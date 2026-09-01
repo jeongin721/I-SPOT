@@ -16,6 +16,29 @@
 └─ TASKS.md                  # 현재 개발 진행 상태
 ```
 
+## 코드 구조
+
+```text
+/
+├─ backend/                  # FastAPI + PostgreSQL Backend (팀 C)
+│  ├─ README.md              # 실행 방법 / 환경변수 / 테스트
+│  └─ docs/API_CONTRACT.md   # Frontend 연동용 API 상세
+├─ ai/                       # STT / LLM 분석 파이프라인 (팀 A·B)
+├─ docker-compose.yml        # Local 실행용 최소 구성 (PostgreSQL 등)
+└─ I-SPOT_DOCS/              # 공통 기준 문서
+```
+
+Backend 를 실행하려면 `backend/README.md` 를 따른다.
+
+```bash
+docker compose up -d db
+cd backend && pip install -r requirements-dev.txt
+cp .env.example .env
+alembic upgrade head
+python -m scripts.seed_users --demo
+uvicorn app.main:app --reload
+```
+
 ## AI가 문서를 읽는 순서
 
 처음에는 `README.md`만 읽고 작업을 분류한다.
