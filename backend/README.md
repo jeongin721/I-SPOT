@@ -43,14 +43,27 @@ Docker 없이 이미 설치된 PostgreSQL 을 쓰려면 `DATABASE_URL` 만 맞�
 ```bash
 cd backend
 python -m venv .venv
+```
 
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
+가상환경 활성화는 **터미널 종류에 따라 경로가 다르다.**
 
+| 터미널 | 명령 |
+|---|---|
+| Git Bash (Windows) | `source .venv/Scripts/activate` |
+| PowerShell (Windows) | `.venv\Scripts\Activate.ps1` |
+| cmd (Windows) | `.venv\Scripts\activate.bat` |
+| macOS / Linux | `source .venv/bin/activate` |
+
+Windows 에서는 `bin/` 이 아니라 `Scripts/` 이므로,
+Git Bash 에서 `source .venv/bin/activate` 를 쓰면 파일을 찾지 못한다.
+
+```bash
 pip install -r requirements-dev.txt
 ```
+
+> Windows 에서 `python` 이 Microsoft Store 안내창을 띄우거나 아무 것도 출력하지 않으면
+> PATH 가 Store 스텁(`WindowsApps\python.exe`)을 가리키는 것이다.
+> 실제 설치 경로(예: `~/anaconda3/python.exe`)를 쓰거나 Store 앱 별칭을 끈다.
 
 ### 2.3 환경변수 설정
 
