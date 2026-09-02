@@ -20,6 +20,7 @@ venv/
 
 # 상담 음성 원본은 절대 커밋하지 않는다.
 storage/
+backend/.demo-storage/
 
 # IDE
 .vscode/

@@ -112,7 +112,38 @@ uvicorn app.main:app --reload
 - API 문서: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
-### 2.7 전체를 Docker 로 실행
+### 2.7 데모 데이터 생성 (선택)
+
+Frontend 개발이나 시연을 하려면 **여러 상태의 상담 데이터**가 필요하다.
+`2.6` 에서 서버를 띄운 상태로 다른 터미널에서 실행한다.
+
+```bash
+python -m scripts.seed_demo_data \
+  --base-url http://localhost:8000 \
+  --admin-email admin@ispot.example.com \
+  --admin-password <seed 비밀번호>
+```
+
+아래 6개 상태의 사례가 생성된다. Frontend 는 각 상태에 대응하는 화면을 확인할 수 있다.
+
+| 상태 | 화면 |
+|---|---|
+| `CREATED` | 녹음 시작 전 |
+| `AUDIO_UPLOADED` | 업로드 완료, STT 대기 |
+| `STT_REVIEW_REQUIRED` | STT 검수 화면 |
+| `STT_CONFIRMED` | 원문 확정, AI 대기 |
+| `AI_REVIEW_REQUIRED` | AI 요약 검수 화면 |
+| `APPROVED` | 완료 (읽기 전용) |
+
+마지막 사례는 다른 상담사에게 배정되므로 **권한 격리**도 확인할 수 있다.
+관리자로 로그인하면 전체가 보이고, 해당 상담사로 로그인하면 1건만 보인다.
+
+데이터는 전부 합성이다. 실제 아동 정보를 사용하지 않으며 학대 정황을 생성하지 않는다.
+(`I-SPOT_DOCS/docs/05_RULES.md`)
+
+실행할 때마다 사례가 새로 추가된다. 초기화하려면 DB 를 다시 만든다.
+
+### 2.8 전체를 Docker 로 실행
 
 ```bash
 # repo root
@@ -282,6 +313,7 @@ backend/
   alembic/               Migration
   scripts/
     seed_users.py        초기 계정 생성
+    seed_demo_data.py    상태별 데모 상담 데이터 생성 (Frontend/시연용)
     smoke_api.py         실행 중인 서버에 대한 전체 Flow 확인
     check.sh             push 전 로컬 검증 (Lint/Test/Migration)
   tests/                 pytest
