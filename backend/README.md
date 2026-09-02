@@ -4,10 +4,11 @@
 FastAPI + PostgreSQL + SQLAlchemy 2.x 기반이며, STT/AI Service 를 Adapter 로 연동한다.
 
 관련 문서
+- `backend/docs/CODE_GUIDE.md` — **처음 이 코드를 본다면 여기부터** (읽는 순서 / 요청 흐름 / 폴더 역할)
+- `backend/docs/API_CONTRACT.md` — **Frontend 연동용 API 상세**
 - `I-SPOT_DOCS/docs/02_ARCHITECTURE.md` — 공통 Contract / 상태 정의
 - `I-SPOT_DOCS/docs/04_DEVELOPMENT.md` — 개발 순서 / 테스트 기준
 - `I-SPOT_DOCS/docs/05_RULES.md` — AI & Project 공통 규칙
-- `backend/docs/API_CONTRACT.md` — **Frontend 연동용 API 상세**
 
 ---
 
