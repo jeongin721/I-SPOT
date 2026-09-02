@@ -106,6 +106,68 @@ def test_list_cases_search_by_alias(client: TestClient, counselor_headers) -> No
     assert items[0]["child_alias"] == "아동_특이케이스"
 
 
+def test_case_list_includes_last_session_at(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    """
+    Case List 화면(03_UI_UX.md S02)의 "최근 상담일".
+    Frontend 가 Case 별로 Session 을 다시 조회하지 않아도 되어야 한다.
+    """
+
+    listed = client.get("/api/v1/cases", headers=counselor_headers).json()["data"]
+
+    # Session 이 없으면 null
+    assert listed["items"][0]["last_session_at"] is None
+
+    client.post(
+        f"/api/v1/cases/{case['id']}/sessions",
+        json={"title": "1회기", "consulted_at": "2026-08-20T10:00:00Z"},
+        headers=counselor_headers,
+    )
+    client.post(
+        f"/api/v1/cases/{case['id']}/sessions",
+        json={"title": "2회기", "consulted_at": "2026-09-01T14:30:00Z"},
+        headers=counselor_headers,
+    )
+
+    listed = client.get("/api/v1/cases", headers=counselor_headers).json()["data"]
+
+    # 가장 최근 상담 일시가 반영된다.
+    assert listed["items"][0]["last_session_at"].startswith("2026-09-01T14:30:00")
+
+
+def test_case_detail_includes_last_session_at(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    client.post(
+        f"/api/v1/cases/{case['id']}/sessions",
+        json={"title": "1회기", "consulted_at": "2026-08-20T10:00:00Z"},
+        headers=counselor_headers,
+    )
+
+    detail = client.get(
+        f"/api/v1/cases/{case['id']}", headers=counselor_headers
+    ).json()["data"]
+
+    assert detail["last_session_at"].startswith("2026-08-20T10:00:00")
+
+
+def test_last_session_at_falls_back_to_created_at(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    """consulted_at 을 기록하지 않은 Session 도 최근 상담일에 반영된다."""
+
+    client.post(
+        f"/api/v1/cases/{case['id']}/sessions",
+        json={"title": "일시 미기록 회기"},
+        headers=counselor_headers,
+    )
+
+    listed = client.get("/api/v1/cases", headers=counselor_headers).json()["data"]
+
+    assert listed["items"][0]["last_session_at"] is not None
+
+
 def test_get_case_detail_includes_counselor_and_session_count(
     client: TestClient, counselor_headers, case: dict
 ) -> None:

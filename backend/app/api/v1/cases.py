@@ -43,7 +43,12 @@ def list_cases(
         search=search,
     )
 
-    items = [CaseResponse.model_validate(case) for case in cases]
+    items = []
+
+    for case, last_session_at in cases:
+        item = CaseResponse.model_validate(case)
+        item.last_session_at = last_session_at
+        items.append(item)
 
     return DataResponse(data=paged(items, total, page, page_size))
 
@@ -69,10 +74,13 @@ def get_case(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[CaseDetailResponse]:
-    case, session_count = case_service.get_case_detail(db, case_id, current_user)
+    case, session_count, last_session_at = case_service.get_case_detail(
+        db, case_id, current_user
+    )
 
     detail = CaseDetailResponse.model_validate(case)
     detail.session_count = session_count
+    detail.last_session_at = last_session_at
     detail.counselor = (
         UserResponse.model_validate(case.counselor) if case.counselor else None
     )

@@ -50,6 +50,9 @@ class CaseResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Case List 화면의 "최근 상담일". Session 이 없으면 null 이다.
+    last_session_at: Optional[datetime] = None
+
 
 class CaseDetailResponse(CaseResponse):
     counselor: Optional[UserResponse] = None

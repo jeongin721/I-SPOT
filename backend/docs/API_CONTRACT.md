@@ -188,7 +188,8 @@ Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
         "notes": null,
         "counselor_id": "uuid",
         "created_at": "...",
-        "updated_at": "..."
+        "updated_at": "...",
+        "last_session_at": "2026-09-01T14:30:00Z"
       }
     ],
     "meta": { "total": 1, "page": 1, "page_size": 20, "total_pages": 1 }
@@ -197,6 +198,10 @@ Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 ```
 
 > 개인정보 최소화 원칙에 따라 아동 실명 필드는 없다. `child_alias` 를 사용한다.
+
+`last_session_at` 은 Case List 화면(`03_UI_UX.md` S02)의 **최근 상담일**이다.
+목록 조회에서 함께 계산되므로 Case 별로 Session 을 다시 호출할 필요가 없다.
+Session 이 없으면 `null`, `consulted_at` 이 기록되지 않은 Session 은 생성 시각으로 대체된다.
 
 ### POST /api/v1/cases → 201
 
@@ -218,7 +223,7 @@ Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 
 ### GET /api/v1/cases/{case_id}
 
-`CaseResponse` + `counselor`(사용자 객체) + `session_count`
+`CaseResponse` + `counselor`(사용자 객체) + `session_count` + `last_session_at`
 
 오류: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`
 

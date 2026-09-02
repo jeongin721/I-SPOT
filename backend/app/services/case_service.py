@@ -126,7 +126,7 @@ def list_cases(
     limit: int,
     status: Optional[CaseStatus] = None,
     search: Optional[str] = None,
-) -> Tuple[List[Case], int]:
+) -> Tuple[List[Tuple[Case, Optional[datetime]]], int]:
     conditions = []
 
     # counselor 는 담당 Case 만 조회한다.
@@ -148,32 +148,59 @@ def list_cases(
         select(func.count()).select_from(Case).where(*conditions)
     ) or 0
 
-    cases = list(
-        db.scalars(
-            select(Case)
-            .where(*conditions)
-            .order_by(Case.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-    )
+    # Case List 화면(S03_UI_UX.md S02)이 "최근 상담일"을 표시하므로
+    # 목록 조회에서 함께 계산한다. Frontend 가 Case 별로 Session 을
+    # 다시 조회하는 N+1 을 막기 위한 것이다.
+    rows = db.execute(
+        select(Case, _last_session_at_subquery())
+        .where(*conditions)
+        .order_by(Case.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    cases = [(row[0], row[1]) for row in rows]
 
     return cases, total
+
+
+def _last_session_at_subquery():
+    """
+    Case 의 가장 최근 상담 일시.
+
+    consulted_at 이 기록되지 않은 Session 은 생성 시각으로 대체한다.
+    """
+
+    return (
+        select(
+            func.max(
+                func.coalesce(
+                    ConsultationSession.consulted_at,
+                    ConsultationSession.created_at,
+                )
+            )
+        )
+        .where(ConsultationSession.case_id == Case.id)
+        .correlate(Case)
+        .scalar_subquery()
+    )
 
 
 def get_case_detail(
     db: Session,
     case_id: uuid.UUID,
     current_user: User,
-) -> Tuple[Case, int]:
-    case = db.scalar(
-        select(Case)
+) -> Tuple[Case, int, Optional[datetime]]:
+    row = db.execute(
+        select(Case, _last_session_at_subquery())
         .options(selectinload(Case.counselor))
         .where(Case.id == case_id)
-    )
+    ).first()
 
-    if case is None:
+    if row is None:
         raise not_found(ErrorCode.CASE_NOT_FOUND, "사례를 찾을 수 없습니다.")
+
+    case, last_session_at = row[0], row[1]
 
     ensure_case_access(current_user, case)
 
@@ -183,7 +210,7 @@ def get_case_detail(
         .where(ConsultationSession.case_id == case.id)
     ) or 0
 
-    return case, session_count
+    return case, session_count, last_session_at
 
 
 def update_case(
