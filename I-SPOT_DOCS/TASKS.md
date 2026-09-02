@@ -22,7 +22,7 @@ DONE
 | FE-01 | Frontend | Case List/Detail | - | TODO | BE-02 |
 | BE-03 | Backend | Audio 업로드 | - | TODO | BE-02 |
 | FE-02 | Frontend | 상담 녹음 UI | - | TODO | FE-01 |
-| AI-01 | AI | STT Adapter/Schema | - | TODO | BE-03 |
+| AI-01 | AI | STT Adapter/Schema | A | IN_PROGRESS | BE-03 |
 | FE-03 | Frontend | Transcript Review | - | TODO | AI-01 |
 | AI-02 | AI | Summary/위험 발화 분석 | - | TODO | AI-01 |
 | BE-04 | Backend | AI 결과 저장/조회 | - | TODO | AI-02 |
