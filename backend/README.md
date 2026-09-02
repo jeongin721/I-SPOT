@@ -159,10 +159,19 @@ python -m scripts.smoke_api \
 로그인 → Case/Session 생성 → Audio 업로드 → STT → Transcript 수정·확정
 → AI 분석 → Summary 수정 → 승인 → 재조회까지 한 번에 확인한다.
 
-### Lint / Migration 정합성
+### Push 전 로컬 검증
+
+CI 와 같은 항목(Lint / Test / Migration 정합성)을 한 번에 확인한다.
+
+```bash
+./scripts/check.sh
+```
+
+개별로 실행할 수도 있다.
 
 ```bash
 ruff check .    # PR 최소 조건 (04_DEVELOPMENT.md §4)
+pytest
 alembic check   # model 과 migration 이 어긋나면 실패한다
 ```
 
@@ -270,7 +279,10 @@ backend/
       stt_adapter.py     STT Provider 추상화 + Mock
       ai_adapter.py      AI Pipeline 추상화 + Mock
   alembic/               Migration
-  scripts/seed_users.py  초기 계정 생성
+  scripts/
+    seed_users.py        초기 계정 생성
+    smoke_api.py         실행 중인 서버에 대한 전체 Flow 확인
+    check.sh             push 전 로컬 검증 (Lint/Test/Migration)
   tests/                 pytest
 ```
 
