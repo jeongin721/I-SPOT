@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     AI_PROVIDER: Literal["mock", "pipeline"] = "mock"
     AI_TIMEOUT_SECONDS: float = 180.0
 
+    # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
+    # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = ""
+
     # ---------------------------------------------------------
     # Logging
     # ---------------------------------------------------------

@@ -126,6 +126,25 @@ class MockAIAdapter:
 # Pipeline Adapter (팀 B run_analysis_pipeline)
 # =========================================================
 
+def export_llm_env() -> None:
+    """
+    팀 B pipeline 이 사용하는 LLM 설정을 process 환경변수로 넘긴다.
+
+    ai/services/summary_service.py 는 OPENAI_API_KEY / OPENAI_MODEL 을
+    os.getenv 로 직접 읽지만, pydantic-settings 의 .env 로딩은
+    os.environ 을 채우지 않는다. 그래서 .env 에만 Key 를 넣으면
+    pipeline 이 값을 찾지 못한다.
+
+    이미 process 환경에 값이 있으면(배포 환경/Secret 주입) 그 값을 우선한다.
+    """
+
+    for name in ("OPENAI_API_KEY", "OPENAI_MODEL"):
+        value = getattr(settings, name, "")
+
+        if value and not os.getenv(name):
+            os.environ[name] = value
+
+
 class PipelineAIAdapter:
     """ai/services/analysis_pipeline.run_analysis_pipeline 을 호출한다."""
 
@@ -133,6 +152,7 @@ class PipelineAIAdapter:
 
     def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
         ensure_repo_root_on_path()
+        export_llm_env()
 
         try:
             from ai.schemas.analysis import Transcript
@@ -249,6 +269,7 @@ __all__ = [
     "AIError",
     "MockAIAdapter",
     "PipelineAIAdapter",
+    "export_llm_env",
     "get_ai_adapter",
     "set_ai_adapter_override",
 ]
