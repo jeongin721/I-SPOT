@@ -33,3 +33,6 @@ Thumbs.db
 # Node (Frontend)
 node_modules/
 .next/
+
+# Personal study guides — do not commit
+_개인용_학습가이드/
