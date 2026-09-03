@@ -1,144 +1,202 @@
-import os
-import pandas as pd
-import numpy as np
-import json
+from pathlib import Path
 import re
-import datetime
 
+import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-
-from transformers import ElectraTokenizer, ElectraForSequenceClassification
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-import warnings
-warnings.filterwarnings("ignore")
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# ============================================================
+# 설정
+# ============================================================
 
-##########################################################################################################
-# 상담 json 데이터셋 (원천데이터)
+MODEL_ID = "klue/roberta-base"
+MAX_LEN = 512
 
-json_file = r"C:\Users\USER\Desktop\최종_프로젝트\최종프로젝트_데이터셋\VL_out\VL_out_data\0008.json"
+BASE_DIR = Path(__file__).resolve().parent
 
-##########################################################################################################
-
-
-audio_texts = []
-file_size = os.path.getsize(json_file) / 1024 
-if file_size <= 1: 
-    print(f"{json_file} is Empty File!")
-
-
-with open(json_file, 'r', encoding='utf-8') as json_file:
-    json_data = json.load(json_file)
-    
-info = json_data["info"]
-abuse_classification = info["상호작용 특성(종합)"]  # interaction classification
-    
-first_list_item = json_data["list"]
-
-audio_texts = []
-list_max_num = len(first_list_item)
-for i in range(list_max_num) :
-    text_sector = first_list_item[i]
-    
-    audio_list = text_sector.get("list")
-    for in_audio in audio_list :
-        audio_text= [item for item in in_audio.get('audio', []) if item.get('type') == 'A']
-        for item in audio_text:
-            text_values = item['text']
-            audio_texts.append(text_values)
-
-data = {
-        "file" : [json_file],
-        "audio_text": [str(audio_texts)]
-        }
-
-data_df= pd.DataFrame(data)
-
-def reduce_consecutive_spaces(text):
-    return re.sub(r'\s+', ' ', text) # 하나 이상의 공백 문자를 한번으로 축소
-
-
-data_df["audio_text"] = data_df["audio_text"].str.replace("[^ㄱ-ㅎㅏ-ㅣ가-힣 0-9]", "", regex=True)  ## 한글, 숫자, 공백 이외의 특수문자 제거
-data_df["audio_text"] = data_df["audio_text"].apply(reduce_consecutive_spaces)
-
-
-class KavaTextDataset(Dataset):
-    def __init__(self, df, tokenizer, max_len, with_labels=True):
-        self.tokenizer = tokenizer
-        self.data = df
-        self.sentences = df["audio_text"].values
-        self.labels = df["abuse_label"].values if with_labels else None
-        self.max_len = max_len
-        self.with_labels = with_labels
-
-    def __len__(self):
-        return len(self.sentences)
-
-    def __getitem__(self, index):
-        sentence = self.sentences[index]
-
-        inputs = self.tokenizer.encode_plus(
-            sentence,
-            add_special_tokens=True,
-            max_length=self.max_len,
-            pad_to_max_length=True,
-            return_attention_mask=True,
-            truncation=True
-        )
-
-        ids = torch.tensor(inputs['input_ids'], dtype=torch.long)
-        mask = torch.tensor(inputs['attention_mask'], dtype=torch.long)
-        token_type_ids = torch.tensor(inputs['token_type_ids'], dtype=torch.long)
-
-        if self.with_labels:
-            label = self.labels[index]
-            return {
-                'ids': ids,
-                'mask': mask,
-                'token_type_ids': token_type_ids,
-                'labels': torch.tensor(label, dtype=torch.long)
-            }
-        else:
-            return {
-                'ids': ids,
-                'mask': mask,
-                'token_type_ids': token_type_ids
-            }
-            
-
-klue_roberta_tokenizer = AutoTokenizer.from_pretrained("klue/roberta-base")
-klue_roberta_model = AutoModelForSequenceClassification.from_pretrained("klue/roberta-base", num_labels=5)
-
-text_data = KavaTextDataset(data_df, klue_roberta_tokenizer, 512,  with_labels=False)
-text_dataloader = DataLoader(text_data, batch_size=1)    
-
-## 모델 가중치 로드
-model = klue_roberta_model
-model.load_state_dict(
-    torch.load(
-        r"C:\Users\USER\Desktop\최종_프로젝트\최종프로젝트_데이터셋\hub_model\1.모델소스코드\02_abuse_classification\weight\roberta_base-2023-11-29_cpu.pth",
-        map_location=device
-    ),
-    strict=False
+MODEL_PATH = (
+    BASE_DIR
+    / "weight"
+    / "roberta_multilabel_2026-09-03.pth"
 )
-model.to(device)
 
+LABEL_NAMES = [
+    "신체학대",
+    "정서학대",
+    "성학대",
+    "방임",
+]
+
+# Validation 데이터에서 튜닝한 라벨별 threshold
+THRESHOLDS = {
+    "신체학대": 0.72,
+    "정서학대": 0.39,
+    "성학대": 0.53,
+    "방임": 0.32,
+}
+
+device = torch.device(
+    "cuda" if torch.cuda.is_available() else "cpu"
+)
+
+
+# ============================================================
+# 텍스트 전처리
+# ============================================================
+
+def clean_text(text: str) -> str:
+    text = str(text)
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text,
+    )
+
+    return text.strip()
+
+
+# ============================================================
+# 모델 로드
+# ============================================================
+
+print("Device :", device)
+
+if torch.cuda.is_available():
+    print(
+        "GPU :",
+        torch.cuda.get_device_name(0),
+    )
+
+
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_ID
+)
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    MODEL_ID,
+    num_labels=4,
+    problem_type="multi_label_classification",
+)
+
+state_dict = torch.load(
+    MODEL_PATH,
+    map_location=device,
+)
+
+model.load_state_dict(state_dict)
+
+model.to(device)
 model.eval()
 
-with torch.no_grad():
-    for data in text_dataloader:
-        ids = data['ids'].to(device)
-        mask = data['mask'].to(device)
-        token_type_ids = data['token_type_ids'].to(device)
+print("Model loaded :", MODEL_PATH)
 
-        outputs = model(ids, attention_mask=mask, token_type_ids=token_type_ids)
-        
-        prediction = outputs.logits.argmax(1).detach().cpu().numpy()
-       
-    
-print(prediction)
 
-# 0:해당없음, 1:신체학대, 2:정서학대, 3:성학대, 4:방임
+# ============================================================
+# 추론
+# ============================================================
+
+def predict_abuse(text: str) -> dict:
+
+    text = clean_text(text)
+
+    if not text:
+        raise ValueError(
+            "분석할 상담 텍스트가 없습니다."
+        )
+
+    encoded = tokenizer(
+        text,
+        max_length=MAX_LEN,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt",
+    )
+
+    input_ids = encoded[
+        "input_ids"
+    ].to(device)
+
+    attention_mask = encoded[
+        "attention_mask"
+    ].to(device)
+
+    token_type_ids = encoded.get(
+        "token_type_ids"
+    )
+
+    if token_type_ids is not None:
+        token_type_ids = token_type_ids.to(device)
+
+    with torch.no_grad():
+
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+        )
+
+        probabilities = torch.sigmoid(
+            outputs.logits
+        )[0].cpu().numpy()
+
+    results = {}
+
+    for label, probability in zip(
+        LABEL_NAMES,
+        probabilities,
+    ):
+
+        threshold = THRESHOLDS[label]
+
+        results[label] = {
+            "probability": float(probability),
+            "percentage": round(
+                float(probability) * 100,
+                2,
+            ),
+            "threshold": threshold,
+            "detected": bool(
+                probability >= threshold
+            ),
+        }
+
+    return results
+
+
+# ============================================================
+# 터미널 테스트
+# ============================================================
+
+if __name__ == "__main__":
+
+    print()
+    print("==============================")
+    print("   학대 관련 신호 테스트")
+    print("==============================")
+
+    text = input(
+        "\n상담 텍스트 입력: "
+    )
+
+    result = predict_abuse(text)
+
+    print("\n===== 분석 결과 =====")
+
+    for label in LABEL_NAMES:
+
+        item = result[label]
+
+        status = (
+            "신호 있음"
+            if item["detected"]
+            else "신호 없음"
+        )
+
+        print(
+            f"{label:<6} "
+            f"{item['percentage']:>6.2f}% "
+            f"(기준 {item['threshold']:.2f}) "
+            f"→ {status}"
+        )

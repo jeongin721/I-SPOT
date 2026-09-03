@@ -62,7 +62,7 @@ from ai.modeling.abuse.utils.Custom_utils import (
 CFG = {
     "EPOCHS": 20,
     "LEARNING_RATE": 2e-5,
-    "BATCH_SIZE": 4,   # 8 → 4
+    "BATCH_SIZE": 16,   # 8 → 4
     "SEED": 69,
     "MAX_LEN": 512,
     "EARLY_STOP": 5,

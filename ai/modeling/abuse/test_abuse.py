@@ -1,129 +1,263 @@
-import pandas as pd
+from pathlib import Path
+import ast
+import random
+import warnings
+
 import numpy as np
-import datetime
-import re
-
-# Custom library
-from utils.Custom_utils import FocalLoss, calculate_confusion_matrix, KoreanTextDataset
-
+import pandas as pd
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
-from transformers import ElectraTokenizer, ElectraForSequenceClassification
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, classification_report
 
-from tqdm.auto import tqdm
-import matplotlib.pyplot as plt
+from ai.modeling.abuse.utils.Custom_utils import (
+    KoreanTextDataset,
+    LABEL_NAMES,
+)
 
-import warnings
 warnings.filterwarnings("ignore")
 
-from transformers import logging
-logging.set_verbosity_error()
+# ============================================================
+# 설정
+# ============================================================
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print("device : ", device)
+SEED = 69
+BATCH_SIZE = 32
+MAX_LEN = 512
+THRESHOLD = 0.5
+MODEL_ID = "klue/roberta-base"
 
+BASE_DIR = Path(__file__).resolve().parent
+
+VALID_DATA_PATH = BASE_DIR / "datasets" / "valid_multilabel.csv"
+MODEL_PATH = BASE_DIR / "weight" / "roberta_multilabel_2026-09-03.pth"
+RESULT_PATH = BASE_DIR / "results" / "validation_predictions.csv"
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print("Device :", device)
+
+if torch.cuda.is_available():
+    print("GPU :", torch.cuda.get_device_name(0))
+
+
+# ============================================================
+# Seed
+# ============================================================
 
 def set_seed(seed=69):
-    np.random.seed(seed) 
+    random.seed(seed)
+    np.random.seed(seed)
     torch.manual_seed(seed)
+
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-set_seed(seed=69)
 
-####################################################################################################
-
-## make_csv.py 코드로 생성한 평가용 데이터셋을 불러옵니다.
-df = pd.read_csv("/workspace/02_abuse_classification/datasets/test.csv")
-
-## 모델 weight 경로 설정
-model_path = "/workspace/02_abuse_classification/weight/roberta_base-2023-11-29_cpu.pth"
-
-## 개별 결과값 csv 저장 경로 설정
-result_path = "/workspace/02_results.csv"
-
-####################################################################################################
-
-label_mapping = {
-                    "(해당 없음)" : 0,   
-                    "신체학대": 1,   
-                    "정서학대": 2,   
-                    "성학대": 3,
-                    "방임" : 4
-                }
-
-df['label'] = df['label'].map(label_mapping)
-
-test_df=df.copy()
-
-print("Test label")
-print(test_df['label'].value_counts())
-print(f"Test_data shape : {test_df.shape}")
-
-# Roberta model load
-klue_roberta_tokenizer = AutoTokenizer.from_pretrained("klue/roberta-base")
-klue_roberta_model = AutoModelForSequenceClassification.from_pretrained("klue/roberta-base", num_labels=5)
-
-# Custom Dataset Loader
-test_data = KoreanTextDataset(test_df, klue_roberta_tokenizer, 512)
-
-# GPU 상황에 따라 batch size 조정 필요
-test_dataloader = DataLoader(test_data, batch_size=32, num_workers=8)
+set_seed(SEED)
 
 
-## Load Training Weight
-model = klue_roberta_model
-model.load_state_dict(torch.load(model_path, map_location="cpu"))
-klue_roberta_model.to(device)
+# ============================================================
+# 데이터 로드
+# ============================================================
 
+print("\n===== Load Validation Dataset =====")
+
+df = pd.read_csv(VALID_DATA_PATH)
+
+print("Validation shape :", df.shape)
+
+
+# label 컬럼이 문자열 형태의 리스트라면 실제 리스트로 변환
+def parse_label(value):
+    if isinstance(value, str):
+        return ast.literal_eval(value)
+
+    return value
+
+
+df["label"] = df["label"].apply(parse_label)
+
+
+print("\n===== Label Distribution =====")
+
+for idx, label_name in enumerate(LABEL_NAMES):
+
+    count = df["label"].apply(
+        lambda x: int(x[idx])
+    ).sum()
+
+    print(f"{label_name}: {count}")
+
+
+# ============================================================
+# Tokenizer / Dataset
+# ============================================================
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+
+test_dataset = KoreanTextDataset(
+    df,
+    tokenizer,
+    MAX_LEN,
+)
+
+test_dataloader = DataLoader(
+    test_dataset,
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    num_workers=4,
+)
+
+
+# ============================================================
+# Model
+# ============================================================
+
+print("\n===== Load Best Model =====")
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    MODEL_ID,
+    num_labels=4,
+    problem_type="multi_label_classification",
+)
+
+state_dict = torch.load(
+    MODEL_PATH,
+    map_location=device,
+)
+
+model.load_state_dict(state_dict)
+
+model.to(device)
 model.eval()
-test_loss = 0.0
-preds, true_labels = [], []
+
+print("Model :", MODEL_PATH)
+
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+all_probs = []
+all_preds = []
+all_labels = []
 
 with torch.no_grad():
+
     for data in test_dataloader:
-        ids = data['ids'].to(device)
-        mask = data['mask'].to(device)
-        token_type_ids = data['token_type_ids'].to(device)
-        labels = data['labels'].to(device)
 
-        outputs = model(ids, attention_mask=mask, token_type_ids=token_type_ids)
-        preds += outputs.logits.argmax(1).detach().cpu().numpy().tolist()
-        true_labels += labels.detach().cpu().numpy().tolist()
-        
-val_f1 = f1_score(true_labels, preds, average ='weighted' )
+        ids = data["ids"].to(device)
+        mask = data["mask"].to(device)
+        token_type_ids = data["token_type_ids"].to(device)
 
-y_true = np.array(true_labels)
+        labels = data["labels"].to(device)
 
-print(f"Test F1 Score : {val_f1}")
-cm, cr= calculate_confusion_matrix(preds, true_labels)
+        outputs = model(
+            input_ids=ids,
+            attention_mask=mask,
+            token_type_ids=token_type_ids,
+        )
 
-print(f"==============================Test Confusion Matrix ==============================")
-print(cm)
-print()
-print("=============================Test classification report=============================")
-print(cr)
+        # Multi-label → sigmoid
+        probs = torch.sigmoid(outputs.logits)
 
+        # 현재 baseline threshold = 0.5
+        preds = (probs >= THRESHOLD).int()
 
-def reverse_label_map(label):
-    for k, v in label_mapping.items():
-        if v == label:
-            return k
+        all_probs.append(probs.cpu().numpy())
+        all_preds.append(preds.cpu().numpy())
+        all_labels.append(labels.cpu().numpy())
 
 
-test_df['prediction'] = preds
-test_df['prediction'] = test_df['prediction'].apply(reverse_label_map)
-test_df['label'] = test_df['label'].apply(reverse_label_map)
-
-result_df = test_df[['file', 'label', 'prediction']]
+y_prob = np.concatenate(all_probs, axis=0)
+y_pred = np.concatenate(all_preds, axis=0)
+y_true = np.concatenate(all_labels, axis=0).astype(int)
 
 
-## 평가용 데이터셋의 개별 예측값과 원래 라벨값을 출력하여 csv 파일로 저장합니다.
-result_df.to_csv(result_path, index=False, encoding='utf-8-sig'
-                 )
-print("Results saved to CSV.")
+# ============================================================
+# Metrics
+# ============================================================
+
+micro_f1 = f1_score(
+    y_true,
+    y_pred,
+    average="micro",
+    zero_division=0,
+)
+
+macro_f1 = f1_score(
+    y_true,
+    y_pred,
+    average="macro",
+    zero_division=0,
+)
+
+
+print("\n======================================")
+print("       BEST MODEL EVALUATION")
+print("======================================")
+
+print(f"Threshold : {THRESHOLD}")
+print(f"Micro F1  : {micro_f1:.4f}")
+print(f"Macro F1  : {macro_f1:.4f}")
+
+
+print("\n===== Per-label F1 =====")
+
+for idx, label_name in enumerate(LABEL_NAMES):
+
+    score = f1_score(
+        y_true[:, idx],
+        y_pred[:, idx],
+        zero_division=0,
+    )
+
+    print(f"{label_name}: {score:.4f}")
+
+
+print("\n===== Classification Report =====")
+
+print(
+    classification_report(
+        y_true,
+        y_pred,
+        target_names=LABEL_NAMES,
+        zero_division=0,
+    )
+)
+
+
+# ============================================================
+# 개별 예측 결과 저장
+# ============================================================
+
+RESULT_PATH.parent.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+result_df = df.copy()
+
+
+for idx, label_name in enumerate(LABEL_NAMES):
+
+    # 실제 라벨
+    result_df[f"{label_name}_true"] = y_true[:, idx]
+
+    # 예측 라벨
+    result_df[f"{label_name}_pred"] = y_pred[:, idx]
+
+    # 확률
+    result_df[f"{label_name}_prob"] = y_prob[:, idx]
+
+
+result_df.to_csv(
+    RESULT_PATH,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+
+print("\nResults saved:")
+print(RESULT_PATH)
