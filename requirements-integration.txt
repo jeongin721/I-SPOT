@@ -1,0 +1,23 @@
+# 통합 트리(backend + ai/ + stt/) 를 한 venv 에서 실행하기 위한 추가 의존성.
+#
+# backend/requirements.txt 는 Backend 단독 실행 의존성이므로 수정하지 않는다.
+# 팀 A(stt/) / 팀 B(ai/) 코드를 실제로 import 해서 쓸 때만 아래를 추가 설치한다.
+#
+#   . backend/.venv/bin/activate
+#   pip install -r backend/requirements-dev.txt
+#   pip install -r requirements-integration.txt
+#
+# 주의: STT 화자분리(diarization) 옵션인 pyannote-audio/torch 는 포함하지 않는다.
+#       stt/ispot_stt.py 의 diarization 은 I_SPOT_SPEAKER_DIARIZATION_PROVIDER=pyannote
+#       일 때만 필요하고, 기본값(mock)/deepgram 경로에서는 쓰이지 않는다.
+
+# ai/services/summary_service.py: from openai import OpenAI, ...
+# stt/ispot_stt.py(WhisperSTTProvider), stt/ispot_analyzer.py 도 사용한다.
+openai==3.7.0
+
+# stt/ispot_stt.py: from deepgram import DeepgramClient (module import 시점에 필요)
+deepgram-sdk==7.8.0
+
+# stt/ispot_stt.py, stt/ispot_analyzer.py: from dotenv import load_dotenv
+# (pydantic-settings 의 전이 의존성이지만 팀 A 코드가 직접 쓰므로 명시한다.)
+python-dotenv==1.2.3
