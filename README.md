@@ -73,3 +73,63 @@ AI의 첫 답변은 장황한 설계 설명이 아니라 아래만 보여준다.
 ```
 
 그 다음 실제 작업을 수행한다.
+
+---
+
+## 개발 환경 실행 (Getting Started)
+
+MVP 스캐폴드는 FastAPI 백엔드 + PostgreSQL, Next.js 프론트엔드로 구성된다.
+
+```text
+backend/    FastAPI + SQLAlchemy 2.x + Pydantic (Case/Session API, /api/v1)
+frontend/   Next.js + TypeScript + Tailwind (Case/Session 관리 UI)
+```
+
+### 1) Docker Compose (권장)
+
+```bash
+docker compose up --build
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:8000  (docs: /docs, health: /health)
+```
+
+### 2) 로컬 실행 (Docker 없이)
+
+PostgreSQL이 `127.0.0.1:5432`에 `ispot/ispot` 계정으로 준비되어 있어야 한다.
+
+Backend:
+
+```bash
+cd backend
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload --port 8000
+pytest            # 테스트 실행
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev       # http://localhost:3000
+```
+
+### Cloud Agent 환경
+
+`.cursor/environment.json`이 `install`/`start`/`terminals`를 정의한다.
+`install.sh`는 시스템 패키지·의존성을 설치하고, `start.sh`는 PostgreSQL을 기동하며,
+`backend`/`frontend` 터미널이 개발 서버를 실행한다.
+
+### 주요 API (`/api/v1`)
+
+```text
+GET  /health
+GET  /cases
+POST /cases
+GET  /cases/{case_id}
+GET  /cases/{case_id}/sessions
+POST /cases/{case_id}/sessions
+```
+
+성공 응답은 `{"data": ...}`, 실패 응답은 `{"error": {"code","message"}}` 형식을 따른다.
