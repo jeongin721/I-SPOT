@@ -2,10 +2,10 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Literal
+from typing import Annotated, List, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
@@ -46,7 +46,9 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------
     # CORS
     # ---------------------------------------------------------
-    CORS_ORIGINS: List[str] = Field(
+    # NoDecode: pydantic-settings 가 env 값을 JSON 으로 먼저 파싱하지 않게 하고,
+    # 아래 _split_comma_separated 가 콤마 구분 문자열을 처리하도록 위임한다.
+    CORS_ORIGINS: Annotated[List[str], NoDecode] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
@@ -59,7 +61,7 @@ class Settings(BaseSettings):
     # 9월 MVP 는 Local Storage 를 사용한다. (docs/02_ARCHITECTURE.md)
     AUDIO_STORAGE_ROOT: Path = REPO_ROOT / "storage" / "audio"
     AUDIO_MAX_SIZE_MB: int = 200
-    AUDIO_ALLOWED_EXTENSIONS: List[str] = Field(
+    AUDIO_ALLOWED_EXTENSIONS: Annotated[List[str], NoDecode] = Field(
         default_factory=lambda: [
             ".wav",
             ".mp3",
