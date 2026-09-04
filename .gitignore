@@ -1,4 +1,38 @@
-.env
-.env
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Virtual Environment
+.venv/
+venv/
+
+# Database (local/test)
+*.db
+*.sqlite3
+
+# 상담 음성 원본은 절대 커밋하지 않는다.
+storage/
+backend/.demo-storage/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (Frontend)
+node_modules/
+.next/
+
+# Personal study guides — do not commit
+_개인용_학습가이드/

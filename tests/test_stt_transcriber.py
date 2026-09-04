@@ -13,7 +13,7 @@ import wave
 
 import pytest
 
-from ispot_stt import (
+from stt.ispot_stt import (
     SpeakerDiarizer,
     Transcriber,
     InvalidAudioError,
