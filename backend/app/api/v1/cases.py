@@ -45,9 +45,10 @@ def list_cases(
 
     items = []
 
-    for case, last_session_at in cases:
+    for case, last_session_at, counselor_name in cases:
         item = CaseResponse.model_validate(case)
         item.last_session_at = last_session_at
+        item.counselor_name = counselor_name
         items.append(item)
 
     return DataResponse(data=paged(items, total, page, page_size))
@@ -84,6 +85,8 @@ def get_case(
     detail.counselor = (
         UserResponse.model_validate(case.counselor) if case.counselor else None
     )
+    # 목록 응답과 같은 필드로도 읽을 수 있게 채운다.
+    detail.counselor_name = case.counselor.name if case.counselor else None
 
     return DataResponse(data=detail)
 

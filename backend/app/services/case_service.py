@@ -126,7 +126,7 @@ def list_cases(
     limit: int,
     status: Optional[CaseStatus] = None,
     search: Optional[str] = None,
-) -> Tuple[List[Tuple[Case, Optional[datetime]]], int]:
+) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str]]], int]:
     conditions = []
 
     # counselor 는 담당 Case 만 조회한다.
@@ -148,18 +148,22 @@ def list_cases(
         select(func.count()).select_from(Case).where(*conditions)
     ) or 0
 
-    # Case List 화면(S03_UI_UX.md S02)이 "최근 상담일"을 표시하므로
-    # 목록 조회에서 함께 계산한다. Frontend 가 Case 별로 Session 을
+    # Case List 화면(S03_UI_UX.md S02)이 "최근 상담일"과 담당자 이름을 표시하므로
+    # 목록 조회에서 함께 가져온다. Frontend 가 Case 별로 Session 이나 User 를
     # 다시 조회하는 N+1 을 막기 위한 것이다.
+    #
+    # 담당자는 outerjoin 으로 붙인다. 상담사 계정이 삭제되면 counselor_id 가
+    # 남아도 User row 는 없을 수 있고, 그때도 사례는 조회되어야 한다.
     rows = db.execute(
-        select(Case, _last_session_at_subquery())
+        select(Case, _last_session_at_subquery(), User.name)
+        .outerjoin(User, User.id == Case.counselor_id)
         .where(*conditions)
         .order_by(Case.created_at.desc())
         .offset(offset)
         .limit(limit)
     ).all()
 
-    cases = [(row[0], row[1]) for row in rows]
+    cases = [(row[0], row[1], row[2]) for row in rows]
 
     return cases, total
 

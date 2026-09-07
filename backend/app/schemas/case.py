@@ -53,6 +53,10 @@ class CaseResponse(BaseModel):
     # Case List 화면의 "최근 상담일". Session 이 없으면 null 이다.
     last_session_at: Optional[datetime] = None
 
+    # Case List 화면이 담당자를 이름으로 표시한다. counselor_id(UUID)만으로는
+    # Frontend 가 사용자 조회를 다시 해야 하므로 목록에서 함께 내려준다.
+    counselor_name: Optional[str] = None
+
 
 class CaseDetailResponse(CaseResponse):
     counselor: Optional[UserResponse] = None

@@ -90,6 +90,40 @@ def test_list_cases_returns_paged_envelope(
     assert data["meta"]["total_pages"] == 2
 
 
+def test_list_cases_includes_counselor_name(
+    client: TestClient, counselor_headers
+) -> None:
+    """Frontend 가 담당자를 이름으로 표시하므로 목록에서 함께 내려준다."""
+
+    create_case(client, counselor_headers, title="담당자 표시 확인")
+
+    response = client.get("/api/v1/cases", headers=counselor_headers)
+
+    assert response.status_code == 200
+
+    item = response.json()["data"]["items"][0]
+
+    # UUID 만으로는 화면에 이름을 띄울 수 없다.
+    assert item["counselor_id"]
+    assert item["counselor_name"] == "상담사A"
+
+
+def test_case_detail_includes_counselor_name(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    """상세 응답도 목록과 같은 필드로 읽을 수 있어야 한다."""
+
+    response = client.get(f"/api/v1/cases/{case['id']}", headers=counselor_headers)
+
+    assert response.status_code == 200
+
+    data = response.json()["data"]
+
+    assert data["counselor_name"] == "상담사A"
+    # 기존 counselor 객체도 그대로 유지된다.
+    assert data["counselor"]["name"] == "상담사A"
+
+
 def test_list_cases_search_by_alias(client: TestClient, counselor_headers) -> None:
     create_case(client, counselor_headers, child_alias="아동_특이케이스")
     create_case(client, counselor_headers, child_alias="아동_기본")
