@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # ispot 모듈 불러오기
-from ispot_stt import DeepgramSTTProvider
+from ispot_stt import SelectiveFallbackSTTProvider
 from ispot_postprocess import STTPostProcessor
 
 load_dotenv()
@@ -66,7 +66,7 @@ def analyze_audio(file: UploadFile = File(...)):
         # 4. Deepgram STT 변환 (예외 처리 포함)
         print("1️⃣ Deepgram STT 진행 중...")
         try:
-            provider = DeepgramSTTProvider()
+            provider = SelectiveFallbackSTTProvider()
             raw_stt_result = provider.transcribe(temp_file_path)
         except Exception as stt_err:
             print(f"❌ STT 엔진 오류: {str(stt_err)}")

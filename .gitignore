@@ -2,3 +2,8 @@
 .env
 __pycache__/
 *.pyc
+# Local model weights
+abuse_model/weight/
+
+# Local evaluation dataset
+test_sample/

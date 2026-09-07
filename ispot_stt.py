@@ -307,10 +307,35 @@ class DeepgramSTTProvider(BaseSTTProvider):
                 request=audio_bytes,
                 model="nova-2",
                 language="ko",
-                diarize=True,
+                diarize_model="latest",
                 punctuate=True,
                 utterances=True,
             )
+
+            # DEBUG: Deepgram SDK 원본 응답 저장
+            if str(audio_path).endswith("1354.mp3"):
+                import json
+
+                with open(
+                    "test_sample/1354_deepgram_sdk_raw.json",
+                    "w",
+                    encoding="utf-8",
+                ) as f:
+                    json.dump(
+                        response,
+                        f,
+                        ensure_ascii=False,
+                        indent=2,
+                        default=lambda obj: (
+                            obj.to_dict()
+                            if hasattr(obj, "to_dict")
+                            else obj.model_dump()
+                            if hasattr(obj, "model_dump")
+                            else obj.__dict__
+                            if hasattr(obj, "__dict__")
+                            else str(obj)
+                        ),
+                    )
 
             segments = self._coerce_to_contract(response)
             return {"schema_version": "1.0", "segments": segments}
@@ -324,12 +349,15 @@ class DeepgramSTTProvider(BaseSTTProvider):
         return self.transcribe(audio_path)
 
     def _coerce_to_contract(self, response) -> List[Dict[str, Any]]:
-        # 공부용 설명:
-        # Deepgram가 준 원본 응답은 우리가 직접 다루기 편한 형태가 아니다.
-        # 예를 들어 results.utterances 안에 발화 단위 정보가 들어 있는데,
-        # 프로젝트는 segment_id, speaker, start_ms, end_ms, text 같은 형태를 기대한다.
-        #
-        # 그래서 이 함수는 "외부 API 응답을 내부 표준 규격으로 바꾸는 변환기" 역할을 한다.
+        """
+        Deepgram 응답을 I-SPOT 공통 segment 구조로 변환한다.
+
+        추가 기능:
+        - utterance 단위 정보 유지
+        - 각 utterance 내부의 word 단위 정보도 함께 저장
+        - word별 speaker / start / end / confidence 확인 가능
+        """
+
         contract_segments = []
 
         results = getattr(response, "results", None)
@@ -339,13 +367,51 @@ class DeepgramSTTProvider(BaseSTTProvider):
             return contract_segments
 
         for idx, utt in enumerate(utterances, start=1):
-            # Deepgram는 초 단위로 시간을 제공하므로 ms 단위로 바꾼다.
             start_ms = int(math.floor(utt.start * 1000))
             end_ms = int(math.ceil(utt.end * 1000))
             confidence = round(float(utt.confidence), 2)
 
             speaker_num = getattr(utt, "speaker", None)
-            speaker_label = f"SPEAKER_{speaker_num}" if speaker_num is not None else "UNKNOWN"
+            speaker_label = (
+                f"SPEAKER_{speaker_num}"
+                if speaker_num is not None
+                else "UNKNOWN"
+            )
+
+            # --------------------------------------------------
+            # word-level 정보 저장
+            # --------------------------------------------------
+            word_items = []
+
+            raw_words = getattr(utt, "words", None) or []
+
+            for word in raw_words:
+                word_speaker = getattr(word, "speaker", None)
+
+                word_text = (
+                    getattr(word, "punctuated_word", None)
+                    or getattr(word, "word", "")
+                )
+
+                word_start = float(getattr(word, "start", 0.0) or 0.0)
+                word_end = float(getattr(word, "end", 0.0) or 0.0)
+                word_confidence = float(
+                    getattr(word, "confidence", 0.0) or 0.0
+                )
+
+                word_items.append(
+                    {
+                        "word": word_text,
+                        "speaker": (
+                            f"SPEAKER_{word_speaker}"
+                            if word_speaker is not None
+                            else "UNKNOWN"
+                        ),
+                        "start_ms": int(word_start * 1000),
+                        "end_ms": int(word_end * 1000),
+                        "confidence": round(word_confidence, 3),
+                    }
+                )
 
             contract_segments.append(
                 {
@@ -356,6 +422,9 @@ class DeepgramSTTProvider(BaseSTTProvider):
                     "text": utt.transcript.strip(),
                     "confidence": confidence,
                     "is_low_confidence": confidence < 0.70,
+
+                    # 새로 추가된 word 단위 정보
+                    "words": word_items,
                 }
             )
 
@@ -492,6 +561,521 @@ class WhisperSTTProvider(BaseSTTProvider):
             ]
 
         return {"schema_version": "1.0", "segments": segments}
+
+
+class WhisperLargeV3FallbackProvider(BaseSTTProvider):
+    """
+    Selective fallback 전용 Whisper large-v3 provider.
+
+    Deepgram 전체 결과를 대체하지 않고,
+    의심 구간만 재전사하기 위해 사용한다.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+    ):
+        super().__init__(
+            api_key=api_key,
+            api_url=api_url,
+        )
+
+        try:
+            import whisper
+        except ImportError as exc:
+            raise AudioProviderError(
+                "openai-whisper package is required "
+                "for large-v3 fallback."
+            ) from exc
+
+        self._whisper = whisper
+        self._model = None
+
+    def _get_model(self):
+        """
+        모델은 최초 fallback 발생 시 한 번만 로드한다.
+        """
+        if self._model is None:
+            print(
+                "[Fallback] Whisper large-v3 모델 로딩 중..."
+            )
+
+            self._model = self._whisper.load_model(
+                "large-v3"
+            )
+
+        return self._model
+
+    def transcribe(
+        self,
+        audio_path: str,
+    ) -> Dict[str, Any]:
+
+        if (
+            not os.path.exists(audio_path)
+            or os.path.getsize(audio_path) == 0
+        ):
+            raise InvalidAudioError(
+                "유효하지 않거나 빈 오디오 파일입니다."
+            )
+
+        model = self._get_model()
+
+        result = model.transcribe(
+            audio_path,
+            language="ko",
+            fp16=False,
+        )
+
+        segments = (
+            WhisperSTTProvider
+            ._coerce_segments_to_contract(
+                result.get("segments", [])
+            )
+        )
+
+        return {
+            "schema_version": "1.0",
+            "segments": segments,
+            "text": (
+                result.get("text", "")
+                or ""
+            ).strip(),
+        }
+
+
+class SelectiveFallbackDetector:
+    """
+    Deepgram 결과에서 Whisper 재전사가 필요한
+    의심 구간을 탐지한다.
+
+    v1 heuristic:
+    - gap >= 6초
+    - gap 직전 발화 <= 3단어
+    - 직전 발화가 질문이 아님
+    - gap 전후 speaker가 변경됨
+    - 다음 발화가 질문임
+
+    현재 30개 상담 / 3,223개 gap에서 검증:
+    → 1354 critical omission 1건 탐지
+    """
+
+    MIN_GAP_MS = 6000
+    MAX_PREV_WORDS = 3
+
+    @staticmethod
+    def _is_question(text: str) -> bool:
+        text = (text or "").strip()
+
+        question_patterns = (
+            "?",
+            "까",
+            "니",
+            "어?",
+            "야?",
+            "있어?",
+            "했어?",
+            "했니?",
+            "인가?",
+        )
+
+        return any(
+            text.endswith(pattern)
+            for pattern in question_patterns
+        )
+
+    @staticmethod
+    def _word_count(segment: Dict[str, Any]) -> int:
+        """
+        Deepgram word 정보가 있으면 그것을 우선 사용한다.
+        없으면 텍스트 공백 기준으로 계산한다.
+        """
+        words = segment.get("words") or []
+
+        if words:
+            return len(words)
+
+        text = (segment.get("text") or "").strip()
+
+        if not text:
+            return 0
+
+        return len(text.split())
+
+    def detect(
+        self,
+        segments: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+
+        if len(segments) < 2:
+            return []
+
+        ordered = sorted(
+            segments,
+            key=lambda x: x.get("start_ms", 0),
+        )
+
+        candidates = []
+
+        for index in range(len(ordered) - 1):
+
+            prev = ordered[index]
+            nxt = ordered[index + 1]
+
+            prev_end = prev.get("end_ms")
+            next_start = nxt.get("start_ms")
+
+            if not isinstance(
+                prev_end,
+                (int, float),
+            ):
+                continue
+
+            if not isinstance(
+                next_start,
+                (int, float),
+            ):
+                continue
+
+            gap_ms = next_start - prev_end
+
+            if gap_ms < self.MIN_GAP_MS:
+                continue
+
+            prev_word_count = self._word_count(prev)
+
+            if prev_word_count > self.MAX_PREV_WORDS:
+                continue
+
+            prev_text = (
+                prev.get("text") or ""
+            ).strip()
+
+            next_text = (
+                nxt.get("text") or ""
+            ).strip()
+
+            if self._is_question(prev_text):
+                continue
+
+            prev_speaker = prev.get("speaker")
+            next_speaker = nxt.get("speaker")
+
+            if prev_speaker == next_speaker:
+                continue
+
+            if not self._is_question(next_text):
+                continue
+
+            candidates.append(
+                {
+                    "index": index,
+                    "gap_start_ms": int(prev_end),
+                    "gap_end_ms": int(next_start),
+                    "gap_ms": int(gap_ms),
+                    "prev_speaker": prev_speaker,
+                    "next_speaker": next_speaker,
+                    "prev_text": prev_text,
+                    "next_text": next_text,
+                    "prev_word_count": prev_word_count,
+                }
+            )
+
+        return candidates
+
+
+class SelectiveFallbackSTTProvider(BaseSTTProvider):
+    """
+    Deepgram을 기본 STT로 사용하고,
+    SelectiveFallbackDetector v1이 이상 구간을 탐지한 경우에만
+    해당 구간을 Whisper large-v3로 재전사한다.
+
+    중요:
+    - 기존 Deepgram segments는 수정하지 않는다.
+    - Whisper 결과는 fallback_evidence에 별도로 보존한다.
+    """
+
+    PRE_MARGIN_MS = 3000
+    POST_MARGIN_MS = 1000
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+    ):
+        super().__init__(
+            api_key=api_key,
+            api_url=api_url,
+        )
+
+        # 기본 STT
+        self.primary_provider = DeepgramSTTProvider(
+            api_key=api_key,
+            api_url=api_url,
+        )
+
+        # fallback 탐지기
+        self.detector = SelectiveFallbackDetector()
+
+        # Whisper는 실제 fallback 발생 전에는
+        # 객체조차 만들지 않는다.
+        self.fallback_provider = None
+
+    def _get_fallback_provider(self):
+        if self.fallback_provider is None:
+            self.fallback_provider = (
+                WhisperLargeV3FallbackProvider()
+            )
+
+        return self.fallback_provider
+
+    def _make_clip(
+        self,
+        audio_path: str,
+        start_ms: int,
+        end_ms: int,
+    ) -> Path:
+        """
+        원본 오디오에서 fallback용 임시 WAV를 생성한다.
+        """
+
+        import subprocess
+        import tempfile
+
+        duration_ms = end_ms - start_ms
+
+        if duration_ms <= 0:
+            raise AudioProviderError(
+                "fallback 오디오 구간 길이가 올바르지 않습니다."
+            )
+
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=".wav",
+            delete=False,
+        )
+
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    str(start_ms / 1000),
+                    "-i",
+                    str(audio_path),
+                    "-t",
+                    str(duration_ms / 1000),
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    str(temp_path),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        except Exception:
+            if temp_path.exists():
+                temp_path.unlink()
+
+            raise
+
+        return temp_path
+
+    def transcribe(
+        self,
+        audio_path: str,
+    ) -> Dict[str, Any]:
+
+        # ------------------------------------------
+        # 1. 기본 Deepgram STT
+        # ------------------------------------------
+
+        primary_result = (
+            self.primary_provider.transcribe(
+                audio_path
+            )
+        )
+
+        segments = primary_result.get(
+            "segments",
+            [],
+        )
+
+        # ------------------------------------------
+        # 2. fallback 후보 탐지
+        # ------------------------------------------
+
+        candidates = self.detector.detect(
+            segments
+        )
+
+        fallback_evidence = []
+
+        # 후보가 없으면 Whisper는 실행되지 않는다.
+        if not candidates:
+            return {
+                **primary_result,
+                "fallback_used": False,
+                "fallback_evidence": [],
+            }
+
+        # ------------------------------------------
+        # 3. 필요한 경우에만 Whisper 준비
+        # ------------------------------------------
+
+        fallback_provider = (
+            self._get_fallback_provider()
+        )
+
+        # ------------------------------------------
+        # 4. 후보 구간 selective 재전사
+        # ------------------------------------------
+
+        for candidate in candidates:
+
+            gap_start_ms = (
+                candidate["gap_start_ms"]
+            )
+
+            gap_end_ms = (
+                candidate["gap_end_ms"]
+            )
+
+            clip_start_ms = max(
+                0,
+                gap_start_ms
+                - self.PRE_MARGIN_MS,
+            )
+
+            clip_end_ms = (
+                gap_end_ms
+                + self.POST_MARGIN_MS
+            )
+
+            clip_path = None
+
+            try:
+                clip_path = self._make_clip(
+                    audio_path=audio_path,
+                    start_ms=clip_start_ms,
+                    end_ms=clip_end_ms,
+                )
+
+                whisper_result = (
+                    fallback_provider.transcribe(
+                        str(clip_path)
+                    )
+                )
+
+                whisper_text = (
+                    whisper_result
+                    .get("text", "")
+                    .strip()
+                )
+
+                fallback_evidence.append(
+                    {
+                        "trigger":
+                            "selective_gap_v1",
+
+                        "gap_start_ms":
+                            gap_start_ms,
+
+                        "gap_end_ms":
+                            gap_end_ms,
+
+                        "clip_start_ms":
+                            clip_start_ms,
+
+                        "clip_end_ms":
+                            clip_end_ms,
+
+                        "provider":
+                            "whisper-large-v3",
+
+                        "speaker_hint":
+                            candidate.get(
+                                "prev_speaker"
+                            ),
+
+                        "prev_text":
+                            candidate.get(
+                                "prev_text"
+                            ),
+
+                        "next_text":
+                            candidate.get(
+                                "next_text"
+                            ),
+
+                        "text":
+                            whisper_text,
+                    }
+                )
+
+            except Exception as exc:
+
+                # fallback 실패가 전체 STT 실패로
+                # 이어지지 않도록 기록만 남긴다.
+                fallback_evidence.append(
+                    {
+                        "trigger":
+                            "selective_gap_v1",
+
+                        "gap_start_ms":
+                            gap_start_ms,
+
+                        "gap_end_ms":
+                            gap_end_ms,
+
+                        "provider":
+                            "whisper-large-v3",
+
+                        "speaker_hint":
+                            candidate.get(
+                                "prev_speaker"
+                            ),
+
+                        "text": "",
+
+                        "error": str(exc),
+                    }
+                )
+
+            finally:
+
+                if (
+                    clip_path is not None
+                    and clip_path.exists()
+                ):
+                    clip_path.unlink()
+
+        # ------------------------------------------
+        # 5. Deepgram 원본 + 보완 evidence 반환
+        # ------------------------------------------
+
+        successful_fallbacks = [
+            item
+            for item in fallback_evidence
+            if item.get("text")
+        ]
+
+        return {
+            **primary_result,
+
+            "fallback_used":
+                bool(successful_fallbacks),
+
+            "fallback_evidence":
+                fallback_evidence,
+        }
 
 
 # 4-3. CLOVA placeholder
@@ -699,6 +1283,7 @@ class Transcriber:
             confidence = float(segment.get("confidence", 0.0))
             confidence = max(0.0, min(1.0, confidence))
             is_low_confidence = bool(segment.get("is_low_confidence", confidence < 0.6))
+            words = segment.get("words", [])
             normalized_segments.append(
                 {
                     "segment_id": segment_id,
@@ -708,6 +1293,7 @@ class Transcriber:
                     "text": text,
                     "confidence": confidence,
                     "is_low_confidence": is_low_confidence,
+                    "words": words,
                 }
             )
 
