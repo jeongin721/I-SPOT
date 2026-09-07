@@ -2,7 +2,7 @@
 # 파일 자체는 Local Storage 에 있고, DB 에는 경로/타입/크기/길이만 저장한다.
 
 import uuid
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.audio_feature import AudioFeature
     from app.models.session import ConsultationSession
 
 
@@ -35,6 +36,12 @@ class AudioFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     session: Mapped["ConsultationSession"] = relationship(back_populates="audio_files")
+    features: Mapped[List["AudioFeature"]] = relationship(
+        back_populates="audio_file",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="AudioFeature.created_at",
+    )
 
     def __repr__(self) -> str:
         return f"<AudioFile id={self.id} size={self.size_bytes}>"

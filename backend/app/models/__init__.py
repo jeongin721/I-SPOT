@@ -3,6 +3,7 @@
 
 from app.models.analysis import AIAnalysis
 from app.models.audio import AudioFile
+from app.models.audio_feature import AudioFeature
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.case import Case
@@ -14,6 +15,7 @@ from app.models.user import User
 
 __all__ = [
     "AIAnalysis",
+    "AudioFeature",
     "AudioFile",
     "AuditLog",
     "Base",

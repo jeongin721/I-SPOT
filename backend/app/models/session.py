@@ -24,6 +24,7 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.analysis import AIAnalysis
     from app.models.audio import AudioFile
+    from app.models.audio_feature import AudioFeature
     from app.models.case import Case
     from app.models.document import Document
     from app.models.summary import ConsultationSummary
@@ -95,6 +96,12 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="AudioFile.created_at",
+    )
+    audio_features: Mapped[List["AudioFeature"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="AudioFeature.created_at",
     )
     transcripts: Mapped[List["Transcript"]] = relationship(
         back_populates="session",
