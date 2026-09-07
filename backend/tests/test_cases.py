@@ -108,6 +108,30 @@ def test_list_cases_includes_counselor_name(
     assert item["counselor_name"] == "상담사A"
 
 
+def test_create_and_update_responses_include_counselor_name(
+    client: TestClient, counselor_headers
+) -> None:
+    """
+    생성/수정 응답에도 담당자 이름이 있어야 한다.
+
+    목록에만 채우면 화면이 사례를 만든 직후 담당자를 표시하지 못하고
+    목록을 다시 불러와야 한다.
+    """
+
+    created = create_case(client, counselor_headers, title="생성 응답 확인")
+
+    assert created["counselor_name"] == "상담사A"
+
+    response = client.patch(
+        f"/api/v1/cases/{created['id']}",
+        json={"title": "수정 응답 확인"},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["counselor_name"] == "상담사A"
+
+
 def test_case_detail_includes_counselor_name(
     client: TestClient, counselor_headers, case: dict
 ) -> None:

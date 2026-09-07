@@ -25,6 +25,20 @@ PageQuery = Annotated[int, Query(ge=1, description="1부터 시작하는 page �
 PageSizeQuery = Annotated[int, Query(ge=1, le=100)]
 
 
+def _case_response(case) -> CaseResponse:
+    """
+    단건 응답을 만든다.
+
+    counselor_name 은 relationship 에서 채운다. 목록은 N+1 을 피하려고
+    join 으로 미리 가져오므로 여기를 거치지 않는다.
+    """
+
+    item = CaseResponse.model_validate(case)
+    item.counselor_name = case.counselor.name if case.counselor else None
+
+    return item
+
+
 @router.get("", response_model=DataResponse[PagedItems[CaseResponse]])
 def list_cases(
     db: DbSession,
@@ -66,7 +80,7 @@ def create_case(
 ) -> DataResponse[CaseResponse]:
     case = case_service.create_case(db, current_user, payload)
 
-    return DataResponse(data=CaseResponse.model_validate(case))
+    return DataResponse(data=_case_response(case))
 
 
 @router.get("/{case_id}", response_model=DataResponse[CaseDetailResponse])
@@ -101,7 +115,7 @@ def update_case(
     case = get_case_or_404(db, case_id, current_user)
     updated = case_service.update_case(db, case, current_user, payload)
 
-    return DataResponse(data=CaseResponse.model_validate(updated))
+    return DataResponse(data=_case_response(updated))
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
