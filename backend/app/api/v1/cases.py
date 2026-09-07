@@ -21,6 +21,14 @@ from app.services.access import get_case_or_404
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
+# /cases/{case_id}/sessions 는 주소만 Case 하위일 뿐 다루는 대상은 Session 이다.
+# 이 저장소는 주소가 아니라 대상으로 tag 를 나누므로(/sessions/{id}/audio 가
+# audio tag 인 것과 같다) 별도 router 로 분리한다.
+#
+# 같은 router 에 tags=["sessions"] 만 붙이면 FastAPI 가 router tag 와 합쳐
+# ["cases", "sessions"] 가 되고, 문서에 같은 endpoint 가 두 번 나온다.
+session_router = APIRouter(prefix="/cases", tags=["sessions"])
+
 PageQuery = Annotated[int, Query(ge=1, description="1부터 시작하는 page 번호")]
 PageSizeQuery = Annotated[int, Query(ge=1, le=100)]
 
@@ -132,10 +140,9 @@ def delete_case(
 # /cases/{case_id}/sessions
 # =========================================================
 
-@router.get(
+@session_router.get(
     "/{case_id}/sessions",
     response_model=DataResponse[PagedItems[SessionResponse]],
-    tags=["sessions"],
 )
 def list_sessions(
     case_id: uuid.UUID,
@@ -160,11 +167,10 @@ def list_sessions(
     return DataResponse(data=paged(items, total, page, page_size))
 
 
-@router.post(
+@session_router.post(
     "/{case_id}/sessions",
     response_model=DataResponse[SessionResponse],
     status_code=status.HTTP_201_CREATED,
-    tags=["sessions"],
 )
 def create_session(
     case_id: uuid.UUID,
