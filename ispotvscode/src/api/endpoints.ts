@@ -5,18 +5,22 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
-  AIAnalysis,
+  AnalysisEnvelope,
+  AnalysisRequestResponse,
   AudioUploadResponse,
   Case,
   CaseCreateRequest,
   LoginRequest,
   LoginResponse,
   Paged,
+  STTRequestResponse,
   Session,
   SessionCreateRequest,
   Summary,
+  SummaryEnvelope,
   SummaryUpdateRequest,
   Transcript,
+  TranscriptEnvelope,
   User,
 } from "./types";
 
@@ -117,13 +121,20 @@ export const sessions = {
 // =========================================================
 
 export const transcript = {
-  /** STT 실행. 완료되면 회차가 STT_REVIEW_REQUIRED 가 된다. */
-  run(sessionId: string): Promise<Transcript> {
-    return api.post<Transcript>(`/sessions/${sessionId}/transcript`);
+  /**
+   * STT 실행 요청. 202 로 즉시 돌아오고 처리는 뒤에서 진행된다.
+   * 결과를 받으려면 get() 을 polling 해야 한다.
+   */
+  run(sessionId: string): Promise<STTRequestResponse> {
+    return api.post<STTRequestResponse>(`/sessions/${sessionId}/transcript`);
   },
 
-  get(sessionId: string): Promise<Transcript> {
-    return api.get<Transcript>(`/sessions/${sessionId}/transcript`);
+  /**
+   * 전사본 조회.
+   * STT 진행 중이면 transcript 가 null 이므로 session_status 로 판단한다.
+   */
+  get(sessionId: string): Promise<TranscriptEnvelope> {
+    return api.get<TranscriptEnvelope>(`/sessions/${sessionId}/transcript`);
   },
 
   /** 상담사 수정. 덮어쓰지 않고 새 version 이 만들어진다. */
@@ -142,13 +153,16 @@ export const transcript = {
 // =========================================================
 
 export const analysis = {
-  /** 분석 실행. 전사본이 확정된 상태여야 한다. */
-  run(sessionId: string): Promise<AIAnalysis> {
-    return api.post<AIAnalysis>(`/sessions/${sessionId}/analysis`);
+  /**
+   * 분석 실행 요청. 전사본이 확정된 상태여야 한다.
+   * STT 와 마찬가지로 202 로 돌아오므로 get() 을 polling 한다.
+   */
+  run(sessionId: string): Promise<AnalysisRequestResponse> {
+    return api.post<AnalysisRequestResponse>(`/sessions/${sessionId}/analysis`);
   },
 
-  get(sessionId: string): Promise<AIAnalysis> {
-    return api.get<AIAnalysis>(`/sessions/${sessionId}/analysis`);
+  get(sessionId: string): Promise<AnalysisEnvelope> {
+    return api.get<AnalysisEnvelope>(`/sessions/${sessionId}/analysis`);
   },
 };
 
@@ -157,8 +171,9 @@ export const analysis = {
 // =========================================================
 
 export const summary = {
-  get(sessionId: string): Promise<Summary> {
-    return api.get<Summary>(`/sessions/${sessionId}/summary`);
+  /** 요약 조회. 근거 발화(summary_evidence)가 함께 온다. */
+  get(sessionId: string): Promise<SummaryEnvelope> {
+    return api.get<SummaryEnvelope>(`/sessions/${sessionId}/summary`);
   },
 
   update(sessionId: string, payload: SummaryUpdateRequest): Promise<Summary> {

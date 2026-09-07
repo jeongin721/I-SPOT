@@ -34,6 +34,15 @@ export interface Paged<T> {
   meta: PageMeta;
 }
 
+/**
+ * 재시도 가능한 실패 정보.
+ * 이 값이 있으면 화면에 재시도 버튼을 보여줄 수 있다.
+ */
+export interface SessionErrorInfo {
+  code: string;
+  message: string;
+}
+
 // =========================================================
 // 열거형 — backend/app/core/enums.py
 // =========================================================
@@ -192,7 +201,30 @@ export interface Transcript {
   stt_provider: string | null;
   stt_model: string | null;
   segments: TranscriptSegment[];
+  /** 상담사가 수정한 발화의 segment_id. 검수 화면에서 표시에 쓴다. */
+  edited_segment_ids: string[];
   created_at: string;
+}
+
+/**
+ * STT 실행 요청 결과. 202 로 돌아오며 처리는 아직 진행 중이다.
+ * 완료 여부는 세션 상태를 polling 해서 판단한다.
+ */
+export interface STTRequestResponse {
+  session_id: string;
+  session_status: SessionStatus;
+  message: string;
+}
+
+/**
+ * 전사본 조회 응답.
+ * STT 가 끝나지 않았으면 transcript 가 null 이고 session_status 로 판단한다.
+ */
+export interface TranscriptEnvelope {
+  session_id: string;
+  session_status: SessionStatus;
+  transcript: Transcript | null;
+  error: SessionErrorInfo | null;
 }
 
 // =========================================================
@@ -220,6 +252,13 @@ export interface AnalysisResult {
   warnings: string[];
 }
 
+/** AI 가 요약 항목과 근거 발화를 연결한 정보. */
+export interface SummaryEvidenceItem {
+  key_point: string;
+  segment_ids: string[];
+  score: number;
+}
+
 export interface AIAnalysis {
   id: string;
   session_id: string;
@@ -227,13 +266,28 @@ export interface AIAnalysis {
   transcript_version: number | null;
   status: AnalysisStatus;
   schema_version: string;
-  result: AnalysisResult | null;
   provider: string | null;
   model: string | null;
-  error_code: string | null;
-  error_message: string | null;
-  completed_at: string | null;
   created_at: string;
+  completed_at: string | null;
+  result: AnalysisResult | null;
+  summary_evidence: SummaryEvidenceItem[];
+  error: SessionErrorInfo | null;
+}
+
+/** AI 분석 실행 요청 결과. 202 로 돌아오며 처리는 아직 진행 중이다. */
+export interface AnalysisRequestResponse {
+  session_id: string;
+  session_status: SessionStatus;
+  analysis_id: string;
+  message: string;
+}
+
+export interface AnalysisEnvelope {
+  session_id: string;
+  session_status: SessionStatus;
+  analysis: AIAnalysis | null;
+  error: SessionErrorInfo | null;
 }
 
 // =========================================================
@@ -258,4 +312,13 @@ export interface SummaryUpdateRequest {
   overview?: string;
   key_points?: string[];
   counselor_note?: string;
+}
+
+export interface SummaryEnvelope {
+  session_id: string;
+  session_status: SessionStatus;
+  summary: Summary | null;
+  /** 요약 항목별 근거 발화. 검수 화면에서 "왜 이렇게 요약됐는지" 표시에 쓴다. */
+  summary_evidence: SummaryEvidenceItem[];
+  error: SessionErrorInfo | null;
 }
