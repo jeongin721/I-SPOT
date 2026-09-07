@@ -101,6 +101,8 @@ export interface Case {
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
+  /** 담당 상담사 이름. 계정이 삭제되었으면 null. */
+  counselor_name: string | null;
   created_at: string;
   updated_at: string;
   /** 가장 최근 상담 일시. 회차가 없으면 null. */

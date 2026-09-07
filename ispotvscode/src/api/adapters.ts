@@ -21,8 +21,9 @@ import type { Case, Session, SessionStatus } from "./types";
 //  abuseTypes        | 사례 단위로는 없음. AI 분석 결과(abuse_signals)에 있음
 //  riskLevel/Score   | 사례 단위로는 없음. 회차별 AI 분석에서 집계해야 함
 //  keywords          | Backend 에 없음
-//  counselor(이름)    | counselor_id(UUID)만 있음. 이름은 별도 조회 필요
 //  sessionCount      | Case 응답에 없음. 회차 목록의 meta.total 로 얻는다
+//
+//  counselor(이름) 은 Backend 가 counselor_name 으로 내려주므로 해결되었다.
 //
 // 위 항목이 필요하면 Backend 에 필드 추가를 요청해야 한다.
 // 지금은 화면이 깨지지 않도록 중립값을 넣는다.
@@ -54,7 +55,7 @@ function toUiCaseStatus(status: Case["status"]): CaseRecord["status"] {
 export interface CaseAdapterExtras {
   /** 회차 목록에서 얻은 총 회차 수. 없으면 0. */
   sessionCount?: number;
-  /** 담당 상담사 이름. 사용자 조회로 채운다. */
+  /** Backend 의 counselor_name 을 덮어써야 할 때만 쓴다. */
   counselorName?: string;
   /** AI 분석에서 집계한 위험도. 없으면 표시하지 않는다. */
   riskLevel?: RiskLevel;
@@ -78,7 +79,7 @@ export function toUiCase(source: Case, extras: CaseAdapterExtras = {}): CaseReco
     riskScore: extras.riskScore ?? 0,
     lastSession: toDateOnly(source.last_session_at),
     sessionCount: extras.sessionCount ?? 0,
-    counselor: extras.counselorName ?? NOT_PROVIDED,
+    counselor: extras.counselorName ?? source.counselor_name ?? NOT_PROVIDED,
     status: toUiCaseStatus(source.status),
     keywords: [],
   };

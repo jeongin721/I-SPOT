@@ -211,7 +211,7 @@ function CaseList() {
                 )}
               </div>
               <p className="text-[12px] text-[#94A3B8] mt-0.5">
-                회차 {item.sessionCount}건
+                담당 {item.counselor} · 회차 {item.sessionCount}건
                 {item.lastSession && ` · 최근 상담 ${item.lastSession}`}
               </p>
             </div>
