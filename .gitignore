@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyc
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
@@ -21,6 +22,12 @@ venv/
 # 상담 음성 원본은 절대 커밋하지 않는다.
 storage/
 backend/.demo-storage/
+
+# 학습된 모델 가중치는 용량이 커서 커밋하지 않는다.
+abuse_model/weight/
+
+# 로컬 평가용 데이터셋
+test_sample/
 
 # IDE
 .vscode/

@@ -1,55 +1,45 @@
 """I-SPOT STT Post-processing Module.
 
 STT 결과(Contract v1.0)를 전달받아 다음 작업을 수행한다:
-1. 연속된 동일 화자의 세그먼트를 문맥 단위로 재병합 (타임스탬프 재계산)
-2. 신뢰도(Confidence) 재검증 및 낮은 신뢰도 구간 플래그 부여
-3. 텍스트 불필요 공백 정제
+1. 연속된 동일 화자의 세그먼트 병합
+2. word-level 정보 보존
+3. 잘못 잘린 화자 경계 일부 보정
+4. confidence 재검증
+5. 텍스트 공백 정제
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-# 공부용 설명:
-# 이 파일은 STT 결과를 '다음 단계에서 다루기 좋게 정리하는 후처리 모듈'이다.
-#
-# STT는 종종 다음과 같은 문제가 있다:
-# - 같은 화자의 짧은 발화가 여러 segment로 나뉜다.
-# - 공백, 문장 부호, 신뢰도 값이 불안정하다.
-# - 시간 타임스탬프가 segment 단위로 흩어져 있다.
-#
-# 그래서 여기서는 다음 작업을 수행한다:
-# 1) 같은 화자의 연속 발화를 병합한다.
-# 2) 텍스트 공백을 정리한다.
-# 3) 신뢰도 낮은 발화 구간을 표시한다.
-#
-# 결과적으로 downstream AI 분석 단계가 훨씬 편하게 데이터를 받아볼 수 있다.
+
 class STTPostProcessor:
-    def __init__(self, low_confidence_threshold: float = 0.70, merge_silence_gap_ms: int = 1500):
-        # 공부용 설명:
-        # threshold: 신뢰도가 이 값보다 낮으면 '낮은 신뢰도'라는 표시를 붙인다.
-        # max_gap_ms: 같은 화자의 발화를 병합할 때 허용할 최대 시간 간격이다.
-        # 예를 들어 1.5초 정도의 짧은 공백이면 같은 문맥으로 묶을 수 있다고 판단한다.
+    def __init__(
+        self,
+        low_confidence_threshold: float = 0.70,
+        merge_silence_gap_ms: int = 1500,
+    ):
         self.threshold = low_confidence_threshold
-        self.max_gap_ms = merge_silence_gap_ms  # 동일 화자 간 병합 허용 최대 무음 시간
+        self.max_gap_ms = merge_silence_gap_ms
+
+    # ============================================================
+    # 1. 텍스트 정리
+    # ============================================================
 
     def clean_text(self, text: str) -> str:
-        """텍스트 공백 정제"""
+        """불필요한 공백 정리"""
         if not text:
             return ""
+
         return " ".join(text.split())
 
-    def merge_same_speaker_segments(self, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """동일 화자의 연속 발화 병합 로직"""
-        # 공부용 설명:
-        # STT는 말을 끊어 여러 segment로 나누는 경우가 많다.
-        # 예를 들어 같은 사람이 한 문장 안에서 짧게 쪼개지면
-        # 실제로는 하나의 문장처럼 보여야 한다.
-        #
-        # 이 메서드는 다음 조건을 보고 병합 여부를 결정한다:
-        # - 화자가 동일한가?
-        # - 이전 발화 끝과 다음 발화 시작 사이 간격이 너무 큰가?
-        # - 같은 문맥으로 묶어도 되는가?
-        #
-        # 조건이 맞으면 두 발화를 하나로 합쳐서 더 자연스러운 transcript를 만든다.
+    # ============================================================
+    # 2. 동일 화자의 연속 segment 병합
+    # ============================================================
+
+    def merge_same_speaker_segments(
+        self,
+        segments: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+
         if not segments:
             return []
 
@@ -57,73 +47,425 @@ class STTPostProcessor:
         current = None
 
         for seg in segments:
-            cleaned_text = self.clean_text(seg.get("text", ""))
+
+            cleaned_text = self.clean_text(
+                seg.get("text", "")
+            )
+
             if not cleaned_text:
                 continue
 
             seg_info = {
-                "speaker": seg.get("speaker", "UNKNOWN"),
-                "start_ms": seg.get("start_ms", 0),
-                "end_ms": seg.get("end_ms", 0),
+                "speaker": seg.get(
+                    "speaker",
+                    "UNKNOWN",
+                ),
+                "start_ms": seg.get(
+                    "start_ms",
+                    0,
+                ),
+                "end_ms": seg.get(
+                    "end_ms",
+                    0,
+                ),
                 "text": cleaned_text,
-                "confidence": seg.get("confidence", 0.0),
+                "confidence": seg.get(
+                    "confidence",
+                    0.0,
+                ),
+
+                # word-level 정보 유지
+                "words": list(
+                    seg.get("words", [])
+                ),
             }
 
+            # 첫 segment
             if current is None:
                 current = seg_info
                 continue
 
-            # 동일 화자이고, 이전 발화 끝과 다음 발화 시작 사이 간격이 임계값 이내인 경우 병합
-            is_same_speaker = current["speaker"] == seg_info["speaker"]
-            gap = seg_info["start_ms"] - current["end_ms"]
+            is_same_speaker = (
+                current["speaker"]
+                == seg_info["speaker"]
+            )
 
-            if is_same_speaker and gap <= self.max_gap_ms:
-                current["end_ms"] = seg_info["end_ms"]
-                current["text"] = f"{current['text']} {seg_info['text']}"
-                # 신뢰도는 두 세그먼트의 평균치로 계산
-                current["confidence"] = round((current["confidence"] + seg_info["confidence"]) / 2, 2)
+            gap = (
+                seg_info["start_ms"]
+                - current["end_ms"]
+            )
+
+            # 같은 화자 + 짧은 공백이면 병합
+            if (
+                is_same_speaker
+                and gap <= self.max_gap_ms
+            ):
+
+                current["end_ms"] = (
+                    seg_info["end_ms"]
+                )
+
+                current["text"] = (
+                    f"{current['text']} "
+                    f"{seg_info['text']}"
+                ).strip()
+
+                current["confidence"] = round(
+                    (
+                        current["confidence"]
+                        + seg_info["confidence"]
+                    )
+                    / 2,
+                    2,
+                )
+
+                # words도 같이 병합
+                current["words"].extend(
+                    seg_info["words"]
+                )
+
             else:
+
                 merged.append(current)
                 current = seg_info
 
         if current:
             merged.append(current)
 
-        # ID 재할당 및 신뢰도 플래그 계산
+        return merged
+
+    # ============================================================
+    # 3. 화자 경계 보정
+    # ============================================================
+
+    def fix_speaker_boundary(
+        self,
+        segments: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Deepgram diarization이 문장의 마지막 질문 표현을
+        다음 화자로 잘못 넘긴 경우를 일부 보정한다.
+
+        예:
+
+        SPEAKER_0
+        "보통 일주일이면 몇 번 아픈 거"
+
+        SPEAKER_1
+        "같아? 일주일에 두 번 아픈 거 같아요."
+
+        ↓
+
+        SPEAKER_0
+        "보통 일주일이면 몇 번 아픈 거 같아?"
+
+        SPEAKER_1
+        "일주일에 두 번 아픈 거 같아요."
+        """
+
+        if not segments or len(segments) < 2:
+            return segments
+
+        # --------------------------------------------------------
+        # 앞 문장에 붙을 가능성이 높은 짧은 질문 종결 표현
+        # --------------------------------------------------------
+
+        question_endings = {
+            "같아?",
+            "어때?",
+            "있어?",
+            "했어?",
+            "뭐야?",
+            "왜?",
+            "어떠셔?",
+        }
+
+        for i in range(len(segments) - 1):
+
+            current = segments[i]
+            next_seg = segments[i + 1]
+
+            # 같은 화자라면 보정할 필요 없음
+            if (
+                current.get("speaker")
+                == next_seg.get("speaker")
+            ):
+                continue
+
+            current_words = current.get(
+                "words",
+                [],
+            )
+
+            next_words = next_seg.get(
+                "words",
+                [],
+            )
+
+            if not current_words:
+                continue
+
+            if not next_words:
+                continue
+
+            # 다음 segment의 첫 단어
+            first_next_word = next_words[0]
+
+            first_word_text = str(
+                first_next_word.get(
+                    "word",
+                    "",
+                )
+            ).strip()
+
+            # 우리가 지정한 질문형이 아니면 건드리지 않음
+            if (
+                first_word_text
+                not in question_endings
+            ):
+                continue
+
+            # ----------------------------------------------------
+            # 시간 간격 확인
+            # ----------------------------------------------------
+
+            current_end = int(
+                current.get(
+                    "end_ms",
+                    0,
+                )
+            )
+
+            word_start = int(
+                first_next_word.get(
+                    "start_ms",
+                    0,
+                )
+            )
+
+            gap = word_start - current_end
+
+            # 1.5초보다 멀리 떨어져 있으면
+            # 같은 발화라고 보기 어려움
+            if gap < 0 or gap > 1500:
+                continue
+
+            # ----------------------------------------------------
+            # 다음 segment 첫 단어를 앞 segment로 이동
+            # ----------------------------------------------------
+
+            moved_word = next_words.pop(0)
+
+            # word에 기록된 Deepgram speaker도
+            # 이동된 화자로 수정
+            moved_word["speaker"] = current.get(
+                "speaker",
+                "UNKNOWN",
+            )
+
+            current_words.append(
+                moved_word
+            )
+
+            current["words"] = (
+                current_words
+            )
+
+            next_seg["words"] = (
+                next_words
+            )
+
+            # ----------------------------------------------------
+            # 앞 segment text 수정
+            # ----------------------------------------------------
+
+            current_text = str(
+                current.get(
+                    "text",
+                    "",
+                )
+            ).strip()
+
+            current["text"] = (
+                f"{current_text} "
+                f"{first_word_text}"
+            ).strip()
+
+            # 앞 segment 종료시간도 이동된 단어까지 연장
+            current["end_ms"] = (
+                moved_word.get(
+                    "end_ms",
+                    current_end,
+                )
+            )
+
+            # ----------------------------------------------------
+            # 다음 segment text에서 이동한 단어 삭제
+            # ----------------------------------------------------
+
+            next_text = str(
+                next_seg.get(
+                    "text",
+                    "",
+                )
+            ).strip()
+
+            if next_text.startswith(
+                first_word_text
+            ):
+
+                next_text = next_text[
+                    len(first_word_text):
+                ].strip()
+
+            next_seg["text"] = (
+                next_text
+            )
+
+            # 다음 segment의 시작시간 수정
+            if next_words:
+
+                next_seg["start_ms"] = (
+                    next_words[0].get(
+                        "start_ms",
+                        next_seg.get(
+                            "start_ms",
+                            0,
+                        ),
+                    )
+                )
+
+        # --------------------------------------------------------
+        # 혹시 text가 완전히 비어버린 segment가 있으면 제거
+        # --------------------------------------------------------
+
+        cleaned_segments = []
+
+        for seg in segments:
+
+            if str(
+                seg.get(
+                    "text",
+                    "",
+                )
+            ).strip():
+
+                cleaned_segments.append(
+                    seg
+                )
+
+        return cleaned_segments
+
+    # ============================================================
+    # 4. 최종 segment_id / confidence 재계산
+    # ============================================================
+
+    def finalize_segments(
+        self,
+        segments: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+
         final_segments = []
-        for idx, seg in enumerate(merged, start=1):
-            conf = seg["confidence"]
+
+        for idx, seg in enumerate(
+            segments,
+            start=1,
+        ):
+
+            conf = float(
+                seg.get(
+                    "confidence",
+                    0.0,
+                )
+            )
+
             final_segments.append(
                 {
-                    "segment_id": f"seg_{idx:03d}",
-                    "speaker": seg["speaker"],
-                    "start_ms": seg["start_ms"],
-                    "end_ms": seg["end_ms"],
-                    "text": seg["text"],
+                    "segment_id": (
+                        f"seg_{idx:03d}"
+                    ),
+                    "speaker": seg.get(
+                        "speaker",
+                        "UNKNOWN",
+                    ),
+                    "start_ms": seg.get(
+                        "start_ms",
+                        0,
+                    ),
+                    "end_ms": seg.get(
+                        "end_ms",
+                        0,
+                    ),
+                    "text": seg.get(
+                        "text",
+                        "",
+                    ),
                     "confidence": conf,
-                    "is_low_confidence": conf < self.threshold,
+                    "is_low_confidence": (
+                        conf < self.threshold
+                    ),
+                    "words": seg.get(
+                        "words",
+                        [],
+                    ),
                 }
             )
 
         return final_segments
 
-    def process(self, stt_result: Dict[str, Any]) -> Dict[str, Any]:
-        """후처리 실행 메인 메서드"""
-        # 공부용 설명:
-        # 실제 사용 시에는 전체 STT JSON 하나를 받아서,
-        # 여기서 segments만 뽑아 merge_same_speaker_segments()를 실행한다.
-        #
-        # 이후 최종 결과는 이렇게 반환된다:
-        # {
-        #   "schema_version": "1.0",
-        #   "segments": [ ... ]
-        # }
-        #
-        # 이 JSON은 이후 분석 단계에서 더 쉽게 사용된다.
-        raw_segments = stt_result.get("segments", [])
-        processed_segments = self.merge_same_speaker_segments(raw_segments)
+    # ============================================================
+    # 5. 전체 후처리 실행
+    # ============================================================
+
+    def process(
+        self,
+        stt_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+
+        raw_segments = stt_result.get(
+            "segments",
+            [],
+        )
+
+        # STEP 1
+        # 동일 화자 연속 발화 병합
+        merged_segments = (
+            self.merge_same_speaker_segments(
+                raw_segments
+            )
+        )
+
+        # STEP 2
+        # 잘못 잘린 화자 경계 보정
+        corrected_segments = (
+            self.fix_speaker_boundary(
+                merged_segments
+            )
+        )
+
+        # STEP 3
+        # ID / confidence 최종 정리
+        final_segments = (
+            self.finalize_segments(
+                corrected_segments
+            )
+        )
 
         return {
-            "schema_version": stt_result.get("schema_version", "1.0"),
-            "segments": processed_segments,
+            "schema_version": stt_result.get(
+                "schema_version",
+                "1.0",
+            ),
+            "segments": final_segments,
+
+            # Selective Whisper fallback 정보 보존
+            "fallback_used": stt_result.get(
+                "fallback_used",
+                False,
+            ),
+
+            "fallback_evidence": stt_result.get(
+                "fallback_evidence",
+                [],
+            ),
         }
