@@ -28,16 +28,22 @@ from ai.modeling.abuse.infer_abuse import (
 # 2. 설정
 # ============================================================
 
-# 최대 몇 개 어절을 하나의 Phrase로 묶을지
-MAX_NGRAM = 3
+# 최대 6어절까지 하나의 근거 표현으로 분석
+MAX_NGRAM = 6
 
 # 라벨별 최대 근거 표현 수
-TOP_K = 5
+TOP_K = 3
 
-# 너무 작은 logit 변화는 근거에서 제외
-MIN_LOGIT_IMPORTANCE = 0.05
+# 너무 작은 logit 변화 제거
+MIN_LOGIT_IMPORTANCE = 0.10
 
-# 여러 Phrase 가림 문장을 한 번에 추론
+# 최고 근거 대비 최소 기여도 비율
+RELATIVE_IMPORTANCE_RATIO = 0.15
+
+# 비슷한 기여도라면 더 긴 문맥 표현을 우선
+LONGER_PHRASE_TOLERANCE = 0.85
+
+# 여러 Phrase를 한 번에 추론
 BATCH_SIZE = 32
 
 
@@ -223,7 +229,7 @@ def _mask_phrase(
 
 
 # ============================================================
-# 7. 겹치는 근거 표현 정리
+# 7. 핵심 근거 표현 선택
 # ============================================================
 
 def _select_evidence(
@@ -231,44 +237,110 @@ def _select_evidence(
     top_k: int,
 ) -> List[dict]:
     """
-    logit 기여도가 높은 표현부터 선택한다.
+    모델의 logit 기여도를 기준으로 핵심 표현만 선택한다.
 
-    이미 선택한 표현과 문자 범위가 겹치는 후보는 제외해
-    유사한 표현이 반복 출력되는 것을 줄인다.
+    - 절대적으로 약한 attribution 제거
+    - 최고 근거 대비 너무 약한 attribution 제거
+    - 겹치는 표현 중 기여도가 비슷하면 더 긴 문맥을 우선
+    - 최대 top_k개 반환
     """
 
-    sorted_items = sorted(
-        items,
-        key=lambda item: item[
-            "importance"
-        ],
+    if not items:
+        return []
+
+    # --------------------------------------------------------
+    # 1. 가장 높은 importance 확인
+    # --------------------------------------------------------
+
+    max_importance = max(
+        item["importance"]
+        for item in items
+    )
+
+    dynamic_threshold = max(
+        MIN_LOGIT_IMPORTANCE,
+        max_importance * RELATIVE_IMPORTANCE_RATIO,
+    )
+
+    filtered_items = [
+        item
+        for item in items
+        if item["importance"] >= dynamic_threshold
+    ]
+
+    if not filtered_items:
+        return []
+
+    # --------------------------------------------------------
+    # 2. 기본적으로 importance 순 정렬
+    # --------------------------------------------------------
+
+    filtered_items = sorted(
+        filtered_items,
+        key=lambda item: (
+            item["importance"],
+            item["word_count"],
+        ),
         reverse=True,
     )
 
     selected = []
 
-    for item in sorted_items:
+    # --------------------------------------------------------
+    # 3. 겹치는 후보 정리
+    # --------------------------------------------------------
 
-        if (
-            item["importance"]
-            < MIN_LOGIT_IMPORTANCE
+    for item in filtered_items:
+
+        replaced = False
+        skip = False
+
+        for index, existing in enumerate(
+            selected
         ):
-            continue
 
-        overlap = False
+            overlap = (
+                item["start"] < existing["end"]
+                and item["end"] > existing["start"]
+            )
 
-        for existing in selected:
+            if not overlap:
+                continue
+
+            # ------------------------------------------------
+            # importance가 비슷하다면 더 긴 표현을 선택
+            #
+            # 예:
+            # "때리고"                      4.5
+            # "저를 세게 때리고 벽으로"     4.2
+            #
+            # → 긴 문맥을 사람이 보는 근거로 사용
+            # ------------------------------------------------
+
+            similar_importance = (
+                item["importance"]
+                >= existing["importance"]
+                * LONGER_PHRASE_TOLERANCE
+            )
 
             if (
-                item["start"]
-                < existing["end"]
-                and item["end"]
-                > existing["start"]
+                similar_importance
+                and item["word_count"]
+                > existing["word_count"]
             ):
-                overlap = True
-                break
 
-        if overlap:
+                selected[index] = item
+                replaced = True
+
+            else:
+                skip = True
+
+            break
+
+        if replaced:
+            continue
+
+        if skip:
             continue
 
         selected.append(
@@ -278,8 +350,17 @@ def _select_evidence(
         if len(selected) >= top_k:
             break
 
-    return selected
+    # --------------------------------------------------------
+    # 4. 최종 importance 순 정렬
+    # --------------------------------------------------------
 
+    selected = sorted(
+        selected,
+        key=lambda item: item["importance"],
+        reverse=True,
+    )
+
+    return selected[:top_k]
 
 # ============================================================
 # 8. Logit 기반 Phrase Occlusion

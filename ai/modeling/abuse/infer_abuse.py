@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = (
     BASE_DIR
     / "weight"
-    / "roberta_multilabel_2026-09-03.pth"
+    / "roberta_multilabel_v5_2026-09-07.pth"
 )
 
 LABEL_NAMES = [
@@ -30,10 +30,10 @@ LABEL_NAMES = [
 
 # Validation 데이터에서 튜닝한 라벨별 threshold
 THRESHOLDS = {
-    "신체학대": 0.72,
-    "정서학대": 0.39,
-    "성학대": 0.53,
-    "방임": 0.32,
+    "신체학대": 0.50,
+    "정서학대": 0.50,
+    "성학대": 0.50,
+    "방임": 0.50,
 }
 
 device = torch.device(
@@ -80,10 +80,24 @@ model = AutoModelForSequenceClassification.from_pretrained(
     problem_type="multi_label_classification",
 )
 
-state_dict = torch.load(
+checkpoint = torch.load(
     MODEL_PATH,
     map_location=device,
 )
+
+if "model_state_dict" in checkpoint:
+    state_dict = checkpoint["model_state_dict"]
+else:
+    state_dict = checkpoint
+
+model.load_state_dict(state_dict)
+
+# 학습 시 저장한 checkpoint에서 실제 모델 가중치만 추출
+if "model_state_dict" in checkpoint:
+    state_dict = checkpoint["model_state_dict"]
+else:
+    # 기존 순수 state_dict 형식도 호환
+    state_dict = checkpoint
 
 model.load_state_dict(state_dict)
 
