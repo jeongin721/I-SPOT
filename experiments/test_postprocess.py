@@ -1,5 +1,5 @@
 import json
-from ispot_postprocess import STTPostProcessor
+from stt.ispot_postprocess import STTPostProcessor
 
 # 파이프라인 흐름 예시 테스트
 mock_stt_output = {

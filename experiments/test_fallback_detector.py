@@ -1,6 +1,6 @@
 import json
 
-from ispot_stt import SelectiveFallbackDetector
+from stt.ispot_stt import SelectiveFallbackDetector
 
 
 with open(

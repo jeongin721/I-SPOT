@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # ispot 모듈 불러오기
-from ispot_stt import SelectiveFallbackSTTProvider
-from ispot_postprocess import STTPostProcessor
+from stt.ispot_stt import SelectiveFallbackSTTProvider
+from stt.ispot_postprocess import STTPostProcessor
 
 load_dotenv()
 
