@@ -3,6 +3,7 @@ import AppLayout from "./AppLayout";
 import LoginPage from "./LoginPage";
 import NotFoundPage from "../pages/NotFoundPage";
 import PermissionDeniedPage from "../pages/PermissionDeniedPage";
+import ApiDemoPage from "../pages/ApiDemoPage";
 
 // Lazy imports to keep bundle sane
 import DashboardView from "../views/DashboardView";
@@ -26,6 +27,11 @@ export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    // Backend 연결 확인용. 실제 API 로 로그인·조회가 동작한다.
+    path: "/api-demo",
+    element: <ApiDemoPage />,
   },
   {
     path: "/",
