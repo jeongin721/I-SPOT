@@ -1,24 +1,32 @@
+"""
+I-SPOT 1차 학대유형 관련 신호 분류 추론 모듈.
+상담 텍스트에서 4대 학대유형 관련 신호의 탐지 여부만 반환하며 확률은 외부에 노출하지 않는다.
+"""
+
 from pathlib import Path
 import re
 
-import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+)
 
 
 # ============================================================
-# 설정
+# 기본 설정
 # ============================================================
 
 MODEL_ID = "klue/roberta-base"
 MAX_LEN = 512
+NUM_LABELS = 4
 
 BASE_DIR = Path(__file__).resolve().parent
 
 MODEL_PATH = (
     BASE_DIR
     / "weight"
-    / "roberta_multilabel_v5_2026-09-07.pth"
+    / "roberta_multilabel_v4_2026-09-07.pth"
 )
 
 LABEL_NAMES = [
@@ -28,13 +36,25 @@ LABEL_NAMES = [
     "방임",
 ]
 
-# Validation 데이터에서 튜닝한 라벨별 threshold
+
+# ============================================================
+# 내부 판정 Threshold
+#
+# Validation 데이터에서 튜닝한 값.
+# 사용자 화면/API 결과에는 노출하지 않는다.
+# ============================================================
+
 THRESHOLDS = {
-    "신체학대": 0.50,
-    "정서학대": 0.50,
-    "성학대": 0.50,
-    "방임": 0.50,
+    "신체학대": 0.57,
+    "정서학대": 0.54,
+    "성학대": 0.19,
+    "방임": 0.55,
 }
+
+
+# ============================================================
+# Device 설정
+# ============================================================
 
 device = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,6 +66,8 @@ device = torch.device(
 # ============================================================
 
 def clean_text(text: str) -> str:
+    """입력 상담 텍스트의 불필요한 공백을 정리한다."""
+
     text = str(text)
 
     text = re.sub(
@@ -76,7 +98,7 @@ tokenizer = AutoTokenizer.from_pretrained(
 
 model = AutoModelForSequenceClassification.from_pretrained(
     MODEL_ID,
-    num_labels=4,
+    num_labels=NUM_LABELS,
     problem_type="multi_label_classification",
 )
 
@@ -85,40 +107,57 @@ checkpoint = torch.load(
     map_location=device,
 )
 
-if "model_state_dict" in checkpoint:
+# ------------------------------------------------------------
+# 학습 checkpoint / 순수 state_dict 형식 모두 지원
+# ------------------------------------------------------------
+
+if (
+    isinstance(checkpoint, dict)
+    and "model_state_dict" in checkpoint
+):
     state_dict = checkpoint["model_state_dict"]
 else:
     state_dict = checkpoint
 
-model.load_state_dict(state_dict)
+model.load_state_dict(
+    state_dict
+)
 
-# 학습 시 저장한 checkpoint에서 실제 모델 가중치만 추출
-if "model_state_dict" in checkpoint:
-    state_dict = checkpoint["model_state_dict"]
-else:
-    # 기존 순수 state_dict 형식도 호환
-    state_dict = checkpoint
+model.to(
+    device
+)
 
-model.load_state_dict(state_dict)
-
-model.to(device)
 model.eval()
 
-print("Model loaded :", MODEL_PATH)
+print(
+    "Model loaded :",
+    MODEL_PATH,
+)
 
 
 # ============================================================
-# 추론
+# 1차 학대유형 관련 신호 추론
 # ============================================================
 
 def predict_abuse(text: str) -> dict:
+    """
+    상담 텍스트를 분석하여 4대 학대유형 관련 신호 여부를 반환한다.
 
-    text = clean_text(text)
+    확률과 threshold는 내부 판정에만 사용하고 외부 결과에는 포함하지 않는다.
+    """
+
+    text = clean_text(
+        text
+    )
 
     if not text:
         raise ValueError(
             "분석할 상담 텍스트가 없습니다."
         )
+
+    # --------------------------------------------------------
+    # Tokenization
+    # --------------------------------------------------------
 
     encoded = tokenizer(
         text,
@@ -128,52 +167,49 @@ def predict_abuse(text: str) -> dict:
         return_tensors="pt",
     )
 
-    input_ids = encoded[
-        "input_ids"
-    ].to(device)
+    encoded = {
+        key: value.to(device)
+        for key, value in encoded.items()
+    }
 
-    attention_mask = encoded[
-        "attention_mask"
-    ].to(device)
-
-    token_type_ids = encoded.get(
-        "token_type_ids"
-    )
-
-    if token_type_ids is not None:
-        token_type_ids = token_type_ids.to(device)
+    # --------------------------------------------------------
+    # RoBERTa 추론
+    # --------------------------------------------------------
 
     with torch.no_grad():
 
         outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
+            **encoded
         )
 
         probabilities = torch.sigmoid(
             outputs.logits
-        )[0].cpu().numpy()
+        )[0]
+
+    # --------------------------------------------------------
+    # Threshold 기반 관련 신호 판정
+    #
+    # probability 자체는 반환하지 않는다.
+    # --------------------------------------------------------
 
     results = {}
 
-    for label, probability in zip(
-        LABEL_NAMES,
-        probabilities,
+    for index, label in enumerate(
+        LABEL_NAMES
     ):
 
-        threshold = THRESHOLDS[label]
+        probability = float(
+            probabilities[index].item()
+        )
+
+        threshold = THRESHOLDS[
+            label
+        ]
 
         results[label] = {
-            "probability": float(probability),
-            "percentage": round(
-                float(probability) * 100,
-                2,
-            ),
-            "threshold": threshold,
             "detected": bool(
                 probability >= threshold
-            ),
+            )
         }
 
     return results
@@ -194,23 +230,40 @@ if __name__ == "__main__":
         "\n상담 텍스트 입력: "
     )
 
-    result = predict_abuse(text)
+    result = predict_abuse(
+        text
+    )
 
-    print("\n===== 분석 결과 =====")
+    print()
+    print("===== 분석 결과 =====")
+
+    detected_labels = []
 
     for label in LABEL_NAMES:
 
-        item = result[label]
+        if result[label]["detected"]:
+            detected_labels.append(
+                label
+            )
 
-        status = (
-            "신호 있음"
-            if item["detected"]
-            else "신호 없음"
-        )
+    # --------------------------------------------------------
+    # 사용자에게는 탐지 여부만 표시
+    # --------------------------------------------------------
 
+    if detected_labels:
+
+        for label in detected_labels:
+            print(
+                f"✓ {label} 관련 신호 탐지"
+            )
+
+    else:
         print(
-            f"{label:<6} "
-            f"{item['percentage']:>6.2f}% "
-            f"(기준 {item['threshold']:.2f}) "
-            f"→ {status}"
+            "탐지된 학대 관련 신호 없음"
         )
+
+    print()
+    print(
+        "※ AI 분석 결과는 상담사의 판단을 "
+        "보조하기 위한 정보입니다."
+    )
