@@ -30,6 +30,9 @@ Frontend 는 STT/LLM Provider 를 직접 호출하지 않는다. 모든 외부 �
 
 ## 2. 빠른 시작
 
+> **Frontend 개발자라면 [부록 A. Docker 없이 5분 만에 띄우기](#부록-a-docker-없이-5분-만에-띄우기)를 먼저 보세요.**
+> 화면 연동 확인이 목적이면 PostgreSQL 도 Docker 도 필요 없습니다.
+
 ### 2.1 PostgreSQL 실행
 
 ```bash
@@ -341,3 +344,119 @@ Kubernetes, Kafka, MSA, 복잡한 Queue Infrastructure, S3 필수화, RAG,
 중대사건 DB, 사례관리 자동 추천은 이번 범위에서 다루지 않는다.
 
 장시간 작업(STT/AI)은 FastAPI `BackgroundTasks` + Polling 으로 처리한다.
+
+---
+
+## 부록 A. Docker 없이 5분 만에 띄우기
+
+**Frontend 화면을 실제 API 에 붙여볼 때** 쓰는 방법이다.
+PostgreSQL·Docker 없이 SQLite 파일 하나로 동작한다.
+
+> 이 방법은 **로컬 개발 전용**이다. 배포나 성능 확인에는 §2 의 PostgreSQL 을 쓴다.
+
+### A.1 가상환경 + 의존성
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/Scripts/activate      # Git Bash (Windows)
+pip install -r requirements-dev.txt
+```
+
+활성화 명령은 터미널 종류에 따라 다르다. §2.2 표를 참고한다.
+
+### A.2 .env 생성
+
+`backend/.env` 로 저장한다. `JWT_SECRET_KEY` 는 아무 문자열이나 넣어도 로컬에서는 동작한다.
+
+```bash
+ENV=local
+DEBUG=true
+LOG_LEVEL=INFO
+
+# PostgreSQL 대신 파일 하나를 쓴다. Docker 가 필요 없다.
+DATABASE_URL=sqlite+pysqlite:///./dev.db
+DB_ECHO=false
+
+JWT_SECRET_KEY=local-dev-only-change-me-1234567890
+ACCESS_TOKEN_EXPIRE_MINUTES=720
+
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+AUDIO_STORAGE_ROOT=../storage/audio
+AUDIO_MAX_SIZE_MB=200
+AUDIO_ALLOWED_EXTENSIONS=.wav,.mp3,.m4a,.mp4,.ogg,.flac,.webm
+
+# 팀 A / 팀 B 산출물 없이도 전 과정이 동작한다.
+STT_PROVIDER=mock
+AI_PROVIDER=mock
+```
+
+### A.3 DB 생성 + 계정 + 데모 데이터
+
+```bash
+alembic upgrade head
+
+# 관리자/상담사 계정 생성 — 출력되는 비밀번호를 적어둔다
+PYTHONPATH=. python scripts/seed_users.py --demo
+
+# 서버 실행 (아래 A.4) 후 다른 터미널에서
+PYTHONPATH=. python scripts/seed_demo_data.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-email admin@ispot.example.com \
+  --admin-password <위에서 출력된 비밀번호>
+```
+
+데모 데이터는 **상태별 사례 6건**을 만든다. 각 화면이 어떤 상태에서
+어떻게 보여야 하는지 한 번에 확인할 수 있다.
+
+```text
+C-2026-0001  CREATED               음성 업로드 전
+C-2026-0002  AUDIO_UPLOADED        STT 대기
+C-2026-0003  STT_REVIEW_REQUIRED   원문 검수 필요
+C-2026-0004  STT_CONFIRMED         AI 분석 대기
+C-2026-0005  AI_REVIEW_REQUIRED    요약 검수 필요
+C-2026-0006  APPROVED              완료
+```
+
+### A.4 서버 실행
+
+```bash
+uvicorn app.main:app --reload
+```
+
+- API 문서 — <http://127.0.0.1:8000/docs>
+- 상태 확인 — <http://127.0.0.1:8000/health>
+
+### A.5 Frontend 에서 붙이기
+
+`ispotvscode` 의 vite 설정이 `/api/v1` 요청을 `127.0.0.1:8000` 으로 넘긴다.
+Backend 를 켜둔 상태에서 프론트를 실행하면 CORS 설정 없이 바로 연결된다.
+
+```bash
+cd ispotvscode
+npm install
+npm run dev
+```
+
+연결 확인 페이지: <http://localhost:5173/api-demo>
+로그인 → 사례 목록 → 회차 목록이 실제 API 로 동작한다.
+
+### A.6 자주 겪는 문제
+
+| 증상 | 원인과 해결 |
+|---|---|
+| `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
+| 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
+| `409 INVALID_SESSION_STATE` | 상태 순서를 건너뛴 요청이다. 오류 본문의 `expected_status` 를 확인한다 |
+| `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
+| 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
+
+### A.7 정리
+
+DB 를 초기화하려면 서버를 끄고 파일만 지우면 된다.
+
+```bash
+rm backend/dev.db
+alembic upgrade head
+```
