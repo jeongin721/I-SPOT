@@ -51,6 +51,33 @@ export type UserRole = "COUNSELOR" | "ADMIN";
 
 export type CaseStatus = "ACTIVE" | "CLOSED";
 
+/**
+ * 보호자 유형.
+ * 목록에 없는 관계는 OTHER 로 두고 guardian_note 에 적는다.
+ * Backend 는 보호자 실명을 저장하지 않는다(아동 실명과 같은 원칙).
+ */
+export type GuardianType =
+  | "PARENTS"
+  | "FATHER"
+  | "MOTHER"
+  | "GRANDPARENTS"
+  | "RELATIVE"
+  | "FOSTER"
+  | "FACILITY"
+  | "OTHER";
+
+/** 화면에 표시할 한글 이름. */
+export const GUARDIAN_LABELS: Record<GuardianType, string> = {
+  PARENTS: "부모",
+  FATHER: "부",
+  MOTHER: "모",
+  GRANDPARENTS: "조부모",
+  RELATIVE: "친인척",
+  FOSTER: "위탁",
+  FACILITY: "시설",
+  OTHER: "기타",
+};
+
 /** 회차 상태. Backend 가 전이 규칙을 강제하므로 임의로 바꾸지 않는다. */
 export type SessionStatus =
   | "CREATED"
@@ -107,6 +134,9 @@ export interface Case {
   child_alias: string;
   child_birth_year: number | null;
   child_gender: string | null;
+  guardian_type: GuardianType | null;
+  /** guardian_type 이 OTHER 일 때만 값이 있다. */
+  guardian_note: string | null;
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
@@ -123,6 +153,9 @@ export interface CaseCreateRequest {
   child_alias: string;
   child_birth_year?: number | null;
   child_gender?: string | null;
+  guardian_type?: GuardianType | null;
+  /** guardian_type 이 OTHER 일 때만 보낼 수 있다. 그 외에는 422. */
+  guardian_note?: string | null;
   notes?: string | null;
 }
 

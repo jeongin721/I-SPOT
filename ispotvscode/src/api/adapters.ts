@@ -9,6 +9,7 @@
 
 import type { CaseRecord, RiskLevel } from "../data/cases";
 import type { Session as UiSession } from "../data/mockData";
+import { GUARDIAN_LABELS } from "./types";
 import type { Case, Session, SessionStatus } from "./types";
 
 // =========================================================
@@ -17,13 +18,13 @@ import type { Case, Session, SessionStatus } from "./types";
 //
 //  화면 필드          | 상태
 //  ------------------|---------------------------------------------------
-//  guardian          | Backend Case 에 보호자 필드 없음
 //  abuseTypes        | 사례 단위로는 없음. AI 분석 결과(abuse_signals)에 있음
 //  riskLevel/Score   | 사례 단위로는 없음. 회차별 AI 분석에서 집계해야 함
 //  keywords          | Backend 에 없음
 //  sessionCount      | Case 응답에 없음. 회차 목록의 meta.total 로 얻는다
 //
-//  counselor(이름) 은 Backend 가 counselor_name 으로 내려주므로 해결되었다.
+//  해결됨: counselor(이름) → counselor_name
+//         guardian       → guardian_type / guardian_note
 //
 // 위 항목이 필요하면 Backend 에 필드 추가를 요청해야 한다.
 // 지금은 화면이 깨지지 않도록 중립값을 넣는다.
@@ -45,6 +46,20 @@ function toDateOnly(iso: string | null): string {
   if (!iso) return "";
 
   return iso.slice(0, 10);
+}
+
+/**
+ * 보호자를 화면에 보여줄 문자열로 바꾼다.
+ * OTHER 는 상담사가 직접 적은 값(guardian_note)을 그대로 쓴다.
+ */
+export function toGuardianLabel(source: Case): string {
+  if (!source.guardian_type) return NOT_PROVIDED;
+
+  if (source.guardian_type === "OTHER") {
+    return source.guardian_note || GUARDIAN_LABELS.OTHER;
+  }
+
+  return GUARDIAN_LABELS[source.guardian_type];
 }
 
 /** 사례 상태: Backend 는 ACTIVE/CLOSED 두 가지뿐이다. */
@@ -73,7 +88,7 @@ export function toUiCase(source: Case, extras: CaseAdapterExtras = {}): CaseReco
     id: source.case_number,
     childName: source.child_alias,
     age: toAge(source.child_birth_year),
-    guardian: NOT_PROVIDED,
+    guardian: toGuardianLabel(source),
     abuseTypes: [],
     riskLevel: extras.riskLevel ?? "low",
     riskScore: extras.riskScore ?? 0,
