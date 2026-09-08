@@ -1,6 +1,6 @@
 """
-I-SPOT 2차 학대 세부유형 모델의 라벨 체계와 5단계 신호 수준을 정의한다.
- Multi-label 분류에 사용하며, 신호 수준은 별도 ordinal target으로 관리한다.
+I-SPOT 2차 모델에서 사용하는 공식자료 기반 학대 세부유형 라벨을 정의한다.
+4대 학대유형 아래 19개 세부 신호를 Multi-label 방식으로 분류하기 위한 설정 파일이다.
 """
 
 # ============================================================
@@ -16,94 +16,90 @@ MAJOR_LABELS = [
 
 
 # ============================================================
-# 2. 세부유형 라벨
+# 2. 세부유형 Multi-label
+# ============================================================
+# 하나의 상담 발화/사례에서 여러 세부유형이 동시에
+# 나타날 수 있으므로 상호배타적인 클래스가 아니다.
 # ============================================================
 
 SUBTYPE_LABELS = {
     "신체학대": [
-        "physical_direct_hit",
-        "physical_force",
+        "physical_direct",
         "physical_object",
-        "physical_punishment",
-        "physical_harmful_substance",
+        "physical_force",
+        "physical_harmful",
     ],
 
     "정서학대": [
         "emotional_verbal",
         "emotional_threat",
-        "emotional_humiliation",
-        "emotional_isolation",
+        "emotional_restriction",
+        "emotional_discrimination",
         "emotional_dv_exposure",
-        "emotional_excessive_demand",
+        "emotional_cruelty",
     ],
 
     "성학대": [
-        "sexual_contact",
-        "sexual_harassment",
-        "sexual_request",
-        "sexual_exposure_request",
-        "sexual_content_exposure",
+        "sexual_exposure",
+        "sexual_molestation",
+        "sexual_simulated",
+        "sexual_intercourse",
         "sexual_exploitation",
     ],
 
     "방임": [
         "neglect_physical",
-        "neglect_medical",
         "neglect_education",
-        "neglect_supervision",
+        "neglect_medical",
         "neglect_abandonment",
     ],
 }
 
 
 # ============================================================
-# 3. 한국어 표시명
+# 3. 사용자 화면용 한국어 표시명
 # ============================================================
 
 SUBTYPE_DISPLAY_NAMES = {
-    "physical_direct_hit": "직접 타격",
-    "physical_force": "완력 사용",
-    "physical_object": "도구 사용",
-    "physical_punishment": "체벌",
-    "physical_harmful_substance": "유해물질",
+    # --------------------------------------------------------
+    # 신체학대
+    # --------------------------------------------------------
+    "physical_direct": "직접 신체 가해",
+    "physical_object": "도구 사용 가해",
+    "physical_force": "완력·신체적 강압",
+    "physical_harmful": "유해물질·화상 등 가해",
 
-    "emotional_verbal": "언어폭력·모욕",
-    "emotional_threat": "위협·협박",
-    "emotional_humiliation": "공개적 수치심",
-    "emotional_isolation": "감금·고립",
+    # --------------------------------------------------------
+    # 정서학대
+    # --------------------------------------------------------
+    "emotional_verbal": "언어적 모욕·적대",
+    "emotional_threat": "위협·쫓아냄",
+    "emotional_restriction": "감금·억제·강압",
+    "emotional_discrimination": "차별·편애·가족 내 고립",
     "emotional_dv_exposure": "가정폭력 노출",
-    "emotional_excessive_demand": "과도한 강요",
+    "emotional_cruelty": "기타 가학적 행위",
 
-    "sexual_contact": "성적 신체접촉",
-    "sexual_harassment": "성적 언행·성희롱",
-    "sexual_request": "성적 행위 요구",
-    "sexual_exposure_request": "신체 노출 요구",
-    "sexual_content_exposure": "성적 장면 노출",
+    # --------------------------------------------------------
+    # 성학대
+    # --------------------------------------------------------
+    "sexual_exposure": "성적 노출·관찰",
+    "sexual_molestation": "성적 추행",
+    "sexual_simulated": "유사성행위",
+    "sexual_intercourse": "성교",
     "sexual_exploitation": "성매매·매개",
 
+    # --------------------------------------------------------
+    # 방임
+    # --------------------------------------------------------
     "neglect_physical": "물리적 방임",
-    "neglect_medical": "의료적 방임",
     "neglect_education": "교육적 방임",
-    "neglect_supervision": "보호·감독 방임",
+    "neglect_medical": "의료적 방임",
     "neglect_abandonment": "유기",
 }
 
 
 # ============================================================
-# 4. 5단계 신호 수준
-# ============================================================
-
-SIGNAL_LEVELS = {
-    1: "매우 낮음",
-    2: "낮음",
-    3: "중간",
-    4: "높음",
-    5: "매우 높음",
-}
-
-
-# ============================================================
-# 5. 전체 세부유형 라벨 평탄화
+# 4. 전체 세부유형 라벨
 # ============================================================
 
 ALL_SUBTYPE_LABELS = [
@@ -111,3 +107,25 @@ ALL_SUBTYPE_LABELS = [
     for subtype_list in SUBTYPE_LABELS.values()
     for subtype in subtype_list
 ]
+
+
+# ============================================================
+# 5. 세부유형 → 대분류 매핑
+# ============================================================
+# 추론 결과를 다시 4대 유형과 연결하거나
+# 데이터 검증 시 사용한다.
+# ============================================================
+
+SUBTYPE_TO_MAJOR = {
+    subtype: major
+    for major, subtype_list in SUBTYPE_LABELS.items()
+    for subtype in subtype_list
+}
+
+
+# ============================================================
+# 6. 기본 검증
+# ============================================================
+
+assert len(ALL_SUBTYPE_LABELS) == 19
+assert len(set(ALL_SUBTYPE_LABELS)) == 19
