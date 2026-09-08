@@ -8,8 +8,28 @@ from dotenv import load_dotenv
 # ispot 모듈 불러오기
 from ispot_stt import SelectiveFallbackSTTProvider
 from ispot_postprocess import STTPostProcessor
+from child_analysis_text import ChildAnalysisTextBuilder
+from abuse_model.infer_abuse import predict_abuse
 
 load_dotenv()
+
+# ---------------------------------------------------------
+# 서버 공용 AI / STT 객체
+# ---------------------------------------------------------
+# 요청마다 새로 만들지 않고 서버 실행 시 한 번만 생성한다.
+#
+# Whisper large-v3는 SelectiveFallbackSTTProvider 내부에서
+# 실제 fallback이 필요한 순간에만 lazy loading되고,
+# 이후 요청에서는 같은 모델 인스턴스를 재사용한다.
+# ---------------------------------------------------------
+
+stt_provider = SelectiveFallbackSTTProvider()
+
+post_processor = STTPostProcessor(
+    low_confidence_threshold=0.70
+)
+
+child_builder = ChildAnalysisTextBuilder()
 
 app = FastAPI(
     title="I-SPOT AI Backend API",
@@ -66,8 +86,9 @@ def analyze_audio(file: UploadFile = File(...)):
         # 4. Deepgram STT 변환 (예외 처리 포함)
         print("1️⃣ Deepgram STT 진행 중...")
         try:
-            provider = SelectiveFallbackSTTProvider()
-            raw_stt_result = provider.transcribe(temp_file_path)
+            raw_stt_result = stt_provider.transcribe(
+                temp_file_path
+            )
         except Exception as stt_err:
             print(f"❌ STT 엔진 오류: {str(stt_err)}")
             raise HTTPException(
@@ -78,7 +99,6 @@ def analyze_audio(file: UploadFile = File(...)):
         # 5. 후처리 및 발화 병합
         print("2️⃣ STT 결과 후처리 및 발화 병합 중...")
         try:
-            post_processor = STTPostProcessor(low_confidence_threshold=0.70)
             final_result = post_processor.process(raw_stt_result)
         except Exception as post_err:
             print(f"❌ 후처리 모듈 오류: {str(post_err)}")
@@ -89,10 +109,98 @@ def analyze_audio(file: UploadFile = File(...)):
 
         print("✅ STT 파이프라인 분석 완수!")
 
+        # 6. Runtime speaker role 판별 + 아동 분석 텍스트 생성
+        print("3️⃣ 아동 화자 판별 및 분석 텍스트 생성 중...")
+
+        try:
+            child_result = child_builder.build(
+                final_result
+            )
+
+        except Exception as child_err:
+            print(
+                f"❌ 아동 분석 텍스트 생성 오류: "
+                f"{str(child_err)}"
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "아동 분석 텍스트 생성 중 "
+                    f"오류가 발생했습니다: {str(child_err)}"
+                ),
+            )
+
+
+        child_analysis_text = (
+            child_result.get(
+                "child_analysis_text",
+                "",
+            )
+            or ""
+        ).strip()
+
+
+        # 7. KLUE-RoBERTa 학대 유형 분석
+        abuse_prediction = None
+
+        if (
+            child_result.get("status") == "OK"
+            and child_analysis_text
+        ):
+
+            print("4️⃣ KLUE-RoBERTa 학대 유형 분석 중...")
+
+            try:
+                abuse_prediction = predict_abuse(
+                    child_analysis_text
+                )
+
+            except Exception as abuse_err:
+                print(
+                    f"❌ 학대 유형 분석 오류: "
+                    f"{str(abuse_err)}"
+                )
+
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        "학대 유형 분석 중 "
+                        f"오류가 발생했습니다: {str(abuse_err)}"
+                    ),
+                )
+
+        else:
+            print(
+                "⚠️ 아동 화자를 확정하지 못해 "
+                "학대 유형 분석을 건너뜁니다."
+            )
+
+
         return {
             "status": "success",
             "file_name": filename,
-            "stt_data": final_result
+
+            "stt_data": final_result,
+
+            "speaker_roles": child_result.get(
+                "role_mapping",
+                {},
+            ),
+
+            "child_speaker": child_result.get(
+                "child_speaker"
+            ),
+
+            "child_analysis_status": child_result.get(
+                "status"
+            ),
+
+            "child_analysis_text":
+                child_analysis_text,
+
+            "abuse_prediction":
+                abuse_prediction,
         }
 
     except HTTPException as http_ex:

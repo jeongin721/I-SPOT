@@ -436,53 +436,274 @@ class DeepgramSTTProvider(BaseSTTProvider):
 # Whisper는 로컬 모델 또는 OpenAI API 둘 다 쓸 수 있는 구조로 설계되어 있다.
 # 먼저 local whisper가 설치되어 있으면 그것을 쓰고,
 # 그렇지 않으면 OpenAI transcription API를 이용한다.
-#
 # 이 방식은 환경에 따라 유연하게 동작하게 만들기 위한 설계다.
 # 즉, 코드가 특정 서비스에 강하게 묶이지 않도록 만든 것이다.
 class WhisperSTTProvider(BaseSTTProvider):
     """Thin adapter for providers compatible with OpenAI Whisper-style transcription."""
 
     @staticmethod
-    def _coerce_segments_to_contract(raw_segments: Any) -> List[Dict[str, Any]]:
-        # Whisper 모델이 자체적으로 준 segment는 보통 start/end/text/confidence 형태이다.
-        # 하지만 프로젝트는 이 정보를 내부 Contract로 나중에 쉽게 재사용할 수 있도록
-        # segment_id, speaker, start_ms, end_ms 등에 맞게 변환해야 한다.
+    def _coerce_segments_to_contract(
+        raw_segments: Any,
+    ) -> List[Dict[str, Any]]:
+
         if raw_segments is None:
             return []
 
         normalized: List[Dict[str, Any]] = []
-        for index, segment in enumerate(raw_segments, start=1):
+
+        for index, segment in enumerate(
+            raw_segments,
+            start=1,
+        ):
             if isinstance(segment, dict):
-                start = float(segment.get("start", 0.0) or 0.0)
-                end = float(segment.get("end", start) or start)
-                text = str(segment.get("text") or "").strip()
-                confidence = segment.get("confidence")
-                avg_logprob = segment.get("avg_logprob")
+                start = float(
+                    segment.get("start", 0.0)
+                    or 0.0
+                )
+
+                end = float(
+                    segment.get("end", start)
+                    or start
+                )
+
+                text = str(
+                    segment.get("text")
+                    or ""
+                ).strip()
+
+                confidence = segment.get(
+                    "confidence"
+                )
+
+                avg_logprob = segment.get(
+                    "avg_logprob"
+                )
+
+                raw_words = (
+                    segment.get("words")
+                    or []
+                )
+
             else:
-                start = float(getattr(segment, "start", 0.0) or 0.0)
-                end = float(getattr(segment, "end", start) or start)
-                text = str(getattr(segment, "text", "") or "").strip()
-                confidence = getattr(segment, "confidence", None)
-                avg_logprob = getattr(segment, "avg_logprob", None)
+                start = float(
+                    getattr(
+                        segment,
+                        "start",
+                        0.0,
+                    )
+                    or 0.0
+                )
+
+                end = float(
+                    getattr(
+                        segment,
+                        "end",
+                        start,
+                    )
+                    or start
+                )
+
+                text = str(
+                    getattr(
+                        segment,
+                        "text",
+                        "",
+                    )
+                    or ""
+                ).strip()
+
+                confidence = getattr(
+                    segment,
+                    "confidence",
+                    None,
+                )
+
+                avg_logprob = getattr(
+                    segment,
+                    "avg_logprob",
+                    None,
+                )
+
+                raw_words = (
+                    getattr(
+                        segment,
+                        "words",
+                        [],
+                    )
+                    or []
+                )
 
             if not text:
                 continue
 
+            # ------------------------------------------
+            # confidence 보정
+            # ------------------------------------------
+
             if confidence is None:
                 confidence = avg_logprob
+
             if confidence is None:
                 confidence = 0.9
-            confidence = max(0.0, min(1.0, float(confidence)))
+
+            try:
+                confidence = float(
+                    confidence
+                )
+            except (TypeError, ValueError):
+                confidence = 0.9
+
+            # avg_logprob는 음수가 될 수 있으므로
+            # contract 범위 0~1 안으로 제한한다.
+            confidence = max(
+                0.0,
+                min(
+                    1.0,
+                    confidence,
+                ),
+            )
+
+            # ------------------------------------------
+            # Whisper word timestamp 보존
+            # ------------------------------------------
+
+            words = []
+
+            for raw_word in raw_words:
+
+                if isinstance(
+                    raw_word,
+                    dict,
+                ):
+                    word_text = str(
+                        raw_word.get("word")
+                        or ""
+                    ).strip()
+
+                    word_start = (
+                        raw_word.get("start")
+                    )
+
+                    word_end = (
+                        raw_word.get("end")
+                    )
+
+                    word_probability = (
+                        raw_word.get(
+                            "probability"
+                        )
+                    )
+
+                else:
+                    word_text = str(
+                        getattr(
+                            raw_word,
+                            "word",
+                            "",
+                        )
+                        or ""
+                    ).strip()
+
+                    word_start = getattr(
+                        raw_word,
+                        "start",
+                        None,
+                    )
+
+                    word_end = getattr(
+                        raw_word,
+                        "end",
+                        None,
+                    )
+
+                    word_probability = getattr(
+                        raw_word,
+                        "probability",
+                        None,
+                    )
+
+                if not word_text:
+                    continue
+
+                if (
+                    word_start is None
+                    or word_end is None
+                ):
+                    continue
+
+                word_item = {
+                    "word":
+                        word_text,
+
+                    "start_ms":
+                        int(
+                            float(
+                                word_start
+                            )
+                            * 1000
+                        ),
+
+                    "end_ms":
+                        int(
+                            float(
+                                word_end
+                            )
+                            * 1000
+                        ),
+                }
+
+                if word_probability is not None:
+                    try:
+                        word_item[
+                            "confidence"
+                        ] = max(
+                            0.0,
+                            min(
+                                1.0,
+                                float(
+                                    word_probability
+                                ),
+                            ),
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        pass
+
+                words.append(
+                    word_item
+                )
 
             normalized.append(
                 {
-                    "segment_id": f"seg_{index:03d}",
-                    "speaker": "UNKNOWN",
-                    "start_ms": int(start * 1000),
-                    "end_ms": int(end * 1000),
-                    "text": text,
-                    "confidence": confidence,
-                    "is_low_confidence": confidence < 0.6,
+                    "segment_id":
+                        f"seg_{index:03d}",
+
+                    "speaker":
+                        "UNKNOWN",
+
+                    "start_ms":
+                        int(
+                            start * 1000
+                        ),
+
+                    "end_ms":
+                        int(
+                            end * 1000
+                        ),
+
+                    "text":
+                        text,
+
+                    "confidence":
+                        confidence,
+
+                    "is_low_confidence":
+                        confidence < 0.6,
+
+                    "words":
+                        words,
                 }
             )
 
@@ -626,6 +847,7 @@ class WhisperLargeV3FallbackProvider(BaseSTTProvider):
             audio_path,
             language="ko",
             fp16=False,
+            word_timestamps=True,
         )
 
         segments = (
@@ -888,6 +1110,58 @@ class SelectiveFallbackSTTProvider(BaseSTTProvider):
 
         return temp_path
 
+    def _extract_gap_text(
+        self,
+        absolute_segments: List[Dict[str, Any]],
+        gap_start_ms: int,
+        gap_end_ms: int,
+    ) -> str:
+        """
+        Whisper word timestamp를 이용하여
+        실제 의심 gap 안에 완전히 포함된 단어만 추출한다.
+
+        목적:
+        - PRE_MARGIN에 포함된 기존 Deepgram 발화 중복 제거
+        - POST_MARGIN에 포함된 다음 발화 오염 최소화
+        """
+
+        gap_words = []
+
+        for segment in absolute_segments:
+
+            for word in segment.get("words", []):
+
+                word_start_ms = word.get("start_ms")
+                word_end_ms = word.get("end_ms")
+
+                if not isinstance(
+                    word_start_ms,
+                    (int, float),
+                ):
+                    continue
+
+                if not isinstance(
+                    word_end_ms,
+                    (int, float),
+                ):
+                    continue
+
+                # gap 내부에 완전히 포함된 단어만 사용
+                if (
+                    word_start_ms >= gap_start_ms
+                    and word_end_ms <= gap_end_ms
+                ):
+                    word_text = (
+                        word.get("word")
+                        or ""
+                    ).strip()
+
+                    if word_text:
+                        gap_words.append(word_text)
+
+        return " ".join(gap_words).strip()
+
+
     def transcribe(
         self,
         audio_path: str,
@@ -980,6 +1254,85 @@ class SelectiveFallbackSTTProvider(BaseSTTProvider):
                     .strip()
                 )
 
+                # Whisper segment 시간은 잘라낸 clip 기준(0ms부터 시작)이므로
+                # 원본 상담 음성 기준 절대시간으로 변환한다.
+                absolute_segments = []
+
+                for segment in whisper_result.get("segments", []):
+
+                    relative_start_ms = segment.get("start_ms")
+                    relative_end_ms = segment.get("end_ms")
+
+                    if not isinstance(
+                        relative_start_ms,
+                        (int, float),
+                    ):
+                        continue
+
+                    if not isinstance(
+                        relative_end_ms,
+                        (int, float),
+                    ):
+                        continue
+
+                    # ------------------------------------------
+                    # word timestamp도 원본 오디오 기준으로 변환
+                    # ------------------------------------------
+
+                    absolute_words = []
+
+                    for word in segment.get("words", []):
+
+                        word_start_ms = word.get("start_ms")
+                        word_end_ms = word.get("end_ms")
+
+                        if not isinstance(
+                            word_start_ms,
+                            (int, float),
+                        ):
+                            continue
+
+                        if not isinstance(
+                            word_end_ms,
+                            (int, float),
+                        ):
+                            continue
+
+                        absolute_words.append(
+                            {
+                                **word,
+                                "start_ms": int(
+                                    clip_start_ms
+                                    + word_start_ms
+                                ),
+                                "end_ms": int(
+                                    clip_start_ms
+                                    + word_end_ms
+                                ),
+                            }
+                        )
+
+                    absolute_segments.append(
+                        {
+                            **segment,
+                            "start_ms": int(
+                                clip_start_ms
+                                + relative_start_ms
+                            ),
+                            "end_ms": int(
+                                clip_start_ms
+                                + relative_end_ms
+                            ),
+                            "words": absolute_words,
+                        }
+                    )
+
+                gap_text = self._extract_gap_text(
+                    absolute_segments=absolute_segments,
+                    gap_start_ms=gap_start_ms,
+                    gap_end_ms=gap_end_ms,
+                )
+
                 fallback_evidence.append(
                     {
                         "trigger":
@@ -1017,6 +1370,12 @@ class SelectiveFallbackSTTProvider(BaseSTTProvider):
 
                         "text":
                             whisper_text,
+
+                        "segments":
+                            absolute_segments,
+
+                        "gap_text": gap_text,
+                    
                     }
                 )
 
