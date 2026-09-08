@@ -78,6 +78,8 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             child_alias=payload.child_alias,
             child_birth_year=payload.child_birth_year,
             child_gender=payload.child_gender,
+            guardian_type=payload.guardian_type,
+            guardian_note=payload.guardian_note,
             notes=payload.notes,
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
@@ -236,7 +238,16 @@ def update_case(
 
         data.pop("counselor_id")
 
-    for field in ("title", "child_alias", "child_birth_year", "child_gender", "notes", "status"):
+    for field in (
+        "title",
+        "child_alias",
+        "child_birth_year",
+        "child_gender",
+        "guardian_type",
+        "guardian_note",
+        "notes",
+        "status",
+    ):
         if field in data:
             setattr(case, field, data[field])
             changed_fields.append(field)

@@ -18,6 +18,24 @@ class CaseStatus(str, Enum):
     CLOSED = "CLOSED"
 
 
+class GuardianType(str, Enum):
+    """
+    아동의 보호자 유형.
+
+    나중에 보호자 유형별 통계를 낼 수 있도록 목록으로 관리한다.
+    목록에 없는 관계는 OTHER 로 두고 guardian_note 에 적는다.
+    """
+
+    PARENTS = "PARENTS"            # 부모
+    FATHER = "FATHER"              # 부
+    MOTHER = "MOTHER"              # 모
+    GRANDPARENTS = "GRANDPARENTS"  # 조부모
+    RELATIVE = "RELATIVE"          # 친인척
+    FOSTER = "FOSTER"              # 위탁
+    FACILITY = "FACILITY"          # 시설
+    OTHER = "OTHER"                # 기타(guardian_note 에 직접 입력)
+
+
 class SessionStatus(str, Enum):
     """
     상담 Session 상태.

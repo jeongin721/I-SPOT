@@ -184,9 +184,12 @@ Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
         "child_alias": "아동_001",
         "child_birth_year": 2015,
         "child_gender": null,
+        "guardian_type": "PARENTS",
+        "guardian_note": null,
         "status": "ACTIVE",
         "notes": null,
         "counselor_id": "uuid",
+        "counselor_name": "이서연",
         "created_at": "...",
         "updated_at": "...",
         "last_session_at": "2026-09-01T14:30:00Z"
@@ -198,10 +201,27 @@ Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 ```
 
 > 개인정보 최소화 원칙에 따라 아동 실명 필드는 없다. `child_alias` 를 사용한다.
+> 같은 이유로 **보호자 실명도 저장하지 않는다.** 관계 유형만 기록한다.
 
 `last_session_at` 은 Case List 화면(`03_UI_UX.md` S02)의 **최근 상담일**이다.
 목록 조회에서 함께 계산되므로 Case 별로 Session 을 다시 호출할 필요가 없다.
 Session 이 없으면 `null`, `consulted_at` 이 기록되지 않은 Session 은 생성 시각으로 대체된다.
+
+`counselor_name` 은 담당 상담사 이름이다. 화면이 담당자를 이름으로 표시하므로
+목록에서 함께 내려준다. 상담사 계정이 삭제되었으면 `null`.
+
+#### 보호자 (`guardian_type` / `guardian_note`)
+
+```text
+PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
+  부모     부       모       조부모         친인척     위탁     시설      기타
+```
+
+- 선택 항목이다. 지정하지 않으면 `null`
+- 목록에 없는 관계는 `guardian_type: "OTHER"` + `guardian_note` 에 직접 입력
+- **`guardian_note` 는 `OTHER` 일 때만 사용한다.** 다른 유형과 함께 보내면 `422`
+  (유형을 골라놓고 자유 입력까지 하면 통계 기준이 갈라진다)
+- 목록에 없는 값을 보내면 `422`
 
 ### POST /api/v1/cases → 201
 
@@ -211,6 +231,8 @@ Session 이 없으면 `null`, `consulted_at` 이 기록되지 않은 Session 은
   "child_alias": "아동_001",
   "child_birth_year": 2015,
   "child_gender": null,
+  "guardian_type": "PARENTS",
+  "guardian_note": null,
   "notes": null,
   "counselor_id": null,
   "case_number": null
@@ -218,6 +240,7 @@ Session 이 없으면 `null`, `consulted_at` 이 기록되지 않은 Session 은
 ```
 
 - `title`, `child_alias` 필수
+- `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
 - `case_number` 미지정 → `C-YYYY-NNNN` 자동 생성
 

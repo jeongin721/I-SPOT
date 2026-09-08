@@ -9,7 +9,7 @@ from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import CaseStatus
+from app.core.enums import CaseStatus, GuardianType
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -29,6 +29,14 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     child_alias: Mapped[str] = mapped_column(String(100), nullable=False)
     child_birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     child_gender: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    # 보호자 유형. 목록에 없는 관계는 OTHER 로 두고 guardian_note 에 적는다.
+    # 아동 실명과 마찬가지로 보호자 실명은 저장하지 않는다.
+    guardian_type: Mapped[Optional[GuardianType]] = mapped_column(
+        SAEnum(GuardianType, name="guardian_type", native_enum=False, length=20),
+        nullable=True,
+    )
+    guardian_note: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     status: Mapped[CaseStatus] = mapped_column(
         SAEnum(CaseStatus, name="case_status", native_enum=False, length=20),

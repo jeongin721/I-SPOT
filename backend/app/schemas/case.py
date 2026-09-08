@@ -5,13 +5,34 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.core.enums import CaseStatus
+from app.core.enums import CaseStatus, GuardianType
 from app.schemas.auth import UserResponse
 
 
-class CaseCreateRequest(BaseModel):
+class GuardianFields(BaseModel):
+    """
+    보호자 유형.
+
+    목록에 없는 관계는 guardian_type=OTHER 로 두고 guardian_note 에 적는다.
+    보호자 실명은 저장하지 않는다(아동 실명과 같은 원칙).
+    """
+
+    guardian_type: Optional[GuardianType] = None
+    guardian_note: Optional[str] = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def _check_note_usage(self) -> "GuardianFields":
+        if self.guardian_note and self.guardian_type != GuardianType.OTHER:
+            raise ValueError(
+                "guardian_note 는 guardian_type 이 OTHER 일 때만 사용합니다."
+            )
+
+        return self
+
+
+class CaseCreateRequest(GuardianFields):
     title: str = Field(..., min_length=1, max_length=200)
     child_alias: str = Field(..., min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
@@ -25,7 +46,7 @@ class CaseCreateRequest(BaseModel):
     case_number: Optional[str] = Field(default=None, min_length=1, max_length=50)
 
 
-class CaseUpdateRequest(BaseModel):
+class CaseUpdateRequest(GuardianFields):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     child_alias: Optional[str] = Field(default=None, min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
@@ -44,6 +65,8 @@ class CaseResponse(BaseModel):
     child_alias: str
     child_birth_year: Optional[int]
     child_gender: Optional[str]
+    guardian_type: Optional[GuardianType]
+    guardian_note: Optional[str]
     status: CaseStatus
     notes: Optional[str]
     counselor_id: uuid.UUID

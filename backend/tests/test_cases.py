@@ -71,6 +71,141 @@ def test_create_case_rejects_invalid_birth_year(
     assert response.status_code == 422
 
 
+# =========================================================
+# 보호자 유형
+# =========================================================
+
+def test_create_case_with_guardian_type(
+    client: TestClient, counselor_headers
+) -> None:
+    response = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "보호자 지정",
+            "child_alias": "아동_보호자",
+            "guardian_type": "GRANDPARENTS",
+        },
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 201
+
+    data = response.json()["data"]
+
+    assert data["guardian_type"] == "GRANDPARENTS"
+    assert data["guardian_note"] is None
+
+
+def test_guardian_type_is_optional(client: TestClient, counselor_headers) -> None:
+    """기존 사례와 호환되어야 하므로 보호자는 필수가 아니다."""
+
+    data = create_case(client, counselor_headers, title="보호자 미지정")
+
+    assert data["guardian_type"] is None
+
+
+def test_other_guardian_uses_note(client: TestClient, counselor_headers) -> None:
+    """목록에 없는 관계는 OTHER + guardian_note 로 기록한다."""
+
+    response = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "기타 보호자",
+            "child_alias": "아동_기타",
+            "guardian_type": "OTHER",
+            "guardian_note": "외조모",
+        },
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 201
+
+    data = response.json()["data"]
+
+    assert data["guardian_type"] == "OTHER"
+    assert data["guardian_note"] == "외조모"
+
+
+def test_note_without_other_is_rejected(
+    client: TestClient, counselor_headers
+) -> None:
+    """
+    목록 값을 골라놓고 자유 입력까지 하면 어느 쪽이 맞는지 알 수 없다.
+    통계를 내려면 guardian_type 이 단일 기준이어야 한다.
+    """
+
+    response = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "잘못된 조합",
+            "child_alias": "아동_오류",
+            "guardian_type": "MOTHER",
+            "guardian_note": "친모",
+        },
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_unknown_guardian_type_is_rejected(
+    client: TestClient, counselor_headers
+) -> None:
+    """목록에 없는 값은 거부한다. 오타로 통계가 갈라지는 것을 막는다."""
+
+    response = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "없는 유형",
+            "child_alias": "아동_오타",
+            "guardian_type": "친척",
+        },
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_guardian_type(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    response = client.patch(
+        f"/api/v1/cases/{case['id']}",
+        json={"guardian_type": "FOSTER"},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["guardian_type"] == "FOSTER"
+
+
+def test_guardian_appears_in_list_and_detail(
+    client: TestClient, counselor_headers
+) -> None:
+    """화면이 목록에서도 보호자를 표시하므로 두 응답 모두에 있어야 한다."""
+
+    created = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "목록 표시 확인",
+            "child_alias": "아동_목록",
+            "guardian_type": "FACILITY",
+        },
+        headers=counselor_headers,
+    ).json()["data"]
+
+    listed = client.get("/api/v1/cases", headers=counselor_headers).json()["data"]
+
+    assert listed["items"][0]["guardian_type"] == "FACILITY"
+
+    detail = client.get(
+        f"/api/v1/cases/{created['id']}", headers=counselor_headers
+    ).json()["data"]
+
+    assert detail["guardian_type"] == "FACILITY"
+
+
 def test_list_cases_returns_paged_envelope(
     client: TestClient, counselor_headers
 ) -> None:
