@@ -43,3 +43,10 @@ node_modules/
 
 # Personal study guides — do not commit
 _개인용_학습가이드/
+
+# 실험 결과·캐시 (cocopb 님 요청)
+#
+# 주의: 이미 커밋된 results/ 안의 8개 파일은 이 규칙으로 사라지지 않는다.
+# .gitignore 는 아직 추적되지 않는 파일에만 적용된다.
+# 기존 파일까지 빼려면 `git rm --cached -r results/` 가 따로 필요하다.
+results/
