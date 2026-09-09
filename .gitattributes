@@ -20,3 +20,10 @@
 *.ogg binary
 *.flac binary
 *.webm binary
+
+# 학습 가중치(.pth)는 Git LFS 로 저장한다.
+#
+# ai-modeling 브랜치가 이미 이 규칙으로 442MB 가중치를 관리하고 있는데,
+# 이쪽 .gitattributes 에는 규칙이 없어서 두 파일이 서로 어긋나 있었다.
+# 병합 시 이 줄이 빠지면 가중치가 일반 blob 으로 커밋되어 저장소가 망가진다.
+*.pth filter=lfs diff=lfs merge=lfs -text
