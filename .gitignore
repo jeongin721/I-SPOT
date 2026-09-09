@@ -1,9 +1,15 @@
+# Environment variables
 .env
-.env
+
+# Python cache
 __pycache__/
 *.pyc
+
 # Local model weights
 abuse_model/weight/
 
 # Local evaluation dataset
 test_sample/
+
+# Local experiment outputs / caches
+results/
