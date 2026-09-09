@@ -14,6 +14,7 @@ from tqdm import tqdm
 from ai.adapters.stt_analysis_adapter import (
     AnalysisChunk,
     STTAnalysisAdapter,
+    validate_stt_result,
 )
 
 from ai.modeling.abuse.infer_abuse import (
@@ -25,6 +26,9 @@ from ai.modeling.abuse.infer_subtype import (
     predict_subtype,
 )
 
+from ai.modeling.abuse.explain_subtype import (
+    explain_single_subtype,
+)
 
 # ============================================================
 # 2. 1차 학대유형 설정
@@ -94,6 +98,115 @@ def _chunk_to_dict(
             chunk.has_low_confidence
         ),
     }
+
+# ============================================================
+# XAI 근거 표현 → 원본 STT Segment 연결
+# ============================================================
+
+def _link_evidence_to_segments(
+    evidence_phrases: List[str],
+    chunk: AnalysisChunk,
+    stt_segments: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    XAI가 추출한 근거 표현을 실제 CHILD STT segment와 연결한다.
+
+    근거 표현이 실제로 포함된 CHILD 발화만 사용하며,
+    원본 segment_id / timestamp / confidence 정보를 보존한다.
+
+    하나의 근거 표현이 여러 segment에 존재하면
+    해당되는 모든 segment를 반환한다.
+    """
+
+    linked_evidence = []
+
+    # 현재 chunk에 포함된 segment만 검색
+    chunk_segment_ids = set(
+        chunk.segment_ids
+    )
+
+    for phrase in evidence_phrases:
+
+        normalized_phrase = (
+            phrase.strip()
+        )
+
+        if not normalized_phrase:
+            continue
+
+        for segment in stt_segments:
+
+            # -----------------------------------------------
+            # 현재 chunk 밖의 segment 제외
+            # -----------------------------------------------
+
+            if (
+                segment["segment_id"]
+                not in chunk_segment_ids
+            ):
+                continue
+
+            # -----------------------------------------------
+            # XAI 근거는 CHILD 발화에서만 연결
+            # -----------------------------------------------
+
+            if (
+                segment["speaker"]
+                != "CHILD"
+            ):
+                continue
+
+            source_text = (
+                segment["text"]
+            )
+
+            # -----------------------------------------------
+            # 근거 표현이 실제 원문에 존재하는지 확인
+            # -----------------------------------------------
+
+            if (
+                normalized_phrase
+                not in source_text
+            ):
+                continue
+
+            linked_evidence.append(
+                {
+                    "evidence_text": (
+                        normalized_phrase
+                    ),
+                    "segment_id": (
+                        segment[
+                            "segment_id"
+                        ]
+                    ),
+                    "source_text": (
+                        source_text
+                    ),
+                    "start_ms": (
+                        segment[
+                            "start_ms"
+                        ]
+                    ),
+                    "end_ms": (
+                        segment[
+                            "end_ms"
+                        ]
+                    ),
+                    "confidence": (
+                        segment[
+                            "confidence"
+                        ]
+                    ),
+                    "is_low_confidence": (
+                        segment[
+                            "is_low_confidence"
+                        ]
+                    ),
+                }
+            )
+
+    return linked_evidence
 
 
 # ============================================================
@@ -173,15 +286,19 @@ def _analyze_abuse_chunks(
 
 
 # ============================================================
-# 6. 2차 회기 분석
+# 2차 회기 분석 + XAI + Segment 연결
 # ============================================================
 
 def _analyze_subtype_chunks(
     chunks: List[AnalysisChunk],
+    stt_segments: List[Dict[str, Any]],
 ) -> Dict[str, Dict[str, Any]]:
     """
     COUNSELOR + CHILD 문맥 chunk를 각각
     2차 세부유형 모델로 분석한다.
+
+    탐지된 subtype에 대해서만 Phrase Occlusion XAI를 수행하고,
+    XAI 근거 표현을 실제 CHILD STT segment_id와 연결한다.
 
     하나의 chunk에서라도 탐지된 subtype은
     회기 전체에서 detected=True로 통합한다.
@@ -192,6 +309,10 @@ def _analyze_subtype_chunks(
         Dict[str, Any],
     ] = {}
 
+    # --------------------------------------------------------
+    # Chunk별 2차 추론
+    # --------------------------------------------------------
+
     for chunk in tqdm(
         chunks,
         desc="2차 회기 분석",
@@ -200,6 +321,10 @@ def _analyze_subtype_chunks(
         predictions = predict_subtype(
             chunk.text
         )
+
+        # ----------------------------------------------------
+        # 탐지된 Subtype만 처리
+        # ----------------------------------------------------
 
         for (
             subtype,
@@ -213,7 +338,38 @@ def _analyze_subtype_chunks(
                 continue
 
             # ------------------------------------------------
-            # 최초 탐지
+            # XAI 실행
+            #
+            # 전체 Q+A는 모델 문맥으로 유지하고,
+            # explain_subtype.py 내부에서 CHILD 발화만
+            # Phrase Occlusion 대상으로 사용한다.
+            # ------------------------------------------------
+
+            evidence_phrases = (
+                explain_single_subtype(
+                    text=chunk.text,
+                    label=subtype,
+                )
+            )
+
+            # ------------------------------------------------
+            # XAI 근거 → 실제 STT Segment 연결
+            # ------------------------------------------------
+
+            linked_evidence = (
+                _link_evidence_to_segments(
+                    evidence_phrases=(
+                        evidence_phrases
+                    ),
+                    chunk=chunk,
+                    stt_segments=(
+                        stt_segments
+                    ),
+                )
+            )
+
+            # ------------------------------------------------
+            # Subtype 최초 탐지
             # ------------------------------------------------
 
             if subtype not in session_result:
@@ -234,10 +390,11 @@ def _analyze_subtype_chunks(
                         )
                     ),
                     "evidence_chunks": [],
+                    "evidence": [],
                 }
 
             # ------------------------------------------------
-            # 해당 subtype이 탐지된 chunk 기록
+            # 탐지된 Chunk 기록
             # ------------------------------------------------
 
             session_result[
@@ -248,6 +405,18 @@ def _analyze_subtype_chunks(
                 _chunk_to_dict(
                     chunk
                 )
+            )
+
+            # ------------------------------------------------
+            # Segment 단위 실제 근거 기록
+            # ------------------------------------------------
+
+            session_result[
+                subtype
+            ][
+                "evidence"
+            ].extend(
+                linked_evidence
             )
 
     return session_result
@@ -406,6 +575,16 @@ def analyze_stt_session(
     """
 
     # --------------------------------------------------------
+    # STT Contract 검증 및 원본 Segment 확보
+    # --------------------------------------------------------
+
+    stt_segments = (
+        validate_stt_result(
+            stt_result
+        )
+    )
+
+    # --------------------------------------------------------
     # Adapter 준비
     # --------------------------------------------------------
 
@@ -449,7 +628,8 @@ def analyze_stt_session(
 
     subtype_result = (
         _analyze_subtype_chunks(
-            subtype_chunks
+            chunks=subtype_chunks,
+            stt_segments=stt_segments,
         )
     )
 
@@ -619,9 +799,54 @@ def main() -> None:
             )
 
             print(
-                "  segment: "
+                "  탐지 chunk: "
                 f"{analysis['evidence_chunks']}"
             )
+
+            evidence_items = (
+                analysis.get(
+                    "evidence",
+                    [],
+                )
+            )
+
+            if evidence_items:
+
+                print(
+                    "  XAI 근거:"
+                )
+
+                for evidence in evidence_items:
+
+                    print(
+                        f"    - "
+                        f"{evidence['evidence_text']}"
+                    )
+
+                    print(
+                        f"      segment_id: "
+                        f"{evidence['segment_id']}"
+                    )
+
+                    print(
+                        f"      원문: "
+                        f"{evidence['source_text']}"
+                    )
+
+                    print(
+                        f"      시간: "
+                        f"{evidence['start_ms']}ms"
+                        f" ~ "
+                        f"{evidence['end_ms']}ms"
+                    )
+
+                    if evidence[
+                        "is_low_confidence"
+                    ]:
+
+                        print(
+                            "      ⚠ STT 저신뢰 구간"
+                        )
 
     # --------------------------------------------------------
     # Warning

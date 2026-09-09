@@ -483,15 +483,23 @@ def build_subtype_chunks(
     """
     2차 세부유형 모델 입력을 생성한다.
 
-    COUNSELOR 질문과 CHILD 답변의 문맥을 유지한다.
-
-    긴 상담은 Q+A 그룹 경계를 최대한 유지하면서
-    여러 chunk로 분할한다.
+    핵심 원칙:
+    - 하나의 COUNSELOR 질문 + 이어지는 CHILD 답변을 하나의 분석 단위로 사용한다.
+    - 서로 다른 Q+A 그룹을 하나의 chunk로 합치지 않는다.
+    - 이를 통해 2차 모델 탐지 → XAI → 원본 CHILD segment 연결을 명확하게 유지한다.
     """
+
+    # ========================================================
+    # 1. STT 결과 검증
+    # ========================================================
 
     segments = validate_stt_result(
         stt_result
     )
+
+    # ========================================================
+    # 2. COUNSELOR + CHILD 문맥 그룹 생성
+    # ========================================================
 
     qa_groups = _build_qa_groups(
         segments
@@ -500,84 +508,39 @@ def build_subtype_chunks(
     if not qa_groups:
         return []
 
-    chunks = []
+    # ========================================================
+    # 3. Q+A 하나당 하나의 Chunk 생성
+    # ========================================================
 
-    current_groups = []
-    current_segments = []
-    current_texts = []
+    chunks: List[AnalysisChunk] = []
 
     for group in qa_groups:
 
-        group_text = (
-            _qa_group_to_text(
-                group
-            )
-        )
-
-        candidate_texts = (
-            current_texts
-            + [group_text]
-        )
-
-        candidate_text = " ".join(
-            candidate_texts
-        )
-
-        # Q+A 그룹을 추가하면 제한을 넘는 경우
-        # 기존 chunk를 먼저 확정한다.
-        if (
-            current_groups
-            and len(candidate_text) > max_chars
-        ):
-
-            chunks.append(
-                _build_chunk(
-                    chunk_index=(
-                        len(chunks) + 1
-                    ),
-                    segments=(
-                        current_segments
-                    ),
-                    text=" ".join(
-                        current_texts
-                    ),
-                )
-            )
-
-            current_groups = []
-            current_segments = []
-            current_texts = []
-
-        current_groups.append(
+        group_text = _qa_group_to_text(
             group
         )
 
-        current_segments.extend(
-            group
-        )
+        if not group_text.strip():
+            continue
 
-        current_texts.append(
-            group_text
-        )
-
-    # 마지막 chunk 저장
-    if current_segments:
+        # ----------------------------------------------------
+        # Q+A 그룹이 max_chars보다 길더라도
+        # 서로 다른 Q+A 그룹과 합치지는 않는다.
+        #
+        # 실제 RoBERTa tokenizer 길이 초과 문제는
+        # 이후 tokenizer 기반 분할 단계에서 별도로 처리한다.
+        # ----------------------------------------------------
 
         chunks.append(
             _build_chunk(
-                chunk_index=(
-                    len(chunks) + 1
-                ),
-                segments=current_segments,
-                text=" ".join(
-                    current_texts
-                ),
+                chunk_index=len(chunks) + 1,
+                segments=group,
+                text=group_text,
             )
         )
 
     return chunks
-
-
+    
 # ============================================================
 # 10. 전체 Adapter
 # ============================================================
