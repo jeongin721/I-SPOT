@@ -1,9 +1,28 @@
 import os
+import sys
 import tempfile
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+# ---------------------------------------------------------
+# 콘솔 출력 인코딩을 UTF-8 로 고정한다.
+#
+# Windows 한국어 환경의 콘솔 기본 인코딩은 cp949 이고, cp949 에는
+# 이모지가 없다. 아래 print 들이 쓰는 📥 1️⃣ ✅ 같은 문자를 만나면
+# UnicodeEncodeError 가 나고, 그 지점에서 요청 처리가 중단되어
+# /api/v1/analyze 가 500 을 돌려준다. (macOS/Linux 는 기본이 UTF-8
+# 이라 드러나지 않는다.)
+#
+# 출력이 파일·파이프로 리다이렉트되어 reconfigure 가 없는 객체일
+# 수 있으므로 방어적으로 처리한다.
+# ---------------------------------------------------------
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
 
 # ispot 모듈 불러오기
 from stt.ispot_stt import SelectiveFallbackSTTProvider
