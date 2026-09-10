@@ -1,10 +1,19 @@
-# 이 프로젝트에서 필요한 Python 패키지 목록.
-# python-dotenv: .env 파일 로딩
-# pytest: 테스트 실행
-# openai: Whisper 등 OpenAI 호환 STT 호출
-# pyannote-audio: 화자 분리(diarization)용 선택 의존성
-# -> 실제 운영 환경에서 사용 시 별도 설치가 필요하다.
-python-dotenv>=1.0.0
+# I-SPOT main API / STT pipeline dependencies
+
+fastapi==0.141.1
+uvicorn==0.52.4
+python-multipart==0.0.32
+python-dotenv==1.2.3
+
+deepgram-sdk==7.8.0
+
+openai==3.7.0
+openai-whisper==20250625
+
+torch==2.13.0
+transformers==5.16.1
+
+numpy==2.3.2
+requests==2.32.4
+
 pytest>=8.0.0
-openai>=1.0.0
-pyannote-audio>=3.0.0
