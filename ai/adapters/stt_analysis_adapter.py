@@ -255,95 +255,90 @@ def _build_chunk(
 # ============================================================
 
 def build_abuse_chunks(
-    stt_result: Dict[str, Any],
-    max_chars: int = DEFAULT_MAX_CHARS,
-) -> List[AnalysisChunk]:
+    stt_result,
+    max_chars=DEFAULT_MAX_CHARS,
+):
     """
-    1차 4대 학대유형 모델 입력을 생성한다.
-
-    현재 1차 모델이 CHILD 답변 중심으로 학습되어 있으므로
-    speaker == CHILD인 segment만 사용한다.
-
-    긴 상담은 segment 경계를 유지하면서 여러 chunk로 분할한다.
+    팀 공용 Transcript에서 CHILD 발화만 추출하여
+    현재 A-only 1차 학대유형 모델 입력 chunk를 생성한다.
     """
 
-    segments = validate_stt_result(
-        stt_result
-    )
+    # ============================================================
+    # 1. 팀 공용 Transcript 검증
+    # ============================================================
+
+    segments = validate_stt_result(stt_result)
+
+    # ============================================================
+    # 2. CHILD 발화만 추출
+    # ============================================================
 
     child_segments = [
         segment
         for segment in segments
-        if segment["speaker"] == "CHILD"
+        if (
+            segment["speaker"] == "CHILD"
+            and segment["text"].strip()
+        )
     ]
 
     if not child_segments:
         return []
 
+    # ============================================================
+    # 3. CHILD 발화를 모델 입력 길이에 맞게 묶기
+    # ============================================================
+
     chunks = []
 
     current_segments = []
     current_texts = []
+    current_length = 0
 
     for segment in child_segments:
 
-        candidate_texts = (
-            current_texts
-            + [segment["text"]]
-        )
+        text = segment["text"].strip()
 
-        candidate_text = " ".join(
-            candidate_texts
-        )
+        additional_length = len(text)
 
-        # 현재 chunk가 존재하고,
-        # 다음 segment까지 넣으면 제한을 초과하는 경우
-        # 기존 chunk를 먼저 저장한다.
+        if current_texts:
+            additional_length += 1
+
         if (
             current_segments
-            and len(candidate_text) > max_chars
+            and current_length + additional_length > max_chars
         ):
-
             chunks.append(
                 _build_chunk(
-                    chunk_index=(
-                        len(chunks) + 1
-                    ),
+                    chunk_index=len(chunks) + 1,
                     segments=current_segments,
-                    text=" ".join(
-                        current_texts
-                    ),
+                    text=" ".join(current_texts),
                 )
             )
 
             current_segments = []
             current_texts = []
+            current_length = 0
 
-        current_segments.append(
-            segment
-        )
+        current_segments.append(segment)
+        current_texts.append(text)
 
-        current_texts.append(
-            segment["text"]
-        )
+        current_length += additional_length
 
-    # 마지막 남은 chunk 저장
+    # ============================================================
+    # 4. 마지막 chunk 저장
+    # ============================================================
+
     if current_segments:
-
         chunks.append(
             _build_chunk(
-                chunk_index=(
-                    len(chunks) + 1
-                ),
+                chunk_index=len(chunks) + 1,
                 segments=current_segments,
-                text=" ".join(
-                    current_texts
-                ),
+                text=" ".join(current_texts),
             )
         )
 
     return chunks
-
 
 # ============================================================
 # 7. COUNSELOR + CHILD 문맥 그룹 생성
@@ -481,12 +476,10 @@ def build_subtype_chunks(
     max_chars: int = DEFAULT_MAX_CHARS,
 ) -> List[AnalysisChunk]:
     """
-    2차 세부유형 모델 입력을 생성한다.
+    2차 세부유형 모델 입력을 CHILD 발화만 사용해 생성한다.
 
-    핵심 원칙:
-    - 하나의 COUNSELOR 질문 + 이어지는 CHILD 답변을 하나의 분석 단위로 사용한다.
-    - 서로 다른 Q+A 그룹을 하나의 chunk로 합치지 않는다.
-    - 이를 통해 2차 모델 탐지 → XAI → 원본 CHILD segment 연결을 명확하게 유지한다.
+    COUNSELOR 발화는 모델 입력에서 제외하고,
+    CHILD segment 하나를 하나의 분석 chunk로 사용한다.
     """
 
     # ========================================================
@@ -498,44 +491,44 @@ def build_subtype_chunks(
     )
 
     # ========================================================
-    # 2. COUNSELOR + CHILD 문맥 그룹 생성
+    # 2. CHILD 발화만 추출
     # ========================================================
 
-    qa_groups = _build_qa_groups(
-        segments
-    )
+    child_segments = [
+        segment
+        for segment in segments
+        if (
+            segment["speaker"] == "CHILD"
+            and segment["text"].strip()
+        )
+    ]
 
-    if not qa_groups:
+    if not child_segments:
         return []
 
     # ========================================================
-    # 3. Q+A 하나당 하나의 Chunk 생성
+    # 3. CHILD segment 하나당 하나의 Chunk 생성
     # ========================================================
 
     chunks: List[AnalysisChunk] = []
 
-    for group in qa_groups:
+    for segment in child_segments:
 
-        group_text = _qa_group_to_text(
-            group
+        child_text = segment[
+            "text"
+        ].strip()
+
+        # XAI의 CHILD 범위 추출 로직과 호환되도록
+        # [CHILD] 태그만 붙인다.
+        chunk_text = (
+            f"[CHILD] {child_text}"
         )
-
-        if not group_text.strip():
-            continue
-
-        # ----------------------------------------------------
-        # Q+A 그룹이 max_chars보다 길더라도
-        # 서로 다른 Q+A 그룹과 합치지는 않는다.
-        #
-        # 실제 RoBERTa tokenizer 길이 초과 문제는
-        # 이후 tokenizer 기반 분할 단계에서 별도로 처리한다.
-        # ----------------------------------------------------
 
         chunks.append(
             _build_chunk(
                 chunk_index=len(chunks) + 1,
-                segments=group,
-                text=group_text,
+                segments=[segment],
+                text=chunk_text,
             )
         )
 
