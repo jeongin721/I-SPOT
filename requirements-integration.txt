@@ -10,6 +10,19 @@
 # 주의: STT 화자분리(diarization) 옵션인 pyannote-audio/torch 는 포함하지 않는다.
 #       stt/ispot_stt.py 의 diarization 은 I_SPOT_SPEAKER_DIARIZATION_PROVIDER=pyannote
 #       일 때만 필요하고, 기본값(mock)/deepgram 경로에서는 쓰이지 않는다.
+#
+# ------------------------------------------------------------------
+# 최상위 requirements.txt 와 헷갈리지 말 것. 용도가 다르다.
+#
+#   requirements.txt              최상위 main.py 실행용 (팀 A 인계 대상).
+#                                 학대 모델을 직접 돌리므로 torch/transformers 를 포함한다.
+#                                 절차는 HANDOFF_STT.md §11 참조.
+#
+#   requirements-integration.txt  이 파일. Backend 가 stt/·ai/ 를 import 해서
+#                                 쓰는 경로만 커버한다.
+#
+# 둘 다 최상위에 있지만 서로를 대체하지 않는다.
+# ------------------------------------------------------------------
 
 # ai/services/summary_service.py: from openai import OpenAI, ...
 # stt/ispot_stt.py(WhisperSTTProvider), stt/ispot_analyzer.py 도 사용한다.

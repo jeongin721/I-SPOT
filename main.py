@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from stt.ispot_stt import SelectiveFallbackSTTProvider
 from stt.ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
+from transcript_builder import TranscriptBuilder
 from abuse_model.infer_abuse import predict_abuse
 
 load_dotenv()
@@ -30,6 +31,7 @@ post_processor = STTPostProcessor(
 )
 
 child_builder = ChildAnalysisTextBuilder()
+transcript_builder = TranscriptBuilder()
 
 app = FastAPI(
     title="I-SPOT AI Backend API",
@@ -140,8 +142,34 @@ def analyze_audio(file: UploadFile = File(...)):
             or ""
         ).strip()
 
+                # 7. 팀 공용 Transcript 생성
+        print("4️⃣ 팀 공용 Transcript 생성 중...")
 
-        # 7. KLUE-RoBERTa 학대 유형 분석
+        try:
+            transcript = transcript_builder.build(
+                stt_data=final_result,
+                role_mapping=child_result.get(
+                    "role_mapping",
+                    {},
+                ),
+            )
+
+        except Exception as transcript_err:
+            print(
+                f"❌ Transcript 생성 오류: "
+                f"{str(transcript_err)}"
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "팀 공용 Transcript 생성 중 "
+                    f"오류가 발생했습니다: {str(transcript_err)}"
+                ),
+            )
+
+
+        # 8. KLUE-RoBERTa 학대 유형 분석
         abuse_prediction = None
 
         if (
@@ -149,7 +177,7 @@ def analyze_audio(file: UploadFile = File(...)):
             and child_analysis_text
         ):
 
-            print("4️⃣ KLUE-RoBERTa 학대 유형 분석 중...")
+            print("5️⃣ KLUE-RoBERTa 학대 유형 분석 중...")
 
             try:
                 abuse_prediction = predict_abuse(
@@ -182,6 +210,8 @@ def analyze_audio(file: UploadFile = File(...)):
             "file_name": filename,
 
             "stt_data": final_result,
+            
+            "transcript": transcript,
 
             "speaker_roles": child_result.get(
                 "role_mapping",
