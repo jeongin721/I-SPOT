@@ -13,3 +13,7 @@ test_sample/
 
 # Local experiment outputs / caches
 results/
+
+# Local RAG source documents and generated vector DB
+rag_data/
+rag_storage/
