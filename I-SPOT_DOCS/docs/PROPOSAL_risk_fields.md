@@ -42,15 +42,19 @@ def evidence_check_node(state):
 
 `confidence` 라는 키가 존재하는지 알 수 없어 **현재로서는 작성이 불가능**합니다.
 
-### 1-3. 화면 필터 3종이 동작하지 않습니다
+### 1-3. 화면 조회 기능 5개 중 4개가 동작하지 않습니다
 
-`CasesView` 의 필터 5개 중 3개가 이 필드에 의존합니다.
+`CasesView` 의 필터 4개와 정렬 1개 중, 이름·사례번호 검색을 뺀 **나머지 전부**가 이 필드에 의존합니다.
 
-| 필터 | 현재 결과 |
-| --- | --- |
-| 학대유형 | 항상 0건 |
-| 위험도 정렬 | 무의미 |
-| 키워드 검색 | 항상 0건 |
+| 조회 기능 | 의존 필드 | 현재 결과 |
+| --- | --- | --- |
+| 이름·사례번호 검색 | `childName` `id` `guardian` | 정상 |
+| 학대유형 필터 | `abuseTypes` | **항상 0건** |
+| 위험도 필터 | `riskLevel` | **항상 0건** |
+| 키워드 검색 | `keywords` | **항상 0건** |
+| 위험도순 정렬 | `riskScore` | **무의미** (전부 동일값) |
+
+화면은 `abuseTypes` `riskLevel` `riskScore` `keywords` 네 필드를 기대하지만, Contract 에는 이에 대응하는 값이 없습니다. `abuse_signals` 와 `risk_factors` 가 채워지면 여기서 파생할 수 있습니다.
 
 이 때문에 Backend API 연결(PR #8)에서 기존 `CasesView` 를 **의도적으로 연결하지 않았습니다.** 지금 연결하면 고장난 것처럼 보입니다.
 
@@ -101,9 +105,13 @@ result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True
 
 ## 4. Frontend 영향
 
-- 학대유형 / 위험도 / 키워드 필터 3종이 동작하게 됩니다
+- 학대유형·위험도·키워드 필터와 위험도순 정렬, **네 기능이 동작하게 됩니다**(1-3 참조)
 - `types.ts` 의 `RiskUtterance` 를 확정안에 맞춰 교체합니다
 - `abuse_signals` 표기 통일이 필요합니다 (아래 5절 참조)
+- 화면이 쓰는 `abuseTypes` `riskLevel` `riskScore` `keywords` 를 Contract 값에서
+  **어떻게 파생할지** 정해야 합니다. 예를 들어 `riskLevel` 은 `abuse_signals` 의
+  `detected` 개수로 볼 수도, 최고 `confidence` 로 볼 수도 있습니다. 파생 규칙이
+  화면마다 달라지지 않도록 `adapters.ts` 한 곳에 둡니다.
 
 ---
 

@@ -103,6 +103,29 @@ def search_evidence(
 
 원본 PDF 는 `rag_data/` 에 두며 `.gitignore` 대상입니다. **각자 로컬에 준비해야 합니다.**
 
+#### ⚠️ `rag/` 패키지는 아직 `feature/rag` 브랜치에만 있습니다
+
+| 브랜치 | `rag/` |
+| --- | --- |
+| `feature/rag` | 있음 |
+| `develop` | **없음** |
+| `integration/develop-consolidation` | **없음** |
+
+따라서 지금 `rag_node` 에서 아래처럼 쓰면 `ModuleNotFoundError` 가 납니다.
+
+```python
+from rag.retriever import search_evidence   # 아직 import 불가
+```
+
+`feature/rag` 가 `develop` 에 머지되기 전까지는 `rag_node` 를 **인터페이스만 정의하고 비워두거나**, 고정 응답을 돌려주는 stub 으로 둡니다. 그래프 구조 검증은 stub 으로도 가능합니다.
+
+```python
+def rag_node(state: AgentState) -> AgentState:
+    # TODO: feature/rag 머지 후 search_evidence() 로 교체
+    state["rag_documents"] = []
+    return state
+```
+
 ### 2-5. LangGraph 는 아직 어디에도 없습니다
 
 `requirements*.txt` 전체에 `langgraph` 항목이 없습니다. 의존성 추가가 첫 작업입니다.
@@ -266,7 +289,10 @@ def evidence_check_node(state: AgentState) -> str:
 ### 5-4. Frontend (다솔)
 
 1. 재분석이 일어난 경우를 화면에 표시할지 결정
-   — 응답에 `retry_count` / `warnings` 가 실릴 수 있습니다
+   — `warnings` 는 **이미 Contract 에 있습니다**(`contracts.py:77`). 근거가 부족한 채로
+     종료하면 그래프가 여기에 사유를 넣으므로, 추가 작업 없이 표시할 수 있습니다.
+   — `retry_count`(재분석 횟수)는 **Contract 에 없습니다.** 화면에 필요하다면
+     필드 추가가 필요하고, 그것은 Contract 변경입니다.
 2. RAG 근거 문서를 화면에 노출할지 결정
    — 노출한다면 `AIAnalysisBundle` 에 필드 추가가 필요하고, 그것은 Contract 변경입니다
 
@@ -327,15 +353,18 @@ Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 
 2.  mock provider 를 새 구조로 수정          (Backend, 반나절)
        ↓
 3.  그래프 골격 + 루프 종료 구현             (Agent, mock 으로 검증 가능)
+       │   rag_node 는 stub 으로 둔다 (2-4 참조)
        ↓
 4.  AI 가 실제 값 채우기                     (AI, 병행 가능)
        ↓
-5.  rag_node 연결                           (RAG)
+5.  feature/rag 머지 → rag_node 를 실제 연결  (RAG)
        ↓
 6.  reanalysis 품질 조정
 ```
 
 **2번과 3번은 1번만 끝나면 AI 작업을 기다리지 않고 진행할 수 있습니다.** mock 이 새 구조를 돌려주면 그래프 분기를 검증할 수 있기 때문입니다.
+
+**5번은 `feature/rag` 머지가 선행되어야 합니다.** 현재 `rag/` 는 그 브랜치에만 있고 PR 도 없습니다(2-4).
 
 ---
 
