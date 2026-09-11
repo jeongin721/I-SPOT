@@ -224,10 +224,12 @@ const SEVERITY_TO_RISK_LEVEL: Record<Severity, RiskLevel> = {
 
 이 제안이 합의되면 `TASKS.md` 의 `AI-02` 에 담당자를 지정하고 `IN_PROGRESS` 로 옮겨 주십시오.
 
-### 5-1. `summarize_consultation` 이 빈 배열 대신 값을 채워야 합니다
+### 5-1. 위험 필드는 **요약 함수가 아닌 별도 단계**에서 채워야 합니다
+
+`develop` 기준으로는 `summarize_consultation` 이 빈 배열로 고정합니다.
 
 ```python
-# ai/services/summary_service.py:215-222  (현재)
+# ai/services/summary_service.py:215-222  (develop / integration 브랜치)
 return AIAnalysisOutput(
     schema_version="1.0",
     summary=summary,
@@ -237,6 +239,57 @@ return AIAnalysisOutput(
     warnings=warnings,
 )
 ```
+
+#### ⚠️ `ai-modeling` 브랜치에는 **위험 필드를 거부하는 가드**가 이미 있습니다
+
+```python
+# ai-modeling 판 summary_service.py:148
+if parsed.risk_utterances or parsed.abuse_signals or parsed.risk_factors:
+    raise SummaryOutputError("요약 단계에서 허용되지 않은 위험 분석 결과가 생성되었습니다.")
+```
+
+즉 이경진 님은 **요약과 위험분석을 명시적으로 분리**해 두셨습니다. 요약 LLM 이 위험 필드를 만들면 오류를 냅니다.
+
+따라서 이 제안은 **`summarize_consultation` 을 고치자는 뜻이 아닙니다.** 위험 필드를 채우는 **별도 단계**를 두고, 그 출력이 이 구조를 따르자는 것입니다. 그 단계를 어디에 둘지는 이경진 님 판단에 맡깁니다.
+
+> **줄번호 주의** — 이 파일은 브랜치마다 다릅니다(162줄 차이). `ai-modeling` 에서는
+> 필드 정의가 84-86 행, 빈 배열 고정이 180-182 행입니다. 위 인용은
+> `integration/develop-consolidation` 기준입니다.
+
+### 5-1-2. 🔴 `key_points` 구조가 `ai-modeling` 에서 이미 바뀌어 있습니다
+
+이번 검증 중에 발견했습니다. **이 제안과 별개로 처리가 필요한 사안**입니다.
+
+| 위치 | `key_points` |
+| --- | --- |
+| `develop` / `integration` | `List[str]` |
+| `backend/app/schemas/contracts.py:61` | `List[str]` |
+| `ispotvscode` `types.ts:277` | `string[]` |
+| **`ai-modeling`** `ai/schemas/analysis.py:42` | **`List[KeyPointItem]`** |
+
+```python
+# ai-modeling 판 ai/schemas/analysis.py:32-37
+class KeyPointItem(BaseModel):
+    point: str
+    segment_ids: List[str] = Field(default_factory=list)
+```
+
+`ai-modeling` 을 합치는 순간 Backend 검증이 깨집니다. `AISummaryBody` 가 문자열 목록을 기대하는데 객체 목록이 들어옵니다.
+
+그리고 `summary_evidence` 와 **역할이 겹칩니다.** 둘 다 요약 문장과 근거 발화를 잇습니다.
+
+```jsonc
+// 기존: 분리된 배열
+"key_points": ["...", "..."]
+"summary_evidence": [{ "key_point": "...", "segment_ids": ["seg_004"], "score": 0.75 }]
+
+// ai-modeling: key_points 안에 내장
+"key_points": [{ "point": "...", "segment_ids": ["seg_004"] }]
+```
+
+**어느 쪽으로 갈지 정해야 합니다.** 내장하는 편이 자연스럽지만, 그러면 `summary_evidence` 를 없애거나 `score` 만 남기는 정리가 따릅니다. Backend·Frontend 양쪽 수정이 필요하므로 `02_ARCHITECTURE.md` §8 절차 대상입니다.
+
+이 제안서의 §7 은 위험 필드 3종만 다루므로 **여기서 결론 내지 않습니다.** 별도 안건으로 올려 주십시오.
 
 ### 5-2. 학대 유형 표기가 네 곳에서 다릅니다
 

@@ -373,7 +373,11 @@ def evidence_verdict(state: AgentState) -> str:
 ### 5-2. AI 모델 (이경진)
 
 1. `risk_utterances` / `abuse_signals` / `risk_factors` 를 **실제로 채우기**
-   — 현재 `ai/services/summary_service.py:215-222` 에서 빈 배열로 고정돼 있습니다
+   — `develop` 기준 `ai/services/summary_service.py:215-222` 에서 빈 배열로 고정돼 있습니다.
+     다만 **요약 함수를 고치자는 뜻이 아닙니다.** `ai-modeling` 판에는 요약 단계가
+     위험 필드를 만들면 오류를 내는 가드가 이미 있습니다(`:148`). 요약과 위험분석을
+     분리해 두신 설계이므로, **별도 단계**에서 채우는 방향으로 봅니다.
+     자세한 내용은 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) §5-1 참조.
 2. 각 필드 구조 확정 — [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) §8 질문 답변
 3. `abuse_model` 결과를 `abuse_signals` 로 넘기는 경로
    — 현재 최상위 `main.py` 에서만 쓰이고 Backend 로 전달되지 않습니다
@@ -430,7 +434,7 @@ risk_factors: List[Dict[str, Any]]
 
 ### 6-2. 값이 비어 있어 그래프를 검증할 수 없습니다 🟡
 
-구조가 정해져도 `summarize_consultation` 이 값을 채우기 전에는 분기가 항상 한쪽으로만 흐릅니다. `AI_PROVIDER=mock` 이 새 구조의 예시 데이터를 반환하도록 먼저 수정하면, AI 작업과 병행해서 그래프를 개발할 수 있습니다.
+구조가 정해져도 AI 가 실제 값을 채우기 전에는 분기가 항상 한쪽으로만 흐릅니다. `AI_PROVIDER=mock` 이 새 구조의 예시 데이터를 반환하도록 먼저 수정하면, AI 작업과 병행해서 그래프를 개발할 수 있습니다.
 
 ### 6-3. PRD 상 RAG 는 Later 항목입니다 🟡
 
