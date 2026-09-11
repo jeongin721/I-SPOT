@@ -345,9 +345,11 @@ def evidence_verdict(state: AgentState) -> str:
 `TASKS.md` 의 현재 MVP 표에 Agent·RAG 항목이 없습니다. 새 Task 추가 규칙에 따라 아래를 등록해 주십시오.
 
 ```text
-| AI-03  | AI     | RAG 문서 색인/검색       | mingyu | TODO | -     |
-| BE-08  | Backend| LangGraph Agent Adapter | mingyu | TODO | AI-02 |
+| AI-03 | AI | RAG 문서 색인/검색 | C | TODO | - |
+| BE-08 | Backend | LangGraph Agent Adapter | C | TODO | AI-02 |
 ```
+
+담당 칸은 기존 표와 같이 **팀 문자**를 씁니다(`A` 팀 A / `B` 팀 B / `C` Backend). 두 항목 모두 Backend 가 맡으므로 `C` 입니다.
 
 `BE-08` 이 `AI-02`(Summary/위험 발화 분석)에 의존한다는 점이 중요합니다. **`AI-02` 는 현재 담당자가 비어 있고 `TODO` 상태입니다.** 그래서 6-1 이 막혀 있습니다.
 
@@ -369,7 +371,7 @@ def evidence_verdict(state: AgentState) -> str:
 ### 5-2. AI 모델 (이경진)
 
 1. `risk_utterances` / `abuse_signals` / `risk_factors` 를 **실제로 채우기**
-   — 현재 `ai/services/summary_service.py:215-221` 에서 빈 배열로 고정돼 있습니다
+   — 현재 `ai/services/summary_service.py:215-222` 에서 빈 배열로 고정돼 있습니다
 2. 각 필드 구조 확정 — [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) §8 질문 답변
 3. `abuse_model` 결과를 `abuse_signals` 로 넘기는 경로
    — 현재 최상위 `main.py` 에서만 쓰이고 Backend 로 전달되지 않습니다
