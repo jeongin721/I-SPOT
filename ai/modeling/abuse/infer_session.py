@@ -30,6 +30,10 @@ from ai.modeling.abuse.explain_subtype import (
     explain_single_subtype,
 )
 
+from ai.services.subtype_explanation_service import (
+    generate_subtype_explanations,
+)
+
 # ============================================================
 # 2. 1차 학대유형 설정
 # ============================================================
@@ -231,7 +235,8 @@ def _analyze_abuse_chunks(
 
     session_result = {
         label: {
-            "evidence" : [],
+            "detected": False,
+            "evidence_chunks": [],
         }
         for label in ABUSE_LABELS
     }
@@ -642,12 +647,47 @@ def analyze_stt_session(
     )
 
     # --------------------------------------------------------
+    # 2차 XAI 근거 → LLM 설명 생성
+    # --------------------------------------------------------
+
+    try:
+        subtype_explanations = (
+            generate_subtype_explanations(
+                subtype_result
+            )
+        )
+
+        subtype_explanations_data = (
+            subtype_explanations.model_dump()
+        )
+
+    except Exception as exc:
+        subtype_explanations_data = {
+            "schema_version": "1.0",
+            "explanations": [],
+            "warnings": [
+                (
+                    "세부유형 LLM 설명 생성 실패: "
+                    f"{exc}"
+                )
+            ],
+        }
+
+    # --------------------------------------------------------
     # Warning
     # --------------------------------------------------------
 
     warnings = _build_warnings(
         abuse_result=abuse_result,
         subtype_result=subtype_result,
+    )
+
+    # LLM 설명 경고도 최종 warning에 추가
+    warnings.extend(
+        subtype_explanations_data.get(
+            "warnings",
+            []
+        )
     )
 
     # --------------------------------------------------------
@@ -661,6 +701,12 @@ def analyze_stt_session(
         ),
         "subtype_signals": (
             subtype_result
+        ),
+        "subtype_explanations": (
+            subtype_explanations_data.get(
+                "explanations",
+                []
+            )
         ),
         "warnings": warnings,
     }

@@ -173,81 +173,75 @@ def render_analysis_result(result: dict):
             st.success("관련 신호 탐지 있음")
 
             # --------------------------------------------
-            # 탐지된 chunk
+            # LLM 세부유형 설명
             # --------------------------------------------
 
-            evidence_chunks = subtype_result.get(
-                "evidence_chunks",
+            subtype_explanations = result.get(
+                "subtype_explanations",
                 [],
             )
 
-            if evidence_chunks:
-
-                st.markdown("**탐지 발화**")
-
-                for chunk in evidence_chunks:
-
-                    segment_ids = chunk.get(
-                        "segment_ids",
-                        [],
-                    )
-
-                    st.write(
-                        "Segment:",
-                        ", ".join(segment_ids),
-                    )
-
-            # --------------------------------------------
-            # XAI 근거
-            # --------------------------------------------
-
-            evidence = subtype_result.get(
-                "evidence",
-                [],
+            matched_explanation = next(
+                (
+                    item
+                    for item in subtype_explanations
+                    if item.get("subtype") == subtype
+                ),
+                None,
             )
 
-            if evidence:
+            if matched_explanation:
 
-                st.markdown(
-                    "**모델 예측에 기여한 주요 표현**"
+                evidence_list = matched_explanation.get(
+                    "evidence",
+                    [],
                 )
 
-                for item in evidence:
+                if evidence_list:
 
-                    phrase = item.get(
-                        "evidence_text",
-                        "",
-                    )
+                    for evidence_item in evidence_list:
 
-                    source_text = item.get(
-                        "source_text",
-                        "",
-                    )
-
-                    segment_id = item.get(
-                        "segment_id",
-                        "",
-                    )
-
-                    if phrase:
-                        st.markdown(
-                            f"- **{phrase}**"
+                        evidence_text = evidence_item.get(
+                            "evidence_text",
+                            "",
                         )
 
-                    if source_text:
-                        st.caption(
-                            f"원문: {source_text}"
+                        source_text = evidence_item.get(
+                            "source_text",
+                            "",
                         )
 
-                    if segment_id:
-                        st.caption(
-                            f"Segment: {segment_id}"
+                        explanation = evidence_item.get(
+                            "explanation",
+                            "",
                         )
 
-    if detected_count == 0:
-        st.info(
-            "탐지된 세부유형 신호가 없습니다."
-        )
+                        if evidence_text:
+                            st.markdown(
+                                f"**근거 키워드**  \n{evidence_text}"
+                            )
+
+                        if source_text:
+                            st.markdown(
+                                f"**근거 발화**  \n{source_text}"
+                            )
+
+                        if explanation:
+                            st.markdown(
+                                f"**AI 설명**  \n{explanation}"
+                            )
+
+                        st.divider()
+
+                else:
+                    st.info(
+                        "선별된 설명 근거가 없습니다."
+                    )
+
+            else:
+                st.info(
+                    "LLM 설명 결과가 없습니다."
+                )
 
     # ========================================================
     # Warning
