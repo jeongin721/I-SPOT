@@ -11,13 +11,18 @@
 import pytest
 from pydantic import ValidationError
 
-from app.adapters.ai_adapter import (
+# langgraph 는 Backend 단독 실행에 필요 없는 선택 의존성이다.
+# 설치되지 않은 환경에서는 이 파일을 통째로 건너뛴다.
+#   pip install -r ../requirements-agent.txt
+pytest.importorskip("langgraph")
+
+from app.adapters.ai_adapter import (  # noqa: E402
     AIError,
     LangGraphAIAdapter,
     get_ai_adapter,
 )
-from app.core.config import Settings, settings
-from app.core.errors import ErrorCode
+from app.core.config import Settings, settings  # noqa: E402
+from app.core.errors import ErrorCode  # noqa: E402
 
 TRANSCRIPT = {
     "schema_version": "1.0",

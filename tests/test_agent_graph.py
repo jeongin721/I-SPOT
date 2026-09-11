@@ -9,9 +9,13 @@
 
 import pytest
 
-from agent.graph import build_graph
-from agent.nodes import MAX_RETRY, evidence_verdict, route_after_risk
-from agent.state import initial_state
+# langgraph 는 선택 의존성이다. 설치되지 않은 환경에서는 건너뛴다.
+#   pip install -r requirements-agent.txt
+pytest.importorskip("langgraph")
+
+from agent.graph import build_graph  # noqa: E402
+from agent.nodes import MAX_RETRY, evidence_verdict, route_after_risk  # noqa: E402
+from agent.state import initial_state  # noqa: E402
 
 TRANSCRIPT = {
     "schema_version": "1.0",
