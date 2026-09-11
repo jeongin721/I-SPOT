@@ -1,8 +1,8 @@
 import json
 import os
-from ispot_stt import DeepgramSTTProvider
-from ispot_postprocess import STTPostProcessor
-from ispot_analyzer import RiskAnalyzer
+from stt.ispot_stt import DeepgramSTTProvider
+from stt.ispot_postprocess import STTPostProcessor
+from stt.ispot_analyzer import RiskAnalyzer
 
 # 공부용 설명:
 # 이 파일은 전체 I-SPOT 분석 파이프라인을 한 번에 테스트하는 스크립트다.

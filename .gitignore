@@ -1,15 +1,52 @@
-# Environment variables
-.env
-
-# Python cache
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
 
-# Local model weights
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Virtual Environment
+.venv/
+venv/
+
+# Database (local/test)
+*.db
+*.sqlite3
+
+# 상담 음성 원본은 절대 커밋하지 않는다.
+storage/
+backend/.demo-storage/
+
+# 학습된 모델 가중치는 용량이 커서 커밋하지 않는다.
 abuse_model/weight/
 
-# Local evaluation dataset
+# 로컬 평가용 데이터셋
 test_sample/
 
-# Local experiment outputs / caches
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (Frontend)
+node_modules/
+.next/
+
+# Personal study guides — do not commit
+_개인용_학습가이드/
+
+# 실험 결과·캐시 (cocopb 님 요청)
+#
+# 주의: 이미 커밋된 results/ 안의 8개 파일은 이 규칙으로 사라지지 않는다.
+# .gitignore 는 아직 추적되지 않는 파일에만 적용된다.
+# 기존 파일까지 빼려면 `git rm --cached -r results/` 가 따로 필요하다.
 results/

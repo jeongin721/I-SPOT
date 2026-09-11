@@ -1,0 +1,53 @@
+# 9월 MVP Local 실행용 최소 구성.
+# Kubernetes / Kafka / MSA 는 도입하지 않는다. (docs/04_DEVELOPMENT.md §6)
+#
+#   docker compose up -d db          # PostgreSQL 만 실행 (권장)
+#   docker compose up -d             # Backend 까지 함께 실행
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ispot-db
+    environment:
+      POSTGRES_USER: ispot
+      POSTGRES_PASSWORD: ispot
+      POSTGRES_DB: ispot
+      TZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      - ispot-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ispot -d ispot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ispot-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://ispot:ispot@db:5432/ispot
+      AUDIO_STORAGE_ROOT: /app/storage/audio
+      # 운영에서는 반드시 .env 로 교체한다.
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-only-change-me-0123456789abcdef}
+      CORS_ORIGINS: http://localhost:3000
+      STT_PROVIDER: ${STT_PROVIDER:-mock}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      # 음성 파일은 컨테이너 재시작 후에도 유지한다.
+      - ./storage:/app/storage
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  ispot-db-data:

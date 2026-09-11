@@ -16,6 +16,44 @@
 └─ TASKS.md                  # 현재 개발 진행 상태
 ```
 
+## 코드 구조
+
+```text
+/
+├─ backend/                  # FastAPI + PostgreSQL Backend (팀 C)
+│  ├─ README.md              # 실행 방법 / 환경변수 / 테스트
+│  └─ docs/
+│     ├─ CODE_GUIDE.md       # 코드 읽는 순서 / 요청 흐름 (처음이면 여기부터)
+│     └─ API_CONTRACT.md     # Frontend 연동용 API 상세
+├─ ai/                       # LLM 분석 파이프라인 (팀 B)
+│  └─ modeling/              # 학대/위기/상호작용 모델링 (ai-modeling)
+├─ stt/                      # STT 파이프라인 (팀 A)
+├─ main.py                   # STT + 학대분석 단독 실행용 (팀 A) — Backend 아님
+├─ docker-compose.yml        # Local 실행용 최소 구성 (PostgreSQL 등)
+└─ I-SPOT_DOCS/              # 공통 기준 문서
+```
+
+### FastAPI 앱이 두 개다 — 포트가 겹친다
+
+| 파일 | 무엇인가 | 포트 |
+| --- | --- | --- |
+| `backend/app/main.py` | **Backend 본체.** 사례·회차·전사·분석·요약 API | 8000 |
+| `main.py` (최상위) | STT + 학대분석만 확인하는 단독 스크립트 | 8000 |
+
+둘 다 8000 이라 **동시에 켜지지 않는다.** 최상위 `main.py` 를 켜 둔 채
+<http://localhost:8000/docs> 를 열면 Backend 가 아닌 `/api/v1/analyze` 하나만 보인다.
+
+Backend 를 실행하려면 `backend/README.md` 를 따른다.
+
+```bash
+docker compose up -d db
+cd backend && pip install -r requirements-dev.txt
+cp .env.example .env
+alembic upgrade head
+python -m scripts.seed_users --demo
+uvicorn app.main:app --reload
+```
+
 ## AI가 문서를 읽는 순서
 
 처음에는 `README.md`만 읽고 작업을 분류한다.
@@ -107,7 +145,7 @@ python -m pytest tests/test_stt_transcriber.py -q
 
 ### 4) STT 사용 예시
 ```python
-from ispot_stt import Transcriber
+from stt.ispot_stt import Transcriber
 
 transcriber = Transcriber(provider="mock")
 result = transcriber.transcribe("sample.wav")

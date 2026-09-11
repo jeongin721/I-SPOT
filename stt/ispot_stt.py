@@ -14,6 +14,8 @@
 import os
 import math
 import re
+import subprocess
+import wave
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -300,7 +302,9 @@ class DeepgramSTTProvider(BaseSTTProvider):
                 audio_bytes = audio_file.read()
 
             # Deepgram 최신 SDK(v3/v4+) 표준 호출 메서드
-            # diarize=True: 화자 분리 활성화
+            # diarize_model="latest": 화자 분리 활성화 + 모델 선택(현재 v2).
+            #   SDK 문서상 이 파라미터만으로 diarization 이 켜지므로
+            #   deprecated 된 diarize=True 는 함께 주지 않는다.
             # punctuate=True: 문장부호 보정
             # utterances=True: 발화 단위의 세그먼트 생성
             response = self.client.listen.v1.media.transcribe_file(
@@ -310,6 +314,14 @@ class DeepgramSTTProvider(BaseSTTProvider):
                 diarize_model="latest",
                 punctuate=True,
                 utterances=True,
+
+                # SDK 기본 타임아웃은 60초인데, 상담 녹음은 30분을 넘는 경우가
+                # 많아 업로드/전사 도중 끊긴다. 긴 음성과 느린 네트워크를 감안해
+                # 180초로 늘리고, 일시적 실패는 2회까지 재시도한다.
+                request_options={
+                    "timeout_in_seconds": 180,
+                    "max_retries": 2,
+                },
             )
 
             # DEBUG: Deepgram SDK 원본 응답 저장
