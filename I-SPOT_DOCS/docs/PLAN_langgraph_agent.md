@@ -236,6 +236,36 @@ START → analysis_node → risk_node ─┬─[sufficient]───→ report_n
 
 `risk_node` 와 `reanalysis_node` 뒤에 **같은 라우터**(`route_after_risk`)를 붙입니다.
 
+#### ⚠️ 팀장님 자료의 두 그림이 서로 다릅니다 — 확인 필요
+
+**그림 1** 은 RAG 를 **양쪽 경로 모두**에 둡니다.
+
+```text
+근거 충분?
+ ↙ YES              ↘ NO
+RAG                 RAG 추가 검색
+ ↓                   ↓
+결과 생성  ←──────  재분석
+```
+
+**그림 2** 의 노드 연결은 RAG 를 **부족한 경우에만** 둡니다.
+
+```text
+근거 충분  →  report_node
+근거 부족  →  rag_node → reanalysis_node
+```
+
+위 4-2 는 **그림 2** 를 따랐습니다. 다만 그림 1 의 구조도 말이 됩니다.
+
+| 해석 | RAG 의 역할 |
+| --- | --- |
+| 그림 1 | **항상 조회.** 근거가 충분해도 지침·판례를 붙여 결과를 풍부하게 한다 |
+| 그림 2 | **부족할 때만.** 판정을 보강하기 위한 되돌이 경로 |
+
+그림 1 이 의도라면 `report_node` 앞에 `rag_node` 를 한 번 더 두면 됩니다. 다만 **근거가 충분한데도 매번 LLM·검색 비용이 듭니다.**
+
+**어느 쪽인지 확인 부탁드립니다**(8절 질문). 판단이 오기 전까지는 비용이 적은 그림 2 로 만들고, 그림 1 이 맞으면 엣지 하나만 추가하면 됩니다.
+
 ### 4-3. State
 
 여러 노드가 같은 키에 쓰는 항목은 **reducer** 를 지정해야 합니다. 지정하지 않으면 뒤에 쓴 값이 **앞의 값을 덮어씁니다.**
@@ -358,8 +388,11 @@ def evidence_verdict(state: AgentState) -> str:
 ### 5-1. Agent / Backend (mingyu)
 
 ```text
-브랜치  feat/langgraph-agent   (integration/develop-consolidation 에서 분기)
+브랜치  backend-agent   (팀장님 지정)
+분기점  integration/develop-consolidation
 ```
+
+분기점을 `develop` 이 아니라 통합 브랜치로 두는 이유는, PR #6 이 아직 머지되지 않아 `develop` 에는 Backend 수정분이 없기 때문입니다. PR #6 머지 후에는 같아집니다.
 
 1. `requirements-agent.txt` 추가 — `langgraph` 의존성
 2. `agent/` 패키지 신설 — `state.py`, `nodes.py`, `graph.py`
@@ -367,6 +400,21 @@ def evidence_verdict(state: AgentState) -> str:
 4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:88`)
 5. 루프 종료·에러 처리·타임아웃
 6. 그래프 결과를 `AIAnalysisBundle` 로 변환
+
+#### 팀장님이 지정하신 담당 항목과의 대응
+
+| 팀장님 자료 | 이 문서에서 | 상태 |
+| --- | --- | --- |
+| LangGraph | 4절 전체 | 신규 |
+| Agent State 관리 | 4-3 `AgentState` (reducer 포함) | 신규 |
+| 조건 분기 | 4-1 조건부 엣지 함수(라우터) · 4-6 판정 기준 | 신규 |
+| Tool 연결 | 2-2 어댑터 패턴 — `STT_PROVIDER` / `AI_PROVIDER` | **이미 있음** |
+| FastAPI | 2-1 세션 상태 기계 · 2-3 비동기 처리 | **이미 있음** |
+| 각 AI API 통합 | 2-2 `PipelineAIAdapter` · 신규 `LangGraphAIAdapter` | 일부 신규 |
+| DB 연결 | 3절 — 상태 저장 주체는 DB 하나로 유지 | **이미 있음** |
+| Error 처리 | 2-1 `AIError` + `ErrorCode`, 4-5 루프 종료 | 일부 신규 |
+
+**"이미 있음" 표시된 넷은 Backend 에 구현되어 테스트 152건이 돕니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
 
 **기존 어댑터 계약을 바꾸지 않습니다.** `analyze(transcript_payload) -> AIAnalysisBundle` 을 그대로 만족시킵니다. 기존 `mock` / `pipeline` 은 건드리지 않습니다.
 
@@ -483,11 +531,12 @@ Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 
 2. `stt_node` 를 그래프에서 빼고 `STT_CONFIRMED` 이후부터 시작하는 것(3절)이 괜찮으신지요?
 3. PRD §7 상 RAG 는 Later 인데, Must Have 미구현 항목보다 먼저 진행할지 판단 부탁드립니다(6-3).
 4. **재분석 루프가 `05_RULES.md` §3 의 "결과를 억지로 생성하지 않음" 에 저촉되지 않는지** 확인 부탁드립니다(4-4). 이 문서는 "RAG 로 가져오는 것은 판단 기준이지 새 근거가 아니며, 부족하면 빈 결과로 종료한다" 는 전제로 설계했습니다. 전제가 다르면 루프를 빼야 합니다.
+5. **RAG 를 항상 태울지, 근거가 부족할 때만 태울지** 확인 부탁드립니다(4-2). 보내주신 자료의 두 그림이 다릅니다. 첫 그림은 양쪽 경로 모두 RAG 를 거치고, 두 번째의 노드 연결은 부족한 경우에만 거칩니다. 일단 비용이 적은 두 번째로 잡아두었습니다.
 
 **이경진 님**
 
-5. 5-2 의 4개 항목 중 착수 가능한 것과 예상 시점을 알려주시면 순서를 맞추겠습니다.
+6. 5-2 의 4개 항목 중 착수 가능한 것과 예상 시점을 알려주시면 순서를 맞추겠습니다.
 
 **다솔 님**
 
-6. 5-4 의 두 가지(재분석 표시 / RAG 근거 노출)는 지금 정하지 않아도 되지만, 필요하다고 판단되면 Contract 변경이 되므로 미리 말씀해주세요.
+7. 5-4 의 두 가지(재분석 표시 / RAG 근거 노출)는 지금 정하지 않아도 되지만, 필요하다고 판단되면 Contract 변경이 되므로 미리 말씀해주세요.
