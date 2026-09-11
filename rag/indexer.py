@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
 from .config import RAG_DATA_DIR
 from .loader import load_all_pdfs
 from .splitter import split_documents
@@ -7,6 +9,8 @@ from .vector_store import get_vector_store
 
 
 def build_index() -> dict[str, int]:
+    load_dotenv()
+
     pages = load_all_pdfs(RAG_DATA_DIR)
     chunks = split_documents(pages)
 
