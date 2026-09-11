@@ -156,6 +156,25 @@ class AIAnalysisResult(BaseModel):
   `detected` 개수로 볼 수도, 최고 `confidence` 로 볼 수도 있습니다. 파생 규칙이
   화면마다 달라지지 않도록 `adapters.ts` 한 곳에 둡니다.
 
+### ⚠️ 화면의 값 표기가 Contract 안과 다릅니다
+
+`ispotvscode/src/data/cases.ts` 의 정의입니다.
+
+```ts
+export type RiskLevel = "high" | "mid" | "low";
+export type AbuseType = "신체" | "정서" | "성" | "방임";
+```
+
+§7-3 에서 제안한 `severity` 는 `LOW | MEDIUM | HIGH` 인데 화면은 `low | mid | high` 를 씁니다. **대소문자도 다르고 중간값 이름도 다릅니다**(`MEDIUM` vs `mid`).
+
+Contract 안은 대문자로 통일하고, 화면 값으로의 변환은 `adapters.ts` 에서 처리합니다. `guardian_type` 과 같은 방식입니다.
+
+```ts
+const SEVERITY_TO_RISK_LEVEL: Record<Severity, RiskLevel> = {
+  HIGH: "high", MEDIUM: "mid", LOW: "low",
+};
+```
+
 ---
 
 ## 5. AI 영향
