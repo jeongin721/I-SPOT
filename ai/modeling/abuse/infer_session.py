@@ -231,8 +231,7 @@ def _analyze_abuse_chunks(
 
     session_result = {
         label: {
-            "detected": False,
-            "evidence_chunks": [],
+            "evidence" : [],
         }
         for label in ABUSE_LABELS
     }
@@ -294,7 +293,7 @@ def _analyze_subtype_chunks(
     stt_segments: List[Dict[str, Any]],
 ) -> Dict[str, Dict[str, Any]]:
     """
-    COUNSELOR + CHILD 문맥 chunk를 각각
+    CHILD 중심 chunk를 각각
     2차 세부유형 모델로 분석한다.
 
     탐지된 subtype에 대해서만 Phrase Occlusion XAI를 수행하고,
@@ -602,15 +601,13 @@ def analyze_stt_session(
         )
     )
 
-    # --------------------------------------------------------
+    # ============================================================
     # 2차 입력 생성
-    # --------------------------------------------------------
+    # ============================================================
+    # 현재 2차 세부유형 모델도 AI-Hub A-only CHILD 발화로 학습했으므로
+    # 1차와 동일하게 CHILD 발화만 포함된 chunk를 입력으로 사용한다.
 
-    subtype_chunks = (
-        adapter.build_subtype_inputs(
-            stt_result
-        )
-    )
+    subtype_chunks = abuse_chunks
 
     # --------------------------------------------------------
     # 1차 분석
