@@ -268,6 +268,25 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 ## 7. 변경안
 
+### 기존 필드명과의 관계
+
+이미 API 응답에 나가고 있는 `summary_evidence` 는 이런 모양입니다.
+
+```jsonc
+{ "key_point": "...", "segment_ids": ["seg_004"], "score": 0.75 }
+```
+
+아래 변경안은 **확신도를 `score` 가 아니라 `confidence` 로** 씁니다. 이름을 다르게 둔 이유는 의미가 다르기 때문입니다.
+
+| 필드 | 의미 |
+| --- | --- |
+| `summary_evidence.score` | 요약 문장과 근거 발화의 **연결 강도** (팀 B `EvidenceLink` 유래) |
+| 아래의 `confidence` | 분류 모델이 낸 **확률값** (`abuse_model` 의 `probability`) |
+
+같은 이름을 쓰면 임계값 비교를 섞어 쓰기 쉬워 일부러 구분합니다. **다른 이름이 낫다고 보시면 말씀해 주세요.**
+
+연결 대상이 하나면 `segment_id`, 여럿이면 `segment_ids` 로 둡니다. 발화 하나를 가리키는 `risk_utterances` 만 단수입니다.
+
 ### 7-1. `risk_utterances` — 위험 관련 발화
 
 ```jsonc
