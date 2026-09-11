@@ -288,13 +288,25 @@ class KeyPointItem(BaseModel):
 
 그리고 `summary_evidence` 와 **역할이 겹칩니다.** 둘 다 요약 문장과 근거 발화를 잇습니다.
 
-```jsonc
-// 기존: 분리된 배열
-"key_points": ["...", "..."]
-"summary_evidence": [{ "key_point": "...", "segment_ids": ["seg_004"], "score": 0.75 }]
+기존 — 요약과 근거를 **분리된 두 배열**로 둔다.
 
-// ai-modeling: key_points 안에 내장
-"key_points": [{ "point": "...", "segment_ids": ["seg_004"] }]
+```jsonc
+{
+  "key_points": ["아버지의 체벌 진술", "야간 외출 반복"],
+  "summary_evidence": [
+    { "key_point": "아버지의 체벌 진술", "segment_ids": ["seg_004"], "score": 0.75 }
+  ]
+}
+```
+
+`ai-modeling` — 근거를 **`key_points` 안에 내장**한다.
+
+```jsonc
+{
+  "key_points": [
+    { "point": "아버지의 체벌 진술", "segment_ids": ["seg_004"] }
+  ]
+}
 ```
 
 **어느 쪽으로 갈지 정해야 합니다.** 내장하는 편이 자연스럽지만, 그러면 `summary_evidence` 를 없애거나 `score` 만 남기는 정리가 따릅니다. Backend·Frontend 양쪽 수정이 필요하므로 `02_ARCHITECTURE.md` §8 절차 대상입니다.
