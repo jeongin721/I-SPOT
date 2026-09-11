@@ -98,10 +98,10 @@ status_code=status.HTTP_202_ACCEPTED
 
 ### 2-4. RAG 는 V1 골격이 있습니다
 
-`feature/rag` 브랜치, 커밋 13개. 검색까지만 되고 **답변 생성은 없습니다.**
+`feature/rag` 브랜치, 커밋 18개(2026-09-11 기준). 검색까지만 되고 **답변 생성은 없습니다.**
 
 ```python
-# rag/retriever.py:9   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
+# rag/retriever.py:30   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
 def search_evidence(
     query: str, *, top_k: int = TOP_K,
     source_type: str | None = None,
@@ -110,6 +110,8 @@ def search_evidence(
     """반환: [{"content": str, "metadata": dict}, ...]"""
     ...
 ```
+
+**시그니처와 반환 모양은 계속 같습니다.** 다만 브랜치가 활발히 움직이고 있어(메타데이터 추론·청킹·필터 개선) `rag_node` 를 실제로 연결할 때 한 번 더 대조해야 합니다.
 
 원본 PDF 는 `rag_data/` 에 두며 `.gitignore` 대상입니다. **각자 로컬에 준비해야 합니다.**
 

@@ -259,6 +259,15 @@ class LangGraphAIAdapter:
     name = "langgraph"
 
     def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
+        # 빈 Transcript 는 상류(STT/검수)가 깨졌다는 뜻이므로 거부한다.
+        # 그냥 통과시키면 "근거 부족" 경고만 달린 정상 결과처럼 저장되어
+        # 원인이 묻힌다. MockAIAdapter 와 같은 규약을 유지한다.
+        if not (transcript_payload or {}).get("segments"):
+            raise AIError(
+                "분석할 Transcript segment 가 없습니다.",
+                ErrorCode.AI_INVALID_OUTPUT,
+            )
+
         ensure_repo_root_on_path()
         export_llm_env()
 

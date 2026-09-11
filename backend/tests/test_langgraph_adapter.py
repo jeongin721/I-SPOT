@@ -98,6 +98,42 @@ def test_intermediate_state_does_not_leak():
 # 실패 처리
 # =========================================================
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({}, id="빈-payload"),
+        pytest.param({"schema_version": "1.0", "segments": []}, id="segments-빈-배열"),
+    ],
+)
+def test_empty_transcript_is_rejected(payload):
+    """빈 Transcript 는 거부한다. MockAIAdapter 와 같은 규약이다.
+
+    통과시키면 "근거 부족" 경고만 달린 정상 결과처럼 저장되어, 상류(STT/
+    검수)가 깨진 것이 묻힌다. AI_PROVIDER 를 바꿨다고 오류 동작이 달라지면
+    어댑터를 바꿔 끼울 수 없다.
+    """
+
+    with pytest.raises(AIError) as exc:
+        LangGraphAIAdapter().analyze(payload)
+
+    assert exc.value.error_code == ErrorCode.AI_INVALID_OUTPUT
+
+
+def test_empty_transcript_matches_mock_behaviour():
+    """두 어댑터가 같은 오류 코드를 낸다."""
+
+    from app.adapters.ai_adapter import MockAIAdapter
+
+    payload = {"schema_version": "1.0", "segments": []}
+
+    with pytest.raises(AIError) as mock_exc:
+        MockAIAdapter().analyze(payload)
+
+    with pytest.raises(AIError) as graph_exc:
+        LangGraphAIAdapter().analyze(payload)
+
+    assert mock_exc.value.error_code == graph_exc.value.error_code
+
 def test_graph_failure_becomes_ai_error(monkeypatch):
     """어댑터는 상태 전이를 하지 않고 AIError 만 던진다.
 
