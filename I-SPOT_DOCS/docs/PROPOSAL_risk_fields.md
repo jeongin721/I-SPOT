@@ -23,6 +23,15 @@
 
 `types.ts` 의 `RiskUtterance` 는 제가 추측으로 써둔 것입니다. 근거 없이 정한 것이므로 **채택하든 폐기하든 이번에 정리**되어야 합니다.
 
+> **인용 파일의 위치 주의** — `ispotvscode/` 는 이 문서가 있는 브랜치에 없습니다.
+> `feat/api-integration` 브랜치(PR #8)에 있습니다. 확인하시려면 아래처럼 하세요.
+>
+> ```bash
+> git show origin/feat/api-integration:ispotvscode/src/api/types.ts
+> ```
+>
+> 마찬가지로 `rag/` 는 `feature/rag` 브랜치에만 있습니다.
+
 ### 1-2. LangGraph 의 근거 충족 판정을 구현할 수 없습니다
 
 팀장님이 제안하신 Agent 구조에서 분기 판정이 이렇게 동작해야 합니다.

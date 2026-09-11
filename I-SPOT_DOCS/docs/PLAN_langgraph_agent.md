@@ -40,7 +40,7 @@ CREATED → AUDIO_UPLOADED → STT_PROCESSING → STT_REVIEW_REQUIRED
 STT_FAILED   AI_FAILED
 ```
 
-`analysis_service.py:140` 이 **어떤 예외가 발생해도** 세션을 `AI_REVIEW_REQUIRED` 또는 `AI_FAILED` 로 마감합니다.
+`backend/app/services/analysis_service.py:140` 이 **어떤 예외가 발생해도** 세션을 `AI_REVIEW_REQUIRED` 또는 `AI_FAILED` 로 마감합니다.
 
 따라서 **어댑터는 상태 전이를 직접 하지 않습니다.** 실패 시 `AIError` 에 `ErrorCode` 를 담아 던지기만 하면 됩니다. 기존 `PipelineAIAdapter` 와 동일한 규약입니다.
 
@@ -101,7 +101,7 @@ status_code=status.HTTP_202_ACCEPTED
 `feature/rag` 브랜치, 커밋 13개. 검색까지만 되고 **답변 생성은 없습니다.**
 
 ```python
-# rag/retriever.py:9
+# rag/retriever.py:9   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
 def search_evidence(
     query: str, *, top_k: int = TOP_K,
     source_type: str | None = None,
@@ -130,11 +130,12 @@ from rag.retriever import search_evidence   # 아직 import 불가
 `feature/rag` 가 `develop` 에 머지되기 전까지는 `rag_node` 를 **인터페이스만 정의하고 비워두거나**, 고정 응답을 돌려주는 stub 으로 둡니다. 그래프 구조 검증은 stub 으로도 가능합니다.
 
 ```python
-def rag_node(state: AgentState) -> AgentState:
+def rag_node(state: AgentState) -> dict:
     # TODO: feature/rag 머지 후 search_evidence() 로 교체
-    state["rag_documents"] = []
-    return state
+    return {"rag_documents": []}
 ```
+
+노드는 State 전체가 아니라 **바뀐 부분만 `dict` 로** 돌려줍니다(4-1). stub 이 빈 목록을 돌려주면 근거가 늘지 않아 재분석이 계속 "부족" 으로 판정되지만, `MAX_RETRY` 가 있어 무한 루프로는 가지 않습니다(4-4).
 
 ### 2-5. LangGraph 는 아직 어디에도 없습니다
 
@@ -210,7 +211,13 @@ graph.add_conditional_edges(
 )
 ```
 
-라우터는 **State 를 바꾸지 않고 목적지 이름만 돌려줍니다.** 노드는 State 부분 갱신을 `dict` 로 돌려주고, 라우터는 `str` 을 돌려준다는 점이 다릅니다. 둘을 섞으면 라우터에서 한 변경이 State 에 반영되지 않습니다.
+라우터는 **State 를 바꾸지 않고 목적지 이름만 돌려줍니다.** 노드는 State 부분 갱신을 `dict` 로 돌려주고, 라우터는 `str` 을 돌려준다는 점이 다릅니다.
+
+라우터 안에서 State 를 고치면 **반영이 보장되지 않습니다.** 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
+
+> **이 절의 LangGraph 동작 서술은 라이브러리 규약을 따른 것이고, 이 저장소에서
+> 실행으로 확인한 것이 아닙니다.** `langgraph` 가 아직 설치되어 있지 않습니다(2-5).
+> 착수 시 설치한 버전의 문서로 한 번 대조해 주세요.
 
 ### 4-2. 엣지
 
@@ -317,7 +324,7 @@ def evidence_verdict(state: AgentState) -> str:
 1. `requirements-agent.txt` 추가 — `langgraph` 의존성
 2. `agent/` 패키지 신설 — `state.py`, `nodes.py`, `graph.py`
 3. `backend/app/adapters/ai_adapter.py` 에 `LangGraphAIAdapter` 추가
-4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`config.py:88`)
+4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:88`)
 5. 루프 종료·에러 처리·타임아웃
 6. 그래프 결과를 `AIAnalysisBundle` 로 변환
 
@@ -342,12 +349,12 @@ def evidence_verdict(state: AgentState) -> str:
 ### 5-4. Frontend (다솔)
 
 1. 재분석이 일어난 경우를 화면에 표시할지 결정
-   — `warnings` 는 **이미 Contract 에 있습니다**(`contracts.py:77`). 근거가 부족한 채로
+   — `warnings` 는 **이미 Contract 에 있습니다**(`backend/app/schemas/contracts.py:77`). 근거가 부족한 채로
      종료하면 그래프가 여기에 사유를 넣으므로, 추가 작업 없이 표시할 수 있습니다.
    — `retry_count`(재분석 횟수)는 **Contract 에 없습니다.** 화면에 필요하다면
      필드 추가가 필요하고, 그것은 Contract 변경입니다.
 2. RAG 근거 문서를 화면에 노출할지 결정
-   — `AIAnalysisBundle` 의 값은 API 응답까지 그대로 나갑니다(`schemas/analysis.py:32`
+   — `AIAnalysisBundle` 의 값은 API 응답까지 그대로 나갑니다(`backend/app/schemas/analysis.py:32`
      의 `summary_evidence` 가 전례). 따라서 노출하려면 **API 응답 스키마 변경**이
      필요합니다. 단, `02_ARCHITECTURE.md` §7 의 **AI Output Contract 변경은 아닙니다**
      — `summary_evidence` 와 같이 Contract 밖 부가 정보로 둘 수 있습니다.
