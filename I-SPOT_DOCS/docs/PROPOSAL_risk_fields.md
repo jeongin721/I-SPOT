@@ -96,10 +96,42 @@ result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True
 필요한 작업은 다음과 같습니다.
 
 - `contracts.py` 에 `RiskUtterance` / `AbuseSignal` / `RiskFactor` 모델 추가
-- AI 응답 검증 강화 — 현재는 키 존재만 확인하고 내부는 통과시킵니다
 - 필터·정렬을 위한 조회 경로 (JSON 내부 검색 또는 별도 컬럼 승격 검토)
 
-마지막 항목은 **이번 제안 범위 밖**입니다. 구조가 정해진 뒤 성능을 보고 판단하겠습니다.
+### 검증을 강화할지는 별도 판단이 필요합니다
+
+현재 `AIAnalysisResult` 는 **리스트·사전 형태인지만 확인하고 키는 전혀 검사하지 않습니다.**
+
+```python
+# backend/app/schemas/contracts.py:64-77
+class AIAnalysisResult(BaseModel):
+    """
+    AI 담당의 Structured JSON Contract.
+
+    9월에는 위험 관련 필드가 빈 배열일 수 있다.
+    Backend 는 내용을 판단하지 않고 그대로 저장/전달한다.
+    """
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    summary: AISummaryBody = Field(default_factory=AISummaryBody)
+    risk_utterances: List[Dict[str, Any]] = Field(default_factory=list)
+    abuse_signals: List[Dict[str, Any]] = Field(default_factory=list)
+    risk_factors: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+```
+
+**"내용을 판단하지 않는다" 는 의도적인 설계**입니다. AI 출력이 바뀌어도 Backend 가 막지 않도록 일부러 느슨하게 둔 것입니다.
+
+구조를 확정한 뒤에도 이 방침을 유지할지는 선택입니다.
+
+| 방식 | 장점 | 단점 |
+| --- | --- | --- |
+| 현행 유지 (`Dict[str, Any]`) | AI 쪽 변경에 Backend 가 안 막힘 | 잘못된 값이 화면까지 감 |
+| 모델로 검증 | 깨진 데이터를 조기 차단 | AI 가 필드 추가할 때마다 Backend 수정 |
+
+**절충안** — `ConfigDict(extra="allow")` 로 정의하면 명시한 키는 검증하면서 추가 키는 통과시킵니다. `audio_feature` 스키마에서 이미 쓰고 있는 방식입니다.
+
+마지막 조회 경로 항목은 **이번 제안 범위 밖**입니다. 구조가 정해진 뒤 성능을 보고 판단하겠습니다.
 
 ---
 

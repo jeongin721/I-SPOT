@@ -70,8 +70,17 @@ class AIAnalysisBundle:
 
 | `AI_PROVIDER` | 클래스 | 동작 |
 | --- | --- | --- |
-| `mock` | `MockAIAdapter` | 외부 호출 없이 고정 결과 |
+| `mock` | `MockAIAdapter` | 외부 호출 없이 **Transcript 에서 파생** |
 | `pipeline` | `PipelineAIAdapter` | `ai.services.analysis_pipeline` 호출 |
+
+`mock` 은 고정 응답이 아닙니다. Transcript 를 읽어 다음을 만들어 냅니다.
+
+- `CHILD` 발화 앞 3건을 `key_points` 로
+- 그 각각에 `segment_id` 를 연결해 `summary_evidence` 로
+- `confidence < 0.7` 인 구간 수를 세어 `warnings` 에
+- segment 가 하나도 없으면 `AIError(AI_INVALID_OUTPUT)`
+
+위험 필드 3종만 빈 배열로 고정돼 있습니다. **그 부분만 새 구조의 예시 값으로 바꾸면** 그래프 분기를 검증할 수 있습니다.
 
 ```python
 # backend/app/core/config.py:88
@@ -294,7 +303,10 @@ def evidence_check_node(state: AgentState) -> str:
    — `retry_count`(재분석 횟수)는 **Contract 에 없습니다.** 화면에 필요하다면
      필드 추가가 필요하고, 그것은 Contract 변경입니다.
 2. RAG 근거 문서를 화면에 노출할지 결정
-   — 노출한다면 `AIAnalysisBundle` 에 필드 추가가 필요하고, 그것은 Contract 변경입니다
+   — `AIAnalysisBundle` 의 값은 API 응답까지 그대로 나갑니다(`schemas/analysis.py:32`
+     의 `summary_evidence` 가 전례). 따라서 노출하려면 **API 응답 스키마 변경**이
+     필요합니다. 단, `02_ARCHITECTURE.md` §7 의 **AI Output Contract 변경은 아닙니다**
+     — `summary_evidence` 와 같이 Contract 밖 부가 정보로 둘 수 있습니다.
 
 ### 5-5. STT (정담원)
 
