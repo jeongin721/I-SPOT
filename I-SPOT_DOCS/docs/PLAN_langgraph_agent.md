@@ -107,7 +107,8 @@ def search_evidence(
     source_type: str | None = None,
     abuse_type: str | None = None,
 ) -> list[dict[str, Any]]:
-    # 반환: [{"content": str, "metadata": dict}, ...]
+    """반환: [{"content": str, "metadata": dict}, ...]"""
+    ...
 ```
 
 원본 PDF 는 `rag_data/` 에 두며 `.gitignore` 대상입니다. **각자 로컬에 준비해야 합니다.**
@@ -189,56 +190,96 @@ STT 는 분 단위로 걸리고(2-3), 중간에 **상담사 검수 단계** 가 
 
 ### 4-1. 노드
 
-| 노드 | 입력 | 출력 | 담당 |
+| 노드 | 입력 | 반환(State 부분 갱신) | 담당 |
 | --- | --- | --- | --- |
-| `analysis_node` | Transcript | 요약 + key_points | AI |
-| `risk_node` | Transcript | `risk_utterances`, `abuse_signals`, `risk_factors` | AI |
-| `evidence_check_node` | 위 결과 | `"sufficient"` / `"insufficient"` | Agent |
-| `rag_node` | 부족한 근거 | 참고 문서 조각 | RAG |
-| `reanalysis_node` | 원본 + 문서 | 보강된 결과 | AI |
-| `report_node` | 최종 결과 | `AIAnalysisBundle` | Agent |
+| `analysis_node` | `transcript` | `summary` | AI |
+| `risk_node` | `transcript` | `risk_utterances`, `abuse_signals`, `risk_factors` | AI |
+| `rag_node` | 부족한 근거 | `rag_documents` | RAG |
+| `reanalysis_node` | 원본 + `rag_documents` | 위험 필드 3종 + `retry_count` | AI |
+| `report_node` | 전체 State | `warnings` (필요 시) | Agent |
+
+#### `evidence_check` 는 노드가 아니라 **조건부 엣지 함수** 입니다
+
+팀장님 그림에는 `evidence_check_node` 로 표기돼 있으나, LangGraph 에서 분기 판정은 **노드가 아니라 라우터** 로 구현합니다.
+
+```python
+graph.add_conditional_edges(
+    "risk_node",                    # 이 노드 다음에
+    route_after_risk,               # 이 함수가 다음 목적지를 고른다
+    {"sufficient": "report_node", "insufficient": "rag_node"},
+)
+```
+
+라우터는 **State 를 바꾸지 않고 목적지 이름만 돌려줍니다.** 노드는 State 부분 갱신을 `dict` 로 돌려주고, 라우터는 `str` 을 돌려준다는 점이 다릅니다. 둘을 섞으면 라우터에서 한 변경이 State 에 반영되지 않습니다.
 
 ### 4-2. 엣지
 
 ```text
-START → analysis_node → risk_node → evidence_check_node
-                                         ├ sufficient   → report_node → END
-                                         └ insufficient → rag_node
-                                                            ↓
-                                                      reanalysis_node
-                                                            ↓
-                                                   evidence_check_node
+START → analysis_node → risk_node ─┬─[sufficient]───→ report_node → END
+                                   │
+                                   └─[insufficient]─→ rag_node
+                                                         ↓
+                                                   reanalysis_node
+                                                         │
+                                        ┌────────────────┘
+                                        │  (같은 라우터를 다시 통과)
+                                        └─┬─[sufficient]───→ report_node
+                                          └─[insufficient]─→ rag_node
 ```
+
+`risk_node` 와 `reanalysis_node` 뒤에 **같은 라우터**(`route_after_risk`)를 붙입니다.
 
 ### 4-3. State
 
+여러 노드가 같은 키에 쓰는 항목은 **reducer** 를 지정해야 합니다. 지정하지 않으면 뒤에 쓴 값이 **앞의 값을 덮어씁니다.**
+
 ```python
+import operator
+from typing import Annotated, TypedDict
+
 class AgentState(TypedDict):
-    transcript: dict            # 입력. Transcript Contract
+    transcript: dict                                    # 입력. Transcript Contract
     summary: dict
     risk_utterances: list[dict]
     abuse_signals: list[dict]
     risk_factors: list[dict]
-    rag_documents: list[dict]   # search_evidence() 반환 누적
-    retry_count: int            # 재분석 횟수
-    warnings: list[str]
+
+    # 재분석을 돌 때마다 쌓여야 하므로 누적 reducer 를 쓴다.
+    rag_documents: Annotated[list[dict], operator.add]
+    warnings: Annotated[list[str], operator.add]
+    retry_count: Annotated[int, operator.add]           # 노드가 1 을 돌려주면 +1
 ```
+
+위험 필드 3종은 **재분석 결과로 교체**되는 값이므로 reducer 를 두지 않습니다. `rag_documents` 는 검색할수록 쌓여야 하므로 누적입니다. 이 구분을 틀리면 재분석이 이전 근거를 지우거나, 반대로 중복이 무한히 쌓입니다.
 
 ### 4-4. ⚠️ 루프 종료 조건은 필수입니다
 
 `evidence_check → rag → reanalysis → evidence_check` 는 **닫힌 고리** 입니다. 종료 조건이 없으면 무한 루프가 되고, 매 바퀴가 LLM 호출이므로 비용도 계속 발생합니다.
 
+라우터는 State 를 바꿀 수 없으므로(4-1), **횟수 판단은 라우터가 하고 사유 기록은 `report_node` 가** 합니다.
+
 ```python
 MAX_RETRY = 2
 
-def evidence_check_node(state: AgentState) -> str:
+# 라우터 — 목적지만 고른다
+def route_after_risk(state: AgentState) -> str:
     if state["retry_count"] >= MAX_RETRY:
-        state["warnings"].append("근거 부족 상태로 종료했습니다.")
-        return "sufficient"          # 부족함을 표시하고 종료
+        return "sufficient"           # 더 못 돌므로 결과 작성으로 보낸다
+    return evidence_verdict(state)    # 4-5 참조
+
+# 노드 — 포기한 경우 사유를 남긴다
+def report_node(state: AgentState) -> dict:
+    if state["retry_count"] >= MAX_RETRY and evidence_verdict(state) == "insufficient":
+        return {"warnings": ["근거가 부족한 상태로 분석을 종료했습니다."]}
+    return {}
+
+# 노드 — 재분석 때마다 1 을 돌려주면 reducer 가 더한다
+def reanalysis_node(state: AgentState) -> dict:
     ...
+    return {"risk_utterances": ..., "abuse_signals": ..., "retry_count": 1}
 ```
 
-`reanalysis_node` 는 반드시 `retry_count` 를 증가시킵니다.
+`reanalysis_node` 가 `retry_count` 를 올리지 않으면 **무한 루프가 됩니다.**
 
 ### 4-5. 판정 기준
 
@@ -254,11 +295,14 @@ def evidence_check_node(state: AgentState) -> str:
 모델이 이미 계산한 `detected` 를 그대로 사용합니다. 근거 상세는 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) §7-4 를 따릅니다.
 
 ```python
-def evidence_check_node(state: AgentState) -> str:
-    signals = [s for s in state["abuse_signals"] if s["detected"]]
+def evidence_verdict(state: AgentState) -> str:
+    """근거 충족 여부만 판단한다. State 를 바꾸지 않는다."""
+    signals = [s for s in state["abuse_signals"] if s.get("detected")]
     linked = [s for s in signals if s.get("segment_ids")]
     return "sufficient" if len(linked) >= 1 else "insufficient"
 ```
+
+`s["detected"]` 가 아니라 `s.get("detected")` 를 씁니다. 구조 합의 전이거나 AI 가 필드를 빠뜨린 경우 `KeyError` 로 그래프 전체가 죽는 것을 막습니다.
 
 ---
 
@@ -316,7 +360,7 @@ def evidence_check_node(state: AgentState) -> str:
 
 ## 6. 막혀 있는 것
 
-### 6-1. `evidence_check_node` 를 작성할 수 없습니다 🔴
+### 6-1. 근거 충족 판정(`evidence_verdict`)을 작성할 수 없습니다 🔴
 
 ```python
 # ai/schemas/analysis.py:40-42

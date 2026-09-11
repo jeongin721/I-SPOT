@@ -23,24 +23,26 @@
 
 `types.ts` 의 `RiskUtterance` 는 제가 추측으로 써둔 것입니다. 근거 없이 정한 것이므로 **채택하든 폐기하든 이번에 정리**되어야 합니다.
 
-### 1-2. LangGraph `evidence_check_node` 를 구현할 수 없습니다
+### 1-2. LangGraph 의 근거 충족 판정을 구현할 수 없습니다
 
-팀장님이 제안하신 Agent 구조에서 분기 판정 노드가 이렇게 동작해야 합니다.
+팀장님이 제안하신 Agent 구조에서 분기 판정이 이렇게 동작해야 합니다.
 
 ```text
 근거 충분  →  report_node
 근거 부족  →  rag_node  →  reanalysis_node
 ```
 
-판정 코드는 이런 형태가 됩니다.
+판정하려면 근거 하나하나의 **키를 읽어야** 합니다.
 
 ```python
-def evidence_check_node(state):
-    strong = [u for u in state["risk_utterances"] if u["confidence"] >= 0.7]
-    return "sufficient" if len(strong) >= 2 else "insufficient"
+s["detected"]        # 이 유형이 검출됐는가
+s["segment_ids"]     # 근거 발화가 Transcript 에 연결돼 있는가
 ```
 
-`confidence` 라는 키가 존재하는지 알 수 없어 **현재로서는 작성이 불가능**합니다.
+`risk_utterances` 와 `abuse_signals` 가 `List[Dict[str, Any]]` 로만 정의돼 있어 **이 키들이 존재한다는 보장이 없습니다.** 따라서 판정 함수를 작성할 수 없습니다.
+
+> 실제 판정 초안은 §7-4 에 있습니다. 유형별 임계값이 0.32 ~ 0.72 로 다르므로
+> `confidence >= 0.7` 같은 **단일 기준은 쓰면 안 됩니다**(§7-2 참조).
 
 ### 1-3. 화면 조회 기능 5개 중 4개가 동작하지 않습니다
 
@@ -270,18 +272,20 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 `code` 목록은 **이경진 님이 실제로 추출 가능한 범위**로 정해주시면 그에 맞추겠습니다.
 
-### 7-4. `evidence_check_node` 판정 기준 (초안)
+### 7-4. 근거 충족 판정 기준 (초안)
 
 단일 확신도 기준(`>= 0.7`)은 **쓸 수 없습니다.** 위에서 본 대로 유형별 기준선이 0.32 ~ 0.72 로 다르기 때문입니다. 모델이 계산한 `detected` 를 기준으로 삼습니다.
 
 ```python
-def evidence_check_node(state):
-    signals = [s for s in state["abuse_signals"] if s["detected"]]
+def evidence_verdict(state) -> str:
+    signals = [s for s in state["abuse_signals"] if s.get("detected")]
     linked = [s for s in signals if s.get("segment_ids")]
 
     sufficient = len(linked) >= 1
     return "sufficient" if sufficient else "insufficient"
 ```
+
+이 함수는 LangGraph 의 **조건부 엣지 함수**로 쓰입니다. 노드가 아니므로 State 를 바꾸지 않고 목적지 이름만 돌려줍니다. 배치 방법은 [PLAN_langgraph_agent.md](./PLAN_langgraph_agent.md) §4-1 을 참고하세요.
 
 판정 기준을 **"검출된 유형이 1건 이상이고, 그 근거 발화가 Transcript 에 연결돼 있을 것"** 으로 둡니다. 근거 없는 판정은 상담사가 확인할 수 없으므로 `segment_ids` 연결을 필수로 봅니다.
 
