@@ -178,7 +178,7 @@ class AIAnalysisResult(BaseModel):
 
 ## 4. Frontend 영향
 
-- 학대유형·위험도·키워드 필터와 위험도순 정렬, **네 기능이 동작하게 됩니다**(1-3 참조)
+- 학대유형·위험도·키워드 필터와 위험도순 정렬 네 기능이 **목업을 떼고 Backend 에 붙여도 계속 동작합니다**(1-3 참조). 지금 연결하면 이 네 기능이 빈 결과를 냅니다.
 - `types.ts` 의 `RiskUtterance` 를 확정안에 맞춰 교체합니다
 - `abuse_signals` 표기 통일이 필요합니다 (아래 5절 참조)
 - 화면이 쓰는 `abuseTypes` `riskLevel` `riskScore` `keywords` 를 Contract 값에서
@@ -225,12 +225,14 @@ const SEVERITY_TO_RISK_LEVEL: Record<Severity, RiskLevel> = {
 ### 5-1. `summarize_consultation` 이 빈 배열 대신 값을 채워야 합니다
 
 ```python
-# ai/services/summary_service.py:215-221  (현재)
+# ai/services/summary_service.py:215-222  (현재)
 return AIAnalysisOutput(
+    schema_version="1.0",
     summary=summary,
     risk_utterances=[],   # ← 하드코딩
     abuse_signals=[],
     risk_factors=[],
+    warnings=warnings,
 )
 ```
 
@@ -241,7 +243,7 @@ return AIAnalysisOutput(
 | `02_ARCHITECTURE.md` §7 | `PHYSICAL` `EMOTIONAL` `SEXUAL` `NEGLECT` |
 | `abuse_model/infer_abuse.py` | `신체학대` `정서학대` `성학대` `방임` |
 | `ai/modeling/abuse/train_subtype_v1.py` | `physical_direct` … `neglect_medical` (15종) |
-| Frontend | `신체` `정서` `성` `방임` |
+| `ispotvscode/src/data/cases.ts` | `신체` `정서` `성` `방임` |
 
 세부유형 15종은 접두사가 대분류와 일치하므로 매핑이 자명합니다.
 
