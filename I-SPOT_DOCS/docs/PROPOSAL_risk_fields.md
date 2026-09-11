@@ -19,6 +19,16 @@
 | `ai/services/summary_service.py:78-80` | `List[str]` |
 | `ispotvscode/src/api/types.ts:282-284` | `RiskUtterance[]` / `string[]` |
 
+> **줄번호는 `integration/develop-consolidation` 기준입니다.** `ai/` 아래 파일들은
+> `ai-modeling` 브랜치에서 내용이 달라 줄번호도 다릅니다.
+>
+> | 파일 | 이 브랜치 | `ai-modeling` |
+> | --- | --- | --- |
+> | `ai/schemas/analysis.py` | 40-42 | **48-50** |
+> | `ai/services/summary_service.py` | 78-80 | **84-86** |
+>
+> 정의 자체(`List[Dict[str, Any]]` / `List[str]`)는 양쪽 같습니다.
+
 지금은 **세 곳 모두 빈 배열**이라 충돌이 드러나지 않습니다. 값이 들어가는 순간 한 곳이 깨집니다.
 
 `types.ts` 의 `RiskUtterance` 는 제가 추측으로 써둔 것입니다. 근거 없이 정한 것이므로 **채택하든 폐기하든 이번에 정리**되어야 합니다.
@@ -413,7 +423,8 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 | 유형 | `abuse_model/infer_abuse.py` | `ai/modeling/abuse/infer_abuse.py` |
 | --- | --- | --- |
-| | 가중치 `..._2026-09-03.pth` | 가중치 `..._v4_2026-09-07.pth` |
+| 브랜치 | 이 브랜치 · `develop` | **`ai-modeling` 판** |
+| 가중치 | `..._2026-09-03.pth` | `..._v4_2026-09-07.pth` |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
 | 성학대 | 0.53 | **0.19** |
