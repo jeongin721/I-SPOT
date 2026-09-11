@@ -203,6 +203,19 @@ const SEVERITY_TO_RISK_LEVEL: Record<Severity, RiskLevel> = {
 
 ## 5. AI 영향
 
+### 5-0. 이 작업은 `TASKS.md` 의 `AI-02` 이고, **담당자가 비어 있습니다**
+
+```text
+| AI-02 | AI | Summary/위험 발화 분석 | - | TODO | AI-01 |
+| BE-04 | Backend | AI 결과 저장/조회 | C | REVIEW | AI-02 |
+```
+
+`AI-02` 는 담당 칸이 `-` 이고 상태가 `TODO` 입니다. **아무도 맡고 있지 않습니다.**
+
+`BE-04`(Backend AI 결과 저장/조회)가 `AI-02` 에 의존하며 이미 `REVIEW` 상태이므로, **Backend 쪽은 받을 준비가 되어 있고 채울 사람만 없는 상태**입니다.
+
+이 제안이 합의되면 `TASKS.md` 의 `AI-02` 에 담당자를 지정하고 `IN_PROGRESS` 로 옮겨 주십시오.
+
 ### 5-1. `summarize_consultation` 이 빈 배열 대신 값을 채워야 합니다
 
 ```python

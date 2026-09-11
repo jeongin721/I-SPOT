@@ -340,6 +340,17 @@ def evidence_verdict(state: AgentState) -> str:
 
 ## 5. 담당별 할 일
 
+### 5-0. `TASKS.md` 에 Task 를 추가해야 합니다
+
+`TASKS.md` 의 현재 MVP 표에 Agent·RAG 항목이 없습니다. 새 Task 추가 규칙에 따라 아래를 등록해 주십시오.
+
+```text
+| AI-03  | AI     | RAG 문서 색인/검색       | mingyu | TODO | -     |
+| BE-08  | Backend| LangGraph Agent Adapter | mingyu | TODO | AI-02 |
+```
+
+`BE-08` 이 `AI-02`(Summary/위험 발화 분석)에 의존한다는 점이 중요합니다. **`AI-02` 는 현재 담당자가 비어 있고 `TODO` 상태입니다.** 그래서 6-1 이 막혀 있습니다.
+
 ### 5-1. Agent / Backend (mingyu)
 
 ```text
