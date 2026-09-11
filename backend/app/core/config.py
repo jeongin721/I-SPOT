@@ -83,9 +83,10 @@ class Settings(BaseSettings):
     STT_FUNCTION: str = "transcribe"
     STT_TIMEOUT_SECONDS: float = 600.0
 
-    # mock    : 고정된 합성 요약 반환
-    # pipeline: ai/services/analysis_pipeline.run_analysis_pipeline 호출
-    AI_PROVIDER: Literal["mock", "pipeline"] = "mock"
+    # mock     : Transcript 에서 파생한 합성 요약 반환
+    # pipeline : ai/services/analysis_pipeline.run_analysis_pipeline 호출
+    # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)
+    AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
     AI_TIMEOUT_SECONDS: float = 180.0
 
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
