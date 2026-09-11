@@ -1,0 +1,32 @@
+# I-SPOT AI Backend — Python dependencies
+#
+# Pinned to versions validated on Python 3.12 (Cloud Agent environment setup).
+# Install with:
+#   pip install -r requirements.txt
+#
+# torch is pulled from the PyTorch CPU wheel index below to keep the install
+# lean; drop the --extra-index-url line and use a matching CUDA build if you
+# need GPU inference for the abuse/subtype models.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- FastAPI service layer (main.py) ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-dotenv==1.2.3
+
+# --- LLM summary / analysis services (ai/services) ---
+openai==3.13.0
+pydantic==2.13.5
+
+# --- STT + abuse/subtype model runtime (POST /api/v1/analyze path) ---
+deepgram-sdk==7.8.1
+transformers==5.17.0
+torch==2.14.0+cpu
+openai-whisper==20250625
+
+# --- Shared utilities ---
+requests==2.34.2
+tqdm==4.70.0
+
+# --- Tests ---
+pytest==9.1.1
