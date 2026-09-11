@@ -1,9 +1,21 @@
 from pathlib import Path
 import os
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load project .env before reading any RAG environment variables.
+# This makes indexer/query use the same paths and model settings consistently.
+load_dotenv(BASE_DIR / ".env")
+
 RAG_DATA_DIR = Path(os.getenv("RAG_DATA_DIR", BASE_DIR / "rag_data"))
-VECTOR_DB_DIR = Path(os.getenv("RAG_VECTOR_DB_DIR", BASE_DIR / "rag_storage" / "chroma"))
+VECTOR_DB_DIR = Path(
+    os.getenv(
+        "RAG_VECTOR_DB_DIR",
+        BASE_DIR / "rag_storage" / "chroma",
+    )
+)
 
 EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "text-embedding-3-small")
 COLLECTION_NAME = os.getenv("RAG_COLLECTION_NAME", "ispot_child_abuse")
