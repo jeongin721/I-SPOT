@@ -4,10 +4,16 @@ on:
   push:
     paths:
       - "backend/**"
+      # agent/ 는 Backend 가 AI_PROVIDER=langgraph 로 호출하므로
+      # 여기만 바뀌어도 Backend 테스트가 깨질 수 있다.
+      - "agent/**"
+      - "requirements-agent.txt"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "agent/**"
+      - "requirements-agent.txt"
       - ".github/workflows/backend-ci.yml"
 
 jobs:
@@ -29,6 +35,12 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Install agent dependencies
+        # langgraph 는 Backend 단독 실행에 필요 없는 선택 의존성이라
+        # requirements-dev.txt 에 넣지 않는다. 다만 설치하지 않으면
+        # LangGraph Adapter 테스트가 건너뛰어져 검증이 비게 된다.
+        run: pip install -r ../requirements-agent.txt
 
       - name: Lint
         run: ruff check .

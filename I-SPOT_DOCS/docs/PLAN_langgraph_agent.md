@@ -98,10 +98,10 @@ status_code=status.HTTP_202_ACCEPTED
 
 ### 2-4. RAG 는 V1 골격이 있습니다
 
-`feature/rag` 브랜치, 커밋 13개. 검색까지만 되고 **답변 생성은 없습니다.**
+`feature/rag` 브랜치, 커밋 18개(2026-09-11 기준). 검색까지만 되고 **답변 생성은 없습니다.**
 
 ```python
-# rag/retriever.py:9   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
+# rag/retriever.py:30   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
 def search_evidence(
     query: str, *, top_k: int = TOP_K,
     source_type: str | None = None,
@@ -110,6 +110,8 @@ def search_evidence(
     """반환: [{"content": str, "metadata": dict}, ...]"""
     ...
 ```
+
+**시그니처와 반환 모양은 계속 같습니다.** 다만 브랜치가 활발히 움직이고 있어(메타데이터 추론·청킹·필터 개선) `rag_node` 를 실제로 연결할 때 한 번 더 대조해야 합니다.
 
 원본 PDF 는 `rag_data/` 에 두며 `.gitignore` 대상입니다. **각자 로컬에 준비해야 합니다.**
 
@@ -137,9 +139,9 @@ def rag_node(state: AgentState) -> dict:
 
 노드는 State 전체가 아니라 **바뀐 부분만 `dict` 로** 돌려줍니다(4-1). stub 이 빈 목록을 돌려주면 근거가 늘지 않아 재분석이 계속 "부족" 으로 판정되지만, `MAX_RETRY` 가 있어 무한 루프로는 가지 않습니다(4-5).
 
-### 2-5. LangGraph 는 아직 어디에도 없습니다
+### 2-5. LangGraph 의존성
 
-`requirements*.txt` 전체에 `langgraph` 항목이 없습니다. 의존성 추가가 첫 작업입니다.
+`requirements*.txt` 전체에 `langgraph` 항목이 없었습니다. `backend-agent` 브랜치에서 `langgraph 1.2.11` 을 설치하고 `requirements-agent.txt` 로 고정합니다.
 
 ---
 
@@ -213,11 +215,41 @@ graph.add_conditional_edges(
 
 라우터는 **State 를 바꾸지 않고 목적지 이름만 돌려줍니다.** 노드는 State 부분 갱신을 `dict` 로 돌려주고, 라우터는 `str` 을 돌려준다는 점이 다릅니다.
 
-라우터 안에서 State 를 고치면 **반영이 보장되지 않습니다.** 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
+라우터 안에서 State 를 고치면 **반영되지 않습니다**(아래에서 실행으로 확인). 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
 
-> **이 절의 LangGraph 동작 서술은 라이브러리 규약을 따른 것이고, 이 저장소에서
-> 실행으로 확인한 것이 아닙니다.** `langgraph` 가 아직 설치되어 있지 않습니다(2-5).
-> 착수 시 설치한 버전의 문서로 한 번 대조해 주세요.
+#### 실행으로 확인했습니다 (`langgraph 1.2.11`)
+
+최소 그래프를 만들어 세 가지를 검증했습니다.
+
+```python
+class S(TypedDict):
+    log: Annotated[list[str], operator.add]   # reducer 있음
+    n: Annotated[int, operator.add]
+    plain: list[str]                          # reducer 없음
+
+def a(s): return {"log": ["a"], "n": 1, "plain": ["A"]}
+def b(s): return {"log": ["b"], "n": 1, "plain": ["B"]}
+
+def router(s) -> str:
+    s["log"].append("router-mutation")        # 라우터에서 State 변경 시도
+    return "b" if s["n"] < 2 else "end"
+```
+
+실행 결과입니다.
+
+```text
+log   : ['a', 'b']     ← router-mutation 이 없다. 라우터 변경은 반영되지 않는다
+n     : 2              ← reducer 가 1 + 1 을 누적했다
+plain : ['B']          ← reducer 가 없으면 ['A'] 가 덮어써진다
+```
+
+| 문서의 주장 | 결과 |
+| --- | --- |
+| 라우터의 State 변경은 반영되지 않는다 | **확인** — `router-mutation` 이 로그에 없음 |
+| reducer 가 있으면 누적된다 | **확인** — `['a','b']`, `n=2` |
+| reducer 가 없으면 덮어쓴다 | **확인** — `['A']` 소실 |
+
+따라서 4-3 의 reducer 구분(위험 필드는 교체, `rag_documents` 는 누적)은 **반드시 지켜야 합니다.** 틀리면 재분석이 이전 결과를 조용히 지웁니다.
 
 ### 4-2. 엣지
 
