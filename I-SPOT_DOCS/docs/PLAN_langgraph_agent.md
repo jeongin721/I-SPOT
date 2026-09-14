@@ -3,7 +3,7 @@
 > 팀장님이 제안하신 LangGraph Agent 구조를 현재 코드베이스에 맞춰 구체화한 문서입니다.
 > 확정 전이며, 아래 **6. 막혀 있는 것** 이 먼저 풀려야 착수할 수 있습니다.
 >
-> 작성: mingyu · 2026-09-11 · 관련 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md)
+> 작성: 최민규 · 2026-09-11 · 관련 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md)
 
 ---
 
@@ -418,7 +418,7 @@ def evidence_verdict(state: AgentState) -> str:
 
 `BE-08` 이 `AI-02`(Summary/위험 발화 분석)에 의존한다는 점이 중요합니다. **`AI-02` 는 현재 담당자가 비어 있고 `TODO` 상태입니다.** 그래서 6-1 이 막혀 있습니다.
 
-### 5-1. Agent / Backend (mingyu)
+### 5-1. Agent / Backend (최민규)
 
 ```text
 브랜치  backend-agent   (팀장님 지정)
@@ -464,7 +464,7 @@ PR      #10 → develop
    — 현재 최상위 `main.py` 에서만 쓰이고 Backend 로 전달되지 않습니다
 4. `reanalysis_node` 용 함수 — RAG 문서를 받아 재판정하는 진입점
 
-### 5-3. RAG (mingyu, 팀장님 V1 이어받음)
+### 5-3. RAG (팀장님)
 
 1. 임베딩 모델 확정 — **나중에 바꾸면 전체 재색인이 필요합니다**
 2. `rag_data/` 원본 PDF 확보 (팀장님께 기존 수집본 확인)

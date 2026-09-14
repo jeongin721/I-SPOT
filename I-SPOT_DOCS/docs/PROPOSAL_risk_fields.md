@@ -3,7 +3,7 @@
 > `02_ARCHITECTURE.md` §8 Contract 변경 규칙에 따른 제안서입니다.
 > 확정 전이며, AI·Backend·Frontend 세 파트 합의가 필요합니다.
 >
-> 작성: mingyu · 2026-09-11
+> 작성: 최민규 · 2026-09-11
 
 대상 필드 — `risk_utterances`, `abuse_signals`, `risk_factors`
 
