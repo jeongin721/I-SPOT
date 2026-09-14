@@ -43,7 +43,8 @@ jobs:
         run: pip install -r ../requirements-agent.txt
 
       - name: Lint
-        run: ruff check .
+        # agent/ 는 backend/ 밖에 있어 "." 만 검사하면 빠진다.
+        run: ruff check . ../agent
 
       - name: Run tests
         run: pytest

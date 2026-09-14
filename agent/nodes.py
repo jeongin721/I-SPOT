@@ -13,7 +13,7 @@
 # 현재 노드 본문은 비어 있다. 값을 채우는 것은 AI 담당(TASKS.md AI-02)이고,
 # 이 파일은 그래프가 실제로 도는지 검증할 수 있는 골격을 제공한다.
 
-from typing import Dict, List
+from typing import List
 
 from agent.state import AgentState
 
