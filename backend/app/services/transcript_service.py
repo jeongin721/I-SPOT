@@ -154,7 +154,8 @@ def request_stt(
 
     audio_service.get_latest_audio(db, session.id)
 
-    assert_transition(session.status, SessionStatus.STT_PROCESSING)
+    # 동시에 들어온 중복 요청은 여기서 한 건만 통과한다.
+    session_service.claim_status(db, session, SessionStatus.STT_PROCESSING)
 
     session.status = SessionStatus.STT_PROCESSING
     session.stt_started_at = datetime.now(timezone.utc)

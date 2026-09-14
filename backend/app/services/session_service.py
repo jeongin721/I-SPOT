@@ -3,12 +3,13 @@
 import uuid
 from typing import List, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core.enums import AuditAction, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, conflict
+from app.core.state_machine import assert_transition
 from app.models.analysis import AIAnalysis
 from app.models.audio import AudioFile
 from app.models.case import Case
@@ -222,3 +223,46 @@ def build_error_info(session: ConsultationSession) -> Optional[SessionErrorInfo]
         code=session.last_error_code,
         message=session.last_error_message or "처리 중 오류가 발생했습니다.",
     )
+
+
+def claim_status(
+    db: Session,
+    session: ConsultationSession,
+    target: SessionStatus,
+) -> None:
+    """읽어 둔 상태가 DB 에서도 그대로일 때만 target 으로 바꾼다.
+
+    두 요청이 같은 상태를 읽고 거의 동시에 들어오면 assert_transition 은 둘 다 통과한다.
+    그러면 Background 작업이 두 번 예약되고, 늦게 도는 쪽은 상태 불일치로 조기 종료해
+    분석이 PROCESSING 으로 남는다. UPDATE ... WHERE status = 읽은 상태 로 먼저 도착한
+    요청만 성공시키고 나머지는 409 로 거절한다.
+
+    행 잠금(SELECT ... FOR UPDATE)은 SQLite 에서 동작하지 않아 테스트로 확인할 수 없으므로
+    SQLite · PostgreSQL 에서 똑같이 동작하는 조건부 UPDATE 를 쓴다.
+    """
+
+    expected = session.status
+    assert_transition(expected, target)
+
+    claimed = db.execute(
+        update(ConsultationSession)
+        .where(
+            ConsultationSession.id == session.id,
+            ConsultationSession.status == expected,
+        )
+        .values(status=target)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    if claimed != 1:
+        db.rollback()
+
+        # rollback 으로 만료된 session 을 다시 읽어 지금 상태 기준으로 알려준다.
+        assert_transition(session.status, target)
+
+        raise conflict(
+            ErrorCode.INVALID_SESSION_STATE,
+            "다른 요청이 먼저 이 Session 의 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요.",
+        )
+
+    session.status = target

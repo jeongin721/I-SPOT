@@ -20,7 +20,6 @@ from app.core.database import SessionLocal
 from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, not_found
 from app.core.logging import get_logger
-from app.core.state_machine import assert_transition
 from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
@@ -98,7 +97,8 @@ def request_analysis(
 
     transcript = transcript_service.require_confirmed_transcript(db, session.id)
 
-    assert_transition(session.status, SessionStatus.AI_PROCESSING)
+    # 동시에 들어온 중복 요청은 여기서 한 건만 통과한다.
+    session_service.claim_status(db, session, SessionStatus.AI_PROCESSING)
 
     analysis = AIAnalysis(
         session_id=session.id,
