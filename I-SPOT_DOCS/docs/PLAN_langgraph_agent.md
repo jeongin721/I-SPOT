@@ -380,7 +380,7 @@ def reanalysis_node(state: AgentState) -> dict:
 
 **단일 확신도 기준(`>= 0.7`)을 쓰면 안 됩니다.** 학대 유형별 임계값이 크게 다르고, **모델 버전마다 또 다릅니다.**
 
-| 유형 | `abuse_model/` (09-03 가중치) | `ai/modeling/abuse/` (v4 09-07 가중치) |
+| 유형 | `develop` · `abuse_model/` (09-03 가중치) | `ai-modeling` 브랜치 · `ai/modeling/abuse/` (v4 09-07 가중치) |
 | --- | --- | --- |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
