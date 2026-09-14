@@ -8,8 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core import storage
 from app.core.enums import AuditAction, CaseStatus, UserRole
 from app.core.errors import ErrorCode, bad_request, conflict, forbidden, not_found
+from app.models.audio import AudioFile
 from app.models.case import Case
 from app.models.session import ConsultationSession
 from app.models.user import User
@@ -24,13 +26,19 @@ def _generate_case_number(db: Session) -> str:
     year = datetime.now(timezone.utc).year
     prefix = f"C-{year}-"
 
-    count = db.scalar(
-        select(func.count())
-        .select_from(Case)
-        .where(Case.case_number.like(f"{prefix}%"))
+    # "기존 개수 + 1" 로 만들면 중간 사례를 지운 뒤 이미 있는 번호를 다시 만들어
+    # 재시도해도 계속 충돌한다(1·2·3 중 1 삭제 → 개수 2 → 3 번 중복).
+    # 지금 있는 가장 큰 일련번호의 다음 값을 쓴다.
+    existing = db.scalars(
+        select(Case.case_number).where(Case.case_number.like(f"{prefix}%"))
     )
+    serials = [
+        int(number[len(prefix):])
+        for number in existing
+        if number[len(prefix):].isdigit()
+    ]
 
-    return f"{prefix}{(count or 0) + 1:04d}"
+    return f"{prefix}{max(serials, default=0) + 1:04d}"
 
 
 def _resolve_counselor(
@@ -275,6 +283,17 @@ def delete_case(db: Session, case: Case, current_user: User) -> None:
     if not current_user.is_admin:
         raise forbidden("사례 삭제는 관리자만 할 수 있습니다.")
 
+    # DB 는 연쇄 삭제되지만 저장소의 상담 음성 파일은 따로 지워야 한다.
+    # (session_service.delete_session 과 같은 방식) 지우지 않으면 삭제한 사례의
+    # 아동 상담 음성이 디스크에 그대로 남는다.
+    audio_paths = list(
+        db.scalars(
+            select(AudioFile.path)
+            .join(ConsultationSession, AudioFile.session_id == ConsultationSession.id)
+            .where(ConsultationSession.case_id == case.id)
+        )
+    )
+
     audit_service.record(
         db,
         action=AuditAction.CASE_DELETED,
@@ -282,8 +301,11 @@ def delete_case(db: Session, case: Case, current_user: User) -> None:
         entity_id=case.id,
         actor_id=current_user.id,
         case_id=case.id,
-        detail={"case_number": case.case_number},
+        detail={"case_number": case.case_number, "audio_file_count": len(audio_paths)},
     )
 
     db.delete(case)
     db.commit()
+
+    for path in audio_paths:
+        storage.delete_stored_audio(path)
