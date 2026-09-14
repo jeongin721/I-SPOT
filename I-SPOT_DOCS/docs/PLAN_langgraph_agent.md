@@ -57,7 +57,7 @@ class AIAdapter(Protocol):
 ```
 
 ```python
-# backend/app/adapters/ai_adapter.py:29
+# backend/app/adapters/ai_adapter.py:28
 @dataclass
 class AIAnalysisBundle:
     result: AIAnalysisResult
@@ -66,12 +66,13 @@ class AIAnalysisBundle:
     model: Optional[str] = None
 ```
 
-현재 구현체는 둘입니다.
+구현체는 셋입니다. `langgraph` 는 이 PR(#10)에서 추가했습니다(5-1).
 
 | `AI_PROVIDER` | 클래스 | 동작 |
 | --- | --- | --- |
 | `mock` | `MockAIAdapter` | 외부 호출 없이 **Transcript 에서 파생** |
 | `pipeline` | `PipelineAIAdapter` | `ai.services.analysis_pipeline` 호출 |
+| `langgraph` | `LangGraphAIAdapter` | `agent.graph.run` 호출 — **이 PR 에서 추가** |
 
 `mock` 은 고정 응답이 아닙니다. Transcript 를 읽어 다음을 만들어 냅니다.
 
@@ -83,8 +84,8 @@ class AIAnalysisBundle:
 위험 필드 3종만 빈 배열로 고정돼 있습니다. **그 부분만 새 구조의 예시 값으로 바꾸면** 그래프 분기를 검증할 수 있습니다.
 
 ```python
-# backend/app/core/config.py:88
-AI_PROVIDER: Literal["mock", "pipeline"] = "mock"
+# backend/app/core/config.py:89
+AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
 ```
 
 ### 2-3. 분석은 비동기입니다
@@ -98,10 +99,10 @@ status_code=status.HTTP_202_ACCEPTED
 
 ### 2-4. RAG 는 V1 골격이 있습니다
 
-`feature/rag` 브랜치, 커밋 18개(2026-09-11 기준). 검색까지만 되고 **답변 생성은 없습니다.**
+`feature/rag` 브랜치, 커밋 25개(2026-09-14 기준). 검색까지만 되고 **답변 생성은 없습니다.**
 
 ```python
-# rag/retriever.py:30   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
+# rag/retriever.py:30   (feature/rag 브랜치에만 있습니다 — 아래 주의 참조)
 def search_evidence(
     query: str, *, top_k: int = TOP_K,
     source_type: str | None = None,
@@ -121,7 +122,7 @@ def search_evidence(
 | --- | --- |
 | `feature/rag` | 있음 |
 | `develop` | **없음** |
-| `integration/develop-consolidation` | **없음** |
+| `backend-agent` | **없음** |
 
 따라서 지금 `rag_node` 에서 아래처럼 쓰면 `ModuleNotFoundError` 가 납니다.
 
@@ -421,15 +422,15 @@ def evidence_verdict(state: AgentState) -> str:
 
 ```text
 브랜치  backend-agent   (팀장님 지정)
-분기점  integration/develop-consolidation
+PR      #10 → develop
 ```
 
-분기점을 `develop` 이 아니라 통합 브랜치로 두는 이유는, PR #6 이 아직 머지되지 않아 `develop` 에는 Backend 수정분이 없기 때문입니다. PR #6 머지 후에는 같아집니다.
+처음에는 PR #6 이 머지되기 전이라 통합 브랜치에서 분기했습니다. PR #6 이 `develop` 에 머지되고(2026-09-11) 통합 브랜치를 정리하면서 PR #10 의 베이스를 `develop` 으로 옮겼습니다.
 
 1. `requirements-agent.txt` 추가 — `langgraph` 의존성
 2. `agent/` 패키지 신설 — `state.py`, `nodes.py`, `graph.py`
 3. `backend/app/adapters/ai_adapter.py` 에 `LangGraphAIAdapter` 추가
-4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:88`)
+4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:89`)
 5. 루프 종료·에러 처리·타임아웃
 6. 그래프 결과를 `AIAnalysisBundle` 로 변환
 

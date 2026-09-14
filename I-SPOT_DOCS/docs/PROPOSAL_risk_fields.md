@@ -19,10 +19,10 @@
 | `ai/services/summary_service.py:78-80` | `List[str]` |
 | `ispotvscode/src/api/types.ts:282-284` | `RiskUtterance[]` / `string[]` |
 
-> **줄번호는 `integration/develop-consolidation` 기준입니다.** `ai/` 아래 파일들은
+> **줄번호는 `develop` 기준입니다.** `ai/` 아래 파일들은
 > `ai-modeling` 브랜치에서 내용이 달라 줄번호도 다릅니다.
 >
-> | 파일 | 이 브랜치 | `ai-modeling` |
+> | 파일 | `develop` | `ai-modeling` |
 > | --- | --- | --- |
 > | `ai/schemas/analysis.py` | 40-42 | **48-50** |
 > | `ai/services/summary_service.py` | 78-80 | **84-86** |
@@ -33,14 +33,14 @@
 
 `types.ts` 의 `RiskUtterance` 는 제가 추측으로 써둔 것입니다. 근거 없이 정한 것이므로 **채택하든 폐기하든 이번에 정리**되어야 합니다.
 
-> **인용 파일의 위치 주의** — `ispotvscode/` 는 이 문서가 있는 브랜치에 없습니다.
-> `feat/api-integration` 브랜치(PR #8)에 있습니다. 확인하시려면 아래처럼 하세요.
+> **인용 파일의 위치 주의** — `ispotvscode/` 는 PR #6 으로 `develop` 에 들어갔습니다.
+> 다른 브랜치에서 확인하시려면 아래처럼 하세요.
 >
 > ```bash
-> git show origin/feat/api-integration:ispotvscode/src/api/types.ts
+> git show origin/develop:ispotvscode/src/api/types.ts
 > ```
 >
-> 마찬가지로 `rag/` 는 `feature/rag` 브랜치에만 있습니다.
+> `rag/` 는 아직 `feature/rag` 브랜치에만 있습니다.
 
 ### 1-2. LangGraph 의 근거 충족 판정을 구현할 수 없습니다
 
@@ -239,7 +239,7 @@ const SEVERITY_TO_RISK_LEVEL: Record<Severity, RiskLevel> = {
 `develop` 기준으로는 `summarize_consultation` 이 빈 배열로 고정합니다.
 
 ```python
-# ai/services/summary_service.py:215-222  (develop / integration 브랜치)
+# ai/services/summary_service.py:215-222  (develop)
 return AIAnalysisOutput(
     schema_version="1.0",
     summary=summary,
@@ -264,7 +264,7 @@ if parsed.risk_utterances or parsed.abuse_signals or parsed.risk_factors:
 
 > **줄번호 주의** — 이 파일은 브랜치마다 다릅니다(162줄 차이). `ai-modeling` 에서는
 > 필드 정의가 84-86 행, 빈 배열 고정이 180-182 행입니다. 위 인용은
-> `integration/develop-consolidation` 기준입니다.
+> `develop` 기준입니다.
 
 ### 5-1-2. 🔴 `key_points` 구조가 `ai-modeling` 에서 이미 바뀌어 있습니다
 
@@ -272,7 +272,7 @@ if parsed.risk_utterances or parsed.abuse_signals or parsed.risk_factors:
 
 | 위치 | `key_points` |
 | --- | --- |
-| `develop` / `integration` | `List[str]` |
+| `develop` | `List[str]` |
 | `backend/app/schemas/contracts.py:61` | `List[str]` |
 | `ispotvscode` `types.ts:277` | `string[]` |
 | **`ai-modeling`** `ai/schemas/analysis.py:42` | **`List[KeyPointItem]`** |
@@ -435,7 +435,7 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 | 유형 | `abuse_model/infer_abuse.py` | `ai/modeling/abuse/infer_abuse.py` |
 | --- | --- | --- |
-| 브랜치 | 이 브랜치 · `develop` | **`ai-modeling` 판** |
+| 브랜치 | `develop` | **`ai-modeling` 판** |
 | 가중치 | `..._2026-09-03.pth` | `..._v4_2026-09-07.pth` |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
