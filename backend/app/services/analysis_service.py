@@ -20,7 +20,6 @@ from app.core.database import SessionLocal
 from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, not_found
 from app.core.logging import get_logger
-from app.core.state_machine import assert_transition
 from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
@@ -73,6 +72,9 @@ def to_analysis_response(analysis: AIAnalysis) -> AnalysisResponse:
 
 
 def build_envelope(db: Session, session: ConsultationSession) -> AnalysisEnvelope:
+    # Polling 중 작업이 사라져 멈춘 상태면 실패로 바꿔 재시도 버튼이 보이게 한다.
+    session_service.expire_stale_processing(db, session)
+
     analysis = get_latest_analysis(db, session.id)
 
     return AnalysisEnvelope(
@@ -96,9 +98,13 @@ def request_analysis(
     AI 분석을 예약한다. 확정된 Transcript 가 없으면 시작하지 않는다.
     """
 
+    # 작업이 사라져 멈춘 처리 중 상태면 먼저 실패로 마감해 재시도를 허용한다.
+    session_service.expire_stale_processing(db, session)
+
     transcript = transcript_service.require_confirmed_transcript(db, session.id)
 
-    assert_transition(session.status, SessionStatus.AI_PROCESSING)
+    # 동시에 들어온 중복 요청은 여기서 한 건만 통과한다.
+    session_service.claim_status(db, session, SessionStatus.AI_PROCESSING)
 
     analysis = AIAnalysis(
         session_id=session.id,

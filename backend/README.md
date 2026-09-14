@@ -88,6 +88,8 @@ JWT_SECRET_KEY=<32 byte 이상 임의 문자열>
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
+`ENV=production` 에서는 `JWT_SECRET_KEY` 가 32자 미만이거나 저장소에 적힌 예시값(`change-me-in-env-file` 등)이면 서버가 시작되지 않는다. 공개된 값으로 서명한 토큰은 누구나 만들 수 있기 때문이다.
+
 ### 2.4 DB Migration
 
 ```bash

@@ -67,6 +67,10 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
 
 결과가 아직 없어도 **404 가 아니라** `transcript: null` / `analysis: null` 을 반환한다.
 
+처리 중 상태가 제한 시간(`STT_TIMEOUT_SECONDS` / `AI_TIMEOUT_SECONDS`) + 60초가 지나도 끝나지 않으면
+(서버 재시작 등으로 작업이 사라진 경우) 위 조회나 재요청 시점에 `STT_FAILED` / `AI_FAILED` 로 바뀌고
+`error.code` 도 같은 값으로 내려온다. 재시도 버튼으로 다시 요청하면 된다.
+
 ---
 
 ## 2. Session 상태
@@ -390,7 +394,7 @@ STT 실행 요청. Body 없음.
 }
 ```
 
-오류: `404 AUDIO_NOT_FOUND`(음성 미업로드), `409 INVALID_SESSION_STATE`
+오류: `404 AUDIO_NOT_FOUND`(음성 미업로드), `409 INVALID_SESSION_STATE`(처리 중이거나, 동시에 들어온 같은 요청이 먼저 처리됨)
 
 ### GET /api/v1/sessions/{session_id}/transcript
 
@@ -456,7 +460,7 @@ STT 실행 요청. Body 없음.
 
 응답은 새 `TranscriptResponse`. 확정 이후 수정하면 상태가 `STT_REVIEW_REQUIRED` 로 되돌아간다.
 
-오류: `404 TRANSCRIPT_NOT_FOUND`(없는 segment_id 포함), `409 INVALID_SESSION_STATE`
+오류: `404 TRANSCRIPT_NOT_FOUND`(없는 segment_id 포함), `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`(다른 요청이 같은 version 을 먼저 수정함 — 새로고침 후 다시 수정)
 
 ### POST /api/v1/sessions/{session_id}/transcript/confirm
 
@@ -484,7 +488,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 오류
 - `404 TRANSCRIPT_NOT_FOUND` — Transcript 없음
 - `409 TRANSCRIPT_NOT_CONFIRMED` — 확정 전
-- `409 INVALID_SESSION_STATE`
+- `409 INVALID_SESSION_STATE` — 처리 중이거나, 동시에 들어온 같은 요청이 먼저 처리됨
 
 ### GET /api/v1/sessions/{session_id}/analysis
 
@@ -631,7 +635,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
-| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호) |
+| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
 | `INVALID_SESSION_STATE` | 409 | 상태 전이 불가 (`details.current_status`, `details.expected_status`) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
