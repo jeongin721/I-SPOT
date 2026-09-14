@@ -107,6 +107,9 @@ def to_transcript_response(transcript: Transcript) -> TranscriptResponse:
 
 
 def build_envelope(db: Session, session: ConsultationSession) -> TranscriptEnvelope:
+    # Polling 중 작업이 사라져 멈춘 상태면 실패로 바꿔 재시도 버튼이 보이게 한다.
+    session_service.expire_stale_processing(db, session)
+
     transcript = get_latest_transcript(db, session.id)
 
     return TranscriptEnvelope(
@@ -152,6 +155,9 @@ def request_stt(
 
     음성 파일이 없으면 시작하지 않고, 상태만 STT_PROCESSING 으로 전이한다.
     """
+
+    # 작업이 사라져 멈춘 처리 중 상태면 먼저 실패로 마감해 재시도를 허용한다.
+    session_service.expire_stale_processing(db, session)
 
     audio_service.get_latest_audio(db, session.id)
 

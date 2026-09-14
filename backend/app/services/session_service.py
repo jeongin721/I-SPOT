@@ -1,14 +1,18 @@
 # Session CRUD 및 상태 조회.
 
 import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core import storage
-from app.core.enums import AuditAction, ReviewStatus, SessionStatus
+from app.core.config import settings
+from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, conflict
+from app.core.logging import get_logger
 from app.core.state_machine import assert_transition
 from app.models.analysis import AIAnalysis
 from app.models.audio import AudioFile
@@ -24,6 +28,8 @@ from app.schemas.session import (
     SessionUpdateRequest,
 )
 from app.services import audit_service
+
+logger = get_logger(__name__)
 
 
 def create_session(
@@ -174,6 +180,8 @@ def build_session_detail(
 ) -> SessionDetailResponse:
     """새로고침 후 Frontend 가 상태를 복원할 수 있도록 진행 상황을 요약한다."""
 
+    expire_stale_processing(db, session)
+
     latest_transcript = db.scalar(
         select(Transcript)
         .where(Transcript.session_id == session.id)
@@ -266,3 +274,139 @@ def claim_status(
         )
 
     session.status = target
+
+
+# =========================================================
+# 멈춘 처리 상태 복구
+# =========================================================
+
+# 제한 시간이 끝난 뒤 실패·결과를 기록하는 데 걸리는 시간을 감안한 여유.
+STALE_GRACE_SECONDS = 60
+
+
+@dataclass(frozen=True)
+class _ProcessingRule:
+    started_field: str
+    completed_field: str
+    timeout_setting: str
+    failed_status: SessionStatus
+    error_code: ErrorCode
+    audit_action: AuditAction
+
+
+_PROCESSING_RULES = {
+    SessionStatus.STT_PROCESSING: _ProcessingRule(
+        "stt_started_at",
+        "stt_completed_at",
+        "STT_TIMEOUT_SECONDS",
+        SessionStatus.STT_FAILED,
+        ErrorCode.STT_FAILED,
+        AuditAction.STT_FAILED,
+    ),
+    SessionStatus.AI_PROCESSING: _ProcessingRule(
+        "ai_started_at",
+        "ai_completed_at",
+        "AI_TIMEOUT_SECONDS",
+        SessionStatus.AI_FAILED,
+        ErrorCode.AI_FAILED,
+        AuditAction.ANALYSIS_FAILED,
+    ),
+}
+
+_STALE_MESSAGE = (
+    "처리 제한 시간이 지나도 결과가 없어 중단된 것으로 처리했습니다(서버 재시작 등). "
+    "다시 시도해 주세요."
+)
+
+
+def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
+    """처리 제한 시간을 한참 넘긴 처리 중 상태를 실패로 마감한다. 마감했으면 True.
+
+    STT · AI 처리는 같은 프로세스의 BackgroundTasks 에서만 돈다. 처리 도중 서버가
+    재시작되면 작업이 사라지고, 처리 중 상태에서 벗어나는 API 경로가 없어 Session 이
+    영원히 멈춘다(재요청·재업로드 모두 409).
+
+    살아 있는 작업은 run_with_timeout 때문에 제한 시간 안에 결과나 실패를 기록한다.
+    그래서 제한 시간 + 여유 시간이 지난 처리 중 상태만 작업이 사라진 것으로 본다.
+
+    서버 시작 시 일괄 정리하지 않는 이유: 여러 프로세스로 띄우면 다른 프로세스가
+    처리 중인 작업까지 실패로 만든다. 그래서 조회·재요청 시점에 Session 별로 판단한다.
+    """
+
+    rule = _PROCESSING_RULES.get(session.status)
+
+    if rule is None:
+        return False
+
+    now = datetime.now(timezone.utc)
+    limit_seconds = getattr(settings, rule.timeout_setting) + STALE_GRACE_SECONDS
+    started_at = getattr(session, rule.started_field)
+
+    if started_at is not None:
+        if started_at.tzinfo is None:
+            # SQLite 는 시간대 정보 없이 돌려준다. 저장 값은 UTC 다.
+            started_at = started_at.replace(tzinfo=timezone.utc)
+
+        if (now - started_at).total_seconds() <= limit_seconds:
+            return False
+
+    processing = session.status
+
+    expired = db.execute(
+        update(ConsultationSession)
+        .where(
+            ConsultationSession.id == session.id,
+            ConsultationSession.status == processing,
+        )
+        .values(status=rule.failed_status)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    if expired != 1:
+        # 판단하는 사이에 작업이 끝나 상태가 바뀌었다.
+        db.rollback()
+        return False
+
+    session.status = rule.failed_status
+    setattr(session, rule.completed_field, now)
+    session.set_error(rule.error_code.value, _STALE_MESSAGE)
+
+    if processing == SessionStatus.AI_PROCESSING:
+        db.execute(
+            update(AIAnalysis)
+            .where(
+                AIAnalysis.session_id == session.id,
+                AIAnalysis.status == AnalysisStatus.PROCESSING,
+            )
+            .values(
+                status=AnalysisStatus.FAILED,
+                error_code=rule.error_code.value,
+                error_message=_STALE_MESSAGE,
+                completed_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+
+    audit_service.record(
+        db,
+        action=rule.audit_action,
+        entity_type="ConsultationSession",
+        entity_id=session.id,
+        case_id=session.case_id,
+        session_id=session.id,
+        detail={
+            "error_code": rule.error_code.value,
+            "reason": "stale_processing",
+            "limit_seconds": limit_seconds,
+        },
+    )
+
+    db.commit()
+
+    logger.warning(
+        "처리 중 상태가 제한 시간을 넘겨 실패로 마감했습니다. session_id=%s status=%s",
+        session.id,
+        processing.value,
+    )
+
+    return True

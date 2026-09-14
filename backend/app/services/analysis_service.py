@@ -72,6 +72,9 @@ def to_analysis_response(analysis: AIAnalysis) -> AnalysisResponse:
 
 
 def build_envelope(db: Session, session: ConsultationSession) -> AnalysisEnvelope:
+    # Polling 중 작업이 사라져 멈춘 상태면 실패로 바꿔 재시도 버튼이 보이게 한다.
+    session_service.expire_stale_processing(db, session)
+
     analysis = get_latest_analysis(db, session.id)
 
     return AnalysisEnvelope(
@@ -94,6 +97,9 @@ def request_analysis(
     """
     AI 분석을 예약한다. 확정된 Transcript 가 없으면 시작하지 않는다.
     """
+
+    # 작업이 사라져 멈춘 처리 중 상태면 먼저 실패로 마감해 재시도를 허용한다.
+    session_service.expire_stale_processing(db, session)
 
     transcript = transcript_service.require_confirmed_transcript(db, session.id)
 
