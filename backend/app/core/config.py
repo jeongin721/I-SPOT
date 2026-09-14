@@ -4,11 +4,25 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, List, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
+
+# 저장소에 공개된 JWT 비밀키 값들. 이 값으로 서명한 토큰은 누구나 만들 수 있다.
+#   기본값(아래 Settings) · backend/.env.example · docker-compose.yml · backend/README.md
+_PUBLIC_JWT_SECRETS = frozenset(
+    {
+        "change-me-in-env-file",
+        "replace-this-with-a-long-random-value",
+        "local-dev-only-change-me-0123456789abcdef",
+        "local-dev-only-change-me-1234567890",
+    }
+)
+
+# HS256 서명 키 권장 길이(32 byte).
+_MIN_JWT_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -107,6 +121,29 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
 
         return value
+
+    @model_validator(mode="after")
+    def _require_private_jwt_secret_in_production(self) -> "Settings":
+        """운영에서 공개된 기본값·예시값이나 짧은 JWT 비밀키로 서버가 뜨지 않게 한다.
+
+        .env 에 JWT_SECRET_KEY 를 빠뜨리면 기본값으로 조용히 기동되고, 저장소를 본 사람은
+        다른 사용자(관리자 포함)의 UUID 로 유효한 토큰을 만들 수 있다.
+        local/test 는 .env 없이 바로 실행되도록 검사하지 않는다.
+        """
+
+        if self.ENV != "production":
+            return self
+
+        secret = self.JWT_SECRET_KEY
+
+        if secret in _PUBLIC_JWT_SECRETS or len(secret) < _MIN_JWT_SECRET_LENGTH:
+            raise ValueError(
+                "ENV=production 에서는 JWT_SECRET_KEY 를 저장소에 없는 "
+                f"{_MIN_JWT_SECRET_LENGTH}자 이상 임의 값으로 설정해야 합니다. "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))" 로 만들 수 있습니다.'
+            )
+
+        return self
 
     @property
     def audio_max_size_bytes(self) -> int:

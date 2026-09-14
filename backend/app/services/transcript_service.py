@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.adapters.stt_adapter import STTError, STTOutputError, get_stt_adapter
@@ -106,6 +107,9 @@ def to_transcript_response(transcript: Transcript) -> TranscriptResponse:
 
 
 def build_envelope(db: Session, session: ConsultationSession) -> TranscriptEnvelope:
+    # Polling 중 작업이 사라져 멈춘 상태면 실패로 바꿔 재시도 버튼이 보이게 한다.
+    session_service.expire_stale_processing(db, session)
+
     transcript = get_latest_transcript(db, session.id)
 
     return TranscriptEnvelope(
@@ -152,9 +156,13 @@ def request_stt(
     음성 파일이 없으면 시작하지 않고, 상태만 STT_PROCESSING 으로 전이한다.
     """
 
+    # 작업이 사라져 멈춘 처리 중 상태면 먼저 실패로 마감해 재시도를 허용한다.
+    session_service.expire_stale_processing(db, session)
+
     audio_service.get_latest_audio(db, session.id)
 
-    assert_transition(session.status, SessionStatus.STT_PROCESSING)
+    # 동시에 들어온 중복 요청은 여기서 한 건만 통과한다.
+    session_service.claim_status(db, session, SessionStatus.STT_PROCESSING)
 
     session.status = SessionStatus.STT_PROCESSING
     session.stt_started_at = datetime.now(timezone.utc)
@@ -399,7 +407,18 @@ def update_transcript(
     )
 
     db.add(new_transcript)
-    db.flush()
+
+    try:
+        db.flush()
+    except IntegrityError as error:
+        # 같은 version 을 보고 동시에 저장한 다른 요청이 먼저 커밋했다.
+        # (session_id, version) 유니크 제약에 걸린 것을 500 대신 409 로 알려준다.
+        db.rollback()
+
+        raise conflict(
+            ErrorCode.DUPLICATE_RESOURCE,
+            "다른 요청이 먼저 Transcript 를 수정했습니다. 새로고침 후 다시 수정해 주세요.",
+        ) from error
 
     order_index = 0
     edited_ids: List[str] = []
