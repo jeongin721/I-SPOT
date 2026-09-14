@@ -97,9 +97,23 @@ status_code=status.HTTP_202_ACCEPTED
 
 `POST /analysis` 는 즉시 `202` 를 돌려주고 `BackgroundTasks` 로 처리한 뒤, 클라이언트가 폴링으로 결과를 가져갑니다.
 
-### 2-4. RAG 는 V1 골격이 있습니다
+### 2-4. RAG 는 V2 까지 있습니다
 
-`feature/rag` 브랜치, 커밋 25개(2026-09-14 기준). 검색까지만 되고 **답변 생성은 없습니다.**
+`feature/rag` 브랜치, 커밋 37개(2026-09-14 13:25 `44b5476` 기준). 검색에 더해 **상담사용 결과를 생성합니다.** 9/11 오후에 체크리스트 판정, 9/14 에 법령 조회와 다음 상담 질문이 추가되었습니다.
+
+`rag/pipeline.py` 의 `analyze_consultation_evidence(text, abuse_type)` 가 전체를 묶습니다.
+
+```text
+상담 문장 + 학대 유형
+→ 체크리스트 검색 → 상담 문장과 비교 (matched / needs_confirmation / excluded)   ← LLM
+→ 국가법령정보센터 API 에서 관련 현행 조문
+→ 다음 상담용 확인 질문 3~5개                                                 ← LLM
+→ 상담사 참고자료 2~3개
+```
+
+`rag/README.md` §11 은 이 결과 JSON 을 **Backend / LangGraph Agent 에 연결하고 Frontend 에서 상담사에게 보여주는** 방향입니다. 이 문서의 4절은 RAG 를 **근거가 부족할 때만 부르는 재분석 재료**로 잡았으므로(4-1 표의 `rag_node` 입력), 어느 쪽으로 할지 팀장님 확인이 필요합니다(8절 5번).
+
+아래 `search_evidence` 는 파이프라인 안에서 쓰이는 검색 함수입니다.
 
 ```python
 # rag/retriever.py:30   (feature/rag 브랜치에만 있습니다 — 아래 주의 참조)
@@ -468,8 +482,8 @@ PR      #10 → develop
 
 1. 임베딩 모델 확정 — **나중에 바꾸면 전체 재색인이 필요합니다**
 2. `rag_data/` 원본 PDF 확보 (팀장님께 기존 수집본 확인)
-3. `rag/README.md` §6 의 메타데이터 정확도 작업
-4. `search_evidence()` 를 `rag_node` 에서 호출할 때의 쿼리 구성 규칙
+3. 메타데이터 정확도 (`rag/metadata.py`) — 9/11 에 `category`·`abuse_type` 추론이 추가되었습니다
+4. Agent 가 RAG 에 넘길 입력 규칙 — 상담 문장 범위, 학대 유형 표기(RAG 는 `physical` 등, 이경진 님 모델은 `신체학대` 등)
 
 ### 5-4. Frontend (다솔)
 
@@ -525,7 +539,7 @@ risk_factors: List[Dict[str, Any]]
 Must Have 가 안정적으로 동작하기 전에는 Later 기능을 우선 구현하지 않는다.
 ```
 
-또한 PRD 의 RAG 는 **"과거 중대사건"**(내부 상담 기록 검색)이고, `feature/rag` 는 **지침·판례·매뉴얼**(외부 공개 문서)입니다. 서로 다른 기능입니다.
+또한 PRD 의 RAG 는 **"과거 중대사건"**(내부 상담 기록 검색)이고, `feature/rag` 는 **지침·매뉴얼·체크리스트·판례 등 공개 문서와 현행 법령**입니다. 서로 다른 기능입니다.
 
 Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 신호` · `Risk Factor 추출` · `근거 문장 제공` 이 아직 미구현입니다(6-1 과 같은 원인).
 
