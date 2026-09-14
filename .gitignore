@@ -17,3 +17,6 @@ results/
 # Local RAG source documents and generated vector DB
 rag_data/
 rag_storage/
+
+# Cached responses from 국가법령정보센터 Open API
+law_cache/
