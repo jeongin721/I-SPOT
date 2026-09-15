@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+python-multipart
+PyMuPDF
+numpy
+pandas
+scikit-learn
+joblib
+requests
+transformers
+datasets
+accelerate
+sentencepiece
+safetensors
+torch
+torchvision
+torchaudio
