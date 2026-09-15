@@ -13,6 +13,7 @@ import type {
   CaseCreateRequest,
   CaseDetail,
   CaseStatus,
+  CaseUpdateRequest,
   LoginRequest,
   LoginResponse,
   Paged,
@@ -86,7 +87,8 @@ export const cases = {
     return api.post<Case>("/cases", payload);
   },
 
-  update(caseId: string, payload: Partial<CaseCreateRequest>): Promise<Case> {
+  /** 바꿀 필드만 보낸다. status 로 종결, counselor_id 로 담당자 변경(관리자만). */
+  update(caseId: string, payload: CaseUpdateRequest): Promise<Case> {
     return api.patch<Case>(`/cases/${caseId}`, payload);
   },
 
