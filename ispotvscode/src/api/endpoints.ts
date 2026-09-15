@@ -1,4 +1,5 @@
-// Backend 의 29개 endpoint 를 함수로 감싼 것.
+// Backend endpoint 를 함수로 감싼 것. 쿼리 이름·응답 모양은 Backend OpenAPI(/openapi.json)와 같다.
+// (문서 API · 계정 생성 · 음성 metadata 조회는 아직 쓰는 화면이 없어 감싸지 않았다.)
 //
 // 화면에서는 주소 문자열을 직접 쓰지 않고 이 함수들만 부른다.
 // Backend 주소가 바뀌어도 고칠 곳이 여기 한 군데로 유지된다.
@@ -10,19 +11,33 @@ import type {
   AudioUploadResponse,
   Case,
   CaseCreateRequest,
+  CaseDetail,
+  CaseStatus,
   LoginRequest,
   LoginResponse,
   Paged,
   STTRequestResponse,
   Session,
   SessionCreateRequest,
+  SessionDetail,
+  SessionStatus,
   Summary,
   SummaryEnvelope,
   SummaryUpdateRequest,
   Transcript,
   TranscriptEnvelope,
+  TranscriptUpdateRequest,
   User,
 } from "./types";
+
+/**
+ * 목록 조회 공통 쿼리. Backend 이름(page_size)을 그대로 쓴다. page 는 1부터, page_size 는 최대 100.
+ * interface 가 아니라 type 으로 둔다 — client 의 query 인자(Record)에 그대로 넘기려면 필요하다.
+ */
+export type PageQuery = {
+  page?: number;
+  page_size?: number;
+};
 
 // =========================================================
 // 인증
@@ -47,9 +62,9 @@ export const auth = {
     clearToken();
   },
 
-  /** 관리자 전용 */
-  listUsers(): Promise<Paged<User>> {
-    return api.get<Paged<User>>("/auth/users");
+  /** 관리자 전용. 페이지 없이 전체 배열로 온다. */
+  listUsers(): Promise<User[]> {
+    return api.get<User[]>("/auth/users");
   },
 };
 
@@ -58,12 +73,13 @@ export const auth = {
 // =========================================================
 
 export const cases = {
-  list(params?: { page?: number; size?: number; status?: string; q?: string }): Promise<Paged<Case>> {
+  /** search 는 제목·사례번호·아동 별칭에서 찾는다. */
+  list(params?: PageQuery & { status?: CaseStatus; search?: string }): Promise<Paged<Case>> {
     return api.get<Paged<Case>>("/cases", params);
   },
 
-  get(caseId: string): Promise<Case> {
-    return api.get<Case>(`/cases/${caseId}`);
+  get(caseId: string): Promise<CaseDetail> {
+    return api.get<CaseDetail>(`/cases/${caseId}`);
   },
 
   create(payload: CaseCreateRequest): Promise<Case> {
@@ -78,7 +94,10 @@ export const cases = {
     return api.delete<void>(`/cases/${caseId}`);
   },
 
-  listSessions(caseId: string, params?: { page?: number; size?: number }): Promise<Paged<Session>> {
+  listSessions(
+    caseId: string,
+    params?: PageQuery & { status?: SessionStatus },
+  ): Promise<Paged<Session>> {
     return api.get<Paged<Session>>(`/cases/${caseId}/sessions`, params);
   },
 
@@ -92,8 +111,9 @@ export const cases = {
 // =========================================================
 
 export const sessions = {
-  get(sessionId: string): Promise<Session> {
-    return api.get<Session>(`/sessions/${sessionId}`);
+  /** 새로고침 후 화면 복원용. 진행 상황(has_audio 등)과 실패 정보(error)가 함께 온다. */
+  get(sessionId: string): Promise<SessionDetail> {
+    return api.get<SessionDetail>(`/sessions/${sessionId}`);
   },
 
   update(sessionId: string, payload: Partial<SessionCreateRequest>): Promise<Session> {
@@ -137,9 +157,13 @@ export const transcript = {
     return api.get<TranscriptEnvelope>(`/sessions/${sessionId}/transcript`);
   },
 
-  /** 상담사 수정. 덮어쓰지 않고 새 version 이 만들어진다. */
-  update(sessionId: string, segments: Transcript["segments"]): Promise<Transcript> {
-    return api.patch<Transcript>(`/sessions/${sessionId}/transcript`, { segments });
+  /**
+   * 상담사 수정. 덮어쓰지 않고 새 version 이 만들어진다.
+   * 바꾼 발화의 바꾼 필드만 보낸다. 전체 발화를 보내면 모두 "수정됨"으로 표시된다.
+   * 다른 사람이 먼저 같은 version 을 수정했으면 409 DUPLICATE_RESOURCE — 새로고침 후 다시 수정한다.
+   */
+  update(sessionId: string, payload: TranscriptUpdateRequest): Promise<Transcript> {
+    return api.patch<Transcript>(`/sessions/${sessionId}/transcript`, payload);
   },
 
   /** 검수 확정. 이 다음에야 AI 분석을 요청할 수 있다. */

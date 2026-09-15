@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -50,6 +51,10 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
+
+    # 등록 순서가 중요하다. 나중에 등록한 미들웨어가 바깥에 놓이므로, 오류 처리를
+    # 먼저 등록해야 CORS 가 그 바깥에서 500 응답에도 헤더를 붙인다.
+    app.add_middleware(_UnexpectedErrorMiddleware)
 
     app.add_middleware(
         CORSMiddleware,
@@ -88,6 +93,62 @@ def create_app() -> FastAPI:
         )
 
     return app
+
+
+def _internal_error_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": ErrorCode.INTERNAL_ERROR.value,
+                "message": "서버 내부 오류가 발생했습니다.",
+            }
+        },
+    )
+
+
+class _UnexpectedErrorMiddleware:
+    """처리되지 않은 예외를 CORS 미들웨어 안쪽에서 500 오류 응답으로 바꾼다.
+
+    @app.exception_handler(Exception) 은 가장 바깥의 ServerErrorMiddleware 에서 실행되어
+    CORSMiddleware 를 거치지 않는다. 그러면 500 응답에 CORS 헤더가 빠져 브라우저가
+    본문을 막고, Frontend 는 원인 없는 CORS 오류만 보게 된다.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        response_started = False
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal response_started
+
+            if message["type"] == "http.response.start":
+                response_started = True
+
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception as exc:
+            # 응답을 이미 보내기 시작했으면(BackgroundTasks 등) 바꿀 수 없으므로 그대로 올린다.
+            if response_started:
+                raise
+
+            # 상담 원문이 섞일 수 있는 request body 는 로그에 남기지 않는다.
+            logger.exception(
+                "처리되지 않은 오류 method=%s path=%s type=%s",
+                scope.get("method"),
+                scope.get("path"),
+                type(exc).__name__,
+            )
+
+            await _internal_error_response()(scope, receive, send)
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -137,15 +198,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
             type(exc).__name__,
         )
 
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": {
-                    "code": ErrorCode.INTERNAL_ERROR.value,
-                    "message": "서버 내부 오류가 발생했습니다.",
-                }
-            },
-        )
+        return _internal_error_response()
 
 
 def _summarize_validation_errors(exc: RequestValidationError) -> Any:

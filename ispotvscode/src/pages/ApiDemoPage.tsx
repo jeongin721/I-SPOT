@@ -139,13 +139,13 @@ function CaseList() {
     setError(null);
 
     try {
-      const page = await casesApi.list({ page: 1, size: 50 });
+      const page = await casesApi.list({ page: 1, page_size: 50 });
 
-      // 회차 수는 사례 응답에 없으므로 각 사례의 회차 목록에서 total 만 읽어온다.
+      // 회차 수는 사례 목록 응답에 없으므로 각 사례의 회차 목록에서 total 만 읽어온다.
       const withCounts = await Promise.all(
         page.items.map(async (item) => {
           try {
-            const sessions = await casesApi.listSessions(item.id, { page: 1, size: 1 });
+            const sessions = await casesApi.listSessions(item.id, { page: 1, page_size: 1 });
 
             return toUiCaseWithId(item, { sessionCount: sessions.meta.total });
           } catch {
@@ -244,7 +244,7 @@ function SessionList({ caseId, caseNumber }: { caseId: string; caseNumber: strin
     setLoading(true);
 
     casesApi
-      .listSessions(caseId, { page: 1, size: 50 })
+      .listSessions(caseId, { page: 1, page_size: 50 })
       .then((page) => {
         if (!cancelled) setItems(page.items);
       })

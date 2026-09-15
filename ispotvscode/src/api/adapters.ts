@@ -21,7 +21,7 @@ import type { Case, Session, SessionStatus } from "./types";
 //  abuseTypes        | 사례 단위로는 없음. AI 분석 결과(abuse_signals)에 있음
 //  riskLevel/Score   | 사례 단위로는 없음. 회차별 AI 분석에서 집계해야 함
 //  keywords          | Backend 에 없음
-//  sessionCount      | Case 응답에 없음. 회차 목록의 meta.total 로 얻는다
+//  sessionCount      | 사례 목록 응답에는 없음. 사례 상세(session_count) 또는 회차 목록 meta.total
 //
 //  해결됨: counselor(이름) → counselor_name
 //         guardian       → guardian_type / guardian_note
