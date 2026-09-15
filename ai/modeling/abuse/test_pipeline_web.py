@@ -7,12 +7,14 @@ QA / Child-only 입력을 받아 1차 대분류, 2차 세부유형, 근거 발�
 import json
 from datetime import datetime
 from html import escape
+from typing import List
 
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, PlainTextResponse
 import uvicorn
 
 from ai.modeling.abuse.infer_abuse_pipeline import analyze_session
+from ai.modeling.abuse import case_store
 
 
 # ============================================================
@@ -204,7 +206,9 @@ app = FastAPI(
 def build_page(
     text="",
     input_mode="qa",
+    case_id="",
     result=None,
+    session_id=None,
     error=None,
 ):
     mode_qa_checked = "checked" if input_mode == "qa" else ""
@@ -229,27 +233,6 @@ def build_page(
             result.get("subtype_analysis", {})
         )
 
-        summary = escape(
-            result.get(
-                "counseling_summary",
-                "",
-            )
-        )
-
-        note = escape(
-            result.get(
-                "counseling_note",
-                "",
-            )
-        )
-
-        checklist_html = build_checklist_draft_html(
-            result.get(
-                "checklist_draft",
-                {},
-            )
-        )
-
         result_html = f"""
         <section class="panel">
             <h2>1차 학대 위험신호</h2>
@@ -261,21 +244,7 @@ def build_page(
             {subtype_html}
         </section>
 
-        <section class="panel">
-            <h2>상담 요약</h2>
-            <div class="text-box">
-                {summary if summary else "생성된 상담 요약이 없습니다."}
-            </div>
-        </section>
-
-        <section class="panel">
-            <h2>상담일지</h2>
-            <div class="text-box">
-                {note if note else "생성된 상담일지가 없습니다."}
-            </div>
-        </section>
-
-        {checklist_html}
+        {build_approval_form_html(session_id, result)}
 
         {build_download_form_html(result)}
         """
@@ -481,6 +450,126 @@ def build_page(
                 gap: 8px;
             }}
 
+            .case-id-input {{
+                width: 100%;
+                padding: 12px 14px;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                font-size: 14px;
+                margin-bottom: 8px;
+            }}
+
+            textarea.editable {{
+                background: white;
+                border-color: #93c5fd;
+            }}
+
+            .checklist-edit-grid {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+            }}
+
+            .checklist-edit-item {{
+                display: inline-flex;
+                flex-direction: column;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+                background: #f9fafb;
+                cursor: pointer;
+            }}
+
+            .checklist-edit-item.has-evidence {{
+                border-color: #f87171;
+                background: #fee2e2;
+            }}
+
+            .checklist-edit-item input[type="checkbox"] {{
+                margin-right: 6px;
+            }}
+
+            .checklist-edit-item .checklist-evidence-box {{
+                margin: 6px 0 0;
+                background: white;
+            }}
+
+            .confirm-panel ul {{
+                padding-left: 20px;
+            }}
+
+            .confirm-links {{
+                display: flex;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-top: 16px;
+            }}
+
+            .confirm-links a {{
+                display: inline-block;
+                padding: 10px 18px;
+                border-radius: 10px;
+                background: #111827;
+                color: white;
+                text-decoration: none;
+                font-size: 14px;
+                font-weight: 600;
+            }}
+
+            table.case-table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+
+            table.case-table th,
+            table.case-table td {{
+                text-align: left;
+                padding: 10px 12px;
+                border-bottom: 1px solid #e5e7eb;
+                font-size: 14px;
+            }}
+
+            table.case-table a {{
+                color: #2563eb;
+                text-decoration: none;
+                font-weight: 600;
+            }}
+
+            .status-badge {{
+                display: inline-block;
+                padding: 2px 10px;
+                border-radius: 999px;
+                font-size: 12px;
+                font-weight: 700;
+            }}
+
+            .status-badge.approved {{
+                background: #dcfce7;
+                color: #166534;
+            }}
+
+            .status-badge.draft {{
+                background: #fef3c7;
+                color: #92400e;
+            }}
+
+            @media print {{
+                .no-print {{
+                    display: none !important;
+                }}
+
+                body {{
+                    background: white;
+                }}
+
+                .panel {{
+                    box-shadow: none;
+                    border: none;
+                }}
+            }}
+
             .checklist-pill {{
                 border: 1px solid #d1d5db;
                 border-radius: 999px;
@@ -599,6 +688,17 @@ def build_page(
             <section class="panel">
 
                 <form method="post" action="/analyze">
+
+                    <h2>사례 ID</h2>
+
+                    <input
+                        type="text"
+                        name="case_id"
+                        class="case-id-input"
+                        placeholder="예: CASE-2026-0001 (같은 사례의 다음 회기는 동일한 ID를 입력하세요)"
+                        value="{escape(case_id)}"
+                        required
+                    >
 
                     <h2>입력 방식</h2>
 
@@ -1148,7 +1248,282 @@ def build_checklist_draft_html(
 
 
 # ============================================================
-# 6. Routes
+# 6. 승인 워크플로 + 사례관리 HTML
+# ============================================================
+
+def build_checklist_edit_html(
+    checklist_draft: dict,
+) -> str:
+    def render_category(category):
+        blocks = []
+
+        for item in checklist_draft.get(
+            "checklist",
+            [],
+        ):
+            if item.get("category") != category:
+                continue
+
+            key = f"{item['category']}::{item['item']}"
+
+            checked_attr = (
+                "checked"
+                if item.get("suggested")
+                else ""
+            )
+
+            evidence = item.get(
+                "evidence",
+                [],
+            )
+
+            has_evidence_class = (
+                " has-evidence"
+                if evidence
+                else ""
+            )
+
+            evidence_html = (
+                f'<div class="checklist-evidence-box">'
+                f'{build_evidence_list_html(evidence)}</div>'
+                if evidence
+                else ""
+            )
+
+            blocks.append(
+                f"""
+                <label class="checklist-edit-item{has_evidence_class}">
+                    <span>
+                        <input
+                            type="checkbox"
+                            name="checked_items"
+                            value="{escape(key, quote=True)}"
+                            {checked_attr}
+                        >
+                        {escape(item['item'])}
+                    </span>
+                    {evidence_html}
+                </label>
+                """
+            )
+
+        return "".join(blocks)
+
+    safety_html = build_safety_assessment_html(
+        checklist_draft.get(
+            "safety_assessment_evidence",
+            [],
+        )
+    )
+
+    environment = checklist_draft.get(
+        "environment_key_person"
+    )
+
+    if environment:
+        environment_evidence_html = build_evidence_list_html(
+            environment.get(
+                "evidence",
+                [],
+            )
+        )
+
+        environment_html = f"""
+        <div class="checklist-category">환경</div>
+        <div class="safety-item">
+            <div class="safety-item-title">
+                {escape(environment.get("item", ""))}
+                — {escape(environment.get("status", ""))}
+            </div>
+            <div class="safety-item-evidence">
+                {environment_evidence_html}
+            </div>
+        </div>
+        """
+    else:
+        environment_html = """
+        <div class="checklist-category">환경</div>
+        <div class="safety-item-empty">
+            신뢰할 만한 주위 사람 관련 언급을 찾지 못했습니다.
+        </div>
+        """
+
+    return f"""
+    <section class="panel">
+        <h2>AI 상담 체크리스트 초안 — 검수 후 승인</h2>
+
+        <div class="ai-banner">
+            체크된 항목은 AI 제안입니다. 근거를 확인하고,
+            잘못됐거나 빠진 항목은 직접 체크박스를 수정한 뒤 승인해주세요.
+        </div>
+
+        <div class="checklist-category">가정상황</div>
+        <div class="checklist-edit-grid">
+            {render_category("가정상황")}
+        </div>
+
+        <div class="checklist-category">아동 특성</div>
+        <div class="checklist-edit-grid">
+            {render_category("아동 특성")}
+        </div>
+
+        <div class="checklist-category">
+            안전영역 관련 근거
+            <span style="font-weight: 400; font-size: 12px; color: #6b7280;">
+                (등급은 AI가 매기지 않습니다 — 상담사가 직접 판단)
+            </span>
+        </div>
+        {safety_html}
+
+        {environment_html}
+    </section>
+    """
+
+
+def build_approval_form_html(
+    session_id,
+    result: dict,
+) -> str:
+    checklist_draft = (
+        result.get(
+            "checklist_draft"
+        )
+        or {}
+    )
+
+    summary = escape(
+        result.get(
+            "counseling_summary",
+            "",
+        )
+    )
+
+    note = escape(
+        result.get(
+            "counseling_note",
+            "",
+        )
+    )
+
+    problem_history = escape(
+        checklist_draft.get(
+            "problem_history_draft",
+            "",
+        )
+    )
+
+    counselor_opinion = escape(
+        checklist_draft.get(
+            "counselor_opinion_draft",
+            "",
+        )
+    )
+
+    return f"""
+    <form method="post" action="/approve">
+        <input type="hidden" name="session_id" value="{session_id}">
+
+        <section class="panel">
+            <h2>상담 요약 (수정 가능)</h2>
+            <textarea name="counseling_summary" class="editable">{summary}</textarea>
+        </section>
+
+        <section class="panel">
+            <h2>상담일지 (수정 가능)</h2>
+            <textarea name="counseling_note" class="editable">{note}</textarea>
+        </section>
+
+        {build_checklist_edit_html(checklist_draft)}
+
+        <section class="panel">
+            <h2>문제력 초안 (수정 가능)</h2>
+            <textarea name="problem_history_draft" class="editable">{problem_history}</textarea>
+        </section>
+
+        <section class="panel">
+            <h2>상담원 소견 초안 (수정 가능)</h2>
+            <textarea name="counselor_opinion_draft" class="editable">{counselor_opinion}</textarea>
+        </section>
+
+        <section class="panel">
+            <button type="submit">승인하고 저장</button>
+        </section>
+    </form>
+    """
+
+
+def build_confirmation_page_html(
+    case_id: str,
+    session_id: int,
+    edit_log: list,
+) -> str:
+    if edit_log:
+        edit_items = "".join(
+            f"<li>{escape(entry['field'])} — AI 초안에서 수정됨</li>"
+            for entry in edit_log
+        )
+    else:
+        edit_items = (
+            "<li>AI 초안 그대로 승인됨 (수정 없음)</li>"
+        )
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <title>승인 완료</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                background: #f5f7fb;
+                margin: 0;
+                padding: 40px 24px;
+                color: #1f2937;
+            }}
+            .panel {{
+                max-width: 640px;
+                margin: 0 auto;
+                background: white;
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
+                padding: 28px;
+            }}
+            ul {{
+                padding-left: 20px;
+            }}
+            .confirm-links a {{
+                display: inline-block;
+                margin-top: 16px;
+                margin-right: 12px;
+                padding: 10px 18px;
+                border-radius: 10px;
+                background: #111827;
+                color: white;
+                text-decoration: none;
+                font-size: 14px;
+                font-weight: 600;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="panel">
+            <h1>승인 완료</h1>
+            <p>사례 <b>{escape(case_id)}</b>의 회기 #{session_id}가 저장됐습니다.</p>
+            <ul>{edit_items}</ul>
+            <div class="confirm-links">
+                <a href="/cases/{escape(case_id, quote=True)}">이 사례 회기 목록</a>
+                <a href="/sessions/{session_id}/document">문서로 보기 / 인쇄</a>
+                <a href="/">새 분석 시작</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+# ============================================================
+# 7. Routes
 # ============================================================
 
 @app.get(
@@ -1174,6 +1549,7 @@ def index():
 def analyze(
     text: str = Form(...),
     input_mode: str = Form(...),
+    case_id: str = Form(...),
 ):
     try:
         result = analyze_session(
@@ -1181,18 +1557,342 @@ def analyze(
             input_mode=input_mode,
         )
 
+        session_id = case_store.save_draft_session(
+            case_id=case_id,
+            input_mode=input_mode,
+            source_type="text",
+            raw_text=text,
+            analysis=result,
+        )
+
         return build_page(
             text=text,
             input_mode=input_mode,
+            case_id=case_id,
             result=result,
+            session_id=session_id,
         )
 
     except Exception as exc:
         return build_page(
             text=text,
             input_mode=input_mode,
+            case_id=case_id,
             error=exc,
         )
+
+
+@app.post(
+    "/approve",
+    response_class=HTMLResponse,
+)
+def approve(
+    session_id: int = Form(...),
+    counseling_summary: str = Form(""),
+    counseling_note: str = Form(""),
+    problem_history_draft: str = Form(""),
+    counselor_opinion_draft: str = Form(""),
+    checked_items: List[str] = Form([]),
+):
+    session = case_store.get_session(
+        session_id
+    )
+
+    if session is None:
+        return HTMLResponse(
+            "<h1>세션을 찾을 수 없습니다.</h1>",
+            status_code=404,
+        )
+
+    ai_checklist = json.loads(
+        session["ai_checklist"] or "{}"
+    )
+
+    checked_set = set(
+        checked_items
+    )
+
+    final_checklist_items = []
+
+    for item in ai_checklist.get(
+        "checklist",
+        [],
+    ):
+        key = f"{item['category']}::{item['item']}"
+
+        final_checklist_items.append(
+            {
+                **item,
+                "suggested": key in checked_set,
+            }
+        )
+
+    final_checklist = {
+        **ai_checklist,
+        "checklist": final_checklist_items,
+        "problem_history_draft": problem_history_draft,
+        "counselor_opinion_draft": counselor_opinion_draft,
+    }
+
+    edit_log = case_store.approve_session(
+        session_id=session_id,
+        final_counseling_summary=counseling_summary,
+        final_counseling_note=counseling_note,
+        final_checklist=final_checklist,
+    )
+
+    return HTMLResponse(
+        build_confirmation_page_html(
+            case_id=session["case_id"],
+            session_id=session_id,
+            edit_log=edit_log,
+        )
+    )
+
+
+@app.get(
+    "/cases",
+    response_class=HTMLResponse,
+)
+def cases_list():
+    cases = case_store.list_cases()
+
+    rows = "".join(
+        f"""
+        <tr>
+            <td><a href="/cases/{escape(c['case_id'], quote=True)}">{escape(c['case_id'])}</a></td>
+            <td>{c['session_count']}</td>
+            <td>{escape(c['last_session_at'] or '-')}</td>
+        </tr>
+        """
+        for c in cases
+    )
+
+    return HTMLResponse(
+        f"""
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <title>사례 목록</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    background: #f5f7fb; margin: 0; padding: 40px 24px; color: #1f2937; }}
+                .panel {{ max-width: 800px; margin: 0 auto; background: white;
+                    border: 1px solid #e5e7eb; border-radius: 16px; padding: 28px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }}
+                a {{ color: #2563eb; text-decoration: none; font-weight: 600; }}
+            </style>
+        </head>
+        <body>
+            <div class="panel">
+                <h1>사례 목록</h1>
+                <table>
+                    <tr><th>사례 ID</th><th>회기 수</th><th>최근 회기</th></tr>
+                    {rows if rows else '<tr><td colspan="3">저장된 사례가 없습니다.</td></tr>'}
+                </table>
+                <p><a href="/">새 분석 시작</a></p>
+            </div>
+        </body>
+        </html>
+        """
+    )
+
+
+@app.get(
+    "/cases/{case_id}",
+    response_class=HTMLResponse,
+)
+def case_detail(
+    case_id: str,
+):
+    sessions = case_store.list_sessions_for_case(
+        case_id
+    )
+
+    rows = []
+
+    for s in sessions:
+        major_types = json.loads(
+            s["major_types"] or "{}"
+        )
+
+        detected = [
+            label
+            for label, prediction in major_types.items()
+            if prediction.get("detected")
+        ]
+
+        status_class = s["status"]
+
+        status_label = (
+            "승인됨"
+            if s["status"] == "approved"
+            else "초안"
+        )
+
+        document_link = (
+            f'<a href="/sessions/{s["session_id"]}/document">문서보기</a>'
+            if s["status"] == "approved"
+            else "(미승인)"
+        )
+
+        rows.append(
+            f"""
+            <tr>
+                <td>#{s['session_id']}</td>
+                <td>{escape(s['created_at'])}</td>
+                <td><span class="status-badge {status_class}">{status_label}</span></td>
+                <td>{escape(', '.join(detected)) if detected else '-'}</td>
+                <td>{document_link}</td>
+            </tr>
+            """
+        )
+
+    return HTMLResponse(
+        f"""
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <title>{escape(case_id)} 회기 목록</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    background: #f5f7fb; margin: 0; padding: 40px 24px; color: #1f2937; }}
+                .panel {{ max-width: 900px; margin: 0 auto; background: white;
+                    border: 1px solid #e5e7eb; border-radius: 16px; padding: 28px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }}
+                a {{ color: #2563eb; text-decoration: none; font-weight: 600; }}
+                .status-badge {{ display: inline-block; padding: 2px 10px; border-radius: 999px;
+                    font-size: 12px; font-weight: 700; }}
+                .status-badge.approved {{ background: #dcfce7; color: #166534; }}
+                .status-badge.draft {{ background: #fef3c7; color: #92400e; }}
+            </style>
+        </head>
+        <body>
+            <div class="panel">
+                <h1>사례 {escape(case_id)} — 회기 목록</h1>
+                <p>회기별로 나열되어 있어 이전 회기와 비교해볼 수 있습니다.</p>
+                <table>
+                    <tr><th>회기</th><th>생성 시각</th><th>상태</th><th>탐지된 유형</th><th></th></tr>
+                    {''.join(rows) if rows else '<tr><td colspan="5">회기가 없습니다.</td></tr>'}
+                </table>
+                <p><a href="/cases">전체 사례 목록</a> · <a href="/">새 분석 시작</a></p>
+            </div>
+        </body>
+        </html>
+        """
+    )
+
+
+@app.get(
+    "/sessions/{session_id}/document",
+    response_class=HTMLResponse,
+)
+def session_document(
+    session_id: int,
+):
+    session = case_store.get_session(
+        session_id
+    )
+
+    if session is None:
+        return HTMLResponse(
+            "<h1>세션을 찾을 수 없습니다.</h1>",
+            status_code=404,
+        )
+
+    if session["status"] != "approved":
+        return HTMLResponse(
+            f"""
+            <h1>아직 승인되지 않은 회기입니다.</h1>
+            <p><a href="/cases/{escape(session['case_id'], quote=True)}">뒤로</a></p>
+            """
+        )
+
+    final_checklist = json.loads(
+        session["final_checklist"] or "{}"
+    )
+
+    checked_items = [
+        item
+        for item in final_checklist.get(
+            "checklist",
+            [],
+        )
+        if item.get("suggested")
+    ]
+
+    checklist_lines = "".join(
+        f"<li>[{escape(item['category'])}] {escape(item['item'])}</li>"
+        for item in checked_items
+    ) or "<li>해당 없음</li>"
+
+    return HTMLResponse(
+        f"""
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <title>상담 기록 문서 — {escape(session['case_id'])} #{session_id}</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    background: #f5f7fb; margin: 0; padding: 40px 24px; color: #1f2937; }}
+                .doc {{ max-width: 760px; margin: 0 auto; background: white;
+                    border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px; }}
+                h1 {{ font-size: 22px; border-bottom: 2px solid #111827; padding-bottom: 12px; }}
+                h2 {{ font-size: 16px; margin-top: 28px; }}
+                .meta {{ color: #6b7280; font-size: 13px; margin-bottom: 20px; }}
+                .text-box {{ white-space: pre-wrap; line-height: 1.75; background: #f9fafb;
+                    padding: 16px; border-radius: 10px; }}
+                ul {{ padding-left: 20px; }}
+                .no-print button {{ border: none; border-radius: 10px; padding: 10px 18px;
+                    background: #111827; color: white; font-size: 14px; font-weight: 600; cursor: pointer; }}
+                @media print {{
+                    .no-print {{ display: none !important; }}
+                    body {{ background: white; padding: 0; }}
+                    .doc {{ border: none; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="doc">
+                <div class="no-print" style="margin-bottom: 20px;">
+                    <button onclick="window.print()">인쇄 / PDF로 저장</button>
+                </div>
+
+                <h1>상담 기록</h1>
+                <div class="meta">
+                    사례 ID: {escape(session['case_id'])} ·
+                    회기 #{session_id} ·
+                    승인 시각: {escape(session['approved_at'] or '')}
+                </div>
+
+                <h2>상담 요약</h2>
+                <div class="text-box">{escape(session['final_counseling_summary'] or '')}</div>
+
+                <h2>상담일지</h2>
+                <div class="text-box">{escape(session['final_counseling_note'] or '')}</div>
+
+                <h2>체크리스트 (상담사 확인 완료)</h2>
+                <ul>{checklist_lines}</ul>
+
+                <h2>문제력</h2>
+                <div class="text-box">{escape(final_checklist.get('problem_history_draft', ''))}</div>
+
+                <h2>상담원 소견</h2>
+                <div class="text-box">{escape(final_checklist.get('counselor_opinion_draft', ''))}</div>
+
+                <div class="no-print" style="margin-top: 24px;">
+                    <a href="/cases/{escape(session['case_id'], quote=True)}">뒤로</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    )
 
 
 @app.post(
@@ -1220,7 +1920,7 @@ def download(
 
 
 # ============================================================
-# 6. 실행
+# 8. 실행
 # ============================================================
 
 if __name__ == "__main__":

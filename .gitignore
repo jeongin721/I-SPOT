@@ -11,3 +11,4 @@ ai/modeling/abuse/results/
 ai/modeling/abuse/analysis_output/
 ai/modeling/abuse/weight/*.pth
 ai/modeling/abuse/weight/*_tokenizer/
+ai/modeling/abuse/*.db
