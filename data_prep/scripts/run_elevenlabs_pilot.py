@@ -72,6 +72,34 @@ RETRY_WAIT_SECONDS = 5
 
 
 # ============================================================
+# quota 초과 여부 확인
+# ============================================================
+
+def is_quota_exceeded(error):
+    """
+    ElevenLabs 크레딧이 모두 소진된 경우인지 확인한다.
+
+    quota_exceeded는 잠깐 기다린다고 해결되는 오류가 아니다.
+    따라서 일반적인 네트워크 오류처럼 재시도하면 안 된다.
+    """
+
+    error_text = str(error).lower()
+
+    quota_keywords = [
+        "quota_exceeded",
+        "quota exceeded",
+        "credits remaining",
+        "0 credits remaining",
+        "exceeds your quota",
+    ]
+
+    return any(
+        keyword in error_text
+        for keyword in quota_keywords
+    )
+
+
+# ============================================================
 # 객체 → dict
 # ============================================================
 
@@ -370,6 +398,9 @@ def main():
     skip_count = 0
     fail_count = 0
 
+    # quota가 떨어졌는지 기록
+    quota_exhausted = False
+
     with zipfile.ZipFile(
         TS_ZIP,
         "r"
@@ -393,9 +424,9 @@ def main():
                 / f"{sample_id}_elevenlabs.json"
             )
 
-            # --------------------------------------------
-            # 이미 정상 결과가 있으면 skip
-            # --------------------------------------------
+            # ------------------------------------------------
+            # 이미 정상 결과가 있으면 SKIP
+            # ------------------------------------------------
 
             if valid_existing_json(
                 output_path
@@ -474,9 +505,9 @@ def main():
 
                 continue
 
-            # --------------------------------------------
+            # ------------------------------------------------
             # MP3 확인
-            # --------------------------------------------
+            # ------------------------------------------------
 
             mp3_name = audio_index.get(
                 sample_id
@@ -536,15 +567,20 @@ def main():
                 )
 
                 fail_count += 1
+
+                save_summary(
+                    summary_rows
+                )
+
                 continue
 
             audio_bytes = zf.read(
                 mp3_name
             )
 
-            # --------------------------------------------
+            # ------------------------------------------------
             # API 호출
-            # --------------------------------------------
+            # ------------------------------------------------
 
             final_error = None
 
@@ -590,9 +626,9 @@ def main():
                         response
                     )
 
-                    # ------------------------------------
+                    # ----------------------------------------
                     # JSON 저장
-                    # ------------------------------------
+                    # ----------------------------------------
 
                     with output_path.open(
                         "w",
@@ -697,6 +733,34 @@ def main():
                         f"{e}"
                     )
 
+                    # ========================================
+                    # 핵심 수정
+                    # quota 소진은 재시도하지 않고
+                    # 전체 pilot 실행을 즉시 중단
+                    # ========================================
+
+                    if is_quota_exceeded(e):
+
+                        quota_exhausted = True
+
+                        print()
+                        print(
+                            "    [QUOTA EXHAUSTED]"
+                        )
+
+                        print(
+                            "    ElevenLabs 크레딧이 "
+                            "부족합니다."
+                        )
+
+                        print(
+                            "    같은 요청을 재시도하지 않고 "
+                            "전체 실행을 안전하게 중단합니다."
+                        )
+
+                        break
+
+                    # quota 문제가 아닌 경우에만 재시도
                     if (
                         attempt
                         < MAX_RETRIES
@@ -712,9 +776,9 @@ def main():
                             RETRY_WAIT_SECONDS
                         )
 
-            # --------------------------------------------
-            # 최종 실패
-            # --------------------------------------------
+            # ------------------------------------------------
+            # 최종 실패 기록
+            # ------------------------------------------------
 
             if final_error is not None:
 
@@ -731,7 +795,11 @@ def main():
                             sample_id,
 
                         "status":
-                            "FAILED",
+                            (
+                                "QUOTA_EXHAUSTED"
+                                if quota_exhausted
+                                else "FAILED"
+                            ),
 
                         "speaker_count":
                             "",
@@ -762,10 +830,16 @@ def main():
                 )
 
             # 매 샘플마다 summary 갱신
-            # 중간에 종료돼도 기록이 남음
+            # 중간 종료돼도 기록이 남는다.
             save_summary(
                 summary_rows
             )
+
+            # quota가 소진됐으면
+            # 다음 sample로 넘어가지 않고 종료
+            if quota_exhausted:
+
+                break
 
     # ========================================================
     # 최종 결과
@@ -777,9 +851,20 @@ def main():
 
     print()
     print("=" * 72)
-    print(
-        "ElevenLabs Pilot 실행 완료"
-    )
+
+    if quota_exhausted:
+
+        print(
+            "ElevenLabs Pilot 안전 중단 "
+            "(크레딧 부족)"
+        )
+
+    else:
+
+        print(
+            "ElevenLabs Pilot 실행 완료"
+        )
+
     print("=" * 72)
 
     print(
@@ -788,7 +873,7 @@ def main():
     )
 
     print(
-        f"신규 성공: "
+        f"이번 실행 신규 성공: "
         f"{success_count}"
     )
 
@@ -798,8 +883,31 @@ def main():
     )
 
     print(
-        f"실패: "
+        f"이번 실행 실패: "
         f"{fail_count}"
+    )
+
+    current_valid_count = sum(
+        1
+        for row in pilot_rows
+        if valid_existing_json(
+            OUTPUT_DIR
+            / (
+                f"{str(row['sample_id']).strip()}"
+                "_elevenlabs.json"
+            )
+        )
+    )
+
+    print(
+        f"현재 누적 정상 결과: "
+        f"{current_valid_count}/"
+        f"{len(pilot_rows)}"
+    )
+
+    print(
+        f"남은 미처리: "
+        f"{len(pilot_rows) - current_valid_count}"
     )
 
     print()
@@ -819,6 +927,18 @@ def main():
         print(
             f"에러 로그: "
             f"{ERROR_JSONL}"
+        )
+
+    if quota_exhausted:
+
+        print()
+        print(
+            "크레딧을 추가한 뒤 "
+            "같은 명령을 다시 실행하면 됩니다."
+        )
+
+        print(
+            "이미 성공한 JSON은 자동으로 SKIP됩니다."
         )
 
 
