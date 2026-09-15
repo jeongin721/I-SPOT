@@ -1,0 +1,5 @@
+{
+  "name": "I-SPOT AI Backend",
+  "install": "python3 -m pip install --break-system-packages -r requirements.txt",
+  "ports": [8000]
+}
