@@ -174,6 +174,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 
+- `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
 - 상담사: 담당 Case 만 반환
 - 관리자: 전체 반환
 
@@ -257,6 +258,13 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 ### PATCH /api/v1/cases/{case_id}
 
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.
+
+- `title`, `child_alias`, `status` 는 `null` 로 보낼 수 없다(`422 VALIDATION_ERROR`). 바꾸지 않을 필드는 빼고 보낸다
+- `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`)
+- 보호자 규칙은 저장된 값과 합쳐서 판단한다
+  - 이미 `OTHER` 인 사례는 `guardian_note` 만 보내도 된다
+  - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
+  - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
