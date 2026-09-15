@@ -2,3 +2,12 @@
 .env.*
 !.env.example
 *.swp
+
+__pycache__/
+*.pyc
+
+ai/modeling/abuse/datasets/
+ai/modeling/abuse/results/
+ai/modeling/abuse/analysis_output/
+ai/modeling/abuse/weight/*.pth
+ai/modeling/abuse/weight/*_tokenizer/
