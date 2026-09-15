@@ -3,7 +3,7 @@
 > 팀장님이 제안하신 LangGraph Agent 구조를 현재 코드베이스에 맞춰 구체화한 문서입니다.
 > 확정 전이며, 아래 **6. 막혀 있는 것** 이 먼저 풀려야 착수할 수 있습니다.
 >
-> 작성: mingyu · 2026-09-11 · 관련 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md)
+> 작성: 최민규 · 2026-09-11 · 관련 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md)
 
 ---
 
@@ -57,7 +57,7 @@ class AIAdapter(Protocol):
 ```
 
 ```python
-# backend/app/adapters/ai_adapter.py:29
+# backend/app/adapters/ai_adapter.py:28
 @dataclass
 class AIAnalysisBundle:
     result: AIAnalysisResult
@@ -66,12 +66,13 @@ class AIAnalysisBundle:
     model: Optional[str] = None
 ```
 
-현재 구현체는 둘입니다.
+구현체는 셋입니다. `langgraph` 는 이 PR(#10)에서 추가했습니다(5-1).
 
 | `AI_PROVIDER` | 클래스 | 동작 |
 | --- | --- | --- |
 | `mock` | `MockAIAdapter` | 외부 호출 없이 **Transcript 에서 파생** |
 | `pipeline` | `PipelineAIAdapter` | `ai.services.analysis_pipeline` 호출 |
+| `langgraph` | `LangGraphAIAdapter` | `agent.graph.run` 호출 — **이 PR 에서 추가** |
 
 `mock` 은 고정 응답이 아닙니다. Transcript 를 읽어 다음을 만들어 냅니다.
 
@@ -83,8 +84,8 @@ class AIAnalysisBundle:
 위험 필드 3종만 빈 배열로 고정돼 있습니다. **그 부분만 새 구조의 예시 값으로 바꾸면** 그래프 분기를 검증할 수 있습니다.
 
 ```python
-# backend/app/core/config.py:88
-AI_PROVIDER: Literal["mock", "pipeline"] = "mock"
+# backend/app/core/config.py:89
+AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
 ```
 
 ### 2-3. 분석은 비동기입니다
@@ -96,12 +97,26 @@ status_code=status.HTTP_202_ACCEPTED
 
 `POST /analysis` 는 즉시 `202` 를 돌려주고 `BackgroundTasks` 로 처리한 뒤, 클라이언트가 폴링으로 결과를 가져갑니다.
 
-### 2-4. RAG 는 V1 골격이 있습니다
+### 2-4. RAG 는 V2 까지 있습니다
 
-`feature/rag` 브랜치, 커밋 13개. 검색까지만 되고 **답변 생성은 없습니다.**
+`feature/rag` 브랜치, 커밋 37개(2026-09-14 13:25 `44b5476` 기준). 검색에 더해 **상담사용 결과를 생성합니다.** 9/11 오후에 체크리스트 판정, 9/14 에 법령 조회와 다음 상담 질문이 추가되었습니다.
+
+`rag/pipeline.py` 의 `analyze_consultation_evidence(text, abuse_type)` 가 전체를 묶습니다.
+
+```text
+상담 문장 + 학대 유형
+→ 체크리스트 검색 → 상담 문장과 비교 (matched / needs_confirmation / excluded)   ← LLM
+→ 국가법령정보센터 API 에서 관련 현행 조문
+→ 다음 상담용 확인 질문 3~5개                                                 ← LLM
+→ 상담사 참고자료 2~3개
+```
+
+`rag/README.md` §11 은 이 결과 JSON 을 **Backend / LangGraph Agent 에 연결하고 Frontend 에서 상담사에게 보여주는** 방향입니다. 이 문서의 4절은 RAG 를 **근거가 부족할 때만 부르는 재분석 재료**로 잡았으므로(4-1 표의 `rag_node` 입력), 어느 쪽으로 할지 팀장님 확인이 필요합니다(8절 5번).
+
+아래 `search_evidence` 는 파이프라인 안에서 쓰이는 검색 함수입니다.
 
 ```python
-# rag/retriever.py:9   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
+# rag/retriever.py:30   (feature/rag 브랜치에만 있습니다 — 아래 주의 참조)
 def search_evidence(
     query: str, *, top_k: int = TOP_K,
     source_type: str | None = None,
@@ -111,6 +126,8 @@ def search_evidence(
     ...
 ```
 
+**시그니처와 반환 모양은 계속 같습니다.** 다만 브랜치가 활발히 움직이고 있어(메타데이터 추론·청킹·필터 개선) `rag_node` 를 실제로 연결할 때 한 번 더 대조해야 합니다.
+
 원본 PDF 는 `rag_data/` 에 두며 `.gitignore` 대상입니다. **각자 로컬에 준비해야 합니다.**
 
 #### ⚠️ `rag/` 패키지는 아직 `feature/rag` 브랜치에만 있습니다
@@ -119,7 +136,7 @@ def search_evidence(
 | --- | --- |
 | `feature/rag` | 있음 |
 | `develop` | **없음** |
-| `integration/develop-consolidation` | **없음** |
+| `backend-agent` | **없음** |
 
 따라서 지금 `rag_node` 에서 아래처럼 쓰면 `ModuleNotFoundError` 가 납니다.
 
@@ -137,9 +154,9 @@ def rag_node(state: AgentState) -> dict:
 
 노드는 State 전체가 아니라 **바뀐 부분만 `dict` 로** 돌려줍니다(4-1). stub 이 빈 목록을 돌려주면 근거가 늘지 않아 재분석이 계속 "부족" 으로 판정되지만, `MAX_RETRY` 가 있어 무한 루프로는 가지 않습니다(4-5).
 
-### 2-5. LangGraph 는 아직 어디에도 없습니다
+### 2-5. LangGraph 의존성
 
-`requirements*.txt` 전체에 `langgraph` 항목이 없습니다. 의존성 추가가 첫 작업입니다.
+`requirements*.txt` 전체에 `langgraph` 항목이 없었습니다. `backend-agent` 브랜치에서 `langgraph 1.2.11` 을 설치하고 `requirements-agent.txt` 로 고정합니다.
 
 ---
 
@@ -213,11 +230,41 @@ graph.add_conditional_edges(
 
 라우터는 **State 를 바꾸지 않고 목적지 이름만 돌려줍니다.** 노드는 State 부분 갱신을 `dict` 로 돌려주고, 라우터는 `str` 을 돌려준다는 점이 다릅니다.
 
-라우터 안에서 State 를 고치면 **반영이 보장되지 않습니다.** 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
+라우터 안에서 State 를 고치면 **반영되지 않습니다**(아래에서 실행으로 확인). 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
 
-> **이 절의 LangGraph 동작 서술은 라이브러리 규약을 따른 것이고, 이 저장소에서
-> 실행으로 확인한 것이 아닙니다.** `langgraph` 가 아직 설치되어 있지 않습니다(2-5).
-> 착수 시 설치한 버전의 문서로 한 번 대조해 주세요.
+#### 실행으로 확인했습니다 (`langgraph 1.2.11`)
+
+최소 그래프를 만들어 세 가지를 검증했습니다.
+
+```python
+class S(TypedDict):
+    log: Annotated[list[str], operator.add]   # reducer 있음
+    n: Annotated[int, operator.add]
+    plain: list[str]                          # reducer 없음
+
+def a(s): return {"log": ["a"], "n": 1, "plain": ["A"]}
+def b(s): return {"log": ["b"], "n": 1, "plain": ["B"]}
+
+def router(s) -> str:
+    s["log"].append("router-mutation")        # 라우터에서 State 변경 시도
+    return "b" if s["n"] < 2 else "end"
+```
+
+실행 결과입니다.
+
+```text
+log   : ['a', 'b']     ← router-mutation 이 없다. 라우터 변경은 반영되지 않는다
+n     : 2              ← reducer 가 1 + 1 을 누적했다
+plain : ['B']          ← reducer 가 없으면 ['A'] 가 덮어써진다
+```
+
+| 문서의 주장 | 결과 |
+| --- | --- |
+| 라우터의 State 변경은 반영되지 않는다 | **확인** — `router-mutation` 이 로그에 없음 |
+| reducer 가 있으면 누적된다 | **확인** — `['a','b']`, `n=2` |
+| reducer 가 없으면 덮어쓴다 | **확인** — `['A']` 소실 |
+
+따라서 4-3 의 reducer 구분(위험 필드는 교체, `rag_documents` 는 누적)은 **반드시 지켜야 합니다.** 틀리면 재분석이 이전 결과를 조용히 지웁니다.
 
 ### 4-2. 엣지
 
@@ -347,7 +394,7 @@ def reanalysis_node(state: AgentState) -> dict:
 
 **단일 확신도 기준(`>= 0.7`)을 쓰면 안 됩니다.** 학대 유형별 임계값이 크게 다르고, **모델 버전마다 또 다릅니다.**
 
-| 유형 | `abuse_model/` (09-03 가중치) | `ai/modeling/abuse/` (v4 09-07 가중치) |
+| 유형 | `develop` · `abuse_model/` (09-03 가중치) | `ai-modeling` 브랜치 · `ai/modeling/abuse/` (v4 09-07 가중치) |
 | --- | --- | --- |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
@@ -385,19 +432,19 @@ def evidence_verdict(state: AgentState) -> str:
 
 `BE-08` 이 `AI-02`(Summary/위험 발화 분석)에 의존한다는 점이 중요합니다. **`AI-02` 는 현재 담당자가 비어 있고 `TODO` 상태입니다.** 그래서 6-1 이 막혀 있습니다.
 
-### 5-1. Agent / Backend (mingyu)
+### 5-1. Agent / Backend (최민규)
 
 ```text
 브랜치  backend-agent   (팀장님 지정)
-분기점  integration/develop-consolidation
+PR      #10 → develop
 ```
 
-분기점을 `develop` 이 아니라 통합 브랜치로 두는 이유는, PR #6 이 아직 머지되지 않아 `develop` 에는 Backend 수정분이 없기 때문입니다. PR #6 머지 후에는 같아집니다.
+처음에는 PR #6 이 머지되기 전이라 통합 브랜치에서 분기했습니다. PR #6 이 `develop` 에 머지되고(2026-09-11) 통합 브랜치를 정리하면서 PR #10 의 베이스를 `develop` 으로 옮겼습니다.
 
 1. `requirements-agent.txt` 추가 — `langgraph` 의존성
 2. `agent/` 패키지 신설 — `state.py`, `nodes.py`, `graph.py`
 3. `backend/app/adapters/ai_adapter.py` 에 `LangGraphAIAdapter` 추가
-4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:88`)
+4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:89`)
 5. 루프 종료·에러 처리·타임아웃
 6. 그래프 결과를 `AIAnalysisBundle` 로 변환
 
@@ -414,7 +461,7 @@ def evidence_verdict(state: AgentState) -> str:
 | DB 연결 | 3절 — 상태 저장 주체는 DB 하나로 유지 | **이미 있음** |
 | Error 처리 | 2-1 `AIError` + `ErrorCode`, 4-5 루프 종료 | 일부 신규 |
 
-**"이미 있음" 표시된 넷은 Backend 에 구현되어 테스트 152건이 돕니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
+**"이미 있음" 표시된 넷은 Backend 에 구현되어 있고 테스트로 검증됩니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
 
 **기존 어댑터 계약을 바꾸지 않습니다.** `analyze(transcript_payload) -> AIAnalysisBundle` 을 그대로 만족시킵니다. 기존 `mock` / `pipeline` 은 건드리지 않습니다.
 
@@ -431,12 +478,12 @@ def evidence_verdict(state: AgentState) -> str:
    — 현재 최상위 `main.py` 에서만 쓰이고 Backend 로 전달되지 않습니다
 4. `reanalysis_node` 용 함수 — RAG 문서를 받아 재판정하는 진입점
 
-### 5-3. RAG (mingyu, 팀장님 V1 이어받음)
+### 5-3. RAG (팀장님)
 
 1. 임베딩 모델 확정 — **나중에 바꾸면 전체 재색인이 필요합니다**
 2. `rag_data/` 원본 PDF 확보 (팀장님께 기존 수집본 확인)
-3. `rag/README.md` §6 의 메타데이터 정확도 작업
-4. `search_evidence()` 를 `rag_node` 에서 호출할 때의 쿼리 구성 규칙
+3. 메타데이터 정확도 (`rag/metadata.py`) — 9/11 에 `category`·`abuse_type` 추론이 추가되었습니다
+4. Agent 가 RAG 에 넘길 입력 규칙 — 상담 문장 범위, 학대 유형 표기(RAG 는 `physical` 등, 이경진 님 모델은 `신체학대` 등)
 
 ### 5-4. Frontend (다솔)
 
@@ -492,7 +539,7 @@ risk_factors: List[Dict[str, Any]]
 Must Have 가 안정적으로 동작하기 전에는 Later 기능을 우선 구현하지 않는다.
 ```
 
-또한 PRD 의 RAG 는 **"과거 중대사건"**(내부 상담 기록 검색)이고, `feature/rag` 는 **지침·판례·매뉴얼**(외부 공개 문서)입니다. 서로 다른 기능입니다.
+또한 PRD 의 RAG 는 **"과거 중대사건"**(내부 상담 기록 검색)이고, `feature/rag` 는 **지침·매뉴얼·체크리스트·판례 등 공개 문서와 현행 법령**입니다. 서로 다른 기능입니다.
 
 Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 신호` · `Risk Factor 추출` · `근거 문장 제공` 이 아직 미구현입니다(6-1 과 같은 원인).
 

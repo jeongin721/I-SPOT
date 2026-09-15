@@ -207,7 +207,7 @@ CI 와 같은 항목(Lint / Test / Migration 정합성)을 한 번에 확인한�
 개별로 실행할 수도 있다.
 
 ```bash
-ruff check .    # PR 최소 조건 (04_DEVELOPMENT.md §4)
+ruff check . ../agent   # PR 최소 조건 (04_DEVELOPMENT.md §4). agent/ 는 backend/ 밖에 있다
 pytest
 alembic check   # model 과 migration 이 어긋나면 실패한다
 ```

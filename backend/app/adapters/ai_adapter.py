@@ -240,6 +240,92 @@ class PipelineAIAdapter:
 
 
 # =========================================================
+# LangGraph Agent Adapter
+# =========================================================
+
+class LangGraphAIAdapter:
+    """agent/ 의 LangGraph 를 호출한다.
+
+    설계 근거: I-SPOT_DOCS/docs/PLAN_langgraph_agent.md §3
+
+    LangGraph 를 최상위 오케스트레이터로 두지 않고 여기에 가둔다.
+    Backend 가 이미 세션 상태로 흐름을 관리하므로, 밖에 두면
+    "지금 어느 단계인가" 의 정답이 DB 와 그래프 두 곳이 된다.
+
+    이 어댑터는 상태 전이를 하지 않는다. 실패하면 AIError 를 던지고,
+    세션 마감은 analysis_service 가 한다. PipelineAIAdapter 와 같은 규약이다.
+    """
+
+    name = "langgraph"
+
+    def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
+        # 빈 Transcript 는 상류(STT/검수)가 깨졌다는 뜻이므로 거부한다.
+        # 그냥 통과시키면 "근거 부족" 경고만 달린 정상 결과처럼 저장되어
+        # 원인이 묻힌다. MockAIAdapter 와 같은 규약을 유지한다.
+        if not (transcript_payload or {}).get("segments"):
+            raise AIError(
+                "분석할 Transcript segment 가 없습니다.",
+                ErrorCode.AI_INVALID_OUTPUT,
+            )
+
+        ensure_repo_root_on_path()
+        export_llm_env()
+
+        try:
+            from agent.graph import run as run_graph
+        except ImportError as error:
+            raise AIError(
+                f"LangGraph Agent module 을 import 할 수 없습니다: {error}",
+                ErrorCode.AI_FAILED,
+            ) from error
+
+        try:
+            final_state = run_graph(transcript_payload)
+        except Exception as error:
+            raise AIError(
+                f"LangGraph 실행에 실패했습니다: {error}",
+                ErrorCode.AI_FAILED,
+            ) from error
+
+        return self._to_bundle(final_state)
+
+    # -----------------------------------------------------
+    # 내부 helper
+    # -----------------------------------------------------
+
+    def _to_bundle(self, state: Dict[str, Any]) -> AIAnalysisBundle:
+        """그래프 최종 State 에서 Contract 에 해당하는 값만 추린다.
+
+        rag_documents / retry_count 는 중간 산물이므로 담지 않는다.
+        05_RULES.md §3 "내부 chain-of-thought 를 결과 데이터로 저장하지 않음".
+        """
+
+        payload = {
+            "schema_version": "1.0",
+            "summary": state.get("summary") or {},
+            "risk_utterances": state.get("risk_utterances") or [],
+            "abuse_signals": state.get("abuse_signals") or [],
+            "risk_factors": state.get("risk_factors") or [],
+            "warnings": state.get("warnings") or [],
+        }
+
+        try:
+            result = AIAnalysisResult.model_validate(payload)
+        except ValidationError as error:
+            raise AIError(
+                f"Agent 결과가 AI Output Contract 를 만족하지 않습니다: {error.error_count()}건",
+                ErrorCode.AI_INVALID_OUTPUT,
+            ) from error
+
+        return AIAnalysisBundle(
+            result=result,
+            summary_evidence=[],
+            provider=self.name,
+            model=os.getenv("OPENAI_MODEL"),
+        )
+
+
+# =========================================================
 # Factory
 # =========================================================
 
@@ -257,6 +343,9 @@ def get_ai_adapter() -> AIAdapter:
     if _override is not None:
         return _override
 
+    if settings.AI_PROVIDER == "langgraph":
+        return LangGraphAIAdapter()
+
     if settings.AI_PROVIDER == "pipeline":
         return PipelineAIAdapter()
 
@@ -267,6 +356,7 @@ __all__ = [
     "AIAdapter",
     "AIAnalysisBundle",
     "AIError",
+    "LangGraphAIAdapter",
     "MockAIAdapter",
     "PipelineAIAdapter",
     "export_llm_env",
