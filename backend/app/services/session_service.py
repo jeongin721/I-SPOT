@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import storage
@@ -31,6 +32,8 @@ from app.services import audit_service
 
 logger = get_logger(__name__)
 
+_SESSION_NUMBER_MAX_RETRY = 5
+
 
 def create_session(
     db: Session,
@@ -38,44 +41,61 @@ def create_session(
     current_user: User,
     payload: SessionCreateRequest,
 ) -> ConsultationSession:
-    next_number = (
-        db.scalar(
-            select(func.coalesce(func.max(ConsultationSession.session_number), 0)).where(
-                ConsultationSession.case_id == case.id
+    for attempt in range(_SESSION_NUMBER_MAX_RETRY):
+        next_number = (
+            db.scalar(
+                select(func.coalesce(func.max(ConsultationSession.session_number), 0)).where(
+                    ConsultationSession.case_id == case.id
+                )
             )
+            or 0
+        ) + 1
+
+        session = ConsultationSession(
+            case_id=case.id,
+            session_number=next_number,
+            title=payload.title,
+            status=SessionStatus.CREATED,
+            counselor_id=case.counselor_id,
+            consulted_at=payload.consulted_at,
+            location=payload.location,
+            memo=payload.memo,
         )
-        or 0
-    ) + 1
 
-    session = ConsultationSession(
-        case_id=case.id,
-        session_number=next_number,
-        title=payload.title,
-        status=SessionStatus.CREATED,
-        counselor_id=case.counselor_id,
-        consulted_at=payload.consulted_at,
-        location=payload.location,
-        memo=payload.memo,
-    )
+        db.add(session)
 
-    db.add(session)
-    db.flush()
+        try:
+            db.flush()
+        except IntegrityError as error:
+            # 같은 사례에 동시에 만든 다른 요청이 같은 번호를 먼저 가져갔다.
+            # (case_id, session_number) 유니크 제약. 번호를 다시 계산해 재시도한다.
+            db.rollback()
 
-    audit_service.record(
-        db,
-        action=AuditAction.SESSION_CREATED,
-        entity_type="ConsultationSession",
-        entity_id=session.id,
-        actor_id=current_user.id,
-        case_id=case.id,
-        session_id=session.id,
-        detail={"session_number": session.session_number},
-    )
+            if attempt == _SESSION_NUMBER_MAX_RETRY - 1:
+                raise conflict(
+                    ErrorCode.DUPLICATE_RESOURCE,
+                    "회기 번호를 정하지 못했습니다. 다시 시도해 주세요.",
+                ) from error
 
-    db.commit()
-    db.refresh(session)
+            continue
 
-    return session
+        audit_service.record(
+            db,
+            action=AuditAction.SESSION_CREATED,
+            entity_type="ConsultationSession",
+            entity_id=session.id,
+            actor_id=current_user.id,
+            case_id=case.id,
+            session_id=session.id,
+            detail={"session_number": session.session_number},
+        )
+
+        db.commit()
+        db.refresh(session)
+
+        return session
+
+    raise conflict(ErrorCode.DUPLICATE_RESOURCE, "회기 번호를 정하지 못했습니다. 다시 시도해 주세요.")
 
 
 def list_sessions(

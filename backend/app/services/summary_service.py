@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session
 from app.core.enums import AuditAction, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, conflict, not_found
 from app.core.state_machine import assert_status_in, assert_transition
+from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.models.user import User
 from app.schemas.contracts import SummaryEvidenceItem
 from app.schemas.summary import SummaryEnvelope, SummaryResponse, SummaryUpdateRequest
-from app.services import analysis_service, audit_service, session_service
+from app.services import audit_service, session_service
 
 
 def get_summary(db: Session, session_id: uuid.UUID) -> Optional[ConsultationSummary]:
@@ -45,7 +46,13 @@ def build_envelope(db: Session, session: ConsultationSession) -> SummaryEnvelope
     summary = get_summary(db, session.id)
     evidence: List[SummaryEvidenceItem] = []
 
-    analysis = analysis_service.get_latest_analysis(db, session.id)
+    # 근거 발화는 요약을 만든 분석 기준으로 보여준다. 최신 분석 기준이면 재분석이
+    # 실패하거나 도는 중일 때 요약은 그대로인데 근거 발화만 사라진다.
+    analysis = (
+        db.get(AIAnalysis, summary.analysis_id)
+        if summary is not None and summary.analysis_id is not None
+        else None
+    )
 
     if analysis and analysis.summary_evidence:
         evidence = [

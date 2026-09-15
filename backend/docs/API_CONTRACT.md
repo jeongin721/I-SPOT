@@ -260,7 +260,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
-관리자 전용. Session 이하 데이터가 함께 삭제된다.
+관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다.
 
 ---
 
@@ -277,7 +277,8 @@ Query: `page`, `page_size`, `status`
 { "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null }
 ```
 
-`session_number` 는 Case 내에서 1부터 자동 증가한다.
+`session_number` 는 Case 내에서 1부터 자동 증가한다. 요청 본문으로 지정할 수 없다.
+같은 Case 에 회기를 동시에 만들어도 번호가 겹치지 않는다(겹치면 서버가 다시 계산한다).
 
 ### GET /api/v1/sessions/{session_id}
 

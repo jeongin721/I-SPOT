@@ -148,6 +148,12 @@ export interface Case {
   last_session_at: string | null;
 }
 
+/** 사례 상세(GET /cases/{id}). 목록 응답에는 없는 담당자 정보와 회차 수가 함께 온다. */
+export interface CaseDetail extends Case {
+  counselor: User | null;
+  session_count: number;
+}
+
 export interface CaseCreateRequest {
   title: string;
   child_alias: string;
@@ -182,12 +188,27 @@ export interface Session {
   approved_at: string | null;
 }
 
+/** session_number 는 Backend 가 자동으로 매긴다. 요청으로 지정할 수 없다. */
 export interface SessionCreateRequest {
-  session_number?: number;
   title?: string | null;
   consulted_at?: string | null;
   location?: string | null;
   memo?: string | null;
+}
+
+/**
+ * 회차 상세. 새로고침 후 화면 상태를 복원할 때 쓴다(GET /sessions/{id}).
+ * 처리 중에 서버가 재시작돼 멈춘 회차는 이 조회에서 STT_FAILED / AI_FAILED 로 바뀌고 error 가 채워진다.
+ */
+export interface SessionDetail extends Session {
+  has_audio: boolean;
+  has_transcript: boolean;
+  transcript_version: number | null;
+  transcript_confirmed: boolean;
+  has_analysis: boolean;
+  has_summary: boolean;
+  summary_approved: boolean;
+  error: SessionErrorInfo | null;
 }
 
 // =========================================================
@@ -237,6 +258,25 @@ export interface Transcript {
   /** 상담사가 수정한 발화의 segment_id. 검수 화면에서 표시에 쓴다. */
   edited_segment_ids: string[];
   created_at: string;
+}
+
+/**
+ * 상담사가 고친 발화 하나. 바꾼 필드만 보낸다.
+ * 보내지 않은 필드는 그대로 유지되고, 보낸 발화만 "수정됨"(edited_segment_ids)으로 표시된다.
+ * confidence 는 STT 값이라 수정할 수 없다.
+ */
+export interface TranscriptSegmentUpdate {
+  segment_id: string;
+  speaker?: Speaker;
+  text?: string;
+  start_ms?: number;
+  end_ms?: number;
+}
+
+/** 전사본 수정 요청(PATCH /sessions/{id}/transcript). 둘 중 하나는 있어야 한다. */
+export interface TranscriptUpdateRequest {
+  segments?: TranscriptSegmentUpdate[];
+  removed_segment_ids?: string[];
 }
 
 /**
@@ -337,6 +377,7 @@ export interface Summary {
   status: ReviewStatus;
   is_edited: boolean;
   approved_at: string | null;
+  approved_by_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -351,7 +392,10 @@ export interface SummaryEnvelope {
   session_id: string;
   session_status: SessionStatus;
   summary: Summary | null;
-  /** 요약 항목별 근거 발화. 검수 화면에서 "왜 이렇게 요약됐는지" 표시에 쓴다. */
+  /**
+   * 요약 항목별 근거 발화. 검수 화면에서 "왜 이렇게 요약됐는지" 표시에 쓴다.
+   * 요약을 만든 분석 기준이라, 재분석이 실패하거나 도는 중이어도 사라지지 않는다.
+   */
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
 }
