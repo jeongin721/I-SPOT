@@ -461,7 +461,7 @@ PR      #10 → develop
 | DB 연결 | 3절 — 상태 저장 주체는 DB 하나로 유지 | **이미 있음** |
 | Error 처리 | 2-1 `AIError` + `ErrorCode`, 4-5 루프 종료 | 일부 신규 |
 
-**"이미 있음" 표시된 넷은 Backend 에 구현되어 테스트 152건이 돕니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
+**"이미 있음" 표시된 넷은 Backend 에 구현되어 있고 테스트로 검증됩니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
 
 **기존 어댑터 계약을 바꾸지 않습니다.** `analyze(transcript_payload) -> AIAnalysisBundle` 을 그대로 만족시킵니다. 기존 `mock` / `pipeline` 은 건드리지 않습니다.
 
