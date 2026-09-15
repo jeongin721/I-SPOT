@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import storage
-from app.core.enums import AuditAction, CaseStatus, UserRole
-from app.core.errors import ErrorCode, bad_request, conflict, forbidden, not_found
+from app.core.enums import AuditAction, CaseStatus, GuardianType, UserRole
+from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found
 from app.models.audio import AudioFile
 from app.models.case import Case
 from app.models.session import ConsultationSession
@@ -146,12 +146,19 @@ def list_cases(
     if status is not None:
         conditions.append(Case.status == status)
 
-    if search:
-        pattern = f"%{search.strip()}%"
+    term = search.strip() if search else ""
+
+    if term:
+        # % 와 _ 는 LIKE 의 와일드카드라 그대로 넣으면 "10%" 가 "10" 이 들어간 모든 사례를,
+        # "아동_0" 이 "아동A0" 까지 찾는다. 글자 그대로 찾도록 escape 한다.
+        # escape 문자는 역슬래시가 아니라 "/" 를 쓴다. 역슬래시는 DB 마다 문자열 안에서
+        # 해석이 달라 SQLite 와 PostgreSQL 에서 결과가 갈릴 수 있다.
+        escaped = term.replace("/", "//").replace("%", "/%").replace("_", "/_")
+        pattern = f"%{escaped}%"
         conditions.append(
-            Case.title.ilike(pattern)
-            | Case.case_number.ilike(pattern)
-            | Case.child_alias.ilike(pattern)
+            Case.title.ilike(pattern, escape="/")
+            | Case.case_number.ilike(pattern, escape="/")
+            | Case.child_alias.ilike(pattern, escape="/")
         )
 
     total = db.scalar(
@@ -236,6 +243,31 @@ def update_case(
     changed_fields = []
 
     data = payload.model_dump(exclude_unset=True)
+
+    # 보호자 메모는 유형이 OTHER 일 때만 의미가 있다. 수정은 보낸 필드만 바뀌므로
+    # 저장된 값과 합친 결과로 판단한다. (유형과 메모를 함께 보낸 경우는 스키마가 검사한다.)
+    if "guardian_type" in data and data["guardian_type"] != GuardianType.OTHER:
+        # 유형을 OTHER 가 아닌 값으로 바꾸면 이전 메모가 남지 않게 지운다.
+        if case.guardian_note is not None:
+            data["guardian_note"] = None
+    elif (
+        data.get("guardian_note")
+        and "guardian_type" not in data
+        and case.guardian_type != GuardianType.OTHER
+    ):
+        raise APIError(
+            ErrorCode.VALIDATION_ERROR,
+            "guardian_note 는 guardian_type 이 OTHER 인 사례에만 적을 수 있습니다.",
+            status_code=422,
+            details={
+                "fields": [
+                    {
+                        "field": "guardian_note",
+                        "reason": "guardian_type 이 OTHER 가 아닙니다.",
+                    }
+                ]
+            },
+        )
 
     if "counselor_id" in data and data["counselor_id"] is not None:
         new_counselor_id = _resolve_counselor(db, current_user, data["counselor_id"])
