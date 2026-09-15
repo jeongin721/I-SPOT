@@ -11,6 +11,7 @@ import re
 
 from ai.modeling.abuse.infer_abuse_qa_v3 import (
     MODEL_PATH,
+    BASE_DIR,
     AbuseQAModel,
     predict_abuse as predict_abuse_v3,
     predict_qa,
@@ -26,6 +27,18 @@ from ai.modeling.abuse.infer_abuse_qa_v3 import (
 
 _engine = AbuseQAModel(
     model_path=MODEL_PATH,
+)
+
+# note(상담일지) 문체 전용 모델. qa/child_only 모델과 아키텍처는
+# 동일하고 학습 데이터만 다르므로 같은 AbuseQAModel 클래스를 재사용한다.
+NOTE_MODEL_PATH = (
+    BASE_DIR
+    / "weight"
+    / "roberta_abuse_note_v1_best.pth"
+)
+
+_note_engine = AbuseQAModel(
+    model_path=NOTE_MODEL_PATH,
 )
 
 
@@ -131,6 +144,9 @@ def predict_major_types(
 
     input_mode="child_only": text 전체를 아동 발화로 보고
     predict_child_only 경로(CHILD-only 모델)로 분석한다.
+
+    input_mode="note": 상담일지(3인칭 서술형) 문체 텍스트를
+    note 전용 모델(roberta_abuse_note_v1)로 태깅 없이 그대로 분석한다.
     """
 
     if input_mode == "qa":
@@ -144,17 +160,27 @@ def predict_major_types(
             child_text,
         )
 
+        predictions = raw_result["predictions"]
+
     elif input_mode == "child_only":
         raw_result = predict_child_only(
             _engine,
             text,
         )
 
+        predictions = raw_result["predictions"]
+
+    elif input_mode == "note":
+        predictions = predict_abuse_v3(
+            _note_engine,
+            text,
+        )
+
     else:
         raise ValueError(
-            "input_mode must be 'qa' or 'child_only'"
+            "input_mode must be 'qa', 'child_only', or 'note'"
         )
 
     return _simplify_predictions(
-        raw_result["predictions"]
+        predictions
     )
