@@ -4,13 +4,188 @@ QA / Child-only 입력을 받아 1차 대분류, 2차 세부유형, 근거 발�
 상담 요약, 상담일지를 한 화면에서 확인한다.
 """
 
+import json
+from datetime import datetime
 from html import escape
 
 from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 import uvicorn
 
 from ai.modeling.abuse.infer_abuse_pipeline import analyze_session
+
+
+# ============================================================
+# 0. 결과 다운로드 (간단한 텍스트 파일)
+# ============================================================
+
+def build_download_text(
+    result: dict,
+) -> str:
+    checklist_draft = (
+        result.get(
+            "checklist_draft"
+        )
+        or {}
+    )
+
+    lines = [
+        "I-SPOT 상담 분석 결과",
+        f"생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "=" * 60,
+        "",
+        "[상담 요약]",
+        result.get(
+            "counseling_summary",
+            "",
+        )
+        or "(없음)",
+        "",
+        "[상담일지]",
+        result.get(
+            "counseling_note",
+            "",
+        )
+        or "(없음)",
+        "",
+        "[AI 상담 체크리스트 초안 - 상담사 확인 필요]",
+        "",
+    ]
+
+    for category in (
+        "가정상황",
+        "아동 특성",
+    ):
+        items = [
+            item
+            for item in checklist_draft.get(
+                "checklist",
+                [],
+            )
+            if item.get("category") == category
+            and item.get("suggested")
+        ]
+
+        lines.append(f"■ {category}")
+
+        if not items:
+            lines.append(
+                "  (근거 있는 항목 없음)"
+            )
+
+        for item in items:
+            lines.append(
+                f"  - {item['item']}"
+            )
+
+            for evidence in item.get(
+                "evidence",
+                [],
+            ):
+                lines.append(
+                    "      근거: "
+                    f"\"{evidence.get('evidence', '')}\""
+                )
+
+        lines.append("")
+
+    lines.append(
+        "■ 안전영역 관련 근거 (등급은 상담사가 직접 판단)"
+    )
+
+    for entry in checklist_draft.get(
+        "safety_assessment_evidence",
+        [],
+    ):
+        if not entry.get("evidence"):
+            continue
+
+        lines.append(
+            f"  [{entry['category']}] {entry['item']}"
+        )
+
+        for evidence in entry["evidence"]:
+            lines.append(
+                "      근거: "
+                f"\"{evidence.get('evidence', '')}\""
+            )
+
+    lines.append("")
+
+    environment = checklist_draft.get(
+        "environment_key_person"
+    )
+
+    lines.append(
+        "■ 환경 - 신뢰할 만한 주위 사람"
+    )
+
+    if environment:
+        lines.append(
+            f"  {environment.get('status', '')}"
+        )
+
+        for evidence in environment.get(
+            "evidence",
+            [],
+        ):
+            lines.append(
+                "      근거: "
+                f"\"{evidence.get('evidence', '')}\""
+            )
+    else:
+        lines.append(
+            "  관련 언급 없음"
+        )
+
+    lines.extend(
+        [
+            "",
+            "[문제력 초안]",
+            checklist_draft.get(
+                "problem_history_draft",
+                "",
+            )
+            or "(없음)",
+            "",
+            "[상담원 소견 초안]",
+            checklist_draft.get(
+                "counselor_opinion_draft",
+                "",
+            )
+            or "(없음)",
+            "",
+            "=" * 60,
+            "본 문서는 AI가 생성한 초안이며, "
+            "상담사의 확인·수정·승인이 필요합니다.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def build_download_form_html(
+    result: dict,
+) -> str:
+    payload = json.dumps(
+        result,
+        ensure_ascii=False,
+    )
+
+    return f"""
+    <section class="panel">
+        <form method="post" action="/download">
+            <input
+                type="hidden"
+                name="payload"
+                value='{escape(payload, quote=True)}'
+            >
+            <button type="submit">
+                결과 텍스트 파일로 다운로드
+            </button>
+        </form>
+    </section>
+    """
 
 
 # ============================================================
@@ -68,6 +243,13 @@ def build_page(
             )
         )
 
+        checklist_html = build_checklist_draft_html(
+            result.get(
+                "checklist_draft",
+                {},
+            )
+        )
+
         result_html = f"""
         <section class="panel">
             <h2>1차 학대 위험신호</h2>
@@ -92,6 +274,10 @@ def build_page(
                 {note if note else "생성된 상담일지가 없습니다."}
             </div>
         </section>
+
+        {checklist_html}
+
+        {build_download_form_html(result)}
         """
 
     return f"""
@@ -266,6 +452,115 @@ def build_page(
 
             .empty {{
                 color: #6b7280;
+            }}
+
+            .ai-banner {{
+                background: #eff6ff;
+                border: 1px solid #93c5fd;
+                color: #1e3a8a;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                margin-bottom: 18px;
+            }}
+
+            .checklist-category {{
+                font-size: 15px;
+                font-weight: 700;
+                margin: 18px 0 10px;
+            }}
+
+            .checklist-category:first-child {{
+                margin-top: 0;
+            }}
+
+            .checklist-grid {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }}
+
+            .checklist-pill {{
+                border: 1px solid #d1d5db;
+                border-radius: 999px;
+                padding: 6px 14px;
+                font-size: 13px;
+                color: #9ca3af;
+                background: #f9fafb;
+            }}
+
+            .checklist-pill.checked {{
+                border-color: #f87171;
+                background: #fee2e2;
+                color: #991b1b;
+                font-weight: 600;
+                cursor: pointer;
+                padding: 0;
+            }}
+
+            .checklist-pill.checked summary {{
+                padding: 6px 14px;
+                list-style: none;
+                cursor: pointer;
+            }}
+
+            .checklist-pill.checked summary::-webkit-details-marker {{
+                display: none;
+            }}
+
+            .checklist-pill.checked[open] {{
+                width: 100%;
+            }}
+
+            .checklist-evidence-box {{
+                margin: 0 14px 10px;
+                padding: 10px 12px;
+                background: white;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 400;
+                color: #374151;
+                line-height: 1.6;
+            }}
+
+            .checklist-evidence-box div {{
+                margin-bottom: 4px;
+            }}
+
+            .safety-item {{
+                border-top: 1px solid #e5e7eb;
+                padding: 10px 0;
+            }}
+
+            .safety-item:first-child {{
+                border-top: none;
+            }}
+
+            .safety-item-title {{
+                font-weight: 600;
+                margin-bottom: 4px;
+            }}
+
+            .safety-item-evidence {{
+                font-size: 13px;
+                color: #374151;
+                background: #f9fafb;
+                border-radius: 8px;
+                padding: 8px 12px;
+                margin-top: 4px;
+            }}
+
+            .safety-item-empty {{
+                font-size: 13px;
+                color: #9ca3af;
+            }}
+
+            .review-note {{
+                margin-top: 16px;
+                font-size: 12px;
+                color: #6b7280;
+                text-align: center;
             }}
 
             .error-panel {{
@@ -589,7 +884,271 @@ def build_subtypes_html(subtype_analysis):
 
 
 # ============================================================
-# 5. Routes
+# 5. AI 상담 체크리스트 초안 HTML
+# ============================================================
+
+def build_evidence_list_html(
+    evidence_entries,
+):
+    lines = []
+
+    for entry in evidence_entries:
+        quote = entry.get(
+            "matched_evidence"
+        ) or entry.get(
+            "evidence",
+            "",
+        )
+
+        lines.append(
+            f"<div>“{escape(str(quote))}”</div>"
+        )
+
+    return "".join(lines)
+
+
+def build_checklist_pills_html(
+    checklist,
+    category,
+):
+    pills = []
+
+    for entry in checklist:
+        if entry.get("category") != category:
+            continue
+
+        item = entry.get(
+            "item",
+            "",
+        )
+
+        evidence = entry.get(
+            "evidence",
+            [],
+        )
+
+        if entry.get("suggested"):
+            evidence_html = build_evidence_list_html(
+                evidence
+            )
+
+            pills.append(
+                f"""
+                <details class="checklist-pill checked">
+                    <summary>☑ {escape(item)}</summary>
+                    <div class="checklist-evidence-box">
+                        {evidence_html}
+                    </div>
+                </details>
+                """
+            )
+        else:
+            pills.append(
+                f"""
+                <div class="checklist-pill">
+                    ☐ {escape(item)}
+                </div>
+                """
+            )
+
+    return f"""
+    <div class="checklist-grid">
+        {''.join(pills)}
+    </div>
+    """
+
+
+def build_safety_assessment_html(
+    safety_assessment_evidence,
+):
+    categories = [
+        "피해아동",
+        "가족구성원",
+        "사례관리대상자",
+    ]
+
+    blocks = []
+
+    for category in categories:
+        items_html = []
+
+        for entry in safety_assessment_evidence:
+            if entry.get("category") != category:
+                continue
+
+            item = entry.get(
+                "item",
+                "",
+            )
+
+            evidence = entry.get(
+                "evidence",
+                [],
+            )
+
+            if evidence:
+                evidence_html = build_evidence_list_html(
+                    evidence
+                )
+
+                items_html.append(
+                    f"""
+                    <div class="safety-item">
+                        <div class="safety-item-title">
+                            {escape(item)}
+                        </div>
+                        <div class="safety-item-evidence">
+                            {evidence_html}
+                        </div>
+                    </div>
+                    """
+                )
+            else:
+                items_html.append(
+                    f"""
+                    <div class="safety-item">
+                        <div class="safety-item-title">
+                            {escape(item)}
+                        </div>
+                        <div class="safety-item-empty">
+                            관련 근거를 찾지 못했습니다. (등급은 상담사가 직접 판단)
+                        </div>
+                    </div>
+                    """
+                )
+
+        blocks.append(
+            f"""
+            <div class="checklist-category">
+                {escape(category)}
+            </div>
+            {''.join(items_html)}
+            """
+        )
+
+    return "".join(blocks)
+
+
+def build_checklist_draft_html(
+    checklist_draft,
+):
+    if not checklist_draft:
+        return ""
+
+    household_html = build_checklist_pills_html(
+        checklist_draft.get(
+            "checklist",
+            [],
+        ),
+        "가정상황",
+    )
+
+    child_trait_html = build_checklist_pills_html(
+        checklist_draft.get(
+            "checklist",
+            [],
+        ),
+        "아동 특성",
+    )
+
+    safety_html = build_safety_assessment_html(
+        checklist_draft.get(
+            "safety_assessment_evidence",
+            [],
+        )
+    )
+
+    environment = checklist_draft.get(
+        "environment_key_person"
+    )
+
+    if environment:
+        environment_evidence_html = build_evidence_list_html(
+            environment.get(
+                "evidence",
+                [],
+            )
+        )
+
+        environment_html = f"""
+        <div class="checklist-category">환경</div>
+        <div class="safety-item">
+            <div class="safety-item-title">
+                {escape(environment.get("item", ""))}
+                — {escape(environment.get("status", ""))}
+            </div>
+            <div class="safety-item-evidence">
+                {environment_evidence_html}
+            </div>
+        </div>
+        """
+    else:
+        environment_html = """
+        <div class="checklist-category">환경</div>
+        <div class="safety-item-empty">
+            신뢰할 만한 주위 사람 관련 언급을 찾지 못했습니다.
+        </div>
+        """
+
+    problem_history = escape(
+        checklist_draft.get(
+            "problem_history_draft",
+            "",
+        )
+    )
+
+    counselor_opinion = escape(
+        checklist_draft.get(
+            "counselor_opinion_draft",
+            "",
+        )
+    )
+
+    return f"""
+    <section class="panel">
+        <h2>AI 상담 체크리스트 초안</h2>
+
+        <div class="ai-banner">
+            상담사가 확인하지 않은 AI 제안입니다.
+            체크된 항목은 근거를 확인한 뒤 승인해주세요.
+        </div>
+
+        <div class="checklist-category">가정상황</div>
+        {household_html}
+
+        <div class="checklist-category">아동 특성</div>
+        {child_trait_html}
+
+        <div class="checklist-category">
+            안전영역 관련 근거
+            <span style="font-weight: 400; font-size: 12px; color: #6b7280;">
+                (등급은 AI가 매기지 않습니다 — 상담사가 직접 판단)
+            </span>
+        </div>
+        {safety_html}
+
+        {environment_html}
+
+        <div class="checklist-category">문제력 초안</div>
+        <div class="text-box">
+            {problem_history if problem_history else "생성된 초안이 없습니다."}
+        </div>
+
+        <div class="checklist-category">상담원 소견 초안</div>
+        <div class="text-box">
+            {counselor_opinion if counselor_opinion else "생성된 초안이 없습니다."}
+        </div>
+
+        <div class="review-note">
+            모든 제안 항목은 원문 근거 검증을 거쳤지만,
+            최종 확인·수정·승인은 상담사가 직접 해야 합니다.
+        </div>
+    </section>
+    """
+
+
+# ============================================================
+# 6. Routes
 # ============================================================
 
 @app.get(
@@ -634,6 +1193,30 @@ def analyze(
             input_mode=input_mode,
             error=exc,
         )
+
+
+@app.post(
+    "/download",
+    response_class=PlainTextResponse,
+)
+def download(
+    payload: str = Form(...),
+):
+    result = json.loads(payload)
+
+    filename = (
+        "ispot_report_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    )
+
+    return PlainTextResponse(
+        content=build_download_text(result),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"'
+            )
+        },
+    )
 
 
 # ============================================================

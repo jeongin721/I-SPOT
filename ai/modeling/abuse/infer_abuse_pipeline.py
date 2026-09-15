@@ -1,13 +1,17 @@
 """
-1차 RoBERTa 대분류 모델, 2차 LLM 세부유형 분석, 상담 요약·상담일지 생성까지
-하나로 묶는 전체 세션 파이프라인.
+1차 RoBERTa 대분류 모델, 2차 LLM 세부유형 분석, 상담 요약·상담일지 생성,
+서식 체크리스트 초안 생성까지 하나로 묶는 전체 세션 파이프라인.
 
 입력 유형(input_mode)에 따라 1차 모델 경로만 다르게 타고,
-2차 세부유형 분석과 상담 요약·상담일지 생성은 입력 유형과 무관하게
-원문 텍스트만으로 동일하게 동작한다.
+2차 세부유형 분석/상담 요약·상담일지/체크리스트 초안은 입력 유형과
+무관하게 원문 텍스트만으로 동일하게 동작한다.
 
 note(상담일지/서술형 텍스트) 입력용 1차 모델은 아직 없으므로
 input_mode="note"는 이번 범위에 포함하지 않는다.
+
+체크리스트 초안(checklist_draft)의 모든 제안 항목은 원문 근거가 있을 때만
+포함되며, 높음/보통/낮음 같은 등급·점수는 절대 AI가 확정하지 않는다.
+모든 제안은 상담사가 확인·수정·승인해야 하는 "AI 제안" 상태다.
 """
 
 import json
@@ -24,6 +28,10 @@ from ai.modeling.abuse.second_stage_llm import (
 from ai.modeling.abuse.audio_to_counseling_note import (
     DEFAULT_MODEL as DEFAULT_NOTE_MODEL,
     generate_counseling_records,
+)
+from ai.modeling.abuse.checklist_llm import (
+    DEFAULT_MODEL as DEFAULT_CHECKLIST_MODEL,
+    generate_checklist_draft,
 )
 
 
@@ -84,21 +92,28 @@ def analyze_session(
     input_mode: str = "qa",
     client: OpenAI = None,
     note_model: str = DEFAULT_NOTE_MODEL,
+    checklist_model: str = DEFAULT_CHECKLIST_MODEL,
 ) -> dict:
     """
     한 세션 텍스트에 대해
-    1차 대분류 판정 → 2차 세부유형 분석 → 상담 요약·상담일지 생성까지
-    한 번에 수행한다.
+    1차 대분류 판정 → 2차 세부유형 분석 → 상담 요약·상담일지 생성 →
+    서식 체크리스트 초안 생성까지 한 번에 수행한다.
 
-    상담 요약/상담일지는 학대 탐지 여부와 무관하게 항상 생성한다.
+    상담 요약/상담일지/체크리스트 초안은 학대 탐지 여부와 무관하게 항상 생성한다.
 
-    input_mode="child_only"인 경우 generate_counseling_records도
-    아동 발화만 보고 상담일지를 작성하게 된다. 상담사 질문이 빠져 있으므로
-    "상담 일지"보다는 "아동 진술 기반 기록"에 가까운 결과가 나온다는 점에 유의한다.
+    input_mode="child_only"인 경우 generate_counseling_records와
+    generate_checklist_draft도 아동 발화만 보고 작성하게 된다.
+    상담사 질문이 빠져 있으므로 "상담 일지"보다는
+    "아동 진술 기반 기록"에 가까운 결과가 나온다는 점에 유의한다.
+
+    checklist_draft의 모든 제안 항목은 원문 근거가 있을 때만 포함되며,
+    안전영역 항목에는 높음/보통/낮음 등급을 절대 매기지 않는다.
+    상담사가 확인하기 전까지는 "AI 제안" 상태로만 취급한다.
     """
 
-    # analyze_abuse(1차+2차 판정)와 generate_counseling_records(요약/일지)는
-    # 서로 결과를 참조하지 않는 독립 호출이라 순차 실행해도 결과는 같다.
+    # analyze_abuse(1차+2차 판정), generate_counseling_records(요약/일지),
+    # generate_checklist_draft(체크리스트 초안)는 서로 결과를 참조하지 않는
+    # 독립 호출이라 순차 실행해도 결과는 같다.
     # FastAPI로 옮길 때는 asyncio.gather 등으로 병렬화할 수 있다.
     abuse_result = analyze_abuse(
         text=text,
@@ -125,6 +140,12 @@ def analyze_session(
         model=note_model,
     )
 
+    checklist_draft = generate_checklist_draft(
+        text=text,
+        client=client,
+        model=checklist_model,
+    )
+
     return {
         **abuse_result,
         "counseling_summary": counseling_records[
@@ -134,6 +155,7 @@ def analyze_session(
             "counseling_note"
         ],
         "counseling_record_model": note_model,
+        "checklist_draft": checklist_draft,
     }
 
 
