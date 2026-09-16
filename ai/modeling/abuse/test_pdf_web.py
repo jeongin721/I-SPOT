@@ -26,9 +26,13 @@ from ai.modeling.abuse.infer_abuse_pipeline import (
 from ai.modeling.abuse.test_pipeline_web import (
     build_major_types_html,
     build_subtypes_html,
-    build_checklist_draft_html,
+    build_approval_form_html,
     build_download_text,
     build_download_form_html,
+)
+from ai.modeling.abuse import case_store
+from ai.modeling.abuse.case_workflow_routes import (
+    register_case_workflow_routes,
 )
 
 
@@ -40,6 +44,8 @@ app = FastAPI(
     title="I-SPOT PDF 상담일지 예측 테스트",
 )
 
+register_case_workflow_routes(app)
+
 
 # ============================================================
 # 2. 페이지 렌더링
@@ -49,6 +55,8 @@ def build_page(
     filename=None,
     extraction=None,
     analysis=None,
+    case_id="",
+    session_id=None,
     error=None,
 ):
     result_html = ""
@@ -62,27 +70,6 @@ def build_page(
         """
 
     elif analysis:
-        summary = escape(
-            analysis.get(
-                "counseling_summary",
-                "",
-            )
-        )
-
-        note = escape(
-            analysis.get(
-                "counseling_note",
-                "",
-            )
-        )
-
-        checklist_html = build_checklist_draft_html(
-            analysis.get(
-                "checklist_draft",
-                {},
-            )
-        )
-
         result_html = f"""
         <section class="panel">
             <h2>1차 학대 위험신호 (note 전용 모델)</h2>
@@ -94,21 +81,7 @@ def build_page(
             {build_subtypes_html(analysis.get("subtype_analysis", {}))}
         </section>
 
-        <section class="panel">
-            <h2>상담 요약</h2>
-            <div class="text-box">
-                {summary if summary else "생성된 상담 요약이 없습니다."}
-            </div>
-        </section>
-
-        <section class="panel">
-            <h2>상담일지</h2>
-            <div class="text-box">
-                {note if note else "생성된 상담일지가 없습니다."}
-            </div>
-        </section>
-
-        {checklist_html}
+        {build_approval_form_html(session_id, analysis)}
 
         {build_download_form_html(analysis)}
         """
@@ -148,6 +121,15 @@ def build_page(
             {warning_html}
 
             <form method="post" action="/analyze">
+                <input
+                    type="text"
+                    name="case_id"
+                    class="case-id-input"
+                    placeholder="사례 ID (예: CASE-2026-001)"
+                    value="{escape(case_id)}"
+                    required
+                >
+
                 <textarea
                     name="text"
                     class="editable"
@@ -218,6 +200,15 @@ def build_page(
             input[type="file"] {{
                 display: block;
                 margin-bottom: 16px;
+            }}
+
+            .case-id-input {{
+                width: 100%;
+                padding: 12px 14px;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                font-size: 14px;
+                margin-bottom: 8px;
             }}
 
             button {{
@@ -588,6 +579,7 @@ async def extract(
 )
 def analyze(
     text: str = Form(...),
+    case_id: str = Form(...),
 ):
     try:
         if not text.strip():
@@ -600,13 +592,24 @@ def analyze(
             input_mode="note",
         )
 
+        session_id = case_store.save_draft_session(
+            case_id=case_id,
+            input_mode="note",
+            source_type="pdf",
+            raw_text=text,
+            analysis=analysis,
+        )
+
         return build_page(
-            analysis=analysis
+            analysis=analysis,
+            case_id=case_id,
+            session_id=session_id,
         )
 
     except Exception as exc:
         return build_page(
-            error=exc
+            case_id=case_id,
+            error=exc,
         )
 
 

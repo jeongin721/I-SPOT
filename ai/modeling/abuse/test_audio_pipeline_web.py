@@ -30,9 +30,13 @@ from ai.modeling.abuse.infer_audio_session import (
 from ai.modeling.abuse.test_pipeline_web import (
     build_major_types_html,
     build_subtypes_html,
-    build_checklist_draft_html,
+    build_approval_form_html,
     build_download_text,
     build_download_form_html,
+)
+from ai.modeling.abuse import case_store
+from ai.modeling.abuse.case_workflow_routes import (
+    register_case_workflow_routes,
 )
 
 
@@ -57,6 +61,8 @@ transcript_builder = TranscriptBuilder()
 app = FastAPI(
     title="I-SPOT 음성 파이프라인 테스트",
 )
+
+register_case_workflow_routes(app)
 
 
 # ============================================================
@@ -162,6 +168,8 @@ def build_page(
     filename=None,
     transcript=None,
     analysis=None,
+    case_id="",
+    session_id=None,
     error=None,
 ):
     result_html = ""
@@ -175,27 +183,6 @@ def build_page(
         """
 
     elif analysis:
-        summary = escape(
-            analysis.get(
-                "counseling_summary",
-                "",
-            )
-        )
-
-        note = escape(
-            analysis.get(
-                "counseling_note",
-                "",
-            )
-        )
-
-        checklist_html = build_checklist_draft_html(
-            analysis.get(
-                "checklist_draft",
-                {},
-            )
-        )
-
         chunk_meta_html = "".join(
             f"""
             <div class="chunk-meta">
@@ -223,21 +210,7 @@ def build_page(
             {build_subtypes_html(analysis.get("subtype_analysis", {}))}
         </section>
 
-        <section class="panel">
-            <h2>상담 요약</h2>
-            <div class="text-box">
-                {summary if summary else "생성된 상담 요약이 없습니다."}
-            </div>
-        </section>
-
-        <section class="panel">
-            <h2>상담일지</h2>
-            <div class="text-box">
-                {note if note else "생성된 상담일지가 없습니다."}
-            </div>
-        </section>
-
-        {checklist_html}
+        {build_approval_form_html(session_id, analysis)}
 
         {build_download_form_html(analysis)}
         """
@@ -260,6 +233,15 @@ def build_page(
             </div>
 
             <form method="post" action="/analyze-transcript">
+                <input
+                    type="text"
+                    name="case_id"
+                    class="case-id-input"
+                    placeholder="사례 ID (예: CASE-2026-001)"
+                    value="{escape(case_id)}"
+                    required
+                >
+
                 <div class="transcript-review-box">
                     {build_transcript_review_html(transcript)}
                 </div>
@@ -329,6 +311,15 @@ def build_page(
             input[type="file"] {{
                 display: block;
                 margin-bottom: 16px;
+            }}
+
+            .case-id-input {{
+                width: 100%;
+                padding: 12px 14px;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                font-size: 14px;
+                margin-bottom: 12px;
             }}
 
             button {{
@@ -779,8 +770,12 @@ def transcribe(
 async def analyze_transcript(
     request: Request,
 ):
+    case_id = ""
+
     try:
         form = await request.form()
+
+        case_id = form.get("case_id", "")
 
         segment_ids = form.getlist("segment_id")
         speakers = form.getlist("speaker")
@@ -826,13 +821,24 @@ async def analyze_transcript(
             stt_result=transcript
         )
 
+        session_id = case_store.save_draft_session(
+            case_id=case_id,
+            input_mode="qa",
+            source_type="audio",
+            raw_text=analysis.get("full_text", ""),
+            analysis=analysis,
+        )
+
         return build_page(
-            analysis=analysis
+            analysis=analysis,
+            case_id=case_id,
+            session_id=session_id,
         )
 
     except Exception as exc:
         return build_page(
-            error=exc
+            case_id=case_id,
+            error=exc,
         )
 
 
