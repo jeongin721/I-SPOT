@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyc
 .pytest_cache/
+.pytest-*/
 .ruff_cache/
 *.egg-info/
 
@@ -50,3 +51,15 @@ _개인용_학습가이드/
 # .gitignore 는 아직 추적되지 않는 파일에만 적용된다.
 # 기존 파일까지 빼려면 `git rm --cached -r results/` 가 따로 필요하다.
 results/
+
+# Generated evaluation artifacts (keep manifests, scripts, and result CSVs reviewable)
+/data_prep/evaluation/deepgram/outputs/
+/data_prep/evaluation/elevenlabs/outputs/
+/data_prep/evaluation/elevenlabs_500/outputs/
+/data_prep/evaluation/elevenlabs/*_audio/
+/data_prep/evaluation/**/errors.jsonl
+
+# Reproducible, large local evaluation exports
+/data_prep/evaluation/ground_truth/gt_2876.csv
+/data_prep/evaluation/ground_truth/gt_2876.jsonl
+/data_prep/metadata/original_dataset_2876.csv

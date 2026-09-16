@@ -94,10 +94,20 @@ class MockAIAdapter:
 
         warnings = ["Mock AI Provider 결과입니다. 실제 분석 결과가 아닙니다."]
 
+        def is_explicitly_low_confidence(segment: Dict[str, Any]) -> bool:
+            # ``is_low_confidence`` is internal provider metadata when it is
+            # available before Contract serialization.  Persisted Contract
+            # segments do not carry that field; in that case 0.0 means the
+            # provider did not supply a compatible confidence score, not a
+            # measured 0% confidence.  Keep warning behavior for actual,
+            # positive low confidence values.
+            if segment.get("is_low_confidence") is True:
+                return True
+            confidence = float(segment.get("confidence") or 0)
+            return 0.0 < confidence < 0.7
+
         low_confidence = [
-            segment
-            for segment in segments
-            if float(segment.get("confidence") or 0) < 0.7
+            segment for segment in segments if is_explicitly_low_confidence(segment)
         ]
 
         if low_confidence:

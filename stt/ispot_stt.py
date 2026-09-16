@@ -22,6 +22,11 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from deepgram import DeepgramClient
 
+try:
+    from elevenlabs.client import ElevenLabs
+except ImportError:  # pragma: no cover - exercised when optional SDK is absent
+    ElevenLabs = None
+
 
 load_dotenv()
 
@@ -270,6 +275,190 @@ class MockSTTProvider(BaseSTTProvider):
                 }
             ],
         }
+
+
+# 4-1. ElevenLabs Scribe v2 provider
+class ElevenLabsScribeV2Provider(BaseSTTProvider):
+    """ElevenLabs Scribe v2 adapter for the I-SPOT STT contract.
+
+    ``speaker_id`` is treated as a provider-local identity.  It is never
+    interpreted by position (for example, speaker_0 is not assumed to be a
+    counselor).  A runtime role mapper decides whether the identity can be
+    represented as COUNSELOR/CHILD; otherwise it remains UNKNOWN.
+    """
+
+    MODEL_ID = "scribe_v2"
+    LANGUAGE_CODE = "kor"
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+        client: Any = None,
+    ) -> None:
+        super().__init__(api_key=api_key, api_url=api_url)
+        self.api_key = self.api_key or os.getenv("ELEVENLABS_API_KEY")
+        self._client = client
+        self.model_id = os.getenv("ELEVENLABS_MODEL_ID", self.MODEL_ID)
+        self.language_code = os.getenv("ELEVENLABS_LANGUAGE_CODE", self.LANGUAGE_CODE)
+        self.diarize = os.getenv("ELEVENLABS_DIARIZE", "true").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+
+    @staticmethod
+    def _to_dict(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: ElevenLabsScribeV2Provider._to_dict(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [ElevenLabsScribeV2Provider._to_dict(item) for item in value]
+        if hasattr(value, "model_dump"):
+            return ElevenLabsScribeV2Provider._to_dict(value.model_dump())
+        if hasattr(value, "dict"):
+            return ElevenLabsScribeV2Provider._to_dict(value.dict())
+        return value
+
+    @classmethod
+    def _coerce_to_contract(cls, response: Any) -> List[Dict[str, Any]]:
+        """Convert valid ElevenLabs word output without positional role mapping."""
+        payload = cls._to_dict(response)
+        if not isinstance(payload, dict) or not isinstance(payload.get("words"), list):
+            raise ValueError("ElevenLabs response has no top-level words list.")
+
+        provider_segments: List[Dict[str, Any]] = []
+        current: Optional[Dict[str, Any]] = None
+
+        for index, item in enumerate(payload["words"]):
+            if not isinstance(item, dict) or item.get("type") != "word":
+                continue
+
+            text = item.get("text")
+            speaker_id = item.get("speaker_id")
+            start = item.get("start")
+            end = item.get("end")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"ElevenLabs word {index} has no text.")
+            if speaker_id is None or not str(speaker_id).strip():
+                raise ValueError(f"ElevenLabs word {index} has no speaker_id.")
+            try:
+                start_ms = int(round(float(start) * 1000))
+                end_ms = int(round(float(end) * 1000))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"ElevenLabs word {index} has invalid timestamps.") from exc
+            if start_ms < 0 or end_ms < start_ms:
+                raise ValueError(f"ElevenLabs word {index} has an invalid time range.")
+
+            raw_speaker_id = str(speaker_id).strip()
+            word = {
+                "word": text.strip(),
+                "speaker": raw_speaker_id,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                # Scribe output used here has no word confidence.  Do not invent one.
+                "confidence": 0.0,
+            }
+            if current is None or current["provider_speaker_id"] != raw_speaker_id:
+                if current is not None:
+                    provider_segments.append(current)
+                current = {
+                    "provider_speaker_id": raw_speaker_id,
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "words": [word],
+                }
+            else:
+                current["end_ms"] = max(current["end_ms"], end_ms)
+                current["words"].append(word)
+
+        if current is not None:
+            provider_segments.append(current)
+        if not provider_segments:
+            raise ValueError("ElevenLabs response contains no type='word' entries.")
+
+        # Keep raw identities until the role-inference boundary.  The public
+        # Backend Contract cannot carry arbitrary speaker IDs in its speaker
+        # enum, so unresolved identities become UNKNOWN there.
+        raw_segments = [
+            {
+                "speaker": segment["provider_speaker_id"],
+                "text": " ".join(word["word"] for word in segment["words"]),
+            }
+            for segment in provider_segments
+        ]
+        from speaker_role_runtime import RuntimeSpeakerRoleMapper
+
+        role_mapping = RuntimeSpeakerRoleMapper().map_roles(raw_segments)
+        contract_segments: List[Dict[str, Any]] = []
+        for segment_index, segment in enumerate(provider_segments, start=1):
+            provider_speaker_id = segment["provider_speaker_id"]
+            role = role_mapping.get(provider_speaker_id, {}).get("role", "UNKNOWN")
+            if role not in SPEAKER_ENUM:
+                role = "UNKNOWN"
+            contract_segments.append(
+                {
+                    "segment_id": f"seg_{segment_index:03d}",
+                    "speaker": role,
+                    "provider_speaker_id": provider_speaker_id,
+                    "start_ms": segment["start_ms"],
+                    "end_ms": segment["end_ms"],
+                    "text": " ".join(word["word"] for word in segment["words"]),
+                    # ElevenLabs does not provide a compatible confidence value.
+                    "confidence": 0.0,
+                    # A compatible confidence score is unavailable, which is
+                    # different from an explicitly low-confidence result.
+                    "is_low_confidence": False,
+                    "words": segment["words"],
+                }
+            )
+        return contract_segments
+
+    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+        if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+            raise InvalidAudioError("Invalid or empty audio file.")
+        try:
+            if self._client is None:
+                if ElevenLabs is None:
+                    raise AudioProviderError(
+                        "elevenlabs package is required for ElevenLabs Scribe v2"
+                    )
+                if not self.api_key:
+                    raise AudioProviderError("ELEVENLABS_API_KEY is not configured.")
+                self._client = ElevenLabs(api_key=self.api_key)
+            with open(audio_path, "rb") as audio_file:
+                response = self._client.speech_to_text.convert(
+                    file=audio_file.read(),
+                    model_id=self.model_id,
+                    language_code=self.language_code,
+                    diarize=self.diarize,
+                    tag_audio_events=False,
+                )
+            return {"schema_version": "1.0", "segments": self._coerce_to_contract(response)}
+        except AudioProviderError:
+            raise
+        except Exception as exc:
+            raise AudioProviderError(f"ElevenLabs Scribe v2 STT failed: {exc}") from exc
+
+
+class ProviderFailureFallbackSTTProvider(BaseSTTProvider):
+    """Use a secondary provider only when the primary provider itself fails."""
+
+    def __init__(self, primary: BaseSTTProvider, fallback: BaseSTTProvider) -> None:
+        super().__init__()
+        self.primary = primary
+        self.fallback = fallback
+
+    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+        try:
+            return self.primary.transcribe(audio_path)
+        except AudioProviderError as primary_error:
+            try:
+                result = self.fallback.transcribe(audio_path)
+            except Exception as fallback_error:
+                raise AudioProviderError(
+                    f"Primary provider failed ({primary_error}); fallback also failed ({fallback_error})."
+                ) from fallback_error
+            # This is provenance only; it does not change the Backend Contract.
+            result["provider_fallback_used"] = True
+            return result
 
 
 # 4-1. Deepgram provider
@@ -1591,7 +1780,25 @@ class Transcriber:
             "clova": ClovaSpeechSTTProvider,
             "clova_speech": ClovaSpeechSTTProvider,
             "deepgram": DeepgramSTTProvider,
+            "elevenlabs": ElevenLabsScribeV2Provider,
         }
+        if self.provider_name == "elevenlabs":
+            # The generic I_SPOT_STT_API_KEY may belong to another provider.
+            # ElevenLabs always receives its explicitly named key instead.
+            primary = ElevenLabsScribeV2Provider(
+                api_key=os.getenv("ELEVENLABS_API_KEY"),
+                api_url=self.api_url,
+            )
+            fallback_name = os.getenv("I_SPOT_STT_FALLBACK_PROVIDER", "deepgram").lower()
+            if fallback_name == "deepgram":
+                return ProviderFailureFallbackSTTProvider(
+                    primary=primary,
+                    fallback=DeepgramSTTProvider(
+                        api_key=os.getenv("DEEPGRAM_API_KEY"),
+                        api_url=self.api_url,
+                    ),
+                )
+            return primary
         provider_cls = provider_map.get(self.provider_name, MockSTTProvider)
         return provider_cls(api_key=self.api_key, api_url=self.api_url)
 

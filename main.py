@@ -25,7 +25,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 # ispot 모듈 불러오기
-from stt.ispot_stt import SelectiveFallbackSTTProvider
+from stt.ispot_stt import Transcriber
 from stt.ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
@@ -43,7 +43,11 @@ load_dotenv()
 # 이후 요청에서는 같은 모델 인스턴스를 재사용한다.
 # ---------------------------------------------------------
 
-stt_provider = SelectiveFallbackSTTProvider()
+# ElevenLabs is the default production provider. The provider-level fallback
+# uses Deepgram only for an ElevenLabs API/network/response failure.
+stt_provider = Transcriber(
+    provider=os.getenv("I_SPOT_STT_PROVIDER") or "elevenlabs"
+)
 
 post_processor = STTPostProcessor(
     low_confidence_threshold=0.70
@@ -120,7 +124,13 @@ def analyze_audio(file: UploadFile = File(...)):
         # 5. 후처리 및 발화 병합
         print("2️⃣ STT 결과 후처리 및 발화 병합 중...")
         try:
-            final_result = post_processor.process(raw_stt_result)
+            # This boundary heuristic is Deepgram-oriented; leave ElevenLabs
+            # output untouched until it has its own production regression test.
+            final_result = (
+                raw_stt_result
+                if stt_provider.provider_name == "elevenlabs"
+                else post_processor.process(raw_stt_result)
+            )
         except Exception as post_err:
             print(f"❌ 후처리 모듈 오류: {str(post_err)}")
             raise HTTPException(
