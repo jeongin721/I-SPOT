@@ -163,6 +163,28 @@ export interface CaseCreateRequest {
   /** guardian_type 이 OTHER 일 때만 보낼 수 있다. 그 외에는 422. */
   guardian_note?: string | null;
   notes?: string | null;
+  /** 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403). */
+  counselor_id?: string;
+}
+
+/**
+ * 사례 수정 요청(PATCH /cases/{id}). 바꿀 필드만 보낸다.
+ * title · child_alias · status 는 null 로 보낼 수 없다(422). 바꾸지 않으려면 빼고 보낸다.
+ */
+export interface CaseUpdateRequest {
+  title?: string;
+  child_alias?: string;
+  child_birth_year?: number | null;
+  child_gender?: string | null;
+  /** OTHER 가 아닌 값(또는 null)으로 바꾸면 Backend 가 기존 guardian_note 를 지운다. */
+  guardian_type?: GuardianType | null;
+  /** 사례의 guardian_type 이 OTHER 일 때만 보낼 수 있다(함께 보내거나 이미 OTHER). 그 외에는 422. */
+  guardian_note?: string | null;
+  notes?: string | null;
+  /** CLOSED 로 바꾸면 사례 종결. */
+  status?: CaseStatus;
+  /** 담당 상담사 변경. 관리자만 할 수 있다(403). */
+  counselor_id?: string;
 }
 
 // =========================================================
