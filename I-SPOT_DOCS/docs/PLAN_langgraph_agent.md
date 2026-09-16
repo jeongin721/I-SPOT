@@ -394,14 +394,19 @@ def reanalysis_node(state: AgentState) -> dict:
 
 **단일 확신도 기준(`>= 0.7`)을 쓰면 안 됩니다.** 학대 유형별 임계값이 크게 다르고, **모델 버전마다 또 다릅니다.**
 
-| 유형 | `develop` · `abuse_model/` (09-03 가중치) | `ai-modeling` 브랜치 · `ai/modeling/abuse/` (v4 09-07 가중치) |
+| 유형 | `develop` · `abuse_model/infer_abuse.py` (09-03 가중치) | `ai-modeling` 옛 판 · `ai/modeling/abuse/infer_abuse.py` (v4 09-07 가중치, 9/15 삭제) |
 | --- | --- | --- |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
 | 성학대 | 0.53 | **0.19** |
 | 방임 | **0.32** | 0.55 |
 
-성학대가 0.53 ↔ 0.19, 방임이 0.32 ↔ 0.55 로 뒤집힙니다. 게다가 이경진 님이 2026-09-11 에 임계값 진단 코드(`test_abuse_probabilities.py`)를 추가하셔서 **아직 확정 전입니다.**
+성학대가 0.53 ↔ 0.19, 방임이 0.32 ↔ 0.55 로 뒤집힙니다.
+
+**2026-09-15 에 모델이 또 바뀌었습니다.** 이경진 님이 `ai-modeling` 에서 오른쪽 열의 `infer_abuse.py` 와 임계값 진단 코드(`test_abuse_probabilities.py`)를 지우셨습니다. 커밋 설명에 따르면 새 모델(`infer_abuse_v3_adapter.py`)로 대체한 것입니다(`0bf2c40`).
+
+- 새 모델의 `predict_abuse` 는 확률을 버리고 **`detected` 만** 돌려줍니다. 새 모델 본체(`infer_abuse_qa_v3.py`)는 저장소에 올라와 있지 않아 **임계값은 확인하지 못했습니다**(`cea06ad` 기준).
+- 세부유형 15종(`infer_subtype.py`)도 임계값이 0.19 ~ 0.94 로 제각각이고, 코드 주석에 잠정값(provisional)이라고 적혀 있습니다. 이쪽도 밖으로는 탐지 여부만 내보냅니다.
 
 따라서 **Agent 는 임계값을 갖지 않습니다.** 모델이 계산한 `detected` 를 그대로 씁니다. 상수로 박아두면 모델이 바뀔 때마다 Agent 를 고쳐야 합니다. 근거 상세는 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) §7-2 와 §7-4 를 따릅니다.
 

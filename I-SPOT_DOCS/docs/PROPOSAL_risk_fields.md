@@ -433,9 +433,9 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 유형별 판정 기준선이 크게 다르고, **모델 버전마다 또 다릅니다.**
 
-| 유형 | `abuse_model/infer_abuse.py` | `ai/modeling/abuse/infer_abuse.py` |
+| 유형 | `abuse_model/infer_abuse.py` | `ai/modeling/abuse/infer_abuse.py` (9/15 삭제) |
 | --- | --- | --- |
-| 브랜치 | `develop` | **`ai-modeling` 판** |
+| 브랜치 | `develop` | **`ai-modeling` 옛 판** |
 | 가중치 | `..._2026-09-03.pth` | `..._v4_2026-09-07.pth` |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
@@ -444,10 +444,10 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 같은 유형인데 성학대가 0.53 ↔ 0.19 로, 방임이 0.32 ↔ 0.55 로 뒤집힙니다. 학습 데이터와 가중치가 달라서입니다.
 
-그리고 **이 값들은 아직 확정이 아닙니다.** 이경진 님이 2026-09-11 에 진단 코드를 추가하셨습니다.
+그리고 **이 값들은 확정된 적이 없습니다.** 이경진 님이 2026-09-11 에 진단 코드를 추가하셨고, 2026-09-15 에 오른쪽 모델과 이 진단 코드를 함께 지우셨습니다(`0bf2c40`).
 
 ```text
-ai/modeling/abuse/test_abuse_probabilities.py
+ai/modeling/abuse/test_abuse_probabilities.py   (9/15 삭제)
 "오탐/미탐 문장이 threshold 문제인지 학습 문제인지 진단하기 위한 테스트 코드다."
 ```
 
@@ -457,6 +457,13 @@ ai/modeling/abuse/test_abuse_probabilities.py
 - 그래서 `threshold` 를 **응답에 실어 보내야** 합니다. 받는 쪽이 자기 기준을 따로 두면 모델 교체 때마다 어긋납니다.
 
 `confidence` 만 넘기고 화면이나 Agent 가 `>= 0.7` 같은 **단일 기준으로 판단하면** 어느 모델을 쓰든 일부 유형을 놓칩니다.
+
+> **⚠️ `ai-modeling` 판은 이 제안과 방향이 다릅니다 (2026-09-15 확인).**
+> 지워진 옛 판(`infer_abuse.py`)도, 커밋 설명상 이를 대체한 새 모델(`infer_abuse_v3_adapter.py`)과
+> 세부유형 모델(`infer_subtype.py`)도 확률과 임계값을 **밖으로 내보내지 않고 탐지 여부만** 돌려줍니다(`cea06ad` 기준).
+> 이대로면 위 구조의 `confidence` · `threshold` 는 채울 수 없습니다.
+> `detected` 만 받는 구조로 줄일지, 모델이 두 값을 내보내도록 할지는 이경진 님과 정해야 합니다.
+> Agent 는 어느 쪽이든 `detected` 만 보므로 영향이 없습니다(§7-4).
 
 `detected` 는 모델이 이미 계산한 값이므로 그대로 전달합니다. **어느 모델을 쓸지는 이 제안의 범위 밖**이며, 어느 쪽이든 구조는 동일합니다.
 
