@@ -165,6 +165,133 @@ def _chunk_to_text(
 
 
 # ============================================================
+# 2.5 근거(evidence) → 원본 음성 타임스탬프 역매핑
+# ============================================================
+# 2차 LLM의 evidence_start/evidence_end는 build_full_transcript_text가
+# 만든 전체 텍스트 안에서의 문자 위치다. 그 문자 위치가 어떤 STT
+# segment(들)에서 나왔는지 되짚어서 start_ms/end_ms를 붙여주면
+# 근거 발화를 원본 음성 재생 위치와 연결할 수 있다.
+
+def build_line_char_spans(
+    lines: List[Tuple[str, str, Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """
+    build_full_transcript_text와 완전히 동일한 조립 규칙
+    ("화자: 텍스트"를 "\\n"으로 join)으로 각 줄의 문자 구간을 계산한다.
+    """
+
+    spans: List[Dict[str, Any]] = []
+
+    cursor = 0
+
+    for speaker, text, segment in lines:
+        line_text = f"{speaker}: {text}"
+
+        start_char = cursor
+        end_char = cursor + len(line_text)
+
+        spans.append(
+            {
+                "start_char": start_char,
+                "end_char": end_char,
+                "segment_id": segment["segment_id"],
+                "start_ms": segment["start_ms"],
+                "end_ms": segment["end_ms"],
+            }
+        )
+
+        # build_full_transcript_text가 줄 사이에 "\n" 하나를 넣으므로
+        # 다음 줄은 그만큼 뒤에서 시작한다.
+        cursor = end_char + 1
+
+    return spans
+
+
+def _find_spans_for_char_range(
+    start_char: int,
+    end_char: int,
+    line_spans: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    return [
+        span
+        for span in line_spans
+        if span["start_char"] < end_char
+        and span["end_char"] > start_char
+    ]
+
+
+def link_evidence_timestamps(
+    subtype_analysis: Dict[str, Any],
+    line_spans: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    subtype_analysis 안의 evidence마다 원본 음성 타임스탬프
+    (start_ms/end_ms/segment_ids)를 timestamps 필드로 붙인다.
+
+    evidence_verified가 False이거나 문자 위치가 없으면
+    timestamps는 None으로 둔다 (근거 자체가 불확실한 상태에서
+    잘못된 시간 구간을 링크하지 않기 위함).
+    """
+
+    for major_result in subtype_analysis.get(
+        "results",
+        [],
+    ):
+        for subtype in major_result.get(
+            "subtypes",
+            [],
+        ):
+            for evidence in subtype.get(
+                "evidences",
+                [],
+            ):
+                start_char = evidence.get(
+                    "evidence_start"
+                )
+
+                end_char = evidence.get(
+                    "evidence_end"
+                )
+
+                if (
+                    not evidence.get(
+                        "evidence_verified"
+                    )
+                    or start_char is None
+                    or end_char is None
+                ):
+                    evidence["timestamps"] = None
+                    continue
+
+                matches = _find_spans_for_char_range(
+                    start_char,
+                    end_char,
+                    line_spans,
+                )
+
+                if not matches:
+                    evidence["timestamps"] = None
+                    continue
+
+                evidence["timestamps"] = {
+                    "start_ms": min(
+                        span["start_ms"]
+                        for span in matches
+                    ),
+                    "end_ms": max(
+                        span["end_ms"]
+                        for span in matches
+                    ),
+                    "segment_ids": [
+                        span["segment_id"]
+                        for span in matches
+                    ],
+                }
+
+    return subtype_analysis
+
+
+# ============================================================
 # 3. 세션 전체 분석
 # ============================================================
 
@@ -265,6 +392,15 @@ def analyze_audio_session(
         subtype_result = analyze_subtypes(
             text=full_text,
             major_types=detected_major_types,
+        )
+
+        line_spans = build_line_char_spans(
+            lines
+        )
+
+        subtype_result = link_evidence_timestamps(
+            subtype_result,
+            line_spans,
         )
     else:
         subtype_result = {

@@ -17,6 +17,9 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
+from ai.modeling.abuse.feedback_analysis import (
+    build_correction_hint_text,
+)
 from ai.modeling.abuse.second_stage_llm import (
     _call_llm_with_retry,
     verify_evidence,
@@ -183,7 +186,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 
 근거 있는 항목이 하나도 없으면 checklist/safety_assessment_evidence는
 빈 배열로 반환한다.
-"""
+{correction_hint}"""
 
 USER_PROMPT_TEMPLATE = """
 [상담 원문]
@@ -489,6 +492,12 @@ def generate_checklist_draft(
             api_key=api_key
         )
 
+    try:
+        correction_hint = build_correction_hint_text()
+    except Exception:
+        # 피드백 DB를 못 읽어도 체크리스트 생성 자체는 막지 않는다.
+        correction_hint = ""
+
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         household_items=_build_item_list_text(
             CHECKLIST_DEFINITIONS["가정상황"]
@@ -500,6 +509,7 @@ def generate_checklist_draft(
             SAFETY_ASSESSMENT_DIMENSIONS
         ),
         environment_item=ENVIRONMENT_ITEM,
+        correction_hint=correction_hint,
     )
 
     user_prompt = USER_PROMPT_TEMPLATE.format(

@@ -905,6 +905,10 @@ def build_subtypes_html(subtype_analysis):
                     "target_body_part"
                 )
 
+                timestamps = evidence.get(
+                    "timestamps"
+                )
+
                 meta_parts = []
 
                 if strength:
@@ -925,6 +929,15 @@ def build_subtypes_html(subtype_analysis):
                 if body_part:
                     meta_parts.append(
                         f"신체 부위: {escape(str(body_part))}"
+                    )
+
+                if timestamps:
+                    start_sec = timestamps["start_ms"] / 1000
+                    end_sec = timestamps["end_ms"] / 1000
+
+                    meta_parts.append(
+                        "원본 음성 위치: "
+                        f"{start_sec:.1f}s ~ {end_sec:.1f}s"
                     )
 
                 if verified:
