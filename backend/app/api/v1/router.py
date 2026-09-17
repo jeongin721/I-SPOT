@@ -10,6 +10,7 @@ from app.api.v1 import (
     documents,
     sessions,
     summary,
+    tasks,
     transcript,
 )
 
@@ -25,3 +26,4 @@ api_router.include_router(transcript.router)
 api_router.include_router(analysis.router)
 api_router.include_router(summary.router)
 api_router.include_router(documents.router)
+api_router.include_router(tasks.router)

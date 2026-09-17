@@ -70,6 +70,22 @@ class SessionStatus(str, Enum):
     AI_FAILED = "AI_FAILED"
 
 
+class TaskType(str, Enum):
+    """
+    처리 대기 업무 종류. 사람이 처리할 차례인 Session 상태 하나에 하나씩 대응한다.
+
+    업무는 따로 저장하지 않고 Session 상태에서 계산한다(task_service).
+    """
+
+    UPLOAD_AUDIO = "UPLOAD_AUDIO"            # CREATED — 녹음 업로드
+    REQUEST_STT = "REQUEST_STT"              # AUDIO_UPLOADED — 원문 변환 요청
+    REVIEW_TRANSCRIPT = "REVIEW_TRANSCRIPT"  # STT_REVIEW_REQUIRED — 원문 검수
+    REQUEST_ANALYSIS = "REQUEST_ANALYSIS"    # STT_CONFIRMED — AI 분석 요청
+    REVIEW_ANALYSIS = "REVIEW_ANALYSIS"      # AI_REVIEW_REQUIRED — 분석 결과 검토·승인
+    RETRY_STT = "RETRY_STT"                  # STT_FAILED — 원문 변환 재시도
+    RETRY_ANALYSIS = "RETRY_ANALYSIS"        # AI_FAILED — AI 분석 재시도
+
+
 class Speaker(str, Enum):
     """STT Contract speaker Enum. 확실하지 않으면 UNKNOWN 을 사용한다."""
 
