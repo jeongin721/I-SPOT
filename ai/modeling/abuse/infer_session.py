@@ -17,7 +17,7 @@ from ai.adapters.stt_analysis_adapter import (
     validate_stt_result,
 )
 
-from ai.modeling.abuse.infer_abuse import (
+from ai.modeling.abuse.infer_abuse_v3_adapter import (
     predict_abuse,
 )
 
