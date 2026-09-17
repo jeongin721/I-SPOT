@@ -25,6 +25,9 @@ import type {
   Summary,
   SummaryEnvelope,
   SummaryUpdateRequest,
+  TaskItem,
+  TaskSummary,
+  TaskType,
   Transcript,
   TranscriptEnvelope,
   TranscriptUpdateRequest,
@@ -209,5 +212,30 @@ export const summary = {
   /** 승인. 회차가 APPROVED 로 넘어간다. */
   approve(sessionId: string): Promise<Summary> {
     return api.post<Summary>(`/sessions/${sessionId}/summary/approve`);
+  },
+};
+
+// =========================================================
+// 처리 대기 업무 (대시보드)
+// =========================================================
+
+export const tasks = {
+  /**
+   * 사람이 처리할 차례인 회차를 오래 기다린 순서로 가져온다.
+   * 상담사는 담당 사례만 보인다. counselor_id 는 관리자만 쓸 수 있다(다른 사람 id 면 403).
+   */
+  list(
+    params?: PageQuery & {
+      task_type?: TaskType;
+      overdue_only?: boolean;
+      counselor_id?: string;
+    },
+  ): Promise<Paged<TaskItem>> {
+    return api.get<Paged<TaskItem>>("/tasks", params);
+  },
+
+  /** 대시보드 숫자 (전체 · 지연 · 종류별). */
+  summary(params?: { counselor_id?: string }): Promise<TaskSummary> {
+    return api.get<TaskSummary>("/tasks/summary", params);
   },
 };
