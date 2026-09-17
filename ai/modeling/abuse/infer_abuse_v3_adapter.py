@@ -49,14 +49,15 @@ _note_engine = AbuseQAModel(
 def _simplify_predictions(raw_predictions: dict) -> dict:
     """
     v3 모델의 label별 예측 결과에서 probability는 버리고
-    detected 여부만 남긴다.
+    detected 여부만 남긴다. _suppress_denied_labels가 남긴
+    filtered_reason이 있으면 그대로 함께 전달한다.
     """
 
     result = {}
 
     for label, prediction in raw_predictions.items():
 
-        result[label] = {
+        simplified = {
             "detected": bool(
                 prediction.get(
                     "detected",
@@ -64,6 +65,13 @@ def _simplify_predictions(raw_predictions: dict) -> dict:
                 )
             )
         }
+
+        if prediction.get("filtered_reason"):
+            simplified["filtered_reason"] = prediction[
+                "filtered_reason"
+            ]
+
+        result[label] = simplified
 
     return result
 
@@ -132,6 +140,104 @@ def _split_counselor_child_text(text: str):
     )
 
 
+# ============================================================
+# 6. 명확한 부정 응답 필터
+# ============================================================
+# 1차 모델이 detected=True로 판정해도, 관련 키워드가 원문에서
+# 전부 부정문으로만 등장하면("굶은 적 있어요? / 아니요, 안 굶어요")
+# 오탐으로 보고 detected를 False로 내린다.
+#
+# 근거 문장이 하나라도 부정 없이(=긍정적으로) 등장하면 절대
+# 건드리지 않는다 — 실제 탐지를 놓치지 않기 위한 보수적 규칙이다.
+#
+# qa/child_only 모드처럼 아동 발화를 따로 뽑을 수 있을 때만
+# 적용되고, note 모드(3인칭 서술문)는 화자 구분이 없어
+# 아직 적용하지 않는다.
+
+_LABEL_KEYWORDS = {
+    "신체학대": [
+        "때리", "맞았", "맞은", "맞아", "멍",
+        "다쳤", "부러지", "흉기", "벨트", "막대기", "조르",
+    ],
+    "정서학대": [
+        "욕하", "협박", "죽이겠", "버리겠",
+        "가두", "무시", "소리 지르", "폭언",
+    ],
+    "성학대": [
+        "만지", "성기", "가슴", "성폭행", "성추행", "보여달라",
+    ],
+    "방임": [
+        "굶", "못 먹", "안 챙기", "혼자 두", "방치", "씻지", "병원",
+    ],
+}
+
+_NEGATION_PATTERN = re.compile(
+    r"아니요|아니예요|아니에요|아뇨|없어요|없었어요|없습니다|안\s|않았|못\s"
+)
+
+
+def _split_sentences(
+    text: str,
+):
+    return re.split(
+        r"(?<=[.?!])\s+|\n",
+        text,
+    )
+
+
+def _suppress_denied_labels(
+    child_text: str,
+    predictions: dict,
+) -> dict:
+    """
+    child_text 안에서 각 유형의 키워드가 등장하는 문장을 찾아,
+    전부 부정문일 때만 해당 유형의 detected를 False로 내린다.
+    """
+
+    if not child_text.strip():
+        return predictions
+
+    sentences = _split_sentences(
+        child_text
+    )
+
+    for label, keywords in _LABEL_KEYWORDS.items():
+        prediction = predictions.get(
+            label
+        )
+
+        if not prediction or not prediction.get(
+            "detected"
+        ):
+            continue
+
+        has_affirmative = False
+        has_negated_mention = False
+
+        for sentence in sentences:
+            if not any(
+                keyword in sentence
+                for keyword in keywords
+            ):
+                continue
+
+            if _NEGATION_PATTERN.search(
+                sentence
+            ):
+                has_negated_mention = True
+            else:
+                has_affirmative = True
+
+        if has_negated_mention and not has_affirmative:
+            prediction["detected"] = False
+
+            prediction["filtered_reason"] = (
+                "아동이 관련 발화를 명확히 부정함"
+            )
+
+    return predictions
+
+
 def predict_major_types(
     text: str,
     input_mode: str = "qa",
@@ -162,6 +268,11 @@ def predict_major_types(
 
         predictions = raw_result["predictions"]
 
+        predictions = _suppress_denied_labels(
+            child_text,
+            predictions,
+        )
+
     elif input_mode == "child_only":
         raw_result = predict_child_only(
             _engine,
@@ -169,6 +280,11 @@ def predict_major_types(
         )
 
         predictions = raw_result["predictions"]
+
+        predictions = _suppress_denied_labels(
+            text,
+            predictions,
+        )
 
     elif input_mode == "note":
         predictions = predict_abuse_v3(

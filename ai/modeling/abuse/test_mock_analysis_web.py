@@ -52,6 +52,7 @@ register_case_workflow_routes(
 
 def build_mock_analysis(
     detected_label: str,
+    suggested_items: set = None,
 ) -> dict:
     major_types = {
         label: {
@@ -109,10 +110,11 @@ def build_mock_analysis(
         ],
     }
 
-    suggested_items = {
-        "배우자폭력",
-        "불안",
-    }
+    if suggested_items is None:
+        suggested_items = {
+            "배우자폭력",
+            "불안",
+        }
 
     for category, items in checklist_candidates.items():
         for item in items:
@@ -295,6 +297,29 @@ def index():
                 </select>
 
                 <button type="submit">가짜 분석 결과 생성</button>
+            </form>
+
+            <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+            <h2 style="font-size: 16px;">2회차 비교 데모</h2>
+            <p style="font-size: 13px; color: #6b7280;">
+                같은 사례 ID로 서로 다른 체크리스트 항목이 확정된
+                2개 회기를 한 번에 만들어서, 회차별 Risk Factor 비교와
+                사정기록지 초안을 바로 확인해볼 수 있습니다.
+                (1회차: 배우자폭력+불안 → 2회차: 불안+우울,
+                즉 배우자폭력은 해소, 불안은 반복, 우울은 신규로 나타납니다.)
+            </p>
+
+            <form method="post" action="/demo-scenario">
+                <label>사례 ID</label>
+                <input
+                    type="text"
+                    name="case_id"
+                    placeholder="예: CASE-DEMO-001"
+                    required
+                >
+
+                <button type="submit">2회차 데모 자동 생성</button>
             </form>
 
             <p style="margin-top: 20px;">
@@ -494,6 +519,140 @@ def mock_analyze(
     </body>
     </html>
     """
+
+
+def _build_final_checklist(
+    ai_checklist: dict,
+    suggested_items: set,
+) -> dict:
+    items = [
+        {
+            **item,
+            "suggested": item["item"] in suggested_items,
+        }
+        for item in ai_checklist.get(
+            "checklist",
+            [],
+        )
+    ]
+
+    return {
+        **ai_checklist,
+        "checklist": items,
+    }
+
+
+def _create_approved_round(
+    case_id: str,
+    round_label: str,
+    suggested_items: set,
+) -> int:
+    analysis = build_mock_analysis(
+        "신체학대",
+        suggested_items=suggested_items,
+    )
+
+    session_id = case_store.save_draft_session(
+        case_id=case_id,
+        input_mode="mock",
+        source_type="mock",
+        raw_text=f"(데모용 {round_label} 가짜 데이터)",
+        analysis=analysis,
+    )
+
+    final_checklist = _build_final_checklist(
+        analysis["checklist_draft"],
+        suggested_items,
+    )
+
+    case_store.approve_session(
+        session_id=session_id,
+        final_counseling_summary=analysis[
+            "counseling_summary"
+        ],
+        final_counseling_note=analysis[
+            "counseling_note"
+        ],
+        final_checklist=final_checklist,
+    )
+
+    return session_id
+
+
+@app.post(
+    "/demo-scenario",
+    response_class=HTMLResponse,
+)
+def demo_scenario(
+    case_id: str = Form(...),
+):
+    round1_id = _create_approved_round(
+        case_id,
+        "1회차",
+        {"배우자폭력", "불안"},
+    )
+
+    round2_id = _create_approved_round(
+        case_id,
+        "2회차",
+        {"불안", "우울"},
+    )
+
+    return HTMLResponse(
+        f"""
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>2회차 데모 생성 완료</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    background: #f5f7fb; margin: 0; padding: 40px 24px; color: #1f2937;
+                }}
+                .panel {{
+                    max-width: 640px; margin: 0 auto; background: white;
+                    border: 1px solid #e5e7eb; border-radius: 16px; padding: 28px;
+                }}
+                ul {{ padding-left: 20px; line-height: 1.8; }}
+                .links {{ display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }}
+                .links a {{
+                    display: inline-block; padding: 10px 16px; border-radius: 10px;
+                    background: #111827; color: white; text-decoration: none;
+                    font-size: 14px; font-weight: 600; text-align: center;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="panel">
+                <h1>2회차 데모 생성 완료</h1>
+                <p>사례 ID: <b>{escape(case_id)}</b></p>
+                <ul>
+                    <li>1회차 (#{round1_id}): 배우자폭력, 불안 확정</li>
+                    <li>2회차 (#{round2_id}): 불안, 우울 확정
+                        → 배우자폭력 해소 / 불안 반복 / 우울 신규</li>
+                </ul>
+                <div class="links">
+                    <a href="/cases/{escape(case_id, quote=True)}">
+                        회차별 Risk Factor 비교 보기 (/cases/{escape(case_id)})
+                    </a>
+                    <a href="/sessions/{round1_id}/assessment-record">
+                        1회차 사정기록지 초안 보기
+                    </a>
+                    <a href="/sessions/{round2_id}/assessment-record">
+                        2회차 사정기록지 초안 보기
+                    </a>
+                    <a href="/sessions/{round2_id}/document">
+                        2회차 상담기록 문서 보기
+                    </a>
+                </div>
+                <p style="margin-top: 20px;"><a href="/">처음으로</a></p>
+            </div>
+        </body>
+        </html>
+        """
+    )
 
 
 # ============================================================
