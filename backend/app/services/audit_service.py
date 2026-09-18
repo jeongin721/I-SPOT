@@ -21,6 +21,10 @@ def record(
     case_id: Optional[uuid.UUID] = None,
     session_id: Optional[uuid.UUID] = None,
     detail: Optional[Dict[str, Any]] = None,
+    status: str = "SUCCESS",
+    error_code: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
 ) -> AuditLog:
     """
     Audit log 를 추가한다. commit 은 호출 측 transaction 에 맡긴다.
@@ -34,6 +38,10 @@ def record(
         case_id=case_id,
         session_id=session_id,
         detail=detail,
+        status=status,
+        error_code=error_code,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
     db.add(log)

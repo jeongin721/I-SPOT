@@ -12,6 +12,7 @@ from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.models.transcript import Transcript, TranscriptSegment
 from app.models.user import User
+from app.models.user_password_history import UserPasswordHistory
 
 __all__ = [
     "AIAnalysis",
@@ -26,4 +27,5 @@ __all__ = [
     "Transcript",
     "TranscriptSegment",
     "User",
+    "UserPasswordHistory",
 ]

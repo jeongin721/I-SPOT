@@ -353,10 +353,20 @@ def test_change_password_detects_same_korean_password(
 
     assert first.status_code == 204
 
+    # 비밀번호를 바꾸면 이전 Token 이 무효가 되므로 다시 로그인한다.
+    relogin = client.post(
+        "/api/v1/auth/login",
+        json={"email": COUNSELOR_EMAIL, "password": KO_24},
+    )
+
+    assert relogin.status_code == 200
+
+    headers = {"Authorization": f"Bearer {relogin.json()['data']['access_token']}"}
+
     second = client.post(
         "/api/v1/auth/me/password",
         json={"current_password": KO_24, "new_password": KO_24},
-        headers=counselor_headers,
+        headers=headers,
     )
 
     assert second.status_code == 422

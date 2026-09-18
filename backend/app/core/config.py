@@ -68,6 +68,18 @@ class Settings(BaseSettings):
     PASSWORD_PASSPHRASE_LENGTH: int = Field(default=20, ge=12, le=72)
 
     # ---------------------------------------------------------
+    # Account State
+    # ---------------------------------------------------------
+    # 팀 회의 결정(2026-09-18): 5회 실패 잠금(관리자가 해제), 2개월 미접속 휴면.
+    LOGIN_MAX_FAILURES: int = Field(default=5, ge=1)
+    # 0 이면 시간이 지나도 풀리지 않고 관리자만 해제한다.(회의 결정)
+    LOGIN_LOCK_MINUTES: int = Field(default=0, ge=0)
+    DORMANT_AFTER_DAYS: int = Field(default=60, ge=1)
+    TEMP_PASSWORD_VALID_HOURS: int = Field(default=72, ge=1)
+    # 이전 비밀번호 재사용 금지에 쓸 보관 개수. 0 이면 검사하지 않는다.
+    PASSWORD_HISTORY_COUNT: int = Field(default=3, ge=0, le=20)
+
+    # ---------------------------------------------------------
     # CORS
     # ---------------------------------------------------------
     # NoDecode: pydantic-settings 가 env 값을 JSON 으로 먼저 decode 하지 않게 해서
