@@ -6,6 +6,7 @@
 import re
 import secrets
 import string
+import unicodedata
 from typing import Iterable, List, Optional
 
 from app.core.config import settings
@@ -131,7 +132,13 @@ def check_password(
     """위반 사유 목록을 돌려준다. 빈 목록이면 통과다."""
 
     reasons: List[str] = []
+
+    # 저장될 형태와 같은 표기로 본다.(app/core/security.py 와 같은 규칙)
+    password = unicodedata.normalize("NFC", password)
     byte_length = len(password.encode("utf-8"))
+
+    if password != password.strip():
+        reasons.append("앞이나 뒤에 공백을 넣을 수 없습니다.")
 
     if byte_length > MAX_BYTES:
         reasons.append(

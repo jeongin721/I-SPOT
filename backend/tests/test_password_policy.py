@@ -3,6 +3,7 @@
 # 규칙은 "새로 정하는 비밀번호" 에만 적용한다. 로그인 요청은 검사하지 않는다.
 # (이미 있는 계정이 전부 잠기는 것을 막기 위해서다.)
 
+import unicodedata
 import uuid
 from typing import Dict
 
@@ -78,6 +79,21 @@ def test_generate_password_follows_min_length_setting(monkeypatch) -> None:
 
     assert len(password) >= 20
     assert check_password(password) == []
+
+
+def test_hangul_notation_does_not_change_the_result() -> None:
+    """같은 한글도 표기(NFC/NFD)가 다르면 byte 가 달라진다. 규칙은 같게 봐야 한다."""
+
+    nfc = "가나다라마바사아자차1!"
+    nfd = unicodedata.normalize("NFD", nfc)
+
+    assert nfc.encode("utf-8") != nfd.encode("utf-8")
+    assert check_password(nfc) == check_password(nfd) == []
+
+
+def test_leading_or_trailing_space_is_blocked() -> None:
+    assert check_password(" Rainy-Harbor-73") != []
+    assert check_password("Rainy-Harbor-73 ") != []
 
 
 def test_email_id_is_blocked() -> None:
@@ -343,3 +359,27 @@ def test_change_password_detects_same_korean_password(
 
     assert second.status_code == 422
     assert second.json()["error"]["code"] == "SAME_PASSWORD"
+
+
+def test_korean_password_works_across_notations(
+    client: TestClient, counselor_headers
+) -> None:
+    """NFC 로 바꾼 한글 비밀번호를 NFD 로 입력해도 로그인돼야 한다."""
+
+    changed = client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": COUNSELOR_PASSWORD, "new_password": KO_24},
+        headers=counselor_headers,
+    )
+
+    assert changed.status_code == 204
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": COUNSELOR_EMAIL,
+            "password": unicodedata.normalize("NFD", KO_24),
+        },
+    )
+
+    assert login.status_code == 200
