@@ -38,3 +38,10 @@ class UserCreateRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     name: str = Field(..., min_length=1, max_length=100)
     role: UserRole = UserRole.COUNSELOR
+
+
+class PasswordChangeRequest(BaseModel):
+    """본인 비밀번호 변경. 새 비밀번호 규칙은 app/core/password_policy.py 에 있다."""
+
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)

@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
 
     # ---------------------------------------------------------
+    # Password Policy
+    # ---------------------------------------------------------
+    # 새로 정하는 비밀번호에만 적용한다. 로그인 검사에는 쓰지 않는다.
+    # 기관 보안 기준이 4종 전부를 요구하면 PASSWORD_MIN_CLASSES 만 4 로 올린다.
+    PASSWORD_MIN_LENGTH: int = Field(default=12, ge=8, le=72)
+    PASSWORD_MIN_CLASSES: int = Field(default=3, ge=1, le=4)
+    PASSWORD_PASSPHRASE_LENGTH: int = Field(default=20, ge=12, le=72)
+
+    # ---------------------------------------------------------
     # CORS
     # ---------------------------------------------------------
     # NoDecode: pydantic-settings 가 env 값을 JSON 으로 먼저 decode 하지 않게 해서

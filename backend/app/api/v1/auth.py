@@ -12,6 +12,7 @@ from app.core.security import create_access_token, token_expires_in_seconds
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    PasswordChangeRequest,
     UserCreateRequest,
     UserResponse,
 )
@@ -39,6 +40,19 @@ def login(payload: LoginRequest, db: DbSession) -> DataResponse[LoginResponse]:
 @router.get("/me", response_model=DataResponse[UserResponse])
 def get_me(current_user: CurrentUser) -> DataResponse[UserResponse]:
     return DataResponse(data=UserResponse.model_validate(current_user))
+
+
+@router.post(
+    "/me/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="내 비밀번호 변경",
+)
+def change_my_password(
+    payload: PasswordChangeRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    user_service.change_password(db, current_user, payload)
 
 
 @router.post(
