@@ -71,27 +71,26 @@ _SEQUENCES = (
 
 def _character_classes(password: str) -> int:
     """
-    섞여 있는 글자 종류 수.
+    섞여 있는 글자 종류 수. 글자 · 숫자 · 특수문자 3가지로 센다.
 
-    한글처럼 대소문자가 없는 글자도 한 종류로 센다. 안 세면 한글 비밀번호는
-    숫자 · 특수문자를 넣어도 2종류밖에 안 되어 20자 미만이면 무조건 거부된다.
+    팀 회의 결정(2026-09-18)이 "영문 · 숫자 · 특수문자를 포함" 이므로
+    대문자와 소문자를 나누지 않는다. 나누면 `Abcdefgh1` 처럼
+    특수문자가 없어도 3종류가 되어 결정과 어긋난다.
+
+    한글도 글자로 센다. 안 세면 한글 비밀번호는 20자 미만에서 모두 거부된다.
     """
 
-    upper = lower = digit = other_letter = symbol = False
+    letter = digit = symbol = False
 
     for char in password:
-        if char.isupper():
-            upper = True
-        elif char.islower():
-            lower = True
+        if char.isalpha():
+            letter = True
         elif char.isdigit():
             digit = True
-        elif char.isalpha():
-            other_letter = True
         else:
             symbol = True
 
-    return sum((upper, lower, digit, other_letter, symbol))
+    return sum((letter, digit, symbol))
 
 
 def _tokens(*values: Optional[str]) -> Iterable[str]:
@@ -153,7 +152,7 @@ def check_password(
         and _character_classes(password) < settings.PASSWORD_MIN_CLASSES
     ):
         reasons.append(
-            f"대문자 · 소문자 · 숫자 · 특수문자 · 한글 중 {settings.PASSWORD_MIN_CLASSES}종류 이상을 "
+            f"영문(한글도 됩니다) · 숫자 · 특수문자 중 {settings.PASSWORD_MIN_CLASSES}종류 이상을 "
             f"섞어야 합니다. {settings.PASSWORD_PASSPHRASE_LENGTH}자 이상이면 섞지 않아도 됩니다."
         )
 

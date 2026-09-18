@@ -19,9 +19,9 @@ from tests.conftest import COUNSELOR_PASSWORD
 COUNSELOR_EMAIL = "counselor.a@ispot.example.com"
 NEW_PASSWORD = "Violet-Ferry-62"
 
-# 12자 이상 + 3종 이상을 만족하는 값들
-OK_12 = "Ab3-xyzPmQvt"
-OK_3_CLASSES = "Manzoburitakoy7"
+# 8자 이상 + 글자 · 숫자 · 특수문자를 모두 갖춘 값들
+OK_MIN = "Ab3-xyzQ"
+OK_3_CLASSES = "Manzoburitakoy7!"
 OK_PASSPHRASE = "manzoburitakoyhanabira"
 KO_24 = "가나다라마바사아자차카타파하거너더러머버서어저처"
 
@@ -31,13 +31,16 @@ KO_24 = "가나다라마바사아자차카타파하거너더러머버서어저�
 # =========================================================
 
 def test_minimum_length() -> None:
-    assert check_password("Ab3-xyzPmQv") != []  # 11자
-    assert check_password(OK_12) == []  # 12자
+    assert check_password("Ab3-xyz") != []  # 7자
+    assert check_password(OK_MIN) == []  # 8자 (팀 결정 기준)
 
 
-def test_three_classes_required() -> None:
-    assert check_password("manzoburitakoy7") != []  # 소문자 + 숫자 = 2종
-    assert check_password(OK_3_CLASSES) == []  # 대문자 추가 = 3종
+def test_all_three_classes_required() -> None:
+    """팀 결정은 영문 · 숫자 · 특수문자를 모두 포함하는 것이다."""
+
+    assert check_password("manzoburitakoy7") != []  # 글자 + 숫자 = 2종
+    assert check_password("Abcdefgh1") != []  # 대소문자를 나눠 세면 통과하던 값
+    assert check_password(OK_3_CLASSES) == []  # 특수문자까지 = 3종
 
 
 def test_long_passphrase_is_exempt_from_classes() -> None:
@@ -53,8 +56,8 @@ def test_korean_passphrase_and_byte_limit() -> None:
     assert check_password(KO_24 + "커") != []  # 75바이트 — bcrypt 가 잘라내는 구간
 
 
-def test_hangul_counts_as_a_character_class() -> None:
-    """한글도 한 종류로 센다. 안 세면 한글 비밀번호는 20자 미만에서 모두 거부된다."""
+def test_hangul_counts_as_a_letter() -> None:
+    """한글도 글자로 센다. 안 세면 한글 비밀번호는 20자 미만에서 모두 거부된다."""
 
     assert check_password("가나다라마바사아자차1!") == []  # 한글 + 숫자 + 특수 = 3종
 
@@ -132,10 +135,9 @@ def test_reason_is_returned_for_each_violation() -> None:
 
 
 def test_min_classes_setting_is_honored(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "PASSWORD_MIN_CLASSES", 4)
+    monkeypatch.setattr(settings, "PASSWORD_MIN_CLASSES", 2)
 
-    assert check_password(OK_3_CLASSES) != []
-    assert check_password(OK_3_CLASSES + "!") == []
+    assert check_password("manzoburitakoy7") == []  # 2종만 요구하면 통과한다
 
 
 def test_generated_password_always_passes_policy() -> None:
