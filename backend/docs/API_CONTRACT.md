@@ -149,7 +149,27 @@ AI_FAILED     ← AI_PROCESSING 실패
 }
 ```
 
-오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`
+오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`, `403 ACCOUNT_LOCKED`,
+`403 ACCOUNT_DORMANT`, `403 TEMP_PASSWORD_EXPIRED`
+
+**계정 상태는 비밀번호가 맞은 뒤에만 알려준다.** 먼저 알려주면 비밀번호를 모르는 사람이
+"이 이메일은 등록돼 있다" 를 알아내는 계정 열거가 된다. 틀린 비밀번호는 언제나 `INVALID_CREDENTIALS` 다.
+
+| 상태 | 오류 | 푸는 방법 |
+| --- | --- | --- |
+| 관리자가 정지 | `INACTIVE_USER` | 관리자가 `PATCH /auth/users/{id}` 로 활성화 |
+| 로그인 5회 실패 | `ACCOUNT_LOCKED` | 관리자가 `POST /auth/users/{id}/unlock` |
+| 2개월 미접속 | `ACCOUNT_DORMANT` | 관리자가 `POST /auth/users/{id}/reactivate` |
+| 임시 비밀번호 기간 경과(72시간) | `TEMP_PASSWORD_EXPIRED` | 관리자가 `POST /auth/users/{id}/password-reset` |
+
+기준값은 설정으로 바꾼다 — `LOGIN_MAX_FAILURES`(5), `LOGIN_LOCK_MINUTES`(0 = 관리자만 해제),
+`DORMANT_AFTER_DAYS`(60), `TEMP_PASSWORD_VALID_HOURS`(72).
+
+**임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
+모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
+
+**Token 무효화** — 비밀번호를 바꾸거나 관리자가 강제 로그아웃 · 역할 변경 · 정지를 하면
+그 계정에 발급된 Token 이 전부 무효가 된다(`401 UNAUTHORIZED`). 다시 로그인해야 한다.
 
 ### GET /api/v1/auth/me
 
@@ -180,6 +200,51 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 > 자유 회원가입 endpoint 는 존재하지 않는다.
 
+### 계정 관리 (관리자 전용)
+
+| 창구 | 하는 일 | 응답 |
+| --- | --- | --- |
+| `PATCH /api/v1/auth/users/{id}` | 활성화 · 비활성화(`is_active`), 역할(`role`), 이름(`name`) | `200` 계정 |
+| `POST /api/v1/auth/users/{id}/password-reset` | 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
+| `POST /api/v1/auth/users/{id}/unlock` | 실패 잠금 해제 | `204` |
+| `POST /api/v1/auth/users/{id}/reactivate` | 휴면 해제 + 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
+| `POST /api/v1/auth/users/{id}/logout-all` | 발급된 Token 전부 무효 | `204` |
+
+```json
+{ "data": { "temporary_password": "...", "expires_at": "...", "must_change_password": true } }
+```
+
+**임시 비밀번호는 이 응답에서 한 번만 나간다.** 다시 조회할 수 없고 DB 에는 해시만 남는다.
+
+**마지막 활성 관리자는 비활성화 · 역할 변경을 할 수 없다**(`409`). 아무도 풀 수 없게 되기 때문이다.
+자기 계정에 `logout-all` 도 할 수 없다.
+
+계정 응답에는 상태를 구분할 수 있게 `last_login_at` · `must_change_password` ·
+`locked_until` · `dormant_at` 이 함께 온다.
+
+### GET /api/v1/auth/audit-logs (관리자 전용)
+
+Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
+
+```json
+{
+  "data": {
+    "items": [{
+      "id": "uuid", "action": "LOGIN", "status": "FAILURE",
+      "error_code": "INVALID_CREDENTIALS", "actor_id": null,
+      "entity_type": "User", "entity_id": null,
+      "ip_address": "127.0.0.1", "user_agent": "...",
+      "detail": null, "created_at": "..."
+    }],
+    "meta": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+  }
+}
+```
+
+**행동은 `action`, 결과는 `status` 로 나눈다.** 실패를 별도 action 으로 만들지 않는다.
+로그인 실패에 이메일은 저장하지 않으므로, 없는 계정의 실패는 `actor_id` 가 비어 있다.
+**변경 전후 값은 담지 않는다** — 상담 원문이 감사 로그에 복제되면 개인정보 파기가 불가능해진다.
+
 ### 비밀번호 규칙
 
 **새로 정하는 비밀번호에만 적용한다.** 로그인 요청은 검사하지 않는다 —
@@ -202,6 +267,8 @@ AI_FAILED     ← AI_PROCESSING 실패
 같은 문자 4회 반복, 연속 문자(`1234` · `qwer` · `asdf`), 앞뒤 공백.
 
 한글은 표기 방식이 두 가지(NFC · NFD)라 Backend 가 저장 · 검증 모두 NFC 로 맞춘다. 기기가 달라도 같은 비밀번호로 로그인된다.
+
+**이전 비밀번호는 다시 쓸 수 없다**(`422 PASSWORD_REUSED`). 최근 `PASSWORD_HISTORY_COUNT`(3)개를 본다.
 
 위반하면 `422 WEAK_PASSWORD` 이고 사유가 `details.reasons` 에 문장 배열로 담긴다.
 
