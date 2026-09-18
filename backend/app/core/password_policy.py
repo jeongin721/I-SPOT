@@ -69,14 +69,28 @@ _SEQUENCES = (
 
 
 def _character_classes(password: str) -> int:
-    return sum(
-        (
-            any(char.isupper() for char in password),
-            any(char.islower() for char in password),
-            any(char.isdigit() for char in password),
-            any(not char.isalnum() for char in password),
-        )
-    )
+    """
+    섞여 있는 글자 종류 수.
+
+    한글처럼 대소문자가 없는 글자도 한 종류로 센다. 안 세면 한글 비밀번호는
+    숫자 · 특수문자를 넣어도 2종류밖에 안 되어 20자 미만이면 무조건 거부된다.
+    """
+
+    upper = lower = digit = other_letter = symbol = False
+
+    for char in password:
+        if char.isupper():
+            upper = True
+        elif char.islower():
+            lower = True
+        elif char.isdigit():
+            digit = True
+        elif char.isalpha():
+            other_letter = True
+        else:
+            symbol = True
+
+    return sum((upper, lower, digit, other_letter, symbol))
 
 
 def _tokens(*values: Optional[str]) -> Iterable[str]:
@@ -84,9 +98,17 @@ def _tokens(*values: Optional[str]) -> Iterable[str]:
         if not value:
             continue
 
-        for token in _TOKEN_SPLIT.split(value):
+        lowered = value.lower()
+
+        # 한글 이름은 아래 정규식에서 구분자로 잘려 사라진다.
+        # 영문·숫자가 아닌 조각은 따로 통째로 비교한다.
+        for part in lowered.split():
+            if len(part) >= 2 and not part.isascii():
+                yield part
+
+        for token in _TOKEN_SPLIT.split(lowered):
             if len(token) >= _TOKEN_MIN_LENGTH:
-                yield token.lower()
+                yield token
 
 
 def _has_sequence(lowered: str) -> bool:
@@ -124,7 +146,7 @@ def check_password(
         and _character_classes(password) < settings.PASSWORD_MIN_CLASSES
     ):
         reasons.append(
-            f"대문자 · 소문자 · 숫자 · 특수문자 중 {settings.PASSWORD_MIN_CLASSES}종류 이상을 "
+            f"대문자 · 소문자 · 숫자 · 특수문자 · 한글 중 {settings.PASSWORD_MIN_CLASSES}종류 이상을 "
             f"섞어야 합니다. {settings.PASSWORD_PASSPHRASE_LENGTH}자 이상이면 섞지 않아도 됩니다."
         )
 
@@ -138,7 +160,7 @@ def check_password(
     if any(token in lowered for token in _tokens(email_id, name)):
         reasons.append("이메일 아이디나 이름을 비밀번호에 넣을 수 없습니다.")
 
-    if _REPEATED.search(password):
+    if _REPEATED.search(lowered):
         reasons.append("같은 문자를 4번 이상 반복할 수 없습니다.")
 
     if _has_sequence(lowered):
@@ -170,6 +192,9 @@ def generate_password(length: int = 16) -> str:
     """규칙을 통과하는 임의 비밀번호. 임시 비밀번호 발급과 seed script 가 쓴다."""
 
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+?"
+
+    # 설정 최소 길이가 기본값보다 크면 그 길이로 만든다. 안 맞추면 영원히 실패한다.
+    length = max(length, settings.PASSWORD_MIN_LENGTH)
 
     for _ in range(100):
         candidate = "".join(secrets.choice(alphabet) for _ in range(length))

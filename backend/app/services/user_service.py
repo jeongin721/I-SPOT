@@ -3,6 +3,7 @@
 # 자유 회원가입은 제공하지 않는다.(03_BACKEND_PROMPT.md §10)
 # 계정은 관리자 API 또는 seed script 로만 생성된다.
 
+from secrets import compare_digest
 from typing import List
 
 from sqlalchemy import select
@@ -92,7 +93,13 @@ def change_password(
 
     validate_password(payload.new_password, email=user.email, name=user.name)
 
-    if verify_password(payload.new_password, user.hashed_password):
+    # 현재 비밀번호가 맞는 것을 위에서 확인했으므로 평문 비교로 충분하다.
+    # bcrypt 를 한 번 더 돌리면 요청당 0.3초가 그냥 늘어난다.
+    # compare_digest 는 ASCII 가 아닌 문자열을 str 로 받지 못해 bytes 로 비교한다.
+    if compare_digest(
+        payload.new_password.encode("utf-8"),
+        payload.current_password.encode("utf-8"),
+    ):
         raise APIError(
             ErrorCode.SAME_PASSWORD,
             "이전과 다른 비밀번호를 정해 주세요.",

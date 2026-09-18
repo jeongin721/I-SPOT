@@ -52,6 +52,34 @@ def test_korean_passphrase_and_byte_limit() -> None:
     assert check_password(KO_24 + "커") != []  # 75바이트 — bcrypt 가 잘라내는 구간
 
 
+def test_hangul_counts_as_a_character_class() -> None:
+    """한글도 한 종류로 센다. 안 세면 한글 비밀번호는 20자 미만에서 모두 거부된다."""
+
+    assert check_password("가나다라마바사아자차1!") == []  # 한글 + 숫자 + 특수 = 3종
+
+
+def test_hangul_only_password_still_needs_classes() -> None:
+    assert check_password("가나다라마바사아자차카타") != []  # 한글만 = 1종
+
+
+def test_korean_name_is_blocked() -> None:
+    assert check_password("최민규-Pwqmxz82!") == []
+    assert check_password("최민규-Pwqmxz82!", name="최민규") != []
+
+
+def test_mixed_case_repetition_is_blocked() -> None:
+    assert check_password("Vx-AAaa-Poqm9!") != []
+
+
+def test_generate_password_follows_min_length_setting(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "PASSWORD_MIN_LENGTH", 20)
+
+    password = generate_password()
+
+    assert len(password) >= 20
+    assert check_password(password) == []
+
+
 def test_email_id_is_blocked() -> None:
     assert check_password("Counselor-77x!") == []
     assert check_password("Counselor-77x!", email=COUNSELOR_EMAIL) != []
@@ -292,3 +320,26 @@ def test_login_does_not_apply_password_policy(client: TestClient, counselor_id) 
     )
 
     assert response.status_code == 200
+
+
+def test_change_password_detects_same_korean_password(
+    client: TestClient, counselor_headers
+) -> None:
+    """한글 비밀번호는 문자열 비교 함수가 str 로 받지 못한다. bytes 로 비교하는지 확인한다."""
+
+    first = client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": COUNSELOR_PASSWORD, "new_password": KO_24},
+        headers=counselor_headers,
+    )
+
+    assert first.status_code == 204
+
+    second = client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": KO_24, "new_password": KO_24},
+        headers=counselor_headers,
+    )
+
+    assert second.status_code == 422
+    assert second.json()["error"]["code"] == "SAME_PASSWORD"
