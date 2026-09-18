@@ -108,6 +108,47 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   created_at: string;
+
+  /**
+   * 계정 상태. 넷은 뜻이 다르므로 화면에서 구분해 보여준다.
+   * is_active=false 관리자 정지 / locked_until 로그인 실패 잠금 /
+   * dormant_at 2개월 미접속 휴면 / must_change_password 임시 비밀번호
+   */
+  last_login_at?: string | null;
+  must_change_password?: boolean;
+  locked_until?: string | null;
+  dormant_at?: string | null;
+}
+
+export interface UserUpdateRequest {
+  is_active?: boolean;
+  role?: UserRole;
+  name?: string;
+}
+
+/** 임시 비밀번호는 이 응답에서 한 번만 온다. 다시 조회할 수 없다. */
+export interface TemporaryPassword {
+  temporary_password: string;
+  expires_at: string;
+  must_change_password: boolean;
+}
+
+export type AuditStatus = "SUCCESS" | "FAILURE";
+
+/** 감사 로그. 상담 원문과 아동 실명은 담기지 않는다. */
+export interface AuditLog {
+  id: string;
+  action: string;
+  status: AuditStatus;
+  error_code?: string | null;
+  actor_id?: string | null;
+  actor_name?: string | null;
+  entity_type: string;
+  entity_id?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  detail?: Record<string, unknown> | null;
+  created_at: string;
 }
 
 export interface LoginRequest {

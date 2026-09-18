@@ -17,6 +17,10 @@ import type {
   LoginRequest,
   LoginResponse,
   PasswordChangeRequest,
+  TemporaryPassword,
+  UserUpdateRequest,
+  AuditLog,
+  AuditStatus,
   Paged,
   STTRequestResponse,
   Session,
@@ -78,6 +82,49 @@ export const auth = {
   /** 관리자 전용. 페이지 없이 전체 배열로 온다. */
   listUsers(): Promise<User[]> {
     return api.get<User[]>("/auth/users");
+  },
+
+  /**
+   * 관리자 전용. 활성화·비활성화, 역할, 이름을 바꾼다.
+   *
+   * 마지막 활성 관리자를 비활성화하거나 역할을 내리면 409 로 막힌다.
+   * 역할·활성 상태를 바꾸면 그 계정의 Token 이 모두 무효가 된다.
+   */
+  updateUser(userId: string, payload: UserUpdateRequest): Promise<User> {
+    return api.patch<User>(`/auth/users/${userId}`, payload);
+  },
+
+  /** 관리자 전용. 임시 비밀번호는 이 응답에서 한 번만 온다. */
+  resetPassword(userId: string): Promise<TemporaryPassword> {
+    return api.post<TemporaryPassword>(`/auth/users/${userId}/password-reset`, {});
+  },
+
+  /** 관리자 전용. 로그인 실패로 잠긴 계정을 푼다. */
+  unlockUser(userId: string): Promise<void> {
+    return api.post<void>(`/auth/users/${userId}/unlock`, {});
+  },
+
+  /** 관리자 전용. 휴면을 풀고 임시 비밀번호를 새로 발급한다. */
+  reactivateUser(userId: string): Promise<TemporaryPassword> {
+    return api.post<TemporaryPassword>(`/auth/users/${userId}/reactivate`, {});
+  },
+
+  /** 관리자 전용. 그 계정에 발급된 Token 을 전부 무효로 만든다. */
+  logoutAll(userId: string): Promise<void> {
+    return api.post<void>(`/auth/users/${userId}/logout-all`, {});
+  },
+
+  /** 관리자 전용. 접속 기록·보안 이벤트 화면이 쓰는 감사 로그. */
+  auditLogs(
+    params?: PageQuery & {
+      action?: string;
+      status?: AuditStatus;
+      actor_id?: string;
+      since?: string;
+      until?: string;
+    },
+  ): Promise<Paged<AuditLog>> {
+    return api.get<Paged<AuditLog>>("/auth/audit-logs", params);
   },
 };
 
