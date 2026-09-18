@@ -9,13 +9,13 @@
 
 import argparse
 import os
-import secrets
 import sys
 from typing import List, Optional, Tuple
 
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
+from app.core.password_policy import generate_password
 from app.core.enums import UserRole
 from app.core.security import hash_password
 from app.models.user import User
@@ -64,7 +64,7 @@ def resolve_password(provided: Optional[str]) -> Tuple[str, bool]:
     if from_env:
         return from_env, False
 
-    return secrets.token_urlsafe(12), True
+    return generate_password(), True
 
 
 def main() -> int:

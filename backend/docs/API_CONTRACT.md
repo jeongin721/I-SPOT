@@ -155,16 +155,68 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 현재 로그인 사용자. 새로고침 후 세션 복원에 사용한다.
 
+### POST /api/v1/auth/me/password
+
+본인 비밀번호 변경. 성공하면 `204` (본문 없음).
+
+```json
+{ "current_password": "...", "new_password": "..." }
+```
+
+현재 비밀번호를 함께 받는다. Token 만 훔친 사람이 비밀번호를 바꿔 계정을 가져가는 것을 막는다.
+주소에 사용자 id 를 두지 않는다(`me`). 남의 비밀번호를 바꾸는 경로를 만들지 않기 위해서다.
+
+오류: `401 UNAUTHORIZED`(로그인 안 됨), `401 INVALID_CREDENTIALS`(현재 비밀번호 불일치),
+`422 WEAK_PASSWORD`, `422 SAME_PASSWORD`
+
 ### POST /api/v1/auth/users (관리자 전용)
 
 ```json
-{ "email": "new@example.com", "password": "8자 이상", "name": "이름", "role": "COUNSELOR" }
+{ "email": "new@example.com", "password": "아래 비밀번호 규칙 참고", "name": "이름", "role": "COUNSELOR" }
 ```
 
 `role`: `COUNSELOR | ADMIN`
-오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`
+오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`, `422 WEAK_PASSWORD`
 
 > 자유 회원가입 endpoint 는 존재하지 않는다.
+
+### 비밀번호 규칙
+
+**새로 정하는 비밀번호에만 적용한다.** 로그인 요청은 검사하지 않는다 —
+검사하면 규칙 이전에 만든 계정이 전부 잠긴다.
+
+기본값은 **팀 회의 결정(2026-09-18)** 인 "8자 이상, 영문 · 숫자 · 특수문자 포함" 이다.
+
+| 항목 | 기본값 | 설정 이름 |
+| --- | --- | --- |
+| 최소 길이 | 8자 | `PASSWORD_MIN_LENGTH` |
+| 문자 종류 | 글자 · 숫자 · 특수문자 **3종 모두**. 대문자와 소문자를 나누지 않는다 | `PASSWORD_MIN_CLASSES` |
+| 종류 면제 | 20자 이상이면 종류를 보지 않는다 | `PASSWORD_PASSPHRASE_LENGTH` |
+| 최대 | 72바이트 (한글 24자) | 고정 — bcrypt 가 그 뒤를 잘라낸다 |
+
+한글도 글자로 센다. 한글 + 숫자 + 특수문자면 통과한다.
+
+한글도 한 종류로 센다. 안 세면 한글 비밀번호는 숫자 · 특수문자를 넣어도 20자 미만에서 모두 거부된다.
+
+같이 막는 것: 이메일 아이디 · 이름(한글 이름 포함), 서비스 이름(`ispot`), 흔한 비밀번호(`password` 등),
+같은 문자 4회 반복, 연속 문자(`1234` · `qwer` · `asdf`), 앞뒤 공백.
+
+한글은 표기 방식이 두 가지(NFC · NFD)라 Backend 가 저장 · 검증 모두 NFC 로 맞춘다. 기기가 달라도 같은 비밀번호로 로그인된다.
+
+위반하면 `422 WEAK_PASSWORD` 이고 사유가 `details.reasons` 에 문장 배열로 담긴다.
+
+```json
+{
+  "error": {
+    "code": "WEAK_PASSWORD",
+    "message": "비밀번호가 규칙에 맞지 않습니다.",
+    "details": { "reasons": ["12자 이상이어야 합니다.", "..."] }
+  }
+}
+```
+
+**비밀번호 원문은 응답 · 오류 · 로그 어디에도 담기지 않는다.**
+8자 미만은 Pydantic 이 먼저 거르므로 `422 VALIDATION_ERROR` 로 나간다(최소 길이와 같은 값이다).
 
 ---
 

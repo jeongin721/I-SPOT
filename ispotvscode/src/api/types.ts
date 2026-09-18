@@ -122,6 +122,25 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface PasswordChangeRequest {
+  current_password: string;
+  new_password: string;
+}
+
+/**
+ * 비밀번호 규칙 안내 문구. Backend `API_CONTRACT.md` 3절과 같은 내용이다.
+ * 화면에서 따로 규칙을 적지 말고 이 값을 쓴다 — 두 곳에 적으면 어긋난다.
+ *
+ * 규칙 위반은 `422 WEAK_PASSWORD` 이고, 사유가 `details.reasons` 에 문장 배열로 온다.
+ * 그 문장을 그대로 보여주면 된다.
+ *
+ * 주의: 숫자(8자·3종류)는 Backend 설정값이다. 기관 기준이 바뀌어 설정을 고치면
+ * 이 문구도 같이 고쳐야 한다. 그때는 API_CONTRACT.md 3절의 표를 그대로 옮긴다.
+ */
+export const PASSWORD_RULE_TEXT =
+  "8자 이상이고 영문·숫자·특수문자를 모두 넣어 주세요(한글도 글자로 셉니다). " +
+  "20자 이상이면 섞지 않아도 됩니다. 이메일 아이디·이름과 흔한 단어는 쓸 수 없습니다.";
+
 // =========================================================
 // 사례
 // =========================================================

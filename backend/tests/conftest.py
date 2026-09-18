@@ -37,8 +37,8 @@ from app.core.security import hash_password  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, User  # noqa: E402
 
-COUNSELOR_PASSWORD = "counselor-pass-1234"
-ADMIN_PASSWORD = "admin-pass-1234"
+COUNSELOR_PASSWORD = "Rainy-Harbor-73"
+ADMIN_PASSWORD = "Quiet-Lantern-48"
 
 
 # =========================================================

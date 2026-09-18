@@ -91,7 +91,7 @@ def test_no_public_signup_endpoint(client: TestClient) -> None:
 
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": "new@ispot.example.com", "password": "password-1234", "name": "신규"},
+        json={"email": "new@ispot.example.com", "password": "Willow-Creek-31", "name": "신규"},
     )
 
     assert response.status_code == 404
@@ -102,7 +102,7 @@ def test_counselor_cannot_create_user(client: TestClient, counselor_headers) -> 
         "/api/v1/auth/users",
         json={
             "email": "new@ispot.example.com",
-            "password": "password-1234",
+            "password": "Willow-Creek-31",
             "name": "신규",
             "role": "COUNSELOR",
         },
@@ -120,7 +120,7 @@ def test_admin_can_create_user_and_new_user_can_login(
         "/api/v1/auth/users",
         json={
             "email": "counselor.c@ispot.example.com",
-            "password": "password-1234",
+            "password": "Willow-Creek-31",
             "name": "상담사C",
             "role": "COUNSELOR",
         },
@@ -132,7 +132,7 @@ def test_admin_can_create_user_and_new_user_can_login(
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "counselor.c@ispot.example.com", "password": "password-1234"},
+        json={"email": "counselor.c@ispot.example.com", "password": "Willow-Creek-31"},
     )
 
     assert login.status_code == 200
@@ -141,7 +141,7 @@ def test_admin_can_create_user_and_new_user_can_login(
 def test_admin_cannot_create_duplicate_email(client: TestClient, admin_headers) -> None:
     payload = {
         "email": "dup@ispot.example.com",
-        "password": "password-1234",
+        "password": "Willow-Creek-31",
         "name": "중복",
         "role": "COUNSELOR",
     }

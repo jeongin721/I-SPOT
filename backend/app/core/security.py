@@ -1,5 +1,6 @@
 # 비밀번호 해싱 및 JWT 발급/검증.
 
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -14,7 +15,17 @@ _BCRYPT_MAX_BYTES = 72
 
 
 def _normalize(password: str) -> bytes:
-    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    """
+    저장·검증에 쓸 byte 값.
+
+    한글은 표기 방식이 두 가지(NFC/NFD)라 눈에 같아 보여도 byte 가 다르다.
+    한쪽으로 저장하고 다른 쪽으로 입력하면 로그인이 안 되므로 NFC 로 맞춘다.
+    ASCII 는 NFC 로 바뀌지 않아 기존 해시에 영향이 없다.
+    """
+
+    normalized = unicodedata.normalize("NFC", password)
+
+    return normalized.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def hash_password(password: str) -> str:
