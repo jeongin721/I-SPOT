@@ -1281,6 +1281,9 @@ def build_checklist_edit_html(
             if item.get("category") != category:
                 continue
 
+            if not item.get("suggested"):
+                continue
+
             key = f"{item['category']}::{item['item']}"
 
             checked_attr = (
@@ -1325,13 +1328,6 @@ def build_checklist_edit_html(
             )
 
         return "".join(blocks)
-
-    safety_html = build_safety_assessment_html(
-        checklist_draft.get(
-            "safety_assessment_evidence",
-            [],
-        )
-    )
 
     environment = checklist_draft.get(
         "environment_key_person"
@@ -1383,14 +1379,6 @@ def build_checklist_edit_html(
         <div class="checklist-edit-grid">
             {render_category("아동 특성")}
         </div>
-
-        <div class="checklist-category">
-            안전영역 관련 근거
-            <span style="font-weight: 400; font-size: 12px; color: #6b7280;">
-                (등급은 AI가 매기지 않습니다 — 상담사가 직접 판단)
-            </span>
-        </div>
-        {safety_html}
 
         {environment_html}
     </section>

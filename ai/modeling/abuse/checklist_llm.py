@@ -459,13 +459,17 @@ def generate_checklist_draft(
     client: Any = None,
     model: str = DEFAULT_MODEL,
     max_retries: int = 3,
-    timeout_seconds: float = 30.0,
+    timeout_seconds: float = 180.0,
 ) -> Dict[str, Any]:
     """
     상담 원문을 바탕으로 서식 체크리스트 초안을 생성한다.
 
     반환값의 모든 제안 항목은 "AI 제안 / 상담사 확인 필요" 상태이며,
     안전영역 항목에는 등급(높음/보통/낮음)을 포함하지 않는다.
+
+    timeout_seconds 기본값은 로컬 Ollama 호출(수십~백여 초) 기준으로
+    잡았다 — 예전 OpenAI 전용(30초) 그대로 두면 응답 전에 타임아웃되어
+    처음부터 재시도만 반복하다 실패하는 경우가 있었다.
     """
 
     if not text.strip():

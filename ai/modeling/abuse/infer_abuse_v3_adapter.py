@@ -179,8 +179,11 @@ _NEGATION_PATTERN = re.compile(
 def _split_sentences(
     text: str,
 ):
+    # 쉼표도 절 경계로 취급한다 — "아니요, 며칠 굶은 적도 있어요"처럼
+    # 문장 앞의 감탄사성 부정어가 뒤따르는 긍정 진술까지
+    # 통째로 부정문으로 오인하는 것을 막기 위함이다.
     return re.split(
-        r"(?<=[.?!])\s+|\n",
+        r"(?<=[.?!])\s+|\n|,\s*",
         text,
     )
 

@@ -896,7 +896,7 @@ def _call_llm_with_retry(
     system_prompt: str,
     user_prompt: str,
     max_retries: int = 3,
-    timeout_seconds: float = 30.0,
+    timeout_seconds: float = 180.0,
 ) -> Dict[str, Any]:
     """
     일시적 API 오류를 대비해 retry + exponential backoff 적용.
@@ -978,11 +978,15 @@ def analyze_subtypes(
     fuzzy_threshold: float = 0.88,
     max_fuzzy_search_chars: int = 3000,
     max_retries: int = 3,
-    timeout_seconds: float = 30.0,
+    timeout_seconds: float = 180.0,
 ) -> Dict[str, Any]:
     """
     1차 모델에서 탐지된 major_types만 대상으로
     세부 위험신호를 분석한다.
+
+    timeout_seconds 기본값은 로컬 Ollama 호출(수십~백여 초) 기준으로
+    잡았다 — 예전 OpenAI 전용(30초) 그대로 두면 응답 전에 타임아웃되어
+    처음부터 재시도만 반복하다 실패하는 경우가 있었다.
     """
 
     cleaned_major_types: List[str] = []

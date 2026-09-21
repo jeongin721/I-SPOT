@@ -13,10 +13,7 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 토큰 제한이 훨씬 커서 세션 전체 transcript를 한 번에 사용한다.
 """
 
-import os
 from typing import Any, Dict, List, Tuple
-
-from openai import OpenAI
 
 from ai.adapters.stt_analysis_adapter import validate_stt_result
 
@@ -33,6 +30,9 @@ from ai.modeling.abuse.audio_to_counseling_note import (
 from ai.modeling.abuse.checklist_llm import (
     DEFAULT_MODEL as DEFAULT_CHECKLIST_MODEL,
     generate_checklist_draft,
+)
+from ai.modeling.abuse.llm_backend import (
+    build_llm_client_and_model,
 )
 
 
@@ -304,7 +304,22 @@ def analyze_audio_session(
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
     체크리스트 초안까지 오늘 만든 파이프라인으로 분석한다.
+
+    LLM_BACKEND=ollama면 세션 전체(2차/요약/체크리스트)가 같은 로컬
+    모델 하나를 쓰도록 여기서 한 번만 client를 정하고 아래로 전달한다.
     """
+
+    subtype_model = "gpt-5.6-luna"
+
+    if client is None:
+        client, resolved_model = build_llm_client_and_model(
+            default_openai_model=note_model,
+        )
+
+        if resolved_model != note_model:
+            note_model = resolved_model
+            checklist_model = resolved_model
+            subtype_model = resolved_model
 
     segments = validate_stt_result(
         stt_result
@@ -392,6 +407,8 @@ def analyze_audio_session(
         subtype_result = analyze_subtypes(
             text=full_text,
             major_types=detected_major_types,
+            client=client,
+            model=subtype_model,
         )
 
         line_spans = build_line_char_spans(
@@ -411,20 +428,6 @@ def analyze_audio_session(
     # --------------------------------------------------------
     # 상담 요약/일지 + 체크리스트 초안 (세션 전체 transcript)
     # --------------------------------------------------------
-
-    if client is None:
-        api_key = os.environ.get(
-            "OPENAI_API_KEY"
-        )
-
-        if not api_key:
-            raise RuntimeError(
-                "환경변수 OPENAI_API_KEY가 설정되어 있지 않습니다."
-            )
-
-        client = OpenAI(
-            api_key=api_key
-        )
 
     counseling_records = generate_counseling_records(
         client=client,

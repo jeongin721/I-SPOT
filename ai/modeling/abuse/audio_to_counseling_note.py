@@ -11,6 +11,10 @@ from typing import Dict
 
 from openai import OpenAI
 
+from ai.modeling.abuse.second_stage_llm import (
+    _call_llm_with_retry,
+)
+
 
 # ============================================================
 # 기본 설정
@@ -142,14 +146,11 @@ def generate_counseling_records(
 {transcript}
 """
 
-    response = client.responses.create(
+    result = _call_llm_with_retry(
+        client=client,
         model=model,
-        instructions=SYSTEM_PROMPT,
-        input=user_prompt,
-    )
-
-    result = parse_json_response(
-        response.output_text
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=user_prompt,
     )
 
     summary = result.get(
