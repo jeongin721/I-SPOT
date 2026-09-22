@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
 
     # ---------------------------------------------------------
+    # Password Policy
+    # ---------------------------------------------------------
+    # 새로 정하는 비밀번호에만 적용한다. 로그인 검사에는 쓰지 않는다.
+    # 기본값은 팀 회의 결정(2026-09-18) "8자 이상, 영문 · 숫자 · 특수문자 포함" 이다.
+    # 종류는 글자 · 숫자 · 특수문자 3가지로 세므로 3 이면 전부 포함해야 한다.
+    PASSWORD_MIN_LENGTH: int = Field(default=8, ge=8, le=72)
+    PASSWORD_MIN_CLASSES: int = Field(default=3, ge=1, le=3)
+    PASSWORD_PASSPHRASE_LENGTH: int = Field(default=20, ge=12, le=72)
+
+    # ---------------------------------------------------------
     # CORS
     # ---------------------------------------------------------
     # NoDecode: pydantic-settings 가 env 값을 JSON 으로 먼저 decode 하지 않게 해서
