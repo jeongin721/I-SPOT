@@ -887,6 +887,68 @@ def validate_and_enrich_results(
 
 
 # ============================================================
+# 5-1. 저신뢰 예측 필터링
+# ============================================================
+# 2026-09-22 평가(60건, subtype_labeled_valid_v4_refined.csv 기준):
+# 세부유형 Macro F1 0.450 — Recall은 대부분 높은데(자주 1.0) Precision이
+# 낮은 패턴이 뚜렷했다(예: 교육적 방임 P=0.000, 9번 예측해서 9번 다 오탐).
+# 근거 강도가 "낮음"이거나 원문에서 근거를 아예 못 찾은(evidence_verified
+# =False, 즉 evidence_match_method="unverified") 예측을 걸러내면, recall을
+# 크게 해치지 않으면서 precision을 끌어올릴 수 있을 것으로 보고 추가했다.
+
+def filter_low_confidence_subtypes(
+    validated: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    evidence_strength가 "낮음"이거나 evidence_verified가 False인
+    근거는 제거한다. 근거가 하나도 안 남은 세부유형/대분류는 통째로
+    제거한다 — 확신 없는 예측은 아예 안 보여주는 게 낫다는 판단.
+    """
+
+    filtered_results: List[Dict[str, Any]] = []
+
+    for major_block in validated.get("results", []):
+        filtered_subtypes = []
+
+        for subtype in major_block.get("subtypes", []):
+            kept_evidences = [
+                evidence
+                for evidence in subtype.get("evidences", [])
+                if evidence.get("evidence_strength") != "낮음"
+                and evidence.get("evidence_verified") is True
+            ]
+
+            if not kept_evidences:
+                continue
+
+            filtered_subtypes.append(
+                {
+                    **subtype,
+                    "evidences": kept_evidences,
+                    "needs_review": any(
+                        evidence.get("needs_review", False)
+                        for evidence in kept_evidences
+                    ),
+                }
+            )
+
+        if not filtered_subtypes:
+            continue
+
+        filtered_results.append(
+            {
+                **major_block,
+                "subtypes": filtered_subtypes,
+            }
+        )
+
+    return {
+        **validated,
+        "results": filtered_results,
+    }
+
+
+# ============================================================
 # 6. OpenAI 호출 + retry
 # ============================================================
 
@@ -979,6 +1041,7 @@ def analyze_subtypes(
     max_fuzzy_search_chars: int = 3000,
     max_retries: int = 3,
     timeout_seconds: float = 180.0,
+    filter_low_confidence: bool = False,
 ) -> Dict[str, Any]:
     """
     1차 모델에서 탐지된 major_types만 대상으로
@@ -987,6 +1050,15 @@ def analyze_subtypes(
     timeout_seconds 기본값은 로컬 Ollama 호출(수십~백여 초) 기준으로
     잡았다 — 예전 OpenAI 전용(30초) 그대로 두면 응답 전에 타임아웃되어
     처음부터 재시도만 반복하다 실패하는 경우가 있었다.
+
+    filter_low_confidence: 근거 강도가 "낮음"이거나 원문에서 검증 안 된
+    (unverified) 예측을 결과에서 빼는 옵션 — 기본은 꺼져 있다.
+    2026-09-22 세부유형 평가(60건, 같은 원본으로 필터 전/후 페어 비교)
+    결과 Macro F1이 0.457→0.443으로 오히려 떨어졌다: 진짜 문제였던
+    오탐(성적 착취/교육적 방임 등, P=0.000)은 hallucination이 아니라
+    원문 근거는 있는데 세부유형을 잘못 해석한 경우라 이 필터로는 안
+    걸러지고, 반대로 맞게 예측한 것들(근거강도가 낮게 나온 것)만 걸러져
+    recall을 깎았다. 실험/비교용으로만 True를 넘겨서 켤 수 있다.
     """
 
     cleaned_major_types: List[str] = []
@@ -1057,6 +1129,11 @@ def analyze_subtypes(
             max_fuzzy_search_chars=max_fuzzy_search_chars,
         )
     )
+
+    if filter_low_confidence:
+        validated = filter_low_confidence_subtypes(
+            validated
+        )
 
     validated[
         "model"

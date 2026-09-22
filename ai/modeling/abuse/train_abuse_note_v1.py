@@ -21,7 +21,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from transformers import (
@@ -607,6 +607,34 @@ def validate(
         zero_division=0,
     )
 
+    macro_precision = precision_score(
+        labels,
+        preds,
+        average="macro",
+        zero_division=0,
+    )
+
+    macro_recall = recall_score(
+        labels,
+        preds,
+        average="macro",
+        zero_division=0,
+    )
+
+    per_label_precision = precision_score(
+        labels,
+        preds,
+        average=None,
+        zero_division=0,
+    )
+
+    per_label_recall = recall_score(
+        labels,
+        preds,
+        average=None,
+        zero_division=0,
+    )
+
     exact_match = (
         preds == labels
     ).all(axis=1).mean()
@@ -621,6 +649,12 @@ def validate(
         "macro_f1":
             float(macro_f1),
 
+        "macro_precision":
+            float(macro_precision),
+
+        "macro_recall":
+            float(macro_recall),
+
         "exact_match":
             float(exact_match),
 
@@ -632,7 +666,77 @@ def validate(
                 NUM_LABELS
             )
         },
+
+        "per_label_precision": {
+            LABEL_NAMES[i]:
+                float(per_label_precision[i])
+
+            for i in range(
+                NUM_LABELS
+            )
+        },
+
+        "per_label_recall": {
+            LABEL_NAMES[i]:
+                float(per_label_recall[i])
+
+            for i in range(
+                NUM_LABELS
+            )
+        },
+
+        # 유형별 threshold 튜닝에 쓰는 원본 확률/정답값 (0.5 고정
+        # threshold로 계산한 위 지표들과는 별개로, best epoch에서만
+        # 유형별 최적 threshold를 다시 찾을 때 사용한다).
+        "probs": probs,
+        "labels": labels,
     }
+
+
+def find_best_thresholds(
+    probs,
+    labels,
+    candidates=None,
+) -> dict:
+    """
+    유형별로 F1이 가장 높은 threshold를 validation set에서 찾는다.
+
+    Deepgram/Whisper confidence처럼 전 유형에 0.5를 일괄 적용하면,
+    유형마다 확률 분포가 달라서(특히 정서학대처럼 애매한 유형) 최적점이
+    아닐 수 있다 — 유형별로 독립적으로 가장 좋은 threshold를 고른다.
+    """
+
+    if candidates is None:
+        candidates = [
+            round(0.05 * i, 2)
+            for i in range(3, 19)
+        ]  # 0.15 ~ 0.90
+
+    best_thresholds = {}
+
+    for i, label_name in enumerate(LABEL_NAMES):
+        label_probs = probs[:, i]
+        label_true = labels[:, i]
+
+        best_f1 = -1.0
+        best_threshold = THRESHOLD
+
+        for candidate in candidates:
+            pred = (label_probs >= candidate).astype(int)
+
+            f1 = f1_score(
+                label_true,
+                pred,
+                zero_division=0,
+            )
+
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = candidate
+
+        best_thresholds[label_name] = best_threshold
+
+    return best_thresholds
 
 
 # ============================================================
@@ -700,11 +804,23 @@ for epoch in range(
         "macro_f1":
             metrics["macro_f1"],
 
+        "macro_precision":
+            metrics["macro_precision"],
+
+        "macro_recall":
+            metrics["macro_recall"],
+
         "exact_match":
             metrics["exact_match"],
 
         "per_label_f1":
             metrics["per_label_f1"],
+
+        "per_label_precision":
+            metrics["per_label_precision"],
+
+        "per_label_recall":
+            metrics["per_label_recall"],
     }
 
     history.append(
@@ -733,17 +849,29 @@ for epoch in range(
     )
 
     print(
+        f"Macro Precision: "
+        f"{metrics['macro_precision']:.4f}"
+    )
+
+    print(
+        f"Macro Recall   : "
+        f"{metrics['macro_recall']:.4f}"
+    )
+
+    print(
         f"Exact Match: "
         f"{metrics['exact_match']:.4f}"
     )
 
-    print("Per-label F1:")
+    print("Per-label F1 / Precision / Recall:")
 
     for label_name in LABEL_NAMES:
 
         print(
             f"  {label_name:<6}: "
-            f"{metrics['per_label_f1'][label_name]:.4f}"
+            f"F1={metrics['per_label_f1'][label_name]:.4f}  "
+            f"P={metrics['per_label_precision'][label_name]:.4f}  "
+            f"R={metrics['per_label_recall'][label_name]:.4f}"
         )
 
 
@@ -764,6 +892,11 @@ for epoch in range(
 
         patience_counter = 0
 
+        best_thresholds = find_best_thresholds(
+            metrics["probs"],
+            metrics["labels"],
+        )
+
         torch.save(
             {
                 "model_state_dict":
@@ -778,8 +911,10 @@ for epoch in range(
                 "macro_f1":
                     best_macro_f1,
 
+                # 유형별로 F1이 가장 높은 threshold를 따로 저장한다
+                # (전 유형 0.5 고정 대신) — find_best_thresholds 참고.
                 "threshold":
-                    THRESHOLD,
+                    best_thresholds,
 
                 "label_names":
                     LABEL_NAMES,
@@ -799,6 +934,14 @@ for epoch in range(
         print(
             f"  Macro F1 : "
             f"{best_macro_f1:.4f}"
+        )
+
+        print(
+            "  유형별 threshold: "
+            + ", ".join(
+                f"{name}={value}"
+                for name, value in best_thresholds.items()
+            )
         )
 
         print(

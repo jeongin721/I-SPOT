@@ -23,6 +23,45 @@ from deepgram import DeepgramClient
 
 load_dotenv()
 
+# WhisperX(ctranslate2)가 cuDNN 라이브러리를 런타임에 dlopen으로
+# 찾는데, pip으로 설치한 nvidia-cudnn-cu12 패키지의 .so는 시스템
+# 라이브러리 경로에 없다. 프로세스 시작 후 os.environ["LD_LIBRARY_PATH"]를
+# 바꿔도 이미 실행 중인 글리백 동적 로더에는 반영되지 않아서, 대신
+# ctypes로 해당 .so들을 미리 전역(RTLD_GLOBAL)으로 로드해 둔다 — 그러면
+# ctranslate2가 이름만으로 dlopen할 때 이미 메모리에 있는 걸 찾는다.
+# 패키지가 없는 환경(WhisperX 미사용)에서도 다른 provider는 그대로
+# 동작해야 하므로 실패해도 조용히 넘어간다.
+try:
+    import ctypes
+
+    import nvidia.cudnn
+
+    _cudnn_lib_dir = Path(nvidia.cudnn.__file__).parent / "lib"
+
+    # 의존관계상 하위 라이브러리(ops)를 먼저, 통합 라이브러리(libcudnn.so)를
+    # 마지막에 로드해야 심볼을 못 찾는 일이 없다.
+    _cudnn_load_order = [
+        "libcudnn_ops.so.9",
+        "libcudnn_cnn.so.9",
+        "libcudnn_adv.so.9",
+        "libcudnn_graph.so.9",
+        "libcudnn_heuristic.so.9",
+        "libcudnn_engines_precompiled.so.9",
+        "libcudnn_engines_runtime_compiled.so.9",
+        "libcudnn.so.9",
+    ]
+
+    for _lib_name in _cudnn_load_order:
+        _lib_path = _cudnn_lib_dir / _lib_name
+
+        if _lib_path.exists():
+            ctypes.CDLL(
+                str(_lib_path),
+                mode=ctypes.RTLD_GLOBAL,
+            )
+except (ImportError, OSError):
+    pass
+
 # 공부용 설명:
 # 이 파일은 '음성 파일 -> 텍스트 segment JSON'으로 바꾸는 변환기다.
 # 실제로는 외부 STT 서비스(Deepgram, Whisper)를 호출하는 역할을 하며,
@@ -879,6 +918,273 @@ class WhisperLargeV3FallbackProvider(BaseSTTProvider):
         }
 
 
+# 4-3. WhisperX provider (완전 로컬, API 미사용)
+# 공부용 설명:
+# Deepgram은 유료 외부 API라 실제 상담 음성(개인정보)이 회사 밖으로
+# 나간다. WhisperX는 Whisper(전사) + wav2vec2(단어 단위 정렬) +
+# pyannote.audio(화자분리)를 묶은 오픈소스 파이프라인으로, 모델
+# 가중치를 한 번 받아두면 그 이후로는 완전히 로컬 GPU에서만 돈다.
+#
+# pyannote 화자분리 모델은 HuggingFace의 "게이트"(약관 동의) 모델이라
+# 최초 다운로드 시 PYANNOTE_AUTH_TOKEN(무료 발급)이 필요하다.
+class WhisperXSTTProvider(BaseSTTProvider):
+    """
+    완전 로컬 STT — 외부 API 호출이 전혀 없다.
+
+    화자 수는 상담사/아동 2명으로 고정한다(min_speakers=max_speakers=2).
+    3인 이상이 참여하는 상담(보호자 동석 등)은 아직 지원 범위 밖이다.
+
+    원본 whisperx 세그먼트는 무음 구간(VAD) 기준으로만 잘려서, 한
+    세그먼트 안에 화자 두 명의 발화가 섞이는 경우가 있다. 이 provider는
+    단어 단위 화자 정보를 기준으로 화자가 바뀌는 지점마다 다시 잘라서,
+    "누가 말했는지 애매한 지점"을 세그먼트 단위로 명확히 구분해 낸다.
+
+    신뢰도(confidence)는 wav2vec2 정렬 점수의 평균이다 — Deepgram의
+    confidence(0.7 근방이 평균)와 스케일이 전혀 달라서, 저신뢰 기준값
+    (LOW_CONFIDENCE_THRESHOLD)도 별도로 잡았다. 실제 샘플 음성으로
+    측정한 점수 분포(중앙값 0.10, 상위 25%가 0.14 이상)를 참고해
+    대략 하위 1/4~1/3이 걸리도록 0.10으로 잡았다 — 실제 상담 데이터가
+    쌓이면 재조정이 필요할 수 있다.
+    """
+
+    LOW_CONFIDENCE_THRESHOLD = 0.10
+
+    # 모델은 프로세스당 한 번만 읽어서 재사용한다(로드 자체가 수 초~수십 초 걸림).
+    _model = None
+    _align_model = None
+    _align_metadata = None
+    _diarize_model = None
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+        model_size: Optional[str] = None,
+        device: Optional[str] = None,
+    ):
+        super().__init__(api_key=api_key, api_url=api_url)
+
+        import torch
+
+        self.model_size = model_size or os.getenv(
+            "WHISPERX_MODEL_SIZE", "large-v3"
+        )
+
+        self.device = device or (
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+
+        self.compute_type = "float16" if self.device == "cuda" else "int8"
+
+        self.hf_token = (
+            self.api_key
+            or os.getenv("PYANNOTE_AUTH_TOKEN")
+        )
+
+        if not self.hf_token:
+            raise AudioProviderError(
+                "PYANNOTE_AUTH_TOKEN이 설정되어 있지 않습니다 "
+                "(화자분리 모델 다운로드에 필요)."
+            )
+
+    def _ensure_models_loaded(self) -> None:
+        import whisperx
+
+        cls = WhisperXSTTProvider
+
+        if cls._model is None:
+            cls._model = whisperx.load_model(
+                self.model_size,
+                self.device,
+                compute_type=self.compute_type,
+                language="ko",
+            )
+
+        if cls._align_model is None:
+            align_model, metadata = whisperx.load_align_model(
+                language_code="ko",
+                device=self.device,
+            )
+            cls._align_model = align_model
+            cls._align_metadata = metadata
+
+        if cls._diarize_model is None:
+            cls._diarize_model = whisperx.diarize.DiarizationPipeline(
+                use_auth_token=self.hf_token,
+                device=self.device,
+            )
+
+    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+        if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+            raise InvalidAudioError("유효하지 않거나 텅 빈 오디오 파일입니다.")
+
+        import whisperx
+
+        try:
+            self._ensure_models_loaded()
+
+            cls = WhisperXSTTProvider
+
+            audio = whisperx.load_audio(audio_path)
+
+            result = cls._model.transcribe(audio, batch_size=8)
+
+            result = whisperx.align(
+                result["segments"],
+                cls._align_model,
+                cls._align_metadata,
+                audio,
+                self.device,
+            )
+
+            diarize_segments = cls._diarize_model(
+                audio,
+                min_speakers=2,
+                max_speakers=2,
+            )
+
+            result = whisperx.assign_word_speakers(
+                diarize_segments,
+                result,
+            )
+
+            segments = self._coerce_to_contract(
+                result["segments"]
+            )
+
+            return {
+                "schema_version": "1.0",
+                "segments": segments,
+            }
+
+        except (InvalidAudioError, AudioProviderError):
+            raise
+
+        except Exception as exc:
+            raise AudioProviderError(
+                f"WhisperX STT 처리 중 오류 발생: {exc}"
+            ) from exc
+
+    def _coerce_to_contract(
+        self,
+        whisperx_segments,
+    ) -> List[Dict[str, Any]]:
+        contract_segments: List[Dict[str, Any]] = []
+        segment_counter = [0]
+
+        def _flush(run: List[Dict[str, Any]]) -> None:
+            if not run:
+                return
+
+            segment_counter[0] += 1
+
+            timed_words = [
+                w for w in run
+                if "start" in w and "end" in w
+            ]
+
+            scores = [
+                float(w.get("score", 0.0))
+                for w in run
+                if "score" in w
+            ]
+
+            avg_score = (
+                sum(scores) / len(scores)
+                if scores
+                else 0.0
+            )
+
+            start_sec = (
+                timed_words[0]["start"]
+                if timed_words
+                else 0.0
+            )
+
+            end_sec = (
+                timed_words[-1]["end"]
+                if timed_words
+                else start_sec
+            )
+
+            run_speaker = run[0].get(
+                "speaker", "UNKNOWN"
+            )
+
+            contract_segments.append(
+                {
+                    "segment_id": f"seg_{segment_counter[0]:03d}",
+                    "speaker": run_speaker,
+                    "start_ms": int(start_sec * 1000),
+                    "end_ms": int(end_sec * 1000),
+                    "text": " ".join(
+                        w.get("word", "") for w in run
+                    ).strip(),
+                    "confidence": round(avg_score, 3),
+                    "is_low_confidence": (
+                        avg_score < self.LOW_CONFIDENCE_THRESHOLD
+                    ),
+                    "words": [
+                        {
+                            "word": w.get("word", ""),
+                            "speaker": w.get("speaker", "UNKNOWN"),
+                            "start_ms": (
+                                int(w["start"] * 1000)
+                                if "start" in w
+                                else None
+                            ),
+                            "end_ms": (
+                                int(w["end"] * 1000)
+                                if "end" in w
+                                else None
+                            ),
+                            "confidence": round(
+                                float(w.get("score", 0.0)), 3
+                            ),
+                        }
+                        for w in run
+                    ],
+                }
+            )
+
+        for seg in whisperx_segments:
+            words = seg.get("words", [])
+
+            if not words:
+                # 정렬 실패로 단어 정보가 아예 없는 구간 —
+                # 화자/타임스탬프를 신뢰할 수 없으니 무조건 저신뢰로 표시한다.
+                segment_counter[0] += 1
+
+                contract_segments.append(
+                    {
+                        "segment_id": f"seg_{segment_counter[0]:03d}",
+                        "speaker": seg.get("speaker", "UNKNOWN"),
+                        "start_ms": int(seg.get("start", 0.0) * 1000),
+                        "end_ms": int(seg.get("end", 0.0) * 1000),
+                        "text": (seg.get("text") or "").strip(),
+                        "confidence": 0.0,
+                        "is_low_confidence": True,
+                        "words": [],
+                    }
+                )
+                continue
+
+            current_run: List[Dict[str, Any]] = []
+
+            for word in words:
+                if current_run and word.get(
+                    "speaker"
+                ) != current_run[-1].get("speaker"):
+                    _flush(current_run)
+                    current_run = []
+
+                current_run.append(word)
+
+            _flush(current_run)
+
+        return contract_segments
+
+
 class SelectiveFallbackDetector:
     """
     Deepgram 결과에서 Whisper 재전사가 필요한
@@ -1588,6 +1894,7 @@ class Transcriber:
         provider_map = {
             "mock": MockSTTProvider,
             "whisper": WhisperSTTProvider,
+            "whisperx": WhisperXSTTProvider,
             "clova": ClovaSpeechSTTProvider,
             "clova_speech": ClovaSpeechSTTProvider,
             "deepgram": DeepgramSTTProvider,

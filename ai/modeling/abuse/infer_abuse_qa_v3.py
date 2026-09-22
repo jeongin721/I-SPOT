@@ -181,6 +181,23 @@ class AbuseQAModel:
 
         print("=" * 80)
 
+    def threshold_for(
+        self,
+        label_name: str,
+    ) -> float:
+        """
+        threshold가 유형별 dict({"신체학대": 0.4, ...})면 그 유형의 값을,
+        기존처럼 단일 숫자(구버전 체크포인트 호환)면 그 값을 그대로 쓴다.
+        """
+
+        if isinstance(self.threshold, dict):
+            return self.threshold.get(
+                label_name,
+                DEFAULT_THRESHOLD,
+            )
+
+        return self.threshold
+
 
 # ============================================================
 # 4. 입력 포맷 생성
@@ -322,7 +339,7 @@ def predict_abuse(
 
             "detected": (
                 probability
-                >= engine.threshold
+                >= engine.threshold_for(label_name)
             ),
         }
 

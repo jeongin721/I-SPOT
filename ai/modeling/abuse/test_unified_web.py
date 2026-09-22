@@ -814,7 +814,7 @@ def transcribe(
                 총 {len(transcript.get("segments", []))}개 발화.
                 화자 표시나 텍스트가 잘못됐으면 직접 수정한 뒤
                 분석하기를 눌러주세요. 노란 배경은 STT 신뢰도가
-                낮은(0.70 미만) 구간입니다.
+                낮은(신뢰도 {post_processor.threshold:.2f} 미만) 구간입니다.
             </div>
 
             <form method="post" action="/analyze-transcript">
@@ -963,7 +963,10 @@ async def extract_pdf(
 
             <div class="meta">
                 총 {extraction["page_count"]}페이지.
-                추출된 텍스트를 확인·수정한 뒤 분석하기를 눌러주세요.
+                문서번호/페이지번호/작성일자/담당자 같은 행정 정보는
+                자동으로 걸러냈습니다 (확실한 것만 제거 — 애매하면
+                그대로 둡니다). 아래 내용을 확인·수정한 뒤
+                분석하기를 눌러주세요.
             </div>
 
             {warning_html}
@@ -971,7 +974,7 @@ async def extract_pdf(
             <form method="post" action="/analyze-pdf">
                 <input type="hidden" name="case_id" value="{escape(case_id)}">
 
-                <textarea name="text" class="editable">{escape(extraction["text"])}</textarea>
+                <textarea name="text" class="editable">{escape(extraction["clean_text"])}</textarea>
 
                 <button type="submit">
                     검수 완료 — 분석하기

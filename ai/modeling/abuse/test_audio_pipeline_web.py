@@ -2,11 +2,17 @@
 음성 파일 업로드 → STT → 오늘 만든 신규 파이프라인(analyze_audio_session)
 전체를 확인하는 테스트 웹.
 
-STT 쪽은 test_web_qa.py가 이미 쓰던 기존 구성(SelectiveFallbackSTTProvider +
-STTPostProcessor + ChildAnalysisTextBuilder + TranscriptBuilder)을 그대로
-재사용한다 — 실제 음성 모델(팀 제공 예정)이 오면 stt_provider 자리만
-바꿔 끼우면 된다. TranscriptBuilder의 출력이 이미 Contract v1.0
-형식이라 infer_audio_session.analyze_audio_session()에 그대로 들어간다.
+STT provider는 환경변수 I_SPOT_STT_PROVIDER로 고른다.
+- "whisperx"(기본값): WhisperX(전사+화자분리) — 완전 로컬, API 호출 없음.
+  개인정보(실제 상담 음성)를 외부로 보내지 않기 위해 기본값으로 삼았다.
+- "deepgram": 기존 SelectiveFallbackSTTProvider(Deepgram 기반, 유료 API).
+
+WhisperX의 confidence는 wav2vec2 정렬 점수 기준이라 Deepgram(0.7 근방이
+평균)과 스케일이 달라서, STTPostProcessor의 저신뢰 임계값도 provider에
+맞춰 따로 잡는다. STTPostProcessor/ChildAnalysisTextBuilder/
+TranscriptBuilder는 provider와 무관하게 그대로 재사용한다 —
+TranscriptBuilder의 출력이 이미 Contract v1.0 형식이라
+infer_audio_session.analyze_audio_session()에 그대로 들어간다.
 """
 
 import json
@@ -19,7 +25,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse
 import uvicorn
 
-from ispot_stt import SelectiveFallbackSTTProvider
+from ispot_stt import SelectiveFallbackSTTProvider, WhisperXSTTProvider
 from ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
@@ -44,11 +50,23 @@ from ai.modeling.abuse.case_workflow_routes import (
 # 1. STT 객체 (test_web_qa.py와 동일한 구성)
 # ============================================================
 
-stt_provider = SelectiveFallbackSTTProvider()
+_stt_provider_name = os.getenv(
+    "I_SPOT_STT_PROVIDER",
+    "whisperx",
+).lower()
 
-post_processor = STTPostProcessor(
-    low_confidence_threshold=0.70
-)
+if _stt_provider_name == "deepgram":
+    stt_provider = SelectiveFallbackSTTProvider()
+    post_processor = STTPostProcessor(
+        low_confidence_threshold=0.70
+    )
+else:
+    stt_provider = WhisperXSTTProvider()
+    post_processor = STTPostProcessor(
+        low_confidence_threshold=(
+            WhisperXSTTProvider.LOW_CONFIDENCE_THRESHOLD
+        )
+    )
 
 child_builder = ChildAnalysisTextBuilder()
 transcript_builder = TranscriptBuilder()
@@ -229,7 +247,7 @@ def build_page(
                 총 {len(transcript.get("segments", []))}개 발화.
                 화자 표시나 텍스트가 잘못됐으면 직접 수정한 뒤
                 분석하기를 눌러주세요. 노란 배경은 STT 신뢰도가
-                낮은(0.70 미만) 구간입니다.
+                낮은(신뢰도 {post_processor.threshold:.2f} 미만) 구간입니다.
             </div>
 
             <form method="post" action="/analyze-transcript">
