@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .pytest-*/
+pytest-cache-files-*/
 .ruff_cache/
 *.egg-info/
 
@@ -58,6 +59,36 @@ results/
 /data_prep/evaluation/elevenlabs_500/outputs/
 /data_prep/evaluation/elevenlabs/*_audio/
 /data_prep/evaluation/**/errors.jsonl
+
+# Development-cohort raw responses and generated runtime records can contain
+# consultation-derived content or operational diagnostics.  Keep manifests and
+# reproducible scripts reviewable, but never stage these generated artifacts.
+/data_prep/evaluation/elevenlabs_improvement/development_outputs/
+/data_prep/evaluation/elevenlabs_improvement/development_errors.jsonl
+/data_prep/evaluation/elevenlabs_improvement/development_run_summary.csv
+
+# Selective Deepgram fallback experiment: raw provider responses and runtime
+# diagnostics may contain consultation-derived content. Keep only the frozen
+# manifest and reproducible scripts reviewable.
+/data_prep/evaluation/elevenlabs_improvement/deepgram_single_recovery_outputs/
+/data_prep/evaluation/elevenlabs_improvement/deepgram_single_recovery_errors.jsonl
+/data_prep/evaluation/elevenlabs_improvement/deepgram_single_recovery_run_summary.csv
+
+# Development selective-Deepgram Stage-1 raw responses and local diagnostics.
+/data_prep/evaluation/elevenlabs_improvement/development_single_speaker_deepgram_stage1_raw/
+/data_prep/evaluation/elevenlabs_improvement/development_single_speaker_deepgram_stage1_summary.csv
+/data_prep/evaluation/elevenlabs_improvement/development_1366_timestamp_failure_details.jsonl
+/data_prep/evaluation/elevenlabs_improvement/tmp0ixegixg
+
+# These CER exports contain consultation-derived reference or hypothesis text.
+/data_prep/evaluation/comparison/both_ok_child_cer_76.csv
+/data_prep/evaluation/comparison/oracle_child_cer_100.csv
+/data_prep/evaluation/deepgram/child_text_cer_100.csv
+/data_prep/evaluation/elevenlabs_500/mapped_child_cer_472.csv
+/data_prep/evaluation/elevenlabs_500/oracle_child_cer_500.csv
+
+# Keep generated synthetic dialogue data local; generator scripts remain tracked.
+/synthetic_data/*.csv
 
 # Reproducible, large local evaluation exports
 /data_prep/evaluation/ground_truth/gt_2876.csv

@@ -31,6 +31,31 @@ class TranscriptResponse(BaseModel):
 
     segments: List[STTSegment]
     edited_segment_ids: List[str] = Field(default_factory=list)
+    # Additive handoff view. The existing ``segments`` Contract is unchanged.
+    child_handoff: Optional["ChildHandoffResponse"] = None
+
+
+class ChildHandoffSegment(BaseModel):
+    segment_id: str = Field(min_length=1, max_length=50)
+    text: str
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _valid_range(self) -> "ChildHandoffSegment":
+        if self.end_ms < self.start_ms:
+            raise ValueError("end_ms must not precede start_ms")
+        return self
+
+
+class ReviewNeededSegment(ChildHandoffSegment):
+    reason: str
+
+
+class ChildHandoffResponse(BaseModel):
+    child_analysis_text: str = ""
+    confirmed_child_segments: List[ChildHandoffSegment] = Field(default_factory=list)
+    review_needed_segments: List[ReviewNeededSegment] = Field(default_factory=list)
 
 
 class TranscriptEnvelope(BaseModel):
