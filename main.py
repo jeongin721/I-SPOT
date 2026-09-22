@@ -11,8 +11,40 @@ from ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
 from abuse_model.infer_abuse import predict_abuse
+from rag.pipeline import analyze_consultation_evidence
 
 load_dotenv()
+
+# ---------------------------------------------------------
+# KLUE-RoBERTa 멀티라벨 결과 → RAG abuse_type 매핑
+# ---------------------------------------------------------
+ABUSE_LABEL_TO_RAG_TYPE = {
+    "신체학대": "physical",
+    "정서학대": "emotional",
+    "성학대": "sexual",
+    "방임": "neglect",
+}
+
+
+def resolve_rag_abuse_type(abuse_prediction: dict | None) -> str | None:
+    """abuse_prediction에서 threshold를 넘긴(detected) 라벨을 RAG abuse_type으로 변환한다.
+
+    감지된 라벨이 없으면 None, 2개 이상이면 "multiple"을 반환한다.
+    """
+    if not abuse_prediction:
+        return None
+
+    detected_types = [
+        ABUSE_LABEL_TO_RAG_TYPE[label]
+        for label in ABUSE_LABEL_TO_RAG_TYPE
+        if abuse_prediction.get(label, {}).get("detected")
+    ]
+
+    if not detected_types:
+        return None
+    if len(detected_types) > 1:
+        return "multiple"
+    return detected_types[0]
 
 # ---------------------------------------------------------
 # 서버 공용 AI / STT 객체
@@ -204,6 +236,29 @@ def analyze_audio(file: UploadFile = File(...)):
                 "학대 유형 분석을 건너뜁니다."
             )
 
+        # 9. RAG 근거자료 / 관련 법령 / 다음 상담 체크리스트 분석
+        rag_analysis = None
+        rag_abuse_type = resolve_rag_abuse_type(abuse_prediction)
+
+        if rag_abuse_type and child_analysis_text:
+            print("6️⃣ RAG 근거자료 및 관련 법령 분석 중...")
+
+            try:
+                rag_analysis = analyze_consultation_evidence(
+                    text=child_analysis_text,
+                    abuse_type=rag_abuse_type,
+                )
+            except Exception as rag_err:
+                # RAG는 보조 참고정보이므로 실패해도 STT/학대유형 분석 결과는 그대로 반환한다.
+                print(f"❌ RAG 근거자료 분석 오류: {str(rag_err)}")
+                rag_analysis = {
+                    "error": f"RAG 근거자료 분석 중 오류가 발생했습니다: {str(rag_err)}"
+                }
+        else:
+            print(
+                "⚠️ 감지된 학대 유형이 없어 "
+                "RAG 근거자료 분석을 건너뜁니다."
+            )
 
         return {
             "status": "success",
@@ -231,6 +286,9 @@ def analyze_audio(file: UploadFile = File(...)):
 
             "abuse_prediction":
                 abuse_prediction,
+
+            "rag_analysis":
+                rag_analysis,
         }
 
     except HTTPException as http_ex:
