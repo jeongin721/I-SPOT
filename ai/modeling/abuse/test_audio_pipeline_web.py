@@ -3,16 +3,22 @@
 전체를 확인하는 테스트 웹.
 
 STT provider는 환경변수 I_SPOT_STT_PROVIDER로 고른다.
-- "whisperx"(기본값): WhisperX(전사+화자분리) — 완전 로컬, API 호출 없음.
-  개인정보(실제 상담 음성)를 외부로 보내지 않기 위해 기본값으로 삼았다.
-- "deepgram": 기존 SelectiveFallbackSTTProvider(Deepgram 기반, 유료 API).
+- "elevenlabs"(기본값): ElevenLabs Scribe v2(팀 STT 파트 최종본) — 화자분리
+  정확도 때문에 채택. 외부 유료 API를 호출하므로 실제 상담 음성이 외부로
+  나간다는 점은 감수한 선택이다(정확도 우선). 화자를 CHILD/COUNSELOR로
+  확정하기 어려운 구간은 UNKNOWN으로 남기고 review_needed로 넘긴다.
+  응답 실패 시에만 내부적으로 Deepgram으로 자동 대체된다.
+- "whisperx": WhisperX(전사+화자분리) — 완전 로컬, API 호출 없음. 외부로
+  음성을 보내지 않아야 할 때 이 값으로 전환.
+- "deepgram": 기존 SelectiveFallbackSTTProvider(Deepgram 기반, 유료 API)를
+  단독으로 사용.
 
-WhisperX의 confidence는 wav2vec2 정렬 점수 기준이라 Deepgram(0.7 근방이
-평균)과 스케일이 달라서, STTPostProcessor의 저신뢰 임계값도 provider에
-맞춰 따로 잡는다. STTPostProcessor/ChildAnalysisTextBuilder/
-TranscriptBuilder는 provider와 무관하게 그대로 재사용한다 —
-TranscriptBuilder의 출력이 이미 Contract v1.0 형식이라
-infer_audio_session.analyze_audio_session()에 그대로 들어간다.
+Provider마다 confidence의 스케일/의미가 달라(WhisperX는 wav2vec2 정렬
+점수, ElevenLabs는 제공되지 않아 항상 0.0/False, Deepgram은 자체 신뢰도)
+STTPostProcessor의 저신뢰 임계값도 provider에 맞춰 따로 잡는다.
+STTPostProcessor/ChildAnalysisTextBuilder/TranscriptBuilder는 provider와
+무관하게 그대로 재사용한다 — TranscriptBuilder의 출력이 이미 Contract
+v1.0 형식이라 infer_audio_session.analyze_audio_session()에 그대로 들어간다.
 """
 
 import json
@@ -25,7 +31,13 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse
 import uvicorn
 
-from ispot_stt import SelectiveFallbackSTTProvider, WhisperXSTTProvider
+from ispot_stt import (
+    DeepgramSTTProvider,
+    ElevenLabsScribeV2Provider,
+    ProviderFailureFallbackSTTProvider,
+    SelectiveFallbackSTTProvider,
+    WhisperXSTTProvider,
+)
 from ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
@@ -52,7 +64,7 @@ from ai.modeling.abuse.case_workflow_routes import (
 
 _stt_provider_name = os.getenv(
     "I_SPOT_STT_PROVIDER",
-    "whisperx",
+    "elevenlabs",
 ).lower()
 
 if _stt_provider_name == "deepgram":
@@ -60,13 +72,23 @@ if _stt_provider_name == "deepgram":
     post_processor = STTPostProcessor(
         low_confidence_threshold=0.70
     )
-else:
+elif _stt_provider_name == "whisperx":
     stt_provider = WhisperXSTTProvider()
     post_processor = STTPostProcessor(
         low_confidence_threshold=(
             WhisperXSTTProvider.LOW_CONFIDENCE_THRESHOLD
         )
     )
+else:
+    # ElevenLabs는 실패 시에만 Deepgram으로 자동 대체(ProviderFailureFallback).
+    # confidence는 항상 0.0/is_low_confidence=False로 오므로(호환 가능한 값이
+    # 없음), 저신뢰 임계값은 사실상 이 provider에서는 쓰이지 않는다 — 화자
+    # 확정 불가 구간은 confidence가 아니라 UNKNOWN speaker로 걸러진다.
+    stt_provider = ProviderFailureFallbackSTTProvider(
+        primary=ElevenLabsScribeV2Provider(),
+        fallback=DeepgramSTTProvider(),
+    )
+    post_processor = STTPostProcessor(low_confidence_threshold=0.0)
 
 child_builder = ChildAnalysisTextBuilder()
 transcript_builder = TranscriptBuilder()
@@ -142,9 +164,21 @@ def build_transcript_review_html(
             0.0,
         )
 
+        # TranscriptBuilder.build()가 is_low_confidence 필드 자체를
+        # 제거하므로(공용 Transcript에서는 제외), 여기서 0.70을
+        # 하드코딩하면 ElevenLabs(confidence 항상 0.0)는 모든 행이
+        # 항상 low-confidence로 표시되어 정작 봐야 할 신호(UNKNOWN
+        # 화자)가 묻힌다. STTPostProcessor가 provider별로 이미 잡아 둔
+        # post_processor.threshold를 그대로 재사용한다.
+        row_classes = []
+        if confidence < post_processor.threshold:
+            row_classes.append("low-confidence")
+        if speaker == "UNKNOWN":
+            # ElevenLabs 등에서 화자를 확정하지 못해 review가 필요한 구간.
+            row_classes.append("needs-review")
         low_conf_class = (
-            " low-confidence"
-            if confidence < 0.70
+            " " + " ".join(row_classes)
+            if row_classes
             else ""
         )
 
@@ -419,6 +453,10 @@ def build_page(
 
             .segment-row.low-confidence {{
                 background: #fffbeb;
+            }}
+
+            .segment-row.needs-review {{
+                background: #fee2e2;
             }}
 
             .segment-speaker-select {{
@@ -746,16 +784,38 @@ def transcribe(
             raw_result
         )
 
-        child_result = child_builder.build(
-            final_result
-        )
+        if _stt_provider_name == "elevenlabs":
+            # ElevenLabsScribeV2Provider는 provider 단계에서 이미
+            # RuntimeSpeakerRoleMapper로 CHILD/COUNSELOR/UNKNOWN을
+            # 확정해서 내려준다(segment["speaker"]가 raw id가 아니라
+            # canonical role). WhisperX/Deepgram용으로 만든
+            # ChildAnalysisTextBuilder를 여기에 또 돌리면 raw
+            # speaker_id 대신 이미 확정된 역할 문자열("CHILD" 등)을
+            # 다시 텍스트 휴리스틱으로 재분류하게 되어, provider가
+            # 내린 결정을 뒤집을 수 있다. 그래서 이미 정해진 role을
+            # 그대로 통과시키는 identity mapping만 사용한다.
+            role_mapping = {
+                role: {"role": role}
+                for role in (
+                    "COUNSELOR",
+                    "CHILD",
+                    "GUARDIAN",
+                    "OTHER",
+                    "UNKNOWN",
+                )
+            }
+        else:
+            child_result = child_builder.build(
+                final_result
+            )
+            role_mapping = child_result.get(
+                "role_mapping",
+                {},
+            )
 
         transcript = transcript_builder.build(
             stt_data=final_result,
-            role_mapping=child_result.get(
-                "role_mapping",
-                {},
-            ),
+            role_mapping=role_mapping,
         )
 
         # 여기서 바로 분석하지 않는다.

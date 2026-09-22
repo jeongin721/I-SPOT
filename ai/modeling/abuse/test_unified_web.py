@@ -48,6 +48,7 @@ from ai.modeling.abuse.test_audio_pipeline_web import (
     post_processor,
     child_builder,
     transcript_builder,
+    _stt_provider_name,
 )
 
 from ai.modeling.abuse import case_store
@@ -799,11 +800,29 @@ def transcribe(
 
         raw_result = stt_provider.transcribe(temp_path)
         final_result = post_processor.process(raw_result)
-        child_result = child_builder.build(final_result)
+
+        if _stt_provider_name == "elevenlabs":
+            # ElevenLabsScribeV2Provider는 provider 단계에서 이미 역할을
+            # 확정해서 내려주므로(test_audio_pipeline_web.py의 /transcribe
+            # 참고), WhisperX/Deepgram 전용인 ChildAnalysisTextBuilder의
+            # 텍스트 휴리스틱을 다시 돌리지 않고 그대로 통과시킨다.
+            role_mapping = {
+                role: {"role": role}
+                for role in (
+                    "COUNSELOR",
+                    "CHILD",
+                    "GUARDIAN",
+                    "OTHER",
+                    "UNKNOWN",
+                )
+            }
+        else:
+            child_result = child_builder.build(final_result)
+            role_mapping = child_result.get("role_mapping", {})
 
         transcript = transcript_builder.build(
             stt_data=final_result,
-            role_mapping=child_result.get("role_mapping", {}),
+            role_mapping=role_mapping,
         )
 
         panel = f"""
