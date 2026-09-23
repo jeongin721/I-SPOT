@@ -421,3 +421,59 @@ export interface SummaryEnvelope {
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
 }
+
+// =========================================================
+// 처리 대기 업무 (대시보드)
+// =========================================================
+
+/** 사람이 처리할 차례인 업무 종류. 회차 상태 하나에 하나씩 대응한다. */
+export type TaskType =
+  | "UPLOAD_AUDIO"
+  | "REQUEST_STT"
+  | "REVIEW_TRANSCRIPT"
+  | "REQUEST_ANALYSIS"
+  | "REVIEW_ANALYSIS"
+  | "RETRY_STT"
+  | "RETRY_ANALYSIS";
+
+/** 화면에 표시할 한글 이름. */
+export const TASK_LABELS: Record<TaskType, string> = {
+  UPLOAD_AUDIO: "녹음 업로드",
+  REQUEST_STT: "원문 변환 요청",
+  REVIEW_TRANSCRIPT: "원문 검수",
+  REQUEST_ANALYSIS: "AI 분석 요청",
+  REVIEW_ANALYSIS: "분석 결과 검토",
+  RETRY_STT: "원문 변환 재시도",
+  RETRY_ANALYSIS: "AI 분석 재시도",
+};
+
+/** 처리 대기 업무 하나. 오래 기다린 것부터 온다. */
+export interface TaskItem {
+  session_id: string;
+  case_id: string;
+  case_number: string;
+  /** 실명이 아닌 별칭. */
+  child_alias: string;
+  session_number: number;
+  session_title: string | null;
+  session_status: SessionStatus;
+  task_type: TaskType;
+  /** 이 상태로 기다리기 시작한 시각(UTC, 항상 Z 로 끝남). */
+  waiting_since: string;
+  /**
+   * 기다린 시간이 기준(기본 48시간)을 넘었는지.
+   * 화면에는 "지연"으로 표시한다. 위험 신호와 헷갈리지 않게 "긴급"이라고 쓰지 않는다.
+   */
+  is_overdue: boolean;
+  counselor_id: string;
+  counselor_name: string | null;
+  /** 재시도 업무에만 값이 있다. 메시지는 회차 상세(error)에서 본다. */
+  last_error_code: string | null;
+}
+
+/** 대시보드 숫자. by_type 에는 업무 종류가 항상 모두 들어 있다(없으면 0). */
+export interface TaskSummary {
+  total: number;
+  overdue: number;
+  by_type: Record<TaskType, number>;
+}

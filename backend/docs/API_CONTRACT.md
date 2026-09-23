@@ -626,7 +626,87 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ---
 
-## 11. Error Code 목록
+## 11. Tasks (처리 대기 업무)
+
+대시보드의 "나의 업무 목록"용. **사람이 처리할 차례인 Session** 을 오래 기다린 순서로 준다.
+업무는 따로 저장하지 않고 Session 상태에서 계산한다.
+
+| Session 상태 | `task_type` | 화면 이름 | 기다리기 시작한 시각 |
+|---|---|---|---|
+| `CREATED` | `UPLOAD_AUDIO` | 녹음 업로드 | 상담일(`consulted_at`), 없으면 생성 시각 |
+| `AUDIO_UPLOADED` | `REQUEST_STT` | 원문 변환 요청 | 가장 최근 음성 업로드 시각 |
+| `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정 후 되돌린 경우 확정 시각) |
+| `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 (AI 실패 후 되돌린 경우 실패 시각) |
+| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 |
+| `STT_FAILED` | `RETRY_STT` | 원문 변환 재시도 | 실패 시각 |
+| `AI_FAILED` | `RETRY_ANALYSIS` | AI 분석 재시도 | 실패 시각 |
+
+- 처리 중(`STT_PROCESSING`, `AI_PROCESSING`)과 `APPROVED` 는 업무가 아니다.
+  처리 중에 멈춘 Session 은 조회할 때 실패로 마감되어 재시도 업무로 나온다(1.4 참고).
+- **종결(`CLOSED`) 사례의 Session 과, 상담일이 아직 오지 않은 `CREATED` Session 은 뺀다.**
+- 상담사는 담당 사례의 Session 만, 관리자는 전체를 본다.
+
+### GET /api/v1/tasks
+
+Query: `page`, `page_size`(≤100), `task_type`, `overdue_only`(`true`/`false`), `counselor_id`
+
+- `counselor_id` 는 **관리자만** 쓸 수 있다. 상담사가 본인이 아닌 id 를 보내면 `403 FORBIDDEN`
+- 모르는 `task_type` 이면 `422 VALIDATION_ERROR`
+- 정렬: `waiting_since` 오래된 순, 같으면 `case_number` · `session_number` 순
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "session_id": "uuid",
+        "case_id": "uuid",
+        "case_number": "C-2026-0001",
+        "child_alias": "아동_001",
+        "session_number": 2,
+        "session_title": "2회기 상담",
+        "session_status": "STT_REVIEW_REQUIRED",
+        "task_type": "REVIEW_TRANSCRIPT",
+        "waiting_since": "2026-09-15T02:10:00Z",
+        "is_overdue": true,
+        "counselor_id": "uuid",
+        "counselor_name": "이서연",
+        "last_error_code": null
+      }
+    ],
+    "meta": { "total": 1, "page": 1, "page_size": 20, "total_pages": 1 }
+  }
+}
+```
+
+- `waiting_since` 는 항상 UTC(`Z`)로 준다.
+- `is_overdue` 는 `waiting_since` 로부터 `TASK_OVERDUE_HOURS`(기본 48시간)가 지났는지다.
+  화면에는 **"지연"** 으로 표시한다. 위험 신호와 헷갈리지 않게 "긴급"이라고 쓰지 않고, 색만으로 구분하지 않는다.
+- 아동은 `child_alias` 만 준다. 상담 원문은 주지 않는다.
+- `last_error_code` 는 재시도 업무에만 값이 있다. 메시지는 `GET /api/v1/sessions/{session_id}` 의 `error` 에서 본다.
+
+### GET /api/v1/tasks/summary
+
+Query: `counselor_id` (목록과 같은 규칙)
+
+```json
+{
+  "data": {
+    "total": 5,
+    "overdue": 3,
+    "by_type": {
+      "UPLOAD_AUDIO": 1, "REQUEST_STT": 0, "REVIEW_TRANSCRIPT": 1, "REQUEST_ANALYSIS": 0,
+      "REVIEW_ANALYSIS": 2, "RETRY_STT": 1, "RETRY_ANALYSIS": 0
+    }
+  }
+}
+```
+
+`by_type` 에는 업무 종류 7개가 **항상 모두** 들어 있다. 없는 종류는 `0` 이다.
+
+---
+
+## 12. Error Code 목록
 
 | code | status | 설명 |
 |---|---|---|
@@ -657,7 +737,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ---
 
-## 12. 전체 Flow 예시
+## 13. 전체 Flow 예시
 
 ```text
 POST /auth/login
@@ -678,7 +758,7 @@ GET  /sessions/{id}                           → 상태/데이터 유지 확인
 
 ---
 
-## 13. Contract 변경 요청
+## 14. Contract 변경 요청
 
 이 문서의 구조를 바꿔야 하면 코드 수정 전에 아래 형식으로 제안한다.
 
