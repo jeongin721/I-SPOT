@@ -1,0 +1,144 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  test:
+    name: pytest (SQLite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest
+
+  runtime-deps:
+    # requirements.txt 만으로 서버가 뜨는지 확인한다.
+    # dev 의존성이 런타임 누락을 가려주는 것을 방지한다.
+    name: Runtime dependency check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      # import 만 확인하므로 실제 연결은 하지 않는다.
+      DATABASE_URL: sqlite+pysqlite:///./ci-import-check.db
+      JWT_SECRET_KEY: ci-only-secret-key-not-for-production-0123456789
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install runtime dependencies only
+        run: pip install -r requirements.txt
+
+      - name: Import app and build OpenAPI schema
+        run: |
+          python -c "
+          from app.main import app
+          paths = app.openapi()['paths']
+          assert len(paths) > 0, 'OpenAPI 경로가 비어 있습니다.'
+          print(f'OK: app imported, {len(paths)} paths')
+          "
+
+  migration:
+    name: Alembic migration (PostgreSQL)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ispot
+          POSTGRES_PASSWORD: ispot
+          POSTGRES_DB: ispot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ispot -d ispot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg://ispot:ispot@localhost:5432/ispot
+      JWT_SECRET_KEY: ci-only-secret-key-not-for-production-0123456789
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Verify models match migrations
+        # migration 과 model 이 어긋나면 autogenerate 가 변경사항을 감지한다.
+        run: |
+          alembic check
+
+      - name: Verify downgrade
+        run: alembic downgrade base
+
+  secret-scan:
+    name: Secret check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure no .env file is committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.' | grep -v '\.env\.example'; then
+            echo "::error::.env 파일이 커밋되었습니다. Secret 은 커밋하지 않습니다."
+            exit 1
+          fi
+          echo "OK: committed .env file not found"
+
+      - name: Ensure no audio files are committed
+        run: |
+          if git ls-files | grep -E '\.(wav|mp3|m4a|ogg|flac|webm)$'; then
+            echo "::error::상담 음성 파일이 커밋되었습니다."
+            exit 1
+          fi
+          echo "OK: committed audio file not found"

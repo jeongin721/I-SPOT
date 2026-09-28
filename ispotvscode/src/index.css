@@ -1,0 +1,74 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  /* ── Sidebar / Navy ── */
+  --color-navy-deep:    #0F263B;
+  --color-navy-primary: #15314A;
+  --color-navy-mid:     #1C3D5A;
+  --color-navy-light:   #1F4868;
+
+  /* ── Primary interactive blue ── */
+  --color-blue-primary: #2563EB;
+  --color-blue-hover:   #1D4ED8;
+  --color-blue-muted:   #EFF6FF;
+
+  /* ── Backgrounds ── */
+  --color-bg-main:      #F6F8FB;
+  --color-surface:      #FFFFFF;
+  --color-surface-2:    #F8FAFC;
+
+  /* ── Borders ── */
+  --color-border:       #E2E8F0;
+  --color-border-strong:#CBD5E1;
+
+  /* ── Text ── */
+  --color-text-primary: #172033;
+  --color-text-secondary: #64748B;
+  --color-text-muted:   #94A3B8;
+
+  /* ── Status (restrained) ── */
+  --color-success:      #16A34A;
+  --color-success-bg:   #F0FDF4;
+  --color-warning:      #D97706;
+  --color-warning-bg:   #FFFBEB;
+  --color-danger:       #DC2626;
+  --color-danger-bg:    #FEF2F2;
+
+  /* ── Risk ── */
+  --color-risk-high:    #B91C1C;
+  --color-risk-high-bg: #FEF2F2;
+  --color-risk-mid:     #B45309;
+  --color-risk-mid-bg:  #FFFBEB;
+  --color-risk-low:     #15803D;
+  --color-risk-low-bg:  #F0FDF4;
+
+  /* ── Fonts ── */
+  --font-sans: 'Pretendard Variable', 'Pretendard', Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg-main);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
