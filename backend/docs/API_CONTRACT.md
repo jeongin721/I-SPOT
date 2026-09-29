@@ -635,12 +635,17 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 |---|---|---|---|
 | `CREATED` | `UPLOAD_AUDIO` | 녹음 업로드 | 상담일(`consulted_at`), 없으면 생성 시각 |
 | `AUDIO_UPLOADED` | `REQUEST_STT` | 원문 변환 요청 | 가장 최근 음성 업로드 시각 |
-| `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정 후 되돌린 경우 확정 시각) |
-| `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 (AI 실패 후 되돌린 경우 실패 시각) |
+| `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정한 원문을 다시 고친 경우 되돌린 시각) |
+| `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 |
 | `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 |
 | `STT_FAILED` | `RETRY_STT` | 원문 변환 재시도 | 실패 시각 |
 | `AI_FAILED` | `RETRY_ANALYSIS` | AI 분석 재시도 | 실패 시각 |
 
+- `REVIEW_TRANSCRIPT` 는 STT 완료 · 최근 확정 · 되돌린 시각 중 가장 늦은 값이다. 되돌린 시각은 확정 뒤
+  처음 고친(`PATCH …/transcript`) 시각이다. 오래전에 확정한 원문을 오늘 다시 고치면 오늘부터 세고,
+  되돌린 뒤 더 고쳐도 다시 세지 않는다.
+- `REQUEST_ANALYSIS` 는 AI 실패 뒤 이 상태로 되돌아오면 실패 시각이 더 늦을 때 그것을 쓴다.
+  상태 전이 규칙에만 있는 대비용이고, 지금은 이 경로로 가는 API 가 없다.
 - 처리 중(`STT_PROCESSING`, `AI_PROCESSING`)과 `APPROVED` 는 업무가 아니다.
   처리 중에 멈춘 Session 은 조회할 때 실패로 마감되어 재시도 업무로 나온다(1.4 참고).
 - **종결(`CLOSED`) 사례의 Session 과, 상담일이 아직 오지 않은 `CREATED` Session 은 뺀다.**
