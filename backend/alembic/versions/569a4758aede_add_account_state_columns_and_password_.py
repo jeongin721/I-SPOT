@@ -6,6 +6,11 @@
 기존 행이 있으므로 필수 칸에는 server_default 를 준다.
 Boolean 기본값은 sa.false() 를 쓴다 — PostgreSQL 은 0 을 받지 않는다.
 
+기존 계정의 last_login_at 은 배포 시각으로 채운다. 비워 두면 휴면 판정이 created_at 을
+쓰므로, 만든 지 60일(DORMANT_AFTER_DAYS)이 넘은 기존 계정이 배포 뒤 첫 로그인에서
+곧바로 휴면이 된다. 이전 로그인 기록이 없으니 "배포 시점부터 센다" 로 본다.
+CURRENT_TIMESTAMP 는 SQLite · PostgreSQL 모두에서 된다.
+
 Revision ID: 569a4758aede
 Revises: a4d05486e8c9
 Create Date: 2026-09-18 17:16:05.931862
@@ -46,6 +51,8 @@ def upgrade() -> None:
     op.add_column('users', sa.Column('locked_until', sa.DateTime(timezone=True), nullable=True))
     op.add_column('users', sa.Column('anonymized_at', sa.DateTime(timezone=True), nullable=True))
     op.add_column('users', sa.Column('token_version', sa.Integer(), server_default=sa.text('0'), nullable=False))
+    # 기존 계정이 배포 뒤 첫 로그인에서 바로 휴면이 되지 않게 한다(위 설명).
+    op.execute(sa.text("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE last_login_at IS NULL"))
     op.create_index(op.f('ix_users_dormant_at'), 'users', ['dormant_at'], unique=False)
     op.create_index(op.f('ix_users_last_login_at'), 'users', ['last_login_at'], unique=False)
 
