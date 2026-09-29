@@ -212,6 +212,26 @@ def test_malformed_segment_refs_are_treated_as_ungrounded(item):
     assert filtered.abuse_signals == []
 
 
+def test_not_detected_signals_are_kept_without_warning():
+    """검출되지 않은 유형(detected=False)은 근거가 없어도 빼지 않고 경고도 달지 않는다.
+
+    모델은 네 유형을 모두 내보낸다. 이것을 빼면 정상 상담마다
+    "신호 4건을 제외" 경고가 붙는다.
+    """
+
+    not_detected = [
+        {"type": abuse_type, "confidence": 0.1, "detected": False, "segment_ids": []}
+        for abuse_type in ("PHYSICAL", "EMOTIONAL", "SEXUAL", "NEGLECT")
+    ]
+    result = AIAnalysisResult(abuse_signals=not_detected)
+
+    filtered, dropped = drop_ungrounded_risk_items(result, TRANSCRIPT)
+
+    assert dropped == 0
+    assert filtered.abuse_signals == not_detected
+    assert filtered.warnings == []
+
+
 def test_grounded_result_is_left_untouched():
     """모두 근거가 있으면 결과를 바꾸지 않고 경고도 달지 않는다."""
 

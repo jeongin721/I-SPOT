@@ -392,6 +392,7 @@ class AgentState(TypedDict):
 > 어댑터는 추릴 때 **근거 발화가 없는 위험 항목을 뺍니다**(`drop_ungrounded_risk_items`).
 > 세 필드의 각 항목 중 `segment_id` · `segment_ids` 가 비었거나 Transcript 에 없는 번호를
 > 하나라도 가리키면 제외하고 `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 남깁니다.
+> `abuse_signals` 중 `detected: false` 인 유형은 위험 신호가 아니므로 근거가 없어도 남깁니다(정상 상담마다 경고가 붙지 않게).
 > 그래프 안의 판정(4-6)은 재분석 여부만 정할 뿐 항목을 거르지 않으므로, `05_RULES.md` §1
 > "근거(`segment_id`) 없는 위험 신호 생성" 금지를 지키는 마지막 관문입니다.
 

@@ -299,6 +299,22 @@ def _segment_refs(item: Dict[str, Any]) -> List[Any]:
     return refs
 
 
+def _needs_grounding(field: str, item: Dict[str, Any]) -> bool:
+    """근거 발화가 있어야 하는 항목인가.
+
+    abuse_signals 는 네 유형을 모두 내보내고 detected 로 검출 여부를 적는다
+    (PROPOSAL_risk_fields.md §7-2). detected 가 명시적으로 False 인 유형은
+    위험 신호가 아니므로 근거를 요구하지 않는다. 요구하면 정상 상담마다
+    "신호 4건을 제외" 경고가 붙고 유형별 확률도 사라진다.
+    detected 가 없거나 False 가 아니면 신호로 보고 근거를 요구한다.
+    """
+
+    if field == "abuse_signals":
+        return item.get("detected") is not False
+
+    return True
+
+
 def _is_grounded(item: Dict[str, Any], known_segment_ids: set) -> bool:
     refs = _segment_refs(item)
 
@@ -334,7 +350,11 @@ def drop_ungrounded_risk_items(
 
     for name in _RISK_FIELDS:
         items = getattr(result, name)
-        grounded = [item for item in items if _is_grounded(item, known)]
+        grounded = [
+            item
+            for item in items
+            if not _needs_grounding(name, item) or _is_grounded(item, known)
+        ]
 
         dropped += len(items) - len(grounded)
         kept[name] = grounded

@@ -533,6 +533,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
     `risk_utterances` / `abuse_signals` / `risk_factors` 의 각 항목 중 `segment_id` · `segment_ids` 가
     비었거나 Transcript 에 없는 번호를 하나라도 가리키면 제외하고,
     `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 덧붙인다. 필드 모양은 바뀌지 않는다.
+    `abuse_signals` 중 `detected` 가 명시적으로 `false` 인 항목은 위험 신호가 아니므로 근거가 없어도 남긴다.
 - 9월 범위에서 `risk_utterances` / `abuse_signals` / `risk_factors` 는 빈 배열일 수 있다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
