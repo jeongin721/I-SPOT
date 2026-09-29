@@ -26,7 +26,8 @@ echo "인터프리터: $("$PY" --version 2>&1)"
 
 echo
 echo "[1/3] Lint (ruff)"
-"$PY" -m ruff check .
+# agent/ 는 backend/ 밖에 있어 "." 만 검사하면 빠진다(CI 와 같은 범위).
+"$PY" -m ruff check . ../agent
 
 echo
 echo "[2/3] Test (pytest)"

@@ -599,11 +599,21 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 ```
 
 - `result` 는 **AI 담당의 Structured JSON Contract 원본**이다. Backend 가 변형하지 않는다.
+  - 예외: `AI_PROVIDER=langgraph` 결과는 저장 전에 **근거 발화가 없는 위험 항목을 뺀다**
+    (`05_RULES.md` §1 "근거(`segment_id`) 없는 위험 신호 생성" 금지).
+    `risk_utterances` / `abuse_signals` / `risk_factors` 의 각 항목 중 `segment_id` · `segment_ids` 가
+    비었거나 Transcript 에 없는 번호를 하나라도 가리키면 제외하고,
+    `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 덧붙인다. 필드 모양은 바뀌지 않는다.
+    `abuse_signals` 중 `detected` 가 명시적으로 `false` 인 항목은 위험 신호가 아니므로 근거가 없어도 남긴다.
 - 9월 범위에서 `risk_utterances` / `abuse_signals` / `risk_factors` 는 빈 배열일 수 있다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
+
+AI 쪽에서 알 수 없는 예외가 나면 `error.message` 에는 고정 문구와 예외 종류 이름만 담는다
+(예: `"AI 분석에 실패했습니다: RuntimeError"`). 예외 문구에 상담 발화가 섞일 수 있어서다.
+자세한 내용은 서버 로그에 `session_id` 와 함께 남는다. `pipeline` · `langgraph` 모두 같다.
 
 > **표현 주의**: AI 결과는 판정이 아니다. "AI 분석 참고정보", "관련 신호",
 > "추가 확인 필요", "근거 발화", "상담사 검토 필요" 로 표기하고

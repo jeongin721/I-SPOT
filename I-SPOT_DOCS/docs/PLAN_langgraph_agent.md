@@ -3,7 +3,10 @@
 > 팀장님이 제안하신 LangGraph Agent 구조를 현재 코드베이스에 맞춰 구체화한 문서입니다.
 > 확정 전이며, 아래 **6. 막혀 있는 것** 이 먼저 풀려야 착수할 수 있습니다.
 >
-> 작성: mingyu · 2026-09-11 · 관련 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md)
+> 작성: 최민규 · 2026-09-11 · 관련 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md)
+>
+> 갱신 · 2026-09-29 — 근거 판정을 세 갈래로 나눔(4-6), 외부 LLM 호출 전 비식별 자리 추가(4-7, 9/18 회의 결정),
+> `feature/rag` 의 9/22 연결 반영(2-4, 8절)
 
 ---
 
@@ -45,8 +48,11 @@ STT_FAILED   AI_FAILED
 따라서 **어댑터는 상태 전이를 직접 하지 않습니다.** 실패 시 `AIError` 에 `ErrorCode` 를 담아 던지기만 하면 됩니다. 기존 `PipelineAIAdapter` 와 동일한 규약입니다.
 
 ```python
-raise AIError("LangGraph 실행에 실패했습니다.", ErrorCode.AI_FAILED)
+except Exception as error:
+    raise map_ai_error(error) from error
 ```
+
+`map_ai_error` 는 `PipelineAIAdapter` 와 함께 씁니다. 알 수 없는 예외는 문구를 버리고 `"AI 분석에 실패했습니다: RuntimeError"` 처럼 **예외 종류 이름만** 담습니다. `AIError` 의 문구는 DB 와 API 응답까지 가는데, 예외 문구에는 상담 발화가 섞일 수 있기 때문입니다. 자세한 내용은 `analysis_service` 가 `session_id` 와 함께 `logger.exception` 으로 남깁니다.
 
 ### 2-2. AI 는 교체 가능한 어댑터로 연결돼 있습니다
 
@@ -57,7 +63,7 @@ class AIAdapter(Protocol):
 ```
 
 ```python
-# backend/app/adapters/ai_adapter.py:29
+# backend/app/adapters/ai_adapter.py:28
 @dataclass
 class AIAnalysisBundle:
     result: AIAnalysisResult
@@ -66,12 +72,13 @@ class AIAnalysisBundle:
     model: Optional[str] = None
 ```
 
-현재 구현체는 둘입니다.
+구현체는 셋입니다. `langgraph` 는 이 PR(#10)에서 추가했습니다(5-1).
 
 | `AI_PROVIDER` | 클래스 | 동작 |
 | --- | --- | --- |
 | `mock` | `MockAIAdapter` | 외부 호출 없이 **Transcript 에서 파생** |
 | `pipeline` | `PipelineAIAdapter` | `ai.services.analysis_pipeline` 호출 |
+| `langgraph` | `LangGraphAIAdapter` | `agent.graph.run` 호출 — **이 PR 에서 추가** |
 
 `mock` 은 고정 응답이 아닙니다. Transcript 를 읽어 다음을 만들어 냅니다.
 
@@ -83,8 +90,8 @@ class AIAnalysisBundle:
 위험 필드 3종만 빈 배열로 고정돼 있습니다. **그 부분만 새 구조의 예시 값으로 바꾸면** 그래프 분기를 검증할 수 있습니다.
 
 ```python
-# backend/app/core/config.py:88
-AI_PROVIDER: Literal["mock", "pipeline"] = "mock"
+# backend/app/core/config.py:89
+AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
 ```
 
 ### 2-3. 분석은 비동기입니다
@@ -96,12 +103,43 @@ status_code=status.HTTP_202_ACCEPTED
 
 `POST /analysis` 는 즉시 `202` 를 돌려주고 `BackgroundTasks` 로 처리한 뒤, 클라이언트가 폴링으로 결과를 가져갑니다.
 
-### 2-4. RAG 는 V1 골격이 있습니다
+### 2-4. RAG 는 V2 까지 있습니다
 
-`feature/rag` 브랜치, 커밋 13개. 검색까지만 되고 **답변 생성은 없습니다.**
+`feature/rag` 브랜치, `develop` 에 없는 커밋 38개(끝 `02ffb4d`, 2026-09-22). 검색에 더해 **상담사용 결과를 생성합니다.** 9/11 오후에 체크리스트 판정, 9/14 에 법령 조회와 다음 상담 질문이 추가되었습니다.
+
+**9/22 `02ffb4d` 에서 RAG 가 실제로 연결되었습니다.** 연결된 곳은 Backend 도 이 Agent 도 아니고, 팀장님 브랜치의 **루트 STT 서버**(`main.py` 의 `POST /api/v1/analyze`)입니다.
+
+```text
+음성 업로드 → STT → 아동 발화 텍스트(child_analysis_text) → 학대 유형 모델(detected)
+→ detected 유형을 RAG abuse_type 으로 변환 → analyze_consultation_evidence(아동 발화, 유형)
+→ 응답의 rag_analysis 로 반환      (RAG 가 실패하면 rag_analysis.error 에 담고 나머지 결과는 그대로)
+```
+
+- 이 경로는 Backend 의 세션 상태 기계를 타지 않습니다. **상담사 STT 검수(`STT_REVIEW_REQUIRED`) 전 텍스트**로 RAG 를 돌립니다.
+- ⚠️ **아동 발화를 비식별 없이 OpenAI 로 보냅니다.** 검색 질의 임베딩(`rag/vector_store.py`, `OpenAIEmbeddings`), 체크리스트 판정(`rag/evidence_analyzer.py`, `[상담 원문]` 을 `ChatOpenAI` 로), 다음 상담 질문(`rag/checklist_builder.py`) 세 곳입니다. 9/18 회의 결정(외부 LLM 에는 로컬에서 비식별한 텍스트만)과 어긋납니다(4-7).
+
+`rag/pipeline.py` 의 `analyze_consultation_evidence(text, abuse_type)` 가 전체를 묶습니다.
+
+```text
+상담 문장 + 학대 유형
+→ 체크리스트 검색 → 상담 문장과 비교 (matched / needs_confirmation / excluded)   ← LLM
+→ 국가법령정보센터 API 에서 관련 현행 조문
+→ 다음 상담용 확인 질문 3~5개                                                 ← LLM
+→ 상담사 참고자료 2~3개
+```
+
+`rag/README.md` §11 은 이 결과 JSON 을 **Backend / LangGraph Agent 에 연결하고 Frontend 에서 상담사에게 보여주는** 방향이었는데, 9/22 연결은 위처럼 **루트 STT 서버에서 detected 유형이 있으면 항상** 부르는 방식입니다. 이 문서의 4절은 RAG 를 **Agent 안에서 근거가 부족할 때만 부르는 재분석 재료**로 잡았습니다(4-1 표의 `rag_node` 입력). 세 방식이 서로 다르므로 어느 쪽으로 할지 팀장님 확인이 필요합니다(8절 5번).
+
+| 방식 | RAG 를 부르는 곳 | 부르는 때 | 입력 |
+| --- | --- | --- | --- |
+| 9/22 연결 (`02ffb4d`) | 루트 STT 서버 `/api/v1/analyze` | detected 유형이 있으면 항상 | STT 검수 **전** 아동 발화 |
+| `rag/README.md` §11 | Backend / Agent | 적혀 있지 않음 | STT 상담 텍스트 + 멀티라벨 모델의 `abuse_type` |
+| 이 문서 4절 | Agent `rag_node` | 근거가 부족할 때만 | STT 확정 **후** Transcript |
+
+아래 `search_evidence` 는 파이프라인 안에서 쓰이는 검색 함수입니다.
 
 ```python
-# rag/retriever.py:9   (feature/rag 브랜치. 이 브랜치에는 없습니다 — 아래 주의 참조)
+# rag/retriever.py:30   (feature/rag 브랜치에만 있습니다 — 아래 주의 참조)
 def search_evidence(
     query: str, *, top_k: int = TOP_K,
     source_type: str | None = None,
@@ -111,6 +149,8 @@ def search_evidence(
     ...
 ```
 
+**시그니처와 반환 모양은 계속 같습니다.** 다만 브랜치가 활발히 움직이고 있어(메타데이터 추론·청킹·필터 개선) `rag_node` 를 실제로 연결할 때 한 번 더 대조해야 합니다.
+
 원본 PDF 는 `rag_data/` 에 두며 `.gitignore` 대상입니다. **각자 로컬에 준비해야 합니다.**
 
 #### ⚠️ `rag/` 패키지는 아직 `feature/rag` 브랜치에만 있습니다
@@ -119,7 +159,7 @@ def search_evidence(
 | --- | --- |
 | `feature/rag` | 있음 |
 | `develop` | **없음** |
-| `integration/develop-consolidation` | **없음** |
+| `backend-agent` | **없음** |
 
 따라서 지금 `rag_node` 에서 아래처럼 쓰면 `ModuleNotFoundError` 가 납니다.
 
@@ -137,9 +177,9 @@ def rag_node(state: AgentState) -> dict:
 
 노드는 State 전체가 아니라 **바뀐 부분만 `dict` 로** 돌려줍니다(4-1). stub 이 빈 목록을 돌려주면 근거가 늘지 않아 재분석이 계속 "부족" 으로 판정되지만, `MAX_RETRY` 가 있어 무한 루프로는 가지 않습니다(4-5).
 
-### 2-5. LangGraph 는 아직 어디에도 없습니다
+### 2-5. LangGraph 의존성
 
-`requirements*.txt` 전체에 `langgraph` 항목이 없습니다. 의존성 추가가 첫 작업입니다.
+`requirements*.txt` 전체에 `langgraph` 항목이 없었습니다. `backend-agent` 브랜치에서 `langgraph 1.2.11` 을 설치하고 `requirements-agent.txt` 로 고정합니다.
 
 ---
 
@@ -155,6 +195,7 @@ FastAPI  (세션 상태·권한·저장·에러 — 기존 그대로)
 ai_adapter.py  →  LangGraphAIAdapter        ← 신규
                      ↓
                   LangGraph
+                     ├─ 비식별        ← 외부 LLM 호출 전 필수 (9/18 회의 결정, 4-7)
                      ├─ 분석
                      ├─ 근거 판정
                      ├─ RAG
@@ -180,7 +221,7 @@ STT 는 분 단위로 걸리고(2-3), 중간에 **상담사 검수 단계** 가 
 ```text
 [그래프 밖]  음성 업로드 → STT → 상담사 검수·확정
                                       ↓
-[그래프 안]  분석 → 위험요인 → 근거판정 → (RAG → 재분석) → 결과
+[그래프 안]  비식별 → 분석 → 위험요인 → 근거판정 → (RAG → 재분석) → 결과
 ```
 
 그래프는 **`STT_CONFIRMED` 이후에 시작** 합니다. 어댑터가 호출되는 시점과 정확히 일치합니다.
@@ -193,7 +234,8 @@ STT 는 분 단위로 걸리고(2-3), 중간에 **상담사 검수 단계** 가 
 
 | 노드 | 입력 | 반환(State 부분 갱신) | 담당 |
 | --- | --- | --- | --- |
-| `analysis_node` | `transcript` | `summary` | AI |
+| `deidentify_node` | `transcript` | `deidentified` (지금은 항상 `False`, 4-7) | Agent · AI |
+| `analysis_node` | `transcript` | `summary`, `summary_evidence` | AI |
 | `risk_node` | `transcript` | `risk_utterances`, `abuse_signals`, `risk_factors` | AI |
 | `rag_node` | 부족한 근거 | `rag_documents` | RAG |
 | `reanalysis_node` | 원본 + `rag_documents` | 위험 필드 3종 + `retry_count` | AI |
@@ -207,34 +249,65 @@ STT 는 분 단위로 걸리고(2-3), 중간에 **상담사 검수 단계** 가 
 graph.add_conditional_edges(
     "risk_node",                    # 이 노드 다음에
     route_after_risk,               # 이 함수가 다음 목적지를 고른다
-    {"sufficient": "report_node", "insufficient": "rag_node"},
+    {"none": "report_node", "sufficient": "report_node", "insufficient": "rag_node"},
 )
 ```
 
 라우터는 **State 를 바꾸지 않고 목적지 이름만 돌려줍니다.** 노드는 State 부분 갱신을 `dict` 로 돌려주고, 라우터는 `str` 을 돌려준다는 점이 다릅니다.
 
-라우터 안에서 State 를 고치면 **반영이 보장되지 않습니다.** 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
+라우터 안에서 State 를 고치면 **반영되지 않습니다**(아래에서 실행으로 확인). 갱신은 노드가 돌려준 `dict` 를 통해서만 이뤄지기 때문입니다. 라우터는 판단만 하고, 기록이 필요하면 노드에서 합니다.
 
-> **이 절의 LangGraph 동작 서술은 라이브러리 규약을 따른 것이고, 이 저장소에서
-> 실행으로 확인한 것이 아닙니다.** `langgraph` 가 아직 설치되어 있지 않습니다(2-5).
-> 착수 시 설치한 버전의 문서로 한 번 대조해 주세요.
+#### 실행으로 확인했습니다 (`langgraph 1.2.11`)
+
+최소 그래프를 만들어 세 가지를 검증했습니다.
+
+```python
+class S(TypedDict):
+    log: Annotated[list[str], operator.add]   # reducer 있음
+    n: Annotated[int, operator.add]
+    plain: list[str]                          # reducer 없음
+
+def a(s): return {"log": ["a"], "n": 1, "plain": ["A"]}
+def b(s): return {"log": ["b"], "n": 1, "plain": ["B"]}
+
+def router(s) -> str:
+    s["log"].append("router-mutation")        # 라우터에서 State 변경 시도
+    return "b" if s["n"] < 2 else "end"
+```
+
+실행 결과입니다.
+
+```text
+log   : ['a', 'b']     ← router-mutation 이 없다. 라우터 변경은 반영되지 않는다
+n     : 2              ← reducer 가 1 + 1 을 누적했다
+plain : ['B']          ← reducer 가 없으면 ['A'] 가 덮어써진다
+```
+
+| 문서의 주장 | 결과 |
+| --- | --- |
+| 라우터의 State 변경은 반영되지 않는다 | **확인** — `router-mutation` 이 로그에 없음 |
+| reducer 가 있으면 누적된다 | **확인** — `['a','b']`, `n=2` |
+| reducer 가 없으면 덮어쓴다 | **확인** — `['A']` 소실 |
+
+따라서 4-3 의 reducer 구분(위험 필드는 교체, `rag_documents` 는 누적)은 **반드시 지켜야 합니다.** 틀리면 재분석이 이전 결과를 조용히 지웁니다.
 
 ### 4-2. 엣지
 
 ```text
-START → analysis_node → risk_node ─┬─[sufficient]───→ report_node → END
-                                   │
-                                   └─[insufficient]─→ rag_node
-                                                         ↓
-                                                   reanalysis_node
-                                                         │
-                                        ┌────────────────┘
-                                        │  (같은 라우터를 다시 통과)
-                                        └─┬─[sufficient]───→ report_node
-                                          └─[insufficient]─→ rag_node
+START → deidentify_node → analysis_node → risk_node ─┬─[none]─────────→ report_node → END
+        (외부 LLM 호출 전                             ├─[sufficient]───→ report_node
+         비식별 자리, 4-7)                            │
+                                                     └─[insufficient]─→ rag_node
+                                                                           ↓
+                                                                     reanalysis_node
+                                                                           │
+                                                          ┌────────────────┘
+                                                          │  (같은 라우터를 다시 통과)
+                                                          └─┬─[sufficient]───→ report_node
+                                                            └─[insufficient]─→ rag_node
 ```
 
-`risk_node` 와 `reanalysis_node` 뒤에 **같은 라우터**(`route_after_risk`)를 붙입니다.
+`risk_node` 와 `reanalysis_node` 뒤에 **같은 라우터**(`route_after_risk`)를 붙입니다. 세 갈래의 기준은 4-6 입니다. `none`(검출된 신호 없음)은 재분석 없이, 경고 없이 결과 작성으로 갑니다.
 
 #### ⚠️ 팀장님 자료의 두 그림이 서로 다릅니다 — 확인 필요
 
@@ -264,7 +337,7 @@ RAG                 RAG 추가 검색
 
 그림 1 이 의도라면 `report_node` 앞에 `rag_node` 를 한 번 더 두면 됩니다. 다만 **근거가 충분한데도 매번 LLM·검색 비용이 듭니다.**
 
-**어느 쪽인지 확인 부탁드립니다**(8절 질문). 판단이 오기 전까지는 비용이 적은 그림 2 로 만들고, 그림 1 이 맞으면 엣지 하나만 추가하면 됩니다.
+**어느 쪽인지 확인 부탁드립니다**(8절 5번). 판단이 오기 전까지는 비용이 적은 그림 2 로 만들고, 그림 1 이 맞으면 엣지 하나만 추가하면 됩니다.
 
 ### 4-3. State
 
@@ -276,7 +349,9 @@ from typing import Annotated, TypedDict
 
 class AgentState(TypedDict):
     transcript: dict                                    # 입력. Transcript Contract
+    deidentified: bool                                  # 비식별 완료 여부 (4-7)
     summary: dict
+    summary_evidence: list[dict]                        # 요약 문장 ↔ 근거 발화
     risk_utterances: list[dict]
     abuse_signals: list[dict]
     risk_factors: list[dict]
@@ -287,7 +362,7 @@ class AgentState(TypedDict):
     retry_count: Annotated[int, operator.add]           # 노드가 1 을 돌려주면 +1
 ```
 
-위험 필드 3종은 **재분석 결과로 교체**되는 값이므로 reducer 를 두지 않습니다. `rag_documents` 는 검색할수록 쌓여야 하므로 누적입니다. 이 구분을 틀리면 재분석이 이전 근거를 지우거나, 반대로 중복이 무한히 쌓입니다.
+위험 필드 3종은 **재분석 결과로 교체**되는 값이므로 reducer 를 두지 않습니다. `deidentified` · `summary_evidence` 도 교체형입니다. `summary_evidence` 는 어댑터가 `PipelineAIAdapter` 와 같은 방식으로 `AIAnalysisBundle.summary_evidence` 에 옮깁니다(Contract 밖 부가 정보). `rag_documents` 는 검색할수록 쌓여야 하므로 누적입니다. 이 구분을 틀리면 재분석이 이전 근거를 지우거나, 반대로 중복이 무한히 쌓입니다.
 
 ### 4-4. ⚠️ 재분석 루프는 팀 규칙과 긴장 관계에 있습니다
 
@@ -311,8 +386,15 @@ class AgentState(TypedDict):
 **이 전제가 팀 합의와 다르면 재분석 루프 자체를 빼야 합니다.** 8절에서 확인 부탁드립니다.
 
 > 또한 `05_RULES.md` §3 은 **"내부 chain-of-thought 를 결과 데이터로 저장하지 않음"** 을
-> 규정합니다. `AgentState` 의 `rag_documents` · `retry_count` 는 **중간 산물이므로
+> 규정합니다. `AgentState` 의 `rag_documents` · `retry_count` · `deidentified` 는 **중간 산물이므로
 > DB 에 저장하지 않습니다.** 어댑터는 `AIAnalysisBundle` 에 담을 값만 추려서 돌려줍니다.
+>
+> 어댑터는 추릴 때 **근거 발화가 없는 위험 항목을 뺍니다**(`drop_ungrounded_risk_items`).
+> 세 필드의 각 항목 중 `segment_id` · `segment_ids` 가 비었거나 Transcript 에 없는 번호를
+> 하나라도 가리키면 제외하고 `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 남깁니다.
+> `abuse_signals` 중 `detected: false` 인 유형은 위험 신호가 아니므로 근거가 없어도 남깁니다(정상 상담마다 경고가 붙지 않게).
+> 그래프 안의 판정(4-6)은 재분석 여부만 정할 뿐 항목을 거르지 않으므로, `05_RULES.md` §1
+> "근거(`segment_id`) 없는 위험 신호 생성" 금지를 지키는 마지막 관문입니다.
 
 ### 4-5. ⚠️ 루프 종료 조건은 필수입니다
 
@@ -329,7 +411,7 @@ def route_after_risk(state: AgentState) -> str:
         return "sufficient"           # 더 못 돌므로 결과 작성으로 보낸다
     return evidence_verdict(state)    # 4-6 참조
 
-# 노드 — 포기한 경우 사유를 남긴다
+# 노드 — 포기한 경우 사유를 남긴다. 검출 신호가 없는 "none" 은 경고하지 않는다
 def report_node(state: AgentState) -> dict:
     if state["retry_count"] >= MAX_RETRY and evidence_verdict(state) == "insufficient":
         return {"warnings": ["근거가 부족한 상태로 분석을 종료했습니다."]}
@@ -347,26 +429,64 @@ def reanalysis_node(state: AgentState) -> dict:
 
 **단일 확신도 기준(`>= 0.7`)을 쓰면 안 됩니다.** 학대 유형별 임계값이 크게 다르고, **모델 버전마다 또 다릅니다.**
 
-| 유형 | `abuse_model/` (09-03 가중치) | `ai/modeling/abuse/` (v4 09-07 가중치) |
+| 유형 | `develop` · `abuse_model/infer_abuse.py` (09-03 가중치) | `ai-modeling` 옛 판 · `ai/modeling/abuse/infer_abuse.py` (v4 09-07 가중치, 9/15 삭제) |
 | --- | --- | --- |
 | 신체학대 | 0.72 | 0.57 |
 | 정서학대 | 0.39 | 0.54 |
 | 성학대 | 0.53 | **0.19** |
 | 방임 | **0.32** | 0.55 |
 
-성학대가 0.53 ↔ 0.19, 방임이 0.32 ↔ 0.55 로 뒤집힙니다. 게다가 이경진 님이 2026-09-11 에 임계값 진단 코드(`test_abuse_probabilities.py`)를 추가하셔서 **아직 확정 전입니다.**
+성학대가 0.53 ↔ 0.19, 방임이 0.32 ↔ 0.55 로 뒤집힙니다.
+
+**2026-09-15 에 모델이 또 바뀌었습니다.** 이경진 님이 `ai-modeling` 에서 오른쪽 열의 `infer_abuse.py` 와 임계값 진단 코드(`test_abuse_probabilities.py`)를 지우셨습니다. 커밋 설명에 따르면 새 모델(`infer_abuse_v3_adapter.py`)로 대체한 것입니다(`0bf2c40`).
+
+- 새 모델의 `predict_abuse` 는 확률을 버리고 **`detected` 만** 돌려줍니다. 새 모델 본체(`infer_abuse_qa_v3.py`)는 저장소에 올라와 있지 않아 **임계값은 확인하지 못했습니다**(`cea06ad` 기준).
+- 세부유형 15종(`infer_subtype.py`)도 임계값이 0.19 ~ 0.94 로 제각각이고, 코드 주석에 잠정값(provisional)이라고 적혀 있습니다. 이쪽도 밖으로는 탐지 여부만 내보냅니다.
 
 따라서 **Agent 는 임계값을 갖지 않습니다.** 모델이 계산한 `detected` 를 그대로 씁니다. 상수로 박아두면 모델이 바뀔 때마다 Agent 를 고쳐야 합니다. 근거 상세는 [PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) §7-2 와 §7-4 를 따릅니다.
 
 ```python
 def evidence_verdict(state: AgentState) -> str:
     """근거 충족 여부만 판단한다. State 를 바꾸지 않는다."""
-    signals = [s for s in state["abuse_signals"] if s.get("detected")]
-    linked = [s for s in signals if s.get("segment_ids")]
-    return "sufficient" if len(linked) >= 1 else "insufficient"
+    detected = [s for s in state.get("abuse_signals") or [] if s.get("detected")]
+    if not detected:
+        return "none"             # 검출된 신호 없음 → 재분석 없이 결과로, 경고 없음
+    if all(s.get("segment_ids") for s in detected):
+        return "sufficient"       # 검출 신호가 모두 근거 발화에 연결됨
+    return "insufficient"         # 근거 발화가 없는 검출 신호가 하나라도 있음
 ```
 
+**처음 초안(9/11)은 검출 신호가 0개일 때도 `insufficient` 를 돌려줬습니다.** 신호가 없는 정상 상담까지 재분석을 `MAX_RETRY` 번 돌고 "근거가 부족" 경고가 붙는 오류였습니다. 신호가 없는 것은 근거가 부족한 것이 아니므로 `none` 으로 나눴습니다. 또 "연결된 신호가 1개 이상" 이던 기준을 **"검출 신호가 모두 연결"** 로 바꿨습니다. 연결 안 된 검출 신호가 섞여 있으면 그 신호는 근거가 없는 것이기 때문입니다.
+
 `s["detected"]` 가 아니라 `s.get("detected")` 를 씁니다. 구조 합의 전이거나 AI 가 필드를 빠뜨린 경우 `KeyError` 로 그래프 전체가 죽는 것을 막습니다.
+
+### 4-7. 외부 LLM 호출 전 비식별 필수 (9/18 회의 결정)
+
+**외부 LLM 에는 로컬(Ollama)에서 비식별한 텍스트만 보냅니다.** 그래프에는 이 자리를 먼저 만들어 두었습니다.
+
+```python
+# agent/nodes.py
+def deidentify_node(state) -> dict:        # 그래프 맨 앞 노드
+    return {"deidentified": False}         # 비식별을 연결하기 전까지는 항상 False
+
+def require_deidentified(state) -> None:   # 외부 LLM 을 부르는 노드가 호출 직전에 부른다
+    if state.get("deidentified") is not True:
+        raise DeidentificationRequiredError(...)   # 어댑터에서 AI_FAILED 로 바뀐다
+```
+
+- **지금 노드들은 LLM 을 부르지 않으므로 동작은 바뀌지 않습니다.** 원문도 그래프 밖으로 나가지 않습니다.
+- `analysis_node` · `risk_node`(외부 LLM 단계) · `rag_node` · `reanalysis_node` 의 TODO 에 `require_deidentified(state)` 필수를 적었습니다. 값이 없거나 `True` 가 아니면 모두 막습니다.
+- `deidentify_node` 에 실제 비식별을 연결한 뒤에만 `deidentified=True` 를 돌려줍니다.
+
+#### 합칠 때 할 일
+
+| 위치 | 사실 | 할 일 |
+| --- | --- | --- |
+| `ai-modeling` `ai/modeling/abuse/pii_masking.py` (`4433c3d`, 9/22) | `mask_pii(text)` — 정규식(주민등록번호·전화번호·이메일) + NER(`monologg/koelectra-base-v3-naver-ner`, 사람·기관·지역)으로 `[PERSON_01]` 같은 토큰으로 바꾼다. 토큰↔원문 대응표(`entity_map`)는 로컬에만 두고 `restore_pii` 로 되돌린다 | `deidentify_node` 에서 쓴다. `entity_map` 은 DB·로그·외부 LLM 으로 내보내지 않는다. **모듈을 import 하는 순간 NER 모델을 내려받아 올리므로**(파일 최상단 `from_pretrained`) 노드 안에서 늦게 import 하거나, 테스트에서 가짜로 바꿔야 한다 |
+| `ai-modeling` `ai/modeling/abuse/llm_backend.py` (`c5a7fde`, 9/21) | `LLM_BACKEND` 기본값이 `"ollama"`(로컬 `qwen2.5:14b-instruct`, `http://localhost:11434/v1`). `"openai"` 로 바꾸면 **같은 호출부가 그대로 OpenAI 로 나간다** | `LLM_BACKEND` 값만 보고 비식별을 건너뛰지 않는다. 설정 하나로 같은 호출이 외부로 나가기 때문이다. 그래서 LLM 을 부르는 노드는 설정과 관계없이 `require_deidentified` 를 먼저 부르는 것을 기본으로 둔다 |
+| `ai-modeling` `ai/modeling/abuse/infer_abuse_pipeline.py` | 2차 세부유형·요약·체크리스트는 `mask_pii` 를 거친다. 단 note 모드의 1차 보완 체크(`_screen_missed_major_types`, 호출 :180-185)는 **`mask_pii` 전에 원문을** LLM 에 보낸다 | `LLM_BACKEND=openai` 이면 원문이 외부로 나간다. 이경진 님께 확인(8절 8번) |
+| `develop` `ai/services/summary_service.py` | `summarize_consultation` 이 Transcript 전체를 JSON 으로 바꿔(`build_transcript_input`, :97) **비식별 없이** OpenAI `client.responses.parse`(:145)로 보낸다. `AI_PROVIDER=pipeline` 이 이 경로를 쓴다 | `analysis_node` 에 이 경로를 그대로 붙이지 않는다. 비식별한 Transcript 를 넘기고 `require_deidentified` 를 먼저 부른다. `pipeline` 경로도 같은 원칙이 필요하다(이 PR 범위 밖, 팀 공유) |
+| `feature/rag` `02ffb4d` (9/22) | 루트 STT 서버 `/api/v1/analyze` 가 아동 발화를 **비식별 없이** OpenAI 임베딩·`ChatOpenAI` 로 보낸다(2-4) | `rag_node` 로 옮길 때 비식별한 텍스트만 넘긴다. 루트 서버 경로를 유지할지는 팀장님 확인(8절 5·6번) |
 
 ---
 
@@ -385,21 +505,24 @@ def evidence_verdict(state: AgentState) -> str:
 
 `BE-08` 이 `AI-02`(Summary/위험 발화 분석)에 의존한다는 점이 중요합니다. **`AI-02` 는 현재 담당자가 비어 있고 `TODO` 상태입니다.** 그래서 6-1 이 막혀 있습니다.
 
-### 5-1. Agent / Backend (mingyu)
+### 5-1. Agent / Backend (최민규)
 
 ```text
 브랜치  backend-agent   (팀장님 지정)
-분기점  integration/develop-consolidation
+PR      #10 → develop
 ```
 
-분기점을 `develop` 이 아니라 통합 브랜치로 두는 이유는, PR #6 이 아직 머지되지 않아 `develop` 에는 Backend 수정분이 없기 때문입니다. PR #6 머지 후에는 같아집니다.
+처음에는 PR #6 이 머지되기 전이라 통합 브랜치에서 분기했습니다. PR #6 이 `develop` 에 머지되고(2026-09-11) 통합 브랜치를 정리하면서 PR #10 의 베이스를 `develop` 으로 옮겼습니다.
 
 1. `requirements-agent.txt` 추가 — `langgraph` 의존성
 2. `agent/` 패키지 신설 — `state.py`, `nodes.py`, `graph.py`
 3. `backend/app/adapters/ai_adapter.py` 에 `LangGraphAIAdapter` 추가
-4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:88`)
+4. `AI_PROVIDER` 에 `"langgraph"` 허용값 추가 (`backend/app/core/config.py:89`)
 5. 루프 종료·에러 처리·타임아웃
-6. 그래프 결과를 `AIAnalysisBundle` 로 변환
+6. 그래프 결과를 `AIAnalysisBundle` 로 변환 — `summary_evidence` 포함(4-3)
+7. 근거 발화가 없는 위험 항목을 저장 전에 빼는 마지막 관문(4-4 끝)
+8. 외부 LLM 호출 전 비식별 자리 — `deidentify_node` · `require_deidentified`(4-7)
+9. 그래프 테스트를 `backend/tests/test_agent_graph.py` 로 옮김 — 최상위 `tests/` 에 있을 때는 CI 와 `scripts/check.sh` 가 한 번도 돌리지 않았습니다
 
 #### 팀장님이 지정하신 담당 항목과의 대응
 
@@ -414,9 +537,9 @@ def evidence_verdict(state: AgentState) -> str:
 | DB 연결 | 3절 — 상태 저장 주체는 DB 하나로 유지 | **이미 있음** |
 | Error 처리 | 2-1 `AIError` + `ErrorCode`, 4-5 루프 종료 | 일부 신규 |
 
-**"이미 있음" 표시된 넷은 Backend 에 구현되어 테스트 152건이 돕니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
+**"이미 있음" 표시된 넷은 Backend 에 구현되어 있고 테스트로 검증됩니다.** 다시 만들지 않고 그대로 씁니다. 그래서 3절에서 LangGraph 를 어댑터 안에 두는 것입니다.
 
-**기존 어댑터 계약을 바꾸지 않습니다.** `analyze(transcript_payload) -> AIAnalysisBundle` 을 그대로 만족시킵니다. 기존 `mock` / `pipeline` 은 건드리지 않습니다.
+**기존 어댑터 계약을 바꾸지 않습니다.** `analyze(transcript_payload) -> AIAnalysisBundle` 을 그대로 만족시킵니다. 기존 `mock` 은 건드리지 않습니다. `pipeline` 은 오류 변환 함수만 `LangGraphAIAdapter` 와 함께 쓰도록 모듈 함수(`map_ai_error`)로 뺐고, 그 결과 알 수 없는 예외의 문구를 싣지 않게 되었습니다(2-1).
 
 ### 5-2. AI 모델 (이경진)
 
@@ -430,13 +553,15 @@ def evidence_verdict(state: AgentState) -> str:
 3. `abuse_model` 결과를 `abuse_signals` 로 넘기는 경로
    — 현재 최상위 `main.py` 에서만 쓰이고 Backend 로 전달되지 않습니다
 4. `reanalysis_node` 용 함수 — RAG 문서를 받아 재판정하는 진입점
+5. 비식별 연결 — `ai-modeling` 의 `pii_masking.mask_pii` 를 `deidentify_node` 에서 쓸 수 있게(4-7)
 
-### 5-3. RAG (mingyu, 팀장님 V1 이어받음)
+### 5-3. RAG (팀장님)
 
 1. 임베딩 모델 확정 — **나중에 바꾸면 전체 재색인이 필요합니다**
 2. `rag_data/` 원본 PDF 확보 (팀장님께 기존 수집본 확인)
-3. `rag/README.md` §6 의 메타데이터 정확도 작업
-4. `search_evidence()` 를 `rag_node` 에서 호출할 때의 쿼리 구성 규칙
+3. 메타데이터 정확도 (`rag/metadata.py`) — 9/11 에 `category`·`abuse_type` 추론이 추가되었습니다
+4. Agent 가 RAG 에 넘길 입력 규칙 — 상담 문장 범위, 학대 유형 표기(RAG 는 `physical` 등, 이경진 님 모델은 `신체학대` 등)
+5. RAG 를 부를 곳 — 9/22 에 루트 STT 서버 `/api/v1/analyze` 에 연결하셨습니다(2-4). 이 경로는 아동 발화를 비식별 없이 OpenAI 로 보냅니다(4-7)
 
 ### 5-4. Frontend (다솔)
 
@@ -492,7 +617,7 @@ risk_factors: List[Dict[str, Any]]
 Must Have 가 안정적으로 동작하기 전에는 Later 기능을 우선 구현하지 않는다.
 ```
 
-또한 PRD 의 RAG 는 **"과거 중대사건"**(내부 상담 기록 검색)이고, `feature/rag` 는 **지침·판례·매뉴얼**(외부 공개 문서)입니다. 서로 다른 기능입니다.
+또한 PRD 의 RAG 는 **"과거 중대사건"**(내부 상담 기록 검색)이고, `feature/rag` 는 **지침·매뉴얼·체크리스트·판례 등 공개 문서와 현행 법령**입니다. 서로 다른 기능입니다.
 
 Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 신호` · `Risk Factor 추출` · `근거 문장 제공` 이 아직 미구현입니다(6-1 과 같은 원인).
 
@@ -531,12 +656,14 @@ Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 
 2. `stt_node` 를 그래프에서 빼고 `STT_CONFIRMED` 이후부터 시작하는 것(3절)이 괜찮으신지요?
 3. PRD §7 상 RAG 는 Later 인데, Must Have 미구현 항목보다 먼저 진행할지 판단 부탁드립니다(6-3).
 4. **재분석 루프가 `05_RULES.md` §3 의 "결과를 억지로 생성하지 않음" 에 저촉되지 않는지** 확인 부탁드립니다(4-4). 이 문서는 "RAG 로 가져오는 것은 판단 기준이지 새 근거가 아니며, 부족하면 빈 결과로 종료한다" 는 전제로 설계했습니다. 전제가 다르면 루프를 빼야 합니다.
-5. **RAG 를 항상 태울지, 근거가 부족할 때만 태울지** 확인 부탁드립니다(4-2). 보내주신 자료의 두 그림이 다릅니다. 첫 그림은 양쪽 경로 모두 RAG 를 거치고, 두 번째의 노드 연결은 부족한 경우에만 거칩니다. 일단 비용이 적은 두 번째로 잡아두었습니다.
+5. **RAG 를 어디서, 언제 부를지** 확인 부탁드립니다(2-4, 4-2). 9/22 에 루트 STT 서버 `/api/v1/analyze` 에서 detected 유형이 있으면 항상 부르도록 연결하셨는데(`02ffb4d`), 이 문서는 Agent 의 `rag_node` 에서 근거가 부족할 때만 부르도록 잡았습니다. 보내주신 자료의 두 그림도 서로 다릅니다(첫 그림은 양쪽 경로 모두 RAG, 두 번째는 부족할 때만). 루트 서버 경로는 상담사 STT 검수 전 텍스트를 쓰고 Backend 세션 상태를 거치지 않습니다. 앞으로 어느 경로를 쓸지 정해 주시면 그에 맞추겠습니다. 답을 받기 전까지 Agent 는 비용이 적은 두 번째로 둡니다.
+6. **9/22 연결 경로가 아동 발화를 비식별 없이 OpenAI 로 보냅니다**(2-4, 4-7). 검색 질의 임베딩·체크리스트 판정·다음 상담 질문 세 곳입니다. 9/18 회의 결정(외부 LLM 에는 로컬에서 비식별한 텍스트만)에 맞추려면 `ai-modeling` 의 `mask_pii` 를 거친 텍스트를 넘겨야 합니다. 이 경로를 유지하신다면 비식별을 언제 붙일지, Agent 로 옮긴다면 `deidentify_node` 뒤에 두면 되는지 확인 부탁드립니다.
 
 **이경진 님**
 
-6. 5-2 의 4개 항목 중 착수 가능한 것과 예상 시점을 알려주시면 순서를 맞추겠습니다.
+7. 5-2 의 5개 항목 중 착수 가능한 것과 예상 시점을 알려주시면 순서를 맞추겠습니다.
+8. **비식별 관련 두 가지**입니다(4-7). ① `pii_masking.mask_pii` 를 Agent 의 `deidentify_node` 에서 그대로 불러 써도 될까요? import 하는 순간 NER 모델을 올리는 구조라 Backend 테스트에서는 가짜로 바꿔 쓰려고 합니다. ② note 모드의 1차 보완 체크(`infer_abuse_pipeline._screen_missed_major_types`)는 `mask_pii` 전에 원문을 LLM 에 보냅니다. `LLM_BACKEND=openai` 로 바꾸면 원문이 외부로 나가는데, 이 단계도 비식별한 텍스트로 바꾸실 수 있을까요?
 
 **다솔 님**
 
-7. 5-4 의 두 가지(재분석 표시 / RAG 근거 노출)는 지금 정하지 않아도 되지만, 필요하다고 판단되면 Contract 변경이 되므로 미리 말씀해주세요.
+9. 5-4 의 두 가지(재분석 표시 / RAG 근거 노출)는 지금 정하지 않아도 되지만, 필요하다고 판단되면 Contract 변경이 되므로 미리 말씀해주세요.
