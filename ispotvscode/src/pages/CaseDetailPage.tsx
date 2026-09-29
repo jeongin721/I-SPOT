@@ -2,10 +2,11 @@ import { useParams, useNavigate } from "react-router";
 import type { Session as UiSession } from "../data/mockData";
 import { RiskBadge, AbuseBadge, StatusLabel } from "../components/ui/Badges";
 import Breadcrumb from "../components/ui/Breadcrumb";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import UploadModal from "../components/ui/UploadModal";
-import { cases as casesApi, summary as summaryApi } from "../api/endpoints";
+import { cases as casesApi, documents as documentsApi, summary as summaryApi } from "../api/endpoints";
 import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+import { toUiDocumentRows, type UiDocumentRow } from "../api/documentAdapters";
 import type { Summary } from "../api/types";
 
 // 사례와 회기 목록은 Backend(GET /cases/{id}, GET /cases/{id}/sessions)에서 온다.
@@ -21,14 +22,14 @@ const STT_STATUS_CFG: Record<string, string> = {
   "분석완료": "border-[#CBD5E1] text-[#475569]",
 };
 
-interface MockFile {
-  id: string;
-  name: string;
-  type: "음성" | "문서";
-  session: number;
-  uploadDate: string;
-  uploader: string;
-  status: string;
+// 문서 탭은 최근 회기 몇 개의 문서만 불러온다(회기마다 GET /sessions/{id}/documents 가 하나씩 나간다).
+const DOC_SESSION_LIMIT = 5;
+
+interface DocumentListState {
+  /** 불러올 때 쓴 회기 목록. 사례가 바뀌어 회기 목록이 바뀌면 다시 불러온다. */
+  source: UiSession[];
+  rows: UiDocumentRow[];
+  error: string | null;
 }
 
 export default function CaseDetailPage() {
@@ -36,7 +37,7 @@ export default function CaseDetailPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"overview" | "sessions" | "documents">("overview");
   const [showUpload, setShowUpload] = useState(false);
-  const [extraFiles, setExtraFiles] = useState<MockFile[]>([]);
+  const [docList, setDocList] = useState<DocumentListState | null>(null);
   const [c, setCase]                = useState<CaseWithId | null>(null);
   const [sessions, setSessions]     = useState<UiSession[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -91,18 +92,33 @@ export default function CaseDetailPage() {
     };
   }, [caseId]);
 
-  const mockFiles = useMemo<MockFile[]>(() => {
-    if (!c) return [];
-    const files: MockFile[] = [];
-    const completedSessions = sessions.filter(s => s.sttStatus === "분석완료" || s.sttStatus === "검수완료");
-    completedSessions.slice(0, 3).forEach(s => {
-      files.push({ id: `f-audio-${s.id}`, name: `상담_${s.sessionNumber}회차.m4a`, type: "음성", session: s.sessionNumber, uploadDate: s.date, uploader: s.counselor, status: s.sttStatus === "분석완료" ? "분석 완료" : "검수 완료" });
-      files.push({ id: `f-doc-${s.id}`, name: `상담일지_${s.sessionNumber}회차.pdf`, type: "문서", session: s.sessionNumber, uploadDate: s.date, uploader: s.counselor, status: "등록 완료" });
-    });
-    return files;
-  }, [c, sessions]);
+  // 문서 탭을 열 때 최근 회기의 문서를 불러온다. 상담일지가 없는 회기는 "미작성" 줄로 보인다.
+  const currentDocs = docList !== null && docList.source === sessions ? docList : null;
 
-  const allFiles = useMemo(() => [...extraFiles, ...mockFiles], [extraFiles, mockFiles]);
+  useEffect(() => {
+    if (tab !== "documents" || loading || currentDocs) return;
+
+    let cancelled = false;
+    const source = sessions;
+
+    Promise.all(
+      source.slice(0, DOC_SESSION_LIMIT).map((s) =>
+        documentsApi.list(s.id).then((docs) => toUiDocumentRows(s.id, s.sessionNumber, docs)),
+      ),
+    )
+      .then((groups) => {
+        if (!cancelled) setDocList({ source, rows: groups.flat(), error: null });
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setDocList({ source, rows: [], error: describeApiError(caught, "문서 목록을 불러오지 못했습니다.") });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, loading, sessions, currentDocs]);
 
   if (loading) {
     return (
@@ -343,7 +359,10 @@ export default function CaseDetailPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-[15px] font-semibold text-[#172033]">사례 자료</h2>
-                <p className="text-[12px] text-[#64748B] mt-0.5">이 사례에 연결된 음성 및 문서 파일</p>
+                <p className="text-[12px] text-[#64748B] mt-0.5">
+                  이 사례의 회기에 작성된 문서
+                  {sessions.length > DOC_SESSION_LIMIT && ` · 최근 ${DOC_SESSION_LIMIT}개 회기만 표시`}
+                </p>
               </div>
               <button
                 onClick={() => setShowUpload(true)}
@@ -357,36 +376,45 @@ export default function CaseDetailPage() {
               <table className="w-full">
                 <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
                   <tr>
-                    {["파일명", "자료 유형", "연결 상담", "업로드일", "등록자", "상태", "작업"].map(h => (
+                    {["제목", "자료 유형", "연결 상담", "수정일", "상태", "작업"].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {allFiles.map(f => (
-                    <tr key={f.id} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
-                      <td className="px-4 py-3 text-[13px] text-[#172033] font-medium">{f.name}</td>
+                  {!currentDocs && (
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">문서를 불러오는 중...</td></tr>
+                  )}
+                  {currentDocs?.error && (
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-red-600">{currentDocs.error}</td></tr>
+                  )}
+                  {currentDocs?.rows.map(row => (
+                    <tr key={row.key} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
+                      <td className={`px-4 py-3 text-[13px] font-medium ${row.placeholder ? "text-[#94A3B8]" : "text-[#172033]"}`}>{row.title}</td>
                       <td className="px-4 py-3">
                         <span className="text-[12px] px-2 py-0.5 rounded border border-[#CBD5E1] text-[#475569] bg-white font-medium">
-                          {f.type}
+                          {row.typeLabel}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-[#64748B]">{f.session}회차</td>
-                      <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{f.uploadDate}</td>
-                      <td className="px-4 py-3 text-[12px] text-[#64748B]">{f.uploader}</td>
-                      <td className="px-4 py-3 text-[11px] text-[#64748B]">{f.status}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#64748B]">{row.sessionNumber}회차</td>
+                      <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{row.updatedAt || "—"}</td>
+                      <td className="px-4 py-3 text-[11px] text-[#64748B]">{row.statusLabel}</td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => alert("실제 파일이 연결되지 않은 목업입니다.")}
-                          className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium"
-                        >
-                          다운로드
-                        </button>
+                        {row.openable ? (
+                          <button
+                            onClick={() => navigate(`/cases/${caseId}/sessions/${row.sessionId}/document`)}
+                            className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium"
+                          >
+                            {row.placeholder ? "작성" : "열기"}
+                          </button>
+                        ) : (
+                          <span className="text-[12px] text-[#94A3B8]">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
-                  {allFiles.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">등록된 자료가 없습니다.</td></tr>
+                  {currentDocs && !currentDocs.error && currentDocs.rows.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">등록된 자료가 없습니다.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -401,18 +429,6 @@ export default function CaseDetailPage() {
         onClose={() => setShowUpload(false)}
         preSelectedCaseId={caseId}
         preSelectedType="document"
-        onUploaded={info => {
-          const newFile: MockFile = {
-            id: `f-new-${Date.now()}`,
-            name: info.fileName,
-            type: info.type === "audio" ? "음성" : "문서",
-            session: info.sessionNumber,
-            uploadDate: new Date().toISOString().slice(0, 10),
-            uploader: c?.counselor ?? "",
-            status: "등록 완료",
-          };
-          setExtraFiles(prev => [newFile, ...prev]);
-        }}
       />
     )}
     </>
