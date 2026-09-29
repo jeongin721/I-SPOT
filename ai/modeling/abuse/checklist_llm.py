@@ -247,6 +247,7 @@ def _verify_evidence_list(
                 "evidence_verified": result["evidence_verified"],
                 "evidence_match_method": result["evidence_match_method"],
                 "matched_evidence": result["matched_evidence"],
+                "closest_source_snippet": result.get("closest_source_snippet"),
             }
         )
 
@@ -320,12 +321,13 @@ def _build_checklist(
                 source_text,
             )
 
-            has_verified_evidence = any(
-                evidence["evidence_verified"]
-                for evidence in verified_evidence
-            )
-
-            if not has_verified_evidence:
+            # 원문을 한 글자도 안 틀리고 그대로 인용해야만 통과하는 기준이라,
+            # 로컬 LLM이 문장을 살짝 요약해서 인용하면(흔한 일) 항목 전체가
+            # 통째로 사라지는 문제가 있었다. evidence_verified 여부와
+            # 무관하게 LLM이 근거 텍스트를 제시했으면 항목은 살려서
+            # 보여주고, 검증 실패한 근거는 evidence_verified=False로
+            # 표시해 상담사가 원문을 재확인하게 한다.
+            if not verified_evidence:
                 continue
 
             evidence_map[key] = verified_evidence
@@ -425,19 +427,15 @@ def _build_environment_key_person(
         source_text,
     )
 
-    verified_only = [
-        evidence
-        for evidence in verified_evidence
-        if evidence["evidence_verified"]
-    ]
-
-    if not verified_only:
+    # _build_checklist와 동일한 이유로, 검증 실패 근거도 버리지 않고
+    # evidence_verified=False로 표시해서 남긴다.
+    if not verified_evidence:
         return None
 
     return {
         "item": ENVIRONMENT_ITEM,
         "status": status,
-        "evidence": verified_only,
+        "evidence": verified_evidence,
     }
 
 

@@ -12,5 +12,6 @@ ai/modeling/abuse/analysis_output/
 ai/modeling/abuse/weight/*.pth
 ai/modeling/abuse/weight/*_tokenizer/
 ai/modeling/abuse/*.db
+ai/modeling/abuse/audio_uploads_tmp/
 
 data/

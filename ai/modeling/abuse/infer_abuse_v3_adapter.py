@@ -140,6 +140,45 @@ def _split_counselor_child_text(text: str):
     )
 
 
+def _build_ordered_qa_text(text: str) -> str:
+    """
+    "상담사: .../아동: ..." 형식의 대화에서, 화자 표시가 있는 줄만
+    걸러내고 원래 줄 순서는 그대로 유지해서 다시 합친다.
+
+    예전 경로(_split_counselor_child_text + build_qa_text)는 화자별로
+    전부 따로 모았다가 다시 합쳐서, 질문-답변이 번갈아 나오는 순서를
+    깨뜨렸다. 특히 여러 턴이 있는 입력(예: 음성 1,000자 청크)에서
+    이 문제가 커서, 명확한 신체학대 진술도 놓치는 경우가 확인됐다
+    (질문 뭉치+답변 뭉치로 섞으면 원시 확률이 0.001까지 떨어지는데,
+    순서를 그대로 두면 같은 문장이 0.99 이상으로 나온다).
+
+    태그는 학습 데이터의 "[COUNSELOR]"/"[CHILD]"로 바꾸지 않고 원래
+    한글 태그("상담사:"/"아동:")를 그대로 둔다 — 대괄호+영단어 태그는
+    klue/roberta 토크나이저에서 토큰을 훨씬 많이 잡아먹어서(같은 내용
+    기준 510 -> 635토큰), 여러 턴이 있는 긴 입력에서 512토큰 한도를
+    넘겨 뒷부분이 잘리는 사고가 실제로 확인됐다. 한글 태그는 훨씬
+    짧아서 이 한도 초과를 피할 수 있고, 실측 확률도 더 정확했다.
+    """
+
+    lines = []
+
+    for line in text.splitlines():
+        match = _SPEAKER_LINE_PATTERN.match(line)
+
+        if not match:
+            continue
+
+        speaker, content = match.groups()
+        content = content.strip()
+
+        if not content:
+            continue
+
+        lines.append(f"{speaker}: {content}")
+
+    return "\n".join(lines)
+
+
 # ============================================================
 # 6. 명확한 부정 응답 필터
 # ============================================================
@@ -188,13 +227,35 @@ def _split_sentences(
     )
 
 
+# 표준 문진(AI-Hub 선별 질문지)은 "~한 적 있어요?"처럼 상담사 질문 자체에
+# 유형 키워드가 들어 있고, 아동은 그 키워드를 되풀이하지 않고 "아니요"로만
+# 짧게 답하는 경우가 있다(예: 성학대 질문에 "아니요. 본 적 없어요."만 답함).
+# 이런 일반 부정 응답을 상담사 질문의 키워드와 엮어서 눌러주는 방식을
+# 한때 시도했으나, 여러 턴이 섞인 긴 입력(음성 청크 등)에서 전혀 다른
+# 질문에 대한 부정 응답까지 같이 걸려서 실제 긍정 진술을 지우는 사고가
+# 발생해 되돌렸다(_suppress_denied_labels 주석 참고). 이 문제는 아직
+# 안전하게 해결하지 못한 상태로 남아 있다.
+
+
 def _suppress_denied_labels(
     child_text: str,
     predictions: dict,
+    counselor_text: str = "",
 ) -> dict:
     """
     child_text 안에서 각 유형의 키워드가 등장하는 문장을 찾아,
     전부 부정문일 때만 해당 유형의 detected를 False로 내린다.
+
+    "상담사 질문에 키워드가 있고 아동이 일반 부정('아니요')으로만
+    답했으면 눌러준다"는 조건을 한때 추가했다가 되돌렸다 — 실제
+    음성(0280.mp3)에서 아동이 "아빠가 저를 때렸어요"라고 명확히
+    긍정했는데도, 키워드 "때리"가 활용형 "때렸"과 문자열이 달라
+    매칭에 실패하고, 같은 청크 뒤쪽 전혀 다른 질문(사진·영상 유포
+    등)에 대한 "아니요"를 근거로 삼아 신체학대를 잘못 지운 사고가
+    확인됐다. 여러 턴이 섞인 긴 입력에서는 "어딘가에 있는 일반
+    부정"이 그 유형과 무관할 위험이 너무 커서, 같은 문장 안에서
+    키워드+부정이 함께 있을 때만 지우는 원래 방식으로 되돌린다.
+    counselor_text 인자는 호출부 호환을 위해 남겨두되 쓰지 않는다.
     """
 
     if not child_text.strip():
@@ -249,7 +310,8 @@ def predict_major_types(
     입력 유형에 맞는 1차 RoBERTa 경로로 4대 학대유형을 판정한다.
 
     input_mode="qa": "상담사: .../아동: ..." 형식의 대화 텍스트를
-    화자별로 분리해 predict_qa 경로(Q+A 모델)로 분석한다.
+    줄 순서를 그대로 유지한 채 태그만 바꿔서(Q+A 모델 학습 형식과
+    동일하게) 분석한다.
 
     input_mode="child_only": text 전체를 아동 발화로 보고
     predict_child_only 경로(CHILD-only 모델)로 분석한다.
@@ -259,21 +321,25 @@ def predict_major_types(
     """
 
     if input_mode == "qa":
+        # 부정 응답 필터(_suppress_denied_labels)에는 화자별로 분리한
+        # 텍스트가 필요하므로 그대로 구한다. 다만 모델에 실제로 넣는
+        # 입력은 이걸로 만들지 않고, 아래 _build_ordered_qa_text로
+        # 원래 대화 순서를 그대로 유지한 텍스트를 쓴다.
         counselor_text, child_text = (
             _split_counselor_child_text(text)
         )
 
-        raw_result = predict_qa(
-            _engine,
-            counselor_text,
-            child_text,
-        )
+        ordered_text = _build_ordered_qa_text(text)
 
-        predictions = raw_result["predictions"]
+        predictions = predict_abuse_v3(
+            _engine,
+            ordered_text,
+        )
 
         predictions = _suppress_denied_labels(
             child_text,
             predictions,
+            counselor_text=counselor_text,
         )
 
     elif input_mode == "child_only":

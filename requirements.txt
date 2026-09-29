@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 PyMuPDF
+reportlab==3.6.13
 numpy
 pandas
 scikit-learn

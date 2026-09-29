@@ -352,7 +352,8 @@ def mock_analyze(
     )
 
     major_html = build_major_types_html(
-        result["major_types"]
+        result["major_types"],
+        result.get("subtype_analysis", {}),
     )
 
     subtype_html = build_subtypes_html(

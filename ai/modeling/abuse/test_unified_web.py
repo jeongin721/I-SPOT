@@ -20,14 +20,21 @@ I-SPOT 통합 파이프라인 테스트 웹.
 """
 
 import json
+import mimetypes
 import os
 import tempfile
+import uuid
 from datetime import datetime
 from html import escape
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    PlainTextResponse,
+    Response,
+)
 import uvicorn
 
 from ai.modeling.abuse.infer_abuse_pipeline import analyze_session
@@ -40,6 +47,7 @@ from ai.modeling.abuse.test_pipeline_web import (
     build_approval_form_html,
     build_download_form_html,
     build_download_text,
+    build_download_pdf,
 )
 from ai.modeling.abuse.test_audio_pipeline_web import (
     build_transcript_review_html,
@@ -69,17 +77,69 @@ register_case_workflow_routes(app)
 
 
 # ============================================================
+# 1-1. 업로드 음성 재생용 임시 저장소
+# ============================================================
+# STT 분석이 끝나도 파일을 지우지 않고 잠깐 남겨 둬서, 화면에서
+# "확인 필요" 구간이나 2차 근거 구간을 눌러 그 부분을 다시 들어볼 수
+# 있게 한다. 테스트용 웹이라 별도 만료 처리는 하지 않으므로, 오래
+# 쌓이면 이 폴더를 수동으로 비워야 한다.
+AUDIO_STORAGE_DIR = (
+    Path(__file__).parent / "audio_uploads_tmp"
+)
+AUDIO_STORAGE_DIR.mkdir(
+    exist_ok=True,
+)
+
+
+# ============================================================
 # 2. 결과 패널 (텍스트/음성/PDF 공통)
 # ============================================================
+
+def build_audio_player_html(audio_id):
+    """
+    audio_id가 있으면(음성 입력 세션) 재생기와, "확인 필요"/2차 근거
+    구간의 재생 버튼이 호출하는 playAt(seconds) 함수를 함께 넣는다.
+    text/PDF 세션은 audio_id가 없어서 아무것도 렌더링하지 않는다.
+    """
+
+    if not audio_id:
+        return ""
+
+    return f"""
+    <div class="panel">
+        <audio
+            id="audioPlayer"
+            controls
+            preload="metadata"
+            style="width: 100%;"
+            src="/audio-file/{escape(audio_id, quote=True)}"
+        ></audio>
+    </div>
+    <script>
+    function playAt(sec) {{
+        var player = document.getElementById("audioPlayer");
+        if (!player) {{
+            return;
+        }}
+        player.currentTime = sec;
+        player.play();
+        player.scrollIntoView({{block: "center", behavior: "smooth"}});
+    }}
+    </script>
+    """
+
 
 def build_result_html(
     result,
     session_id,
+    audio_id=None,
 ):
     return f"""
+    {build_audio_player_html(audio_id)}
+
     <section class="panel">
         <h2>1차 학대 위험신호</h2>
-        {build_major_types_html(result.get("major_types", {}))}
+        {build_major_types_html(result.get("major_types", {}), result.get("subtype_analysis", {}))}
     </section>
 
     <section class="panel">
@@ -393,6 +453,72 @@ def build_page(
                 margin-bottom: 4px;
             }}
 
+            .borderline-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #1e40af;
+                background: #dbeafe;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 8px;
+                vertical-align: middle;
+            }}
+
+            .needs-review-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #b45309;
+                background: #fef3c7;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 4px;
+            }}
+
+            .closest-snippet {{
+                margin-top: 8px;
+                padding: 8px 10px;
+                background: #fef3c7;
+                border-left: 3px solid #d97706;
+                border-radius: 6px;
+                font-size: 12px;
+                color: #78350f;
+                line-height: 1.6;
+            }}
+
+            .checklist-edit-grid {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+            }}
+
+            .checklist-edit-item {{
+                display: inline-flex;
+                flex-direction: column;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+                background: #f9fafb;
+                cursor: pointer;
+            }}
+
+            .checklist-edit-item.has-evidence {{
+                border-color: #f87171;
+                background: #fee2e2;
+            }}
+
+            .checklist-edit-item input[type="checkbox"] {{
+                margin-right: 6px;
+            }}
+
+            .checklist-edit-item .checklist-evidence-box {{
+                margin: 6px 0 0;
+                background: white;
+            }}
+
             .safety-item {{
                 border-top: 1px solid #e5e7eb;
                 padding: 10px 0;
@@ -454,6 +580,24 @@ def build_page(
 
             .segment-row.low-confidence {{
                 background: #fffbeb;
+            }}
+
+            .segment-row.needs-review {{
+                background: #fee2e2;
+            }}
+
+            .play-btn {{
+                border: 1px solid #d1d5db;
+                background: #fff;
+                border-radius: 6px;
+                padding: 2px 8px;
+                font-size: 12px;
+                cursor: pointer;
+                flex-shrink: 0;
+            }}
+
+            .play-btn:hover {{
+                background: #f3f4f6;
             }}
 
             .segment-speaker-select {{
@@ -526,7 +670,36 @@ def build_page(
                     flex-wrap: wrap;
                 }}
             }}
+
+            .segment-row-ok {{
+                display: none;
+            }}
+
+            .transcript-review-box.show-all .segment-row-ok {{
+                display: flex;
+            }}
+
+            .review-toggle-bar {{
+                font-size: 13px;
+                color: #6b7280;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+            }}
         </style>
+        <script>
+        function toggleAllSegments(btn) {{
+            var box = btn.closest(".transcript-review-box");
+            if (!box) {{
+                return;
+            }}
+            box.classList.toggle("show-all");
+            btn.textContent = box.classList.contains("show-all")
+                ? "확인 필요만 보기"
+                : "전체 보기";
+        }}
+        </script>
     </head>
 
     <body>
@@ -787,16 +960,25 @@ def transcribe(
     file: UploadFile = File(...),
 ):
     temp_path = None
+    audio_id = None
 
     try:
         extension = os.path.splitext(file.filename)[1]
+        file_bytes = file.file.read()
 
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=extension,
         ) as temp_file:
-            temp_file.write(file.file.read())
+            temp_file.write(file_bytes)
             temp_path = temp_file.name
+
+        # STT 분석 후에도 나중에 재생할 수 있게 별도 저장소에 복사해
+        # 둔다(임시 파일은 STT가 끝나면 아래 finally에서 그대로 지운다).
+        audio_id = uuid.uuid4().hex + extension
+        (AUDIO_STORAGE_DIR / audio_id).write_bytes(
+            file_bytes
+        )
 
         raw_result = stt_provider.transcribe(temp_path)
         final_result = post_processor.process(raw_result)
@@ -826,6 +1008,8 @@ def transcribe(
         )
 
         panel = f"""
+        {build_audio_player_html(audio_id)}
+
         <section class="panel">
             <h2>STT 결과 검수 — {escape(file.filename)}</h2>
 
@@ -834,10 +1018,12 @@ def transcribe(
                 화자 표시나 텍스트가 잘못됐으면 직접 수정한 뒤
                 분석하기를 눌러주세요. 노란 배경은 STT 신뢰도가
                 낮은(신뢰도 {post_processor.threshold:.2f} 미만) 구간입니다.
+                각 줄의 ▶ 버튼을 누르면 그 구간을 다시 들을 수 있습니다.
             </div>
 
             <form method="post" action="/analyze-transcript">
                 <input type="hidden" name="case_id" value="{escape(case_id)}">
+                <input type="hidden" name="audio_id" value="{escape(audio_id or '', quote=True)}">
 
                 <div class="transcript-review-box">
                     {build_transcript_review_html(transcript)}
@@ -876,6 +1062,7 @@ async def analyze_transcript(
         form = await request.form()
 
         case_id = form.get("case_id", "")
+        audio_id = form.get("audio_id", "") or None
 
         segment_ids = form.getlist("segment_id")
         speakers = form.getlist("speaker")
@@ -925,7 +1112,7 @@ async def analyze_transcript(
             analysis=result,
         )
 
-        panel = build_result_html(result, session_id)
+        panel = build_result_html(result, session_id, audio_id=audio_id)
 
     except Exception as exc:
         panel = build_error_html(exc)
@@ -933,6 +1120,36 @@ async def analyze_transcript(
     return build_page(
         active_tab="audio",
         audio_panel=panel,
+    )
+
+
+@app.get(
+    "/audio-file/{audio_id}",
+)
+def get_audio_file(
+    audio_id: str,
+):
+    # audio_id는 uuid4().hex + 확장자로만 만들어지므로, 경로 조작을
+    # 막기 위해 파일명 부분만 쓰고(디렉터리 구분자 제거) 저장소 밖의
+    # 경로는 접근하지 못하게 한다.
+    safe_name = os.path.basename(audio_id)
+
+    file_path = AUDIO_STORAGE_DIR / safe_name
+
+    if not file_path.is_file():
+        return PlainTextResponse(
+            "파일을 찾을 수 없습니다.",
+            status_code=404,
+        )
+
+    media_type = (
+        mimetypes.guess_type(str(file_path))[0]
+        or "application/octet-stream"
+    )
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
     )
 
 
@@ -1067,6 +1284,30 @@ def download(
 
     return PlainTextResponse(
         content=build_download_text(result),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"'
+            )
+        },
+    )
+
+
+@app.post(
+    "/download-pdf",
+)
+def download_pdf(
+    payload: str = Form(...),
+):
+    result = json.loads(payload)
+
+    filename = (
+        "ispot_report_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+
+    return Response(
+        content=build_download_pdf(result),
+        media_type="application/pdf",
         headers={
             "Content-Disposition": (
                 f'attachment; filename="{filename}"'

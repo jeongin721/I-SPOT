@@ -4,19 +4,58 @@ QA / Child-only 입력을 받아 1차 대분류, 2차 세부유형, 근거 발�
 상담 요약, 상담일지를 한 화면에서 확인한다.
 """
 
+import io
 import json
 from datetime import datetime
 from html import escape
+from pathlib import Path
 
 from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 import uvicorn
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from ai.modeling.abuse.infer_abuse_pipeline import analyze_session
 from ai.modeling.abuse import case_store
 from ai.modeling.abuse.case_workflow_routes import (
     register_case_workflow_routes,
 )
+
+
+# ============================================================
+# 0-1. PDF 다운로드용 한글 폰트 등록
+# ============================================================
+# 시스템에 한글 TTF가 별도로 설치돼 있지 않을 수 있어, 이미 설치된
+# koreanize_matplotlib 패키지가 들고 있는 나눔고딕을 그대로 재사용한다.
+
+try:
+    import koreanize_matplotlib
+
+    _NANUM_FONT_PATH = (
+        Path(koreanize_matplotlib.__file__).parent
+        / "fonts"
+        / "NanumGothic.ttf"
+    )
+except ImportError:
+    _NANUM_FONT_PATH = Path("")
+
+if _NANUM_FONT_PATH.exists():
+    pdfmetrics.registerFont(
+        TTFont(
+            "NanumGothic",
+            str(_NANUM_FONT_PATH),
+        )
+    )
+    _PDF_FONT_NAME = "NanumGothic"
+else:
+    # 폰트를 못 찾으면 한글이 깨지지만, PDF 생성 자체는 실패하지
+    # 않도록 기본 폰트로 대체한다.
+    _PDF_FONT_NAME = "Helvetica"
 
 
 # ============================================================
@@ -168,6 +207,67 @@ def build_download_text(
     return "\n".join(lines)
 
 
+def build_download_pdf(
+    result: dict,
+) -> bytes:
+    """
+    build_download_text와 같은 내용을 PDF로 만든다.
+    줄바꿈만 있는 일반 텍스트를 그대로 문단으로 넣으면 특수문자
+    (<, &, " 등)가 마크업으로 오인될 수 있어 escape() 후 넣는다.
+    """
+
+    buffer = io.BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+    )
+
+    body_style = ParagraphStyle(
+        "body",
+        fontName=_PDF_FONT_NAME,
+        fontSize=10,
+        leading=15,
+    )
+
+    heading_style = ParagraphStyle(
+        "heading",
+        fontName=_PDF_FONT_NAME,
+        fontSize=12,
+        leading=18,
+        spaceBefore=8,
+    )
+
+    flowables = []
+
+    for line in build_download_text(result).split("\n"):
+        if not line.strip():
+            flowables.append(Spacer(1, 6))
+            continue
+
+        style = (
+            heading_style
+            if line.startswith("[")
+            or line.startswith("■")
+            else body_style
+        )
+
+        flowables.append(
+            Paragraph(
+                escape(line),
+                style,
+            )
+        )
+
+    doc.build(flowables)
+
+    return buffer.getvalue()
+
+
 def build_download_form_html(
     result: dict,
 ) -> str:
@@ -178,7 +278,7 @@ def build_download_form_html(
 
     return f"""
     <section class="panel">
-        <form method="post" action="/download">
+        <form method="post" action="/download" style="display: inline-block;">
             <input
                 type="hidden"
                 name="payload"
@@ -186,6 +286,17 @@ def build_download_form_html(
             >
             <button type="submit">
                 결과 텍스트 파일로 다운로드
+            </button>
+        </form>
+
+        <form method="post" action="/download-pdf" style="display: inline-block; margin-left: 8px;">
+            <input
+                type="hidden"
+                name="payload"
+                value='{escape(payload, quote=True)}'
+            >
+            <button type="submit">
+                결과 PDF로 다운로드
             </button>
         </form>
     </section>
@@ -230,7 +341,8 @@ def build_page(
 
     elif result:
         major_html = build_major_types_html(
-            result.get("major_types", {})
+            result.get("major_types", {}),
+            result.get("subtype_analysis", {}),
         )
 
         subtype_html = build_subtypes_html(
@@ -412,6 +524,40 @@ def build_page(
             .meta {{
                 font-size: 13px;
                 color: #6b7280;
+                line-height: 1.6;
+            }}
+
+            .borderline-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #1e40af;
+                background: #dbeafe;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 8px;
+                vertical-align: middle;
+            }}
+
+            .needs-review-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #b45309;
+                background: #fef3c7;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 4px;
+            }}
+
+            .closest-snippet {{
+                margin-top: 8px;
+                padding: 8px 10px;
+                background: #fef3c7;
+                border-left: 3px solid #d97706;
+                border-radius: 6px;
+                font-size: 12px;
+                color: #78350f;
                 line-height: 1.6;
             }}
 
@@ -755,13 +901,27 @@ def build_page(
 # 3. 1차 대분류 HTML
 # ============================================================
 
-def build_major_types_html(major_types):
+def build_major_types_html(major_types, subtype_analysis=None):
+    """
+    subtype_analysis를 함께 넘기면, 1차가 탐지했지만 2차 세부유형
+    분석에서 그 대분류에 해당하는 근거를 하나도 찾지 못한 경우
+    "AI 근거 확인 필요" 안내를 함께 보여준다 — 1차가 표준 문진
+    질문 문구만으로 오탐하고 아동은 부인한 경우가 대표적이다.
+    실제로 유형이 없다는 뜻이 아니라, 상담사가 직접 원문을 봐야
+    한다는 뜻이다.
+    """
+
     labels = [
         "신체학대",
         "정서학대",
         "성학대",
         "방임",
     ]
+
+    detected_majors_in_subtypes = {
+        result.get("major_type")
+        for result in (subtype_analysis or {}).get("results", [])
+    }
 
     cards = []
 
@@ -788,6 +948,21 @@ def build_major_types_html(major_types):
             else "미탐지"
         )
 
+        no_subtype_evidence = (
+            detected
+            and subtype_analysis is not None
+            and label not in detected_majors_in_subtypes
+        )
+
+        note = (
+            '<div style="margin-top: 6px;">'
+            '<span class="needs-review-tag">'
+            "AI 근거 확인 필요 — 2차 분석에서 근거를 찾지 못했습니다"
+            "</span></div>"
+            if no_subtype_evidence
+            else ""
+        )
+
         cards.append(
             f"""
             <div class="{card_class}">
@@ -801,6 +976,7 @@ def build_major_types_html(major_types):
                 >
                     {status}
                 </div>
+                {note}
             </div>
             """
         )
@@ -909,6 +1085,10 @@ def build_subtypes_html(subtype_analysis):
                     "timestamps"
                 )
 
+                closest_snippet = evidence.get(
+                    "closest_source_snippet"
+                )
+
                 meta_parts = []
 
                 if strength:
@@ -931,23 +1111,46 @@ def build_subtypes_html(subtype_analysis):
                         f"신체 부위: {escape(str(body_part))}"
                     )
 
+                timestamp_html = ""
+
                 if timestamps:
                     start_sec = timestamps["start_ms"] / 1000
                     end_sec = timestamps["end_ms"] / 1000
 
-                    meta_parts.append(
-                        "원본 음성 위치: "
-                        f"{start_sec:.1f}s ~ {end_sec:.1f}s"
+                    timestamp_html = (
+                        '<div style="margin-top: 4px;">'
+                        '<button type="button" class="play-btn" '
+                        f'onclick="playAt({start_sec})">'
+                        f"▶ 원본 음성 {start_sec:.1f}s ~ {end_sec:.1f}s 재생"
+                        "</button></div>"
                     )
 
                 if verified:
                     meta_parts.append(
                         f"근거 검증: {escape(str(method))}"
                     )
+                elif closest_snippet:
+                    meta_parts.append(
+                        "근거 검증: AI 인용문이 원문과 정확히 "
+                        "일치하지 않음 — 아래는 원문에서 가장 "
+                        "비슷한 부분(참고용)"
+                    )
                 else:
                     meta_parts.append(
-                        "근거 검증: 확인 필요"
+                        "근거 검증: AI 인용문을 원문에서 찾지 "
+                        "못함 — 원문 재확인 필요"
                     )
+
+                closest_snippet_html = (
+                    f"""
+                    <div class="closest-snippet">
+                        원문에서 가장 비슷한 부분:
+                        “{escape(str(closest_snippet))}”
+                    </div>
+                    """
+                    if not verified and closest_snippet
+                    else ""
+                )
 
                 evidence_blocks.append(
                     f"""
@@ -961,6 +1164,10 @@ def build_subtypes_html(subtype_analysis):
                             {'<br>'.join(meta_parts)}
                         </div>
 
+                        {timestamp_html}
+
+                        {closest_snippet_html}
+
                     </div>
                     """
                 )
@@ -971,6 +1178,7 @@ def build_subtypes_html(subtype_analysis):
 
                     <div class="subtype-title">
                         {escape(subtype_name)}
+                        {'<span class="borderline-tag">판단 애매 — 상담사 확인</span>' if subtype.get("borderline") else ""}
                     </div>
 
                     {
@@ -1017,8 +1225,27 @@ def build_evidence_list_html(
             "",
         )
 
+        # LLM이 원문을 그대로 인용하지 못해 evidence_verified가
+        # False인 근거도(이제는 숨기지 않고) 보여주되, 상담사가
+        # 원문을 직접 확인해야 함을 표시한다.
+        review_tag = (
+            ""
+            if entry.get("evidence_verified")
+            else ' <span class="needs-review-tag">원문 재확인 필요</span>'
+        )
+
+        closest_snippet = entry.get("closest_source_snippet")
+
+        closest_snippet_html = (
+            f'<div class="closest-snippet">원문에서 가장 비슷한 부분: '
+            f'“{escape(str(closest_snippet))}”</div>'
+            if not entry.get("evidence_verified") and closest_snippet
+            else ""
+        )
+
         lines.append(
-            f"<div>“{escape(str(quote))}”</div>"
+            f"<div>“{escape(str(quote))}”{review_tag}</div>"
+            f"{closest_snippet_html}"
         )
 
     return "".join(lines)
@@ -1533,6 +1760,30 @@ def download(
 
     return PlainTextResponse(
         content=build_download_text(result),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"'
+            )
+        },
+    )
+
+
+@app.post(
+    "/download-pdf",
+)
+def download_pdf(
+    payload: str = Form(...),
+):
+    result = json.loads(payload)
+
+    filename = (
+        "ispot_report_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+
+    return Response(
+        content=build_download_pdf(result),
+        media_type="application/pdf",
         headers={
             "Content-Disposition": (
                 f'attachment; filename="{filename}"'

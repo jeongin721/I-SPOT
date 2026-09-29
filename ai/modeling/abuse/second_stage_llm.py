@@ -17,13 +17,17 @@ from openai import OpenAI
 # 1. 세부유형 정의
 # ============================================================
 
+# 경계 규칙은 '2020-2022 아동학대사건 판례연구' 일반론(vii~xi쪽)과 실제 상담
+# 원문 대조를 근거로 했다. 15개 세부유형은 자체 분류라서 평가 CSV의 세부 라벨은
+# AI-Hub 19라벨을 합쳐 만든 대용값일 뿐 정답이 아니다(F1을 맞추려고 조이지 말 것).
 SUBTYPE_DEFINITIONS: Dict[str, Dict[str, str]] = {
     "신체학대": {
         "직접 신체 가해": (
-            "아동을 때리거나 차거나 꼬집거나 물어뜯거나 조르는 등 "
+            "아동을 때리거나 차거나 밀치거나 꼬집거나 물어뜯거나 조르는 등 "
             "신체에 직접적인 위해를 가한 경우. "
             "손·발뿐 아니라 도구를 이용해 때린 경우에도 이 유형에 해당할 수 있으며, "
-            "도구가 사용된 경우에는 '도구·위험수단 사용'과 동시에 선택할 수 있다."
+            "도구가 사용된 경우에는 '도구·위험수단 사용'과 동시에 선택할 수 있다. "
+            "밀친 경우에는 '신체적 강압·제압'과 동시에 선택할 수 있다."
         ),
         "도구·위험수단 사용": (
             "막대기, 벨트, 흉기, 뜨거운 물질, 화학물질 등 "
@@ -33,80 +37,119 @@ SUBTYPE_DEFINITIONS: Dict[str, Dict[str, str]] = {
         ),
         "신체적 강압·제압": (
             "아동을 붙잡거나 누르거나 묶거나 밀치거나 움직이지 못하게 하는 등 "
-            "신체적인 힘으로 강압하거나 제압한 경우"
+            "신체적인 힘으로 강압하거나 제압한 경우. 밀친 경우에는 '직접 신체 가해'와 "
+            "동시에 선택할 수 있다."
         ),
     },
 
     "정서학대": {
         "폭언·모욕": (
-            "욕설, 모욕, 비난, 인격 비하, 수치심을 주는 말 등으로 "
-            "아동의 정서에 해를 가하는 경우"
+            "욕설, 혐오성 발언, 모욕, 비난, 인격·외모·신체 비하, 수치심을 주는 "
+            "말 등으로 아동의 정서에 해를 가하는 경우. "
+            "가해자가 실제로 한 욕설·비하·모욕의 말이 원문에 나올 때만 선택한다. "
+            "폭행·협박·강요·가둠만 있고 그런 말이 없으면 선택하지 않는다"
+            "(협박하는 말은 '폭언·모욕'이 아니라 '위협·공포 유발'이다). "
+            "아동이 자기 감정·상태를 말한 것('죽고 싶어요', '무서웠어요')이나 "
+            "부모가 아동을 무시하거나 말을 안 하는 것은 가해자의 폭언이 아니므로 "
+            "이 유형의 근거가 아니다."
         ),
         "위협·공포 유발": (
-            "죽이겠다는 말, 때리겠다는 협박, 버리겠다는 위협 등으로 "
-            "아동에게 공포나 두려움을 유발하는 경우"
+            "'죽여버린다', '손가락 잘라버린다' 같은 해악 고지, 흉기를 들고 하는 "
+            "협박, '신고하면 죽인다' 같은 입막음 협박, 집에서 쫓아내겠다·"
+            "버리겠다는 위협 등으로 아동에게 공포나 두려움을 유발하는 경우. "
+            "아동 본인을 향한 구체적인 해악 고지가 있어야 하며, 단순히 "
+            "혼내거나 꾸짖는 말은 포함하지 않는다."
         ),
         "통제·강요·고립": (
             "아동의 행동이나 인간관계를 과도하게 통제하거나, 원하지 않는 행동을 "
-            "강요하거나, 격리·고립·차별하는 경우. "
-            "일반적인 훈육이나 규칙 설정(예: '숙제 먼저 해라', '외출 시간 지켜라')은 "
-            "포함하지 않는다 — 반복적이고 과도해서 아동의 자율성·인간관계를 "
-            "실질적으로 억압하는 수준이어야 한다. 원문에 구체적인 통제·강요·고립 "
-            "행위가 명시돼 있지 않다면, 다른 정서학대 세부유형이 있다고 해서 "
-            "같이 선택하지 않는다."
+            "강요하거나, 격리·고립·차별하는 경우. 예: 억지로 먹게 하거나 토한 것을 "
+            "다시 먹게 하는 행위, 강제로 재우는 행위, 술을 따르게·마시게 하는 행위, "
+            "또래와 어울리지 못하게 막는 행위, 방·화장실·베란다 등에 가두고 "
+            "'못 나오게' 한 행위. "
+            "일반적인 훈육이나 규칙 설정(예: '숙제 먼저 해라', '외출 시간 지켜라', "
+            "청소 당번, '친구들에게 먼저 다가가라'는 조언)은 포함하지 않는다 — "
+            "합리적 범위의 지도이고 계속적인 훈육의 일환이면 학대가 아니며, "
+            "방이나 화장실에 '가서 생각하고 오라'고 한 정도는 아동이 나오지 "
+            "못하게 막혔다고 진술하지 않으면 해당하지 않는다. "
+            "위협하는 말만 있고 실제로 행동을 제한·강요한 내용이 없으면 "
+            "'위협·공포 유발'만 선택한다. 협박과 통제가 각각 별개의 행위로 "
+            "원문에 있을 때만 두 유형을 함께 선택한다. "
+            "원문에 구체적인 통제·강요·고립 행위가 명시돼 있지 않다면, 다른 "
+            "정서학대 세부유형이 있다고 해서 같이 선택하지 않는다."
         ),
         "가정폭력·폭력상황 노출": (
-            "부모 또는 보호자 간의 폭행, 심한 언쟁, 폭력적 상황 등을 "
-            "아동이 직접 보거나 듣게 되는 경우"
+            "부모 또는 보호자 간의 폭행, 부부싸움, 심한 언쟁, 폭력적 상황 등을 "
+            "아동이 직접 보거나 듣게 되는 경우. 아동 본인이 폭행을 당한 것은 "
+            "이 유형이 아니라 신체학대에 해당한다."
         ),
     },
 
     "성학대": {
         "성적 노출·성희롱": (
-            "아동에게 성적인 신체 노출을 보이거나, 음란물을 보여주거나, "
-            "성적 발언·성희롱 등 비접촉 성적 행위를 한 경우. "
-            "가해자가 아동의 신체를 직접 만졌다는 내용이 원문에 있으면 "
-            "'성적 접촉·추행'을 선택하고, 이 유형은 선택하지 않는다."
+            "신체 접촉 없이 이루어지는 성적 행위. 예: 성기·신체를 아동에게 "
+            "노출하거나 아동 앞에서 자위행위를 하는 것, 아동에게 옷을 벗으라고 "
+            "시키는 것, 음란물을 보여주는 것, 성적 발언·성적 조롱(신체·생리에 "
+            "대한 성적 언급 등), 아동의 신체 부위 사진·영상을 찍어 보내라고 "
+            "요구하는 것(온라인·메신저 포함). 접촉이 없어도 성적 학대로 본다. "
+            "신체 접촉이 있으면 '성적 접촉·추행'을 선택하고, 접촉과 별개로 "
+            "위와 같은 비접촉 행위가 원문에 따로 있을 때만 이 유형도 함께 선택한다."
         ),
         "성적 접촉·추행": (
-            "아동의 가슴, 성기, 엉덩이 등 신체를 성적인 목적으로 만지거나 "
-            "아동에게 성적 신체접촉을 강요한 경우. "
-            "원문에 '만졌다', '접촉했다' 등 신체 접촉을 나타내는 표현이 "
-            "명시돼 있을 때만 선택한다."
+            "아동의 가슴, 성기, 엉덩이, 허벅지 등을 성적인 목적으로 만지거나, "
+            "옷·속옷을 벗기거나, 몸을 눌러 밀착시키거나 끌어안는 등 성적 신체접촉을 "
+            "하거나 아동에게 강요한 경우. "
+            "아동이 '만졌다' 또는 위 행위를 구체적으로 진술했을 때만 선택한다. "
+            "상담사 질문에 '만지거나 보여달라고'처럼 여러 행위가 함께 묶여 있고 "
+            "아동이 '네'라고만 답했다면 접촉 여부가 특정되지 않으므로, 아동이 "
+            "이어서 실제로 진술한 행위에 해당하는 유형만 선택한다."
         ),
         "성교·유사성행위": (
-            "성교, 삽입, 구강성교 등 성교 또는 이에 준하는 유사성행위를 "
-            "아동에게 행하거나 강요한 경우"
+            "성기 결합, 구강성교, 손가락·물건을 성기나 항문에 넣는 삽입 등 "
+            "성교 또는 이에 준하는 유사성행위를 아동에게 행하거나 강요한 경우. "
+            "예: '팬티 안으로 손을 넣어 손가락을 넣었다'. 삽입이 실제로 있었다는 "
+            "진술이 있어야 하며, 옷을 벗기거나 시도했지만 '하려다 못했다'는 "
+            "경우는 '성적 접촉·추행'을 선택한다."
         ),
         "성적 착취": (
-            "성매매, 대가를 조건으로 한 성적 행위, 성적 사진·영상 제작·전송·판매 등 "
-            "아동을 성적으로 이용하거나 착취한 경우. "
-            "'성적 착취'는 대가성(돈·물건 등 조건) 또는 촬영·유포 같은 매체 관련 "
-            "요소가 원문에 명시돼 있을 때만 선택한다 — 단순히 행위 자체가 "
-            "심각하다는 이유만으로는 선택하지 않는다. 그런 경우는 "
-            "'성교·유사성행위'나 '성적 접촉·추행' 쪽이 맞을 가능성이 높다."
+            "성매매, 대가를 조건으로 한 성적 행위, 성적 사진·영상 제작·전송·판매, "
+            "또는 촬영물을 유포하겠다고 협박하는 경우 등 아동을 성적으로 "
+            "이용하거나 착취한 경우. "
+            "'성적 착취'는 다음 중 하나가 원문에 명시돼 있을 때만 선택한다: "
+            "(1) 돈·물건 등 대가 지급이 실제로 언급됨, "
+            "(2) 이미 보낸 사진·영상을 유포하겠다고 협박하는 내용이 있음. "
+            "단순히 사진·영상을 보내달라고 요청받았다는 사실만으로는 선택하지 "
+            "않는다 — 대가나 유포 협박이 실제로 원문에 있는지 반드시 확인한다. "
+            "아동이 '돈 얘기는 없었다', '유포된 적 없다'처럼 대가·유포 요소를 "
+            "직접 부정하는 경우 이 유형을 선택하지 않는다. 대가·유포 요소가 "
+            "없으면 '성교·유사성행위'나 '성적 접촉·추행' 쪽이 맞을 가능성이 높다."
         ),
     },
 
     "방임": {
         "기본적 보호·양육 방임": (
             "식사, 의복, 위생, 안전한 보호, 감독 등 기본적인 양육과 보호를 "
-            "적절히 제공하지 않는 경우"
+            "적절히 제공하지 않는 경우. 보호자가 아동을 버리고 떠나거나(유기) "
+            "장기간 홀로 방치해 사실상 보호관계를 중단한 경우, 더러운 환경에 "
+            "방치한 경우도 이 유형에 포함한다."
         ),
         "교육적 방임": (
-            "정당한 사유 없이 아동을 학교에 보내지 않거나 "
-            "지속적인 결석·미취학 상태를 방치하는 경우. "
-            "학교 결석이나 미취학에 대한 직접적인 언급이 원문에 있을 때만 "
-            "선택한다 — 다른 방임 유형(기본적 보호, 의료적 방임 등)이 있다고 "
-            "해서 자동으로 같이 선택하지 않는다."
+            "정당한 사유 없이 '아동 본인'을 학교에 보내지 않거나 "
+            "지속적인 결석·미취학 상태를 방치하는 경우. 아동이 직접 "
+            "'학교에 안 다닌다', '결석했다' 등 본인의 등교·재학 상태가 "
+            "방치되고 있다고 말하는 경우에만 선택한다. "
+            "부모·보호자가 참관수업·학부모 상담 같은 학교 '행사'에 "
+            "오지 않았다는 내용은 아동 본인의 결석·미취학이 아니므로 "
+            "이 유형에 해당하지 않는다 — '학교' 단어가 원문에 있어도 "
+            "아동 본인의 등교 방치를 가리키는 게 아니면 선택하지 않는다. "
+            "원문에 아동 본인의 결석·미취학을 가리키는 내용이 전혀 없으면 "
+            "이 유형은 절대 선택하지 않는다 — 식사·의복·위생·의료 등 다른 "
+            "영역의 방임 정황만으로는 교육적 방임을 추론하지 않는다. "
+            "다른 방임 유형(기본적 보호, 의료적 방임 등)이 있다고 해서 자동으로 "
+            "같이 선택하지 않는다."
         ),
         "의료적 방임": (
             "질병, 부상, 치료 필요가 있음에도 필요한 의료기관 방문이나 "
             "치료를 제공하지 않는 경우"
-        ),
-        "유기": (
-            "보호자가 아동을 버리고 떠나거나 장기간 방치하여 "
-            "사실상 보호관계를 중단한 경우"
         ),
     },
 }
@@ -160,6 +203,10 @@ SYSTEM_PROMPT_TEMPLATE = """
 15. 두 세부유형 사이에서 애매하면(예: 접촉이 있었는지 불확실) 더 좁고
     구체적인 근거를 요구하는 쪽 대신, 원문 표현에 더 정확히 맞는 하나만
     선택한다. 둘 다 확신이 없으면 더 보수적인(약한) 쪽 하나만 선택한다.
+16. borderline은 선택한 세부유형의 근거는 있지만 인접한 다른 세부유형과 구별이
+    애매하거나(예: 위협↔통제, 노출↔접촉) 진술이 간접적이어서 상담사가 직접
+    확인해야 할 때 true, 근거가 명확하면 false로 표시한다. 애매하다는 이유로
+    세부유형을 빼지 말고, 고른 뒤 borderline만 true로 표시한다.
 
 [이번 요청에서 판단할 세부유형]
 
@@ -174,6 +221,7 @@ SYSTEM_PROMPT_TEMPLATE = """
       "subtypes": [
         {{
           "type": "세부유형명",
+          "borderline": false,
           "evidences": [
             {{
               "evidence": "원문에서 그대로 발췌한 근거 표현",
@@ -312,7 +360,6 @@ def _normalized_match(
 def _fuzzy_match(
     evidence: str,
     source_text: str,
-    threshold: float = 0.88,
     max_search_chars: int = 3000,
 ) -> Optional[Tuple[int, int, float]]:
     """
@@ -320,6 +367,11 @@ def _fuzzy_match(
 
     긴 전체 세션을 그대로 반복 탐색하면 느려질 수 있으므로
     max_search_chars 상한을 둔다.
+
+    통과 기준(threshold) 판단은 호출부(verify_evidence)에서 한다 —
+    여기서는 가장 비슷했던 후보를 비율과 함께 그대로 돌려준다.
+    기준 미달이어도 "원문에서 제일 비슷한 부분"을 상담사에게 참고용으로
+    보여줄 수 있어야 하기 때문이다.
     """
 
     evidence = evidence.strip()
@@ -405,7 +457,6 @@ def _fuzzy_match(
     if (
         best_start is not None
         and best_end is not None
-        and best_ratio >= threshold
     ):
         return (
             best_start,
@@ -414,6 +465,11 @@ def _fuzzy_match(
         )
 
     return None
+
+
+# fuzzy 유사도가 이 밑이면 참고용으로도 보여줄 가치가 없다고 본다
+# (엉뚱한 구간을 "비슷한 원문"이라며 보여주면 오히려 혼란만 준다).
+_MIN_REFERENCE_RATIO = 0.5
 
 
 def verify_evidence(
@@ -425,6 +481,11 @@ def verify_evidence(
     """
     LLM이 반환한 evidence가 실제 원문에 존재하는지 검증한다.
     exact → normalized → fuzzy 순서로 확인한다.
+
+    fuzzy 유사도가 fuzzy_threshold 미달이라도 _MIN_REFERENCE_RATIO
+    이상이면 evidence_verified는 False로 유지하되 closest_source_snippet에
+    원문에서 가장 비슷했던 구간을 담아 돌려준다 — 검증에는 실패했지만
+    상담사가 원문의 어디를 봐야 할지 참고할 수 있게 하기 위함이다.
     """
 
     if not source_text or not evidence:
@@ -434,6 +495,7 @@ def verify_evidence(
             "evidence_start": None,
             "evidence_end": None,
             "matched_evidence": None,
+            "closest_source_snippet": None,
         }
 
     # ============================================================
@@ -451,6 +513,7 @@ def verify_evidence(
             "evidence_start": exact_start,
             "evidence_end": exact_end,
             "matched_evidence": source_text[exact_start:exact_end],
+            "closest_source_snippet": None,
         }
 
     # ============================================================
@@ -477,6 +540,7 @@ def verify_evidence(
             "evidence_start": original_start,
             "evidence_end": original_end,
             "matched_evidence": matched_text,
+            "closest_source_snippet": None,
         }
 
     # ============================================================
@@ -486,20 +550,31 @@ def verify_evidence(
     fuzzy_result = _fuzzy_match(
         source_text=source_text,
         evidence=evidence,
-        threshold=fuzzy_threshold,
         max_search_chars=max_fuzzy_search_chars,
     )
 
     if fuzzy_result is not None:
-        fuzzy_start, fuzzy_end, _fuzzy_ratio = fuzzy_result
+        fuzzy_start, fuzzy_end, fuzzy_ratio = fuzzy_result
 
-        return {
-            "evidence_verified": True,
-            "evidence_match_method": "fuzzy",
-            "evidence_start": fuzzy_start,
-            "evidence_end": fuzzy_end,
-            "matched_evidence": source_text[fuzzy_start:fuzzy_end],
-        }
+        if fuzzy_ratio >= fuzzy_threshold:
+            return {
+                "evidence_verified": True,
+                "evidence_match_method": "fuzzy",
+                "evidence_start": fuzzy_start,
+                "evidence_end": fuzzy_end,
+                "matched_evidence": source_text[fuzzy_start:fuzzy_end],
+                "closest_source_snippet": None,
+            }
+
+        if fuzzy_ratio >= _MIN_REFERENCE_RATIO:
+            return {
+                "evidence_verified": False,
+                "evidence_match_method": "unverified",
+                "evidence_start": None,
+                "evidence_end": None,
+                "matched_evidence": None,
+                "closest_source_snippet": source_text[fuzzy_start:fuzzy_end],
+            }
 
     # ============================================================
     # 4. Match failed
@@ -511,6 +586,7 @@ def verify_evidence(
         "evidence_start": None,
         "evidence_end": None,
         "matched_evidence": None,
+        "closest_source_snippet": None,
     }
 
 
@@ -645,6 +721,7 @@ def validate_and_enrich_results(
             str,
             List[Dict[str, Any]]
         ] = {}
+        borderline_map: Dict[str, bool] = {}
 
         for subtype_item in raw_subtypes:
             if not isinstance(
@@ -659,6 +736,9 @@ def validate_and_enrich_results(
 
             if subtype_name not in allowed_subtypes:
                 continue
+
+            if str(subtype_item.get("borderline")).lower() == "true":
+                borderline_map[subtype_name] = True
 
             raw_evidences = subtype_item.get(
                 "evidences",
@@ -835,6 +915,11 @@ def validate_and_enrich_results(
                             "matched_evidence"
                         ],
 
+                    "closest_source_snippet":
+                        evidence_result.get(
+                            "closest_source_snippet"
+                        ),
+
                     "evidence_strength":
                         evidence_strength,
 
@@ -892,6 +977,12 @@ def validate_and_enrich_results(
 
                     "needs_review":
                         subtype_needs_review,
+
+                    "borderline":
+                        borderline_map.get(
+                            subtype_name,
+                            False,
+                        ),
                 }
             )
 
@@ -925,9 +1016,16 @@ def filter_low_confidence_subtypes(
     validated: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    evidence_strength가 "낮음"이거나 evidence_verified가 False인
-    근거는 제거한다. 근거가 하나도 안 남은 세부유형/대분류는 통째로
-    제거한다 — 확신 없는 예측은 아예 안 보여주는 게 낫다는 판단.
+    evidence_strength가 "낮음"인 근거는 제거한다. 근거가 하나도 안
+    남은 세부유형/대분류는 통째로 제거한다.
+
+    예전에는 evidence_verified가 False인 근거도 같이 제거했는데,
+    로컬 LLM(qwen2.5:14b)이 원문을 한 글자도 안 틀리고 그대로
+    인용하지 못하고 살짝 요약해서 인용하는 경우가 꽤 있어서(특히
+    문장이 길고 서술식인 note 모드), AI가 맞게 탐지했어도 항목
+    자체가 통째로 사라지는 부작용이 있었다. 이제는 검증 실패한
+    근거도 남기되 evidence_verified=False로 표시해서, 상담사가
+    "원문 재확인 필요" 상태로 직접 확인하게 한다.
     """
 
     filtered_results: List[Dict[str, Any]] = []
@@ -940,7 +1038,6 @@ def filter_low_confidence_subtypes(
                 evidence
                 for evidence in subtype.get("evidences", [])
                 if evidence.get("evidence_strength") != "낮음"
-                and evidence.get("evidence_verified") is True
             ]
 
             if not kept_evidences:
@@ -991,6 +1088,29 @@ def _call_llm_with_retry(
 
     last_error = None
 
+    # Qwen3 계열처럼 "thinking" 모드가 있는 로컬 모델은 답하기 전에 긴
+    # 내부 추론을 생성해서 응답이 10배 넘게 느려질 수 있다(실측: qwen3:14b
+    # 172초 -> think:false 시 16초). 우리 작업은 정해진 스키마로 근거를
+    # 뽑아내는 구조화 추출이라 깊은 추론이 필요 없어서 꺼도 품질 손해가
+    # 거의 없다. think는 Ollama 자체 API 필드라 실제 OpenAI API로 보내면
+    # 거부당하므로 LLM_BACKEND=ollama일 때만 붙인다(호출 시점 env를
+    # 읽어야 llm_backend.build_llm_client_and_model()과 일관된다).
+    #
+    # temperature를 따로 안 주면 Ollama 기본값(약 0.8)이 쓰여서 같은 프롬프트
+    # 인데도 매번 다른 세부유형이 붙거나 빠졌다(60샘플 평가에서 손 안 댄
+    # 카테고리 F1이 실행마다 흔들린 원인). 분류·근거 추출은 결정적으로
+    # 동작해야 하므로 temperature=0 + seed 고정. OpenAI 백엔드는 모델에
+    # 따라 temperature 지정을 거부할 수 있어 건드리지 않는다.
+    extra_kwargs: Dict[str, Any] = (
+        {
+            "extra_body": {"think": False},
+            "temperature": 0,
+            "seed": 42,
+        }
+        if os.environ.get("LLM_BACKEND", "ollama").lower() == "ollama"
+        else {}
+    )
+
     for attempt in range(
         1,
         max_retries + 1,
@@ -1004,6 +1124,7 @@ def _call_llm_with_retry(
                         "type":
                             "json_object"
                     },
+                    **extra_kwargs,
                     messages=[
                         {
                             "role":

@@ -127,11 +127,14 @@ def build_transcript_review_html(
     """
 
     rows = []
+    flagged_count = 0
+    total_count = 0
 
     for segment in transcript.get(
         "segments",
         [],
     ):
+        total_count += 1
         segment_id = str(
             segment.get(
                 "segment_id",
@@ -176,6 +179,15 @@ def build_transcript_review_html(
         if speaker == "UNKNOWN":
             # ElevenLabs 등에서 화자를 확정하지 못해 review가 필요한 구간.
             row_classes.append("needs-review")
+        if row_classes:
+            flagged_count += 1
+        else:
+            # 화자·신뢰도 모두 문제없는 줄 — 기본으로는 화면에서
+            # 숨기고, "전체 보기"를 눌렀을 때만 드러낸다. 폼에는
+            # hidden input이 그대로 남아 있어서 제출 내용에는
+            # 영향이 없다.
+            row_classes.append("segment-row-ok")
+
         low_conf_class = (
             " " + " ".join(row_classes)
             if row_classes
@@ -197,6 +209,13 @@ def build_transcript_review_html(
                 <input type="hidden" name="end_ms" value="{end_ms}">
                 <input type="hidden" name="confidence" value="{confidence}">
 
+                <button
+                    type="button"
+                    class="play-btn"
+                    onclick="playAt({start_ms / 1000})"
+                    title="이 구간 재생"
+                >▶</button>
+
                 <select name="speaker" class="segment-speaker-select">
                     {options_html}
                 </select>
@@ -207,13 +226,21 @@ def build_transcript_review_html(
                     class="segment-text-input"
                     value="{escape(str(text), quote=True)}"
                 >
-
-                <span class="segment-conf">conf {confidence:.2f}</span>
             </div>
             """
         )
 
-    return "".join(rows)
+    toggle_bar = f"""
+    <div class="review-toggle-bar">
+        전체 {total_count}개 발화 중 확인이 필요한 {flagged_count}개만
+        표시 중입니다(화자 미확정 또는 STT 신뢰도 낮음).
+        <button type="button" class="play-btn" onclick="toggleAllSegments(this)">
+            전체 보기
+        </button>
+    </div>
+    """
+
+    return toggle_bar + "".join(rows)
 
 
 def build_page(
@@ -251,7 +278,7 @@ def build_page(
         result_html = f"""
         <section class="panel">
             <h2>1차 학대 위험신호</h2>
-            {build_major_types_html(analysis.get("major_types", {}))}
+            {build_major_types_html(analysis.get("major_types", {}), analysis.get("subtype_analysis", {}))}
             <div class="chunk-meta-box">
                 {chunk_meta_html}
             </div>
@@ -428,6 +455,37 @@ def build_page(
                 font-size: 11px;
                 color: #9ca3af;
                 white-space: nowrap;
+            }}
+
+            .play-btn {{
+                border: 1px solid #d1d5db;
+                background: #fff;
+                border-radius: 6px;
+                padding: 2px 8px;
+                font-size: 12px;
+                cursor: pointer;
+                flex-shrink: 0;
+            }}
+
+            .play-btn:hover {{
+                background: #f3f4f6;
+            }}
+
+            .segment-row-ok {{
+                display: none;
+            }}
+
+            .transcript-review-box.show-all .segment-row-ok {{
+                display: flex;
+            }}
+
+            .review-toggle-bar {{
+                font-size: 13px;
+                color: #6b7280;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
             }}
 
             .transcript-review-box {{
@@ -647,6 +705,72 @@ def build_page(
                 margin-bottom: 4px;
             }}
 
+            .borderline-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #1e40af;
+                background: #dbeafe;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 8px;
+                vertical-align: middle;
+            }}
+
+            .needs-review-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #b45309;
+                background: #fef3c7;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 4px;
+            }}
+
+            .closest-snippet {{
+                margin-top: 8px;
+                padding: 8px 10px;
+                background: #fef3c7;
+                border-left: 3px solid #d97706;
+                border-radius: 6px;
+                font-size: 12px;
+                color: #78350f;
+                line-height: 1.6;
+            }}
+
+            .checklist-edit-grid {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+            }}
+
+            .checklist-edit-item {{
+                display: inline-flex;
+                flex-direction: column;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+                background: #f9fafb;
+                cursor: pointer;
+            }}
+
+            .checklist-edit-item.has-evidence {{
+                border-color: #f87171;
+                background: #fee2e2;
+            }}
+
+            .checklist-edit-item input[type="checkbox"] {{
+                margin-right: 6px;
+            }}
+
+            .checklist-edit-item .checklist-evidence-box {{
+                margin: 6px 0 0;
+                background: white;
+            }}
+
             .safety-item {{
                 border-top: 1px solid #e5e7eb;
                 padding: 10px 0;
@@ -689,6 +813,27 @@ def build_page(
                 }}
             }}
         </style>
+        <script>
+        // 이 단독 테스트 페이지는 아직 음성 파일을 다시 서빙하지
+        // 않는다(재생 기능은 test_unified_web.py에 먼저 붙였다).
+        // 그래도 ▶ 버튼이 있으니, 눌렀을 때 콘솔 에러 대신 안내만
+        // 뜨게 자리표시자를 둔다.
+        function playAt(sec) {{
+            alert("이 화면에서는 아직 재생을 지원하지 않습니다. "
+                + "통합 테스트 웹(test_unified_web)에서 재생해 주세요.");
+        }}
+
+        function toggleAllSegments(btn) {{
+            var box = btn.closest(".transcript-review-box");
+            if (!box) {{
+                return;
+            }}
+            box.classList.toggle("show-all");
+            btn.textContent = box.classList.contains("show-all")
+                ? "확인 필요만 보기"
+                : "전체 보기";
+        }}
+        </script>
     </head>
 
     <body>

@@ -73,7 +73,7 @@ def build_page(
         result_html = f"""
         <section class="panel">
             <h2>1차 학대 위험신호 (note 전용 모델)</h2>
-            {build_major_types_html(analysis.get("major_types", {}))}
+            {build_major_types_html(analysis.get("major_types", {}), analysis.get("subtype_analysis", {}))}
         </section>
 
         <section class="panel">
@@ -428,6 +428,72 @@ def build_page(
 
             .checklist-evidence-box div {{
                 margin-bottom: 4px;
+            }}
+
+            .borderline-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #1e40af;
+                background: #dbeafe;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 8px;
+                vertical-align: middle;
+            }}
+
+            .needs-review-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #b45309;
+                background: #fef3c7;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: 4px;
+            }}
+
+            .closest-snippet {{
+                margin-top: 8px;
+                padding: 8px 10px;
+                background: #fef3c7;
+                border-left: 3px solid #d97706;
+                border-radius: 6px;
+                font-size: 12px;
+                color: #78350f;
+                line-height: 1.6;
+            }}
+
+            .checklist-edit-grid {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+            }}
+
+            .checklist-edit-item {{
+                display: inline-flex;
+                flex-direction: column;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+                background: #f9fafb;
+                cursor: pointer;
+            }}
+
+            .checklist-edit-item.has-evidence {{
+                border-color: #f87171;
+                background: #fee2e2;
+            }}
+
+            .checklist-edit-item input[type="checkbox"] {{
+                margin-right: 6px;
+            }}
+
+            .checklist-edit-item .checklist-evidence-box {{
+                margin: 6px 0 0;
+                background: white;
             }}
 
             .safety-item {{
