@@ -4,6 +4,8 @@
 > 확정 전이며, AI·Backend·Frontend 세 파트 합의가 필요합니다.
 >
 > 작성: 최민규 · 2026-09-11
+>
+> 갱신 · 2026-09-29 — `detected` 출처 필드 제안(§7-2 끝), 근거 판정 세 갈래(§7-4), §8 질문 6·8번
 
 대상 필드 — `risk_utterances`, `abuse_signals`, `risk_factors`
 
@@ -467,6 +469,49 @@ ai/modeling/abuse/test_abuse_probabilities.py   (9/15 삭제)
 
 `detected` 는 모델이 이미 계산한 값이므로 그대로 전달합니다. **어느 모델을 쓸지는 이 제안의 범위 밖**이며, 어느 쪽이든 구조는 동일합니다.
 
+### ⚠️ `detected` 가 어디서 왔는지 구분해야 합니다 (2026-09-29 추가)
+
+`ai-modeling` 최신(`cd4c915`, 9/22)의 `ai/modeling/abuse/infer_abuse_pipeline.py` 를 보면 `detected` 가 **세 곳에서 정해집니다.** 지금은 결과만 보고는 어느 쪽인지 알 수 없습니다.
+
+| 출처 | 코드 | `detected` | 결과에 남는 표시 |
+| --- | --- | --- | --- |
+| 1차 모델 판정 | `infer_abuse_v3_adapter.predict_major_types` | 모델 값 그대로 | 없음 |
+| LLM 보완 검출 (note 모드만) | `infer_abuse_pipeline._screen_missed_major_types` (`c5a7fde`, 9/21) | 1차가 놓친 유형을 LLM 이 찾으면 `True` 로 바꿈 | `llm_supplementary: true` |
+| 부정 응답 필터로 빠짐 (qa · child_only 모드) | `infer_abuse_v3_adapter._suppress_denied_labels` (`51a80f1`, 9/17) | 모델은 `True` 였으나 아동이 명확히 부정하면 `False` 로 내림 | `filtered_reason: "아동이 관련 발화를 명확히 부정함"` |
+
+LLM 보완 검출은 `{"types": [...]}` 로 **유형 이름만** 돌려줍니다. 어느 문장·어느 발화가 근거인지는 주지 않습니다. 그대로 `abuse_signals` 에 `detected: true` 로 넣으면 `segment_ids` 가 빈 신호가 됩니다.
+
+#### 제안 1 — 출처 필드 `detection_source`
+
+```jsonc
+{
+  "abuse_type": "PHYSICAL",
+  "detected": true,
+  "detection_source": "MODEL",          // 필수. MODEL | LLM_SUPPLEMENTARY | FILTERED
+  "filtered_reason": null,              // detection_source=FILTERED 일 때만. 모델 문구 그대로
+  "segment_ids": ["seg_047"]
+}
+```
+
+| `ai-modeling` 의 현재 값 | `detected` | `detection_source` |
+| --- | --- | --- |
+| 표시 없음 | 모델 값 | `MODEL` |
+| `llm_supplementary: true` | `true` | `LLM_SUPPLEMENTARY` |
+| `filtered_reason` 있음 | `false` | `FILTERED` |
+
+- 상담사가 "모델이 본 것" 과 "LLM 이 덧붙인 것" 을 구분해 검토할 수 있습니다.
+- `FILTERED` 를 남기면 필터가 실제 신호를 지웠는지 나중에 되짚을 수 있습니다. 결과에서 아예 빼는 것보다 낫다고 봅니다.
+- 이름·값은 초안입니다. 값은 `abuse_type` 과 같이 영문 대문자로 둡니다.
+
+#### 제안 2 — segment 근거 없는 LLM 보완 검출은 신호로 내지 않는다
+
+`05_RULES.md` §1 은 **"근거(`segment_id`) 없는 위험 신호를 생성하지 않는다"** 입니다. 따라서
+
+- `LLM_SUPPLEMENTARY` 검출은 **근거 발화(`segment_ids`)를 함께 줄 수 있을 때만** `abuse_signals` 에 `detected: true` 로 넣습니다.
+- 근거 발화를 줄 수 없으면 신호로 내지 않고, 필요하면 `warnings` 에 "추가 확인이 필요한 유형이 있습니다" 수준으로만 남깁니다.
+
+Backend 는 이미 이 규칙의 마지막 관문을 두었습니다. `AI_PROVIDER=langgraph` 결과에서 `segment_id` · `segment_ids` 가 비었거나 Transcript 에 없는 번호를 가리키는 항목은 **저장 전에 빠지고** `warnings` 에 "segment 근거가 없는 신호 N건을 제외했습니다." 가 남습니다([PLAN_langgraph_agent.md](./PLAN_langgraph_agent.md) 4-4). 다만 이것은 안전장치일 뿐이라, **근거를 줄 수 없는 검출은 만드는 쪽에서 신호로 내지 않는 편**이 상담사에게 덜 혼란스럽습니다.
+
 ### 7-3. `risk_factors` — 위험 요인
 
 ```jsonc
@@ -486,18 +531,32 @@ ai/modeling/abuse/test_abuse_probabilities.py   (9/15 삭제)
 
 ```python
 def evidence_verdict(state) -> str:
-    signals = [s for s in state["abuse_signals"] if s.get("detected")]
-    linked = [s for s in signals if s.get("segment_ids")]
+    detected = [s for s in state.get("abuse_signals") or [] if s.get("detected")]
 
-    sufficient = len(linked) >= 1
-    return "sufficient" if sufficient else "insufficient"
+    if not detected:
+        return "none"             # 검출 신호 없음 → 재분석 없이 결과로, 경고 없음
+    if all(s.get("segment_ids") for s in detected):
+        return "sufficient"       # 검출 신호가 모두 근거 발화에 연결됨
+    return "insufficient"         # 근거 발화가 없는 검출 신호가 하나라도 있음
 ```
 
 이 함수는 LangGraph 의 **조건부 엣지 함수**로 쓰입니다. 노드가 아니므로 State 를 바꾸지 않고 목적지 이름만 돌려줍니다. 배치 방법은 [PLAN_langgraph_agent.md](./PLAN_langgraph_agent.md) §4-1 을 참고하세요.
 
-판정 기준을 **"검출된 유형이 1건 이상이고, 그 근거 발화가 Transcript 에 연결돼 있을 것"** 으로 둡니다. 근거 없는 판정은 상담사가 확인할 수 없으므로 `segment_ids` 연결을 필수로 봅니다.
+판정은 세 갈래입니다.
 
-`>= 1` 은 초안입니다. 실제 출력을 보고 조정하되, **확신도 임계값을 Agent 쪽에서 다시 정하지는 않습니다.** 모델이 유형별로 튜닝한 값을 존중합니다.
+| 판정 | 조건 | 다음 |
+| --- | --- | --- |
+| `none` | 검출된 유형이 없음 | 결과 작성. 경고 없음 |
+| `sufficient` | 검출된 유형이 **모두** 근거 발화에 연결됨 | 결과 작성 |
+| `insufficient` | 근거 발화가 없는 검출 유형이 하나라도 있음 | RAG → 재분석 (최대 `MAX_RETRY` 번) |
+
+근거 없는 판정은 상담사가 확인할 수 없으므로 `segment_ids` 연결을 필수로 봅니다.
+
+> **2026-09-29 정정** — 9/11 초안은 "연결된 검출 유형이 1건 이상" 이면 충분, 아니면 부족이었습니다.
+> 그러면 **검출된 유형이 없는 정상 상담도 "부족"** 이 되어 재분석을 `MAX_RETRY` 번 돌고
+> "근거가 부족" 경고가 붙습니다. 신호가 없는 것과 근거가 부족한 것을 나눴습니다.
+
+**확신도 임계값을 Agent 쪽에서 다시 정하지는 않습니다.** 모델이 유형별로 튜닝한 값을 존중합니다.
 
 **먼저 필요한 것은 `detected` 와 `segment_ids` 키의 존재 보장**입니다.
 
@@ -512,14 +571,15 @@ def evidence_verdict(state) -> str:
 3. `abuse_model` 결과를 `abuse_signals` 로 넘기는 경로를 만드실 예정인가요? 아니면 Backend 에서 별도로 호출할까요?
 4. **`segment_ids` 를 어떻게 채울지**가 가장 어려운 지점으로 보입니다(§7-2). `predict_abuse(text: str)` 는 문자열만 받아서 어느 segment 의 판정인지 모릅니다. `child_analysis_text` 를 만들 때 쓴 segment 목록을 함께 남기는 방식이 가능할까요?
 5. 세 필드를 채우는 작업의 **예상 시점**을 알려주시면 그에 맞춰 준비하겠습니다.
+6. **`detected` 의 출처를 결과에 남겨 주실 수 있을까요?**(§7-2 끝) 지금은 1차 모델 판정, note 모드의 LLM 보완 검출(`llm_supplementary`), 부정 응답 필터(`filtered_reason`)가 섞여 있어 결과만 보고는 구분할 수 없습니다. `detection_source`(`MODEL | LLM_SUPPLEMENTARY | FILTERED`) 같은 필드를 제안드립니다. 그리고 LLM 보완 검출은 유형 이름만 돌려주고 근거 문장을 주지 않는데, **근거 발화를 줄 수 없는 LLM 보완 검출은 신호로 내지 않는 규칙**에 동의하시는지, 아니면 근거 문장을 함께 받도록 바꾸실 수 있는지 여쭙니다.
 
 **팀장님**
 
-6. `abuse_type` 을 영문 대문자 대분류로 통일하는 안에 동의하시는지요?
-7. 근거 충족 판정(`evidence_verdict`, §7-4)을 위 초안으로 시작해도 될까요?
+7. `abuse_type` 을 영문 대문자 대분류로 통일하는 안에 동의하시는지요?
+8. 근거 충족 판정(`evidence_verdict`, §7-4)을 세 갈래(`none` / `sufficient` / `insufficient`)로 시작해도 될까요? 9/11 초안은 검출 신호가 없는 정상 상담까지 "부족" 으로 보아 재분석과 경고가 붙던 문제가 있어 고쳤습니다.
 
 **다솔 님**
 
-8. 화면에서 위 필드 외에 **추가로 필요한 항목**이 있으면 지금 말씀해주세요. 나중에 추가하면 AI·Backend·Frontend 를 모두 고쳐야 합니다.
-9. `CasesView` 의 학대유형·위험도·키워드 필터는 `03_UI_UX.md` S02 명세에 없는 항목입니다(1-3). **유지하실 계획이면 Contract 에 반영**하고, 아니면 명세 범위로 줄이는 편이 낫습니다. 어느 쪽인지 알려주시면 그에 맞추겠습니다.
-10. `03_UI_UX.md` §5 가 **"위험 확정" · "AI 판정"** 같은 표현을 금지합니다. `detected: true` 는 모델 내부 값이므로 화면에는 **"관련 신호"** · **"추가 확인 필요"** 로 표기해 주세요. 색상만으로 위험도를 표현하지 않는 규칙도 같은 절에 있습니다.
+9. 화면에서 위 필드 외에 **추가로 필요한 항목**이 있으면 지금 말씀해주세요. 나중에 추가하면 AI·Backend·Frontend 를 모두 고쳐야 합니다.
+10. `CasesView` 의 학대유형·위험도·키워드 필터는 `03_UI_UX.md` S02 명세에 없는 항목입니다(1-3). **유지하실 계획이면 Contract 에 반영**하고, 아니면 명세 범위로 줄이는 편이 낫습니다. 어느 쪽인지 알려주시면 그에 맞추겠습니다.
+11. `03_UI_UX.md` §5 가 **"위험 확정" · "AI 판정"** 같은 표현을 금지합니다. `detected: true` 는 모델 내부 값이므로 화면에는 **"관련 신호"** · **"추가 확인 필요"** 로 표기해 주세요. 색상만으로 위험도를 표현하지 않는 규칙도 같은 절에 있습니다.
