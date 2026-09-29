@@ -1,10 +1,24 @@
 import { useParams, useNavigate } from "react-router";
-import { CASES } from "../data/cases";
-import { SESSIONS } from "../data/mockData";
+import type { Session as UiSession } from "../data/mockData";
 import { RiskBadge, AbuseBadge, StatusLabel } from "../components/ui/Badges";
 import Breadcrumb from "../components/ui/Breadcrumb";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import UploadModal from "../components/ui/UploadModal";
+import { cases as casesApi, summary as summaryApi } from "../api/endpoints";
+import { ApiError } from "../api/client";
+import { toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+import type { Summary } from "../api/types";
+
+// 사례와 회기 목록은 Backend(GET /cases/{id}, GET /cases/{id}/sessions)에서 온다.
+// 주소의 caseId 는 Backend UUID 이고, 화면에 보이는 사례번호(C-2026-0001)는 응답의 case_number 다.
+// 학대 유형 · 키워드 · 위험도 · 상담 유형 · 소요 시간은 아직 Backend 에 없어 adapters 의 기본값으로 보인다.
+const SESSION_PAGE_SIZE = 100;
+
+function loadErrorMessage(caught: unknown, fallback: string): string {
+  if (!(caught instanceof ApiError)) return fallback;
+  if (caught.isForbidden) return "권한이 없거나 없는 사례입니다.";
+  return caught.message;
+}
 
 const STT_STATUS_CFG: Record<string, string> = {
   "처리중":   "border-[#94A3B8] text-[#475569]",
@@ -29,9 +43,59 @@ export default function CaseDetailPage() {
   const [tab, setTab] = useState<"overview" | "sessions" | "documents">("overview");
   const [showUpload, setShowUpload] = useState(false);
   const [extraFiles, setExtraFiles] = useState<MockFile[]>([]);
+  const [c, setCase]                = useState<CaseWithId | null>(null);
+  const [sessions, setSessions]     = useState<UiSession[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [loadError, setLoadError]   = useState<string | null>(null);
+  // 최근 회기의 요약(GET /sessions/{id}/summary). 아직 분석 · 승인 전이면 null.
+  const [latestSummary, setLatestSummary] = useState<Summary | null>(null);
 
-  const c = CASES.find(x => x.id === caseId);
-  const sessions = SESSIONS.filter(s => s.caseId === caseId).sort((a, b) => b.date.localeCompare(a.date));
+  useEffect(() => {
+    if (!caseId) return;
+
+    let cancelled = false;
+
+    setLoading(true);
+    setLoadError(null);
+    setLatestSummary(null);
+
+    Promise.all([
+      casesApi.get(caseId),
+      casesApi.listSessions(caseId, { page: 1, page_size: SESSION_PAGE_SIZE }),
+    ])
+      .then(([detail, page]) => {
+        if (cancelled) return;
+        // Backend 가 최신 회기(session_number 내림차순)부터 주므로 다시 정렬하지 않는다.
+        const uiSessions = page.items.map((s) =>
+          toUiSession(s, detail.case_number, { counselorName: detail.counselor_name ?? undefined }),
+        );
+        setCase(toUiCaseDetail(detail));
+        setSessions(uiSessions);
+
+        const latest = uiSessions[0];
+        if (!latest) return;
+
+        // 요약은 없을 수 있으므로(회기 등록 직후 등) 실패해도 화면은 그대로 둔다.
+        summaryApi
+          .get(latest.id)
+          .then((envelope) => {
+            if (!cancelled) setLatestSummary(envelope.summary);
+          })
+          .catch(() => {
+            if (!cancelled) setLatestSummary(null);
+          });
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(loadErrorMessage(caught, "사례를 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId]);
 
   const mockFiles = useMemo<MockFile[]>(() => {
     if (!c) return [];
@@ -46,10 +110,18 @@ export default function CaseDetailPage() {
 
   const allFiles = useMemo(() => [...extraFiles, ...mockFiles], [extraFiles, mockFiles]);
 
-  if (!c) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-[#94A3B8]">
-        사례를 찾을 수 없습니다.
+        사례를 불러오는 중...
+      </div>
+    );
+  }
+
+  if (loadError || !c) {
+    return (
+      <div className="flex items-center justify-center h-full text-[#94A3B8]">
+        {loadError ?? "사례를 찾을 수 없습니다."}
       </div>
     );
   }
@@ -111,7 +183,8 @@ export default function CaseDetailPage() {
             { label: "자료 등록",   done: c.sessionCount > 0 },
             { label: "자료 검수",   done: sessions.some(s => s.sttStatus === "검수완료" || s.sttStatus === "분석완료") },
             { label: "AI 분석",     done: sessions.some(s => s.sttStatus === "분석완료") },
-            { label: "문서 작성",   done: sessions.some(s => s.aiStatus === "검토완료") },
+            // Backend 상태로는 "검토완료" 가 나오지 않고 승인되면 "상담사검토완료" 가 된다.
+            { label: "문서 작성",   done: sessions.some(s => s.aiStatus === "검토완료" || s.aiStatus === "상담사검토완료") },
             { label: "후속 업무",   done: false },
           ];
           const currentStep = progressSteps.filter(s => s.done).length;
@@ -195,11 +268,24 @@ export default function CaseDetailPage() {
                   </div>
                   <div>
                     <p className="text-[12px] font-semibold text-[#64748B] mb-1">주요 내용</p>
-                    <p>아동이 가정 내 상황에 대한 불안감을 표현하였으며, 신체적 증상에 대한 호소가 있었음. 보호자와의 관계에서 지속적인 긴장이 관찰됨. 아동의 위축 행동이 이전 회차 대비 증가하였음.</p>
+                    {/* 요약은 AI 분석 뒤 상담사가 검수한 것(GET /sessions/{id}/summary). 아직 없으면 그렇다고 보여 준다. */}
+                    {latestSummary ? (
+                      <>
+                        <p>{latestSummary.overview}</p>
+                        {latestSummary.key_points.length > 0 && (
+                          <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                            {latestSummary.key_points.map((point, i) => <li key={i}>{point}</li>)}
+                          </ul>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[#94A3B8]">아직 작성된 요약이 없습니다. AI 분석과 상담사 검수가 끝나면 여기에 보입니다.</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-[12px] font-semibold text-[#64748B] mb-1">다음 회차 계획</p>
-                    <p>보호자 면담 예약 및 추가 심리 검사 검토 필요.</p>
+                    {/* 다음 회차 계획은 Backend 에 아직 없다. */}
+                    <p className="text-[#94A3B8]">—</p>
                   </div>
                 </div>
                 <div className="mt-4 pt-3 border-t border-[#F1F5F9]">
@@ -250,6 +336,9 @@ export default function CaseDetailPage() {
                     </td>
                   </tr>
                 ))}
+                {sessions.length === 0 && (
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">상담 기록이 없습니다.</td></tr>
+                )}
               </tbody>
             </table>
           </div>

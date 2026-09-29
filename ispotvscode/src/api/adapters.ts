@@ -232,3 +232,16 @@ export function toUiSession(
     recordStatus: derived.record,
   };
 }
+
+// =========================================================
+// ===== 사례 · 회기 화면 (갈래 A) =====
+// =========================================================
+//
+// 사례 상세 · 회기 목록 · 회기 등록 화면이 함께 쓰는 변환.
+// 회차 수(session_count)는 사례 상세(GET /cases/{id}) 응답에만 있어 여기서 채운다.
+// 담당 상담사 이름은 toUiCase 가 counselor_name 에서 읽는다.
+
+/** 사례 상세 응답을 화면의 CaseWithId 로 바꾼다. CaseDetail 을 그대로 넘기면 된다. */
+export function toUiCaseDetail(source: Case & { session_count: number }): CaseWithId {
+  return toUiCaseWithId(source, { sessionCount: source.session_count });
+}

@@ -1,7 +1,20 @@
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
-import { CASES } from "../data/cases";
-import { SESSIONS, AI_ANALYSES } from "../data/mockData";
+import type { Session as UiSession } from "../data/mockData";
 import Breadcrumb from "../components/ui/Breadcrumb";
+import { cases as casesApi } from "../api/endpoints";
+import { ApiError } from "../api/client";
+import { toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+
+// 사례와 회기 목록은 Backend(GET /cases/{id}, GET /cases/{id}/sessions)에서 온다.
+// 주소의 caseId 는 Backend UUID 다. 녹음 길이 · 상담사(회기 단위)는 아직 Backend 에 없어 "—" 로 보인다.
+const SESSION_PAGE_SIZE = 100;
+
+function loadErrorMessage(caught: unknown, fallback: string): string {
+  if (!(caught instanceof ApiError)) return fallback;
+  if (caught.isForbidden) return "권한이 없거나 없는 사례입니다.";
+  return caught.message;
+}
 
 const STT_CFG: Record<string, string> = {
   "처리중":   "bg-blue-50 text-blue-700",
@@ -21,14 +34,50 @@ const AI_CFG: Record<string, string> = {
 export default function SessionListPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
+  const [c, setCase]              = useState<CaseWithId | null>(null);
+  const [sessions, setSessions]   = useState<UiSession[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const c = CASES.find(x => x.id === caseId);
-  if (!c) return <div className="flex items-center justify-center h-full text-[#94A3B8]">사례를 찾을 수 없습니다.</div>;
+  useEffect(() => {
+    if (!caseId) return;
 
-  const sessions = SESSIONS.filter(s => s.caseId === caseId).sort((a, b) => b.date.localeCompare(a.date));
+    let cancelled = false;
 
-  function getAnalysisId(sessionId: string) {
-    return AI_ANALYSES.find(a => a.sessionId === sessionId)?.id;
+    setLoading(true);
+    setLoadError(null);
+
+    Promise.all([
+      casesApi.get(caseId),
+      casesApi.listSessions(caseId, { page: 1, page_size: SESSION_PAGE_SIZE }),
+    ])
+      .then(([detail, page]) => {
+        if (cancelled) return;
+        setCase(toUiCaseDetail(detail));
+        // Backend 가 최신 회기(session_number 내림차순)부터 주므로 다시 정렬하지 않는다.
+        setSessions(page.items.map((s) =>
+          toUiSession(s, detail.case_number, { counselorName: detail.counselor_name ?? undefined }),
+        ));
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(loadErrorMessage(caught, "사례를 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId]);
+
+  if (loading) return <div className="flex items-center justify-center h-full text-[#94A3B8]">사례를 불러오는 중...</div>;
+  if (loadError || !c) return <div className="flex items-center justify-center h-full text-[#94A3B8]">{loadError ?? "사례를 찾을 수 없습니다."}</div>;
+
+  // AI 분석은 회기당 하나(GET /sessions/{id}/analysis)라 분석 화면 주소에도 회기 UUID 를 쓴다.
+  // 분석이 요청된 뒤(분석중 · 검토필요)에만 "AI 검토" 를 보여 준다.
+  function hasAnalysis(s: UiSession) {
+    return s.aiStatus === "분석중" || s.aiStatus === "검토필요";
   }
 
   return (
@@ -56,7 +105,6 @@ export default function SessionListPage() {
             </thead>
             <tbody>
               {sessions.map(s => {
-                const analysisId = getAnalysisId(s.id);
                 return (
                   <tr key={s.id} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
                     <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{s.date}</td>
@@ -82,9 +130,9 @@ export default function SessionListPage() {
                             STT 검수
                           </button>
                         )}
-                        {s.sttStatus === "검수완료" && analysisId && (
+                        {s.sttStatus === "검수완료" && hasAnalysis(s) && (
                           <button
-                            onClick={() => navigate(`/cases/${caseId}/analyses/${analysisId}`)}
+                            onClick={() => navigate(`/cases/${caseId}/analyses/${s.id}`)}
                             className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium rounded-[6px] hover:bg-blue-100 transition-colors"
                           >
                             AI 검토

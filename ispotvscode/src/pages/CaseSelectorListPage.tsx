@@ -1,9 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { CASES } from "../data/cases";
-import { SESSIONS, AI_ANALYSES } from "../data/mockData";
 import { RiskBadge, StatusLabel } from "../components/ui/Badges";
 import Breadcrumb from "../components/ui/Breadcrumb";
+import { cases as casesApi } from "../api/endpoints";
+import { ApiError } from "../api/client";
+import { NOT_PROVIDED, toUiCaseWithId, type CaseWithId } from "../api/adapters";
+
+// 사례 목록은 Backend(GET /cases)에서 온다. 선택하면 Backend UUID(backendId)로 이동한다.
+// 위험도 · 회차 수 · 분석 완료 건수는 목록 응답에 없어 adapters 의 기본값으로 보인다.
+const PAGE_SIZE = 50;
+
+function errorMessage(caught: unknown, fallback: string): string {
+  return caught instanceof ApiError ? caught.message : fallback;
+}
 
 type Mode = "plan" | "closure" | "report";
 
@@ -13,7 +22,7 @@ const MODE_CFG: Record<Mode, {
   breadcrumb: string;
   dest: (caseId: string) => string;
   col: string;
-  colValue: (caseId: string) => React.ReactNode;
+  colValue: (c: CaseWithId) => React.ReactNode;
 }> = {
   plan: {
     title: "사례관리 계획 — 사례 선택",
@@ -21,8 +30,7 @@ const MODE_CFG: Record<Mode, {
     breadcrumb: "사례관리 계획",
     dest: (id) => `/cases/${id}/plan`,
     col: "계획 상태",
-    colValue: (caseId) => {
-      const c = CASES.find(x => x.id === caseId)!;
+    colValue: (c) => {
       if (c.status === "review") return <span className="text-[11px] px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">검토 필요</span>;
       if (c.status === "active") return <span className="text-[11px] px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">진행중</span>;
       return <span className="text-[11px] text-[#94A3B8]">대기중</span>;
@@ -34,9 +42,9 @@ const MODE_CFG: Record<Mode, {
     breadcrumb: "종결·가정복귀 검토",
     dest: (id) => `/cases/${id}/closure`,
     col: "상담 회차",
-    colValue: (caseId) => {
-      const c = CASES.find(x => x.id === caseId)!;
-      return <span className="text-[12px] text-[#64748B]">{c.sessionCount}회차</span>;
+    // 회차 수는 사례 목록 응답에 없다(사례 상세에만 있음). 값이 오기 전까지 "—" 로 보인다.
+    colValue: (c) => {
+      return <span className="text-[12px] text-[#64748B]">{c.sessionCount > 0 ? `${c.sessionCount}회차` : NOT_PROVIDED}</span>;
     },
   },
   report: {
@@ -45,11 +53,9 @@ const MODE_CFG: Record<Mode, {
     breadcrumb: "보고서 생성",
     dest: (id) => `/cases/${id}/reports`,
     col: "분석 완료",
-    colValue: (caseId) => {
-      const count = AI_ANALYSES.filter(a => a.caseId === caseId && a.status === "상담사검토완료").length;
-      return count > 0
-        ? <span className="text-[11px] px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded">{count}건 완료</span>
-        : <span className="text-[11px] text-[#94A3B8]">없음</span>;
+    // 사례 단위 분석 완료 건수는 Backend 에 없다(분석은 회기 단위 GET /sessions/{id}/analysis).
+    colValue: () => {
+      return <span className="text-[11px] text-[#94A3B8]">{NOT_PROVIDED}</span>;
     },
   },
 };
@@ -58,14 +64,37 @@ export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"riskScore" | "lastSession">("riskScore");
+  const [allCases, setAllCases]   = useState<CaseWithId[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const cfg = MODE_CFG[mode];
 
+  useEffect(() => {
+    let cancelled = false;
+
+    casesApi
+      .list({ page: 1, page_size: PAGE_SIZE })
+      .then((page) => {
+        if (!cancelled) setAllCases(page.items.map((c) => toUiCaseWithId(c)));
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(errorMessage(caught, "사례 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const rows = useMemo(() =>
-    CASES.filter(c => {
+    allCases.filter(c => {
       if (!query) return true;
       return c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase());
     }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)),
-    [query, sortBy]
+    [query, sortBy, allCases]
   );
 
   return (
@@ -112,13 +141,13 @@ export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
                   key={c.id}
                   className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
                   style={{ borderLeft: c.riskLevel === "high" ? "2px solid #DC2626" : "2px solid transparent" }}
-                  onClick={() => navigate(cfg.dest(c.id))}
+                  onClick={() => navigate(cfg.dest(c.backendId))}
                 >
                   <td className="px-4 py-3 text-[13px] font-semibold text-[#172033]">{c.childName}</td>
                   <td className="px-4 py-3 text-[11px] font-mono text-[#94A3B8]">{c.id}</td>
                   <td className="px-4 py-3"><RiskBadge level={c.riskLevel} score={c.riskScore} /></td>
                   <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{c.lastSession}</td>
-                  <td className="px-4 py-3">{cfg.colValue(c.id)}</td>
+                  <td className="px-4 py-3">{cfg.colValue(c)}</td>
                   <td className="px-4 py-3"><StatusLabel status={c.status} /></td>
                   <td className="px-4 py-3 text-[12px] text-[#64748B]">{c.counselor}</td>
                   <td className="px-4 py-3">
@@ -126,7 +155,13 @@ export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && (
+              {loading && (
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">사례 목록을 불러오는 중...</td></tr>
+              )}
+              {!loading && loadError && (
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-[13px] text-red-600">{loadError}</td></tr>
+              )}
+              {!loading && !loadError && rows.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">
                     검색 조건에 맞는 사례가 없습니다.

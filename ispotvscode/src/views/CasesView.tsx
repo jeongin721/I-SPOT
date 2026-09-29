@@ -275,7 +275,7 @@ export default function CasesView() {
                   <td className="px-4 py-3 text-[13px] text-[#64748B]">{c.counselor}</td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={e => { e.stopPropagation(); navigate(`/cases/${c.id}`); }}
+                      onClick={e => { e.stopPropagation(); navigate(`/cases/${c.backendId}`); }}
                       className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium transition-colors"
                     >
                       상세
@@ -308,7 +308,7 @@ export default function CasesView() {
                         </div>
                         <div className="flex gap-2 shrink-0">
                           <button
-                            onClick={() => navigate(`/cases/${c.id}`)}
+                            onClick={() => navigate(`/cases/${c.backendId}`)}
                             className="px-3 py-1.5 bg-[#15314A] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#0F263B] transition-colors"
                           >
                             상세 화면
