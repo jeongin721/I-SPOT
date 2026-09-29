@@ -42,7 +42,8 @@ alembic upgrade head
 
 # 데모 계정 비밀번호. 로컬 개발 전용이며 합성 데이터에만 사용한다.
 # (docker-compose.yml 의 ispot:ispot DB 자격증명과 동일한 성격의 dev-only 값)
-export SEED_USER_PASSWORD="${SEED_USER_PASSWORD:-ispot-demo-1234}"
+# seed_users 가 비밀번호 규칙을 검사하므로 규칙에 맞는 값이어야 한다(backend/docs/API_CONTRACT.md 3절).
+export SEED_USER_PASSWORD="${SEED_USER_PASSWORD:-Demo-Harbor-2468}"
 python -m scripts.seed_users --demo || true
 
 echo "[start] 완료 — admin@ispot.example.com / counselor@ispot.example.com (비밀번호: \$SEED_USER_PASSWORD)"

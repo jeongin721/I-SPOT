@@ -2,6 +2,8 @@
 #
 # 자유 회원가입이 없기 때문에 첫 관리자/상담사 계정은 이 script 로 만든다.
 # 비밀번호는 인자 또는 환경변수로 받고, 코드에 하드코딩하지 않는다.
+# 직접 준 비밀번호도 API 와 같은 비밀번호 규칙(app/core/password_policy.py)을 거친다.
+# 맞지 않으면 계정을 만들지 않고 사유를 출력한 뒤 종료 코드 1 로 끝난다.
 #
 # 사용 예:
 #   python -m scripts.seed_users --email admin@example.com --name 관리자 --role ADMIN
@@ -10,13 +12,14 @@
 import argparse
 import os
 import sys
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.core.password_policy import generate_password
 from app.core.enums import UserRole
+from app.core.errors import APIError
+from app.core.password_policy import generate_password, validate_password
 from app.core.security import hash_password
 from app.models.user import User
 
@@ -67,6 +70,30 @@ def resolve_password(provided: Optional[str]) -> Tuple[str, bool]:
     return generate_password(), True
 
 
+def check_given_password(password: str, accounts: Iterable[Tuple[str, str]]) -> bool:
+    """
+    직접 준 비밀번호가 규칙에 맞는지 본다. 맞지 않으면 사유를 출력하고 False.
+
+    --demo 는 계정 여러 개에 같은 비밀번호를 쓰므로 계정마다 이메일 · 이름 기준으로 본다.
+    비밀번호 원문은 출력하지 않는다.
+    """
+
+    for email, name in accounts:
+        try:
+            validate_password(password, email=email, name=name)
+        except APIError as error:
+            reasons = (error.details or {}).get("reasons", [])
+
+            print(f"비밀번호가 규칙에 맞지 않습니다({email}).", file=sys.stderr)
+
+            for reason in reasons:
+                print(f"  - {reason}", file=sys.stderr)
+
+            return False
+
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="I-SPOT 초기 계정 생성")
     parser.add_argument("--email")
@@ -94,6 +121,11 @@ def main() -> int:
     if args.demo:
         password, generated = resolve_password(args.password)
 
+        demo_accounts = [(email, name) for email, name, _ in DEMO_ACCOUNTS]
+
+        if not generated and not check_given_password(password, demo_accounts):
+            return 1
+
         for email, name, role in DEMO_ACCOUNTS:
             print(upsert_user(email, name, role, password))
 
@@ -104,6 +136,9 @@ def main() -> int:
         return 0
 
     password, generated = resolve_password(args.password)
+
+    if not generated and not check_given_password(password, [(args.email, args.name)]):
+        return 1
 
     print(upsert_user(args.email, args.name, UserRole(args.role), password))
 
