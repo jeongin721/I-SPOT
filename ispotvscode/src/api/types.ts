@@ -122,6 +122,26 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface PasswordChangeRequest {
+  current_password: string;
+  new_password: string;
+}
+
+/**
+ * 비밀번호 규칙 안내 문구. Backend `API_CONTRACT.md` 3절과 같은 내용이다.
+ * 화면에서 따로 규칙을 적지 말고 이 값을 쓴다 — 두 곳에 적으면 어긋난다.
+ *
+ * 규칙 위반은 `422 WEAK_PASSWORD` 이고, 사유가 `details.reasons` 에 문장 배열로 온다.
+ * 그 문장을 그대로 보여주면 된다.
+ *
+ * 주의: 숫자(8자·3종류)는 Backend 설정값이다. 기관 기준이 바뀌어 설정을 고치면
+ * 이 문구도 같이 고쳐야 한다. 그때는 API_CONTRACT.md 3절의 표를 그대로 옮긴다.
+ * 긴 비밀번호 종류 면제(`PASSWORD_PASSPHRASE_LENGTH`)는 기본값이 꺼짐(0)이라 적지 않는다.
+ */
+export const PASSWORD_RULE_TEXT =
+  "8자 이상이고 영문·숫자·특수문자를 모두 넣어 주세요(한글도 글자로 셉니다). " +
+  "이메일 아이디·이름과 흔한 단어는 쓸 수 없습니다.";
+
 // =========================================================
 // 사례
 // =========================================================
@@ -163,6 +183,28 @@ export interface CaseCreateRequest {
   /** guardian_type 이 OTHER 일 때만 보낼 수 있다. 그 외에는 422. */
   guardian_note?: string | null;
   notes?: string | null;
+  /** 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403). */
+  counselor_id?: string;
+}
+
+/**
+ * 사례 수정 요청(PATCH /cases/{id}). 바꿀 필드만 보낸다.
+ * title · child_alias · status 는 null 로 보낼 수 없다(422). 바꾸지 않으려면 빼고 보낸다.
+ */
+export interface CaseUpdateRequest {
+  title?: string;
+  child_alias?: string;
+  child_birth_year?: number | null;
+  child_gender?: string | null;
+  /** OTHER 가 아닌 값(또는 null)으로 바꾸면 Backend 가 기존 guardian_note 를 지운다. */
+  guardian_type?: GuardianType | null;
+  /** 사례의 guardian_type 이 OTHER 일 때만 보낼 수 있다(함께 보내거나 이미 OTHER). 그 외에는 422. */
+  guardian_note?: string | null;
+  notes?: string | null;
+  /** CLOSED 로 바꾸면 사례 종결. */
+  status?: CaseStatus;
+  /** 담당 상담사 변경. 관리자만 할 수 있다(403). */
+  counselor_id?: string;
 }
 
 // =========================================================
@@ -398,4 +440,60 @@ export interface SummaryEnvelope {
    */
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
+}
+
+// =========================================================
+// 처리 대기 업무 (대시보드)
+// =========================================================
+
+/** 사람이 처리할 차례인 업무 종류. 회차 상태 하나에 하나씩 대응한다. */
+export type TaskType =
+  | "UPLOAD_AUDIO"
+  | "REQUEST_STT"
+  | "REVIEW_TRANSCRIPT"
+  | "REQUEST_ANALYSIS"
+  | "REVIEW_ANALYSIS"
+  | "RETRY_STT"
+  | "RETRY_ANALYSIS";
+
+/** 화면에 표시할 한글 이름. */
+export const TASK_LABELS: Record<TaskType, string> = {
+  UPLOAD_AUDIO: "녹음 업로드",
+  REQUEST_STT: "원문 변환 요청",
+  REVIEW_TRANSCRIPT: "원문 검수",
+  REQUEST_ANALYSIS: "AI 분석 요청",
+  REVIEW_ANALYSIS: "분석 결과 검토",
+  RETRY_STT: "원문 변환 재시도",
+  RETRY_ANALYSIS: "AI 분석 재시도",
+};
+
+/** 처리 대기 업무 하나. 오래 기다린 것부터 온다. */
+export interface TaskItem {
+  session_id: string;
+  case_id: string;
+  case_number: string;
+  /** 실명이 아닌 별칭. */
+  child_alias: string;
+  session_number: number;
+  session_title: string | null;
+  session_status: SessionStatus;
+  task_type: TaskType;
+  /** 이 상태로 기다리기 시작한 시각(UTC, 항상 Z 로 끝남). */
+  waiting_since: string;
+  /**
+   * 기다린 시간이 기준(기본 48시간)을 넘었는지.
+   * 화면에는 "지연"으로 표시한다. 위험 신호와 헷갈리지 않게 "긴급"이라고 쓰지 않는다.
+   */
+  is_overdue: boolean;
+  counselor_id: string;
+  counselor_name: string | null;
+  /** 재시도 업무에만 값이 있다. 메시지는 회차 상세(error)에서 본다. */
+  last_error_code: string | null;
+}
+
+/** 대시보드 숫자. by_type 에는 업무 종류가 항상 모두 들어 있다(없으면 0). */
+export interface TaskSummary {
+  total: number;
+  overdue: number;
+  by_type: Record<TaskType, number>;
 }

@@ -155,16 +155,79 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 현재 로그인 사용자. 새로고침 후 세션 복원에 사용한다.
 
+### POST /api/v1/auth/me/password
+
+본인 비밀번호 변경. 성공하면 `204` (본문 없음).
+
+```json
+{ "current_password": "...", "new_password": "..." }
+```
+
+현재 비밀번호를 함께 받는다. Token 만 훔친 사람이 비밀번호를 바꿔 계정을 가져가는 것을 막는다.
+주소에 사용자 id 를 두지 않는다(`me`). 남의 비밀번호를 바꾸는 경로를 만들지 않기 위해서다.
+
+오류: `401 UNAUTHORIZED`(로그인 안 됨), `400 INVALID_CURRENT_PASSWORD`(현재 비밀번호 불일치),
+`422 WEAK_PASSWORD`, `422 SAME_PASSWORD`
+
+현재 비밀번호가 틀린 것은 `401` 이 아니다. Frontend 는 `401` 을 로그인 만료로 보고 로그인 화면으로 보내므로,
+입력만 틀렸는데 쫓겨나지 않도록 `400` 으로 구분한다.
+
 ### POST /api/v1/auth/users (관리자 전용)
 
 ```json
-{ "email": "new@example.com", "password": "8자 이상", "name": "이름", "role": "COUNSELOR" }
+{ "email": "new@example.com", "password": "아래 비밀번호 규칙 참고", "name": "이름", "role": "COUNSELOR" }
 ```
 
 `role`: `COUNSELOR | ADMIN`
-오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`
+오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`, `422 WEAK_PASSWORD`
 
 > 자유 회원가입 endpoint 는 존재하지 않는다.
+
+### 비밀번호 규칙
+
+**새로 정하는 비밀번호에만 적용한다.** 로그인 요청은 검사하지 않는다 —
+검사하면 규칙 이전에 만든 계정이 전부 잠긴다.
+
+기본값은 **팀 회의 결정(2026-09-18)** 인 "8자 이상, 영문 · 숫자 · 특수문자 포함" 이다.
+
+| 항목 | 기본값 | 설정 이름 |
+| --- | --- | --- |
+| 최소 길이 | 8자 | `PASSWORD_MIN_LENGTH` |
+| 문자 종류 | 글자 · 숫자 · 특수문자 **3종 모두**. 대문자와 소문자를 나누지 않는다 | `PASSWORD_MIN_CLASSES` |
+| 종류 면제 | **없음** (`0`). `12`~`72` 로 설정하면 그 길이 이상은 종류를 보지 않는다 | `PASSWORD_PASSPHRASE_LENGTH` |
+| 공백 | 공백도 특수문자로 센다(앞뒤 공백은 거부) | 고정 |
+| 최대 | 72바이트 (한글 24자) | 고정 — bcrypt 가 그 뒤를 잘라낸다 |
+
+한글도 글자로 센다. 한글 + 숫자 + 특수문자면 통과한다.
+
+같이 막는 것: 이메일 아이디 · 이름(한글 이름 포함), 서비스 이름(`ispot`), 흔한 비밀번호(`password` 등),
+같은 문자 4회 반복, 연속 문자(`1234` · `qwer` · `asdf`), 숫자 · 영문 교차 배열(`1q2w` · `q1w2`),
+한글 자판 상태로 친 키보드 줄(`ㅂㅈㄷㄱ` · `ㅁㄴㅇㄹ` · `ㅋㅌㅊㅍ`), 앞뒤 공백.
+금지 단어는 흔한 기호 치환(`@`·`4`→a, `0`→o, `1`→i, `3`→e, `5`·`$`→s, `7`→t)을 되돌려서도 찾는다.
+`P@ssw0rd` 는 `password` 로 본다.
+
+한글은 표기 방식이 두 가지(NFC · NFD)라 Backend 가 저장 · 검증 모두 NFC 로 맞춘다. 기기가 달라도 같은 비밀번호로 로그인된다.
+
+위반하면 `422 WEAK_PASSWORD` 이고 사유가 `details.reasons` 에 문장 배열로 담긴다.
+아래는 `abc` 를 보냈을 때다.
+
+```json
+{
+  "error": {
+    "code": "WEAK_PASSWORD",
+    "message": "비밀번호가 규칙에 맞지 않습니다.",
+    "details": {
+      "reasons": [
+        "8자 이상이어야 합니다.",
+        "영문(한글도 됩니다) · 숫자 · 특수문자 중 3종류 이상을 섞어야 합니다."
+      ]
+    }
+  }
+}
+```
+
+**비밀번호 원문은 응답 · 오류 · 로그 어디에도 담기지 않는다.**
+8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값과 128자 초과뿐이다(요청 형식 검사).
 
 ---
 
@@ -174,6 +237,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 
+- `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
 - 상담사: 담당 Case 만 반환
 - 관리자: 전체 반환
 
@@ -257,6 +321,13 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 ### PATCH /api/v1/cases/{case_id}
 
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.
+
+- `title`, `child_alias`, `status` 는 `null` 로 보낼 수 없다(`422 VALIDATION_ERROR`). 바꾸지 않을 필드는 빼고 보낸다
+- `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`)
+- 보호자 규칙은 저장된 값과 합쳐서 판단한다
+  - 이미 `OTHER` 인 사례는 `guardian_note` 만 보내도 된다
+  - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
+  - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
@@ -628,11 +699,97 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ---
 
-## 11. Error Code 목록
+## 11. Tasks (처리 대기 업무)
+
+대시보드의 "나의 업무 목록"용. **사람이 처리할 차례인 Session** 을 오래 기다린 순서로 준다.
+업무는 따로 저장하지 않고 Session 상태에서 계산한다.
+
+| Session 상태 | `task_type` | 화면 이름 | 기다리기 시작한 시각 |
+|---|---|---|---|
+| `CREATED` | `UPLOAD_AUDIO` | 녹음 업로드 | 상담일(`consulted_at`), 없으면 생성 시각 |
+| `AUDIO_UPLOADED` | `REQUEST_STT` | 원문 변환 요청 | 가장 최근 음성 업로드 시각 |
+| `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정한 원문을 다시 고친 경우 되돌린 시각) |
+| `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 |
+| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 |
+| `STT_FAILED` | `RETRY_STT` | 원문 변환 재시도 | 실패 시각 |
+| `AI_FAILED` | `RETRY_ANALYSIS` | AI 분석 재시도 | 실패 시각 |
+
+- `REVIEW_TRANSCRIPT` 는 STT 완료 · 최근 확정 · 되돌린 시각 중 가장 늦은 값이다. 되돌린 시각은 확정 뒤
+  처음 고친(`PATCH …/transcript`) 시각이다. 오래전에 확정한 원문을 오늘 다시 고치면 오늘부터 세고,
+  되돌린 뒤 더 고쳐도 다시 세지 않는다.
+- `REQUEST_ANALYSIS` 는 AI 실패 뒤 이 상태로 되돌아오면 실패 시각이 더 늦을 때 그것을 쓴다.
+  상태 전이 규칙에만 있는 대비용이고, 지금은 이 경로로 가는 API 가 없다.
+- 처리 중(`STT_PROCESSING`, `AI_PROCESSING`)과 `APPROVED` 는 업무가 아니다.
+  처리 중에 멈춘 Session 은 조회할 때 실패로 마감되어 재시도 업무로 나온다(1.4 참고).
+- **종결(`CLOSED`) 사례의 Session 과, 상담일이 아직 오지 않은 `CREATED` Session 은 뺀다.**
+- 상담사는 담당 사례의 Session 만, 관리자는 전체를 본다.
+
+### GET /api/v1/tasks
+
+Query: `page`, `page_size`(≤100), `task_type`, `overdue_only`(`true`/`false`), `counselor_id`
+
+- `counselor_id` 는 **관리자만** 쓸 수 있다. 상담사가 본인이 아닌 id 를 보내면 `403 FORBIDDEN`
+- 모르는 `task_type` 이면 `422 VALIDATION_ERROR`
+- 정렬: `waiting_since` 오래된 순, 같으면 `case_number` · `session_number` 순
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "session_id": "uuid",
+        "case_id": "uuid",
+        "case_number": "C-2026-0001",
+        "child_alias": "아동_001",
+        "session_number": 2,
+        "session_title": "2회기 상담",
+        "session_status": "STT_REVIEW_REQUIRED",
+        "task_type": "REVIEW_TRANSCRIPT",
+        "waiting_since": "2026-09-15T02:10:00Z",
+        "is_overdue": true,
+        "counselor_id": "uuid",
+        "counselor_name": "이서연",
+        "last_error_code": null
+      }
+    ],
+    "meta": { "total": 1, "page": 1, "page_size": 20, "total_pages": 1 }
+  }
+}
+```
+
+- `waiting_since` 는 항상 UTC(`Z`)로 준다.
+- `is_overdue` 는 `waiting_since` 로부터 `TASK_OVERDUE_HOURS`(기본 48시간)가 지났는지다.
+  화면에는 **"지연"** 으로 표시한다. 위험 신호와 헷갈리지 않게 "긴급"이라고 쓰지 않고, 색만으로 구분하지 않는다.
+- 아동은 `child_alias` 만 준다. 상담 원문은 주지 않는다.
+- `last_error_code` 는 재시도 업무에만 값이 있다. 메시지는 `GET /api/v1/sessions/{session_id}` 의 `error` 에서 본다.
+
+### GET /api/v1/tasks/summary
+
+Query: `counselor_id` (목록과 같은 규칙)
+
+```json
+{
+  "data": {
+    "total": 5,
+    "overdue": 3,
+    "by_type": {
+      "UPLOAD_AUDIO": 1, "REQUEST_STT": 0, "REVIEW_TRANSCRIPT": 1, "REQUEST_ANALYSIS": 0,
+      "REVIEW_ANALYSIS": 2, "RETRY_STT": 1, "RETRY_ANALYSIS": 0
+    }
+  }
+}
+```
+
+`by_type` 에는 업무 종류 7개가 **항상 모두** 들어 있다. 없는 종류는 `0` 이다.
+
+---
+
+## 12. Error Code 목록
 
 | code | status | 설명 |
 |---|---|---|
 | `INVALID_CREDENTIALS` | 401 | 로그인 실패 |
+| `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다) |
 | `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류 |
 | `INACTIVE_USER` | 403 | 비활성 계정 |
 | `FORBIDDEN` | 403 | 권한 없음 (담당 아닌 Case 포함) |
@@ -646,6 +803,8 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
+| `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
+| `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
 | `INVALID_SESSION_STATE` | 409 | 상태 전이 불가 (`details.current_status`, `details.expected_status`) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
@@ -659,7 +818,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ---
 
-## 12. 전체 Flow 예시
+## 13. 전체 Flow 예시
 
 ```text
 POST /auth/login
@@ -680,7 +839,7 @@ GET  /sessions/{id}                           → 상태/데이터 유지 확인
 
 ---
 
-## 13. Contract 변경 요청
+## 14. Contract 변경 요청
 
 이 문서의 구조를 바꿔야 하면 코드 수정 전에 아래 형식으로 제안한다.
 

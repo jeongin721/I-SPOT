@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.adapters.module_loader import ensure_repo_root_on_path
 from app.adapters.stt_adapter import STTError, STTOutputError, get_stt_adapter
 from app.core import storage
 from app.core.concurrency import OperationTimeout, run_with_timeout
@@ -34,6 +35,9 @@ from app.schemas.transcript import (
     TranscriptUpdateRequest,
 )
 from app.services import audit_service, audio_service, session_service
+
+ensure_repo_root_on_path()
+from stt.child_handoff import build_canonical_child_handoff
 
 logger = get_logger(__name__)
 
@@ -77,6 +81,17 @@ def require_confirmed_transcript(db: Session, session_id: uuid.UUID) -> Transcri
 
 def to_transcript_response(transcript: Transcript) -> TranscriptResponse:
     segments = sorted(transcript.segments, key=lambda item: item.order_index)
+    contract_segments = [
+        {
+            "segment_id": segment.segment_id,
+            "speaker": segment.speaker.value,
+            "start_ms": segment.start_ms,
+            "end_ms": segment.end_ms,
+            "text": segment.text,
+            "confidence": segment.confidence,
+        }
+        for segment in segments
+    ]
 
     return TranscriptResponse(
         id=transcript.id,
@@ -89,20 +104,11 @@ def to_transcript_response(transcript: Transcript) -> TranscriptResponse:
         stt_provider=transcript.stt_provider,
         stt_model=transcript.stt_model,
         created_at=transcript.created_at,
-        segments=[
-            {
-                "segment_id": segment.segment_id,
-                "speaker": segment.speaker,
-                "start_ms": segment.start_ms,
-                "end_ms": segment.end_ms,
-                "text": segment.text,
-                "confidence": segment.confidence,
-            }
-            for segment in segments
-        ],
+        segments=contract_segments,
         edited_segment_ids=[
             segment.segment_id for segment in segments if segment.is_edited
         ],
+        child_handoff=build_canonical_child_handoff({"segments": contract_segments}),
     )
 
 

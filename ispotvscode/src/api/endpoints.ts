@@ -13,8 +13,10 @@ import type {
   CaseCreateRequest,
   CaseDetail,
   CaseStatus,
+  CaseUpdateRequest,
   LoginRequest,
   LoginResponse,
+  PasswordChangeRequest,
   Paged,
   STTRequestResponse,
   Session,
@@ -24,6 +26,9 @@ import type {
   Summary,
   SummaryEnvelope,
   SummaryUpdateRequest,
+  TaskItem,
+  TaskSummary,
+  TaskType,
   Transcript,
   TranscriptEnvelope,
   TranscriptUpdateRequest,
@@ -62,6 +67,17 @@ export const auth = {
     clearToken();
   },
 
+  /**
+   * 본인 비밀번호 변경. 성공하면 응답 본문이 없다(204).
+   *
+   * 오류: 400 INVALID_CURRENT_PASSWORD(현재 비밀번호 불일치 — 로그인 만료가 아니므로
+   * 로그인 화면으로 보내지 않는다), 422 WEAK_PASSWORD(규칙 위반 — `details.reasons` 에 사유),
+   * 422 SAME_PASSWORD(이전과 같음)
+   */
+  changePassword(payload: PasswordChangeRequest): Promise<void> {
+    return api.post<void>("/auth/me/password", payload);
+  },
+
   /** 관리자 전용. 페이지 없이 전체 배열로 온다. */
   listUsers(): Promise<User[]> {
     return api.get<User[]>("/auth/users");
@@ -86,7 +102,8 @@ export const cases = {
     return api.post<Case>("/cases", payload);
   },
 
-  update(caseId: string, payload: Partial<CaseCreateRequest>): Promise<Case> {
+  /** 바꿀 필드만 보낸다. status 로 종결, counselor_id 로 담당자 변경(관리자만). */
+  update(caseId: string, payload: CaseUpdateRequest): Promise<Case> {
     return api.patch<Case>(`/cases/${caseId}`, payload);
   },
 
@@ -207,5 +224,30 @@ export const summary = {
   /** 승인. 회차가 APPROVED 로 넘어간다. */
   approve(sessionId: string): Promise<Summary> {
     return api.post<Summary>(`/sessions/${sessionId}/summary/approve`);
+  },
+};
+
+// =========================================================
+// 처리 대기 업무 (대시보드)
+// =========================================================
+
+export const tasks = {
+  /**
+   * 사람이 처리할 차례인 회차를 오래 기다린 순서로 가져온다.
+   * 상담사는 담당 사례만 보인다. counselor_id 는 관리자만 쓸 수 있다(다른 사람 id 면 403).
+   */
+  list(
+    params?: PageQuery & {
+      task_type?: TaskType;
+      overdue_only?: boolean;
+      counselor_id?: string;
+    },
+  ): Promise<Paged<TaskItem>> {
+    return api.get<Paged<TaskItem>>("/tasks", params);
+  },
+
+  /** 대시보드 숫자 (전체 · 지연 · 종류별). */
+  summary(params?: { counselor_id?: string }): Promise<TaskSummary> {
+    return api.get<TaskSummary>("/tasks/summary", params);
   },
 };

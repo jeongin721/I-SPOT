@@ -46,6 +46,9 @@ class CaseCreateRequest(GuardianFields):
     case_number: Optional[str] = Field(default=None, min_length=1, max_length=50)
 
 
+_CASE_NOT_NULLABLE_FIELDS = ("title", "child_alias", "status")
+
+
 class CaseUpdateRequest(GuardianFields):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     child_alias: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -54,6 +57,33 @@ class CaseUpdateRequest(GuardianFields):
     notes: Optional[str] = Field(default=None, max_length=4000)
     status: Optional[CaseStatus] = None
     counselor_id: Optional[uuid.UUID] = None
+
+    @model_validator(mode="after")
+    def _check_note_usage(self) -> "CaseUpdateRequest":
+        """
+        GuardianFields 의 같은 이름 검사를 대신한다.
+
+        수정은 보낸 필드만 바뀐다. 메모만 보내면 저장된 유형과 합쳐서 판단해야 하므로
+        여기서는 유형을 함께 보냈을 때만 검사하고, 나머지는 case_service.update_case 가 검사한다.
+        """
+
+        if (
+            self.guardian_note
+            and "guardian_type" in self.model_fields_set
+            and self.guardian_type != GuardianType.OTHER
+        ):
+            raise ValueError(
+                "guardian_note 는 guardian_type 이 OTHER 일 때만 사용합니다."
+            )
+
+        # 비울 수 없는 필드를 null 로 보내면 DB 저장에서 500 이 난다. 요청 단계에서 거부한다.
+        for field in _CASE_NOT_NULLABLE_FIELDS:
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(
+                    f"{field} 는 null 로 보낼 수 없습니다. 바꾸지 않으려면 보내지 않습니다."
+                )
+
+        return self
 
 
 class CaseResponse(BaseModel):
