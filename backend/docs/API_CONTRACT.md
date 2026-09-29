@@ -143,7 +143,12 @@ AI_FAILED     ← AI_PROCESSING 실패
       "name": "상담사",
       "role": "COUNSELOR",
       "is_active": true,
-      "created_at": "2026-09-01T10:00:00Z"
+      "created_at": "2026-09-01T10:00:00Z",
+      "last_login_at": "2026-09-29T09:00:00Z",
+      "must_change_password": false,
+      "is_locked": false,
+      "locked_until": null,
+      "dormant_at": null
     }
   }
 }
@@ -202,7 +207,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 주소에 사용자 id 를 두지 않는다(`me`). 남의 비밀번호를 바꾸는 경로를 만들지 않기 위해서다.
 
 오류: `401 UNAUTHORIZED`(로그인 안 됨), `400 INVALID_CURRENT_PASSWORD`(현재 비밀번호 불일치),
-`422 WEAK_PASSWORD`, `422 SAME_PASSWORD`
+`422 WEAK_PASSWORD`, `422 SAME_PASSWORD`, `422 PASSWORD_REUSED`
 
 현재 비밀번호가 틀린 것은 `401` 이 아니다. Frontend 는 `401` 을 로그인 만료로 보고 로그인 화면으로 보내므로,
 입력만 틀렸는데 쫓겨나지 않도록 `400` 으로 구분한다.
@@ -215,6 +220,8 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 `role`: `COUNSELOR | ADMIN`
 오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`, `422 WEAK_PASSWORD`
+
+만든 관리자와 함께 감사 로그 `USER_CREATED` 로 남는다(아래 감사 로그 절).
 
 > 자유 회원가입 endpoint 는 존재하지 않는다.
 
