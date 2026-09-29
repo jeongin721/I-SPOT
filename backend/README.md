@@ -108,6 +108,9 @@ python -m scripts.seed_users --demo
 python -m scripts.seed_users --email admin@example.com --name 관리자 --role ADMIN
 ```
 
+비밀번호를 `--password` 나 `SEED_USER_PASSWORD` 로 직접 주면 API 와 같은 비밀번호 규칙(`docs/API_CONTRACT.md` 3절)을 거친다.
+맞지 않으면 계정을 만들지 않고 사유를 출력한 뒤 종료 코드 1 로 끝난다. 주지 않으면 규칙에 맞는 값을 만들어 출력한다.
+
 ### 2.6 서버 실행
 
 ```bash

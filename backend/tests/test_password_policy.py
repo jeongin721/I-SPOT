@@ -7,10 +7,12 @@ import unicodedata
 import uuid
 from typing import Dict
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import select
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.enums import AuditAction
 from app.core.password_policy import check_password, generate_password
 from app.models.audit_log import AuditLog
@@ -24,6 +26,16 @@ OK_MIN = "Ab3-xyzQ"
 OK_3_CLASSES = "Manzoburitakoy7!"
 OK_PASSPHRASE = "manzoburitakoyhanabira"
 KO_24 = "가나다라마바사아자차카타파하거너더러머버서어저처"
+
+# 한글 23자(69바이트) + 숫자 · 특수문자 3자 = 72바이트. bcrypt 가 받는 최대 길이다.
+KO_72 = "가나다라마바사아자차카타파하거너더러머버서어저" + "7!?"
+
+SEQUENCE_REASON = "연속된 문자"
+BANNED_WORD_REASON = "쉽게 짐작할 수 있는 단어"
+
+
+def _has_reason(password: str, keyword: str) -> bool:
+    return any(keyword in reason for reason in check_password(password))
 
 
 # =========================================================
@@ -43,21 +55,47 @@ def test_all_three_classes_required() -> None:
     assert check_password(OK_3_CLASSES) == []  # 특수문자까지 = 3종
 
 
-def test_long_passphrase_is_exempt_from_classes() -> None:
-    assert len(OK_PASSPHRASE) >= settings.PASSWORD_PASSPHRASE_LENGTH
+def test_long_password_is_not_exempt_from_classes_by_default(monkeypatch) -> None:
+    """팀 결정(8자 이상, 영문 · 숫자 · 특수문자 모두)에 긴 비밀번호 면제는 없다."""
+
+    assert Settings(_env_file=None).PASSWORD_PASSPHRASE_LENGTH == 0
+
+    monkeypatch.setattr(settings, "PASSWORD_PASSPHRASE_LENGTH", 0)
+
+    assert check_password(OK_PASSPHRASE) != []  # 22자, 글자만
+    assert check_password(KO_24) != []  # 한글 24자, 글자만
+    assert not any("섞지 않아도" in reason for reason in check_password(OK_PASSPHRASE))
+
+
+def test_passphrase_exemption_applies_only_when_configured(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "PASSWORD_PASSPHRASE_LENGTH", 20)
+
     assert check_password(OK_PASSPHRASE) == []
+    assert any("20자 이상이면" in reason for reason in check_password("manzoburitakoy7"))
 
 
-def test_korean_passphrase_and_byte_limit() -> None:
-    assert len(KO_24) == 24
-    assert len(KO_24.encode("utf-8")) == 72
+@pytest.mark.parametrize("value", [0, 12, 20, 72])
+def test_passphrase_length_setting_accepts_off_or_12_to_72(value: int) -> None:
+    configured = Settings(_env_file=None, PASSWORD_PASSPHRASE_LENGTH=value)
 
-    assert check_password(KO_24) == []
-    assert check_password(KO_24 + "커") != []  # 75바이트 — bcrypt 가 잘라내는 구간
+    assert configured.PASSWORD_PASSPHRASE_LENGTH == value
+
+
+@pytest.mark.parametrize("value", [-1, 1, 8, 11, 73])
+def test_passphrase_length_setting_rejects_other_values(value: int) -> None:
+    with pytest.raises(ValidationError, match="PASSWORD_PASSPHRASE_LENGTH"):
+        Settings(_env_file=None, PASSWORD_PASSPHRASE_LENGTH=value)
+
+
+def test_korean_byte_limit() -> None:
+    assert len(KO_72.encode("utf-8")) == 72
+
+    assert check_password(KO_72) == []
+    assert check_password(KO_72 + "커") != []  # 75바이트 — bcrypt 가 잘라내는 구간
 
 
 def test_hangul_counts_as_a_letter() -> None:
-    """한글도 글자로 센다. 안 세면 한글 비밀번호는 20자 미만에서 모두 거부된다."""
+    """한글도 글자로 센다. 안 세면 한글 + 숫자 + 특수문자 비밀번호가 모두 거부된다."""
 
     assert check_password("가나다라마바사아자차1!") == []  # 한글 + 숫자 + 특수 = 3종
 
@@ -117,6 +155,29 @@ def test_common_password_is_blocked() -> None:
     assert check_password("MyQwerty-88x!") != []
 
 
+@pytest.mark.parametrize(
+    "password",
+    [
+        "P@ssw0rd!",  # @→a, 0→o
+        "Passw0rd!",  # 0→o
+        "4dm1n-Tiger-9",  # 4→a, 1→i
+        "$ecret-Tiger-9",  # $→s
+        "H3ll0-Tiger-9",  # 3→e, 0→o
+        "R007-Tiger-9!",  # 0→o, 7→t
+        "Mas7er-Tiger-9!",  # 7→t
+    ],
+)
+def test_common_password_with_symbol_substitution_is_blocked(password: str) -> None:
+    """흔한 기호 치환(@→a, 0→o 같은 것)을 되돌려서도 금지 단어를 찾는다."""
+
+    assert _has_reason(password, BANNED_WORD_REASON)
+
+
+def test_symbol_substitution_does_not_block_ordinary_password() -> None:
+    assert check_password(NEW_PASSWORD) == []
+    assert check_password("Rainy-Harbor-73") == []
+
+
 def test_repeated_characters_are_blocked() -> None:
     assert check_password("Vaaaa-Poqm9!") != []
 
@@ -125,6 +186,21 @@ def test_sequential_characters_are_blocked() -> None:
     assert check_password("Vx-1234-Poqm!") != []  # 숫자 연속
     assert check_password("Vx-asdf-Poqm9!") != []  # 키보드 연속
     assert check_password("Vx-hijk-Poqm9!") != []  # 알파벳 연속
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        "1q2w3e4r!",  # 숫자 · 영문 교차
+        "q1w2e3r4!",  # 영문 · 숫자 교차
+        "Vx-r4e3w2-Poqm!",  # 교차 배열을 거꾸로
+        "ㅂㅈㄷㄱ12!@",  # 한글 자판 상태로 친 qwer
+        "ㅁㄴㅇㄹ-Poqm9!",  # 한글 자판 상태로 친 asdf
+        "ㅋㅌㅊㅍ-Poqm9!",  # 한글 자판 상태로 친 zxcv
+    ],
+)
+def test_keyboard_patterns_are_blocked(password: str) -> None:
+    assert _has_reason(password, SEQUENCE_REASON)
 
 
 def test_reason_is_returned_for_each_violation() -> None:
@@ -185,14 +261,33 @@ def test_create_user_rejects_password_containing_email_id(
     assert response.json()["error"]["code"] == "WEAK_PASSWORD"
 
 
-def test_create_user_short_password_stays_validation_error(
+def test_create_user_short_password_is_weak_password(
     client: TestClient, admin_headers
 ) -> None:
-    """8자 미만은 기존 계약대로 VALIDATION_ERROR 로 남긴다."""
+    """8자 미만도 규칙 위반이다. 다른 위반과 같이 WEAK_PASSWORD 와 한국어 사유로 알린다."""
 
     response = client.post(
         "/api/v1/auth/users",
-        json=_create_user_payload("123"),
+        json=_create_user_payload("Ab3-xyz"),
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 422
+
+    error = response.json()["error"]
+
+    assert error["code"] == "WEAK_PASSWORD"
+    assert f"{settings.PASSWORD_MIN_LENGTH}자 이상이어야 합니다." in error["details"]["reasons"]
+
+
+def test_create_user_empty_password_stays_validation_error(
+    client: TestClient, admin_headers
+) -> None:
+    """빈 값은 규칙을 볼 것도 없이 입력 형식 오류다."""
+
+    response = client.post(
+        "/api/v1/auth/users",
+        json=_create_user_payload(""),
         headers=admin_headers,
     )
 
@@ -233,14 +328,41 @@ def test_change_password_requires_login(client: TestClient) -> None:
 def test_change_password_rejects_wrong_current_password(
     client: TestClient, counselor_headers
 ) -> None:
+    """
+    현재 비밀번호가 틀린 것은 로그인 만료가 아니다.
+
+    Frontend 는 401 을 로그인 만료로 보고 로그인 화면으로 보낸다(client.ts isUnauthorized).
+    입력만 틀렸는데 쫓겨나지 않도록 400 으로 알린다.
+    """
+
     response = client.post(
         "/api/v1/auth/me/password",
         json={"current_password": "Wrong-Current-11", "new_password": NEW_PASSWORD},
         headers=counselor_headers,
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_CURRENT_PASSWORD"
+
+    # 로그인은 그대로 유지된다.
+    assert client.get("/api/v1/auth/me", headers=counselor_headers).status_code == 200
+
+
+def test_change_password_short_new_password_is_weak_password(
+    client: TestClient, counselor_headers
+) -> None:
+    response = client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": COUNSELOR_PASSWORD, "new_password": "Ab3-xyz"},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 422
+
+    error = response.json()["error"]
+
+    assert error["code"] == "WEAK_PASSWORD"
+    assert f"{settings.PASSWORD_MIN_LENGTH}자 이상이어야 합니다." in error["details"]["reasons"]
 
 
 def test_change_password_rejects_weak_new_password(
@@ -347,7 +469,7 @@ def test_change_password_detects_same_korean_password(
 
     first = client.post(
         "/api/v1/auth/me/password",
-        json={"current_password": COUNSELOR_PASSWORD, "new_password": KO_24},
+        json={"current_password": COUNSELOR_PASSWORD, "new_password": KO_72},
         headers=counselor_headers,
     )
 
@@ -356,7 +478,7 @@ def test_change_password_detects_same_korean_password(
     # 비밀번호를 바꾸면 이전 Token 이 무효가 되므로 다시 로그인한다.
     relogin = client.post(
         "/api/v1/auth/login",
-        json={"email": COUNSELOR_EMAIL, "password": KO_24},
+        json={"email": COUNSELOR_EMAIL, "password": KO_72},
     )
 
     assert relogin.status_code == 200
@@ -365,7 +487,7 @@ def test_change_password_detects_same_korean_password(
 
     second = client.post(
         "/api/v1/auth/me/password",
-        json={"current_password": KO_24, "new_password": KO_24},
+        json={"current_password": KO_72, "new_password": KO_72},
         headers=headers,
     )
 
@@ -380,7 +502,7 @@ def test_korean_password_works_across_notations(
 
     changed = client.post(
         "/api/v1/auth/me/password",
-        json={"current_password": COUNSELOR_PASSWORD, "new_password": KO_24},
+        json={"current_password": COUNSELOR_PASSWORD, "new_password": KO_72},
         headers=counselor_headers,
     )
 
@@ -390,7 +512,7 @@ def test_korean_password_works_across_notations(
         "/api/v1/auth/login",
         json={
             "email": COUNSELOR_EMAIL,
-            "password": unicodedata.normalize("NFD", KO_24),
+            "password": unicodedata.normalize("NFD", KO_72),
         },
     )
 

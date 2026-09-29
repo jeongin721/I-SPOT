@@ -12,6 +12,8 @@ class ErrorCode(str, Enum):
 
     # 인증 / 권한
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    # 비밀번호 변경 때 현재 비밀번호 불일치. 로그인 만료(401)와 헷갈리지 않게 400 으로 쓴다.
+    INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"
     UNAUTHORIZED = "UNAUTHORIZED"
     INACTIVE_USER = "INACTIVE_USER"
     ACCOUNT_LOCKED = "ACCOUNT_LOCKED"

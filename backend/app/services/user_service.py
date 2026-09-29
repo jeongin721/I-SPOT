@@ -360,13 +360,16 @@ def change_password(
 
     현재 비밀번호를 함께 받는다. Token 만 훔친 사람이 비밀번호를 바꿔
     계정을 가져가는 것을 막는다.
+
+    현재 비밀번호가 틀리면 401 이 아니라 400 이다. Frontend 는 401 을 로그인 만료로 보고
+    로그인 화면으로 보내므로(client.ts isUnauthorized), 입력 실수로 쫓겨나지 않게 한다.
     """
 
     if not verify_password(payload.current_password, user.hashed_password):
         raise APIError(
-            ErrorCode.INVALID_CREDENTIALS,
+            ErrorCode.INVALID_CURRENT_PASSWORD,
             "현재 비밀번호가 올바르지 않습니다.",
-            status_code=401,
+            status_code=400,
         )
 
     validate_password(payload.new_password, email=user.email, name=user.name)

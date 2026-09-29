@@ -59,6 +59,11 @@ _BANNED_WORDS = (
     "abc123",
 )
 
+# 흔한 기호 치환. `P@ssw0rd` 처럼 글자를 바꿔 금지 단어를 피하는 것을 되돌려 본다.
+_SUBSTITUTIONS = str.maketrans(
+    {"@": "a", "4": "a", "0": "o", "1": "i", "3": "e", "5": "s", "$": "s", "7": "t"}
+)
+
 _SEQUENCES = (
     string.ascii_lowercase,
     string.digits,
@@ -66,6 +71,13 @@ _SEQUENCES = (
     "asdfghjkl",
     "zxcvbnm",
     "1qaz2wsx",
+    # 숫자 줄과 윗줄을 번갈아 친 것(1q2w3e4r · q1w2e3r4)
+    "1q2w3e4r5t6y7u8i9o0p",
+    "q1w2e3r4t5y6u7i8o9p0",
+    # 한글 자판 상태로 친 키보드 줄(qwer → ㅂㅈㄷㄱ). 두벌식 기준이다.
+    "ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔ",
+    "ㅁㄴㅇㄹㅎㅗㅓㅏㅣ",
+    "ㅋㅌㅊㅍㅠㅜㅡ",
 )
 
 
@@ -77,7 +89,8 @@ def _character_classes(password: str) -> int:
     대문자와 소문자를 나누지 않는다. 나누면 `Abcdefgh1` 처럼
     특수문자가 없어도 3종류가 되어 결정과 어긋난다.
 
-    한글도 글자로 센다. 안 세면 한글 비밀번호는 20자 미만에서 모두 거부된다.
+    한글도 글자로 센다. 안 세면 한글 + 숫자 + 특수문자 비밀번호가 모두 거부된다.
+    공백도 특수문자로 센다(앞뒤 공백은 check_password 가 따로 거부한다).
     """
 
     letter = digit = symbol = False
@@ -147,18 +160,25 @@ def check_password(
     if len(password) < settings.PASSWORD_MIN_LENGTH:
         reasons.append(f"{settings.PASSWORD_MIN_LENGTH}자 이상이어야 합니다.")
 
-    if (
-        len(password) < settings.PASSWORD_PASSPHRASE_LENGTH
-        and _character_classes(password) < settings.PASSWORD_MIN_CLASSES
-    ):
-        reasons.append(
+    # 0 이면 면제하지 않는다. 팀 결정(2026-09-18)에 긴 비밀번호 면제는 없다.
+    passphrase_length = settings.PASSWORD_PASSPHRASE_LENGTH
+    exempt = passphrase_length > 0 and len(password) >= passphrase_length
+
+    if not exempt and _character_classes(password) < settings.PASSWORD_MIN_CLASSES:
+        message = (
             f"영문(한글도 됩니다) · 숫자 · 특수문자 중 {settings.PASSWORD_MIN_CLASSES}종류 이상을 "
-            f"섞어야 합니다. {settings.PASSWORD_PASSPHRASE_LENGTH}자 이상이면 섞지 않아도 됩니다."
+            "섞어야 합니다."
         )
 
-    lowered = password.lower()
+        if passphrase_length > 0:
+            message += f" {passphrase_length}자 이상이면 섞지 않아도 됩니다."
 
-    if any(word in lowered for word in _BANNED_WORDS):
+        reasons.append(message)
+
+    lowered = password.lower()
+    unsubstituted = lowered.translate(_SUBSTITUTIONS)
+
+    if any(word in lowered or word in unsubstituted for word in _BANNED_WORDS):
         reasons.append("쉽게 짐작할 수 있는 단어가 들어 있습니다.")
 
     email_id = email.split("@")[0] if email else None

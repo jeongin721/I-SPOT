@@ -155,6 +155,8 @@ def test_admin_cannot_create_duplicate_email(client: TestClient, admin_headers) 
 
 
 def test_short_password_is_rejected(client: TestClient, admin_headers) -> None:
+    """짧은 것도 비밀번호 규칙 위반이라 WEAK_PASSWORD 로 나간다.(API_CONTRACT.md 3절)"""
+
     response = client.post(
         "/api/v1/auth/users",
         json={
@@ -167,7 +169,7 @@ def test_short_password_is_rejected(client: TestClient, admin_headers) -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.json()["error"]["code"] == "WEAK_PASSWORD"
 
 
 def test_admin_login_returns_admin_role(client: TestClient, admin_id: uuid.UUID) -> None:
