@@ -26,9 +26,12 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     # 관리자 화면이 "왜 로그인이 안 되는지" 를 구분해 보여줄 수 있어야 한다.
-    # is_active(관리자 정지) · locked_until(실패 잠금) · dormant_at(미접속) 은 뜻이 다르다.
+    # is_active(관리자 정지) · is_locked(실패 잠금) · dormant_at(미접속) 은 뜻이 다르다.
     last_login_at: Optional[datetime] = None
     must_change_password: bool = False
+    # 잠김 여부는 is_locked 로 본다. 기본 설정(LOGIN_LOCK_MINUTES=0)에서는 시간으로 풀리지 않아
+    # locked_until 이 비어 있다. locked_until 은 시간 잠금일 때 풀리는 시각이다.
+    is_locked: bool = False
     locked_until: Optional[datetime] = None
     dormant_at: Optional[datetime] = None
 

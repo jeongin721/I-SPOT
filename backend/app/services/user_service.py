@@ -17,6 +17,7 @@ from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError, ErrorCode, conflict
 from app.core.password_policy import validate_password
 from app.core.security import hash_password, verify_password
+from app.models.base import as_utc
 from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
 from app.schemas.auth import PasswordChangeRequest, UserCreateRequest
@@ -33,18 +34,6 @@ INVALID_CREDENTIALS_MESSAGE = (
 # =========================================================
 # 공통
 # =========================================================
-
-def as_utc(value: Optional[datetime]) -> Optional[datetime]:
-    """
-    SQLite 는 시간대 없이 돌려준다. 저장은 UTC 이므로 UTC 로 본다.
-    PostgreSQL 은 시간대를 그대로 돌려주므로 값이 바뀌지 않는다.
-    """
-
-    if value is None:
-        return None
-
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-
 
 def active_admin_count(db: Session) -> int:
     """지금 로그인할 수 있는 관리자 수."""
@@ -65,19 +54,9 @@ def active_admin_count(db: Session) -> int:
 
 
 def _is_locked(user: User, now: datetime) -> bool:
-    """
-    잠금 여부.
+    """잠금 여부. 판정 규칙은 User.is_locked_at 한 곳에 있다(계정 응답의 is_locked 와 같은 기준)."""
 
-    `LOGIN_LOCK_MINUTES` 가 0 이면 시간으로 풀리지 않으므로 실패 횟수가 기준이다.
-    0 보다 크면 그 시각까지만 잠긴다.
-    """
-
-    locked_until = as_utc(user.locked_until)
-
-    if locked_until is not None:
-        return locked_until > now
-
-    return user.failed_login_count >= settings.LOGIN_MAX_FAILURES
+    return user.is_locked_at(now)
 
 
 def _should_become_dormant(db: Session, user: User, now: datetime) -> bool:

@@ -5,6 +5,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import JSON, DateTime, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
@@ -16,6 +17,18 @@ JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """
+    SQLite 는 시간대 없이 돌려준다. 저장은 UTC 이므로 UTC 로 본다.
+    PostgreSQL 은 시간대를 그대로 돌려주므로 값이 바뀌지 않는다.
+    """
+
+    if value is None:
+        return None
+
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 class Base(DeclarativeBase):

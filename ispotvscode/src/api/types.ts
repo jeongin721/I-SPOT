@@ -111,11 +111,15 @@ export interface User {
 
   /**
    * 계정 상태. 넷은 뜻이 다르므로 화면에서 구분해 보여준다.
-   * is_active=false 관리자 정지 / locked_until 로그인 실패 잠금 /
+   * is_active=false 관리자 정지 / is_locked 로그인 실패 잠금 /
    * dormant_at 2개월 미접속 휴면 / must_change_password 임시 비밀번호
+   *
+   * 잠김 여부는 is_locked 로 본다. 기본 설정에서는 시간이 지나도 풀리지 않아 locked_until 이
+   * 비어 있다. locked_until 은 시간 잠금(Backend LOGIN_LOCK_MINUTES > 0)일 때 풀리는 시각이다.
    */
   last_login_at?: string | null;
   must_change_password?: boolean;
+  is_locked?: boolean;
   locked_until?: string | null;
   dormant_at?: string | null;
 }

@@ -158,7 +158,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 틀린 비밀번호 · 없는 계정과 **같은 `401 INVALID_CREDENTIALS`(같은 문구)** 를 준다. 잠김을 따로 알려주면
 잠긴 뒤에도 계속 맞혀 보다가 응답이 바뀌는 순간 정답을 알게 된다. 잠긴 사람도 안내받도록 문구에
 "여러 번 틀려 잠겼다면 관리자에게 문의하세요" 를 늘 함께 싣는다. 관리자는 감사 로그의 `error_code`
-(`ACCOUNT_LOCKED`)로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교와
+(`ACCOUNT_LOCKED`)와 계정 응답의 `is_locked` 로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교와
 같은 시간이 걸리게 해서 응답 시간으로도 드러나지 않는다.
 
 ```json
@@ -235,7 +235,11 @@ AI_FAILED     ← AI_PROCESSING 실패
 자기 계정에 `logout-all` 도 할 수 없다.
 
 계정 응답에는 상태를 구분할 수 있게 `last_login_at` · `must_change_password` ·
-`locked_until` · `dormant_at` 이 함께 온다.
+`is_locked` · `locked_until` · `dormant_at` 이 함께 온다.
+
+- **잠김 여부는 `is_locked` 로 본다.** 기본 설정(`LOGIN_LOCK_MINUTES`=0)에서는 시간이 지나도 풀리지 않아
+  `locked_until` 이 비어 있다. `locked_until` 은 시간 잠금일 때 풀리는 시각이고, 그 시각이 지나면 `is_locked` 는 `false` 다.
+- 로그인은 잠김을 알려주지 않으므로(위 로그인 절) 관리자 화면이 잠긴 계정을 알 수 있는 곳은 이 값과 감사 로그뿐이다.
 
 ### GET /api/v1/auth/audit-logs (관리자 전용)
 

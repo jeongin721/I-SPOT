@@ -699,7 +699,74 @@ def test_user_response_exposes_account_state(
     users = client.get("/api/v1/auth/users", headers=admin_headers).json()["data"]
     target = next(user for user in users if user["id"] == str(counselor_id))
 
-    for field in ("is_active", "last_login_at", "must_change_password", "locked_until", "dormant_at"):
+    for field in (
+        "is_active",
+        "last_login_at",
+        "must_change_password",
+        "is_locked",
+        "locked_until",
+        "dormant_at",
+    ):
         assert field in target
 
     assert "hashed_password" not in target
+
+
+def _account(client: TestClient, admin_headers, user_id: uuid.UUID) -> dict:
+    users = client.get("/api/v1/auth/users", headers=admin_headers).json()["data"]
+
+    return next(user for user in users if user["id"] == str(user_id))
+
+
+def test_user_response_shows_lock_with_default_settings(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    """기본 설정(LOGIN_LOCK_MINUTES=0)에서는 locked_until 이 비어 있어 is_locked 로만 보인다."""
+
+    assert _account(client, admin_headers, counselor_id)["is_locked"] is False
+
+    _lock(client)
+
+    locked = _account(client, admin_headers, counselor_id)
+
+    assert locked["is_locked"] is True
+    assert locked["locked_until"] is None
+
+    client.post(f"/api/v1/auth/users/{counselor_id}/unlock", headers=admin_headers)
+
+    assert _account(client, admin_headers, counselor_id)["is_locked"] is False
+
+
+def test_user_response_shows_expired_timed_lock_as_unlocked(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID, db, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "LOGIN_LOCK_MINUTES", 10)
+
+    _lock(client)
+
+    assert _account(client, admin_headers, counselor_id)["is_locked"] is True
+
+    _expire_lock(db, counselor_id)
+
+    assert _account(client, admin_headers, counselor_id)["is_locked"] is False
+
+
+def test_is_locked_at_uses_one_rule() -> None:
+    """계정 응답과 로그인 판정이 같은 규칙을 쓴다(User.is_locked_at)."""
+
+    now = datetime.now(timezone.utc)
+    user = User(failed_login_count=settings.LOGIN_MAX_FAILURES - 1, locked_until=None)
+
+    assert user.is_locked_at(now) is False
+    assert user_service._is_locked(user, now) is False
+
+    user.failed_login_count = settings.LOGIN_MAX_FAILURES
+
+    assert user.is_locked_at(now) is True
+    assert user_service._is_locked(user, now) is True
+
+    # 시간 잠금은 시각으로 본다. SQLite 처럼 시간대 없이 읽힌 값도 UTC 로 본다.
+    user.locked_until = (now + timedelta(minutes=1)).replace(tzinfo=None)
+
+    assert user.is_locked_at(now) is True
+    assert user.is_locked_at(now + timedelta(minutes=2)) is False
