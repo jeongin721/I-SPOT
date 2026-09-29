@@ -4,17 +4,22 @@
 #
 # Frontend 가 LLM Provider 를 직접 호출하지 않게 하고,
 # 팀 B 의 Structured JSON Contract 를 변형 없이 그대로 저장/전달한다.
+# 예외: LangGraph 결과는 근거 발화가 없는 위험 항목을 빼고 저장한다
+# (drop_ungrounded_risk_items 참고).
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from pydantic import ValidationError
 
 from app.adapters.module_loader import ensure_repo_root_on_path
 from app.core.config import settings
 from app.core.errors import ErrorCode
+from app.core.logging import get_logger
 from app.schemas.contracts import AIAnalysisResult, SummaryEvidenceItem
+
+logger = get_logger(__name__)
 
 
 class AIError(Exception):
@@ -23,6 +28,59 @@ class AIError(Exception):
     def __init__(self, message: str, error_code: ErrorCode = ErrorCode.AI_FAILED) -> None:
         super().__init__(message)
         self.error_code = error_code
+
+
+# 팀 B(ai/services/summary_service.py) Service Exception → Backend 오류 코드.
+# 이 예외들은 고정 문구만 담으므로 문구를 그대로 저장해도 된다.
+_KNOWN_AI_ERROR_CODES = {
+    "SummaryTimeoutError": ErrorCode.AI_TIMEOUT,
+    "SummaryAuthenticationError": ErrorCode.AI_AUTH_ERROR,
+    "SummaryQuotaError": ErrorCode.AI_QUOTA_ERROR,
+    "SummaryConnectionError": ErrorCode.AI_FAILED,
+    "SummaryOutputError": ErrorCode.AI_INVALID_OUTPUT,
+}
+
+
+def map_ai_error(error: Exception) -> AIError:
+    """AI 쪽에서 올라온 예외를 Backend 오류 코드로 변환한다.
+
+    알 수 없는 예외는 문구를 버리고 고정 문구와 예외 종류 이름만 남긴다.
+    예외 문구에는 상담 발화나 내부 경로가 섞일 수 있는데, AIError 의 문구는
+    DB(error_message)와 API 응답까지 그대로 간다. 자세한 내용은
+    analysis_service 가 session_id 와 함께 logger.exception 으로 남긴다.
+    호출하는 쪽은 `raise map_ai_error(error) from error` 로 원인을 이어 둔다.
+    """
+
+    name = type(error).__name__
+    code = _KNOWN_AI_ERROR_CODES.get(name)
+
+    if code is not None:
+        return AIError(str(error) or "AI 분석에 실패했습니다.", code)
+
+    return AIError(f"AI 분석에 실패했습니다: {name}", ErrorCode.AI_FAILED)
+
+
+def _to_summary_evidence(links: Any) -> List[SummaryEvidenceItem]:
+    """AI 쪽 근거 연결 정보를 API 용 SummaryEvidenceItem 으로 옮긴다.
+
+    팀 B 의 EvidenceLink(text/segment_ids/score) 와, 같은 키를 쓰는
+    dict 를 모두 받는다. key_point 키로 와도 받아 준다.
+    """
+
+    evidence: List[SummaryEvidenceItem] = []
+
+    for link in links or []:
+        raw = link.model_dump() if hasattr(link, "model_dump") else dict(link)
+
+        evidence.append(
+            SummaryEvidenceItem(
+                key_point=raw.get("text", "") or raw.get("key_point", ""),
+                segment_ids=list(raw.get("segment_ids") or []),
+                score=float(raw.get("score") or 0.0),
+            )
+        )
+
+    return evidence
 
 
 @dataclass
@@ -174,30 +232,13 @@ class PipelineAIAdapter:
         try:
             pipeline_result = run_analysis_pipeline(transcript)
         except Exception as error:
-            raise self._map_pipeline_error(error) from error
+            raise map_ai_error(error) from error
 
         return self._to_bundle(pipeline_result)
 
     # -----------------------------------------------------
     # 내부 helper
     # -----------------------------------------------------
-
-    def _map_pipeline_error(self, error: Exception) -> AIError:
-        """팀 B Service Exception 을 Backend 오류 코드로 변환한다."""
-
-        name = type(error).__name__
-
-        mapping = {
-            "SummaryTimeoutError": ErrorCode.AI_TIMEOUT,
-            "SummaryAuthenticationError": ErrorCode.AI_AUTH_ERROR,
-            "SummaryQuotaError": ErrorCode.AI_QUOTA_ERROR,
-            "SummaryConnectionError": ErrorCode.AI_FAILED,
-            "SummaryOutputError": ErrorCode.AI_INVALID_OUTPUT,
-        }
-
-        code = mapping.get(name, ErrorCode.AI_FAILED)
-
-        return AIError(str(error) or "AI 분석에 실패했습니다.", code)
 
     def _to_bundle(self, pipeline_result: Any) -> AIAnalysisBundle:
         analysis = getattr(pipeline_result, "analysis", None)
@@ -218,18 +259,7 @@ class PipelineAIAdapter:
                 ErrorCode.AI_INVALID_OUTPUT,
             ) from error
 
-        evidence: List[SummaryEvidenceItem] = []
-
-        for link in getattr(pipeline_result, "summary_evidence", []) or []:
-            raw = link.model_dump() if hasattr(link, "model_dump") else dict(link)
-
-            evidence.append(
-                SummaryEvidenceItem(
-                    key_point=raw.get("text", "") or raw.get("key_point", ""),
-                    segment_ids=list(raw.get("segment_ids") or []),
-                    score=float(raw.get("score") or 0.0),
-                )
-            )
+        evidence = _to_summary_evidence(getattr(pipeline_result, "summary_evidence", []))
 
         return AIAnalysisBundle(
             result=result,
@@ -237,6 +267,84 @@ class PipelineAIAdapter:
             provider=self.name,
             model=os.getenv("OPENAI_MODEL"),
         )
+
+
+# =========================================================
+# 근거 없는 위험 항목 제외 (LangGraph 결과의 마지막 관문)
+# =========================================================
+
+_RISK_FIELDS = ("risk_utterances", "abuse_signals", "risk_factors")
+
+
+def _segment_refs(item: Dict[str, Any]) -> List[Any]:
+    """항목이 근거로 든 발화 번호. segment_id(단수)와 segment_ids(복수)를 모두 본다.
+
+    PROPOSAL_risk_fields.md §7 은 risk_utterances 만 단수, 나머지는 복수를 쓴다.
+    구조가 확정되기 전이라 어느 쪽으로 와도 읽는다.
+    """
+
+    refs: List[Any] = []
+
+    for key in ("segment_id", "segment_ids"):
+        value = item.get(key)
+
+        if value is None or value == "":
+            continue
+
+        if isinstance(value, (list, tuple)):
+            refs.extend(value)
+        else:
+            refs.append(value)
+
+    return refs
+
+
+def _is_grounded(item: Dict[str, Any], known_segment_ids: set) -> bool:
+    refs = _segment_refs(item)
+
+    return bool(refs) and all(
+        isinstance(ref, str) and ref in known_segment_ids for ref in refs
+    )
+
+
+def drop_ungrounded_risk_items(
+    result: AIAnalysisResult,
+    transcript_payload: Dict[str, Any],
+) -> Tuple[AIAnalysisResult, int]:
+    """근거 발화가 없거나 Transcript 에 없는 번호를 가리키는 위험 항목을 뺀다.
+
+    05_RULES.md §1 "근거(segment_id) 없는 위험 신호를 생성하지 않는다".
+    그래프 안의 판정(evidence_verdict)은 재분석 여부만 정하고 항목을
+    거르지 않으므로, 저장 직전에 여기서 한 번 더 막는다.
+
+    한 항목이 여러 발화를 가리키면 하나라도 Transcript 에 없을 때 뺀다.
+    없는 발화를 근거로 든 항목은 상담사가 원문을 확인할 수 없다.
+
+    뺀 건수는 warnings 에 남긴다. 조용히 사라지면 상담사가 모른다.
+    """
+
+    known = {
+        segment.get("segment_id")
+        for segment in (transcript_payload or {}).get("segments") or []
+        if isinstance(segment, dict) and segment.get("segment_id")
+    }
+
+    kept: Dict[str, List[Dict[str, Any]]] = {}
+    dropped = 0
+
+    for name in _RISK_FIELDS:
+        items = getattr(result, name)
+        grounded = [item for item in items if _is_grounded(item, known)]
+
+        dropped += len(items) - len(grounded)
+        kept[name] = grounded
+
+    if not dropped:
+        return result, 0
+
+    warnings = [*result.warnings, f"segment 근거가 없는 신호 {dropped}건을 제외했습니다."]
+
+    return result.model_copy(update={**kept, "warnings": warnings}), dropped
 
 
 # =========================================================
@@ -282,22 +390,28 @@ class LangGraphAIAdapter:
         try:
             final_state = run_graph(transcript_payload)
         except Exception as error:
-            raise AIError(
-                f"LangGraph 실행에 실패했습니다: {error}",
-                ErrorCode.AI_FAILED,
-            ) from error
+            # 예외 문구를 그대로 싣지 않는다. 저장·응답까지 가기 때문이다.
+            raise map_ai_error(error) from error
 
-        return self._to_bundle(final_state)
+        return self._to_bundle(final_state, transcript_payload)
 
     # -----------------------------------------------------
     # 내부 helper
     # -----------------------------------------------------
 
-    def _to_bundle(self, state: Dict[str, Any]) -> AIAnalysisBundle:
+    def _to_bundle(
+        self,
+        state: Dict[str, Any],
+        transcript_payload: Dict[str, Any],
+    ) -> AIAnalysisBundle:
         """그래프 최종 State 에서 Contract 에 해당하는 값만 추린다.
 
-        rag_documents / retry_count 는 중간 산물이므로 담지 않는다.
+        rag_documents / retry_count / deidentified 는 중간 산물이므로 담지 않는다.
         05_RULES.md §3 "내부 chain-of-thought 를 결과 데이터로 저장하지 않음".
+
+        근거 발화가 없는 위험 항목은 여기서 뺀다(drop_ungrounded_risk_items).
+        Transcript 는 그래프 State 가 아니라 어댑터가 받은 입력으로 대조한다.
+        마지막 관문이 그래프가 돌려준 값을 믿으면 관문이 되지 않는다.
         """
 
         payload = {
@@ -317,9 +431,27 @@ class LangGraphAIAdapter:
                 ErrorCode.AI_INVALID_OUTPUT,
             ) from error
 
+        result, dropped = drop_ungrounded_risk_items(result, transcript_payload)
+
+        if dropped:
+            logger.warning(
+                "segment 근거가 없는 위험 항목을 제외했습니다. provider=%s count=%s",
+                self.name,
+                dropped,
+            )
+
+        # ValidationError 는 ValueError 의 하위 클래스다.
+        try:
+            evidence = _to_summary_evidence(state.get("summary_evidence"))
+        except (TypeError, ValueError) as error:
+            raise AIError(
+                "Agent 결과의 summary_evidence 가 형식을 만족하지 않습니다.",
+                ErrorCode.AI_INVALID_OUTPUT,
+            ) from error
+
         return AIAnalysisBundle(
             result=result,
-            summary_evidence=[],
+            summary_evidence=evidence,
             provider=self.name,
             model=os.getenv("OPENAI_MODEL"),
         )
@@ -359,7 +491,9 @@ __all__ = [
     "LangGraphAIAdapter",
     "MockAIAdapter",
     "PipelineAIAdapter",
+    "drop_ungrounded_risk_items",
     "export_llm_env",
     "get_ai_adapter",
+    "map_ai_error",
     "set_ai_adapter_override",
 ]

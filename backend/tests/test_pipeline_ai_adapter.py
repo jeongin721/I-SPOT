@@ -213,6 +213,19 @@ def test_pipeline_exception_is_mapped_during_analyze(pipeline) -> None:
     assert raised.value.error_code == ErrorCode.AI_TIMEOUT
 
 
+def test_unknown_pipeline_exception_text_is_not_stored(pipeline) -> None:
+    """알 수 없는 예외의 문구는 AIError 에 싣지 않는다. 예외 종류 이름만 남긴다."""
+
+    pipeline["error"] = RuntimeError("아빠가 때렸어요 발화 처리 중 오류")
+
+    with pytest.raises(AIError) as raised:
+        PipelineAIAdapter().analyze(TRANSCRIPT)
+
+    assert raised.value.error_code == ErrorCode.AI_FAILED
+    assert "아빠가 때렸어요" not in str(raised.value)
+    assert "RuntimeError" in str(raised.value)
+
+
 def test_missing_ai_package_is_reported_as_ai_failed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "ai.services.analysis_pipeline", None)
 
