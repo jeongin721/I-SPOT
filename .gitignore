@@ -1,96 +1,20 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyc
-.pytest_cache/
-.pytest-*/
-pytest-cache-files-*/
-.ruff_cache/
-*.egg-info/
-
-# Environment / Secrets
-.env
-.env.*
-!.env.example
-
-# Virtual Environment
-.venv/
-venv/
-
-# Database (local/test)
-*.db
-*.sqlite3
-
-# 상담 음성 원본은 절대 커밋하지 않는다.
-storage/
-backend/.demo-storage/
-
-# 학습된 모델 가중치는 용량이 커서 커밋하지 않는다.
-abuse_model/weight/
-
-# 로컬 평가용 데이터셋
-test_sample/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Node (Frontend)
 node_modules/
-.next/
+dist/
+build/
+.cache/
+.env*
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
+*.log
+.claude-replay.*
+.tmp-*
 
-# Personal study guides — do not commit
-_개인용_학습가이드/
-
-# 실험 결과·캐시 (cocopb 님 요청)
-#
-# 주의: 이미 커밋된 results/ 안의 8개 파일은 이 규칙으로 사라지지 않는다.
-# .gitignore 는 아직 추적되지 않는 파일에만 적용된다.
-# 기존 파일까지 빼려면 `git rm --cached -r results/` 가 따로 필요하다.
-results/
-
-# Generated evaluation artifacts (keep manifests, scripts, and result CSVs reviewable)
-/data_prep/evaluation/deepgram/outputs/
-/data_prep/evaluation/elevenlabs/outputs/
-/data_prep/evaluation/elevenlabs_500/outputs/
-/data_prep/evaluation/elevenlabs/*_audio/
-/data_prep/evaluation/**/errors.jsonl
-
-# Development-cohort raw responses and generated runtime records can contain
-# consultation-derived content or operational diagnostics.  Keep manifests and
-# reproducible scripts reviewable, but never stage these generated artifacts.
-/data_prep/evaluation/elevenlabs_improvement/development_outputs/
-/data_prep/evaluation/elevenlabs_improvement/development_errors.jsonl
-/data_prep/evaluation/elevenlabs_improvement/development_run_summary.csv
-
-# Selective Deepgram fallback experiment: raw provider responses and runtime
-# diagnostics may contain consultation-derived content. Keep only the frozen
-# manifest and reproducible scripts reviewable.
-/data_prep/evaluation/elevenlabs_improvement/deepgram_single_recovery_outputs/
-/data_prep/evaluation/elevenlabs_improvement/deepgram_single_recovery_errors.jsonl
-/data_prep/evaluation/elevenlabs_improvement/deepgram_single_recovery_run_summary.csv
-
-# Development selective-Deepgram Stage-1 raw responses and local diagnostics.
-/data_prep/evaluation/elevenlabs_improvement/development_single_speaker_deepgram_stage1_raw/
-/data_prep/evaluation/elevenlabs_improvement/development_single_speaker_deepgram_stage1_summary.csv
-/data_prep/evaluation/elevenlabs_improvement/development_1366_timestamp_failure_details.jsonl
-/data_prep/evaluation/elevenlabs_improvement/tmp0ixegixg
-
-# These CER exports contain consultation-derived reference or hypothesis text.
-/data_prep/evaluation/comparison/both_ok_child_cer_76.csv
-/data_prep/evaluation/comparison/oracle_child_cer_100.csv
-/data_prep/evaluation/deepgram/child_text_cer_100.csv
-/data_prep/evaluation/elevenlabs_500/mapped_child_cer_472.csv
-/data_prep/evaluation/elevenlabs_500/oracle_child_cer_500.csv
-
-# Keep generated synthetic dialogue data local; generator scripts remain tracked.
-/synthetic_data/*.csv
-
-# Reproducible, large local evaluation exports
-/data_prep/evaluation/ground_truth/gt_2876.csv
-/data_prep/evaluation/ground_truth/gt_2876.jsonl
-/data_prep/metadata/original_dataset_2876.csv
+# Platform-managed agentplat state, not project source. In the
+# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
+# repo root IS the workspace root, so these land inside this repo rather than
+# beside it.
+/.plugins/
+/.opencode-skills/
