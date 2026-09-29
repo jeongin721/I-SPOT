@@ -978,6 +978,14 @@ def test_user_response_shows_expired_timed_lock_as_unlocked(
     assert _account(client, admin_headers, counselor_id)["is_locked"] is False
 
 
+def test_is_locked_at_before_flush_treats_missing_count_as_zero() -> None:
+    """DB 에 넣기 전 객체는 failed_login_count 가 아직 None 이다. 오류 없이 잠기지 않은 것으로 본다."""
+
+    user = User(locked_until=None)
+
+    assert user.failed_login_count is None
+    assert user.is_locked_at(datetime.now(timezone.utc)) is False
+
 def test_is_locked_at_uses_one_rule() -> None:
     """계정 응답과 로그인 판정이 같은 규칙을 쓴다(User.is_locked_at)."""
 

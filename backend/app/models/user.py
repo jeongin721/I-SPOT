@@ -95,7 +95,8 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         if locked_until is not None:
             return locked_until > now
 
-        return self.failed_login_count >= settings.LOGIN_MAX_FAILURES
+        # DB 에 넣기 전 객체는 default 가 아직 적용되지 않아 None 일 수 있다.
+        return (self.failed_login_count or 0) >= settings.LOGIN_MAX_FAILURES
 
     @property
     def is_locked(self) -> bool:
