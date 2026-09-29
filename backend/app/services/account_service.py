@@ -38,7 +38,14 @@ def _is_last_active_admin(db: Session, user: User) -> bool:
     if not user.is_active or user.dormant_at is not None or user.anonymized_at is not None:
         return False
 
-    return user_service.active_admin_count(db) <= 1
+    # 잠긴 관리자는 지금 쓸 수 있는 관리자 수에 들지 않는다. 그 계정을 끄거나 역할을 내려도
+    # 쓸 수 있는 관리자는 줄지 않는다.
+    now = datetime.now(timezone.utc)
+
+    if user.is_locked_at(now):
+        return False
+
+    return user_service.active_admin_count(db, now) <= 1
 
 
 def _issue_temporary_password(user: User) -> str:

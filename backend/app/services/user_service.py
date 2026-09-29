@@ -8,7 +8,7 @@ from functools import lru_cache
 from secrets import compare_digest, token_urlsafe
 from typing import List, Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -35,22 +35,26 @@ INVALID_CREDENTIALS_MESSAGE = (
 # 공통
 # =========================================================
 
-def active_admin_count(db: Session) -> int:
-    """지금 로그인할 수 있는 관리자 수."""
+def active_admin_count(db: Session, now: Optional[datetime] = None) -> int:
+    """
+    지금 로그인할 수 있는 관리자 수.
 
-    return (
-        db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(
-                User.role == UserRole.ADMIN,
-                User.is_active.is_(True),
-                User.dormant_at.is_(None),
-                User.anonymized_at.is_(None),
-            )
+    실패 잠금된 관리자는 뺀다. 잠금 판정(User.is_locked_at)은 시각 비교가 있어 SQL 로 옮기면
+    SQLite 의 시간대 처리가 PostgreSQL 과 달라진다. 관리자는 몇 명 안 되므로 불러와서 거른다.
+    """
+
+    now = now or datetime.now(timezone.utc)
+
+    admins = db.scalars(
+        select(User).where(
+            User.role == UserRole.ADMIN,
+            User.is_active.is_(True),
+            User.dormant_at.is_(None),
+            User.anonymized_at.is_(None),
         )
-        or 0
     )
+
+    return sum(1 for admin in admins if not admin.is_locked_at(now))
 
 
 def _is_locked(user: User, now: datetime) -> bool:
@@ -68,8 +72,8 @@ def _should_become_dormant(db: Session, user: User, now: datetime) -> bool:
     if now - reference <= timedelta(days=settings.DORMANT_AFTER_DAYS):
         return False
 
-    # 관리자가 전부 휴면이 되면 아무도 풀 수 없다.
-    if user.role == UserRole.ADMIN and active_admin_count(db) <= 1:
+    # 관리자가 전부 휴면이 되면 아무도 풀 수 없다. 잠긴 관리자는 풀어 줄 수 없으므로 세지 않는다.
+    if user.role == UserRole.ADMIN and active_admin_count(db, now) <= 1:
         return False
 
     return True

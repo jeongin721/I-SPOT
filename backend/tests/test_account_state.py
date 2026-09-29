@@ -16,8 +16,9 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AuditAction
+from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError
+from app.core.security import hash_password
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
@@ -527,6 +528,74 @@ def test_last_active_admin_cannot_be_deactivated_or_demoted(
     )
 
     assert demote.status_code == 409
+
+
+def _locked_second_admin(db) -> uuid.UUID:
+    """로그인 실패로 잠긴 두 번째 관리자."""
+
+    admin = User(
+        email="admin.b@ispot.example.com",
+        name="관리자B",
+        role=UserRole.ADMIN,
+        hashed_password=hash_password(ADMIN_PASSWORD),
+        is_active=True,
+        failed_login_count=settings.LOGIN_MAX_FAILURES,
+    )
+    db.add(admin)
+    db.commit()
+
+    return admin.id
+
+
+def test_active_admin_count_excludes_locked_admins(admin_id: uuid.UUID, db) -> None:
+    _locked_second_admin(db)
+
+    assert user_service.active_admin_count(db) == 1
+
+
+def test_last_usable_admin_is_protected_when_other_admin_is_locked(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, db
+) -> None:
+    """다른 관리자가 잠겨 있으면 나머지 한 명이 마지막 관리자다. 끄면 아무도 풀 수 없다."""
+
+    _locked_second_admin(db)
+
+    deactivate = client.patch(
+        f"/api/v1/auth/users/{admin_id}", json={"is_active": False}, headers=admin_headers
+    )
+
+    assert deactivate.status_code == 409
+
+    demote = client.patch(
+        f"/api/v1/auth/users/{admin_id}", json={"role": "COUNSELOR"}, headers=admin_headers
+    )
+
+    assert demote.status_code == 409
+
+
+def test_locked_admin_can_be_deactivated(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, db
+) -> None:
+    """잠긴 관리자를 끄는 것은 쓸 수 있는 관리자 수를 줄이지 않는다."""
+
+    locked_id = _locked_second_admin(db)
+
+    response = client.patch(
+        f"/api/v1/auth/users/{locked_id}", json={"is_active": False}, headers=admin_headers
+    )
+
+    assert response.status_code == 200
+
+
+def test_admin_is_not_made_dormant_when_other_admin_is_locked(
+    client: TestClient, admin_id: uuid.UUID, db
+) -> None:
+    """잠긴 관리자는 휴면을 풀어 줄 수 없다. 남은 관리자를 휴면으로 만들면 아무도 못 들어온다."""
+
+    _locked_second_admin(db)
+    _age_last_login(db, admin_id, settings.DORMANT_AFTER_DAYS + 10)
+
+    assert _login(client, ADMIN_EMAIL, ADMIN_PASSWORD).status_code == 200
 
 
 def test_counselor_cannot_use_account_endpoints(
