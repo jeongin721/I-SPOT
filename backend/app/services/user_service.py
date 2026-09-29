@@ -4,10 +4,11 @@
 # 계정은 관리자 API 또는 seed script 로만 생성된다.
 
 from datetime import datetime, timedelta, timezone
-from secrets import compare_digest
+from functools import lru_cache
+from secrets import compare_digest, token_urlsafe
 from typing import List, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,13 @@ from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
 from app.schemas.auth import PasswordChangeRequest, UserCreateRequest
 from app.services import audit_service
+
+# 틀린 비밀번호 · 없는 계정 · 잠긴 계정이 모두 이 문구를 받는다. 잠긴 사람도 안내받도록
+# 잠김 안내를 늘 함께 싣는다. 잠겼을 때만 붙이면 그것으로 잠김 여부가 드러난다.
+INVALID_CREDENTIALS_MESSAGE = (
+    "이메일 또는 비밀번호가 올바르지 않습니다. "
+    "여러 번 틀려 잠겼다면 관리자에게 문의하세요."
+)
 
 
 # =========================================================
@@ -129,6 +137,67 @@ def _record_login(
     )
 
 
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """
+    응답 시간을 맞추는 데만 쓰는 해시.
+
+    없는 계정과 잠긴 계정은 비밀번호를 확인하지 않는다. bcrypt 비교(약 0.3초)를 건너뛰면
+    응답이 눈에 띄게 빨라져 "이 이메일은 없다 / 잠겼다" 가 드러나므로 이 해시와 한 번 비교한다.
+    처음 필요할 때 한 번만 만든다. import 때 만들면 서버 시작과 테스트가 그만큼 느려진다.
+    """
+
+    return hash_password(token_urlsafe(32))
+
+
+def _count_failure(
+    db: Session,
+    user: User,
+    now: datetime,
+    *,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> None:
+    """
+    로그인 실패 횟수를 1 올리고, 기준에 닿으면 잠근다.
+
+    파이썬에서 += 1 하면 동시에 들어온 요청이 같은 값을 읽어 횟수가 빠진다.
+    DB 에서 더한 뒤 다시 읽는다.
+    """
+
+    db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(failed_login_count=User.failed_login_count + 1)
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(user)
+
+    # 잠긴 계정은 여기까지 오지 않는다(비밀번호를 확인하지 않는다).
+    # 그래서 이번 실패로 기준을 넘겼을 때가 새로 잠기는 때다. 동시에 틀린 요청이 여러 개여도
+    # 기준을 넘긴 요청 하나만 잠금을 남긴다.
+    if not (
+        user.failed_login_count - 1
+        < settings.LOGIN_MAX_FAILURES
+        <= user.failed_login_count
+    ):
+        return
+
+    if settings.LOGIN_LOCK_MINUTES:
+        user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCK_MINUTES)
+
+    audit_service.record(
+        db,
+        action=AuditAction.ACCOUNT_LOCKED,
+        entity_type="User",
+        entity_id=user.id,
+        actor_id=user.id,
+        detail={"failed_login_count": user.failed_login_count},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+
 # =========================================================
 # 로그인
 # =========================================================
@@ -146,17 +215,27 @@ def authenticate(
 
     **계정 상태는 비밀번호가 맞은 뒤에만 알려준다.** 먼저 알려주면 비밀번호를
     모르는 사람이 "이 이메일은 등록돼 있다" 를 알아내는 계정 열거가 된다.
+
+    **실패 잠금은 비밀번호가 맞아도 알려주지 않는다.** 잠긴 계정은 비밀번호를 확인하지 않고
+    틀린 비밀번호와 같은 401 을 준다. 잠김을 따로 알려주면 잠긴 뒤에도 계속 맞혀 보다가
+    응답이 바뀌는 순간 정답을 알게 된다. 관리자는 감사 로그의 error_code(ACCOUNT_LOCKED)로 구분한다.
     """
 
     now = datetime.now(timezone.utc)
     user = db.scalar(select(User).where(User.email == email.lower()))
 
-    def reject(code: ErrorCode, message: str, status_code: int) -> APIError:
+    def reject(
+        code: ErrorCode,
+        message: str,
+        status_code: int,
+        *,
+        audit_code: Optional[ErrorCode] = None,
+    ) -> APIError:
         _record_login(
             db,
             user=user,
             status="FAILURE",
-            error_code=code,
+            error_code=audit_code or code,
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -164,60 +243,51 @@ def authenticate(
 
         return APIError(code, message, status_code=status_code)
 
-    # 1. 비밀번호 확인 — 계정 존재 여부를 노출하지 않기 위해 동일한 오류를 반환한다.
-    if user is None or not verify_password(password, user.hashed_password):
-        if user is not None:
-            user.failed_login_count += 1
-
-            if user.failed_login_count == settings.LOGIN_MAX_FAILURES:
-                if settings.LOGIN_LOCK_MINUTES:
-                    user.locked_until = now + timedelta(
-                        minutes=settings.LOGIN_LOCK_MINUTES
-                    )
-
-                audit_service.record(
-                    db,
-                    action=AuditAction.ACCOUNT_LOCKED,
-                    entity_type="User",
-                    entity_id=user.id,
-                    actor_id=user.id,
-                    detail={"failed_login_count": user.failed_login_count},
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                )
-
-        raise reject(
+    def invalid_credentials(audit_code: Optional[ErrorCode] = None) -> APIError:
+        return reject(
             ErrorCode.INVALID_CREDENTIALS,
-            "이메일 또는 비밀번호가 올바르지 않습니다.",
+            INVALID_CREDENTIALS_MESSAGE,
             401,
+            audit_code=audit_code,
         )
 
-    # 2. 잠금 시간이 지났으면 먼저 푼다.
+    # 1. 없는 계정 — 있는 계정과 같은 시간이 걸리게 가짜 해시와 한 번 비교한다.
+    if user is None:
+        verify_password(password, _dummy_password_hash())
+
+        raise invalid_credentials()
+
+    # 2. 잠금 시간이 지났으면 먼저 푼다. 실패 횟수도 비운다. 안 비우면 횟수가 기준을 넘은 채로
+    #    남아, 다시 틀려도 잠기지 않는다.
     locked_until = as_utc(user.locked_until)
 
     if locked_until is not None and locked_until <= now:
         user.locked_until = None
         user.failed_login_count = 0
 
-    # 3. 계정 상태 — 비밀번호가 맞은 뒤에만 본다.
+        # 아래 실패 횟수 UPDATE 뒤의 refresh 가 이 변경을 덮어쓰지 않게 먼저 보낸다.
+        db.flush()
+
+    # 3. 잠긴 계정 — 비밀번호는 확인하지 않는다. 시간만 맞추고 틀린 비밀번호와 같은 응답을 준다.
+    if _is_locked(user, now):
+        verify_password(password, _dummy_password_hash())
+
+        raise invalid_credentials(audit_code=ErrorCode.ACCOUNT_LOCKED)
+
+    # 4. 비밀번호 확인 — 계정 존재 여부를 노출하지 않기 위해 동일한 오류를 반환한다.
+    if not verify_password(password, user.hashed_password):
+        _count_failure(db, user, now, ip_address=ip_address, user_agent=user_agent)
+
+        raise invalid_credentials()
+
+    # 5. 계정 상태 — 비밀번호가 맞은 뒤에만 본다.
     if user.anonymized_at is not None:
-        raise reject(
-            ErrorCode.INVALID_CREDENTIALS,
-            "이메일 또는 비밀번호가 올바르지 않습니다.",
-            401,
-        )
+        raise invalid_credentials()
 
     if not user.is_active:
         raise reject(
             ErrorCode.INACTIVE_USER,
             "비활성화된 계정입니다. 관리자에게 문의하세요.",
-            403,
-        )
-
-    if _is_locked(user, now):
-        raise reject(
-            ErrorCode.ACCOUNT_LOCKED,
-            "로그인 실패가 반복되어 잠긴 계정입니다. 관리자에게 문의하세요.",
             403,
         )
 
@@ -249,7 +319,7 @@ def authenticate(
             403,
         )
 
-    # 4. 성공
+    # 6. 성공
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now

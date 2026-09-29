@@ -10,20 +10,25 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.core.enums import AuditAction
+from app.core.errors import APIError
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
+from app.services import user_service
 from tests.conftest import ADMIN_PASSWORD, COUNSELOR_PASSWORD
 
 COUNSELOR_EMAIL = "counselor.a@ispot.example.com"
 ADMIN_EMAIL = "admin@ispot.example.com"
 NEW_PASSWORD = "Violet-Ferry-62"
 OTHER_PASSWORD = "Copper-Meadow-31"
+WRONG_PASSWORD = "Wrong-Password-11"
 
 
 def _login(client: TestClient, email: str, password: str):
@@ -112,16 +117,187 @@ def test_temporary_password_blocks_everything_but_password_change(
 # 로그인 실패 잠금
 # =========================================================
 
+def _lock(client: TestClient, email: str = COUNSELOR_EMAIL) -> None:
+    for _ in range(settings.LOGIN_MAX_FAILURES):
+        assert _login(client, email, WRONG_PASSWORD).status_code == 401
+
+
+def _last_login_failure(db) -> AuditLog:
+    return db.scalar(
+        select(AuditLog)
+        .where(AuditLog.action == AuditAction.LOGIN, AuditLog.status == "FAILURE")
+        .order_by(AuditLog.created_at.desc())
+    )
+
+
+def _lock_logs(db, user_id: uuid.UUID):
+    return db.scalars(
+        select(AuditLog).where(
+            AuditLog.action == AuditAction.ACCOUNT_LOCKED, AuditLog.entity_id == user_id
+        )
+    ).all()
+
+
 def test_account_locks_after_five_failures(
     client: TestClient, counselor_id: uuid.UUID
 ) -> None:
-    for _ in range(settings.LOGIN_MAX_FAILURES):
-        assert _login(client, COUNSELOR_EMAIL, "Wrong-Password-11").status_code == 401
+    _lock(client)
 
+    # 맞는 비밀번호로도 들어가지 못한다. 잠김은 알려주지 않는다(아래 테스트).
     locked = _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
 
-    assert locked.status_code == 403
-    assert locked.json()["error"]["code"] == "ACCOUNT_LOCKED"
+    assert locked.status_code == 401
+    assert locked.json()["error"]["code"] == "INVALID_CREDENTIALS"
+
+
+def test_locked_account_does_not_reveal_correct_password(
+    client: TestClient, counselor_id: uuid.UUID
+) -> None:
+    """잠긴 뒤에 맞는 비밀번호와 틀린 비밀번호의 응답이 같아야 계속 맞혀 볼 수 없다."""
+
+    _lock(client)
+
+    right = _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+    wrong = _login(client, COUNSELOR_EMAIL, WRONG_PASSWORD)
+    unknown = _login(client, "nobody@ispot.example.com", COUNSELOR_PASSWORD)
+
+    assert right.status_code == wrong.status_code == unknown.status_code == 401
+    assert right.json() == wrong.json() == unknown.json()
+
+
+def test_invalid_credentials_message_guides_locked_users(
+    client: TestClient, counselor_id: uuid.UUID
+) -> None:
+    """잠긴 사람도 안내를 받아야 한다. 잠김 여부와 상관없이 같은 문구다."""
+
+    message = _login(client, COUNSELOR_EMAIL, WRONG_PASSWORD).json()["error"]["message"]
+
+    assert "관리자에게 문의" in message
+
+
+def test_locked_login_attempt_is_recorded_as_account_locked(
+    client: TestClient, counselor_id: uuid.UUID, db
+) -> None:
+    """응답은 같아도 관리자는 감사 로그로 구분할 수 있어야 한다."""
+
+    _lock(client)
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    log = _last_login_failure(db)
+
+    assert log.actor_id == counselor_id
+    assert log.error_code == "ACCOUNT_LOCKED"
+
+
+def test_locked_account_attempts_do_not_count_as_failures(
+    client: TestClient, counselor_id: uuid.UUID, db
+) -> None:
+    _lock(client)
+    _login(client, COUNSELOR_EMAIL, WRONG_PASSWORD)
+    _login(client, COUNSELOR_EMAIL, WRONG_PASSWORD)
+
+    user = db.get(User, counselor_id)
+    db.refresh(user)
+
+    assert user.failed_login_count == settings.LOGIN_MAX_FAILURES
+    assert len(_lock_logs(db, counselor_id)) == 1  # 잠금은 한 번만 남는다
+
+
+def test_unknown_and_locked_accounts_still_run_bcrypt(
+    client: TestClient, counselor_id: uuid.UUID, monkeypatch
+) -> None:
+    """bcrypt 비교를 건너뛰면 응답 시간으로 "없다 / 잠겼다" 가 드러난다."""
+
+    compared = []
+    original = user_service.verify_password
+
+    def spy(password: str, hashed: str) -> bool:
+        compared.append(hashed)
+        return original(password, hashed)
+
+    monkeypatch.setattr(user_service, "verify_password", spy)
+
+    _login(client, "nobody@ispot.example.com", COUNSELOR_PASSWORD)
+
+    assert compared == [user_service._dummy_password_hash()]
+
+    _lock(client)
+    compared.clear()
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    # 잠긴 계정은 진짜 해시가 아니라 가짜 해시와 비교한다.
+    assert compared == [user_service._dummy_password_hash()]
+
+
+def test_failure_count_is_added_in_database(counselor_id: uuid.UUID, db) -> None:
+    """
+    동시에 틀린 요청이 들어와도 횟수가 빠지지 않아야 한다.
+
+    예전 값(0)을 들고 있는 세션에서 실패해도, 그사이 다른 요청이 올린 값(3)에 더해야 한다.
+    """
+
+    stale = db.get(User, counselor_id)
+
+    assert stale.failed_login_count == 0
+
+    other = SessionLocal()
+
+    try:
+        other.get(User, counselor_id).failed_login_count = 3
+        other.commit()
+    finally:
+        other.close()
+
+    with pytest.raises(APIError):
+        user_service.authenticate(db, COUNSELOR_EMAIL, WRONG_PASSWORD)
+
+    db.refresh(stale)
+
+    assert stale.failed_login_count == 4
+
+
+def test_timed_lock_expires(
+    client: TestClient, counselor_id: uuid.UUID, db, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "LOGIN_LOCK_MINUTES", 10)
+
+    _lock(client)
+
+    assert _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD).status_code == 401
+
+    _expire_lock(db, counselor_id)
+
+    assert _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD).status_code == 200
+
+
+def test_timed_lock_locks_again_after_expiry(
+    client: TestClient, counselor_id: uuid.UUID, db, monkeypatch
+) -> None:
+    """잠금이 풀린 뒤 다시 5번 틀리면 다시 잠겨야 한다."""
+
+    monkeypatch.setattr(settings, "LOGIN_LOCK_MINUTES", 10)
+
+    _lock(client)
+    _expire_lock(db, counselor_id)
+    _lock(client)
+
+    relocked = _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    assert relocked.status_code == 401
+    assert _last_login_failure(db).error_code == "ACCOUNT_LOCKED"
+    assert len(_lock_logs(db, counselor_id)) == 2
+
+
+def _expire_lock(db, user_id: uuid.UUID) -> None:
+    """잠금 시간이 지난 것처럼 만든다."""
+
+    user = db.get(User, user_id)
+    db.refresh(user)
+
+    assert user.locked_until is not None
+
+    user.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
 
 
 def test_successful_login_clears_failure_count(

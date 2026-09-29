@@ -16,6 +16,8 @@ class ErrorCode(str, Enum):
     INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"
     UNAUTHORIZED = "UNAUTHORIZED"
     INACTIVE_USER = "INACTIVE_USER"
+    # 감사 로그 전용(LOGIN 실패의 error_code). 응답에는 쓰지 않는다 — 잠긴 계정도
+    # 틀린 비밀번호와 같은 INVALID_CREDENTIALS 를 받는다.(user_service.authenticate)
     ACCOUNT_LOCKED = "ACCOUNT_LOCKED"
     ACCOUNT_DORMANT = "ACCOUNT_DORMANT"
     PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED"

@@ -149,21 +149,33 @@ AI_FAILED     ← AI_PROCESSING 실패
 }
 ```
 
-오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`, `403 ACCOUNT_LOCKED`,
-`403 ACCOUNT_DORMANT`, `403 TEMP_PASSWORD_EXPIRED`
+오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`, `403 ACCOUNT_DORMANT`, `403 TEMP_PASSWORD_EXPIRED`
 
 **계정 상태는 비밀번호가 맞은 뒤에만 알려준다.** 먼저 알려주면 비밀번호를 모르는 사람이
 "이 이메일은 등록돼 있다" 를 알아내는 계정 열거가 된다. 틀린 비밀번호는 언제나 `INVALID_CREDENTIALS` 다.
 
-| 상태 | 오류 | 푸는 방법 |
+**실패 잠금은 비밀번호가 맞아도 알려주지 않는다.** 잠긴 계정은 비밀번호를 확인하지 않고
+틀린 비밀번호 · 없는 계정과 **같은 `401 INVALID_CREDENTIALS`(같은 문구)** 를 준다. 잠김을 따로 알려주면
+잠긴 뒤에도 계속 맞혀 보다가 응답이 바뀌는 순간 정답을 알게 된다. 잠긴 사람도 안내받도록 문구에
+"여러 번 틀려 잠겼다면 관리자에게 문의하세요" 를 늘 함께 싣는다. 관리자는 감사 로그의 `error_code`
+(`ACCOUNT_LOCKED`)로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교와
+같은 시간이 걸리게 해서 응답 시간으로도 드러나지 않는다.
+
+```json
+{ "error": { "code": "INVALID_CREDENTIALS", "message": "이메일 또는 비밀번호가 올바르지 않습니다. 여러 번 틀려 잠겼다면 관리자에게 문의하세요." } }
+```
+
+| 상태 | 로그인 응답 | 푸는 방법 |
 | --- | --- | --- |
-| 관리자가 정지 | `INACTIVE_USER` | 관리자가 `PATCH /auth/users/{id}` 로 활성화 |
-| 로그인 5회 실패 | `ACCOUNT_LOCKED` | 관리자가 `POST /auth/users/{id}/unlock` |
-| 2개월 미접속 | `ACCOUNT_DORMANT` | 관리자가 `POST /auth/users/{id}/reactivate` |
-| 임시 비밀번호 기간 경과(72시간) | `TEMP_PASSWORD_EXPIRED` | 관리자가 `POST /auth/users/{id}/password-reset` |
+| 관리자가 정지 | `403 INACTIVE_USER` | 관리자가 `PATCH /auth/users/{id}` 로 활성화 |
+| 로그인 5회 실패 | `401 INVALID_CREDENTIALS` (감사 로그 `error_code` 는 `ACCOUNT_LOCKED`) | 관리자가 `POST /auth/users/{id}/unlock`. `LOGIN_LOCK_MINUTES` 가 0 보다 크면 그 시간이 지나도 풀린다 |
+| 2개월 미접속 | `403 ACCOUNT_DORMANT` | 관리자가 `POST /auth/users/{id}/reactivate` |
+| 임시 비밀번호 기간 경과(72시간) | `403 TEMP_PASSWORD_EXPIRED` | 관리자가 `POST /auth/users/{id}/password-reset` |
 
 기준값은 설정으로 바꾼다 — `LOGIN_MAX_FAILURES`(5), `LOGIN_LOCK_MINUTES`(0 = 관리자만 해제),
 `DORMANT_AFTER_DAYS`(60), `TEMP_PASSWORD_VALID_HOURS`(72).
+시간 잠금(`LOGIN_LOCK_MINUTES` > 0)이 풀리면 실패 횟수도 0 으로 돌아가, 다시 5번 틀리면 다시 잠긴다.
+잠긴 동안의 로그인 시도는 실패 횟수에 더하지 않는다.
 
 **임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
 모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
@@ -760,10 +772,14 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 | code | status | 설명 |
 |---|---|---|
-| `INVALID_CREDENTIALS` | 401 | 로그인 실패 |
+| `INVALID_CREDENTIALS` | 401 | 로그인 실패 (틀린 비밀번호 · 없는 계정 · 실패 잠금 모두 같다) |
 | `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다) |
 | `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류 |
 | `INACTIVE_USER` | 403 | 비활성 계정 |
+| `ACCOUNT_LOCKED` | — | **감사 로그 전용.** 잠긴 계정의 로그인 시도가 LOGIN 실패의 `error_code` 로 남는다. 응답에는 쓰지 않는다 |
+| `ACCOUNT_DORMANT` | 403 | 휴면 계정 (비밀번호가 맞았을 때만) |
+| `TEMP_PASSWORD_EXPIRED` | 403 | 임시 비밀번호 사용 기간 경과 (비밀번호가 맞았을 때만) |
+| `PASSWORD_CHANGE_REQUIRED` | 403 | 임시 비밀번호 상태에서 비밀번호 변경 외의 요청 |
 | `FORBIDDEN` | 403 | 권한 없음 (담당 아닌 Case 포함) |
 | `NOT_FOUND` | 404 | 존재하지 않는 경로 |
 | `CASE_NOT_FOUND` | 404 | 사례 없음 |

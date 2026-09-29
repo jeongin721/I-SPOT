@@ -50,7 +50,13 @@ export type PageQuery = {
 // =========================================================
 
 export const auth = {
-  /** 로그인에 성공하면 토큰을 저장하고 사용자 정보를 돌려준다. */
+  /**
+   * 로그인에 성공하면 토큰을 저장하고 사용자 정보를 돌려준다.
+   *
+   * 오류: 401 INVALID_CREDENTIALS(틀린 비밀번호·없는 계정·5회 실패 잠금이 모두 같은 응답·같은 문구),
+   * 403 INACTIVE_USER · ACCOUNT_DORMANT · TEMP_PASSWORD_EXPIRED(비밀번호가 맞았을 때만).
+   * 잠김은 응답으로 알려주지 않으므로 화면은 Backend 문구(`message`)를 그대로 보여준다.
+   */
   async login(payload: LoginRequest): Promise<LoginResponse> {
     const result = await api.post<LoginResponse>("/auth/login", payload);
 
