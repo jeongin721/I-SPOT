@@ -75,20 +75,40 @@ def test_result_satisfies_contract():
     assert bundle.result.risk_factors == []
 
 
-def test_gives_up_with_reason_not_silently():
-    """근거가 부족하면 억지로 채우지 않고 사유를 남긴다.
+def test_no_signal_means_no_warning():
+    """검출된 신호가 없는 정상 상담에는 "근거 부족" 경고를 달지 않는다.
 
-    05_RULES.md §3 "근거 부족 시 빈 결과 허용", "결과를 억지로 생성하지 않음".
+    신호가 없는 것은 근거가 부족한 것이 아니다. 경고가 붙으면 모든 상담에
+    같은 경고가 달려 상담사가 경고를 무시하게 된다.
     """
 
     bundle = LangGraphAIAdapter().analyze(TRANSCRIPT)
 
-    assert bundle.result.warnings
+    assert bundle.result.warnings == []
+
+
+def test_gives_up_with_reason_not_silently(monkeypatch):
+    """근거 발화가 끝내 연결되지 않으면 억지로 채우지 않고 사유를 남긴다.
+
+    05_RULES.md §3 "근거 부족 시 빈 결과 허용", "결과를 억지로 생성하지 않음".
+    """
+
+    monkeypatch.setattr(
+        "agent.graph.risk_node",
+        lambda state: {
+            "risk_utterances": [],
+            "abuse_signals": [{"abuse_type": "EMOTIONAL", "detected": True, "segment_ids": []}],
+            "risk_factors": [],
+        },
+    )
+
+    bundle = LangGraphAIAdapter().analyze(TRANSCRIPT)
+
     assert any("근거가 부족" in w for w in bundle.result.warnings)
 
 
 def test_intermediate_state_does_not_leak():
-    """rag_documents / retry_count 는 중간 산물이라 Contract 에 담지 않는다.
+    """rag_documents / retry_count / deidentified 는 중간 산물이라 Contract 에 담지 않는다.
 
     05_RULES.md §3 "내부 chain-of-thought 를 결과 데이터로 저장하지 않음".
     """
@@ -98,6 +118,7 @@ def test_intermediate_state_does_not_leak():
 
     assert "rag_documents" not in dumped
     assert "retry_count" not in dumped
+    assert "deidentified" not in dumped
 
 
 # =========================================================

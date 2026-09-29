@@ -27,9 +27,17 @@ class AgentState(TypedDict, total=False):
     # -----------------------------------------------------
     # 교체되는 값 (reducer 없음)
     # -----------------------------------------------------
+    # 상담 원문의 개인 식별 정보를 가렸는지. deidentify_node 가 쓴다.
+    # 외부 LLM 을 부르는 노드는 require_deidentified() 로 먼저 확인한다
+    # (9/18 회의 결정: 외부 LLM 에는 로컬에서 비식별한 텍스트만 보낸다).
+    deidentified: bool
+
     # 재분석이 돌면 이전 판정을 대체해야 하므로 누적하지 않는다.
     # 누적시키면 같은 근거가 중복으로 쌓인다.
     summary: Dict[str, Any]
+    # 요약 문장 ↔ 근거 발화 연결. PipelineAIAdapter 의 summary_evidence 와
+    # 같은 모양(text 또는 key_point / segment_ids / score)이다.
+    summary_evidence: List[Dict[str, Any]]
     risk_utterances: List[Dict[str, Any]]
     abuse_signals: List[Dict[str, Any]]
     risk_factors: List[Dict[str, Any]]
@@ -52,7 +60,9 @@ def initial_state(transcript: Dict[str, Any]) -> AgentState:
 
     return AgentState(
         transcript=transcript,
+        deidentified=False,
         summary={},
+        summary_evidence=[],
         risk_utterances=[],
         abuse_signals=[],
         risk_factors=[],
