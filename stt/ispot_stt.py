@@ -16,11 +16,17 @@ import math
 import re
 import subprocess
 import wave
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from deepgram import DeepgramClient
+
+try:
+    from elevenlabs.client import ElevenLabs
+except ImportError:  # pragma: no cover - exercised when optional SDK is absent
+    ElevenLabs = None
 
 
 load_dotenv()
@@ -37,6 +43,20 @@ load_dotenv()
 #    → 상담사/아동/보호자처럼 표현이 달라도 최종에는 이 값만 남는다.
 SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".flac"}
 SPEAKER_ENUM = {"COUNSELOR", "CHILD", "GUARDIAN", "OTHER", "UNKNOWN"}
+logger = logging.getLogger(__name__)
+SINGLE_SPEAKER_FALLBACK_ENV = "I_SPOT_SINGLE_SPEAKER_FALLBACK"
+
+
+def single_speaker_fallback_enabled() -> bool:
+    """Return whether the opt-in selective Deepgram prototype is enabled.
+
+    The default is deliberately disabled.  This switch is separate from the
+    existing provider-failure fallback: a valid ElevenLabs one-speaker result
+    is not a provider error.
+    """
+    return os.getenv(SINGLE_SPEAKER_FALLBACK_ENV, "off").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
 
 
 # ------------------------------------------------------------
@@ -272,6 +292,363 @@ class MockSTTProvider(BaseSTTProvider):
         }
 
 
+# 4-1. ElevenLabs Scribe v2 provider
+class ElevenLabsScribeV2Provider(BaseSTTProvider):
+    """ElevenLabs Scribe v2 adapter for the I-SPOT STT contract.
+
+    ``speaker_id`` is treated as a provider-local identity.  It is never
+    interpreted by position (for example, speaker_0 is not assumed to be a
+    counselor).  A runtime role mapper decides whether the identity can be
+    represented as COUNSELOR/CHILD; otherwise it remains UNKNOWN.
+    """
+
+    MODEL_ID = "scribe_v2"
+    LANGUAGE_CODE = "kor"
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+        client: Any = None,
+    ) -> None:
+        super().__init__(api_key=api_key, api_url=api_url)
+        self.api_key = self.api_key or os.getenv("ELEVENLABS_API_KEY")
+        self._client = client
+        self.model_id = os.getenv("ELEVENLABS_MODEL_ID", self.MODEL_ID)
+        self.language_code = os.getenv("ELEVENLABS_LANGUAGE_CODE", self.LANGUAGE_CODE)
+        self.diarize = os.getenv("ELEVENLABS_DIARIZE", "true").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+
+    @staticmethod
+    def _to_dict(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: ElevenLabsScribeV2Provider._to_dict(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [ElevenLabsScribeV2Provider._to_dict(item) for item in value]
+        if hasattr(value, "model_dump"):
+            return ElevenLabsScribeV2Provider._to_dict(value.model_dump())
+        if hasattr(value, "dict"):
+            return ElevenLabsScribeV2Provider._to_dict(value.dict())
+        return value
+
+    @classmethod
+    def _coerce_to_contract(cls, response: Any) -> List[Dict[str, Any]]:
+        """Convert valid ElevenLabs word output without positional role mapping."""
+        payload = cls._to_dict(response)
+        if not isinstance(payload, dict) or not isinstance(payload.get("words"), list):
+            raise ValueError("ElevenLabs response has no top-level words list.")
+
+        provider_segments: List[Dict[str, Any]] = []
+        current: Optional[Dict[str, Any]] = None
+
+        for index, item in enumerate(payload["words"]):
+            if not isinstance(item, dict) or item.get("type") != "word":
+                continue
+
+            text = item.get("text")
+            speaker_id = item.get("speaker_id")
+            start = item.get("start")
+            end = item.get("end")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"ElevenLabs word {index} has no text.")
+            if speaker_id is None or not str(speaker_id).strip():
+                raise ValueError(f"ElevenLabs word {index} has no speaker_id.")
+            try:
+                start_ms = int(round(float(start) * 1000))
+                end_ms = int(round(float(end) * 1000))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"ElevenLabs word {index} has invalid timestamps.") from exc
+            if start_ms < 0 or end_ms < start_ms:
+                raise ValueError(f"ElevenLabs word {index} has an invalid time range.")
+
+            raw_speaker_id = str(speaker_id).strip()
+            word = {
+                "word": text.strip(),
+                "speaker": raw_speaker_id,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                # Scribe output used here has no word confidence.  Do not invent one.
+                "confidence": 0.0,
+            }
+            if current is None or current["provider_speaker_id"] != raw_speaker_id:
+                if current is not None:
+                    provider_segments.append(current)
+                current = {
+                    "provider_speaker_id": raw_speaker_id,
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "words": [word],
+                }
+            else:
+                current["end_ms"] = max(current["end_ms"], end_ms)
+                current["words"].append(word)
+
+        if current is not None:
+            provider_segments.append(current)
+        if not provider_segments:
+            raise ValueError("ElevenLabs response contains no type='word' entries.")
+
+        # Keep raw identities until the role-inference boundary.  The public
+        # Backend Contract cannot carry arbitrary speaker IDs in its speaker
+        # enum, so unresolved identities become UNKNOWN there.
+        raw_segments = [
+            {
+                "speaker": segment["provider_speaker_id"],
+                "text": " ".join(word["word"] for word in segment["words"]),
+            }
+            for segment in provider_segments
+        ]
+        from speaker_role_runtime import RuntimeSpeakerRoleMapper
+
+        role_mapping = RuntimeSpeakerRoleMapper().map_roles(raw_segments)
+        contract_segments: List[Dict[str, Any]] = []
+        for segment_index, segment in enumerate(provider_segments, start=1):
+            provider_speaker_id = segment["provider_speaker_id"]
+            role = role_mapping.get(provider_speaker_id, {}).get("role", "UNKNOWN")
+            if role not in SPEAKER_ENUM:
+                role = "UNKNOWN"
+            contract_segments.append(
+                {
+                    "segment_id": f"seg_{segment_index:03d}",
+                    "speaker": role,
+                    "provider_speaker_id": provider_speaker_id,
+                    "start_ms": segment["start_ms"],
+                    "end_ms": segment["end_ms"],
+                    "text": " ".join(word["word"] for word in segment["words"]),
+                    # ElevenLabs does not provide a compatible confidence value.
+                    "confidence": 0.0,
+                    # A compatible confidence score is unavailable, which is
+                    # different from an explicitly low-confidence result.
+                    "is_low_confidence": False,
+                    "words": segment["words"],
+                }
+            )
+        return contract_segments
+
+    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+        if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+            raise InvalidAudioError("Invalid or empty audio file.")
+        try:
+            if self._client is None:
+                if ElevenLabs is None:
+                    raise AudioProviderError(
+                        "elevenlabs package is required for ElevenLabs Scribe v2"
+                    )
+                if not self.api_key:
+                    raise AudioProviderError("ELEVENLABS_API_KEY is not configured.")
+                self._client = ElevenLabs(api_key=self.api_key)
+            with open(audio_path, "rb") as audio_file:
+                response = self._client.speech_to_text.convert(
+                    file=audio_file.read(),
+                    model_id=self.model_id,
+                    language_code=self.language_code,
+                    diarize=self.diarize,
+                    tag_audio_events=False,
+                )
+            segments = self._coerce_to_contract(response)
+            raw_speaker_ids = sorted(
+                {
+                    str(segment["provider_speaker_id"])
+                    for segment in segments
+                    if segment.get("provider_speaker_id")
+                }
+            )
+            return {
+                "schema_version": "1.0",
+                "segments": segments,
+                # Internal-only provenance.  Transcriber intentionally does
+                # not expose this extra field through the shared STT contract.
+                "_ispot_metadata": {
+                    "primary_provider": "elevenlabs",
+                    "primary_raw_speaker_count": len(raw_speaker_ids),
+                    "primary_raw_speaker_ids": raw_speaker_ids,
+                    "valid_normalized_words": True,
+                },
+            }
+        except AudioProviderError:
+            raise
+        except Exception as exc:
+            raise AudioProviderError(f"ElevenLabs Scribe v2 STT failed: {exc}") from exc
+
+
+class ProviderFailureFallbackSTTProvider(BaseSTTProvider):
+    """Use a secondary provider only when the primary provider itself fails."""
+
+    def __init__(self, primary: BaseSTTProvider, fallback: BaseSTTProvider) -> None:
+        super().__init__()
+        self.primary = primary
+        self.fallback = fallback
+
+    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+        try:
+            return self.primary.transcribe(audio_path)
+        except AudioProviderError as primary_error:
+            try:
+                result = self.fallback.transcribe(audio_path)
+            except Exception as fallback_error:
+                raise AudioProviderError(
+                    f"Primary provider failed ({primary_error}); fallback also failed ({fallback_error})."
+                ) from fallback_error
+            # This is provenance only; it does not change the Backend Contract.
+            result["provider_fallback_used"] = True
+            return result
+
+
+class SelectiveSingleSpeakerFallbackSTTProvider(BaseSTTProvider):
+    """Opt-in Deepgram fallback for a valid ElevenLabs one-speaker result.
+
+    This class never uses GT metrics, positional speaker labels, acoustic age,
+    or pitch.  It invokes Deepgram only when a valid ElevenLabs response has
+    exactly one provider-local speaker identity and the feature flag is on.
+    A Deepgram response is accepted only after RuntimeSpeakerRoleMapper
+    resolves exactly one CHILD and one COUNSELOR; every other outcome returns
+    the original result with UNKNOWN roles.
+    """
+
+    def __init__(
+        self,
+        primary: BaseSTTProvider,
+        secondary: BaseSTTProvider,
+        *,
+        enabled: Optional[bool] = None,
+    ) -> None:
+        super().__init__()
+        self.primary = primary
+        self.secondary = secondary
+        self.enabled = single_speaker_fallback_enabled() if enabled is None else enabled
+
+    @staticmethod
+    def _metadata(result: Dict[str, Any]) -> Dict[str, Any]:
+        metadata = result.get("_ispot_metadata", {})
+        return metadata if isinstance(metadata, dict) else {}
+
+    @staticmethod
+    def _unknown_primary_result(primary_result: Dict[str, Any], reason: str) -> Dict[str, Any]:
+        """Keep the primary text but prohibit a CHILD decision on uncertainty."""
+        safe_segments: List[Dict[str, Any]] = []
+        for index, segment in enumerate(primary_result.get("segments", []) or [], start=1):
+            if not isinstance(segment, dict):
+                continue
+            copied = dict(segment)
+            copied["segment_id"] = copied.get("segment_id") or f"seg_{index:03d}"
+            copied["speaker"] = "UNKNOWN"
+            safe_segments.append(copied)
+        metadata = dict(SelectiveSingleSpeakerFallbackSTTProvider._metadata(primary_result))
+        metadata.update(
+            {
+                "single_speaker_fallback_triggered": True,
+                "fallback_used": False,
+                "fallback_reason": reason,
+                "secondary_provider": "deepgram",
+                "secondary_role_resolved": False,
+            }
+        )
+        logger.info(
+            "selective_single_speaker_fallback unresolved reason=%s primary_raw_speaker_count=%s",
+            reason,
+            metadata.get("primary_raw_speaker_count"),
+        )
+        return {
+            "schema_version": primary_result.get("schema_version", "1.0"),
+            "segments": safe_segments,
+            "_ispot_metadata": metadata,
+        }
+
+    @staticmethod
+    def _secondary_raw_speaker_ids(result: Dict[str, Any]) -> list[str]:
+        metadata = SelectiveSingleSpeakerFallbackSTTProvider._metadata(result)
+        known = metadata.get("raw_speaker_ids")
+        if isinstance(known, list) and known:
+            return sorted({str(item) for item in known if str(item).strip()})
+        return sorted(
+            {
+                str(segment.get("speaker"))
+                for segment in result.get("segments", []) or []
+                if isinstance(segment, dict)
+                and segment.get("speaker") not in (None, "", "UNKNOWN")
+            }
+        )
+
+    def _resolve_secondary(
+        self,
+        primary_result: Dict[str, Any],
+        secondary_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        raw_segments = secondary_result.get("segments")
+        if not isinstance(raw_segments, list) or not raw_segments:
+            return self._unknown_primary_result(primary_result, "secondary_invalid_response")
+
+        speaker_ids = self._secondary_raw_speaker_ids(secondary_result)
+        if len(speaker_ids) <= 1:
+            return self._unknown_primary_result(primary_result, "secondary_single_speaker")
+
+        valid_segments = [segment for segment in raw_segments if isinstance(segment, dict)]
+        if len(valid_segments) != len(raw_segments):
+            return self._unknown_primary_result(primary_result, "secondary_malformed_response")
+
+        from speaker_role_runtime import RuntimeSpeakerRoleMapper
+
+        role_mapping = RuntimeSpeakerRoleMapper().map_roles(valid_segments)
+        child_ids = [speaker for speaker, info in role_mapping.items() if info.get("role") == "CHILD"]
+        counselor_ids = [speaker for speaker, info in role_mapping.items() if info.get("role") == "COUNSELOR"]
+        if len(child_ids) != 1 or len(counselor_ids) != 1:
+            return self._unknown_primary_result(primary_result, "secondary_role_unresolved")
+
+        resolved_segments: List[Dict[str, Any]] = []
+        for index, segment in enumerate(valid_segments, start=1):
+            provider_speaker_id = str(segment.get("speaker", "UNKNOWN"))
+            copied = dict(segment)
+            copied["segment_id"] = copied.get("segment_id") or f"seg_{index:03d}"
+            copied["provider_speaker_id"] = provider_speaker_id
+            copied["speaker"] = role_mapping.get(provider_speaker_id, {}).get("role", "UNKNOWN")
+            if copied["speaker"] not in SPEAKER_ENUM:
+                copied["speaker"] = "UNKNOWN"
+            resolved_segments.append(copied)
+
+        metadata = dict(self._metadata(primary_result))
+        metadata.update(
+            {
+                "single_speaker_fallback_triggered": True,
+                "secondary_provider": "deepgram",
+                "secondary_raw_speaker_count": len(speaker_ids),
+                "secondary_raw_speaker_ids": speaker_ids,
+                "secondary_role_resolved": True,
+                "fallback_used": True,
+                "fallback_reason": "primary_single_speaker_secondary_role_resolved",
+            }
+        )
+        logger.info(
+            "selective_single_speaker_fallback used primary_raw_speaker_count=1 secondary_raw_speaker_count=%s",
+            len(speaker_ids),
+        )
+        return {
+            "schema_version": secondary_result.get("schema_version", "1.0"),
+            "segments": resolved_segments,
+            "_ispot_metadata": metadata,
+        }
+
+    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+        primary_result = self.primary.transcribe(audio_path)
+        metadata = self._metadata(primary_result)
+        trigger = (
+            self.enabled
+            and metadata.get("primary_provider") == "elevenlabs"
+            and metadata.get("valid_normalized_words") is True
+            and metadata.get("primary_raw_speaker_count") == 1
+        )
+        if not trigger:
+            return primary_result
+
+        try:
+            secondary_result = self.secondary.transcribe(audio_path)
+        except Exception:
+            return self._unknown_primary_result(primary_result, "secondary_provider_failure")
+        if not isinstance(secondary_result, dict):
+            return self._unknown_primary_result(primary_result, "secondary_malformed_response")
+        return self._resolve_secondary(primary_result, secondary_result)
+
+
 # 4-1. Deepgram provider
 # 공부용 설명:
 # Deepgram는 실제로 음성을 인식하는 외부 서비스이다.
@@ -350,7 +727,22 @@ class DeepgramSTTProvider(BaseSTTProvider):
                     )
 
             segments = self._coerce_to_contract(response)
-            return {"schema_version": "1.0", "segments": segments}
+            raw_speaker_ids = sorted(
+                {
+                    str(segment.get("speaker"))
+                    for segment in segments
+                    if segment.get("speaker") not in (None, "", "UNKNOWN")
+                }
+            )
+            return {
+                "schema_version": "1.0",
+                "segments": segments,
+                "_ispot_metadata": {
+                    "provider": "deepgram",
+                    "raw_speaker_count": len(raw_speaker_ids),
+                    "raw_speaker_ids": raw_speaker_ids,
+                },
+            }
 
         except Exception as exc:
             raise AudioProviderError(f"Deepgram STT 처리 중 오류 발생: {exc}") from exc
@@ -1591,7 +1983,36 @@ class Transcriber:
             "clova": ClovaSpeechSTTProvider,
             "clova_speech": ClovaSpeechSTTProvider,
             "deepgram": DeepgramSTTProvider,
+            "elevenlabs": ElevenLabsScribeV2Provider,
         }
+        if self.provider_name == "elevenlabs":
+            # The generic I_SPOT_STT_API_KEY may belong to another provider.
+            # ElevenLabs always receives its explicitly named key instead.
+            primary = ElevenLabsScribeV2Provider(
+                api_key=os.getenv("ELEVENLABS_API_KEY"),
+                api_url=self.api_url,
+            )
+            fallback_name = os.getenv("I_SPOT_STT_FALLBACK_PROVIDER", "deepgram").lower()
+            if fallback_name == "deepgram":
+                deepgram = DeepgramSTTProvider(
+                    api_key=os.getenv("DEEPGRAM_API_KEY"),
+                    api_url=self.api_url,
+                )
+                provider: BaseSTTProvider = ProviderFailureFallbackSTTProvider(
+                    primary=primary,
+                    fallback=deepgram,
+                )
+                # The existing provider-failure fallback remains inside this
+                # wrapper.  The selective path only sees successful,
+                # valid ElevenLabs one-speaker responses.
+                if single_speaker_fallback_enabled():
+                    return SelectiveSingleSpeakerFallbackSTTProvider(
+                        primary=provider,
+                        secondary=deepgram,
+                        enabled=True,
+                    )
+                return provider
+            return primary
         provider_cls = provider_map.get(self.provider_name, MockSTTProvider)
         return provider_cls(api_key=self.api_key, api_url=self.api_url)
 
@@ -1675,6 +2096,8 @@ class Transcriber:
         if self.speaker_diarizer is not None:
             normalized_segments = self.speaker_diarizer.apply_to_segments(normalized_segments, str(path))
 
+        # `_ispot_metadata` is internal provider provenance only.  Do not add
+        # it to the shared Backend/Frontend STT contract.
         return {"schema_version": "1.0", "segments": normalized_segments}
 
     def transcribe_and_diarize(self, audio_path: str | os.PathLike[str]) -> Dict[str, Any]:
@@ -1684,4 +2107,4 @@ class Transcriber:
         return self.transcribe(audio_path)
 
 
-__all__ = ["Transcriber", "InvalidAudioError", "AudioProviderError", "SpeakerDiarizer", "SpeakerDiarizationError"]
+__all__ = ["Transcriber", "InvalidAudioError", "AudioProviderError", "SpeakerDiarizer", "SpeakerDiarizationError", "SelectiveSingleSpeakerFallbackSTTProvider", "single_speaker_fallback_enabled"]
