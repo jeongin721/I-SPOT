@@ -1,26 +1,49 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { CASES } from "../data/cases";
-import { SESSIONS } from "../data/mockData";
-import { RiskBadge, StatusLabel } from "../components/ui/Badges";
+import { StatusLabel } from "../components/ui/Badges";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import UploadModal from "../components/ui/UploadModal";
+import { tasks as tasksApi } from "../api/endpoints";
+import { describeApiError, toUiTaskRow, type UiTaskRow } from "../api/adapters";
+
+// 목록은 처리 대기 업무 API(GET /tasks, task_type=REVIEW_TRANSCRIPT)에서 온다.
+// 사례가 아니라 검수가 필요한 회기 하나가 한 줄이고, 누르면 그 회기의 전사 검수 화면으로 간다.
+// 위험도는 Backend 에 없어 정렬 기준에서 뺐다(오래 기다린 순 · 최근 순).
+const PAGE_SIZE = 100;
 
 export default function STTCaseSelectorPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"riskScore" | "lastSession">("riskScore");
+  const [sortBy, setSortBy] = useState<"waiting" | "recent">("waiting");
   const [showUpload, setShowUpload] = useState(false);
+  const [tasks, setTasks] = useState<UiTaskRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const rows = useMemo(() => CASES.map(c => {
-    const cs = SESSIONS.filter(s => s.caseId === c.id);
-    const pending = cs.filter(s => s.sttStatus === "검수필요" || s.sttStatus === "처리중").length;
-    const latest = cs.sort((a, b) => b.date.localeCompare(a.date))[0];
-    return { ...c, pendingCount: pending, latestDate: latest?.date ?? c.lastSession };
-  }).filter(c => {
+  useEffect(() => {
+    let cancelled = false;
+
+    tasksApi
+      .list({ task_type: "REVIEW_TRANSCRIPT", page: 1, page_size: PAGE_SIZE })
+      .then((page) => {
+        if (!cancelled) setTasks(page.items.map(toUiTaskRow));
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "검수 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const rows = useMemo(() => tasks.filter(t => {
     if (!query) return true;
-    return c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase());
-  }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)), [query, sortBy]);
+    return t.childName.includes(query) || t.caseNumber.toLowerCase().includes(query.toLowerCase());
+  }).sort((a, b) => sortBy === "waiting" ? a.waitingSince.localeCompare(b.waitingSince) : b.waitingSince.localeCompare(a.waitingSince)), [tasks, query, sortBy]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#F6F8FB]">
@@ -34,8 +57,8 @@ export default function STTCaseSelectorPage() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-0.5 text-[13px] text-[#94A3B8] bg-white border border-[#E2E8F0] rounded-[6px] px-1 py-1">
-              <button onClick={() => setSortBy("riskScore")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "riskScore" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>위험도순</button>
-              <button onClick={() => setSortBy("lastSession")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "lastSession" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>최근상담순</button>
+              <button onClick={() => setSortBy("waiting")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "waiting" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>오래 기다린순</button>
+              <button onClick={() => setSortBy("recent")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "recent" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>최근순</button>
             </div>
             <div className="relative">
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -55,37 +78,50 @@ export default function STTCaseSelectorPage() {
           <table className="w-full">
             <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
               <tr>
-                {["아동명", "사례 ID", "위험도", "최근 상담", "STT 대기 건수", "상태", ""].map(h => (
+                {["아동명", "사례 ID", "회차", "대기 시작", "STT 대기", "상태", ""].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map(c => (
+              {rows.map(t => (
                 <tr
-                  key={c.id}
+                  key={t.sessionId}
                   className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
-                  onClick={() => navigate(`/cases/${c.id}/sessions`)}
+                  onClick={() => navigate(`/cases/${t.caseId}/sessions/${t.sessionId}/transcript`)}
                 >
-                  <td className="px-4 py-3 text-[13px] font-semibold text-[#172033]">{c.childName}</td>
-                  <td className="px-4 py-3 text-[11px] font-mono text-[#94A3B8]">{c.id}</td>
-                  <td className="px-4 py-3"><RiskBadge level={c.riskLevel} score={c.riskScore} /></td>
-                  <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{c.latestDate}</td>
+                  <td className="px-4 py-3 text-[13px] font-semibold text-[#172033]">{t.childName}</td>
+                  <td className="px-4 py-3 text-[11px] font-mono text-[#94A3B8]">{t.caseNumber}</td>
+                  <td className="px-4 py-3 text-[13px] text-[#64748B]">
+                    {t.sessionNumber}회차
+                    {t.sessionTitle && <span className="ml-1.5 text-[11px] text-[#94A3B8]">{t.sessionTitle}</span>}
+                  </td>
+                  <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{t.waitingSince}</td>
                   <td className="px-4 py-3">
-                    {c.pendingCount > 0 ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[11px] font-semibold">
-                        {c.pendingCount}건 대기
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[11px] font-semibold">
+                      {t.taskLabel} 대기
+                    </span>
+                    {t.isOverdue && (
+                      <span className="ml-1.5 inline-flex items-center px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded text-[11px] font-semibold">
+                        지연
                       </span>
-                    ) : (
-                      <span className="text-[11px] text-[#94A3B8]">없음</span>
                     )}
                   </td>
-                  <td className="px-4 py-3"><StatusLabel status={c.status} /></td>
+                  <td className="px-4 py-3"><StatusLabel status="review" /></td>
                   <td className="px-4 py-3">
                     <button className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium">선택</button>
                   </td>
                 </tr>
               ))}
+              {loading && (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">검수 목록을 불러오는 중...</td></tr>
+              )}
+              {!loading && loadError && (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-[13px] text-red-600">{loadError}</td></tr>
+              )}
+              {!loading && !loadError && rows.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">{query ? "검색 결과가 없습니다." : "검수할 상담 자료가 없습니다."}</td></tr>
+              )}
             </tbody>
           </table>
         </div>
