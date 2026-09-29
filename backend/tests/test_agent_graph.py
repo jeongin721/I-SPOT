@@ -6,12 +6,21 @@
 #   - 근거가 충분하면 재분석 없이 끝나는가
 #   - 근거가 부족해도 MAX_RETRY 에서 멈추는가 (무한 루프 방지)
 #   - reducer 구분이 맞는가 (누적 vs 교체)
+#
+# 이 파일은 원래 최상위 tests/ 에 있었는데, CI 와 scripts/check.sh 는
+# backend/ 에서 pytest 를 돌려 이 파일을 한 번도 실행하지 않았다.
+# 그래서 backend/tests 로 옮겼다. agent/ 는 저장소 최상위에 있으므로
+# import 전에 최상위 경로를 sys.path 에 넣는다.
 
 import pytest
 
+from app.adapters.module_loader import ensure_repo_root_on_path
+
 # langgraph 는 선택 의존성이다. 설치되지 않은 환경에서는 건너뛴다.
-#   pip install -r requirements-agent.txt
+#   pip install -r ../requirements-agent.txt
 pytest.importorskip("langgraph")
+
+ensure_repo_root_on_path()
 
 from agent.graph import build_graph  # noqa: E402
 from agent.nodes import MAX_RETRY, evidence_verdict, route_after_risk  # noqa: E402

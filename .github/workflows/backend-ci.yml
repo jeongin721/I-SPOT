@@ -39,7 +39,8 @@ jobs:
       - name: Install agent dependencies
         # langgraph 는 Backend 단독 실행에 필요 없는 선택 의존성이라
         # requirements-dev.txt 에 넣지 않는다. 다만 설치하지 않으면
-        # LangGraph Adapter 테스트가 건너뛰어져 검증이 비게 된다.
+        # LangGraph 그래프·Adapter 테스트(tests/test_agent_graph.py,
+        # tests/test_langgraph_adapter.py)가 건너뛰어져 검증이 비게 된다.
         run: pip install -r ../requirements-agent.txt
 
       - name: Lint

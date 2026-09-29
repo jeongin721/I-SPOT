@@ -1,6 +1,6 @@
 # LangGraph Agent Adapter 를 검증한다.
 #
-# 그래프 내부 동작은 최상위 tests/test_agent_graph.py 에서 본다.
+# 그래프 내부 동작은 tests/test_agent_graph.py 에서 본다.
 # 여기서는 Backend 쪽 계약만 확인한다.
 #
 #   - AI_PROVIDER=langgraph 로 전환되는가
@@ -11,10 +11,16 @@
 import pytest
 from pydantic import ValidationError
 
+from app.adapters.module_loader import ensure_repo_root_on_path
+
 # langgraph 는 Backend 단독 실행에 필요 없는 선택 의존성이다.
 # 설치되지 않은 환경에서는 이 파일을 통째로 건너뛴다.
 #   pip install -r ../requirements-agent.txt
 pytest.importorskip("langgraph")
+
+# monkeypatch 가 "agent.graph.*" 를 찾으려면 최상위 경로가 필요하다.
+# 이 줄이 없으면 파일 하나만 돌릴 때 앞선 테스트가 경로를 넣어 주지 않아 실패한다.
+ensure_repo_root_on_path()
 
 from app.adapters.ai_adapter import (  # noqa: E402
     AIError,
