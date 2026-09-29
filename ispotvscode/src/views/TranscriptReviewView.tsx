@@ -243,7 +243,7 @@ export default function TranscriptReviewView() {
       setStatus("STT_CONFIRMED");
       setShowConfirm(false);
       showToast("STT 검수가 완료되었습니다.", "success");
-      if (caseId) navigate(`/case-management`);
+      if (caseId) navigate(`/cases/${caseId}/analyses/${sessionId}`);
     } catch (caught) {
       setShowConfirm(false);
       showToast(describeApiError(caught, "검수 확정에 실패했습니다.", "권한이 없거나 없는 회기입니다."), "error");
@@ -501,7 +501,7 @@ export default function TranscriptReviewView() {
       <ConfirmModal
         open={showConfirm}
         title="STT 검수 완료"
-        message="STT 검수를 완료하시겠습니까? 완료 후 사례 관리 화면으로 이동합니다."
+        message="STT 검수를 완료하시겠습니까? 완료 후 AI 분석 화면으로 이동합니다."
         confirmLabel={confirming ? "처리 중..." : "완료"}
         onConfirm={handleConfirmComplete}
         onCancel={() => { if (!confirming) setShowConfirm(false); }}
