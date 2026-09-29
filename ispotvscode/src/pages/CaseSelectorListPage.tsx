@@ -46,7 +46,7 @@ const MODE_CFG: Record<Mode, {
     dest: (id) => `/cases/${id}/reports`,
     col: "분석 완료",
     colValue: (caseId) => {
-      const count = AI_ANALYSES.filter(a => a.caseId === caseId && a.status === "승인완료").length;
+      const count = AI_ANALYSES.filter(a => a.caseId === caseId && a.status === "상담사검토완료").length;
       return count > 0
         ? <span className="text-[11px] px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded">{count}건 완료</span>
         : <span className="text-[11px] text-[#94A3B8]">없음</span>;
@@ -57,14 +57,15 @@ const MODE_CFG: Record<Mode, {
 export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"riskScore" | "lastSession">("riskScore");
   const cfg = MODE_CFG[mode];
 
   const rows = useMemo(() =>
     CASES.filter(c => {
       if (!query) return true;
       return c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase());
-    }).sort((a, b) => b.riskScore - a.riskScore),
-    [query]
+    }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)),
+    [query, sortBy]
   );
 
   return (
@@ -77,16 +78,22 @@ export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
             <h1 className="text-[22px] font-semibold text-[#172033]">{cfg.title}</h1>
             <p className="text-[13px] text-[#64748B] mt-0.5">{cfg.subtitle}</p>
           </div>
-          <div className="relative">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="아동명·사례ID"
-              className="pl-8 pr-3 py-1.5 rounded-[6px] border border-[#E2E8F0] text-[13px] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] bg-white w-48 transition-all"
-            />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5 text-[13px] text-[#94A3B8] bg-white border border-[#E2E8F0] rounded-[6px] px-1 py-1">
+              <button onClick={() => setSortBy("riskScore")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "riskScore" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>위험도순</button>
+              <button onClick={() => setSortBy("lastSession")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "lastSession" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>최근상담순</button>
+            </div>
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="아동명·사례ID"
+                className="pl-8 pr-3 py-1.5 rounded-[6px] border border-[#E2E8F0] text-[13px] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] bg-white w-48 transition-all"
+              />
+            </div>
           </div>
         </div>
 

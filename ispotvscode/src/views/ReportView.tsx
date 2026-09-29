@@ -1,19 +1,26 @@
 import { useState } from "react";
-import CaseSelectorPanel from "../components/CaseSelectorPanel";
+import { useParams } from "react-router";
 import { CASES } from "../data/cases";
+import Breadcrumb from "../components/ui/Breadcrumb";
 
-type ReportType = "사례회의" | "외부전달" | "종결검토";
+type ReportType = "사례회의" | "외부전달" | "종결검토" | "요약본";
 
 interface ContentItem { id: string; label: string; desc: string; }
 
 const CONTENT_ITEMS: Record<ReportType, ContentItem[]> = {
+  요약본: [
+    { id: "summary-risk",    label: "위험도 요약",              desc: "현재 위험 등급 및 핵심 근거" },
+    { id: "summary-speech",  label: "주요 발화 요약",           desc: "가장 위험도 높은 발화 3~5건" },
+    { id: "summary-session", label: "최근 상담 요약",           desc: "최근 2회차 핵심 내용" },
+    { id: "summary-action",  label: "필요 조치 요약",           desc: "즉각 개입이 필요한 사항" },
+  ],
   사례회의: [
-    { id: "ai-risk",       label: "AI 위험도 추이 그래프",    desc: "회차별 위험 점수 변화 시각화" },
+    { id: "ai-risk",       label: "회차별 근거 신호 변화",    desc: "회차별 위험 점수 변화 시각화" },
     { id: "session-sum",   label: "회차별 상담 요약",         desc: "각 회차 핵심 내용 및 아동 상태" },
     { id: "risk-speech",   label: "주요 위험 발화 근거",      desc: "위험 판단에 영향을 준 발화 원문" },
     { id: "abuse-type",    label: "학대유형별 분석 결과",     desc: "신체·정서·성·방임 유형 가능성" },
     { id: "keywords",      label: "핵심 키워드 목록",         desc: "위험 신호 키워드 및 빈도" },
-    { id: "intervention",  label: "개입 영역 우선순위",       desc: "AI 추천 사례관리 방향" },
+    { id: "intervention",  label: "상담사 지정 개입 계획",       desc: "AI 추천 사례관리 방향" },
   ],
   외부전달: [
     { id: "case-basic",    label: "사례 기본 정보",           desc: "아동 인적사항 및 의뢰 경로" },
@@ -36,8 +43,10 @@ const CONTENT_ITEMS: Record<ReportType, ContentItem[]> = {
 function buildPreview(caseItem: typeof CASES[0], type: ReportType): string {
   const typeLabel = type === "사례회의" ? "내부 사례회의 보고서"
     : type === "외부전달" ? "지자체·경찰 전달용 정황 요약서"
-    : "사례 종결 검토서";
+    : type === "종결검토" ? "사례 종결 검토서"
+    : "AI 분석 요약본";
 
+  const riskLabel = caseItem.riskLevel === "high" ? "확인 필요" : caseItem.riskLevel === "mid" ? "확인 중" : "확인 완료";
   return `■ ${typeLabel}
 
 사례번호: ${caseItem.id}
@@ -46,16 +55,33 @@ function buildPreview(caseItem: typeof CASES[0], type: ReportType): string {
 담 당 자: ${caseItem.counselor} 상담사
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-${type === "사례회의" ? `[학대유형별 분석 결과]
+${type === "요약본" ? `[위험도 요약]
+현재 등급: ${riskLabel} (${caseItem.riskScore}점)
+학대 유형: ${caseItem.abuseTypes.join(", ")}
+
+[주요 발화 요약]
+• "배가 너무 아파요, 때렸어요" (8회차)
+• "집에 가기 싫어요" (7회차)
+• "엄마가 화나면 무서워요" (6회차)
+
+[최근 상담 요약]
+8회차 (2026-07-14): 신체 증상 호소, 가정 환경 불안 지속
+7회차 (2026-06-30): 위축 행동 증가, 보호자 면담 진행
+
+[필요 조치]
+• 즉각 안전 확인 및 현장 점검 권고
+• 의료기관 연계 (신체 검사) 검토`
+
+: type === "사례회의" ? `[학대유형별 분석 결과]
 ${caseItem.abuseTypes.map(t => `• ${t}학대: 확인됨`).join("\n")}
 
 [AI 위험도]
-종합 위험도: ${caseItem.riskScore}점 (${caseItem.riskLevel === "high" ? "고위험" : caseItem.riskLevel === "mid" ? "중위험" : "저위험"})
+종합 위험도: ${caseItem.riskScore}점 (${caseItem.riskLevel === "high" ? "확인 필요" : caseItem.riskLevel === "mid" ? "확인 중" : "확인 완료"})
 
 [주요 위험 키워드]
 ${caseItem.keywords.map(k => `• ${k}`).join("\n")}
 
-[개입 우선순위 (AI 추천)]
+[상담사 지정 개입 계획]
 ① 아동 심리·정서 지원
 ② 안전 및 보호 조치
 ③ 보호자 상담 및 교육`
@@ -67,7 +93,7 @@ ${caseItem.keywords.map(k => `• ${k}`).join("\n")}
 
 [위험도 평가]
 종합 위험도: ${caseItem.riskScore}점
-등급: ${caseItem.riskLevel === "high" ? "고위험 - 즉각 개입 권고" : caseItem.riskLevel === "mid" ? "중위험 - 지속 모니터링 필요" : "저위험"}
+등급: ${caseItem.riskLevel === "high" ? "확인 필요 - 즉각 개입 권고" : caseItem.riskLevel === "mid" ? "확인 중 - 지속 모니터링 필요" : "확인 완료"}
 
 [즉각 조치 필요 사항]
 • 현장 출동 및 아동 안전 확인
@@ -93,19 +119,20 @@ ${caseItem.keywords.slice(0, 2).map(k => `• ${k} (지속 관찰 필요)`).join
 }
 
 export default function ReportView() {
-  const [selectedId, setSelectedId] = useState(CASES[0].id);
+  const { caseId } = useParams<{ caseId: string }>();
+  const selectedCase = CASES.find(c => c.id === caseId) ?? CASES[0];
+
   const [reportType, setReportType] = useState<ReportType>("사례회의");
   const [selectedItems, setSelectedItems] = useState<Record<ReportType, Set<string>>>({
+    요약본:  new Set(CONTENT_ITEMS["요약본"].map(i => i.id)),
     사례회의: new Set(CONTENT_ITEMS["사례회의"].map(i => i.id)),
     외부전달: new Set(CONTENT_ITEMS["외부전달"].map(i => i.id)),
     종결검토: new Set(CONTENT_ITEMS["종결검토"].map(i => i.id)),
   });
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
-
-  const selectedCase = CASES.find(c => c.id === selectedId)!;
-
-  function handleSelectCase(id: string) { setSelectedId(id); setGenerated(false); }
+  const [draftMode, setDraftMode] = useState(false);
+  const [draftText, setDraftText] = useState("");
 
   function toggleItem(id: string) {
     setSelectedItems(prev => {
@@ -118,46 +145,53 @@ export default function ReportView() {
 
   function handleGenerate() {
     setGenerating(true);
-    setTimeout(() => { setGenerating(false); setGenerated(true); }, 1200);
+    setTimeout(() => {
+      setGenerating(false);
+      if (draftMode) {
+        setDraftText(buildPreview(selectedCase, reportType));
+      }
+      setGenerated(true);
+    }, 1200);
   }
 
   const items = CONTENT_ITEMS[reportType];
   const selected = selectedItems[reportType];
 
   const TYPE_CFG: Record<ReportType, { color: string; bg: string; border: string; active: string }> = {
+    요약본:   { color: "text-violet-700", bg: "bg-violet-50", border: "border-violet-200", active: "border-violet-600 bg-violet-50 text-violet-700" },
     사례회의: { color: "text-blue-700",  bg: "bg-blue-50",  border: "border-blue-200",  active: "border-blue-600 bg-blue-50 text-blue-700" },
     외부전달: { color: "text-red-700",   bg: "bg-red-50",   border: "border-red-200",   active: "border-red-600 bg-red-50 text-red-700" },
     종결검토: { color: "text-green-700", bg: "bg-green-50", border: "border-green-200", active: "border-green-600 bg-green-50 text-green-700" },
   };
 
   const TYPE_LABELS: Record<ReportType, string> = {
+    요약본:   "AI 분석 요약본",
     사례회의: "내부 사례회의 보고서",
     외부전달: "지자체·경찰 전달용 정황 요약서",
     종결검토: "종결 검토서",
   };
 
   const TYPE_DESCS: Record<ReportType, string> = {
+    요약본:   "AI가 생성하는 핵심 위험 신호 요약 문서",
     사례회의: "기관 내 사례회의 제출용 종합 보고서",
     외부전달: "수사기관·지자체 연계를 위한 공식 요약서",
     종결검토: "사례 종결 또는 가정복귀 전 최종 검토서",
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <CaseSelectorPanel selectedId={selectedId} onSelect={handleSelectCase} />
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-5">
-          <div>
-            <h1 className="text-xl font-bold text-[#172033]">보고서 생성</h1>
-            <p className="text-[#64748B] text-sm mt-0.5">
-              <span className="font-semibold text-[#172033]">{selectedCase.childName}</span>
-              <span className="mx-1.5 text-[#94A3B8]">·</span>
-              <span className="font-mono text-xs">{selectedCase.id}</span>
-              <span className="mx-1.5 text-[#94A3B8]">·</span>
-              보고서 유형과 포함 항목을 선택하세요
-            </p>
-          </div>
+    <div className="flex-1 overflow-y-auto bg-[#F6F8FB]">
+      <div className="p-6 space-y-5">
+        <Breadcrumb items={[{ label: "보고서 생성", to: "/report-cases" }, { label: selectedCase.childName }]} />
+        <div>
+          <h1 className="text-[22px] font-semibold text-[#172033]">보고서 생성</h1>
+          <p className="text-[#64748B] text-[13px] mt-0.5">
+            <span className="font-semibold text-[#172033]">{selectedCase.childName}</span>
+            <span className="mx-1.5 text-[#94A3B8]">·</span>
+            <span className="font-mono text-xs">{selectedCase.id}</span>
+            <span className="mx-1.5 text-[#94A3B8]">·</span>
+            보고서 유형과 포함 항목을 선택하세요
+          </p>
+        </div>
 
           <div className="grid grid-cols-5 gap-5">
             {/* Settings */}
@@ -166,7 +200,7 @@ export default function ReportView() {
               <div className="bg-white rounded-[8px] border border-[#E2E8F0] p-5">
                 <h2 className="font-semibold text-[#172033] text-sm mb-3">보고서 유형</h2>
                 <div className="space-y-2.5">
-                  {(["사례회의", "외부전달", "종결검토"] as ReportType[]).map(type => {
+                  {(["요약본", "사례회의", "외부전달", "종결검토"] as ReportType[]).map(type => {
                     const cfg = TYPE_CFG[type];
                     return (
                       <button key={type} onClick={() => { setReportType(type); setGenerated(false); }}
@@ -214,14 +248,24 @@ export default function ReportView() {
                     </div>
                   ))}
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <div
+                    onClick={() => { setDraftMode(d => !d); setGenerated(false); }}
+                    className="relative w-8 h-4.5 rounded-full transition-colors shrink-0"
+                    style={{ background: draftMode ? "#2563EB" : "#CBD5E1", width: "32px", height: "18px" }}
+                  >
+                    <div className="absolute top-0.5 transition-all rounded-full bg-white" style={{ width: "14px", height: "14px", left: draftMode ? "15px" : "2px" }} />
+                  </div>
+                  <span className="text-[12px] text-[#64748B]">초안 모드 (생성 후 직접 편집)</span>
+                </label>
                 <button onClick={handleGenerate} disabled={generating || selected.size === 0}
                   className="w-full py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-semibold rounded-[6px] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {generating
                     ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>보고서 생성 중...</span>
-                    : "보고서 생성"}
+                    : draftMode ? "초안 생성" : "보고서 생성"}
                 </button>
-                {generated && (
+                {generated && !draftMode && (
                   <div className="grid grid-cols-2 gap-2">
                     {["PDF 다운로드", "HWP 다운로드"].map(label => (
                       <button key={label} className="flex items-center justify-center gap-1.5 py-2.5 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors">
@@ -231,6 +275,14 @@ export default function ReportView() {
                     ))}
                   </div>
                 )}
+                {generated && draftMode && (
+                  <button
+                    onClick={() => {}}
+                    className="w-full py-2.5 border border-[#2563EB] text-[#2563EB] text-sm font-semibold rounded-[6px] hover:bg-[#EFF6FF] transition-colors"
+                  >
+                    초안 확정 및 제출
+                  </button>
+                )}
               </div>
             </div>
 
@@ -238,10 +290,10 @@ export default function ReportView() {
             <div className="col-span-3 rounded-[8px] border border-[#E2E8F0] overflow-hidden flex flex-col bg-[#F6F8FB]" style={{ maxHeight: "75vh" }}>
               <div className="px-5 py-3.5 border-b border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
-                  <h2 className="font-semibold text-[#172033] text-sm">미리보기</h2>
+                  <h2 className="font-semibold text-[#172033] text-sm">{draftMode && generated ? "초안 편집" : "미리보기"}</h2>
                   {generated && (
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${TYPE_CFG[reportType].bg} ${TYPE_CFG[reportType].border} ${TYPE_CFG[reportType].color}`}>
-                      생성 완료
+                      {draftMode ? "초안" : "생성 완료"}
                     </span>
                   )}
                 </div>
@@ -253,6 +305,13 @@ export default function ReportView() {
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                     <p className="text-sm text-center">항목을 선택하고<br/>보고서 생성 버튼을 클릭하세요</p>
                   </div>
+                ) : draftMode ? (
+                  <textarea
+                    value={draftText}
+                    onChange={e => setDraftText(e.target.value)}
+                    className="w-full h-full font-mono text-xs text-[#172033] leading-relaxed bg-white border border-[#E2E8F0] rounded-[8px] p-6 resize-none focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]"
+                    style={{ minHeight: "400px" }}
+                  />
                 ) : (
                   <div className="bg-white border border-[#E2E8F0] rounded-[8px] shadow-sm mx-auto" style={{ maxWidth: "680px" }}>
                     <div className="px-10 py-8 border-b border-[#E2E8F0]">
@@ -276,6 +335,5 @@ export default function ReportView() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

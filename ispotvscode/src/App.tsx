@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import RecordingView from "./views/RecordingView";
 import TranscriptReviewView from "./views/TranscriptReviewView";
 import AIReviewView from "./views/AIReviewView";
 import CasePlanView from "./views/CasePlanView";
@@ -22,9 +21,9 @@ const TASKS = [
 // ── Shared compact components ───────────────────────────────────────────────
 function RiskBadge({ level, score }: { level: RiskLevel; score?: number }) {
   const cfg = {
-    high: { label: "고위험", cls: "text-[#B91C1C] bg-[#FEF2F2] border-[#FECACA]" },
-    mid:  { label: "중위험", cls: "text-[#B45309] bg-[#FFFBEB] border-[#FDE68A]" },
-    low:  { label: "저위험", cls: "text-[#15803D] bg-[#F0FDF4] border-[#BBF7D0]" },
+    high: { label: "확인 필요", cls: "text-[#172033] bg-white border-[#64748B]" },
+    mid:  { label: "확인 중",   cls: "text-[#172033] bg-white border-[#94A3B8]" },
+    low:  { label: "확인 완료", cls: "text-[#475569] bg-white border-[#CBD5E1]" },
   }[level];
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px] font-semibold tracking-wide ${cfg.cls}`}>
@@ -372,7 +371,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: View) => void }) {
           {[
             { label: "전체 담당 사례", value: CASES.length,    note: `활성 ${CASES.filter(c => c.status === "active").length} · 검토 ${CASES.filter(c => c.status === "review").length}` },
             { label: "오늘 예정 상담", value: 3,               note: "13:00, 14:30, 16:00" },
-            { label: "고위험 우선 검토", value: highRisk.length, note: "즉시 검토 필요", accent: true },
+            { label: "확인 필요 우선 검토", value: highRisk.length, note: "즉시 검토 필요", accent: true },
             { label: "미처리 업무",    value: TASKS.length,    note: `긴급 ${TASKS.filter(t => t.urgent).length}건 포함` },
           ].map(stat => (
             <div key={stat.label} className="px-5 py-4">
@@ -406,7 +405,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: View) => void }) {
         {/* High-risk compact table */}
         <div className="col-span-2 bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
           <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-[#172033]">고위험 우선 검토</span>
+            <span className="text-[13px] font-semibold text-[#172033]">확인 필요 우선 검토</span>
             <button onClick={() => onNavigate("cases")} className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium transition-colors">전체보기</button>
           </div>
           <div className="divide-y divide-[#F1F5F9]">
@@ -435,7 +434,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: View) => void }) {
 // ── Cases View ─────────────────────────────────────────────────────────────
 const ABUSE_OPTIONS: (AbuseType | "전체")[] = ["전체", "신체", "정서", "성", "방임"];
 const RISK_OPTIONS:  (RiskLevel | "전체")[] = ["전체", "high", "mid", "low"];
-const RISK_LABELS = { "전체": "전체", high: "고위험", mid: "중위험", low: "저위험" };
+const RISK_LABELS = { "전체": "전체", high: "확인 필요", mid: "확인 중", low: "확인 완료" };
 
 function CasesView() {
   const [query,        setQuery]        = useState("");
@@ -624,7 +623,6 @@ export default function App() {
     switch (view) {
       case "dashboard":  return <DashboardView onNavigate={setView} />;
       case "cases":      return <CasesView />;
-      case "recording":  return <RecordingView />;
       case "stt-review": return <TranscriptReviewView />;
       case "ai-review":  return <AIReviewView />;
       case "case-plan":  return <CasePlanView />;

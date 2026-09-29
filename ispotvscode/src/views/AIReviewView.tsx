@@ -185,7 +185,7 @@ export default function AIReviewView() {
                   </button>
                 ))}
               </div>
-              {approved && <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded font-medium">승인 완료</span>}
+              {approved && <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded font-medium">상담사 검토 완료</span>}
             </div>
             <textarea
               value={activeDoc === "diary" ? diaryText : reportText}
