@@ -189,6 +189,13 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
         except OperationTimeout as error:
             _fail_analysis(db, session, analysis, ErrorCode.AI_TIMEOUT, str(error))
         except AIError as error:
+            # 어댑터가 알 수 없는 예외를 AI_FAILED 로 감쌀 때는 문구를 버리고
+            # 예외 종류 이름만 싣는다(ai_adapter.map_ai_error). 원인은 여기서
+            # session_id 와 함께 남긴다. 다른 오류 코드는 문구에 원인이 드러나
+            # 있고, 원인 예외(ValidationError 등)의 문구에 발화가 섞일 수 있어
+            # 남기지 않는다.
+            if error.error_code == ErrorCode.AI_FAILED and error.__cause__ is not None:
+                logger.exception("AI 분석 중 어댑터 오류. session_id=%s", session_id)
             _fail_analysis(db, session, analysis, error.error_code, str(error))
         except Exception as error:
             logger.exception("AI 분석 중 예상하지 못한 오류. session_id=%s", session_id)
