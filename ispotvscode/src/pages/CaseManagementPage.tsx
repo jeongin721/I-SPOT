@@ -22,7 +22,7 @@ import {
   type HistoryRow,
   type ManagedCase,
 } from "../api/dashboardAdapters";
-import type { AnalysisEnvelope, Session, Summary, SummaryEnvelope, TranscriptEnvelope } from "../api/types";
+import type { AnalysisEnvelope, Session, SessionStatus, Summary, SummaryEnvelope, TranscriptEnvelope } from "../api/types";
 
 // 사례 목록은 GET /cases, 이전 상담은 GET /cases/{id}/sessions(+ 회기별 요약 · 전사본),
 // 분석 결과 검토 탭은 회기별 GET /sessions/{id}/analysis · summary 를 읽기 전용으로 보여 준다.
@@ -73,6 +73,9 @@ function CenteredMessage({ children, error = false }: { children: ReactNode; err
 //
 // 지금 이 화면의 첫 단계는 아래 CaseListView 라 이 표는 쓰이지 않는다(원래부터). 다시 쓸 때를 위해
 // 가짜 데이터 대신 사례 목록을 받도록만 바꿔 두었다.
+
+/** 분석 단계에서 상담사가 할 일이 있는 회기(분석 요청 대기 · 결과 검토 · 실패 뒤 다시 요청). */
+const NEEDS_ACTION_STATUSES: SessionStatus[] = ["STT_CONFIRMED", "AI_REVIEW_REQUIRED", "AI_FAILED"];
 
 function CaseSelector({ cases, selected, onSelect }: { cases: ManagedCase[]; selected: ManagedCase | null; onSelect: (c: ManagedCase) => void }) {
   const [query, setQuery] = useState("");
@@ -302,7 +305,9 @@ function AiReviewTab({ caseObj, sessions, sessionsLoading, sessionsError, onNavi
             ? "AI 분석이 진행 중입니다. 끝나면 결과가 여기에 보입니다."
             : failure
               ? `AI 분석에 실패했습니다: ${failure.message}`
-              : "이 회기의 분석 결과가 아직 없습니다."}
+              : session.status === "STT_CONFIRMED"
+                ? "아직 AI 분석을 요청하지 않았습니다. 위의 'AI 분석 화면에서 검토하기' 에서 요청할 수 있습니다."
+                : "이 회기의 분석 결과가 아직 없습니다."}
         </div>
       )}
 
@@ -1239,7 +1244,8 @@ export default function CaseManagementPage() {
     );
   }
 
-  const reviewCount = sessions.filter(s => s.status === "AI_REVIEW_REQUIRED").length;
+  // 상담사가 할 일이 있는 회기 수. 메뉴 배지(분석 요청 · 결과 검토 · 다시 요청)와 같은 기준이다.
+  const reviewCount = sessions.filter(s => NEEDS_ACTION_STATUSES.includes(s.status)).length;
   const sessionProps = { caseObj: selectedCase, sessions, sessionsLoading, sessionsError };
 
   return (

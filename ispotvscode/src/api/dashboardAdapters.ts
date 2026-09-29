@@ -5,7 +5,7 @@
 // (adapters.toUiCase 는 위험도를 "low", toUiSession 은 상담 유형을 "정기상담" 으로 채우므로
 //  이 화면들에서는 쓰지 않는다. 확인하지 않은 값이 "확인 완료" · "정기상담" 으로 보이기 때문이다.)
 
-import { NOT_PROVIDED, deriveStatus, toGuardianLabel, toUiTaskRow, toUiTranscriptSegments } from "./adapters";
+import { NOT_PROVIDED, deriveStatus, toGuardianLabel, toUiTaskRow, toUiTranscriptSegments, pad2, parseBackendTime } from "./adapters";
 import type { UiTaskRow, UiTranscriptSegment } from "./adapters";
 import type {
   AnalysisResult,
@@ -23,20 +23,9 @@ import type {
 // 시각
 // =========================================================
 //
-// adapters.ts 의 같은 이름 함수는 내보내지 않아 여기서 다시 둔다.
+// 시간대 규칙은 adapters.parseBackendTime 하나를 쓴다.
 // Backend 는 UTC 로 저장하는데 사례 · 회기 시각은 시간대 표시 없이 온다(업무의 waiting_since 만 Z).
 // 표시가 없으면 UTC 로 읽어야 한국 시간 새벽 기록이 전날로 보이지 않는다.
-
-function parseBackendTime(iso: string): Date | null {
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso);
-  const parsed = new Date(hasZone ? iso : `${iso}Z`);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
 
 /** 사용자 시간대의 날짜(YYYY-MM-DD). 값이 없으면 빈 문자열. */
 export function toLocalDate(iso: string | null): string {
@@ -137,6 +126,7 @@ export function toDashboardTaskRow(item: TaskItem): DashboardTaskRow {
  * - 상담 자료 검수: 원문 검수 대기(검수 목록 화면이 task_type=REVIEW_TRANSCRIPT 로 불러오는 것과 같다)
  * - 사례 관리: AI 분석 단계에서 사람이 할 일(분석 요청 · 결과 검토 · 실패 재시도)
  */
+/** 메뉴별로 세는 업무. 사례 관리 탭 배지(CaseManagementPage 의 NEEDS_ACTION_STATUSES)와 같은 대상이다. */
 export const MENU_BADGE_TASKS: Record<string, TaskType[]> = {
   "/stt-cases": ["REVIEW_TRANSCRIPT"],
   "/case-management": ["REQUEST_ANALYSIS", "REVIEW_ANALYSIS", "RETRY_ANALYSIS"],
@@ -348,8 +338,13 @@ export function sortSessionsLatestFirst<T extends { session_number: number }>(li
 // AI 분석 (사례 관리 — 분석 결과 검토, 읽기 전용)
 // =========================================================
 
-/** AI 분석을 요청한 적이 있는 회기 상태. 이 회기들만 분석 결과를 조회한다. */
+/**
+ * AI 분석 단계의 회기 상태. 분석 결과 검토 탭은 이 회기들을 보여 준다.
+ * 검수가 끝나 분석을 기다리는 회기(STT_CONFIRMED)도 넣는다. 메뉴 배지가 분석 요청 대기를 함께 세므로,
+ * 배지를 보고 들어온 상담사가 이 탭에서 해당 회기를 찾을 수 있어야 한다(요청은 AI 분석 화면에서 한다).
+ */
 export const ANALYSED_SESSION_STATUSES: SessionStatus[] = [
+  "STT_CONFIRMED",
   "AI_PROCESSING",
   "AI_REVIEW_REQUIRED",
   "APPROVED",
@@ -359,6 +354,8 @@ export const ANALYSED_SESSION_STATUSES: SessionStatus[] = [
 /** 분석 결과 검토 탭의 상태 표시. 판정처럼 읽히지 않게 검토 진행 상황만 적는다. */
 export function toAnalysisStatusLabel(status: SessionStatus, summary: Summary | null): string {
   switch (status) {
+    case "STT_CONFIRMED":
+      return "분석 요청 대기";
     case "AI_PROCESSING":
       return "분석 중";
     case "AI_FAILED":
@@ -372,122 +369,14 @@ export function toAnalysisStatusLabel(status: SessionStatus, summary: Summary | 
   }
 }
 
-/** 학대유형 대분류 → 화면 이름. 판정이 아니라 "관련 신호" 로만 쓴다. */
-const ABUSE_TYPE_LABELS: Record<string, string> = {
-  PHYSICAL: "신체",
-  EMOTIONAL: "정서",
-  SEXUAL: "성",
-  NEGLECT: "방임",
-};
-
-function toAbuseTypeLabel(value: unknown): string | null {
-  if (typeof value !== "string" || !value) return null;
-
-  return ABUSE_TYPE_LABELS[value] ?? value;
-}
-
-function readString(item: Record<string, unknown>, key: string): string | null {
-  const value = item[key];
-
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-/** segment_id(단수) · segment_ids(복수)를 모두 읽는다. 위험 필드 구조가 아직 확정 전이다. */
-function readSegmentIds(item: Record<string, unknown>): string[] {
-  const ids: string[] = [];
-
-  for (const key of ["segment_id", "segment_ids"]) {
-    const value = item[key];
-
-    if (typeof value === "string" && value) ids.push(value);
-    if (Array.isArray(value)) ids.push(...value.filter((v): v is string => typeof v === "string"));
-  }
-
-  return ids;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** AI 가 주의 표시한 발화 하나. */
-export interface UiRiskUtterance {
-  segmentId: string | null;
-  text: string;
-  reason: string;
-  /** 학대유형 대분류가 있으면 화면 이름(예: "신체"). */
-  typeLabel: string | null;
-}
-
-/**
- * risk_utterances 를 화면 형태로 바꾼다.
- * 근거 발화(segment_id)가 없는 항목은 보여 주지 않는다(근거 없는 위험 신호 금지).
- */
-export function toUiRiskUtterances(result: AnalysisResult | null): UiRiskUtterance[] {
-  const items: unknown[] = result?.risk_utterances ?? [];
-
-  return items.filter(isRecord).flatMap((item) => {
-    const segmentId = readSegmentIds(item)[0] ?? null;
-
-    if (!segmentId) return [];
-
-    return [{
-      segmentId,
-      text: readString(item, "text") ?? "",
-      reason: readString(item, "reason") ?? "",
-      typeLabel: toAbuseTypeLabel(item.abuse_type),
-    }];
-  });
-}
-
-/** 관련 신호 · 위험 요인 한 줄. */
-export interface UiReferenceSignal {
-  label: string;
-  /** "관련 신호"(abuse_signals) 또는 "위험 요인"(risk_factors). */
-  kind: string;
-  segmentIds: string[];
-}
-
-/**
- * abuse_signals · risk_factors 를 한 목록으로 바꾼다.
- *
- * types.ts 는 두 필드를 문자열 배열로 적었지만 Backend 스키마(app/schemas/contracts.py)는 객체 배열이다
- * (모양은 PROPOSAL_risk_fields.md 7절 초안). 객체만 읽고, 근거 발화(segment_id · segment_ids)가 없는
- * 항목과 문자열로 온 항목은 보여 주지 않는다(근거 없는 위험 신호 금지).
- * detected 가 false 인 학대유형은 신호가 아니므로 뺀다.
- */
-export function toUiReferenceSignals(result: AnalysisResult | null): UiReferenceSignal[] {
-  const rows: UiReferenceSignal[] = [];
-  const signals: unknown[] = result?.abuse_signals ?? [];
-  const factors: unknown[] = result?.risk_factors ?? [];
-
-  for (const item of signals) {
-    if (!isRecord(item) || item.detected === false) continue;
-
-    const segmentIds = readSegmentIds(item);
-
-    if (segmentIds.length === 0) continue;
-
-    const typeLabel = toAbuseTypeLabel(item.abuse_type);
-    const label = typeLabel ? `${typeLabel} 관련 신호` : readString(item, "label") ?? "관련 신호";
-
-    rows.push({ label, kind: "관련 신호", segmentIds });
-  }
-
-  for (const item of factors) {
-    if (!isRecord(item)) continue;
-
-    const segmentIds = readSegmentIds(item);
-
-    if (segmentIds.length === 0) continue;
-
-    const label = readString(item, "label") ?? readString(item, "code") ?? "위험 요인";
-
-    rows.push({ label, kind: "위험 요인", segmentIds });
-  }
-
-  return rows;
-}
+// 위험 관련 항목 변환은 AI 분석 검토 화면과 함께 쓰도록 riskAdapters.ts 에 둔다.
+export {
+  riskSegmentIdSet,
+  toUiReferenceSignals,
+  toUiRiskUtterances,
+  type UiReferenceSignal,
+  type UiRiskUtterance,
+} from "./riskAdapters";
 
 /** segment_id → 발화. 근거 발화의 시각 · 화자를 찾는 데 쓴다. 전사본이 없으면 빈 Map. */
 export function indexSegments(source: Transcript | null): Map<string, UiTranscriptSegment> {

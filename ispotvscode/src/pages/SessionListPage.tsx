@@ -69,7 +69,8 @@ export default function SessionListPage() {
   if (loadError || !c) return <div className="flex items-center justify-center h-full text-[#94A3B8]">{loadError ?? "사례를 찾을 수 없습니다."}</div>;
 
   // AI 분석은 회기당 하나(GET /sessions/{id}/analysis)라 분석 화면 주소에도 회기 UUID 를 쓴다.
-  // 분석이 요청된 뒤(분석중 · 검토필요)에만 "AI 검토" 를 보여 준다.
+  // 검수가 끝난 회기는 모두 AI 분석 화면으로 갈 수 있다. 요청 전 · 실패면 "AI 분석"(요청 · 다시 요청),
+  // 요청 뒤면 "AI 검토". 승인된 회기는 결과 보기와 상담일지 작성으로 간다.
   function hasAnalysis(s: UiSession) {
     return s.aiStatus === "분석중" || s.aiStatus === "검토필요";
   }
@@ -124,21 +125,35 @@ export default function SessionListPage() {
                             STT 검수
                           </button>
                         )}
-                        {s.sttStatus === "검수완료" && hasAnalysis(s) && (
+                        {s.sttStatus === "검수완료" && (
                           <button
                             onClick={() => navigate(`/cases/${caseId}/analyses/${s.id}`)}
                             className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium rounded-[6px] hover:bg-blue-100 transition-colors"
                           >
-                            AI 검토
+                            {hasAnalysis(s) ? "AI 검토" : "AI 분석"}
                           </button>
                         )}
                         {(s.sttStatus === "분석완료") && (
-                          <button
-                            onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/transcript`)}
-                            className="text-[11px] text-[#94A3B8] hover:text-[#64748B]"
-                          >
-                            보기
-                          </button>
+                          <>
+                            <button
+                              onClick={() => navigate(`/cases/${caseId}/analyses/${s.id}`)}
+                              className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium rounded-[6px] hover:bg-blue-100 transition-colors"
+                            >
+                              AI 결과
+                            </button>
+                            <button
+                              onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/document`)}
+                              className="px-2.5 py-1 bg-white text-[#172033] border border-[#E2E8F0] text-[11px] font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
+                            >
+                              상담일지
+                            </button>
+                            <button
+                              onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/transcript`)}
+                              className="text-[11px] text-[#94A3B8] hover:text-[#64748B]"
+                            >
+                              원문
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>

@@ -50,14 +50,14 @@ function toAge(birthYear: number | null): number {
  * 오고(업무 목록의 waiting_since 만 Z 가 붙는다) 브라우저는 이런 문자열을 지역 시각으로 읽는다.
  * 그대로 두면 한국 시간 새벽에 등록한 회기가 전날로 보이므로, 표시가 없으면 UTC 로 본다.
  */
-function parseBackendTime(iso: string): Date | null {
+export function parseBackendTime(iso: string): Date | null {
   const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso);
   const parsed = new Date(hasZone ? iso : `${iso}Z`);
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function pad2(value: number): string {
+export function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
 

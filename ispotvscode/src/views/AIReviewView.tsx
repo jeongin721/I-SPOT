@@ -143,25 +143,41 @@ export default function AIReviewView() {
   // AI 분석이 도는 중이면 끝날 때까지 결과를 다시 확인한다. 끝나면 요약도 함께 받는다.
   const [pollTries, setPollTries] = useState(0);
 
+  // 주소의 회기가 바뀌면 이전 회기의 재확인 횟수 · 강조 발화를 넘겨받지 않는다.
+  useEffect(() => {
+    setPollTries(0);
+    setFocusIds([]);
+  }, [sessionId]);
+
   useEffect(() => {
     if (status !== "AI_PROCESSING" || !sessionId || pollTries >= POLL_MAX_TRIES) return;
+
+    let cancelled = false;
 
     const timer = window.setTimeout(() => {
       analysisApi
         .get(sessionId)
         .then(async (envelope) => {
+          if (cancelled) return;
           if (envelope.session_status !== "AI_PROCESSING") {
-            applySummary(await summaryApi.get(sessionId));
+            const summaryEnvelope = await summaryApi.get(sessionId);
+            if (cancelled) return;
+            applySummary(summaryEnvelope);
           }
           applyAnalysis(envelope);
         })
         .catch(() => {
           // 한 번 실패해도 다음 확인에서 다시 시도한다.
         })
-        .finally(() => setPollTries(n => n + 1));
+        .finally(() => {
+          if (!cancelled) setPollTries(n => n + 1);
+        });
     }, POLL_INTERVAL_MS);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [status, sessionId, pollTries]);
 
   /**
@@ -377,7 +393,7 @@ export default function AIReviewView() {
                   onClick={() => focusSegments(signal.segmentIds)}
                   className="block text-left text-xs text-[#475569] hover:text-[#2563EB] transition-colors"
                 >
-                  • {signal.label} — 추가 확인 필요 · 근거 발화 {signal.segmentIds.length}건
+                  • {signal.kind === "위험 요인" ? `위험 요인: ${signal.label}` : signal.label} — 추가 확인 필요 · 근거 발화 {signal.segmentIds.length}건
                 </button>
               ))}
             </div>
@@ -638,10 +654,19 @@ export default function AIReviewView() {
                         검토 완료
                       </button>
                     </div>
+                  ) : approved ? (
+                    // 요약 검토가 끝나면 이 요약을 바탕으로 상담일지(문서)를 쓴다. 문서는 따로 저장 · 승인한다.
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-[#94A3B8]">검토 완료된 요약은 수정할 수 없습니다. 이 요약으로 상담일지를 작성할 수 있습니다.</p>
+                      <button
+                        onClick={() => navigate(`/cases/${caseId}/sessions/${sessionId}/document`)}
+                        className="shrink-0 px-4 py-2 bg-[#2563EB] text-white text-sm font-semibold rounded-[6px] hover:bg-blue-700 transition-colors"
+                      >
+                        상담일지 작성
+                      </button>
+                    </div>
                   ) : (
-                    <p className="text-xs text-[#94A3B8]">
-                      {approved ? "검토 완료된 요약은 수정할 수 없습니다." : "지금 상태에서는 요약을 수정할 수 없습니다."}
-                    </p>
+                    <p className="text-xs text-[#94A3B8]">지금 상태에서는 요약을 수정할 수 없습니다.</p>
                   )}
                 </div>
               )}

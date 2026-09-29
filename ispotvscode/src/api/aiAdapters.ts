@@ -6,7 +6,7 @@
 // ⚠️ AI 결과는 판정이 아니라 참고정보다. 화면 문구는 "관련 신호", "추가 확인 필요",
 //    "근거 발화", "상담사 검토 필요" 로 쓰고 "확정" · "판정" 표현을 쓰지 않는다.
 
-import { NOT_PROVIDED, deriveStatus, toUiCaseWithId, type CaseWithId, type UiTranscriptSegment } from "./adapters";
+import { NOT_PROVIDED, deriveStatus, toUiCaseWithId, type CaseWithId, type UiTranscriptSegment, pad2, parseBackendTime } from "./adapters";
 import type {
   AnalysisResult,
   Case,
@@ -23,19 +23,8 @@ import type {
 // 시각
 // =========================================================
 
-// adapters.ts 의 parseBackendTime 과 같은 규칙이다(그 함수는 내보내지 않아 여기 따로 둔다).
+// 시간대 규칙은 adapters.parseBackendTime 하나를 쓴다.
 // 사례 · 회기 시각은 시간대 표시 없이 UTC 로 오므로, 표시가 없으면 UTC 로 읽는다.
-function parseBackendTime(iso: string): Date | null {
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso);
-  const parsed = new Date(hasZone ? iso : `${iso}Z`);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
 /** 사용자 시간대의 날짜(YYYY-MM-DD). 값이 없으면 NOT_PROVIDED. */
 export function toLocalDate(iso: string | null): string {
   if (!iso) return NOT_PROVIDED;
@@ -212,140 +201,14 @@ export function toReviewStage(status: SessionStatus): ReviewStage {
   }
 }
 
-/**
- * AI 결과의 위험 관련 항목 하나.
- *
- * risk_utterances · abuse_signals · risk_factors 의 항목 구조는 아직 팀 합의 전이라
- * (PROPOSAL_risk_fields.md §7) Backend 는 객체를 그대로 넘긴다. 그래서 필드를 하나씩 확인하며 읽는다.
- * types.ts 는 abuse_signals · risk_factors 를 string[] 로 적어 두었지만 실제로는 객체 배열이다.
- */
-type LooseItem = Record<string, unknown>;
-
-function asItems(value: unknown): LooseItem[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.filter((item): item is LooseItem => typeof item === "object" && item !== null);
-}
-
-function readString(item: LooseItem, key: string): string | null {
-  const value = item[key];
-
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-/** 항목이 근거로 든 발화 번호. segment_id(단수)와 segment_ids(복수)를 모두 본다. */
-function readSegmentIds(item: LooseItem): string[] {
-  const ids: string[] = [];
-  const single = item.segment_id;
-  const many = item.segment_ids;
-
-  if (typeof single === "string" && single) ids.push(single);
-
-  if (Array.isArray(many)) {
-    for (const id of many) {
-      if (typeof id === "string" && id && !ids.includes(id)) ids.push(id);
-    }
-  }
-
-  return ids;
-}
-
-/** 추가 확인이 필요하다고 AI 가 표시한 발화 하나. */
-export interface UiRiskUtterance {
-  segmentId: string;
-  /** AI 가 든 발화 문장. 없으면 전사본의 같은 발화 문장. */
-  text: string;
-  /** AI 가 든 사유. 없으면 빈 문자열. */
-  reason: string;
-  /** 전사본에서 찾은 시작 시각. 전사본에 없는 번호면 빈 문자열. */
-  timestamp: string;
-}
-
-/**
- * risk_utterances 를 화면 형태로 바꾼다. 근거 발화 번호가 없는 항목은 보여 주지 않는다
- * (05_RULES.md "근거 없는 위험 신호를 생성하지 않는다").
- */
-export function toUiRiskUtterances(
-  result: AnalysisResult | null,
-  segments: UiTranscriptSegment[],
-): UiRiskUtterance[] {
-  if (!result) return [];
-
-  const byId = new Map(segments.map((seg) => [seg.id, seg]));
-  const rows: UiRiskUtterance[] = [];
-
-  for (const item of asItems(result.risk_utterances)) {
-    for (const segmentId of readSegmentIds(item)) {
-      const seg = byId.get(segmentId);
-
-      rows.push({
-        segmentId,
-        text: readString(item, "text") ?? seg?.text ?? "",
-        reason: readString(item, "reason") ?? "",
-        timestamp: seg?.timestamp ?? "",
-      });
-    }
-  }
-
-  return rows;
-}
-
-/** 학대유형 대분류 → 화면 이름. Contract 는 영문 대문자로 오고 한글은 화면에서만 쓴다. */
-const ABUSE_TYPE_LABELS: Record<string, string> = {
-  PHYSICAL: "신체적 위해",
-  EMOTIONAL: "정서적 위해",
-  SEXUAL: "성적 위해",
-  NEGLECT: "방임",
-};
-
-/** abuse_signals · risk_factors 한 줄. 판정이 아니라 추가 확인이 필요한 참고정보다. */
-export interface UiReferenceSignal {
-  key: string;
-  label: string;
-  segmentIds: string[];
-}
-
-/**
- * abuse_signals · risk_factors 를 화면에 보여 줄 참고정보 목록으로 바꾼다.
- *
- * - abuse_signals 중 detected 가 명시적으로 false 인 항목은 신호가 아니므로 뺀다.
- * - 근거 발화 번호가 없는 항목도 뺀다.
- */
-export function toUiReferenceSignals(result: AnalysisResult | null): UiReferenceSignal[] {
-  if (!result) return [];
-
-  const rows: UiReferenceSignal[] = [];
-
-  asItems(result.abuse_signals).forEach((item, index) => {
-    if (item.detected === false) return;
-
-    const segmentIds = readSegmentIds(item);
-
-    if (segmentIds.length === 0) return;
-
-    const type = readString(item, "abuse_type");
-    const typeLabel = type ? ABUSE_TYPE_LABELS[type] ?? type : "학대유형 미표기";
-
-    rows.push({ key: `signal-${index}`, label: `${typeLabel} 관련 신호`, segmentIds });
-  });
-
-  asItems(result.risk_factors).forEach((item, index) => {
-    const segmentIds = readSegmentIds(item);
-
-    if (segmentIds.length === 0) return;
-
-    const label = readString(item, "label") ?? readString(item, "code") ?? "위험요인";
-
-    rows.push({ key: `factor-${index}`, label: `위험요인: ${label}`, segmentIds });
-  });
-
-  return rows;
-}
-
-/** 강조해서 보여 줄 발화 번호(위험 관련 발화로 표시된 것). */
-export function riskSegmentIdSet(utterances: UiRiskUtterance[]): Set<string> {
-  return new Set(utterances.map((item) => item.segmentId));
-}
+// 위험 관련 항목 변환은 사례 관리 화면과 함께 쓰도록 riskAdapters.ts 에 둔다.
+export {
+  riskSegmentIdSet,
+  toUiReferenceSignals,
+  toUiRiskUtterances,
+  type UiReferenceSignal,
+  type UiRiskUtterance,
+} from "./riskAdapters";
 
 /** 요약 항목과 근거 발화. 근거 발화는 시작 시각과 화자로 보여 준다. */
 export interface UiEvidence {

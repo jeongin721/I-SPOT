@@ -346,12 +346,13 @@ export default function DocumentWritePage() {
                   <p className="text-[13px] text-[#94A3B8] bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] px-3 py-2">—</p>
                 </div>
 
-                {/* AI Reference — 이 발화를 근거로 든 AI 요약 항목 */}
+                {/* AI Reference — 이 발화를 근거로 든 AI 요약 항목.
+                    근거는 분석 당시 AI 가 만든 문장 기준이라, 상담사가 요약을 고쳤어도 원래 문장으로 보인다. */}
                 <div>
                   <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider mb-2">AI 참고정보</p>
                   <div className="text-[12px] text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] px-3 py-2 leading-relaxed space-y-1">
                     {activeEvidence.keyPoints.length > 0
-                      ? activeEvidence.keyPoints.map((point, i) => <p key={i}>요약 항목: {point}</p>)
+                      ? activeEvidence.keyPoints.map((point, i) => <p key={i}>AI 원본 요약 항목: {point}</p>)
                       : <p>—</p>}
                   </div>
                 </div>

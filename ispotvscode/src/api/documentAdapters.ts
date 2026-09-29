@@ -5,7 +5,7 @@
 // 상담일지 초안은 상담사가 검수하는 요약(GET /sessions/{id}/summary)에서 만들고,
 // Backend 에 없는 항목(상담형태, 아동 상태 등)은 빈 칸으로 두어 상담사가 채운다.
 
-import { SPEAKER_LABELS, toTimestamp } from "./adapters";
+import { SPEAKER_LABELS, toTimestamp, pad2, parseBackendTime } from "./adapters";
 import { DOC_TYPE_CONSULTATION_RECORD } from "./types";
 import type {
   Document,
@@ -26,17 +26,6 @@ export const DOCUMENT_CONTENT_MAX = 50000;
 //
 // adapters.ts 의 시각 변환(parseBackendTime)은 밖으로 내보내지 않아 같은 규칙을 여기에 둔다.
 // Backend 는 UTC 로 저장하고 시간대 표시 없이 주므로, 표시가 없으면 UTC 로 읽는다.
-
-function parseBackendTime(iso: string): Date | null {
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso);
-  const parsed = new Date(hasZone ? iso : `${iso}Z`);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
 
 /** 사용자 시간대의 "YYYY-MM-DD HH:MM". 값이 없으면 빈 문자열. */
 export function toLocalDateTime(iso: string | null): string {
