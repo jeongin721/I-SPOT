@@ -18,6 +18,7 @@ from app.models.session import ConsultationSession
 from app.models.transcript import Transcript
 from tests.conftest import create_case, create_session, upload_audio
 from tests.test_analysis import confirmed_session
+from tests.test_stt_transcript import transcribed_session
 
 TASKS = "/api/v1/tasks"
 SUMMARY = "/api/v1/tasks/summary"
@@ -85,6 +86,36 @@ def _set_confirmed_at(session_id: str, when: datetime) -> None:
         )
         transcript.confirmed_at = when
         db.commit()
+
+
+def _set_version_created_at(session_id: str, version: int, when: datetime) -> None:
+    with SessionLocal() as db:
+        transcript = db.scalar(
+            select(Transcript)
+            .where(
+                Transcript.session_id == uuid.UUID(session_id),
+                Transcript.version == version,
+            )
+        )
+        transcript.created_at = when
+        db.commit()
+
+
+def _edit_transcript(client: TestClient, headers, session_id: str, text: str) -> dict:
+    """실제 수정 API(PATCH)로 첫 구간을 고친다. 새 version 이 생긴다."""
+
+    envelope = client.get(f"/api/v1/sessions/{session_id}/transcript", headers=headers)
+    segment_id = envelope.json()["data"]["transcript"]["segments"][0]["segment_id"]
+
+    response = client.patch(
+        f"/api/v1/sessions/{session_id}/transcript",
+        json={"segments": [{"segment_id": segment_id, "text": text}]},
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+
+    return response.json()["data"]
 
 
 def _get(client: TestClient, headers, **params):
@@ -282,10 +313,15 @@ def test_waiting_since_for_confirmed_transcript_is_confirmation(
     assert _same_time(_waiting(data)[session["id"]], base)
 
 
-def test_reopened_transcript_waits_from_confirmation(
+def test_reopened_transcript_without_new_version_waits_from_confirmation(
     client: TestClient, counselor_headers, session
 ) -> None:
-    """확정 후 다시 고치려고 되돌린 회기가 원래 STT 완료 시각 기준으로 "지연"이 되면 안 된다."""
+    """
+    확정 뒤 상태만 되돌아가고 새 version 이 없는 데이터는 확정 시각부터 센다.
+
+    수정 API 로 되돌리면 새 version 이 항상 생기므로 대비용 규칙이다.
+    원래 STT 완료 시각 기준으로 "지연"이 되면 안 된다.
+    """
 
     base = _now() - timedelta(days=5)
 
@@ -303,9 +339,78 @@ def test_reopened_transcript_waits_from_confirmation(
     assert _same_time(_waiting(data)[session["id"]], base + timedelta(days=4))
 
 
+def test_transcript_reopened_long_after_confirmation_waits_from_reopening(
+    client: TestClient, counselor_headers, session
+) -> None:
+    """오래전에 확정한 원문을 오늘 다시 고치면 되돌린 시각부터 센다. 곧바로 "지연"이 되면 안 된다."""
+
+    long_ago = _now() - timedelta(days=10)
+
+    confirmed_session(client, counselor_headers, session["id"])
+    _set_session(session["id"], stt_completed_at=long_ago)
+    _set_confirmed_at(session["id"], long_ago + timedelta(hours=1))
+
+    reopened = _edit_transcript(client, counselor_headers, session["id"], "오늘 다시 고친 문장")
+
+    item = _list(client, counselor_headers)["items"][0]
+
+    assert item["task_type"] == "REVIEW_TRANSCRIPT"
+    assert _same_time(_parse(item["waiting_since"]), _parse(reopened["created_at"]))
+    assert item["is_overdue"] is False
+
+    summary = client.get(SUMMARY, headers=counselor_headers).json()["data"]
+
+    assert (summary["total"], summary["overdue"]) == (1, 0)
+
+
+def test_later_edits_do_not_restart_the_reopened_wait(
+    client: TestClient, counselor_headers, session
+) -> None:
+    """되돌린 뒤 여러 번 고쳐도 처음 되돌린 시각부터 센다. 고칠 때마다 새로 세면 묵은 검수가 새것처럼 보인다."""
+
+    long_ago = _now() - timedelta(days=10)
+    reopened_at = _now() - timedelta(days=3)
+
+    confirmed_session(client, counselor_headers, session["id"])
+    _set_session(session["id"], stt_completed_at=long_ago)
+    _set_confirmed_at(session["id"], long_ago + timedelta(hours=1))
+
+    first_edit = _edit_transcript(client, counselor_headers, session["id"], "되돌리며 고친 문장")
+    _set_version_created_at(session["id"], first_edit["version"], reopened_at)
+    _edit_transcript(client, counselor_headers, session["id"], "한 번 더 고친 문장")
+
+    item = _list(client, counselor_headers)["items"][0]
+
+    assert _same_time(_parse(item["waiting_since"]), reopened_at)
+    assert item["is_overdue"] is True
+
+
+def test_edits_before_first_confirmation_keep_stt_completion_time(
+    client: TestClient, counselor_headers, session
+) -> None:
+    """확정한 적이 없으면 고친 version 이 있어도 되돌린 것이 아니다. STT 완료 시각부터 센다."""
+
+    stt_done = _now() - timedelta(days=3)
+
+    transcribed_session(client, counselor_headers, session["id"])
+    _set_session(session["id"], stt_completed_at=stt_done)
+    _edit_transcript(client, counselor_headers, session["id"], "확정 전에 고친 문장")
+
+    item = _list(client, counselor_headers)["items"][0]
+
+    assert item["task_type"] == "REVIEW_TRANSCRIPT"
+    assert _same_time(_parse(item["waiting_since"]), stt_done)
+
+
 def test_analysis_request_after_ai_failure_waits_from_failure(
     client: TestClient, counselor_headers, session
 ) -> None:
+    """
+    AI 실패 뒤 원문 확정 상태로 되돌린 회기는 실패 시각부터 센다.
+
+    상태 전이 규칙에는 있지만 지금은 이 경로로 가는 API 가 없어, DB 에 상태를 직접 넣어 확인한다.
+    """
+
     base = _now() - timedelta(days=5)
 
     confirmed_session(client, counselor_headers, session["id"])

@@ -4,14 +4,14 @@
 # 조회할 때마다 상태에서 계산한다. 따로 저장하면 상태 기계와 어긋날 수 있다.
 #
 # 정렬 기준은 "이 상태로 기다리기 시작한 시각"이다. 새 컬럼 없이 이미 저장되는
-# 시각(STT·AI 완료, 원문 확정, 음성 업로드)에서 계산하고, 정렬·페이지는 DB 에서 한다.
+# 시각(STT·AI 완료, 원문 확정·수정, 음성 업로드)에서 계산하고, 정렬·페이지는 DB 에서 한다.
 
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, case, func, not_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.config import settings
 from app.core.enums import CaseStatus, SessionStatus, TaskType
@@ -117,19 +117,42 @@ def _waiting_since():
         .scalar_subquery()
     )
 
+    # 확정한 원문을 다시 고치면(PATCH) 확정 version 뒤에 새 version 이 생긴다.
+    # 그 첫 version 의 생성 시각이 되돌린 시각이다. 확정한 적이 없으면 비어 있다.
+    confirmed = aliased(Transcript)
+    latest_confirmed_version = (
+        select(func.max(confirmed.version))
+        .where(confirmed.session_id == session.id, confirmed.is_confirmed.is_(True))
+        .correlate(session)
+        .scalar_subquery()
+    )
+    reopened_at = (
+        select(Transcript.created_at)
+        .where(
+            Transcript.session_id == session.id,
+            Transcript.version > latest_confirmed_version,
+        )
+        .order_by(Transcript.version)
+        .limit(1)
+        .correlate(session)
+        .scalar_subquery()
+    )
+
     started = case(
         (
             session.status == SessionStatus.CREATED,
             func.coalesce(session.consulted_at, session.created_at),
         ),
         (session.status == SessionStatus.AUDIO_UPLOADED, latest_audio_at),
-        # 확정 후 다시 고치려고 되돌렸으면 확정 시각부터 기다린 것으로 본다.
-        # 원래 STT 완료 시각을 쓰면 방금 되돌린 업무가 오래된 것처럼 보인다.
+        # STT 완료 · 최근 확정 · 되돌린 시각 중 가장 늦은 값.
+        # 원래 STT 완료나 확정 시각을 쓰면, 오래전에 확정한 원문을 방금 되돌린 업무가
+        # 곧바로 "지연"으로 보인다. 되돌린 뒤 다시 STT 를 돌렸으면 새 STT 완료 시각이 늦다.
         (
             session.status == SessionStatus.STT_REVIEW_REQUIRED,
-            _later(session.stt_completed_at, latest_confirmed_at),
+            _later(_later(session.stt_completed_at, latest_confirmed_at), reopened_at),
         ),
-        # AI 분석이 실패해 원문 확정 상태로 되돌렸으면 실패 시각부터.
+        # 대비용: AI 실패 후 원문 확정 상태로 되돌리면 실패 시각부터 센다.
+        # 상태 전이 규칙(AI_FAILED → STT_CONFIRMED)에만 있고, 지금은 이 경로로 가는 API 가 없다.
         (
             session.status == SessionStatus.STT_CONFIRMED,
             _later(latest_confirmed_at, session.ai_completed_at),
