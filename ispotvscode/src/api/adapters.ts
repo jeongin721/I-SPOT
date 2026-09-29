@@ -232,3 +232,163 @@ export function toUiSession(
     recordStatus: derived.record,
   };
 }
+
+// ===== 전사 검수 · 음성 업로드 =====
+//
+// TranscriptReviewView · UploadModal · STTCaseSelectorPage 가 쓰는 변환.
+// 다른 갈래와 같은 파일에 붙이므로 위쪽 import 를 건드리지 않고 여기서 따로 들여온다.
+
+import { ApiError } from "./client";
+import { TASK_LABELS } from "./types";
+import type { Speaker, TaskItem, Transcript } from "./types";
+
+/**
+ * 사례 · 회기 자체가 없거나 남의 것일 때의 오류 코드. 같은 403/404 라도 AUDIO_NOT_FOUND ·
+ * TRANSCRIPT_NOT_FOUND 는 "음성이 없다" 같은 다른 뜻이라 서버 문구를 그대로 보여 준다.
+ */
+const MISSING_RESOURCE_CODES = new Set(["FORBIDDEN", "NOT_FOUND", "CASE_NOT_FOUND", "SESSION_NOT_FOUND"]);
+
+/**
+ * ApiError 를 화면 문구로 바꾼다.
+ * 남의 자료거나 없는 자료(403/404)는 서버 문구 대신 한 가지 안내로 통일한다.
+ */
+export function describeApiError(
+  caught: unknown,
+  fallback: string,
+  forbiddenMessage = "권한이 없거나 없는 사례입니다.",
+): string {
+  if (!(caught instanceof ApiError)) return fallback;
+
+  if (caught.isForbidden && MISSING_RESOURCE_CODES.has(caught.code)) return forbiddenMessage;
+
+  return caught.message;
+}
+
+/** 화자 코드 → 화면 이름. */
+export const SPEAKER_LABELS: Record<Speaker, string> = {
+  COUNSELOR: "상담사",
+  CHILD: "아동",
+  GUARDIAN: "보호자",
+  OTHER: "기타",
+  UNKNOWN: "미확인",
+};
+
+/** ms → "mm:ss". 한 시간을 넘으면 "h:mm:ss". */
+export function toTimestamp(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mmss = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+
+  return h > 0 ? `${h}:${mmss}` : mmss;
+}
+
+/**
+ * Backend 가 전사본에 덧붙여 주는 아동 발화 인수인계 보기(child_handoff).
+ *
+ * types.ts 의 Transcript 와 API_CONTRACT.md 7절에는 아직 없는 필드라 여기서만 읽는다.
+ * review_needed_segments 는 화자가 불확실해 사람이 확인해야 하는 발화다.
+ */
+interface ChildHandoffSegment {
+  segment_id: string;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+}
+
+interface ChildHandoffReviewSegment extends ChildHandoffSegment {
+  reason: string;
+}
+
+export interface ChildHandoff {
+  child_analysis_text: string;
+  confirmed_child_segments: ChildHandoffSegment[];
+  review_needed_segments: ChildHandoffReviewSegment[];
+}
+
+type TranscriptWithHandoff = Transcript & { child_handoff?: ChildHandoff | null };
+
+/** child_handoff 의 사유 코드 → 화면 문구. 모르는 코드는 그대로 보여 준다. */
+const REVIEW_REASON_LABELS: Record<string, string> = {
+  UNRESOLVED_SPEAKER: "화자 확인 필요",
+};
+
+/** 전사 검수 화면의 발화 한 줄. */
+export interface UiTranscriptSegment {
+  /** Backend 의 segment_id. 수정 요청에 그대로 쓴다. */
+  id: string;
+  speaker: Speaker;
+  speakerLabel: string;
+  /** "mm:ss" 로 표시한 시작 시각. */
+  timestamp: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  confidence: number;
+  /** 상담사가 이미 고친 발화인가(edited_segment_ids). */
+  edited: boolean;
+  /** child_handoff 가 사람 확인이 필요하다고 표시한 사유. 없으면 null. */
+  reviewReason: string | null;
+}
+
+/** Backend Transcript 의 발화 목록을 화면 형태로 바꾼다. 순서는 시작 시각 순으로 맞춘다. */
+export function toUiTranscriptSegments(source: Transcript): UiTranscriptSegment[] {
+  const edited = new Set(source.edited_segment_ids);
+  const reasons = new Map<string, string>();
+
+  for (const item of (source as TranscriptWithHandoff).child_handoff?.review_needed_segments ?? []) {
+    reasons.set(item.segment_id, REVIEW_REASON_LABELS[item.reason] ?? item.reason);
+  }
+
+  return [...source.segments]
+    .sort((a, b) => a.start_ms - b.start_ms)
+    .map((seg) => ({
+      id: seg.segment_id,
+      speaker: seg.speaker,
+      speakerLabel: SPEAKER_LABELS[seg.speaker] ?? seg.speaker,
+      timestamp: toTimestamp(seg.start_ms),
+      startMs: seg.start_ms,
+      endMs: seg.end_ms,
+      text: seg.text,
+      confidence: seg.confidence,
+      edited: edited.has(seg.segment_id),
+      reviewReason: reasons.get(seg.segment_id) ?? null,
+    }));
+}
+
+/** 상담 자료 검수 목록(처리 대기 업무) 한 줄. */
+export interface UiTaskRow {
+  sessionId: string;
+  /** Backend 사례 UUID. 주소에 쓴다. */
+  caseId: string;
+  /** 화면에 보이는 사례번호. */
+  caseNumber: string;
+  childName: string;
+  sessionNumber: number;
+  sessionTitle: string;
+  /** 업무 이름(TASK_LABELS). */
+  taskLabel: string;
+  /** 회기 상태를 사람에게 보여줄 문구. */
+  statusLabel: string;
+  /** 기다리기 시작한 날짜(YYYY-MM-DD). */
+  waitingSince: string;
+  isOverdue: boolean;
+  counselor: string;
+}
+
+export function toUiTaskRow(item: TaskItem): UiTaskRow {
+  return {
+    sessionId: item.session_id,
+    caseId: item.case_id,
+    caseNumber: item.case_number,
+    childName: item.child_alias,
+    sessionNumber: item.session_number,
+    sessionTitle: item.session_title ?? "",
+    taskLabel: TASK_LABELS[item.task_type],
+    statusLabel: deriveStatus(item.session_status).label,
+    waitingSince: toDateOnly(item.waiting_since),
+    isOverdue: item.is_overdue,
+    counselor: item.counselor_name ?? NOT_PROVIDED,
+  };
+}
