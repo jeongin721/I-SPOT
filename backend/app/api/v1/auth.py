@@ -94,9 +94,9 @@ def change_my_password(
 def create_user(
     payload: UserCreateRequest,
     db: DbSession,
-    _: AdminUser,
+    admin: AdminUser,
 ) -> DataResponse[UserResponse]:
-    user = user_service.create_user(db, payload)
+    user = user_service.create_user(db, payload, actor=admin)
 
     return DataResponse(data=UserResponse.model_validate(user))
 
@@ -218,6 +218,11 @@ def list_audit_logs(
         until=until,
     )
 
-    items = [AuditLogResponse.model_validate(row) for row in rows]
+    items = []
+
+    for row, actor_name in rows:
+        item = AuditLogResponse.model_validate(row)
+        item.actor_name = actor_name
+        items.append(item)
 
     return DataResponse(data=paged(items, total, page, page_size))

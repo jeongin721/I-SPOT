@@ -17,11 +17,12 @@ from typing import Iterable, List, Optional, Tuple
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.core.enums import UserRole
+from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError
 from app.core.password_policy import generate_password, validate_password
 from app.core.security import hash_password
 from app.models.user import User
+from app.services import audit_service
 
 DEMO_ACCOUNTS: List[Tuple[str, str, UserRole]] = [
     ("admin@ispot.example.com", "데모 관리자", UserRole.ADMIN),
@@ -38,14 +39,24 @@ def upsert_user(email: str, name: str, role: UserRole, password: str) -> str:
         if existing is not None:
             return f"이미 존재하는 계정입니다: {email} (role={existing.role.value})"
 
-        session.add(
-            User(
-                email=email.lower(),
-                name=name,
-                role=role,
-                hashed_password=hash_password(password),
-                is_active=True,
-            )
+        user = User(
+            email=email.lower(),
+            name=name,
+            role=role,
+            hashed_password=hash_password(password),
+            is_active=True,
+        )
+
+        session.add(user)
+        session.flush()
+
+        # 서버에서 직접 만든 계정이라 행동한 사람(actor)이 없다. API 로 만든 계정과 구분되게 남긴다.
+        audit_service.record(
+            session,
+            action=AuditAction.USER_CREATED,
+            entity_type="User",
+            entity_id=user.id,
+            detail={"role": role.value, "via": "seed_users script"},
         )
         session.commit()
 

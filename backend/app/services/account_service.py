@@ -7,7 +7,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -219,7 +219,9 @@ def list_audit_logs(
     actor_id: Optional[uuid.UUID] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
-) -> Tuple[List[AuditLog], int]:
+) -> Tuple[List[Tuple[AuditLog, Optional[str]]], int]:
+    """감사 로그와 행동한 사람 이름(없는 계정 · 시스템 작업은 None)을 짝지어 돌려준다."""
+
     conditions = []
 
     if action is not None:
@@ -251,4 +253,16 @@ def list_audit_logs(
         )
     )
 
-    return rows, total
+    # 행동한 사람 이름. 행마다 users 를 읽지 않도록(N+1) 한 번에 가져온다.
+    actor_ids = {row.actor_id for row in rows if row.actor_id is not None}
+    names: Dict[uuid.UUID, str] = {}
+
+    if actor_ids:
+        names = {
+            user_id: name
+            for user_id, name in db.execute(
+                select(User.id, User.name).where(User.id.in_(actor_ids))
+            )
+        }
+
+    return [(row, names.get(row.actor_id)) for row in rows], total

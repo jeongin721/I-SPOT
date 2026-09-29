@@ -323,7 +323,17 @@ def authenticate(
 # 계정 생성 / 조회
 # =========================================================
 
-def create_user(db: Session, payload: UserCreateRequest) -> User:
+def create_user(
+    db: Session,
+    payload: UserCreateRequest,
+    actor: Optional[User] = None,
+) -> User:
+    """
+    계정 생성. 누가 만들었는지 감사 로그(USER_CREATED)에 남긴다.
+
+    actor 는 만든 관리자다. 서버에서 직접 만드는 경로는 actor 없이 남는다.
+    """
+
     validate_password(payload.password, email=payload.email, name=payload.name)
 
     user = User(
@@ -337,8 +347,9 @@ def create_user(db: Session, payload: UserCreateRequest) -> User:
 
     db.add(user)
 
+    # 감사 로그에 계정 id 가 필요해 먼저 보낸다. 이메일 중복도 여기서 걸린다.
     try:
-        db.commit()
+        db.flush()
     except IntegrityError as error:
         db.rollback()
 
@@ -347,6 +358,17 @@ def create_user(db: Session, payload: UserCreateRequest) -> User:
             "이미 등록된 이메일입니다.",
         ) from error
 
+    # 이메일 · 이름은 남기지 않는다. 계정 id 와 역할만 남긴다.
+    audit_service.record(
+        db,
+        action=AuditAction.USER_CREATED,
+        entity_type="User",
+        entity_id=user.id,
+        actor_id=actor.id if actor else None,
+        detail={"role": user.role.value},
+    )
+
+    db.commit()
     db.refresh(user)
 
     return user

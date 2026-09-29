@@ -253,7 +253,7 @@ Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `acto
   "data": {
     "items": [{
       "id": "uuid", "action": "LOGIN", "status": "FAILURE",
-      "error_code": "INVALID_CREDENTIALS", "actor_id": null,
+      "error_code": "INVALID_CREDENTIALS", "actor_id": null, "actor_name": null,
       "entity_type": "User", "entity_id": null,
       "ip_address": "127.0.0.1", "user_agent": "...",
       "detail": null, "created_at": "..."
@@ -265,6 +265,13 @@ Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `acto
 
 **행동은 `action`, 결과는 `status` 로 나눈다.** 실패를 별도 action 으로 만들지 않는다.
 로그인 실패에 이메일은 저장하지 않으므로, 없는 계정의 실패는 `actor_id` 가 비어 있다.
+`actor_name` 은 행동한 사람의 이름이다. `actor_id` 가 비어 있으면 함께 비어 있다.
+
+로그인 실패의 `error_code` 는 응답과 다를 수 있다. 잠긴 계정의 시도는 응답이 `INVALID_CREDENTIALS` 라도
+여기에는 `ACCOUNT_LOCKED` 로 남는다.
+
+계정 생성은 `USER_CREATED` 로 남는다(`detail` 에 역할만, 이메일 · 이름은 담지 않는다). 관리자 API 로 만들면
+`actor_id` 가 그 관리자, 서버에서 script 로 만들거나 고친 것은 `actor_id` 가 비어 있고 `detail.via` 에 script 이름이 있다.
 **변경 전후 값은 담지 않는다** — 상담 원문이 감사 로그에 복제되면 개인정보 파기가 불가능해진다.
 
 ### 비밀번호 규칙

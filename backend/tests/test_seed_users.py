@@ -7,8 +7,11 @@ import sys
 from typing import List, Tuple
 
 import pytest
+from sqlalchemy import select
 
-from app.core.enums import UserRole
+from app.core.enums import AuditAction, UserRole
+from app.models.audit_log import AuditLog
+from app.models.user import User
 from scripts import seed_users
 
 STRONG_PASSWORD = "Violet-Ferry-62"
@@ -100,3 +103,22 @@ def test_generated_password_is_used_without_extra_check(monkeypatch, created) ->
 
     assert code == 0
     assert len(created) == 1
+
+
+def test_seeded_user_is_recorded_without_actor(db) -> None:
+    """서버에서 직접 만든 계정도 감사 로그(USER_CREATED)에 남는다. 행동한 사람은 없다."""
+
+    seed_users.upsert_user("seed.admin@example.com", "관리자", UserRole.ADMIN, STRONG_PASSWORD)
+
+    user = db.scalar(select(User).where(User.email == "seed.admin@example.com"))
+    log = db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.USER_CREATED))
+
+    assert log is not None
+    assert log.actor_id is None
+    assert log.entity_id == user.id
+    assert log.detail == {"role": "ADMIN", "via": "seed_users script"}
+
+    # 이미 있는 계정이면 만들지 않으므로 기록도 늘지 않는다.
+    seed_users.upsert_user("seed.admin@example.com", "관리자", UserRole.ADMIN, STRONG_PASSWORD)
+
+    assert len(db.scalars(select(AuditLog)).all()) == 1

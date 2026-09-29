@@ -12,17 +12,17 @@ from typing import Dict
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.core.config import settings
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError
 from app.core.security import hash_password
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
-from app.services import user_service
+from app.services import account_service, audit_service, user_service
 from tests.conftest import ADMIN_PASSWORD, COUNSELOR_PASSWORD
 
 COUNSELOR_EMAIL = "counselor.a@ispot.example.com"
@@ -755,6 +755,97 @@ def test_admin_can_read_audit_logs_with_filters(
     ).json()["data"]["items"]
 
     assert all(item["action"] == "LOGIN" for item in by_action)
+
+
+def test_audit_logs_show_actor_name(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+    _login(client, "nobody@ispot.example.com", WRONG_PASSWORD)
+
+    items = client.get(
+        "/api/v1/auth/audit-logs", params={"action": "LOGIN"}, headers=admin_headers
+    ).json()["data"]["items"]
+
+    by_actor = {item["actor_id"]: item["actor_name"] for item in items}
+
+    assert by_actor[str(counselor_id)] == "상담사A"
+    assert by_actor[None] is None  # 없는 계정의 실패는 이름도 없다
+
+
+def test_audit_log_actor_names_are_loaded_in_one_query(
+    admin_id: uuid.UUID, counselor_id: uuid.UUID, db
+) -> None:
+    """행마다 users 를 읽으면(N+1) 로그가 많을수록 느려진다."""
+
+    for actor in (admin_id, counselor_id, admin_id, counselor_id, None):
+        audit_service.record(db, action=AuditAction.LOGIN, entity_type="User", actor_id=actor)
+
+    db.commit()
+
+    statements = []
+
+    def remember(conn, cursor, statement, parameters, context, executemany) -> None:
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", remember)
+
+    try:
+        rows, total = account_service.list_audit_logs(db, offset=0, limit=20)
+    finally:
+        event.remove(engine, "before_cursor_execute", remember)
+
+    names = {log.actor_id: name for log, name in rows}
+
+    assert total == 5
+    assert names == {admin_id: "관리자", counselor_id: "상담사A", None: None}
+    assert sum("FROM users" in statement for statement in statements) == 1
+
+
+def test_admin_created_user_is_recorded(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, db
+) -> None:
+    response = client.post(
+        "/api/v1/auth/users",
+        json={
+            "email": "new.counselor@ispot.example.com",
+            "password": NEW_PASSWORD,
+            "name": "새 상담사",
+            "role": "COUNSELOR",
+        },
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 201
+
+    created_id = uuid.UUID(response.json()["data"]["id"])
+
+    log = db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.USER_CREATED))
+
+    assert log is not None
+    assert log.actor_id == admin_id
+    assert log.entity_id == created_id
+    assert log.detail == {"role": "COUNSELOR"}
+    assert "new.counselor" not in str(log.detail)  # 이메일은 남기지 않는다
+
+    items = client.get(
+        "/api/v1/auth/audit-logs", params={"action": "USER_CREATED"}, headers=admin_headers
+    ).json()["data"]["items"]
+
+    assert [item["actor_name"] for item in items] == ["관리자"]
+
+
+def test_duplicate_user_is_not_recorded(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID, db
+) -> None:
+    response = client.post(
+        "/api/v1/auth/users",
+        json={"email": COUNSELOR_EMAIL, "password": NEW_PASSWORD, "name": "중복"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.USER_CREATED)) is None
 
 
 # =========================================================
