@@ -450,6 +450,7 @@ def change_password(
             )
 
     previous_hash = user.hashed_password
+    was_temporary = user.must_change_password
 
     user.hashed_password = hash_password(payload.new_password)
     user.password_changed_at = datetime.now(timezone.utc)
@@ -458,7 +459,10 @@ def change_password(
     # 비밀번호를 바꾸면 다른 기기에 남은 Token 도 무효가 된다.
     user.token_version += 1
 
-    remember_password(db, user, previous_hash)
+    # 임시 비밀번호는 이력에 남기지 않는다. 사람이 정한 비밀번호가 아니라 이력 칸만 차지한다.
+    # 임시 비밀번호로 바뀌기 전 비밀번호는 발급할 때 남겼다(account_service.issue_temporary_password).
+    if not was_temporary:
+        remember_password(db, user, previous_hash)
 
     # detail 에 비밀번호를 담지 않는다.
     audit_service.record(

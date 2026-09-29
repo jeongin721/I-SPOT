@@ -293,6 +293,8 @@ Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `acto
 한글은 표기 방식이 두 가지(NFC · NFD)라 Backend 가 저장 · 검증 모두 NFC 로 맞춘다. 기기가 달라도 같은 비밀번호로 로그인된다.
 
 **이전 비밀번호는 다시 쓸 수 없다**(`422 PASSWORD_REUSED`). 최근 `PASSWORD_HISTORY_COUNT`(3)개를 본다.
+관리자 재발급(`password-reset`) · 휴면 해제(`reactivate`) 전 비밀번호도 이력에 들어간다.
+임시 비밀번호는 이력에 넣지 않는다 — 사람이 정한 비밀번호가 아니고, 넣으면 재발급 몇 번으로 진짜 이전 비밀번호가 밀려난다.
 
 위반하면 `422 WEAK_PASSWORD` 이고 사유가 `details.reasons` 에 문장 배열로 담긴다.
 아래는 `abc` 를 보냈을 때다.
@@ -800,6 +802,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
+| `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
 | `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
 | `INVALID_SESSION_STATE` | 409 | 상태 전이 불가 (`details.current_status`, `details.expected_status`) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |

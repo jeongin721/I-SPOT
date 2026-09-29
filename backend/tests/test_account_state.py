@@ -447,6 +447,73 @@ def test_password_before_admin_reset_cannot_be_reused(
     assert response.json()["error"]["code"] == "PASSWORD_REUSED"
 
 
+def _change_password(client: TestClient, email: str, current: str, new: str):
+    headers = _headers(client, email, current)
+
+    return client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": current, "new_password": new},
+        headers=headers,
+    )
+
+
+def _history_count(db, user_id: uuid.UUID) -> int:
+    return len(
+        db.scalars(
+            select(UserPasswordHistory).where(UserPasswordHistory.user_id == user_id)
+        ).all()
+    )
+
+
+def test_password_before_dormancy_cannot_be_reused(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID, db
+) -> None:
+    """휴면 해제도 새 비밀번호를 발급한다. 휴면 전 비밀번호로 돌아갈 수 없어야 한다."""
+
+    _age_last_login(db, counselor_id, settings.DORMANT_AFTER_DAYS + 1)
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)  # 휴면 처리
+
+    temporary = client.post(
+        f"/api/v1/auth/users/{counselor_id}/reactivate", headers=admin_headers
+    ).json()["data"]["temporary_password"]
+
+    response = _change_password(client, COUNSELOR_EMAIL, temporary, COUNSELOR_PASSWORD)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "PASSWORD_REUSED"
+
+
+def test_temporary_passwords_do_not_take_history_slots(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID, db
+) -> None:
+    """
+    임시 비밀번호는 이력에 넣지 않는다.
+
+    넣으면 재발급을 몇 번 하는 것만으로 진짜 이전 비밀번호가 보관 개수(3) 밖으로 밀려나
+    다시 쓸 수 있게 된다.
+    """
+
+    assert _change_password(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD, NEW_PASSWORD).status_code == 204
+
+    for _ in range(settings.PASSWORD_HISTORY_COUNT):
+        temporary = client.post(
+            f"/api/v1/auth/users/{counselor_id}/password-reset", headers=admin_headers
+        ).json()["data"]["temporary_password"]
+
+    # 처음 비밀번호와 첫 재발급 전 비밀번호만 남는다. 재발급 한 번에 한 줄이다.
+    assert _history_count(db, counselor_id) == 2
+
+    assert _change_password(client, COUNSELOR_EMAIL, temporary, OTHER_PASSWORD).status_code == 204
+
+    # 임시 비밀번호에서 바꿀 때도 임시 비밀번호는 남기지 않는다.
+    assert _history_count(db, counselor_id) == 2
+
+    reused = _change_password(client, COUNSELOR_EMAIL, OTHER_PASSWORD, COUNSELOR_PASSWORD)
+
+    assert reused.status_code == 422
+    assert reused.json()["error"]["code"] == "PASSWORD_REUSED"
+
+
 # =========================================================
 # 강제 로그아웃
 # =========================================================

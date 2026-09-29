@@ -48,12 +48,20 @@ def _is_last_active_admin(db: Session, user: User) -> bool:
     return user_service.active_admin_count(db, now) <= 1
 
 
-def _issue_temporary_password(user: User) -> str:
+def issue_temporary_password(db: Session, user: User) -> str:
     """
-    임시 비밀번호를 만들어 계정에 건다.
+    임시 비밀번호를 만들어 계정에 건다. 재발급 · 휴면 해제 · 복구 script(scripts/unlock_user.py)가 함께 쓴다.
 
     돌려준 값은 이 응답에서 한 번만 나가고 다시 조회할 수 없다. DB 에는 해시만 남는다.
+
+    바꾸기 전 비밀번호는 이력에 남긴다. 안 남기면 임시 비밀번호를 거쳐 예전 비밀번호로
+    돌아가 재사용 금지를 지나갈 수 있다. 단 지금 비밀번호가 이미 임시 비밀번호
+    (must_change_password)면 남기지 않는다. 사람이 정한 비밀번호가 아니라 이력 칸만 차지해,
+    재발급을 몇 번 하면 진짜 이전 비밀번호가 밀려난다.
     """
+
+    if not user.must_change_password:
+        user_service.remember_password(db, user, user.hashed_password)
 
     temporary = generate_password()
 
@@ -70,10 +78,8 @@ def _issue_temporary_password(user: User) -> str:
 
 
 def reset_password(db: Session, actor: User, user: User) -> str:
-    # 초기화 전 비밀번호도 이력에 남긴다. 안 남기면 재사용 금지를 지나갈 수 있다.
-    user_service.remember_password(db, user, user.hashed_password)
-
-    temporary = _issue_temporary_password(user)
+    # 초기화 전 비밀번호는 issue_temporary_password 가 이력에 남긴다.
+    temporary = issue_temporary_password(db, user)
 
     audit_service.record(
         db,
@@ -114,7 +120,8 @@ def reactivate(db: Session, actor: User, user: User) -> str:
     # 내려가서, 오래 전에 만든 계정은 다음 로그인에 곧바로 다시 휴면이 된다.
     user.last_login_at = datetime.now(timezone.utc)
 
-    temporary = _issue_temporary_password(user)
+    # 휴면 전 비밀번호도 이력에 남는다(재사용 금지). issue_temporary_password 참고.
+    temporary = issue_temporary_password(db, user)
 
     audit_service.record(
         db,
