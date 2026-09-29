@@ -5,8 +5,7 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import { useState, useMemo, useEffect } from "react";
 import UploadModal from "../components/ui/UploadModal";
 import { cases as casesApi, summary as summaryApi } from "../api/endpoints";
-import { ApiError } from "../api/client";
-import { toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
 import type { Summary } from "../api/types";
 
 // 사례와 회기 목록은 Backend(GET /cases/{id}, GET /cases/{id}/sessions)에서 온다.
@@ -14,11 +13,6 @@ import type { Summary } from "../api/types";
 // 학대 유형 · 키워드 · 위험도 · 상담 유형 · 소요 시간은 아직 Backend 에 없어 adapters 의 기본값으로 보인다.
 const SESSION_PAGE_SIZE = 100;
 
-function loadErrorMessage(caught: unknown, fallback: string): string {
-  if (!(caught instanceof ApiError)) return fallback;
-  if (caught.isForbidden) return "권한이 없거나 없는 사례입니다.";
-  return caught.message;
-}
 
 const STT_STATUS_CFG: Record<string, string> = {
   "처리중":   "border-[#94A3B8] text-[#475569]",
@@ -86,7 +80,7 @@ export default function CaseDetailPage() {
           });
       })
       .catch((caught) => {
-        if (!cancelled) setLoadError(loadErrorMessage(caught, "사례를 불러오지 못했습니다."));
+        if (!cancelled) setLoadError(describeApiError(caught, "사례를 불러오지 못했습니다."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

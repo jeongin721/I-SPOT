@@ -2,17 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import { cases as casesApi } from "../api/endpoints";
-import { ApiError } from "../api/client";
-import { toUiCaseDetail, type CaseWithId } from "../api/adapters";
+import { describeApiError, toUiCaseDetail, type CaseWithId } from "../api/adapters";
 
 // 사례는 Backend(GET /cases/{id})에서 오고, 회기 등록은 POST /cases/{id}/sessions 로 저장한다.
 // 주소의 caseId 는 Backend UUID 다. 상담 유형 · 상담 방식은 Backend 에 아직 없어 화면에만 있고 보내지 않는다.
 
-function loadErrorMessage(caught: unknown, fallback: string): string {
-  if (!(caught instanceof ApiError)) return fallback;
-  if (caught.isForbidden) return "권한이 없거나 없는 사례입니다.";
-  return caught.message;
-}
 
 /** 오늘 날짜(YYYY-MM-DD). 화면 표시용이라 사용자의 시간대 기준이다. */
 function todayLabel(): string {
@@ -52,7 +46,7 @@ export default function PreSessionPage() {
         if (!cancelled) setCase(toUiCaseDetail(detail));
       })
       .catch((caught) => {
-        if (!cancelled) setLoadError(loadErrorMessage(caught, "사례를 불러오지 못했습니다."));
+        if (!cancelled) setLoadError(describeApiError(caught, "사례를 불러오지 못했습니다."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -77,7 +71,7 @@ export default function PreSessionPage() {
       });
       navigate(`/cases/${caseId}`);
     } catch (caught) {
-      setSaveError(loadErrorMessage(caught, "상담 등록에 실패했습니다. 잠시 후 다시 시도해 주세요."));
+      setSaveError(describeApiError(caught, "상담 등록에 실패했습니다. 잠시 후 다시 시도해 주세요."));
     } finally {
       setSaving(false);
     }

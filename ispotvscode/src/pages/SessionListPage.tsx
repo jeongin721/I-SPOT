@@ -3,18 +3,12 @@ import { useParams, useNavigate } from "react-router";
 import type { Session as UiSession } from "../data/mockData";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import { cases as casesApi } from "../api/endpoints";
-import { ApiError } from "../api/client";
-import { toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
 
 // 사례와 회기 목록은 Backend(GET /cases/{id}, GET /cases/{id}/sessions)에서 온다.
 // 주소의 caseId 는 Backend UUID 다. 녹음 길이 · 상담사(회기 단위)는 아직 Backend 에 없어 "—" 로 보인다.
 const SESSION_PAGE_SIZE = 100;
 
-function loadErrorMessage(caught: unknown, fallback: string): string {
-  if (!(caught instanceof ApiError)) return fallback;
-  if (caught.isForbidden) return "권한이 없거나 없는 사례입니다.";
-  return caught.message;
-}
 
 const STT_CFG: Record<string, string> = {
   "처리중":   "bg-blue-50 text-blue-700",
@@ -60,7 +54,7 @@ export default function SessionListPage() {
         ));
       })
       .catch((caught) => {
-        if (!cancelled) setLoadError(loadErrorMessage(caught, "사례를 불러오지 못했습니다."));
+        if (!cancelled) setLoadError(describeApiError(caught, "사례를 불러오지 못했습니다."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

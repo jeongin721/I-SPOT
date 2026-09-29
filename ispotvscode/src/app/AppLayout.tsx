@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate, Navigate } from "react-router";
 import { useEffect, useState } from "react";
 import NotificationPopover from "../components/ui/NotificationPopover";
+import { SESSION_INFO_KEY, UNAUTHORIZED_EVENT, clearSession, getToken } from "../api/client";
 
 const NAV_ITEMS = [
   { to: "/dashboard",       label: "대시보드",       icon: "grid",       group: null },
@@ -32,18 +33,28 @@ export default function AppLayout() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem("ispot_auth");
-    if (raw) {
+    const raw = localStorage.getItem(SESSION_INFO_KEY);
+    // 이름 · 역할만 남고 토큰이 없으면 서버를 부를 수 없으므로 로그인하지 않은 것으로 본다.
+    if (raw && getToken()) {
       try { setAuth(JSON.parse(raw)); } catch { /* ignore */ }
     }
     setChecked(true);
+
+    // 어느 화면에서든 토큰이 만료 · 폐기되면(401) 로그인 화면으로 보낸다.
+    function onUnauthorized() {
+      setAuth(null);
+    }
+
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
   if (!checked) return null;
   if (!auth) return <Navigate to="/login" replace />;
 
   function handleLogout() {
-    localStorage.removeItem("ispot_auth");
+    clearSession();
     navigate("/login");
   }
 

@@ -3,16 +3,12 @@ import { useNavigate } from "react-router";
 import { RiskBadge, StatusLabel } from "../components/ui/Badges";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import { cases as casesApi } from "../api/endpoints";
-import { ApiError } from "../api/client";
-import { NOT_PROVIDED, toUiCaseWithId, type CaseWithId } from "../api/adapters";
+import { describeApiError, NOT_PROVIDED, toUiCaseWithId, type CaseWithId } from "../api/adapters";
 
 // 사례 목록은 Backend(GET /cases)에서 온다. 선택하면 Backend UUID(backendId)로 이동한다.
 // 위험도 · 회차 수 · 분석 완료 건수는 목록 응답에 없어 adapters 의 기본값으로 보인다.
 const PAGE_SIZE = 50;
 
-function errorMessage(caught: unknown, fallback: string): string {
-  return caught instanceof ApiError ? caught.message : fallback;
-}
 
 type Mode = "plan" | "closure" | "report";
 
@@ -78,7 +74,7 @@ export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
         if (!cancelled) setAllCases(page.items.map((c) => toUiCaseWithId(c)));
       })
       .catch((caught) => {
-        if (!cancelled) setLoadError(errorMessage(caught, "사례 목록을 불러오지 못했습니다."));
+        if (!cancelled) setLoadError(describeApiError(caught, "사례 목록을 불러오지 못했습니다."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

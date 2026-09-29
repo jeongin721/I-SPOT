@@ -33,6 +33,23 @@ const LOW_CONF = 0.75;
 /** 아직 전사본이 만들어지기 전 상태. 이때는 발화 목록 대신 안내를 보여 준다. */
 const BEFORE_STT: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_PROCESSING"];
 
+/**
+ * 원문을 고칠 수 있는 상태. Backend 도 이 두 상태에서만 PATCH 를 받는다
+ * (transcript_service._EDITABLE_STATUSES). 그 밖에서는 읽기 전용으로 보여 준다.
+ */
+const EDITABLE: SessionStatus[] = ["STT_REVIEW_REQUIRED", "STT_CONFIRMED"];
+
+/** 읽기 전용일 때 띠에 보여 줄 이유. */
+function readOnlyReason(status: SessionStatus): string {
+  if (status === "APPROVED") return "승인된 전사본은 수정할 수 없습니다.";
+
+  return "AI 분석 단계에서는 원문을 수정할 수 없습니다.";
+}
+
+/** STT 가 끝나기를 기다릴 때 다시 확인하는 간격과 횟수(약 2분). */
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_TRIES = 60;
+
 /** 저신뢰이거나 child_handoff 가 사람 확인이 필요하다고 표시한 발화. */
 function needsReview(seg: UiTranscriptSegment): boolean {
   return seg.confidence < LOW_CONF || seg.reviewReason !== null;
@@ -127,6 +144,26 @@ export default function TranscriptReviewView() {
     };
   }, [caseId, sessionId]);
 
+  // STT 가 아직 도는 중이면 끝날 때까지 전사본을 다시 확인한다.
+  // 실제 공급자(ElevenLabs)는 업로드 창의 대기 시간보다 오래 걸릴 수 있다.
+  const [pollTries, setPollTries] = useState(0);
+
+  useEffect(() => {
+    if (status !== "STT_PROCESSING" || !sessionId || pollTries >= POLL_MAX_TRIES) return;
+
+    const timer = window.setTimeout(() => {
+      transcriptApi
+        .get(sessionId)
+        .then(applyEnvelope)
+        .catch(() => {
+          // 한 번 실패해도 다음 확인에서 다시 시도한다.
+        })
+        .finally(() => setPollTries(n => n + 1));
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [status, sessionId, pollTries]);
+
   const displayed = useMemo(() =>
     filterLow ? segments.filter(needsReview) : segments,
     [segments, filterLow]
@@ -138,6 +175,7 @@ export default function TranscriptReviewView() {
   const allDone         = segments.length > 0 && segments.every(s => s.confirmed);
   const hasTranscript   = segments.length > 0;
   const beforeStt       = status !== null && BEFORE_STT.includes(status);
+  const editable        = status !== null && EDITABLE.includes(status);
 
   function startEdit(id: string) {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text } : s));
@@ -264,7 +302,7 @@ export default function TranscriptReviewView() {
                 뒤로
               </button>
             )}
-            {allDone && !isConfirmed && (
+            {editable && allDone && !isConfirmed && (
               <button
                 onClick={handleComplete}
                 className="flex items-center gap-2 px-4 py-2 bg-[#2563EB] text-white text-sm font-semibold rounded-[6px] hover:bg-blue-700 transition-colors"
@@ -292,14 +330,19 @@ export default function TranscriptReviewView() {
             <span className="text-[#64748B] text-xs">확정 완료</span>
             <span className="font-semibold text-green-700">{confirmedCount}/{segments.length}</span>
           </div>
-          {pendingLowCount > 0 && (
+          {editable && pendingLowCount > 0 && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded text-xs font-medium text-amber-700">
               저신뢰 {pendingLowCount}개 미검수
             </div>
           )}
-          {isConfirmed && (
+          {editable && isConfirmed && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded text-xs font-medium text-green-700">
               확정된 전사본{version !== null ? ` (v${version})` : ""} · 수정하면 다시 검수 필요 상태가 됩니다
+            </div>
+          )}
+          {!editable && hasTranscript && status && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded text-xs font-medium text-[#64748B]">
+              읽기 전용{version !== null ? ` (v${version})` : ""} · {readOnlyReason(status)}
             </div>
           )}
           <div className="ml-auto flex items-center gap-3">
@@ -307,11 +350,13 @@ export default function TranscriptReviewView() {
               <input type="checkbox" checked={filterLow} onChange={e => setFilterLow(e.target.checked)} className="accent-amber-500" />
               저신뢰만 보기
             </label>
-            <button onClick={confirmAll} disabled={allDone || !hasTranscript}
-              className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              전체 확정
-            </button>
+            {editable && (
+              <button onClick={confirmAll} disabled={allDone || !hasTranscript}
+                className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                전체 확정
+              </button>
+            )}
           </div>
         </div>
 
@@ -398,7 +443,7 @@ export default function TranscriptReviewView() {
                     )}
                   </div>
 
-                  {!seg.editing && (
+                  {editable && !seg.editing && (
                     <div className="flex items-center gap-2 shrink-0">
                       {seg.confirmed ? (
                         <>
@@ -426,7 +471,7 @@ export default function TranscriptReviewView() {
         </div>
 
         {/* Footer CTA */}
-        {allDone && !isConfirmed && (
+        {editable && allDone && !isConfirmed && (
           <div className="px-6 py-4 border-t border-[#E2E8F0] bg-white shrink-0 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-green-700">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>

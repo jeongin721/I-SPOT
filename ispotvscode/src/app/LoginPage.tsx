@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import AdminApp from "../admin/AdminApp";
 import { auth } from "../api/endpoints";
-import { ApiError } from "../api/client";
+import { ApiError, SESSION_INFO_KEY, clearSession } from "../api/client";
 
 // 로그인은 Backend(POST /auth/login)가 판정한다. 역할도 서버가 준 값을 쓴다.
 // 2단계 인증(OTP)은 Backend 에 아직 없어 건너뛴다(팀 결정 대기). 화면 코드는 남겨 둔다.
@@ -49,7 +49,7 @@ export default function LoginPage() {
       const uiRole = user.role === "ADMIN" ? "admin" : "counselor";
 
       // AppLayout 이 이 값으로 로그인 여부와 이름을 본다. 토큰은 auth.login 이 따로 저장한다.
-      localStorage.setItem("ispot_auth", JSON.stringify({ role: uiRole, name: user.name }));
+      localStorage.setItem(SESSION_INFO_KEY, JSON.stringify({ role: uiRole, name: user.name }));
 
       if (uiRole === "admin") {
         setAdminMode(true);
@@ -65,7 +65,7 @@ export default function LoginPage() {
   }
 
   if (adminMode) {
-    return <AdminApp onLogout={() => { localStorage.removeItem("ispot_auth"); setAdminMode(false); setOtpStep(false); setId(""); setPw(""); setOtp(""); setLoading(false); }} />;
+    return <AdminApp onLogout={() => { clearSession(); setAdminMode(false); setOtpStep(false); setId(""); setPw(""); setOtp(""); setLoading(false); }} />;
   }
 
   const features = [

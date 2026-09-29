@@ -44,6 +44,31 @@ export function clearToken(): void {
   }
 }
 
+/**
+ * 토큰이 만료 · 폐기되어 다시 로그인해야 할 때 window 에 보내는 이벤트.
+ * AppLayout 이 받아서 로그인 화면으로 보낸다.
+ */
+export const UNAUTHORIZED_EVENT = "ispot:unauthorized";
+
+/** 로그인 화면이 따로 저장해 두는 이름 · 역할. 토큰이 끊기면 함께 지운다. */
+export const SESSION_INFO_KEY = "ispot_auth";
+
+/** 로그인 정보를 모두 지운다. 로그아웃과 토큰 만료가 같은 길을 쓴다. */
+export function clearSession(): void {
+  clearToken();
+
+  try {
+    localStorage.removeItem(SESSION_INFO_KEY);
+  } catch {
+    // 무시
+  }
+}
+
+function notifyUnauthorized(): void {
+  clearSession();
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+}
+
 // =========================================================
 // 오류
 // =========================================================
@@ -158,6 +183,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   if (!response.ok) {
     const failure = payload as Partial<ErrorResponse>;
+
+    // 토큰을 붙였는데 401 이면 만료 · 폐기다(비밀번호 변경, 강제 로그아웃 포함).
+    // 로그인 요청의 401(비밀번호 틀림)은 토큰 없이 보내므로 여기에 걸리지 않는다.
+    if (response.status === 401 && token) notifyUnauthorized();
 
     throw new ApiError(
       failure.error?.code ?? "UNKNOWN_ERROR",

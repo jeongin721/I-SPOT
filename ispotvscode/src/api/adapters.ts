@@ -9,8 +9,9 @@
 
 import type { CaseRecord, RiskLevel } from "../data/cases";
 import type { Session as UiSession } from "../data/mockData";
-import { GUARDIAN_LABELS } from "./types";
-import type { Case, Session, SessionStatus } from "./types";
+import { ApiError } from "./client";
+import { GUARDIAN_LABELS, TASK_LABELS } from "./types";
+import type { Case, Session, SessionStatus, Speaker, TaskItem, Transcript } from "./types";
 
 // =========================================================
 // Backend 가 아직 제공하지 않는 값
@@ -42,10 +43,33 @@ function toAge(birthYear: number | null): number {
   return new Date().getFullYear() - birthYear;
 }
 
+/**
+ * Backend 시각을 Date 로 읽는다.
+ *
+ * Backend 는 UTC 로 저장하는데, 사례 · 회기 시각은 `2026-09-29T07:04:56` 처럼 시간대 표시 없이
+ * 오고(업무 목록의 waiting_since 만 Z 가 붙는다) 브라우저는 이런 문자열을 지역 시각으로 읽는다.
+ * 그대로 두면 한국 시간 새벽에 등록한 회기가 전날로 보이므로, 표시가 없으면 UTC 로 본다.
+ */
+function parseBackendTime(iso: string): Date | null {
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso);
+  const parsed = new Date(hasZone ? iso : `${iso}Z`);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** 사용자 시간대의 날짜(YYYY-MM-DD). */
 function toDateOnly(iso: string | null): string {
   if (!iso) return "";
 
-  return iso.slice(0, 10);
+  const at = parseBackendTime(iso);
+
+  if (!at) return iso.slice(0, 10);
+
+  return `${at.getFullYear()}-${pad2(at.getMonth() + 1)}-${pad2(at.getDate())}`;
 }
 
 /**
@@ -195,10 +219,15 @@ export function nextAction(status: SessionStatus): string {
 // 회차
 // =========================================================
 
+/** 사용자 시간대의 시각(HH:MM). */
 function toTimePart(iso: string | null): string {
   if (!iso) return "";
 
-  return iso.slice(11, 16);
+  const at = parseBackendTime(iso);
+
+  if (!at) return iso.slice(11, 16);
+
+  return `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
 }
 
 export interface SessionAdapterExtras {
@@ -250,11 +279,6 @@ export function toUiCaseDetail(source: Case & { session_count: number }): CaseWi
 // ===== 전사 검수 · 음성 업로드 =====
 //
 // TranscriptReviewView · UploadModal · STTCaseSelectorPage 가 쓰는 변환.
-// 다른 갈래와 같은 파일에 붙이므로 위쪽 import 를 건드리지 않고 여기서 따로 들여온다.
-
-import { ApiError } from "./client";
-import { TASK_LABELS } from "./types";
-import type { Speaker, TaskItem, Transcript } from "./types";
 
 /**
  * 사례 · 회기 자체가 없거나 남의 것일 때의 오류 코드. 같은 403/404 라도 AUDIO_NOT_FOUND ·

@@ -3,16 +3,12 @@ import { useNavigate } from "react-router";
 import { type RiskLevel, type AbuseType, type CaseRecord as Case } from "../data/cases";
 import { RiskBadge, AbuseBadge, StatusLabel } from "../components/ui/Badges";
 import { cases as casesApi } from "../api/endpoints";
-import { ApiError } from "../api/client";
-import { toUiCaseWithId, type CaseWithId } from "../api/adapters";
+import { describeApiError, toUiCaseWithId, type CaseWithId } from "../api/adapters";
 
 // 사례 목록은 Backend(GET /cases)에서 온다. 학대유형 · 키워드 · 위험도는 아직 Backend 에
 // 없어 빈 값으로 온다(adapters.toUiCase). 그 필터는 값이 들어오기 전까지 비어 보인다.
 const PAGE_SIZE = 50;
 
-function errorMessage(caught: unknown, fallback: string): string {
-  return caught instanceof ApiError ? caught.message : fallback;
-}
 
 const ABUSE_OPTIONS: (AbuseType | "전체")[] = ["전체", "신체", "정서", "성", "방임"];
 const RISK_OPTIONS: (RiskLevel | "전체")[] = ["전체", "high", "mid", "low"];
@@ -61,7 +57,7 @@ function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps)
       });
       onRegister(toUiCaseWithId(created, { counselorName }));
     } catch (caught) {
-      setErrors({ form: errorMessage(caught, "사례 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.") });
+      setErrors({ form: describeApiError(caught, "사례 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.") });
     } finally {
       setSaving(false);
     }
@@ -167,7 +163,7 @@ export default function CasesView() {
         if (!cancelled) setAllCases(page.items.map((c) => toUiCaseWithId(c)));
       })
       .catch((caught) => {
-        if (!cancelled) setLoadError(errorMessage(caught, "사례 목록을 불러오지 못했습니다."));
+        if (!cancelled) setLoadError(describeApiError(caught, "사례 목록을 불러오지 못했습니다."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
