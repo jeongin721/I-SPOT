@@ -111,6 +111,8 @@ python -m scripts.seed_users --email admin@example.com --name 관리자 --role A
 비밀번호를 `--password` 나 `SEED_USER_PASSWORD` 로 직접 주면 API 와 같은 비밀번호 규칙(`docs/API_CONTRACT.md` 3절)을 거친다.
 맞지 않으면 계정을 만들지 않고 사유를 출력한 뒤 종료 코드 1 로 끝난다. 주지 않으면 규칙에 맞는 값을 만들어 출력한다.
 
+관리자가 한 명뿐인데 그 계정이 잠기거나 휴면이 되면 관리자 화면으로는 풀 수 없다. 서버에서 `python -m scripts.unlock_user --email <이메일>` 로 푼다(실패 잠금 · 휴면 해제. 비활성 계정은 `--activate`, 임시 비밀번호 새로 발급은 `--reset-password` 를 붙인다). 한 일은 감사 로그에 `detail.via` 로 남는다.
+
 ### 2.6 서버 실행
 
 ```bash
@@ -321,6 +323,7 @@ backend/
   alembic/               Migration
   scripts/
     seed_users.py        초기 계정 생성
+    unlock_user.py       잠긴 · 휴면 계정 복구 (서버에서만, 관리자가 모두 잠겼을 때)
     seed_demo_data.py    상태별 데모 상담 데이터 생성 (Frontend/시연용)
     smoke_api.py         실행 중인 서버에 대한 전체 Flow 확인
     check.sh             push 전 로컬 검증 (Lint/Test/Migration)

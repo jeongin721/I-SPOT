@@ -172,6 +172,9 @@ AI_FAILED     ← AI_PROCESSING 실패
 | 2개월 미접속 | `403 ACCOUNT_DORMANT` | 관리자가 `POST /auth/users/{id}/reactivate` |
 | 임시 비밀번호 기간 경과(72시간) | `403 TEMP_PASSWORD_EXPIRED` | 관리자가 `POST /auth/users/{id}/password-reset` |
 
+관리자가 모두 잠기거나 휴면이 되면 관리자 화면으로는 풀 수 없다. 그때는 서버에서
+`python -m scripts.unlock_user --email <이메일>` 로 푼다(API 는 없다. `backend/README.md` 2.5절).
+
 기준값은 설정으로 바꾼다 — `LOGIN_MAX_FAILURES`(5), `LOGIN_LOCK_MINUTES`(0 = 관리자만 해제),
 `DORMANT_AFTER_DAYS`(60), `TEMP_PASSWORD_VALID_HOURS`(72).
 시간 잠금(`LOGIN_LOCK_MINUTES` > 0)이 풀리면 실패 횟수도 0 으로 돌아가, 다시 5번 틀리면 다시 잠긴다.
