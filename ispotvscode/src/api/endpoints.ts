@@ -16,6 +16,7 @@ import type {
   CaseUpdateRequest,
   LoginRequest,
   LoginResponse,
+  PasswordChangeRequest,
   Paged,
   STTRequestResponse,
   Session,
@@ -64,6 +65,17 @@ export const auth = {
 
   logout(): void {
     clearToken();
+  },
+
+  /**
+   * 본인 비밀번호 변경. 성공하면 응답 본문이 없다(204).
+   *
+   * 오류: 400 INVALID_CURRENT_PASSWORD(현재 비밀번호 불일치 — 로그인 만료가 아니므로
+   * 로그인 화면으로 보내지 않는다), 422 WEAK_PASSWORD(규칙 위반 — `details.reasons` 에 사유),
+   * 422 SAME_PASSWORD(이전과 같음)
+   */
+  changePassword(payload: PasswordChangeRequest): Promise<void> {
+    return api.post<void>("/auth/me/password", payload);
   },
 
   /** 관리자 전용. 페이지 없이 전체 배열로 온다. */

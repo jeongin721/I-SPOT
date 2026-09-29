@@ -24,6 +24,10 @@ _PUBLIC_JWT_SECRETS = frozenset(
 # HS256 서명 키 권장 길이(32 byte).
 _MIN_JWT_SECRET_LENGTH = 32
 
+# 긴 비밀번호의 문자 종류 면제 길이로 받을 수 있는 범위. 0 은 면제 없음이다.
+# 12자보다 짧으면 사실상 종류 규칙을 끄는 셈이고, 72 는 bcrypt 가 받는 최대 byte 다.
+_PASSPHRASE_LENGTH_RANGE = (12, 72)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -56,6 +60,18 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-env-file"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
+
+    # ---------------------------------------------------------
+    # Password Policy
+    # ---------------------------------------------------------
+    # 새로 정하는 비밀번호에만 적용한다. 로그인 검사에는 쓰지 않는다.
+    # 기본값은 팀 회의 결정(2026-09-18) "8자 이상, 영문 · 숫자 · 특수문자 포함" 이다.
+    # 종류는 글자 · 숫자 · 특수문자 3가지로 세므로 3 이면 전부 포함해야 한다.
+    # PASSWORD_PASSPHRASE_LENGTH 는 이 길이 이상이면 종류를 보지 않는 설정이다.
+    # 팀 결정에 없는 면제라 기본값은 0(면제 없음)이다. 켤 때는 12~72 로 준다.
+    PASSWORD_MIN_LENGTH: int = Field(default=8, ge=8, le=72)
+    PASSWORD_MIN_CLASSES: int = Field(default=3, ge=1, le=3)
+    PASSWORD_PASSPHRASE_LENGTH: int = 0
 
     # ---------------------------------------------------------
     # CORS
@@ -126,6 +142,21 @@ class Settings(BaseSettings):
 
         if isinstance(value, str) and not value.strip().startswith("["):
             return [item.strip() for item in value.split(",") if item.strip()]
+
+        return value
+
+    @field_validator("PASSWORD_PASSPHRASE_LENGTH")
+    @classmethod
+    def _passphrase_length_is_off_or_in_range(cls, value: int) -> int:
+        """0(면제 없음) 또는 12~72 만 받는다."""
+
+        low, high = _PASSPHRASE_LENGTH_RANGE
+
+        if value != 0 and not low <= value <= high:
+            raise ValueError(
+                f"PASSWORD_PASSPHRASE_LENGTH 는 0(면제 없음) 또는 {low}~{high} 여야 합니다. "
+                f"지금 값: {value}"
+            )
 
         return value
 

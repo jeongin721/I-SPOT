@@ -6,6 +6,7 @@ python-multipart==0.0.32
 python-dotenv==1.2.3
 
 deepgram-sdk==7.8.0
+elevenlabs==2.68.0
 
 openai==3.7.0
 openai-whisper==20250625

@@ -17,7 +17,9 @@ from stt.ispot_postprocess import STTPostProcessor
 from stt.ispot_stt import Transcriber
 
 # 외부 API Key 없이 오프라인으로 동작하는 provider 를 기본값으로 둔다.
-DEFAULT_PROVIDER = "mock"
+# Backend production deployments select this module through STT_PROVIDER=module.
+# Local development can still explicitly set I_SPOT_STT_PROVIDER=mock.
+DEFAULT_PROVIDER = "elevenlabs"
 
 # 환경변수 이름은 팀 A 코드(ispot_stt.py) 규약을 그대로 따른다.
 PROVIDER_ENV = "I_SPOT_STT_PROVIDER"
