@@ -1,23 +1,82 @@
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { CASES, type CaseRecord } from "../data/cases";
-import { SESSIONS, AI_ANALYSES } from "../data/mockData";
-import { RiskBadge, AbuseBadge } from "../components/ui/Badges";
-import { useToast } from "../components/ui/Toast";
+import {
+  analysis as analysisApi,
+  cases as casesApi,
+  summary as summaryApi,
+  transcript as transcriptApi,
+} from "../api/endpoints";
+import { NOT_PROVIDED, describeApiError, toUiTranscriptSegments } from "../api/adapters";
+import {
+  ANALYSED_SESSION_STATUSES,
+  indexSegments,
+  segmentContext,
+  sortByRecentSession,
+  sortSessionsLatestFirst,
+  toAnalysisStatusLabel,
+  toHistoryRow,
+  toLocalDate,
+  toManagedCase,
+  toUiReferenceSignals,
+  toUiRiskUtterances,
+  type HistoryRow,
+  type ManagedCase,
+} from "../api/dashboardAdapters";
+import type { AnalysisEnvelope, Session, Summary, SummaryEnvelope, TranscriptEnvelope } from "../api/types";
+
+// 사례 목록은 GET /cases, 이전 상담은 GET /cases/{id}/sessions(+ 회기별 요약 · 전사본),
+// 분석 결과 검토 탭은 회기별 GET /sessions/{id}/analysis · summary 를 읽기 전용으로 보여 준다.
+// 검토 · 승인은 AI 분석 화면(/cases/{caseId}/analyses/{sessionId})에서 한다.
+// 이 화면은 주소에 사례가 없어 고른 사례를 화면 상태로만 들고 있다.
+//
+// 위험도 · 상담 회차 수 · 상담 유형 · 소요 시간은 Backend 에 없어 "—" 로 둔다.
+// 사례관리 계획 · 종결 검토는 Backend 에 기능이 없어 화면 구성만 두고 저장 · 제출을 막았다.
+
+/** 사례는 한 번에 받는다(Backend 최대 100). 검색 · 최근 상담순 정렬은 화면에서 한다. */
+const CASE_PAGE_SIZE = 100;
+const SESSION_PAGE_SIZE = 100;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Tab = "ai-review" | "plan" | "closure" | "history";
 
-// ─── Compact Case Selector ────────────────────────────────────────────────────
+function matchesQuery(c: ManagedCase, query: string): boolean {
+  return !query || c.childName.includes(query) || c.caseNumber.toLowerCase().includes(query.toLowerCase());
+}
 
-function CaseSelector({ selected, onSelect }: { selected: CaseRecord | null; onSelect: (c: CaseRecord) => void }) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(() =>
-    CASES.filter(c => !query || c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase()))
-      .sort((a, b) => (a.riskLevel === "high" ? 0 : a.riskLevel === "mid" ? 1 : 2) - (b.riskLevel === "high" ? 0 : b.riskLevel === "mid" ? 1 : 2)),
-    [query]
+function CaseStatusChip({ c }: { c: ManagedCase }) {
+  return (
+    <span className={`px-2 py-0.5 rounded border text-[12px] bg-white ${c.status === "ACTIVE" ? "border-[#94A3B8] text-[#172033] font-semibold" : "border-[#CBD5E1] text-[#64748B]"}`}>
+      {c.statusLabel}
+    </span>
   );
+}
+
+/** Backend 에 아직 없는 기능 안내. */
+function NotServedNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="bg-white border border-[#CBD5E1] rounded-[8px] px-4 py-3 text-[13px] text-[#475569]">
+      {children}
+    </div>
+  );
+}
+
+function CenteredMessage({ children, error = false }: { children: ReactNode; error?: boolean }) {
+  return (
+    <div className={`flex-1 flex items-center justify-center text-[14px] ${error ? "text-red-600" : "text-[#94A3B8]"}`}>
+      {children}
+    </div>
+  );
+}
+
+// ─── Compact Case Selector ────────────────────────────────────────────────────
+//
+// 지금 이 화면의 첫 단계는 아래 CaseListView 라 이 표는 쓰이지 않는다(원래부터). 다시 쓸 때를 위해
+// 가짜 데이터 대신 사례 목록을 받도록만 바꿔 두었다.
+
+function CaseSelector({ cases, selected, onSelect }: { cases: ManagedCase[]; selected: ManagedCase | null; onSelect: (c: ManagedCase) => void }) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => cases.filter(c => matchesQuery(c, query)), [cases, query]);
 
   return (
     <div className="bg-white border-b border-[#E2E8F0]">
@@ -43,40 +102,30 @@ function CaseSelector({ selected, onSelect }: { selected: CaseRecord | null; onS
             </tr>
           </thead>
           <tbody>
-            {filtered.map(c => (
-              <tr
-                key={c.id}
-                onClick={() => onSelect(c)}
-                className="border-b border-[#F1F5F9] cursor-pointer transition-colors"
-                style={{ background: selected?.id === c.id ? "#EFF6FF" : undefined }}
-                onMouseEnter={e => { if (selected?.id !== c.id) (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = selected?.id === c.id ? "#EFF6FF" : ""; }}
-              >
-                <td className="px-4 py-2 text-[13px] font-semibold text-[#172033]">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: c.riskLevel === "high" ? "#DC2626" : c.riskLevel === "mid" ? "#D97706" : "#16A34A" }} />
-                    {c.childName}
-                  </div>
-                </td>
-                <td className="px-4 py-2 text-[11px] font-mono text-[#94A3B8]">{c.id}</td>
-                <td className="px-4 py-2">
-                  <span className={`px-1.5 py-0.5 rounded border text-[11px] font-semibold ${c.riskLevel === "high" ? "text-[#B91C1C] bg-[#FEF2F2] border-[#FECACA]" : c.riskLevel === "mid" ? "text-[#B45309] bg-[#FFFBEB] border-[#FDE68A]" : "text-[#15803D] bg-[#F0FDF4] border-[#BBF7D0]"}`}>
-                    {c.riskLevel === "high" ? "확인 필요" : c.riskLevel === "mid" ? "확인 중" : "확인 완료"}
-                  </span>
-                </td>
-                <td className="px-4 py-2">
-                  <span className={`px-1.5 py-0.5 rounded border text-[11px] font-medium ${c.status === "active" ? "text-[#1D4ED8] bg-[#EFF6FF] border-[#BFDBFE]" : c.status === "review" ? "text-[#B45309] bg-[#FFFBEB] border-[#FDE68A]" : "text-[#64748B] bg-[#F8FAFC] border-[#E2E8F0]"}`}>
-                    {c.status === "active" ? "진행중" : c.status === "review" ? "검토필요" : "대기중"}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-[12px] font-mono text-[#64748B]">{c.lastSession}</td>
-                <td className="px-4 py-2">
-                  <span className={`text-[12px] font-medium ${selected?.id === c.id ? "text-[#2563EB]" : "text-[#94A3B8]"}`}>
-                    {selected?.id === c.id ? "선택됨" : "선택"}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {filtered.map(c => {
+              const isSelected = selected?.backendId === c.backendId;
+              return (
+                <tr
+                  key={c.backendId}
+                  onClick={() => onSelect(c)}
+                  className="border-b border-[#F1F5F9] cursor-pointer transition-colors"
+                  style={{ background: isSelected ? "#EFF6FF" : undefined }}
+                  onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? "#EFF6FF" : ""; }}
+                >
+                  <td className="px-4 py-2 text-[13px] font-semibold text-[#172033]">{c.childName}</td>
+                  <td className="px-4 py-2 text-[11px] font-mono text-[#94A3B8]">{c.caseNumber}</td>
+                  <td className="px-4 py-2 text-[12px] text-[#94A3B8]">{NOT_PROVIDED}</td>
+                  <td className="px-4 py-2"><CaseStatusChip c={c} /></td>
+                  <td className="px-4 py-2 text-[12px] font-mono text-[#64748B]">{c.lastSession || NOT_PROVIDED}</td>
+                  <td className="px-4 py-2">
+                    <span className={`text-[12px] font-medium ${isSelected ? "text-[#2563EB]" : "text-[#94A3B8]"}`}>
+                      {isSelected ? "선택됨" : "선택"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -86,12 +135,9 @@ function CaseSelector({ selected, onSelect }: { selected: CaseRecord | null; onS
 
 // ─── Sub-nav Tabs ─────────────────────────────────────────────────────────────
 
-function SubNav({ active, onChange, caseObj }: { active: Tab; onChange: (t: Tab) => void; caseObj: CaseRecord }) {
-  const analyses = AI_ANALYSES.filter(a => a.caseId === caseObj.id);
-  const hasPending = analyses.some(a => a.status === "검토필요");
-
+function SubNav({ active, onChange, reviewCount }: { active: Tab; onChange: (t: Tab) => void; reviewCount: number }) {
   const tabs: { id: Tab; label: string; badge?: number }[] = [
-    { id: "ai-review", label: "분석 결과 검토", badge: hasPending ? analyses.filter(a => a.status === "검토필요").length : undefined },
+    { id: "ai-review", label: "분석 결과 검토", badge: reviewCount > 0 ? reviewCount : undefined },
     { id: "plan",      label: "사례관리 계획" },
     { id: "closure",   label: "종결·가정복귀 검토" },
     { id: "history",   label: "이전 상담" },
@@ -123,50 +169,71 @@ function SubNav({ active, onChange, caseObj }: { active: Tab; onChange: (t: Tab)
 
 // ─── AI Review Tab ────────────────────────────────────────────────────────────
 
-const INDICATOR_DETAILS: Record<string, {
-  sessionSummary: string;
-  evidences: { text: string; keyPhrase: string; speaker: string; timestamp: string }[];
-  ragSources: { title: string; content: string; connection: string }[];
-}> = {
-  "신체적 학대 발화": {
-    sessionSummary: "8회차 상담에서 아동이 신체적 불편함을 반복적으로 언급하였음. 보호자로부터의 신체적 접촉에 대한 두려움이 표현되었으며, 등과 팔 부위의 통증을 호소함. 상담 내내 위축된 자세와 회피적 시선이 관찰됨.",
-    evidences: [
-      { text: "보호자가 화가 나면 아이를 밀치거나 때리는 경우가 있다고 진술함.", keyPhrase: "밀치거나 때리는 경우", speaker: "아동", timestamp: "00:41" },
-      { text: "소리 지르고 많이 때렸어요. 등이랑 팔이요.", keyPhrase: "때렸어요", speaker: "아동", timestamp: "01:08" },
-    ],
-    ragSources: [
-      { title: "아동학대 신체학대 판단 기준 (보건복지부 2023)", content: "신체학대는 보호자가 아동에게 신체적 손상을 입히거나 신체적 손상을 입힐 위험이 있는 폭력 행위를 포함함.", connection: "아동 발화의 '때리다', '밀치다' 표현이 신체적 손상 유발 행위와 일치" },
-    ],
-  },
-  "두려움·회피 반응": {
-    sessionSummary: "아동이 보호자에 대한 두려움을 직접적으로 표현하지 않으면서도, 간접적 회피 표현과 함께 위축 행동을 보임. 상담 중 주제 전환 시도와 눈맞춤 회피가 반복적으로 관찰됨.",
-    evidences: [
-      { text: "말하면 더 혼난다고 했어요. 그래서 말 안 하려고요.", keyPhrase: "말하면 더 혼난다", speaker: "아동", timestamp: "01:08" },
-      { text: "집에 가기 싫어요. 거기 있으면 무서워요.", keyPhrase: "무서워요", speaker: "아동", timestamp: "02:30" },
-    ],
-    ragSources: [
-      { title: "외상 후 스트레스 반응 체크리스트 (아동심리연구원)", content: "학대 피해 아동에서 나타나는 회피 반응: 관련 자극 회피, 정보 은폐 시도, 위축 행동", connection: "아동의 '말 안 하려고'라는 표현이 정보 은폐 시도 패턴과 일치" },
-    ],
-  },
-  "방임 가능성 발화": {
-    sessionSummary: "아동이 기본적 생활 필요의 미충족 상황을 구체적으로 언급함. 식사 제공 여부, 위생 관리, 수면 환경에 대한 진술이 방임 가능성을 시사함.",
-    evidences: [
-      { text: "밥도 안 줄 때가 있어요. 라면 끓여 먹어요.", keyPhrase: "밥도 안 줄 때가", speaker: "아동", timestamp: "02:15" },
-    ],
-    ragSources: [
-      { title: "방임 판단 매뉴얼 (아동권리보장원 2022)", content: "정서적·신체적 방임: 기본 생활 필요(식사, 의복, 위생) 미충족, 적절한 보호 결여", connection: "식사 미제공 진술이 신체적 방임 판단 지표와 직접 부합" },
-    ],
-  },
-};
+interface AnalysisDetail {
+  analysis: AnalysisEnvelope;
+  /** 요약 · 전사본은 없어도 분석 결과는 보여 준다. 불러오지 못하면 null. */
+  summary: SummaryEnvelope | null;
+  transcript: TranscriptEnvelope | null;
+}
 
-function AiReviewTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate: (t: Tab) => void }) {
-  const analyses = AI_ANALYSES.filter(a => a.caseId === caseObj.id).sort((a, b) => b.sessionNumber - a.sessionNumber);
+interface SessionListProps {
+  caseObj: ManagedCase;
+  sessions: Session[];
+  sessionsLoading: boolean;
+  sessionsError: string | null;
+}
+
+function AiReviewTab({ caseObj, sessions, sessionsLoading, sessionsError, onNavigate }: SessionListProps & { onNavigate: (t: Tab) => void }) {
+  const navigate = useNavigate();
+  // 분석을 요청한 적이 있는 회기만, 최근 회기부터.
+  const analyses = useMemo(
+    () => sortSessionsLatestFirst(sessions.filter(s => ANALYSED_SESSION_STATUSES.includes(s.status))),
+    [sessions],
+  );
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showEvidence, setShowEvidence] = useState<string | null>(null);
   const [selectedIndicator, setSelectedIndicator] = useState<string | null>(null);
-  const analysis = analyses[selectedIdx];
+  const [detail, setDetail] = useState<AnalysisDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const session = analyses[selectedIdx];
+  const sessionId = session?.id;
 
-  if (!analysis) {
+  useEffect(() => {
+    if (!sessionId) return;
+
+    let cancelled = false;
+
+    setDetail(null);
+    setDetailLoading(true);
+    setDetailError(null);
+    setShowEvidence(null);
+    setSelectedIndicator(null);
+
+    Promise.all([
+      analysisApi.get(sessionId),
+      summaryApi.get(sessionId).catch(() => null),
+      transcriptApi.get(sessionId).catch(() => null),
+    ])
+      .then(([analysis, summary, transcript]) => {
+        if (!cancelled) setDetail({ analysis, summary, transcript });
+      })
+      .catch((caught) => {
+        if (!cancelled) setDetailError(describeApiError(caught, "분석 결과를 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  if (sessionsLoading) return <CenteredMessage>회기 목록을 불러오는 중...</CenteredMessage>;
+  if (sessionsError) return <CenteredMessage error>{sessionsError}</CenteredMessage>;
+
+  if (!session) {
     return (
       <div className="flex-1 flex items-center justify-center text-[14px] text-[#94A3B8]">
         이 사례에 대한 AI 분석 결과가 없습니다.
@@ -174,19 +241,17 @@ function AiReviewTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
     );
   }
 
-  const statusLabel: Record<string, string> = {
-    검토필요: "검토 필요",
-    검토중: "검토 중",
-    수정됨: "수정됨",
-    상담사검토완료: "상담사 검토 완료",
-    분석중: "분석 중",
-  };
-
-  const signalItems = [
-    { signal: "신체적 학대 관련 신호", evidence: "소리 지르고 많이 때렸어요", timestamp: "00:41", speaker: "아동", keyword: "신체" },
-    { signal: "두려움·회피 반응 신호", evidence: "등이랑 팔이요. 말하면 더 혼난다고 했어요", timestamp: "01:08", speaker: "아동", keyword: "두려움" },
-    { signal: "방임 가능성 신호", evidence: "밥도 안 줄 때가 있어요", timestamp: "02:15", speaker: "아동", keyword: "방임" },
-  ];
+  const analysis = detail?.analysis.analysis ?? null;
+  const result = analysis?.status === "COMPLETED" ? analysis.result : null;
+  const summaryData: Summary | null = detail?.summary?.summary ?? null;
+  const transcript = detail?.transcript?.transcript ?? null;
+  const segments = indexSegments(transcript);
+  const utterances = toUiRiskUtterances(result);
+  const signals = toUiReferenceSignals(result);
+  const overview = result?.summary.overview || summaryData?.overview || "";
+  const warnings = result?.warnings ?? [];
+  const failure = detail?.analysis.error ?? analysis?.error ?? null;
+  const analysedOn = analysis ? toLocalDate(analysis.completed_at ?? analysis.created_at).slice(5) : NOT_PROVIDED;
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
@@ -195,7 +260,7 @@ function AiReviewTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
         <div className="flex items-center gap-3">
           <h2 className="text-[18px] font-semibold text-[#172033]">{caseObj.childName} · 분석 결과 검토</h2>
           <span className="text-[12px] font-semibold px-2 py-1 rounded-[4px] border border-[#CBD5E1] text-[#475569] bg-white">
-            {statusLabel[analysis.status] ?? analysis.status}
+            {toAnalysisStatusLabel(session.status, summaryData)}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -208,159 +273,217 @@ function AiReviewTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
                 background: selectedIdx === i ? "#EFF6FF" : "white",
                 color: selectedIdx === i ? "#2563EB" : "#64748B",
               }}>
-              {a.sessionNumber}회차
+              {a.session_number}회차
             </button>
           ))}
         </div>
       </div>
 
-      {/* Summary strip */}
-      <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-4 flex gap-6">
-        <div className="flex-1">
-          <p className="text-[12px] font-semibold text-[#64748B] mb-1">AI 분석 참고정보</p>
-          <p className="text-[14px] text-[#172033]">{analysis.summary}</p>
-        </div>
-        <div className="flex gap-5 shrink-0 border-l border-[#F1F5F9] pl-5">
-          <div className="text-center">
-            <div className="text-[22px] font-bold text-[#172033]">{signalItems.length}</div>
-            <div className="text-[12px] text-[#94A3B8]">감지 신호</div>
-          </div>
-          <div className="text-center">
-            <div className="text-[22px] font-bold text-[#172033]">{analysis.sessionNumber}</div>
-            <div className="text-[12px] text-[#94A3B8]">회차</div>
-          </div>
-          <div className="text-center">
-            <div className="text-[22px] font-bold text-[#172033]">{analysis.date.slice(5)}</div>
-            <div className="text-[12px] text-[#94A3B8]">분석일</div>
-          </div>
-        </div>
+      {/* 읽기 전용 안내 */}
+      <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-3 flex items-center justify-between gap-3">
+        <p className="text-[13px] text-[#64748B]">이 탭은 읽기 전용입니다. 검토 · 승인은 AI 분석 화면에서 합니다.</p>
+        <button
+          onClick={() => navigate(`/cases/${caseObj.backendId}/analyses/${session.id}`)}
+          className="shrink-0 px-3 py-1.5 text-[12px] font-medium text-[#2563EB] border border-[#DBEAFE] rounded-[6px] bg-[#EFF6FF] hover:bg-[#DBEAFE] transition-colors"
+        >
+          AI 분석 화면에서 검토하기
+        </button>
       </div>
 
-      {/* 추가 확인 필요 발화 */}
-      <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
-        <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span className="text-[14px] font-semibold text-[#172033]">추가 확인 필요 발화</span>
-          <span className="text-[12px] text-[#64748B]">AI가 주의 표시한 발화입니다. 상담사의 최종 판단이 필요합니다.</span>
+      {detailLoading && (
+        <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-8 text-center text-[13px] text-[#94A3B8]">분석 결과를 불러오는 중...</div>
+      )}
+      {!detailLoading && detailError && (
+        <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-8 text-center text-[13px] text-red-600">{detailError}</div>
+      )}
+      {!detailLoading && detail && !result && (
+        <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-8 text-center text-[13px] text-[#64748B]">
+          {session.status === "AI_PROCESSING" || analysis?.status === "PROCESSING"
+            ? "AI 분석이 진행 중입니다. 끝나면 결과가 여기에 보입니다."
+            : failure
+              ? `AI 분석에 실패했습니다: ${failure.message}`
+              : "이 회기의 분석 결과가 아직 없습니다."}
         </div>
-        <div className="divide-y divide-[#F1F5F9]">
-          {signalItems.map((item, i) => (
-            <div key={i} className="px-5 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[11px] font-mono text-[#94A3B8] bg-[#F1F5F9] px-1.5 py-0.5 rounded">{item.timestamp}</span>
-                    <span className="text-[12px] text-[#64748B]">{item.speaker}</span>
-                    <span className="text-[12px] text-[#475569] border border-[#CBD5E1] px-1.5 py-0.5 rounded bg-white font-medium">#{item.keyword}</span>
-                  </div>
-                  <p className="text-[14px] text-[#172033] font-medium">"{item.evidence}"</p>
-                  <p className="text-[12px] text-[#64748B] mt-1">관련 신호: {item.signal}</p>
-                </div>
-                <button
-                  onClick={() => setShowEvidence(showEvidence === `${i}` ? null : `${i}`)}
-                  className="shrink-0 px-2.5 py-1.5 text-[12px] font-medium rounded-[6px] border border-[#CBD5E1] text-[#475569] hover:bg-[#F8FAFC] transition-colors"
-                >
-                  원문 위치 보기
-                </button>
-              </div>
-              {showEvidence === `${i}` && (
-                <div className="mt-3 border-t border-[#F1F5F9] pt-3">
-                  <p className="text-[12px] font-semibold text-[#94A3B8] mb-2">STT 원문 컨텍스트</p>
-                  <div className="bg-[#F8FAFC] rounded-[6px] px-4 py-3 font-mono text-[13px] text-[#64748B]">
-                    <span className="text-[#94A3B8]">{item.timestamp.replace(":", "분 ")}초</span>{" "}
-                    <span className="text-[#172033] font-bold underline underline-offset-2">{item.evidence}</span>
-                  </div>
-                </div>
+      )}
+
+      {!detailLoading && result && (
+        <>
+          {/* Summary strip */}
+          <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-4 flex gap-6">
+            <div className="flex-1">
+              <p className="text-[12px] font-semibold text-[#64748B] mb-1">AI 분석 참고정보</p>
+              <p className="text-[14px] text-[#172033]">{overview || NOT_PROVIDED}</p>
+              {warnings.length > 0 && (
+                <ul className="mt-2 space-y-0.5">
+                  {warnings.map((w, i) => (
+                    <li key={i} className="text-[12px] text-[#64748B]">· {w}</li>
+                  ))}
+                </ul>
               )}
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="flex gap-5 shrink-0 border-l border-[#F1F5F9] pl-5">
+              <div className="text-center">
+                <div className="text-[22px] font-bold text-[#172033]">{utterances.length}</div>
+                <div className="text-[12px] text-[#94A3B8]">감지 신호</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[22px] font-bold text-[#172033]">{session.session_number}</div>
+                <div className="text-[12px] text-[#94A3B8]">회차</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[22px] font-bold text-[#172033]">{analysedOn}</div>
+                <div className="text-[12px] text-[#94A3B8]">분석일</div>
+              </div>
+            </div>
+          </div>
 
-      {/* Risk indicators - clickable */}
-      <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
-        <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
-          <p className="text-[14px] font-semibold text-[#172033]">위험 관련 신호·근거 발화</p>
-          <span className="text-[12px] text-[#94A3B8]">항목을 클릭하면 근거를 확인할 수 있습니다</span>
-        </div>
-        <div className="divide-y divide-[#F1F5F9]">
-          {analysis.riskIndicators.map((ind, i) => {
-            const key = Object.keys(INDICATOR_DETAILS)[i % Object.keys(INDICATOR_DETAILS).length];
-            const detail = INDICATOR_DETAILS[key];
-            const isOpen = selectedIndicator === `${i}`;
-            return (
-              <div key={i}>
-                <button
-                  onClick={() => setSelectedIndicator(isOpen ? null : `${i}`)}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-[#F8FAFC] transition-colors"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#475569] shrink-0" />
-                  <span className="text-[14px] text-[#172033] flex-1 font-medium">{ind}</span>
-                  <span className="text-[12px] text-[#94A3B8]">참고 신호</span>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 transition-transform" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)" }}><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                {isOpen && detail && (
-                  <div className="border-t border-[#F1F5F9] bg-[#FAFAFA] px-5 py-5 space-y-5">
-                    {/* 전체 상담 요약본 */}
-                    <div>
-                      <p className="text-[12px] font-semibold text-[#64748B] mb-2">전체 상담 요약본</p>
-                      <p className="text-[14px] text-[#172033] leading-relaxed">{detail.sessionSummary}</p>
-                    </div>
-
-                    {/* 학대 근거 요인 */}
-                    <div>
-                      <p className="text-[12px] font-semibold text-[#64748B] mb-2">학대 근거 요인</p>
-                      <div className="space-y-3">
-                        {detail.evidences.map((ev, ei) => (
-                          <div key={ei} className="border border-[#E2E8F0] rounded-[6px] bg-white p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-[11px] font-mono text-[#94A3B8] bg-[#F1F5F9] px-1.5 py-0.5 rounded">{ev.timestamp}</span>
-                              <span className="text-[12px] text-[#64748B]">{ev.speaker}</span>
-                            </div>
-                            <p className="text-[14px] text-[#172033] leading-relaxed mb-2">
-                              {ev.text.split(ev.keyPhrase).map((part, pi, arr) => (
-                                <Fragment key={pi}>
-                                  {part}
-                                  {pi < arr.length - 1 && (
-                                    <span className="font-bold underline underline-offset-2">{ev.keyPhrase}</span>
-                                  )}
-                                </Fragment>
-                              ))}
-                            </p>
-                            <div className="flex items-start gap-2 pt-2 border-t border-[#F1F5F9]">
-                              <span className="text-[11px] text-[#94A3B8] shrink-0 mt-0.5">근거 요소</span>
-                              <span className="text-[12px] font-semibold text-[#172033]">"{ev.keyPhrase}"</span>
-                            </div>
-                          </div>
-                        ))}
+          {/* 추가 확인 필요 발화 */}
+          <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span className="text-[14px] font-semibold text-[#172033]">추가 확인 필요 발화</span>
+              <span className="text-[12px] text-[#64748B]">AI가 주의 표시한 발화입니다. 상담사의 최종 판단이 필요합니다.</span>
+            </div>
+            <div className="divide-y divide-[#F1F5F9]">
+              {utterances.map((item, i) => {
+                const seg = item.segmentId ? segments.get(item.segmentId) : undefined;
+                const context = item.segmentId ? segmentContext(transcript, item.segmentId) : [];
+                return (
+                  <div key={i} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[11px] font-mono text-[#94A3B8] bg-[#F1F5F9] px-1.5 py-0.5 rounded">{seg?.timestamp ?? NOT_PROVIDED}</span>
+                          <span className="text-[12px] text-[#64748B]">{seg?.speakerLabel ?? NOT_PROVIDED}</span>
+                          {item.typeLabel && (
+                            <span className="text-[12px] text-[#475569] border border-[#CBD5E1] px-1.5 py-0.5 rounded bg-white font-medium">#{item.typeLabel}</span>
+                          )}
+                        </div>
+                        <p className="text-[14px] text-[#172033] font-medium">"{item.text || seg?.text || NOT_PROVIDED}"</p>
+                        <p className="text-[12px] text-[#64748B] mt-1">관련 신호: {item.reason || NOT_PROVIDED}</p>
                       </div>
+                      <button
+                        onClick={() => setShowEvidence(showEvidence === `${i}` ? null : `${i}`)}
+                        className="shrink-0 px-2.5 py-1.5 text-[12px] font-medium rounded-[6px] border border-[#CBD5E1] text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+                      >
+                        원문 위치 보기
+                      </button>
                     </div>
-
-                    {/* RAG 근거 자료 */}
-                    {detail.ragSources.length > 0 && (
-                      <div>
-                        <p className="text-[12px] font-semibold text-[#64748B] mb-2">관련 근거 자료</p>
-                        <div className="space-y-2">
-                          {detail.ragSources.map((rag, ri) => (
-                            <div key={ri} className="border border-[#E2E8F0] rounded-[6px] bg-white p-4">
-                              <p className="text-[13px] font-semibold text-[#172033] mb-1">{rag.title}</p>
-                              <p className="text-[13px] text-[#475569] mb-2">{rag.content}</p>
-                              <div className="flex items-start gap-2 pt-2 border-t border-[#F1F5F9]">
-                                <span className="text-[11px] text-[#94A3B8] shrink-0 mt-0.5">연결 근거</span>
-                                <p className="text-[12px] text-[#475569]">{rag.connection}</p>
-                              </div>
-                            </div>
+                    {showEvidence === `${i}` && (
+                      <div className="mt-3 border-t border-[#F1F5F9] pt-3">
+                        <p className="text-[12px] font-semibold text-[#94A3B8] mb-2">STT 원문 컨텍스트</p>
+                        <div className="bg-[#F8FAFC] rounded-[6px] px-4 py-3 font-mono text-[13px] text-[#64748B] space-y-1">
+                          {context.length === 0 && <p>전사본에서 이 발화를 찾지 못했습니다.</p>}
+                          {context.map(line => (
+                            <p key={line.id}>
+                              <span className="text-[#94A3B8]">{line.timestamp}</span>{" "}
+                              <span className="text-[#94A3B8]">{line.speakerLabel}</span>{" "}
+                              <span className={line.id === item.segmentId ? "text-[#172033] font-bold underline underline-offset-2" : ""}>{line.text}</span>
+                            </p>
                           ))}
                         </div>
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+              {utterances.length === 0 && (
+                <div className="px-5 py-6 text-[13px] text-[#94A3B8]">AI가 주의 표시한 발화가 없습니다.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Risk indicators - clickable */}
+          <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
+              <p className="text-[14px] font-semibold text-[#172033]">위험 관련 신호·근거 발화</p>
+              <span className="text-[12px] text-[#94A3B8]">항목을 클릭하면 근거를 확인할 수 있습니다</span>
+            </div>
+            <div className="divide-y divide-[#F1F5F9]">
+              {signals.map((ind, i) => {
+                const isOpen = selectedIndicator === `${i}`;
+                return (
+                  <div key={i}>
+                    <button
+                      onClick={() => setSelectedIndicator(isOpen ? null : `${i}`)}
+                      className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-[#F8FAFC] transition-colors"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#475569] shrink-0" />
+                      <span className="text-[14px] text-[#172033] flex-1 font-medium">{ind.label}</span>
+                      <span className="text-[12px] text-[#94A3B8]">{ind.kind}</span>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 transition-transform" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)" }}><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-[#F1F5F9] bg-[#FAFAFA] px-5 py-5 space-y-5">
+                        {/* 전체 상담 요약본 */}
+                        <div>
+                          <p className="text-[12px] font-semibold text-[#64748B] mb-2">전체 상담 요약본</p>
+                          <p className="text-[14px] text-[#172033] leading-relaxed">{summaryData?.overview || overview || NOT_PROVIDED}</p>
+                        </div>
+
+                        {/* 근거 발화 */}
+                        <div>
+                          <p className="text-[12px] font-semibold text-[#64748B] mb-2">근거 발화</p>
+                          <div className="space-y-3">
+                            {ind.segmentIds.map(id => {
+                              const ev = segments.get(id);
+                              return (
+                                <div key={id} className="border border-[#E2E8F0] rounded-[6px] bg-white p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-[11px] font-mono text-[#94A3B8] bg-[#F1F5F9] px-1.5 py-0.5 rounded">{ev?.timestamp ?? NOT_PROVIDED}</span>
+                                    <span className="text-[12px] text-[#64748B]">{ev?.speakerLabel ?? NOT_PROVIDED}</span>
+                                  </div>
+                                  <p className="text-[14px] text-[#172033] leading-relaxed">
+                                    {ev?.text ?? "전사본에서 이 발화를 찾지 못했습니다."}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {signals.length === 0 && (
+                <div className="px-5 py-6 text-[13px] text-[#94A3B8]">AI가 표시한 관련 신호가 없습니다.</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 요약 검토 현황 (읽기 전용) */}
+      {!detailLoading && detail && (
+        <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
+            <p className="text-[14px] font-semibold text-[#172033]">상담 요약 검토 현황</p>
+            {summaryData && (
+              <span className="text-[12px] text-[#64748B]">
+                {summaryData.status === "APPROVED" ? "승인됨" : "초안"}{summaryData.is_edited ? " · 상담사 수정" : ""}
+              </span>
+            )}
+          </div>
+          {summaryData ? (
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-[14px] text-[#172033]">{summaryData.overview || NOT_PROVIDED}</p>
+              {summaryData.key_points.length > 0 && (
+                <ul className="space-y-1">
+                  {summaryData.key_points.map((point, i) => (
+                    <li key={i} className="text-[13px] text-[#475569]">· {point}</li>
+                  ))}
+                </ul>
+              )}
+              {summaryData.counselor_note && (
+                <p className="text-[12px] text-[#64748B] border-t border-[#F1F5F9] pt-2">상담사 메모: {summaryData.counselor_note}</p>
+              )}
+            </div>
+          ) : (
+            <div className="px-5 py-6 text-[13px] text-[#94A3B8]">요약이 아직 없습니다.</div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Navigation to plan */}
       <div className="flex justify-end">
@@ -377,29 +500,12 @@ function AiReviewTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
 }
 
 // ─── Case Plan Tab ────────────────────────────────────────────────────────────
+//
+// 사례관리 계획은 Backend 에 없다. 화면 구성만 두고 내용은 비워 둔다(예시 문장을 사실처럼 보이지 않게).
 
-function CasePlanTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate: (t: Tab) => void }) {
+function CasePlanTab({ caseObj, onNavigate }: { caseObj: ManagedCase; onNavigate: (t: Tab) => void }) {
   const [planTab, setPlanTab] = useState<"domains" | "priority" | "records">("domains");
-  const [expandedEvidence, setExpandedEvidence] = useState<number | null>(null);
-  const { showToast } = useToast();
-
-  const problemDomains = [
-    { domain: "신체 안전", level: "높음", basis: "신체 학대 관련 발화 3건", source: "6회차 00:41, 01:08, 03:22", color: "#DC2626" },
-    { domain: "정서 발달", level: "중간", basis: "두려움·위축 반응 반복 관찰", source: "5회차, 6회차 전반", color: "#D97706" },
-    { domain: "학교생활", level: "낮음", basis: "결석 이력 확인 필요", source: "초기 면담 기록", color: "#16A34A" },
-    { domain: "가족 관계", level: "높음", basis: "보호자와 갈등 패턴 지속", source: "4회차, 5회차, 6회차", color: "#DC2626" },
-  ];
-
-  const priorities = [
-    { rank: 1, goal: "즉각적인 신체 안전 확보", basis: "신체적 학대 징후 지속 확인됨", action: "보호조치 검토 요청", status: "진행중" },
-    { rank: 2, goal: "아동 정서 안정 지원", basis: "위축 행동 및 두려움 반응", action: "전문 심리치료 연계", status: "대기중" },
-    { rank: 3, goal: "보호자 교육 및 상담 연계", basis: "가족 관계 갈등 지속", action: "부모 교육 프로그램 소개", status: "대기중" },
-  ];
-
-  const records = [
-    { date: "2026-08-15", content: "6회차 상담 후 아동 신체 학대 관련 진술 강화 확인. 보호조치 논의 시작.", counselor: caseObj.counselor },
-    { date: "2026-08-10", content: "5회차 상담. 아동 일상 개선 없음. 담임 교사와 연계 확인.", counselor: caseObj.counselor },
-  ];
+  const [draft, setDraft] = useState("");
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
@@ -422,6 +528,10 @@ function CasePlanTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
         </div>
       </div>
 
+      <NotServedNotice>
+        사례관리 계획은 아직 서버에 없습니다. 화면 구성만 보여 주며, 입력한 내용은 저장되지 않습니다.
+      </NotServedNotice>
+
       {planTab === "domains" && (
         <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
           <table className="w-full">
@@ -433,87 +543,38 @@ function CasePlanTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
               </tr>
             </thead>
             <tbody>
-              {problemDomains.map((d, i) => (
-                <Fragment key={i}>
-                  <tr className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
-                    <td className="px-4 py-3 text-[13px] font-semibold text-[#172033]">{d.domain}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-[4px]"
-                        style={{ background: `${d.color}15`, color: d.color }}>{d.level}</span>
-                    </td>
-                    <td className="px-4 py-3 text-[13px] text-[#64748B]">{d.basis}</td>
-                    <td className="px-4 py-3 text-[12px] font-mono text-[#94A3B8]">{d.source}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setExpandedEvidence(expandedEvidence === i ? null : i)}
-                        className="text-[11px] font-medium text-[#2563EB] hover:text-[#1D4ED8] border border-[#DBEAFE] px-2 py-1 rounded-[4px] hover:bg-[#EFF6FF] transition-colors"
-                      >
-                        근거 보기
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedEvidence === i && (
-                    <tr className="bg-[#EFF6FF] border-b border-[#DBEAFE]">
-                      <td colSpan={5} className="px-6 py-3">
-                        <p className="text-[12px] font-semibold text-[#2563EB] mb-1.5">관련 발화 근거</p>
-                        <p className="text-[12px] text-[#172033]">{d.basis}</p>
-                        <p className="text-[11px] text-[#64748B] mt-1">출처: {d.source}</p>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">정리된 문제 영역이 아직 없습니다.</td>
+              </tr>
             </tbody>
           </table>
         </div>
       )}
 
       {planTab === "priority" && (
-        <div className="space-y-3">
-          {priorities.map(p => (
-            <div key={p.rank} className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-4 flex gap-4 items-start">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
-                style={{ background: p.rank === 1 ? "#DC2626" : p.rank === 2 ? "#D97706" : "#64748B" }}>
-                {p.rank}
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#172033]">{p.goal}</p>
-                <p className="text-[12px] text-[#64748B] mt-0.5">근거: {p.basis}</p>
-                <p className="text-[12px] text-[#2563EB] mt-1">조치: {p.action}</p>
-              </div>
-              <span className="text-[11px] px-2 py-0.5 rounded-[4px] font-medium shrink-0"
-                style={{
-                  background: p.status === "진행중" ? "#EFF6FF" : "#F8FAFC",
-                  color: p.status === "진행중" ? "#2563EB" : "#94A3B8",
-                }}>
-                {p.status}
-              </span>
-            </div>
-          ))}
+        <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-10 text-center text-[13px] text-[#94A3B8]">
+          상담사 확인 필요 항목이 아직 없습니다.
         </div>
       )}
 
       {planTab === "records" && (
         <div className="space-y-4">
-          {records.map((r, i) => (
-            <div key={i} className="bg-white border border-[#E2E8F0] rounded-[8px] p-5">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-[12px] font-mono text-[#94A3B8]">{r.date}</span>
-                <span className="text-[12px] text-[#64748B]">{r.counselor}</span>
-              </div>
-              <p className="text-[13px] text-[#172033]">{r.content}</p>
-            </div>
-          ))}
+          <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-5 py-8 text-center text-[13px] text-[#94A3B8]">
+            사례관리 기록이 아직 없습니다.
+          </div>
           <div className="bg-white border border-[#E2E8F0] rounded-[8px] p-4">
             <p className="text-[12px] font-semibold text-[#94A3B8] mb-2">새 기록 추가</p>
             <textarea
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
               className="w-full h-24 text-[13px] border border-[#E2E8F0] rounded-[6px] p-3 text-[#172033] placeholder:text-[#CBD5E1] focus:outline-none focus:border-[#2563EB] resize-none"
               placeholder="상담 내용, 조치 사항, 소견 등을 기록하세요..."
             />
-            <div className="flex justify-end mt-2">
+            <div className="flex items-center justify-end gap-3 mt-2">
+              <span className="text-[12px] text-[#94A3B8]">서버에 저장 기능이 아직 없습니다.</span>
               <button
-                onClick={() => showToast("사례관리 기록이 저장되었습니다.", "success")}
-                className="px-3 py-1.5 text-[12px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors"
+                disabled
+                className="px-3 py-1.5 text-[12px] font-medium text-white bg-[#2563EB] rounded-[6px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 기록 저장
               </button>
@@ -537,98 +598,238 @@ function CasePlanTab({ caseObj, onNavigate }: { caseObj: CaseRecord; onNavigate:
 
 // ─── Previous Sessions Tab ────────────────────────────────────────────────────
 
-function HistoryTab({ caseObj }: { caseObj: CaseRecord }) {
-  const sessions = SESSIONS.filter(s => s.caseId === caseObj.id).sort((a, b) => b.sessionNumber - a.sessionNumber);
-  const [viewSession, setViewSession] = useState<string | null>(null);
-  const [compareMode, setCompareMode] = useState(false);
+const STT_CHIP: Record<string, { bg: string; color: string }> = {
+  "분석완료": { bg: "#F0FDF4", color: "#16A34A" },
+  "검수완료": { bg: "#EFF6FF", color: "#2563EB" },
+  "실패":     { bg: "#FEF2F2", color: "#B91C1C" },
+};
 
-  const currentSession = sessions[0];
-  const selected = sessions.find(s => s.id === viewSession);
+const AI_CHIP: Record<string, { bg: string; color: string }> = {
+  "상담사검토완료": { bg: "#F0FDF4", color: "#16A34A" },
+  "검토완료":       { bg: "#EFF6FF", color: "#2563EB" },
+  "검토필요":       { bg: "#FFF7ED", color: "#D97706" },
+  "실패":           { bg: "#FEF2F2", color: "#B91C1C" },
+};
 
-  const compareRows = [
-    { category: "주요 호소 내용", prev: "부모의 체벌이 무서워 집에 가기 싫다고 함", curr: "체벌 빈도 줄었다고 함, 그래도 두렵다 표현", change: "유지" as const },
-    { category: "정서 상태", prev: "극도의 불안·위축", curr: "다소 불안하나 대화 가능", change: "감소" as const },
-    { category: "학교 출석", prev: "주 2회 결석", curr: "주 1회 결석", change: "감소" as const },
-    { category: "보호자 태도", prev: "협조 거부", curr: "1회 면담 응함", change: "증가" as const },
-  ];
+/** 요약 상태를 사람에게 보여줄 문구. */
+function summaryStatusText(summary: Summary | null): string {
+  if (!summary) return NOT_PROVIDED;
 
-  const changeColor = { 증가: "#16A34A", 감소: "#DC2626", 유지: "#D97706" };
-  const changeArrow = { 증가: "↑", 감소: "↓", 유지: "→" };
+  return `${summary.status === "APPROVED" ? "승인됨" : "초안"}${summary.is_edited ? " · 상담사 수정" : ""}`;
+}
 
-  if (compareMode && selected) {
-    return (
-      <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
+function SessionDetailView({ session, canCompare, onBack, onCompare }: {
+  session: HistoryRow;
+  canCompare: boolean;
+  onBack: () => void;
+  onCompare: () => void;
+}) {
+  const [summaryEnv, setSummaryEnv]       = useState<SummaryEnvelope | null>(null);
+  const [transcriptEnv, setTranscriptEnv] = useState<TranscriptEnvelope | null>(null);
+  const [loading, setLoading]             = useState(true);
+  const [loadError, setLoadError]         = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoading(true);
+    setLoadError(null);
+
+    Promise.all([summaryApi.get(session.id), transcriptApi.get(session.id)])
+      .then(([s, t]) => {
+        if (cancelled) return;
+        setSummaryEnv(s);
+        setTranscriptEnv(t);
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "회기 기록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session.id]);
+
+  const summaryData = summaryEnv?.summary ?? null;
+  const transcriptData = transcriptEnv?.transcript ?? null;
+  const lines = transcriptData ? toUiTranscriptSegments(transcriptData) : [];
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => setCompareMode(false)} className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1">
+          <button onClick={onBack} className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
             목록으로
           </button>
-          <h2 className="text-[18px] font-semibold text-[#172033]">상담 비교: {selected.sessionNumber}회차 ↔ {currentSession.sessionNumber}회차</h2>
+          <h2 className="text-[18px] font-semibold text-[#172033]">{session.sessionNumber}회차 상담 내역</h2>
         </div>
+        {canCompare && (
+          <button
+            onClick={onCompare}
+            className="flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium text-[#2563EB] border border-[#DBEAFE] rounded-[6px] bg-[#EFF6FF] hover:bg-[#DBEAFE] transition-colors"
+          >
+            현재 상담과 비교
+          </button>
+        )}
+      </div>
+      <div className="bg-white border border-[#E2E8F0] rounded-[8px] p-5 space-y-4">
+        <div className="grid grid-cols-4 gap-4">
+          {[
+            { label: "상담 일시", value: `${session.date} ${session.time}`.trim() || NOT_PROVIDED },
+            { label: "상담 유형", value: session.type },
+            { label: "장소", value: session.location },
+            { label: "소요 시간", value: session.duration },
+          ].map(f => (
+            <div key={f.label}>
+              <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider mb-1">{f.label}</p>
+              <p className="text-[13px] text-[#172033] font-medium">{f.value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-[#F1F5F9] pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider">상담 내용 요약</p>
+            {summaryData && <span className="text-[11px] text-[#64748B]">{summaryStatusText(summaryData)}</span>}
+          </div>
+          {loading && <p className="text-[13px] text-[#94A3B8]">불러오는 중...</p>}
+          {!loading && loadError && <p className="text-[13px] text-red-600">{loadError}</p>}
+          {!loading && !loadError && !summaryData && (
+            <p className="text-[13px] text-[#94A3B8]">요약이 아직 없습니다. AI 분석이 끝나면 여기에 보입니다.</p>
+          )}
+          {!loading && summaryData && (
+            <div className="space-y-2">
+              <p className="text-[13px] text-[#172033]">{summaryData.overview || NOT_PROVIDED}</p>
+              {summaryData.key_points.length > 0 && (
+                <ul className="space-y-0.5">
+                  {summaryData.key_points.map((point, i) => (
+                    <li key={i} className="text-[13px] text-[#64748B]">· {point}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="border-t border-[#F1F5F9] pt-4">
+          <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider mb-2">전사 원문</p>
+          {!loading && !loadError && lines.length === 0 && (
+            <p className="text-[13px] text-[#94A3B8]">전사본이 아직 없습니다.</p>
+          )}
+          {lines.length > 0 && (
+            <div className="bg-[#F8FAFC] rounded-[6px] px-4 py-3 space-y-1.5 overflow-y-auto" style={{ maxHeight: "320px" }}>
+              {lines.map(line => (
+                <p key={line.id} className="text-[13px] text-[#172033]">
+                  <span className="font-mono text-[11px] text-[#94A3B8] mr-2">{line.timestamp}</span>
+                  <span className="text-[12px] text-[#64748B] mr-2">{line.speakerLabel}</span>
+                  {line.text}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 두 회기의 요약을 나란히 보여 준다. 회기 사이 변화를 판단하는 기능은 Backend 에 없어 "변화" 칸은 "—".
+ */
+function SessionCompareView({ prev, curr, onBack }: { prev: HistoryRow; curr: HistoryRow; onBack: () => void }) {
+  const [prevSummary, setPrevSummary] = useState<Summary | null>(null);
+  const [currSummary, setCurrSummary] = useState<Summary | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [loadError, setLoadError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoading(true);
+    setLoadError(null);
+
+    Promise.all([summaryApi.get(prev.id), summaryApi.get(curr.id)])
+      .then(([p, c]) => {
+        if (cancelled) return;
+        setPrevSummary(p.summary);
+        setCurrSummary(c.summary);
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "요약을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [prev.id, curr.id]);
+
+  const compareRows = [
+    { category: "상담 요약", prev: prevSummary?.overview, curr: currSummary?.overview },
+    { category: "주요 내용", prev: prevSummary?.key_points.join(" / "), curr: currSummary?.key_points.join(" / ") },
+    { category: "상담사 메모", prev: prevSummary?.counselor_note ?? undefined, curr: currSummary?.counselor_note ?? undefined },
+    { category: "검토 상태", prev: summaryStatusText(prevSummary), curr: summaryStatusText(currSummary) },
+  ];
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          목록으로
+        </button>
+        <h2 className="text-[18px] font-semibold text-[#172033]">상담 비교: {prev.sessionNumber}회차 ↔ {curr.sessionNumber}회차</h2>
+      </div>
+      {loading && <p className="text-[13px] text-[#94A3B8]">요약을 불러오는 중...</p>}
+      {!loading && loadError && <p className="text-[13px] text-red-600">{loadError}</p>}
+      {!loading && !loadError && (
         <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
           <div className="grid grid-cols-[1fr_1fr_1fr_80px] bg-[#F8FAFC] border-b border-[#E2E8F0]">
             <div className="px-4 py-2.5 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider">항목</div>
-            <div className="px-4 py-2.5 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider border-l border-[#E2E8F0]">이전 ({selected.sessionNumber}회차)</div>
-            <div className="px-4 py-2.5 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider border-l border-[#E2E8F0]">현재 ({currentSession.sessionNumber}회차)</div>
+            <div className="px-4 py-2.5 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider border-l border-[#E2E8F0]">이전 ({prev.sessionNumber}회차)</div>
+            <div className="px-4 py-2.5 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider border-l border-[#E2E8F0]">현재 ({curr.sessionNumber}회차)</div>
             <div className="px-4 py-2.5 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider border-l border-[#E2E8F0] text-center">변화</div>
           </div>
           {compareRows.map((r, i) => (
             <div key={i} className="grid grid-cols-[1fr_1fr_1fr_80px] border-b border-[#F1F5F9]">
               <div className="px-4 py-3 text-[13px] font-semibold text-[#172033]">{r.category}</div>
-              <div className="px-4 py-3 text-[13px] text-[#64748B] border-l border-[#F1F5F9]">{r.prev}</div>
-              <div className="px-4 py-3 text-[13px] text-[#172033] border-l border-[#F1F5F9]">{r.curr}</div>
+              <div className="px-4 py-3 text-[13px] text-[#64748B] border-l border-[#F1F5F9]">{r.prev || NOT_PROVIDED}</div>
+              <div className="px-4 py-3 text-[13px] text-[#172033] border-l border-[#F1F5F9]">{r.curr || NOT_PROVIDED}</div>
               <div className="px-4 py-3 border-l border-[#F1F5F9] flex items-center justify-center">
-                <span className="text-[12px] font-bold" style={{ color: changeColor[r.change] }}>
-                  {changeArrow[r.change]} {r.change}
-                </span>
+                <span className="text-[12px] text-[#94A3B8]">{NOT_PROVIDED}</span>
               </div>
             </div>
           ))}
         </div>
-      </div>
-    );
+      )}
+    </div>
+  );
+}
+
+function HistoryTab({ caseObj, sessions, sessionsLoading, sessionsError }: SessionListProps) {
+  const rows = useMemo(() => sortSessionsLatestFirst(sessions).map(toHistoryRow), [sessions]);
+  const [viewSession, setViewSession] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+
+  const currentSession = rows[0];
+  const selected = rows.find(s => s.id === viewSession);
+
+  if (compareMode && selected && currentSession) {
+    return <SessionCompareView prev={selected} curr={currentSession} onBack={() => setCompareMode(false)} />;
   }
 
-  if (viewSession && selected) {
+  if (viewSession && selected && currentSession) {
     return (
-      <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setViewSession(null)} className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
-              목록으로
-            </button>
-            <h2 className="text-[18px] font-semibold text-[#172033]">{selected.sessionNumber}회차 상담 내역</h2>
-          </div>
-          {selected.sessionNumber !== currentSession.sessionNumber && (
-            <button
-              onClick={() => setCompareMode(true)}
-              className="flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium text-[#2563EB] border border-[#DBEAFE] rounded-[6px] bg-[#EFF6FF] hover:bg-[#DBEAFE] transition-colors"
-            >
-              현재 상담과 비교
-            </button>
-          )}
-        </div>
-        <div className="bg-white border border-[#E2E8F0] rounded-[8px] p-5 space-y-4">
-          <div className="grid grid-cols-4 gap-4">
-            {[
-              { label: "상담 일시", value: `${selected.date} ${selected.time}` },
-              { label: "상담 유형", value: selected.type },
-              { label: "장소", value: selected.location },
-              { label: "소요 시간", value: selected.duration },
-            ].map(f => (
-              <div key={f.label}>
-                <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider mb-1">{f.label}</p>
-                <p className="text-[13px] text-[#172033] font-medium">{f.value}</p>
-              </div>
-            ))}
-          </div>
-          <div className="border-t border-[#F1F5F9] pt-4">
-            <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider mb-2">상담 내용 요약</p>
-            <p className="text-[13px] text-[#64748B]">{caseObj.childName} {selected.sessionNumber}회차 상담 기록입니다. 아동의 현재 상태를 점검하고 개입 방향을 협의하였습니다.</p>
-          </div>
-        </div>
-      </div>
+      <SessionDetailView
+        session={selected}
+        canCompare={selected.sessionNumber !== currentSession.sessionNumber}
+        onBack={() => setViewSession(null)}
+        onCompare={() => setCompareMode(true)}
+      />
     );
   }
 
@@ -645,35 +846,46 @@ function HistoryTab({ caseObj }: { caseObj: CaseRecord }) {
             </tr>
           </thead>
           <tbody>
-            {sessions.map((s, i) => (
-              <tr key={s.id} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors cursor-pointer" onClick={() => setViewSession(s.id)}>
-                <td className="px-4 py-3 text-[13px] font-semibold text-[#172033]">
-                  {s.sessionNumber}회차
-                  {i === 0 && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] rounded font-medium">최근</span>}
-                </td>
-                <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{s.date}</td>
-                <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.type}</td>
-                <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.location}</td>
-                <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.duration}</td>
-                <td className="px-4 py-3">
-                  <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ background: s.sttStatus === "분석완료" ? "#F0FDF4" : s.sttStatus === "검수완료" ? "#EFF6FF" : "#FFFBEB", color: s.sttStatus === "분석완료" ? "#16A34A" : s.sttStatus === "검수완료" ? "#2563EB" : "#D97706" }}>
-                    {s.sttStatus}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ background: s.aiStatus === "상담사검토완료" ? "#F0FDF4" : s.aiStatus === "검토완료" ? "#EFF6FF" : s.aiStatus === "검토필요" ? "#FFF7ED" : "#F8FAFC", color: s.aiStatus === "상담사검토완료" ? "#16A34A" : s.aiStatus === "검토완료" ? "#2563EB" : s.aiStatus === "검토필요" ? "#D97706" : "#94A3B8" }}>
-                    {s.aiStatus}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <button className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium" onClick={e => { e.stopPropagation(); setViewSession(s.id); }}>
-                    상세
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((s, i) => {
+              const stt = STT_CHIP[s.sttLabel] ?? { bg: "#FFFBEB", color: "#D97706" };
+              const ai = AI_CHIP[s.aiLabel] ?? { bg: "#F8FAFC", color: "#94A3B8" };
+              return (
+                <tr key={s.id} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors cursor-pointer" onClick={() => setViewSession(s.id)}>
+                  <td className="px-4 py-3 text-[13px] font-semibold text-[#172033]">
+                    {s.sessionNumber}회차
+                    {i === 0 && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] rounded font-medium">최근</span>}
+                  </td>
+                  <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{s.date || NOT_PROVIDED}</td>
+                  <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.type}</td>
+                  <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.location}</td>
+                  <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.duration}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-[11px] px-1.5 py-0.5 rounded font-medium" style={{ background: stt.bg, color: stt.color }}>
+                      {s.sttLabel}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-[11px] px-1.5 py-0.5 rounded font-medium" style={{ background: ai.bg, color: ai.color }}>
+                      {s.aiLabel}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium" onClick={e => { e.stopPropagation(); setViewSession(s.id); }}>
+                      상세
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {sessionsLoading && (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">회기 목록을 불러오는 중...</td></tr>
+            )}
+            {!sessionsLoading && sessionsError && (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-[13px] text-red-600">{sessionsError}</td></tr>
+            )}
+            {!sessionsLoading && !sessionsError && rows.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-[13px] text-[#94A3B8]">등록된 회기가 없습니다.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -682,28 +894,27 @@ function HistoryTab({ caseObj }: { caseObj: CaseRecord }) {
 }
 
 // ─── Closure Tab ─────────────────────────────────────────────────────────────
+//
+// 종결 · 가정복귀 검토는 Backend 에 없다. 점검 항목 이름만 두고 근거 · 출처는 비워 둔다
+// (예시 발화를 사실처럼 보이지 않게). 제출은 막아 둔다.
 
 type ClosureItemStatus = "근거확인" | "정보부족" | "해당없음" | "추가상담필요" | null;
 
 interface ClosureCheckItem {
   id: string;
   label: string;
-  evidence: string;
-  source: string;
-  session: number;
-  quote: string;
   required: boolean;
 }
 
 const CLOSURE_CHECK_ITEMS: ClosureCheckItem[] = [
-  { id: "c1", label: "신체적 위험 신호 해소 여부", evidence: "6회차 발화에서 체벌 관련 진술 확인", source: "6회차 상담 기록", session: 6, quote: "소리 지르고 많이 때렸어요", required: true },
-  { id: "c2", label: "보호자 협조 충분성 확인", evidence: "면담 1회만 참여, 추가 협조 필요", source: "사례관리 기록", session: 5, quote: "보호자 면담 1회 참여 기록", required: true },
-  { id: "c3", label: "아동 정서 안정화 여부", evidence: "5회차, 6회차 모두 위축 반응 관찰", source: "상담 기록", session: 6, quote: "집에 가기 싫어요", required: true },
-  { id: "c4", label: "아동 안전 환경 확인", evidence: "가정 내 안전 환경 점검 필요", source: "현장 방문 기록", session: 4, quote: "엄마가 화나면 무서워요", required: true },
-  { id: "c5", label: "지역사회 연계 자원 확인", evidence: "연계 기관 확인 필요", source: "자원 연계 기록", session: 3, quote: "지역 자원 연계 현황", required: true },
-  { id: "c6", label: "후속 모니터링 계획 수립", evidence: "종결 후 모니터링 방안 필요", source: "사례관리 계획", session: 7, quote: "후속 계획 미수립", required: true },
-  { id: "c7", label: "아동 의견 청취 여부", evidence: "아동 의사 확인 필요", source: "상담 기록", session: 6, quote: "아동이 원하는 상황 파악 필요", required: false },
-  { id: "c8", label: "보호자 양육 역량 향상 여부", evidence: "부모 교육 참여 기록 확인", source: "교육 참여 기록", session: 5, quote: "부모 교육 1회 참여", required: false },
+  { id: "c1", label: "신체적 위험 신호 해소 여부", required: true },
+  { id: "c2", label: "보호자 협조 충분성 확인", required: true },
+  { id: "c3", label: "아동 정서 안정화 여부", required: true },
+  { id: "c4", label: "아동 안전 환경 확인", required: true },
+  { id: "c5", label: "지역사회 연계 자원 확인", required: true },
+  { id: "c6", label: "후속 모니터링 계획 수립", required: true },
+  { id: "c7", label: "아동 의견 청취 여부", required: false },
+  { id: "c8", label: "보호자 양육 역량 향상 여부", required: false },
 ];
 
 const STATUS_BTN_LABELS: Record<NonNullable<ClosureItemStatus>, string> = {
@@ -713,12 +924,11 @@ const STATUS_BTN_LABELS: Record<NonNullable<ClosureItemStatus>, string> = {
   "추가상담필요": "추가 상담 필요",
 };
 
-function ClosureTab({ caseObj }: { caseObj: CaseRecord }) {
+function ClosureTab({ caseObj }: { caseObj: ManagedCase }) {
   const [itemStatuses, setItemStatuses] = useState<Record<string, ClosureItemStatus>>({});
   const [itemMemos, setItemMemos] = useState<Record<string, string>>({});
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
-  const { showToast } = useToast();
   const navigate = useNavigate();
 
   const requiredItems = CLOSURE_CHECK_ITEMS.filter(i => i.required);
@@ -738,6 +948,10 @@ function ClosureTab({ caseObj }: { caseObj: CaseRecord }) {
   return (
     <div className="flex-1 overflow-y-auto bg-[#F6F8FB] p-6 space-y-5">
       <h2 className="text-[18px] font-semibold text-[#172033]">{caseObj.childName} · 종결 검토 항목 확인 현황</h2>
+
+      <NotServedNotice>
+        종결 · 가정복귀 검토는 아직 서버에 없습니다. 항목 확인과 의견은 이 화면에만 남고 저장 · 제출되지 않습니다.
+      </NotServedNotice>
 
       {/* 전체 현황 통계 */}
       <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
@@ -806,13 +1020,13 @@ function ClosureTab({ caseObj }: { caseObj: CaseRecord }) {
                     <div className="mt-3 pl-12 space-y-3">
                       <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] p-4">
                         <div className="grid grid-cols-2 gap-3 text-[13px] mb-3">
-                          <div><span className="text-[#94A3B8] mr-2">관련 근거</span><span className="text-[#172033]">{item.evidence}</span></div>
-                          <div><span className="text-[#94A3B8] mr-2">출처</span><span className="text-[#172033]">{item.source}</span></div>
-                          <div><span className="text-[#94A3B8] mr-2">확인 회차</span><span className="text-[#172033]">{item.session}회차</span></div>
+                          <div><span className="text-[#94A3B8] mr-2">관련 근거</span><span className="text-[#172033]">{NOT_PROVIDED}</span></div>
+                          <div><span className="text-[#94A3B8] mr-2">출처</span><span className="text-[#172033]">{NOT_PROVIDED}</span></div>
+                          <div><span className="text-[#94A3B8] mr-2">확인 회차</span><span className="text-[#172033]">{NOT_PROVIDED}</span></div>
                         </div>
                         <div className="border-t border-[#E2E8F0] pt-3">
                           <p className="text-[12px] text-[#94A3B8] mb-1">원문 발화 또는 기록</p>
-                          <p className="text-[13px] text-[#172033] font-medium">"{item.quote}"</p>
+                          <p className="text-[13px] text-[#94A3B8]">연결된 근거가 아직 없습니다.</p>
                         </div>
                       </div>
                       {status === "정보부족" && (
@@ -850,18 +1064,18 @@ function ClosureTab({ caseObj }: { caseObj: CaseRecord }) {
             필수 검토 항목을 모두 확인해야 제출할 수 있습니다.
           </p>
         )}
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-[12px] text-[#94A3B8] mr-1">서버에 제출 기능이 아직 없습니다.</span>
           <button
-            onClick={() => navigate(`/cases/${caseObj.id}/reports`)}
+            onClick={() => navigate(`/cases/${caseObj.backendId}/reports`)}
             className="px-3 py-2 text-[13px] font-medium text-[#64748B] border border-[#E2E8F0] rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
           >
             보고서 생성
           </button>
           <button
-            disabled={!allRequiredDone}
-            onClick={() => showToast("종결 검토 자료가 제출되었습니다.", "success")}
+            disabled
             className="px-4 py-2 text-[13px] font-medium text-white rounded-[6px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: allRequiredDone ? "#2563EB" : "#94A3B8" }}
+            style={{ background: "#94A3B8" }}
           >
             종결 검토 자료 제출
           </button>
@@ -873,13 +1087,17 @@ function ClosureTab({ caseObj }: { caseObj: CaseRecord }) {
 
 // ─── Case List (entry view) ───────────────────────────────────────────────────
 
-function CaseListView({ onSelect }: { onSelect: (c: CaseRecord) => void }) {
+function CaseListView({ cases, loading, error, onSelect }: {
+  cases: ManagedCase[];
+  loading: boolean;
+  error: string | null;
+  onSelect: (c: ManagedCase) => void;
+}) {
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"riskScore" | "lastSession">("riskScore");
-  const rows = useMemo(() =>
-    CASES.filter(c => !query || c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase()))
-      .sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)),
-    [query, sortBy]
+  // 위험도는 사례 단위로 Backend 에 없어 최근 상담순만 쓴다(위험도순 단추는 막아 둔다).
+  const rows = useMemo(
+    () => sortByRecentSession(cases.filter(c => matchesQuery(c, query))),
+    [cases, query],
   );
 
   return (
@@ -892,8 +1110,8 @@ function CaseListView({ onSelect }: { onSelect: (c: CaseRecord) => void }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-0.5 text-[13px] text-[#94A3B8] bg-white border border-[#E2E8F0] rounded-[6px] px-1 py-1">
-              <button onClick={() => setSortBy("riskScore")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "riskScore" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>위험도순</button>
-              <button onClick={() => setSortBy("lastSession")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "lastSession" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>최근상담순</button>
+              <button disabled title="위험도는 아직 서버에 없습니다" className="px-2.5 py-1 rounded transition-all opacity-50 cursor-not-allowed">위험도순</button>
+              <button className="px-2.5 py-1 rounded transition-all font-semibold text-[#172033] bg-[#F1F5F9]">최근상담순</button>
             </div>
             <div className="relative">
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -914,28 +1132,32 @@ function CaseListView({ onSelect }: { onSelect: (c: CaseRecord) => void }) {
             <tbody>
               {rows.map(c => (
                 <tr
-                  key={c.id}
+                  key={c.backendId}
                   onClick={() => onSelect(c)}
                   className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3.5 text-[14px] font-semibold text-[#172033]">{c.childName}</td>
-                  <td className="px-4 py-3.5 text-[12px] font-mono text-[#64748B]">{c.id}</td>
-                  <td className="px-4 py-3.5"><RiskBadge level={c.riskLevel} /></td>
-                  <td className="px-4 py-3.5 text-[13px] text-[#475569]">{c.sessionCount}회</td>
-                  <td className="px-4 py-3.5 text-[13px] font-mono text-[#475569]">{c.lastSession}</td>
-                  <td className="px-4 py-3.5">
-                    <span className={`px-2 py-0.5 rounded border text-[12px] bg-white ${c.status === "review" ? "border-[#64748B] text-[#172033] font-bold" : c.status === "active" ? "border-[#94A3B8] text-[#172033] font-semibold" : "border-[#CBD5E1] text-[#64748B]"}`}>
-                      {c.status === "active" ? "진행중" : c.status === "review" ? "검토필요" : "대기중"}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3.5 text-[12px] font-mono text-[#64748B]">{c.caseNumber}</td>
+                  <td className="px-4 py-3.5 text-[13px] text-[#94A3B8]">{NOT_PROVIDED}</td>
+                  <td className="px-4 py-3.5 text-[13px] text-[#94A3B8]">{NOT_PROVIDED}</td>
+                  <td className="px-4 py-3.5 text-[13px] font-mono text-[#475569]">{c.lastSession || NOT_PROVIDED}</td>
+                  <td className="px-4 py-3.5"><CaseStatusChip c={c} /></td>
                   <td className="px-4 py-3.5 text-[13px] text-[#475569]">{c.counselor}</td>
                   <td className="px-4 py-3.5">
                     <button className="text-[13px] text-[#2563EB] hover:text-[#1D4ED8] font-medium">선택</button>
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-[14px] text-[#94A3B8]">검색 조건에 맞는 사례가 없습니다.</td></tr>
+              {loading && (
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-[14px] text-[#94A3B8]">사례 목록을 불러오는 중...</td></tr>
+              )}
+              {!loading && error && (
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-[14px] text-red-600">{error}</td></tr>
+              )}
+              {!loading && !error && rows.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-[14px] text-[#94A3B8]">
+                  {cases.length === 0 ? "담당 사례가 없습니다." : "검색 조건에 맞는 사례가 없습니다."}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -948,12 +1170,77 @@ function CaseListView({ onSelect }: { onSelect: (c: CaseRecord) => void }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CaseManagementPage() {
-  const [selectedCase, setSelectedCase] = useState<CaseRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("ai-review");
+  const [cases, setCases]                     = useState<ManagedCase[]>([]);
+  const [casesLoading, setCasesLoading]       = useState(true);
+  const [casesError, setCasesError]           = useState<string | null>(null);
+  const [selectedCase, setSelectedCase]       = useState<ManagedCase | null>(null);
+  const [activeTab, setActiveTab]             = useState<Tab>("ai-review");
+  const [sessions, setSessions]               = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    casesApi
+      .list({ page: 1, page_size: CASE_PAGE_SIZE })
+      .then((page) => {
+        if (!cancelled) setCases(page.items.map(toManagedCase));
+      })
+      .catch((caught) => {
+        if (!cancelled) setCasesError(describeApiError(caught, "사례 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setCasesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 고른 사례의 회기 목록. 분석 결과 검토 · 이전 상담 탭과 탭 배지가 함께 쓴다.
+  const selectedId = selectedCase?.backendId;
+
+  useEffect(() => {
+    if (!selectedId) return;
+
+    let cancelled = false;
+
+    setSessions([]);
+    setSessionsLoading(true);
+    setSessionsError(null);
+
+    casesApi
+      .listSessions(selectedId, { page: 1, page_size: SESSION_PAGE_SIZE })
+      .then((page) => {
+        if (!cancelled) setSessions(page.items);
+      })
+      .catch((caught) => {
+        if (!cancelled) setSessionsError(describeApiError(caught, "회기 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setSessionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
 
   if (!selectedCase) {
-    return <CaseListView onSelect={c => { setSelectedCase(c); setActiveTab("ai-review"); }} />;
+    return (
+      <CaseListView
+        cases={cases}
+        loading={casesLoading}
+        error={casesError}
+        onSelect={c => { setSelectedCase(c); setActiveTab("ai-review"); }}
+      />
+    );
   }
+
+  const reviewCount = sessions.filter(s => s.status === "AI_REVIEW_REQUIRED").length;
+  const sessionProps = { caseObj: selectedCase, sessions, sessionsLoading, sessionsError };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -970,20 +1257,20 @@ export default function CaseManagementPage() {
           <span className="text-[#E2E8F0]">/</span>
           <div>
             <span className="text-[16px] font-semibold text-[#172033]">{selectedCase.childName}</span>
-            <span className="text-[13px] text-[#94A3B8] font-mono ml-2">{selectedCase.id}</span>
+            <span className="text-[13px] text-[#94A3B8] font-mono ml-2">{selectedCase.caseNumber}</span>
           </div>
-          <RiskBadge level={selectedCase.riskLevel} />
+          <CaseStatusChip c={selectedCase} />
         </div>
       </div>
 
       {/* Sub-nav */}
-      <SubNav active={activeTab} onChange={setActiveTab} caseObj={selectedCase} />
+      <SubNav active={activeTab} onChange={setActiveTab} reviewCount={reviewCount} />
 
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {activeTab === "ai-review" && <AiReviewTab caseObj={selectedCase} onNavigate={setActiveTab} />}
+        {activeTab === "ai-review" && <AiReviewTab key={selectedCase.backendId} {...sessionProps} onNavigate={setActiveTab} />}
         {activeTab === "plan"      && <CasePlanTab caseObj={selectedCase} onNavigate={setActiveTab} />}
-        {activeTab === "history"   && <HistoryTab caseObj={selectedCase} />}
+        {activeTab === "history"   && <HistoryTab key={selectedCase.backendId} {...sessionProps} />}
         {activeTab === "closure"   && <ClosureTab caseObj={selectedCase} />}
       </div>
     </div>
