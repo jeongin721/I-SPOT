@@ -223,6 +223,53 @@ def test_admin_can_reactivate_dormant_account(
     assert _login(client, COUNSELOR_EMAIL, temporary).status_code == 200
 
 
+def test_reactivated_old_account_does_not_go_dormant_again(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID, db
+) -> None:
+    """오래 전에 만든 계정이라도 휴면을 풀면 바로 다시 잠기면 안 된다."""
+
+    user = db.get(User, counselor_id)
+    user.created_at = datetime.now(timezone.utc) - timedelta(days=365)
+    db.commit()
+
+    _age_last_login(db, counselor_id, settings.DORMANT_AFTER_DAYS + 1)
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)  # 휴면 처리
+
+    temporary = client.post(
+        f"/api/v1/auth/users/{counselor_id}/reactivate", headers=admin_headers
+    ).json()["data"]["temporary_password"]
+
+    first = _login(client, COUNSELOR_EMAIL, temporary)
+
+    assert first.status_code == 200
+
+    # 두 번째 로그인에서도 휴면으로 되돌아가지 않아야 한다.
+    second = _login(client, COUNSELOR_EMAIL, temporary)
+
+    assert second.status_code == 200
+
+
+def test_password_before_admin_reset_cannot_be_reused(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    """관리자가 초기화해도 초기화 전 비밀번호는 재사용할 수 없어야 한다."""
+
+    temporary = client.post(
+        f"/api/v1/auth/users/{counselor_id}/password-reset", headers=admin_headers
+    ).json()["data"]["temporary_password"]
+
+    headers = _headers(client, COUNSELOR_EMAIL, temporary)
+
+    response = client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": temporary, "new_password": COUNSELOR_PASSWORD},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "PASSWORD_REUSED"
+
+
 # =========================================================
 # 강제 로그아웃
 # =========================================================

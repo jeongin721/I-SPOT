@@ -63,6 +63,9 @@ def _issue_temporary_password(user: User) -> str:
 
 
 def reset_password(db: Session, actor: User, user: User) -> str:
+    # 초기화 전 비밀번호도 이력에 남긴다. 안 남기면 재사용 금지를 지나갈 수 있다.
+    user_service.remember_password(db, user, user.hashed_password)
+
     temporary = _issue_temporary_password(user)
 
     audit_service.record(
@@ -99,7 +102,10 @@ def reactivate(db: Session, actor: User, user: User) -> str:
     """
 
     user.dormant_at = None
-    user.last_login_at = None
+
+    # 휴면을 푸는 것 자체를 활동으로 본다. 비워 두면 판정 기준이 created_at 으로
+    # 내려가서, 오래 전에 만든 계정은 다음 로그인에 곧바로 다시 휴면이 된다.
+    user.last_login_at = datetime.now(timezone.utc)
 
     temporary = _issue_temporary_password(user)
 
