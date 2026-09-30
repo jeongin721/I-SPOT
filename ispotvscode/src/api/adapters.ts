@@ -354,7 +354,7 @@ const REVIEW_REASON_LABELS: Record<string, string> = {
 };
 
 // 신뢰도 규칙(값 없음 · 저신뢰 기준)은 confidence.ts 한 곳에 있다. 화면은 여기서 가져다 쓴다.
-export { LOW_CONFIDENCE_THRESHOLD, hasConfidence, isLowConfidence } from "./confidence";
+export { LOW_CONFIDENCE_THRESHOLD, formatConfidencePercent, hasConfidence, isLowConfidence } from "./confidence";
 
 /** 전사 검수 화면의 발화 한 줄. */
 export interface UiTranscriptSegment {

@@ -11,6 +11,7 @@ import type { Session as UiSession } from "../data/mockData";
 import {
   describeApiError,
   deriveStatus,
+  formatConfidencePercent,
   isLowConfidence,
   toUiCase,
   toUiSession,
@@ -51,7 +52,9 @@ const POLL_MAX_TRIES = 60;
 /**
  * 검수가 필요한 발화. 저신뢰(값이 있고 0.7 미만, api/confidence.ts)이거나 화자 확인이 필요한 발화
  * (child_handoff 의 review_needed 또는 화자 UNKNOWN, adapters.ts 의 reviewReason)다.
- * 신뢰도 값 없음(0.0, ElevenLabs 등)은 그것만으로는 검수 필요로 세지 않는다.
+ * 신뢰도 값 없음(0.0, ElevenLabs 등)은 그것만으로는 검수 필요로 세지 않는다. 검수가 필요 없다는 뜻은
+ * 아니므로, 모든 발화에 값이 없으면 안내 칩으로, 값 없는 발화가 있는데 필터 결과가 비면 빈 목록 문구로
+ * 따로 알린다.
  */
 function needsReview(seg: UiTranscriptSegment): boolean {
   return seg.lowConfidence || seg.reviewReason !== null;
@@ -70,8 +73,13 @@ function toSegments(source: Transcript, confirmedIds: Set<string> = new Set()): 
 /** 신뢰도 값이 없을 때(STT 공급자가 주지 않음) 막대 · 퍼센트 대신 보여 줄 안내. */
 const NO_CONFIDENCE_TITLE = "신뢰도 값 없음 · STT 공급자가 신뢰도를 제공하지 않았습니다";
 
+/** 저신뢰 · 화자 확인 필요 개수를 나란히 보여 줄 때, 두 사유가 모두 해당하는 발화를 어떻게 셌는지 알린다. */
+const OVERLAP_TITLE = "저신뢰이면서 화자 확인도 필요한 구간은 두 개수에 모두 셉니다";
+
 function ConfidenceBar({ value }: { value: number | null }) {
-  if (value === null) {
+  // 퍼센트 문구는 공용 규칙(api/confidence.ts)으로 만든다. 저신뢰는 내림이라 기준(70%) 미만으로만 보인다.
+  const label = value === null ? null : formatConfidencePercent(value);
+  if (value === null || label === null) {
     return (
       <span className="text-[11px] font-mono font-semibold text-[#94A3B8]" title={NO_CONFIDENCE_TITLE}>
         <span aria-hidden="true">—</span>
@@ -80,16 +88,15 @@ function ConfidenceBar({ value }: { value: number | null }) {
     );
   }
 
-  const pct = Math.round(value * 100);
   const low = isLowConfidence(value);
   const color = !low ? "bg-green-400" : value >= 0.55 ? "bg-amber-400" : "bg-red-400";
   return (
     <div className="flex items-center gap-2 min-w-0">
       <div className="w-16 h-1.5 bg-[#F1F5F9] rounded overflow-hidden shrink-0">
-        <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+        <div className={`h-full ${color}`} style={{ width: `${Math.min(value, 1) * 100}%` }} />
       </div>
       <span className={`text-[11px] font-mono font-semibold shrink-0 ${low ? "text-amber-600" : "text-[#94A3B8]"}`}>
-        {pct}%
+        {label}
       </span>
     </div>
   );
@@ -189,11 +196,15 @@ export default function TranscriptReviewView() {
   // 저신뢰 개수는 수정 · 확정 여부와 관계없이 센다(Backend Mock AI 경고 "저신뢰 구간 N건" 과 같은 규칙).
   const lowConfCount       = segments.filter(s => s.lowConfidence).length;
   const speakerReviewCount = segments.filter(s => s.reviewReason !== null).length;
+  // 저신뢰이면서 화자 확인도 필요한 발화. 위 두 개수에 모두 들어가므로 겹친 수를 따로 보여 준다.
+  const overlapCount       = segments.filter(s => s.lowConfidence && s.reviewReason !== null).length;
   const pendingReviewCount = segments.filter(s => needsReview(s) && !s.confirmed).length;
   const allDone            = segments.length > 0 && segments.every(s => s.confirmed);
   const hasTranscript      = segments.length > 0;
-  // 모든 발화에 신뢰도 값이 없다(ElevenLabs 등). 이때는 화자 확인 필요 구간을 중심으로 검수한다.
-  const noConfidence       = hasTranscript && segments.every(s => s.confidence === null);
+  // 신뢰도 값이 없는 발화. 저신뢰 여부를 알 수 없어서 "검수 필요" 로 걸리지 않는다(검수가 필요 없다는 뜻이 아니다).
+  const noConfCount        = segments.filter(s => s.confidence === null).length;
+  // 모든 발화에 신뢰도 값이 없다(ElevenLabs 등). 저신뢰 구간을 표시할 수 없으니 발화를 직접 확인하도록 안내한다.
+  const noConfidence       = hasTranscript && noConfCount === segments.length;
   const beforeStt          = status !== null && BEFORE_STT.includes(status);
   const editable           = status !== null && EDITABLE.includes(status);
 
@@ -345,8 +356,9 @@ export default function TranscriptReviewView() {
             <span className="text-[#64748B] text-xs">검수 필요 구간</span>
             <span className={`font-semibold ${reviewCount > 0 ? "text-amber-600" : "text-[#172033]"}`}>{reviewCount}개</span>
             {(reviewCount > 0 || noConfidence) && (
-              <span className="text-[11px] text-[#94A3B8]">
-                (저신뢰 {noConfidence ? "—" : `${lowConfCount}개`} · 화자 확인 필요 {speakerReviewCount}개)
+              <span className="text-[11px] text-[#94A3B8]" title={overlapCount > 0 ? OVERLAP_TITLE : undefined}>
+                (저신뢰 {noConfidence ? "—" : `${lowConfCount}개`} · 화자 확인 필요 {speakerReviewCount}개
+                {overlapCount > 0 && ` · 두 사유 겹침 ${overlapCount}개`})
               </span>
             )}
           </div>
@@ -362,7 +374,11 @@ export default function TranscriptReviewView() {
           )}
           {noConfidence && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded text-xs font-medium text-[#64748B]" title={NO_CONFIDENCE_TITLE}>
-              STT 신뢰도 값 없음(공급자 미제공){editable && " · 화자 확인 필요 구간을 중심으로 검수하세요"}
+              STT 신뢰도 값 없음(공급자 미제공)
+              {/* 화자 확인 필요 구간이 없으면 "검수할 것이 없다" 로 읽히지 않게, 발화를 직접 확인하도록 안내한다. */}
+              {editable && (speakerReviewCount > 0
+                ? " · 화자 확인 필요 구간을 중심으로 검수하세요"
+                : " · 저신뢰 구간을 표시할 수 없으니 발화를 직접 확인해 주세요")}
             </div>
           )}
           {editable && isConfirmed && (
@@ -414,7 +430,26 @@ export default function TranscriptReviewView() {
             </div>
           )}
 
-          {!loading && !loadError && hasTranscript && displayed.length === 0 && (
+          {/* 신뢰도 값이 없는 발화가 있으면 저신뢰 여부를 알 수 없으므로 "검수가 필요 없다" 고 단정하지 않는다. */}
+          {!loading && !loadError && hasTranscript && displayed.length === 0 && noConfCount > 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-[#94A3B8] space-y-3 px-6 text-center">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <p className="text-sm">표시된 검수 필요 구간이 없습니다</p>
+              <p className="text-xs">
+                {noConfidence
+                  ? "신뢰도 값이 없어 저신뢰 구간은 표시되지 않습니다(추가 확인 필요)"
+                  : `신뢰도 값이 없는 발화 ${noConfCount}개는 저신뢰 여부를 알 수 없어 표시되지 않습니다(추가 확인 필요)`}
+              </p>
+              <button
+                onClick={() => setFilterReview(false)}
+                className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
+              >
+                전체 발화 보기
+              </button>
+            </div>
+          )}
+
+          {!loading && !loadError && hasTranscript && displayed.length === 0 && noConfCount === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-[#94A3B8] space-y-3">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><polyline points="20 6 9 17 4 12"/></svg>
               <p className="text-sm">검수가 필요한 구간이 없습니다</p>
@@ -438,8 +473,12 @@ export default function TranscriptReviewView() {
                       {seg.speakerLabel}
                     </span>
                     <ConfidenceBar value={seg.confidence} />
-                    {flagged && !seg.confirmed && (
-                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{seg.reviewReason ?? "저신뢰"}</span>
+                    {/* 두 사유가 겹치면 배지를 둘 다 보여 준다(화자 확인 필요만 보이면 저신뢰라는 사실이 빠진다). */}
+                    {!seg.confirmed && seg.reviewReason !== null && (
+                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{seg.reviewReason}</span>
+                    )}
+                    {!seg.confirmed && seg.lowConfidence && (
+                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">저신뢰</span>
                     )}
                     {seg.edited && (
                       <span className="text-[10px] font-medium text-[#64748B] bg-[#F1F5F9] border border-[#E2E8F0] px-1.5 py-0.5 rounded">수정됨</span>

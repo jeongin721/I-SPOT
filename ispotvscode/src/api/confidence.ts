@@ -25,3 +25,22 @@ export function hasConfidence(confidence: number): boolean {
 export function isLowConfidence(confidence: number): boolean {
   return hasConfidence(confidence) && confidence < LOW_CONFIDENCE_THRESHOLD;
 }
+
+/**
+ * 화면에 보여 줄 신뢰도 퍼센트 문구. 값 없음이면 null 이고, 화면은 숫자 대신 "—" 를 보여 준다.
+ * - 저신뢰는 내림하고 기준 바로 아래(69%)를 넘지 않게 한다. 반올림하면 0.695 가 "70%" 로 보여
+ *   "70% 미만이 저신뢰" 라는 기준과 어긋난다. (+1e-9 는 0.29 * 100 = 28.999… 같은 부동소수 오차 보정)
+ * - 저신뢰이면서 1% 가 안 되는 값은 "<1%" 로 보여 값 없음("—")과 구분한다.
+ * - 기준 이상은 반올림한다. 기준 이상인 값이 기준 아래 퍼센트로 보이는 일은 없다.
+ */
+export function formatConfidencePercent(confidence: number): string | null {
+  if (!hasConfidence(confidence)) return null;
+
+  if (isLowConfidence(confidence)) {
+    const maxLowPct = Math.round(LOW_CONFIDENCE_THRESHOLD * 100) - 1;
+    const pct = Math.min(Math.floor(confidence * 100 + 1e-9), maxLowPct);
+    return pct < 1 ? "<1%" : `${pct}%`;
+  }
+
+  return `${Math.round(confidence * 100)}%`;
+}
