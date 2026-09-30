@@ -39,6 +39,7 @@ from app.services import audit_service, audio_service, session_service
 
 logger = get_logger(__name__)
 
+
 @lru_cache(maxsize=1)
 def _load_child_handoff_builder() -> Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]:
     """
