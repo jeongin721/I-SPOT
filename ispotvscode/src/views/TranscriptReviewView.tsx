@@ -53,8 +53,8 @@ const POLL_MAX_TRIES = 60;
  * 검수가 필요한 발화. 저신뢰(값이 있고 0.7 미만, api/confidence.ts)이거나 화자 확인이 필요한 발화
  * (child_handoff 의 review_needed 또는 화자 UNKNOWN, adapters.ts 의 reviewReason)다.
  * 신뢰도 값 없음(0.0, ElevenLabs 등)은 그것만으로는 검수 필요로 세지 않는다. 검수가 필요 없다는 뜻은
- * 아니므로, 모든 발화에 값이 없으면 안내 칩으로, 값 없는 발화가 있는데 필터 결과가 비면 빈 목록 문구로
- * 따로 알린다.
+ * 아니므로 따로 알린다. 모든 발화에 값이 없으면 안내 칩으로, 일부만 없으면 개수 괄호의 "신뢰도 값 없음 n개"
+ * 로, "검수 필요만 보기" 에서 값 없는 발화가 빠지면 목록 위 안내(목록이 비면 빈 목록 문구)로 알린다.
  */
 function needsReview(seg: UiTranscriptSegment): boolean {
   return seg.lowConfidence || seg.reviewReason !== null;
@@ -75,6 +75,9 @@ const NO_CONFIDENCE_TITLE = "신뢰도 값 없음 · STT 공급자가 신뢰도�
 
 /** 저신뢰 · 화자 확인 필요 개수를 나란히 보여 줄 때, 두 사유가 모두 해당하는 발화를 어떻게 셌는지 알린다. */
 const OVERLAP_TITLE = "저신뢰이면서 화자 확인도 필요한 구간은 두 개수에 모두 셉니다";
+
+/** 개수 괄호의 "신뢰도 값 없음 n개" 가 검수 필요 구간 수에 들어가지 않는다는 것을 알린다. */
+const NO_CONF_COUNT_TITLE = "신뢰도 값이 없는 발화는 저신뢰 여부를 알 수 없어 검수 필요 구간 수에 들어가지 않습니다(추가 확인 필요)";
 
 function ConfidenceBar({ value }: { value: number | null }) {
   // 퍼센트 문구는 공용 규칙(api/confidence.ts)으로 만든다. 저신뢰는 내림이라 기준(70%) 미만으로만 보인다.
@@ -205,6 +208,14 @@ export default function TranscriptReviewView() {
   const noConfCount        = segments.filter(s => s.confidence === null).length;
   // 모든 발화에 신뢰도 값이 없다(ElevenLabs 등). 저신뢰 구간을 표시할 수 없으니 발화를 직접 확인하도록 안내한다.
   const noConfidence       = hasTranscript && noConfCount === segments.length;
+  // 일부 발화에만 신뢰도 값이 없다. 개수 괄호에 값 없는 발화 수를 덧붙인다.
+  const partialNoConf      = noConfCount > 0 && noConfCount < segments.length;
+  // 신뢰도 값이 없고 화자 확인도 필요 없어 "검수 필요만 보기" 에서 빠지는 발화.
+  const hiddenNoConfCount  = segments.filter(s => s.confidence === null && !needsReview(s)).length;
+  // "검수 필요만 보기" 에서 신뢰도 값 없는 발화가 빠졌다는 안내. 목록 위(목록이 비면 빈 목록 문구)에 보여 준다.
+  const noConfFilterNote   = noConfidence
+    ? "신뢰도 값이 없어 저신뢰 구간은 표시되지 않습니다(추가 확인 필요)"
+    : `신뢰도 값이 없는 발화 ${hiddenNoConfCount}개는 이 목록에 나오지 않습니다(추가 확인 필요)`;
   const beforeStt          = status !== null && BEFORE_STT.includes(status);
   const editable           = status !== null && EDITABLE.includes(status);
 
@@ -355,10 +366,12 @@ export default function TranscriptReviewView() {
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-[#64748B] text-xs">검수 필요 구간</span>
             <span className={`font-semibold ${reviewCount > 0 ? "text-amber-600" : "text-[#172033]"}`}>{reviewCount}개</span>
-            {(reviewCount > 0 || noConfidence) && (
+            {/* 신뢰도 값 없는 발화가 있으면 검수 필요 구간이 0개여도 괄호를 보여 준다(0개가 "검수할 것 없음" 으로 읽히지 않게). */}
+            {(reviewCount > 0 || noConfCount > 0) && (
               <span className="text-[11px] text-[#94A3B8]" title={overlapCount > 0 ? OVERLAP_TITLE : undefined}>
                 (저신뢰 {noConfidence ? "—" : `${lowConfCount}개`} · 화자 확인 필요 {speakerReviewCount}개
-                {overlapCount > 0 && ` · 두 사유 겹침 ${overlapCount}개`})
+                {overlapCount > 0 && ` · 두 사유 겹침 ${overlapCount}개`}
+                {partialNoConf && <span title={NO_CONF_COUNT_TITLE}>{` · 신뢰도 값 없음 ${noConfCount}개`}</span>})
               </span>
             )}
           </div>
@@ -375,9 +388,10 @@ export default function TranscriptReviewView() {
           {noConfidence && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded text-xs font-medium text-[#64748B]" title={NO_CONFIDENCE_TITLE}>
               STT 신뢰도 값 없음(공급자 미제공)
-              {/* 화자 확인 필요 구간이 없으면 "검수할 것이 없다" 로 읽히지 않게, 발화를 직접 확인하도록 안내한다. */}
-              {editable && (speakerReviewCount > 0
-                ? " · 화자 확인 필요 구간을 중심으로 검수하세요"
+              {/* 신뢰도 정보가 없으니 인식 오류는 어느 발화에나 있을 수 있다. 화자 확인 필요 구간이 있어도 그것만 보면
+                  된다고 읽히지 않게, 나머지 발화도 직접 확인하도록 안내한다. */}
+              {editable && (speakerReviewCount > 0 && speakerReviewCount < segments.length
+                ? ` · 화자 확인 필요 ${speakerReviewCount}개와 함께 나머지 발화도 직접 확인해 주세요`
                 : " · 저신뢰 구간을 표시할 수 없으니 발화를 직접 확인해 주세요")}
             </div>
           )}
@@ -435,11 +449,7 @@ export default function TranscriptReviewView() {
             <div className="flex flex-col items-center justify-center h-full text-[#94A3B8] space-y-3 px-6 text-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               <p className="text-sm">표시된 검수 필요 구간이 없습니다</p>
-              <p className="text-xs">
-                {noConfidence
-                  ? "신뢰도 값이 없어 저신뢰 구간은 표시되지 않습니다(추가 확인 필요)"
-                  : `신뢰도 값이 없는 발화 ${noConfCount}개는 저신뢰 여부를 알 수 없어 표시되지 않습니다(추가 확인 필요)`}
-              </p>
+              <p className="text-xs">{noConfFilterNote}</p>
               <button
                 onClick={() => setFilterReview(false)}
                 className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
@@ -453,6 +463,19 @@ export default function TranscriptReviewView() {
             <div className="flex flex-col items-center justify-center h-full text-[#94A3B8] space-y-3">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><polyline points="20 6 9 17 4 12"/></svg>
               <p className="text-sm">검수가 필요한 구간이 없습니다</p>
+            </div>
+          )}
+
+          {/* 목록에 행이 남아 있어도 신뢰도 값 없는 발화가 빠졌으면 알린다(목록이 비면 위의 빈 목록 문구가 같은 안내를 한다). */}
+          {!loading && !loadError && filterReview && displayed.length > 0 && hiddenNoConfCount > 0 && (
+            <div className="px-6 py-2.5 border-b border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-[#64748B]">{noConfFilterNote}</p>
+              <button
+                onClick={() => setFilterReview(false)}
+                className="px-3 py-1.5 border border-[#E2E8F0] bg-white text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors shrink-0"
+              >
+                전체 발화 보기
+              </button>
             </div>
           )}
 
