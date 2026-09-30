@@ -52,8 +52,9 @@ _ALLOWED_TRANSITIONS: Dict[SessionStatus, Set[SessionStatus]] = {
 }
 
 # 오류 문구에 쓰는 회기 상태 이름. 상태 코드는 문구에 넣지 않고 오류 details 에만 둔다.
-# 화면(ispotvscode/src/api/adapters.ts)의 상태 이름을 따르되, STT 는 업무 이름
-# (TASK_LABELS)처럼 "원문 변환"으로 쓴다.
+# 화면(ispotvscode/src/api/adapters.ts 의 STATUS_MAP)의 상태 이름을 따르되, STT 는 업무 이름
+# (ispotvscode/src/api/types.ts 의 TASK_LABELS)처럼 "원문 변환"으로 쓰고,
+# 실패 상태는 화면 이름 뒤의 "— 재시도 필요"를 붙이지 않는다.
 _STATUS_LABELS: Dict[SessionStatus, str] = {
     SessionStatus.CREATED: "음성 업로드 대기",
     SessionStatus.AUDIO_UPLOADED: "원문 변환 대기",
@@ -61,7 +62,7 @@ _STATUS_LABELS: Dict[SessionStatus, str] = {
     SessionStatus.STT_REVIEW_REQUIRED: "원문 검수 필요",
     SessionStatus.STT_CONFIRMED: "AI 분석 대기",
     SessionStatus.AI_PROCESSING: "AI 분석 중",
-    SessionStatus.AI_REVIEW_REQUIRED: "AI 결과 검토 필요",
+    SessionStatus.AI_REVIEW_REQUIRED: "AI 결과 검수 필요",
     SessionStatus.APPROVED: "승인 완료",
     SessionStatus.STT_FAILED: "원문 변환 실패",
     SessionStatus.AI_FAILED: "AI 분석 실패",

@@ -380,7 +380,8 @@ export interface TranscriptEnvelope {
 
 /**
  * 위험 관련 항목(risk_utterances · abuse_signals · risk_factors) 하나.
- * 항목 구조는 팀 합의 전(PROPOSAL_risk_fields.md §7)이라 Backend 가 키를 검사하지 않고 객체를 그대로 넘긴다.
+ * 항목 구조는 팀 합의 전(PROPOSAL_risk_fields.md §7)이라 Backend 는 항목 구조를 검증하지 않는다
+ * (langgraph 결과만 근거 발화가 없는 항목을 빼고 넘긴다. API_CONTRACT 8절).
  * 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
  */
 export type RiskItem = Record<string, unknown>;

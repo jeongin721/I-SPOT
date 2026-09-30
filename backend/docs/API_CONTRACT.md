@@ -76,10 +76,12 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
 시각 칸(`created_at`, `consulted_at` 등)은 ISO 8601 문자열이고, 저장은 UTC 로 한다.
 
 - 소수점 아래 마이크로초가 붙을 수 있다(예: `2026-09-30T00:49:54.529999`).
-- 시간대 표시는 DB 에 따라 다르다. SQLite(로컬 · 테스트)에서는 표시 없이 오며, 이 값은 UTC 로 읽는다.
+- 시간대 표시는 칸과 DB 에 따라 다르다. SQLite(로컬 · 테스트)에서는 대부분 표시 없이 오며, 이 값은 UTC 로 읽는다.
+  일부 칸은 UTC 로 바꿔 `Z` 를 붙여 준다(예: 11절 `waiting_since`).
   PostgreSQL 에서는 `+09:00` 같은 오프셋이 붙어 올 수 있다(같은 순간이다. PostgreSQL 응답은 아직 실측하지 않았다).
-  Frontend 는 두 형식을 모두 읽는다.
-- 이 문서 예시의 `Z` 는 표기 예일 뿐이다. 항상 `Z` 로 주는 칸은 `tasks` 의 `waiting_since` 하나다(11절).
+- Frontend 는 표시가 없으면 UTC 로, 있으면 그 표시대로 읽는다. 표시가 있는 값에 `Z` 를 덧붙이지 않는다.
+  `waiting_since` 말고는 어느 칸에 표시가 붙는지 정해 두지 않았으니, 칸 이름으로 나누지 말고 값의 모양을 보고 읽는다.
+- 이 문서 예시의 `Z` 는 표기 예일 뿐이다(11절 `waiting_since` 는 항상 `Z` 다).
 - 보낼 때(`consulted_at`)는 UTC(`Z`)로 보낸다. SQLite 에서는 오프셋이 버려진 채 저장되어,
   `+09:00` 을 붙여 보내면 9시간 어긋난다.
 
@@ -670,7 +672,8 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
     `abuse_signals` 중 `detected` 가 명시적으로 `false` 인 항목은 위험 신호가 아니므로 근거가 없어도 남긴다.
 - `result.schema_version` 은 AI Output Contract 버전이다(지금 `"1.0"`). 성공한 분석의 `analysis.schema_version` 과 같다.
 - `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는
-  `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 키를 검사하지 않는다.
+  `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 항목 구조(키 목록)를 검증하지 않는다.
+  다만 `langgraph` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
   Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
