@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app.adapters.abuse_classifier_adapter import PredictAbuseClassifierAdapter
 from app.adapters.stt_adapter import set_stt_adapter_override
 from app.schemas.contracts import STTResult
 from tests.conftest import upload_audio
@@ -84,6 +84,12 @@ def test_unresolved_canonical_stt_has_no_confirmed_child_and_keeps_review(client
 
 
 def test_transcript_child_handoff_never_calls_classifier(client, counselor_headers, session, monkeypatch):
+    # app.adapters.abuse_classifier_adapter 는 아직 저장소에 없다(어느 브랜치에도 없음).
+    # 파일 맨 위에서 import 하면 이 파일의 테스트 전체가 수집 단계에서 멈추므로,
+    # 이 테스트만 모듈이 생길 때까지 건너뛴다.
+    classifier_module = pytest.importorskip("app.adapters.abuse_classifier_adapter")
+    PredictAbuseClassifierAdapter = classifier_module.PredictAbuseClassifierAdapter
+
     def forbidden_classifier_call(*_args, **_kwargs):
         raise AssertionError("classifier must not run in the STT CHILD handoff path")
 
@@ -97,3 +103,20 @@ def test_transcript_child_handoff_never_calls_classifier(client, counselor_heade
         set_stt_adapter_override(None)
 
     assert transcript["child_handoff"]["child_analysis_text"] == "child"
+
+
+def test_transcript_is_served_without_stt_child_handoff_module(client, counselor_headers, session, monkeypatch):
+    """stt/ 가 없는 배포에서도 전사본은 나오고 child_handoff 만 비어 있다."""
+    from app.services import transcript_service
+
+    monkeypatch.setattr(transcript_service, "_load_child_handoff_builder", lambda: None)
+    set_stt_adapter_override(StaticSTTAdapter([
+        {"segment_id": "c1", "speaker": "CHILD", "start_ms": 0, "end_ms": 500, "text": "child", "confidence": 0.8},
+    ]))
+    try:
+        transcript = _transcribe(client, counselor_headers, session["id"])
+    finally:
+        set_stt_adapter_override(None)
+
+    assert transcript["child_handoff"] is None
+    assert [segment["segment_id"] for segment in transcript["segments"]] == ["c1"]

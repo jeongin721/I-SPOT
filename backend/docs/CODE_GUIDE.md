@@ -47,7 +47,7 @@ FastAPI  ← 이 저장소
 | `app/adapters/` | **Adapter** | 외부 서비스(STT/AI) 연결. 갈아끼울 수 있게 분리 |
 | `app/core/` | **Core** | 설정, DB 연결, 인증, 오류, 상태 규칙 등 공통 기반 |
 | `alembic/` | **Migration** | DB 테이블 생성/변경 이력 |
-| `tests/` | **Test** | pytest 392개 |
+| `tests/` | **Test** | pytest 393개 |
 
 ### 왜 Router 를 얇게 만들었나
 
@@ -150,7 +150,7 @@ Frontend 는 `session_status` 만 보고 판단하면 된다.
 | 순서 | 파일 | 줄 수 | 왜 먼저 보나 |
 |---|---|---|---|
 | 1 | `app/core/enums.py` | 114 | 상담 상태, 화자 종류 등 **용어 사전**. 여기부터 봐야 나머지가 읽힌다 |
-| 2 | `app/core/state_machine.py` | 73 | 상태가 어떤 순서로 바뀌는지. 이 시스템의 뼈대 |
+| 2 | `app/core/state_machine.py` | 113 | 상태가 어떤 순서로 바뀌는지. 이 시스템의 뼈대 |
 | 3 | `app/schemas/contracts.py` | 90 | 팀 A·B 와 주고받는 **공통 데이터 형식** |
 | 4 | `app/models/session.py` | 133 | 가장 중심이 되는 테이블 |
 | 5 | `app/api/v1/sessions.py` | 57 | 가장 단순한 Router. 계층 구조 감 잡기 |
@@ -162,7 +162,7 @@ Frontend 는 `session_status` 만 보고 판단하면 된다.
 
 ### 테스트를 읽는 것도 좋은 방법이다
 
-`tests/test_e2e_flow.py` (252줄) 는 로그인부터 승인까지 전체 흐름을
+`tests/test_e2e_flow.py` (262줄) 는 로그인부터 승인까지 전체 흐름을
 순서대로 실행한다. **이 파일 하나가 사용 설명서 역할**을 한다.
 
 ---
@@ -281,7 +281,7 @@ DB 컬럼을 바꿨다면 migration 을 잊지 말 것. 안 만들면 CI 가 잡
 ./scripts/check.sh
 ```
 
-lint, 테스트 392개, migration 정합성을 한 번에 확인한다.
+lint, 테스트 393개, migration 정합성을 한 번에 확인한다.
 여기서 통과하면 CI 도 통과한다.
 
 ---
