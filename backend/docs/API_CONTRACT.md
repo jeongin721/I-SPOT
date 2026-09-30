@@ -71,6 +71,18 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
 (서버 재시작 등으로 작업이 사라진 경우) 위 조회나 재요청 시점에 `STT_FAILED` / `AI_FAILED` 로 바뀌고
 `error.code` 도 같은 값으로 내려온다. 재시도 버튼으로 다시 요청하면 된다.
 
+### 1.5 시각
+
+시각 칸(`created_at`, `consulted_at` 등)은 ISO 8601 문자열이고, 저장은 UTC 로 한다.
+
+- 소수점 아래 마이크로초가 붙을 수 있다(예: `2026-09-30T00:49:54.529999`).
+- 시간대 표시는 DB 에 따라 다르다. SQLite(로컬 · 테스트)에서는 표시 없이 오며, 이 값은 UTC 로 읽는다.
+  PostgreSQL 에서는 `+09:00` 같은 오프셋이 붙어 올 수 있다(같은 순간이다. PostgreSQL 응답은 아직 실측하지 않았다).
+  Frontend 는 두 형식을 모두 읽는다.
+- 이 문서 예시의 `Z` 는 표기 예일 뿐이다. 항상 `Z` 로 주는 칸은 `tasks` 의 `waiting_since` 하나다(11절).
+- 보낼 때(`consulted_at`)는 UTC(`Z`)로 보낸다. SQLite 에서는 오프셋이 버려진 채 저장되어,
+  `+09:00` 을 붙여 보내면 9시간 어긋난다.
+
 ---
 
 ## 2. Session 상태
@@ -496,7 +508,8 @@ STT 실행 요청. Body 없음.
           "confidence": 0.91
         }
       ],
-      "edited_segment_ids": []
+      "edited_segment_ids": [],
+      "child_handoff": { "...": "아래 child_handoff 참고" }
     },
     "error": null
   }
@@ -509,8 +522,44 @@ STT 실행 요청. Body 없음.
 `speaker`: `COUNSELOR | CHILD | GUARDIAN | OTHER | UNKNOWN`
 `source`: `STT | COUNSELOR_EDIT`
 
-저신뢰 구간 표시는 `confidence` 로 판단하되(예: `< 0.7`),
+`confidence` 가 `0.0` 이면 **STT 공급자가 신뢰도를 주지 않았다는 뜻**이다(0% 가 아니다).
+`STT_PROVIDER=module` 일 때 STT 모듈(`stt/`)의 기본 공급자인 ElevenLabs 결과는 모든 발화가 `0.0` 이며,
+이 값은 저신뢰로 표시하지 않는다.
+저신뢰 구간은 `0 < confidence < 0.7` 로 판단한다(Mock AI 의 저신뢰 경고와 같은 기준).
 `edited_segment_ids` 에 포함된 segment 는 상담사가 확인했으므로 경고를 해제해도 된다.
+
+#### child_handoff (아동 발화 인계 보기)
+
+transcript level 칸이다. `segments` Contract 는 바뀌지 않는다.
+저장하지 않고 응답할 때마다 그 version 의 `speaker` 로 다시 만들므로, 상담사가 화자를 고치면 다음 응답에 바로 반영된다.
+GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어간다.
+
+```json
+{
+  "child_handoff": {
+    "child_analysis_text": "네, 안녕하세요. 요즘은 괜찮아요.",
+    "confirmed_child_segments": [
+      { "segment_id": "seg_002", "text": "네, 안녕하세요.", "start_ms": 2800, "end_ms": 5800 },
+      { "segment_id": "seg_004", "text": "요즘은 괜찮아요.", "start_ms": 8400, "end_ms": 10900 }
+    ],
+    "review_needed_segments": [
+      {
+        "segment_id": "seg_008", "text": "화자 확인이 필요한 발화", "start_ms": 19600, "end_ms": 22600,
+        "reason": "UNRESOLVED_SPEAKER"
+      }
+    ]
+  }
+}
+```
+
+- `confirmed_child_segments`: `speaker` 가 `CHILD` 인 발화. 시작 시각 순이다.
+  문장이 있는 `CHILD` 발화가 하나도 없으면 빈 배열이다.
+- `review_needed_segments`: `speaker` 가 `UNKNOWN` 이라 사람이 화자를 확인해야 하는 발화. 시작 시각 순이다.
+  `reason` 은 지금 `UNRESOLVED_SPEAKER` 하나뿐이다. 모르는 값이 오면 그대로 보여 준다.
+- `COUNSELOR` · `GUARDIAN` · `OTHER` 발화는 어느 쪽에도 들어가지 않는다.
+- `child_analysis_text`: 문장이 있는 `CHILD` 발화를 시간 순으로 공백 하나로 이은 문장. 없으면 `""`.
+- `child_handoff` 는 `null` 일 수 있다. Backend 가 STT 모듈(`stt/`)을 불러오지 못하는 배포(예: backend 폴더만 담은 이미지)에서는 비워서 준다.
+- 분류 모델의 판단이 아니라 `speaker` 값을 옮겨 담은 참고용 보기다. 화자 확인은 상담사가 한다.
 
 ### PATCH /api/v1/sessions/{session_id}/transcript
 
@@ -557,10 +606,24 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 }
 ```
 
+요청할 수 있는 상태(모두 `202`)
+- `STT_CONFIRMED` — 첫 분석
+- `AI_FAILED` — 재시도
+- `AI_REVIEW_REQUIRED` — 재분석(아래 "재분석" 참고)
+
 오류
 - `404 TRANSCRIPT_NOT_FOUND` — Transcript 없음
-- `409 TRANSCRIPT_NOT_CONFIRMED` — 확정 전
-- `409 INVALID_SESSION_STATE` — 처리 중이거나, 동시에 들어온 같은 요청이 먼저 처리됨
+- `409 TRANSCRIPT_NOT_CONFIRMED` — 확정 전. Transcript 검사는 상태 검사보다 먼저 한다
+- `409 INVALID_SESSION_STATE` — 처리 중(`AI_PROCESSING`), 승인된 회기(`APPROVED`), 또는 동시에 들어온 같은 요청이 먼저 처리됨
+
+#### 재분석 (`AI_REVIEW_REQUIRED` 에서 다시 요청)
+
+- 새 분석을 만든다. `GET …/analysis` 는 가장 최근 분석을 주므로, 요청한 뒤로는 이전 결과를 API 로 다시 볼 수 없다
+  (도는 동안에는 `status: "PROCESSING"` · `result: null`, 실패하면 `status: "FAILED"` 가 온다).
+- 성공하면 `summary.analysis_id` 가 새 분석으로 바뀐다. 상담사가 고치지 않은 요약(`is_edited: false`)은
+  새 결과로 바뀐다(`DRAFT`). 상담사가 고친 요약(`is_edited: true`)은 내용을 그대로 둔다(9절).
+- 실패하면 Session 이 `AI_FAILED` 가 된다. 이때(재분석이 도는 동안도 같다)는 요약 수정 · 승인이
+  `409 INVALID_SESSION_STATE` 로 막히고, 다시 요청(재시도)해 성공해야 풀린다.
 
 ### GET /api/v1/sessions/{session_id}/analysis
 
@@ -605,7 +668,10 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
     비었거나 Transcript 에 없는 번호를 하나라도 가리키면 제외하고,
     `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 덧붙인다. 필드 모양은 바뀌지 않는다.
     `abuse_signals` 중 `detected` 가 명시적으로 `false` 인 항목은 위험 신호가 아니므로 근거가 없어도 남긴다.
-- 9월 범위에서 `risk_utterances` / `abuse_signals` / `risk_factors` 는 빈 배열일 수 있다.
+- `result.schema_version` 은 AI Output Contract 버전이다(지금 `"1.0"`). 성공한 분석의 `analysis.schema_version` 과 같다.
+- `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는
+  `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 키를 검사하지 않는다.
+  Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
 
@@ -656,6 +722,13 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 `status`: `DRAFT | APPROVED` — AI 결과는 항상 `DRAFT` 로 시작하며 자동 승인되지 않는다.
 
+`summary_evidence` 는 `summary.analysis_id` 가 가리키는 분석(마지막으로 성공한 분석)의 근거 정보를 그대로 준다.
+재분석이 도는 중이거나 실패해도 이전 근거는 사라지지 않는다.
+
+- `key_point` 는 **AI 원본 요약 문장**이다. 상담사가 `key_points` 를 고쳐도 바뀌지 않으므로,
+  요약 문장과 문자열 일치로 연결하지 않는다. 근거 발화 표시는 `segment_ids` 로 한다.
+- 수정한 요약에서 재분석이 성공하면 요약 문장은 상담사 것 그대로, `summary_evidence` 는 새 분석 것이 된다.
+
 ### PATCH /api/v1/sessions/{session_id}/summary
 
 ```json
@@ -671,8 +744,8 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
 - 승인 후 수정 시 `409 ALREADY_APPROVED`
 
-> 수정한 Summary 는 AI 재분석으로 덮어써지지 않는다.
-> 새 AI 결과는 `GET .../analysis` 로 확인한다.
+> 수정한 Summary 는 AI 재분석으로 덮어써지지 않는다. 다만 `analysis_id` 와 `summary_evidence` 는
+> 새 분석 것으로 바뀐다. 새 AI 결과는 `GET .../analysis` 로 확인한다(8절 "재분석").
 
 ### POST /api/v1/sessions/{session_id}/summary/approve
 
@@ -684,6 +757,8 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ## 10. Documents
 
+상담사가 작성하는 상담 기록(상담일지 등) 문서다. 파일이 아니라 제목 · 본문 텍스트다.
+
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/api/v1/sessions/{session_id}/documents` | 목록 |
@@ -691,11 +766,58 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | PATCH | `/api/v1/sessions/{session_id}/documents/{document_id}` | 수정 |
 | POST | `/api/v1/sessions/{session_id}/documents/{document_id}/approve` | 승인 |
 
+문서 하나를 조회하거나 삭제하는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 하나를 볼 때도 목록에서 찾는다.
+
+### 응답
+
+생성 · 수정 · 승인은 문서 하나를 준다.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "session_id": "uuid",
+    "doc_type": "CONSULTATION_RECORD",
+    "title": "상담 기록",
+    "content": "본문",
+    "status": "DRAFT",
+    "created_by_id": "uuid",
+    "approved_by_id": null,
+    "approved_at": null,
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+- 목록은 `data` 가 **문서 배열 그대로**다(`items` · `meta` 가 없다 — 1.1 의 예외). 페이지를 나누지 않고 `created_at` 오래된 순이다.
+- `created_by_id` 는 만든 계정이 삭제되면 `null` 이 된다.
+
+### 요청 규칙
+
 ```json
 { "title": "상담 기록", "content": "본문", "doc_type": "CONSULTATION_RECORD" }
 ```
 
-승인된 문서는 수정할 수 없다(`409 ALREADY_APPROVED`).
+| 칸 | 생성(POST) | 수정(PATCH) |
+|---|---|---|
+| `title` | 필수, 1~200자 | 선택, 1~200자 |
+| `content` | 선택, 50000자 이하, 빼면 `""` | 선택, 50000자 이하 |
+| `doc_type` | 선택, 50자 이하, 빼면 `CONSULTATION_RECORD` | 바꿀 수 없다(보내도 무시) |
+
+- `doc_type` 은 정해진 값 목록이 아니라 자유 문자열이라 Backend 가 검사하지 않는다(빈 문자열도 받는다).
+  지금 정해진 값은 `CONSULTATION_RECORD`(상담일지) 하나다.
+- PATCH 는 `title` · `content` 중 최소 1개가 있어야 한다. 둘 다 없으면(예: `doc_type` 만 보냄) `422 VALIDATION_ERROR`.
+
+### 상태 규칙
+
+- 항상 `DRAFT` 로 만들어진다. 승인하면 `APPROVED` 가 되고 `approved_at` · `approved_by_id` 가 채워진다.
+- 승인된 문서는 수정하거나 다시 승인할 수 없다(`409 ALREADY_APPROVED`).
+- 회기 상태를 검사하지 않는다. 어느 상태(`CREATED` 포함)에서도 만들고 고치고 승인할 수 있다.
+- 요약 승인(9절)과 따로 동작한다. 문서를 승인해도 회기 상태는 바뀌지 않고, 회기가 `APPROVED` 여도 문서는 만들고 고칠 수 있다.
+
+오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `404 DOCUMENT_NOT_FOUND`(없는 문서, 다른 회기의 문서),
+`409 ALREADY_APPROVED`, `422 VALIDATION_ERROR`
 
 ---
 
@@ -806,7 +928,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
-| `INVALID_SESSION_STATE` | 409 | 상태 전이 불가 (`details.current_status`, `details.expected_status`) |
+| `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
@@ -815,6 +937,15 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method |
 | `INTERNAL_ERROR` | 500 | 서버 오류 |
+
+`INVALID_SESSION_STATE` 의 `message` 는 한국어 상태 이름으로 쓰고 상태 코드를 넣지 않는다. 화면에는 그대로 보여 주면 된다.
+예: `"지금 회기 상태(음성 업로드 대기)에서는 할 수 없는 요청입니다. 원문 검수 필요 · AI 분석 대기 상태에서만 할 수 있습니다."`,
+승인된 회기는 `"승인이 끝난 회기는 바꿀 수 없습니다."`
+
+- `details.current_status` 는 지금 상태 코드다.
+- `details.expected_status` 는 참고용 상태 코드 목록(`, ` 로 이음)이다. 요청에 따라 "이 요청을 할 수 있는 상태"이기도 하고
+  "지금 상태에서 넘어갈 수 있는 상태"이기도 해서, "필요한 상태"로 읽지 않는다. 뒤쪽 뜻인데 넘어갈 수 있는 상태가 없으면(`APPROVED`) `없음` 이다.
+- 동시에 들어온 요청과 겹친 경우 일부는 `details` 없이 `message` 만 온다.
 
 ---
 
