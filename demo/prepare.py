@@ -186,13 +186,14 @@ def demo_env() -> Dict[str, str]:
 def demo_password() -> str:
     """공용 데모 비밀번호. 저장소의 .cursor/start.sh 에 이미 공개된 개발용 값을 그대로 쓴다."""
 
+    # start.sh 에는 export SEED_USER_PASSWORD="${SEED_USER_PASSWORD:-기본값}" 으로 적혀 있다. 기본값만 꺼낸다.
     start_sh = ROOT / ".cursor" / "start.sh"
-    match = re.search(r"SEED_USER_PASSWORD=(\S+)", start_sh.read_text(encoding="utf-8"))
+    match = re.search(r"SEED_USER_PASSWORD:-([^}\"'\s]+)\}", start_sh.read_text(encoding="utf-8"))
 
     if not match:
         fail(".cursor/start.sh 에서 데모 비밀번호를 찾지 못했습니다.")
 
-    return match.group(1).strip("'\"")
+    return match.group(1)
 
 
 def make_sample_audio() -> None:
@@ -331,6 +332,13 @@ def cmd_open() -> None:
 
 
 def main() -> None:
+    # 창(chcp 65001)과 로그 파일 모두 UTF-8 로 맞춘다. 출력을 파일로 돌리면 cp949 로 써서 한글이 깨진다.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
     parser = argparse.ArgumentParser(description="I-SPOT 시연 준비")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("setup")
