@@ -196,7 +196,8 @@ const STATUS_MAP: Record<SessionStatus, Omit<DerivedStatus, "sttLabel" | "aiLabe
 // 화면 타입(sttStatus · aiStatus)에는 대기 · 실패를 나타낼 값이 없어서, 위 표 그대로면
 // 음성 업로드 대기 · 원문 변환 대기 · 원문 변환 실패가 STT 칸에 "처리중", AI 분석 실패가 AI 칸에 "대기중" 으로 보인다.
 // 목업 타입은 그대로 두고 칸에 보여 줄 문구만 이 상태들에서 바꾼다. 조건 판단은 계속 stt · ai 값으로 한다.
-// 이름은 Backend 가 오류 문구에 쓰는 상태 이름과 같게 한다.
+// 이름은 fix/contract-sync 에서 Backend 오류 문구용으로 정한 상태 이름(state_machine._STATUS_LABELS)과 같게 한다.
+// 그 브랜치가 합쳐지기 전 Backend 오류 문구에는 상태 코드(STT_FAILED 등)가 그대로 나온다.
 const STT_LABELS: Partial<Record<SessionStatus, string>> = {
   CREATED: "음성 업로드 대기",
   AUDIO_UPLOADED: "원문 변환 대기",
