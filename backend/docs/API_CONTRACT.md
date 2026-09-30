@@ -480,7 +480,7 @@ STT 실행 요청. Body 없음.
 }
 ```
 
-오류: `404 AUDIO_NOT_FOUND`(음성 미업로드), `409 INVALID_SESSION_STATE`(처리 중이거나, 동시에 들어온 같은 요청이 먼저 처리됨)
+오류: `404 AUDIO_NOT_FOUND`(음성 미업로드), `409 INVALID_SESSION_STATE`(변환 중(`STT_PROCESSING`), 원문 확정 뒤(`STT_CONFIRMED` · `AI_PROCESSING` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`), 또는 동시에 들어온 같은 요청이 먼저 처리됨)
 
 ### GET /api/v1/sessions/{session_id}/transcript
 
@@ -589,7 +589,7 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 
 Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 
-오류: `404 TRANSCRIPT_NOT_FOUND`, `409 TRANSCRIPT_ALREADY_CONFIRMED`
+오류: `404 TRANSCRIPT_NOT_FOUND`, `409 TRANSCRIPT_ALREADY_CONFIRMED`(이미 확정됨. 확정 검사는 상태 검사보다 먼저 한다), `409 INVALID_SESSION_STATE`(원문 검수 필요(`STT_REVIEW_REQUIRED`)가 아닌 상태 — 예: 재업로드 · 재변환 뒤 이전 전사본이 남은 채 `AUDIO_UPLOADED` · `STT_PROCESSING` · `STT_FAILED` 인 경우)
 
 ---
 
