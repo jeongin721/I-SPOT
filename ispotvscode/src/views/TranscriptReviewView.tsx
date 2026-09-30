@@ -22,6 +22,7 @@ import {
 // 발화 목록은 Backend(GET /sessions/{id}/transcript)에서 온다. 발화별 "확정" 표시는 화면에서만
 // 관리하는 검수 체크이고(Backend 에는 발화 단위 확정이 없다), 수정은 저장할 때마다 PATCH 로 바로
 // 반영되며 "STT 검수 완료" 가 POST .../transcript/confirm 이다.
+// 원문 변환 대기 · 실패 회기는 전사본 대신 "원문 변환 (다시) 요청"(POST .../transcript)을 보여 준다.
 
 interface Segment extends UiTranscriptSegment {
   confirmed: boolean;
@@ -29,8 +30,12 @@ interface Segment extends UiTranscriptSegment {
   draft: string;
 }
 
-/** 아직 전사본이 만들어지기 전 상태. 이때는 발화 목록 대신 안내를 보여 준다. */
-const BEFORE_STT: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_PROCESSING"];
+/**
+ * 원문 변환(POST .../transcript)을 이 화면에서 요청할 수 있는 상태. Backend 도 이 두 상태에서
+ * STT_PROCESSING 으로 넘어가는 것을 허용한다(state_machine, STT_FAILED 는 재시도).
+ * 음성 업로드 대기(CREATED)는 올린 음성이 없어 요청할 수 없으니 업로드 창으로 안내만 한다.
+ */
+const STT_REQUESTABLE: SessionStatus[] = ["AUDIO_UPLOADED", "STT_FAILED"];
 
 /**
  * 원문을 고칠 수 있는 상태. Backend 도 이 두 상태에서만 PATCH 를 받는다
@@ -125,6 +130,9 @@ export default function TranscriptReviewView() {
   const [confirming, setConfirming] = useState(false);
   const [filterReview, setFilterReview] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  /** 원문 변환 요청이 거절된 이유. 버튼 아래에 보여 준다. */
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   function applyEnvelope(envelope: TranscriptEnvelope) {
     setStatus(envelope.session_status);
@@ -149,6 +157,7 @@ export default function TranscriptReviewView() {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
+    setRequestError(null);
 
     Promise.all([casesApi.get(caseId), sessionsApi.get(sessionId), transcriptApi.get(sessionId)])
       .then(([c, s, envelope]) => {
@@ -216,8 +225,8 @@ export default function TranscriptReviewView() {
   const noConfFilterNote   = noConfidence
     ? "신뢰도 값이 없어 저신뢰 구간은 표시되지 않습니다(추가 확인 필요)"
     : `신뢰도 값이 없는 발화 ${hiddenNoConfCount}개는 이 목록에 나오지 않습니다(추가 확인 필요)`;
-  const beforeStt          = status !== null && BEFORE_STT.includes(status);
   const editable           = status !== null && EDITABLE.includes(status);
+  const sttRequestable     = status !== null && STT_REQUESTABLE.includes(status);
 
   function startEdit(id: string) {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text } : s));
@@ -291,6 +300,38 @@ export default function TranscriptReviewView() {
       showToast(describeApiError(caught, "검수 확정에 실패했습니다.", "권한이 없거나 없는 회기입니다."), "error");
     } finally {
       setConfirming(false);
+    }
+  }
+
+  /**
+   * 원문 변환 요청(POST .../transcript). 202 로 돌아오고, 결과는 위의 재확인이 받아 온다.
+   * 다시 실패하면 재확인이 STT_FAILED 를 받아 버튼이 다시 보인다.
+   */
+  async function handleRequestStt() {
+    if (!sessionId || requesting) return;
+
+    setRequesting(true);
+    setRequestError(null);
+    try {
+      const response = await transcriptApi.run(sessionId);
+      setStatus(response.session_status);
+      setSttError(null);
+      setPollTries(0);
+      showToast("원문 변환을 요청했습니다.", "success");
+    } catch (caught) {
+      setRequestError(describeApiError(caught, "원문 변환 요청에 실패했습니다.", "권한이 없거나 없는 회기입니다."));
+      // 다른 사람이 먼저 요청했을 수 있으니 서버 상태로 다시 맞춘다(처리 중이면 재확인이 이어서 돈다).
+      transcriptApi
+        .get(sessionId)
+        .then((envelope) => {
+          applyEnvelope(envelope);
+          setPollTries(0);
+        })
+        .catch(() => {
+          // 다시 맞추지 못해도 화면은 그대로 둔다. 새로고침하면 된다.
+        });
+    } finally {
+      setRequesting(false);
     }
   }
 
@@ -437,10 +478,26 @@ export default function TranscriptReviewView() {
               {status && (
                 <p className="text-xs">
                   현재 상태: {deriveStatus(status).label}
-                  {beforeStt && status !== "STT_PROCESSING" && " · 음성을 올리고 STT 를 실행하면 여기에 발화가 나타납니다"}
+                  {/* 음성 업로드는 이 화면에 없다. 업로드 창이 있는 메뉴를 알려 준다. */}
+                  {status === "CREATED" && " · 상담 자료 검수 → 상담 자료 업로드에서 음성을 올려 주세요"}
+                  {status === "AUDIO_UPLOADED" && " · 원문 변환을 요청하면 여기에 발화가 나타납니다"}
+                  {status === "STT_PROCESSING" && " · 끝나면 여기에 발화가 나타납니다"}
                 </p>
               )}
               {sttError && <p className="text-xs text-red-600">{sttError.message}</p>}
+              {sttRequestable && (
+                <>
+                  <button
+                    onClick={handleRequestStt}
+                    disabled={requesting}
+                    className="px-4 py-2 bg-[#2563EB] text-white text-sm font-semibold rounded-[6px] hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                  >
+                    {requesting ? "요청 중..." : status === "STT_FAILED" ? "원문 변환 다시 요청" : "원문 변환 요청"}
+                  </button>
+                  {/* 요청이 거절돼 상태가 바뀌었으면(다른 사람이 먼저 요청 등) 위 현재 상태가 이유를 보여 준다. */}
+                  {requestError && <p className="text-xs text-red-600">{requestError}</p>}
+                </>
+              )}
             </div>
           )}
 

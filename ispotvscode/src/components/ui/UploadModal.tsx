@@ -26,6 +26,12 @@ const PAGE_SIZE = 100;
 /** 음성을 올릴 수 있는 회기 상태(Backend 상태 전이 규칙). 그 밖의 회기는 이미 전사본이 있어 고를 수 없다. */
 const UPLOADABLE: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_FAILED"];
 
+/**
+ * 회차 목록에 보여 줄 최근 회기 수. 음성을 올릴 수 있는 회기(UPLOADABLE)는 이보다 오래됐어도 함께 보여 준다.
+ * 최근 몇 개만 보이면 오래된 원문 변환 대기 · 실패 회기를 고를 길이 없다.
+ */
+const RECENT_SESSION_COUNT = 5;
+
 /** STT 가 끝날 때까지 기다리는 횟수와 간격. mock STT 는 바로 끝나지만 202 라 몇 번은 확인한다. */
 const STT_POLL_MAX = 15;
 const STT_POLL_MS = 800;
@@ -333,7 +339,7 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
                 </label>
                 {sessionsLoading && <p className="py-3 text-center text-[12px] text-[#94A3B8]">회기 목록을 불러오는 중...</p>}
                 {!sessionsLoading && sessionsError && <p className="py-3 text-center text-[12px] text-red-600">{sessionsError}</p>}
-                {caseSessions.slice(0, 5).map(s => {
+                {caseSessions.filter((s, i) => i < RECENT_SESSION_COUNT || UPLOADABLE.includes(s.status)).map(s => {
                   const ui = toUiSession(s, selectedCase?.id ?? "");
                   const uploadable = UPLOADABLE.includes(s.status);
                   return (

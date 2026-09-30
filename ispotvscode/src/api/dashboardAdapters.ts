@@ -90,19 +90,22 @@ export function readSignedInUser(raw: string | null): SignedInUser {
 /**
  * 업무 종류별로 처리할 화면 주소. 주소의 사례 · 회기는 Backend UUID 다.
  * AI 분석은 회기당 하나라 분석 화면 주소의 analysisId 자리에 회기 UUID 를 쓴다.
+ * 원문 변환 요청 · 재시도는 전사 검수 화면의 "원문 변환 (다시) 요청" 버튼으로 처리한다.
+ * 녹음 업로드는 음성을 올릴 수 있는 업로드 창이 상담 자료 검수(상담 자료 업로드)에만 있어서 그리로 보낸다
+ * (사례 상세의 업로드 창은 문서용이다).
  */
 export function toTaskLink(item: Pick<TaskItem, "task_type" | "case_id" | "session_id">): string {
   switch (item.task_type) {
     case "REVIEW_TRANSCRIPT":
+    case "REQUEST_STT":
+    case "RETRY_STT":
       return `/cases/${item.case_id}/sessions/${item.session_id}/transcript`;
     case "REQUEST_ANALYSIS":
     case "REVIEW_ANALYSIS":
     case "RETRY_ANALYSIS":
       return `/cases/${item.case_id}/analyses/${item.session_id}`;
     case "UPLOAD_AUDIO":
-    case "REQUEST_STT":
-    case "RETRY_STT":
-      return `/cases/${item.case_id}/sessions`;
+      return "/stt-cases";
   }
 }
 

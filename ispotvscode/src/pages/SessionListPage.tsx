@@ -74,6 +74,8 @@ export default function SessionListPage() {
   // AI 분석은 회기당 하나(GET /sessions/{id}/analysis)라 분석 화면 주소에도 회기 UUID 를 쓴다.
   // 검수가 끝난 회기는 모두 AI 분석 화면으로 갈 수 있다. 요청 전 · 실패면 "AI 분석"(요청 · 다시 요청),
   // 요청 뒤면 "AI 검토". 승인된 회기는 결과 보기와 상담일지 작성으로 간다.
+  // 원문 변환 대기 · 실패 회기는 전사 검수 화면(원문 변환 (다시) 요청)으로, 음성 업로드 대기 회기는
+  // 업로드 창이 있는 상담 자료 검수로 간다. 목업 타입(sttStatus)으로는 이 상태들이 모두 "처리중" 이라 backendStatus 로 가른다.
   function hasAnalysis(s: UiSession) {
     return s.aiStatus === "분석중" || s.aiStatus === "검토필요";
   }
@@ -120,6 +122,22 @@ export default function SessionListPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
+                        {s.backendStatus === "CREATED" && (
+                          <button
+                            onClick={() => navigate("/stt-cases")}
+                            className="px-2.5 py-1 bg-white text-[#172033] border border-[#E2E8F0] text-[11px] font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
+                          >
+                            음성 업로드
+                          </button>
+                        )}
+                        {(s.backendStatus === "AUDIO_UPLOADED" || s.backendStatus === "STT_FAILED") && (
+                          <button
+                            onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/transcript`)}
+                            className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-medium rounded-[6px] hover:bg-amber-100 transition-colors"
+                          >
+                            원문 변환
+                          </button>
+                        )}
                         {s.sttStatus === "검수필요" && (
                           <button
                             onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/transcript`)}
