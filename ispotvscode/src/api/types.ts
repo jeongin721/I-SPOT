@@ -283,7 +283,37 @@ export interface TranscriptSegment {
   start_ms: number;
   end_ms: number;
   text: string;
+  /**
+   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 모두 0.0).
+   * 저신뢰 표시는 0 < confidence < 0.7 로 한다(API_CONTRACT.md 7절).
+   */
   confidence: number;
+}
+
+/** 아동 발화 인계 보기의 발화 하나(child_handoff). */
+export interface ChildHandoffSegment {
+  segment_id: string;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+}
+
+/** 화자가 불확실해 사람이 확인해야 하는 발화. reason 은 지금 "UNRESOLVED_SPEAKER" 하나뿐이다. */
+export interface ChildHandoffReviewSegment extends ChildHandoffSegment {
+  reason: string;
+}
+
+/**
+ * 전사본에 덧붙는 아동 발화 인계 보기(API_CONTRACT.md 7절).
+ * segments 의 speaker 로 응답마다 다시 만든다. 분류 모델의 판단이 아니라 참고용이다.
+ */
+export interface ChildHandoff {
+  /** CHILD 발화 문장을 시간 순으로 이은 것. 없으면 "". */
+  child_analysis_text: string;
+  /** speaker 가 CHILD 인 발화. 시작 시각 순. */
+  confirmed_child_segments: ChildHandoffSegment[];
+  /** speaker 가 UNKNOWN 인 발화. 시작 시각 순. */
+  review_needed_segments: ChildHandoffReviewSegment[];
 }
 
 export interface Transcript {
@@ -299,6 +329,8 @@ export interface Transcript {
   segments: TranscriptSegment[];
   /** 상담사가 수정한 발화의 segment_id. 검수 화면에서 표시에 쓴다. */
   edited_segment_ids: string[];
+  /** 아동 발화 인계 보기. Backend 가 STT 모듈(stt/)을 불러오지 못하는 배포에서는 null. */
+  child_handoff: ChildHandoff | null;
   created_at: string;
 }
 
@@ -346,12 +378,12 @@ export interface TranscriptEnvelope {
 // AI 분석
 // =========================================================
 
-export interface RiskUtterance {
-  segment_id: string;
-  text: string;
-  reason: string;
-  severity?: string;
-}
+/**
+ * 위험 관련 항목(risk_utterances · abuse_signals · risk_factors) 하나.
+ * 항목 구조는 팀 합의 전(PROPOSAL_risk_fields.md §7)이라 Backend 가 키를 검사하지 않고 객체를 그대로 넘긴다.
+ * 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
+ */
+export type RiskItem = Record<string, unknown>;
 
 export interface AnalysisSummary {
   overview: string;
@@ -360,14 +392,20 @@ export interface AnalysisSummary {
 }
 
 export interface AnalysisResult {
+  /** AI Output Contract 버전. 지금은 "1.0". */
+  schema_version: string;
   summary: AnalysisSummary;
-  risk_utterances: RiskUtterance[];
-  abuse_signals: string[];
-  risk_factors: string[];
+  risk_utterances: RiskItem[];
+  abuse_signals: RiskItem[];
+  risk_factors: RiskItem[];
   warnings: string[];
 }
 
-/** AI 가 요약 항목과 근거 발화를 연결한 정보. */
+/**
+ * AI 가 요약 항목과 근거 발화를 연결한 정보.
+ * key_point 는 AI 원본 요약 문장이라 상담사가 고친 key_points 와 다를 수 있다.
+ * 요약 문장과 문자열 일치로 연결하지 말고 segment_ids 로 근거 발화를 표시한다.
+ */
 export interface SummaryEvidenceItem {
   key_point: string;
   segment_ids: string[];
@@ -436,7 +474,8 @@ export interface SummaryEnvelope {
   summary: Summary | null;
   /**
    * 요약 항목별 근거 발화. 검수 화면에서 "왜 이렇게 요약됐는지" 표시에 쓴다.
-   * 요약을 만든 분석 기준이라, 재분석이 실패하거나 도는 중이어도 사라지지 않는다.
+   * summary.analysis_id(마지막으로 성공한 분석) 기준이라, 재분석이 실패하거나 도는 중이어도 사라지지 않는다.
+   * 상담사가 고친 요약에서 재분석이 성공하면 요약 문장은 그대로, 근거는 새 분석 것이 된다.
    */
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
