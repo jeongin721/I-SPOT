@@ -15,7 +15,7 @@ const AI_CFG: Record<string, string> = {
   "분석중":   "text-blue-600",
   "검토필요": "text-amber-600 font-semibold",
   "검토완료": "text-green-600",
-  "승인완료": "text-green-700 font-semibold",
+  "상담사검토완료": "text-green-700 font-semibold",
 };
 
 export default function SessionListPage() {
@@ -49,7 +49,7 @@ export default function SessionListPage() {
           <table className="w-full">
             <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
               <tr>
-                {["날짜", "시간", "회차", "상담사", "녹음 길이", "STT 상태", "AI 상태", ""].map(h => (
+                {["날짜", "시간", "회차", "상담사", "녹음 길이", "STT 상태", "상태", ""].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>

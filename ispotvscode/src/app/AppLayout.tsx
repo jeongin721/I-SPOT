@@ -3,14 +3,12 @@ import { useEffect, useState } from "react";
 import NotificationPopover from "../components/ui/NotificationPopover";
 
 const NAV_ITEMS = [
-  { to: "/dashboard",  label: "대시보드",          icon: "grid",       group: null },
-  { to: "/cases",      label: "통합 사례 목록",     icon: "folder",     group: "사례 관리" },
-  { to: "/recording",  label: "상담 녹음",          icon: "mic",        group: "상담 업무" },
-  { to: "/stt-cases",  label: "STT 검수",           icon: "transcript", group: "상담 업무", badge: 1 },
-  { to: "/ai-cases",   label: "분석 결과 검토",     icon: "robot",      group: "상담 업무", badge: 2 },
-  { to: "/plan-cases",    label: "사례관리 계획",      icon: "clipboard",  group: "상담 업무", badge: 0 },
-  { to: "/closure-cases", label: "종결·가정복귀 검토", icon: "home",       group: "상담 업무", badge: 0 },
-  { to: "/report-cases",  label: "보고서 생성",        icon: "document",   group: "문서",      badge: 0 },
+  { to: "/dashboard",       label: "대시보드",       icon: "grid",       group: null },
+  { to: "/cases",           label: "통합 사례 목록", icon: "folder",     group: "사례 관리" },
+  { to: "/follow-up",       label: "후속 관리",      icon: "home",       group: "사례 관리" },
+  { to: "/stt-cases",       label: "상담 자료 검수", icon: "transcript", group: "상담 업무", badge: 1 },
+  { to: "/case-management", label: "사례 관리",      icon: "clipboard",  group: "상담 업무", badge: 2 },
+  { to: "/report-cases",    label: "보고서 생성",    icon: "document",   group: "문서",      badge: 0 },
 ];
 
 function NavIcon({ id }: { id: string }) {
@@ -75,13 +73,13 @@ export default function AppLayout() {
         </div>
 
         <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center gap-2.5">
+          <button onClick={() => navigate("/profile")} className="flex items-center gap-2.5 w-full text-left hover:opacity-80 transition-opacity">
             <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ background: "#15314A" }}>{initial}</div>
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-white truncate">{auth.name}</div>
               <div className="text-[11px] truncate" style={{ color: "rgba(255,255,255,0.4)" }}>아동·청소년 상담사</div>
             </div>
-          </div>
+          </button>
         </div>
 
         <nav className="flex-1 py-2 overflow-y-auto">
@@ -140,11 +138,7 @@ export default function AppLayout() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-[#E2E8F0] px-5 flex items-center justify-between shrink-0" style={{ height: "56px" }}>
-          <div className="relative" style={{ width: "300px" }}>
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="빠른 사례 검색..." className="w-full pl-8 pr-3 py-1.5 rounded-[6px] border border-[#E2E8F0] text-[13px] text-[#172033] bg-[#F8FAFC] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all" />
-          </div>
+        <header className="bg-white border-b border-[#E2E8F0] px-5 flex items-center justify-end shrink-0" style={{ height: "52px" }}>
           <div className="flex items-center gap-3">
             <NotificationPopover />
             <div className="w-px h-4 bg-[#E2E8F0]" />

@@ -154,7 +154,7 @@ const STATUS_MAP: Record<SessionStatus, DerivedStatus> = {
     stt: "검수완료", ai: "검토필요", record: "작성중", failed: false, label: "AI 결과 검수 필요",
   },
   APPROVED: {
-    stt: "분석완료", ai: "승인완료", record: "승인완료", failed: false, label: "승인 완료",
+    stt: "분석완료", ai: "상담사검토완료", record: "상담사검토완료", failed: false, label: "승인 완료",
   },
   STT_FAILED: {
     stt: "처리중", ai: "대기중", record: "미작성", failed: true, label: "STT 실패 — 재시도 필요",

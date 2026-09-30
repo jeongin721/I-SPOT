@@ -4,11 +4,11 @@ import { AI_ANALYSES } from "../data/mockData";
 import Breadcrumb from "../components/ui/Breadcrumb";
 
 const STATUS_CFG: Record<string, string> = {
-  "분석중":   "bg-blue-50 text-blue-700",
-  "검토필요": "bg-amber-50 text-amber-700",
-  "검토중":   "bg-amber-50 text-amber-700",
-  "수정됨":   "bg-blue-50 text-blue-700",
-  "승인완료": "bg-green-50 text-green-700",
+  "분석중":   "border-[#CBD5E1] text-[#64748B]",
+  "검토필요": "border-[#64748B] text-[#172033] font-semibold",
+  "검토중":   "border-[#64748B] text-[#172033] font-semibold",
+  "수정됨":   "border-[#CBD5E1] text-[#64748B]",
+  "상담사검토완료": "border-[#CBD5E1] text-[#475569]",
 };
 
 export default function AIAnalysisListPage() {
@@ -49,7 +49,7 @@ export default function AIAnalysisListPage() {
                   <td className="px-4 py-3 text-[12px] font-mono text-[#64748B]">{a.date}</td>
                   <td className="px-4 py-3 text-[13px] text-[#172033]">{a.sessionNumber}회차</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_CFG[a.status] ?? "bg-slate-50 text-slate-600"}`}>
+                    <span className={`px-2 py-0.5 rounded border text-[12px] bg-white ${STATUS_CFG[a.status] ?? "border-[#CBD5E1] text-[#64748B]"}`}>
                       {a.status}
                     </span>
                   </td>

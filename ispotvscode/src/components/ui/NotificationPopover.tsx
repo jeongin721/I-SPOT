@@ -4,7 +4,7 @@ import { NOTIFICATIONS, type Notification } from "../../data/mockData";
 
 const TYPE_DOT: Record<Notification["type"], string> = {
   "검토필요": "bg-amber-400",
-  "고위험":   "bg-red-500",
+  "확인필요":   "bg-red-500",
   "업무":     "bg-blue-400",
   "분석완료": "bg-green-400",
 };

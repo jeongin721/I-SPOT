@@ -8,9 +8,9 @@ interface Props {
 }
 
 const RISK_CFG: Record<RiskLevel, { label: string; dot: string; text: string }> = {
-  high: { label: "고위험", dot: "bg-red-400",   text: "text-red-300" },
-  mid:  { label: "중위험", dot: "bg-amber-400", text: "text-amber-300" },
-  low:  { label: "저위험", dot: "bg-green-400", text: "text-green-300" },
+  high: { label: "확인 필요", dot: "bg-[#94A3B8]", text: "text-[#94A3B8]" },
+  mid:  { label: "확인 중",   dot: "bg-[#CBD5E1]", text: "text-[#CBD5E1]" },
+  low:  { label: "확인 완료", dot: "bg-[#E2E8F0]", text: "text-[#E2E8F0]" },
 };
 
 const ABUSE_COLOR: Record<AbuseType, string> = {
@@ -69,7 +69,7 @@ export default function CaseSelectorPanel({ selectedId, onSelect, filterLevel }:
         {/* Risk filter chips */}
         <div className="flex gap-1 mt-2 flex-wrap">
           {(["전체", "high", "mid", "low"] as const).map(r => {
-            const labels = { 전체: "전체", high: "고위험", mid: "중위험", low: "저위험" };
+            const labels = { 전체: "전체", high: "확인 필요", mid: "확인 중", low: "확인 완료" };
             const isActive = riskFilter === r;
             return (
               <button
@@ -161,7 +161,7 @@ export default function CaseSelectorPanel({ selectedId, onSelect, filterLevel }:
       {/* Footer */}
       <div className="px-4 py-2.5 shrink-0" style={{ borderTop: "1px solid #1E3A54" }}>
         <p className="text-[10px] text-slate-500 text-center">
-          고위험 {CASES.filter(c => c.riskLevel === "high").length}건 · 중위험 {CASES.filter(c => c.riskLevel === "mid").length}건 · 저위험 {CASES.filter(c => c.riskLevel === "low").length}건
+          확인 필요 {CASES.filter(c => c.riskLevel === "high").length}건 · 확인 중 {CASES.filter(c => c.riskLevel === "mid").length}건 · 확인 완료 {CASES.filter(c => c.riskLevel === "low").length}건
         </p>
       </div>
     </aside>

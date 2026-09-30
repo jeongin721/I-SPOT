@@ -17,13 +17,29 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
+  const [findPw, setFindPw] = useState(false);
+  const [findId, setFindId] = useState("");
+  const [findSent, setFindSent] = useState(false);
+  const [failCount, setFailCount] = useState(0);
+  const [locked, setLocked] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (locked) return;
     if (!otpStep) {
       const cred = CREDENTIALS[role];
-      if (id === cred.id && pw === cred.pw) { setOtpStep(true); setError(""); }
-      else setError("기관 ID 또는 비밀번호가 올바르지 않습니다.");
+      if (id === cred.id && pw === cred.pw) {
+        setOtpStep(true); setError(""); setFailCount(0);
+      } else {
+        const next = failCount + 1;
+        setFailCount(next);
+        if (next >= 5) {
+          setLocked(true);
+          setError("로그인 5회 실패로 계정이 잠겼습니다. 관리자에게 문의하세요.");
+        } else {
+          setError(`기관 ID 또는 비밀번호가 올바르지 않습니다. (${next}/5회)`);
+        }
+      }
     } else {
       if (otp === "123456") {
         setLoading(true);
@@ -176,6 +192,18 @@ export default function LoginPage() {
                   이전으로
                 </button>
               )}
+
+              {!otpStep && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => { setFindPw(true); setFindId(""); setFindSent(false); }}
+                    className="text-[12px] text-[#64748B] hover:text-[#2563EB] transition-colors"
+                  >
+                    비밀번호 찾기
+                  </button>
+                </div>
+              )}
             </form>
 
             <div className="px-6 py-4 border-t border-[#E2E8F0] bg-[#F8FAFC]">
@@ -190,6 +218,50 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {findPw && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,38,59,0.5)" }}>
+          <div className="bg-white rounded-[8px] border border-[#E2E8F0] w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#172033]">비밀번호 찾기</h3>
+              <button onClick={() => setFindPw(false)} className="text-[#94A3B8] hover:text-[#64748B]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {!findSent ? (
+                <>
+                  <p className="text-[13px] text-[#64748B]">등록된 기관 ID를 입력하면 담당자에게 임시 비밀번호를 발송합니다.</p>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">기관 ID</label>
+                    <input
+                      type="text" value={findId} onChange={e => setFindId(e.target.value)}
+                      placeholder="기관 ID 입력"
+                      className="w-full px-3 py-2 rounded-[6px] border border-[#E2E8F0] text-[13px] text-[#172033] bg-white focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { if (findId.trim()) setFindSent(true); }}
+                    disabled={!findId.trim()}
+                    className="w-full py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold rounded-[6px] text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    임시 비밀번호 요청
+                  </button>
+                </>
+              ) : (
+                <div className="text-center py-4 space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-green-50 border border-green-200 flex items-center justify-center mx-auto">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#172033]">요청이 전송되었습니다</p>
+                  <p className="text-[12px] text-[#64748B]">관리자가 확인 후 임시 비밀번호를 발송합니다.</p>
+                  <button onClick={() => setFindPw(false)} className="text-[13px] text-[#2563EB] hover:text-[#1D4ED8] font-medium">닫기</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
