@@ -11,6 +11,7 @@ import type { Session as UiSession } from "../data/mockData";
 import {
   describeApiError,
   deriveStatus,
+  isLowConfidence,
   toUiCase,
   toUiSession,
   toUiTranscriptSegments,
@@ -26,9 +27,6 @@ interface Segment extends UiTranscriptSegment {
   editing: boolean;
   draft: string;
 }
-
-// 저신뢰 기준. ElevenLabs 결과는 confidence 0.0 = 값 없음이라 기준 재검토 필요.
-const LOW_CONF = 0.75;
 
 /** 아직 전사본이 만들어지기 전 상태. 이때는 발화 목록 대신 안내를 보여 준다. */
 const BEFORE_STT: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_PROCESSING"];
@@ -50,9 +48,13 @@ function readOnlyReason(status: SessionStatus): string {
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_TRIES = 60;
 
-/** 저신뢰이거나 child_handoff 가 사람 확인이 필요하다고 표시한 발화. */
+/**
+ * 검수가 필요한 발화. 저신뢰(값이 있고 0.7 미만, api/confidence.ts)이거나 화자 확인이 필요한 발화
+ * (child_handoff 의 review_needed 또는 화자 UNKNOWN, adapters.ts 의 reviewReason)다.
+ * 신뢰도 값 없음(0.0, ElevenLabs 등)은 그것만으로는 검수 필요로 세지 않는다.
+ */
 function needsReview(seg: UiTranscriptSegment): boolean {
-  return seg.confidence < LOW_CONF || seg.reviewReason !== null;
+  return seg.lowConfidence || seg.reviewReason !== null;
 }
 
 function toSegments(source: Transcript, confirmedIds: Set<string> = new Set()): Segment[] {
@@ -65,15 +67,28 @@ function toSegments(source: Transcript, confirmedIds: Set<string> = new Set()): 
   }));
 }
 
-function ConfidenceBar({ value }: { value: number }) {
+/** 신뢰도 값이 없을 때(STT 공급자가 주지 않음) 막대 · 퍼센트 대신 보여 줄 안내. */
+const NO_CONFIDENCE_TITLE = "신뢰도 값 없음 · STT 공급자가 신뢰도를 제공하지 않았습니다";
+
+function ConfidenceBar({ value }: { value: number | null }) {
+  if (value === null) {
+    return (
+      <span className="text-[11px] font-mono font-semibold text-[#94A3B8]" title={NO_CONFIDENCE_TITLE}>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{NO_CONFIDENCE_TITLE}</span>
+      </span>
+    );
+  }
+
   const pct = Math.round(value * 100);
-  const color = value >= LOW_CONF ? "bg-green-400" : value >= 0.55 ? "bg-amber-400" : "bg-red-400";
+  const low = isLowConfidence(value);
+  const color = !low ? "bg-green-400" : value >= 0.55 ? "bg-amber-400" : "bg-red-400";
   return (
     <div className="flex items-center gap-2 min-w-0">
       <div className="w-16 h-1.5 bg-[#F1F5F9] rounded overflow-hidden shrink-0">
         <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className={`text-[11px] font-mono font-semibold shrink-0 ${value < LOW_CONF ? "text-amber-600" : "text-[#94A3B8]"}`}>
+      <span className={`text-[11px] font-mono font-semibold shrink-0 ${low ? "text-amber-600" : "text-[#94A3B8]"}`}>
         {pct}%
       </span>
     </div>
@@ -98,7 +113,7 @@ export default function TranscriptReviewView() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [filterLow, setFilterLow] = useState(false);
+  const [filterReview, setFilterReview] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   function applyEnvelope(envelope: TranscriptEnvelope) {
@@ -165,17 +180,22 @@ export default function TranscriptReviewView() {
   }, [status, sessionId, pollTries]);
 
   const displayed = useMemo(() =>
-    filterLow ? segments.filter(needsReview) : segments,
-    [segments, filterLow]
+    filterReview ? segments.filter(needsReview) : segments,
+    [segments, filterReview]
   );
 
-  const confirmedCount  = segments.filter(s => s.confirmed).length;
-  const lowConfCount    = segments.filter(needsReview).length;
-  const pendingLowCount = segments.filter(s => needsReview(s) && !s.confirmed).length;
-  const allDone         = segments.length > 0 && segments.every(s => s.confirmed);
-  const hasTranscript   = segments.length > 0;
-  const beforeStt       = status !== null && BEFORE_STT.includes(status);
-  const editable        = status !== null && EDITABLE.includes(status);
+  const confirmedCount     = segments.filter(s => s.confirmed).length;
+  const reviewCount        = segments.filter(needsReview).length;
+  // 저신뢰 개수는 수정 · 확정 여부와 관계없이 센다(Backend Mock AI 경고 "저신뢰 구간 N건" 과 같은 규칙).
+  const lowConfCount       = segments.filter(s => s.lowConfidence).length;
+  const speakerReviewCount = segments.filter(s => s.reviewReason !== null).length;
+  const pendingReviewCount = segments.filter(s => needsReview(s) && !s.confirmed).length;
+  const allDone            = segments.length > 0 && segments.every(s => s.confirmed);
+  const hasTranscript      = segments.length > 0;
+  // 모든 발화에 신뢰도 값이 없다(ElevenLabs 등). 이때는 화자 확인 필요 구간을 중심으로 검수한다.
+  const noConfidence       = hasTranscript && segments.every(s => s.confidence === null);
+  const beforeStt          = status !== null && BEFORE_STT.includes(status);
+  const editable           = status !== null && EDITABLE.includes(status);
 
   function startEdit(id: string) {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text } : s));
@@ -290,7 +310,7 @@ export default function TranscriptReviewView() {
                 </>
               )}
               <span className="mx-1.5 text-[#94A3B8]">·</span>
-              저신뢰 구간을 확인하고 수정·확정하세요
+              검수 필요 구간을 확인하고 수정·확정하세요
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -322,17 +342,27 @@ export default function TranscriptReviewView() {
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span className="text-[#64748B] text-xs">저신뢰 구간</span>
-            <span className={`font-semibold ${lowConfCount > 0 ? "text-amber-600" : "text-[#172033]"}`}>{lowConfCount}개</span>
+            <span className="text-[#64748B] text-xs">검수 필요 구간</span>
+            <span className={`font-semibold ${reviewCount > 0 ? "text-amber-600" : "text-[#172033]"}`}>{reviewCount}개</span>
+            {(reviewCount > 0 || noConfidence) && (
+              <span className="text-[11px] text-[#94A3B8]">
+                (저신뢰 {noConfidence ? "—" : `${lowConfCount}개`} · 화자 확인 필요 {speakerReviewCount}개)
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
             <span className="text-[#64748B] text-xs">확정 완료</span>
             <span className="font-semibold text-green-700">{confirmedCount}/{segments.length}</span>
           </div>
-          {editable && pendingLowCount > 0 && (
+          {editable && pendingReviewCount > 0 && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded text-xs font-medium text-amber-700">
-              저신뢰 {pendingLowCount}개 미검수
+              검수 필요 {pendingReviewCount}개 미검수
+            </div>
+          )}
+          {noConfidence && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded text-xs font-medium text-[#64748B]" title={NO_CONFIDENCE_TITLE}>
+              STT 신뢰도 값 없음(공급자 미제공){editable && " · 화자 확인 필요 구간을 중심으로 검수하세요"}
             </div>
           )}
           {editable && isConfirmed && (
@@ -347,8 +377,8 @@ export default function TranscriptReviewView() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <label className="flex items-center gap-2 text-xs text-[#64748B] cursor-pointer select-none">
-              <input type="checkbox" checked={filterLow} onChange={e => setFilterLow(e.target.checked)} className="accent-amber-500" />
-              저신뢰만 보기
+              <input type="checkbox" checked={filterReview} onChange={e => setFilterReview(e.target.checked)} className="accent-amber-500" />
+              검수 필요만 보기
             </label>
             {editable && (
               <button onClick={confirmAll} disabled={allDone || !hasTranscript}
@@ -387,18 +417,18 @@ export default function TranscriptReviewView() {
           {!loading && !loadError && hasTranscript && displayed.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-[#94A3B8] space-y-3">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><polyline points="20 6 9 17 4 12"/></svg>
-              <p className="text-sm">모든 저신뢰 구간이 검수되었습니다</p>
+              <p className="text-sm">검수가 필요한 구간이 없습니다</p>
             </div>
           )}
 
           {displayed.map(seg => {
-            const isLow = needsReview(seg);
+            const flagged = needsReview(seg);
             const isSaving = savingId === seg.id;
             return (
               <div
                 key={seg.id}
                 className={`px-6 py-3.5 border-b border-[#F1F5F9] transition-colors ${
-                  seg.confirmed ? "bg-[#F0FDF4]/40" : isLow ? "bg-[#FFFBEB]" : "bg-white hover:bg-[#F8FAFC]"
+                  seg.confirmed ? "bg-[#F0FDF4]/40" : flagged ? "bg-[#FFFBEB]" : "bg-white hover:bg-[#F8FAFC]"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -408,8 +438,8 @@ export default function TranscriptReviewView() {
                       {seg.speakerLabel}
                     </span>
                     <ConfidenceBar value={seg.confidence} />
-                    {isLow && !seg.confirmed && (
-                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{seg.reviewReason ?? "검수 필요"}</span>
+                    {flagged && !seg.confirmed && (
+                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{seg.reviewReason ?? "저신뢰"}</span>
                     )}
                     {seg.edited && (
                       <span className="text-[10px] font-medium text-[#64748B] bg-[#F1F5F9] border border-[#E2E8F0] px-1.5 py-0.5 rounded">수정됨</span>
@@ -437,7 +467,7 @@ export default function TranscriptReviewView() {
                         </div>
                       </div>
                     ) : (
-                      <p className={`text-sm leading-relaxed ${isLow && !seg.confirmed ? "text-amber-900" : seg.confirmed ? "text-[#64748B]" : "text-[#172033]"}`}>
+                      <p className={`text-sm leading-relaxed ${flagged && !seg.confirmed ? "text-amber-900" : seg.confirmed ? "text-[#64748B]" : "text-[#172033]"}`}>
                         {seg.text}
                       </p>
                     )}

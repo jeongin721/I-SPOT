@@ -10,6 +10,7 @@
 import type { CaseRecord, RiskLevel } from "../data/cases";
 import type { Session as UiSession } from "../data/mockData";
 import { ApiError } from "./client";
+import { hasConfidence, isLowConfidence } from "./confidence";
 import { GUARDIAN_LABELS, TASK_LABELS } from "./types";
 import type { Case, Session, SessionStatus, Speaker, TaskItem, Transcript } from "./types";
 
@@ -352,6 +353,9 @@ const REVIEW_REASON_LABELS: Record<string, string> = {
   UNRESOLVED_SPEAKER: "화자 확인 필요",
 };
 
+// 신뢰도 규칙(값 없음 · 저신뢰 기준)은 confidence.ts 한 곳에 있다. 화면은 여기서 가져다 쓴다.
+export { LOW_CONFIDENCE_THRESHOLD, hasConfidence, isLowConfidence } from "./confidence";
+
 /** 전사 검수 화면의 발화 한 줄. */
 export interface UiTranscriptSegment {
   /** Backend 의 segment_id. 수정 요청에 그대로 쓴다. */
@@ -363,10 +367,16 @@ export interface UiTranscriptSegment {
   startMs: number;
   endMs: number;
   text: string;
-  confidence: number;
+  /** STT 신뢰도. null = STT 공급자가 신뢰도를 주지 않음(Backend 값 0.0, confidence.ts 참고). */
+  confidence: number | null;
+  /** 값이 있고 저신뢰 기준(0.7)보다 낮은 발화인가. 값 없음은 false. */
+  lowConfidence: boolean;
   /** 상담사가 이미 고친 발화인가(edited_segment_ids). */
   edited: boolean;
-  /** child_handoff 가 사람 확인이 필요하다고 표시한 사유. 없으면 null. */
+  /**
+   * 사람 확인이 필요한 사유. child_handoff 의 review_needed_segments 에 있으면 그 사유를 쓰고,
+   * 없더라도 화자가 UNKNOWN 이면 "화자 확인 필요" 로 채운다. 해당 없으면 null.
+   */
   reviewReason: string | null;
 }
 
@@ -389,9 +399,14 @@ export function toUiTranscriptSegments(source: Transcript): UiTranscriptSegment[
       startMs: seg.start_ms,
       endMs: seg.end_ms,
       text: seg.text,
-      confidence: seg.confidence,
+      confidence: hasConfidence(seg.confidence) ? seg.confidence : null,
+      lowConfidence: isLowConfidence(seg.confidence),
       edited: edited.has(seg.segment_id),
-      reviewReason: reasons.get(seg.segment_id) ?? null,
+      // child_handoff 가 없거나 null 이어도(Backend 가 stt 모듈을 읽지 못한 경우) UNKNOWN 발화는
+      // 화자 확인이 필요하다. 신뢰도 값 없음(0.0)을 저신뢰에서 뺐으므로 이 표시가 없으면 묻힌다.
+      reviewReason:
+        reasons.get(seg.segment_id)
+        ?? (seg.speaker === "UNKNOWN" ? REVIEW_REASON_LABELS.UNRESOLVED_SPEAKER : null),
     }));
 }
 
