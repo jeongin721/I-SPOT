@@ -5,7 +5,123 @@ import { RiskBadge, AbuseBadge, StatusLabel } from "../components/ui/Badges";
 
 const ABUSE_OPTIONS: (AbuseType | "전체")[] = ["전체", "신체", "정서", "성", "방임"];
 const RISK_OPTIONS: (RiskLevel | "전체")[] = ["전체", "high", "mid", "low"];
-const RISK_LABELS = { "전체": "전체", high: "고위험", mid: "중위험", low: "저위험" };
+const RISK_LABELS = { "전체": "전체", high: "확인 필요", mid: "확인 중", low: "확인 완료" };
+
+// ─── New Case Modal ───────────────────────────────────────────────────────────
+
+interface NewCaseModalProps {
+  counselorName: string;
+  onClose: () => void;
+  onRegister: (c: Case) => void;
+}
+
+function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps) {
+  const [name, setName]         = useState("");
+  const [age, setAge]           = useState("");
+  const [guardian, setGuardian] = useState("");
+  const [riskLevel, setRiskLevel] = useState<"high" | "mid" | "low">("low");
+  const [errors, setErrors]     = useState<Record<string, string>>({});
+
+  function validate() {
+    const e: Record<string, string> = {};
+    if (!name.trim())     e.name = "이름을 입력해주세요.";
+    if (!age.trim())      e.age = "연령을 입력해주세요.";
+    else if (isNaN(Number(age)) || Number(age) <= 0) e.age = "유효한 연령을 입력해주세요.";
+    if (!guardian.trim()) e.guardian = "보호자를 입력해주세요.";
+    return e;
+  }
+
+  function handleSubmit() {
+    const e = validate();
+    if (Object.keys(e).length > 0) { setErrors(e); return; }
+    const newId = `C-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const newCase: Case = {
+      id: newId,
+      childName: name.trim(),
+      age: Number(age),
+      guardian: guardian.trim(),
+      counselor: counselorName,
+      sessionCount: 0,
+      lastSession: "상담 기록 없음",
+      riskLevel: riskLevel,
+      riskScore: 0,
+      abuseTypes: [],
+      keywords: [],
+      status: "active",
+    };
+    onRegister(newCase);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white border border-[#E2E8F0] rounded-[10px] w-[440px] shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0]">
+          <h2 className="text-[16px] font-semibold text-[#172033]">새 사례 등록</h2>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1">아동 이름 <span className="text-red-500">*</span></label>
+            <input value={name} onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: "" })); }}
+              placeholder="이름 입력"
+              className="w-full px-3 py-2 rounded-[6px] border text-[13px] text-[#172033] focus:outline-none focus:ring-1 focus:ring-[#2563EB] transition-all"
+              style={{ borderColor: errors.name ? "#DC2626" : "#E2E8F0" }} />
+            {errors.name && <p className="text-[11px] text-red-500 mt-1">{errors.name}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1">연령 <span className="text-red-500">*</span></label>
+            <input value={age} onChange={e => { setAge(e.target.value); setErrors(p => ({ ...p, age: "" })); }}
+              placeholder="예: 9" type="number" min="1" max="18"
+              className="w-full px-3 py-2 rounded-[6px] border text-[13px] text-[#172033] focus:outline-none focus:ring-1 focus:ring-[#2563EB] transition-all"
+              style={{ borderColor: errors.age ? "#DC2626" : "#E2E8F0" }} />
+            {errors.age && <p className="text-[11px] text-red-500 mt-1">{errors.age}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1">보호자 <span className="text-red-500">*</span></label>
+            <input value={guardian} onChange={e => { setGuardian(e.target.value); setErrors(p => ({ ...p, guardian: "" })); }}
+              placeholder="보호자 이름 입력"
+              className="w-full px-3 py-2 rounded-[6px] border text-[13px] text-[#172033] focus:outline-none focus:ring-1 focus:ring-[#2563EB] transition-all"
+              style={{ borderColor: errors.guardian ? "#DC2626" : "#E2E8F0" }} />
+            {errors.guardian && <p className="text-[11px] text-red-500 mt-1">{errors.guardian}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1.5">위험도</label>
+            <div className="flex gap-2">
+              {([["high", "확인 필요", "#B91C1C", "#FEF2F2", "#FECACA"], ["mid", "확인 중", "#B45309", "#FFFBEB", "#FDE68A"], ["low", "확인 완료", "#15803D", "#F0FDF4", "#BBF7D0"]] as const).map(([v, lbl, color, bg, border]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setRiskLevel(v)}
+                  className="flex-1 py-2 rounded-[6px] border text-[12px] font-semibold transition-all"
+                  style={{
+                    color: riskLevel === v ? color : "#94A3B8",
+                    background: riskLevel === v ? bg : "#F8FAFC",
+                    borderColor: riskLevel === v ? border : "#E2E8F0",
+                  }}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] p-4 space-y-2 text-[13px]">
+            <div className="flex justify-between"><span className="text-[#94A3B8]">담당 상담사</span><span className="text-[#172033] font-medium">{counselorName} <span className="text-[11px] text-[#94A3B8]">자동 입력</span></span></div>
+            <div className="flex justify-between"><span className="text-[#94A3B8]">상담 회차</span><span className="text-[#172033] font-medium">0회 <span className="text-[11px] text-[#94A3B8]">자동 관리</span></span></div>
+            <div className="flex justify-between"><span className="text-[#94A3B8]">최근 상담</span><span className="text-[#172033] font-medium">상담 기록 없음 <span className="text-[11px] text-[#94A3B8]">자동 관리</span></span></div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-[#E2E8F0] bg-[#F8FAFC]">
+          <button onClick={onClose} className="px-4 py-2 text-[13px] text-[#64748B] border border-[#E2E8F0] rounded-[6px] hover:bg-white transition-colors">취소</button>
+          <button onClick={handleSubmit} className="px-4 py-2 text-[13px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors">사례 등록</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main View ────────────────────────────────────────────────────────────────
 
 export default function CasesView() {
   const navigate = useNavigate();
@@ -15,14 +131,22 @@ export default function CasesView() {
   const [kwQuery,     setKwQuery]     = useState("");
   const [sortBy,      setSortBy]      = useState<"riskScore" | "lastSession">("riskScore");
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
+  const [showNewCase, setShowNewCase] = useState(false);
+  const [extraCases, setExtraCases]   = useState<Case[]>([]);
 
-  const filtered = useMemo(() => CASES.filter(c => {
+  const counselorName = (() => {
+    try { return JSON.parse(localStorage.getItem("ispot_auth") ?? "{}").name ?? "상담사"; } catch { return "상담사"; }
+  })();
+
+  const allCases = useMemo(() => [...CASES, ...extraCases], [extraCases]);
+
+  const filtered = useMemo(() => allCases.filter(c => {
     if (query && !c.childName.includes(query) && !c.id.toLowerCase().includes(query.toLowerCase()) && !c.guardian.includes(query)) return false;
     if (abuseFilter !== "전체" && !c.abuseTypes.includes(abuseFilter)) return false;
     if (riskFilter !== "전체" && c.riskLevel !== riskFilter) return false;
     if (kwQuery && !c.keywords.some(k => k.includes(kwQuery))) return false;
     return true;
-  }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)), [query, abuseFilter, riskFilter, kwQuery, sortBy]);
+  }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)), [query, abuseFilter, riskFilter, kwQuery, sortBy, allCases]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -32,7 +156,10 @@ export default function CasesView() {
             <h1 className="text-[22px] font-semibold text-[#172033]">통합 사례 목록</h1>
             <p className="text-[13px] text-[#64748B] mt-0.5">담당 사례 전체 · 이름, 학대유형, 키워드로 검색</p>
           </div>
-          <button className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-[#15314A] hover:bg-[#0F263B] rounded-[6px] transition-colors">
+          <button
+            onClick={() => setShowNewCase(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-[#15314A] hover:bg-[#0F263B] rounded-[6px] transition-colors"
+          >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             새 사례 등록
           </button>
@@ -148,12 +275,6 @@ export default function CasesView() {
                           >
                             상세 화면
                           </button>
-                          <button
-                            onClick={() => navigate(`/cases/${c.id}/counseling/new`)}
-                            className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-[12px] font-medium rounded-[6px] hover:bg-[#F1F5F9] transition-colors"
-                          >
-                            새 상담 시작
-                          </button>
                           <button onClick={() => setSelectedCase(null)} className="p-1.5 text-[#94A3B8] hover:text-[#64748B] transition-colors">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                           </button>
@@ -170,6 +291,14 @@ export default function CasesView() {
           </tbody>
         </table>
       </div>
+
+      {showNewCase && (
+        <NewCaseModal
+          counselorName={counselorName}
+          onClose={() => setShowNewCase(false)}
+          onRegister={c => { setExtraCases(prev => [c, ...prev]); setShowNewCase(false); }}
+        />
+      )}
     </div>
   );
 }

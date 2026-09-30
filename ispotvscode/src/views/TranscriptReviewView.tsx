@@ -100,7 +100,7 @@ export default function TranscriptReviewView() {
   function handleConfirmComplete() {
     setShowConfirm(false);
     showToast("STT 검수가 완료되었습니다.", "success");
-    if (caseId) navigate(`/cases/${caseId}/analyses`);
+    if (caseId) navigate(`/case-management`);
   }
 
   const isRouted = !!caseId;
@@ -301,7 +301,7 @@ export default function TranscriptReviewView() {
       <ConfirmModal
         open={showConfirm}
         title="STT 검수 완료"
-        message="STT 검수를 완료하시겠습니까? 완료 후 AI 분석 결과 검토 단계로 이동합니다."
+        message="STT 검수를 완료하시겠습니까? 완료 후 사례 관리 화면으로 이동합니다."
         confirmLabel="완료"
         onConfirm={handleConfirmComplete}
         onCancel={() => setShowConfirm(false)}

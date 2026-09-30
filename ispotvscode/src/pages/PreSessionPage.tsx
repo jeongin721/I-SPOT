@@ -31,7 +31,7 @@ export default function PreSessionPage() {
 
         <div>
           <h1 className="text-[22px] font-semibold text-[#172033]">새 상담 시작</h1>
-          <p className="text-[13px] text-[#64748B] mt-0.5">상담 정보를 입력하고 녹음을 시작하세요</p>
+          <p className="text-[13px] text-[#64748B] mt-0.5">상담 정보를 입력하고 자료를 업로드하세요</p>
         </div>
 
         {/* Read-only info */}
@@ -44,7 +44,7 @@ export default function PreSessionPage() {
               ["예정 회차", `${nextSession}회차`],
               ["날짜", "2026-08-21"],
               ["담당 상담사", c.counselor],
-              ["위험도", c.riskLevel === "high" ? "고위험" : c.riskLevel === "mid" ? "중위험" : "저위험"],
+              ["위험도", c.riskLevel === "high" ? "확인 필요" : c.riskLevel === "mid" ? "확인 중" : "확인 완료"],
             ].map(([k, v]) => (
               <div key={k} className="flex gap-3">
                 <span className="text-[#94A3B8] w-24 shrink-0">{k}</span>
@@ -116,10 +116,10 @@ export default function PreSessionPage() {
             취소
           </button>
           <button
-            onClick={() => navigate(`/cases/${caseId}/recording`)}
+            onClick={() => navigate(`/cases/${caseId}`)}
             className="px-5 py-2.5 bg-[#2563EB] text-white text-[13px] font-semibold rounded-[6px] hover:bg-[#1D4ED8] transition-colors"
           >
-            상담 시작
+            상담 등록 완료
           </button>
         </div>
       </div>

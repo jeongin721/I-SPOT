@@ -29,15 +29,15 @@ const PROBLEM_AREAS = {
 };
 
 const SEVERITY_CFG = {
-  high: { label: "심각", cls: "bg-red-50 border-red-200 text-red-700" },
-  mid:  { label: "중간", cls: "bg-amber-50 border-amber-200 text-amber-700" },
-  low:  { label: "낮음", cls: "bg-green-50 border-green-200 text-green-600" },
+  high: { label: "심각", cls: "border-[#64748B] text-[#172033] font-bold bg-white" },
+  mid:  { label: "중간", cls: "border-[#94A3B8] text-[#475569] font-semibold bg-white" },
+  low:  { label: "낮음", cls: "border-[#CBD5E1] text-[#64748B] font-medium bg-white" },
 };
 
 const DIR_CFG: Record<Direction, string> = {
-  강화: "bg-red-100 text-red-700",
-  유지: "bg-blue-100 text-blue-700",
-  완화: "bg-green-100 text-green-700",
+  강화: "border-[#64748B] text-[#172033] font-semibold bg-white",
+  유지: "border-[#94A3B8] text-[#475569] bg-white",
+  완화: "border-[#CBD5E1] text-[#64748B] bg-white",
 };
 
 export default function CasePlanView() {
@@ -63,7 +63,7 @@ export default function CasePlanView() {
           {/* Header */}
           <div>
             <h1 className="text-xl font-bold text-[#172033]">사례관리 계획</h1>
-            <p className="text-[#64748B] text-sm mt-0.5">문제 영역을 분석하고 개입 우선순위 및 방향을 설정합니다</p>
+            <p className="text-[#64748B] text-sm mt-0.5">문제 영역을 분석하고 상담사 지정 개입 계획 및 방향을 설정합니다</p>
           </div>
 
           {/* Case bar */}
@@ -113,12 +113,12 @@ export default function CasePlanView() {
             {/* Intervention priority */}
             <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-hidden">
               <div className="px-5 py-3.5 border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                <h2 className="font-semibold text-[#172033] text-sm">개입 우선순위 추천</h2>
+                <h2 className="font-semibold text-[#172033] text-sm">상담사 지정 개입 계획 추천</h2>
                 <p className="text-xs text-[#64748B] mt-0.5">항목 선택 및 방향 조정 후 계획에 반영</p>
               </div>
               <div className="p-5 space-y-2">
                 {interventions.map(item => (
-                  <div key={item.id} className={`rounded-[6px] border p-3 transition-colors ${item.checked ? "border-blue-200 bg-blue-50" : "border-[#E2E8F0] bg-[#F8FAFC] opacity-60"}`}>
+                  <div key={item.id} className={`rounded-[6px] border p-3 transition-colors ${item.checked ? "border-[#64748B] bg-white" : "border-[#E2E8F0] bg-[#F8FAFC] opacity-60"}`}>
                     <div className="flex items-start gap-2.5">
                       <input type="checkbox" checked={item.checked} onChange={() => toggleIntervention(item.id)} className="mt-0.5 shrink-0 accent-[#2563EB]" />
                       <div className="flex-1 min-w-0">
@@ -168,7 +168,7 @@ export default function CasePlanView() {
                     <div className="bg-[#F8FAFC] rounded-[6px] border border-[#E2E8F0] p-3"><p className="text-[#64748B] mb-1">계획 수립일</p><p className="font-mono font-semibold text-[#172033]">2026-08-21</p></div>
                   </div>
                   {saved && (
-                    <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-[6px] px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm text-[#172033] bg-[#F8FAFC] border border-[#CBD5E1] rounded-[6px] px-3 py-2">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       사례관리 계획이 저장되었습니다
                     </div>
