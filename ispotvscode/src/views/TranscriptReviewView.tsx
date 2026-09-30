@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import CaseSelectorPanel from "../components/CaseSelectorPanel";
 import Breadcrumb from "../components/ui/Breadcrumb";
@@ -22,7 +22,8 @@ import {
 // 발화 목록은 Backend(GET /sessions/{id}/transcript)에서 온다. 발화별 "확정" 표시는 화면에서만
 // 관리하는 검수 체크이고(Backend 에는 발화 단위 확정이 없다), 수정은 저장할 때마다 PATCH 로 바로
 // 반영되며 "STT 검수 완료" 가 POST .../transcript/confirm 이다.
-// 원문 변환 대기 · 실패 회기는 전사본 대신 "원문 변환 (다시) 요청"(POST .../transcript)을 보여 준다.
+// 원문 변환 대기 · 실패 회기는 "원문 변환 (다시) 요청"(POST .../transcript)을 보여 준다. 전사본이 없으면
+// 목록 자리의 안내 칸에, 이전 전사본이 남아 있으면(재업로드 · 다시 변환 뒤 실패 등) 헤더에 둔다.
 
 interface Segment extends UiTranscriptSegment {
   confirmed: boolean;
@@ -49,6 +50,8 @@ function readOnlyReason(status: SessionStatus): string {
   // 검수 중에 원문 변환을 다시 돌린 경우다(Backend 는 STT_REVIEW_REQUIRED 에서도 받는다). 보이는 것은 이전 전사본이다.
   if (status === "STT_PROCESSING") return "원문 변환 중에는 원문을 수정할 수 없습니다(이전 전사본).";
   if (status === "STT_FAILED") return "원문 변환이 실패해 이전 전사본을 보여 줍니다.";
+  // 전사본이 있는 채로 원문 변환 대기가 되는 것은 음성을 다시 올린 경우뿐이다(Backend 는 재업로드해도 전사본을 지우지 않는다).
+  if (status === "AUDIO_UPLOADED") return "새 음성이 올라와 원문 변환을 기다립니다(이전 전사본).";
 
   return "AI 분석 단계에서는 원문을 수정할 수 없습니다.";
 }
@@ -188,20 +191,42 @@ export default function TranscriptReviewView() {
   // 실제 공급자(ElevenLabs)는 업로드 창의 대기 시간보다 오래 걸릴 수 있다.
   const [pollTries, setPollTries] = useState(0);
 
+  // 지금 주소의 회기. 같은 경로에서 회기만 바뀌면(알림 창 · 뒤로가기) 화면이 새로 만들어지지 않으므로,
+  // 원문 변환 요청처럼 응답을 기다렸다가 화면을 바꾸는 곳은 이것과 비교해 다른 회기의 응답을 넣지 않는다.
+  const currentSessionId = useRef(sessionId);
+
+  // 주소의 회기가 바뀌면 이전 회기의 재확인 횟수 · 요청 중 표시를 넘겨받지 않는다(AIReviewView 와 같다).
+  // 새 회기가 그려지는 즉시 바꿔 두어야 그 사이에 도착한 이전 회기 응답도 걸러진다.
+  useLayoutEffect(() => {
+    currentSessionId.current = sessionId;
+    setPollTries(0);
+    setRequesting(false);
+  }, [sessionId]);
+
   useEffect(() => {
     if (status !== "STT_PROCESSING" || !sessionId || pollTries >= POLL_MAX_TRIES) return;
+
+    // 기다리는 사이 회기가 바뀌면 받은 응답을 버린다(이전 회기 전사본이 새 회기 화면에 들어가지 않게).
+    let cancelled = false;
 
     const timer = window.setTimeout(() => {
       transcriptApi
         .get(sessionId)
-        .then(applyEnvelope)
+        .then((envelope) => {
+          if (!cancelled) applyEnvelope(envelope);
+        })
         .catch(() => {
           // 한 번 실패해도 다음 확인에서 다시 시도한다.
         })
-        .finally(() => setPollTries(n => n + 1));
+        .finally(() => {
+          if (!cancelled) setPollTries(n => n + 1);
+        });
     }, POLL_INTERVAL_MS);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [status, sessionId, pollTries]);
 
   const displayed = useMemo(() =>
@@ -235,6 +260,10 @@ export default function TranscriptReviewView() {
   const sttRequestable     = status !== null && STT_REQUESTABLE.includes(status);
   // 재확인을 다 쓰고도 처리 중이다. 새로고침 없이는 바뀌지 않으니 "다시 확인" 을 보여 준다(AIReviewView 와 같다).
   const sttGaveUp          = status === "STT_PROCESSING" && pollTries >= POLL_MAX_TRIES;
+  // 이전 전사본이 목록에 보이는 중이다. 전사본이 없을 때의 안내 칸이 그려지지 않으니 원문 변환 요청 · "다시 확인"
+  // 버튼은 헤더에, 실패 사유 · 거절 이유는 통계 띠의 읽기 전용 표시 옆에 둔다.
+  const transcriptShown    = !loading && !loadError && hasTranscript;
+  const requestLabel       = requesting ? "요청 중..." : status === "STT_FAILED" ? "원문 변환 다시 요청" : "원문 변환 요청";
 
   function startEdit(id: string) {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text } : s));
@@ -316,34 +345,43 @@ export default function TranscriptReviewView() {
    * 다시 실패하면 재확인이 STT_FAILED 를 받아 버튼이 다시 보인다.
    * Backend 는 검수 중(STT_REVIEW_REQUIRED)에도 다시 변환을 받는다. 화면을 연 뒤 다른 탭 · 다른 사람이 먼저
    * 변환 · 수정을 했으면 그 위에 새 STT 버전이 생겨 고친 문구가 최신본에서 빠지므로, 보내기 직전에 서버 상태를
-   * 다시 받아 이 화면이 보던 상태(요청 가능 · 전사본 없음)일 때만 보낸다. 그 사이에 끼는 짧은 경쟁까지 막으려면
-   * Backend 에 기대 상태 조건이 있어야 한다.
+   * 다시 받아 이 화면이 보던 상태 · 전사본 version(둘 다 없음 포함) 그대로일 때만 보낸다. 이전 전사본이 남은
+   * 원문 변환 대기 · 실패 회기도 이렇게 보낼 수 있다. 그 사이에 끼는 짧은 경쟁까지 막으려면 Backend 에 기대 상태
+   * 조건이 있어야 한다.
+   * 기다리는 사이 주소의 회기가 바뀌면 받은 응답 · 문구를 새 회기 화면에 넣지 않는다.
    */
   async function handleRequestStt() {
     if (!sessionId || requesting) return;
 
+    const target = sessionId;
+    const moved = () => currentSessionId.current !== target;
+
     setRequesting(true);
     setRequestError(null);
     try {
-      const latest = await transcriptApi.get(sessionId);
-      if (!STT_REQUESTABLE.includes(latest.session_status) || latest.transcript) {
+      const latest = await transcriptApi.get(target);
+      if (moved()) return;
+      if (latest.session_status !== status || (latest.transcript?.version ?? null) !== version) {
         applyEnvelope(latest);
         setPollTries(0);
         showToast("회기 상태가 바뀌어 원문 변환을 요청하지 않았습니다. 바뀐 상태를 확인해 주세요.", "info");
         return;
       }
 
-      const response = await transcriptApi.run(sessionId);
+      const response = await transcriptApi.run(target);
+      if (moved()) return;
       setStatus(response.session_status);
       setSttError(null);
       setPollTries(0);
       showToast("원문 변환을 요청했습니다.", "success");
     } catch (caught) {
+      if (moved()) return;
       setRequestError(describeApiError(caught, "원문 변환 요청에 실패했습니다.", "권한이 없거나 없는 회기입니다."));
       // 다른 사람이 먼저 요청했을 수 있으니 서버 상태로 다시 맞춘다(처리 중이면 재확인이 이어서 돈다).
       transcriptApi
-        .get(sessionId)
+        .get(target)
         .then((envelope) => {
+          if (moved()) return;
           applyEnvelope(envelope);
           setPollTries(0);
         })
@@ -351,7 +389,8 @@ export default function TranscriptReviewView() {
           // 다시 맞추지 못해도 화면은 그대로 둔다. 새로고침하면 된다.
         });
     } finally {
-      setRequesting(false);
+      // 회기가 바뀌었으면 위 useLayoutEffect 가 이미 풀었다. 새 회기에서 누른 요청의 잠금을 풀지 않는다.
+      if (!moved()) setRequesting(false);
     }
   }
 
@@ -403,6 +442,23 @@ export default function TranscriptReviewView() {
                 className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-sm font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
               >
                 뒤로
+              </button>
+            )}
+            {transcriptShown && sttGaveUp && (
+              <button
+                onClick={() => setPollTries(0)}
+                className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-sm font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
+              >
+                다시 확인
+              </button>
+            )}
+            {transcriptShown && sttRequestable && (
+              <button
+                onClick={handleRequestStt}
+                disabled={requesting}
+                className="px-4 py-2 bg-[#2563EB] text-white text-sm font-semibold rounded-[6px] hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              >
+                {requestLabel}
               </button>
             )}
             {editable && allDone && !isConfirmed && (
@@ -466,6 +522,8 @@ export default function TranscriptReviewView() {
               읽기 전용{version !== null ? ` (v${version})` : ""} · {readOnlyReason(status)}
             </div>
           )}
+          {transcriptShown && status === "STT_FAILED" && sttError && <p className="text-xs text-red-600">{sttError.message}</p>}
+          {transcriptShown && sttRequestable && requestError && <p className="text-xs text-red-600">{requestError}</p>}
           <div className="ml-auto flex items-center gap-3">
             <label className="flex items-center gap-2 text-xs text-[#64748B] cursor-pointer select-none">
               <input type="checkbox" checked={filterReview} onChange={e => setFilterReview(e.target.checked)} className="accent-amber-500" />
@@ -522,7 +580,7 @@ export default function TranscriptReviewView() {
                     disabled={requesting}
                     className="px-4 py-2 bg-[#2563EB] text-white text-sm font-semibold rounded-[6px] hover:bg-blue-700 disabled:opacity-60 transition-colors"
                   >
-                    {requesting ? "요청 중..." : status === "STT_FAILED" ? "원문 변환 다시 요청" : "원문 변환 요청"}
+                    {requestLabel}
                   </button>
                   {/* 요청이 거절돼 상태가 바뀌었으면(다른 사람이 먼저 요청 등) 위 현재 상태가 이유를 보여 준다.
                       요청할 수 없는 상태로 바뀌면 applyEnvelope 가 이 문구를 지운다. */}
