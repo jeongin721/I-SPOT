@@ -6,7 +6,9 @@ I-SPOT 2차 세부유형 판정 LLM 모듈.
 import difflib
 import json
 import os
+import queue
 import re
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1111,43 +1113,59 @@ def _call_llm_with_retry(
         else {}
     )
 
+    def _request():
+        response = client.chat.completions.create(
+            model=model,
+            timeout=timeout_seconds,
+            response_format={"type": "json_object"},
+            **extra_kwargs,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        return response.choices[0].message.content
+
     for attempt in range(
         1,
         max_retries + 1,
     ):
         try:
-            response = (
-                client.chat.completions.create(
-                    model=model,
-                    timeout=timeout_seconds,
-                    response_format={
-                        "type":
-                            "json_object"
-                    },
-                    **extra_kwargs,
-                    messages=[
-                        {
-                            "role":
-                                "system",
-                            "content":
-                                system_prompt,
-                        },
-                        {
-                            "role":
-                                "user",
-                            "content":
-                                user_prompt,
-                        },
-                    ],
-                )
-            )
+            # client.chat.completions.create(timeout=...)만 믿으면 안 된다 —
+            # Ollama가 응답을 아주 느리게 나눠 보내면(특정 민감한 내용에서
+            # 실측 확인됨: 180초를 넘겨도 안 끝남) SDK의 읽기 타임아웃은
+            # "완전히 끊긴 시간"을 기준으로 재서 계속 미뤄질 수 있다. 데몬
+            # 스레드에서 호출하고 여기서 직접 마감 시간을 강제한다 — 네트워크
+            # 호출 자체를 강제로 죽이지는 못하지만(스레드는 뒤에서 계속
+            # 돌다가 나중에 정리된다), 우리 쪽 처리 흐름은 확실히 넘어간다.
+            # ThreadPoolExecutor는 워커 스레드가 데몬이 아니라서 프로세스
+            # 종료 시 멈춘 요청이 있으면 종료 자체가 막힐 수 있어(테스트 웹
+            # 서버처럼 오래 떠 있는 프로세스에서 문제가 됨), daemon=True인
+            # threading.Thread를 직접 쓴다.
+            result_queue: "queue.Queue" = queue.Queue(maxsize=1)
 
-            raw_content = (
-                response
-                .choices[0]
-                .message
-                .content
-            )
+            def _run():
+                try:
+                    result_queue.put(("ok", _request()))
+                except Exception as thread_exc:
+                    result_queue.put(("error", thread_exc))
+
+            thread = threading.Thread(target=_run, daemon=True)
+            thread.start()
+
+            try:
+                status, payload = result_queue.get(
+                    timeout=timeout_seconds + 5
+                )
+            except queue.Empty:
+                raise TimeoutError(
+                    f"LLM 호출이 {timeout_seconds + 5:.0f}초 안에 끝나지 않음"
+                )
+
+            if status == "error":
+                raise payload
+
+            raw_content = payload
 
             return json.loads(
                 raw_content

@@ -66,6 +66,17 @@ def init_db() -> None:
         """
     )
 
+    # Privacy Gateway의 Tier 2(등록된 실명 정확매칭) 단계에서 쓸 필드.
+    # 기존 DB에는 없는 컬럼이라 ALTER TABLE로 추가한다 — CREATE TABLE
+    # IF NOT EXISTS는 이미 있는 테이블의 컬럼을 늘려주지 않는다. 이미
+    # 컬럼이 있으면(재실행) OperationalError가 나므로 무시한다.
+    try:
+        conn.execute(
+            "ALTER TABLE cases ADD COLUMN known_identifiers TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -79,6 +90,7 @@ init_db()
 
 def create_case_if_missing(
     case_id: str,
+    known_identifiers: Optional[List[str]] = None,
 ) -> None:
     conn = _get_connection()
 
@@ -92,6 +104,60 @@ def create_case_if_missing(
 
     conn.commit()
     conn.close()
+
+    # known_identifiers는 사례가 이미 있던 경우(재상담 회기)에도 새로
+    # 등록/추가될 수 있으므로, INSERT OR IGNORE와 별개로 항상 반영한다.
+    if known_identifiers is not None:
+        set_known_identifiers(case_id, known_identifiers)
+
+
+def set_known_identifiers(
+    case_id: str,
+    known_identifiers: List[str],
+) -> None:
+    """
+    Privacy Gateway Tier 2(정확 매칭)에 쓸 아동/보호자 실명 등을 저장한다.
+    NER은 재현율이 100%가 아니므로(KLUE-NER 5,000문장 기준 사람이름
+    미탐률 36.8%, 2026-09-30 측정), 이미 알고 있는 실명은 NER 탐지에
+    기대지 않고 정확 문자열 대조로 항상 걸러낸다.
+    """
+
+    cleaned = sorted(
+        {
+            name.strip()
+            for name in known_identifiers
+            if name and name.strip()
+        }
+    )
+
+    conn = _get_connection()
+
+    conn.execute(
+        "UPDATE cases SET known_identifiers = ? WHERE case_id = ?",
+        (
+            json.dumps(cleaned, ensure_ascii=False),
+            case_id,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_known_identifiers(case_id: str) -> List[str]:
+    conn = _get_connection()
+
+    row = conn.execute(
+        "SELECT known_identifiers FROM cases WHERE case_id = ?",
+        (case_id,),
+    ).fetchone()
+
+    conn.close()
+
+    if row is None or not row["known_identifiers"]:
+        return []
+
+    return json.loads(row["known_identifiers"])
 
 
 # ============================================================

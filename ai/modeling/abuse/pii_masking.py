@@ -38,18 +38,27 @@ _REGEX_RULES: List[Tuple[str, re.Pattern]] = [
 # 별도 파인튜닝 없이 공개 체크포인트를 그대로 사용한다.
 # 도메인 특화(가족관계 표현 등) 확장은 필요성이 확인되면 추후 진행한다.
 
-NER_MODEL_NAME = "monologg/koelectra-base-v3-naver-ner"
+# monologg/koelectra-base-v3-naver-ner(뉴스 도메인 학습)에서 교체함 —
+# 상담 도메인 실사용 중 "아동"을 지명(LOC)으로, "선생님"/"밤"을 반쪽만
+# 잘라 오탐하는 문제를 확인했다(pii_masking.py 관련 이슈 확인, 2026-09-30).
+# Leo97/KoELECTRA-small-v3-modu-ner(국립국어원 모두의 말뭉치 학습,
+# 다운로드 수 최상위권)로 바꾸니 같은 문장에서 이런 오탐이 없었고,
+# 실제 이름·기관명·지명은 그대로 잘 잡았다(직접 비교 테스트로 확인).
+NER_MODEL_NAME = "Leo97/KoELECTRA-small-v3-modu-ner"
 
 _ner_tokenizer = AutoTokenizer.from_pretrained(NER_MODEL_NAME)
 _ner_model = AutoModelForTokenClassification.from_pretrained(NER_MODEL_NAME)
 _ner_model.eval()
 
-# 마스킹 대상은 사람이름(PER)/기관명(ORG)/지역명(LOC)뿐이다.
-# 날짜/시간/수량 등 나머지 태그는 개인 식별 정보가 아니므로 건드리지 않는다.
+# 마스킹 대상은 사람이름(PS)/기관명(OG)/지역명(LC)뿐이다. 이 모델은
+# 모두의 말뭉치 태그 체계(PS/OG/LC/DT/TI/QT/CV/AF/FD/TR/EV/AM/PT/MT/TM)를
+# 쓴다 — 날짜/시간/수량 등 나머지 태그는 개인 식별 정보가 아니므로
+# 건드리지 않는다. 토큰 이름(PERSON/ORG/LOCATION)은 기존과 동일하게
+# 유지해서, 이 값을 쓰는 다른 코드(복원 로직 등)는 안 건드려도 된다.
 _NER_LABEL_TO_TOKEN_PREFIX = {
-    "PER": "PERSON",
-    "ORG": "ORG",
-    "LOC": "LOCATION",
+    "PS": "PERSON",
+    "OG": "ORG",
+    "LC": "LOCATION",
 }
 
 _SCHOOL_KEYWORDS = ("학교", "유치원", "어린이집")
@@ -90,10 +99,14 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
     id2label = _ner_model.config.id2label
 
-    # 이 체크포인트는 한 단어 내 연속된 음절에도 "-B"를 반복해서
-    # 매기는 경우가 있어(예: "김민"=PER-B, "##수"=PER-B), B/I 구분보다
-    # "같은 태그 + 문자 위치가 이어짐(공백 없이 인접)"을 기준으로
-    # 병합해야 실제 단어 단위 span이 정확히 복원된다.
+    # 체크포인트마다 라벨 표기 방식이 다르다("B-PS"처럼 앞에 B/I를
+    # 붙이는 표준 방식도 있고, 예전에 쓰던 모델처럼 "PER-B"처럼 뒤에
+    # 붙이는 방식도 있었다). 어느 쪽이든 태그 이름은 "B"/"I"가 아닌
+    # 나머지 부분이므로, 그 부분만 골라내면 모델이 바뀌어도 안전하다.
+    # 또한 한 단어 내 연속된 음절에도 "B"를 반복해서 매기는 체크포인트가
+    # 있어(예: "김민"=B, "##수"=B), B/I 구분보다 "같은 태그 + 문자
+    # 위치가 이어짐(공백 없이 인접)"을 기준으로 병합해야 실제 단어
+    # 단위 span이 정확히 복원된다.
 
     spans: List[Tuple[int, int, str]] = []
     current_start = None
@@ -104,13 +117,19 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
         if current_tag is not None:
             spans.append((current_start, current_end, current_tag))
 
+    def _extract_tag(label: str):
+        if label in ("O", "0"):
+            return None
+        parts = [p for p in label.split("-") if p not in ("B", "I")]
+        return parts[0] if parts else None
+
     for (start, end), pred_id in zip(offsets, pred_ids):
         # 특수 토큰([CLS], [SEP], padding)은 offset이 (0, 0)이다.
         if start == end:
             continue
 
         label = id2label[pred_id]
-        tag = None if label == "O" else label.split("-")[0]
+        tag = _extract_tag(label)
 
         if tag is None or tag not in _NER_LABEL_TO_TOKEN_PREFIX:
             _flush()
@@ -189,10 +208,18 @@ def mask_pii(text: str) -> Tuple[str, Dict[str, str]]:
     for start, end, tag in selected_spans:
         original = text[start:end]
 
+        # tag는 모델의 원본 라벨(RRN/PHONE/EMAIL 또는 PS/OG/LC 등)이라
+        # 모델을 바꾸면 문자열이 달라진다. "ORG로 매핑되는 태그인가"는
+        # 원본 문자열이 아니라 _NER_LABEL_TO_TOKEN_PREFIX 매핑 결과로
+        # 판단해야, NER 모델을 교체해도 학교/병원 세분화가 계속 동작한다
+        # (Leo97로 교체하며 "OG" != "ORG"라 이 분기가 조용히 죽어있던
+        # 것을 확인해 고쳤다).
+        mapped = _NER_LABEL_TO_TOKEN_PREFIX.get(tag, tag)
+
         prefix = (
             _refine_org_prefix(original)
-            if tag == "ORG"
-            else _NER_LABEL_TO_TOKEN_PREFIX.get(tag, tag)
+            if mapped == "ORG"
+            else mapped
         )
 
         token = text_to_token.get(original)
