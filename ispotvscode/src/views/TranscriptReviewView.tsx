@@ -46,6 +46,9 @@ const EDITABLE: SessionStatus[] = ["STT_REVIEW_REQUIRED", "STT_CONFIRMED"];
 /** 읽기 전용일 때 띠에 보여 줄 이유. */
 function readOnlyReason(status: SessionStatus): string {
   if (status === "APPROVED") return "승인된 전사본은 수정할 수 없습니다.";
+  // 검수 중에 원문 변환을 다시 돌린 경우다(Backend 는 STT_REVIEW_REQUIRED 에서도 받는다). 보이는 것은 이전 전사본이다.
+  if (status === "STT_PROCESSING") return "원문 변환 중에는 원문을 수정할 수 없습니다(이전 전사본).";
+  if (status === "STT_FAILED") return "원문 변환이 실패해 이전 전사본을 보여 줍니다.";
 
   return "AI 분석 단계에서는 원문을 수정할 수 없습니다.";
 }
@@ -137,6 +140,9 @@ export default function TranscriptReviewView() {
   function applyEnvelope(envelope: TranscriptEnvelope) {
     setStatus(envelope.session_status);
     setSttError(envelope.error);
+    // 요청할 수 없는 상태(처리 중 등)로 바뀌면 지난 거절 문구는 지금 상태와 맞지 않는다.
+    // 남겨 두면 재확인 끝에 다시 실패했을 때 새 실패 사유 아래에 옛 문구가 되살아난다.
+    if (!STT_REQUESTABLE.includes(envelope.session_status)) setRequestError(null);
     if (envelope.transcript) {
       setVersion(envelope.transcript.version);
       setIsConfirmed(envelope.transcript.is_confirmed);
@@ -227,6 +233,8 @@ export default function TranscriptReviewView() {
     : `신뢰도 값이 없는 발화 ${hiddenNoConfCount}개는 이 목록에 나오지 않습니다(추가 확인 필요)`;
   const editable           = status !== null && EDITABLE.includes(status);
   const sttRequestable     = status !== null && STT_REQUESTABLE.includes(status);
+  // 재확인을 다 쓰고도 처리 중이다. 새로고침 없이는 바뀌지 않으니 "다시 확인" 을 보여 준다(AIReviewView 와 같다).
+  const sttGaveUp          = status === "STT_PROCESSING" && pollTries >= POLL_MAX_TRIES;
 
   function startEdit(id: string) {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text } : s));
@@ -306,6 +314,10 @@ export default function TranscriptReviewView() {
   /**
    * 원문 변환 요청(POST .../transcript). 202 로 돌아오고, 결과는 위의 재확인이 받아 온다.
    * 다시 실패하면 재확인이 STT_FAILED 를 받아 버튼이 다시 보인다.
+   * Backend 는 검수 중(STT_REVIEW_REQUIRED)에도 다시 변환을 받는다. 화면을 연 뒤 다른 탭 · 다른 사람이 먼저
+   * 변환 · 수정을 했으면 그 위에 새 STT 버전이 생겨 고친 문구가 최신본에서 빠지므로, 보내기 직전에 서버 상태를
+   * 다시 받아 이 화면이 보던 상태(요청 가능 · 전사본 없음)일 때만 보낸다. 그 사이에 끼는 짧은 경쟁까지 막으려면
+   * Backend 에 기대 상태 조건이 있어야 한다.
    */
   async function handleRequestStt() {
     if (!sessionId || requesting) return;
@@ -313,6 +325,14 @@ export default function TranscriptReviewView() {
     setRequesting(true);
     setRequestError(null);
     try {
+      const latest = await transcriptApi.get(sessionId);
+      if (!STT_REQUESTABLE.includes(latest.session_status) || latest.transcript) {
+        applyEnvelope(latest);
+        setPollTries(0);
+        showToast("회기 상태가 바뀌어 원문 변환을 요청하지 않았습니다. 바뀐 상태를 확인해 주세요.", "info");
+        return;
+      }
+
       const response = await transcriptApi.run(sessionId);
       setStatus(response.session_status);
       setSttError(null);
@@ -481,8 +501,18 @@ export default function TranscriptReviewView() {
                   {/* 음성 업로드는 이 화면에 없다. 업로드 창이 있는 메뉴를 알려 준다. */}
                   {status === "CREATED" && " · 상담 자료 검수 → 상담 자료 업로드에서 음성을 올려 주세요"}
                   {status === "AUDIO_UPLOADED" && " · 원문 변환을 요청하면 여기에 발화가 나타납니다"}
-                  {status === "STT_PROCESSING" && " · 끝나면 여기에 발화가 나타납니다"}
+                  {status === "STT_PROCESSING" && (sttGaveUp
+                    ? " · 오래 걸리고 있습니다. 잠시 뒤 다시 확인해 주세요."
+                    : " · 끝나면 여기에 발화가 나타납니다")}
                 </p>
+              )}
+              {sttGaveUp && (
+                <button
+                  onClick={() => setPollTries(0)}
+                  className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-[6px] hover:bg-[#F8FAFC] transition-colors"
+                >
+                  다시 확인
+                </button>
               )}
               {sttError && <p className="text-xs text-red-600">{sttError.message}</p>}
               {sttRequestable && (
@@ -494,7 +524,8 @@ export default function TranscriptReviewView() {
                   >
                     {requesting ? "요청 중..." : status === "STT_FAILED" ? "원문 변환 다시 요청" : "원문 변환 요청"}
                   </button>
-                  {/* 요청이 거절돼 상태가 바뀌었으면(다른 사람이 먼저 요청 등) 위 현재 상태가 이유를 보여 준다. */}
+                  {/* 요청이 거절돼 상태가 바뀌었으면(다른 사람이 먼저 요청 등) 위 현재 상태가 이유를 보여 준다.
+                      요청할 수 없는 상태로 바뀌면 applyEnvelope 가 이 문구를 지운다. */}
                   {requestError && <p className="text-xs text-red-600">{requestError}</p>}
                 </>
               )}
