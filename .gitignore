@@ -94,3 +94,6 @@ results/
 /data_prep/evaluation/ground_truth/gt_2876.csv
 /data_prep/evaluation/ground_truth/gt_2876.jsonl
 /data_prep/metadata/original_dataset_2876.csv
+
+# 시연 준비 스크립트가 만드는 무음 샘플(demo/prepare.py)
+demo/*.wav

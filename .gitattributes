@@ -27,3 +27,6 @@
 # 이쪽 .gitattributes 에는 규칙이 없어서 두 파일이 서로 어긋나 있었다.
 # 병합 시 이 줄이 빠지면 가중치가 일반 blob 으로 커밋되어 저장소가 망가진다.
 *.pth filter=lfs diff=lfs merge=lfs -text
+
+# 시연용 .cmd 는 Windows 줄바꿈으로 둔다(LF 만 있으면 cmd 가 줄을 잘못 읽을 수 있다).
+*.cmd text eol=crlf
