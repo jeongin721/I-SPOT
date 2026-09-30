@@ -150,18 +150,22 @@ interface DerivedStatus {
   stt: UiSttStatus;
   ai: UiAiStatus;
   record: UiRecordStatus;
+  /** 목록 · 표의 STT 칸 문구. stt 와 같되, 대기 · 실패 상태는 정확한 이름을 쓴다(STT_LABELS). */
+  sttLabel: string;
+  /** 목록 · 표의 AI 칸 문구. ai 와 같되, AI 분석 실패는 정확한 이름을 쓴다(AI_LABELS). */
+  aiLabel: string;
   /** 실패 상태인가. 화면 타입에는 실패 표현이 없어 별도로 알린다. */
   failed: boolean;
   /** 실패나 진행 상황을 사람에게 보여줄 문구. */
   label: string;
 }
 
-const STATUS_MAP: Record<SessionStatus, DerivedStatus> = {
+const STATUS_MAP: Record<SessionStatus, Omit<DerivedStatus, "sttLabel" | "aiLabel">> = {
   CREATED: {
     stt: "처리중", ai: "대기중", record: "미작성", failed: false, label: "음성 업로드 대기",
   },
   AUDIO_UPLOADED: {
-    stt: "처리중", ai: "대기중", record: "미작성", failed: false, label: "STT 실행 대기",
+    stt: "처리중", ai: "대기중", record: "미작성", failed: false, label: "원문 변환 대기",
   },
   STT_PROCESSING: {
     stt: "처리중", ai: "대기중", record: "미작성", failed: false, label: "받아쓰는 중",
@@ -182,15 +186,31 @@ const STATUS_MAP: Record<SessionStatus, DerivedStatus> = {
     stt: "분석완료", ai: "상담사검토완료", record: "상담사검토완료", failed: false, label: "승인 완료",
   },
   STT_FAILED: {
-    stt: "처리중", ai: "대기중", record: "미작성", failed: true, label: "STT 실패 — 재시도 필요",
+    stt: "처리중", ai: "대기중", record: "미작성", failed: true, label: "원문 변환 실패 — 재시도 필요",
   },
   AI_FAILED: {
     stt: "검수완료", ai: "대기중", record: "미작성", failed: true, label: "AI 분석 실패 — 재시도 필요",
   },
 };
 
+// 화면 타입(sttStatus · aiStatus)에는 대기 · 실패를 나타낼 값이 없어서, 위 표 그대로면
+// 음성 업로드 대기 · 원문 변환 대기 · 원문 변환 실패가 STT 칸에 "처리중", AI 분석 실패가 AI 칸에 "대기중" 으로 보인다.
+// 목업 타입은 그대로 두고 칸에 보여 줄 문구만 이 상태들에서 바꾼다. 조건 판단은 계속 stt · ai 값으로 한다.
+// 이름은 Backend 가 오류 문구에 쓰는 상태 이름과 같게 한다.
+const STT_LABELS: Partial<Record<SessionStatus, string>> = {
+  CREATED: "음성 업로드 대기",
+  AUDIO_UPLOADED: "원문 변환 대기",
+  STT_FAILED: "원문 변환 실패",
+};
+
+const AI_LABELS: Partial<Record<SessionStatus, string>> = {
+  AI_FAILED: "AI 분석 실패",
+};
+
 export function deriveStatus(status: SessionStatus): DerivedStatus {
-  return STATUS_MAP[status];
+  const base = STATUS_MAP[status];
+
+  return { ...base, sttLabel: STT_LABELS[status] ?? base.stt, aiLabel: AI_LABELS[status] ?? base.ai };
 }
 
 /** 다음에 해야 할 행동. 버튼 활성화 판단에 쓴다. */
@@ -238,12 +258,29 @@ export interface SessionAdapterExtras {
   durationLabel?: string;
 }
 
+/**
+ * 화면의 Session 에 Backend 상태에서 나온 표시 정보를 더한 형태.
+ * 목업 타입(mockData.Session)의 sttStatus · aiStatus 에는 대기 · 실패가 없어서, 목록 · 표는 이 문구를 보여 준다.
+ */
+export interface SessionWithStatus extends UiSession {
+  /** Backend 회기 상태 그대로. */
+  backendStatus: SessionStatus;
+  /** STT 칸 문구(deriveStatus 의 sttLabel). */
+  sttLabel: string;
+  /** AI 칸 문구(deriveStatus 의 aiLabel). */
+  aiLabel: string;
+  /** 회기 진행 상황을 사람에게 보여줄 문구(deriveStatus 의 label). */
+  statusLabel: string;
+  /** 실패 상태(STT_FAILED · AI_FAILED)인가. */
+  failed: boolean;
+}
+
 /** Backend Session 을 화면의 Session 으로 바꾼다. */
 export function toUiSession(
   source: Session,
   caseNumber: string,
   extras: SessionAdapterExtras = {},
-): UiSession {
+): SessionWithStatus {
   const derived = deriveStatus(source.status);
   const at = source.consulted_at ?? source.created_at;
 
@@ -260,6 +297,11 @@ export function toUiSession(
     sttStatus: derived.stt,
     aiStatus: derived.ai,
     recordStatus: derived.record,
+    backendStatus: source.status,
+    sttLabel: derived.sttLabel,
+    aiLabel: derived.aiLabel,
+    statusLabel: derived.label,
+    failed: derived.failed,
   };
 }
 

@@ -606,14 +606,14 @@ function CasePlanTab({ caseObj, onNavigate }: { caseObj: ManagedCase; onNavigate
 const STT_CHIP: Record<string, { bg: string; color: string }> = {
   "분석완료": { bg: "#F0FDF4", color: "#16A34A" },
   "검수완료": { bg: "#EFF6FF", color: "#2563EB" },
-  "실패":     { bg: "#FEF2F2", color: "#B91C1C" },
+  "원문 변환 실패": { bg: "#FEF2F2", color: "#B91C1C" },
 };
 
 const AI_CHIP: Record<string, { bg: string; color: string }> = {
   "상담사검토완료": { bg: "#F0FDF4", color: "#16A34A" },
   "검토완료":       { bg: "#EFF6FF", color: "#2563EB" },
   "검토필요":       { bg: "#FFF7ED", color: "#D97706" },
-  "실패":           { bg: "#FEF2F2", color: "#B91C1C" },
+  "AI 분석 실패":   { bg: "#FEF2F2", color: "#B91C1C" },
 };
 
 /** 요약 상태를 사람에게 보여줄 문구. */

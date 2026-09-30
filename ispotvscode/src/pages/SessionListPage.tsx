@@ -3,18 +3,20 @@ import { useParams, useNavigate } from "react-router";
 import type { Session as UiSession } from "../data/mockData";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import { cases as casesApi } from "../api/endpoints";
-import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId, type SessionWithStatus } from "../api/adapters";
 
 // 사례와 회기 목록은 Backend(GET /cases/{id}, GET /cases/{id}/sessions)에서 온다.
 // 주소의 caseId 는 Backend UUID 다. 녹음 길이 · 상담사(회기 단위)는 아직 Backend 에 없어 "—" 로 보인다.
 const SESSION_PAGE_SIZE = 100;
 
 
+// 칸 문구(sttLabel · aiLabel)로 색을 고른다. 대기 상태(음성 업로드 대기 · 원문 변환 대기)는 기본 색으로 보인다.
 const STT_CFG: Record<string, string> = {
   "처리중":   "bg-blue-50 text-blue-700",
   "검수필요": "bg-amber-50 text-amber-700",
   "검수완료": "bg-green-50 text-green-700",
   "분석완료": "bg-green-50 text-green-700",
+  "원문 변환 실패": "bg-red-50 text-red-700",
 };
 
 const AI_CFG: Record<string, string> = {
@@ -23,13 +25,14 @@ const AI_CFG: Record<string, string> = {
   "검토필요": "text-amber-600 font-semibold",
   "검토완료": "text-green-600",
   "상담사검토완료": "text-green-700 font-semibold",
+  "AI 분석 실패": "text-red-600 font-semibold",
 };
 
 export default function SessionListPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
   const [c, setCase]              = useState<CaseWithId | null>(null);
-  const [sessions, setSessions]   = useState<UiSession[]>([]);
+  const [sessions, setSessions]   = useState<SessionWithStatus[]>([]);
   const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -108,12 +111,12 @@ export default function SessionListPage() {
                     <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.counselor}</td>
                     <td className="px-4 py-3 text-[12px] text-[#64748B]">{s.duration}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STT_CFG[s.sttStatus] ?? "bg-slate-50 text-slate-600"}`}>
-                        {s.sttStatus}
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STT_CFG[s.sttLabel] ?? "bg-slate-50 text-slate-600"}`}>
+                        {s.sttLabel}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-[12px] ${AI_CFG[s.aiStatus] ?? "text-[#64748B]"}`}>{s.aiStatus}</span>
+                      <span className={`text-[12px] ${AI_CFG[s.aiLabel] ?? "text-[#64748B]"}`}>{s.aiLabel}</span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

@@ -5,7 +5,7 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import { useState, useEffect } from "react";
 import UploadModal from "../components/ui/UploadModal";
 import { cases as casesApi, documents as documentsApi, summary as summaryApi } from "../api/endpoints";
-import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId } from "../api/adapters";
+import { describeApiError, toUiCaseDetail, toUiSession, type CaseWithId, type SessionWithStatus } from "../api/adapters";
 import { toUiDocumentRows, type UiDocumentRow } from "../api/documentAdapters";
 import type { Summary } from "../api/types";
 
@@ -15,11 +15,13 @@ import type { Summary } from "../api/types";
 const SESSION_PAGE_SIZE = 100;
 
 
+// 칸 문구(sttLabel)로 색을 고른다. 대기 상태(음성 업로드 대기 · 원문 변환 대기)는 기본 색으로 보인다.
 const STT_STATUS_CFG: Record<string, string> = {
   "처리중":   "border-[#94A3B8] text-[#475569]",
   "검수필요": "border-[#64748B] text-[#172033] font-semibold",
   "검수완료": "border-[#CBD5E1] text-[#475569]",
   "분석완료": "border-[#CBD5E1] text-[#475569]",
+  "원문 변환 실패": "border-[#FCA5A5] text-[#B91C1C]",
 };
 
 // 문서 탭은 최근 회기 몇 개의 문서만 불러온다(회기마다 GET /sessions/{id}/documents 가 하나씩 나간다).
@@ -39,7 +41,7 @@ export default function CaseDetailPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [docList, setDocList] = useState<DocumentListState | null>(null);
   const [c, setCase]                = useState<CaseWithId | null>(null);
-  const [sessions, setSessions]     = useState<UiSession[]>([]);
+  const [sessions, setSessions]     = useState<SessionWithStatus[]>([]);
   const [loading, setLoading]       = useState(true);
   const [loadError, setLoadError]   = useState<string | null>(null);
   // 최근 회기의 요약(GET /sessions/{id}/summary). 아직 분석 · 승인 전이면 null.
@@ -331,11 +333,11 @@ export default function CaseDetailPage() {
                     <td className="px-4 py-3 text-[13px] text-[#475569]">{s.counselor}</td>
                     <td className="px-4 py-3 text-[13px] text-[#475569]">{s.duration}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded border text-[12px] bg-white ${STT_STATUS_CFG[s.sttStatus] ?? "border-[#E2E8F0] text-[#64748B]"}`}>
-                        {s.sttStatus}
+                      <span className={`px-2 py-0.5 rounded border text-[12px] bg-white ${STT_STATUS_CFG[s.sttLabel] ?? "border-[#E2E8F0] text-[#64748B]"}`}>
+                        {s.sttLabel}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-[13px] text-[#64748B]">{s.aiStatus}</td>
+                    <td className={`px-4 py-3 text-[13px] ${s.backendStatus === "AI_FAILED" ? "text-[#B91C1C]" : "text-[#64748B]"}`}>{s.aiLabel}</td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/transcript`)}

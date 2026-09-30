@@ -323,9 +323,9 @@ export function toHistoryRow(source: Session): HistoryRow {
     type: NOT_PROVIDED,
     location: source.location ?? NOT_PROVIDED,
     duration: NOT_PROVIDED,
-    // 실패 상태는 화면 타입에 표현이 없어(STT_FAILED 가 "처리중" 으로 보인다) 여기서 "실패" 로 바꾼다.
-    sttLabel: source.status === "STT_FAILED" ? "실패" : derived.stt,
-    aiLabel: source.status === "AI_FAILED" ? "실패" : derived.ai,
+    // 대기 · 실패 상태는 화면 타입에 표현이 없어 adapters.deriveStatus 의 칸 문구를 쓴다.
+    sttLabel: derived.sttLabel,
+    aiLabel: derived.aiLabel,
   };
 }
 
