@@ -339,8 +339,9 @@ export default function CaseDetailPage() {
                     </td>
                     <td className={`px-4 py-3 text-[13px] ${s.backendStatus === "AI_FAILED" ? "text-[#B91C1C]" : "text-[#64748B]"}`}>{s.aiLabel}</td>
                     <td className="px-4 py-3">
+                      {/* AI 분석 실패 회기는 원문 화면이 읽기 전용이라, 다시 요청할 수 있는 AI 분석 화면으로 보낸다. */}
                       <button
-                        onClick={() => navigate(`/cases/${caseId}/sessions/${s.id}/transcript`)}
+                        onClick={() => navigate(s.backendStatus === "AI_FAILED" ? `/cases/${caseId}/analyses/${s.id}` : `/cases/${caseId}/sessions/${s.id}/transcript`)}
                         className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium"
                       >
                         보기
