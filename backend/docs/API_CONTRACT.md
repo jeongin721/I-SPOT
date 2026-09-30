@@ -794,7 +794,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 ```
 
 - 목록은 `data` 가 **문서 배열 그대로**다(`items` · `meta` 가 없다 — 1.1 의 예외). 페이지를 나누지 않고 `created_at` 오래된 순이다.
-- `created_by_id` 는 `null` 일 수 있다(만든 계정이 DB 에서 지워지면 비워진다. 계정을 지우는 API 는 지금 없다).
+- `created_by_id` · `approved_by_id` 는 그 계정이 DB 에서 지워지면 `null` 로 비워진다(계정을 지우는 API 는 지금 없다). `approved_by_id` 는 승인 전에도 `null` 이다.
 
 ### 요청 규칙
 

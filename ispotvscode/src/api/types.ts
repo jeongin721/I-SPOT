@@ -308,9 +308,12 @@ export interface ChildHandoffReviewSegment extends ChildHandoffSegment {
  * segments 의 speaker 로 응답마다 다시 만든다. 분류 모델의 판단이 아니라 참고용이다.
  */
 export interface ChildHandoff {
-  /** CHILD 발화 문장을 시간 순으로 이은 것. 없으면 "". */
+  /** 문장이 있는 CHILD 발화를 시간 순으로 공백 하나로 이은 것. 없으면 "". */
   child_analysis_text: string;
-  /** speaker 가 CHILD 인 발화. 시작 시각 순. */
+  /**
+   * speaker 가 CHILD 인 발화. 시작 시각 순.
+   * 문장이 있는 CHILD 발화가 하나도 없으면 빈 배열이다(문장이 빈 CHILD 발화만 있을 때 포함).
+   */
   confirmed_child_segments: ChildHandoffSegment[];
   /** speaker 가 UNKNOWN 인 발화. 시작 시각 순. */
   review_needed_segments: ChildHandoffReviewSegment[];
