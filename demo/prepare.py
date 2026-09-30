@@ -85,6 +85,26 @@ def wait_http(url: str, seconds: float) -> bool:
 # ---------------------------------------------------------------- 확인
 
 
+def check_path_length() -> None:
+    """음성 저장 경로가 Windows 경로 길이 제한(260자)을 넘지 않는지 미리 본다.
+
+    저장 경로는 <저장 폴더>\\<사례 id 36자>\\<회기 id 36자>\\<12자>_<파일 이름 최대 65자> 라서
+    저장 폴더 뒤로 최대 153자가 붙는다. 넘으면 업로드가 '음성 파일 저장에 실패했습니다' 로 끝난다.
+    """
+
+    if os.name != "nt":
+        return
+
+    longest = len(str((STORAGE_DIR / "audio").resolve())) + 153
+
+    if longest > 259:
+        fail(
+            f"이 폴더 경로가 너무 깁니다({ROOT}).\n"
+            "        음성 저장 경로가 Windows 길이 제한을 넘어 업로드가 실패합니다.\n"
+            "        C:\\ispot-demo 처럼 짧은 경로로 폴더를 옮긴 뒤 다시 실행해 주세요."
+        )
+
+
 def check_python() -> None:
     version = sys.version_info
 
@@ -299,6 +319,7 @@ def print_login() -> None:
 
 
 def cmd_setup() -> None:
+    check_path_length()
     check_python()
     npm = find_npm()
     ensure_venv()
@@ -312,6 +333,7 @@ def cmd_reset() -> None:
     if not VENV_PY.exists():
         fail("먼저 demo\\setup.cmd 를 실행해 주세요.")
 
+    check_path_length()
     reset_data()
     say("시연 데이터를 처음 상태로 되돌렸습니다. demo\\start.cmd 로 실행합니다.")
     print_login()
