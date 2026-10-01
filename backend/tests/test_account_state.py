@@ -8,7 +8,7 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
@@ -228,6 +228,60 @@ def test_unknown_and_locked_accounts_still_run_bcrypt(
 
     # 잠긴 계정은 진짜 해시가 아니라 가짜 해시와 비교한다.
     assert compared == [user_service._dummy_password_hash()]
+
+
+def _commits_around_password_check(
+    client: TestClient, monkeypatch, email: str, password: str
+) -> Tuple[int, int]:
+    """로그인 한 번에서 비밀번호 대조(verify_password) 앞 · 뒤로 DB 에 커밋한 횟수."""
+
+    steps: List[str] = []
+    original = user_service.verify_password
+
+    def spy(plain: str, hashed: str) -> bool:
+        steps.append("verify")
+        return original(plain, hashed)
+
+    def on_commit(_connection) -> None:
+        steps.append("commit")
+
+    monkeypatch.setattr(user_service, "verify_password", spy)
+    event.listen(engine, "commit", on_commit)
+
+    try:
+        _login(client, email, password)
+    finally:
+        event.remove(engine, "commit", on_commit)
+        monkeypatch.setattr(user_service, "verify_password", original)
+
+    assert steps.count("verify") == 1
+
+    at = steps.index("verify")
+
+    return steps[:at].count("commit"), steps[at + 1:].count("commit")
+
+
+def test_failed_logins_commit_at_the_same_point_for_every_account(
+    client: TestClient, counselor_id: uuid.UUID, monkeypatch
+) -> None:
+    """
+    없는 계정 · 있는 계정(틀린 비밀번호) · 잠긴 계정이 비밀번호 대조 앞뒤로 같은 수만큼 커밋한다.
+
+    커밋(디스크 기록)은 몇 ms 걸린다. 있는 계정만 대조 전에 시도를 세어 한 번 더 커밋하면
+    bcrypt 시간을 맞춰도 응답 시간 차이로 계정이 있는지 드러난다.
+    """
+
+    missing = _commits_around_password_check(
+        client, monkeypatch, "nobody@ispot.example.com", WRONG_PASSWORD
+    )
+    existing = _commits_around_password_check(client, monkeypatch, COUNSELOR_EMAIL, WRONG_PASSWORD)
+
+    _lock(client)
+
+    locked = _commits_around_password_check(client, monkeypatch, COUNSELOR_EMAIL, WRONG_PASSWORD)
+
+    # 시도 기록(감사 로그)과 실패 횟수를 대조 전에 한 번에 커밋하고, 대조 뒤에는 커밋하지 않는다.
+    assert missing == existing == locked == (1, 0)
 
 
 def test_failure_count_is_added_in_database(counselor_id: uuid.UUID, db) -> None:

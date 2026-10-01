@@ -560,9 +560,16 @@ def test_transcript_edit_rejects_time_inverted_after_merging_saved_value(
     assert "details" not in response.json()["error"]
 
 
-def test_transcript_edit_without_transcript_returns_not_found(
+def test_transcript_edit_without_transcript_returns_state_error(
     client: TestClient, counselor_headers, session: dict
 ) -> None:
+    """
+    원문 수정(PATCH)은 상태를 먼저 본다. 전사본이 없는 회기(CREATED)도 404 가 아니라 409 다.
+
+    STT 요청 · 원문 확정 · AI 분석 요청은 음성 · 전사본이 없으면 상태보다 먼저 404 를 준다
+    (README A.6 · CODE_GUIDE). 수정할 수 있는 상태(원문 검수 필요 · AI 분석 대기)에는 전사본이 늘 있다.
+    """
+
     response = client.patch(
         f"/api/v1/sessions/{session['id']}/transcript",
         json={"segments": [{"segment_id": "seg_001", "text": "수정"}]},

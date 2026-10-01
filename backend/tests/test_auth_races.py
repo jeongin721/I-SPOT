@@ -9,6 +9,7 @@
 
 import threading
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 
 import pytest
@@ -20,6 +21,7 @@ from app.core.database import SessionLocal
 from app.core.enums import AuditAction
 from app.main import app
 from app.models.audit_log import AuditLog
+from app.models.base import as_utc
 from app.models.user import User
 from app.services import audit_service, user_service
 from tests.conftest import COUNSELOR_PASSWORD
@@ -123,6 +125,48 @@ def test_concurrent_wrong_logins_check_password_only_up_to_the_limit(
     )
 
     assert correct.status_code == 401
+
+
+def test_concurrent_wrong_logins_right_after_timed_lock_expires_lock_again_at_the_limit(
+    counselor_id: uuid.UUID, db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    시간 잠금(LOGIN_LOCK_MINUTES > 0)이 막 풀린 순간에 몰려 든 요청도 기준 횟수까지만 대조하고 다시 잠근다.
+
+    요청마다 처음 읽은 "지난 잠금" 을 보고 실패 횟수를 0 으로 되돌리면, 앞 요청이 예약한 횟수를 지워
+    기준보다 많이 대조하고 다시 잠기지도 않는다. 잠금은 처음 읽은 잠금 시각이 그대로일 때 한 번만 풀어야 한다.
+    """
+
+    monkeypatch.setattr(settings, "LOGIN_LOCK_MINUTES", 15)
+
+    user = db.get(User, counselor_id)
+    user.failed_login_count = settings.LOGIN_MAX_FAILURES
+    user.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+
+    wrong = [
+        {"email": COUNSELOR_EMAIL, "password": f"Wrong-Guess-{index:02d}x"}
+        for index in range(BURST)
+    ]
+
+    statuses = _burst(lambda c, body: c.post(LOGIN, json=body).status_code, wrong)
+
+    assert statuses == [401] * BURST
+
+    login_failures = (AuditLog.action == AuditAction.LOGIN, AuditLog.status == "FAILURE")
+
+    assert _count(db, *login_failures, AuditLog.error_code == "INVALID_CREDENTIALS") == (
+        settings.LOGIN_MAX_FAILURES
+    )
+    assert _count(db, *login_failures, AuditLog.error_code == "ACCOUNT_LOCKED") == (
+        BURST - settings.LOGIN_MAX_FAILURES
+    )
+    assert _count(db, AuditLog.action == AuditAction.ACCOUNT_LOCKED) == 1
+
+    db.refresh(user)
+
+    assert user.failed_login_count == settings.LOGIN_MAX_FAILURES
+    assert as_utc(user.locked_until) > datetime.now(timezone.utc)
 
 
 # =========================================================
