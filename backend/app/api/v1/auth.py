@@ -79,10 +79,17 @@ def get_me(current_user: CurrentUser) -> DataResponse[UserResponse]:
 )
 def change_my_password(
     payload: PasswordChangeRequest,
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
-    user_service.change_password(db, current_user, payload)
+    user_service.change_password(
+        db,
+        current_user,
+        payload,
+        ip_address=client_ip(request),
+        user_agent=user_agent(request),
+    )
 
 
 @router.post(

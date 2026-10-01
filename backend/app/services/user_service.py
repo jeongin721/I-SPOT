@@ -17,6 +17,7 @@ from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError, ErrorCode, conflict
 from app.core.password_policy import validate_password
 from app.core.security import hash_password, verify_password
+from app.models.audit_log import AuditLog
 from app.models.base import as_utc
 from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
@@ -425,10 +426,104 @@ def remember_password(db: Session, user: User, hashed_password: str) -> None:
         db.delete(row)
 
 
+def _password_change_failures(db: Session, user: User) -> int:
+    """
+    마지막 로그인(또는 비밀번호 변경) 뒤로 현재 비밀번호를 틀린 횟수. 감사 로그로 센다.
+
+    실패는 어차피 감사 로그에 남기므로 따로 칸을 두지 않는다. 기준 횟수를 넘었는지만 알면 되므로
+    최근 기록을 기준 횟수만큼만 읽는다. 시각 비교는 파이썬에서 한다(SQLite 는 시간대 없이 돌려준다).
+    """
+
+    since = max(
+        (
+            value
+            for value in (as_utc(user.last_login_at), as_utc(user.password_changed_at))
+            if value is not None
+        ),
+        default=None,
+    )
+
+    recent = db.scalars(
+        select(AuditLog.created_at)
+        .where(
+            AuditLog.action == AuditAction.PASSWORD_CHANGED,
+            AuditLog.status == "FAILURE",
+            AuditLog.actor_id == user.id,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(settings.LOGIN_MAX_FAILURES)
+    ).all()
+
+    return sum(1 for at in recent if since is None or as_utc(at) >= since)
+
+
+def _reject_wrong_current_password(
+    db: Session,
+    user: User,
+    *,
+    ip_address: Optional[str],
+    user_agent: Optional[str],
+) -> APIError:
+    """
+    현재 비밀번호가 틀린 요청을 기록하고 돌려줄 오류를 만든다.
+
+    틀린 횟수가 기준(LOGIN_MAX_FAILURES)에 닿으면 그 계정의 Token 을 모두 끊는다(401).
+    토큰만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀 보지 못하게 하기 위해서다.
+    계정은 잠그지 않는다. 다시 로그인하면 되고, 로그인 쪽에는 이미 실패 잠금이 있다.
+    """
+
+    audit_service.record(
+        db,
+        action=AuditAction.PASSWORD_CHANGED,
+        entity_type="User",
+        entity_id=user.id,
+        actor_id=user.id,
+        status="FAILURE",
+        error_code=ErrorCode.INVALID_CURRENT_PASSWORD.value,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.flush()
+
+    failures = _password_change_failures(db, user)
+
+    if failures < settings.LOGIN_MAX_FAILURES:
+        db.commit()
+
+        return APIError(
+            ErrorCode.INVALID_CURRENT_PASSWORD,
+            "현재 비밀번호가 올바르지 않습니다.",
+            status_code=400,
+        )
+
+    user.token_version += 1
+
+    audit_service.record(
+        db,
+        action=AuditAction.LOGOUT_ALL,
+        entity_type="User",
+        entity_id=user.id,
+        actor_id=user.id,
+        detail={"reason": "PASSWORD_CHANGE_FAILURES", "failed_attempts": failures},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.commit()
+
+    return APIError(
+        ErrorCode.UNAUTHORIZED,
+        "현재 비밀번호를 여러 번 틀려 로그아웃했습니다. 다시 로그인해 주세요.",
+        status_code=401,
+    )
+
+
 def change_password(
     db: Session,
     user: User,
     payload: PasswordChangeRequest,
+    *,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
 ) -> None:
     """
     본인 비밀번호 변경.
@@ -438,19 +533,15 @@ def change_password(
 
     현재 비밀번호가 틀리면 401 이 아니라 400 이다. Frontend 는 401 을 로그인 만료로 보고
     로그인 화면으로 보내므로(client.ts isUnauthorized), 입력 실수로 쫓겨나지 않게 한다.
+    단, 정해진 횟수만큼 틀리면 Token 을 끊고 401 을 준다(_reject_wrong_current_password).
     """
 
-    if not verify_password(payload.current_password, user.hashed_password):
-        raise APIError(
-            ErrorCode.INVALID_CURRENT_PASSWORD,
-            "현재 비밀번호가 올바르지 않습니다.",
-            status_code=400,
-        )
-
+    # 새 비밀번호 규칙 · 같은 비밀번호 검사는 현재 비밀번호를 확인하기 전에 한다.
+    # 확인한 뒤에 하면 "현재 비밀번호가 맞으면 422, 틀리면 400" 이 되어, 비밀번호를 바꾸지 않고도
+    # 정답인지 알아내는 수단이 된다. 이 두 검사는 현재 비밀번호와 관계없이 같은 답을 준다.
     validate_password(payload.new_password, email=user.email, name=user.name)
 
-    # 현재 비밀번호가 맞는 것을 위에서 확인했으므로 평문 비교로 충분하다.
-    # bcrypt 를 한 번 더 돌리면 요청당 0.3초가 그냥 늘어난다.
+    # 입력한 두 값끼리의 비교라 평문 비교로 충분하다(bcrypt 를 돌리면 요청당 0.3초가 그냥 늘어난다).
     # compare_digest 는 ASCII 가 아닌 문자열을 str 로 받지 못해 bytes 로 비교한다.
     if compare_digest(
         payload.new_password.encode("utf-8"),
@@ -462,7 +553,13 @@ def change_password(
             status_code=422,
         )
 
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise _reject_wrong_current_password(
+            db, user, ip_address=ip_address, user_agent=user_agent
+        )
+
     # 팀 회의 결정(2026-09-18): 이전 비밀번호 재사용 금지
+    # 이전 비밀번호를 알려 주는 셈이 되므로 현재 비밀번호를 확인한 뒤에만 검사한다.
     for previous in _recent_password_hashes(db, user):
         if verify_password(payload.new_password, previous):
             raise APIError(
@@ -493,6 +590,8 @@ def change_password(
         entity_type="User",
         entity_id=user.id,
         actor_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
     db.commit()
