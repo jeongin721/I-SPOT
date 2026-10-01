@@ -123,10 +123,16 @@ def bad_request(code: ErrorCode, message: str) -> APIError:
     return APIError(code, message, status_code=400)
 
 
-def invalid_session_state(current: str, expected: str) -> APIError:
+def invalid_session_state(current: str, expected: str, message: str) -> APIError:
+    """회기 상태 때문에 거절할 때 쓴다.
+
+    message 는 사람에게 보여줄 문구라 상태 코드를 넣지 않는다(state_machine 이 만든다).
+    상태 코드는 details 에만 둔다.
+    """
+
     return APIError(
         ErrorCode.INVALID_SESSION_STATE,
-        f"현재 상태({current})에서는 처리할 수 없습니다. 필요 상태: {expected}",
+        message,
         status_code=409,
         details={"current_status": current, "expected_status": expected},
     )

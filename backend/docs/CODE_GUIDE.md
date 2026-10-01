@@ -150,7 +150,7 @@ Frontend 는 `session_status` 만 보고 판단하면 된다.
 | 순서 | 파일 | 줄 수 | 왜 먼저 보나 |
 |---|---|---|---|
 | 1 | `app/core/enums.py` | 114 | 상담 상태, 화자 종류 등 **용어 사전**. 여기부터 봐야 나머지가 읽힌다 |
-| 2 | `app/core/state_machine.py` | 73 | 상태가 어떤 순서로 바뀌는지. 이 시스템의 뼈대 |
+| 2 | `app/core/state_machine.py` | 113 | 상태가 어떤 순서로 바뀌는지. 이 시스템의 뼈대 |
 | 3 | `app/schemas/contracts.py` | 90 | 팀 A·B 와 주고받는 **공통 데이터 형식** |
 | 4 | `app/models/session.py` | 133 | 가장 중심이 되는 테이블 |
 | 5 | `app/api/v1/sessions.py` | 57 | 가장 단순한 Router. 계층 구조 감 잡기 |
@@ -162,7 +162,7 @@ Frontend 는 `session_status` 만 보고 판단하면 된다.
 
 ### 테스트를 읽는 것도 좋은 방법이다
 
-`tests/test_e2e_flow.py` (252줄) 는 로그인부터 승인까지 전체 흐름을
+`tests/test_e2e_flow.py` (262줄) 는 로그인부터 승인까지 전체 흐름을
 순서대로 실행한다. **이 파일 하나가 사용 설명서 역할**을 한다.
 
 ---
