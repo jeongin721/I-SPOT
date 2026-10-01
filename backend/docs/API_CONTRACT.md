@@ -54,6 +54,7 @@
 - `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 두 가지가 더 있다. `message` 로 구분한다.
   - 본문이 너무 큼 — 본문을 받는 창구(JSON · form)에서 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
     **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절 `AUDIO_TOO_LARGE`.
+    음성 업로드 경로라도 `multipart/form-data` 가 아닌 본문은 음성이 아니므로 이 한도와 문구를 쓴다.
     본문을 읽지 않는 창구(GET, 본문 없는 POST)는 보낸 본문을 무시하고 평소처럼 답한다(`401` 이나 정상 응답).
   - 서비스가 내는 것 — 사례 담당자로 정지된 계정을 지정함(4절).
 
@@ -580,6 +581,13 @@ Query: `page`, `page_size`, `status`
 
 `multipart/form-data`
 
+- 큰 본문(`AUDIO_MAX_SIZE_MB` + 1MB 까지)은 서명 · 만료가 맞는 token 을 붙인 `multipart/form-data` 요청만 받는다.
+  token 이 없거나 틀리거나 만료됐으면 본문을 해석하기 전에 `401 UNAUTHORIZED` 로 답한다. 문구는 다른 창구와 같고
+  ("Authorization 헤더가 없습니다." · "유효하지 않은 토큰입니다." · "토큰이 만료되었습니다. 다시 로그인해 주세요."),
+  본문 크기와 상관없다. 이때도 남은 본문은 버리며 읽은 뒤 답한다(최대 30초).
+- 여기서는 token 의 서명 · 만료만 본다. 정지 · 강제 로그아웃 · 임시 비밀번호 상태는 본문을 받은 뒤 평소처럼 확인한다(3절).
+- `multipart/form-data` 가 아닌 본문은 일반 본문 한도(`REQUEST_MAX_BODY_MB`, 1.2)를 쓴다.
+
 | field | 필수 | 설명 |
 |---|---|---|
 | `file` | O | 녹음 파일 |
@@ -615,7 +623,7 @@ Query: `page`, `page_size`, `status`
 | code | status | 상황 |
 |---|---|---|
 | `AUDIO_EMPTY_FILE` | 400 | 빈 파일 |
-| `AUDIO_TOO_LARGE` | 400 | 크기 초과. 요청 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘으면 로그인 확인보다 먼저 거절한다. 거절 전에 남은 본문을 읽어 버리므로(최대 30초) 개발 프록시(vite)를 거쳐도 이 응답이 온다 |
+| `AUDIO_TOO_LARGE` | 400 | 크기 초과. token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘으면 계정 상태 · 회기 확인보다 먼저 거절한다(token 이 없거나 틀리면 크기와 상관없이 `401`). 거절 전에 남은 본문을 읽어 버리므로(최대 30초) 개발 프록시(vite)를 거쳐도 이 응답이 온다 |
 | `AUDIO_UNSUPPORTED_TYPE` | 400 | 확장자/MIME 불허, 확장자와 실제 형식 불일치 |
 | `AUDIO_CORRUPTED` | 400 | 음성 형식 판별 불가 |
 | `AUDIO_INVALID_FILENAME` | 400 | 파일명 없음/확장자 없음 |
@@ -1104,7 +1112,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(`field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2) |
-| `VALIDATION_ERROR` | 400 | `details` 없음 — multipart 본문을 해석할 수 없음(예: boundary 없음), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
+| `VALIDATION_ERROR` | 400 | `details` 없음 — multipart 본문을 해석할 수 없음(예: boundary 없음), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 multipart 아닌 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
 | `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |

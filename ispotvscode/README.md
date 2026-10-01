@@ -21,7 +21,9 @@ npm run dev
 - `backend` 폴더에서 `PYTHONPATH=. python scripts/seed_users.py --demo` 로 데모 계정을 만듭니다.
   - 상담사: `counselor@ispot.example.com`
   - 관리자: `admin@ispot.example.com` (관리자 화면은 아직 Backend 에 연결되지 않아 예시 데이터로 보입니다)
-- 비밀번호는 위 명령이 출력한 값입니다. `SEED_USER_PASSWORD` 환경변수를 정해 두었으면 그 값입니다.
+- 비밀번호는 계정을 처음 만들 때 위 명령이 출력한 값입니다. `SEED_USER_PASSWORD` 환경변수를 정해 두었으면 그 값이고, `.cursor/start.sh` 로 만들었으면 그 파일의 `SEED_USER_PASSWORD` 기본값입니다.
+- 이미 있는 계정은 명령을 다시 돌려도 비밀번호가 바뀌지 않고, 비밀번호를 출력하지도 않습니다. 모르면 `backend/README.md` 부록 A.7 대로 DB 를 지우고 다시 만들거나, `backend` 폴더에서 `python -m scripts.unlock_user --email <이메일> --reset-password` 로 임시 비밀번호를 받습니다.
+- 로그인을 5번 틀리면 계정이 잠기고 저절로 풀리지 않습니다(그 뒤로는 맞는 비밀번호도 거절). `python -m scripts.unlock_user --email <이메일>` 로 풉니다(`backend/README.md` 2.5).
 - 자세한 것은 `backend/README.md` 부록 A.3 · A.5 를 봅니다.
 - 2단계 인증(OTP)은 아직 없습니다(팀 결정 대기).
 

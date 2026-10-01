@@ -110,6 +110,11 @@ python -m scripts.seed_users --email admin@example.com --name 관리자 --role A
 
 비밀번호를 `--password` 나 `SEED_USER_PASSWORD` 로 직접 주면 API 와 같은 비밀번호 규칙(`docs/API_CONTRACT.md` 3절)을 거친다.
 맞지 않으면 계정을 만들지 않고 사유를 출력한 뒤 종료 코드 1 로 끝난다. 주지 않으면 규칙에 맞는 값을 만들어 출력한다.
+비밀번호는 **계정을 새로 만들 때만** 적용 · 출력된다. 이미 있는 계정은 건너뛰고 비밀번호도 바꾸지 않는다(`SEED_USER_PASSWORD` 를 바꿔
+다시 돌려도 같다). 일부만 새로 만들었으면 그 비밀번호가 적용된 계정의 이메일을 함께 출력한다. `.cursor/start.sh` 로 만든 데모 계정의
+비밀번호는 그 파일의 `SEED_USER_PASSWORD` 기본값이다. 비밀번호를 모르면 A.7 대로 DB 를 지우고 다시 만들거나 아래
+`unlock_user --reset-password` 로 임시 비밀번호를 받는다. 로그인을 5번 틀리면 계정이 잠기고 기본 설정(`LOGIN_LOCK_MINUTES=0`)에서는
+저절로 풀리지 않는다.
 
 관리자가 한 명뿐인데 그 계정이 잠기거나 휴면이 되면 관리자 화면으로는 풀 수 없다. 서버에서 `python -m scripts.unlock_user --email <이메일>` 로 푼다(실패 잠금 · 휴면 해제. 비활성 계정은 `--activate`, 임시 비밀번호 새로 발급은 `--reset-password` 를 붙인다). 한 일은 감사 로그에 `detail.via` 로 남는다.
 
@@ -348,6 +353,10 @@ backend/
   (`app/main.py` `_BodySizeLimitMiddleware`). 음성 업로드는 `AUDIO_MAX_SIZE_MB` + 1MB, 나머지는
   `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면 `400` 으로 거절한다. 본문을 읽지 않는 창구(GET, 본문 없는 POST)는
   보낸 본문을 무시하고 평소처럼 답한다(401 이나 정상 응답).
+  음성 업로드의 큰 한도는 서명 · 만료가 맞는 토큰을 붙인 `multipart/form-data` 요청만 받는다. JSON · urlencoded 본문과
+  multipart 의 파일이 아닌 칸은 해석할 때 메모리에 쌓이기 때문이다. 음성 경로라도 multipart 가 아니면 일반 한도를 쓰고,
+  토큰이 없거나 틀리거나 만료된 multipart 본문은 해석하기 전에 다른 창구와 같은 `401` 로 답한다. 토큰의 서명 · 만료만 보고
+  DB 는 보지 않으므로, 정지 · 강제 로그아웃된 계정의 토큰은 본문을 받은 뒤에 `401` · `403` 이 난다.
   거절하기 전에 남은 본문을 저장하지 않고 끝까지 읽어 버린다(최대 30초). 다 읽지 않고 응답하면 연결이 끊겨(TCP RST)
   개발 프록시(vite)를 거친 화면은 `400` 문구 대신 "서버에 연결할 수 없습니다" 를 본다. 30초 안에 다 못 보내는
   본문은 다시 끊길 수 있다. 수동 확인: Backend 를 `AUDIO_MAX_SIZE_MB=2` 로 띄우고 화면(vite)을 거쳐 5MB 음성을
@@ -416,15 +425,21 @@ AI_PROVIDER=mock
 ```bash
 alembic upgrade head
 
-# 관리자/상담사 계정 생성 — 출력되는 비밀번호를 적어둔다
+# 관리자/상담사 계정 생성 — 계정을 처음 만들 때 출력되는 비밀번호를 적어둔다
 PYTHONPATH=. python scripts/seed_users.py --demo
 
 # 서버 실행 (아래 A.4) 후 다른 터미널에서
 PYTHONPATH=. python scripts/seed_demo_data.py \
   --base-url http://127.0.0.1:8000 \
   --admin-email admin@ispot.example.com \
-  --admin-password <위에서 출력된 비밀번호>
+  --admin-password <계정을 처음 만들 때 출력된 비밀번호>
 ```
+
+비밀번호는 계정을 처음 만들 때만 출력된다(`SEED_USER_PASSWORD` 를 정해 두었으면 그 값, `.cursor/start.sh` 로 만들었으면 그 파일의
+`SEED_USER_PASSWORD` 기본값). 이미 있는 계정으로 다시 돌리면 비밀번호를 바꾸지 않고 출력하지도 않는다("이미 존재하는 계정입니다").
+비밀번호를 모르면 A.7 대로 DB 를 지우고 다시 만들거나 `python -m scripts.unlock_user --email <이메일> --reset-password` 로
+임시 비밀번호를 받는다. 틀린 값으로 5번 로그인하면 계정이 잠기고 저절로 풀리지 않는다 — `python -m scripts.unlock_user --email <이메일>`
+로 푼다(2.5).
 
 데모 데이터는 **상태별 사례 6건**을 만든다. 각 화면이 어떤 상태에서
 어떻게 보여야 하는지 한 번에 확인할 수 있다.
