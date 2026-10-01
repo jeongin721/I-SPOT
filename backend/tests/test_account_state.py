@@ -853,6 +853,34 @@ def test_audit_log_time_filters_read_any_time_zone_the_same(
     assert until_totals == [0, 0, 0]
 
 
+def test_audit_log_time_filters_past_the_calendar_edge_are_not_server_errors(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    """
+    UTC 로 바꾸면 날짜 범위(1년 1월 1일 ~ 9999년 12월 31일)를 벗어나는 값도 500 이 아니다.
+
+    아주 이른 since 는 '처음부터', 아주 늦은 until 은 '끝까지' 와 같다.
+    반대로 아주 늦은 since · 아주 이른 until 에 걸리는 기록은 없다.
+    """
+
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    def total(**params) -> int:
+        response = client.get("/api/v1/auth/audit-logs", params=params, headers=admin_headers)
+
+        assert response.status_code == 200, response.text
+
+        return response.json()["data"]["meta"]["total"]
+
+    everything = total()
+
+    assert everything >= 2
+    assert total(since="0001-01-01T00:00:00+09:00") == everything
+    assert total(until="9999-12-31T23:59:59-01:00") == everything
+    assert total(since="9999-12-31T23:59:59-01:00") == 0
+    assert total(until="0001-01-01T00:00:00+09:00") == 0
+
+
 def test_audit_logs_show_actor_name(
     client: TestClient, admin_headers, counselor_id: uuid.UUID
 ) -> None:

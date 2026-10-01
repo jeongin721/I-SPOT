@@ -165,6 +165,7 @@ def test_rerunning_demo_keeps_existing_passwords_and_prints_none(
     assert "생성된" not in second
     assert "이미 있는 계정의 비밀번호는 바뀌지 않았습니다." in second
     assert "unlock_user" in second  # 모를 때 푸는 방법을 알려 준다
+    assert "먼저 새 비밀번호로 바꿔야" in second  # 임시 비밀번호로는 seed_demo_data 가 403 이다
 
     for email, _, _ in seed_users.DEMO_ACCOUNTS:
         assert _stored_password_matches(db, email, "Gen-First-Pass-11")
