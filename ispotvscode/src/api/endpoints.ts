@@ -83,9 +83,11 @@ export const auth = {
   /**
    * 본인 비밀번호 변경. 성공하면 응답 본문이 없다(204).
    *
-   * 오류: 400 INVALID_CURRENT_PASSWORD(현재 비밀번호 불일치 — 로그인 만료가 아니므로
-   * 로그인 화면으로 보내지 않는다), 422 WEAK_PASSWORD(규칙 위반 — `details.reasons` 에 사유),
-   * 422 SAME_PASSWORD(이전과 같음)
+   * 오류: 422 WEAK_PASSWORD(규칙 위반 — `details.reasons` 에 사유) · 422 SAME_PASSWORD(두 칸이 같음)는
+   * 현재 비밀번호를 확인하기 전에 나간다. 400 INVALID_CURRENT_PASSWORD(현재 비밀번호 불일치 — 로그인 만료가
+   * 아니므로 로그인 화면으로 보내지 않는다), 422 PASSWORD_REUSED(최근에 쓰던 비밀번호).
+   * 현재 비밀번호를 정해진 횟수(LOGIN_MAX_FAILURES, 기본 5)만큼 틀리면 그 계정 토큰이 모두 끊기고 401 이다
+   * (client 가 로그인 화면으로 보낸다). 계정은 잠기지 않아 다시 로그인하면 된다.
    */
   changePassword(payload: PasswordChangeRequest): Promise<void> {
     return api.post<void>("/auth/me/password", payload);
@@ -99,7 +101,7 @@ export const auth = {
   /**
    * 관리자 전용. 활성화·비활성화, 역할, 이름을 바꾼다.
    *
-   * 마지막 활성 관리자를 비활성화하거나 역할을 내리면 409 로 막힌다.
+   * 마지막 활성 관리자를 비활성화하거나 역할을 내리면 409 VALIDATION_ERROR(details 없음)로 막힌다.
    * 역할·활성 상태를 바꾸면 그 계정의 Token 이 모두 무효가 된다.
    */
   updateUser(userId: string, payload: UserUpdateRequest): Promise<User> {
@@ -121,7 +123,7 @@ export const auth = {
     return api.post<TemporaryPassword>(`/auth/users/${userId}/reactivate`, {});
   },
 
-  /** 관리자 전용. 그 계정에 발급된 Token 을 전부 무효로 만든다. */
+  /** 관리자 전용. 그 계정에 발급된 Token 을 전부 무효로 만든다. 자기 계정은 409 VALIDATION_ERROR. */
   logoutAll(userId: string): Promise<void> {
     return api.post<void>(`/auth/users/${userId}/logout-all`, {});
   },
@@ -234,6 +236,7 @@ export const transcript = {
    * 상담사 수정. 덮어쓰지 않고 새 version 이 만들어진다.
    * 바꾼 발화의 바꾼 필드만 보낸다. 전체 발화를 보내면 모두 "수정됨"으로 표시된다.
    * 다른 사람이 먼저 같은 version 을 수정했으면 409 DUPLICATE_RESOURCE — 새로고침 후 다시 수정한다.
+   * 모든 발화 삭제 · 시각 역전(end_ms < start_ms)은 409 VALIDATION_ERROR.
    */
   update(sessionId: string, payload: TranscriptUpdateRequest): Promise<Transcript> {
     return api.patch<Transcript>(`/sessions/${sessionId}/transcript`, payload);

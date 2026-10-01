@@ -13,7 +13,11 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const API_PREFIX = "/api/v1";
 
-const TOKEN_KEY = "ispot_access_token";
+/** localStorage 의 토큰 칸. 다른 탭의 로그아웃 · 로그인을 알아채는 데도 쓴다(AppLayout 의 storage 이벤트). */
+export const TOKEN_KEY = "ispot_access_token";
+
+/** 로그인 요청 경로. 이 요청의 401 은 비밀번호가 틀린 것이라 로그인 만료로 보지 않는다. */
+const LOGIN_PATH = "/auth/login";
 
 // =========================================================
 // 토큰 보관
@@ -49,6 +53,13 @@ export function clearToken(): void {
  * AppLayout 이 받아서 로그인 화면으로 보낸다.
  */
 export const UNAUTHORIZED_EVENT = "ispot:unauthorized";
+
+/**
+ * 임시 비밀번호로 로그인해 비밀번호를 바꿔야 할 때(403 PASSWORD_CHANGE_REQUIRED) window 에 보내는 이벤트.
+ * AppLayout 이 받아서 내 정보(비밀번호 변경) 화면으로 보낸다. 그 화면이 부르는 GET /auth/me 와
+ * POST /auth/me/password 는 Backend 가 열어 두어(API_CONTRACT 3절) 다시 보내지는 일이 없다.
+ */
+export const PASSWORD_CHANGE_REQUIRED_EVENT = "ispot:password-change-required";
 
 /** 로그인 화면이 따로 저장해 두는 이름 · 역할. 토큰이 끊기면 함께 지운다. */
 export const SESSION_INFO_KEY = "ispot_auth";
@@ -184,9 +195,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (!response.ok) {
     const failure = payload as Partial<ErrorResponse>;
 
-    // 토큰을 붙였는데 401 이면 만료 · 폐기다(비밀번호 변경, 강제 로그아웃 포함).
-    // 로그인 요청의 401(비밀번호 틀림)은 토큰 없이 보내므로 여기에 걸리지 않는다.
-    if (response.status === 401 && token) notifyUnauthorized();
+    // 401 이면 만료 · 폐기다(비밀번호 변경, 강제 로그아웃 · 정지 포함). 토큰이 없어서 난 401 도 같다 —
+    // 다른 탭에서 로그아웃해 이 탭의 토큰이 이미 지워진 경우다. 로그인 요청의 401(비밀번호 틀림)만 뺀다.
+    if (response.status === 401 && path !== LOGIN_PATH) notifyUnauthorized();
+
+    if (response.status === 403 && failure.error?.code === "PASSWORD_CHANGE_REQUIRED") {
+      window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+    }
 
     throw new ApiError(
       failure.error?.code ?? "UNKNOWN_ERROR",

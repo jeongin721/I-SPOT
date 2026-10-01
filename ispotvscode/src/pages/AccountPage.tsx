@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import { useToast } from "../components/ui/Toast";
 import { auth as authApi } from "../api/endpoints";
 import { ApiError, SESSION_INFO_KEY, clearSession } from "../api/client";
 import { PASSWORD_RULE_TEXT, type User } from "../api/types";
+import { toLocalDate } from "../api/dashboardAdapters";
 
 /** WEAK_PASSWORD 는 details.reasons 에 사유 문장 배열이 온다. */
 function passwordReasons(caught: ApiError): string[] {
@@ -15,6 +16,7 @@ function passwordReasons(caught: ApiError): string[] {
 
 export default function AccountPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast } = useToast();
   const [auth, setAuth] = useState<{ role: string; name: string } | null>(null);
   const [editing, setEditing] = useState(false);
@@ -83,10 +85,26 @@ export default function AccountPage() {
   const name = auth?.name ?? "이서연";
   const role = auth?.role === "admin" ? "관리자" : "상담사";
 
+  // 임시 비밀번호로 로그인했다. 로그인 화면 · AppLayout 이 이 화면으로 보낼 때 state 로 알리고,
+  // 새로고침했을 때는 GET /auth/me 의 must_change_password 로 안다.
+  const mustChangePassword =
+    me?.must_change_password ?? Boolean((location.state as { mustChangePassword?: boolean } | null)?.mustChangePassword);
+  const accountStatus = !me ? "—" : !me.is_active ? "비활성" : me.must_change_password ? "임시 비밀번호(변경 필요)" : "활성";
+
   return (
     <div className="flex-1 overflow-y-auto bg-[#F6F8FB]">
       <div className="p-6 space-y-5 max-w-2xl">
         <Breadcrumb items={[{ label: "계정 정보" }]} />
+
+        {mustChangePassword && (
+          <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-[8px] text-[13px] text-amber-800">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>
+              임시 비밀번호로 로그인했습니다. 아래 보안 설정에서 새 비밀번호로 바꿔야 다른 화면을 쓸 수 있습니다.
+              현재 비밀번호 칸에는 받은 임시 비밀번호를 넣어 주세요.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div>
@@ -121,8 +139,10 @@ export default function AccountPage() {
               ["역할", role],
               ["이메일", me?.email ?? "—"],
               ["연락처", "—"],
-              ["계정 상태", me ? (me.is_active ? "활성" : "비활성") : "—"],
-              ["계정 생성일", me ? me.created_at.slice(0, 10) : "—"],
+              ["계정 상태", accountStatus],
+              // 시간대 표시가 없으면 UTC 로 읽어 사용자 시간대 날짜로 바꾼다(API_CONTRACT 1.5). 앞 10글자를 자르면
+              // 한국 시각 0~9시에 만든 계정이 하루 전 날짜로 보인다.
+              ["계정 생성일", me ? toLocalDate(me.created_at) : "—"],
             ].map(([k, v]) => (
               <div key={k} className="flex gap-3">
                 <span className="text-[#94A3B8] w-28 shrink-0">{k}</span>
