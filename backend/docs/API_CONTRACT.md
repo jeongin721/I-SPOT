@@ -20,6 +20,7 @@
 ```
 
 목록은 `data.items` + `data.meta` 구조를 사용한다.
+예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절)은 `data` 가 배열 그대로다(페이지 없음).
 
 ```json
 {
@@ -29,6 +30,10 @@
   }
 }
 ```
+
+목록 Query 의 `page` 는 1 ~ 1,000,000, `page_size` 는 1 ~ 100 이다(사례 · 회기 · 업무 · 감사 로그 목록 공통).
+범위를 벗어나면 `422 VALIDATION_ERROR`(`details.fields` 의 `field` 는 `query.page` · `query.page_size`)다.
+범위 안이지만 마지막 page 를 넘으면 `items` 가 빈 배열인 200 이다.
 
 ### 1.2 실패 응답
 
@@ -43,7 +48,29 @@
 ```
 
 - `details` 는 있을 때만 포함된다(주로 `VALIDATION_ERROR`).
-- `message` 는 한국어이며 그대로 노출 가능하다.
+- `message` 는 한국어이며 그대로 노출 가능하다. 라우터에 닿기 전에 서버 프레임워크가 막는 오류도 같다 —
+  없는 경로 `404 NOT_FOUND`("요청한 경로를 찾을 수 없습니다."), 허용되지 않는 method `405 METHOD_NOT_ALLOWED`
+  ("허용되지 않는 요청 방식입니다."), 해석할 수 없거나 프레임워크의 form 제한을 넘는 form 본문(예: multipart 의
+  boundary 없음, multipart · urlencoded 의 파일이 아닌 칸 하나가 1MB 를 넘음)
+  `400 VALIDATION_ERROR`(`details` 없음, "요청 형식이 올바르지 않습니다."). `INTERNAL_ERROR` 는 서버 오류(5xx)에만 쓴다.
+- JSON 문법 오류는 400 이 아니라 **`422 VALIDATION_ERROR`** 이고 `details.fields` 로 온다
+  ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
+  `"JSON decode error"` 다. 본문 해석은 로그인 확인보다 먼저라, JSON 본문을 받는 창구는 token 이 없어도 `401` 이
+  아니라 이 422 를 준다.
+- `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 세 가지가 더 있다. `message` 로 구분한다.
+  - JSON 본문을 읽을 수 없음 — JSON 본문을 받는 창구에 `Content-Type` 이 JSON 인 본문을 보냈는데 UTF-8 로 읽을 수
+    없는 바이트가 들어 있음(예: CP949 로 인코딩한 한글). 프레임워크는 JSON 문법 오류만 422 로 바꾸고 이런 해석 오류는
+    400 으로 낸다. **로그인 확인보다 먼저** 거절한다("요청 형식이 올바르지 않습니다.").
+  - 본문이 너무 큼 — 본문을 받는 창구(JSON · form)에서 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
+    **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절(token 의 서명 · 만료를
+    먼저 보고, 맞으면 `AUDIO_TOO_LARGE`, 없거나 틀리면 `401`).
+    음성 업로드 경로라도 `multipart/form-data` 가 아닌 본문에는 음성 한도를 주지 않는다.
+    `application/x-www-form-urlencoded` 본문은 이 한도와 문구를 쓴다(Content-Length 가 없거나 한도 안일 때,
+    받은 양이 한도에 닿기 전에 칸 하나가 1MB 를 넘으면 위의 form 제한 "요청 형식이 올바르지 않습니다." 다).
+    그 밖의 형식(JSON · text · octet-stream · Content-Type 없음)은 이 창구가 본문을 읽지 않으므로 크기와 상관없이
+    token 이 없거나 틀리면 `401`, 맞으면 `422 VALIDATION_ERROR`(`details.fields` 에 `file` — 녹음 파일 없음)다.
+    본문을 읽지 않는 창구(GET, 본문 없는 POST)는 보낸 본문을 무시하고 평소처럼 답한다(`401` 이나 정상 응답).
+  - 서비스가 내는 것 — 사례 담당자로 정지된 계정을 지정함(4절).
 
 ### 1.3 인증
 
@@ -69,7 +96,8 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
 
 처리 중 상태가 제한 시간(`STT_TIMEOUT_SECONDS` / `AI_TIMEOUT_SECONDS`) + 60초가 지나도 끝나지 않으면
 (서버 재시작 등으로 작업이 사라진 경우) 위 조회나 재요청 시점에 `STT_FAILED` / `AI_FAILED` 로 바뀌고
-`error.code` 도 같은 값으로 내려온다. 재시도 버튼으로 다시 요청하면 된다.
+`error.code` 도 같은 값으로 내려온다. 회기 목록(`GET /cases/{case_id}/sessions`)과 처리 대기 업무(11절) 조회도
+같은 판단으로 먼저 마감한 뒤 돌려준다. 재시도 버튼으로 다시 요청하면 된다.
 
 ### 1.5 시각
 
@@ -85,7 +113,9 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
   같은 칸도 DB 에 따라 표시가 달라지니, 칸 이름으로 나누지 말고 값의 모양을 보고 읽는다.
   같은 순간도 칸마다 표시가 다를 수 있으니(`waiting_since` 는 `Z`, `consulted_at` 은 `+09:00`) 문자열로 비교 · 정렬하지 않는다.
 - 이 문서 예시의 `Z` 는 표기 예일 뿐이다(11절 `waiting_since` 는 항상 `Z` 다).
-- 보낼 때(`consulted_at`, 만들기 · 고치기 모두)는 UTC(`Z`)로 보낸다. 표시 없이 보내지 않는다.
+- 보낼 때(`consulted_at` 만들기 · 고치기, 감사 로그 조회의 `since` · `until`)는 UTC(`Z`)로 보낸다. 표시 없이 보내지 않는다.
+  감사 로그의 `since` · `until` 은 서버가 UTC 로 바꿔 비교하므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
+  `consulted_at` 은 아래처럼 어긋나니 반드시 `Z` 로 보낸다.
   SQLite 는 오프셋을 버리고 저장해 `+09:00` 을 붙여 보내면 9시간 어긋나고, PostgreSQL 은 표시 없는 값을
   DB 시간대로 읽어 `Asia/Seoul` 설정에서는 9시간 어긋난다(PostgreSQL 은 `Z` 와 `+09:00` 을 같은 순간으로 저장한다).
 
@@ -181,8 +211,10 @@ AI_FAILED     ← AI_PROCESSING 실패
 틀린 비밀번호 · 없는 계정과 **같은 `401 INVALID_CREDENTIALS`(같은 문구)** 를 준다. 잠김을 따로 알려주면
 잠긴 뒤에도 계속 맞혀 보다가 응답이 바뀌는 순간 정답을 알게 된다. 잠긴 사람도 안내받도록 문구에
 "여러 번 틀려 잠겼다면 관리자에게 문의하세요" 를 늘 함께 싣는다. 관리자는 감사 로그의 `error_code`
-(`ACCOUNT_LOCKED`)와 계정 응답의 `is_locked` 로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교와
-같은 시간이 걸리게 해서 응답 시간으로도 드러나지 않는다.
+(`ACCOUNT_LOCKED`)와 계정 응답의 `is_locked` 로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교(bcrypt)를
+한 번 하고, DB 기록도 같은 순서(대조 전에 시도 기록을 한 번 커밋, 대조 뒤에는 잠글 때 말고는 쓰지 않음)로 해서
+응답 시간 차이를 줄였다. 있는 계정은 실패 횟수를 세는 쓰기 하나가 더 있어 그만큼(로컬 SQLite 실측 약 1ms)의
+차이는 남는다.
 
 ```json
 { "error": { "code": "INVALID_CREDENTIALS", "message": "이메일 또는 비밀번호가 올바르지 않습니다. 여러 번 틀려 잠겼다면 관리자에게 문의하세요." } }
@@ -202,12 +234,19 @@ AI_FAILED     ← AI_PROCESSING 실패
 `DORMANT_AFTER_DAYS`(60), `TEMP_PASSWORD_VALID_HOURS`(72).
 시간 잠금(`LOGIN_LOCK_MINUTES` > 0)이 풀리면 실패 횟수도 0 으로 돌아가, 다시 5번 틀리면 다시 잠긴다.
 잠긴 동안의 로그인 시도는 실패 횟수에 더하지 않는다.
+**동시에 몰려 들어와도 비밀번호를 대조하는 것은 기준 횟수(5번)까지다.** 서버는 대조하기 전에 실패 횟수를 먼저 1 올려
+두고(맞으면 되돌린다), 기준을 이미 채운 뒤 들어온 시도는 잠긴 계정과 같게 대조 없이 거절한다(감사 로그 `ACCOUNT_LOCKED`).
+시간 잠금이 풀리는 순간 몰려 들어와도 같다. 잠금을 풀고 횟수를 비우는 것은 처음 읽은 잠금 시각이 그대로일 때 한 요청만
+하므로, 다른 요청이 예약한 횟수나 다시 걸린 잠금을 지우지 않는다.
 
 **임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
 모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
 
 **Token 무효화** — 비밀번호를 바꾸거나 관리자가 강제 로그아웃 · 역할 변경 · 정지를 하면
 그 계정에 발급된 Token 이 전부 무효가 된다(`401 UNAUTHORIZED`). 다시 로그인해야 한다.
+정지된 계정은 다시 로그인할 때 `403 INACTIVE_USER` 로 이유를 알려준다. Token 버전을 올리지 않고 정지된 계정
+(서버에서 DB 를 직접 고친 경우 등)은 기존 Token 요청도 `403 INACTIVE_USER` 다.
+현재 비밀번호를 정해진 횟수만큼 틀려도 Token 이 끊긴다(아래 `POST /auth/me/password`).
 
 ### GET /api/v1/auth/me
 
@@ -224,11 +263,30 @@ AI_FAILED     ← AI_PROCESSING 실패
 현재 비밀번호를 함께 받는다. Token 만 훔친 사람이 비밀번호를 바꿔 계정을 가져가는 것을 막는다.
 주소에 사용자 id 를 두지 않는다(`me`). 남의 비밀번호를 바꾸는 경로를 만들지 않기 위해서다.
 
-오류: `401 UNAUTHORIZED`(로그인 안 됨), `400 INVALID_CURRENT_PASSWORD`(현재 비밀번호 불일치),
+오류: `401 UNAUTHORIZED`(로그인 안 됨, 또는 아래 반복 실패로 끊김), `400 INVALID_CURRENT_PASSWORD`(현재 비밀번호 불일치),
 `422 WEAK_PASSWORD`, `422 SAME_PASSWORD`, `422 PASSWORD_REUSED`
 
 현재 비밀번호가 틀린 것은 `401` 이 아니다. Frontend 는 `401` 을 로그인 만료로 보고 로그인 화면으로 보내므로,
 입력만 틀렸는데 쫓겨나지 않도록 `400` 으로 구분한다.
+
+**검사 순서** — `422 WEAK_PASSWORD`(새 비밀번호 규칙)와 `422 SAME_PASSWORD`(두 칸이 같음)는 현재 비밀번호를
+확인하기 **전에** 나간다. 확인한 뒤에 하면 "현재 비밀번호가 맞으면 422, 틀리면 400" 이 되어, 비밀번호를 바꾸지
+않고도 정답인지 알아내는 수단이 된다. `422 PASSWORD_REUSED` 는 이전 비밀번호를 알려 주는 셈이라 현재 비밀번호를
+확인한 **뒤에만** 본다.
+
+**반복 실패** — 현재 비밀번호가 틀린 요청은 감사 로그에 `PASSWORD_CHANGED` · `FAILURE`
+(`error_code` `INVALID_CURRENT_PASSWORD`)로 남는다. 마지막 로그인(또는 비밀번호 변경) 뒤로 `LOGIN_MAX_FAILURES`(5)번
+틀리면 그 계정의 Token 을 모두 끊고 `401 UNAUTHORIZED` 를 준다(감사 로그 `LOGOUT_ALL`,
+`detail.reason` = `PASSWORD_CHANGE_FAILURES`). 계정은 잠그지 않는다 — 다시 로그인하면 되고 횟수도 처음부터 센다.
+Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀 보지 못하게 하기 위해서다.
+
+동시에 몰려 들어와도 현재 비밀번호를 대조하는 것은 기준 횟수까지다. 서버는 대조하기 **전에** 시도를 먼저 실패로 남겨
+(맞으면 성공 기록으로 바꾸고, `PASSWORD_REUSED` 로 거절되면 지운다) 함께 들어온 요청도 바로 센다.
+
+- 기준을 이미 채운 뒤 들어온 시도는 대조하지 않고 `401 UNAUTHORIZED`(위와 같은 문구)를 준다. 감사 로그 `error_code` 는 `UNAUTHORIZED`.
+- 현재 비밀번호를 대조하는 사이 Token 이 끊겼으면(함께 보낸 다른 시도가 기준을 채움, 강제 로그아웃 등) 맞는 비밀번호여도
+  바꾸지 않고 `401 UNAUTHORIZED` 를 준다. 감사 로그 `error_code` 는 `UNAUTHORIZED`.
+- `LOGOUT_ALL` 은 한 번만 남는다.
 
 ### POST /api/v1/auth/users (관리자 전용)
 
@@ -247,6 +305,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 | 창구 | 하는 일 | 응답 |
 | --- | --- | --- |
+| `GET /api/v1/auth/users` | 계정 목록(페이지 없음, `created_at` 오래된 순) | `200` 계정 배열 |
 | `PATCH /api/v1/auth/users/{id}` | 활성화 · 비활성화(`is_active`), 역할(`role`), 이름(`name`) | `200` 계정 |
 | `POST /api/v1/auth/users/{id}/password-reset` | 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
 | `POST /api/v1/auth/users/{id}/unlock` | 실패 잠금 해제 | `204` |
@@ -257,13 +316,15 @@ AI_FAILED     ← AI_PROCESSING 실패
 { "data": { "temporary_password": "...", "expires_at": "...", "must_change_password": true } }
 ```
 
+계정 목록은 `data` 가 계정 배열 그대로다(`items` · `meta` 없음 — 1.1 의 예외). 계정 하나의 모양은 로그인 응답의 `user` 와 같다.
+
 **임시 비밀번호는 이 응답에서 한 번만 나간다.** 다시 조회할 수 없고 DB 에는 해시만 남는다.
 
-**마지막 활성 관리자는 비활성화 · 역할 변경을 할 수 없다**(`409`). 아무도 풀 수 없게 되기 때문이다.
+**마지막 활성 관리자는 비활성화 · 역할 변경을 할 수 없다**(`409 VALIDATION_ERROR`). 아무도 풀 수 없게 되기 때문이다.
 여기서 활성 관리자는 "지금 로그인할 수 있는 관리자" 다 — 정지 · 휴면 · **실패 잠금**된 관리자는 세지 않는다.
 그래서 다른 관리자가 잠겨 있으면 남은 한 명은 끌 수 없고, 잠긴 관리자를 끄는 것은 막지 않는다.
 마지막 관리자는 휴면으로도 바뀌지 않는다(같은 기준).
-자기 계정에 `logout-all` 도 할 수 없다.
+자기 계정에 `logout-all` 도 할 수 없다(`409 VALIDATION_ERROR`).
 
 계정 응답에는 상태를 구분할 수 있게 `last_login_at` · `must_change_password` ·
 `is_locked` · `locked_until` · `dormant_at` 이 함께 온다.
@@ -274,7 +335,13 @@ AI_FAILED     ← AI_PROCESSING 실패
 
 ### GET /api/v1/auth/audit-logs (관리자 전용)
 
-Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
+Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
+
+- `since` · `until` 은 ISO 8601 이고 경계를 포함한다(`since` ≤ `created_at` ≤ `until`). UTC(`Z`)로 보낸다(1.5).
+  서버가 UTC 로 바꿔 비교하므로 `+09:00` 을 붙여도 같은 순간으로 읽고, 표시가 없으면 UTC 로 읽는다.
+  UTC 로 바꾸면 날짜 범위를 벗어나는 값(예: `0001-01-01T00:00:00+09:00`, `9999-12-31T23:59:59-01:00`)은 가장 이른 ·
+  가장 늦은 시각으로 보고 평소처럼 `200` 으로 답한다.
+  화면의 날짜 입력값(`datetime-local`, 표시 없는 지역 시각)을 그대로 보내면 9시간 어긋나니 `Date.toISOString()` 으로 바꿔 보낸다.
 
 ```json
 {
@@ -358,7 +425,7 @@ Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `acto
 
 ### GET /api/v1/cases
 
-Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
 - 상담사: 담당 Case 만 반환
@@ -433,6 +500,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `title`, `child_alias` 필수
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
+  - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
+    "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
 - `case_number` 미지정 → `C-YYYY-NNNN` 자동 생성
 
 ### GET /api/v1/cases/{case_id}
@@ -446,7 +515,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.
 
 - `title`, `child_alias`, `status` 는 `null` 로 보낼 수 없다(`422 VALIDATION_ERROR`). 바꾸지 않을 필드는 빼고 보낸다
-- `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`)
+- `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`). 없는 계정 · 정지된 계정은 위 `POST` 와 같다
+  (`404 USER_NOT_FOUND`, `400 VALIDATION_ERROR`). 거절되면 담당자는 바뀌지 않는다
 - 보호자 규칙은 저장된 값과 합쳐서 판단한다
   - 이미 `OTHER` 인 사례는 `guardian_note` 만 보내도 된다
   - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
@@ -462,8 +532,9 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 ### GET /api/v1/cases/{case_id}/sessions
 
-Query: `page`, `page_size`, `status`
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 최신 회기(`session_number` 내림차순)부터 반환한다.
+멈춘 처리 중 회기는 먼저 실패로 마감한 뒤 세고 거른다(1.4). 그래서 `status` 필터와 `meta.total` 도 마감 뒤 상태 기준이다.
 
 ### POST /api/v1/cases/{case_id}/sessions → 201
 
@@ -526,6 +597,17 @@ Query: `page`, `page_size`, `status`
 
 `multipart/form-data`
 
+- 큰 본문(`AUDIO_MAX_SIZE_MB` + 1MB 까지)은 서명 · 만료가 맞는 token 을 붙인 `multipart/form-data` 요청만 받는다.
+  token 이 없거나 틀리거나 만료됐으면 본문을 해석하기 전에 `401 UNAUTHORIZED` 로 답한다. 문구는 다른 창구와 같고
+  ("Authorization 헤더가 없습니다." · "유효하지 않은 토큰입니다." · "토큰이 만료되었습니다. 다시 로그인해 주세요."),
+  본문 크기와 상관없다. 이때도 남은 본문은 버리며 읽은 뒤 답한다(최대 30초).
+- 여기서는 token 의 서명 · 만료만 본다. 정지 · 강제 로그아웃 · 임시 비밀번호 상태는 본문을 받은 뒤 평소처럼 확인한다(3절).
+- `multipart/form-data` 가 아닌 본문에는 음성 한도를 주지 않는다. urlencoded 본문은 일반 본문 한도
+  (`REQUEST_MAX_BODY_MB`)를 쓰고, 그 밖의 형식(JSON · text 등)은 본문을 읽지 않고 크기와 상관없이 `401`(token 없음 ·
+  틀림) 또는 `422`(`file` 없음)로 답한다(1.2).
+- token 이 맞는 multipart 라도 파일이 아닌 칸 하나가 1MB 를 넘으면 `400 VALIDATION_ERROR`
+  ("요청 형식이 올바르지 않습니다.", 1.2)다. 파일 칸에는 이 제한이 없다.
+
 | field | 필수 | 설명 |
 |---|---|---|
 | `file` | O | 녹음 파일 |
@@ -561,7 +643,7 @@ Query: `page`, `page_size`, `status`
 | code | status | 상황 |
 |---|---|---|
 | `AUDIO_EMPTY_FILE` | 400 | 빈 파일 |
-| `AUDIO_TOO_LARGE` | 400 | 크기 초과 |
+| `AUDIO_TOO_LARGE` | 400 | 크기 초과. token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘으면 계정 상태 · 회기 확인보다 먼저 거절한다(token 이 없거나 틀리면 크기와 상관없이 `401`). 거절 전에 남은 본문을 읽어 버리므로(최대 30초) 개발 프록시(vite)를 거쳐도 이 응답이 온다 |
 | `AUDIO_UNSUPPORTED_TYPE` | 400 | 확장자/MIME 불허, 확장자와 실제 형식 불일치 |
 | `AUDIO_CORRUPTED` | 400 | 음성 형식 판별 불가 |
 | `AUDIO_INVALID_FILENAME` | 400 | 파일명 없음/확장자 없음 |
@@ -578,6 +660,11 @@ Query: `page`, `page_size`, `status`
 ### POST /api/v1/sessions/{session_id}/transcript → 202
 
 STT 실행 요청. Body 없음.
+처음 변환(`AUDIO_UPLOADED`), 실패 뒤 재시도(`STT_FAILED`), 검수 중 다시 변환(`STT_REVIEW_REQUIRED`) 모두 받는다.
+
+STT 가 발화를 하나도 찾지 못하면(무음 · 잡음만 있는 음성) 실패로 마감한다 — `STT_FAILED`, `error.code` `STT_FAILED`,
+`error.message` "음성에서 발화를 찾지 못했습니다. …". 빈 전사본(version)은 만들지 않는다. 검수할 발화가 없는
+`STT_REVIEW_REQUIRED` 로 두면 확정할 것도 없는 막다른 상태가 되기 때문이다. 다시 요청하거나 음성을 다시 올리면 된다.
 
 ```json
 {
@@ -687,12 +774,16 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 
 - `segments[]` 는 `segment_id` 필수 + 나머지 중 최소 1개
 - 수정/삭제 중 최소 1개는 있어야 한다(`422 VALIDATION_ERROR`)
-- 모든 segment 삭제는 불가
+- 모든 segment 삭제는 불가(`409 VALIDATION_ERROR`)
+- 시각이 거꾸로(`end_ms < start_ms`)이면 불가. 어디서 걸리느냐에 따라 응답이 다르다
+  - 한 발화에 `start_ms` · `end_ms` 를 **둘 다** 보내 거꾸로면 요청 형식 오류 `422 VALIDATION_ERROR`(`details.fields`, `field` = `segments.N`)
+  - **한쪽만** 보내 원래 값과 합친 결과가 거꾸로면 `409 VALIDATION_ERROR`(`details` 없이 `message` 만 온다)
 - `confidence` 는 STT 값이므로 수정 대상이 아니다
 
 응답은 새 `TranscriptResponse`. 확정 이후 수정하면 상태가 `STT_REVIEW_REQUIRED` 로 되돌아간다.
 
-오류: `404 TRANSCRIPT_NOT_FOUND`(없는 segment_id 포함), `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`(다른 요청이 같은 version 을 먼저 수정함 — 새로고침 후 다시 수정)
+오류: `404 TRANSCRIPT_NOT_FOUND`(없는 segment_id 포함), `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`(다른 요청이 같은 version 을 먼저 수정함 — 새로고침 후 다시 수정),
+`409 VALIDATION_ERROR`(모든 segment 삭제, 한쪽만 보내 합친 뒤 시각 역전 — `details` 없이 `message` 만 온다), `422 VALIDATION_ERROR`(요청 형식 — 한 발화에 두 시각을 모두 보내 거꾸로인 경우 포함)
 
 ### POST /api/v1/sessions/{session_id}/transcript/confirm
 
@@ -960,7 +1051,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ### GET /api/v1/tasks
 
-Query: `page`, `page_size`(≤100), `task_type`, `overdue_only`(`true`/`false`), `counselor_id`
+Query: `page`(≤1,000,000), `page_size`(≤100), `task_type`, `overdue_only`(`true`/`false`), `counselor_id`
 
 - `counselor_id` 는 **관리자만** 쓸 수 있다. 상담사가 본인이 아닌 id 를 보내면 `403 FORBIDDEN`
 - 모르는 `task_type` 이면 `422 VALIDATION_ERROR`
@@ -1023,9 +1114,9 @@ Query: `counselor_id` (목록과 같은 규칙)
 | code | status | 설명 |
 |---|---|---|
 | `INVALID_CREDENTIALS` | 401 | 로그인 실패 (틀린 비밀번호 · 없는 계정 · 실패 잠금 모두 같다) |
-| `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다) |
-| `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류 |
-| `INACTIVE_USER` | 403 | 비활성 계정 |
+| `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다. 반복되면 Token 이 끊겨 401 — 3절) |
+| `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류, 무효화된 토큰(비밀번호 변경 · 강제 로그아웃 · 역할 변경 · 정지 · 현재 비밀번호 반복 실패 — 대조하는 사이 끊긴 경우 포함) |
+| `INACTIVE_USER` | 403 | 비활성 계정 — 정지된 계정의 로그인(비밀번호가 맞았을 때만), Token 버전을 올리지 않고 정지된 계정의 요청 |
 | `ACCOUNT_LOCKED` | — | **감사 로그 전용.** 잠긴 계정의 로그인 시도가 LOGIN 실패의 `error_code` 로 남는다. 응답에는 쓰지 않는다 |
 | `ACCOUNT_DORMANT` | 403 | 휴면 계정 (비밀번호가 맞았을 때만) |
 | `TEMP_PASSWORD_EXPIRED` | 403 | 임시 비밀번호 사용 기간 경과 (비밀번호가 맞았을 때만) |
@@ -1040,7 +1131,9 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `SUMMARY_NOT_FOUND` | 404 | 요약 없음 |
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
-| `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
+| `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(로그인 확인 전, `field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2). 목록의 `page` · `page_size` 범위 밖(1.1) |
+| `VALIDATION_ERROR` | 400 | `details` 없음 — form 본문을 해석할 수 없거나 form 제한을 넘음(예: multipart 의 boundary 없음, 파일이 아닌 칸 하나가 1MB 초과), JSON 본문에 UTF-8 로 읽을 수 없는 바이트가 있음(로그인 확인 전, 문법 오류는 422 — 1.2), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 urlencoded 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
+| `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
@@ -1049,11 +1142,11 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
-| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 |
+| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청이면 계정 상태 · 회기 확인보다 먼저 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
-| `METHOD_NOT_ALLOWED` | 405 | 잘못된 method |
-| `INTERNAL_ERROR` | 500 | 서버 오류 |
+| `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
+| `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
 `INVALID_SESSION_STATE` 의 `message` 는 한국어 상태 이름으로 쓰고 상태 코드를 넣지 않는다. 화면에는 그대로 보여 주면 된다.
 예: `"지금 회기 상태(음성 업로드 대기)에서는 할 수 없는 요청입니다. 원문 검수 필요 · AI 분석 대기 상태에서만 할 수 있습니다."`

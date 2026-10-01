@@ -59,12 +59,15 @@ def _resolve_counselor(
     if counselor is None:
         raise not_found(ErrorCode.USER_NOT_FOUND, "담당 상담사를 찾을 수 없습니다.")
 
+    # 400 VALIDATION_ERROR(details 없음). API_CONTRACT 4절 · 12절에 적혀 있다.
     if not counselor.is_active:
         raise bad_request(
             ErrorCode.VALIDATION_ERROR,
             "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.",
         )
 
+    # 방어 코드. 역할은 지금 COUNSELOR · ADMIN 둘뿐이라(core/enums.py) 여기에 닿지 않는다.
+    # 역할이 늘어날 때를 위해 남겨 둔다(그때 API_CONTRACT 4절에도 적는다).
     if counselor.role not in (UserRole.COUNSELOR, UserRole.ADMIN):
         raise bad_request(
             ErrorCode.VALIDATION_ERROR,

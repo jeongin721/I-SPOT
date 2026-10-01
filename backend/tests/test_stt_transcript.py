@@ -53,6 +53,16 @@ class SlowSTTAdapter:
         return STTResult(schema_version="1.0", segments=[])
 
 
+class EmptySTTAdapter:
+    """형식은 맞지만 발화를 하나도 찾지 못한 Provider(무음 · 잡음만 있는 음성)."""
+
+    name = "empty"
+    model = None
+
+    def transcribe(self, audio_path):
+        return STTResult(schema_version="1.0", segments=[])
+
+
 class ContractViolatingSTTAdapter:
     """STTResult 가 아닌 값을 반환하는 Provider."""
 
@@ -273,6 +283,39 @@ def test_stt_can_be_retried_after_failure(
     assert envelope["transcript"]["segments"]
 
 
+def test_stt_result_without_segments_fails_and_can_be_retried(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """
+    발화를 하나도 찾지 못한 결과(무음 · 잡음만 있는 음성)는 실패로 마감한다.
+
+    검수 필요(STT_REVIEW_REQUIRED)로 두면 검수할 발화가 없어 확정도 의미가 없고, 화면은 그 상태에서
+    다시 변환을 권하지 않아 막다른 길이 된다. 실패로 두면 다른 실패처럼 재시도 · 재업로드 길이 열린다.
+    빈 전사본(version)도 남기지 않는다.
+    """
+
+    upload_audio(client, counselor_headers, session["id"])
+    set_stt_adapter_override(EmptySTTAdapter())
+
+    assert _run_stt(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_transcript(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "STT_FAILED"
+    assert envelope["transcript"] is None
+    assert envelope["error"]["code"] == "STT_FAILED"
+    assert "발화를 찾지 못했습니다" in envelope["error"]["message"]
+
+    set_stt_adapter_override(None)
+
+    assert _run_stt(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_transcript(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "STT_REVIEW_REQUIRED"
+    assert envelope["transcript"]["version"] == 1
+
+
 # =========================================================
 # Adapter 출력 검증 (단위 테스트)
 # =========================================================
@@ -489,12 +532,44 @@ def test_transcript_edit_rejects_inverted_time_range(
         headers=counselor_headers,
     )
 
+    # 한 발화에 두 값을 모두 보내 거꾸로면 요청 형식 오류다(details.fields). API_CONTRACT 7절
     assert response.status_code == 422
+    assert response.json()["error"]["details"]["fields"][0]["field"] == "segments.0"
 
 
-def test_transcript_edit_without_transcript_returns_not_found(
+def test_transcript_edit_rejects_time_inverted_after_merging_saved_value(
     client: TestClient, counselor_headers, session: dict
 ) -> None:
+    """한쪽만 보내 저장된 값과 합친 결과가 거꾸로면 409 VALIDATION_ERROR(details 없음)."""
+
+    envelope = transcribed_session(client, counselor_headers, session["id"])
+    target = envelope["transcript"]["segments"][0]
+
+    response = client.patch(
+        f"/api/v1/sessions/{session['id']}/transcript",
+        json={
+            "segments": [
+                {"segment_id": target["segment_id"], "start_ms": target["end_ms"] + 100}
+            ]
+        },
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "details" not in response.json()["error"]
+
+
+def test_transcript_edit_without_transcript_returns_state_error(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """
+    원문 수정(PATCH)은 상태를 먼저 본다. 전사본이 없는 회기(CREATED)도 404 가 아니라 409 다.
+
+    STT 요청 · 원문 확정 · AI 분석 요청은 음성 · 전사본이 없으면 상태보다 먼저 404 를 준다
+    (README A.6 · CODE_GUIDE). 수정할 수 있는 상태(원문 검수 필요 · AI 분석 대기)에는 전사본이 늘 있다.
+    """
+
     response = client.patch(
         f"/api/v1/sessions/{session['id']}/transcript",
         json={"segments": [{"segment_id": "seg_001", "text": "수정"}]},

@@ -199,6 +199,7 @@ def test_main_prints_temporary_password_once(
 
     assert output.count(temporary) == 1
     assert "복구 완료: admin@ispot.example.com (role=ADMIN)" in output
+    assert "PASSWORD_CHANGE_REQUIRED" in output  # 바꾸기 전에는 다른 요청이 막힌다는 안내
     assert _login(client, temporary).status_code == 200
 
 

@@ -79,10 +79,17 @@ def get_me(current_user: CurrentUser) -> DataResponse[UserResponse]:
 )
 def change_my_password(
     payload: PasswordChangeRequest,
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
-    user_service.change_password(db, current_user, payload)
+    user_service.change_password(
+        db,
+        current_user,
+        payload,
+        ip_address=client_ip(request),
+        user_agent=user_agent(request),
+    )
 
 
 @router.post(
@@ -204,8 +211,8 @@ def list_audit_logs(
         Optional[str], Query(alias="status", pattern="^(SUCCESS|FAILURE)$")
     ] = None,
     actor_id: Annotated[Optional[uuid.UUID], Query(description="행동한 사용자")] = None,
-    since: Annotated[Optional[datetime], Query(description="이 시각부터")] = None,
-    until: Annotated[Optional[datetime], Query(description="이 시각까지")] = None,
+    since: Annotated[Optional[datetime], Query(description="이 시각부터(포함). ISO 8601, 시간대 표시 없으면 UTC")] = None,
+    until: Annotated[Optional[datetime], Query(description="이 시각까지(포함). ISO 8601, 시간대 표시 없으면 UTC")] = None,
 ) -> DataResponse[PagedItems[AuditLogResponse]]:
     rows, total = account_service.list_audit_logs(
         db,

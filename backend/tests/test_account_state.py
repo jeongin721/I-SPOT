@@ -8,7 +8,7 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
@@ -228,6 +228,60 @@ def test_unknown_and_locked_accounts_still_run_bcrypt(
 
     # 잠긴 계정은 진짜 해시가 아니라 가짜 해시와 비교한다.
     assert compared == [user_service._dummy_password_hash()]
+
+
+def _commits_around_password_check(
+    client: TestClient, monkeypatch, email: str, password: str
+) -> Tuple[int, int]:
+    """로그인 한 번에서 비밀번호 대조(verify_password) 앞 · 뒤로 DB 에 커밋한 횟수."""
+
+    steps: List[str] = []
+    original = user_service.verify_password
+
+    def spy(plain: str, hashed: str) -> bool:
+        steps.append("verify")
+        return original(plain, hashed)
+
+    def on_commit(_connection) -> None:
+        steps.append("commit")
+
+    monkeypatch.setattr(user_service, "verify_password", spy)
+    event.listen(engine, "commit", on_commit)
+
+    try:
+        _login(client, email, password)
+    finally:
+        event.remove(engine, "commit", on_commit)
+        monkeypatch.setattr(user_service, "verify_password", original)
+
+    assert steps.count("verify") == 1
+
+    at = steps.index("verify")
+
+    return steps[:at].count("commit"), steps[at + 1:].count("commit")
+
+
+def test_failed_logins_commit_at_the_same_point_for_every_account(
+    client: TestClient, counselor_id: uuid.UUID, monkeypatch
+) -> None:
+    """
+    없는 계정 · 있는 계정(틀린 비밀번호) · 잠긴 계정이 비밀번호 대조 앞뒤로 같은 수만큼 커밋한다.
+
+    커밋(디스크 기록)은 몇 ms 걸린다. 있는 계정만 대조 전에 시도를 세어 한 번 더 커밋하면
+    bcrypt 시간을 맞춰도 응답 시간 차이로 계정이 있는지 드러난다.
+    """
+
+    missing = _commits_around_password_check(
+        client, monkeypatch, "nobody@ispot.example.com", WRONG_PASSWORD
+    )
+    existing = _commits_around_password_check(client, monkeypatch, COUNSELOR_EMAIL, WRONG_PASSWORD)
+
+    _lock(client)
+
+    locked = _commits_around_password_check(client, monkeypatch, COUNSELOR_EMAIL, WRONG_PASSWORD)
+
+    # 시도 기록(감사 로그)과 실패 횟수를 대조 전에 한 번에 커밋하고, 대조 뒤에는 커밋하지 않는다.
+    assert missing == existing == locked == (1, 0)
 
 
 def test_failure_count_is_added_in_database(counselor_id: uuid.UUID, db) -> None:
@@ -557,10 +611,18 @@ def test_admin_can_deactivate_account(
     assert response.status_code == 200
     assert response.json()["data"]["is_active"] is False
 
+    # 정지하면 토큰이 무효가 된다(API_CONTRACT 3절 "Token 무효화", 401).
+    # 403 이면 화면이 로그인으로 보내지 않아 정지된 사람이 앱 안에 남는다.
     blocked = client.get("/api/v1/auth/me", headers=counselor_headers)
 
-    assert blocked.status_code == 403
-    assert blocked.json()["error"]["code"] == "INACTIVE_USER"
+    assert blocked.status_code == 401
+    assert blocked.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # 정지된 이유는 다시 로그인할 때 알려준다.
+    login = _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    assert login.status_code == 403
+    assert login.json()["error"]["code"] == "INACTIVE_USER"
 
 
 def test_admin_can_change_role(
@@ -755,6 +817,68 @@ def test_admin_can_read_audit_logs_with_filters(
     ).json()["data"]["items"]
 
     assert all(item["action"] == "LOGIN" for item in by_action)
+
+
+def test_audit_log_time_filters_read_any_time_zone_the_same(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    """
+    since · until 은 같은 순간이면 표기(Z · +09:00 · 표시 없음=UTC)와 상관없이 같은 결과여야 한다.
+
+    SQLite 는 시간대를 버리고 벽시계 글자로 비교하므로, UTC 로 바꾸지 않으면 +09:00 이 9시간 어긋난다.
+    """
+
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    moment = datetime.now(timezone.utc) - timedelta(minutes=5)
+    forms = [
+        moment.replace(tzinfo=None).isoformat() + "Z",
+        moment.astimezone(timezone(timedelta(hours=9))).isoformat(),
+        moment.replace(tzinfo=None).isoformat(),
+    ]
+
+    def total(**params) -> int:
+        response = client.get("/api/v1/auth/audit-logs", params=params, headers=admin_headers)
+
+        assert response.status_code == 200, response.text
+
+        return response.json()["data"]["meta"]["total"]
+
+    since_totals = [total(since=value) for value in forms]
+    until_totals = [total(until=value) for value in forms]
+
+    # 관리자 로그인 · 상담사 로그인 두 건은 5분 전 뒤에 남았다.
+    assert since_totals[0] >= 2
+    assert since_totals == [since_totals[0]] * 3
+    assert until_totals == [0, 0, 0]
+
+
+def test_audit_log_time_filters_past_the_calendar_edge_are_not_server_errors(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    """
+    UTC 로 바꾸면 날짜 범위(1년 1월 1일 ~ 9999년 12월 31일)를 벗어나는 값도 500 이 아니다.
+
+    아주 이른 since 는 '처음부터', 아주 늦은 until 은 '끝까지' 와 같다.
+    반대로 아주 늦은 since · 아주 이른 until 에 걸리는 기록은 없다.
+    """
+
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    def total(**params) -> int:
+        response = client.get("/api/v1/auth/audit-logs", params=params, headers=admin_headers)
+
+        assert response.status_code == 200, response.text
+
+        return response.json()["data"]["meta"]["total"]
+
+    everything = total()
+
+    assert everything >= 2
+    assert total(since="0001-01-01T00:00:00+09:00") == everything
+    assert total(until="9999-12-31T23:59:59-01:00") == everything
+    assert total(since="9999-12-31T23:59:59-01:00") == 0
+    assert total(until="0001-01-01T00:00:00+09:00") == 0
 
 
 def test_audit_logs_show_actor_name(

@@ -451,6 +451,132 @@ def test_change_password_writes_audit_log_without_password(
     assert COUNSELOR_PASSWORD not in str(log.detail)
 
 
+# =========================================================
+# 비밀번호 변경 — 현재 비밀번호를 맞혀 보는 것 막기
+# =========================================================
+#
+# 현재 비밀번호를 받는 이유는 토큰만 훔친 사람이 비밀번호를 바꿔 계정을 가져가는 것을 막기
+# 위해서다(API_CONTRACT 3절). 이 창구로 현재 비밀번호를 끝없이 맞혀 볼 수 있으면 그 목적이 깨진다.
+
+ME_PASSWORD = "/api/v1/auth/me/password"
+WRONG_CURRENT = "Wrong-Current-11"
+
+
+def _password_failures(db) -> list:
+    return db.scalars(
+        select(AuditLog).where(
+            AuditLog.action == AuditAction.PASSWORD_CHANGED,
+            AuditLog.status == "FAILURE",
+        )
+    ).all()
+
+
+def test_change_password_failure_is_audited(
+    client: TestClient, counselor_headers, counselor_id: uuid.UUID, db
+) -> None:
+    response = client.post(
+        ME_PASSWORD,
+        json={"current_password": WRONG_CURRENT, "new_password": NEW_PASSWORD},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 400
+
+    failures = _password_failures(db)
+
+    assert len(failures) == 1
+    assert failures[0].actor_id == counselor_id
+    assert failures[0].entity_id == counselor_id
+    assert failures[0].error_code == "INVALID_CURRENT_PASSWORD"
+    assert WRONG_CURRENT not in str(failures[0].detail)
+    assert NEW_PASSWORD not in str(failures[0].detail)
+
+
+@pytest.mark.parametrize("current", [WRONG_CURRENT, COUNSELOR_PASSWORD])
+def test_change_password_answers_rule_errors_before_checking_current_password(
+    client: TestClient, counselor_headers, current: str, db
+) -> None:
+    """
+    새 비밀번호 규칙 위반 · 같은 비밀번호는 현재 비밀번호가 맞든 틀리든 같은 422 다.
+
+    현재 비밀번호를 먼저 확인하면 "맞으면 422, 틀리면 400" 이 되어, 비밀번호를 바꾸지 않고도
+    정답인지 알아내는 수단이 된다. 이렇게 걸러진 요청은 현재 비밀번호를 확인하지 않았으므로
+    실패 횟수에도 넣지 않는다.
+    """
+
+    weak = client.post(
+        ME_PASSWORD,
+        json={"current_password": current, "new_password": "abc"},
+        headers=counselor_headers,
+    )
+
+    assert weak.status_code == 422
+    assert weak.json()["error"]["code"] == "WEAK_PASSWORD"
+
+    same = client.post(
+        ME_PASSWORD,
+        json={"current_password": current, "new_password": current},
+        headers=counselor_headers,
+    )
+
+    assert same.status_code == 422
+    assert same.json()["error"]["code"] == "SAME_PASSWORD"
+
+    assert _password_failures(db) == []
+
+
+def test_repeated_wrong_current_password_ends_the_session(
+    client: TestClient,
+    counselor_headers,
+    counselor_id: uuid.UUID,
+    db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    현재 비밀번호를 정해진 횟수(LOGIN_MAX_FAILURES)만큼 틀리면 그 계정의 토큰을 모두 끊는다.
+
+    계정은 잠그지 않는다. 다시 로그인하면 되고, 로그인 쪽은 이미 실패 잠금이 있다.
+    그래서 토큰 하나로 맞혀 볼 수 있는 횟수가 정해진 횟수로 묶인다.
+    """
+
+    monkeypatch.setattr(settings, "LOGIN_MAX_FAILURES", 3)
+    wrong = {"current_password": WRONG_CURRENT, "new_password": NEW_PASSWORD}
+
+    for _ in range(2):
+        response = client.post(ME_PASSWORD, json=wrong, headers=counselor_headers)
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "INVALID_CURRENT_PASSWORD"
+
+    last = client.post(ME_PASSWORD, json=wrong, headers=counselor_headers)
+
+    assert last.status_code == 401
+    assert last.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # 토큰은 끊겼다. 끊긴 뒤에는 현재 비밀번호를 확인하지 않는다.
+    assert client.get("/api/v1/auth/me", headers=counselor_headers).status_code == 401
+    assert client.post(ME_PASSWORD, json=wrong, headers=counselor_headers).status_code == 401
+
+    revoked = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.LOGOUT_ALL)).all()
+
+    assert len(revoked) == 1
+    assert revoked[0].actor_id == counselor_id
+    assert revoked[0].entity_id == counselor_id
+
+    # 계정은 잠기지 않는다. 다시 로그인하면 횟수가 처음부터 다시 센다.
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": COUNSELOR_EMAIL, "password": COUNSELOR_PASSWORD},
+    )
+
+    assert login.status_code == 200
+
+    fresh = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+
+    assert client.post(ME_PASSWORD, json=wrong, headers=fresh).status_code == 400
+    assert len(_password_failures(db)) == 4
+
+
 def test_login_does_not_apply_password_policy(client: TestClient, counselor_id) -> None:
     """규칙은 새로 정할 때만 적용한다. 기존 계정 로그인은 막지 않는다."""
 

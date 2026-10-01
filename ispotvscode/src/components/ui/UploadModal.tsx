@@ -205,6 +205,11 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
         const created = await casesApi.createSession(selectedCase.backendId, {});
         sessionId = created.id;
         sessionNumber = created.session_number;
+        // 방금 만든 회차를 고른 상태로 바꾼다. 아래 업로드 · 원문 변환이 실패한 뒤 다시 "업로드" 를 누르면
+        // 새 회차를 또 만들지 않고 이 회차에 다시 올린다(회차 요약에도 이 회차 번호가 보인다).
+        setCaseSessions(prev => [created, ...prev.filter(s => s.id !== created.id)]);
+        setSessionTotal(prev => prev + 1);
+        setSessionChoice(created.id);
       }
 
       setPhase("업로드 중...");
@@ -213,6 +218,9 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
       setPhase("STT 실행 중...");
       await transcriptApi.run(sessionId);
       const envelope = await waitForStt(sessionId);
+
+      // 고른 회차의 상태를 서버 상태로 맞춘다. 업로드할 수 있는 상태인지(UPLOADABLE)와 목록 표시가 이 값을 본다.
+      setCaseSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: envelope.session_status } : s));
 
       if (envelope.session_status === "STT_FAILED") {
         setUploadError(envelope.error?.message ?? "STT 처리에 실패했습니다. 다시 시도해 주세요.");

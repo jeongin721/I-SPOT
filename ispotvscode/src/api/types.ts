@@ -13,7 +13,14 @@ export interface DataResponse<T> {
   data: T;
 }
 
-/** 모든 실패 응답은 error 로 감싸진다. */
+/**
+ * 모든 실패 응답은 error 로 감싸진다. message 는 한국어라 그대로 보여 줄 수 있다
+ * (없는 경로 404 · 허용되지 않는 method 405 · 해석할 수 없는 multipart 본문 400 처럼 서버 프레임워크가 만드는 오류도 같다).
+ * JSON 문법 오류는 400 이 아니라 422 VALIDATION_ERROR 이고 details.fields 로 온다
+ * (field 는 글자 위치, reason 은 "JSON decode error" — API_CONTRACT 1.2).
+ * UTF-8 로 읽을 수 없는 바이트가 든 JSON 본문은 400 VALIDATION_ERROR(details 없음)다. 화면은 fetch 로
+ * JSON.stringify 한 문자열을 보내 늘 UTF-8 이므로 이 경우를 만나지 않는다.
+ */
 export interface ErrorResponse {
   error: {
     code: string;
@@ -113,6 +120,7 @@ export interface User {
    * 계정 상태. 넷은 뜻이 다르므로 화면에서 구분해 보여준다.
    * is_active=false 관리자 정지 / is_locked 로그인 실패 잠금 /
    * dormant_at 2개월 미접속 휴면 / must_change_password 임시 비밀번호
+   * (must_change_password 면 GET /auth/me · POST /auth/me/password 외에는 403 PASSWORD_CHANGE_REQUIRED)
    *
    * 잠김 여부는 is_locked 로 본다. 기본 설정에서는 시간이 지나도 풀리지 않아 locked_until 이
    * 비어 있다. locked_until 은 시간 잠금(Backend LOGIN_LOCK_MINUTES > 0)일 때 풀리는 시각이다.
@@ -228,7 +236,10 @@ export interface CaseCreateRequest {
   /** guardian_type 이 OTHER 일 때만 보낼 수 있다. 그 외에는 422. */
   guardian_note?: string | null;
   notes?: string | null;
-  /** 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403). */
+  /**
+   * 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403).
+   * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만, API_CONTRACT 4절).
+   */
   counselor_id?: string;
 }
 
@@ -248,7 +259,10 @@ export interface CaseUpdateRequest {
   notes?: string | null;
   /** CLOSED 로 바꾸면 사례 종결. */
   status?: CaseStatus;
-  /** 담당 상담사 변경. 관리자만 할 수 있다(403). */
+  /**
+   * 담당 상담사 변경. 관리자만 할 수 있다(403).
+   * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만). 거절되면 바뀌지 않는다.
+   */
   counselor_id?: string;
 }
 
@@ -395,7 +409,12 @@ export interface TranscriptSegmentUpdate {
   end_ms?: number;
 }
 
-/** 전사본 수정 요청(PATCH /sessions/{id}/transcript). 둘 중 하나는 있어야 한다. */
+/**
+ * 전사본 수정 요청(PATCH /sessions/{id}/transcript). 둘 중 하나는 있어야 한다(없으면 422 VALIDATION_ERROR).
+ * 모든 발화를 지우면 409 VALIDATION_ERROR(details 없음). 시각 역전(end_ms < start_ms)은 한 발화에 두 시각을 모두 보내
+ * 거꾸로면 422 VALIDATION_ERROR(details.fields), 한쪽만 보내 저장된 값과 합친 결과가 거꾸로면 409 VALIDATION_ERROR
+ * (details 없음). API_CONTRACT 7절.
+ */
 export interface TranscriptUpdateRequest {
   segments?: TranscriptSegmentUpdate[];
   removed_segment_ids?: string[];
@@ -414,6 +433,7 @@ export interface STTRequestResponse {
 /**
  * 전사본 조회 응답.
  * STT 가 끝나지 않았으면 transcript 가 null 이고 session_status 로 판단한다.
+ * STT 가 발화를 하나도 찾지 못하면 실패(STT_FAILED, error.code STT_FAILED)로 끝나고 빈 전사본은 만들지 않는다.
  */
 export interface TranscriptEnvelope {
   session_id: string;

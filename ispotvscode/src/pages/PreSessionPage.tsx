@@ -109,7 +109,7 @@ export default function PreSessionPage() {
               ["예정 회차", `${nextSession}회차`],
               ["날짜", todayLabel()],
               ["담당 상담사", c.counselor],
-              ["위험도", c.riskLevel === "high" ? "확인 필요" : c.riskLevel === "mid" ? "확인 중" : "확인 완료"],
+              ["위험도", !c.riskLevel ? "—" : c.riskLevel === "high" ? "확인 필요" : c.riskLevel === "mid" ? "확인 중" : "확인 완료"],
             ].map(([k, v]) => (
               <div key={k} className="flex gap-3">
                 <span className="text-[#94A3B8] w-24 shrink-0">{k}</span>
