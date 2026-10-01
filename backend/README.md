@@ -453,7 +453,7 @@ npm run dev
 |---|---|
 | `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
 | 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
-| `409 INVALID_SESSION_STATE` | 상태 순서를 건너뛴 요청이다. 오류 본문의 `expected_status` 를 확인한다 |
+| `409 INVALID_SESSION_STATE` | 상태 순서를 건너뛴 요청이다. 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절) |
 | `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
 | 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
 

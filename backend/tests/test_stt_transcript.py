@@ -1,6 +1,7 @@
 # STT 연동 및 Transcript 저장/조회/수정 테스트.
 # STT Mock / STT Error / Timeout / 잘못된 출력을 모두 확인한다.
 
+import re
 import time
 import uuid
 from typing import Dict
@@ -15,6 +16,8 @@ from app.adapters.stt_adapter import (
     validate_stt_output,
 )
 from app.core.config import settings
+from app.core.enums import SessionStatus
+from app.core.state_machine import status_label
 from app.schemas.contracts import STTResult
 from tests.conftest import upload_audio
 
@@ -70,6 +73,23 @@ def _run_stt(client: TestClient, headers: Dict[str, str], session_id: str):
 
 def _get_transcript(client: TestClient, headers: Dict[str, str], session_id: str):
     return client.get(f"/api/v1/sessions/{session_id}/transcript", headers=headers)
+
+
+def _assert_state_error_is_readable(response, current_status: str) -> str:
+    """INVALID_SESSION_STATE 를 확인하고 사람에게 보여줄 문구를 돌려준다.
+
+    문구에는 CREATED · STT_PROCESSING 같은 상태 코드를 넣지 않고 details 에만 둔다.
+    """
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+
+    assert error["code"] == "INVALID_SESSION_STATE"
+    assert error["details"]["current_status"] == current_status
+    assert re.search(r"[A-Z]{3,}|[A-Z]+_", error["message"]) is None, error["message"]
+    assert "필요 상태" not in error["message"]
+
+    return error["message"]
 
 
 def transcribed_session(
@@ -481,8 +501,22 @@ def test_transcript_edit_without_transcript_returns_not_found(
         headers=counselor_headers,
     )
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "INVALID_SESSION_STATE"
+    message = _assert_state_error_is_readable(response, "CREATED")
+
+    assert message == (
+        "지금 회기 상태(음성 업로드 대기)에서는 할 수 없는 요청입니다. "
+        "원문 검수 필요 · AI 분석 대기 상태에서만 할 수 있습니다."
+    )
+    assert (
+        response.json()["error"]["details"]["expected_status"]
+        == "STT_CONFIRMED, STT_REVIEW_REQUIRED"
+    )
+
+    # 문구에 쓰는 상태 이름은 모든 상태에 따로 있다(코드가 문구로 새지 않게).
+    labels = {status_label(status) for status in SessionStatus}
+
+    assert len(labels) == len(SessionStatus)
+    assert "알 수 없는 상태" not in labels
 
 
 def test_confirm_transcript_moves_to_confirmed(

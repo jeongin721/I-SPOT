@@ -9,6 +9,7 @@
 from fastapi.testclient import TestClient
 
 from tests.conftest import COUNSELOR_PASSWORD, upload_audio
+from tests.test_stt_transcript import _assert_state_error_is_readable
 
 
 def test_full_consultation_flow_persists_after_reentry(
@@ -192,6 +193,15 @@ def test_full_consultation_flow_persists_after_reentry(
     )
 
     assert edited_segment["text"] == "상담사가 확인한 문장입니다."
+
+    # 14) 승인이 끝난 회기는 다시 분석하지 않는다. 문구에 상태 코드를 드러내지 않는다.
+    reanalysis = client.post(
+        f"/api/v1/sessions/{session_id}/analysis", headers=fresh_headers
+    )
+    message = _assert_state_error_is_readable(reanalysis, "APPROVED")
+
+    assert message == "승인이 끝난 회기는 바꿀 수 없습니다."
+    assert reanalysis.json()["error"]["details"]["expected_status"] == "없음"
 
 
 def test_every_response_uses_data_or_error_envelope(
