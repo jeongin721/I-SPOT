@@ -4,7 +4,7 @@
 # Frontend 메뉴 숨김만으로 권한을 처리하지 않는다.(03_BACKEND_PROMPT.md §10)
 
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -46,6 +46,22 @@ def user_agent(request: Request) -> Optional[str]:
     return value[:255] if value else None
 
 
+def verify_access_token(
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Dict[str, Any]:
+    """
+    Bearer 토큰의 서명 · 만료만 보고 내용을 돌려준다. DB 는 보지 않는다. 틀리면 401.
+
+    get_current_user 와, 본문을 읽기 전에 음성 업로드를 거르는 main._BodySizeLimitMiddleware 가 같이 쓴다.
+    둘이 같은 문구를 내야 화면이 같은 401 로 다룬다.
+    """
+
+    if credentials is None or not credentials.credentials:
+        raise unauthorized("Authorization 헤더가 없습니다.")
+
+    return decode_access_token(credentials.credentials)
+
+
 def get_current_user(
     request: Request,
     db: DbSession,
@@ -53,10 +69,7 @@ def get_current_user(
         Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)
     ] = None,
 ) -> User:
-    if credentials is None or not credentials.credentials:
-        raise unauthorized("Authorization 헤더가 없습니다.")
-
-    payload = decode_access_token(credentials.credentials)
+    payload = verify_access_token(credentials)
     subject = payload.get("sub")
 
     if not subject:

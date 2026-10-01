@@ -21,6 +21,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
+from app.core.deps import bearer_scheme, verify_access_token
 from app.core.errors import APIError, ErrorCode
 from app.core.logging import configure_logging, get_logger
 from app.core.responses import DataResponse
@@ -188,14 +189,55 @@ class _RequestBodyTooLarge(StarletteHTTPException):
 
 _MB = 1024 * 1024
 
-# 음성 업로드(POST /sessions/{session_id}/audio)만 큰 본문을 받는다.
+# 음성 업로드(POST /sessions/{session_id}/audio 에 multipart 본문)만 큰 본문을 받는다.
 _AUDIO_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/sessions/[^/]+/audio/?$")
 
 
-def _body_limit(scope: Scope) -> Tuple[int, ErrorCode, str]:
+def _media_type(scope: Scope) -> str:
+    """Content-Type 의 주 형식(소문자). boundary 같은 매개변수는 뺀다. 없으면 빈 문자열."""
+
+    for name, value in scope.get("headers", []):
+        if name == b"content-type":
+            return value.decode("latin-1").split(";", 1)[0].strip().lower()
+
+    return ""
+
+
+def _is_audio_upload(scope: Scope) -> bool:
+    """
+    음성 업로드 요청인가. 음성 경로라도 multipart 가 아니면 음성 파일이 올 수 없으므로 아니다.
+
+    urlencoded 본문은 Starlette 가 칸마다 메모리에 쌓아 해석한다. 이런 본문에 음성 한도(기본 201MB)를 주면
+    로그인하지 않은 요청 하나로 그만큼 메모리를 쓸 수 있다. 그래서 일반 본문 한도를 쓴다.
+    """
+
+    return (
+        scope.get("method") == "POST"
+        and _AUDIO_UPLOAD_PATH.match(scope.get("path", "")) is not None
+        and _media_type(scope) == "multipart/form-data"
+    )
+
+
+async def _token_error(scope: Scope) -> Optional[APIError]:
+    """
+    Authorization 의 Bearer 토큰이 서명 · 만료 검사를 통과하지 못하면 그 401 오류를 돌려준다.
+
+    get_current_user 와 같은 함수(deps.verify_access_token)로 보므로 문구도 같다. DB 는 보지 않는다.
+    정지 · 강제 로그아웃 여부는 본문을 받은 뒤 get_current_user 가 다시 본다.
+    """
+
+    try:
+        verify_access_token(await bearer_scheme(Request(scope)))
+    except APIError as error:
+        return error
+
+    return None
+
+
+def _body_limit(audio_upload: bool) -> Tuple[int, ErrorCode, str]:
     """이 요청이 받을 수 있는 본문 크기(바이트)와, 넘었을 때의 오류 코드 · 문구."""
 
-    if scope.get("method") == "POST" and _AUDIO_UPLOAD_PATH.match(scope.get("path", "")):
+    if audio_upload:
         # 파일 크기는 저장할 때 정확히 다시 잰다(core/storage.py). 여기서는 multipart 머리글 등
         # 파일 밖의 몫으로 1MB 를 더 준다.
         return (
@@ -248,10 +290,15 @@ class _BodySizeLimitMiddleware:
     """
     본문을 받는 창구(JSON · form · multipart)에서 요청 본문 크기를 로그인 확인보다 먼저 제한한다.
 
-    FastAPI 는 본문(JSON · multipart)을 끝까지 읽은 뒤에 의존성(get_current_user 포함)을 실행한다.
-    제한이 없으면 로그인하지 않은 요청도 본문을 다 받아, JSON 은 메모리에, multipart 는 디스크 임시 파일에
-    쌓인다. 본문을 읽는 receive 를 감싸서 Content-Length 가 한도를 넘으면 처음 읽을 때, 없으면(chunked)
-    받은 만큼 세다가 넘는 순간 400 을 준다. 400 을 주기 전에 남은 본문은 버리며 읽는다(_discard_rest_of_body).
+    FastAPI 는 본문(JSON · form · multipart)을 끝까지 읽어 해석한 뒤에 의존성(get_current_user 포함)을 실행한다.
+    제한이 없으면 로그인하지 않은 요청도 본문을 다 받는다. JSON · urlencoded 본문과 multipart 의 파일이 아닌 칸은
+    메모리에, multipart 의 파일 칸은 1MB 를 넘으면 디스크 임시 파일에 쌓인다. 본문을 읽는 receive 를 감싸서
+    Content-Length 가 한도를 넘으면 처음 읽을 때, 없으면(chunked) 받은 만큼 세다가 넘는 순간 400 을 준다.
+    400 을 주기 전에 남은 본문은 버리며 읽는다(_discard_rest_of_body).
+
+    음성 업로드(_is_audio_upload: 음성 경로 + multipart)만 큰 한도(AUDIO_MAX_SIZE_MB + 1MB)를 쓴다. 그 한도는
+    서명 · 만료가 맞는 토큰을 붙인 요청에만 준다. 토큰이 없거나 틀리면 본문을 해석하기 전에, 남은 본문을 버리며
+    읽은 뒤 get_current_user 와 같은 401 로 답한다. 음성 경로라도 multipart 가 아니면 일반 한도를 쓴다.
 
     receive 를 감싸는 것이라 본문을 읽지 않는 창구(GET, 본문 없는 POST)에는 걸리지 않는다. 그런 창구는
     보낸 본문을 읽지 않고 평소대로(401 이나 정상 응답) 답한다. 운영에서 앞단 프록시를 두면 그쪽에도 같은 제한을 둔다.
@@ -265,7 +312,21 @@ class _BodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        limit, code, message = _body_limit(scope)
+        audio_upload = _is_audio_upload(scope)
+
+        if audio_upload:
+            error = await _token_error(scope)
+
+            if error is not None:
+                # 여기서 바로 답한다(바깥의 CORS 미들웨어가 헤더를 붙인다). 본문을 다 받지 않고 답하면
+                # 개발 프록시를 거친 화면이 401 대신 연결 끊김을 보므로 남은 본문은 버리며 읽는다.
+                await _discard_rest_of_body(receive)
+
+                response = JSONResponse(status_code=error.status_code, content=error.to_payload())
+                await response(scope, receive, send)
+                return
+
+        limit, code, message = _body_limit(audio_upload)
         declared = _declared_length(scope)
         received = 0
 
