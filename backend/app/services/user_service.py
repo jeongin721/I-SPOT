@@ -193,7 +193,17 @@ def _reserve_login_attempt(db: Session, user: User) -> Optional[int]:
 
 
 def _release_login_attempt(db: Session, user: User) -> None:
-    """비밀번호가 맞은 시도는 실패가 아니므로 예약한 1 을 되돌린다."""
+    """
+    비밀번호가 맞은 시도는 실패가 아니므로 예약한 1 을 되돌린다.
+
+    되돌린 뒤 **실패 횟수와 잠금 시각만** 다시 읽는다. 성공 처리(authenticate 7단계)에서 두 값을
+    비울 때 메모리 값이 낡아 있으면(이미 0 · None) 바뀐 것이 없다고 보고 UPDATE 에서 빠진다.
+
+    계정 전체를 다시 읽으면 안 된다. 대조하는 사이 본인이 비밀번호를 바꿨으면(Token 버전 + 1)
+    옛 비밀번호로 확인된 이 로그인이 새 버전으로 Token 을 받아, 바꾼 뒤에도 쓸 수 있게 된다.
+    나머지 값(Token 버전 · 계정 상태)은 대조한 해시와 같은 때 읽은 값으로 둔다. 그사이 관리자가
+    정지 · 임시 비밀번호 발급 · 강제 로그아웃을 했으면 Token 버전이 올라 이 로그인의 Token 은 401 이 된다.
+    """
 
     db.execute(
         update(User)
@@ -201,7 +211,7 @@ def _release_login_attempt(db: Session, user: User) -> None:
         .values(failed_login_count=User.failed_login_count - 1)
         .execution_options(synchronize_session=False)
     )
-    db.refresh(user)
+    db.refresh(user, ["failed_login_count", "locked_until"])
 
 
 def _lock_if_limit_reached(
