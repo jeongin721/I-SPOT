@@ -165,6 +165,10 @@ def main() -> int:
             f"이 값은 다시 볼 수 없습니다. {settings.TEMP_PASSWORD_VALID_HOURS}시간 안에 "
             "로그인해 새 비밀번호로 바꿔야 합니다."
         )
+        print(
+            "바꾸기 전에는 내 정보 확인 · 비밀번호 변경 말고는 모두 403 PASSWORD_CHANGE_REQUIRED 입니다"
+            "(seed_demo_data 포함). 바꾸는 방법은 backend/README.md 2.5."
+        )
 
     return 0
 

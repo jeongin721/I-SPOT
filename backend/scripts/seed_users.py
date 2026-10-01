@@ -34,7 +34,9 @@ DEMO_ACCOUNTS: List[Tuple[str, str, UserRole]] = [
 
 EXISTING_ACCOUNT_NOTICE = (
     "이미 있는 계정의 비밀번호는 바뀌지 않았습니다. 모르면 DB 를 지우고(backend/README.md 부록 A.7) "
-    "다시 만들거나 python -m scripts.unlock_user --email <이메일> --reset-password 를 쓰세요."
+    "다시 만들거나 python -m scripts.unlock_user --email <이메일> --reset-password 를 쓰세요.\n"
+    "임시 비밀번호는 먼저 새 비밀번호로 바꿔야 다른 기능(seed_demo_data 포함)을 쓸 수 있습니다"
+    "(backend/README.md 2.5)."
 )
 
 
