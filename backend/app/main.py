@@ -29,9 +29,10 @@ from app.schemas.common import HealthStatus
 
 logger = get_logger(__name__)
 
-# FastAPI · Starlette 가 직접 만드는 HTTP 오류(없는 경로, 허용되지 않은 method, 해석할 수 없는 multipart 본문 등)
-# → 공통 오류 코드. 서비스 코드는 HTTPException 대신 APIError 를 쓰므로(core/errors.py) 여기로 오는 것은
-# 프레임워크 오류뿐이다. JSON 문법 오류는 여기가 아니라 RequestValidationError(422)로 온다.
+# FastAPI · Starlette 가 직접 만드는 HTTP 오류(없는 경로, 허용되지 않은 method, 해석할 수 없는 multipart 본문,
+# UTF-8 로 읽을 수 없는 바이트가 든 JSON 본문 등) → 공통 오류 코드. 서비스 코드는 HTTPException 대신 APIError 를
+# 쓰므로(core/errors.py) 여기로 오는 것은 프레임워크 오류뿐이다. JSON 문법 오류는 여기가 아니라
+# RequestValidationError(422)로 온다. FastAPI 가 본문 해석 오류 가운데 문법 오류만 422 로 바꾸고 나머지는 400 으로 낸다.
 _STATUS_ERROR_CODES: Dict[int, ErrorCode] = {
     400: ErrorCode.VALIDATION_ERROR,
     401: ErrorCode.UNAUTHORIZED,

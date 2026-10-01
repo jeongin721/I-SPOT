@@ -43,7 +43,8 @@ import type {
 } from "./types";
 
 /**
- * 목록 조회 공통 쿼리. Backend 이름(page_size)을 그대로 쓴다. page 는 1부터, page_size 는 최대 100.
+ * 목록 조회 공통 쿼리. Backend 이름(page_size)을 그대로 쓴다. page 는 1 ~ 1,000,000, page_size 는 1 ~ 100.
+ * 범위를 벗어나면 422 VALIDATION_ERROR 다(API_CONTRACT 1.1).
  * interface 가 아니라 type 으로 둔다 — client 의 query 인자(Record)에 그대로 넘기려면 필요하다.
  */
 export type PageQuery = {

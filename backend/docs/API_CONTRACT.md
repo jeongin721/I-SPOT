@@ -31,6 +31,10 @@
 }
 ```
 
+목록 Query 의 `page` 는 1 ~ 1,000,000, `page_size` 는 1 ~ 100 이다(사례 · 회기 · 업무 · 감사 로그 목록 공통).
+범위를 벗어나면 `422 VALIDATION_ERROR`(`details.fields` 의 `field` 는 `query.page` · `query.page_size`)다.
+범위 안이지만 마지막 page 를 넘으면 `items` 가 빈 배열인 200 이다.
+
 ### 1.2 실패 응답
 
 ```json
@@ -49,10 +53,14 @@
   ("허용되지 않는 요청 방식입니다."), 해석할 수 없거나 프레임워크의 form 제한을 넘는 form 본문(예: multipart 의
   boundary 없음, multipart · urlencoded 의 파일이 아닌 칸 하나가 1MB 를 넘음)
   `400 VALIDATION_ERROR`(`details` 없음, "요청 형식이 올바르지 않습니다."). `INTERNAL_ERROR` 는 서버 오류(5xx)에만 쓴다.
-- JSON 문법 오류(깨진 JSON 본문)는 400 이 아니라 **`422 VALIDATION_ERROR`** 이고 `details.fields` 로 온다
+- JSON 문법 오류는 400 이 아니라 **`422 VALIDATION_ERROR`** 이고 `details.fields` 로 온다
   ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
-  `"JSON decode error"` 다.
-- `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 두 가지가 더 있다. `message` 로 구분한다.
+  `"JSON decode error"` 다. 본문 해석은 로그인 확인보다 먼저라, JSON 본문을 받는 창구는 token 이 없어도 `401` 이
+  아니라 이 422 를 준다.
+- `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 세 가지가 더 있다. `message` 로 구분한다.
+  - JSON 본문을 읽을 수 없음 — JSON 본문을 받는 창구에 `Content-Type` 이 JSON 인 본문을 보냈는데 UTF-8 로 읽을 수
+    없는 바이트가 들어 있음(예: CP949 로 인코딩한 한글). 프레임워크는 JSON 문법 오류만 422 로 바꾸고 이런 해석 오류는
+    400 으로 낸다. **로그인 확인보다 먼저** 거절한다("요청 형식이 올바르지 않습니다.").
   - 본문이 너무 큼 — 본문을 받는 창구(JSON · form)에서 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
     **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절(token 의 서명 · 만료를
     먼저 보고, 맞으면 `AUDIO_TOO_LARGE`, 없거나 틀리면 `401`).
@@ -327,7 +335,7 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 
 ### GET /api/v1/auth/audit-logs (관리자 전용)
 
-Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
+Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
 
 - `since` · `until` 은 ISO 8601 이고 경계를 포함한다(`since` ≤ `created_at` ≤ `until`). UTC(`Z`)로 보낸다(1.5).
   서버가 UTC 로 바꿔 비교하므로 `+09:00` 을 붙여도 같은 순간으로 읽고, 표시가 없으면 UTC 로 읽는다.
@@ -417,7 +425,7 @@ Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `acto
 
 ### GET /api/v1/cases
 
-Query: `page`, `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
 - 상담사: 담당 Case 만 반환
@@ -524,7 +532,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 ### GET /api/v1/cases/{case_id}/sessions
 
-Query: `page`, `page_size`, `status`
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 최신 회기(`session_number` 내림차순)부터 반환한다.
 멈춘 처리 중 회기는 먼저 실패로 마감한 뒤 세고 거른다(1.4). 그래서 `status` 필터와 `meta.total` 도 마감 뒤 상태 기준이다.
 
@@ -1043,7 +1051,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ### GET /api/v1/tasks
 
-Query: `page`, `page_size`(≤100), `task_type`, `overdue_only`(`true`/`false`), `counselor_id`
+Query: `page`(≤1,000,000), `page_size`(≤100), `task_type`, `overdue_only`(`true`/`false`), `counselor_id`
 
 - `counselor_id` 는 **관리자만** 쓸 수 있다. 상담사가 본인이 아닌 id 를 보내면 `403 FORBIDDEN`
 - 모르는 `task_type` 이면 `422 VALIDATION_ERROR`
@@ -1123,8 +1131,8 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `SUMMARY_NOT_FOUND` | 404 | 요약 없음 |
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
-| `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(`field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2) |
-| `VALIDATION_ERROR` | 400 | `details` 없음 — form 본문을 해석할 수 없거나 form 제한을 넘음(예: multipart 의 boundary 없음, 파일이 아닌 칸 하나가 1MB 초과), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 urlencoded 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
+| `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(로그인 확인 전, `field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2). 목록의 `page` · `page_size` 범위 밖(1.1) |
+| `VALIDATION_ERROR` | 400 | `details` 없음 — form 본문을 해석할 수 없거나 form 제한을 넘음(예: multipart 의 boundary 없음, 파일이 아닌 칸 하나가 1MB 초과), JSON 본문에 UTF-8 로 읽을 수 없는 바이트가 있음(로그인 확인 전, 문법 오류는 422 — 1.2), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 urlencoded 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
 | `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
