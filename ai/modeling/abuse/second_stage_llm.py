@@ -188,6 +188,12 @@ SYSTEM_PROMPT_TEMPLATE = """
 - 중간: 문맥상 비교적 명확하지만 일부 정보가 생략됨
 - 낮음: 간접적 위험신호이며 사람 확인이 필요함
 
+7-1. strength_reason에는 evidence_strength를 왜 그렇게 판단했는지
+    한 문장으로 쓴다. "근거가 명확함" 같은 동어반복이 아니라, 어떤
+    정보가 직접 진술됐고 어떤 정보가 생략/추정됐는지를 구체적으로
+    쓴다. 상담사가 이 판단을 그대로 믿을지 직접 원문을 봐야 할지
+    정할 근거이므로 반드시 채운다.
+
 8. action은 원문에서 확인되는 행위만 작성한다.
 9. instrument는 원문에 명시된 도구나 수단만 작성한다.
 10. target_body_part는 원문에 명시된 신체 부위만 작성한다.
@@ -228,6 +234,7 @@ SYSTEM_PROMPT_TEMPLATE = """
             {{
               "evidence": "원문에서 그대로 발췌한 근거 표현",
               "evidence_strength": "높음|중간|낮음",
+              "strength_reason": "이 강도로 판단한 이유 한 문장",
               "action": "행위 또는 null",
               "instrument": "도구/수단 또는 null",
               "target_body_part": "신체 부위 또는 null"
@@ -764,6 +771,11 @@ def validate_and_enrich_results(
                                     "evidence_strength"
                                 ),
 
+                            "strength_reason":
+                                subtype_item.get(
+                                    "strength_reason"
+                                ),
+
                             "action":
                                 subtype_item.get(
                                     "action"
@@ -830,6 +842,14 @@ def validate_and_enrich_results(
                     not in VALID_EVIDENCE_STRENGTH
                 ):
                     evidence_strength = "낮음"
+
+                strength_reason = (
+                    _clean_optional_string(
+                        evidence_item.get(
+                            "strength_reason"
+                        )
+                    )
+                )
 
                 action = (
                     _clean_optional_string(
@@ -924,6 +944,9 @@ def validate_and_enrich_results(
 
                     "evidence_strength":
                         evidence_strength,
+
+                    "strength_reason":
+                        strength_reason,
 
                     "action":
                         action,

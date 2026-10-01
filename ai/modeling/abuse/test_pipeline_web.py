@@ -1320,6 +1320,11 @@ def build_subtypes_html(subtype_analysis):
                     "",
                 )
 
+                strength_reason = evidence.get(
+                    "strength_reason",
+                    "",
+                )
+
                 action = evidence.get(
                     "action"
                 )
@@ -1345,6 +1350,11 @@ def build_subtypes_html(subtype_analysis):
                 if strength:
                     meta_parts.append(
                         f"근거 강도: {escape(str(strength))}"
+                    )
+
+                if strength_reason:
+                    meta_parts.append(
+                        f"근거 강도 이유: {escape(str(strength_reason))}"
                     )
 
                 if action:
