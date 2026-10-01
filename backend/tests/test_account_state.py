@@ -557,10 +557,18 @@ def test_admin_can_deactivate_account(
     assert response.status_code == 200
     assert response.json()["data"]["is_active"] is False
 
+    # 정지하면 토큰이 무효가 된다(API_CONTRACT 3절 "Token 무효화", 401).
+    # 403 이면 화면이 로그인으로 보내지 않아 정지된 사람이 앱 안에 남는다.
     blocked = client.get("/api/v1/auth/me", headers=counselor_headers)
 
-    assert blocked.status_code == 403
-    assert blocked.json()["error"]["code"] == "INACTIVE_USER"
+    assert blocked.status_code == 401
+    assert blocked.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # 정지된 이유는 다시 로그인할 때 알려준다.
+    login = _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    assert login.status_code == 403
+    assert login.json()["error"]["code"] == "INACTIVE_USER"
 
 
 def test_admin_can_change_role(

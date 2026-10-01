@@ -33,3 +33,36 @@ def test_unexpected_error_keeps_error_contract_and_cors_headers(
         "error": {"code": "INTERNAL_ERROR", "message": "서버 내부 오류가 발생했습니다."}
     }
     assert response.headers.get("access-control-allow-origin") == origin
+
+
+# =========================================================
+# FastAPI · Starlette 가 직접 만드는 오류
+# =========================================================
+#
+# 경로 · method · 본문 형식 오류는 라우터에 닿기 전에 프레임워크가 만든다. 이때도 message 는
+# 한국어여야 하고(API_CONTRACT 1.2), INTERNAL_ERROR 는 5xx 에만 쓴다(12절).
+
+def test_method_not_allowed_uses_korean_message(client: TestClient, counselor_headers) -> None:
+    response = client.put("/api/v1/auth/me", headers=counselor_headers)
+
+    assert response.status_code == 405
+    assert response.json() == {
+        "error": {"code": "METHOD_NOT_ALLOWED", "message": "허용되지 않는 요청 방식입니다."}
+    }
+
+
+def test_malformed_multipart_body_is_validation_error(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """boundary 없는 multipart 는 Starlette 가 400 으로 막는다. 서버 오류(INTERNAL_ERROR)가 아니다."""
+
+    response = client.post(
+        f"/api/v1/sessions/{session['id']}/audio",
+        content=b"abc",
+        headers={**counselor_headers, "Content-Type": "multipart/form-data"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"code": "VALIDATION_ERROR", "message": "요청 형식이 올바르지 않습니다."}
+    }

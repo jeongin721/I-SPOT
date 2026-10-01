@@ -53,6 +53,16 @@ class SlowSTTAdapter:
         return STTResult(schema_version="1.0", segments=[])
 
 
+class EmptySTTAdapter:
+    """형식은 맞지만 발화를 하나도 찾지 못한 Provider(무음 · 잡음만 있는 음성)."""
+
+    name = "empty"
+    model = None
+
+    def transcribe(self, audio_path):
+        return STTResult(schema_version="1.0", segments=[])
+
+
 class ContractViolatingSTTAdapter:
     """STTResult 가 아닌 값을 반환하는 Provider."""
 
@@ -271,6 +281,39 @@ def test_stt_can_be_retried_after_failure(
     assert envelope["session_status"] == "STT_REVIEW_REQUIRED"
     assert envelope["error"] is None
     assert envelope["transcript"]["segments"]
+
+
+def test_stt_result_without_segments_fails_and_can_be_retried(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """
+    발화를 하나도 찾지 못한 결과(무음 · 잡음만 있는 음성)는 실패로 마감한다.
+
+    검수 필요(STT_REVIEW_REQUIRED)로 두면 검수할 발화가 없어 확정도 의미가 없고, 화면은 그 상태에서
+    다시 변환을 권하지 않아 막다른 길이 된다. 실패로 두면 다른 실패처럼 재시도 · 재업로드 길이 열린다.
+    빈 전사본(version)도 남기지 않는다.
+    """
+
+    upload_audio(client, counselor_headers, session["id"])
+    set_stt_adapter_override(EmptySTTAdapter())
+
+    assert _run_stt(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_transcript(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "STT_FAILED"
+    assert envelope["transcript"] is None
+    assert envelope["error"]["code"] == "STT_FAILED"
+    assert "발화를 찾지 못했습니다" in envelope["error"]["message"]
+
+    set_stt_adapter_override(None)
+
+    assert _run_stt(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_transcript(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "STT_REVIEW_REQUIRED"
+    assert envelope["transcript"]["version"] == 1
 
 
 # =========================================================

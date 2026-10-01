@@ -128,6 +128,43 @@ def test_session_detail_also_recovers_stale_processing(
     assert response.json()["data"]["status"] == "STT_FAILED"
 
 
+def test_session_list_also_recovers_stale_processing(
+    client, counselor_headers, counselor_id, case, session
+) -> None:
+    """회기 목록(사례 상세 · 업로드 창)에서도 멈춘 처리 중 회기가 실패로 보여야 재시도 길이 열린다."""
+
+    assert upload_audio(client, counselor_headers, session["id"])[0] == 201
+    _start_stt_without_worker(session["id"], counselor_id)
+    _started(session["id"], "stt_started_at", LONG_AGO_SECONDS)
+
+    sessions_url = f"/api/v1/cases/{case['id']}/sessions"
+
+    # 상태 필터도 마감한 뒤의 상태로 센다.
+    processing = client.get(
+        sessions_url, params={"status": "STT_PROCESSING"}, headers=counselor_headers
+    )
+
+    assert processing.status_code == 200
+    assert processing.json()["data"]["meta"]["total"] == 0
+
+    listed = client.get(sessions_url, headers=counselor_headers).json()["data"]["items"]
+
+    assert [item["status"] for item in listed] == ["STT_FAILED"]
+
+
+def test_session_list_leaves_processing_within_time_limit(
+    client, counselor_headers, counselor_id, case, session
+) -> None:
+    assert upload_audio(client, counselor_headers, session["id"])[0] == 201
+    _start_stt_without_worker(session["id"], counselor_id)
+
+    listed = client.get(
+        f"/api/v1/cases/{case['id']}/sessions", headers=counselor_headers
+    ).json()["data"]["items"]
+
+    assert [item["status"] for item in listed] == ["STT_PROCESSING"]
+
+
 # =========================================================
 # AI 분석
 # =========================================================
