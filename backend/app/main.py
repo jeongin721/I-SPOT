@@ -26,8 +26,11 @@ from app.schemas.common import HealthStatus
 
 logger = get_logger(__name__)
 
-# HTTP status code → 공통 오류 코드
+# FastAPI · Starlette 가 직접 만드는 HTTP 오류(없는 경로, 허용되지 않은 method, 해석할 수 없는 본문 등)
+# → 공통 오류 코드. 서비스 코드는 HTTPException 대신 APIError 를 쓰므로(core/errors.py) 여기로 오는 것은
+# 프레임워크 오류뿐이다.
 _STATUS_ERROR_CODES: Dict[int, ErrorCode] = {
+    400: ErrorCode.VALIDATION_ERROR,
     401: ErrorCode.UNAUTHORIZED,
     403: ErrorCode.FORBIDDEN,
     404: ErrorCode.NOT_FOUND,
@@ -35,6 +38,17 @@ _STATUS_ERROR_CODES: Dict[int, ErrorCode] = {
     409: ErrorCode.DUPLICATE_RESOURCE,
     413: ErrorCode.AUDIO_TOO_LARGE,
     422: ErrorCode.VALIDATION_ERROR,
+}
+
+# 프레임워크 오류의 detail 은 영어 원문("Method Not Allowed", "Missing boundary in multipart." 등)이다.
+# message 는 한국어로 그대로 보여 줄 수 있어야 하므로(API_CONTRACT 1.2) 상태 코드별 고정 문구를 쓴다.
+_STATUS_MESSAGES: Dict[int, str] = {
+    400: "요청 형식이 올바르지 않습니다.",
+    401: "로그인이 필요합니다.",
+    403: "권한이 없습니다.",
+    404: "요청한 경로를 찾을 수 없습니다.",
+    405: "허용되지 않는 요청 방식입니다.",
+    413: "요청 크기가 너무 큽니다.",
 }
 
 
@@ -175,13 +189,15 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def handle_http_exception(
         _: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
-        code = _STATUS_ERROR_CODES.get(exc.status_code, ErrorCode.INTERNAL_ERROR)
-
-        # 404 는 리소스 종류를 알 수 없는 라우팅 실패이므로 일반 메시지를 사용한다.
-        if exc.status_code == 404:
-            message = "요청한 경로를 찾을 수 없습니다."
-        else:
-            message = str(exc.detail) if exc.detail else "요청을 처리할 수 없습니다."
+        # INTERNAL_ERROR 는 서버 오류(5xx)에만 쓴다. 표에 없는 4xx 는 요청 쪽 문제다.
+        code = _STATUS_ERROR_CODES.get(
+            exc.status_code,
+            ErrorCode.VALIDATION_ERROR if exc.status_code < 500 else ErrorCode.INTERNAL_ERROR,
+        )
+        message = _STATUS_MESSAGES.get(
+            exc.status_code,
+            "요청을 처리할 수 없습니다." if exc.status_code < 500 else "서버 내부 오류가 발생했습니다.",
+        )
 
         return JSONResponse(
             status_code=exc.status_code,
