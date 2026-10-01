@@ -442,13 +442,13 @@ uvicorn app.main:app --reload
 Backend 를 켜둔 상태에서 프론트를 실행하면 CORS 설정 없이 바로 연결된다.
 
 ```bash
-cd ispotvscode
+cd ../ispotvscode      # A.1 에서 backend/ 로 들어와 있으면. 저장소 맨 위에서는 cd ispotvscode
 npm install
 npm run dev
 ```
 
-연결 확인 페이지: <http://localhost:5173/api-demo>
-로그인 → 사례 목록 → 회차 목록이 실제 API 로 동작한다.
+연결 확인: <http://localhost:5173/login> 에서 A.3 의 데모 계정으로 로그인한다.
+대시보드 · 통합 사례 목록 · 회차 목록이 실제 API 로 나온다.
 
 ### A.6 자주 겪는 문제
 
@@ -456,15 +456,19 @@ npm run dev
 |---|---|
 | `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
 | 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
-| `409 INVALID_SESSION_STATE` | 상태 순서를 건너뛴 요청이다. 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절) |
+| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절). 음성 · 전사본이 아직 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다 |
 | `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
 | 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
 
 ### A.7 정리
 
-DB 를 초기화하려면 서버를 끄고 파일만 지우면 된다.
+DB 를 초기화하려면 서버를 끄고 파일만 지우면 된다. `dev.db` 와 `alembic.ini` 는 `backend/` 에 있으므로
+`backend/` 에서 실행한다.
 
 ```bash
-rm backend/dev.db
+cd backend            # 이미 backend/ 이면 생략
+rm dev.db
 alembic upgrade head
 ```
+
+데모 계정 · 데이터가 필요하면 A.3 을 다시 실행한다.
