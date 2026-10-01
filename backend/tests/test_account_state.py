@@ -765,6 +765,40 @@ def test_admin_can_read_audit_logs_with_filters(
     assert all(item["action"] == "LOGIN" for item in by_action)
 
 
+def test_audit_log_time_filters_read_any_time_zone_the_same(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    """
+    since · until 은 같은 순간이면 표기(Z · +09:00 · 표시 없음=UTC)와 상관없이 같은 결과여야 한다.
+
+    SQLite 는 시간대를 버리고 벽시계 글자로 비교하므로, UTC 로 바꾸지 않으면 +09:00 이 9시간 어긋난다.
+    """
+
+    _login(client, COUNSELOR_EMAIL, COUNSELOR_PASSWORD)
+
+    moment = datetime.now(timezone.utc) - timedelta(minutes=5)
+    forms = [
+        moment.replace(tzinfo=None).isoformat() + "Z",
+        moment.astimezone(timezone(timedelta(hours=9))).isoformat(),
+        moment.replace(tzinfo=None).isoformat(),
+    ]
+
+    def total(**params) -> int:
+        response = client.get("/api/v1/auth/audit-logs", params=params, headers=admin_headers)
+
+        assert response.status_code == 200, response.text
+
+        return response.json()["data"]["meta"]["total"]
+
+    since_totals = [total(since=value) for value in forms]
+    until_totals = [total(until=value) for value in forms]
+
+    # 관리자 로그인 · 상담사 로그인 두 건은 5분 전 뒤에 남았다.
+    assert since_totals[0] >= 2
+    assert since_totals == [since_totals[0]] * 3
+    assert until_totals == [0, 0, 0]
+
+
 def test_audit_logs_show_actor_name(
     client: TestClient, admin_headers, counselor_id: uuid.UUID
 ) -> None:

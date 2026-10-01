@@ -532,7 +532,32 @@ def test_transcript_edit_rejects_inverted_time_range(
         headers=counselor_headers,
     )
 
+    # 한 발화에 두 값을 모두 보내 거꾸로면 요청 형식 오류다(details.fields). API_CONTRACT 7절
     assert response.status_code == 422
+    assert response.json()["error"]["details"]["fields"][0]["field"] == "segments.0"
+
+
+def test_transcript_edit_rejects_time_inverted_after_merging_saved_value(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """한쪽만 보내 저장된 값과 합친 결과가 거꾸로면 409 VALIDATION_ERROR(details 없음)."""
+
+    envelope = transcribed_session(client, counselor_headers, session["id"])
+    target = envelope["transcript"]["segments"][0]
+
+    response = client.patch(
+        f"/api/v1/sessions/{session['id']}/transcript",
+        json={
+            "segments": [
+                {"segment_id": target["segment_id"], "start_ms": target["end_ms"] + 100}
+            ]
+        },
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "details" not in response.json()["error"]
 
 
 def test_transcript_edit_without_transcript_returns_not_found(

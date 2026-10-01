@@ -3,6 +3,8 @@
 # 브라우저는 CORS 헤더가 없는 응답을 막는다. 500 응답에 CORS 헤더가 빠지면 Frontend 는
 # {"error": {...}} 본문을 읽지 못하고 원인 없는 네트워크(CORS) 오류만 보게 된다.
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -66,3 +68,86 @@ def test_malformed_multipart_body_is_validation_error(
     assert response.json() == {
         "error": {"code": "VALIDATION_ERROR", "message": "요청 형식이 올바르지 않습니다."}
     }
+
+
+# =========================================================
+# 본문 크기 제한 — 로그인 확인보다 먼저
+# =========================================================
+#
+# FastAPI 는 본문을 다 읽은 뒤에 의존성(로그인 확인 포함)을 실행한다. 크기 제한이 없으면
+# 로그인하지 않은 요청도 본문을 끝까지 받아 메모리 · 디스크를 쓴다.
+
+MB = 1024 * 1024
+
+
+def test_oversized_json_body_is_rejected_before_login(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "REQUEST_MAX_BODY_MB", 1)
+
+    response = client.post(
+        "/api/v1/cases",
+        content=b'{"title": "' + b"a" * MB + b'"}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"code": "VALIDATION_ERROR", "message": "요청 본문이 너무 큽니다(최대 1MB)."}
+    }
+
+
+def test_oversized_body_without_content_length_is_rejected(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Content-Length 없이(chunked) 보내도 받은 만큼 세어 막는다."""
+
+    monkeypatch.setattr(settings, "REQUEST_MAX_BODY_MB", 1)
+
+    def chunks():
+        for _ in range(3):
+            yield b"a" * (MB // 2)
+
+    response = client.post(
+        "/api/v1/auth/login",
+        content=chunks(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_oversized_audio_upload_is_rejected_before_login(client: TestClient) -> None:
+    """음성 업로드는 AUDIO_MAX_SIZE_MB 에 여유 1MB 를 더한 만큼까지 받는다. 넘으면 AUDIO_TOO_LARGE."""
+
+    too_big = settings.audio_max_size_bytes + MB + 1
+
+    response = client.post(
+        f"/api/v1/sessions/{uuid.uuid4()}/audio",
+        files={"file": ("big.wav", b"0" * too_big, "audio/wav")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "AUDIO_TOO_LARGE"
+
+
+def test_audio_upload_under_its_own_limit_still_reaches_login_check(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """음성 업로드는 일반 본문 한도가 아니라 음성 한도를 쓴다. 한도 안이면 평소처럼 로그인부터 본다."""
+
+    monkeypatch.setattr(settings, "REQUEST_MAX_BODY_MB", 1)
+
+    response = client.post(
+        f"/api/v1/sessions/{uuid.uuid4()}/audio",
+        files={"file": ("ok.wav", b"0" * (settings.audio_max_size_bytes + MB // 2), "audio/wav")},
+    )
+
+    assert response.status_code == 401
+
+
+def test_small_body_still_reaches_login_check(client: TestClient) -> None:
+    response = client.post("/api/v1/cases", json={"title": "작은 본문", "child_alias": "아동"})
+
+    assert response.status_code == 401

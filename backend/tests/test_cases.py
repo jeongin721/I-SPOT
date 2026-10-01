@@ -499,3 +499,46 @@ def test_admin_assign_to_unknown_user_returns_user_not_found(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "USER_NOT_FOUND"
+
+
+def test_admin_cannot_assign_case_to_inactive_counselor(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, counselor_id: uuid.UUID
+) -> None:
+    """정지된 계정은 담당자로 지정할 수 없다 — 400 VALIDATION_ERROR(details 없음, API_CONTRACT 4절)."""
+
+    deactivated = client.patch(
+        f"/api/v1/auth/users/{counselor_id}",
+        json={"is_active": False},
+        headers=admin_headers,
+    )
+
+    assert deactivated.status_code == 200
+
+    created = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "정지 계정 배정",
+            "child_alias": "아동_007",
+            "counselor_id": str(counselor_id),
+        },
+        headers=admin_headers,
+    )
+
+    assert created.status_code == 400
+    assert created.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "details" not in created.json()["error"]
+
+    case = create_case(client, admin_headers)
+
+    updated = client.patch(
+        f"/api/v1/cases/{case['id']}",
+        json={"counselor_id": str(counselor_id)},
+        headers=admin_headers,
+    )
+
+    assert updated.status_code == 400
+    assert updated.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    after = client.get(f"/api/v1/cases/{case['id']}", headers=admin_headers)
+
+    assert after.json()["data"]["counselor_id"] == str(admin_id)
