@@ -47,7 +47,7 @@ FastAPI  ← 이 저장소
 | `app/adapters/` | **Adapter** | 외부 서비스(STT/AI) 연결. 갈아끼울 수 있게 분리 |
 | `app/core/` | **Core** | 설정, DB 연결, 인증, 오류, 상태 규칙 등 공통 기반 |
 | `alembic/` | **Migration** | DB 테이블 생성/변경 이력 |
-| `tests/` | **Test** | pytest 477개 |
+| `tests/` | **Test** | pytest 483개 |
 
 ### 왜 Router 를 얇게 만들었나
 
@@ -192,8 +192,9 @@ CREATED → AUDIO_UPLOADED → STT_PROCESSING → STT_REVIEW_REQUIRED
 
 지금 상태에서 할 수 없는 요청이면 `409 INVALID_SESSION_STATE` 로 막힌다.
 예를 들어 **원문 변환 중(`STT_PROCESSING`)에는 변환을 다시 요청할 수 없다.**
-필요한 자료가 아직 없으면(음성 · 전사본) 상태보다 먼저 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 난다.
-음성도 안 올리고 AI 분석을 요청하면 `404 TRANSCRIPT_NOT_FOUND` 다.
+STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 상태보다 먼저
+`404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 난다. 음성도 안 올리고 AI 분석을 요청하면 `404 TRANSCRIPT_NOT_FOUND` 다.
+원문 수정(`PATCH /transcript`)은 상태를 먼저 봐서, 전사본이 없는 회기에서도 `409 INVALID_SESSION_STATE` 다.
 
 실패하면 `STT_FAILED` / `AI_FAILED` 로 가고, 오류 내용이 저장되어
 같은 요청을 다시 보내면 재시도된다.
@@ -283,7 +284,7 @@ DB 컬럼을 바꿨다면 migration 을 잊지 말 것. 안 만들면 CI 가 잡
 ./scripts/check.sh
 ```
 
-lint, 테스트 477개, migration 정합성을 한 번에 확인한다.
+lint, 테스트 483개, migration 정합성을 한 번에 확인한다.
 여기서 통과하면 CI 도 통과한다.
 
 ---

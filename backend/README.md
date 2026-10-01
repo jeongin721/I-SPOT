@@ -290,7 +290,8 @@ AI_PROCESSING  → AI_FAILED  → (재시도) → AI_PROCESSING
 Frontend 는 이 값으로 재시도 UI 를 노출할 수 있다.
 
 상태 전이는 `app/core/state_machine.py` 에서 강제되며,
-잘못된 순서로 호출하면 `409 INVALID_SESSION_STATE` 를 반환한다.
+잘못된 순서로 호출하면 대개 `409 INVALID_SESSION_STATE` 를 반환한다.
+필요한 음성 · 전사본이 아직 없으면 `404` 가 먼저 나는 요청도 있다(아래 A.6).
 
 ---
 
@@ -343,8 +344,14 @@ backend/
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.
-- 요청 본문 크기는 로그인 확인보다 먼저 제한한다(`app/main.py` `_BodySizeLimitMiddleware`). 음성 업로드는
-  `AUDIO_MAX_SIZE_MB` + 1MB, 나머지는 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면 `400` 으로 거절한다.
+- 본문을 받는 창구(JSON · form · 음성 업로드)는 요청 본문 크기를 로그인 확인보다 먼저 제한한다
+  (`app/main.py` `_BodySizeLimitMiddleware`). 음성 업로드는 `AUDIO_MAX_SIZE_MB` + 1MB, 나머지는
+  `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면 `400` 으로 거절한다. 본문을 읽지 않는 창구(GET, 본문 없는 POST)는
+  보낸 본문을 무시하고 평소처럼 답한다(401 이나 정상 응답).
+  거절하기 전에 남은 본문을 저장하지 않고 끝까지 읽어 버린다(최대 30초). 다 읽지 않고 응답하면 연결이 끊겨(TCP RST)
+  개발 프록시(vite)를 거친 화면은 `400` 문구 대신 "서버에 연결할 수 없습니다" 를 본다. 30초 안에 다 못 보내는
+  본문은 다시 끊길 수 있다. 수동 확인: Backend 를 `AUDIO_MAX_SIZE_MB=2` 로 띄우고 화면(vite)을 거쳐 5MB 음성을
+  올리면 "음성 파일이 최대 허용 크기(2MB)를 초과했습니다." 가 떠야 한다.
   운영에서 앞단 프록시(nginx 등)를 두면 그쪽에도 같은 제한을 둔다(예: `client_max_body_size 201m;`).
   `docker-compose.yml` 은 uvicorn 을 프록시 없이 바로 연다 — 로컬 · 시연용이다.
 
@@ -460,7 +467,7 @@ npm run dev
 |---|---|
 | `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
 | 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
-| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절). 음성 · 전사본이 아직 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다 |
+| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절). STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다. 원문 수정(`PATCH /transcript`)은 상태를 먼저 보므로 전사본이 없어도 409 다 |
 | `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
 | 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
 

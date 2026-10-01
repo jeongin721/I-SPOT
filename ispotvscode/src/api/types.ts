@@ -15,7 +15,9 @@ export interface DataResponse<T> {
 
 /**
  * 모든 실패 응답은 error 로 감싸진다. message 는 한국어라 그대로 보여 줄 수 있다
- * (없는 경로 404 · 허용되지 않는 method 405 · 해석할 수 없는 본문 400 처럼 서버 프레임워크가 만드는 오류도 같다).
+ * (없는 경로 404 · 허용되지 않는 method 405 · 해석할 수 없는 multipart 본문 400 처럼 서버 프레임워크가 만드는 오류도 같다).
+ * 깨진 JSON 본문은 400 이 아니라 422 VALIDATION_ERROR 이고 details.fields 로 온다
+ * (field 는 글자 위치, reason 은 "JSON decode error" — API_CONTRACT 1.2).
  */
 export interface ErrorResponse {
   error: {

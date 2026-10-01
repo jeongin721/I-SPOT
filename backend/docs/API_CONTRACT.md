@@ -46,11 +46,15 @@
 - `details` 는 있을 때만 포함된다(주로 `VALIDATION_ERROR`).
 - `message` 는 한국어이며 그대로 노출 가능하다. 라우터에 닿기 전에 서버 프레임워크가 막는 오류도 같다 —
   없는 경로 `404 NOT_FOUND`("요청한 경로를 찾을 수 없습니다."), 허용되지 않는 method `405 METHOD_NOT_ALLOWED`
-  ("허용되지 않는 요청 방식입니다."), 해석할 수 없는 본문(예: boundary 없는 multipart) `400 VALIDATION_ERROR`
-  ("요청 형식이 올바르지 않습니다."). `INTERNAL_ERROR` 는 서버 오류(5xx)에만 쓴다.
+  ("허용되지 않는 요청 방식입니다."), 형식 자체를 해석할 수 없는 multipart 본문(예: boundary 없음)
+  `400 VALIDATION_ERROR`(`details` 없음, "요청 형식이 올바르지 않습니다."). `INTERNAL_ERROR` 는 서버 오류(5xx)에만 쓴다.
+- JSON 문법 오류(깨진 JSON 본문)는 400 이 아니라 **`422 VALIDATION_ERROR`** 이고 `details.fields` 로 온다
+  ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
+  `"JSON decode error"` 다.
 - `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 두 가지가 더 있다. `message` 로 구분한다.
-  - 본문이 너무 큼 — 음성 업로드가 아닌 요청의 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
+  - 본문이 너무 큼 — 본문을 받는 창구(JSON · form)에서 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
     **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절 `AUDIO_TOO_LARGE`.
+    본문을 읽지 않는 창구(GET, 본문 없는 POST)는 보낸 본문을 무시하고 평소처럼 답한다(`401` 이나 정상 응답).
   - 서비스가 내는 것 — 사례 담당자로 정지된 계정을 지정함(4절).
 
 ### 1.3 인증
@@ -192,8 +196,10 @@ AI_FAILED     ← AI_PROCESSING 실패
 틀린 비밀번호 · 없는 계정과 **같은 `401 INVALID_CREDENTIALS`(같은 문구)** 를 준다. 잠김을 따로 알려주면
 잠긴 뒤에도 계속 맞혀 보다가 응답이 바뀌는 순간 정답을 알게 된다. 잠긴 사람도 안내받도록 문구에
 "여러 번 틀려 잠겼다면 관리자에게 문의하세요" 를 늘 함께 싣는다. 관리자는 감사 로그의 `error_code`
-(`ACCOUNT_LOCKED`)와 계정 응답의 `is_locked` 로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교와
-같은 시간이 걸리게 해서 응답 시간으로도 드러나지 않는다.
+(`ACCOUNT_LOCKED`)와 계정 응답의 `is_locked` 로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교(bcrypt)를
+한 번 하고, DB 기록도 같은 순서(대조 전에 시도 기록을 한 번 커밋, 대조 뒤에는 잠글 때 말고는 쓰지 않음)로 해서
+응답 시간 차이를 줄였다. 있는 계정은 실패 횟수를 세는 쓰기 하나가 더 있어 그만큼(로컬 SQLite 실측 약 1ms)의
+차이는 남는다.
 
 ```json
 { "error": { "code": "INVALID_CREDENTIALS", "message": "이메일 또는 비밀번호가 올바르지 않습니다. 여러 번 틀려 잠겼다면 관리자에게 문의하세요." } }
@@ -215,6 +221,8 @@ AI_FAILED     ← AI_PROCESSING 실패
 잠긴 동안의 로그인 시도는 실패 횟수에 더하지 않는다.
 **동시에 몰려 들어와도 비밀번호를 대조하는 것은 기준 횟수(5번)까지다.** 서버는 대조하기 전에 실패 횟수를 먼저 1 올려
 두고(맞으면 되돌린다), 기준을 이미 채운 뒤 들어온 시도는 잠긴 계정과 같게 대조 없이 거절한다(감사 로그 `ACCOUNT_LOCKED`).
+시간 잠금이 풀리는 순간 몰려 들어와도 같다. 잠금을 풀고 횟수를 비우는 것은 처음 읽은 잠금 시각이 그대로일 때 한 요청만
+하므로, 다른 요청이 예약한 횟수나 다시 걸린 잠금을 지우지 않는다.
 
 **임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
 모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
@@ -607,7 +615,7 @@ Query: `page`, `page_size`, `status`
 | code | status | 상황 |
 |---|---|---|
 | `AUDIO_EMPTY_FILE` | 400 | 빈 파일 |
-| `AUDIO_TOO_LARGE` | 400 | 크기 초과. 요청 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘으면 로그인 확인보다 먼저 거절한다 |
+| `AUDIO_TOO_LARGE` | 400 | 크기 초과. 요청 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘으면 로그인 확인보다 먼저 거절한다. 거절 전에 남은 본문을 읽어 버리므로(최대 30초) 개발 프록시(vite)를 거쳐도 이 응답이 온다 |
 | `AUDIO_UNSUPPORTED_TYPE` | 400 | 확장자/MIME 불허, 확장자와 실제 형식 불일치 |
 | `AUDIO_CORRUPTED` | 400 | 음성 형식 판별 불가 |
 | `AUDIO_INVALID_FILENAME` | 400 | 파일명 없음/확장자 없음 |
@@ -1095,8 +1103,8 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `SUMMARY_NOT_FOUND` | 404 | 요약 없음 |
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
-| `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
-| `VALIDATION_ERROR` | 400 | `details` 없음 — 본문을 해석할 수 없음(예: boundary 없는 multipart), 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
+| `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(`field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2) |
+| `VALIDATION_ERROR` | 400 | `details` 없음 — multipart 본문을 해석할 수 없음(예: boundary 없음), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
 | `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
