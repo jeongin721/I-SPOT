@@ -298,9 +298,10 @@ class _BodySizeLimitMiddleware:
 
     음성 업로드(_is_audio_upload: 음성 경로 + multipart)만 큰 한도(AUDIO_MAX_SIZE_MB + 1MB)를 쓴다. 그 한도는
     서명 · 만료가 맞는 토큰을 붙인 요청에만 준다. 토큰이 없거나 틀리면 본문을 해석하기 전에, 남은 본문을 버리며
-    읽은 뒤 get_current_user 와 같은 401 로 답한다. 음성 경로라도 multipart 가 아니면 일반 한도를 쓴다.
+    읽은 뒤 get_current_user 와 같은 401 로 답한다. 음성 경로라도 multipart 가 아니면 일반 한도를 고른다.
 
-    receive 를 감싸는 것이라 본문을 읽지 않는 창구(GET, 본문 없는 POST)에는 걸리지 않는다. 그런 창구는
+    receive 를 감싸는 것이라 본문을 읽지 않는 창구(GET, 본문 없는 POST)에는 걸리지 않는다. 음성 창구(form)도
+    multipart · urlencoded 가 아닌 본문(JSON 등)은 읽지 않으므로 같다(401 이나 file 없음 422). 그런 창구는
     보낸 본문을 읽지 않고 평소대로(401 이나 정상 응답) 답한다. 운영에서 앞단 프록시를 두면 그쪽에도 같은 제한을 둔다.
     """
 

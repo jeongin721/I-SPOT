@@ -46,7 +46,8 @@
 - `details` 는 있을 때만 포함된다(주로 `VALIDATION_ERROR`).
 - `message` 는 한국어이며 그대로 노출 가능하다. 라우터에 닿기 전에 서버 프레임워크가 막는 오류도 같다 —
   없는 경로 `404 NOT_FOUND`("요청한 경로를 찾을 수 없습니다."), 허용되지 않는 method `405 METHOD_NOT_ALLOWED`
-  ("허용되지 않는 요청 방식입니다."), 형식 자체를 해석할 수 없는 multipart 본문(예: boundary 없음)
+  ("허용되지 않는 요청 방식입니다."), 해석할 수 없거나 프레임워크의 form 제한을 넘는 form 본문(예: multipart 의
+  boundary 없음, multipart · urlencoded 의 파일이 아닌 칸 하나가 1MB 를 넘음)
   `400 VALIDATION_ERROR`(`details` 없음, "요청 형식이 올바르지 않습니다."). `INTERNAL_ERROR` 는 서버 오류(5xx)에만 쓴다.
 - JSON 문법 오류(깨진 JSON 본문)는 400 이 아니라 **`422 VALIDATION_ERROR`** 이고 `details.fields` 로 온다
   ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
@@ -55,7 +56,11 @@
   - 본문이 너무 큼 — 본문을 받는 창구(JSON · form)에서 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
     **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절(token 의 서명 · 만료를
     먼저 보고, 맞으면 `AUDIO_TOO_LARGE`, 없거나 틀리면 `401`).
-    음성 업로드 경로라도 `multipart/form-data` 가 아닌 본문은 음성이 아니므로 이 한도와 문구를 쓴다.
+    음성 업로드 경로라도 `multipart/form-data` 가 아닌 본문에는 음성 한도를 주지 않는다.
+    `application/x-www-form-urlencoded` 본문은 이 한도와 문구를 쓴다(Content-Length 가 없거나 한도 안일 때,
+    받은 양이 한도에 닿기 전에 칸 하나가 1MB 를 넘으면 위의 form 제한 "요청 형식이 올바르지 않습니다." 다).
+    그 밖의 형식(JSON · text · octet-stream · Content-Type 없음)은 이 창구가 본문을 읽지 않으므로 크기와 상관없이
+    token 이 없거나 틀리면 `401`, 맞으면 `422 VALIDATION_ERROR`(`details.fields` 에 `file` — 녹음 파일 없음)다.
     본문을 읽지 않는 창구(GET, 본문 없는 POST)는 보낸 본문을 무시하고 평소처럼 답한다(`401` 이나 정상 응답).
   - 서비스가 내는 것 — 사례 담당자로 정지된 계정을 지정함(4절).
 
@@ -589,7 +594,11 @@ Query: `page`, `page_size`, `status`
   ("Authorization 헤더가 없습니다." · "유효하지 않은 토큰입니다." · "토큰이 만료되었습니다. 다시 로그인해 주세요."),
   본문 크기와 상관없다. 이때도 남은 본문은 버리며 읽은 뒤 답한다(최대 30초).
 - 여기서는 token 의 서명 · 만료만 본다. 정지 · 강제 로그아웃 · 임시 비밀번호 상태는 본문을 받은 뒤 평소처럼 확인한다(3절).
-- `multipart/form-data` 가 아닌 본문은 일반 본문 한도(`REQUEST_MAX_BODY_MB`, 1.2)를 쓴다.
+- `multipart/form-data` 가 아닌 본문에는 음성 한도를 주지 않는다. urlencoded 본문은 일반 본문 한도
+  (`REQUEST_MAX_BODY_MB`)를 쓰고, 그 밖의 형식(JSON · text 등)은 본문을 읽지 않고 크기와 상관없이 `401`(token 없음 ·
+  틀림) 또는 `422`(`file` 없음)로 답한다(1.2).
+- token 이 맞는 multipart 라도 파일이 아닌 칸 하나가 1MB 를 넘으면 `400 VALIDATION_ERROR`
+  ("요청 형식이 올바르지 않습니다.", 1.2)다. 파일 칸에는 이 제한이 없다.
 
 | field | 필수 | 설명 |
 |---|---|---|
@@ -1115,7 +1124,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(`field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2) |
-| `VALIDATION_ERROR` | 400 | `details` 없음 — multipart 본문을 해석할 수 없음(예: boundary 없음), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 multipart 아닌 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
+| `VALIDATION_ERROR` | 400 | `details` 없음 — form 본문을 해석할 수 없거나 form 제한을 넘음(예: multipart 의 boundary 없음, 파일이 아닌 칸 하나가 1MB 초과), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 urlencoded 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
 | `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
