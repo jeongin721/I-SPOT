@@ -13,12 +13,19 @@ from pathlib import Path
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 import uvicorn
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import (
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from ai.modeling.abuse.infer_abuse_pipeline import analyze_session
 from ai.modeling.abuse import case_store
@@ -207,61 +214,305 @@ def build_download_text(
     return "\n".join(lines)
 
 
+def _build_family_situation_text(
+    checklist_draft: dict,
+) -> str:
+    """상담일지 서식의 "가정사항" 칸에 들어갈 텍스트를 만든다."""
+
+    lines = []
+
+    problem_history = checklist_draft.get(
+        "problem_history_draft",
+        "",
+    )
+
+    if problem_history:
+        lines.append(problem_history)
+
+    household_items = [
+        item
+        for item in checklist_draft.get("checklist", [])
+        if item.get("category") == "가정상황"
+        and item.get("suggested")
+    ]
+
+    for item in household_items:
+        evidences = [
+            evidence.get("evidence", "")
+            for evidence in item.get("evidence", [])
+            if evidence.get("evidence")
+        ]
+
+        if evidences:
+            lines.append(
+                f"- {item['item']}: "
+                + " / ".join(evidences)
+            )
+        else:
+            lines.append(f"- {item['item']}")
+
+    return "\n".join(lines) if lines else "(해당 사항 없음)"
+
+
+def _build_special_notes_text(
+    result: dict,
+) -> str:
+    """상담일지 서식의 "특기사항" 칸에 들어갈 텍스트를 만든다 —
+    탐지된 학대유형 + 안전영역 관련 근거 요약(등급은 상담사가 직접 판단)."""
+
+    lines = []
+
+    detected = [
+        label
+        for label, info in result.get(
+            "major_types",
+            {},
+        ).items()
+        if info.get("detected")
+    ]
+
+    if detected:
+        lines.append(
+            "탐지된 학대유형(AI 제안, 상담사 확인 필요): "
+            + ", ".join(detected)
+        )
+
+    checklist_draft = (
+        result.get("checklist_draft") or {}
+    )
+
+    for entry in checklist_draft.get(
+        "safety_assessment_evidence",
+        [],
+    ):
+        evidences = [
+            evidence.get("evidence", "")
+            for evidence in entry.get("evidence", [])
+            if evidence.get("evidence")
+        ]
+
+        if evidences:
+            lines.append(
+                f"[{entry['category']}] {entry['item']}: "
+                + " / ".join(evidences)
+            )
+
+    return "\n".join(lines) if lines else "(해당 사항 없음)"
+
+
 def build_download_pdf(
     result: dict,
 ) -> bytes:
     """
-    build_download_text와 같은 내용을 PDF로 만든다.
-    줄바꿈만 있는 일반 텍스트를 그대로 문단으로 넣으면 특수문자
-    (<, &, " 등)가 마크업으로 오인될 수 있어 escape() 후 넣는다.
+    기관에서 쓰는 공식 "아동 상담일지" 서식과 같은 표 형태로 PDF를 만든다.
+
+    아동명/성별/보호자명/관계/전화번호/주소/상담교사/상담종류/상담사유는
+    이 파이프라인이 수집하지 않는 정보라 빈칸으로 두고 상담사가 직접
+    기입하게 한다 — 공식 문서의 신원 정보를 AI가 추측해서 채우는 건
+    위험하다고 판단했다(상담사와 합의한 매핑, 2026-10-01).
+
+    AI가 채우는 칸은 가정사항/상담내용/상담결과/특기사항 네 곳뿐이며,
+    전부 "AI 초안" 상태로 상담사의 확인·수정·승인이 필요하다.
     """
+
+    checklist_draft = (
+        result.get("checklist_draft") or {}
+    )
 
     buffer = io.BytesIO()
 
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
     )
 
-    body_style = ParagraphStyle(
-        "body",
+    title_style = ParagraphStyle(
+        "title",
         fontName=_PDF_FONT_NAME,
-        fontSize=10,
-        leading=15,
+        fontSize=18,
+        leading=22,
+        alignment=1,
     )
 
-    heading_style = ParagraphStyle(
-        "heading",
+    label_style = ParagraphStyle(
+        "label",
         fontName=_PDF_FONT_NAME,
-        fontSize=12,
-        leading=18,
-        spaceBefore=8,
+        fontSize=9,
+        leading=12,
     )
 
-    flowables = []
+    value_style = ParagraphStyle(
+        "value",
+        fontName=_PDF_FONT_NAME,
+        fontSize=9,
+        leading=14,
+    )
 
-    for line in build_download_text(result).split("\n"):
-        if not line.strip():
-            flowables.append(Spacer(1, 6))
-            continue
+    footer_style = ParagraphStyle(
+        "footer",
+        fontName=_PDF_FONT_NAME,
+        fontSize=8,
+        textColor=colors.grey,
+    )
 
-        style = (
-            heading_style
-            if line.startswith("[")
-            or line.startswith("■")
-            else body_style
+    label_fill = colors.Color(0.85, 0.93, 0.96)
+
+    def _label(text):
+        return Paragraph(text, label_style)
+
+    def _value(text=""):
+        return Paragraph(
+            escape(text) if text else "",
+            value_style,
         )
 
-        flowables.append(
-            Paragraph(
-                escape(line),
-                style,
-            )
+    def _multiline(text):
+        return Paragraph(
+            escape(text).replace("\n", "<br/>"),
+            value_style,
         )
+
+    # ---- 상단: 제목 + 결재란 ----
+    approval_table = Table(
+        [
+            ["담당", "", ""],
+            ["", "", ""],
+        ],
+        colWidths=[18 * mm] * 3,
+        rowHeights=[6 * mm, 12 * mm],
+    )
+    approval_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("FONTNAME", (0, 0), (-1, -1), _PDF_FONT_NAME),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    header_table = Table(
+        [[Paragraph("아동 상담일지", title_style), approval_table]],
+        colWidths=[126 * mm, 54 * mm],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+
+    # ---- 기본 정보 (좌: 날짜/아동/보호자/주소/상담종류,
+    #      우: 상담교사/나이/성별/관계/전화번호) ----
+    info_table = Table(
+        [
+            [_label("상담일지"), _value(), _label("상담교사"), _value()],
+            [_label("아동명"), _value(), _label("나이"), _value()],
+            [_label("보호자명"), _value(), _label("성별"), _value()],
+            [_label("주소"), _value(), _label("관계"), _value()],
+            [_label("상담종류"), _value(), _label("전화번호"), _value()],
+        ],
+        colWidths=[22 * mm, 68 * mm, 22 * mm, 68 * mm],
+        rowHeights=[8 * mm] * 5,
+    )
+    info_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("BACKGROUND", (0, 0), (0, -1), label_fill),
+                ("BACKGROUND", (2, 0), (2, -1), label_fill),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    reason_table = Table(
+        [[_label("상담사유"), _value()]],
+        colWidths=[22 * mm, 158 * mm],
+        rowHeights=[14 * mm],
+    )
+    reason_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("BACKGROUND", (0, 0), (0, -1), label_fill),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    # ---- AI 초안 내용 (가정사항/상담내용/상담결과/특기사항) ----
+    content_table = Table(
+        [
+            [
+                _label("가정사항"),
+                _multiline(
+                    _build_family_situation_text(checklist_draft)
+                ),
+            ],
+            [
+                _label("상담내용"),
+                _multiline(
+                    result.get("counseling_note", "")
+                    or "(없음)"
+                ),
+            ],
+            [
+                _label("상담결과"),
+                _multiline(
+                    checklist_draft.get(
+                        "counselor_opinion_draft",
+                        "",
+                    )
+                    or "(없음)"
+                ),
+            ],
+            [
+                _label("특기사항"),
+                _multiline(_build_special_notes_text(result)),
+            ],
+        ],
+        colWidths=[22 * mm, 158 * mm],
+    )
+    content_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("BACKGROUND", (0, 0), (0, -1), label_fill),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    flowables = [
+        header_table,
+        Spacer(1, 6 * mm),
+        info_table,
+        reason_table,
+        Spacer(1, 2 * mm),
+        content_table,
+        Spacer(1, 4 * mm),
+        Paragraph(
+            "가정사항/상담내용/상담결과/특기사항은 AI가 생성한 초안이며, "
+            "상담사의 확인·수정·승인이 필요합니다. 그 외 항목은 "
+            "상담사가 직접 기입합니다.",
+            footer_style,
+        ),
+    ]
 
     doc.build(flowables)
 
