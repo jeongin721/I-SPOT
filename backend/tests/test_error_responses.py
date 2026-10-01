@@ -10,11 +10,14 @@ from typing import List, Optional, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app import main as app_main
 from app.core.config import settings
+from app.core.security import create_access_token
 from app.main import app
 from app.services import case_service
+from tests.conftest import make_wav_bytes, upload_audio
 
 
 def test_unexpected_error_keeps_error_contract_and_cors_headers(
@@ -146,33 +149,132 @@ def test_oversized_body_without_content_length_is_rejected(
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_oversized_audio_upload_is_rejected_before_login(client: TestClient) -> None:
-    """음성 업로드는 AUDIO_MAX_SIZE_MB 에 여유 1MB 를 더한 만큼까지 받는다. 넘으면 AUDIO_TOO_LARGE."""
+def test_oversized_audio_upload_is_rejected_before_reaching_the_route(
+    client: TestClient, counselor_headers
+) -> None:
+    """
+    음성 업로드는 AUDIO_MAX_SIZE_MB 에 여유 1MB 를 더한 만큼까지 받는다. 넘으면 AUDIO_TOO_LARGE.
+
+    없는 회기라 라우터까지 갔다면 404 다. 400 이면 본문 크기 제한이 먼저 막은 것이다.
+    """
 
     too_big = settings.audio_max_size_bytes + MB + 1
 
     response = client.post(
         f"/api/v1/sessions/{uuid.uuid4()}/audio",
         files={"file": ("big.wav", b"0" * too_big, "audio/wav")},
+        headers=counselor_headers,
     )
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "AUDIO_TOO_LARGE"
 
 
-def test_audio_upload_under_its_own_limit_still_reaches_login_check(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+# 음성 업로드의 큰 한도는 서명 · 만료가 맞는 토큰을 붙인 multipart 요청만 받는다.
+# FastAPI 는 multipart 본문을 다 해석한 뒤에 로그인을 확인한다. 파일이 아닌 칸은 메모리에 쌓이므로,
+# 토큰이 없거나 틀린 요청은 본문을 해석하기 전에 401 로 끝낸다.
+
+
+def _spy_form_parsing(monkeypatch: pytest.MonkeyPatch) -> List[str]:
+    """FastAPI 가 본문을 form 으로 해석하면 그 경로를 기록한다."""
+
+    parsed: List[str] = []
+    original = Request.form
+
+    def spy(self, *args, **kwargs):
+        parsed.append(self.url.path)
+
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Request, "form", spy)
+
+    return parsed
+
+
+@pytest.mark.parametrize(
+    ("authorization", "message"),
+    [
+        (None, "Authorization 헤더가 없습니다."),
+        ("Basic YWJjOmRlZg==", "Authorization 헤더가 없습니다."),
+        ("Bearer not.a.jwt", "유효하지 않은 토큰입니다."),
+        ("expired", "토큰이 만료되었습니다. 다시 로그인해 주세요."),
+    ],
+)
+def test_audio_upload_without_valid_token_is_401_before_parsing_body(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    authorization: Optional[str],
+    message: str,
 ) -> None:
-    """음성 업로드는 일반 본문 한도가 아니라 음성 한도를 쓴다. 한도 안이면 평소처럼 로그인부터 본다."""
+    """음성 한도 안의 본문이라도 토큰이 없거나 틀리면 본문을 해석하지 않고 로그인 확인과 같은 401 을 준다."""
 
-    monkeypatch.setattr(settings, "REQUEST_MAX_BODY_MB", 1)
+    monkeypatch.setattr(settings, "AUDIO_MAX_SIZE_MB", 5)
+    parsed = _spy_form_parsing(monkeypatch)
 
+    if authorization == "expired":
+        token = create_access_token(str(uuid.uuid4()), "COUNSELOR", expires_minutes=-1)
+        authorization = f"Bearer {token}"
+
+    origin = settings.CORS_ORIGINS[0]
+    headers = {"Origin": origin}
+
+    if authorization:
+        headers["Authorization"] = authorization
+
+    # 파일이 아닌 칸(칸마다 1MB 안쪽) 3개 — 해석하면 그대로 메모리에 올라간다.
     response = client.post(
         f"/api/v1/sessions/{uuid.uuid4()}/audio",
-        files={"file": ("ok.wav", b"0" * (settings.audio_max_size_bytes + MB // 2), "audio/wav")},
+        data={f"note{index}": "a" * (MB - 1024) for index in range(3)},
+        files={"file": ("ok.wav", b"0", "audio/wav")},
+        headers=headers,
     )
 
     assert response.status_code == 401
+    assert response.json() == {"error": {"code": "UNAUTHORIZED", "message": message}}
+    assert response.headers.get("access-control-allow-origin") == origin  # 화면이 본문을 읽을 수 있다
+    assert parsed == []
+
+
+def test_non_multipart_body_to_audio_upload_uses_general_limit(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """음성 경로라도 multipart 가 아니면 음성이 아니다. 일반 본문 한도와 문구를 쓴다."""
+
+    monkeypatch.setattr(settings, "AUDIO_MAX_SIZE_MB", 5)
+
+    # 칸마다 1MB 안쪽인 칸 3개(약 3MB). 음성 한도로 받으면 다 해석해 메모리에 올린 뒤에야 401 이 난다.
+    form = b"&".join(b"note%d=" % index + b"a" * (MB - 1024) for index in range(3))
+
+    response = client.post(
+        f"/api/v1/sessions/{uuid.uuid4()}/audio",
+        content=form,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"code": "VALIDATION_ERROR", "message": "요청 본문이 너무 큽니다(최대 2MB)."}
+    }
+
+
+def test_logged_in_audio_upload_over_general_limit_is_created(
+    client: TestClient,
+    counselor_headers,
+    session: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """로그인한 음성 업로드는 일반 본문 한도가 아니라 음성 한도를 쓴다."""
+
+    monkeypatch.setattr(settings, "REQUEST_MAX_BODY_MB", 1)
+    monkeypatch.setattr(settings, "AUDIO_MAX_SIZE_MB", 3)
+
+    wav = make_wav_bytes(duration_ms=100_000)  # 약 1.5MB
+
+    assert MB < len(wav) < 2 * MB
+
+    status_code, body = upload_audio(client, counselor_headers, session["id"], content=wav)
+
+    assert status_code == 201, body
 
 
 def test_small_body_still_reaches_login_check(client: TestClient) -> None:
@@ -196,10 +298,11 @@ def _call_raw(
     *,
     content_length: Optional[int] = None,
     endless: bool = False,
+    content_type: bytes = b"application/json",
 ) -> Tuple[int, dict, int]:
     """응답 상태 · 본문과, 앱이 읽어 간 본문 조각 수를 돌려준다. endless 면 본문이 끝나지 않는다."""
 
-    headers = [(b"content-type", b"application/json")]
+    headers = [(b"content-type", content_type)]
 
     if content_length is not None:
         headers.append((b"content-length", str(content_length).encode()))
@@ -285,6 +388,25 @@ def test_oversized_chunked_body_is_read_to_the_end_before_rejecting(
     status, body, delivered = _call_raw("/api/v1/auth/login", chunks)
 
     assert (status, body) == (400, TOO_LARGE_1MB)
+    assert delivered == len(chunks)
+
+
+def test_audio_upload_without_token_is_read_to_the_end_before_401() -> None:
+    """토큰 없는 음성 업로드도 본문을 버리며 끝까지 읽은 뒤 401 을 준다. 음성 한도를 넘어도 401 이다."""
+
+    chunks = [b"a" * (MB // 2)] * 6  # 3MB — 테스트의 음성 한도(1MB + 여유 1MB)보다 크다
+
+    status, body, delivered = _call_raw(
+        f"/api/v1/sessions/{uuid.uuid4()}/audio",
+        chunks,
+        content_length=sum(len(chunk) for chunk in chunks),
+        content_type=b"multipart/form-data; boundary=x",
+    )
+
+    assert (status, body) == (
+        401,
+        {"error": {"code": "UNAUTHORIZED", "message": "Authorization 헤더가 없습니다."}},
+    )
     assert delivered == len(chunks)
 
 
