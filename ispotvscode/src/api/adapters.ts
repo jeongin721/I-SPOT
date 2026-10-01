@@ -196,8 +196,7 @@ const STATUS_MAP: Record<SessionStatus, Omit<DerivedStatus, "sttLabel" | "aiLabe
 // 화면 타입(sttStatus · aiStatus)에는 대기 · 실패를 나타낼 값이 없어서, 위 표 그대로면
 // 음성 업로드 대기 · 원문 변환 대기 · 원문 변환 실패가 STT 칸에 "처리중", AI 분석 실패가 AI 칸에 "대기중" 으로 보인다.
 // 목업 타입은 그대로 두고 칸에 보여 줄 문구만 이 상태들에서 바꾼다. 조건 판단은 계속 stt · ai 값으로 한다.
-// 이름은 fix/contract-sync 에서 Backend 오류 문구용으로 정한 상태 이름(state_machine._STATUS_LABELS)과 같게 한다.
-// 그 브랜치가 합쳐지기 전 Backend 오류 문구에는 상태 코드(STT_FAILED 등)가 그대로 나온다.
+// 이름은 Backend 오류 문구의 상태 이름(backend/app/core/state_machine.py 의 _STATUS_LABELS)과 같게 한다.
 const STT_LABELS: Partial<Record<SessionStatus, string>> = {
   CREATED: "음성 업로드 대기",
   AUDIO_UPLOADED: "원문 변환 대기",
@@ -367,31 +366,9 @@ export function toTimestamp(ms: number): string {
 }
 
 /**
- * Backend 가 전사본에 덧붙여 주는 아동 발화 인수인계 보기(child_handoff).
- *
- * types.ts 의 Transcript 와 API_CONTRACT.md 7절에는 아직 없는 필드라 여기서만 읽는다.
- * review_needed_segments 는 화자가 불확실해 사람이 확인해야 하는 발화다.
+ * 아동 발화 인계 보기(Transcript.child_handoff, 타입은 types.ts 의 ChildHandoff)의 사유 코드 → 화면 문구.
+ * review_needed_segments 는 화자가 불확실해 사람이 확인해야 하는 발화다. 모르는 코드는 그대로 보여 준다.
  */
-interface ChildHandoffSegment {
-  segment_id: string;
-  text: string;
-  start_ms: number;
-  end_ms: number;
-}
-
-interface ChildHandoffReviewSegment extends ChildHandoffSegment {
-  reason: string;
-}
-
-export interface ChildHandoff {
-  child_analysis_text: string;
-  confirmed_child_segments: ChildHandoffSegment[];
-  review_needed_segments: ChildHandoffReviewSegment[];
-}
-
-type TranscriptWithHandoff = Transcript & { child_handoff?: ChildHandoff | null };
-
-/** child_handoff 의 사유 코드 → 화면 문구. 모르는 코드는 그대로 보여 준다. */
 const REVIEW_REASON_LABELS: Record<string, string> = {
   UNRESOLVED_SPEAKER: "화자 확인 필요",
 };
@@ -428,7 +405,7 @@ export function toUiTranscriptSegments(source: Transcript): UiTranscriptSegment[
   const edited = new Set(source.edited_segment_ids);
   const reasons = new Map<string, string>();
 
-  for (const item of (source as TranscriptWithHandoff).child_handoff?.review_needed_segments ?? []) {
+  for (const item of source.child_handoff?.review_needed_segments ?? []) {
     reasons.set(item.segment_id, REVIEW_REASON_LABELS[item.reason] ?? item.reason);
   }
 
