@@ -1,0 +1,102 @@
+[
+  {
+    "row": 30,
+    "label": "정서학대",
+    "reference_abuse_label": "신체학대"
+  },
+  {
+    "row": 30,
+    "label": "방임",
+    "reference_abuse_label": "신체학대"
+  },
+  {
+    "row": 77,
+    "label": "정서학대",
+    "reference_abuse_label": "(해당 없음)"
+  },
+  {
+    "row": 79,
+    "label": "신체학대",
+    "reference_abuse_label": "(해당 없음)"
+  },
+  {
+    "row": 101,
+    "label": "신체학대",
+    "reference_abuse_label": "정서학대"
+  },
+  {
+    "row": 172,
+    "label": "신체학대",
+    "reference_abuse_label": "성학대"
+  },
+  {
+    "row": 172,
+    "label": "정서학대",
+    "reference_abuse_label": "성학대"
+  },
+  {
+    "row": 185,
+    "label": "정서학대",
+    "reference_abuse_label": "신체학대"
+  },
+  {
+    "row": 220,
+    "label": "신체학대",
+    "reference_abuse_label": "성학대"
+  },
+  {
+    "row": 227,
+    "label": "정서학대",
+    "reference_abuse_label": "신체학대"
+  },
+  {
+    "row": 237,
+    "label": "신체학대",
+    "reference_abuse_label": "정서학대"
+  },
+  {
+    "row": 341,
+    "label": "정서학대",
+    "reference_abuse_label": "신체학대"
+  },
+  {
+    "row": 369,
+    "label": "정서학대",
+    "reference_abuse_label": "신체학대,성학대"
+  },
+  {
+    "row": 382,
+    "label": "정서학대",
+    "reference_abuse_label": "신체학대,방임"
+  },
+  {
+    "row": 384,
+    "label": "신체학대",
+    "reference_abuse_label": "정서학대,성학대"
+  },
+  {
+    "row": 403,
+    "label": "신체학대",
+    "reference_abuse_label": "성학대,방임"
+  },
+  {
+    "row": 403,
+    "label": "정서학대",
+    "reference_abuse_label": "성학대,방임"
+  },
+  {
+    "row": 422,
+    "label": "신체학대",
+    "reference_abuse_label": "정서학대,성학대,방임"
+  },
+  {
+    "row": 447,
+    "label": "신체학대",
+    "reference_abuse_label": "정서학대,방임"
+  },
+  {
+    "row": 451,
+    "label": "신체학대",
+    "reference_abuse_label": "정서학대,방임"
+  }
+]

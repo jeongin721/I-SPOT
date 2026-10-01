@@ -186,13 +186,114 @@ def _screen_missed_major_types(
 
 
 # ============================================================
+# 1-2. qa/child_only 1차 결과 LLM 재검증(추가 + 제거)
+# ============================================================
+# 1차 RoBERTa는 순수 분류기라 "누가 때렸는지"(또래 아동 vs 책임 있는
+# 어른), "누가 맞았는지"(아동 본인 vs 목격), "정상적 훈육인지 학대인지"
+# 같은 관계·맥락 추론을 못 한다. valid_qa_typeblock_v1.csv 1,440건을
+# 실제 서비스 코드 경로로 재검증하며 이런 종류의 오탐/미탐을 다수
+# 확인했다(2026-10-01) — 예: 또래가 때렸는데 신체학대로 오탐, 아동이
+# 목격만 했는데 신체학대로 오탐, 부모가 운동 대신 공부를 시킨 정상적
+# 훈육을 정서학대로 오탐.
+#
+# note 모드의 _screen_missed_major_types는 "1차가 놓친 유형 추가"만
+# 하지만, qa/child_only에서 발견된 문제는 추가뿐 아니라 "1차가 맥락을
+# 못 읽어 잘못 넣은 유형 제거"도 필요해서 별도 함수로 둔다. 1차 결과는
+# 참고 정보로만 주고 최종 판단은 LLM이 원문 근거로 새로 내리게 한다.
+
+def _verify_major_types_qa(
+    text: str,
+    client: OpenAI,
+    model: str,
+    detected_major_types: list,
+) -> list:
+    all_labels = list(SUBTYPE_DEFINITIONS.keys())
+
+    definitions_text = "\n\n".join(
+        label
+        + ": "
+        + " / ".join(
+            f"{subtype}({description})"
+            for subtype, description in SUBTYPE_DEFINITIONS[label].items()
+        )
+        for label in all_labels
+    )
+
+    # _screen_missed_major_types의 신체학대 규칙과 동일 — "누가 때렸고
+    # 누가 맞았는가"는 qa 모드에서도 똑같이 중요한 맹점이라 그대로 쓴다.
+    extra_rules = """
+신체학대는 보호자·교사·시설장 등 아동에 대해 책임 있는 어른이 아동 본인의
+몸에 직접 가한 행위(때림, 밀침, 붙잡아 끎, 도구 사용 등)가 원문에 있을 때만
+해당한다. 원문에 폭행 장면이 나와도 아래 두 조건 중 하나라도 아니면 신체학대가
+아니다:
+1) 맞은 사람이 아동 본인인가? — 예: 다른 사람이 맞는 것을 아동이 지켜본
+   경우는 맞은 사람이 아동이 아니므로 신체학대가 아니다(정서학대의 폭력상황
+   노출에 해당할 수 있다).
+2) 때린 사람이 보호자·교사·시설장 등 아동에 대해 책임 있는 어른인가, 아니면
+   또래 아동(다른 아이)인가? — 또래 아동이 때린 경우는 신체학대가 아니다.
+"""
+
+    detected_text = (
+        ", ".join(detected_major_types)
+        if detected_major_types
+        else "없음"
+    )
+
+    system_prompt = f"""너는 아동학대 상담 대화 원문을 보고 학대유형을 판정하는
+전문가다. 1차 분류 모델이 아래와 같이 판정했다: {detected_text}
+
+1차 모델은 단순 분류기라 "누가 때렸는지", "누가 맞았는지", "정상적인
+훈육인지 학대인지" 같은 맥락을 이해하지 못한다. 1차 결과는 참고만 하고,
+아래 정의와 원문 근거만으로 네가 직접 최종 판단을 내려라 — 1차가 맞았는지
+틀렸는지도 같이 검토해라(놓친 유형을 추가하거나, 잘못 넣은 유형을 빼거나
+둘 다 할 수 있다).
+
+{definitions_text}
+{extra_rules}
+원문을 읽고, 실제로 원문 표현으로 명확히 뒷받침되는 유형만 배열에 넣어서
+JSON으로만 답해:
+{{"types": []}}
+"""
+
+    try:
+        parsed = _call_llm_with_retry(
+            client=client,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=text,
+            max_retries=2,
+            timeout_seconds=180.0,
+        )
+    except Exception:
+        # 재검증 실패는 1차 결과를 그대로 살리고 무시한다.
+        return detected_major_types
+
+    answered = parsed.get("types", [])
+
+    subtype_to_major = {
+        subtype: label
+        for label in all_labels
+        for subtype in SUBTYPE_DEFINITIONS[label].keys()
+    }
+
+    resolved = set()
+
+    for name in answered:
+        if name in all_labels:
+            resolved.add(name)
+        elif name in subtype_to_major:
+            resolved.add(subtype_to_major[name])
+
+    return list(resolved)
+
+
+# ============================================================
 # 2. 통합 함수
 # ============================================================
 
 def analyze_abuse(
     text: str,
     input_mode: str = "qa",
-    client: OpenAI = None,
     model: str = "gpt-5.6-luna",
     case_id: str = None,
 ) -> dict:
@@ -200,21 +301,22 @@ def analyze_abuse(
     1차 대분류 판정 → 2차 세부유형 분석까지 이어서 수행한다.
 
     input_mode: "qa" | "child_only" | "note"
-    note 모드는 1차 결과에 LLM 보완 체크를 한 번 더 거친다
-    (_screen_missed_major_types 참고).
+    note 모드는 1차 결과에 LLM 보완 체크(추가만)를 한 번 더 거친다
+    (_screen_missed_major_types 참고). qa/child_only는 추가+제거가
+    둘 다 되는 재검증을 거친다(_verify_major_types_qa 참고) — 순수
+    분류기가 못하는 "누가 때렸는지", "정상 훈육인지" 같은 맥락 판단을
+    LLM이 보완한다(2026-10-01 추가). 이 보완 체크는 항상
+    build_local_llm_client_and_model()로 만든 로컬 Ollama client를
+    쓴다(함수 안에서 직접 만들며, 호출부가 지정할 수 없다).
 
     case_id를 주면 Privacy Gateway가 case_store에 등록된 아동/보호자
     실명을 정확 매칭으로 한 번 더 걸러낸다(known_identifiers, Tier 2).
     주지 않으면(예: case_id가 아직 없는 임시 분석) NER/정규식 검사만
     적용된다.
 
-    client/model은 note 모드 1차 보완 체크(_screen_missed_major_types)
-    전용이다 — 항상 로컬 Ollama를 쓰며, 지정하지 않으면
-    llm_backend.build_local_llm_client_and_model()이 만든다. 2차
-    세부유형 분석은 이 client와 무관하게 항상 build_subtype_llm_
-    client_and_model()로 만든 별도의 OpenAI client를 쓴다 — 2차는
-    Privacy Gateway의 보호 대상인 외부 호출로 고정돼 있어서, 호출부가
-    로컬 client를 넘겨도 거기로 새지 않는다.
+    model은 2차 세부유형 분석(OpenAI)에만 쓰인다 — build_subtype_llm_
+    client_and_model()이 이 이름으로 OpenAI client를 만든다. 2차는
+    Privacy Gateway의 보호 대상인 외부 호출로 고정돼 있다.
     """
 
     # 1차 판정은 로컬 모델이라 개인정보 유출 위험이 없으므로 원문을 그대로 쓴다.
@@ -232,12 +334,17 @@ def analyze_abuse(
         )
     ]
 
-    if input_mode == "note":
-        if client is None:
-            client, model = build_local_llm_client_and_model()
+    # note 보완 체크/qa 재검증 전용 로컬 client. 파라미터로 받은
+    # client/model(2차 세부유형 분석용)을 덮어쓰면, 둘 다 쓰는 호출부
+    # (analyze_session)가 client를 미리 채워 넘겨서 평소엔 안 드러나지만
+    # analyze_abuse를 client 없이 직접 호출하면(예: 단독 테스트) 2차가
+    # 엉뚱하게 로컬 Ollama 모델명을 OpenAI 모델로 보내는 사고가 난다
+    # (2026-10-01 테스트 중 발견) — 그래서 변수를 분리한다.
+    local_client, local_model = build_local_llm_client_and_model()
 
+    if input_mode == "note":
         # note 보완 체크도 네트워크로 LLM을 호출하는 이상 비식별화한
-        # 텍스트를 쓴다(2026-10-01 발견 — 이 호출만 원문을 그대로
+        # 텍스트를 쓴다(2026-09-30 발견 — 이 호출만 원문을 그대로
         # 쓰고 있었다. 로컬 Ollama로만 가도록 고정된 뒤에도 defense in
         # depth로 유지한다). 응답이 고정 유형명 목록뿐이라 복원할 토큰이
         # 없으므로 entity_map은 쓰지 않는다.
@@ -245,8 +352,8 @@ def analyze_abuse(
 
         additional_types = _screen_missed_major_types(
             text=masked_text,
-            client=client,
-            model=model,
+            client=local_client,
+            model=local_model,
             already_detected=detected_major_types,
         )
 
@@ -254,6 +361,29 @@ def analyze_abuse(
             detected_major_types.append(label)
             major_result[label]["detected"] = True
             major_result[label]["llm_supplementary"] = True
+
+    elif input_mode in ("qa", "child_only"):
+        masked_text, _ = mask_pii(text)
+
+        verified_types = _verify_major_types_qa(
+            text=masked_text,
+            client=local_client,
+            model=local_model,
+            detected_major_types=detected_major_types,
+        )
+
+        for label in SUBTYPE_DEFINITIONS.keys():
+            was_detected = label in detected_major_types
+            now_detected = label in verified_types
+
+            if now_detected and not was_detected:
+                major_result[label]["detected"] = True
+                major_result[label]["llm_supplementary"] = True
+            elif was_detected and not now_detected:
+                major_result[label]["detected"] = False
+                major_result[label]["llm_corrected"] = True
+
+        detected_major_types = verified_types
 
     if not detected_major_types:
         subtype_result = {
@@ -346,7 +476,6 @@ def analyze_session(
     abuse_result = analyze_abuse(
         text=text,
         input_mode=input_mode,
-        client=client,
         case_id=case_id,
     )
 

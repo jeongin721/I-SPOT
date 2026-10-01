@@ -180,6 +180,118 @@ def _build_ordered_qa_text(text: str) -> str:
 
 
 # ============================================================
+# 5-1. note(상담일지) 입력 정리 — 행정정보 제거 + 청크 분할
+# ============================================================
+# 업로드된 상담일지 전체 문서를 그대로 note 모델에 넣으면, 결재란/
+# 기본정보 표(이름·성별·생년월일·입소일자·상담자·상담일시·상담장소)가
+# 토큰 예산을 깎아먹어 512토큰 한도를 넘기거나(뒷부분 잘림) 실제
+# 서술 내용의 비중이 희석된다(실측: "상담내용"만 넣었을 때 정서학대
+# 확률 0.504 -> 전체 문서 그대로 넣었을 때 0.107로 떨어짐, 2026-10-01
+# 온라인 그루밍 협박 사례로 확인).
+#
+# 삭제 기준은 "행정정보 키워드가 있고 + 서술형 문장 종결어미로 끝나지
+# 않는 줄"이다 — 둘 다 만족해야만 지운다(보수적). 상담주제·상담사유·
+# 상담내용·조치내용·슈퍼비전처럼 실제 서술이 있는 줄은 키워드가
+# 없거나 문장으로 끝나므로 항상 남는다. 기관마다 상담일지 양식이
+# 달라 완벽한 절취는 불가능하므로, 안전하게 확실한 행정정보만 줄이고
+# 나머지는 아래 청크 분할로 한 번 더 방어한다.
+
+_ADMIN_LINE_KEYWORDS = (
+    "이 름", "이름", "성별", "생년월일", "입소일자", "상담자", "상담일시",
+    "상담장소", "결재", "담당", "시설장", "슈퍼바이저", "팀장",
+)
+
+_NARRATIVE_ENDING_PATTERN = re.compile(
+    r"(다|음|함|됨|요|임)[.]?\s*$"
+)
+
+
+def _strip_admin_header_lines(text: str) -> str:
+    kept = []
+
+    for line in text.splitlines():
+        stripped = line.strip()
+
+        if not stripped:
+            kept.append(line)
+            continue
+
+        has_admin_keyword = any(
+            keyword in stripped
+            for keyword in _ADMIN_LINE_KEYWORDS
+        )
+
+        is_narrative = bool(
+            _NARRATIVE_ENDING_PATTERN.search(stripped)
+        )
+
+        if has_admin_keyword and not is_narrative:
+            continue
+
+        kept.append(line)
+
+    return "\n".join(kept)
+
+
+def _split_note_text(
+    text: str,
+    max_chars: int = 800,
+) -> list:
+    """note 텍스트가 길면(512토큰 한도 근처) 문단 단위로 나눈다.
+    오디오 세션 청크 분할(infer_audio_session.py의 MAX_CHUNK_CHARS)과
+    같은 이유 — 한 번에 너무 많이 넣으면 신호가 희석된다."""
+
+    paragraphs = [
+        paragraph
+        for paragraph in text.split("\n")
+        if paragraph.strip()
+    ]
+
+    if not paragraphs:
+        return [text]
+
+    chunks = []
+    current = ""
+
+    for paragraph in paragraphs:
+        if current and len(current) + len(paragraph) > max_chars:
+            chunks.append(current)
+            current = paragraph
+        else:
+            current = (
+                f"{current}\n{paragraph}"
+                if current
+                else paragraph
+            )
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+
+def _merge_note_predictions(
+    chunk_predictions: list,
+) -> dict:
+    """여러 청크의 예측을 라벨별 최대 확률 기준으로 합친다(하나라도
+    강하게 탐지되면 전체 결과로 반영 — 오디오 세션 청크 병합과 같은
+    방식). detected 여부는 그 최대 확률을 낸 청크가 이미 engine의
+    유형별 threshold로 판정한 값을 그대로 쓴다."""
+
+    merged = {}
+
+    for chunk_result in chunk_predictions:
+        for label, info in chunk_result.items():
+            if (
+                label not in merged
+                or info["probability"] > merged[label]["probability"]
+            ):
+                merged[label] = info
+
+    return merged
+
+
+# ============================================================
 # 6. 명확한 부정 응답 필터
 # ============================================================
 # 1차 모델이 detected=True로 판정해도, 관련 키워드가 원문에서
@@ -369,9 +481,19 @@ def predict_major_types(
         )
 
     elif input_mode == "note":
-        predictions = predict_abuse_v3(
-            _note_engine,
-            text,
+        cleaned_text = _strip_admin_header_lines(text)
+        chunks = _split_note_text(cleaned_text)
+
+        chunk_predictions = [
+            predict_abuse_v3(
+                _note_engine,
+                chunk,
+            )
+            for chunk in chunks
+        ]
+
+        predictions = _merge_note_predictions(
+            chunk_predictions
         )
 
     else:
