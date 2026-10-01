@@ -7,7 +7,9 @@ export interface CaseRecord {
   age: number;
   guardian: string;
   abuseTypes: AbuseType[];
-  riskLevel: RiskLevel;
+  /** Backend 에는 사례 위험도가 아직 없다. Backend 에서 온 사례는 비어 있고(adapters.toUiCase) 화면은 "—" 로 그린다. */
+  riskLevel?: RiskLevel;
+  /** 위험도가 없으면 0. */
   riskScore: number;
   lastSession: string;
   sessionCount: number;
@@ -16,7 +18,10 @@ export interface CaseRecord {
   keywords: string[];
 }
 
-export const CASES: CaseRecord[] = [
+/** 가짜 데이터(아직 Backend 에 연결되지 않은 화면용)는 위험도가 늘 있다. */
+export type MockCaseRecord = CaseRecord & { riskLevel: RiskLevel };
+
+export const CASES: MockCaseRecord[] = [
   { id: "C-2026-0412", childName: "김○○", age: 8,  guardian: "부모",   abuseTypes: ["신체", "정서"], riskLevel: "high", riskScore: 87, lastSession: "2026-08-19", sessionCount: 6, counselor: "이서연", status: "active",  keywords: ["멍", "두려움", "회피", "수면장애"] },
   { id: "C-2026-0389", childName: "박○○", age: 11, guardian: "모",     abuseTypes: ["방임", "정서"], riskLevel: "high", riskScore: 82, lastSession: "2026-08-20", sessionCount: 4, counselor: "이서연", status: "review",  keywords: ["결석", "영양실조", "위축"] },
   { id: "C-2026-0374", childName: "최○○", age: 6,  guardian: "부모",   abuseTypes: ["신체"],          riskLevel: "mid",  riskScore: 61, lastSession: "2026-08-18", sessionCount: 3, counselor: "김민준", status: "active",  keywords: ["타박상", "설명불일치"] },

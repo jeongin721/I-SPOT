@@ -75,9 +75,45 @@ export function clearSession(): void {
   }
 }
 
-function notifyUnauthorized(): void {
+/**
+ * 토큰이 끊겨 로그인 화면으로 보낼 때 그 이유(서버 문구)를 넘기는 sessionStorage 칸.
+ * 예: 현재 비밀번호를 여러 번 틀려 끊긴 경우. 로그인 화면이 처음 그릴 때 보여 주고 지운다.
+ */
+export const LOGOUT_REASON_KEY = "ispot_logout_reason";
+
+/** 로그인 화면이 보여 줄 로그아웃 이유. 없으면 빈 문자열. 읽기만 한다(지우는 것은 clearLogoutReason). */
+export function readLogoutReason(): string {
+  try {
+    return sessionStorage.getItem(LOGOUT_REASON_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function clearLogoutReason(): void {
+  try {
+    sessionStorage.removeItem(LOGOUT_REASON_KEY);
+  } catch {
+    // 무시
+  }
+}
+
+/**
+ * 로그인 정보를 지우고 AppLayout 에 알린다. reason 이 있으면 로그인 화면이 보여 주도록 남긴다.
+ * 이벤트의 detail.message 에도 같은 문구를 싣는다.
+ */
+function notifyUnauthorized(reason?: string): void {
   clearSession();
-  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+
+  if (reason) {
+    try {
+      sessionStorage.setItem(LOGOUT_REASON_KEY, reason);
+    } catch {
+      // 저장하지 못하면 이유 없이 로그인 화면으로 간다.
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { message: reason ?? null } }));
 }
 
 // =========================================================
@@ -197,7 +233,11 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
     // 401 이면 만료 · 폐기다(비밀번호 변경, 강제 로그아웃 · 정지 포함). 토큰이 없어서 난 401 도 같다 —
     // 다른 탭에서 로그아웃해 이 탭의 토큰이 이미 지워진 경우다. 로그인 요청의 401(비밀번호 틀림)만 뺀다.
-    if (response.status === 401 && path !== LOGIN_PATH) notifyUnauthorized();
+    // 토큰을 실어 보낸 요청이면 서버 문구(예: "현재 비밀번호를 여러 번 틀려 로그아웃했습니다.")를 로그인 화면에 넘긴다.
+    // 토큰 없이 보낸 요청의 문구("Authorization 헤더가 없습니다.")는 사용자에게 뜻이 없어 넘기지 않는다.
+    if (response.status === 401 && path !== LOGIN_PATH) {
+      notifyUnauthorized(token ? failure.error?.message : undefined);
+    }
 
     if (response.status === 403 && failure.error?.code === "PASSWORD_CHANGE_REQUIRED") {
       window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));

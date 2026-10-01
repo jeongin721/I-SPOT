@@ -19,7 +19,6 @@ export default function AccountPage() {
   const location = useLocation();
   const { showToast } = useToast();
   const [auth, setAuth] = useState<{ role: string; name: string } | null>(null);
-  const [editing, setEditing] = useState(false);
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
@@ -68,7 +67,15 @@ export default function AccountPage() {
     } catch (caught) {
       if (caught instanceof ApiError) {
         const reasons = passwordReasons(caught);
-        setPwErrors(reasons.length > 0 ? reasons : [caught.message]);
+        const messages = reasons.length > 0 ? reasons : [caught.message];
+
+        // 같은 로그인에서 현재 비밀번호를 정해진 횟수(LOGIN_MAX_FAILURES, 기본 5)만큼 틀리면 서버가 로그아웃시킨다
+        // (401 — 이유 문구는 로그인 화면에 나온다). 그 전에 미리 알린다. 남은 횟수는 서버가 주지 않는다.
+        if (caught.code === "INVALID_CURRENT_PASSWORD") {
+          messages.push("현재 비밀번호를 계속 틀리면(기본 5번) 보안을 위해 로그아웃됩니다.");
+        }
+
+        setPwErrors(messages);
       } else {
         setPwErrors(["비밀번호 변경에 실패했습니다. 잠시 후 다시 시도해 주세요."]);
       }
@@ -112,11 +119,14 @@ export default function AccountPage() {
             <p className="text-[13px] text-[#64748B] mt-0.5">계정 정보 확인 및 보안 설정</p>
           </div>
           <div className="flex gap-2">
+            {/* 본인 정보를 고치는 API(PATCH /auth/me)가 아직 없다. 누르면 아무 일도 하지 않던 단추라 막아 둔다.
+                넣으려면 Contract 변경 제안부터 한다. */}
             <button
-              onClick={() => setEditing(v => !v)}
-              className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-[12px] font-medium rounded-[6px] hover:bg-[#F1F5F9] transition-colors"
+              disabled
+              title="계정 정보 수정은 아직 서버에 없습니다"
+              className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-[12px] font-medium rounded-[6px] transition-colors opacity-50 cursor-not-allowed"
             >
-              {editing ? "취소" : "계정 정보 수정"}
+              계정 정보 수정
             </button>
             <button
               onClick={handleLogout}

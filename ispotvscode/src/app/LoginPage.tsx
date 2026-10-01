@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import AdminApp from "../admin/AdminApp";
 import { auth } from "../api/endpoints";
-import { ApiError, SESSION_INFO_KEY, clearSession } from "../api/client";
+import { ApiError, SESSION_INFO_KEY, clearLogoutReason, clearSession, readLogoutReason } from "../api/client";
 
 // 로그인은 Backend(POST /auth/login)가 판정한다. 역할도 서버가 준 값을 쓴다.
 // 2단계 인증(OTP)은 Backend 에 아직 없어 건너뛴다(팀 결정 대기). 화면 코드는 남겨 둔다.
@@ -18,10 +18,16 @@ export default function LoginPage() {
   const [role, setRole]   = useState<"counselor" | "admin">("counselor");
   const [otpStep, setOtpStep] = useState(false);
   const [otp, setOtp]     = useState("");
-  const [error, setError] = useState("");
+  // 토큰이 끊겨 여기로 왔으면(예: 현재 비밀번호를 여러 번 틀림) 서버가 보낸 이유를 먼저 보여 준다(client.ts).
+  const [error, setError] = useState(readLogoutReason);
   const [loading, setLoading] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [findPw, setFindPw] = useState(false);
+
+  // 한 번 보여 준 이유는 지운다. 그리는 함수(useState 초기값)에서 지우면 StrictMode 의 두 번째 그리기에서 사라진다.
+  useEffect(() => {
+    clearLogoutReason();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,6 +54,8 @@ export default function LoginPage() {
 
       // AppLayout 이 이 값으로 로그인 여부와 이름을 본다. 토큰은 auth.login 이 따로 저장한다.
       localStorage.setItem(SESSION_INFO_KEY, JSON.stringify({ role: uiRole, name: user.name }));
+      // 이 화면이 뜬 뒤에 늦게 도착한 401 이 남긴 이유가 다음 로그아웃 때 다시 보이지 않게 지운다.
+      clearLogoutReason();
 
       if (uiRole === "admin") {
         // 관리자 화면(AdminApp)은 아직 Backend 에 연결되지 않았다. 임시 비밀번호 안내는 연결할 때 함께 넣는다.
