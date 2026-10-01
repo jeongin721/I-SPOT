@@ -31,6 +31,19 @@ def as_utc(value: Optional[datetime]) -> Optional[datetime]:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def to_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """
+    받은 시각을 UTC 로 바꾼다. 표시 없는 값은 UTC 로 본다(as_utc).
+
+    DB 와 비교할 값에 쓴다. SQLite 는 비교할 때 시간대를 버리고 벽시계 글자만 보므로
+    `+09:00` 이 붙은 값을 그대로 넘기면 9시간 어긋난다. PostgreSQL 은 결과가 바뀌지 않는다.
+    """
+
+    converted = as_utc(value)
+
+    return converted.astimezone(timezone.utc) if converted is not None else None
+
+
 class Base(DeclarativeBase):
     pass
 

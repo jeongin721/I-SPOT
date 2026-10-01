@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     # 9월 MVP 는 Local Storage 를 사용한다. (docs/02_ARCHITECTURE.md)
     AUDIO_STORAGE_ROOT: Path = REPO_ROOT / "storage" / "audio"
     AUDIO_MAX_SIZE_MB: int = 200
+    # 음성 업로드가 아닌 요청 본문의 최대 크기. 로그인 확인보다 먼저 막는다(main.py _BodySizeLimitMiddleware).
+    # 음성 업로드는 AUDIO_MAX_SIZE_MB 에 multipart 여유 1MB 를 더한 만큼까지 받는다.
+    REQUEST_MAX_BODY_MB: int = Field(default=2, ge=1)
     AUDIO_ALLOWED_EXTENSIONS: Annotated[List[str], NoDecode] = Field(
         default_factory=lambda: [
             ".wav",

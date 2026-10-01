@@ -6,7 +6,8 @@
 #
 # 예외 handler 를 한곳에 모아 어떤 경로로 실패해도 형식이 깨지지 않게 한다.
 
-from typing import Any, Dict
+import re
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -68,6 +69,8 @@ def create_app() -> FastAPI:
 
     # 등록 순서가 중요하다. 나중에 등록한 미들웨어가 바깥에 놓이므로, 오류 처리를
     # 먼저 등록해야 CORS 가 그 바깥에서 500 응답에도 헤더를 붙인다.
+    # 본문 크기 제한은 가장 안쪽이다. 거절 응답은 아래 handler 가 만들고 CORS 헤더도 붙는다.
+    app.add_middleware(_BodySizeLimitMiddleware)
     app.add_middleware(_UnexpectedErrorMiddleware)
 
     app.add_middleware(
@@ -165,10 +168,111 @@ class _UnexpectedErrorMiddleware:
             await _internal_error_response()(scope, receive, send)
 
 
+class _RequestBodyTooLarge(StarletteHTTPException):
+    """
+    본문이 크기 제한을 넘었다(_BodySizeLimitMiddleware). 400 으로 준다.
+
+    본문을 읽다가 난 HTTPException 은 FastAPI 가 400("본문을 해석할 수 없음")으로 바꾸지 않고 그대로 올린다.
+    그래서 HTTPException 으로 만들고, 아래 handler 가 공통 오류 형식으로 바꾼다.
+
+    상태 코드는 413 이 아니라 400 이다. 음성은 저장할 때 재는 크기 초과(`400 AUDIO_TOO_LARGE`)와 같게,
+    나머지는 해석할 수 없는 본문(`400 VALIDATION_ERROR`)과 같게 해서 API_CONTRACT 에 없는 상태 코드를 만들지 않는다.
+    """
+
+    def __init__(self, code: ErrorCode, message: str) -> None:
+        super().__init__(status_code=400, detail=message)
+        self.code = code
+        self.message = message
+
+
+_MB = 1024 * 1024
+
+# 음성 업로드(POST /sessions/{session_id}/audio)만 큰 본문을 받는다.
+_AUDIO_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/sessions/[^/]+/audio/?$")
+
+
+def _body_limit(scope: Scope) -> Tuple[int, ErrorCode, str]:
+    """이 요청이 받을 수 있는 본문 크기(바이트)와, 넘었을 때의 오류 코드 · 문구."""
+
+    if scope.get("method") == "POST" and _AUDIO_UPLOAD_PATH.match(scope.get("path", "")):
+        # 파일 크기는 저장할 때 정확히 다시 잰다(core/storage.py). 여기서는 multipart 머리글 등
+        # 파일 밖의 몫으로 1MB 를 더 준다.
+        return (
+            settings.audio_max_size_bytes + _MB,
+            ErrorCode.AUDIO_TOO_LARGE,
+            f"음성 파일이 최대 허용 크기({settings.AUDIO_MAX_SIZE_MB}MB)를 초과했습니다.",
+        )
+
+    return (
+        settings.REQUEST_MAX_BODY_MB * _MB,
+        ErrorCode.VALIDATION_ERROR,
+        f"요청 본문이 너무 큽니다(최대 {settings.REQUEST_MAX_BODY_MB}MB).",
+    )
+
+
+def _declared_length(scope: Scope) -> Optional[int]:
+    for name, value in scope.get("headers", []):
+        if name == b"content-length":
+            try:
+                return int(value)
+            except ValueError:
+                return None
+
+    return None
+
+
+class _BodySizeLimitMiddleware:
+    """
+    요청 본문 크기를 로그인 확인보다 먼저 제한한다.
+
+    FastAPI 는 본문(JSON · multipart)을 끝까지 읽은 뒤에 의존성(get_current_user 포함)을 실행한다.
+    제한이 없으면 로그인하지 않은 요청도 본문을 다 받아, JSON 은 메모리에, multipart 는 디스크 임시 파일에
+    쌓인다. 본문을 읽는 receive 를 감싸서 Content-Length 가 한도를 넘으면 읽기 전에, 없으면(chunked)
+    받은 만큼 세다가 넘는 순간 멈추고 400 을 준다. 운영에서 앞단 프록시를 두면 그쪽에도 같은 제한을 둔다.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        limit, code, message = _body_limit(scope)
+        declared = _declared_length(scope)
+        received = 0
+
+        async def receive_with_limit() -> Message:
+            nonlocal received
+
+            if declared is not None and declared > limit:
+                raise _RequestBodyTooLarge(code, message)
+
+            incoming = await receive()
+
+            if incoming["type"] == "http.request":
+                received += len(incoming.get("body", b""))
+
+                if received > limit:
+                    raise _RequestBodyTooLarge(code, message)
+
+            return incoming
+
+        await self.app(scope, receive_with_limit, send)
+
+
 def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(APIError)
     async def handle_api_error(_: Request, exc: APIError) -> JSONResponse:
         return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
+
+    @app.exception_handler(_RequestBodyTooLarge)
+    async def handle_body_too_large(_: Request, exc: _RequestBodyTooLarge) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"code": exc.code.value, "message": exc.message}},
+        )
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

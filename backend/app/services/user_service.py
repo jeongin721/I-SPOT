@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.enums import AuditAction, UserRole
-from app.core.errors import APIError, ErrorCode, conflict
+from app.core.errors import APIError, ErrorCode, conflict, unauthorized
 from app.core.password_policy import validate_password
 from app.core.security import hash_password, verify_password
 from app.models.audit_log import AuditLog
@@ -30,6 +30,9 @@ INVALID_CREDENTIALS_MESSAGE = (
     "이메일 또는 비밀번호가 올바르지 않습니다. "
     "여러 번 틀려 잠겼다면 관리자에게 문의하세요."
 )
+
+# 비밀번호 변경 창구에서 현재 비밀번호를 기준만큼 틀려 Token 을 끊을 때의 문구.
+PASSWORD_FAILURE_LOGOUT_MESSAGE = "현재 비밀번호를 여러 번 틀려 로그아웃했습니다. 다시 로그인해 주세요."
 
 
 # =========================================================
@@ -134,37 +137,65 @@ def _dummy_password_hash() -> str:
     return hash_password(token_urlsafe(32))
 
 
-def _count_failure(
+def _reserve_login_attempt(db: Session, user: User) -> Optional[int]:
+    """
+    비밀번호를 대조하기 **전에** 실패 횟수를 1 올려 커밋한다(시도 예약). 올린 뒤 횟수를 돌려준다.
+
+    대조(bcrypt 약 0.3초)한 뒤에 세면, 그 사이 함께 들어온 요청이 모두 "아직 안 잠김" 을 보고
+    대조까지 가서 기준(LOGIN_MAX_FAILURES)보다 훨씬 많이 맞혀 볼 수 있다. 조건을 건 UPDATE 하나로
+    올리므로 동시에 몇 개가 들어와도 기준 횟수만큼만 예약된다. 이미 기준에 닿았으면 None 이다.
+
+    파이썬에서 += 1 하면 동시에 들어온 요청이 같은 값을 읽어 횟수가 빠지므로 DB 에서 더한다.
+    """
+
+    reserved = db.execute(
+        update(User)
+        .where(
+            User.id == user.id,
+            User.failed_login_count < settings.LOGIN_MAX_FAILURES,
+        )
+        .values(failed_login_count=User.failed_login_count + 1)
+        .returning(User.failed_login_count)
+        .execution_options(synchronize_session=False)
+    ).scalar_one_or_none()
+
+    # 다른 요청이 바로 보도록 대조 전에 커밋한다. 세션은 커밋해도 값을 다시 읽지 않으므로
+    # (expire_on_commit=False) 성공 때 0 으로 되돌리는 것이 빠지지 않게 지금 값을 읽어 둔다.
+    db.commit()
+    db.refresh(user)
+
+    return reserved
+
+
+def _release_login_attempt(db: Session, user: User) -> None:
+    """비밀번호가 맞은 시도는 실패가 아니므로 예약한 1 을 되돌린다."""
+
+    db.execute(
+        update(User)
+        .where(User.id == user.id, User.failed_login_count > 0)
+        .values(failed_login_count=User.failed_login_count - 1)
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(user)
+
+
+def _lock_if_limit_reached(
     db: Session,
     user: User,
+    reserved: int,
     now: datetime,
     *,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> None:
     """
-    로그인 실패 횟수를 1 올리고, 기준에 닿으면 잠근다.
+    틀린 시도가 기준 횟수째 예약이었으면 잠근다.
 
-    파이썬에서 += 1 하면 동시에 들어온 요청이 같은 값을 읽어 횟수가 빠진다.
-    DB 에서 더한 뒤 다시 읽는다.
+    예약은 원자적이라 기준 횟수째를 받는 요청은 하나뿐이다. 그래서 동시에 틀린 요청이 여러 개여도
+    잠금은 한 번만 남는다. 잠긴 계정과 기준을 넘은 시도는 예약되지 않아 여기까지 오지 않는다.
     """
 
-    db.execute(
-        update(User)
-        .where(User.id == user.id)
-        .values(failed_login_count=User.failed_login_count + 1)
-        .execution_options(synchronize_session=False)
-    )
-    db.refresh(user)
-
-    # 잠긴 계정은 여기까지 오지 않는다(비밀번호를 확인하지 않는다).
-    # 그래서 이번 실패로 기준을 넘겼을 때가 새로 잠기는 때다. 동시에 틀린 요청이 여러 개여도
-    # 기준을 넘긴 요청 하나만 잠금을 남긴다.
-    if not (
-        user.failed_login_count - 1
-        < settings.LOGIN_MAX_FAILURES
-        <= user.failed_login_count
-    ):
+    if reserved < settings.LOGIN_MAX_FAILURES:
         return
 
     if settings.LOGIN_LOCK_MINUTES:
@@ -176,7 +207,7 @@ def _count_failure(
         entity_type="User",
         entity_id=user.id,
         actor_id=user.id,
-        detail={"failed_login_count": user.failed_login_count},
+        detail={"failed_login_count": reserved},
         ip_address=ip_address,
         user_agent=user_agent,
     )
@@ -258,13 +289,26 @@ def authenticate(
 
         raise invalid_credentials(audit_code=ErrorCode.ACCOUNT_LOCKED)
 
-    # 4. 비밀번호 확인 — 계정 존재 여부를 노출하지 않기 위해 동일한 오류를 반환한다.
+    # 4. 시도 예약 — 비밀번호를 대조하기 전에 실패 횟수를 먼저 센다(_reserve_login_attempt).
+    #    함께 들어온 다른 요청이 이미 기준을 채웠으면 예약되지 않는다. 잠긴 계정과 같게 거절한다.
+    reserved = _reserve_login_attempt(db, user)
+
+    if reserved is None:
+        verify_password(password, _dummy_password_hash())
+
+        raise invalid_credentials(audit_code=ErrorCode.ACCOUNT_LOCKED)
+
+    # 5. 비밀번호 확인 — 계정 존재 여부를 노출하지 않기 위해 동일한 오류를 반환한다.
     if not verify_password(password, user.hashed_password):
-        _count_failure(db, user, now, ip_address=ip_address, user_agent=user_agent)
+        _lock_if_limit_reached(
+            db, user, reserved, now, ip_address=ip_address, user_agent=user_agent
+        )
 
         raise invalid_credentials()
 
-    # 5. 계정 상태 — 비밀번호가 맞은 뒤에만 본다.
+    _release_login_attempt(db, user)
+
+    # 6. 계정 상태 — 비밀번호가 맞은 뒤에만 본다.
     if user.anonymized_at is not None:
         raise invalid_credentials()
 
@@ -303,7 +347,7 @@ def authenticate(
             403,
         )
 
-    # 6. 성공
+    # 7. 성공
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
@@ -428,10 +472,11 @@ def remember_password(db: Session, user: User, hashed_password: str) -> None:
 
 def _password_change_failures(db: Session, user: User) -> int:
     """
-    마지막 로그인(또는 비밀번호 변경) 뒤로 현재 비밀번호를 틀린 횟수. 감사 로그로 센다.
+    마지막 로그인(또는 비밀번호 변경) 뒤로 현재 비밀번호 확인에 실패한 시도 수. 감사 로그로 센다.
 
-    실패는 어차피 감사 로그에 남기므로 따로 칸을 두지 않는다. 기준 횟수를 넘었는지만 알면 되므로
-    최근 기록을 기준 횟수만큼만 읽는다. 시각 비교는 파이썬에서 한다(SQLite 는 시간대 없이 돌려준다).
+    실패는 어차피 감사 로그에 남기므로 따로 칸을 두지 않는다. 대조 중인 시도도 미리 남기므로
+    (_reserve_password_attempt) 함께 들어온 요청도 바로 센다. 기준을 넘었는지만 알면 되므로
+    최근 기록을 기준 횟수 + 1 개만 읽는다. 시각 비교는 파이썬에서 한다(SQLite 는 시간대 없이 돌려준다).
     """
 
     since = max(
@@ -451,28 +496,28 @@ def _password_change_failures(db: Session, user: User) -> int:
             AuditLog.actor_id == user.id,
         )
         .order_by(AuditLog.created_at.desc())
-        .limit(settings.LOGIN_MAX_FAILURES)
+        .limit(settings.LOGIN_MAX_FAILURES + 1)
     ).all()
 
     return sum(1 for at in recent if since is None or as_utc(at) >= since)
 
 
-def _reject_wrong_current_password(
+def _reserve_password_attempt(
     db: Session,
     user: User,
     *,
     ip_address: Optional[str],
     user_agent: Optional[str],
-) -> APIError:
+) -> AuditLog:
     """
-    현재 비밀번호가 틀린 요청을 기록하고 돌려줄 오류를 만든다.
+    현재 비밀번호를 대조하기 **전에** 이번 시도를 실패로 남기고 커밋한다(시도 예약).
 
-    틀린 횟수가 기준(LOGIN_MAX_FAILURES)에 닿으면 그 계정의 Token 을 모두 끊는다(401).
-    토큰만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀 보지 못하게 하기 위해서다.
-    계정은 잠그지 않는다. 다시 로그인하면 되고, 로그인 쪽에는 이미 실패 잠금이 있다.
+    대조(bcrypt 약 0.3초)한 뒤에 남기면, 그 사이 함께 들어온 요청이 모두 "아직 기준 전" 을 보고
+    대조까지 가서 기준보다 많이 맞혀 볼 수 있다. 결과가 나오면 이 기록을 고친다
+    (맞으면 성공으로, 이전 비밀번호라 거절되면 지운다).
     """
 
-    audit_service.record(
+    attempt = audit_service.record(
         db,
         action=AuditAction.PASSWORD_CHANGED,
         entity_type="User",
@@ -483,36 +528,57 @@ def _reject_wrong_current_password(
         ip_address=ip_address,
         user_agent=user_agent,
     )
-    db.flush()
+    db.commit()
 
-    failures = _password_change_failures(db, user)
+    return attempt
 
-    if failures < settings.LOGIN_MAX_FAILURES:
-        db.commit()
 
-        return APIError(
-            ErrorCode.INVALID_CURRENT_PASSWORD,
-            "현재 비밀번호가 올바르지 않습니다.",
-            status_code=400,
+def _logout_after_failures(
+    db: Session,
+    user: User,
+    token_version: int,
+    failures: int,
+    *,
+    ip_address: Optional[str],
+    user_agent: Optional[str],
+) -> APIError:
+    """
+    현재 비밀번호를 기준(LOGIN_MAX_FAILURES)만큼 틀렸다. 그 계정의 Token 을 모두 끊고 401 을 만든다.
+
+    토큰만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀 보지 못하게 하기 위해서다.
+    계정은 잠그지 않는다. 다시 로그인하면 되고, 로그인 쪽에는 이미 실패 잠금이 있다.
+
+    이 요청의 Token 버전일 때만 올린다. 함께 들어온 요청이 이미 끊었으면 다시 올리지 않으므로
+    LOGOUT_ALL 은 한 번만 남는다.
+    """
+
+    revoked = db.execute(
+        update(User)
+        .where(User.id == user.id, User.token_version == token_version)
+        .values(token_version=User.token_version + 1)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    if revoked:
+        audit_service.record(
+            db,
+            action=AuditAction.LOGOUT_ALL,
+            entity_type="User",
+            entity_id=user.id,
+            actor_id=user.id,
+            detail={
+                "reason": "PASSWORD_CHANGE_FAILURES",
+                "failed_attempts": min(failures, settings.LOGIN_MAX_FAILURES),
+            },
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
 
-    user.token_version += 1
-
-    audit_service.record(
-        db,
-        action=AuditAction.LOGOUT_ALL,
-        entity_type="User",
-        entity_id=user.id,
-        actor_id=user.id,
-        detail={"reason": "PASSWORD_CHANGE_FAILURES", "failed_attempts": failures},
-        ip_address=ip_address,
-        user_agent=user_agent,
-    )
     db.commit()
 
     return APIError(
         ErrorCode.UNAUTHORIZED,
-        "현재 비밀번호를 여러 번 틀려 로그아웃했습니다. 다시 로그인해 주세요.",
+        PASSWORD_FAILURE_LOGOUT_MESSAGE,
         status_code=401,
     )
 
@@ -533,8 +599,12 @@ def change_password(
 
     현재 비밀번호가 틀리면 401 이 아니라 400 이다. Frontend 는 401 을 로그인 만료로 보고
     로그인 화면으로 보내므로(client.ts isUnauthorized), 입력 실수로 쫓겨나지 않게 한다.
-    단, 정해진 횟수만큼 틀리면 Token 을 끊고 401 을 준다(_reject_wrong_current_password).
+    단, 정해진 횟수만큼 틀리면 Token 을 끊고 401 을 준다(_logout_after_failures).
     """
+
+    # 이 요청 Token 의 버전(get_current_user 가 같은지 확인했다). 대조하는 사이 다른 요청이
+    # Token 을 끊었는지 저장할 때 다시 본다.
+    token_version = user.token_version
 
     # 새 비밀번호 규칙 · 같은 비밀번호 검사는 현재 비밀번호를 확인하기 전에 한다.
     # 확인한 뒤에 하면 "현재 비밀번호가 맞으면 422, 틀리면 400" 이 되어, 비밀번호를 바꾸지 않고도
@@ -553,15 +623,39 @@ def change_password(
             status_code=422,
         )
 
+    attempt = _reserve_password_attempt(
+        db, user, ip_address=ip_address, user_agent=user_agent
+    )
+    failures = _password_change_failures(db, user)
+
+    # 함께 들어온 다른 요청들이 이미 기준을 채웠다. 대조하지 않고 끊는다(대조하면 기준을 넘어 맞혀 보는 것이 된다).
+    if failures > settings.LOGIN_MAX_FAILURES:
+        attempt.error_code = ErrorCode.UNAUTHORIZED.value
+
+        raise _logout_after_failures(
+            db, user, token_version, failures, ip_address=ip_address, user_agent=user_agent
+        )
+
     if not verify_password(payload.current_password, user.hashed_password):
-        raise _reject_wrong_current_password(
-            db, user, ip_address=ip_address, user_agent=user_agent
+        if failures < settings.LOGIN_MAX_FAILURES:
+            raise APIError(
+                ErrorCode.INVALID_CURRENT_PASSWORD,
+                "현재 비밀번호가 올바르지 않습니다.",
+                status_code=400,
+            )
+
+        raise _logout_after_failures(
+            db, user, token_version, failures, ip_address=ip_address, user_agent=user_agent
         )
 
     # 팀 회의 결정(2026-09-18): 이전 비밀번호 재사용 금지
     # 이전 비밀번호를 알려 주는 셈이 되므로 현재 비밀번호를 확인한 뒤에만 검사한다.
+    # 현재 비밀번호는 맞았으므로 미리 남긴 실패 기록은 지운다(예전처럼 기록하지 않는다).
     for previous in _recent_password_hashes(db, user):
         if verify_password(payload.new_password, previous):
+            db.delete(attempt)
+            db.commit()
+
             raise APIError(
                 ErrorCode.PASSWORD_REUSED,
                 "최근에 쓰던 비밀번호는 다시 쓸 수 없습니다.",
@@ -571,27 +665,41 @@ def change_password(
     previous_hash = user.hashed_password
     was_temporary = user.must_change_password
 
-    user.hashed_password = hash_password(payload.new_password)
-    user.password_changed_at = datetime.now(timezone.utc)
-    user.must_change_password = False
+    # Token 버전이 그대로일 때만 바꾼다. 대조하는 사이 함께 보낸 다른 추측이 기준을 채워 Token 을
+    # 끊었으면(또는 강제 로그아웃 등) 바꾸지 않는다. 이미 끊긴 Token 으로 계정을 가져가지 못하게 한다.
+    # 비밀번호를 바꾸면 다른 기기에 남은 Token 도 무효가 된다(버전 + 1).
+    changed = db.execute(
+        update(User)
+        .where(User.id == user.id, User.token_version == token_version)
+        .values(
+            hashed_password=hash_password(payload.new_password),
+            password_changed_at=datetime.now(timezone.utc),
+            must_change_password=False,
+            token_version=User.token_version + 1,
+        )
+        .execution_options(synchronize_session=False)
+    ).rowcount
 
-    # 비밀번호를 바꾸면 다른 기기에 남은 Token 도 무효가 된다.
-    user.token_version += 1
+    if not changed:
+        attempt.error_code = ErrorCode.UNAUTHORIZED.value
+        db.commit()
+
+        # 실패 때문에 끊긴 것이면 그 응답과 같은 문구를 준다. 다르면 이 추측이 맞았다는 것이 드러난다.
+        if _password_change_failures(db, user) >= settings.LOGIN_MAX_FAILURES:
+            raise APIError(
+                ErrorCode.UNAUTHORIZED, PASSWORD_FAILURE_LOGOUT_MESSAGE, status_code=401
+            )
+
+        raise unauthorized("다시 로그인해 주세요.")
+
+    # 미리 남긴 시도 기록을 성공으로 바꾼다. detail 에 비밀번호를 담지 않는다.
+    attempt.status = "SUCCESS"
+    attempt.error_code = None
 
     # 임시 비밀번호는 이력에 남기지 않는다. 사람이 정한 비밀번호가 아니라 이력 칸만 차지한다.
     # 임시 비밀번호로 바뀌기 전 비밀번호는 발급할 때 남겼다(account_service.issue_temporary_password).
     if not was_temporary:
         remember_password(db, user, previous_hash)
 
-    # detail 에 비밀번호를 담지 않는다.
-    audit_service.record(
-        db,
-        action=AuditAction.PASSWORD_CHANGED,
-        entity_type="User",
-        entity_id=user.id,
-        actor_id=user.id,
-        ip_address=ip_address,
-        user_agent=user_agent,
-    )
-
     db.commit()
+    db.refresh(user)
