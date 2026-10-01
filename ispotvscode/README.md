@@ -3,6 +3,8 @@
 Figma Make 최신 I-SPOT 소스를 로컬 VSCode에서 실행할 수 있게 정리한 React + TypeScript + Vite 프로젝트입니다.
 
 ## 실행 방법
+0. Backend 를 먼저 켭니다(`backend/README.md` 부록 A.1~A.4). 로그인과 사례 · 회기 화면이 모두 Backend API 를 씁니다.
+   개발 서버(vite)가 `/api/v1` 요청을 `127.0.0.1:8000` 으로 넘깁니다. Backend 주소가 다르면 `VITE_BACKEND_URL` 환경변수로 바꿉니다.
 1. 압축을 풀고 해당 폴더를 VSCode에서 엽니다.
 2. VSCode 터미널에서 아래 명령을 실행합니다.
 
@@ -14,21 +16,21 @@ npm run dev
 3. 브라우저에서 `http://localhost:5173`을 엽니다.
 
 ## 테스트 로그인
-### 상담사
-- ID: `이서연`
-- 비밀번호: `1234`
-- OTP: `123456`
+로그인은 Backend 계정으로 합니다. 이 화면에 들어 있는 계정은 없습니다.
 
-### 관리자
-- ID: `김민준`
-- 비밀번호: `admin1234`
-- OTP: `123456`
+- `backend` 폴더에서 `PYTHONPATH=. python scripts/seed_users.py --demo` 로 데모 계정을 만듭니다.
+  - 상담사: `counselor@ispot.example.com`
+  - 관리자: `admin@ispot.example.com` (관리자 화면은 아직 Backend 에 연결되지 않아 예시 데이터로 보입니다)
+- 비밀번호는 위 명령이 출력한 값입니다. `SEED_USER_PASSWORD` 환경변수를 정해 두었으면 그 값입니다.
+- 자세한 것은 `backend/README.md` 부록 A.3 · A.5 를 봅니다.
+- 2단계 인증(OTP)은 아직 없습니다(팀 결정 대기).
 
 ## 주요 URL
 - `/dashboard`
 - `/cases`
-- `/recording`
+- `/follow-up`
 - `/stt-cases`
+- `/case-management`
 - `/ai-cases`
 - `/plan-cases`
 - `/closure-cases`

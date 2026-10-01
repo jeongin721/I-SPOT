@@ -232,7 +232,10 @@ export interface CaseCreateRequest {
   /** guardian_type 이 OTHER 일 때만 보낼 수 있다. 그 외에는 422. */
   guardian_note?: string | null;
   notes?: string | null;
-  /** 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403). */
+  /**
+   * 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403).
+   * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만, API_CONTRACT 4절).
+   */
   counselor_id?: string;
 }
 
@@ -252,7 +255,10 @@ export interface CaseUpdateRequest {
   notes?: string | null;
   /** CLOSED 로 바꾸면 사례 종결. */
   status?: CaseStatus;
-  /** 담당 상담사 변경. 관리자만 할 수 있다(403). */
+  /**
+   * 담당 상담사 변경. 관리자만 할 수 있다(403).
+   * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만). 거절되면 바뀌지 않는다.
+   */
   counselor_id?: string;
 }
 
@@ -401,7 +407,9 @@ export interface TranscriptSegmentUpdate {
 
 /**
  * 전사본 수정 요청(PATCH /sessions/{id}/transcript). 둘 중 하나는 있어야 한다(없으면 422 VALIDATION_ERROR).
- * 모든 발화를 지우거나 합친 결과가 end_ms < start_ms 가 되면 409 VALIDATION_ERROR(details 없음, API_CONTRACT 7절).
+ * 모든 발화를 지우면 409 VALIDATION_ERROR(details 없음). 시각 역전(end_ms < start_ms)은 한 발화에 두 시각을 모두 보내
+ * 거꾸로면 422 VALIDATION_ERROR(details.fields), 한쪽만 보내 저장된 값과 합친 결과가 거꾸로면 409 VALIDATION_ERROR
+ * (details 없음). API_CONTRACT 7절.
  */
 export interface TranscriptUpdateRequest {
   segments?: TranscriptSegmentUpdate[];

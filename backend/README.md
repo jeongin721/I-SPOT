@@ -343,6 +343,10 @@ backend/
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.
+- 요청 본문 크기는 로그인 확인보다 먼저 제한한다(`app/main.py` `_BodySizeLimitMiddleware`). 음성 업로드는
+  `AUDIO_MAX_SIZE_MB` + 1MB, 나머지는 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면 `400` 으로 거절한다.
+  운영에서 앞단 프록시(nginx 등)를 두면 그쪽에도 같은 제한을 둔다(예: `client_max_body_size 201m;`).
+  `docker-compose.yml` 은 uvicorn 을 프록시 없이 바로 연다 — 로컬 · 시연용이다.
 
 ---
 

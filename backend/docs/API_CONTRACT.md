@@ -48,6 +48,10 @@
   없는 경로 `404 NOT_FOUND`("요청한 경로를 찾을 수 없습니다."), 허용되지 않는 method `405 METHOD_NOT_ALLOWED`
   ("허용되지 않는 요청 방식입니다."), 해석할 수 없는 본문(예: boundary 없는 multipart) `400 VALIDATION_ERROR`
   ("요청 형식이 올바르지 않습니다."). `INTERNAL_ERROR` 는 서버 오류(5xx)에만 쓴다.
+- `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 두 가지가 더 있다. `message` 로 구분한다.
+  - 본문이 너무 큼 — 음성 업로드가 아닌 요청의 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
+    **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절 `AUDIO_TOO_LARGE`.
+  - 서비스가 내는 것 — 사례 담당자로 정지된 계정을 지정함(4절).
 
 ### 1.3 인증
 
@@ -90,7 +94,9 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
   같은 칸도 DB 에 따라 표시가 달라지니, 칸 이름으로 나누지 말고 값의 모양을 보고 읽는다.
   같은 순간도 칸마다 표시가 다를 수 있으니(`waiting_since` 는 `Z`, `consulted_at` 은 `+09:00`) 문자열로 비교 · 정렬하지 않는다.
 - 이 문서 예시의 `Z` 는 표기 예일 뿐이다(11절 `waiting_since` 는 항상 `Z` 다).
-- 보낼 때(`consulted_at`, 만들기 · 고치기 모두)는 UTC(`Z`)로 보낸다. 표시 없이 보내지 않는다.
+- 보낼 때(`consulted_at` 만들기 · 고치기, 감사 로그 조회의 `since` · `until`)는 UTC(`Z`)로 보낸다. 표시 없이 보내지 않는다.
+  감사 로그의 `since` · `until` 은 서버가 UTC 로 바꿔 비교하므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
+  `consulted_at` 은 아래처럼 어긋나니 반드시 `Z` 로 보낸다.
   SQLite 는 오프셋을 버리고 저장해 `+09:00` 을 붙여 보내면 9시간 어긋나고, PostgreSQL 은 표시 없는 값을
   DB 시간대로 읽어 `Asia/Seoul` 설정에서는 9시간 어긋난다(PostgreSQL 은 `Z` 와 `+09:00` 을 같은 순간으로 저장한다).
 
@@ -207,6 +213,8 @@ AI_FAILED     ← AI_PROCESSING 실패
 `DORMANT_AFTER_DAYS`(60), `TEMP_PASSWORD_VALID_HOURS`(72).
 시간 잠금(`LOGIN_LOCK_MINUTES` > 0)이 풀리면 실패 횟수도 0 으로 돌아가, 다시 5번 틀리면 다시 잠긴다.
 잠긴 동안의 로그인 시도는 실패 횟수에 더하지 않는다.
+**동시에 몰려 들어와도 비밀번호를 대조하는 것은 기준 횟수(5번)까지다.** 서버는 대조하기 전에 실패 횟수를 먼저 1 올려
+두고(맞으면 되돌린다), 기준을 이미 채운 뒤 들어온 시도는 잠긴 계정과 같게 대조 없이 거절한다(감사 로그 `ACCOUNT_LOCKED`).
 
 **임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
 모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
@@ -248,6 +256,14 @@ AI_FAILED     ← AI_PROCESSING 실패
 틀리면 그 계정의 Token 을 모두 끊고 `401 UNAUTHORIZED` 를 준다(감사 로그 `LOGOUT_ALL`,
 `detail.reason` = `PASSWORD_CHANGE_FAILURES`). 계정은 잠그지 않는다 — 다시 로그인하면 되고 횟수도 처음부터 센다.
 Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀 보지 못하게 하기 위해서다.
+
+동시에 몰려 들어와도 현재 비밀번호를 대조하는 것은 기준 횟수까지다. 서버는 대조하기 **전에** 시도를 먼저 실패로 남겨
+(맞으면 성공 기록으로 바꾸고, `PASSWORD_REUSED` 로 거절되면 지운다) 함께 들어온 요청도 바로 센다.
+
+- 기준을 이미 채운 뒤 들어온 시도는 대조하지 않고 `401 UNAUTHORIZED`(위와 같은 문구)를 준다. 감사 로그 `error_code` 는 `UNAUTHORIZED`.
+- 현재 비밀번호를 대조하는 사이 Token 이 끊겼으면(함께 보낸 다른 시도가 기준을 채움, 강제 로그아웃 등) 맞는 비밀번호여도
+  바꾸지 않고 `401 UNAUTHORIZED` 를 준다. 감사 로그 `error_code` 는 `UNAUTHORIZED`.
+- `LOGOUT_ALL` 은 한 번만 남는다.
 
 ### POST /api/v1/auth/users (관리자 전용)
 
@@ -297,6 +313,10 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 ### GET /api/v1/auth/audit-logs (관리자 전용)
 
 Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
+
+- `since` · `until` 은 ISO 8601 이고 경계를 포함한다(`since` ≤ `created_at` ≤ `until`). UTC(`Z`)로 보낸다(1.5).
+  서버가 UTC 로 바꿔 비교하므로 `+09:00` 을 붙여도 같은 순간으로 읽고, 표시가 없으면 UTC 로 읽는다.
+  화면의 날짜 입력값(`datetime-local`, 표시 없는 지역 시각)을 그대로 보내면 9시간 어긋나니 `Date.toISOString()` 으로 바꿔 보낸다.
 
 ```json
 {
@@ -455,6 +475,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `title`, `child_alias` 필수
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
+  - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
+    "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
 - `case_number` 미지정 → `C-YYYY-NNNN` 자동 생성
 
 ### GET /api/v1/cases/{case_id}
@@ -468,7 +490,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.
 
 - `title`, `child_alias`, `status` 는 `null` 로 보낼 수 없다(`422 VALIDATION_ERROR`). 바꾸지 않을 필드는 빼고 보낸다
-- `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`)
+- `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`). 없는 계정 · 정지된 계정은 위 `POST` 와 같다
+  (`404 USER_NOT_FOUND`, `400 VALIDATION_ERROR`). 거절되면 담당자는 바뀌지 않는다
 - 보호자 규칙은 저장된 값과 합쳐서 판단한다
   - 이미 `OTHER` 인 사례는 `guardian_note` 만 보내도 된다
   - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
@@ -584,7 +607,7 @@ Query: `page`, `page_size`, `status`
 | code | status | 상황 |
 |---|---|---|
 | `AUDIO_EMPTY_FILE` | 400 | 빈 파일 |
-| `AUDIO_TOO_LARGE` | 400 | 크기 초과 |
+| `AUDIO_TOO_LARGE` | 400 | 크기 초과. 요청 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘으면 로그인 확인보다 먼저 거절한다 |
 | `AUDIO_UNSUPPORTED_TYPE` | 400 | 확장자/MIME 불허, 확장자와 실제 형식 불일치 |
 | `AUDIO_CORRUPTED` | 400 | 음성 형식 판별 불가 |
 | `AUDIO_INVALID_FILENAME` | 400 | 파일명 없음/확장자 없음 |
@@ -716,13 +739,15 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 - `segments[]` 는 `segment_id` 필수 + 나머지 중 최소 1개
 - 수정/삭제 중 최소 1개는 있어야 한다(`422 VALIDATION_ERROR`)
 - 모든 segment 삭제는 불가(`409 VALIDATION_ERROR`)
-- 보낸 값과 원래 값을 합친 결과가 `end_ms < start_ms` 이면 불가(`409 VALIDATION_ERROR`). 한쪽만 보내도 원래 값과 비교한다
+- 시각이 거꾸로(`end_ms < start_ms`)이면 불가. 어디서 걸리느냐에 따라 응답이 다르다
+  - 한 발화에 `start_ms` · `end_ms` 를 **둘 다** 보내 거꾸로면 요청 형식 오류 `422 VALIDATION_ERROR`(`details.fields`, `field` = `segments.N`)
+  - **한쪽만** 보내 원래 값과 합친 결과가 거꾸로면 `409 VALIDATION_ERROR`(`details` 없이 `message` 만 온다)
 - `confidence` 는 STT 값이므로 수정 대상이 아니다
 
 응답은 새 `TranscriptResponse`. 확정 이후 수정하면 상태가 `STT_REVIEW_REQUIRED` 로 되돌아간다.
 
 오류: `404 TRANSCRIPT_NOT_FOUND`(없는 segment_id 포함), `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`(다른 요청이 같은 version 을 먼저 수정함 — 새로고침 후 다시 수정),
-`409 VALIDATION_ERROR`(모든 segment 삭제, 합친 뒤 시각 역전 — `details` 없이 `message` 만 온다), `422 VALIDATION_ERROR`(요청 형식)
+`409 VALIDATION_ERROR`(모든 segment 삭제, 한쪽만 보내 합친 뒤 시각 역전 — `details` 없이 `message` 만 온다), `422 VALIDATION_ERROR`(요청 형식 — 한 발화에 두 시각을 모두 보내 거꾸로인 경우 포함)
 
 ### POST /api/v1/sessions/{session_id}/transcript/confirm
 
@@ -1054,7 +1079,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 |---|---|---|
 | `INVALID_CREDENTIALS` | 401 | 로그인 실패 (틀린 비밀번호 · 없는 계정 · 실패 잠금 모두 같다) |
 | `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다. 반복되면 Token 이 끊겨 401 — 3절) |
-| `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류, 무효화된 토큰(비밀번호 변경 · 강제 로그아웃 · 역할 변경 · 정지 · 현재 비밀번호 반복 실패) |
+| `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류, 무효화된 토큰(비밀번호 변경 · 강제 로그아웃 · 역할 변경 · 정지 · 현재 비밀번호 반복 실패 — 대조하는 사이 끊긴 경우 포함) |
 | `INACTIVE_USER` | 403 | 비활성 계정 — 정지된 계정의 로그인(비밀번호가 맞았을 때만), Token 버전을 올리지 않고 정지된 계정의 요청 |
 | `ACCOUNT_LOCKED` | — | **감사 로그 전용.** 잠긴 계정의 로그인 시도가 LOGIN 실패의 `error_code` 로 남는다. 응답에는 쓰지 않는다 |
 | `ACCOUNT_DORMANT` | 403 | 휴면 계정 (비밀번호가 맞았을 때만) |
@@ -1071,8 +1096,8 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `DOCUMENT_NOT_FOUND` | 404 | 문서 없음 |
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
-| `VALIDATION_ERROR` | 400 | 본문을 해석할 수 없음(예: boundary 없는 multipart). `details` 없음 |
-| `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 합친 뒤 시각 역전 |
+| `VALIDATION_ERROR` | 400 | `details` 없음 — 본문을 해석할 수 없음(예: boundary 없는 multipart), 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
+| `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
@@ -1081,7 +1106,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
-| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 |
+| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 본문이 너무 크면 로그인 확인 전에도 온다 — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
