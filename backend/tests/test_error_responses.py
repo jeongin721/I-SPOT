@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app import main as app_main
+from app.api.v1 import cases as cases_api
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.main import app
@@ -99,6 +100,90 @@ def test_malformed_json_body_is_422_with_fields(client: TestClient) -> None:
             "details": {"fields": [{"field": "30", "reason": "JSON decode error"}]},
         }
     }
+
+    # 본문 해석은 로그인 확인보다 먼저라, Token 없이 보내도 401 이 아니라 422 다.
+    no_token = client.post(
+        "/api/v1/cases", content=b'{"title":', headers={"Content-Type": "application/json"}
+    )
+
+    assert no_token.status_code == 422
+    assert no_token.json()["error"]["details"] == {
+        "fields": [{"field": "9", "reason": "JSON decode error"}]
+    }
+
+
+def test_json_body_that_is_not_utf8_is_400_before_login(client: TestClient) -> None:
+    """
+    Content-Type 이 JSON 인데 UTF-8 로 읽을 수 없는 바이트(예: CP949 로 인코딩한 한글)가 든 본문은
+    문법 오류(422)가 아니라 400 VALIDATION_ERROR(details 없음)다(API_CONTRACT 1.2).
+
+    FastAPI 는 본문 해석 오류 가운데 JSON 문법 오류만 입력값 오류(422)로 바꾸고, 그 밖의 오류는 400 으로
+    바꾼다. 본문 해석은 의존성(로그인 확인)보다 먼저라 Token 이 없어도 401 이 아니라 400 이다.
+    """
+
+    malformed = {
+        "error": {"code": "VALIDATION_ERROR", "message": "요청 형식이 올바르지 않습니다."}
+    }
+    json_header = {"Content-Type": "application/json"}
+
+    login = client.post(
+        "/api/v1/auth/login",
+        content='{"email": "a@b.c", "password": "비밀번호"}'.encode("cp949"),
+        headers=json_header,
+    )
+
+    assert login.status_code == 400
+    assert login.json() == malformed
+
+    title = '{"title": "사례"}'
+    no_token = client.post("/api/v1/cases", content=title.encode("cp949"), headers=json_header)
+
+    assert no_token.status_code == 400
+    assert no_token.json() == malformed
+
+    # 같은 본문을 UTF-8 로 보내면 본문을 읽은 뒤 로그인 확인에서 401 이다.
+    assert client.post(
+        "/api/v1/cases", content=title.encode("utf-8"), headers=json_header
+    ).status_code == 401
+
+
+# =========================================================
+# 목록 page 상한
+# =========================================================
+
+def test_too_large_page_is_422_not_server_error(
+    counselor_headers, admin_headers, case: dict
+) -> None:
+    """
+    목록 창구의 page 는 MAX_PAGE 까지다. 상한이 없으면 건너뛸 행 수((page - 1) × page_size)가
+    DB 정수 범위를 넘어 500 INTERNAL_ERROR(OverflowError)가 났다. 넘는 값은 입력값 오류(422)다.
+    """
+
+    max_page = cases_api.MAX_PAGE
+    lists = [
+        ("/api/v1/cases", counselor_headers),
+        ("/api/v1/tasks", counselor_headers),
+        (f"/api/v1/cases/{case['id']}/sessions", counselor_headers),
+        ("/api/v1/auth/audit-logs", admin_headers),
+    ]
+
+    # 서버 오류를 테스트로 다시 던지지 않고 실제 응답을 본다.
+    with TestClient(app, raise_server_exceptions=False) as raw_client:
+        for path, headers in lists:
+            # 상한 값까지는 받는다(끝을 넘은 page 라 빈 목록).
+            last = raw_client.get(
+                path, params={"page": max_page, "page_size": 100}, headers=headers
+            )
+
+            assert last.status_code == 200, path
+            assert last.json()["data"]["items"] == [], path
+
+            for page in (max_page + 1, 2**62, 10**30):
+                response = raw_client.get(path, params={"page": page}, headers=headers)
+
+                assert response.status_code == 422, (path, page, response.text)
+                assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+                assert response.json()["error"]["details"]["fields"][0]["field"] == "query.page"
 
 
 # =========================================================

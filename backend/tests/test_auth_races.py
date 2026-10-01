@@ -91,6 +91,59 @@ def test_login_attempt_is_counted_before_password_check(
         assert other.get(User, counselor_id).failed_login_count == 0
 
 
+def test_login_checked_with_old_password_gets_no_token_that_outlives_a_password_change(
+    client: TestClient,
+    counselor_headers: Dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    로그인이 옛 비밀번호를 대조한 직후 본인이 다른 기기에서 비밀번호를 바꾸면(그 계정의 Token 을 모두
+    끊는다), 그 로그인이 받은 Token 도 바꾼 뒤에는 쓸 수 없어야 한다. 대조 뒤 계정을 다시 읽을 때
+    Token 버전까지 새로 읽으면, 옛 비밀번호로 확인된 로그인이 바꾼 뒤의 버전으로 Token 을 받아 남는다.
+    """
+
+    original = user_service.verify_password
+    change: List[int] = []
+
+    def check_then_change(password: str, hashed: str) -> bool:
+        matched = original(password, hashed)
+
+        # 로그인의 대조가 끝난 직후 한 번만 본인이 비밀번호를 바꾼다. 바꾸는 요청 안의 대조는 그대로 지나간다.
+        if matched and not change:
+            change.append(0)
+            change[0] = TestClient(app).post(
+                ME_PASSWORD,
+                json={"current_password": COUNSELOR_PASSWORD, "new_password": NEW_PASSWORD},
+                headers=counselor_headers,
+            ).status_code
+
+        return matched
+
+    monkeypatch.setattr(user_service, "verify_password", check_then_change)
+
+    login = client.post(LOGIN, json={"email": COUNSELOR_EMAIL, "password": COUNSELOR_PASSWORD})
+
+    monkeypatch.undo()
+
+    assert change == [204]
+
+    # 로그인은 바꾸기 전 비밀번호로 확인됐으므로 200 이지만, 받은 Token 은 바꾼 뒤에 쓸 수 없다.
+    assert login.status_code == 200
+
+    stale = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+
+    assert client.get("/api/v1/auth/me", headers=stale).status_code == 401
+    assert client.get("/api/v1/cases", headers=stale).status_code == 401
+
+    # 옛 비밀번호로는 더 들어오지 못하고, 새 비밀번호로는 들어온다.
+    assert client.post(
+        LOGIN, json={"email": COUNSELOR_EMAIL, "password": COUNSELOR_PASSWORD}
+    ).status_code == 401
+    assert client.post(
+        LOGIN, json={"email": COUNSELOR_EMAIL, "password": NEW_PASSWORD}
+    ).status_code == 200
+
+
 def test_concurrent_wrong_logins_check_password_only_up_to_the_limit(
     counselor_id: uuid.UUID, db
 ) -> None:
