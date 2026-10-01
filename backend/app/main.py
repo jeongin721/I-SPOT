@@ -9,6 +9,7 @@
 import re
 from typing import Any, Dict, Optional, Tuple
 
+import anyio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,9 +28,9 @@ from app.schemas.common import HealthStatus
 
 logger = get_logger(__name__)
 
-# FastAPI · Starlette 가 직접 만드는 HTTP 오류(없는 경로, 허용되지 않은 method, 해석할 수 없는 본문 등)
+# FastAPI · Starlette 가 직접 만드는 HTTP 오류(없는 경로, 허용되지 않은 method, 해석할 수 없는 multipart 본문 등)
 # → 공통 오류 코드. 서비스 코드는 HTTPException 대신 APIError 를 쓰므로(core/errors.py) 여기로 오는 것은
-# 프레임워크 오류뿐이다.
+# 프레임워크 오류뿐이다. JSON 문법 오류는 여기가 아니라 RequestValidationError(422)로 온다.
 _STATUS_ERROR_CODES: Dict[int, ErrorCode] = {
     400: ErrorCode.VALIDATION_ERROR,
     401: ErrorCode.UNAUTHORIZED,
@@ -176,7 +177,7 @@ class _RequestBodyTooLarge(StarletteHTTPException):
     그래서 HTTPException 으로 만들고, 아래 handler 가 공통 오류 형식으로 바꾼다.
 
     상태 코드는 413 이 아니라 400 이다. 음성은 저장할 때 재는 크기 초과(`400 AUDIO_TOO_LARGE`)와 같게,
-    나머지는 해석할 수 없는 본문(`400 VALIDATION_ERROR`)과 같게 해서 API_CONTRACT 에 없는 상태 코드를 만들지 않는다.
+    나머지는 해석할 수 없는 multipart 본문(`400 VALIDATION_ERROR`)과 같게 해서 API_CONTRACT 에 없는 상태 코드를 만들지 않는다.
     """
 
     def __init__(self, code: ErrorCode, message: str) -> None:
@@ -221,14 +222,39 @@ def _declared_length(scope: Scope) -> Optional[int]:
     return None
 
 
+# 한도를 넘은 본문을 버리며 읽는 최대 시간(초). nginx 의 lingering_time(기본 30초)과 같은 생각이다.
+_DISCARD_SECONDS = 30.0
+
+
+async def _discard_rest_of_body(receive: Receive) -> None:
+    """
+    남은 본문을 저장하지 않고 끝까지 읽어 버린다. _DISCARD_SECONDS 가 지나면 그만 읽는다.
+
+    본문을 다 받지 않고 응답하면 서버(uvicorn)는 받지 않은 데이터가 남은 연결을 닫게 되어 TCP RST 가 나간다.
+    Backend 에 바로 붙은 클라이언트는 400 을 받지만, 개발 프록시(vite)처럼 본문을 아직 보내는 중간 단계는
+    쓰다가 끊겨(ECONNRESET) 응답을 받지 못한다. 그러면 화면은 400 문구 대신 연결 끊김(502 · Failed to fetch)을
+    본다. 읽은 조각은 바로 버리므로 메모리 · 디스크에는 쌓이지 않는다.
+    """
+
+    with anyio.move_on_after(_DISCARD_SECONDS):
+        while True:
+            message = await receive()
+
+            if message["type"] != "http.request" or not message.get("more_body", False):
+                return
+
+
 class _BodySizeLimitMiddleware:
     """
-    요청 본문 크기를 로그인 확인보다 먼저 제한한다.
+    본문을 받는 창구(JSON · form · multipart)에서 요청 본문 크기를 로그인 확인보다 먼저 제한한다.
 
     FastAPI 는 본문(JSON · multipart)을 끝까지 읽은 뒤에 의존성(get_current_user 포함)을 실행한다.
     제한이 없으면 로그인하지 않은 요청도 본문을 다 받아, JSON 은 메모리에, multipart 는 디스크 임시 파일에
-    쌓인다. 본문을 읽는 receive 를 감싸서 Content-Length 가 한도를 넘으면 읽기 전에, 없으면(chunked)
-    받은 만큼 세다가 넘는 순간 멈추고 400 을 준다. 운영에서 앞단 프록시를 두면 그쪽에도 같은 제한을 둔다.
+    쌓인다. 본문을 읽는 receive 를 감싸서 Content-Length 가 한도를 넘으면 처음 읽을 때, 없으면(chunked)
+    받은 만큼 세다가 넘는 순간 400 을 준다. 400 을 주기 전에 남은 본문은 버리며 읽는다(_discard_rest_of_body).
+
+    receive 를 감싸는 것이라 본문을 읽지 않는 창구(GET, 본문 없는 POST)에는 걸리지 않는다. 그런 창구는
+    보낸 본문을 읽지 않고 평소대로(401 이나 정상 응답) 답한다. 운영에서 앞단 프록시를 두면 그쪽에도 같은 제한을 둔다.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -247,6 +273,8 @@ class _BodySizeLimitMiddleware:
             nonlocal received
 
             if declared is not None and declared > limit:
+                await _discard_rest_of_body(receive)
+
                 raise _RequestBodyTooLarge(code, message)
 
             incoming = await receive()
@@ -255,6 +283,9 @@ class _BodySizeLimitMiddleware:
                 received += len(incoming.get("body", b""))
 
                 if received > limit:
+                    if incoming.get("more_body", False):
+                        await _discard_rest_of_body(receive)
+
                     raise _RequestBodyTooLarge(code, message)
 
             return incoming
