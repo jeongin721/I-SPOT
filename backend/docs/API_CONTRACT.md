@@ -161,13 +161,53 @@ AI_FAILED     ← AI_PROCESSING 실패
       "name": "상담사",
       "role": "COUNSELOR",
       "is_active": true,
-      "created_at": "2026-09-01T10:00:00Z"
+      "created_at": "2026-09-01T10:00:00Z",
+      "last_login_at": "2026-09-29T09:00:00Z",
+      "must_change_password": false,
+      "is_locked": false,
+      "locked_until": null,
+      "dormant_at": null
     }
   }
 }
 ```
 
-오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`
+오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`, `403 ACCOUNT_DORMANT`, `403 TEMP_PASSWORD_EXPIRED`
+
+**계정 상태는 비밀번호가 맞은 뒤에만 알려준다.** 먼저 알려주면 비밀번호를 모르는 사람이
+"이 이메일은 등록돼 있다" 를 알아내는 계정 열거가 된다. 틀린 비밀번호는 언제나 `INVALID_CREDENTIALS` 다.
+
+**실패 잠금은 비밀번호가 맞아도 알려주지 않는다.** 잠긴 계정은 비밀번호를 확인하지 않고
+틀린 비밀번호 · 없는 계정과 **같은 `401 INVALID_CREDENTIALS`(같은 문구)** 를 준다. 잠김을 따로 알려주면
+잠긴 뒤에도 계속 맞혀 보다가 응답이 바뀌는 순간 정답을 알게 된다. 잠긴 사람도 안내받도록 문구에
+"여러 번 틀려 잠겼다면 관리자에게 문의하세요" 를 늘 함께 싣는다. 관리자는 감사 로그의 `error_code`
+(`ACCOUNT_LOCKED`)와 계정 응답의 `is_locked` 로 구분한다. 없는 계정 · 잠긴 계정도 비밀번호 비교와
+같은 시간이 걸리게 해서 응답 시간으로도 드러나지 않는다.
+
+```json
+{ "error": { "code": "INVALID_CREDENTIALS", "message": "이메일 또는 비밀번호가 올바르지 않습니다. 여러 번 틀려 잠겼다면 관리자에게 문의하세요." } }
+```
+
+| 상태 | 로그인 응답 | 푸는 방법 |
+| --- | --- | --- |
+| 관리자가 정지 | `403 INACTIVE_USER` | 관리자가 `PATCH /auth/users/{id}` 로 활성화 |
+| 로그인 5회 실패 | `401 INVALID_CREDENTIALS` (감사 로그 `error_code` 는 `ACCOUNT_LOCKED`) | 관리자가 `POST /auth/users/{id}/unlock`. `LOGIN_LOCK_MINUTES` 가 0 보다 크면 그 시간이 지나도 풀린다 |
+| 2개월 미접속 | `403 ACCOUNT_DORMANT` | 관리자가 `POST /auth/users/{id}/reactivate` |
+| 임시 비밀번호 기간 경과(72시간) | `403 TEMP_PASSWORD_EXPIRED` | 관리자가 `POST /auth/users/{id}/password-reset` |
+
+관리자가 모두 잠기거나 휴면이 되면 관리자 화면으로는 풀 수 없다. 그때는 서버에서
+`python -m scripts.unlock_user --email <이메일>` 로 푼다(API 는 없다. `backend/README.md` 2.5절).
+
+기준값은 설정으로 바꾼다 — `LOGIN_MAX_FAILURES`(5), `LOGIN_LOCK_MINUTES`(0 = 관리자만 해제),
+`DORMANT_AFTER_DAYS`(60), `TEMP_PASSWORD_VALID_HOURS`(72).
+시간 잠금(`LOGIN_LOCK_MINUTES` > 0)이 풀리면 실패 횟수도 0 으로 돌아가, 다시 5번 틀리면 다시 잠긴다.
+잠긴 동안의 로그인 시도는 실패 횟수에 더하지 않는다.
+
+**임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
+모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
+
+**Token 무효화** — 비밀번호를 바꾸거나 관리자가 강제 로그아웃 · 역할 변경 · 정지를 하면
+그 계정에 발급된 Token 이 전부 무효가 된다(`401 UNAUTHORIZED`). 다시 로그인해야 한다.
 
 ### GET /api/v1/auth/me
 
@@ -185,7 +225,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 주소에 사용자 id 를 두지 않는다(`me`). 남의 비밀번호를 바꾸는 경로를 만들지 않기 위해서다.
 
 오류: `401 UNAUTHORIZED`(로그인 안 됨), `400 INVALID_CURRENT_PASSWORD`(현재 비밀번호 불일치),
-`422 WEAK_PASSWORD`, `422 SAME_PASSWORD`
+`422 WEAK_PASSWORD`, `422 SAME_PASSWORD`, `422 PASSWORD_REUSED`
 
 현재 비밀번호가 틀린 것은 `401` 이 아니다. Frontend 는 `401` 을 로그인 만료로 보고 로그인 화면으로 보내므로,
 입력만 틀렸는데 쫓겨나지 않도록 `400` 으로 구분한다.
@@ -199,7 +239,68 @@ AI_FAILED     ← AI_PROCESSING 실패
 `role`: `COUNSELOR | ADMIN`
 오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`, `422 WEAK_PASSWORD`
 
+만든 관리자와 함께 감사 로그 `USER_CREATED` 로 남는다(아래 감사 로그 절).
+
 > 자유 회원가입 endpoint 는 존재하지 않는다.
+
+### 계정 관리 (관리자 전용)
+
+| 창구 | 하는 일 | 응답 |
+| --- | --- | --- |
+| `PATCH /api/v1/auth/users/{id}` | 활성화 · 비활성화(`is_active`), 역할(`role`), 이름(`name`) | `200` 계정 |
+| `POST /api/v1/auth/users/{id}/password-reset` | 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
+| `POST /api/v1/auth/users/{id}/unlock` | 실패 잠금 해제 | `204` |
+| `POST /api/v1/auth/users/{id}/reactivate` | 휴면 해제 + 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
+| `POST /api/v1/auth/users/{id}/logout-all` | 발급된 Token 전부 무효 | `204` |
+
+```json
+{ "data": { "temporary_password": "...", "expires_at": "...", "must_change_password": true } }
+```
+
+**임시 비밀번호는 이 응답에서 한 번만 나간다.** 다시 조회할 수 없고 DB 에는 해시만 남는다.
+
+**마지막 활성 관리자는 비활성화 · 역할 변경을 할 수 없다**(`409`). 아무도 풀 수 없게 되기 때문이다.
+여기서 활성 관리자는 "지금 로그인할 수 있는 관리자" 다 — 정지 · 휴면 · **실패 잠금**된 관리자는 세지 않는다.
+그래서 다른 관리자가 잠겨 있으면 남은 한 명은 끌 수 없고, 잠긴 관리자를 끄는 것은 막지 않는다.
+마지막 관리자는 휴면으로도 바뀌지 않는다(같은 기준).
+자기 계정에 `logout-all` 도 할 수 없다.
+
+계정 응답에는 상태를 구분할 수 있게 `last_login_at` · `must_change_password` ·
+`is_locked` · `locked_until` · `dormant_at` 이 함께 온다.
+
+- **잠김 여부는 `is_locked` 로 본다.** 기본 설정(`LOGIN_LOCK_MINUTES`=0)에서는 시간이 지나도 풀리지 않아
+  `locked_until` 이 비어 있다. `locked_until` 은 시간 잠금일 때 풀리는 시각이고, 그 시각이 지나면 `is_locked` 는 `false` 다.
+- 로그인은 잠김을 알려주지 않으므로(위 로그인 절) 관리자 화면이 잠긴 계정을 알 수 있는 곳은 이 값과 감사 로그뿐이다.
+
+### GET /api/v1/auth/audit-logs (관리자 전용)
+
+Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `actor_id`, `since`, `until`
+
+```json
+{
+  "data": {
+    "items": [{
+      "id": "uuid", "action": "LOGIN", "status": "FAILURE",
+      "error_code": "INVALID_CREDENTIALS", "actor_id": null, "actor_name": null,
+      "entity_type": "User", "entity_id": null,
+      "ip_address": "127.0.0.1", "user_agent": "...",
+      "detail": null, "created_at": "..."
+    }],
+    "meta": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+  }
+}
+```
+
+**행동은 `action`, 결과는 `status` 로 나눈다.** 실패를 별도 action 으로 만들지 않는다.
+로그인 실패에 이메일은 저장하지 않으므로, 없는 계정의 실패는 `actor_id` 가 비어 있다.
+`actor_name` 은 행동한 사람의 이름이다. `actor_id` 가 비어 있으면 함께 비어 있다.
+
+로그인 실패의 `error_code` 는 응답과 다를 수 있다. 잠긴 계정의 시도는 응답이 `INVALID_CREDENTIALS` 라도
+여기에는 `ACCOUNT_LOCKED` 로 남는다.
+
+계정 생성은 `USER_CREATED` 로 남는다(`detail` 에 역할만, 이메일 · 이름은 담지 않는다). 관리자 API 로 만들면
+`actor_id` 가 그 관리자, 서버에서 script 로 만들거나 고친 것은 `actor_id` 가 비어 있고 `detail.via` 에 script 이름이 있다.
+**변경 전후 값은 담지 않는다** — 상담 원문이 감사 로그에 복제되면 개인정보 파기가 불가능해진다.
 
 ### 비밀번호 규칙
 
@@ -225,6 +326,10 @@ AI_FAILED     ← AI_PROCESSING 실패
 `P@ssw0rd` 는 `password` 로 본다.
 
 한글은 표기 방식이 두 가지(NFC · NFD)라 Backend 가 저장 · 검증 모두 NFC 로 맞춘다. 기기가 달라도 같은 비밀번호로 로그인된다.
+
+**이전 비밀번호는 다시 쓸 수 없다**(`422 PASSWORD_REUSED`). 최근 `PASSWORD_HISTORY_COUNT`(3)개를 본다.
+관리자 재발급(`password-reset`) · 휴면 해제(`reactivate`) 전 비밀번호도 이력에 들어간다.
+임시 비밀번호는 이력에 넣지 않는다 — 사람이 정한 비밀번호가 아니고, 넣으면 재발급 몇 번으로 진짜 이전 비밀번호가 밀려난다.
 
 위반하면 `422 WEAK_PASSWORD` 이고 사유가 `details.reasons` 에 문장 배열로 담긴다.
 아래는 `abc` 를 보냈을 때다.
@@ -917,10 +1022,14 @@ Query: `counselor_id` (목록과 같은 규칙)
 
 | code | status | 설명 |
 |---|---|---|
-| `INVALID_CREDENTIALS` | 401 | 로그인 실패 |
+| `INVALID_CREDENTIALS` | 401 | 로그인 실패 (틀린 비밀번호 · 없는 계정 · 실패 잠금 모두 같다) |
 | `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다) |
 | `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류 |
 | `INACTIVE_USER` | 403 | 비활성 계정 |
+| `ACCOUNT_LOCKED` | — | **감사 로그 전용.** 잠긴 계정의 로그인 시도가 LOGIN 실패의 `error_code` 로 남는다. 응답에는 쓰지 않는다 |
+| `ACCOUNT_DORMANT` | 403 | 휴면 계정 (비밀번호가 맞았을 때만) |
+| `TEMP_PASSWORD_EXPIRED` | 403 | 임시 비밀번호 사용 기간 경과 (비밀번호가 맞았을 때만) |
+| `PASSWORD_CHANGE_REQUIRED` | 403 | 임시 비밀번호 상태에서 비밀번호 변경 외의 요청 |
 | `FORBIDDEN` | 403 | 권한 없음 (담당 아닌 Case 포함) |
 | `NOT_FOUND` | 404 | 존재하지 않는 경로 |
 | `CASE_NOT_FOUND` | 404 | 사례 없음 |
@@ -934,6 +1043,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`) |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
+| `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
 | `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
 | `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |

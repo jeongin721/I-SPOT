@@ -42,14 +42,22 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def create_access_token(
     subject: str,
     role: str,
+    token_version: int = 0,
     expires_minutes: Optional[int] = None,
 ) -> str:
+    """
+    Access Token.
+
+    tv(token_version)는 발급 시점의 계정 번호다. 비밀번호를 바꾸거나 관리자가
+    강제 로그아웃시키면 계정 쪽 번호가 올라가 이전 Token 이 전부 거부된다.
+    """
     expire_minutes = expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
     now = datetime.now(timezone.utc)
 
     payload: Dict[str, Any] = {
         "sub": subject,
         "role": role,
+        "tv": token_version,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=expire_minutes)).timestamp()),
     }

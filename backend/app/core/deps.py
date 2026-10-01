@@ -6,7 +6,7 @@
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,7 +22,32 @@ bearer_scheme = HTTPBearer(auto_error=False, description="로그인 후 발급�
 DbSession = Annotated[Session, Depends(get_db)]
 
 
+# 임시 비밀번호 상태에서도 열어 두는 경로.
+# 내 정보 확인은 화면이 "비밀번호를 바꿔야 한다" 를 보여주는 데 필요하다.
+_PASSWORD_CHANGE_ALLOWED_PATHS = frozenset(
+    {"/api/v1/auth/me", "/api/v1/auth/me/password"}
+)
+
+
+def client_ip(request: Request) -> Optional[str]:
+    """
+    접속 기록에 남길 IP.
+
+    X-Forwarded-For 는 클라이언트가 마음대로 보낼 수 있어 쓰지 않는다.
+    프록시 뒤에 두게 되면 신뢰할 프록시를 정한 뒤에 다시 본다.
+    """
+
+    return request.client.host if request.client else None
+
+
+def user_agent(request: Request) -> Optional[str]:
+    value = request.headers.get("user-agent")
+
+    return value[:255] if value else None
+
+
 def get_current_user(
+    request: Request,
     db: DbSession,
     credentials: Annotated[
         Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)
@@ -51,6 +76,18 @@ def get_current_user(
         raise APIError(
             ErrorCode.INACTIVE_USER,
             "비활성화된 계정입니다. 관리자에게 문의하세요.",
+            status_code=403,
+        )
+
+    # 발급 뒤에 비밀번호 변경이나 강제 로그아웃이 있었으면 거부한다.
+    if int(payload.get("tv", 0)) != user.token_version:
+        raise unauthorized("다시 로그인해 주세요.")
+
+    # 임시 비밀번호 상태에서는 비밀번호 변경 외에는 막는다.
+    if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
+        raise APIError(
+            ErrorCode.PASSWORD_CHANGE_REQUIRED,
+            "임시 비밀번호를 새 비밀번호로 바꾼 뒤에 이용할 수 있습니다.",
             status_code=403,
         )
 

@@ -108,6 +108,51 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   created_at: string;
+
+  /**
+   * 계정 상태. 넷은 뜻이 다르므로 화면에서 구분해 보여준다.
+   * is_active=false 관리자 정지 / is_locked 로그인 실패 잠금 /
+   * dormant_at 2개월 미접속 휴면 / must_change_password 임시 비밀번호
+   *
+   * 잠김 여부는 is_locked 로 본다. 기본 설정에서는 시간이 지나도 풀리지 않아 locked_until 이
+   * 비어 있다. locked_until 은 시간 잠금(Backend LOGIN_LOCK_MINUTES > 0)일 때 풀리는 시각이다.
+   */
+  last_login_at?: string | null;
+  must_change_password?: boolean;
+  is_locked?: boolean;
+  locked_until?: string | null;
+  dormant_at?: string | null;
+}
+
+export interface UserUpdateRequest {
+  is_active?: boolean;
+  role?: UserRole;
+  name?: string;
+}
+
+/** 임시 비밀번호는 이 응답에서 한 번만 온다. 다시 조회할 수 없다. */
+export interface TemporaryPassword {
+  temporary_password: string;
+  expires_at: string;
+  must_change_password: boolean;
+}
+
+export type AuditStatus = "SUCCESS" | "FAILURE";
+
+/** 감사 로그. 상담 원문과 아동 실명은 담기지 않는다. */
+export interface AuditLog {
+  id: string;
+  action: string;
+  status: AuditStatus;
+  error_code?: string | null;
+  actor_id?: string | null;
+  actor_name?: string | null;
+  entity_type: string;
+  entity_id?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  detail?: Record<string, unknown> | null;
+  created_at: string;
 }
 
 export interface LoginRequest {
