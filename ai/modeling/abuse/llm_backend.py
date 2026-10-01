@@ -36,12 +36,24 @@ Ollama는 http://localhost:11434/v1 에서 OpenAI 호환 API를 그대로
     OLLAMA_MODEL      LLM_BACKEND=ollama일 때 사용할 모델 태그
                        (기본값 "qwen3:14b")
     OLLAMA_BASE_URL   기본값 http://localhost:11434/v1
+    OPENAI_API_KEY    프로젝트 루트 .env 파일에서 읽는다(아래 load_dotenv
+                       참고) — 셸 환경변수로 이미 설정돼 있으면 그 값이
+                       우선한다(.env가 덮어쓰지 않는다).
 """
 
 import os
+from pathlib import Path
 from typing import Optional, Tuple
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+# 프로젝트 루트(.env가 있는 위치)를 이 파일 위치 기준으로 찾는다 —
+# 어느 작업 디렉터리에서 실행하든 항상 같은 .env를 읽기 위함이다.
+# .env에 OPENAI_API_KEY를 넣어 뒀는데도(상담사가 흔히 하는 설정 방식)
+# 아무 코드도 .env를 읽지 않아서 적용이 안 되던 문제를 여기서 고쳤다
+# (2026-10-01 발견).
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"

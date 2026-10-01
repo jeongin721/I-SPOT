@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 python-multipart
+python-dotenv
 PyMuPDF
 reportlab==3.6.13
 numpy
