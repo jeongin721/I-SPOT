@@ -23,6 +23,7 @@ npm run dev
   - 관리자: `admin@ispot.example.com` (관리자 화면은 아직 Backend 에 연결되지 않아 예시 데이터로 보입니다)
 - 비밀번호는 계정을 처음 만들 때 위 명령이 출력한 값입니다. `SEED_USER_PASSWORD` 환경변수를 정해 두었으면 그 값이고, `.cursor/start.sh` 로 만들었으면 그 파일의 `SEED_USER_PASSWORD` 기본값입니다.
 - 이미 있는 계정은 명령을 다시 돌려도 비밀번호가 바뀌지 않고, 비밀번호를 출력하지도 않습니다. 모르면 `backend/README.md` 부록 A.7 대로 DB 를 지우고 다시 만들거나, `backend` 폴더에서 `python -m scripts.unlock_user --email <이메일> --reset-password` 로 임시 비밀번호를 받습니다.
+  - 임시 비밀번호는 먼저 새 비밀번호로 바꿔야 쓸 수 있습니다(바꾸기 전에는 다른 요청이 모두 `403 PASSWORD_CHANGE_REQUIRED`). 상담사는 로그인하면 내 정보 화면으로 가서 바꾸고, 관리자는 `backend/README.md` 2.5 대로 Swagger 에서 바꿉니다.
 - 로그인을 5번 틀리면 계정이 잠기고 저절로 풀리지 않습니다(그 뒤로는 맞는 비밀번호도 거절). `python -m scripts.unlock_user --email <이메일>` 로 풉니다(`backend/README.md` 2.5).
 - 자세한 것은 `backend/README.md` 부록 A.3 · A.5 를 봅니다.
 - 2단계 인증(OTP)은 아직 없습니다(팀 결정 대기).

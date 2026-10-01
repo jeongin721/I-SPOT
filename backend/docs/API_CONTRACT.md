@@ -53,7 +53,8 @@
   `"JSON decode error"` 다.
 - `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 두 가지가 더 있다. `message` 로 구분한다.
   - 본문이 너무 큼 — 본문을 받는 창구(JSON · form)에서 본문이 `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면
-    **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절 `AUDIO_TOO_LARGE`.
+    **로그인 확인보다 먼저** 거절한다("요청 본문이 너무 큽니다(최대 2MB)."). 음성 업로드는 6절(token 의 서명 · 만료를
+    먼저 보고, 맞으면 `AUDIO_TOO_LARGE`, 없거나 틀리면 `401`).
     음성 업로드 경로라도 `multipart/form-data` 가 아닌 본문은 음성이 아니므로 이 한도와 문구를 쓴다.
     본문을 읽지 않는 창구(GET, 본문 없는 POST)는 보낸 본문을 무시하고 평소처럼 답한다(`401` 이나 정상 응답).
   - 서비스가 내는 것 — 사례 담당자로 정지된 계정을 지정함(4절).
@@ -325,6 +326,8 @@ Query: `page`, `page_size`(≤100), `action`, `status`(`SUCCESS|FAILURE`), `acto
 
 - `since` · `until` 은 ISO 8601 이고 경계를 포함한다(`since` ≤ `created_at` ≤ `until`). UTC(`Z`)로 보낸다(1.5).
   서버가 UTC 로 바꿔 비교하므로 `+09:00` 을 붙여도 같은 순간으로 읽고, 표시가 없으면 UTC 로 읽는다.
+  UTC 로 바꾸면 날짜 범위를 벗어나는 값(예: `0001-01-01T00:00:00+09:00`, `9999-12-31T23:59:59-01:00`)은 가장 이른 ·
+  가장 늦은 시각으로 보고 평소처럼 `200` 으로 답한다.
   화면의 날짜 입력값(`datetime-local`, 표시 없는 지역 시각)을 그대로 보내면 9시간 어긋나니 `Date.toISOString()` 으로 바꿔 보낸다.
 
 ```json
@@ -1122,7 +1125,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
-| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 본문이 너무 크면 로그인 확인 전에도 온다 — 6절) |
+| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청이면 계정 상태 · 회기 확인보다 먼저 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
