@@ -38,9 +38,14 @@ from ai.modeling.abuse.pii_masking import (
     mask_pii,
     restore_pii,
 )
-from ai.modeling.abuse.llm_backend import (
-    build_llm_client_and_model,
+from ai.modeling.abuse.privacy_gateway import (
+    mask_for_outbound,
 )
+from ai.modeling.abuse.llm_backend import (
+    build_local_llm_client_and_model,
+    build_subtype_llm_client_and_model,
+)
+from ai.modeling.abuse import case_store
 
 
 # ============================================================
@@ -189,6 +194,7 @@ def analyze_abuse(
     input_mode: str = "qa",
     client: OpenAI = None,
     model: str = "gpt-5.6-luna",
+    case_id: str = None,
 ) -> dict:
     """
     1차 대분류 판정 → 2차 세부유형 분석까지 이어서 수행한다.
@@ -197,8 +203,18 @@ def analyze_abuse(
     note 모드는 1차 결과에 LLM 보완 체크를 한 번 더 거친다
     (_screen_missed_major_types 참고).
 
-    client/model을 지정하지 않으면 llm_backend.build_llm_client_and_model이
-    LLM_BACKEND 환경변수(openai/ollama)에 따라 알아서 만든다.
+    case_id를 주면 Privacy Gateway가 case_store에 등록된 아동/보호자
+    실명을 정확 매칭으로 한 번 더 걸러낸다(known_identifiers, Tier 2).
+    주지 않으면(예: case_id가 아직 없는 임시 분석) NER/정규식 검사만
+    적용된다.
+
+    client/model은 note 모드 1차 보완 체크(_screen_missed_major_types)
+    전용이다 — 항상 로컬 Ollama를 쓰며, 지정하지 않으면
+    llm_backend.build_local_llm_client_and_model()이 만든다. 2차
+    세부유형 분석은 이 client와 무관하게 항상 build_subtype_llm_
+    client_and_model()로 만든 별도의 OpenAI client를 쓴다 — 2차는
+    Privacy Gateway의 보호 대상인 외부 호출로 고정돼 있어서, 호출부가
+    로컬 client를 넘겨도 거기로 새지 않는다.
     """
 
     # 1차 판정은 로컬 모델이라 개인정보 유출 위험이 없으므로 원문을 그대로 쓴다.
@@ -218,12 +234,17 @@ def analyze_abuse(
 
     if input_mode == "note":
         if client is None:
-            client, model = build_llm_client_and_model(
-                default_openai_model=model,
-            )
+            client, model = build_local_llm_client_and_model()
+
+        # note 보완 체크도 네트워크로 LLM을 호출하는 이상 비식별화한
+        # 텍스트를 쓴다(2026-10-01 발견 — 이 호출만 원문을 그대로
+        # 쓰고 있었다. 로컬 Ollama로만 가도록 고정된 뒤에도 defense in
+        # depth로 유지한다). 응답이 고정 유형명 목록뿐이라 복원할 토큰이
+        # 없으므로 entity_map은 쓰지 않는다.
+        masked_text, _ = mask_pii(text)
 
         additional_types = _screen_missed_major_types(
-            text=text,
+            text=masked_text,
             client=client,
             model=model,
             already_detected=detected_major_types,
@@ -240,21 +261,25 @@ def analyze_abuse(
             "note": "탐지된 대분류 없음",
         }
     else:
-        if client is None:
-            client, model = build_llm_client_and_model(
-                default_openai_model=model,
-            )
+        subtype_client, subtype_model = build_subtype_llm_client_and_model(
+            default_openai_model=model,
+        )
 
-        # 2차부터는 외부(또는 로컬 Ollama) LLM을 호출하므로 비식별화한
-        # 텍스트만 전달하고, 응답에 남은 토큰은 상담사 화면에 보이기 전에
+        # 2차는 항상 외부 OpenAI로 나가므로 Privacy Gateway(차단형
+        # 검증)를 거친다. 응답에 남은 토큰은 상담사 화면에 보이기 전에
         # 원문으로 되돌린다.
-        masked_text, entity_map = mask_pii(text)
+        known_identifiers = (
+            case_store.get_known_identifiers(case_id) if case_id else []
+        )
+        masked_text, entity_map = mask_for_outbound(
+            text, known_identifiers=known_identifiers
+        )
 
         subtype_result = analyze_subtypes(
             text=masked_text,
             major_types=detected_major_types,
-            client=client,
-            model=model,
+            client=subtype_client,
+            model=subtype_model,
         )
 
         subtype_result = restore_pii(
@@ -280,13 +305,20 @@ def analyze_session(
     client: OpenAI = None,
     note_model: str = DEFAULT_NOTE_MODEL,
     checklist_model: str = DEFAULT_CHECKLIST_MODEL,
+    case_id: str = None,
 ) -> dict:
     """
     한 세션 텍스트에 대해
     1차 대분류 판정 → 2차 세부유형 분석 → 상담 요약·상담일지 생성 →
     서식 체크리스트 초안 생성까지 한 번에 수행한다.
 
+    case_id를 주면 Privacy Gateway Tier 2(등록된 실명 정확매칭)가
+    2차 세부유형 분석에 적용된다. analyze_abuse 참고.
+
     상담 요약/상담일지/체크리스트 초안은 학대 탐지 여부와 무관하게 항상 생성한다.
+    이 둘은 2차 세부유형 분석과 달리 항상 로컬 Ollama로만 보낸다(client
+    인자는 이 둘과 note 모드 1차 보완체크 전용 — 2차는 analyze_abuse 내부에서
+    별도의 OpenAI client를 쓴다).
 
     input_mode="child_only"인 경우 generate_counseling_records와
     generate_checklist_draft도 아동 발화만 보고 작성하게 된다.
@@ -298,21 +330,14 @@ def analyze_session(
     상담사가 확인하기 전까지는 "AI 제안" 상태로만 취급한다.
     """
 
-    # LLM_BACKEND=ollama면 세션 전체(2차/요약/체크리스트)가 같은 로컬
-    # 모델 하나를 쓰도록 여기서 한 번만 client를 정하고 아래로 전달한다.
-    # openai 백엔드에서는 기존과 동일하게 각자 자기 기본 모델을 쓴다.
-    subtype_model = "gpt-5.6-luna"
-
+    # 세션 전체(요약/체크리스트)가 같은 로컬 모델 하나를 쓰도록 여기서
+    # 한 번만 client를 정하고 아래로 전달한다. 2차 세부유형 분석은 이
+    # client와 무관하게 analyze_abuse 내부에서 항상 별도의 OpenAI
+    # client를 쓴다.
     if client is None:
-        client, resolved_model = build_llm_client_and_model(
-            default_openai_model=note_model,
-        )
-
-        if resolved_model != note_model:
-            # ollama 백엔드 -> note/checklist/subtype 모두 같은 로컬 모델로 통일
-            note_model = resolved_model
-            checklist_model = resolved_model
-            subtype_model = resolved_model
+        client, resolved_model = build_local_llm_client_and_model()
+        note_model = resolved_model
+        checklist_model = resolved_model
 
     # analyze_abuse(1차+2차 판정), generate_counseling_records(요약/일지),
     # generate_checklist_draft(체크리스트 초안)는 서로 결과를 참조하지 않는
@@ -322,11 +347,12 @@ def analyze_session(
         text=text,
         input_mode=input_mode,
         client=client,
-        model=subtype_model,
+        case_id=case_id,
     )
 
-    # 상담 요약/일지, 체크리스트 초안도 외부 LLM 호출이므로
-    # 비식별화한 텍스트로 생성하고, 결과는 원문으로 복원해 돌려준다.
+    # 상담 요약/일지는 로컬 Ollama로만 가므로 mask_pii()의 최선형
+    # 마스킹만 적용한다(Privacy Gateway의 차단형 검증은 2차처럼 항상
+    # 외부로 나가는 호출 전용이다 — privacy_gateway.mask_for_outbound 참고).
     masked_text, entity_map = mask_pii(text)
 
     counseling_records = generate_counseling_records(

@@ -132,6 +132,17 @@ def set_known_identifiers(
 
     conn = _get_connection()
 
+    # 이 함수가 create_case_if_missing보다 먼저 불릴 수도 있다(예: 텍스트
+    # 탭에서 실명을 분석 직전에 먼저 등록하는 흐름). 사례 행이 아직 없으면
+    # UPDATE는 조용히 0행에 적용돼 값이 사라지므로, 먼저 있는지 보장한다.
+    conn.execute(
+        "INSERT OR IGNORE INTO cases (case_id, created_at) VALUES (?, ?)",
+        (
+            case_id,
+            datetime.now().isoformat(),
+        ),
+    )
+
     conn.execute(
         "UPDATE cases SET known_identifiers = ? WHERE case_id = ?",
         (

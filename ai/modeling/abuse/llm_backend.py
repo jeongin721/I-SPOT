@@ -1,9 +1,22 @@
 """
 2차 세부유형 분석/상담요약/체크리스트에 쓸 LLM 백엔드를 선택한다.
 
-기본은 로컬 Ollama(qwen3:14b)이고, 환경변수로 외부 OpenAI 호출로 되돌릴
-수 있다. Ollama는 http://localhost:11434/v1 에서 OpenAI 호환 API를
-그대로 제공하므로, openai 파이썬 SDK의 base_url만 바꾸면 된다
+2026-10-01부터 LLM_BACKEND 하나로 전체를 전환하는 방식을 버리고 호출
+종류별로 고정했다 — 2차 세부유형 분석(근거/인용문 추출)은 항상 외부
+OpenAI로 보내고(Privacy Gateway가 그 직전에 차단형 검증을 한다,
+privacy_gateway.mask_for_outbound 참고), 상담 요약/상담일지/체크리스트
+초안과 note 모드 1차 보완 체크는 항상 로컬 Ollama를 쓴다. 호출부는
+build_subtype_llm_client_and_model()/build_local_llm_client_and_model()
+중 자신에게 맞는 쪽을 쓰면 된다.
+
+build_llm_client_and_model()(LLM_BACKEND 환경변수로 전체를 토글하던
+예전 방식)은 make_note_multitype_v1.py 같은 오프라인 데이터 생성
+스크립트의 하위 호환을 위해서만 남겨 뒀다 — 실제 서비스 경로
+(infer_abuse_pipeline.py/infer_audio_session.py)에서는 더 이상 쓰지
+않는다.
+
+Ollama는 http://localhost:11434/v1 에서 OpenAI 호환 API를 그대로
+제공하므로, openai 파이썬 SDK의 base_url만 바꾸면 된다
 (second_stage_llm.py/checklist_llm.py 등 호출부 코드는 그대로 둔다).
 
 - 1차: qwen2.5:14b-instruct / exaone3.5:7.8b / qwen2.5:32b 세 모델을
@@ -52,6 +65,29 @@ def build_llm_client_and_model(
 
     if backend == "openai":
         return _build_openai_client(), default_openai_model
+
+    return _build_ollama_client_and_model()
+
+
+def build_subtype_llm_client_and_model(
+    default_openai_model: str,
+) -> Tuple[OpenAI, str]:
+    """
+    2차 세부유형 분석(근거/인용문 추출) 전용. 항상 외부 OpenAI client를
+    반환한다 — 이 호출은 Privacy Gateway의 보호 대상이라 로컬로 빠질
+    수 없다. OPENAI_API_KEY가 없으면 여기서 바로 에러를 낸다(조용히
+    로컬로 돌아가면 "분석은 됐는데 사실 2차 결과가 아니었다"는 상황이
+    생길 수 있어, 명확히 실패시키는 쪽을 택했다).
+    """
+
+    return _build_openai_client(), default_openai_model
+
+
+def build_local_llm_client_and_model() -> Tuple[OpenAI, str]:
+    """
+    상담 요약/상담일지/체크리스트 초안, note 모드 1차 보완 체크 전용.
+    항상 로컬 Ollama client를 반환한다.
+    """
 
     return _build_ollama_client_and_model()
 

@@ -1095,21 +1095,30 @@ def _call_llm_with_retry(
     # 172초 -> think:false 시 16초). 우리 작업은 정해진 스키마로 근거를
     # 뽑아내는 구조화 추출이라 깊은 추론이 필요 없어서 꺼도 품질 손해가
     # 거의 없다. think는 Ollama 자체 API 필드라 실제 OpenAI API로 보내면
-    # 거부당하므로 LLM_BACKEND=ollama일 때만 붙인다(호출 시점 env를
-    # 읽어야 llm_backend.build_llm_client_and_model()과 일관된다).
+    # 거부당한다.
+    #
+    # 호출 종류별로 백엔드가 고정된 뒤로는(llm_backend.py 참고 — 2차는
+    # 항상 OpenAI, 요약/체크리스트/note 보완체크는 항상 Ollama) 전역
+    # LLM_BACKEND 환경변수로는 "지금 이 호출이 실제로 어느 쪽으로
+    # 가는지" 알 수 없다(한 세션 안에서 두 백엔드가 동시에 쓰이므로).
+    # 그래서 전달받은 client가 실제로 가리키는 주소(base_url)를 직접
+    # 보고 판단한다 — client를 만든 쪽이 아니라 쓰는 쪽에서 사실을
+    # 확인하는 셈이라 더 안전하다.
     #
     # temperature를 따로 안 주면 Ollama 기본값(약 0.8)이 쓰여서 같은 프롬프트
     # 인데도 매번 다른 세부유형이 붙거나 빠졌다(60샘플 평가에서 손 안 댄
     # 카테고리 F1이 실행마다 흔들린 원인). 분류·근거 추출은 결정적으로
     # 동작해야 하므로 temperature=0 + seed 고정. OpenAI 백엔드는 모델에
     # 따라 temperature 지정을 거부할 수 있어 건드리지 않는다.
+    is_ollama_client = "openai.com" not in str(client.base_url)
+
     extra_kwargs: Dict[str, Any] = (
         {
             "extra_body": {"think": False},
             "temperature": 0,
             "seed": 42,
         }
-        if os.environ.get("LLM_BACKEND", "ollama").lower() == "ollama"
+        if is_ollama_client
         else {}
     )
 

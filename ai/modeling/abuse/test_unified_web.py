@@ -162,6 +162,22 @@ def build_error_html(error):
     """
 
 
+def apply_known_names(case_id: str, known_names_raw: str) -> None:
+    """
+    상담사가 입력한 아동/보호자 실명을 Privacy Gateway Tier 2(정확 매칭)용
+    으로 저장한다. 빈 입력이면 아무것도 하지 않는다 — 같은 사례의 다음
+    회기에서 이 칸을 비워 둔 채 제출해도 이전에 등록한 이름이 지워지지
+    않게 하기 위함이다(set_known_identifiers는 덮어쓰기라 빈 리스트를
+    넘기면 지워진다).
+    """
+
+    if not known_names_raw.strip():
+        return
+
+    names = [name.strip() for name in known_names_raw.split(",") if name.strip()]
+    case_store.set_known_identifiers(case_id, names)
+
+
 # ============================================================
 # 3. 페이지 렌더링 (탭 3개: 텍스트 / 음성 / PDF)
 # ============================================================
@@ -767,6 +783,15 @@ def build_page(
                                 required
                             >
 
+                            <h2>아동/보호자 실명 (선택)</h2>
+
+                            <input
+                                type="text"
+                                name="known_names"
+                                class="case-id-input"
+                                placeholder="쉼표로 구분해 입력 (예: 김민수, 박영희) — 외부 전송 전 개인정보 차단에 사용됩니다"
+                            >
+
                             <h2>입력 방식</h2>
 
                             <div class="mode-area">
@@ -825,6 +850,15 @@ def build_page(
                                 required
                             >
 
+                            <h2>아동/보호자 실명 (선택)</h2>
+
+                            <input
+                                type="text"
+                                name="known_names"
+                                class="case-id-input"
+                                placeholder="쉼표로 구분해 입력 (예: 김민수, 박영희) — 외부 전송 전 개인정보 차단에 사용됩니다"
+                            >
+
                             <h2>음성 파일</h2>
 
                             <input
@@ -860,6 +894,15 @@ def build_page(
                                 class="case-id-input"
                                 placeholder="예: CASE-2026-0001"
                                 required
+                            >
+
+                            <h2>아동/보호자 실명 (선택)</h2>
+
+                            <input
+                                type="text"
+                                name="known_names"
+                                class="case-id-input"
+                                placeholder="쉼표로 구분해 입력 (예: 김민수, 박영희) — 외부 전송 전 개인정보 차단에 사용됩니다"
                             >
 
                             <h2>PDF 상담일지</h2>
@@ -918,11 +961,15 @@ def analyze(
     text: str = Form(...),
     input_mode: str = Form(...),
     case_id: str = Form(...),
+    known_names: str = Form(""),
 ):
     try:
+        apply_known_names(case_id, known_names)
+
         result = analyze_session(
             text=text,
             input_mode=input_mode,
+            case_id=case_id,
         )
 
         session_id = case_store.save_draft_session(
@@ -957,6 +1004,7 @@ def analyze(
 )
 def transcribe(
     case_id: str = Form(...),
+    known_names: str = Form(""),
     file: UploadFile = File(...),
 ):
     temp_path = None
@@ -1023,6 +1071,7 @@ def transcribe(
 
             <form method="post" action="/analyze-transcript">
                 <input type="hidden" name="case_id" value="{escape(case_id)}">
+                <input type="hidden" name="known_names" value="{escape(known_names, quote=True)}">
                 <input type="hidden" name="audio_id" value="{escape(audio_id or '', quote=True)}">
 
                 <div class="transcript-review-box">
@@ -1062,6 +1111,7 @@ async def analyze_transcript(
         form = await request.form()
 
         case_id = form.get("case_id", "")
+        known_names = form.get("known_names", "")
         audio_id = form.get("audio_id", "") or None
 
         segment_ids = form.getlist("segment_id")
@@ -1102,7 +1152,12 @@ async def analyze_transcript(
             "segments": segments,
         }
 
-        result = analyze_audio_session(stt_result=transcript)
+        apply_known_names(case_id, known_names)
+
+        result = analyze_audio_session(
+            stt_result=transcript,
+            case_id=case_id,
+        )
 
         session_id = case_store.save_draft_session(
             case_id=case_id,
@@ -1163,6 +1218,7 @@ def get_audio_file(
 )
 async def extract_pdf(
     case_id: str = Form(...),
+    known_names: str = Form(""),
     file: UploadFile = File(...),
 ):
     try:
@@ -1209,6 +1265,7 @@ async def extract_pdf(
 
             <form method="post" action="/analyze-pdf">
                 <input type="hidden" name="case_id" value="{escape(case_id)}">
+                <input type="hidden" name="known_names" value="{escape(known_names, quote=True)}">
 
                 <textarea name="text" class="editable">{escape(extraction["clean_text"])}</textarea>
 
@@ -1235,14 +1292,18 @@ async def extract_pdf(
 def analyze_pdf(
     case_id: str = Form(...),
     text: str = Form(...),
+    known_names: str = Form(""),
 ):
     try:
         if not text.strip():
             raise ValueError("분석할 텍스트가 없습니다.")
 
+        apply_known_names(case_id, known_names)
+
         result = analyze_session(
             text=text,
             input_mode="note",
+            case_id=case_id,
         )
 
         session_id = case_store.save_draft_session(
