@@ -1,5 +1,5 @@
 // Backend endpoint 를 함수로 감싼 것. 쿼리 이름·응답 모양은 Backend OpenAPI(/openapi.json)와 같다.
-// (문서 API · 계정 생성 · 음성 metadata 조회는 아직 쓰는 화면이 없어 감싸지 않았다.)
+// (계정 생성 · 음성 metadata 조회는 아직 쓰는 화면이 없어 감싸지 않았다.)
 //
 // 화면에서는 주소 문자열을 직접 쓰지 않고 이 함수들만 부른다.
 // Backend 주소가 바뀌어도 고칠 곳이 여기 한 군데로 유지된다.
@@ -14,6 +14,9 @@ import type {
   CaseDetail,
   CaseStatus,
   CaseUpdateRequest,
+  Document,
+  DocumentCreateRequest,
+  DocumentUpdateRequest,
   LoginRequest,
   LoginResponse,
   PasswordChangeRequest,
@@ -249,5 +252,37 @@ export const tasks = {
   /** 대시보드 숫자 (전체 · 지연 · 종류별). */
   summary(params?: { counselor_id?: string }): Promise<TaskSummary> {
     return api.get<TaskSummary>("/tasks/summary", params);
+  },
+};
+
+// =========================================================
+// 문서 (상담 기록)
+// =========================================================
+
+export const documents = {
+  /** 회기의 문서 목록. 페이지 없이 전체 배열이 만든 순서(created_at 오름차순)로 온다. */
+  list(sessionId: string): Promise<Document[]> {
+    return api.get<Document[]>(`/sessions/${sessionId}/documents`);
+  },
+
+  /**
+   * 새 문서. 항상 DRAFT 로 만들어진다(201). doc_type 을 빼면 CONSULTATION_RECORD.
+   * 회기 상태와 상관없이 만들 수 있다.
+   */
+  create(sessionId: string, payload: DocumentCreateRequest): Promise<Document> {
+    return api.post<Document>(`/sessions/${sessionId}/documents`, payload);
+  },
+
+  /**
+   * 바꿀 필드만 보낸다. 아무것도 없으면 422 VALIDATION_ERROR.
+   * 승인된 문서는 409 ALREADY_APPROVED, 다른 회기의 문서 id 면 404 DOCUMENT_NOT_FOUND.
+   */
+  update(sessionId: string, documentId: string, payload: DocumentUpdateRequest): Promise<Document> {
+    return api.patch<Document>(`/sessions/${sessionId}/documents/${documentId}`, payload);
+  },
+
+  /** 승인. 이후에는 수정할 수 없다. 이미 승인됐으면 409 ALREADY_APPROVED. */
+  approve(sessionId: string, documentId: string): Promise<Document> {
+    return api.post<Document>(`/sessions/${sessionId}/documents/${documentId}/approve`);
   },
 };

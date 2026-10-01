@@ -1,20 +1,58 @@
-import { useState, useMemo, useRef } from "react";
-import { CASES } from "../../data/cases";
-import { SESSIONS } from "../../data/mockData";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useNavigate } from "react-router";
+import { cases as casesApi, sessions as sessionsApi, transcript as transcriptApi } from "../../api/endpoints";
+import type { Session, SessionStatus, TranscriptEnvelope } from "../../api/types";
+import { describeApiError, deriveStatus, toUiCaseWithId, toUiSession, type CaseWithId } from "../../api/adapters";
+
+// 사례 목록은 GET /cases, 회기 목록은 GET /cases/{id}/sessions 에서 온다.
+// 음성은 POST /sessions/{id}/audio 로 올린 뒤 POST /sessions/{id}/transcript 로 STT 를 실행하고,
+// 끝나면 전사 검수 화면으로 이동한다. 문서 업로드는 endpoints.ts 에 문서 API 가 아직 없어 연결하지 못했다.
 
 type UploadType = "audio" | "document";
 
 interface UploadModalProps {
   onClose: () => void;
+  /** Backend 사례 UUID(주소의 :caseId 와 같다). 있으면 사례 선택 단계를 건너뛴다. */
   preSelectedCaseId?: string;
   preSelectedType?: UploadType;
-  onUploaded?: (info: { caseId: string; sessionNumber: number; type: UploadType; fileName: string }) => void;
+  onUploaded?: (info: { caseId: string; sessionId: string; sessionNumber: number; type: UploadType; fileName: string }) => void;
 }
 
 const AUDIO_ACCEPT = ".mp3,.m4a,.wav";
 const DOC_ACCEPT   = ".pdf,.hwp,.hwpx,.txt,.docx";
 
+const PAGE_SIZE = 100;
+
+/** 음성을 올릴 수 있는 회기 상태(Backend 상태 전이 규칙). 그 밖의 회기는 이미 전사본이 있어 고를 수 없다. */
+const UPLOADABLE: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_FAILED"];
+
+/**
+ * 회차 목록에 보여 줄 최근 회기 수. 음성을 올릴 수 있는 회기(UPLOADABLE)는 이보다 오래됐어도 함께 보여 준다.
+ * 최근 몇 개만 보이면 오래된 원문 변환 대기 · 실패 회기를 고를 길이 없다.
+ */
+const RECENT_SESSION_COUNT = 5;
+
+/** STT 가 끝날 때까지 기다리는 횟수와 간격. mock STT 는 바로 끝나지만 202 라 몇 번은 확인한다. */
+const STT_POLL_MAX = 15;
+const STT_POLL_MS = 800;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForStt(sessionId: string): Promise<TranscriptEnvelope> {
+  let envelope = await transcriptApi.get(sessionId);
+
+  for (let i = 0; i < STT_POLL_MAX && envelope.session_status === "STT_PROCESSING"; i++) {
+    await sleep(STT_POLL_MS);
+    envelope = await transcriptApi.get(sessionId);
+  }
+
+  return envelope;
+}
+
 export default function UploadModal({ onClose, preSelectedCaseId, preSelectedType, onUploaded }: UploadModalProps) {
+  const navigate = useNavigate();
   const skipCaseStep = !!preSelectedCaseId;
   const skipTypeStep = !!preSelectedType;
 
@@ -24,24 +62,102 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
   const [step, setStep]               = useState(initialStep);
   const [selectedCaseId, setSelectedCaseId] = useState(preSelectedCaseId ?? "");
   const [query, setQuery]             = useState("");
-  const [sessionChoice, setSessionChoice] = useState<number | "new">("new");
+  const [sessionChoice, setSessionChoice] = useState<string | "new">("new");
   const [uploadType, setUploadType]   = useState<UploadType | "">(preSelectedType ?? "");
-  const [fileName, setFileName]       = useState("");
+  const [file, setFile]               = useState<File | null>(null);
   const [uploading, setUploading]     = useState(false);
+  const [phase, setPhase]             = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [done, setDone]               = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const selectedCase = CASES.find(c => c.id === selectedCaseId);
-  const caseSessions = selectedCase
-    ? SESSIONS.filter(s => s.caseId === selectedCase.id).sort((a, b) => b.sessionNumber - a.sessionNumber)
-    : [];
-  const nextSessionNumber = selectedCase ? selectedCase.sessionCount + 1 : 1;
+  const [caseList, setCaseList]       = useState<CaseWithId[]>([]);
+  const [casesLoading, setCasesLoading] = useState(!skipCaseStep);
+  const [casesError, setCasesError]   = useState<string | null>(null);
+  const [preSelectedCase, setPreSelectedCase] = useState<CaseWithId | null>(null);
+  const [caseSessions, setCaseSessions] = useState<Session[]>([]);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+
+  const fileName = file?.name ?? "";
+
+  // 사례 선택 단계가 있으면 목록을, 사례가 정해져 있으면 그 사례 하나를 가져온다.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (preSelectedCaseId) {
+      casesApi
+        .get(preSelectedCaseId)
+        .then((c) => {
+          if (!cancelled) setPreSelectedCase(toUiCaseWithId(c, { sessionCount: c.session_count }));
+        })
+        .catch((caught) => {
+          if (!cancelled) setCasesError(describeApiError(caught, "사례 정보를 불러오지 못했습니다."));
+        });
+    } else {
+      casesApi
+        .list({ page: 1, page_size: PAGE_SIZE })
+        .then((page) => {
+          if (!cancelled) setCaseList(page.items.map((c) => toUiCaseWithId(c)));
+        })
+        .catch((caught) => {
+          if (!cancelled) setCasesError(describeApiError(caught, "사례 목록을 불러오지 못했습니다."));
+        })
+        .finally(() => {
+          if (!cancelled) setCasesLoading(false);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [preSelectedCaseId]);
+
+  const selectedCase = preSelectedCase ?? caseList.find(c => c.backendId === selectedCaseId) ?? null;
+
+  // 사례가 정해지면 그 사례의 회기 목록을 가져온다.
+  useEffect(() => {
+    if (!selectedCaseId) {
+      setCaseSessions([]);
+      setSessionTotal(0);
+      return;
+    }
+
+    let cancelled = false;
+    setSessionsLoading(true);
+    setSessionsError(null);
+    setSessionChoice("new");
+
+    casesApi
+      .listSessions(selectedCaseId, { page: 1, page_size: PAGE_SIZE })
+      .then((page) => {
+        if (cancelled) return;
+        setCaseSessions([...page.items].sort((a, b) => b.session_number - a.session_number));
+        setSessionTotal(page.meta.total);
+      })
+      .catch((caught) => {
+        if (!cancelled) setSessionsError(describeApiError(caught, "회기 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setSessionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCaseId]);
+
+  // 회차 번호는 Backend 가 매긴다. 여기서는 안내용으로만 계산한다.
+  const nextSessionNumber = sessionTotal + 1;
 
   const filteredCases = useMemo(() =>
-    CASES.filter(c => !query || c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase()))
-      .sort((a, b) => b.riskScore - a.riskScore),
-    [query]
+    caseList.filter(c => !query || c.childName.includes(query) || c.id.toLowerCase().includes(query.toLowerCase())),
+    [caseList, query]
   );
+
+  const chosenSession = sessionChoice === "new" ? null : caseSessions.find(s => s.id === sessionChoice) ?? null;
+  const chosenSessionLabel = chosenSession ? `${chosenSession.session_number}회차` : `${nextSessionNumber}회차 (신규)`;
 
   function goNext() {
     if (step === 0) { setStep(1); return; }
@@ -58,29 +174,69 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) setFileName(file.name);
+    const picked = e.target.files?.[0];
+    if (picked) setFile(picked);
+    setUploadError(null);
   }
 
-  function handleUpload() {
-    if (!fileName) return;
+  async function handleUpload() {
+    if (!file || !selectedCase || uploading) return;
+
+    const type = (uploadType || preSelectedType) as UploadType;
+
+    if (type === "document") {
+      // Backend 문서 API 는 있지만 endpoints.ts 에 아직 감싸지 않았다. 여기서는 안내만 한다.
+      setUploadError("문서 업로드는 아직 서버와 연결되지 않았습니다.");
+      return;
+    }
+
     setUploading(true);
-    setTimeout(() => {
-      setUploading(false);
+    setUploadError(null);
+
+    try {
+      let sessionId: string;
+      let sessionNumber: number;
+
+      if (chosenSession) {
+        sessionId = chosenSession.id;
+        sessionNumber = chosenSession.session_number;
+      } else {
+        setPhase("회기 생성 중...");
+        const created = await casesApi.createSession(selectedCase.backendId, {});
+        sessionId = created.id;
+        sessionNumber = created.session_number;
+      }
+
+      setPhase("업로드 중...");
+      await sessionsApi.uploadAudio(sessionId, file);
+
+      setPhase("STT 실행 중...");
+      await transcriptApi.run(sessionId);
+      const envelope = await waitForStt(sessionId);
+
+      if (envelope.session_status === "STT_FAILED") {
+        setUploadError(envelope.error?.message ?? "STT 처리에 실패했습니다. 다시 시도해 주세요.");
+        return;
+      }
+
       setDone(true);
-      const sessionNum = sessionChoice === "new" ? nextSessionNumber : sessionChoice;
-      onUploaded?.({ caseId: selectedCaseId, sessionNumber: sessionNum, type: (uploadType || preSelectedType) as UploadType, fileName });
-    }, 1000);
+      onUploaded?.({ caseId: selectedCase.backendId, sessionId, sessionNumber, type, fileName });
+      navigate(`/cases/${selectedCase.backendId}/sessions/${sessionId}/transcript`);
+    } catch (caught) {
+      // 크기 · 확장자 오류(AUDIO_TOO_LARGE · AUDIO_UNSUPPORTED_TYPE 등)는 서버 문구를 그대로 보여 준다.
+      setUploadError(describeApiError(caught, "업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.", "권한이 없거나 없는 사례입니다."));
+    } finally {
+      setUploading(false);
+      setPhase("");
+    }
   }
 
   const stepLabels = skipCaseStep
     ? ["상담 회차", "업로드 유형", "파일 선택"]
     : ["사례 선택", "상담 회차", "업로드 유형", "파일 선택"];
 
-  const displayStep = skipCaseStep ? step : step;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={e => { if (e.target === e.currentTarget && !uploading) onClose(); }}>
       <div className="bg-white border border-[#E2E8F0] rounded-[10px] w-[520px] max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0]">
@@ -108,7 +264,7 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
               </div>
             )}
           </div>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] transition-colors">
+          <button onClick={onClose} disabled={uploading} className="text-[#94A3B8] hover:text-[#64748B] transition-colors disabled:opacity-40">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -142,15 +298,20 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
                   className="w-full pl-8 pr-3 py-2 rounded-[6px] border border-[#E2E8F0] text-[13px] focus:outline-none focus:border-[#2563EB] bg-[#F8FAFC]" />
               </div>
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {casesLoading && <p className="py-6 text-center text-[12px] text-[#94A3B8]">사례 목록을 불러오는 중...</p>}
+                {!casesLoading && casesError && <p className="py-6 text-center text-[12px] text-red-600">{casesError}</p>}
+                {!casesLoading && !casesError && filteredCases.length === 0 && (
+                  <p className="py-6 text-center text-[12px] text-[#94A3B8]">검색 결과가 없습니다.</p>
+                )}
                 {filteredCases.map(c => (
-                  <label key={c.id} className="flex items-start gap-3 p-3 border rounded-[6px] cursor-pointer transition-all"
-                    style={{ borderColor: selectedCaseId === c.id ? "#2563EB" : "#E2E8F0", background: selectedCaseId === c.id ? "#EFF6FF" : "white" }}>
-                    <input type="radio" name="case-select" value={c.id} checked={selectedCaseId === c.id}
-                      onChange={() => setSelectedCaseId(c.id)} className="mt-0.5 accent-[#2563EB]" />
+                  <label key={c.backendId} className="flex items-start gap-3 p-3 border rounded-[6px] cursor-pointer transition-all"
+                    style={{ borderColor: selectedCaseId === c.backendId ? "#2563EB" : "#E2E8F0", background: selectedCaseId === c.backendId ? "#EFF6FF" : "white" }}>
+                    <input type="radio" name="case-select" value={c.backendId} checked={selectedCaseId === c.backendId}
+                      onChange={() => setSelectedCaseId(c.backendId)} className="mt-0.5 accent-[#2563EB]" />
                     <div>
                       <p className="text-[13px] font-semibold text-[#172033]">{c.childName}</p>
                       <p className="text-[11px] font-mono text-[#94A3B8]">{c.id}</p>
-                      <p className="text-[11px] text-[#64748B]">담당 상담사 {c.counselor} · {c.sessionCount}회차</p>
+                      <p className="text-[11px] text-[#64748B]">담당 상담사 {c.counselor}</p>
                     </div>
                   </label>
                 ))}
@@ -159,11 +320,12 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
           )}
 
           {/* Step 1: 상담 회차 */}
-          {!done && step === 1 && selectedCase && (
+          {!done && step === 1 && (
             <div className="space-y-4">
               <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] px-4 py-3">
-                <p className="text-[13px] font-semibold text-[#172033]">{selectedCase.childName}</p>
-                <p className="text-[11px] font-mono text-[#94A3B8]">{selectedCase.id}</p>
+                <p className="text-[13px] font-semibold text-[#172033]">{selectedCase?.childName ?? "불러오는 중..."}</p>
+                <p className="text-[11px] font-mono text-[#94A3B8]">{selectedCase?.id ?? ""}</p>
+                {casesError && <p className="text-[11px] text-red-600 mt-1">{casesError}</p>}
               </div>
               <p className="text-[13px] font-semibold text-[#172033]">연결할 상담 회차</p>
               <div className="space-y-2">
@@ -175,16 +337,22 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
                     <p className="text-[11px] text-[#64748B]">신규 회차로 등록합니다</p>
                   </div>
                 </label>
-                {caseSessions.slice(0, 5).map(s => (
-                  <label key={s.id} className="flex items-center gap-3 p-3 border rounded-[6px] cursor-pointer transition-all"
-                    style={{ borderColor: sessionChoice === s.sessionNumber ? "#2563EB" : "#E2E8F0", background: sessionChoice === s.sessionNumber ? "#EFF6FF" : "white" }}>
-                    <input type="radio" name="session-choice" checked={sessionChoice === s.sessionNumber} onChange={() => setSessionChoice(s.sessionNumber)} className="accent-[#2563EB]" />
-                    <div>
-                      <p className="text-[13px] font-medium text-[#172033]">{s.sessionNumber}회차</p>
-                      <p className="text-[11px] text-[#94A3B8]">{s.date} · {s.type}</p>
-                    </div>
-                  </label>
-                ))}
+                {sessionsLoading && <p className="py-3 text-center text-[12px] text-[#94A3B8]">회기 목록을 불러오는 중...</p>}
+                {!sessionsLoading && sessionsError && <p className="py-3 text-center text-[12px] text-red-600">{sessionsError}</p>}
+                {caseSessions.filter((s, i) => i < RECENT_SESSION_COUNT || UPLOADABLE.includes(s.status)).map(s => {
+                  const ui = toUiSession(s, selectedCase?.id ?? "");
+                  const uploadable = UPLOADABLE.includes(s.status);
+                  return (
+                    <label key={s.id} className={`flex items-center gap-3 p-3 border rounded-[6px] transition-all ${uploadable ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
+                      style={{ borderColor: sessionChoice === s.id ? "#2563EB" : "#E2E8F0", background: sessionChoice === s.id ? "#EFF6FF" : "white" }}>
+                      <input type="radio" name="session-choice" checked={sessionChoice === s.id} disabled={!uploadable} onChange={() => setSessionChoice(s.id)} className="accent-[#2563EB]" />
+                      <div>
+                        <p className="text-[13px] font-medium text-[#172033]">{s.session_number}회차{s.title ? ` · ${s.title}` : ""}</p>
+                        <p className="text-[11px] text-[#94A3B8]">{ui.date} · {deriveStatus(s.status).label}{!uploadable && " · 이미 전사본이 있어 올릴 수 없습니다"}</p>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -218,7 +386,7 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
               {/* 연결 정보 요약 */}
               <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] p-4 space-y-2 text-[13px]">
                 <div className="flex gap-3"><span className="text-[#94A3B8] w-20">연결 사례</span><span className="font-medium text-[#172033]">{selectedCase.childName} · {selectedCase.id}</span></div>
-                <div className="flex gap-3"><span className="text-[#94A3B8] w-20">상담 회차</span><span className="font-medium text-[#172033]">{sessionChoice === "new" ? `${nextSessionNumber}회차 (신규)` : `${sessionChoice}회차`}</span></div>
+                <div className="flex gap-3"><span className="text-[#94A3B8] w-20">상담 회차</span><span className="font-medium text-[#172033]">{chosenSessionLabel}</span></div>
                 <div className="flex gap-3"><span className="text-[#94A3B8] w-20">자료 유형</span><span className="font-medium text-[#172033]">{(uploadType || preSelectedType) === "audio" ? "음성 파일" : "문서 파일"}</span></div>
               </div>
 
@@ -234,7 +402,8 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
                 />
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-[#E2E8F0] rounded-[8px] text-[13px] text-[#64748B] hover:border-[#2563EB] hover:text-[#2563EB] hover:bg-[#F8FAFC] transition-all"
+                  disabled={uploading}
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-[#E2E8F0] rounded-[8px] text-[13px] text-[#64748B] hover:border-[#2563EB] hover:text-[#2563EB] hover:bg-[#F8FAFC] transition-all disabled:opacity-40"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                   파일 선택
@@ -243,10 +412,16 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
                   <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-[#F0FDF4] border border-green-200 rounded-[6px]">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <span className="text-[12px] text-[#172033] font-medium flex-1 truncate">{fileName}</span>
-                    <button onClick={() => setFileName("")} className="text-[#94A3B8] hover:text-[#64748B]">
+                    <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ""; }} disabled={uploading} className="text-[#94A3B8] hover:text-[#64748B] disabled:opacity-40">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   </div>
+                )}
+                {uploading && phase && (
+                  <p className="mt-2 text-[12px] text-[#64748B]">{phase}</p>
+                )}
+                {uploadError && (
+                  <p className="mt-2 text-[12px] text-red-600">{uploadError}</p>
                 )}
               </div>
             </div>
@@ -256,7 +431,7 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
         {/* Footer */}
         {!done && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-[#E2E8F0] bg-[#F8FAFC]">
-            <button onClick={goBack} className="px-4 py-2 text-[13px] text-[#64748B] border border-[#E2E8F0] rounded-[6px] hover:bg-white transition-colors">
+            <button onClick={goBack} disabled={uploading} className="px-4 py-2 text-[13px] text-[#64748B] border border-[#E2E8F0] rounded-[6px] hover:bg-white transition-colors disabled:opacity-40">
               {step === initialStep ? "취소" : "이전"}
             </button>
             {step < 3 ? (
@@ -264,6 +439,7 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
                 onClick={goNext}
                 disabled={
                   (step === 0 && !selectedCaseId) ||
+                  (step === 1 && (!selectedCase || sessionsLoading || (sessionChoice !== "new" && !chosenSession))) ||
                   (step === 2 && !uploadType)
                 }
                 className="px-4 py-2 text-[13px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -273,7 +449,7 @@ export default function UploadModal({ onClose, preSelectedCaseId, preSelectedTyp
             ) : (
               <button
                 onClick={handleUpload}
-                disabled={!fileName || uploading}
+                disabled={!file || uploading}
                 className="px-4 py-2 text-[13px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {uploading ? "업로드 중..." : "업로드"}

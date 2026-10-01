@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import AdminApp from "../admin/AdminApp";
+import { auth } from "../api/endpoints";
+import { ApiError, SESSION_INFO_KEY, clearSession } from "../api/client";
 
-const CREDENTIALS = {
-  counselor: { id: "이서연", pw: "1234",      hint: "이서연 / 1234" },
-  admin:     { id: "김민준", pw: "admin1234", hint: "김민준 / admin1234" },
+// 로그인은 Backend(POST /auth/login)가 판정한다. 역할도 서버가 준 값을 쓴다.
+// 2단계 인증(OTP)은 Backend 에 아직 없어 건너뛴다(팀 결정 대기). 화면 코드는 남겨 둔다.
+const PLACEHOLDER = {
+  counselor: "counselor@기관.or.kr",
+  admin:     "admin@기관.or.kr",
 };
 
 export default function LoginPage() {
@@ -20,44 +24,48 @@ export default function LoginPage() {
   const [findPw, setFindPw] = useState(false);
   const [findId, setFindId] = useState("");
   const [findSent, setFindSent] = useState(false);
-  const [failCount, setFailCount] = useState(0);
-  const [locked, setLocked] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (locked) return;
-    if (!otpStep) {
-      const cred = CREDENTIALS[role];
-      if (id === cred.id && pw === cred.pw) {
-        setOtpStep(true); setError(""); setFailCount(0);
+    if (loading) return;
+
+    if (otpStep) {
+      // OTP 단계는 지금 쓰지 않는다. 들어왔다면 처음으로 돌린다.
+      setOtpStep(false);
+      return;
+    }
+
+    if (!id.trim() || !pw) {
+      setError("이메일과 비밀번호를 입력해 주세요.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const result = await auth.login({ email: id.trim(), password: pw });
+      const user = result.user;
+      const uiRole = user.role === "ADMIN" ? "admin" : "counselor";
+
+      // AppLayout 이 이 값으로 로그인 여부와 이름을 본다. 토큰은 auth.login 이 따로 저장한다.
+      localStorage.setItem(SESSION_INFO_KEY, JSON.stringify({ role: uiRole, name: user.name }));
+
+      if (uiRole === "admin") {
+        setAdminMode(true);
       } else {
-        const next = failCount + 1;
-        setFailCount(next);
-        if (next >= 5) {
-          setLocked(true);
-          setError("로그인 5회 실패로 계정이 잠겼습니다. 관리자에게 문의하세요.");
-        } else {
-          setError(`기관 ID 또는 비밀번호가 올바르지 않습니다. (${next}/5회)`);
-        }
+        navigate("/dashboard");
       }
-    } else {
-      if (otp === "123456") {
-        setLoading(true);
-        setTimeout(() => {
-          localStorage.setItem("ispot_auth", JSON.stringify({ role, name: role === "admin" ? "김민준" : "이서연" }));
-          if (role === "admin") {
-            setAdminMode(true);
-            setLoading(false);
-          } else {
-            navigate("/dashboard");
-          }
-        }, 600);
-      } else setError("인증번호가 일치하지 않습니다.");
+    } catch (caught) {
+      // 서버 문구를 그대로 보여 준다. 잠금 · 휴면 · 임시 비밀번호 안내가 여기에 담겨 온다.
+      setError(caught instanceof ApiError ? caught.message : "로그인 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setLoading(false);
     }
   }
 
   if (adminMode) {
-    return <AdminApp onLogout={() => { localStorage.removeItem("ispot_auth"); setAdminMode(false); setOtpStep(false); setId(""); setPw(""); setOtp(""); setLoading(false); }} />;
+    return <AdminApp onLogout={() => { clearSession(); setAdminMode(false); setOtpStep(false); setId(""); setPw(""); setOtp(""); setLoading(false); }} />;
   }
 
   const features = [
@@ -141,10 +149,10 @@ export default function LoginPage() {
                   </div>
 
                   <div>
-                    <label htmlFor="uid" className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">기관 ID</label>
+                    <label htmlFor="uid" className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">이메일</label>
                     <input
-                      id="uid" type="text" value={id} onChange={e => setId(e.target.value)} autoComplete="username"
-                      placeholder={CREDENTIALS[role].id}
+                      id="uid" type="email" value={id} onChange={e => setId(e.target.value)} autoComplete="username"
+                      placeholder={PLACEHOLDER[role]}
                       className="w-full px-3 py-2 rounded-[6px] border border-[#E2E8F0] text-sm text-[#172033] bg-white focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all"
                     />
                   </div>
@@ -156,7 +164,6 @@ export default function LoginPage() {
                       placeholder="••••••••"
                       className="w-full px-3 py-2 rounded-[6px] border border-[#E2E8F0] text-sm text-[#172033] bg-white focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all"
                     />
-                    <p className="mt-1 text-[11px] text-[#94A3B8]">테스트: {CREDENTIALS[role].hint} / OTP: 123456</p>
                   </div>
                 </>
               ) : (

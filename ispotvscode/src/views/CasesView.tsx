@@ -1,7 +1,14 @@
-import { Fragment, useState, useMemo } from "react";
+import { Fragment, useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { CASES, type RiskLevel, type AbuseType, type CaseRecord as Case } from "../data/cases";
+import { type RiskLevel, type AbuseType, type CaseRecord as Case } from "../data/cases";
 import { RiskBadge, AbuseBadge, StatusLabel } from "../components/ui/Badges";
+import { cases as casesApi } from "../api/endpoints";
+import { describeApiError, toUiCaseWithId, type CaseWithId } from "../api/adapters";
+
+// 사례 목록은 Backend(GET /cases)에서 온다. 학대유형 · 키워드 · 위험도는 아직 Backend 에
+// 없어 빈 값으로 온다(adapters.toUiCase). 그 필터는 값이 들어오기 전까지 비어 보인다.
+const PAGE_SIZE = 50;
+
 
 const ABUSE_OPTIONS: (AbuseType | "전체")[] = ["전체", "신체", "정서", "성", "방임"];
 const RISK_OPTIONS: (RiskLevel | "전체")[] = ["전체", "high", "mid", "low"];
@@ -12,7 +19,7 @@ const RISK_LABELS = { "전체": "전체", high: "확인 필요", mid: "확인 �
 interface NewCaseModalProps {
   counselorName: string;
   onClose: () => void;
-  onRegister: (c: Case) => void;
+  onRegister: (c: CaseWithId) => void;
 }
 
 function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps) {
@@ -21,6 +28,7 @@ function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps)
   const [guardian, setGuardian] = useState("");
   const [riskLevel, setRiskLevel] = useState<"high" | "mid" | "low">("low");
   const [errors, setErrors]     = useState<Record<string, string>>({});
+  const [saving, setSaving]     = useState(false);
 
   function validate() {
     const e: Record<string, string> = {};
@@ -31,25 +39,28 @@ function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps)
     return e;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
-    const newId = `C-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-    const newCase: Case = {
-      id: newId,
-      childName: name.trim(),
-      age: Number(age),
-      guardian: guardian.trim(),
-      counselor: counselorName,
-      sessionCount: 0,
-      lastSession: "상담 기록 없음",
-      riskLevel: riskLevel,
-      riskScore: 0,
-      abuseTypes: [],
-      keywords: [],
-      status: "active",
-    };
-    onRegister(newCase);
+    if (saving) return;
+
+    setSaving(true);
+    try {
+      // Backend 는 아동 실명을 저장하지 않으므로 입력값을 별칭(child_alias)으로 보낸다.
+      // 위험도는 Backend 에 없어 보내지 않는다(AI 분석 결과로 채울 예정).
+      const created = await casesApi.create({
+        title: `${name.trim()} 사례`,
+        child_alias: name.trim(),
+        child_birth_year: new Date().getFullYear() - Number(age),
+        guardian_type: "OTHER",
+        guardian_note: guardian.trim(),
+      });
+      onRegister(toUiCaseWithId(created, { counselorName }));
+    } catch (caught) {
+      setErrors({ form: describeApiError(caught, "사례 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.") });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -112,9 +123,12 @@ function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps)
             <div className="flex justify-between"><span className="text-[#94A3B8]">최근 상담</span><span className="text-[#172033] font-medium">상담 기록 없음 <span className="text-[11px] text-[#94A3B8]">자동 관리</span></span></div>
           </div>
         </div>
+        {errors.form && (
+          <p className="px-6 pb-3 text-[12px] text-red-600">{errors.form}</p>
+        )}
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-[#E2E8F0] bg-[#F8FAFC]">
           <button onClick={onClose} className="px-4 py-2 text-[13px] text-[#64748B] border border-[#E2E8F0] rounded-[6px] hover:bg-white transition-colors">취소</button>
-          <button onClick={handleSubmit} className="px-4 py-2 text-[13px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors">사례 등록</button>
+          <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-[13px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors disabled:opacity-60">{saving ? "등록 중..." : "사례 등록"}</button>
         </div>
       </div>
     </div>
@@ -132,13 +146,33 @@ export default function CasesView() {
   const [sortBy,      setSortBy]      = useState<"riskScore" | "lastSession">("riskScore");
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [showNewCase, setShowNewCase] = useState(false);
-  const [extraCases, setExtraCases]   = useState<Case[]>([]);
+  const [allCases, setAllCases]       = useState<CaseWithId[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [loadError, setLoadError]     = useState<string | null>(null);
 
   const counselorName = (() => {
     try { return JSON.parse(localStorage.getItem("ispot_auth") ?? "{}").name ?? "상담사"; } catch { return "상담사"; }
   })();
 
-  const allCases = useMemo(() => [...CASES, ...extraCases], [extraCases]);
+  useEffect(() => {
+    let cancelled = false;
+
+    casesApi
+      .list({ page: 1, page_size: PAGE_SIZE })
+      .then((page) => {
+        if (!cancelled) setAllCases(page.items.map((c) => toUiCaseWithId(c)));
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "사례 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => allCases.filter(c => {
     if (query && !c.childName.includes(query) && !c.id.toLowerCase().includes(query.toLowerCase()) && !c.guardian.includes(query)) return false;
@@ -237,7 +271,7 @@ export default function CasesView() {
                   <td className="px-4 py-3 text-[13px] text-[#64748B]">{c.counselor}</td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={e => { e.stopPropagation(); navigate(`/cases/${c.id}`); }}
+                      onClick={e => { e.stopPropagation(); navigate(`/cases/${c.backendId}`); }}
                       className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium transition-colors"
                     >
                       상세
@@ -270,7 +304,7 @@ export default function CasesView() {
                         </div>
                         <div className="flex gap-2 shrink-0">
                           <button
-                            onClick={() => navigate(`/cases/${c.id}`)}
+                            onClick={() => navigate(`/cases/${c.backendId}`)}
                             className="px-3 py-1.5 bg-[#15314A] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#0F263B] transition-colors"
                           >
                             상세 화면
@@ -285,7 +319,13 @@ export default function CasesView() {
                 )}
               </Fragment>
             ))}
-            {filtered.length === 0 && (
+            {loading && (
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">사례 목록을 불러오는 중...</td></tr>
+            )}
+            {!loading && loadError && (
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-[13px] text-red-600">{loadError}</td></tr>
+            )}
+            {!loading && !loadError && filtered.length === 0 && (
               <tr><td colSpan={10} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">검색 결과가 없습니다.</td></tr>
             )}
           </tbody>
@@ -296,7 +336,7 @@ export default function CasesView() {
         <NewCaseModal
           counselorName={counselorName}
           onClose={() => setShowNewCase(false)}
-          onRegister={c => { setExtraCases(prev => [c, ...prev]); setShowNewCase(false); }}
+          onRegister={c => { setAllCases(prev => [c, ...prev]); setShowNewCase(false); }}
         />
       )}
     </div>

@@ -540,3 +540,60 @@ export interface TaskSummary {
   overdue: number;
   by_type: Record<TaskType, number>;
 }
+
+// =========================================================
+// 문서 (상담 기록) — backend/app/schemas/document.py
+// =========================================================
+
+/**
+ * 문서 유형. Backend 는 enum 이 아니라 50자 이하 자유 문자열로 받는다(검사하지 않는다).
+ * 지금 정해진 값은 상담일지(CONSULTATION_RECORD) 하나다. 사정기록지 등 다른 유형은
+ * 팀이 코드를 정한 뒤 여기에 상수로 적는다.
+ */
+export type DocumentType = string;
+
+/** 상담일지. 생성 요청에서 doc_type 을 빼면 Backend 가 이 값으로 채운다. */
+export const DOC_TYPE_CONSULTATION_RECORD: DocumentType = "CONSULTATION_RECORD";
+
+/** 문서 상태. 요약과 같은 검수 상태를 쓴다. 항상 DRAFT 로 만들어지고, 승인되면 수정할 수 없다. */
+export type DocumentStatus = ReviewStatus;
+
+/**
+ * 상담 기록 문서(DocumentResponse). 파일이 아니라 제목 · 본문 텍스트다.
+ * 이름이 브라우저의 Document 타입과 같으니, 가져다 쓰는 파일에서는 필요하면 별칭으로 가져온다.
+ */
+export interface Document {
+  id: string;
+  session_id: string;
+  doc_type: DocumentType;
+  title: string;
+  content: string;
+  status: DocumentStatus;
+  /** 만든 사람. 계정이 삭제되었으면 null. */
+  created_by_id: string | null;
+  approved_by_id: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 문서 생성 요청(POST /sessions/{id}/documents). 201 로 DRAFT 문서가 돌아온다. */
+export interface DocumentCreateRequest {
+  /** 1~200자. */
+  title: string;
+  /** 50000자 이하. 빼면 빈 문자열. */
+  content?: string;
+  /** 50자 이하. 빼면 CONSULTATION_RECORD. */
+  doc_type?: DocumentType;
+}
+
+/**
+ * 문서 수정 요청(PATCH /sessions/{id}/documents/{document_id}). 바꿀 필드만 보낸다.
+ * 둘 다 빼면(또는 null 이면) 422. 유형(doc_type)은 바꿀 수 없다. 승인된 문서는 409 ALREADY_APPROVED.
+ */
+export interface DocumentUpdateRequest {
+  /** 1~200자. */
+  title?: string;
+  /** 50000자 이하. */
+  content?: string;
+}

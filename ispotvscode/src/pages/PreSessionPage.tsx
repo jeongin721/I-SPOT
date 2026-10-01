@@ -1,14 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
-import { CASES } from "../data/cases";
-import { SESSIONS } from "../data/mockData";
 import Breadcrumb from "../components/ui/Breadcrumb";
+import { cases as casesApi } from "../api/endpoints";
+import { describeApiError, toUiCaseDetail, type CaseWithId } from "../api/adapters";
+
+// 사례는 Backend(GET /cases/{id})에서 오고, 회기 등록은 POST /cases/{id}/sessions 로 저장한다.
+// 주소의 caseId 는 Backend UUID 다. 상담 유형 · 상담 방식은 Backend 에 아직 없어 화면에만 있고 보내지 않는다.
+
+
+/** 오늘 날짜(YYYY-MM-DD). 화면 표시용이라 사용자의 시간대 기준이다. */
+function todayLabel(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 
 export default function PreSessionPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
+  const [c, setCase]              = useState<CaseWithId | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const c = CASES.find(x => x.id === caseId);
   const nextSession = c ? c.sessionCount + 1 : 1;
 
   const [type, setType]   = useState<string>("정기상담");
@@ -16,8 +32,57 @@ export default function PreSessionPage() {
   const [place, setPlace] = useState("");
   const [memo, setMemo]   = useState("");
 
-  if (!c) {
-    return <div className="flex items-center justify-center h-full text-[#94A3B8]">사례를 찾을 수 없습니다.</div>;
+  useEffect(() => {
+    if (!caseId) return;
+
+    let cancelled = false;
+
+    setLoading(true);
+    setLoadError(null);
+
+    casesApi
+      .get(caseId)
+      .then((detail) => {
+        if (!cancelled) setCase(toUiCaseDetail(detail));
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "사례를 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId]);
+
+  async function handleRegister() {
+    if (!caseId || saving) return;
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      // 회차 번호(session_number)는 Backend 가 매긴다. 상담 유형 · 방식은 Backend 에 없어 보내지 않는다.
+      await casesApi.createSession(caseId, {
+        consulted_at: new Date().toISOString(),
+        location: place.trim() || null,
+        memo: memo.trim() || null,
+      });
+      navigate(`/cases/${caseId}`);
+    } catch (caught) {
+      setSaveError(describeApiError(caught, "상담 등록에 실패했습니다. 잠시 후 다시 시도해 주세요."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-full text-[#94A3B8]">사례를 불러오는 중...</div>;
+  }
+
+  if (loadError || !c) {
+    return <div className="flex items-center justify-center h-full text-[#94A3B8]">{loadError ?? "사례를 찾을 수 없습니다."}</div>;
   }
 
   return (
@@ -42,7 +107,7 @@ export default function PreSessionPage() {
               ["아동명", c.childName],
               ["사례 ID", c.id],
               ["예정 회차", `${nextSession}회차`],
-              ["날짜", "2026-08-21"],
+              ["날짜", todayLabel()],
               ["담당 상담사", c.counselor],
               ["위험도", c.riskLevel === "high" ? "확인 필요" : c.riskLevel === "mid" ? "확인 중" : "확인 완료"],
             ].map(([k, v]) => (
@@ -108,6 +173,10 @@ export default function PreSessionPage() {
           </div>
         </div>
 
+        {saveError && (
+          <p className="text-[12px] text-red-600">{saveError}</p>
+        )}
+
         <div className="flex justify-end gap-3">
           <button
             onClick={() => navigate(-1)}
@@ -116,10 +185,11 @@ export default function PreSessionPage() {
             취소
           </button>
           <button
-            onClick={() => navigate(`/cases/${caseId}`)}
-            className="px-5 py-2.5 bg-[#2563EB] text-white text-[13px] font-semibold rounded-[6px] hover:bg-[#1D4ED8] transition-colors"
+            onClick={handleRegister}
+            disabled={saving}
+            className="px-5 py-2.5 bg-[#2563EB] text-white text-[13px] font-semibold rounded-[6px] hover:bg-[#1D4ED8] transition-colors disabled:opacity-60"
           >
-            상담 등록 완료
+            {saving ? "등록 중..." : "상담 등록 완료"}
           </button>
         </div>
       </div>

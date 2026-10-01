@@ -1,48 +1,67 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { tasks as tasksApi } from "../api/endpoints";
+import { describeApiError } from "../api/adapters";
+import { toDashboardTaskRow, toFollowUpStats, type DashboardTaskRow } from "../api/dashboardAdapters";
+import type { TaskSummary } from "../api/types";
 
-const STATS = [
-  { label: "오늘 상담", value: 3, color: "#2563EB" },
-  { label: "기록 작성 대기", value: 2, color: "#D97706" },
-  { label: "상담사 확인 필요", value: 1, color: "#7C3AED" },
-  { label: "승인 반려", value: 1, color: "#DC2626" },
-  { label: "후속상담 예정", value: 2, color: "#0891B2" },
-];
+// 미완료 업무 · 승인 대기는 처리 대기 업무 API(GET /tasks, GET /tasks/summary)에서 온다.
+// 승인 대기 = AI 결과 검토(REVIEW_ANALYSIS) 업무, 즉 상담사 승인을 기다리는 상담 요약이다.
+// 오늘 상담 · 후속상담 예정 · 승인 반려 · 기록 작성 대기는 Backend 에 조회가 없어 "—" 로 둔다.
+// 다음 상담일 · 확인사항 · 기타 메모는 저장할 곳이 없어 이 화면에만 남는다.
 
-const TODAY_SESSIONS = [
-  { time: "13:00", childName: "박서준", caseId: "C-2026-0412", type: "정기상담", riskLevel: "high" as const },
-  { time: "14:30", childName: "최유나", caseId: "C-2026-0351", type: "초기면담", riskLevel: "mid" as const },
-  { time: "16:00", childName: "이지후", caseId: "C-2026-0277", type: "정기상담", riskLevel: "low" as const },
-];
+const INCOMPLETE_PAGE_SIZE = 10;
+const APPROVAL_PAGE_SIZE = 10;
 
-const PENDING_SESSIONS = [
-  { childName: "김민서", caseId: "C-2026-0389", scheduledDate: "2026-08-25", type: "정기상담", note: "이전 회차 검토 필요" },
-  { childName: "정하은", caseId: "C-2026-0312", scheduledDate: "2026-08-28", type: "종결 상담", note: "종결 검토 항목 확인 현황 검토 후 진행" },
-];
-
-const APPROVAL_PENDING = [
-  { doc: "상담일지 8회차", childName: "박서준", caseId: "C-2026-0412", submittedAt: "2026-08-20", status: "검토중" },
-  { doc: "사정기록지", childName: "최유나", caseId: "C-2026-0351", submittedAt: "2026-08-19", status: "검토중" },
-];
-
-const APPROVAL_REJECTED = [
-  { doc: "상담일지 7회차", childName: "김민서", caseId: "C-2026-0389", reason: "서명 누락", rejectedAt: "2026-08-18" },
-];
-
-const INCOMPLETE_TASKS = [
-  { label: "C-2026-0412 음성 검수 대기", urgent: true },
-  { label: "C-2026-0351 분석 결과 검토", urgent: true },
-  { label: "C-2026-0277 상담일지 작성", urgent: false },
-];
+function OverdueTag() {
+  return (
+    <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-bold text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded">지연</span>
+  );
+}
 
 export default function FollowUpPage() {
   const navigate = useNavigate();
-  const [nextDate, setNextDate] = useState("2026-08-25");
-  const [checkItems, setCheckItems] = useState("이전 회차 상담 내용 재검토\n위험 신호 변화 여부 확인");
+  const [nextDate, setNextDate] = useState("");
+  const [checkItems, setCheckItems] = useState("");
   const [otherMemo, setOtherMemo] = useState("");
 
-  const riskColor = (level: "high" | "mid" | "low") =>
-    level === "high" ? "#DC2626" : level === "mid" ? "#D97706" : "#16A34A";
+  const [summary, setSummary]             = useState<TaskSummary | null>(null);
+  const [incomplete, setIncomplete]       = useState<DashboardTaskRow[]>([]);
+  const [incompleteTotal, setIncompleteTotal] = useState(0);
+  const [approvals, setApprovals]         = useState<DashboardTaskRow[]>([]);
+  const [approvalTotal, setApprovalTotal] = useState(0);
+  const [loading, setLoading]             = useState(true);
+  const [loadError, setLoadError]         = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([
+      tasksApi.summary(),
+      tasksApi.list({ page: 1, page_size: INCOMPLETE_PAGE_SIZE }),
+      tasksApi.list({ task_type: "REVIEW_ANALYSIS", page: 1, page_size: APPROVAL_PAGE_SIZE }),
+    ])
+      .then(([counts, all, review]) => {
+        if (cancelled) return;
+        setSummary(counts);
+        setIncomplete(all.items.map(toDashboardTaskRow));
+        setIncompleteTotal(all.meta.total);
+        setApprovals(review.items.map(toDashboardTaskRow));
+        setApprovalTotal(review.meta.total);
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "업무 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stats = toFollowUpStats(summary);
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#F6F8FB]">
@@ -52,13 +71,17 @@ export default function FollowUpPage() {
           <p className="text-[13px] text-[#64748B] mt-0.5">진행 중인 사례의 후속 상담 및 미처리 업무를 확인하세요</p>
         </div>
 
+        {loadError && (
+          <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-[8px] px-4 py-3 text-[13px] text-red-600">{loadError}</div>
+        )}
+
         {/* Stat strip */}
         <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
-          <div className="grid divide-x divide-[#E2E8F0]" style={{ gridTemplateColumns: `repeat(${STATS.length}, 1fr)` }}>
-            {STATS.map(s => (
+          <div className="grid divide-x divide-[#E2E8F0]" style={{ gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
+            {stats.map(s => (
               <div key={s.label} className="px-5 py-4 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-[6px] flex items-center justify-center shrink-0" style={{ background: `${s.color}18` }}>
-                  <span className="text-[16px] font-bold" style={{ color: s.color }}>{s.value}</span>
+                  <span className="text-[16px] font-bold" style={{ color: s.color }}>{loading && s.fromServer ? "…" : s.value}</span>
                 </div>
                 <p className="text-[12px] font-semibold text-[#172033]">{s.label}</p>
               </div>
@@ -74,22 +97,8 @@ export default function FollowUpPage() {
               <div className="px-5 py-3 border-b border-[#E2E8F0]">
                 <span className="text-[13px] font-semibold text-[#172033]">오늘 상담 사안</span>
               </div>
-              <div className="divide-y divide-[#F1F5F9]">
-                {TODAY_SESSIONS.map(s => (
-                  <button
-                    key={s.caseId}
-                    onClick={() => navigate(`/cases/${s.caseId}`)}
-                    className="w-full text-left px-5 py-3 hover:bg-[#F8FAFC] transition-colors flex items-center gap-3"
-                  >
-                    <span className="text-[13px] font-mono text-[#2563EB] shrink-0 w-14">{s.time}</span>
-                    <div className="flex items-center gap-1.5 flex-1">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: riskColor(s.riskLevel) }} />
-                      <span className="text-[13px] font-semibold text-[#172033]">{s.childName}</span>
-                      <span className="text-[11px] text-[#94A3B8]">{s.type}</span>
-                    </div>
-                    <span className="text-[11px] font-mono text-[#94A3B8]">{s.caseId}</span>
-                  </button>
-                ))}
+              <div className="px-5 py-4 text-[12px] text-[#94A3B8]">
+                여러 사례에 걸친 상담 일정 조회가 아직 서버에 없습니다.
               </div>
             </div>
 
@@ -98,48 +107,48 @@ export default function FollowUpPage() {
               <div className="px-5 py-3 border-b border-[#E2E8F0]">
                 <span className="text-[13px] font-semibold text-[#172033]">후속상담 예정</span>
               </div>
-              <div className="divide-y divide-[#F1F5F9]">
-                {PENDING_SESSIONS.map(s => (
-                  <div key={s.caseId} className="px-5 py-3 flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[13px] font-semibold text-[#172033]">{s.childName}</span>
-                        <span className="text-[11px] text-[#64748B]">{s.type}</span>
-                        <span className="text-[11px] font-mono text-[#94A3B8]">{s.caseId}</span>
-                      </div>
-                      <p className="text-[12px] text-[#64748B]">{s.note}</p>
-                    </div>
-                    <span className="text-[12px] font-mono text-[#2563EB] shrink-0">{s.scheduledDate}</span>
-                  </div>
-                ))}
+              <div className="px-5 py-4 text-[12px] text-[#94A3B8]">
+                후속상담 일정은 아직 서버에 없습니다.
               </div>
             </div>
 
             {/* 승인 대기 / 반려 */}
             <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
-              <div className="px-5 py-3 border-b border-[#E2E8F0]">
+              <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
                 <span className="text-[13px] font-semibold text-[#172033]">승인 현황</span>
+                {!loading && !loadError && approvalTotal > approvals.length && (
+                  <span className="text-[11px] text-[#94A3B8]">최근 {approvals.length}건 / 전체 {approvalTotal}건</span>
+                )}
               </div>
-              {APPROVAL_PENDING.map(a => (
-                <div key={a.doc} className="px-5 py-2.5 flex items-center gap-3 border-b border-[#F1F5F9]">
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold text-[#1D4ED8] bg-[#EFF6FF] border border-[#BFDBFE] rounded">검토중</span>
-                  <span className="text-[13px] text-[#172033] flex-1">{a.childName} · {a.doc}</span>
-                  <span className="text-[11px] font-mono text-[#94A3B8]">{a.submittedAt}</span>
-                </div>
+              {approvals.map(a => (
+                <button
+                  key={a.sessionId}
+                  onClick={() => navigate(a.link)}
+                  className="w-full text-left px-5 py-2.5 flex items-center gap-3 border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors"
+                >
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold text-[#1D4ED8] bg-[#EFF6FF] border border-[#BFDBFE] rounded">승인 대기</span>
+                  <span className="text-[13px] text-[#172033] flex-1">{a.childName} · {a.sessionNumber}회기 상담 요약</span>
+                  {a.isOverdue && <OverdueTag />}
+                  <span className="text-[11px] font-mono text-[#94A3B8]">{a.waitingSince}</span>
+                </button>
               ))}
-              {APPROVAL_REJECTED.map(a => (
-                <div key={a.doc} className="px-5 py-2.5 flex items-center gap-3">
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold text-[#DC2626] bg-[#FEF2F2] border border-[#FECACA] rounded">반려</span>
-                  <span className="text-[13px] text-[#172033] flex-1">{a.childName} · {a.doc}</span>
-                  <span className="text-[12px] text-[#64748B]">{a.reason}</span>
-                  <span className="text-[11px] font-mono text-[#94A3B8]">{a.rejectedAt}</span>
-                </div>
-              ))}
+              {loading && (
+                <div className="px-5 py-2.5 text-[12px] text-[#94A3B8] border-b border-[#F1F5F9]">불러오는 중...</div>
+              )}
+              {!loading && !loadError && approvals.length === 0 && (
+                <div className="px-5 py-2.5 text-[12px] text-[#94A3B8] border-b border-[#F1F5F9]">승인을 기다리는 상담 요약이 없습니다.</div>
+              )}
+              <div className="px-5 py-2.5 flex items-center gap-3">
+                <span className="px-1.5 py-0.5 text-[10px] font-bold text-[#DC2626] bg-[#FEF2F2] border border-[#FECACA] rounded">반려</span>
+                <span className="text-[12px] text-[#94A3B8] flex-1">반려 기록은 아직 서버에 없습니다.</span>
+              </div>
             </div>
           </div>
 
           {/* Right column */}
           <div className="col-span-2 space-y-5">
+            <p className="text-[12px] text-[#94A3B8]">다음 상담일 · 확인사항 · 기타 메모는 아직 서버에 저장되지 않습니다.</p>
+
             {/* 다음 상담일 */}
             <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
               <div className="px-5 py-3 border-b border-[#E2E8F0]">
@@ -173,16 +182,30 @@ export default function FollowUpPage() {
 
             {/* 미완료 업무 */}
             <div className="bg-white border border-[#E2E8F0] rounded-[8px] overflow-hidden">
-              <div className="px-5 py-3 border-b border-[#E2E8F0]">
+              <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
                 <span className="text-[13px] font-semibold text-[#172033]">미완료 업무</span>
+                {!loading && !loadError && incompleteTotal > incomplete.length && (
+                  <span className="text-[11px] text-[#94A3B8]">오래된 {incomplete.length}건 / 전체 {incompleteTotal}건</span>
+                )}
               </div>
               <div className="divide-y divide-[#F1F5F9]">
-                {INCOMPLETE_TASKS.map(t => (
-                  <div key={t.label} className="flex items-center gap-2.5 px-5 py-2.5">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.urgent ? "bg-[#DC2626]" : "bg-[#CBD5E1]"}`} />
-                    <span className="text-[13px] text-[#172033] flex-1">{t.label}</span>
-                  </div>
+                {incomplete.map(t => (
+                  <button
+                    key={t.sessionId}
+                    onClick={() => navigate(t.link)}
+                    className="w-full text-left flex items-center gap-2.5 px-5 py-2.5 hover:bg-[#F8FAFC] transition-colors"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.isOverdue ? "bg-[#DC2626]" : "bg-[#CBD5E1]"}`} />
+                    <span className="text-[13px] text-[#172033] flex-1">{t.caseNumber} {t.sessionNumber}회기 {t.taskLabel}</span>
+                    {t.isOverdue && <OverdueTag />}
+                  </button>
                 ))}
+                {loading && (
+                  <div className="px-5 py-2.5 text-[12px] text-[#94A3B8]">불러오는 중...</div>
+                )}
+                {!loading && !loadError && incomplete.length === 0 && (
+                  <div className="px-5 py-2.5 text-[12px] text-[#94A3B8]">미완료 업무가 없습니다.</div>
+                )}
               </div>
             </div>
 

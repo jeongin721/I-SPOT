@@ -1,14 +1,19 @@
-import { Outlet, NavLink, useNavigate, Navigate } from "react-router";
+import { Outlet, NavLink, useNavigate, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import NotificationPopover from "../components/ui/NotificationPopover";
+import { SESSION_INFO_KEY, UNAUTHORIZED_EVENT, clearSession, getToken } from "../api/client";
+import { tasks as tasksApi } from "../api/endpoints";
+import { toMenuBadges } from "../api/dashboardAdapters";
 
+// 메뉴 배지 숫자는 처리 대기 업무 요약(GET /tasks/summary)에서 온다. 어느 메뉴가 어떤 업무를 세는지는
+// dashboardAdapters.MENU_BADGE_TASKS 에 있다(보고서 생성은 대응하는 업무가 Backend 에 없어 배지가 없다).
 const NAV_ITEMS = [
   { to: "/dashboard",       label: "대시보드",       icon: "grid",       group: null },
   { to: "/cases",           label: "통합 사례 목록", icon: "folder",     group: "사례 관리" },
   { to: "/follow-up",       label: "후속 관리",      icon: "home",       group: "사례 관리" },
-  { to: "/stt-cases",       label: "상담 자료 검수", icon: "transcript", group: "상담 업무", badge: 1 },
-  { to: "/case-management", label: "사례 관리",      icon: "clipboard",  group: "상담 업무", badge: 2 },
-  { to: "/report-cases",    label: "보고서 생성",    icon: "document",   group: "문서",      badge: 0 },
+  { to: "/stt-cases",       label: "상담 자료 검수", icon: "transcript", group: "상담 업무" },
+  { to: "/case-management", label: "사례 관리",      icon: "clipboard",  group: "상담 업무" },
+  { to: "/report-cases",    label: "보고서 생성",    icon: "document",   group: "문서" },
 ];
 
 function NavIcon({ id }: { id: string }) {
@@ -26,24 +31,70 @@ function NavIcon({ id }: { id: string }) {
   return <>{icons[id] ?? null}</>;
 }
 
+/** 메뉴 옆 숫자. 0 이거나 아직 모르면(불러오는 중 · 실패) 그리지 않는다. */
+function MenuBadge({ count }: { count: number | undefined }) {
+  if (count == null || count <= 0) return null;
+
+  return (
+    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-sm min-w-[18px] text-center"
+      style={{ background: count > 1 ? "#DC2626" : "#D97706", color: "white" }}>
+      {count}
+    </span>
+  );
+}
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const [auth, setAuth] = useState<{ role: string; name: string } | null>(null);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem("ispot_auth");
-    if (raw) {
+    const raw = localStorage.getItem(SESSION_INFO_KEY);
+    // 이름 · 역할만 남고 토큰이 없으면 서버를 부를 수 없으므로 로그인하지 않은 것으로 본다.
+    if (raw && getToken()) {
       try { setAuth(JSON.parse(raw)); } catch { /* ignore */ }
     }
     setChecked(true);
+
+    // 어느 화면에서든 토큰이 만료 · 폐기되면(401) 로그인 화면으로 보낸다.
+    function onUnauthorized() {
+      setAuth(null);
+    }
+
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
+
+  // 메뉴 배지. 화면을 옮길 때마다 다시 세어 검수 · 승인 뒤 숫자가 따라오게 한다.
+  // 처음 불러오는 중이거나 실패하면 배지를 숨긴다(null). 다시 세는 동안에는 직전 숫자를 둔다.
+  const location = useLocation();
+  const [badges, setBadges] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    if (!auth) return;
+
+    let cancelled = false;
+
+    tasksApi
+      .summary()
+      .then((summary) => {
+        if (!cancelled) setBadges(toMenuBadges(summary));
+      })
+      .catch(() => {
+        if (!cancelled) setBadges(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, location.pathname]);
 
   if (!checked) return null;
   if (!auth) return <Navigate to="/login" replace />;
 
   function handleLogout() {
-    localStorage.removeItem("ispot_auth");
+    clearSession();
     navigate("/login");
   }
 
@@ -110,12 +161,7 @@ export default function AppLayout() {
                 >
                   <span className="shrink-0"><NavIcon id={item.icon} /></span>
                   <span className="text-[13px] font-medium flex-1 leading-tight">{item.label}</span>
-                  {item.badge != null && item.badge > 0 && (
-                    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-sm min-w-[18px] text-center"
-                      style={{ background: item.badge > 1 ? "#DC2626" : "#D97706", color: "white" }}>
-                      {item.badge}
-                    </span>
-                  )}
+                  <MenuBadge count={badges?.[item.to]} />
                 </NavLink>
               ))}
             </div>
