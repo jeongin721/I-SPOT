@@ -103,7 +103,7 @@ def _record_login(
     error_code: Optional[ErrorCode] = None,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
-) -> None:
+) -> AuditLog:
     """
     로그인 시도 기록.
 
@@ -111,7 +111,7 @@ def _record_login(
     관리자 화면에서 "unknown" 으로 보인다.
     """
 
-    audit_service.record(
+    return audit_service.record(
         db,
         action=AuditAction.LOGIN,
         entity_type="User",
@@ -137,18 +137,50 @@ def _dummy_password_hash() -> str:
     return hash_password(token_urlsafe(32))
 
 
+def _clear_expired_lock(db: Session, user: User, now: datetime) -> None:
+    """
+    시간 잠금(LOGIN_LOCK_MINUTES > 0)이 지났으면 풀고 실패 횟수도 비운다. 안 비우면 횟수가 기준을
+    넘은 채로 남아, 다시 틀려도 잠기지 않는다.
+
+    **처음 읽은 잠금 시각이 그대로일 때만 푼다**(비교 후 교체). 잠금이 풀리는 순간 몰려 든 요청이
+    저마다 읽은 "지난 잠금" 을 보고 조건 없이 횟수를 0 으로 되돌리면, 앞 요청들이 예약해 둔 횟수를
+    지워 기준보다 많이 대조하고, 그사이 다시 걸린 잠금도 지운다. 그래서 하나의 요청만 풀고, 늦게 온
+    요청은 아무것도 바꾸지 않는다. 어느 쪽이든 지금 값을 다시 읽어 그 값으로 잠금을 판정한다.
+
+    커밋은 호출 측(authenticate)이 이번 시도 기록과 함께 한다.
+    """
+
+    seen = user.locked_until
+    locked_until = as_utc(seen)
+
+    if locked_until is None or locked_until > now:
+        return
+
+    # 읽은 값 그대로와 비교한다. SQLite 는 시간대 없이 돌려주므로 as_utc 로 바꾼 값을 쓰면
+    # 저장된 값과 같게 맞지 않을 수 있다.
+    db.execute(
+        update(User)
+        .where(User.id == user.id, User.locked_until == seen)
+        .values(locked_until=None, failed_login_count=0)
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(user)
+
+
 def _reserve_login_attempt(db: Session, user: User) -> Optional[int]:
     """
-    비밀번호를 대조하기 **전에** 실패 횟수를 1 올려 커밋한다(시도 예약). 올린 뒤 횟수를 돌려준다.
+    비밀번호를 대조하기 **전에** 실패 횟수를 1 올린다(시도 예약). 올린 뒤 횟수를 돌려준다.
 
     대조(bcrypt 약 0.3초)한 뒤에 세면, 그 사이 함께 들어온 요청이 모두 "아직 안 잠김" 을 보고
     대조까지 가서 기준(LOGIN_MAX_FAILURES)보다 훨씬 많이 맞혀 볼 수 있다. 조건을 건 UPDATE 하나로
     올리므로 동시에 몇 개가 들어와도 기준 횟수만큼만 예약된다. 이미 기준에 닿았으면 None 이다.
 
     파이썬에서 += 1 하면 동시에 들어온 요청이 같은 값을 읽어 횟수가 빠지므로 DB 에서 더한다.
+    다른 요청이 바로 보도록 대조 전에 커밋하는데, 커밋은 호출 측(authenticate)이 이번 시도 기록과
+    함께 한 번에 한다. 객체의 failed_login_count 는 다시 읽지 않는다(성공하면 _release_login_attempt 가 읽는다).
     """
 
-    reserved = db.execute(
+    return db.execute(
         update(User)
         .where(
             User.id == user.id,
@@ -158,13 +190,6 @@ def _reserve_login_attempt(db: Session, user: User) -> Optional[int]:
         .returning(User.failed_login_count)
         .execution_options(synchronize_session=False)
     ).scalar_one_or_none()
-
-    # 다른 요청이 바로 보도록 대조 전에 커밋한다. 세션은 커밋해도 값을 다시 읽지 않으므로
-    # (expire_on_commit=False) 성공 때 0 으로 되돌리는 것이 빠지지 않게 지금 값을 읽어 둔다.
-    db.commit()
-    db.refresh(user)
-
-    return reserved
 
 
 def _release_login_attempt(db: Session, user: User) -> None:
@@ -189,28 +214,47 @@ def _lock_if_limit_reached(
     user_agent: Optional[str] = None,
 ) -> None:
     """
-    틀린 시도가 기준 횟수째 예약이었으면 잠근다.
+    틀린 시도가 기준 횟수째 예약이었으면 잠그고 커밋한다.
 
     예약은 원자적이라 기준 횟수째를 받는 요청은 하나뿐이다. 그래서 동시에 틀린 요청이 여러 개여도
     잠금은 한 번만 남는다. 잠긴 계정과 기준을 넘은 시도는 예약되지 않아 여기까지 오지 않는다.
+
+    잠금 시각(LOGIN_LOCK_MINUTES > 0)은 실패 횟수가 아직 기준 이상일 때만 쓴다. 대조하는 사이
+    관리자가 풀었으면(횟수 0) 다시 잠그지 않는다. 횟수와 잠금이 어긋난 상태가 생기지 않게 한다.
+    잠그지 않는 틀린 시도는 대조 뒤에 아무것도 쓰지 않는다(authenticate 참고).
     """
 
     if reserved < settings.LOGIN_MAX_FAILURES:
         return
 
-    if settings.LOGIN_LOCK_MINUTES:
-        user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCK_MINUTES)
+    locked = True
 
-    audit_service.record(
-        db,
-        action=AuditAction.ACCOUNT_LOCKED,
-        entity_type="User",
-        entity_id=user.id,
-        actor_id=user.id,
-        detail={"failed_login_count": reserved},
-        ip_address=ip_address,
-        user_agent=user_agent,
-    )
+    if settings.LOGIN_LOCK_MINUTES:
+        locked = bool(
+            db.execute(
+                update(User)
+                .where(
+                    User.id == user.id,
+                    User.failed_login_count >= settings.LOGIN_MAX_FAILURES,
+                )
+                .values(locked_until=now + timedelta(minutes=settings.LOGIN_LOCK_MINUTES))
+                .execution_options(synchronize_session=False)
+            ).rowcount
+        )
+
+    if locked:
+        audit_service.record(
+            db,
+            action=AuditAction.ACCOUNT_LOCKED,
+            entity_type="User",
+            entity_id=user.id,
+            actor_id=user.id,
+            detail={"failed_login_count": reserved},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+    db.commit()
 
 
 # =========================================================
@@ -234,69 +278,60 @@ def authenticate(
     **실패 잠금은 비밀번호가 맞아도 알려주지 않는다.** 잠긴 계정은 비밀번호를 확인하지 않고
     틀린 비밀번호와 같은 401 을 준다. 잠김을 따로 알려주면 잠긴 뒤에도 계속 맞혀 보다가
     응답이 바뀌는 순간 정답을 알게 된다. 관리자는 감사 로그의 error_code(ACCOUNT_LOCKED)로 구분한다.
+
+    **없는 계정 · 잠긴 계정 · 틀린 비밀번호는 같은 순서로 DB 에 쓴다.** 비밀번호를 대조하기 전에
+    이번 시도 기록(과 있는 계정이면 시도 예약)을 한 번에 커밋하고, 대조 뒤에는 잠글 때 말고는 쓰지
+    않는다. 커밋(디스크 기록)은 몇 ms 걸리므로, 있는 계정만 커밋을 더 하면 bcrypt 시간을 맞춰도
+    응답 시간 차이로 계정이 있는지 드러난다.
     """
 
     now = datetime.now(timezone.utc)
     user = db.scalar(select(User).where(User.email == email.lower()))
 
-    def reject(
-        code: ErrorCode,
-        message: str,
-        status_code: int,
-        *,
-        audit_code: Optional[ErrorCode] = None,
-    ) -> APIError:
-        _record_login(
-            db,
-            user=user,
-            status="FAILURE",
-            error_code=audit_code or code,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
-        db.commit()
-
-        return APIError(code, message, status_code=status_code)
-
-    def invalid_credentials(audit_code: Optional[ErrorCode] = None) -> APIError:
-        return reject(
+    def invalid_credentials() -> APIError:
+        return APIError(
             ErrorCode.INVALID_CREDENTIALS,
             INVALID_CREDENTIALS_MESSAGE,
-            401,
-            audit_code=audit_code,
+            status_code=401,
         )
 
-    # 1. 없는 계정 — 있는 계정과 같은 시간이 걸리게 가짜 해시와 한 번 비교한다.
-    if user is None:
+    # 1~4. 대조 전 — 무엇과 대조할지 정한다. 예약(reserved)이 없으면 진짜 해시와 대조하지 않는다.
+    reserved: Optional[int] = None
+    audit_code = ErrorCode.INVALID_CREDENTIALS
+
+    if user is not None:
+        # 2. 잠금 시간이 지났으면 먼저 푼다(_clear_expired_lock).
+        _clear_expired_lock(db, user, now)
+
+        # 3. 잠긴 계정 — 비밀번호는 확인하지 않는다.
+        if _is_locked(user, now):
+            audit_code = ErrorCode.ACCOUNT_LOCKED
+        else:
+            # 4. 시도 예약 — 비밀번호를 대조하기 전에 실패 횟수를 먼저 센다(_reserve_login_attempt).
+            #    함께 들어온 다른 요청이 이미 기준을 채웠으면 예약되지 않는다. 잠긴 계정과 같게 거절한다.
+            reserved = _reserve_login_attempt(db, user)
+
+            if reserved is None:
+                audit_code = ErrorCode.ACCOUNT_LOCKED
+
+    # 이번 시도를 실패로 먼저 남기고 예약과 함께 커밋한다. 비밀번호가 맞으면 아래에서 고친다
+    # (성공으로, 또는 계정 상태 오류 코드로).
+    attempt = _record_login(
+        db,
+        user=user,
+        status="FAILURE",
+        error_code=audit_code,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.commit()
+
+    # 1 · 3 · 4. 없는 계정 · 잠긴 계정 · 예약되지 않은 시도 — 가짜 해시와 한 번 비교해 있는 계정과
+    #           같은 시간이 걸리게 하고, 틀린 비밀번호와 같은 응답을 준다.
+    if user is None or reserved is None:
         verify_password(password, _dummy_password_hash())
 
         raise invalid_credentials()
-
-    # 2. 잠금 시간이 지났으면 먼저 푼다. 실패 횟수도 비운다. 안 비우면 횟수가 기준을 넘은 채로
-    #    남아, 다시 틀려도 잠기지 않는다.
-    locked_until = as_utc(user.locked_until)
-
-    if locked_until is not None and locked_until <= now:
-        user.locked_until = None
-        user.failed_login_count = 0
-
-        # 아래 실패 횟수 UPDATE 뒤의 refresh 가 이 변경을 덮어쓰지 않게 먼저 보낸다.
-        db.flush()
-
-    # 3. 잠긴 계정 — 비밀번호는 확인하지 않는다. 시간만 맞추고 틀린 비밀번호와 같은 응답을 준다.
-    if _is_locked(user, now):
-        verify_password(password, _dummy_password_hash())
-
-        raise invalid_credentials(audit_code=ErrorCode.ACCOUNT_LOCKED)
-
-    # 4. 시도 예약 — 비밀번호를 대조하기 전에 실패 횟수를 먼저 센다(_reserve_login_attempt).
-    #    함께 들어온 다른 요청이 이미 기준을 채웠으면 예약되지 않는다. 잠긴 계정과 같게 거절한다.
-    reserved = _reserve_login_attempt(db, user)
-
-    if reserved is None:
-        verify_password(password, _dummy_password_hash())
-
-        raise invalid_credentials(audit_code=ErrorCode.ACCOUNT_LOCKED)
 
     # 5. 비밀번호 확인 — 계정 존재 여부를 노출하지 않기 위해 동일한 오류를 반환한다.
     if not verify_password(password, user.hashed_password):
@@ -308,9 +343,15 @@ def authenticate(
 
     _release_login_attempt(db, user)
 
+    def reject(code: ErrorCode, message: str, status_code: int) -> APIError:
+        attempt.error_code = code.value
+        db.commit()
+
+        return APIError(code, message, status_code=status_code)
+
     # 6. 계정 상태 — 비밀번호가 맞은 뒤에만 본다.
     if user.anonymized_at is not None:
-        raise invalid_credentials()
+        raise reject(ErrorCode.INVALID_CREDENTIALS, INVALID_CREDENTIALS_MESSAGE, 401)
 
     if not user.is_active:
         raise reject(
@@ -347,18 +388,13 @@ def authenticate(
             403,
         )
 
-    # 7. 성공
+    # 7. 성공 — 미리 남긴 시도 기록을 성공으로 바꾼다.
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
 
-    _record_login(
-        db,
-        user=user,
-        status="SUCCESS",
-        ip_address=ip_address,
-        user_agent=user_agent,
-    )
+    attempt.status = "SUCCESS"
+    attempt.error_code = None
     db.commit()
 
     return user
