@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse
 from ai.modeling.abuse import case_store
 from ai.modeling.abuse.case_comparison import (
     compare_case_sessions,
+    summarize_case_trend,
 )
 
 
@@ -238,6 +239,10 @@ def register_case_workflow_routes(app: FastAPI) -> None:
             )
         }
 
+        trend = summarize_case_trend(
+            case_id
+        )
+
         rows = []
 
         for s in sessions:
@@ -324,6 +329,33 @@ def register_case_workflow_routes(app: FastAPI) -> None:
                 """
             )
 
+        if trend is None:
+            trend_box_html = """
+            <div class="trend-box trend-box-empty">
+                승인된 회기가 아직 없어 종결 검토 참고자료를 만들 수 없습니다.
+            </div>
+            """
+        else:
+            active_items_html = (
+                "".join(
+                    f'<span class="trend-item-tag">{escape(category)}::{escape(item)}</span>'
+                    for category, item in trend["active_items"]
+                )
+                if trend["active_items"]
+                else '<span class="trend-item-tag trend-item-tag-clean">없음</span>'
+            )
+
+            trend_box_html = f"""
+            <div class="trend-box">
+                <div class="trend-box-title">📋 종결 검토 참고자료</div>
+                <p class="trend-summary-text">{escape(trend["summary_text"])}</p>
+                <div class="trend-active-items">
+                    <strong>현재 활성 항목:</strong> {active_items_html}
+                </div>
+                <p class="trend-disclaimer">{escape(trend["disclaimer"])}</p>
+            </div>
+            """
+
         return HTMLResponse(
             f"""
             <!DOCTYPE html>
@@ -349,11 +381,24 @@ def register_case_workflow_routes(app: FastAPI) -> None:
                     .rf-new {{ color: #b91c1c; margin-bottom: 4px; }}
                     .rf-recurring {{ color: #92400e; margin-bottom: 4px; }}
                     .rf-resolved {{ color: #166534; margin-bottom: 4px; }}
+                    .trend-box {{ background: #eff6ff; border: 1px solid #bfdbfe;
+                        border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }}
+                    .trend-box-empty {{ background: #f3f4f6; border-color: #e5e7eb;
+                        color: #6b7280; font-size: 14px; }}
+                    .trend-box-title {{ font-weight: 700; margin-bottom: 8px; }}
+                    .trend-summary-text {{ margin: 0 0 8px 0; font-size: 14px; }}
+                    .trend-active-items {{ font-size: 13px; margin-bottom: 8px; }}
+                    .trend-item-tag {{ display: inline-block; background: #fee2e2; color: #991b1b;
+                        border-radius: 999px; padding: 2px 10px; margin: 2px 4px 2px 0; font-size: 12px; }}
+                    .trend-item-tag-clean {{ background: #dcfce7; color: #166534; }}
+                    .trend-disclaimer {{ font-size: 12px; color: #6b7280; margin: 0;
+                        font-style: italic; }}
                 </style>
             </head>
             <body>
                 <div class="panel">
                     <h1>사례 {escape(case_id)} — 회기 목록</h1>
+                    {trend_box_html}
                     <p>회기별로 나열되어 있어 이전 회기와 비교해볼 수 있습니다.
                     "Risk Factor 변화"는 직전 승인 회기 대비 체크리스트 변화입니다.</p>
                     <table>

@@ -181,6 +181,64 @@ def _chunk_to_text(
 
 
 # ============================================================
+# 2.4 "분석하기" 전 빠른 1차 스캔(검수 화면용)
+# ============================================================
+# 상담사가 "검수 완료 — 분석하기"를 누르기 전, STT 직후 화면에서부터
+# 위험 신호가 있는 구간을 바로 보고 재생할 수 있게 한다(2026-10-01
+# 추가). LLM 보완체크(_verify_major_types_qa)는 건당 수십 초가 걸려서
+# 이 빠른 미리보기 단계에는 쓰지 않는다 — 순수 1차 분류기만 돌린다
+# (어차피 "분석하기"를 누르면 LLM 보완체크까지 포함한 정식 분석이 한
+# 번 더 돈다 — 이건 그 전 단계의 미리보기일 뿐이다).
+
+def quick_risk_scan(
+    stt_result: Dict[str, Any],
+) -> Dict[str, List[str]]:
+    """
+    STT 결과에 1차 분류기만 빠르게 돌려서, segment_id별로 탐지된
+    학대유형 목록을 반환한다. 실제 "분석하기"가 쓰는 것과 동일한
+    chunk 분할(build_qa_chunks)을 재사용해 일관성을 유지한다.
+    """
+
+    try:
+        segments = validate_stt_result(stt_result)
+    except Exception:
+        return {}
+
+    lines = build_qa_transcript_lines(segments)
+
+    if not lines:
+        return {}
+
+    chunks = build_qa_chunks(lines)
+
+    risk_by_segment: Dict[str, List[str]] = {}
+
+    for chunk in chunks:
+        chunk_prediction = predict_major_types(
+            text=_chunk_to_text(chunk),
+            input_mode="qa",
+        )
+
+        detected_labels = [
+            label
+            for label in ABUSE_LABELS
+            if chunk_prediction.get(label, {}).get("detected", False)
+        ]
+
+        if not detected_labels:
+            continue
+
+        for _, _, segment in chunk:
+            segment_id = str(segment.get("segment_id", ""))
+            risk_by_segment.setdefault(segment_id, [])
+            for label in detected_labels:
+                if label not in risk_by_segment[segment_id]:
+                    risk_by_segment[segment_id].append(label)
+
+    return risk_by_segment
+
+
+# ============================================================
 # 2.5 근거(evidence) → 원본 음성 타임스탬프 역매핑
 # ============================================================
 # 2차 LLM의 evidence_start/evidence_end는 build_full_transcript_text가

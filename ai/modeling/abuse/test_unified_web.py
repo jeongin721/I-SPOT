@@ -38,7 +38,10 @@ from fastapi.responses import (
 import uvicorn
 
 from ai.modeling.abuse.infer_abuse_pipeline import analyze_session
-from ai.modeling.abuse.infer_audio_session import analyze_audio_session
+from ai.modeling.abuse.infer_audio_session import (
+    analyze_audio_session,
+    quick_risk_scan,
+)
 from ai.modeling.abuse.pdf_text_extractor import extract_text_from_pdf
 
 from ai.modeling.abuse.test_pipeline_web import (
@@ -602,6 +605,19 @@ def build_page(
                 background: #fee2e2;
             }}
 
+            .segment-row.abuse-risk {{
+                background: #fef2f2;
+                border-left: 4px solid #dc2626;
+                padding-left: 8px;
+            }}
+
+            .abuse-risk-tag {{
+                color: #dc2626;
+                font-weight: 700;
+                font-size: 12px;
+                white-space: nowrap;
+            }}
+
             .play-btn {{
                 border: 1px solid #d1d5db;
                 background: #fff;
@@ -1055,6 +1071,12 @@ def transcribe(
             role_mapping=role_mapping,
         )
 
+        # "분석하기"를 누르기 전에 1차 분류기만 빠르게 돌려서 위험
+        # 신호가 있는 구간을 검수 화면에서부터 바로 보여준다(2026-10-01
+        # 추가). LLM 보완체크는 느려서 여기선 안 쓴다 — "분석하기"를
+        # 누르면 그걸 포함한 정식 분석이 한 번 더 돈다.
+        risk_by_segment = quick_risk_scan(transcript)
+
         panel = f"""
         {build_audio_player_html(audio_id)}
 
@@ -1065,7 +1087,10 @@ def transcribe(
                 총 {len(transcript.get("segments", []))}개 발화.
                 화자 표시나 텍스트가 잘못됐으면 직접 수정한 뒤
                 분석하기를 눌러주세요. 노란 배경은 STT 신뢰도가
-                낮은(신뢰도 {post_processor.threshold:.2f} 미만) 구간입니다.
+                낮은(신뢰도 {post_processor.threshold:.2f} 미만) 구간,
+                빨간 배경(⚠)은 1차 분류기가 미리 훑어서 학대 위험
+                신호를 찾은 구간입니다(정식 분석 전 미리보기 — 최종
+                판정은 분석하기를 눌러야 확정됩니다).
                 각 줄의 ▶ 버튼을 누르면 그 구간을 다시 들을 수 있습니다.
             </div>
 
@@ -1075,7 +1100,7 @@ def transcribe(
                 <input type="hidden" name="audio_id" value="{escape(audio_id or '', quote=True)}">
 
                 <div class="transcript-review-box">
-                    {build_transcript_review_html(transcript)}
+                    {build_transcript_review_html(transcript, risk_by_segment)}
                 </div>
 
                 <button type="submit">

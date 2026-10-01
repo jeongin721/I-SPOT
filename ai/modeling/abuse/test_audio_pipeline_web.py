@@ -120,11 +120,19 @@ SPEAKER_OPTIONS = [
 
 def build_transcript_review_html(
     transcript,
+    risk_by_segment=None,
 ):
     """
     STT segment를 화자/텍스트만 수정 가능한 형태로 렌더링한다.
     segment_id/start_ms/end_ms/confidence는 hidden으로 그대로 들고 간다.
+
+    risk_by_segment: {segment_id: [탐지된 유형, ...]} — "분석하기"를
+    누르기 전, STT 직후에 1차 분류기를 미리 돌려 학대 위험 신호가 있는
+    구간을 상담사가 검수 단계에서부터 바로 보고 재생할 수 있게 한다
+    (2026-10-01 추가). None/빈 dict면 기존과 동일하게 동작한다.
     """
+
+    risk_by_segment = risk_by_segment or {}
 
     rows = []
     flagged_count = 0
@@ -173,12 +181,19 @@ def build_transcript_review_html(
         # 항상 low-confidence로 표시되어 정작 봐야 할 신호(UNKNOWN
         # 화자)가 묻힌다. STTPostProcessor가 provider별로 이미 잡아 둔
         # post_processor.threshold를 그대로 재사용한다.
+        risk_types = risk_by_segment.get(segment_id, [])
+
         row_classes = []
         if confidence < post_processor.threshold:
             row_classes.append("low-confidence")
         if speaker == "UNKNOWN":
             # ElevenLabs 등에서 화자를 확정하지 못해 review가 필요한 구간.
             row_classes.append("needs-review")
+        if risk_types:
+            # 1차 분류기가 "분석하기"를 누르기 전에 미리 훑어서 학대
+            # 위험 신호를 찾은 구간 — STT 품질 문제(위 두 플래그)와는
+            # 성격이 달라 별도 스타일을 쓴다.
+            row_classes.append("abuse-risk")
         if row_classes:
             flagged_count += 1
         else:
@@ -199,6 +214,12 @@ def build_transcript_review_html(
             f'{" selected" if option == speaker else ""}>'
             f"{option}</option>"
             for option in SPEAKER_OPTIONS
+        )
+
+        risk_badge_html = (
+            f'<span class="abuse-risk-tag">⚠ {escape(", ".join(risk_types))} 의심</span>'
+            if risk_types
+            else ""
         )
 
         rows.append(
@@ -226,6 +247,8 @@ def build_transcript_review_html(
                     class="segment-text-input"
                     value="{escape(str(text), quote=True)}"
                 >
+
+                {risk_badge_html}
             </div>
             """
         )
@@ -233,7 +256,8 @@ def build_transcript_review_html(
     toggle_bar = f"""
     <div class="review-toggle-bar">
         전체 {total_count}개 발화 중 확인이 필요한 {flagged_count}개만
-        표시 중입니다(화자 미확정 또는 STT 신뢰도 낮음).
+        표시 중입니다(화자 미확정, STT 신뢰도 낮음, 또는 학대 위험 신호
+        포함 — ⚠ 표시).
         <button type="button" class="play-btn" onclick="toggleAllSegments(this)">
             전체 보기
         </button>
@@ -515,6 +539,19 @@ def build_page(
 
             .segment-row.needs-review {{
                 background: #fee2e2;
+            }}
+
+            .segment-row.abuse-risk {{
+                background: #fef2f2;
+                border-left: 4px solid #dc2626;
+                padding-left: 8px;
+            }}
+
+            .abuse-risk-tag {{
+                color: #dc2626;
+                font-weight: 700;
+                font-size: 12px;
+                white-space: nowrap;
             }}
 
             .segment-speaker-select {{
