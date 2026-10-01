@@ -235,10 +235,10 @@ def test_audio_upload_without_valid_token_is_401_before_parsing_body(
     assert parsed == []
 
 
-def test_non_multipart_body_to_audio_upload_uses_general_limit(
+def test_urlencoded_body_to_audio_upload_uses_general_limit(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """음성 경로라도 multipart 가 아니면 음성이 아니다. 일반 본문 한도와 문구를 쓴다."""
+    """음성 경로라도 urlencoded 본문은 음성이 아니다. 일반 본문 한도와 문구를 쓴다."""
 
     monkeypatch.setattr(settings, "AUDIO_MAX_SIZE_MB", 5)
 
@@ -254,6 +254,70 @@ def test_non_multipart_body_to_audio_upload_uses_general_limit(
     assert response.status_code == 400
     assert response.json() == {
         "error": {"code": "VALIDATION_ERROR", "message": "요청 본문이 너무 큽니다(최대 2MB)."}
+    }
+
+
+@pytest.mark.parametrize(
+    "content_type", ["application/json", "text/plain", "application/octet-stream", None]
+)
+def test_non_form_body_to_audio_upload_is_answered_without_size_limit(
+    client: TestClient, counselor_headers, session: dict, content_type: Optional[str]
+) -> None:
+    """
+    음성 경로에 form(multipart · urlencoded)이 아닌 본문을 보내면 이 창구는 본문을 읽지 않는다.
+
+    그래서 본문이 일반 한도(2MB)를 넘어도 400 "요청 본문이 너무 큽니다" 가 아니다.
+    토큰이 없으면 401, 있으면 file 칸이 없다는 422 다(계약서 1.2 · 6절).
+    """
+
+    body = b"a" * (3 * MB)
+    headers = {"Content-Type": content_type} if content_type else {}
+    path = f"/api/v1/sessions/{session['id']}/audio"
+
+    anonymous = client.post(path, content=body, headers=headers)
+
+    assert anonymous.status_code == 401
+    assert anonymous.json() == {
+        "error": {"code": "UNAUTHORIZED", "message": "Authorization 헤더가 없습니다."}
+    }
+
+    logged_in = client.post(path, content=body, headers={**headers, **counselor_headers})
+
+    assert logged_in.status_code == 422
+    error = logged_in.json()["error"]
+    assert error["code"] == "VALIDATION_ERROR"
+    assert [field["field"] for field in error["details"]["fields"]] == ["file"]
+
+
+@pytest.mark.parametrize("multipart", [True, False], ids=["multipart", "urlencoded"])
+def test_form_field_over_1mb_to_audio_upload_is_malformed_form(
+    client: TestClient, counselor_headers, multipart: bool
+) -> None:
+    """
+    form 의 파일이 아닌 칸 하나가 1MB(Starlette 기본값)를 넘으면, 본문 전체가 한도 안이라도
+    해석 단계에서 400 "요청 형식이 올바르지 않습니다." 다(계약서 1.2).
+    """
+
+    value = b"a" * (MB + 1024)
+
+    if multipart:
+        content_type = "multipart/form-data; boundary=x"
+        form = b'--x\r\nContent-Disposition: form-data; name="note"\r\n\r\n' + value + b"\r\n--x--\r\n"
+    else:
+        content_type = "application/x-www-form-urlencoded"
+        form = b"note=" + value
+
+    assert len(form) < 2 * MB  # 일반 본문 한도(2MB) 안
+
+    response = client.post(
+        f"/api/v1/sessions/{uuid.uuid4()}/audio",
+        content=form,
+        headers={**counselor_headers, "Content-Type": content_type},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"code": "VALIDATION_ERROR", "message": "요청 형식이 올바르지 않습니다."}
     }
 
 
@@ -408,6 +472,25 @@ def test_audio_upload_without_token_is_read_to_the_end_before_401() -> None:
         {"error": {"code": "UNAUTHORIZED", "message": "Authorization 헤더가 없습니다."}},
     )
     assert delivered == len(chunks)
+
+
+def test_non_form_body_to_audio_upload_is_not_read() -> None:
+    """음성 경로에 form 이 아닌 본문(JSON)을 보내면 한 조각도 읽지 않고 답한다. 그래서 크기 한도에 닿지 않는다."""
+
+    chunks = [b"a" * (MB // 2)] * 6  # 3MB — 일반 본문 한도(2MB)보다 크다
+
+    status, body, delivered = _call_raw(
+        f"/api/v1/sessions/{uuid.uuid4()}/audio",
+        chunks,
+        content_length=sum(len(chunk) for chunk in chunks),
+        content_type=b"application/json",
+    )
+
+    assert (status, body) == (
+        401,
+        {"error": {"code": "UNAUTHORIZED", "message": "Authorization 헤더가 없습니다."}},
+    )
+    assert delivered == 0
 
 
 def test_endless_oversized_body_is_read_only_for_a_limited_time(
