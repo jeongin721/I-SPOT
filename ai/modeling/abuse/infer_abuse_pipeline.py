@@ -391,27 +391,18 @@ def analyze_abuse(
             major_result[label]["llm_supplementary"] = True
 
     elif input_mode in ("qa", "child_only"):
-        masked_text, _ = mask_pii(text)
-
-        verified_types = _verify_major_types_qa(
-            text=masked_text,
-            client=local_client,
-            model=local_model,
-            detected_major_types=detected_major_types,
-        )
-
-        for label in SUBTYPE_DEFINITIONS.keys():
-            was_detected = label in detected_major_types
-            now_detected = label in verified_types
-
-            if now_detected and not was_detected:
-                major_result[label]["detected"] = True
-                major_result[label]["llm_supplementary"] = True
-            elif was_detected and not now_detected:
-                major_result[label]["detected"] = False
-                major_result[label]["llm_corrected"] = True
-
-        detected_major_types = verified_types
+        # 2026-10-01 끄기로 결정: _verify_major_types_qa를 독립적인
+        # 100건 샘플로 순효과 측정해보니(알려진 문제 케이스 몇 건으로
+        # 튜닝한 프롬프트라 오버피팅됐던 것) Macro F1이 0.8974 ->
+        # 0.5673로 오히려 크게 떨어졌다(신체학대 F1 1.000->0.769,
+        # 정서학대 0.923->0.500, 방임 0.667->0.000 — 특히 정서학대/
+        # 방임은 1차가 맞게 잡은 것까지 LLM이 지워버려서 미탐이
+        # 늘었다). 몇 개 케이스를 고치려다 프롬프트를 바꿀 때마다
+        # 다른 데서 더 크게 터지는 패턴이 반복돼서, 제대로 재설계하고
+        # 다시 큰 샘플로 검증하기 전까지는 호출 자체를 꺼서 1차 단독
+        # 결과를 그대로 쓴다. 함수(_verify_major_types_qa)는 재설계
+        # 때 참고할 수 있게 남겨 둔다.
+        pass
 
     if not detected_major_types:
         subtype_result = {
