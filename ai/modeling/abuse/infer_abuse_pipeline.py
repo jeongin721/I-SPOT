@@ -330,12 +330,12 @@ def analyze_abuse(
 
     input_mode: "qa" | "child_only" | "note"
     note 모드는 1차 결과에 LLM 보완 체크(추가만)를 한 번 더 거친다
-    (_screen_missed_major_types 참고). qa/child_only는 추가+제거가
-    둘 다 되는 재검증을 거친다(_verify_major_types_qa 참고) — 순수
-    분류기가 못하는 "누가 때렸는지", "정상 훈육인지" 같은 맥락 판단을
-    LLM이 보완한다(2026-10-01 추가). 이 보완 체크는 항상
-    build_local_llm_client_and_model()로 만든 로컬 Ollama client를
-    쓴다(함수 안에서 직접 만들며, 호출부가 지정할 수 없다).
+    (_screen_missed_major_types 참고, 로컬 Ollama 사용). qa/child_only는
+    1차(RoBERTa) 단독 결과를 그대로 쓴다 — qa 전용 LLM 재검증
+    (_verify_major_types_qa)을 만들어 봤지만 100건 독립 샘플 순효과
+    측정에서 Macro F1이 0.8974 -> 0.5673로 오히려 크게 나빠져
+    2026-10-01 끄기로 결정했다(함수는 재설계 참고용으로 남겨둠,
+    analyze_abuse 본문의 해당 분기 주석 참고).
 
     case_id를 주면 Privacy Gateway가 case_store에 등록된 아동/보호자
     실명을 정확 매칭으로 한 번 더 걸러낸다(known_identifiers, Tier 2).
