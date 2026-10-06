@@ -2,6 +2,7 @@
 #
 # 테스트는 PostgreSQL 없이도 실행 가능해야 한다.(docs/04_DEVELOPMENT.md)
 # app import 전에 환경변수를 설정해 SQLite + 임시 Storage 를 사용한다.
+# TEST_DATABASE_URL 이 있으면 그 DB(PostgreSQL 등)로 돌린다(README 3절).
 
 import os
 import shutil
@@ -13,11 +14,27 @@ from typing import Dict, Iterator, Tuple
 
 import pytest
 
+from tests.db_guard import check_connected_test_database, check_test_database_url
+
 _TMP_ROOT = Path(tempfile.mkdtemp(prefix="ispot-backend-test-"))
+
+
+def _test_database_url() -> str:
+    url = os.environ.get("TEST_DATABASE_URL", "").strip()
+
+    if not url:
+        return f"sqlite+pysqlite:///{(_TMP_ROOT / 'test.db').as_posix()}"
+
+    # 개발 DB 를 잘못 가리켜 데이터를 날리지 않도록 이름이 _test 로 끝나는 DB 만 받는다.
+    # 실제로 연결된 DB 는 app import 뒤에 한 번 더 본다(tests/db_guard.py).
+    check_test_database_url(url)
+
+    return url
+
 
 os.environ["ENV"] = "test"
 os.environ["DEBUG"] = "false"
-os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{(_TMP_ROOT / 'test.db').as_posix()}"
+os.environ["DATABASE_URL"] = _test_database_url()
 os.environ["AUDIO_STORAGE_ROOT"] = str(_TMP_ROOT / "audio")
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-key-not-for-production-use-0123456789"
 os.environ["STT_PROVIDER"] = "mock"
@@ -36,6 +53,9 @@ from app.core.enums import UserRole  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, User  # noqa: E402
+
+# 표를 만들거나 지우기 전에, 주소의 접속 옵션 등으로 다른 DB 에 붙지 않았는지 확인한다.
+check_connected_test_database(engine)
 
 COUNSELOR_PASSWORD = "Rainy-Harbor-73"
 ADMIN_PASSWORD = "Quiet-Lantern-48"
