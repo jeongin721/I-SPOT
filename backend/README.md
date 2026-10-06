@@ -44,7 +44,8 @@ Docker 없이 이미 설치된 PostgreSQL 을 쓰려면 `DATABASE_URL` 만 맞�
 
 **부록 A(SQLite)로 쓰다가 옮겨 올 때**
 
-- `backend/.env` 의 `DATABASE_URL` 을 2.3 의 PostgreSQL 주소로 바꾸고 2.4 · 2.5 를 다시 한다. 옮기기 전 데이터는 따라오지 않는다
+- `backend/.env` 의 `DATABASE_URL` 을 2.3 의 PostgreSQL 주소로 바꾸고, `backend/` 로 이동해(저장소 맨 위에서는 `cd backend`)
+  2.4 · 2.5 를 다시 한다. `alembic` · `scripts.seed_users` 는 `backend/` 에서만 돈다. 옮기기 전 데이터는 따라오지 않는다
   (`dev.db` 는 그대로 남으므로 `DATABASE_URL` 을 되돌리면 다시 쓸 수 있다).
 - 터미널이나 Windows 사용자 환경변수에 `DATABASE_URL` 이 있으면 `.env` 보다 먼저 쓰인다. 바꾼 뒤 서버를 다시 켠다(설정은 처음 한 번만 읽는다).
 - 예전 `SEED_USER_PASSWORD` 가 지금 비밀번호 규칙에 맞지 않으면 2.5 의 계정 생성이 실패한다. 값을 바꾸거나 지우고 다시 돌린다.
@@ -55,6 +56,7 @@ Docker 없이 이미 설치된 PostgreSQL 을 쓰려면 `DATABASE_URL` 만 맞�
 # repo root 에서
 docker compose down -v      # 컨테이너와 ispot-db-data 볼륨을 함께 지운다
 docker compose up -d db
+cd backend                  # 2.4 · 2.5 는 backend/ 에서 돌린다
 ```
 
 그다음 2.4 · 2.5 를 다시 한다.
