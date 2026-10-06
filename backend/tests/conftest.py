@@ -2,6 +2,7 @@
 #
 # 테스트는 PostgreSQL 없이도 실행 가능해야 한다.(docs/04_DEVELOPMENT.md)
 # app import 전에 환경변수를 설정해 SQLite + 임시 Storage 를 사용한다.
+# TEST_DATABASE_URL 이 있으면 그 DB(PostgreSQL 등)로 돌린다(README 3절).
 
 import os
 import shutil
@@ -12,12 +13,33 @@ from pathlib import Path
 from typing import Dict, Iterator, Tuple
 
 import pytest
+from sqlalchemy.engine import make_url
 
 _TMP_ROOT = Path(tempfile.mkdtemp(prefix="ispot-backend-test-"))
 
+
+def _test_database_url() -> str:
+    url = os.environ.get("TEST_DATABASE_URL", "").strip()
+
+    if not url:
+        return f"sqlite+pysqlite:///{(_TMP_ROOT / 'test.db').as_posix()}"
+
+    # fixture 가 매 테스트마다 모든 표를 비우고 끝나면 표를 지운다.
+    # 개발 DB 를 잘못 가리켜 데이터를 날리지 않도록 이름이 _test 로 끝나는 DB 만 받는다.
+    database = make_url(url).database or ""
+
+    if not database.endswith("_test"):
+        raise pytest.UsageError(
+            f"TEST_DATABASE_URL 의 DB 이름은 _test 로 끝나야 합니다(지금: {database!r}). "
+            "테스트가 표를 비우고 지우므로 개발 DB 와 따로 만듭니다."
+        )
+
+    return url
+
+
 os.environ["ENV"] = "test"
 os.environ["DEBUG"] = "false"
-os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{(_TMP_ROOT / 'test.db').as_posix()}"
+os.environ["DATABASE_URL"] = _test_database_url()
 os.environ["AUDIO_STORAGE_ROOT"] = str(_TMP_ROOT / "audio")
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-key-not-for-production-use-0123456789"
 os.environ["STT_PROVIDER"] = "mock"
