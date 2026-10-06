@@ -128,7 +128,7 @@ python -m scripts.seed_users --email admin@example.com --name 관리자 --role A
 ### 2.6 서버 실행
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --no-proxy-headers --reload
 ```
 
 - API 문서: http://localhost:8000/docs
@@ -201,7 +201,7 @@ pytest
 실제 Polling 동작과 시연 환경을 확인하려면 서버를 띄운 뒤 아래를 실행한다.
 
 ```bash
-uvicorn app.main:app --port 8000
+uvicorn app.main:app --no-proxy-headers --port 8000
 
 # 다른 터미널에서
 python -m scripts.smoke_api \
@@ -373,6 +373,11 @@ backend/
   올리면 "음성 파일이 최대 허용 크기(2MB)를 초과했습니다." 가 떠야 한다.
   운영에서 앞단 프록시(nginx 등)를 두면 그쪽에도 같은 제한을 둔다(예: `client_max_body_size 201m;`).
   `docker-compose.yml` 은 uvicorn 을 프록시 없이 바로 연다 — 로컬 · 시연용이다.
+- **서버는 `--no-proxy-headers` 로 띄운다.** uvicorn 은 기본으로 127.0.0.1 에서 온 요청의 `X-Forwarded-For` 를 믿고
+  접속 IP 를 그 값으로 바꾼다. 누구나 가짜 헤더로 감사 로그의 IP 를 위조할 수 있다(로그인 성공 · 실패 모두). 앱은 바뀐 값만
+  볼 수 있어 코드로는 막을 수 없으므로 실행 명령에서 막는다(`tests/test_launch_flags.py` 가 지킨다). 이 옵션을 쓰면
+  개발 프록시(vite) 뒤에서는 접속 IP 가 프록시 주소(127.0.0.1)로 남는다. 운영에서 실제 사용자 IP 가 필요해 앞단 프록시를
+  둘 때는 그 프록시가 들어온 `X-Forwarded-For` 를 지우고 다시 쓰게 한 뒤, `--forwarded-allow-ips` 에 그 프록시 주소만 적는다.
 
 ---
 
@@ -468,7 +473,7 @@ C-2026-0006  APPROVED              완료
 ### A.4 서버 실행
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --no-proxy-headers --reload
 ```
 
 - API 문서 — <http://127.0.0.1:8000/docs>

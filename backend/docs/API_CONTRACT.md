@@ -242,7 +242,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 **임시 비밀번호 상태**(`must_change_password`)에서는 `GET /auth/me` 와 `POST /auth/me/password` 외의
 모든 요청이 `403 PASSWORD_CHANGE_REQUIRED` 로 막힌다.
 
-**Token 무효화** — 비밀번호를 바꾸거나 관리자가 강제 로그아웃 · 역할 변경 · 정지를 하면
+**Token 무효화** — 비밀번호를 바꾸거나 관리자가 강제 로그아웃 · 역할 변경 · 정지 · 임시 비밀번호 재발급 · 휴면 해제를 하면
 그 계정에 발급된 Token 이 전부 무효가 된다(`401 UNAUTHORIZED`). 다시 로그인해야 한다.
 정지된 계정은 다시 로그인할 때 `403 INACTIVE_USER` 로 이유를 알려준다. Token 버전을 올리지 않고 정지된 계정
 (서버에서 DB 를 직접 고친 경우 등)은 기존 Token 요청도 `403 INACTIVE_USER` 다.
@@ -1115,7 +1115,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 |---|---|---|
 | `INVALID_CREDENTIALS` | 401 | 로그인 실패 (틀린 비밀번호 · 없는 계정 · 실패 잠금 모두 같다) |
 | `INVALID_CURRENT_PASSWORD` | 400 | 비밀번호 변경 때 현재 비밀번호 불일치 (로그인 만료가 아니다. 반복되면 Token 이 끊겨 401 — 3절) |
-| `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류, 무효화된 토큰(비밀번호 변경 · 강제 로그아웃 · 역할 변경 · 정지 · 현재 비밀번호 반복 실패 — 대조하는 사이 끊긴 경우 포함) |
+| `UNAUTHORIZED` | 401 | 토큰 없음/만료/오류, 무효화된 토큰(비밀번호 변경 · 강제 로그아웃 · 역할 변경 · 정지 · 임시 비밀번호 재발급 · 휴면 해제 · 현재 비밀번호 반복 실패 — 대조하는 사이 끊긴 경우 포함) |
 | `INACTIVE_USER` | 403 | 비활성 계정 — 정지된 계정의 로그인(비밀번호가 맞았을 때만), Token 버전을 올리지 않고 정지된 계정의 요청 |
 | `ACCOUNT_LOCKED` | — | **감사 로그 전용.** 잠긴 계정의 로그인 시도가 LOGIN 실패의 `error_code` 로 남는다. 응답에는 쓰지 않는다 |
 | `ACCOUNT_DORMANT` | 403 | 휴면 계정 (비밀번호가 맞았을 때만) |
@@ -1142,7 +1142,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
-| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청이면 계정 상태 · 회기 확인보다 먼저 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
+| `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
