@@ -1,5 +1,5 @@
 // Backend endpoint 를 함수로 감싼 것. 쿼리 이름·응답 모양은 Backend OpenAPI(/openapi.json)와 같다.
-// (계정 생성 · 음성 metadata 조회는 아직 쓰는 화면이 없어 감싸지 않았다.)
+// (음성 metadata 조회는 아직 쓰는 화면이 없어 감싸지 않았다.)
 //
 // 화면에서는 주소 문자열을 직접 쓰지 않고 이 함수들만 부른다.
 // Backend 주소가 바뀌어도 고칠 곳이 여기 한 군데로 유지된다.
@@ -21,6 +21,7 @@ import type {
   LoginResponse,
   PasswordChangeRequest,
   TemporaryPassword,
+  UserCreateRequest,
   UserUpdateRequest,
   AuditLog,
   AuditStatus,
@@ -92,6 +93,14 @@ export const auth = {
    */
   changePassword(payload: PasswordChangeRequest): Promise<void> {
     return api.post<void>("/auth/me/password", payload);
+  },
+
+  /**
+   * 관리자 전용 계정 생성(201). 비밀번호가 규칙에 맞지 않으면 422 WEAK_PASSWORD(`details.reasons`),
+   * 같은 이메일이 있으면 409 DUPLICATE_RESOURCE. 첫 로그인 때 변경을 강제하려면 곧바로 resetPassword 를 부른다.
+   */
+  createUser(payload: UserCreateRequest): Promise<User> {
+    return api.post<User>("/auth/users", payload);
   },
 
   /** 관리자 전용. 페이지 없이 전체 배열로 온다. */

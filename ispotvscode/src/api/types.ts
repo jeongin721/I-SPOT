@@ -132,6 +132,17 @@ export interface User {
   dormant_at?: string | null;
 }
 
+/**
+ * 관리자 전용 계정 생성(POST /auth/users). password 를 그대로 쓰고 첫 로그인 때 변경을 강제하지 않는다.
+ * 관리자 화면은 임의 비밀번호로 만든 뒤 곧바로 password-reset 으로 임시 비밀번호를 발급한다.
+ */
+export interface UserCreateRequest {
+  email: string;
+  password: string;
+  name: string;
+  role?: UserRole;
+}
+
 export interface UserUpdateRequest {
   is_active?: boolean;
   role?: UserRole;
