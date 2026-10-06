@@ -64,6 +64,8 @@ export function countCasesByCounselor(list: Pick<Case, "counselor_id">[]): Map<s
 // 발급한다(변경 강제 · 만료 시각이 붙는다). 이 값은 어디에도 보여 주거나 저장하지 않는다.
 //
 // Backend 비밀번호 규칙(app/core/password_policy.py)을 통과하도록 만든다.
+// - 길이는 규칙이 받는 최대(MAX_BYTES = 72바이트, ASCII 라 72자)로 만든다. 최소 길이 설정(PASSWORD_MIN_LENGTH)의
+//   상한도 72 라서(app/core/config.py) 설정을 어떻게 바꿔도 짧다는 이유로 거절되지 않는다.
 // - 글자 · 숫자 · 특수문자를 모두 넣는다.
 // - 모음(a e i o u)과 치환 문자(@ 4 0 1 3 5 $ 7 — `P@ssw0rd` 를 password 로 되돌려 보는 것)를 쓰지 않는다.
 //   금지 단어는 모두 모음이 들어 있어 이렇게 하면 들어갈 수 없다.
@@ -74,7 +76,8 @@ const LETTERS = "bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ";
 const DIGITS = "2689";
 const SYMBOLS = "!#%^&*-_=+?";
 const PASSWORD_ALPHABET = LETTERS + DIGITS + SYMBOLS;
-const INITIAL_PASSWORD_LENGTH = 20;
+/** Backend 비밀번호 최대 길이(password_policy.MAX_BYTES). 이보다 길면 WEAK_PASSWORD 다. */
+const INITIAL_PASSWORD_LENGTH = 72;
 
 const SEQUENCES = [
   "abcdefghijklmnopqrstuvwxyz",
