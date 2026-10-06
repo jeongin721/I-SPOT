@@ -158,7 +158,7 @@ def search_evidence(
 | 브랜치 | `rag/` |
 | --- | --- |
 | `feature/rag` | 있음 |
-| `develop` | **없음** |
+| `main` | **없음** |
 | `backend-agent` | **없음** |
 
 따라서 지금 `rag_node` 에서 아래처럼 쓰면 `ModuleNotFoundError` 가 납니다.
@@ -167,7 +167,7 @@ def search_evidence(
 from rag.retriever import search_evidence   # 아직 import 불가
 ```
 
-`feature/rag` 가 `develop` 에 머지되기 전까지는 `rag_node` 를 **인터페이스만 정의하고 비워두거나**, 고정 응답을 돌려주는 stub 으로 둡니다. 그래프 구조 검증은 stub 으로도 가능합니다.
+`feature/rag` 가 `main` 에 머지되기 전까지는 `rag_node` 를 **인터페이스만 정의하고 비워두거나**, 고정 응답을 돌려주는 stub 으로 둡니다. 그래프 구조 검증은 stub 으로도 가능합니다.
 
 ```python
 def rag_node(state: AgentState) -> dict:
