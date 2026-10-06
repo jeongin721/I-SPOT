@@ -617,7 +617,9 @@ export default function App() {
   }
 
   if (!auth)               return <LoginScreen onLogin={handleLogin} />;
-  if (userRole === "admin") return <AdminApp onLogout={handleLogout} />;
+  // 이 파일은 쓰이지 않는 옛 진입점이다(main.tsx 는 app/App 을 쓴다). 관리자 화면은 이제 /admin 경로에서
+  // 로그인 · 로그아웃을 스스로 처리하므로 onLogout 을 받지 않는다.
+  if (userRole === "admin") return <AdminApp />;
 
   const renderMain = () => {
     switch (view) {
