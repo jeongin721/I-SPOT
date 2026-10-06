@@ -235,7 +235,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     // 다른 탭에서 로그아웃해 이 탭의 토큰이 이미 지워진 경우다. 로그인 요청의 401(비밀번호 틀림)만 뺀다.
     // 토큰을 실어 보낸 요청이면 서버 문구(예: "현재 비밀번호를 여러 번 틀려 로그아웃했습니다.")를 로그인 화면에 넘긴다.
     // 토큰 없이 보낸 요청의 문구("Authorization 헤더가 없습니다.")는 사용자에게 뜻이 없어 넘기지 않는다.
-    if (response.status === 401 && path !== LOGIN_PATH) {
+    //
+    // 단, 응답이 오기 전에 이 탭이나 다른 탭이 다시 로그인해 토큰이 바뀌었다면(요청에 실은 토큰과 지금 토큰이 다르면)
+    // 늦게 도착한 옛 토큰의 401 이다. 새 토큰을 지우면 방금 로그인한 사용자가 또 로그아웃되므로 무시한다.
+    if (response.status === 401 && path !== LOGIN_PATH && getToken() === token) {
       notifyUnauthorized(token ? failure.error?.message : undefined);
     }
 
