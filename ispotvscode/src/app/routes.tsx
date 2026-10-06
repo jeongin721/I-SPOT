@@ -3,7 +3,6 @@ import AppLayout from "./AppLayout";
 import LoginPage from "./LoginPage";
 import NotFoundPage from "../pages/NotFoundPage";
 import PermissionDeniedPage from "../pages/PermissionDeniedPage";
-import ApiDemoPage from "../pages/ApiDemoPage";
 
 // Lazy imports to keep bundle sane
 import DashboardView from "../views/DashboardView";
@@ -16,22 +15,18 @@ import AIAnalysisSelectorPage from "../pages/AIAnalysisSelectorPage";
 import AIAnalysisListPage from "../pages/AIAnalysisListPage";
 import AccountPage from "../pages/AccountPage";
 import CaseSelectorListPage from "../pages/CaseSelectorListPage";
+import CaseManagementPage from "../pages/CaseManagementPage";
+import FollowUpPage from "../pages/FollowUpPage";
 import TranscriptReviewView from "../views/TranscriptReviewView";
 import AIReviewView from "../views/AIReviewView";
 import CasePlanView from "../views/CasePlanView";
 import ClosureView from "../views/ClosureView";
 import ReportView from "../views/ReportView";
-import RecordingView from "../views/RecordingView";
-
+import DocumentWritePage from "../pages/DocumentWritePage";
 export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
-  },
-  {
-    // Backend 연결 확인용. 실제 API 로 로그인·조회가 동작한다.
-    path: "/api-demo",
-    element: <ApiDemoPage />,
   },
   {
     path: "/",
@@ -44,14 +39,15 @@ export const router = createBrowserRouter([
       { path: "cases/:caseId/counseling/new", element: <PreSessionPage /> },
       { path: "cases/:caseId/sessions", element: <SessionListPage /> },
       { path: "cases/:caseId/sessions/:sessionId/transcript", element: <TranscriptReviewView /> },
+      { path: "cases/:caseId/sessions/:sessionId/document", element: <DocumentWritePage /> },
       { path: "cases/:caseId/analyses", element: <AIAnalysisListPage /> },
       { path: "cases/:caseId/analyses/:analysisId", element: <AIReviewView /> },
       { path: "cases/:caseId/plan", element: <CasePlanView /> },
       { path: "cases/:caseId/closure", element: <ClosureView /> },
       { path: "cases/:caseId/reports", element: <ReportView /> },
-      { path: "cases/:caseId/recording", element: <RecordingView /> },
-      { path: "recording", element: <RecordingView /> },
+      { path: "follow-up", element: <FollowUpPage /> },
       { path: "stt-cases", element: <STTCaseSelectorPage /> },
+      { path: "case-management", element: <CaseManagementPage /> },
       { path: "ai-cases", element: <AIAnalysisSelectorPage /> },
       { path: "plan-cases", element: <CaseSelectorListPage mode="plan" /> },
       { path: "closure-cases", element: <CaseSelectorListPage mode="closure" /> },

@@ -1,7 +1,7 @@
 # Backend 코드 읽는 가이드 (Code Reading Guide)
 
 이 문서는 **처음 이 코드를 보는 팀원**을 위한 길잡이다.
-파일이 90개라 어디부터 봐야 할지 막막할 때 여기부터 읽으면 된다.
+파일이 100개가 넘어서 어디부터 봐야 할지 막막할 때 여기부터 읽으면 된다.
 
 - 각 파일이 무슨 일을 하는지는 **파일 맨 위 주석**에 적혀 있다.
 - 이 문서는 그 파일들이 **어떻게 맞물려 돌아가는지**를 설명한다.
@@ -19,7 +19,7 @@
 처리하는 API 서버다.
 
 ```text
-Frontend (Next.js)
+Frontend (ispotvscode: Vite + React)
    ↓  HTTP
 FastAPI  ← 이 저장소
    ├─ PostgreSQL        상담 기록 저장
@@ -47,11 +47,11 @@ FastAPI  ← 이 저장소
 | `app/adapters/` | **Adapter** | 외부 서비스(STT/AI) 연결. 갈아끼울 수 있게 분리 |
 | `app/core/` | **Core** | 설정, DB 연결, 인증, 오류, 상태 규칙 등 공통 기반 |
 | `alembic/` | **Migration** | DB 테이블 생성/변경 이력 |
-| `tests/` | **Test** | pytest 237개 |
+| `tests/` | **Test** | pytest 510개 |
 
 ### 왜 Router 를 얇게 만들었나
 
-`app/api/v1/analysis.py` 는 57줄인데 `app/services/analysis_service.py` 는 337줄이다.
+`app/api/v1/analysis.py` 는 57줄인데 `app/services/analysis_service.py` 는 350줄이다.
 Router 에 로직을 넣으면 테스트할 때 매번 HTTP 요청을 만들어야 하고,
 같은 로직을 다른 곳에서 재사용할 수 없다.
 그래서 **Router 는 "받아서 넘기기"만** 하고 판단은 전부 Service 가 한다.
@@ -149,20 +149,20 @@ Frontend 는 `session_status` 만 보고 판단하면 된다.
 
 | 순서 | 파일 | 줄 수 | 왜 먼저 보나 |
 |---|---|---|---|
-| 1 | `app/core/enums.py` | 114 | 상담 상태, 화자 종류 등 **용어 사전**. 여기부터 봐야 나머지가 읽힌다 |
-| 2 | `app/core/state_machine.py` | 73 | 상태가 어떤 순서로 바뀌는지. 이 시스템의 뼈대 |
+| 1 | `app/core/enums.py` | 161 | 상담 상태, 화자 종류 등 **용어 사전**. 여기부터 봐야 나머지가 읽힌다 |
+| 2 | `app/core/state_machine.py` | 113 | 상태가 어떤 순서로 바뀌는지. 이 시스템의 뼈대 |
 | 3 | `app/schemas/contracts.py` | 90 | 팀 A·B 와 주고받는 **공통 데이터 형식** |
-| 4 | `app/models/session.py` | 133 | 가장 중심이 되는 테이블 |
+| 4 | `app/models/session.py` | 140 | 가장 중심이 되는 테이블 |
 | 5 | `app/api/v1/sessions.py` | 57 | 가장 단순한 Router. 계층 구조 감 잡기 |
 | 6 | `app/services/access.py` | 70 | 권한 검사가 어떻게 되는지 |
 | 7 | `app/main.py` | — | 앱 시작점. 오류 응답이 어떻게 통일되는지 |
-| 8 | `app/services/transcript_service.py` | 526 | 가장 복잡한 로직. 위를 다 본 뒤에 |
+| 8 | `app/services/transcript_service.py` | 595 | 가장 복잡한 로직. 위를 다 본 뒤에 |
 
 시간이 없다면 **1 → 2 → 5** 만 봐도 구조는 파악된다.
 
 ### 테스트를 읽는 것도 좋은 방법이다
 
-`tests/test_e2e_flow.py` (252줄) 는 로그인부터 승인까지 전체 흐름을
+`tests/test_e2e_flow.py` (262줄) 는 로그인부터 승인까지 전체 흐름을
 순서대로 실행한다. **이 파일 하나가 사용 설명서 역할**을 한다.
 
 ---
@@ -190,8 +190,11 @@ CREATED → AUDIO_UPLOADED → STT_PROCESSING → STT_REVIEW_REQUIRED
         → STT_CONFIRMED → AI_PROCESSING → AI_REVIEW_REQUIRED → APPROVED
 ```
 
-순서를 건너뛰면 `409 INVALID_SESSION_STATE` 로 막힌다.
-예를 들어 **음성도 안 올리고 AI 분석을 요청할 수 없다.**
+지금 상태에서 할 수 없는 요청이면 `409 INVALID_SESSION_STATE` 로 막힌다.
+예를 들어 **원문 변환 중(`STT_PROCESSING`)에는 변환을 다시 요청할 수 없다.**
+STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 상태보다 먼저
+`404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 난다. 음성도 안 올리고 AI 분석을 요청하면 `404 TRANSCRIPT_NOT_FOUND` 다.
+원문 수정(`PATCH /transcript`)은 상태를 먼저 봐서, 전사본이 없는 회기에서도 `409 INVALID_SESSION_STATE` 다.
 
 실패하면 `STT_FAILED` / `AI_FAILED` 로 가고, 오류 내용이 저장되어
 같은 요청을 다시 보내면 재시도된다.
@@ -281,7 +284,7 @@ DB 컬럼을 바꿨다면 migration 을 잊지 말 것. 안 만들면 CI 가 잡
 ./scripts/check.sh
 ```
 
-lint, 테스트 237개, migration 정합성을 한 번에 확인한다.
+lint, 테스트 510개, migration 정합성을 한 번에 확인한다.
 여기서 통과하면 CI 도 통과한다.
 
 ---

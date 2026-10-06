@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.adapters.ai_adapter import (
     AIAnalysisBundle,
     AIError,
-    PipelineAIAdapter,
+    map_ai_error,
     set_ai_adapter_override,
 )
 from app.core.config import settings
@@ -345,11 +345,35 @@ def test_pipeline_error_mapping(exception_name: str, expected_code: ErrorCode) -
     """
     팀 B(ai/services/summary_service.py)의 Service Exception 이
     Backend 오류 코드로 정확히 변환되는지 확인한다.
+    PipelineAIAdapter 와 LangGraphAIAdapter 가 같은 변환 함수를 쓴다.
     """
 
     exception_type = type(exception_name, (Exception,), {})
-    adapter = PipelineAIAdapter()
 
-    mapped = adapter._map_pipeline_error(exception_type("오류 메시지"))
+    mapped = map_ai_error(exception_type("오류 메시지"))
 
     assert mapped.error_code == expected_code
+
+
+def test_known_ai_error_keeps_fixed_message() -> None:
+    """팀 B 예외는 고정 문구만 담으므로 문구를 그대로 쓴다."""
+
+    timeout = type("SummaryTimeoutError", (Exception,), {})
+
+    mapped = map_ai_error(timeout("LLM 상담 요약 요청 시간이 초과되었습니다."))
+
+    assert str(mapped) == "LLM 상담 요약 요청 시간이 초과되었습니다."
+
+
+def test_unknown_ai_error_hides_exception_text() -> None:
+    """알 수 없는 예외는 문구를 버리고 예외 종류 이름만 남긴다.
+
+    AIError 문구는 error_message 로 저장되고 API 응답까지 간다. 예외 문구에는
+    상담 발화나 내부 경로가 섞일 수 있다.
+    """
+
+    mapped = map_ai_error(ValueError("아빠가 때렸어요 발화를 처리하지 못했습니다"))
+
+    assert mapped.error_code == ErrorCode.AI_FAILED
+    assert "아빠가 때렸어요" not in str(mapped)
+    assert "ValueError" in str(mapped)

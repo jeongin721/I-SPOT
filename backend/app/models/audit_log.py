@@ -39,6 +39,18 @@ class AuditLog(UUIDPrimaryKeyMixin, Base):
         Uuid(as_uuid=True), nullable=True, index=True
     )
 
+    # 행동의 결과. 실패한 로그인 · 거부된 접근도 남기기 위해 둔다.
+    # 실패를 별도 action 값으로 만들면 action 이 *_FAILED 로 두 배가 된다.
+    status: Mapped[str] = mapped_column(
+        String(20), default="SUCCESS", server_default="SUCCESS", nullable=False, index=True
+    )
+    error_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # 접속 기록 화면이 쓰는 값. IPv6 가 최대 45자라 String(45) 로 둔다.
+    # PostgreSQL 전용 INET 은 SQLite 테스트에서 쓸 수 없다.(models/base.py)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     detail: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

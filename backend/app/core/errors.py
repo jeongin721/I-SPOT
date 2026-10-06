@@ -12,8 +12,16 @@ class ErrorCode(str, Enum):
 
     # 인증 / 권한
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    # 비밀번호 변경 때 현재 비밀번호 불일치. 로그인 만료(401)와 헷갈리지 않게 400 으로 쓴다.
+    INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"
     UNAUTHORIZED = "UNAUTHORIZED"
     INACTIVE_USER = "INACTIVE_USER"
+    # 감사 로그 전용(LOGIN 실패의 error_code). 응답에는 쓰지 않는다 — 잠긴 계정도
+    # 틀린 비밀번호와 같은 INVALID_CREDENTIALS 를 받는다.(user_service.authenticate)
+    ACCOUNT_LOCKED = "ACCOUNT_LOCKED"
+    ACCOUNT_DORMANT = "ACCOUNT_DORMANT"
+    PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED"
+    TEMP_PASSWORD_EXPIRED = "TEMP_PASSWORD_EXPIRED"
     FORBIDDEN = "FORBIDDEN"
 
     # 조회
@@ -29,6 +37,9 @@ class ErrorCode(str, Enum):
 
     # 입력 검증
     VALIDATION_ERROR = "VALIDATION_ERROR"
+    WEAK_PASSWORD = "WEAK_PASSWORD"
+    SAME_PASSWORD = "SAME_PASSWORD"
+    PASSWORD_REUSED = "PASSWORD_REUSED"
     DUPLICATE_RESOURCE = "DUPLICATE_RESOURCE"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
 
@@ -119,10 +130,16 @@ def bad_request(code: ErrorCode, message: str) -> APIError:
     return APIError(code, message, status_code=400)
 
 
-def invalid_session_state(current: str, expected: str) -> APIError:
+def invalid_session_state(current: str, expected: str, message: str) -> APIError:
+    """회기 상태 때문에 거절할 때 쓴다.
+
+    message 는 사람에게 보여줄 문구라 상태 코드를 넣지 않는다(state_machine 이 만든다).
+    상태 코드는 details 에만 둔다.
+    """
+
     return APIError(
         ErrorCode.INVALID_SESSION_STATE,
-        f"현재 상태({current})에서는 처리할 수 없습니다. 필요 상태: {expected}",
+        message,
         status_code=409,
         details={"current_status": current, "expected_status": expected},
     )

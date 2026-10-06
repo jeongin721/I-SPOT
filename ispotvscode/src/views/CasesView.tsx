@@ -1,11 +1,140 @@
-import { Fragment, useState, useMemo } from "react";
+import { Fragment, useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { CASES, type RiskLevel, type AbuseType, type CaseRecord as Case } from "../data/cases";
+import { type RiskLevel, type AbuseType, type CaseRecord as Case } from "../data/cases";
 import { RiskBadge, AbuseBadge, StatusLabel } from "../components/ui/Badges";
+import { cases as casesApi } from "../api/endpoints";
+import { describeApiError, toUiCaseWithId, type CaseWithId } from "../api/adapters";
+
+// 사례 목록은 Backend(GET /cases)에서 온다. 학대유형 · 키워드 · 위험도는 아직 Backend 에
+// 없어 빈 값으로 온다(adapters.toUiCase). 그 필터는 값이 들어오기 전까지 비어 보인다.
+const PAGE_SIZE = 50;
+
 
 const ABUSE_OPTIONS: (AbuseType | "전체")[] = ["전체", "신체", "정서", "성", "방임"];
 const RISK_OPTIONS: (RiskLevel | "전체")[] = ["전체", "high", "mid", "low"];
-const RISK_LABELS = { "전체": "전체", high: "고위험", mid: "중위험", low: "저위험" };
+const RISK_LABELS = { "전체": "전체", high: "확인 필요", mid: "확인 중", low: "확인 완료" };
+
+// ─── New Case Modal ───────────────────────────────────────────────────────────
+
+interface NewCaseModalProps {
+  counselorName: string;
+  onClose: () => void;
+  onRegister: (c: CaseWithId) => void;
+}
+
+function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps) {
+  const [name, setName]         = useState("");
+  const [age, setAge]           = useState("");
+  const [guardian, setGuardian] = useState("");
+  const [errors, setErrors]     = useState<Record<string, string>>({});
+  const [saving, setSaving]     = useState(false);
+
+  function validate() {
+    const e: Record<string, string> = {};
+    if (!name.trim())     e.name = "이름을 입력해주세요.";
+    if (!age.trim())      e.age = "연령을 입력해주세요.";
+    else if (isNaN(Number(age)) || Number(age) <= 0) e.age = "유효한 연령을 입력해주세요.";
+    if (!guardian.trim()) e.guardian = "보호자를 입력해주세요.";
+    return e;
+  }
+
+  async function handleSubmit() {
+    const e = validate();
+    if (Object.keys(e).length > 0) { setErrors(e); return; }
+    if (saving) return;
+
+    setSaving(true);
+    try {
+      // Backend 는 아동 실명을 저장하지 않으므로 입력값을 별칭(child_alias)으로 보낸다.
+      // 위험도는 Backend 에 없어 보내지 않는다(AI 분석 결과로 채울 예정).
+      const created = await casesApi.create({
+        title: `${name.trim()} 사례`,
+        child_alias: name.trim(),
+        child_birth_year: new Date().getFullYear() - Number(age),
+        guardian_type: "OTHER",
+        guardian_note: guardian.trim(),
+      });
+      onRegister(toUiCaseWithId(created, { counselorName }));
+    } catch (caught) {
+      setErrors({ form: describeApiError(caught, "사례 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.") });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white border border-[#E2E8F0] rounded-[10px] w-[440px] shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0]">
+          <h2 className="text-[16px] font-semibold text-[#172033]">새 사례 등록</h2>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1">아동 이름 <span className="text-red-500">*</span></label>
+            <input value={name} onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: "" })); }}
+              placeholder="이름 입력"
+              className="w-full px-3 py-2 rounded-[6px] border text-[13px] text-[#172033] focus:outline-none focus:ring-1 focus:ring-[#2563EB] transition-all"
+              style={{ borderColor: errors.name ? "#DC2626" : "#E2E8F0" }} />
+            {errors.name && <p className="text-[11px] text-red-500 mt-1">{errors.name}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1">연령 <span className="text-red-500">*</span></label>
+            <input value={age} onChange={e => { setAge(e.target.value); setErrors(p => ({ ...p, age: "" })); }}
+              placeholder="예: 9" type="number" min="1" max="18"
+              className="w-full px-3 py-2 rounded-[6px] border text-[13px] text-[#172033] focus:outline-none focus:ring-1 focus:ring-[#2563EB] transition-all"
+              style={{ borderColor: errors.age ? "#DC2626" : "#E2E8F0" }} />
+            {errors.age && <p className="text-[11px] text-red-500 mt-1">{errors.age}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1">보호자 <span className="text-red-500">*</span></label>
+            <input value={guardian} onChange={e => { setGuardian(e.target.value); setErrors(p => ({ ...p, guardian: "" })); }}
+              placeholder="보호자 이름 입력"
+              className="w-full px-3 py-2 rounded-[6px] border text-[13px] text-[#172033] focus:outline-none focus:ring-1 focus:ring-[#2563EB] transition-all"
+              style={{ borderColor: errors.guardian ? "#DC2626" : "#E2E8F0" }} />
+            {errors.guardian && <p className="text-[11px] text-red-500 mt-1">{errors.guardian}</p>}
+          </div>
+          {/* 위험도는 Backend 에 저장할 곳이 없다(AI 분석 · 상담사 검토 뒤 정해질 값). 예전에는 고른 값을 말없이
+              버렸으므로 고르지 못하게 막고 이유를 적는다. 저장하려면 Contract 변경 제안부터 한다. */}
+          <div>
+            <label className="block text-[12px] font-semibold text-[#172033] mb-1.5">위험도</label>
+            <div className="flex gap-2">
+              {(["확인 필요", "확인 중", "확인 완료"] as const).map(lbl => (
+                <button
+                  key={lbl}
+                  type="button"
+                  disabled
+                  title="위험도는 아직 서버에 없습니다"
+                  className="flex-1 py-2 rounded-[6px] border text-[12px] font-semibold transition-all opacity-60 cursor-not-allowed"
+                  style={{ color: "#94A3B8", background: "#F8FAFC", borderColor: "#E2E8F0" }}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-[#94A3B8] mt-1">위험도는 아직 서버에 저장되지 않아 등록할 때 고를 수 없습니다.</p>
+          </div>
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] p-4 space-y-2 text-[13px]">
+            <div className="flex justify-between"><span className="text-[#94A3B8]">담당 상담사</span><span className="text-[#172033] font-medium">{counselorName} <span className="text-[11px] text-[#94A3B8]">자동 입력</span></span></div>
+            <div className="flex justify-between"><span className="text-[#94A3B8]">상담 회차</span><span className="text-[#172033] font-medium">0회 <span className="text-[11px] text-[#94A3B8]">자동 관리</span></span></div>
+            <div className="flex justify-between"><span className="text-[#94A3B8]">최근 상담</span><span className="text-[#172033] font-medium">상담 기록 없음 <span className="text-[11px] text-[#94A3B8]">자동 관리</span></span></div>
+          </div>
+        </div>
+        {errors.form && (
+          <p className="px-6 pb-3 text-[12px] text-red-600">{errors.form}</p>
+        )}
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-[#E2E8F0] bg-[#F8FAFC]">
+          <button onClick={onClose} className="px-4 py-2 text-[13px] text-[#64748B] border border-[#E2E8F0] rounded-[6px] hover:bg-white transition-colors">취소</button>
+          <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-[13px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-[6px] transition-colors disabled:opacity-60">{saving ? "등록 중..." : "사례 등록"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main View ────────────────────────────────────────────────────────────────
 
 export default function CasesView() {
   const navigate = useNavigate();
@@ -13,16 +142,45 @@ export default function CasesView() {
   const [abuseFilter, setAbuseFilter] = useState<AbuseType | "전체">("전체");
   const [riskFilter,  setRiskFilter]  = useState<RiskLevel | "전체">("전체");
   const [kwQuery,     setKwQuery]     = useState("");
-  const [sortBy,      setSortBy]      = useState<"riskScore" | "lastSession">("riskScore");
+  // 위험도가 아직 없어(모든 사례 0점) 위험도순 정렬은 막고 최근상담순으로 시작한다.
+  const [sortBy,      setSortBy]      = useState<"riskScore" | "lastSession">("lastSession");
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
+  const [showNewCase, setShowNewCase] = useState(false);
+  const [allCases, setAllCases]       = useState<CaseWithId[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [loadError, setLoadError]     = useState<string | null>(null);
 
-  const filtered = useMemo(() => CASES.filter(c => {
+  const counselorName = (() => {
+    try { return JSON.parse(localStorage.getItem("ispot_auth") ?? "{}").name ?? "상담사"; } catch { return "상담사"; }
+  })();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    casesApi
+      .list({ page: 1, page_size: PAGE_SIZE })
+      .then((page) => {
+        if (!cancelled) setAllCases(page.items.map((c) => toUiCaseWithId(c)));
+      })
+      .catch((caught) => {
+        if (!cancelled) setLoadError(describeApiError(caught, "사례 목록을 불러오지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = useMemo(() => allCases.filter(c => {
     if (query && !c.childName.includes(query) && !c.id.toLowerCase().includes(query.toLowerCase()) && !c.guardian.includes(query)) return false;
     if (abuseFilter !== "전체" && !c.abuseTypes.includes(abuseFilter)) return false;
     if (riskFilter !== "전체" && c.riskLevel !== riskFilter) return false;
     if (kwQuery && !c.keywords.some(k => k.includes(kwQuery))) return false;
     return true;
-  }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)), [query, abuseFilter, riskFilter, kwQuery, sortBy]);
+  }).sort((a, b) => sortBy === "riskScore" ? b.riskScore - a.riskScore : b.lastSession.localeCompare(a.lastSession)), [query, abuseFilter, riskFilter, kwQuery, sortBy, allCases]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -32,7 +190,10 @@ export default function CasesView() {
             <h1 className="text-[22px] font-semibold text-[#172033]">통합 사례 목록</h1>
             <p className="text-[13px] text-[#64748B] mt-0.5">담당 사례 전체 · 이름, 학대유형, 키워드로 검색</p>
           </div>
-          <button className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-[#15314A] hover:bg-[#0F263B] rounded-[6px] transition-colors">
+          <button
+            onClick={() => setShowNewCase(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-[#15314A] hover:bg-[#0F263B] rounded-[6px] transition-colors"
+          >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             새 사례 등록
           </button>
@@ -70,7 +231,7 @@ export default function CasesView() {
           </div>
           <div className="ml-auto flex items-center gap-1 text-[12px] text-[#64748B]">
             <span>정렬:</span>
-            <button onClick={() => setSortBy("riskScore")} className={`px-2 py-1 rounded transition-all ${sortBy === "riskScore" ? "font-semibold text-[#172033]" : "hover:text-[#172033]"}`}>위험도순</button>
+            <button disabled title="위험도는 아직 서버에 없습니다" className="px-2 py-1 rounded transition-all opacity-50 cursor-not-allowed">위험도순</button>
             <button onClick={() => setSortBy("lastSession")} className={`px-2 py-1 rounded transition-all ${sortBy === "lastSession" ? "font-semibold text-[#172033]" : "hover:text-[#172033]"}`}>최근상담순</button>
             <span className="ml-2 text-[#94A3B8]">{filtered.length}건</span>
           </div>
@@ -110,7 +271,7 @@ export default function CasesView() {
                   <td className="px-4 py-3 text-[13px] text-[#64748B]">{c.counselor}</td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={e => { e.stopPropagation(); navigate(`/cases/${c.id}`); }}
+                      onClick={e => { e.stopPropagation(); navigate(`/cases/${c.backendId}`); }}
                       className="text-[12px] text-[#2563EB] hover:text-[#1D4ED8] font-medium transition-colors"
                     >
                       상세
@@ -143,16 +304,10 @@ export default function CasesView() {
                         </div>
                         <div className="flex gap-2 shrink-0">
                           <button
-                            onClick={() => navigate(`/cases/${c.id}`)}
+                            onClick={() => navigate(`/cases/${c.backendId}`)}
                             className="px-3 py-1.5 bg-[#15314A] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#0F263B] transition-colors"
                           >
                             상세 화면
-                          </button>
-                          <button
-                            onClick={() => navigate(`/cases/${c.id}/counseling/new`)}
-                            className="px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-[12px] font-medium rounded-[6px] hover:bg-[#F1F5F9] transition-colors"
-                          >
-                            새 상담 시작
                           </button>
                           <button onClick={() => setSelectedCase(null)} className="p-1.5 text-[#94A3B8] hover:text-[#64748B] transition-colors">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -164,12 +319,26 @@ export default function CasesView() {
                 )}
               </Fragment>
             ))}
-            {filtered.length === 0 && (
+            {loading && (
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">사례 목록을 불러오는 중...</td></tr>
+            )}
+            {!loading && loadError && (
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-[13px] text-red-600">{loadError}</td></tr>
+            )}
+            {!loading && !loadError && filtered.length === 0 && (
               <tr><td colSpan={10} className="px-4 py-12 text-center text-[13px] text-[#94A3B8]">검색 결과가 없습니다.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {showNewCase && (
+        <NewCaseModal
+          counselorName={counselorName}
+          onClose={() => setShowNewCase(false)}
+          onRegister={c => { setAllCases(prev => [c, ...prev]); setShowNewCase(false); }}
+        />
+      )}
     </div>
   );
 }

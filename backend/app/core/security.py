@@ -1,5 +1,6 @@
 # 비밀번호 해싱 및 JWT 발급/검증.
 
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -14,7 +15,17 @@ _BCRYPT_MAX_BYTES = 72
 
 
 def _normalize(password: str) -> bytes:
-    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    """
+    저장·검증에 쓸 byte 값.
+
+    한글은 표기 방식이 두 가지(NFC/NFD)라 눈에 같아 보여도 byte 가 다르다.
+    한쪽으로 저장하고 다른 쪽으로 입력하면 로그인이 안 되므로 NFC 로 맞춘다.
+    ASCII 는 NFC 로 바뀌지 않아 기존 해시에 영향이 없다.
+    """
+
+    normalized = unicodedata.normalize("NFC", password)
+
+    return normalized.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def hash_password(password: str) -> str:
@@ -31,14 +42,22 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def create_access_token(
     subject: str,
     role: str,
+    token_version: int = 0,
     expires_minutes: Optional[int] = None,
 ) -> str:
+    """
+    Access Token.
+
+    tv(token_version)는 발급 시점의 계정 번호다. 비밀번호를 바꾸거나 관리자가
+    강제 로그아웃시키면 계정 쪽 번호가 올라가 이전 Token 이 전부 거부된다.
+    """
     expire_minutes = expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
     now = datetime.now(timezone.utc)
 
     payload: Dict[str, Any] = {
         "sub": subject,
         "role": role,
+        "tv": token_version,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=expire_minutes)).timestamp()),
     }
@@ -48,10 +67,14 @@ def create_access_token(
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     try:
+        # iat(발급 시각)가 지금보다 뒤라는 이유로는 거절하지 않는다. PyJWT 는 기본으로 그렇게 하는데, 서버 시계가
+        # 뒤로 조정되면 방금 발급한 토큰이 곧바로 401 이 된다. iat 는 어디에서도 쓰지 않고, 토큰은 서버만 서명하며,
+        # 유효 기간은 exp, 계정 쪽 무효화는 tv(Token 버전)가 맡는다.
         return jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_iat": False},
         )
     except jwt.ExpiredSignatureError as error:
         raise unauthorized("토큰이 만료되었습니다. 다시 로그인해 주세요.") from error

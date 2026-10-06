@@ -1,16 +1,26 @@
-import { Outlet, NavLink, useNavigate, Navigate } from "react-router";
+import { Outlet, NavLink, useNavigate, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import NotificationPopover from "../components/ui/NotificationPopover";
+import {
+  PASSWORD_CHANGE_REQUIRED_EVENT,
+  SESSION_INFO_KEY,
+  TOKEN_KEY,
+  UNAUTHORIZED_EVENT,
+  clearSession,
+  getToken,
+} from "../api/client";
+import { tasks as tasksApi } from "../api/endpoints";
+import { toMenuBadges } from "../api/dashboardAdapters";
 
+// 메뉴 배지 숫자는 처리 대기 업무 요약(GET /tasks/summary)에서 온다. 어느 메뉴가 어떤 업무를 세는지는
+// dashboardAdapters.MENU_BADGE_TASKS 에 있다(보고서 생성은 대응하는 업무가 Backend 에 없어 배지가 없다).
 const NAV_ITEMS = [
-  { to: "/dashboard",  label: "대시보드",          icon: "grid",       group: null },
-  { to: "/cases",      label: "통합 사례 목록",     icon: "folder",     group: "사례 관리" },
-  { to: "/recording",  label: "상담 녹음",          icon: "mic",        group: "상담 업무" },
-  { to: "/stt-cases",  label: "STT 검수",           icon: "transcript", group: "상담 업무", badge: 1 },
-  { to: "/ai-cases",   label: "분석 결과 검토",     icon: "robot",      group: "상담 업무", badge: 2 },
-  { to: "/plan-cases",    label: "사례관리 계획",      icon: "clipboard",  group: "상담 업무", badge: 0 },
-  { to: "/closure-cases", label: "종결·가정복귀 검토", icon: "home",       group: "상담 업무", badge: 0 },
-  { to: "/report-cases",  label: "보고서 생성",        icon: "document",   group: "문서",      badge: 0 },
+  { to: "/dashboard",       label: "대시보드",       icon: "grid",       group: null },
+  { to: "/cases",           label: "통합 사례 목록", icon: "folder",     group: "사례 관리" },
+  { to: "/follow-up",       label: "후속 관리",      icon: "home",       group: "사례 관리" },
+  { to: "/stt-cases",       label: "상담 자료 검수", icon: "transcript", group: "상담 업무" },
+  { to: "/case-management", label: "사례 관리",      icon: "clipboard",  group: "상담 업무" },
+  { to: "/report-cases",    label: "보고서 생성",    icon: "document",   group: "문서" },
 ];
 
 function NavIcon({ id }: { id: string }) {
@@ -28,24 +38,94 @@ function NavIcon({ id }: { id: string }) {
   return <>{icons[id] ?? null}</>;
 }
 
+/** 메뉴 옆 숫자. 0 이거나 아직 모르면(불러오는 중 · 실패) 그리지 않는다. */
+function MenuBadge({ count }: { count: number | undefined }) {
+  if (count == null || count <= 0) return null;
+
+  return (
+    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-sm min-w-[18px] text-center"
+      style={{ background: count > 1 ? "#DC2626" : "#D97706", color: "white" }}>
+      {count}
+    </span>
+  );
+}
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const [auth, setAuth] = useState<{ role: string; name: string } | null>(null);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem("ispot_auth");
-    if (raw) {
-      try { setAuth(JSON.parse(raw)); } catch { /* ignore */ }
+    // 이름 · 역할만 남고 토큰이 없으면 서버를 부를 수 없으므로 로그인하지 않은 것으로 본다.
+    function readStoredAuth(): { role: string; name: string } | null {
+      const raw = localStorage.getItem(SESSION_INFO_KEY);
+      if (!raw || !getToken()) return null;
+      try { return JSON.parse(raw); } catch { return null; }
     }
+
+    setAuth(readStoredAuth());
     setChecked(true);
-  }, []);
+
+    // 어느 화면에서든 토큰이 만료 · 폐기되면(401) 로그인 화면으로 보낸다.
+    function onUnauthorized() {
+      setAuth(null);
+    }
+
+    // 임시 비밀번호 상태(403 PASSWORD_CHANGE_REQUIRED)면 비밀번호를 바꾸는 내 정보 화면으로 보낸다.
+    // 새로고침 · 주소 직접 입력으로 다른 화면에 들어와도 그 화면이나 메뉴 배지의 첫 요청에서 여기로 온다.
+    function onPasswordChangeRequired() {
+      if (window.location.pathname !== "/profile") {
+        navigate("/profile", { replace: true, state: { mustChangePassword: true } });
+      }
+    }
+
+    // 다른 탭에서 로그아웃 · 다른 계정 로그인 · 토큰 폐기가 일어나면 localStorage 가 바뀐다(이 탭에는 storage 이벤트로 온다).
+    // 토큰이 없어졌으면 로그인 화면으로, 다른 계정이 들어왔으면 그 이름 · 역할로 바꾼다.
+    function onStorage(event: StorageEvent) {
+      if (event.key !== null && event.key !== TOKEN_KEY && event.key !== SESSION_INFO_KEY) return;
+      setAuth(readStoredAuth());
+    }
+
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, onPasswordChangeRequired);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+      window.removeEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, onPasswordChangeRequired);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [navigate]);
+
+  // 메뉴 배지. 화면을 옮길 때마다 다시 세어 검수 · 승인 뒤 숫자가 따라오게 한다.
+  // 처음 불러오는 중이거나 실패하면 배지를 숨긴다(null). 다시 세는 동안에는 직전 숫자를 둔다.
+  const location = useLocation();
+  const [badges, setBadges] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    if (!auth) return;
+
+    let cancelled = false;
+
+    tasksApi
+      .summary()
+      .then((summary) => {
+        if (!cancelled) setBadges(toMenuBadges(summary));
+      })
+      .catch(() => {
+        if (!cancelled) setBadges(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, location.pathname]);
 
   if (!checked) return null;
   if (!auth) return <Navigate to="/login" replace />;
 
   function handleLogout() {
-    localStorage.removeItem("ispot_auth");
+    clearSession();
     navigate("/login");
   }
 
@@ -75,13 +155,13 @@ export default function AppLayout() {
         </div>
 
         <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center gap-2.5">
+          <button onClick={() => navigate("/profile")} className="flex items-center gap-2.5 w-full text-left hover:opacity-80 transition-opacity">
             <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ background: "#15314A" }}>{initial}</div>
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-white truncate">{auth.name}</div>
               <div className="text-[11px] truncate" style={{ color: "rgba(255,255,255,0.4)" }}>아동·청소년 상담사</div>
             </div>
-          </div>
+          </button>
         </div>
 
         <nav className="flex-1 py-2 overflow-y-auto">
@@ -112,12 +192,7 @@ export default function AppLayout() {
                 >
                   <span className="shrink-0"><NavIcon id={item.icon} /></span>
                   <span className="text-[13px] font-medium flex-1 leading-tight">{item.label}</span>
-                  {item.badge != null && item.badge > 0 && (
-                    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-sm min-w-[18px] text-center"
-                      style={{ background: item.badge > 1 ? "#DC2626" : "#D97706", color: "white" }}>
-                      {item.badge}
-                    </span>
-                  )}
+                  <MenuBadge count={badges?.[item.to]} />
                 </NavLink>
               ))}
             </div>
@@ -140,11 +215,7 @@ export default function AppLayout() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-[#E2E8F0] px-5 flex items-center justify-between shrink-0" style={{ height: "56px" }}>
-          <div className="relative" style={{ width: "300px" }}>
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="빠른 사례 검색..." className="w-full pl-8 pr-3 py-1.5 rounded-[6px] border border-[#E2E8F0] text-[13px] text-[#172033] bg-[#F8FAFC] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all" />
-          </div>
+        <header className="bg-white border-b border-[#E2E8F0] px-5 flex items-center justify-end shrink-0" style={{ height: "52px" }}>
           <div className="flex items-center gap-3">
             <NotificationPopover />
             <div className="w-px h-4 bg-[#E2E8F0]" />

@@ -10,16 +10,15 @@ type AdminView =
   | "accounts"
   | "access-log"
   | "security"
-  | "notices"
-  | "assignments";
+  | "stats";
 
 // ── Mock data ──────────────────────────────────────────────────────────────
 const COUNSELORS = [
-  { id: "C001", name: "이서연", role: "상담사", status: "active",  lastLogin: "2026-08-21 09:14", caseCount: 6,  ip: "192.168.1.12" },
-  { id: "C002", name: "박지훈", role: "상담사", status: "active",  lastLogin: "2026-08-21 08:52", caseCount: 4,  ip: "192.168.1.19" },
-  { id: "C003", name: "최수민", role: "상담사", status: "inactive", lastLogin: "2026-08-14 14:30", caseCount: 0,  ip: "192.168.1.34" },
-  { id: "C004", name: "정다은", role: "선임상담사", status: "active", lastLogin: "2026-08-21 09:01", caseCount: 7, ip: "192.168.1.8"  },
-  { id: "C005", name: "한승호", role: "상담사", status: "active",  lastLogin: "2026-08-20 17:45", caseCount: 3,  ip: "192.168.1.22" },
+  { id: "C001", name: "이서연", role: "상담사",    status: "active",   lastLogin: "2026-08-21 09:14", caseCount: 6, ip: "192.168.1.12", locked: false },
+  { id: "C002", name: "박지훈", role: "상담사",    status: "active",   lastLogin: "2026-08-21 08:52", caseCount: 4, ip: "192.168.1.19", locked: false },
+  { id: "C003", name: "최수민", role: "상담사",    status: "inactive", lastLogin: "2026-08-14 14:30", caseCount: 0, ip: "192.168.1.34", locked: false },
+  { id: "C004", name: "정다은", role: "선임상담사", status: "active",   lastLogin: "2026-08-21 09:01", caseCount: 7, ip: "192.168.1.8",  locked: true  },
+  { id: "C005", name: "한승호", role: "상담사",    status: "active",   lastLogin: "2026-08-20 17:45", caseCount: 3, ip: "192.168.1.22", locked: false },
 ];
 
 const ACCESS_LOG = [
@@ -44,18 +43,18 @@ const SECURITY_EVENTS = [
 
 const WORK_QUEUE = {
   stt: [
-    { caseId: "C-2026-0412", child: "김○○", counselor: "이서연", submitted: "2026-08-21 13:50", status: "처리중" },
-    { caseId: "C-2026-0389", child: "최○○", counselor: "박지훈", submitted: "2026-08-21 11:20", status: "대기" },
-    { caseId: "C-2026-0451", child: "황○○", counselor: "한승호", submitted: "2026-08-20 16:44", status: "오류" },
+    { caseId: "C-2026-0451", child: "황○○", counselor: "한승호", submitted: "2026-08-20 16:44", status: "오류",    waitTime: "17시간 52분", stage: "오류",    reason: "STT 변환 처리", handler: "시스템" },
+    { caseId: "C-2026-0389", child: "최○○", counselor: "박지훈", submitted: "2026-08-21 11:20", status: "대기",    waitTime: "4시간 30분",  stage: "처리 대기", reason: "STT 변환 처리", handler: "시스템" },
+    { caseId: "C-2026-0412", child: "김○○", counselor: "이서연", submitted: "2026-08-21 13:50", status: "처리중",  waitTime: "2시간 15분",  stage: "처리중",   reason: "STT 변환 처리", handler: "시스템" },
   ],
   aiReview: [
-    { caseId: "C-2026-0351", child: "박○○", counselor: "정다은", submitted: "2026-08-21 10:05", status: "검토 대기" },
-    { caseId: "C-2026-0277", child: "오○○", counselor: "이서연", submitted: "2026-08-20 14:30", status: "검토 대기" },
+    { caseId: "C-2026-0277", child: "오○○", counselor: "이서연", submitted: "2026-08-20 14:30", status: "검토 대기", waitTime: "22시간 17분", stage: "검토 대기", reason: "AI 분석 완료 검토 요청", handler: "이서연" },
+    { caseId: "C-2026-0351", child: "박○○", counselor: "정다은", submitted: "2026-08-21 10:05", status: "검토 대기", waitTime: "5시간 42분",  stage: "검토 대기", reason: "AI 분석 완료 검토 요청", handler: "정다은" },
   ],
   approval: [
-    { caseId: "C-2026-0312", child: "이○○", counselor: "정다은", docType: "상담일지",  submitted: "2026-08-21 09:40", status: "승인 대기" },
-    { caseId: "C-2026-0389", child: "최○○", counselor: "박지훈", docType: "사정기록지", submitted: "2026-08-20 17:10", status: "승인 대기" },
-    { caseId: "C-2026-0234", child: "정○○", counselor: "한승호", docType: "상담일지",  submitted: "2026-08-19 15:55", status: "반려됨" },
+    { caseId: "C-2026-0234", child: "정○○", counselor: "한승호", docType: "상담일지",  submitted: "2026-08-19 15:55", status: "반려됨",   waitTime: "51시간 52분", stage: "반려됨",  reason: "상담일지 제출",  handler: "한승호" },
+    { caseId: "C-2026-0389", child: "최○○", counselor: "박지훈", docType: "사정기록지", submitted: "2026-08-20 17:10", status: "승인 대기", waitTime: "26시간 37분", stage: "승인 대기", reason: "사정기록지 제출", handler: "박지훈" },
+    { caseId: "C-2026-0312", child: "이○○", counselor: "정다은", docType: "상담일지",  submitted: "2026-08-21 09:40", status: "승인 대기", waitTime: "6시간 7분",   stage: "승인 대기", reason: "상담일지 제출",  handler: "정다은" },
   ],
 };
 
@@ -79,7 +78,7 @@ function RiskBadge({ level }: { level: RiskLevel }) {
     mid:  "bg-amber-50 text-amber-700 border-amber-200",
     low:  "bg-green-50 text-green-700 border-green-200",
   }[level];
-  const label = { high: "고위험", mid: "중위험", low: "저위험" }[level];
+  const label = { high: "확인 필요", mid: "확인 중", low: "확인 완료" }[level];
   return <span className={`px-2 py-0.5 rounded text-xs font-medium border ${cfg}`}>{label}</span>;
 }
 
@@ -109,9 +108,9 @@ function AdminOverview({ onNavigate }: { onNavigate: (v: AdminView) => void }) {
 
   const urgent = [
     { label: "외부 IP 반복 로그인 실패 감지", tag: "보안", color: "text-red-700 bg-red-50 border-red-200",    view: "security" as AdminView },
-    { label: `고위험 사례 ${highRisk}건 집중 모니터링 필요`, tag: "사례", color: "text-amber-700 bg-amber-50 border-amber-200", view: "cases" as AdminView },
+    { label: `확인 필요 사례 ${highRisk}건 집중 모니터링 필요`, tag: "사례", color: "text-amber-700 bg-amber-50 border-amber-200", view: "cases" as AdminView },
     { label: `문서 승인 대기 ${WORK_QUEUE.approval.filter(a => a.status === "승인 대기").length}건`,             tag: "승인", color: "text-blue-700 bg-blue-50 border-blue-200",  view: "approvals" as AdminView },
-    { label: `미배정 신규 사례 ${UNASSIGNED_CASES.length}건`,                                                   tag: "배정", color: "text-purple-700 bg-purple-50 border-purple-200", view: "assignments" as AdminView },
+    { label: `미배정 신규 사례 ${UNASSIGNED_CASES.length}건`,                                                   tag: "배정", color: "text-purple-700 bg-purple-50 border-purple-200", view: "cases" as AdminView },
   ];
 
   return (
@@ -126,7 +125,7 @@ function AdminOverview({ onNavigate }: { onNavigate: (v: AdminView) => void }) {
 
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "전체 관리 사례", value: String(CASES.length),          sub: `고위험 ${highRisk}건 포함`,   color: "text-slate-900",  icon: "📁" },
+          { label: "전체 관리 사례", value: String(CASES.length),          sub: `확인 필요 ${highRisk}건 포함`,   color: "text-slate-900",  icon: "📁" },
           { label: "처리 대기 업무", value: String(pendingAll),             sub: "STT·AI검토·승인 합산",       color: "text-amber-700",  icon: "⏳" },
           { label: "활성 상담사",    value: String(COUNSELORS.filter(c => c.status === "active").length), sub: `전체 ${COUNSELORS.length}명 중`, color: "text-green-700",  icon: "👤" },
           { label: "미배정 사례",    value: String(UNASSIGNED_CASES.length), sub: "즉시 배정 필요",            color: "text-[#2563EB]", icon: "📋" },
@@ -186,8 +185,11 @@ function AllCasesView() {
   const [counselorFilter, setCounselorFilter] = useState("전체");
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "전체">("전체");
   const [query, setQuery] = useState("");
+  const [showUnassigned, setShowUnassigned] = useState(false);
+  const [assignedMap, setAssignedMap] = useState<Record<string, string>>({});
 
   const counselorNames = ["전체", ...Array.from(new Set(CASES.map(c => c.counselor)))];
+  const activeCounselors = COUNSELORS.filter(c => c.status === "active");
 
   const filtered = useMemo(() => CASES.filter(c => {
     if (counselorFilter !== "전체" && c.counselor !== counselorFilter) return false;
@@ -216,7 +218,7 @@ function AllCasesView() {
         </div>
         <div className="flex items-center gap-2">
           {(["전체", "high", "mid", "low"] as const).map(r => {
-            const labels = { "전체": "전체", high: "고위험", mid: "중위험", low: "저위험" };
+            const labels = { "전체": "전체", high: "확인 필요", mid: "확인 중", low: "확인 완료" };
             return (
               <button key={r} onClick={() => setRiskFilter(r)}
                 className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${riskFilter === r ? "bg-[#172033] text-white border-[#172033]" : "border-slate-200 text-slate-600 hover:border-slate-400"}`}
@@ -226,66 +228,126 @@ function AllCasesView() {
             );
           })}
         </div>
-        <span className="ml-auto text-xs text-slate-400 font-medium">{filtered.length}건</span>
+        <button
+          onClick={() => setShowUnassigned(v => !v)}
+          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${showUnassigned ? "bg-purple-700 text-white border-purple-700" : "border-slate-200 text-slate-600 hover:border-slate-400"}`}
+        >
+          미배정 ({UNASSIGNED_CASES.length})
+        </button>
+        <span className="ml-auto text-xs text-slate-400 font-medium">{showUnassigned ? UNASSIGNED_CASES.length : filtered.length}건</span>
       </div>
 
-      <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50">
-              {["사례 ID", "아동명", "연령", "학대유형", "위험도", "담당 상담사", "최근 상담", "상태", ""].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {filtered.map(c => (
-              <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${c.riskLevel === "high" ? "border-l-2 border-l-red-400" : ""}`}>
-                <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.id}</td>
-                <td className="px-4 py-3 font-semibold text-slate-900 text-sm">{c.childName}</td>
-                <td className="px-4 py-3 text-sm text-slate-600">{c.age}세</td>
-                <td className="px-4 py-3"><div className="flex gap-1">{c.abuseTypes.map(t => <AbuseBadge key={t} type={t} />)}</div></td>
-                <td className="px-4 py-3"><RiskBadge level={c.riskLevel} /></td>
-                <td className="px-4 py-3 text-sm text-slate-700 font-medium">{c.counselor}</td>
-                <td className="px-4 py-3 text-xs text-slate-500 font-mono">{c.lastSession}</td>
-                <td className="px-4 py-3">
-                  <span className={{active:"bg-blue-50 text-blue-700", pending:"bg-slate-100 text-slate-600", review:"bg-amber-50 text-amber-700"}[c.status] + " px-2 py-0.5 rounded text-xs font-medium"}>
-                    {{active:"진행중", pending:"대기중", review:"검토필요"}[c.status]}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <button className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium transition-colors">담당자 변경</button>
-                </td>
+      {showUnassigned ? (
+        <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                {["사례 ID", "아동명", "연령", "학대유형", "위험도", "접수일", "담당자 배정"].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {UNASSIGNED_CASES.map(uc => (
+                <tr key={uc.id} className="hover:bg-slate-50 transition-colors border-l-2 border-l-purple-300">
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{uc.id}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-900 text-sm">{uc.child}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{uc.age}세</td>
+                  <td className="px-4 py-3"><div className="flex gap-1">{uc.types.map(t => <AbuseBadge key={t} type={t} />)}</div></td>
+                  <td className="px-4 py-3"><RiskBadge level={uc.risk} /></td>
+                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{uc.received}</td>
+                  <td className="px-4 py-3">
+                    {assignedMap[uc.id] ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded">✓ {assignedMap[uc.id]}</span>
+                        <button onClick={() => setAssignedMap(p => { const n = { ...p }; delete n[uc.id]; return n; })} className="text-xs text-slate-400 hover:text-slate-600">취소</button>
+                      </div>
+                    ) : (
+                      <select onChange={e => e.target.value && setAssignedMap(p => ({ ...p, [uc.id]: e.target.value }))} defaultValue=""
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                      >
+                        <option value="">담당자 선택</option>
+                        {activeCounselors.map(c => <option key={c.id} value={c.name}>{c.name} ({c.caseCount}건)</option>)}
+                      </select>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                {["사례 ID", "아동명", "연령", "학대유형", "위험도", "담당 상담사", "최근 상담", "상태", ""].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filtered.map(c => (
+                <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${c.riskLevel === "high" ? "border-l-2 border-l-red-400" : ""}`}>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.id}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-900 text-sm">{c.childName}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{c.age}세</td>
+                  <td className="px-4 py-3"><div className="flex gap-1">{c.abuseTypes.map(t => <AbuseBadge key={t} type={t} />)}</div></td>
+                  <td className="px-4 py-3"><RiskBadge level={c.riskLevel} /></td>
+                  <td className="px-4 py-3 text-sm text-slate-700 font-medium">{c.counselor}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{c.lastSession}</td>
+                  <td className="px-4 py-3">
+                    <span className={{active:"bg-blue-50 text-blue-700", pending:"bg-slate-100 text-slate-600", review:"bg-amber-50 text-amber-700"}[c.status] + " px-2 py-0.5 rounded text-xs font-medium"}>
+                      {{active:"진행중", pending:"대기중", review:"검토필요"}[c.status]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium transition-colors">담당자 변경</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Section: 업무 처리 현황 ────────────────────────────────────────────────
+function waitTimeColor(wt: string): string {
+  const h = parseInt(wt);
+  if (h >= 24) return "text-red-600 font-semibold";
+  if (h >= 12) return "text-amber-600";
+  return "text-slate-500";
+}
+
+function StageBadge({ stage }: { stage: string }) {
+  const cfg: Record<string, string> = {
+    "처리중":  "bg-blue-50 text-blue-700",
+    "처리 대기": "bg-slate-100 text-slate-600",
+    "오류":    "bg-red-50 text-red-700",
+    "검토 대기": "bg-amber-50 text-amber-700",
+    "승인 대기": "bg-amber-50 text-amber-700",
+    "반려됨":  "bg-red-50 text-red-700",
+  };
+  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${cfg[stage] ?? "bg-slate-100 text-slate-600"}`}>{stage}</span>;
+}
+
 function WorkQueueView() {
   const [tab, setTab] = useState<"stt" | "aiReview" | "approval">("stt");
 
   const tabCfg = [
     { id: "stt" as const,      label: "STT 처리 대기",   count: WORK_QUEUE.stt.length },
-    { id: "aiReview" as const, label: "AI 검토 대기",    count: WORK_QUEUE.aiReview.length },
+    { id: "aiReview" as const, label: "상담사 검토 대기",    count: WORK_QUEUE.aiReview.length },
     { id: "approval" as const, label: "문서 승인 대기",  count: WORK_QUEUE.approval.filter(a => a.status === "승인 대기").length },
   ];
 
-  const sttStatusCfg: Record<string, string> = {
-    "처리중": "bg-blue-50 text-blue-700",
-    "대기":   "bg-slate-100 text-slate-600",
-    "오류":   "bg-red-50 text-red-700",
-  };
-
   return (
-    <div className="p-7 space-y-5 max-w-4xl">
+    <div className="p-7 space-y-5 max-w-5xl">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">업무 처리 현황</h1>
-        <p className="text-slate-500 text-sm mt-0.5">STT 변환 · AI 검토 · 문서 승인 처리 대기 현황</p>
+        <p className="text-slate-500 text-sm mt-0.5">STT 변환 · AI 검토 · 문서 승인 처리 대기 현황 (대기시간 기준 내림차순)</p>
       </div>
 
       <div className="flex gap-2">
@@ -303,21 +365,24 @@ function WorkQueueView() {
         {tab === "stt" && (
           <table className="w-full">
             <thead><tr className="border-b border-slate-100 bg-slate-50">
-              {["사례 ID", "아동명", "담당 상담사", "제출 시각", "상태", ""].map(h => (
-                <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+              {["사례 ID", "아동명", "담당 상담사", "제출 시각", "대기시간", "처리단계", "사유", "담당 처리자", "작업"].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {WORK_QUEUE.stt.map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{row.caseId}</td>
-                  <td className="px-5 py-3.5 font-semibold text-slate-900 text-sm">{row.child}</td>
-                  <td className="px-5 py-3.5 text-sm text-slate-700">{row.counselor}</td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500 font-mono">{row.submitted}</td>
-                  <td className="px-5 py-3.5"><span className={`px-2 py-0.5 rounded text-xs font-medium ${sttStatusCfg[row.status]}`}>{row.status}</span></td>
-                  <td className="px-5 py-3.5">
-                    {row.status === "오류" && <button className="text-xs text-red-600 hover:text-red-800 font-medium">재처리 요청</button>}
-                    {row.status !== "오류" && <button className="text-xs text-slate-400 font-medium">상세보기</button>}
+                  <td className="px-4 py-3.5 font-mono text-xs text-slate-500">{row.caseId}</td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-900 text-sm">{row.child}</td>
+                  <td className="px-4 py-3.5 text-sm text-slate-700">{row.counselor}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500 font-mono">{row.submitted}</td>
+                  <td className={`px-4 py-3.5 text-xs font-mono ${waitTimeColor(row.waitTime)}`}>{row.waitTime}</td>
+                  <td className="px-4 py-3.5"><StageBadge stage={row.stage} /></td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500">{row.reason}</td>
+                  <td className="px-4 py-3.5 text-sm text-slate-700">{row.handler}</td>
+                  <td className="px-4 py-3.5">
+                    {row.stage === "오류" && <button className="text-xs text-red-600 hover:text-red-800 font-medium">재처리 요청</button>}
+                    {row.stage !== "오류" && <button className="text-xs text-slate-400 font-medium">상세보기</button>}
                   </td>
                 </tr>
               ))}
@@ -327,18 +392,21 @@ function WorkQueueView() {
         {tab === "aiReview" && (
           <table className="w-full">
             <thead><tr className="border-b border-slate-100 bg-slate-50">
-              {["사례 ID", "아동명", "담당 상담사", "검토 요청 시각", ""].map(h => (
-                <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+              {["사례 ID", "아동명", "담당 상담사", "제출 시각", "대기시간", "처리단계", "담당 처리자", "작업"].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {WORK_QUEUE.aiReview.map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{row.caseId}</td>
-                  <td className="px-5 py-3.5 font-semibold text-slate-900 text-sm">{row.child}</td>
-                  <td className="px-5 py-3.5 text-sm text-slate-700">{row.counselor}</td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500 font-mono">{row.submitted}</td>
-                  <td className="px-5 py-3.5"><button className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium">검토 독려</button></td>
+                  <td className="px-4 py-3.5 font-mono text-xs text-slate-500">{row.caseId}</td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-900 text-sm">{row.child}</td>
+                  <td className="px-4 py-3.5 text-sm text-slate-700">{row.counselor}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500 font-mono">{row.submitted}</td>
+                  <td className={`px-4 py-3.5 text-xs font-mono ${waitTimeColor(row.waitTime)}`}>{row.waitTime}</td>
+                  <td className="px-4 py-3.5"><StageBadge stage={row.stage} /></td>
+                  <td className="px-4 py-3.5 text-sm text-slate-700">{row.handler}</td>
+                  <td className="px-4 py-3.5"><button className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium">검토 독려</button></td>
                 </tr>
               ))}
             </tbody>
@@ -347,22 +415,22 @@ function WorkQueueView() {
         {tab === "approval" && (
           <table className="w-full">
             <thead><tr className="border-b border-slate-100 bg-slate-50">
-              {["사례 ID", "아동명", "문서 유형", "담당 상담사", "제출 시각", "상태", ""].map(h => (
-                <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+              {["사례 ID", "아동명", "문서 유형", "제출 시각", "대기시간", "상태", "사유", "담당 처리자", "작업"].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {WORK_QUEUE.approval.map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{row.caseId}</td>
-                  <td className="px-5 py-3.5 font-semibold text-slate-900 text-sm">{row.child}</td>
-                  <td className="px-5 py-3.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-medium">{row.docType}</span></td>
-                  <td className="px-5 py-3.5 text-sm text-slate-700">{row.counselor}</td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500 font-mono">{row.submitted}</td>
-                  <td className="px-5 py-3.5">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.status === "승인 대기" ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}>{row.status}</span>
-                  </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-3.5 font-mono text-xs text-slate-500">{row.caseId}</td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-900 text-sm">{row.child}</td>
+                  <td className="px-4 py-3.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-medium">{row.docType}</span></td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500 font-mono">{row.submitted}</td>
+                  <td className={`px-4 py-3.5 text-xs font-mono ${waitTimeColor(row.waitTime)}`}>{row.waitTime}</td>
+                  <td className="px-4 py-3.5"><StageBadge stage={row.stage} /></td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500">{row.reason}</td>
+                  <td className="px-4 py-3.5 text-sm text-slate-700">{row.handler}</td>
+                  <td className="px-4 py-3.5">
                     {row.status === "승인 대기" && (
                       <div className="flex gap-2">
                         <button className="text-xs text-green-700 hover:text-green-900 font-medium">승인</button>
@@ -386,6 +454,10 @@ function AccountsView() {
 
   function toggleStatus(id: string) {
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: a.status === "active" ? "inactive" : "active" } : a));
+  }
+
+  function unlock(id: string) {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, locked: false } : a));
   }
 
   return (
@@ -414,7 +486,12 @@ function AccountsView() {
             {accounts.map(a => (
               <tr key={a.id} className={`transition-colors ${a.status === "inactive" ? "bg-slate-50/60 opacity-70" : "hover:bg-slate-50"}`}>
                 <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{a.id}</td>
-                <td className="px-5 py-3.5 font-semibold text-slate-900">{a.name}</td>
+                <td className="px-5 py-3.5 font-semibold text-slate-900">
+                  <div className="flex items-center gap-2">
+                    {a.name}
+                    {a.locked && <span className="px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-semibold">잠금</span>}
+                  </div>
+                </td>
                 <td className="px-5 py-3.5 text-sm text-slate-600">{a.role}</td>
                 <td className="px-5 py-3.5 text-sm text-slate-700">{a.caseCount}건</td>
                 <td className="px-5 py-3.5 text-xs text-slate-500 font-mono">{a.lastLogin}</td>
@@ -425,6 +502,9 @@ function AccountsView() {
                     <button onClick={() => toggleStatus(a.id)} className={`text-xs font-medium transition-colors ${a.status === "active" ? "text-amber-600 hover:text-amber-800" : "text-green-600 hover:text-green-800"}`}>
                       {a.status === "active" ? "비활성화" : "활성화"}
                     </button>
+                    {a.locked && (
+                      <button onClick={() => unlock(a.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">잠금 해제</button>
+                    )}
                     <button className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors">비밀번호 초기화</button>
                   </div>
                 </td>
@@ -678,6 +758,168 @@ function AssignmentsView() {
   );
 }
 
+// ── Section: 통계 리포트 ──────────────────────────────────────────────────
+function StatsView() {
+  const monthlyData = [
+    { month: "3월", count: 28 },
+    { month: "4월", count: 35 },
+    { month: "5월", count: 31 },
+    { month: "6월", count: 42 },
+    { month: "7월", count: 38 },
+    { month: "8월", count: 45 },
+  ];
+  const abuseTypes = [
+    { label: "신체", count: 38, color: "#EF4444" },
+    { label: "정서", count: 27, color: "#A855F7" },
+    { label: "방임", count: 22, color: "#64748B" },
+    { label: "성",   count: 13, color: "#F97316" },
+  ];
+  const ageGroups = [
+    { label: "0~6세", count: 18 },
+    { label: "7~12세", count: 32 },
+    { label: "13~18세", count: 15 },
+  ];
+
+  const maxMonthly = Math.max(...monthlyData.map(d => d.count));
+  const total = abuseTypes.reduce((s, t) => s + t.count, 0);
+  const maxAge = Math.max(...ageGroups.map(g => g.count));
+
+  // Pie chart slices
+  let cumAngle = -Math.PI / 2;
+  const slices = abuseTypes.map(t => {
+    const angle = (t.count / total) * 2 * Math.PI;
+    const start = cumAngle;
+    cumAngle += angle;
+    const end = cumAngle;
+    const r = 70;
+    const cx = 90; const cy = 90;
+    const x1 = cx + r * Math.cos(start); const y1 = cy + r * Math.sin(start);
+    const x2 = cx + r * Math.cos(end);   const y2 = cy + r * Math.sin(end);
+    const large = angle > Math.PI ? 1 : 0;
+    return { ...t, d: `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z` };
+  });
+
+  // Line chart points
+  const svgW = 480; const svgH = 140; const padL = 30; const padR = 10; const padT = 10; const padB = 30;
+  const pts = monthlyData.map((d, i) => {
+    const x = padL + (i / (monthlyData.length - 1)) * (svgW - padL - padR);
+    const y = padT + (1 - d.count / maxMonthly) * (svgH - padT - padB);
+    return { x, y, ...d };
+  });
+  const polyline = pts.map(p => `${p.x},${p.y}`).join(" ");
+
+  return (
+    <div className="p-7 space-y-6 max-w-5xl">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">통계 리포트</h1>
+        <p className="text-slate-500 text-sm mt-0.5">2026년 8월 기준 · 기관 업무 통계 요약</p>
+      </div>
+
+      {/* Stat strip */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "이번 달 상담 건수", value: "45건", sub: "전월(38건) 대비", change: "+18.4%", up: true },
+          { label: "이번 달 처리 건수", value: "39건", sub: "처리율 86.7%", change: "+12.0%", up: true },
+          { label: "평균 대기 시간",    value: "14.2시간", sub: "전월(11.8시간) 대비", change: "+20.3%", up: false },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-[8px] border border-[#E2E8F0] p-5">
+            <p className="text-xs font-medium text-slate-500 mb-2">{s.label}</p>
+            <p className="text-2xl font-bold text-slate-900">{s.value}</p>
+            <p className="text-xs text-slate-400 mt-1">{s.sub} <span className={`font-semibold ${s.up ? "text-green-600" : "text-red-500"}`}>{s.change}</span></p>
+          </div>
+        ))}
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-2 gap-5">
+        {/* Line chart */}
+        <div className="bg-white rounded-[8px] border border-[#E2E8F0] p-5">
+          <p className="text-sm font-semibold text-slate-800 mb-4">월별 상담 건수 (최근 6개월)</p>
+          <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full">
+            {/* Grid lines */}
+            {[0, 0.5, 1].map(f => {
+              const y = padT + f * (svgH - padT - padB);
+              return <line key={f} x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#E2E8F0" strokeWidth="1" />;
+            })}
+            <polyline points={polyline} fill="none" stroke="#2563EB" strokeWidth="2" strokeLinejoin="round" />
+            {pts.map((p, i) => (
+              <g key={i}>
+                <circle cx={p.x} cy={p.y} r="4" fill="#2563EB" />
+                <text x={p.x} y={svgH - 8} textAnchor="middle" fontSize="10" fill="#94A3B8">{p.month}</text>
+                <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize="10" fill="#475569" fontWeight="600">{p.count}</text>
+              </g>
+            ))}
+          </svg>
+        </div>
+
+        {/* Pie chart */}
+        <div className="bg-white rounded-[8px] border border-[#E2E8F0] p-5">
+          <p className="text-sm font-semibold text-slate-800 mb-4">학대유형별 비율</p>
+          <div className="flex items-center gap-6">
+            <svg viewBox="0 0 180 180" className="w-36 h-36 shrink-0">
+              {slices.map((s, i) => <path key={i} d={s.d} fill={s.color} />)}
+            </svg>
+            <div className="space-y-2">
+              {abuseTypes.map(t => (
+                <div key={t.label} className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: t.color }} />
+                  <span className="text-sm text-slate-700">{t.label}</span>
+                  <span className="text-xs text-slate-400 ml-auto">{Math.round(t.count / total * 100)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Age bar chart + work status table */}
+      <div className="grid grid-cols-2 gap-5">
+        <div className="bg-white rounded-[8px] border border-[#E2E8F0] p-5">
+          <p className="text-sm font-semibold text-slate-800 mb-4">연령별 사례 분포</p>
+          <div className="space-y-4">
+            {ageGroups.map(g => (
+              <div key={g.label}>
+                <div className="flex justify-between text-xs text-slate-600 mb-1.5">
+                  <span>{g.label}</span>
+                  <span className="font-semibold">{g.count}건</span>
+                </div>
+                <div className="h-5 bg-slate-100 rounded overflow-hidden">
+                  <div className="h-full bg-[#2563EB] rounded transition-all" style={{ width: `${(g.count / maxAge) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-[8px] border border-[#E2E8F0] p-5">
+          <p className="text-sm font-semibold text-slate-800 mb-4">전체 업무 현황</p>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["구분", "대기 건수"].map(h => (
+                  <th key={h} className="pb-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {[
+                { label: "STT 처리 대기",  count: WORK_QUEUE.stt.length },
+                { label: "상담사 검토 대기",   count: WORK_QUEUE.aiReview.length },
+                { label: "문서 승인 대기", count: WORK_QUEUE.approval.filter(a => a.status === "승인 대기").length },
+              ].map(r => (
+                <tr key={r.label}>
+                  <td className="py-2.5 text-sm text-slate-700">{r.label}</td>
+                  <td className="py-2.5 text-sm font-bold text-slate-900">{r.count}건</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
   { label: null, items: [{ id: "overview", label: "관리자 대시보드", icon: "grid" }] },
@@ -695,21 +937,14 @@ const NAV_SECTIONS = [
       { id: "accounts",   label: "상담사 계정 관리", icon: "user" },
       { id: "access-log", label: "접속 기록",        icon: "log" },
       { id: "security",   label: "보안 이벤트",      icon: "shield" },
-    ],
-  },
-  {
-    label: "운영 편의",
-    items: [
-      { id: "notices",     label: "공지사항 관리", icon: "bell" },
-      { id: "assignments", label: "업무 배정",     icon: "assign" },
+      { id: "stats",      label: "통계 리포트",      icon: "chart" },
     ],
   },
 ];
 
 const BADGE_MAP: Partial<Record<AdminView, number>> = {
-  "security":    1,
-  "workqueue":   WORK_QUEUE.approval.filter(a => a.status === "승인 대기").length + WORK_QUEUE.stt.filter(s => s.status === "오류").length,
-  "assignments": UNASSIGNED_CASES.length,
+  "security":  1,
+  "workqueue": WORK_QUEUE.approval.filter(a => a.status === "승인 대기").length + WORK_QUEUE.stt.filter(s => s.status === "오류").length,
 };
 
 function AdminIcon({ id }: { id: string }) {
@@ -723,6 +958,7 @@ function AdminIcon({ id }: { id: string }) {
     shield: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
     bell:   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
     assign: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+    chart:  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
   };
   return <>{icons[id] ?? null}</>;
 }
@@ -806,16 +1042,15 @@ export default function AdminApp({ onLogout }: { onLogout: () => void }) {
 
   const renderView = () => {
     switch (view) {
-      case "overview":    return <AdminOverview onNavigate={setView} />;
-      case "cases":       return <AllCasesView />;
-      case "workqueue":   return <WorkQueueView />;
-      case "approvals":   return <WorkQueueView />;
-      case "accounts":    return <AccountsView />;
-      case "access-log":  return <AccessLogView />;
-      case "security":    return <SecurityView />;
-      case "notices":     return <NoticesView />;
-      case "assignments": return <AssignmentsView />;
-      default:            return <AdminOverview onNavigate={setView} />;
+      case "overview":   return <AdminOverview onNavigate={setView} />;
+      case "cases":      return <AllCasesView />;
+      case "workqueue":  return <WorkQueueView />;
+      case "approvals":  return <WorkQueueView />;
+      case "accounts":   return <AccountsView />;
+      case "access-log": return <AccessLogView />;
+      case "security":   return <SecurityView />;
+      case "stats":      return <StatsView />;
+      default:           return <AdminOverview onNavigate={setView} />;
     }
   };
 

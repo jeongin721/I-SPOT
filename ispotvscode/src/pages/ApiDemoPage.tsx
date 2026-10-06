@@ -7,7 +7,8 @@
 //   2. loading / error / data 세 가지 상태를 모두 처리한다
 //   3. 받은 값은 adapters 로 화면 형태에 맞춘다
 //
-// 접속: /api-demo
+// 지금은 경로에 연결돼 있지 않다(9/29 다솔 님 화면으로 routes.tsx 를 바꾸며 /api-demo 가 빠졌다).
+// 화면을 연결할 때 따라 할 예시 코드로만 남겨 둔다. 연결 확인은 backend/README.md 부록 A.5 를 본다.
 
 import { useCallback, useEffect, useState } from "react";
 

@@ -1,34 +1,45 @@
 import type { RiskLevel, AbuseType, CaseRecord } from "../../data/cases";
 
-export function RiskBadge({ level, score }: { level: RiskLevel; score?: number }) {
+export function RiskBadge({ level, score: _score }: { level?: RiskLevel; score?: number }) {
+  // 위험도가 아직 없는 사례(Backend 에 사례 위험도가 없다). "확인 완료" 로 그리면 아무도 보지 않은 사례가
+  // 검토가 끝난 것처럼 보인다.
+  if (!level) {
+    return (
+      <span title="위험도는 아직 서버에 없습니다" className="inline-flex items-center px-2 py-0.5 rounded border text-[12px] bg-white font-medium border-[#E2E8F0] text-[#94A3B8]">
+        —
+      </span>
+    );
+  }
+
   const cfg = {
-    high: { label: "고위험", cls: "text-[#B91C1C] bg-[#FEF2F2] border-[#FECACA]" },
-    mid:  { label: "중위험", cls: "text-[#B45309] bg-[#FFFBEB] border-[#FDE68A]" },
-    low:  { label: "저위험", cls: "text-[#15803D] bg-[#F0FDF4] border-[#BBF7D0]" },
+    high: { label: "확인 필요", cls: "font-bold border-[#64748B] text-[#172033]" },
+    mid:  { label: "확인 중",   cls: "font-semibold border-[#94A3B8] text-[#172033]" },
+    low:  { label: "확인 완료", cls: "font-medium border-[#CBD5E1] text-[#475569]" },
   }[level];
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px] font-semibold tracking-wide ${cfg.cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[12px] bg-white ${cfg.cls}`}>
       {cfg.label}
-      {score !== undefined && <span className="opacity-70 font-mono ml-0.5">{score}</span>}
     </span>
   );
 }
 
 export function AbuseBadge({ type }: { type: AbuseType }) {
-  const cls: Record<AbuseType, string> = {
-    "신체": "text-[#991B1B] bg-[#FEF2F2] border-[#FECACA]",
-    "정서": "text-[#6B21A8] bg-[#FAF5FF] border-[#E9D5FF]",
-    "성":   "text-[#9A3412] bg-[#FFF7ED] border-[#FED7AA]",
-    "방임": "text-[#475569] bg-[#F8FAFC] border-[#E2E8F0]",
-  };
-  return <span className={`px-1.5 py-0.5 rounded border text-[11px] font-medium ${cls[type]}`}>{type}</span>;
+  return (
+    <span className="px-2 py-0.5 rounded border border-[#CBD5E1] text-[12px] text-[#475569] bg-white font-medium">
+      {type}
+    </span>
+  );
 }
 
 export function StatusLabel({ status }: { status: CaseRecord["status"] }) {
   const cfg = {
-    active:  { label: "진행중",   cls: "text-[#1D4ED8] bg-[#EFF6FF] border-[#BFDBFE]" },
-    pending: { label: "대기중",   cls: "text-[#64748B] bg-[#F8FAFC] border-[#E2E8F0]" },
-    review:  { label: "검토필요", cls: "text-[#B45309] bg-[#FFFBEB] border-[#FDE68A]" },
+    active:  { label: "진행중",   cls: "border-[#94A3B8] text-[#172033] font-semibold" },
+    pending: { label: "대기중",   cls: "border-[#CBD5E1] text-[#64748B] font-medium" },
+    review:  { label: "검토필요", cls: "border-[#64748B] text-[#172033] font-bold" },
   }[status];
-  return <span className={`px-1.5 py-0.5 rounded border text-[11px] font-medium ${cfg.cls}`}>{cfg.label}</span>;
+  return (
+    <span className={`px-2 py-0.5 rounded border text-[12px] bg-white ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
 }

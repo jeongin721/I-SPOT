@@ -11,8 +11,8 @@ export interface Session {
   type: "초기면담" | "정기상담" | "전화상담" | "방문상담";
   location: string;
   sttStatus: "처리중" | "검수필요" | "검수완료" | "분석완료";
-  aiStatus: "대기중" | "분석중" | "검토필요" | "검토완료" | "승인완료";
-  recordStatus: "미작성" | "작성중" | "작성완료" | "승인완료";
+  aiStatus: "대기중" | "분석중" | "검토필요" | "검토완료" | "상담사검토완료";
+  recordStatus: "미작성" | "작성중" | "작성완료" | "상담사검토완료";
 }
 
 export interface AIAnalysis {
@@ -21,7 +21,7 @@ export interface AIAnalysis {
   caseId: string;
   date: string;
   sessionNumber: number;
-  status: "분석중" | "검토필요" | "검토중" | "수정됨" | "승인완료";
+  status: "분석중" | "검토필요" | "검토중" | "수정됨" | "상담사검토완료";
   signals: number;
   reviewedBy?: string;
   reviewedAt?: string;
@@ -32,7 +32,7 @@ export interface AIAnalysis {
 
 export interface Notification {
   id: string;
-  type: "검토필요" | "고위험" | "업무" | "분석완료";
+  type: "검토필요" | "확인필요" | "업무" | "분석완료";
   title: string;
   body: string;
   time: string;
@@ -78,8 +78,8 @@ function buildSessions(): Session[] {
         recordStatus = "작성완료";
       } else {
         sttStatus = "분석완료";
-        aiStatus = "승인완료";
-        recordStatus = "승인완료";
+        aiStatus = "상담사검토완료";
+        recordStatus = "상담사검토완료";
       }
 
       const sessionId = `S-${c.id.slice(2)}-${String(i).padStart(2, "0")}`;
@@ -116,7 +116,7 @@ function buildAnalyses(): AIAnalysis[] {
     const analysisId = `AI-${s.caseId.slice(2)}-${String(s.sessionNumber).padStart(2, "0")}`;
 
     let status: AIAnalysis["status"];
-    if (s.aiStatus === "승인완료") status = "승인완료";
+    if (s.aiStatus === "상담사검토완료") status = "상담사검토완료";
     else if (s.aiStatus === "검토완료") status = "수정됨";
     else status = "검토필요";
 
@@ -128,14 +128,14 @@ function buildAnalyses(): AIAnalysis[] {
       sessionNumber: s.sessionNumber,
       status,
       signals: Math.floor((c.riskScore / 10) + idx % 4),
-      reviewedBy: status === "승인완료" ? c.counselor : undefined,
-      reviewedAt: status === "승인완료" ? s.date : undefined,
+      reviewedBy: status === "상담사검토완료" ? c.counselor : undefined,
+      reviewedAt: status === "상담사검토완료" ? s.date : undefined,
       riskIndicators: c.keywords.slice(0, 3),
       evidenceSpeeches: [
         { text: "소리 지르고 많이 때렸어요", timestamp: "00:41", speaker: "아동" },
         { text: "등이랑 팔이요. 말하면 더 혼난다고 했어요", timestamp: "01:08", speaker: "아동" },
       ],
-      summary: `${c.childName} ${s.sessionNumber}회차 상담 AI 분석 결과. 위험 지표 ${Math.floor(c.riskScore / 10)}건 감지됨.`,
+      summary: `${c.childName} ${s.sessionNumber}회차 상담 AI 분석 결과. 관련 신호 ${Math.floor(c.riskScore / 10)}건 감지됨.`,
     });
   });
 
@@ -157,9 +157,9 @@ export const NOTIFICATIONS: Notification[] = [
   },
   {
     id: "N-002",
-    type: "고위험",
-    title: "고위험 사례 알림",
-    body: "이○○ (C-2026-0351) 고위험 신호가 감지되었습니다. 즉시 검토가 필요합니다.",
+    type: "확인필요",
+    title: "확인 필요 사례 알림",
+    body: "이○○ (C-2026-0351) 확인 필요 신호가 감지되었습니다. 즉시 검토가 필요합니다.",
     time: "32분 전",
     read: false,
     link: "/cases/C-2026-0351",

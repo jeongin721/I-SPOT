@@ -9,7 +9,8 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from functools import lru_cache
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -36,15 +37,52 @@ from app.schemas.transcript import (
 )
 from app.services import audit_service, audio_service, session_service
 
-ensure_repo_root_on_path()
-from stt.child_handoff import build_canonical_child_handoff
-
 logger = get_logger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _load_child_handoff_builder() -> Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]:
+    """
+    STT 파트의 아동 발화 인계 함수(stt.child_handoff)를 처음 쓸 때 한 번만 불러온다.
+
+    모듈을 불러오는 시점에 import 하면 두 가지가 깨진다.
+    - ruff E402(모듈 중간의 import) 로 CI lint 가 실패한다.
+    - stt/ 가 없는 배포(backend 폴더만 담는 Docker 이미지)에서 Backend 가 아예 뜨지 않는다.
+      해당 package 가 없어도 Backend 는 단독으로 떠야 한다(module_loader.py 머리 주석).
+
+    불러오지 못하면 None 을 돌려주고, 전사본 응답의 child_handoff 는 비워 둔다(스키마상 선택 칸).
+    """
+
+    ensure_repo_root_on_path()
+
+    try:
+        from stt.child_handoff import build_canonical_child_handoff
+    except ImportError:
+        logger.warning("stt.child_handoff 를 불러오지 못해 전사본 응답의 child_handoff 를 비워 둡니다.")
+        return None
+
+    return build_canonical_child_handoff
+
+
+def _build_child_handoff(contract_segments: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    builder = _load_child_handoff_builder()
+
+    if builder is None:
+        return None
+
+    return builder({"segments": contract_segments})
+
 
 _EDITABLE_STATUSES = {
     SessionStatus.STT_REVIEW_REQUIRED,
     SessionStatus.STT_CONFIRMED,
 }
+
+# 발화를 하나도 찾지 못한 STT 결과의 실패 문구. 화면에 그대로 보인다(Session error.message).
+EMPTY_STT_RESULT_MESSAGE = (
+    "음성에서 발화를 찾지 못했습니다. 녹음 상태를 확인해 음성을 다시 올리거나 "
+    "원문 변환을 다시 요청해 주세요."
+)
 
 
 # =========================================================
@@ -108,7 +146,7 @@ def to_transcript_response(transcript: Transcript) -> TranscriptResponse:
         edited_segment_ids=[
             segment.segment_id for segment in segments if segment.is_edited
         ],
-        child_handoff=build_canonical_child_handoff({"segments": contract_segments}),
+        child_handoff=_build_child_handoff(contract_segments),
     )
 
 
@@ -231,6 +269,12 @@ def process_stt(session_id: uuid.UUID) -> None:
 
             if not isinstance(result, STTResult):
                 raise STTOutputError("STT Adapter 가 STTResult 를 반환하지 않았습니다.")
+
+            # 발화를 하나도 찾지 못했으면(무음 · 잡음만 있는 음성) 실패로 마감한다.
+            # 검수 필요로 두면 검수할 발화가 없는 막다른 상태가 된다. 실패로 두면 재시도 · 재업로드
+            # 길이 그대로 열린다. 빈 전사본 version 도 남기지 않는다.
+            if not result.segments:
+                raise STTError(EMPTY_STT_RESULT_MESSAGE)
 
             _save_stt_result(
                 db,
