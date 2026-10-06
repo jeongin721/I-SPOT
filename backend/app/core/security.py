@@ -67,10 +67,14 @@ def create_access_token(
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     try:
+        # iat(발급 시각)가 지금보다 뒤라는 이유로는 거절하지 않는다. PyJWT 는 기본으로 그렇게 하는데, 서버 시계가
+        # 뒤로 조정되면 방금 발급한 토큰이 곧바로 401 이 된다. iat 는 어디에서도 쓰지 않고, 토큰은 서버만 서명하며,
+        # 유효 기간은 exp, 계정 쪽 무효화는 tv(Token 버전)가 맡는다.
         return jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_iat": False},
         )
     except jwt.ExpiredSignatureError as error:
         raise unauthorized("토큰이 만료되었습니다. 다시 로그인해 주세요.") from error

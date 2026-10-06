@@ -82,3 +82,15 @@ def test_role_claim_in_token_does_not_grant_admin(
     response = client.get("/api/v1/auth/users", headers=headers)
 
     assert response.status_code == 403
+
+
+def test_token_issued_in_the_future_is_still_accepted(client: TestClient, counselor_id: uuid.UUID) -> None:
+    """서버 시계가 뒤로 조정되면 방금 발급한 토큰의 iat 가 지금보다 뒤가 된다. 이것만으로 401 을 내지 않는다.
+
+    토큰은 서버만 서명하고 iat 는 어디에서도 쓰지 않는다. 서명 · 만료(exp) · 계정 번호(tv)로 충분하다.
+    """
+
+    future = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    response = client.get(ME, headers=_signed({"sub": str(counselor_id), "iat": future}))
+
+    assert response.status_code == 200
