@@ -42,6 +42,28 @@ docker compose up -d db
 
 Docker 없이 이미 설치된 PostgreSQL 을 쓰려면 `DATABASE_URL` 만 맞추면 된다.
 
+**부록 A(SQLite)로 쓰다가 옮겨 올 때**
+
+- `backend/.env` 의 `DATABASE_URL` 을 2.3 의 PostgreSQL 주소로 바꾸고 2.4 · 2.5 를 다시 한다. 옮기기 전 데이터는 따라오지 않는다
+  (`dev.db` 는 그대로 남으므로 `DATABASE_URL` 을 되돌리면 다시 쓸 수 있다).
+- 터미널이나 Windows 사용자 환경변수에 `DATABASE_URL` 이 있으면 `.env` 보다 먼저 쓰인다. 바꾼 뒤 서버를 다시 켠다(설정은 처음 한 번만 읽는다).
+- 예전 `SEED_USER_PASSWORD` 가 지금 비밀번호 규칙에 맞지 않으면 2.5 의 계정 생성이 실패한다. 값을 바꾸거나 지우고 다시 돌린다.
+
+**PostgreSQL 을 처음 상태로 되돌리기** (데이터가 모두 지워진다)
+
+```bash
+# repo root 에서
+docker compose down -v      # 컨테이너와 ispot-db-data 볼륨을 함께 지운다
+docker compose up -d db
+```
+
+그다음 2.4 · 2.5 를 다시 한다.
+
+Windows 에서 Docker Desktop 이 켜자마자 "An unexpected error occurred" 창을 띄우고 꺼지며 로그
+(`%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`)에 `sailor-ingest.sock ... cannot be accessed` 가 있으면,
+지난번에 남은 소켓 파일 때문이다. Docker Desktop 을 끈 상태에서 Git Bash 로
+`rm "$LOCALAPPDATA/Docker/run/sailor-ingest.sock"` 를 한 뒤 다시 켠다(탐색기 · PowerShell 로는 지워지지 않는다).
+
 ### 2.2 의존성 설치
 
 ```bash
@@ -185,6 +207,21 @@ pytest
 
 테스트는 PostgreSQL 없이 SQLite + 임시 디렉터리로 동작하므로 별도 준비가 필요 없다.
 
+**PostgreSQL 로 돌리기** — 운영 DB 와 같은 조건에서 확인할 때. CI 의 `pytest (PostgreSQL)` 작업과 같다.
+
+```bash
+# 2.1 의 DB 컨테이너가 떠 있을 때, 테스트 전용 DB 를 한 번 만든다
+docker exec ispot-db psql -U ispot -d ispot -c "CREATE DATABASE ispot_test;"
+
+# backend/ 에서
+TEST_DATABASE_URL=postgresql+psycopg://ispot:ispot@localhost:5432/ispot_test pytest
+```
+
+PowerShell 에서는 `$env:TEST_DATABASE_URL = "postgresql+psycopg://ispot:ispot@localhost:5432/ispot_test"` 를 먼저 설정하고
+`pytest` 를 돌린다(끝나면 `Remove-Item Env:TEST_DATABASE_URL`).
+테스트는 매번 모든 표를 비우고 끝나면 표를 지운다. 개발 DB(`ispot`)를 지우지 않도록 **이름이 `_test` 로 끝나는 DB 만** 받고,
+아니면 테스트를 시작하지 않는다.
+
 포함 범위
 - Case / Session CRUD
 - Permission (상담사 사례 격리, 관리자 전체 접근)
@@ -229,8 +266,9 @@ pytest
 alembic check   # model 과 migration 이 어긋나면 실패한다
 ```
 
-GitHub Actions(`.github/workflows/backend-ci.yml`)에서 lint, pytest,
+GitHub Actions(`.github/workflows/backend-ci.yml`)에서 lint, pytest(SQLite · PostgreSQL 두 번),
 PostgreSQL 대상 migration, secret/음성파일 커밋 검사를 자동 실행한다.
+`check.sh` 는 `TEST_DATABASE_URL` 이 없으면 SQLite 로 돌므로, DB 에 따라 다르게 동작할 수 있는 코드(시각 · 문자열 비교 · JSON)를 고쳤으면 위의 PostgreSQL 방법도 돌린다.
 
 ---
 
