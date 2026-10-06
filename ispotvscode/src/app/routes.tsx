@@ -23,10 +23,17 @@ import CasePlanView from "../views/CasePlanView";
 import ClosureView from "../views/ClosureView";
 import ReportView from "../views/ReportView";
 import DocumentWritePage from "../pages/DocumentWritePage";
+import AdminApp from "../admin/AdminApp";
 export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    // 관리자 화면. 상담사 앱(AppLayout)과 따로 그린다. 메뉴는 주소(/admin/accounts 등)로 나뉘어 새로고침해도 유지된다.
+    // 관리자 확인 · 로그인 끊김 처리는 AdminApp 안(useAdminSession)에서 한다.
+    path: "/admin/:view?",
+    element: <AdminApp />,
   },
   {
     path: "/",

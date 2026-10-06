@@ -1,5 +1,21 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { CASES, type RiskLevel, type AbuseType } from "../data/cases";
+import { ApiError } from "../api/client";
+import { auth as authApi, cases as casesApi } from "../api/endpoints";
+import { useAdminSession } from "../api/useAdminSession";
+import {
+  ROLE_LABELS,
+  accountStateTags,
+  countCasesByCounselor,
+  toAuditRange,
+  toBrowserLabel,
+  toLocalDateTime,
+  toLoginFailureReason,
+} from "../api/adminAdapters";
+import type { AuditLog, Case, Paged, TemporaryPassword, User } from "../api/types";
+import { useToast } from "../components/ui/Toast";
+import { ConfirmDialog, CreateAccountDialog, TemporaryPasswordDialog } from "./AccountDialogs";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type AdminView =
@@ -449,16 +465,158 @@ function WorkQueueView() {
 }
 
 // ── Section: 상담사 계정 관리 ───────────────────────────────────────────────
-function AccountsView() {
-  const [accounts, setAccounts] = useState(COUNSELORS);
+// GET /auth/users(관리자 포함 전체) + 담당 사례 수(GET /cases 전체 페이지를 받아 셈).
+// 자기 계정에는 비활성화 · 강제 로그아웃 · 비밀번호 초기화 · 휴면 해제 단추를 두지 않는다(바로 자기 로그인이 끊긴다).
+const CASE_PAGE_SIZE = 100;
 
-  function toggleStatus(id: string) {
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: a.status === "active" ? "inactive" : "active" } : a));
+async function loadAllCases(): Promise<Case[]> {
+  const all: Case[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const result = await casesApi.list({ page, page_size: CASE_PAGE_SIZE });
+
+    all.push(...result.items);
+
+    if (page >= result.meta.total_pages || result.items.length === 0) return all;
+  }
+}
+
+type AccountAction = "deactivate" | "logoutAll" | "resetPassword" | "reactivate";
+
+const ACCOUNT_ACTION_TEXT: Record<AccountAction, { title: string; confirm: string; danger: boolean; message: (u: User) => string }> = {
+  deactivate: {
+    title: "계정 비활성화",
+    confirm: "비활성화",
+    danger: true,
+    message: u => `${u.name}(${u.email}) 계정을 비활성화합니다. 지금 로그인돼 있으면 바로 끊기고, 다시 활성화할 때까지 로그인할 수 없습니다.`,
+  },
+  logoutAll: {
+    title: "강제 로그아웃",
+    confirm: "강제 로그아웃",
+    danger: true,
+    message: u => `${u.name}(${u.email}) 계정의 모든 기기 로그인을 끊습니다. 비밀번호는 그대로이며 다시 로그인할 수 있습니다.`,
+  },
+  resetPassword: {
+    title: "비밀번호 초기화",
+    confirm: "초기화",
+    danger: true,
+    message: u => `${u.name}(${u.email}) 계정의 비밀번호를 임시 비밀번호로 바꿉니다. 지금 로그인돼 있으면 끊기고, 다음 로그인 때 새 비밀번호로 바꿔야 합니다.`,
+  },
+  reactivate: {
+    title: "휴면 해제",
+    confirm: "휴면 해제",
+    danger: false,
+    message: u => `${u.name}(${u.email}) 계정의 휴면을 풀고 임시 비밀번호를 새로 발급합니다.`,
+  },
+};
+
+const TAG_TONE: Record<"red" | "amber" | "slate", string> = {
+  red: "bg-red-50 text-red-600 border-red-200",
+  amber: "bg-amber-50 text-amber-700 border-amber-200",
+  slate: "bg-slate-100 text-slate-600 border-slate-200",
+};
+
+function AccountsView({ me }: { me: User }) {
+  const { showToast } = useToast();
+  const [accounts, setAccounts] = useState<User[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [caseCounts, setCaseCounts] = useState<Map<string, number> | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ action: AccountAction; user: User } | null>(null);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  // 임시 비밀번호는 이 창에서 한 번만 보여 주고 닫으면 버린다.
+  const [issued, setIssued] = useState<{ title: string; user: User; temporary: TemporaryPassword } | null>(null);
+
+  const reload = useCallback(() => setReloadKey(k => k + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    authApi.listUsers()
+      .then(list => { if (!cancelled) { setAccounts(list); setLoadError(null); } })
+      .catch(caught => { if (!cancelled) setLoadError(caught instanceof ApiError ? caught.message : "계정 목록을 불러오지 못했습니다."); });
+
+    // 담당 사례 수는 실패해도 목록은 보여 준다(칸에 "—").
+    loadAllCases()
+      .then(list => { if (!cancelled) setCaseCounts(countCasesByCounselor(list)); })
+      .catch(() => { if (!cancelled) setCaseCounts(null); });
+
+    return () => { cancelled = true; };
+  }, [reloadKey]);
+
+  async function toggleStatus(a: User) {
+    if (a.is_active) {
+      setPendingError(null);
+      setPending({ action: "deactivate", user: a });
+      return;
+    }
+
+    setBusyId(a.id);
+    try {
+      await authApi.updateUser(a.id, { is_active: true });
+      showToast(`${a.name} 계정을 활성화했습니다.`, "success");
+      reload();
+    } catch (caught) {
+      showToast(caught instanceof ApiError ? caught.message : "활성화하지 못했습니다.", "error");
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  function unlock(id: string) {
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, locked: false } : a));
+  async function unlock(a: User) {
+    setBusyId(a.id);
+    try {
+      await authApi.unlockUser(a.id);
+      showToast(`${a.name} 계정의 잠금을 해제했습니다.`, "success");
+      reload();
+    } catch (caught) {
+      showToast(caught instanceof ApiError ? caught.message : "잠금을 해제하지 못했습니다.", "error");
+    } finally {
+      setBusyId(null);
+    }
   }
+
+  async function confirmPending() {
+    if (!pending) return;
+
+    const { action, user } = pending;
+
+    setBusyId(user.id);
+    setPendingError(null);
+    try {
+      if (action === "deactivate") {
+        await authApi.updateUser(user.id, { is_active: false });
+        showToast(`${user.name} 계정을 비활성화했습니다.`, "success");
+      } else if (action === "logoutAll") {
+        await authApi.logoutAll(user.id);
+        showToast(`${user.name} 계정의 로그인을 모두 끊었습니다.`, "success");
+      } else {
+        const temporary = action === "resetPassword" ? await authApi.resetPassword(user.id) : await authApi.reactivateUser(user.id);
+        setIssued({ title: action === "resetPassword" ? "비밀번호 초기화 완료" : "휴면 해제 완료", user, temporary });
+      }
+      setPending(null);
+      reload();
+    } catch (caught) {
+      setPendingError(caught instanceof ApiError ? caught.message : "처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function handleCreated(user: User, temporary: TemporaryPassword | null) {
+    setCreating(false);
+    reload();
+
+    if (temporary) {
+      setIssued({ title: "신규 계정 생성 완료", user, temporary });
+    } else {
+      showToast(`${user.name} 계정은 만들었지만 임시 비밀번호를 발급하지 못했습니다. 목록에서 '비밀번호 초기화'를 눌러 주세요.`, "error");
+    }
+  }
+
+  const pendingText = pending ? ACCOUNT_ACTION_TEXT[pending.action] : null;
 
   return (
     <div className="p-7 space-y-5 max-w-5xl">
@@ -467,60 +625,143 @@ function AccountsView() {
           <h1 className="text-2xl font-bold text-slate-900">상담사 계정 관리</h1>
           <p className="text-slate-500 text-sm mt-0.5">계정 활성화·비활성화 · 비밀번호 초기화 · 신규 계정 생성</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-[#15314A] text-white text-sm font-semibold rounded-lg hover:bg-[#0F263B] transition-colors">
+        <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-4 py-2 bg-[#15314A] text-white text-sm font-semibold rounded-lg hover:bg-[#0F263B] transition-colors">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           신규 계정 생성
         </button>
       </div>
 
-      <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-hidden">
+      <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
-              {["계정 ID", "이름", "직급", "담당 사례", "최근 접속", "접속 IP", "상태", ""].map(h => (
+              {["계정 ID", "이름", "직급", "담당 사례", "최근 접속", "상태", ""].map(h => (
                 <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {accounts.map(a => (
-              <tr key={a.id} className={`transition-colors ${a.status === "inactive" ? "bg-slate-50/60 opacity-70" : "hover:bg-slate-50"}`}>
-                <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{a.id}</td>
-                <td className="px-5 py-3.5 font-semibold text-slate-900">
-                  <div className="flex items-center gap-2">
-                    {a.name}
-                    {a.locked && <span className="px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-semibold">잠금</span>}
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 text-sm text-slate-600">{a.role}</td>
-                <td className="px-5 py-3.5 text-sm text-slate-700">{a.caseCount}건</td>
-                <td className="px-5 py-3.5 text-xs text-slate-500 font-mono">{a.lastLogin}</td>
-                <td className="px-5 py-3.5 text-xs text-slate-400 font-mono">{a.ip}</td>
-                <td className="px-5 py-3.5"><StatusDot active={a.status === "active"} /></td>
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => toggleStatus(a.id)} className={`text-xs font-medium transition-colors ${a.status === "active" ? "text-amber-600 hover:text-amber-800" : "text-green-600 hover:text-green-800"}`}>
-                      {a.status === "active" ? "비활성화" : "활성화"}
-                    </button>
-                    {a.locked && (
-                      <button onClick={() => unlock(a.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">잠금 해제</button>
-                    )}
-                    <button className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors">비밀번호 초기화</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {!accounts && (
+              <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-slate-400">{loadError ?? "불러오는 중..."}</td></tr>
+            )}
+            {accounts?.map(a => {
+              const isSelf = a.id === me.id;
+              const busy = busyId === a.id;
+              return (
+                <tr key={a.id} className={`transition-colors ${!a.is_active ? "bg-slate-50/60 opacity-70" : "hover:bg-slate-50"}`}>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{a.email}</td>
+                  <td className="px-5 py-3.5 font-semibold text-slate-900 whitespace-nowrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {a.name}
+                      {isSelf && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-semibold">본인</span>}
+                      {accountStateTags(a).map(t => (
+                        <span key={t.label} className={`px-1.5 py-0.5 border rounded text-[10px] font-semibold ${TAG_TONE[t.tone]}`}>{t.label}</span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm text-slate-600">{ROLE_LABELS[a.role] ?? a.role}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm text-slate-700">{caseCounts ? `${caseCounts.get(a.id) ?? 0}건` : "—"}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap text-xs text-slate-500 font-mono">{toLocalDateTime(a.last_login_at)}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap"><StatusDot active={a.is_active} /></td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      {!isSelf && (
+                        <button disabled={busy} onClick={() => toggleStatus(a)} className={`text-xs font-medium transition-colors disabled:opacity-50 ${a.is_active ? "text-amber-600 hover:text-amber-800" : "text-green-600 hover:text-green-800"}`}>
+                          {a.is_active ? "비활성화" : "활성화"}
+                        </button>
+                      )}
+                      {a.is_locked && (
+                        <button disabled={busy} onClick={() => unlock(a)} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors disabled:opacity-50">잠금 해제</button>
+                      )}
+                      {!isSelf && a.dormant_at && (
+                        <button disabled={busy} onClick={() => { setPendingError(null); setPending({ action: "reactivate", user: a }); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors disabled:opacity-50">휴면 해제</button>
+                      )}
+                      {!isSelf && (
+                        <button disabled={busy} onClick={() => { setPendingError(null); setPending({ action: "logoutAll", user: a }); }} className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors disabled:opacity-50">강제 로그아웃</button>
+                      )}
+                      {!isSelf && (
+                        <button disabled={busy} onClick={() => { setPendingError(null); setPending({ action: "resetPassword", user: a }); }} className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors disabled:opacity-50">비밀번호 초기화</button>
+                      )}
+                      {isSelf && <span className="text-xs text-slate-400">본인 계정</span>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      {pending && pendingText && (
+        <ConfirmDialog
+          title={pendingText.title}
+          message={pendingText.message(pending.user)}
+          confirmLabel={pendingText.confirm}
+          danger={pendingText.danger}
+          busy={busyId === pending.user.id}
+          error={pendingError}
+          onConfirm={confirmPending}
+          onCancel={() => setPending(null)}
+        />
+      )}
+      {creating && <CreateAccountDialog onCreated={handleCreated} onCancel={() => setCreating(false)} />}
+      {issued && <TemporaryPasswordDialog title={issued.title} user={issued.user} temporary={issued.temporary} onClose={() => setIssued(null)} />}
     </div>
   );
 }
 
 // ── Section: 접속 기록 ────────────────────────────────────────────────────
+// GET /auth/audit-logs?action=LOGIN. 성공/실패 · 기간은 서버에서 거르고 20건씩 넘긴다.
+// 로그인 당시 역할은 기록에 없어 '현재 역할'(계정 목록)을 보여 준다.
+const ACCESS_LOG_PAGE_SIZE = 20;
+
 function AccessLogView() {
   const [filter, setFilter] = useState<"전체" | "성공" | "실패">("전체");
-  const rows = filter === "전체" ? ACCESS_LOG : ACCESS_LOG.filter(r => r.result === filter);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState<Paged<AuditLog> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [roles, setRoles] = useState<Map<string, User["role"]>>(new Map());
+
+  const rangeInvalid = Boolean(startDate && endDate && startDate > endDate);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    authApi.listUsers()
+      .then(list => { if (!cancelled) setRoles(new Map(list.map(u => [u.id, u.role]))); })
+      .catch(() => { /* 역할 칸만 "—" 로 둔다 */ });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (rangeInvalid) return;
+
+    let cancelled = false;
+
+    setLoading(true);
+    setError(null);
+
+    authApi.auditLogs({
+      action: "LOGIN",
+      status: filter === "성공" ? "SUCCESS" : filter === "실패" ? "FAILURE" : undefined,
+      ...toAuditRange(startDate, endDate),
+      page,
+      page_size: ACCESS_LOG_PAGE_SIZE,
+    })
+      .then(data => { if (!cancelled) setResult(data); })
+      .catch(caught => { if (!cancelled) setError(caught instanceof ApiError ? caught.message : "접속 기록을 불러오지 못했습니다."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [filter, startDate, endDate, page, rangeInvalid]);
+
+  const rows = result?.items ?? [];
+  const totalPages = Math.max(1, result?.meta.total_pages ?? 1);
+  const dateInput = "px-2 py-1.5 rounded border border-slate-200 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#2563EB]";
 
   return (
     <div className="p-7 space-y-5 max-w-5xl">
@@ -528,40 +769,67 @@ function AccessLogView() {
         <h1 className="text-2xl font-bold text-slate-900">접속 기록</h1>
         <p className="text-slate-500 text-sm mt-0.5">최근 시스템 접속 이력 · 이상 접속 감지</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap items-center">
         {(["전체", "성공", "실패"] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)}
+          <button key={f} onClick={() => { setFilter(f); setPage(1); }}
             className={`px-4 py-1.5 rounded text-xs font-medium border transition-all ${filter === f ? "bg-[#172033] text-white border-[#172033]" : "border-slate-200 text-slate-600 hover:border-slate-400"}`}
           >
             {f}
           </button>
         ))}
-        <span className="ml-auto text-xs text-slate-400 self-center">{rows.length}건</span>
+        <div className="flex items-center gap-1.5 ml-3">
+          <label htmlFor="log-start" className="text-xs font-semibold text-slate-500">기간</label>
+          <input id="log-start" type="date" value={startDate} max={endDate || undefined} onChange={e => { setStartDate(e.target.value); setPage(1); }} className={dateInput} aria-label="시작일" />
+          <span className="text-xs text-slate-400">~</span>
+          <input id="log-end" type="date" value={endDate} min={startDate || undefined} onChange={e => { setEndDate(e.target.value); setPage(1); }} className={dateInput} aria-label="종료일" />
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(""); setEndDate(""); setPage(1); }} className="text-xs text-slate-400 hover:text-slate-600 ml-1">기간 지우기</button>
+          )}
+        </div>
+        <span className="ml-auto text-xs text-slate-400 self-center">{result ? `${result.meta.total}건` : ""}</span>
       </div>
-      <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-hidden">
+      {rangeInvalid && <p className="text-xs text-red-600">시작일이 종료일보다 늦습니다.</p>}
+      <div className="bg-white rounded-[8px] border border-[#E2E8F0] overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
-              {["접속 시각", "사용자", "직급", "IP 주소", "브라우저", "결과"].map(h => (
+              {["접속 시각", "사용자", "현재 역할", "IP 주소", "브라우저", "결과"].map(h => (
                 <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((log, i) => (
-              <tr key={i} className={`transition-colors ${log.result === "실패" ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-slate-50"}`}>
-                <td className="px-5 py-3 text-xs text-slate-500 font-mono">{log.time}</td>
-                <td className="px-5 py-3 font-semibold text-sm text-slate-900">{log.user}</td>
-                <td className="px-5 py-3 text-sm text-slate-600">{log.role}</td>
-                <td className="px-5 py-3 text-xs text-slate-500 font-mono">{log.ip}</td>
-                <td className="px-5 py-3 text-xs text-slate-400">{log.ua}</td>
-                <td className="px-5 py-3">
-                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${log.result === "성공" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{log.result}</span>
-                </td>
-              </tr>
-            ))}
+            {(error || (loading && rows.length === 0) || (!loading && rows.length === 0)) && (
+              <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-slate-400">
+                {error ?? (loading ? "불러오는 중..." : "조건에 맞는 접속 기록이 없습니다.")}
+              </td></tr>
+            )}
+            {!error && rows.map(log => {
+              const failed = log.status === "FAILURE";
+              const role = log.actor_id ? roles.get(log.actor_id) : undefined;
+              return (
+                <tr key={log.id} className={`transition-colors ${failed ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-slate-50"}`}>
+                  <td className="px-5 py-3 whitespace-nowrap text-xs text-slate-500 font-mono">{toLocalDateTime(log.created_at)}</td>
+                  <td className="px-5 py-3 whitespace-nowrap font-semibold text-sm text-slate-900" title={log.actor_name ? undefined : "등록되지 않은 이메일로 시도"}>{log.actor_name ?? "알 수 없음"}</td>
+                  <td className="px-5 py-3 whitespace-nowrap text-sm text-slate-600">{role ? ROLE_LABELS[role] : "—"}</td>
+                  <td className="px-5 py-3 whitespace-nowrap text-xs text-slate-500 font-mono">{log.ip_address ?? "—"}</td>
+                  <td className="px-5 py-3 whitespace-nowrap text-xs text-slate-400" title={log.user_agent ?? undefined}>{toBrowserLabel(log.user_agent)}</td>
+                  <td className="px-5 py-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${failed ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{failed ? "실패" : "성공"}</span>
+                    {failed && log.error_code && <span className="block mt-1 text-[11px] text-slate-500">{toLoginFailureReason(log.error_code)}</span>}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+      </div>
+      <div className="flex items-center justify-center gap-3">
+        <button disabled={page <= 1 || loading} onClick={() => setPage(p => Math.max(1, p - 1))}
+          className="px-3 py-1.5 rounded border border-slate-200 text-xs font-medium text-slate-600 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed">이전</button>
+        <span className="text-xs text-slate-500">{page} / {totalPages}</span>
+        <button disabled={page >= totalPages || loading} onClick={() => setPage(p => p + 1)}
+          className="px-3 py-1.5 rounded border border-slate-200 text-xs font-medium text-slate-600 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed">다음</button>
       </div>
     </div>
   );
@@ -963,7 +1231,7 @@ function AdminIcon({ id }: { id: string }) {
   return <>{icons[id] ?? null}</>;
 }
 
-function AdminSidebar({ current, onChange, onLogout }: { current: AdminView; onChange: (v: AdminView) => void; onLogout: () => void }) {
+function AdminSidebar({ me, current, onChange, onLogout }: { me: User; current: AdminView; onChange: (v: AdminView) => void; onLogout: () => void }) {
   return (
     <aside className="flex flex-col w-60 min-h-screen shrink-0" style={{ background: "#0F263B", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="px-5 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -980,10 +1248,11 @@ function AdminSidebar({ current, onChange, onLogout }: { current: AdminView; onC
 
       <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#15314A] flex items-center justify-center text-xs font-bold text-white">김</div>
+          <div className="w-8 h-8 rounded-full bg-[#15314A] flex items-center justify-center text-xs font-bold text-white">{me.name.charAt(0) || "?"}</div>
           <div>
-            <div className="text-sm font-medium text-white">김민준</div>
-            <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>시스템 관리자</div>
+            <div className="text-sm font-medium text-white">{me.name}</div>
+            {/* 역할 3종(시스템 관리자 등)은 아직 Backend 에 없어 '관리자'로 둔다. */}
+            <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>{ROLE_LABELS[me.role]}</div>
           </div>
         </div>
       </div>
@@ -1037,8 +1306,43 @@ function AdminSidebar({ current, onChange, onLogout }: { current: AdminView; onC
 }
 
 // ── Root ───────────────────────────────────────────────────────────────────
-export default function AdminApp({ onLogout }: { onLogout: () => void }) {
-  const [view, setView] = useState<AdminView>("overview");
+// 메뉴는 주소(/admin, /admin/accounts …)로 나눈다. 새로고침해도 보던 메뉴가 유지된다.
+const ADMIN_VIEWS: AdminView[] = ["overview", "cases", "workqueue", "approvals", "accounts", "access-log", "security", "stats"];
+
+export default function AdminApp() {
+  const navigate = useNavigate();
+  const { view: viewParam } = useParams();
+  const { me, error, retry, logout } = useAdminSession();
+
+  const setView = useCallback((v: AdminView) => {
+    navigate(v === "overview" ? "/admin" : `/admin/${v}`);
+  }, [navigate]);
+
+  // 모르는 메뉴 주소는 대시보드로. overview 는 /admin 이 대표 주소다.
+  if (viewParam !== undefined && (viewParam === "overview" || !ADMIN_VIEWS.includes(viewParam as AdminView))) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  const view: AdminView = (viewParam as AdminView | undefined) ?? "overview";
+
+  // 관리자인지 서버에서 확인하기 전에는 아무 화면도 그리지 않는다(관리자가 아니면 useAdminSession 이 다른 곳으로 보낸다).
+  if (!me) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F6F8FB]">
+        {error ? (
+          <div className="bg-white border border-[#E2E8F0] rounded-[8px] px-6 py-5 text-center space-y-3 max-w-sm">
+            <p className="text-sm text-slate-700">{error}</p>
+            <div className="flex gap-2 justify-center">
+              <button onClick={retry} className="px-4 py-2 bg-[#15314A] text-white text-sm font-semibold rounded-lg hover:bg-[#0F263B]">다시 시도</button>
+              <button onClick={logout} className="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50">로그인 화면으로</button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">관리자 정보를 확인하는 중...</p>
+        )}
+      </div>
+    );
+  }
 
   const renderView = () => {
     switch (view) {
@@ -1046,7 +1350,7 @@ export default function AdminApp({ onLogout }: { onLogout: () => void }) {
       case "cases":      return <AllCasesView />;
       case "workqueue":  return <WorkQueueView />;
       case "approvals":  return <WorkQueueView />;
-      case "accounts":   return <AccountsView />;
+      case "accounts":   return <AccountsView me={me} />;
       case "access-log": return <AccessLogView />;
       case "security":   return <SecurityView />;
       case "stats":      return <StatsView />;
@@ -1056,7 +1360,7 @@ export default function AdminApp({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <AdminSidebar current={view} onChange={setView} onLogout={onLogout} />
+      <AdminSidebar me={me} current={view} onChange={setView} onLogout={logout} />
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-white border-b border-[#E2E8F0] px-7 py-3.5 flex items-center justify-between shrink-0">
@@ -1069,8 +1373,8 @@ export default function AdminApp({ onLogout }: { onLogout: () => void }) {
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
             </button>
             <div className="h-6 w-px bg-slate-200" />
-            <div className="w-7 h-7 rounded-full bg-[#15314A] flex items-center justify-center text-white text-xs font-bold">김</div>
-            <span className="text-sm font-medium text-slate-700">김민준</span>
+            <div className="w-7 h-7 rounded-full bg-[#15314A] flex items-center justify-center text-white text-xs font-bold">{me.name.charAt(0) || "?"}</div>
+            <span className="text-sm font-medium text-slate-700">{me.name}</span>
           </div>
         </header>
 
