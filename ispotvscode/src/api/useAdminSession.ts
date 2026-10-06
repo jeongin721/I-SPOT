@@ -38,12 +38,24 @@ export function useAdminSession(): AdminSession {
   const [checkKey, setCheckKey] = useState(0);
 
   useEffect(() => {
-    if (!getToken()) {
+    const requestedToken = getToken();
+
+    if (!requestedToken) {
       navigate("/login", { replace: true });
       return;
     }
 
     let cancelled = false;
+
+    // 응답을 기다리는 사이에 다른 탭에서 로그아웃하거나 다른 계정으로 로그인하면 토큰이 바뀐다.
+    // 그 응답은 옛 계정의 것이라 그대로 따르면 잘못된 화면으로 간다(예: 옛 상담사 응답으로 /dashboard 로 가 버려
+    // 새로 들어온 관리자가 관리자 화면을 못 봄). storage 이벤트보다 응답이 먼저 오면 생기므로, 토큰을 직접 비교해
+    // 다르면 그 응답은 버리고 지금 토큰으로 다시 확인한다.
+    const tokenChanged = () => getToken() !== requestedToken;
+    const recheck = () => {
+      setMe(null);
+      setCheckKey((key) => key + 1);
+    };
 
     setError(null);
 
@@ -52,7 +64,9 @@ export function useAdminSession(): AdminSession {
       .then((user) => {
         if (cancelled) return;
 
-        if (user.role !== "ADMIN") {
+        if (tokenChanged()) {
+          recheck();
+        } else if (user.role !== "ADMIN") {
           setMe(null);
           navigate("/dashboard", { replace: true });
         } else if (user.must_change_password) {
@@ -66,6 +80,12 @@ export function useAdminSession(): AdminSession {
       })
       .catch((caught) => {
         if (cancelled) return;
+
+        // 옛 토큰의 실패다(늦게 온 401 은 client 도 무시한다). 지금 토큰으로 다시 확인한다.
+        if (tokenChanged()) {
+          recheck();
+          return;
+        }
 
         // 401 은 client 가 토큰을 지우고 UNAUTHORIZED_EVENT 를 보낸다(아래에서 /login 으로).
         if (caught instanceof ApiError && caught.isUnauthorized) return;
