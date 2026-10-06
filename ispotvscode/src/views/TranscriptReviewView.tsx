@@ -5,7 +5,14 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { useToast } from "../components/ui/Toast";
 import { cases as casesApi, sessions as sessionsApi, transcript as transcriptApi } from "../api/endpoints";
-import type { SessionErrorInfo, SessionStatus, Transcript, TranscriptEnvelope } from "../api/types";
+import type {
+  SessionErrorInfo,
+  SessionStatus,
+  Speaker,
+  Transcript,
+  TranscriptEnvelope,
+  TranscriptSegmentUpdate,
+} from "../api/types";
 import type { CaseRecord } from "../data/cases";
 import type { Session as UiSession } from "../data/mockData";
 import {
@@ -13,6 +20,7 @@ import {
   deriveStatus,
   formatConfidencePercent,
   isLowConfidence,
+  SPEAKER_LABELS,
   toUiCase,
   toUiSession,
   toUiTranscriptSegments,
@@ -24,12 +32,18 @@ import {
 // 반영되며 "STT 검수 완료" 가 POST .../transcript/confirm 이다.
 // 원문 변환 대기 · 실패 회기는 "원문 변환 (다시) 요청"(POST .../transcript)을 보여 준다. 전사본이 없으면
 // 목록 자리의 안내 칸에, 이전 전사본이 남아 있으면(재업로드 · 다시 변환 뒤 실패 등) 헤더에 둔다.
+// 수정은 문장과 화자를 함께 고친다(화자 확인 필요 발화를 아동 · 상담사 등으로 바로잡는 곳이 여기다).
 
 interface Segment extends UiTranscriptSegment {
   confirmed: boolean;
   editing: boolean;
   draft: string;
+  /** 수정 중에 고른 화자. 수정을 시작할 때 지금 화자로 채운다. */
+  draftSpeaker: Speaker;
 }
+
+/** 수정할 때 고를 수 있는 화자(API_CONTRACT 7절의 speaker 값). 이름은 adapters.SPEAKER_LABELS 를 쓴다. */
+const SPEAKER_OPTIONS: Speaker[] = ["COUNSELOR", "CHILD", "GUARDIAN", "OTHER", "UNKNOWN"];
 
 /**
  * 원문 변환(POST .../transcript)을 이 화면에서 요청할 수 있는 상태. Backend 도 이 두 상태에서
@@ -37,6 +51,20 @@ interface Segment extends UiTranscriptSegment {
  * 음성 업로드 대기(CREATED)는 올린 음성이 없어 요청할 수 없으니 업로드 창으로 안내만 한다.
  */
 const STT_REQUESTABLE: SessionStatus[] = ["AUDIO_UPLOADED", "STT_FAILED"];
+
+/**
+ * 검수 필요 상태인데 전사본에 발화가 하나도 없다. 검수 · 확정할 것이 없으니 원문 변환을 다시 요청하게 한다
+ * (Backend 도 STT_REVIEW_REQUIRED 에서 다시 변환을 받는다). 지금 Backend 는 발화 0개 결과를 실패(STT_FAILED)로
+ * 마감하므로, 그 전에 만들어진 전사본에만 해당한다.
+ */
+function isEmptyReview(status: SessionStatus | null, transcript: Transcript | null): boolean {
+  return status === "STT_REVIEW_REQUIRED" && transcript !== null && transcript.segments.length === 0;
+}
+
+/** 이 화면에서 원문 변환을 요청할 수 있는가. */
+function canRequestStt(status: SessionStatus | null, transcript: Transcript | null): boolean {
+  return status !== null && (STT_REQUESTABLE.includes(status) || isEmptyReview(status, transcript));
+}
 
 /**
  * 원문을 고칠 수 있는 상태. Backend 도 이 두 상태에서만 PATCH 를 받는다
@@ -78,6 +106,7 @@ function toSegments(source: Transcript, confirmedIds: Set<string> = new Set()): 
     confirmed: s.edited || confirmedIds.has(s.id),
     editing: false,
     draft: "",
+    draftSpeaker: s.speaker,
   }));
 }
 
@@ -139,13 +168,16 @@ export default function TranscriptReviewView() {
   const [requesting, setRequesting] = useState(false);
   /** 원문 변환 요청이 거절된 이유. 버튼 아래에 보여 준다. */
   const [requestError, setRequestError] = useState<string | null>(null);
+  /** 검수 필요 상태인데 발화가 하나도 없는 전사본이다(isEmptyReview). */
+  const [emptyTranscript, setEmptyTranscript] = useState(false);
 
   function applyEnvelope(envelope: TranscriptEnvelope) {
     setStatus(envelope.session_status);
     setSttError(envelope.error);
     // 요청할 수 없는 상태(처리 중 등)로 바뀌면 지난 거절 문구는 지금 상태와 맞지 않는다.
     // 남겨 두면 재확인 끝에 다시 실패했을 때 새 실패 사유 아래에 옛 문구가 되살아난다.
-    if (!STT_REQUESTABLE.includes(envelope.session_status)) setRequestError(null);
+    if (!canRequestStt(envelope.session_status, envelope.transcript)) setRequestError(null);
+    setEmptyTranscript(isEmptyReview(envelope.session_status, envelope.transcript));
     if (envelope.transcript) {
       setVersion(envelope.transcript.version);
       setIsConfirmed(envelope.transcript.is_confirmed);
@@ -197,10 +229,23 @@ export default function TranscriptReviewView() {
 
   // 주소의 회기가 바뀌면 이전 회기의 재확인 횟수 · 요청 중 표시를 넘겨받지 않는다(AIReviewView 와 같다).
   // 새 회기가 그려지는 즉시 바꿔 두어야 그 사이에 도착한 이전 회기 응답도 걸러진다.
+  // 이전 회기의 발화 · 상태 · 수정 중 표시도 비운다. 남겨 두면 새 회기를 불러오는 동안(또는 불러오기 실패 때)
+  // 이전 회기 발화와 수정 · 확정 버튼이 새 회기 주소 아래에 보이고 눌린다.
   useLayoutEffect(() => {
     currentSessionId.current = sessionId;
     setPollTries(0);
     setRequesting(false);
+    setLoading(Boolean(sessionId));
+    setSessionInfo(null);
+    setStatus(null);
+    setSttError(null);
+    setVersion(null);
+    setIsConfirmed(false);
+    setSegments([]);
+    setEmptyTranscript(false);
+    setSavingId(null);
+    setConfirming(false);
+    setShowConfirm(false);
   }, [sessionId]);
 
   useEffect(() => {
@@ -257,19 +302,25 @@ export default function TranscriptReviewView() {
     ? "신뢰도 값이 없어 저신뢰 구간은 표시되지 않습니다(추가 확인 필요)"
     : `신뢰도 값이 없는 발화 ${hiddenNoConfCount}개는 이 목록에 나오지 않습니다(추가 확인 필요)`;
   const editable           = status !== null && EDITABLE.includes(status);
-  const sttRequestable     = status !== null && STT_REQUESTABLE.includes(status);
+  // 발화 0개 전사본이면 검수 필요 상태에서도 다시 요청할 수 있다(isEmptyReview).
+  const sttRequestable     = status !== null && (STT_REQUESTABLE.includes(status) || (emptyTranscript && status === "STT_REVIEW_REQUIRED"));
   // 재확인을 다 쓰고도 처리 중이다. 새로고침 없이는 바뀌지 않으니 "다시 확인" 을 보여 준다(AIReviewView 와 같다).
   const sttGaveUp          = status === "STT_PROCESSING" && pollTries >= POLL_MAX_TRIES;
   // 이전 전사본이 목록에 보이는 중이다. 전사본이 없을 때의 안내 칸이 그려지지 않으니 원문 변환 요청 · "다시 확인"
   // 버튼은 헤더에, 실패 사유 · 거절 이유는 통계 띠의 읽기 전용 표시 옆에 둔다.
   const transcriptShown    = !loading && !loadError && hasTranscript;
-  const requestLabel       = requesting ? "요청 중..." : status === "STT_FAILED" ? "원문 변환 다시 요청" : "원문 변환 요청";
+  const requestLabel       = requesting ? "요청 중..." : status === "STT_FAILED" || emptyTranscript ? "원문 변환 다시 요청" : "원문 변환 요청";
 
   function startEdit(id: string) {
-    setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text } : s));
+    setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: true, draft: s.text, draftSpeaker: s.speaker } : s));
   }
 
-  /** 고친 문장을 Backend 에 저장한다. 새 version 이 만들어지므로 목록 전체를 응답으로 다시 채운다. */
+  /**
+   * 고친 문장 · 화자를 Backend 에 저장한다. 바뀐 칸만 보낸다(화자만 바꿔도 보낸다).
+   * 새 version 이 만들어지므로 목록 전체를 응답으로 다시 채운다. 화자를 바꾸면 응답의 child_handoff 도
+   * 다시 만들어져 화자 확인 필요 표시가 따라 바뀐다.
+   * 기다리는 사이 주소의 회기가 바뀌면 받은 응답을 새 회기 화면에 넣지 않는다.
+   */
   async function saveDraft(id: string) {
     const target = segments.find(s => s.id === id);
     if (!target || !sessionId || savingId) return;
@@ -280,15 +331,23 @@ export default function TranscriptReviewView() {
       return;
     }
 
+    const update: TranscriptSegmentUpdate = { segment_id: id };
+    if (text !== target.text) update.text = text;
+    if (target.draftSpeaker !== target.speaker) update.speaker = target.draftSpeaker;
+
     // 바뀐 게 없으면 서버에 보내지 않고 확정 표시만 한다.
-    if (text === target.text) {
+    if (update.text === undefined && update.speaker === undefined) {
       setSegments(prev => prev.map(s => s.id === id ? { ...s, editing: false, draft: "", confirmed: true } : s));
       return;
     }
 
+    const targetSession = sessionId;
+    const moved = () => currentSessionId.current !== targetSession;
+
     setSavingId(id);
     try {
-      const updated = await transcriptApi.update(sessionId, { segments: [{ segment_id: id, text }] });
+      const updated = await transcriptApi.update(targetSession, { segments: [update] });
+      if (moved()) return;
       const confirmedIds = new Set(segments.filter(s => s.confirmed).map(s => s.id));
       confirmedIds.add(id);
       setSegments(toSegments(updated, confirmedIds));
@@ -298,9 +357,11 @@ export default function TranscriptReviewView() {
       if (!updated.is_confirmed) setStatus("STT_REVIEW_REQUIRED");
       showToast("발화를 수정했습니다.", "success");
     } catch (caught) {
+      if (moved()) return;
       showToast(describeApiError(caught, "발화 수정에 실패했습니다.", "권한이 없거나 없는 회기입니다."), "error");
     } finally {
-      setSavingId(null);
+      // 회기가 바뀌었으면 위 useLayoutEffect 가 이미 풀었다.
+      if (!moved()) setSavingId(null);
     }
   }
   function cancelEdit(id: string) {
@@ -324,19 +385,25 @@ export default function TranscriptReviewView() {
   async function handleConfirmComplete() {
     if (!sessionId || confirming) return;
 
+    const targetSession = sessionId;
+    const moved = () => currentSessionId.current !== targetSession;
+
     setConfirming(true);
     try {
-      const confirmed = await transcriptApi.confirm(sessionId);
+      const confirmed = await transcriptApi.confirm(targetSession);
+      // 기다리는 사이 회기가 바뀌었으면 새 회기 화면을 바꾸거나 이전 회기 분석 화면으로 옮기지 않는다.
+      if (moved()) return;
       setIsConfirmed(confirmed.is_confirmed);
       setStatus("STT_CONFIRMED");
       setShowConfirm(false);
       showToast("STT 검수가 완료되었습니다.", "success");
-      if (caseId) navigate(`/cases/${caseId}/analyses/${sessionId}`);
+      if (caseId) navigate(`/cases/${caseId}/analyses/${targetSession}`);
     } catch (caught) {
+      if (moved()) return;
       setShowConfirm(false);
       showToast(describeApiError(caught, "검수 확정에 실패했습니다.", "권한이 없거나 없는 회기입니다."), "error");
     } finally {
-      setConfirming(false);
+      if (!moved()) setConfirming(false);
     }
   }
 
@@ -552,13 +619,14 @@ export default function TranscriptReviewView() {
           {!loading && !loadError && !hasTranscript && (
             <div className="flex flex-col items-center justify-center h-full text-[#94A3B8] space-y-3">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-              <p className="text-sm">{status === "STT_FAILED" ? "STT 처리에 실패했습니다" : "아직 전사본이 없습니다"}</p>
+              <p className="text-sm">{status === "STT_FAILED" ? "STT 처리에 실패했습니다" : emptyTranscript && status === "STT_REVIEW_REQUIRED" ? "인식된 발화가 없습니다" : "아직 전사본이 없습니다"}</p>
               {status && (
                 <p className="text-xs">
                   현재 상태: {deriveStatus(status).label}
                   {/* 음성 업로드는 이 화면에 없다. 업로드 창이 있는 메뉴를 알려 준다. */}
                   {status === "CREATED" && " · 상담 자료 검수 → 상담 자료 업로드에서 음성을 올려 주세요"}
                   {status === "AUDIO_UPLOADED" && " · 원문 변환을 요청하면 여기에 발화가 나타납니다"}
+                  {emptyTranscript && status === "STT_REVIEW_REQUIRED" && " · 검수할 발화가 없습니다. 원문 변환을 다시 요청하거나 음성을 다시 올려 주세요"}
                   {status === "STT_PROCESSING" && (sttGaveUp
                     ? " · 오래 걸리고 있습니다. 잠시 뒤 다시 확인해 주세요."
                     : " · 끝나면 여기에 발화가 나타납니다")}
@@ -625,7 +693,7 @@ export default function TranscriptReviewView() {
             </div>
           )}
 
-          {displayed.map(seg => {
+          {!loading && !loadError && displayed.map(seg => {
             const flagged = needsReview(seg);
             const isSaving = savingId === seg.id;
             return (
@@ -666,6 +734,22 @@ export default function TranscriptReviewView() {
                           className="w-full px-3 py-2 rounded-[6px] border border-[#2563EB] text-sm text-[#172033] resize-none focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
                         />
                         <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1.5 text-xs text-[#64748B]">
+                            화자
+                            <select
+                              value={seg.draftSpeaker}
+                              onChange={e => {
+                                const next = e.target.value as Speaker;
+                                setSegments(prev => prev.map(s => s.id === seg.id ? { ...s, draftSpeaker: next } : s));
+                              }}
+                              disabled={isSaving}
+                              className="px-2 py-1.5 rounded-[6px] border border-[#E2E8F0] text-xs text-[#172033] bg-white focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]"
+                            >
+                              {SPEAKER_OPTIONS.map(code => (
+                                <option key={code} value={code}>{SPEAKER_LABELS[code]}</option>
+                              ))}
+                            </select>
+                          </label>
                           <button onClick={() => saveDraft(seg.id)} disabled={isSaving} className="px-3 py-1.5 bg-[#2563EB] text-white text-xs font-semibold rounded-[6px] hover:bg-blue-700 disabled:opacity-60 transition-colors">
                             {isSaving ? "저장 중..." : "저장 및 확정"}
                           </button>

@@ -29,7 +29,13 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 # ["cases", "sessions"] 가 되고, 문서에 같은 endpoint 가 두 번 나온다.
 session_router = APIRouter(prefix="/cases", tags=["sessions"])
 
-PageQuery = Annotated[int, Query(ge=1, description="1부터 시작하는 page 번호")]
+# page 상한. 없으면 건너뛸 행 수((page - 1) × page_size)가 DB 정수 범위를 넘어 500 이 난다.
+# 넘는 값은 다른 입력값 오류처럼 422 VALIDATION_ERROR 다. 목록 창구(사례 · 회기 · 업무 · 감사 로그)가 함께 쓴다.
+MAX_PAGE = 1_000_000
+
+PageQuery = Annotated[
+    int, Query(ge=1, le=MAX_PAGE, description="1부터 시작하는 page 번호(최대 1,000,000)")
+]
 PageSizeQuery = Annotated[int, Query(ge=1, le=100)]
 
 

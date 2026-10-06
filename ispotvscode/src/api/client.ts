@@ -13,7 +13,11 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const API_PREFIX = "/api/v1";
 
-const TOKEN_KEY = "ispot_access_token";
+/** localStorage 의 토큰 칸. 다른 탭의 로그아웃 · 로그인을 알아채는 데도 쓴다(AppLayout 의 storage 이벤트). */
+export const TOKEN_KEY = "ispot_access_token";
+
+/** 로그인 요청 경로. 이 요청의 401 은 비밀번호가 틀린 것이라 로그인 만료로 보지 않는다. */
+const LOGIN_PATH = "/auth/login";
 
 // =========================================================
 // 토큰 보관
@@ -50,6 +54,13 @@ export function clearToken(): void {
  */
 export const UNAUTHORIZED_EVENT = "ispot:unauthorized";
 
+/**
+ * 임시 비밀번호로 로그인해 비밀번호를 바꿔야 할 때(403 PASSWORD_CHANGE_REQUIRED) window 에 보내는 이벤트.
+ * AppLayout 이 받아서 내 정보(비밀번호 변경) 화면으로 보낸다. 그 화면이 부르는 GET /auth/me 와
+ * POST /auth/me/password 는 Backend 가 열어 두어(API_CONTRACT 3절) 다시 보내지는 일이 없다.
+ */
+export const PASSWORD_CHANGE_REQUIRED_EVENT = "ispot:password-change-required";
+
 /** 로그인 화면이 따로 저장해 두는 이름 · 역할. 토큰이 끊기면 함께 지운다. */
 export const SESSION_INFO_KEY = "ispot_auth";
 
@@ -64,9 +75,45 @@ export function clearSession(): void {
   }
 }
 
-function notifyUnauthorized(): void {
+/**
+ * 토큰이 끊겨 로그인 화면으로 보낼 때 그 이유(서버 문구)를 넘기는 sessionStorage 칸.
+ * 예: 현재 비밀번호를 여러 번 틀려 끊긴 경우. 로그인 화면이 처음 그릴 때 보여 주고 지운다.
+ */
+export const LOGOUT_REASON_KEY = "ispot_logout_reason";
+
+/** 로그인 화면이 보여 줄 로그아웃 이유. 없으면 빈 문자열. 읽기만 한다(지우는 것은 clearLogoutReason). */
+export function readLogoutReason(): string {
+  try {
+    return sessionStorage.getItem(LOGOUT_REASON_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function clearLogoutReason(): void {
+  try {
+    sessionStorage.removeItem(LOGOUT_REASON_KEY);
+  } catch {
+    // 무시
+  }
+}
+
+/**
+ * 로그인 정보를 지우고 AppLayout 에 알린다. reason 이 있으면 로그인 화면이 보여 주도록 남긴다.
+ * 이벤트의 detail.message 에도 같은 문구를 싣는다.
+ */
+function notifyUnauthorized(reason?: string): void {
   clearSession();
-  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+
+  if (reason) {
+    try {
+      sessionStorage.setItem(LOGOUT_REASON_KEY, reason);
+    } catch {
+      // 저장하지 못하면 이유 없이 로그인 화면으로 간다.
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { message: reason ?? null } }));
 }
 
 // =========================================================
@@ -184,9 +231,17 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (!response.ok) {
     const failure = payload as Partial<ErrorResponse>;
 
-    // 토큰을 붙였는데 401 이면 만료 · 폐기다(비밀번호 변경, 강제 로그아웃 포함).
-    // 로그인 요청의 401(비밀번호 틀림)은 토큰 없이 보내므로 여기에 걸리지 않는다.
-    if (response.status === 401 && token) notifyUnauthorized();
+    // 401 이면 만료 · 폐기다(비밀번호 변경, 강제 로그아웃 · 정지 포함). 토큰이 없어서 난 401 도 같다 —
+    // 다른 탭에서 로그아웃해 이 탭의 토큰이 이미 지워진 경우다. 로그인 요청의 401(비밀번호 틀림)만 뺀다.
+    // 토큰을 실어 보낸 요청이면 서버 문구(예: "현재 비밀번호를 여러 번 틀려 로그아웃했습니다.")를 로그인 화면에 넘긴다.
+    // 토큰 없이 보낸 요청의 문구("Authorization 헤더가 없습니다.")는 사용자에게 뜻이 없어 넘기지 않는다.
+    if (response.status === 401 && path !== LOGIN_PATH) {
+      notifyUnauthorized(token ? failure.error?.message : undefined);
+    }
+
+    if (response.status === 403 && failure.error?.code === "PASSWORD_CHANGE_REQUIRED") {
+      window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+    }
 
     throw new ApiError(
       failure.error?.code ?? "UNKNOWN_ERROR",

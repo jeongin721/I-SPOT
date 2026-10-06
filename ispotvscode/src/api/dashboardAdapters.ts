@@ -2,8 +2,9 @@
 //
 // 공통 변환(adapters.ts)은 가져다 쓰기만 하고, 이 화면들에만 필요한 것은 여기에 둔다.
 // Backend 에 없는 값은 NOT_PROVIDED("—")로 두고 그럴듯한 기본값을 만들지 않는다.
-// (adapters.toUiCase 는 위험도를 "low", toUiSession 은 상담 유형을 "정기상담" 으로 채우므로
-//  이 화면들에서는 쓰지 않는다. 확인하지 않은 값이 "확인 완료" · "정기상담" 으로 보이기 때문이다.)
+// (adapters.toUiSession 은 상담 유형을 "정기상담" 으로 채우므로 이 화면들에서는 쓰지 않는다.
+//  확인하지 않은 상담 유형이 "정기상담" 으로 보이기 때문이다.
+//  adapters.toUiCase 의 위험도는 서버 값이 없으면 비워 두고, RiskBadge 가 "—" 로 그린다.)
 
 import { NOT_PROVIDED, deriveStatus, toGuardianLabel, toUiTaskRow, toUiTranscriptSegments, pad2, parseBackendTime } from "./adapters";
 import type { UiTaskRow, UiTranscriptSegment } from "./adapters";

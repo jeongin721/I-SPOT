@@ -59,7 +59,8 @@ const MODE_CFG: Record<Mode, {
 export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"riskScore" | "lastSession">("riskScore");
+  // 위험도가 아직 없어(모든 사례 0점) 위험도순 정렬은 막고 최근상담순으로 시작한다.
+  const [sortBy, setSortBy] = useState<"riskScore" | "lastSession">("lastSession");
   const [allCases, setAllCases]   = useState<CaseWithId[]>([]);
   const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -105,7 +106,7 @@ export default function CaseSelectorListPage({ mode }: { mode: Mode }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-0.5 text-[13px] text-[#94A3B8] bg-white border border-[#E2E8F0] rounded-[6px] px-1 py-1">
-              <button onClick={() => setSortBy("riskScore")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "riskScore" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>위험도순</button>
+              <button disabled title="위험도는 아직 서버에 없습니다" className="px-2.5 py-1 rounded transition-all opacity-50 cursor-not-allowed">위험도순</button>
               <button onClick={() => setSortBy("lastSession")} className={`px-2.5 py-1 rounded transition-all ${sortBy === "lastSession" ? "font-semibold text-[#172033] bg-[#F1F5F9]" : "hover:text-[#172033]"}`}>최근상담순</button>
             </div>
             <div className="relative">

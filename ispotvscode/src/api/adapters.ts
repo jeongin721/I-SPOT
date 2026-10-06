@@ -115,7 +115,8 @@ export function toUiCase(source: Case, extras: CaseAdapterExtras = {}): CaseReco
     age: toAge(source.child_birth_year),
     guardian: toGuardianLabel(source),
     abuseTypes: [],
-    riskLevel: extras.riskLevel ?? "low",
+    // 위험도가 없으면 비워 둔다. "low"(확인 완료)로 채우면 아무도 검토하지 않은 사례가 끝난 것처럼 보인다.
+    riskLevel: extras.riskLevel,
     riskScore: extras.riskScore ?? 0,
     lastSession: toDateOnly(source.last_session_at),
     sessionCount: extras.sessionCount ?? 0,

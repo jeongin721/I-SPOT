@@ -110,6 +110,18 @@ python -m scripts.seed_users --email admin@example.com --name 관리자 --role A
 
 비밀번호를 `--password` 나 `SEED_USER_PASSWORD` 로 직접 주면 API 와 같은 비밀번호 규칙(`docs/API_CONTRACT.md` 3절)을 거친다.
 맞지 않으면 계정을 만들지 않고 사유를 출력한 뒤 종료 코드 1 로 끝난다. 주지 않으면 규칙에 맞는 값을 만들어 출력한다.
+비밀번호는 **계정을 새로 만들 때만** 적용 · 출력된다. 이미 있는 계정은 건너뛰고 비밀번호도 바꾸지 않는다(`SEED_USER_PASSWORD` 를 바꿔
+다시 돌려도 같다). 일부만 새로 만들었으면 그 비밀번호가 적용된 계정의 이메일을 함께 출력한다. `.cursor/start.sh` 로 만든 데모 계정의
+비밀번호는 그 파일의 `SEED_USER_PASSWORD` 기본값이다. 비밀번호를 모르면 A.7 대로 DB 를 지우고 다시 만들거나 아래
+`unlock_user --reset-password` 로 임시 비밀번호를 받는다. 로그인을 5번 틀리면 계정이 잠기고 기본 설정(`LOGIN_LOCK_MINUTES=0`)에서는
+저절로 풀리지 않는다.
+
+임시 비밀번호로 로그인하면 **새 비밀번호로 바꾸기 전에는** `GET /api/v1/auth/me` · `POST /api/v1/auth/me/password` 말고는
+모두 `403 PASSWORD_CHANGE_REQUIRED` 다(`seed_demo_data` 도 여기서 멈춘다). 상담사는 로그인하면 화면이 내 정보(`/profile`)로
+보내므로 거기서 바꾼다. 관리자 화면은 아직 Backend 에 연결되지 않아, 관리자는 지금은 Swagger(`/docs`)에서 바꾼다:
+`POST /api/v1/auth/login` 으로 받은 `access_token` 을 Authorize 에 넣고, `POST /api/v1/auth/me/password` 에
+`{"current_password": "<임시 비밀번호>", "new_password": "<새 비밀번호>"}` 를 보낸다(성공하면 `204`).
+그 뒤 `seed_demo_data` 의 `--admin-password` 에는 바꾼 새 비밀번호를 준다.
 
 관리자가 한 명뿐인데 그 계정이 잠기거나 휴면이 되면 관리자 화면으로는 풀 수 없다. 서버에서 `python -m scripts.unlock_user --email <이메일>` 로 푼다(실패 잠금 · 휴면 해제. 비활성 계정은 `--activate`, 임시 비밀번호 새로 발급은 `--reset-password` 를 붙인다). 한 일은 감사 로그에 `detail.via` 로 남는다.
 
@@ -290,7 +302,8 @@ AI_PROCESSING  → AI_FAILED  → (재시도) → AI_PROCESSING
 Frontend 는 이 값으로 재시도 UI 를 노출할 수 있다.
 
 상태 전이는 `app/core/state_machine.py` 에서 강제되며,
-잘못된 순서로 호출하면 `409 INVALID_SESSION_STATE` 를 반환한다.
+잘못된 순서로 호출하면 대개 `409 INVALID_SESSION_STATE` 를 반환한다.
+필요한 음성 · 전사본이 아직 없으면 `404` 가 먼저 나는 요청도 있다(아래 A.6).
 
 ---
 
@@ -343,6 +356,23 @@ backend/
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.
+- 본문을 받는 창구(JSON · form · 음성 업로드)는 요청 본문 크기를 먼저 제한한다(`app/main.py` `_BodySizeLimitMiddleware`).
+  JSON · form 은 로그인 확인보다 먼저, 음성 업로드는 토큰의 서명 · 만료를 먼저 본 뒤 계정 상태 · 회기 확인보다 먼저
+  거절한다. 음성 업로드는 `AUDIO_MAX_SIZE_MB` + 1MB, 나머지는
+  `REQUEST_MAX_BODY_MB`(기본 2MB)를 넘으면 `400` 으로 거절한다. 본문을 읽지 않는 창구(GET, 본문 없는 POST)는
+  보낸 본문을 무시하고 평소처럼 답한다(401 이나 정상 응답).
+  음성 업로드의 큰 한도는 서명 · 만료가 맞는 토큰을 붙인 `multipart/form-data` 요청만 받는다. JSON · urlencoded 본문과
+  multipart 의 파일이 아닌 칸은 해석할 때 메모리에 쌓이기 때문이다. 음성 경로라도 urlencoded 본문은 일반 한도를 쓰고,
+  그 밖의 multipart 아닌 본문(JSON · text 등)은 음성 창구가 읽지 않으므로 크기와 상관없이 `401`(토큰 없음 · 틀림) 또는
+  `422`(`file` 없음)로 답한다. 토큰이 없거나 틀리거나 만료된 multipart 본문은 해석하기 전에 다른 창구와 같은
+  `401` 로 답한다. 토큰의 서명 · 만료만 보고 DB 는 보지 않으므로, 정지 · 강제 로그아웃된 계정의 토큰은
+  본문을 받은 뒤에 `401` · `403` 이 난다(본문이 한도를 넘으면 그보다 먼저 `400 AUDIO_TOO_LARGE`).
+  거절하기 전에 남은 본문을 저장하지 않고 끝까지 읽어 버린다(최대 30초). 다 읽지 않고 응답하면 연결이 끊겨(TCP RST)
+  개발 프록시(vite)를 거친 화면은 `400` 문구 대신 "서버에 연결할 수 없습니다" 를 본다. 30초 안에 다 못 보내는
+  본문은 다시 끊길 수 있다. 수동 확인: Backend 를 `AUDIO_MAX_SIZE_MB=2` 로 띄우고 화면(vite)을 거쳐 5MB 음성을
+  올리면 "음성 파일이 최대 허용 크기(2MB)를 초과했습니다." 가 떠야 한다.
+  운영에서 앞단 프록시(nginx 등)를 두면 그쪽에도 같은 제한을 둔다(예: `client_max_body_size 201m;`).
+  `docker-compose.yml` 은 uvicorn 을 프록시 없이 바로 연다 — 로컬 · 시연용이다.
 
 ---
 
@@ -405,15 +435,23 @@ AI_PROVIDER=mock
 ```bash
 alembic upgrade head
 
-# 관리자/상담사 계정 생성 — 출력되는 비밀번호를 적어둔다
+# 관리자/상담사 계정 생성 — 계정을 처음 만들 때 출력되는 비밀번호를 적어둔다
 PYTHONPATH=. python scripts/seed_users.py --demo
 
 # 서버 실행 (아래 A.4) 후 다른 터미널에서
 PYTHONPATH=. python scripts/seed_demo_data.py \
   --base-url http://127.0.0.1:8000 \
   --admin-email admin@ispot.example.com \
-  --admin-password <위에서 출력된 비밀번호>
+  --admin-password <계정을 처음 만들 때 출력된 비밀번호>
 ```
+
+비밀번호는 계정을 처음 만들 때만 출력된다(`SEED_USER_PASSWORD` 를 정해 두었으면 그 값, `.cursor/start.sh` 로 만들었으면 그 파일의
+`SEED_USER_PASSWORD` 기본값). 이미 있는 계정으로 다시 돌리면 비밀번호를 바꾸지 않고 출력하지도 않는다("이미 존재하는 계정입니다").
+비밀번호를 모르면 데모 준비만 할 때는 A.7 대로 DB 를 지우고 위 명령을 다시 돌리는 것이 가장 간단하다. DB 를 남겨야 하면
+`python -m scripts.unlock_user --email <이메일> --reset-password` 로 임시 비밀번호를 받는데, 임시 비밀번호는 **먼저 새 비밀번호로
+바꾼 뒤**(2.5) 그 새 비밀번호를 `--admin-password` 에 준다. 임시 비밀번호를 그대로 주면 `seed_demo_data` 가
+`403 PASSWORD_CHANGE_REQUIRED` 로 멈춘다. 틀린 값으로 5번 로그인하면 계정이 잠기고 저절로 풀리지 않는다 —
+`python -m scripts.unlock_user --email <이메일>` 로 푼다(2.5).
 
 데모 데이터는 **상태별 사례 6건**을 만든다. 각 화면이 어떤 상태에서
 어떻게 보여야 하는지 한 번에 확인할 수 있다.
@@ -442,13 +480,13 @@ uvicorn app.main:app --reload
 Backend 를 켜둔 상태에서 프론트를 실행하면 CORS 설정 없이 바로 연결된다.
 
 ```bash
-cd ispotvscode
+cd ../ispotvscode      # A.1 에서 backend/ 로 들어와 있으면. 저장소 맨 위에서는 cd ispotvscode
 npm install
 npm run dev
 ```
 
-연결 확인 페이지: <http://localhost:5173/api-demo>
-로그인 → 사례 목록 → 회차 목록이 실제 API 로 동작한다.
+연결 확인: <http://localhost:5173/login> 에서 A.3 의 데모 계정으로 로그인한다.
+대시보드 · 통합 사례 목록 · 회차 목록이 실제 API 로 나온다.
 
 ### A.6 자주 겪는 문제
 
@@ -456,15 +494,20 @@ npm run dev
 |---|---|
 | `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
 | 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
-| `409 INVALID_SESSION_STATE` | 상태 순서를 건너뛴 요청이다. 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절) |
+| `403 PASSWORD_CHANGE_REQUIRED` | 임시 비밀번호(`unlock_user --reset-password`)로 로그인한 상태다. 2.5 대로 새 비밀번호로 바꾼 뒤 다시 한다(`seed_demo_data` 도 같다) |
+| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절). STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다. 원문 수정(`PATCH /transcript`)은 상태를 먼저 보므로 전사본이 없어도 409 다 |
 | `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
 | 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
 
 ### A.7 정리
 
-DB 를 초기화하려면 서버를 끄고 파일만 지우면 된다.
+DB 를 초기화하려면 서버를 끄고 파일만 지우면 된다. `dev.db` 와 `alembic.ini` 는 `backend/` 에 있으므로
+`backend/` 에서 실행한다.
 
 ```bash
-rm backend/dev.db
+cd backend            # 이미 backend/ 이면 생략
+rm dev.db
 alembic upgrade head
 ```
+
+데모 계정 · 데이터가 필요하면 A.3 을 다시 실행한다.

@@ -78,6 +78,12 @@ _EDITABLE_STATUSES = {
     SessionStatus.STT_CONFIRMED,
 }
 
+# 발화를 하나도 찾지 못한 STT 결과의 실패 문구. 화면에 그대로 보인다(Session error.message).
+EMPTY_STT_RESULT_MESSAGE = (
+    "음성에서 발화를 찾지 못했습니다. 녹음 상태를 확인해 음성을 다시 올리거나 "
+    "원문 변환을 다시 요청해 주세요."
+)
+
 
 # =========================================================
 # 조회
@@ -263,6 +269,12 @@ def process_stt(session_id: uuid.UUID) -> None:
 
             if not isinstance(result, STTResult):
                 raise STTOutputError("STT Adapter 가 STTResult 를 반환하지 않았습니다.")
+
+            # 발화를 하나도 찾지 못했으면(무음 · 잡음만 있는 음성) 실패로 마감한다.
+            # 검수 필요로 두면 검수할 발화가 없는 막다른 상태가 된다. 실패로 두면 재시도 · 재업로드
+            # 길이 그대로 열린다. 빈 전사본 version 도 남기지 않는다.
+            if not result.segments:
+                raise STTError(EMPTY_STT_RESULT_MESSAGE)
 
             _save_stt_result(
                 db,

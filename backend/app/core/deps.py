@@ -4,7 +4,7 @@
 # Frontend 메뉴 숨김만으로 권한을 처리하지 않는다.(03_BACKEND_PROMPT.md §10)
 
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -46,6 +46,22 @@ def user_agent(request: Request) -> Optional[str]:
     return value[:255] if value else None
 
 
+def verify_access_token(
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Dict[str, Any]:
+    """
+    Bearer 토큰의 서명 · 만료만 보고 내용을 돌려준다. DB 는 보지 않는다. 틀리면 401.
+
+    get_current_user 와, 본문을 읽기 전에 음성 업로드를 거르는 main._BodySizeLimitMiddleware 가 같이 쓴다.
+    둘이 같은 문구를 내야 화면이 같은 401 로 다룬다.
+    """
+
+    if credentials is None or not credentials.credentials:
+        raise unauthorized("Authorization 헤더가 없습니다.")
+
+    return decode_access_token(credentials.credentials)
+
+
 def get_current_user(
     request: Request,
     db: DbSession,
@@ -53,10 +69,7 @@ def get_current_user(
         Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)
     ] = None,
 ) -> User:
-    if credentials is None or not credentials.credentials:
-        raise unauthorized("Authorization 헤더가 없습니다.")
-
-    payload = decode_access_token(credentials.credentials)
+    payload = verify_access_token(credentials)
     subject = payload.get("sub")
 
     if not subject:
@@ -72,16 +85,20 @@ def get_current_user(
     if user is None:
         raise unauthorized("사용자를 찾을 수 없습니다.")
 
+    # 발급 뒤에 비밀번호 변경 · 강제 로그아웃 · 역할 변경 · 정지가 있었으면 거부한다.
+    # 정지 검사보다 먼저 본다. 관리자가 API 로 정지하면 토큰 버전도 오르므로(account_service)
+    # 옛 토큰은 401 이 되고, 화면은 401 을 받아 로그인 화면으로 보낸다(API_CONTRACT 3절).
+    # 정지 이유(INACTIVE_USER)는 다시 로그인할 때 알려준다.
+    if int(payload.get("tv", 0)) != user.token_version:
+        raise unauthorized("다시 로그인해 주세요.")
+
+    # 토큰 버전을 올리지 않고 정지한 경우(DB 를 직접 고친 경우 등)도 막는다.
     if not user.is_active:
         raise APIError(
             ErrorCode.INACTIVE_USER,
             "비활성화된 계정입니다. 관리자에게 문의하세요.",
             status_code=403,
         )
-
-    # 발급 뒤에 비밀번호 변경이나 강제 로그아웃이 있었으면 거부한다.
-    if int(payload.get("tv", 0)) != user.token_version:
-        raise unauthorized("다시 로그인해 주세요.")
 
     # 임시 비밀번호 상태에서는 비밀번호 변경 외에는 막는다.
     if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:

@@ -26,7 +26,6 @@ function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps)
   const [name, setName]         = useState("");
   const [age, setAge]           = useState("");
   const [guardian, setGuardian] = useState("");
-  const [riskLevel, setRiskLevel] = useState<"high" | "mid" | "low">("low");
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [saving, setSaving]     = useState(false);
 
@@ -97,25 +96,25 @@ function NewCaseModal({ counselorName, onClose, onRegister }: NewCaseModalProps)
               style={{ borderColor: errors.guardian ? "#DC2626" : "#E2E8F0" }} />
             {errors.guardian && <p className="text-[11px] text-red-500 mt-1">{errors.guardian}</p>}
           </div>
+          {/* 위험도는 Backend 에 저장할 곳이 없다(AI 분석 · 상담사 검토 뒤 정해질 값). 예전에는 고른 값을 말없이
+              버렸으므로 고르지 못하게 막고 이유를 적는다. 저장하려면 Contract 변경 제안부터 한다. */}
           <div>
             <label className="block text-[12px] font-semibold text-[#172033] mb-1.5">위험도</label>
             <div className="flex gap-2">
-              {([["high", "확인 필요", "#B91C1C", "#FEF2F2", "#FECACA"], ["mid", "확인 중", "#B45309", "#FFFBEB", "#FDE68A"], ["low", "확인 완료", "#15803D", "#F0FDF4", "#BBF7D0"]] as const).map(([v, lbl, color, bg, border]) => (
+              {(["확인 필요", "확인 중", "확인 완료"] as const).map(lbl => (
                 <button
-                  key={v}
+                  key={lbl}
                   type="button"
-                  onClick={() => setRiskLevel(v)}
-                  className="flex-1 py-2 rounded-[6px] border text-[12px] font-semibold transition-all"
-                  style={{
-                    color: riskLevel === v ? color : "#94A3B8",
-                    background: riskLevel === v ? bg : "#F8FAFC",
-                    borderColor: riskLevel === v ? border : "#E2E8F0",
-                  }}
+                  disabled
+                  title="위험도는 아직 서버에 없습니다"
+                  className="flex-1 py-2 rounded-[6px] border text-[12px] font-semibold transition-all opacity-60 cursor-not-allowed"
+                  style={{ color: "#94A3B8", background: "#F8FAFC", borderColor: "#E2E8F0" }}
                 >
                   {lbl}
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-[#94A3B8] mt-1">위험도는 아직 서버에 저장되지 않아 등록할 때 고를 수 없습니다.</p>
           </div>
           <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] p-4 space-y-2 text-[13px]">
             <div className="flex justify-between"><span className="text-[#94A3B8]">담당 상담사</span><span className="text-[#172033] font-medium">{counselorName} <span className="text-[11px] text-[#94A3B8]">자동 입력</span></span></div>
@@ -143,7 +142,8 @@ export default function CasesView() {
   const [abuseFilter, setAbuseFilter] = useState<AbuseType | "전체">("전체");
   const [riskFilter,  setRiskFilter]  = useState<RiskLevel | "전체">("전체");
   const [kwQuery,     setKwQuery]     = useState("");
-  const [sortBy,      setSortBy]      = useState<"riskScore" | "lastSession">("riskScore");
+  // 위험도가 아직 없어(모든 사례 0점) 위험도순 정렬은 막고 최근상담순으로 시작한다.
+  const [sortBy,      setSortBy]      = useState<"riskScore" | "lastSession">("lastSession");
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [showNewCase, setShowNewCase] = useState(false);
   const [allCases, setAllCases]       = useState<CaseWithId[]>([]);
@@ -231,7 +231,7 @@ export default function CasesView() {
           </div>
           <div className="ml-auto flex items-center gap-1 text-[12px] text-[#64748B]">
             <span>정렬:</span>
-            <button onClick={() => setSortBy("riskScore")} className={`px-2 py-1 rounded transition-all ${sortBy === "riskScore" ? "font-semibold text-[#172033]" : "hover:text-[#172033]"}`}>위험도순</button>
+            <button disabled title="위험도는 아직 서버에 없습니다" className="px-2 py-1 rounded transition-all opacity-50 cursor-not-allowed">위험도순</button>
             <button onClick={() => setSortBy("lastSession")} className={`px-2 py-1 rounded transition-all ${sortBy === "lastSession" ? "font-semibold text-[#172033]" : "hover:text-[#172033]"}`}>최근상담순</button>
             <span className="ml-2 text-[#94A3B8]">{filtered.length}건</span>
           </div>

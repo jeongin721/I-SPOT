@@ -43,7 +43,8 @@ import type {
 } from "./types";
 
 /**
- * 목록 조회 공통 쿼리. Backend 이름(page_size)을 그대로 쓴다. page 는 1부터, page_size 는 최대 100.
+ * 목록 조회 공통 쿼리. Backend 이름(page_size)을 그대로 쓴다. page 는 1 ~ 1,000,000, page_size 는 1 ~ 100.
+ * 범위를 벗어나면 422 VALIDATION_ERROR 다(API_CONTRACT 1.1).
  * interface 가 아니라 type 으로 둔다 — client 의 query 인자(Record)에 그대로 넘기려면 필요하다.
  */
 export type PageQuery = {
@@ -83,9 +84,11 @@ export const auth = {
   /**
    * 본인 비밀번호 변경. 성공하면 응답 본문이 없다(204).
    *
-   * 오류: 400 INVALID_CURRENT_PASSWORD(현재 비밀번호 불일치 — 로그인 만료가 아니므로
-   * 로그인 화면으로 보내지 않는다), 422 WEAK_PASSWORD(규칙 위반 — `details.reasons` 에 사유),
-   * 422 SAME_PASSWORD(이전과 같음)
+   * 오류: 422 WEAK_PASSWORD(규칙 위반 — `details.reasons` 에 사유) · 422 SAME_PASSWORD(두 칸이 같음)는
+   * 현재 비밀번호를 확인하기 전에 나간다. 400 INVALID_CURRENT_PASSWORD(현재 비밀번호 불일치 — 로그인 만료가
+   * 아니므로 로그인 화면으로 보내지 않는다), 422 PASSWORD_REUSED(최근에 쓰던 비밀번호).
+   * 현재 비밀번호를 정해진 횟수(LOGIN_MAX_FAILURES, 기본 5)만큼 틀리면 그 계정 토큰이 모두 끊기고 401 이다
+   * (client 가 로그인 화면으로 보내고, 서버 문구를 로그인 화면에 보여 준다). 계정은 잠기지 않아 다시 로그인하면 된다.
    */
   changePassword(payload: PasswordChangeRequest): Promise<void> {
     return api.post<void>("/auth/me/password", payload);
@@ -99,7 +102,7 @@ export const auth = {
   /**
    * 관리자 전용. 활성화·비활성화, 역할, 이름을 바꾼다.
    *
-   * 마지막 활성 관리자를 비활성화하거나 역할을 내리면 409 로 막힌다.
+   * 마지막 활성 관리자를 비활성화하거나 역할을 내리면 409 VALIDATION_ERROR(details 없음)로 막힌다.
    * 역할·활성 상태를 바꾸면 그 계정의 Token 이 모두 무효가 된다.
    */
   updateUser(userId: string, payload: UserUpdateRequest): Promise<User> {
@@ -121,7 +124,7 @@ export const auth = {
     return api.post<TemporaryPassword>(`/auth/users/${userId}/reactivate`, {});
   },
 
-  /** 관리자 전용. 그 계정에 발급된 Token 을 전부 무효로 만든다. */
+  /** 관리자 전용. 그 계정에 발급된 Token 을 전부 무효로 만든다. 자기 계정은 409 VALIDATION_ERROR. */
   logoutAll(userId: string): Promise<void> {
     return api.post<void>(`/auth/users/${userId}/logout-all`, {});
   },
@@ -132,7 +135,12 @@ export const auth = {
       action?: string;
       status?: AuditStatus;
       actor_id?: string;
+      /**
+       * UTC ISO 문자열(Date.toISOString()). 경계 포함. API_CONTRACT 1.5 · 3절.
+       * datetime-local 입력값(표시 없는 지역 시각)을 그대로 보내면 UTC 로 읽혀 9시간 어긋난다.
+       */
       since?: string;
+      /** since 와 같은 형식. */
       until?: string;
     },
   ): Promise<Paged<AuditLog>> {
@@ -234,6 +242,8 @@ export const transcript = {
    * 상담사 수정. 덮어쓰지 않고 새 version 이 만들어진다.
    * 바꾼 발화의 바꾼 필드만 보낸다. 전체 발화를 보내면 모두 "수정됨"으로 표시된다.
    * 다른 사람이 먼저 같은 version 을 수정했으면 409 DUPLICATE_RESOURCE — 새로고침 후 다시 수정한다.
+   * 모든 발화 삭제는 409 VALIDATION_ERROR. 시각 역전(end_ms < start_ms)은 한 발화에 두 시각을 모두 보내 거꾸로면
+   * 422 VALIDATION_ERROR(details.fields), 한쪽만 보내 저장된 값과 합친 결과가 거꾸로면 409 VALIDATION_ERROR.
    */
   update(sessionId: string, payload: TranscriptUpdateRequest): Promise<Transcript> {
     return api.patch<Transcript>(`/sessions/${sessionId}/transcript`, payload);

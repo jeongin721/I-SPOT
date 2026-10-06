@@ -106,6 +106,19 @@ def list_sessions(
     limit: int,
     status: Optional[SessionStatus] = None,
 ) -> Tuple[List[ConsultationSession], int]:
+    # 작업이 사라져 멈춘 처리 중 회기를 먼저 실패로 마감한다. Session 상세 · 원문 · 분석 조회와
+    # 업무 목록이 같은 함수를 쓴다. 안 하면 목록에서만 계속 "처리 중" 으로 보이고, 상태 필터와
+    # 개수도 마감 전 상태로 센다. 제한 시간 안의 작업은 건드리지 않는다.
+    processing = db.scalars(
+        select(ConsultationSession).where(
+            ConsultationSession.case_id == case_id,
+            ConsultationSession.status.in_(list(_PROCESSING_RULES)),
+        )
+    ).all()
+
+    for session in processing:
+        expire_stale_processing(db, session)
+
     conditions = [ConsultationSession.case_id == case_id]
 
     if status is not None:

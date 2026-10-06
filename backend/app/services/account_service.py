@@ -17,6 +17,7 @@ from app.core.errors import ErrorCode, conflict, not_found
 from app.core.password_policy import generate_password
 from app.core.security import hash_password
 from app.models.audit_log import AuditLog
+from app.models.base import to_utc
 from app.models.user import User
 from app.schemas.auth import UserUpdateRequest
 from app.services import audit_service, user_service
@@ -233,11 +234,12 @@ def list_audit_logs(
     if actor_id is not None:
         conditions.append(AuditLog.actor_id == actor_id)
 
+    # 같은 순간이면 표기(Z · +09:00 · 표시 없음=UTC)와 상관없이 같은 결과가 나오게 UTC 로 맞춘다.
     if since is not None:
-        conditions.append(AuditLog.created_at >= since)
+        conditions.append(AuditLog.created_at >= to_utc(since))
 
     if until is not None:
-        conditions.append(AuditLog.created_at <= until)
+        conditions.append(AuditLog.created_at <= to_utc(until))
 
     total = db.scalar(
         select(func.count()).select_from(AuditLog).where(*conditions)

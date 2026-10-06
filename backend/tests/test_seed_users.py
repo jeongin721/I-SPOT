@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.enums import AuditAction, UserRole
+from app.core.security import verify_password
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from scripts import seed_users
@@ -24,9 +25,9 @@ def created(monkeypatch) -> List[Tuple[str, str, UserRole, str]]:
 
     calls: List[Tuple[str, str, UserRole, str]] = []
 
-    def fake_upsert(email: str, name: str, role: UserRole, password: str) -> str:
+    def fake_upsert(email: str, name: str, role: UserRole, password: str) -> Tuple[str, bool]:
         calls.append((email, name, role, password))
-        return f"생성 완료: {email}"
+        return f"생성 완료: {email}", True
 
     monkeypatch.setattr(seed_users, "upsert_user", fake_upsert)
     monkeypatch.delenv("SEED_USER_PASSWORD", raising=False)
@@ -122,3 +123,117 @@ def test_seeded_user_is_recorded_without_actor(db) -> None:
     seed_users.upsert_user("seed.admin@example.com", "관리자", UserRole.ADMIN, STRONG_PASSWORD)
 
     assert len(db.scalars(select(AuditLog)).all()) == 1
+
+
+# =========================================================
+# 이미 있는 계정으로 다시 돌릴 때
+# =========================================================
+#
+# 이미 있는 계정은 비밀번호를 바꾸지 않는다. 그런데 새로 만든 비밀번호를 출력하면 사람은 그 값으로
+# 로그인하다 틀리고, 5번 틀리면 계정이 잠긴다. 계정을 새로 만들 때만 비밀번호를 알려 준다.
+
+ANOTHER_STRONG_PASSWORD = "Amber-Canyon-35"
+
+
+def _stored_password_matches(db, email: str, password: str) -> bool:
+    db.expire_all()
+    user = db.scalar(select(User).where(User.email == email))
+
+    return verify_password(password, user.hashed_password)
+
+
+def _generated(monkeypatch, *values: str) -> None:
+    pending = iter(values)
+
+    monkeypatch.setattr(seed_users, "generate_password", lambda: next(pending))
+
+
+def test_rerunning_demo_keeps_existing_passwords_and_prints_none(
+    db, monkeypatch, capsys
+) -> None:
+    monkeypatch.delenv("SEED_USER_PASSWORD", raising=False)
+    _generated(monkeypatch, "Gen-First-Pass-11", "Gen-Second-Pass-22")
+
+    assert _run(monkeypatch, "--demo") == 0
+    assert "생성된 공용 데모 비밀번호: Gen-First-Pass-11" in capsys.readouterr().out
+
+    assert _run(monkeypatch, "--demo") == 0
+
+    second = capsys.readouterr().out
+
+    assert "Gen-Second-Pass-22" not in second  # 쓸 수 없는 새 값을 알려 주지 않는다
+    assert "생성된" not in second
+    assert "이미 있는 계정의 비밀번호는 바뀌지 않았습니다." in second
+    assert "unlock_user" in second  # 모를 때 푸는 방법을 알려 준다
+    assert "먼저 새 비밀번호로 바꿔야" in second  # 임시 비밀번호로는 seed_demo_data 가 403 이다
+
+    for email, _, _ in seed_users.DEMO_ACCOUNTS:
+        assert _stored_password_matches(db, email, "Gen-First-Pass-11")
+
+
+def test_given_password_is_not_applied_to_existing_demo_accounts(
+    db, monkeypatch, capsys
+) -> None:
+    """SEED_USER_PASSWORD 를 바꿔 다시 돌려도 이미 있는 계정의 비밀번호는 그대로다. 그렇다고 알려 준다."""
+
+    monkeypatch.setenv("SEED_USER_PASSWORD", STRONG_PASSWORD)
+
+    assert _run(monkeypatch, "--demo") == 0
+
+    capsys.readouterr()
+    monkeypatch.setenv("SEED_USER_PASSWORD", ANOTHER_STRONG_PASSWORD)
+
+    assert _run(monkeypatch, "--demo") == 0
+
+    output = capsys.readouterr().out
+
+    assert "이미 있는 계정의 비밀번호는 바뀌지 않았습니다." in output
+    assert ANOTHER_STRONG_PASSWORD not in output
+
+    for email, _, _ in seed_users.DEMO_ACCOUNTS:
+        assert _stored_password_matches(db, email, STRONG_PASSWORD)
+        assert not _stored_password_matches(db, email, ANOTHER_STRONG_PASSWORD)
+
+
+def test_partial_demo_run_names_accounts_that_got_the_password(
+    db, monkeypatch, capsys
+) -> None:
+    """일부만 새로 만들면 출력한 비밀번호가 어느 계정의 것인지 이메일로 밝힌다."""
+
+    admin_email, admin_name, admin_role = seed_users.DEMO_ACCOUNTS[0]
+    counselor_email = seed_users.DEMO_ACCOUNTS[1][0]
+
+    seed_users.upsert_user(admin_email, admin_name, admin_role, STRONG_PASSWORD)
+    monkeypatch.delenv("SEED_USER_PASSWORD", raising=False)
+    _generated(monkeypatch, "Gen-Only-New-33")
+
+    assert _run(monkeypatch, "--demo") == 0
+
+    lines = capsys.readouterr().out.splitlines()
+    applied = [line for line in lines if "적용" in line]
+
+    assert "생성된 공용 데모 비밀번호: Gen-Only-New-33" in lines
+    assert len(applied) == 1
+    assert counselor_email in applied[0]
+    assert admin_email not in applied[0]
+    assert "이미 있는 계정의 비밀번호는 바뀌지 않았습니다." in "\n".join(lines)
+    assert _stored_password_matches(db, admin_email, STRONG_PASSWORD)
+    assert _stored_password_matches(db, counselor_email, "Gen-Only-New-33")
+
+
+def test_rerunning_single_account_does_not_print_password(db, monkeypatch, capsys) -> None:
+    monkeypatch.delenv("SEED_USER_PASSWORD", raising=False)
+    _generated(monkeypatch, "Gen-Single-One-44", "Gen-Single-Two-55")
+    args = ("--email", "seed.one@example.com", "--name", "상담사")
+
+    assert _run(monkeypatch, *args) == 0
+    assert "생성된 비밀번호: Gen-Single-One-44" in capsys.readouterr().out
+
+    assert _run(monkeypatch, *args) == 0
+
+    second = capsys.readouterr().out
+
+    assert "Gen-Single-Two-55" not in second
+    assert "생성된" not in second
+    assert "이미 있는 계정의 비밀번호는 바뀌지 않았습니다." in second
+    assert _stored_password_matches(db, "seed.one@example.com", "Gen-Single-One-44")

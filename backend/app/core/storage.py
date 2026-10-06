@@ -119,7 +119,9 @@ def save_audio_chunks(
     """
     음성 파일을 Local Storage 에 streaming 으로 저장한다.
 
-    전체를 메모리에 올리지 않고 크기 제한을 초과하면 즉시 중단·삭제한다.
+    chunks 는 프레임워크가 이미 다 받아 둔 업로드 임시 파일(1MB 를 넘으면 디스크)을 조각으로 읽은 것이다.
+    여기서는 전체를 메모리에 올리지 않고 옮기며, 크기 제한을 넘으면 그 자리에서 멈추고 지운다.
+    로그인 확인 전에 너무 큰 본문을 받지 않게 막는 것은 main.py 의 _BodySizeLimitMiddleware 다.
     """
 
     safe_name = sanitize_filename(filename)

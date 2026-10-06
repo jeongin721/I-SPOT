@@ -1,7 +1,14 @@
 import { Outlet, NavLink, useNavigate, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import NotificationPopover from "../components/ui/NotificationPopover";
-import { SESSION_INFO_KEY, UNAUTHORIZED_EVENT, clearSession, getToken } from "../api/client";
+import {
+  PASSWORD_CHANGE_REQUIRED_EVENT,
+  SESSION_INFO_KEY,
+  TOKEN_KEY,
+  UNAUTHORIZED_EVENT,
+  clearSession,
+  getToken,
+} from "../api/client";
 import { tasks as tasksApi } from "../api/endpoints";
 import { toMenuBadges } from "../api/dashboardAdapters";
 
@@ -49,11 +56,14 @@ export default function AppLayout() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem(SESSION_INFO_KEY);
     // 이름 · 역할만 남고 토큰이 없으면 서버를 부를 수 없으므로 로그인하지 않은 것으로 본다.
-    if (raw && getToken()) {
-      try { setAuth(JSON.parse(raw)); } catch { /* ignore */ }
+    function readStoredAuth(): { role: string; name: string } | null {
+      const raw = localStorage.getItem(SESSION_INFO_KEY);
+      if (!raw || !getToken()) return null;
+      try { return JSON.parse(raw); } catch { return null; }
     }
+
+    setAuth(readStoredAuth());
     setChecked(true);
 
     // 어느 화면에서든 토큰이 만료 · 폐기되면(401) 로그인 화면으로 보낸다.
@@ -61,10 +71,31 @@ export default function AppLayout() {
       setAuth(null);
     }
 
-    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    // 임시 비밀번호 상태(403 PASSWORD_CHANGE_REQUIRED)면 비밀번호를 바꾸는 내 정보 화면으로 보낸다.
+    // 새로고침 · 주소 직접 입력으로 다른 화면에 들어와도 그 화면이나 메뉴 배지의 첫 요청에서 여기로 온다.
+    function onPasswordChangeRequired() {
+      if (window.location.pathname !== "/profile") {
+        navigate("/profile", { replace: true, state: { mustChangePassword: true } });
+      }
+    }
 
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
-  }, []);
+    // 다른 탭에서 로그아웃 · 다른 계정 로그인 · 토큰 폐기가 일어나면 localStorage 가 바뀐다(이 탭에는 storage 이벤트로 온다).
+    // 토큰이 없어졌으면 로그인 화면으로, 다른 계정이 들어왔으면 그 이름 · 역할로 바꾼다.
+    function onStorage(event: StorageEvent) {
+      if (event.key !== null && event.key !== TOKEN_KEY && event.key !== SESSION_INFO_KEY) return;
+      setAuth(readStoredAuth());
+    }
+
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, onPasswordChangeRequired);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+      window.removeEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, onPasswordChangeRequired);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [navigate]);
 
   // 메뉴 배지. 화면을 옮길 때마다 다시 세어 검수 · 승인 뒤 숫자가 따라오게 한다.
   // 처음 불러오는 중이거나 실패하면 배지를 숨긴다(null). 다시 세는 동안에는 직전 숫자를 둔다.

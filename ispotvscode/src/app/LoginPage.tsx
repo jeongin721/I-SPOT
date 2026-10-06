@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import AdminApp from "../admin/AdminApp";
 import { auth } from "../api/endpoints";
-import { ApiError, SESSION_INFO_KEY, clearSession } from "../api/client";
+import { ApiError, SESSION_INFO_KEY, clearLogoutReason, clearSession, readLogoutReason } from "../api/client";
 
 // 로그인은 Backend(POST /auth/login)가 판정한다. 역할도 서버가 준 값을 쓴다.
 // 2단계 인증(OTP)은 Backend 에 아직 없어 건너뛴다(팀 결정 대기). 화면 코드는 남겨 둔다.
@@ -18,12 +18,16 @@ export default function LoginPage() {
   const [role, setRole]   = useState<"counselor" | "admin">("counselor");
   const [otpStep, setOtpStep] = useState(false);
   const [otp, setOtp]     = useState("");
-  const [error, setError] = useState("");
+  // 토큰이 끊겨 여기로 왔으면(예: 현재 비밀번호를 여러 번 틀림) 서버가 보낸 이유를 먼저 보여 준다(client.ts).
+  const [error, setError] = useState(readLogoutReason);
   const [loading, setLoading] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [findPw, setFindPw] = useState(false);
-  const [findId, setFindId] = useState("");
-  const [findSent, setFindSent] = useState(false);
+
+  // 한 번 보여 준 이유는 지운다. 그리는 함수(useState 초기값)에서 지우면 StrictMode 의 두 번째 그리기에서 사라진다.
+  useEffect(() => {
+    clearLogoutReason();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,9 +54,16 @@ export default function LoginPage() {
 
       // AppLayout 이 이 값으로 로그인 여부와 이름을 본다. 토큰은 auth.login 이 따로 저장한다.
       localStorage.setItem(SESSION_INFO_KEY, JSON.stringify({ role: uiRole, name: user.name }));
+      // 이 화면이 뜬 뒤에 늦게 도착한 401 이 남긴 이유가 다음 로그아웃 때 다시 보이지 않게 지운다.
+      clearLogoutReason();
 
       if (uiRole === "admin") {
+        // 관리자 화면(AdminApp)은 아직 Backend 에 연결되지 않았다. 임시 비밀번호 안내는 연결할 때 함께 넣는다.
         setAdminMode(true);
+      } else if (user.must_change_password) {
+        // 임시 비밀번호로 들어왔다. 비밀번호를 바꾸기 전에는 다른 요청이 모두 403 PASSWORD_CHANGE_REQUIRED 라서
+        // 대시보드 대신 비밀번호를 바꾸는 내 정보 화면으로 보낸다.
+        navigate("/profile", { state: { mustChangePassword: true } });
       } else {
         navigate("/dashboard");
       }
@@ -204,7 +215,7 @@ export default function LoginPage() {
                 <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => { setFindPw(true); setFindId(""); setFindSent(false); }}
+                    onClick={() => setFindPw(true)}
                     className="text-[12px] text-[#64748B] hover:text-[#2563EB] transition-colors"
                   >
                     비밀번호 찾기
@@ -219,10 +230,6 @@ export default function LoginPage() {
               </p>
             </div>
           </div>
-
-          <p className="text-center text-[11px] text-[#94A3B8] mt-4">
-            최근 로그인: 2026-08-20 09:14 · 서울 관악구
-          </p>
         </div>
       </div>
 
@@ -235,36 +242,22 @@ export default function LoginPage() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+            {/* 로그인하지 않은 사람이 재발급을 요청하는 창구는 Backend 에 없다(관리자 재발급만 있다).
+                요청이 간 것처럼 보이지 않게, 실제로 할 수 있는 방법만 안내한다. */}
             <div className="px-6 py-5 space-y-4">
-              {!findSent ? (
-                <>
-                  <p className="text-[13px] text-[#64748B]">등록된 기관 ID를 입력하면 담당자에게 임시 비밀번호를 발송합니다.</p>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">기관 ID</label>
-                    <input
-                      type="text" value={findId} onChange={e => setFindId(e.target.value)}
-                      placeholder="기관 ID 입력"
-                      className="w-full px-3 py-2 rounded-[6px] border border-[#E2E8F0] text-[13px] text-[#172033] bg-white focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]"
-                    />
-                  </div>
-                  <button
-                    onClick={() => { if (findId.trim()) setFindSent(true); }}
-                    disabled={!findId.trim()}
-                    className="w-full py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold rounded-[6px] text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    임시 비밀번호 요청
-                  </button>
-                </>
-              ) : (
-                <div className="text-center py-4 space-y-3">
-                  <div className="w-10 h-10 rounded-full bg-green-50 border border-green-200 flex items-center justify-center mx-auto">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                  <p className="text-[13px] font-semibold text-[#172033]">요청이 전송되었습니다</p>
-                  <p className="text-[12px] text-[#64748B]">관리자가 확인 후 임시 비밀번호를 발송합니다.</p>
-                  <button onClick={() => setFindPw(false)} className="text-[13px] text-[#2563EB] hover:text-[#1D4ED8] font-medium">닫기</button>
-                </div>
-              )}
+              <p className="text-[13px] text-[#64748B] leading-relaxed">
+                비밀번호를 잊었거나 여러 번 틀려 잠겼다면 소속 기관 관리자에게 임시 비밀번호 재발급을 요청해 주세요.
+              </p>
+              <p className="text-[13px] text-[#64748B] leading-relaxed">
+                임시 비밀번호로 로그인하면 먼저 새 비밀번호로 바꿔야 합니다. 임시 비밀번호는 사용 기간(기본 72시간)이 지나면 쓸 수 없습니다.
+              </p>
+              <button
+                type="button"
+                onClick={() => setFindPw(false)}
+                className="w-full py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold rounded-[6px] text-sm transition-colors"
+              >
+                닫기
+              </button>
             </div>
           </div>
         </div>

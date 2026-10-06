@@ -1,10 +1,24 @@
 # Case CRUD / Validation / 없는 Case 테스트.
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
 from tests.conftest import create_case
+
+
+def _instant(value: str) -> datetime:
+    """응답 시각을 같은 순간인지 비교할 수 있게 바꾼다.
+
+    시간대 표시는 DB 에 따라 다르다(API_CONTRACT 1.5). SQLite 는 표시 없이(UTC),
+    PostgreSQL 은 연결 시간대 기준(예: +09:00)으로 온다. 문자열 앞부분으로 비교하면
+    PostgreSQL 에서 같은 순간인데도 틀린다.
+    """
+
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def test_create_case_assigns_requester_as_counselor(
@@ -326,7 +340,7 @@ def test_case_list_includes_last_session_at(
     listed = client.get("/api/v1/cases", headers=counselor_headers).json()["data"]
 
     # 가장 최근 상담 일시가 반영된다.
-    assert listed["items"][0]["last_session_at"].startswith("2026-09-01T14:30:00")
+    assert _instant(listed["items"][0]["last_session_at"]) == _instant("2026-09-01T14:30:00Z")
 
 
 def test_case_detail_includes_last_session_at(
@@ -342,7 +356,7 @@ def test_case_detail_includes_last_session_at(
         f"/api/v1/cases/{case['id']}", headers=counselor_headers
     ).json()["data"]
 
-    assert detail["last_session_at"].startswith("2026-08-20T10:00:00")
+    assert _instant(detail["last_session_at"]) == _instant("2026-08-20T10:00:00Z")
 
 
 def test_last_session_at_falls_back_to_created_at(
@@ -485,3 +499,46 @@ def test_admin_assign_to_unknown_user_returns_user_not_found(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "USER_NOT_FOUND"
+
+
+def test_admin_cannot_assign_case_to_inactive_counselor(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, counselor_id: uuid.UUID
+) -> None:
+    """정지된 계정은 담당자로 지정할 수 없다 — 400 VALIDATION_ERROR(details 없음, API_CONTRACT 4절)."""
+
+    deactivated = client.patch(
+        f"/api/v1/auth/users/{counselor_id}",
+        json={"is_active": False},
+        headers=admin_headers,
+    )
+
+    assert deactivated.status_code == 200
+
+    created = client.post(
+        "/api/v1/cases",
+        json={
+            "title": "정지 계정 배정",
+            "child_alias": "아동_007",
+            "counselor_id": str(counselor_id),
+        },
+        headers=admin_headers,
+    )
+
+    assert created.status_code == 400
+    assert created.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "details" not in created.json()["error"]
+
+    case = create_case(client, admin_headers)
+
+    updated = client.patch(
+        f"/api/v1/cases/{case['id']}",
+        json={"counselor_id": str(counselor_id)},
+        headers=admin_headers,
+    )
+
+    assert updated.status_code == 400
+    assert updated.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    after = client.get(f"/api/v1/cases/{case['id']}", headers=admin_headers)
+
+    assert after.json()["data"]["counselor_id"] == str(admin_id)
