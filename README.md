@@ -36,7 +36,7 @@ cd backend && pip install -r requirements-dev.txt
 cp .env.example .env
 alembic upgrade head
 python -m scripts.seed_users --demo
-uvicorn app.main:app --reload
+uvicorn app.main:app --no-proxy-headers --reload
 ```
 
 ## AI/STT 파이프라인

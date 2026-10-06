@@ -10,7 +10,7 @@
 #   - 학대 정황을 지어내지 않는다. 상담 내용은 mock STT 의 중립적인 예시 문장이다.
 #
 # 사용 예:
-#   uvicorn app.main:app --port 8000
+#   uvicorn app.main:app --no-proxy-headers --port 8000
 #   python -m scripts.seed_demo_data --admin-email admin@... --admin-password ...
 
 import argparse

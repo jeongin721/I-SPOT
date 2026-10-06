@@ -5,7 +5,7 @@
 # 통합/시연 환경 점검(05_UI_INTEGRATION_QA_PROMPT.md)에 사용할 수 있다.
 #
 # 사용 예:
-#   uvicorn app.main:app --port 8000
+#   uvicorn app.main:app --no-proxy-headers --port 8000
 #   python -m scripts.smoke_api --email admin@ispot.example.com --password demo-pass-1234
 
 import argparse
