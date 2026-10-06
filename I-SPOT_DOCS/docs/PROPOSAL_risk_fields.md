@@ -35,11 +35,11 @@
 
 `types.ts` 의 `RiskUtterance` 는 제가 추측으로 써둔 것입니다. 근거 없이 정한 것이므로 **채택하든 폐기하든 이번에 정리**되어야 합니다.
 
-> **인용 파일의 위치 주의** — `ispotvscode/` 는 PR #6 으로 `develop` 에 들어갔습니다.
+> **인용 파일의 위치 주의** — `ispotvscode/` 는 PR #6 으로 `develop` 에 들어갔고, 2026-10-06 `main` 에 합쳐졌습니다(#26).
 > 다른 브랜치에서 확인하시려면 아래처럼 하세요.
 >
 > ```bash
-> git show origin/develop:ispotvscode/src/api/types.ts
+> git show origin/main:ispotvscode/src/api/types.ts
 > ```
 >
 > `rag/` 는 아직 `feature/rag` 브랜치에만 있습니다.
