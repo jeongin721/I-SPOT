@@ -403,14 +403,24 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
             if start_ms < 0 or end_ms < start_ms:
                 raise ValueError(f"ElevenLabs word {index} has an invalid time range.")
 
+            # logprob은 이 단어가 예측된 확률의 로그값(범위 [-inf, 0])이다.
+            # e^logprob으로 환산하면 실제 0~1 확률이 된다(2026-10-07 실제
+            # API 호출로 confirm — 응답에 word별 logprob이 들어온다. 예전
+            # 주석은 "신뢰도 없음"이라고 돼 있었는데 지금 API 기준으로는
+            # 틀렸다).
+            logprob = item.get("logprob")
+            if isinstance(logprob, (int, float)):
+                word_confidence = math.exp(logprob)
+            else:
+                word_confidence = 0.0
+
             raw_speaker_id = str(speaker_id).strip()
             word = {
                 "word": text.strip(),
                 "speaker": raw_speaker_id,
                 "start_ms": start_ms,
                 "end_ms": end_ms,
-                # Scribe output used here has no word confidence.  Do not invent one.
-                "confidence": 0.0,
+                "confidence": round(word_confidence, 4),
             }
             if current is None or current["provider_speaker_id"] != raw_speaker_id:
                 if current is not None:
@@ -449,6 +459,16 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
             role = role_mapping.get(provider_speaker_id, {}).get("role", "UNKNOWN")
             if role not in SPEAKER_ENUM:
                 role = "UNKNOWN"
+
+            # 세그먼트 신뢰도는 단어별 확률의 평균이 아니라 최솟값을 쓴다 —
+            # 근거로 인용될 문장 하나에 신뢰도 낮은 단어가 하나라도 있으면
+            # 그 문장 전체를 "재확인 필요"로 봐야 한다(평균을 쓰면 나머지
+            # 단어들이 신뢰도를 높게 끌고 가서 그 단어 하나가 묻힌다).
+            # 임계값 0.70은 이 파일의 다른 ASR 기반 provider(Deepgram, 아래
+            # DeepgramProvider)와 동일하게 맞췄다.
+            word_confidences = [w["confidence"] for w in segment["words"]]
+            segment_confidence = min(word_confidences) if word_confidences else 0.0
+
             contract_segments.append(
                 {
                     "segment_id": f"seg_{segment_index:03d}",
@@ -457,11 +477,8 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
                     "start_ms": segment["start_ms"],
                     "end_ms": segment["end_ms"],
                     "text": " ".join(word["word"] for word in segment["words"]),
-                    # ElevenLabs does not provide a compatible confidence value.
-                    "confidence": 0.0,
-                    # A compatible confidence score is unavailable, which is
-                    # different from an explicitly low-confidence result.
-                    "is_low_confidence": False,
+                    "confidence": round(segment_confidence, 4),
+                    "is_low_confidence": segment_confidence < 0.70,
                     "words": segment["words"],
                 }
             )

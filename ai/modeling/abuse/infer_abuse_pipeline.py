@@ -35,15 +35,13 @@ from ai.modeling.abuse.checklist_llm import (
     generate_checklist_draft,
 )
 from ai.modeling.abuse.pii_masking import (
-    mask_pii,
     restore_pii,
 )
 from ai.modeling.abuse.privacy_gateway import (
     mask_for_outbound,
 )
 from ai.modeling.abuse.llm_backend import (
-    build_local_llm_client_and_model,
-    build_subtype_llm_client_and_model,
+    build_openai_client_and_model,
 )
 from ai.modeling.abuse import case_store
 
@@ -330,21 +328,23 @@ def analyze_abuse(
 
     input_mode: "qa" | "child_only" | "note"
     note 모드는 1차 결과에 LLM 보완 체크(추가만)를 한 번 더 거친다
-    (_screen_missed_major_types 참고, 로컬 Ollama 사용). qa/child_only는
-    1차(RoBERTa) 단독 결과를 그대로 쓴다 — qa 전용 LLM 재검증
-    (_verify_major_types_qa)을 만들어 봤지만 100건 독립 샘플 순효과
-    측정에서 Macro F1이 0.8974 -> 0.5673로 오히려 크게 나빠져
-    2026-10-01 끄기로 결정했다(함수는 재설계 참고용으로 남겨둠,
-    analyze_abuse 본문의 해당 분기 주석 참고).
+    (_screen_missed_major_types 참고). qa/child_only는 1차(RoBERTa) 단독
+    결과를 그대로 쓴다 — qa 전용 LLM 재검증(_verify_major_types_qa)을
+    만들어 봤지만 100건 독립 샘플 순효과 측정에서 Macro F1이 0.8974 ->
+    0.5673로 오히려 크게 나빠져 2026-10-01 끄기로 결정했다(함수는 재설계
+    참고용으로 남겨둠, analyze_abuse 본문의 해당 분기 주석 참고).
 
     case_id를 주면 Privacy Gateway가 case_store에 등록된 아동/보호자
     실명을 정확 매칭으로 한 번 더 걸러낸다(known_identifiers, Tier 2).
     주지 않으면(예: case_id가 아직 없는 임시 분석) NER/정규식 검사만
     적용된다.
 
-    model은 2차 세부유형 분석(OpenAI)에만 쓰인다 — build_subtype_llm_
-    client_and_model()이 이 이름으로 OpenAI client를 만든다. 2차는
-    Privacy Gateway의 보호 대상인 외부 호출로 고정돼 있다.
+    model은 이 함수 안의 모든 LLM 호출(2차 세부유형 분석, note 모드
+    보완 체크)이 공통으로 쓰는 OpenAI 모델명이다 — 2026-10-02부터 이
+    함수의 LLM 호출은 전부 OpenAI로 나간다(MVP 아키텍처가 "GPT+Cloud"로
+    통일되면서 로컬 Ollama 서빙을 뺐다). 그래서 둘 다 Privacy Gateway의
+    보호 대상인 외부 호출이고, 보내기 전에 항상 mask_for_outbound()를
+    거친다.
     """
 
     # 1차 판정은 로컬 모델이라 개인정보 유출 위험이 없으므로 원문을 그대로 쓴다.
@@ -362,26 +362,30 @@ def analyze_abuse(
         )
     ]
 
-    # note 보완 체크/qa 재검증 전용 로컬 client. 파라미터로 받은
-    # client/model(2차 세부유형 분석용)을 덮어쓰면, 둘 다 쓰는 호출부
-    # (analyze_session)가 client를 미리 채워 넘겨서 평소엔 안 드러나지만
-    # analyze_abuse를 client 없이 직접 호출하면(예: 단독 테스트) 2차가
-    # 엉뚱하게 로컬 Ollama 모델명을 OpenAI 모델로 보내는 사고가 난다
-    # (2026-10-01 테스트 중 발견) — 그래서 변수를 분리한다.
-    local_client, local_model = build_local_llm_client_and_model()
+    # note 보완 체크도 2차와 마찬가지로 이제 항상 OpenAI로 나간다
+    # (2026-10-02 MVP 아키텍처 피벗). known_identifiers는 두 호출(note
+    # 보완 체크, 2차 세부유형 분석)이 공유한다.
+    known_identifiers = (
+        case_store.get_known_identifiers(case_id) if case_id else []
+    )
 
     if input_mode == "note":
-        # note 보완 체크도 네트워크로 LLM을 호출하는 이상 비식별화한
-        # 텍스트를 쓴다(2026-09-30 발견 — 이 호출만 원문을 그대로
-        # 쓰고 있었다. 로컬 Ollama로만 가도록 고정된 뒤에도 defense in
-        # depth로 유지한다). 응답이 고정 유형명 목록뿐이라 복원할 토큰이
-        # 없으므로 entity_map은 쓰지 않는다.
-        masked_text, _ = mask_pii(text)
+        screening_client, screening_model = build_openai_client_and_model(
+            default_openai_model=model,
+        )
+
+        # 외부로 나가는 호출이므로 mask_pii()의 최선형 마스킹이 아니라
+        # Privacy Gateway의 차단형 검증(mask_for_outbound)을 거친다.
+        # 응답이 고정 유형명 목록뿐이라 복원할 토큰이 없으므로 entity_map은
+        # 쓰지 않는다.
+        masked_text, _ = mask_for_outbound(
+            text, known_identifiers=known_identifiers
+        )
 
         additional_types = _screen_missed_major_types(
             text=masked_text,
-            client=local_client,
-            model=local_model,
+            client=screening_client,
+            model=screening_model,
             already_detected=detected_major_types,
         )
 
@@ -410,16 +414,13 @@ def analyze_abuse(
             "note": "탐지된 대분류 없음",
         }
     else:
-        subtype_client, subtype_model = build_subtype_llm_client_and_model(
+        subtype_client, subtype_model = build_openai_client_and_model(
             default_openai_model=model,
         )
 
         # 2차는 항상 외부 OpenAI로 나가므로 Privacy Gateway(차단형
         # 검증)를 거친다. 응답에 남은 토큰은 상담사 화면에 보이기 전에
         # 원문으로 되돌린다.
-        known_identifiers = (
-            case_store.get_known_identifiers(case_id) if case_id else []
-        )
         masked_text, entity_map = mask_for_outbound(
             text, known_identifiers=known_identifiers
         )
@@ -465,9 +466,11 @@ def analyze_session(
     2차 세부유형 분석에 적용된다. analyze_abuse 참고.
 
     상담 요약/상담일지/체크리스트 초안은 학대 탐지 여부와 무관하게 항상 생성한다.
-    이 둘은 2차 세부유형 분석과 달리 항상 로컬 Ollama로만 보낸다(client
-    인자는 이 둘과 note 모드 1차 보완체크 전용 — 2차는 analyze_abuse 내부에서
-    별도의 OpenAI client를 쓴다).
+    2026-10-02부터 이 둘도 2차 세부유형 분석과 마찬가지로 항상 외부
+    OpenAI로 보낸다(MVP 아키텍처가 "GPT+Cloud, 비식별 최소정보만 외부
+    전송"으로 통일되면서 로컬 Ollama 서빙을 뺐다). client 인자를 직접
+    주지 않으면 OpenAI client를 자동으로 만든다 — 2차는 analyze_abuse
+    내부에서 별도의 OpenAI client를 쓰므로 이 client와는 무관하다.
 
     input_mode="child_only"인 경우 generate_counseling_records와
     generate_checklist_draft도 아동 발화만 보고 작성하게 된다.
@@ -479,14 +482,19 @@ def analyze_session(
     상담사가 확인하기 전까지는 "AI 제안" 상태로만 취급한다.
     """
 
-    # 세션 전체(요약/체크리스트)가 같은 로컬 모델 하나를 쓰도록 여기서
-    # 한 번만 client를 정하고 아래로 전달한다. 2차 세부유형 분석은 이
-    # client와 무관하게 analyze_abuse 내부에서 항상 별도의 OpenAI
-    # client를 쓴다.
+    # 세션 전체(요약/체크리스트)가 같은 OpenAI client 하나를 쓰도록
+    # 여기서 한 번만 만들어 아래로 전달한다. note_model/checklist_model은
+    # 이미 OpenAI 모델명(DEFAULT_NOTE_MODEL/DEFAULT_CHECKLIST_MODEL)이
+    # 기본값이라 따로 덮어쓸 필요가 없다. 2차 세부유형 분석은 이 client와
+    # 무관하게 analyze_abuse 내부에서 항상 별도의 OpenAI client를 쓴다.
     if client is None:
-        client, resolved_model = build_local_llm_client_and_model()
-        note_model = resolved_model
-        checklist_model = resolved_model
+        client, _ = build_openai_client_and_model(
+            default_openai_model=note_model,
+        )
+
+    known_identifiers = (
+        case_store.get_known_identifiers(case_id) if case_id else []
+    )
 
     # analyze_abuse(1차+2차 판정), generate_counseling_records(요약/일지),
     # generate_checklist_draft(체크리스트 초안)는 서로 결과를 참조하지 않는
@@ -498,10 +506,12 @@ def analyze_session(
         case_id=case_id,
     )
 
-    # 상담 요약/일지는 로컬 Ollama로만 가므로 mask_pii()의 최선형
-    # 마스킹만 적용한다(Privacy Gateway의 차단형 검증은 2차처럼 항상
-    # 외부로 나가는 호출 전용이다 — privacy_gateway.mask_for_outbound 참고).
-    masked_text, entity_map = mask_pii(text)
+    # 상담 요약/일지도 이제 2차처럼 외부로 나가므로 mask_pii()의 최선형
+    # 마스킹이 아니라 Privacy Gateway의 차단형 검증(mask_for_outbound)을
+    # 거친다.
+    masked_text, entity_map = mask_for_outbound(
+        text, known_identifiers=known_identifiers
+    )
 
     counseling_records = generate_counseling_records(
         client=client,

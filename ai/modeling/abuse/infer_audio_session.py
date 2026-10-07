@@ -32,11 +32,9 @@ from ai.modeling.abuse.checklist_llm import (
     generate_checklist_draft,
 )
 from ai.modeling.abuse.llm_backend import (
-    build_local_llm_client_and_model,
-    build_subtype_llm_client_and_model,
+    build_openai_client_and_model,
 )
 from ai.modeling.abuse.pii_masking import (
-    mask_pii,
     restore_pii,
 )
 from ai.modeling.abuse.privacy_gateway import (
@@ -380,22 +378,24 @@ def analyze_audio_session(
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
     체크리스트 초안까지 오늘 만든 파이프라인으로 분석한다.
 
-    세션 전체(요약/체크리스트)가 같은 로컬 Ollama 모델 하나를 쓰도록
-    여기서 한 번만 client를 정하고 아래로 전달한다. 2차 세부유형 분석은
-    이 client와 무관하게 항상 별도의 OpenAI client를 쓴다(2차는 Privacy
-    Gateway의 보호 대상인 외부 호출로 고정돼 있다 —
-    infer_abuse_pipeline.analyze_abuse 참고).
+    2026-10-02부터 요약/체크리스트도 2차 세부유형 분석과 마찬가지로 항상
+    외부 OpenAI로 나간다(MVP 아키텍처가 "GPT+Cloud, 비식별 최소정보만
+    외부 전송"으로 통일되면서 로컬 Ollama 서빙을 뺐다). 세션 전체
+    (요약/체크리스트)가 같은 OpenAI client 하나를 쓰도록 여기서 한 번만
+    만들어 아래로 전달한다. 2차 세부유형 분석은 이 client와 무관하게
+    항상 별도의 OpenAI client를 쓴다(infer_abuse_pipeline.analyze_abuse
+    참고).
 
     case_id를 주면 Privacy Gateway Tier 2(등록된 실명 정확매칭)가 2차
-    세부유형 분석에 적용된다.
+    세부유형 분석과 요약/체크리스트 생성 둘 다에 적용된다.
     """
 
     subtype_model = "gpt-5.6-luna"
 
     if client is None:
-        client, resolved_model = build_local_llm_client_and_model()
-        note_model = resolved_model
-        checklist_model = resolved_model
+        client, _ = build_openai_client_and_model(
+            default_openai_model=note_model,
+        )
 
     segments = validate_stt_result(
         stt_result
@@ -488,7 +488,7 @@ def analyze_audio_session(
         # 동일 — 이 파일은 예전에 이 단계가 빠져 있어서 원문이 그대로
         # 나가고 있었다, 2026-09-30 발견 후 추가) 별도의 OpenAI client를
         # 쓰고 Privacy Gateway(차단형 검증)를 거친다.
-        subtype_client, subtype_model = build_subtype_llm_client_and_model(
+        subtype_client, subtype_model = build_openai_client_and_model(
             default_openai_model=subtype_model,
         )
 
@@ -529,10 +529,12 @@ def analyze_audio_session(
     # 상담 요약/일지 + 체크리스트 초안 (세션 전체 transcript)
     # --------------------------------------------------------
 
-    # 요약/체크리스트는 로컬 Ollama로만 가므로 mask_pii()의 최선형
-    # 마스킹만 적용한다(차단형 Privacy Gateway는 2차처럼 항상 외부로
-    # 나가는 호출 전용).
-    masked_full_text, entity_map = mask_pii(full_text)
+    # 요약/체크리스트도 이제 2차처럼 외부로 나가므로 mask_pii()의 최선형
+    # 마스킹이 아니라 Privacy Gateway의 차단형 검증(mask_for_outbound)을
+    # 거친다.
+    masked_full_text, entity_map = mask_for_outbound(
+        full_text, known_identifiers=known_identifiers
+    )
 
     counseling_records = generate_counseling_records(
         client=client,

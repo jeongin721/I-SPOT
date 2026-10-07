@@ -19,8 +19,8 @@ import pandas as pd
 
 from ai.modeling.abuse.infer_abuse_v3_adapter import predict_major_types
 from ai.modeling.abuse.infer_abuse_pipeline import _verify_major_types_qa
-from ai.modeling.abuse.llm_backend import build_local_llm_client_and_model
-from ai.modeling.abuse.pii_masking import mask_pii
+from ai.modeling.abuse.llm_backend import build_openai_client_and_model
+from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 from ai.modeling.abuse.eval_modelA_qa import _to_production_format, LABELS
 
 VALID_CSV = str(
@@ -63,7 +63,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
 
-    client, model = build_local_llm_client_and_model()
+    client, model = build_openai_client_and_model(
+        default_openai_model="gpt-5.6-luna",
+    )
 
     df = pd.read_csv(VALID_CSV)
     sample = df.sample(n=args.n, random_state=args.seed).sort_index()
@@ -78,9 +80,9 @@ def main() -> None:
         before = predict_major_types(text=text, input_mode="qa")
         before_types = [l for l in LABELS if before[l]["detected"]]
 
-        masked_text, _ = mask_pii(text)
-
         try:
+            masked_text, _ = mask_for_outbound(text)
+
             after_types = _verify_major_types_qa(
                 text=masked_text,
                 client=client,

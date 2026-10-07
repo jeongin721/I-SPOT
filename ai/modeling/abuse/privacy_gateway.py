@@ -310,17 +310,17 @@ def mask_for_outbound(
     known_identifiers: Optional[List[str]] = None,
 ) -> Tuple[str, Dict[str, str]]:
     """
-    외부(OpenAI) LLM 호출 직전에 쓰는 전용 진입점 — 2차 세부유형 분석처럼
-    llm_backend.build_subtype_llm_client_and_model()로 만든 client에
-    보낼 텍스트에만 쓴다. review()의 차단형 검증을 거쳐 (masked_text,
+    외부(OpenAI) LLM 호출 직전에 쓰는 전용 진입점 —
+    llm_backend.build_openai_client_and_model()로 만든 client에 보낼
+    텍스트에 쓴다. review()의 차단형 검증을 거쳐 (masked_text,
     entity_map)을 반환한다.
 
-    상담 요약/상담일지/체크리스트 초안, note 모드 1차 보완 체크처럼
-    build_local_llm_client_and_model()(항상 로컬 Ollama)로 보내는
-    호출은 이 함수를 쓰지 말고 pii_masking.mask_pii()를 직접 써야 한다
-    — 호출 종류별로 백엔드가 고정된 뒤로는(llm_backend.py 참고) "지금
-    이 호출이 외부로 나가는가"가 LLM_BACKEND 환경변수가 아니라 호출
-    지점 자체로 정해지기 때문이다.
+    2026-10-02부터 실제 서비스 경로(2차 세부유형 분석, 상담 요약/
+    상담일지/체크리스트 초안, note 모드 1차 보완 체크)와 합성 데이터
+    검수 도구(review_modelB_labels.py, eval_modelA_qa_llm_verify.py)까지
+    전부 OpenAI로 나가므로 이 함수를 쓴다. make_note_multitype_v1.py처럼
+    build_llm_client_and_model()로 로컬 Ollama를 쓰는 경우만
+    pii_masking.mask_pii()를 직접 쓰면 된다.
 
     known_identifiers가 없으면(케이스에 등록된 실명을 모르면) review()는
     NER/정규식 재검사만 적용한다 — 그래도 mask_pii() 단독보다 안전하다

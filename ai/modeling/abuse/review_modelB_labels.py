@@ -1,9 +1,13 @@
 """
-valid_note_v1.csv(Model B 검증셋) 457건을 LLM(로컬 Ollama)으로 재검토해서,
+valid_note_v1.csv(Model B 검증셋) 457건을 LLM(OpenAI)으로 재검토해서,
 reference_abuse_label 하나만 보고 라벨링하면서 놓쳤을 수 있는 다른 유형의
 증거를 찾는다. QA 데이터셋에서 이미 확인한 것과 같은 문제(주 라벨만 보고
 동시에 있는 다른 유형 증거를 놓침)가 note 데이터셋에도 있는지, 있다면
 얼마나 심각한지 전수로 스캔한다.
+
+AI-Hub 합성 데이터라 실제 개인정보는 없지만, 2026-10-02부터 로컬
+Ollama 대신 OpenAI로 나가는 모든 호출에 Privacy Gateway(mask_for_outbound)
+를 일괄 적용하기로 해서 이 스크립트도 예외를 두지 않는다.
 
 LLM은 SUBTYPE_DEFINITIONS 기준으로 4개 유형을 현재 gold label과 무관하게
 독립적으로 판단하게 하고(현재 라벨을 보여주지 않음), 그 결과를 현재
@@ -23,7 +27,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ai.modeling.abuse.llm_backend import build_local_llm_client_and_model
+from ai.modeling.abuse.llm_backend import build_openai_client_and_model
+from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 from ai.modeling.abuse.second_stage_llm import (
     SUBTYPE_DEFINITIONS,
     build_subtype_definition_text,
@@ -58,7 +63,9 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
 
-    client, model = build_local_llm_client_and_model()
+    client, model = build_openai_client_and_model(
+        default_openai_model="gpt-5.6-luna",
+    )
 
     df = pd.read_csv(VALID_CSV)
     if args.limit:
@@ -75,11 +82,13 @@ def main() -> None:
         gold = dict(zip(LABELS, ast.literal_eval(row["label"])))
 
         try:
+            masked_text, _ = mask_for_outbound(text)
+
             parsed = _call_llm_with_retry(
                 client=client,
                 model=model,
                 system_prompt=SYSTEM_PROMPT,
-                user_prompt=text,
+                user_prompt=masked_text,
                 max_retries=1,
                 timeout_seconds=240.0,
             )
