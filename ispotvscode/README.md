@@ -15,6 +15,9 @@ npm run dev
 
 3. 브라우저에서 `http://localhost:5173`을 엽니다.
 
+## 자동 검사
+`ispotvscode/` 가 바뀌는 PR 은 GitHub Actions(`.github/workflows/frontend-ci.yml`)가 `npm ci` 뒤 `npx tsc --noEmit` 과 `npx vite build` 를 돌립니다. 올리기 전에 같은 두 명령을 로컬에서 먼저 돌려 보세요.
+
 ## 테스트 로그인
 로그인은 Backend 계정으로 합니다. 이 화면에 들어 있는 계정은 없습니다.
 
