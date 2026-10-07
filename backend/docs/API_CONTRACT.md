@@ -117,7 +117,11 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
   서버는 이 값들을 모두 UTC 로 바꿔 읽으므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
   `consulted_at` 도 DB 에 넣기 전에 UTC 로 바꿔 저장하므로 DB(SQLite · PostgreSQL)와 DB 시간대에 따라 어긋나지 않는다.
   (이전에는 SQLite 가 오프셋을 버려 `+09:00` 이 9시간, PostgreSQL 은 표시 없는 값이 `Asia/Seoul` 설정에서 9시간 어긋났다.)
-  UTC 로 바꾸면 날짜 범위를 벗어나는 값(예: `0001-01-01T00:00:00+09:00`)은 가장 이른 · 가장 늦은 시각으로 저장한다(오류가 아니다).
+  **`consulted_at` 은 UTC 로 바꾼 값이 1900-01-01T00:00:00Z 이상 2101-01-01T00:00:00Z 미만(2100-12-31 까지)이어야 한다.**
+  벗어나면 저장하기 전에 `422 VALIDATION_ERROR`(`details.fields` 의 `field` 는 `consulted_at`)로 거절하고 아무것도 바뀌지 않는다.
+  `+09:00` 처럼 오프셋이 붙은 값도 UTC 로 바꾼 뒤 판단한다(예: `1900-01-01T00:00:00+09:00` 은 1899-12-31T15:00Z 라 거절).
+  범위를 두는 이유: `9999-12-31T23:00:00` 같은 값을 저장하면 PostgreSQL(`Asia/Seoul`)이 읽을 때 10000년이 되어
+  그 사례의 목록 · 상세 조회가 계속 `500` 이 되기 때문이다. (감사 로그 `since` · `until` 은 저장하지 않고 비교만 하므로 이 범위 제한이 없다.)
 
 ---
 
@@ -546,7 +550,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 { "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null }
 ```
 
-`consulted_at` 은 UTC 로 바꿔 저장한다(1.5). `PATCH /sessions/{id}` 도 같다.
+`consulted_at` 은 UTC 로 바꿔 저장하고, UTC 기준 1900-01-01 ~ 2100-12-31 밖이면 `422 VALIDATION_ERROR` 다(1.5). `PATCH /sessions/{id}` 도 같다.
 
 `session_number` 는 Case 내에서 1부터 자동 증가한다. 요청 본문으로 지정할 수 없다.
 같은 Case 에 회기를 동시에 만들어도 번호가 겹치지 않는다(겹치면 서버가 다시 계산한다).
@@ -590,6 +594,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 ### PATCH /api/v1/sessions/{session_id}
 
 `APPROVED` 상태에서는 `409 ALREADY_APPROVED`.
+`consulted_at` 규칙은 `POST` 와 같다(UTC 로 저장, 범위 밖 `422`). 거절되면 같이 보낸 필드도 바뀌지 않는다.
 
 ### DELETE /api/v1/sessions/{session_id} → 204
 
