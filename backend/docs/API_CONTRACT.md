@@ -113,11 +113,11 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
   같은 칸도 DB 에 따라 표시가 달라지니, 칸 이름으로 나누지 말고 값의 모양을 보고 읽는다.
   같은 순간도 칸마다 표시가 다를 수 있으니(`waiting_since` 는 `Z`, `consulted_at` 은 `+09:00`) 문자열로 비교 · 정렬하지 않는다.
 - 이 문서 예시의 `Z` 는 표기 예일 뿐이다(11절 `waiting_since` 는 항상 `Z` 다).
-- 보낼 때(`consulted_at` 만들기 · 고치기, 감사 로그 조회의 `since` · `until`)는 UTC(`Z`)로 보낸다. 표시 없이 보내지 않는다.
-  감사 로그의 `since` · `until` 은 서버가 UTC 로 바꿔 비교하므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
-  `consulted_at` 은 아래처럼 어긋나니 반드시 `Z` 로 보낸다.
-  SQLite 는 오프셋을 버리고 저장해 `+09:00` 을 붙여 보내면 9시간 어긋나고, PostgreSQL 은 표시 없는 값을
-  DB 시간대로 읽어 `Asia/Seoul` 설정에서는 9시간 어긋난다(PostgreSQL 은 `Z` 와 `+09:00` 을 같은 순간으로 저장한다).
+- 보낼 때(`consulted_at` 만들기 · 고치기, 감사 로그 조회의 `since` · `until`)는 UTC(`Z`)로 보내는 것을 권한다.
+  서버는 이 값들을 모두 UTC 로 바꿔 읽으므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
+  `consulted_at` 도 DB 에 넣기 전에 UTC 로 바꿔 저장하므로 DB(SQLite · PostgreSQL)와 DB 시간대에 따라 어긋나지 않는다.
+  (이전에는 SQLite 가 오프셋을 버려 `+09:00` 이 9시간, PostgreSQL 은 표시 없는 값이 `Asia/Seoul` 설정에서 9시간 어긋났다.)
+  UTC 로 바꾸면 날짜 범위를 벗어나는 값(예: `0001-01-01T00:00:00+09:00`)은 가장 이른 · 가장 늦은 시각으로 저장한다(오류가 아니다).
 
 ---
 
@@ -307,7 +307,7 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 | --- | --- | --- |
 | `GET /api/v1/auth/users` | 계정 목록(페이지 없음, `created_at` 오래된 순) | `200` 계정 배열 |
 | `PATCH /api/v1/auth/users/{id}` | 활성화 · 비활성화(`is_active`), 역할(`role`), 이름(`name`) | `200` 계정 |
-| `POST /api/v1/auth/users/{id}/password-reset` | 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
+| `POST /api/v1/auth/users/{id}/password-reset` | 임시 비밀번호 재발급(자기 계정은 `409`) | `200` 임시 비밀번호 |
 | `POST /api/v1/auth/users/{id}/unlock` | 실패 잠금 해제 | `204` |
 | `POST /api/v1/auth/users/{id}/reactivate` | 휴면 해제 + 임시 비밀번호 재발급 | `200` 임시 비밀번호 |
 | `POST /api/v1/auth/users/{id}/logout-all` | 발급된 Token 전부 무효 | `204` |
@@ -325,6 +325,9 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 그래서 다른 관리자가 잠겨 있으면 남은 한 명은 끌 수 없고, 잠긴 관리자를 끄는 것은 막지 않는다.
 마지막 관리자는 휴면으로도 바뀌지 않는다(같은 기준).
 자기 계정에 `logout-all` 도 할 수 없다(`409 VALIDATION_ERROR`).
+자기 계정에 `password-reset` 도 할 수 없다(`409 VALIDATION_ERROR`, `details` 없음). 초기화하면 자기 토큰이 끊기고
+임시 비밀번호만 화면에 남기 때문이다. 자기 비밀번호는 `POST /auth/me/password`(비밀번호 변경)로 바꾸고,
+다른 관리자가 있으면 그 관리자가 초기화한다. 거절되면 비밀번호 · 토큰 · 이력 · 감사 로그는 바뀌지 않는다.
 
 계정 응답에는 상태를 구분할 수 있게 `last_login_at` · `must_change_password` ·
 `is_locked` · `locked_until` · `dormant_at` 이 함께 온다.
@@ -514,7 +517,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.
 
-- `title`, `child_alias`, `status` 는 `null` 로 보낼 수 없다(`422 VALIDATION_ERROR`). 바꾸지 않을 필드는 빼고 보낸다
+- `title`, `child_alias`, `status`, `counselor_id` 는 `null` 로 보낼 수 없다(`422 VALIDATION_ERROR`). 바꾸지 않을 필드는 빼고 보낸다
+  (`counselor_id: null` 은 이전에는 조용히 무시돼 `200` 이었다. 담당자를 비우는 기능은 없다. 사례를 만들 때 `counselor_id` 를 `null` 로 보내거나 빼면 요청자 본인이다 — `POST` 는 그대로)
 - `counselor_id` 변경은 **관리자만** 가능(`403 FORBIDDEN`). 없는 계정 · 정지된 계정은 위 `POST` 와 같다
   (`404 USER_NOT_FOUND`, `400 VALIDATION_ERROR`). 거절되면 담당자는 바뀌지 않는다
 - 보호자 규칙은 저장된 값과 합쳐서 판단한다
@@ -541,6 +545,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 ```json
 { "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null }
 ```
+
+`consulted_at` 은 UTC 로 바꿔 저장한다(1.5). `PATCH /sessions/{id}` 도 같다.
 
 `session_number` 는 Case 내에서 1부터 자동 증가한다. 요청 본문으로 지정할 수 없다.
 같은 Case 에 회기를 동시에 만들어도 번호가 겹치지 않는다(겹치면 서버가 다시 계산한다).
@@ -1133,7 +1139,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `USER_NOT_FOUND` | 404 | 사용자 없음 |
 | `VALIDATION_ERROR` | 422 | 입력값 오류 (`details.fields`). JSON 문법 오류도 여기다(로그인 확인 전, `field` 는 글자 위치, `reason` 은 "JSON decode error" — 1.2). 목록의 `page` · `page_size` 범위 밖(1.1) |
 | `VALIDATION_ERROR` | 400 | `details` 없음 — form 본문을 해석할 수 없거나 form 제한을 넘음(예: multipart 의 boundary 없음, 파일이 아닌 칸 하나가 1MB 초과), JSON 본문에 UTF-8 로 읽을 수 없는 바이트가 있음(로그인 확인 전, 문법 오류는 422 — 1.2), 본문을 받는 창구에서 본문이 `REQUEST_MAX_BODY_MB` 를 넘음(로그인 확인 전, 음성 경로의 urlencoded 본문 포함, 1.2), 사례 담당자로 정지된 계정을 지정함(4절) |
-| `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
+| `VALIDATION_ERROR` | 409 | 지금 데이터 상태로는 할 수 없는 요청. `details` 없음 — 마지막 활성 관리자 비활성화 · 역할 변경, 자기 계정 `logout-all` · `password-reset`, 전사본 PATCH 의 모든 segment 삭제 · 한쪽 시각만 보내 합친 뒤 시각 역전 |
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
