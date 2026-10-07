@@ -542,3 +542,53 @@ def test_admin_cannot_assign_case_to_inactive_counselor(
     after = client.get(f"/api/v1/cases/{case['id']}", headers=admin_headers)
 
     assert after.json()["data"]["counselor_id"] == str(admin_id)
+
+
+def test_update_case_rejects_null_counselor_id(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, counselor_id: uuid.UUID
+) -> None:
+    """counselor_id: null 을 조용히 무시하면 담당자가 비워진 줄 안다. 422 로 거부한다."""
+
+    case = create_case(client, admin_headers, counselor_id=str(counselor_id))
+
+    response = client.patch(
+        f"/api/v1/cases/{case['id']}",
+        json={"counselor_id": None, "title": "같이 보낸 제목"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    # 거절되면 같이 보낸 필드도 바뀌지 않는다.
+    after = client.get(f"/api/v1/cases/{case['id']}", headers=admin_headers).json()["data"]
+
+    assert after["counselor_id"] == str(counselor_id)
+    assert after["title"] == case["title"]
+
+
+def test_update_case_null_counselor_id_is_rejected_for_counselor_too(
+    client: TestClient, counselor_headers
+) -> None:
+    case = create_case(client, counselor_headers)
+
+    response = client.patch(
+        f"/api/v1/cases/{case['id']}",
+        json={"counselor_id": None},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_case_without_counselor_id_keeps_counselor(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    case = create_case(client, admin_headers, counselor_id=str(counselor_id))
+
+    response = client.patch(
+        f"/api/v1/cases/{case['id']}", json={"title": "제목만"}, headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["counselor_id"] == str(counselor_id)

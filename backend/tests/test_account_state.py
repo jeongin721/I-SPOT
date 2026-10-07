@@ -1129,3 +1129,51 @@ def test_is_locked_at_uses_one_rule() -> None:
 
     assert user.is_locked_at(now) is True
     assert user.is_locked_at(now + timedelta(minutes=2)) is False
+
+
+# =========================================================
+# 자기 계정 비밀번호 초기화 금지
+# =========================================================
+
+def test_admin_cannot_reset_own_password(
+    client: TestClient, admin_headers, admin_id: uuid.UUID, db
+) -> None:
+    """관리자가 자기 비밀번호를 초기화하면 자기 토큰이 끊기고 임시 비밀번호가 화면에 남는다.
+
+    자기 강제 로그아웃(logout-all)과 같이 409 로 막고, 아무것도 바꾸지 않는다.
+    """
+
+    response = client.post(
+        f"/api/v1/auth/users/{admin_id}/password-reset", headers=admin_headers
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "details" not in response.json()["error"]
+
+    # 비밀번호 · 토큰 · 이력 · 감사 로그 모두 그대로다.
+    assert client.get("/api/v1/auth/me", headers=admin_headers).status_code == 200
+    assert _login(client, ADMIN_EMAIL, ADMIN_PASSWORD).status_code == 200
+
+    db.expire_all()
+    user = db.get(User, admin_id)
+
+    assert user.must_change_password is False
+    assert _history_count(db, admin_id) == 0
+    assert (
+        db.scalars(
+            select(AuditLog).where(AuditLog.action == AuditAction.PASSWORD_RESET)
+        ).first()
+        is None
+    )
+
+
+def test_admin_can_still_reset_another_users_password(
+    client: TestClient, admin_headers, counselor_id: uuid.UUID
+) -> None:
+    response = client.post(
+        f"/api/v1/auth/users/{counselor_id}/password-reset", headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["temporary_password"]

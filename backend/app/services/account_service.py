@@ -79,6 +79,14 @@ def issue_temporary_password(db: Session, user: User) -> str:
 
 
 def reset_password(db: Session, actor: User, user: User) -> str:
+    # 자기 비밀번호를 초기화하면 자기 토큰이 끊기고 임시 비밀번호만 남는다.
+    # 다른 관리자가 해 주거나 비밀번호 변경(/auth/me/password)을 쓴다.
+    if user.id == actor.id:
+        raise conflict(
+            ErrorCode.VALIDATION_ERROR,
+            "자기 계정의 비밀번호는 초기화할 수 없습니다. 비밀번호 변경을 이용하세요.",
+        )
+
     # 초기화 전 비밀번호는 issue_temporary_password 가 이력에 남긴다.
     temporary = issue_temporary_password(db, user)
 

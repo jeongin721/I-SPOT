@@ -272,7 +272,8 @@ def update_case(
             },
         )
 
-    if "counselor_id" in data and data["counselor_id"] is not None:
+    # null 은 스키마(CaseUpdateRequest)가 422 로 거부하므로 여기 오면 값이 있다.
+    if "counselor_id" in data:
         new_counselor_id = _resolve_counselor(db, current_user, data["counselor_id"])
 
         if new_counselor_id != case.counselor_id:
