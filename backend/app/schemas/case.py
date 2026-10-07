@@ -46,7 +46,7 @@ class CaseCreateRequest(GuardianFields):
     case_number: Optional[str] = Field(default=None, min_length=1, max_length=50)
 
 
-_CASE_NOT_NULLABLE_FIELDS = ("title", "child_alias", "status")
+_CASE_NOT_NULLABLE_FIELDS = ("title", "child_alias", "status", "counselor_id")
 
 
 class CaseUpdateRequest(GuardianFields):
