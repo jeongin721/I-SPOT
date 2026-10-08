@@ -45,6 +45,9 @@ from ai.modeling.abuse.infer_audio_session import (
 from ai.modeling.abuse.pdf_text_extractor import extract_text_from_pdf
 
 from ai.modeling.abuse.test_pipeline_web import (
+    build_triage_summary_html,
+    get_top_signal_labels,
+    build_record_draft_view_html,
     build_major_types_html,
     build_subtypes_html,
     build_approval_form_html,
@@ -137,12 +140,30 @@ def build_result_html(
     session_id,
     audio_id=None,
 ):
+    # record_draft는 analyze_audio_session(음성 입력)만 만든다 —
+    # 텍스트/PDF 경로는 이 필드가 없으므로 조건부로만 렌더링한다
+    # (2026-10-08 추가, 기존 1차/2차 표시는 그대로 둠).
+    record_draft_html = (
+        build_record_draft_view_html(result)
+        if result.get("record_draft")
+        else ""
+    )
+
     return f"""
     {build_audio_player_html(audio_id)}
 
+    {record_draft_html}
+
     <section class="panel">
+        {build_triage_summary_html(result.get("major_types", {}), result.get("subtype_analysis", {}))}
         <h2>1차 학대 위험신호</h2>
-        {build_major_types_html(result.get("major_types", {}), result.get("subtype_analysis", {}))}
+        {build_major_types_html(
+            result.get("major_types", {}),
+            result.get("subtype_analysis", {}),
+            highlighted_labels=get_top_signal_labels(
+                result.get("major_types", {}), result.get("subtype_analysis", {})
+            ),
+        )}
     </section>
 
     <section class="panel">

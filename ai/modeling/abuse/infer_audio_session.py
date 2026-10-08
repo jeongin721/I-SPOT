@@ -31,6 +31,10 @@ from ai.modeling.abuse.checklist_llm import (
     DEFAULT_MODEL as DEFAULT_CHECKLIST_MODEL,
     generate_checklist_draft,
 )
+from ai.modeling.abuse.record_draft_llm import (
+    build_transcript_citation_text,
+    generate_record_draft,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -558,8 +562,49 @@ def analyze_audio_session(
         entity_map,
     )
 
+    # --------------------------------------------------------
+    # 기록 초안(축어록 + 아동 진술 요지 + 위험 신호, 2026-10-08 추가)
+    # --------------------------------------------------------
+    # "향후 계획"은 뺐다 — 질문 추천은 자유생성보다 검증된 질문
+    # 은행에서 RAG로 찾는 게 안전한데 지금 그 은행이 없다(record_draft_llm
+    # 모듈 docstring 참고). 은행이 생기면 그때 추가한다.
+
+    citation_text = build_transcript_citation_text(segments)
+
+    masked_citation_text, citation_entity_map = mask_for_outbound(
+        citation_text, known_identifiers=known_identifiers
+    )
+
+    total_ms = max(
+        (segment.get("end_ms", 0) for segment in segments),
+        default=0,
+    )
+    duration_label = (
+        f"녹취 {total_ms // 60000}분" if total_ms else ""
+    )
+    session_overview = " · ".join(
+        part
+        for part in [duration_label, f"발화 {len(segments)}건"]
+        if part
+    )
+
+    record_draft = generate_record_draft(
+        client=client,
+        model=note_model,
+        masked_transcript_text=masked_citation_text,
+        segments=segments,
+        subtype_analysis=subtype_result,
+        session_overview=session_overview,
+    )
+
+    record_draft = restore_pii(
+        record_draft,
+        citation_entity_map,
+    )
+
     return {
         "full_text": full_text,
+        "segments": segments,
         "major_types": major_types,
         "detected_major_types": detected_major_types,
         "subtype_analysis": subtype_result,
@@ -571,6 +616,7 @@ def analyze_audio_session(
         ],
         "counseling_record_model": note_model,
         "checklist_draft": checklist_draft,
+        "record_draft": record_draft,
         "chunk_results": chunk_results,
     }
 

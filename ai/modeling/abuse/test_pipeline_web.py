@@ -591,9 +591,18 @@ def build_page(
         """
 
     elif result:
+        triage_html = build_triage_summary_html(
+            result.get("major_types", {}),
+            result.get("subtype_analysis", {}),
+        )
+
         major_html = build_major_types_html(
             result.get("major_types", {}),
             result.get("subtype_analysis", {}),
+            highlighted_labels=get_top_signal_labels(
+                result.get("major_types", {}),
+                result.get("subtype_analysis", {}),
+            ),
         )
 
         subtype_html = build_subtypes_html(
@@ -602,6 +611,7 @@ def build_page(
 
         result_html = f"""
         <section class="panel">
+            {triage_html}
             <h2>1차 학대 위험신호</h2>
             {major_html}
         </section>
@@ -799,6 +809,236 @@ def build_page(
                 border-radius: 999px;
                 padding: 1px 8px;
                 margin-left: 4px;
+            }}
+
+            .triage-summary {{
+                border: 1px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 16px 18px;
+                margin-bottom: 18px;
+                background: #fafafa;
+            }}
+
+            .triage-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 6px;
+            }}
+
+            .triage-count {{
+                font-size: 13px;
+                font-weight: 600;
+                color: #374151;
+                background: #eef2ff;
+                padding: 2px 10px;
+                border-radius: 999px;
+            }}
+
+            .triage-note {{
+                font-size: 12px;
+                color: #9ca3af;
+                margin-bottom: 10px;
+            }}
+
+            .triage-row {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 0;
+                border-top: 1px solid #eee;
+            }}
+
+            .triage-row:first-of-type {{
+                border-top: none;
+            }}
+
+            .triage-label {{
+                font-weight: 700;
+                min-width: 70px;
+            }}
+
+            .triage-badge {{
+                font-size: 12px;
+                font-weight: 600;
+                color: #374151;
+                background: #f3f4f6;
+                border: 1px solid #e5e7eb;
+                padding: 2px 10px;
+                border-radius: 999px;
+            }}
+
+            .triage-empty {{
+                font-size: 13px;
+                color: #9ca3af;
+            }}
+
+            .triage-row.top-signal {{
+                background: #fff7ed;
+                border-top-color: #fdba74;
+                border-radius: 8px;
+                padding-left: 8px;
+                padding-right: 8px;
+            }}
+
+            .triage-highlight-tag {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #9a3412;
+                background: #ffedd5;
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-left: auto;
+            }}
+
+            .major-card.detected.top-signal {{
+                border-width: 3px;
+                border-color: #ea580c;
+                box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15);
+            }}
+
+            .tdraft-split {{
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                gap: 16px;
+            }}
+
+            @media (max-width: 860px) {{
+                .tdraft-split {{
+                    grid-template-columns: 1fr;
+                }}
+            }}
+
+            .tdraft-panel {{
+                border: 1px solid #e5e7eb;
+                border-radius: 12px;
+                overflow: hidden;
+                min-width: 0;
+            }}
+
+            .tdraft-panel-header {{
+                padding: 10px 14px;
+                font-weight: 700;
+                background: #f9fafb;
+                border-bottom: 1px solid #e5e7eb;
+            }}
+
+            .tdraft-transcript {{
+                max-height: 560px;
+                overflow-y: auto;
+                padding: 6px 0;
+            }}
+
+            .tdraft-line {{
+                display: grid;
+                grid-template-columns: 48px 56px minmax(0, 1fr);
+                gap: 8px;
+                padding: 6px 14px;
+                font-size: 13.5px;
+                border-left: 3px solid transparent;
+            }}
+
+            .tdraft-line.k .tdraft-sp {{
+                color: #b45309;
+            }}
+
+            .tdraft-ts {{
+                font-family: ui-monospace, Menlo, Consolas, monospace;
+                font-size: 11.5px;
+                color: #9ca3af;
+                padding-top: 2px;
+            }}
+
+            .tdraft-sp {{
+                font-size: 11.5px;
+                font-weight: 700;
+                color: #6b7280;
+                padding-top: 2px;
+            }}
+
+            .tdraft-flash {{
+                background: #fff3c4 !important;
+                border-left-color: #d97706;
+            }}
+
+            .tdraft-field {{
+                border-bottom: 1px solid #e5e7eb;
+                padding: 12px 16px;
+            }}
+
+            .tdraft-field:last-child {{
+                border-bottom: none;
+            }}
+
+            .tdraft-field-head {{
+                font-weight: 700;
+                margin-bottom: 8px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }}
+
+            .tdraft-field-body {{
+                font-size: 13.5px;
+                color: #374151;
+            }}
+
+            .tdraft-point {{
+                padding: 6px 0;
+                border-top: 1px dashed #eee;
+            }}
+
+            .tdraft-point:first-child {{
+                border-top: none;
+            }}
+
+            .tdraft-cite {{
+                font-family: ui-monospace, Menlo, Consolas, monospace;
+                font-size: 11px;
+                border: 1px solid #e5e7eb;
+                background: #f3f4f6;
+                color: #1d5c63;
+                border-radius: 5px;
+                padding: 0 5px;
+                margin-left: 4px;
+                text-decoration: none;
+                white-space: nowrap;
+            }}
+
+            .tdraft-cite:hover {{
+                border-color: #1d5c63;
+            }}
+
+            .tdraft-textarea {{
+                width: 100%;
+                min-height: 72px;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 8px 10px;
+                font: inherit;
+                font-size: 13.5px;
+                resize: vertical;
+            }}
+
+            .tag.t-ai {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #3730a3;
+                background: #eef2ff;
+                border-radius: 999px;
+                padding: 1px 8px;
+            }}
+
+            .tag.t-manual {{
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #b45309;
+                background: #fef3c7;
+                border-radius: 999px;
+                padding: 1px 8px;
             }}
 
             .closest-snippet {{
@@ -1149,10 +1389,198 @@ def build_page(
 
 
 # ============================================================
+# 2-1. 우선순위 참고 신호 HTML (신규, 기존 major/subtype 표시는 그대로 둠)
+# ============================================================
+
+_EVIDENCE_STRENGTH_RANK = {"높음": 3, "중간": 2, "낮음": 1}
+
+_MAJOR_TYPE_LABELS = [
+    "신체학대",
+    "정서학대",
+    "성학대",
+    "방임",
+]
+
+
+def _rank_detected_types(major_types, subtype_analysis=None):
+    """
+    탐지된 유형들을 "이 사례 안에서" 근거 신호(세부유형 개수, 최고
+    근거강도)가 더 뚜렷한 순서로 정렬한다(2026-10-08 추가).
+
+    이건 유형 자체의 본질적 위험도(신체학대가 정서학대보다 항상 더
+    위험한가 같은 임상적 판단)를 매기는 게 아니다 — 그건 기관/
+    슈퍼바이저의 사례관리 지침에서 가져와야 할 기준이라 여기서
+    만들지 않는다(설계 논의 참고). 여기서 하는 건 오직 "같이 탐지된
+    유형들 중 이 사례에서 어느 쪽 근거가 상대적으로 더 뚜렷한가"
+    비교뿐이다.
+
+    정렬 기준(우선순위 순): 최고 근거강도 -> 세부유형 개수. 동점이면
+    둘 다 "공동 1위"로 처리한다(강제로 하나만 고르지 않는다).
+    """
+
+    detected_labels = [
+        label
+        for label in _MAJOR_TYPE_LABELS
+        if major_types.get(label, {}).get("detected", False)
+    ]
+
+    subtypes_by_major = {
+        result.get("major_type"): result.get("subtypes", [])
+        for result in (subtype_analysis or {}).get("results", [])
+    }
+
+    ranked = []
+
+    for label in detected_labels:
+        subtypes = subtypes_by_major.get(label, [])
+        subtype_count = len(subtypes)
+
+        strengths = [
+            evidence.get("evidence_strength")
+            for subtype in subtypes
+            for evidence in subtype.get("evidences", [])
+            if evidence.get("evidence_strength") in _EVIDENCE_STRENGTH_RANK
+        ]
+
+        top_strength = (
+            max(strengths, key=lambda s: _EVIDENCE_STRENGTH_RANK[s])
+            if strengths
+            else None
+        )
+
+        strength_rank = _EVIDENCE_STRENGTH_RANK.get(top_strength, 0)
+
+        ranked.append(
+            {
+                "label": label,
+                "subtype_count": subtype_count,
+                "top_strength": top_strength,
+                "sort_key": (strength_rank, subtype_count),
+            }
+        )
+
+    ranked.sort(key=lambda r: r["sort_key"], reverse=True)
+    return ranked
+
+
+def get_top_signal_labels(major_types, subtype_analysis=None):
+    """
+    같이 탐지된 유형이 2개 이상일 때만, 이 사례 안에서 근거 신호가
+    가장 뚜렷한 유형(공동 1위 포함)을 반환한다. 1개만 탐지됐거나
+    아무 신호가 없으면(세부유형도 근거강도도 전혀 없으면) 빈 리스트를
+    반환한다 — 비교할 대상이 없거나 강조할 근거 자체가 없을 때는
+    강조하지 않는다.
+    """
+
+    ranked = _rank_detected_types(major_types, subtype_analysis)
+
+    if len(ranked) < 2:
+        return []
+
+    top_key = ranked[0]["sort_key"]
+
+    if top_key == (0, 0):
+        return []
+
+    return [r["label"] for r in ranked if r["sort_key"] == top_key]
+
+
+def build_triage_summary_html(major_types, subtype_analysis=None):
+    """
+    여러 케이스를 훑어볼 때 우선순위를 가늠할 수 있도록, 서로 다른
+    신호 세 가지를 뱃지로 나란히 보여준다(2026-10-08 추가). 기존
+    build_major_types_html/build_subtypes_html은 그대로 두고 이 함수를
+    추가로 호출하는 방식이다 — 둘 다 그대로 보여주고 이 카드는 위에
+    요약만 더해준다.
+
+    하나의 "위험도" 점수로 합치지 않는다 — 확신도(얼마나 명확한 근거인가)
+    와 복합도(몇 가지 다른 방식의 행위가 겹쳤는가)는 서로 다른 의미라
+    하나로 합치면 상담사가 오독할 위험이 있다(둘 다 낮은데 등급만
+    높게 나오거나, 그 반대인 경우를 구분 못 하게 된다). 그래서 신호를
+    따로따로 보여주고, 심각도 판단 자체는 하지 않는다 — 참고용이며
+    최종 판단은 상담사가 근거 원문을 직접 보고 내린다.
+
+    - 탐지된 유형 수: 1차가 detected=True로 본 대분류 개수(0~4)
+    - 세부유형 개수: 그 대분류 아래 2차 분석에서 서로 다른 세부유형이
+      몇 개나 잡혔는가(여러 방식의 행위가 겹쳐 있는지를 보는 복합도)
+    - 최고 근거강도: 그 대분류의 근거들 중 가장 높은 evidence_strength
+      (낮음/중간/높음 중 최댓값)
+
+    복합 유형(2개 이상 탐지)일 때는, 같이 탐지된 유형들 중 이 사례
+    안에서 근거 신호가 가장 뚜렷한 쪽에 강조 표시를 추가한다(유형의
+    본질적 위험도가 아니라 "이 사례에서 상대적으로 더 뚜렷한 근거"라는
+    뜻 — get_top_signal_labels 참고).
+    """
+
+    detected_labels = [
+        label
+        for label in _MAJOR_TYPE_LABELS
+        if major_types.get(label, {}).get("detected", False)
+    ]
+
+    ranked = _rank_detected_types(major_types, subtype_analysis)
+    ranked_by_label = {r["label"]: r for r in ranked}
+    top_labels = set(get_top_signal_labels(major_types, subtype_analysis))
+
+    rows = []
+
+    for label in detected_labels:
+        info = ranked_by_label.get(label, {})
+        subtype_count = info.get("subtype_count", 0)
+        top_strength = info.get("top_strength") or "-"
+
+        is_top = label in top_labels
+        row_class = "triage-row top-signal" if is_top else "triage-row"
+        highlight_tag = (
+            '<span class="triage-highlight-tag">이 사례에서 근거 가장 뚜렷함</span>'
+            if is_top
+            else ""
+        )
+
+        rows.append(
+            f"""
+            <div class="{row_class}">
+                <span class="triage-label">{escape(label)}</span>
+                <span class="triage-badge">세부유형 {subtype_count}개</span>
+                <span class="triage-badge">최고 근거강도 {escape(str(top_strength))}</span>
+                {highlight_tag}
+            </div>
+            """
+        )
+
+    body = (
+        "".join(rows)
+        if rows
+        else '<div class="triage-empty">탐지된 유형이 없습니다.</div>'
+    )
+
+    return f"""
+    <div class="triage-summary">
+        <div class="triage-header">
+            <strong>우선순위 참고 신호</strong>
+            <span class="triage-count">탐지된 유형 {len(detected_labels)}개 / {len(_MAJOR_TYPE_LABELS)}개</span>
+        </div>
+        <div class="triage-note">
+            심각도 점수가 아닙니다 — 여러 신호를 참고용으로만 보여줍니다.
+            "근거 가장 뚜렷함" 표시도 유형 자체의 위험도가 아니라, 같이
+            탐지된 유형들 중 이 사례에서 근거가 상대적으로 더 많이
+            나온 쪽이라는 뜻입니다. 최종 판단은 근거 원문을 직접
+            확인해 주세요.
+        </div>
+        {body}
+    </div>
+    """
+
+
+# ============================================================
 # 3. 1차 대분류 HTML
 # ============================================================
 
-def build_major_types_html(major_types, subtype_analysis=None):
+def build_major_types_html(
+    major_types,
+    subtype_analysis=None,
+    highlighted_labels=None,
+):
     """
     subtype_analysis를 함께 넘기면, 1차가 탐지했지만 2차 세부유형
     분석에서 그 대분류에 해당하는 근거를 하나도 찾지 못한 경우
@@ -1160,7 +1588,15 @@ def build_major_types_html(major_types, subtype_analysis=None):
     질문 문구만으로 오탐하고 아동은 부인한 경우가 대표적이다.
     실제로 유형이 없다는 뜻이 아니라, 상담사가 직접 원문을 봐야
     한다는 뜻이다.
+
+    highlighted_labels(선택, 기본값 None — 기존 호출부는 동작이
+    그대로다)를 넘기면 해당 카드에 추가 강조 테두리를 준다.
+    get_top_signal_labels()가 반환하는 라벨을 그대로 넘기면 된다 —
+    유형의 본질적 위험도가 아니라 "복합 탐지된 유형들 중 이 사례에서
+    근거가 더 뚜렷한 쪽"이라는 뜻(build_triage_summary_html 참고).
     """
+
+    highlighted_labels = set(highlighted_labels or [])
 
     labels = [
         "신체학대",
@@ -1192,6 +1628,9 @@ def build_major_types_html(major_types, subtype_analysis=None):
             if detected
             else "major-card"
         )
+
+        if detected and label in highlighted_labels:
+            card_class += " top-signal"
 
         status = (
             "위험신호 탐지"
@@ -1870,6 +2309,201 @@ def build_checklist_edit_html(
 
         {environment_html}
     </section>
+    """
+
+
+# ============================================================
+# 2-2. 축어록 + 기록 초안 분할 화면 (신규, 2026-10-08)
+# ============================================================
+# 음성 세션(infer_audio_session.analyze_audio_session)이 만드는
+# result["segments"]/result["record_draft"]가 있을 때만 렌더링한다.
+# 텍스트/PDF 입력 경로는 이 필드가 없으므로 호출부가 조건부로만
+# 이 함수를 부르면 된다(기존 1차/2차 표시는 그대로 두고 추가하는
+# 화면이라 build_major_types_html 등은 건드리지 않았다).
+#
+# "향후 계획" 섹션은 없다 — 질문 추천은 자유생성보다 검증된 질문
+# 은행에서 RAG로 찾는 쪽이 안전한데 지금 그 은행이 없어서 뺐다
+# (record_draft_llm.py 모듈 docstring 참고, 2026-10-08 논의).
+
+_SPEAKER_DISPLAY_LABEL = {
+    "COUNSELOR": "상담원",
+    "CHILD": "아동",
+}
+
+
+def _format_timestamp_label(start_ms):
+    total_seconds = int(start_ms or 0) // 1000
+    return f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
+
+
+def _build_citation_chips_html(segment_ids):
+    return "".join(
+        f'<a class="tdraft-cite" href="#{escape(str(segment_id), quote=True)}" '
+        f'onclick="return tdraftJump(\'{escape(str(segment_id), quote=True)}\')">'
+        f"{escape(str(segment_id))}</a>"
+        for segment_id in segment_ids
+    )
+
+
+def _build_statement_points_html(points, empty_text):
+    if not points:
+        return f'<p class="triage-empty">{escape(empty_text)}</p>'
+
+    items = []
+
+    for point in points:
+        items.append(
+            f"""
+            <div class="tdraft-point">
+                <span>{escape(point.get("text", ""))}</span>
+                {_build_citation_chips_html(point.get("segment_ids", []))}
+            </div>
+            """
+        )
+
+    return "".join(items)
+
+
+def _build_risk_points_html(points):
+    if not points:
+        return '<p class="triage-empty">탐지된 위험 신호가 없습니다.</p>'
+
+    items = []
+
+    for point in points:
+        label_parts = [
+            part
+            for part in [point.get("major_type"), point.get("subtype")]
+            if part
+        ]
+        label = " · ".join(label_parts)
+        strength = point.get("evidence_strength") or "-"
+
+        items.append(
+            f"""
+            <div class="tdraft-point">
+                <div class="meta">{escape(label)} · 근거강도 {escape(str(strength))}</div>
+                <span>{escape(point.get("text", ""))}</span>
+                {_build_citation_chips_html(point.get("segment_ids", []))}
+            </div>
+            """
+        )
+
+    return "".join(items)
+
+
+def build_record_draft_view_html(result):
+    """
+    목업(2026-10-08 공유)의 "축어록 + 기록 초안" 분할 화면을 렌더링한다.
+
+    왼쪽: 축어록(타임스탬프+화자), 각 줄에 segment_id를 id 속성으로
+    달아둔다 — 오른쪽 "기록 초안"의 근거 칩을 누르면 그 줄로 스크롤
+    이동하고 잠깐 강조된다(아래 tdraftJump 스크립트).
+
+    오른쪽: 기록 초안 4개 섹션. "상담원 관찰"만 AI가 채우지 않는
+    직접 입력 칸이다(상담사가 상담 직후 쓰는 메모라서 — 모듈 docstring
+    참고).
+    """
+
+    segments = result.get("segments", []) or []
+    record_draft = result.get("record_draft") or {}
+
+    transcript_lines = []
+
+    for segment in segments:
+        segment_id = str(segment.get("segment_id", ""))
+        speaker = segment.get("speaker", "UNKNOWN")
+        speaker_label = _SPEAKER_DISPLAY_LABEL.get(speaker, speaker)
+        speaker_class = "k" if speaker == "CHILD" else "c"
+        text = segment.get("text", "")
+        ts_label = _format_timestamp_label(segment.get("start_ms", 0))
+
+        transcript_lines.append(
+            f"""
+            <div class="tdraft-line {speaker_class}" id="{escape(segment_id, quote=True)}">
+                <span class="tdraft-ts">{ts_label}</span>
+                <span class="tdraft-sp">{escape(speaker_label)}</span>
+                <span class="tdraft-tx">{escape(text)}</span>
+            </div>
+            """
+        )
+
+    transcript_html = (
+        "".join(transcript_lines)
+        if transcript_lines
+        else '<p class="triage-empty">축어록이 없습니다.</p>'
+    )
+
+    return f"""
+    <section class="panel">
+        <h2>축어록 + 기록 초안</h2>
+        <div class="tdraft-split">
+            <div class="tdraft-panel">
+                <div class="tdraft-panel-header">축어록</div>
+                <div class="tdraft-transcript">{transcript_html}</div>
+            </div>
+            <div class="tdraft-panel">
+                <div class="tdraft-panel-header">기록 초안</div>
+
+                <div class="tdraft-field">
+                    <div class="tdraft-field-head">
+                        상담 개요 <span class="tag t-ai">AI 초안</span>
+                    </div>
+                    <div class="tdraft-field-body">
+                        {escape(record_draft.get("session_overview", "") or "-")}
+                    </div>
+                </div>
+
+                <div class="tdraft-field">
+                    <div class="tdraft-field-head">
+                        아동 진술 요지 <span class="tag t-ai">AI 초안</span>
+                    </div>
+                    <div class="tdraft-field-body">
+                        {_build_statement_points_html(
+                            record_draft.get("child_statement_points", []),
+                            "진술 요지가 없습니다.",
+                        )}
+                    </div>
+                </div>
+
+                <div class="tdraft-field">
+                    <div class="tdraft-field-head">
+                        위험 신호 <span class="tag t-ai">AI 초안</span>
+                    </div>
+                    <div class="tdraft-field-body">
+                        {_build_risk_points_html(
+                            record_draft.get("risk_signal_points", [])
+                        )}
+                    </div>
+                </div>
+
+                <div class="tdraft-field">
+                    <div class="tdraft-field-head">
+                        상담원 관찰 <span class="tag t-manual">직접 입력</span>
+                    </div>
+                    <div class="tdraft-field-body">
+                        <textarea
+                            name="counselor_observation"
+                            class="tdraft-textarea"
+                            placeholder="상담 직후 관찰 내용을 입력하세요"
+                        >{escape(record_draft.get("counselor_observation", ""))}</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+    function tdraftJump(segmentId) {{
+        var el = document.getElementById(segmentId);
+        if (el) {{
+            el.scrollIntoView({{behavior: "smooth", block: "center"}});
+            el.classList.add("tdraft-flash");
+            setTimeout(function () {{ el.classList.remove("tdraft-flash"); }}, 1500);
+        }}
+        return false;
+    }}
+    </script>
     """
 
 
