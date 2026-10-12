@@ -1,0 +1,325 @@
+{
+  "pages": [
+    "Admin",
+    "CaseApp",
+    "CaseDetail",
+    "CaseDocs",
+    "CaseForm",
+    "CaseHistory",
+    "CaseList",
+    "CaseRegister",
+    "ChildDetail",
+    "ChildLink",
+    "Closure",
+    "ClosureDetail",
+    "FollowupQ",
+    "Login",
+    "Main",
+    "NoteWrite",
+    "PreBriefing",
+    "Schedule",
+    "SessionDetail",
+    "Settings",
+    "SignalReview",
+    "Stats",
+    "SttReview",
+    "UploadModal",
+    "ClosureReview"
+  ],
+  "boards": {
+    "Admin.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "관리자 대시보드",
+      "w": 1440,
+      "x": 7600,
+      "y": 10100
+    },
+    "CaseApp.dc.html": {
+      "expand": "fill",
+      "h": 1650,
+      "is_interactive": true,
+      "title": "탭 4 · 아이 연계 (아이 상세와 같은 화면)",
+      "w": 1440,
+      "x": 6080,
+      "y": 4800
+    },
+    "CaseDetail.dc.html": {
+      "expand": "fill",
+      "h": 1350,
+      "is_interactive": true,
+      "title": "탭 1 · 내담자 정보 + 기관 서식 + 종결 검토 등록",
+      "w": 1440,
+      "x": 0,
+      "y": 4800
+    },
+    "CaseDocs.dc.html": {
+      "expand": "fill",
+      "h": 1350,
+      "is_interactive": true,
+      "title": "탭 5 · 문서함 (기관 서식 6종 + 파일)",
+      "w": 1440,
+      "x": 7600,
+      "y": 4800
+    },
+    "CaseForm.dc.html": {
+      "expand": "fill",
+      "h": 1880,
+      "is_interactive": true,
+      "title": "탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)",
+      "w": 1440,
+      "x": 9120,
+      "y": 4800
+    },
+    "CaseHistory.dc.html": {
+      "expand": "fill",
+      "h": 1550,
+      "is_interactive": true,
+      "title": "탭 2 · 상담 이력 (① 지금까지 상담 → ② 상담 회차 → ③ 회차별 세부 신호)",
+      "w": 1440,
+      "x": 1520,
+      "y": 4800
+    },
+    "CaseList.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)",
+      "w": 1440,
+      "x": 0,
+      "y": 2450
+    },
+    "CaseRegister.dc.html": {
+      "expand": "fill",
+      "h": 1700,
+      "is_interactive": true,
+      "title": "새 사례 등록 (팝업 · 서식 4 초기면접지)",
+      "w": 1440,
+      "x": 1520,
+      "y": 2450
+    },
+    "ChildDetail.dc.html": {
+      "expand": "fill",
+      "h": 1600,
+      "is_interactive": true,
+      "title": "아이 연계 › 아이 상세 (아이가 쓴 글 · 질문과 답 · 확인할 답변 · 추가 질문)",
+      "w": 1440,
+      "x": 6080,
+      "y": 0
+    },
+    "ChildLink.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태)",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "Closure.dc.html": {
+      "expand": "fill",
+      "h": 640,
+      "is_interactive": true,
+      "title": "종결 검토 · 대상 아동 목록",
+      "w": 1440,
+      "x": 0,
+      "y": 10100
+    },
+    "ClosureDetail.dc.html": {
+      "expand": "fill",
+      "h": 2250,
+      "is_interactive": true,
+      "title": "종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안)",
+      "w": 1440,
+      "x": 3040,
+      "y": 10100
+    },
+    "FollowupQ.dc.html": {
+      "expand": "fill",
+      "h": 1550,
+      "is_interactive": true,
+      "title": "4 · 추가 확인 · 질문 (모두 승인 / 수정 가능)",
+      "w": 1440,
+      "x": 6080,
+      "y": 7400
+    },
+    "Login.dc.html": {
+      "expand": "fill",
+      "h": 720,
+      "is_interactive": true,
+      "title": "로그인",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 1060,
+      "is_interactive": true,
+      "title": "홈 (대시보드)",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "NoteWrite.dc.html": {
+      "expand": "fill",
+      "h": 2000,
+      "is_interactive": true,
+      "title": "3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식)",
+      "w": 1440,
+      "x": 4560,
+      "y": 7400
+    },
+    "PreBriefing.dc.html": {
+      "expand": "fill",
+      "h": 1550,
+      "is_interactive": true,
+      "title": "탭 3 · 상담 전 브리핑 (+ 신변안전 확인)",
+      "w": 1440,
+      "x": 4560,
+      "y": 4800
+    },
+    "Schedule.dc.html": {
+      "expand": "fill",
+      "h": 1200,
+      "is_interactive": true,
+      "title": "일정 · 월간 달력 + 일정 추가",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "SessionDetail.dc.html": {
+      "expand": "fill",
+      "h": 950,
+      "is_interactive": true,
+      "title": "탭 2 › 회차 상세 (1~4단계 처리로 바로 가기)",
+      "w": 1440,
+      "x": 3040,
+      "y": 4800
+    },
+    "Settings.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "is_interactive": true,
+      "title": "설정 · 계정 / 알림 설정",
+      "w": 1440,
+      "x": 6080,
+      "y": 10100
+    },
+    "SignalReview.dc.html": {
+      "expand": "fill",
+      "h": 1350,
+      "is_interactive": true,
+      "title": "2 · 위험 신호 검토",
+      "w": 1440,
+      "x": 3040,
+      "y": 7400
+    },
+    "Stats.dc.html": {
+      "expand": "fill",
+      "h": 1990,
+      "is_interactive": true,
+      "title": "통계 (기간 직접 선택 · 원형 · 가로/세로 막대 · 표)",
+      "w": 1440,
+      "x": 4560,
+      "y": 10100
+    },
+    "SttReview.dc.html": {
+      "expand": "fill",
+      "h": 1250,
+      "is_interactive": true,
+      "title": "1 · STT 검수 (화자: 피해아동 · 사례관리대상자 · 상담원)",
+      "w": 1440,
+      "x": 1520,
+      "y": 7400
+    },
+    "UploadModal.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "녹취 · 자료 올리기 (팝업 3단계 + 확인창)",
+      "w": 1440,
+      "x": 0,
+      "y": 7400
+    },
+    "ClosureReview.dc.html": {
+      "expand": "fill",
+      "h": 2300,
+      "is_interactive": true,
+      "title": "종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로)",
+      "w": 1440,
+      "x": 1520,
+      "y": 10100
+    }
+  },
+  "notes": {
+    "rowA": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "① 하루 시작 · 로그인 → 홈 → 일정 → 아이 연계 → 아이 상세",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "rowB": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "② 사례 관리 · 통합 목록 → 새 사례 등록",
+      "w": 240,
+      "x": 0,
+      "y": 2150
+    },
+    "rowC": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "③ 사례 상세 · 탭 5개 (내담자 정보 · 상담 이력 · 상담 전 브리핑 · 아이 연계 · 문서함) + 기관 서식 작성",
+      "w": 240,
+      "x": 0,
+      "y": 4500
+    },
+    "rowD": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 요약 · 일지 작성 → 추가 확인 · 질문",
+      "w": 240,
+      "x": 0,
+      "y": 7100
+    },
+    "rowE": {
+      "kind": "title1",
+      "maxW": 9040,
+      "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 관리자",
+      "w": 240,
+      "x": 0,
+      "y": 9800
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Login.dc.html",
+    "Schedule.dc.html",
+    "ChildLink.dc.html",
+    "ChildDetail.dc.html",
+    "CaseList.dc.html",
+    "CaseRegister.dc.html",
+    "CaseDetail.dc.html",
+    "CaseHistory.dc.html",
+    "SessionDetail.dc.html",
+    "PreBriefing.dc.html",
+    "CaseApp.dc.html",
+    "CaseDocs.dc.html",
+    "CaseForm.dc.html",
+    "UploadModal.dc.html",
+    "SttReview.dc.html",
+    "SignalReview.dc.html",
+    "NoteWrite.dc.html",
+    "FollowupQ.dc.html",
+    "Closure.dc.html",
+    "ClosureReview.dc.html",
+    "ClosureDetail.dc.html",
+    "Stats.dc.html",
+    "Settings.dc.html",
+    "Admin.dc.html"
+  ]
+}

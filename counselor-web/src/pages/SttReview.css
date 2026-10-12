@@ -1,0 +1,31 @@
+.pg-SttReview .ln {
+  display: grid;
+  grid-template-columns: 52px 124px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid #eee8da;
+}
+.pg-SttReview .in {
+  width: 100%;
+  border: 1px solid #dcd5c3;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  background: #ffffff;
+  color: #2f3a44;
+}
+.pg-SttReview .prog {
+  height: 10px;
+  border-radius: 5px;
+  background: #eee8da;
+  overflow: hidden;
+}
+.pg-SttReview .prog span {
+  display: block;
+  height: 100%;
+  background: #a8c6e7;
+  border-radius: 5px;
+  transition: width 0.4s;
+}

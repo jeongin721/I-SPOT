@@ -1,0 +1,24 @@
+.pg-UploadModal .opt {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid #e7e0ce;
+  cursor: pointer;
+  background: #ffffff;
+}
+.pg-UploadModal .lb {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.pg-UploadModal .fmt {
+  flex: 1 1 220px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f8f5ec;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

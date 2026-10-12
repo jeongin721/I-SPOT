@@ -9,7 +9,8 @@ I-SPOT/
 ├─ backend/                  # FastAPI + PostgreSQL Backend (팀 C)
 │  ├─ README.md              # Backend 실행 방법 / 환경변수 / 테스트
 │  └─ docs/                  # CODE_GUIDE, API_CONTRACT
-├─ ispotvscode/              # Frontend (React/Vite)
+├─ counselor-web/            # 상담사 웹 새 화면 (React/Vite, 2026-10-12~) — 실행법은 counselor-web/README.md
+├─ ispotvscode/              # 이전 Frontend (React/Vite) — counselor-web 으로 바꾸는 중
 ├─ ai/                       # LLM 분석 파이프라인 및 모델링 코드 (팀 B)
 │  └─ modeling/              # 학대 / 위기 / 상호작용 모델링
 ├─ stt/                      # STT 파이프라인 모듈 (팀 A)
