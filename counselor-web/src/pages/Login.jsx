@@ -27,7 +27,8 @@ class Logic extends DCLogic {
     if (!user) return;
     if (user.must_change_password) {
       // 방금 친 임시 비밀번호를 현재 비밀번호 칸에 옮겨 두고, 로그인 상태를 다시 확인해 변경 단계로 넘어간다.
-      this.setState({ current: s.password, password: '' });
+      // 새 비밀번호 · 확인 칸은 비운다(앞 계정에서 치다 만 값이 남아 있으면 이 계정에 그대로 들어가 버린다).
+      this.setState({ current: s.password, password: '', next: '', confirm: '' });
       this.props.session.recheck();
     } else {
       this.props.navigate('/Main');
@@ -70,7 +71,12 @@ class Logic extends DCLogic {
         if (changing) this.changePassword();
         else this.signIn();
       },
-      switchAccount: () => session.logout(),
+      // 다른 계정으로 바꿀 때는 비밀번호 칸을 모두 비우고 오류 문구도 지운 뒤 로그아웃한다.
+      switchAccount: () => {
+        this.setState({ password: '', current: '', next: '', confirm: '' });
+        pwChange.clearErrors();
+        session.logout();
+      },
     };
   }
 }
