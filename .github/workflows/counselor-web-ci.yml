@@ -1,0 +1,37 @@
+name: Counselor Web CI
+
+# 상담사 웹 새 화면(counselor-web/)이 바뀌는 PR 에서 빌드가 깨지지 않는지 본다.
+# JavaScript 앱이라 타입 검사는 없고 vite build 만 돌린다.
+on:
+  push:
+    paths:
+      - "counselor-web/**"
+      - ".github/workflows/counselor-web-ci.yml"
+  pull_request:
+    paths:
+      - "counselor-web/**"
+      - ".github/workflows/counselor-web-ci.yml"
+
+jobs:
+  build:
+    name: counselor-web vite build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: counselor-web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # README 기준 Node 18 이상. ispotvscode CI 와 같은 22 를 쓴다.
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: counselor-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npx vite build
