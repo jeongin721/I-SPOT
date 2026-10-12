@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError, signOut } from "../api/client";
+import { ApiError, getToken, signOut } from "../api/client";
 import { auth } from "../api/endpoints";
 
 export { PASSWORD_RULE_TEXT } from "../api/types";
@@ -71,10 +71,14 @@ export function usePasswordChange(): PasswordChangeState {
     setSubmitting(true);
     setErrors([]);
 
+    // 요청할 때의 토큰. 응답을 기다리는 사이 다른 탭에서 다른 계정으로 로그인하면 토큰이 바뀐다.
+    const requestedToken = getToken();
+
     try {
       await auth.changePassword({ current_password: currentPassword, new_password: newPassword });
       // 토큰이 이미 끊겼으므로 이 탭과 다른 탭 모두 로그아웃한다.
-      signOut(PASSWORD_CHANGED_MESSAGE);
+      // 단, 그사이 토큰이 바뀌었으면(다른 계정으로 로그인) 그 새 로그인은 그대로 둔다.
+      if (getToken() === requestedToken) signOut(PASSWORD_CHANGED_MESSAGE);
 
       return true;
     } catch (caught) {
