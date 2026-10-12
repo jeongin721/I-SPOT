@@ -66,6 +66,7 @@ export interface AudioUploadState {
   failedStep: UploadFailedStep | null;
   /** 진행 중이면 true(단추를 끄는 데 쓴다). */
   busy: boolean;
+  /** 시작한다. 이미 진행 중이면 아무것도 하지 않고 false(먼저 reset 한다). */
   start: (request: UploadRequest) => Promise<boolean>;
   /** 실패한 단계부터 다시 한다. 파일 검사에서 실패했으면 다시 할 것이 없어 false. */
   retry: () => Promise<boolean>;
@@ -93,6 +94,8 @@ export function useAudioUpload(): AudioUploadState {
   // 이 창에서 만든 회차(사례별). 실패 뒤 다시 시도할 때 또 만들지 않는다.
   const created = useRef<{ caseId: string; sessionId: string } | null>(null);
   const failedAt = useRef<UploadFailedStep | null>(null);
+  // 실행 중인가. 실행 중에는 start · retry 를 받지 않는다.
+  const running = useRef(false);
 
   useEffect(
     () => () => {
@@ -232,8 +235,32 @@ export function useAudioUpload(): AudioUploadState {
     }
   }, []);
 
+  /**
+   * 진행 중인 실행이 없을 때만 시작한다. 같은 순간 start 를 두 번 불러도(두 번 누름) 회차가 두 개 생기지 않게.
+   * phase 는 그린 뒤에야 바뀌므로 ref 로 막는다.
+   */
+  const launch = useCallback(
+    (input: UploadRequest, from: UploadFailedStep) => {
+      if (running.current) return Promise.resolve(false);
+
+      running.current = true;
+
+      // run 은 첫 await 전까지 바로 돌아 runId 를 올린다. 그 번호의 실행이 끝날 때만 풀어 준다
+      // (reset 뒤 새로 시작한 실행의 잠금을 앞 실행이 풀지 않게).
+      const finished = run(input, from);
+      const id = runId.current;
+
+      return finished.finally(() => {
+        if (runId.current === id) running.current = false;
+      });
+    },
+    [run],
+  );
+
   const start = useCallback(
     (input: UploadRequest) => {
+      if (running.current) return Promise.resolve(false);
+
       // 다른 사례로 새로 시작하면 앞 사례에서 만든 회차는 잊는다(같은 사례면 retry 처럼 다시 쓴다).
       if (created.current && created.current.caseId !== input.caseId) created.current = null;
 
@@ -241,9 +268,9 @@ export function useAudioUpload(): AudioUploadState {
       setSessionId(input.sessionId ?? null);
       setSessionStatus(null);
 
-      return run(input, "file");
+      return launch(input, "file");
     },
-    [run],
+    [launch],
   );
 
   const retry = useCallback(() => {
@@ -252,11 +279,13 @@ export function useAudioUpload(): AudioUploadState {
 
     if (!input || !from || from === "file") return Promise.resolve(false);
 
-    return run(input, from);
-  }, [run]);
+    return launch(input, from);
+  }, [launch]);
 
   const reset = useCallback(() => {
+    // 기다리던 실행은 다음 확인 때 조용히 멈춘다. 그 실행이 이미 보낸 요청(회차 만들기 · 업로드)은 서버에서 끝까지 간다.
     runId.current += 1;
+    running.current = false;
     request.current = null;
     created.current = null;
     failedAt.current = null;
