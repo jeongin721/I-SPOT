@@ -1,5 +1,4 @@
 // Backend endpoint 를 함수로 감싼 것. 쿼리 이름·응답 모양은 Backend OpenAPI(/openapi.json)와 같다.
-// (음성 metadata 조회는 아직 쓰는 화면이 없어 감싸지 않았다.)
 //
 // 화면에서는 주소 문자열을 직접 쓰지 않고 이 함수들만 부른다.
 // Backend 주소가 바뀌어도 고칠 곳이 여기 한 군데로 유지된다.
@@ -10,6 +9,7 @@ import { api, clearToken, setToken } from "./client";
 import type {
   AnalysisEnvelope,
   AnalysisRequestResponse,
+  AudioFile,
   AudioUploadResponse,
   Case,
   CaseCreateRequest,
@@ -225,6 +225,11 @@ export const sessions = {
     if (durationMs !== undefined) form.append("duration_ms", String(durationMs));
 
     return api.upload<AudioUploadResponse>(`/sessions/${sessionId}/audio`, form);
+  },
+
+  /** 최신 음성 파일 정보(파일 이름 · 크기 · 길이). 파일 자체는 주지 않는다. 음성이 없으면 404 AUDIO_NOT_FOUND. */
+  getAudio(sessionId: string): Promise<AudioFile> {
+    return api.get<AudioFile>(`/sessions/${sessionId}/audio`);
   },
 };
 
