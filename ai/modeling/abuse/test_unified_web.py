@@ -1379,6 +1379,33 @@ def api_analyze_audio(
             case_id=case_id or None,
         )
 
+        # "회차 경과" 탭(case_store.get_case_trend)이 쓸 수 있도록
+        # 세션을 저장한다. 이 라우트는 애초에 검수 단계 없이 업로드부터
+        # 분석까지 한 번에 처리하는 구조라(위 docstring 참고), draft로
+        # 저장한 뒤 바로 같은 내용으로 승인 처리한다 — 별도 검수 UI가
+        # 생기면 그때 draft만 저장하고 승인은 그 UI로 옮기면 된다.
+        if case_id:
+            session_id = case_store.save_draft_session(
+                case_id=case_id,
+                input_mode="audio",
+                source_type="audio",
+                raw_text=result.get("full_text", ""),
+                analysis=result,
+            )
+
+            case_store.approve_session(
+                session_id=session_id,
+                final_counseling_summary=result.get(
+                    "counseling_summary", ""
+                ),
+                final_counseling_note=result.get(
+                    "counseling_note", ""
+                ),
+                final_checklist=result.get(
+                    "checklist_draft", {}
+                ),
+            )
+
         return JSONResponse(
             {
                 "segments": result.get("segments", []),
@@ -1401,6 +1428,23 @@ def api_analyze_audio(
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+@app.get("/api/case-trend/{case_id}")
+def api_case_trend(case_id: str):
+    """
+    목업 "회차 경과" 탭이 쓸 회차별 추이 데이터.
+
+    case_store.get_case_trend() 그대로 반환한다 — 승인된("approved")
+    회기만 포함되고, "좋아짐/나빠짐" 같은 해석은 여기서도 만들지
+    않는다(case_store.py 원칙 그대로). 아직 저장된 회기가 없으면
+    빈 배열을 돌려주고, 프론트에서 그 경우 기존 데모 데이터를 그대로
+    보여주면 된다.
+    """
+
+    return JSONResponse(
+        {"trend": case_store.get_case_trend(case_id)}
+    )
 
 
 # ============================================================
