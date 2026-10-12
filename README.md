@@ -1,102 +1,134 @@
-# I-SPOT Project Guide
+# I-SPOT 상담사 웹 (프론트엔드 프로토타입)
 
-I-SPOT은 Backend, Frontend, AI 모델링, STT 파이프라인을 함께 개발하는 통합 저장소입니다. 이 문서는 저장소에 처음 들어온 팀원을 위한 공통 진입점입니다.
+아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
+모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
 
-## 코드 구조
-
-```text
-I-SPOT/
-├─ backend/                  # FastAPI + PostgreSQL Backend (팀 C)
-│  ├─ README.md              # Backend 실행 방법 / 환경변수 / 테스트
-│  └─ docs/                  # CODE_GUIDE, API_CONTRACT
-├─ counselor-web/            # 상담사 웹 새 화면 (React/Vite, 2026-10-12~) — 실행법은 counselor-web/README.md
-├─ ispotvscode/              # 이전 Frontend (React/Vite) — counselor-web 으로 바꾸는 중
-├─ ai/                       # LLM 분석 파이프라인 및 모델링 코드 (팀 B)
-│  └─ modeling/              # 학대 / 위기 / 상호작용 모델링
-├─ stt/                      # STT 파이프라인 모듈 (팀 A)
-├─ data_prep/                # GT 구축 및 STT Provider 평가 코드·산출물
-├─ main.py                   # STT + 학대분석 단독 확인용 앱 — Backend 아님
-├─ docker-compose.yml        # Local 실행용 최소 구성
-└─ I-SPOT_DOCS/              # 공통 기획·아키텍처·개발 규칙 문서
-```
-
-### FastAPI 앱이 두 개다 — 포트가 겹친다
-
-| 파일 | 무엇인가 | 포트 |
-| --- | --- | --- |
-| `backend/app/main.py` | **Backend 본체.** 사례·회차·전사·분석·요약 API | 8000 |
-| `main.py` (최상위) | STT + 학대분석만 확인하는 단독 앱 | 8000 |
-
-둘 다 8000 포트를 사용하므로 **동시에 실행할 수 없습니다.** 최상위 `main.py`를 실행한 상태에서 <http://localhost:8000/docs>를 열면 Backend가 아닌 `/api/v1/analyze`만 보입니다.
-
-Backend 실행은 [backend/README.md](backend/README.md)를 따릅니다.
+## 실행
 
 ```bash
-docker compose up -d db
-cd backend && pip install -r requirements-dev.txt
-cp .env.example .env
-alembic upgrade head
-python -m scripts.seed_users --demo
-uvicorn app.main:app --no-proxy-headers --reload
+npm install
+npm run dev        # http://localhost:5173  → 첫 화면은 '화면 목록'
+npm run build      # dist/ 에 배포용 파일 생성
 ```
 
-## AI/STT 파이프라인
+- Node.js 18 이상
+- 화면 주소: `http://localhost:5173/#/Main`, `#/CaseDetail` 처럼 `#/파일이름`
+- 위치: I-SPOT 저장소의 `counselor-web/` 폴더 (기존 `ispotvscode/` 와 별개)
 
-STT 결과는 화자 분리와 역할 판별을 거쳐, 안전하게 확정된 아동(`CHILD`) 발화를 후단 분석에 전달하는 것을 목표로 합니다.
+## 폴더 구조
 
-```text
-음성 입력 → STT / 화자 분리 → 역할 판별 → CHILD 발화 추출 → 후단 분석
+```
+src/
+  main.jsx            진입점 (공통 CSS 로드)
+  App.jsx             라우터 — src/pages/*.jsx 를 '/파일이름' 경로로 자동 등록 (HashRouter)
+  Overview.jsx        첫 화면: 흐름별 화면 목록
+  dc.js               화면 로직 어댑터 (DCLogic · useDC)
+  components/A.jsx    화면 간 이동 링크 (내부 경로는 react-router Link)
+  styles/common.css   공통 스타일 (사이드바 · 카드 · 칩 · 버튼 · 탭 · 단계 표시 등)
+  pages/
+    Xxx.jsx           화면 1개 = 파일 1개 (로직 class + JSX)
+    Xxx.css           그 화면 전용 스타일 (.pg-Xxx 로 범위 제한)
+    manifest.json     화면 목록 · 제목 · 흐름(행) 정보
 ```
 
-- 주요 역할은 `COUNSELOR`, `CHILD`, `UNKNOWN`입니다. 불확실한 화자는 `UNKNOWN`으로 유지합니다.
-- 아동 화자를 안전하게 확정할 수 없으면 CHILD 대상 분석을 보류합니다. 원본 STT 결과를 억지로 역할로 단정하지 않습니다.
-- STT 구현은 `stt/`에, AI 분석·모델링은 `ai/`에 분리되어 있습니다. Backend 연동과 API Contract는 `backend/` 문서를 기준으로 확인합니다.
-- 평가·재현용 코드는 `data_prep/` 및 실험 경로에 두며, production 경로와 구분합니다.
+### 화면 파일 읽는 법
 
-### Provider 평가 현황
-
-`data_prep/`은 GT 기반으로 STT Provider의 화자 분리와 역할 매핑을 평가하기 위한 코드와 산출물을 관리합니다.
-
-- Deepgram과 ElevenLabs의 비교 평가는 진행 중입니다.
-- Deepgram 100건 파일럿에서는 GT 기반 strict role-separation 평가의 `purity >= 80%`, `role coverage >= 80%` 기준으로 `ROLE_MAPPING_OK`가 77/100건입니다. 이는 일반적인 전사 정확도 77%를 의미하지 않습니다.
-- ElevenLabs는 100건 API 처리를 완료했지만, 100건 전체 GT 평가는 아직 완료되지 않았습니다. 현재 18건 비교 결과는 전체 성능 지표로 해석하지 않습니다.
-
-상세 평가 절차·스크립트·산출물은 `data_prep/`을 확인합니다.
-
-## 문서 안내와 협업 규칙
-
-작업을 시작할 때는 `README.md`에서 영역을 분류한 뒤, 해당 문서만 추가로 확인합니다.
-
-- 요구사항/기능 범위: [01_PRD.md](I-SPOT_DOCS/docs/01_PRD.md)
-- 시스템·데이터·AI 구조: [02_ARCHITECTURE.md](I-SPOT_DOCS/docs/02_ARCHITECTURE.md)
-- 화면/User Flow: [03_UI_UX.md](I-SPOT_DOCS/docs/03_UI_UX.md)
-- 코드·폴더·Git·테스트·배포: [04_DEVELOPMENT.md](I-SPOT_DOCS/docs/04_DEVELOPMENT.md)
-- 안전·보안·변경 제약: [05_RULES.md](I-SPOT_DOCS/docs/05_RULES.md)
-- 현재 작업·담당·진척도: [TASKS.md](I-SPOT_DOCS/TASKS.md)
-
-문서 간 내용이 충돌하면 다음 우선순위를 따릅니다.
-
-`최신 승인된 기획 내용 > 01_PRD.md > 02_ARCHITECTURE.md / 03_UI_UX.md > 04_DEVELOPMENT.md > TASKS.md`
-
-`05_RULES.md`의 안전·보안·변경 금지 규칙은 항상 적용합니다.
-
-공통 Contract와 구조는 우선 재사용합니다. 공통 구조 변경이 필요하면 바로 변경하지 말고 변경안을 먼저 제안합니다.
-
-## 로컬 개발 환경
-
-프로젝트 루트의 STT 관련 환경 변수는 로컬 `.env`에서 관리합니다. 실제 개인정보를 테스트 데이터로 사용하거나 API Key를 코드에 직접 기록하지 않습니다.
-
-```env
-I_SPOT_STT_PROVIDER=mock
-I_SPOT_SPEAKER_DIARIZATION_PROVIDER=mock
-OPENAI_API_KEY=
-PYANNOTE_AUTH_TOKEN=
+```jsx
+class Logic extends DCLogic {
+  constructor(props) { super(props); this.state = { tab: 'A' }; }   // 화면 상태
+  renderVals() {                                                     // 화면에 쓸 값 + 이벤트 함수
+    return { isA: this.state.tab === 'A', goB: () => this.setState({ tab: 'B' }) };
+  }
+}
+export default function Page(props) {
+  const v = useDC(Logic, props);     // v.isA, v.goB ...
+  return <button onClick={v.goB}>…</button>;
+}
 ```
 
-STT Contract 검증은 다음 명령으로 실행할 수 있습니다.
+- 예시 데이터는 각 화면 `renderVals()` 안에 있습니다. API 연결 시 이 부분을 fetch 결과로 바꾸면 됩니다.
+- 원하면 화면별로 `useState` / 커스텀 훅 / 컴포넌트로 자유롭게 리팩터링해도 됩니다. (자동 변환이라 인라인 style 이 많습니다 — 공통 컴포넌트로 묶어 가며 정리 추천)
+- 사이드바 · 사례 상세 탭 · 회차 처리 4단계 표시는 지금 각 화면에 복사돼 있습니다. 첫 리팩터링으로 `components/` 로 빼는 걸 추천합니다.
 
-```bash
-python -m pytest tests/test_stt_transcriber.py -q
-```
+## 디자인 기준
 
-Backend의 설치·실행·테스트는 별도 [backend/README.md](backend/README.md)를 기준으로 합니다.
+| 용도 | 색 |
+|---|---|
+| 페이지 배경 / 사이드바 | `#FFFEFA` / `#FFFCF5` |
+| 메인 (주요 버튼 · 현재 메뉴 · 선택 상태) | 하늘색 `#A8C6E7` · `#7FA8D6` · 선택 배경 `#E2ECF8` |
+| 긴급 · 위험도 '상' · 중요 일정 | 적갈색 `#93452E` / 배경 `#FBE4DC` |
+| 위험도 '중' · '아이가 쓴 글' 강조 | 머스타드 `#FCEFB4` / 글자 `#7B4A26` |
+| 그 밖 | 무채색 (글자 `#2F3A44`, 보조 `#6F7880`, 테두리 `#E7E0CE`) |
+
+- 글꼴: Noto Sans KR
+- 위험도는 상 / 중 / 하로만 표시 (점수 · % 없음)
+- 색은 중요한 곳에만. 보충 설명 문구는 최소로.
+
+## 지켜야 할 원칙 (AI 기능)
+
+1. AI는 제안만 합니다. 신고 · 판정 · 종결 결정은 상담원이 합니다.
+2. AI가 만든 내용은 항상 `AI 초안` / `AI 제안` 으로 표시합니다.
+3. 모든 제안에는 근거 위치(몇 회차 몇 분, 아이 연계 몇 월 며칠)를 함께 보여 줍니다.
+4. 서로 다른 진술은 합치지 않고 그대로 나란히 둡니다.
+5. 아이의 무응답은 위험 신호가 아닙니다.
+6. 보호자 진술은 아이에게 할 질문의 근거로 쓰지 않습니다.
+7. 추가 질문은 질문 은행에서만 제안하고, 상담원이 고친 질문은 `상담사 수정` 으로 표시합니다.
+8. 화면의 모든 내용은 상담원이 고칠 수 있어야 합니다.
+
+## 화면 목록
+
+**① 하루 시작 · 로그인 → 홈 → 일정 → 아이 연계 → 아이 상세**
+
+| 경로 | 파일 | 화면 |
+|---|---|---|
+| `/#/Login` | `src/pages/Login.jsx` | 로그인 |
+| `/#/Main` | `src/pages/Main.jsx` | 홈 (대시보드) |
+| `/#/Schedule` | `src/pages/Schedule.jsx` | 일정 · 월간 달력 + 일정 추가 |
+| `/#/ChildLink` | `src/pages/ChildLink.jsx` | 아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태) |
+| `/#/ChildDetail` | `src/pages/ChildDetail.jsx` | 아이 연계 › 아이 상세 (아이가 쓴 글 · 질문과 답 · 확인할 답변 · 추가 질문) |
+
+**② 사례 관리 · 통합 목록 → 새 사례 등록**
+
+| 경로 | 파일 | 화면 |
+|---|---|---|
+| `/#/CaseList` | `src/pages/CaseList.jsx` | 통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도) |
+| `/#/CaseRegister` | `src/pages/CaseRegister.jsx` | 새 사례 등록 (팝업 · 서식 4 초기면접지) |
+
+**③ 사례 상세 · 탭 5개 (내담자 정보 · 상담 이력 · 상담 전 브리핑 · 아이 연계 · 문서함) + 기관 서식 작성**
+
+| 경로 | 파일 | 화면 |
+|---|---|---|
+| `/#/CaseDetail` | `src/pages/CaseDetail.jsx` | 탭 1 · 내담자 정보 + 기관 서식 + 종결 검토 등록 |
+| `/#/CaseHistory` | `src/pages/CaseHistory.jsx` | 탭 2 · 상담 이력 (① 지금까지 상담 → ② 상담 회차 → ③ 회차별 세부 신호) |
+| `/#/SessionDetail` | `src/pages/SessionDetail.jsx` | 탭 2 › 회차 상세 (1~4단계 처리로 바로 가기) |
+| `/#/PreBriefing` | `src/pages/PreBriefing.jsx` | 탭 3 · 상담 전 브리핑 (+ 신변안전 확인) |
+| `/#/CaseApp` | `src/pages/CaseApp.jsx` | 탭 4 · 아이 연계 (아이 상세와 같은 화면) |
+| `/#/CaseDocs` | `src/pages/CaseDocs.jsx` | 탭 5 · 문서함 (기관 서식 6종 + 파일) |
+| `/#/CaseForm` | `src/pages/CaseForm.jsx` | 탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도) |
+
+**④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문**
+
+| 경로 | 파일 | 화면 |
+|---|---|---|
+| `/#/UploadModal` | `src/pages/UploadModal.jsx` | 녹취 · 자료 올리기 (팝업 3단계 + 확인창) |
+| `/#/SttReview` | `src/pages/SttReview.jsx` | 1 · STT 검수 (화자: 피해아동 · 사례관리대상자 · 상담원) |
+| `/#/SignalReview` | `src/pages/SignalReview.jsx` | 2 · 위험 신호 검토 (→ 유형별 위험도) |
+| `/#/RiskProfile` | `src/pages/RiskProfile.jsx` | 2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단) |
+| `/#/NoteWrite` | `src/pages/NoteWrite.jsx` | 3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식) |
+| `/#/FollowupQ` | `src/pages/FollowupQ.jsx` | 4 · 추가 확인 · 질문 (모두 승인 / 수정 가능) |
+
+**⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 관리자**
+
+| 경로 | 파일 | 화면 |
+|---|---|---|
+| `/#/Closure` | `src/pages/Closure.jsx` | 종결 검토 · 대상 아동 목록 |
+| `/#/ClosureReview` | `src/pages/ClosureReview.jsx` | 종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로) |
+| `/#/ClosureDetail` | `src/pages/ClosureDetail.jsx` | 종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안) |
+| `/#/Stats` | `src/pages/Stats.jsx` | 통계 (기간 직접 선택 · 원형 · 가로/세로 막대 · 표) |
+| `/#/Settings` | `src/pages/Settings.jsx` | 설정 · 계정 / 알림 설정 |
+| `/#/Admin` | `src/pages/Admin.jsx` | 관리자 대시보드 |
+
+## 참고
+
+- 기관 서식은 「2026년 아동학대 대응 업무 매뉴얼」 양식(서식 4 초기면접지, 서식 6 사정기록지, 서식 27 사례관리 점검표, 서식 29 사례관리 종결보고서, 참고자료 1 · 3 척도)을 따랐습니다.
+- 모든 이름 · 사례 · 수치는 가상 데이터입니다.
