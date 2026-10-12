@@ -22,8 +22,25 @@ npm run build      # dist/ 에 배포용 파일 생성
 - 배포할 때는 `.env` 에 `VITE_API_BASE_URL`(Backend 주소)을 넣습니다.
 - 서버 연결 부분은 화면과 나눠 두었습니다. 화면(`.jsx`)은 JavaScript, 연결 부분은 TypeScript 이고 Vite 가 함께 빌드합니다.
   - `src/api/` Backend 호출(토큰 · 401 · 오류 형식), 주소 함수, Backend 응답 타입. `ispotvscode/src/api` 에서 옮겨 왔습니다.
-  - `src/data/` 응답을 화면에 쓰기 좋은 모양으로 바꾸는 함수와 훅(로그인 상태 · 로그인 · 비밀번호 변경 · 사례 목록). 화면 이동은 하지 않고 상태만 돌려주므로 어느 화면 코드에도 끼울 수 있습니다.
+  - `src/data/` 응답을 화면에 쓰기 좋은 모양으로 바꾸는 함수와 훅. 화면 이동은 하지 않고 상태만 돌려주므로 어느 화면 코드에도 끼울 수 있습니다.
 - 화면 파일은 훅의 결과를 `useDC(Logic, { ...props, 훅 결과 })` 로 넘겨 `renderVals()` 에서 씁니다(`Login.jsx` · `CaseList.jsx` 참고). 화면을 새로 바꿀 때는 훅 부분을 그대로 두고 JSX 만 갈아 끼웁니다.
+- 회차를 다루는 훅은 회차 ID 를, 사례 상세는 사례 ID 를 받습니다. 로그인 확인 전에 부르지 않도록 `{ enabled: session.status === 'signedIn' }` 을 함께 넘깁니다.
+
+| 화면 | 훅 · 변환 | 하는 일 |
+| --- | --- | --- |
+| 로그인 | `useAuthSession` · `useLogin` · `useLogoutNotice` | 로그인 상태(401 · 임시 비밀번호 · 다른 탭), 로그인, 로그아웃 이유 |
+| 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색 |
+| 사례 상세 · 상담 이력 | `useCaseDetail` · `sessionRows` | 사례 정보와 회차 목록. 처리 중인 회차가 있으면 끝날 때까지 다시 조회 |
+| 회차 상세 | `useSessionDetail` | 회차 진행 단계 · 실패 문구 · 음성 파일 정보, 지금 할 수 있는 요청 |
+| 녹음 업로드 | `useAudioUpload` · `audioFile` | (새 회차) → 음성 올리기 → 원문 변환 요청 → 끝날 때까지 기다리기. 실패하면 그 단계부터 다시(새 회차를 또 만들지 않음) |
+| 원문(STT) 검수 | `useTranscriptReview` · `transcriptRows` | 발화 줄 · 저신뢰 · 화자 미확인, 고친 칸만 저장, 확정, 다시 변환 |
+| AI 분석 | `useSessionAnalysis` | 분석 요청 · 진행 · AI 원본 요약과 안내(위험 신호 배열은 팀 결정 전이라 내보내지 않음) |
+| 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |
+| 상담일지 | `useSessionDocuments` | 문서 목록 · 만들기 · 고치기 · 승인(회차 상태와 따로 움직임) |
+| 설정 | `useAuthSession` + `profile` · `usePasswordChange` | 내 정보 표시, 비밀번호 변경 |
+
+- 한 화면에서 위 훅을 여러 개 함께 써도 됩니다. 한 훅의 요청(업로드 · 확정 · 분석 요청 · 승인)으로 회차 상태가 바뀌면 같은 회차를 보는 다른 훅도 다시 조회합니다(`sessionEvents`).
+- Backend 에 없는 값(실명 · 신고접수일 · 위험도 · 상담 유형 · 기관 이름 등)은 다른 값으로 채우지 않고 `—` 로 둡니다.
 - 타입 검사: `npx tsc --noEmit` (CI 에서도 돕니다)
 
 ## 폴더 구조
