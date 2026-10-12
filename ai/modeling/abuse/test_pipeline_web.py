@@ -2336,16 +2336,37 @@ def _format_timestamp_label(start_ms):
     return f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
 
 
-def _build_citation_chips_html(segment_ids):
-    return "".join(
-        f'<a class="tdraft-cite" href="#{escape(str(segment_id), quote=True)}" '
-        f'onclick="return tdraftJump(\'{escape(str(segment_id), quote=True)}\')">'
-        f"{escape(str(segment_id))}</a>"
-        for segment_id in segment_ids
-    )
+def _build_citation_chips_html(segment_ids, segment_lookup=None):
+    """
+    근거 칩에 segment_id 원문("seg_002")이 아니라 타임스탬프("00:31")를
+    보여준다 — 상담사가 실제로 필요한 건 녹취의 어느 지점인지지,
+    내부 ID가 아니다. segment_lookup이 없거나 해당 id를 못 찾으면
+    ID 문자열로 대체 표시한다(안전망).
+    """
+
+    segment_lookup = segment_lookup or {}
+
+    chips = []
+
+    for segment_id in segment_ids:
+        segment = segment_lookup.get(str(segment_id))
+
+        label = (
+            _format_timestamp_label(segment.get("start_ms", 0))
+            if segment
+            else str(segment_id)
+        )
+
+        chips.append(
+            f'<a class="tdraft-cite" href="#{escape(str(segment_id), quote=True)}" '
+            f'onclick="return tdraftJump(\'{escape(str(segment_id), quote=True)}\')">'
+            f"{escape(label)}</a>"
+        )
+
+    return "".join(chips)
 
 
-def _build_statement_points_html(points, empty_text):
+def _build_statement_points_html(points, empty_text, segment_lookup=None):
     if not points:
         return f'<p class="triage-empty">{escape(empty_text)}</p>'
 
@@ -2356,7 +2377,7 @@ def _build_statement_points_html(points, empty_text):
             f"""
             <div class="tdraft-point">
                 <span>{escape(point.get("text", ""))}</span>
-                {_build_citation_chips_html(point.get("segment_ids", []))}
+                {_build_citation_chips_html(point.get("segment_ids", []), segment_lookup)}
             </div>
             """
         )
@@ -2364,7 +2385,7 @@ def _build_statement_points_html(points, empty_text):
     return "".join(items)
 
 
-def _build_risk_points_html(points):
+def _build_risk_points_html(points, segment_lookup=None):
     if not points:
         return '<p class="triage-empty">탐지된 위험 신호가 없습니다.</p>'
 
@@ -2384,7 +2405,7 @@ def _build_risk_points_html(points):
             <div class="tdraft-point">
                 <div class="meta">{escape(label)} · 근거강도 {escape(str(strength))}</div>
                 <span>{escape(point.get("text", ""))}</span>
-                {_build_citation_chips_html(point.get("segment_ids", []))}
+                {_build_citation_chips_html(point.get("segment_ids", []), segment_lookup)}
             </div>
             """
         )
@@ -2407,6 +2428,11 @@ def build_record_draft_view_html(result):
 
     segments = result.get("segments", []) or []
     record_draft = result.get("record_draft") or {}
+
+    segment_lookup = {
+        str(segment.get("segment_id", "")): segment
+        for segment in segments
+    }
 
     transcript_lines = []
 
@@ -2462,6 +2488,7 @@ def build_record_draft_view_html(result):
                         {_build_statement_points_html(
                             record_draft.get("child_statement_points", []),
                             "진술 요지가 없습니다.",
+                            segment_lookup,
                         )}
                     </div>
                 </div>
@@ -2472,7 +2499,8 @@ def build_record_draft_view_html(result):
                     </div>
                     <div class="tdraft-field-body">
                         {_build_risk_points_html(
-                            record_draft.get("risk_signal_points", [])
+                            record_draft.get("risk_signal_points", []),
+                            segment_lookup,
                         )}
                     </div>
                 </div>

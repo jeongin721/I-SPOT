@@ -35,6 +35,9 @@ from ai.modeling.abuse.record_draft_llm import (
     build_transcript_citation_text,
     generate_record_draft,
 )
+from ai.modeling.abuse.protective_factor_llm import (
+    generate_protective_factors,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -602,6 +605,25 @@ def analyze_audio_session(
         citation_entity_map,
     )
 
+    # --------------------------------------------------------
+    # 보호 요인("회차 경과" 화면 초안, 2026-10-12 추가)
+    # --------------------------------------------------------
+    # protective_factor_llm.py 모듈 docstring 참고: 5개 범주는 아직
+    # 검수 중인 초안이다. 위험신호 분석(subtype_result)과 완전히 분리된
+    # 호출이라 여기 실패해도 위험신호/기록초안 결과에는 영향이 없다.
+
+    protective_factors = generate_protective_factors(
+        client=client,
+        model=note_model,
+        masked_transcript_text=masked_citation_text,
+        segments=segments,
+    )
+
+    protective_factors = restore_pii(
+        protective_factors,
+        citation_entity_map,
+    )
+
     return {
         "full_text": full_text,
         "segments": segments,
@@ -617,6 +639,7 @@ def analyze_audio_session(
         "counseling_record_model": note_model,
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
+        "protective_factors": protective_factors,
         "chunk_results": chunk_results,
     }
 

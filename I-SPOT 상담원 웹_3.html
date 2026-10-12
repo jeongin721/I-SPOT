@@ -1,0 +1,941 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>I-SPOT 상담원 웹</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: 왼쪽 고정 메뉴 + 오른쪽 작업 영역. 좁은 화면에서는 메뉴가 위쪽 가로 띠로 바뀜.
+   색은 I-SPOT 설계 지도와 같은 청록 계열. 상태색(긴급/확인 필요/아이 안건/일반)은 별도 의미색 */
+:root{
+  --bg:#f6f8f8; --surface:#ffffff; --band:#eef2f3; --line:#d7dfe1; --ink:#17252a; --sub:#56666c; --mute:#7d8b90;
+  --brand:#1d5c63; --brand-2:#2c7a82; --brand-bg:#e3f0f0; --on-brand:#ffffff;
+  --red:#b23a32; --red-bg:#fbeceb; --amb:#8a6410; --amb-bg:#f8f0dc; --kid:#b4561f; --kid-bg:#fbefe6; --grn:#2f7a52; --grn-bg:#e7f3ec;
+  --hl:#fff3c4;
+  --font:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1719; --surface:#152023; --band:#1b282c; --line:#2b3b40; --ink:#e3ecee; --sub:#9db0b5; --mute:#7f9297;
+    --brand:#7cc4c6; --brand-2:#93d2d3; --brand-bg:#173033; --on-brand:#0f1719;
+    --red:#ef8f86; --red-bg:#3a2220; --amb:#e5c06a; --amb-bg:#342b17; --kid:#f0a26e; --kid-bg:#352419; --grn:#80cfa2; --grn-bg:#18301f;
+    --hl:#4a3f14; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1719; --surface:#152023; --band:#1b282c; --line:#2b3b40; --ink:#e3ecee; --sub:#9db0b5; --mute:#7f9297;
+  --brand:#7cc4c6; --brand-2:#93d2d3; --brand-bg:#173033; --on-brand:#0f1719;
+  --red:#ef8f86; --red-bg:#3a2220; --amb:#e5c06a; --amb-bg:#342b17; --kid:#f0a26e; --kid-bg:#352419; --grn:#80cfa2; --grn-bg:#18301f;
+  --hl:#4a3f14; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.55}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100%}
+
+/* sidebar */
+.side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:18px;padding:20px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{display:flex;align-items:center;gap:10px;padding:0 6px}
+.logo .mk{width:30px;height:30px;border-radius:8px;background:var(--brand);color:var(--on-brand);display:grid;place-items:center;font-weight:700;font-size:13px;letter-spacing:.02em}
+.logo b{font-size:15px;display:block;line-height:1.2}
+.logo span{font-size:11.5px;color:var(--sub)}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{display:flex;align-items:center;justify-content:space-between;gap:8px;border:none;background:none;text-align:left;padding:8px 10px;border-radius:8px;color:var(--sub);font-weight:500}
+.nav button:hover{background:var(--band);color:var(--ink)}
+.nav button[aria-current="page"]{background:var(--brand-bg);color:var(--brand);font-weight:600}
+.nav .cnt{font-size:11px;font-weight:700;min-width:20px;text-align:center;padding:0 6px;border-radius:20px;background:var(--amb-bg);color:var(--amb)}
+.nav .cnt.r{background:var(--red-bg);color:var(--red)}
+.upbtn{border:none;background:var(--brand);color:var(--on-brand);border-radius:10px;padding:10px 12px;font-weight:600;text-align:center}
+.upbtn:hover{background:var(--brand-2)}
+.sec{margin-top:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--sub);display:grid;gap:4px}
+.sec b{color:var(--ink);font-size:12px}
+.sec li{margin-left:14px}
+.sec ul{margin:0;padding:0}
+.me{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:0 6px}
+.me .av{width:26px;height:26px;border-radius:50%;background:var(--band);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--sub)}
+
+/* main */
+.main{min-width:0;padding-inline:28px;padding-block:22px 48px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.crumb{font-size:12.5px;color:var(--sub);margin:0 0 2px}
+.crumb button{border:none;background:none;padding:0;color:var(--brand);font-size:12.5px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:15px;margin:0}
+.demo{font-size:11.5px;color:var(--amb);background:var(--amb-bg);border-radius:20px;padding:2px 10px;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;min-width:0}
+.card > header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card > header span{font-size:12px;color:var(--sub)}
+.card .body{padding:14px 16px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.g2e{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+.kpi .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .l{font-size:12.5px;color:var(--sub)}
+.kpi.r .v{color:var(--red)} .kpi.a .v{color:var(--amb)} .kpi.b .v{color:var(--brand)}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;white-space:nowrap;vertical-align:1px}
+.t-red{background:var(--red-bg);color:var(--red)} .t-amb{background:var(--amb-bg);color:var(--amb)} .t-kid{background:var(--kid-bg);color:var(--kid)} .t-grn{background:var(--grn-bg);color:var(--grn)} .t-b{background:var(--brand-bg);color:var(--brand)} .t-n{background:var(--band);color:var(--sub)}
+.list{list-style:none;margin:0;padding:0}
+.list > li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.list > li:last-child{border-bottom:none}
+.list .t{font-weight:600}
+.list .d{font-size:12.5px;color:var(--sub)}
+.list .w{font-size:12px;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 10px;font-size:12.5px}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:var(--on-brand);font-weight:600}
+.btn.pri:hover{background:var(--brand-2);color:var(--on-brand)}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.cite{font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:var(--band);color:var(--brand);border-radius:5px;padding:0 5px;margin-left:3px;white-space:nowrap}
+.cite:hover{border-color:var(--brand)}
+.note{font-size:12px;color:var(--sub);margin:10px 0 0}
+.empty{color:var(--sub);font-size:13px;margin:0}
+.chk{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:13.5px}
+.chk input{margin-top:4px}
+.chk.done span{text-decoration:line-through;color:var(--mute)}
+
+/* table */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:760px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--sub);font-weight:600;background:var(--band)}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--band)}
+td .nm{font-weight:600}
+td .sm{font-size:12px;color:var(--sub)}
+
+/* case detail */
+.chead{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.chead .av{width:44px;height:44px;border-radius:12px;background:var(--brand-bg);color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:16px}
+.meta{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12.5px;color:var(--sub)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:16px 0 14px;overflow-x:auto}
+.tabs button{border:none;background:none;padding:9px 12px;color:var(--sub);font-weight:500;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--brand);font-weight:600}
+.bsec{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid var(--line)}
+.bsec:last-child{border-bottom:none}
+.bsec h3{font-size:12.5px;color:var(--sub);margin:0;font-weight:600}
+.bsec ul{margin:0;padding-left:18px}
+.bsec li{margin:3px 0}
+.agenda{background:var(--kid-bg);border-radius:8px;padding:10px 12px}
+.agenda b{color:var(--kid);font-size:12.5px}
+
+/* timeline */
+.tl{list-style:none;margin:0;padding:0;position:relative}
+.tl li{display:grid;grid-template-columns:86px 18px minmax(0,1fr);gap:8px;padding:8px 0}
+.tl .dt{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;text-align:right;padding-top:1px}
+.tl .dot{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--brand);justify-self:center;box-shadow:0 0 0 3px var(--surface)}
+.tl .dot.kid{background:var(--kid)} .tl .dot.amb{background:var(--amb)} .tl .dot.obs{background:var(--mute)} .tl .dot.call{background:var(--grn)}
+.tl .tx{min-width:0}
+.tl .tx small{display:block;font-size:12px;color:var(--sub)}
+.who{font-size:10.5px;font-weight:700;border-radius:4px;padding:0 5px;margin-right:4px;border:1px solid var(--line);color:var(--sub)}
+
+/* transcript */
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.tr{max-height:560px;overflow-y:auto;padding:6px 0}
+.ln{display:grid;grid-template-columns:52px 56px minmax(0,1fr);gap:8px;padding:6px 14px;font-size:13.5px;border-left:3px solid transparent}
+.ln .ts{font-family:var(--mono);font-size:11.5px;color:var(--mute);padding-top:2px}
+.ln .sp{font-size:11.5px;font-weight:700;padding-top:2px}
+.ln.c .sp{color:var(--sub)} .ln.k .sp{color:var(--kid)}
+.ln.ev{background:var(--band)}
+.ln.flash{background:var(--hl)!important;border-left-color:var(--amb)}
+.ln .fl{display:block;font-size:11.5px;color:var(--amb);margin-top:2px}
+.ln .fl.e{color:var(--brand)}
+.sel{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.doc{display:grid;gap:12px}
+.field{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.field .fh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;background:var(--band);font-size:12px;color:var(--sub);font-weight:600}
+.field .fb{padding:8px 10px;font-size:13.5px}
+.field .fb[contenteditable]{outline:none}
+.field .fb[contenteditable]:focus{background:var(--brand-bg)}
+.ai{font-size:10.5px;font-weight:700;color:var(--brand);background:var(--brand-bg);border-radius:4px;padding:0 5px}
+.docbar{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;z-index:50}
+
+/* kid app */
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--sub);font-size:11px;font-family:var(--font)}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .bar{fill:var(--brand)}
+.chart .bar:hover{fill:var(--brand-2)}
+.chart .hit{fill:transparent}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:5px 8px;border-radius:6px;z-index:40}
+.rcard{border:1px solid var(--line);border-left:4px solid var(--amb);border-radius:10px;overflow:hidden;font-size:13px}
+.rcard.kid{border-left-color:var(--kid)}
+.rcard.b{border-left-color:var(--brand)}
+.rcard .rh{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:7px 12px;background:var(--band);font-size:12.5px}
+.rcard .rb{padding:10px 12px;display:grid;gap:5px}
+.f{display:grid;grid-template-columns:100px minmax(0,1fr);gap:8px}
+.f > span:first-child{color:var(--sub);font-size:12px}
+.rcard .ra{border-top:1px solid var(--line);padding:9px 12px;display:grid;gap:8px}
+.stack{display:grid;gap:10px}
+
+/* genogram */
+.geno{width:100%;height:auto;display:block}
+.geno text{fill:var(--ink);font-family:var(--font);font-size:12px}
+.geno .lb{fill:var(--sub);font-size:11px}
+.geno .nd{fill:var(--surface);stroke:var(--ink);stroke-width:1.5}
+.geno .nd.me{fill:var(--brand-bg);stroke:var(--brand);stroke-width:2.5}
+.geno .ln1{stroke:var(--ink);stroke-width:1.5;fill:none}
+.geno .conf{stroke:var(--amb);stroke-width:2;fill:none;stroke-dasharray:4 3}
+
+/* feedback */
+.meter{height:10px;border-radius:5px;background:var(--band);overflow:hidden;display:flex;gap:2px}
+.meter i{display:block;height:100%}
+
+/* upload */
+.drop{border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;color:var(--sub);display:grid;gap:8px;justify-items:center}
+.drop.on{border-color:var(--brand);background:var(--brand-bg)}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.steps li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13.5px;color:var(--mute)}
+.steps li .ic{width:18px;height:18px;border-radius:50%;border:2px solid var(--line)}
+.steps li.run{color:var(--ink)} .steps li.run .ic{border-color:var(--brand);border-top-color:transparent;animation:spin .8s linear infinite}
+.steps li.ok{color:var(--ink)} .steps li.ok .ic{background:var(--brand);border-color:var(--brand)}
+.steps li small{color:var(--sub);font-size:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* schedule */
+.week{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;min-width:0;display:grid;gap:8px;align-content:start}
+.day h3{margin:0;font-size:13px}
+.day h3 span{font-weight:400;color:var(--sub);font-size:12px}
+.ev{border-radius:8px;padding:7px 9px;font-size:12.5px;background:var(--band);border-left:3px solid var(--brand);display:grid;gap:2px}
+.ev.visit{border-left-color:var(--grn)} .ev.meet{border-left-color:var(--mute)}
+.ev b{font-size:12.5px}
+.ev span{color:var(--sub);font-size:12px}
+.ev button{justify-self:start;margin-top:2px}
+
+/* modal & form */
+.modal{position:fixed;inset:0;background:rgba(10,20,22,.45);display:grid;place-items:center;padding:16px;z-index:60}
+.mbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(640px,100%);max-height:calc(100% - 32px);display:flex;flex-direction:column;overflow:hidden}
+.mbox > header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.mbox > header h2{font-size:16px}
+.mbox form{display:flex;flex-direction:column;min-height:0;flex:1}
+.mbox .mbody{padding:16px 18px;overflow-y:auto;display:grid;gap:14px}
+.mbox footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:var(--band)}
+.x{border:none;background:none;font-size:20px;line-height:1;color:var(--sub);padding:2px 6px;border-radius:6px}
+.x:hover{background:var(--band)}
+.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fi{display:grid;gap:4px;font-size:13px;min-width:0}
+.fi.w{grid-column:1/-1}
+.fi > span{color:var(--sub);font-size:12.5px;font-weight:500}
+.fi > span em{color:var(--red);font-style:normal}
+.fi input[type=text],.fi input[type=date],.fi input[type=time],.fi select,.fi textarea{font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}
+.fi textarea{min-height:64px;resize:vertical}
+.fi small{color:var(--mute);font-size:11.5px}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opts label{display:flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:13px;cursor:pointer}
+.opts label:has(input:checked){border-color:var(--brand);background:var(--brand-bg);color:var(--brand);font-weight:600}
+.opts input{margin:0}
+.fsec{font-size:12px;font-weight:700;color:var(--brand);letter-spacing:.02em;margin:0;padding-top:4px;border-top:1px solid var(--line)}
+.fsec:first-child{border-top:none;padding-top:0}
+.err{color:var(--red);font-size:12.5px;margin:0}
+.code{font-family:var(--mono);font-size:28px;font-weight:500;letter-spacing:.18em;padding:10px 14px;border:1px dashed var(--brand);border-radius:10px;background:var(--brand-bg);color:var(--brand);text-align:center;user-select:all}
+.setup{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.setup li{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.setup li:last-child{border-bottom:none}
+.setup .n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:1.5px solid var(--line);color:var(--sub)}
+.setup li.ok .n{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.setup .d{font-size:12.5px;color:var(--sub)}
+.cact{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-self:flex-start}
+.upbtn.ghost{background:var(--surface);color:var(--brand);border:1px solid var(--brand)}
+.upbtn.ghost:hover{background:var(--brand-bg)}
+@media (max-width:620px){.fg{grid-template-columns:minmax(0,1fr)}}
+/* progress */
+.mx{border-collapse:separate;border-spacing:0;min-width:720px}
+.mx th,.mx td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:center;vertical-align:middle}
+.mx th:first-child,.mx td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1;min-width:150px}
+.mx thead th{background:var(--band);font-size:12px;color:var(--sub);font-weight:600}
+.mx thead th:first-child{background:var(--band)}
+.mx th small{display:block;font-weight:400;color:var(--mute);font-size:11px}
+.mx th.appx{background:var(--kid-bg);color:var(--kid)}
+.mx th.plan{color:var(--mute)}
+.mx tr.grp td{background:var(--band);font-size:11.5px;font-weight:700;color:var(--sub);letter-spacing:.02em;text-align:left;padding:5px 10px}
+.mx tbody tr:hover{background:none}
+.mx tbody tr{cursor:default}
+.cell{border:1px solid transparent;background:none;border-radius:8px;padding:4px 6px;display:inline-grid;justify-items:center;gap:2px;min-width:74px;font-size:11px;color:var(--sub)}
+.cell:hover{border-color:var(--line);background:var(--band)}
+.cell[aria-pressed="true"]{border-color:var(--brand);background:var(--brand-bg)}
+.sym{width:14px;height:14px;border-radius:50%;display:block}
+.sym.on{background:var(--ink)}
+.sym.new{background:var(--ink);box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--amb)}
+.sym.less{background:linear-gradient(90deg,var(--ink) 50%,transparent 50%);border:1.5px solid var(--ink)}
+.sym.appx{width:13px;height:13px;border-radius:2px;transform:rotate(45deg);background:var(--kid)}
+.sym.pos{background:var(--grn)}
+.sym.none{width:14px;height:2px;border-radius:1px;background:var(--line);margin-block:6px}
+.legend2{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--sub);align-items:center}
+.legend2 span{display:inline-flex;gap:6px;align-items:center}
+.legend2 .sym{display:inline-block;flex:none}
+.detail{border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:6px;font-size:13.5px;background:var(--surface)}
+.detail .q{border-left:3px solid var(--line);padding:2px 0 2px 10px}
+.stl{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:0;overflow-x:auto;padding-bottom:6px}
+.stl > div{position:relative;padding:28px 12px 4px;min-width:0}
+.stl > div::before{content:"";position:absolute;left:0;right:0;top:9px;height:2px;background:var(--line)}
+.stl > div:first-child::before{left:50%}
+.stl > div:last-child::before{right:50%}
+.stl .pin{position:absolute;top:2px;left:50%;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--surface);border:3px solid var(--brand)}
+.stl .pin.appx{border-color:var(--kid);border-radius:3px;transform:translateX(-50%) rotate(45deg);width:14px;height:14px;top:3px}
+.stl .pin.plan{border-style:dashed;border-color:var(--mute)}
+.stl h4{margin:0 0 2px;font-size:14px;text-align:center}
+.stl .sd{font-size:12px;color:var(--sub);text-align:center;margin-bottom:8px}
+.stl ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.stl li{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--surface)}
+.stl li .k{display:block;font-size:11px;color:var(--sub);margin-bottom:2px}
+@media (max-width:1080px){.g2,.split{grid-template-columns:minmax(0,1fr)}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.week{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:780px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px 16px;gap:10px;border-right:none;border-bottom:1px solid var(--line)}
+  .nav{flex-direction:row;overflow-x:auto;width:100%;order:3}
+  .nav button{white-space:nowrap}
+  .sec,.me{display:none}
+  .upbtn{margin-left:auto;padding:7px 10px}
+  .main{padding-inline:16px}
+  .g2e{grid-template-columns:minmax(0,1fr)}
+  .week{grid-template-columns:minmax(0,1fr)}
+  .ln{grid-template-columns:44px 46px minmax(0,1fr);padding:6px 10px}
+  .f{grid-template-columns:minmax(0,1fr);gap:0}
+  .tl li{grid-template-columns:62px 14px minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="logo"><div class="mk">IS</div><div><b>I-SPOT</b><span>아동보호 상담 지원</span></div></div>
+    <div style="display:grid;gap:6px"><button class="upbtn" id="goUpload" type="button">녹취 올리기</button><button class="upbtn ghost" id="goNewCase" type="button">새 사례 등록</button></div>
+    <nav class="nav" id="nav" aria-label="메뉴"></nav>
+    <div class="sec">
+      <b>보안 설계 원칙</b>
+      <ul><li>녹취·기록 저장 전 암호화</li><li>상담 기록을 AI 학습에 쓰지 않음</li><li>담당 사례만 열람, 열람 이력 기록</li><li>아이 이름·학교는 기본 가림</li></ul>
+    </div>
+    <div class="me"><div class="av">김</div><div>김○○ 상담원<br><span style="color:var(--sub);font-size:11.5px">○○아동보호전문기관</span></div></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+
+<script>
+/* ===================== 예시 데이터 (가상) ===================== */
+const CASES=[
+  {id:'jiwoo',name:'지우',full:'김지우',age:'초5',stage:'진행 중',session:3,next:'10/9(목) 14:00',nextShort:'목 14:00',checkin:'오늘 08:12',signal:['확인 필요'],unread:2,prio:1,reason:'연락 요청 1건 · 안전 확인 "있었어"',type:'정서'},
+  {id:'hajun',name:'하준',full:'이하준',age:'중1',stage:'진행 중',session:5,next:'10/13(월) 16:00',nextShort:'월 16:00',checkin:'14일 전',signal:['무응답'],unread:0,prio:2,reason:'앱 체크인 2주째 없음 (평소 주 3회)',type:'신체'},
+  {id:'seoyun',name:'서윤',full:'박서윤',age:'초6',stage:'진행 중',session:2,next:'10/10(금) 11:00',nextShort:'금 11:00',checkin:'어제 21:40',signal:['수면 악화'],unread:0,prio:3,reason:'수면 "거의 못 잤어" 3일 연속',type:'방임'},
+  {id:'doyun',name:'도윤',full:'최도윤',age:'초4',stage:'진행 중',session:4,next:'10/15(수) 15:00',nextShort:'수 15:00',checkin:'어제 18:05',signal:[],unread:0,prio:0,reason:'',type:'정서'},
+  {id:'minseo',name:'민서',full:'정민서',age:'초3',stage:'사후관리',session:8,next:'안전 체크 10/20',nextShort:'—',checkin:'5일 전',signal:[],unread:0,prio:0,reason:'',type:'방임'},
+];
+const URG=[
+  {tier:'amb',caseId:'jiwoo',title:'지우 · 연락 요청',desc:'"말로 설명하기 어려워요. 다음 상담 때 제가 남긴 이야기를 먼저 봐주세요."',when:'오늘 08:15'},
+  {tier:'amb',caseId:'jiwoo',title:'지우 · 안전 확인 응답',desc:'"지난번 선생님이랑 이야기한 일, 다시 있었어?" → 있었어',when:'오늘 08:13'},
+  {tier:'kid',caseId:'seoyun',title:'서윤 · 다음 상담 안건',desc:'"학교 끝나고 집에 혼자 있는 게 싫어요."',when:'어제 21:42'},
+];
+const TODOS=[
+  {t:'서윤 담임교사에게 출결 확인 전화',src:'10/6 방문 후 음성 메모',done:false},
+  {t:'지우 다음 상담 전 학교 상담실 일정 확인',src:'3회차 상담 음성 메모',done:false},
+  {t:'하준 보호자 면담 일정 다시 잡기',src:'10/2 통화 기록',done:true},
+];
+const SCHED={
+  '월 10/6':[{t:'10:00',k:'visit',b:'서윤 가정 방문',s:'방임 사례 · 2회차'}],
+  '화 10/7':[{t:'14:00',k:'meet',b:'사례회의',s:'지우, 하준'},{t:'16:00',k:'',b:'도윤 상담',s:'3회차 후속 전화'}],
+  '수 10/8':[],
+  '목 10/9':[{t:'14:00',k:'',b:'지우 상담',s:'4회차 · 브리핑 준비됨',open:'jiwoo'}],
+  '금 10/10':[{t:'11:00',k:'',b:'서윤 상담',s:'3회차 · 브리핑 준비됨',open:'seoyun'}],
+};
+/* 지우 3회차 축어록 */
+const TR=[
+  {id:1,ts:'00:12',sp:'c',tx:'지우야, 지난주는 어떻게 지냈어? 처음부터 생각나는 대로 이야기해 줄래?',fl:'개방형 질문',fk:'e'},
+  {id:2,ts:'00:31',sp:'k',tx:'그냥 학교 다니고… 친구랑 그림 그렸어요.'},
+  {id:3,ts:'01:05',sp:'c',tx:'그림 그렸구나. 어떤 그림이었는지 더 말해 줄래?',fl:'개방형 질문',fk:'e'},
+  {id:4,ts:'01:20',sp:'k',tx:'고양이요. 민지가 잘 그렸다고 했어요.'},
+  {id:5,ts:'04:48',sp:'c',tx:'집에서는 요즘 어때?'},
+  {id:6,ts:'05:02',sp:'k',tx:'요즘엔 아빠가 소리 안 질러요.',ev:'감소 진술 · 1회차 "아빠가 소리 질러서 무서워요"와 다름'},
+  {id:7,ts:'05:30',sp:'c',tx:'그렇구나. 그럼 이제 괜찮은 거지?',fl:'답을 정해 둔 질문일 수 있음',fk:'w',alt:'"요즘 집에서 지낼 때 마음은 어때?"'},
+  {id:8,ts:'05:41',sp:'k',tx:'…네.'},
+  {id:9,ts:'08:15',sp:'c',tx:'잠은 잘 자?',fl:'폐쇄형 질문'},
+  {id:10,ts:'08:19',sp:'k',tx:'가끔 밤에 깨요. 거실에서 큰 소리 나면요.',ev:'새로 언급 · 수면 중 깸, 큰 소리'},
+  {id:11,ts:'09:02',sp:'c',tx:'큰 소리가 나면 그때 어떻게 해?',fl:'개방형 질문',fk:'e'},
+  {id:12,ts:'09:20',sp:'k',tx:'이불 덮고 있어요. 동생이 깨면 같이 있어 줘요.',ev:'보호 행동 · 동생 언급'},
+  {id:13,ts:'12:41',sp:'c',tx:'선생님한테 더 하고 싶은 말 있어?'},
+  {id:14,ts:'12:50',sp:'k',tx:'없어요. 다음에요.'},
+];
+const FAM={nodes:[
+  {id:'f',x:150,y:50,shape:'sq',name:'아빠',sub:'동거'},{id:'m',x:330,y:50,shape:'ci',name:'엄마',sub:'동거'},
+  {id:'k',x:200,y:170,shape:'ci',name:'지우',sub:'초5',me:true},{id:'s',x:290,y:170,shape:'sq',name:'동생',sub:'나이 미언급'}],
+  rel:[{a:'f',b:'k',type:'conf',label:'갈등 언급',cite:6}],
+  cites:[{who:'아빠',text:'"요즘엔 아빠가 소리 안 질러요"',id:6},{who:'동생',text:'"동생이 깨면 같이 있어 줘요"',id:12},{who:'함께 사는 가족',text:'1회차 진술 "아빠, 엄마, 동생이랑 살아요"',id:null}]};
+const RECS=[
+  {id:1,src:'10/6 앱 : "선생님한테 말하고 싶은데 말이 안 나와"',q:'선생님께 이야기할 때 어떤 방법이 편할 것 같아?',why:'아이가 말하기 어려움을 표현함. 편한 표현 방식 확인',st:'대기'},
+  {id:2,src:'3회차 08:19 : "가끔 밤에 깨요"',q:'밤에 깼을 때 다시 잠드는 건 어땠어?',why:'고정 문항 외 수면 정보. 원인은 묻지 않음',st:'대기'},
+  {id:3,src:'3회차 01:20 : "고양이요. 민지가 잘 그렸다고 했어요"',q:'그림 그리는 것처럼 요즘 즐거운 일이 또 있어?',why:'긍정적인 경험 확인',st:'대기'},
+];
+const CHECK=[
+  {d:'9/29',mood:'좋아',sleep:4},{d:'9/30',mood:'그냥 그래',sleep:3},{d:'10/1',mood:'그냥 그래',sleep:3},{d:'10/2',mood:'속상해',sleep:2},
+  {d:'10/3',mood:'—',sleep:0},{d:'10/4',mood:'걱정돼',sleep:2},{d:'10/5',mood:'걱정돼',sleep:1},{d:'10/6',mood:'속상해, 걱정돼',sleep:2},{d:'10/7',mood:'걱정돼',sleep:1},
+];
+const SLEEP=['기록 없음','거의 못 잤어','자다가 깼어','잠들기 어려웠어','잘 잤어'];
+
+/* ===================== 상태 ===================== */
+let route={page:'today',caseId:null,tab:'brief'};
+let docTpl='org';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=s=>document.querySelector(s);
+const main=$('#main');
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),1800)}
+function go(r){route=Object.assign({page:'today',caseId:null,tab:'brief'},r);render();main.scrollTop=0;window.scrollTo(0,0)}
+const caseOf=id=>CASES.find(c=>c.id===id);
+const tierTag=t=>({red:'<span class="tag t-red">긴급</span>',amb:'<span class="tag t-amb">확인 필요</span>',kid:'<span class="tag t-kid">아이 안건</span>',grn:'<span class="tag t-grn">일반</span>'}[t]);
+const cite=(id,label)=>`<button class="cite" type="button" data-cite="${id}">${label||'3회차 '+TR.find(x=>x.id===id).ts}</button>`;
+
+/* ===================== 메뉴 ===================== */
+function renderNav(){
+  const pend=RECS.filter(r=>r.st==='대기').length;
+  const items=[['today','오늘',URG.length,'r'],['cases','사례',0],['schedule','일정',0],['kids','아이 연계',pend,''],['feedback','면담 피드백',0]];
+  $('#nav').innerHTML=items.map(([k,l,c,cl])=>`<button type="button" data-nav="${k}" ${route.page===k||(k==='cases'&&route.page==='case')?'aria-current="page"':''}><span>${l}</span>${c?`<span class="cnt ${cl||''}">${c}</span>`:''}</button>`).join('');
+}
+document.addEventListener('click',e=>{
+  const n=e.target.closest('[data-nav]');if(n){go({page:n.dataset.nav});return}
+  const oc=e.target.closest('[data-open]');if(oc){go({page:'case',caseId:oc.dataset.open,tab:oc.dataset.tab||'brief'});return}
+  const ci=e.target.closest('[data-cite]');if(ci){const id=+ci.dataset.cite;go({page:'case',caseId:'jiwoo',tab:'session'});setTimeout(()=>flash(id),60);return}
+});
+$('#goUpload').onclick=()=>go({page:'upload'});
+$('#goNewCase').onclick=()=>openNewCase();
+function flash(id){const el=document.getElementById('ln'+id);if(!el)return;el.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),2200)}
+
+/* ===================== 오늘 ===================== */
+function pageToday(){
+  const pend=RECS.filter(r=>r.st==='대기').length;
+  const prio=CASES.filter(c=>c.prio).sort((a,b)=>a.prio-b.prio);
+  return `
+  <div class="top"><div><p class="crumb">10월 7일 화요일</p><h1>오늘 할 일</h1></div><span class="demo">가상 사례로 만든 예시 화면</span></div>
+  <div class="kpis">
+    <div class="kpi a"><div class="v">${URG.length}</div><div class="l">확인할 아이 신호 (하루 1번 묶음)</div></div>
+    <div class="kpi"><div class="v">2</div><div class="l">이번 주 남은 상담</div></div>
+    <div class="kpi b"><div class="v">${pend}</div><div class="l">승인 대기 추천 질문</div></div>
+    <div class="kpi"><div class="v">3</div><div class="l">확인 대기 일지 초안</div></div>
+  </div>
+  <div class="grid g2">
+    <div class="grid">
+      <section class="card"><header><h2>오늘의 확인 묶음</h2><span>긴급은 즉시 따로 알림 · 오늘 긴급 0건</span></header><div class="body">
+        <ul class="list">${URG.map(u=>`<li>${tierTag(u.tier)}<div><div class="t">${esc(u.title)}</div><div class="d">${esc(u.desc)}</div></div><div style="display:grid;gap:4px;justify-items:end"><span class="w">${u.when}</span><button class="btn" type="button" data-open="${u.caseId}" data-tab="kid">열기</button></div></li>`).join('')}</ul>
+      </div></section>
+      <section class="card"><header><h2>이번 주 먼저 연락할 아이</h2><span>체크인 변화 · 무응답 · 요청 기준</span></header><div class="body">
+        <ul class="list">${prio.map((c,i)=>`<li><span class="tag t-n">${i+1}</span><div><div class="t">${c.name} <span class="sm" style="font-weight:400;color:var(--sub);font-size:12px">${c.age} · ${c.session}회차</span></div><div class="d">${esc(c.reason)}</div></div><button class="btn" type="button" data-open="${c.id}">연락 전 브리핑</button></li>`).join('')}</ul>
+        <p class="note">순서는 제안일 뿐이고, 연락 여부와 방법은 상담원이 정합니다.</p>
+      </div></section>
+    </div>
+    <div class="grid">
+      <section class="card"><header><h2>오늘 일정</h2><span>10/7</span></header><div class="body">
+        <ul class="list">${SCHED['화 10/7'].map(s=>`<li><span class="w">${s.t}</span><div><div class="t">${esc(s.b)}</div><div class="d">${esc(s.s)}</div></div><span></span></li>`).join('')}</ul>
+      </div></section>
+      <section class="card"><header><h2>할 일</h2><span>음성 메모·통화 기록에서 자동 추출</span></header><div class="body" id="todos"></div></section>
+      <section class="card"><header><h2>일지 초안</h2><span>확인하고 확정만 하면 됩니다</span></header><div class="body">
+        <ul class="list">
+          <li><span class="tag t-b">초안</span><div><div class="t">지우 3회차 상담일지</div><div class="d">녹취 13분 · 근거 인용 6곳</div></div><button class="btn" type="button" data-open="jiwoo" data-tab="session">확인</button></li>
+          <li><span class="tag t-b">초안</span><div><div class="t">서윤 가정 방문 기록</div><div class="d">방문 후 음성 메모 3분 · 상담원 관찰</div></div><button class="btn" type="button" data-open="seoyun">확인</button></li>
+          <li><span class="tag t-b">초안</span><div><div class="t">하준 보호자 통화 기록</div><div class="d">통화 녹음 6분</div></div><button class="btn" type="button" data-open="hajun">확인</button></li>
+        </ul>
+      </div></section>
+    </div>
+  </div>`;
+}
+function renderTodos(){
+  const el=$('#todos');if(!el)return;
+  el.innerHTML=TODOS.map((t,i)=>`<label class="chk ${t.done?'done':''}"><input type="checkbox" id="todo${i}" ${t.done?'checked':''} data-todo="${i}"><span>${esc(t.t)}<br><small style="color:var(--sub)">${esc(t.src)}</small></span></label>`).join('');
+  el.querySelectorAll('[data-todo]').forEach(cb=>cb.onchange=()=>{TODOS[+cb.dataset.todo].done=cb.checked;renderTodos()});
+}
+
+/* ===================== 사례 목록 ===================== */
+function pageCases(){
+  return `
+  <div class="top"><div><p class="crumb">담당 사례 ${CASES.length}건</p><h1>사례</h1></div><div class="btns" style="align-items:center"><span class="demo">가상 사례</span><button class="btn pri" type="button" data-act="newcase">새 사례 등록</button></div></div>
+  <section class="card"><div class="tw"><table>
+    <thead><tr><th>아이</th><th>단계</th><th>회차</th><th>다음 일정</th><th>최근 체크인</th><th>신호</th><th>미확인 요청</th></tr></thead>
+    <tbody>${CASES.map(c=>`<tr data-open="${c.id}" tabindex="0"><td><div class="nm">${esc(c.name)}${c.isNew?' <span class="tag t-b">신규</span>':''}</div><div class="sm">${esc(c.age)} · ${esc(c.type)} 사례</div></td>
+      <td>${stageTag(c.stage)}</td>
+      <td style="font-variant-numeric:tabular-nums">${c.session}</td><td>${c.next}</td><td>${c.checkin}</td>
+      <td>${c.signal.length?c.signal.map(s=>`<span class="tag t-amb">${s}</span>`).join(' '):'<span class="sm">없음</span>'}</td>
+      <td>${c.unread?`<span class="tag t-amb">${c.unread}</span>`:'<span class="sm">0</span>'}</td></tr>`).join('')}</tbody>
+  </table></div></section>
+  <p class="note">이름은 화면에서 성을 가린 상태로 보입니다. 상세 시연 데이터는 지우 사례에 들어 있습니다.</p>`;
+}
+
+/* ===================== 사례 상세 ===================== */
+const TABS=[['brief','상담 전 브리핑'],['timeline','타임라인'],['progress','회차 경과'],['session','회기 기록'],['kid','아이 앱'],['geno','가계도']];
+function pageCase(){
+  const c=caseOf(route.caseId);
+  const head=`<p class="crumb"><button type="button" data-nav="cases">사례</button> / ${esc(c.name)}</p>
+  <div class="chead"><div class="av">${esc(c.name[0])}</div><div><h1>${esc(c.name)} <span style="font-size:14px;color:var(--sub);font-weight:500">${esc(c.age)}</span></h1>
+  <div class="meta"><span>${stageTag(c.stage)}</span><span>${esc(c.type)} 사례</span><span>${c.session}회차 진행</span><span>다음 : ${esc(c.next)}</span><span>담당 김○○</span>${c.app?`<span>앱 ${c.app}</span>`:''}</div></div>
+  <div class="cact"><button class="btn" type="button" data-act="sched" data-id="${c.id}">일정 추가</button><button class="btn" type="button" data-act="invite" data-id="${c.id}">아이 앱 연결</button><button class="btn" type="button" data-act="stage" data-id="${c.id}">단계 변경</button><button class="btn" type="button" data-act="edit" data-id="${c.id}">정보 수정</button></div></div>
+  <div class="tabs" role="tablist">${TABS.map(([k,l])=>`<button type="button" role="tab" data-tab-btn="${k}" aria-selected="${route.tab===k}">${l}</button>`).join('')}</div>`;
+  if(c.isNew)return head+newCaseBody(c);
+  if(c.id!=='jiwoo')return head+`<section class="card"><div class="body"><p class="empty">${esc(c.name)} 사례의 상세 화면은 시연 데이터가 없습니다. 지우 사례에서 모든 탭을 볼 수 있습니다.</p><div class="btns" style="margin-top:10px"><button class="btn pri" type="button" data-open="jiwoo">지우 사례 열기</button></div></div></section>`;
+  const body={brief:tabBrief,timeline:tabTimeline,progress:tabProgress,session:tabSession,kid:tabKid,geno:tabGeno}[route.tab]();
+  return head+body;
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-tab-btn]');if(t){route.tab=t.dataset.tabBtn;render()}});
+document.addEventListener('keydown',e=>{const tr=e.target.closest('tr[data-open]');if(tr&&(e.key==='Enter'||e.key===' ')){e.preventDefault();go({page:'case',caseId:tr.dataset.open})}});
+
+function tabBrief(){
+  return `<div class="grid g2">
+  <section class="card"><header><h2>4회차 상담 전 브리핑</h2><span>10/9(목) 14:00 · 읽는 데 약 2분</span></header><div class="body">
+    <div class="agenda"><b>아이가 고른 안건</b><div style="margin-top:4px">"말로 설명하기 어려워요. 다음 상담 때 제가 남긴 이야기를 먼저 봐주세요." <span class="tag t-kid">연락 요청 · 10/7</span></div></div>
+    <div class="bsec" style="margin-top:6px"><h3>지난 회차(3회차) 요약</h3><ul>
+      <li>친구와 그림 그린 일을 편하게 이야기함 ${cite(4)}</li>
+      <li>"요즘엔 아빠가 소리 안 질러요"라고 말함. 1회차 진술과 다름, 합치지 않고 둘 다 보존 ${cite(6)}</li>
+      <li>밤에 거실 큰 소리에 깬다고 새로 언급 ${cite(10)}</li>
+      <li>동생과 함께 있어 준다고 말함 ${cite(12)}</li>
+    </ul></div>
+    <div class="bsec"><h3>상담 사이 경과 (앱)</h3><ul>
+      <li>수면 응답이 "거의 못 잤어" 쪽으로 이동 (9/29 잘 잤어 → 10/7 거의 못 잤어) <button class="cite" type="button" data-open="jiwoo" data-tab="kid">체크인</button></li>
+      <li>기분 "걱정돼"가 4번 연속</li>
+      <li>안전 확인 "지난번 이야기한 일, 다시 있었어?" → <b>있었어</b> (10/7) <span class="tag t-amb">확인 필요</span></li>
+    </ul></div>
+    <div class="bsec"><h3>이번 상담에서 확인해 볼 것 (제안)</h3><ul>
+      <li>아이가 남긴 이야기를 먼저 함께 보기 (아이 안건)</li>
+      <li>요즘 집에서 지낼 때 마음 (개방형으로)</li>
+      <li>밤에 깼을 때의 경험</li>
+    </ul><p class="note">제안 질문은 누가·왜·몇 번을 묻지 않도록 만들어졌습니다. 상담 방향은 상담원이 정합니다.</p></div>
+  </div></section>
+  <div class="grid">
+    <section class="card"><header><h2>아직 처리 안 된 것</h2></header><div class="body"><ul class="list">
+      <li><span class="tag t-amb">요청</span><div><div class="t">연락 요청 미답장</div><div class="d">아이 화면 : "선생님이 확인했어" 표시 전</div></div><button class="btn" type="button" data-tab-btn="kid">답장</button></li>
+      <li><span class="tag t-b">질문</span><div><div class="t">추천 질문 ${RECS.filter(r=>r.st==='대기').length}개 승인 대기</div><div class="d">승인하면 다음 앱 실행 때 1회</div></div><button class="btn" type="button" data-tab-btn="kid">보기</button></li>
+    </ul></div></section>
+    <section class="card"><header><h2>이 브리핑이 대신하는 일</h2></header><div class="body" style="font-size:13px;color:var(--sub)">지난 회차 일지와 녹취, 2주치 앱 기록을 다시 읽는 일. 모든 문장은 원문으로 되짚을 수 있습니다.</div></section>
+  </div></div>`;
+}
+function tabTimeline(){
+  const ev=[
+    ['10/7 08:15','kid','아이 요청','연락 요청 : "말로 설명하기 어려워요. 다음 상담 때 제가 남긴 이야기를 먼저 봐주세요."','아동'],
+    ['10/7 08:13','amb','안전 확인','"지난번 선생님이랑 이야기한 일, 다시 있었어?" → 있었어','아동'],
+    ['10/6 19:20','kid','앱 자유 입력','"선생님한테 말하고 싶은데 말이 안 나와"','아동'],
+    ['10/4~7','kid','하루 체크','기분 "걱정돼" 4회, 수면 "거의 못 잤어" 2회','아동'],
+    ['10/2 16:40','call','통화','보호자 통화 : 다음 상담 일정 확인','보호자'],
+    ['9/29 14:00','','3회차 상담','감소 진술, 수면 중 깸 새로 언급','아동'],
+    ['9/29 14:20','obs','상담원 관찰','"처음엔 눈을 잘 안 맞췄고 그림 이야기부터 편해짐"','상담원'],
+    ['9/22 14:00','','2회차 상담','학교·친구 관계 중심','아동'],
+    ['9/15 14:00','','1회차 상담','"아빠가 소리 질러서 무서워요" · 앱 연결','아동'],
+  ];
+  return `<section class="card"><header><h2>사례 타임라인</h2><span>상담 · 앱 · 통화 · 관찰을 한 시간축에</span></header><div class="body">
+    <ul class="tl">${ev.map(([d,k,t,x,w])=>`<li><span class="dt">${d}</span><span class="dot ${k}"></span><div class="tx"><span class="who">${w}</span><b>${t}</b><small>${esc(x)}</small></div></li>`).join('')}</ul>
+    <p class="note">진술 주체(아동 · 보호자 · 상담원)를 항목마다 표시합니다. 서로 다른 진술은 합치지 않습니다.</p>
+  </div></section>`;
+}
+const TPL={
+  org:{name:'기관 상담일지',fields:[
+    ['상담 개요','3회차 대면 상담, 기관 상담실, 13분 녹취. 아동 단독 면담.'],
+    ['아동 진술 요지','친구와 그림 그린 일을 이야기함 [[4]]. "요즘엔 아빠가 소리 안 질러요"라고 말함 [[6]]. 밤에 거실에서 큰 소리가 나면 깬다고 함 [[10]]. 동생이 깨면 함께 있어 준다고 함 [[12]].'],
+    ['상담원 관찰','처음엔 눈 맞춤이 적었고 그림 이야기부터 표정이 편해짐. (상담 직후 음성 메모)'],
+    ['위험 신호와 변화','1회차 "아빠가 소리 질러서 무서워요"와 다른 감소 진술 [[6]]. 수면 중 깸 새로 언급 [[10]]. 판단은 상담원이 함.'],
+    ['향후 계획','4회차에서 아이가 남긴 이야기를 먼저 함께 보기. 수면 관련 지원 검토.'],
+  ]},
+  sys:{name:'시스템 입력용',fields:[
+    ['서비스 유형','상담 (아동, 대면)'],['일시·시간','2026-09-29 14:00 / 13분'],['장소','기관 상담실'],
+    ['주요 내용 (200자)','아동은 학교·친구 관계를 편하게 이야기함. 부의 고성이 줄었다고 진술하였으나 야간 거실 소음으로 깬다고 새로 언급함. 동생을 돌보는 행동 언급. 다음 회기에서 수면과 가정 내 경험 확인 예정.'],
+    ['다음 계획','4회기 상담 10/9 예정'],
+  ]},
+  conf:{name:'사례회의 요약',fields:[
+    ['사례 경과','1~3회차 진행, 앱 연결 후 체크인 9회. 3회차 감소 진술 [[6]], 이후 앱 안전 확인에서 "있었어" 응답 (10/7).'],
+    ['논의할 점','감소 진술 이후 앱 응답과의 차이. 수면 악화 추이 [[10]]. 상담 주기 조정 여부.'],
+    ['공유 범위','사례회의 내부용. 외부 기관 공유 시 원문 인용 제외.'],
+  ]},
+};
+function fieldHtml(txt){return esc(txt).replace(/\[\[(\d+)\]\]/g,(m,id)=>cite(+id))}
+function tabSession(){
+  const leading=TR.filter(t=>t.fk==='w').length,open=TR.filter(t=>t.fk==='e').length,closed=TR.filter(t=>t.sp==='c'&&!t.fk).length;
+  const tpl=TPL[docTpl];
+  return `<div class="split">
+  <section class="card"><header><h2>3회차 축어록</h2><span>9/29 14:00 · 13분 · 화자 자동 분리</span></header>
+    <div class="tr" id="tr">${TR.map(t=>`<div class="ln ${t.sp}${t.ev?' ev':''}" id="ln${t.id}"><span class="ts">${t.ts}</span><span class="sp">${t.sp==='c'?'상담원':'아동'}</span><span>${esc(t.tx)}${t.ev?`<span class="fl e">${esc(t.ev)}</span>`:''}${t.fk==='w'?`<span class="fl">${esc(t.fl)} · 대안 ${esc(t.alt)}</span>`:''}</span></div>`).join('')}</div>
+    <div class="body" style="border-top:1px solid var(--line)"><p class="note" style="margin:0">회색 줄은 일지 근거로 쓰인 아동 발화입니다. 질문 방식 표시는 상담원 본인에게만 보입니다. 개방형 ${open} · 폐쇄형 ${closed} · 확인할 질문 ${leading}</p></div>
+  </section>
+  <section class="card"><header><h2>기록 초안</h2><select class="sel" id="tplSel" aria-label="양식">${Object.entries(TPL).map(([k,v])=>`<option value="${k}" ${k===docTpl?'selected':''}>${v.name}</option>`).join('')}</select></header>
+    <div class="body doc">
+      ${tpl.fields.map(([h,t],i)=>`<div class="field"><div class="fh"><span>${h} <span class="ai">AI 초안</span></span><button class="btn" type="button" data-copy="${i}">복사</button></div><div class="fb" contenteditable="true" id="fld${i}">${fieldHtml(t)}</div></div>`).join('')}
+      <div class="docbar"><span class="note" style="margin:0">근거 칩을 누르면 축어록 해당 줄로 이동합니다. 내용은 직접 고칠 수 있습니다.</span><div class="btns"><button class="btn" type="button" id="copyAll">전체 복사</button><button class="btn pri" type="button" id="confirmDoc">확정</button></div></div>
+    </div>
+  </section></div>`;
+}
+function bindSession(){
+  const s=$('#tplSel');if(!s)return;
+  s.onchange=()=>{docTpl=s.value;render()};
+  const copy=txt=>{const done=()=>toast('복사했습니다. 기관 시스템에 붙여넣으세요.');try{navigator.clipboard.writeText(txt).then(done,()=>toast('복사가 막혀 있어 직접 선택해 복사해 주세요.'))}catch(e){toast('복사가 막혀 있어 직접 선택해 복사해 주세요.')}};
+  document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copy(document.getElementById('fld'+b.dataset.copy).innerText));
+  $('#copyAll').onclick=()=>copy(TPL[docTpl].fields.map(([h],i)=>h+'\n'+document.getElementById('fld'+i).innerText).join('\n\n'));
+  $('#confirmDoc').onclick=()=>toast('일지를 확정했습니다. 사례 타임라인에 반영됩니다.');
+}
+function sleepChart(){
+  const W=560,H=170,pl=96,pr=10,pt=10,pb=26,iw=W-pl-pr,ih=H-pt-pb,n=CHECK.length,bw=Math.min(28,iw/n*0.55);
+  const x=i=>pl+iw*(i+.5)/n,y=v=>pt+ih-ih*v/4;
+  let g='';
+  for(let v=1;v<=4;v++)g+=`<line class="grid" x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl-8}" y="${y(v)+4}" text-anchor="end">${SLEEP[v]}</text>`;
+  CHECK.forEach((c,i)=>{
+    if(c.sleep){const h=ih*c.sleep/4,yy=pt+ih-h;g+=`<path class="bar" d="M${x(i)-bw/2},${pt+ih} V${yy+4} Q${x(i)-bw/2},${yy} ${x(i)-bw/2+4},${yy} H${x(i)+bw/2-4} Q${x(i)+bw/2},${yy} ${x(i)+bw/2},${yy+4} V${pt+ih} Z"/>`}
+    g+=`<rect class="hit" x="${x(i)-iw/n/2}" y="${pt}" width="${iw/n}" height="${ih}" data-tip="${c.d} · 수면 : ${SLEEP[c.sleep]} · 기분 : ${esc(c.mood)}"/><text x="${x(i)}" y="${H-8}" text-anchor="middle">${c.d}</text>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="최근 9일 수면 응답. 잘 잤어에서 거의 못 잤어 쪽으로 낮아짐">${g}</svg>`;
+}
+function tabKid(){
+  return `<div class="grid g2">
+  <div class="grid">
+    <section class="card"><header><h2>수면 응답 추이</h2><span>하루 체크 고정 문항 · 막대가 낮을수록 잠을 못 잠</span></header><div class="body">${sleepChart()}
+      <details style="margin-top:8px;font-size:12.5px"><summary style="cursor:pointer;color:var(--sub)">표로 보기 (기분 포함)</summary><div class="tw"><table style="min-width:0;margin-top:6px"><thead><tr><th>날짜</th><th>수면</th><th>기분</th></tr></thead><tbody>${CHECK.map(c=>`<tr style="cursor:default"><td>${c.d}</td><td>${SLEEP[c.sleep]}</td><td>${esc(c.mood)}</td></tr>`).join('')}</tbody></table></div></details>
+    </div></section>
+    <section class="card"><header><h2>추천 질문</h2><span>AI 후보 → 승인한 것만 다음 앱 실행 때 1회</span></header><div class="body stack" id="recs"></div></section>
+  </div>
+  <section class="card"><header><h2>아이 요청</h2><span>열면 아이 화면에 "확인했어" 표시</span></header><div class="body stack" id="reqs"></div></section>
+  </div>`;
+}
+let reqState={opened:false,replied:null};
+function bindKid(){
+  const r=$('#recs');if(!r)return;
+  r.innerHTML=RECS.map(c=>`<div class="rcard b"><div class="rh"><span><span class="tag ${c.st==='대기'?'t-amb':c.st==='승인됨'?'t-grn':'t-n'}">${c.st}</span></span><span style="color:var(--sub)">AI 후보</span></div>
+    <div class="rb"><div class="f"><span>아이 원문</span><span>${esc(c.src)}</span></div><div class="f"><span>추천 질문</span><span style="font-weight:600" id="rq${c.id}">${esc(c.q)}</span></div><div class="f"><span>추천 이유</span><span>${esc(c.why)}</span></div></div>
+    ${c.st==='대기'?`<div class="ra"><div class="btns"><button class="btn pri" type="button" data-rec="ok" data-id="${c.id}">승인</button><button class="btn" type="button" data-rec="edit" data-id="${c.id}">문구 수정</button><button class="btn" type="button" data-rec="no" data-id="${c.id}">제외</button><button class="btn" type="button" data-rec="direct" data-id="${c.id}">직접 상담에서 확인</button></div></div>`:''}</div>`).join('');
+  r.querySelectorAll('[data-rec]').forEach(b=>b.onclick=()=>{
+    const c=RECS.find(x=>x.id===+b.dataset.id),a=b.dataset.rec;
+    if(a==='edit'){const el=document.getElementById('rq'+c.id);el.contentEditable='true';el.focus();b.textContent='수정 완료';b.dataset.rec='ok';return}
+    if(a==='ok'){const el=document.getElementById('rq'+c.id);c.q=el.innerText.trim()||c.q;c.st='승인됨';toast('승인했습니다. 다음 앱 실행 때 1회 나갑니다.')}
+    if(a==='no')c.st='제외';
+    if(a==='direct')c.st='직접 확인';
+    bindKid();renderNav();
+  });
+  const q=$('#reqs');
+  const st=(on,i)=>on?'<span class="tag t-b">'+i+'</span>':'<span class="tag t-n">'+i+'</span>';
+  q.innerHTML=`<div class="rcard"><div class="rh"><span><span class="tag t-amb">확인 필요</span> <b>연락 요청</b></span><span style="color:var(--sub)">10/7 08:15</span></div>
+    <div class="rb"><div class="f"><span>아이가 원하는 것</span><span>연락 요청</span></div>
+    <div class="f"><span>아동 발화 원문</span><span>"선생님한테 말하고 싶은데 말이 안 나와" (10/6)</span></div>
+    <div class="f"><span>아이가 확인한 문장</span><span>"말로 설명하기 어려워요. 다음 상담 때 제가 남긴 이야기를 먼저 봐주세요."</span></div>
+    <div class="f"><span>앱에서 한 일</span><span>요청 문장 만들기 → 아이가 그대로 사용</span></div></div>
+    <div class="ra"><div class="btns" style="align-items:center">${st(true,'미확인')}›${st(reqState.opened,'확인')}›${st(!!reqState.replied,'답장함')}</div>
+    <div class="btns" id="reqAct">${!reqState.opened?'<button class="btn pri" type="button" id="openReq">열어서 확인</button>':!reqState.replied?['확인했어. 목요일 상담 때 이 이야기부터 같이 하자.','확인했어. 내일 오후에 선생님이 전화할게.','이야기해줘서 고마워.'].map((t,i)=>`<button class="btn" type="button" data-reply="${i}">${t}</button>`).join(''):`<span class="note" style="margin:0">답장 보냄 : "${esc(reqState.replied)}"</span>`}</div></div></div>
+    <div class="rcard"><div class="rh"><span><span class="tag t-amb">확인 필요</span> <b>안전 확인 응답</b></span><span style="color:var(--sub)">10/7 08:13</span></div>
+    <div class="rb"><div class="f"><span>문항</span><span>지난번 선생님이랑 이야기한 일, 다시 있었어? (상담사 지정 · 주 1회)</span></div><div class="f"><span>응답</span><span><b>있었어</b></span></div><div class="f"><span>앱에서 한 일</span><span>"알려줘서 고마워. 선생님이 꼭 확인할게." 표시. 내용은 묻지 않음</span></div></div>
+    <div class="ra"><div class="btns"><button class="btn" type="button" id="callPlan">연락 계획에 추가</button><button class="btn" type="button" data-tab-btn="brief">브리핑에서 보기</button></div></div></div>`;
+  const o=$('#openReq');if(o)o.onclick=()=>{reqState.opened=true;toast('아이 화면에 "선생님이 확인했어"가 표시됩니다.');bindKid()};
+  q.querySelectorAll('[data-reply]').forEach(b=>b.onclick=()=>{reqState.replied=b.textContent;URG.splice(0,1);toast('아이에게 답장을 보냈습니다.');bindKid();renderNav()});
+  $('#callPlan').onclick=()=>{TODOS.unshift({t:'지우 안전 확인 응답 관련 연락',src:'10/7 앱 안전 확인',done:false});toast('할 일에 추가했습니다.')};
+}
+function tabGeno(){
+  const N=Object.fromEntries(FAM.nodes.map(n=>[n.id,n]));
+  const shape=n=>n.shape==='sq'?`<rect class="nd${n.me?' me':''}" x="${n.x-18}" y="${n.y-18}" width="36" height="36" rx="2"/>`:`<circle class="nd${n.me?' me':''}" cx="${n.x}" cy="${n.y}" r="18"/>`;
+  const f=N.f,m=N.m,k=N.k,s=N.s,midX=(f.x+m.x)/2;
+  let g=`<path class="ln1" d="M${f.x+18},${f.y} H${m.x-18}"/><path class="ln1" d="M${midX},${f.y} V110 M${k.x},110 H${s.x} M${k.x},110 V${k.y-18} M${s.x},110 V${s.y-18}"/>`;
+  g+=`<path class="conf" d="M${f.x-18},${f.y+8} C${f.x-70},${f.y+70} ${k.x-80},${k.y} ${k.x-19},${k.y}"/><text class="lb" x="${f.x-112}" y="${(f.y+k.y)/2+14}">갈등 언급</text>`;
+  FAM.nodes.forEach(n=>{g+=shape(n)+`<text x="${n.x}" y="${n.y+36}" text-anchor="middle" font-weight="600">${n.name}</text><text class="lb" x="${n.x}" y="${n.y+51}" text-anchor="middle">${n.sub}</text>`});
+  g+=`<path class="ln1" d="M${f.x-18},${f.y-26} H${m.x+18}" stroke-dasharray="2 4" opacity=".5"/><text class="lb" x="${midX}" y="${f.y-32}" text-anchor="middle">동거 가구</text>`;
+  return `<div class="grid g2">
+  <section class="card"><header><h2>가계도</h2><span>녹취에서 원문 근거가 있는 관계만 그림</span></header><div class="body"><svg class="geno" viewBox="0 0 460 250" role="img" aria-label="가계도 : 아빠, 엄마, 지우, 동생. 아빠와 지우 사이 갈등 언급">${g}</svg>
+    <p class="note">네모는 남성, 동그라미는 여성, 진한 테두리는 아동입니다. 점선은 아이가 말한 갈등이며 판단이 아닌 언급 표시입니다.</p></div></section>
+  <section class="card"><header><h2>근거</h2></header><div class="body"><ul class="list">
+    ${FAM.cites.map(c=>`<li><span class="tag t-n">${c.who}</span><div class="d" style="color:var(--ink)">${esc(c.text)}</div>${c.id?cite(c.id):'<span class="w">1회차</span>'}</li>`).join('')}
+    <li><span class="tag t-amb">미표시</span><div class="d">조부모는 언급이 없어 그리지 않음. AI가 관계를 추측해 채우지 않습니다.</div><span></span></li>
+  </ul></div></section></div>`;
+}
+
+/* ===================== 회차 경과 ===================== */
+/* 열 : 회차와 상담 사이 앱 기간. 행 : 세부 신호 (예시. 팀의 15개 세부 위험신호로 교체) */
+const PCOLS=[
+  {k:'s1',l:'1회차',d:'9/15'},{k:'s2',l:'2회차',d:'9/22'},{k:'s3',l:'3회차',d:'9/29'},
+  {k:'app',l:'상담 사이 앱',d:'9/30~10/7',app:true},{k:'s4',l:'4회차',d:'10/9 예정',plan:true}];
+const PROWS=[
+  {g:'위험 신호',r:'고성·위협적 언행',v:{s1:{q:['"아빠가 소리 질러서 무서워요"'],w:'03:12'},s2:{q:['"아빠가 화나면 문을 세게 닫아요"'],w:'06:40'},s3:{q:['"요즘엔 아빠가 소리 안 질러요"'],less:true,cite:6},app:{q:['안전 확인 "지난번 이야기한 일, 다시 있었어?" → 있었어 (10/7)'],a:true}}},
+  {g:'위험 신호',r:'두려움 표현',v:{s1:{q:['"아빠가 소리 질러서 무서워요"'],w:'03:12'},app:{q:['기분 "걱정돼" 4회 (10/4~10/7)'],a:true}}},
+  {g:'위험 신호',r:'가정 내 다툼 목격',v:{s1:{q:['"엄마랑 아빠 싸우면 방에 들어가요"'],w:'05:20'},s3:{q:['"거실에서 큰 소리 나면요"'],cite:10}}},
+  {g:'위험 신호',r:'수면 문제',v:{s3:{q:['"가끔 밤에 깨요"'],cite:10},app:{q:['수면 "거의 못 잤어" 2회, "자다가 깼어" 2회'],a:true}}},
+  {g:'위험 신호',r:'신체 피해 언급',v:{}},
+  {g:'위험 신호',r:'식사·돌봄 결핍',v:{}},
+  {g:'보호 요인',r:'또래 관계',v:{s2:{q:['"민지랑 쉬는 시간에 놀아요"'],w:'02:05',pos:true},s3:{q:['"민지가 잘 그렸다고 했어요"'],cite:4,pos:true}}},
+  {g:'보호 요인',r:'도움 요청 의사',v:{app:{q:['"선생님한테 말하고 싶은데 말이 안 나와" → 연락 요청 (10/6~7)'],a:true,pos:true}}},
+  {g:'보호 요인',r:'안심 대상 언급',v:{s1:{q:['"동생이랑 같이 있으면 괜찮아요"'],w:'08:02',pos:true},s3:{q:['"동생이 깨면 같이 있어 줘요"'],cite:12,pos:true}}},
+];
+let pSel=null;
+function changeOf(row,ci){
+  const col=PCOLS[ci],cur=row.v[col.k];if(col.plan)return null;
+  const earlier=PCOLS.slice(0,ci).filter(c=>!c.plan);
+  const prevAny=earlier.some(c=>row.v[c.k]);
+  const last=earlier[earlier.length-1];
+  if(!cur)return last&&row.v[last.k]?'미언급':null;
+  if(cur.less)return '감소 진술';
+  return prevAny?'다시 언급':'새로 언급';
+}
+function symOf(row,ci){
+  const col=PCOLS[ci],cur=row.v[col.k];
+  if(col.plan)return '<span class="sym none"></span><span>예정</span>';
+  const ch=changeOf(row,ci);
+  if(!cur)return `<span class="sym none"></span><span>${ch==='미언급'?'미언급':''}</span>`;
+  const cls=col.app?'appx':cur.less?'less':cur.pos?'pos':ch==='새로 언급'?'new':'on';
+  return `<span class="sym ${cls}"></span><span>${ch}</span>`;
+}
+function tabProgress(){
+  const groups=[...new Set(PROWS.map(r=>r.g))];
+  const counts=PCOLS.map(c=>PROWS.filter(r=>r.g==='위험 신호'&&r.v[c.k]).length);
+  const head=`<tr><th>세부 신호</th>${PCOLS.map(c=>`<th class="${c.app?'appx':c.plan?'plan':''}">${c.l}<small>${c.d}</small></th>`).join('')}</tr>`;
+  const body=groups.map(g=>`<tr class="grp"><td colspan="${PCOLS.length+1}">${g}</td></tr>`+PROWS.map((r,ri)=>r.g!==g?'':`<tr><td>${r.r}</td>${PCOLS.map((c,ci)=>`<td>${r.v[c.k]?`<button class="cell" type="button" data-pc="${ri}-${ci}" aria-pressed="${pSel===ri+'-'+ci}" aria-label="${r.r} ${c.l}">${symOf(r,ci)}</button>`:`<span class="cell" style="cursor:default">${symOf(r,ci)}</span>`}</td>`).join('')}</tr>`).join('')).join('');
+  const sum=`<tr><td style="font-size:12px;color:var(--sub)">위험 신호 언급 수</td>${counts.map((n,i)=>`<td style="font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--sub)">${PCOLS[i].plan?'—':n}</td>`).join('')}</tr>`;
+  const stl=PCOLS.map((c,ci)=>{
+    const items=PROWS.map(r=>({r,v:r.v[c.k],ch:changeOf(r,ci)})).filter(x=>x.v);
+    const gone=PROWS.map(r=>({r,ch:changeOf(r,ci)})).filter(x=>x.ch==='미언급'&&x.r.g==='위험 신호');
+    return `<div><span class="pin ${c.app?'appx':c.plan?'plan':''}"></span><h4>${c.l}</h4><div class="sd">${c.d}</div><ul>
+      ${c.plan?'<li style="color:var(--sub)">브리핑 준비됨. 아이 안건 : 남긴 이야기 먼저 보기</li>':''}
+      ${items.map(x=>`<li><span class="k">${x.r.r} · ${x.ch||''}</span>${esc(x.v.q[0])}${x.v.cite?' '+cite(x.v.cite):x.v.w?` <span class="w">${c.l} ${x.v.w}</span>`:''}</li>`).join('')}
+      ${gone.length?`<li style="color:var(--sub)"><span class="k">이번에 언급 없음</span>${gone.map(x=>x.r.r).join(', ')}</li>`:''}
+    </ul></div>`}).join('');
+  let det='<p class="empty">표의 칸을 누르면 해당 발화 원문이 여기에 나옵니다.</p>';
+  if(pSel){const [ri,ci]=pSel.split('-').map(Number),r=PROWS[ri],c=PCOLS[ci],v=r.v[c.k];
+    det=`<div class="detail"><div><b>${r.r}</b> · ${c.l} (${c.d}) <span class="tag t-n">${changeOf(r,ci)}</span> <span class="tag ${c.app?'t-kid':'t-n'}">${c.app?'아이 앱 응답':'아동 직접 진술'}</span></div>${v.q.map(q=>`<div class="q">${esc(q)}</div>`).join('')}<div style="font-size:12px;color:var(--sub)">${v.cite?'근거 : '+cite(v.cite):v.w?'근거 : '+c.l+' 녹취 '+v.w+' (시연 축어록은 3회차만 있음)':'근거 : 앱 기록'}</div></div>`}
+  return `<div class="grid">
+  <section class="card"><header><h2>회차별 세부 신호</h2><span>직전 기록과 비교한 변화만 표시 · 나아짐/나빠짐 판정 없음</span></header><div class="body" style="display:grid;gap:12px">
+    <div class="legend2"><span><i class="sym new"></i>새로 언급</span><span><i class="sym on"></i>다시 언급</span><span><i class="sym less"></i>감소 진술</span><span><i class="sym appx"></i>앱 응답</span><span><i class="sym pos"></i>보호 요인</span><span><i class="sym none"></i>언급 없음</span></div>
+    <div class="tw"><table class="mx"><thead>${head}</thead><tbody>${body}${sum}</tbody></table></div>
+    <div id="pDet">${det}</div>
+    <p class="note" style="margin:0">언급 수는 많고 적음을 비교하려는 숫자가 아니라 기록 양을 보여주는 참고값입니다. "미언급"은 위험이 사라졌다는 뜻이 아니라 그 회차에 이야기가 나오지 않았다는 뜻입니다. 세부 신호 목록은 예시이며 팀의 15개 세부 위험신호로 바꿔 쓰면 됩니다.</p>
+  </div></section>
+  <section class="card"><header><h2>회차 타임라인</h2><span>회차마다 나온 발화와 변화</span></header><div class="body"><div class="stl">${stl}</div></div></section>
+  </div>`;
+}
+document.addEventListener('click',e=>{const c=e.target.closest('[data-pc]');if(!c)return;pSel=pSel===c.dataset.pc?null:c.dataset.pc;render();const d=document.getElementById('pDet');if(d)d.scrollIntoView({block:'nearest'})});
+
+/* ===================== 사례 관리 (등록·수정·일정·앱 연결·단계) ===================== */
+const STAGES=['진행 중','종결 준비','사후관리','종료'];
+function stageTag(st){return {'진행 중':'<span class="tag t-b">진행 중</span>','종결 준비':'<span class="tag t-amb">종결 준비</span>','사후관리':'<span class="tag t-n">사후관리</span>','종료':'<span class="tag t-n">종료</span>','접수':'<span class="tag t-kid">접수</span>'}[st]||esc(st)}
+const TYPES=['신체','정서','성','방임'];
+const GRADES=['미취학','초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'];
+function modal(title,body,okLabel,onOk,wide){
+  closeModal();
+  const m=document.createElement('div');m.className='modal';m.id='modal';
+  m.innerHTML=`<div class="mbox" role="dialog" aria-modal="true" aria-label="${esc(title)}"><header><h2>${esc(title)}</h2><button class="x" type="button" aria-label="닫기" data-close>×</button></header><form class="mform" novalidate><div class="mbody">${body}<p class="err" id="mErr" hidden></p></div><footer><button class="btn" type="button" data-close>취소</button>${okLabel?`<button class="btn pri" type="submit">${okLabel}</button>`:''}</footer></form></div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m||e.target.closest('[data-close]'))closeModal()});
+  m.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+  m.querySelector('form').addEventListener('submit',e=>{e.preventDefault();const err=onOk?onOk(new FormData(e.target),m):null;if(err){const el=m.querySelector('#mErr');el.textContent=err;el.hidden=false}else closeModal()});
+  const first=m.querySelector('input,select,textarea,button.pri');if(first)first.focus();
+  return m;
+}
+function closeModal(){const m=document.getElementById('modal');if(m)m.remove()}
+const opt=(arr,sel)=>arr.map(v=>`<option ${v===sel?'selected':''}>${v}</option>`).join('');
+const chks=(name,arr,sel=[])=>`<div class="opts">${arr.map((v,i)=>`<label><input type="checkbox" name="${name}" value="${v}" ${sel.includes(v)?'checked':''}>${v}</label>`).join('')}</div>`;
+const radios=(name,arr,sel)=>`<div class="opts">${arr.map(v=>`<label><input type="radio" name="${name}" value="${v}" ${v===sel?'checked':''}>${v}</label>`).join('')}</div>`;
+function caseForm(c={}){
+  return `<p class="fsec">아이 정보</p>
+  <div class="fg">
+    <label class="fi"><span>이름 <em>*</em></span><input type="text" name="full" id="fFull" value="${esc(c.full||'')}" autocomplete="off"><small>화면에는 성을 가린 이름만 보입니다</small></label>
+    <label class="fi"><span>학년 <em>*</em></span><select name="age" id="fAge"><option value="">선택</option>${opt(GRADES,c.age)}</select></label>
+    <div class="fi w"><span>성별</span>${radios('sex',['여','남','밝히지 않음'],c.sex||'')}</div>
+  </div>
+  <p class="fsec">사례 정보</p>
+  <div class="fg">
+    <div class="fi w"><span>학대 유형 (여러 개 가능) <em>*</em></span>${chks('type',TYPES,c.types||[])}</div>
+    <label class="fi"><span>의뢰 경로</span><select name="route" id="fRoute">${opt(['지자체 아동학대전담공무원 의뢰','신고 접수','타 기관 연계','재신고 (이전 사례 있음)'],c.route)}</select></label>
+    <label class="fi"><span>보호 상태</span><select name="care" id="fCare">${opt(['원가정 보호','친인척 보호','시설 분리 보호','가정위탁'],c.care)}</select></label>
+    <label class="fi w"><span>함께 사는 사람</span><input type="text" name="family" id="fFam" value="${esc(c.family||'')}" placeholder="예 : 엄마, 동생"><small>가계도의 시작점이 됩니다. 이후 녹취에서 근거가 확인되면 추가됩니다</small></label>
+    <div class="fi w"><span>안전 주의</span>${chks('caution',['행위자와 동거 중','아이 휴대폰을 보호자가 확인함','연락 시 보호자 동석 피하기'],c.caution||[])}<small>체크하면 아이 앱의 숨기기·중립 알림이 기본으로 켜집니다</small></div>
+  </div>
+  <p class="fsec">첫 상담</p>
+  <div class="fg">
+    <label class="fi"><span>날짜</span><input type="date" name="date" id="fDate" value="${c.date||''}"></label>
+    <label class="fi"><span>시간</span><input type="time" name="time" id="fTime" value="${c.time||''}"></label>
+    <label class="fi w"><span>메모 (상담원만 봄)</span><textarea name="memo" id="fMemo">${esc(c.memo||'')}</textarea></label>
+  </div>`;
+}
+function maskName(full){full=full.trim();return full.length>=3?full.slice(1):full.length===2?full.slice(1)+'○':full}
+function fmtDate(d,t){if(!d)return '미정';const x=new Date(d+'T00:00');const w='일월화수목금토'[x.getDay()];return `${x.getMonth()+1}/${x.getDate()}(${w})${t?' '+t:''}`}
+function readCase(fd){
+  const full=(fd.get('full')||'').trim(),age=fd.get('age'),types=fd.getAll('type');
+  if(!full)return '이름을 적어 주세요.';if(!age)return '학년을 골라 주세요.';if(!types.length)return '학대 유형을 하나 이상 골라 주세요.';
+  return {full,age,types,sex:fd.get('sex')||'',route:fd.get('route'),care:fd.get('care'),family:(fd.get('family')||'').trim(),caution:fd.getAll('caution'),date:fd.get('date'),time:fd.get('time'),memo:(fd.get('memo')||'').trim()};
+}
+function openNewCase(){
+  modal('새 사례 등록',caseForm(),'등록',fd=>{
+    const v=readCase(fd);if(typeof v==='string')return v;
+    const id='c'+Date.now();
+    const c=Object.assign(v,{id,name:maskName(v.full),type:v.types.join('·'),stage:'접수',session:0,next:fmtDate(v.date,v.time),checkin:'앱 미연결',signal:[],unread:0,prio:0,reason:'',isNew:true,app:''});
+    CASES.unshift(c);
+    if(v.date)addSched(v.date,v.time||'',`${c.name} 첫 상담`,'1회차 · 앱 연결 예정','',id);
+    go({page:'case',caseId:id});toast('사례를 등록했습니다.');
+  });
+}
+function openEdit(id){
+  const c=caseOf(id);
+  modal('사례 정보 수정',caseForm(Object.assign({types:c.type.split('·')},c)),'저장',fd=>{
+    const v=readCase(fd);if(typeof v==='string')return v;
+    Object.assign(c,v,{name:maskName(v.full),type:v.types.join('·')});
+    if(c.isNew)c.next=fmtDate(v.date,v.time);
+    render();toast('저장했습니다.');
+  });
+}
+function addSched(date,time,b,sub,kind,openId){
+  const x=new Date(date+'T00:00'),key=`${'일월화수목금토'[x.getDay()]} ${x.getMonth()+1}/${x.getDate()}`;
+  (SCHED[key]=SCHED[key]||[]).push({t:time,k:kind,b,s:sub,open:openId});
+}
+function openSched(id){
+  const c=caseOf(id);
+  modal(`${c.name} · 일정 추가`,`<div class="fg">
+    <div class="fi w"><span>종류</span>${radios('kind',['상담','가정 방문','통화','사례회의'],'상담')}</div>
+    <label class="fi"><span>날짜 <em>*</em></span><input type="date" name="date" id="sDate"></label>
+    <label class="fi"><span>시간</span><input type="time" name="time" id="sTime"></label>
+    <label class="fi w"><span>메모</span><input type="text" name="memo" id="sMemo" placeholder="예 : 4회차, 학교 상담실"></label></div>
+    <p class="note" style="margin:0">상담 일정은 전날 브리핑이 자동으로 준비되고, 아이 앱에는 "선생님 만나는 날까지 ○일"만 표시됩니다.</p>`,'추가',fd=>{
+    const d=fd.get('date');if(!d)return '날짜를 골라 주세요.';
+    const kind=fd.get('kind'),t=fd.get('time')||'';
+    addSched(d,t,`${c.name} ${kind}`,fd.get('memo')||'',kind==='가정 방문'?'visit':kind==='사례회의'?'meet':'',id);
+    if(kind==='상담'){c.next=fmtDate(d,t);if(!c.date){c.date=d;c.time=t}}
+    render();toast('일정을 추가했습니다.');
+  });
+}
+function openInvite(id){
+  const c=caseOf(id);
+  const code=Array.from({length:6},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+  const careful=(c.caution||[]).length>0;
+  modal(`${c.name} · 아이 앱 연결`,`<div class="code" aria-label="초대 코드">${code}</div>
+    <p class="note" style="margin:0;text-align:center">7일 동안 쓸 수 있는 1회용 코드입니다. 첫 상담 마무리에 아이와 함께 입력하세요.</p>
+    <p class="fsec">아이 앱 설정</p>
+    <div class="fg">
+      <label class="fi"><span>지정 문항</span><select name="extra" id="iExtra">${opt(['없음','안전 확인 (주 1회)','식사','집에서의 생활'],'안전 확인 (주 1회)')}</select></label>
+      <label class="fi"><span>확인 가능 시간 안내</span><select name="hours" id="iHours">${opt(['평일 9시~18시','평일 9시~21시'],'평일 9시~18시')}</select></label>
+      <div class="fi w"><span>보안</span>${chks('sec',['평범한 앱 이름과 아이콘','알림에 내용 숨김','잠금 번호','기기에 대화 저장 안 함'],careful?['평범한 앱 이름과 아이콘','알림에 내용 숨김','잠금 번호','기기에 대화 저장 안 함']:['평범한 앱 이름과 아이콘','알림에 내용 숨김','기기에 대화 저장 안 함'])}${careful?'<small>안전 주의 항목이 있어 모두 켜 두었습니다</small>':''}</div>
+    </div>
+    <p class="fsec">아이에게 함께 안내할 것</p>
+    <ul style="margin:0;padding-left:18px;font-size:13px;display:grid;gap:3px"><li>여기 남긴 이야기는 ○○ 선생님이 볼 수 있어.</li><li>위험해 보이면 너를 지키기 위해 선생님이 바로 알게 돼.</li><li>선생님은 평일 낮에 확인해. 급하면 112나 1388.</li><li>누가 보면 "숨기기"를 눌러.</li></ul>`,'연결 대기로 저장',fd=>{
+    c.app='연결 대기 (코드 '+code+')';c.checkin='연결 대기';c.extra=fd.get('extra');render();toast('아이가 코드를 입력하면 연결됩니다.');
+  });
+}
+function openStage(id){
+  const c=caseOf(id);
+  modal(`${c.name} · 단계 변경`,`<div class="fi"><span>단계</span>${radios('stage',['접수'].concat(STAGES),c.stage)}</div>
+    <div class="rcard b"><div class="rb" style="font-size:13px;display:grid;gap:4px">
+      <div><b>종결 준비</b> : 종결 상담에서 아이 앱이 사후관리 모드로 바뀐다는 것을 안내합니다.</div>
+      <div><b>사후관리</b> : 아이 앱이 격주 안전 체크와 "다시 도움이 필요해" 버튼 중심으로 바뀝니다. 재발 신호는 사후관리 담당자에게 갑니다.</div>
+      <div><b>종료</b> : 아이 앱 연결을 끊고, 남는 도움 경로(112·1388·학교 상담실)를 안내합니다. 기록은 기관 보관 기준을 따릅니다.</div>
+    </div></div>
+    <label class="fi"><span>사후관리 담당 (사후관리 선택 시)</span><select name="owner" id="stOwner">${opt(['김○○ (현 담당)','사후관리팀 당직'],'김○○ (현 담당)')}</select></label>`,'변경',fd=>{
+    const st=fd.get('stage');if(!st)return '단계를 골라 주세요.';
+    c.stage=st;
+    if(st==='사후관리'){c.next='안전 체크 격주';c.owner=fd.get('owner')}
+    if(st==='종료'){c.app='';c.checkin='연결 해제';c.next='—'}
+    render();toast('단계를 '+st+'(으)로 바꿨습니다.');
+  });
+}
+function newCaseBody(c){
+  const steps=[
+    [true,'기본 정보 등록',`${esc(c.route)} · ${esc(c.care)}${c.caution.length?' · 안전 주의 '+c.caution.length+'건':''}`,`<button class="btn" type="button" data-act="edit" data-id="${c.id}">수정</button>`],
+    [!!c.date,'첫 상담 일정',c.date?esc(c.next):'아직 정하지 않음',`<button class="btn" type="button" data-act="sched" data-id="${c.id}">${c.date?'추가':'잡기'}</button>`],
+    [c.session>0,'첫 상담 녹취 올리기','올리면 축어록, 일지 초안, 가계도 초안이 만들어집니다',`<button class="btn" type="button" data-nav="upload">올리기</button>`],
+    [!!c.app,'아이 앱 연결',c.app?esc(c.app):'첫 상담 마무리에 초대 코드로 연결',`<button class="btn" type="button" data-act="invite" data-id="${c.id}">${c.app?'다시 발급':'코드 발급'}</button>`],
+  ];
+  return `<div class="grid g2">
+    <section class="card"><header><h2>사례 시작하기</h2><span>${steps.filter(s=>s[0]).length}/${steps.length} 완료</span></header><div class="body"><ul class="setup">
+      ${steps.map(([ok,t,d,b],i)=>`<li class="${ok?'ok':''}"><span class="n">${ok?'✓':i+1}</span><div><div style="font-weight:600">${t}</div><div class="d">${d}</div></div>${b}</li>`).join('')}
+    </ul></div></section>
+    <div class="grid">
+      <section class="card"><header><h2>등록 정보</h2></header><div class="body" style="display:grid;gap:6px;font-size:13px">
+        <div class="f"><span>학대 유형</span><span>${esc(c.type)}</span></div>
+        <div class="f"><span>함께 사는 사람</span><span>${esc(c.family||'미입력')}</span></div>
+        <div class="f"><span>성별</span><span>${esc(c.sex||'미입력')}</span></div>
+        ${c.memo?`<div class="f"><span>메모</span><span>${esc(c.memo)}</span></div>`:''}
+      </div></section>
+      <section class="card"><header><h2>다른 탭은</h2></header><div class="body" style="font-size:13px;color:var(--sub)">첫 상담 녹취를 올리면 브리핑, 타임라인, 회기 기록, 가계도가 채워지고, 아이 앱을 연결하면 체크인과 요청이 쌓입니다. 채워진 모습은 <button class="cite" type="button" data-open="jiwoo">지우 사례</button>에서 볼 수 있습니다.</div></section>
+    </div></div>`;
+}
+document.addEventListener('click',e=>{
+  const a=e.target.closest('[data-act]');if(!a)return;
+  const id=a.dataset.id;
+  ({newcase:openNewCase,edit:()=>openEdit(id),sched:()=>openSched(id),invite:()=>openInvite(id),stage:()=>openStage(id)})[a.dataset.act]();
+});
+
+/* ===================== 아이 연계 ===================== */
+function pageKids(){
+  return `<div class="top"><div><p class="crumb">담당 아이 앱 전체</p><h1>아이 연계</h1></div><span class="demo">가상 사례</span></div>
+  <div class="grid g2e">
+    <section class="card"><header><h2>아이 신호</h2><span>긴급은 즉시 따로 · 나머지는 하루 1번</span></header><div class="body"><ul class="list">${URG.map(u=>`<li>${tierTag(u.tier)}<div><div class="t">${esc(u.title)}</div><div class="d">${esc(u.desc)}</div></div><button class="btn" type="button" data-open="${u.caseId}" data-tab="kid">열기</button></li>`).join('')||'<li><span></span><span class="empty">확인할 신호가 없습니다.</span><span></span></li>'}</ul></div></section>
+    <section class="card"><header><h2>앱 사용 현황</h2><span>무응답도 신호로 봅니다</span></header><div class="body"><ul class="list">${CASES.map(c=>`<li><span class="tag ${c.signal.includes('무응답')?'t-amb':'t-n'}">${c.name}</span><div><div class="d">최근 체크인 ${c.checkin}${c.stage==='사후관리'?' · 사후관리 모드 (격주 안전 체크)':''}</div></div><button class="btn" type="button" data-open="${c.id}" data-tab="kid">보기</button></li>`).join('')}</ul></div></section>
+    <section class="card"><header><h2>승인 대기 추천 질문</h2></header><div class="body"><ul class="list">${RECS.filter(r=>r.st==='대기').map(r=>`<li><span class="tag t-b">지우</span><div><div class="t">${esc(r.q)}</div><div class="d">${esc(r.src)}</div></div><button class="btn" type="button" data-open="jiwoo" data-tab="kid">검토</button></li>`).join('')||'<li><span></span><span class="empty">대기 중인 질문이 없습니다.</span><span></span></li>'}</ul></div></section>
+    <section class="card"><header><h2>아이 화면 원칙</h2></header><div class="body" style="font-size:13px;display:grid;gap:6px">
+      <div>아이에게 나가는 질문은 고정 문항, 상담사 지정 문항, 승인된 추천 질문뿐입니다.</div>
+      <div>누가·왜·언제·몇 번을 묻지 않고, 판정이나 점수를 보여주지 않습니다.</div>
+      <div>앱 이름과 알림은 평범하게, 기기에는 대화를 저장하지 않습니다.</div></div></section>
+  </div>`;
+}
+
+/* ===================== 면담 피드백 ===================== */
+function pageFeedback(){
+  const rows=[['지우 3회차','9/29',7,5,1,46],['서윤 2회차','9/26',5,8,2,58],['도윤 3회차','9/24',9,3,0,39],['하준 4회차','9/22',6,6,1,51]];
+  return `<div class="top"><div><p class="crumb">최근 4회기 · 본인만 볼 수 있음</p><h1>면담 피드백</h1></div><span class="demo">가상 사례</span></div>
+  <div class="grid g2">
+    <section class="card"><header><h2>회기별 질문 방식</h2><span>녹취에서 상담원 발화만 분석</span></header><div class="body"><div class="tw"><table style="min-width:560px"><thead><tr><th>회기</th><th>개방형 · 폐쇄형 · 확인할 질문</th><th style="text-align:right">상담원 발화 비율</th><th></th></tr></thead><tbody>
+      ${rows.map(([n,d,o,c,l,p])=>{const t=o+c+l;return `<tr style="cursor:default"><td><b>${n}</b><div class="sm" style="color:var(--sub);font-size:12px">${d}</div></td><td><div class="meter" title="개방형 ${o}, 폐쇄형 ${c}, 확인할 질문 ${l}"><i style="width:${o/t*100}%;background:var(--brand)"></i><i style="width:${c/t*100}%;background:var(--mute)"></i>${l?`<i style="width:${l/t*100}%;background:var(--amb)"></i>`:''}</div><div style="font-size:12px;color:var(--sub);margin-top:4px">개방형 ${o} · 폐쇄형 ${c} · 확인할 질문 ${l}</div></td><td style="text-align:right;font-variant-numeric:tabular-nums">${p}%</td><td>${n.startsWith('지우')?'<button class="btn" type="button" data-open="jiwoo" data-tab="session">축어록</button>':''}</td></tr>`}).join('')}
+    </tbody></table></div><p class="note">색 : 청록 개방형 · 회색 폐쇄형 · 노랑 확인할 질문. 표 아래 숫자로도 읽을 수 있습니다.</p></div></section>
+    <section class="card"><header><h2>다시 볼 질문</h2><span>대안 표현 제안</span></header><div class="body"><ul class="list">
+      <li><span class="tag t-amb">지우</span><div><div class="t">"그럼 이제 괜찮은 거지?"</div><div class="d">답을 정해 둔 질문일 수 있음 → "요즘 집에서 지낼 때 마음은 어때?"</div></div>${cite(7)}</li>
+      <li><span class="tag t-amb">서윤</span><div><div class="t">"엄마가 밥 안 챙겨줬어?"</div><div class="d">특정 사람을 넣은 예/아니오 질문 → "오늘 밥은 어떻게 먹었어?"</div></div><span class="w">2회차 07:12</span></li>
+    </ul><p class="note">이 화면은 평가가 아니라 본인 점검용입니다. 수퍼비전에 가져갈지는 상담원이 정합니다.</p></div></section>
+  </div>`;
+}
+
+/* ===================== 일정 ===================== */
+function pageSchedule(){
+  return `<div class="top"><div><p class="crumb">10월 6일 이후 · 사례 화면에서 일정을 추가할 수 있습니다</p><h1>일정</h1></div><span class="demo">가상 일정</span></div>
+  <div class="week">${Object.entries(SCHED).sort((a,b)=>{const k=x=>{const [m,d]=x.split(' ')[1].split('/').map(Number);return m*100+d};return k(a[0])-k(b[0])}).map(([d,ev])=>{const [w,dd]=d.split(' ');return `<div class="day"><h3>${w} <span>${dd}</span></h3>${ev.length?ev.map(e=>`<div class="ev ${e.k}"><b>${e.t} ${esc(e.b)}</b><span>${esc(e.s)}</span>${e.open?`<button class="btn" type="button" data-open="${e.open}">브리핑</button>`:''}</div>`).join(''):'<span class="empty" style="font-size:12px">일정 없음</span>'}</div>`}).join('')}</div>
+  <p class="note">상담 전날 브리핑이 자동으로 준비됩니다. 아이 앱에는 "선생님 만나는 날까지 ○일"만 표시됩니다.</p>`;
+}
+
+/* ===================== 녹취 올리기 ===================== */
+let up={file:null,running:false,done:false};
+function pageUpload(){
+  return `<div class="top"><div><p class="crumb">상담·통화·방문 후 음성 메모</p><h1>녹취 올리기</h1></div></div>
+  <div class="grid g2">
+    <section class="card"><header><h2>파일과 사례 선택</h2></header><div class="body" style="display:grid;gap:12px">
+      <label style="display:grid;gap:4px;font-size:13px"><span style="color:var(--sub)">사례</span><select class="sel" id="upCase">${CASES.map(c=>`<option value="${c.id}">${c.name} (${c.age})</option>`).join('')}</select></label>
+      <label style="display:grid;gap:4px;font-size:13px"><span style="color:var(--sub)">종류</span><select class="sel" id="upKind"><option>대면 상담 녹취</option><option>통화 녹음</option><option>상담 직후 음성 메모 (관찰)</option><option>방문 후 음성 메모</option></select></label>
+      <div class="drop" id="drop"><div><b>음성 파일을 끌어다 놓거나</b></div><div class="btns"><label class="btn" for="upFile">파일 고르기</label><input type="file" id="upFile" accept="audio/*" hidden><button class="btn" type="button" id="useSample">예시 녹취 쓰기</button></div><div id="fname" style="font-size:12.5px"></div></div>
+      <label class="chk"><input type="checkbox" id="upConsent"><span>녹음 동의를 받았습니다 (아동·보호자)</span></label>
+      <button class="btn pri" type="button" id="upStart" style="justify-self:start;padding:8px 14px">분석 시작</button>
+      <p class="note" style="margin:0">시연 화면이라 파일은 서버로 보내지 않고, 처리 과정만 보여줍니다.</p>
+    </div></section>
+    <section class="card"><header><h2>처리 과정</h2><span>보안 처리 후 AI 정리</span></header><div class="body">
+      <ol class="steps" id="steps">${[['암호화 저장','저장 전에 먼저 암호화'],['글로 바꾸기 · 화자 나누기','아동 · 상담원 · 보호자'],['이름·학교 가리기','기본 비식별'],['위험 신호 · 근거 확인','원문에 없는 근거는 버림'],['기록 초안 만들기','기관 일지 · 시스템 입력용 · 브리핑']].map(([a,b])=>`<li><span class="ic"></span><span>${a}<br><small>${b}</small></span><span class="w"></span></li>`).join('')}</ol>
+      <div id="upDone" style="margin-top:14px"></div>
+    </div></section>
+  </div>`;
+}
+function bindUpload(){
+  const f=$('#upFile');if(!f)return;
+  const setName=n=>{up.file=n;$('#fname').textContent='선택됨 : '+n};
+  f.onchange=()=>{if(f.files[0])setName(f.files[0].name)};
+  $('#useSample').onclick=()=>setName('지우_3회차_0929.m4a (예시)');
+  const d=$('#drop');
+  d.ondragover=e=>{e.preventDefault();d.classList.add('on')};d.ondragleave=()=>d.classList.remove('on');
+  d.ondrop=e=>{e.preventDefault();d.classList.remove('on');const fl=e.dataTransfer.files[0];if(fl)setName(fl.name)};
+  $('#upStart').onclick=async()=>{
+    if(up.running)return;
+    if(!up.file){toast('파일을 고르거나 예시 녹취를 써 주세요.');return}
+    if(!$('#upConsent').checked){toast('녹음 동의 확인이 필요합니다.');return}
+    up.running=true;const lis=[...document.querySelectorAll('#steps li')];
+    const times=['0.4초','38초','2초','11초','9초'];
+    for(let i=0;i<lis.length;i++){lis[i].className='run';await new Promise(r=>setTimeout(r,700));lis[i].className='ok';lis[i].querySelector('.w').textContent=times[i]}
+    up.running=false;
+    const cid=$('#upCase').value,c=caseOf(cid);
+    if(c.isNew&&c.session===0){c.session=1;if(c.stage==='접수')c.stage='진행 중'}
+    $('#upDone').innerHTML=`<div class="rcard b"><div class="rh"><b>완료</b><span style="color:var(--sub)">약 1분 (예시)</span></div><div class="rb"><div>${c.name} 사례에 축어록과 기록 초안이 붙었습니다. 상담원은 확인하고 고치기만 하면 됩니다.</div><div class="btns"><button class="btn pri" type="button" data-open="jiwoo" data-tab="session">초안 확인</button></div>${cid!=='jiwoo'?'<p class="note" style="margin:0">시연 축어록은 지우 사례로 열립니다.</p>':''}</div></div>`;
+  };
+}
+
+/* ===================== 렌더 ===================== */
+let tipEl=null;
+function bindTips(){
+  document.querySelectorAll('[data-tip]').forEach(el=>{
+    el.addEventListener('mousemove',e=>{if(!tipEl){tipEl=document.createElement('div');tipEl.className='tip';document.body.appendChild(tipEl)}tipEl.textContent=el.dataset.tip;tipEl.style.left=Math.min(e.clientX+12,innerWidth-220)+'px';tipEl.style.top=(e.clientY+12)+'px'});
+    el.addEventListener('mouseleave',()=>{if(tipEl){tipEl.remove();tipEl=null}});
+  });
+}
+function render(){
+  renderNav();
+  const p={today:pageToday,cases:pageCases,case:pageCase,kids:pageKids,feedback:pageFeedback,schedule:pageSchedule,upload:pageUpload}[route.page];
+  main.innerHTML=p();
+  renderTodos();bindSession();bindKid();bindUpload();bindTips();
+}
+render();
+</script>
+
+</body></html>

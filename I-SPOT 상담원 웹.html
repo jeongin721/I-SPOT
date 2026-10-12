@@ -147,7 +147,7 @@ td .sm{font-size:12px;color:var(--sub)}
 .doc{display:grid;gap:12px}
 .field{border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .field .fh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;background:var(--band);font-size:12px;color:var(--sub);font-weight:600}
-.field .fb{padding:8px 10px;font-size:13.5px}
+.field .fb{padding:8px 10px;font-size:13.5px;white-space:pre-wrap}
 .field .fb[contenteditable]{outline:none}
 .field .fb[contenteditable]:focus{background:var(--brand-bg)}
 .ai{font-size:10.5px;font-weight:700;color:var(--brand);background:var(--brand-bg);border-radius:4px;padding:0 5px}
@@ -310,6 +310,74 @@ const caseOf=id=>CASES.find(c=>c.id===id);
 const tierTag=t=>({red:'<span class="tag t-red">긴급</span>',amb:'<span class="tag t-amb">확인 필요</span>',kid:'<span class="tag t-kid">아이 안건</span>',grn:'<span class="tag t-grn">일반</span>'}[t]);
 const cite=(id,label)=>`<button class="cite" type="button" data-cite="${id}">${label||'3회차 '+TR.find(x=>x.id===id).ts}</button>`;
 
+/* ===== 실제 백엔드 연결(2026-10-08 추가) =====
+   "회기 기록" 탭만 /api/analyze-audio 결과로 바꿔치기한다. 다른 탭
+   (아이 앱/가계도/타임라인/브리핑)은 연결할 실제 데이터가 없어서
+   그대로 데모로 남는다 — REAL_SESSION이 있으면 TR/TPL.org.fields를
+   덮어쓰고, 화면에 "실제 분석 결과" 표시를 추가한다. */
+let REAL_SESSION=null;
+const msToTs=ms=>{const t=Math.floor((ms||0)/1000);return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')};
+function mapSegmentsToTR(segments){
+  return (segments||[]).map((s,i)=>({id:i+1,ts:msToTs(s.start_ms),sp:s.speaker==='CHILD'?'k':'c',tx:s.text||'',_segId:String(s.segment_id||'')}));
+}
+function buildFieldText(points,segIdToNum){
+  return (points||[]).map(p=>{
+    const ids=(p.segment_ids||[]).map(sid=>segIdToNum[sid]).filter(Boolean);
+    return '· '+p.text+(ids.length?' '+ids.map(id=>'[['+id+']]').join(' '):'');
+  }).join('\n') || '(원문에서 확인된 내용 없음)';
+}
+function buildRiskSignalText(points,segIdToNum){
+  if(!points||!points.length)return '(원문에서 확인된 위험 신호 없음)';
+  const order=[],byType={};
+  points.forEach(p=>{
+    const type=p.major_type||'미분류';
+    if(!byType[type]){byType[type]=[];order.push(type)}
+    byType[type].push(p);
+  });
+  return order.map(type=>{
+    const lines=byType[type].map(p=>{
+      const ids=(p.segment_ids||[]).map(sid=>segIdToNum[sid]).filter(Boolean);
+      const citeTxt=ids.length?' '+ids.map(id=>'[['+id+']]').join(' '):'';
+      return `· (${p.subtype||'-'} · 근거 ${p.evidence_strength||'-'}) ${p.text}${citeTxt}`;
+    }).join('\n');
+    return `[${type}]\n${lines}`;
+  }).join('\n\n');
+}
+function buildProtectiveFactorText(points,segIdToNum){
+  if(!points||!points.length)return '(원문에서 확인된 보호 요인 없음)';
+  const order=[],byCat={};
+  points.forEach(p=>{
+    const cat=p.category||'미분류';
+    if(!byCat[cat]){byCat[cat]=[];order.push(cat)}
+    byCat[cat].push(p);
+  });
+  return order.map(cat=>{
+    const lines=byCat[cat].map(p=>{
+      const ids=(p.segment_ids||[]).map(sid=>segIdToNum[sid]).filter(Boolean);
+      const citeTxt=ids.length?' '+ids.map(id=>'[['+id+']]').join(' '):'';
+      return `· ${p.text}${citeTxt}`;
+    }).join('\n');
+    return `[${cat}]\n${lines}`;
+  }).join('\n\n');
+}
+function applyRealData(segments,recordDraft,counselingSummary,protectiveFactors){
+  const trMapped=mapSegmentsToTR(segments);
+  const segIdToNum={};
+  trMapped.forEach(t=>{segIdToNum[t._segId]=t.id});
+  TR.length=0;TR.push(...trMapped);
+  TPL.org.fields=[
+    ['상담 요약',counselingSummary||'-'],
+    ['상담 개요',recordDraft.session_overview||'-'],
+    ['아동 진술 요지',buildFieldText(recordDraft.child_statement_points,segIdToNum)],
+    ['상담원 관찰',recordDraft.counselor_observation||''],
+    ['위험 신호','AI 초안 — 2차 분석 근거 재사용.\n'+buildRiskSignalText(recordDraft.risk_signal_points,segIdToNum)],
+    ['보호 요인','AI 초안 · 검수 전 — 보호 요인은 위험 평가를 상쇄하지 않습니다.\n'+buildProtectiveFactorText(protectiveFactors,segIdToNum)],
+    ['향후 계획','질문 은행 연결 전까지는 비워둡니다 — 상담사가 직접 작성해 주세요.'],
+  ];
+  docTpl='org';
+  REAL_SESSION=true;
+}
+
 /* ===================== 메뉴 ===================== */
 function renderNav(){
   const pend=RECS.filter(r=>r.st==='대기').length;
@@ -466,8 +534,10 @@ function fieldHtml(txt){return esc(txt).replace(/\[\[(\d+)\]\]/g,(m,id)=>cite(+i
 function tabSession(){
   const leading=TR.filter(t=>t.fk==='w').length,open=TR.filter(t=>t.fk==='e').length,closed=TR.filter(t=>t.sp==='c'&&!t.fk).length;
   const tpl=TPL[docTpl];
+  const sessionLabel=REAL_SESSION?'업로드한 녹취 축어록':'3회차 축어록';
+  const sessionMeta=REAL_SESSION?'<span class="tag t-grn">실제 분석 결과</span> · 화자 자동 분리':'9/29 14:00 · 13분 · 화자 자동 분리 <span class="demo">예시</span>';
   return `<div class="split">
-  <section class="card"><header><h2>3회차 축어록</h2><span>9/29 14:00 · 13분 · 화자 자동 분리</span></header>
+  <section class="card"><header><h2>${sessionLabel}</h2><span>${sessionMeta}</span></header>
     <div class="tr" id="tr">${TR.map(t=>`<div class="ln ${t.sp}${t.ev?' ev':''}" id="ln${t.id}"><span class="ts">${t.ts}</span><span class="sp">${t.sp==='c'?'상담원':'아동'}</span><span>${esc(t.tx)}${t.ev?`<span class="fl e">${esc(t.ev)}</span>`:''}${t.fk==='w'?`<span class="fl">${esc(t.fl)} · 대안 ${esc(t.alt)}</span>`:''}</span></div>`).join('')}</div>
     <div class="body" style="border-top:1px solid var(--line)"><p class="note" style="margin:0">회색 줄은 일지 근거로 쓰인 아동 발화입니다. 질문 방식 표시는 상담원 본인에게만 보입니다. 개방형 ${open} · 폐쇄형 ${closed} · 확인할 질문 ${leading}</p></div>
   </section>
@@ -602,7 +672,7 @@ function pageUpload(){
       <div class="drop" id="drop"><div><b>음성 파일을 끌어다 놓거나</b></div><div class="btns"><label class="btn" for="upFile">파일 고르기</label><input type="file" id="upFile" accept="audio/*" hidden><button class="btn" type="button" id="useSample">예시 녹취 쓰기</button></div><div id="fname" style="font-size:12.5px"></div></div>
       <label class="chk"><input type="checkbox" id="upConsent"><span>녹음 동의를 받았습니다 (아동·보호자)</span></label>
       <button class="btn pri" type="button" id="upStart" style="justify-self:start;padding:8px 14px">분석 시작</button>
-      <p class="note" style="margin:0">시연 화면이라 파일은 서버로 보내지 않고, 처리 과정만 보여줍니다.</p>
+      <p class="note" style="margin:0">"파일 고르기"로 실제 음성 파일을 선택하면 서버로 보내 실제 분석합니다. "예시 녹취 쓰기"는 서버로 보내지 않는 시연용입니다.</p>
     </div></section>
     <section class="card"><header><h2>처리 과정</h2><span>보안 처리 후 AI 정리</span></header><div class="body">
       <ol class="steps" id="steps">${[['암호화 저장','저장 전에 먼저 암호화'],['글로 바꾸기 · 화자 나누기','아동 · 상담원 · 보호자'],['이름·학교 가리기','기본 비식별'],['위험 신호 · 근거 확인','원문에 없는 근거는 버림'],['기록 초안 만들기','기관 일지 · 시스템 입력용 · 브리핑']].map(([a,b])=>`<li><span class="ic"></span><span>${a}<br><small>${b}</small></span><span class="w"></span></li>`).join('')}</ol>
@@ -612,21 +682,45 @@ function pageUpload(){
 }
 function bindUpload(){
   const f=$('#upFile');if(!f)return;
-  const setName=n=>{up.file=n;$('#fname').textContent='선택됨 : '+n};
-  f.onchange=()=>{if(f.files[0])setName(f.files[0].name)};
-  $('#useSample').onclick=()=>setName('지우_3회차_0929.m4a (예시)');
+  const setName=(n,fileObj)=>{up.file=n;up.fileObj=fileObj||null;$('#fname').textContent='선택됨 : '+n};
+  f.onchange=()=>{if(f.files[0])setName(f.files[0].name,f.files[0])};
+  $('#useSample').onclick=()=>setName('지우_3회차_0929.m4a (예시)',null);
   const d=$('#drop');
   d.ondragover=e=>{e.preventDefault();d.classList.add('on')};d.ondragleave=()=>d.classList.remove('on');
-  d.ondrop=e=>{e.preventDefault();d.classList.remove('on');const fl=e.dataTransfer.files[0];if(fl)setName(fl.name)};
+  d.ondrop=e=>{e.preventDefault();d.classList.remove('on');const fl=e.dataTransfer.files[0];if(fl)setName(fl.name,fl)};
   $('#upStart').onclick=async()=>{
     if(up.running)return;
     if(!up.file){toast('파일을 고르거나 예시 녹취를 써 주세요.');return}
     if(!$('#upConsent').checked){toast('녹음 동의 확인이 필요합니다.');return}
     up.running=true;const lis=[...document.querySelectorAll('#steps li')];
+    const cid=$('#upCase').value,c=caseOf(cid);
+
+    // 실제 파일이 있으면(예시 녹취가 아니면) /api/analyze-audio로 진짜
+    // 분석을 돌린다 — 아래 단계 애니메이션은 그대로 보여주되, 실제
+    // 호출이 더 걸리면 마지막 단계에서 완료될 때까지 기다린다.
+    if(up.fileObj){
+      const fd=new FormData();fd.append('case_id',cid);fd.append('file',up.fileObj,up.file);
+      const fetchPromise=fetch('/api/analyze-audio',{method:'POST',body:fd}).then(r=>r.json());
+      for(let i=0;i<lis.length-1;i++){lis[i].className='run';await new Promise(r=>setTimeout(r,500));lis[i].className='ok';lis[i].querySelector('.w').textContent=''}
+      lis[lis.length-1].className='run';
+      let data;
+      try{data=await fetchPromise}catch(e){data={error:String(e)}}
+      up.running=false;
+      if(data.error){
+        lis[lis.length-1].className='';
+        $('#upDone').innerHTML=`<div class="rcard"><div class="rh"><b>분석 실패</b></div><div class="rb"><div>${esc(data.error)}</div></div></div>`;
+        return;
+      }
+      lis[lis.length-1].className='ok';
+      applyRealData(data.segments,data.record_draft,data.counseling_summary,data.protective_factors);
+      $('#upDone').innerHTML=`<div class="rcard b"><div class="rh"><b>완료</b><span style="color:var(--sub)">실제 분석 결과</span></div><div class="rb"><div>${c.name} 사례에 실제 분석한 축어록과 기록 초안이 붙었습니다. 상담원은 확인하고 고치기만 하면 됩니다.</div><div class="btns"><button class="btn pri" type="button" data-open="jiwoo" data-tab="session">초안 확인</button></div><p class="note" style="margin:0">회기 기록 탭만 실제 데이터이며, 다른 탭(아이 앱·가계도·타임라인 등)은 여전히 시연 데이터입니다.</p></div></div>`;
+      return;
+    }
+
+    // 예시 녹취(실제 파일 없음) — 기존처럼 순수 시연 애니메이션만
     const times=['0.4초','38초','2초','11초','9초'];
     for(let i=0;i<lis.length;i++){lis[i].className='run';await new Promise(r=>setTimeout(r,700));lis[i].className='ok';lis[i].querySelector('.w').textContent=times[i]}
     up.running=false;
-    const cid=$('#upCase').value,c=caseOf(cid);
     $('#upDone').innerHTML=`<div class="rcard b"><div class="rh"><b>완료</b><span style="color:var(--sub)">약 1분 (예시)</span></div><div class="rb"><div>${c.name} 사례에 축어록과 기록 초안이 붙었습니다. 상담원은 확인하고 고치기만 하면 됩니다.</div><div class="btns"><button class="btn pri" type="button" data-open="jiwoo" data-tab="session">초안 확인</button></div>${cid!=='jiwoo'?'<p class="note" style="margin:0">시연 축어록은 지우 사례로 열립니다.</p>':''}</div></div>`;
   };
 }

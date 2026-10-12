@@ -966,7 +966,10 @@ def transcribe(
             raw_result
         )
 
-        if _stt_provider_name == "elevenlabs":
+        if (
+            _stt_provider_name == "elevenlabs"
+            and not raw_result.get("provider_fallback_used")
+        ):
             # ElevenLabsScribeV2Provider는 provider 단계에서 이미
             # RuntimeSpeakerRoleMapper로 CHILD/COUNSELOR/UNKNOWN을
             # 확정해서 내려준다(segment["speaker"]가 raw id가 아니라
@@ -976,6 +979,15 @@ def transcribe(
             # 다시 텍스트 휴리스틱으로 재분류하게 되어, provider가
             # 내린 결정을 뒤집을 수 있다. 그래서 이미 정해진 role을
             # 그대로 통과시키는 identity mapping만 사용한다.
+            #
+            # 단, provider_fallback_used=True면(ElevenLabs가 실패해서
+            # Deepgram으로 자동 대체된 경우, ProviderFailureFallbackSTT
+            # Provider 참고) 실제로 응답을 만든 건 Deepgram이라 raw
+            # speaker_id가 "SPEAKER_0" 같은 Deepgram 포맷으로 온다.
+            # 이 경우에 identity mapping을 쓰면 전부 UNKNOWN으로 빠져서
+            # "분석 가능한 발화가 없습니다" 오류가 난다(2026-10-08
+            # 실제 크레딧 소진 상황에서 재현·확인). 그래서 설정값이
+            # 아니라 "이번 응답이 실제로 fallback을 썼는지"로 분기한다.
             role_mapping = {
                 role: {"role": role}
                 for role in (

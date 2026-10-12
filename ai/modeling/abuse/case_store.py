@@ -403,3 +403,112 @@ def list_sessions_for_case(
         dict(row)
         for row in rows
     ]
+
+
+# ============================================================
+# 6. 회차별 추이 — 사례관리 "추이 보기" 화면용
+# ============================================================
+# 2026-10-08: 아직 실사용 다회차 데이터가 없어서(배포 전) 알고리즘만
+# 먼저 만들어 둔다 — 상담사들이 실제로 쓰기 시작해서 같은 case_id로
+# 세션이 여러 개 쌓이면, 이 함수는 코드 수정 없이 그대로 작동한다.
+# 더미 데이터로 "미리 학습"시킬 ML 모델이 아니다 — 이미 있는 1차/2차
+# 분석 결과를 세션 축으로 모아서 보여주는 순수 집계 로직이라, 데이터가
+# 쌓인다고 이 함수 자체가 똑똑해지지는 않는다. 쌓인 데이터는 상담사가
+# 직접 회차별 변화를 해석하는 데 쓰인다 — 이 함수가 "개선/악화"를
+# 판단하지는 않는다(그 판단을 AI가 내리면 안 된다는 설계 원칙 때문).
+
+_TREND_LABELS = ["신체학대", "정서학대", "성학대", "방임"]
+_TREND_STRENGTH_RANK = {"높음": 3, "중간": 2, "낮음": 1}
+
+
+def get_case_trend(
+    case_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    사례의 "승인된"(approved) 회기만 시간순으로 모아, 회차별 탐지
+    신호(탐지 유형, 세부유형 개수, 최고 근거강도)를 그대로 나열한다.
+
+    draft(상담사가 아직 확인 안 한 AI 초안) 세션은 제외한다 — 검증
+    안 된 걸 사례관리 추이에 섞으면 안 된다(이 파일 머리말의 원칙 3과
+    동일).
+
+    반환값은 raw 시계열이다. "1회차보다 나아짐/나빠짐" 같은 해석
+    문구는 여기서 만들지 않는다 — 회차마다 상담 주제가 다를 수 있고
+    분석에 쓰인 모델 버전도 다를 수 있어서, 탐지 빈도 변화만으로
+    상태 변화를 단정하면 안 된다. 해석은 상담사가 한다.
+    """
+
+    sessions = [
+        session
+        for session in list_sessions_for_case(case_id)
+        if session.get("status") == "approved"
+    ]
+
+    trend = []
+
+    for session in sessions:
+        try:
+            major_types = json.loads(
+                session.get("major_types") or "{}"
+            )
+        except (TypeError, ValueError):
+            major_types = {}
+
+        try:
+            subtype_analysis = json.loads(
+                session.get("subtype_analysis") or "{}"
+            )
+        except (TypeError, ValueError):
+            subtype_analysis = {}
+
+        detected_labels = [
+            label
+            for label in _TREND_LABELS
+            if major_types.get(label, {}).get("detected", False)
+        ]
+
+        subtypes_by_major = {
+            result.get("major_type"): result.get("subtypes", [])
+            for result in subtype_analysis.get("results", [])
+        }
+
+        type_signals = []
+
+        for label in detected_labels:
+            subtypes = subtypes_by_major.get(label, [])
+
+            strengths = [
+                evidence.get("evidence_strength")
+                for subtype in subtypes
+                for evidence in subtype.get("evidences", [])
+                if evidence.get("evidence_strength")
+                in _TREND_STRENGTH_RANK
+            ]
+
+            top_strength = (
+                max(
+                    strengths,
+                    key=lambda s: _TREND_STRENGTH_RANK[s],
+                )
+                if strengths
+                else None
+            )
+
+            type_signals.append(
+                {
+                    "label": label,
+                    "subtype_count": len(subtypes),
+                    "top_strength": top_strength,
+                }
+            )
+
+        trend.append(
+            {
+                "session_id": session.get("session_id"),
+                "approved_at": session.get("approved_at"),
+                "detected_count": len(detected_labels),
+                "types": type_signals,
+            }
+        )
+
+    return trend

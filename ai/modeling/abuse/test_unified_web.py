@@ -32,6 +32,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     Response,
 )
@@ -1068,11 +1069,23 @@ def transcribe(
         raw_result = stt_provider.transcribe(temp_path)
         final_result = post_processor.process(raw_result)
 
-        if _stt_provider_name == "elevenlabs":
+        if (
+            _stt_provider_name == "elevenlabs"
+            and not raw_result.get("provider_fallback_used")
+        ):
             # ElevenLabsScribeV2Provider는 provider 단계에서 이미 역할을
             # 확정해서 내려주므로(test_audio_pipeline_web.py의 /transcribe
             # 참고), WhisperX/Deepgram 전용인 ChildAnalysisTextBuilder의
             # 텍스트 휴리스틱을 다시 돌리지 않고 그대로 통과시킨다.
+            #
+            # provider_fallback_used=True(ElevenLabs 실패 후 Deepgram으로
+            # 자동 대체, ProviderFailureFallbackSTTProvider 참고)면 실제
+            # 응답은 Deepgram이 만든 것이라 raw speaker_id가 "SPEAKER_0"
+            # 같은 Deepgram 포맷으로 온다. 이걸 그대로 identity mapping에
+            # 통과시키면 전부 UNKNOWN으로 빠져서 "분석 가능한 발화가
+            # 없습니다" 오류가 난다 — 2026-10-08 ElevenLabs 크레딧 소진
+            # 상황에서 실제로 재현·확인했다. 그래서 설정값이 아니라
+            # "이번 응답이 실제로 fallback을 썼는지"로 분기한다.
             role_mapping = {
                 role: {"role": role}
                 for role in (
@@ -1252,6 +1265,142 @@ def get_audio_file(
         path=file_path,
         media_type=media_type,
     )
+
+
+# ============================================================
+# 5-1. 상담원 웹 목업 연결용 JSON API (2026-10-08 추가)
+# ============================================================
+# "I-SPOT 상담원 웹.html" 목업의 "회기 기록" 탭만 실제 데이터로 연결
+# 하기 위한 전용 엔드포인트. 목업의 다른 탭(아이 앱/가계도/타임라인/
+# 브리핑)은 연결할 실제 데이터 소스가 없어서 그대로 데모로 남는다 —
+# 이 엔드포인트는 축어록+기록초안에 필요한 segments/record_draft만
+# 돌려준다. /transcribe+/analyze-transcript처럼 STT 결과를 사람이
+# 검수하는 단계 없이 업로드부터 분석까지 한 번에 처리한다(목업의
+# 데모 업로드 흐름 자체가 검수 단계가 없는 구조라 그에 맞췄다).
+
+MOCKUP_HTML_PATH = Path(
+    "/data/I-SPOT/I-SPOT 상담원 웹.html"
+)
+MOCKUP_HTML_PATH_V2 = Path(
+    "/data/I-SPOT/I-SPOT 상담원 웹_2차.html"
+)
+
+
+def _serve_mockup_html(path: Path) -> HTMLResponse:
+    if not path.exists():
+        return HTMLResponse(
+            f"목업 파일을 찾을 수 없습니다: {path}",
+            status_code=404,
+        )
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
+@app.get(
+    "/demo",
+    response_class=HTMLResponse,
+)
+def demo_page():
+    """
+    목업 HTML을 이 FastAPI 앱에서 그대로 서빙한다. 별도 서버에서 열면
+    /api/analyze-audio 호출이 다른 출처(origin)가 돼 CORS 문제가
+    생기므로, 같은 앱에서 서빙해 동일 출처로 맞춘다.
+    """
+
+    return _serve_mockup_html(MOCKUP_HTML_PATH)
+
+
+@app.get(
+    "/demo2",
+    response_class=HTMLResponse,
+)
+def demo_page_v2():
+    """2차 목업(새 사례 등록 등 추가 화면 포함) 버전. /demo와 동일한 이유로
+    같은 앱에서 서빙한다."""
+
+    return _serve_mockup_html(MOCKUP_HTML_PATH_V2)
+
+
+@app.post("/api/analyze-audio")
+def api_analyze_audio(
+    case_id: str = Form(""),
+    file: UploadFile = File(...),
+):
+    """
+    음성 파일을 받아 STT + 전체 분석까지 돌리고, 목업 JS가 TR/TPL
+    형태로 바로 매핑할 수 있도록 segments/record_draft만 JSON으로
+    돌려준다.
+    """
+
+    temp_path = None
+
+    try:
+        extension = os.path.splitext(file.filename)[1]
+        file_bytes = file.file.read()
+
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=extension,
+        ) as temp_file:
+            temp_file.write(file_bytes)
+            temp_path = temp_file.name
+
+        raw_result = stt_provider.transcribe(temp_path)
+        final_result = post_processor.process(raw_result)
+
+        # /transcribe와 동일한 이유로 설정값이 아니라 "이번 응답이
+        # 실제로 fallback을 썼는지"로 분기한다(2026-10-08 — ElevenLabs
+        # 크레딧 소진으로 Deepgram 대체된 상황에서 전부 UNKNOWN으로
+        # 빠지는 버그를 실제로 재현·확인했다).
+        if (
+            _stt_provider_name == "elevenlabs"
+            and not raw_result.get("provider_fallback_used")
+        ):
+            role_mapping = {
+                role: {"role": role}
+                for role in (
+                    "COUNSELOR",
+                    "CHILD",
+                    "GUARDIAN",
+                    "OTHER",
+                    "UNKNOWN",
+                )
+            }
+        else:
+            child_result = child_builder.build(final_result)
+            role_mapping = child_result.get("role_mapping", {})
+
+        transcript = transcript_builder.build(
+            stt_data=final_result,
+            role_mapping=role_mapping,
+        )
+
+        result = analyze_audio_session(
+            stt_result=transcript,
+            case_id=case_id or None,
+        )
+
+        return JSONResponse(
+            {
+                "segments": result.get("segments", []),
+                "record_draft": result.get("record_draft", {}),
+                "counseling_summary": result.get(
+                    "counseling_summary", ""
+                ),
+                "protective_factors": result.get(
+                    "protective_factors", []
+                ),
+            }
+        )
+
+    except Exception as exc:
+        return JSONResponse(
+            {"error": str(exc)},
+            status_code=500,
+        )
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 # ============================================================
