@@ -28,3 +28,55 @@ export function toDateOnly(iso: string | null | undefined): string {
 
   return `${at.getFullYear()}-${pad2(at.getMonth() + 1)}-${pad2(at.getDate())}`;
 }
+
+/** 사용자 시간대의 날짜와 시각(YYYY-MM-DD HH:mm). 값이 없으면 빈 문자열. */
+export function toDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+
+  const at = parseBackendTime(iso);
+
+  if (!at) return iso.slice(0, 16).replace("T", " ");
+
+  return `${toDateOnly(iso)} ${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+}
+
+/**
+ * 음성 안의 위치 · 길이(밀리초)를 "01:36" 이나 "1:02:05" 로 쓴다. 1시간이 안 되면 분:초, 넘으면 시:분:초.
+ * 음수나 숫자가 아닌 값은 빈 문자열.
+ */
+export function formatClock(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return hours > 0 ? `${hours}:${pad2(minutes)}:${pad2(seconds)}` : `${pad2(minutes)}:${pad2(seconds)}`;
+}
+
+/** 녹음 길이(밀리초)를 "24분" · "1시간 5분" · "40초" 로 쓴다. 값이 없으면 빈 문자열. */
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "";
+
+  const totalSeconds = Math.round(ms / 1000);
+
+  if (totalSeconds < 60) return `${totalSeconds}초`;
+
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0) return `${minutes}분`;
+
+  return minutes === 0 ? `${hours}시간` : `${hours}시간 ${minutes}분`;
+}
+
+/** 파일 크기를 "183 KB" · "12.4 MB" 로 쓴다. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
