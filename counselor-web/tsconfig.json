@@ -1,0 +1,18 @@
+// 서버 연결 부분(src/api · src/data)만 TypeScript 로 검사한다. 화면(.jsx)은 JavaScript 그대로이고 Vite 가 함께 빌드한다.
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src/api", "src/data", "src/vite-env.d.ts"]
+}
