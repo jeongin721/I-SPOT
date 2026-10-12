@@ -1,60 +1,85 @@
 // 통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)
 // 원본: I-SPOT 디자인 캔버스 보드 CaseList.dc.html (자동 변환 후 다듬어 쓰세요)
-import { Fragment } from 'react';
+//
+// 서버 연결: 로그인 상태(useAuthSession)와 사례 목록(useCaseList)은 src/data 의 훅이 하고, 이 파일은 배치만 한다.
+// 피그마 화면으로 바꿀 때는 아래 CaseList 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
+//  - 이름은 아동 별칭이다(Backend 는 실명을 저장하지 않는다). 나이 대신 출생연도를 보여 준다.
+//  - 신고접수일 · 위험도 · 실명 보기는 Backend 에 값이 없어 자리만 두고 '—' · 준비 중으로 둔다(팀 결정 대기).
+//  - 상세로 가는 링크는 아직 사례 ID 를 넘기지 않는다(화면 주소에 ID 넣기는 새 화면 코드가 온 뒤).
+import { Fragment, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import { useAuthSession } from '../data/useAuthSession';
+import { useCaseList } from '../data/useCaseList';
 import './CaseList.css';
 
+const NOT_READY = '준비 중';
+
 class Logic extends DCLogic {
-  constructor(props) {
-    super(props);
-    this.state = { f: 'all', real: false };
-  }
   renderVals() {
-    const s = this.state;
-    const cls = { 상: 'chip c-hi', 중: 'chip c-mid', 하: 'chip c-lo' };
-    const data = [
-      ['C-2026-0277', '장', '민준', '9세', '2026-06-02', '상'],
-      ['C-2026-0351', '이', '서윤', '13세', '2026-07-28', '상'],
-      ['C-2026-0412', '김', '도현', '8세', '2026-08-19', '상'],
-      ['C-2026-0389', '박', '지호', '11세', '2026-09-03', '중'],
-      ['C-2026-0338', '정', '예린', '9세', '2026-08-05', '중'],
-      ['C-2026-0374', '최', '서준', '6세', '2026-09-25', '중'],
-      ['C-2026-0298', '윤', '하은', '10세', '2026-06-20', '중'],
-      ['C-2026-0229', '신', '유나', '8세', '2026-05-14', '하'],
-      ['C-2026-0312', '강', '시우', '7세', '2026-04-08', '하'],
-      ['C-2026-0251', '조', '하린', '14세', '2026-05-30', '하'],
-    ];
-    const rows = data
-      .filter((d) => s.f === 'all' || d[5] === s.f)
-      .map((d) => ({
-        id: d[0],
-        ini: s.real ? d[1] : d[2].slice(0, 1),
-        name: s.real ? d[1] + d[2] : '○' + d[2],
-        age: d[3],
-        date: d[4],
-        risk: d[5],
-        cls: cls[d[5]],
-      }));
+    const { session, list, search, setSearch } = this.props;
+    const me = session.me;
+    const rows = list.rows.map((r) => ({
+      id: r.caseNumber,
+      ini: r.initial,
+      name: r.alias,
+      age: r.birthYearLabel,
+      date: r.reportDate,
+      risk: r.riskLabel,
+      cls: 'note',
+    }));
+    // 위험도는 사례 단위 값이 Backend 에 없다. '전체'만 고를 수 있다.
     const filters = [
-      ['all', '전체 10'],
-      ['상', '상 3'],
-      ['중', '중 4'],
-      ['하', '하 3'],
-    ].map(([k, label]) => ({ label, cls: s.f === k ? 'on' : '', pick: () => this.setState({ f: k }) }));
+      ['all', list.total == null ? '전체' : `전체 ${list.total}`],
+      ['상', '상'],
+      ['중', '중'],
+      ['하', '하'],
+    ].map(([k, label]) => ({ label, cls: k === 'all' ? 'on' : '', disabled: k !== 'all' }));
+
+    // 표 본문: 확인 · 불러오는 중 → 오류 → 빈 목록 → 행
+    const sessionError = session.status === 'error';
+    let phase = 'rows';
+    if (session.status === 'checking' || list.loading) phase = 'loading';
+    if (sessionError || (phase !== 'loading' && list.error)) phase = 'error';
+    else if (phase === 'rows' && rows.length === 0) phase = 'empty';
+
+    let countLabel = '';
+    if (list.total != null) {
+      countLabel = `${me && me.role === 'ADMIN' ? '전체' : '담당'} 사례 ${list.total}건`;
+      if (list.total > rows.length) countLabel += ` · 처음 ${rows.length}건 표시`;
+    }
+
     return {
       rows,
       filters,
-      real: s.real,
-      tgBg: s.real ? '#A8C6E7' : '#DCD5C3',
-      tgX: s.real ? '16px' : '2px',
-      toggleReal: () => this.setState({ real: !s.real }),
+      real: false,
+      tgBg: '#DCD5C3',
+      tgX: '2px',
+      notReady: NOT_READY,
+      countLabel,
+      search: { value: search, onChange: (e) => setSearch(e.target.value) },
+      phase,
+      errorText: sessionError ? session.error : list.error,
+      retry: sessionError ? session.recheck : list.reload,
+      emptyText: search.trim() ? '검색 결과가 없습니다.' : '사례가 없습니다.',
+      meName: me ? `${me.name} ${me.role === 'ADMIN' ? '관리자' : '상담원'}` : '',
+      meInitial: me && me.name ? Array.from(me.name)[0] : '',
+      // 링크가 /Login 으로 옮기기 전에 로그아웃한다.
+      logout: () => session.logout(),
     };
   }
 }
 
 export default function CaseList(props) {
-  const v = useDC(Logic, props);
+  const session = useAuthSession();
+  const [search, setSearch] = useState('');
+  const list = useCaseList({ search, enabled: session.status === 'signedIn' });
+  const v = useDC(Logic, { ...props, session, list, search, setSearch });
+  // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다.
+  if (session.status === 'signedOut' || session.status === 'mustChangePassword') {
+    return <Navigate to="/Login" replace />;
+  }
   return (
     <div className="pg-CaseList">
       <div
@@ -97,9 +122,9 @@ export default function CaseList(props) {
             <A to="/Settings">설정</A>
           </nav>
           <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
+            <span className="av">{v.meInitial}</span>
+            <b style={{ fontWeight: '500' }}>{v.meName}</b>
+            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
               로그아웃
             </A>
           </div>
@@ -116,7 +141,7 @@ export default function CaseList(props) {
         >
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 260px' }}>
-              <div className="sub">담당 사례 10건</div>
+              <div className="sub">{v.countLabel}</div>
               <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>통합 사례 관리</h1>
             </div>
           </header>
@@ -127,17 +152,31 @@ export default function CaseList(props) {
               aria-label="이름 또는 사례 ID 검색"
               placeholder="이름 · 사례 ID 검색"
               style={{ flex: '1 1 240px' }}
+              {...v.search}
             />
             <div role="group" aria-label="위험도" className="seg">
               {(v.filters || []).map((f, fIndex) => (
                 <Fragment key={fIndex}>
-                  <button type="button" className={f.cls} onClick={f.pick}>
+                  <button
+                    type="button"
+                    className={f.cls}
+                    disabled={f.disabled}
+                    title={f.disabled ? v.notReady : undefined}
+                    style={f.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                  >
                     {f.label}
                   </button>
                 </Fragment>
               ))}
             </div>
-            <button type="button" className="tg" aria-pressed={v.real} onClick={v.toggleReal}>
+            <button
+              type="button"
+              className="tg"
+              aria-pressed={v.real}
+              disabled
+              title={v.notReady}
+              style={{ opacity: 0.5, cursor: 'not-allowed' }}
+            >
               <span
                 style={{
                   width: '34px',
@@ -164,13 +203,9 @@ export default function CaseList(props) {
               실명 보기
             </button>
           </section>
-          {v.real ? (
-            <>
-              <p className="note" style={{ margin: '-8px 0 0' }}>
-                실명 표시 중 · 열람 기록 남음
-              </p>
-            </>
-          ) : null}
+          <p className="note" style={{ margin: '-8px 0 0' }}>
+            위험도 · 실명 보기 · 신고접수일은 {v.notReady}입니다(서버에 아직 없는 값).
+          </p>
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>
               <thead>
@@ -185,7 +220,23 @@ export default function CaseList(props) {
                 </tr>
               </thead>
               <tbody>
-                {(v.rows || []).map((r, rIndex) => (
+                {v.phase !== 'rows' ? (
+                  <tr>
+                    <td colSpan={5} className="note" style={{ textAlign: 'center', padding: '28px 12px' }}>
+                      {v.phase === 'loading' ? '불러오는 중…' : null}
+                      {v.phase === 'empty' ? v.emptyText : null}
+                      {v.phase === 'error' ? (
+                        <span role="alert">
+                          {v.errorText}{' '}
+                          <button type="button" className="btn btn-s btn-sm" onClick={v.retry}>
+                            다시 시도
+                          </button>
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ) : null}
+                {(v.phase === 'rows' ? v.rows : []).map((r, rIndex) => (
                   <Fragment key={rIndex}>
                     <tr>
                       <td className="note">{r.id}</td>

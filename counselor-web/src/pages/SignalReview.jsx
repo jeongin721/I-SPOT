@@ -1,4 +1,4 @@
-// 2 · 위험 신호 검토
+// 2 · 위험 신호 검토 (→ 유형별 위험도)
 // 원본: I-SPOT 디자인 캔버스 보드 SignalReview.dc.html (자동 변환 후 다듬어 쓰세요)
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
@@ -170,6 +170,26 @@ export default function SignalReview(props) {
               <b style={{ fontWeight: '500' }}>추가 확인 · 질문</b>
             </A>
           </nav>
+          <nav className="seg" aria-label="2단계 보기" style={{ alignSelf: 'flex-start' }}>
+            <button type="button" className="on">
+              위험 신호
+            </button>
+            <A
+              to="/RiskProfile"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: '34px',
+                padding: '0 13px',
+                borderRadius: '9px',
+                fontSize: '13px',
+                color: '#55606A',
+                textDecoration: 'none',
+              }}
+            >
+              유형별 위험도
+            </A>
+          </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <span className="chip c-ai">AI 분석 · 판정 아님</span>
             <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
@@ -230,8 +250,8 @@ export default function SignalReview(props) {
             <A className="btn btn-s" to="/SttReview">
               ← STT 검수
             </A>
-            <A className="btn btn-p" to="/NoteWrite" style={{ marginLeft: 'auto' }}>
-              요약 · 일지 작성 →
+            <A className="btn btn-p" to="/RiskProfile" style={{ marginLeft: 'auto' }}>
+              유형별 위험도 →
             </A>
           </div>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>

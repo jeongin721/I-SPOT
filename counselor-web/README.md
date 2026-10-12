@@ -1,7 +1,8 @@
 # I-SPOT 상담사 웹 (프론트엔드 프로토타입)
 
-아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 25개 화면을 **React + Vite** 코드로 옮겼습니다.
+아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
+**로그인 · 통합 사례 관리 두 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결").
 
 ## 실행
 
@@ -15,6 +16,16 @@ npm run build      # dist/ 에 배포용 파일 생성
 - 화면 주소: `http://localhost:5173/#/Main`, `#/CaseDetail` 처럼 `#/파일이름`
 - 위치: I-SPOT 저장소의 `counselor-web/` 폴더 (기존 `ispotvscode/` 와 별개)
 
+## 서버 연결
+
+- 개발 중에는 `npm run dev` 가 `/api/v1` 요청을 Backend(기본 `http://127.0.0.1:8000`)로 넘깁니다. 주소가 다르면 `VITE_BACKEND_URL=http://127.0.0.1:8013 npm run dev` 처럼 바꿉니다.
+- 배포할 때는 `.env` 에 `VITE_API_BASE_URL`(Backend 주소)을 넣습니다.
+- 서버 연결 부분은 화면과 나눠 두었습니다. 화면(`.jsx`)은 JavaScript, 연결 부분은 TypeScript 이고 Vite 가 함께 빌드합니다.
+  - `src/api/` Backend 호출(토큰 · 401 · 오류 형식), 주소 함수, Backend 응답 타입. `ispotvscode/src/api` 에서 옮겨 왔습니다.
+  - `src/data/` 응답을 화면에 쓰기 좋은 모양으로 바꾸는 함수와 훅(로그인 상태 · 로그인 · 비밀번호 변경 · 사례 목록). 화면 이동은 하지 않고 상태만 돌려주므로 어느 화면 코드에도 끼울 수 있습니다.
+- 화면 파일은 훅의 결과를 `useDC(Logic, { ...props, 훅 결과 })` 로 넘겨 `renderVals()` 에서 씁니다(`Login.jsx` · `CaseList.jsx` 참고). 화면을 새로 바꿀 때는 훅 부분을 그대로 두고 JSX 만 갈아 끼웁니다.
+- 타입 검사: `npx tsc --noEmit` (CI 에서도 돕니다)
+
 ## 폴더 구조
 
 ```
@@ -25,6 +36,8 @@ src/
   dc.js               화면 로직 어댑터 (DCLogic · useDC)
   components/A.jsx    화면 간 이동 링크 (내부 경로는 react-router Link)
   styles/common.css   공통 스타일 (사이드바 · 카드 · 칩 · 버튼 · 탭 · 단계 표시 등)
+  api/                Backend 호출 (TypeScript) — client · endpoints · types
+  data/               응답 변환 함수 · 데이터 훅 (TypeScript)
   pages/
     Xxx.jsx           화면 1개 = 파일 1개 (로직 class + JSX)
     Xxx.css           그 화면 전용 스타일 (.pg-Xxx 로 범위 제한)
@@ -106,13 +119,14 @@ export default function Page(props) {
 | `/#/CaseDocs` | `src/pages/CaseDocs.jsx` | 탭 5 · 문서함 (기관 서식 6종 + 파일) |
 | `/#/CaseForm` | `src/pages/CaseForm.jsx` | 탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도) |
 
-**④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 요약 · 일지 작성 → 추가 확인 · 질문**
+**④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문**
 
 | 경로 | 파일 | 화면 |
 |---|---|---|
 | `/#/UploadModal` | `src/pages/UploadModal.jsx` | 녹취 · 자료 올리기 (팝업 3단계 + 확인창) |
 | `/#/SttReview` | `src/pages/SttReview.jsx` | 1 · STT 검수 (화자: 피해아동 · 사례관리대상자 · 상담원) |
-| `/#/SignalReview` | `src/pages/SignalReview.jsx` | 2 · 위험 신호 검토 |
+| `/#/SignalReview` | `src/pages/SignalReview.jsx` | 2 · 위험 신호 검토 (→ 유형별 위험도) |
+| `/#/RiskProfile` | `src/pages/RiskProfile.jsx` | 2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단) |
 | `/#/NoteWrite` | `src/pages/NoteWrite.jsx` | 3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식) |
 | `/#/FollowupQ` | `src/pages/FollowupQ.jsx` | 4 · 추가 확인 · 질문 (모두 승인 / 수정 가능) |
 

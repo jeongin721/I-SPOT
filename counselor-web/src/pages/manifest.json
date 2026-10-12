@@ -12,6 +12,7 @@
     "ChildLink",
     "Closure",
     "ClosureDetail",
+    "ClosureReview",
     "FollowupQ",
     "Login",
     "Main",
@@ -24,7 +25,7 @@
     "Stats",
     "SttReview",
     "UploadModal",
-    "ClosureReview"
+    "RiskProfile"
   ],
   "boards": {
     "Admin.dc.html": {
@@ -135,13 +136,22 @@
       "x": 3040,
       "y": 10100
     },
+    "ClosureReview.dc.html": {
+      "expand": "fill",
+      "h": 2300,
+      "is_interactive": true,
+      "title": "종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로)",
+      "w": 1440,
+      "x": 1520,
+      "y": 10100
+    },
     "FollowupQ.dc.html": {
       "expand": "fill",
       "h": 1550,
       "is_interactive": true,
       "title": "4 · 추가 확인 · 질문 (모두 승인 / 수정 가능)",
       "w": 1440,
-      "x": 6080,
+      "x": 7600,
       "y": 7400
     },
     "Login.dc.html": {
@@ -168,7 +178,7 @@
       "is_interactive": true,
       "title": "3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식)",
       "w": 1440,
-      "x": 4560,
+      "x": 6080,
       "y": 7400
     },
     "PreBriefing.dc.html": {
@@ -211,7 +221,7 @@
       "expand": "fill",
       "h": 1350,
       "is_interactive": true,
-      "title": "2 · 위험 신호 검토",
+      "title": "2 · 위험 신호 검토 (→ 유형별 위험도)",
       "w": 1440,
       "x": 3040,
       "y": 7400
@@ -243,14 +253,14 @@
       "x": 0,
       "y": 7400
     },
-    "ClosureReview.dc.html": {
+    "RiskProfile.dc.html": {
       "expand": "fill",
-      "h": 2300,
+      "h": 1900,
       "is_interactive": true,
-      "title": "종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로)",
+      "title": "2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단)",
       "w": 1440,
-      "x": 1520,
-      "y": 10100
+      "x": 4560,
+      "y": 7400
     }
   },
   "notes": {
@@ -280,15 +290,15 @@
     },
     "rowD": {
       "kind": "title1",
-      "maxW": 7520,
-      "text": "④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 요약 · 일지 작성 → 추가 확인 · 질문",
+      "maxW": 9040,
+      "text": "④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문",
       "w": 240,
       "x": 0,
       "y": 7100
     },
     "rowE": {
       "kind": "title1",
-      "maxW": 9040,
+      "maxW": 8000,
       "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 관리자",
       "w": 240,
       "x": 0,
@@ -313,6 +323,7 @@
     "UploadModal.dc.html",
     "SttReview.dc.html",
     "SignalReview.dc.html",
+    "RiskProfile.dc.html",
     "NoteWrite.dc.html",
     "FollowupQ.dc.html",
     "Closure.dc.html",
