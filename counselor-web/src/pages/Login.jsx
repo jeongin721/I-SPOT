@@ -25,6 +25,8 @@ class Logic extends DCLogic {
     const s = this.state;
     const user = await this.props.login.login(s.email, s.password);
     if (!user) return;
+    // 로그인했으니 앞서 남은 로그아웃 이유는 지운다(이 계정이 '다른 계정으로 로그인'을 눌렀을 때 앞 사람 문구가 다시 뜨지 않게).
+    this.props.dismissNotice();
     if (user.must_change_password) {
       // 방금 친 임시 비밀번호를 현재 비밀번호 칸에 옮겨 두고, 로그인 상태를 다시 확인해 변경 단계로 넘어간다.
       // 새 비밀번호 · 확인 칸은 비운다(앞 계정에서 치다 만 값이 남아 있으면 이 계정에 그대로 들어가 버린다).
@@ -71,9 +73,9 @@ class Logic extends DCLogic {
         if (changing) this.changePassword();
         else this.signIn();
       },
-      // 다른 계정으로 바꿀 때는 비밀번호 칸을 모두 비우고 오류 문구도 지운 뒤 로그아웃한다.
+      // 다른 계정으로 바꿀 때는 이메일 · 비밀번호 칸을 모두 비우고 오류 문구도 지운 뒤 로그아웃한다.
       switchAccount: () => {
-        this.setState({ password: '', current: '', next: '', confirm: '' });
+        this.setState({ email: '', password: '', current: '', next: '', confirm: '' });
         pwChange.clearErrors();
         session.logout();
       },
@@ -86,8 +88,8 @@ export default function Login(props) {
   const session = useAuthSession();
   const login = useLogin();
   const pwChange = usePasswordChange();
-  const { notice } = useLogoutNotice();
-  const v = useDC(Logic, { ...props, navigate, session, login, pwChange, notice });
+  const { notice, dismiss: dismissNotice } = useLogoutNotice();
+  const v = useDC(Logic, { ...props, navigate, session, login, pwChange, notice, dismissNotice });
   return (
     <div className="pg-Login">
       <div
