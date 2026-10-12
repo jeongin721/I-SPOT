@@ -1,0 +1,11 @@
+.pg-Closure .tbl tr:hover td {
+  background: #f8f5ec;
+}
+.pg-Closure .nm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #2f3a44;
+  font-weight: 500;
+}

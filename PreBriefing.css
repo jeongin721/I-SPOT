@@ -1,0 +1,21 @@
+.pg-PreBriefing .rq {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid #e7e0ce;
+  background: #ffffff;
+}
+.pg-PreBriefing .rq input {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: #a8c6e7;
+  flex: none;
+}
+.pg-PreBriefing .src {
+  display: block;
+  font-size: 12px;
+  color: #6f7880;
+}

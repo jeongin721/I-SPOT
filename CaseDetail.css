@@ -1,0 +1,50 @@
+.pg-CaseDetail .kv {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 9px 12px;
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+.pg-CaseDetail .kv dt {
+  color: #6f7880;
+}
+.pg-CaseDetail .kv dd {
+  margin: 0;
+}
+.pg-CaseDetail .st {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 13px;
+  position: relative;
+  z-index: 1;
+}
+.pg-CaseDetail .sd {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pg-CaseDetail .bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #eee8da;
+  overflow: hidden;
+}
+.pg-CaseDetail .bar span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #6f7880;
+}
+.pg-CaseDetail .box {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f8f5ec;
+}
