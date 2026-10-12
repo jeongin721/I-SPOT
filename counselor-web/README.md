@@ -1,6 +1,6 @@
 # I-SPOT 상담사 웹 (프론트엔드 프로토타입)
 
-아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 25개 화면을 **React + Vite** 코드로 옮겼습니다.
+아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
 **로그인 · 통합 사례 관리 두 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결").
 
@@ -119,13 +119,14 @@ export default function Page(props) {
 | `/#/CaseDocs` | `src/pages/CaseDocs.jsx` | 탭 5 · 문서함 (기관 서식 6종 + 파일) |
 | `/#/CaseForm` | `src/pages/CaseForm.jsx` | 탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도) |
 
-**④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 요약 · 일지 작성 → 추가 확인 · 질문**
+**④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문**
 
 | 경로 | 파일 | 화면 |
 |---|---|---|
 | `/#/UploadModal` | `src/pages/UploadModal.jsx` | 녹취 · 자료 올리기 (팝업 3단계 + 확인창) |
 | `/#/SttReview` | `src/pages/SttReview.jsx` | 1 · STT 검수 (화자: 피해아동 · 사례관리대상자 · 상담원) |
-| `/#/SignalReview` | `src/pages/SignalReview.jsx` | 2 · 위험 신호 검토 |
+| `/#/SignalReview` | `src/pages/SignalReview.jsx` | 2 · 위험 신호 검토 (→ 유형별 위험도) |
+| `/#/RiskProfile` | `src/pages/RiskProfile.jsx` | 2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단) |
 | `/#/NoteWrite` | `src/pages/NoteWrite.jsx` | 3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식) |
 | `/#/FollowupQ` | `src/pages/FollowupQ.jsx` | 4 · 추가 확인 · 질문 (모두 승인 / 수정 가능) |
 
