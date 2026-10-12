@@ -7,7 +7,7 @@
 // (PROPOSAL_risk_fields.md §7) 지금은 mock · pipeline · langgraph 모두 빈 배열이다. 신호 검토 화면은
 // 팀 결정(specs 대응표 'AI 신호 · 검수') 뒤에 따로 만든다.
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { analysis as analysisApi } from "../api/endpoints";
@@ -71,7 +71,15 @@ export function useSessionAnalysis(
   const key = enabled && sessionId ? sessionId : null;
   const remote = useRemote<AnalysisEnvelope>(key, analysisApi.get, "AI 분석 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
   const [submitting, setSubmitting] = useState(false);
+  // 요청 중인가. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
+  const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState(key);
+
+  if (errorKey !== key) {
+    setErrorKey(key);
+    setActionError(null);
+  }
 
   const envelope = remote.data;
   const sessionStatus = envelope?.session_status ?? null;
@@ -80,27 +88,44 @@ export function useSessionAnalysis(
   usePolling(processing, remote.refresh, remote.settled);
 
   const run = useCallback(async () => {
-    if (submitting || !key) return false;
+    if (!key || inFlight.current) return false;
 
+    const forKey = key;
+
+    inFlight.current = true;
     setSubmitting(true);
     setActionError(null);
 
     try {
-      await analysisApi.run(key);
-      // 이 훅과 같은 회차를 보는 훅(요약 · 원문 · 회차 상세)이 모두 'AI 분석 중' 을 받아 가고, usePolling 이 이어서 조회한다.
-      notifySessionChanged({ sessionId: key });
+      const requested = await analysisApi.run(forKey);
+
+      // 요청 응답의 'AI 분석 중' 을 바로 반영한다. 이어지는 조회가 한 번 실패해도 되풀이 조회가 시작되게.
+      // 재분석을 요청하면 이전 결과는 API 로 더 볼 수 없으므로(API_CONTRACT 8절) 이전 결과도 내린다.
+      remote.setData(forKey, (current) => ({
+        ...current,
+        session_id: forKey,
+        session_status: requested.session_status,
+        analysis: null,
+        error: null,
+      }));
+      // 이 훅과 같은 회차를 보는 훅(요약 · 원문 · 회차 상세)도 'AI 분석 중' 을 받아 간다.
+      notifySessionChanged({ sessionId: forKey });
 
       return true;
     } catch (caught) {
-      if (!(caught instanceof ApiError && caught.isUnauthorized)) {
+      if (remote.isCurrent(forKey) && !(caught instanceof ApiError && caught.isUnauthorized)) {
         setActionError(errorMessage(caught, "AI 분석을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요."));
       }
 
+      // 이미 분석 중이거나(409) 상태가 어긋났을 수 있다. 최신 상태를 다시 받는다.
+      remote.refresh();
+
       return false;
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
-  }, [submitting, key]);
+  }, [key, remote.setData, remote.isCurrent, remote.refresh]);
 
   const source = envelope?.analysis ?? null;
 

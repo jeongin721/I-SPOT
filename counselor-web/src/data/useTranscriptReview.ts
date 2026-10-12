@@ -11,7 +11,7 @@
 //  - 화면의 줄별 '확인' 표시는 화면 상태다. 서버에는 '원문 확정' 하나만 있다(specs 대응표 SttReview).
 //  - 원문 변환 중이면 POLL_INTERVAL_MS 마다 조용히 다시 조회한다.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { transcript as transcriptApi } from "../api/endpoints";
@@ -105,6 +105,8 @@ export function useTranscriptReview(
   const [drafts, setDrafts] = useState<Record<string, SegmentDraft>>({});
   const [removed, setRemoved] = useState<Record<string, true>>({});
   const [submitting, setSubmitting] = useState(false);
+  // 요청 중인가. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
+  const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState(key);
 
@@ -225,128 +227,161 @@ export function useTranscriptReview(
     setActionError(null);
   }, []);
 
+  /** 응답으로 받은 원문을 반영한다. 요청한 뒤 다른 회차로 옮겼으면 버린다. */
   const applyTranscript = useCallback(
-    (next: Transcript, status: SessionStatus) => {
-      if (!envelope) return;
-
-      remote.setData({ ...envelope, session_status: status, transcript: next, error: null });
-    },
-    [envelope, remote.setData],
+    (forKey: string, next: Transcript, status: SessionStatus) =>
+      remote.setData(forKey, (current) => ({
+        session_id: forKey,
+        ...current,
+        session_status: status,
+        transcript: next,
+        error: null,
+      })),
+    [remote.setData],
   );
 
-  /** 고친 칸을 보낸다. 성공하면 새 원문 버전(없으면 null — 보낼 것이 없음). 실패하면 undefined. */
-  const sendChanges = useCallback(async (): Promise<Transcript | null | undefined> => {
-    if (!key) return undefined;
+  /** 요청 하나를 한 번에 하나만 보낸다. 같은 순간 두 번 눌러도 두 번째는 false. */
+  const begin = useCallback(() => {
+    if (inFlight.current) return false;
 
-    const segments: TranscriptSegmentUpdate[] = Object.entries(effectiveDrafts)
-      .filter(([segmentId]) => !(segmentId in removed))
-      .map(([segmentId, change]) => ({ segment_id: segmentId, ...change }));
+    inFlight.current = true;
+    setSubmitting(true);
+    setActionError(null);
 
-    if (segments.length === 0 && effectiveRemoved.length === 0) return null;
+    return true;
+  }, []);
 
-    const payload: TranscriptUpdateRequest = {};
+  const end = useCallback(() => {
+    inFlight.current = false;
+    setSubmitting(false);
+  }, []);
 
-    if (segments.length > 0) payload.segments = segments;
-    if (effectiveRemoved.length > 0) payload.removed_segment_ids = effectiveRemoved;
+  /** 실패를 알린다. 요청한 뒤 다른 회차로 옮겼으면 앞 회차의 오류는 보이지 않는다. */
+  const report = useCallback(
+    (forKey: string, caught: unknown, fallback: string) => {
+      if (!remote.isCurrent(forKey)) return;
+      if (caught instanceof ApiError && caught.isUnauthorized) return;
 
-    try {
-      // 고친 칸은 비우지 않는다. 새 원문과 같아진 칸은 effectiveDrafts 에서 저절로 빠지고,
-      // 저장을 기다리는 사이 더 고친 칸은 그대로 남는다(통째로 비우면 그 입력이 사라진다).
-      return await transcriptApi.update(key, payload);
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.code === "DUPLICATE_RESOURCE") {
-        setActionError("다른 곳에서 원문이 먼저 수정됐습니다. 최신 원문을 불러왔으니 확인한 뒤 다시 저장해 주세요.");
-        remote.refresh();
-      } else if (!(caught instanceof ApiError && caught.isUnauthorized)) {
-        setActionError(errorMessage(caught, "원문을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+      setActionError(errorMessage(caught, fallback));
+    },
+    [remote.isCurrent],
+  );
+
+  /**
+   * 고친 칸을 보낸다. 성공하면 새 원문 버전(없으면 null — 보낼 것이 없음). 실패하면 undefined(오류는 알렸다).
+   * 고친 칸은 비우지 않는다. 새 원문과 같아진 칸은 effectiveDrafts 에서 저절로 빠지고,
+   * 저장을 기다리는 사이 더 고친 칸은 그대로 남는다(통째로 비우면 그 입력이 사라진다).
+   */
+  const sendChanges = useCallback(
+    async (forKey: string): Promise<Transcript | null | undefined> => {
+      const segments: TranscriptSegmentUpdate[] = Object.entries(effectiveDrafts)
+        .filter(([segmentId]) => !(segmentId in removed))
+        .map(([segmentId, change]) => ({ segment_id: segmentId, ...change }));
+
+      if (segments.length === 0 && effectiveRemoved.length === 0) return null;
+
+      const payload: TranscriptUpdateRequest = {};
+
+      if (segments.length > 0) payload.segments = segments;
+      if (effectiveRemoved.length > 0) payload.removed_segment_ids = effectiveRemoved;
+
+      try {
+        const next = await transcriptApi.update(forKey, payload);
+
+        // 확정 뒤에 고치면 서버가 '원문 검수 필요' 로 되돌린다(API_CONTRACT 7절).
+        applyTranscript(forKey, next, "STT_REVIEW_REQUIRED");
+        notifySessionChanged({ sessionId: forKey });
+
+        return next;
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.code === "DUPLICATE_RESOURCE") {
+          if (remote.isCurrent(forKey)) {
+            setActionError("다른 곳에서 원문이 먼저 수정됐습니다. 최신 원문을 불러왔으니 확인한 뒤 다시 저장해 주세요.");
+          }
+          remote.refresh();
+        } else {
+          report(forKey, caught, "원문을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        }
+
+        return undefined;
       }
-
-      return undefined;
-    }
-  }, [key, effectiveDrafts, effectiveRemoved, removed, remote.refresh]);
+    },
+    [effectiveDrafts, effectiveRemoved, removed, applyTranscript, report, remote.isCurrent, remote.refresh],
+  );
 
   const save = useCallback(async () => {
-    if (submitting) return false;
-
-    setSubmitting(true);
-    setActionError(null);
+    if (!key || !begin()) return false;
 
     try {
-      const next = await sendChanges();
-
-      if (next === undefined) return false;
-      // 확정 뒤에 고치면 서버가 '원문 검수 필요' 로 되돌린다(API_CONTRACT 7절).
-      if (next && key) {
-        applyTranscript(next, "STT_REVIEW_REQUIRED");
-        notifySessionChanged({ sessionId: key });
-      }
-
-      return true;
+      return (await sendChanges(key)) !== undefined;
     } finally {
-      setSubmitting(false);
+      end();
     }
-  }, [submitting, key, sendChanges, applyTranscript]);
+  }, [key, begin, end, sendChanges]);
 
   const confirm = useCallback(async () => {
-    if (submitting || !key) return false;
+    if (!key || !begin()) return false;
 
-    setSubmitting(true);
-    setActionError(null);
+    const forKey = key;
 
     try {
-      const next = await sendChanges();
+      if ((await sendChanges(forKey)) === undefined) return false;
+      // 저장하는 사이 다른 회차로 옮겼으면 확정하지 않는다(사람이 보고 있지 않은 회차를 확정하지 않게).
+      if (!remote.isCurrent(forKey)) return false;
 
-      if (next === undefined) return false;
+      const confirmed = await transcriptApi.confirm(forKey);
 
-      const confirmed = await transcriptApi.confirm(key);
-
-      applyTranscript(confirmed, "STT_CONFIRMED");
+      applyTranscript(forKey, confirmed, "STT_CONFIRMED");
       // 같은 화면의 AI 분석 훅 등이 '분석 요청 가능' 상태를 받아 가게 알린다.
-      notifySessionChanged({ sessionId: key });
+      notifySessionChanged({ sessionId: forKey });
 
       return true;
     } catch (caught) {
-      if (!(caught instanceof ApiError && caught.isUnauthorized)) {
-        setActionError(errorMessage(caught, "원문을 확정하지 못했습니다. 잠시 후 다시 시도해 주세요."));
-      }
-
+      report(forKey, caught, "원문을 확정하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       // 상태가 어긋났을 수 있다(다른 창에서 확정 · 다시 변환). 최신 상태를 다시 받는다.
       remote.refresh();
 
       return false;
     } finally {
-      setSubmitting(false);
+      end();
     }
-  }, [submitting, key, sendChanges, applyTranscript, remote.refresh]);
+  }, [key, begin, end, sendChanges, applyTranscript, report, remote.isCurrent, remote.refresh]);
 
   const requestStt = useCallback(async () => {
-    if (submitting || !key) return false;
+    if (!key || !begin()) return false;
 
-    setSubmitting(true);
-    setActionError(null);
+    const forKey = key;
 
     try {
-      const requested = await transcriptApi.run(key);
+      const requested = await transcriptApi.run(forKey);
 
-      setDrafts({});
-      setRemoved({});
+      // 요청 응답의 '변환 중' 을 바로 반영한다. 이어지는 조회가 한 번 실패해도 되풀이 조회가 시작되게.
+      if (remote.setData(forKey, (current) => ({
+        session_id: forKey,
+        transcript: null,
+        ...current,
+        session_status: requested.session_status,
+        error: null,
+      }))) {
+        setDrafts({});
+        setRemoved({});
+      }
 
-      if (envelope) remote.setData({ ...envelope, session_status: requested.session_status, error: null });
-
-      // 이 훅과 같은 회차를 보는 훅이 모두 다시 조회한다. 변환 중이면 usePolling 이 이어서 조회한다.
-      notifySessionChanged({ sessionId: key });
+      // 이 훅과 같은 회차를 보는 훅이 모두 다시 조회한다.
+      notifySessionChanged({ sessionId: forKey });
 
       return true;
     } catch (caught) {
-      if (!(caught instanceof ApiError && caught.isUnauthorized)) {
-        setActionError(errorMessage(caught, "원문 변환을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요."));
-      }
+      report(forKey, caught, "원문 변환을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      // 그사이 다른 곳에서 요청해 409 일 수 있다. 최신 상태를 다시 받는다.
+      remote.refresh();
 
       return false;
     } finally {
-      setSubmitting(false);
+      end();
     }
-  }, [submitting, key, envelope, remote.setData]);
+  }, [key, begin, end, report, remote.setData, remote.refresh]);
+
 
   return {
     sessionStatus,

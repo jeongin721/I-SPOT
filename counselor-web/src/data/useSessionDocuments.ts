@@ -6,7 +6,7 @@
 //  - 문서 하나를 따로 조회하는 API 는 없다. 목록에서 찾는다(findConsultationRecord).
 //  - 사정기록지 · 종결 보고서 같은 기관 서식은 구조가 팀 결정 전이다. 지금 정해진 유형은 상담일지 하나다.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { documents as documentsApi } from "../api/endpoints";
@@ -116,6 +116,8 @@ export function useSessionDocuments(
   const key = enabled && sessionId ? sessionId : null;
   const remote = useRemote<SessionDocument[]>(key, documentsApi.list, "문서를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
   const [submitting, setSubmitting] = useState(false);
+  // 요청 중인가. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
+  const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState(key);
 
@@ -126,36 +128,47 @@ export function useSessionDocuments(
 
   const rows = useMemo(() => (remote.data ?? []).map(toDocumentRow), [remote.data]);
 
-  /** 요청 하나를 보내고 결과 문서를 목록에 반영한다. */
+  /**
+   * 요청 하나를 보내고 결과 문서를 목록에 반영한다. 한 번에 하나만 보낸다(같은 순간 두 번 눌러도 두 번째는 null).
+   * 요청한 뒤 다른 회차로 옮겼으면 결과를 지금 회차의 목록에 넣지 않는다(문서는 요청한 회차에 만들어졌다).
+   */
   const perform = useCallback(
     async (send: (sessionId: string) => Promise<SessionDocument>, fallback: string): Promise<DocumentRow | null> => {
-      if (submitting || !key) return null;
+      if (!key || inFlight.current) return null;
 
+      const forKey = key;
+
+      inFlight.current = true;
       setSubmitting(true);
       setActionError(null);
 
       try {
-        const result = await send(key);
-        const current = remote.data ?? [];
-        const exists = current.some((document) => document.id === result.id);
+        const result = await send(forKey);
 
-        remote.setData(
-          exists ? current.map((document) => (document.id === result.id ? result : document)) : [...current, result],
-        );
+        remote.setData(forKey, (current) => {
+          const list = current ?? [];
+
+          return list.some((document) => document.id === result.id)
+            ? list.map((document) => (document.id === result.id ? result : document))
+            : [...list, result];
+        });
 
         return toDocumentRow(result);
       } catch (caught) {
-        if (!(caught instanceof ApiError && caught.isUnauthorized)) setActionError(errorMessage(caught, fallback));
+        if (remote.isCurrent(forKey) && !(caught instanceof ApiError && caught.isUnauthorized)) {
+          setActionError(errorMessage(caught, fallback));
+        }
 
         // 다른 창에서 승인됐을 수 있다(409 ALREADY_APPROVED). 최신 목록을 다시 받는다.
         remote.refresh();
 
         return null;
       } finally {
+        inFlight.current = false;
         setSubmitting(false);
       }
     },
-    [submitting, key, remote.data, remote.setData, remote.refresh],
+    [key, remote.setData, remote.isCurrent, remote.refresh],
   );
 
   const create = useCallback(
