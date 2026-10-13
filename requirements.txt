@@ -6,6 +6,7 @@ openai
 PyMuPDF
 reportlab==3.6.13
 koreanize-matplotlib
+deepgram-sdk
 numpy
 pandas
 scikit-learn
