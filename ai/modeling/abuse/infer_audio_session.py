@@ -38,6 +38,10 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.severity_llm import (
+    build_evidence_block_text,
+    rate_severity_from_text,
+)
 from ai.modeling.abuse.narrative_summary_llm import (
     format_points_for_masking,
     generate_narrative_summary_from_masked_text,
@@ -677,6 +681,43 @@ def analyze_audio_session(
 
     record_draft["narrative_summary"] = narrative_summary
 
+    # --------------------------------------------------------
+    # 유형별 심각도("유형별 위험도" 화면, 2026-10-13 추가, 검수 전 초안)
+    # --------------------------------------------------------
+    # severity_llm.py 모듈 docstring 참고 — subtype_result는 이 시점에
+    # 이미 restore_pii로 실명이 복원된 상태라(515행 근처 link_evidence_
+    # timestamps 때문에 복원이 먼저 필요했음), 외부 LLM에 보내기 전에
+    # 여기서 다시 마스킹한다.
+
+    severity_evidence_blocks = build_evidence_block_text(
+        subtype_result
+    )
+
+    severity_ratings = []
+
+    if severity_evidence_blocks:
+        severity_major_types = list(severity_evidence_blocks.keys())
+
+        severity_text = "\n\n".join(
+            f"[{major_type}]\n{block}"
+            for major_type, block in severity_evidence_blocks.items()
+        )
+
+        masked_severity_text, severity_entity_map = mask_for_outbound(
+            severity_text, known_identifiers=known_identifiers
+        )
+
+        severity_ratings = rate_severity_from_text(
+            client=client,
+            model=note_model,
+            major_types=severity_major_types,
+            masked_evidence_text=masked_severity_text,
+        )
+
+        severity_ratings = restore_pii(
+            severity_ratings, severity_entity_map
+        )
+
     return {
         "full_text": full_text,
         "segments": segments,
@@ -693,6 +734,7 @@ def analyze_audio_session(
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
         "protective_factors": protective_factors,
+        "severity_ratings": severity_ratings,
         "chunk_results": chunk_results,
     }
 

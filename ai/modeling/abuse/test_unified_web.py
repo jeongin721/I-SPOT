@@ -1439,6 +1439,9 @@ def api_analyze_audio(
                 "protective_factors": result.get(
                     "protective_factors", []
                 ),
+                "severity_ratings": result.get(
+                    "severity_ratings", []
+                ),
             }
         )
 

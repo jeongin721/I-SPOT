@@ -317,33 +317,37 @@ def _clean_ratings(
 # 4. 진입점
 # ============================================================
 
-def rate_severity(
+def rate_severity_from_text(
     client: OpenAI,
     model: str,
-    subtype_analysis: Dict[str, Any],
+    major_types: List[str],
+    masked_evidence_text: str,
 ) -> List[Dict[str, Any]]:
     """
-    탐지된 대분류별로 1~5단계 심각도를 매긴다. 전부 "검수 전 초안"이다
-    — 반환값에 reviewed: False를 항상 포함시켜서, 호출부/화면이 이걸
-    빠뜨리지 않고 "검수 전" 표시를 하도록 강제한다.
+    이미 build_evidence_block_text()로 만들고 호출부가 mask_for_outbound()로
+    마스킹한 텍스트를 받는 하위 함수. infer_audio_session.py처럼 실제
+    프로덕션 파이프라인에서 PII 마스킹을 거쳐야 할 때 이 함수를 쓴다
+    (protective_factor_llm.generate_protective_factors의
+    masked_transcript_text 패턴과 동일).
+
+    전부 "검수 전 초안"이다 — 반환값에 reviewed: False를 항상
+    포함시켜서, 호출부/화면이 이걸 빠뜨리지 않고 "검수 전" 표시를
+    하도록 강제한다.
     """
 
-    evidence_blocks = build_evidence_block_text(subtype_analysis)
+    cleaned_major_types = [
+        major_type
+        for major_type in major_types
+        if major_type in VALID_MAJOR_TYPES
+    ]
 
-    if not evidence_blocks:
+    if not cleaned_major_types or not masked_evidence_text.strip():
         return []
-
-    major_types = list(evidence_blocks.keys())
 
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         severity_definitions=build_severity_definition_text(
-            major_types
+            cleaned_major_types
         )
-    )
-
-    user_prompt = "\n\n".join(
-        f"[{major_type}]\n{block}"
-        for major_type, block in evidence_blocks.items()
     )
 
     try:
@@ -351,7 +355,7 @@ def rate_severity(
             client=client,
             model=model,
             system_prompt=system_prompt,
-            user_prompt=user_prompt,
+            user_prompt=masked_evidence_text,
             max_retries=2,
             timeout_seconds=180.0,
         )
@@ -363,7 +367,38 @@ def rate_severity(
 
     return _clean_ratings(
         parsed.get("ratings"),
-        set(major_types),
+        set(cleaned_major_types),
+    )
+
+
+def rate_severity(
+    client: OpenAI,
+    model: str,
+    subtype_analysis: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    독립 실행/데모용 편의 함수 — subtype_analysis에서 바로 평가 텍스트를
+    만들어서 마스킹 없이 호출한다. 프로덕션 파이프라인(PII 마스킹 필요)
+    에서는 이 함수 대신 rate_severity_from_text를 직접 쓴다.
+    """
+
+    evidence_blocks = build_evidence_block_text(subtype_analysis)
+
+    if not evidence_blocks:
+        return []
+
+    major_types = list(evidence_blocks.keys())
+
+    user_prompt = "\n\n".join(
+        f"[{major_type}]\n{block}"
+        for major_type, block in evidence_blocks.items()
+    )
+
+    return rate_severity_from_text(
+        client=client,
+        model=model,
+        major_types=major_types,
+        masked_evidence_text=user_prompt,
     )
 
 
