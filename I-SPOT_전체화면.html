@@ -897,14 +897,20 @@ renderVals() {
   const msToTs = (ms) => { const t = Math.floor((ms || 0) / 1000); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
   const segMap = {};
   if (real && real.segments) real.segments.forEach((seg) => { segMap[seg.segment_id] = msToTs(seg.start_ms); });
+  const SUBTYPE_NO = { '직접 신체 가해': 1, '도구·위험수단 사용': 2, '신체적 강압·제압': 3,
+    '폭언·모욕': 4, '위협·공포 유발': 5, '통제·강요·고립': 6, '가정폭력·폭력상황 노출': 7,
+    '성적 노출·성희롱': 8, '성적 접촉·추행': 9, '성교·유사성행위': 10, '성적 착취': 11,
+    '기본적 보호·양육 방임': 12, '교육적 방임': 13, '의료적 방임': 14 };
   const realPoints = real && real.record_draft && real.record_draft.risk_signal_points;
-  const defs = (realPoints && realPoints.length) ? realPoints.map((p) => ({
-    type: (p.major_type || '').replace('학대', ''), title: p.subtype || '',
+  const defs = (realPoints && realPoints.length) ? realPoints.map((p) => {
+    const no = SUBTYPE_NO[p.subtype];
+    const noTag = no ? ` (세부 신호 ${no})` : '';
+    return { type: (p.major_type || '').replace('학대', ''), title: p.subtype || '',
     at: (p.segment_ids || []).map((id) => segMap[id]).filter(Boolean).join(' · ') || '-',
-    quote: p.text || '', why: `AI 추출 근거 · 근거 강도 ${p.evidence_strength || '-'}`,
-    check: p.evidence_strength === '낮음' ? '근거 약함 · 확인 권장' : '근거 강도 ' + (p.evidence_strength || '-'),
+    quote: p.text || '', why: (p.strength_reason || `근거 강도 ${p.evidence_strength || '-'}`) + noTag,
+    check: p.evidence_verified ? '원문 일치 ✓' : '원문 재확인 필요',
     ok: p.evidence_strength !== '낮음'
-  })) : [
+  }; }) : [
     { type: '신체', title: '직접 신체 가해', at: '00:41', quote: '저한테 소리 지르고… 많이 때렸어요', why: '보호자가 아동을 때렸다는 1인칭 진술 (세부 신호 3)', check: '원문 일치 ✓', ok: true },
     { type: '신체', title: '상해 부위 진술', at: '01:08', quote: '등이랑 팔이요', why: '맞은 부위를 구체적으로 말함 (세부 신호 4)', check: '원문 일치 ✓', ok: true },
     { type: '정서', title: '위협 · 공포 유발', at: '01:08 · 01:36', quote: '말하면 더 혼난다고 했어요 / 무서웠어요', why: '함구 요구와 두려움 표현이 이어짐 (세부 신호 9)', check: '원문 일치 ✓ · 발화별 보관', ok: true },
@@ -974,13 +980,23 @@ renderVals() {
   const childStatementText = (rd && rd.child_statement_points && rd.child_statement_points.length)
     ? rd.child_statement_points.map((p) => `· ${tsOf(p.segment_ids)} "${p.text}"`).join('\n')
     : '· 00:41 "아빠가 또 화났어요. 저한테 소리 지르고… 많이 때렸어요"\n· 01:08 "등이랑 팔이요. 근데 말하면 더 혼난다고 했어요"\n· 01:36 "무서웠어요"';
+  const segById = {};
+  if (real && real.segments) real.segments.forEach((seg) => { segById[seg.segment_id] = seg; });
+  const isHeld = (p) => p.evidence_strength === '낮음' || (p.segment_ids || []).some((id) => { const sg = segById[id]; return sg && (sg.speaker === 'UNKNOWN' || sg.is_low_confidence); });
+  const groupText = (list) => { const order = [], byKey = {};
+    list.forEach((p) => { const key = p.subtype || p.major_type || '기타'; if (!byKey[key]) { byKey[key] = []; order.push(key); } byKey[key].push(p); });
+    return order.map((key) => { const ts = []; byKey[key].forEach((p) => (p.segment_ids || []).forEach((id) => { const sg = segById[id]; if (sg) ts.push(msToTs(sg.start_ms)); }));
+      const note = (list === heldList && segById && byKey[key].some((p) => (p.segment_ids || []).some((id) => { const sg = segById[id]; return sg && sg.speaker === 'UNKNOWN'; }))) ? ', 화자 불확실' : '';
+      return `${key}(${ts.join(', ')}${note})`; }).join(' · '); };
+  const acceptedList = (riskPoints || []).filter((p) => !isHeld(p));
+  const heldList = (riskPoints || []).filter((p) => isHeld(p));
   const riskReviewText = (riskPoints && riskPoints.length)
-    ? riskPoints.map((p) => `${p.major_type || ''} · ${p.subtype || ''} (${tsOf(p.segment_ids)}) · 근거 강도 ${p.evidence_strength || '-'}`).join('\n')
+    ? [acceptedList.length ? '채택: ' + groupText(acceptedList) : '', heldList.length ? '보류: ' + groupText(heldList) : ''].filter(Boolean).join('\n')
     : '채택: 직접 신체 가해(00:41) · 상해 부위 진술(01:08) · 위협 · 공포 유발(01:08, 01:36)\n보류: 기본 보호 · 양육 방임(02:15, 화자 불확실)';
   const sums = [
     { k: '(안전관련) 조사 후 변화된 사항', v: '6회차 "맞은 적은 잘 모르겠어요"였던 진술이 8회차에 "많이 때렸어요"로 바뀜. 두 진술 모두 원문대로 남김.', src: '6회차 05:02 · 8회차 00:41' },
-    { k: '아동안전과 관련된 강점과 자원', v: (protectivePoints && protectivePoints.length) ? protectivePoints.map((p) => `[${p.category}] ${p.text}`).join('\n') : '조모에게 연락하는 안전 계획을 알고 있음. 할머니 집에 가고 싶다고 말함.', src: (protectivePoints && protectivePoints.length) ? 'AI 추출 · 보호 요인(검수 전)' : '7회차 02:40 · 8회차 02:40' },
-    { k: '아동안전과 관련된 위험요인', v: (riskPoints && riskPoints.length) ? riskPoints.map((p) => `${p.major_type || ''} · ${p.subtype || ''} (${tsOf(p.segment_ids)})`).join('\n') : '보호자(부)의 체벌과 함구 요구("말하면 더 혼난다"). 식사 관련 발화는 화자 확인 필요.', src: (riskPoints && riskPoints.length) ? 'AI 추출 · 2차 분석 근거' : '8회차 00:41 · 01:08 · 02:15' },
+    { k: '아동안전과 관련된 강점과 자원', v: (rd && rd.narrative_summary && rd.narrative_summary.strengths_narrative) || '조모에게 연락하는 안전 계획을 알고 있음. 할머니 집에 가고 싶다고 말함.', src: (rd && rd.narrative_summary) ? 'AI 추출 · ' + tsOf(rd.narrative_summary.strengths_citations) : '7회차 02:40 · 8회차 02:40' },
+    { k: '아동안전과 관련된 위험요인', v: (rd && rd.narrative_summary && rd.narrative_summary.risks_narrative) || '보호자(부)의 체벌과 함구 요구("말하면 더 혼난다"). 식사 관련 발화는 화자 확인 필요.', src: (rd && rd.narrative_summary) ? 'AI 추출 · ' + tsOf(rd.narrative_summary.risks_citations) : '8회차 00:41 · 01:08 · 02:15' },
     { k: '앞으로 원하는 변화 · 원하는 서비스/지원', v: '아동: 할머니 집에 가고 싶음. 서비스: 등 · 팔 통증 의료 확인 필요.', src: '8회차 02:40 · 01:08' }
   ];
   const T = ['불안', '낮은 자존감', '우울', '무력감', '대인관계 기피', '학교부적응', '애착문제', '주의산만', '반항 · 충동 · 공격성', '잦은 결석', '수면 · 위생 문제', '특성없음'];

@@ -38,6 +38,10 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.narrative_summary_llm import (
+    format_points_for_masking,
+    generate_narrative_summary_from_masked_text,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -623,6 +627,55 @@ def analyze_audio_session(
         protective_factors,
         citation_entity_map,
     )
+
+    # --------------------------------------------------------
+    # 상담 요약 문단 종합(2026-10-13 추가)
+    # --------------------------------------------------------
+    # 이미 만든 보호요인/위험신호를 자연스러운 문단으로 "다시 쓰기"만
+    # 한다 — 새 사실을 추가하지 않는다. narrative_summary_llm.py
+    # 모듈 docstring 참고(지금은 이번 세션 1개 분량만, 여러 회차를
+    # 가로지르는 종합은 case_store 쪽 작업이 더 필요해 범위 밖).
+    #
+    # protective_factors/risk_signal_points는 이 시점에 이미
+    # restore_pii로 실명이 복원된 상태라, 외부 LLM에 보내기 전에
+    # 여기서 다시 마스킹한다(narrative_summary_llm.py의 PII 마스킹
+    # 설계 결정 참고).
+
+    narrative_combined = format_points_for_masking(
+        protective_factors,
+        record_draft.get("risk_signal_points", []),
+    )
+
+    masked_narrative_combined, narrative_entity_map = mask_for_outbound(
+        narrative_combined, known_identifiers=known_identifiers
+    )
+
+    narrative_summary = generate_narrative_summary_from_masked_text(
+        client=client,
+        model=note_model,
+        masked_combined_text=masked_narrative_combined,
+    )
+
+    narrative_summary = restore_pii(
+        narrative_summary, narrative_entity_map
+    )
+
+    narrative_summary["strengths_citations"] = sorted(
+        {
+            str(sid)
+            for p in protective_factors
+            for sid in (p.get("segment_ids") or [])
+        }
+    )
+    narrative_summary["risks_citations"] = sorted(
+        {
+            str(sid)
+            for p in record_draft.get("risk_signal_points", [])
+            for sid in (p.get("segment_ids") or [])
+        }
+    )
+
+    record_draft["narrative_summary"] = narrative_summary
 
     return {
         "full_text": full_text,

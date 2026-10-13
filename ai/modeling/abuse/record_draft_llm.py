@@ -119,6 +119,19 @@ def _build_risk_signal_points(
                         "evidence_strength": evidence.get(
                             "evidence_strength"
                         ),
+                        # 2026-10-13: SignalReview 화면의 "근거" 칸이
+                        # 지금까지 이 둘을 안 받아서 "AI 추출 근거"라는
+                        # 의미 없는 placeholder만 보여주고 있었다.
+                        # strength_reason은 이미 2차 분석이 만들어 둔
+                        # "왜 이 강도로 판단했는지" 설명이고,
+                        # evidence_verified는 원문 대조 결과다 — 둘 다
+                        # 새로 만들 필요 없이 그대로 넘기면 된다.
+                        "strength_reason": evidence.get(
+                            "strength_reason"
+                        ),
+                        "evidence_verified": evidence.get(
+                            "evidence_verified", False
+                        ),
                         "segment_ids": segment_ids,
                     }
                 )
