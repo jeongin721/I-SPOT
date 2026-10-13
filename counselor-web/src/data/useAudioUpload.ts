@@ -5,7 +5,8 @@
 //
 // 화면은 start() 에 사례 · 회차 · 파일을 넘기고 phase 를 보고 그린다. 실패하면 retry() 가 실패한 단계부터 다시 한다.
 //  - 새 회차를 만든 뒤 업로드 · 변환이 실패하고 다시 시도하면 **이미 만든 회차를 다시 쓴다**
-//    (예전 화면은 새 회차를 또 만들어 빈 회차가 쌓였다).
+//    (예전 화면은 새 회차를 또 만들어 빈 회차가 쌓였다). 회차 만들기 응답을 놓쳤으면(연결 끊김 · 5xx) 다시 시도할 때
+//    그사이 생긴 빈 회차(CREATED)를 먼저 찾아 쓴다.
 //  - 진행률(%)은 Backend 가 주지 않는다. 단계(phase)로 보여 준다.
 //  - 화면을 닫아도 서버의 변환은 계속된다. 결과는 회차 상세 · 처리 대기 업무에서 이어서 본다.
 
@@ -16,6 +17,7 @@ import { cases, sessions, transcript } from "../api/endpoints";
 import type { SessionCreateRequest, SessionStatus } from "../api/types";
 import { checkAudioFile } from "./audioFile";
 import { notifySessionChanged } from "./sessionEvents";
+import { parseBackendTime } from "./time";
 import { POLL_INTERVAL_MS, errorMessage } from "./useRemote";
 
 /**
@@ -81,6 +83,23 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+/** 응답을 놓친 회차 만들기 요청이 서버에서 만든 회차를 가늠하는 여유(서버 · 브라우저 시계 차이 포함). */
+const CREATE_LOOKBACK_MS = 5 * 60 * 1000;
+
+/**
+ * since 무렵 이후에 생긴, 음성이 없는(CREATED) 회차 중 가장 최근 것. 없으면 null.
+ * 응답을 놓친 회차 만들기를 다시 시도할 때 빈 회차를 또 만들지 않으려고 쓴다.
+ */
+async function findCreatedSession(caseId: string, since: number): Promise<string | null> {
+  const page = await cases.listSessions(caseId, { page: 1, page_size: 100 });
+  const recent = page.items
+    .filter((row) => row.status === "CREATED")
+    .filter((row) => (parseBackendTime(row.created_at)?.getTime() ?? 0) >= since - CREATE_LOOKBACK_MS)
+    .sort((a, b) => b.session_number - a.session_number);
+
+  return recent.length > 0 ? recent[0].id : null;
+}
+
 export function useAudioUpload(): AudioUploadState {
   const [phase, setPhase] = useState<UploadPhase>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -93,6 +112,8 @@ export function useAudioUpload(): AudioUploadState {
   const request = useRef<UploadRequest | null>(null);
   // 이 창에서 만든 회차(사례별). 실패 뒤 다시 시도할 때 또 만들지 않는다.
   const created = useRef<{ caseId: string; sessionId: string } | null>(null);
+  // 회차 만들기 요청이 서버에 닿았는지 모르게 실패했다(연결 끊김 · 5xx). 다시 시도할 때 그사이 생긴 빈 회차를 먼저 찾는다.
+  const uncertain = useRef<{ caseId: string; since: number } | null>(null);
   const failedAt = useRef<UploadFailedStep | null>(null);
   // 실행 중인가. 실행 중에는 start · retry 를 받지 않는다.
   const running = useRef(false);
@@ -141,11 +162,38 @@ export function useAudioUpload(): AudioUploadState {
 
       if (!target && created.current?.caseId === input.caseId) target = created.current.sessionId;
 
+      if (!target && uncertain.current?.caseId === input.caseId) {
+        step = "createSession";
+        setPhase("creatingSession");
+
+        const found = await findCreatedSession(input.caseId, uncertain.current.since);
+
+        if (!alive()) return false;
+
+        uncertain.current = null;
+
+        if (found) {
+          created.current = { caseId: input.caseId, sessionId: found };
+          target = found;
+        }
+      }
+
       if (!target) {
         step = "createSession";
         setPhase("creatingSession");
 
-        const session = await cases.createSession(input.caseId, input.newSession ?? {});
+        const since = Date.now();
+        let session;
+
+        try {
+          session = await cases.createSession(input.caseId, input.newSession ?? {});
+        } catch (caught) {
+          // 응답을 못 받았으면(연결 끊김 · 5xx) 서버에는 회차가 생겼을 수 있다.
+          if (caught instanceof ApiError && (caught.status === 0 || caught.status >= 500)) {
+            uncertain.current = { caseId: input.caseId, since };
+          }
+          throw caught;
+        }
 
         if (!alive()) return false;
 
@@ -263,6 +311,7 @@ export function useAudioUpload(): AudioUploadState {
 
       // 다른 사례로 새로 시작하면 앞 사례에서 만든 회차는 잊는다(같은 사례면 retry 처럼 다시 쓴다).
       if (created.current && created.current.caseId !== input.caseId) created.current = null;
+      if (uncertain.current && uncertain.current.caseId !== input.caseId) uncertain.current = null;
 
       request.current = input;
       setSessionId(input.sessionId ?? null);
@@ -288,6 +337,7 @@ export function useAudioUpload(): AudioUploadState {
     running.current = false;
     request.current = null;
     created.current = null;
+    uncertain.current = null;
     failedAt.current = null;
     setPhase("idle");
     setSessionId(null);

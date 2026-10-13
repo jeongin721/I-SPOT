@@ -94,7 +94,8 @@ export function uploadModalValues(input: UploadScreenInput) {
   // 1단계: 사례
   const cases = list.rows.map((row) => ({
     name: row.alias,
-    meta: `${row.caseNumber} · 최근 상담 ${row.lastSessionDate}`,
+    // 최근 상담일은 쓰지 않는다(목록의 last_session_at 은 상담일이 없으면 회차 등록일로 채워진다).
+    meta: `${row.caseNumber} · ${row.birthYearLabel}`,
     ...radio(row.id === caseId),
     pick: () => setCaseId(row.id),
   }));
@@ -218,9 +219,10 @@ export function uploadModalValues(input: UploadScreenInput) {
       if (canNext) setState({ step: Math.min(3, state.step + 1) as UploadUiState["step"] });
     },
     prev: () => setState({ step: Math.max(1, state.step - 1) as UploadUiState["step"] }),
-    canUpload: Boolean(caseId && file && !state.fileError && !upload.busy),
+    // 길이를 읽는 중에는 막는다(WAV 가 아니면 서버가 길이를 재지 않아 그대로 올리면 길이가 빠진다).
+    canUpload: Boolean(caseId && file && !state.fileError && !state.measuring && !upload.busy),
     upload: () => {
-      if (!caseId || !file || state.fileError || upload.busy) return;
+      if (!caseId || !file || state.fileError || state.measuring || upload.busy) return;
       setState({ dialog: true });
       void upload.start({
         caseId,

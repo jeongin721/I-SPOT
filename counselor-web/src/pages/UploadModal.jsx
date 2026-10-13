@@ -29,8 +29,14 @@ class Logic extends DCLogic {
 }
 
 export default function UploadModal(props) {
-  const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
+  // 주소의 사례 · 회차가 바뀌면 처음부터 다시 그린다(고른 사례 · 단계를 앞 주소 것으로 두고 올리지 않게).
+  return <UploadModalScreen key={`${ids.caseId ?? ''}|${ids.sessionId ?? ''}`} {...props} ids={ids} />;
+}
+
+function UploadModalScreen(props) {
+  const { ids } = props;
+  const session = useAuthSession();
   const go = useNavigate();
   const enabled = signedIn(session);
   const [search, setSearch] = useState('');

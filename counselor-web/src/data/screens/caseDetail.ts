@@ -65,6 +65,10 @@ export function caseDetailValues(input: CaseScreenInput) {
   const info = detail.caseInfo;
   const latest = detail.sessions[0] ?? null;
   const dash = NOT_PROVIDED;
+  // 최근 상담일은 회차의 상담 일시(consulted_at)로만 센다. 사례의 last_session_at 은 상담일이 없으면
+  // 회차 등록일로 채워지므로(backend case_service._last_session_at_subquery) 쓰지 않는다.
+  const consulted = detail.sessions.map((row) => row.consultedDate).filter((date) => date !== NOT_PROVIDED);
+  const lastConsulted = consulted.length > 0 ? [...consulted].sort().reverse()[0] : dash;
 
   const basics: { label: string; value: string; strong?: boolean }[] = info
     ? [
@@ -77,7 +81,7 @@ export function caseDetailValues(input: CaseScreenInput) {
         { label: "신고접수일", value: dash },
         { label: "사례연계일", value: dash },
         { label: "상담 회차", value: `${info.sessionCount}회`, strong: true },
-        { label: "최근 상담", value: info.lastSessionDate },
+        { label: "최근 상담", value: lastConsulted },
         { label: "아이 앱", value: dash },
       ]
     : [];
