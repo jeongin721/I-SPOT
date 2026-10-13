@@ -38,7 +38,13 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |
 | 상담일지 | `useSessionDocuments` | 문서 목록 · 만들기 · 고치기 · 승인(회차 상태와 따로 움직임) |
 | 설정 | `useAuthSession` + `profile` · `usePasswordChange` | 내 정보 표시, 비밀번호 변경 |
+| 관리자 대시보드 | `useAdminDashboard` · `adminRows` | 전체 사례 · 처리 대기 업무(지연 · 종류별) · 활성 상담사 · 최근 접속 5건. 미배정 · 문서 승인 · 보안 경고는 `—` |
+| 관리자 · 업무 처리 현황 | `useAdminTasks` | 모든 상담사의 처리 대기 회차(종류 · 지연 · 상담사로 거르기). 재처리 요청은 넣지 않음(팀 결정) |
+| 관리자 · 상담사 계정 관리 | `useAdminAccounts` · `initialPassword` | 계정 목록 · 담당 사례 수, 등록(임시 비밀번호 발급) · 이름 · 역할 · 활성/비활성, 비밀번호 초기화 · 잠금 해제 · 휴면 해제 · 강제 로그아웃. 자기 계정은 막음 |
+| 관리자 · 접속 기록 | `useAuditLogs` | 로그인 기록(성공 · 실패 · 기간 · 쪽), `action` 을 바꾸면 계정 관리 기록. 보안 이벤트 심각도는 Backend 에 없음 |
+| 관리자 · 전체 사례 현황 | `useCaseList` | 관리자는 전체 사례가 온다(Backend 가 거름) |
 
+- 관리자 훅(`useAdmin*` · `useAuditLogs`)은 `{ enabled }` 대신 `useAuthSession()` 결과를 첫 인자로 받습니다(`useAdminDashboard(session)`). `session.isAdmin`(로그인됐고 서버가 준 역할이 관리자)이 아니면 서버를 부르지 않고, 로그아웃 · 다른 계정으로 바뀌면 불러온 값을 바로 비웁니다. 계정 관리 훅의 요청 뒤에는 같은 탭의 대시보드 · 접속 기록도 다시 조회합니다(`adminEvents`).
 - 한 화면에서 위 훅을 여러 개 함께 써도 됩니다. 한 훅의 요청(업로드 · 확정 · 분석 요청 · 승인)으로 회차 상태가 바뀌면 같은 회차를 보는 다른 훅도 다시 조회합니다(`sessionEvents`).
 - Backend 에 없는 값(실명 · 신고접수일 · 위험도 · 상담 유형 · 기관 이름 등)은 다른 값으로 채우지 않고 `—` 로 둡니다.
 - 타입 검사: `npx tsc --noEmit` (CI 에서도 돕니다)
