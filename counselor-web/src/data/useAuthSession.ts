@@ -21,7 +21,7 @@ import {
   signOut,
 } from "../api/client";
 import { auth } from "../api/endpoints";
-import type { User } from "../api/types";
+import type { User, UserRole } from "../api/types";
 
 /**
  * checking           저장된 토큰을 확인하는 중
@@ -36,6 +36,14 @@ export interface AuthSession {
   status: AuthStatus;
   /** signedIn · mustChangePassword 일 때 로그인한 사용자. 그 밖에는 null. */
   me: User | null;
+  /** 로그인한 사용자의 역할(서버가 GET /auth/me 로 준 값). 로그인 전 · 확인 중이면 null. */
+  role: UserRole | null;
+  /**
+   * 관리자 화면을 써도 되는가. 로그인이 끝났고(signedIn) 서버가 준 역할이 관리자일 때만 true.
+   * 임시 비밀번호 상태(mustChangePassword)는 관리자라도 false 다 — 다른 요청이 모두 403 이다.
+   * 관리자 훅(useAdmin*)은 이 값이 false 면 서버를 부르지 않는다.
+   */
+  isAdmin: boolean;
   error: string | null;
   /** 다시 확인한다(오류 뒤 다시 시도, 이 탭에서 방금 로그인한 뒤). */
   recheck: () => void;
@@ -148,5 +156,7 @@ export function useAuthSession(): AuthSession {
 
   const logout = useCallback((reason?: string) => signOut(reason), []);
 
-  return { status, me, error, recheck, logout };
+  const role = me?.role ?? null;
+
+  return { status, me, role, isAdmin: status === "signedIn" && role === "ADMIN", error, recheck, logout };
 }
