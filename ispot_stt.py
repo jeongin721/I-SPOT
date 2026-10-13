@@ -67,7 +67,13 @@ try:
                 str(_lib_path),
                 mode=ctypes.RTLD_GLOBAL,
             )
-except (ImportError, OSError):
+except (ImportError, OSError, TypeError, AttributeError):
+    # TypeError/AttributeError: nvidia-cudnn-cu12이 __init__.py 없는
+    # namespace 패키지로 설치된 환경에서는 nvidia.cudnn.__file__이
+    # None이라 Path(None)이 TypeError를 낸다(2026-10-13, 실제 GPU
+    # 배포 환경에서 재현 — 기존에는 ImportError/OSError만 잡아서
+    # 이 경우 서버 전체가 기동 실패했다). 주석에 적힌 원래 의도대로
+    # "실패해도 조용히 넘어간다"에 맞게 범위를 넓힌다.
     pass
 
 # 공부용 설명:
