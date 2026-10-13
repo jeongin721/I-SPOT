@@ -48,8 +48,9 @@ export function sessionHeaderValues({ session, ids, detail, caseDetail }: Sessio
       session,
       missing: ids.sessionId ? null : missingSession(caseId),
       loading: detail.loading,
-      error: detail.error,
-      retry: detail.reload,
+      // 회차는 받았는데 사례(별칭 · 다른 회차 목록)만 실패해도 알린다.
+      error: detail.error ?? caseDetail.error,
+      retry: detail.error ? detail.reload : caseDetail.reload,
     }),
     caseLabel: info ? `${info.alias} ${info.caseNumber}` : "",
     caseHref: screenHref("/CaseDetail", { caseId }),

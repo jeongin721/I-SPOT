@@ -30,7 +30,10 @@ export interface CaseRow {
   initial: string;
   /** "2016년생". 출생연도가 없으면 NOT_PROVIDED. */
   birthYearLabel: string;
-  /** 최근 상담일(YYYY-MM-DD). 회차가 없으면 NOT_PROVIDED. */
+  /**
+   * 사례의 last_session_at(YYYY-MM-DD). 회차가 없으면 NOT_PROVIDED.
+   * Backend 는 상담 일시를 넣지 않은 회차를 등록일로 채워 계산하므로 '최근 상담일' 로 보이면 안 된다.
+   */
   lastSessionDate: string;
   /** 담당 상담사 이름. 계정이 지워졌으면 NOT_PROVIDED. */
   counselorName: string;
