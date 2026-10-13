@@ -1291,6 +1291,9 @@ MOCKUP_HTML_PATH = (
 MOCKUP_HTML_PATH_V2 = (
     _PROJECT_ROOT / "I-SPOT 상담원 웹_2차.html"
 )
+MOCKUP_HTML_PATH_FULL = (
+    _PROJECT_ROOT / "I-SPOT_전체화면.html"
+)
 
 
 def _serve_mockup_html(path: Path) -> HTMLResponse:
@@ -1325,6 +1328,19 @@ def demo_page_v2():
     같은 앱에서 서빙한다."""
 
     return _serve_mockup_html(MOCKUP_HTML_PATH_V2)
+
+
+@app.get(
+    "/demo-full",
+    response_class=HTMLResponse,
+)
+def demo_page_full():
+    """26개 화면 전체 디자인(SPA, 해시 라우팅) 버전. 지금은 UploadModal→
+    SttReview만 /api/analyze-audio에 실제로 연결돼 있고 나머지 화면은
+    데모 데이터 그대로다(2026-10-13). /demo와 동일한 이유로 같은 앱에서
+    서빙한다."""
+
+    return _serve_mockup_html(MOCKUP_HTML_PATH_FULL)
 
 
 @app.post("/api/analyze-audio")
