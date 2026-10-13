@@ -1278,11 +1278,18 @@ def get_audio_file(
 # 검수하는 단계 없이 업로드부터 분석까지 한 번에 처리한다(목업의
 # 데모 업로드 흐름 자체가 검수 단계가 없는 구조라 그에 맞췄다).
 
-MOCKUP_HTML_PATH = Path(
-    "/data/I-SPOT/I-SPOT 상담원 웹.html"
+# 개발 파드 경로(/data/I-SPOT)로 하드코딩돼 있던 걸 __file__ 기준
+# 상대경로로 수정 — 다른 환경(예: EC2의 /root/I-SPOT)에 배포하면
+# 절대경로가 안 맞아서 "목업 파일을 찾을 수 없습니다" 404가 났다
+# (2026-10-13, 실제 배포 중 재현). llm_backend.py의 .env 로딩과
+# 같은 방식(parents[3] = 프로젝트 루트)으로 통일한다.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+MOCKUP_HTML_PATH = (
+    _PROJECT_ROOT / "I-SPOT 상담원 웹.html"
 )
-MOCKUP_HTML_PATH_V2 = Path(
-    "/data/I-SPOT/I-SPOT 상담원 웹_2차.html"
+MOCKUP_HTML_PATH_V2 = (
+    _PROJECT_ROOT / "I-SPOT 상담원 웹_2차.html"
 )
 
 
