@@ -72,10 +72,10 @@ export default function SttReview(props) {
             </A>
             <A to="/Schedule">일정</A>
             <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
+              아이 연계
             </A>
             <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
+              종결 검토
             </A>
             <A to="/Stats">통계</A>
             <A to="/Settings">설정</A>
