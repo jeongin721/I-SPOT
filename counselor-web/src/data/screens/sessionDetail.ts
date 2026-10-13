@@ -8,9 +8,9 @@
 import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { SessionDetailState, SessionDetailView } from "../useSessionDetail";
-import type { SessionStep } from "../sessionRows";
 import { NOT_PROVIDED } from "../caseRows";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
+import { CARD_OF } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 회차 화면이 쓸 사례 ID. 회차 정보를 받았으면 그 사례, 아직이면 주소의 사례. */
@@ -62,16 +62,6 @@ export function sessionHeaderValues({ session, ids, detail, caseDetail }: Sessio
     ids: sessionIds,
   };
 }
-
-/** 회차 상세의 단계 카드 4개(STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 추가 확인 · 질문)에서 지금 카드. 승인 완료면 -1. */
-const CARD_OF: Record<SessionStep, number> = {
-  upload: 0,
-  stt: 0,
-  sttReview: 0,
-  analysis: 1,
-  summaryReview: 2,
-  done: -1,
-};
 
 function sttCard(sv: SessionDetailView): { st: string; preview: string } {
   const audio = sv.audio ? `${sv.audio.fileName} · ${sv.audio.durationLabel} · ${sv.audio.sizeLabel}` : "녹음 파일 없음";

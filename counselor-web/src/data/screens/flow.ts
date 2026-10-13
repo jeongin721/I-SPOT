@@ -7,7 +7,7 @@
 //  - '추가 확인 · 질문' 은 Backend 에 없다(회차 상태에 '질문 처리 완료' 단계가 없다). 늘 준비 중이다.
 
 import type { SessionRow, SessionStep } from "../sessionRows";
-import { screenHref } from "./links";
+import { type ScreenIds, screenHref } from "./links";
 
 /** 화면의 회차 처리 단계. index 는 사례 상세 '현재 진행 상황' 의 칸 순서다. */
 export const PROCESS_COLUMNS = ["녹취 올림", "STT 검수", "위험 신호 검토", "요약 · 일지 작성", "추가 확인 · 질문"] as const;
@@ -47,4 +47,47 @@ export function continueLink(row: Pick<SessionRow, "id" | "caseId" | "step">): {
     href: screenHref(STEP_SCREEN[row.step], { caseId: row.caseId, sessionId: row.id }),
     label: `이어서 하기 · ${CONTINUE_LABEL[row.step]}`,
   };
+}
+
+/**
+ * 회차 처리 단계 카드 · 탭 4개(STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 추가 확인 · 질문)에서 회차가 있는 칸.
+ * 승인 완료면 -1(앞 세 칸을 모두 지났다). '추가 확인 · 질문' 칸에 오는 상태는 없다.
+ */
+export const CARD_OF: Record<SessionStep, number> = {
+  upload: 0,
+  stt: 0,
+  sttReview: 0,
+  analysis: 1,
+  summaryReview: 2,
+  done: -1,
+};
+
+const PROCESS_SCREENS = [
+  { page: "/SttReview", label: "STT 검수" },
+  { page: "/SignalReview", label: "위험 신호 검토" },
+  { page: "/NoteWrite", label: "요약 · 일지 작성" },
+  { page: "/FollowupQ", label: "추가 확인 · 질문" },
+] as const;
+
+/**
+ * 회차 처리 화면 위의 단계 표시(.steps). here 는 지금 화면의 칸(0~3).
+ * 지금 화면은 'on', 회차가 이미 지난 칸은 'done'(✓). 링크는 같은 사례 · 회차 주소다.
+ */
+export function processNav(step: SessionStep | null, here: number, ids: Partial<ScreenIds>) {
+  const at = step === null ? 0 : CARD_OF[step];
+  const lastDone = at === -1 ? 2 : at - 1;
+
+  return PROCESS_SCREENS.map((screen, index) => {
+    const on = index === here;
+    const done = step !== null && index <= lastDone;
+
+    return {
+      href: screenHref(screen.page, ids),
+      label: screen.label,
+      cls: on ? "stp on" : done ? "stp done" : "stp",
+      mark: done && !on ? "✓" : String(index + 1),
+      weight: on ? "700" : "500",
+      current: on ? "step" : undefined,
+    };
+  });
 }
