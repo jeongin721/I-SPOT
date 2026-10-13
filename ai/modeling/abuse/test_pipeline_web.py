@@ -49,9 +49,13 @@ try:
         / "NanumGothic.ttf"
     )
 except ImportError:
-    _NANUM_FONT_PATH = Path("")
+    # Path("")는 내부적으로 "."(현재 작업 디렉터리)로 정규화되고
+    # Path(".").exists()는 항상 True라, 이 폴백이 "폰트 없음"이 아니라
+    # "현재 디렉터리를 폰트 파일로 열기 시도"로 이어져 TTFError가 났다
+    # (2026-10-13, koreanize_matplotlib 미설치 환경에서 실제 재현).
+    _NANUM_FONT_PATH = None
 
-if _NANUM_FONT_PATH.exists():
+if _NANUM_FONT_PATH is not None and _NANUM_FONT_PATH.exists():
     pdfmetrics.registerFont(
         TTFont(
             "NanumGothic",
