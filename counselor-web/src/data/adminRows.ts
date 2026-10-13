@@ -293,7 +293,8 @@ export function toAuditRow(log: AuditLog, roles: Map<string, UserRole>): AuditRo
 
 /**
  * 날짜 입력(YYYY-MM-DD, 사용자 시간대) → 감사 로그 since · until(UTC ISO).
- * 시작일은 그날 0시부터, 종료일은 그날 23:59:59.999 까지 포함한다(Backend 는 둘 다 경계 포함).
+ * 시작일은 그날 0시부터, 종료일은 그날 23:59:59.999999 까지 포함한다(Backend 는 둘 다 경계 포함).
+ * Backend 는 마이크로초까지 저장하므로 끝 경계도 마이크로초로 보낸다(Date 는 밀리초까지라 .999Z 면 마지막 1ms 가 빠진다).
  * 비어 있거나 읽지 못하면 undefined(조건 없음).
  */
 export function toAuditRange(startDate: string, endDate: string): { since?: string; until?: string } {
@@ -302,7 +303,7 @@ export function toAuditRange(startDate: string, endDate: string): { since?: stri
 
   return {
     since: since && !Number.isNaN(since.getTime()) ? since.toISOString() : undefined,
-    until: until && !Number.isNaN(until.getTime()) ? until.toISOString() : undefined,
+    until: until && !Number.isNaN(until.getTime()) ? until.toISOString().replace(/\.999Z$/, ".999999Z") : undefined,
   };
 }
 

@@ -12,10 +12,14 @@
 //
 // 요청은 한 번에 하나다(같은 순간 두 번 눌러도 두 번째는 null). 요청이 끝나면 목록을 다시 받고, 같은 탭의
 // 다른 관리자 훅(대시보드 · 접속 기록)에도 알린다(adminEvents).
+//
+// 요청을 여러 번 보내는 일(등록 = 만들기 → 초기화, WEAK_PASSWORD 다시 보내기, 사례 수의 다음 쪽)은 다음 요청을
+// 보내기 직전마다 로그인이 그대로인지(토큰이 같은지 · 화면에 붙어 있는지) 본다. 그사이 로그아웃하거나 다른 계정으로
+// 바뀌었으면 멈춘다 — 바뀐 계정의 토큰으로 앞 사람의 작업을 이어 보내지 않게.
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { ApiError, getToken } from "../api/client";
 import { auth, cases } from "../api/endpoints";
 import type { Case, User, UserRole, UserUpdateRequest } from "../api/types";
 import { adminKey, type AdminAccess, type AdminHookOptions } from "./adminAccess";
@@ -39,10 +43,22 @@ const CREATE_ATTEMPTS = 3;
 
 const CASE_PAGE_SIZE = 100;
 
+/** 요청을 보내기 직전에 로그인이 그대로인지 볼 때 던진다. 받은 쪽은 조용히 그만둔다. */
+class SessionChangedError extends Error {
+  constructor() {
+    super("로그인이 바뀌어 요청을 멈췄습니다.");
+    this.name = "SessionChangedError";
+  }
+}
+
 async function loadAllCases(): Promise<Case[]> {
   const all: Case[] = [];
+  // 첫 쪽을 보낼 때의 로그인. 다음 쪽을 보내기 전에 바뀌었으면 멈춘다(결과는 useRemote 가 어차피 버린다).
+  const token = getToken();
 
   for (let page = 1; ; page += 1) {
+    if (page > 1 && getToken() !== token) throw new SessionChangedError();
+
     const result = await cases.list({ page, page_size: CASE_PAGE_SIZE });
 
     all.push(...result.items);
@@ -132,10 +148,11 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
     "담당 사례 수를 세지 못했습니다.",
     () => false,
   );
-  const [submitting, setSubmitting] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  // 요청 중인가. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
-  const inFlight = useRef(false);
+  // 진행 중인 요청과 그 요청을 보낸 계정 key. 다른 관리자로 바뀌면 앞 사람의 요청은 새 사람의 진행 상태 ·
+  // 두 번 누름 막기에 끼어들지 않는다. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
+  const [busy, setBusy] = useState<{ id: number; key: string; userId: string | null } | null>(null);
+  const inFlight = useRef<{ id: number; key: string } | null>(null);
+  const lastRequestId = useRef(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState(key);
 
@@ -162,32 +179,43 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
   const perform = useCallback(
     async <T>(
       userId: string | null,
-      send: () => Promise<T>,
+      send: (stillSame: () => void) => Promise<T>,
       fallback: string,
       onFailure?: (caught: unknown) => T | null,
     ): Promise<T | null> => {
-      if (!key || inFlight.current) return null;
+      if (!key || inFlight.current?.key === key) return null;
 
       const forKey = key;
+      const token = getToken();
+      const id = ++lastRequestId.current;
+      // 보낸 계정 그대로 화면에 붙어 있고 토큰도 같은가.
+      const same = () => users.isCurrent(forKey) && getToken() === token;
+      // 다음 요청을 보내기 직전에 부른다. 바뀌었으면 멈춘다.
+      const stillSame = () => {
+        if (!same()) throw new SessionChangedError();
+      };
 
-      inFlight.current = true;
-      setSubmitting(true);
-      setBusyId(userId);
+      inFlight.current = { id, key: forKey };
+      setBusy({ id, key: forKey, userId });
       setActionError(null);
 
       try {
-        const result = await send();
+        const result = await send(stillSame);
 
         notifyAccountsChanged();
 
-        if (!users.isCurrent(forKey)) return null;
+        if (!same()) return null;
 
         users.refresh();
         counts.refresh();
 
         return result;
       } catch (caught) {
-        if (!users.isCurrent(forKey)) return null;
+        // 로그인이 바뀌어 중간에 멈췄다. 앞 요청(예: 계정 만들기)은 이미 처리됐을 수 있어 다른 관리자 훅에 알린다.
+        // 결과 · 오류는 바뀐 로그인에 보이지 않는다.
+        if (caught instanceof SessionChangedError) notifyAccountsChanged();
+
+        if (!same()) return null;
 
         if (!(caught instanceof ApiError && caught.isUnauthorized)) setActionError(errorMessage(caught, fallback));
 
@@ -196,9 +224,8 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
 
         return onFailure ? onFailure(caught) : null;
       } finally {
-        inFlight.current = false;
-        setSubmitting(false);
-        setBusyId(null);
+        if (inFlight.current?.id === id) inFlight.current = null;
+        setBusy((current) => (current?.id === id ? null : current));
       }
     },
     [key, users.isCurrent, users.refresh, counts.refresh],
@@ -235,8 +262,10 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
 
       return perform<CreatedAccount>(
         null,
-        async () => {
+        async (stillSame) => {
           for (let attempt = 1; !created; attempt += 1) {
+            if (attempt > 1) stillSame();
+
             try {
               created = await auth.createUser({ ...payload, password: generateInitialPassword() });
             } catch (caught) {
@@ -247,6 +276,9 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
           }
 
           const account = toAccountRow(created, meId, null);
+
+          stillSame();
+
           const temporary = await auth.resetPassword(created.id);
 
           return { account, temporaryPassword: toTemporaryPasswordView(temporary) };
@@ -256,13 +288,16 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
         (): CreatedAccount | null => {
           if (!created) return null;
 
+          // 계정은 만들어졌다. 같은 탭의 대시보드 · 접속 기록도 다시 부르게 알린다.
+          notifyAccountsChanged();
+          counts.refresh();
           setActionError(`${created.name} 계정은 만들었지만 임시 비밀번호를 발급하지 못했습니다. 목록에서 '비밀번호 초기화'를 눌러 주세요.`);
 
           return { account: toAccountRow(created, meId, null), temporaryPassword: null };
         },
       );
     },
-    [perform, meId],
+    [perform, meId, counts.refresh],
   );
 
   const update = useCallback(
@@ -379,8 +414,8 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
     loading: users.loading,
     error: actionError ?? users.error,
     caseCountError: counts.error,
-    submitting,
-    busyId,
+    submitting: busy?.key === key,
+    busyId: busy?.key === key ? busy.userId : null,
     create,
     update,
     setActive,

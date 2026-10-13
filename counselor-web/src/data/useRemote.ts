@@ -1,6 +1,6 @@
 // 서버 값 하나를 불러와 들고 있는 공용 훅. 회차 · 전사 · 분석 · 요약 · 문서 훅이 이 위에 얹힌다.
 //
-//  - key 가 바뀌면(다른 회차) 앞 값을 바로 비우고 새로 부른다. 늦게 온 앞 회차 응답은 버린다.
+//  - key 가 바뀌면(다른 회차) 바뀐 첫 그리기부터 앞 값을 보이지 않고 새로 부른다. 늦게 온 앞 회차 응답은 버린다.
 //  - reload()  는 '불러오는 중' 을 보이며 다시 부른다(사용자가 누른 새로고침).
 //  - refresh() 는 값을 그대로 둔 채 조용히 다시 부른다(처리 중 상태를 되풀이 조회할 때).
 //  - setData(key, …) 로 수정 · 승인 응답을 바로 반영한다(다시 부르지 않아도 되게). 요청을 보낸 뒤 대상이 바뀌었으면
@@ -55,9 +55,11 @@ export function useRemote<T>(
   affects: (change: SessionChange, key: string, data: T | null) => boolean = (change, current) =>
     change.sessionId === current,
 ): RemoteState<T> {
-  const [data, setDataState] = useState<T | null>(null);
+  // 값 · 오류는 어느 key 의 것인지와 함께 든다. key 가 바뀐 첫 그리기부터 앞 대상의 값 · 오류를 보이지 않게 하려고서다
+  // (비우는 일을 effect 에서 하면 바뀐 key 로 한 번은 앞 대상의 값이 그려진다).
+  const [entry, setEntry] = useState<{ key: string | null; data: T | null }>({ key, data: null });
+  const [failure, setFailure] = useState<{ key: string | null; message: string | null }>({ key, message: null });
   const [loading, setLoading] = useState(key !== null);
-  const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [settled, setSettled] = useState(0);
   // 이번 조회가 조용한 refresh 인가. 조회를 시작할 때 읽고 되돌린다.
@@ -70,6 +72,11 @@ export function useRemote<T>(
   // 지금 대상. 요청을 보낸 뒤 대상이 바뀌었는지 setData · isCurrent 가 본다.
   const keyRef = useRef(key);
   keyRef.current = key;
+  // 화면에 붙어 있는가. 떠난 뒤에는 isCurrent 가 false 다(떠난 화면의 요청 결과를 돌려주지 않게).
+  const mounted = useRef(false);
+
+  const data = entry.key === key ? entry.data : null;
+  const error = failure.key === key ? failure.message : null;
 
   const reload = useCallback(() => {
     silent.current = false;
@@ -80,12 +87,6 @@ export function useRemote<T>(
     silent.current = true;
     setTick((value) => value + 1);
   }, []);
-
-  // 다른 대상으로 바뀌면 앞 값을 먼저 비운다(잠깐이라도 다른 회차의 내용이 보이지 않게).
-  useEffect(() => {
-    setDataState(null);
-    setError(null);
-  }, [key]);
 
   useEffect(() => {
     const quiet = silent.current;
@@ -102,7 +103,7 @@ export function useRemote<T>(
 
     if (!quiet) {
       setLoading(true);
-      setError(null);
+      setFailure({ key, message: null });
     }
 
     loadRef
@@ -110,8 +111,8 @@ export function useRemote<T>(
       .then((value) => {
         if (requestId !== latest.current) return;
 
-        setDataState(value);
-        setError(null);
+        setEntry({ key, data: value });
+        setFailure({ key, message: null });
         setLoading(false);
         setSettled((count) => count + 1);
       })
@@ -119,8 +120,8 @@ export function useRemote<T>(
         if (requestId !== latest.current) return;
 
         // 조용한 refresh 가 실패하면 들고 있던 값은 두고 오류만 알린다.
-        if (!quiet) setDataState(null);
-        setError(errorMessage(caught, fallback));
+        if (!quiet) setEntry({ key, data: null });
+        setFailure({ key, message: errorMessage(caught, fallback) });
         setLoading(false);
         setSettled((count) => count + 1);
       });
@@ -140,24 +141,30 @@ export function useRemote<T>(
     });
   }, [key, refresh]);
 
-  // 화면을 떠나면 늦게 온 응답을 버린다.
-  useEffect(
-    () => () => {
-      latest.current += 1;
-    },
-    [],
-  );
+  // 화면을 떠나면 늦게 온 응답을 버리고, 보낸 요청의 결과도 지금 대상이 아닌 것으로 본다.
+  useEffect(() => {
+    mounted.current = true;
 
-  const isCurrent = useCallback((forKey: string) => keyRef.current === forKey, []);
+    return () => {
+      mounted.current = false;
+      latest.current += 1;
+    };
+  }, []);
+
+  const isCurrent = useCallback((forKey: string) => mounted.current && keyRef.current === forKey, []);
 
   const setData = useCallback((forKey: string, value: T | ((current: T | null) => T)) => {
     // 요청을 보낸 뒤 다른 대상으로 옮겼으면 앞 대상의 응답은 버린다(지금 대상의 값 · 진행 중인 조회는 그대로).
-    if (keyRef.current !== forKey) return false;
+    if (!mounted.current || keyRef.current !== forKey) return false;
 
     // 진행 중인 조회가 있으면 그 응답이 방금 반영한 값을 덮지 않게 버린다.
     latest.current += 1;
-    setDataState((current) => (typeof value === "function" ? (value as (current: T | null) => T)(current) : value));
-    setError(null);
+    setEntry((current) => {
+      const held = current.key === forKey ? current.data : null;
+
+      return { key: forKey, data: typeof value === "function" ? (value as (current: T | null) => T)(held) : value };
+    });
+    setFailure({ key: forKey, message: null });
     setLoading(false);
     setSettled((count) => count + 1);
 
