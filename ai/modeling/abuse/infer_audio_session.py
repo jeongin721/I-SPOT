@@ -49,6 +49,10 @@ from ai.modeling.abuse.narrative_summary_llm import (
 from ai.modeling.abuse.session_change import (
     build_session_change_notes,
 )
+from ai.modeling.abuse.followup_check_llm import (
+    format_inputs_for_masking as format_followup_inputs_for_masking,
+    generate_followup_check_points_from_masked_text,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -751,6 +755,36 @@ def analyze_audio_session(
                 current_round_label=current_round_label,
             )
 
+    # --------------------------------------------------------
+    # 다음 상담에서 확인할 것("유형별 위험도" 화면, 2026-10-14 추가)
+    # --------------------------------------------------------
+    # followup_check_llm.py 모듈 docstring 참고 — 질문 문구를 만들지
+    # 않고 "무엇이 불확실한지"만 서술하게 범위를 제한했다. segments/
+    # risk_signal_points는 이 시점에 이미 restore_pii로 실명이 복원된
+    # 상태라 외부로 보내기 전에 여기서 다시 마스킹한다.
+
+    followup_masked_text, followup_entity_map = mask_for_outbound(
+        format_followup_inputs_for_masking(
+            segments, record_draft.get("risk_signal_points", [])
+        ),
+        known_identifiers=known_identifiers,
+    )
+
+    followup_check_points = generate_followup_check_points_from_masked_text(
+        client=client,
+        model=note_model,
+        masked_combined_text=followup_masked_text,
+    )
+
+    followup_check_points = restore_pii(
+        followup_check_points, followup_entity_map
+    )
+
+    # 회차 간 진술 변화는 이미 완성된 문장이라 LLM을 다시 거치지 않고
+    # 그대로 덧붙인다(session_change.py 모듈 docstring 참고 — 재작성
+    # 위험을 피하려고 LLM을 안 쓴다).
+    followup_check_points = followup_check_points + session_change_notes
+
     return {
         "full_text": full_text,
         "segments": segments,
@@ -770,6 +804,7 @@ def analyze_audio_session(
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,
+        "followup_check_points": followup_check_points,
         "chunk_results": chunk_results,
     }
 

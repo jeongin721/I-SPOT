@@ -1456,6 +1456,9 @@ def api_analyze_audio(
                     "current_round_label", ""
                 ),
                 "case_trend": case_trend,
+                "followup_check_points": result.get(
+                    "followup_check_points", []
+                ),
             }
         )
 
