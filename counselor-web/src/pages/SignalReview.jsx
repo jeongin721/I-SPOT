@@ -1,88 +1,40 @@
 // 2 · 위험 신호 검토 (→ 유형별 위험도)
 // 원본: I-SPOT 디자인 캔버스 보드 SignalReview.dc.html (자동 변환 후 다듬어 쓰세요)
+//
+// 서버 연결: 화면 주소 ?case=…&session=…. AI 분석 요청 · 진행은 useSessionAnalysis, 머리는 useSessionDetail · useCaseDetail 이
+// 부르고, 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
+// 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중이다(빈 목록).
 import { Fragment } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
+import { useAuthSession } from '../data/useAuthSession';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { useSessionAnalysis } from '../data/useSessionAnalysis';
+import { useSessionDetail } from '../data/useSessionDetail';
+import { needsLogin, signedIn } from '../data/screens/common';
+import { readScreenIds } from '../data/screens/links';
+import { useScreenGo } from '../data/screens/useScreenGo';
+import { sessionCaseId } from '../data/screens/sessionDetail';
+import { signalReviewValues } from '../data/screens/signalReview';
 
 class Logic extends DCLogic {
-  constructor(props) {
-    super(props);
-    this.state = { dec: { 0: 'adopt', 1: 'adopt', 2: 'adopt', 3: 'hold' } };
-  }
   renderVals() {
-    const s = this.state;
-    const defs = [
-      {
-        type: '신체',
-        title: '직접 신체 가해',
-        at: '00:41',
-        quote: '저한테 소리 지르고… 많이 때렸어요',
-        why: '보호자가 아동을 때렸다는 1인칭 진술 (세부 신호 3)',
-        check: '원문 일치 ✓',
-        ok: true,
-      },
-      {
-        type: '신체',
-        title: '상해 부위 진술',
-        at: '01:08',
-        quote: '등이랑 팔이요',
-        why: '맞은 부위를 구체적으로 말함 (세부 신호 4)',
-        check: '원문 일치 ✓',
-        ok: true,
-      },
-      {
-        type: '정서',
-        title: '위협 · 공포 유발',
-        at: '01:08 · 01:36',
-        quote: '말하면 더 혼난다고 했어요 / 무서웠어요',
-        why: '함구 요구와 두려움 표현이 이어짐 (세부 신호 9)',
-        check: '원문 일치 ✓ · 발화별 보관',
-        ok: true,
-      },
-      {
-        type: '방임',
-        title: '기본 보호 · 양육 방임',
-        at: '02:15',
-        quote: '밥도 안 줄 때가 있어요',
-        why: '식사 제공 결핍 진술 (세부 신호 12)',
-        check: '화자 불확실 · 보류 권장',
-        ok: false,
-      },
-    ];
-    const sigs = defs.map((g, i) => {
-      const d = s.dec[i];
-      const set = (v) => () => this.setState({ dec: { ...s.dec, [i]: v } });
-      const st =
-        d === 'adopt'
-          ? ['채택', 'chip c-ok', 'inset 4px 0 0 #A8C6E7']
-          : d === 'hold'
-            ? ['보류', 'chip c-check', 'none']
-            : ['제외', 'chip c-normal', 'none'];
-      return {
-        ...g,
-        st: st[0],
-        stCls: st[1],
-        bar: st[2],
-        aCls: d === 'adopt' ? 'on' : '',
-        hCls: d === 'hold' ? 'on' : '',
-        dCls: d === 'drop' ? 'on' : '',
-        adopt: set('adopt'),
-        hold: set('hold'),
-        drop: set('drop'),
-      };
-    });
-    const v = Object.values(s.dec);
-    return {
-      sigs,
-      nA: v.filter((x) => x === 'adopt').length,
-      nH: v.filter((x) => x === 'hold').length,
-      nD: v.filter((x) => x === 'drop').length,
-    };
+    return signalReviewValues(this.props);
   }
 }
 
 export default function SignalReview(props) {
-  const v = useDC(Logic, props);
+  const session = useAuthSession();
+  const ids = readScreenIds(useSearchParams()[0]);
+  const go = useScreenGo(useNavigate(), ids);
+  const enabled = signedIn(session);
+  const detail = useSessionDetail(ids.sessionId, { enabled });
+  const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, go });
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-SignalReview">
       <div
@@ -116,18 +68,18 @@ export default function SignalReview(props) {
             </A>
             <A to="/Schedule">일정</A>
             <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
+              아이 연계
             </A>
             <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
+              종결 검토
             </A>
             <A to="/Stats">통계</A>
             <A to="/Settings">설정</A>
           </nav>
           <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
+            <span className="av">{v.meInitial}</span>
+            <b style={{ fontWeight: '500' }}>{v.meName}</b>
+            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
               로그아웃
             </A>
           </div>
@@ -143,39 +95,30 @@ export default function SignalReview(props) {
           }}
         >
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to="/CaseDetail">이서윤 C-2026-0351</A> ›{' '}
-            <A to="/CaseHistory">상담 이력</A> › <A to="/SessionDetail">8회차</A>
+            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> ›{' '}
+            <A to={v.historyHref}>상담 이력</A> › <A to={v.sessionHref}>{v.sessionLabel}</A>
           </nav>
+          <Notice value={v.notice} />
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 280px' }}>
-              <div className="sub">10/2(금) 방문상담</div>
-              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>8회차 처리 · 이서윤</h1>
+              <div className="sub">{v.sub}</div>
+              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <A className="stp done" to="/SttReview">
-              <span className="sn">✓</span>
-              <b style={{ fontWeight: '500' }}>STT 검수</b>
-            </A>
-            <A className="stp on" to="/SignalReview" aria-current="step">
-              <span className="sn">2</span>
-              <b style={{ fontWeight: '700' }}>위험 신호 검토</b>
-            </A>
-            <A className="stp" to="/NoteWrite">
-              <span className="sn">3</span>
-              <b style={{ fontWeight: '500' }}>요약 · 일지 작성</b>
-            </A>
-            <A className="stp" to="/FollowupQ">
-              <span className="sn">4</span>
-              <b style={{ fontWeight: '500' }}>추가 확인 · 질문</b>
-            </A>
+            {(v.steps || []).map((t, tIndex) => (
+              <A key={tIndex} className={t.cls} to={t.href} aria-current={t.current}>
+                <span className="sn">{t.mark}</span>
+                <b style={{ fontWeight: t.weight }}>{t.label}</b>
+              </A>
+            ))}
           </nav>
           <nav className="seg" aria-label="2단계 보기" style={{ alignSelf: 'flex-start' }}>
             <button type="button" className="on">
               위험 신호
             </button>
             <A
-              to="/RiskProfile"
+              to={v.riskHref}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -197,6 +140,41 @@ export default function SignalReview(props) {
               <span className="chip c-check">보류 {v.nH}</span>
               <span className="chip c-normal">제외 {v.nD}</span>
             </span>
+          </section>
+          <section
+            className="card"
+            aria-label="AI 분석"
+            style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+              <b style={{ fontSize: '16px' }}>AI 분석</b>
+              {v.aiChip ? <span className="chip c-ai">{v.aiChip}</span> : null}
+              {v.aiAction ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-p"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={v.aiAction}
+                >
+                  {v.aiActionLabel}
+                </button>
+              ) : null}
+            </div>
+            <div aria-live="polite">{v.aiText}</div>
+            {v.error ? (
+              <div className="note" role="alert" style={{ color: '#93452E' }}>
+                {v.error}
+              </div>
+            ) : null}
+            {(v.aiWarnings || []).map((w, wIndex) => (
+              <div key={wIndex} style={{ padding: '12px 14px', borderRadius: '12px', background: '#F8F5EC' }}>
+                <div className="note">AI 안내 · 추가 확인 필요</div>
+                <div style={{ fontSize: '13px' }}>{w}</div>
+              </div>
+            ))}
+            <p className="note" style={{ margin: 0 }}>
+              {v.signalNote}
+            </p>
           </section>
           {(v.sigs || []).map((g, gIndex) => (
             <Fragment key={gIndex}>
@@ -247,12 +225,18 @@ export default function SignalReview(props) {
             </Fragment>
           ))}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-            <A className="btn btn-s" to="/SttReview">
+            <A className="btn btn-s" to={v.sttHref}>
               ← STT 검수
             </A>
-            <A className="btn btn-p" to="/RiskProfile" style={{ marginLeft: 'auto' }}>
-              유형별 위험도 →
-            </A>
+            {v.canNext ? (
+              <A className="btn btn-p" to={v.nextHref} style={{ marginLeft: 'auto' }}>
+                {v.nextLabel}
+              </A>
+            ) : (
+              <button type="button" className="btn btn-p" disabled style={{ marginLeft: 'auto' }}>
+                {v.nextLabel}
+              </button>
+            )}
           </div>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>

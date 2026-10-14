@@ -8,9 +8,10 @@
 import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { SessionDetailState, SessionDetailView } from "../useSessionDetail";
-import type { SessionStep } from "../sessionRows";
 import { NOT_PROVIDED } from "../caseRows";
+import type { ScreenGo } from "./useScreenGo";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
+import { CARD_OF } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 회차 화면이 쓸 사례 ID. 회차 정보를 받았으면 그 사례, 아직이면 주소의 사례. */
@@ -31,8 +32,11 @@ export interface SessionScreenInput {
   ids: ScreenIds;
   detail: SessionDetailState;
   caseDetail: CaseDetailState;
-  /** 화면 이동(react-router 의 navigate). */
-  go: (href: string) => void;
+  /**
+   * 화면 이동. 요청 응답 뒤에 옮길 때는 요청한 회차 ID 를 함께 넘겨, 그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않는다
+   * (useScreenGo). 화면 파일은 useScreenGo(useNavigate(), ids) 로 만들어 넘긴다.
+   */
+  go: ScreenGo;
 }
 
 /** 회차 화면 공통: 위치 표시 링크 · 머리 · 안내. */
@@ -63,16 +67,6 @@ export function sessionHeaderValues({ session, ids, detail, caseDetail }: Sessio
     ids: sessionIds,
   };
 }
-
-/** 회차 상세의 단계 카드 4개(STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 추가 확인 · 질문)에서 지금 카드. 승인 완료면 -1. */
-const CARD_OF: Record<SessionStep, number> = {
-  upload: 0,
-  stt: 0,
-  sttReview: 0,
-  analysis: 1,
-  summaryReview: 2,
-  done: -1,
-};
 
 function sttCard(sv: SessionDetailView): { st: string; preview: string } {
   const audio = sv.audio ? `${sv.audio.fileName} · ${sv.audio.durationLabel} · ${sv.audio.sizeLabel}` : "녹음 파일 없음";

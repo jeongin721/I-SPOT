@@ -2,7 +2,7 @@
 
 아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
-**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
+**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
 
 ## 실행
 
@@ -85,7 +85,7 @@ export default function CaseDetail(props) {
 
 - 피그마 화면이 오면 위 훅 몇 줄과 `renderVals()` 를 그대로 옮기고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
 - 화면만의 상태(단계 · 고른 항목 · 펼침 등)는 `Logic.state` 에 두고, 처음 값 · 바꾸는 함수는 값 함수가 줍니다(`uploadModal.ts` 의 `initialUploadState` · `setState`). 훅에 넘겨야 하는 상태(검색어 · 고른 사례)는 화면 함수의 `useState` 로 듭니다.
-- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink`(`flow.ts`).
+- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
 - `Login.jsx` 는 아직 값 계산이 화면 파일 안에 있습니다(이 규칙 전에 연결).
 
 | 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
@@ -95,6 +95,14 @@ export default function CaseDetail(props) {
 | 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
 | 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
 | 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
+| 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
+| 2 · 위험 신호 검토 | `SignalReview.jsx` | `case` · `session` | `useSessionAnalysis` + 머리 | `signalReview.ts` `signalReviewValues` |
+| 3 · 요약 · 일지 작성 | `NoteWrite.jsx` | `case` · `session` | `useSummaryReview` · `useSessionDocuments` + 머리 | `noteWrite.ts` `noteWriteValues` |
+
+- 회차 처리 흐름: 녹취 올리기 → STT 검수(고친 발화 저장 · 원문 확정) → 위험 신호 검토(AI 분석 요청 · 진행 · 실패 뒤 다시 분석) → 요약 · 일지 작성(요약 고치기 · 저장 · **요약 승인 = 회차 '승인 완료'**, 상담일지 저장 · 승인).
+- 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중입니다. 위험 신호 검토 화면은 AI 분석 상태와 AI 안내만 보입니다.
+- 요약 승인은 회차를 잠그므로 '요약 승인' 단추를 따로 두고 한 번 더 묻습니다. '저장 · 추가 확인 · 질문 →' 은 저장만 합니다.
+- 상담일지는 Backend 에서 제목 · 본문 텍스트 하나입니다. 화면의 칸(아동 진술 · 대상자 태도 · 물리적 환경 · 아동 특성 · 가정상황 · 위험 신호 검토 결과 · 상담원 소견)은 `[칸 이름]` 머리줄로 나눠 본문에 담습니다(`noteWrite.ts` 의 `formatNote` · `parseNote`). 기관 양식 구조가 정해지기 전의 임시 형식입니다.
 
 ## 폴더 구조
 
