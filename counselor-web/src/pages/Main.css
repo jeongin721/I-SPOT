@@ -1,14 +1,15 @@
+/* Main 화면에만 있는 규칙(디자인 Main.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-Main .stat {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 20px 22px;
   text-decoration: none;
-  color: #2f3a44;
+  color: #2b2a26;
 }
 .pg-Main a.stat:hover {
-  border-color: #a8c6e7;
-  color: #2f3a44;
+  border-color: #2b2a26;
+  color: #2b2a26;
 }
 .pg-Main .stat b.n {
   font-size: 36px;
@@ -21,21 +22,21 @@
   gap: 10px;
   padding: 9px 12px;
   border-radius: 12px;
-  background: #f8f5ec;
+  background: #f7f6f2;
   text-decoration: none;
-  color: #2f3a44;
+  color: #2b2a26;
   font-size: 14px;
 }
 .pg-Main .todo:hover {
-  background: #f1efe9;
-  color: #2f3a44;
+  background: #f2efe8;
+  color: #2b2a26;
 }
 .pg-Main .hr {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 14px;
   padding: 10px 22px;
-  border-bottom: 1px solid #eee8da;
+  border-bottom: 1px solid #eae7df;
   min-height: 56px;
 }
 .pg-Main .ev {
@@ -45,7 +46,7 @@
   padding: 8px 12px;
   border-radius: 12px;
   text-decoration: none;
-  color: #2f3a44;
+  color: #2b2a26;
 }
 .pg-Main .qa {
   position: relative;
@@ -55,16 +56,16 @@
   gap: 6px;
   padding: 14px;
   border-radius: 14px;
-  border: 1px solid #e7e0ce;
+  border: 1px solid #e7e4dc;
   background: #ffffff;
   text-decoration: none;
-  color: #2f3a44;
+  color: #2b2a26;
   min-height: 64px;
 }
 .pg-Main .qa:hover {
-  border-color: #a8c6e7;
+  border-color: #2b2a26;
   background: #ffffff;
-  color: #2f3a44;
+  color: #2b2a26;
 }
 .pg-Main .qi {
   width: 32px;
@@ -75,8 +76,8 @@
   justify-content: center;
   font-size: 15px;
   font-weight: 700;
-  background: #f1efe9;
-  color: #55606a;
+  background: #f2efe8;
+  color: #66625a;
 }
 .pg-Main .rm {
   position: absolute;
@@ -86,8 +87,8 @@
   height: 26px;
   border-radius: 50%;
   border: 0;
-  background: #f1efe9;
-  color: #55606a;
+  background: #f2efe8;
+  color: #66625a;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -99,10 +100,54 @@
   min-height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px dashed #dcd5c3;
+  border: 1px dashed #dad5c9;
   background: #ffffff;
   font: inherit;
   font-size: 13px;
-  color: #2f3a44;
+  color: #2b2a26;
   cursor: pointer;
+}
+.pg-Main .thm-root.dark .stat {
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark a.stat:hover {
+  border-color: #d6d0c4 !important;
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark .todo {
+  background: #33312c !important;
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark .todo:hover {
+  background: #393731 !important;
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark .hr {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-Main .thm-root.dark .ev {
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark .qa {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark .qa:hover {
+  border-color: #d6d0c4 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Main .thm-root.dark .qi {
+  background: #393731 !important;
+  color: #bdb7aa !important;
+}
+.pg-Main .thm-root.dark .rm {
+  background: #393731 !important;
+  color: #bdb7aa !important;
+}
+.pg-Main .thm-root.dark .addq {
+  border: 1px dashed #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
 }

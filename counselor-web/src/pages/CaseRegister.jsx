@@ -1,8 +1,10 @@
 // 새 사례 등록 (팝업 · 서식 4 초기면접지)
-// 원본: I-SPOT 디자인 캔버스 보드 CaseRegister.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/CaseRegister.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import './CaseRegister.css';
 
 class Logic extends DCLogic {
@@ -13,9 +15,9 @@ class Logic extends DCLogic {
   renderVals() {
     const s = this.state;
     const on = (v) => ({
-      bg: v ? '#E2ECF8' : '#FFFFFF',
-      bd: v ? '#A8C6E7' : '#DCD5C3',
-      fg: v ? '#2E5687' : '#2F3A44',
+      bg: v ? '#F1EADA' : '#FFFFFF',
+      bd: v ? '#2B2A26' : '#DAD5C9',
+      fg: v ? '#2B2A26' : '#2B2A26',
       fw: v ? 700 : 400,
       mark: v ? '✓' : '+',
     });
@@ -111,8 +113,8 @@ class Logic extends DCLogic {
     ].map(([k, label]) => ({
       label,
       sel: s.tab === k ? 'true' : 'false',
-      bd: s.tab === k ? '#7FA8D6' : 'transparent',
-      fg: s.tab === k ? '#2E5687' : '#55606A',
+      bd: s.tab === k ? '#C2A36B' : 'transparent',
+      fg: s.tab === k ? '#2B2A26' : '#66625A',
       fw: s.tab === k ? 700 : 400,
       go: () => this.setState({ tab: k }),
     }));
@@ -133,23 +135,29 @@ class Logic extends DCLogic {
 }
 
 export default function CaseRegister(props) {
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-CaseRegister">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1700px',
           background: 'rgba(47,58,68,0.40)',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
-          color: '#2F3A44',
+          color: '#2B2A26',
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'center',
           padding: '48px 16px',
+          position: 'relative',
         }}
       >
+        <div className="thm-abs">
+          <ThemeToggle />
+        </div>
         <section
           role="dialog"
           aria-modal="true"
@@ -159,7 +167,7 @@ export default function CaseRegister(props) {
             maxWidth: '860px',
             background: '#FFFFFF',
             borderRadius: '24px',
-            boxShadow: '0 20px 60px rgba(30,50,80,0.22)',
+            boxShadow: '0 20px 60px rgba(43, 42, 38,0.22)',
             overflow: 'hidden',
           }}
         >
@@ -178,22 +186,19 @@ export default function CaseRegister(props) {
                 width: '40px',
                 height: '40px',
                 borderRadius: '50%',
-                background: '#F8F5EC',
+                background: '#F7F6F2',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 textDecoration: 'none',
-                color: '#2F3A44',
+                color: '#2B2A26',
                 fontSize: '18px',
               }}
             >
               ×
             </A>
           </div>
-          <div
-            role="tablist"
-            style={{ display: 'flex', margin: '16px 30px 0', borderBottom: '1px solid #EEE8DA' }}
-          >
+          <div role="tablist" style={{ display: 'flex', margin: '16px 30px 0', borderBottom: '1px solid #EAE7DF' }}>
             {(v.tabs || []).map((t, tIndex) => (
               <Fragment key={tIndex}>
                 <button
@@ -209,6 +214,7 @@ export default function CaseRegister(props) {
               </Fragment>
             ))}
           </div>
+
           <form style={{ padding: '22px 30px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
             {v.isA ? (
               <>
@@ -279,6 +285,7 @@ export default function CaseRegister(props) {
                     </select>
                   </label>
                 </div>
+
                 <div className="fl">
                   <span className="lb">
                     학대유형 <span className="req">*</span>{' '}
@@ -301,6 +308,7 @@ export default function CaseRegister(props) {
                     ))}
                   </div>
                 </div>
+
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">
@@ -349,10 +357,11 @@ export default function CaseRegister(props) {
                   <span className="lb">
                     사례연계 경위 <span className="req">*</span>
                   </span>
-                  <textarea className="ta2" placeholder="신고 경위 · 신고자 유형 · 연계 내용" />
+                  <textarea className="ta2" placeholder="신고 경위 · 신고자 유형 · 연계 내용"></textarea>
                 </label>
               </>
             ) : null}
+
             {v.isB ? (
               <>
                 <div className="sec">
@@ -377,8 +386,9 @@ export default function CaseRegister(props) {
                 </div>
                 <label className="fl">
                   <span className="lb">보호자와 아동과의 관계</span>
-                  <textarea className="ta2" />
+                  <textarea className="ta2"></textarea>
                 </label>
+
                 <div className="sec">가족유형</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {(v.fams || []).map((o, oIndex) => (
@@ -394,6 +404,7 @@ export default function CaseRegister(props) {
                     </Fragment>
                   ))}
                 </div>
+
                 <div className="sec">가족관계</div>
                 <div style={{ overflowX: 'auto' }}>
                   <table className="ft">
@@ -447,6 +458,7 @@ export default function CaseRegister(props) {
                 >
                   + 가족 추가
                 </button>
+
                 <div className="sec">
                   아동 특성{' '}
                   <span className="note" style={{ fontWeight: '400' }}>
@@ -467,15 +479,16 @@ export default function CaseRegister(props) {
                     </Fragment>
                   ))}
                 </div>
+
                 <div className="sec">문제력 · 건강정도</div>
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">현 상황</span>
-                    <textarea className="ta2" />
+                    <textarea className="ta2"></textarea>
                   </label>
                   <label className="fl">
                     <span className="lb">이유 인식</span>
-                    <textarea className="ta2" />
+                    <textarea className="ta2"></textarea>
                   </label>
                 </div>
                 <div className="g3">
@@ -500,23 +513,25 @@ export default function CaseRegister(props) {
                     <input className="inp" type="text" />
                   </label>
                 </div>
+
                 <div className="sec">대상자 태도 및 관찰내용</div>
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">대상자 태도</span>
-                    <textarea className="ta2" />
+                    <textarea className="ta2"></textarea>
                   </label>
                   <label className="fl">
                     <span className="lb">물리적 환경</span>
-                    <textarea className="ta2" />
+                    <textarea className="ta2"></textarea>
                   </label>
                 </div>
                 <label className="fl">
                   <span className="lb">상담원 소견 및 향후 계획</span>
-                  <textarea className="ta2" style={{ minHeight: '96px' }} />
+                  <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
                 </label>
               </>
             ) : null}
+
             <div
               style={{
                 display: 'flex',
@@ -524,7 +539,7 @@ export default function CaseRegister(props) {
                 alignItems: 'center',
                 justifyContent: 'flex-end',
                 gap: '10px',
-                borderTop: '1px solid #EEE8DA',
+                borderTop: '1px solid #EAE7DF',
                 paddingTop: '18px',
               }}
             >

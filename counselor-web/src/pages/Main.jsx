@@ -1,8 +1,12 @@
 // 홈 (대시보드)
-// 원본: I-SPOT 디자인 캔버스 보드 Main.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/Main.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './Main.css';
 
 class Logic extends DCLogic {
@@ -28,13 +32,7 @@ class Logic extends DCLogic {
       { m: 600, t: 'p', title: '기관 사례회의', sub: '회의실 2', href: '/Schedule' },
       { m: 780, t: 'c', title: '지호 · 정기상담 4회차', sub: '면담실 A', href: '/Schedule' },
       { m: 870, t: 'c', title: '서준 · 초기면담', sub: '가정 방문', href: '/Schedule' },
-      {
-        m: 960,
-        t: 'c',
-        title: '서윤 · 정기상담 9회차',
-        sub: '면담실 B · 브리핑 준비됨',
-        href: '/PreBriefing',
-      },
+      { m: 960, t: 'c', title: '서윤 · 정기상담 9회차', sub: '면담실 B · 브리핑 준비됨', href: '/PreBriefing' },
       { m: 1050, t: 'p', title: '슈퍼비전', sub: '팀장 면담 · 30분', href: '/Schedule' },
     ];
     const nowH = now.getHours();
@@ -49,9 +47,9 @@ class Logic extends DCLogic {
             title: e.title,
             sub: e.sub,
             href: e.href,
-            dot: c ? '#6F7880' : '#DCD5C3',
+            dot: c ? '#7A776F' : '#DAD5C9',
             radius: c ? '50%' : '2px',
-            bg: '#F8F5EC',
+            bg: '#F7F6F2',
           };
         });
       const isNowHour = h === nowH;
@@ -59,9 +57,9 @@ class Logic extends DCLogic {
         label: `${pad(h)}:00`,
         events: evs,
         isNowHour,
-        bg: isNowHour ? '#F8F5EC' : '#FFFFFF',
+        bg: isNowHour ? '#F7F6F2' : '#FFFFFF',
         op: h < nowH ? 0.5 : 1,
-        labelFg: isNowHour ? '#2F3A44' : '#6F7880',
+        labelFg: isNowHour ? '#2B2A26' : '#7A776F',
         labelFw: isNowHour ? 700 : 400,
       });
     }
@@ -110,15 +108,19 @@ class Logic extends DCLogic {
 }
 
 export default function Main(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-Main">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1060px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -126,40 +128,7 @@ export default function Main(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A className="on" to="/Main">
-              홈
-            </A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="Main" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -170,16 +139,18 @@ export default function Main(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 300px' }}>
               <div className="sub brn" style={{ fontWeight: '500' }}>
                 {v.dateLabel}
               </div>
-              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>
-                안녕하세요, 이서연 상담원님
-              </h1>
+              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>안녕하세요, 이서연 상담원님</h1>
             </div>
           </header>
+
           <section
             aria-label="오늘 요약"
             style={{
@@ -214,7 +185,7 @@ export default function Main(props) {
                 </A>
               </div>
             </div>
-            <A className="card stat" to="/ChildLink" style={{ boxShadow: 'inset 0 4px 0 #93452E' }}>
+            <A className="card stat" to="/ChildLink" style={{ boxShadow: 'inset 0 4px 0 #A33B2E' }}>
               <span className="sub acc" style={{ fontWeight: '700' }}>
                 긴급 업무
               </span>
@@ -222,6 +193,7 @@ export default function Main(props) {
               <span style={{ fontSize: '14px' }}>민준 · 오늘 08:12 체크인</span>
             </A>
           </section>
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
             <section
               className="card"
@@ -237,24 +209,15 @@ export default function Main(props) {
               {(v.hours || []).map((h, hIndex) => (
                 <Fragment key={hIndex}>
                   <div className="hr" style={{ background: h.bg, opacity: h.op }}>
-                    <span
-                      style={{ paddingTop: '8px', fontSize: '13px', color: h.labelFg, fontWeight: h.labelFw }}
-                    >
+                    <span style={{ paddingTop: '8px', fontSize: '13px', color: h.labelFg, fontWeight: h.labelFw }}>
                       {h.label}
                     </span>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                        justifyContent: 'center',
-                      }}
-                    >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'center' }}>
                       {h.isNowHour ? (
                         <>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <b style={{ fontSize: '12px', color: '#2E5687' }}>지금 {v.clock}</b>
-                            <span style={{ flex: '1', height: '2px', background: '#A8C6E7' }} />
+                            <b style={{ fontSize: '12px', color: '#2B2A26' }}>지금 {v.clock}</b>
+                            <span style={{ flex: '1', height: '2px', background: '#2B2A26' }}></span>
                           </span>
                         </>
                       ) : null}
@@ -269,10 +232,8 @@ export default function Main(props) {
                                 borderRadius: e.radius,
                                 background: e.dot,
                               }}
-                            />
-                            <b style={{ fontWeight: '500', fontSize: '13px', width: '44px', flex: 'none' }}>
-                              {e.time}
-                            </b>
+                            ></span>
+                            <b style={{ fontWeight: '500', fontSize: '13px', width: '44px', flex: 'none' }}>{e.time}</b>
                             <span style={{ flex: '1', minWidth: '0' }}>
                               <b style={{ fontWeight: '500' }}>{e.title}</b>
                               <span className="note" style={{ marginLeft: '8px' }}>
@@ -287,30 +248,23 @@ export default function Main(props) {
                 </Fragment>
               ))}
             </section>
-            <div
-              style={{
-                flex: '2 1 320px',
-                minWidth: '0',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '20px',
-              }}
-            >
+
+            <div style={{ flex: '2 1 320px', minWidth: '0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <section
                 className="card"
                 aria-label="현재 시간"
                 style={{
                   padding: '22px 24px',
-                  background: 'linear-gradient(135deg, #DCE8F6 0%, #EEF4FB 60%, #FFF8DC 100%)',
-                  borderColor: '#C9DBEF',
+                  background: 'linear-gradient(135deg, #F1EADA 0%, #F7F2E6 60%, #FAF6EC 100%)',
+                  borderColor: '#DCCB9F',
                 }}
               >
-                <div className="note" style={{ color: '#2E5687' }}>
+                <div className="note" style={{ color: '#2B2A26' }}>
                   지금
                 </div>
                 <div
                   style={{
-                    color: '#7B4A26',
+                    color: '#7A5F28',
                     fontSize: '44px',
                     fontWeight: '700',
                     lineHeight: '1.1',
@@ -325,18 +279,19 @@ export default function Main(props) {
                     padding: '14px 16px',
                     borderRadius: '14px',
                     background: '#FFFFFF',
-                    border: '1px solid #C9DBEF',
-                    borderLeft: '4px solid #E2B23C',
+                    border: '1px solid #DCCB9F',
+                    borderLeft: '4px solid #C2A36B',
                   }}
                 >
                   <div className="note">다음 상담까지</div>
-                  <b style={{ fontSize: '24px', color: '#93452E' }}>{v.remain}</b>
+                  <b style={{ fontSize: '24px', color: '#A33B2E' }}>{v.remain}</b>
                   <div style={{ marginTop: '2px', fontSize: '14px' }}>{v.nextTitle}</div>
                   <A className="btn btn-p" to="/PreBriefing" style={{ width: '100%', marginTop: '12px' }}>
                     상담 전 브리핑 보기
                   </A>
                 </div>
               </section>
+
               <section className="card" aria-label="빠른 실행" style={{ padding: '20px 22px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                   <h2 className="h2">빠른 실행</h2>
@@ -349,9 +304,7 @@ export default function Main(props) {
                     {v.editLabel}
                   </button>
                 </div>
-                <div
-                  style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}
-                >
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
                   {(v.quick || []).map((q, qIndex) => (
                     <Fragment key={qIndex}>
                       <A className="qa" to={q.href}>
@@ -370,7 +323,7 @@ export default function Main(props) {
                 </div>
                 {v.editing ? (
                   <>
-                    <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #EEE8DA' }}>
+                    <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #EAE7DF' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         {(v.addable || []).map((o, oIndex) => (
                           <Fragment key={oIndex}>

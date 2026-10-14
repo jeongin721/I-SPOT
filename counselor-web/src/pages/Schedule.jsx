@@ -1,8 +1,12 @@
 // 일정 · 월간 달력 + 일정 추가
-// 원본: I-SPOT 디자인 캔버스 보드 Schedule.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/Schedule.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './Schedule.css';
 
 class Logic extends DCLogic {
@@ -19,15 +23,7 @@ class Logic extends DCLogic {
       filter: 'all',
       adding: false,
       kind: 'c',
-      form: {
-        child: '서윤',
-        ctype: '정기상담',
-        pcat: '기관 회의',
-        title: '',
-        time: '10:00',
-        place: '',
-        imp: false,
-      },
+      form: { child: '서윤', ctype: '정기상담', pcat: '기관 회의', title: '', time: '10:00', place: '', imp: false },
       events: [
         C(2, '15:00', '서윤 · 정기상담 8회차', '가정 방문'),
         P(5, '10:00', '기관 사례회의', '기관 회의'),
@@ -69,31 +65,23 @@ class Logic extends DCLogic {
     const style = (e) =>
       e.imp
         ? {
-            bg: '#FBE4DC',
-            fg: '#93452E',
-            dot: '#93452E',
+            bg: '#F7E4DF',
+            fg: '#A33B2E',
+            dot: '#A33B2E',
             radius: e.t === 'c' ? '50%' : '2px',
-            tagBg: '#FBE4DC',
-            tagFg: '#93452E',
+            tagBg: '#F7E4DF',
+            tagFg: '#A33B2E',
             fw: 700,
           }
         : e.t === 'c'
-          ? {
-              bg: '#F1EFE9',
-              fg: '#2F3A44',
-              dot: '#6F7880',
-              radius: '50%',
-              tagBg: '#F1EFE9',
-              tagFg: '#55606A',
-              fw: 400,
-            }
+          ? { bg: '#F2EFE8', fg: '#2B2A26', dot: '#7A776F', radius: '50%', tagBg: '#F2EFE8', tagFg: '#66625A', fw: 400 }
           : {
-              bg: '#F8F5EC',
-              fg: '#55606A',
-              dot: '#B5AC98',
+              bg: '#F7F6F2',
+              fg: '#66625A',
+              dot: '#B9B2A2',
               radius: '2px',
-              tagBg: '#F8F5EC',
-              tagFg: '#55606A',
+              tagBg: '#F7F6F2',
+              tagFg: '#66625A',
               fw: 400,
             };
     const cells = [];
@@ -101,9 +89,7 @@ class Logic extends DCLogic {
       const d = i - first + 1;
       const valid = d >= 1 && d <= dim;
       const dow = i % 7;
-      const evs = valid
-        ? s.events.filter((e) => e.y === s.y && e.m === s.m && e.d === d && show(e)).sort(sortT)
-        : [];
+      const evs = valid ? s.events.filter((e) => e.y === s.y && e.m === s.m && e.d === d && show(e)).sort(sortT) : [];
       const isToday = valid && now.getFullYear() === s.y && now.getMonth() === s.m && now.getDate() === d;
       const isSel = valid && d === s.sel;
       const hol = valid ? holidays[`${s.y}-${s.m}-${d}`] || '' : '';
@@ -111,10 +97,10 @@ class Logic extends DCLogic {
         num: valid ? String(d) : '',
         holiday: hol,
         aria: valid ? `${s.m + 1}월 ${d}일 일정 ${evs.length}건` : '빈 칸',
-        bg: valid ? (isSel ? '#E2ECF8' : '#FFFFFF') : '#F8F5EC',
-        ring: isSel ? 'inset 0 0 0 2px #A8C6E7' : 'none',
-        numBg: isToday ? '#2F3A44' : 'transparent',
-        numFg: isToday ? '#FFFFFF' : hol || dow === 0 ? '#6F7880' : '#2F3A44',
+        bg: valid ? (isSel ? '#F1EADA' : '#FFFFFF') : '#F7F6F2',
+        ring: isSel ? 'inset 0 0 0 2px #2B2A26' : 'none',
+        numBg: isToday ? '#2B2A26' : 'transparent',
+        numFg: isToday ? '#FFFFFF' : hol || dow === 0 ? '#7A776F' : '#2B2A26',
         fw: isToday || isSel ? 700 : 400,
         pills: evs.slice(0, 3).map((e) => {
           const st = style(e);
@@ -151,14 +137,13 @@ class Logic extends DCLogic {
           tagBg: st.tagBg,
           tagFg: st.tagFg,
           fw: on ? 700 : 500,
-          titleFg: on ? '#93452E' : '#2F3A44',
+          titleFg: on ? '#A33B2E' : '#2B2A26',
           impOn: on ? 'true' : 'false',
           impLabel: on ? '! 중요' : '중요 표시',
-          impBg: on ? '#93452E' : '#FFFFFF',
-          impFg: on ? '#FFFFFF' : '#6F7880',
-          impBd: on ? '#93452E' : '#DCD5C3',
-          toggleImp: () =>
-            this.setState({ events: s.events.map((x, j) => (j === e.i ? { ...x, imp: !x.imp } : x)) }),
+          impBg: on ? '#A33B2E' : '#FFFFFF',
+          impFg: on ? '#FFFFFF' : '#7A776F',
+          impBd: on ? '#A33B2E' : '#DAD5C9',
+          toggleImp: () => this.setState({ events: s.events.map((x, j) => (j === e.i ? { ...x, imp: !x.imp } : x)) }),
         };
       });
     const monthEv = s.events.filter((e) => e.y === s.y && e.m === s.m);
@@ -203,16 +188,16 @@ class Logic extends DCLogic {
       isP: !isC,
       kindC: () => this.setState({ kind: 'c' }),
       kindP: () => this.setState({ kind: 'p' }),
-      kcBorder: isC ? '#A8C6E7' : '#DCD5C3',
-      kcBg: isC ? '#E2ECF8' : '#FFFFFF',
-      kpBorder: !isC ? '#A8C6E7' : '#DCD5C3',
-      kpBg: !isC ? '#E2ECF8' : '#FFFFFF',
+      kcBorder: isC ? '#2B2A26' : '#DAD5C9',
+      kcBg: isC ? '#F1EADA' : '#FFFFFF',
+      kpBorder: !isC ? '#2B2A26' : '#DAD5C9',
+      kpBg: !isC ? '#F1EADA' : '#FFFFFF',
       form: s.form,
       formImpOn: s.form.imp ? 'true' : 'false',
-      formImpBd: s.form.imp ? '#93452E' : '#DCD5C3',
-      formImpBg: s.form.imp ? '#FBE4DC' : '#FFFFFF',
-      formImpFg: s.form.imp ? '#93452E' : '#55606A',
-      formImpBox: s.form.imp ? '#93452E' : '#FFFFFF',
+      formImpBd: s.form.imp ? '#A33B2E' : '#DAD5C9',
+      formImpBg: s.form.imp ? '#F7E4DF' : '#FFFFFF',
+      formImpFg: s.form.imp ? '#A33B2E' : '#66625A',
+      formImpBox: s.form.imp ? '#A33B2E' : '#FFFFFF',
       formImpMark: s.form.imp ? '✓' : '',
       toggleFormImp: () => this.setState({ form: { ...s.form, imp: !s.form.imp } }),
       setChild: setF('child'),
@@ -246,26 +231,26 @@ class Logic extends DCLogic {
               tag: f.pcat,
               imp: f.imp,
             };
-        this.setState({
-          events: [...s.events, ev],
-          adding: false,
-          form: { ...f, title: '', place: '', imp: false },
-        });
+        this.setState({ events: [...s.events, ev], adding: false, form: { ...f, title: '', place: '', imp: false } });
       },
     };
   }
 }
 
 export default function Schedule(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-Schedule">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1200px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -273,40 +258,8 @@ export default function Schedule(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A className="on" to="/Schedule">
-              일정
-            </A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="Schedule" session={session} />
+
         <main
           style={{
             flex: '999 1 640px',
@@ -317,11 +270,15 @@ export default function Schedule(props) {
             gap: '18px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 260px' }}>
               <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>일정</h1>
             </div>
           </header>
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', alignItems: 'flex-start' }}>
             <section
               className="card"
@@ -357,18 +314,12 @@ export default function Schedule(props) {
                   <button type="button" className={v.fPCls} onClick={v.showP}>
                     ■ 개인 · 기관
                   </button>
-                  <button type="button" className={v.fICls} onClick={v.showI} style={{ color: '#93452E' }}>
+                  <button type="button" className={v.fICls} onClick={v.showI} style={{ color: '#A33B2E' }}>
                     ! 중요
                   </button>
                 </div>
               </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                  background: '#F8F5EC',
-                }}
-              >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', background: '#F7F6F2' }}>
                 <span className="dow">일</span>
                 <span className="dow">월</span>
                 <span className="dow">화</span>
@@ -404,7 +355,7 @@ export default function Schedule(props) {
                         >
                           {c.num}
                         </span>
-                        <span style={{ fontSize: '10px', color: '#6F7880' }}>{c.holiday}</span>
+                        <span style={{ fontSize: '10px', color: '#7A776F' }}>{c.holiday}</span>
                       </span>
                       {(c.pills || []).map((p, pIndex) => (
                         <Fragment key={pIndex}>
@@ -417,12 +368,12 @@ export default function Schedule(props) {
                                 borderRadius: p.radius,
                                 background: p.dot,
                               }}
-                            />
+                            ></span>
                             {p.label}
                           </span>
                         </Fragment>
                       ))}
-                      <span style={{ fontSize: '11px', color: '#5F6A73', paddingLeft: '4px' }}>{c.more}</span>
+                      <span style={{ fontSize: '11px', color: '#6E6A62', paddingLeft: '4px' }}>{c.more}</span>
                     </button>
                   </Fragment>
                 ))}
@@ -434,20 +385,16 @@ export default function Schedule(props) {
                   gap: '8px 20px',
                   padding: '14px 18px',
                   fontSize: '12px',
-                  color: '#55606A',
-                  borderTop: '1px solid #EEE8DA',
+                  color: '#66625A',
+                  borderTop: '1px solid #EAE7DF',
                 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <span
-                    style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#6F7880' }}
-                  />
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#7A776F' }}></span>
                   상담 일정 {v.countC}건
                 </span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <span
-                    style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#B5AC98' }}
-                  />
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#B9B2A2' }}></span>
                   개인 · 기관 일정 {v.countP}건
                 </span>
                 <span
@@ -455,17 +402,16 @@ export default function Schedule(props) {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
-                    color: '#93452E',
+                    color: '#A33B2E',
                     fontWeight: '500',
                   }}
                 >
-                  <span
-                    style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#93452E' }}
-                  />
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#A33B2E' }}></span>
                   중요 {v.countI}건
                 </span>
               </div>
             </section>
+
             <aside
               className="card"
               aria-label="선택한 날 일정"
@@ -493,7 +439,7 @@ export default function Schedule(props) {
                     {(v.dayEvents || []).map((e, eIndex) => (
                       <Fragment key={eIndex}>
                         <div className="ev">
-                          <span style={{ fontSize: '13px', color: '#55606A' }}>{e.time}</span>
+                          <span style={{ fontSize: '13px', color: '#66625A' }}>{e.time}</span>
                           <span
                             style={{
                               marginTop: '5px',
@@ -502,12 +448,10 @@ export default function Schedule(props) {
                               borderRadius: e.radius,
                               background: e.dot,
                             }}
-                          />
+                          ></span>
                           <span style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             <b style={{ fontWeight: e.fw, color: e.titleFg }}>{e.title}</b>
-                            <span
-                              style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}
-                            >
+                            <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
                               <span className="chip" style={{ background: e.tagBg, color: e.tagFg }}>
                                 {e.tag}
                               </span>
@@ -536,6 +480,7 @@ export default function Schedule(props) {
                   </div>
                 </>
               ) : null}
+
               {v.adding ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -564,6 +509,7 @@ export default function Schedule(props) {
                       <b style={{ fontWeight: '700' }}>■ 개인 · 기관 일정</b>
                     </button>
                   </div>
+
                   {v.isC ? (
                     <>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -619,6 +565,7 @@ export default function Schedule(props) {
                       </label>
                     </>
                   ) : null}
+
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <label style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span className="lb">시간</span>
@@ -635,13 +582,14 @@ export default function Schedule(props) {
                       />
                     </label>
                   </div>
+
                   {v.isC ? (
                     <>
                       <div
                         style={{
                           padding: '12px 14px',
                           borderRadius: '12px',
-                          background: '#F8F5EC',
+                          background: '#F7F6F2',
                           fontSize: '13px',
                           display: 'flex',
                           flexDirection: 'column',
@@ -652,7 +600,7 @@ export default function Schedule(props) {
                           <input
                             type="checkbox"
                             defaultChecked
-                            style={{ width: '16px', height: '16px', accentColor: '#A8C6E7' }}
+                            style={{ width: '16px', height: '16px', accentColor: '#2B2A26' }}
                           />
                           상담 전날 <A to="/PreBriefing">브리핑</A> 자동 준비
                         </label>
@@ -663,23 +611,16 @@ export default function Schedule(props) {
                   {v.isP ? (
                     <>
                       <div
-                        style={{
-                          padding: '12px 14px',
-                          borderRadius: '12px',
-                          background: '#F8F5EC',
-                          fontSize: '13px',
-                        }}
+                        style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2', fontSize: '13px' }}
                       >
                         <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input
-                            type="checkbox"
-                            style={{ width: '16px', height: '16px', accentColor: '#A8C6E7' }}
-                          />
-                          팀 일정으로 공유
+                          <input type="checkbox" style={{ width: '16px', height: '16px', accentColor: '#2B2A26' }} />팀
+                          일정으로 공유
                         </label>
                       </div>
                     </>
                   ) : null}
+
                   <button
                     type="button"
                     role="switch"
@@ -720,6 +661,7 @@ export default function Schedule(props) {
                     </span>
                     중요 일정 (빨간색 표시)
                   </button>
+
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                     <button type="button" className="btn btn-s" onClick={v.cancelAdd}>
                       취소

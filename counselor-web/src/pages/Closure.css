@@ -1,11 +1,37 @@
+/* Closure 화면에만 있는 규칙(디자인 Closure.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-Closure .tg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid #dad5c9;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2b2a26;
+}
 .pg-Closure .tbl tr:hover td {
-  background: #f8f5ec;
+  background: #f7f6f2;
 }
 .pg-Closure .nm {
   display: flex;
   align-items: center;
   gap: 10px;
   text-decoration: none;
-  color: #2f3a44;
+  color: #2b2a26;
   font-weight: 500;
+}
+.pg-Closure .thm-root.dark .tbl tr:hover td {
+  background: #33312c !important;
+}
+.pg-Closure .thm-root.dark .nm {
+  color: #ece8df !important;
+}
+.pg-Closure .thm-root.dark .tg {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
 }

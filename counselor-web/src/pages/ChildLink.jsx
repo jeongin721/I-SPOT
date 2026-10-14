@@ -1,8 +1,12 @@
 // 아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태)
-// 원본: I-SPOT 디자인 캔버스 보드 ChildLink.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/ChildLink.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './ChildLink.css';
 
 class Logic extends DCLogic {
@@ -278,10 +282,10 @@ class Logic extends DCLogic {
       const k = KIDS[key];
       const ds = (k.days || '').split('');
       return {
-        name: k.short,
+        name: s.real ? k.name : '○' + k.short,
         age: k.age,
         id: k.id,
-        ini: k.short.slice(0, 1),
+        ini: s.real ? k.name.slice(0, 1) : k.short.slice(0, 1),
         last: k.last,
         reason: k.reason,
         rCls: k.reason === '긴급' ? 'chip c-urgent' : 'chip c-normal',
@@ -292,20 +296,32 @@ class Logic extends DCLogic {
       ['need', '확인할 아이 6'],
       ['all', '전체 9'],
     ].map(([v, l]) => ({ label: l, cls: s.f === v ? 'on' : '', pick: () => this.setState({ f: v }) }));
-    return { rows, filters };
+    return {
+      rows,
+      filters,
+      alertName: s.real ? KIDS.minjun.name : '○' + KIDS.minjun.short,
+      real: !!s.real,
+      tgBg: s.real ? '#2B2A26' : '#DAD5C9',
+      tgX: s.real ? '16px' : '2px',
+      toggleReal: () => this.setState({ real: !s.real }),
+    };
   }
 }
 
 export default function ChildLink(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-ChildLink">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1000px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -313,38 +329,7 @@ export default function ChildLink(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A className="on" to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="ChildLink" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -355,7 +340,11 @@ export default function ChildLink(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>아이 연계</h1>
+
           <A
             role="alert"
             to="/ChildDetail"
@@ -366,28 +355,72 @@ export default function ChildLink(props) {
               gap: '10px 14px',
               padding: '16px 20px',
               borderRadius: '16px',
-              background: '#FBE4DC',
+              background: '#F7E4DF',
               textDecoration: 'none',
-              color: '#93452E',
+              color: '#A33B2E',
             }}
           >
             <span className="chip c-urgent" style={{ background: '#FFFFFF' }}>
               긴급
             </span>
             <span style={{ flex: '1 1 320px' }}>
-              <b>민준</b> · 오늘 08:12 "물건으로 맞았어 · 여러 번" · 아이 화면 112 · 1388 안내됨
+              <b>{v.alertName}</b> · 오늘 08:12 "물건으로 맞았어 · 여러 번" · 아이 화면 112 · 1388 안내됨
             </span>
             <b style={{ fontSize: '14px' }}>바로 확인 →</b>
           </A>
-          <div role="group" aria-label="상태" className="seg" style={{ alignSelf: 'flex-start' }}>
-            {(v.filters || []).map((f, fIndex) => (
-              <Fragment key={fIndex}>
-                <button type="button" className={f.cls} onClick={f.pick}>
-                  {f.label}
-                </button>
-              </Fragment>
-            ))}
-          </div>
+
+          <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 12px' }}>
+            <input
+              className="inp"
+              type="search"
+              aria-label="이름 또는 사례 ID 검색"
+              placeholder="이름 · 사례 ID 검색"
+              style={{ flex: '1 1 240px' }}
+            />
+            <div role="group" aria-label="상태" className="seg">
+              {(v.filters || []).map((f, fIndex) => (
+                <Fragment key={fIndex}>
+                  <button type="button" className={f.cls} onClick={f.pick}>
+                    {f.label}
+                  </button>
+                </Fragment>
+              ))}
+            </div>
+            <button type="button" className="tg" aria-pressed={v.real} onClick={v.toggleReal}>
+              <span
+                style={{
+                  width: '34px',
+                  height: '20px',
+                  borderRadius: '10px',
+                  background: v.tgBg,
+                  position: 'relative',
+                  display: 'inline-block',
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: v.tgX,
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: '#FFFFFF',
+                    boxShadow: '0 1px 2px rgba(0,0,0,.2)',
+                  }}
+                ></span>
+              </span>
+              실명 보기
+            </button>
+          </section>
+          {v.real ? (
+            <>
+              <p className="note" style={{ margin: '-8px 0 0' }}>
+                실명 표시 중 · 열람 기록 남음
+              </p>
+            </>
+          ) : null}
+
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>
               <thead>

@@ -1,8 +1,12 @@
 // 종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로)
-// 원본: I-SPOT 디자인 캔버스 보드 ClosureReview.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/ClosureReview.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './ClosureReview.css';
 
 class Logic extends DCLogic {
@@ -68,11 +72,7 @@ class Logic extends DCLogic {
             '5월 "무서워" 응답 3회 → 9~10월 "좋아 · 보통"만. 긴급 응답 0회.',
             '아이 연계 체크인 5/2 ~ 10/11 · QB-E-02',
           ],
-          [
-            'e2',
-            '무서움 · 고성 관련 글 없음. 9/30 가족과 웃었다는 글.',
-            '아이 연계 · 아이가 쓴 글 6/12 · 9/30',
-          ],
+          ['e2', '무서움 · 고성 관련 글 없음. 9/30 가족과 웃었다는 글.', '아이 연계 · 아이가 쓴 글 6/12 · 9/30'],
         ],
       ],
     ];
@@ -89,8 +89,8 @@ class Logic extends DCLogic {
           src,
           on: on ? 'true' : 'false',
           mark: on ? '✓' : '',
-          ckBg: on ? '#7FA8D6' : '#FFFFFF',
-          ckBd: on ? '#7FA8D6' : '#C9C2B2',
+          ckBg: on ? '#C2A36B' : '#FFFFFF',
+          ckBd: on ? '#C2A36B' : '#CFC9BB',
           fixed: s.txt[k] !== undefined && s.txt[k] !== t,
           view: !ed,
           editing: ed,
@@ -102,13 +102,7 @@ class Logic extends DCLogic {
     const okCount = all.filter((k) => s.ok[k]).length;
     const allOk = okCount === all.length;
     const R = [
-      [
-        '1회차',
-        '4/10',
-        '초기면접 · 가정방문',
-        '"엄마가 소리 지르면 숨고 싶어요" · 위축',
-        '02:15 · 대상자 태도',
-      ],
+      ['1회차', '4/10', '초기면접 · 가정방문', '"엄마가 소리 지르면 숨고 싶어요" · 위축', '02:15 · 대상자 태도'],
       ['2회차', '4/24', '정기상담', '"너 버리고 간다고 했어요" (보호자는 부인)', '06:41'],
       ['3회차', '5/8', '정기상담', '감정 카드로 무서움 표현 · 안전 계획 처음 만듦', '04:10'],
       ['4회차', '5/22', '정기상담', '"요즘은 엄마가 덜 무서워요"', '02:50'],
@@ -151,15 +145,19 @@ class Logic extends DCLogic {
 }
 
 export default function ClosureReview(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-ClosureReview">
       <div
+        className={theme.cls}
         style={{
           minHeight: '2300px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -167,38 +165,7 @@ export default function ClosureReview(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A className="on" to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="Closure" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -209,23 +176,22 @@ export default function ClosureReview(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/Closure">종결 검토</A> › 강시우
           </nav>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 16px' }}>
             <A className="btn btn-sm btn-s" to="/Closure">
-              ← 종결 검토
+              ← 목록
             </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>
-                  강시우 · 전체 상담 내역 검토
-                </h1>
+                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>강시우 · 전체 상담 내역 검토</h1>
                 <span className="chip c-ai">AI 초안</span>
               </div>
-              <div className="note">
-                C-2026-0312 · 정서 · 7세 · 1~12회차 (4/10 ~ 10/7) · 아이 연계 (5/2 ~ 10/11)
-              </div>
+              <div className="note">C-2026-0312 · 정서 · 7세 · 1~12회차 (4/10 ~ 10/7) · 아이 연계 (5/2 ~ 10/11)</div>
             </div>
             <A className="btn btn-s" to="/CaseHistory">
               상담 이력 원본
@@ -241,13 +207,10 @@ export default function ClosureReview(props) {
               <b style={{ fontWeight: '500' }}>종결보고서 작성</b>
             </A>
           </nav>
+
           <section
             aria-label="한눈에"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-              gap: '12px',
-            }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}
           >
             <div className="kpi">
               <span className="note">상담</span>
@@ -270,15 +233,10 @@ export default function ClosureReview(props) {
               <span className="src">4/12 → 10/2 · 사정기록지</span>
             </div>
           </section>
+
           <section className="card" aria-label="핵심 요약" style={{ padding: '20px 24px' }}>
             <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '8px 12px',
-                marginBottom: '4px',
-              }}
+              style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px', marginBottom: '4px' }}
             >
               <h2 className="h2">핵심 요약</h2>
               <span className="chip c-ai">AI 초안</span>
@@ -314,10 +272,7 @@ export default function ClosureReview(props) {
                               {it.fixed ? (
                                 <>
                                   {' '}
-                                  <span
-                                    className="chip c-normal"
-                                    style={{ height: '20px', fontSize: '11px' }}
-                                  >
+                                  <span className="chip c-normal" style={{ height: '20px', fontSize: '11px' }}>
                                     상담사 수정
                                   </span>
                                 </>
@@ -330,8 +285,8 @@ export default function ClosureReview(props) {
                                 className="ta3"
                                 aria-label="요약 고치기"
                                 onChange={v.setDraft}
-                                defaultValue={it.text}
-                              />
+                                defaultValue={'{{ it.text }}'}
+                              ></textarea>
                               <span style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
                                 <button type="button" className="btn btn-sm btn-p" onClick={v.saveEdit}>
                                   저장
@@ -358,6 +313,7 @@ export default function ClosureReview(props) {
               </Fragment>
             ))}
           </section>
+
           <section
             className="card"
             aria-label="서로 다른 진술"
@@ -369,32 +325,20 @@ export default function ClosureReview(props) {
                 합치지 않고 그대로
               </span>
             </h2>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '10px',
-              }}
-            >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
               <div className="qt">
-                아동 "엄마가 '너 버리고 간다'고 했어요"
-                <span className="src">2회차 4/24 · 06:41 (검수본)</span>
+                아동 "엄마가 '너 버리고 간다'고 했어요"<span className="src">2회차 4/24 · 06:41 (검수본)</span>
               </div>
               <div className="qt">
-                보호자(모) "그런 말은 한 적 없어요"
-                <span className="src">보호자 상담 2회차 5/15 · 상담일지</span>
+                보호자(모) "그런 말은 한 적 없어요"<span className="src">보호자 상담 2회차 5/15 · 상담일지</span>
               </div>
             </div>
           </section>
+
           <section className="card" aria-label="회차별 흐름" style={{ overflowX: 'auto' }}>
             <div className="hd">
               <h2 className="h2">회차별 흐름</h2>
-              <button
-                type="button"
-                className="btn btn-sm btn-s"
-                style={{ marginLeft: 'auto' }}
-                onClick={v.toggleAll}
-              >
+              <button type="button" className="btn btn-sm btn-s" style={{ marginLeft: 'auto' }} onClick={v.toggleAll}>
                 {v.tlLabel}
               </button>
             </div>
@@ -429,25 +373,19 @@ export default function ClosureReview(props) {
               </tbody>
             </table>
           </section>
+
           <section
             className="card"
             aria-label="아이 연계"
             style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '12px' }}
           >
             <h2 className="h2">아이 연계</h2>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '10px',
-              }}
-            >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
               <div className="qt">
                 "오늘 엄마랑 그림 그렸어"<span className="src">아이가 쓴 글 · 6/12 21:40</span>
               </div>
               <div className="qt">
-                "할머니랑 떡볶이 먹었다. 엄마도 같이 웃었어"
-                <span className="src">아이가 쓴 글 · 9/30 19:05</span>
+                "할머니랑 떡볶이 먹었다. 엄마도 같이 웃었어"<span className="src">아이가 쓴 글 · 9/30 19:05</span>
               </div>
             </div>
             <table className="tbl tl">
@@ -490,15 +428,10 @@ export default function ClosureReview(props) {
               체크인 QB-E-02 · QB-H-04 · QB-S-01 · 월별 가장 많은 답
             </span>
           </section>
+
           <section
             className="card"
-            style={{
-              padding: '18px 22px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '12px',
-            }}
+            style={{ padding: '18px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <div style={{ flex: '1 1 300px' }}>
               <b>{v.doneTitle}</b>
@@ -515,7 +448,7 @@ export default function ClosureReview(props) {
             ) : null}
             {v.notAllOk ? (
               <>
-                <span className="btn" style={{ background: '#F1EFE9', color: '#8A939B', cursor: 'default' }}>
+                <span className="btn" style={{ background: '#F2EFE8', color: '#98948B', cursor: 'default' }}>
                   종결보고서 작성 →
                 </span>
               </>

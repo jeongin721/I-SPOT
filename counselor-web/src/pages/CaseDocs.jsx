@@ -1,8 +1,12 @@
 // 탭 5 · 문서함 (기관 서식 6종 + 파일)
-// 원본: I-SPOT 디자인 캔버스 보드 CaseDocs.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/CaseDocs.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 
 class Logic extends DCLogic {
   constructor(props) {
@@ -26,63 +30,14 @@ class Logic extends DCLogic {
       ['8회차 STT 검수본', '녹취', '8회차', '10/07', '검수 중', 'chip c-check', '/SttReview', '열기', 'rec'],
       ['7회차 상담일지', '상담 일지', '7회차', '09/18', '확정', 'chip c-ok', '/CaseHistory', '열기', 'note'],
       ['6회차 상담일지', '상담 일지', '6회차', '09/04', '확정', 'chip c-ok', '/CaseHistory', '열기', 'note'],
-      [
-        '9회차 상담 전 브리핑',
-        '브리핑',
-        '9회차',
-        '10/08',
-        '준비됨',
-        'chip c-sky',
-        '/PreBriefing',
-        '열기',
-        'brief',
-      ],
-      [
-        '심리치료 소견서_9월.pdf',
-        '외부 문서',
-        '—',
-        '09/30',
-        '보관',
-        'chip c-normal',
-        '/CaseDocs',
-        '열기',
-        'ext',
-      ],
-      [
-        '초기 조사 보고서.hwpx',
-        '외부 문서',
-        '—',
-        '07/29',
-        '보관',
-        'chip c-normal',
-        '/CaseDocs',
-        '열기',
-        'ext',
-      ],
-      [
-        '7회차 녹취_0918.m4a',
-        '녹취',
-        '7회차',
-        '09/18',
-        '검수 완료',
-        'chip c-ok',
-        '/CaseHistory',
-        '열기',
-        'rec',
-      ],
+      ['9회차 상담 전 브리핑', '브리핑', '9회차', '10/08', '준비됨', 'chip c-sky', '/PreBriefing', '열기', 'brief'],
+      ['심리치료 소견서_9월.pdf', '외부 문서', '—', '09/30', '보관', 'chip c-normal', '/CaseDocs', '열기', 'ext'],
+      ['초기 조사 보고서.hwpx', '외부 문서', '—', '07/29', '보관', 'chip c-normal', '/CaseDocs', '열기', 'ext'],
+      ['7회차 녹취_0918.m4a', '녹취', '7회차', '09/18', '검수 완료', 'chip c-ok', '/CaseHistory', '열기', 'rec'],
     ];
     const rows = all
       .filter((d) => s.f === 'all' || d[8] === s.f)
-      .map((d) => ({
-        name: d[0],
-        kind: d[1],
-        ses: d[2],
-        date: d[3],
-        st: d[4],
-        stCls: d[5],
-        href: d[6],
-        go: d[7],
-      }));
+      .map((d) => ({ name: d[0], kind: d[1], ses: d[2], date: d[3], st: d[4], stCls: d[5], href: d[6], go: d[7] }));
     const filters = [
       ['all', '전체'],
       ['rec', '녹취'],
@@ -111,16 +66,7 @@ class Logic extends DCLogic {
         '/CaseForm',
         '작성',
       ],
-      [
-        '사례관리 점검표',
-        '서식 27',
-        '3개월마다',
-        '2026-09-14 (2차)',
-        '3차 AI 초안',
-        'chip c-sky',
-        '/CaseForm',
-        '작성',
-      ],
+      ['사례관리 점검표', '서식 27', '3개월마다', '2026-09-14 (2차)', '3차 AI 초안', 'chip c-sky', '/CaseForm', '작성'],
       [
         '위험수준별 개입 사정 척도',
         '참고자료 3',
@@ -151,30 +97,25 @@ class Logic extends DCLogic {
         '/ClosureDetail',
         '예시 보기',
       ],
-    ].map((d) => ({
-      name: d[0],
-      no: d[1],
-      when: d[2],
-      date: d[3],
-      st: d[4],
-      stCls: d[5],
-      href: d[6],
-      go: d[7],
-    }));
+    ].map((d) => ({ name: d[0], no: d[1], when: d[2], date: d[3], st: d[4], stCls: d[5], href: d[6], go: d[7] }));
     return { rows, filters, forms };
   }
 }
 
 export default function CaseDocs(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-CaseDocs">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1350px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -182,40 +123,7 @@ export default function CaseDocs(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -226,10 +134,16 @@ export default function CaseDocs(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › 이서윤 C-2026-0351
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A className="btn btn-sm btn-s" to="/CaseList">
+              ← 목록
+            </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>이서윤</h1>
@@ -276,7 +190,7 @@ export default function CaseDocs(props) {
                   <th>작성 시점</th>
                   <th>최근 작성</th>
                   <th>상태</th>
-                  <th />
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -303,6 +217,7 @@ export default function CaseDocs(props) {
               </tbody>
             </table>
           </section>
+
           <section className="card" aria-label="파일" style={{ overflowX: 'auto' }}>
             <div className="hd">
               <h2 className="h2">녹취 · 일지 · 외부 문서</h2>
@@ -315,7 +230,7 @@ export default function CaseDocs(props) {
                   <th>회차</th>
                   <th>날짜</th>
                   <th>상태</th>
-                  <th />
+                  <th></th>
                 </tr>
               </thead>
               <tbody>

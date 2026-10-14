@@ -1,8 +1,12 @@
 // 종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안)
-// 원본: I-SPOT 디자인 캔버스 보드 ClosureDetail.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/ClosureDetail.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './ClosureDetail.css';
 
 class Logic extends DCLogic {
@@ -12,11 +16,7 @@ class Logic extends DCLogic {
   }
   renderVals() {
     const s = this.state;
-    const sel = (on) => ({
-      bg: on ? '#FFFFFF' : 'transparent',
-      fg: on ? '#2E5687' : '#55606A',
-      fw: on ? 700 : 400,
-    });
+    const sel = (on) => ({ bg: on ? '#FFFFFF' : 'transparent', fg: on ? '#2B2A26' : '#66625A', fw: on ? 700 : 400 });
     const R = [
       [
         '초기면접일 이후 지난 6개월간 재학대가 발생하지 않았을 경우',
@@ -53,11 +53,7 @@ class Logic extends DCLogic {
         '피해아동',
         [
           ['아동의 위험상황 인지 및 대처능력', '높음', '11회차 녹취 03:12 · 안전 계획을 자기 말로 설명함'],
-          [
-            '아동의 연령, 장애 등 집중적 보호가 요구되는 특성 보유',
-            '보통',
-            '초기면접지 · 만 7세, 장애 기록 없음',
-          ],
+          ['아동의 연령, 장애 등 집중적 보호가 요구되는 특성 보유', '보통', '초기면접지 · 만 7세, 장애 기록 없음'],
           ['피해아동과 가족과의 관계 친밀성', '높음', '체크인 기분 응답 4주 "좋아 · 보통" · 12회차 상담일지'],
         ],
       ],
@@ -80,11 +76,7 @@ class Logic extends DCLogic {
             '보호자 상담 6회차 "소리 지른 게 아이한테 상처였다는 걸 알았어요"',
           ],
           ['스스로 자신을 통제하기 어려운 특성 (중독, 성격장애 등)', '', ''],
-          [
-            '가정 내 위기상황(실직, 가정폭력 등)으로 인한 만성적 스트레스',
-            '보통',
-            '보호자 상담 · 이직 준비 중',
-          ],
+          ['가정 내 위기상황(실직, 가정폭력 등)으로 인한 만성적 스트레스', '보통', '보호자 상담 · 이직 준비 중'],
         ],
       ],
     ];
@@ -112,15 +104,19 @@ class Logic extends DCLogic {
 }
 
 export default function ClosureDetail(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-ClosureDetail">
       <div
+        className={theme.cls}
         style={{
           minHeight: '2250px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -128,38 +124,7 @@ export default function ClosureDetail(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A className="on" to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="Closure" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -170,6 +135,9 @@ export default function ClosureDetail(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/Closure">종결 검토</A> › 강시우
           </nav>
@@ -198,6 +166,7 @@ export default function ClosureDetail(props) {
               <b style={{ fontWeight: '700' }}>종결보고서 작성</b>
             </A>
           </nav>
+
           <section
             className="card"
             style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}
@@ -228,6 +197,7 @@ export default function ClosureDetail(props) {
                 <span className="v">2026-04-10</span>
               </div>
             </div>
+
             <div className="grp">종결사유</div>
             {(v.reasons || []).map((r, rIndex) => (
               <Fragment key={rIndex}>
@@ -249,9 +219,10 @@ export default function ClosureDetail(props) {
                 </label>
               </Fragment>
             ))}
+
             <div className="grp">사례관리 제공 요약</div>
-            <div style={{ border: '1px solid #E7E0CE', borderRadius: '12px', overflow: 'hidden' }}>
-              <div className="goal" style={{ background: '#F1EFE9', fontSize: '13px', color: '#55606A' }}>
+            <div style={{ border: '1px solid #E7E4DC', borderRadius: '12px', overflow: 'hidden' }}>
+              <div className="goal" style={{ background: '#F2EFE8', fontSize: '13px', color: '#66625A' }}>
                 <span>개입목표</span>
                 <span>
                   제공된 서비스 내용 및 총량{' '}
@@ -277,10 +248,11 @@ export default function ClosureDetail(props) {
                 </Fragment>
               ))}
             </div>
+
             <div className="grp">안전평가</div>
             {(v.safety || []).map((g, gIndex) => (
               <Fragment key={gIndex}>
-                <b style={{ fontSize: '13px', color: '#55606A', padding: '4px 4px 0' }}>{g.name}</b>
+                <b style={{ fontSize: '13px', color: '#66625A', padding: '4px 4px 0' }}>{g.name}</b>
                 {(g.items || []).map((it, itIndex) => (
                   <Fragment key={itIndex}>
                     <div className="item">
@@ -313,7 +285,7 @@ export default function ClosureDetail(props) {
                 ))}
               </Fragment>
             ))}
-            <b style={{ fontSize: '13px', color: '#55606A', padding: '4px 4px 0' }}>환경</b>
+            <b style={{ fontSize: '13px', color: '#66625A', padding: '4px 4px 0' }}>환경</b>
             <div className="item" style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)' }}>
               <span>조부모, 친구, 이웃 등 신뢰할만한 주위 사람 (Key Person)</span>
               <input
@@ -330,6 +302,7 @@ export default function ClosureDetail(props) {
                 보호자 상담 3회차 · 서비스 기록
               </span>
             </div>
+
             <div className="grp">
               안전점수{' '}
               <span className="note" style={{ fontWeight: '400' }}>
@@ -349,13 +322,7 @@ export default function ClosureDetail(props) {
                     aria-label="안전점수"
                     style={{ width: '100px' }}
                   />
-                  <input
-                    className="inp"
-                    type="text"
-                    placeholder="이유"
-                    aria-label="이유"
-                    style={{ width: '100%' }}
-                  />
+                  <input className="inp" type="text" placeholder="이유" aria-label="이유" style={{ width: '100%' }} />
                 </div>
               </Fragment>
             ))}
@@ -366,6 +333,7 @@ export default function ClosureDetail(props) {
                 <span className="note">· 10/1 응답 (모) · 초기 4/12 응답 2.40점</span>
               </span>
             </div>
+
             <div className="grp">대상자 변화상황</div>
             <div className="two">
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -381,7 +349,7 @@ export default function ClosureDetail(props) {
                   defaultValue={
                     '보호자(모)의 잦은 고성 · 위협적 언어로 아동이 위축됨. 아동은 "엄마가 소리 지르면 숨고 싶어요"라고 진술함. 보호자는 훈육이라고 인식함.'
                   }
-                />
+                ></textarea>
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -396,9 +364,10 @@ export default function ClosureDetail(props) {
                   defaultValue={
                     '9~12회차 상담과 체크인에서 새 학대 진술 없음. 아동이 안전 계획을 스스로 설명함. 보호자는 부모교육 8회를 이수하고 고성이 상처였다고 말함.'
                   }
-                />
+                ></textarea>
               </label>
             </div>
+
             <div className="two">
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <b style={{ fontSize: '14px' }}>종결 심의일</b>
@@ -417,8 +386,9 @@ export default function ClosureDetail(props) {
             </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>담당 상담원 종합의견</b>
-              <textarea className="ta2" style={{ minHeight: '110px' }} placeholder="상담원 작성" />
+              <textarea className="ta2" style={{ minHeight: '110px' }} placeholder="상담원 작성"></textarea>
             </label>
+
             <div
               style={{
                 display: 'flex',
