@@ -7,9 +7,15 @@ LLM을 쓰지 않는다 — 기계적인 텍스트 비교이고, 요약·해석�
 "두 회차의 원문을 그대로 나란히 보여주는" 목적이라 LLM이 끼어들
 이유가 없다(새 사실을 추가하거나 표현을 바꿔 쓸 위험만 생긴다).
 
-세부유형(major_type, subtype) 조합마다 "대표 진술 1개"만 비교한다
-(evidence_strength가 가장 높은 것 — 동률이면 먼저 나온 것). 같은
-세부유형 안에 근거가 여러 개 있어도 전부 비교하면 소음이 너무 커진다.
+세부유형(major_type, subtype)별로 "대표 진술"(evidence_strength가
+가장 높은 것 — 동률이면 먼저 나온 것)을 비교 문구에 쓰지만, "바뀌었다"
+판정 자체는 그 세부유형의 근거 전체(여러 개일 수 있음)를 서로 비교해서
+내린다. 2026-10-14 실사용 테스트에서 발견: 같은 녹취를 다시 분석해도
+2차 LLM이 같은 발화를 매번 똑같이 끊어서 인용하지 않는다(예:
+"...이불 들추고"까지 인용했다가 다음 회차엔 "..."만 인용). 대표 진술
+하나만 정확히 문자열 비교하면 이런 재인용 차이를 "진술이 바뀜"으로
+오탐한다 — 그래서 "이번 세부유형에 저번과 충분히 겹치는 근거가 하나도
+없을 때만" 바뀐 걸로 본다(difflib 문자열 유사도, LLM 아님).
 
 "회차" 표시는 case_store에 아직 정식 회차 번호 필드가 없어서, 그
 사례의 "승인된" 세션 개수로 근사한다(1번째 승인=1회차, 2번째=2회차,
@@ -18,16 +24,29 @@ LLM을 쓰지 않는다 — 기계적인 텍스트 비교이고, 요약·해석�
 """
 
 import json
+from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
 
 _STRENGTH_RANK = {"높음": 3, "중간": 2, "낮음": 1}
 
+# 이 미만이면 "다른 진술"로 본다. 재인용 때문에 한쪽이 다른 쪽의 부분
+# 문자열이기만 해도(접두사가 잘리는 경우 등) 유사도가 높게 나오므로,
+# 느슨하게 잡아도 "진짜 다른 내용"은 대부분 이 밑으로 떨어진다.
+_SAME_STATEMENT_SIMILARITY = 0.5
 
-def _top_evidence_by_subtype(
+
+def _evidence_by_subtype(
     subtype_analysis: Optional[Dict[str, Any]],
-) -> Dict[Tuple[str, str], str]:
-    best: Dict[Tuple[str, str], Tuple[str, int]] = {}
+) -> Dict[Tuple[str, str], List[Tuple[str, int]]]:
+    """
+    {(major_type, subtype): [(evidence_text, strength_rank), ...]}
+    세부유형 안의 근거를 전부 모은다(강도 높은 순 정렬) — "대표 진술
+    1개만 문자열 비교"로는 재인용 차이를 걸러낼 수 없어서다(모듈
+    docstring 참고).
+    """
+
+    grouped: Dict[Tuple[str, str], List[Tuple[str, int]]] = {}
 
     for major_result in (subtype_analysis or {}).get(
         "results", []
@@ -54,15 +73,32 @@ def _top_evidence_by_subtype(
                     evidence.get("evidence_strength"), 0
                 )
 
-                current = best.get(key)
+                grouped.setdefault(key, []).append(
+                    (text, rank)
+                )
 
-                if current is None or rank > current[1]:
-                    best[key] = (text, rank)
+    for key, items in grouped.items():
+        items.sort(key=lambda item: item[1], reverse=True)
 
-    return {
-        key: text
-        for key, (text, rank) in best.items()
-    }
+    return grouped
+
+
+def _max_similarity(
+    current_texts: List[str],
+    previous_texts: List[str],
+) -> float:
+    best = 0.0
+
+    for current_text in current_texts:
+        for previous_text in previous_texts:
+            ratio = SequenceMatcher(
+                None, current_text, previous_text
+            ).ratio()
+
+            if ratio > best:
+                best = ratio
+
+    return best
 
 
 def build_session_change_notes(
@@ -88,27 +124,42 @@ def build_session_change_notes(
     except (TypeError, ValueError):
         return []
 
-    current_map = _top_evidence_by_subtype(
+    current_grouped = _evidence_by_subtype(
         current_subtype_analysis
     )
-    previous_map = _top_evidence_by_subtype(
+    previous_grouped = _evidence_by_subtype(
         previous_subtype_analysis
     )
 
     notes = []
 
-    for key, current_text in current_map.items():
-        previous_text = previous_map.get(key)
+    for key, current_items in current_grouped.items():
+        previous_items = previous_grouped.get(key)
 
-        if previous_text is None:
+        if not previous_items:
             continue
 
-        if previous_text == current_text:
+        current_texts = [
+            text for text, _rank in current_items
+        ]
+        previous_texts = [
+            text for text, _rank in previous_items
+        ]
+
+        if (
+            _max_similarity(
+                current_texts, previous_texts
+            )
+            >= _SAME_STATEMENT_SIMILARITY
+        ):
             continue
+
+        current_top = current_items[0][0]
+        previous_top = previous_items[0][0]
 
         notes.append(
-            f'{previous_round_label} "{previous_text}"였던 '
-            f'진술이 {current_round_label}에 "{current_text}"로 '
+            f'{previous_round_label} "{previous_top}"였던 '
+            f'진술이 {current_round_label}에 "{current_top}"로 '
             f"바뀜. 두 진술 모두 원문대로 남김."
         )
 
