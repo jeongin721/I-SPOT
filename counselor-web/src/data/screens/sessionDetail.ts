@@ -34,7 +34,7 @@ export interface SessionScreenInput {
   caseDetail: CaseDetailState;
   /**
    * 화면 이동. 요청 응답 뒤에 옮길 때는 요청한 회차 ID 를 함께 넘겨, 그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않는다
-   * (useScreenGo). react-router 의 navigate 를 그대로 넘겨도 된다.
+   * (useScreenGo). 화면 파일은 useScreenGo(useNavigate(), ids) 로 만들어 넘긴다.
    */
   go: ScreenGo;
 }

@@ -87,11 +87,14 @@ export const EMPTY_NOTE: NoteDraft = {
 const HEADING_LIKE = /^(\\*)\[(.+)\]$/;
 const TITLES = new Set(SECTIONS.map((section) => section.title));
 
-/** 본문 줄이 칸 머리줄과 같은 모양이면 앞에 역슬래시를 하나 붙인다(parseNote 가 하나 떼어 낸다). */
+/**
+ * 본문 줄이 칸 머리줄과 같은 모양이면 '[' 바로 앞(앞쪽 공백 뒤)에 역슬래시를 하나 붙인다(parseNote 가 하나 떼어 낸다).
+ * 공백 앞에 붙이면 읽을 때 머리줄 모양으로 알아보지 못해 역슬래시가 남는다.
+ */
 function escapeLine(line: string): string {
   const match = HEADING_LIKE.exec(line.trim());
 
-  return match && TITLES.has(match[2]) ? `\\${line}` : line;
+  return match && TITLES.has(match[2]) ? line.replace(/^(\s*)/, "$1\\") : line;
 }
 
 /** 칸 → 본문. 빈 칸은 쓰지 않는다. 고르기 칸은 ', ' 로 잇는다. */

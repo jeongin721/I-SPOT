@@ -15,6 +15,7 @@ import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useScreenGo } from '../data/screens/useScreenGo';
 import { sessionCaseId } from '../data/screens/sessionDetail';
 import { signalReviewValues } from '../data/screens/signalReview';
 
@@ -27,7 +28,7 @@ class Logic extends DCLogic {
 export default function SignalReview(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
-  const go = useNavigate();
+  const go = useScreenGo(useNavigate(), ids);
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });

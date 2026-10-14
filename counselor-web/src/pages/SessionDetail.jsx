@@ -14,6 +14,7 @@ import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useScreenGo } from '../data/screens/useScreenGo';
 import { sessionCaseId, sessionDetailValues } from '../data/screens/sessionDetail';
 import './SessionDetail.css';
 
@@ -26,7 +27,7 @@ class Logic extends DCLogic {
 export default function SessionDetail(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
-  const go = useNavigate();
+  const go = useScreenGo(useNavigate(), ids);
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
