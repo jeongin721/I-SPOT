@@ -814,7 +814,7 @@ renderVals() {
     if (!s.file) { this.setState({ confirm: true }); return; }
     this.setState({ uploading: true });
     const fd = new FormData();
-    fd.append('case_id', 'jiwoo');
+    fd.append('case_id', cs[s.c][1].split(' · ')[0]);
     fd.append('file', s.file, s.file.name);
     fetch('/api/analyze-audio', { method: 'POST', body: fd }).then((r) => r.json()).then((data) => {
       window.__REAL_SESSION__ = data;
