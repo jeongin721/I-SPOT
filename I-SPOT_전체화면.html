@@ -811,7 +811,7 @@ renderVals() {
   const s = this.state;
   const onFile = (e) => { const f = e.target.files && e.target.files[0]; if (f) this.setState({ file: f }); };
   const doUpload = () => {
-    if (!s.file) { this.setState({ confirm: true }); return; }
+    if (!s.file) { alert('먼저 음성 파일을 선택해 주세요.'); return; }
     this.setState({ uploading: true });
     const fd = new FormData();
     fd.append('case_id', cs[s.c][1].split(' · ')[0]);
@@ -841,8 +841,8 @@ renderVals() {
   const sessions = xs.map((x, i) => ({ label: x[0], meta: x[1], ...radio(i === s.x), pick: () => this.setState({ x: i }) }));
   return { steps, cases, sessions, caseName: cs[s.c][0] + ' · ' + cs[s.c][1].split(' · ')[0], sesLabel: xs[s.x][0].split(' · ')[0],
     s1: s.step === 1, s2: s.step === 2, s3: s.step === 3, notFirst: s.step > 1, notLast: s.step < 3, confirm: s.confirm,
-    onFile, fileLabel: s.file ? s.file.name + (s.uploading ? ' · 분석 중…' : '') : '방문상담_1002.m4a',
-    fileMeta: s.file ? Math.round(s.file.size / 1024 / 1024 * 10) / 10 + 'MB · 실제 파일' : '24분 · 18MB',
+    onFile, fileLabel: s.file ? s.file.name + (s.uploading ? ' · 분석 중…' : '') : '선택된 파일 없음',
+    fileMeta: s.file ? Math.round(s.file.size / 1024 / 1024 * 10) / 10 + 'MB · 실제 파일' : '',
     next: () => this.setState({ step: Math.min(3, s.step + 1) }), prev: () => this.setState({ step: Math.max(1, s.step - 1) }),
     upload: doUpload };
 }
