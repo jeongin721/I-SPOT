@@ -1,73 +1,22 @@
 // 통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)
 // 원본: I-SPOT 디자인 캔버스 보드 CaseList.dc.html (자동 변환 후 다듬어 쓰세요)
 //
-// 서버 연결: 로그인 상태(useAuthSession)와 사례 목록(useCaseList)은 src/data 의 훅이 하고, 이 파일은 배치만 한다.
+// 서버 연결: 로그인 상태(useAuthSession)와 사례 목록(useCaseList)은 src/data 의 훅이 하고,
+// 화면에 쓸 값은 src/data/screens/caseList.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 피그마 화면으로 바꿀 때는 아래 CaseList 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
-//  - 이름은 아동 별칭이다(Backend 는 실명을 저장하지 않는다). 나이 대신 출생연도를 보여 준다.
-//  - 신고접수일 · 위험도 · 실명 보기는 Backend 에 값이 없어 자리만 두고 '—' · 준비 중으로 둔다(팀 결정 대기).
-//  - 상세로 가는 링크는 아직 사례 ID 를 넘기지 않는다(화면 주소에 ID 넣기는 새 화면 코드가 온 뒤).
 import { Fragment, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseList } from '../data/useCaseList';
+import { caseListValues } from '../data/screens/caseList';
+import { needsLogin, signedIn } from '../data/screens/common';
 import './CaseList.css';
-
-const NOT_READY = '준비 중';
 
 class Logic extends DCLogic {
   renderVals() {
-    const { session, list, search, setSearch } = this.props;
-    const me = session.me;
-    const rows = list.rows.map((r) => ({
-      id: r.caseNumber,
-      ini: r.initial,
-      name: r.alias,
-      age: r.birthYearLabel,
-      date: r.reportDate,
-      risk: r.riskLabel,
-      cls: 'note',
-    }));
-    // 위험도는 사례 단위 값이 Backend 에 없다. '전체'만 고를 수 있다.
-    const filters = [
-      ['all', list.total == null ? '전체' : `전체 ${list.total}`],
-      ['상', '상'],
-      ['중', '중'],
-      ['하', '하'],
-    ].map(([k, label]) => ({ label, cls: k === 'all' ? 'on' : '', disabled: k !== 'all' }));
-
-    // 표 본문: 확인 · 불러오는 중 → 오류 → 빈 목록 → 행
-    const sessionError = session.status === 'error';
-    let phase = 'rows';
-    if (session.status === 'checking' || list.loading) phase = 'loading';
-    if (sessionError || (phase !== 'loading' && list.error)) phase = 'error';
-    else if (phase === 'rows' && rows.length === 0) phase = 'empty';
-
-    let countLabel = '';
-    if (list.total != null) {
-      countLabel = `${me && me.role === 'ADMIN' ? '전체' : '담당'} 사례 ${list.total}건`;
-      if (list.total > rows.length) countLabel += ` · 처음 ${rows.length}건 표시`;
-    }
-
-    return {
-      rows,
-      filters,
-      real: false,
-      tgBg: '#DCD5C3',
-      tgX: '2px',
-      notReady: NOT_READY,
-      countLabel,
-      search: { value: search, onChange: (e) => setSearch(e.target.value) },
-      phase,
-      errorText: sessionError ? session.error : list.error,
-      retry: sessionError ? session.recheck : list.reload,
-      emptyText: search.trim() ? '검색 결과가 없습니다.' : '사례가 없습니다.',
-      meName: me ? `${me.name} ${me.role === 'ADMIN' ? '관리자' : '상담원'}` : '',
-      meInitial: me && me.name ? Array.from(me.name)[0] : '',
-      // 링크가 /Login 으로 옮기기 전에 로그아웃한다.
-      logout: () => session.logout(),
-    };
+    return caseListValues(this.props);
   }
 }
 
@@ -113,10 +62,10 @@ export default function CaseList(props) {
             </A>
             <A to="/Schedule">일정</A>
             <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
+              아이 연계
             </A>
             <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
+              종결 검토
             </A>
             <A to="/Stats">통계</A>
             <A to="/Settings">설정</A>
@@ -241,7 +190,7 @@ export default function CaseList(props) {
                     <tr>
                       <td className="note">{r.id}</td>
                       <td>
-                        <A className="nm" to="/CaseDetail">
+                        <A className="nm" to={r.href}>
                           <span className="av" style={{ width: '34px', height: '34px', fontSize: '13px' }}>
                             {r.ini}
                           </span>
@@ -257,7 +206,7 @@ export default function CaseList(props) {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <A to="/CaseDetail">상세</A>
+                        <A to={r.href}>상세</A>
                       </td>
                     </tr>
                   </Fragment>

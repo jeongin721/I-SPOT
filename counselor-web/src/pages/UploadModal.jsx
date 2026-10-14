@@ -1,81 +1,51 @@
 // 녹취 · 자료 올리기 (팝업 3단계 + 확인창)
 // 원본: I-SPOT 디자인 캔버스 보드 UploadModal.dc.html (자동 변환 후 다듬어 쓰세요)
-import { Fragment } from 'react';
+//
+// 서버 연결: 화면 주소 ?case=…(&session=…) 로 열면 그 사례(회차)를 고른 채 시작한다. 사례 목록은 useCaseList,
+// 고른 사례의 회차는 useCaseDetail, 올리기 · 원문 변환은 useAudioUpload 가 하고, 화면에 쓸 값은
+// src/data/screens/uploadModal.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
+// 끝나면 확인창에서 그 회차의 STT 검수(이동) 또는 회차 상세(나중에)로 간다.
+import { Fragment, useState } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import { useAudioUpload } from '../data/useAudioUpload';
+import { useAuthSession } from '../data/useAuthSession';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseList } from '../data/useCaseList';
+import { needsLogin, signedIn } from '../data/screens/common';
+import { readScreenIds } from '../data/screens/links';
+import { initialUploadState, uploadModalValues } from '../data/screens/uploadModal';
 import './UploadModal.css';
 
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { step: 1, c: 0, x: 0, confirm: false };
+    this.state = initialUploadState(props.ids);
   }
   renderVals() {
-    const s = this.state;
-    const labels = ['사례 선택', '상담 회차', '파일 선택'];
-    const steps = labels.map((label, i) => {
-      const n = i + 1,
-        done = n < s.step,
-        cur = n === s.step;
-      return {
-        label,
-        mark: done ? '✓' : String(n),
-        bg: cur ? '#E2ECF8' : 'transparent',
-        fg: cur ? '#2E5687' : done ? '#2F3A44' : '#6F7880',
-        fw: cur ? 700 : 400,
-        dotBg: cur ? '#A8C6E7' : done ? '#F1EFE9' : '#EEE8DA',
-        dotFg: cur ? '#213F63' : done ? '#55606A' : '#6F7880',
-      };
-    });
-    const cs = [
-      ['이서윤', 'C-2026-0351 · 8회차까지 진행'],
-      ['김도현', 'C-2026-0412 · 6회차까지 진행'],
-      ['박지호', 'C-2026-0389 · 3회차까지 진행'],
-    ];
-    const radio = (on) => ({
-      bd: on ? '#A8C6E7' : '#E7E0CE',
-      bg: on ? '#E2ECF8' : '#FFFFFF',
-      dot: on ? '#2E5687' : '#DCD5C3',
-      fill: on ? '#2E5687' : 'transparent',
-    });
-    const cases = cs.map((c, i) => ({
-      name: c[0],
-      meta: c[1],
-      ...radio(i === s.c),
-      pick: () => this.setState({ c: i }),
-    }));
-    const xs = [
-      ['8회차 · 10/2 방문상담', '녹취 아직 없음'],
-      ['새 회차 · 9회차', '새로 등록'],
-      ['7회차 · 9/18 정기상담', '녹취 있음 · 추가 자료'],
-    ];
-    const sessions = xs.map((x, i) => ({
-      label: x[0],
-      meta: x[1],
-      ...radio(i === s.x),
-      pick: () => this.setState({ x: i }),
-    }));
-    return {
-      steps,
-      cases,
-      sessions,
-      caseName: cs[s.c][0] + ' · ' + cs[s.c][1].split(' · ')[0],
-      sesLabel: xs[s.x][0].split(' · ')[0],
-      s1: s.step === 1,
-      s2: s.step === 2,
-      s3: s.step === 3,
-      notFirst: s.step > 1,
-      notLast: s.step < 3,
-      confirm: s.confirm,
-      next: () => this.setState({ step: Math.min(3, s.step + 1) }),
-      prev: () => this.setState({ step: Math.max(1, s.step - 1) }),
-      upload: () => this.setState({ confirm: true }),
-    };
+    return uploadModalValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
 
 export default function UploadModal(props) {
-  const v = useDC(Logic, props);
+  const ids = readScreenIds(useSearchParams()[0]);
+  // 주소의 사례 · 회차가 바뀌면 처음부터 다시 그린다(고른 사례 · 단계를 앞 주소 것으로 두고 올리지 않게).
+  return <UploadModalScreen key={`${ids.caseId ?? ''}|${ids.sessionId ?? ''}`} {...props} ids={ids} />;
+}
+
+function UploadModalScreen(props) {
+  const { ids } = props;
+  const session = useAuthSession();
+  const go = useNavigate();
+  const enabled = signedIn(session);
+  const [search, setSearch] = useState('');
+  const [caseId, setCaseId] = useState(ids.caseId);
+  const list = useCaseList({ search, enabled });
+  const caseDetail = useCaseDetail(caseId, { enabled });
+  const upload = useAudioUpload();
+  const v = useDC(Logic, { ...props, session, ids, list, search, setSearch, caseId, setCaseId, caseDetail, upload, go });
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-UploadModal">
       <div
@@ -112,7 +82,7 @@ export default function UploadModal(props) {
                 녹취 · 자료 올리기
               </h1>
               <A
-                to="/Main"
+                to={v.closeHref}
                 aria-label="닫기"
                 style={{
                   marginLeft: 'auto',
@@ -189,6 +159,7 @@ export default function UploadModal(props) {
                   aria-label="이름 또는 사례 ID 검색"
                   placeholder="이름 또는 사례 ID 검색"
                   style={{ width: '100%' }}
+                  {...v.search}
                 />
                 <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {(v.cases || []).map((c, cIndex) => (
@@ -220,6 +191,11 @@ export default function UploadModal(props) {
                       </button>
                     </Fragment>
                   ))}
+                  {v.casesNote ? (
+                    <p className="note" role="status" style={{ margin: 0 }}>
+                      {v.casesNote}
+                    </p>
+                  ) : null}
                 </div>
                 <div
                   style={{
@@ -234,7 +210,7 @@ export default function UploadModal(props) {
                   }}
                 >
                   <span style={{ flex: '1 1 240px', fontSize: '13px' }}>찾는 아이가 없나요?</span>
-                  <A className="btn btn-sm btn-s" to="/CaseRegister">
+                  <A className="btn btn-sm btn-s" to={v.registerHref}>
                     + 새 사례 등록
                   </A>
                 </div>
@@ -286,6 +262,11 @@ export default function UploadModal(props) {
                       </button>
                     </Fragment>
                   ))}
+                  {v.sessionsNote ? (
+                    <p className="note" role="status" style={{ margin: 0 }}>
+                      {v.sessionsNote}
+                    </p>
+                  ) : null}
                 </div>
               </>
             ) : null}
@@ -333,31 +314,44 @@ export default function UploadModal(props) {
                     ↑
                   </span>
                   <b style={{ fontWeight: '500' }}>파일을 끌어 놓거나 눌러서 선택</b>
-                  <input type="file" aria-label="파일 선택" style={{ fontSize: '13px', marginTop: '6px' }} />
+                  <input
+                    type="file"
+                    aria-label="파일 선택"
+                    accept={v.accept}
+                    onChange={v.pickFile}
+                    style={{ fontSize: '13px', marginTop: '6px' }}
+                  />
                 </label>
-                <div
-                  style={{
-                    marginTop: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    border: '1px solid #E7E0CE',
-                  }}
-                >
-                  <span className="chip c-sky">음성</span>
-                  <span style={{ flex: '1' }}>방문상담_1002.m4a</span>
-                  <span className="note">24분 · 18MB</span>
-                </div>
+                {v.hasFile ? (
+                  <div
+                    style={{
+                      marginTop: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      border: '1px solid #E7E0CE',
+                    }}
+                  >
+                    <span className="chip c-sky">음성</span>
+                    <span style={{ flex: '1' }}>{v.fileName}</span>
+                    <span className="note">{v.fileMeta}</span>
+                  </div>
+                ) : null}
+                {v.fileError ? (
+                  <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#93452E' }}>
+                    {v.fileError}
+                  </p>
+                ) : null}
                 <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                   <div className="fmt">
                     <b style={{ fontSize: '13px' }}>음성 파일</b>
-                    <span className="note">MP3 · M4A · WAV · 최대 2시간</span>
+                    <span className="note">{v.audioRule}</span>
                   </div>
                   <div className="fmt">
                     <b style={{ fontSize: '13px' }}>문서 파일</b>
-                    <span className="note">PDF · HWPX · DOCX · TXT</span>
+                    <span className="note">{v.docRule}</span>
                   </div>
                 </div>
               </>
@@ -374,7 +368,7 @@ export default function UploadModal(props) {
           >
             {v.s1 ? (
               <>
-                <A className="btn btn-s" to="/Main">
+                <A className="btn btn-s" to={v.closeHref}>
                   취소
                 </A>
               </>
@@ -389,14 +383,14 @@ export default function UploadModal(props) {
             <span style={{ flex: '1' }} />
             {v.notLast ? (
               <>
-                <button type="button" className="btn btn-p" onClick={v.next}>
+                <button type="button" className="btn btn-p" onClick={v.next} disabled={!v.canNext}>
                   다음
                 </button>
               </>
             ) : null}
             {v.s3 ? (
               <>
-                <button type="button" className="btn btn-p" onClick={v.upload}>
+                <button type="button" className="btn btn-p" onClick={v.upload} disabled={!v.canUpload}>
                   업로드
                 </button>
               </>
@@ -445,23 +439,28 @@ export default function UploadModal(props) {
                     fontWeight: '700',
                   }}
                 >
-                  ✓
+                  {v.dialogMark}
                 </span>
                 <h2 id="ok-title" style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>
-                  업로드했어요
+                  {v.dialogTitle}
                 </h2>
-                <p style={{ margin: '0' }}>
-                  {v.caseName} · {v.sesLabel} · 방문상담_1002.m4a
+                <p style={{ margin: '0' }} aria-live="polite">
+                  {v.dialogText}
                   <br />
-                  STT 분석 시작 · <b>검수 화면으로 이동할까요?</b>
+                  <b>{v.dialogAsk}</b>
                 </p>
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
-                  <A className="btn btn-s" to="/Main">
-                    나중에
-                  </A>
-                  <A className="btn btn-p" to="/SttReview">
-                    이동
-                  </A>
+                  {(v.dialogActions || []).map((a, aIndex) => (
+                    <button
+                      key={aIndex}
+                      type="button"
+                      className={`btn ${a.primary ? 'btn-p' : 'btn-s'}`}
+                      onClick={a.onClick}
+                      disabled={a.disabled}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
                 </div>
               </section>
             </div>

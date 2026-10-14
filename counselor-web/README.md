@@ -2,7 +2,7 @@
 
 아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
-**로그인 · 통합 사례 관리 두 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결").
+**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
 
 ## 실행
 
@@ -13,7 +13,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 ```
 
 - Node.js 18 이상
-- 화면 주소: `http://localhost:5173/#/Main`, `#/CaseDetail` 처럼 `#/파일이름`
+- 화면 주소: `http://localhost:5173/#/Main` 처럼 `#/파일이름`. 사례 · 회차를 다루는 화면은 `#/CaseDetail?case=<사례 ID>` 처럼 쿼리로 ID 를 넘깁니다(아래 "화면 주소")
 - 위치: I-SPOT 저장소의 `counselor-web/` 폴더 (기존 `ispotvscode/` 와 별개)
 
 ## 서버 연결
@@ -23,8 +23,8 @@ npm run build      # dist/ 에 배포용 파일 생성
 - 서버 연결 부분은 화면과 나눠 두었습니다. 화면(`.jsx`)은 JavaScript, 연결 부분은 TypeScript 이고 Vite 가 함께 빌드합니다.
   - `src/api/` Backend 호출(토큰 · 401 · 오류 형식), 주소 함수, Backend 응답 타입. `ispotvscode/src/api` 에서 옮겨 왔습니다.
   - `src/data/` 응답을 화면에 쓰기 좋은 모양으로 바꾸는 함수와 훅. 화면 이동은 하지 않고 상태만 돌려주므로 어느 화면 코드에도 끼울 수 있습니다.
-- 화면 파일은 훅의 결과를 `useDC(Logic, { ...props, 훅 결과 })` 로 넘겨 `renderVals()` 에서 씁니다(`Login.jsx` · `CaseList.jsx` 참고). 화면을 새로 바꿀 때는 훅 부분을 그대로 두고 JSX 만 갈아 끼웁니다.
-- 회차를 다루는 훅은 회차 ID 를, 사례 상세는 사례 ID 를 받습니다. 로그인 확인 전에 부르지 않도록 `{ enabled: session.status === 'signedIn' }` 을 함께 넘깁니다.
+  - `src/data/screens/` 화면별 값 함수. 훅 결과를 받아 화면의 예시 데이터를 대신할 값(문자열 · 목록 · 링크 · 이벤트 함수)을 만듭니다. 아래 "화면 파일과 값 함수".
+- 회차를 다루는 훅은 회차 ID 를, 사례 상세는 사례 ID 를 받습니다. 로그인 확인 전에 부르지 않도록 `{ enabled: signedIn(session) }` 을 함께 넘깁니다.
 
 | 화면 | 훅 · 변환 | 하는 일 |
 | --- | --- | --- |
@@ -49,6 +49,53 @@ npm run build      # dist/ 에 배포용 파일 생성
 - Backend 에 없는 값(실명 · 신고접수일 · 위험도 · 상담 유형 · 기관 이름 등)은 다른 값으로 채우지 않고 `—` 로 둡니다.
 - 타입 검사: `npx tsc --noEmit` (CI 에서도 돕니다)
 
+### 화면 주소
+
+화면 경로는 파일 이름 그대로이고(`App.jsx`), 다루는 사례 · 회차는 쿼리로 넘깁니다. **새 화면도 이 규칙을 따릅니다.**
+
+| 쿼리 | 값 | 쓰는 화면 |
+| --- | --- | --- |
+| `case` | 사례 ID(UUID, 목록의 `CaseRow.id`). 화면에 보이는 사례번호 `C-2026-0001` 이 아닙니다 | 사례 상세 탭들, 녹취 올리기(그 사례를 고른 채 시작) |
+| `session` | 회차 ID(UUID) | 회차 상세, 회차 처리 화면, 녹취 올리기(그 회차를 고른 채 시작) |
+
+- 예: `#/CaseDetail?case=…`, `#/SessionDetail?case=…&session=…`
+- 읽기는 `readScreenIds(useSearchParams()[0])`, 만들기는 `screenHref('/SessionDetail', { caseId, sessionId })`(`src/data/screens/links.ts`). 주소 문자열을 직접 이어 붙이지 않습니다.
+- 회차 화면은 `session` 만 있어도 됩니다. 사례는 회차 정보에서 찾고, 주소의 `case` 와 다르면 회차 쪽을 씁니다. 링크를 만들 때는 아는 ID 를 모두 넣습니다.
+- 필요한 ID 가 없거나 없는 사례 · 회차면 화면 위에 안내와 돌아갈 링크를 보입니다(`screenNotice` → `components/Notice.jsx`).
+
+### 화면 파일과 값 함수
+
+화면 파일(`.jsx`)에는 훅을 부르고 넘기는 몇 줄과 배치(JSX)만 둡니다. 값 계산은 `src/data/screens/` 에 둡니다.
+
+```jsx
+class Logic extends DCLogic {
+  renderVals() {
+    return caseDetailValues(this.props);           // 값 계산은 src/data/screens/caseDetail.ts
+  }
+}
+export default function CaseDetail(props) {
+  const session = useAuthSession();
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, caseId });
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  return ( /* JSX: v.title, v.basics … */ );
+}
+```
+
+- 피그마 화면이 오면 위 훅 몇 줄과 `renderVals()` 를 그대로 옮기고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
+- 화면만의 상태(단계 · 고른 항목 · 펼침 등)는 `Logic.state` 에 두고, 처음 값 · 바꾸는 함수는 값 함수가 줍니다(`uploadModal.ts` 의 `initialUploadState` · `setState`). 훅에 넘겨야 하는 상태(검색어 · 고른 사례)는 화면 함수의 `useState` 로 듭니다.
+- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink`(`flow.ts`).
+- `Login.jsx` 는 아직 값 계산이 화면 파일 안에 있습니다(이 규칙 전에 연결).
+
+| 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
+| --- | --- | --- | --- | --- |
+| 통합 사례 관리 | `CaseList.jsx` | — | `useAuthSession` · `useCaseList` | `caseList.ts` `caseListValues` |
+| 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseDetailValues` |
+| 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
+| 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
+| 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
+
 ## 폴더 구조
 
 ```
@@ -58,9 +105,11 @@ src/
   Overview.jsx        첫 화면: 흐름별 화면 목록
   dc.js               화면 로직 어댑터 (DCLogic · useDC)
   components/A.jsx    화면 간 이동 링크 (내부 경로는 react-router Link)
+  components/Notice.jsx 화면 위 한 줄 안내 (불러오는 중 · 오류 · 대상 없음)
   styles/common.css   공통 스타일 (사이드바 · 카드 · 칩 · 버튼 · 탭 · 단계 표시 등)
   api/                Backend 호출 (TypeScript) — client · endpoints · types
   data/               응답 변환 함수 · 데이터 훅 (TypeScript)
+    screens/          화면별 값 함수 · 화면 주소(links.ts)
   pages/
     Xxx.jsx           화면 1개 = 파일 1개 (로직 class + JSX)
     Xxx.css           그 화면 전용 스타일 (.pg-Xxx 로 범위 제한)
@@ -82,7 +131,7 @@ export default function Page(props) {
 }
 ```
 
-- 예시 데이터는 각 화면 `renderVals()` 안에 있습니다. API 연결 시 이 부분을 fetch 결과로 바꾸면 됩니다.
+- 아직 연결하지 않은 화면은 예시 데이터가 `renderVals()` 안에 있습니다. 연결할 때는 위 "화면 파일과 값 함수" 대로 값 함수로 바꿉니다.
 - 원하면 화면별로 `useState` / 커스텀 훅 / 컴포넌트로 자유롭게 리팩터링해도 됩니다. (자동 변환이라 인라인 style 이 많습니다 — 공통 컴포넌트로 묶어 가며 정리 추천)
 - 사이드바 · 사례 상세 탭 · 회차 처리 4단계 표시는 지금 각 화면에 복사돼 있습니다. 첫 리팩터링으로 `components/` 로 빼는 걸 추천합니다.
 
