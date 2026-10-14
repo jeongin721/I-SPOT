@@ -4,12 +4,14 @@
 # 백엔드는 서버 안쪽 127.0.0.1:8000 에서만 받고, 앞의 Caddy(같은 서버)만 믿는다(실제 접속 IP 가 기록에 남음).
 #
 # 서버에서: cd /opt/ispot/I-SPOT && sudo git pull --ff-only && sudo bash deploy/web-deploy.sh
-# 주소를 바꾸려면 SITE 를 넘긴다(sudo 는 환경변수를 넘기지 않으므로 sudo 뒤에 env 로 쓴다):
+# 주소를 바꾸려면 SITE 를 넘긴다(sudo 는 설정에 따라 환경변수를 넘기지 않을 수 있어 sudo 뒤에 env 로 쓴다):
 #   sudo env SITE=<새 주소> bash deploy/web-deploy.sh
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
 SITE="${SITE:-15-165-250-143.sslip.io}"
+# SITE 는 아래 sed 치환 · Caddyfile 에 그대로 들어간다. 호스트 이름 · IP 글자만 받는다(| & 공백 따옴표 등은 설정을 깨뜨린다).
+[[ "$SITE" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "SITE 는 영문 · 숫자 · 점 · 하이픈만 쓸 수 있습니다: $SITE"; exit 1; }
 REPO=/opt/ispot/I-SPOT
 ENV_FILE=/opt/ispot/backend.env
 
