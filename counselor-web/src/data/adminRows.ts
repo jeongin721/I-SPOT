@@ -222,6 +222,30 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   USER_UPDATED: "계정 수정",
 };
 
+/** 업무 감사 동작의 한글 이름(같은 AuditAction). 접속 기록에서 '모든 동작' 을 고르면 함께 보인다. */
+export const WORK_AUDIT_ACTION_LABELS: Record<string, string> = {
+  CASE_CREATED: "사례 등록",
+  CASE_UPDATED: "사례 수정",
+  CASE_DELETED: "사례 삭제",
+  SESSION_CREATED: "회차 생성",
+  SESSION_UPDATED: "회차 수정",
+  SESSION_DELETED: "회차 삭제",
+  AUDIO_UPLOADED: "녹음 업로드",
+  STT_REQUESTED: "원문 변환 요청",
+  STT_COMPLETED: "원문 변환 완료",
+  STT_FAILED: "원문 변환 실패",
+  TRANSCRIPT_UPDATED: "원문 수정",
+  TRANSCRIPT_CONFIRMED: "원문 확정",
+  ANALYSIS_REQUESTED: "AI 분석 요청",
+  ANALYSIS_COMPLETED: "AI 분석 완료",
+  ANALYSIS_FAILED: "AI 분석 실패",
+  SUMMARY_UPDATED: "요약 수정",
+  SUMMARY_APPROVED: "요약 승인",
+  DOCUMENT_CREATED: "문서 생성",
+  DOCUMENT_UPDATED: "문서 수정",
+  DOCUMENT_APPROVED: "문서 승인",
+};
+
 /** User-Agent 를 "Chrome 126" 처럼 줄인다. 모르는 값은 앞부분만(전체는 userAgent 로). */
 export function toBrowserLabel(userAgent: string | null | undefined): string {
   if (!userAgent) return NOT_PROVIDED;
@@ -276,7 +300,7 @@ export function toAuditRow(log: AuditLog, roles: Map<string, UserRole>): AuditRo
   return {
     id: log.id,
     action: log.action,
-    actionLabel: AUDIT_ACTION_LABELS[log.action] ?? log.action,
+    actionLabel: AUDIT_ACTION_LABELS[log.action] ?? WORK_AUDIT_ACTION_LABELS[log.action] ?? log.action,
     success,
     resultLabel: success ? "성공" : "실패",
     failureReason: success ? "" : toFailureReason(log.error_code),
