@@ -1,5 +1,5 @@
 // 탭 2 › 회차 상세 (1~4단계 처리로 바로 가기)
-// 원본: I-SPOT 디자인 캔버스 보드 SessionDetail.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/SessionDetail.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>&session=<회차 ID>. 회차는 useSessionDetail, 사례 별칭 · 다른 회차는
 // useCaseDetail 이 부르고, 화면에 쓸 값은 src/data/screens/sessionDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
@@ -9,6 +9,9 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
@@ -31,16 +34,18 @@ export default function SessionDetail(props) {
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-SessionDetail">
       <div
+        className={theme.cls}
         style={{
           minHeight: '950px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -48,40 +53,7 @@ export default function SessionDetail(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -92,15 +64,20 @@ export default function SessionDetail(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> ›{' '}
-            <A to={v.historyHref}>상담 이력</A> › {v.cur.no}
+            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> › <A to={v.historyHref}>상담 이력</A>{' '}
+            › {v.cur.no}
           </nav>
           <Notice value={v.notice} />
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 300px' }}>
               <div className="sub">{v.cur.meta}</div>
-              <h1 style={{ margin: '2px 0 0', fontSize: '30px', fontWeight: '700' }}>{v.cur.no} · {v.alias}</h1>
+              <h1 style={{ margin: '2px 0 0', fontSize: '30px', fontWeight: '700' }}>
+                {v.cur.no} · {v.alias}
+              </h1>
             </div>
             <span className={v.cur.st} style={{ height: '28px' }}>
               {v.cur.status}
@@ -129,11 +106,7 @@ export default function SessionDetail(props) {
           </section>
           <nav
             aria-label="회차 처리 단계"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-              gap: '18px',
-            }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '18px' }}
           >
             {(v.steps || []).map((t, tIndex) => (
               <Fragment key={tIndex}>

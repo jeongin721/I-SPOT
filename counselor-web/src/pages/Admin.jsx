@@ -1,8 +1,15 @@
 // 관리자 대시보드
-// 원본: I-SPOT 디자인 캔버스 보드 Admin.dc.html (자동 변환 후 다듬어 쓰세요)
-import { Fragment } from 'react';
+// 원본: 다솔 님 디자인 counselor-web-design/Admin.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(useAuthSession 의 isAdmin).
+// 관리자 데이터 훅(useAdminDashboard 등, README '서버 연결')은 아직 이 화면에 붙이지 않았다.
+import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
+import { useAuthSession } from '../data/useAuthSession';
+import { needsLogin, notice, screenNotice, sidebarValues } from '../data/screens/common';
 import './Admin.css';
 
 class Logic extends DCLogic {
@@ -12,15 +19,43 @@ class Logic extends DCLogic {
 }
 
 export default function Admin(props) {
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  if (!session.isAdmin) {
+    const blocked =
+      screenNotice({ session }) ??
+      notice('관리자 계정만 볼 수 있는 화면입니다.', { href: '/Main', hrefLabel: '홈으로' });
+    return (
+      <div className="pg-Admin">
+        <div
+          className={theme.cls}
+          style={{
+            minHeight: '100vh',
+            background: '#F2F2F0',
+            color: '#2B2A26',
+            fontFamily: "'IBM Plex Sans KR', sans-serif",
+            fontSize: '14px',
+            lineHeight: '1.6',
+            padding: '48px 36px',
+          }}
+        >
+          <Notice value={blocked} />
+        </div>
+      </div>
+    );
+  }
+  const me = sidebarValues(session);
   return (
     <div className="pg-Admin">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1000px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -29,7 +64,7 @@ export default function Admin(props) {
         }}
       >
         <aside className="side" aria-label="관리자 메뉴">
-          <A to="/Admin" style={{ minHeight: 'auto', padding: '2px 6px 16px', color: '#2F3A44' }}>
+          <A to="/Admin" style={{ minHeight: 'auto', padding: '2px 6px 16px', color: '#2B2A26' }}>
             <span className="mk">IS</span>
             <b style={{ fontSize: '17px' }}>I-SPOT</b>
           </A>
@@ -49,24 +84,20 @@ export default function Admin(props) {
             보안 이벤트<span className="badge">1</span>
           </A>
           <A to="/Admin">통계 리포트</A>
-          <A to="/Login" style={{ marginTop: 'auto', color: '#6F7880' }}>
+          <A to="/Login" style={{ marginTop: 'auto', color: '#7A776F' }} onClick={me.logout}>
             로그아웃
           </A>
         </aside>
+
         <div style={{ flex: '999 1 640px', minWidth: '0', display: 'flex', flexDirection: 'column' }}>
           <header className="top">
-            <span
-              style={{
-                marginLeft: 'auto',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-              }}
-            >
-              <span className="av">김</span>김민준 관리자
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+              <span className="av">{me.meInitial}</span>
+              {me.meName}
             </span>
+            <ThemeToggle />
           </header>
+
           <main
             style={{
               padding: '26px 36px 56px',
@@ -78,13 +109,12 @@ export default function Admin(props) {
             }}
           >
             <div>
-              <h1 style={{ margin: '0', fontSize: '24px', fontWeight: '700', color: '#2F3A44' }}>
-                관리자 대시보드
-              </h1>
+              <h1 style={{ margin: '0', fontSize: '24px', fontWeight: '700', color: '#2B2A26' }}>관리자 대시보드</h1>
               <p className="sub" style={{ margin: '2px 0 0' }}>
                 10월 7일 (수)
               </p>
             </div>
+
             <section
               className="card"
               style={{
@@ -93,15 +123,15 @@ export default function Admin(props) {
                 overflow: 'hidden',
               }}
             >
-              <div className="stat" style={{ borderRight: '1px solid #EEE8DA' }}>
+              <div className="stat" style={{ borderRight: '1px solid #EAE7DF' }}>
                 <span className="sub">전체 관리 사례</span>
                 <b>10</b>
               </div>
-              <div className="stat" style={{ borderRight: '1px solid #EEE8DA' }}>
+              <div className="stat" style={{ borderRight: '1px solid #EAE7DF' }}>
                 <span className="sub">처리 대기 업무</span>
                 <b>8</b>
               </div>
-              <div className="stat" style={{ borderRight: '1px solid #EEE8DA' }}>
+              <div className="stat" style={{ borderRight: '1px solid #EAE7DF' }}>
                 <span className="sub">활성 상담사</span>
                 <b>
                   4
@@ -116,6 +146,7 @@ export default function Admin(props) {
                 <b>3</b>
               </div>
             </section>
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
               <section
                 className="card"
@@ -200,6 +231,7 @@ export default function Admin(props) {
                 </div>
               </section>
             </div>
+
             <section className="card" aria-label="업무 처리 현황" style={{ overflowX: 'auto' }}>
               <div
                 style={{

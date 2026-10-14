@@ -1,13 +1,16 @@
 // 통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)
-// 원본: I-SPOT 디자인 캔버스 보드 CaseList.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/CaseList.dc.html (front_new 브랜치)
 //
 // 서버 연결: 로그인 상태(useAuthSession)와 사례 목록(useCaseList)은 src/data 의 훅이 하고,
 // 화면에 쓸 값은 src/data/screens/caseList.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 피그마 화면으로 바꿀 때는 아래 CaseList 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
+// 디자인을 바꿀 때는 아래 CaseList 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
 import { Fragment, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseList } from '../data/useCaseList';
 import { caseListValues } from '../data/screens/caseList';
@@ -24,6 +27,7 @@ export default function CaseList(props) {
   const session = useAuthSession();
   const [search, setSearch] = useState('');
   const list = useCaseList({ search, enabled: session.status === 'signedIn' });
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, session, list, search, setSearch });
   // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다.
   if (session.status === 'signedOut' || session.status === 'mustChangePassword') {
@@ -32,11 +36,12 @@ export default function CaseList(props) {
   return (
     <div className="pg-CaseList">
       <div
+        className={theme.cls}
         style={{
           minHeight: '960px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -44,40 +49,7 @@ export default function CaseList(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -88,6 +60,9 @@ export default function CaseList(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 260px' }}>
               <div className="sub">{v.countLabel}</div>
@@ -103,12 +78,14 @@ export default function CaseList(props) {
               style={{ flex: '1 1 240px' }}
               {...v.search}
             />
-            <div role="group" aria-label="위험도" className="seg">
+            <div role="group" aria-label="정렬" className="seg">
+              <span className="seg-lb">정렬</span>
               {(v.filters || []).map((f, fIndex) => (
                 <Fragment key={fIndex}>
                   <button
                     type="button"
                     className={f.cls}
+                    aria-pressed={f.cls === 'on'}
                     disabled={f.disabled}
                     title={f.disabled ? v.notReady : undefined}
                     style={f.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
@@ -147,7 +124,7 @@ export default function CaseList(props) {
                     background: '#FFFFFF',
                     boxShadow: '0 1px 2px rgba(0,0,0,.2)',
                   }}
-                />
+                ></span>
               </span>
               실명 보기
             </button>

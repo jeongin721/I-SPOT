@@ -1,5 +1,5 @@
 // 3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식)
-// 원본: I-SPOT 디자인 캔버스 보드 NoteWrite.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/NoteWrite.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=…&session=…. 상담 요약은 useSummaryReview(고치기 · 저장 · 승인), 상담 일지는
 // useSessionDocuments(상담일지 문서 만들기 · 고치기 · 승인), 머리는 useSessionDetail · useCaseDetail 이 부르고,
@@ -10,6 +10,9 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
@@ -42,17 +45,19 @@ export default function NoteWrite(props) {
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const summary = useSummaryReview(ids.sessionId, { enabled });
   const docs = useSessionDocuments(ids.sessionId, { enabled });
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, go });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-NoteWrite">
       <div
+        className={theme.cls}
         style={{
           minHeight: '2000px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -60,40 +65,7 @@ export default function NoteWrite(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -104,9 +76,12 @@ export default function NoteWrite(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> ›{' '}
-            <A to={v.historyHref}>상담 이력</A> › <A to={v.sessionHref}>{v.sessionLabel}</A>
+            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> › <A to={v.historyHref}>상담 이력</A>{' '}
+            › <A to={v.sessionHref}>{v.sessionLabel}</A>
           </nav>
           <Notice value={v.notice} />
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
@@ -167,7 +142,7 @@ export default function NoteWrite(props) {
               </span>
             ))}
             {v.summaryError ? (
-              <p className="note" role="alert" style={{ margin: 0, color: '#93452E' }}>
+              <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>
                 {v.summaryError}
               </p>
             ) : null}
@@ -190,7 +165,7 @@ export default function NoteWrite(props) {
                   gap: '8px',
                   padding: '12px 14px',
                   borderRadius: '12px',
-                  background: '#F8F5EC',
+                  background: '#F7F6F2',
                 }}
               >
                 <span style={{ flex: '1 1 260px' }}>{v.summaryAskText}</span>
@@ -203,6 +178,7 @@ export default function NoteWrite(props) {
               </div>
             ) : null}
           </section>
+
           <section
             className="card"
             aria-label="상담 일지"
@@ -221,14 +197,12 @@ export default function NoteWrite(props) {
                 </div>
               ))}
             </div>
+
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>아동 진술</b>
-              <textarea
-                className="ta2"
-                style={{ minHeight: '104px' }}
-                {...v.statement}
-              />
+              <textarea className="ta2" style={{ minHeight: '104px' }} {...v.statement} />
             </label>
+
             <div className="grp">대상자 태도 및 관찰내용</div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -239,16 +213,14 @@ export default function NoteWrite(props) {
                   </span>
                 ) : null}
               </span>
-              <textarea
-                className="ta2"
-                {...v.attitude}
-              />
+              <textarea className="ta2" {...v.attitude} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>(물리적 환경)</b>
               <textarea className="ta2" placeholder="상담원 작성" {...v.environment} />
               <span className="note acc">신변안전 · 기관 복귀 후 기록 (현장 기록 금지)</span>
             </label>
+
             <div className="grp">아동 특성</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {(v.traits || []).map((t, tIndex) => (
@@ -275,6 +247,7 @@ export default function NoteWrite(props) {
                 </span>
               </Fragment>
             ))}
+
             <div className="grp">가정상황</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {(v.homes || []).map((t, tIndex) => (
@@ -301,12 +274,10 @@ export default function NoteWrite(props) {
                 </span>
               </Fragment>
             ))}
+
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>위험 신호 검토 결과</b>
-              <textarea
-                className="ta2"
-                {...v.signals}
-              />
+              <textarea className="ta2" {...v.signals} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -317,14 +288,10 @@ export default function NoteWrite(props) {
                   </span>
                 ) : null}
               </span>
-              <textarea
-                className="ta2"
-                style={{ minHeight: '96px' }}
-                {...v.opinion}
-              />
+              <textarea className="ta2" style={{ minHeight: '96px' }} {...v.opinion} />
             </label>
             {v.docError ? (
-              <p className="note" role="alert" style={{ margin: 0, color: '#93452E' }}>
+              <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>
                 {v.docError}
               </p>
             ) : null}
@@ -347,7 +314,7 @@ export default function NoteWrite(props) {
                   gap: '8px',
                   padding: '12px 14px',
                   borderRadius: '12px',
-                  background: '#F8F5EC',
+                  background: '#F7F6F2',
                 }}
               >
                 <span style={{ flex: '1 1 260px' }}>{v.docAskText}</span>

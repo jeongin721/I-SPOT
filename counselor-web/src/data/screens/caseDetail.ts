@@ -55,9 +55,9 @@ export function caseHeaderValues({ session, detail, caseId }: CaseScreenInput) {
   };
 }
 
-const DOT_DONE = { background: "#F1EFE9", color: "#55606A" };
-const DOT_CURRENT = { background: "#FFFFFF", border: "2px solid #A8C6E7", color: "#2E5687" };
-const DOT_PENDING = { background: "#EEE8DA", color: "#6F7880" };
+const DOT_DONE = { background: "#F2EFE8", color: "#66625A" };
+const DOT_CURRENT = { background: "#FFFFFF", border: "2px solid #2B2A26", color: "#2B2A26" };
+const DOT_PENDING = { background: "#EAE7DF", color: "#7A776F" };
 
 /** 탭 1 · 내담자 정보. */
 export function caseDetailValues(input: CaseScreenInput) {
@@ -128,9 +128,16 @@ export function caseDetailValues(input: CaseScreenInput) {
   };
 }
 
-/** 탭 2 · 상담 이력. 누적 요약 · 주제 비중 · 세부 신호는 Backend 에 없어 빈 목록과 준비 중 안내를 준다. */
-export function caseHistoryValues(input: CaseScreenInput) {
+/**
+ * 탭 2 · 상담 이력. 누적 요약 · 주제 비중 · 세부 신호는 Backend 에 없어 빈 목록과 준비 중 안내를 준다.
+ * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
+ * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
+ */
+export function caseHistoryValues(
+  input: CaseScreenInput & { historyOpen?: boolean; setHistoryOpen?: (open: boolean) => void },
+) {
   const { detail } = input;
+  const open = Boolean(input.historyOpen);
   const dash = NOT_PROVIDED;
 
   const sessions = detail.sessions.map((row) => ({
@@ -138,6 +145,7 @@ export function caseHistoryValues(input: CaseScreenInput) {
     // 상담 일시를 넣지 않은 회차는 등록일을 '등록' 이라고 밝혀 보여 준다(상담일로 대신하지 않는다).
     date: row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`,
     kind: `상담 유형 ${dash}`,
+    kindShort: dash,
     status: row.statusLabel,
     st: TONE_CHIP[row.tone],
     sig: `신호 ${dash}`,
@@ -164,6 +172,13 @@ export function caseHistoryValues(input: CaseScreenInput) {
     topics: [] as { label: string; width: string; pct: string }[],
     insights: [] as { title: string; text: string; src: string }[],
     sessions,
+    recent: sessions.slice(0, 3),
+    all: sessions,
+    total: detail.sessionTotal ?? sessions.length,
+    shownCount: `${sessions.length}개`,
+    open,
+    toggleOpen: () => input.setHistoryOpen?.(!open),
+    notReady: NOT_READY,
     sessionsNote,
     cols,
     mrows: [] as { type: string; name: string; cells: { v: string; tip: string; bg: string; fg: string; ring: string }[] }[],

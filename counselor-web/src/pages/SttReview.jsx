@@ -1,5 +1,5 @@
 // 1 · STT 검수 (화자: 피해아동 · 사례관리대상자 · 상담원)
-// 원본: I-SPOT 디자인 캔버스 보드 SttReview.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/SttReview.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=…&session=…. 원문은 useTranscriptReview, 회차 · 사례 머리는 useSessionDetail · useCaseDetail 이
 // 부르고, 화면에 쓸 값은 src/data/screens/sttReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
@@ -9,6 +9,9 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
@@ -39,17 +42,19 @@ export default function SttReview(props) {
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const review = useTranscriptReview(ids.sessionId, { enabled });
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, review, go });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-SttReview">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1250px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -57,40 +62,7 @@ export default function SttReview(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -101,9 +73,12 @@ export default function SttReview(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> ›{' '}
-            <A to={v.historyHref}>상담 이력</A> › <A to={v.sessionHref}>{v.sessionLabel}</A>
+            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> › <A to={v.historyHref}>상담 이력</A>{' '}
+            › <A to={v.sessionHref}>{v.sessionLabel}</A>
           </nav>
           <Notice value={v.notice} />
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
@@ -132,7 +107,7 @@ export default function SttReview(props) {
                   <b>{v.stageLabel}</b>
                 </div>
                 {v.error ? (
-                  <p className="note" role="alert" style={{ margin: 0, color: '#93452E' }}>
+                  <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>
                     {v.error}
                   </p>
                 ) : null}
@@ -149,6 +124,7 @@ export default function SttReview(props) {
               </section>
             </>
           ) : null}
+
           {v.done ? (
             <>
               <section className="card" aria-label="STT 검수" style={{ overflow: 'hidden' }}>
@@ -168,14 +144,7 @@ export default function SttReview(props) {
                   <Fragment key={lIndex}>
                     <div className="ln" style={{ background: l.bg }}>
                       <span className="note">{l.t}</span>
-                      <span
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '2px',
-                          alignItems: 'flex-start',
-                        }}
-                      >
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
                         <button
                           type="button"
                           className="chip"
@@ -188,8 +157,8 @@ export default function SttReview(props) {
                             cursor: 'pointer',
                             font: 'inherit',
                             fontSize: '12px',
-                            background: '#F1EFE9',
-                            color: '#55606A',
+                            background: '#F2EFE8',
+                            color: '#66625A',
                             fontWeight: l.spFw,
                           }}
                         >
@@ -239,17 +208,11 @@ export default function SttReview(props) {
                   </Fragment>
                 ))}
                 <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '16px 22px',
-                  }}
+                  style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', padding: '16px 22px' }}
                 >
                   <span className="note">{v.versionLabel}</span>
                   {v.error ? (
-                    <span className="note" role="alert" style={{ color: '#93452E' }}>
+                    <span className="note" role="alert" style={{ color: '#A33B2E' }}>
                       {v.error}
                     </span>
                   ) : null}

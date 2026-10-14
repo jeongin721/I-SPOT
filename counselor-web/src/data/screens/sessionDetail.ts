@@ -122,9 +122,9 @@ export function sessionDetailValues(input: SessionScreenInput) {
     return {
       label: `${row.sessionNumber}회`,
       on: on ? "true" : "false",
-      bg: on ? "#E2ECF8" : "#FFFFFF",
-      bd: on ? "#A8C6E7" : "#E7E0CE",
-      fg: on ? "#2E5687" : "#2F3A44",
+      bg: on ? "#F1EADA" : "#FFFFFF",
+      bd: on ? "#2B2A26" : "#E7E4DC",
+      fg: "#2B2A26",
       fw: on ? 700 : 400,
       go: () => {
         if (!on) go(href);
@@ -158,9 +158,9 @@ export function sessionDetailValues(input: SessionScreenInput) {
         ...d,
         stCls: done ? "chip c-ok" : cur ? TONE_CHIP[sv.tone] : "chip c-normal",
         mark: done ? "✓" : String(i + 1),
-        nBg: done ? "#F1EFE9" : cur ? "#A8C6E7" : "#EEE8DA",
-        nFg: done ? "#55606A" : cur ? "#213F63" : "#6F7880",
-        ring: cur ? "inset 0 0 0 2px #A8C6E7" : "none",
+        nBg: done ? "#F2EFE8" : cur ? "#2B2A26" : "#EAE7DF",
+        nFg: done ? "#66625A" : cur ? "#EADBB5" : "#7A776F",
+        ring: cur ? "inset 0 0 0 2px #2B2A26" : "none",
         bg: "#FFFFFF",
       };
     });

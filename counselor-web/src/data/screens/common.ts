@@ -2,7 +2,7 @@
 //
 // src/data/screens/ 의 함수는 훅 결과를 받아 화면의 예시 데이터를 대신할 값(문자열 · 목록 · 링크 · 이벤트 함수)을 만든다.
 // 화면 파일(.jsx)은 훅을 부르고 결과를 useDC(Logic, …) 로 넘긴 뒤 renderVals() 에서 이 함수를 부르기만 한다.
-// 피그마 화면으로 바꿀 때는 JSX 만 바꾸고 이 함수들은 그대로 쓴다(배치가 달라 필요한 값이 다르면 여기에 더한다).
+// 디자인을 바꿀 때는 JSX 만 바꾸고 이 함수들은 그대로 쓴다(배치가 달라 필요한 값이 다르면 여기에 더한다).
 
 import type { AuthSession } from "../useAuthSession";
 import type { SessionTone } from "../sessionRows";

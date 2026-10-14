@@ -48,10 +48,10 @@ export function initialUploadState(ids: ScreenIds): UploadUiState {
 }
 
 const radio = (on: boolean) => ({
-  bd: on ? "#A8C6E7" : "#E7E0CE",
-  bg: on ? "#E2ECF8" : "#FFFFFF",
-  dot: on ? "#2E5687" : "#DCD5C3",
-  fill: on ? "#2E5687" : "transparent",
+  bd: on ? "#2B2A26" : "#E7E4DC",
+  bg: on ? "#F1EADA" : "#FFFFFF",
+  dot: on ? "#2B2A26" : "#DAD5C9",
+  fill: on ? "#2B2A26" : "transparent",
 });
 
 export interface UploadScreenInput {
@@ -83,11 +83,11 @@ export function uploadModalValues(input: UploadScreenInput) {
     return {
       label,
       mark: done ? "✓" : String(n),
-      bg: cur ? "#E2ECF8" : "transparent",
-      fg: cur ? "#2E5687" : done ? "#2F3A44" : "#6F7880",
+      bg: cur ? "#F1EADA" : "transparent",
+      fg: cur || done ? "#2B2A26" : "#7A776F",
       fw: cur ? 700 : 400,
-      dotBg: cur ? "#A8C6E7" : done ? "#F1EFE9" : "#EEE8DA",
-      dotFg: cur ? "#213F63" : done ? "#55606A" : "#6F7880",
+      dotBg: cur ? "#2B2A26" : done ? "#F2EFE8" : "#EAE7DF",
+      dotFg: cur ? "#EADBB5" : done ? "#66625A" : "#7A776F",
     };
   });
 
