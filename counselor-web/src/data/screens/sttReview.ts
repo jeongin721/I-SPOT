@@ -64,7 +64,10 @@ export function sttReviewValues(input: SttScreenInput) {
   }
 
   const needsCheck = (row: { lowConfidence: boolean; speakerUnknown: boolean }) => row.lowConfidence || row.speakerUnknown;
-  const visible = review.rows.filter((row) => !row.removed && (state.view === "all" || needsCheck(row)));
+  // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게).
+  const visible = review.rows.filter((row) => !row.removed && (state.view === "all" || needsCheck(row) || row.dirty));
+  // 저장 · 확정을 기다리는 동안에는 고치지 못하게 한다(보낸 내용 뒤에 친 글자가 저장되지 않고 사라지지 않게).
+  const editable = review.canEdit && !review.submitting;
   const okKey = (segmentId: string) => `${ids.sessionId}:${segmentId}`;
   const left = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]).length;
 
@@ -85,7 +88,7 @@ export function sttReviewValues(input: SttScreenInput) {
       aria: `${row.startLabel} 발화 고치기`,
       spFw: row.speaker === "CHILD" ? 700 : 500,
       spFix: row.edited || row.dirty,
-      canEdit: review.canEdit,
+      canEdit: editable,
       nextSp: () => review.editSpeaker(row.segmentId, next),
       onText: (event: { target: { value: string } }) => review.editText(row.segmentId, event.target.value),
       conf: row.confidenceLabel,
@@ -139,12 +142,16 @@ export function sttReviewValues(input: SttScreenInput) {
     nextLabel: review.submitting ? "처리 중…" : nextLabel,
     next: async () => {
       if (mustConfirm) {
+        const forSession = ids.sessionId;
         const ok = await review.confirm();
 
-        if (ok) go(signalHref);
+        // 확정을 기다리는 사이 다른 회차 · 화면으로 옮겼으면 앞 회차의 다음 화면으로 끌고 가지 않는다.
+        if (ok) go(signalHref, forSession);
       } else if (canGoOn) {
         go(signalHref);
       }
     },
+    /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
+    unsaved: review.counts.pending > 0,
   };
 }

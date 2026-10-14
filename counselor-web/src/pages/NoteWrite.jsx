@@ -19,6 +19,8 @@ import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { INITIAL_NOTE_STATE, noteWriteValues } from '../data/screens/noteWrite';
 import { sessionCaseId } from '../data/screens/sessionDetail';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
+import { useScreenGo } from '../data/screens/useScreenGo';
 import './NoteWrite.css';
 
 class Logic extends DCLogic {
@@ -34,13 +36,14 @@ class Logic extends DCLogic {
 export default function NoteWrite(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
-  const go = useNavigate();
+  const go = useScreenGo(useNavigate(), ids);
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const summary = useSummaryReview(ids.sessionId, { enabled });
   const docs = useSessionDocuments(ids.sessionId, { enabled });
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, go });
+  useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-NoteWrite">

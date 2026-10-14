@@ -83,11 +83,22 @@ export const EMPTY_NOTE: NoteDraft = {
   opinion: "",
 };
 
+/** 칸 머리줄로 읽히는 줄. 앞에 역슬래시가 붙은 것은 본문에 쓴 같은 모양의 글이다(escapeLine). */
+const HEADING_LIKE = /^(\\*)\[(.+)\]$/;
+const TITLES = new Set(SECTIONS.map((section) => section.title));
+
+/** 본문 줄이 칸 머리줄과 같은 모양이면 앞에 역슬래시를 하나 붙인다(parseNote 가 하나 떼어 낸다). */
+function escapeLine(line: string): string {
+  const match = HEADING_LIKE.exec(line.trim());
+
+  return match && TITLES.has(match[2]) ? `\\${line}` : line;
+}
+
 /** 칸 → 본문. 빈 칸은 쓰지 않는다. 고르기 칸은 ', ' 로 잇는다. */
 export function formatNote(note: NoteDraft): string {
   return SECTIONS.map(({ key, title }) => {
     const value = note[key];
-    const text = Array.isArray(value) ? value.join(", ") : value.trim();
+    const text = Array.isArray(value) ? value.join(", ") : value.trim().split("\n").map(escapeLine).join("\n");
 
     return text ? `[${title}]\n${text}` : "";
   })
@@ -102,9 +113,11 @@ export function parseNote(content: string): NoteDraft {
   let current: string | null = null;
   const loose: string[] = [];
 
-  for (const line of content.split(/\r?\n/)) {
-    const heading = /^\[(.+)\]$/.exec(line.trim());
-    const key = heading ? byTitle.get(heading[1]) : undefined;
+  for (const raw of content.split(/\r?\n/)) {
+    const heading = HEADING_LIKE.exec(raw.trim());
+    const key = heading && heading[1] === "" ? byTitle.get(heading[2]) : undefined;
+    // 본문에 쓴 머리줄 모양의 글(앞에 역슬래시)은 역슬래시 하나를 떼고 글로 둔다.
+    const line = heading && heading[1] !== "" && TITLES.has(heading[2]) ? raw.replace("\\", "") : raw;
 
     if (key) {
       current = key;
@@ -149,8 +162,8 @@ export interface NoteUiState {
   draft: NoteDraft | null;
   /** draft 가 어느 회차 것인가(다른 회차로 옮기면 버린다). */
   draftFor: string | null;
-  /** 승인을 한 번 더 묻는 중인 것. */
-  ask: "summary" | "document" | null;
+  /** 승인을 한 번 더 묻는 중인 것과 그 회차. 다른 회차로 옮기면 확인창은 닫힌 것으로 본다. */
+  ask: { kind: "summary" | "document"; sessionId: string | null } | null;
 }
 
 export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, ask: null };
@@ -179,8 +192,12 @@ export function noteWriteValues(input: NoteScreenInput) {
   const info = caseDetail.caseInfo;
   const signalHref = screenHref("/SignalReview", ids);
 
+  const busy = summary.submitting || docs.submitting;
+  const asking = state.ask && state.ask.sessionId === sessionId ? state.ask.kind : null;
+
   // ---------------- 상담 요약 ----------------
-  const readOnly = !summary.canEdit;
+  // 저장 · 승인을 기다리는 동안에는 잠근다(보낸 내용 뒤에 친 글자가 승인된 내용과 다르게 남지 않게).
+  const readOnly = !summary.canEdit || busy;
   const fields = summary.fields;
   const sums = summary.hasSummary
     ? [
@@ -240,6 +257,9 @@ export function noteWriteValues(input: NoteScreenInput) {
   const content = formatNote(note);
   const docDirty = draft !== null && content !== (record?.content ?? "");
   const docReadOnly = record ? !record.editable : false;
+  // 일지를 불러오는 중이거나 저장 · 승인을 기다리는 동안에도 잠근다. 불러오기 전에 쓰면 빈 일지를 바탕으로 초안이 생겨
+  // 저장할 때 원래 있던 다른 칸이 지워진다.
+  const docLocked = docReadOnly || docs.loading || busy;
   const edit = (patch: Partial<NoteDraft>) =>
     setState((current) => {
       const base = current.draft && current.draftFor === sessionId ? current.draft : note;
@@ -248,8 +268,10 @@ export function noteWriteValues(input: NoteScreenInput) {
     });
   const textField = (key: TextKey) => ({
     value: note[key],
-    onChange: (e: { target: { value: string } }) => edit({ [key]: e.target.value }),
-    readOnly: docReadOnly,
+    onChange: (e: { target: { value: string } }) => {
+      if (!docLocked) edit({ [key]: e.target.value });
+    },
+    readOnly: docLocked,
   });
   const toggles = (key: ListKey, options: string[]) =>
     options.map((label) => {
@@ -258,8 +280,8 @@ export function noteWriteValues(input: NoteScreenInput) {
       return {
         label,
         ...chipStyle(on),
-        disabled: docReadOnly,
-        toggle: () => edit({ [key]: on ? note[key].filter((item) => item !== label) : [...note[key], label] }),
+        disabled: docLocked,
+        toggle: () => !docLocked && edit({ [key]: on ? note[key].filter((item) => item !== label) : [...note[key], label] }),
       };
     });
 
@@ -290,8 +312,6 @@ export function noteWriteValues(input: NoteScreenInput) {
     { k: "담당 상담원", v: info ? info.counselorName : NOT_PROVIDED },
   ];
 
-  const busy = summary.submitting || docs.submitting;
-
   return {
     ...header,
     // 상담 요약
@@ -304,10 +324,12 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveSummary: summary.canEdit && summary.dirty && !busy,
     saveSummary: () => void summary.save(),
     canApproveSummary: summary.canApprove && !busy,
-    askSummary: () => setState({ ask: "summary" }),
-    summaryAsk: state.ask === "summary",
+    askSummary: () => setState({ ask: { kind: "summary", sessionId } }),
+    summaryAsk: asking === "summary",
     summaryAskText: "승인하면 이 회차가 '승인 완료' 가 되고 요약을 더 고칠 수 없습니다. 상담일지 승인은 따로 합니다.",
     approveSummary: async () => {
+      if (asking !== "summary") return;
+
       const ok = await summary.approve();
 
       if (ok) setState({ ask: null });
@@ -330,10 +352,12 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveDoc: docDirty && !docReadOnly && !busy,
     saveDoc: () => void saveDoc(),
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
-    askDoc: () => setState({ ask: "document" }),
-    docAsk: state.ask === "document",
+    askDoc: () => setState({ ask: { kind: "document", sessionId } }),
+    docAsk: asking === "document",
     docAskText: "승인하면 상담일지를 더 고칠 수 없습니다. 회차 상태는 바뀌지 않습니다.",
     approveDoc: async () => {
+      if (asking !== "document") return;
+
       const target = await saveDoc();
 
       if (target && (await docs.approve(target.id))) setState({ ask: null });
@@ -344,9 +368,14 @@ export function noteWriteValues(input: NoteScreenInput) {
     nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",
     canNext: !busy,
     next: async () => {
+      const forSession = sessionId;
+
       if (summary.canEdit && summary.dirty && !(await summary.save())) return;
       if (docDirty && !(await saveDoc())) return;
-      go(screenHref("/FollowupQ", ids));
+      // 저장을 기다리는 사이 다른 회차 · 화면으로 옮겼으면 앞 회차의 다음 화면으로 끌고 가지 않는다.
+      go(screenHref("/FollowupQ", ids), forSession);
     },
+    /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
+    unsaved: (summary.canEdit && summary.dirty) || docDirty,
   };
 }

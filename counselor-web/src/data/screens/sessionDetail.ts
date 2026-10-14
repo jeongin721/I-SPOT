@@ -9,6 +9,7 @@ import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { SessionDetailState, SessionDetailView } from "../useSessionDetail";
 import { NOT_PROVIDED } from "../caseRows";
+import type { ScreenGo } from "./useScreenGo";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
 import { CARD_OF } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
@@ -31,8 +32,11 @@ export interface SessionScreenInput {
   ids: ScreenIds;
   detail: SessionDetailState;
   caseDetail: CaseDetailState;
-  /** 화면 이동(react-router 의 navigate). */
-  go: (href: string) => void;
+  /**
+   * 화면 이동. 요청 응답 뒤에 옮길 때는 요청한 회차 ID 를 함께 넘겨, 그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않는다
+   * (useScreenGo). react-router 의 navigate 를 그대로 넘겨도 된다.
+   */
+  go: ScreenGo;
 }
 
 /** 회차 화면 공통: 위치 표시 링크 · 머리 · 안내. */
