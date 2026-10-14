@@ -1509,6 +1509,26 @@ def api_cases():
     )
 
 
+@app.get("/api/case-sessions/{case_id}")
+def api_case_sessions(case_id: str):
+    """
+    "사례 상세 · 상담 이력"(CaseHistory) 화면의 "상담 회차" 목록과
+    "회차별 세부 신호" 표가 쓸 데이터. case_store.get_case_sessions_detail()
+    그대로 반환한다 — 승인된 회기만 포함되고, 세부유형(14종)별 근거
+    개수까지 내려간다. 회차를 가로지르는 주제 비중·단계 구분 같은
+    종합 해석은 아직 안 만든다(크로스 세션 요약 기능이 따로 필요해서
+    범위 밖).
+    """
+
+    return JSONResponse(
+        {
+            "sessions": case_store.get_case_sessions_detail(
+                case_id
+            )
+        }
+    )
+
+
 # ============================================================
 # 6. PDF 탭
 # ============================================================

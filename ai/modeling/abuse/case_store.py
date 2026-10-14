@@ -77,6 +77,17 @@ def init_db() -> None:
     except sqlite3.OperationalError:
         pass
 
+    # "상담 전 브리핑"(PreBriefing)의 "확인할 사항"이 쓸 필드. 분석
+    # 시점에 만든 followup_check_llm.py 결과를 세션에 같이 저장해 둬야
+    # 나중에(다음 상담 전) 다시 분석을 돌리지 않고도 그대로 보여줄 수
+    # 있다(2026-10-14 추가).
+    try:
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN followup_check_points TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -201,8 +212,9 @@ def save_draft_session(
             case_id, input_mode, source_type, raw_text,
             major_types, subtype_analysis,
             ai_counseling_summary, ai_counseling_note, ai_checklist,
+            followup_check_points,
             status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
         """,
         (
             case_id,
@@ -233,6 +245,13 @@ def save_draft_session(
             ),
             json.dumps(
                 checklist_draft,
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                analysis.get(
+                    "followup_check_points",
+                    [],
+                ),
                 ensure_ascii=False,
             ),
             datetime.now().isoformat(),
@@ -512,3 +531,83 @@ def get_case_trend(
         )
 
     return trend
+
+
+# ============================================================
+# 7. 회차별 세부 신호 — "사례 상세 · 상담 이력" 화면용
+# ============================================================
+# get_case_trend()와 같은 원칙(승인된 세션만, "좋아짐/나빠짐" 같은
+# 해석은 안 만든다)인데 대분류가 아니라 세부유형(14종) 단위까지
+# 내려간다(2026-10-14 추가). "상담 회차" 목록과 "회차별 세부 신호"
+# 표 둘 다 이 함수 하나로 채운다.
+
+def get_case_sessions_detail(
+    case_id: str,
+) -> List[Dict[str, Any]]:
+    sessions = [
+        session
+        for session in list_sessions_for_case(case_id)
+        if session.get("status") == "approved"
+    ]
+
+    result = []
+
+    for index, session in enumerate(sessions, start=1):
+        try:
+            subtype_analysis = json.loads(
+                session.get("subtype_analysis") or "{}"
+            )
+        except (TypeError, ValueError):
+            subtype_analysis = {}
+
+        try:
+            followup_check_points = json.loads(
+                session.get("followup_check_points") or "[]"
+            )
+        except (TypeError, ValueError):
+            followup_check_points = []
+
+        subtype_counts = []
+
+        for major_result in subtype_analysis.get("results", []):
+            major_type = major_result.get("major_type")
+
+            for subtype_entry in major_result.get(
+                "subtypes", []
+            ):
+                evidences = subtype_entry.get(
+                    "evidences", []
+                )
+
+                # evidence_strength가 전부 "낮음"이면 "보류"(화자 확인
+                # 중) 표시로 쓴다 — SignalReview/NoteWrite가 이미 쓰는
+                # 같은 기준(evidence_strength!='낮음'=채택)을 그대로
+                # 재사용한다.
+                low_only = bool(evidences) and all(
+                    e.get("evidence_strength") == "낮음"
+                    for e in evidences
+                )
+
+                subtype_counts.append(
+                    {
+                        "major_type": major_type,
+                        "subtype": subtype_entry.get(
+                            "type"
+                        ),
+                        "count": len(evidences),
+                        "low_confidence_only": low_only,
+                    }
+                )
+
+        result.append(
+            {
+                "session_id": session.get("session_id"),
+                "round_label": f"{index}회차",
+                "created_at": session.get("created_at"),
+                "status": session.get("status"),
+                "followup_check_points": followup_check_points,
+                "subtype_counts": subtype_counts,
+            }
+        )
+
+    return result
