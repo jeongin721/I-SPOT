@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)
     AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
     AI_TIMEOUT_SECONDS: float = 180.0
+    # pipeline 은 상담 원문을 비식별(가리기) 없이 OpenAI 로 보낸다(ai/services/summary_service.py).
+    # ENV=production 에서는 이 값이 true 일 때만 pipeline 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
+    # local/test 에서는 보지 않는다.
+    AI_PIPELINE_ALLOW_UNMASKED: bool = False
 
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
     # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
@@ -201,6 +205,25 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    @model_validator(mode="after")
+    def _block_unmasked_pipeline_in_production(self) -> "Settings":
+        """운영에서 상담 원문이 비식별 없이 외부(OpenAI)로 나가는 pipeline 으로 서버가 뜨지 않게 한다.
+
+        외부 LLM 에는 비식별한 텍스트만 보낸다는 9/18 회의 결정과 어긋나는 경로다. 실제 상담 데이터가 들어오는
+        운영에서 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_PIPELINE_ALLOW_UNMASKED=true 를 함께 적어야만 뜬다.
+        local/test 는 지금처럼 그대로 둔다(가상 데이터 전용).
+        """
+
+        if self.ENV != "production" or self.AI_PROVIDER != "pipeline" or self.AI_PIPELINE_ALLOW_UNMASKED:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 AI_PROVIDER=pipeline 으로 서버를 시작하지 않습니다. "
+            "pipeline 은 상담 원문을 비식별(이름 · 학교 · 주소 가리기) 없이 OpenAI 로 보냅니다. "
+            "실제 상담 데이터에는 AI_PROVIDER=mock 을 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 AI_PIPELINE_ALLOW_UNMASKED=true 를 함께 적어 풀 수 있습니다."
+        )
 
     @property
     def audio_max_size_bytes(self) -> int:
