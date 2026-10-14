@@ -48,3 +48,62 @@ def test_non_production_keeps_default_for_local_development(env: str) -> None:
     settings = _settings(ENV=env, JWT_SECRET_KEY="change-me-in-env-file")
 
     assert settings.ENV == env
+
+
+# ---------------------------------------------------------
+# AI_PROVIDER=pipeline 은 상담 원문을 비식별 없이 OpenAI 로 보낸다
+# (specs ai-analysis-connect-research-1013.md 3-3 ①). 운영에서는 일부러 풀 때만 뜬다.
+# ---------------------------------------------------------
+
+
+def test_production_rejects_unmasked_pipeline() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER="pipeline")
+
+    message = str(caught.value)
+
+    # 막은 이유와 푸는 방법을 문구로 알려 준다.
+    assert "AI_PROVIDER=pipeline" in message
+    assert "비식별" in message
+    assert "AI_PIPELINE_ALLOW_UNMASKED=true" in message
+
+
+def test_production_allows_pipeline_only_when_explicitly_unmasked() -> None:
+    settings = _settings(
+        ENV="production",
+        JWT_SECRET_KEY=STRONG_SECRET,
+        AI_PROVIDER="pipeline",
+        AI_PIPELINE_ALLOW_UNMASKED=True,
+    )
+
+    assert settings.AI_PROVIDER == "pipeline"
+
+
+def test_unmasked_pipeline_flag_reads_true_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """서버 .env 에 적는 그대로(AI_PIPELINE_ALLOW_UNMASKED=true) 읽힌다."""
+
+    monkeypatch.setenv("AI_PIPELINE_ALLOW_UNMASKED", "true")
+
+    settings = _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER="pipeline")
+
+    assert settings.AI_PIPELINE_ALLOW_UNMASKED is True
+
+
+def test_unmasked_pipeline_flag_is_off_by_default() -> None:
+    assert _settings().AI_PIPELINE_ALLOW_UNMASKED is False
+
+
+@pytest.mark.parametrize("provider", ["mock", "langgraph"])
+def test_production_keeps_other_ai_providers(provider: str) -> None:
+    settings = _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER=provider)
+
+    assert settings.AI_PROVIDER == provider
+
+
+@pytest.mark.parametrize("env", ["local", "test"])
+def test_non_production_keeps_pipeline_as_before(env: str) -> None:
+    """개발 · 테스트 환경은 지금처럼 pipeline 을 그대로 쓸 수 있다(가상 데이터 전용)."""
+
+    settings = _settings(ENV=env, AI_PROVIDER="pipeline")
+
+    assert settings.AI_PROVIDER == "pipeline"
