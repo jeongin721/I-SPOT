@@ -937,12 +937,22 @@ renderVals() {
     neglect: ['일시적 · 가벼운 돌봄 소홀', '식사 · 위생 소홀 반복, 건강 영향 없음', '지속적 방치, 결석 방치, 학령기 아동 장시간 방치', '건강 영향, 치료 방치, 영유아 방치', '유기, 생명 위협 수준의 방치'],
     sexual: ['성적 수치심을 주는 언행, 단발', '반복적 성적 언행, 음란물 노출', '비접촉 성적 행위 요구 · 노출 · 촬영', '접촉을 동반한 성적 행위', '반복 · 지속적 접촉, 위협 · 강압 동반']
   };
-  const T = [
+  const BASE_T = [
     { k: 'physical', label: '신체학대', ev: '직접 근거', ai: 3, flag: 'S3', refs: ['8회차 00:41 피해아동 "…많이 때렸어요."', '8회차 01:08 피해아동 "등이랑 팔이요."'] },
     { k: 'emotional', label: '정서학대', ev: '직접 근거', ai: 3, flag: 'S5', refs: ['8회차 01:08 피해아동 "말하면 더 혼난다고 했어요."', '8회차 01:36 피해아동 "무서웠어요."'] },
     { k: 'neglect', label: '방임', ev: '확인 필요', ai: 0, flag: '', refs: ['8회차 02:15 화자 불확실 "밥도 안 줄 때가 있어요." · 신뢰도 0.70'] },
     { k: 'sexual', label: '성학대', ev: '언급 없음', ai: 0, flag: '', refs: ['언급 없음 ≠ 학대 없음 · 질문하지 않았을 수 있음'] }
   ];
+  const real = window.__REAL_SESSION__;
+  const sevMap = {};
+  if (real && real.severity_ratings) real.severity_ratings.forEach((r) => { sevMap[r.major_type] = r; });
+  const T = !real ? BASE_T : BASE_T.map((t) => {
+    const r = sevMap[t.label];
+    if (!r) return { ...t, ev: '언급 없음', ai: 0, flag: '', refs: ['실데이터 기준 · 해당 유형 근거 없음'] };
+    const lvl = (typeof r.level === 'number') ? r.level : 0;
+    const refs = [r.matched_evidence, r.reason ? ('판단 근거: ' + r.reason) : null].filter(Boolean);
+    return { ...t, ev: lvl ? '직접 근거' : '확인 필요', ai: lvl, flag: '', refs: refs.length ? refs : ['판단 근거 텍스트 없음'] };
+  });
   const evTone = { '직접 근거': ['#2B2A26', '#FFFFFF'], '확인 필요': ['#F2EFE8', '#66625A'], '언급 없음': ['#FFFFFF', '#98948B'] };
   const types = T.map((t) => {
     const cur = s.sev[t.k] !== undefined ? s.sev[t.k] : t.ai;
