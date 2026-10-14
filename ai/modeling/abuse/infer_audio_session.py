@@ -756,16 +756,21 @@ def analyze_audio_session(
             )
 
     # --------------------------------------------------------
-    # 다음 상담에서 확인할 것("유형별 위험도" 화면, 2026-10-14 추가)
+    # 다음 상담에서 확인할 것("유형별 위험도" 화면, 2026-10-14 추가,
+    # 같은 날 재설계 — followup_check_llm.py 모듈 docstring 참고)
     # --------------------------------------------------------
-    # followup_check_llm.py 모듈 docstring 참고 — 질문 문구를 만들지
-    # 않고 "무엇이 불확실한지"만 서술하게 범위를 제한했다. segments/
-    # risk_signal_points는 이 시점에 이미 restore_pii로 실명이 복원된
-    # 상태라 외부로 보내기 전에 여기서 다시 마스킹한다.
+    # 질문 문구를 만들지 않고 "무엇이 불확실하거나 확인이 안 됐는지"만
+    # 서술하게 범위를 제한했다. 회차 간 진술 변화는 "상담 요약"
+    # 화면에 이미 따로 나오므로(조사 후 변화된 사항) 여기 다시 섞지
+    # 않는다 — 중복이라 치웠다. segments/record_draft는 이 시점에
+    # 이미 restore_pii로 실명이 복원된 상태라 외부로 보내기 전에
+    # 여기서 다시 마스킹한다.
 
     followup_masked_text, followup_entity_map = mask_for_outbound(
         format_followup_inputs_for_masking(
-            segments, record_draft.get("risk_signal_points", [])
+            segments,
+            record_draft.get("child_statement_points", []),
+            record_draft.get("risk_signal_points", []),
         ),
         known_identifiers=known_identifiers,
     )
@@ -779,11 +784,6 @@ def analyze_audio_session(
     followup_check_points = restore_pii(
         followup_check_points, followup_entity_map
     )
-
-    # 회차 간 진술 변화는 이미 완성된 문장이라 LLM을 다시 거치지 않고
-    # 그대로 덧붙인다(session_change.py 모듈 docstring 참고 — 재작성
-    # 위험을 피하려고 LLM을 안 쓴다).
-    followup_check_points = followup_check_points + session_change_notes
 
     return {
         "full_text": full_text,
