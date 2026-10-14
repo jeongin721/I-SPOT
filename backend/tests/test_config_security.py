@@ -107,3 +107,23 @@ def test_non_production_keeps_pipeline_as_before(env: str) -> None:
     settings = _settings(ENV=env, AI_PROVIDER="pipeline")
 
     assert settings.AI_PROVIDER == "pipeline"
+
+
+def test_settings_error_does_not_print_input_values() -> None:
+    """설정 검사 오류 문구에 입력값(API 키 등)이 찍히지 않는다. 서버 시작 실패는 로그에 그대로 남는다."""
+
+    fake_key = "sk-SYNTHETIC-NOT-A-REAL-KEY-0123456789"
+
+    with pytest.raises(ValidationError) as caught:
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="pipeline",
+            OPENAI_API_KEY=fake_key,
+        )
+
+    message = str(caught.value)
+
+    assert "AI_PIPELINE_ALLOW_UNMASKED=true" in message
+    assert "0123456789" not in message
+    assert STRONG_SECRET[-8:] not in message
