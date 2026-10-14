@@ -85,7 +85,7 @@ export default function CaseDetail(props) {
 
 - 피그마 화면이 오면 위 훅 몇 줄과 `renderVals()` 를 그대로 옮기고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
 - 화면만의 상태(단계 · 고른 항목 · 펼침 등)는 `Logic.state` 에 두고, 처음 값 · 바꾸는 함수는 값 함수가 줍니다(`uploadModal.ts` 의 `initialUploadState` · `setState`). 훅에 넘겨야 하는 상태(검색어 · 고른 사례)는 화면 함수의 `useState` 로 듭니다.
-- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`).
+- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
 - `Login.jsx` 는 아직 값 계산이 화면 파일 안에 있습니다(이 규칙 전에 연결).
 
 | 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
