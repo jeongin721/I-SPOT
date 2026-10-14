@@ -2,7 +2,7 @@
 
 아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
-**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
+**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 설정 · 관리자 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
 
 ## 실행
 
@@ -57,6 +57,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 | --- | --- | --- |
 | `case` | 사례 ID(UUID, 목록의 `CaseRow.id`). 화면에 보이는 사례번호 `C-2026-0001` 이 아닙니다 | 사례 상세 탭들, 녹취 올리기(그 사례를 고른 채 시작) |
 | `session` | 회차 ID(UUID) | 회차 상세, 회차 처리 화면, 녹취 올리기(그 회차를 고른 채 시작) |
+| `view` | `tasks` · `accounts` · `audit`(없으면 대시보드) | 관리자 화면의 보기(업무 처리 현황 · 상담사 계정 관리 · 접속 기록). `readAdminView` · `adminHref`(`src/data/screens/admin.ts`) |
 
 - 예: `#/CaseDetail?case=…`, `#/SessionDetail?case=…&session=…`
 - 읽기는 `readScreenIds(useSearchParams()[0])`, 만들기는 `screenHref('/SessionDetail', { caseId, sessionId })`(`src/data/screens/links.ts`). 주소 문자열을 직접 이어 붙이지 않습니다.
@@ -98,10 +99,14 @@ export default function CaseDetail(props) {
 | 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
 | 2 · 위험 신호 검토 | `SignalReview.jsx` | `case` · `session` | `useSessionAnalysis` + 머리 | `signalReview.ts` `signalReviewValues` |
 | 3 · 요약 · 일지 작성 | `NoteWrite.jsx` | `case` · `session` | `useSummaryReview` · `useSessionDocuments` + 머리 | `noteWrite.ts` `noteWriteValues` |
+| 설정 | `Settings.jsx` | — | `useAuthSession` · `usePasswordChange` | `settings.ts` `settingsValues` |
+| 관리자 | `Admin.jsx` | (`view`) | `useAdminDashboard` · `useAdminTasks`(대시보드 탭 2종 · 업무 보기) · `useAdminAccounts` · `useAuditLogs` | `admin.ts` `adminValues` |
 
 - 회차 처리 흐름: 녹취 올리기 → STT 검수(고친 발화 저장 · 원문 확정) → 위험 신호 검토(AI 분석 요청 · 진행 · 실패 뒤 다시 분석) → 요약 · 일지 작성(요약 고치기 · 저장 · **요약 승인 = 회차 '승인 완료'**, 상담일지 저장 · 승인).
 - 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중입니다. 위험 신호 검토 화면은 AI 분석 상태와 AI 안내만 보입니다.
 - 요약 승인은 회차를 잠그므로 '요약 승인' 단추를 따로 두고 한 번 더 묻습니다. '저장 · 추가 확인 · 질문 →' 은 저장만 합니다.
+- 관리자 화면: 디자인은 대시보드 한 장이라 왼쪽 메뉴의 업무 처리 현황 · 상담사 계정 관리 · 접속 기록은 같은 화면의 다른 보기(`?view=`)로 두고 디자인의 카드 · 표 · 칩을 그대로 씁니다. 상담원 계정이면 훅이 서버를 부르지 않고 안내만 보입니다. 대시보드 업무 탭은 Backend 가 종류를 하나만 거를 수 있어 두 종류씩 불러 오래 기다린 순서로 합칩니다(원문 변환 · 상담사 검토 · AI 분석). 계정 만들기 · 비밀번호 초기화 · 휴면 해제의 임시 비밀번호는 화면 상태에만 한 번 두고 '닫기' 로 버립니다(다른 관리자로 바뀌면 보이지 않음). 비밀번호 초기화 · 휴면 해제 · 비활성화 · 강제 로그아웃은 한 번 더 묻습니다. 미배정 사례 · 문서 승인 · 보안 경고 · 재처리 요청은 서버에 없어 `—` · 준비 중입니다.
+- 설정 화면: 이름 · 이메일 · 역할 · 계정 만든 날은 내 정보에서, 비밀번호는 현재 비밀번호를 넣고 바꿉니다(바꾸면 로그아웃 → 로그인 화면). 이름 · 이메일 바꾸기, 소속 기관, 마지막 비밀번호 변경일, 알림 설정은 서버에 없어 `—` · 준비 중입니다.
 - 상담일지는 Backend 에서 제목 · 본문 텍스트 하나입니다. 화면의 칸(아동 진술 · 대상자 태도 · 물리적 환경 · 아동 특성 · 가정상황 · 위험 신호 검토 결과 · 상담원 소견)은 `[칸 이름]` 머리줄로 나눠 본문에 담습니다(`noteWrite.ts` 의 `formatNote` · `parseNote`). 기관 양식 구조가 정해지기 전의 임시 형식입니다.
 
 ## 폴더 구조
