@@ -16,8 +16,12 @@ sudo bash deploy/web-deploy.sh
 
 - 먼저 `git pull` 하는 것은 스크립트 자신도 최신으로 받기 위해서입니다. 스크립트도 시작할 때 `origin/main` 을 다시 받아 fast-forward 합니다(main 만 배포).
 - 여러 번 돌려도 됩니다. 돌릴 때마다 화면을 새로 빌드하고 Backend 컨테이너를 다시 만듭니다. 그동안 잠깐 접속이 끊깁니다.
-- 끝에 `WEB-DEPLOY DONE` 과 `/health` 결과가 나오면 성공입니다. 브라우저에서 `https://<주소>/health` 로도 확인합니다.
-- 주소를 바꿀 때만 `SITE` 를 넘깁니다(기본값은 지금 주소). `sudo` 는 환경변수를 넘기지 않으므로 이렇게 씁니다.
+- **성공 판정은 직접 봅니다.** 1/5~5/5 중 한 단계라도 실패하면 스크립트는 그 자리에서 멈추고 0 이 아닌 값으로 끝납니다. 하지만 마지막 확인(`/health`)은 결과를 보여 주기만 하고 실패해도 `WEB-DEPLOY DONE` 을 찍고 정상 종료합니다. 그래서 `DONE` 위의 두 줄을 봅니다.
+  - `-- 백엔드:` 줄에 `"status":"ok"` 와 `"database":"ok"` 가 있어야 합니다. 비어 있거나 다른 값이면 `sudo docker logs --tail 50 ispot-backend` 로 원인을 봅니다.
+  - `-- HTTPS:` 줄도 같은 내용이어야 합니다. `(HTTPS 아직 준비 안 됨 …)` 이면 인증서 발급을 기다리는 중일 수 있으니 1~2분 뒤 브라우저에서 `https://<주소>/health` 로 다시 확인합니다.
+- **중간에 멈췄을 때**: 앞 단계는 이미 반영된 채로 남습니다. 예를 들어 3/5(DB 마이그레이션)에서 멈추면 화면(2/5)은 새것으로 바뀌었고 `backend.env` 의 `CORS_ORIGINS` 도 고쳐졌지만 Backend 는 옛 컨테이너 그대로입니다. 원인을 고친 뒤 스크립트를 다시 돌립니다.
+  - `ENV=production` 에서 `AI_PROVIDER=pipeline` 이면 Backend 설정 검사가 시작을 막아 3/5 에서 멈춥니다(상담 원문이 비식별 없이 외부로 나가는 경로라서). 다시 배포 전에 `sudo grep -E '^(ENV|AI_PROVIDER|AI_PIPELINE_ALLOW_UNMASKED)=' /opt/ispot/backend.env` 로 확인합니다.
+- 주소를 바꿀 때만 `SITE` 를 넘깁니다(기본값은 지금 주소, 영문 · 숫자 · 점 · 하이픈만). `sudo` 는 설정에 따라 환경변수를 넘기지 않을 수 있어 이렇게 씁니다.
 
   ```bash
   sudo env SITE=<새 주소> bash deploy/web-deploy.sh
