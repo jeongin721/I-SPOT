@@ -1442,6 +1442,9 @@ def api_analyze_audio(
                 "severity_ratings": result.get(
                     "severity_ratings", []
                 ),
+                "session_change_notes": result.get(
+                    "session_change_notes", []
+                ),
             }
         )
 

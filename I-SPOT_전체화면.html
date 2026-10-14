@@ -1029,7 +1029,7 @@ renderVals() {
   // 입력 영역). 데모 문구를 real에서도 보여주면 안 지어낸 것처럼
   // 보이므로, real일 땐 빈 칸으로 둬서 상담사가 직접 쓰게 한다.
   const sums = [
-    { k: '(안전관련) 조사 후 변화된 사항', v: useReal ? '' : '6회차 "맞은 적은 잘 모르겠어요"였던 진술이 8회차에 "많이 때렸어요"로 바뀜. 두 진술 모두 원문대로 남김.', src: useReal ? '' : '6회차 05:02 · 8회차 00:41' },
+    { k: '(안전관련) 조사 후 변화된 사항', v: (real && real.session_change_notes && real.session_change_notes.length) ? real.session_change_notes.join('\n') : (useReal ? '' : '6회차 "맞은 적은 잘 모르겠어요"였던 진술이 8회차에 "많이 때렸어요"로 바뀜. 두 진술 모두 원문대로 남김.'), src: (real && real.session_change_notes && real.session_change_notes.length) ? 'AI 추출 · 이전 회차와 세부유형별 대표 진술 비교' : (useReal ? '' : '6회차 05:02 · 8회차 00:41') },
     { k: '아동안전과 관련된 강점과 자원', v: (rd && rd.narrative_summary && rd.narrative_summary.strengths_narrative) || (useReal ? '' : '조모에게 연락하는 안전 계획을 알고 있음. 할머니 집에 가고 싶다고 말함.'), src: (rd && rd.narrative_summary) ? 'AI 추출 · ' + tsOf(rd.narrative_summary.strengths_citations) : (useReal ? '' : '7회차 02:40 · 8회차 02:40') },
     { k: '아동안전과 관련된 위험요인', v: (rd && rd.narrative_summary && rd.narrative_summary.risks_narrative) || (useReal ? '' : '보호자(부)의 체벌과 함구 요구("말하면 더 혼난다"). 식사 관련 발화는 화자 확인 필요.'), src: (rd && rd.narrative_summary) ? 'AI 추출 · ' + tsOf(rd.narrative_summary.risks_citations) : (useReal ? '' : '8회차 00:41 · 01:08 · 02:15') },
     { k: '앞으로 원하는 변화 · 원하는 서비스/지원', v: useReal ? '' : '아동: 할머니 집에 가고 싶음. 서비스: 등 · 팔 통증 의료 확인 필요.', src: useReal ? '' : '8회차 02:40 · 01:08' }

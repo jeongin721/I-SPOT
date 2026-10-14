@@ -46,6 +46,9 @@ from ai.modeling.abuse.narrative_summary_llm import (
     format_points_for_masking,
     generate_narrative_summary_from_masked_text,
 )
+from ai.modeling.abuse.session_change import (
+    build_session_change_notes,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -718,6 +721,33 @@ def analyze_audio_session(
             severity_ratings, severity_entity_map
         )
 
+    # --------------------------------------------------------
+    # 회차 간 진술 변화("상담 요약" 화면의 "(안전관련) 조사 후 변화된
+    # 사항", 2026-10-14 추가) — session_change.py 모듈 docstring 참고,
+    # LLM을 쓰지 않는 순수 텍스트 비교다. 이 세션이 case_store에 아직
+    # 저장되기 전이라(저장은 이 함수가 끝난 뒤 호출부에서 한다),
+    # list_sessions_for_case가 돌려주는 건 전부 "이전" 회차뿐이다.
+    session_change_notes: List[str] = []
+
+    if case_id:
+        approved_sessions = [
+            session
+            for session in case_store.list_sessions_for_case(
+                case_id
+            )
+            if session.get("status") == "approved"
+        ]
+
+        if approved_sessions:
+            previous_session = approved_sessions[-1]
+
+            session_change_notes = build_session_change_notes(
+                current_subtype_analysis=subtype_result,
+                previous_session_row=previous_session,
+                previous_round_label=f"{len(approved_sessions)}회차",
+                current_round_label=f"{len(approved_sessions) + 1}회차",
+            )
+
     return {
         "full_text": full_text,
         "segments": segments,
@@ -735,6 +765,7 @@ def analyze_audio_session(
         "record_draft": record_draft,
         "protective_factors": protective_factors,
         "severity_ratings": severity_ratings,
+        "session_change_notes": session_change_notes,
         "chunk_results": chunk_results,
     }
 
