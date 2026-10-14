@@ -84,6 +84,9 @@ export function usePasswordChange(): PasswordChangeState {
     } catch (caught) {
       if (!mounted.current) return false;
 
+      // 그사이 다른 탭에서 다시 로그인했으면 앞 계정의 실패다. 지금 계정의 화면에 오류를 띄우지 않는다.
+      if (getToken() !== requestedToken) return false;
+
       if (caught instanceof ApiError) {
         // 401 은 로그인이 끝난 것이다. client 가 로그아웃시키고 이유를 로그인 화면에 남겼다.
         if (caught.isUnauthorized) return false;

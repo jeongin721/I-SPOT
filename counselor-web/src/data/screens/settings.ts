@@ -35,7 +35,7 @@ export interface SettingsScreenInput {
   session: AuthSession;
   pwChange: PasswordChangeState;
   state: SettingsUiState;
-  setState: (patch: Partial<SettingsUiState>) => void;
+  setState: (patch: Partial<SettingsUiState> | ((current: SettingsUiState) => Partial<SettingsUiState>)) => void;
 }
 
 const CLOSED: Partial<SettingsUiState> = { pwFor: null, current: "", next: "", confirm: "" };
@@ -94,13 +94,15 @@ export function settingsValues(input: SettingsScreenInput) {
       if (!pwOpen) return;
 
       // 성공하면 로그아웃되어 로그인 화면으로 간다(Settings.jsx 의 needsLogin).
+      // 응답을 기다리는 사이 다른 탭에서 다른 계정으로 바뀌어 그 계정이 칸을 새로 열었으면 그 칸은 건드리지 않는다.
+      const forUser = state.pwFor;
       const ok = await pwChange.change({
         currentPassword: state.current,
         newPassword: state.next,
         confirmPassword: state.confirm,
       });
 
-      if (ok) setState(CLOSED);
+      if (ok) setState((current) => (current.pwFor === forUser ? CLOSED : {}));
     },
 
     // ---------------- 알림 설정 ----------------
