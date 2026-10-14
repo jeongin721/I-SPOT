@@ -34,7 +34,8 @@ function setDark(next) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key !== KEY) return;
+    // key 가 null 이면 다른 탭이 저장소를 통째로 비운 것(localStorage.clear())이라 다시 읽는다.
+    if (e.key !== null && e.key !== KEY) return;
     dark = read();
     apply();
   });
