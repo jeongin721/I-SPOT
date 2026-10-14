@@ -246,12 +246,14 @@ export function adminValues(input: AdminScreenInput) {
 
   const goOverdue = () => setQuery({ taskType: "", overdueOnly: true, taskPage: 1 });
   // 즉시 확인 필요: 디자인의 네 줄(보안 · 사례 · 승인 · 배정) 자리. 서버에 있는 것은 지연 업무뿐이다.
+  // '바로가기' 는 종류 없이 '지연만' 으로 거른 목록을 연다(Backend 는 종류를 하나만 거를 수 있어 녹음 업로드를 뺄 수 없다).
+  // 그래서 이 줄의 숫자도 녹음 업로드를 포함한 전체 지연(overdueAll)으로 센다 — 위 '처리 대기 업무' 의 지연과 모집단이 다르다.
   const alerts = [
     { chip: "보안", cls: "chip c-urgent", text: `보안 경고 ${dashboard.securityAlerts}`, href: "", onClick: undefined, note: NOT_READY },
     {
       chip: "업무",
       cls: "chip c-check",
-      text: `기준 시간을 넘긴 처리 대기 업무 ${pending ? `${pending.overdue}건` : cellText(dashboard.pendingTasks, String)}`,
+      text: `기준 시간을 넘긴 업무(녹음 업로드 포함) ${pending ? `${pending.overdueAll}건` : cellText(dashboard.pendingTasks, String)}`,
       href: adminHref("tasks"),
       onClick: goOverdue,
       note: "",
@@ -287,7 +289,7 @@ export function adminValues(input: AdminScreenInput) {
   });
   const [first, second] = groupTasks;
   const groupRows = [...first.rows, ...second.rows]
-    .sort((a, b) => a.waitingSinceFull.localeCompare(b.waitingSinceFull))
+    .sort((a, b) => a.waitingSinceAt - b.waitingSinceAt)
     .slice(0, DASHBOARD_TASK_ROWS)
     .map(taskRowValues);
   const groupTotal = first.total !== null && second.total !== null ? first.total + second.total : null;

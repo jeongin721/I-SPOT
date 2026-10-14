@@ -361,6 +361,8 @@ export interface PendingTasks {
   count: number;
   /** 그 가운데 지연. */
   overdue: number;
+  /** 모든 종류(UPLOAD_AUDIO 포함)의 지연. 업무 목록을 '지연만' 으로 거르면(종류 없이) 이 수만큼 나온다. */
+  overdueAll: number;
   /** 종류별 수(UPLOAD_AUDIO 포함 7종 모두). 업무 표의 탭 숫자에 쓴다. */
   byType: Record<TaskType, number>;
 }
@@ -376,7 +378,7 @@ export function toPendingTasks(summary: TaskSummary, uploadAudioOverdue: number)
   // 두 요청 사이에 기준 시간을 넘기는 업무가 있으면 어긋날 수 있어 범위 안으로 맞춘다.
   const overdue = Math.min(count, Math.max(0, summary.overdue - uploadAudioOverdue));
 
-  return { count, overdue, byType: { ...summary.by_type } };
+  return { count, overdue, overdueAll: summary.overdue, byType: { ...summary.by_type } };
 }
 
 export interface TaskRow {
@@ -397,6 +399,8 @@ export interface TaskRow {
   waitingSince: string;
   /** YYYY-MM-DD HH:mm */
   waitingSinceFull: string;
+  /** 기다리기 시작한 시각(밀리초). 정렬용 — 분까지만 있는 글자로 정렬하면 같은 분 안의 순서가 틀린다. 읽지 못하면 맨 뒤로. */
+  waitingSinceAt: number;
   /** 기다린 시간("5시간"). 부른 시각 기준이라 다시 조회할 때 바뀐다. */
   waitingFor: string;
   /** 서버 기준 지연. 위험 신호가 아니므로 '긴급' 이라고 쓰지 않는다. */
@@ -420,6 +424,7 @@ export function toTaskRow(item: TaskItem, now: number = Date.now()): TaskRow {
     stageLabel: TASK_LABELS[item.task_type] ?? item.task_type,
     waitingSince: toShortDateTime(item.waiting_since),
     waitingSinceFull: toDateTime(item.waiting_since),
+    waitingSinceAt: parseBackendTime(item.waiting_since)?.getTime() ?? Number.MAX_SAFE_INTEGER,
     waitingFor: toWaitingFor(item.waiting_since, now),
     overdue: item.is_overdue,
     failed: item.task_type === "RETRY_STT" || item.task_type === "RETRY_ANALYSIS",
