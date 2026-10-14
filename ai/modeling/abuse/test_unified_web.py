@@ -1407,6 +1407,8 @@ def api_analyze_audio(
         # 분석까지 한 번에 처리하는 구조라(위 docstring 참고), draft로
         # 저장한 뒤 바로 같은 내용으로 승인 처리한다 — 별도 검수 UI가
         # 생기면 그때 draft만 저장하고 승인은 그 UI로 옮기면 된다.
+        case_trend = []
+
         if case_id:
             session_id = case_store.save_draft_session(
                 case_id=case_id,
@@ -1429,6 +1431,11 @@ def api_analyze_audio(
                 ),
             )
 
+            # 방금 승인한 이번 회차까지 포함해서 "회차별 추이" 표를
+            # 만들 수 있도록, 저장이 끝난 뒤에 계산한다(2026-10-14,
+            # RiskProfile 화면의 "회차별 추이" 실데이터 연결).
+            case_trend = case_store.get_case_trend(case_id)
+
         return JSONResponse(
             {
                 "segments": result.get("segments", []),
@@ -1445,6 +1452,10 @@ def api_analyze_audio(
                 "session_change_notes": result.get(
                     "session_change_notes", []
                 ),
+                "current_round_label": result.get(
+                    "current_round_label", ""
+                ),
+                "case_trend": case_trend,
             }
         )
 

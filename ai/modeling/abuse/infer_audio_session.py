@@ -728,6 +728,7 @@ def analyze_audio_session(
     # 저장되기 전이라(저장은 이 함수가 끝난 뒤 호출부에서 한다),
     # list_sessions_for_case가 돌려주는 건 전부 "이전" 회차뿐이다.
     session_change_notes: List[str] = []
+    current_round_label = ""
 
     if case_id:
         approved_sessions = [
@@ -738,6 +739,8 @@ def analyze_audio_session(
             if session.get("status") == "approved"
         ]
 
+        current_round_label = f"{len(approved_sessions) + 1}회차"
+
         if approved_sessions:
             previous_session = approved_sessions[-1]
 
@@ -745,7 +748,7 @@ def analyze_audio_session(
                 current_subtype_analysis=subtype_result,
                 previous_session_row=previous_session,
                 previous_round_label=f"{len(approved_sessions)}회차",
-                current_round_label=f"{len(approved_sessions) + 1}회차",
+                current_round_label=current_round_label,
             )
 
     return {
@@ -766,6 +769,7 @@ def analyze_audio_session(
         "protective_factors": protective_factors,
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
+        "current_round_label": current_round_label,
         "chunk_results": chunk_results,
     }
 
