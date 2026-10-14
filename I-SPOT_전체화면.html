@@ -816,10 +816,19 @@ renderVals() {
     const fd = new FormData();
     fd.append('case_id', cs[s.c][1].split(' · ')[0]);
     fd.append('file', s.file, s.file.name);
-    fetch('/api/analyze-audio', { method: 'POST', body: fd }).then((r) => r.json()).then((data) => {
+    fetch('/api/analyze-audio', { method: 'POST', body: fd }).then((r) => r.json().then((data) => {
+      // r.ok만 보면 안 된다 — 이 라우트는 실패해도 500 + {"error":"..."}
+      // 형태로 JSON을 주는데, fetch는 HTTP 상태코드를 안 가리고 그냥
+      // 파싱해 버려서 실패 응답을 성공 데이터처럼 __REAL_SESSION__에
+      // 넣는 버그가 있었다(2026-10-14, 재상담 회차 업로드 테스트 중
+      // Privacy Gateway 차단으로 500이 났는데 알림 없이 조용히 데모로
+      // 떨어진 걸 발견). data.error가 있으면 무조건 실패로 본다.
+      if (!r.ok || data.error) { throw new Error(data.error || ('서버 오류 (' + r.status + ')')); }
+      return data;
+    })).then((data) => {
       window.__REAL_SESSION__ = data;
       this.setState({ confirm: true, uploading: false });
-    }).catch((err) => { alert('실제 분석 실패: ' + err); this.setState({ uploading: false }); });
+    }).catch((err) => { alert('실제 분석 실패: ' + (err && err.message ? err.message : err)); this.setState({ uploading: false }); });
   };
   const labels = ['사례 선택', '상담 회차', '파일 선택'];
   const steps = labels.map((label, i) => { const n = i + 1, done = n < s.step, cur = n === s.step;
