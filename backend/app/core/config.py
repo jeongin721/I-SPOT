@@ -34,6 +34,8 @@ class Settings(BaseSettings):
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        # 설정 검사 오류에 입력값(.env 전체 — API 키 · JWT 비밀키 포함)을 찍지 않는다. 시작 실패는 서버 로그에 남는다.
+        hide_input_in_errors=True,
     )
 
     # ---------------------------------------------------------
