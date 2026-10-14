@@ -845,20 +845,27 @@ SCREENS["SttReview"]={title:"I-SPOT 회차 처리 · STT 검수",props:{},style:
 const SPK_LABEL = { CHILD: '피해아동', COUNSELOR: '상담원', GUARDIAN: '보호자', OTHER: '사례관리대상자', UNKNOWN: '화자?' };
 function msToTs(ms) { const t = Math.floor((ms || 0) / 1000); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); }
 class Component extends DCLogic {
-constructor(props) { super(props); this.state = { pct: 0, view: window.__REAL_SESSION__ ? 'all' : 'key', ok: {}, sp: {} }; }
+constructor(props) { super(props); this.state = { pct: 0, view: 'key', ok: {}, sp: {} }; }
 componentDidMount() { this.timer = setInterval(() => { if (this.state.pct >= 100) { clearInterval(this.timer); return; } this.setState({ pct: Math.min(100, this.state.pct + 20) }); }, 700); }
 componentWillUnmount() { clearInterval(this.timer); }
 renderVals() {
   const s = this.state;
   const real = window.__REAL_SESSION__;
-  // 실데이터는 '1차 핵심 발화' 큐레이션 기능이 아직 없어서 l.key가 항상
-  // undefined다. view가 업로드 완료 전(real 없음)에 'key'로 초기화된 채
-  // 남아 있으면(비동기 분석이 끝나기 전에 마운트됨) 실데이터가 와도
-  // all.filter(l=>l.key)가 항상 빈 배열이 되는 걸 막는다(2026-10-14).
-  const effView = real && s.view === 'key' ? 'all' : s.view;
+  // 실데이터의 '1차 핵심 발화'는 위험 신호 검토(SignalReview)가 이미
+  // 뽑아낸 risk_signal_points의 근거 segment_id로 정의한다 — 데모처럼
+  // 별도 큐레이션을 새로 만들지 않고 이미 계산된 신호를 재사용한다.
+  // narrative_summary.risks_citations가 바로 그 집합이라 우선 쓰고,
+  // 없으면 risk_signal_points.segment_ids에서 직접 모은다(2026-10-14).
+  const keyIds = new Set();
+  if (real && real.record_draft) {
+    const rd = real.record_draft;
+    const cited = rd.narrative_summary && rd.narrative_summary.risks_citations;
+    if (cited && cited.length) { cited.forEach((id) => keyIds.add(String(id))); }
+    else { (rd.risk_signal_points || []).forEach((p) => (p.segment_ids || []).forEach((id) => keyIds.add(String(id)))); }
+  }
   const all = (real && real.segments ? real.segments.map((seg) => ({
     t: msToTs(seg.start_ms), sp: SPK_LABEL[seg.speaker] || '화자?', text: seg.text, c: seg.confidence,
-    hint: seg.is_low_confidence ? '신뢰도 낮음 · 원문 재확인 필요' : ''
+    hint: seg.is_low_confidence ? '신뢰도 낮음 · 원문 재확인 필요' : '', key: keyIds.has(String(seg.segment_id))
   })) : [
     { t: '00:12', sp: '상담원', text: '오늘은 집에서 만나네. 요즘 어떻게 지냈어?', c: 0.97 },
     { t: '00:20', sp: '피해아동', text: '그냥… 학교는 괜찮아요.', c: 0.94 },
@@ -873,9 +880,9 @@ renderVals() {
     { t: '03:05', sp: '사례관리대상자', text: '(현관문 소리) 누구 왔어? 무슨 얘기 하는 거야?', c: 0.81, key: true, safe: true },
     { t: '03:12', sp: '피해아동', text: '…아무것도 아니에요.', c: 0.88 }
   ]).map((l, i) => ({ ...l, i, low: l.c < 0.75 }));
-  const pick = effView === 'all' ? all : effView === 'low' ? all.filter((l) => l.low) : all.filter((l) => l.key);
+  const pick = s.view === 'all' ? all : s.view === 'low' ? all.filter((l) => l.low) : all.filter((l) => l.key);
   const SPK = ['피해아동', '상담원', '사례관리대상자', '보호자', '화자?'];
-  const lines = pick.map((l) => { const done = !!s.ok[l.i]; const edit = effView !== 'key' && l.low;
+  const lines = pick.map((l) => { const done = !!s.ok[l.i]; const edit = s.view !== 'key' && l.low;
     const sp = s.sp[l.i] || l.sp;
     return { t: l.t, sp, text: l.text, aria: `${l.t} 발화 고치기`, spFw: sp === '피해아동' ? 700 : 500, spFix: !!s.sp[l.i], nextSp: () => this.setState({ sp: { ...s.sp, [l.i]: SPK[(SPK.indexOf(sp) + 1) % SPK.length] } }), conf: `${Math.round(l.c * 100)}%`,
       edit, read: !edit, hint: done ? '확인했어요' : (l.low ? (l.hint || '') : (l.safe ? '신변안전 · 사례관리대상자 귀가 후 아동 발화 감소' : '')), hintFg: !done && !l.low && l.safe ? '#A33B2E' : '#7A776F',
@@ -884,9 +891,9 @@ renderVals() {
   const stages = ['화자 구분 중', '전사 중', '신뢰도 계산 중', '핵심 발화 고르는 중', '거의 끝났어요', '완료'];
   const titles = { key: '1차 임시 핵심 발화', all: '전체 STT', low: '저신뢰 구간' };
   return { analyzing: s.pct < 100, done: s.pct >= 100, pct: s.pct, pctW: s.pct + '%', stageLabel: stages[Math.floor(s.pct / 20)],
-    skip: () => this.setState({ pct: 100 }), lines, lowLeft: lowLeft + '곳', viewTitle: titles[effView],
-    chipText: effView === 'key' ? '임시 · 검수 전' : (lowLeft ? `확인할 곳 ${lowLeft}` : '모두 확인'), chipCls: effView === 'key' ? 'chip c-sand' : (lowLeft ? 'chip c-check' : 'chip c-ok'),
-    allCls: effView === 'all' ? 'btn-p' : 'btn-s', lowCls: effView === 'low' ? 'btn-p' : 'btn-s',
+    skip: () => this.setState({ pct: 100 }), lines, lowLeft: lowLeft + '곳', viewTitle: titles[s.view],
+    chipText: s.view === 'key' ? '임시 · 검수 전' : (lowLeft ? `확인할 곳 ${lowLeft}` : '모두 확인'), chipCls: s.view === 'key' ? 'chip c-sand' : (lowLeft ? 'chip c-check' : 'chip c-ok'),
+    allCls: s.view === 'all' ? 'btn-p' : 'btn-s', lowCls: s.view === 'low' ? 'btn-p' : 'btn-s',
     showAll: () => this.setState({ view: s.view === 'all' ? 'key' : 'all' }), showLow: () => this.setState({ view: s.view === 'low' ? 'key' : 'low' }) };
 }
 }
