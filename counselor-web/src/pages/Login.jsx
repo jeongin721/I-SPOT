@@ -1,14 +1,16 @@
 // 로그인
-// 원본: I-SPOT 디자인 캔버스 보드 Login.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/Login.dc.html (front_new 브랜치)
 //
 // 서버 연결: 로그인 · 로그인 상태 · 비밀번호 변경은 src/data 의 훅이 하고, 이 파일은 배치만 한다.
-// 피그마 화면으로 바꿀 때는 아래 Login 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
+// 디자인을 바꿀 때는 아래 Login 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
 //  - 로그인은 이메일(Backend 계약). OTP 는 Backend 에 없어 칸만 두고 막아 둔다(팀 결정 대기).
 //  - 임시 비밀번호로 들어오면 같은 카드가 비밀번호 변경 단계로 바뀐다. 바꾸면 다시 로그인한다.
 //  - 역할과 상관없이 로그인하면 /Main 으로 간다.
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useLogin } from '../data/useLogin';
 import { useLogoutNotice } from '../data/useLogoutNotice';
@@ -89,23 +91,29 @@ export default function Login(props) {
   const login = useLogin();
   const pwChange = usePasswordChange();
   const { notice, dismiss: dismissNotice } = useLogoutNotice();
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, navigate, session, login, pwChange, notice, dismissNotice });
   return (
     <div className="pg-Login">
       <div
+        className={theme.cls}
         style={{
           minHeight: '720px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#F2F2F0',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '48px 24px',
+          position: 'relative',
         }}
       >
+        <div className="thm-abs">
+          <ThemeToggle />
+        </div>
         <form
           onSubmit={v.submit}
           noValidate
@@ -113,8 +121,9 @@ export default function Login(props) {
             width: '100%',
             maxWidth: '400px',
             background: '#FFFFFF',
-            border: '1px solid #E7E0CE',
-            borderRadius: '20px',
+            border: '1px solid #E2DED3',
+            borderRadius: '24px',
+            boxShadow: '8px 8px 22px var(--sd), -8px -8px 22px var(--sl)',
             padding: '36px 34px',
             display: 'flex',
             flexDirection: 'column',

@@ -180,9 +180,9 @@ export interface NoteScreenInput extends SessionScreenInput {
 
 const chipStyle = (on: boolean) => ({
   mark: on ? "✓" : "+",
-  bg: on ? "#E2ECF8" : "#FFFFFF",
-  bd: on ? "#A8C6E7" : "#DCD5C3",
-  fg: on ? "#2E5687" : "#2F3A44",
+  bg: on ? "#F1EADA" : "#FFFFFF",
+  bd: on ? "#2B2A26" : "#DAD5C9",
+  fg: "#2B2A26",
   fw: on ? 700 : 400,
 });
 

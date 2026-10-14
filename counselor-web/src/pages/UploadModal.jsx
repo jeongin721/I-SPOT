@@ -1,5 +1,5 @@
 // 녹취 · 자료 올리기 (팝업 3단계 + 확인창)
-// 원본: I-SPOT 디자인 캔버스 보드 UploadModal.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/UploadModal.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=…(&session=…) 로 열면 그 사례(회차)를 고른 채 시작한다. 사례 목록은 useCaseList,
 // 고른 사례의 회차는 useCaseDetail, 올리기 · 원문 변환은 useAudioUpload 가 하고, 화면에 쓸 값은
@@ -9,8 +9,10 @@ import { Fragment, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
-import { useAudioUpload } from '../data/useAudioUpload';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
+import { useAudioUpload } from '../data/useAudioUpload';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseList } from '../data/useCaseList';
 import { needsLogin, signedIn } from '../data/screens/common';
@@ -44,18 +46,32 @@ function UploadModalScreen(props) {
   const list = useCaseList({ search, enabled });
   const caseDetail = useCaseDetail(caseId, { enabled });
   const upload = useAudioUpload();
-  const v = useDC(Logic, { ...props, session, ids, list, search, setSearch, caseId, setCaseId, caseDetail, upload, go });
+  const theme = useTheme();
+  const v = useDC(Logic, {
+    ...props,
+    session,
+    ids,
+    list,
+    search,
+    setSearch,
+    caseId,
+    setCaseId,
+    caseDetail,
+    upload,
+    go,
+  });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-UploadModal">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1000px',
           background: 'rgba(47,58,68,0.40)',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
-          color: '#2F3A44',
+          color: '#2B2A26',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -63,6 +79,9 @@ function UploadModalScreen(props) {
           position: 'relative',
         }}
       >
+        <div className="thm-abs">
+          <ThemeToggle />
+        </div>
         <section
           role="dialog"
           aria-modal="true"
@@ -72,11 +91,11 @@ function UploadModalScreen(props) {
             maxWidth: '640px',
             background: '#FFFFFF',
             borderRadius: '24px',
-            boxShadow: '0 20px 60px rgba(30,50,80,0.22)',
+            boxShadow: '0 20px 60px rgba(43, 42, 38,0.22)',
             overflow: 'hidden',
           }}
         >
-          <div style={{ padding: '24px 30px 18px', borderBottom: '1px solid #EEE8DA' }}>
+          <div style={{ padding: '24px 30px 18px', borderBottom: '1px solid #EAE7DF' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <h1 id="up-title" style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>
                 녹취 · 자료 올리기
@@ -89,12 +108,12 @@ function UploadModalScreen(props) {
                   width: '40px',
                   height: '40px',
                   borderRadius: '50%',
-                  background: '#F8F5EC',
+                  background: '#F7F6F2',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   textDecoration: 'none',
-                  color: '#2F3A44',
+                  color: '#2B2A26',
                   fontSize: '18px',
                 }}
               >
@@ -181,9 +200,7 @@ function UploadModalScreen(props) {
                             justifyContent: 'center',
                           }}
                         >
-                          <span
-                            style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.fill }}
-                          />
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.fill }}></span>
                         </span>
                         <span>
                           <b style={{ fontWeight: '500' }}>{c.name}</b> <span className="note">{c.meta}</span>
@@ -202,7 +219,7 @@ function UploadModalScreen(props) {
                     marginTop: '16px',
                     padding: '14px 16px',
                     borderRadius: '14px',
-                    border: '1px dashed #DCD5C3',
+                    border: '1px dashed #DAD5C9',
                     display: 'flex',
                     flexWrap: 'wrap',
                     alignItems: 'center',
@@ -219,12 +236,7 @@ function UploadModalScreen(props) {
             {v.s2 ? (
               <>
                 <div
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: '14px',
-                    background: '#F8F5EC',
-                    marginBottom: '16px',
-                  }}
+                  style={{ padding: '12px 16px', borderRadius: '14px', background: '#F7F6F2', marginBottom: '16px' }}
                 >
                   <b style={{ fontWeight: '500' }}>{v.caseName}</b>
                 </div>
@@ -249,9 +261,7 @@ function UploadModalScreen(props) {
                             justifyContent: 'center',
                           }}
                         >
-                          <span
-                            style={{ width: '8px', height: '8px', borderRadius: '50%', background: x.fill }}
-                          />
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: x.fill }}></span>
                         </span>
                         <span>
                           <b style={{ fontWeight: '500' }}>{x.label}</b>
@@ -273,12 +283,7 @@ function UploadModalScreen(props) {
             {v.s3 ? (
               <>
                 <div
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: '14px',
-                    background: '#F8F5EC',
-                    marginBottom: '16px',
-                  }}
+                  style={{ padding: '12px 16px', borderRadius: '14px', background: '#F7F6F2', marginBottom: '16px' }}
                 >
                   <b style={{ fontWeight: '500' }}>{v.caseName}</b> · {v.sesLabel}
                 </div>
@@ -291,8 +296,8 @@ function UploadModalScreen(props) {
                     gap: '6px',
                     padding: '26px',
                     borderRadius: '16px',
-                    border: '1.5px dashed #DCD5C3',
-                    background: '#F8F5EC',
+                    border: '1.5px dashed #DAD5C9',
+                    background: '#F7F6F2',
                     cursor: 'pointer',
                     textAlign: 'center',
                   }}
@@ -302,11 +307,11 @@ function UploadModalScreen(props) {
                       width: '52px',
                       height: '52px',
                       borderRadius: '50%',
-                      background: '#F1EFE9',
+                      background: '#F2EFE8',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: '#55606A',
+                      color: '#66625A',
                       fontSize: '22px',
                       fontWeight: '700',
                     }}
@@ -331,7 +336,7 @@ function UploadModalScreen(props) {
                       gap: '10px',
                       padding: '10px 14px',
                       borderRadius: '12px',
-                      border: '1px solid #E7E0CE',
+                      border: '1px solid #E7E4DC',
                     }}
                   >
                     <span className="chip c-sky">음성</span>
@@ -340,7 +345,7 @@ function UploadModalScreen(props) {
                   </div>
                 ) : null}
                 {v.fileError ? (
-                  <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#93452E' }}>
+                  <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#A33B2E' }}>
                     {v.fileError}
                   </p>
                 ) : null}
@@ -363,7 +368,7 @@ function UploadModalScreen(props) {
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              borderTop: '1px solid #EEE8DA',
+              borderTop: '1px solid #EAE7DF',
             }}
           >
             {v.s1 ? (
@@ -380,7 +385,7 @@ function UploadModalScreen(props) {
                 </button>
               </>
             ) : null}
-            <span style={{ flex: '1' }} />
+            <span style={{ flex: '1' }}></span>
             {v.notLast ? (
               <>
                 <button type="button" className="btn btn-p" onClick={v.next} disabled={!v.canNext}>
@@ -397,6 +402,7 @@ function UploadModalScreen(props) {
             ) : null}
           </div>
         </section>
+
         {v.confirm ? (
           <>
             <div
@@ -418,7 +424,7 @@ function UploadModalScreen(props) {
                   maxWidth: '440px',
                   background: '#FFFFFF',
                   borderRadius: '22px',
-                  boxShadow: '0 20px 60px rgba(30,50,80,0.28)',
+                  boxShadow: '0 20px 60px rgba(43, 42, 38,0.28)',
                   padding: '28px 28px 22px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -430,8 +436,8 @@ function UploadModalScreen(props) {
                     width: '48px',
                     height: '48px',
                     borderRadius: '50%',
-                    background: '#F1EFE9',
-                    color: '#55606A',
+                    background: '#F2EFE8',
+                    color: '#66625A',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',

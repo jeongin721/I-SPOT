@@ -1,14 +1,17 @@
 // 탭 1 · 내담자 정보 + 기관 서식 + 종결 검토 등록
-// 원본: I-SPOT 디자인 캔버스 보드 CaseDetail.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/CaseDetail.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차는 useCaseDetail 이 부르고, 화면에 쓸 값은
-// src/data/screens/caseDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다(피그마 화면이 오면 JSX 만 바꾼다).
+// src/data/screens/caseDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다(디자인이 바뀌면 JSX 만 바꾼다).
 // 서버에 없는 값(위험도 · 사례관리대상자 · 신고접수일 · 서비스 · 일정 등)은 '—', 종결 검토 등록은 준비 중.
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { caseDetailValues } from '../data/screens/caseDetail';
@@ -26,16 +29,18 @@ export default function CaseDetail(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, session, detail, caseId });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDetail">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1350px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -43,40 +48,7 @@ export default function CaseDetail(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -87,11 +59,17 @@ export default function CaseDetail(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
           <Notice value={v.notice} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A className="btn btn-sm btn-s" to="/CaseList">
+              ← 목록
+            </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
@@ -113,13 +91,7 @@ export default function CaseDetail(props) {
             <A to={v.tabs.app}>아이 연계</A>
             <A to={v.tabs.docs}>문서함</A>
           </nav>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-              gap: '18px',
-            }}
-          >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
             <section className="card" aria-label="기본 정보" style={{ padding: '22px 24px' }}>
               <h2 className="h2">기본 정보</h2>
               <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
@@ -159,30 +131,15 @@ export default function CaseDetail(props) {
                   </span>
                 ))}
               </div>
-              <div
-                style={{
-                  marginTop: '14px',
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
+              <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <span className="note">사정결과</span>
                 <b>{v.assessment}</b>
               </div>
             </section>
           </div>
+
           <section className="card" aria-label="현재 진행 상황" style={{ padding: '22px 24px' }}>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '16px',
-              }}
-            >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <h2 className="h2">현재 진행 상황</h2>
               <span className="note">{v.latestLabel}</span>
               <A className="btn btn-p btn-sm" to={v.continueHref} style={{ marginLeft: 'auto' }}>
@@ -205,7 +162,7 @@ export default function CaseDetail(props) {
                     right: '10%',
                     top: '17px',
                     height: '2px',
-                    background: '#E7E0CE',
+                    background: '#E7E4DC',
                   }}
                 />
                 {(v.progress || []).map((p, pIndex) => (
@@ -214,8 +171,8 @@ export default function CaseDetail(props) {
                       {p.mark}
                     </span>
                     {p.done ? p.label : null}
-                    {p.current ? <b style={{ fontWeight: '700', color: '#2E5687' }}>{p.label}</b> : null}
-                    {p.pending ? <span style={{ color: '#6F7880' }}>{p.label}</span> : null}
+                    {p.current ? <b style={{ fontWeight: '700', color: '#2B2A26' }}>{p.label}</b> : null}
+                    {p.pending ? <span style={{ color: '#7A776F' }}>{p.label}</span> : null}
                     {p.chip ? <span className="chip c-check">{p.chip}</span> : null}
                   </div>
                 ))}
@@ -246,16 +203,11 @@ export default function CaseDetail(props) {
               </div>
             </div>
           </section>
+
           <section
             className="card"
             aria-label="기관 서식"
-            style={{
-              padding: '20px 24px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '12px',
-            }}
+            style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <b style={{ flex: '1 1 200px' }}>기관 서식</b>
             <span className="chip c-check">{v.formsChip}</span>
@@ -263,16 +215,11 @@ export default function CaseDetail(props) {
               기관 서식 작성
             </A>
           </section>
+
           <section
             className="card"
             aria-label="종결 검토 등록"
-            style={{
-              padding: '20px 24px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '12px',
-            }}
+            style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <b style={{ flex: '1 1 200px' }}>종결 검토</b>
             <button

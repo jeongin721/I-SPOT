@@ -1,5 +1,5 @@
 // 2 · 위험 신호 검토 (→ 유형별 위험도)
-// 원본: I-SPOT 디자인 캔버스 보드 SignalReview.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/SignalReview.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=…&session=…. AI 분석 요청 · 진행은 useSessionAnalysis, 머리는 useSessionDetail · useCaseDetail 이
 // 부르고, 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
@@ -9,6 +9,9 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
@@ -33,16 +36,18 @@ export default function SignalReview(props) {
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-SignalReview">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1350px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -50,40 +55,7 @@ export default function SignalReview(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -94,9 +66,12 @@ export default function SignalReview(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> ›{' '}
-            <A to={v.historyHref}>상담 이력</A> › <A to={v.sessionHref}>{v.sessionLabel}</A>
+            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> › <A to={v.historyHref}>상담 이력</A>{' '}
+            › <A to={v.sessionHref}>{v.sessionLabel}</A>
           </nav>
           <Notice value={v.notice} />
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
@@ -126,7 +101,7 @@ export default function SignalReview(props) {
                 padding: '0 13px',
                 borderRadius: '9px',
                 fontSize: '13px',
-                color: '#55606A',
+                color: '#66625A',
                 textDecoration: 'none',
               }}
             >
@@ -150,24 +125,19 @@ export default function SignalReview(props) {
               <b style={{ fontSize: '16px' }}>AI 분석</b>
               {v.aiChip ? <span className="chip c-ai">{v.aiChip}</span> : null}
               {v.aiAction ? (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-p"
-                  style={{ marginLeft: 'auto' }}
-                  onClick={v.aiAction}
-                >
+                <button type="button" className="btn btn-sm btn-p" style={{ marginLeft: 'auto' }} onClick={v.aiAction}>
                   {v.aiActionLabel}
                 </button>
               ) : null}
             </div>
             <div aria-live="polite">{v.aiText}</div>
             {v.error ? (
-              <div className="note" role="alert" style={{ color: '#93452E' }}>
+              <div className="note" role="alert" style={{ color: '#A33B2E' }}>
                 {v.error}
               </div>
             ) : null}
             {(v.aiWarnings || []).map((w, wIndex) => (
-              <div key={wIndex} style={{ padding: '12px 14px', borderRadius: '12px', background: '#F8F5EC' }}>
+              <div key={wIndex} style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                 <div className="note">AI 안내 · 추가 확인 필요</div>
                 <div style={{ fontSize: '13px' }}>{w}</div>
               </div>
@@ -205,17 +175,13 @@ export default function SignalReview(props) {
                   </span>
                 </div>
                 <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                    gap: '10px',
-                  }}
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}
                 >
-                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F8F5EC' }}>
+                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                     <div className="note">발화 · {g.at}</div>
                     <div style={{ fontSize: '15px' }}>"{g.quote}"</div>
                   </div>
-                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F8F5EC' }}>
+                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                     <div className="note">근거</div>
                     <div style={{ fontSize: '13px' }}>{g.why}</div>
                     <div className="note">{g.check}</div>

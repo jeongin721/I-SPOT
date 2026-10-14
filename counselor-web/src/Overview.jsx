@@ -15,9 +15,9 @@ const rows = Object.values(manifest.notes)
 
 export default function Overview() {
   return (
-    <main style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px 80px', fontFamily: "'Noto Sans KR', sans-serif", color: '#2F3A44' }}>
+    <main style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px 80px', fontFamily: "'IBM Plex Sans KR', sans-serif", color: '#2B2A26' }}>
       <h1 style={{ margin: 0, fontSize: 30 }}>I-SPOT 상담사 웹 · 화면 목록</h1>
-      <p style={{ color: '#6F7880', marginTop: 6 }}>아동보호전문기관 상담원용 · 화면을 누르면 실제로 클릭해 볼 수 있어요</p>
+      <p style={{ color: '#7A776F', marginTop: 6 }}>아동보호전문기관 상담원용 · 화면을 누르면 실제로 클릭해 볼 수 있어요</p>
       {rows.map((row) => (
         <section key={row.title} style={{ marginTop: 28 }}>
           <h2 style={{ fontSize: 17, margin: '0 0 10px' }}>{row.title}</h2>
@@ -26,10 +26,10 @@ export default function Overview() {
               <Link
                 key={b.name}
                 to={`/${b.name}`}
-                style={{ display: 'block', padding: '14px 16px', borderRadius: 14, border: '1px solid #E7E0CE', background: '#FFFFFF', textDecoration: 'none', color: '#2F3A44' }}
+                style={{ display: 'block', padding: '14px 16px', borderRadius: 14, border: '1px solid #E2DED3', background: '#FFFFFF', textDecoration: 'none', color: '#2B2A26' }}
               >
                 <b style={{ display: 'block', fontSize: 15 }}>{b.name}</b>
-                <span style={{ fontSize: 12.5, color: '#6F7880' }}>{b.title}</span>
+                <span style={{ fontSize: 12.5, color: '#7A776F' }}>{b.title}</span>
               </Link>
             ))}
           </div>

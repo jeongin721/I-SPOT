@@ -1,3 +1,4 @@
+/* CaseDetail 화면에만 있는 규칙(디자인 CaseDetail.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-CaseDetail .kv {
   display: grid;
   grid-template-columns: 96px 1fr;
@@ -6,7 +7,7 @@
   font-size: 14px;
 }
 .pg-CaseDetail .kv dt {
-  color: #6f7880;
+  color: #7a776f;
 }
 .pg-CaseDetail .kv dd {
   margin: 0;
@@ -34,17 +35,29 @@
 .pg-CaseDetail .bar {
   height: 8px;
   border-radius: 4px;
-  background: #eee8da;
+  background: #eae7df;
   overflow: hidden;
 }
 .pg-CaseDetail .bar span {
   display: block;
   height: 100%;
   border-radius: 4px;
-  background: #6f7880;
+  background: #7a776f;
 }
 .pg-CaseDetail .box {
   padding: 14px 16px;
   border-radius: 14px;
-  background: #f8f5ec;
+  background: #f7f6f2;
+}
+.pg-CaseDetail .thm-root.dark .kv dt {
+  color: #a8a296 !important;
+}
+.pg-CaseDetail .thm-root.dark .bar {
+  background: #393731 !important;
+}
+.pg-CaseDetail .thm-root.dark .bar span {
+  background: #a8a296 !important;
+}
+.pg-CaseDetail .thm-root.dark .box {
+  background: #33312c !important;
 }

@@ -1,8 +1,12 @@
 // 설정 · 계정 / 알림 설정
-// 원본: I-SPOT 디자인 캔버스 보드 Settings.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/Settings.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './Settings.css';
 
 class Logic extends DCLogic {
@@ -22,11 +26,7 @@ class Logic extends DCLogic {
   }
   renderVals() {
     const s = this.state;
-    const sw = (on) => ({
-      bg: on ? '#A8C6E7' : '#DCD5C3',
-      x: on ? '23px' : '3px',
-      on: on ? 'true' : 'false',
-    });
+    const sw = (on) => ({ bg: on ? '#2B2A26' : '#DAD5C9', x: on ? '23px' : '3px', on: on ? 'true' : 'false' });
     const defs = [
       ['urgent', '긴급 응답 즉시 알림'],
       ['brief', '상담 30분 전 브리핑 알림'],
@@ -75,15 +75,19 @@ class Logic extends DCLogic {
 }
 
 export default function Settings(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-Settings">
       <div
+        className={theme.cls}
         style={{
           minHeight: '800px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -91,40 +95,7 @@ export default function Settings(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A className="on" to="/Settings">
-              설정
-            </A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="Settings" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -135,6 +106,9 @@ export default function Settings(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 300px' }}>
               <nav aria-label="위치" className="note">
@@ -155,6 +129,7 @@ export default function Settings(props) {
               </>
             ) : null}
           </header>
+
           {v.atHome ? (
             <>
               <section
@@ -174,13 +149,10 @@ export default function Settings(props) {
               </section>
             </>
           ) : null}
+
           {v.isAccount ? (
             <>
-              <section
-                className="card"
-                aria-label="계정"
-                style={{ padding: '6px 26px 14px', maxWidth: '900px' }}
-              >
+              <section className="card" aria-label="계정" style={{ padding: '6px 26px 14px', maxWidth: '900px' }}>
                 <div className="row">
                   <span className="lab">상담사 이름</span>
                   {v.nameView ? (
@@ -260,13 +232,10 @@ export default function Settings(props) {
               ) : null}
             </>
           ) : null}
+
           {v.isNotify ? (
             <>
-              <section
-                className="card"
-                aria-label="알림 설정"
-                style={{ padding: '6px 26px 14px', maxWidth: '900px' }}
-              >
+              <section className="card" aria-label="알림 설정" style={{ padding: '6px 26px 14px', maxWidth: '900px' }}>
                 {(v.toggles || []).map((t, tIndex) => (
                   <Fragment key={tIndex}>
                     <div className="row">
@@ -280,7 +249,7 @@ export default function Settings(props) {
                         onClick={t.flip}
                         style={{ background: t.bg }}
                       >
-                        <span style={{ left: t.x }} />
+                        <span style={{ left: t.x }}></span>
                       </button>
                     </div>
                   </Fragment>

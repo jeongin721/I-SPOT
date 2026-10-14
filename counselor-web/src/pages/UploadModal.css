@@ -1,10 +1,11 @@
+/* UploadModal 화면에만 있는 규칙(디자인 UploadModal.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-UploadModal .opt {
   display: flex;
   gap: 14px;
   align-items: center;
   padding: 14px 18px;
   border-radius: 14px;
-  border: 1px solid #e7e0ce;
+  border: 1px solid #e7e4dc;
   cursor: pointer;
   background: #ffffff;
 }
@@ -17,8 +18,15 @@
   flex: 1 1 220px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #f8f5ec;
+  background: #f7f6f2;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.pg-UploadModal .thm-root.dark .opt {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+}
+.pg-UploadModal .thm-root.dark .fmt {
+  background: #33312c !important;
 }

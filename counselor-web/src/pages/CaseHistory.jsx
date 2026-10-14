@@ -1,14 +1,17 @@
 // 탭 2 · 상담 이력 (① 지금까지 상담 → ② 상담 회차 → ③ 회차별 세부 신호)
-// 원본: I-SPOT 디자인 캔버스 보드 CaseHistory.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/CaseHistory.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 회차 목록은 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseDetail.ts(caseHistoryValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 누적 요약 · 주제 비중 · 회차별 세부 신호 · 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { caseHistoryValues } from '../data/screens/caseDetail';
@@ -17,6 +20,10 @@ import { readScreenIds } from '../data/screens/links';
 import './CaseHistory.css';
 
 class Logic extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { open: false, sigOnly: false };
+  }
   renderVals() {
     return caseHistoryValues(this.props);
   }
@@ -26,16 +33,20 @@ export default function CaseHistory(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, caseId });
+  const theme = useTheme();
+  // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const v = useDC(Logic, { ...props, session, detail, caseId, historyOpen, setHistoryOpen });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseHistory">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1550px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -43,40 +54,7 @@ export default function CaseHistory(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계
-            </A>
-            <A to="/Closure">
-              종결 검토
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">{v.meInitial}</span>
-            <b style={{ fontWeight: '500' }}>{v.meName}</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }} onClick={v.logout}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -87,11 +65,17 @@ export default function CaseHistory(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
           <Notice value={v.notice} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A className="btn btn-sm btn-s" to="/CaseList">
+              ← 목록
+            </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
@@ -175,59 +159,113 @@ export default function CaseHistory(props) {
               </div>
             </div>
           </section>
-          <section className="card" aria-label="상담 회차" style={{ padding: '22px 24px' }}>
+
+          <section className="card" aria-label="상담 회차" style={{ padding: '22px 24px', position: 'relative' }}>
             <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '8px 12px',
-                marginBottom: '14px',
-              }}
+              style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px', marginBottom: '10px' }}
             >
               <span className="secno">2</span>
               <h2 className="h2">상담 회차</h2>
+              <span className="note">최근 3회차</span>
+              <button
+                type="button"
+                className="btn btn-sm btn-s"
+                style={{ marginLeft: 'auto' }}
+                aria-haspopup="dialog"
+                aria-expanded={v.open}
+                onClick={v.toggleOpen}
+              >
+                전 회차 보기 · {v.total}회
+              </button>
             </div>
             {v.sessionsNote ? (
               <p className="note" style={{ margin: '0 0 12px' }}>
                 {v.sessionsNote}
               </p>
             ) : null}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '12px',
-              }}
-            >
-              {(v.sessions || []).map((s, sIndex) => (
+            <div>
+              {(v.recent || []).map((s, sIndex) => (
                 <Fragment key={sIndex}>
-                  <A className="scard" to={s.href}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <b className="brn" style={{ fontSize: '18px' }}>
-                        {s.no}
-                      </b>
-                      <span className={s.st} style={{ marginLeft: 'auto' }}>
-                        {s.status}
-                      </span>
-                    </span>
-                    <span style={{ fontSize: '14px' }}>{s.date}</span>
+                  <A className="srow" to={s.href}>
+                    <b>{s.no}</b>
+                    <span>{s.date}</span>
                     <span className="note">{s.kind}</span>
                     <span className="note">{s.sig}</span>
+                    <span className={s.st}>{s.status}</span>
                   </A>
                 </Fragment>
               ))}
             </div>
+            {v.open ? (
+              <>
+                <div className="pop" role="dialog" aria-label="전 회차">
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '14px 16px 10px',
+                      borderBottom: '1px solid #EAE7DF',
+                    }}
+                  >
+                    <b style={{ fontSize: '15px' }}>전 회차 · {v.shownCount}</b>
+                    <label
+                      style={{
+                        marginLeft: 'auto',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '12.5px',
+                        color: '#66625A',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        disabled
+                        title={v.notReady}
+                        style={{ accentColor: '#C2A36B' }}
+                      />
+                      신호 있는 회차만
+                    </label>
+                    <button
+                      type="button"
+                      aria-label="닫기"
+                      onClick={v.toggleOpen}
+                      style={{
+                        border: '0',
+                        background: 'transparent',
+                        fontSize: '18px',
+                        color: '#7A776F',
+                        cursor: 'pointer',
+                        padding: '0 2px',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div style={{ maxHeight: '360px', overflowY: 'auto', padding: '4px 8px 8px' }}>
+                    {(v.all || []).map((s, sIndex) => (
+                      <Fragment key={sIndex}>
+                        <A className="prow" to={s.href}>
+                          <b>{s.no}</b>
+                          <span>{s.date}</span>
+                          <span className="note">{s.kindShort}</span>
+                          <span className="note">{s.sig}</span>
+                          <span className={s.st}>{s.status}</span>
+                        </A>
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
           </section>
+
           <section className="card" aria-label="회차별 세부 신호" style={{ padding: '22px 24px' }}>
             <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '8px 12px',
-                marginBottom: '10px',
-              }}
+              style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px', marginBottom: '10px' }}
             >
               <span className="secno">3</span>
               <h2 className="h2">회차별 세부 신호</h2>
@@ -243,7 +281,7 @@ export default function CaseHistory(props) {
                 <span className="rl note">세부 신호</span>
                 {(v.cols || []).map((c, cIndex) => (
                   <Fragment key={cIndex}>
-                    <A to={c.href} className="note" style={{ textDecoration: 'none', color: '#5F6A73' }}>
+                    <A to={c.href} className="note" style={{ textDecoration: 'none', color: '#6E6A62' }}>
                       {c.label}
                     </A>
                   </Fragment>
@@ -251,10 +289,7 @@ export default function CaseHistory(props) {
                 {(v.mrows || []).map((r, rIndex) => (
                   <Fragment key={rIndex}>
                     <span className="rl">
-                      <span
-                        className="chip c-normal"
-                        style={{ height: '20px', fontSize: '11px', marginRight: '6px' }}
-                      >
+                      <span className="chip c-normal" style={{ height: '20px', fontSize: '11px', marginRight: '6px' }}>
                         {r.type}
                       </span>
                       {r.name}
@@ -283,16 +318,14 @@ export default function CaseHistory(props) {
                 gap: '14px',
                 marginTop: '10px',
                 fontSize: '12px',
-                color: '#6F7880',
+                color: '#7A776F',
               }}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="dot" style={{ width: '18px', height: '18px', background: '#EEE8DA' }} />
-                1번
+                <span className="dot" style={{ width: '18px', height: '18px', background: '#EAE7DF' }}></span>1번
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="dot" style={{ width: '18px', height: '18px', background: '#6F7880' }} />
-                2번 이상
+                <span className="dot" style={{ width: '18px', height: '18px', background: '#7A776F' }}></span>2번 이상
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <span
@@ -301,9 +334,9 @@ export default function CaseHistory(props) {
                     width: '18px',
                     height: '18px',
                     background: '#FFFFFF',
-                    boxShadow: 'inset 0 0 0 1.5px #6F7880',
+                    boxShadow: 'inset 0 0 0 1.5px #7A776F',
                   }}
-                />
+                ></span>
                 보류 (화자 확인 중)
               </span>
             </div>

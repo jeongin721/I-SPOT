@@ -97,8 +97,8 @@ export function sttReviewValues(input: SttScreenInput) {
       text: row.text,
       check,
       hint,
-      hintFg: "#6F7880",
-      bg: check && !done ? "#F8F5EC" : "#FFFFFF",
+      hintFg: "#7A776F",
+      bg: check && !done ? "#F1E3BF" : "#FFFFFF",
       okLabel: done ? "확인됨 ✓" : "확인",
       ok: () => setState({ ok: { ...state.ok, [okKey(row.segmentId)]: !done } }),
     };

@@ -26,13 +26,12 @@ export function caseListValues(input: {
     cls: "note",
     href: screenHref("/CaseDetail", { caseId: r.id }),
   }));
-  // 위험도는 사례 단위 값이 Backend 에 없다. '전체'만 고를 수 있다.
+  // 정렬 단추(디자인: 전체 · 신고접수일 · 위험도). 신고접수일 · 위험도는 사례 단위 값이 Backend 에 없어 '전체'만 고를 수 있다.
   const filters = [
-    ["all", list.total == null ? "전체" : `전체 ${list.total}`],
-    ["상", "상"],
-    ["중", "중"],
-    ["하", "하"],
-  ].map(([k, label]) => ({ label, cls: k === "all" ? "on" : "", disabled: k !== "all" }));
+    ["none", "전체"],
+    ["date", "신고접수일"],
+    ["risk", "위험도"],
+  ].map(([k, label]) => ({ label, cls: k === "none" ? "on" : "", disabled: k !== "none" }));
 
   // 표 본문: 확인 · 불러오는 중 → 오류 → 빈 목록 → 행
   const sessionError = session.status === "error";
@@ -52,7 +51,7 @@ export function caseListValues(input: {
     rows,
     filters,
     real: false,
-    tgBg: "#DCD5C3",
+    tgBg: "#DAD5C9",
     tgX: "2px",
     notReady: NOT_READY,
     countLabel,

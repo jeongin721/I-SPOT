@@ -83,7 +83,7 @@ export default function CaseDetail(props) {
 }
 ```
 
-- 피그마 화면이 오면 위 훅 몇 줄과 `renderVals()` 를 그대로 옮기고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
+- 디자인이 바뀌면 위 훅 몇 줄과 `renderVals()` 를 그대로 두고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
 - 화면만의 상태(단계 · 고른 항목 · 펼침 등)는 `Logic.state` 에 두고, 처음 값 · 바꾸는 함수는 값 함수가 줍니다(`uploadModal.ts` 의 `initialUploadState` · `setState`). 훅에 넘겨야 하는 상태(검색어 · 고른 사례)는 화면 함수의 `useState` 로 듭니다.
 - 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
 - `Login.jsx` 는 아직 값 계산이 화면 파일 안에 있습니다(이 규칙 전에 연결).
@@ -114,7 +114,10 @@ src/
   dc.js               화면 로직 어댑터 (DCLogic · useDC)
   components/A.jsx    화면 간 이동 링크 (내부 경로는 react-router Link)
   components/Notice.jsx 화면 위 한 줄 안내 (불러오는 중 · 오류 · 대상 없음)
-  styles/common.css   공통 스타일 (사이드바 · 카드 · 칩 · 버튼 · 탭 · 단계 표시 등)
+  components/Sidebar.jsx 상담원 화면 왼쪽 메뉴 (내 정보 · 로그아웃 · 관리자 메뉴)
+  components/ThemeToggle.jsx 밝은 · 어두운 화면 스위치
+  theme.js            다크 모드 상태 (브라우저에만 기억)
+  styles/common.css   공통 스타일 (사이드바 · 카드 · 칩 · 버튼 · 탭 · 단계 표시 · 다크 모드 등)
   api/                Backend 호출 (TypeScript) — client · endpoints · types
   data/               응답 변환 함수 · 데이터 훅 (TypeScript)
     screens/          화면별 값 함수 · 화면 주소(links.ts)
@@ -145,15 +148,21 @@ export default function Page(props) {
 
 ## 디자인 기준
 
+원본은 다솔 님 디자인 `counselor-web-design/*.dc.html`(Claude Design 캔버스, `front_new` 브랜치)입니다. 화면 JSX 는 그 마크업을, `src/styles/common.css` 는 20개 이상 화면이 똑같이 쓰는 규칙을, `src/pages/<화면>.css` 는 그 화면에만 있는 규칙을 옮긴 것입니다.
+
 | 용도 | 색 |
 |---|---|
-| 페이지 배경 / 사이드바 | `#FFFEFA` / `#FFFCF5` |
-| 메인 (주요 버튼 · 현재 메뉴 · 선택 상태) | 하늘색 `#A8C6E7` · `#7FA8D6` · 선택 배경 `#E2ECF8` |
-| 긴급 · 위험도 '상' · 중요 일정 | 적갈색 `#93452E` / 배경 `#FBE4DC` |
-| 위험도 '중' · '아이가 쓴 글' 강조 | 머스타드 `#FCEFB4` / 글자 `#7B4A26` |
-| 그 밖 | 무채색 (글자 `#2F3A44`, 보조 `#6F7880`, 테두리 `#E7E0CE`) |
+| 본문 바탕 / 왼쪽 레일 | `#F2F2F0` / `#E9E7E1` (본문이 레일에 이어진 모양, 현재 메뉴는 금색 점) |
+| 먹색 (주요 버튼 · 글자) | `#2B2A26`, 버튼 글자 `#EADBB5` |
+| 금색 포인트 (선택 테두리 · 초점 · 현재 탭) | `#C2A36B` · 링크 `#8C7340` |
+| 긴급 · 위험도 '상' | `#A33B2E` / 배경 `#F7E4DF` |
+| 위험도 '중' | 글자 `#7A5F28` / 배경 `#F3EAD3` |
+| 그 밖 | 무채색 (보조 `#6E6A62` · `#7A776F`, 테두리 `#E2DED3` · `#DAD5C9`) |
 
-- 글꼴: Noto Sans KR
+- 글꼴: 본문 IBM Plex Sans KR, 제목(h1 · 로고) Noto Serif KR (Google Fonts, `index.html`)
+- 카드 · 단추 · 입력칸은 부분 뉴모피즘 그림자(`--sd` · `--sl`)와 알약 모양 단추
+- 다크 모드: 화면 오른쪽 위 스위치(`components/ThemeToggle.jsx`). 이 브라우저에만 기억하고(localStorage `ispot-theme`) 서버에는 저장하지 않습니다(`src/theme.js`). 화면 맨 바깥 div 에 `useTheme().cls` 를 붙이면 `common.css` 의 다크 모드 규칙이 걸립니다. 이 규칙은 인라인 style 의 색을 찾아 바꾸므로 **화면 JSX 와 값 함수의 색은 위 색표(디자인 값)만 씁니다.**
+- 왼쪽 메뉴는 `components/Sidebar.jsx` 하나를 모든 상담원 화면이 씁니다. 메뉴 옆 숫자(디자인의 예시 값)는 넣지 않았고, 관리자 계정이면 '관리자 메뉴' 링크가 더 보입니다. 관리자 화면(`Admin.jsx`)은 관리자 계정만 보입니다.
 - 위험도는 상 / 중 / 하로만 표시 (점수 · % 없음)
 - 색은 중요한 곳에만. 보충 설명 문구는 최소로.
 

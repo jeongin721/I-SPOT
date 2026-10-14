@@ -1,28 +1,4 @@
-.pg-Login {
-  margin: 0;
-  background: #fffefa;
-}
-.pg-Login * {
-  box-sizing: border-box;
-}
-.pg-Login a {
-  color: #3a68a0;
-}
-.pg-Login a:hover {
-  color: #2e5687;
-}
-.pg-Login .mk {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: #a8c6e7;
-  color: #213f63;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
+/* Login 화면에만 있는 규칙(디자인 Login.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-Login .btn {
   display: inline-flex;
   align-items: center;
@@ -39,28 +15,22 @@
   text-decoration: none;
   white-space: nowrap;
 }
-.pg-Login .btn-p {
-  background: #a8c6e7;
-  color: #213f63;
-  font-weight: 700;
-}
-.pg-Login .btn-p:hover {
-  background: #95b8df;
-  color: #213f63;
-}
 .pg-Login .inp {
   height: 48px;
-  border: 1px solid #dcd5c3;
+  border: 1px solid #dad5c9;
   border-radius: 12px;
   padding: 0 16px;
   font: inherit;
   font-size: 14px;
   background: #ffffff;
-  color: #2f3a44;
+  color: #2b2a26;
   width: 100%;
 }
 .pg-Login .lb {
   font-size: 13px;
   font-weight: 500;
-  color: #55606a;
+  color: #66625a;
+}
+.pg-Login .thm-root.dark .lb {
+  color: #bdb7aa !important;
 }
