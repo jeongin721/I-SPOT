@@ -1,22 +1,17 @@
 // 통계 (기간 직접 선택 · 원형 · 가로/세로 막대 · 표)
-// 원본: I-SPOT 디자인 캔버스 보드 Stats.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/Stats.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
-import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './Stats.css';
 
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = {
-      preset: 'm3',
-      from: '2026-07-13',
-      to: '2026-10-12',
-      cal: false,
-      cy: 2026,
-      cm: 9,
-      pickStage: 0,
-    };
+    this.state = { preset: 'm3', from: '2026-07-13', to: '2026-10-12', cal: false, cy: 2026, cm: 9, pickStage: 0 };
   }
   renderVals() {
     const s = this.state;
@@ -142,12 +137,7 @@ class Logic extends DCLogic {
       const lab = weekly
         ? `${new Date(x).getUTCMonth() + 1}/${new Date(x).getUTCDate()}~`
         : `${new Date(x).getUTCMonth() + 1}월`;
-      return {
-        v,
-        h: Math.round((v / tmax) * 150) + 'px',
-        label: lab,
-        tip: `${iso(x)} ~ ${iso(y)} · 접수 ${v}건`,
-      };
+      return { v, h: Math.round((v / tmax) * 150) + 'px', label: lab, tip: `${iso(x)} ~ ${iso(y)} · 접수 ${v}건` };
     });
     // 유형
     const tc = count(
@@ -185,14 +175,7 @@ class Logic extends DCLogic {
           : sweep >= Math.PI * 2 - 1e-6
             ? 'M100 10 A90 90 0 1 1 99.99 10 Z'
             : `M100 100 L${P(90, a0)} A90 90 0 ${big} 1 ${P(90, a1)} Z`;
-      return {
-        name,
-        v,
-        p: pct(v, J.length),
-        c: COLORS.at(i),
-        d,
-        tip: `${name} ${v}명 (${pct(v, J.length)})`,
-      };
+      return { name, v, p: pct(v, J.length), c: COLORS.at(i), d, tip: `${name} ${v}명 (${pct(v, J.length)})` };
     });
     // 행위자 (표)
     const actc = count(
@@ -248,8 +231,7 @@ class Logic extends DCLogic {
     ].map(([v, label, f, t]) => ({
       label,
       cls: s.preset === v ? 'on' : '',
-      pick: () =>
-        this.setState(f ? { preset: v, from: f, to: t, cal: false } : { preset: v, cal: true, pickStage: 0 }),
+      pick: () => this.setState(f ? { preset: v, from: f, to: t, cal: false } : { preset: v, cal: true, pickStage: 0 }),
     }));
     const first = new Date(Date.UTC(s.cy, s.cm, 1)).getUTCDay(),
       dim = new Date(Date.UTC(s.cy, s.cm + 1, 0)).getUTCDate();
@@ -265,8 +247,8 @@ class Logic extends DCLogic {
         n: ok ? String(dd) : '',
         off: !ok || future,
         aria: ok ? iso(t) : '빈 칸',
-        bg: edge ? '#A8C6E7' : inR ? '#E2ECF8' : 'transparent',
-        fg: edge ? '#213F63' : future ? '#C9C2B0' : inR ? '#2E5687' : '#2F3A44',
+        bg: edge ? '#2B2A26' : inR ? '#F1EADA' : 'transparent',
+        fg: edge ? '#EADBB5' : future ? '#CFC9BB' : inR ? '#2B2A26' : '#2B2A26',
         fw: edge ? 700 : 400,
         pick: () => {
           if (!ok || future) return;
@@ -282,8 +264,7 @@ class Logic extends DCLogic {
         },
       });
     }
-    const fmt = (t) =>
-      `${new Date(t).getUTCFullYear()}.${new Date(t).getUTCMonth() + 1}.${new Date(t).getUTCDate()}`;
+    const fmt = (t) => `${new Date(t).getUTCFullYear()}.${new Date(t).getUTCMonth() + 1}.${new Date(t).getUTCDate()}`;
     return {
       presets,
       from: s.from,
@@ -315,15 +296,19 @@ class Logic extends DCLogic {
 }
 
 export default function Stats(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-Stats">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1990px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -331,40 +316,7 @@ export default function Stats(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A className="on" to="/Stats">
-              통계
-            </A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="Stats" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -375,11 +327,15 @@ export default function Stats(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 300px' }}>
               <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>통계</h1>
             </div>
           </header>
+
           <section
             className="card"
             aria-label="기간 선택"
@@ -435,26 +391,16 @@ export default function Stats(props) {
                     flexWrap: 'wrap',
                     gap: '24px',
                     paddingTop: '6px',
-                    borderTop: '1px solid #EEE8DA',
+                    borderTop: '1px solid #EAE7DF',
                   }}
                 >
                   <div style={{ flex: '0 1 320px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-s"
-                        onClick={v.calPrev}
-                        aria-label="이전 달"
-                      >
+                      <button type="button" className="btn btn-sm btn-s" onClick={v.calPrev} aria-label="이전 달">
                         ‹
                       </button>
                       <b style={{ flex: '1', textAlign: 'center' }}>{v.calLabel}</b>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-s"
-                        onClick={v.calNext}
-                        aria-label="다음 달"
-                      >
+                      <button type="button" className="btn btn-sm btn-s" onClick={v.calNext} aria-label="다음 달">
                         ›
                       </button>
                     </div>
@@ -490,12 +436,9 @@ export default function Stats(props) {
               </>
             ) : null}
           </section>
+
           <section
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '14px',
-            }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}
           >
             <div className="card kpi">
               <div className="sub">신고 접수</div>
@@ -517,6 +460,7 @@ export default function Stats(props) {
               <div className="note">완료율 {v.k.donePct}</div>
             </div>
           </section>
+
           <section className="card" aria-label="신고 접수" style={{ padding: '20px 22px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
               <h2 className="h2">신고 접수 추이</h2>
@@ -526,10 +470,10 @@ export default function Stats(props) {
               {(v.trend || []).map((t, tIndex) => (
                 <Fragment key={tIndex}>
                   <div className="col" title={t.tip}>
-                    <span className="note" style={{ color: '#2F3A44' }}>
+                    <span className="note" style={{ color: '#2B2A26' }}>
                       {t.v}
                     </span>
-                    <span className="b" style={{ height: t.h }} />
+                    <span className="b" style={{ height: t.h }}></span>
                   </div>
                 </Fragment>
               ))}
@@ -539,13 +483,7 @@ export default function Stats(props) {
                 <Fragment key={tIndex}>
                   <span
                     className="note"
-                    style={{
-                      flex: '1',
-                      minWidth: '0',
-                      textAlign: 'center',
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                    }}
+                    style={{ flex: '1', minWidth: '0', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap' }}
                   >
                     {t.label}
                   </span>
@@ -553,13 +491,8 @@ export default function Stats(props) {
               ))}
             </div>
           </section>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-              gap: '18px',
-            }}
-          >
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '18px' }}>
             <section
               className="card"
               aria-label="학대 유형별 사례 수"
@@ -571,26 +504,19 @@ export default function Stats(props) {
                   <div className="hb" title={g.tip}>
                     <span>{g.name}</span>
                     <span className="track">
-                      <span style={{ width: g.w }} />
+                      <span style={{ width: g.w }}></span>
                     </span>
-                    <span className="note" style={{ color: '#2F3A44' }}>
+                    <span className="note" style={{ color: '#2B2A26' }}>
                       {g.v}건 · {g.p}
                     </span>
                   </div>
                 </Fragment>
               ))}
             </section>
+
             <section className="card" aria-label="아동 연령 비율" style={{ padding: '20px 22px' }}>
               <h2 className="h2">학대 피해 아동 연령 비율</h2>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '22px',
-                  marginTop: '12px',
-                }}
-              >
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '22px', marginTop: '12px' }}>
                 <svg viewBox="0 0 200 200" width="190" height="190" role="img" aria-label={v.ageAria}>
                   {(v.ages || []).map((a, aIndex) => (
                     <Fragment key={aIndex}>
@@ -599,11 +525,11 @@ export default function Stats(props) {
                       </path>
                     </Fragment>
                   ))}
-                  <circle cx="100" cy="100" r="52" fill="#FFFFFF" />
-                  <text x="100" y="96" textAnchor="middle" fontSize="13" fill="#6F7880">
+                  <circle cx="100" cy="100" r="52" fill="#FFFFFF"></circle>
+                  <text x="100" y="96" textAnchor="middle" fontSize="13" fill="#7A776F">
                     피해 아동
                   </text>
-                  <text x="100" y="118" textAnchor="middle" fontSize="20" fontWeight="700" fill="#2F3A44">
+                  <text x="100" y="118" textAnchor="middle" fontSize="20" fontWeight="700" fill="#2B2A26">
                     {v.k.judged}명
                   </text>
                 </svg>
@@ -612,14 +538,8 @@ export default function Stats(props) {
                     <Fragment key={aIndex}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
                         <span
-                          style={{
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '3px',
-                            background: a.c,
-                            flex: 'none',
-                          }}
-                        />
+                          style={{ width: '12px', height: '12px', borderRadius: '3px', background: a.c, flex: 'none' }}
+                        ></span>
                         <span style={{ flex: '1' }}>{a.name}</span>
                         <b>{a.p}</b>
                         <span className="note" style={{ width: '44px', textAlign: 'right' }}>
@@ -632,6 +552,7 @@ export default function Stats(props) {
               </div>
             </section>
           </div>
+
           <section className="card" aria-label="학대 행위자 상황" style={{ overflow: 'hidden' }}>
             <div className="hd">
               <h2 className="h2">학대 행위자 상황</h2>
@@ -657,7 +578,7 @@ export default function Stats(props) {
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span className="mini" style={{ flex: '1' }}>
-                              <span style={{ width: r.w }} />
+                              <span style={{ width: r.w }}></span>
                             </span>
                             <span className="note" style={{ width: '44px' }}>
                               {r.p}
@@ -672,28 +593,18 @@ export default function Stats(props) {
               </table>
             </div>
           </section>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-              gap: '18px',
-            }}
-          >
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '18px' }}>
             <section className="card" aria-label="서비스 제공 현황" style={{ padding: '20px 22px' }}>
               <h2 className="h2">서비스 제공 현황</h2>
-              <div
-                className="vb"
-                style={{ marginTop: '14px', height: '200px' }}
-                role="img"
-                aria-label={v.svcAria}
-              >
+              <div className="vb" style={{ marginTop: '14px', height: '200px' }} role="img" aria-label={v.svcAria}>
                 {(v.svc || []).map((t, tIndex) => (
                   <Fragment key={tIndex}>
                     <div className="col" title={t.tip}>
-                      <span className="note" style={{ color: '#2F3A44' }}>
+                      <span className="note" style={{ color: '#2B2A26' }}>
                         {t.v}
                       </span>
-                      <span className="b" style={{ height: t.h }} />
+                      <span className="b" style={{ height: t.h }}></span>
                     </div>
                   </Fragment>
                 ))}
@@ -701,10 +612,7 @@ export default function Stats(props) {
               <div style={{ display: 'flex', gap: '8px', padding: '6px 4px 0' }}>
                 {(v.svc || []).map((t, tIndex) => (
                   <Fragment key={tIndex}>
-                    <span
-                      className="note"
-                      style={{ flex: '1', minWidth: '0', textAlign: 'center', lineHeight: '1.3' }}
-                    >
+                    <span className="note" style={{ flex: '1', minWidth: '0', textAlign: 'center', lineHeight: '1.3' }}>
                       {t.label}
                     </span>
                   </Fragment>
@@ -743,6 +651,7 @@ export default function Stats(props) {
               </table>
             </section>
           </div>
+
           <section
             className="card"
             aria-label="AI 분석"
@@ -760,11 +669,11 @@ export default function Stats(props) {
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      background: '#DCD5C3',
+                      background: '#DAD5C9',
                       marginTop: '8px',
                       flex: 'none',
                     }}
-                  />
+                  ></span>
                   <span>{t}</span>
                 </div>
               </Fragment>

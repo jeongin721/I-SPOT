@@ -1,8 +1,12 @@
 // 탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)
-// 원본: I-SPOT 디자인 캔버스 보드 CaseForm.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/CaseForm.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './CaseForm.css';
 
 class Logic extends DCLogic {
@@ -13,10 +17,10 @@ class Logic extends DCLogic {
   renderVals() {
     const s = this.state;
     const sel = (on) => ({
-      bg: on ? '#E2ECF8' : 'transparent',
-      fg: on ? '#2E5687' : '#55606A',
+      bg: on ? '#F1EADA' : 'transparent',
+      fg: on ? '#2B2A26' : '#66625A',
       fw: on ? 700 : 400,
-      bd: on ? 'inset 0 0 0 1px #A8C6E7' : 'none',
+      bd: on ? 'inset 0 0 0 1px #2B2A26' : 'none',
     });
     const tabs = [
       ['A', '사정기록지 · 안전영역'],
@@ -35,16 +39,8 @@ class Logic extends DCLogic {
         '피해아동',
         [
           ['아동의 위험상황 인지 및 대처능력', '보통', '7회차(9/18) 안전 계획을 자기 말로 설명함'],
-          [
-            '아동의 연령, 장애 등 집중적 보호가 요구되는 특성 보유',
-            '낮음',
-            '초기면접지 · 만 13세, 장애 기록 없음',
-          ],
-          [
-            '피해아동과 가족과의 관계 친밀성',
-            '보통',
-            '6회차 "아빠가 소리 지르는 게 제일 싫어요" · 조모와 관계 긍정',
-          ],
+          ['아동의 연령, 장애 등 집중적 보호가 요구되는 특성 보유', '낮음', '초기면접지 · 만 13세, 장애 기록 없음'],
+          ['피해아동과 가족과의 관계 친밀성', '보통', '6회차 "아빠가 소리 지르는 게 제일 싫어요" · 조모와 관계 긍정'],
         ],
       ],
       [
@@ -60,11 +56,7 @@ class Logic extends DCLogic {
       [
         '사례관리대상자',
         [
-          [
-            '학대행위에 대한 잘못 인지 및 개선 의지',
-            '낮음',
-            '7회차 05:10 "아빠가 그 얘기 하지 말랬어요" (함구 요구)',
-          ],
+          ['학대행위에 대한 잘못 인지 및 개선 의지', '낮음', '7회차 05:10 "아빠가 그 얘기 하지 말랬어요" (함구 요구)'],
           ['스스로 자신을 통제하기 어려운 특성 (중독, 성격장애 등)', '', ''],
           ['가정 내 위기상황(실직, 가정폭력 등)으로 인한 만성적 스트레스', '', ''],
         ],
@@ -102,11 +94,7 @@ class Logic extends DCLogic {
     }));
     // 서식 27 점검표
     const CK = [
-      [
-        '사례관리 계획에 따라 서비스가 적절하게 제공되고 있는가?',
-        '아니오',
-        '부모교육 2회 연속 결석 (9/18, 10/2)',
-      ],
+      ['사례관리 계획에 따라 서비스가 적절하게 제공되고 있는가?', '아니오', '부모교육 2회 연속 결석 (9/18, 10/2)'],
       [
         '학대피해아동과 비공식적인 지지망 그리고 전문적 보호체계의 노력이 적절한가?',
         '예',
@@ -118,11 +106,7 @@ class Logic extends DCLogic {
         '8회차(10/2) 신체 학대 진술 · 체크인 QB-E-05 "없어 → 1번"',
       ],
       ['제공되는 서비스에 대해 학대피해아동과 가족이 만족하고 있는가?', '', ''],
-      [
-        '다른 서비스 욕구가 발생하였는가?',
-        '예',
-        '등 · 팔 통증 치료 여부 미확인 (8회차 01:08) → 의료 지원 검토',
-      ],
+      ['다른 서비스 욕구가 발생하였는가?', '예', '등 · 팔 통증 치료 여부 미확인 (8회차 01:08) → 의료 지원 검토'],
       ['사례관리 지속이 필요한가?', '예', '위 3번 근거'],
       ['재사정이 필요한가?', '예', '새 진술로 위험요인 변화'],
       ['사례관리 계획은 수정되어야 하는가?', '예', '부모교육 일정 · 의료 연계 반영 필요'],
@@ -293,15 +277,19 @@ class Logic extends DCLogic {
 }
 
 export default function CaseForm(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-CaseForm">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1880px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -309,40 +297,7 @@ export default function CaseForm(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -353,10 +308,16 @@ export default function CaseForm(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › 이서윤 C-2026-0351
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A className="btn btn-sm btn-s" to="/CaseList">
+              ← 목록
+            </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>이서윤</h1>
@@ -384,18 +345,13 @@ export default function CaseForm(props) {
           <div role="tablist" aria-label="서식" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {(v.tabs || []).map((t, tIndex) => (
               <Fragment key={tIndex}>
-                <button
-                  type="button"
-                  role="tab"
-                  className={`ftab ${t.cls}`}
-                  aria-selected={t.on}
-                  onClick={t.pick}
-                >
+                <button type="button" role="tab" className={`ftab ${t.cls}`} aria-selected={t.on} onClick={t.pick}>
                   {t.label}
                 </button>
               </Fragment>
             ))}
           </div>
+
           {v.tA ? (
             <>
               <section
@@ -497,8 +453,8 @@ export default function CaseForm(props) {
                 <div className="grp">아동학대 위험수준별 개입 사정 척도</div>
                 <div className="item" style={{ gridTemplateColumns: '1fr auto' }}>
                   <span>
-                    위험요인 <b className="brn">{v.riskSum}점</b> / 보호요인{' '}
-                    <b className="brn">{v.protSum}점</b> <span className="note">· {v.filled}/43 입력</span>
+                    위험요인 <b className="brn">{v.riskSum}점</b> / 보호요인 <b className="brn">{v.protSum}점</b>{' '}
+                    <span className="note">· {v.filled}/43 입력</span>
                   </span>
                   <button type="button" className="btn btn-sm btn-s" onClick={v.goC}>
                     척도 열기
@@ -506,7 +462,7 @@ export default function CaseForm(props) {
                 </div>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <b style={{ fontSize: '14px' }}>담당자 소견</b>
-                  <textarea className="ta2" placeholder="직접 작성" />
+                  <textarea className="ta2" placeholder="직접 작성"></textarea>
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                   <b style={{ fontSize: '14px' }}>사정결과</b>
@@ -528,6 +484,7 @@ export default function CaseForm(props) {
               </section>
             </>
           ) : null}
+
           {v.tB ? (
             <>
               <section
@@ -619,7 +576,7 @@ export default function CaseForm(props) {
                     defaultValue={
                       '8회차(10/2)에 신체 학대 진술이 새로 나왔고, 체크인 QB-E-05 응답이 "없어"에서 "1번"으로 바뀌어 학대 위험이 감소했다고 보기 어려움. 보호자 부모교육은 2회 연속 결석함.'
                     }
-                  />
+                  ></textarea>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -630,14 +587,13 @@ export default function CaseForm(props) {
                   </span>
                   <textarea
                     className="ta2"
-                    defaultValue={
-                      '재사정 실시 · 부모교육 일정 재조율(가정방문 시) · 등 · 팔 통증 의료 연계 여부 확인.'
-                    }
-                  />
+                    defaultValue={'재사정 실시 · 부모교육 일정 재조율(가정방문 시) · 등 · 팔 통증 의료 연계 여부 확인.'}
+                  ></textarea>
                 </label>
               </section>
             </>
           ) : null}
+
           {v.tC ? (
             <>
               <section
@@ -712,6 +668,7 @@ export default function CaseForm(props) {
               </section>
             </>
           ) : null}
+
           {v.tD ? (
             <>
               <section
@@ -755,8 +712,8 @@ export default function CaseForm(props) {
                     padding: '0 4px',
                   }}
                 >
-                  <span />
-                  <span />
+                  <span></span>
+                  <span></span>
                   <span>1 전혀 그렇지 않다 · 3 보통이다 · 5 항상 그렇다</span>
                 </div>
                 {(v.fam || []).map((s, sIndex) => (
@@ -792,6 +749,7 @@ export default function CaseForm(props) {
               </section>
             </>
           ) : null}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <A className="btn btn-s" to="/CaseDocs">
               ← 문서함

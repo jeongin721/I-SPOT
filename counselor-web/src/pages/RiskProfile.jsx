@@ -1,8 +1,12 @@
 // 2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단)
-// 원본: I-SPOT 디자인 캔버스 보드 RiskProfile.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/RiskProfile.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './RiskProfile.css';
 
 class Logic extends DCLogic {
@@ -77,9 +81,9 @@ class Logic extends DCLogic {
       },
     ];
     const evTone = {
-      '직접 근거': ['#2F3A44', '#FFFFFF'],
-      '확인 필요': ['#F1EFE9', '#55606A'],
-      '언급 없음': ['#FFFFFF', '#8A939B'],
+      '직접 근거': ['#2B2A26', '#FFFFFF'],
+      '확인 필요': ['#F2EFE8', '#66625A'],
+      '언급 없음': ['#FFFFFF', '#98948B'],
     };
     const types = T.map((t) => {
       const cur = s.sev[t.k] !== undefined ? s.sev[t.k] : t.ai;
@@ -97,9 +101,9 @@ class Logic extends DCLogic {
         boxes: [1, 2, 3, 4, 5].map((n) => ({
           n,
           aria: t.label + ' 심각도 ' + n,
-          bg: n <= cur ? (cur >= 4 ? '#93452E' : '#7FA8D6') : '#FFFFFF',
-          fg: n <= cur ? '#FFFFFF' : '#8A939B',
-          bd: n <= cur ? 'transparent' : '#DCD5C3',
+          bg: n <= cur ? (cur >= 4 ? '#A33B2E' : '#C2A36B') : '#FFFFFF',
+          fg: n <= cur ? '#FFFFFF' : '#98948B',
+          bd: n <= cur ? 'transparent' : '#DAD5C9',
           pick: () => this.setState({ sev: { ...s.sev, [t.k]: cur === n ? 0 : n } }),
         })),
         matched: cur
@@ -114,21 +118,21 @@ class Logic extends DCLogic {
         anchors: A[t.k].map((text, i) => ({
           n: i + 1,
           text,
-          bg: i + 1 === cur ? '#E2ECF8' : 'transparent',
-          fg: i + 1 === cur ? '#2E5687' : '#6F7880',
+          bg: i + 1 === cur ? '#F1EADA' : 'transparent',
+          fg: i + 1 === cur ? '#2B2A26' : '#7A776F',
           fw: i + 1 === cur ? 700 : 400,
         })),
       };
     });
     const levels = ['상', '중', '하'].map((l) => {
       const on = s.lv === l;
-      const tone = l === '상' ? '#93452E' : l === '중' ? '#7B4A26' : '#55606A';
+      const tone = l === '상' ? '#A33B2E' : l === '중' ? '#7A5F28' : '#66625A';
       return {
         label: l,
         on: on ? 'true' : 'false',
-        bg: on ? (l === '상' ? '#FBE4DC' : l === '중' ? '#FCEFB4' : '#F1EFE9') : '#FFFFFF',
-        bd: on ? tone : '#DCD5C3',
-        fg: on ? tone : '#55606A',
+        bg: on ? (l === '상' ? '#F7E4DF' : l === '중' ? '#F3EAD3' : '#F2EFE8') : '#FFFFFF',
+        bd: on ? tone : '#DAD5C9',
+        fg: on ? tone : '#66625A',
         pick: () => this.setState({ lv: on ? '' : l }),
       };
     });
@@ -146,15 +150,19 @@ class Logic extends DCLogic {
 }
 
 export default function RiskProfile(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-RiskProfile">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1900px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -162,40 +170,7 @@ export default function RiskProfile(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -206,6 +181,9 @@ export default function RiskProfile(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › <A to="/CaseDetail">이서윤 C-2026-0351</A> ›{' '}
             <A to="/CaseHistory">상담 이력</A> › <A to="/SessionDetail">8회차</A>
@@ -244,7 +222,7 @@ export default function RiskProfile(props) {
                 padding: '0 13px',
                 borderRadius: '9px',
                 fontSize: '13px',
-                color: '#55606A',
+                color: '#66625A',
                 textDecoration: 'none',
               }}
             >
@@ -254,16 +232,11 @@ export default function RiskProfile(props) {
               유형별 위험도
             </button>
           </nav>
+
           <section
             className="card"
             aria-label="위험도"
-            style={{
-              padding: '22px 24px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '18px 28px',
-            }}
+            style={{ padding: '22px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 28px' }}
           >
             <div style={{ flex: '1 1 280px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -271,7 +244,7 @@ export default function RiskProfile(props) {
                 <span className="chip c-ai">AI 초안</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '4px' }}>
-                <b style={{ fontSize: '30px', color: '#93452E' }}>상</b>
+                <b style={{ fontSize: '30px', color: '#A33B2E' }}>상</b>
                 <span style={{ fontSize: '14px' }}>안전 플래그 2개</span>
                 <span className="note">· 7회차 중 → ↑ 증가</span>
               </div>
@@ -298,6 +271,7 @@ export default function RiskProfile(props) {
               <span className="sub2">{v.decisionNote}</span>
             </div>
           </section>
+
           <section className="card" aria-label="유형별 심각도" style={{ overflow: 'hidden' }}>
             <div className="hd">
               <h2 className="h2">유형별 심각도</h2>
@@ -361,20 +335,10 @@ export default function RiskProfile(props) {
                     ))}
                     {t.open ? (
                       <>
-                        <div
-                          style={{
-                            marginTop: '10px',
-                            padding: '8px',
-                            borderRadius: '10px',
-                            background: '#F8F5EC',
-                          }}
-                        >
+                        <div style={{ marginTop: '10px', padding: '8px', borderRadius: '10px', background: '#F7F6F2' }}>
                           {(t.anchors || []).map((a, aIndex) => (
                             <Fragment key={aIndex}>
-                              <div
-                                className="anchor"
-                                style={{ background: a.bg, color: a.fg, fontWeight: a.fw }}
-                              >
+                              <div className="anchor" style={{ background: a.bg, color: a.fg, fontWeight: a.fw }}>
                                 <span>{a.n}</span>
                                 <span>{a.text}</span>
                               </div>
@@ -391,13 +355,8 @@ export default function RiskProfile(props) {
               </Fragment>
             ))}
           </section>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '18px',
-            }}
-          >
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
             <section className="card" aria-label="회차별 추이" style={{ overflowX: 'auto' }}>
               <div className="hd">
                 <h2 className="h2">회차별 추이</h2>
@@ -451,6 +410,7 @@ export default function RiskProfile(props) {
                 </tbody>
               </table>
             </section>
+
             <section
               className="card"
               aria-label="안전 플래그와 재학대 요인"
@@ -471,8 +431,7 @@ export default function RiskProfile(props) {
                   </span>
                 </div>
                 <div>
-                  <span className="chip c-normal">S6 확인 후보</span> "할머니 집에 가고 싶어요" — 귀가
-                  두려움인지 확인
+                  <span className="chip c-normal">S6 확인 후보</span> "할머니 집에 가고 싶어요" — 귀가 두려움인지 확인
                   <span className="sub2" style={{ display: 'block' }}>
                     8회차 02:40
                   </span>
@@ -484,7 +443,7 @@ export default function RiskProfile(props) {
                   flexWrap: 'wrap',
                   gap: '6px',
                   paddingTop: '10px',
-                  borderTop: '1px solid #EEE8DA',
+                  borderTop: '1px solid #EAE7DF',
                 }}
               >
                 <span className="note" style={{ width: '100%' }}>
@@ -492,12 +451,13 @@ export default function RiskProfile(props) {
                 </span>
                 <span className="chip c-normal">R1 중복 유형</span>
                 <span className="chip c-normal">R7 친부가 행위자</span>
-                <span className="chip c-sky" style={{ border: '1px solid #A8C6E7', background: '#FFFFFF' }}>
+                <span className="chip c-sky" style={{ border: '1px solid #2B2A26', background: '#FFFFFF' }}>
                   P1 Key Person (조모)
                 </span>
               </div>
             </section>
           </div>
+
           <section
             className="card"
             aria-label="확인할 것"
@@ -515,6 +475,7 @@ export default function RiskProfile(props) {
               <span className="sub2">합치지 않고 그대로</span>
             </div>
           </section>
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
             <A className="btn btn-s" to="/SignalReview">
               ← 위험 신호

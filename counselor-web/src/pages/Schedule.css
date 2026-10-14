@@ -1,220 +1,10 @@
-.pg-Schedule {
-  margin: 0;
-  background: #fffefa;
-}
-.pg-Schedule * {
-  box-sizing: border-box;
-}
-.pg-Schedule a {
-  color: #3a68a0;
-}
-.pg-Schedule a:hover {
-  color: #2e5687;
-}
-.pg-Schedule .side {
-  flex: 1 1 248px;
-  background: #fffcf5;
-  border-right: 1px solid #e4dcc8;
-  padding: 22px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.pg-Schedule .logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 2px 6px 12px;
-  text-decoration: none;
-  color: #2f3a44;
-}
-.pg-Schedule .mk {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: #a8c6e7;
-  color: #213f63;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
-.pg-Schedule .cta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 48px;
-  border-radius: 14px;
-  background: #a8c6e7;
-  color: #213f63;
-  font-weight: 700;
-  text-decoration: none;
-  font-size: 15px;
-}
-.pg-Schedule .cta:hover {
-  background: #95b8df;
-  color: #213f63;
-}
-.pg-Schedule .cta2 {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 46px;
-  border-radius: 14px;
-  background: #ffffff;
-  border: 1.5px solid #a8c6e7;
-  color: #2e5687;
-  font-weight: 700;
-  text-decoration: none;
-  font-size: 15px;
-}
-.pg-Schedule .cta2:hover {
-  background: #f5f8fc;
-  color: #2e5687;
-}
-.pg-Schedule .nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 14px 0;
-}
-.pg-Schedule .nav a {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 14px;
-  border-radius: 12px;
-  color: #3d4852;
-  text-decoration: none;
-  font-size: 15px;
-}
-.pg-Schedule .nav a:hover {
-  background: #eef3fa;
-  color: #3d4852;
-}
-.pg-Schedule .nav a.on {
-  background: #e2ecf8;
-  color: #2e5687;
-  font-weight: 700;
-}
-.pg-Schedule .cnt {
-  margin-left: auto;
-  min-width: 22px;
-  height: 22px;
-  border-radius: 11px;
-  background: #93452e;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 7px;
-}
-.pg-Schedule .me {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 6px 0;
-  border-top: 1px solid #e4dcc8;
-  font-size: 13px;
-}
-.pg-Schedule .av {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #f1efe9;
-  color: #55606a;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-}
-.pg-Schedule .card {
-  background: #ffffff;
-  border-radius: 18px;
-  border: 1px solid #e7e0ce;
-}
-.pg-Schedule .h2 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  color: #2f3a44;
-}
-.pg-Schedule .chip {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.pg-Schedule .c-sky {
-  background: #f1efe9;
-  color: #55606a;
-}
-.pg-Schedule .c-sand {
-  background: #f1efe9;
-  color: #55606a;
-}
-.pg-Schedule .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 18px;
-  border-radius: 12px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.pg-Schedule .btn-p {
-  background: #a8c6e7;
-  color: #213f63;
-  font-weight: 700;
-}
-.pg-Schedule .btn-p:hover {
-  background: #95b8df;
-  color: #213f63;
-}
-.pg-Schedule .btn-s {
-  background: #ffffff;
-  color: #2f3a44;
-  border-color: #dcd5c3;
-}
-.pg-Schedule .btn-s:hover {
-  border-color: #a8c6e7;
-  color: #2e5687;
-}
-.pg-Schedule .sub {
-  color: #5f6a73;
-  font-size: 13px;
-}
-.pg-Schedule .note {
-  font-size: 12px;
-  color: #6f7880;
-}
-.pg-Schedule .demo {
-  display: none;
-}
+/* Schedule 화면에만 있는 규칙(디자인 Schedule.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-Schedule .seg {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
-  background: #eee8da;
+  background: #eae7df;
 }
 .pg-Schedule .seg button {
   border: 0;
@@ -224,31 +14,31 @@
   font: inherit;
   font-size: 13px;
   background: transparent;
-  color: #55606a;
+  color: #66625a;
   cursor: pointer;
 }
 .pg-Schedule .seg button.on {
   background: #ffffff;
-  color: #2e5687;
+  color: #2b2a26;
   font-weight: 700;
-  box-shadow: 0 1px 3px rgba(60, 80, 100, 0.12);
+  box-shadow: 0 1px 3px rgba(43, 42, 38, 0.12);
 }
 .pg-Schedule .mnav {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #dcd5c3;
+  border: 1px solid #dad5c9;
   background: #ffffff;
   font: inherit;
   font-size: 16px;
-  color: #2f3a44;
+  color: #2b2a26;
   cursor: pointer;
 }
 .pg-Schedule .dow {
   padding: 10px 8px;
   font-size: 12px;
   font-weight: 500;
-  color: #5f6a73;
+  color: #6e6a62;
   text-align: left;
 }
 .pg-Schedule .cell {
@@ -259,15 +49,15 @@
   min-height: 112px;
   padding: 8px;
   border: 0;
-  border-top: 1px solid #eee8da;
-  border-left: 1px solid #eee8da;
+  border-top: 1px solid #eae7df;
+  border-left: 1px solid #eae7df;
   background: #ffffff;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 .pg-Schedule .cell:hover {
-  background: #f8f5ec;
+  background: #f7f6f2;
 }
 .pg-Schedule .pill {
   display: flex;
@@ -286,22 +76,22 @@
   gap: 10px;
   align-items: start;
   padding: 12px 0;
-  border-bottom: 1px solid #eee8da;
+  border-bottom: 1px solid #eae7df;
 }
 .pg-Schedule .lb {
   font-size: 13px;
   font-weight: 500;
-  color: #2f3a44;
+  color: #2b2a26;
 }
 .pg-Schedule .in {
   height: 42px;
-  border: 1px solid #dcd5c3;
+  border: 1px solid #dad5c9;
   border-radius: 10px;
   padding: 0 12px;
   font: inherit;
   font-size: 14px;
   background: #ffffff;
-  color: #2f3a44;
+  color: #2b2a26;
   width: 100%;
 }
 .pg-Schedule .kind {
@@ -312,23 +102,58 @@
   gap: 2px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1.5px solid #dcd5c3;
+  border: 1.5px solid #dad5c9;
   background: #ffffff;
   font: inherit;
   font-size: 14px;
   text-align: left;
   cursor: pointer;
-  color: #2f3a44;
+  color: #2b2a26;
 }
 .pg-Schedule .impb {
   align-self: center;
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid #dcd5c3;
+  border: 1px solid #dad5c9;
   font: inherit;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+}
+.pg-Schedule .thm-root.dark .mnav {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .dow {
+  color: #b5afa3 !important;
+}
+.pg-Schedule .thm-root.dark .cell {
+  border-top: 1px solid #45423b !important;
+  border-left: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+}
+.pg-Schedule .thm-root.dark .cell:hover {
+  background: #33312c !important;
+}
+.pg-Schedule .thm-root.dark .ev {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-Schedule .thm-root.dark .lb {
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .in {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .kind {
+  border: 1.5px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .impb {
+  border: 1px solid #4e4b44 !important;
 }

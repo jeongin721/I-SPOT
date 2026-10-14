@@ -1,8 +1,11 @@
 // 탭 3 · 상담 전 브리핑 (+ 신변안전 확인)
-// 원본: I-SPOT 디자인 캔버스 보드 PreBriefing.dc.html (자동 변환 후 다듬어 쓰세요)
-import { Fragment } from 'react';
+// 원본: 다솔 님 디자인 counselor-web-design/PreBriefing.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './PreBriefing.css';
 
 class Logic extends DCLogic {
@@ -12,15 +15,19 @@ class Logic extends DCLogic {
 }
 
 export default function PreBriefing(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-PreBriefing">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1550px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -28,40 +35,7 @@ export default function PreBriefing(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A className="on" to="/CaseList">
-              사례 관리
-            </A>
-            <A to="/Schedule">일정</A>
-            <A to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="CaseList" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -72,10 +46,16 @@ export default function PreBriefing(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › 이서윤 C-2026-0351
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A className="btn btn-sm btn-s" to="/CaseList">
+              ← 목록
+            </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>이서윤</h1>
@@ -106,13 +86,10 @@ export default function PreBriefing(props) {
               인쇄 · PDF
             </button>
           </section>
+
           <section
             aria-label="먼저 볼 것"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '14px',
-            }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}
           >
             <div
               className="card"
@@ -141,13 +118,8 @@ export default function PreBriefing(props) {
               <span className="src">8회차 02:15 · 화자 확인 중</span>
             </div>
           </section>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '18px',
-            }}
-          >
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
             <section
               className="card"
               style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '10px' }}
@@ -200,6 +172,7 @@ export default function PreBriefing(props) {
               </div>
             </section>
           </div>
+
           <section
             className="card"
             aria-label="신변안전 확인"
@@ -212,13 +185,7 @@ export default function PreBriefing(props) {
                 매뉴얼 5장
               </span>
             </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: '10px',
-              }}
-            >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
               <label className="rq">
                 <input type="checkbox" defaultChecked />
                 <span>
@@ -242,22 +209,17 @@ export default function PreBriefing(props) {
               자살 · 살해 발언 시 112 · 자살예방센터 · 정신건강복지센터 신고
             </p>
           </section>
+
           <section className="card" style={{ padding: '22px 24px' }}>
             <h2 className="h2" style={{ marginBottom: '12px' }}>
               그대로 남겨 둔 진술
             </h2>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '10px',
-              }}
-            >
-              <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F8F5EC' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+              <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                 <span className="src">6회차 05:02</span>
                 <div>"맞은 적은… 잘 모르겠어요"</div>
               </div>
-              <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F8F5EC' }}>
+              <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                 <span className="src">8회차 00:41</span>
                 <div>"소리 지르고… 많이 때렸어요"</div>
               </div>

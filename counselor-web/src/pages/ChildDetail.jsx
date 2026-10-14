@@ -1,8 +1,12 @@
 // 아이 연계 › 아이 상세 (아이가 쓴 글 · 질문과 답 · 확인할 답변 · 추가 질문)
-// 원본: I-SPOT 디자인 캔버스 보드 ChildDetail.dc.html (자동 변환 후 다듬어 쓰세요)
+// 원본: 다솔 님 디자인 counselor-web-design/ChildDetail.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Sidebar from '../components/Sidebar';
+import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useTheme } from '../theme';
 import './ChildDetail.css';
 
 class Logic extends DCLogic {
@@ -92,7 +96,7 @@ class Logic extends DCLogic {
           edited: !!cur.text || !!cur.opts,
           st: ok ? (q0.sendNote ? '승인됨 · ' + q0.sendNote : '승인됨') : 'AI 초안',
           stCls: ok ? 'chip c-sel' : 'chip c-ai',
-          ring: editing ? 'inset 0 0 0 2px #A8C6E7' : 'none',
+          ring: editing ? 'inset 0 0 0 2px #2B2A26' : 'none',
           okCls: ok ? 'btn-p' : 'btn-s',
           okLabel: ok ? '승인됨 ✓' : '승인',
           isEdit: editing,
@@ -145,7 +149,7 @@ class Logic extends DCLogic {
       q: a[1],
       ans: a[2],
       fw: a[3] ? 700 : 500,
-      bg: a[3] ? '#F8F5EC' : 'transparent',
+      bg: a[3] ? '#F7F6F2' : 'transparent',
       flagText: a[3] ? '확인 필요' : '',
     }));
     const notes = mkNotes(K.notes);
@@ -162,15 +166,19 @@ class Logic extends DCLogic {
 }
 
 export default function ChildDetail(props) {
+  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
+  const session = useAuthSession();
+  const theme = useTheme();
   const v = useDC(Logic, props);
   return (
     <div className="pg-ChildDetail">
       <div
+        className={theme.cls}
         style={{
           minHeight: '1600px',
-          background: '#FFFEFA',
-          color: '#2F3A44',
-          fontFamily: "'Noto Sans KR', sans-serif",
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
           fontSize: '14px',
           lineHeight: '1.6',
           display: 'flex',
@@ -178,38 +186,7 @@ export default function ChildDetail(props) {
           alignItems: 'stretch',
         }}
       >
-        <aside className="side" aria-label="주 메뉴">
-          <A className="logo" to="/Main">
-            <span className="mk">IS</span>
-            <b style={{ fontSize: '17px' }}>I-SPOT</b>
-          </A>
-          <A className="cta" to="/UploadModal">
-            ↑ 녹취 · 자료 올리기
-          </A>
-          <A className="cta2" to="/CaseRegister">
-            + 새 사례 등록
-          </A>
-          <nav className="nav" aria-label="메뉴">
-            <A to="/Main">홈</A>
-            <A to="/CaseList">사례 관리</A>
-            <A to="/Schedule">일정</A>
-            <A className="on" to="/ChildLink">
-              아이 연계<span className="cnt">4</span>
-            </A>
-            <A to="/Closure">
-              종결 검토<span className="cnt">2</span>
-            </A>
-            <A to="/Stats">통계</A>
-            <A to="/Settings">설정</A>
-          </nav>
-          <div className="me">
-            <span className="av">이</span>
-            <b style={{ fontWeight: '500' }}>이서연 상담원</b>
-            <A to="/Login" className="note" style={{ marginLeft: 'auto' }}>
-              로그아웃
-            </A>
-          </div>
-        </aside>
+        <Sidebar active="ChildLink" session={session} />
         <main
           style={{
             flex: '999 1 640px',
@@ -220,10 +197,16 @@ export default function ChildDetail(props) {
             gap: '20px',
           }}
         >
+          <div className="thm-bar">
+            <ThemeToggle />
+          </div>
           <nav aria-label="위치" className="note">
             <A to="/ChildLink">아이 연계</A> › {v.k.short}
           </nav>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 16px' }}>
+            <A className="btn btn-sm btn-s" to="/ChildLink">
+              ← 목록
+            </A>
             <span className="av" style={{ width: '52px', height: '52px', fontSize: '20px' }}>
               {v.k.short0}
             </span>
@@ -254,6 +237,7 @@ export default function ChildDetail(props) {
               </section>
             </>
           ) : null}
+
           <section className="card" aria-label="질문과 아이의 답" style={{ padding: '20px 22px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
               <h2 className="h2">질문과 아이의 답</h2>
@@ -265,7 +249,7 @@ export default function ChildDetail(props) {
               <span>문항</span>
               <span>질문</span>
               <span>아이의 답</span>
-              <span />
+              <span></span>
             </div>
             {(v.answers || []).map((a, aIndex) => (
               <Fragment key={aIndex}>
@@ -278,6 +262,7 @@ export default function ChildDetail(props) {
               </Fragment>
             ))}
           </section>
+
           <section
             className="card"
             aria-label="확인해 봐야 할 답변"
@@ -336,7 +321,7 @@ export default function ChildDetail(props) {
                           aria-label="확인해 볼 점 수정"
                           value={f.n.draft}
                           onChange={f.n.setDraft}
-                        />
+                        ></textarea>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button type="button" className="btn btn-sm btn-p" onClick={f.n.save}>
                             저장
@@ -355,16 +340,14 @@ export default function ChildDetail(props) {
                       flexDirection: 'column',
                       gap: '8px',
                       paddingLeft: '14px',
-                      borderLeft: '3px solid #E7E0CE',
+                      borderLeft: '3px solid #E7E4DC',
                     }}
                   >
                     <b style={{ fontSize: '13px' }}>추가 질문</b>
                     {(f.qs || []).map((q, qIndex) => (
                       <Fragment key={qIndex}>
                         <div className="qcard" style={{ boxShadow: q.ring }}>
-                          <div
-                            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}
-                          >
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                             <span className="chip c-sky">{q.id}</span>
                             <span className={q.stCls}>{q.st}</span>
                             {q.edited ? (
@@ -410,7 +393,7 @@ export default function ChildDetail(props) {
                                   aria-label="질문 문장 수정"
                                   value={q.draftText}
                                   onChange={q.setText}
-                                />
+                                ></textarea>
                               </label>
                               {q.hasOpts ? (
                                 <>
@@ -444,6 +427,7 @@ export default function ChildDetail(props) {
               </Fragment>
             ))}
           </section>
+
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>
       </div>

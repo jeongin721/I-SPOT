@@ -1,20 +1,21 @@
+/* ClosureDetail 화면에만 있는 규칙(디자인 ClosureDetail.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-ClosureDetail .fhead {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  border: 1px solid #e7e0ce;
+  border: 1px solid #e7e4dc;
   border-radius: 14px;
   overflow: hidden;
 }
 .pg-ClosureDetail .fhead > div {
   display: flex;
-  border-bottom: 1px solid #eee8da;
+  border-bottom: 1px solid #eae7df;
 }
 .pg-ClosureDetail .fhead .k {
   width: 110px;
   flex: none;
   padding: 10px 12px;
-  background: #f8f5ec;
-  color: #55606a;
+  background: #f7f6f2;
+  color: #66625a;
   font-size: 13px;
 }
 .pg-ClosureDetail .fhead .v {
@@ -24,7 +25,7 @@
 }
 .pg-ClosureDetail .grp {
   padding: 10px 14px;
-  background: #f1efe9;
+  background: #f2efe8;
   font-weight: 700;
   font-size: 14px;
   border-radius: 10px;
@@ -35,14 +36,14 @@
   gap: 8px 14px;
   align-items: center;
   padding: 12px 4px;
-  border-bottom: 1px solid #eee8da;
+  border-bottom: 1px solid #eae7df;
 }
 .pg-ClosureDetail .opt3 {
   display: inline-flex;
   gap: 4px;
   padding: 3px;
   border-radius: 10px;
-  background: #eee8da;
+  background: #eae7df;
 }
 .pg-ClosureDetail .opt3 button {
   border: 0;
@@ -53,13 +54,13 @@
   font: inherit;
   font-size: 13px;
   background: transparent;
-  color: #55606a;
+  color: #66625a;
   cursor: pointer;
 }
 .pg-ClosureDetail .ev {
   grid-column: 1 / -1;
   font-size: 12px;
-  color: #6f7880;
+  color: #7a776f;
   display: flex;
   gap: 6px;
   align-items: center;
@@ -68,14 +69,14 @@
 .pg-ClosureDetail .ta2 {
   width: 100%;
   min-height: 76px;
-  border: 1px solid #dcd5c3;
+  border: 1px solid #dad5c9;
   border-radius: 12px;
   padding: 10px 12px;
   font: inherit;
   font-size: 14px;
   line-height: 1.6;
   background: #ffffff;
-  color: #2f3a44;
+  color: #2b2a26;
   resize: vertical;
 }
 .pg-ClosureDetail .ck {
@@ -83,7 +84,7 @@
   gap: 10px;
   align-items: flex-start;
   padding: 10px 4px;
-  border-bottom: 1px solid #eee8da;
+  border-bottom: 1px solid #eae7df;
   font-size: 14px;
   cursor: pointer;
 }
@@ -91,19 +92,19 @@
   width: 18px;
   height: 18px;
   margin-top: 2px;
-  accent-color: #a8c6e7;
+  accent-color: #2b2a26;
   flex: none;
 }
 .pg-ClosureDetail .goal {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
-  border-bottom: 1px solid #eee8da;
+  border-bottom: 1px solid #eae7df;
 }
 .pg-ClosureDetail .goal > * {
   padding: 10px 12px;
 }
 .pg-ClosureDetail .goal .k {
-  background: #f8f5ec;
+  background: #f7f6f2;
   font-size: 13px;
 }
 .pg-ClosureDetail .two {
@@ -118,10 +119,57 @@
   min-height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid #dcd5c3;
+  border: 1px solid #dad5c9;
   background: #ffffff;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
-  color: #2f3a44;
+  color: #2b2a26;
+}
+.pg-ClosureDetail .thm-root.dark .fhead {
+  border: 1px solid #45423b !important;
+}
+.pg-ClosureDetail .thm-root.dark .fhead > div {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-ClosureDetail .thm-root.dark .fhead .k {
+  background: #33312c !important;
+  color: #bdb7aa !important;
+}
+.pg-ClosureDetail .thm-root.dark .grp {
+  background: #393731 !important;
+}
+.pg-ClosureDetail .thm-root.dark .item {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-ClosureDetail .thm-root.dark .opt3 {
+  background: #393731 !important;
+}
+.pg-ClosureDetail .thm-root.dark .opt3 button {
+  color: #bdb7aa !important;
+}
+.pg-ClosureDetail .thm-root.dark .ev {
+  color: #a8a296 !important;
+}
+.pg-ClosureDetail .thm-root.dark .ta2 {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-ClosureDetail .thm-root.dark .ck {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-ClosureDetail .thm-root.dark .ck input {
+  accent-color: #d6d0c4 !important;
+}
+.pg-ClosureDetail .thm-root.dark .goal {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-ClosureDetail .thm-root.dark .goal .k {
+  background: #33312c !important;
+}
+.pg-ClosureDetail .thm-root.dark .chipck {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
 }
