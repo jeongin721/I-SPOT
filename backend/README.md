@@ -113,6 +113,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 `ENV=production` 에서는 `JWT_SECRET_KEY` 가 32자 미만이거나 저장소에 적힌 예시값(`change-me-in-env-file` 등)이면 서버가 시작되지 않는다. 공개된 값으로 서명한 토큰은 누구나 만들 수 있기 때문이다.
+같은 이유로 `ENV=production` 에서 `AI_PROVIDER=pipeline`(상담 원문을 비식별 없이 OpenAI 로 보냄)도 `AI_PIPELINE_ALLOW_UNMASKED=true` 없이는 시작되지 않는다(아래 "AI (팀 B)").
 
 ### 2.4 DB Migration
 
@@ -299,11 +300,17 @@ STT_FUNCTION=transcribe
 ```env
 AI_PROVIDER=mock
 
-# 실제 AI Pipeline 연동
+# 실제 AI Pipeline 연동(가상 데이터 전용 — 아래 주의)
 AI_PROVIDER=pipeline
 OPENAI_API_KEY=...
 OPENAI_MODEL=...
 ```
+
+> **주의: `pipeline` 은 상담 원문을 비식별(이름 · 학교 · 주소 가리기) 없이 OpenAI 로 보낸다.** 외부 LLM 에는 비식별한
+> 텍스트만 보낸다는 9/18 회의 결정과 어긋나므로 가상 데이터로만 쓴다.
+> 그래서 `ENV=production` 에서 `AI_PROVIDER=pipeline` 이면 서버가 시작하지 않고 이유를 오류 문구로 보여 준다(설정 검사,
+> `app/core/config.py`). 가상 데이터로 일부러 시험할 때만 `AI_PIPELINE_ALLOW_UNMASKED=true` 를 함께 적어 푼다.
+> `ENV=local` · `test` 는 이 검사를 하지 않는다(지금처럼 쓸 수 있다).
 
 `pipeline` 모드는 `ai/services/analysis_pipeline.run_analysis_pipeline(transcript)` 를 호출한다.
 팀 B 의 Service Exception 은 아래처럼 API 오류 코드로 변환된다.
