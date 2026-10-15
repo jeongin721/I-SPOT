@@ -134,7 +134,10 @@ class Settings(BaseSettings):
     # mock     : Transcript 에서 파생한 합성 요약 반환
     # pipeline : ai/services/analysis_pipeline.run_analysis_pipeline 호출
     # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)
-    AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
+    # modeling : ai/modeling/abuse/contract_adapter.analyze_audio_session_as_contract 호출
+    #            (이경진 파이프라인 — 1차 분류+2차 세부유형+심각도+보호요인+
+    #            회차간변화+후속확인까지 포함, Contract 밖 필드는 risk_factors에 임시 보관)
+    AI_PROVIDER: Literal["mock", "pipeline", "langgraph", "modeling"] = "mock"
     AI_TIMEOUT_SECONDS: float = 180.0
 
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
