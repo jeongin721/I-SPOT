@@ -76,9 +76,13 @@ export function usePasswordChange(): PasswordChangeState {
 
     try {
       await auth.changePassword({ current_password: currentPassword, new_password: newPassword });
+
+      // 그사이 토큰이 바뀌었으면(다른 탭에서 같은 계정 · 다른 계정으로 다시 로그인) 그 새 로그인은 그대로 두고,
+      // 이 응답을 지금 화면의 성공으로 돌려주지 않는다 — 돌려주면 화면이 새 로그인에서 치던 칸을 비운다.
+      if (getToken() !== requestedToken) return false;
+
       // 토큰이 이미 끊겼으므로 이 탭과 다른 탭 모두 로그아웃한다.
-      // 단, 그사이 토큰이 바뀌었으면(다른 계정으로 로그인) 그 새 로그인은 그대로 둔다.
-      if (getToken() === requestedToken) signOut(PASSWORD_CHANGED_MESSAGE);
+      signOut(PASSWORD_CHANGED_MESSAGE);
 
       return true;
     } catch (caught) {
