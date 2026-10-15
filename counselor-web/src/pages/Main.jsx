@@ -1,18 +1,27 @@
 // 홈 (대시보드)
-// 원본: 다솔 님 디자인 counselor-web-design/Main.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 원본: 다솔 님 디자인 counselor-web-design/Main.dc.html (front_new 브랜치)
+//
+// 서버 연결: 진행 중 사례 수 · 미처리 업무(목록 · 종류별 수)는 useHomeDashboard 가 부르고, 화면에 쓸 값은
+// src/data/screens/main.ts(mainValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
+// 오늘 일정 · 다음 상담까지 남은 시간 · 아이 앱 긴급 응답은 서버에 없어 준비 중 · '—'. 시계 · 빠른 실행은 화면 상태다.
 import { Fragment } from 'react';
+import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useHomeDashboard } from '../data/useHomeDashboard';
+import { needsLogin } from '../data/screens/common';
+import { initialMainState, mainValues } from '../data/screens/main';
 import { useTheme } from '../theme';
 import './Main.css';
 
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { now: new Date(), editing: false, quick: ['upload', 'schedule', 'closure', 'search'] };
+    this.state = initialMainState();
   }
   componentDidMount() {
     this.timer = setInterval(() => this.setState({ now: new Date() }), 20000);
@@ -21,97 +30,16 @@ class Logic extends DCLogic {
     clearInterval(this.timer);
   }
   renderVals() {
-    const s = this.state;
-    const now = s.now;
-    const pad = (n) => String(n).padStart(2, '0');
-    const mins = now.getHours() * 60 + now.getMinutes();
-    const days = ['일', '월', '화', '수', '목', '금', '토'];
-    const dateLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${days[now.getDay()]}요일`;
-    const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const events = [
-      { m: 600, t: 'p', title: '기관 사례회의', sub: '회의실 2', href: '/Schedule' },
-      { m: 780, t: 'c', title: '지호 · 정기상담 4회차', sub: '면담실 A', href: '/Schedule' },
-      { m: 870, t: 'c', title: '서준 · 초기면담', sub: '가정 방문', href: '/Schedule' },
-      { m: 960, t: 'c', title: '서윤 · 정기상담 9회차', sub: '면담실 B · 브리핑 준비됨', href: '/PreBriefing' },
-      { m: 1050, t: 'p', title: '슈퍼비전', sub: '팀장 면담 · 30분', href: '/Schedule' },
-    ];
-    const nowH = now.getHours();
-    const hours = [];
-    for (let h = 9; h <= 18; h++) {
-      const evs = events
-        .filter((e) => Math.floor(e.m / 60) === h)
-        .map((e) => {
-          const c = e.t === 'c';
-          return {
-            time: `${pad(Math.floor(e.m / 60))}:${pad(e.m % 60)}`,
-            title: e.title,
-            sub: e.sub,
-            href: e.href,
-            dot: c ? '#7A776F' : '#DAD5C9',
-            radius: c ? '50%' : '2px',
-            bg: '#F7F6F2',
-          };
-        });
-      const isNowHour = h === nowH;
-      hours.push({
-        label: `${pad(h)}:00`,
-        events: evs,
-        isNowHour,
-        bg: isNowHour ? '#F7F6F2' : '#FFFFFF',
-        op: h < nowH ? 0.5 : 1,
-        labelFg: isNowHour ? '#2B2A26' : '#7A776F',
-        labelFw: isNowHour ? 700 : 400,
-      });
-    }
-    const next = events.find((e) => e.t === 'c' && e.m > mins);
-    let remain = '오늘 남은 상담 없음',
-      nextTitle = '내일 첫 상담 10:00 · 하은 전화상담';
-    if (next) {
-      const d = next.m - mins;
-      const hh = Math.floor(d / 60);
-      const mm = d % 60;
-      remain = hh > 0 ? `${hh}시간 ${mm}분 남음` : `${mm}분 남음`;
-      nextTitle = `${pad(Math.floor(next.m / 60))}:${pad(next.m % 60)} ${next.title}`;
-    }
-    const pool = {
-      upload: { label: '녹취 올리기', icon: '↑', href: '/UploadModal' },
-      schedule: { label: '일정 추가', icon: '+', href: '/Schedule' },
-      closure: { label: '종결 검토', icon: '✓', href: '/Closure' },
-      search: { label: '사례 찾기', icon: '⌕', href: '/CaseList' },
-      stats: { label: '통계', icon: '▦', href: '/Stats' },
-      briefing: { label: '상담 전 브리핑', icon: '☰', href: '/PreBriefing' },
-    };
-    const quick = s.quick.map((k) => ({
-      ...pool[k],
-      rmLabel: `${pool[k].label} 빼기`,
-      remove: (ev) => {
-        if (ev && ev.preventDefault) ev.preventDefault();
-        this.setState({ quick: s.quick.filter((x) => x !== k) });
-      },
-    }));
-    const addable = Object.keys(pool)
-      .filter((k) => !s.quick.includes(k))
-      .map((k) => ({ label: pool[k].label, add: () => this.setState({ quick: [...s.quick, k] }) }));
-    return {
-      hours,
-      clock,
-      dateLabel,
-      remain,
-      nextTitle,
-      quick,
-      addable,
-      editing: s.editing,
-      editLabel: s.editing ? '완료' : '편집',
-      toggleEdit: () => this.setState({ editing: !s.editing }),
-    };
+    return mainValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
 
 export default function Main(props) {
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
+  const home = useHomeDashboard(session);
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const v = useDC(Logic, { ...props, session, home });
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-Main">
       <div
@@ -147,9 +75,10 @@ export default function Main(props) {
               <div className="sub brn" style={{ fontWeight: '500' }}>
                 {v.dateLabel}
               </div>
-              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>안녕하세요, 이서연 상담원님</h1>
+              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>{v.greeting}</h1>
             </div>
           </header>
+          <Notice value={v.notice} />
 
           <section
             aria-label="오늘 요약"
@@ -161,36 +90,31 @@ export default function Main(props) {
             }}
           >
             <A className="card stat" to="/CaseList">
-              <span className="sub">진행 중 내담자</span>
-              <b className="n brn">10</b>
+              <span className="sub">{v.casesLabel}</span>
+              <b className="n brn">{v.casesCount}</b>
             </A>
             <div className="card stat">
-              <span className="sub">미처리 업무</span>
-              <b className="n brn">7</b>
+              <span className="sub">{v.tasksLabel}</span>
+              <b className="n brn">{v.tasksCount}</b>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                <A className="todo" to="/SttReview">
-                  <span className="chip c-sand">STT 검수</span>
-                  <span style={{ flex: '1' }}>서윤 8회차</span>
-                  <b className="brn">1</b>
-                </A>
-                <A className="todo" to="/NoteWrite">
-                  <span className="chip c-sky">상담 일지 작성</span>
-                  <span style={{ flex: '1' }}>서윤 8회차 외</span>
-                  <b className="brn">2</b>
-                </A>
-                <A className="todo" to="/ChildLink">
-                  <span className="chip c-check">앱 확인</span>
-                  <span style={{ flex: '1' }}>오늘 09:00 묶음</span>
-                  <b className="brn">4</b>
-                </A>
+                {(v.todos || []).map((t, tIndex) => (
+                  <A key={tIndex} className="todo" to={t.href}>
+                    <span className={t.chip}>{t.label}</span>
+                    <span style={{ flex: '1' }}>{t.text}</span>
+                    <b className="brn" title={t.waitedTitle}>
+                      {t.waited}
+                    </b>
+                  </A>
+                ))}
+                {v.todoNote ? <span className="note">{v.todoNote}</span> : null}
               </div>
             </div>
             <A className="card stat" to="/ChildLink" style={{ boxShadow: 'inset 0 4px 0 #A33B2E' }}>
               <span className="sub acc" style={{ fontWeight: '700' }}>
                 긴급 업무
               </span>
-              <b className="n acc">1</b>
-              <span style={{ fontSize: '14px' }}>민준 · 오늘 08:12 체크인</span>
+              <b className="n acc">{v.urgentCount}</b>
+              <span style={{ fontSize: '14px' }}>{v.urgentText}</span>
             </A>
           </section>
 
@@ -206,6 +130,9 @@ export default function Main(props) {
                   달력 보기
                 </A>
               </div>
+              <p className="note" style={{ margin: '0 24px 10px' }}>
+                {v.scheduleNote}
+              </p>
               {(v.hours || []).map((h, hIndex) => (
                 <Fragment key={hIndex}>
                   <div className="hr" style={{ background: h.bg, opacity: h.op }}>
