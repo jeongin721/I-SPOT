@@ -9,9 +9,14 @@ __pycache__/
 ai/modeling/abuse/datasets/
 ai/modeling/abuse/results/
 ai/modeling/abuse/analysis_output/
-ai/modeling/abuse/weight/*.pth
-ai/modeling/abuse/weight/*_tokenizer/
+ai/modeling/abuse/weight/
 ai/modeling/abuse/*.db
 ai/modeling/abuse/audio_uploads_tmp/
 
 data/
+
+# 키 · 자격증명 · 참고용 원본 문서 — 절대 올리면 안 됨(2026-10-14 추가)
+*.pem
+*.key
+I-SPOT 상담사 웹 화면 설계_3.html
+유형별 위험도.pdf
