@@ -9,6 +9,7 @@
 import { useMemo, useRef } from "react";
 
 import { documents as documentsApi } from "../api/endpoints";
+import { mapLimited } from "./mapLimited";
 import type { SessionRow } from "./sessionRows";
 import { toDocumentRow, type DocumentRow } from "./useSessionDocuments";
 import { loadSessionDetail, type SessionDetailView } from "./useSessionDetail";
@@ -29,23 +30,6 @@ export interface CaseDocumentsState {
   loading: boolean;
   error: string | null;
   reload: () => void;
-}
-
-/** items 를 limit 개씩 나눠 차례로 부른다. 결과 순서는 items 와 같다. */
-async function mapLimited<T, R>(items: T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-
-  async function worker() {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await run(items[index]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-
-  return results;
 }
 
 async function loadSessionDocs(sessionId: string): Promise<SessionDocs> {
