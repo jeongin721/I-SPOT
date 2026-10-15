@@ -4,6 +4,7 @@
 // 서버 연결: '등록' 은 useCaseRegister(POST /cases)로 서버가 받는 칸만 저장하고 새 사례 상세(?case=새 ID)로 간다.
 // 화면에 쓸 값은 src/data/screens/caseRegister.ts(caseRegisterValues)가 만든다. 담당 상담원은 관리자만 고른다.
 // 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 초기면접 내용은 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -13,7 +14,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseRegister } from '../data/useCaseRegister';
 import { caseRegisterValues, initialRegisterState } from '../data/screens/caseRegister';
-import { needsLogin } from '../data/screens/common';
+import { needsLogin, screenNotice } from '../data/screens/common';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import { useTheme } from '../theme';
 import './CaseRegister.css';
@@ -32,11 +33,54 @@ const NO_IDS = { caseId: null, sessionId: null };
 
 export default function CaseRegister(props) {
   const session = useAuthSession();
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  // 로그인 확인 중 · 확인 실패면 입력칸 없이 안내만 보인다. 다른 탭에서 다른 계정으로 로그인하면 이 단계를 거치므로
+  // 앞 계정이 쓰던 초안은 사라진다. key 로 계정마다 새로 만들어, 초안 · 늦은 응답이 다른 계정에 남지 않게 한다.
+  if (session.status !== 'signedIn' || !session.me) return <CaseRegisterWaiting session={session} />;
+  return <CaseRegisterForm key={session.me.id} {...props} session={session} />;
+}
+
+function CaseRegisterWaiting({ session }) {
+  const theme = useTheme();
+  return (
+    <div className="pg-CaseRegister">
+      <div
+        className={theme.cls}
+        style={{
+          minHeight: '100vh',
+          background: 'rgba(47,58,68,0.40)',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
+          fontSize: '14px',
+          lineHeight: '1.6',
+          color: '#2B2A26',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          padding: '48px 16px',
+        }}
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reg-title"
+          style={{ width: '100%', maxWidth: '860px', background: '#FFFFFF', borderRadius: '24px', padding: '24px 30px' }}
+        >
+          <h1 id="reg-title" style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>
+            새 사례 등록
+          </h1>
+          <Notice value={screenNotice({ session })} style={{ marginTop: '12px' }} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function CaseRegisterForm(props) {
+  const { session } = props;
   const register = useCaseRegister(session);
   const go = useScreenGo(useNavigate(), NO_IDS);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, register, go });
-  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseRegister">
       <div

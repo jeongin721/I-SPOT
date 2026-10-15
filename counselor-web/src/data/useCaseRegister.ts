@@ -6,8 +6,10 @@
 // 개인정보 저장 범위가 팀 결정 전이라 보내지 않는다. 다른 칸(사례 메모 등)에 옮겨 담지도 않는다.
 //
 // 한 번에 한 요청만 보낸다. 성공하면 만든 사례를 돌려주고, 그 뒤에는 다시 보내지 않는다(같은 사례를 두 번 만들지 않게).
+// 입력 · 요청 상태는 로그인한 계정 하나의 것이다. 화면은 계정이 확인된 동안에만 이 훅을 쓰고, 계정이 바뀌면 새로 만든다
+// (CaseRegister.jsx 의 key). 그래도 요청을 보낸 뒤 계정이 바뀌었거나 화면을 떠났으면 그 응답(성공 · 실패)은 버린다.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { auth, cases } from "../api/endpoints";
@@ -139,6 +141,18 @@ export function useCaseRegister(session: AuthSession): CaseRegisterState {
   // 같은 순간의 두 번째 누름 · 만든 뒤 다시 누름을 막는다(state 는 바로 바뀌지 않아 ref 로도 든다).
   const inFlight = useRef(false);
   const done = useRef(false);
+  // 지금 로그인한 계정 · 화면에 붙어 있는가. 늦게 온 응답을 버릴지 보는 데 쓴다.
+  const currentUser = useRef<string | null>(me?.id ?? null);
+  currentUser.current = me?.id ?? null;
+  const alive = useRef(false);
+
+  useEffect(() => {
+    alive.current = true;
+
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   const counselors = useMemo(() => {
     if (!session.isAdmin) return [];
@@ -161,6 +175,9 @@ export function useCaseRegister(session: AuthSession): CaseRegisterState {
         return null;
       }
 
+      const forUser = me.id;
+      const stillMine = () => alive.current && currentUser.current === forUser;
+
       inFlight.current = true;
       setSubmitting(true);
       setError(null);
@@ -169,19 +186,23 @@ export function useCaseRegister(session: AuthSession): CaseRegisterState {
         const result = await cases.create(checked.payload);
 
         done.current = true;
+        // 그사이 다른 계정으로 바뀌었거나 화면을 떠났으면 결과를 화면에 쓰지 않고 이동도 하지 않는다
+        // (사례는 보낸 계정으로 이미 만들어졌다 — 취소된 것이 아니다).
+        if (!stillMine()) return null;
+
         setCreated(result);
 
         return result;
       } catch (caught) {
         // 401 · 403 PASSWORD_CHANGE_REQUIRED 는 client 가 이벤트로 알리고, 화면은 useAuthSession 상태로 움직인다.
-        if (!(caught instanceof ApiError && caught.isUnauthorized)) {
+        if (stillMine() && !(caught instanceof ApiError && caught.isUnauthorized)) {
           setError(errorMessage(caught, "사례를 등록하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         }
 
         return null;
       } finally {
         inFlight.current = false;
-        setSubmitting(false);
+        if (alive.current) setSubmitting(false);
       }
     },
     [me, session.isAdmin],
