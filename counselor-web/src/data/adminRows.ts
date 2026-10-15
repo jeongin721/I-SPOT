@@ -222,6 +222,30 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   USER_UPDATED: "계정 수정",
 };
 
+/** 업무 감사 동작의 한글 이름(같은 AuditAction). 접속 기록에서 '모든 동작' 을 고르면 함께 보인다. */
+export const WORK_AUDIT_ACTION_LABELS: Record<string, string> = {
+  CASE_CREATED: "사례 등록",
+  CASE_UPDATED: "사례 수정",
+  CASE_DELETED: "사례 삭제",
+  SESSION_CREATED: "회차 생성",
+  SESSION_UPDATED: "회차 수정",
+  SESSION_DELETED: "회차 삭제",
+  AUDIO_UPLOADED: "녹음 업로드",
+  STT_REQUESTED: "원문 변환 요청",
+  STT_COMPLETED: "원문 변환 완료",
+  STT_FAILED: "원문 변환 실패",
+  TRANSCRIPT_UPDATED: "원문 수정",
+  TRANSCRIPT_CONFIRMED: "원문 확정",
+  ANALYSIS_REQUESTED: "AI 분석 요청",
+  ANALYSIS_COMPLETED: "AI 분석 완료",
+  ANALYSIS_FAILED: "AI 분석 실패",
+  SUMMARY_UPDATED: "요약 수정",
+  SUMMARY_APPROVED: "요약 승인",
+  DOCUMENT_CREATED: "문서 생성",
+  DOCUMENT_UPDATED: "문서 수정",
+  DOCUMENT_APPROVED: "문서 승인",
+};
+
 /** User-Agent 를 "Chrome 126" 처럼 줄인다. 모르는 값은 앞부분만(전체는 userAgent 로). */
 export function toBrowserLabel(userAgent: string | null | undefined): string {
   if (!userAgent) return NOT_PROVIDED;
@@ -276,7 +300,7 @@ export function toAuditRow(log: AuditLog, roles: Map<string, UserRole>): AuditRo
   return {
     id: log.id,
     action: log.action,
-    actionLabel: AUDIT_ACTION_LABELS[log.action] ?? log.action,
+    actionLabel: AUDIT_ACTION_LABELS[log.action] ?? WORK_AUDIT_ACTION_LABELS[log.action] ?? log.action,
     success,
     resultLabel: success ? "성공" : "실패",
     failureReason: success ? "" : toFailureReason(log.error_code),
@@ -337,6 +361,8 @@ export interface PendingTasks {
   count: number;
   /** 그 가운데 지연. */
   overdue: number;
+  /** 모든 종류(UPLOAD_AUDIO 포함)의 지연. 업무 목록을 '지연만' 으로 거르면(종류 없이) 이 수만큼 나온다. */
+  overdueAll: number;
   /** 종류별 수(UPLOAD_AUDIO 포함 7종 모두). 업무 표의 탭 숫자에 쓴다. */
   byType: Record<TaskType, number>;
 }
@@ -352,7 +378,7 @@ export function toPendingTasks(summary: TaskSummary, uploadAudioOverdue: number)
   // 두 요청 사이에 기준 시간을 넘기는 업무가 있으면 어긋날 수 있어 범위 안으로 맞춘다.
   const overdue = Math.min(count, Math.max(0, summary.overdue - uploadAudioOverdue));
 
-  return { count, overdue, byType: { ...summary.by_type } };
+  return { count, overdue, overdueAll: summary.overdue, byType: { ...summary.by_type } };
 }
 
 export interface TaskRow {
@@ -373,6 +399,8 @@ export interface TaskRow {
   waitingSince: string;
   /** YYYY-MM-DD HH:mm */
   waitingSinceFull: string;
+  /** 기다리기 시작한 시각(밀리초). 정렬용 — 분까지만 있는 글자로 정렬하면 같은 분 안의 순서가 틀린다. 읽지 못하면 맨 뒤로. */
+  waitingSinceAt: number;
   /** 기다린 시간("5시간"). 부른 시각 기준이라 다시 조회할 때 바뀐다. */
   waitingFor: string;
   /** 서버 기준 지연. 위험 신호가 아니므로 '긴급' 이라고 쓰지 않는다. */
@@ -396,6 +424,7 @@ export function toTaskRow(item: TaskItem, now: number = Date.now()): TaskRow {
     stageLabel: TASK_LABELS[item.task_type] ?? item.task_type,
     waitingSince: toShortDateTime(item.waiting_since),
     waitingSinceFull: toDateTime(item.waiting_since),
+    waitingSinceAt: parseBackendTime(item.waiting_since)?.getTime() ?? Number.MAX_SAFE_INTEGER,
     waitingFor: toWaitingFor(item.waiting_since, now),
     overdue: item.is_overdue,
     failed: item.task_type === "RETRY_STT" || item.task_type === "RETRY_ANALYSIS",
