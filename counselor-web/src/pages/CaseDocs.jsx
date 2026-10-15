@@ -1,11 +1,22 @@
 // 탭 5 · 문서함 (기관 서식 6종 + 파일)
-// 원본: 다솔 님 디자인 counselor-web-design/CaseDocs.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 원본: 다솔 님 디자인 counselor-web-design/CaseDocs.dc.html (front_new 브랜치)
+//
+// 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차 목록은 useCaseDetail, 회차마다 녹음 · 원문 · 상담일지는
+// useCaseDocuments 가 부르고, 화면에 쓸 값은 src/data/screens/caseDocs.ts(caseDocsValues)가 만든다.
+// 기관 서식 작성 기록 · 브리핑 · 외부 문서 올리기는 서버에 없어 준비 중.
 import { Fragment } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseDocuments } from '../data/useCaseDocuments';
+import { caseDocsValues } from '../data/screens/caseDocs';
+import { needsLogin, signedIn } from '../data/screens/common';
+import { readScreenIds } from '../data/screens/links';
 import { useTheme } from '../theme';
 
 class Logic extends DCLogic {
@@ -14,99 +25,19 @@ class Logic extends DCLogic {
     this.state = { f: 'all' };
   }
   renderVals() {
-    const s = this.state;
-    const all = [
-      [
-        '방문상담_1002.m4a',
-        '녹취',
-        '8회차',
-        '10/07 업로드',
-        '검수 대기',
-        'chip c-check',
-        '/SttReview',
-        'STT 검수',
-        'rec',
-      ],
-      ['8회차 STT 검수본', '녹취', '8회차', '10/07', '검수 중', 'chip c-check', '/SttReview', '열기', 'rec'],
-      ['7회차 상담일지', '상담 일지', '7회차', '09/18', '확정', 'chip c-ok', '/CaseHistory', '열기', 'note'],
-      ['6회차 상담일지', '상담 일지', '6회차', '09/04', '확정', 'chip c-ok', '/CaseHistory', '열기', 'note'],
-      ['9회차 상담 전 브리핑', '브리핑', '9회차', '10/08', '준비됨', 'chip c-sky', '/PreBriefing', '열기', 'brief'],
-      ['심리치료 소견서_9월.pdf', '외부 문서', '—', '09/30', '보관', 'chip c-normal', '/CaseDocs', '열기', 'ext'],
-      ['초기 조사 보고서.hwpx', '외부 문서', '—', '07/29', '보관', 'chip c-normal', '/CaseDocs', '열기', 'ext'],
-      ['7회차 녹취_0918.m4a', '녹취', '7회차', '09/18', '검수 완료', 'chip c-ok', '/CaseHistory', '열기', 'rec'],
-    ];
-    const rows = all
-      .filter((d) => s.f === 'all' || d[8] === s.f)
-      .map((d) => ({ name: d[0], kind: d[1], ses: d[2], date: d[3], st: d[4], stCls: d[5], href: d[6], go: d[7] }));
-    const filters = [
-      ['all', '전체'],
-      ['rec', '녹취'],
-      ['note', '상담 일지'],
-      ['brief', '브리핑'],
-      ['ext', '외부 문서'],
-    ].map(([k, l]) => ({ label: l, cls: s.f === k ? 'on' : '', pick: () => this.setState({ f: k }) }));
-    const forms = [
-      [
-        '초기면접지 (아동용)',
-        '서식 4',
-        '사례 등록 · 최초면접',
-        '2026-07-29',
-        '확정',
-        'chip c-ok',
-        '/CaseRegister',
-        '열기',
-      ],
-      [
-        '사정기록지 · 안전영역',
-        '서식 6',
-        '초기 사정 · 재사정',
-        '2026-09-18',
-        '재사정 필요',
-        'chip c-check',
-        '/CaseForm',
-        '작성',
-      ],
-      ['사례관리 점검표', '서식 27', '3개월마다', '2026-09-14 (2차)', '3차 AI 초안', 'chip c-sky', '/CaseForm', '작성'],
-      [
-        '위험수준별 개입 사정 척도',
-        '참고자료 3',
-        '사정 · 재사정',
-        '2026-09-18',
-        'AI 제안 12개',
-        'chip c-sky',
-        '/CaseForm',
-        '작성',
-      ],
-      [
-        '축약형 가족관계 척도',
-        '참고자료 1',
-        '초기 · 종결',
-        '2026-08-02',
-        '응답 받기 전',
-        'chip c-normal',
-        '/CaseForm',
-        '작성',
-      ],
-      [
-        '사례관리 종결보고서',
-        '서식 29',
-        '종결 검토 등록 후',
-        '—',
-        '등록 전',
-        'chip c-normal',
-        '/ClosureDetail',
-        '예시 보기',
-      ],
-    ].map((d) => ({ name: d[0], no: d[1], when: d[2], date: d[3], st: d[4], stCls: d[5], href: d[6], go: d[7] }));
-    return { rows, filters, forms };
+    return caseDocsValues({ ...this.props, filter: this.state.f, setFilter: (f) => this.setState({ f }) });
   }
 }
 
 export default function CaseDocs(props) {
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  const enabled = signedIn(session);
+  const detail = useCaseDetail(caseId, { enabled });
+  const docs = useCaseDocuments(caseId, detail.caseInfo ? detail.sessions : null, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const v = useDC(Logic, { ...props, session, detail, docs, caseId });
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDocs">
       <div
@@ -138,30 +69,31 @@ export default function CaseDocs(props) {
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › 이서윤 C-2026-0351
+            <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
+          <Notice value={v.notice} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
             <A className="btn btn-sm btn-s" to="/CaseList">
               ← 목록
             </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>이서윤</h1>
-                <span className="sub">13세 · 중1</span>
-                <span className="chip c-hi">위험도 상</span>
+                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
+                <span className="sub">{v.sub}</span>
+                <span className="chip c-normal">{v.riskChip}</span>
               </div>
-              <div className="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
+              <div className="note">{v.meta}</div>
             </div>
-            <A className="btn btn-s" to="/UploadModal">
+            <A className="btn btn-s" to={v.uploadHref}>
               ↑ 녹취 올리기
             </A>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
-            <A to="/CaseDetail">내담자 정보</A>
-            <A to="/CaseHistory">상담 이력</A>
-            <A to="/PreBriefing">상담 전 브리핑</A>
-            <A to="/CaseApp">아이 연계</A>
-            <A className="on" aria-current="page" to="/CaseDocs">
+            <A to={v.tabs.detail}>내담자 정보</A>
+            <A to={v.tabs.history}>상담 이력</A>
+            <A to={v.tabs.briefing}>상담 전 브리핑</A>
+            <A to={v.tabs.app}>아이 연계</A>
+            <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
           </nav>
@@ -175,13 +107,19 @@ export default function CaseDocs(props) {
                 </Fragment>
               ))}
             </div>
-            <A className="btn btn-p" to="/UploadModal" style={{ marginLeft: 'auto' }}>
+            <span className="note" style={{ marginLeft: 'auto' }}>
+              {v.uploadNote}
+            </span>
+            <A className="btn btn-p" to={v.uploadHref}>
               ↑ 자료 올리기
             </A>
           </section>
           <section className="card" aria-label="기관 서식" style={{ overflowX: 'auto' }}>
             <div className="hd">
               <h2 className="h2">기관 서식</h2>
+              <span className="note" style={{ marginLeft: 'auto' }}>
+                {v.formsNote}
+              </span>
             </div>
             <table className="tbl" style={{ minWidth: '680px' }}>
               <thead>
@@ -208,9 +146,7 @@ export default function CaseDocs(props) {
                       <td>
                         <span className={r.stCls}>{r.st}</span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <A to={r.href}>{r.go}</A>
-                      </td>
+                      <td style={{ textAlign: 'right' }}>{r.href ? <A to={r.href}>{r.go}</A> : null}</td>
                     </tr>
                   </Fragment>
                 ))}
@@ -247,13 +183,18 @@ export default function CaseDocs(props) {
                         <span className={r.stCls}>{r.st}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <A to={r.href}>{r.go}</A>
+                        {r.href ? <A to={r.href}>{r.go}</A> : <span className="note">{r.go}</span>}
                       </td>
                     </tr>
                   </Fragment>
                 ))}
               </tbody>
             </table>
+            {v.rowsNote ? (
+              <p className="note" style={{ margin: '12px 24px 18px' }}>
+                {v.rowsNote}
+              </p>
+            ) : null}
           </section>
         </main>
       </div>
