@@ -107,9 +107,9 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
 
     if (total === 0) todoNote = "처리할 업무가 없습니다.";
     else {
-      const parts = [byType.join(" · ")];
+      // 줄로 다 보이면 종류별 수는 줄과 같아 적지 않는다.
+      const parts = total > todos.length ? [`오래 기다린 ${todos.length}건만 보입니다`, byType.join(" · ")] : [];
       if (data.summary.overdue > 0) parts.push(`지연 ${data.summary.overdue}건`);
-      if (total > todos.length) parts.push(`오래 기다린 ${todos.length}건만 보입니다`);
       todoNote = parts.join(" — ");
     }
   }

@@ -1,4 +1,4 @@
-// 홈(대시보드) 훅. GET /cases(진행 중 건수만) + GET /tasks/summary + GET /tasks(오래 기다린 것부터 HOME_TASK_COUNT 건).
+// 홈(대시보드) 훅. GET /cases(진행 중 건수만) + GET /tasks/summary + GET /tasks(오래 기다린 것부터 HOME_TASK_COUNT 건 — 디자인의 세 줄).
 //
 // 상담사는 담당 사례 · 업무만, 관리자는 전체 사례 · 모든 상담사의 업무가 온다(Backend 가 거른다).
 // 관리자도 업무를 자기 것으로 좁히지 않는다(counselor_id) — 사례 목록에는 담당자로 거르는 조건이 없어,
@@ -17,7 +17,7 @@ import { sessionStep, type SessionStep } from "./sessionRows";
 import { useRemote } from "./useRemote";
 
 /** 홈에 줄로 보이는 업무 수. 나머지는 건수만 보인다. */
-export const HOME_TASK_COUNT = 5;
+export const HOME_TASK_COUNT = 3;
 
 export interface HomeTask extends TaskRow {
   /** 회차 처리 단계. 이어서 할 화면을 고르는 데 쓴다. */
