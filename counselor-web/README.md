@@ -2,7 +2,7 @@
 
 아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
-**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 설정 · 관리자 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
+**로그인 · 홈 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력 · 문서함) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 설정 · 관리자 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
 
 ## 실행
 
@@ -29,8 +29,10 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 화면 | 훅 · 변환 | 하는 일 |
 | --- | --- | --- |
 | 로그인 | `useAuthSession` · `useLogin` · `useLogoutNotice` | 로그인 상태(401 · 임시 비밀번호 · 다른 탭), 로그인, 로그아웃 이유 |
+| 홈 | `useHomeDashboard` | 진행 중 사례 수, 미처리 업무(종류별 수 · 지연 · 오래 기다린 5건). 관리자는 전체 사례 · 모든 상담사의 업무 |
 | 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색 |
 | 사례 상세 · 상담 이력 | `useCaseDetail` · `sessionRows` | 사례 정보와 회차 목록. 처리 중인 회차가 있으면 끝날 때까지 다시 조회 |
+| 사례 문서함 | `useCaseDocuments` | 사례의 회차마다 회차 상세(녹음 · 원문 상태) + 문서 목록을 모음(한 번에 4회차씩). 사례 단위 문서 API 는 없음 |
 | 회차 상세 | `useSessionDetail` | 회차 진행 단계 · 실패 문구 · 음성 파일 정보, 지금 할 수 있는 요청 |
 | 녹음 업로드 | `useAudioUpload` · `audioFile` | (새 회차) → 음성 올리기 → 원문 변환 요청 → 끝날 때까지 기다리기. 실패하면 그 단계부터 다시(새 회차를 또 만들지 않음) |
 | 원문(STT) 검수 | `useTranscriptReview` · `transcriptRows` | 발화 줄 · 저신뢰 · 화자 미확인, 고친 칸만 저장, 확정, 다시 변환 |
@@ -91,9 +93,11 @@ export default function CaseDetail(props) {
 
 | 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
 | --- | --- | --- | --- | --- |
+| 홈 | `Main.jsx` | — | `useAuthSession` · `useHomeDashboard` | `main.ts` `mainValues` |
 | 통합 사례 관리 | `CaseList.jsx` | — | `useAuthSession` · `useCaseList` | `caseList.ts` `caseListValues` |
 | 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseDetailValues` |
 | 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
+| 사례 상세 · 문서함 | `CaseDocs.jsx` | `case` | `useCaseDetail` · `useCaseDocuments` | `caseDocs.ts` `caseDocsValues` |
 | 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
 | 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
 | 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
@@ -106,6 +110,8 @@ export default function CaseDetail(props) {
 - 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중입니다. 위험 신호 검토 화면은 AI 분석 상태와 AI 안내만 보입니다.
 - 요약 승인은 회차를 잠그므로 '요약 승인' 단추를 따로 두고 한 번 더 묻습니다. '저장 · 추가 확인 · 질문 →' 은 저장만 합니다.
 - 관리자 화면: 디자인은 대시보드 한 장이라 왼쪽 메뉴의 업무 처리 현황 · 상담사 계정 관리 · 접속 기록은 같은 화면의 다른 보기(`?view=`)로 두고 디자인의 카드 · 표 · 칩을 그대로 씁니다. 상담원 계정이면 훅이 서버를 부르지 않고 안내만 보입니다. 대시보드 업무 탭은 Backend 가 종류를 하나만 거를 수 있어 두 종류씩 불러 오래 기다린 순서로 합칩니다(원문 변환 · 상담사 검토 · AI 분석). 계정 만들기 · 비밀번호 초기화 · 휴면 해제의 임시 비밀번호는 화면 상태에만 한 번 두고 '닫기' 로 버립니다(다른 관리자로 바뀌면 보이지 않음). 비밀번호 초기화 · 휴면 해제 · 비활성화 · 강제 로그아웃은 한 번 더 묻습니다. 미배정 사례 · 문서 승인 · 보안 경고 · 재처리 요청은 서버에 없어 `—` · 준비 중입니다.
+- 홈: 미처리 업무는 회차 처리 대기(`/tasks` 7종)만 셉니다. 줄을 누르면 그 회차에서 이어서 할 화면(녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성)으로 갑니다. 오래 기다린 업무는 '지연'(위험 신호가 아니라 '긴급' 이라고 쓰지 않음)입니다. 관리자는 사례 목록을 담당자로 거를 수 없어 두 숫자 모두 전체(라벨에 '전체')로 둡니다. 오늘 일정 · 다음 상담까지 남은 시간 · 아이 앱 긴급 응답은 서버에 없어 `—` · 준비 중이고, 시계 · 빠른 실행(편집은 저장하지 않음)은 화면 상태입니다.
+- 문서함: 회차마다 녹음(파일 이름 · 올린 날) · STT 원문(변환 상태 · 검수 필요/완료 · 버전) · 문서(상담일지 작성 중/승인)를 한 줄씩 보입니다. 녹음은 회차 상세, 원문은 STT 검수, 상담일지는 요약 · 일지 작성 화면으로 갑니다. 기관 서식 6종의 작성 기록 · 상담 전 브리핑 · 외부 문서(PDF · HWPX) 올리기는 서버에 없어 준비 중입니다('자료 올리기' 는 녹음 올리기 창).
 - 설정 화면: 이름 · 이메일 · 역할 · 계정 만든 날은 내 정보에서, 비밀번호는 현재 비밀번호를 넣고 바꿉니다(바꾸면 로그아웃 → 로그인 화면). 이름 · 이메일 바꾸기, 소속 기관, 마지막 비밀번호 변경일, 알림 설정은 서버에 없어 `—` · 준비 중입니다.
 - 상담일지는 Backend 에서 제목 · 본문 텍스트 하나입니다. 화면의 칸(아동 진술 · 대상자 태도 · 물리적 환경 · 아동 특성 · 가정상황 · 위험 신호 검토 결과 · 상담원 소견)은 `[칸 이름]` 머리줄로 나눠 본문에 담습니다(`noteWrite.ts` 의 `formatNote` · `parseNote`). 기관 양식 구조가 정해지기 전의 임시 형식입니다.
 
