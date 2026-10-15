@@ -253,6 +253,8 @@ export interface CaseCreateRequest {
    * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만, API_CONTRACT 4절).
    */
   counselor_id?: string;
+  /** 개별사건번호. 빼면 Backend 가 C-YYYY-NNNN 으로 만든다. 1~50자, 이미 있는 번호면 409 DUPLICATE_RESOURCE. */
+  case_number?: string;
 }
 
 /**

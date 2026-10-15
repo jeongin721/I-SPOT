@@ -119,3 +119,12 @@
 .pg-CaseRegister .thm-root.dark .sec {
   background: #393731 !important;
 }
+/* 준비 중(서버에 저장 칸이 없음)이라 막아 둔 칸. 라벨의 '준비 중' 과 함께 흐리게 보인다. */
+.pg-CaseRegister .inp:disabled,
+.pg-CaseRegister .ta2:disabled,
+.pg-CaseRegister .pk:disabled,
+.pg-CaseRegister fieldset:disabled input,
+.pg-CaseRegister fieldset:disabled .btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
