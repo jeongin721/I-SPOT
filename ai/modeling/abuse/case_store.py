@@ -607,6 +607,11 @@ def get_case_sessions_detail(
                 "status": session.get("status"),
                 "followup_check_points": followup_check_points,
                 "subtype_counts": subtype_counts,
+                "counseling_summary": session.get(
+                    "final_counseling_summary"
+                )
+                or session.get("ai_counseling_summary")
+                or "",
             }
         )
 
