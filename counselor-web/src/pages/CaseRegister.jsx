@@ -1,142 +1,86 @@
 // 새 사례 등록 (팝업 · 서식 4 초기면접지)
-// 원본: 다솔 님 디자인 counselor-web-design/CaseRegister.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 원본: 다솔 님 디자인 counselor-web-design/CaseRegister.dc.html (front_new 브랜치)
+//
+// 서버 연결: '등록' 은 useCaseRegister(POST /cases)로 서버가 받는 칸만 저장하고 새 사례 상세(?case=새 ID)로 간다.
+// 화면에 쓸 값은 src/data/screens/caseRegister.ts(caseRegisterValues)가 만든다. 담당 상담원은 관리자만 고른다.
+// 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 초기면접 내용은 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
 import ThemeToggle from '../components/ThemeToggle';
+import { useAuthSession } from '../data/useAuthSession';
+import { useCaseRegister } from '../data/useCaseRegister';
+import { caseRegisterValues, initialRegisterState } from '../data/screens/caseRegister';
+import { needsLogin, screenNotice } from '../data/screens/common';
+import { useScreenGo } from '../data/screens/useScreenGo';
 import { useTheme } from '../theme';
 import './CaseRegister.css';
 
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { tab: 'A', ty: {}, hm: {}, tr: {}, fam: '', rows: 2 };
+    this.state = initialRegisterState();
   }
   renderVals() {
-    const s = this.state;
-    const on = (v) => ({
-      bg: v ? '#F1EADA' : '#FFFFFF',
-      bd: v ? '#2B2A26' : '#DAD5C9',
-      fg: v ? '#2B2A26' : '#2B2A26',
-      fw: v ? 700 : 400,
-      mark: v ? '✓' : '+',
-    });
-    const multi = (list, key) =>
-      list.map((label) => {
-        const v = !!s[key][label];
-        return { label, ...on(v), toggle: () => this.setState({ [key]: { ...s[key], [label]: !v } }) };
-      });
-    const TY = ['방임', '신체학대', '정서학대', '성학대'];
-    const HM = [
-      '성격 및 기질 문제',
-      '어릴적 학대경험',
-      '알콜남용',
-      '약물남용',
-      '신체질환 및 장애',
-      '정신질환 및 장애',
-      '원치않은 아동',
-      '부적절한 양육태도',
-      '양육지식 및 기술부족',
-      '부부 및 가족갈등',
-      '성문제',
-      '스트레스',
-      '사회적 고립',
-      '경제적 어려움',
-      '배우자폭력',
-      '존속학대',
-      '전과력',
-      '종교문제',
-      '도박 · 게임중독',
-      '특성없음',
-      '기타',
-    ];
-    const FAM = [
-      '일반가정',
-      '부자가정',
-      '모자가정',
-      '미혼부 · 모 가정',
-      '친부+계모',
-      '친모+계부',
-      '친인척보호',
-      '친부+동거녀',
-      '친모+동거남',
-      '가정위탁',
-      '입양가정',
-      '시설보호',
-      '기타',
-    ];
-    const TR = [
-      '거짓말',
-      '반항 · 충동 · 공격성',
-      '도벽',
-      '가출',
-      '약물',
-      '흡연',
-      '음주',
-      '인터넷(게임)중독',
-      '성문제',
-      '주의산만',
-      '과잉행동',
-      '늦은귀가',
-      '불건전한 또래관계',
-      '대인관계 기피',
-      '학교부적응',
-      '잦은결석',
-      '학교폭력 가해자',
-      '학교폭력 피해자',
-      '불안',
-      '애착문제',
-      '무력감',
-      '우울',
-      '낮은자존감',
-      '신체발달지연',
-      '언어문제',
-      '학습문제',
-      '대소변문제',
-      '성격 및 기질문제',
-      '위생문제',
-      '틱',
-      '급(만)성질병',
-      '영양결핍',
-      '탐식 및 결식',
-      '특성없음',
-      '기타',
-    ];
-    const fams = FAM.map((label) => ({
-      label,
-      ...on(s.fam === label),
-      pick: () => this.setState({ fam: s.fam === label ? '' : label }),
-    }));
-    const tabs = [
-      ['A', '① 기본 정보 (필수)'],
-      ['B', '② 초기면접 내용'],
-    ].map(([k, label]) => ({
-      label,
-      sel: s.tab === k ? 'true' : 'false',
-      bd: s.tab === k ? '#C2A36B' : 'transparent',
-      fg: s.tab === k ? '#2B2A26' : '#66625A',
-      fw: s.tab === k ? 700 : 400,
-      go: () => this.setState({ tab: k }),
-    }));
-    return {
-      tabs,
-      isA: s.tab === 'A',
-      isB: s.tab === 'B',
-      types: multi(TY, 'ty'),
-      homes: multi(HM, 'hm'),
-      traits: multi(TR, 'tr'),
-      fams,
-      famRows: Array.from({ length: s.rows }, (_, i) => i),
-      addRow: () => this.setState({ rows: s.rows + 1 }),
-      midLabel: s.tab === 'A' ? '초기면접 내용 →' : '← 기본 정보',
-      goB: () => this.setState({ tab: s.tab === 'A' ? 'B' : 'A' }),
-    };
+    return caseRegisterValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
 
+const NO_IDS = { caseId: null, sessionId: null };
+
 export default function CaseRegister(props) {
+  const session = useAuthSession();
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  // 로그인 확인 중 · 확인 실패면 입력칸 없이 안내만 보인다. 다른 탭에서 다른 계정으로 로그인하면 이 단계를 거치므로
+  // 앞 계정이 쓰던 초안은 사라진다. key 로 계정마다 새로 만들어, 초안 · 늦은 응답이 다른 계정에 남지 않게 한다.
+  if (session.status !== 'signedIn' || !session.me) return <CaseRegisterWaiting session={session} />;
+  return <CaseRegisterForm key={session.me.id} {...props} session={session} />;
+}
+
+function CaseRegisterWaiting({ session }) {
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  return (
+    <div className="pg-CaseRegister">
+      <div
+        className={theme.cls}
+        style={{
+          minHeight: '100vh',
+          background: 'rgba(47,58,68,0.40)',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
+          fontSize: '14px',
+          lineHeight: '1.6',
+          color: '#2B2A26',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          padding: '48px 16px',
+        }}
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reg-title"
+          style={{ width: '100%', maxWidth: '860px', background: '#FFFFFF', borderRadius: '24px', padding: '24px 30px' }}
+        >
+          <h1 id="reg-title" style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>
+            새 사례 등록
+          </h1>
+          <Notice value={screenNotice({ session })} style={{ marginTop: '12px' }} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function CaseRegisterForm(props) {
+  const { session } = props;
+  const register = useCaseRegister(session);
+  const go = useScreenGo(useNavigate(), NO_IDS);
+  const theme = useTheme();
+  const v = useDC(Logic, { ...props, session, register, go });
   return (
     <div className="pg-CaseRegister">
       <div
@@ -215,83 +159,130 @@ export default function CaseRegister(props) {
             ))}
           </div>
 
-          <form style={{ padding: '22px 30px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <form
+            onSubmit={v.submit}
+            style={{ padding: '22px 30px', display: 'flex', flexDirection: 'column', gap: '18px' }}
+          >
+            <Notice value={v.notice} />
+            <p className="note" style={{ margin: 0 }}>
+              {v.savedNote}
+            </p>
             {v.isA ? (
               <>
+                <label className="fl">
+                  <span className="lb">
+                    사례 제목 <span className="req">*</span>
+                  </span>
+                  <input
+                    className="inp"
+                    type="text"
+                    required
+                    maxLength={v.title.max}
+                    placeholder="예: 2026 상반기 신고 사례 (실명 · 주소는 넣지 마세요)"
+                    value={v.title.value}
+                    onChange={v.title.onChange}
+                  />
+                </label>
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">
-                      신고접수일 <span className="req">*</span>
+                      신고접수일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                     </span>
-                    <input className="inp" type="date" defaultValue="2026-10-12" />
+                    <input className="inp" type="date" disabled />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      사례연계일 <span className="req">*</span>
+                      사례연계일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                     </span>
-                    <input className="inp" type="date" defaultValue="2026-10-12" />
-                  </label>
-                  <label className="fl">
-                    <span className="lb">최초면접일</span>
-                    <input className="inp" type="date" />
+                    <input className="inp" type="date" disabled />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      개별사건번호 <span className="req">*</span>
+                      최초면접일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                     </span>
-                    <input className="inp" type="text" defaultValue="C-2026-0352" />
+                    <input className="inp" type="date" disabled />
+                  </label>
+                  <label className="fl">
+                    <span className="lb">개별사건번호</span>
+                    <input
+                      className="inp"
+                      type="text"
+                      maxLength={v.caseNumber.max}
+                      placeholder="비우면 자동 (C-2026-0001 형식)"
+                      value={v.caseNumber.value}
+                      onChange={v.caseNumber.onChange}
+                    />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      대상아동 이름 <span className="req">*</span>
+                      아동 별칭 <span className="req">*</span>
                     </span>
-                    <input className="inp" type="text" placeholder="이름" />
+                    <input
+                      className="inp"
+                      type="text"
+                      required
+                      maxLength={v.alias.max}
+                      placeholder="실명 대신 부를 이름"
+                      value={v.alias.value}
+                      onChange={v.alias.onChange}
+                    />
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      성별 <span className="req">*</span>
-                    </span>
-                    <select className="inp">
-                      <option>선택</option>
-                      <option>여</option>
-                      <option>남</option>
+                    <span className="lb">성별</span>
+                    <select className="inp" value={v.gender.value} onChange={v.gender.onChange}>
+                      <option value="">선택</option>
+                      <option value="여">여</option>
+                      <option value="남">남</option>
                     </select>
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      생년월일 (나이) <span className="req">*</span>
-                    </span>
-                    <input className="inp" type="date" />
+                    <span className="lb">출생연도 (생일은 저장하지 않음)</span>
+                    <input
+                      className="inp"
+                      type="number"
+                      inputMode="numeric"
+                      min="1900"
+                      max={v.birthYear.max}
+                      placeholder="예: 2015"
+                      value={v.birthYear.value}
+                      onChange={v.birthYear.onChange}
+                    />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      사례관리대상자 <span className="req">*</span>
+                      사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                     </span>
-                    <input className="inp" type="text" placeholder="이름" />
+                    <input className="inp" type="text" disabled />
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      관계 <span className="req">*</span>
-                    </span>
-                    <select className="inp">
-                      <option>선택</option>
-                      <option>친부</option>
-                      <option>친모</option>
-                      <option>계부</option>
-                      <option>계모</option>
-                      <option>조부모</option>
-                      <option>친인척</option>
-                      <option>기타</option>
+                    <span className="lb">보호자 유형</span>
+                    <select className="inp" value={v.guardianType.value} onChange={v.guardianType.onChange}>
+                      <option value="">선택</option>
+                      {(v.guardianOptions || []).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
+                  {v.showGuardianNote ? (
+                    <label className="fl">
+                      <span className="lb">보호자 관계 메모 (실명 제외)</span>
+                      <input
+                        className="inp"
+                        type="text"
+                        maxLength={v.guardianNote.max}
+                        placeholder="예: 이모"
+                        value={v.guardianNote.value}
+                        onChange={v.guardianNote.onChange}
+                      />
+                    </label>
+                  ) : null}
                 </div>
 
                 <div className="fl">
                   <span className="lb">
-                    학대유형 <span className="req">*</span>{' '}
-                    <span className="note" style={{ fontWeight: '400' }}>
-                      복수 선택
-                    </span>
+                    학대유형 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                   </span>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {(v.types || []).map((o, oIndex) => (
@@ -299,7 +290,7 @@ export default function CaseRegister(props) {
                         <button
                           type="button"
                           className="pk"
-                          onClick={o.toggle}
+                          disabled
                           style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                         >
                           {o.mark} {o.label}
@@ -312,9 +303,9 @@ export default function CaseRegister(props) {
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">
-                      조치결과 · 피해아동 <span className="req">*</span>
+                      조치결과 · 피해아동 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                     </span>
-                    <select className="inp">
+                    <select className="inp" disabled>
                       <option>원가정보호</option>
                       <option>친인척보호</option>
                       <option>연고자에 의한 보호</option>
@@ -326,9 +317,9 @@ export default function CaseRegister(props) {
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      조치결과 · 사례관리대상자 <span className="req">*</span>
+                      조치결과 · 사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                     </span>
-                    <select className="inp">
+                    <select className="inp" disabled>
                       <option>지속관찰</option>
                       <option>아동과의 분리</option>
                       <option>고소 · 고발</option>
@@ -336,16 +327,44 @@ export default function CaseRegister(props) {
                     </select>
                   </label>
                   <label className="fl">
-                    <span className="lb">면접대상자 / 관계</span>
-                    <input className="inp" type="text" placeholder="예: 이서윤 / 피해아동" />
+                    <span className="lb">
+                      면접대상자 / 관계 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                    </span>
+                    <input className="inp" type="text" disabled />
                   </label>
                   <label className="fl">
                     <span className="lb">담당 상담원</span>
-                    <input className="inp" type="text" defaultValue="이서연" />
+                    {v.isAdmin ? (
+                      <select className="inp" value={v.counselor.value} onChange={v.counselor.onChange}>
+                        <option value="">본인</option>
+                        {(v.counselorOptions || []).map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input className="inp" type="text" readOnly value={v.meName} />
+                    )}
+                    {v.counselorNote ? (
+                      <span className="note">
+                        {v.counselorNote}
+                        {v.counselorRetry ? (
+                          <>
+                            {' '}
+                            <button type="button" className="btn btn-s btn-sm" onClick={v.counselorRetry}>
+                              다시 시도
+                            </button>
+                          </>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </label>
                   <label className="fl">
-                    <span className="lb">위험도 (우선)</span>
-                    <select className="inp">
+                    <span className="lb">
+                      위험도 (우선) {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                    </span>
+                    <select className="inp" disabled>
                       <option>선택</option>
                       <option>상</option>
                       <option>중</option>
@@ -355,15 +374,39 @@ export default function CaseRegister(props) {
                 </div>
                 <label className="fl">
                   <span className="lb">
-                    사례연계 경위 <span className="req">*</span>
+                    사례연계 경위 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                   </span>
-                  <textarea className="ta2" placeholder="신고 경위 · 신고자 유형 · 연계 내용"></textarea>
+                  <textarea className="ta2" disabled></textarea>
+                </label>
+                <label className="fl">
+                  <span className="lb">사례 메모</span>
+                  <textarea
+                    className="ta2"
+                    maxLength={v.notes.max}
+                    placeholder="실명 · 연락처 · 주소 등 개인정보는 적지 마세요"
+                    value={v.notes.value}
+                    onChange={v.notes.onChange}
+                  ></textarea>
                 </label>
               </>
             ) : null}
 
             {v.isB ? (
-              <>
+              <fieldset
+                disabled
+                style={{
+                  border: '0',
+                  margin: '0',
+                  padding: '0',
+                  minWidth: '0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '18px',
+                }}
+              >
+                <p className="note" role="status" style={{ margin: 0 }}>
+                  {v.tabNote}
+                </p>
                 <div className="sec">
                   가정상황{' '}
                   <span className="note" style={{ fontWeight: '400' }}>
@@ -376,7 +419,6 @@ export default function CaseRegister(props) {
                       <button
                         type="button"
                         className="pk"
-                        onClick={o.toggle}
                         style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                       >
                         {o.mark} {o.label}
@@ -396,7 +438,6 @@ export default function CaseRegister(props) {
                       <button
                         type="button"
                         className="pk"
-                        onClick={o.pick}
                         style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                       >
                         {o.label}
@@ -454,7 +495,6 @@ export default function CaseRegister(props) {
                   type="button"
                   className="btn btn-sm btn-s"
                   style={{ alignSelf: 'flex-start' }}
-                  onClick={v.addRow}
                 >
                   + 가족 추가
                 </button>
@@ -471,7 +511,6 @@ export default function CaseRegister(props) {
                       <button
                         type="button"
                         className="pk"
-                        onClick={o.toggle}
                         style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                       >
                         {o.mark} {o.label}
@@ -529,9 +568,10 @@ export default function CaseRegister(props) {
                   <span className="lb">상담원 소견 및 향후 계획</span>
                   <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
                 </label>
-              </>
+              </fieldset>
             ) : null}
 
+            <Notice value={v.formError} />
             <div
               style={{
                 display: 'flex',
@@ -549,9 +589,9 @@ export default function CaseRegister(props) {
               <button type="button" className="btn btn-s" onClick={v.goB}>
                 {v.midLabel}
               </button>
-              <A className="btn btn-p" to="/CaseDetail">
-                등록
-              </A>
+              <button type="submit" className="btn btn-p" disabled={v.submitting}>
+                {v.submitLabel}
+              </button>
             </div>
           </form>
         </section>
