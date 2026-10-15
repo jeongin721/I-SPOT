@@ -45,6 +45,10 @@ export function useCaseList({ search = "", status, page = 1, enabled = true }: C
 
   useEffect(() => {
     if (!enabled) {
+      // 로그아웃 · 다른 계정으로 바뀌는 중이면 앞 계정의 목록을 버린다(다시 켜질 때 앞 목록이 보이지 않게).
+      setRows([]);
+      setTotal(null);
+      setError(null);
       setLoading(false);
       return;
     }
