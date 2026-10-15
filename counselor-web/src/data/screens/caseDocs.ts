@@ -8,6 +8,7 @@
 import { NOT_PROVIDED } from "../caseRows";
 import type { CaseDocumentsState, SessionDocs } from "../useCaseDocuments";
 import type { CaseDetailState } from "../useCaseDetail";
+import { findConsultationRecord } from "../useSessionDocuments";
 import type { AuthSession } from "../useAuthSession";
 import { caseHeaderValues } from "./caseDetail";
 import { NOT_READY, notice } from "./common";
@@ -40,14 +41,20 @@ export interface DocRow {
   date: string;
   st: string;
   stCls: string;
-  href: string;
+  /** 누르면 갈 화면. 열 화면이 없으면 null(go 를 글자로만 보인다). */
+  href: string | null;
   go: string;
   filter: DocsFilter;
 }
 
 const dateOf = (dateTime: string) => (dateTime ? dateTime.slice(0, 10) : NOT_PROVIDED);
 
-/** 회차 하나의 줄: 녹음 → 원문(STT) → 문서(만든 순서). */
+/**
+ * 회차 하나의 줄: 녹음 → 원문(STT) → 문서(만든 순서).
+ * 요약 · 일지 작성 화면(NoteWrite)은 회차의 가장 최근 상담일지 하나만 연다(useSessionDocuments.findConsultationRecord).
+ * 그래서 그 문서 줄만 그 화면으로 보내고, 이전 상담일지 · 다른 유형 문서는 열 화면이 없어 준비 중으로 둔다
+ * (다른 문서를 누르고 최신 일지가 열리지 않게).
+ */
 export function sessionDocRows({ session, documents }: SessionDocs): DocRow[] {
   const ids = { caseId: session.caseId, sessionId: session.id };
   const ses = session.numberLabel;
@@ -103,7 +110,10 @@ export function sessionDocRows({ session, documents }: SessionDocs): DocRow[] {
     });
   }
 
+  const openable = findConsultationRecord(documents);
+
   for (const document of documents) {
+    const opens = openable !== null && document.id === openable.id;
     rows.push({
       name: document.title,
       kind: document.docTypeLabel,
@@ -111,8 +121,8 @@ export function sessionDocRows({ session, documents }: SessionDocs): DocRow[] {
       date: dateOf(document.approvedAt || document.updatedAt),
       st: document.statusLabel,
       stCls: document.editable ? "chip c-check" : "chip c-ok",
-      href: screenHref("/NoteWrite", ids),
-      go: "열기",
+      href: opens ? screenHref("/NoteWrite", ids) : null,
+      go: opens ? "열기" : `열기 ${NOT_READY}`,
       filter: "note",
     });
   }

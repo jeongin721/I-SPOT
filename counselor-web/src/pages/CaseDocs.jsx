@@ -183,7 +183,7 @@ export default function CaseDocs(props) {
                         <span className={r.stCls}>{r.st}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <A to={r.href}>{r.go}</A>
+                        {r.href ? <A to={r.href}>{r.go}</A> : <span className="note">{r.go}</span>}
                       </td>
                     </tr>
                   </Fragment>
