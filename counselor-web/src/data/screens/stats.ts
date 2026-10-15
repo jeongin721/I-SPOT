@@ -55,7 +55,8 @@ export function initialStatsState(today: string = localToday()): StatsUiState {
 }
 
 interface Bar {
-  v: number;
+  /** 칸의 건수. 아직 못 불러왔거나 불러오지 못했으면 NOT_PROVIDED. */
+  v: number | string;
   h: string;
   label: string;
   tip: string;
@@ -135,6 +136,17 @@ export function statsValues(input: StatsInput) {
   const sessionTrend = trendBars(consulted.filter(inRange), a, b, "상담 회차");
 
   const loaded = overview.data !== null;
+  // 아직 못 불러왔거나 불러오지 못했으면 칸 이름만 두고 값은 '—' 로 둔다(조회한 결과 0건과 구별되게).
+  const unloadedText = overview.error ? "사례 정보를 불러오지 못해 추이를 보일 수 없습니다." : "불러오는 중…";
+  const trendValues = (bars: Bar[], unit: string) =>
+    loaded
+      ? { bars, aria: bars.map((t) => `${t.label} ${t.v}${unit}`).join(", ") }
+      : {
+          bars: bars.map((t) => ({ ...t, v: NOT_PROVIDED, h: "0px", tip: `${t.tip.split(" · ")[0]} · ${unloadedText}` })),
+          aria: unloadedText,
+        };
+  const caseTrendView = trendValues(caseTrend.bars, "건");
+  const sessionTrendView = trendValues(sessionTrend.bars, "회");
   const num = (value: number, unit: string) => (loaded ? `${value}${unit}` : NOT_PROVIDED);
   const scope = overview.wholeOrg ? "기관 전체 사례" : "담당 사례";
   const kpis = [
@@ -239,10 +251,10 @@ export function statsValues(input: StatsInput) {
     kpis,
     pendingKpis,
     binLabel: caseTrend.weekly ? "주별" : "월별",
-    caseTrend: caseTrend.bars,
-    caseTrendAria: caseTrend.bars.map((t) => `${t.label} ${t.v}건`).join(", "),
-    sessionTrend: sessionTrend.bars,
-    sessionTrendAria: sessionTrend.bars.map((t) => `${t.label} ${t.v}회`).join(", "),
+    caseTrend: caseTrendView.bars,
+    caseTrendAria: caseTrendView.aria,
+    sessionTrend: sessionTrendView.bars,
+    sessionTrendAria: sessionTrendView.aria,
     caseTrendNote: "사례를 이 시스템에 등록한 날 기준입니다(신고접수일이 아닙니다).",
     sessionTrendNote: "회차에 넣은 상담 일시 기준입니다.",
     notReadyNote: `${NOT_READY}입니다(원천 데이터와 지표 정의가 팀 결정 전).`,

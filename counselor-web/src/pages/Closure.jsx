@@ -3,8 +3,8 @@
 //
 // 서버 연결: 사례 기본정보 · 회차 수는 useCaseOverview(mode 'counts'), 화면에 쓸 값은 src/data/screens/closure.ts(closureValues).
 // 종결 검토 등록 · 진행 단계 · 내역 검토 진행률은 서버에 없어 준비 중. 이 목록은 종결 검토 대상 목록이 아니다
-// (종결 사례를 '검토 대기' 로 쓰지 않는다). 이름을 누르면 사례 상세로 간다.
-import { Fragment, useState } from 'react';
+// (종결 사례를 '검토 대기' 로 쓰지 않는다). 이름을 누르면 사례 상세로 간다. 검색어는 계정에 묶는다(useAccountSearch).
+import { Fragment } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -13,7 +13,7 @@ import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseOverview } from '../data/useCaseOverview';
-import { closureValues } from '../data/screens/closure';
+import { closureValues, useAccountSearch } from '../data/screens/closure';
 import { needsLogin } from '../data/screens/common';
 import { useTheme } from '../theme';
 import './Closure.css';
@@ -27,7 +27,7 @@ class Logic extends DCLogic {
 export default function Closure(props) {
   const session = useAuthSession();
   const overview = useCaseOverview(session, 'counts');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useAccountSearch(session);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, overview, search, setSearch });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
@@ -72,6 +72,7 @@ export default function Closure(props) {
               style={{ flex: '1 1 240px' }}
               value={v.search.value}
               onChange={v.search.onChange}
+              disabled={v.search.disabled}
             />
             <button
               type="button"
