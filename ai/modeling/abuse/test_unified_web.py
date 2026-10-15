@@ -1408,6 +1408,7 @@ def api_analyze_audio(
         # 저장한 뒤 바로 같은 내용으로 승인 처리한다 — 별도 검수 UI가
         # 생기면 그때 draft만 저장하고 승인은 그 UI로 옮기면 된다.
         case_trend = []
+        session_id = None
 
         if case_id:
             session_id = case_store.save_draft_session(
@@ -1459,6 +1460,7 @@ def api_analyze_audio(
                 "followup_check_points": result.get(
                     "followup_check_points", []
                 ),
+                "session_id": session_id,
             }
         )
 
@@ -1527,6 +1529,32 @@ def api_case_sessions(case_id: str):
             )
         }
     )
+
+
+@app.post("/api/sessions/{session_id}/risk-level")
+def api_set_risk_level(
+    session_id: int,
+    level: str = Form(...),
+):
+    """
+    "유형별 위험도" 화면에서 상담원이 상/중/하를 고르면 그대로
+    저장한다(2026-10-15 추가 — 전엔 화면 state에만 있어서 새로고침
+    하면 사라졌다). AI는 이 값을 만들지 않는다 — case_store.
+    set_counselor_risk_level() 그대로 호출만 한다.
+    """
+
+    try:
+        case_store.set_counselor_risk_level(
+            session_id=session_id,
+            level=level,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            {"error": str(exc)},
+            status_code=400,
+        )
+
+    return JSONResponse({"ok": True})
 
 
 # ============================================================

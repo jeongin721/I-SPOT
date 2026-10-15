@@ -88,6 +88,16 @@ def init_db() -> None:
     except sqlite3.OperationalError:
         pass
 
+    # "유형별 위험도" 화면에서 상담원이 직접 고르는 상/중/하 판단.
+    # AI가 매기지 않는다 — 상담원 판단을 그대로 저장만 한다(2026-10-15
+    # 추가, 이전엔 화면 state에만 있다가 새로고침하면 사라졌다).
+    try:
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN counselor_risk_level TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -362,6 +372,43 @@ def approve_session(
     return edit_log
 
 
+_VALID_RISK_LEVELS = {"상", "중", "하", ""}
+
+
+def set_counselor_risk_level(
+    session_id: int,
+    level: str,
+) -> None:
+    """
+    "유형별 위험도" 화면에서 상담원이 고른 상/중/하를 그대로 저장한다.
+    AI가 만드는 값이 아니다 — 상담원이 버튼을 누른 결과만 받아서
+    저장하는 함수라, 여기서 level을 판단하거나 바꾸지 않는다.
+    level=""는 "선택 취소"를 뜻한다.
+    """
+
+    if level not in _VALID_RISK_LEVELS:
+        raise ValueError(
+            f"알 수 없는 위험도 값입니다: {level!r}"
+        )
+
+    conn = _get_connection()
+
+    cursor = conn.execute(
+        "UPDATE sessions SET counselor_risk_level = ? WHERE session_id = ?",
+        (level, session_id),
+    )
+
+    if cursor.rowcount == 0:
+        conn.close()
+
+        raise ValueError(
+            f"세션을 찾을 수 없습니다: {session_id}"
+        )
+
+    conn.commit()
+    conn.close()
+
+
 # ============================================================
 # 5. 조회
 # ============================================================
@@ -611,6 +658,10 @@ def get_case_sessions_detail(
                     "final_counseling_summary"
                 )
                 or session.get("ai_counseling_summary")
+                or "",
+                "counselor_risk_level": session.get(
+                    "counselor_risk_level"
+                )
                 or "",
             }
         )
