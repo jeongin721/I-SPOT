@@ -136,12 +136,22 @@ class Settings(BaseSettings):
     # mock     : Transcript 에서 파생한 합성 요약 반환
     # pipeline : ai/services/analysis_pipeline.run_analysis_pipeline 호출
     # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)
-    AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
+    # modeling : ai/modeling/abuse/contract_adapter.analyze_audio_session_as_contract 호출
+    #            (이경진 파이프라인 — 1차 분류 + 2차 세부유형 + 요약 · 기록 초안).
+    #            Contract 에는 summary 와 위험 3필드만 담는다. 심각도 · 보호요인 · 회차 간 변화 ·
+    #            다음 확인사항은 정식 선택 필드가 생길 때까지 담지 않고, risk_factors 는 빈 배열이다.
+    #            근거 발화가 없는 위험 항목은 저장 전에 뺀다(langgraph 와 같음).
+    AI_PROVIDER: Literal["mock", "pipeline", "langgraph", "modeling"] = "mock"
     AI_TIMEOUT_SECONDS: float = 180.0
     # pipeline 은 상담 원문을 비식별(가리기) 없이 OpenAI 로 보낸다(ai/services/summary_service.py).
     # ENV=production 에서는 이 값이 true 일 때만 pipeline 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_PIPELINE_ALLOW_UNMASKED: bool = False
+    # modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않다(긴 상담 뒷부분은 이름 등이
+    # 가려지지 않고, 체크리스트 프롬프트에 다른 회기의 원문 인용이 섞일 수 있다).
+    # ENV=production 에서는 이 값이 true 일 때만 modeling 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
+    # local/test 에서는 보지 않는다.
+    AI_MODELING_ALLOW_IN_PRODUCTION: bool = False
 
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
     # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
@@ -225,6 +235,28 @@ class Settings(BaseSettings):
             "pipeline 은 상담 원문을 비식별(이름 · 학교 · 주소 가리기) 없이 OpenAI 로 보냅니다. "
             "실제 상담 데이터에는 AI_PROVIDER=mock 을 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 AI_PIPELINE_ALLOW_UNMASKED=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_modeling_in_production(self) -> "Settings":
+        """운영에서 비식별이 아직 불완전한 modeling 으로 서버가 뜨지 않게 한다.
+
+        modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 이름 인식(NER)이 글 앞 512토큰만 봐서 긴 상담 뒷부분의
+        이름 · 기관 · 지역이 가려지지 않고 잔존 검사도 못 잡는다. 체크리스트 프롬프트에는 다른 회기의 원문 인용이
+        가리지 않은 채 들어갈 수 있다(specs ai-analysis-connect-research-1013.md 3-3 ④ ⑥).
+        이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
+        함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).
+        """
+
+        if self.ENV != "production" or self.AI_PROVIDER != "modeling" or self.AI_MODELING_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
+            "modeling 은 상담 내용을 외부(OpenAI)로 보내는데, 그 전에 하는 비식별(이름 · 학교 · 주소 가리기)이 "
+            "아직 완전하지 않습니다 — 긴 상담 뒷부분은 가려지지 않고, 다른 회기의 원문 인용이 섞여 나갈 수 있습니다. "
+            "이 개인정보 문제가 해결되기 전에는 실제 상담 데이터에 AI_PROVIDER=mock 을 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 AI_MODELING_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @property

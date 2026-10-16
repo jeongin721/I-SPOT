@@ -13,6 +13,25 @@ pytest-cache-files-*/
 .env.*
 !.env.example
 
+# 키 · 자격증명 · 참고용 원본 문서 — 절대 올리면 안 됨
+*.pem
+*.key
+I-SPOT 상담사 웹 화면 설계_3.html
+유형별 위험도.pdf
+
+# ai/modeling/abuse 쪽 로컬 산출물 (ai-modeling 브랜치와 동일 규칙)
+ai/modeling/abuse/datasets/
+ai/modeling/abuse/results/
+ai/modeling/abuse/analysis_output/
+ai/modeling/abuse/weight/
+ai/modeling/abuse/audio_uploads_tmp/
+
+# 학습용 원본 데이터 · 참고 PDF (용량 큼, 개인정보 포함 가능) —
+# 저장소 맨 위 data/ 폴더만 가린다. "data/"(앵커 없음)는
+# counselor-web/src/data/ 같은 하위 디렉터리도 전부 가려버린다
+# (2026-10-16 Mingyu 리뷰에서 발견).
+/data/
+
 # Virtual Environment
 .venv/
 venv/

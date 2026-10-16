@@ -4,7 +4,7 @@
 #
 # Frontend 가 LLM Provider 를 직접 호출하지 않게 하고,
 # 팀 B 의 Structured JSON Contract 를 변형 없이 그대로 저장/전달한다.
-# 예외: LangGraph 결과는 근거 발화가 없는 위험 항목을 빼고 저장한다
+# 예외: LangGraph · Modeling 결과는 근거 발화가 없는 위험 항목을 빼고 저장한다
 # (drop_ungrounded_risk_items 참고).
 
 import os
@@ -280,7 +280,91 @@ class PipelineAIAdapter:
 
 
 # =========================================================
-# 근거 없는 위험 항목 제외 (LangGraph 결과의 마지막 관문)
+# Modeling Adapter (ai/modeling/abuse 이경진 파이프라인)
+# =========================================================
+
+class ModelingAIAdapter:
+    """ai/modeling/abuse/contract_adapter.analyze_audio_session_as_contract 을 호출한다.
+
+    PipelineAIAdapter(ai/services/analysis_pipeline)와 같은 자리에
+    꽂히는 또 다른 AI 구현체다 — 두 파트가 별도 branch에서 독립적으로
+    만든 파이프라인이라, 이 adapter를 선택하면 ai/services/ 쪽은
+    아예 호출되지 않는다. 심각도(severity_ratings)/보호요인
+    (protective_factors)/회차 간 변화(session_change_notes)/다음
+    상담 확인사항(followup_check_points)은 AI Output Contract에
+    아직 정식 필드가 없다 — (10/16 리뷰 결정) risk_factors에 임시로
+    욱여넣지 않고, 정식 선택 필드가 생길 때까지 이번 Contract 출력에는
+    담지 않는다. summary는 agent/summary_converter.convert_summary()를
+    그대로 쓴다 — contract_adapter.py 모듈 docstring 참고.
+
+    근거 발화가 없는 위험 항목은 저장 전에 뺀다(drop_ungrounded_risk_items).
+    LangGraphAIAdapter 와 같이 모듈이 돌려준 값이 아니라 어댑터가 받은
+    Transcript 로 대조한다.
+    """
+
+    name = "modeling"
+
+    def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
+        ensure_repo_root_on_path()
+        export_llm_env()
+
+        try:
+            from ai.schemas.analysis import Transcript
+            from ai.modeling.abuse.contract_adapter import (
+                analyze_audio_session_as_contract,
+            )
+        except ImportError as error:
+            raise AIError(
+                f"Modeling Pipeline module 을 import 할 수 없습니다: {error}",
+                ErrorCode.AI_FAILED,
+            ) from error
+
+        try:
+            transcript = Transcript.model_validate(transcript_payload)
+        except ValidationError as error:
+            raise AIError(
+                f"Transcript 가 Modeling Pipeline 입력 형식을 만족하지 않습니다: {error.error_count()}건",
+                ErrorCode.AI_INVALID_OUTPUT,
+            ) from error
+
+        try:
+            (
+                contract_payload,
+                summary_evidence_raw,
+                model_name,
+            ) = analyze_audio_session_as_contract(
+                stt_result=transcript.model_dump(),
+            )
+        except Exception as error:
+            raise map_ai_error(error) from error
+
+        try:
+            result = AIAnalysisResult.model_validate(contract_payload)
+        except ValidationError as error:
+            raise AIError(
+                f"AI 결과가 AI Output Contract 를 만족하지 않습니다: {error.error_count()}건",
+                ErrorCode.AI_INVALID_OUTPUT,
+            ) from error
+
+        result, dropped = drop_ungrounded_risk_items(result, transcript_payload)
+
+        if dropped:
+            logger.warning(
+                "segment 근거가 없는 위험 항목을 제외했습니다. provider=%s count=%s",
+                self.name,
+                dropped,
+            )
+
+        return AIAnalysisBundle(
+            result=result,
+            summary_evidence=_to_summary_evidence(summary_evidence_raw),
+            provider=self.name,
+            model=model_name,
+        )
+
+
+# =========================================================
+# 근거 없는 위험 항목 제외 (LangGraph · Modeling 결과의 마지막 관문)
 # =========================================================
 
 _RISK_FIELDS = ("risk_utterances", "abuse_signals", "risk_factors")
@@ -511,6 +595,9 @@ def get_ai_adapter() -> AIAdapter:
     if settings.AI_PROVIDER == "pipeline":
         return PipelineAIAdapter()
 
+    if settings.AI_PROVIDER == "modeling":
+        return ModelingAIAdapter()
+
     return MockAIAdapter()
 
 
@@ -520,6 +607,7 @@ __all__ = [
     "AIError",
     "LangGraphAIAdapter",
     "MockAIAdapter",
+    "ModelingAIAdapter",
     "PipelineAIAdapter",
     "drop_ungrounded_risk_items",
     "export_llm_env",

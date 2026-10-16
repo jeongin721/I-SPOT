@@ -875,7 +875,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 ```
 
 - `result` 는 **AI 담당의 Structured JSON Contract 원본**이다. Backend 가 변형하지 않는다.
-  - 예외: `AI_PROVIDER=langgraph` 결과는 저장 전에 **근거 발화가 없는 위험 항목을 뺀다**
+  - 예외: `AI_PROVIDER=langgraph` · `modeling` 결과는 저장 전에 **근거 발화가 없는 위험 항목을 뺀다**
     (`05_RULES.md` §1 "근거(`segment_id`) 없는 위험 신호 생성" 금지).
     `risk_utterances` / `abuse_signals` / `risk_factors` 의 각 항목 중 `segment_id` · `segment_ids` 가
     비었거나 Transcript 에 없는 번호를 하나라도 가리키면 제외하고,
@@ -884,8 +884,9 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `result.schema_version` 은 AI Output Contract 버전이다(지금 `"1.0"`). 성공한 분석의 `analysis.schema_version` 과 같다.
 - `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는
   `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 항목 구조(키 목록)를 검증하지 않는다.
-  다만 `langgraph` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
+  다만 `langgraph` · `modeling` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
   Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
+  `modeling` 은 `risk_utterances` · `abuse_signals` 를 채우지만 항목 구조는 위 합의 전이다(`risk_factors` 는 빈 배열).
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
 
@@ -893,7 +894,7 @@ AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR
 
 AI 쪽에서 알 수 없는 예외가 나면 `error.message` 에는 고정 문구와 예외 종류 이름만 담는다
 (예: `"AI 분석에 실패했습니다: RuntimeError"`). 예외 문구에 상담 발화가 섞일 수 있어서다.
-자세한 내용은 서버 로그에 `session_id` 와 함께 남는다. `pipeline` · `langgraph` 모두 같다.
+자세한 내용은 서버 로그에 `session_id` 와 함께 남는다. `pipeline` · `langgraph` · `modeling` 모두 같다.
 
 > **표현 주의**: AI 결과는 판정이 아니다. "AI 분석 참고정보", "관련 신호",
 > "추가 확인 필요", "근거 발화", "상담사 검토 필요" 로 표기하고

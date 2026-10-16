@@ -1,0 +1,140 @@
+"""
+2차 세부유형 분석/상담요약/체크리스트/note 보완체크 + 오프라인 데이터
+검수 도구가 쓸 LLM 백엔드를 선택한다.
+
+2026-10-02부터 실제 서비스 경로(infer_abuse_pipeline.py의 analyze_abuse/
+analyze_session, infer_audio_session.py의 analyze_audio_session)와
+합성 데이터(AI-Hub) 검수 도구(review_modelB_labels.py,
+eval_modelA_qa_llm_verify.py)까지 전부 외부 OpenAI로 나간다 — 설계
+문서가 MVP 아키텍처를 "GPT + Cloud, 비식별 최소정보만 외부 전송"으로
+못박고 "Ollama GPU 서빙·온프레미스"는 MVP 범위에서 뺀다고 정했기
+때문이다(로컬 LLM은 나중 "외부 전송 제한 기관" 단계에서만 다시 쓴다).
+build_openai_client_and_model() 하나로 통일했고, 외부로 나가는 모든
+호출은 그 직전에 privacy_gateway.mask_for_outbound()(차단형 검증)를
+거친다 — mask_pii()의 최선형 마스킹만으로는 부족하다. 검수 도구가 다루는
+AI-Hub 데이터는 실제 개인정보가 없지만, 예외를 따로 두지 않고 똑같이
+mask_for_outbound()를 적용한다.
+
+make_note_multitype_v1.py(합성 학습 데이터 "생성" 스크립트, 검수와 달리
+수천 건 단위 대량 생성이라 OpenAI로 바꾸면 비용이 커질 수 있다)만은
+build_llm_client_and_model()(LLM_BACKEND 환경변수 토글, 기본값 ollama)을
+그대로 쓴다 — 이 스크립트의 기본값을 OpenAI로 바꿀지는 비용 규모를 먼저
+가늠해보고 별도로 결정한다.
+
+Ollama는 http://localhost:11434/v1 에서 OpenAI 호환 API를 그대로
+제공하므로, openai 파이썬 SDK의 base_url만 바꾸면 된다.
+
+make_note_multitype_v1.py가 LLM_BACKEND=ollama일 때 쓰는 로컬 모델 선택
+근거(실 서비스·검수 도구에는 더 이상 적용 안 됨):
+- 1차: qwen2.5:14b-instruct / exaone3.5:7.8b / qwen2.5:32b 세 모델을
+  실사례 2건으로 비교 — 정확도는 동일, qwen2.5:14b-instruct가 가장
+  빨라(81.8s/55.3s) 기본값으로 선택.
+- 2차: qwen3:14b(신세대)와 qwen3.5:27b를 다시 비교. qwen3 계열은
+  기본적으로 "thinking" 모드가 켜져 있어 실제 2차 프롬프트 기준 172초까지
+  걸렸는데(qwen2.5:14b-instruct 대비 3~8배), _call_llm_with_retry가
+  Ollama에만 보내는 think:false로 끄니 qwen3:14b는 66~68초로
+  qwen2.5:14b-instruct와 비슷한 속도가 나오면서 품질(정확 인용, 근거
+  검증 통과)도 좋았다. qwen3.5:27b는 27B 밀집 모델이라 think:false를
+  켜도 V100 메모리 대역폭에 불리하게 걸려 단일 호출에 7분 넘게 걸려서
+  제외했다. 그래서 qwen3:14b를 새 기본값으로 채택했다.
+
+환경변수:
+    LLM_BACKEND      make_note_multitype_v1.py 전용. "ollama"(기본) 또는
+                      "openai"
+    OLLAMA_MODEL      LLM_BACKEND=ollama일 때 사용할 모델 태그
+                       (기본값 "qwen3:14b")
+    OLLAMA_BASE_URL   기본값 http://localhost:11434/v1
+    OPENAI_API_KEY    프로젝트 루트 .env 파일에서 읽는다(아래 load_dotenv
+                       참고) — 셸 환경변수로 이미 설정돼 있으면 그 값이
+                       우선한다(.env가 덮어쓰지 않는다).
+"""
+
+import os
+from pathlib import Path
+from typing import Optional, Tuple
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# 프로젝트 루트(.env가 있는 위치)를 이 파일 위치 기준으로 찾는다 —
+# 어느 작업 디렉터리에서 실행하든 항상 같은 .env를 읽기 위함이다.
+# .env에 OPENAI_API_KEY를 넣어 뒀는데도(상담사가 흔히 하는 설정 방식)
+# 아무 코드도 .env를 읽지 않아서 적용이 안 되던 문제를 여기서 고쳤다
+# (2026-10-01 발견).
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+
+
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+DEFAULT_OLLAMA_MODEL = "qwen3:14b"
+
+
+def build_llm_client_and_model(
+    default_openai_model: str,
+) -> Tuple[OpenAI, str]:
+    """
+    (client, model_name)을 반환한다.
+
+    LLM_BACKEND=ollama면 로컬 Ollama 서버를 가리키는 client와
+    OLLAMA_MODEL을 반환하고, 그 외에는 기존과 동일하게 OpenAI를 쓴다.
+    """
+
+    backend = os.environ.get(
+        "LLM_BACKEND",
+        "ollama",
+    ).lower()
+
+    if backend == "openai":
+        return _build_openai_client(), default_openai_model
+
+    return _build_ollama_client_and_model()
+
+
+def build_openai_client_and_model(
+    default_openai_model: str,
+) -> Tuple[OpenAI, str]:
+    """
+    실제 서비스 경로(2차 세부유형 분석, 상담 요약/체크리스트, note 모드
+    보완 체크)가 공통으로 쓰는 빌더. 항상 외부 OpenAI client를 반환한다
+    — 이 호출들은 모두 Privacy Gateway(mask_for_outbound)의 보호 대상이라
+    로컬로 빠질 수 없다. OPENAI_API_KEY가 없으면 여기서 바로 에러를
+    낸다(조용히 로컬로 돌아가면 "분석은 됐는데 사실 OpenAI 결과가
+    아니었다"는 상황이 생길 수 있어, 명확히 실패시키는 쪽을 택했다).
+    """
+
+    return _build_openai_client(), default_openai_model
+
+
+def _build_ollama_client_and_model() -> Tuple[OpenAI, str]:
+    model = os.environ.get(
+        "OLLAMA_MODEL",
+        DEFAULT_OLLAMA_MODEL,
+    )
+
+    base_url = os.environ.get(
+        "OLLAMA_BASE_URL",
+        DEFAULT_OLLAMA_BASE_URL,
+    )
+
+    # Ollama는 API 키를 검사하지 않지만, OpenAI SDK가 빈 키를 거부하므로
+    # 더미 값을 넣는다.
+    client = OpenAI(
+        base_url=base_url,
+        api_key="ollama",
+    )
+
+    return client, model
+
+
+def _build_openai_client() -> OpenAI:
+    api_key = os.environ.get(
+        "OPENAI_API_KEY"
+    )
+
+    if not api_key:
+        raise RuntimeError(
+            "환경변수 OPENAI_API_KEY가 설정되어 있지 않습니다."
+        )
+
+    return OpenAI(
+        api_key=api_key
+    )
