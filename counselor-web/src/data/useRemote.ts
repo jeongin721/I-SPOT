@@ -10,6 +10,8 @@
 //    누르고 B 회차로 옮김, B 에 갔다 A 로 돌아옴, 다른 탭에서 다시 로그인함, 화면을 떠남) 반영하지 않는다.
 //    응답 뒤 다른 상태(고친 칸 · 오류 문구)를 바꾸거나 다음 요청을 보낼 때도 isCurrent(표) 로 먼저 확인한다.
 //    key 만 비교하면 같은 key 로 돌아온 경우(A → B → A, 로그아웃 · 다시 로그인)를 가리지 못한다.
+//    반영하지 못했어도 화면이 아직 같은 key 를 보고 있으면(갔다 돌아옴, 다시 로그인) 조용히 다시 부른다.
+//    쓰기는 서버에 반영됐는데 돌아와서 받은 값이 그 전 값일 수 있어서다.
 //  - 같은 탭의 다른 훅이 회차 상태를 바꾸면(sessionEvents) 조용히 다시 부른다.
 //
 // 처리 중(원문 변환 · AI 분석) 되풀이 조회는 usePolling 으로 한다(API_CONTRACT 1.4, 권장 2~3초).
@@ -45,7 +47,9 @@ export interface RemoteState<T> {
   /** 지금 대상의 표. 대상이 없거나(key 가 null) 화면을 떠났으면 null. */
   capture: () => RemoteTicket | null;
   /**
-   * 표가 지금 대상이면 값을 반영하고 true. 대상이 바뀌었으면 아무것도 하지 않고 false(값 · 오류 · 진행 중인 조회 · settled 그대로).
+   * 표가 지금 대상이면 값을 반영하고 true. 대상이 바뀌었으면 반영하지 않고 false(값 · 오류 · settled 그대로).
+   * 이때 화면이 아직 같은 key 를 보고 있으면(갔다 돌아옴, 다시 로그인) refresh() 로 조용히 다시 부른다
+   * (쓰기는 서버에 반영됐는데 돌아와서 받은 값은 그 전 값일 수 있다. 다시 부르는 조회는 지금 로그인 토큰으로 나간다).
    * 값 대신 함수를 넘기면 지금 들고 있는 값으로 새 값을 만든다(요청을 보낼 때 읽은 값이 그사이 바뀌었을 수 있어서).
    */
   setData: (ticket: RemoteTicket, value: T | ((current: T | null) => T)) => boolean;
@@ -86,6 +90,10 @@ export function useRemote<T>(
   const [settled, setSettled] = useState(0);
   // 이번 조회가 조용한 refresh 인가. 조회를 시작할 때 읽고 되돌린다.
   const silent = useRef(false);
+  // 다시 부르기를 예약했고 아직 조회를 시작하지 않았는가. 그사이 refresh 가 또 불리면(쓰기 응답을 버린 setData 와
+  // 회차 변경 알림이 함께 부름) 한 번만 부른다. 두 번 예약되면 앞 조회가 silent 를 써 버려 뒤 조회가
+  // '불러오는 중' 을 보이며 오류 문구를 지운다.
+  const queued = useRef(false);
   // 최근 조회 번호. 늦게 온 앞 조회의 응답을 버리는 데 쓴다.
   const latest = useRef(0);
   // load 가 그릴 때마다 새 함수여도 다시 부르지 않게 마지막 것만 들고 있는다.
@@ -111,11 +119,16 @@ export function useRemote<T>(
   const error = failure.key === key ? failure.message : null;
 
   const reload = useCallback(() => {
+    queued.current = true;
     silent.current = false;
     setTick((value) => value + 1);
   }, []);
 
   const refresh = useCallback(() => {
+    // 이미 예약한 조회(refresh · reload)가 있으면 그 조회가 부른다.
+    if (queued.current) return;
+
+    queued.current = true;
     silent.current = true;
     setTick((value) => value + 1);
   }, []);
@@ -124,6 +137,7 @@ export function useRemote<T>(
     const quiet = silent.current;
 
     silent.current = false;
+    queued.current = false;
 
     if (key === null) {
       latest.current += 1;
@@ -208,8 +222,13 @@ export function useRemote<T>(
 
   const setData = useCallback(
     (ticket: RemoteTicket, value: T | ((current: T | null) => T)) => {
-      // 요청을 보낸 뒤 대상이 바뀌었으면 앞 대상의 응답은 버린다(지금 대상의 값 · 오류 · 진행 중인 조회 · settled 는 그대로).
-      if (!isCurrent(ticket)) return false;
+      // 요청을 보낸 뒤 대상이 바뀌었으면 앞 대상의 응답은 버린다(지금 대상의 값 · 오류 · settled 는 그대로).
+      if (!isCurrent(ticket)) {
+        // 같은 key 로 돌아왔으면 돌아와서 받은 값이 이 쓰기 전 값일 수 있다. 서버 값을 다시 받는다.
+        if (mounted.current && keyRef.current === ticket.key) refresh();
+
+        return false;
+      }
 
       const forKey = ticket.key;
 
@@ -226,7 +245,7 @@ export function useRemote<T>(
 
       return true;
     },
-    [isCurrent],
+    [isCurrent, refresh],
   );
 
   const waitingFirst = key !== null && data === null && error === null;
