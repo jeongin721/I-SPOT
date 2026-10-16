@@ -17,6 +17,7 @@ I-SPOT/
 ├─ data_prep/                # GT 구축 및 STT Provider 평가 코드·산출물
 ├─ main.py                   # STT + 학대분석 단독 확인용 앱 — Backend 아님
 ├─ docker-compose.yml        # Local 실행용 최소 구성
+├─ deploy/                   # AWS 시연 서버 배포 스크립트 — 다시 배포하는 법은 deploy/README.md
 └─ I-SPOT_DOCS/              # 공통 기획·아키텍처·개발 규칙 문서
 ```
 

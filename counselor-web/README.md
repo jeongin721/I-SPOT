@@ -2,7 +2,7 @@
 
 아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
-**로그인 · 통합 사례 관리 · 사례 상세(내담자 정보 · 상담 이력) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
+**로그인 · 홈 · 통합 사례 관리 · 새 사례 등록 · 사례 상세(내담자 정보 · 상담 이력 · 문서함) · 회차 상세 · 녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 일정 · 종결 검토 목록 · 통계 · 설정 · 관리자 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
 
 ## 실행
 
@@ -29,8 +29,12 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 화면 | 훅 · 변환 | 하는 일 |
 | --- | --- | --- |
 | 로그인 | `useAuthSession` · `useLogin` · `useLogoutNotice` | 로그인 상태(401 · 임시 비밀번호 · 다른 탭), 로그인, 로그아웃 이유 |
+| 홈 | `useHomeDashboard` | 진행 중 사례 수, 미처리 업무(종류별 수 · 지연 · 오래 기다린 3건). 관리자는 전체 사례 · 모든 상담사의 업무 |
 | 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색 |
+| 새 사례 등록 | `useCaseRegister` | 서버가 받는 칸만 등록(`toCaseCreateRequest` 로 확인 · 변환). 관리자면 담당 상담사로 고를 활성 계정 목록도 부름. 한 번 만들면 다시 보내지 않음 |
 | 사례 상세 · 상담 이력 | `useCaseDetail` · `sessionRows` | 사례 정보와 회차 목록. 처리 중인 회차가 있으면 끝날 때까지 다시 조회 |
+| 일정 · 종결 검토 목록 · 통계 | `useCaseOverview` | 볼 수 있는 사례를 모두(100건씩 쪽마다) 모으고, 사례마다 회차 목록(`"sessions"`) 또는 회차 수만(`"counts"`) 부름(한 번에 4사례씩, 사례 2,000건 · 사례당 회차 1,000개까지). 집계 API 는 없음 |
+| 사례 문서함 | `useCaseDocuments` | 사례의 회차마다 회차 상세(녹음 · 원문 상태) + 문서 목록을 모음(한 번에 4회차씩). 사례 단위 문서 API 는 없음 |
 | 회차 상세 | `useSessionDetail` | 회차 진행 단계 · 실패 문구 · 음성 파일 정보, 지금 할 수 있는 요청 |
 | 녹음 업로드 | `useAudioUpload` · `audioFile` | (새 회차) → 음성 올리기 → 원문 변환 요청 → 끝날 때까지 기다리기. 실패하면 그 단계부터 다시(새 회차를 또 만들지 않음) |
 | 원문(STT) 검수 | `useTranscriptReview` · `transcriptRows` | 발화 줄 · 저신뢰 · 화자 미확인, 고친 칸만 저장, 확정, 다시 변환 |
@@ -57,6 +61,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 | --- | --- | --- |
 | `case` | 사례 ID(UUID, 목록의 `CaseRow.id`). 화면에 보이는 사례번호 `C-2026-0001` 이 아닙니다 | 사례 상세 탭들, 녹취 올리기(그 사례를 고른 채 시작) |
 | `session` | 회차 ID(UUID) | 회차 상세, 회차 처리 화면, 녹취 올리기(그 회차를 고른 채 시작) |
+| `view` | `tasks` · `accounts` · `audit`(없으면 대시보드) | 관리자 화면의 보기(업무 처리 현황 · 상담사 계정 관리 · 접속 기록). `readAdminView` · `adminHref`(`src/data/screens/admin.ts`) |
 
 - 예: `#/CaseDetail?case=…`, `#/SessionDetail?case=…&session=…`
 - 읽기는 `readScreenIds(useSearchParams()[0])`, 만들기는 `screenHref('/SessionDetail', { caseId, sessionId })`(`src/data/screens/links.ts`). 주소 문자열을 직접 이어 붙이지 않습니다.
@@ -90,18 +95,34 @@ export default function CaseDetail(props) {
 
 | 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
 | --- | --- | --- | --- | --- |
+| 홈 | `Main.jsx` | — | `useAuthSession` · `useHomeDashboard` | `main.ts` `mainValues` |
 | 통합 사례 관리 | `CaseList.jsx` | — | `useAuthSession` · `useCaseList` | `caseList.ts` `caseListValues` |
+| 새 사례 등록 | `CaseRegister.jsx` | — | `useAuthSession` · `useCaseRegister` | `caseRegister.ts` `caseRegisterValues` |
 | 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseDetailValues` |
 | 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
+| 사례 상세 · 문서함 | `CaseDocs.jsx` | `case` | `useCaseDetail` · `useCaseDocuments` | `caseDocs.ts` `caseDocsValues` |
 | 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
 | 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
 | 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
 | 2 · 위험 신호 검토 | `SignalReview.jsx` | `case` · `session` | `useSessionAnalysis` + 머리 | `signalReview.ts` `signalReviewValues` |
 | 3 · 요약 · 일지 작성 | `NoteWrite.jsx` | `case` · `session` | `useSummaryReview` · `useSessionDocuments` + 머리 | `noteWrite.ts` `noteWriteValues` |
+| 일정 | `Schedule.jsx` | — | `useAuthSession` · `useCaseOverview`(`sessions`) | `schedule.ts` `scheduleValues` |
+| 종결 검토 목록 | `Closure.jsx` | — | `useAuthSession` · `useCaseOverview`(`counts`) | `closure.ts` `closureValues` |
+| 통계 | `Stats.jsx` | — | `useAuthSession` · `useCaseOverview`(`sessions`) | `stats.ts` `statsValues` |
+| 설정 | `Settings.jsx` | — | `useAuthSession` · `usePasswordChange` | `settings.ts` `settingsValues` |
+| 관리자 | `Admin.jsx` | (`view`) | `useAdminDashboard` · `useAdminTasks`(대시보드 탭 2종 · 업무 보기) · `useAdminAccounts` · `useAuditLogs` | `admin.ts` `adminValues` |
 
 - 회차 처리 흐름: 녹취 올리기 → STT 검수(고친 발화 저장 · 원문 확정) → 위험 신호 검토(AI 분석 요청 · 진행 · 실패 뒤 다시 분석) → 요약 · 일지 작성(요약 고치기 · 저장 · **요약 승인 = 회차 '승인 완료'**, 상담일지 저장 · 승인).
 - 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중입니다. 위험 신호 검토 화면은 AI 분석 상태와 AI 안내만 보입니다.
 - 요약 승인은 회차를 잠그므로 '요약 승인' 단추를 따로 두고 한 번 더 묻습니다. '저장 · 추가 확인 · 질문 →' 은 저장만 합니다.
+- 관리자 화면: 디자인은 대시보드 한 장이라 왼쪽 메뉴의 업무 처리 현황 · 상담사 계정 관리 · 접속 기록은 같은 화면의 다른 보기(`?view=`)로 두고 디자인의 카드 · 표 · 칩을 그대로 씁니다. 상담원 계정이면 훅이 서버를 부르지 않고 안내만 보입니다. 대시보드 업무 탭은 Backend 가 종류를 하나만 거를 수 있어 두 종류씩 불러 오래 기다린 순서로 합칩니다(원문 변환 · 상담사 검토 · AI 분석). 계정 만들기 · 비밀번호 초기화 · 휴면 해제의 임시 비밀번호는 화면 상태에만 한 번 두고 '닫기' 로 버립니다(다른 관리자로 바뀌면 보이지 않음). 비밀번호 초기화 · 휴면 해제 · 비활성화 · 강제 로그아웃은 한 번 더 묻습니다. 미배정 사례 · 문서 승인 · 보안 경고 · 재처리 요청은 서버에 없어 `—` · 준비 중입니다.
+- 새 사례 등록: 서버에 저장하는 칸은 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 Backend 가 `C-YYYY-NNNN` 으로 만듦, 겹치면 거절 문구) · 성별 · 출생연도 · 보호자 유형(기타면 관계 메모) · 사례 메모, 담당 상담원(관리자만 고름, 상담원은 본인)입니다. 등록되면 새 사례 상세(`?case=새 ID`)로 갑니다. 서식 4 의 나머지 칸(실명 · 생년월일 · 사례관리대상자 · 신고 · 연계 · 면접일 · 학대유형 · 조치결과 · 위험도 · 사례연계 경위, ② 초기면접 내용 탭 전체)은 개인정보 저장 범위가 팀 결정 전이라 입력을 막고 '준비 중' 으로 둡니다. 그 내용을 사례 메모 등 다른 칸에 옮겨 담지 않습니다. 화면 칸 '대상아동 이름' · '생년월일' · '관계' 는 '아동 별칭' · '출생연도' · '보호자 유형' 으로 바꿨습니다(사례관리대상자는 보호자와 같은 뜻이 아니어서 따로 준비 중).
+- 홈: 미처리 업무는 회차 처리 대기(`/tasks` 7종)만 셉니다. 줄을 누르면 그 회차에서 이어서 할 화면(녹취 올리기 · STT 검수 · 위험 신호 검토 · 요약 · 일지 작성)으로 갑니다. 오래 기다린 업무는 '지연'(위험 신호가 아니라 '긴급' 이라고 쓰지 않음)입니다. 관리자는 사례 목록을 담당자로 거를 수 없어 두 숫자 모두 전체(라벨에 '전체')로 둡니다. 오늘 일정 · 다음 상담까지 남은 시간 · 아이 앱 긴급 응답은 서버에 없어 `—` · 준비 중이고, 시계 · 빠른 실행(편집은 저장하지 않음)은 화면 상태입니다.
+- 문서함: 회차마다 녹음(파일 이름 · 올린 날) · STT 원문(변환 상태 · 검수 필요/완료 · 버전) · 문서(상담일지 작성 중/승인)를 한 줄씩 보입니다. 녹음은 회차 상세, 원문은 STT 검수, 상담일지는 요약 · 일지 작성 화면으로 갑니다. 기관 서식 6종의 작성 기록 · 상담 전 브리핑 · 외부 문서(PDF · HWPX) 올리기는 서버에 없어 준비 중입니다('자료 올리기' 는 녹음 올리기 창).
+- 일정: 회차의 상담 일시 · 장소만 달력에 '상담 회차' 로 놓습니다(관리자는 담당 상담사도 붙임). 고른 날의 회차를 누르면 회차 상세로 갑니다. 상담 일시를 넣지 않은 회차는 등록일로 대신하지 않고 빼고 몇 건인지 알립니다. 개인 · 기관 일정, 일정 추가 · 중요 표시 · 팀 공유는 일정과 회차의 관계가 팀 결정 전이라 준비 중입니다.
+- 종결 검토 목록: 사례 기본정보(별칭 · 출생연도 · 사례 ID · 사례 상태) · 회차 수 · 사례 등록일만 보이고, 누르면 사례 상세로 갑니다. 종결 검토 등록 · 진행 단계 · 내역 검토 진행률은 서버에 없어 준비 중이고, **이 목록은 종결 검토 대상 목록이 아닙니다**(종결(CLOSED) 사례를 '검토 대기' 로 쓰지 않음). 별칭 · 사례 ID 검색은 불러온 목록 안에서 하고, 검색어는 입력한 계정에 묶여 다른 계정으로 바뀌면 비웁니다(`useAccountSearch`).
+- 통계: 사례 수 · 지금 진행/종결 수, 기간 안에 등록한 사례 수 · 등록 추이(사례 등록일 기준 — **신고접수일이 아님**), 기간 안의 상담 회차 수 · 추이(상담 일시 기준, 일시 없는 회차는 뺌)만 셉니다. 기간 프리셋 · 직접 선택 · 달력은 화면 상태입니다. 불러오기 전 · 불러오지 못했을 때 추이는 0 이 아니라 `—` 와 안내로 둡니다. 신고 접수 · 학대 판단 · 재신고 · 서비스 지표, 유형 · 연령 · 행위자 · 서비스 분포, AI 요약은 원천 데이터 · 지표 정의가 팀 결정 전이라 `—` · 준비 중입니다. 상담원은 담당 사례, 관리자는 전체 사례 기준입니다.
+- 설정 화면: 이름 · 이메일 · 역할 · 계정 만든 날은 내 정보에서, 비밀번호는 현재 비밀번호를 넣고 바꿉니다(바꾸면 로그아웃 → 로그인 화면). 이름 · 이메일 바꾸기, 소속 기관, 마지막 비밀번호 변경일, 알림 설정은 서버에 없어 `—` · 준비 중입니다.
 - 상담일지는 Backend 에서 제목 · 본문 텍스트 하나입니다. 화면의 칸(아동 진술 · 대상자 태도 · 물리적 환경 · 아동 특성 · 가정상황 · 위험 신호 검토 결과 · 상담원 소견)은 `[칸 이름]` 머리줄로 나눠 본문에 담습니다(`noteWrite.ts` 의 `formatNote` · `parseNote`). 기관 양식 구조가 정해지기 전의 임시 형식입니다.
 
 ## 폴더 구조

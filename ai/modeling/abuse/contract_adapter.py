@@ -25,13 +25,10 @@ followup_check_points를 risk_factors에 kind 태그로 욱여넣는 이전
 선택 필드로 따로 추가한다. 그 전까지 risk_factors는 비워 둔다.
 
 summary(overview/key_points)는 더 이상 이 모듈이 직접 만들지 않고
-agent/summary_converter.convert_summary()(Mingyu, PR
-feat/agent-summary-converter)를 그대로 쓴다 — 아동(CHILD) 발화만
-근거로 남기고 원문 segment_id와 대조해 끊어진 인용을 걸러내는 처리가
-이미 거기 있어서, 같은 처리를 여기서 다시 만들지 않는다. **지금 이
-브랜치에는 agent/summary_converter.py를 feat/agent-summary-converter
-에서 그대로 복사해 뒀다 — 그 브랜치가 main에 머지되면 중복이니
-그때 이 파일을 지우고 main의 것을 쓰도록 바꿔야 한다.**
+agent/summary_converter.convert_summary()(Mingyu, PR #47 — 2026-10-16
+main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남기고
+원문 segment_id와 대조해 끊어진 인용을 걸러내는 처리가 이미 거기
+있어서, 같은 처리를 여기서 다시 만들지 않는다.
 
 [2026-10-16: fixture 리뷰 반영]
 

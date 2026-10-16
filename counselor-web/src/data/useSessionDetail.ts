@@ -32,6 +32,8 @@ export interface SessionDetailView extends SessionRow {
   /** 지금 전사본 버전. 상담사가 고칠 때마다 1씩 오른다. 없으면 null. */
   transcriptVersion: number | null;
   transcriptConfirmed: boolean;
+  /** 원문 변환이 끝난 일시(YYYY-MM-DD HH:mm). 아직이면 빈 문자열. */
+  sttCompletedAt: string;
   hasAnalysis: boolean;
   hasSummary: boolean;
   summaryApproved: boolean;
@@ -63,6 +65,7 @@ export function toSessionDetailView(source: SessionDetail, audio: AudioFile | nu
     hasTranscript: source.has_transcript,
     transcriptVersion: source.transcript_version,
     transcriptConfirmed: source.transcript_confirmed,
+    sttCompletedAt: toDateTime(source.stt_completed_at),
     hasAnalysis: source.has_analysis,
     hasSummary: source.has_summary,
     summaryApproved: source.summary_approved,
@@ -75,7 +78,8 @@ export function toSessionDetailView(source: SessionDetail, audio: AudioFile | nu
   };
 }
 
-async function loadSessionDetail(sessionId: string): Promise<SessionDetailView> {
+/** 회차 하나의 상세와 음성 정보. 문서함(useCaseDocuments)도 회차마다 이 조회를 쓴다. */
+export async function loadSessionDetail(sessionId: string): Promise<SessionDetailView> {
   const detail = await sessions.get(sessionId);
   let audio: AudioFile | null = null;
 

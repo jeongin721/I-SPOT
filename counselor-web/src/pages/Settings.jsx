@@ -1,84 +1,42 @@
 // 설정 · 계정 / 알림 설정
-// 원본: 다솔 님 디자인 counselor-web-design/Settings.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 원본: 다솔 님 디자인 counselor-web-design/Settings.dc.html (front_new 브랜치)
+//
+// 서버 연결: 내 정보는 useAuthSession, 비밀번호 변경은 usePasswordChange 가 하고, 화면에 쓸 값은
+// src/data/screens/settings.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
+//  - 이름 · 이메일 바꾸기, 소속 기관, 마지막 비밀번호 변경일, 알림 설정은 서버에 없어 '—' · 준비 중이다.
+//  - 비밀번호는 현재 비밀번호를 넣고 바꾼다. 바꾸면 로그아웃되어 로그인 화면으로 간다.
 import { Fragment } from 'react';
+import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { usePasswordChange } from '../data/usePasswordChange';
+import { needsLogin } from '../data/screens/common';
+import { INITIAL_SETTINGS_STATE, settingsValues } from '../data/screens/settings';
 import { useTheme } from '../theme';
 import './Settings.css';
 
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = {
-      view: 'home',
-      name: '이서연',
-      mail: 'lee.seoyeon@ispot-center.kr',
-      edit: null,
-      draft: '',
-      mailSent: false,
-      pw: false,
-      t: { urgent: true, brief: true, done: false },
-      batch: '09:00',
-    };
+    this.state = INITIAL_SETTINGS_STATE;
   }
   renderVals() {
-    const s = this.state;
-    const sw = (on) => ({ bg: on ? '#2B2A26' : '#DAD5C9', x: on ? '23px' : '3px', on: on ? 'true' : 'false' });
-    const defs = [
-      ['urgent', '긴급 응답 즉시 알림'],
-      ['brief', '상담 30분 전 브리핑 알림'],
-      ['done', 'STT 분석 완료 알림'],
-    ];
-    const toggles = defs.map(([k, label]) => ({
-      label,
-      ...sw(s.t[k]),
-      flip: () => this.setState({ t: { ...s.t, [k]: !s.t[k] } }),
-    }));
-    const titles = { home: '설정', account: '계정', notify: '알림 설정' };
-    return {
-      title: titles[s.view],
-      subTitle: titles[s.view],
-      atHome: s.view === 'home',
-      inSub: s.view !== 'home',
-      isAccount: s.view === 'account',
-      isNotify: s.view === 'notify',
-      goHome: () => this.setState({ view: 'home', edit: null }),
-      goAccount: () => this.setState({ view: 'account' }),
-      goNotify: () => this.setState({ view: 'notify' }),
-      name: s.name,
-      mail: s.mail,
-      draft: s.draft,
-      mailSent: s.mailSent,
-      nameView: s.edit !== 'name',
-      nameEdit: s.edit === 'name',
-      mailView: s.edit !== 'mail',
-      mailEdit: s.edit === 'mail',
-      editName: () => this.setState({ edit: 'name', draft: s.name }),
-      editMail: () => this.setState({ edit: 'mail', draft: s.mail, mailSent: false }),
-      setDraft: (e) => this.setState({ draft: e.target.value }),
-      cancel: () => this.setState({ edit: null }),
-      saveName: () => this.setState({ edit: null, name: s.draft || s.name }),
-      saveMail: () => this.setState({ edit: null, mailSent: true }),
-      pwText: s.pw ? '재설정 링크 발송됨 · 30분 유효' : '마지막 변경 2026-08-12',
-      pwLabel: s.pw ? '다시 보내기' : '비밀번호 재설정',
-      pwCls: s.pw ? 'btn-s' : 'btn-p',
-      resetPw: () => this.setState({ pw: true }),
-      toggles,
-      urgentOff: !s.t.urgent,
-      batch: s.batch,
-      setBatch: (e) => this.setState({ batch: e.target.value }),
-    };
+    return settingsValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
 
 export default function Settings(props) {
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
+  const pwChange = usePasswordChange();
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const v = useDC(Logic, { ...props, session, pwChange });
+  // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다. 비밀번호를 바꾼 뒤에도 여기로 간다.
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  const off = { opacity: 0.5, cursor: 'not-allowed' };
   return (
     <div className="pg-Settings">
       <div
@@ -114,7 +72,10 @@ export default function Settings(props) {
               <nav aria-label="위치" className="note">
                 {v.inSub ? (
                   <>
-                    <A to="/Settings">설정</A> › {v.subTitle}
+                    <A to="/Settings" onClick={v.goHome}>
+                      설정
+                    </A>{' '}
+                    › {v.subTitle}
                   </>
                 ) : null}
                 {v.atHome ? <>설정</> : null}
@@ -129,6 +90,7 @@ export default function Settings(props) {
               </>
             ) : null}
           </header>
+          <Notice value={v.notice} />
 
           {v.atHome ? (
             <>
@@ -154,82 +116,82 @@ export default function Settings(props) {
             <>
               <section className="card" aria-label="계정" style={{ padding: '6px 26px 14px', maxWidth: '900px' }}>
                 <div className="row">
-                  <span className="lab">상담사 이름</span>
-                  {v.nameView ? (
-                    <>
-                      <b style={{ flex: '1', fontWeight: '500' }}>{v.name}</b>
-                      <button type="button" className="btn btn-sm btn-s" onClick={v.editName}>
-                        수정
-                      </button>
-                    </>
-                  ) : null}
-                  {v.nameEdit ? (
-                    <>
-                      <input
-                        className="edit-in"
-                        type="text"
-                        aria-label="상담사 이름"
-                        value={v.draft}
-                        onChange={v.setDraft}
-                      />
-                      <button type="button" className="btn btn-sm btn-p" onClick={v.saveName}>
-                        저장
-                      </button>
-                      <button type="button" className="btn btn-sm btn-s" onClick={v.cancel}>
-                        취소
-                      </button>
-                    </>
-                  ) : null}
+                  <span className="lab">이름</span>
+                  <b style={{ flex: '1', fontWeight: '500' }}>{v.name}</b>
+                  <button type="button" className="btn btn-sm btn-s" disabled title={v.notReady} style={off}>
+                    수정
+                  </button>
                 </div>
                 <div className="row">
                   <span className="lab">계정 (연결된 이메일)</span>
-                  {v.mailView ? (
-                    <>
-                      <b style={{ flex: '1', fontWeight: '500' }}>{v.mail}</b>
-                      <button type="button" className="btn btn-sm btn-s" onClick={v.editMail}>
-                        변경
-                      </button>
-                    </>
-                  ) : null}
-                  {v.mailEdit ? (
-                    <>
-                      <input
-                        className="edit-in"
-                        type="email"
-                        aria-label="이메일"
-                        value={v.draft}
-                        onChange={v.setDraft}
-                      />
-                      <button type="button" className="btn btn-sm btn-p" onClick={v.saveMail}>
-                        인증 메일 보내기
-                      </button>
-                      <button type="button" className="btn btn-sm btn-s" onClick={v.cancel}>
-                        취소
-                      </button>
-                    </>
-                  ) : null}
+                  <b style={{ flex: '1', fontWeight: '500' }}>{v.mail}</b>
+                  <button type="button" className="btn btn-sm btn-s" disabled title={v.notReady} style={off}>
+                    변경
+                  </button>
+                </div>
+                <div className="row">
+                  <span className="lab">역할</span>
+                  <b style={{ flex: '1', fontWeight: '500' }}>{v.role}</b>
                 </div>
                 <div className="row">
                   <span className="lab">비밀번호</span>
                   <span style={{ flex: '1' }} className="sub">
                     {v.pwText}
                   </span>
-                  <button type="button" className={`btn btn-sm ${v.pwCls}`} onClick={v.resetPw}>
+                  <button type="button" className={`btn btn-sm ${v.pwCls}`} onClick={v.togglePw}>
                     {v.pwLabel}
                   </button>
                 </div>
+                {v.pwOpen ? (
+                  <form
+                    onSubmit={v.submitPw}
+                    noValidate
+                    aria-label="비밀번호 바꾸기"
+                    className="row"
+                    style={{ flexDirection: 'column', alignItems: 'stretch', maxWidth: '420px' }}
+                  >
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span className="lab">현재 비밀번호</span>
+                      <input className="edit-in" type="password" autoComplete="current-password" {...v.current} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span className="lab">새 비밀번호</span>
+                      <input className="edit-in" type="password" autoComplete="new-password" {...v.next} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span className="lab">새 비밀번호 확인</span>
+                      <input className="edit-in" type="password" autoComplete="new-password" {...v.confirm} />
+                    </label>
+                    <p className="note" style={{ margin: '0' }}>
+                      {v.ruleText} 바꾸면 모든 기기에서 로그아웃되고 새 비밀번호로 다시 로그인합니다.
+                    </p>
+                    {v.pwErrors.length > 0 ? (
+                      <ul role="alert" className="acc" style={{ margin: '0', paddingLeft: '18px', fontSize: '13px' }}>
+                        {v.pwErrors.map((message) => (
+                          <li key={message}>{message}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div>
+                      <button type="submit" className="btn btn-sm btn-p" disabled={v.pwBusy}>
+                        {v.pwSubmitLabel}
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+                <div className="row">
+                  <span className="lab">계정 만든 날</span>
+                  <b style={{ flex: '1', fontWeight: '500' }}>{v.joined}</b>
+                </div>
                 <div className="row" style={{ borderBottom: '0' }}>
                   <span className="lab">소속 기관</span>
-                  <b style={{ flex: '1', fontWeight: '500' }}>○○아동보호전문기관</b>
+                  <b style={{ flex: '1', fontWeight: '500' }}>{v.organization}</b>
                 </div>
               </section>
-              {v.mailSent ? (
-                <>
-                  <p className="note" style={{ margin: '0' }}>
-                    인증 메일 발송됨
-                  </p>
-                </>
-              ) : null}
+              <p className="note" style={{ margin: '0' }}>
+                이름 · 이메일 바꾸기와 소속 기관 · 마지막 비밀번호 변경일은 {v.notReady}입니다(서버에 아직 없음). 이름은
+                관리자가 바꿀 수 있습니다.
+              </p>
             </>
           ) : null}
 
@@ -246,8 +208,9 @@ export default function Settings(props) {
                         role="switch"
                         aria-checked={t.on}
                         aria-label={t.label}
-                        onClick={t.flip}
-                        style={{ background: t.bg }}
+                        disabled
+                        title={v.notReady}
+                        style={{ background: t.bg, ...off }}
                       >
                         <span style={{ left: t.x }}></span>
                       </button>
@@ -256,21 +219,14 @@ export default function Settings(props) {
                 ))}
                 <div className="row" style={{ borderBottom: '0' }}>
                   <b style={{ flex: '1', fontWeight: '500' }}>아이 체크인 묶음 시간</b>
-                  <select className="inp" aria-label="묶음 시간" value={v.batch} onChange={v.setBatch}>
-                    <option>08:30</option>
-                    <option>09:00</option>
-                    <option>13:00</option>
-                    <option>17:00</option>
+                  <select className="inp" aria-label="묶음 시간" disabled title={v.notReady} style={off} defaultValue="">
+                    <option value="">—</option>
                   </select>
                 </div>
               </section>
-              {v.urgentOff ? (
-                <>
-                  <p className="acc" style={{ margin: '0', fontSize: '13px', fontWeight: '500' }}>
-                    긴급 응답 알림 꺼짐 · 아이의 긴급 응답을 바로 알 수 없어요
-                  </p>
-                </>
-              ) : null}
+              <p className="note" style={{ margin: '0' }}>
+                알림 설정은 {v.notReady}입니다(서버에 아직 없음).
+              </p>
             </>
           ) : null}
         </main>

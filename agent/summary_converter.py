@@ -104,7 +104,9 @@ def convert_summary(
     # 기록 초안은 LLM 실패를 삼키고 빈 목록을 돌려준다(record_draft_llm.py).
     # "아동이 한 말이 없음" 과 "만들지 못함" 을 상담사가 구분할 수 있게,
     # 아동 발화가 있거나 요지가 왔는데 다 걸러졌으면 경고를 단다.
-    if not key_points and (child_texts or raw_point_count):
+    # child_texts 는 근거로 쓸 수 있는 발화만 담는다(id 가 겹치면 빠짐).
+    # 그래서 "원문에 아동 발화가 있는가" 는 따로 본다(10/16 Codex 재검증).
+    if not key_points and (_has_child_speech(transcript) or raw_point_count):
         warnings.append(KEY_POINTS_EMPTY_WARNING)
 
     return {
@@ -187,8 +189,9 @@ def _child_segments(transcript: Any) -> Tuple[Dict[str, str], Dict[str, str]]:
 
     대조용 키가 원문에서 두 번 이상 나오면(완전히 같은 id 든, 공백만 다른 id 든)
     인용이 어느 발화를 가리키는지 확정할 수 없으므로 그 키는 근거로 쓰지 않는다.
-    화자가 같아도 뺀다. 정상 STT 결과에서는 일어나지 않는 일이라
-    빼도 잃는 것이 없고, 보호자 발화가 아동 근거로 붙는 길을 막는다.
+    화자가 같아도 뺀다. STT 계약은 공백만 다른 id 를 막지 않으므로 이 때문에
+    맞는 근거를 잃을 수도 있다. 일반 STT 가 만드는 seg_NNN 에서는 생기지 않는
+    입력이라, 보호자 발화가 아동 근거로 붙는 길을 막는 쪽을 택했다.
     """
 
     segments = transcript.get("segments") if isinstance(transcript, dict) else None
@@ -227,6 +230,22 @@ def _child_segments(transcript: Any) -> Tuple[Dict[str, str], Dict[str, str]]:
             child_texts[segment["segment_id"]] = text
 
     return child_ids, child_texts
+
+
+def _has_child_speech(transcript: Any) -> bool:
+    """원문에 내용이 있는 아동 발화가 하나라도 있는가. id 가 근거로 쓸 수 있는지와는 따로 본다."""
+
+    segments = transcript.get("segments") if isinstance(transcript, dict) else None
+
+    if not isinstance(segments, list):
+        return False
+
+    return any(
+        isinstance(segment, dict)
+        and segment.get("speaker") == CHILD_SPEAKER
+        and bool(_clean_text(segment.get("text")))
+        for segment in segments
+    )
 
 
 def _score(

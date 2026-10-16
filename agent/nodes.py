@@ -81,6 +81,10 @@ def analysis_node(state: AgentState) -> dict:
         Transcript 원문을 비식별 없이 OpenAI 로 보낸다. 그대로 붙이면
         아동 발화 원문이 외부로 나간다
       - summary_evidence 는 PipelineAIAdapter 와 같은 모양으로 채운다
+      - 안 B(ai-modeling analyze_audio_session 1번 호출)로 가면 이 노드는
+        LLM 을 부르지 않고 agent.summary_converter.convert_summary(결과,
+        state["transcript"]) 의 summary · summary_evidence · warnings 를
+        돌려준다. 그 결과를 State 에 실을 노드가 아직 없어 연결하지 않았다
     """
 
     return {
