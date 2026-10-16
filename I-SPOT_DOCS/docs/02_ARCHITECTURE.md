@@ -72,6 +72,9 @@ CREATED
 
 실패 시 재시도 가능한 상태/오류 정보를 유지한다.
 
+승인 뒤 고칠 일이 생기면 상담사가 요약 승인을 풀어 `APPROVED → AI_REVIEW_REQUIRED` 로 돌아가고,
+쓴 내용을 그대로 고친 뒤 다시 승인한다(`backend/docs/API_CONTRACT.md` 9절 `summary/reopen`).
+
 ## 5. API 기준
 
 Base:
