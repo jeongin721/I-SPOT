@@ -59,7 +59,10 @@ export interface SessionAnalysisState {
   submitting: boolean;
   loading: boolean;
   error: string | null;
-  /** 첫 분석 · 실패 뒤 재시도 · 재분석. 상담사가 고친 요약은 재분석이 덮어쓰지 않는다. */
+  /**
+   * 첫 분석 · 실패 뒤 재시도 · 재분석. 상담사가 고친 요약은 재분석이 덮어쓰지 않는다.
+   * 요청한 뒤 대상이 바뀌어(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남) 반영하지 못했으면 false.
+   */
   run: () => Promise<boolean>;
   reload: () => void;
 }
@@ -74,11 +77,15 @@ export function useSessionAnalysis(
   // 요청 중인가. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
   const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [errorKey, setErrorKey] = useState(key);
+  const [seenGeneration, setSeenGeneration] = useState(remote.generation);
 
-  if (errorKey !== key) {
-    setErrorKey(key);
+  // 대상 세대가 바뀌면(다른 회차, 로그아웃 · 다시 로그인, 다른 회차에 갔다 돌아옴) 앞 대상의 오류를 지우고,
+  // 앞 대상에서 보낸 요청이 아직 안 끝났어도 새 대상에서는 보낼 수 있게 한다(그 요청의 응답은 반영하지 않는다).
+  if (seenGeneration !== remote.generation) {
+    setSeenGeneration(remote.generation);
     setActionError(null);
+    inFlight.current = false;
+    setSubmitting(false);
   }
 
   const envelope = remote.data;
@@ -88,32 +95,37 @@ export function useSessionAnalysis(
   usePolling(processing, remote.refresh, remote.settled);
 
   const run = useCallback(async () => {
-    if (!key || inFlight.current) return false;
+    const ticket = remote.capture();
 
-    const forKey = key;
+    // 이 함수를 만든 그리기 뒤에 대상이 바뀌었으면 보내지 않는다.
+    if (!ticket || ticket.key !== key || inFlight.current) return false;
 
     inFlight.current = true;
     setSubmitting(true);
     setActionError(null);
 
     try {
-      const requested = await analysisApi.run(forKey);
+      const requested = await analysisApi.run(ticket.key);
 
       // 요청 응답의 'AI 분석 중' 을 바로 반영한다. 이어지는 조회가 한 번 실패해도 되풀이 조회가 시작되게.
       // 재분석을 요청하면 이전 결과는 API 로 더 볼 수 없으므로(API_CONTRACT 8절) 이전 결과도 내린다.
-      remote.setData(forKey, (current) => ({
+      // 대상이 바뀌었으면(갔다 돌아옴, 다시 로그인) 그 뒤에 새로 받은 결과를 내리지 않는다.
+      const applied = remote.setData(ticket, (current) => ({
         ...current,
-        session_id: forKey,
+        session_id: ticket.key,
         session_status: requested.session_status,
         analysis: null,
         error: null,
       }));
       // 이 훅과 같은 회차를 보는 훅(요약 · 원문 · 회차 상세)도 'AI 분석 중' 을 받아 간다.
-      notifySessionChanged({ sessionId: forKey });
+      notifySessionChanged({ sessionId: ticket.key });
 
-      return true;
+      return applied;
     } catch (caught) {
-      if (remote.isCurrent(forKey) && !(caught instanceof ApiError && caught.isUnauthorized)) {
+      // 대상이 바뀌었으면 오류 문구도 다시 조회도 하지 않는다.
+      if (!remote.isCurrent(ticket)) return false;
+
+      if (!(caught instanceof ApiError && caught.isUnauthorized)) {
         setActionError(errorMessage(caught, "AI 분석을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요."));
       }
 
@@ -122,10 +134,13 @@ export function useSessionAnalysis(
 
       return false;
     } finally {
-      inFlight.current = false;
-      setSubmitting(false);
+      // 대상 세대가 바뀌었으면 그때 이미 풀었다. 새 대상에서 보낸 요청의 표시를 끄지 않는다.
+      if (remote.sameGeneration(ticket)) {
+        inFlight.current = false;
+        setSubmitting(false);
+      }
     }
-  }, [key, remote.setData, remote.isCurrent, remote.refresh]);
+  }, [key, remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.refresh]);
 
   const source = envelope?.analysis ?? null;
 

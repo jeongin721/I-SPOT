@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { ApiError, getToken } from "../api/client";
 import { cases, sessions, transcript } from "../api/endpoints";
 import type { SessionCreateRequest, SessionStatus } from "../api/types";
 import { checkAudioFile } from "./audioFile";
@@ -125,9 +125,11 @@ export function useAudioUpload(): AudioUploadState {
     [],
   );
 
-  const run = useCallback(async (input: UploadRequest, from: UploadFailedStep): Promise<boolean> => {
+  const run = useCallback(async (input: UploadRequest, from: UploadFailedStep, token: string | null): Promise<boolean> => {
     const id = ++runId.current;
-    const alive = () => id === runId.current;
+    // 시작할 때의 로그인이 그대로인가도 본다. 다른 탭에서 다시 로그인하면(토큰이 바뀜) 화면은 그대로라 runId 가 오르지 않는다.
+    // 그때 앞 로그인으로 시작한 실행이 다음 단계(업로드 · 변환 요청 · 조회)를 새 로그인 토큰으로 보내지 않게 멈춘다.
+    const alive = () => id === runId.current && getToken() === token;
     // 같은 화면의 회차 상세 · 사례 상세 훅이 새 상태를 받아 가게 알린다.
     const changed = (target: string) => notifySessionChanged({ sessionId: target, caseId: input.caseId });
     const steps: UploadFailedStep[] = ["file", "createSession", "upload", "requestStt", "transcribing"];
@@ -293,14 +295,31 @@ export function useAudioUpload(): AudioUploadState {
 
       running.current = true;
 
+      const token = getToken();
       // run 은 첫 await 전까지 바로 돌아 runId 를 올린다. 그 번호의 실행이 끝날 때만 풀어 준다
       // (reset 뒤 새로 시작한 실행의 잠금을 앞 실행이 풀지 않게).
-      const finished = run(input, from);
+      const finished = run(input, from, token);
       const id = runId.current;
 
-      return finished.finally(() => {
-        if (runId.current === id) running.current = false;
-      });
+      return finished
+        .then((ok) => {
+          // 다른 탭에서 다시 로그인해 멈춘 실행이면 진행 표시를 거두고 처음부터 다시 올리게 한다. 다시 시도는 막는다
+          // (앞 로그인으로 고른 회차 · 요청을 새 로그인으로 보내게 되므로).
+          if (!ok && runId.current === id && getToken() !== token) {
+            request.current = null;
+            created.current = null;
+            uncertain.current = null;
+            failedAt.current = "file";
+            setFailedStep("file");
+            setError("로그인이 바뀌어 올리기를 멈췄습니다. 다시 올려 주세요.");
+            setPhase("failed");
+          }
+
+          return ok;
+        })
+        .finally(() => {
+          if (runId.current === id) running.current = false;
+        });
     },
     [run],
   );

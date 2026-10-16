@@ -17,7 +17,7 @@ import {
   type DocumentType,
 } from "../api/types";
 import { toDateTime } from "./time";
-import { errorMessage, useRemote } from "./useRemote";
+import { errorMessage, useRemote, type RemoteTicket } from "./useRemote";
 
 export const DOC_TYPE_LABELS: Record<string, string> = {
   [DOC_TYPE_CONSULTATION_RECORD]: "상담일지",
@@ -101,12 +101,18 @@ export interface SessionDocumentsState {
   submitting: boolean;
   loading: boolean;
   error: string | null;
-  /** 새 문서(초안). 유형을 빼면 상담일지. 성공하면 만든 문서, 실패하면 null. */
+  /**
+   * 새 문서(초안). 유형을 빼면 상담일지. 성공하면 만든 문서, 실패하면 null.
+   * 요청한 뒤 대상이 바뀌어(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남) 반영하지 못했어도 null 이다.
+   */
   create: (input: { title: string; content?: string; docType?: DocumentType }) => Promise<DocumentRow | null>;
-  /** 바꿀 칸만 넘긴다. */
+  /** 바꿀 칸만 넘긴다. 돌려주는 값은 create 와 같다. */
   update: (documentId: string, input: { title?: string; content?: string }) => Promise<DocumentRow | null>;
   approve: (documentId: string) => Promise<DocumentRow | null>;
   reload: () => void;
+  /** 지금 대상의 표(useRemote). 화면 연쇄(저장 → 승인 · 이동)는 누를 때 잡아 두고 다음 요청 · 이동 전에 isCurrent 로 확인한다. */
+  capture: () => RemoteTicket | null;
+  isCurrent: (ticket: RemoteTicket | null) => boolean;
 }
 
 export function useSessionDocuments(
@@ -119,33 +125,38 @@ export function useSessionDocuments(
   // 요청 중인가. state 는 같은 순간의 두 번째 누름을 막지 못해 ref 로도 든다.
   const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [errorKey, setErrorKey] = useState(key);
+  const [seenGeneration, setSeenGeneration] = useState(remote.generation);
 
-  if (errorKey !== key) {
-    setErrorKey(key);
+  // 대상 세대가 바뀌면(다른 회차, 로그아웃 · 다시 로그인, 다른 회차에 갔다 돌아옴) 앞 대상의 오류를 지우고,
+  // 앞 대상에서 보낸 요청이 아직 안 끝났어도 새 대상에서는 보낼 수 있게 한다(그 요청의 응답은 반영하지 않는다).
+  if (seenGeneration !== remote.generation) {
+    setSeenGeneration(remote.generation);
     setActionError(null);
+    inFlight.current = false;
+    setSubmitting(false);
   }
 
   const rows = useMemo(() => (remote.data ?? []).map(toDocumentRow), [remote.data]);
 
   /**
    * 요청 하나를 보내고 결과 문서를 목록에 반영한다. 한 번에 하나만 보낸다(같은 순간 두 번 눌러도 두 번째는 null).
-   * 요청한 뒤 다른 회차로 옮겼으면 결과를 지금 회차의 목록에 넣지 않는다(문서는 요청한 회차에 만들어졌다).
+   * 요청한 뒤 대상이 바뀌었으면 결과를 지금 목록에 넣지 않고 null 을 돌려준다(문서는 요청한 회차에 만들어졌다).
    */
   const perform = useCallback(
     async (send: (sessionId: string) => Promise<SessionDocument>, fallback: string): Promise<DocumentRow | null> => {
-      if (!key || inFlight.current) return null;
+      const ticket = remote.capture();
 
-      const forKey = key;
+      // 이 함수를 만든 그리기 뒤에 대상이 바뀌었으면(앞 회차 화면에서 이어 부른 승인 등) 보내지 않는다.
+      if (!ticket || ticket.key !== key || inFlight.current) return null;
 
       inFlight.current = true;
       setSubmitting(true);
       setActionError(null);
 
       try {
-        const result = await send(forKey);
+        const result = await send(ticket.key);
 
-        remote.setData(forKey, (current) => {
+        const applied = remote.setData(ticket, (current) => {
           const list = current ?? [];
 
           return list.some((document) => document.id === result.id)
@@ -153,9 +164,13 @@ export function useSessionDocuments(
             : [...list, result];
         });
 
-        return toDocumentRow(result);
+        // 반영하지 못했으면 null. 화면 연쇄(저장 → 승인)가 다음 요청을 이어 보내지 않게 한다.
+        return applied ? toDocumentRow(result) : null;
       } catch (caught) {
-        if (remote.isCurrent(forKey) && !(caught instanceof ApiError && caught.isUnauthorized)) {
+        // 대상이 바뀌었으면 오류 문구도 다시 조회도 하지 않는다(새로 부른 목록을 건드리지 않게).
+        if (!remote.isCurrent(ticket)) return null;
+
+        if (!(caught instanceof ApiError && caught.isUnauthorized)) {
           setActionError(errorMessage(caught, fallback));
         }
 
@@ -164,11 +179,14 @@ export function useSessionDocuments(
 
         return null;
       } finally {
-        inFlight.current = false;
-        setSubmitting(false);
+        // 대상 세대가 바뀌었으면 그때 이미 풀었다. 새 대상에서 보낸 요청의 표시를 끄지 않는다.
+        if (remote.sameGeneration(ticket)) {
+          inFlight.current = false;
+          setSubmitting(false);
+        }
       }
     },
-    [key, remote.setData, remote.isCurrent, remote.refresh],
+    [key, remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.refresh],
   );
 
   const create = useCallback(
@@ -229,5 +247,7 @@ export function useSessionDocuments(
     update,
     approve,
     reload: remote.reload,
+    capture: remote.capture,
+    isCurrent: remote.isCurrent,
   };
 }
