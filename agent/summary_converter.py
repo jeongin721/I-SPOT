@@ -27,7 +27,7 @@
 # 반환값은 AgentState 의 summary · summary_evidence · warnings 와 같은 모양이다.
 # AIAnalysisResult 검증은 LangGraphAIAdapter._to_bundle 이 마지막에 한다.
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Tuple
 
 from ai.services.evidence_linker import calculate_similarity
 
@@ -52,13 +52,14 @@ def convert_summary(
     """
 
     result = session_result if isinstance(session_result, dict) else {}
-    child_texts = _child_segment_texts(transcript)
+    child_ids, child_texts = _child_segments(transcript)
 
     overview = _clean_text(result.get("counseling_summary"))
 
-    key_points: List[str] = []
-    evidence: List[Dict[str, Any]] = []
-    evidence_by_text: Dict[str, Dict[str, Any]] = {}
+    # 문장 → 근거 segment_id(원문 표기 그대로). 같은 문장이 두 번 나오면
+    # 하나로 합치고 근거만 더한다. 화면에 같은 요지가 두 줄 보이지 않게 한다.
+    # dict 는 넣은 순서를 지키므로 key_points 순서도 처음 나온 순서다.
+    grouped: Dict[str, Dict[str, None]] = {}
     raw_point_count = 0
 
     for point in _statement_points(result.get("record_draft")):
@@ -70,34 +71,30 @@ def convert_summary(
             continue
 
         segment_ids = [
-            segment_id
-            for segment_id in _segment_ids(point.get("segment_ids"))
-            if segment_id in child_texts
+            child_ids[key]
+            for key in _segment_ids(point.get("segment_ids"))
+            if key in child_ids
         ]
 
         if not segment_ids:
             continue
 
-        # 같은 문장이 두 번 나오면 하나로 합치고 근거만 더한다.
-        # 화면에 같은 요지가 두 줄 보이지 않게 한다.
-        existing = evidence_by_text.get(text)
+        bucket = grouped.setdefault(text, {})
 
-        if existing is not None:
-            for segment_id in segment_ids:
-                if segment_id not in existing["segment_ids"]:
-                    existing["segment_ids"].append(segment_id)
+        for segment_id in segment_ids:
+            bucket.setdefault(segment_id, None)
 
-            existing["score"] = _score(text, existing["segment_ids"], child_texts)
-            continue
-
-        item = {
+    # 점수는 합친 뒤 한 번만 계산한다. 합칠 때마다 다시 계산하면
+    # 같은 문장이 많을 때 근거 수의 제곱만큼 느려진다.
+    key_points = list(grouped)
+    evidence = [
+        {
             "key_point": text,
-            "segment_ids": segment_ids,
+            "segment_ids": list(segment_ids),
             "score": _score(text, segment_ids, child_texts),
         }
-        key_points.append(text)
-        evidence.append(item)
-        evidence_by_text[text] = item
+        for text, segment_ids in grouped.items()
+    ]
 
     warnings: List[str] = []
 
@@ -145,40 +142,61 @@ def _segment_ids(value: Any) -> List[str]:
 
     문자열 하나("seg_001")를 목록으로 보고 글자마다 쪼개지 않도록
     list · tuple 만 받는다. 정수는 이경진 님 _clean_points 와 같게 문자열로 바꾼다.
+    돌려주는 값은 대조용 키(_id_key)다. 원문 표기는 _child_segments 가 되돌린다.
     """
 
     if not isinstance(value, (list, tuple)):
         return []
 
-    segment_ids: List[str] = []
+    keys: Dict[str, None] = {}
 
     for raw in value:
         if isinstance(raw, bool) or not isinstance(raw, (str, int)):
             continue
 
-        segment_id = str(raw).strip()
+        try:
+            key = _id_key(str(raw))
+        except ValueError:
+            # 4300자리를 넘는 정수는 파이썬이 문자열로 바꾸지 않는다.
+            # 정상 segment_id 는 50자 이하라 근거가 될 수 없다.
+            continue
 
-        if segment_id and segment_id not in segment_ids:
-            segment_ids.append(segment_id)
+        if key:
+            keys.setdefault(key, None)
 
-    return segment_ids
+    return list(keys)
 
 
-def _child_segment_texts(transcript: Any) -> Dict[str, str]:
-    """원문에서 아동 발화만 segment_id → text 로 모은다.
+def _id_key(segment_id: str) -> str:
+    """원문 · 인용 양쪽에 같게 쓰는 segment_id 대조 규칙.
 
-    segment_id 가 원문에 두 번 나오면 어느 화자의 발화인지 확정할 수 없으므로
-    근거로 쓰지 않는다(STT 계약은 중복을 막지만 여기서 다시 믿지 않는다).
+    한쪽만 공백을 지우면 원문의 보호자 " s1 " 을 인용한 근거가
+    아동 "s1" 으로 바뀐다(10/15 Codex 교차검증). 그래서 양쪽 모두 이 함수로 비교한다.
+    str.strip() 은 탭 · 줄바꿈 · NBSP · 전각 공백도 지운다.
+    """
+
+    return segment_id.strip()
+
+
+def _child_segments(transcript: Any) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """원문에서 근거로 쓸 수 있는 아동 발화를 모은다.
+
+    돌려주는 값
+      child_ids    대조용 키 → 원문 segment_id(표기 그대로. 응답에는 이 값을 싣는다)
+      child_texts  원문 segment_id → 발화 text
+
+    대조용 키가 원문에서 두 번 이상 나오면(완전히 같은 id 든, 공백만 다른 id 든)
+    인용이 어느 발화를 가리키는지 확정할 수 없으므로 그 키는 근거로 쓰지 않는다.
+    화자가 같아도 뺀다. 정상 STT 결과에서는 일어나지 않는 일이라
+    빼도 잃는 것이 없고, 보호자 발화가 아동 근거로 붙는 길을 막는다.
     """
 
     segments = transcript.get("segments") if isinstance(transcript, dict) else None
 
     if not isinstance(segments, list):
-        return {}
+        return {}, {}
 
-    child_texts: Dict[str, str] = {}
-    seen: set = set()
-    duplicated: set = set()
+    candidates: Dict[str, List[Dict[str, Any]]] = {}
 
     for segment in segments:
         if not isinstance(segment, dict):
@@ -186,29 +204,34 @@ def _child_segment_texts(transcript: Any) -> Dict[str, str]:
 
         segment_id = segment.get("segment_id")
 
-        if not isinstance(segment_id, str) or not segment_id:
+        if not isinstance(segment_id, str):
             continue
 
-        if segment_id in seen:
-            duplicated.add(segment_id)
+        key = _id_key(segment_id)
+
+        if key:
+            candidates.setdefault(key, []).append(segment)
+
+    child_ids: Dict[str, str] = {}
+    child_texts: Dict[str, str] = {}
+
+    for key, matched in candidates.items():
+        if len(matched) != 1:
             continue
 
-        seen.add(segment_id)
-
+        segment = matched[0]
         text = _clean_text(segment.get("text"))
 
         if segment.get("speaker") == CHILD_SPEAKER and text:
-            child_texts[segment_id] = text
+            child_ids[key] = segment["segment_id"]
+            child_texts[segment["segment_id"]] = text
 
-    for segment_id in duplicated:
-        child_texts.pop(segment_id, None)
-
-    return child_texts
+    return child_ids, child_texts
 
 
 def _score(
     key_point: str,
-    segment_ids: List[str],
+    segment_ids: Iterable[str],
     child_texts: Dict[str, str],
 ) -> float:
     """요지 문장과 근거 발화의 연결 강도.
