@@ -535,6 +535,13 @@ class LangGraphAIAdapter:
             "abuse_signals": state.get("abuse_signals") or [],
             "risk_factors": state.get("risk_factors") or [],
             "warnings": state.get("warnings") or [],
+            # 선택 필드. 지금 그래프는 만들지 않아 빈 배열이 된다.
+            # 키가 없을 때만 기본값을 쓴다. `or []` 로 받으면 None · {} 같은
+            # 잘못된 값이 빈 배열로 바뀌어 Contract 검사를 지나간다.
+            "severity_ratings": state.get("severity_ratings", []),
+            "protective_factors": state.get("protective_factors", []),
+            "session_change_notes": state.get("session_change_notes", []),
+            "followup_check_points": state.get("followup_check_points", []),
         }
 
         try:
