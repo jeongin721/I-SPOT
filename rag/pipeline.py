@@ -11,7 +11,7 @@ from law.parser import extract_articles
 from .checklist_builder import build_next_session_checklist
 from .config import LAW_TARGET_LAWS
 from .evidence_analyzer import analyze_checklist_candidates
-from .resource_ranker import build_reference_materials
+from .resource_ranker import build_reference_materials, format_document_reference
 from .retriever import search_evidence
 
 
@@ -19,6 +19,10 @@ DISCLAIMER = (
     "본 결과는 상담사의 판단을 지원하기 위한 참고정보이며 "
     "학대 여부를 확정하거나 법적 판단을 대신하지 않습니다."
 )
+
+# 화면의 '매뉴얼과 서식' / '법령과 판례' 섹션에 들어갈 RAG 원문 유형
+MANUAL_SOURCE_TYPES = ("manual", "guideline", "form")
+PRECEDENT_SOURCE_TYPES = ("precedent",)
 
 ABUSE_TYPE_KO = {
     "physical": "신체학대",
@@ -39,6 +43,8 @@ def _empty_result(consultation_text: str, abuse_type: str) -> dict[str, Any]:
         "related_laws": [],
         "next_session_checklist": {"items": []},
         "reference_materials": [],
+        "manual_references": [],
+        "precedents": [],
         "disclaimer": DISCLAIMER,
     }
 
@@ -150,6 +156,9 @@ def _load_law_articles(
 def _load_supplementary_rag(
     consultation_text: str,
     abuse_type: str,
+    *,
+    source_types: tuple[str, ...] = MANUAL_SOURCE_TYPES,
+    top_k: int = 2,
 ) -> list[dict[str, Any]]:
     query = (
         f"{consultation_text} "
@@ -159,11 +168,11 @@ def _load_supplementary_rag(
     results: list[dict[str, Any]] = []
     seen_chunks: set[str] = set()
 
-    for source_type in ("manual", "guideline"):
+    for source_type in source_types:
         try:
             found = search_evidence(
                 query,
-                top_k=2,
+                top_k=top_k,
                 source_type=source_type,
             )
         except Exception:
@@ -222,6 +231,13 @@ def analyze_consultation_evidence(
         consultation_text,
         abuse_type,
     )
+    # rag_data/precedents/ 에 판례 원문이 없으면 빈 목록이 반환된다.
+    precedent_results = _load_supplementary_rag(
+        consultation_text,
+        abuse_type,
+        source_types=PRECEDENT_SOURCE_TYPES,
+        top_k=3,
+    )
 
     next_session_checklist = build_next_session_checklist(
         consultation_text,
@@ -240,6 +256,12 @@ def analyze_consultation_evidence(
     result["related_laws"] = law_articles
     result["next_session_checklist"] = next_session_checklist
     result["reference_materials"] = reference_materials
+    result["manual_references"] = [
+        format_document_reference(item) for item in supplementary_results
+    ]
+    result["precedents"] = [
+        format_document_reference(item) for item in precedent_results
+    ]
     if law_warning:
         result["law_warning"] = law_warning
 
@@ -247,6 +269,22 @@ def analyze_consultation_evidence(
         result["message"] = "조건에 맞는 체크리스트 검색 결과가 없습니다."
 
     return result
+
+
+def _print_document_references(
+    references: list[dict[str, Any]],
+    *,
+    empty_message: str,
+) -> None:
+    if not references:
+        print(empty_message)
+        return
+
+    for reference in references:
+        page = reference.get("page")
+        suffix = f" p.{page}" if page else ""
+        print(f"- [{reference.get('type', '')}] {reference.get('title', '')}{suffix}")
+        print(f"  {reference.get('summary', '')}")
 
 
 def _print_human_readable(
@@ -338,6 +376,18 @@ def _print_human_readable(
             print(f"   {material.get('summary', '')}")
     else:
         print("- 제공할 참고자료가 없습니다.")
+
+    print("\n[7. 매뉴얼과 서식]")
+    _print_document_references(
+        result.get("manual_references", []),
+        empty_message="- 관련 매뉴얼·가이드·서식이 없습니다.",
+    )
+
+    print("\n[8. 판례]")
+    _print_document_references(
+        result.get("precedents", []),
+        empty_message="- 관련 판례가 없습니다. (rag_data/precedents/ 원문 필요)",
+    )
 
     print("\n[참고]")
     print(result.get("disclaimer", DISCLAIMER))

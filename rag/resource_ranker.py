@@ -10,6 +10,21 @@ def _shorten(text: str, limit: int = 700) -> str:
     return normalized[: limit - 1].rstrip() + "…"
 
 
+def format_document_reference(result: dict[str, Any]) -> dict[str, Any]:
+    """RAG 검색 결과 1건을 화면 표시용 문서 참고자료 형식으로 변환한다."""
+    metadata = result.get("metadata", {})
+    source = str(metadata.get("source", ""))
+    return {
+        "type": str(metadata.get("source_type", "reference")),
+        "title": source or "공식 참고자료",
+        "summary": _shorten(str(result.get("content", ""))),
+        "source": source,
+        "organization": metadata.get("organization", ""),
+        "page": metadata.get("page"),
+        "chunk_id": metadata.get("chunk_id", ""),
+    }
+
+
 def build_reference_materials(
     checklist_results: list[dict[str, Any]],
     law_articles: list[dict[str, Any]],
@@ -78,21 +93,10 @@ def build_reference_materials(
 
     # 3순위: 업무 매뉴얼/가이드 등 RAG 자료
     for result in supplementary_results:
-        metadata = result.get("metadata", {})
-        source = str(metadata.get("source", ""))
-        page = str(metadata.get("page", ""))
-        source_type = str(metadata.get("source_type", "reference"))
+        reference = format_document_reference(result)
         add(
-            {
-                "type": source_type,
-                "title": source or "공식 참고자료",
-                "summary": _shorten(str(result.get("content", ""))),
-                "source": source,
-                "organization": metadata.get("organization", ""),
-                "page": metadata.get("page"),
-                "chunk_id": metadata.get("chunk_id", ""),
-            },
-            (source_type, source, page),
+            reference,
+            (reference["type"], reference["source"], str(reference["page"] or "")),
         )
         if len(materials) >= limit:
             break

@@ -130,7 +130,7 @@ curl -X POST http://localhost:8000/api/v1/analyze -F "file=@sample.wav"
 | `child_analysis_status` | `OK`가 아니면 학대 유형 분석 생략 |
 | `child_analysis_text` | 아동 발화만 모은 분석용 텍스트 |
 | `abuse_prediction` | 라벨별 확률·threshold 판정 (분석 생략 시 `null`) |
-| `rag_analysis` | 근거 문장, 체크리스트 판정, 관련 법령, 다음 상담 체크리스트, 참고자료 (생략 시 `null`, 실패 시 `{"error": ...}`) |
+| `rag_analysis` | 근거 문장, 체크리스트 판정, 관련 법령, 다음 상담 체크리스트, 참고자료, 매뉴얼·서식(`manual_references`), 판례(`precedents`) (생략 시 `null`, 실패 시 `{"error": ...}`) |
 
 `rag_analysis`의 상세 스키마는 [rag/README.md](rag/README.md#8-주요-json-출력)를 참고한다.
 

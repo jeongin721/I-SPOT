@@ -157,9 +157,32 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
       "type": "manual",
       "title": "아동보호서비스 업무 매뉴얼"
     }
-  ]
+  ],
+  "manual_references": [
+    {
+      "type": "manual",
+      "title": "[붙임1] 2026년 아동보호서비스 업무 매뉴얼.pdf",
+      "summary": "...",
+      "source": "[붙임1] 2026년 아동보호서비스 업무 매뉴얼.pdf",
+      "organization": "보건복지부·아동권리보장원",
+      "page": 123,
+      "chunk_id": "..."
+    }
+  ],
+  "precedents": []
 }
 ```
+
+화면 섹션별 사용 필드:
+
+| 화면 섹션 | 필드 | 내용 |
+|---|---|---|
+| 매뉴얼과 서식 | `manual_references` | `manual` / `guideline` / `form` 원문에서 유형별 상위 2개 (최대 6개) |
+| 매뉴얼과 서식 | `checklist_results` | 공식 체크리스트·서식 항목과 상담 일치 여부 |
+| 법령과 판례 | `related_laws` | 국가법령정보센터 현행 조문 |
+| 법령과 판례 | `precedents` | `rag_data/precedents/` 원문 상위 3개. 원문이 없으면 빈 배열 |
+
+`reference_materials`는 위 자료 중 핵심 2~3개만 섞어서 고른 요약용 필드다.
 
 ## 9. 상태값
 
@@ -191,6 +214,7 @@ rag/checklist_builder.py
 
 rag/resource_ranker.py
 - 상담사에게 보여줄 공식 참고자료 2~3개 선택
+- 매뉴얼·판례 검색 결과를 화면 표시용 형식으로 변환
 
 rag/pipeline.py
 - 전체 기능 통합
