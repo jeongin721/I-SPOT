@@ -3,8 +3,8 @@
 # 업무는 따로 저장하지 않는다. Session 상태가 곧 "지금 누구 차례인가"의 정답이므로
 # 조회할 때마다 상태에서 계산한다. 따로 저장하면 상태 기계와 어긋날 수 있다.
 #
-# 정렬 기준은 "이 상태로 기다리기 시작한 시각"이다. 새 컬럼 없이 이미 저장되는
-# 시각(STT·AI 완료, 원문 확정·수정, 음성 업로드)에서 계산하고, 정렬·페이지는 DB 에서 한다.
+# 정렬 기준은 "이 상태로 기다리기 시작한 시각"이다. 업무용 칸을 따로 두지 않고 이미 저장되는
+# 시각(STT·AI 완료, 원문 확정·수정, 음성 업로드, 요약 승인 풀기)에서 계산하고, 정렬·페이지는 DB 에서 한다.
 
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -126,7 +126,7 @@ def _waiting_since():
         .correlate(session)
         .scalar_subquery()
     )
-    reopened_at = (
+    transcript_reopened_at = (
         select(Transcript.created_at)
         .where(
             Transcript.session_id == session.id,
@@ -149,7 +149,7 @@ def _waiting_since():
         # 곧바로 "지연"으로 보인다. 되돌린 뒤 다시 STT 를 돌렸으면 새 STT 완료 시각이 늦다.
         (
             session.status == SessionStatus.STT_REVIEW_REQUIRED,
-            _later(_later(session.stt_completed_at, latest_confirmed_at), reopened_at),
+            _later(_later(session.stt_completed_at, latest_confirmed_at), transcript_reopened_at),
         ),
         # 대비용: AI 실패 후 원문 확정 상태로 되돌리면 실패 시각부터 센다.
         # 상태 전이 규칙(AI_FAILED → STT_CONFIRMED)에만 있고, 지금은 이 경로로 가는 API 가 없다.
@@ -157,7 +157,12 @@ def _waiting_since():
             session.status == SessionStatus.STT_CONFIRMED,
             _later(latest_confirmed_at, session.ai_completed_at),
         ),
-        (session.status == SessionStatus.AI_REVIEW_REQUIRED, session.ai_completed_at),
+        # AI 완료 · 요약 승인을 푼 시각 중 늦은 값. 원문을 되돌린 경우와 같은 이유다.
+        # 승인을 푼 뒤 다시 분석했으면 새 AI 완료 시각이 늦다. 푼 뒤 요약을 고쳐도 다시 세지 않는다.
+        (
+            session.status == SessionStatus.AI_REVIEW_REQUIRED,
+            _later(session.ai_completed_at, session.reopened_at),
+        ),
         # 실패 시각도 같은 칸에 기록된다(_fail_stt · _fail_analysis · expire_stale_processing).
         (session.status == SessionStatus.STT_FAILED, session.stt_completed_at),
         (session.status == SessionStatus.AI_FAILED, session.ai_completed_at),
