@@ -1,7 +1,8 @@
 # ai-modeling 분석 결과를 서버 요약 응답 모양으로 바꾸는 변환기.
 #
 # 설계 근거: 안 B(analyze_audio_session 을 한 번 부르고 결과를 Agent 에서 바꾼다, 10/13 결정).
-#            연결할 자리는 agent/nodes.py analysis_node 의 TODO 에 적어 두었다.
+#            지금은 ai/modeling/abuse/contract_adapter.py(to_ai_output_contract, AI_PROVIDER=modeling)가 부른다.
+#            LangGraph 쪽 연결 자리는 agent/nodes.py analysis_node 의 TODO 에 있다.
 #
 # 이경진 님 analyze_audio_session 은 요약을 문자열(counseling_summary)로 주고,
 # 근거가 붙은 문장은 기록 초안의 child_statement_points[{text, segment_ids}]
@@ -25,7 +26,7 @@
 #   - 위험 3필드는 다루지 않는다(build_risk_fields 쪽, 다음 차례)
 #
 # 반환값은 AgentState 의 summary · summary_evidence · warnings 와 같은 모양이다.
-# AIAnalysisResult 검증은 LangGraphAIAdapter._to_bundle 이 마지막에 한다.
+# AIAnalysisResult 검증은 부르는 쪽 어댑터(ModelingAIAdapter · LangGraphAIAdapter, backend/app/adapters/ai_adapter.py)가 마지막에 한다.
 
 from typing import Any, Dict, Iterable, List, Tuple
 
