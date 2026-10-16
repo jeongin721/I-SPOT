@@ -451,6 +451,11 @@ class LangGraphAIAdapter:
             "abuse_signals": state.get("abuse_signals") or [],
             "risk_factors": state.get("risk_factors") or [],
             "warnings": state.get("warnings") or [],
+            # 선택 필드. 지금 그래프는 만들지 않아 빈 배열이 된다.
+            "severity_ratings": state.get("severity_ratings") or [],
+            "protective_factors": state.get("protective_factors") or [],
+            "session_change_notes": state.get("session_change_notes") or [],
+            "followup_check_points": state.get("followup_check_points") or [],
         }
 
         try:
