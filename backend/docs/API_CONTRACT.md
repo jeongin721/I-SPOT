@@ -862,7 +862,11 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
         "risk_utterances": [],
         "abuse_signals": [],
         "risk_factors": [],
-        "warnings": ["추가 확인이 필요한 항목이 있습니다."]
+        "warnings": ["추가 확인이 필요한 항목이 있습니다."],
+        "severity_ratings": [],
+        "protective_factors": [],
+        "session_change_notes": [],
+        "followup_check_points": []
       },
       "summary_evidence": [
         { "key_point": "...", "segment_ids": ["seg_004"], "score": 0.75 }
@@ -886,8 +890,56 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
   `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 항목 구조(키 목록)를 검증하지 않는다.
   다만 `langgraph` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
   Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
+- 선택 필드 4개(`severity_ratings` · `protective_factors` · `session_change_notes` · `followup_check_points`)는 아래
+  "선택 필드" 를 본다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
+
+#### 선택 필드 (2026-10-16 추가)
+
+이경진 님 분석 결과(PR #48 의 `AI_PROVIDER=modeling`, 아직 main 에 없음)가 만드는 값을 담는 칸이다. 위험 3필드에 끼우지 않고 따로 둔다.
+모두 **선택**이라 AI 가 보내지 않으면 빈 배열(`[]`)이 된다. `schema_version` 은 `"1.0"` 그대로이고,
+이 필드가 생기기 전에 저장된 결과도 그대로 읽힌다(응답에는 빈 배열로 나온다).
+지금 `mock` · `pipeline` · `langgraph` 는 이 필드를 만들지 않아 모두 빈 배열이다.
+
+| 필드 | 항목 모양 | 설명 |
+| --- | --- | --- |
+| `severity_ratings` | `{ major_type, level, reason, matched_evidence, segment_ids, reviewed }` | 학대 유형별 심각도 **참고값** |
+| `protective_factors` | `{ category, text, segment_ids }` | 보호 요인 |
+| `session_change_notes` | `{ text, segment_ids }` | 이전 회기와 달라진 점 메모 |
+| `followup_check_points` | `{ text, segment_ids }` | 다음에 확인할 점에 대한 **AI 확인 메모** |
+
+```json
+"severity_ratings": [
+  { "major_type": "신체학대", "level": null, "reason": "...", "matched_evidence": "...", "segment_ids": [], "reviewed": false }
+],
+"protective_factors": [ { "category": "...", "text": "...", "segment_ids": ["seg_003"] } ],
+"session_change_notes": [ { "text": "...", "segment_ids": [] } ],
+"followup_check_points": [ { "text": "...", "segment_ids": [] } ]
+```
+
+항목 규칙(어기면 다른 Contract 검사와 같이 `AI_INVALID_OUTPUT` 으로 분석이 실패한다)
+- `severity_ratings[].major_type` · `protective_factors[].category` · 모든 항목의 `text` 는 꼭 있어야 하는 문자열이다.
+- `severity_ratings[].level` 은 **1~5 정수 또는 `null`**(정보 부족). 범위 밖(0, 6 …)이거나 정수가 아니면
+  (`true`, `"3"`, `3.0` 등) 거절한다. 키가 없으면 `null` 이다.
+- `reason` · `matched_evidence` 는 문자열(없으면 `""`), `reviewed` 는 참/거짓(없으면 `false`)이다.
+  `matched_evidence` 는 AI 가 뽑은 발췌문이라 원문과 글자가 다를 수 있다. 근거 위치는 `segment_ids` 로 본다.
+- `segment_ids` 는 근거 발화 번호 목록이고 선택이다(없으면 `[]`). 지금은 비어 올 수 있다.
+- 위 키 말고 다른 키는 버린다(최상위 `result` 와 같다).
+- `severity_ratings[].major_type` 은 지금 한글 유형명(예: `"신체학대"`)이 그대로 온다.
+  대분류를 영문(`PHYSICAL` 등)으로 통일할지는 위험 3필드 항목 구조 합의(`PROPOSAL_risk_fields.md` §7)와 함께 정한다.
+
+근거와 화면 표시
+- **근거 없는 위험 항목 빼기는 위험 3필드에만 적용한다.** 이 4개 필드는 `segment_ids` 가 비어 있어도 빼지 않고
+  저장 · 전달한다(10/16 합의. 지금은 근거 번호가 비어 오는 항목이 많다).
+- 대신 **화면은 `segment_ids` 가 있는 항목만 근거 위치와 함께 보여 준다**(`counselor-web/README.md`
+  "지켜야 할 원칙" 3번: 모든 제안에는 근거 위치를 함께 보여 준다). `segment_ids` 가 빈 항목을 어떻게 보여 줄지는
+  화면을 연결할 때 정한다.
+- **모두 AI 제안이고 판단은 상담원이 한다.** `level` 은 심각도 참고값이지 학대 판정이 아니다.
+  화면에서는 "AI 제안" · "상담사 검토 필요" 로 표시하고 "위험 확정" 같은 표현은 쓰지 않는다(아래 "표현 주의").
+- `followup_check_points` 는 **질문 은행의 질문이 아니라** AI 가 남긴 확인 메모다.
+  화면 원칙 7번("추가 질문은 질문 은행에서만 제안")과의 관계(이 메모를 질문으로 보여 줘도 되는지, 질문 은행 문항과
+  어떻게 잇는지)는 **팀 결정 대기**다. 그 전까지 이 메모를 아이에게 할 질문으로 보여 주지 않는다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
