@@ -63,7 +63,8 @@ export function toRiskAssessmentRows(items: RiskAssessment[]): RiskAssessmentRow
 
 /** 보내기 전에 걸러 낼 문제가 있으면 그 문장, 없으면 null. 서버가 최종으로 거절한다(422). */
 export function checkRiskReason(reason: string | undefined): string | null {
-  if (reason !== undefined && reason.length > RISK_REASON_MAX) {
+  // 서버(파이썬 len)처럼 코드 포인트로 센다. reason.length 는 UTF-16 단위라 이모지 하나를 2 로 센다.
+  if (reason !== undefined && Array.from(reason).length > RISK_REASON_MAX) {
     return `판단 이유는 ${RISK_REASON_MAX.toLocaleString()}자까지 쓸 수 있습니다.`;
   }
 
@@ -104,17 +105,27 @@ export function useRiskAssessments(
   const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState(key);
+  // 대상 세대. key 가 바뀔 때마다 1 씩 늘린다. 로그아웃 · 재로그인은 key 가 null 을 거치므로
+  // 같은 회차로 돌아와도(같은 계정 재로그인, A → B → A) 세대가 달라진다. 저장 요청은 보낼 때의
+  // 세대를 기억해 두고, 응답이 왔을 때 세대가 바뀌었으면 결과 · 오류를 버린다.
+  // 회차 문자열만 비교하면(useRemote.isCurrent) 같은 회차로 돌아온 뒤 앞 요청의 응답이 최신 판단을 덮는다.
+  const generation = useRef(0);
 
   if (errorKey !== key) {
     setErrorKey(key);
     setActionError(null);
+    generation.current += 1;
+    // 앞 대상에서 보낸 요청이 아직 안 끝났어도 새 대상에서는 저장할 수 있게 한다.
+    inFlight.current = false;
+    setSubmitting(false);
   }
 
   const rows = useMemo(() => toRiskAssessmentRows(remote.data ?? []), [remote.data]);
 
   /**
    * 한 번에 하나만 보낸다(같은 순간 두 번 눌러도 두 번째는 null).
-   * 요청한 뒤 다른 회차로 옮겼으면 결과를 지금 회차의 목록에 넣지 않는다(판단은 요청한 회차에 저장됐다).
+   * 요청한 뒤 대상이 바뀌었으면(다른 회차, 로그아웃 · 재로그인, 다른 회차에 갔다 돌아옴) 결과를 반영하지 않고
+   * null 을 돌려준다. 판단은 요청한 회차에 저장됐고, 지금 목록은 그 뒤에 새로 불러온 값이다.
    */
   const save = useCallback(
     async (abuseType: AbuseType, input: { level: RiskLevel; reason?: string }): Promise<RiskAssessmentRow | null> => {
@@ -128,6 +139,8 @@ export function useRiskAssessments(
       }
 
       const forKey = key;
+      const forGeneration = generation.current;
+      const stillCurrent = () => generation.current === forGeneration && remote.isCurrent(forKey);
       const reason = input.reason?.trim() ? input.reason : null;
 
       inFlight.current = true;
@@ -136,6 +149,8 @@ export function useRiskAssessments(
 
       try {
         const result = await riskApi.save(forKey, abuseType, { counselor_level: input.level, reason });
+
+        if (!stillCurrent()) return null;
 
         remote.setData(forKey, (current) => {
           const list = current ?? [];
@@ -147,7 +162,10 @@ export function useRiskAssessments(
 
         return toRiskAssessmentRows([result]).find((row) => row.abuseType === abuseType) ?? null;
       } catch (caught) {
-        if (remote.isCurrent(forKey) && !(caught instanceof ApiError && caught.isUnauthorized)) {
+        // 대상이 바뀌었으면 오류 문구도 다시 조회도 하지 않는다(새로 부른 목록을 건드리지 않게).
+        if (!stillCurrent()) return null;
+
+        if (!(caught instanceof ApiError && caught.isUnauthorized)) {
           setActionError(errorMessage(caught, "위험도 판단을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         }
 
@@ -156,8 +174,11 @@ export function useRiskAssessments(
 
         return null;
       } finally {
-        inFlight.current = false;
-        setSubmitting(false);
+        // 대상이 바뀌었으면 그때 이미 풀었다. 새 대상에서 보낸 요청의 표시를 끄지 않는다.
+        if (generation.current === forGeneration) {
+          inFlight.current = false;
+          setSubmitting(false);
+        }
       }
     },
     [key, remote.setData, remote.isCurrent, remote.refresh],
