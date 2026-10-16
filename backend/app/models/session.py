@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from app.models.audio_feature import AudioFeature
     from app.models.case import Case
     from app.models.document import Document
+    from app.models.risk_assessment import SessionRiskAssessment
     from app.models.summary import ConsultationSummary
     from app.models.transcript import Transcript
     from app.models.user import User
@@ -126,6 +127,11 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="Document.created_at",
+    )
+    risk_assessments: Mapped[List["SessionRiskAssessment"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def clear_error(self) -> None:

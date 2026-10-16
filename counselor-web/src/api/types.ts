@@ -719,3 +719,65 @@ export interface DocumentUpdateRequest {
   /** 50000자 이하. */
   content?: string;
 }
+
+// =========================================================
+// 상담원 위험도 판단 — backend/app/schemas/risk_assessment.py (API_CONTRACT 11절)
+// =========================================================
+
+/** 학대 유형 대분류. 서버 값은 영문 대문자이고 한글 이름은 화면에서만 쓴다(ABUSE_TYPE_LABELS). */
+export type AbuseType = "PHYSICAL" | "EMOTIONAL" | "SEXUAL" | "NEGLECT";
+
+/** 서버가 목록을 주는 순서와 같다. */
+export const ABUSE_TYPES: readonly AbuseType[] = ["PHYSICAL", "EMOTIONAL", "SEXUAL", "NEGLECT"];
+
+export const ABUSE_TYPE_LABELS: Record<AbuseType, string> = {
+  PHYSICAL: "신체학대",
+  EMOTIONAL: "정서학대",
+  SEXUAL: "성학대",
+  NEGLECT: "방임",
+};
+
+/**
+ * 상담원 위험도 판단(상 · 중 · 하). AI 심각도(1~5)와 척도가 다르고, 둘을 대응시키는 규칙은 팀 결정 전이다.
+ * 화면에서 이 값을 '학대 확정' · '위험 확정' 으로 쓰지 않는다.
+ */
+export type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
+
+export const RISK_LEVELS: readonly RiskLevel[] = ["HIGH", "MEDIUM", "LOW"];
+
+export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
+  HIGH: "상",
+  MEDIUM: "중",
+  LOW: "하",
+};
+
+/** 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse). */
+export interface RiskAssessment {
+  id: string;
+  session_id: string;
+  abuse_type: AbuseType;
+  counselor_level: RiskLevel;
+  /** 판단 이유. 적지 않았으면 null. */
+  reason: string | null;
+  /**
+   * 판단을 저장할 때 그 회차 AI 분석 결과에 있던 같은 유형의 심각도(1~5). 서버가 채운다.
+   * 분석이 없거나 · 실패했거나 · 그 유형 항목이 없거나 · 정보 부족이면 null.
+   * 저장한 뒤 재분석해도 바뀌지 않는다(판단 당시 기록). 'AI 판정' 이 아니라 'AI 제안' 이다.
+   */
+  ai_level: number | null;
+  /** 마지막으로 저장한 사람. 계정이 삭제되었으면 null. */
+  assessed_by_id: string | null;
+  assessed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 판단 저장 · 수정 요청(PUT /sessions/{id}/risk-assessments/{abuse_type}). 판단 전체를 바꾼다.
+ * reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
+ */
+export interface RiskAssessmentSaveRequest {
+  counselor_level: RiskLevel;
+  /** 1000자 이하. 빼거나 null · 공백만이면 null 로 저장. */
+  reason?: string | null;
+}
