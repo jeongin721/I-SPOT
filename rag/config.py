@@ -34,6 +34,11 @@ LAW_SERVICE_URL = os.getenv(
     "LAW_SERVICE_URL",
     "https://www.law.go.kr/DRF/lawService.do",
 )
+# 상담사 화면의 '원문보기'가 여는 국가법령정보센터 포털 (OC 인증값 없이 열람)
+LAW_PORTAL_URL = os.getenv(
+    "LAW_PORTAL_URL",
+    "https://www.law.go.kr/LSW",
+).rstrip("/")
 LAW_CACHE_DIR = Path(os.getenv("LAW_CACHE_DIR", BASE_DIR / "law_cache"))
 LAW_TIMEOUT_SECONDS = int(os.getenv("LAW_TIMEOUT_SECONDS", "15"))
 LAW_CACHE_MAX_AGE_HOURS = int(os.getenv("LAW_CACHE_MAX_AGE_HOURS", "24"))

@@ -7,6 +7,7 @@ from typing import Any
 from law.client import LawApiClient, LawApiError
 from law.mapper import rank_law_articles
 from law.parser import extract_articles
+from law.portal import attach_portal_urls
 
 from .checklist_builder import build_next_session_checklist
 from .config import LAW_TARGET_LAWS
@@ -123,13 +124,14 @@ def _load_law_articles(
                 cached.get("body", {}),
                 fallback_law_name=law_name,
             )
+            ranked = rank_law_articles(
+                articles,
+                abuse_type=abuse_type,
+                consultation_text=consultation_text,
+                limit=3,
+            )
             ranked_all.extend(
-                rank_law_articles(
-                    articles,
-                    abuse_type=abuse_type,
-                    consultation_text=consultation_text,
-                    limit=3,
-                )
+                attach_portal_urls(ranked, cached.get("search_item", {}))
             )
         except (LawApiError, OSError, ValueError) as exc:
             warnings.append(f"{law_name}: {exc}")

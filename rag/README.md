@@ -130,7 +130,8 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
       "article": "제17조",
       "title": "금지행위",
       "content": "...",
-      "matched_keywords": ["정서적 학대행위"]
+      "matched_keywords": ["정서적 학대행위"],
+      "portal_url": "https://www.law.go.kr/LSW/lsSideInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00&docCls=jo&urlMode=lsScJoRltInfoR"
     }
   ],
   "next_session_checklist": {
@@ -205,6 +206,11 @@ law/parser.py
 
 law/mapper.py
 - physical/emotional/sexual/neglect에 맞춰 관련 조문 랭킹
+
+law/portal.py
+- 법령 API의 법령일련번호(MST)와 조문번호로 국가법령정보센터 조문 페이지 주소(portal_url) 생성
+- 화면의 '원문보기' 버튼이 이 주소를 연다. API의 법령상세링크는 OC 인증값이 들어 있어 쓰지 않는다.
+- 일련번호를 쓰므로 화면에 보여준 조문과 같은 시행 버전이 열린다. 법령 캐시가 오래되면 옛 버전이 열리므로 캐시는 24시간마다 갱신한다.
 
 rag/evidence_analyzer.py
 - 상담 문장과 체크리스트 비교

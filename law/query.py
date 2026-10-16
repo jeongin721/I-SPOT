@@ -6,6 +6,7 @@ import json
 from .client import LawApiClient
 from .mapper import rank_law_articles
 from .parser import extract_articles
+from .portal import attach_portal_urls
 
 
 def main() -> None:
@@ -28,11 +29,14 @@ def main() -> None:
         cached.get("body", {}),
         fallback_law_name=args.law_name,
     )
-    ranked = rank_law_articles(
-        articles,
-        abuse_type=args.abuse_type,
-        consultation_text=args.text,
-        limit=args.top_k,
+    ranked = attach_portal_urls(
+        rank_law_articles(
+            articles,
+            abuse_type=args.abuse_type,
+            consultation_text=args.text,
+            limit=args.top_k,
+        ),
+        cached.get("search_item", {}),
     )
 
     if args.json:
@@ -48,6 +52,7 @@ def main() -> None:
             f"{article.get('article', '')} {article.get('title', '')}"
         )
         print(f"관련 키워드: {', '.join(article.get('matched_keywords', []))}")
+        print(f"원문보기: {article.get('portal_url', '')}")
         print(article.get("content", "")[:1200])
         print("=" * 80)
 

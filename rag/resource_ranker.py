@@ -84,6 +84,7 @@ def build_reference_materials(
                 "summary": _shorten(str(article.get("content", ""))),
                 "matched_keywords": article.get("matched_keywords", []),
                 "effective_date": article.get("effective_date", ""),
+                "portal_url": article.get("portal_url", ""),
                 "source": "국가법령정보센터",
             },
             ("law", law_name, article_name),
