@@ -1,7 +1,7 @@
 # ai-modeling 분석 결과를 서버 요약 응답 모양으로 바꾸는 변환기.
 #
-# 설계 근거: setting/specs/I-SPOT/ai-analysis-connect-research-1013.md 4절 안 B
-#            '요약 변환기' 표 (10/13 사용자 결정 3)
+# 설계 근거: 안 B(analyze_audio_session 을 한 번 부르고 결과를 Agent 에서 바꾼다, 10/13 결정).
+#            연결할 자리는 agent/nodes.py analysis_node 의 TODO 에 적어 두었다.
 #
 # 이경진 님 analyze_audio_session 은 요약을 문자열(counseling_summary)로 주고,
 # 근거가 붙은 문장은 기록 초안의 child_statement_points[{text, segment_ids}]
