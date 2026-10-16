@@ -5,11 +5,13 @@
 # 데이터는 모두 가상이다.
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.adapters.ai_adapter import set_ai_adapter_override
 from app.core.enums import (
@@ -608,3 +610,65 @@ def test_there_is_no_delete(client: TestClient, counselor_headers, ready_session
 
     assert response.status_code == 405
     assert response.json()["error"]["code"] == "METHOD_NOT_ALLOWED"
+
+
+# =========================================================
+# 저장할 수 없는 문자 · 로그 보호 (Codex PR #51 교차검증 높음)
+# =========================================================
+
+@pytest.mark.parametrize(
+    "raw_reason",
+    # JSON 본문에 그대로 넣는 이스케이프 글자다(r"" 라 파이썬 문자열에는 역슬래시가 그대로 있다).
+    [
+        r"가상_이유\u0000_후반",  # NUL — PostgreSQL text 에 넣으면 DataError(500)
+        r"가상_이유\ud800_후반",  # 짝 없는 서로게이트 — UTF-8 로 바꿀 수 없음
+    ],
+)
+def test_reason_with_unstorable_character_is_rejected(
+    client: TestClient, counselor_headers, ready_session: dict, db, raw_reason: str
+) -> None:
+    url = _url(ready_session["id"], "PHYSICAL")
+    headers = {**counselor_headers, "Content-Type": "application/json"}
+    body = '{"counselor_level": "HIGH", "reason": "' + raw_reason + '"}'
+
+    created = client.put(url, content=body.encode("utf-8"), headers=headers)
+
+    assert created.status_code == 422, created.text
+    assert created.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "후반" not in created.text  # 응답에도 원문을 돌려주지 않는다
+
+    # 이미 있는 판단을 고칠 때도 같고, 저장된 판단은 그대로다.
+    assert _put(client, counselor_headers, ready_session["id"], "PHYSICAL", reason=REASON).status_code == 200
+    updated = client.put(url, content=body.encode("utf-8"), headers=headers)
+
+    assert updated.status_code == 422
+    listed = client.get(_url(ready_session["id"]), headers=counselor_headers).json()["data"]
+    assert [item["reason"] for item in listed] == [REASON]
+
+
+def test_db_errors_do_not_carry_sql_parameters(
+    client: TestClient, counselor_headers, counselor_id, ready_session: dict, db
+) -> None:
+    """
+    DB 오류가 나면 공통 500 처리가 traceback 을 로그에 남긴다(main.py).
+    SQLAlchemy 는 기본으로 SQL 파라미터(판단 이유 원문 등)를 오류 문자열에 넣으므로 숨겨야 한다.
+    """
+
+    assert _put(client, counselor_headers, ready_session["id"], "PHYSICAL").status_code == 200
+
+    db.add(
+        SessionRiskAssessment(
+            session_id=uuid.UUID(ready_session["id"]),
+            abuse_type=AbuseType.PHYSICAL,
+            counselor_level="LOW",
+            reason="가상_로그에_남으면_안_되는_이유",
+            assessed_by_id=counselor_id,
+            assessed_at=datetime.now(timezone.utc),
+        )
+    )
+
+    with pytest.raises(IntegrityError) as raised:
+        db.flush()
+
+    db.rollback()
+    assert "가상_로그에_남으면_안_되는_이유" not in str(raised.value)
