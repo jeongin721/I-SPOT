@@ -1,12 +1,21 @@
 """
-음성 파일을 STT로 변환한 뒤 상담 요약과 상담일지를 생성한다.
-현재는 STT 결과를 LLM에 전달해 summary/note를 만드는 단일 파일 테스트용 스크립트다.
+STT 결과를 LLM에 전달해 상담 요약과 상담일지를 생성한다.
+
+[2026-10-16: CLI 제거 — Mingyu 리뷰]
+
+원래 이 파일은 음성 파일→STT(OpenAI)→상담 요약/일지까지 한 번에
+돌리는 로컬 CLI(transcribe_audio, main)도 겸하고 있었다. 그 CLI는
+STT 원문을 콘솔에 그대로 찍고(print(transcript)) mask_for_outbound
+없이 바로 LLM에 넘겨, 실제 녹음으로 돌리면 원문이 터미널 기록과
+OpenAI 양쪽으로 그대로 나간다. backend 서버 경로는 이 파일의
+generate_counseling_records()만 쓰고(호출 전에 이미
+mask_for_outbound를 거친 글을 받는다) STT를 직접 하지 않으므로,
+main에 올라가는 이 버전에서는 CLI 전체를 뺐다. CLI가 필요하면
+ai-modeling 브랜치의 원본을 쓰면 된다.
 """
 
-import argparse
 import json
 import os
-from pathlib import Path
 from typing import Dict
 
 from openai import OpenAI
@@ -97,29 +106,6 @@ def parse_json_response(text: str) -> Dict[str, str]:
 
 
 # ============================================================
-# STT
-# ============================================================
-
-def transcribe_audio(
-    client: OpenAI,
-    audio_path: Path,
-) -> str:
-    """
-    음성 파일을 텍스트로 변환한다.
-
-    현재는 OpenAI STT를 사용한다.
-    화자 분리는 다음 단계에서 별도로 붙일 수 있다.
-    """
-    with audio_path.open("rb") as audio_file:
-        transcript = client.audio.transcriptions.create(
-            model="gpt-4o-mini-transcribe",
-            file=audio_file,
-        )
-
-    return transcript.text.strip()
-
-
-# ============================================================
 # 상담 요약 + 상담일지 생성
 # ============================================================
 
@@ -177,98 +163,3 @@ def generate_counseling_records(
         "counseling_summary": summary,
         "counseling_note": note,
     }
-
-
-# ============================================================
-# Main
-# ============================================================
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=(
-            "음성 파일 → STT → 상담 요약 + 상담일지"
-        )
-    )
-
-    parser.add_argument(
-        "--audio",
-        required=True,
-        help="음성 파일 경로",
-    )
-
-    parser.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
-        help="상담 기록 생성용 LLM 모델",
-    )
-
-    args = parser.parse_args()
-
-    api_key = os.getenv(
-        "OPENAI_API_KEY"
-    )
-
-    if not api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY 환경변수가 없습니다."
-        )
-
-    audio_path = Path(
-        args.audio
-    )
-
-    if not audio_path.exists():
-        raise FileNotFoundError(
-            f"음성 파일을 찾을 수 없습니다: {audio_path}"
-        )
-
-    client = OpenAI(
-        api_key=api_key
-    )
-
-    # ========================================================
-    # 1. STT
-    # ========================================================
-
-    print("=" * 80)
-    print("[1/2] STT 변환 중...")
-    print("=" * 80)
-
-    transcript = transcribe_audio(
-        client=client,
-        audio_path=audio_path,
-    )
-
-    print("\n[STT 결과]\n")
-    print(transcript)
-
-    # ========================================================
-    # 2. 상담 요약 + 상담일지
-    # ========================================================
-
-    print("\n" + "=" * 80)
-    print("[2/2] 상담 요약 + 상담일지 생성 중...")
-    print("=" * 80)
-
-    result = generate_counseling_records(
-        client=client,
-        transcript=transcript,
-        model=args.model,
-    )
-
-    print("\n[상담 요약]\n")
-    print(
-        result["counseling_summary"]
-    )
-
-    print("\n" + "=" * 80)
-    print("[상담 일지]\n")
-    print(
-        result["counseling_note"]
-    )
-
-    print("\n" + "=" * 80)
-
-
-if __name__ == "__main__":
-    main()
