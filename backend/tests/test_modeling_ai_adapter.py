@@ -9,25 +9,31 @@
 
 import copy
 import importlib
+import importlib.abc
 import importlib.util
 import json
 import logging
 import sys
+import threading
+import time
 import types
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.ai_adapter import (
+    AI_TIMEOUT_MESSAGE,
     AIError,
     ModelingAIAdapter,
     get_ai_adapter,
     set_ai_adapter_override,
+    start_ai_preload,
 )
 from app.adapters.module_loader import ensure_repo_root_on_path
 from app.core.config import settings
 from app.core.errors import ErrorCode
+from app.main import app
 from tests.test_analysis import _get_analysis, _run_analysis, confirmed_session
 
 # monkeypatch 가 "ai.modeling.abuse.*" 를 찾으려면 최상위 경로가 필요하다.
@@ -416,3 +422,291 @@ def test_pipeline_failure_fails_session_instead_of_hanging(
     assert envelope["error"]["code"] == "AI_FAILED"
     assert "아빠가 때렸어요" not in envelope["error"]["message"]
     assert envelope["analysis"]["result"] is None
+
+
+# =========================================================
+# 시간 제한 — 마감 시각 · 모델 로드
+# =========================================================
+
+def test_pipeline_timeout_error_is_stored_as_ai_timeout(
+    client: TestClient, counselor_headers, session: dict, modeling
+) -> None:
+    """모듈이 마감 시각을 넘겨 내장 TimeoutError 를 던지면 AI_TIMEOUT 으로 저장한다. 문구는 고정 문구다."""
+
+    confirmed_session(client, counselor_headers, session["id"])
+    set_ai_adapter_override(ModelingAIAdapter())
+    modeling["error"] = TimeoutError("아빠가 때렸어요 발화를 분석하다 마감 시각을 넘음")
+
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "AI_FAILED"
+    assert envelope["error"]["code"] == "AI_TIMEOUT"
+    assert envelope["analysis"]["error"]["code"] == "AI_TIMEOUT"
+    assert "아빠가 때렸어요" not in envelope["error"]["message"]
+
+
+class _SlowImport(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """infer_audio_session 을 import 하는 데 seconds 초가 걸리게 한다(가중치 로드 흉내).
+
+    실제 모듈은 import 할 때 모델을 올린다(infer_abuse_v3_adapter · pii_masking 의 모듈 수준 코드).
+    """
+
+    def __init__(self, seconds: float, analyze: Callable[..., Any]) -> None:
+        self.seconds = seconds
+        self.analyze = analyze
+        self.imports = 0
+
+    def find_spec(self, fullname, path, target=None):
+        if fullname != HEAVY_MODULE:
+            return None
+
+        return importlib.util.spec_from_loader(fullname, self)
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module) -> None:
+        self.imports += 1
+        time.sleep(self.seconds)
+        module.analyze_audio_session = self.analyze
+
+
+def test_module_import_time_is_outside_ai_time_limit(
+    client: TestClient,
+    counselor_headers,
+    session: dict,
+    modeling,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """모델을 올리는(import) 데 AI_TIMEOUT_SECONDS 보다 오래 걸려도 분석 시간에 들어가지 않는다."""
+
+    slow = _SlowImport(seconds=1.0, analyze=sys.modules[HEAVY_MODULE].analyze_audio_session)
+    monkeypatch.delitem(sys.modules, HEAVY_MODULE)
+    monkeypatch.setattr(sys, "meta_path", [slow, *sys.meta_path])
+    # import 가 부모 패키지에 남기는 속성도 시험 뒤 되돌린다.
+    monkeypatch.setattr(importlib.import_module(PACKAGE), "infer_audio_session", None, raising=False)
+
+    confirmed_session(client, counselor_headers, session["id"])
+    monkeypatch.setattr(settings, "AI_TIMEOUT_SECONDS", 0.5)
+    set_ai_adapter_override(ModelingAIAdapter())
+    modeling["result"] = _result_for
+
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "AI_REVIEW_REQUIRED", envelope["error"]
+    assert slow.imports == 1
+
+
+def test_import_failure_in_prepare_fails_session(
+    client: TestClient,
+    counselor_headers,
+    session: dict,
+    modeling,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """준비 단계(import)가 실패해도 그 분석만 AI_FAILED 로 끝난다."""
+
+    confirmed_session(client, counselor_headers, session["id"])
+    monkeypatch.setitem(sys.modules, HEAVY_MODULE, None)
+    set_ai_adapter_override(ModelingAIAdapter())
+
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "AI_FAILED"
+    assert envelope["error"]["code"] == "AI_FAILED"
+    assert modeling["calls"] == []
+
+
+def _patch_contract_function(
+    monkeypatch: pytest.MonkeyPatch,
+    make: Callable[[Callable[..., Any], List[Dict[str, Any]]], Callable[..., Any]],
+) -> List[Dict[str, Any]]:
+    """contract_adapter.analyze_audio_session_as_contract 를 make 가 만든 함수로 바꾼다.
+
+    make 는 (원래 함수, 받은 인자를 쌓을 목록)을 받아 새 함수를 돌려준다.
+    새 함수가 원래 함수를 부르므로 결과는 그대로 Contract 모양이다.
+    """
+
+    contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
+    calls: List[Dict[str, Any]] = []
+    monkeypatch.setattr(
+        contract_adapter,
+        "analyze_audio_session_as_contract",
+        make(contract_adapter.analyze_audio_session_as_contract, calls),
+    )
+
+    return calls
+
+
+def test_deadline_is_passed_when_pipeline_accepts_it(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """deadline 을 받는 판이면 time.monotonic() 기준 마감 시각(분석 시작 + 제한 시간 - 여유)을 넘긴다."""
+
+    def make(original, calls):
+        def accepts_deadline(stt_result, client=None, case_id=None, *, deadline=None):
+            calls.append({"deadline": deadline})
+            return original(stt_result=stt_result, client=client, case_id=case_id)
+
+        return accepts_deadline
+
+    calls = _patch_contract_function(monkeypatch, make)
+    monkeypatch.setattr(settings, "AI_TIMEOUT_SECONDS", 100.0)
+    monkeypatch.setattr(settings, "AI_DEADLINE_MARGIN_SECONDS", 7.0)
+
+    before = time.monotonic()
+    ModelingAIAdapter().analyze(TRANSCRIPT)
+    after = time.monotonic()
+
+    [call] = calls
+    assert before + 93.0 <= call["deadline"] <= after + 93.0
+
+
+@pytest.mark.parametrize("variant", ["no_deadline_parameter", "only_kwargs"])
+def test_deadline_is_not_passed_when_pipeline_does_not_accept_it(
+    modeling, monkeypatch: pytest.MonkeyPatch, variant: str
+) -> None:
+    """deadline 을 이름으로 받지 않는 판에는 넘기지 않는다. **kwargs 만 있어도 넘기지 않는다."""
+
+    def make(original, calls):
+        def no_deadline_parameter(stt_result, client=None, case_id=None):
+            calls.append({})
+            return original(stt_result=stt_result, client=client, case_id=case_id)
+
+        def only_kwargs(stt_result, **kwargs):
+            calls.append(kwargs)
+            return original(stt_result=stt_result)
+
+        return {"no_deadline_parameter": no_deadline_parameter, "only_kwargs": only_kwargs}[variant]
+
+    calls = _patch_contract_function(monkeypatch, make)
+
+    ModelingAIAdapter().analyze(TRANSCRIPT)
+
+    assert calls == [{}]
+
+
+def test_pipeline_stopping_at_deadline_ends_before_backend_time_limit(
+    client: TestClient,
+    counselor_headers,
+    session: dict,
+    modeling,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """마감 시각에 모듈이 스스로 멈추면 Backend 제한 시간 전에 AI_TIMEOUT(고정 문구)으로 끝난다.
+
+    Backend 제한 시간에 걸렸다면 문구가 run_with_timeout 의 "외부 서비스 응답이 …" 였을 것이다.
+    """
+
+    def make(original, calls):
+        def stops_at_deadline(stt_result, client=None, case_id=None, deadline=None):
+            calls.append({"deadline": deadline})
+            time.sleep(max(0.0, deadline - time.monotonic()))
+            raise TimeoutError("아빠가 때렸어요 발화 분석 중 마감 시각을 넘음")
+
+        return stops_at_deadline
+
+    confirmed_session(client, counselor_headers, session["id"])
+    calls = _patch_contract_function(monkeypatch, make)
+    monkeypatch.setattr(settings, "AI_TIMEOUT_SECONDS", 2.0)
+    monkeypatch.setattr(settings, "AI_DEADLINE_MARGIN_SECONDS", 1.5)
+    set_ai_adapter_override(ModelingAIAdapter())
+
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "AI_FAILED"
+    assert envelope["error"] == {"code": "AI_TIMEOUT", "message": AI_TIMEOUT_MESSAGE}
+    assert len(calls) == 1
+
+
+# =========================================================
+# 서버 시작 때 미리 불러오기
+# =========================================================
+
+@pytest.mark.parametrize("provider", ["mock", "pipeline", "langgraph"])
+def test_providers_without_prepare_start_no_preload(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    monkeypatch.setattr(settings, "AI_PROVIDER", provider)
+
+    assert start_ai_preload() is None
+
+
+def test_preload_imports_modeling_module_in_background(
+    modeling, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    monkeypatch.setattr(settings, "AI_PROVIDER", "modeling")
+
+    with caplog.at_level(logging.INFO):
+        thread = start_ai_preload()
+        thread.join(timeout=30)
+
+    assert thread.daemon
+    assert not thread.is_alive()
+    assert CONTRACT_ADAPTER in sys.modules
+    assert "AI 모듈을 미리 불러왔습니다. provider=modeling" in caplog.text
+
+
+def test_startup_preload_failure_does_not_stop_server(
+    modeling, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """torch 등이 없어 미리 불러오기가 실패해도 서버는 뜨고, 로그에는 예외 종류 이름만 남는다."""
+
+    monkeypatch.setattr(settings, "AI_PROVIDER", "modeling")
+    monkeypatch.setitem(sys.modules, HEAVY_MODULE, None)
+
+    with caplog.at_level(logging.WARNING), TestClient(app) as started:
+        thread = app.state.ai_preload
+        thread.join(timeout=30)
+        health = started.get("/health")
+
+    assert not thread.is_alive()
+    assert health.status_code == 200
+    assert health.json()["data"]["ai_provider"] == "modeling"
+
+    assert "AI 모듈을 미리 불러오지 못했습니다" in caplog.text
+    assert "type=ModuleNotFoundError" in caplog.text
+    # 예외 문구("import of … halted; None in sys.modules")는 남기지 않는다.
+    assert "halted" not in caplog.text
+
+
+class _BlockingPrepareAdapter:
+    """release 가 켜질 때까지 준비 단계가 끝나지 않는 어댑터(내려받기가 오래 걸리는 새 서버 흉내)."""
+
+    name = "blocking-prepare"
+
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def prepare(self) -> None:
+        self.started.set()
+        self.release.wait(timeout=30)
+
+    def analyze(self, transcript_payload):
+        raise AssertionError("시작 때는 분석하지 않는다")
+
+
+def test_startup_preload_does_not_block_health() -> None:
+    adapter = _BlockingPrepareAdapter()
+    set_ai_adapter_override(adapter)
+
+    try:
+        with TestClient(app) as started:
+            assert adapter.started.wait(timeout=10)
+            health = started.get("/health")
+            thread = app.state.ai_preload
+            still_loading = thread.is_alive()
+    finally:
+        adapter.release.set()
+
+    thread.join(timeout=10)
+
+    assert health.status_code == 200
+    assert still_loading
