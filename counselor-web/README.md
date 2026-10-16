@@ -68,6 +68,9 @@ npm run build      # dist/ 에 배포용 파일 생성
 - 읽기는 `readScreenIds(useSearchParams()[0])`, 만들기는 `screenHref('/SessionDetail', { caseId, sessionId })`(`src/data/screens/links.ts`). 주소 문자열을 직접 이어 붙이지 않습니다.
 - 회차 화면은 `session` 만 있어도 됩니다. 사례는 회차 정보에서 찾고, 주소의 `case` 와 다르면 회차 쪽을 씁니다. 링크를 만들 때는 아는 ID 를 모두 넣습니다.
 - 필요한 ID 가 없거나 없는 사례 · 회차면 화면 위에 안내와 돌아갈 링크를 보입니다(`screenNotice` → `components/Notice.jsx`).
+- 아직 예시 데이터인 화면(추가 확인 · 질문, 유형별 위험도, 상담 전 브리핑, 아이 연계, 서식)도 들어올 때 받은 ID 를 다음 화면 링크에 넘깁니다:
+  `const carry = useCarryHref();` → `<A to={carry('/NoteWrite')}>`(`src/data/useCarryHref.ts`). 회차 ID 는 회차 화면으로 갈 때만 넘깁니다
+  (녹취 올리기에 회차 ID 가 붙으면 '그 회차에 이어 올리기'가 됩니다). 예시 화면을 연결된 화면 사이에 새로 둘 때도 이렇게 합니다.
 
 ### 화면 파일과 값 함수
 
