@@ -33,6 +33,7 @@ from tests.test_analysis import _get_analysis, _run_analysis, confirmed_session
 # monkeypatch 가 "ai.modeling.abuse.*" 를 찾으려면 최상위 경로가 필요하다.
 ensure_repo_root_on_path()
 
+PACKAGE = "ai.modeling.abuse"
 CONTRACT_ADAPTER = "ai.modeling.abuse.contract_adapter"
 HEAVY_MODULE = "ai.modeling.abuse.infer_audio_session"
 
@@ -97,7 +98,7 @@ def _native_result() -> Dict[str, Any]:
             "risk_signal_points": [dict(GROUNDED_POINT)],
         },
         # Contract 에 담지 않는 값 — 결과에 새지 않아야 한다.
-        "severity_ratings": [{"major_type": "신체학대", "level": "가상"}],
+        "severity_ratings": [{"major_type": "신체학대", "level": "가상 심각도"}],
         "protective_factors": [
             {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
         ],
@@ -135,9 +136,21 @@ def modeling(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
         monkeypatch.setitem(sys.modules, "openai", fake_openai)
 
     # 앞선 시험이 다른 가짜 모듈로 import 해 둔 contract_adapter 를 쓰지 않게 매번 새로 import 한다.
-    sys.modules.pop(CONTRACT_ADAPTER, None)
+    # import 하면 sys.modules 와 부모 패키지 속성 두 곳에 남으므로 둘 다 비우고, 끝나면 원래대로 되돌린다.
+    package = importlib.import_module(PACKAGE)
+    saved_module = sys.modules.pop(CONTRACT_ADAPTER, None)
+    saved_attr = package.__dict__.pop("contract_adapter", None)
+
     yield state
+
     sys.modules.pop(CONTRACT_ADAPTER, None)
+    package.__dict__.pop("contract_adapter", None)
+
+    if saved_module is not None:
+        sys.modules[CONTRACT_ADAPTER] = saved_module
+
+    if saved_attr is not None:
+        package.contract_adapter = saved_attr
 
 
 # =========================================================
@@ -181,22 +194,22 @@ def test_result_is_converted_to_contract(modeling) -> None:
 
 
 def test_fields_outside_contract_do_not_leak(modeling) -> None:
-    """심각도 · 보호요인 · 회차 간 변화 · 다음 확인사항은 정식 선택 필드 전까지 담지 않는다."""
+    """심각도 · 보호요인 · 회차 간 변화 · 다음 확인사항은 아직 담지 않는다.
+
+    #49 가 같은 이름의 정식 선택 필드(기본값 빈 배열)를 더해도 이 어댑터는 채우지 않으므로
+    기본 6필드 밖의 값은 모두 비어 있어야 한다. contract_adapter 가 채우기 시작하면
+    이 시험을 그때의 계약에 맞춰 바꾼다.
+    """
 
     stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+    core = {"schema_version", "summary", "risk_utterances", "abuse_signals", "risk_factors", "warnings"}
 
-    assert set(stored) == {
-        "schema_version",
-        "summary",
-        "risk_utterances",
-        "abuse_signals",
-        "risk_factors",
-        "warnings",
-    }
+    assert core <= set(stored)
+    assert {key: value for key, value in stored.items() if key not in core and value} == {}
 
     dumped = json.dumps(stored, ensure_ascii=False)
 
-    for leaked in ("담임 선생님", "가상 회차 변화", "가상 확인사항", "severity"):
+    for leaked in ("담임 선생님", "가상 심각도", "가상 회차 변화", "가상 확인사항"):
         assert leaked not in dumped
 
 
