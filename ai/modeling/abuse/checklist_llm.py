@@ -458,6 +458,7 @@ def generate_checklist_draft(
     model: str = DEFAULT_MODEL,
     max_retries: int = 3,
     timeout_seconds: float = 180.0,
+    use_correction_hint: bool = True,
 ) -> Dict[str, Any]:
     """
     상담 원문을 바탕으로 서식 체크리스트 초안을 생성한다.
@@ -468,6 +469,14 @@ def generate_checklist_draft(
     timeout_seconds 기본값은 로컬 Ollama 호출(수십~백여 초) 기준으로
     잡았다 — 예전 OpenAI 전용(30초) 그대로 두면 응답 전에 타임아웃되어
     처음부터 재시도만 반복하다 실패하는 경우가 있었다.
+
+    use_correction_hint: build_correction_hint_text()가 case_store.db에
+    저장된 과거 승인 회차의 원문 인용(matched_evidence)을 그대로
+    시스템 프롬프트에 붙이는데, 이 프롬프트는 mask_for_outbound를 거치지
+    않는다(2026-10-16 Mingyu 리뷰, 높음 4번). backend 서버 경로
+    (infer_audio_session.analyze_audio_session)는 False로 호출해 이
+    힌트를 아예 끈다 — 로컬 CLI/오프라인 검수 도구에서는 기존처럼 켜둘 수
+    있다.
     """
 
     if not text.strip():
@@ -494,11 +503,14 @@ def generate_checklist_draft(
             api_key=api_key
         )
 
-    try:
-        correction_hint = build_correction_hint_text()
-    except Exception:
-        # 피드백 DB를 못 읽어도 체크리스트 생성 자체는 막지 않는다.
-        correction_hint = ""
+    correction_hint = ""
+
+    if use_correction_hint:
+        try:
+            correction_hint = build_correction_hint_text()
+        except Exception:
+            # 피드백 DB를 못 읽어도 체크리스트 생성 자체는 막지 않는다.
+            correction_hint = ""
 
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         household_items=_build_item_list_text(
