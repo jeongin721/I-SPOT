@@ -185,6 +185,32 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
 
 `reference_materials`는 위 자료 중 핵심 2~3개만 섞어서 고른 요약용 필드다.
 
+## 8-1. 화면별 업무 매뉴얼 검색
+
+`2026년 아동보호서비스 업무 매뉴얼`은 상담사 화면 세 곳에 필요한 구간만 검색한다. 구간은 `rag/metadata.py`의 `MANUAL_SCREEN_SECTIONS`(PDF 쪽 범위)로 정하고, 색인할 때 조각마다 `screen` · `screen_section`을 붙인다.
+
+| screen | 화면 | 매뉴얼 구간 |
+|---|---|---|
+| `followup` | 추가 확인 · 질문 | 상담·조사·사정, [서식 8] 친부모 상황 점검표, [서식 9] 아동 상황 점검표 |
+| `prebriefing` | 상담 전 브리핑 | [서식 15] 양육상황 점검표 |
+| `closure` | 종결 검토 | 종결, 사후관리, [서식 20] 종결심사서, [서식 28] 사후관리 점검표 |
+
+```bash
+python -m rag.screen_manual "상담 문장" --screen followup --json
+```
+
+```python
+from rag.screen_manual import search_screen_manual
+
+references = search_screen_manual("상담 문장", "closure", top_k=3)
+# [{"type": "manual", "title": ..., "section": "종결", "summary": ..., "organization": ..., "chunk_id": ...}]
+```
+
+- 구간 밖 내용(전달체계, 입양, 실종아동 등)은 검색되지 않는다.
+- `followup`은 [서식 9] 아동 상황 점검표에서 먼저 `top_k - 1`개를 고르고, 마지막 한 자리는 나머지 구간(상담·조사·사정, 서식 8)에서 채운다.
+- 요약에서 인쇄본 쪽 머리말은 뺀다. 화면에는 쪽 번호를 보여주지 않는다.
+- 구간표를 바꾸거나 새 판 매뉴얼을 넣으면 `python -m rag.indexer`로 다시 색인한다.
+
 ## 9. 상태값
 
 - `matched`: 상담 원문에서 체크리스트 항목을 직접 뒷받침하는 근거가 확인됨

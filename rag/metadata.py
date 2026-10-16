@@ -60,6 +60,48 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
+# 상담사 화면별로 쓸 업무 매뉴얼 구간. (화면, 구간 이름, PDF 시작 쪽, PDF 끝 쪽) — 양 끝 쪽 포함.
+# 2026년판 매뉴얼은 인쇄본 쪽 번호 + 22 = PDF 쪽 번호다. 새 판이 나오면 쪽 범위를 다시 맞춘다.
+#   followup    : 추가 확인 · 질문
+#   prebriefing : 상담 전 브리핑
+#   closure     : 종결 검토
+MANUAL_SCREEN_SECTIONS: dict[str, tuple[tuple[str, str, int, int], ...]] = {
+    "아동보호서비스 업무 매뉴얼": (
+        ("followup", "상담·조사·사정", 124, 134),
+        ("followup", "[서식 8] 친부모 상황 점검표", 283, 288),
+        ("followup", "[서식 9] 아동 상황 점검표", 289, 294),
+        # 양육상황 점검 및 재평가(158~173쪽)는 점검 주기 · 담당 등 행정 절차라 브리핑에서 뺀다.
+        ("prebriefing", "[서식 15] 양육상황 점검표", 309, 312),
+        ("closure", "종결", 174, 188),
+        ("closure", "사후관리", 189, 198),
+        ("closure", "[서식 20] 종결심사서", 330, 331),
+        ("closure", "[서식 28] 보호종결 사유별 사후관리 점검표", 345, 349),
+    ),
+}
+
+# 화면에서 먼저 검색할 구간. 추가 확인 질문은 아동에게 물을 질문이 목적이라 아동 상황 점검표를 앞에 둔다.
+SCREEN_PRIORITY_SECTIONS: dict[str, tuple[str, ...]] = {
+    "followup": ("[서식 9] 아동 상황 점검표",),
+}
+
+SCREEN_NAMES = {
+    "followup": "추가 확인 · 질문",
+    "prebriefing": "상담 전 브리핑",
+    "closure": "종결 검토",
+}
+
+
+def infer_manual_screen(source: str, page: int) -> tuple[str, str]:
+    """매뉴얼 조각이 어느 화면 구간에 속하는지 (screen, 구간 이름)으로 돌려준다. 구간 밖이면 ("", "")."""
+    for title, sections in MANUAL_SCREEN_SECTIONS.items():
+        if title not in source:
+            continue
+        for screen, section_name, start, end in sections:
+            if start <= page <= end:
+                return screen, section_name
+    return "", ""
+
+
 def infer_abuse_type(text: str) -> str:
     scores = {
         abuse_type: sum(text.count(keyword) for keyword in keywords)
@@ -101,6 +143,10 @@ def enrich_chunk_metadata(metadata: dict[str, Any], text: str) -> dict[str, Any]
     source_type = str(enriched.get("source_type", "reference"))
     enriched["category"] = infer_category(text, source_type)
     enriched["abuse_type"] = infer_abuse_type(text)
+    enriched["screen"], enriched["screen_section"] = infer_manual_screen(
+        str(enriched.get("source", "")),
+        int(enriched.get("page", 0) or 0),
+    )
     return enriched
 
 
@@ -118,6 +164,8 @@ def build_base_metadata(file_path: Path) -> dict[str, Any]:
         "abuse_type": "none",
         "section": "",
         "subsection": "",
+        "screen": "",
+        "screen_section": "",
         "year": 0,
         "authority_level": "official" if source_type in {"guideline", "manual", "checklist"} else "reference",
     }

@@ -22,6 +22,7 @@ def format_document_reference(result: dict[str, Any]) -> dict[str, Any]:
         "organization": metadata.get("organization", ""),
         "page": metadata.get("page"),
         "chunk_id": metadata.get("chunk_id", ""),
+        "section": metadata.get("screen_section", ""),
     }
 
 

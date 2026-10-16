@@ -9,6 +9,8 @@ from .vector_store import get_vector_store
 def _build_filter(
     source_type: str | None = None,
     abuse_type: str | None = None,
+    screen: str | None = None,
+    screen_section: str | None = None,
 ) -> dict[str, Any] | None:
     conditions: list[dict[str, Any]] = []
 
@@ -17,6 +19,12 @@ def _build_filter(
 
     if abuse_type:
         conditions.append({"abuse_type": abuse_type})
+
+    if screen:
+        conditions.append({"screen": screen})
+
+    if screen_section:
+        conditions.append({"screen_section": screen_section})
 
     if not conditions:
         return None
@@ -33,6 +41,8 @@ def search_evidence(
     top_k: int = TOP_K,
     source_type: str | None = None,
     abuse_type: str | None = None,
+    screen: str | None = None,
+    screen_section: str | None = None,
 ) -> list[dict[str, Any]]:
     vector_store = get_vector_store()
 
@@ -40,6 +50,8 @@ def search_evidence(
     metadata_filter = _build_filter(
         source_type=source_type,
         abuse_type=abuse_type,
+        screen=screen,
+        screen_section=screen_section,
     )
 
     if metadata_filter is not None:
