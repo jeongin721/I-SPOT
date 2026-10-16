@@ -51,6 +51,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 
 - 관리자 훅(`useAdmin*` · `useAuditLogs`)은 `{ enabled }` 대신 `useAuthSession()` 결과를 첫 인자로 받습니다(`useAdminDashboard(session)`). `session.isAdmin`(로그인됐고 서버가 준 역할이 관리자)이 아니면 서버를 부르지 않고, 로그아웃 · 다른 계정으로 바뀌면 불러온 값을 바로 비웁니다. 계정 관리 훅의 요청 뒤에는 같은 탭의 대시보드 · 접속 기록도 다시 조회합니다(`adminEvents`).
 - 한 화면에서 위 훅을 여러 개 함께 써도 됩니다. 한 훅의 요청(업로드 · 확정 · 분석 요청 · 승인)으로 회차 상태가 바뀌면 같은 회차를 보는 다른 훅도 다시 조회합니다(`sessionEvents`).
+- 회차 훅의 쓰기 요청(저장 · 확정 · 분석 요청 · 승인 · 판단 저장)은 보낼 때 `useRemote` 의 표(`capture()` — key · 대상 세대 · 로그인 토큰)를 잡아 두고, 응답이 오면 그 표가 아직 지금 대상일 때만 반영합니다(`setData(표, …)` · `isCurrent(표)`). 그사이 다른 회차로 옮겼거나, 갔다 돌아왔거나(A → B → A), 다른 탭에서 다시 로그인했거나, 화면을 떠났으면 결과 · 오류를 버리고 '반영 못 함'(`null` · `false`)을 돌려줍니다. 저장 → 승인 같은 화면 연쇄와 응답 뒤 이동(`useScreenGo`)도 다음 요청 · 이동 전에 같은 표로 확인합니다. 세대는 key 가 바뀔 때만 오르므로(다시 조회 · 되풀이 조회에는 그대로) 처리 중 조회 사이의 저장은 반영됩니다. 녹음 업로드는 시작할 때의 로그인 토큰이 바뀌면 다음 단계를 보내지 않고 멈춥니다.
 - Backend 에 없는 값(실명 · 신고접수일 · 위험도 · 상담 유형 · 기관 이름 등)은 다른 값으로 채우지 않고 `—` 로 둡니다.
 - 타입 검사: `npx tsc --noEmit` (CI 에서도 돕니다)
 
@@ -94,7 +95,7 @@ export default function CaseDetail(props) {
 
 - 디자인이 바뀌면 위 훅 몇 줄과 `renderVals()` 를 그대로 두고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
 - 화면만의 상태(단계 · 고른 항목 · 펼침 등)는 `Logic.state` 에 두고, 처음 값 · 바꾸는 함수는 값 함수가 줍니다(`uploadModal.ts` 의 `initialUploadState` · `setState`). 훅에 넘겨야 하는 상태(검색어 · 고른 사례)는 화면 함수의 `useState` 로 듭니다.
-- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
+- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(요청할 때 잡은 표가 지금 대상이 아니면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
 - `Login.jsx` 는 아직 값 계산이 화면 파일 안에 있습니다(이 규칙 전에 연결).
 
 | 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
