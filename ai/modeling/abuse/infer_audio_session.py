@@ -569,10 +569,14 @@ def analyze_audio_session(
         entity_map,
     )
 
+    # use_correction_hint=False: build_correction_hint_text()가 과거 회차
+    # 원문 인용을 mask_for_outbound 없이 시스템 프롬프트에 붙이므로, 외부
+    # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
     checklist_draft = generate_checklist_draft(
         text=masked_full_text,
         client=client,
         model=checklist_model,
+        use_correction_hint=False,
     )
 
     checklist_draft = restore_pii(
