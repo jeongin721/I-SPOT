@@ -530,6 +530,40 @@ def test_child_id_with_whitespace_is_kept_with_original_spelling(space, cited):
     assert result["warnings"] == []
 
 
+@pytest.mark.parametrize("other_speaker", ["GUARDIAN", "CHILD"])
+def test_empty_points_still_warn_when_child_id_is_ambiguous(other_speaker):
+    """id 가 겹쳐 근거로 쓸 아동 발화가 없어도, 원문에 아동 발화가 있으면 경고한다.
+
+    10/16 Codex 재검증: 근거용 아동 발화 목록이 비었다고 "아동 발화 없음" 으로 보아
+    빈 요지 경고가 빠졌다(9577ef2 판에서는 경고가 붙었다).
+    """
+
+    from app.schemas.contracts import STTResult
+
+    transcript = STTResult.model_validate(
+        {
+            "segments": [
+                _segment("s1", "CHILD", "가상 아동이 책을 읽는다."),
+                _segment(" s1 ", other_speaker, "가상 발화"),
+            ]
+        }
+    ).model_dump(mode="json")
+
+    result = convert_summary(_session_result([], summary="가상 상담 요약"), transcript)
+
+    assert result["summary"] == {"overview": "가상 상담 요약", "key_points": []}
+    assert result["summary_evidence"] == []
+    assert result["warnings"] == [KEY_POINTS_EMPTY_WARNING]
+
+
+def test_empty_points_warn_when_child_segment_has_no_usable_id():
+    transcript = {"segments": [{"speaker": "CHILD", "text": "가상 아동 발화"}]}
+
+    result = convert_summary(_session_result([]), transcript)
+
+    assert result["warnings"] == [KEY_POINTS_EMPTY_WARNING]
+
+
 def test_whitespace_only_segment_id_is_ignored():
     transcript = {"segments": [_segment("   ", "CHILD", "가상 아동이 책을 읽어요.")]}
 
