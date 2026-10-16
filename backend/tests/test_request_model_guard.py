@@ -7,8 +7,9 @@
 # 감싸져 있어 original_router 를 따라 내려가야 한다. 비공개 속성이라 FastAPI 를 올리면 바뀔 수 있으므로,
 # 찾은 수를 최소 개수 · OpenAPI 문서와 맞춰 보아 아무것도 검사하지 않고 통과하지 않게 한다.
 
+import sys
 import typing
-from typing import Annotated, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Annotated, Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 
 import pytest
 from fastapi import APIRouter, FastAPI, Query
@@ -305,3 +306,47 @@ def test_request_model_keeps_normal_values() -> None:
 
     assert model.note == "가상 🙂\n"
     assert model.labels == {"키": "값"}
+
+
+def _count_python_steps(run: Callable[[], Any]) -> int:
+    """run 을 부르는 동안 파이썬이 실행한 단계(함수 호출 · 줄 · 반환) 수를 센다."""
+
+    steps = 0
+
+    def tracer(frame: Any, event: str, arg: Any) -> Any:
+        nonlocal steps
+        steps += 1
+        return tracer
+
+    previous = sys.gettrace()
+    sys.settrace(tracer)
+
+    try:
+        run()
+    finally:
+        sys.settrace(previous)
+
+    return steps
+
+
+def test_request_model_check_does_not_loop_per_character() -> None:
+    # 본문 검증은 이벤트 루프에서 돈다. 글자마다 파이썬으로 훑으면 본문 한도(2MB) 안의 긴 글자 하나로
+    # 요청이 0.3초쯤 걸리고 그동안 다른 요청이 모두 기다린다.
+    # 시간은 기계마다 달라 파이썬 실행 단계 수로 본다. 글자 수가 늘어도 단계 수는 늘지 않아야 한다.
+    long_text = "가" * 10_000
+
+    steps = _count_python_steps(
+        lambda: _Shapes.model_validate({"note": long_text, "tags": [long_text] * 3})
+    )
+
+    assert steps < 300
+
+
+def test_request_model_check_does_not_loop_per_text_item() -> None:
+    # removed_segment_ids · key_points 처럼 항목 수 제한이 없는 글자 목록은 짧은 항목 수십만 개로도
+    # 본문 한도 안에서 같은 일이 생긴다. 항목 수가 늘어도 단계 수는 늘지 않아야 한다.
+    many_items = ["가"] * 10_000
+
+    steps = _count_python_steps(lambda: _Shapes.model_validate({"tags": many_items}))
+
+    assert steps < 300
