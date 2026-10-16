@@ -1,6 +1,7 @@
-// 회차 문서(상담일지 등) 훅(GET · POST /sessions/{id}/documents, PATCH …/{document_id}, POST …/approve).
+// 회차 문서(상담일지 등) 훅(GET · POST /sessions/{id}/documents, PATCH …/{document_id}, POST …/approve · …/reopen).
 //
-// 문서는 파일이 아니라 제목 · 본문 텍스트다. 항상 초안(DRAFT)으로 만들어지고, 승인하면 고칠 수 없다.
+// 문서는 파일이 아니라 제목 · 본문 텍스트다. 항상 초안(DRAFT)으로 만들어지고, 승인하면 reopen() 으로 승인을 풀어야
+// 고칠 수 있다(내용은 그대로 초안으로 돌아간다. 고친 뒤 다시 승인한다).
 //  - 회차 상태와 상관없이 만들고 고치고 승인할 수 있다. 문서를 승인해도 회차 상태는 바뀌지 않는다
 //    (요약 승인과 따로 동작한다 — API_CONTRACT 10절). 관리자 결재나 종결 심의가 아니다.
 //  - 문서 하나를 따로 조회하는 API 는 없다. 목록에서 찾는다(findConsultationRecord).
@@ -106,6 +107,8 @@ export interface SessionDocumentsState {
   /** 바꿀 칸만 넘긴다. */
   update: (documentId: string, input: { title?: string; content?: string }) => Promise<DocumentRow | null>;
   approve: (documentId: string) => Promise<DocumentRow | null>;
+  /** 승인을 풀어 다시 고칠 수 있게 한다. 내용은 그대로 둔다. */
+  reopen: (documentId: string) => Promise<DocumentRow | null>;
   reload: () => void;
 }
 
@@ -219,6 +222,12 @@ export function useSessionDocuments(
     [perform],
   );
 
+  const reopen = useCallback(
+    (documentId: string) =>
+      perform((id) => documentsApi.reopen(id, documentId), "문서를 수정 상태로 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    [perform],
+  );
+
   return {
     rows,
     consultationRecord: findConsultationRecord(rows),
@@ -228,6 +237,7 @@ export function useSessionDocuments(
     create,
     update,
     approve,
+    reopen,
     reload: remote.reload,
   };
 }
