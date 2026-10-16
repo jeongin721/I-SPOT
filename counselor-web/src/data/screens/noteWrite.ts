@@ -10,15 +10,15 @@
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
 //  - AI 일지 초안 · 아동 특성 · 가정상황 AI 제안은 Backend 에 없어 보이지 않는다(빈 칸에서 상담원이 쓴다).
-//  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②)에서 고른 항목은 단어로만 보이고, 나머지 서식 4 항목을 체크리스트로 추가해 고른다.
-//    본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다(초기면접 항목은 사례에 속한다).
-//    초기면접 내용은 서버에 저장하지 않아(팀 결정 전 · caseRegister.ts 머리말) 화면이 넘겨주지 않으면 '저장 전' 으로 보이고 전 항목을 고를 수 있다.
+//  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
+//    나머지 서식 4 항목을 체크리스트로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
+//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 체크리스트를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryReviewState } from "../useSummaryReview";
-import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS, type IntakeChecks } from "./intakeItems";
+import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -150,8 +150,6 @@ export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, as
 export interface NoteScreenInput extends SessionScreenInput {
   summary: SummaryReviewState;
   docs: SessionDocumentsState;
-  /** 사례의 초기면접에서 고른 항목. 서버에 저장하지 않아 지금은 넘기지 않는다(undefined · null = 저장 전). */
-  intake?: IntakeChecks | null;
   state: NoteUiState;
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
@@ -169,7 +167,7 @@ export function addableItems(options: string[], intake: string[], picked: string
 }
 
 export function noteWriteValues(input: NoteScreenInput) {
-  const { summary, docs, state, setState, go, detail, caseDetail, intake = null } = input;
+  const { summary, docs, state, setState, go, detail, caseDetail } = input;
   const header = processHeaderValues(input, 2);
   const ids = header.ids;
   const sessionId = ids.sessionId;
@@ -258,21 +256,27 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     readOnly: docLocked,
   });
-  /** 초기면접에서 고른 항목(단어로만 보인다). 저장 전이면 words 는 비고 note 로 까닭을 보인다. */
-  const intakeWords = (words: string[] | null) => ({
-    words: words ?? [],
-    note: words === null ? "초기면접 내용은 아직 서버에 저장하지 않아(준비 중) 보일 항목이 없습니다." : "초기면접에서 고른 항목 없음",
-  });
+  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 체크리스트를 잠근다.
+  // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
+  const intakeWaiting = !info && !caseDetail.error;
+  /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
+  const intakeWords = (words: string[] | null) => {
+    let empty = "초기면접에서 고른 항목 없음";
+    if (words === null) empty = intakeWaiting ? "초기면접 항목을 불러오는 중…" : "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+
+    return { words: words ?? [], note: empty };
+  };
   const checklist = (key: ListKey, options: string[], fromIntake: string[]) =>
     addableItems(options, fromIntake, note[key]).map((label) => {
       const checked = note[key].includes(label);
+      const locked = docLocked || intakeWaiting;
 
       return {
         label,
         checked,
-        disabled: docLocked,
+        disabled: locked,
         onChange: () => {
-          if (!docLocked) edit({ [key]: checked ? note[key].filter((item) => item !== label) : [...note[key], label] });
+          if (!locked) edit({ [key]: checked ? note[key].filter((item) => item !== label) : [...note[key], label] });
         },
       };
     });
@@ -335,10 +339,10 @@ export function noteWriteValues(input: NoteScreenInput) {
     environment: textField("environment"),
     signals: textField("signals"),
     opinion: textField("opinion"),
-    traitIntake: intakeWords(intake ? intake.traits : null),
-    homeIntake: intakeWords(intake ? intake.homes : null),
-    traits: checklist("traits", INTAKE_CHILD_ITEMS, intake ? intake.traits : []),
-    homes: checklist("homes", INTAKE_HOME_ITEMS, intake ? intake.homes : []),
+    traitIntake: intakeWords(info ? info.intakeChildTraits : null),
+    homeIntake: intakeWords(info ? info.intakeFamilySituations : null),
+    traits: checklist("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
+    homes: checklist("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
     traitEv: [] as { label: string; ev: string }[],
     homeEv: [] as { label: string; ev: string }[],
     aiDraft: false,

@@ -1,5 +1,6 @@
 // 서식 4(초기면접지) ② 초기면접 내용의 아동 특성 · 가정상황 고르기 항목(서식의 선택지라 예시 데이터가 아니다).
 // 새 사례 등록(caseRegister.ts)과 상담 일지(noteWrite.ts)가 같은 항목을 쓴다.
+// Backend 가 받는 항목(backend/app/core/intake.py)과 같아야 한다 — backend/tests/test_case_intake.py 가 비교한다.
 // 일지에서는 초기면접에서 고른 항목을 단어로만 보이고, 나머지 항목에서 추가로 고른다.
 
 export const INTAKE_HOME_ITEMS = [
@@ -63,9 +64,3 @@ export const INTAKE_CHILD_ITEMS = [
   "특성없음",
   "기타",
 ];
-
-/** 사례의 초기면접에서 고른 아동 특성 · 가정상황. */
-export interface IntakeChecks {
-  traits: string[];
-  homes: string[];
-}
