@@ -4,7 +4,7 @@
 #
 # Frontend 가 LLM Provider 를 직접 호출하지 않게 하고,
 # 팀 B 의 Structured JSON Contract 를 변형 없이 그대로 저장/전달한다.
-# 예외: LangGraph 결과는 근거 발화가 없는 위험 항목을 빼고 저장한다
+# 예외: LangGraph · Modeling 결과는 근거 발화가 없는 위험 항목을 빼고 저장한다
 # (drop_ungrounded_risk_items 참고).
 
 import os
@@ -296,6 +296,10 @@ class ModelingAIAdapter:
     욱여넣지 않고, 정식 선택 필드가 생길 때까지 이번 Contract 출력에는
     담지 않는다. summary는 agent/summary_converter.convert_summary()를
     그대로 쓴다 — contract_adapter.py 모듈 docstring 참고.
+
+    근거 발화가 없는 위험 항목은 저장 전에 뺀다(drop_ungrounded_risk_items).
+    LangGraphAIAdapter 와 같이 모듈이 돌려준 값이 아니라 어댑터가 받은
+    Transcript 로 대조한다.
     """
 
     name = "modeling"
@@ -342,6 +346,15 @@ class ModelingAIAdapter:
                 ErrorCode.AI_INVALID_OUTPUT,
             ) from error
 
+        result, dropped = drop_ungrounded_risk_items(result, transcript_payload)
+
+        if dropped:
+            logger.warning(
+                "segment 근거가 없는 위험 항목을 제외했습니다. provider=%s count=%s",
+                self.name,
+                dropped,
+            )
+
         return AIAnalysisBundle(
             result=result,
             summary_evidence=_to_summary_evidence(summary_evidence_raw),
@@ -351,7 +364,7 @@ class ModelingAIAdapter:
 
 
 # =========================================================
-# 근거 없는 위험 항목 제외 (LangGraph 결과의 마지막 관문)
+# 근거 없는 위험 항목 제외 (LangGraph · Modeling 결과의 마지막 관문)
 # =========================================================
 
 _RISK_FIELDS = ("risk_utterances", "abuse_signals", "risk_factors")
