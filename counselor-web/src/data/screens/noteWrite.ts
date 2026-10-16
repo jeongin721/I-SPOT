@@ -13,6 +13,7 @@
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
+import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryReviewState } from "../useSummaryReview";
 import { screenHref } from "./links";
@@ -159,14 +160,19 @@ export function parseNote(content: string): NoteDraft {
   return note;
 }
 
-/** 화면 상태(Logic.state). */
+/**
+ * 화면 상태(Logic.state). 화면은 계정이 바뀌어도 새로 만들어지지 않으므로, 고친 일지 · 확인창은 그때의 대상 표
+ * (docs.capture() — 회차 · 대상 세대 · 로그인 토큰)와 함께 두고 표가 지금 대상일 때만 쓴다.
+ * 다른 회차로 옮기거나, 갔다 돌아오거나(A → B → A), 다른 탭에서 다시 로그인하면 버린 것으로 본다
+ * (요약 훅의 고친 칸이 대상이 바뀔 때 비워지는 것과 같은 기준. 앞 로그인이 쓴 초안이 새 로그인 화면 · 요청에 실리지 않게).
+ */
 export interface NoteUiState {
   /** 고친 일지. null 이면 서버 값 그대로. */
   draft: NoteDraft | null;
-  /** draft 가 어느 회차 것인가(다른 회차로 옮기면 버린다). */
-  draftFor: string | null;
-  /** 승인을 한 번 더 묻는 중인 것과 그 회차. 다른 회차로 옮기면 확인창은 닫힌 것으로 본다. */
-  ask: { kind: "summary" | "document"; sessionId: string | null } | null;
+  /** draft 를 쓴 대상의 표. */
+  draftFor: RemoteTicket | null;
+  /** 승인을 한 번 더 묻는 중인 것과 물은 대상의 표. */
+  ask: { kind: "summary" | "document"; ticket: RemoteTicket } | null;
 }
 
 export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, ask: null };
@@ -190,13 +196,18 @@ export function noteWriteValues(input: NoteScreenInput) {
   const { summary, docs, state, setState, go, detail, caseDetail } = input;
   const header = processHeaderValues(input, 2);
   const ids = header.ids;
-  const sessionId = ids.sessionId;
   const sv = detail.session;
   const info = caseDetail.caseInfo;
   const signalHref = screenHref("/SignalReview", ids);
 
   const busy = summary.submitting || docs.submitting;
-  const asking = state.ask && state.ask.sessionId === sessionId ? state.ask.kind : null;
+  const asking = state.ask && docs.isCurrent(state.ask.ticket) ? state.ask.kind : null;
+  /** 승인을 한 번 더 묻는다. 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 열지 않는다. */
+  const ask = (kind: "summary" | "document") => {
+    const ticket = docs.capture();
+
+    if (ticket) setState({ ask: { kind, ticket } });
+  };
 
   // ---------------- 상담 요약 ----------------
   // 저장 · 승인을 기다리는 동안에는 잠근다(보낸 내용 뒤에 친 글자가 승인된 내용과 다르게 남지 않게).
@@ -255,7 +266,7 @@ export function noteWriteValues(input: NoteScreenInput) {
   // ---------------- 상담 일지 ----------------
   const record = docs.consultationRecord;
   const saved = record ? parseNote(record.content) : EMPTY_NOTE;
-  const draft = state.draft && state.draftFor === sessionId ? state.draft : null;
+  const draft = state.draft && docs.isCurrent(state.draftFor) ? state.draft : null;
   const note = draft ?? saved;
   const content = formatNote(note);
   const docDirty = draft !== null && content !== (record?.content ?? "");
@@ -265,9 +276,13 @@ export function noteWriteValues(input: NoteScreenInput) {
   const docLocked = docReadOnly || docs.loading || busy;
   const edit = (patch: Partial<NoteDraft>) =>
     setState((current) => {
-      const base = current.draft && current.draftFor === sessionId ? current.draft : note;
+      const kept = current.draft && docs.isCurrent(current.draftFor) ? current : null;
+      const ticket = kept ? kept.draftFor : docs.capture();
 
-      return { draft: { ...base, ...patch }, draftFor: sessionId };
+      // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 쓸 곳이 없다.
+      if (!ticket) return {};
+
+      return { draft: { ...(kept?.draft ?? note), ...patch }, draftFor: ticket };
     });
   const textField = (key: TextKey) => ({
     value: note[key],
@@ -330,7 +345,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveSummary: summary.canEdit && summary.dirty && !busy,
     saveSummary: () => void summary.save(),
     canApproveSummary: summary.canApprove && !busy,
-    askSummary: () => setState({ ask: { kind: "summary", sessionId } }),
+    askSummary: () => ask("summary"),
     summaryAsk: asking === "summary",
     summaryAskText: "승인하면 이 회차가 '승인 완료' 가 되고 요약을 더 고칠 수 없습니다. 상담일지 승인은 따로 합니다.",
     approveSummary: async () => {
@@ -358,7 +373,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveDoc: docDirty && !docReadOnly && !busy,
     saveDoc: () => void saveDoc(),
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
-    askDoc: () => setState({ ask: { kind: "document", sessionId } }),
+    askDoc: () => ask("document"),
     docAsk: asking === "document",
     docAskText: "승인하면 상담일지를 더 고칠 수 없습니다. 회차 상태는 바뀌지 않습니다.",
     approveDoc: async () => {
