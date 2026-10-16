@@ -16,6 +16,10 @@ def _engine_kwargs(database_url: str) -> Dict[str, Any]:
         "echo": settings.DB_ECHO,
         "future": True,
         "pool_pre_ping": True,
+        # DB 오류가 나면 공통 500 처리가 traceback 을 로그에 남긴다(main.py).
+        # SQLAlchemy 는 기본으로 SQL 파라미터(상담 기록 · 판단 이유 원문 등)를 오류 문자열과
+        # echo 로그에 넣으므로 숨긴다. SQL 문장과 DB 오류 문구는 그대로 남는다.
+        "hide_parameters": True,
     }
 
     if database_url.startswith("sqlite"):
