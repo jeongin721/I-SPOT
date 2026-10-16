@@ -24,6 +24,7 @@ from app.schemas.auth import (
     UserResponse,
     UserUpdateRequest,
 )
+from app.schemas.common import StorableQueryText
 from app.services import account_service, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -207,8 +208,9 @@ def list_audit_logs(
     page: PageQuery = 1,
     page_size: PageSizeQuery = 20,
     action: Optional[AuditAction] = None,
+    # 형식으로 이미 막히지만, 글자 쿼리는 모두 같은 타입을 쓴다(tests/test_request_model_guard.py).
     status_filter: Annotated[
-        Optional[str], Query(alias="status", pattern="^(SUCCESS|FAILURE)$")
+        StorableQueryText, Query(alias="status", pattern="^(SUCCESS|FAILURE)$")
     ] = None,
     actor_id: Annotated[Optional[uuid.UUID], Query(description="행동한 사용자")] = None,
     since: Annotated[Optional[datetime], Query(description="이 시각부터(포함). ISO 8601, 시간대 표시 없으면 UTC")] = None,

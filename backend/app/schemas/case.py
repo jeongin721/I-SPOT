@@ -9,9 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enums import CaseStatus, GuardianType
 from app.schemas.auth import UserResponse
+from app.schemas.common import RequestModel
 
 
-class GuardianFields(BaseModel):
+class GuardianFields(RequestModel):
     """
     보호자 유형.
 

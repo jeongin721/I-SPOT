@@ -15,6 +15,7 @@ from app.schemas.case import (
     CaseUpdateRequest,
 )
 from app.schemas.auth import UserResponse
+from app.schemas.common import StorableQueryText
 from app.schemas.session import SessionCreateRequest, SessionResponse
 from app.services import case_service, session_service
 from app.services.access import get_case_or_404
@@ -60,7 +61,8 @@ def list_cases(
     page: PageQuery = 1,
     page_size: PageSizeQuery = 20,
     status_filter: Annotated[Optional[CaseStatus], Query(alias="status")] = None,
-    search: Annotated[Optional[str], Query(max_length=100)] = None,
+    # NUL 이 든 검색어는 422 다(SQL 파라미터로 쓰이므로 PostgreSQL 이 거절해 500 이 된다).
+    search: Annotated[StorableQueryText, Query(max_length=100)] = None,
 ) -> DataResponse[PagedItems[CaseResponse]]:
     cases, total = case_service.list_cases(
         db,

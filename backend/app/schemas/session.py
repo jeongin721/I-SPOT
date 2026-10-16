@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.enums import SessionStatus
 from app.models.base import to_utc
-from app.schemas.common import SessionErrorInfo
+from app.schemas.common import RequestModel, SessionErrorInfo
 
 
 # 상담 시각으로 받는 범위(UTC 기준, 아래 끝은 포함하지 않음). API_CONTRACT 1.5.
@@ -43,7 +43,7 @@ def _consulted_at_as_utc(value: Optional[datetime]) -> Optional[datetime]:
     return converted
 
 
-class SessionCreateRequest(BaseModel):
+class SessionCreateRequest(RequestModel):
     title: Optional[str] = Field(default=None, max_length=200)
     consulted_at: Optional[datetime] = None
     location: Optional[str] = Field(default=None, max_length=200)
@@ -52,7 +52,7 @@ class SessionCreateRequest(BaseModel):
     _normalize_consulted_at = field_validator("consulted_at")(_consulted_at_as_utc)
 
 
-class SessionUpdateRequest(BaseModel):
+class SessionUpdateRequest(RequestModel):
     title: Optional[str] = Field(default=None, max_length=200)
     consulted_at: Optional[datetime] = None
     location: Optional[str] = Field(default=None, max_length=200)

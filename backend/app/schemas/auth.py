@@ -3,14 +3,19 @@
 import uuid
 from datetime import datetime
 
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar, Dict, FrozenSet, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.enums import AuditAction, UserRole
+from app.schemas.common import RequestModel
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(RequestModel):
+    # 로그인 비밀번호는 저장할 수 없는 문자 검사를 하지 않는다. 평문은 저장되지 않고 SQL 파라미터도
+    # 아니며, 예전 규칙으로 만든 비밀번호의 계정이 잠기면 안 된다(password_policy.py 머리말).
+    unstorable_text_exempt_fields: ClassVar[FrozenSet[str]] = frozenset({"password"})
+
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=128)
 
@@ -43,7 +48,7 @@ class LoginResponse(BaseModel):
     user: UserResponse
 
 
-class UserCreateRequest(BaseModel):
+class UserCreateRequest(RequestModel):
     """
     관리자 전용 계정 생성 요청.
 
@@ -57,18 +62,21 @@ class UserCreateRequest(BaseModel):
     role: UserRole = UserRole.COUNSELOR
 
 
-class PasswordChangeRequest(BaseModel):
+class PasswordChangeRequest(RequestModel):
     """
     본인 비밀번호 변경. 새 비밀번호 규칙은 app/core/password_policy.py 에 있다.
 
     new_password 의 최소 길이도 그 규칙이 본다(UserCreateRequest 와 같은 이유).
+    current_password 는 로그인 비밀번호와 같은 이유로 저장할 수 없는 문자 검사를 하지 않는다.
     """
+
+    unstorable_text_exempt_fields: ClassVar[FrozenSet[str]] = frozenset({"current_password"})
 
     current_password: str = Field(..., min_length=1, max_length=128)
     new_password: str = Field(..., min_length=1, max_length=128)
 
 
-class UserUpdateRequest(BaseModel):
+class UserUpdateRequest(RequestModel):
     """관리자 전용 계정 수정. 비밀번호는 여기서 바꾸지 않는다."""
 
     is_active: Optional[bool] = None
