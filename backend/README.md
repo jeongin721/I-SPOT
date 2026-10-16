@@ -114,6 +114,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 `ENV=production` 에서는 `JWT_SECRET_KEY` 가 32자 미만이거나 저장소에 적힌 예시값(`change-me-in-env-file` 등)이면 서버가 시작되지 않는다. 공개된 값으로 서명한 토큰은 누구나 만들 수 있기 때문이다.
 같은 이유로 `ENV=production` 에서 `AI_PROVIDER=pipeline`(상담 원문을 비식별 없이 OpenAI 로 보냄)도 `AI_PIPELINE_ALLOW_UNMASKED=true` 없이는 시작되지 않는다(아래 "AI (팀 B)").
+`AI_PROVIDER=modeling`(가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않음)도 `AI_MODELING_ALLOW_IN_PRODUCTION=true` 없이는 시작되지 않는다.
 
 ### 2.4 DB Migration
 
@@ -311,6 +312,13 @@ OPENAI_MODEL=...
 > 그래서 `ENV=production` 에서 `AI_PROVIDER=pipeline` 이면 서버가 시작하지 않고 이유를 오류 문구로 보여 준다(설정 검사,
 > `app/core/config.py`). 가상 데이터로 일부러 시험할 때만 `AI_PIPELINE_ALLOW_UNMASKED=true` 를 함께 적어 푼다.
 > `ENV=local` · `test` 는 이 검사를 하지 않는다(지금처럼 쓸 수 있다).
+
+> **주의: `modeling`(이경진 님 파이프라인, `ai/modeling/abuse/contract_adapter`)은 외부로 보내기 전에 가리지만 가리기가 아직
+> 완전하지 않다.** 이름 인식이 글 앞부분만 봐서 긴 상담 뒷부분의 이름 · 기관 · 지역이 가려지지 않고, 체크리스트 프롬프트에
+> 다른 회기의 원문 인용이 섞일 수 있다. 이 개인정보 문제가 해결되기 전에는 가상 데이터로만 쓰고, `ENV=production` 에서는
+> `AI_MODELING_ALLOW_IN_PRODUCTION=true` 를 함께 적어야만 시작한다. torch · transformers · openai 와 가중치 파일은
+> backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
+> 근거 발화가 없는 위험 항목은 `langgraph` 와 같이 저장 전에 뺀다.
 
 `pipeline` 모드는 `ai/services/analysis_pipeline.run_analysis_pipeline(transcript)` 를 호출한다.
 팀 B 의 Service Exception 은 아래처럼 API 오류 코드로 변환된다.

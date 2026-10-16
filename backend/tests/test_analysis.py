@@ -26,6 +26,11 @@ AI_CONTRACT_KEYS = {
     "abuse_signals",
     "risk_factors",
     "warnings",
+    # 선택 필드(없으면 빈 배열). API_CONTRACT.md 8절 "선택 필드".
+    "severity_ratings",
+    "protective_factors",
+    "session_change_notes",
+    "followup_check_points",
 }
 
 
