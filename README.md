@@ -1,194 +1,130 @@
-# I-SPOT
+# I-SPOT Project Guide
 
-아동 상담 음성을 분석하여 **아동 발화 추출 → 학대 유형 신호 탐지 → 공식 근거자료·현행 법령 기반 확인 체크리스트**를 제공하는 상담사 지원 AI 백엔드.
+I-SPOT은 Backend, Frontend, AI 모델링, STT 파이프라인을 함께 개발하는 통합 저장소입니다. 이 문서는 저장소에 처음 들어온 팀원을 위한 공통 진입점입니다.
 
-> ⚠️ I-SPOT은 상담사의 판단을 **보조**한다. 학대 여부, 법 위반 여부, 사례 처리 결정을 자동으로 확정하지 않으며 최종 판단은 상담사·전문가가 수행한다.
-
----
-
-## 전체 흐름
+## 코드 구조
 
 ```text
-상담 음성 (wav/mp3/m4a/flac/ogg/aac)
-  ↓
-SelectiveFallbackSTTProvider   ── Deepgram STT + 화자 분리
-  │                               └ 누락 의심 구간만 Whisper large-v3로 보완
-  ↓
-STTPostProcessor               ── 동일 화자 병합, 공백 정리, confidence 재검증
-  ↓
-RuntimeSpeakerRoleMapper       ── SPEAKER_n → COUNSELOR / CHILD / UNKNOWN
-  ├─→ child_analysis_text  →  KLUE-RoBERTa 멀티라벨 (신체/정서/성/방임)
-  │                              ↓ 감지된 라벨 → abuse_type (2개 이상이면 multiple)
-  │                         RAG + 국가법령정보센터 API (rag/, law/)
-  │                         → 근거 문장, 체크리스트 판정, 관련 조문,
-  │                           다음 상담용 확인 질문, 참고자료 2~3개
-  └─→ TranscriptBuilder    →  팀 공용 Transcript
+I-SPOT/
+├─ backend/                  # FastAPI + PostgreSQL Backend (팀 C)
+│  ├─ README.md              # Backend 실행 방법 / 환경변수 / 테스트
+│  └─ docs/                  # CODE_GUIDE, API_CONTRACT
+├─ counselor-web/            # 상담사 웹 새 화면 (React/Vite, 2026-10-12~) — 실행법은 counselor-web/README.md
+├─ ispotvscode/              # 이전 Frontend (React/Vite) — counselor-web 으로 바꾸는 중
+├─ ai/                       # LLM 분석 파이프라인 및 모델링 코드 (팀 B)
+│  └─ modeling/              # 학대 / 위기 / 상호작용 모델링
+├─ stt/                      # STT 파이프라인 모듈 (팀 A)
+├─ data_prep/                # GT 구축 및 STT Provider 평가 코드·산출물
+├─ rag/                      # 공식 체크리스트·매뉴얼 RAG + 다음 상담 체크리스트 — rag/README.md
+├─ law/                      # 국가법령정보센터 Open API 연동 (현행 조문 조회·랭킹)
+├─ main.py                   # STT + 학대분석 + RAG 근거자료 단독 확인용 앱 — Backend 아님
+├─ docker-compose.yml        # Local 실행용 최소 구성
+├─ deploy/                   # AWS 시연 서버 배포 스크립트 — 다시 배포하는 법은 deploy/README.md
+└─ I-SPOT_DOCS/              # 공통 기획·아키텍처·개발 규칙 문서
 ```
 
-- 아동 화자를 확정하지 못하면(`child_analysis_status != "OK"`) 학대 유형 분석과 RAG 분석을 모두 건너뛴다.
-- threshold를 넘은 학대 유형이 없으면 RAG 분석을 건너뛴다.
-- RAG 분석이 실패해도 요청은 실패하지 않는다. 오류는 `rag_analysis.error`로 반환되고 STT·학대 유형 결과는 그대로 응답된다.
+### FastAPI 앱이 두 개다 — 포트가 겹친다
 
-## 저장소 구조
+| 파일 | 무엇인가 | 포트 |
+| --- | --- | --- |
+| `backend/app/main.py` | **Backend 본체.** 사례·회차·전사·분석·요약 API | 8000 |
+| `main.py` (최상위) | STT + 학대분석 + RAG 근거자료만 확인하는 단독 앱 | 8000 |
+
+둘 다 8000 포트를 사용하므로 **동시에 실행할 수 없습니다.** 최상위 `main.py`를 실행한 상태에서 <http://localhost:8000/docs>를 열면 Backend가 아닌 `/api/v1/analyze`만 보입니다.
+
+Backend 실행은 [backend/README.md](backend/README.md)를 따릅니다.
+
+```bash
+docker compose up -d db
+cd backend && pip install -r requirements-dev.txt
+cp .env.example .env
+alembic upgrade head
+python -m scripts.seed_users --demo
+uvicorn app.main:app --no-proxy-headers --reload
+```
+
+## AI/STT 파이프라인
+
+STT 결과는 화자 분리와 역할 판별을 거쳐, 안전하게 확정된 아동(`CHILD`) 발화를 후단 분석에 전달하는 것을 목표로 합니다.
 
 ```text
-main.py                    # FastAPI 서버 (POST /api/v1/analyze)
-ispot_stt.py               # STT provider (Deepgram / Whisper / Selective Fallback / mock)
-ispot_postprocess.py       # STT 후처리
-speaker_role_runtime.py    # 런타임 화자 역할 추정 (GT 불필요)
-child_analysis_text.py     # 아동 발화만 모은 분석 텍스트 생성
-transcript_builder.py      # 팀 공용 Transcript 스키마 생성
-abuse_model/infer_abuse.py # KLUE-RoBERTa 학대 유형 추론
-ispot_analyzer.py          # (선택) Groq LLM 기반 위험도 분석
-ispot_audio_features.py    # 음향 특징(pause, 발화속도, pitch, energy) 추출 — 실험용
-rag/                       # 체크리스트 RAG + 동적 체크리스트 파이프라인 → rag/README.md
-law/                       # 국가법령정보센터 Open API 클라이언트·파서·조문 랭킹
-experiments/               # STT/화자분리/fallback 평가 스크립트 (서비스 경로 아님)
-tests/                     # 단위 테스트
-I-SPOT_DOCS/               # 기획·아키텍처·규칙·작업 현황 문서
-HANDOFF_STT.md             # STT/화자 역할 파이프라인 인계 문서
+음성 입력 → STT / 화자 분리 → 역할 판별 → CHILD 발화 추출 → 후단 분석
 ```
 
-## 시작하기
+- 주요 역할은 `COUNSELOR`, `CHILD`, `UNKNOWN`입니다. 불확실한 화자는 `UNKNOWN`으로 유지합니다.
+- 아동 화자를 안전하게 확정할 수 없으면 CHILD 대상 분석을 보류합니다. 원본 STT 결과를 억지로 역할로 단정하지 않습니다.
+- STT 구현은 `stt/`에, AI 분석·모델링은 `ai/`에 분리되어 있습니다. Backend 연동과 API Contract는 `backend/` 문서를 기준으로 확인합니다.
+- 평가·재현용 코드는 `data_prep/` 및 실험 경로에 두며, production 경로와 구분합니다.
 
-### 1. 설치
+### Provider 평가 현황
 
-Python 3.12 기준.
+`data_prep/`은 GT 기반으로 STT Provider의 화자 분리와 역할 매핑을 평가하기 위한 코드와 산출물을 관리합니다.
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate           # macOS/Linux: source .venv/bin/activate
+- Deepgram과 ElevenLabs의 비교 평가는 진행 중입니다.
+- Deepgram 100건 파일럿에서는 GT 기반 strict role-separation 평가의 `purity >= 80%`, `role coverage >= 80%` 기준으로 `ROLE_MAPPING_OK`가 77/100건입니다. 이는 일반적인 전사 정확도 77%를 의미하지 않습니다.
+- ElevenLabs는 100건 API 처리를 완료했지만, 100건 전체 GT 평가는 아직 완료되지 않았습니다. 현재 18건 비교 결과는 전체 성능 지표로 해석하지 않습니다.
 
-pip install -r requirements.txt
-pip install -r requirements-rag.txt
-```
+상세 평가 절차·스크립트·산출물은 `data_prep/`을 확인합니다.
 
-`main.py`가 `rag.pipeline`을 import하므로 API 서버를 실행하려면 **두 파일 모두 설치해야 한다.**
+## RAG · 법령 근거자료
 
-선택 의존성 (requirements에 미포함):
-- `librosa` — `ispot_audio_features.py` 사용 시
-- `pyannote.audio` — pyannote 화자 분리 실험 시 (서비스 경로에서는 사용하지 않음)
-
-### 2. 환경 변수
-
-```bash
-copy .env.example .env      # macOS/Linux: cp .env.example .env
-```
-
-| 변수 | 용도 | 필요한 경우 |
-|---|---|---|
-| `DEEPGRAM_API_KEY` | Deepgram STT | API 서버 실행 |
-| `I_SPOT_STT_PROVIDER` | `Transcriber` 기본 provider (`deepgram`, `whisper`, `mock`) | `Transcriber` 직접 사용 |
-| `OPENAI_API_KEY` | RAG 임베딩·근거 분석 | RAG 분석 (`/api/v1/analyze` 포함) |
-| `LAW_API_OC` | 국가법령정보센터 승인 OC 값 | 관련 법령 조회 (없으면 `law_warning`만 남기고 계속 진행) |
-| `RAG_*` | 데이터 경로, 모델, chunk/Top-K 설정 | RAG (기본값 있음) |
-| `LAW_*` | 법령 API URL, 캐시 경로·유효시간, 대상 법령 | 법령 조회 (기본값 있음) |
-| `GROQ_API_KEY` | `ispot_analyzer.py` | 선택 |
-| `PYANNOTE_AUTH_TOKEN` | pyannote 실험 | 선택 |
-
-실제 키는 `.env`에만 넣고 커밋하지 않는다.
-
-### 3. 모델 가중치
-
-학대 유형 모델 가중치는 저장소에 포함되지 않는다. 팀 공유 경로에서 받아 아래 위치에 둔다.
+학대 유형 분석 결과를 받아 공식 체크리스트·매뉴얼과 현행 법령을 근거로 상담사가 다음 상담에서 확인할 항목을 정리합니다. 학대 여부나 법 위반 여부를 확정하지 않습니다.
 
 ```text
-abuse_model/weight/roberta_multilabel_2026-09-03.pth
+CHILD 발화 + 감지된 학대 유형
+→ 체크리스트 RAG 검색 · 상담 문장과 비교 (matched / needs_confirmation / excluded)
+→ 국가법령정보센터 API 현행 조문 조회
+→ 다음 상담용 확인 질문 3~5개 · 참고자료
 ```
 
-`main.py`는 import 시점에 이 파일을 로드하므로 **파일이 없으면 서버가 시작되지 않는다.**
-
-### 4. RAG 벡터 DB
-
-`rag_data/` 아래에 원문 PDF를 두고 `python -m rag.indexer`로 벡터 DB(`rag_storage/chroma`)를 생성한다. 벡터 DB가 없어도 서버는 시작되지만 `rag_analysis`가 비거나 오류로 반환된다.
-
-## API 서버 실행
+- 최상위 `main.py`의 `/api/v1/analyze` 응답에 `rag_analysis`로 포함됩니다. 감지된 학대 유형이 없으면 `null`, 실패하면 `{"error": ...}`이며 STT·학대 유형 결과는 그대로 반환됩니다.
+- 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents` (판례 원문 추가 전까지 빈 배열)
+- 설치: `pip install -r requirements.txt -r requirements-rag.txt` (최상위 `main.py`가 `rag.pipeline`을 import 하므로 둘 다 필요)
+- 환경 변수: `OPENAI_API_KEY`, `LAW_API_OC`, `RAG_*`, `LAW_*` — `.env.example` 참고
+- 원문 PDF(`rag_data/`), Vector DB(`rag_storage/`), 법령 캐시(`law_cache/`)는 커밋하지 않습니다.
 
 ```bash
-python main.py
-# 또는
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m rag.indexer                                              # rag_data/ PDF → Vector DB
+python -m rag.pipeline "상담 문장" --abuse-type emotional --json     # 단독 실행
+python -m law.query "아동복지법" --abuse-type emotional --text "상담 문장"
 ```
 
-- Health check: `GET /`
-- Swagger UI: http://localhost:8000/docs
+상세 흐름과 출력 스키마는 [rag/README.md](rag/README.md)를 확인합니다.
 
-### `POST /api/v1/analyze`
+## 문서 안내와 협업 규칙
+
+작업을 시작할 때는 `README.md`에서 영역을 분류한 뒤, 해당 문서만 추가로 확인합니다.
+
+- 요구사항/기능 범위: [01_PRD.md](I-SPOT_DOCS/docs/01_PRD.md)
+- 시스템·데이터·AI 구조: [02_ARCHITECTURE.md](I-SPOT_DOCS/docs/02_ARCHITECTURE.md)
+- 화면/User Flow: [03_UI_UX.md](I-SPOT_DOCS/docs/03_UI_UX.md)
+- 코드·폴더·Git·테스트·배포: [04_DEVELOPMENT.md](I-SPOT_DOCS/docs/04_DEVELOPMENT.md)
+- 안전·보안·변경 제약: [05_RULES.md](I-SPOT_DOCS/docs/05_RULES.md)
+- 현재 작업·담당·진척도: [TASKS.md](I-SPOT_DOCS/TASKS.md)
+
+문서 간 내용이 충돌하면 다음 우선순위를 따릅니다.
+
+`최신 승인된 기획 내용 > 01_PRD.md > 02_ARCHITECTURE.md / 03_UI_UX.md > 04_DEVELOPMENT.md > TASKS.md`
+
+`05_RULES.md`의 안전·보안·변경 금지 규칙은 항상 적용합니다.
+
+공통 Contract와 구조는 우선 재사용합니다. 공통 구조 변경이 필요하면 바로 변경하지 말고 변경안을 먼저 제안합니다.
+
+## 로컬 개발 환경
+
+프로젝트 루트의 STT 관련 환경 변수는 로컬 `.env`에서 관리합니다. 실제 개인정보를 테스트 데이터로 사용하거나 API Key를 코드에 직접 기록하지 않습니다.
+
+```env
+I_SPOT_STT_PROVIDER=mock
+I_SPOT_SPEAKER_DIARIZATION_PROVIDER=mock
+OPENAI_API_KEY=
+PYANNOTE_AUTH_TOKEN=
+```
+
+STT Contract 검증은 다음 명령으로 실행할 수 있습니다.
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/analyze -F "file=@sample.wav"
+python -m pytest tests/test_stt_transcriber.py -q
 ```
 
-응답 주요 필드:
-
-| 필드 | 설명 |
-|---|---|
-| `stt_data` | 후처리된 STT 결과 (segments, words, confidence) |
-| `transcript` | 역할(COUNSELOR/CHILD/…)이 붙은 팀 공용 Transcript |
-| `speaker_roles` | `SPEAKER_n` → 역할 매핑 |
-| `child_speaker` | 아동으로 판정된 화자 ID |
-| `child_analysis_status` | `OK`가 아니면 학대 유형 분석 생략 |
-| `child_analysis_text` | 아동 발화만 모은 분석용 텍스트 |
-| `abuse_prediction` | 라벨별 확률·threshold 판정 (분석 생략 시 `null`) |
-| `rag_analysis` | 근거 문장, 체크리스트 판정, 관련 법령, 다음 상담 체크리스트, 참고자료, 매뉴얼·서식(`manual_references`), 판례(`precedents`) (생략 시 `null`, 실패 시 `{"error": ...}`) |
-
-`rag_analysis`의 상세 스키마는 [rag/README.md](rag/README.md#8-주요-json-출력)를 참고한다.
-
-오류: 지원하지 않는 확장자·빈 파일 `400`, STT 엔진 오류 `502`, 그 외 처리 오류 `500`.
-
-### STT 모듈 직접 사용
-
-```python
-from ispot_stt import Transcriber
-
-transcriber = Transcriber(provider="mock")   # API Key 없이 동작하는 로컬 테스트용
-result = transcriber.transcribe("sample.wav")
-```
-
-`provider`를 생략하면 `I_SPOT_STT_PROVIDER` 값을 사용한다. 화자 인식이 불확실한 segment는 `UNKNOWN`으로 유지된다.
-
-## RAG · 법령 파이프라인 (CLI)
-
-API 서버를 거치지 않고 상담 문장만으로 RAG 분석을 실행하거나 디버깅할 때 사용한다.
-
-```bash
-# 1) rag_data/ 아래 원문 PDF로 벡터 DB 생성
-python -m rag.indexer
-
-# 2) 상담 문장 분석 (체크리스트 RAG + 현행 법령 + 다음 상담 질문)
-python -m rag.pipeline "상담 문장" --abuse-type emotional
-python -m rag.pipeline "상담 문장" --abuse-type emotional --json        # 백엔드 연동용
-python -m rag.pipeline "상담 문장" --abuse-type emotional --skip-law    # 법령 API 없이
-
-# 3) 법령 API 단독 테스트
-python -m law.query "아동복지법" --abuse-type emotional --text "상담 문장" --refresh
-```
-
-`--abuse-type`: `physical`, `emotional`, `sexual`, `neglect`, `multiple`.
-출력 스키마와 상태값(`matched` / `needs_confirmation` / `excluded`)은 [rag/README.md](rag/README.md)에 정리되어 있다.
-
-## 테스트
-
-```bash
-python -m pytest tests/ -q
-```
-
-`experiments/` 아래 스크립트는 로컬 평가 데이터(`test_sample/`, gitignore)를 전제로 하는 실험·평가용이며 CI 테스트가 아니다. 결과는 `results/`에 저장된다.
-
-## 커밋하지 않는 파일
-
-`.env`, `abuse_model/weight/`, `test_sample/`, `results/`, `rag_data/`, `rag_storage/`, `law_cache/` — 모두 `.gitignore`에 등록되어 있다. 실제 아동·상담 개인정보는 테스트 데이터로 사용하지 않는다.
-
-## 문서
-
-| 문서 | 내용 |
-|---|---|
-| [I-SPOT_DOCS/README.md](I-SPOT_DOCS/README.md) | 문서 읽는 순서, 우선순위, AI 작업 규칙 |
-| [I-SPOT_DOCS/docs/01_PRD.md](I-SPOT_DOCS/docs/01_PRD.md) | 서비스 정의, 요구사항 |
-| [I-SPOT_DOCS/docs/02_ARCHITECTURE.md](I-SPOT_DOCS/docs/02_ARCHITECTURE.md) | 시스템·데이터·AI 구조 |
-| [I-SPOT_DOCS/docs/03_UI_UX.md](I-SPOT_DOCS/docs/03_UI_UX.md) | 화면, 사용자 Flow |
-| [I-SPOT_DOCS/docs/04_DEVELOPMENT.md](I-SPOT_DOCS/docs/04_DEVELOPMENT.md) | 코드·Git·테스트·배포 규칙 |
-| [I-SPOT_DOCS/docs/05_RULES.md](I-SPOT_DOCS/docs/05_RULES.md) | 안전·보안·변경 금지 규칙 (항상 적용) |
-| [I-SPOT_DOCS/TASKS.md](I-SPOT_DOCS/TASKS.md) | 현재 작업 현황 |
-| [HANDOFF_STT.md](HANDOFF_STT.md) | STT·화자 역할 파이프라인 상세 및 실험 기록 |
-| [rag/README.md](rag/README.md) | RAG V2 · 법령 연동 상세 |
+Backend의 설치·실행·테스트는 별도 [backend/README.md](backend/README.md)를 기준으로 합니다.

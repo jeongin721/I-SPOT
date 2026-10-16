@@ -1,0 +1,50 @@
+/* SttReview 화면에만 있는 규칙(디자인 SttReview.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-SttReview .ln {
+  display: grid;
+  grid-template-columns: 52px 124px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid #eae7df;
+}
+.pg-SttReview .in {
+  width: 100%;
+  border: 1px solid #dad5c9;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  background: #ffffff;
+  color: #2b2a26;
+}
+.pg-SttReview .prog {
+  height: 10px;
+  border-radius: 5px;
+  background: #eae7df;
+  overflow: hidden;
+}
+.pg-SttReview .prog span {
+  display: block;
+  height: 100%;
+  background: #2b2a26;
+  border-radius: 5px;
+  transition: width 0.4s;
+}
+.pg-SttReview .thm-root.dark .ln {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-SttReview .thm-root.dark .in {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-SttReview .thm-root.dark .prog {
+  background: #393731 !important;
+}
+.pg-SttReview .thm-root.dark .prog span {
+  background: #eadbb5 !important;
+}
+.pg-SttReview .thm-root.dark [style*='background: #F1E3BF' i],
+.pg-SttReview .thm-root.dark [style*='background: rgb(241, 227, 191)'] {
+  background-color: #54452a !important;
+}

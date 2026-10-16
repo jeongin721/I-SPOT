@@ -1,0 +1,131 @@
+/* FollowupQ 화면에만 있는 규칙(디자인 FollowupQ.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-FollowupQ .qa-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1.5fr) minmax(0, 1fr) 92px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #eae7df;
+  font-size: 14px;
+}
+.pg-FollowupQ .flag {
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid #e7e4dc;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pg-FollowupQ .flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.pg-FollowupQ .flow span.v {
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: #f7f6f2;
+}
+.pg-FollowupQ .flow span.now {
+  background: #f2efe8;
+  color: #2b2a26;
+  font-weight: 700;
+}
+.pg-FollowupQ .aibox {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed #dad5c9;
+  background: #f7f6f2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pg-FollowupQ .qcard {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #e7e4dc;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pg-FollowupQ .opt {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #dad5c9;
+  font-size: 12px;
+  color: #66625a;
+}
+.pg-FollowupQ .edit-in {
+  width: 100%;
+  border: 1px solid #dad5c9;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  background: #ffffff;
+  color: #2b2a26;
+}
+.pg-FollowupQ .c-sel {
+  background: #f1eada;
+  color: #2b2a26;
+  border: 1px solid #2b2a26;
+}
+.pg-FollowupQ .quote {
+  padding: 22px 26px;
+  border-radius: 20px;
+  background: #f3ead3;
+  color: #7a5f28;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pg-FollowupQ .thm-root.dark .qa-row {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-FollowupQ .thm-root.dark .flag {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+}
+.pg-FollowupQ .thm-root.dark .flow span.v {
+  background: #33312c !important;
+}
+.pg-FollowupQ .thm-root.dark .flow span.now {
+  background: #393731 !important;
+  color: #ece8df !important;
+}
+.pg-FollowupQ .thm-root.dark .aibox {
+  border: 1px dashed #4e4b44 !important;
+  background: #33312c !important;
+}
+.pg-FollowupQ .thm-root.dark .qcard {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+}
+.pg-FollowupQ .thm-root.dark .opt {
+  background: #2c2b27 !important;
+  border: 1px solid #4e4b44 !important;
+  color: #bdb7aa !important;
+}
+.pg-FollowupQ .thm-root.dark .edit-in {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-FollowupQ .thm-root.dark .c-sel {
+  background: #3f3729 !important;
+  color: #ece8df !important;
+  border: 1px solid #d6d0c4 !important;
+}
+.pg-FollowupQ .thm-root.dark .quote {
+  background: #453a22 !important;
+  color: #e3c77e !important;
+}

@@ -2,8 +2,8 @@ import json
 import os
 from dotenv import load_dotenv
 
-from ispot_stt import DeepgramSTTProvider
-from ispot_postprocess import STTPostProcessor
+from stt.ispot_stt import DeepgramSTTProvider
+from stt.ispot_postprocess import STTPostProcessor
 
 load_dotenv()
 

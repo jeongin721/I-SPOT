@@ -1,0 +1,92 @@
+/* Stats 화면에만 있는 규칙(디자인 Stats.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-Stats .kpi {
+  padding: 18px 20px;
+}
+.pg-Stats .kpi b {
+  font-size: 30px;
+  line-height: 1.2;
+}
+.pg-Stats .hb {
+  display: grid;
+  grid-template-columns: 110px 1fr 70px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.pg-Stats .track {
+  height: 16px;
+  border-radius: 0 4px 4px 0;
+  background: #f2efe8;
+  overflow: hidden;
+}
+.pg-Stats .track span {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: #c2a36b;
+}
+.pg-Stats .vb {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 190px;
+  padding: 0 4px;
+  border-bottom: 1px solid #dad5c9;
+}
+.pg-Stats .vb .col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 100%;
+}
+.pg-Stats .vb .col span.b {
+  width: 100%;
+  max-width: 40px;
+  border-radius: 4px 4px 0 0;
+  background: #c2a36b;
+}
+.pg-Stats .cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+.pg-Stats .cal button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: transparent;
+  color: #2b2a26;
+}
+.pg-Stats .cal button:disabled {
+  cursor: default;
+}
+.pg-Stats .mini {
+  height: 8px;
+  border-radius: 4px;
+  background: #f2efe8;
+  overflow: hidden;
+}
+.pg-Stats .mini span {
+  display: block;
+  height: 100%;
+  background: #c2a36b;
+}
+.pg-Stats .thm-root.dark .track {
+  background: #393731 !important;
+}
+.pg-Stats .thm-root.dark .vb {
+  border-bottom: 1px solid #4e4b44 !important;
+}
+.pg-Stats .thm-root.dark .cal button {
+  color: #ece8df !important;
+}
+.pg-Stats .thm-root.dark .mini {
+  background: #393731 !important;
+}

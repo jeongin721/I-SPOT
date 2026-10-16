@@ -1,0 +1,63 @@
+/* CaseDetail 화면에만 있는 규칙(디자인 CaseDetail.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-CaseDetail .kv {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 9px 12px;
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+.pg-CaseDetail .kv dt {
+  color: #7a776f;
+}
+.pg-CaseDetail .kv dd {
+  margin: 0;
+}
+.pg-CaseDetail .st {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 13px;
+  position: relative;
+  z-index: 1;
+}
+.pg-CaseDetail .sd {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pg-CaseDetail .bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #eae7df;
+  overflow: hidden;
+}
+.pg-CaseDetail .bar span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #7a776f;
+}
+.pg-CaseDetail .box {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f7f6f2;
+}
+.pg-CaseDetail .thm-root.dark .kv dt {
+  color: #a8a296 !important;
+}
+.pg-CaseDetail .thm-root.dark .bar {
+  background: #393731 !important;
+}
+.pg-CaseDetail .thm-root.dark .bar span {
+  background: #a8a296 !important;
+}
+.pg-CaseDetail .thm-root.dark .box {
+  background: #33312c !important;
+}

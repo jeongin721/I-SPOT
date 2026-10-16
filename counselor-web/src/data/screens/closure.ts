@@ -1,0 +1,97 @@
+// 종결 검토(Closure) 목록 화면 값. useCaseOverview(mode "counts") 의 사례 기본정보 · 회차 수만 보인다.
+//
+// 종결 검토 등록 · 진행 단계 · 내역 검토 진행률은 Backend 에 없다(specs 대응표 Closure 줄 '팀: 검토 등록 · 상태 · 진행률').
+// 그래서 이 목록은 '종결 검토 대상' 이 아니라 볼 수 있는 사례 목록이다 — 종결(CLOSED) 사례를 '검토 대기' 로 쓰지 않는다
+// (사례 상태 종결은 상담사가 사례를 닫은 것이지 종결 검토를 기다리는 것이 아니다). 진행 단계 · 내역 검토는 준비 중으로 둔다.
+// 이름은 아동 별칭(실명 없음), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다. 등록일은 사례 등록일이다.
+// 누르면 사례 상세로 간다(전체 상담 내역 검토 화면은 아직 예시 데이터라 그 사례로 보내지 않는다).
+// 검색어는 입력한 계정에 묶는다(useAccountSearch) — 앞 계정이 친 별칭 · 사례 ID 가 다음 계정에 보이지 않게.
+
+import { useCallback, useEffect, useState } from "react";
+
+import { NOT_PROVIDED } from "../caseRows";
+import type { AuthSession } from "../useAuthSession";
+import type { CaseOverviewState } from "../useCaseOverview";
+import { NOT_READY, screenNotice, sidebarValues } from "./common";
+import { screenHref } from "./links";
+
+/**
+ * 계정에 묶인 검색어. 로그인 확인 중이거나 다른 계정으로 바뀌면 바뀐 첫 그리기부터 빈 검색어로 보이고
+ * 들고 있던 검색어도 버린다(같은 계정으로 다시 확인돼도 비운다). 로그인이 확인되기 전에 친 글자는 받지 않는다.
+ */
+export function useAccountSearch(session: AuthSession): [string, (value: string) => void] {
+  const owner = session.status === "signedIn" && session.me ? session.me.id : null;
+  const [held, setHeld] = useState<{ owner: string | null; value: string }>({ owner: null, value: "" });
+
+  useEffect(() => {
+    setHeld((current) => (current.owner === owner ? current : { owner, value: "" }));
+  }, [owner]);
+
+  const setSearch = useCallback((value: string) => {
+    if (owner !== null) setHeld({ owner, value });
+  }, [owner]);
+
+  return [owner !== null && held.owner === owner ? held.value : "", setSearch];
+}
+
+interface ClosureInput {
+  session: AuthSession;
+  overview: CaseOverviewState;
+  search: string;
+  setSearch: (value: string) => void;
+}
+
+export function closureValues(input: ClosureInput) {
+  const { session, overview, search } = input;
+  const query = search.trim().toLowerCase();
+  const items = overview.data?.items ?? [];
+  const rows = items
+    .filter(
+      ({ caseRow }) =>
+        !query || caseRow.alias.toLowerCase().includes(query) || caseRow.caseNumber.toLowerCase().includes(query),
+    )
+    .map(({ caseRow, createdDate, sessionTotal }) => ({
+      ini: caseRow.initial,
+      name: caseRow.alias,
+      age: caseRow.birthYearLabel,
+      sub: [caseRow.caseNumber, `사례 ${caseRow.statusLabel}`, overview.wholeOrg ? caseRow.counselorName : ""]
+        .filter(Boolean)
+        .join(" · "),
+      href: screenHref("/CaseDetail", { caseId: caseRow.id }),
+      sessions: `${sessionTotal}회차`,
+      date: createdDate || NOT_PROVIDED,
+      stage: NOT_READY,
+      stageCls: "chip c-normal",
+      review: NOT_PROVIDED,
+    }));
+
+  let countLabel = "";
+  if (overview.data) {
+    countLabel = `${overview.wholeOrg ? "전체" : "담당"} 사례 ${overview.data.caseTotal}건`;
+    if (overview.data.casesTruncated) countLabel += ` · 최근 등록한 ${items.length}건 표시`;
+  }
+
+  let emptyText = "";
+  if (overview.data && rows.length === 0) emptyText = query ? "검색 결과가 없습니다." : "사례가 없습니다.";
+
+  return {
+    ...sidebarValues(session),
+    notice: screenNotice({ session, loading: overview.loading, error: overview.error, retry: overview.reload }),
+    listNote:
+      `종결 검토 등록 · 진행 단계 · 내역 검토는 ${NOT_READY}입니다(종결 검토 절차가 팀 결정 전). ` +
+      "아래는 사례 기본정보 · 회차 수이며 종결 검토 대상 목록이 아닙니다.",
+    countLabel,
+    search: {
+      value: search,
+      onChange: (e: { target: { value: string } }) => input.setSearch(e.target.value),
+      // 로그인이 확인된 계정이 있을 때만 입력을 받는다(useAccountSearch).
+      disabled: session.status !== "signedIn",
+    },
+    rows,
+    emptyText,
+    real: false,
+    tgBg: "#DAD5C9",
+    tgX: "2px",
+    notReady: NOT_READY,
+  };
+}

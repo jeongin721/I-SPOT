@@ -1,0 +1,175 @@
+/* NoteWrite 화면에만 있는 규칙(디자인 NoteWrite.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-NoteWrite .fhead {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  border: 1px solid #e7e4dc;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.pg-NoteWrite .fhead > div {
+  display: flex;
+  border-bottom: 1px solid #eae7df;
+}
+.pg-NoteWrite .fhead .k {
+  width: 110px;
+  flex: none;
+  padding: 10px 12px;
+  background: #f7f6f2;
+  color: #66625a;
+  font-size: 13px;
+}
+.pg-NoteWrite .fhead .v {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.pg-NoteWrite .grp {
+  padding: 10px 14px;
+  background: #f2efe8;
+  font-weight: 700;
+  font-size: 14px;
+  border-radius: 10px;
+}
+.pg-NoteWrite .item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) auto;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 12px 4px;
+  border-bottom: 1px solid #eae7df;
+}
+.pg-NoteWrite .opt3 {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #eae7df;
+}
+.pg-NoteWrite .opt3 button {
+  border: 0;
+  border-radius: 8px;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  color: #66625a;
+  cursor: pointer;
+}
+.pg-NoteWrite .ev {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #7a776f;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pg-NoteWrite .ta2 {
+  width: 100%;
+  min-height: 76px;
+  border: 1px solid #dad5c9;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  background: #ffffff;
+  color: #2b2a26;
+  resize: vertical;
+}
+.pg-NoteWrite .ck {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 4px;
+  border-bottom: 1px solid #eae7df;
+  font-size: 14px;
+  cursor: pointer;
+}
+.pg-NoteWrite .ck input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #2b2a26;
+  flex: none;
+}
+.pg-NoteWrite .goal {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  border-bottom: 1px solid #eae7df;
+}
+.pg-NoteWrite .goal > * {
+  padding: 10px 12px;
+}
+.pg-NoteWrite .goal .k {
+  background: #f7f6f2;
+  font-size: 13px;
+}
+.pg-NoteWrite .two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+.pg-NoteWrite .chipck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #dad5c9;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2b2a26;
+}
+.pg-NoteWrite .thm-root.dark .fhead {
+  border: 1px solid #45423b !important;
+}
+.pg-NoteWrite .thm-root.dark .fhead > div {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-NoteWrite .thm-root.dark .fhead .k {
+  background: #33312c !important;
+  color: #bdb7aa !important;
+}
+.pg-NoteWrite .thm-root.dark .grp {
+  background: #393731 !important;
+}
+.pg-NoteWrite .thm-root.dark .item {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-NoteWrite .thm-root.dark .opt3 {
+  background: #393731 !important;
+}
+.pg-NoteWrite .thm-root.dark .opt3 button {
+  color: #bdb7aa !important;
+}
+.pg-NoteWrite .thm-root.dark .ev {
+  color: #a8a296 !important;
+}
+.pg-NoteWrite .thm-root.dark .ta2 {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-NoteWrite .thm-root.dark .ck {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-NoteWrite .thm-root.dark .ck input {
+  accent-color: #d6d0c4 !important;
+}
+.pg-NoteWrite .thm-root.dark .goal {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-NoteWrite .thm-root.dark .goal .k {
+  background: #33312c !important;
+}
+.pg-NoteWrite .thm-root.dark .chipck {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}

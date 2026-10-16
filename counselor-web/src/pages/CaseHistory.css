@@ -1,0 +1,160 @@
+/* CaseHistory 화면에만 있는 규칙(디자인 CaseHistory.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-CaseHistory .bar {
+  height: 10px;
+  border-radius: 5px;
+  background: #eae7df;
+  overflow: hidden;
+}
+.pg-CaseHistory .bar span {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: #7a776f;
+}
+.pg-CaseHistory .scard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #e7e4dc;
+  background: #ffffff;
+  text-decoration: none;
+  color: #2b2a26;
+}
+.pg-CaseHistory .scard:hover {
+  border-color: #2b2a26;
+  color: #2b2a26;
+}
+.pg-CaseHistory .mx {
+  display: grid;
+  grid-template-columns: 150px repeat(8, minmax(44px, 1fr));
+  align-items: center;
+}
+.pg-CaseHistory .mx > * {
+  padding: 8px 4px;
+  border-bottom: 1px solid #eae7df;
+  text-align: center;
+  font-size: 13px;
+}
+.pg-CaseHistory .mx .rl {
+  text-align: left;
+  padding-left: 2px;
+}
+.pg-CaseHistory .dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pg-CaseHistory .srow {
+  display: grid;
+  grid-template-columns: 70px 110px minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 6px;
+  border-top: 1px solid #eae7df;
+  text-decoration: none;
+  color: #2b2a26;
+}
+.pg-CaseHistory .srow:first-child {
+  border-top: 0;
+}
+.pg-CaseHistory .srow:hover {
+  background: #f7f6f2;
+}
+.pg-CaseHistory .pop {
+  position: absolute;
+  right: 20px;
+  top: 62px;
+  width: min(520px, calc(100% - 40px));
+  background: #ffffff;
+  border: 1px solid #e7e4dc;
+  border-radius: 14px;
+  box-shadow: 0 14px 40px -12px rgba(43, 42, 38, 0.28);
+  z-index: 5;
+}
+.pg-CaseHistory .prow {
+  display: grid;
+  grid-template-columns: 58px 92px 70px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #2b2a26;
+  font-size: 13.5px;
+}
+.pg-CaseHistory .prow:hover {
+  background: #f7f6f2;
+}
+.pg-CaseHistory .secno {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #f2efe8;
+  color: #66625a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pg-CaseHistory .box {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f7f6f2;
+}
+.pg-CaseHistory .src {
+  font-size: 12px;
+  color: #7a776f;
+}
+.pg-CaseHistory .thm-root.dark .bar {
+  background: #393731 !important;
+}
+.pg-CaseHistory .thm-root.dark .bar span {
+  background: #a8a296 !important;
+}
+.pg-CaseHistory .thm-root.dark .scard {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-CaseHistory .thm-root.dark .scard:hover {
+  border-color: #d6d0c4 !important;
+  color: #ece8df !important;
+}
+.pg-CaseHistory .thm-root.dark .mx > * {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-CaseHistory .thm-root.dark .srow {
+  border-top: 1px solid #45423b !important;
+  color: #ece8df !important;
+}
+.pg-CaseHistory .thm-root.dark .srow:hover {
+  background: #33312c !important;
+}
+.pg-CaseHistory .thm-root.dark .pop {
+  background: #2c2b27 !important;
+  border: 1px solid #45423b !important;
+}
+.pg-CaseHistory .thm-root.dark .prow {
+  color: #ece8df !important;
+}
+.pg-CaseHistory .thm-root.dark .prow:hover {
+  background: #33312c !important;
+}
+.pg-CaseHistory .thm-root.dark .secno {
+  background: #393731 !important;
+  color: #bdb7aa !important;
+}
+.pg-CaseHistory .thm-root.dark .box {
+  background: #33312c !important;
+}
+.pg-CaseHistory .thm-root.dark .src {
+  color: #a8a296 !important;
+}

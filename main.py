@@ -1,13 +1,32 @@
 import os
+import sys
 import tempfile
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+# ---------------------------------------------------------
+# 콘솔 출력 인코딩을 UTF-8 로 고정한다.
+#
+# Windows 한국어 환경의 콘솔 기본 인코딩은 cp949 이고, cp949 에는
+# 이모지가 없다. 아래 print 들이 쓰는 📥 1️⃣ ✅ 같은 문자를 만나면
+# UnicodeEncodeError 가 나고, 그 지점에서 요청 처리가 중단되어
+# /api/v1/analyze 가 500 을 돌려준다. (macOS/Linux 는 기본이 UTF-8
+# 이라 드러나지 않는다.)
+#
+# 출력이 파일·파이프로 리다이렉트되어 reconfigure 가 없는 객체일
+# 수 있으므로 방어적으로 처리한다.
+# ---------------------------------------------------------
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 # ispot 모듈 불러오기
-from ispot_stt import SelectiveFallbackSTTProvider
-from ispot_postprocess import STTPostProcessor
+from stt.ispot_stt import Transcriber
+from stt.ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
 from abuse_model.infer_abuse import predict_abuse
@@ -56,7 +75,11 @@ def resolve_rag_abuse_type(abuse_prediction: dict | None) -> str | None:
 # 이후 요청에서는 같은 모델 인스턴스를 재사용한다.
 # ---------------------------------------------------------
 
-stt_provider = SelectiveFallbackSTTProvider()
+# ElevenLabs is the default production provider. The provider-level fallback
+# uses Deepgram only for an ElevenLabs API/network/response failure.
+stt_provider = Transcriber(
+    provider=os.getenv("I_SPOT_STT_PROVIDER") or "elevenlabs"
+)
 
 post_processor = STTPostProcessor(
     low_confidence_threshold=0.70
@@ -133,7 +156,13 @@ def analyze_audio(file: UploadFile = File(...)):
         # 5. 후처리 및 발화 병합
         print("2️⃣ STT 결과 후처리 및 발화 병합 중...")
         try:
-            final_result = post_processor.process(raw_stt_result)
+            # This boundary heuristic is Deepgram-oriented; leave ElevenLabs
+            # output untouched until it has its own production regression test.
+            final_result = (
+                raw_stt_result
+                if stt_provider.provider_name == "elevenlabs"
+                else post_processor.process(raw_stt_result)
+            )
         except Exception as post_err:
             print(f"❌ 후처리 모듈 오류: {str(post_err)}")
             raise HTTPException(

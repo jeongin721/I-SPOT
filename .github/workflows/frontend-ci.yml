@@ -1,0 +1,38 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - "ispotvscode/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "ispotvscode/**"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  build:
+    name: tsc + vite build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ispotvscode
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # vite 8 은 Node 20.19 이상 / 22.12 이상이 필요하다(package-lock.json 의 engines).
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ispotvscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npx vite build

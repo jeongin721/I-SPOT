@@ -1,0 +1,130 @@
+/* CaseRegister 화면에만 있는 규칙(디자인 CaseRegister.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-CaseRegister .lb {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2b2a26;
+}
+.pg-CaseRegister .req {
+  color: #a33b2e;
+}
+.pg-CaseRegister .fl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pg-CaseRegister .g3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.pg-CaseRegister .pk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #dad5c9;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: #ffffff;
+  color: #2b2a26;
+}
+.pg-CaseRegister .tabb {
+  flex: 1;
+  min-height: 46px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  color: #66625a;
+}
+.pg-CaseRegister .ta2 {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid #dad5c9;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  background: #ffffff;
+  color: #2b2a26;
+  resize: vertical;
+}
+.pg-CaseRegister .ft {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pg-CaseRegister .ft th {
+  background: #f7f6f2;
+  font-weight: 500;
+  color: #66625a;
+  padding: 8px;
+  text-align: left;
+}
+.pg-CaseRegister .ft td {
+  border-bottom: 1px solid #eae7df;
+  padding: 4px;
+}
+.pg-CaseRegister .ft input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #e7e4dc;
+  border-radius: 8px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.pg-CaseRegister .sec {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+  background: #f2efe8;
+  border-radius: 10px;
+}
+.pg-CaseRegister .thm-root.dark .lb {
+  color: #ece8df !important;
+}
+.pg-CaseRegister .thm-root.dark .req {
+  color: #f0907f !important;
+}
+.pg-CaseRegister .thm-root.dark .pk {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-CaseRegister .thm-root.dark .tabb {
+  color: #bdb7aa !important;
+}
+.pg-CaseRegister .thm-root.dark .ta2 {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-CaseRegister .thm-root.dark .ft th {
+  background: #33312c !important;
+  color: #bdb7aa !important;
+}
+.pg-CaseRegister .thm-root.dark .ft td {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-CaseRegister .thm-root.dark .ft input {
+  border: 1px solid #45423b !important;
+}
+.pg-CaseRegister .thm-root.dark .sec {
+  background: #393731 !important;
+}
+/* 준비 중(서버에 저장 칸이 없음)이라 막아 둔 칸. 라벨의 '준비 중' 과 함께 흐리게 보인다. */
+.pg-CaseRegister .inp:disabled,
+.pg-CaseRegister .ta2:disabled,
+.pg-CaseRegister .pk:disabled,
+.pg-CaseRegister fieldset:disabled input,
+.pg-CaseRegister fieldset:disabled .btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

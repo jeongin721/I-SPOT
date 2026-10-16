@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ispot_stt import (
+from stt.ispot_stt import (
     SelectiveFallbackDetector,
     WhisperLargeV3FallbackProvider,
 )

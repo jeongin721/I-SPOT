@@ -3,7 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ispot_stt import DeepgramSTTProvider
+from stt.ispot_stt import DeepgramSTTProvider
 
 
 BASE_DIR = Path(__file__).resolve().parent

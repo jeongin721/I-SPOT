@@ -1,0 +1,159 @@
+/* Schedule 화면에만 있는 규칙(디자인 Schedule.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-Schedule .seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eae7df;
+}
+.pg-Schedule .seg button {
+  border: 0;
+  border-radius: 9px;
+  min-height: 36px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  color: #66625a;
+  cursor: pointer;
+}
+.pg-Schedule .seg button.on {
+  background: #ffffff;
+  color: #2b2a26;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(43, 42, 38, 0.12);
+}
+.pg-Schedule .mnav {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #dad5c9;
+  background: #ffffff;
+  font: inherit;
+  font-size: 16px;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.pg-Schedule .dow {
+  padding: 10px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6e6a62;
+  text-align: left;
+}
+.pg-Schedule .cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 112px;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid #eae7df;
+  border-left: 1px solid #eae7df;
+  background: #ffffff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pg-Schedule .cell:hover {
+  background: #f7f6f2;
+}
+.pg-Schedule .pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pg-Schedule .ev {
+  display: grid;
+  grid-template-columns: 48px 12px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid #eae7df;
+}
+.pg-Schedule .lb {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2b2a26;
+}
+.pg-Schedule .in {
+  height: 42px;
+  border: 1px solid #dad5c9;
+  border-radius: 10px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  background: #ffffff;
+  color: #2b2a26;
+  width: 100%;
+}
+.pg-Schedule .kind {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #dad5c9;
+  background: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  color: #2b2a26;
+}
+.pg-Schedule .impb {
+  align-self: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #dad5c9;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pg-Schedule .thm-root.dark .mnav {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .dow {
+  color: #b5afa3 !important;
+}
+.pg-Schedule .thm-root.dark .cell {
+  border-top: 1px solid #45423b !important;
+  border-left: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+}
+.pg-Schedule .thm-root.dark .cell:hover {
+  background: #33312c !important;
+}
+.pg-Schedule .thm-root.dark .ev {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-Schedule .thm-root.dark .lb {
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .in {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .kind {
+  border: 1.5px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-Schedule .thm-root.dark .impb {
+  border: 1px solid #4e4b44 !important;
+}

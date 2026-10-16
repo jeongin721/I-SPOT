@@ -1,0 +1,15 @@
+# LangGraph Agent 실행 의존성.
+#
+# Backend 가 AI_PROVIDER=langgraph 로 동작할 때 필요하다.
+# backend/requirements.txt 는 Backend 단독 실행 의존성이므로 수정하지 않는다.
+#
+#   . backend/.venv/bin/activate
+#   pip install -r backend/requirements-dev.txt
+#   pip install -r requirements-agent.txt
+#
+# 최상위 requirements.txt(팀 A main.py 용), requirements-integration.txt
+# (Backend + stt/ + ai/), requirements-rag.txt(RAG) 와 용도가 다르다.
+# 서로를 대체하지 않는다.
+
+# agent/graph.py: from langgraph.graph import StateGraph, START, END
+langgraph==1.2.11

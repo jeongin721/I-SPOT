@@ -1,0 +1,15 @@
+id,title,rag_folder,screens,kind,status,url
+1,아동보호서비스 업무 매뉴얼 2026 (보건복지부·아동권리보장원),manuals,SignalReview;PreBriefing;NoteWrite;CaseForm;ClosureDetail,official,원문 게시 확인 필요,https://seoulcenter.org/pages/page_32.php?sn=3058
+1b,아동보호서비스 업무 매뉴얼 2025 + 서식 hwpx,manuals;forms,SignalReview;PreBriefing;NoteWrite;CaseForm;ClosureDetail,official,게시 확인,https://www.mohw.go.kr/board.es?mid=a10411010100&bid=0019&act=view&list_no=1485922&tag=&nPage=1
+2,아동학대 예방 및 대처요령 교육부문 가이드북 4판,checklists;precedents,SignalReview,official,PDF 직접 링크,https://www.cbe.go.kr/upload/dept-21/na/bbs_1661/2026/03/AC1D0C24-4393-F719-8DFF-64E35865C917.pdf
+3,범죄수사규칙 별지 제130호 아동학대 현장조사 체크리스트,checklists,SignalReview,official,서식 직접 링크,https://www.law.go.kr/LSW//flDownload.do?flSeq=134431977&bylClsCd=200202
+4,아동학대 판단 척도(CAF),guidelines,SignalReview,official,매뉴얼 1 안에 수록,
+5,서식 6·27·29 작성 요령,forms,NoteWrite;CaseForm;ClosureDetail,official,매뉴얼 1 안에 수록,
+6,상담일지·서비스제공 일지 기관 양식,forms,NoteWrite,team,기관 양식 확인 필요,
+7,위험수준별 개입 사정 척도 (참고자료 3·43문항),forms,CaseForm;ClosureDetail,official,매뉴얼 1 참고자료 + JSON 구조화 필요,
+8,가족관계 척도 (참고자료 1·15문항),forms,CaseForm;ClosureReview,official,매뉴얼 1 참고자료 / 2017 척도집 원본 미확보,
+9,아동 면담 가이드 (개방형·비유도 질문),guidelines,FollowupQ;PreBriefing,official,공식 PDF 미확보 - 매뉴얼 조사·면담 장 사용,
+10,질문 은행 (QB-xx),question_bank,FollowupQ;PreBriefing;ChildDetail;CaseApp,team,팀 작성 필요,
+11,세부 신호 사전 (세부유형 15종 정의),guidelines,SignalReview;CaseHistory,team,팀 작성 필요,
+12,아동복지법·아동학대처벌법,law API,ClosureDetail;SignalReview,api,LAW_API_OC 신청 + 서버 IP 등록,https://open.law.go.kr
+13,원가정 관계개선과 복귀를 위한 사례관리 실천 가이드북,guidelines,ClosureReview;ClosureDetail,reference,PDF 직접 링크,https://www.chorogusan.or.kr/STH2/upload/file/contentsTheSis/2024/5/17/EAAUAAQIMM_20240517095117.pdf

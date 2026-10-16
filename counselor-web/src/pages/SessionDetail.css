@@ -1,0 +1,55 @@
+/* SessionDetail 화면에만 있는 규칙(디자인 SessionDetail.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-SessionDetail .pick {
+  min-width: 52px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid #e7e4dc;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.pg-SessionDetail .big {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 26px;
+  border-radius: 20px;
+  border: 1px solid #e7e4dc;
+  background: #ffffff;
+  text-decoration: none;
+  color: #2b2a26;
+  min-height: 150px;
+}
+.pg-SessionDetail .big:hover {
+  border-color: #2b2a26;
+  box-shadow: 0 6px 20px rgba(43, 42, 38, 0.1);
+  color: #2b2a26;
+}
+.pg-SessionDetail .bn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  flex: none;
+}
+.pg-SessionDetail .thm-root.dark .pick {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-SessionDetail .thm-root.dark .big {
+  border: 1px solid #45423b !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-SessionDetail .thm-root.dark .big:hover {
+  border-color: #d6d0c4 !important;
+  color: #ece8df !important;
+}

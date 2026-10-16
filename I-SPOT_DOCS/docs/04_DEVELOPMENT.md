@@ -70,9 +70,12 @@
 기본:
 ```text
 main
-develop
 feature/*
 ```
+
+- 새 작업 브랜치는 `main` 에서 따고, PR 대상(base)도 `main` 이다.
+- 2026-10-06 `develop` 을 `main` 에 합친 뒤(#26)부터 `develop` 은 쓰지 않는다.
+- `main` 에 직접 커밋하거나 푸시하지 않는다.
 
 PR 최소 조건:
 - Build 성공

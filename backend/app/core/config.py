@@ -1,0 +1,240 @@
+# 환경설정. Secret/API Key 는 코드에 하드코딩하지 않고 .env 로만 주입한다.
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Annotated, List, Literal
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+REPO_ROOT = BACKEND_DIR.parent
+
+# 저장소에 공개된 JWT 비밀키 값들. 이 값으로 서명한 토큰은 누구나 만들 수 있다.
+#   기본값(아래 Settings) · backend/.env.example · docker-compose.yml · backend/README.md
+_PUBLIC_JWT_SECRETS = frozenset(
+    {
+        "change-me-in-env-file",
+        "replace-this-with-a-long-random-value",
+        "local-dev-only-change-me-0123456789abcdef",
+        "local-dev-only-change-me-1234567890",
+    }
+)
+
+# HS256 서명 키 권장 길이(32 byte).
+_MIN_JWT_SECRET_LENGTH = 32
+
+# 긴 비밀번호의 문자 종류 면제 길이로 받을 수 있는 범위. 0 은 면제 없음이다.
+# 12자보다 짧으면 사실상 종류 규칙을 끄는 셈이고, 72 는 bcrypt 가 받는 최대 byte 다.
+_PASSPHRASE_LENGTH_RANGE = (12, 72)
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # 설정 검사 오류에 입력값(.env 전체 — API 키 · JWT 비밀키 포함)을 찍지 않는다. 시작 실패는 서버 로그에 남는다.
+        hide_input_in_errors=True,
+    )
+
+    # ---------------------------------------------------------
+    # App
+    # ---------------------------------------------------------
+    APP_NAME: str = "I-SPOT Backend"
+    API_V1_PREFIX: str = "/api/v1"
+    ENV: Literal["local", "test", "production"] = "local"
+    DEBUG: bool = False
+
+    # ---------------------------------------------------------
+    # Database
+    # ---------------------------------------------------------
+    # 운영/개발 기본값은 PostgreSQL. 테스트는 conftest 에서 SQLite 로 override 한다.
+    DATABASE_URL: str = (
+        "postgresql+psycopg://ispot:ispot@localhost:5432/ispot"
+    )
+    DB_ECHO: bool = False
+
+    # ---------------------------------------------------------
+    # Auth
+    # ---------------------------------------------------------
+    # 운영에서는 반드시 .env 로 주입한다. 기본값은 local 개발 전용이다.
+    JWT_SECRET_KEY: str = "change-me-in-env-file"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
+
+    # ---------------------------------------------------------
+    # Password Policy
+    # ---------------------------------------------------------
+    # 새로 정하는 비밀번호에만 적용한다. 로그인 검사에는 쓰지 않는다.
+    # 기본값은 팀 회의 결정(2026-09-18) "8자 이상, 영문 · 숫자 · 특수문자 포함" 이다.
+    # 종류는 글자 · 숫자 · 특수문자 3가지로 세므로 3 이면 전부 포함해야 한다.
+    # PASSWORD_PASSPHRASE_LENGTH 는 이 길이 이상이면 종류를 보지 않는 설정이다.
+    # 팀 결정에 없는 면제라 기본값은 0(면제 없음)이다. 켤 때는 12~72 로 준다.
+    PASSWORD_MIN_LENGTH: int = Field(default=8, ge=8, le=72)
+    PASSWORD_MIN_CLASSES: int = Field(default=3, ge=1, le=3)
+    PASSWORD_PASSPHRASE_LENGTH: int = 0
+
+    # ---------------------------------------------------------
+    # Account State
+    # ---------------------------------------------------------
+    # 팀 회의 결정(2026-09-18): 5회 실패 잠금(관리자가 해제), 2개월 미접속 휴면.
+    LOGIN_MAX_FAILURES: int = Field(default=5, ge=1)
+    # 0 이면 시간이 지나도 풀리지 않고 관리자만 해제한다.(회의 결정)
+    LOGIN_LOCK_MINUTES: int = Field(default=0, ge=0)
+    DORMANT_AFTER_DAYS: int = Field(default=60, ge=1)
+    TEMP_PASSWORD_VALID_HOURS: int = Field(default=72, ge=1)
+    # 이전 비밀번호 재사용 금지에 쓸 보관 개수. 0 이면 검사하지 않는다.
+    PASSWORD_HISTORY_COUNT: int = Field(default=3, ge=0, le=20)
+
+    # ---------------------------------------------------------
+    # CORS
+    # ---------------------------------------------------------
+    # NoDecode: pydantic-settings 가 env 값을 JSON 으로 먼저 decode 하지 않게 해서
+    # 아래 _split_comma_separated validator 가 콤마 구분 문자열을 처리할 수 있게 한다.
+    CORS_ORIGINS: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # Audio Storage
+    # ---------------------------------------------------------
+    # 9월 MVP 는 Local Storage 를 사용한다. (docs/02_ARCHITECTURE.md)
+    AUDIO_STORAGE_ROOT: Path = REPO_ROOT / "storage" / "audio"
+    AUDIO_MAX_SIZE_MB: int = 200
+    # 음성 업로드가 아닌 요청 본문의 최대 크기. 본문을 받는 창구(JSON · form)에서 로그인 확인보다 먼저 막는다
+    # (main.py _BodySizeLimitMiddleware). 본문을 읽지 않는 창구(GET 등)는 보낸 본문을 무시한다.
+    # 음성 업로드(서명 · 만료가 맞는 token 을 붙인 multipart 요청)는 AUDIO_MAX_SIZE_MB 에 multipart 여유 1MB 를
+    # 더한 만큼까지 받는다. 음성 경로라도 urlencoded 본문은 이 한도를 쓰고, 그 밖의 multipart 아닌 본문(JSON 등)은
+    # 음성 창구가 읽지 않는다(크기와 상관없이 401 또는 file 없음 422).
+    REQUEST_MAX_BODY_MB: int = Field(default=2, ge=1)
+    AUDIO_ALLOWED_EXTENSIONS: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: [
+            ".wav",
+            ".mp3",
+            ".m4a",
+            ".mp4",
+            ".ogg",
+            ".flac",
+            ".webm",
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # STT / AI Service
+    # ---------------------------------------------------------
+    # mock  : 팀 A/B 산출물 없이도 Backend 단독 실행/테스트 가능
+    # module: 실제 STT 함수를 import 해서 호출
+    STT_PROVIDER: Literal["mock", "module"] = "mock"
+    STT_MODULE: str = "stt.transcribe_service"
+    STT_FUNCTION: str = "transcribe"
+    STT_TIMEOUT_SECONDS: float = 600.0
+
+    # mock     : Transcript 에서 파생한 합성 요약 반환
+    # pipeline : ai/services/analysis_pipeline.run_analysis_pipeline 호출
+    # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)
+    AI_PROVIDER: Literal["mock", "pipeline", "langgraph"] = "mock"
+    AI_TIMEOUT_SECONDS: float = 180.0
+    # pipeline 은 상담 원문을 비식별(가리기) 없이 OpenAI 로 보낸다(ai/services/summary_service.py).
+    # ENV=production 에서는 이 값이 true 일 때만 pipeline 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
+    # local/test 에서는 보지 않는다.
+    AI_PIPELINE_ALLOW_UNMASKED: bool = False
+
+    # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
+    # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = ""
+
+    # ---------------------------------------------------------
+    # 처리 대기 업무 목록 (/tasks)
+    # ---------------------------------------------------------
+    # 기다리기 시작한 뒤 이 시간이 지나면 "지연"으로 표시한다.
+    # ASSUMPTION: 48시간은 임시값이다. 팀 확인 후 조정한다.
+    TASK_OVERDUE_HOURS: float = Field(default=48.0, gt=0)
+
+    # ---------------------------------------------------------
+    # Logging
+    # ---------------------------------------------------------
+    LOG_LEVEL: str = "INFO"
+
+    @field_validator("CORS_ORIGINS", "AUDIO_ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value: object) -> object:
+        """.env 에서 콤마 구분 문자열로도 설정할 수 있게 한다."""
+
+        if isinstance(value, str) and not value.strip().startswith("["):
+            return [item.strip() for item in value.split(",") if item.strip()]
+
+        return value
+
+    @field_validator("PASSWORD_PASSPHRASE_LENGTH")
+    @classmethod
+    def _passphrase_length_is_off_or_in_range(cls, value: int) -> int:
+        """0(면제 없음) 또는 12~72 만 받는다."""
+
+        low, high = _PASSPHRASE_LENGTH_RANGE
+
+        if value != 0 and not low <= value <= high:
+            raise ValueError(
+                f"PASSWORD_PASSPHRASE_LENGTH 는 0(면제 없음) 또는 {low}~{high} 여야 합니다. "
+                f"지금 값: {value}"
+            )
+
+        return value
+
+    @model_validator(mode="after")
+    def _require_private_jwt_secret_in_production(self) -> "Settings":
+        """운영에서 공개된 기본값·예시값이나 짧은 JWT 비밀키로 서버가 뜨지 않게 한다.
+
+        .env 에 JWT_SECRET_KEY 를 빠뜨리면 기본값으로 조용히 기동되고, 저장소를 본 사람은
+        다른 사용자(관리자 포함)의 UUID 로 유효한 토큰을 만들 수 있다.
+        local/test 는 .env 없이 바로 실행되도록 검사하지 않는다.
+        """
+
+        if self.ENV != "production":
+            return self
+
+        secret = self.JWT_SECRET_KEY
+
+        if secret in _PUBLIC_JWT_SECRETS or len(secret) < _MIN_JWT_SECRET_LENGTH:
+            raise ValueError(
+                "ENV=production 에서는 JWT_SECRET_KEY 를 저장소에 없는 "
+                f"{_MIN_JWT_SECRET_LENGTH}자 이상 임의 값으로 설정해야 합니다. "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))" 로 만들 수 있습니다.'
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def _block_unmasked_pipeline_in_production(self) -> "Settings":
+        """운영에서 상담 원문이 비식별 없이 외부(OpenAI)로 나가는 pipeline 으로 서버가 뜨지 않게 한다.
+
+        외부 LLM 에는 비식별한 텍스트만 보낸다는 9/18 회의 결정과 어긋나는 경로다. 실제 상담 데이터가 들어오는
+        운영에서 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_PIPELINE_ALLOW_UNMASKED=true 를 함께 적어야만 뜬다.
+        local/test 는 지금처럼 그대로 둔다(가상 데이터 전용).
+        """
+
+        if self.ENV != "production" or self.AI_PROVIDER != "pipeline" or self.AI_PIPELINE_ALLOW_UNMASKED:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 AI_PROVIDER=pipeline 으로 서버를 시작하지 않습니다. "
+            "pipeline 은 상담 원문을 비식별(이름 · 학교 · 주소 가리기) 없이 OpenAI 로 보냅니다. "
+            "실제 상담 데이터에는 AI_PROVIDER=mock 을 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 AI_PIPELINE_ALLOW_UNMASKED=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @property
+    def audio_max_size_bytes(self) -> int:
+        return self.AUDIO_MAX_SIZE_MB * 1024 * 1024
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

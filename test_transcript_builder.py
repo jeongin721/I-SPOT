@@ -1,4 +1,14 @@
+import sys
+
 from transcript_builder import TranscriptBuilder
+
+# Windows 한국어 콘솔(cp949)에는 이모지가 없어, 아래 성공 메시지의 ✅ 에서
+# UnicodeEncodeError 가 난다. 검증은 모두 통과한 뒤라 결과는 정상인데
+# traceback 만 보여 실패로 오해하기 쉬우므로 출력 인코딩을 고정한다.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 
 
 ALLOWED_ROLES = {

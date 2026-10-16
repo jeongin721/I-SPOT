@@ -1,4 +1,4 @@
-from ispot_stt import SelectiveFallbackSTTProvider
+from stt.ispot_stt import SelectiveFallbackSTTProvider
 
 
 provider = SelectiveFallbackSTTProvider()
