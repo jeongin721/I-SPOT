@@ -20,7 +20,7 @@
 ```
 
 목록은 `data.items` + `data.meta` 구조를 사용한다.
-예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절)은 `data` 가 배열 그대로다(페이지 없음).
+예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절) · 위험도 판단 목록(11절)은 `data` 가 배열 그대로다(페이지 없음).
 
 ```json
 {
@@ -1103,7 +1103,10 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 | 칸 | 규칙 |
 |---|---|
 | `counselor_level` | 필수. `HIGH` · `MEDIUM` · `LOW` |
-| `reason` | 선택, 1000자 이하. 빼거나 `null` · 공백만 보내면 `null` 로 저장 |
+| `reason` | 선택, 1000자 이하(코드 포인트로 센다 — 이모지 하나도 1자). 빼거나 `null` · 공백만 보내면 `null` 로 저장 |
+
+- `reason` 에 NUL(`\u0000`)이나 짝 없는 서로게이트(`\ud800`~`\udfff`)가 있으면 `422 VALIDATION_ERROR` 다.
+  PostgreSQL 에 저장할 수 없는 글자라 받지 않는다. 오류 응답에 이유 원문은 넣지 않는다.
 
 - 그 유형의 판단이 없으면 만들고, 있으면 고친다. 둘 다 `200` 이고 판단 하나를 준다.
 - PUT 은 판단 전체를 바꾼다. 다시 저장할 때 `reason` 을 빼면 전에 적은 이유도 지워진다.
@@ -1132,7 +1135,7 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 상 · 중 · 하를 "학대 확정" · "위험 확정" 으로 쓰지 않는다. 색만으로 단계를 나타내지 않는다.
 
 오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`,
-`409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`(모르는 유형 · 단계, 1000자 넘는 이유)
+`409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`(모르는 유형 · 단계, 1000자 넘는 이유, 저장할 수 없는 글자가 든 이유)
 
 ---
 
