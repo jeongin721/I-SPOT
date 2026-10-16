@@ -13,58 +13,65 @@ summary(overview/key_points), risk_utterances, abuse_signals,
 risk_factors, warnings. 이 모듈은 그 다섯 필드에 맞는 부분만 골라
 채우는 "번역기" 역할만 한다 — 새로 분석하거나 판단하지 않는다.
 
-[지금 Contract에 정식 자리가 없어서 risk_factors에 임시로 담는 필드]
+[2026-10-16: Mingyu 리뷰 반영]
 
-- severity_ratings(유형별 1~5단계 심각도, 검수 전 초안)
-- protective_factors(보호요인 범주)
-- session_change_notes(회차 간 진술 변화)
-- followup_check_points(다음 상담에서 확인할 것)
+severity_ratings/protective_factors/session_change_notes/
+followup_check_points를 risk_factors에 kind 태그로 욱여넣는 이전
+방식은 보류했다 — risk_factors는 "위험 요인" 칸이라 보호요인이
+섞이면 화면에서 위험 요인으로 보이고, 근거 발화 번호가 없는 항목은
+서버 근거 검사에서 빠질 수 있다는 지적을 받았다. 이번 머지는 위험
+3필드(risk_utterances/abuse_signals/risk_factors) + summary만
+채우고, 저 4개 필드는 Mingyu가 Contract/스키마/프론트 타입에 정식
+선택 필드로 따로 추가한다. 그 전까지 risk_factors는 비워 둔다.
 
-risk_factors는 타입이 느슨한 List[Dict[str, Any]]라 당장은 동작하지만,
-Contract에 정식 필드가 생기면 여기서 분리해서 옮겨야 한다(임시방편임을
-"kind" 키로 표시해 둔다). 정식 필드 추가는 backend 쪽과 상의가 필요
-하다 — contracts.py 주석: "Backend 단독으로 이 구조를 변경하지
-않는다."
+summary(overview/key_points)는 더 이상 이 모듈이 직접 만들지 않고
+agent/summary_converter.convert_summary()(Mingyu, PR
+feat/agent-summary-converter)를 그대로 쓴다 — 아동(CHILD) 발화만
+근거로 남기고 원문 segment_id와 대조해 끊어진 인용을 걸러내는 처리가
+이미 거기 있어서, 같은 처리를 여기서 다시 만들지 않는다. **지금 이
+브랜치에는 agent/summary_converter.py를 feat/agent-summary-converter
+에서 그대로 복사해 뒀다 — 그 브랜치가 main에 머지되면 중복이니
+그때 이 파일을 지우고 main의 것을 쓰도록 바꿔야 한다.**
 
-[2026-10-15: 아직 못 채운 것]
+[아직 못 채운 것]
 
 - 백엔드 adapter의 analyze(transcript_payload)는 case_id를 안 받는다
   (analysis_service가 session.id만 넘긴다). 그래서 Privacy Gateway
   Tier 2(case_store에 등록된 실명 정확매칭)는 이 경로에서는 못 쓴다
-  — NER(Tier 1)만 적용된다. case_id까지 넘기려면 backend 쪽
-  analysis_service.py도 같이 바꿔야 한다.
+  — NER(Tier 1)만 적용된다. 실명 저장 여부가 팀 결정 대기 중이라
+  (10/16 Mingyu 답변) 지금은 이 상태로 둔다.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
+
+from agent.summary_converter import convert_summary
 
 from ai.modeling.abuse.infer_audio_session import analyze_audio_session
 
 
 def to_ai_output_contract(
     result: Dict[str, Any],
-) -> Dict[str, Any]:
-    """analyze_audio_session()의 반환값을 AI Output Contract 모양으로 바꾼다."""
+    transcript: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    analyze_audio_session()의 반환값을 AI Output Contract 모양으로 바꾼다.
+
+    transcript: analyze_audio_session에 넘긴 STT Contract dict({"segments": [...]}).
+                convert_summary()가 근거 발화의 화자를 다시 확인하는 데 쓴다.
+
+    반환값은 (contract_dict, summary_evidence) 튜플이다. summary_evidence는
+    AIAnalysisResult에는 없는 별도 필드(SummaryEvidenceItem과 같은 모양)라
+    호출부(ModelingAIAdapter)가 AIAnalysisBundle을 만들 때 따로 담아야 한다.
+    """
+
+    converted = convert_summary(result, transcript)
+    summary = converted["summary"]
+    summary_evidence = converted.get("summary_evidence", [])
+    warnings = list(converted.get("warnings", []))
 
     record_draft = result.get("record_draft") or {}
-    narrative_summary = (
-        record_draft.get("narrative_summary") or {}
-    )
-
-    overview = (
-        narrative_summary.get("risks_narrative")
-        or result.get("counseling_summary", "")
-        or ""
-    )
-
-    key_points = [
-        point.get("text", "")
-        for point in record_draft.get(
-            "child_statement_points", []
-        )
-        if point.get("text")
-    ]
 
     risk_utterances = [
         {
@@ -91,56 +98,36 @@ def to_ai_output_contract(
         ).items()
     ]
 
-    # Contract에 아직 정식 자리가 없는 필드들을 risk_factors에 임시로
-    # 담는다(모듈 docstring 참고) — "kind"로 구분해서 나중에 분리하기
-    # 쉽게 해 둔다.
+    # severity_ratings/protective_factors/session_change_notes/
+    # followup_check_points는 (10/16 합의) 당분간 Contract에 담지 않는다
+    # — Mingyu가 정식 선택 필드로 추가할 때까지 risk_factors는 비워 둔다.
     risk_factors: List[Dict[str, Any]] = []
 
-    for factor in result.get("protective_factors") or []:
-        risk_factors.append(
-            {"kind": "protective_factor", **factor}
-        )
-
-    for rating in result.get("severity_ratings") or []:
-        risk_factors.append(
-            {"kind": "severity_rating", **rating}
-        )
-
-    for note in result.get("session_change_notes") or []:
-        risk_factors.append(
-            {"kind": "session_change_note", "text": note}
-        )
-
-    for point in result.get("followup_check_points") or []:
-        risk_factors.append(
-            {"kind": "followup_check_point", "text": point}
-        )
-
-    return {
+    contract = {
         "schema_version": "1.0",
-        "summary": {
-            "overview": overview,
-            "key_points": key_points,
-        },
+        "summary": summary,
         "risk_utterances": risk_utterances,
         "abuse_signals": abuse_signals,
         "risk_factors": risk_factors,
-        "warnings": [],
+        "warnings": warnings,
     }
+
+    return contract, summary_evidence
 
 
 def analyze_audio_session_as_contract(
     stt_result: Dict[str, Any],
     client: Any = None,
     case_id: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
 
     PipelineAIAdapter(ai/services/analysis_pipeline.run_analysis_pipeline)와
     같은 자리에 꽂을 수 있도록, 반환값을 처음부터 Contract 모양으로
-    맞춰서 돌려준다 — 호출부는 추가 변환 없이 바로
-    AIAnalysisResult.model_validate()에 넘기면 된다.
+    맞춰서 돌려준다. (contract_dict, summary_evidence) 튜플을 돌려주므로
+    호출부는 contract_dict만 AIAnalysisResult.model_validate()에 넘기고,
+    summary_evidence는 AIAnalysisBundle.summary_evidence에 따로 담으면 된다.
     """
 
     result = analyze_audio_session(
@@ -149,4 +136,4 @@ def analyze_audio_session_as_contract(
         case_id=case_id,
     )
 
-    return to_ai_output_contract(result)
+    return to_ai_output_contract(result, transcript=stt_result)

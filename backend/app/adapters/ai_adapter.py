@@ -292,9 +292,10 @@ class ModelingAIAdapter:
     아예 호출되지 않는다. 심각도(severity_ratings)/보호요인
     (protective_factors)/회차 간 변화(session_change_notes)/다음
     상담 확인사항(followup_check_points)은 AI Output Contract에
-    아직 정식 필드가 없어서 risk_factors 안에 kind로 태그해 임시로
-    담는다 — contract_adapter.py 모듈 docstring 참고. 정식 필드가
-    생기면 그쪽으로 옮겨야 한다.
+    아직 정식 필드가 없다 — (10/16 리뷰 결정) risk_factors에 임시로
+    욱여넣지 않고, 정식 선택 필드가 생길 때까지 이번 Contract 출력에는
+    담지 않는다. summary는 agent/summary_converter.convert_summary()를
+    그대로 쓴다 — contract_adapter.py 모듈 docstring 참고.
     """
 
     name = "modeling"
@@ -323,7 +324,7 @@ class ModelingAIAdapter:
             ) from error
 
         try:
-            contract_payload = analyze_audio_session_as_contract(
+            contract_payload, summary_evidence_raw = analyze_audio_session_as_contract(
                 stt_result=transcript.model_dump(),
             )
         except Exception as error:
@@ -339,7 +340,7 @@ class ModelingAIAdapter:
 
         return AIAnalysisBundle(
             result=result,
-            summary_evidence=[],
+            summary_evidence=_to_summary_evidence(summary_evidence_raw),
             provider=self.name,
             model=os.getenv("OPENAI_MODEL"),
         )
