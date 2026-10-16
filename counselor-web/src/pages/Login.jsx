@@ -20,7 +20,8 @@ import './Login.css';
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { email: '', password: '', current: '', next: '', confirm: '' };
+    // pwFor: 변경 단계 칸(current · next · confirm)이 어느 계정 것인가(설정 화면의 pwFor 와 같은 방식).
+    this.state = { email: '', password: '', current: '', next: '', confirm: '', pwFor: null };
   }
 
   async signIn() {
@@ -32,7 +33,7 @@ class Logic extends DCLogic {
     if (user.must_change_password) {
       // 방금 친 임시 비밀번호를 현재 비밀번호 칸에 옮겨 두고, 로그인 상태를 다시 확인해 변경 단계로 넘어간다.
       // 새 비밀번호 · 확인 칸은 비운다(앞 계정에서 치다 만 값이 남아 있으면 이 계정에 그대로 들어가 버린다).
-      this.setState({ current: s.password, password: '', next: '', confirm: '' });
+      this.setState({ current: s.password, password: '', next: '', confirm: '', pwFor: user.id });
       this.props.session.recheck();
     } else {
       this.props.navigate('/Main');
@@ -51,9 +52,16 @@ class Logic extends DCLogic {
   }
 
   renderVals() {
-    const s = this.state;
     const { session, login, pwChange, notice } = this.props;
     const changing = session.status === 'mustChangePassword';
+    // 변경 단계의 칸 · 오류는 그 계정 것이다. 다른 탭에서 다른 계정(임시 비밀번호)으로 바뀌면 그리는 중에 비운다 —
+    // 앞 계정의 임시 비밀번호가 새 계정의 변경 요청에 실려 나가지 않게.
+    const meId = session.me ? session.me.id : null;
+    if (changing && meId && this.state.pwFor !== meId) {
+      this.state = { ...this.state, current: '', next: '', confirm: '', pwFor: meId };
+      pwChange.clearErrors();
+    }
+    const s = this.state;
     const field = (key) => ({ value: s[key], onChange: (e) => this.setState({ [key]: e.target.value }) });
     const busy = changing ? pwChange.submitting : login.submitting;
     return {

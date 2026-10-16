@@ -288,7 +288,10 @@ export function noteWriteValues(input: NoteScreenInput) {
       };
     });
 
-  /** 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null. */
+  /**
+   * 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null.
+   * 요청한 뒤 대상이 바뀌어(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남) 반영하지 못했어도 null 이다(docs 훅).
+   */
   const saveDoc = async (): Promise<DocumentRow | null> => {
     if (!docDirty) return record;
 
@@ -361,9 +364,13 @@ export function noteWriteValues(input: NoteScreenInput) {
     approveDoc: async () => {
       if (asking !== "document") return;
 
+      // 누를 때의 대상(표). 일지를 저장하는 사이 대상이 바뀌었으면(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남)
+      // 승인 요청을 이어 보내지 않는다(새 로그인 토큰으로 앞 회차의 일지를 승인하지 않게).
+      const ticket = docs.capture();
       const target = await saveDoc();
 
-      if (target && (await docs.approve(target.id))) setState({ ask: null });
+      if (!target || !docs.isCurrent(ticket)) return;
+      if (await docs.approve(target.id)) setState({ ask: null });
     },
     cancelAsk: () => setState({ ask: null }),
     // 아래 단추
@@ -371,12 +378,16 @@ export function noteWriteValues(input: NoteScreenInput) {
     nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",
     canNext: !busy,
     next: async () => {
-      const forSession = sessionId;
+      // 누를 때의 대상(표). 저장을 기다리는 사이 대상이 바뀌었으면(다른 회차 · 화면, 갔다 돌아옴, 다시 로그인)
+      // 다음 저장을 이어 보내지 않고 앞 회차의 다음 화면으로 끌고 가지도 않는다.
+      // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 저장할 것도 없어 바로 옮긴다.
+      const ticket = docs.capture();
+      const stillHere = () => ticket === null || docs.isCurrent(ticket);
 
       if (summary.canEdit && summary.dirty && !(await summary.save())) return;
+      if (!stillHere()) return;
       if (docDirty && !(await saveDoc())) return;
-      // 저장을 기다리는 사이 다른 회차 · 화면으로 옮겼으면 앞 회차의 다음 화면으로 끌고 가지 않는다.
-      go(screenHref("/FollowupQ", ids), forSession);
+      go(screenHref("/FollowupQ", ids), stillHere);
     },
     /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
     unsaved: (summary.canEdit && summary.dirty) || docDirty,
