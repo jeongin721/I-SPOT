@@ -127,3 +127,96 @@ def test_settings_error_does_not_print_input_values() -> None:
     assert "AI_PIPELINE_ALLOW_UNMASKED=true" in message
     assert "0123456789" not in message
     assert STRONG_SECRET[-8:] not in message
+
+
+# ---------------------------------------------------------
+# AI_PROVIDER=modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 불완전하다
+# (specs ai-analysis-connect-research-1013.md 3-3 ④ ⑥). 운영에서는 일부러 풀 때만 뜬다.
+# ---------------------------------------------------------
+
+
+def test_production_rejects_modeling_until_privacy_issues_are_fixed() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER="modeling")
+
+    message = str(caught.value)
+
+    # 막은 이유(개인정보 문제 해결 전)와 푸는 방법을 문구로 알려 준다.
+    assert "AI_PROVIDER=modeling" in message
+    assert "비식별" in message
+    assert "개인정보 문제가 해결되기 전" in message
+    assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
+
+
+def test_production_allows_modeling_only_when_explicitly_allowed() -> None:
+    settings = _settings(
+        ENV="production",
+        JWT_SECRET_KEY=STRONG_SECRET,
+        AI_PROVIDER="modeling",
+        AI_MODELING_ALLOW_IN_PRODUCTION=True,
+    )
+
+    assert settings.AI_PROVIDER == "modeling"
+
+
+def test_modeling_flag_reads_true_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """서버 .env 에 적는 그대로(AI_MODELING_ALLOW_IN_PRODUCTION=true) 읽힌다."""
+
+    monkeypatch.setenv("AI_MODELING_ALLOW_IN_PRODUCTION", "true")
+
+    settings = _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER="modeling")
+
+    assert settings.AI_MODELING_ALLOW_IN_PRODUCTION is True
+
+
+def test_modeling_flag_is_off_by_default() -> None:
+    assert _settings().AI_MODELING_ALLOW_IN_PRODUCTION is False
+
+
+def test_pipeline_flag_does_not_unlock_modeling() -> None:
+    """두 허용 값은 서로를 풀지 않는다. pipeline 을 풀어 둔 서버에서 modeling 으로 바꿔도 막힌다."""
+
+    with pytest.raises(ValidationError, match="AI_MODELING_ALLOW_IN_PRODUCTION=true"):
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="modeling",
+            AI_PIPELINE_ALLOW_UNMASKED=True,
+        )
+
+
+def test_modeling_flag_does_not_unlock_pipeline() -> None:
+    with pytest.raises(ValidationError, match="AI_PIPELINE_ALLOW_UNMASKED=true"):
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="pipeline",
+            AI_MODELING_ALLOW_IN_PRODUCTION=True,
+        )
+
+
+@pytest.mark.parametrize("env", ["local", "test"])
+def test_non_production_keeps_modeling(env: str) -> None:
+    """개발 · 테스트 환경은 modeling 을 그대로 쓸 수 있다(가상 데이터 전용)."""
+
+    settings = _settings(ENV=env, AI_PROVIDER="modeling")
+
+    assert settings.AI_PROVIDER == "modeling"
+
+
+def test_modeling_error_does_not_print_input_values() -> None:
+    fake_key = "sk-SYNTHETIC-NOT-A-REAL-KEY-0123456789"
+
+    with pytest.raises(ValidationError) as caught:
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="modeling",
+            OPENAI_API_KEY=fake_key,
+        )
+
+    message = str(caught.value)
+
+    assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
+    assert "0123456789" not in message
+    assert STRONG_SECRET[-8:] not in message
