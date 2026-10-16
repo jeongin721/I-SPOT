@@ -1,11 +1,15 @@
 # 공통 요청/응답 Schema.
 
+import re
 from typing import Annotated, Any, ClassVar, Dict, FrozenSet, Optional
 
 from pydantic import AfterValidator, BaseModel, ValidationInfo, field_validator
 
 # 사유 문구에는 받은 값을 넣지 않는다. 오류 응답 · 로그에 원문이 나가지 않게 한다.
 UNSTORABLE_TEXT_MESSAGE = "저장할 수 없는 문자(NUL · 짝 없는 서로게이트)가 있습니다."
+
+# NUL(U+0000)과 짝 없는 서로게이트(U+D800~U+DFFF).
+_UNSTORABLE_CHARACTER = re.compile("[\x00\ud800-\udfff]")
 
 
 def has_unstorable_character(value: str) -> bool:
@@ -16,9 +20,11 @@ def has_unstorable_character(value: str) -> bool:
     - 짝 없는 서로게이트(U+D800~U+DFFF): UTF-8 로 바꿀 수 없어 500 이 된다.
     둘 다 JSON 이스케이프(\\u0000, \\ud800)로 들어올 수 있다. 저장 단계까지 가면
     오류 로그에 원문이 실릴 수 있어 입력에서 막는다.
+    본문 검증은 이벤트 루프에서 돈다. 글자마다 파이썬으로 훑으면 2MB 본문 하나가 0.3초쯤
+    루프를 막아, 미리 컴파일한 정규식으로 한 번에 찾는다.
     """
 
-    return any(char == "\x00" or "\ud800" <= char <= "\udfff" for char in value)
+    return _UNSTORABLE_CHARACTER.search(value) is not None
 
 
 def _contains_unstorable_text(value: Any) -> bool:
@@ -28,7 +34,12 @@ def _contains_unstorable_text(value: Any) -> bool:
         return has_unstorable_character(value)
 
     if isinstance(value, (list, tuple, set, frozenset)):
-        return any(_contains_unstorable_text(item) for item in value)
+        # 글자만 든 목록은 이어 붙여 한 번에 찾는다. 항목 수 제한이 없는 칸도 있어 항목마다 파이썬으로 돌지 않는다.
+        # 찾는 글자는 한 글자씩이라 이어 붙여도 없던 것이 생기거나 있던 것이 사라지지 않는다.
+        try:
+            return has_unstorable_character("".join(value))
+        except TypeError:
+            return any(_contains_unstorable_text(item) for item in value)
 
     if isinstance(value, dict):
         return any(
