@@ -13,7 +13,10 @@ ai/modeling/abuse/weight/
 ai/modeling/abuse/*.db
 ai/modeling/abuse/audio_uploads_tmp/
 
-data/
+# 저장소 맨 위 data/ 폴더만 가린다 — 앵커(/) 없이 "data/"만 쓰면
+# 하위 어디든 이름이 data인 디렉터리를 전부 가려버린다(2026-10-16,
+# feat/modeling-pipeline-integration PR 리뷰에서 같은 실수 발견).
+/data/
 
 # 키 · 자격증명 · 참고용 원본 문서 — 절대 올리면 안 됨(2026-10-14 추가)
 *.pem
