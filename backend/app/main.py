@@ -7,7 +7,8 @@
 # 예외 handler 를 한곳에 모아 어떤 경로로 실패해도 형식이 깨지지 않게 한다.
 
 import re
-from typing import Any, Dict, Optional, Tuple
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
 import anyio
 from fastapi import FastAPI, Request
@@ -18,6 +19,7 @@ from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.adapters.ai_adapter import start_ai_preload
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
@@ -56,6 +58,15 @@ _STATUS_MESSAGES: Dict[int, str] = {
 }
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # AI_PROVIDER=modeling 이면 모델을 백그라운드로 미리 올린다. 기다리지 않으므로 /health 는 바로
+    # 응답하고, 실패해도 서버는 뜬다(ai_adapter.start_ai_preload). 다른 provider 는 아무것도 하지 않는다.
+    app.state.ai_preload = start_ai_preload()
+
+    yield
+
+
 def create_app() -> FastAPI:
     configure_logging()
 
@@ -68,6 +79,7 @@ def create_app() -> FastAPI:
         ),
         docs_url="/docs",
         openapi_url="/openapi.json",
+        lifespan=_lifespan,
     )
 
     # 등록 순서가 중요하다. 나중에 등록한 미들웨어가 바깥에 놓이므로, 오류 처리를

@@ -7,9 +7,12 @@
 # 예외: LangGraph · Modeling 결과는 근거 발화가 없는 위험 항목을 빼고 저장한다
 # (drop_ungrounded_risk_items 참고).
 
+import inspect
 import os
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 from pydantic import ValidationError
 
@@ -40,9 +43,14 @@ _KNOWN_AI_ERROR_CODES = {
     "SummaryOutputError": ErrorCode.AI_INVALID_OUTPUT,
 }
 
+AI_TIMEOUT_MESSAGE = "AI 분석이 제한 시간 안에 끝나지 않았습니다."
+
 
 def map_ai_error(error: Exception) -> AIError:
     """AI 쪽에서 올라온 예외를 Backend 오류 코드로 변환한다.
+
+    파이썬 내장 TimeoutError(와 그 하위 예외)는 AI_TIMEOUT 이다. modeling 은 마감 시각
+    (deadline)을 넘기면 이 예외를 던진다. 문구에는 발화가 섞일 수 있어 고정 문구로 바꾼다.
 
     알 수 없는 예외는 문구를 버리고 고정 문구와 예외 종류 이름만 남긴다.
     예외 문구에는 상담 발화나 내부 경로가 섞일 수 있는데, AIError 의 문구는
@@ -56,6 +64,9 @@ def map_ai_error(error: Exception) -> AIError:
 
     if code is not None:
         return AIError(str(error) or "AI 분석에 실패했습니다.", code)
+
+    if isinstance(error, TimeoutError):
+        return AIError(AI_TIMEOUT_MESSAGE, ErrorCode.AI_TIMEOUT)
 
     return AIError(f"AI 분석에 실패했습니다: {name}", ErrorCode.AI_FAILED)
 
@@ -94,6 +105,9 @@ class AIAnalysisBundle:
 
 
 class AIAdapter(Protocol):
+    """준비 단계가 있는 어댑터는 prepare() 도 둔다(선택, 지금은 ModelingAIAdapter 뿐).
+    analysis_service 가 AI_TIMEOUT_SECONDS 를 재기 전에 부른다."""
+
     name: str
 
     def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
@@ -283,6 +297,26 @@ class PipelineAIAdapter:
 # Modeling Adapter (ai/modeling/abuse 이경진 파이프라인)
 # =========================================================
 
+def _accepts_deadline(func: Callable[..., Any]) -> bool:
+    """func 가 deadline 을 이름으로 받는가. **kwargs 만 있는 함수는 받지 않는 것으로 본다.
+
+    deadline 은 time.monotonic() 기준 절대 시각(기본 None)이고, 넘으면 모듈이 남은 단계를
+    건너뛰고 내장 TimeoutError 를 던진다(10/16 이경진 님께 제안한 모양).
+    run_with_timeout 은 thread 를 멈추지 못해 시간이 지나도 OpenAI 호출이 계속되므로,
+    모듈이 스스로 멈출 수 있게 마감 시각을 알려 준다.
+    """
+
+    try:
+        parameter = inspect.signature(func).parameters.get("deadline")
+    except (TypeError, ValueError):
+        return False
+
+    return parameter is not None and parameter.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+
+
 class ModelingAIAdapter:
     """ai/modeling/abuse/contract_adapter.analyze_audio_session_as_contract 을 호출한다.
 
@@ -300,11 +334,20 @@ class ModelingAIAdapter:
     근거 발화가 없는 위험 항목은 저장 전에 뺀다(drop_ungrounded_risk_items).
     LangGraphAIAdapter 와 같이 모듈이 돌려준 값이 아니라 어댑터가 받은
     Transcript 로 대조한다.
+
+    모듈은 import 할 때 모델 가중치를 올린다(V100 측정 약 11초, 새 서버는 내려받기까지 더 걸림).
+    그래서 import 는 prepare() 로 따로 뺀다. analysis_service 가 AI_TIMEOUT_SECONDS 를 재기 전에
+    부르고, 서버 시작 때도 백그라운드로 한 번 부른다(start_ai_preload).
     """
 
     name = "modeling"
 
-    def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
+    def prepare(self) -> None:
+        """모듈 import · 모델 로드. 이미 올라가 있으면 바로 끝난다(sys.modules)."""
+
+        self._load_pipeline()
+
+    def _load_pipeline(self) -> Tuple[Any, Callable[..., Any]]:
         ensure_repo_root_on_path()
         export_llm_env()
 
@@ -319,6 +362,14 @@ class ModelingAIAdapter:
                 ErrorCode.AI_FAILED,
             ) from error
 
+        return Transcript, analyze_audio_session_as_contract
+
+    def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
+        # analysis_service 의 run_with_timeout 이 시간을 재기 시작한 직후다. 마감 시각은 이때부터 잰다.
+        started = time.monotonic()
+
+        Transcript, analyze_audio_session_as_contract = self._load_pipeline()
+
         try:
             transcript = Transcript.model_validate(transcript_payload)
         except ValidationError as error:
@@ -327,6 +378,14 @@ class ModelingAIAdapter:
                 ErrorCode.AI_INVALID_OUTPUT,
             ) from error
 
+        # 마감 시각을 받는 판에만 넘긴다. 받지 않는 판에 넘기면 TypeError 로 분석이 실패한다.
+        options: Dict[str, Any] = {}
+
+        if _accepts_deadline(analyze_audio_session_as_contract):
+            options["deadline"] = (
+                started + settings.AI_TIMEOUT_SECONDS - settings.AI_DEADLINE_MARGIN_SECONDS
+            )
+
         try:
             (
                 contract_payload,
@@ -334,6 +393,7 @@ class ModelingAIAdapter:
                 model_name,
             ) = analyze_audio_session_as_contract(
                 stt_result=transcript.model_dump(),
+                **options,
             )
         except Exception as error:
             raise map_ai_error(error) from error
@@ -608,7 +668,42 @@ def get_ai_adapter() -> AIAdapter:
     return MockAIAdapter()
 
 
+def start_ai_preload() -> Optional[threading.Thread]:
+    """준비 단계(prepare)가 있는 어댑터면 백그라운드 thread 로 미리 불러 둔다. 지금은 modeling 뿐이다.
+
+    서버 시작 때 부른다(main.py lifespan). 기다리지 않으므로 /health 는 바로 응답한다.
+    실패해도 서버는 그대로 뜨고, 첫 분석 요청 때 다시 불러 본다. 실패 로그에는 예외 종류
+    이름만 남긴다(내려받기 주소 · 내부 경로가 문구에 섞일 수 있다).
+    준비 단계가 없으면(mock · pipeline · langgraph) thread 를 만들지 않고 None 을 돌려준다.
+    """
+
+    adapter = get_ai_adapter()
+    prepare = getattr(adapter, "prepare", None)
+
+    if prepare is None:
+        return None
+
+    def run() -> None:
+        try:
+            prepare()
+        except Exception as error:
+            cause = error.__cause__ if isinstance(error, AIError) and error.__cause__ else error
+            logger.warning(
+                "AI 모듈을 미리 불러오지 못했습니다. 첫 분석 요청 때 다시 시도합니다. provider=%s type=%s",
+                adapter.name,
+                type(cause).__name__,
+            )
+        else:
+            logger.info("AI 모듈을 미리 불러왔습니다. provider=%s", adapter.name)
+
+    thread = threading.Thread(target=run, name="ai-preload", daemon=True)
+    thread.start()
+
+    return thread
+
+
 __all__ = [
+    "AI_TIMEOUT_MESSAGE",
     "AIAdapter",
     "AIAnalysisBundle",
     "AIError",
@@ -621,4 +716,5 @@ __all__ = [
     "get_ai_adapter",
     "map_ai_error",
     "set_ai_adapter_override",
+    "start_ai_preload",
 ]

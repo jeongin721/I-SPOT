@@ -31,6 +31,14 @@ from app.services import audit_service, session_service, transcript_service
 
 logger = get_logger(__name__)
 
+# 어댑터 준비 단계(prepare: 모듈 import · 모델 로드)에 주는 시간. AI_TIMEOUT_SECONDS 와 따로 잰다.
+# 처리 중 멈춤 판정(session_service.expire_stale_processing)은 요청 시각부터
+# AI_TIMEOUT_SECONDS + STALE_GRACE_SECONDS 가 지나면 작업이 사라진 것으로 본다. 준비가 그 여유 시간을
+# 다 쓰면 살아 있는 작업이 실패로 마감되므로 여유 시간보다 짧게 둔다.
+PREPARE_TIMEOUT_SECONDS = session_service.STALE_GRACE_SECONDS - 15
+
+PREPARE_TIMEOUT_MESSAGE = "AI 모델을 아직 불러오는 중입니다. 잠시 뒤 다시 시도해 주세요."
+
 
 # =========================================================
 # 조회
@@ -179,6 +187,8 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             payload = transcript_service.transcript_to_contract(transcript)
             adapter = get_ai_adapter()
 
+            _prepare_adapter(adapter)
+
             bundle = run_with_timeout(
                 lambda: adapter.analyze(payload),
                 settings.AI_TIMEOUT_SECONDS,
@@ -208,6 +218,26 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             )
     finally:
         db.close()
+
+
+def _prepare_adapter(adapter) -> None:
+    """어댑터에 준비 단계가 있으면 AI_TIMEOUT_SECONDS 밖에서 먼저 부른다(ModelingAIAdapter.prepare).
+
+    모델 로드가 분석 제한 시간을 쓰지 않게 하려는 것이다. 서버 시작 때 미리 불러 두었으면
+    바로 끝난다. 아직 불러오는 중이면 그 import 가 끝나기를 기다린다(파이썬 import 잠금).
+    PREPARE_TIMEOUT_SECONDS 를 넘기면 이 분석만 AI_TIMEOUT 으로 끝낸다. 불러오기는 thread 에서
+    계속되므로 다음 요청은 빨라진다.
+    """
+
+    prepare = getattr(adapter, "prepare", None)
+
+    if prepare is None:
+        return
+
+    try:
+        run_with_timeout(prepare, PREPARE_TIMEOUT_SECONDS)
+    except OperationTimeout as error:
+        raise AIError(PREPARE_TIMEOUT_MESSAGE, ErrorCode.AI_TIMEOUT) from error
 
 
 def _save_analysis_result(

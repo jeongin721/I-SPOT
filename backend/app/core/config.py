@@ -141,8 +141,18 @@ class Settings(BaseSettings):
     #            Contract 에는 summary 와 위험 3필드만 담는다. 심각도 · 보호요인 · 회차 간 변화 ·
     #            다음 확인사항은 정식 선택 필드가 생길 때까지 담지 않고, risk_factors 는 빈 배열이다.
     #            근거 발화가 없는 위험 항목은 저장 전에 뺀다(langgraph 와 같음).
+    #            모듈 import(모델 로드)는 아래 제한 시간 밖에서 하고, 서버 시작 때 백그라운드로 미리 한다
+    #            (ai_adapter.start_ai_preload · analysis_service.PREPARE_TIMEOUT_SECONDS).
     AI_PROVIDER: Literal["mock", "pipeline", "langgraph", "modeling"] = "mock"
+    # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 다만 thread 는 멈추지 못해(run_with_timeout)
+    # 외부 호출이 뒤에서 계속될 수 있다. 그래서 modeling 함수가 deadline 을 받으면 마감 시각을 넘겨
+    # 스스로 멈추게 한다.
+    # 180초는 10/16 이경진 님 측정(V100 GPU, 30분 합성 녹취 122~134초)으로 여유가 25~45초다.
+    # 측정 장비가 실제 서버(t3.small, GPU 없음)와 달라, NER 수정 뒤 다시 재고 정한다.
     AI_TIMEOUT_SECONDS: float = 180.0
+    # modeling 에 넘기는 마감 시각 = 분석 시작 + AI_TIMEOUT_SECONDS - 이 값.
+    # 모듈이 스스로 멈춘 뒤 결과를 돌려줄 여유다. 함수가 deadline 을 받지 않으면 쓰지 않는다.
+    AI_DEADLINE_MARGIN_SECONDS: float = Field(default=5.0, ge=0)
     # pipeline 은 상담 원문을 비식별(가리기) 없이 OpenAI 로 보낸다(ai/services/summary_service.py).
     # ENV=production 에서는 이 값이 true 일 때만 pipeline 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
