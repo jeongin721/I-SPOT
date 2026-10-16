@@ -33,6 +33,20 @@ feat/agent-summary-converter)를 그대로 쓴다 — 아동(CHILD) 발화만
 에서 그대로 복사해 뒀다 — 그 브랜치가 main에 머지되면 중복이니
 그때 이 파일을 지우고 main의 것을 쓰도록 바꿔야 한다.**
 
+[2026-10-16: fixture 리뷰 반영]
+
+- abuse_signals에 segment_ids를 붙였다 — 같은 major_type의
+  risk_signal_points(=risk_utterances) segment_ids를 모아 붙인 것이라,
+  detected=False거나 해당 유형 근거가 risk_signal_points에 없으면 빈
+  배열이다.
+- model 이름은 더 이상 환경변수(OPENAI_MODEL, 애초에 이 파이프라인
+  어디서도 읽지 않는 값이었다)로 꾸미지 않고, 실제로 쓰인 모델명을
+  result에서 그대로 읽는다(_model_name 참고). 이 파이프라인은 단계마다
+  별도 LLM 호출(second_stage_llm/record_draft_llm/...)이라 모델이
+  이론상 달라질 수 있지만, 전부 같은 DEFAULT_MODEL(현재
+  "gpt-5.6-luna")에서 시작해 보통은 같다 — 대표값으로 subtype_analysis
+  단계의 모델명을 쓴다.
+
 [아직 못 채운 것]
 
 - 백엔드 adapter의 analyze(transcript_payload)는 case_id를 안 받는다
@@ -51,18 +65,27 @@ from agent.summary_converter import convert_summary
 from ai.modeling.abuse.infer_audio_session import analyze_audio_session
 
 
+def _model_name(result: Dict[str, Any]) -> Optional[str]:
+    """실제로 쓰인 모델명을 result에서 읽는다(모듈 docstring 참고)."""
+
+    return (
+        (result.get("subtype_analysis") or {}).get("model")
+        or result.get("counseling_record_model")
+    )
+
+
 def to_ai_output_contract(
     result: Dict[str, Any],
     transcript: Dict[str, Any],
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     analyze_audio_session()의 반환값을 AI Output Contract 모양으로 바꾼다.
 
     transcript: analyze_audio_session에 넘긴 STT Contract dict({"segments": [...]}).
                 convert_summary()가 근거 발화의 화자를 다시 확인하는 데 쓴다.
 
-    반환값은 (contract_dict, summary_evidence) 튜플이다. summary_evidence는
-    AIAnalysisResult에는 없는 별도 필드(SummaryEvidenceItem과 같은 모양)라
+    반환값은 (contract_dict, summary_evidence, model_name) 튜플이다.
+    summary_evidence/model_name은 AIAnalysisResult에는 없는 별도 필드라
     호출부(ModelingAIAdapter)가 AIAnalysisBundle을 만들 때 따로 담아야 한다.
     """
 
@@ -88,10 +111,26 @@ def to_ai_output_contract(
         )
     ]
 
+    # major_type별 근거 segment_id — 같은 유형 risk_utterances에서 모은다.
+    segment_ids_by_type: Dict[str, List[str]] = {}
+
+    for utterance in risk_utterances:
+        major_type = utterance.get("major_type")
+
+        if not major_type:
+            continue
+
+        bucket = segment_ids_by_type.setdefault(major_type, [])
+
+        for segment_id in utterance.get("segment_ids") or []:
+            if segment_id not in bucket:
+                bucket.append(segment_id)
+
     abuse_signals = [
         {
             "major_type": major_type,
             "detected": info.get("detected", False),
+            "segment_ids": segment_ids_by_type.get(major_type, []),
         }
         for major_type, info in (
             result.get("major_types") or {}
@@ -112,22 +151,22 @@ def to_ai_output_contract(
         "warnings": warnings,
     }
 
-    return contract, summary_evidence
+    return contract, summary_evidence, _model_name(result)
 
 
 def analyze_audio_session_as_contract(
     stt_result: Dict[str, Any],
     client: Any = None,
     case_id: Optional[str] = None,
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
 
     PipelineAIAdapter(ai/services/analysis_pipeline.run_analysis_pipeline)와
     같은 자리에 꽂을 수 있도록, 반환값을 처음부터 Contract 모양으로
-    맞춰서 돌려준다. (contract_dict, summary_evidence) 튜플을 돌려주므로
-    호출부는 contract_dict만 AIAnalysisResult.model_validate()에 넘기고,
-    summary_evidence는 AIAnalysisBundle.summary_evidence에 따로 담으면 된다.
+    맞춰서 돌려준다. (contract_dict, summary_evidence, model_name) 튜플을
+    돌려주므로 호출부는 contract_dict만 AIAnalysisResult.model_validate()에
+    넘기고, 나머지 둘은 AIAnalysisBundle에 따로 담으면 된다.
     """
 
     result = analyze_audio_session(

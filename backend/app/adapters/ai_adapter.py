@@ -324,7 +324,11 @@ class ModelingAIAdapter:
             ) from error
 
         try:
-            contract_payload, summary_evidence_raw = analyze_audio_session_as_contract(
+            (
+                contract_payload,
+                summary_evidence_raw,
+                model_name,
+            ) = analyze_audio_session_as_contract(
                 stt_result=transcript.model_dump(),
             )
         except Exception as error:
@@ -342,7 +346,7 @@ class ModelingAIAdapter:
             result=result,
             summary_evidence=_to_summary_evidence(summary_evidence_raw),
             provider=self.name,
-            model=os.getenv("OPENAI_MODEL"),
+            model=model_name,
         )
 
 
