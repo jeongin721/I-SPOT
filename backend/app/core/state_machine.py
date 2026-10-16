@@ -48,7 +48,9 @@ _ALLOWED_TRANSITIONS: Dict[SessionStatus, Set[SessionStatus]] = {
         SessionStatus.AI_PROCESSING,  # 재분석
         SessionStatus.APPROVED,
     },
-    SessionStatus.APPROVED: set(),
+    SessionStatus.APPROVED: {
+        SessionStatus.AI_REVIEW_REQUIRED,  # 요약 승인 풀기(수정 후 다시 승인)
+    },
 }
 
 # 오류 문구에 쓰는 회기 상태 이름. 상태 코드는 문구에 넣지 않고 오류 details 에만 둔다.
@@ -77,7 +79,7 @@ def status_label(status: SessionStatus) -> str:
 
 def _blocked_message(current: SessionStatus, hint: str) -> str:
     if current == SessionStatus.APPROVED:
-        return "승인이 끝난 회기는 바꿀 수 없습니다."
+        return "승인이 끝난 회기는 바꿀 수 없습니다. 상담 요약의 '요약 수정' 으로 승인을 풀면 다시 고칠 수 있습니다."
 
     return f"지금 회기 상태({status_label(current)})에서는 할 수 없는 요청입니다. {hint}"
 
