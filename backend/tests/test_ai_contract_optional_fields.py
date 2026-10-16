@@ -252,6 +252,20 @@ def test_langgraph_without_optional_fields_gives_empty_lists():
         assert result[name] == []
 
 
+@pytest.mark.parametrize("name", OPTIONAL_FIELDS)
+@pytest.mark.parametrize("value", [None, False, 0, "", {}])
+def test_langgraph_falsy_non_list_is_invalid_output(name, value):
+    """키가 없을 때만 빈 배열이다. 배열이 아닌 값을 명시하면 Pipeline 처럼 Contract 위반이다.
+
+    Codex 교차검증(10/16): `or []` 로 받아 None · {} 등이 빈 배열로 바뀌어 통과했다.
+    """
+
+    with pytest.raises(AIError) as error:
+        LangGraphAIAdapter()._to_bundle({name: value}, TRANSCRIPT)
+
+    assert error.value.error_code == ErrorCode.AI_INVALID_OUTPUT
+
+
 # =========================================================
 # 분석 조회 API
 # =========================================================
