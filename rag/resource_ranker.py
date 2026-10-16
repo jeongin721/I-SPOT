@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .metadata import strip_section_prefix
+
 
 def _shorten(text: str, limit: int = 700) -> str:
     normalized = " ".join((text or "").split())
@@ -14,10 +16,11 @@ def format_document_reference(result: dict[str, Any]) -> dict[str, Any]:
     """RAG 검색 결과 1건을 화면 표시용 문서 참고자료 형식으로 변환한다."""
     metadata = result.get("metadata", {})
     source = str(metadata.get("source", ""))
+    content = strip_section_prefix(str(result.get("content", "")), str(metadata.get("screen_section", "")))
     return {
         "type": str(metadata.get("source_type", "reference")),
         "title": source or "공식 참고자료",
-        "summary": _shorten(str(result.get("content", ""))),
+        "summary": _shorten(content),
         "source": source,
         "organization": metadata.get("organization", ""),
         "page": metadata.get("page"),

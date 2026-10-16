@@ -102,6 +102,17 @@ def infer_manual_screen(source: str, page: int) -> tuple[str, str]:
     return "", ""
 
 
+def section_prefix(section: str) -> str:
+    """화면용 구간 조각 앞에 붙이는 제목("[서식 15 양육상황 점검표] "). 조각이 무엇에 관한 내용인지 임베딩에 알려 준다."""
+    return f"[{section.lstrip('[').replace(']', '', 1)}] " if section else ""
+
+
+def strip_section_prefix(text: str, section: str) -> str:
+    """화면에 보일 때는 색인용 구간 제목을 뗀다."""
+    prefix = section_prefix(section)
+    return text[len(prefix):] if prefix and text.startswith(prefix) else text
+
+
 def infer_abuse_type(text: str) -> str:
     scores = {
         abuse_type: sum(text.count(keyword) for keyword in keywords)

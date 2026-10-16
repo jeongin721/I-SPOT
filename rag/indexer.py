@@ -21,12 +21,22 @@ def build_index() -> dict[str, int]:
     ids = [str(chunk.metadata["chunk_id"]) for chunk in chunks]
     vector_store.add_documents(documents=chunks, ids=ids)
 
+    # 분할 방식이 바뀌어 쪽마다 조각 수가 줄면 예전 조각이 남는다. 이번에 만들지 않은 조각은 지운다.
+    current = set(ids)
+    stale = [chunk_id for chunk_id in vector_store.get(include=[])["ids"] if chunk_id not in current]
+    if stale:
+        vector_store.delete(ids=stale)
+
     return {
         "pages": len(pages),
         "chunks": len(chunks),
+        "removed": len(stale),
     }
 
 
 if __name__ == "__main__":
     result = build_index()
-    print(f"Indexed pages={result['pages']}, chunks={result['chunks']}")
+    print(
+        f"Indexed pages={result['pages']}, chunks={result['chunks']}, "
+        f"removed={result.get('removed', 0)}"
+    )

@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .config import CHUNK_OVERLAP, CHUNK_SIZE
-from .metadata import enrich_chunk_metadata, make_chunk_id
+from .metadata import enrich_chunk_metadata, infer_manual_screen, make_chunk_id, section_prefix
 
 
 DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", "다. ", "한다. ", " ", ""]
@@ -109,6 +109,87 @@ def _split_checklist_document(doc: Document) -> list[Document]:
     return chunks
 
 
+# ---------------------------------------------------------------------------
+# 업무 매뉴얼 원문 정리
+# PDF 추출 글자에는 쪽 머리말, 표 머리글, 한 글자씩 벌어진 글자, 서식 빈칸이 섞여 있어
+# 임베딩이 뜻을 덜 잡는다(검색 유사도가 낮아진다). 색인 전에 뜻과 무관한 글자를 지운다.
+# ---------------------------------------------------------------------------
+
+# 줄 전체가 쪽 머리말: "268", "| 271", "288 |", "2026", "|". 1~2자리 숫자만 있는 줄은 서식 항목 번호라 남긴다.
+_PAGE_HEADER_LINE = re.compile(r"^(?:\|\s*\d{0,4}\s*\|?|\d{1,4}\s*\||\d{3,4})$")
+# 줄 앞의 쪽 머리말: "| 287 서식 15 …", "308 | 2026 서식 20 …"
+_PAGE_HEADER_PREFIX = re.compile(r"^(?:\|\s*\d{1,3}\s+|\d{1,3}\s*\|\s*(?:2026\s*)?)")
+# 점검표 표 머리글: "구분 평 가 항 목 평가 ∨ 특이사항", "항목 작성내용"
+_TABLE_HEADER_LINE = re.compile(r"(평\s*가\s*항\s*목.*특이사항|^항목\s*작성내용$)")
+# 한 글자씩 띄어 쓴 글자: "맞 춤 이", "불 분 명 함", "주 1 회 이 상" (공백을 한 칸으로 줄인 뒤 한 글자가 3개 이상 이어짐)
+_SPACED_SYLLABLES = re.compile(r"(?<![가-힣0-9])[가-힣0-9](?: [가-힣0-9](?![가-힣0-9])){2,}")
+# 서식 선택지 칸: "예 아니오 불분명함", "예아 니 오"
+_ANSWER_CHOICES = re.compile(r"예\s*아\s*니\s*오(?:\s*불\s*분\s*명\s*함)?")
+# 서식 빈칸 · 기호: □ ■ ∨, 빈 괄호, "년 월 일"
+_FORM_MARKS = re.compile(r"[□■∨]|\(\s*\)|(?<!\S)년\s+월\s+일(?!\S)")
+
+
+def clean_manual_text(text: str) -> str:
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or _PAGE_HEADER_LINE.match(line) or _TABLE_HEADER_LINE.search(line):
+            continue
+        line = _PAGE_HEADER_PREFIX.sub("", line)
+        line = " ".join(_FORM_MARKS.sub(" ", " ".join(line.split())).split())
+        line = _SPACED_SYLLABLES.sub(lambda match: match.group(0).replace(" ", ""), line)
+        line = " ".join(_ANSWER_CHOICES.sub(" ", line).split())
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+# 서식 평가 항목 번호. "7 연령에 …", "9정 학 …", "12" 처럼 줄 맨 앞의 1~2자리 숫자.
+_ITEM_NUMBER = re.compile(r"^(\d{1,2})(?!\d)\s*(.*)$")
+_MIN_FORM_ITEMS = 3
+
+
+def _split_numbered_items(doc: Document) -> list[Document] | None:
+    """서식 점검표 쪽을 번호 항목 하나씩으로 나눈다.
+
+    한 쪽 전체를 한 조각으로 두면 항목 8~10개가 섞여 검색 점수가 흐려진다.
+    번호가 1씩 늘어나는 줄만 항목 시작으로 보므로 쪽 번호("268", "2026")는 걸리지 않는다.
+    차례로 이어지는 항목이 _MIN_FORM_ITEMS 개보다 적은 쪽(기재란 양식 등)은 None 을 돌려 기본 분할을 쓴다.
+    """
+    items: list[tuple[int, list[str]]] = []
+    expected: int | None = None
+
+    for raw_line in doc.page_content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        match = _ITEM_NUMBER.match(line)
+        if match:
+            number = int(match.group(1))
+            if (expected is None and number <= 40) or number == expected:
+                items.append((number, [match.group(2)] if match.group(2) else []))
+                expected = number + 1
+                continue
+
+        # 첫 항목 앞의 표 머리("구분 평 가 항 목 …")와 쪽 머리말은 버린다.
+        if items:
+            items[-1][1].append(line)
+
+    if len(items) < _MIN_FORM_ITEMS:
+        return None
+
+    chunks: list[Document] = []
+    for number, lines in items:
+        content = "\n".join(lines).strip()
+        if not content:
+            continue
+        metadata = dict(doc.metadata)
+        metadata["item_no"] = number
+        chunks.append(Document(page_content=content, metadata=metadata))
+    return chunks
+
+
 def _get_default_splitter() -> RecursiveCharacterTextSplitter:
     return RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
@@ -127,11 +208,24 @@ def split_documents(documents: list[Document]) -> list[Document]:
             continue
 
         source_type = str(doc.metadata.get("source_type", "reference"))
+        _, screen_section = infer_manual_screen(
+            str(doc.metadata.get("source", "")),
+            int(doc.metadata.get("page", 0) or 0),
+        )
+
+        if source_type == "manual":
+            doc = Document(page_content=clean_manual_text(doc.page_content), metadata=doc.metadata)
+            if not doc.page_content:
+                continue
 
         if source_type == "checklist":
             page_chunks = _split_checklist_document(doc)
         else:
-            page_chunks = default_splitter.split_documents([doc])
+            page_chunks = None
+            if screen_section.startswith("[서식"):
+                page_chunks = _split_numbered_items(doc)
+            if page_chunks is None:
+                page_chunks = default_splitter.split_documents([doc])
 
         for index, chunk in enumerate(page_chunks, start=1):
             metadata = dict(chunk.metadata)
@@ -143,9 +237,12 @@ def split_documents(documents: list[Document]) -> list[Document]:
             if source_type != "checklist":
                 metadata = enrich_chunk_metadata(metadata, chunk.page_content)
 
+            # 화면용 구간 조각은 구간 이름을 앞에 붙여 색인한다(화면에 보일 때는 strip_section_prefix 로 뗀다).
+            content = section_prefix(screen_section) + chunk.page_content.strip()
+
             chunks.append(
                 Document(
-                    page_content=chunk.page_content.strip(),
+                    page_content=content,
                     metadata=metadata,
                 )
             )
