@@ -945,6 +945,14 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
+`AI_TIMEOUT` 은 아래 셋 가운데 하나다. 모두 재시도할 수 있다.
+- 분석이 `AI_TIMEOUT_SECONDS`(기본 180초) 안에 끝나지 않음 — `"외부 서비스 응답이 180.0초 안에 오지 않았습니다."`
+- AI 쪽이 시간 초과 예외를 냄 — 팀 B 의 `SummaryTimeoutError` 는 그 문구 그대로, 파이썬 내장 `TimeoutError`
+  (`modeling` 이 마감 시각을 넘겼을 때 등)는 고정 문구 `"AI 분석이 제한 시간 안에 끝나지 않았습니다."`.
+  내장 예외의 문구에는 발화가 섞일 수 있어 담지 않는다.
+- `modeling` 모델을 아직 불러오는 중(서버 시작 직후 등) — `"AI 모델을 아직 불러오는 중입니다. 잠시 뒤 다시 시도해 주세요."`
+  모델 불러오기는 분석 제한 시간에 넣지 않고 따로 45초까지 기다린다.
+
 AI 쪽에서 알 수 없는 예외가 나면 `error.message` 에는 고정 문구와 예외 종류 이름만 담는다
 (예: `"AI 분석에 실패했습니다: RuntimeError"`). 예외 문구에 상담 발화가 섞일 수 있어서다.
 자세한 내용은 서버 로그에 `session_id` 와 함께 남는다. `pipeline` · `langgraph` · `modeling` 모두 같다.

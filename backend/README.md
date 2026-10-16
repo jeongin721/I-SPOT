@@ -320,6 +320,10 @@ OPENAI_MODEL=...
 > `AI_MODELING_ALLOW_IN_PRODUCTION=true` 를 함께 적어야만 시작한다. torch · transformers · openai 와 가중치 파일은
 > backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
 > 근거 발화가 없는 위험 항목은 `langgraph` 와 같이 저장 전에 뺀다.
+> 모듈은 import 할 때 모델을 올린다. 서버가 시작할 때 백그라운드로 미리 올리고(실패해도 서버는 뜬다),
+> 분석 제한 시간(`AI_TIMEOUT_SECONDS`)에는 넣지 않는다. 아직 올리는 중이면 분석이 45초까지 기다리고, 그래도 안 끝나면
+> `AI_TIMEOUT`("AI 모델을 아직 불러오는 중입니다…")으로 끝난다. 함수가 `deadline` 을 받는 판이면 마감 시각
+> (분석 시작 + `AI_TIMEOUT_SECONDS` - `AI_DEADLINE_MARGIN_SECONDS`, `time.monotonic()` 기준)을 넘긴다.
 
 `pipeline` 모드는 `ai/services/analysis_pipeline.run_analysis_pipeline(transcript)` 를 호출한다.
 팀 B 의 Service Exception 은 아래처럼 API 오류 코드로 변환된다.
@@ -331,6 +335,7 @@ OPENAI_MODEL=...
 | `SummaryQuotaError` | `AI_QUOTA_ERROR` |
 | `SummaryConnectionError` | `AI_FAILED` |
 | `SummaryOutputError` | `AI_INVALID_OUTPUT` |
+| 파이썬 내장 `TimeoutError`(와 하위 예외) | `AI_TIMEOUT` — 문구는 고정 문구로 바꾼다. `pipeline` · `langgraph` · `modeling` 공통 |
 
 ---
 
