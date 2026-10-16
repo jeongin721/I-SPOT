@@ -6,6 +6,7 @@ import A from '../components/A';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCarryHref } from '../data/useCarryHref';
 import { useTheme } from '../theme';
 import './CaseForm.css';
 
@@ -279,6 +280,7 @@ class Logic extends DCLogic {
 export default function CaseForm(props) {
   // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
+  const carry = useCarryHref();
   const theme = useTheme();
   const v = useDC(Logic, props);
   return (
@@ -326,21 +328,21 @@ export default function CaseForm(props) {
               </div>
               <div className="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
             </div>
-            <A className="btn btn-s" to="/UploadModal">
+            <A className="btn btn-s" to={carry('/UploadModal')}>
               ↑ 녹취 올리기
             </A>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
-            <A to="/CaseDetail">내담자 정보</A>
-            <A to="/CaseHistory">상담 이력</A>
-            <A to="/PreBriefing">상담 전 브리핑</A>
-            <A to="/CaseApp">아이 연계</A>
-            <A className="on" aria-current="page" to="/CaseDocs">
+            <A to={carry('/CaseDetail')}>내담자 정보</A>
+            <A to={carry('/CaseHistory')}>상담 이력</A>
+            <A to={carry('/PreBriefing')}>상담 전 브리핑</A>
+            <A to={carry('/CaseApp')}>아이 연계</A>
+            <A className="on" aria-current="page" to={carry('/CaseDocs')}>
               문서함
             </A>
           </nav>
           <nav aria-label="위치" className="note" style={{ marginTop: '-8px' }}>
-            <A to="/CaseDocs">문서함</A> › 기관 서식 작성
+            <A to={carry('/CaseDocs')}>문서함</A> › 기관 서식 작성
           </nav>
           <div role="tablist" aria-label="서식" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {(v.tabs || []).map((t, tIndex) => (
@@ -751,7 +753,7 @@ export default function CaseForm(props) {
           ) : null}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-            <A className="btn btn-s" to="/CaseDocs">
+            <A className="btn btn-s" to={carry('/CaseDocs')}>
               ← 문서함
             </A>
             <button type="button" className="btn btn-s" style={{ marginLeft: 'auto' }}>
