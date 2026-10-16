@@ -133,6 +133,7 @@ def analyze_audio_session_as_contract(
     stt_result: Dict[str, Any],
     client: Any = None,
     case_id: Optional[str] = None,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
@@ -141,12 +142,16 @@ def analyze_audio_session_as_contract(
     같은 자리에 꽂을 수 있도록, 반환값을 처음부터 Contract 모양으로
     맞춰서 돌려준다 — 호출부는 추가 변환 없이 바로
     AIAnalysisResult.model_validate()에 넘기면 된다.
+
+    deadline: time.monotonic() 기준 마감 시각. analyze_audio_session으로
+    그대로 전달한다(2026-10-16, backend AI_TIMEOUT_SECONDS 대응).
     """
 
     result = analyze_audio_session(
         stt_result=stt_result,
         client=client,
         case_id=case_id,
+        deadline=deadline,
     )
 
     return to_ai_output_contract(result)

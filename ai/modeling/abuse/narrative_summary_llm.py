@@ -146,6 +146,7 @@ def generate_narrative_summary_from_masked_text(
     client: OpenAI,
     model: str,
     masked_combined_text: str,
+    deadline: Optional[float] = None,
 ) -> Dict[str, str]:
     """
     masked_combined_text: format_points_for_masking()의 결과를
@@ -178,6 +179,7 @@ def generate_narrative_summary_from_masked_text(
             user_prompt="위 입력을 바탕으로 두 문단을 써.",
             max_retries=2,
             timeout_seconds=180.0,
+            deadline=deadline,
         )
     except Exception:
         parsed = {}

@@ -13,7 +13,8 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 토큰 제한이 훨씬 커서 세션 전체 transcript를 한 번에 사용한다.
 """
 
-from typing import Any, Dict, List, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from ai.adapters.stt_analysis_adapter import validate_stt_result
 
@@ -389,12 +390,30 @@ def link_evidence_timestamps(
 # 3. 세션 전체 분석
 # ============================================================
 
+def _check_deadline(
+    deadline: Optional[float],
+    stage_name: str,
+) -> None:
+    """
+    deadline(time.monotonic() 기준 마감 시각)이 이미 지났으면 다음 단계를
+    시작하지 않고 바로 TimeoutError를 낸다(2026-10-16, backend 요청 —
+    AI_TIMEOUT_SECONDS를 넘긴 뒤에도 뒤에서 OpenAI 호출이 계속되던 문제를
+    막기 위함). deadline이 None이면 기존과 동일하게 아무 일도 안 한다.
+    """
+
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError(
+            f"{stage_name} 전에 시간 초과"
+        )
+
+
 def analyze_audio_session(
     stt_result: Dict[str, Any],
     client: Any = None,
     note_model: str = DEFAULT_NOTE_MODEL,
     checklist_model: str = DEFAULT_CHECKLIST_MODEL,
     case_id: str = None,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
@@ -410,6 +429,13 @@ def analyze_audio_session(
 
     case_id를 주면 Privacy Gateway Tier 2(등록된 실명 정확매칭)가 2차
     세부유형 분석과 요약/체크리스트 생성 둘 다에 적용된다.
+
+    deadline: time.monotonic() 기준 마감 시각(2026-10-16, backend 요청).
+    None이면 기존과 동일하게 동작한다. 넘기면 각 단계를 시작하기 전에
+    마감이 지났는지 확인해 TimeoutError를 내고(_check_deadline), 각
+    OpenAI 호출에는 남은 시간을 실제 timeout으로 넘긴다
+    (_call_llm_with_retry 참고) — 마감을 넘긴 뒤에도 호출이 뒤에서
+    계속되는 걸 막는다.
     """
 
     subtype_model = "gpt-5.6-luna"
@@ -451,6 +477,8 @@ def analyze_audio_session(
     }
 
     chunk_results = []
+
+    _check_deadline(deadline, "1차 분석")
 
     for index, chunk in enumerate(
         chunks,
@@ -518,11 +546,14 @@ def analyze_audio_session(
             full_text, known_identifiers=known_identifiers
         )
 
+        _check_deadline(deadline, "2차 세부유형 분석")
+
         subtype_result = analyze_subtypes(
             text=masked_full_text,
             major_types=detected_major_types,
             client=subtype_client,
             model=subtype_model,
+            deadline=deadline,
         )
 
         # link_evidence_timestamps는 원문 line_spans와 인용문을 대조해
@@ -558,10 +589,13 @@ def analyze_audio_session(
         full_text, known_identifiers=known_identifiers
     )
 
+    _check_deadline(deadline, "상담 요약·일지 생성")
+
     counseling_records = generate_counseling_records(
         client=client,
         transcript=masked_full_text,
         model=note_model,
+        deadline=deadline,
     )
 
     counseling_records = restore_pii(
@@ -572,11 +606,14 @@ def analyze_audio_session(
     # use_correction_hint=False: build_correction_hint_text()가 과거 회차
     # 원문 인용을 mask_for_outbound 없이 시스템 프롬프트에 붙이므로, 외부
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
+    _check_deadline(deadline, "체크리스트 초안 생성")
+
     checklist_draft = generate_checklist_draft(
         text=masked_full_text,
         client=client,
         model=checklist_model,
         use_correction_hint=False,
+        deadline=deadline,
     )
 
     checklist_draft = restore_pii(
@@ -610,6 +647,8 @@ def analyze_audio_session(
         if part
     )
 
+    _check_deadline(deadline, "기록 초안 생성")
+
     record_draft = generate_record_draft(
         client=client,
         model=note_model,
@@ -617,6 +656,7 @@ def analyze_audio_session(
         segments=segments,
         subtype_analysis=subtype_result,
         session_overview=session_overview,
+        deadline=deadline,
     )
 
     record_draft = restore_pii(
@@ -631,11 +671,14 @@ def analyze_audio_session(
     # 검수 중인 초안이다. 위험신호 분석(subtype_result)과 완전히 분리된
     # 호출이라 여기 실패해도 위험신호/기록초안 결과에는 영향이 없다.
 
+    _check_deadline(deadline, "보호요인 생성")
+
     protective_factors = generate_protective_factors(
         client=client,
         model=note_model,
         masked_transcript_text=masked_citation_text,
         segments=segments,
+        deadline=deadline,
     )
 
     protective_factors = restore_pii(
@@ -665,10 +708,13 @@ def analyze_audio_session(
         narrative_combined, known_identifiers=known_identifiers
     )
 
+    _check_deadline(deadline, "강점·위험 서사 요약 생성")
+
     narrative_summary = generate_narrative_summary_from_masked_text(
         client=client,
         model=note_model,
         masked_combined_text=masked_narrative_combined,
+        deadline=deadline,
     )
 
     narrative_summary = restore_pii(
@@ -718,11 +764,14 @@ def analyze_audio_session(
             severity_text, known_identifiers=known_identifiers
         )
 
+        _check_deadline(deadline, "심각도 평가")
+
         severity_ratings = rate_severity_from_text(
             client=client,
             model=note_model,
             major_types=severity_major_types,
             masked_evidence_text=masked_severity_text,
+            deadline=deadline,
         )
 
         severity_ratings = restore_pii(
@@ -779,10 +828,13 @@ def analyze_audio_session(
         known_identifiers=known_identifiers,
     )
 
+    _check_deadline(deadline, "다음 상담 확인사항 생성")
+
     followup_check_points = generate_followup_check_points_from_masked_text(
         client=client,
         model=note_model,
         masked_combined_text=followup_masked_text,
+        deadline=deadline,
     )
 
     followup_check_points = restore_pii(
