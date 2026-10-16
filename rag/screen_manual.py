@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -28,6 +29,41 @@ SCREEN_MIN_SIMILARITY: dict[str, float] = {
 # 이 화면은 벡터 검색 대신 서식 항목 전체를 LLM 에 보여 주고 맞는 항목만 고르게 한다.
 # 서식 항목은 짧고 PDF 추출 글자가 깨져 있어(예아 니 오 …) 임베딩 점수만으로는 맞는 항목을 고르지 못한다.
 LLM_ITEM_SCREENS = {"followup"}
+
+
+def build_screen_references(
+    text: str,
+    *,
+    screens: tuple[str, ...] | None = None,
+    top_k: int = 3,
+) -> dict[str, Any]:
+    """세 화면의 매뉴얼 근거를 한 번에 만든다. 화면마다 LLM 확인이 3~5초 걸려 동시에 돌린다.
+
+    상담사가 화면을 열 때마다 검색하지 말고, 회차 분석이 끝날 때 이 함수로 만들어 저장해 두고 읽는다.
+    한 화면이 실패해도 다른 화면 결과는 돌려준다(실패한 화면은 빈 목록 + errors 에 오류 종류).
+
+    반환: {"references": {screen: [...]}, "errors": {screen: "오류"}}
+    """
+    targets = tuple(screens or SCREEN_NAMES)
+    query = text.strip()
+    if not query:
+        return {"references": {screen: [] for screen in targets}, "errors": {}}
+
+    references: dict[str, list[dict[str, Any]]] = {}
+    errors: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+        futures = {
+            screen: pool.submit(search_screen_manual, query, screen, top_k=top_k)
+            for screen in targets
+        }
+        for screen, future in futures.items():
+            try:
+                references[screen] = future.result()
+            except Exception as error:
+                references[screen] = []
+                errors[screen] = f"{type(error).__name__}: {error}"[:300]
+
+    return {"references": references, "errors": errors}
 
 
 def search_screen_manual(
@@ -254,10 +290,28 @@ def _strip_page_header(summary: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="화면별 업무 매뉴얼 구간 검색")
     parser.add_argument("text", help="검색할 상담 문장 또는 질문")
-    parser.add_argument("--screen", required=True, choices=list(SCREEN_NAMES))
+    parser.add_argument(
+        "--screen",
+        required=True,
+        choices=[*SCREEN_NAMES, "all"],
+        help="all 이면 세 화면을 동시에 만든다",
+    )
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
+
+    if args.screen == "all":
+        built = build_screen_references(args.text, top_k=args.top_k)
+        if args.json:
+            print(json.dumps(built, ensure_ascii=False, indent=2))
+            return
+        for screen, references in built["references"].items():
+            print(f"[{SCREEN_NAMES[screen]}] {len(references)}건")
+            for reference in references:
+                print(f"  - {reference['section']} | {reference.get('reason', '')}")
+            if screen in built["errors"]:
+                print(f"  ! 오류: {built['errors'][screen]}")
+        return
 
     references = search_screen_manual(args.text, args.screen, top_k=args.top_k)
 

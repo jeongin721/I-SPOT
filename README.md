@@ -79,6 +79,7 @@ CHILD 발화 + 감지된 학대 유형
 
 - 최상위 `main.py`의 `/api/v1/analyze` 응답에 `rag_analysis`로 포함됩니다. 감지된 학대 유형이 없으면 `null`, 실패하면 `{"error": ...}`이며 STT·학대 유형 결과는 그대로 반환됩니다.
 - 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents` (판례 원문 추가 전까지 빈 배열)
+- 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)는 같은 응답의 `manual_screen_references`에 담깁니다. 분석할 때 미리 만들어 화면에서 기다리지 않게 합니다. `backend/` 저장은 [제안서](I-SPOT_DOCS/docs/PROPOSAL_manual_references.md) 참고.
 - 설치: `pip install -r requirements.txt -r requirements-rag.txt` (최상위 `main.py`가 `rag.pipeline`을 import 하므로 둘 다 필요)
 - 환경 변수: `OPENAI_API_KEY`, `LAW_API_OC`, `RAG_*`, `LAW_*` — `.env.example` 참고
 - 원문 PDF(`rag_data/`), Vector DB(`rag_storage/`), 법령 캐시(`law_cache/`)는 커밋하지 않습니다.

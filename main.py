@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +32,7 @@ from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
 from abuse_model.infer_abuse import predict_abuse
 from rag.pipeline import analyze_consultation_evidence
+from rag.screen_manual import build_screen_references
 
 load_dotenv()
 
@@ -266,28 +268,55 @@ def analyze_audio(file: UploadFile = File(...)):
             )
 
         # 9. RAG 근거자료 / 관련 법령 / 다음 상담 체크리스트 분석
+        #    + 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)
+        #
+        # 둘 다 LLM 을 부르므로(각 3~5초) 동시에 돌린다. 매뉴얼 근거는 화면을 열 때 검색하지 않고
+        # 여기서 미리 만들어 응답에 담는다. 학대 유형 감지 여부와 상관없이 아동 발화가 있으면 만든다.
         rag_analysis = None
+        manual_screen_references = None
         rag_abuse_type = resolve_rag_abuse_type(abuse_prediction)
 
-        if rag_abuse_type and child_analysis_text:
-            print("6️⃣ RAG 근거자료 및 관련 법령 분석 중...")
-
-            try:
-                rag_analysis = analyze_consultation_evidence(
-                    text=child_analysis_text,
-                    abuse_type=rag_abuse_type,
-                )
-            except Exception as rag_err:
-                # RAG는 보조 참고정보이므로 실패해도 STT/학대유형 분석 결과는 그대로 반환한다.
-                print(f"❌ RAG 근거자료 분석 오류: {str(rag_err)}")
-                rag_analysis = {
-                    "error": f"RAG 근거자료 분석 중 오류가 발생했습니다: {str(rag_err)}"
-                }
-        else:
+        if not rag_abuse_type:
             print(
                 "⚠️ 감지된 학대 유형이 없어 "
                 "RAG 근거자료 분석을 건너뜁니다."
             )
+
+        if child_analysis_text:
+            print("6️⃣ RAG 근거자료 · 법령 · 화면별 매뉴얼 근거 분석 중...")
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                rag_future = (
+                    pool.submit(
+                        analyze_consultation_evidence,
+                        text=child_analysis_text,
+                        abuse_type=rag_abuse_type,
+                    )
+                    if rag_abuse_type
+                    else None
+                )
+                manual_future = pool.submit(
+                    build_screen_references,
+                    child_analysis_text,
+                )
+
+                if rag_future is not None:
+                    try:
+                        rag_analysis = rag_future.result()
+                    except Exception as rag_err:
+                        # RAG는 보조 참고정보이므로 실패해도 STT/학대유형 분석 결과는 그대로 반환한다.
+                        print(f"❌ RAG 근거자료 분석 오류: {str(rag_err)}")
+                        rag_analysis = {
+                            "error": f"RAG 근거자료 분석 중 오류가 발생했습니다: {str(rag_err)}"
+                        }
+
+                try:
+                    manual_screen_references = manual_future.result()
+                except Exception as manual_err:
+                    print(f"❌ 화면별 매뉴얼 근거 분석 오류: {str(manual_err)}")
+                    manual_screen_references = {
+                        "error": f"화면별 매뉴얼 근거 분석 중 오류가 발생했습니다: {str(manual_err)}"
+                    }
 
         return {
             "status": "success",
@@ -318,6 +347,9 @@ def analyze_audio(file: UploadFile = File(...)):
 
             "rag_analysis":
                 rag_analysis,
+
+            "manual_screen_references":
+                manual_screen_references,
         }
 
     except HTTPException as http_ex:

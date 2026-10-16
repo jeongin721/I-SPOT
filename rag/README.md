@@ -211,6 +211,9 @@ references = search_screen_manual("상담 문장", "closure", top_k=3)
   - `followup`: 서식 8 · 9의 번호 항목 42개 전체를 LLM(`RAG_ANALYZER_MODEL`)에 보여 주고, 상담 내용에 실제로 나온 상황을 점검하는 항목만 고르게 한다. 결과에 `item_no`(항목 번호), `reason`(고른 이유), `detail`(작성방법 설명)이 붙는다. 아동 상황 점검표(서식 9) 항목을 먼저 둔다.
   - `prebriefing` · `closure`: 벡터 검색 후보(최대 9개) 중 코사인 유사도가 기준점(브리핑 0.32, 종결 0.35) 미만인 것은 먼저 버리고(`SCREEN_MIN_SIMILARITY`), 남은 후보를 LLM이 화면 목적(`SCREEN_PURPOSES`)에 맞는지 확인해 맞는 것만 남긴다. 서식 작성 절차(작성자 · 시기 · 송부처)만 있는 후보는 뺀다. 결과에 `similarity`, `reason`이 붙는다. 기준점을 넘는 후보가 없으면 LLM을 부르지 않는다.
 - 화면 검색 한 번에 LLM 호출이 한 번 들어간다(`RAG_ANALYZER_MODEL`).
+- LLM 확인 때문에 화면 하나에 3~5초가 걸린다. **화면을 열 때 검색하지 말고 분석할 때 미리 만들어 저장한다.** `build_screen_references(text)`는 세 화면을 동시에 만들고(하나씩 10.4초 → 동시에 6.1초), 한 화면이 실패해도 나머지 결과를 돌려준다(`{"references": {...}, "errors": {...}}`). CLI: `--screen all`.
+- 최상위 `main.py`의 `/api/v1/analyze`는 아동 발화가 있으면 RAG 분석과 동시에 이 함수를 돌려 `manual_screen_references`로 응답에 담는다. `backend/`에 저장하는 방법은 `I-SPOT_DOCS/docs/PROPOSAL_manual_references.md`(제안, 합의 전)를 본다.
+- 아동 발화로는 추가 확인 · 질문만 결과가 나온다. 상담 전 브리핑 · 종결 검토는 지난 회차 요약 · 사례 요약처럼 다른 문장을 넣어야 한다(제안서 §1-3).
 - 매뉴얼은 색인 전에 원문을 정리한다(`splitter.clean_manual_text`: 쪽 머리말 · 표 머리글 · 벌어진 글자 · 서식 빈칸 제거). 화면용 구간 조각은 앞에 구간 이름을 붙여 색인하고, 화면에 보일 때는 뗀다.
 - 색인할 때 이번에 만들지 않은 예전 조각은 지운다.
 - 서식 8 · 9는 색인할 때 번호 항목 하나가 한 조각이 되도록 나눈다(`splitter._split_numbered_items`). 한 쪽 전체를 한 조각으로 두면 항목 8~10개가 섞여 검색 점수가 흐려진다.
