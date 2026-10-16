@@ -360,12 +360,12 @@ Frontend 는 이 값으로 재시도 UI 를 노출할 수 있다.
 backend/
   app/
     main.py              FastAPI app + 전역 예외 handler (Response Contract 보장)
-    api/v1/              Router (auth, cases, sessions, audio, transcript, analysis, summary, documents)
+    api/v1/              Router (auth, cases, sessions, audio, transcript, analysis, summary, documents, risk_assessments, tasks)
     core/
       config.py          .env 기반 설정
       database.py        Engine / Session
       deps.py            인증·권한 Dependency
-      enums.py           공통 Enum (상태 / speaker / role)
+      enums.py           공통 Enum (상태 / speaker / role / 학대 유형 / 위험도 판단)
       errors.py          ErrorCode + APIError
       responses.py       {"data": ...} Envelope
       state_machine.py   Session 상태 전이 규칙
@@ -547,7 +547,7 @@ npm run dev
 | `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
 | 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
 | `403 PASSWORD_CHANGE_REQUIRED` | 임시 비밀번호(`unlock_user --reset-password`)로 로그인한 상태다. 2.5 대로 새 비밀번호로 바꾼 뒤 다시 한다(`seed_demo_data` 도 같다) |
-| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절). STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다. 원문 수정(`PATCH /transcript`)은 상태를 먼저 보므로 전사본이 없어도 409 다 |
+| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 13절). STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다. 원문 수정(`PATCH /transcript`)은 상태를 먼저 보므로 전사본이 없어도 409 다 |
 | `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
 | 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
 

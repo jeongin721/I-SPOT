@@ -96,7 +96,7 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
 
 처리 중 상태가 제한 시간(`STT_TIMEOUT_SECONDS` / `AI_TIMEOUT_SECONDS`) + 60초가 지나도 끝나지 않으면
 (서버 재시작 등으로 작업이 사라진 경우) 위 조회나 재요청 시점에 `STT_FAILED` / `AI_FAILED` 로 바뀌고
-`error.code` 도 같은 값으로 내려온다. 회기 목록(`GET /cases/{case_id}/sessions`)과 처리 대기 업무(11절) 조회도
+`error.code` 도 같은 값으로 내려온다. 회기 목록(`GET /cases/{case_id}/sessions`)과 처리 대기 업무(12절) 조회도
 같은 판단으로 먼저 마감한 뒤 돌려준다. 재시도 버튼으로 다시 요청하면 된다.
 
 ### 1.5 시각
@@ -108,11 +108,11 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
   - SQLite(로컬 · 테스트): 대부분 표시 없이 온다(예: `2026-09-30T04:09:41.553068`). 이 값은 UTC 로 읽는다.
   - PostgreSQL: DB 연결 시간대의 오프셋이 붙는다. `docker-compose.yml` 의 db(`TZ: Asia/Seoul`)에서는
     `+09:00`(예: `2026-09-30T13:09:41.553068+09:00`), 연결 시간대가 UTC 이면 `Z` 다.
-  - 11절 `waiting_since` 는 DB 와 관계없이 항상 UTC(`Z`)로 준다. 방금 계산한 값을 그대로 돌려주는 칸도 `Z` 로 올 수 있다.
+  - 12절 `waiting_since` 는 DB 와 관계없이 항상 UTC(`Z`)로 준다. 방금 계산한 값을 그대로 돌려주는 칸도 `Z` 로 올 수 있다.
 - Frontend 는 표시가 없으면 UTC 로, 있으면 그 표시대로 읽는다. 표시가 있는 값에 `Z` 를 덧붙이지 않는다.
   같은 칸도 DB 에 따라 표시가 달라지니, 칸 이름으로 나누지 말고 값의 모양을 보고 읽는다.
   같은 순간도 칸마다 표시가 다를 수 있으니(`waiting_since` 는 `Z`, `consulted_at` 은 `+09:00`) 문자열로 비교 · 정렬하지 않는다.
-- 이 문서 예시의 `Z` 는 표기 예일 뿐이다(11절 `waiting_since` 는 항상 `Z` 다).
+- 이 문서 예시의 `Z` 는 표기 예일 뿐이다(12절 `waiting_since` 는 항상 `Z` 다).
 - 보낼 때(`consulted_at` 만들기 · 고치기, 감사 로그 조회의 `since` · `until`)는 UTC(`Z`)로 보내는 것을 권한다.
   서버는 이 값들을 모두 UTC 로 바꿔 읽으므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
   `consulted_at` 도 DB 에 넣기 전에 UTC 로 바꿔 저장하므로 DB(SQLite · PostgreSQL)와 DB 시간대에 따라 어긋나지 않는다.
@@ -1035,7 +1035,108 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ---
 
-## 11. Tasks (처리 대기 업무)
+## 11. Risk Assessments (상담원 위험도 판단)
+
+회차 · 학대 유형마다 **상담원이 내린 위험도 판단(상 · 중 · 하)** 을 저장한다.
+AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), 판단은 상담원이 한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/risk-assessments` | 그 회차의 유형별 판단 목록 |
+| PUT | `/api/v1/sessions/{session_id}/risk-assessments/{abuse_type}` | 한 유형의 판단 저장 · 수정 |
+
+판단 하나를 지우는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 판단을 바꿀 때는 PUT 으로 다시 저장한다.
+
+**아직 하지 않는 것(팀 결정 전)**: AI 단계(1~5)와 상 · 중 · 하를 서로 바꾸는 규칙, 사례 단위 위험도 계산.
+그래서 두 값을 따로 저장만 하고, 사례 목록의 위험도 칸은 지금처럼 비워 둔다(`—`).
+
+### 값
+
+| 칸 | 값 |
+|---|---|
+| `abuse_type` | `PHYSICAL`(신체학대) · `EMOTIONAL`(정서학대) · `SEXUAL`(성학대) · `NEGLECT`(방임) |
+| `counselor_level` | `HIGH`(상) · `MEDIUM`(중) · `LOW`(하) |
+
+- 영문 대문자 그대로 보낸다. 한글(`신체학대`, `상`)이나 소문자(`physical`, `high`)는 `422 VALIDATION_ERROR` 다.
+  한글 이름은 화면에서만 바꿔 보여 준다.
+
+### 응답
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "session_id": "uuid",
+    "abuse_type": "PHYSICAL",
+    "counselor_level": "HIGH",
+    "reason": "판단 이유(선택)",
+    "ai_level": 4,
+    "assessed_by_id": "uuid",
+    "assessed_at": "...",
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+- 목록은 `data` 가 **판단 배열 그대로**다(`items` · `meta` 가 없다 — 1.1 의 예외). **판단한 유형만** 오고,
+  순서는 `PHYSICAL` → `EMOTIONAL` → `SEXUAL` → `NEGLECT` 다. 아무것도 판단하지 않았으면 `[]` 다.
+  판단하지 않은 유형은 화면이 "선택 전" 으로 채운다.
+- `ai_level` 은 **판단을 저장할 때 그 회차 AI 분석 결과에 있던 같은 유형의 심각도(1~5)** 다. 서버가 채운다.
+  - 최신 분석(`GET …/analysis` 의 `analysis`)이 `COMPLETED` 일 때 `result.severity_ratings` 에서
+    `major_type` 이 같은 유형인 첫 항목의 `level` 을 읽는다. `major_type` 은 지금 한글 이름(`"신체학대"`)으로 오며,
+    띄어쓰기와 영문 값(`"PHYSICAL"`)도 같은 유형으로 본다.
+  - 분석이 없거나 · 처리 중이거나 · 실패했거나, 그 유형 항목이 없거나, `level` 이 `null`(정보 부족)이거나
+    1~5 정수가 아니면 `null` 이다.
+  - 다시 저장하면 그때의 AI 제안으로 다시 읽는다. 저장한 뒤 재분석해도 이미 저장한 `ai_level` 은 바뀌지 않는다
+    (판단할 때 무엇을 보고 판단했는지 남기는 기록이다).
+- `assessed_by_id` · `assessed_at` 은 마지막으로 저장한 사람과 시각이다. 관리자가 저장하면 관리자 ID 다.
+  계정이 DB 에서 지워지면 `assessed_by_id` 는 `null` 이 된다(계정을 지우는 API 는 지금 없다).
+- 회차를 지우면(5절 DELETE) 그 회차의 판단도 함께 지워진다. 사례를 지울 때도 같다.
+
+### PUT 요청
+
+```json
+{ "counselor_level": "HIGH", "reason": "판단 이유(선택)" }
+```
+
+| 칸 | 규칙 |
+|---|---|
+| `counselor_level` | 필수. `HIGH` · `MEDIUM` · `LOW` |
+| `reason` | 선택, 1000자 이하. 빼거나 `null` · 공백만 보내면 `null` 로 저장 |
+
+- 그 유형의 판단이 없으면 만들고, 있으면 고친다. 둘 다 `200` 이고 판단 하나를 준다.
+- PUT 은 판단 전체를 바꾼다. 다시 저장할 때 `reason` 을 빼면 전에 적은 이유도 지워진다.
+- `ai_level` 을 보내도 무시한다(서버가 분석 결과에서 읽는다).
+
+### 상태 규칙
+
+- 저장은 회차가 **`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`** 일 때만 된다.
+  그 밖의 상태(원문 확정 전, AI 분석 중 `AI_PROCESSING`)는 `409 INVALID_SESSION_STATE` 다.
+  - AI 분석 중에는 판단 당시 AI 제안이 무엇이었는지 흐려져 받지 않는다.
+  - AI 분석이 실패해도 판단은 받는다(AI 제안은 참고일 뿐이다. 이때 `ai_level` 은 `null`).
+  - 승인(`APPROVED`) 뒤에도 받는다. 요약 승인(9절)과 따로 동작하며, 저장해도 회기 상태는 바뀌지 않는다.
+- 목록 조회는 상태와 관계없이 된다.
+- 같은 유형을 두 요청이 동시에 처음 저장하면 늦은 쪽은 `409 DUPLICATE_RESOURCE` 다. 목록을 다시 받아 확인한다.
+
+### 권한 · 감사 기록
+
+- 상담사는 담당 사례의 회차만, 관리자는 전체를 보고 저장한다.
+- 저장하면 감사 기록이 남는다: 처음 저장 `RISK_ASSESSMENT_CREATED`, 고침 `RISK_ASSESSMENT_UPDATED`.
+  `detail` 에는 `abuse_type` · `counselor_level` · `ai_level`(고침이면 `previous_level` 도)만 남긴다.
+  **판단 이유(`reason`) 원문은 감사 기록에 넣지 않는다.**
+
+### 표현 주의
+
+`counselor_level` 은 상담원의 판단이고 `ai_level` 은 AI 의 참고값이다. 화면에서 `ai_level` 을 "AI 판정" 으로 쓰지 않고,
+상 · 중 · 하를 "학대 확정" · "위험 확정" 으로 쓰지 않는다. 색만으로 단계를 나타내지 않는다.
+
+오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`,
+`409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`(모르는 유형 · 단계, 1000자 넘는 이유)
+
+---
+
+## 12. Tasks (처리 대기 업무)
 
 대시보드의 "나의 업무 목록"용. **사람이 처리할 차례인 Session** 을 오래 기다린 순서로 준다.
 업무는 따로 저장하지 않고 Session 상태에서 계산한다.
@@ -1120,7 +1221,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 
 ---
 
-## 12. Error Code 목록
+## 13. Error Code 목록
 
 | code | status | 설명 |
 |---|---|---|
@@ -1148,7 +1249,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
-| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
+| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version / 같은 유형을 동시에 처음 저장한 위험도 판단) |
 | `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
@@ -1170,7 +1271,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 
 ---
 
-## 13. 전체 Flow 예시
+## 14. 전체 Flow 예시
 
 ```text
 POST /auth/login
@@ -1185,13 +1286,14 @@ POST /sessions/{id}/transcript/confirm        → STT_CONFIRMED
 POST /sessions/{id}/analysis                  → 202 / AI_PROCESSING
 GET  /sessions/{id}/analysis     (polling)    → AI_REVIEW_REQUIRED
 PATCH /sessions/{id}/summary                  → is_edited: true
+PUT  /sessions/{id}/risk-assessments/{type}  → 유형별 상담원 판단 (STT_CONFIRMED 부터)
 POST /sessions/{id}/summary/approve           → APPROVED
 GET  /sessions/{id}                           → 상태/데이터 유지 확인
 ```
 
 ---
 
-## 14. Contract 변경 요청
+## 15. Contract 변경 요청
 
 이 문서의 구조를 바꿔야 하면 코드 수정 전에 아래 형식으로 제안한다.
 
