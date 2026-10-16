@@ -474,6 +474,45 @@ export interface AnalysisSummary {
   key_points: string[];
 }
 
+// 아래 4개는 AI 분석 결과의 선택 필드다(API_CONTRACT 8절 "선택 필드", 10/16 추가).
+// 서버는 값이 없으면 빈 배열로 준다. 모두 AI 제안이고 판단은 상담원이 한다.
+// 화면은 segment_ids 가 있는 항목만 근거 위치와 함께 보여 준다(README "지켜야 할 원칙" 3번).
+// 근거 없는 항목을 서버가 빼지 않으므로 segment_ids 는 빈 배열일 수 있다.
+
+/** 학대 유형별 심각도 참고값. 판정이 아니다. */
+export interface SeverityRating {
+  /** 지금은 한글 유형명(예: "신체학대")이 그대로 온다. */
+  major_type: string;
+  /** 1~5 정수. 정보가 부족하면 null. */
+  level: number | null;
+  reason: string;
+  /** AI 가 뽑은 발췌문. 원문과 글자가 다를 수 있어 근거 위치는 segment_ids 로 본다. */
+  matched_evidence: string;
+  segment_ids: string[];
+  reviewed: boolean;
+}
+
+export interface ProtectiveFactor {
+  category: string;
+  text: string;
+  segment_ids: string[];
+}
+
+/** 이전 회기와 달라진 점 메모. */
+export interface SessionChangeNote {
+  text: string;
+  segment_ids: string[];
+}
+
+/**
+ * 다음에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다.
+ * 원칙 7번(추가 질문은 질문 은행에서만)과의 관계는 팀 결정 대기라 아이에게 할 질문으로 보여 주지 않는다.
+ */
+export interface FollowupCheckPoint {
+  text: string;
+  segment_ids: string[];
+}
+
 export interface AnalysisResult {
   /** AI Output Contract 버전. 지금은 "1.0". */
   schema_version: string;
@@ -482,6 +521,10 @@ export interface AnalysisResult {
   abuse_signals: RiskItem[];
   risk_factors: RiskItem[];
   warnings: string[];
+  severity_ratings: SeverityRating[];
+  protective_factors: ProtectiveFactor[];
+  session_change_notes: SessionChangeNote[];
+  followup_check_points: FollowupCheckPoint[];
 }
 
 /**
