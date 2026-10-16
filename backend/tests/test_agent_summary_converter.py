@@ -10,6 +10,8 @@
 #   - record_draft 없음 · 빈 요약 · 아동 발화만 있고 요지 없음 → 빈 값 + 경고
 #   - 잘못된 형식에서 죽지 않는가
 #   - 중복 근거 · 중복 문장 · 원문의 중복 segment_id
+#   - 공백만 다른 segment_id 로 비아동 근거가 아동 근거로 붙지 않는가(10/15 Codex 지적)
+#   - 아주 큰 정수 id · 같은 문장 대량 병합
 #   - 결과가 AI Output Contract 와 LangGraphAIAdapter._to_bundle 을 통과하는가
 
 import ast
@@ -407,6 +409,172 @@ def test_duplicated_segment_id_in_transcript_is_not_used_as_evidence():
 
     assert result["summary"]["key_points"] == ["책을 빌렸다."]
     assert result["summary_evidence"][0]["segment_ids"] == ["seg_101"]
+
+
+# =========================================================
+# 공백만 다른 segment_id (10/15 Codex 교차검증 중간 지적)
+# =========================================================
+#
+# 고치기 전: 인용 쪽 id 만 strip 하고 원문 쪽은 그대로 비교해서,
+# 원문의 보호자 " s1 " 을 인용한 요지가 아동 "s1" 근거로 남았다
+# (key_points 에 보호자 문장, segment_ids=["s1"], warnings=[]).
+
+WHITESPACES = [" ", "\t", "\n", " ", "　"]
+NON_CHILD_SPEAKERS = ["GUARDIAN", "COUNSELOR", "UNKNOWN", "OTHER"]
+
+
+def _segment(segment_id, speaker, text):
+    return {"segment_id": segment_id, "speaker": speaker, "start_ms": 0, "end_ms": 1000,
+            "text": text, "confidence": 0.9}
+
+
+@pytest.mark.parametrize("child_first", [True, False])
+@pytest.mark.parametrize("speaker", NON_CHILD_SPEAKERS)
+@pytest.mark.parametrize("space", WHITESPACES)
+def test_whitespace_variant_of_child_id_does_not_link_non_child_speech(space, speaker, child_first):
+    child = _segment("s1", "CHILD", "가상 아동이 책을 읽어요.")
+    other = _segment(f"{space}s1{space}", speaker, "가상 보호자가 산책을 했어요.")
+    transcript = {"segments": [child, other] if child_first else [other, child]}
+
+    result = convert_summary(
+        _session_result([_point("가상 보호자가 산책을 했어요.", other["segment_id"])]),
+        transcript,
+    )
+
+    assert result["summary"]["key_points"] == []
+    assert result["summary_evidence"] == []
+    assert result["warnings"] == [KEY_POINTS_EMPTY_WARNING]
+
+
+def test_codex_repro_passes_stt_contract_and_is_still_blocked():
+    """재현 입력이 실제 STT 계약 검증을 통과하는 모양인지 함께 확인한다."""
+
+    from app.schemas.contracts import STTResult
+
+    transcript = STTResult.model_validate(
+        {
+            "segments": [
+                _segment("s1", "CHILD", "가상 아동이 책을 읽어요."),
+                _segment(" s1 ", "GUARDIAN", "가상 보호자가 산책을 했어요."),
+            ]
+        }
+    ).model_dump(mode="json")
+
+    result = convert_summary(
+        _session_result([_point("가상 보호자가 산책을 했어요.", " s1 ")]),
+        transcript,
+    )
+    bundle = LangGraphAIAdapter()._to_bundle(
+        {"summary": result["summary"], "summary_evidence": result["summary_evidence"],
+         "warnings": result["warnings"]},
+        transcript,
+    )
+
+    assert bundle.result.summary.key_points == []
+    assert bundle.summary_evidence == []
+
+
+@pytest.mark.parametrize("cited", ["s1", " s1", "s1 ", " s1 "])
+def test_ambiguous_ids_are_not_used_even_if_cited_exactly(cited):
+    """공백만 다른 id 가 원문에 둘 있으면 어느 쪽을 가리켜도 근거로 쓰지 않는다."""
+
+    transcript = {
+        "segments": [
+            _segment("s1", "CHILD", "가상 아동이 책을 읽어요."),
+            _segment(" s1 ", "GUARDIAN", "가상 보호자가 산책을 했어요."),
+            _segment("s2", "CHILD", "가상 아동이 그림을 그려요."),
+        ]
+    }
+
+    result = convert_summary(
+        _session_result([
+            _point("책을 읽는다.", cited),
+            _point("그림을 그린다.", cited, "s2"),
+        ]),
+        transcript,
+    )
+
+    assert result["summary"]["key_points"] == ["그림을 그린다."]
+    assert result["summary_evidence"][0]["segment_ids"] == ["s2"]
+
+
+def test_ambiguous_child_ids_differing_only_by_whitespace_are_not_used():
+    transcript = {
+        "segments": [
+            _segment("s1", "CHILD", "가상 아동이 책을 읽어요."),
+            _segment("s1\t", "CHILD", "가상 아동이 노래를 불러요."),
+        ]
+    }
+
+    result = convert_summary(_session_result([_point("책을 읽는다.", "s1")]), transcript)
+
+    assert result["summary"]["key_points"] == []
+    assert result["warnings"] == [KEY_POINTS_EMPTY_WARNING]
+
+
+@pytest.mark.parametrize("space", WHITESPACES)
+@pytest.mark.parametrize("cited", ["exact", "stripped"])
+def test_child_id_with_whitespace_is_kept_with_original_spelling(space, cited):
+    """공백이 붙은 아동 id 하나뿐이면 정상 근거다. 응답에는 원문 표기를 그대로 싣는다."""
+
+    raw_id = f"{space}s1{space}"
+    transcript = {"segments": [_segment(raw_id, "CHILD", "가상 아동이 책을 읽어요.")]}
+
+    result = convert_summary(
+        _session_result([_point("책을 읽는다.", raw_id if cited == "exact" else "s1")]),
+        transcript,
+    )
+
+    assert result["summary"]["key_points"] == ["책을 읽는다."]
+    assert result["summary_evidence"][0]["segment_ids"] == [raw_id]
+    assert result["warnings"] == []
+
+
+def test_whitespace_only_segment_id_is_ignored():
+    transcript = {"segments": [_segment("   ", "CHILD", "가상 아동이 책을 읽어요.")]}
+
+    result = convert_summary(_session_result([_point("책을 읽는다.", "   ")]), transcript)
+
+    assert result["summary"]["key_points"] == []
+
+
+# =========================================================
+# 아주 큰 정수 · 대량 병합 (10/15 Codex 교차검증 낮음 지적)
+# =========================================================
+
+def test_huge_integer_segment_id_is_skipped_without_error():
+    """4300자리를 넘는 정수는 str() 이 ValueError 를 낸다. 죽지 않고 그 근거만 뺀다."""
+
+    result = convert_summary(
+        _session_result([
+            _point("큰 정수만 근거", 10 ** 5000),
+            _point("도서관에서 책을 읽는다.", 10 ** 5000, "seg_002"),
+        ]),
+        TRANSCRIPT,
+    )
+
+    assert result["summary"]["key_points"] == ["도서관에서 책을 읽는다."]
+    assert result["summary_evidence"][0]["segment_ids"] == ["seg_002"]
+
+
+def test_many_duplicate_points_merge_in_linear_time():
+    """같은 문장 + 서로 다른 근거 3,000개. 고치기 전 2,000개에 20초가 걸렸다."""
+
+    import time
+
+    count = 3000
+    transcript = {
+        "segments": [_segment(f"c{i}", "CHILD", f"가상 아동 발화 {i}") for i in range(count)],
+    }
+    points = [_point("가상 아동이 여러 번 말했다.", f"c{i}") for i in range(count)]
+
+    started = time.perf_counter()
+    result = convert_summary(_session_result(points), transcript)
+    elapsed = time.perf_counter() - started
+
+    assert result["summary"]["key_points"] == ["가상 아동이 여러 번 말했다."]
+    assert result["summary_evidence"][0]["segment_ids"] == [f"c{i}" for i in range(count)]
+    assert elapsed < 5.0
 
 
 # =========================================================
