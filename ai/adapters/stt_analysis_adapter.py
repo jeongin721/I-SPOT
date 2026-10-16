@@ -172,10 +172,14 @@ def validate_stt_result(
             )
         )
 
+        # confidence == 0.0은 "값 없음"으로 취급한다(10/16 Mingyu 지적) —
+        # 실제로 0.0 < confidence < 0.70인 경우만 저신뢰로 본다. STT가
+        # confidence를 아예 안 보낸 세그먼트(위에서 0.0으로 기본값 처리됨)를
+        # "확실히 저신뢰"로 잘못 단정하지 않기 위함이다.
         is_low_confidence = bool(
             segment.get(
                 "is_low_confidence",
-                confidence < 0.70,
+                0.0 < confidence < 0.70,
             )
         )
 
