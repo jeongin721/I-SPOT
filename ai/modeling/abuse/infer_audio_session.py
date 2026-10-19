@@ -51,6 +51,9 @@ from ai.modeling.abuse.narrative_summary_llm import (
 from ai.modeling.abuse.session_change import (
     build_session_change_notes,
 )
+from ai.modeling.abuse.legal_reference_adapter import (
+    build_legal_references,
+)
 from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
@@ -688,6 +691,26 @@ def analyze_audio_session(
     )
 
     # --------------------------------------------------------
+    # 관련 법령 · 매뉴얼 · 판례(rag/, law/ 포팅, 2026-10-19 추가)
+    # --------------------------------------------------------
+    # 탐지된 학대유형마다 그 유형의 위험 신호 근거 발화를 모아 한 번만
+    # 조회한다(세그먼트마다 부르지 않는 이유는 legal_reference_adapter.py
+    # 모듈 docstring 참고). LAW_API_OC가 없거나 매뉴얼/판례 원본 자료가
+    # 없으면 해당 부분만 빈 값으로 돌아온다 — 실패해도 세션 분석 전체를
+    # 막지 않는다.
+
+    _check_deadline(deadline, "관련 법령·참고자료 조회")
+
+    try:
+        legal_references = build_legal_references(
+            detected_major_types=detected_major_types,
+            risk_signal_points=record_draft.get("risk_signal_points", []),
+            known_identifiers=known_identifiers,
+        )
+    except Exception:
+        legal_references = {}
+
+    # --------------------------------------------------------
     # 상담 요약 문단 종합(2026-10-13 추가)
     # --------------------------------------------------------
     # 이미 만든 보호요인/위험신호를 자연스러운 문단으로 "다시 쓰기"만
@@ -858,6 +881,7 @@ def analyze_audio_session(
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
         "protective_factors": protective_factors,
+        "legal_references": legal_references,
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,

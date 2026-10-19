@@ -18,6 +18,11 @@ ai/modeling/abuse/audio_uploads_tmp/
 # feat/modeling-pipeline-integration PR 리뷰에서 같은 실수 발견).
 /data/
 
+# RAG 원문 PDF와 생성된 Vector DB, 법령 API 캐시(feature/rag에서 포팅)
+/rag_data/
+/rag_storage/
+/law_cache/
+
 # 키 · 자격증명 · 참고용 원본 문서 — 절대 올리면 안 됨(2026-10-14 추가)
 *.pem
 *.key

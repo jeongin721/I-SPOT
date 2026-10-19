@@ -1,0 +1,33 @@
+# I-SPOT RAG dependencies
+# Install together with the existing project requirements.
+#
+# 2026-10-19(ai-modeling 포팅, feature/rag에서 가져옴): 이 버전대는
+# Python 3.9+ 전제다. 이 프로젝트의 실제 모델링 파이프라인은 이 pod
+# 기준 Python 3.8이라, 여기 버전으로 그대로 설치하면 아래 두 문제가
+# 난다(둘 다 langchain/chromadb가 아니라 그 하위 의존성 쪽 PEP 585
+# 문법 문제):
+#   1. chromadb가 시스템 sqlite3 >= 3.35.0을 요구한다(Ubuntu 20.04
+#      기본 sqlite3는 더 낮음) → `pip install pysqlite3-binary` 필요.
+#      rag/vector_store.py가 import 시점에 sys.modules["sqlite3"]를
+#      pysqlite3로 바꿔치기해서 처리한다(표준 Chroma 우회법).
+#   2. chromadb의 텔레메트리 의존성 posthog 최신판(4.x, 3.x 일부도)이
+#      `dict[str, ...]`(PEP 585) 문법을 써서 Python 3.8에서 import
+#      자체가 실패한다 → `pip install "posthog==2.5.0"`로 내려야 함.
+#   3. rag/checklist_builder.py 등 Pydantic 모델이 `list[str]` 같은
+#      PEP 585 애노테이션을 쓴다 → `pip install eval_type_backport`
+#      필요(Pydantic이 이 패키지를 찾으면 자동으로 씀).
+# Python 3.9+(예: backend가 쓰는 3.12/3.13)에서는 아래 원래 버전대로
+# 설치하면 이 세 가지가 필요 없을 가능성이 높다 — 확인은 안 해봤다.
+
+langchain>=1.0.0
+langchain-community>=0.4.0
+langchain-openai>=1.0.0
+langchain-text-splitters>=1.0.0
+langchain-chroma>=1.0.0
+chromadb>=1.0.0
+pypdf>=6.0.0
+
+# Python 3.8 전용 호환 패치(위 설명 참고) — 3.9+에서는 불필요할 수 있다.
+pysqlite3-binary
+posthog==2.5.0
+eval_type_backport
