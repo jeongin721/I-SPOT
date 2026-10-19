@@ -200,8 +200,9 @@ def test_full_consultation_flow_persists_after_reentry(
     )
     message = _assert_state_error_is_readable(reanalysis, "APPROVED")
 
-    assert message == "승인이 끝난 회기는 바꿀 수 없습니다."
-    assert reanalysis.json()["error"]["details"]["expected_status"] == "없음"
+    assert message == "승인이 끝난 회기는 바꿀 수 없습니다. 상담 요약의 '요약 수정' 으로 승인을 풀면 다시 고칠 수 있습니다."
+    # 승인 풀기(summary/reopen)로만 검수 단계에 돌아갈 수 있다.
+    assert reanalysis.json()["error"]["details"]["expected_status"] == "AI_REVIEW_REQUIRED"
 
 
 def test_every_response_uses_data_or_error_envelope(

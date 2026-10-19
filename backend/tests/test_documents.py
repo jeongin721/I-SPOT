@@ -79,6 +79,66 @@ def test_approved_document_cannot_be_updated_or_approved_again(
     assert again.json()["error"]["code"] == "ALREADY_APPROVED"
 
 
+def test_reopen_approved_document_keeps_content_and_allows_reapproval(
+    client: TestClient, counselor_headers, counselor_id, session: dict
+) -> None:
+    created = _create_document(client, counselor_headers, session["id"], content="처음 쓴 기록")
+    document_url = f"{_documents_url(session['id'])}/{created['id']}"
+    client.post(f"{document_url}/approve", headers=counselor_headers)
+
+    reopened = client.post(f"{document_url}/reopen", headers=counselor_headers)
+
+    assert reopened.status_code == 200
+    data = reopened.json()["data"]
+    assert data["status"] == "DRAFT"
+    assert data["approved_at"] is None
+    assert data["approved_by_id"] is None
+    # 처음 쓴 내용은 그대로 남아 이어서 고칠 수 있다.
+    assert data["title"] == created["title"]
+    assert data["content"] == "처음 쓴 기록"
+
+    edited = client.patch(document_url, json={"content": "처음 쓴 기록 + 고친 부분"}, headers=counselor_headers)
+    assert edited.status_code == 200
+    assert edited.json()["data"]["content"] == "처음 쓴 기록 + 고친 부분"
+
+    approved = client.post(f"{document_url}/approve", headers=counselor_headers)
+    assert approved.status_code == 200
+    assert approved.json()["data"]["status"] == "APPROVED"
+    assert approved.json()["data"]["approved_by_id"] == str(counselor_id)
+
+    # 문서 승인 · 풀기는 회기 상태를 바꾸지 않는다.
+    detail = client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).json()["data"]
+    assert detail["status"] == session["status"]
+
+
+def test_reopen_draft_document_returns_not_approved(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    created = _create_document(client, counselor_headers, session["id"])
+
+    response = client.post(
+        f"{_documents_url(session['id'])}/{created['id']}/reopen", headers=counselor_headers
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "NOT_APPROVED"
+
+
+def test_reopen_document_of_another_session_is_not_found(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    created = _create_document(client, counselor_headers, session["id"])
+    client.post(f"{_documents_url(session['id'])}/{created['id']}/approve", headers=counselor_headers)
+    other_session = create_session(client, counselor_headers, session["case_id"])
+
+    response = client.post(
+        f"{_documents_url(other_session['id'])}/{created['id']}/reopen", headers=counselor_headers
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "DOCUMENT_NOT_FOUND"
+
+
 def test_document_of_another_session_is_not_found(
     client: TestClient, counselor_headers, session: dict
 ) -> None:
@@ -104,6 +164,9 @@ def test_other_counselor_cannot_touch_documents(
     assert client.get(_documents_url(session["id"]), headers=other_counselor_headers).status_code == 403
     assert client.patch(document_url, json={"title": "x"}, headers=other_counselor_headers).status_code == 403
     assert client.post(f"{document_url}/approve", headers=other_counselor_headers).status_code == 403
+
+    client.post(f"{document_url}/approve", headers=counselor_headers)
+    assert client.post(f"{document_url}/reopen", headers=other_counselor_headers).status_code == 403
 
 
 def test_documents_are_removed_with_their_session(
