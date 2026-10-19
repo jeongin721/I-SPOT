@@ -33,8 +33,8 @@ export interface SessionScreenInput {
   detail: SessionDetailState;
   caseDetail: CaseDetailState;
   /**
-   * 화면 이동. 요청 응답 뒤에 옮길 때는 요청한 회차 ID 를 함께 넘겨, 그사이 다른 회차 · 화면으로 옮겼으면 옮기지 않는다
-   * (useScreenGo). 화면 파일은 useScreenGo(useNavigate(), ids) 로 만들어 넘긴다.
+   * 화면 이동. 요청 응답 뒤에 옮길 때는 요청할 때 잡은 표를 확인하는 함수를 함께 넘겨, 그사이 대상이 바뀌었으면
+   * (다른 회차 · 화면, 갔다 돌아옴, 다시 로그인) 옮기지 않는다(useScreenGo). 화면 파일은 useScreenGo(useNavigate()) 로 만들어 넘긴다.
    */
   go: ScreenGo;
 }
