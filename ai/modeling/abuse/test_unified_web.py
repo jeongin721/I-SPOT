@@ -1460,6 +1460,9 @@ def api_analyze_audio(
                 "followup_check_points": result.get(
                     "followup_check_points", []
                 ),
+                "legal_references": result.get(
+                    "legal_references", {}
+                ),
                 "session_id": session_id,
             }
         )
