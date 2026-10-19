@@ -50,7 +50,7 @@ def test_unexpected_error_keeps_error_contract_and_cors_headers(
 # =========================================================
 #
 # 경로 · method · 본문 형식 오류는 라우터에 닿기 전에 프레임워크가 만든다. 이때도 message 는
-# 한국어여야 하고(API_CONTRACT 1.2), INTERNAL_ERROR 는 5xx 에만 쓴다(12절).
+# 한국어여야 하고(API_CONTRACT 1.2), INTERNAL_ERROR 는 5xx 에만 쓴다(13절).
 
 def test_method_not_allowed_uses_korean_message(client: TestClient, counselor_headers) -> None:
     response = client.put("/api/v1/auth/me", headers=counselor_headers)

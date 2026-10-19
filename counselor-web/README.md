@@ -41,6 +41,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 | AI 분석 | `useSessionAnalysis` | 분석 요청 · 진행 · AI 원본 요약과 안내(위험 신호 배열은 팀 결정 전이라 내보내지 않음) |
 | 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |
 | 상담일지 | `useSessionDocuments` | 문서 목록 · 만들기 · 고치기 · 승인(회차 상태와 따로 움직임) |
+| 유형별 위험도(상담원 판단) | `useRiskAssessments` | 네 유형(신체 · 정서 · 성 · 방임)의 상담원 판단(상 · 중 · 하) · 이유 · 판단 당시 AI 제안(1~5) 조회와 저장. 원문 확정 뒤에만 저장, 회차 상태는 바뀌지 않음. AI 단계 ↔ 상 · 중 · 하 대응과 사례 단위 위험도는 팀 결정 전이라 계산하지 않음. `RiskProfile` 화면에는 아직 연결하지 않음 |
 | 설정 | `useAuthSession` + `profile` · `usePasswordChange` | 내 정보 표시, 비밀번호 변경 |
 | 관리자 대시보드 | `useAdminDashboard` · `adminRows` | 전체 사례 · 처리 대기 업무(지연 · 종류별) · 활성 상담사 · 최근 접속 5건. 미배정 · 문서 승인 · 보안 경고는 `—` |
 | 관리자 · 업무 처리 현황 | `useAdminTasks` | 모든 상담사의 처리 대기 회차(종류 · 지연 · 상담사로 거르기). 재처리 요청은 넣지 않음(팀 결정) |
@@ -67,6 +68,9 @@ npm run build      # dist/ 에 배포용 파일 생성
 - 읽기는 `readScreenIds(useSearchParams()[0])`, 만들기는 `screenHref('/SessionDetail', { caseId, sessionId })`(`src/data/screens/links.ts`). 주소 문자열을 직접 이어 붙이지 않습니다.
 - 회차 화면은 `session` 만 있어도 됩니다. 사례는 회차 정보에서 찾고, 주소의 `case` 와 다르면 회차 쪽을 씁니다. 링크를 만들 때는 아는 ID 를 모두 넣습니다.
 - 필요한 ID 가 없거나 없는 사례 · 회차면 화면 위에 안내와 돌아갈 링크를 보입니다(`screenNotice` → `components/Notice.jsx`).
+- 아직 예시 데이터인 화면(추가 확인 · 질문, 유형별 위험도, 상담 전 브리핑, 아이 연계, 서식)도 들어올 때 받은 ID 를 다음 화면 링크에 넘깁니다:
+  `const carry = useCarryHref();` → `<A to={carry('/NoteWrite')}>`(`src/data/useCarryHref.ts`). 회차 ID 는 회차 화면으로 갈 때만 넘깁니다
+  (녹취 올리기에 회차 ID 가 붙으면 '그 회차에 이어 올리기'가 됩니다). 예시 화면을 연결된 화면 사이에 새로 둘 때도 이렇게 합니다.
 
 ### 화면 파일과 값 함수
 

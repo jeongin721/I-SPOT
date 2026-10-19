@@ -26,6 +26,14 @@ ensure_repo_root_on_path()
 from ai.schemas.analysis import AIAnalysisOutput, Summary  # noqa: E402
 from ai.services.evidence_linker import EvidenceLink  # noqa: E402
 
+# Backend Contract 에만 있는 선택 필드(API_CONTRACT.md 8절 "선택 필드").
+BACKEND_ONLY_OPTIONAL_FIELDS = {
+    "severity_ratings",
+    "protective_factors",
+    "session_change_notes",
+    "followup_check_points",
+}
+
 TRANSCRIPT = {
     "schema_version": "1.0",
     "segments": [
@@ -132,12 +140,33 @@ def test_ai_output_schema_matches_backend_contract() -> None:
     어긋나면 운영에서 _to_bundle 이 모든 분석을 AI_INVALID_OUTPUT 으로 실패시킨다.
     이 테스트가 깨지면 ai/schemas/analysis.py 와 backend/app/schemas/contracts.py 중
     한쪽만 바뀐 것이다. Contract 변경은 02_ARCHITECTURE.md §8 절차를 따른다.
+
+    예외: 10/16 에 추가한 선택 필드 4개는 Backend 에만 있다(ai 패키지는 아직 만들지 않는다).
+    기본값이 빈 배열이라 ai 결과에 없어도 검증을 통과한다. 그래서 그 4개만 빼고 비교하고,
+    4개가 필수가 아닌지 따로 본다.
     """
 
     ai_schema = AIAnalysisOutput.model_json_schema()
     backend_schema = AIAnalysisResult.model_json_schema()
 
-    assert _shape(ai_schema, ai_schema) == _shape(backend_schema, backend_schema)
+    ai_shape = _shape(ai_schema, ai_schema)
+    backend_shape = _shape(backend_schema, backend_schema)
+    backend_only = set(backend_shape) - set(ai_shape)
+
+    assert backend_only <= BACKEND_ONLY_OPTIONAL_FIELDS
+    assert not backend_only & set(backend_schema.get("required", []))
+    assert ai_shape == {
+        key: value for key, value in backend_shape.items() if key not in backend_only
+    }
+
+
+def test_ai_output_without_backend_only_fields_passes_contract() -> None:
+    """ai 패키지 기본 결과(선택 필드 없음)가 Backend Contract 를 통과하고 빈 배열이 된다."""
+
+    result = AIAnalysisResult.model_validate(AIAnalysisOutput().model_dump())
+
+    for name in BACKEND_ONLY_OPTIONAL_FIELDS:
+        assert getattr(result, name) == []
 
 
 # =========================================================

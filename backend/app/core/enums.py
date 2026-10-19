@@ -2,6 +2,7 @@
 # docs/02_ARCHITECTURE.md 의 공통 상태 / STT Contract / AI Output Contract 를 그대로 따른다.
 
 from enum import Enum
+from typing import Optional
 
 
 class UserRole(str, Enum):
@@ -123,6 +124,67 @@ class ReviewStatus(str, Enum):
     APPROVED = "APPROVED"
 
 
+class AbuseType(str, Enum):
+    """
+    학대 유형 대분류. AI Output Contract 와 같은 영문 대문자 값이다(02_ARCHITECTURE.md).
+
+    한글 이름은 화면과 AI 결과(severity_ratings[].major_type)에서만 쓴다.
+    서로 바꿀 때는 abuse_type_label · abuse_type_from_label 을 쓴다.
+    """
+
+    PHYSICAL = "PHYSICAL"    # 신체학대
+    EMOTIONAL = "EMOTIONAL"  # 정서학대
+    SEXUAL = "SEXUAL"        # 성학대
+    NEGLECT = "NEGLECT"      # 방임
+
+
+_ABUSE_TYPE_LABELS = {
+    AbuseType.PHYSICAL: "신체학대",
+    AbuseType.EMOTIONAL: "정서학대",
+    AbuseType.SEXUAL: "성학대",
+    AbuseType.NEGLECT: "방임",
+}
+
+
+def abuse_type_label(abuse_type: AbuseType) -> str:
+    """학대 유형의 한글 이름."""
+
+    return _ABUSE_TYPE_LABELS[abuse_type]
+
+
+def abuse_type_from_label(label: object) -> Optional[AbuseType]:
+    """
+    한글 이름(예: "신체학대") 이나 영문 값(예: "PHYSICAL")을 학대 유형으로 바꾼다.
+
+    AI 결과는 지금 한글 이름으로 온다. 띄어쓰기("신체 학대")와 영문 대소문자는 가리지 않는다.
+    모르는 값이나 문자열이 아닌 값은 None 이다.
+    """
+
+    if not isinstance(label, str):
+        return None
+
+    key = "".join(label.split())
+
+    for abuse_type, name in _ABUSE_TYPE_LABELS.items():
+        if key == name or key.upper() == abuse_type.value:
+            return abuse_type
+
+    return None
+
+
+class RiskLevel(str, Enum):
+    """
+    상담원이 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
+
+    AI 가 제안하는 심각도(1~5)와 척도가 다르다. 둘을 대응시키는 규칙은 팀 결정 전이라
+    따로 저장만 하고 서로 바꾸지 않는다.
+    """
+
+    HIGH = "HIGH"      # 상
+    MEDIUM = "MEDIUM"  # 중
+    LOW = "LOW"        # 하
+
+
 class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
@@ -146,6 +208,9 @@ class AuditAction(str, Enum):
     DOCUMENT_CREATED = "DOCUMENT_CREATED"
     DOCUMENT_UPDATED = "DOCUMENT_UPDATED"
     DOCUMENT_APPROVED = "DOCUMENT_APPROVED"
+    # 상담원 위험도 판단. detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
+    RISK_ASSESSMENT_CREATED = "RISK_ASSESSMENT_CREATED"
+    RISK_ASSESSMENT_UPDATED = "RISK_ASSESSMENT_UPDATED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

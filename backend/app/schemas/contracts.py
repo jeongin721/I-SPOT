@@ -4,9 +4,9 @@
 # 와 1:1 로 대응한다. Backend 단독으로 이 구조를 변경하지 않는다.
 # 팀 B 의 ai/schemas/analysis.py 와 동일한 형태를 유지한다.
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
 
 from app.core.enums import Speaker
 
@@ -61,12 +61,53 @@ class AISummaryBody(BaseModel):
     key_points: List[str] = Field(default_factory=list)
 
 
+# 아래 4개는 2026-10-16 합의로 추가한 선택 필드다(API_CONTRACT.md 8절).
+# 모두 AI 제안이고 판단은 상담원이 한다. segment_ids 는 근거 발화 번호이며
+# 아직 비어 올 수 있다. 근거 없는 위험 항목 빼기(drop_ungrounded_risk_items)는
+# 위험 3필드에만 적용하고 여기에는 적용하지 않는다.
+
+class SeverityRating(BaseModel):
+    """학대 유형별 심각도 참고값. level 은 1~5, 정보가 부족하면 null."""
+
+    major_type: str
+    # bool 이나 "3" 같은 문자열이 정수로 바뀌어 들어오지 않게 StrictInt 로 받는다.
+    level: Optional[StrictInt] = Field(default=None, ge=1, le=5)
+    reason: str = ""
+    matched_evidence: str = ""
+    segment_ids: List[str] = Field(default_factory=list)
+    reviewed: bool = False
+
+
+class ProtectiveFactor(BaseModel):
+    """보호 요인 한 줄."""
+
+    category: str
+    text: str
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+class SessionChangeNote(BaseModel):
+    """이전 회기와 달라진 점 메모. 나중에 근거 번호를 붙여도 모양이 같도록 객체로 받는다."""
+
+    text: str
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+class FollowupCheckPoint(BaseModel):
+    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다."""
+
+    text: str
+    segment_ids: List[str] = Field(default_factory=list)
+
+
 class AIAnalysisResult(BaseModel):
     """
     AI 담당의 Structured JSON Contract.
 
     9월에는 위험 관련 필드가 빈 배열일 수 있다.
     Backend 는 내용을 판단하지 않고 그대로 저장/전달한다.
+    선택 필드 4개(severity_ratings 등)는 없으면 빈 배열이다. 이 필드가 없던
+    때 저장한 결과도 그대로 읽힌다(schema_version 은 "1.0" 그대로).
     """
 
     schema_version: Literal["1.0"] = SCHEMA_VERSION
@@ -75,6 +116,10 @@ class AIAnalysisResult(BaseModel):
     abuse_signals: List[Dict[str, Any]] = Field(default_factory=list)
     risk_factors: List[Dict[str, Any]] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+    severity_ratings: List[SeverityRating] = Field(default_factory=list)
+    protective_factors: List[ProtectiveFactor] = Field(default_factory=list)
+    session_change_notes: List[SessionChangeNote] = Field(default_factory=list)
+    followup_check_points: List[FollowupCheckPoint] = Field(default_factory=list)
 
 
 class SummaryEvidenceItem(BaseModel):
