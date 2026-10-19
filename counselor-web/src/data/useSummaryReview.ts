@@ -1,11 +1,12 @@
-// 요약 검수 · 승인 훅(GET · PATCH /sessions/{id}/summary, POST …/approve). 근거 발화를 보이려고 원문(GET …/transcript)도 함께 받는다.
+// 요약 검수 · 승인 훅(GET · PATCH /sessions/{id}/summary, POST …/approve · …/reopen). 근거 발화를 보이려고 원문(GET …/transcript)도 함께 받는다.
 //
 // AI 요약은 항상 초안(DRAFT)으로 시작하고 자동 승인되지 않는다(AI 생성 → 상담사 확인 → 수정 → 승인 → 저장).
 // 화면은 overview · keyPoints · counselorNote 를 고치고(set…), save() 로 바꾼 칸만 보낸다.
 //
 //  - 고칠 수 있는 것은 회차가 'AI 결과 검수 필요' 이고 요약이 초안일 때뿐이다. 재분석이 도는 중이거나 실패하면 막힌다.
 //  - 상담사가 고친 요약은 재분석이 덮어쓰지 않는다. 근거(evidence)는 새 분석 것으로 바뀐다(API_CONTRACT 9절).
-//  - **approve() 는 회차를 '승인 완료' 로 바꾼다.** 그 뒤에는 요약을 고칠 수 없다. 새 화면의 '일지 저장' 이나
+//  - **approve() 는 회차를 '승인 완료' 로 바꾼다.** 그 뒤에 고치려면 reopen() 으로 승인을 푼다(내용은 그대로 초안이 되고
+//    회차도 'AI 결과 검수 필요' 로 돌아간다. 고친 뒤 다시 승인한다). approve() 를 새 화면의 '일지 저장' 이나
 //    '질문 처리 완료' 단추에 그대로 붙이지 않는다(specs 대응표 '승인 시점'). 상담일지 문서 승인은 useSessionDocuments 로 따로 한다.
 //  - 근거는 요약 문장과 글자로 맞추지 않는다. 근거의 keyPoint 는 AI 원본 문장이고, 발화는 segment_id 로 찾는다.
 //  - AI 분석 중이면 POLL_INTERVAL_MS 마다 조용히 다시 조회한다.
@@ -77,6 +78,8 @@ export interface SummaryReviewState {
   dirty: boolean;
   canEdit: boolean;
   canApprove: boolean;
+  /** 승인된 요약이라 승인을 풀 수(reopen) 있는가. */
+  canReopen: boolean;
   sessionError: string | null;
   submitting: boolean;
   loading: boolean;
@@ -94,6 +97,8 @@ export interface SummaryReviewState {
   save: () => Promise<boolean>;
   /** (바꾼 칸을 먼저 저장하고) 승인한다. 회차가 '승인 완료' 가 된다. 저장 뒤 대상이 바뀌었으면 승인하지 않고 false. */
   approve: () => Promise<boolean>;
+  /** 승인을 풀어 다시 고칠 수 있게 한다. 내용은 그대로 두고, 회차는 'AI 결과 검수 필요' 로 돌아간다. */
+  reopen: () => Promise<boolean>;
   /** 요약과 근거용 원문을 함께 다시 부른다. */
   reload: () => void;
 }
@@ -165,6 +170,7 @@ export function useSummaryReview(
 
   const dirty = Object.keys(changes).length > 0;
   const canEdit = saved !== null && saved.status === "DRAFT" && sessionStatus === "AI_REVIEW_REQUIRED";
+  const canReopen = saved !== null && saved.status === "APPROVED" && sessionStatus === "APPROVED";
 
   const evidence = useMemo<EvidenceItem[]>(() => {
     const segments = new Map((source.data?.transcript?.segments ?? []).map((segment) => [segment.segment_id, segment]));
@@ -342,6 +348,35 @@ export function useSummaryReview(
     }
   }, [begin, end, sendChanges, report, remote.isCurrent, remote.setData]);
 
+  const reopen = useCallback(async () => {
+    const ticket = begin();
+
+    if (!ticket) return false;
+
+    try {
+      const reopened = await summaryApi.reopen(ticket.key);
+
+      const applied = remote.setData(ticket, (current) => ({
+        session_id: ticket.key,
+        summary_evidence: [],
+        error: null,
+        ...current,
+        summary: reopened,
+        session_status: "AI_REVIEW_REQUIRED",
+      }));
+      // 지금 대상에 반영했을 때만 다른 훅에 알린다. 버린 성공의 같은 회차 재조회는 setData 가 맡는다.
+      if (applied) notifySessionChanged({ sessionId: ticket.key });
+
+      return applied;
+    } catch (caught) {
+      report(ticket, caught, "요약을 수정 상태로 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
+
+      return false;
+    } finally {
+      end(ticket);
+    }
+  }, [begin, end, report, remote.setData]);
+
   const reload = useCallback(() => {
     remote.reload();
     source.reload();
@@ -361,6 +396,7 @@ export function useSummaryReview(
     dirty,
     canEdit,
     canApprove: canEdit,
+    canReopen,
     sessionError: envelope?.error?.message ?? null,
     submitting,
     loading: remote.loading,
@@ -373,6 +409,7 @@ export function useSummaryReview(
     discardChanges,
     save,
     approve,
+    reopen,
     reload,
   };
 }

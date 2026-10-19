@@ -88,6 +88,11 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # 요약 승인을 마지막으로 푼 시각. 처리 대기 업무가 검토 대기 시작을 셀 때 쓴다(task_service).
+    # 다시 승인해도 지우지 않는다. 다시 분석하면 ai_completed_at 이 더 늦고, 다시 풀면 덮어쓴다.
+    reopened_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     case: Mapped["Case"] = relationship(back_populates="sessions")
     counselor: Mapped["User"] = relationship(foreign_keys=[counselor_id])
