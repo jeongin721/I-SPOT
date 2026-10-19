@@ -31,7 +31,7 @@ from app.adapters.ai_adapter import (
     start_ai_preload,
 )
 from app.adapters.module_loader import ensure_repo_root_on_path
-from app.core.config import settings
+from app.core.config import BACKEND_DIR, Settings, settings
 from app.core.errors import ErrorCode
 from app.main import app
 from tests.test_analysis import _get_analysis, _run_analysis, confirmed_session
@@ -621,6 +621,73 @@ def test_pipeline_stopping_at_deadline_ends_before_backend_time_limit(
     envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
 
     assert envelope["session_status"] == "AI_FAILED"
+    assert envelope["error"] == {"code": "AI_TIMEOUT", "message": AI_TIMEOUT_MESSAGE}
+    assert len(calls) == 1
+
+
+# #57(이경진 님)의 _call_llm_with_retry 는 마감에 걸린 LLM 호출의 응답을 '남은 시간 + 5초' 까지 기다린 뒤
+# TimeoutError 를 낸다(ai/modeling/abuse/second_stage_llm.py 의 result_queue.get(timeout=effective_timeout + 5)).
+# 그래서 모듈은 마감 시각보다 최대 5초 늦게 멈춘다.
+MODELING_LATE_REPLY_WAIT_SECONDS = 5.0
+DEFAULT_DEADLINE_MARGIN = Settings.model_fields["AI_DEADLINE_MARGIN_SECONDS"].default
+
+
+def _env_example_value(name: str) -> str:
+    for line in (BACKEND_DIR / ".env.example").read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"{name}="):
+            return line.split("=", 1)[1].strip()
+
+    raise AssertionError(f"backend/.env.example 에 {name} 가 없다")
+
+
+def test_default_deadline_margin_is_longer_than_modeling_late_reply_wait() -> None:
+    """기본 여유가 모듈이 마감 뒤 더 기다리는 5초보다 길어야 모듈이 Backend 제한 시간보다 먼저 멈춘다.
+
+    5초 이하면 모듈과 Backend 제한이 같은 순간 끝나 Backend(run_with_timeout)가 먼저 잡는다.
+    .env.example 을 그대로 옮겨 쓰면 거기 적힌 값이 쓰이므로 그 값도 기본값과 같은지 본다.
+    """
+
+    assert DEFAULT_DEADLINE_MARGIN > MODELING_LATE_REPLY_WAIT_SECONDS
+    assert float(_env_example_value("AI_DEADLINE_MARGIN_SECONDS")) == DEFAULT_DEADLINE_MARGIN
+
+
+def test_pipeline_waiting_after_deadline_still_ends_before_backend_time_limit(
+    client: TestClient,
+    counselor_headers,
+    session: dict,
+    modeling,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """모듈이 #57 처럼 마감 시각 + 5초에 TimeoutError 를 내도, 기본 여유면 Backend 제한 시간 전에 고정 문구로 끝난다.
+
+    시간은 모두 같은 비율(SCALE)로 줄여 돈다. 여유 · 기다림 · 제한 시간의 관계는 그대로다
+    (제한 20초 · 여유 10초 · 기다림 5초 → 모듈 15초에 멈춤. 여유 5초면 20초로 Backend 와 같아진다).
+    """
+
+    scale = 0.1
+    late_wait = MODELING_LATE_REPLY_WAIT_SECONDS * scale
+    # 예외가 모듈 단계들을 거쳐 올라오는 데 드는 시간. 이것 때문에 여유 5초면 늘 Backend 가 먼저 잡는다.
+    unwind = 0.05
+
+    def make(original, calls):
+        def stops_after_late_reply_wait(stt_result, client=None, case_id=None, deadline=None):
+            calls.append({"deadline": deadline})
+            time.sleep(max(0.0, deadline + late_wait + unwind - time.monotonic()))
+            raise TimeoutError("아빠가 때렸어요 발화 분석 중 마감 시각을 넘음")
+
+        return stops_after_late_reply_wait
+
+    confirmed_session(client, counselor_headers, session["id"])
+    calls = _patch_contract_function(monkeypatch, make)
+    monkeypatch.setattr(settings, "AI_TIMEOUT_SECONDS", 20.0 * scale)
+    monkeypatch.setattr(settings, "AI_DEADLINE_MARGIN_SECONDS", DEFAULT_DEADLINE_MARGIN * scale)
+    set_ai_adapter_override(ModelingAIAdapter())
+
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
+
+    # Backend 제한에 걸렸다면 "외부 서비스 응답이 2.0초 안에 …" 였을 것이다.
     assert envelope["error"] == {"code": "AI_TIMEOUT", "message": AI_TIMEOUT_MESSAGE}
     assert len(calls) == 1
 
