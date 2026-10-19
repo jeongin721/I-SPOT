@@ -272,6 +272,7 @@ alembic check   # model 과 migration 이 어긋나면 실패한다
 
 GitHub Actions(`.github/workflows/backend-ci.yml`)에서 lint, pytest(SQLite · PostgreSQL 두 번),
 PostgreSQL 대상 migration, secret/음성파일 커밋 검사를 자동 실행한다.
+`backend/` · `agent/` · `ai/` 중 하나라도 바뀌면 돈다(Backend 가 `agent` · `ai` 패키지를 import 하므로 `ai/` 만 바뀐 PR 도 시험이 깨질 수 있다).
 `check.sh` 는 `TEST_DATABASE_URL` 이 없으면 SQLite 로 돌므로, DB 에 따라 다르게 동작할 수 있는 코드(시각 · 문자열 비교 · JSON)를 고쳤으면 위의 PostgreSQL 방법도 돌린다.
 
 ---
