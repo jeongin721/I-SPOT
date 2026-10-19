@@ -1035,6 +1035,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 - 내용(`overview` · `key_points` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
 - Summary 와 Session 의 `approved_at` · `approved_by_id` 는 `null` 로 비운다. 다시 승인하면 새로 채워진다.
 - 감사 기록을 따로 남기지 않는다. 다시 고치면 `SUMMARY_UPDATED`, 다시 승인하면 `SUMMARY_APPROVED` 가 남는다.
+- 푼 시각은 Session 에만 저장하고(`reopened_at`, 응답에는 없음) 처리 대기 업무가 검토 대기를 그때부터 센다(12절).
 - 권한은 approve 와 같다(담당 사례의 상담사 · 관리자).
 
 오류: `403 FORBIDDEN`, `404 SUMMARY_NOT_FOUND`, `409 NOT_APPROVED`(승인되지 않은 요약), `409 INVALID_SESSION_STATE`(요약은 승인됐는데 회기가 `APPROVED` 가 아님)
@@ -1226,13 +1227,15 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 | `AUDIO_UPLOADED` | `REQUEST_STT` | 원문 변환 요청 | 가장 최근 음성 업로드 시각 |
 | `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정한 원문을 다시 고친 경우 되돌린 시각) |
 | `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 |
-| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 |
+| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 (승인한 요약을 푼 경우 푼 시각) |
 | `STT_FAILED` | `RETRY_STT` | 원문 변환 재시도 | 실패 시각 |
 | `AI_FAILED` | `RETRY_ANALYSIS` | AI 분석 재시도 | 실패 시각 |
 
 - `REVIEW_TRANSCRIPT` 는 STT 완료 · 최근 확정 · 되돌린 시각 중 가장 늦은 값이다. 되돌린 시각은 확정 뒤
   처음 고친(`PATCH …/transcript`) 시각이다. 오래전에 확정한 원문을 오늘 다시 고치면 오늘부터 세고,
   되돌린 뒤 더 고쳐도 다시 세지 않는다.
+- `REVIEW_ANALYSIS` 는 AI 완료 · 요약 승인을 푼(`POST …/summary/reopen`) 시각 중 늦은 값이다. 오래전에 분석한
+  회기의 승인을 오늘 풀면 오늘부터 세고, 푼 뒤 요약을 고쳐도 다시 세지 않는다. 푼 뒤 다시 분석하면 새 AI 완료 시각부터 센다.
 - `REQUEST_ANALYSIS` 는 AI 실패 뒤 이 상태로 되돌아오면 실패 시각이 더 늦을 때 그것을 쓴다.
   상태 전이 규칙에만 있는 대비용이고, 지금은 이 경로로 가는 API 가 없다.
 - 처리 중(`STT_PROCESSING`, `AI_PROCESSING`)과 `APPROVED` 는 업무가 아니다.

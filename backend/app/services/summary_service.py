@@ -185,6 +185,8 @@ def reopen_summary(db: Session, session: ConsultationSession) -> ConsultationSum
     session.status = SessionStatus.AI_REVIEW_REQUIRED
     session.approved_at = None
     session.approved_by_id = None
+    # 처리 대기 업무가 검토 대기를 이 시각부터 센다. AI 완료 시각만 보면 방금 푼 회기가 곧바로 "지연"이 된다.
+    session.reopened_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(summary)
