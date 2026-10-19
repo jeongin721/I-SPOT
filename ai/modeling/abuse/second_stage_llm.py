@@ -1244,6 +1244,18 @@ def _call_llm_with_retry(
                 wait_seconds
             )
 
+    # 마지막 시도가 실패한 이유가 "API가 진짜로 실패해서"가 아니라
+    # "마감을 넘겨서 더 기다릴 시간이 없어서"일 수 있다 — 이 경우
+    # RuntimeError 대신 TimeoutError를 내서 backend가 AI_TIMEOUT으로
+    # 구분해 저장하게 한다(2026-10-19 Mingyu 리뷰, 실제 OpenAI
+    # 라이브러리로 재현 확인).
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError(
+            "2차 LLM 호출이 마감 시각을 넘겨 실패: {}".format(
+                last_error
+            )
+        )
+
     raise RuntimeError(
         "2차 LLM 호출 실패: {}".format(
             last_error
