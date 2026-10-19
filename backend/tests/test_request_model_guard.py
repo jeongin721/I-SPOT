@@ -1,7 +1,8 @@
 # 요청 모델 누락 방지 테스트 (app/schemas/common.py 의 RequestModel · StorableQueryText).
 #
 # 저장할 수 없는 문자(NUL · 짝 없는 서로게이트) 검사는 요청 본문 모델이 RequestModel 을 상속해야,
-# 글자 쿼리는 StorableQueryText 를 써야 걸린다. 새 요청 모델 · 쿼리를 만들며 빠뜨리면 여기서 실패한다.
+# 글자 쿼리는 Annotated 맨 뒤에 StorableQueryText 를 붙여야 걸린다. 새 요청 모델 · 쿼리를 만들며 빠뜨리거나
+# Query(...) 보다 앞에 두면(제약이 검사 뒤의 값에 걸려 OpenAPI · 오류 사유가 바뀐다) 여기서 실패한다.
 #
 # fastapi 0.141.1 의 app.routes 에는 /health 만 APIRoute 로 나온다. 포함한 라우터는 _IncludedRouter 로
 # 감싸져 있어 original_router 를 따라 내려가야 한다. 비공개 속성이라 FastAPI 를 올리면 바뀔 수 있으므로,
@@ -76,11 +77,25 @@ def _is_auto_body(model: type) -> bool:
     return model.__name__.startswith("Body_") and model.__module__.startswith("fastapi.")
 
 
-def _uses_storable_query_text(param) -> bool:
-    return any(
-        isinstance(item, AfterValidator) and item.func is reject_unstorable_text
-        for item in param.field_info.metadata
-    )
+def _query_text_problem(param) -> Optional[str]:
+    """글자 쿼리에 StorableQueryText 가 없거나 맨 뒤가 아니면 그 내용을 돌려준다."""
+
+    # Annotated 에 적은 순서대로 들어 있다(Query 의 max_length · pattern 도 여기 풀려 들어온다).
+    metadata = list(param.field_info.metadata)
+    checks = [
+        index
+        for index, item in enumerate(metadata)
+        if isinstance(item, AfterValidator) and item.func is reject_unstorable_text
+    ]
+
+    if not checks:
+        return "가 StorableQueryText 를 쓰지 않음"
+
+    # 검사 뒤에 제약이 있으면 제약이 검사 뒤의 값에 걸려 OpenAPI 와 오류 사유가 바뀐다.
+    if checks[-1] != len(metadata) - 1:
+        return "의 StorableQueryText 가 Annotated 맨 뒤에 있지 않음"
+
+    return None
 
 
 def _collect(target: FastAPI) -> Tuple[List[str], Dict[str, int]]:
@@ -127,9 +142,10 @@ def _collect(target: FastAPI) -> Tuple[List[str], Dict[str, int]]:
                 continue
 
             counts["str_queries"] += 1
+            problem = _query_text_problem(param)
 
-            if not _uses_storable_query_text(param):
-                problems.append(f"{where}: 쿼리 {param.name} 가 StorableQueryText 를 쓰지 않음")
+            if problem is not None:
+                problems.append(f"{where}: 쿼리 {param.name} {problem}")
 
     return problems, counts
 
@@ -235,6 +251,12 @@ def _probe_app() -> FastAPI:
     ) -> None:
         return None
 
+    @inner.get("/wrong-order-query")
+    def wrong_order_query(
+        search: Annotated[Optional[str], StorableQueryText, Query(max_length=10)] = None,
+    ) -> None:
+        return None
+
     outer = APIRouter()
     outer.include_router(inner)
 
@@ -253,6 +275,7 @@ def test_guard_reports_missing_inheritance_and_query_type() -> None:
             "['POST'] /probe/plain: _PlainBody 가 RequestModel 을 상속하지 않음",
             "['POST'] /probe/nested → _GuardedWithPlainItem.items: _PlainItem 가 RequestModel 을 상속하지 않음",
             "['GET'] /probe/plain-query: 쿼리 search 가 StorableQueryText 를 쓰지 않음",
+            "['GET'] /probe/wrong-order-query: 쿼리 search 의 StorableQueryText 가 Annotated 맨 뒤에 있지 않음",
         ]
     )
 

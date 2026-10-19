@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.core.enums import UserRole
 from app.core.security import hash_password
+from app.main import app
 from app.models.user import User
 from tests.conftest import COUNSELOR_PASSWORD, create_case, create_session
 from tests.test_analysis import analyzed_session
@@ -249,6 +250,73 @@ def test_case_search_rejects_nul(client: TestClient, counselor_headers, case: di
     )
 
     _assert_rejected(response, "query.search")
+
+
+def test_audit_log_status_rejects_nul(client: TestClient, admin_headers) -> None:
+    # 형식(SUCCESS|FAILURE) 검사가 먼저 막는다. 사유는 형식 검사 문구지만 422 이고 받은 값은 돌려주지 않는다.
+    response = client.get(
+        "/api/v1/auth/audit-logs", params={"status": f"SUCCESS{MARK}\x00"}, headers=admin_headers
+    )
+
+    _assert_rejected(response, "query.status")
+
+
+# 글자 쿼리의 길이 · 형식 제한은 검사를 붙이기 전(main)과 같아야 한다.
+# 검사가 Query(...) 제약보다 앞에 오면 제약이 검사 뒤의 값에 걸려, OpenAPI 에서 status 의 pattern 이 빠지고
+# search 의 maxLength 가 anyOf 바깥으로 나가며, 101자 검색어의 사유가 pydantic 의 다른 문구로 바뀐다.
+
+def _query_schema(path: str, name: str) -> Dict[str, Any]:
+    for param in app.openapi()["paths"][path]["get"]["parameters"]:
+        if param["name"] == name:
+            return param["schema"]
+
+    raise AssertionError(f"{path} 에 쿼리 {name} 가 없음")
+
+
+def test_text_query_constraints_stay_in_openapi() -> None:
+    assert _query_schema("/api/v1/cases", "search") == {
+        "anyOf": [{"type": "string", "maxLength": 100}, {"type": "null"}],
+        "title": "Search",
+    }
+    assert _query_schema("/api/v1/auth/audit-logs", "status") == {
+        "anyOf": [{"type": "string", "pattern": "^(SUCCESS|FAILURE)$"}, {"type": "null"}],
+        "title": "Status",
+    }
+
+
+def _reasons(response, field: str) -> List[str]:
+    assert response.status_code == 422, response.text
+
+    return [
+        item["reason"]
+        for item in response.json()["error"]["details"]["fields"]
+        if item["field"] == field
+    ]
+
+
+def test_text_query_reasons_stay_the_same(
+    client: TestClient, counselor_headers, admin_headers
+) -> None:
+    # 사유는 pydantic 문구 그대로다. main 의 문구와 같은지 본다.
+    too_long = client.get(
+        "/api/v1/cases", params={"search": "가" * 101}, headers=counselor_headers
+    )
+    bad_status = client.get(
+        "/api/v1/auth/audit-logs", params={"status": "bad"}, headers=admin_headers
+    )
+
+    assert _reasons(too_long, "query.search") == ["String should have at most 100 characters"]
+    assert _reasons(bad_status, "query.status") == [
+        "String should match pattern '^(SUCCESS|FAILURE)$'"
+    ]
+
+    # 길이 제한 안의 정상 값은 그대로 받는다.
+    assert client.get(
+        "/api/v1/cases", params={"search": "가" * 100}, headers=counselor_headers
+    ).status_code == 200
+    assert client.get(
+        "/api/v1/auth/audit-logs", params={"status": "FAILURE"}, headers=admin_headers
+    ).status_code == 200
 
 
 # =========================================================
