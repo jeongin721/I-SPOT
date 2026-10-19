@@ -233,7 +233,7 @@ def live_server(request: pytest.FixtureRequest) -> Iterator[Tuple[int, _ListHand
     if http == "httptools":
         pytest.importorskip("httptools")
 
-    access =_ListHandler(AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False))
+    access = _ListHandler(AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False))
     server_log = _ListHandler(logging.Formatter("%(message)s"))
     loggers = [(logging.getLogger("uvicorn.access"), access), (logging.getLogger("uvicorn.error"), server_log)]
     saved_levels = [logger.level for logger, _ in loggers]
