@@ -361,6 +361,9 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
 
     살아 있는 작업은 run_with_timeout 때문에 제한 시간 안에 결과나 실패를 기록한다.
     그래서 제한 시간 + 여유 시간이 지난 처리 중 상태만 작업이 사라진 것으로 본다.
+    AI 분석은 모델 준비까지 포함해 요청 시각 + 준비 제한(45초) + 제한 시간 안에 끝나도록 제한을 줄이고
+    (analysis_service._job_deadline), 여기서 마감한 뒤 늦게 끝난 작업의 결과 · 실패는 저장하지 않는다
+    (analysis_service._claim_finish).
 
     서버 시작 시 일괄 정리하지 않는 이유: 여러 프로세스로 띄우면 다른 프로세스가
     처리 중인 작업까지 실패로 만든다. 그래서 조회·재요청 시점에 Session 별로 판단한다.

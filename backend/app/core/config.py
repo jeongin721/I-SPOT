@@ -144,13 +144,15 @@ class Settings(BaseSettings):
     #            모듈 import(모델 로드)는 아래 제한 시간 밖에서 하고, 서버 시작 때 백그라운드로 미리 한다
     #            (ai_adapter.start_ai_preload · analysis_service.PREPARE_TIMEOUT_SECONDS).
     AI_PROVIDER: Literal["mock", "pipeline", "langgraph", "modeling"] = "mock"
-    # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 다만 thread 는 멈추지 못해(run_with_timeout)
+    # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 작업 시작이 늦었거나 모델 준비가 길었으면
+    # 요청 시각부터 잰 작업 전체 마감(준비 제한 45초 + 이 값)에 맞춰 짧아진다(analysis_service._job_deadline).
+    # 다만 thread 는 멈추지 못해(run_with_timeout)
     # 외부 호출이 뒤에서 계속될 수 있다. 그래서 modeling 함수가 deadline 을 받으면 마감 시각을 넘겨
     # 스스로 멈추게 한다.
     # 180초는 10/16 이경진 님 측정(V100 GPU, 30분 합성 녹취 122~134초)으로 여유가 25~45초다.
     # 측정 장비가 실제 서버(t3.small, GPU 없음)와 달라, NER 수정 뒤 다시 재고 정한다.
     AI_TIMEOUT_SECONDS: float = 180.0
-    # modeling 에 넘기는 마감 시각 = 분석 시작 + AI_TIMEOUT_SECONDS - 이 값.
+    # modeling 에 넘기는 마감 시각 = 분석 시작 + 분석 제한(AI_TIMEOUT_SECONDS, 위처럼 짧아졌으면 그 값) - 이 값.
     # 모듈이 스스로 멈춘 뒤 결과를 돌려줄 여유다. 함수가 deadline 을 받지 않으면 쓰지 않는다.
     # 10초인 이유: #57(이경진 님)의 _call_llm_with_retry(ai/modeling/abuse/second_stage_llm.py)는 마감에 걸린
     # LLM 호출의 응답을 '남은 시간 + 5초' 까지 기다린다. 여유가 5초 이하면 안쪽(모듈)과 바깥(run_with_timeout)

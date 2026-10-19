@@ -376,9 +376,21 @@ class ModelingAIAdapter:
 
         return Transcript, analyze_audio_session_as_contract
 
-    def analyze(self, transcript_payload: Dict[str, Any]) -> AIAnalysisBundle:
+    def analyze(
+        self,
+        transcript_payload: Dict[str, Any],
+        *,
+        time_limit_seconds: Optional[float] = None,
+    ) -> AIAnalysisBundle:
+        """time_limit_seconds: 이 분석의 제한 시간. analysis_service 가 작업 전체 마감에 맞춰 줄인 값을
+        넘긴다(run_with_timeout 에 준 값과 같다). 직접 부르면 AI_TIMEOUT_SECONDS 다.
+        """
+
         # analysis_service 의 run_with_timeout 이 시간을 재기 시작한 직후다. 마감 시각은 이때부터 잰다.
         started = time.monotonic()
+
+        if time_limit_seconds is None:
+            time_limit_seconds = settings.AI_TIMEOUT_SECONDS
 
         Transcript, analyze_audio_session_as_contract = self._load_pipeline()
 
@@ -395,7 +407,7 @@ class ModelingAIAdapter:
 
         if _accepts_deadline(analyze_audio_session_as_contract):
             options["deadline"] = (
-                started + settings.AI_TIMEOUT_SECONDS - settings.AI_DEADLINE_MARGIN_SECONDS
+                started + time_limit_seconds - settings.AI_DEADLINE_MARGIN_SECONDS
             )
 
         try:
