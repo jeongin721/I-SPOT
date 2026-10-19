@@ -51,7 +51,7 @@ def _contains_unstorable_text(value: Any) -> bool:
 
 
 def reject_unstorable_text(value: Any) -> Any:
-    """저장할 수 없는 글자가 있으면 ValueError(422) 를 낸다. 쿼리 타입과 RequestModel 이 함께 쓴다."""
+    """저장할 수 없는 글자가 있으면 ValueError(422) 를 낸다. 쿼리의 StorableQueryText 표시와 RequestModel 이 함께 쓴다."""
 
     if _contains_unstorable_text(value):
         raise ValueError(UNSTORABLE_TEXT_MESSAGE)
