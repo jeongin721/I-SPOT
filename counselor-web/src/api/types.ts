@@ -222,6 +222,10 @@ export interface Case {
   guardian_type: GuardianType | null;
   /** guardian_type 이 OTHER 일 때만 값이 있다. */
   guardian_note: string | null;
+  /** 초기면접(서식 4 ②)에서 고른 아동 특성(서식 항목 이름). 없으면 빈 목록. */
+  intake_child_traits: string[];
+  /** 초기면접(서식 4 ②)에서 고른 가정상황(서식 항목 이름). 없으면 빈 목록. */
+  intake_family_situations: string[];
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
@@ -247,6 +251,9 @@ export interface CaseCreateRequest {
   guardian_type?: GuardianType | null;
   /** guardian_type 이 OTHER 일 때만 보낼 수 있다. 그 외에는 422. */
   guardian_note?: string | null;
+  /** 서식 4 항목(intakeItems.ts)만 받는다. 그 밖은 422. 겹친 항목은 하나로 합쳐진다. */
+  intake_child_traits?: string[];
+  intake_family_situations?: string[];
   notes?: string | null;
   /**
    * 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403).
@@ -270,6 +277,9 @@ export interface CaseUpdateRequest {
   guardian_type?: GuardianType | null;
   /** 사례의 guardian_type 이 OTHER 일 때만 보낼 수 있다(함께 보내거나 이미 OTHER). 그 외에는 422. */
   guardian_note?: string | null;
+  /** 보내면 목록을 통째로 바꾼다. 비우려면 [](null 은 422). */
+  intake_child_traits?: string[];
+  intake_family_situations?: string[];
   notes?: string | null;
   /** CLOSED 로 바꾸면 사례 종결. */
   status?: CaseStatus;

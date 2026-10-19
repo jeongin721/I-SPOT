@@ -33,6 +33,9 @@ export interface CaseDetailView extends CaseRow {
   createdDate: string;
   /** 담당 상담사 이메일. 계정이 지워졌으면 NOT_PROVIDED. */
   counselorEmail: string;
+  /** 초기면접(서식 4 ②)에서 고른 아동 특성 · 가정상황. 고르지 않았으면 빈 목록. */
+  intakeChildTraits: string[];
+  intakeFamilySituations: string[];
 }
 
 export function toCaseDetailView(source: CaseDetail): CaseDetailView {
@@ -48,6 +51,8 @@ export function toCaseDetailView(source: CaseDetail): CaseDetailView {
     sessionCount: source.session_count,
     createdDate: toDateOnly(source.created_at),
     counselorEmail: source.counselor?.email ?? NOT_PROVIDED,
+    intakeChildTraits: source.intake_child_traits ?? [],
+    intakeFamilySituations: source.intake_family_situations ?? [],
   };
 }
 

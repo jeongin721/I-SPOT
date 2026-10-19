@@ -1,11 +1,12 @@
 // 새 사례 등록(CaseRegister · 서식 4 초기면접지 팝업) 화면 값. useCaseRegister 로 서버가 받는 칸만 저장한다.
 //
 // 저장하는 칸: 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 자동) · 성별 · 출생연도 · 보호자 유형(기타면 보호자 메모) · 사례 메모,
-// 담당 상담원(관리자만 고름, 상담원은 본인). 등록되면 새 사례의 상세(?case=새 ID)로 간다.
+// ② 초기면접 내용의 아동 특성 · 가정상황(서식 4 항목 고르기), 담당 상담원(관리자만 고름, 상담원은 본인).
+// 등록되면 새 사례의 상세(?case=새 ID)로 간다. 초기면접 아동 특성 · 가정상황은 상담 일지(noteWrite.ts)에 단어로 보인다.
 // 나머지 서식 4 칸은 개인정보 저장 범위가 팀 결정 전이라(specs 대응표 CaseRegister 줄) 입력을 막고 '준비 중' 으로 둔다:
 //  - 실명 · 생년월일(출생연도만 저장) · 사례관리대상자(보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다)
 //  - 신고접수일 · 사례연계일 · 최초면접일 · 학대유형 · 조치결과 · 면접대상자 · 위험도 · 사례연계 경위
-//  - ② 초기면접 내용 탭 전체(가정상황 · 가족유형 · 가족관계 · 아동 특성 · 문제력 · 태도 · 소견)
+//  - ② 초기면접 내용 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 가족관계 · 문제력 · 태도 · 소견)
 // 이 칸들의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않는다.
 
 import { GUARDIAN_LABELS, type GuardianType } from "../../api/types";
@@ -21,32 +22,10 @@ import {
   type CaseRegisterState,
 } from "../useCaseRegister";
 import { NOT_READY, notice, screenNotice } from "./common";
+import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { screenHref } from "./links";
 
 const TY = ["방임", "신체학대", "정서학대", "성학대"];
-const HM = [
-  "성격 및 기질 문제",
-  "어릴적 학대경험",
-  "알콜남용",
-  "약물남용",
-  "신체질환 및 장애",
-  "정신질환 및 장애",
-  "원치않은 아동",
-  "부적절한 양육태도",
-  "양육지식 및 기술부족",
-  "부부 및 가족갈등",
-  "성문제",
-  "스트레스",
-  "사회적 고립",
-  "경제적 어려움",
-  "배우자폭력",
-  "존속학대",
-  "전과력",
-  "종교문제",
-  "도박 · 게임중독",
-  "특성없음",
-  "기타",
-];
 const FAM = [
   "일반가정",
   "부자가정",
@@ -62,43 +41,6 @@ const FAM = [
   "시설보호",
   "기타",
 ];
-const TR = [
-  "거짓말",
-  "반항 · 충동 · 공격성",
-  "도벽",
-  "가출",
-  "약물",
-  "흡연",
-  "음주",
-  "인터넷(게임)중독",
-  "성문제",
-  "주의산만",
-  "과잉행동",
-  "늦은귀가",
-  "불건전한 또래관계",
-  "대인관계 기피",
-  "학교부적응",
-  "잦은결석",
-  "학교폭력 가해자",
-  "학교폭력 피해자",
-  "불안",
-  "애착문제",
-  "무력감",
-  "우울",
-  "낮은자존감",
-  "신체발달지연",
-  "언어문제",
-  "학습문제",
-  "대소변문제",
-  "성격 및 기질문제",
-  "위생문제",
-  "틱",
-  "급(만)성질병",
-  "영양결핍",
-  "탐식 및 결식",
-  "특성없음",
-  "기타",
-];
 
 export interface RegisterUiState {
   tab: "A" | "B";
@@ -111,6 +53,9 @@ export function initialRegisterState(): RegisterUiState {
 
 /** 고를 수 없는(준비 중) 선택 단추. 모양은 고르지 않은 단추다. */
 const picker = (label: string) => ({ label, bg: "#FFFFFF", bd: "#DAD5C9", fg: "#2B2A26", fw: 400, mark: "+" });
+
+type IntakeKey = "childTraits" | "familySituations";
+type TextKey = Exclude<keyof CaseRegisterInput, IntakeKey>;
 
 interface CaseRegisterInputs {
   session: AuthSession;
@@ -127,7 +72,7 @@ export function caseRegisterValues({ session, register, state, setState, go }: C
   const isAdmin = session.isAdmin;
 
   /** 입력칸 하나의 값과 바꾸는 함수. */
-  const field = (name: keyof CaseRegisterInput) => ({
+  const field = (name: TextKey) => ({
     value: form[name],
     onChange: (event: { target: { value: string } }) => {
       const value = event.target.value;
@@ -162,6 +107,33 @@ export function caseRegisterValues({ session, register, state, setState, go }: C
 
   const submitting = register.submitting || register.created !== null;
 
+  /** 초기면접 아동 특성 · 가정상황 고르기 단추(눌러서 고르고 다시 눌러 뺀다). 등록 중에는 잠근다. */
+  const intakePickers = (key: IntakeKey, options: string[]) =>
+    options.map((label) => {
+      const on = form[key].includes(label);
+
+      return {
+        label,
+        on,
+        mark: on ? "✓" : "+",
+        bg: on ? "#F1EADA" : "#FFFFFF",
+        bd: on ? "#2B2A26" : "#DAD5C9",
+        fg: "#2B2A26",
+        fw: on ? 700 : 400,
+        disabled: submitting,
+        toggle: () => {
+          if (submitting) return;
+          setState((current) => {
+            const list = current.form[key];
+
+            return {
+              form: { ...current.form, [key]: list.includes(label) ? list.filter((item) => item !== label) : [...list, label] },
+            };
+          });
+        },
+      };
+    });
+
   const submit = async (event?: { preventDefault?: () => void }) => {
     if (event && event.preventDefault) event.preventDefault();
     const created = await register.submit(form);
@@ -172,16 +144,19 @@ export function caseRegisterValues({ session, register, state, setState, go }: C
     notice: screenNotice({ session }),
     formError: register.error ? notice(register.error, { alert: true }) : null,
     savedNote:
-      "서버에 저장하는 칸: 사례 제목 · 아동 별칭 · 개별사건번호 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원. " +
+      "서버에 저장하는 칸: 사례 제목 · 아동 별칭 · 개별사건번호 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원, " +
+      "② 초기면접 내용의 가정상황 · 아동 특성. " +
       `'${NOT_READY}' 칸은 개인정보 저장 범위가 팀 결정 전이라 입력할 수 없습니다.`,
-    tabNote: `초기면접 내용은 ${NOT_READY}입니다. 저장 범위 · 서식 구조가 팀 결정 전이라 입력할 수 없습니다.`,
+    tabNote:
+      "가정상황 · 아동 특성은 서버에 저장하고 상담 일지에서 초기면접 항목으로 보입니다. " +
+      `나머지 칸(관계 · 가족 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
     notReady: NOT_READY,
     tabs,
     isA: state.tab === "A",
     isB: state.tab === "B",
     types: TY.map(picker),
-    homes: HM.map(picker),
-    traits: TR.map(picker),
+    homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
+    traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
     fams: FAM.map(picker),
     famRows: [0, 1],
     midLabel: state.tab === "A" ? "초기면접 내용 →" : "← 기본 정보",

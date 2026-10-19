@@ -1,8 +1,9 @@
 // 새 사례 등록 훅(POST /cases). 관리자면 담당 상담사로 고를 계정 목록(GET /auth/users)도 부른다.
 //
 // 서버가 받는 칸만 보낸다: 제목 · 아동 별칭(필수), 사례번호 · 출생연도 · 성별 · 보호자 유형 · 보호자 메모(기타일 때만) · 사례 메모,
-// 담당 상담사(관리자만, 빼면 요청자 본인). Backend 는 아동 · 보호자 실명을 저장하지 않는다(API types Case · GuardianType).
-// 서식 4(초기면접지)의 나머지 칸(실명 · 생년월일 · 사례관리대상자 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 초기면접 내용)은
+// 초기면접(서식 4 ②)의 아동 특성 · 가정상황(서식 항목만), 담당 상담사(관리자만, 빼면 요청자 본인).
+// Backend 는 아동 · 보호자 실명을 저장하지 않는다(API types Case · GuardianType).
+// 서식 4(초기면접지)의 나머지 칸(실명 · 생년월일 · 사례관리대상자 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 문제력 · 태도 · 소견)은
 // 개인정보 저장 범위가 팀 결정 전이라 보내지 않는다. 다른 칸(사례 메모 등)에 옮겨 담지도 않는다.
 //
 // 한 번에 한 요청만 보낸다. 성공하면 만든 사례를 돌려주고, 그 뒤에는 다시 보내지 않는다(같은 사례를 두 번 만들지 않게).
@@ -16,6 +17,7 @@ import { auth, cases } from "../api/endpoints";
 import { GUARDIAN_LABELS, type Case, type CaseCreateRequest, type GuardianType, type User } from "../api/types";
 import type { AuthSession } from "./useAuthSession";
 import { adminKey } from "./adminAccess";
+import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./screens/intakeItems";
 import { errorMessage, useRemote } from "./useRemote";
 
 /** Backend 제한(backend/app/schemas/case.py CaseCreateRequest). */
@@ -38,6 +40,9 @@ export interface CaseRegisterInput {
   guardianType: GuardianType | "";
   guardianNote: string;
   notes: string;
+  /** 초기면접에서 고른 아동 특성 · 가정상황(서식 4 항목, 고른 순서). */
+  childTraits: string[];
+  familySituations: string[];
   /** 관리자가 고른 담당 상담사. "" 면 본인. */
   counselorId: string;
 }
@@ -51,6 +56,8 @@ export const EMPTY_CASE_INPUT: CaseRegisterInput = {
   guardianType: "",
   guardianNote: "",
   notes: "",
+  childTraits: [],
+  familySituations: [],
   counselorId: "",
 };
 
@@ -102,6 +109,11 @@ export function toCaseCreateRequest(
   // 보호자 메모는 보호자 유형이 기타일 때만 보낼 수 있다(그 밖에는 422).
   if (guardianType === "OTHER" && note) payload.guardian_note = note;
   if (notes) payload.notes = notes;
+  // 초기면접 항목은 서식 순서로 보낸다(서식에 없는 값은 빠진다).
+  const childTraits = INTAKE_CHILD_ITEMS.filter((item) => input.childTraits.includes(item));
+  const familySituations = INTAKE_HOME_ITEMS.filter((item) => input.familySituations.includes(item));
+  if (childTraits.length) payload.intake_child_traits = childTraits;
+  if (familySituations.length) payload.intake_family_situations = familySituations;
   if (isAdmin && input.counselorId && input.counselorId !== meId) payload.counselor_id = input.counselorId;
 
   return { payload, problem: null };

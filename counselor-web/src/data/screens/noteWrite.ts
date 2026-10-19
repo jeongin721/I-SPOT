@@ -10,43 +10,19 @@
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
 //  - AI 일지 초안 · 아동 특성 · 가정상황 AI 제안은 Backend 에 없어 보이지 않는다(빈 칸에서 상담원이 쓴다).
+//  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
+//    나머지 서식 4 항목을 체크리스트로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
+//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 체크리스트를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryReviewState } from "../useSummaryReview";
+import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
-
-/** 기관 양식의 아동 특성 · 가정상황 고르기 항목(서식의 선택지라 예시 데이터가 아니다). */
-export const CHILD_TRAITS = [
-  "불안",
-  "낮은 자존감",
-  "우울",
-  "무력감",
-  "대인관계 기피",
-  "학교부적응",
-  "애착문제",
-  "주의산만",
-  "반항 · 충동 · 공격성",
-  "잦은 결석",
-  "수면 · 위생 문제",
-  "특성없음",
-];
-
-export const HOME_TRAITS = [
-  "부적절한 양육태도",
-  "양육지식 및 기술부족",
-  "부부 및 가족갈등",
-  "경제적 어려움",
-  "스트레스",
-  "알콜남용",
-  "사회적 고립",
-  "배우자폭력",
-  "특성없음",
-];
 
 export interface NoteDraft {
   statement: string;
@@ -184,13 +160,17 @@ export interface NoteScreenInput extends SessionScreenInput {
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
 
-const chipStyle = (on: boolean) => ({
-  mark: on ? "✓" : "+",
-  bg: on ? "#F1EADA" : "#FFFFFF",
-  bd: on ? "#2B2A26" : "#DAD5C9",
-  fg: "#2B2A26",
-  fw: on ? 700 : 400,
-});
+/**
+ * 일지에서 추가로 고를 체크리스트 항목. 서식 항목 중 초기면접에서 고른 것은 뺀다.
+ * 일지에 담긴 항목 중 서식 항목에 없는 것(예전 목록의 이름 등)은 지울 수 있게 고른 채로 뒤에 붙인다.
+ */
+export function addableItems(options: string[], intake: string[], picked: string[]): string[] {
+  const fromIntake = new Set(intake);
+  const listed = new Set(options);
+  const extra = picked.filter((item) => !listed.has(item) && !fromIntake.has(item));
+
+  return [...options.filter((item) => !fromIntake.has(item)), ...extra.filter((item, i) => extra.indexOf(item) === i)];
+}
 
 export function noteWriteValues(input: NoteScreenInput) {
   const { summary, docs, state, setState, go, detail, caseDetail } = input;
@@ -291,15 +271,28 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     readOnly: docLocked,
   });
-  const toggles = (key: ListKey, options: string[]) =>
-    options.map((label) => {
-      const on = note[key].includes(label);
+  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 체크리스트를 잠근다.
+  // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
+  const intakeWaiting = !info && !caseDetail.error;
+  /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
+  const intakeWords = (words: string[] | null) => {
+    let empty = "초기면접에서 고른 항목 없음";
+    if (words === null) empty = intakeWaiting ? "초기면접 항목을 불러오는 중…" : "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+
+    return { words: words ?? [], note: empty };
+  };
+  const checklist = (key: ListKey, options: string[], fromIntake: string[]) =>
+    addableItems(options, fromIntake, note[key]).map((label) => {
+      const checked = note[key].includes(label);
+      const locked = docLocked || intakeWaiting;
 
       return {
         label,
-        ...chipStyle(on),
-        disabled: docLocked,
-        toggle: () => !docLocked && edit({ [key]: on ? note[key].filter((item) => item !== label) : [...note[key], label] }),
+        checked,
+        disabled: locked,
+        onChange: () => {
+          if (!locked) edit({ [key]: checked ? note[key].filter((item) => item !== label) : [...note[key], label] });
+        },
       };
     });
 
@@ -364,8 +357,10 @@ export function noteWriteValues(input: NoteScreenInput) {
     environment: textField("environment"),
     signals: textField("signals"),
     opinion: textField("opinion"),
-    traits: toggles("traits", CHILD_TRAITS),
-    homes: toggles("homes", HOME_TRAITS),
+    traitIntake: intakeWords(info ? info.intakeChildTraits : null),
+    homeIntake: intakeWords(info ? info.intakeFamilySituations : null),
+    traits: checklist("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
+    homes: checklist("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
     traitEv: [] as { label: string; ev: string }[],
     homeEv: [] as { label: string; ev: string }[],
     aiDraft: false,
