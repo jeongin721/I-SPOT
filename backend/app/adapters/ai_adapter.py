@@ -297,8 +297,26 @@ class PipelineAIAdapter:
 # Modeling Adapter (ai/modeling/abuse 이경진 파이프라인)
 # =========================================================
 
+def accepts_keyword(func: Callable[..., Any], name: str) -> bool:
+    """func 가 name 을 이름(키워드)으로 받는가. **kwargs 만 있는 함수는 받지 않는 것으로 본다.
+
+    서명을 읽다가 어떤 예외가 나도(서명 정보가 망가진 호출 가능 객체 등) 받지 않는 것으로 본다.
+    받지 않는 함수에 넘기면 TypeError 로 분석이 실패하므로, 모르면 넘기지 않는 쪽이 안전하다.
+    """
+
+    try:
+        parameter = inspect.signature(func).parameters.get(name)
+    except Exception:
+        return False
+
+    return parameter is not None and parameter.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+
+
 def _accepts_deadline(func: Callable[..., Any]) -> bool:
-    """func 가 deadline 을 이름으로 받는가. **kwargs 만 있는 함수는 받지 않는 것으로 본다.
+    """func 가 deadline 을 이름으로 받는가(accepts_keyword).
 
     deadline 은 time.monotonic() 기준 절대 시각(기본 None)이고, 넘으면 모듈이 남은 단계를
     건너뛰고 내장 TimeoutError 를 던진다(10/16 이경진 님께 제안한 모양).
@@ -306,15 +324,7 @@ def _accepts_deadline(func: Callable[..., Any]) -> bool:
     모듈이 스스로 멈출 수 있게 마감 시각을 알려 준다.
     """
 
-    try:
-        parameter = inspect.signature(func).parameters.get("deadline")
-    except (TypeError, ValueError):
-        return False
-
-    return parameter is not None and parameter.kind in (
-        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        inspect.Parameter.KEYWORD_ONLY,
-    )
+    return accepts_keyword(func, "deadline")
 
 
 class ModelingAIAdapter:
@@ -357,8 +367,10 @@ class ModelingAIAdapter:
                 analyze_audio_session_as_contract,
             )
         except ImportError as error:
+            # 예외 문구에는 모듈 경로 · 내려받기 주소가 섞일 수 있다. 이 문구는 DB · API 응답까지 가므로
+            # 예외 종류 이름만 싣는다(원인은 analysis_service 가 로그로 남긴다).
             raise AIError(
-                f"Modeling Pipeline module 을 import 할 수 없습니다: {error}",
+                f"Modeling Pipeline module 을 import 할 수 없습니다: {type(error).__name__}",
                 ErrorCode.AI_FAILED,
             ) from error
 
@@ -711,6 +723,7 @@ __all__ = [
     "MockAIAdapter",
     "ModelingAIAdapter",
     "PipelineAIAdapter",
+    "accepts_keyword",
     "drop_ungrounded_risk_items",
     "export_llm_env",
     "get_ai_adapter",
