@@ -92,7 +92,8 @@ def _query_text_problem(param) -> Optional[str]:
         return "가 StorableQueryText 를 쓰지 않음"
 
     # 검사 뒤에 제약이 있으면 제약이 검사 뒤의 값에 걸려 OpenAPI 와 오류 사유가 바뀐다.
-    if checks[-1] != len(metadata) - 1:
+    # 맨 뒤에 하나 더 붙여도 앞의 것이 남아 같으므로, 검사는 맨 뒤 한 곳에만 있어야 한다.
+    if checks != [len(metadata) - 1]:
         return "의 StorableQueryText 가 Annotated 맨 뒤에 있지 않음"
 
     return None
@@ -257,6 +258,13 @@ def _probe_app() -> FastAPI:
     ) -> None:
         return None
 
+    # 맨 뒤에도 있지만 Query 앞에 하나 더 붙인 모양 — 앞의 것 때문에 OpenAPI · 사유가 바뀐다.
+    @inner.get("/twice-query")
+    def twice_query(
+        search: Annotated[Optional[str], StorableQueryText, Query(max_length=10), StorableQueryText] = None,
+    ) -> None:
+        return None
+
     outer = APIRouter()
     outer.include_router(inner)
 
@@ -276,6 +284,7 @@ def test_guard_reports_missing_inheritance_and_query_type() -> None:
             "['POST'] /probe/nested → _GuardedWithPlainItem.items: _PlainItem 가 RequestModel 을 상속하지 않음",
             "['GET'] /probe/plain-query: 쿼리 search 가 StorableQueryText 를 쓰지 않음",
             "['GET'] /probe/wrong-order-query: 쿼리 search 의 StorableQueryText 가 Annotated 맨 뒤에 있지 않음",
+            "['GET'] /probe/twice-query: 쿼리 search 의 StorableQueryText 가 Annotated 맨 뒤에 있지 않음",
         ]
     )
 
