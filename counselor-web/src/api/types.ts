@@ -677,7 +677,7 @@ export type DocumentType = string;
 /** 상담일지. 생성 요청에서 doc_type 을 빼면 Backend 가 이 값으로 채운다. */
 export const DOC_TYPE_CONSULTATION_RECORD: DocumentType = "CONSULTATION_RECORD";
 
-/** 문서 상태. 요약과 같은 검수 상태를 쓴다. 항상 DRAFT 로 만들어지고, 승인되면 수정할 수 없다. */
+/** 문서 상태. 요약과 같은 검수 상태를 쓴다. 항상 DRAFT 로 만들어지고, 승인되면 승인을 풀어야(reopen) 고칠 수 있다. */
 export type DocumentStatus = ReviewStatus;
 
 /**

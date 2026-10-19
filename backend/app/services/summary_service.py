@@ -161,3 +161,32 @@ def approve_summary(
     db.refresh(summary)
 
     return summary
+
+
+def reopen_summary(db: Session, session: ConsultationSession) -> ConsultationSummary:
+    """
+    승인을 풀어 다시 고칠 수 있게 한다. 내용은 그대로 두고, 고친 뒤 다시 승인한다.
+
+    회차도 '승인 완료' 에서 'AI 결과 검수 필요' 로 돌아간다. 따로 감사 기록은 남기지 않는다
+    (사용자 결정). 다시 고치면 SUMMARY_UPDATED, 다시 승인하면 SUMMARY_APPROVED 가 남는다.
+    """
+
+    summary = require_summary(db, session.id)
+
+    if summary.status != ReviewStatus.APPROVED:
+        raise conflict(ErrorCode.NOT_APPROVED, "승인된 요약만 수정할 수 있게 되돌릴 수 있습니다.")
+
+    assert_status_in(session.status, {SessionStatus.APPROVED})
+
+    summary.status = ReviewStatus.DRAFT
+    summary.approved_at = None
+    summary.approved_by_id = None
+
+    session.status = SessionStatus.AI_REVIEW_REQUIRED
+    session.approved_at = None
+    session.approved_by_id = None
+
+    db.commit()
+    db.refresh(summary)
+
+    return summary

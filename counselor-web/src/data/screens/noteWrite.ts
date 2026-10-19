@@ -1,7 +1,10 @@
 // 3 · 상담 요약 · 상담 일지(NoteWrite) 화면 값.
 //
 // 상담 요약 카드 = useSummaryReview. AI 요약 초안(개요 · 핵심 내용) · 상담사 메모를 고치고 저장 · 승인한다.
-//  - **요약 승인은 회차를 '승인 완료' 로 바꾼다**(그 뒤 요약을 고칠 수 없다). 그래서 '요약 승인' 단추를 따로 두고 한 번 더 묻는다.
+//  - **요약 승인은 회차를 '승인 완료' 로 바꾼다.** '요약 승인' 단추를 누르면 (고친 칸을 저장하고) 바로 승인한다.
+//    한 번 더 묻지 않는다 — 승인한 뒤에도 '요약 수정' 으로 풀 수 있어서다(2026-10-16 최민규 결정).
+//    승인한 뒤에는 '요약 수정' 단추만 보인다. 누르면 승인이 풀려 쓴 내용 그대로 다시 고칠 수 있고(회차는 'AI 결과 검수 필요'),
+//    고친 뒤 다시 승인한다. 상담 일지도 같다('일지 수정', 회차 상태는 바뀌지 않는다).
 //    아래 '저장 · 추가 확인 · 질문 →' 단추는 저장만 하고 승인하지 않는다(specs 대응표 '승인 시점').
 //  - 근거 발화는 AI 원본 요약 문장별로 보인다(고친 요약 문장과 글자로 맞추지 않는다).
 //  - 화면의 사정 관점 4영역(조사 후 변화 · 강점 · 위험요인 · 원하는 변화)은 Backend 요약에 없다. 개요 · 핵심 내용 · 메모로 보인다.
@@ -161,7 +164,7 @@ export function parseNote(content: string): NoteDraft {
 }
 
 /**
- * 화면 상태(Logic.state). 화면은 계정이 바뀌어도 새로 만들어지지 않으므로, 고친 일지 · 확인창은 그때의 대상 표
+ * 화면 상태(Logic.state). 화면은 계정이 바뀌어도 새로 만들어지지 않으므로, 고친 일지는 그때의 대상 표
  * (docs.capture() — 회차 · 대상 세대 · 로그인 토큰)와 함께 두고 표가 지금 대상일 때만 쓴다.
  * 다른 회차로 옮기거나, 갔다 돌아오거나(A → B → A), 다른 탭에서 다시 로그인하면 버린 것으로 본다
  * (요약 훅의 고친 칸이 대상이 바뀔 때 비워지는 것과 같은 기준. 앞 로그인이 쓴 초안이 새 로그인 화면 · 요청에 실리지 않게).
@@ -171,11 +174,9 @@ export interface NoteUiState {
   draft: NoteDraft | null;
   /** draft 를 쓴 대상의 표. */
   draftFor: RemoteTicket | null;
-  /** 승인을 한 번 더 묻는 중인 것과 물은 대상의 표. */
-  ask: { kind: "summary" | "document"; ticket: RemoteTicket } | null;
 }
 
-export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, ask: null };
+export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null };
 
 export interface NoteScreenInput extends SessionScreenInput {
   summary: SummaryReviewState;
@@ -201,13 +202,6 @@ export function noteWriteValues(input: NoteScreenInput) {
   const signalHref = screenHref("/SignalReview", ids);
 
   const busy = summary.submitting || docs.submitting;
-  const asking = state.ask && docs.isCurrent(state.ask.ticket) ? state.ask.kind : null;
-  /** 승인을 한 번 더 묻는다. 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 열지 않는다. */
-  const ask = (kind: "summary" | "document") => {
-    const ticket = docs.capture();
-
-    if (ticket) setState({ ask: { kind, ticket } });
-  };
 
   // ---------------- 상담 요약 ----------------
   // 저장 · 승인을 기다리는 동안에는 잠근다(보낸 내용 뒤에 친 글자가 승인된 내용과 다르게 남지 않게).
@@ -321,6 +315,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     return result;
   };
 
+  const docApproved = record !== null && record.status === "APPROVED";
   const docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
   const docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
 
@@ -345,16 +340,12 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveSummary: summary.canEdit && summary.dirty && !busy,
     saveSummary: () => void summary.save(),
     canApproveSummary: summary.canApprove && !busy,
-    askSummary: () => ask("summary"),
-    summaryAsk: asking === "summary",
-    summaryAskText: "승인하면 이 회차가 '승인 완료' 가 되고 요약을 더 고칠 수 없습니다. 상담일지 승인은 따로 합니다.",
-    approveSummary: async () => {
-      if (asking !== "summary") return;
-
-      const ok = await summary.approve();
-
-      if (ok) setState({ ask: null });
-    },
+    // 고친 칸을 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
+    approveSummary: () => void summary.approve(),
+    // 승인된 요약이면 저장 · 승인 대신 '요약 수정' 단추만 보인다.
+    summaryApproved: summary.status === "APPROVED",
+    canReopenSummary: summary.canReopen && !busy,
+    reopenSummary: () => void summary.reopen(),
     // 상담 일지
     docChip,
     docNote,
@@ -373,21 +364,20 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveDoc: docDirty && !docReadOnly && !busy,
     saveDoc: () => void saveDoc(),
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
-    askDoc: () => ask("document"),
-    docAsk: asking === "document",
-    docAskText: "승인하면 상담일지를 더 고칠 수 없습니다. 회차 상태는 바뀌지 않습니다.",
+    // 고친 일지를 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
     approveDoc: async () => {
-      if (asking !== "document") return;
-
-      // 누를 때의 대상(표). 일지를 저장하는 사이 대상이 바뀌었으면(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남)
-      // 승인 요청을 이어 보내지 않는다(새 로그인 토큰으로 앞 회차의 일지를 승인하지 않게).
+      // 저장하는 사이 대상이 바뀌면 새 로그인으로 앞 회차의 일지를 승인하지 않는다.
       const ticket = docs.capture();
       const target = await saveDoc();
 
-      if (!target || !docs.isCurrent(ticket)) return;
-      if (await docs.approve(target.id)) setState({ ask: null });
+      if (target && docs.isCurrent(ticket)) await docs.approve(target.id);
     },
-    cancelAsk: () => setState({ ask: null }),
+    // 승인된 일지면 저장 · 승인 대신 '일지 수정' 단추만 보인다. 쓴 내용은 그대로 남아 이어서 고친다.
+    docApproved,
+    canReopenDoc: docApproved && !busy,
+    reopenDoc: () => {
+      if (record && docApproved) void docs.reopen(record.id);
+    },
     // 아래 단추
     backHref: signalHref,
     nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",

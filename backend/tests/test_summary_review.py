@@ -184,6 +184,132 @@ def test_approve_without_summary_returns_not_found(
     assert response.json()["error"]["code"] == "SUMMARY_NOT_FOUND"
 
 
+def test_reopen_approved_summary_keeps_content_and_allows_reapproval(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    summary_url = f"/api/v1/sessions/{session['id']}/summary"
+    session_url = f"/api/v1/sessions/{session['id']}"
+
+    written = client.patch(
+        summary_url,
+        json={
+            "overview": "처음 쓴 요약",
+            "key_points": ["처음 쓴 요점"],
+            "counselor_note": "처음 쓴 메모",
+        },
+        headers=counselor_headers,
+    ).json()["data"]
+    client.post(f"{summary_url}/approve", headers=counselor_headers)
+
+    reopened = client.post(f"{summary_url}/reopen", headers=counselor_headers)
+
+    assert reopened.status_code == 200
+    data = reopened.json()["data"]
+    assert data["status"] == "DRAFT"
+    assert data["approved_at"] is None
+    assert data["approved_by_id"] is None
+    # 처음 쓴 내용은 그대로 남아 이어서 고칠 수 있다.
+    for field in ("overview", "key_points", "counselor_note", "is_edited"):
+        assert data[field] == written[field]
+
+    # 회기도 검수 단계로 돌아가 승인 정보가 비워진다.
+    detail = client.get(session_url, headers=counselor_headers).json()["data"]
+    assert detail["status"] == "AI_REVIEW_REQUIRED"
+    assert detail["summary_approved"] is False
+    assert detail["approved_at"] is None
+
+    edited = client.patch(summary_url, json={"overview": "고친 요약"}, headers=counselor_headers)
+    assert edited.status_code == 200
+    assert edited.json()["data"]["overview"] == "고친 요약"
+    assert edited.json()["data"]["counselor_note"] == "처음 쓴 메모"
+
+    approved = client.post(f"{summary_url}/approve", headers=counselor_headers)
+    assert approved.status_code == 200
+    assert approved.json()["data"]["status"] == "APPROVED"
+
+    detail = client.get(session_url, headers=counselor_headers).json()["data"]
+    assert detail["status"] == "APPROVED"
+    assert detail["summary_approved"] is True
+    assert detail["approved_at"]
+
+
+def test_summary_reopen_does_not_offer_to_unlock_transcript(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    root = f"/api/v1/sessions/{session['id']}"
+    transcript = client.get(f"{root}/transcript", headers=counselor_headers).json()["data"][
+        "transcript"
+    ]
+    assert client.post(f"{root}/summary/approve", headers=counselor_headers).status_code == 200
+    payload = {
+        "segments": [
+            {"segment_id": transcript["segments"][0]["segment_id"], "text": "가상 수정 원문"}
+        ]
+    }
+
+    blocked = client.patch(f"{root}/transcript", json=payload, headers=counselor_headers)
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "INVALID_SESSION_STATE"
+    assert "요약 수정" not in blocked.json()["error"]["message"]
+
+    assert client.post(f"{root}/summary/reopen", headers=counselor_headers).status_code == 200
+    still_blocked = client.patch(f"{root}/transcript", json=payload, headers=counselor_headers)
+    assert still_blocked.status_code == 409
+    assert still_blocked.json()["error"]["details"]["current_status"] == "AI_REVIEW_REQUIRED"
+    unchanged = client.get(f"{root}/transcript", headers=counselor_headers).json()["data"][
+        "transcript"
+    ]
+    assert unchanged == transcript
+
+
+def test_reopen_unapproved_summary_returns_not_approved(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+
+    response = client.post(
+        f"/api/v1/sessions/{session['id']}/summary/reopen", headers=counselor_headers
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "NOT_APPROVED"
+
+    detail = client.get(
+        f"/api/v1/sessions/{session['id']}", headers=counselor_headers
+    ).json()["data"]
+    assert detail["status"] == "AI_REVIEW_REQUIRED"
+
+
+def test_reopen_without_summary_returns_not_found(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    response = client.post(
+        f"/api/v1/sessions/{session['id']}/summary/reopen", headers=counselor_headers
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SUMMARY_NOT_FOUND"
+
+
+def test_other_counselor_cannot_reopen_summary(
+    client: TestClient, counselor_headers, other_counselor_headers, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    summary_url = f"/api/v1/sessions/{session['id']}/summary"
+    client.post(f"{summary_url}/approve", headers=counselor_headers)
+
+    response = client.post(f"{summary_url}/reopen", headers=other_counselor_headers)
+
+    assert response.status_code == 403
+
+    detail = client.get(
+        f"/api/v1/sessions/{session['id']}", headers=counselor_headers
+    ).json()["data"]
+    assert detail["status"] == "APPROVED"
+
+
 def test_reanalysis_preserves_counselor_edits(
     client: TestClient, counselor_headers, session: dict
 ) -> None:
