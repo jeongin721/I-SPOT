@@ -141,6 +141,14 @@ export function useSessionDocuments(
   // 회차별 만들기 상태(createPending 의 mark). 세대가 바뀌어도 지우지 않는다. 같은 회차로 돌아오거나 다시 로그인한 뒤
   // 앞 만들기가 끝나기 전이나 그 문서가 목록에 들어오기 전에 저장하면, 문서가 없는 줄 알고 하나 더 만들게 되므로.
   const creating = useRef(new Map<string, string | null>());
+  // creating 을 바꿀 때마다 다시 그려 waitingCreate 를 다시 계산한다. ref 만 바꾸면 회차를 오간 뒤 늦은 만들기가
+  // 실패로 끝났을 때 아무도 다시 그리지 않아 '저장 중' 잠금이 남는다.
+  const [, setCreatingVersion] = useState(0);
+  const markCreating = useCallback((sessionKey: string, value: string | null | undefined) => {
+    if (value === undefined) creating.current.delete(sessionKey);
+    else creating.current.set(sessionKey, value);
+    setCreatingVersion((version) => version + 1);
+  }, []);
   // 누를 때 볼 지금 목록(perform 을 만든 그리기 뒤에 다시 부른 목록이 들어왔을 수 있어서 ref 로 든다).
   const latestList = useRef(remote.data);
   latestList.current = remote.data;
@@ -179,7 +187,7 @@ export function useSessionDocuments(
       inFlight.current = true;
       setSubmitting(true);
       setActionError(null);
-      if (creates) creating.current.set(ticket.key, null);
+      if (creates) markCreating(ticket.key, null);
 
       try {
         const result = await send(ticket.key);
@@ -192,15 +200,12 @@ export function useSessionDocuments(
             : [...list, result];
         });
 
-        if (creates) {
-          if (applied) creating.current.delete(ticket.key);
-          else creating.current.set(ticket.key, result.id);
-        }
+        if (creates) markCreating(ticket.key, applied ? undefined : result.id);
 
         // 반영하지 못했으면 null. 화면 연쇄(저장 → 승인)가 다음 요청을 이어 보내지 않게 한다.
         return applied ? toDocumentRow(result) : null;
       } catch (caught) {
-        if (creates) creating.current.delete(ticket.key);
+        if (creates) markCreating(ticket.key, undefined);
 
         // 대상이 바뀌었으면 오류 문구도 다시 조회도 하지 않는다(새로 부른 목록을 건드리지 않게).
         if (!remote.isCurrent(ticket)) return null;
@@ -221,7 +226,7 @@ export function useSessionDocuments(
         }
       }
     },
-    [key, remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.refresh],
+    [key, markCreating, remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.refresh],
   );
 
   const create = useCallback(
