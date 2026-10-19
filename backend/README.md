@@ -324,6 +324,9 @@ OPENAI_MODEL=...
 > 분석 제한 시간(`AI_TIMEOUT_SECONDS`)에는 넣지 않는다. 아직 올리는 중이면 분석이 45초까지 기다리고, 그래도 안 끝나면
 > `AI_TIMEOUT`("AI 모델을 아직 불러오는 중입니다…")으로 끝난다. 함수가 `deadline` 을 받는 판이면 마감 시각
 > (분석 시작 + `AI_TIMEOUT_SECONDS` - `AI_DEADLINE_MARGIN_SECONDS`, `time.monotonic()` 기준)을 넘긴다.
+> 여유 기본 10초는 모듈이 마감에 걸린 LLM 호출의 응답을 마감 + 5초까지 기다리는 것보다 길게 잡은 값이다(5초 이하면 Backend
+> 제한 시간과 같은 순간 끝나 Backend 가 먼저 잡는다). `AI_PROVIDER=modeling` 이면 여유가 `AI_TIMEOUT_SECONDS` 보다 작아야
+> 서버가 시작한다(설정 검사).
 
 `pipeline` 모드는 `ai/services/analysis_pipeline.run_analysis_pipeline(transcript)` 를 호출한다.
 팀 B 의 Service Exception 은 아래처럼 API 오류 코드로 변환된다.
