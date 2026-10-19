@@ -6,6 +6,7 @@ import A from '../components/A';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCarryHref } from '../data/useCarryHref';
 import { useTheme } from '../theme';
 import './FollowupQ.css';
 
@@ -154,6 +155,7 @@ class Logic extends DCLogic {
 export default function FollowupQ(props) {
   // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
+  const carry = useCarryHref();
   const theme = useTheme();
   const v = useDC(Logic, props);
   return (
@@ -187,8 +189,8 @@ export default function FollowupQ(props) {
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to="/CaseDetail">이서윤 C-2026-0351</A> ›{' '}
-            <A to="/CaseHistory">상담 이력</A> › <A to="/SessionDetail">8회차</A>
+            <A to="/CaseList">사례 관리</A> › <A to={carry('/CaseDetail')}>이서윤 C-2026-0351</A> ›{' '}
+            <A to={carry('/CaseHistory')}>상담 이력</A> › <A to={carry('/SessionDetail')}>8회차</A>
           </nav>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 280px' }}>
@@ -197,19 +199,19 @@ export default function FollowupQ(props) {
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <A className="stp done" to="/SttReview">
+            <A className="stp done" to={carry('/SttReview')}>
               <span className="sn">✓</span>
               <b style={{ fontWeight: '500' }}>STT 검수</b>
             </A>
-            <A className="stp done" to="/SignalReview">
+            <A className="stp done" to={carry('/SignalReview')}>
               <span className="sn">✓</span>
               <b style={{ fontWeight: '500' }}>위험 신호 검토</b>
             </A>
-            <A className="stp done" to="/NoteWrite">
+            <A className="stp done" to={carry('/NoteWrite')}>
               <span className="sn">✓</span>
               <b style={{ fontWeight: '500' }}>요약 · 일지 작성</b>
             </A>
-            <A className="stp on" to="/FollowupQ" aria-current="step">
+            <A className="stp on" to={carry('/FollowupQ')} aria-current="step">
               <span className="sn">4</span>
               <b style={{ fontWeight: '700' }}>추가 확인 · 질문</b>
             </A>
@@ -380,10 +382,10 @@ export default function FollowupQ(props) {
             ))}
           </section>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-            <A className="btn btn-s" to="/NoteWrite">
+            <A className="btn btn-s" to={carry('/NoteWrite')}>
               ← 요약 · 일지 작성
             </A>
-            <A className="btn btn-p" to="/PreBriefing" style={{ marginLeft: 'auto' }}>
+            <A className="btn btn-p" to={carry('/PreBriefing')} style={{ marginLeft: 'auto' }}>
               8회차 처리 완료 · 브리핑 보기
             </A>
           </div>

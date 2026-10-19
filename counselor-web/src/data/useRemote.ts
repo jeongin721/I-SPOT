@@ -5,20 +5,33 @@
 //    다른 계정으로 같은 key(같은 사례 ID)에 돌아왔을 때 앞 계정이 불러온 값을 다시 보이지 않게 하려고서다.
 //  - reload()  는 '불러오는 중' 을 보이며 다시 부른다(사용자가 누른 새로고침).
 //  - refresh() 는 값을 그대로 둔 채 조용히 다시 부른다(처리 중 상태를 되풀이 조회할 때).
-//  - setData(key, …) 로 수정 · 승인 응답을 바로 반영한다(다시 부르지 않아도 되게). 요청을 보낸 뒤 대상이 바뀌었으면
-//    (A 회차에서 저장을 누르고 B 회차로 옮김) 반영하지 않는다. 요청을 보내는 쪽은 보낼 때의 key 를 기억해 넘기고,
-//    응답 뒤 다른 상태(고친 칸 · 오류 문구)를 바꿀 때도 isCurrent(key) 로 먼저 확인한다.
+//  - setData(표, …) 로 수정 · 승인 응답을 바로 반영한다(다시 부르지 않아도 되게). 요청을 보내는 쪽은 보낼 때 capture() 로
+//    표(key · 대상 세대 · 로그인 토큰)를 잡아 두고 응답이 오면 그 표로 반영한다. 그사이 대상이 바뀌었으면(A 회차에서 저장을
+//    누르고 B 회차로 옮김, B 에 갔다 A 로 돌아옴, 다른 탭에서 다시 로그인함, 화면을 떠남) 반영하지 않는다.
+//    응답 뒤 다른 상태(고친 칸 · 오류 문구)를 바꾸거나 다음 요청을 보낼 때도 isCurrent(표) 로 먼저 확인한다.
+//    key 만 비교하면 같은 key 로 돌아온 경우(A → B → A, 로그아웃 · 다시 로그인)를 가리지 못한다.
+//    반영하지 못했어도 화면이 아직 같은 key 를 보고 있으면(갔다 돌아옴, 다시 로그인) 조용히 다시 부른다.
+//    쓰기는 서버에 반영됐는데 돌아와서 받은 값이 그 전 값일 수 있어서다.
 //  - 같은 탭의 다른 훅이 회차 상태를 바꾸면(sessionEvents) 조용히 다시 부른다.
 //
 // 처리 중(원문 변환 · AI 분석) 되풀이 조회는 usePolling 으로 한다(API_CONTRACT 1.4, 권장 2~3초).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { ApiError, getToken } from "../api/client";
 import { onSessionChanged, type SessionChange } from "./sessionEvents";
 
 /** 처리 중 상태를 다시 조회하는 간격. API_CONTRACT 1.4 권장(2~3초). */
 export const POLL_INTERVAL_MS = 2500;
+
+/** 쓰기 요청을 보낼 때 잡아 두는 표(capture). 응답이 오면 이 표가 아직 지금 대상의 것인지(isCurrent) 보고 반영한다. */
+export interface RemoteTicket {
+  readonly key: string;
+  /** 대상 세대. key 가 바뀔 때마다(null 포함) 1 씩 는다. */
+  readonly generation: number;
+  /** 보낼 때의 로그인 토큰. client 가 요청에 싣는 토큰과 같다. */
+  readonly token: string | null;
+}
 
 export interface RemoteState<T> {
   data: T | null;
@@ -29,13 +42,24 @@ export interface RemoteState<T> {
   settled: number;
   reload: () => void;
   refresh: () => void;
+  /** 대상 세대(RemoteTicket.generation). 쓰기 훅은 이 값이 바뀐 그리기에서 앞 대상 요청의 진행 표시 · 오류를 푼다. */
+  generation: number;
+  /** 지금 대상의 표. 대상이 없거나(key 가 null) 화면을 떠났으면 null. */
+  capture: () => RemoteTicket | null;
   /**
-   * forKey 가 지금 대상이면 값을 반영하고 true. 대상이 바뀌었으면 아무것도 하지 않고 false.
+   * 표가 지금 대상이면 값을 반영하고 true. 대상이 바뀌었으면 반영하지 않고 false(값 · 오류 · settled 그대로).
+   * 이때 화면이 아직 같은 key 를 보고 있으면(갔다 돌아옴, 다시 로그인) refresh() 로 조용히 다시 부른다
+   * (쓰기는 서버에 반영됐는데 돌아와서 받은 값은 그 전 값일 수 있다. 다시 부르는 조회는 지금 로그인 토큰으로 나간다).
    * 값 대신 함수를 넘기면 지금 들고 있는 값으로 새 값을 만든다(요청을 보낼 때 읽은 값이 그사이 바뀌었을 수 있어서).
    */
-  setData: (forKey: string, value: T | ((current: T | null) => T)) => boolean;
-  /** 요청을 보낼 때의 key 가 아직 지금 대상인가. */
-  isCurrent: (forKey: string) => boolean;
+  setData: (ticket: RemoteTicket, value: T | ((current: T | null) => T)) => boolean;
+  /** 표가 아직 지금 대상의 것인가(화면에 붙어 있고 key · 세대 · 로그인 토큰이 모두 같다). null 이면 false. */
+  isCurrent: (ticket: RemoteTicket | null) => boolean;
+  /**
+   * 표를 잡은 뒤 세대가 그대로인가(로그인 토큰은 보지 않는다). 요청이 끝났을 때 진행 표시를 풀지 정하는 데 쓴다 —
+   * 세대가 바뀌었으면 그때 이미 풀었고, 토큰만 바뀌었으면 이 요청이 풀어야 한다.
+   */
+  sameGeneration: (ticket: RemoteTicket) => boolean;
 }
 
 /** 오류를 화면에 보여 줄 문장으로. Backend 문구가 있으면 그대로, 없으면 fallback. */
@@ -66,6 +90,10 @@ export function useRemote<T>(
   const [settled, setSettled] = useState(0);
   // 이번 조회가 조용한 refresh 인가. 조회를 시작할 때 읽고 되돌린다.
   const silent = useRef(false);
+  // 다시 부르기를 예약했고 아직 조회를 시작하지 않았는가. 그사이 refresh 가 또 불리면(쓰기 응답을 버린 setData 와
+  // 회차 변경 알림이 함께 부름) 한 번만 부른다. 두 번 예약되면 앞 조회가 silent 를 써 버려 뒤 조회가
+  // '불러오는 중' 을 보이며 오류 문구를 지운다.
+  const queued = useRef(false);
   // 최근 조회 번호. 늦게 온 앞 조회의 응답을 버리는 데 쓴다.
   const latest = useRef(0);
   // load 가 그릴 때마다 새 함수여도 다시 부르지 않게 마지막 것만 들고 있는다.
@@ -74,6 +102,16 @@ export function useRemote<T>(
   // 지금 대상. 요청을 보낸 뒤 대상이 바뀌었는지 setData · isCurrent 가 본다.
   const keyRef = useRef(key);
   keyRef.current = key;
+  // 대상 세대. key 가 바뀔 때마다(null 포함) 1 씩 늘린다. 그래서 같은 key 로 돌아와도(A → B → A, 로그아웃 · 다시 로그인)
+  // 세대는 다르다. 그리는 중에 앞 그리기의 key 와 비교하므로 같은 key 로 두 번 그려도(StrictMode) 한 번만 는다.
+  // reload · refresh · 되풀이 조회에는 올리지 않는다(올리면 처리 중 조회 사이에 저장한 결과를 버리게 된다).
+  const generation = useRef(0);
+  const generationKey = useRef(key);
+
+  if (generationKey.current !== key) {
+    generationKey.current = key;
+    generation.current += 1;
+  }
   // 화면에 붙어 있는가. 떠난 뒤에는 isCurrent 가 false 다(떠난 화면의 요청 결과를 돌려주지 않게).
   const mounted = useRef(false);
 
@@ -81,11 +119,16 @@ export function useRemote<T>(
   const error = failure.key === key ? failure.message : null;
 
   const reload = useCallback(() => {
+    queued.current = true;
     silent.current = false;
     setTick((value) => value + 1);
   }, []);
 
   const refresh = useCallback(() => {
+    // 이미 예약한 조회(refresh · reload)가 있으면 그 조회가 부른다.
+    if (queued.current) return;
+
+    queued.current = true;
     silent.current = true;
     setTick((value) => value + 1);
   }, []);
@@ -94,6 +137,7 @@ export function useRemote<T>(
     const quiet = silent.current;
 
     silent.current = false;
+    queued.current = false;
 
     if (key === null) {
       latest.current += 1;
@@ -155,29 +199,70 @@ export function useRemote<T>(
     };
   }, []);
 
-  const isCurrent = useCallback((forKey: string) => mounted.current && keyRef.current === forKey, []);
+  const capture = useCallback((): RemoteTicket | null => {
+    const current = keyRef.current;
 
-  const setData = useCallback((forKey: string, value: T | ((current: T | null) => T)) => {
-    // 요청을 보낸 뒤 다른 대상으로 옮겼으면 앞 대상의 응답은 버린다(지금 대상의 값 · 진행 중인 조회는 그대로).
-    if (!mounted.current || keyRef.current !== forKey) return false;
+    if (!mounted.current || current === null) return null;
 
-    // 진행 중인 조회가 있으면 그 응답이 방금 반영한 값을 덮지 않게 버린다.
-    latest.current += 1;
-    setEntry((current) => {
-      const held = current.key === forKey ? current.data : null;
-
-      return { key: forKey, data: typeof value === "function" ? (value as (current: T | null) => T)(held) : value };
-    });
-    setFailure({ key: forKey, message: null });
-    setLoading(false);
-    setSettled((count) => count + 1);
-
-    return true;
+    return { key: current, generation: generation.current, token: getToken() };
   }, []);
+
+  // 로그인 토큰은 client 가 늦은 401 을 가리는 기준(보낼 때 토큰 = 지금 토큰)과 같게 본다.
+  const isCurrent = useCallback(
+    (ticket: RemoteTicket | null) =>
+      ticket !== null &&
+      mounted.current &&
+      keyRef.current === ticket.key &&
+      generation.current === ticket.generation &&
+      getToken() === ticket.token,
+    [],
+  );
+
+  const sameGeneration = useCallback((ticket: RemoteTicket) => generation.current === ticket.generation, []);
+
+  const setData = useCallback(
+    (ticket: RemoteTicket, value: T | ((current: T | null) => T)) => {
+      // 요청을 보낸 뒤 대상이 바뀌었으면 앞 대상의 응답은 버린다(지금 대상의 값 · 오류 · settled 는 그대로).
+      if (!isCurrent(ticket)) {
+        // 같은 key 로 돌아왔으면 돌아와서 받은 값이 이 쓰기 전 값일 수 있다. 서버 값을 다시 받는다.
+        if (mounted.current && keyRef.current === ticket.key) refresh();
+
+        return false;
+      }
+
+      const forKey = ticket.key;
+
+      // 진행 중인 조회가 있으면 그 응답이 방금 반영한 값을 덮지 않게 버린다.
+      latest.current += 1;
+      setEntry((current) => {
+        const held = current.key === forKey ? current.data : null;
+
+        return { key: forKey, data: typeof value === "function" ? (value as (current: T | null) => T)(held) : value };
+      });
+      setFailure({ key: forKey, message: null });
+      setLoading(false);
+      setSettled((count) => count + 1);
+
+      return true;
+    },
+    [isCurrent, refresh],
+  );
 
   const waitingFirst = key !== null && data === null && error === null;
 
-  return { data, loading: loading || waitingFirst, error, settled, reload, refresh, setData, isCurrent };
+  return {
+    data,
+    loading: loading || waitingFirst,
+    error,
+    settled,
+    reload,
+    refresh,
+    generation: generation.current,
+    capture,
+    setData,
+    isCurrent,
+    sameGeneration,
+  };
 }
 
 /**
