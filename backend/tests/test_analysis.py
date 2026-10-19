@@ -333,9 +333,9 @@ def test_slow_prepare_has_its_own_time_limit(
 
 
 def test_prepare_limit_ends_before_stale_processing_check() -> None:
-    """준비 시간 + 분석 제한 시간이 처리 중 멈춤 판정(제한 시간 + 여유 시간)보다 짧다.
+    """작업 전체 마감(요청 시각 + 준비 제한 + 분석 제한)이 처리 중 멈춤 판정(요청 시각 + 분석 제한 + 여유 시간)보다 앞이다.
 
-    길면 살아 있는 작업이 조회 때 '작업이 사라짐' 으로 실패 처리된다.
+    뒤면 살아 있는 작업이 조회 때 '작업이 사라짐' 으로 실패 처리된다(그 뒤 늦은 결과는 저장하지 않는다).
     """
 
     assert 0 < analysis_service.PREPARE_TIMEOUT_SECONDS < session_service.STALE_GRACE_SECONDS

@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import types
+import uuid
 from typing import Any, Callable, Dict, List
 
 import pytest
@@ -34,6 +35,7 @@ from app.adapters.module_loader import ensure_repo_root_on_path
 from app.core.config import BACKEND_DIR, Settings, settings
 from app.core.errors import ErrorCode
 from app.main import app
+from app.services import analysis_service
 from tests.test_analysis import _get_analysis, _run_analysis, confirmed_session
 
 # monkeypatch 가 "ai.modeling.abuse.*" 를 찾으려면 최상위 경로가 필요하다.
@@ -520,6 +522,8 @@ def test_import_failure_in_prepare_fails_session(
 
     assert envelope["session_status"] == "AI_FAILED"
     assert envelope["error"]["code"] == "AI_FAILED"
+    # import 예외 문구("import of … halted; None in sys.modules")는 응답에 싣지 않는다.
+    assert "halted" not in envelope["error"]["message"]
     assert modeling["calls"] == []
 
 
@@ -690,6 +694,108 @@ def test_pipeline_waiting_after_deadline_still_ends_before_backend_time_limit(
     # Backend 제한에 걸렸다면 "외부 서비스 응답이 2.0초 안에 …" 였을 것이다.
     assert envelope["error"] == {"code": "AI_TIMEOUT", "message": AI_TIMEOUT_MESSAGE}
     assert len(calls) == 1
+
+
+def _record_deadline(original, calls):
+    def accepts_deadline(stt_result, client=None, case_id=None, *, deadline=None):
+        calls.append({"deadline": deadline, "now": time.monotonic()})
+        return original(stt_result=stt_result, client=client, case_id=case_id)
+
+    return accepts_deadline
+
+
+def test_deadline_uses_time_limit_given_by_analysis_service(
+    modeling, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """analysis_service 가 작업 전체 마감에 맞춰 줄인 분석 제한 시간을 넘기면 마감 시각도 그 기준이다."""
+
+    calls = _patch_contract_function(monkeypatch, _record_deadline)
+    monkeypatch.setattr(settings, "AI_TIMEOUT_SECONDS", 100.0)
+    monkeypatch.setattr(settings, "AI_DEADLINE_MARGIN_SECONDS", 7.0)
+
+    before = time.monotonic()
+    ModelingAIAdapter().analyze(TRANSCRIPT, time_limit_seconds=40.0)
+    after = time.monotonic()
+
+    [call] = calls
+    assert before + 33.0 <= call["deadline"] <= after + 33.0
+
+
+def test_deadline_follows_job_deadline_when_worker_started_late(
+    client: TestClient,
+    counselor_headers,
+    counselor_id,
+    session: dict,
+    modeling,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """작업 시작이 늦어 분석 제한 시간이 줄면, modeling 에 넘기는 마감 시각도 줄어든 제한 - 여유다.
+
+    시험 설정: 분석 제한 5초 · 여유 1초 · 준비 제한 45초 → 작업 전체 50초. 요청 뒤 47초가 흘렀으면
+    분석 제한은 약 3초, 마감 시각은 분석 시작 + 약 2초다(줄이지 않으면 + 4초).
+    """
+
+    from tests.test_analysis_late_results import _reserve, _shift_requested_at
+
+    confirmed_session(client, counselor_headers, session["id"])
+    calls = _patch_contract_function(monkeypatch, _record_deadline)
+    set_ai_adapter_override(ModelingAIAdapter())
+
+    analysis_id = _reserve(session["id"], counselor_id)
+    _shift_requested_at(session["id"], 47)
+
+    analysis_service.process_analysis(uuid.UUID(session["id"]), analysis_id)
+
+    [call] = calls
+    left = call["deadline"] - call["now"]
+
+    assert 1.5 <= left <= 3.0 - settings.AI_DEADLINE_MARGIN_SECONDS
+    assert _get_analysis(client, counselor_headers, session["id"]).json()["data"]["session_status"] == (
+        "AI_REVIEW_REQUIRED"
+    )
+
+
+class _BrokenSignature:
+    """서명 정보(__signature__)를 읽으면 RuntimeError 가 나는 호출 가능 객체. 원래 함수를 그대로 부른다."""
+
+    def __init__(self, original, calls) -> None:
+        self.original = original
+        self.calls = calls
+
+    @property
+    def __signature__(self):
+        raise RuntimeError("가상 서명 오류")
+
+    def __call__(self, stt_result, client=None, case_id=None, **kwargs):
+        self.calls.append(kwargs)
+        return self.original(stt_result=stt_result, client=client, case_id=case_id)
+
+
+def test_signature_read_error_means_deadline_is_not_passed(
+    modeling, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """함수 서명을 읽다가 TypeError · ValueError 가 아닌 예외가 나도 '받지 않음' 으로 보고 분석을 계속한다."""
+
+    calls = _patch_contract_function(monkeypatch, _BrokenSignature)
+
+    bundle = ModelingAIAdapter().analyze(TRANSCRIPT)
+
+    assert bundle.provider == "modeling"
+    assert calls == [{}]
+
+
+def test_import_error_message_keeps_only_exception_type(
+    modeling, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """import 실패 문구에는 예외 종류 이름만 싣는다. 예외 문구(모듈 경로 · 내려받기 주소 등)는 DB · API 로 가지 않는다."""
+
+    monkeypatch.setitem(sys.modules, HEAVY_MODULE, None)
+
+    with pytest.raises(AIError) as raised:
+        ModelingAIAdapter().prepare()
+
+    assert raised.value.error_code == ErrorCode.AI_FAILED
+    assert str(raised.value) == "Modeling Pipeline module 을 import 할 수 없습니다: ModuleNotFoundError"
 
 
 # =========================================================
