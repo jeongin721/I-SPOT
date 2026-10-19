@@ -233,6 +233,7 @@ PowerShell 에서는 `$env:TEST_DATABASE_URL = "postgresql+psycopg://ispot:ispot
 - Audio Upload (확장자 / MIME / 크기 / 빈 파일 / 손상 파일 / Path Traversal)
 - STT Mock / STT Error / STT Timeout / STT Contract 위반
 - AI Mock / AI Timeout / AI 실패 / AI 잘못된 출력 / 재시도
+- 멈춤 판정 뒤 늦게 끝난 AI 결과 · 실패 버리기, 요청 시각부터 잰 작업 전체 마감(`tests/test_analysis_late_results.py`)
 - Transcript 수정·확정, Summary 수정·승인, Audit log
 - 전체 E2E Flow, Response Contract 유지
 
@@ -321,9 +322,14 @@ OPENAI_MODEL=...
 > backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
 > 근거 발화가 없는 위험 항목은 `langgraph` 와 같이 저장 전에 뺀다.
 > 모듈은 import 할 때 모델을 올린다. 서버가 시작할 때 백그라운드로 미리 올리고(실패해도 서버는 뜬다),
-> 분석 제한 시간(`AI_TIMEOUT_SECONDS`)에는 넣지 않는다. 아직 올리는 중이면 분석이 45초까지 기다리고, 그래도 안 끝나면
+> 분석 제한 시간(`AI_TIMEOUT_SECONDS`)에는 넣지 않는다. 아직 올리는 중이면 분석이 최대 45초 기다리고, 그래도 안 끝나면
 > `AI_TIMEOUT`("AI 모델을 아직 불러오는 중입니다…")으로 끝난다. 함수가 `deadline` 을 받는 판이면 마감 시각
-> (분석 시작 + `AI_TIMEOUT_SECONDS` - `AI_DEADLINE_MARGIN_SECONDS`, `time.monotonic()` 기준)을 넘긴다.
+> (분석 시작 + 분석 제한 - `AI_DEADLINE_MARGIN_SECONDS`, `time.monotonic()` 기준)을 넘긴다.
+> 준비 · 분석 제한은 작업 하나 전체로 맞춘다: 요청 시각부터 45초 + `AI_TIMEOUT_SECONDS`(기본 225초) 안에 끝나도록,
+> 작업 시작이 늦었거나 준비가 길었으면 그만큼 준비 제한 · 분석 제한(과 위 마감 시각)을 줄이고, 남은 시간이 없으면 분석을
+> 부르지 않고 `AI_TIMEOUT` 으로 끝낸다. 처리 중 멈춤 판정(요청 시각 + `AI_TIMEOUT_SECONDS` + 60초)보다 15초 앞이다.
+> 그래도 멈춤 판정이 먼저 실패로 마감한 작업(서버 시계 차이 등)이나 재시도로 바뀐 옛 작업의 늦은 결과 · 실패는 저장하지
+> 않는다(분석이 아직 처리 중이고 회차가 그 작업을 기다릴 때만 저장하는 조건부 UPDATE). 모든 provider 에 같다.
 > 여유 기본 10초는 모듈이 마감에 걸린 LLM 호출의 응답을 마감 + 5초까지 기다리는 것보다 길게 잡은 값이다(5초 이하면 Backend
 > 제한 시간과 같은 순간 끝나 Backend 가 먼저 잡는다). `AI_PROVIDER=modeling` 이면 여유가 `AI_TIMEOUT_SECONDS` 보다 작아야
 > 서버가 시작한다(설정 검사).
