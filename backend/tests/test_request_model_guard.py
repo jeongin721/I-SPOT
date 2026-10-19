@@ -230,7 +230,9 @@ def _probe_app() -> FastAPI:
         return None
 
     @inner.get("/guarded-query")
-    def guarded_query(search: Annotated[StorableQueryText, Query(max_length=10)] = None) -> None:
+    def guarded_query(
+        search: Annotated[Optional[str], Query(max_length=10), StorableQueryText] = None,
+    ) -> None:
         return None
 
     outer = APIRouter()

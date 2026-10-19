@@ -62,7 +62,8 @@ def list_cases(
     page_size: PageSizeQuery = 20,
     status_filter: Annotated[Optional[CaseStatus], Query(alias="status")] = None,
     # NUL 이 든 검색어는 422 다(SQL 파라미터로 쓰이므로 PostgreSQL 이 거절해 500 이 된다).
-    search: Annotated[StorableQueryText, Query(max_length=100)] = None,
+    # StorableQueryText 는 Query(...) 뒤에 둔다(common.py).
+    search: Annotated[Optional[str], Query(max_length=100), StorableQueryText] = None,
 ) -> DataResponse[PagedItems[CaseResponse]]:
     cases, total = case_service.list_cases(
         db,

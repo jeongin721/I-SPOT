@@ -1,7 +1,7 @@
 # 공통 요청/응답 Schema.
 
 import re
-from typing import Annotated, Any, ClassVar, Dict, FrozenSet, Optional
+from typing import Any, ClassVar, Dict, FrozenSet, Optional
 
 from pydantic import AfterValidator, BaseModel, ValidationInfo, field_validator
 
@@ -59,9 +59,15 @@ def reject_unstorable_text(value: Any) -> Any:
     return value
 
 
-# 글자 쿼리 파라미터에 쓴다. 본문은 RequestModel 이 막지만 쿼리는 따로 붙여야 한다.
+# 글자 쿼리 파라미터의 Annotated 맨 뒤에 붙인다. 본문은 RequestModel 이 막지만 쿼리는 따로 붙여야 한다.
 # 쿼리는 저장되지 않아도 SQL 파라미터로 쓰이고, PostgreSQL 은 NUL 이 든 파라미터를 거절한다.
-StorableQueryText = Annotated[Optional[str], AfterValidator(reject_unstorable_text)]
+#
+#   search: Annotated[Optional[str], Query(max_length=100), StorableQueryText] = None
+#
+# Query(...) 보다 앞에 두면 max_length · pattern 이 이 검사를 거친 값에 걸려, OpenAPI 에서 pattern 이 빠지고
+# maxLength 자리가 바뀌며 오류 사유도 pydantic 의 다른 문구가 된다(tests/test_request_model_guard.py 가 순서도 본다).
+# 타입이 아니라 표시라 Annotated[StorableQueryText, ...] 처럼 맨 앞에 쓰면 불러올 때 바로 오류가 난다.
+StorableQueryText = AfterValidator(reject_unstorable_text)
 
 
 class RequestModel(BaseModel):
