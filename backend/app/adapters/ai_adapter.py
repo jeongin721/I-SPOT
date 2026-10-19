@@ -291,11 +291,10 @@ class ModelingAIAdapter:
     만든 파이프라인이라, 이 adapter를 선택하면 ai/services/ 쪽은
     아예 호출되지 않는다. 심각도(severity_ratings)/보호요인
     (protective_factors)/회차 간 변화(session_change_notes)/다음
-    상담 확인사항(followup_check_points)은 AI Output Contract에
-    아직 정식 필드가 없다 — (10/16 리뷰 결정) risk_factors에 임시로
-    욱여넣지 않고, 정식 선택 필드가 생길 때까지 이번 Contract 출력에는
-    담지 않는다. summary는 agent/summary_converter.convert_summary()를
-    그대로 쓴다 — contract_adapter.py 모듈 docstring 참고.
+    상담 확인사항(followup_check_points)은 #49 의 정식 선택 필드에
+    채운다(#57, risk_factors 는 빈 배열). summary는
+    agent/summary_converter.convert_summary()를 그대로 쓴다 —
+    contract_adapter.py 모듈 docstring 참고.
 
     근거 발화가 없는 위험 항목은 저장 전에 뺀다(drop_ungrounded_risk_items).
     LangGraphAIAdapter 와 같이 모듈이 돌려준 값이 아니라 어댑터가 받은
