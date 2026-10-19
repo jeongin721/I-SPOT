@@ -4,7 +4,8 @@
 // 서버 연결: 화면 주소 ?case=…&session=…. 상담 요약은 useSummaryReview(고치기 · 저장 · 승인), 상담 일지는
 // useSessionDocuments(상담일지 문서 만들기 · 고치기 · 승인), 머리는 useSessionDetail · useCaseDetail 이 부르고,
 // 화면에 쓸 값은 src/data/screens/noteWrite.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// '요약 승인' 은 회차를 '승인 완료' 로 바꾸므로 따로 단추를 두고 한 번 더 묻는다. 아래 '저장 · …' 단추는 저장만 한다.
+// '요약 승인' · '일지 승인' 은 누르면 바로 승인한다(승인한 뒤 '요약 수정' · '일지 수정' 으로 풀 수 있다).
+// '요약 승인' 은 회차를 '승인 완료' 로 바꾼다. 아래 '저장 · …' 단추는 저장만 한다.
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -39,7 +40,7 @@ class Logic extends DCLogic {
 export default function NoteWrite(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
-  const go = useScreenGo(useNavigate(), ids);
+  const go = useScreenGo(useNavigate());
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
@@ -147,36 +148,21 @@ export default function NoteWrite(props) {
               </p>
             ) : null}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-s" onClick={v.saveSummary} disabled={!v.canSaveSummary}>
-                요약 저장
-              </button>
-              <button type="button" className="btn btn-p" onClick={v.askSummary} disabled={!v.canApproveSummary}>
-                요약 승인
-              </button>
+              {v.summaryApproved ? (
+                <button type="button" className="btn btn-s" onClick={v.reopenSummary} disabled={!v.canReopenSummary}>
+                  요약 수정
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-s" onClick={v.saveSummary} disabled={!v.canSaveSummary}>
+                    요약 저장
+                  </button>
+                  <button type="button" className="btn btn-p" onClick={v.approveSummary} disabled={!v.canApproveSummary}>
+                    요약 승인
+                  </button>
+                </>
+              )}
             </div>
-            {v.summaryAsk ? (
-              <div
-                role="alertdialog"
-                aria-label="승인 확인"
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px 14px',
-                  borderRadius: '12px',
-                  background: '#F7F6F2',
-                }}
-              >
-                <span style={{ flex: '1 1 260px' }}>{v.summaryAskText}</span>
-                <button type="button" className="btn btn-sm btn-s" onClick={v.cancelAsk}>
-                  취소
-                </button>
-                <button type="button" className="btn btn-sm btn-p" onClick={v.approveSummary}>
-                  승인
-                </button>
-              </div>
-            ) : null}
           </section>
 
           <section
@@ -312,36 +298,21 @@ export default function NoteWrite(props) {
               </p>
             ) : null}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-s" onClick={v.saveDoc} disabled={!v.canSaveDoc}>
-                일지 저장
-              </button>
-              <button type="button" className="btn btn-p" onClick={v.askDoc} disabled={!v.canApproveDoc}>
-                일지 승인
-              </button>
+              {v.docApproved ? (
+                <button type="button" className="btn btn-s" onClick={v.reopenDoc} disabled={!v.canReopenDoc}>
+                  일지 수정
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-s" onClick={v.saveDoc} disabled={!v.canSaveDoc}>
+                    일지 저장
+                  </button>
+                  <button type="button" className="btn btn-p" onClick={v.approveDoc} disabled={!v.canApproveDoc}>
+                    일지 승인
+                  </button>
+                </>
+              )}
             </div>
-            {v.docAsk ? (
-              <div
-                role="alertdialog"
-                aria-label="승인 확인"
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px 14px',
-                  borderRadius: '12px',
-                  background: '#F7F6F2',
-                }}
-              >
-                <span style={{ flex: '1 1 260px' }}>{v.docAskText}</span>
-                <button type="button" className="btn btn-sm btn-s" onClick={v.cancelAsk}>
-                  취소
-                </button>
-                <button type="button" className="btn btn-sm btn-p" onClick={v.approveDoc}>
-                  승인
-                </button>
-              </div>
-            ) : null}
           </section>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <A className="btn btn-s" to={v.backHref}>

@@ -29,8 +29,6 @@ class Logic extends DCLogic {
   }
 }
 
-const NO_IDS = { caseId: null, sessionId: null };
-
 export default function CaseRegister(props) {
   const session = useAuthSession();
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
@@ -78,7 +76,7 @@ function CaseRegisterWaiting({ session }) {
 function CaseRegisterForm(props) {
   const { session } = props;
   const register = useCaseRegister(session);
-  const go = useScreenGo(useNavigate(), NO_IDS);
+  const go = useScreenGo(useNavigate());
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, register, go });
   return (

@@ -6,13 +6,14 @@
 // 화면은 start() 에 사례 · 회차 · 파일을 넘기고 phase 를 보고 그린다. 실패하면 retry() 가 실패한 단계부터 다시 한다.
 //  - 새 회차를 만든 뒤 업로드 · 변환이 실패하고 다시 시도하면 **이미 만든 회차를 다시 쓴다**
 //    (예전 화면은 새 회차를 또 만들어 빈 회차가 쌓였다). 회차 만들기 응답을 놓쳤으면(연결 끊김 · 5xx) 다시 시도할 때
-//    그사이 생긴 빈 회차(CREATED)를 먼저 찾아 쓴다.
+//    그사이 생긴 빈 회차(CREATED)를 먼저 찾아 쓴다. 다만 그 회차 · 요청을 정한 뒤 로그인이 바뀌었으면(다른 탭에서 다시
+//    로그인) 다시 쓰지 않는다. 다시 시도는 막고 처음부터 다시 올리게 한다(앞 로그인이 고른 것을 새 토큰으로 보내지 않게).
 //  - 진행률(%)은 Backend 가 주지 않는다. 단계(phase)로 보여 준다.
 //  - 화면을 닫아도 서버의 변환은 계속된다. 결과는 회차 상세 · 처리 대기 업무에서 이어서 본다.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { ApiError, getToken } from "../api/client";
 import { cases, sessions, transcript } from "../api/endpoints";
 import type { SessionCreateRequest, SessionStatus } from "../api/types";
 import { checkAudioFile } from "./audioFile";
@@ -115,6 +116,9 @@ export function useAudioUpload(): AudioUploadState {
   // 회차 만들기 요청이 서버에 닿았는지 모르게 실패했다(연결 끊김 · 5xx). 다시 시도할 때 그사이 생긴 빈 회차를 먼저 찾는다.
   const uncertain = useRef<{ caseId: string; since: number } | null>(null);
   const failedAt = useRef<UploadFailedStep | null>(null);
+  // 위 request · created · uncertain · failedAt 를 정한 실행의 로그인 토큰. 실패로 멈춘 뒤 다른 탭에서 다시 로그인해도
+  // 업로드 창은 그대로 붙어 있다. 그때 다시 시도 · 새로 시작이 앞 로그인으로 고른 회차 · 파일을 새 토큰으로 보내지 않게 한다.
+  const owner = useRef<string | null>(null);
   // 실행 중인가. 실행 중에는 start · retry 를 받지 않는다.
   const running = useRef(false);
 
@@ -125,9 +129,22 @@ export function useAudioUpload(): AudioUploadState {
     [],
   );
 
-  const run = useCallback(async (input: UploadRequest, from: UploadFailedStep): Promise<boolean> => {
+  /** 로그인이 바뀌어 멈춘다. 앞 로그인으로 고른 회차 · 요청은 잊고, 다시 시도 대신 처음부터 다시 올리게 한다. */
+  const stopForLogin = useCallback(() => {
+    request.current = null;
+    created.current = null;
+    uncertain.current = null;
+    failedAt.current = "file";
+    setFailedStep("file");
+    setError("로그인이 바뀌어 올리기를 멈췄습니다. 다시 올려 주세요.");
+    setPhase("failed");
+  }, []);
+
+  const run = useCallback(async (input: UploadRequest, from: UploadFailedStep, token: string | null): Promise<boolean> => {
     const id = ++runId.current;
-    const alive = () => id === runId.current;
+    // 시작할 때의 로그인이 그대로인가도 본다. 다른 탭에서 다시 로그인하면(토큰이 바뀜) 화면은 그대로라 runId 가 오르지 않는다.
+    // 그때 앞 로그인으로 시작한 실행이 다음 단계(업로드 · 변환 요청 · 조회)를 새 로그인 토큰으로 보내지 않게 멈춘다.
+    const alive = () => id === runId.current && getToken() === token;
     // 같은 화면의 회차 상세 · 사례 상세 훅이 새 상태를 받아 가게 알린다.
     const changed = (target: string) => notifySessionChanged({ sessionId: target, caseId: input.caseId });
     const steps: UploadFailedStep[] = ["file", "createSession", "upload", "requestStt", "transcribing"];
@@ -293,22 +310,37 @@ export function useAudioUpload(): AudioUploadState {
 
       running.current = true;
 
+      const token = getToken();
+      owner.current = token;
       // run 은 첫 await 전까지 바로 돌아 runId 를 올린다. 그 번호의 실행이 끝날 때만 풀어 준다
       // (reset 뒤 새로 시작한 실행의 잠금을 앞 실행이 풀지 않게).
-      const finished = run(input, from);
+      const finished = run(input, from, token);
       const id = runId.current;
 
-      return finished.finally(() => {
-        if (runId.current === id) running.current = false;
-      });
+      return finished
+        .then((ok) => {
+          // 다른 탭에서 다시 로그인해 멈춘 실행이면 진행 표시를 거두고 처음부터 다시 올리게 한다. 다시 시도는 막는다
+          // (앞 로그인으로 고른 회차 · 요청을 새 로그인으로 보내게 되므로).
+          if (!ok && runId.current === id && getToken() !== token) stopForLogin();
+
+          return ok;
+        })
+        .finally(() => {
+          if (runId.current === id) running.current = false;
+        });
     },
-    [run],
+    [run, stopForLogin],
   );
 
   const start = useCallback(
     (input: UploadRequest) => {
       if (running.current) return Promise.resolve(false);
 
+      // 실패로 멈춘 뒤 로그인이 바뀌었으면(다른 탭에서 다시 로그인) 앞 로그인으로 만든 회차는 다시 쓰지 않는다.
+      if (owner.current !== getToken()) {
+        created.current = null;
+        uncertain.current = null;
+      }
       // 다른 사례로 새로 시작하면 앞 사례에서 만든 회차는 잊는다(같은 사례면 retry 처럼 다시 쓴다).
       if (created.current && created.current.caseId !== input.caseId) created.current = null;
       if (uncertain.current && uncertain.current.caseId !== input.caseId) uncertain.current = null;
@@ -326,10 +358,16 @@ export function useAudioUpload(): AudioUploadState {
     const input = request.current;
     const from = failedAt.current;
 
-    if (!input || !from || from === "file") return Promise.resolve(false);
+    if (!input || !from || from === "file" || running.current) return Promise.resolve(false);
+
+    // 실패로 멈춘 뒤 다른 탭에서 다시 로그인했다. 앞 로그인으로 고른 회차 · 파일을 새 로그인 토큰으로 보내지 않는다.
+    if (owner.current !== getToken()) {
+      stopForLogin();
+      return Promise.resolve(false);
+    }
 
     return launch(input, from);
-  }, [launch]);
+  }, [launch, stopForLogin]);
 
   const reset = useCallback(() => {
     // 기다리던 실행은 다음 확인 때 조용히 멈춘다. 그 실행이 이미 보낸 요청(회차 만들기 · 업로드)은 서버에서 끝까지 간다.

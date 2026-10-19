@@ -87,3 +87,21 @@ def approve_document(
     approved = document_service.approve_document(db, session, document, current_user)
 
     return DataResponse(data=DocumentResponse.model_validate(approved))
+
+
+@router.post(
+    "/{session_id}/documents/{document_id}/reopen",
+    response_model=DataResponse[DocumentResponse],
+    summary="승인된 문서를 다시 수정할 수 있게 되돌리기",
+)
+def reopen_document(
+    session_id: uuid.UUID,
+    document_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[DocumentResponse]:
+    session = get_session_or_404(db, session_id, current_user)
+    document = document_service.get_document_or_404(db, session.id, document_id)
+    reopened = document_service.reopen_document(db, document)
+
+    return DataResponse(data=DocumentResponse.model_validate(reopened))
