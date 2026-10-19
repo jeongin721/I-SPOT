@@ -136,5 +136,10 @@ def _build_openai_client() -> OpenAI:
         )
 
     return OpenAI(
-        api_key=api_key
+        api_key=api_key,
+        # SDK 자체 재시도를 끈다 — _call_llm_with_retry(second_stage_llm.py)가
+        # 이미 재시도를 하는데, SDK까지 기본값(2회) 재시도하면 deadline을
+        # 넘긴 뒤에도 같은 요청이 추가로 나간다(2026-10-19 Mingyu 리뷰,
+        # 실제 OpenAI 라이브러리로 재현 확인).
+        max_retries=0,
     )

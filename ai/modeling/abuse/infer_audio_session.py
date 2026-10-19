@@ -14,7 +14,7 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 """
 
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from typing import Any, Dict, List, Optional, Tuple
 
 from ai.adapters.stt_analysis_adapter import validate_stt_result
@@ -630,7 +630,9 @@ def analyze_audio_session(
     # use_correction_hint=False: build_correction_hint_text()가 과거 회차
     # 원문 인용을 mask_for_outbound 없이 시스템 프롬프트에 붙이므로, 외부
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    executor = ThreadPoolExecutor(max_workers=4)
+
+    try:
         counseling_future = executor.submit(
             generate_counseling_records,
             client=client,
@@ -665,13 +667,37 @@ def analyze_audio_session(
             deadline=deadline,
         )
 
-        # future.result()는 해당 작업이 raise한 예외를 그대로 다시
-        # 던진다 — 순차 호출일 때와 동일하게, counseling_records나
-        # checklist_draft가 실패하면 analyze_audio_session 전체가 실패한다.
+        all_futures = [
+            counseling_future,
+            checklist_future,
+            record_draft_future,
+            protective_factors_future,
+        ]
+
+        # 넷 중 하나라도 실패하면(record_draft/protective_factors는 내부에서
+        # 이미 실패를 삼키므로 사실상 counseling_records/checklist_draft만
+        # 해당) 나머지가 아직 안 끝났어도 기다리지 않고 바로 실패 처리한다
+        # (2026-10-19 Mingyu 리뷰) — wait(..)가 반환하자마자 shutdown을
+        # wait=False로 불러 이미 끝난 것 말고는 안 기다린다. 이미 시작된
+        # 스레드 자체를 강제로 멈추지는 못하지만(파이썬 한계), 이 함수는
+        # 더 기다리지 않고 바로 돌아간다 — 그 스레드들도 각자 deadline으로
+        # 묶여 있어 결국 끝난다.
+        done, _not_done = wait(all_futures, return_when=FIRST_EXCEPTION)
+
+        for future in done:
+            future.result()
+
         counseling_records = counseling_future.result()
         checklist_draft = checklist_future.result()
         record_draft = record_draft_future.result()
         protective_factors = protective_factors_future.result()
+    finally:
+        # cancel_futures는 Python 3.9+에서만 있다(이 저장소는 환경마다
+        # 3.8/3.9/3.12가 섞여 있다) — 없으면 그냥 wait=False만 쓴다.
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
 
     counseling_records = restore_pii(
         counseling_records,
@@ -864,6 +890,8 @@ def analyze_audio_session(
     followup_check_points = restore_pii(
         followup_check_points, followup_entity_map
     )
+
+    _check_deadline(deadline, "결과 조립")
 
     return {
         "full_text": full_text,
