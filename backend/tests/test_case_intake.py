@@ -22,7 +22,7 @@ REPO_DIR = Path(__file__).resolve().parents[2]
 WEB_ITEMS = REPO_DIR / "counselor-web" / "src" / "data" / "screens" / "intakeItems.ts"
 
 # 초기면접 칸을 추가하기 바로 전 revision
-BEFORE_INTAKE = "d2abcbfb23b7"
+BEFORE_INTAKE = "a3538c45b811"
 
 
 def _patch(client: TestClient, headers, case_id: str, payload: dict):

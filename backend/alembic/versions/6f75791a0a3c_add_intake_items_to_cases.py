@@ -1,7 +1,7 @@
 """add intake child traits and family situations to cases
 
 Revision ID: 6f75791a0a3c
-Revises: d2abcbfb23b7
+Revises: a3538c45b811
 Create Date: 2026-10-16 17:30:00.000000
 
 초기면접(서식 4 ②)에서 고른 아동 특성 · 가정상황(서식 항목 이름 목록).
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = '6f75791a0a3c'
-down_revision: Union[str, None] = 'd2abcbfb23b7'
+down_revision: Union[str, None] = 'a3538c45b811'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
