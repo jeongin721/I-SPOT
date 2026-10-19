@@ -298,7 +298,9 @@ def _clean_ratings(
         matched_evidence = item.get("matched_evidence")
 
         if not isinstance(matched_evidence, str):
-            matched_evidence = None
+            # Contract의 SeverityRating.matched_evidence는 str(기본 "")라
+            # None을 넣으면 검증에서 거절된다(2026-10-16 Mingyu 리뷰).
+            matched_evidence = ""
 
         cleaned.append(
             {
