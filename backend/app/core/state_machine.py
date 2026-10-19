@@ -77,9 +77,12 @@ def status_label(status: SessionStatus) -> str:
     return _STATUS_LABELS.get(status, "알 수 없는 상태")
 
 
-def _blocked_message(current: SessionStatus, hint: str) -> str:
+def _blocked_message(current: SessionStatus, hint: str, *, after_reopen: bool) -> str:
     if current == SessionStatus.APPROVED:
-        return "승인이 끝난 회기는 바꿀 수 없습니다. 상담 요약의 '요약 수정' 으로 승인을 풀면 다시 고칠 수 있습니다."
+        message = "승인이 끝난 회기는 바꿀 수 없습니다."
+        if after_reopen:
+            message += " 상담 요약의 '요약 수정' 으로 승인을 풀면 다시 고칠 수 있습니다."
+        return message
 
     return f"지금 회기 상태({status_label(current)})에서는 할 수 없는 요청입니다. {hint}"
 
@@ -94,7 +97,11 @@ def assert_transition(current: SessionStatus, target: SessionStatus) -> None:
         # details.expected_status 는 지금 상태에서 넘어갈 수 있는 상태 코드다.
         # 요청에 "필요한" 상태가 아니므로 문구에는 넣지 않는다.
         expected = ", ".join(sorted(status.value for status in allowed)) or "없음"
-        message = _blocked_message(current, "새로고침해 현재 상태를 확인해 주세요.")
+        message = _blocked_message(
+            current,
+            "새로고침해 현재 상태를 확인해 주세요.",
+            after_reopen=can_transition(SessionStatus.AI_REVIEW_REQUIRED, target),
+        )
 
         raise invalid_session_state(current.value, expected, message)
 
@@ -112,4 +119,7 @@ def assert_status_in(current: SessionStatus, allowed: Set[SessionStatus]) -> Non
             else "새로고침해 현재 상태를 확인해 주세요."
         )
 
-        raise invalid_session_state(current.value, expected, _blocked_message(current, hint))
+        message = _blocked_message(
+            current, hint, after_reopen=SessionStatus.AI_REVIEW_REQUIRED in allowed
+        )
+        raise invalid_session_state(current.value, expected, message)

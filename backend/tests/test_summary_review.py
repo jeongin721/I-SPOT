@@ -234,6 +234,36 @@ def test_reopen_approved_summary_keeps_content_and_allows_reapproval(
     assert detail["approved_at"]
 
 
+def test_summary_reopen_does_not_offer_to_unlock_transcript(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    root = f"/api/v1/sessions/{session['id']}"
+    transcript = client.get(f"{root}/transcript", headers=counselor_headers).json()["data"][
+        "transcript"
+    ]
+    assert client.post(f"{root}/summary/approve", headers=counselor_headers).status_code == 200
+    payload = {
+        "segments": [
+            {"segment_id": transcript["segments"][0]["segment_id"], "text": "가상 수정 원문"}
+        ]
+    }
+
+    blocked = client.patch(f"{root}/transcript", json=payload, headers=counselor_headers)
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "INVALID_SESSION_STATE"
+    assert "요약 수정" not in blocked.json()["error"]["message"]
+
+    assert client.post(f"{root}/summary/reopen", headers=counselor_headers).status_code == 200
+    still_blocked = client.patch(f"{root}/transcript", json=payload, headers=counselor_headers)
+    assert still_blocked.status_code == 409
+    assert still_blocked.json()["error"]["details"]["current_status"] == "AI_REVIEW_REQUIRED"
+    unchanged = client.get(f"{root}/transcript", headers=counselor_headers).json()["data"][
+        "transcript"
+    ]
+    assert unchanged == transcript
+
+
 def test_reopen_unapproved_summary_returns_not_approved(
     client: TestClient, counselor_headers, session: dict
 ) -> None:

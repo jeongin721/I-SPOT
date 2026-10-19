@@ -16,6 +16,7 @@
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
+import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryReviewState } from "../useSummaryReview";
 import { screenHref } from "./links";
@@ -162,12 +163,17 @@ export function parseNote(content: string): NoteDraft {
   return note;
 }
 
-/** 화면 상태(Logic.state). */
+/**
+ * 화면 상태(Logic.state). 화면은 계정이 바뀌어도 새로 만들어지지 않으므로, 고친 일지는 그때의 대상 표
+ * (docs.capture() — 회차 · 대상 세대 · 로그인 토큰)와 함께 두고 표가 지금 대상일 때만 쓴다.
+ * 다른 회차로 옮기거나, 갔다 돌아오거나(A → B → A), 다른 탭에서 다시 로그인하면 버린 것으로 본다
+ * (요약 훅의 고친 칸이 대상이 바뀔 때 비워지는 것과 같은 기준. 앞 로그인이 쓴 초안이 새 로그인 화면 · 요청에 실리지 않게).
+ */
 export interface NoteUiState {
   /** 고친 일지. null 이면 서버 값 그대로. */
   draft: NoteDraft | null;
-  /** draft 가 어느 회차 것인가(다른 회차로 옮기면 버린다). */
-  draftFor: string | null;
+  /** draft 를 쓴 대상의 표. */
+  draftFor: RemoteTicket | null;
 }
 
 export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null };
@@ -191,7 +197,6 @@ export function noteWriteValues(input: NoteScreenInput) {
   const { summary, docs, state, setState, go, detail, caseDetail } = input;
   const header = processHeaderValues(input, 2);
   const ids = header.ids;
-  const sessionId = ids.sessionId;
   const sv = detail.session;
   const info = caseDetail.caseInfo;
   const signalHref = screenHref("/SignalReview", ids);
@@ -255,7 +260,7 @@ export function noteWriteValues(input: NoteScreenInput) {
   // ---------------- 상담 일지 ----------------
   const record = docs.consultationRecord;
   const saved = record ? parseNote(record.content) : EMPTY_NOTE;
-  const draft = state.draft && state.draftFor === sessionId ? state.draft : null;
+  const draft = state.draft && docs.isCurrent(state.draftFor) ? state.draft : null;
   const note = draft ?? saved;
   const content = formatNote(note);
   const docDirty = draft !== null && content !== (record?.content ?? "");
@@ -265,9 +270,13 @@ export function noteWriteValues(input: NoteScreenInput) {
   const docLocked = docReadOnly || docs.loading || busy;
   const edit = (patch: Partial<NoteDraft>) =>
     setState((current) => {
-      const base = current.draft && current.draftFor === sessionId ? current.draft : note;
+      const kept = current.draft && docs.isCurrent(current.draftFor) ? current : null;
+      const ticket = kept ? kept.draftFor : docs.capture();
 
-      return { draft: { ...base, ...patch }, draftFor: sessionId };
+      // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 쓸 곳이 없다.
+      if (!ticket) return {};
+
+      return { draft: { ...(kept?.draft ?? note), ...patch }, draftFor: ticket };
     });
   const textField = (key: TextKey) => ({
     value: note[key],
@@ -288,7 +297,10 @@ export function noteWriteValues(input: NoteScreenInput) {
       };
     });
 
-  /** 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null. */
+  /**
+   * 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null.
+   * 요청한 뒤 대상이 바뀌어(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남) 반영하지 못했어도 null 이다(docs 훅).
+   */
   const saveDoc = async (): Promise<DocumentRow | null> => {
     if (!docDirty) return record;
 
@@ -354,9 +366,11 @@ export function noteWriteValues(input: NoteScreenInput) {
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
     // 고친 일지를 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
     approveDoc: async () => {
+      // 저장하는 사이 대상이 바뀌면 새 로그인으로 앞 회차의 일지를 승인하지 않는다.
+      const ticket = docs.capture();
       const target = await saveDoc();
 
-      if (target) await docs.approve(target.id);
+      if (target && docs.isCurrent(ticket)) await docs.approve(target.id);
     },
     // 승인된 일지면 저장 · 승인 대신 '일지 수정' 단추만 보인다. 쓴 내용은 그대로 남아 이어서 고친다.
     docApproved,
@@ -369,12 +383,16 @@ export function noteWriteValues(input: NoteScreenInput) {
     nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",
     canNext: !busy,
     next: async () => {
-      const forSession = sessionId;
+      // 누를 때의 대상(표). 저장을 기다리는 사이 대상이 바뀌었으면(다른 회차 · 화면, 갔다 돌아옴, 다시 로그인)
+      // 다음 저장을 이어 보내지 않고 앞 회차의 다음 화면으로 끌고 가지도 않는다.
+      // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 저장할 것도 없어 바로 옮긴다.
+      const ticket = docs.capture();
+      const stillHere = () => ticket === null || docs.isCurrent(ticket);
 
       if (summary.canEdit && summary.dirty && !(await summary.save())) return;
+      if (!stillHere()) return;
       if (docDirty && !(await saveDoc())) return;
-      // 저장을 기다리는 사이 다른 회차 · 화면으로 옮겼으면 앞 회차의 다음 화면으로 끌고 가지 않는다.
-      go(screenHref("/FollowupQ", ids), forSession);
+      go(screenHref("/FollowupQ", ids), stillHere);
     },
     /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
     unsaved: (summary.canEdit && summary.dirty) || docDirty,

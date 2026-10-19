@@ -7,12 +7,16 @@ on:
       # agent/ 는 Backend 가 AI_PROVIDER=langgraph 로 호출하므로
       # 여기만 바뀌어도 Backend 테스트가 깨질 수 있다.
       - "agent/**"
+      # ai/ 도 같다. Backend 가 ai.services(pipeline) · ai.modeling(modeling) ·
+      # ai.schemas 를 import 하고, 시험이 ai/modeling 의 실제 변환 코드를 돌린다.
+      - "ai/**"
       - "requirements-agent.txt"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
       - "agent/**"
+      - "ai/**"
       - "requirements-agent.txt"
       - ".github/workflows/backend-ci.yml"
 

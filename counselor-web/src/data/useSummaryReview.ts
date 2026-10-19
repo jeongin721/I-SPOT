@@ -20,7 +20,7 @@ import { notifySessionChanged } from "./sessionEvents";
 import { isProcessing } from "./sessionRows";
 import { formatClock, toDateTime } from "./time";
 import { SPEAKER_LABELS } from "./transcriptRows";
-import { errorMessage, usePolling, useRemote } from "./useRemote";
+import { errorMessage, usePolling, useRemote, type RemoteTicket } from "./useRemote";
 
 export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
   DRAFT: "검수 중",
@@ -90,9 +90,12 @@ export interface SummaryReviewState {
   removeKeyPoint: (index: number) => void;
   setCounselorNote: (value: string) => void;
   discardChanges: () => void;
-  /** 바꾼 칸만 저장한다. 바꾼 것이 없으면 아무것도 보내지 않고 true. */
+  /**
+   * 바꾼 칸만 저장한다. 바꾼 것이 없으면 아무것도 보내지 않고 true.
+   * 요청한 뒤 대상이 바뀌어(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남) 반영하지 못했으면 false.
+   */
   save: () => Promise<boolean>;
-  /** (바꾼 칸을 먼저 저장하고) 승인한다. 회차가 '승인 완료' 가 된다. */
+  /** (바꾼 칸을 먼저 저장하고) 승인한다. 회차가 '승인 완료' 가 된다. 저장 뒤 대상이 바뀌었으면 승인하지 않고 false. */
   approve: () => Promise<boolean>;
   /** 승인을 풀어 다시 고칠 수 있게 한다. 내용은 그대로 두고, 회차는 'AI 결과 검수 필요' 로 돌아간다. */
   reopen: () => Promise<boolean>;
@@ -120,11 +123,21 @@ export function useSummaryReview(
   const inFlight = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState(key);
+  const [seenGeneration, setSeenGeneration] = useState(remote.generation);
 
   if (draftKey !== key) {
     setDraftKey(key);
     setDraft(null);
     setActionError(null);
+  }
+
+  // 대상 세대가 바뀌면(다른 회차, 로그아웃 · 다시 로그인, 다른 회차에 갔다 돌아옴) 앞 대상에서 보낸 요청이 아직 안 끝났어도
+  // 새 대상에서는 보낼 수 있게 한다(그 요청의 응답은 반영하지 않는다).
+  if (seenGeneration !== remote.generation) {
+    setSeenGeneration(remote.generation);
+    setActionError(null);
+    inFlight.current = false;
+    setSubmitting(false);
   }
 
   const envelope = remote.data;
@@ -214,29 +227,40 @@ export function useSummaryReview(
     setActionError(null);
   }, []);
 
-  /** 요청 하나를 한 번에 하나만 보낸다. 같은 순간 두 번 눌러도 두 번째는 false. */
-  const begin = useCallback(() => {
-    if (inFlight.current) return false;
+  /**
+   * 요청 하나를 한 번에 하나만 보낸다. 시작하면 지금 대상의 표, 이미 요청 중이거나 대상이 없으면 null
+   * (같은 순간 두 번 눌러도 두 번째는 null). 이 함수를 만든 그리기 뒤에 대상이 바뀌었어도 null.
+   */
+  const begin = useCallback((): RemoteTicket | null => {
+    const ticket = remote.capture();
+
+    if (!ticket || ticket.key !== key || inFlight.current) return null;
 
     inFlight.current = true;
     setSubmitting(true);
     setActionError(null);
 
-    return true;
-  }, []);
+    return ticket;
+  }, [key, remote.capture]);
 
-  const end = useCallback(() => {
-    inFlight.current = false;
-    setSubmitting(false);
-  }, []);
+  /** 요청이 끝났다. 대상 세대가 바뀌었으면 그때 이미 풀었으므로 새 대상에서 보낸 요청의 표시를 끄지 않는다. */
+  const end = useCallback(
+    (ticket: RemoteTicket) => {
+      if (!remote.sameGeneration(ticket)) return;
+
+      inFlight.current = false;
+      setSubmitting(false);
+    },
+    [remote.sameGeneration],
+  );
 
   /**
-   * 바꾼 칸을 보낸다. 성공하면 true(바꾼 것이 없어도 true). 실패하면 던진다.
+   * 바꾼 칸을 보낸다. 반영하면 true(바꾼 것이 없어도 true). 실패하면 던진다.
    * 응답이 오면 **보낸 그 고친 칸일 때만** 비운다. 저장을 기다리는 사이 더 고쳤으면 그 입력은 남는다.
-   * 요청한 뒤 다른 회차로 옮겼으면 응답을 반영하지 않는다(앞 회차에는 저장됐다).
+   * 요청한 뒤 대상이 바뀌었으면 응답을 반영하지 않고 false(앞 대상에는 저장됐다).
    */
   const sendChanges = useCallback(
-    async (forKey: string) => {
+    async (ticket: RemoteTicket) => {
       if (!dirty) return true;
 
       const sent = draft;
@@ -244,10 +268,10 @@ export function useSummaryReview(
       const payload = changes.key_points
         ? { ...changes, key_points: changes.key_points.map((point) => point.trim()).filter(Boolean) }
         : changes;
-      const next = await summaryApi.update(forKey, payload);
+      const next = await summaryApi.update(ticket.key, payload);
 
-      const applied = remote.setData(forKey, (current) => ({
-        session_id: forKey,
+      const applied = remote.setData(ticket, (current) => ({
+        session_id: ticket.key,
         session_status: "AI_REVIEW_REQUIRED",
         summary_evidence: [],
         error: null,
@@ -257,15 +281,15 @@ export function useSummaryReview(
 
       if (applied) setDraft((current) => (current === sent ? null : current));
 
-      return true;
+      return applied;
     },
     [dirty, draft, changes, remote.setData],
   );
 
   const report = useCallback(
-    (forKey: string, caught: unknown, fallback: string) => {
-      // 요청한 뒤 다른 회차로 옮겼으면 앞 회차의 오류는 보이지 않는다.
-      if (!remote.isCurrent(forKey)) return;
+    (ticket: RemoteTicket, caught: unknown, fallback: string) => {
+      // 요청한 뒤 대상이 바뀌었으면 앞 대상의 오류는 보이지 않고 다시 조회도 하지 않는다.
+      if (!remote.isCurrent(ticket)) return;
       if (!(caught instanceof ApiError && caught.isUnauthorized)) setActionError(errorMessage(caught, fallback));
 
       // 상태가 어긋났을 수 있다(다른 창에서 승인 · 재분석). 최신 상태를 다시 받는다. 고친 칸은 남겨 둔다.
@@ -275,35 +299,36 @@ export function useSummaryReview(
   );
 
   const save = useCallback(async () => {
-    if (!key || !begin()) return false;
+    const ticket = begin();
 
-    const forKey = key;
+    if (!ticket) return false;
 
     try {
-      return await sendChanges(forKey);
+      return await sendChanges(ticket);
     } catch (caught) {
-      report(forKey, caught, "요약을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      report(ticket, caught, "요약을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 
       return false;
     } finally {
-      end();
+      end(ticket);
     }
-  }, [key, begin, end, sendChanges, report]);
+  }, [begin, end, sendChanges, report]);
 
   const approve = useCallback(async () => {
-    if (!key || !begin()) return false;
+    const ticket = begin();
 
-    const forKey = key;
+    if (!ticket) return false;
 
     try {
-      if (!(await sendChanges(forKey))) return false;
-      // 저장하는 사이 다른 회차로 옮겼으면 승인하지 않는다(사람이 보고 있지 않은 요약을 승인하지 않게).
-      if (!remote.isCurrent(forKey)) return false;
+      if (!(await sendChanges(ticket))) return false;
+      // 저장하는 사이 대상이 바뀌었으면(다른 회차, 갔다 돌아옴, 다시 로그인) 승인하지 않는다
+      // (사람이 보고 있지 않은 요약이나 돌아와서 새로 고친 칸이 저장되지 않은 요약을 승인하지 않게).
+      if (!remote.isCurrent(ticket)) return false;
 
-      const approved = await summaryApi.approve(forKey);
+      const approved = await summaryApi.approve(ticket.key);
 
-      remote.setData(forKey, (current) => ({
-        session_id: forKey,
+      const applied = remote.setData(ticket, (current) => ({
+        session_id: ticket.key,
         summary_evidence: [],
         error: null,
         ...current,
@@ -311,46 +336,46 @@ export function useSummaryReview(
         session_status: "APPROVED",
       }));
       // 같은 화면의 회차 상세 · 사례 상세 · 분석 훅이 '승인 완료' 를 받아 가게 알린다.
-      notifySessionChanged({ sessionId: forKey });
+      notifySessionChanged({ sessionId: ticket.key });
 
-      return true;
+      return applied;
     } catch (caught) {
-      report(forKey, caught, "요약을 승인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      report(ticket, caught, "요약을 승인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 
       return false;
     } finally {
-      end();
+      end(ticket);
     }
-  }, [key, begin, end, sendChanges, report, remote.isCurrent, remote.setData]);
+  }, [begin, end, sendChanges, report, remote.isCurrent, remote.setData]);
 
   const reopen = useCallback(async () => {
-    if (!key || !begin()) return false;
+    const ticket = begin();
 
-    const forKey = key;
+    if (!ticket) return false;
 
     try {
-      const reopened = await summaryApi.reopen(forKey);
+      const reopened = await summaryApi.reopen(ticket.key);
 
-      remote.setData(forKey, (current) => ({
-        session_id: forKey,
+      const applied = remote.setData(ticket, (current) => ({
+        session_id: ticket.key,
         summary_evidence: [],
         error: null,
         ...current,
         summary: reopened,
         session_status: "AI_REVIEW_REQUIRED",
       }));
-      // 같은 화면의 회차 상세 · 사례 상세 · 분석 훅이 'AI 결과 검수 필요' 를 받아 가게 알린다.
-      notifySessionChanged({ sessionId: forKey });
+      // 지금 대상에 반영했을 때만 다른 훅에 알린다. 버린 성공의 같은 회차 재조회는 setData 가 맡는다.
+      if (applied) notifySessionChanged({ sessionId: ticket.key });
 
-      return true;
+      return applied;
     } catch (caught) {
-      report(forKey, caught, "요약을 수정 상태로 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      report(ticket, caught, "요약을 수정 상태로 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
 
       return false;
     } finally {
-      end();
+      end(ticket);
     }
-  }, [key, begin, end, report, remote.setData]);
+  }, [begin, end, report, remote.setData]);
 
   const reload = useCallback(() => {
     remote.reload();
