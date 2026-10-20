@@ -9,7 +9,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enums import ReviewStatus, SessionStatus
-from app.schemas.common import SessionErrorInfo
+from app.schemas.common import RequestModel, SessionErrorInfo
 from app.schemas.contracts import SummaryEvidenceItem
 
 
@@ -40,7 +40,7 @@ class SummaryEnvelope(BaseModel):
     error: Optional[SessionErrorInfo] = None
 
 
-class SummaryUpdateRequest(BaseModel):
+class SummaryUpdateRequest(RequestModel):
     overview: Optional[str] = Field(default=None, max_length=20000)
     key_points: Optional[List[str]] = None
     counselor_note: Optional[str] = Field(default=None, max_length=20000)

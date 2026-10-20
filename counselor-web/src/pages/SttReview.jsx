@@ -37,7 +37,7 @@ class Logic extends DCLogic {
 export default function SttReview(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
-  const go = useScreenGo(useNavigate(), ids);
+  const go = useScreenGo(useNavigate());
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });

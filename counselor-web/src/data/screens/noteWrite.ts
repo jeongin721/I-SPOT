@@ -1,7 +1,10 @@
 // 3 · 상담 요약 · 상담 일지(NoteWrite) 화면 값.
 //
 // 상담 요약 카드 = useSummaryReview. AI 요약 초안(개요 · 핵심 내용) · 상담사 메모를 고치고 저장 · 승인한다.
-//  - **요약 승인은 회차를 '승인 완료' 로 바꾼다**(그 뒤 요약을 고칠 수 없다). 그래서 '요약 승인' 단추를 따로 두고 한 번 더 묻는다.
+//  - **요약 승인은 회차를 '승인 완료' 로 바꾼다.** '요약 승인' 단추를 누르면 (고친 칸을 저장하고) 바로 승인한다.
+//    한 번 더 묻지 않는다 — 승인한 뒤에도 '요약 수정' 으로 풀 수 있어서다(2026-10-16 최민규 결정).
+//    승인한 뒤에는 '요약 수정' 단추만 보인다. 누르면 승인이 풀려 쓴 내용 그대로 다시 고칠 수 있고(회차는 'AI 결과 검수 필요'),
+//    고친 뒤 다시 승인한다. 상담 일지도 같다('일지 수정', 회차 상태는 바뀌지 않는다).
 //    아래 '저장 · 추가 확인 · 질문 →' 단추는 저장만 하고 승인하지 않는다(specs 대응표 '승인 시점').
 //  - 근거 발화는 AI 원본 요약 문장별로 보인다(고친 요약 문장과 글자로 맞추지 않는다).
 //  - 화면의 사정 관점 4영역(조사 후 변화 · 강점 · 위험요인 · 원하는 변화)은 Backend 요약에 없다. 개요 · 핵심 내용 · 메모로 보인다.
@@ -10,42 +13,19 @@
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
 //  - AI 일지 초안 · 아동 특성 · 가정상황 AI 제안은 Backend 에 없어 보이지 않는다(빈 칸에서 상담원이 쓴다).
+//  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
+//    나머지 서식 4 항목을 체크리스트로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
+//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 체크리스트를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
+import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryReviewState } from "../useSummaryReview";
+import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
-
-/** 기관 양식의 아동 특성 · 가정상황 고르기 항목(서식의 선택지라 예시 데이터가 아니다). */
-export const CHILD_TRAITS = [
-  "불안",
-  "낮은 자존감",
-  "우울",
-  "무력감",
-  "대인관계 기피",
-  "학교부적응",
-  "애착문제",
-  "주의산만",
-  "반항 · 충동 · 공격성",
-  "잦은 결석",
-  "수면 · 위생 문제",
-  "특성없음",
-];
-
-export const HOME_TRAITS = [
-  "부적절한 양육태도",
-  "양육지식 및 기술부족",
-  "부부 및 가족갈등",
-  "경제적 어려움",
-  "스트레스",
-  "알콜남용",
-  "사회적 고립",
-  "배우자폭력",
-  "특성없음",
-];
 
 export interface NoteDraft {
   statement: string;
@@ -159,17 +139,20 @@ export function parseNote(content: string): NoteDraft {
   return note;
 }
 
-/** 화면 상태(Logic.state). */
+/**
+ * 화면 상태(Logic.state). 화면은 계정이 바뀌어도 새로 만들어지지 않으므로, 고친 일지는 그때의 대상 표
+ * (docs.capture() — 회차 · 대상 세대 · 로그인 토큰)와 함께 두고 표가 지금 대상일 때만 쓴다.
+ * 다른 회차로 옮기거나, 갔다 돌아오거나(A → B → A), 다른 탭에서 다시 로그인하면 버린 것으로 본다
+ * (요약 훅의 고친 칸이 대상이 바뀔 때 비워지는 것과 같은 기준. 앞 로그인이 쓴 초안이 새 로그인 화면 · 요청에 실리지 않게).
+ */
 export interface NoteUiState {
   /** 고친 일지. null 이면 서버 값 그대로. */
   draft: NoteDraft | null;
-  /** draft 가 어느 회차 것인가(다른 회차로 옮기면 버린다). */
-  draftFor: string | null;
-  /** 승인을 한 번 더 묻는 중인 것과 그 회차. 다른 회차로 옮기면 확인창은 닫힌 것으로 본다. */
-  ask: { kind: "summary" | "document"; sessionId: string | null } | null;
+  /** draft 를 쓴 대상의 표. */
+  draftFor: RemoteTicket | null;
 }
 
-export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, ask: null };
+export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null };
 
 export interface NoteScreenInput extends SessionScreenInput {
   summary: SummaryReviewState;
@@ -178,25 +161,27 @@ export interface NoteScreenInput extends SessionScreenInput {
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
 
-const chipStyle = (on: boolean) => ({
-  mark: on ? "✓" : "+",
-  bg: on ? "#F1EADA" : "#FFFFFF",
-  bd: on ? "#2B2A26" : "#DAD5C9",
-  fg: "#2B2A26",
-  fw: on ? 700 : 400,
-});
+/**
+ * 일지에서 추가로 고를 체크리스트 항목. 서식 항목 중 초기면접에서 고른 것은 뺀다.
+ * 일지에 담긴 항목 중 서식 항목에 없는 것(예전 목록의 이름 등)은 지울 수 있게 고른 채로 뒤에 붙인다.
+ */
+export function addableItems(options: string[], intake: string[], picked: string[]): string[] {
+  const fromIntake = new Set(intake);
+  const listed = new Set(options);
+  const extra = picked.filter((item) => !listed.has(item) && !fromIntake.has(item));
+
+  return [...options.filter((item) => !fromIntake.has(item)), ...extra.filter((item, i) => extra.indexOf(item) === i)];
+}
 
 export function noteWriteValues(input: NoteScreenInput) {
   const { summary, docs, state, setState, go, detail, caseDetail } = input;
   const header = processHeaderValues(input, 2);
   const ids = header.ids;
-  const sessionId = ids.sessionId;
   const sv = detail.session;
   const info = caseDetail.caseInfo;
   const signalHref = screenHref("/SignalReview", ids);
 
   const busy = summary.submitting || docs.submitting;
-  const asking = state.ask && state.ask.sessionId === sessionId ? state.ask.kind : null;
 
   // ---------------- 상담 요약 ----------------
   // 저장 · 승인을 기다리는 동안에는 잠근다(보낸 내용 뒤에 친 글자가 승인된 내용과 다르게 남지 않게).
@@ -255,7 +240,7 @@ export function noteWriteValues(input: NoteScreenInput) {
   // ---------------- 상담 일지 ----------------
   const record = docs.consultationRecord;
   const saved = record ? parseNote(record.content) : EMPTY_NOTE;
-  const draft = state.draft && state.draftFor === sessionId ? state.draft : null;
+  const draft = state.draft && docs.isCurrent(state.draftFor) ? state.draft : null;
   const note = draft ?? saved;
   const content = formatNote(note);
   const docDirty = draft !== null && content !== (record?.content ?? "");
@@ -265,9 +250,13 @@ export function noteWriteValues(input: NoteScreenInput) {
   const docLocked = docReadOnly || docs.loading || busy;
   const edit = (patch: Partial<NoteDraft>) =>
     setState((current) => {
-      const base = current.draft && current.draftFor === sessionId ? current.draft : note;
+      const kept = current.draft && docs.isCurrent(current.draftFor) ? current : null;
+      const ticket = kept ? kept.draftFor : docs.capture();
 
-      return { draft: { ...base, ...patch }, draftFor: sessionId };
+      // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 쓸 곳이 없다.
+      if (!ticket) return {};
+
+      return { draft: { ...(kept?.draft ?? note), ...patch }, draftFor: ticket };
     });
   const textField = (key: TextKey) => ({
     value: note[key],
@@ -276,19 +265,35 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     readOnly: docLocked,
   });
-  const toggles = (key: ListKey, options: string[]) =>
-    options.map((label) => {
-      const on = note[key].includes(label);
+  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 체크리스트를 잠근다.
+  // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
+  const intakeWaiting = !info && !caseDetail.error;
+  /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
+  const intakeWords = (words: string[] | null) => {
+    let empty = "초기면접에서 고른 항목 없음";
+    if (words === null) empty = intakeWaiting ? "초기면접 항목을 불러오는 중…" : "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+
+    return { words: words ?? [], note: empty };
+  };
+  const checklist = (key: ListKey, options: string[], fromIntake: string[]) =>
+    addableItems(options, fromIntake, note[key]).map((label) => {
+      const checked = note[key].includes(label);
+      const locked = docLocked || intakeWaiting;
 
       return {
         label,
-        ...chipStyle(on),
-        disabled: docLocked,
-        toggle: () => !docLocked && edit({ [key]: on ? note[key].filter((item) => item !== label) : [...note[key], label] }),
+        checked,
+        disabled: locked,
+        onChange: () => {
+          if (!locked) edit({ [key]: checked ? note[key].filter((item) => item !== label) : [...note[key], label] });
+        },
       };
     });
 
-  /** 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null. */
+  /**
+   * 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null.
+   * 요청한 뒤 대상이 바뀌어(다른 회차, 갔다 돌아옴, 다시 로그인, 화면을 떠남) 반영하지 못했어도 null 이다(docs 훅).
+   */
   const saveDoc = async (): Promise<DocumentRow | null> => {
     if (!docDirty) return record;
 
@@ -303,6 +308,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     return result;
   };
 
+  const docApproved = record !== null && record.status === "APPROVED";
   const docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
   const docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
 
@@ -327,16 +333,12 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveSummary: summary.canEdit && summary.dirty && !busy,
     saveSummary: () => void summary.save(),
     canApproveSummary: summary.canApprove && !busy,
-    askSummary: () => setState({ ask: { kind: "summary", sessionId } }),
-    summaryAsk: asking === "summary",
-    summaryAskText: "승인하면 이 회차가 '승인 완료' 가 되고 요약을 더 고칠 수 없습니다. 상담일지 승인은 따로 합니다.",
-    approveSummary: async () => {
-      if (asking !== "summary") return;
-
-      const ok = await summary.approve();
-
-      if (ok) setState({ ask: null });
-    },
+    // 고친 칸을 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
+    approveSummary: () => void summary.approve(),
+    // 승인된 요약이면 저장 · 승인 대신 '요약 수정' 단추만 보인다.
+    summaryApproved: summary.status === "APPROVED",
+    canReopenSummary: summary.canReopen && !busy,
+    reopenSummary: () => void summary.reopen(),
     // 상담 일지
     docChip,
     docNote,
@@ -346,8 +348,10 @@ export function noteWriteValues(input: NoteScreenInput) {
     environment: textField("environment"),
     signals: textField("signals"),
     opinion: textField("opinion"),
-    traits: toggles("traits", CHILD_TRAITS),
-    homes: toggles("homes", HOME_TRAITS),
+    traitIntake: intakeWords(info ? info.intakeChildTraits : null),
+    homeIntake: intakeWords(info ? info.intakeFamilySituations : null),
+    traits: checklist("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
+    homes: checklist("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
     traitEv: [] as { label: string; ev: string }[],
     homeEv: [] as { label: string; ev: string }[],
     aiDraft: false,
@@ -355,28 +359,35 @@ export function noteWriteValues(input: NoteScreenInput) {
     canSaveDoc: docDirty && !docReadOnly && !busy,
     saveDoc: () => void saveDoc(),
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
-    askDoc: () => setState({ ask: { kind: "document", sessionId } }),
-    docAsk: asking === "document",
-    docAskText: "승인하면 상담일지를 더 고칠 수 없습니다. 회차 상태는 바뀌지 않습니다.",
+    // 고친 일지를 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
     approveDoc: async () => {
-      if (asking !== "document") return;
-
+      // 저장하는 사이 대상이 바뀌면 새 로그인으로 앞 회차의 일지를 승인하지 않는다.
+      const ticket = docs.capture();
       const target = await saveDoc();
 
-      if (target && (await docs.approve(target.id))) setState({ ask: null });
+      if (target && docs.isCurrent(ticket)) await docs.approve(target.id);
     },
-    cancelAsk: () => setState({ ask: null }),
+    // 승인된 일지면 저장 · 승인 대신 '일지 수정' 단추만 보인다. 쓴 내용은 그대로 남아 이어서 고친다.
+    docApproved,
+    canReopenDoc: docApproved && !busy,
+    reopenDoc: () => {
+      if (record && docApproved) void docs.reopen(record.id);
+    },
     // 아래 단추
     backHref: signalHref,
     nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",
     canNext: !busy,
     next: async () => {
-      const forSession = sessionId;
+      // 누를 때의 대상(표). 저장을 기다리는 사이 대상이 바뀌었으면(다른 회차 · 화면, 갔다 돌아옴, 다시 로그인)
+      // 다음 저장을 이어 보내지 않고 앞 회차의 다음 화면으로 끌고 가지도 않는다.
+      // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 저장할 것도 없어 바로 옮긴다.
+      const ticket = docs.capture();
+      const stillHere = () => ticket === null || docs.isCurrent(ticket);
 
       if (summary.canEdit && summary.dirty && !(await summary.save())) return;
+      if (!stillHere()) return;
       if (docDirty && !(await saveDoc())) return;
-      // 저장을 기다리는 사이 다른 회차 · 화면으로 옮겼으면 앞 회차의 다음 화면으로 끌고 가지 않는다.
-      go(screenHref("/FollowupQ", ids), forSession);
+      go(screenHref("/FollowupQ", ids), stillHere);
     },
     /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
     unsaved: (summary.canEdit && summary.dirty) || docDirty,

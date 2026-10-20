@@ -3,7 +3,9 @@
 //
 // 서버 연결: '등록' 은 useCaseRegister(POST /cases)로 서버가 받는 칸만 저장하고 새 사례 상세(?case=새 ID)로 간다.
 // 화면에 쓸 값은 src/data/screens/caseRegister.ts(caseRegisterValues)가 만든다. 담당 상담원은 관리자만 고른다.
-// 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 초기면접 내용은 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// ② 초기면접 내용의 가정상황 · 아동 특성은 저장한다(상담 일지에 초기면접 항목으로 보인다).
+// 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족, ② 탭의 나머지 칸(관계 · 문제력 · 태도 · 소견)은
+// 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
 // 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
@@ -28,8 +30,6 @@ class Logic extends DCLogic {
     return caseRegisterValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
-
-const NO_IDS = { caseId: null, sessionId: null };
 
 export default function CaseRegister(props) {
   const session = useAuthSession();
@@ -78,7 +78,7 @@ function CaseRegisterWaiting({ session }) {
 function CaseRegisterForm(props) {
   const { session } = props;
   const register = useCaseRegister(session);
-  const go = useScreenGo(useNavigate(), NO_IDS);
+  const go = useScreenGo(useNavigate());
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, register, go });
   return (
@@ -392,18 +392,7 @@ function CaseRegisterForm(props) {
             ) : null}
 
             {v.isB ? (
-              <fieldset
-                disabled
-                style={{
-                  border: '0',
-                  margin: '0',
-                  padding: '0',
-                  minWidth: '0',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '18px',
-                }}
-              >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 <p className="note" role="status" style={{ margin: 0 }}>
                   {v.tabNote}
                 </p>
@@ -418,7 +407,10 @@ function CaseRegisterForm(props) {
                     <Fragment key={oIndex}>
                       <button
                         type="button"
-                        className="pk"
+                        className={o.on ? 'pk on' : 'pk'}
+                        aria-pressed={o.on}
+                        onClick={o.toggle}
+                        disabled={o.disabled}
                         style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                       >
                         {o.mark} {o.label}
@@ -426,12 +418,24 @@ function CaseRegisterForm(props) {
                     </Fragment>
                   ))}
                 </div>
+                <fieldset
+                  disabled
+                  style={{
+                    border: '0',
+                    margin: '0',
+                    padding: '0',
+                    minWidth: '0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '18px',
+                  }}
+                >
                 <label className="fl">
-                  <span className="lb">보호자와 아동과의 관계</span>
+                  <span className="lb">보호자와 아동과의 관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></span>
                   <textarea className="ta2"></textarea>
                 </label>
 
-                <div className="sec">가족유형</div>
+                <div className="sec">가족유형{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {(v.fams || []).map((o, oIndex) => (
                     <Fragment key={oIndex}>
@@ -446,7 +450,7 @@ function CaseRegisterForm(props) {
                   ))}
                 </div>
 
-                <div className="sec">가족관계</div>
+                <div className="sec">가족관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
                 <div style={{ overflowX: 'auto' }}>
                   <table className="ft">
                     <thead>
@@ -498,6 +502,7 @@ function CaseRegisterForm(props) {
                 >
                   + 가족 추가
                 </button>
+                </fieldset>
 
                 <div className="sec">
                   아동 특성{' '}
@@ -510,7 +515,10 @@ function CaseRegisterForm(props) {
                     <Fragment key={oIndex}>
                       <button
                         type="button"
-                        className="pk"
+                        className={o.on ? 'pk on' : 'pk'}
+                        aria-pressed={o.on}
+                        onClick={o.toggle}
+                        disabled={o.disabled}
                         style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                       >
                         {o.mark} {o.label}
@@ -519,7 +527,19 @@ function CaseRegisterForm(props) {
                   ))}
                 </div>
 
-                <div className="sec">문제력 · 건강정도</div>
+                <fieldset
+                  disabled
+                  style={{
+                    border: '0',
+                    margin: '0',
+                    padding: '0',
+                    minWidth: '0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '18px',
+                  }}
+                >
+                <div className="sec">문제력 · 건강정도{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">현 상황</span>
@@ -553,7 +573,7 @@ function CaseRegisterForm(props) {
                   </label>
                 </div>
 
-                <div className="sec">대상자 태도 및 관찰내용</div>
+                <div className="sec">대상자 태도 및 관찰내용{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">대상자 태도</span>
@@ -568,7 +588,8 @@ function CaseRegisterForm(props) {
                   <span className="lb">상담원 소견 및 향후 계획</span>
                   <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
                 </label>
-              </fieldset>
+                </fieldset>
+              </div>
             ) : null}
 
             <Notice value={v.formError} />

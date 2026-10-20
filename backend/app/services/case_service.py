@@ -59,7 +59,7 @@ def _resolve_counselor(
     if counselor is None:
         raise not_found(ErrorCode.USER_NOT_FOUND, "담당 상담사를 찾을 수 없습니다.")
 
-    # 400 VALIDATION_ERROR(details 없음). API_CONTRACT 4절 · 12절에 적혀 있다.
+    # 400 VALIDATION_ERROR(details 없음). API_CONTRACT 4절 · 13절에 적혀 있다.
     if not counselor.is_active:
         raise bad_request(
             ErrorCode.VALIDATION_ERROR,
@@ -91,6 +91,8 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             child_gender=payload.child_gender,
             guardian_type=payload.guardian_type,
             guardian_note=payload.guardian_note,
+            intake_child_traits=payload.intake_child_traits,
+            intake_family_situations=payload.intake_family_situations,
             notes=payload.notes,
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
@@ -289,6 +291,8 @@ def update_case(
         "child_gender",
         "guardian_type",
         "guardian_note",
+        "intake_child_traits",
+        "intake_family_situations",
         "notes",
         "status",
     ):

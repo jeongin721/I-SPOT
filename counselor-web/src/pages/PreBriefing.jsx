@@ -5,6 +5,7 @@ import A from '../components/A';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCarryHref } from '../data/useCarryHref';
 import { useTheme } from '../theme';
 import './PreBriefing.css';
 
@@ -17,6 +18,7 @@ class Logic extends DCLogic {
 export default function PreBriefing(props) {
   // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
+  const carry = useCarryHref();
   const theme = useTheme();
   const v = useDC(Logic, props);
   return (
@@ -64,18 +66,18 @@ export default function PreBriefing(props) {
               </div>
               <div className="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
             </div>
-            <A className="btn btn-s" to="/UploadModal">
+            <A className="btn btn-s" to={carry('/UploadModal')}>
               ↑ 녹취 올리기
             </A>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
-            <A to="/CaseDetail">내담자 정보</A>
-            <A to="/CaseHistory">상담 이력</A>
-            <A className="on" aria-current="page" to="/PreBriefing">
+            <A to={carry('/CaseDetail')}>내담자 정보</A>
+            <A to={carry('/CaseHistory')}>상담 이력</A>
+            <A className="on" aria-current="page" to={carry('/PreBriefing')}>
               상담 전 브리핑
             </A>
-            <A to="/CaseApp">아이 연계</A>
-            <A to="/CaseDocs">문서함</A>
+            <A to={carry('/CaseApp')}>아이 연계</A>
+            <A to={carry('/CaseDocs')}>문서함</A>
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 20px' }}>
             <div style={{ flex: '1 1 380px' }}>
@@ -154,7 +156,7 @@ export default function PreBriefing(props) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h2 className="h2">추가 질문</h2>
                 <span className="chip c-ai">AI 초안</span>
-                <A to="/FollowupQ" style={{ marginLeft: 'auto', fontSize: '13px' }}>
+                <A to={carry('/FollowupQ')} style={{ marginLeft: 'auto', fontSize: '13px' }}>
                   질문 수정
                 </A>
               </div>

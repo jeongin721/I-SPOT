@@ -1,0 +1,285 @@
+"""
+"유형별 위험도" 화면의 "다음 상담에서 확인할 것" 카드를 채우는 LLM
+모듈(2026-10-14 추가, 2026-10-14 재설계).
+
+[FollowupQ 화면의 "질문 은행"과 다른 범위다]
+
+FollowupQ("추가 확인 · 질문" 단계)는 아동에게 실제로 건넬 질문 문구를
+다루는 화면이라 범위 밖으로 남겨뒀다 — 아동 면담 질문은 유도성 여부가
+중요한 전문 영역이라, 검증된 질문 은행에서 RAG로 가져오는 쪽이
+안전하고 아직 그 은행이 없다(record_draft_llm.py 모듈 docstring 참고).
+
+이 모듈은 질문을 만들지 않는다. "무엇이 불확실하거나 확인이 안 됐는지"
+짧게 서술만 한다 — 상담사가 그걸 보고 실제 질문은 직접 설계한다. 그래서
+유도질문 위험이 사실상 없어서 질문 은행 없이 바로 LLM을 써도 된다고
+판단했다.
+
+[2026-10-14 재설계 — 왜 바꿨나]
+
+1차 버전은 "신뢰도 낮은 발화 + 근거 약한 위험 신호"만 입력으로 줬다.
+실사용 테스트에서 두 가지 문제가 나왔다:
+
+- "네"/"아니요" 같은 단답까지 전부 "신뢰도 X라 불명확함"으로 기계적
+  나열돼서 쓸모가 없었다 → 단답은 입력에서부터 제외(_is_trivial_utterance).
+- 회차 간 진술 변화(session_change.py 결과)를 이 카드에 그대로
+  덧붙였었는데, 그건 이미 "상담 요약" 화면의 "(안전관련) 조사 후
+  변화된 사항"에 따로 나오는 내용이라 중복이었다 → 호출부
+  (infer_audio_session.py)에서 더 이상 합치지 않는다.
+- 더 근본적으로, 원래 목업이 보여준 "확인할 것"(예: "등 · 팔 통증
+  이후 치료 여부")은 저신뢰도 발화 나열이 아니라 "상담 내용 안에서
+  언급은 됐는데 후속 결과가 안 나온 것"을 찾아내는 추론이었다. 그래서
+  입력을 "저신뢰도 발화"뿐 아니라 "이번 상담에서 확인된 아동 진술 +
+  위험 신호 요지" 전체로 넓히고, "언급은 됐지만 결과가 안 나온 것"을
+  찾으라고 프롬프트를 바꿨다 — 단, 입력에 없는 사실 자체를 지어내는
+  건 여전히 금지한다(원칙 2).
+
+[입력 — 전부 이미 계산된 데이터 재사용, 새로 분석하지 않는다]
+
+- 아동 진술 요지(record_draft.child_statement_points) + 위험 신호
+  (record_draft.risk_signal_points) 전체 — "언급됐지만 후속이 안 된
+  것"을 찾으려면 근거 강도와 무관하게 전체 맥락이 필요하다.
+- 신뢰도가 낮거나 화자가 불확실한 발화(segments) — 별도 카테고리로
+  남겨서 "화자/의미가 불확실하다" 종류는 계속 잡아낸다.
+"""
+
+from typing import Any, Dict, List, Optional
+
+from openai import OpenAI
+
+from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
+
+DEFAULT_MODEL = "gpt-5.6-luna"
+
+
+SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인할 것"
+목록을 만드는 도우미다.
+
+[절대 원칙]
+1. 질문 문장을 만들지 않는다("~물어보세요", "~인지 확인해 보세요" 같은
+   표현 금지). 아동 면담에서 유도 질문은 심각한 문제라 실제 질문
+   문구는 상담사가 직접 설계해야 한다. 너는 "무엇이 불확실하거나
+   확인이 안 됐는지"만 짧게 서술한다 — 질문이 아니라 상태 설명이다.
+2. 입력에 있는 내용 안에서 "언급은 됐지만 그 다음 결과나 후속 내용이
+   안 나온 것"을 짚어내는 건 괜찮다 — 예를 들어 다친 걸 말했는데
+   병원에 갔는지는 안 나왔다면 "치료 여부 확인 필요"라고 쓸 수 있다.
+   하지만 입력 어디에도 없는 사실 자체(예: 실제로 언급 안 된 보호자
+   반응, 사건 경위 등)를 지어내면 절대 안 된다 — 오직 입력에 실제로
+   나온 내용을 근거로만 "뭐가 비어 있는지"를 말한다.
+3. "신뢰도가 0.59라서 불명확하다" 같이 신뢰도 수치나 "화자가
+   불확실하다"는 말 자체를 반복하지 않는다 — 그건 상담사가 이미 화면
+   다른 곳에서 보고 있는 정보라 그대로 되풀이하면 아무 도움이 안
+   된다. 대신 그 발화가 "무엇에 대한 내용인지", "누구에게 일어난
+   일인지"처럼 실제로 다음 상담에서 무엇을 더 들어봐야 하는지를
+   적어라.
+4. "네"/"아니요"/"응" 같은 한두 단어짜리 단답은 그 자체로 확인할
+   내용이 없다 — 결과에 포함하지 않는다.
+5. 항목마다 1문장, 간결하게. 입력에 있는 시간(mm:ss)이나 발화 내용은
+   그대로 인용해도 된다.
+6. 입력 항목이 비어 있으면 빈 리스트를 반환한다 — 억지로 만들지 않는다.
+7. 사소한 것까지 전부 나열하지 말고, 실제로 다음 상담에서 챙길 만한
+   가치가 있는 것만 최대 5개까지 고른다.
+
+[입력 — 이번 상담에서 확인된 아동 진술 · 위험 신호 요지]
+{session_content_input}
+
+[입력 — 신뢰도가 낮거나 화자가 불확실한 발화]
+{low_confidence_input}
+
+반드시 아래 JSON 형식으로만 답한다:
+{{
+  "check_points": ["...", "..."]
+}}
+"""
+
+
+#: "네"/"아니요" 같은 한두 단어 단답은 신뢰도가 낮아도 그 자체로는
+#: 확인할 내용이 없다 — 프롬프트에도 걸러내라고 적었지만(SYSTEM_PROMPT
+#: 4번), 애초에 입력에서부터 빼서 LLM이 그걸로 억지 문장을 만들
+#: 여지를 줄인다. 공백 뺀 길이로 대충 "한두 단어"를 가른다.
+_MIN_SUBSTANTIVE_LENGTH = 5
+
+
+def _is_trivial_utterance(text: str) -> bool:
+    stripped = text.strip().rstrip(".!?,")
+    compact = stripped.replace(" ", "")
+    return len(compact) < _MIN_SUBSTANTIVE_LENGTH
+
+
+def _format_low_confidence(
+    segments: List[Dict[str, Any]],
+) -> str:
+    items = [
+        segment
+        for segment in segments
+        if (
+            segment.get("is_low_confidence")
+            or segment.get("speaker") == "UNKNOWN"
+        )
+        and not _is_trivial_utterance(segment.get("text", ""))
+    ]
+
+    if not items:
+        return "없음"
+
+    lines = []
+
+    for segment in items:
+        ms = segment.get("start_ms", 0) or 0
+        t = int(ms // 1000)
+        ts = f"{t // 60:02d}:{t % 60:02d}"
+        reason = (
+            "화자 불확실"
+            if segment.get("speaker") == "UNKNOWN"
+            else f"신뢰도 {segment.get('confidence', 0):.2f}"
+        )
+        lines.append(
+            f"- {ts} \"{segment.get('text', '')}\" ({reason})"
+        )
+
+    return "\n".join(lines)
+
+
+def _format_session_content(
+    child_statement_points: List[Dict[str, Any]],
+    risk_signal_points: List[Dict[str, Any]],
+) -> str:
+    lines = []
+
+    for p in child_statement_points or []:
+        text = (p.get("text") or "").strip()
+
+        if text:
+            lines.append(f"- (아동 진술) {text}")
+
+    for p in risk_signal_points or []:
+        text = (p.get("text") or "").strip()
+
+        if not text:
+            continue
+
+        label = f"{p.get('major_type', '')} · {p.get('subtype', '')}"
+        lines.append(f"- ({label}) \"{text}\"")
+
+    if not lines:
+        return "없음"
+
+    return "\n".join(lines)
+
+
+#: narrative_summary_llm.py와 같은 이유로 쓰는 구분자.
+SPLIT_MARKER = "\n===I-SPOT-FOLLOWUP-SPLIT===\n"
+
+
+def format_inputs_for_masking(
+    segments: List[Dict[str, Any]],
+    child_statement_points: List[Dict[str, Any]],
+    risk_signal_points: List[Dict[str, Any]],
+) -> str:
+    return (
+        _format_session_content(
+            child_statement_points, risk_signal_points
+        )
+        + SPLIT_MARKER
+        + _format_low_confidence(segments)
+    )
+
+
+def generate_followup_check_points_from_masked_text(
+    client: OpenAI,
+    model: str,
+    masked_combined_text: str,
+    deadline: Optional[float] = None,
+) -> List[str]:
+    parts = masked_combined_text.split(SPLIT_MARKER)
+    session_content_input = parts[0] if parts else "없음"
+    low_confidence_input = parts[1] if len(parts) > 1 else "없음"
+
+    if (
+        session_content_input.strip() == "없음"
+        and low_confidence_input.strip() == "없음"
+    ):
+        return []
+
+    system_prompt = SYSTEM_PROMPT.format(
+        session_content_input=session_content_input,
+        low_confidence_input=low_confidence_input,
+    )
+
+    try:
+        parsed = _call_llm_with_retry(
+            client=client,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt="위 입력을 바탕으로 목록을 만들어.",
+            max_retries=2,
+            timeout_seconds=180.0,
+            deadline=deadline,
+        )
+    except Exception:
+        parsed = {}
+
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    points = parsed.get("check_points")
+
+    if not isinstance(points, list):
+        return []
+
+    return [
+        point.strip()
+        for point in points
+        if isinstance(point, str) and point.strip()
+    ]
+
+
+def generate_followup_check_points(
+    client: OpenAI,
+    model: str,
+    segments: List[Dict[str, Any]],
+    child_statement_points: List[Dict[str, Any]],
+    risk_signal_points: List[Dict[str, Any]],
+) -> List[str]:
+    """**독립 테스트/데모 전용** — 마스킹 없이 바로 LLM을 부른다.
+    실제 서비스 경로(infer_audio_session.py)는 format_inputs_for_masking
+    → mask_for_outbound → generate_followup_check_points_from_masked_text
+    → restore_pii 순서를 쓴다(narrative_summary_llm.py와 같은 이유)."""
+
+    combined = format_inputs_for_masking(
+        segments, child_statement_points, risk_signal_points
+    )
+
+    return generate_followup_check_points_from_masked_text(
+        client, model, combined
+    )
+
+
+# ============================================================
+# 데모
+# ============================================================
+
+if __name__ == "__main__":
+    import json
+
+    from ai.modeling.abuse.llm_backend import build_openai_client_and_model
+
+    segments = [
+        {"segment_id": "seg_019", "start_ms": 135000, "speaker": "UNKNOWN", "text": "밥도 안 줄 때가 있어요.", "confidence": 0.70, "is_low_confidence": True},
+        {"segment_id": "seg_020", "start_ms": 383000, "speaker": "CHILD", "text": "아니요", "confidence": 0.59, "is_low_confidence": True},
+    ]
+    child_statement_points = [
+        {"text": "할머니 집에 가고 싶다고 말했다.", "segment_ids": ["seg_050"]},
+    ]
+    risk_signal_points = [
+        {"major_type": "신체학대", "subtype": "직접 신체 가해", "text": "등이랑 팔이요.", "evidence_strength": "높음", "evidence_verified": True},
+    ]
+
+    client, model = build_openai_client_and_model(DEFAULT_MODEL)
+    result = generate_followup_check_points(
+        client=client,
+        model=model,
+        segments=segments,
+        child_statement_points=child_statement_points,
+        risk_signal_points=risk_signal_points,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))

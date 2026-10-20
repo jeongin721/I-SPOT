@@ -244,6 +244,8 @@ export const WORK_AUDIT_ACTION_LABELS: Record<string, string> = {
   DOCUMENT_CREATED: "문서 생성",
   DOCUMENT_UPDATED: "문서 수정",
   DOCUMENT_APPROVED: "문서 승인",
+  RISK_ASSESSMENT_CREATED: "위험도 판단 저장",
+  RISK_ASSESSMENT_UPDATED: "위험도 판단 수정",
 };
 
 /** User-Agent 를 "Chrome 126" 처럼 줄인다. 모르는 값은 앞부분만(전체는 userAgent 로). */

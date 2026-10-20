@@ -245,7 +245,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       notifyUnauthorized(token ? failure.error?.message : undefined);
     }
 
-    if (response.status === 403 && failure.error?.code === "PASSWORD_CHANGE_REQUIRED") {
+    // 403 PASSWORD_CHANGE_REQUIRED 도 같다. 임시 비밀번호 토큰으로 보낸 요청의 응답이 그사이 다른 계정으로 다시 로그인한
+    // 뒤에 도착하면, 새 계정을 비밀번호 변경 단계로 잘못 보내지 않게 지금 토큰으로 보낸 요청일 때만 알린다.
+    if (response.status === 403 && failure.error?.code === "PASSWORD_CHANGE_REQUIRED" && getToken() === token) {
       window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
     }
 
@@ -267,6 +269,8 @@ export const api = {
   post: <T>(path: string, json?: unknown) => request<T>(path, { method: "POST", json }),
 
   patch: <T>(path: string, json?: unknown) => request<T>(path, { method: "PATCH", json }),
+
+  put: <T>(path: string, json?: unknown) => request<T>(path, { method: "PUT", json }),
 
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 

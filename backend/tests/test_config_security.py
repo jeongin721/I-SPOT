@@ -52,7 +52,7 @@ def test_non_production_keeps_default_for_local_development(env: str) -> None:
 
 # ---------------------------------------------------------
 # AI_PROVIDER=pipeline 은 상담 원문을 비식별 없이 OpenAI 로 보낸다
-# (specs ai-analysis-connect-research-1013.md 3-3 ①). 운영에서는 일부러 풀 때만 뜬다.
+# (ai/services/summary_service.py). 운영에서는 일부러 풀 때만 뜬다.
 # ---------------------------------------------------------
 
 
@@ -127,3 +127,142 @@ def test_settings_error_does_not_print_input_values() -> None:
     assert "AI_PIPELINE_ALLOW_UNMASKED=true" in message
     assert "0123456789" not in message
     assert STRONG_SECRET[-8:] not in message
+
+
+# ---------------------------------------------------------
+# AI_PROVIDER=modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 불완전하다
+# (이름 인식이 앞 512토큰만 보고, 서버 경로는 등록 실명 대조를 안 쓴다). 운영에서는 일부러 풀 때만 뜬다.
+# ---------------------------------------------------------
+
+
+def test_production_rejects_modeling_until_privacy_issues_are_fixed() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER="modeling")
+
+    message = str(caught.value)
+
+    # 막은 이유(개인정보 문제 해결 전)와 푸는 방법을 문구로 알려 준다.
+    assert "AI_PROVIDER=modeling" in message
+    assert "비식별" in message
+    assert "개인정보 문제가 해결되기 전" in message
+    assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
+
+
+def test_production_allows_modeling_only_when_explicitly_allowed() -> None:
+    settings = _settings(
+        ENV="production",
+        JWT_SECRET_KEY=STRONG_SECRET,
+        AI_PROVIDER="modeling",
+        AI_MODELING_ALLOW_IN_PRODUCTION=True,
+    )
+
+    assert settings.AI_PROVIDER == "modeling"
+
+
+def test_modeling_flag_reads_true_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """서버 .env 에 적는 그대로(AI_MODELING_ALLOW_IN_PRODUCTION=true) 읽힌다."""
+
+    monkeypatch.setenv("AI_MODELING_ALLOW_IN_PRODUCTION", "true")
+
+    settings = _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, AI_PROVIDER="modeling")
+
+    assert settings.AI_MODELING_ALLOW_IN_PRODUCTION is True
+
+
+def test_modeling_flag_is_off_by_default() -> None:
+    assert _settings().AI_MODELING_ALLOW_IN_PRODUCTION is False
+
+
+def test_pipeline_flag_does_not_unlock_modeling() -> None:
+    """두 허용 값은 서로를 풀지 않는다. pipeline 을 풀어 둔 서버에서 modeling 으로 바꿔도 막힌다."""
+
+    with pytest.raises(ValidationError, match="AI_MODELING_ALLOW_IN_PRODUCTION=true"):
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="modeling",
+            AI_PIPELINE_ALLOW_UNMASKED=True,
+        )
+
+
+def test_modeling_flag_does_not_unlock_pipeline() -> None:
+    with pytest.raises(ValidationError, match="AI_PIPELINE_ALLOW_UNMASKED=true"):
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="pipeline",
+            AI_MODELING_ALLOW_IN_PRODUCTION=True,
+        )
+
+
+@pytest.mark.parametrize("env", ["local", "test"])
+def test_non_production_keeps_modeling(env: str) -> None:
+    """개발 · 테스트 환경은 modeling 을 그대로 쓸 수 있다(가상 데이터 전용)."""
+
+    settings = _settings(ENV=env, AI_PROVIDER="modeling")
+
+    assert settings.AI_PROVIDER == "modeling"
+
+
+def test_modeling_error_does_not_print_input_values() -> None:
+    fake_key = "sk-SYNTHETIC-NOT-A-REAL-KEY-0123456789"
+
+    with pytest.raises(ValidationError) as caught:
+        _settings(
+            ENV="production",
+            JWT_SECRET_KEY=STRONG_SECRET,
+            AI_PROVIDER="modeling",
+            OPENAI_API_KEY=fake_key,
+        )
+
+    message = str(caught.value)
+
+    assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
+    assert "0123456789" not in message
+    assert STRONG_SECRET[-8:] not in message
+
+
+# ---------------------------------------------------------
+# AI_DEADLINE_MARGIN_SECONDS 는 modeling 에 넘기는 마감 시각의 여유다
+# (마감 시각 = 분석 시작 + AI_TIMEOUT_SECONDS - 여유). 제한 시간보다 짧아야 한다.
+# ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("margin", [180.0, 200.0])
+def test_modeling_rejects_deadline_margin_not_shorter_than_time_limit(margin: float) -> None:
+    """여유가 제한 시간과 같거나 길면 마감 시각이 분석 시작 전이 되어 모든 분석이 바로 AI_TIMEOUT 으로 끝난다."""
+
+    with pytest.raises(ValidationError) as caught:
+        _settings(AI_PROVIDER="modeling", AI_TIMEOUT_SECONDS=180.0, AI_DEADLINE_MARGIN_SECONDS=margin)
+
+    message = str(caught.value)
+
+    # 막은 이유와 지금 값을 문구로 알려 준다.
+    assert "AI_DEADLINE_MARGIN_SECONDS 는 AI_TIMEOUT_SECONDS 보다 작아야 합니다" in message
+    assert "바로 AI_TIMEOUT 으로 끝납니다" in message
+    assert f"AI_DEADLINE_MARGIN_SECONDS={margin}, AI_TIMEOUT_SECONDS=180.0" in message
+
+
+def test_deadline_margin_must_not_be_negative() -> None:
+    with pytest.raises(ValidationError, match="AI_DEADLINE_MARGIN_SECONDS"):
+        _settings(AI_PROVIDER="modeling", AI_DEADLINE_MARGIN_SECONDS=-1.0)
+
+
+def test_default_deadline_margin_passes_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """기본값(제한 180초 · 여유 10초)은 검사를 통과한다. conftest 의 시험용 값은 지우고 본다."""
+
+    monkeypatch.delenv("AI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("AI_DEADLINE_MARGIN_SECONDS", raising=False)
+
+    settings = _settings(AI_PROVIDER="modeling")
+
+    assert (settings.AI_TIMEOUT_SECONDS, settings.AI_DEADLINE_MARGIN_SECONDS) == (180.0, 10.0)
+
+
+@pytest.mark.parametrize("provider", ["mock", "pipeline", "langgraph"])
+def test_other_providers_do_not_check_deadline_margin(provider: str) -> None:
+    """여유는 modeling 만 쓴다. 다른 provider 는 제한 시간을 짧게 잡아도 그대로 뜬다."""
+
+    settings = _settings(AI_PROVIDER=provider, AI_TIMEOUT_SECONDS=5.0, AI_DEADLINE_MARGIN_SECONDS=10.0)
+
+    assert settings.AI_PROVIDER == provider

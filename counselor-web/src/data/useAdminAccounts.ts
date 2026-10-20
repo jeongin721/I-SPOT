@@ -188,8 +188,9 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
       const forKey = key;
       const token = getToken();
       const id = ++lastRequestId.current;
-      // 보낸 계정 그대로 화면에 붙어 있고 토큰도 같은가.
-      const same = () => users.isCurrent(forKey) && getToken() === token;
+      // 보낸 계정 그대로 화면에 붙어 있고 토큰도 같은가. key 에 관리자 ID 가 들어 있어 세대(useRemote 의 표)는 보지 않는다 —
+      // 같은 관리자 · 같은 토큰으로 보기만 바꿨다 돌아왔으면(key 가 null 을 거침) 결과(임시 비밀번호)를 그대로 돌려준다.
+      const same = () => users.capture()?.key === forKey && getToken() === token;
       // 다음 요청을 보내기 직전에 부른다. 바뀌었으면 멈춘다.
       const stillSame = () => {
         if (!same()) throw new SessionChangedError();
@@ -228,7 +229,7 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
         setBusy((current) => (current?.id === id ? null : current));
       }
     },
-    [key, users.isCurrent, users.refresh, counts.refresh],
+    [key, users.capture, users.refresh, counts.refresh],
   );
 
   /** 그 줄에서 할 수 있는 요청인지 본다. 안 되면 이유를 error 에 두고 false. */

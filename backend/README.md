@@ -114,6 +114,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 `ENV=production` 에서는 `JWT_SECRET_KEY` 가 32자 미만이거나 저장소에 적힌 예시값(`change-me-in-env-file` 등)이면 서버가 시작되지 않는다. 공개된 값으로 서명한 토큰은 누구나 만들 수 있기 때문이다.
 같은 이유로 `ENV=production` 에서 `AI_PROVIDER=pipeline`(상담 원문을 비식별 없이 OpenAI 로 보냄)도 `AI_PIPELINE_ALLOW_UNMASKED=true` 없이는 시작되지 않는다(아래 "AI (팀 B)").
+`AI_PROVIDER=modeling`(가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않음)도 `AI_MODELING_ALLOW_IN_PRODUCTION=true` 없이는 시작되지 않는다.
 
 ### 2.4 DB Migration
 
@@ -232,6 +233,7 @@ PowerShell 에서는 `$env:TEST_DATABASE_URL = "postgresql+psycopg://ispot:ispot
 - Audio Upload (확장자 / MIME / 크기 / 빈 파일 / 손상 파일 / Path Traversal)
 - STT Mock / STT Error / STT Timeout / STT Contract 위반
 - AI Mock / AI Timeout / AI 실패 / AI 잘못된 출력 / 재시도
+- 멈춤 판정 뒤 늦게 끝난 AI 결과 · 실패 버리기, 요청 시각부터 잰 작업 전체 마감(`tests/test_analysis_late_results.py`)
 - Transcript 수정·확정, Summary 수정·승인, Audit log
 - 전체 E2E Flow, Response Contract 유지
 
@@ -271,6 +273,7 @@ alembic check   # model 과 migration 이 어긋나면 실패한다
 
 GitHub Actions(`.github/workflows/backend-ci.yml`)에서 lint, pytest(SQLite · PostgreSQL 두 번),
 PostgreSQL 대상 migration, secret/음성파일 커밋 검사를 자동 실행한다.
+`backend/` · `agent/` · `ai/` 중 하나라도 바뀌면 돈다(Backend 가 `agent` · `ai` 패키지를 import 하므로 `ai/` 만 바뀐 PR 도 시험이 깨질 수 있다).
 `check.sh` 는 `TEST_DATABASE_URL` 이 없으면 SQLite 로 돌므로, DB 에 따라 다르게 동작할 수 있는 코드(시각 · 문자열 비교 · JSON)를 고쳤으면 위의 PostgreSQL 방법도 돌린다.
 
 ---
@@ -312,6 +315,25 @@ OPENAI_MODEL=...
 > `app/core/config.py`). 가상 데이터로 일부러 시험할 때만 `AI_PIPELINE_ALLOW_UNMASKED=true` 를 함께 적어 푼다.
 > `ENV=local` · `test` 는 이 검사를 하지 않는다(지금처럼 쓸 수 있다).
 
+> **주의: `modeling`(이경진 님 파이프라인, `ai/modeling/abuse/contract_adapter`)은 외부로 보내기 전에 가리지만 가리기가 아직
+> 완전하지 않다.** 이름 인식이 글 앞부분만 봐서 긴 상담 뒷부분의 이름 · 기관 · 지역이 가려지지 않고, 이름 인식이 놓친 이름을
+> 잡아 줄 등록 실명 대조도 서버 경로에서는 돌지 않는다. 이 개인정보 문제가 해결되기 전에는 가상 데이터로만 쓰고, `ENV=production` 에서는
+> `AI_MODELING_ALLOW_IN_PRODUCTION=true` 를 함께 적어야만 시작한다. torch · transformers · openai 와 가중치 파일은
+> backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
+> 근거 발화가 없는 위험 항목은 `langgraph` 와 같이 저장 전에 뺀다.
+> 모듈은 import 할 때 모델을 올린다. 서버가 시작할 때 백그라운드로 미리 올리고(실패해도 서버는 뜬다),
+> 분석 제한 시간(`AI_TIMEOUT_SECONDS`)에는 넣지 않는다. 아직 올리는 중이면 분석이 최대 45초 기다리고, 그래도 안 끝나면
+> `AI_TIMEOUT`("AI 모델을 아직 불러오는 중입니다…")으로 끝난다. 함수가 `deadline` 을 받는 판이면 마감 시각
+> (분석 시작 + 분석 제한 - `AI_DEADLINE_MARGIN_SECONDS`, `time.monotonic()` 기준)을 넘긴다.
+> 준비 · 분석 제한은 작업 하나 전체로 맞춘다: 요청 시각부터 45초 + `AI_TIMEOUT_SECONDS`(기본 225초) 안에 끝나도록,
+> 작업 시작이 늦었거나 준비가 길었으면 그만큼 준비 제한 · 분석 제한(과 위 마감 시각)을 줄이고, 남은 시간이 없으면 분석을
+> 부르지 않고 `AI_TIMEOUT` 으로 끝낸다. 처리 중 멈춤 판정(요청 시각 + `AI_TIMEOUT_SECONDS` + 60초)보다 15초 앞이다.
+> 그래도 멈춤 판정이 먼저 실패로 마감한 작업(서버 시계 차이 등)이나 재시도로 바뀐 옛 작업의 늦은 결과 · 실패는 저장하지
+> 않는다(분석이 아직 처리 중이고 회차가 그 작업을 기다릴 때만 저장하는 조건부 UPDATE). 모든 provider 에 같다.
+> 여유 기본 10초는 모듈이 마감에 걸린 LLM 호출의 응답을 마감 + 5초까지 기다리는 것보다 길게 잡은 값이다(5초 이하면 Backend
+> 제한 시간과 같은 순간 끝나 Backend 가 먼저 잡는다). `AI_PROVIDER=modeling` 이면 여유가 `AI_TIMEOUT_SECONDS` 보다 작아야
+> 서버가 시작한다(설정 검사).
+
 `pipeline` 모드는 `ai/services/analysis_pipeline.run_analysis_pipeline(transcript)` 를 호출한다.
 팀 B 의 Service Exception 은 아래처럼 API 오류 코드로 변환된다.
 
@@ -322,6 +344,7 @@ OPENAI_MODEL=...
 | `SummaryQuotaError` | `AI_QUOTA_ERROR` |
 | `SummaryConnectionError` | `AI_FAILED` |
 | `SummaryOutputError` | `AI_INVALID_OUTPUT` |
+| 파이썬 내장 `TimeoutError`(와 하위 예외) | `AI_TIMEOUT` — 문구는 고정 문구로 바꾼다. `pipeline` · `langgraph` · `modeling` 공통 |
 
 ---
 
@@ -360,12 +383,12 @@ Frontend 는 이 값으로 재시도 UI 를 노출할 수 있다.
 backend/
   app/
     main.py              FastAPI app + 전역 예외 handler (Response Contract 보장)
-    api/v1/              Router (auth, cases, sessions, audio, transcript, analysis, summary, documents)
+    api/v1/              Router (auth, cases, sessions, audio, transcript, analysis, summary, documents, risk_assessments, tasks)
     core/
       config.py          .env 기반 설정
       database.py        Engine / Session
       deps.py            인증·권한 Dependency
-      enums.py           공통 Enum (상태 / speaker / role)
+      enums.py           공통 Enum (상태 / speaker / role / 학대 유형 / 위험도 판단)
       errors.py          ErrorCode + APIError
       responses.py       {"data": ...} Envelope
       state_machine.py   Session 상태 전이 규칙
@@ -400,6 +423,7 @@ backend/
 - 권한 검사는 Backend 에서 수행한다. 상담사는 담당 Case 만 조회·수정할 수 있다.
 - 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 저장한다.
 - 상담 원문을 일반 로그에 출력하지 않는다. 로그에는 식별자·개수만 남긴다.
+- 서버 접속 기록(uvicorn)은 경로 · 상태만 남기고 쿼리 값(`?search=` 등)은 남기지 않는다(`app/core/logging.py`, `tests/test_access_log_query.py`).
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.
@@ -547,7 +571,7 @@ npm run dev
 | `401 UNAUTHORIZED` (Swagger) | 페이지를 새로고침하면 Authorize 가 풀린다. 다시 로그인해 토큰을 넣는다 |
 | 토큰을 넣었는데 `401` | 응답에서 토큰을 복사할 때 앞뒤 `"` 까지 복사한 경우다. 따옴표 안쪽만 넣는다 |
 | `403 PASSWORD_CHANGE_REQUIRED` | 임시 비밀번호(`unlock_user --reset-password`)로 로그인한 상태다. 2.5 대로 새 비밀번호로 바꾼 뒤 다시 한다(`seed_demo_data` 도 같다) |
-| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 12절). STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다. 원문 수정(`PATCH /transcript`)은 상태를 먼저 보므로 전사본이 없어도 409 다 |
+| `409 INVALID_SESSION_STATE` | 지금 회기 상태에서 할 수 없는 요청이다(예: 원문 변환 중에 다시 변환 요청). 오류 본문의 `details.current_status`(지금 상태)를 확인한다. `expected_status` 는 필요한 상태가 아닐 수 있다(API_CONTRACT 13절). STT 요청은 음성이 없으면, 원문 확정 · AI 분석 요청은 전사본이 없으면 409 가 아니라 `404 AUDIO_NOT_FOUND` · `TRANSCRIPT_NOT_FOUND` 가 먼저 난다. 원문 수정(`PATCH /transcript`)은 상태를 먼저 보므로 전사본이 없어도 409 다 |
 | `202` 를 받았는데 결과가 없다 | STT/AI 는 비동기다. 완료가 아니라 **접수**이므로 세션 상태를 polling 한다 |
 | 화면 스타일이 사라짐 | vite 캐시 문제다. `rm -rf node_modules/.vite && npm run dev` |
 

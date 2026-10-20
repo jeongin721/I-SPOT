@@ -142,11 +142,12 @@ export function sttReviewValues(input: SttScreenInput) {
     nextLabel: review.submitting ? "처리 중…" : nextLabel,
     next: async () => {
       if (mustConfirm) {
-        const forSession = ids.sessionId;
+        // 누를 때의 대상(표). 확정을 기다리는 사이 대상이 바뀌었으면(다른 회차 · 화면, 갔다 돌아옴, 다시 로그인)
+        // 앞 회차의 다음 화면으로 끌고 가지 않는다.
+        const ticket = review.capture();
         const ok = await review.confirm();
 
-        // 확정을 기다리는 사이 다른 회차 · 화면으로 옮겼으면 앞 회차의 다음 화면으로 끌고 가지 않는다.
-        if (ok) go(signalHref, forSession);
+        if (ok) go(signalHref, () => review.isCurrent(ticket));
       } else if (canGoOn) {
         go(signalHref);
       }

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from app.models.audio_feature import AudioFeature
     from app.models.case import Case
     from app.models.document import Document
+    from app.models.risk_assessment import SessionRiskAssessment
     from app.models.summary import ConsultationSummary
     from app.models.transcript import Transcript
     from app.models.user import User
@@ -87,6 +88,11 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # 요약 승인을 마지막으로 푼 시각. 처리 대기 업무가 검토 대기 시작을 셀 때 쓴다(task_service).
+    # 다시 승인해도 지우지 않는다. 다시 분석하면 ai_completed_at 이 더 늦고, 다시 풀면 덮어쓴다.
+    reopened_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     case: Mapped["Case"] = relationship(back_populates="sessions")
     counselor: Mapped["User"] = relationship(foreign_keys=[counselor_id])
@@ -126,6 +132,11 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="Document.created_at",
+    )
+    risk_assessments: Mapped[List["SessionRiskAssessment"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def clear_error(self) -> None:

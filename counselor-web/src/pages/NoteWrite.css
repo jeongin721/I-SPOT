@@ -112,19 +112,64 @@
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 12px;
 }
-.pg-NoteWrite .chipck {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid #dad5c9;
-  background: #ffffff;
-  font: inherit;
+/* 아동 특성 · 가정상황: 초기면접에서 고른 항목(단어만) + 추가로 고르는 체크리스트 */
+.pg-NoteWrite .intake {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 0 4px;
+  font-size: 14px;
+}
+.pg-NoteWrite .intake .k {
+  flex: none;
+  color: #66625a;
   font-size: 13px;
+  font-weight: 700;
+}
+.pg-NoteWrite .cklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+}
+.pg-NoteWrite .cklist legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #66625a;
+}
+.pg-NoteWrite .cklist legend .note {
+  margin-left: 6px;
+  font-weight: 400;
+}
+.pg-NoteWrite .ckgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 2px 12px;
+}
+.pg-NoteWrite .ckgrid label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 5px 0;
+  font-size: 14px;
   cursor: pointer;
-  color: #2b2a26;
+}
+.pg-NoteWrite .ckgrid input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex: none;
+  accent-color: #2b2a26;
+}
+.pg-NoteWrite .ckgrid input:disabled,
+.pg-NoteWrite .ckgrid input:disabled + span {
+  cursor: default;
 }
 .pg-NoteWrite .thm-root.dark .fhead {
   border: 1px solid #45423b !important;
@@ -168,8 +213,10 @@
 .pg-NoteWrite .thm-root.dark .goal .k {
   background: #33312c !important;
 }
-.pg-NoteWrite .thm-root.dark .chipck {
-  border: 1px solid #4e4b44 !important;
-  background: #2c2b27 !important;
-  color: #ece8df !important;
+.pg-NoteWrite .thm-root.dark .intake .k,
+.pg-NoteWrite .thm-root.dark .cklist legend {
+  color: #bdb7aa !important;
+}
+.pg-NoteWrite .thm-root.dark .ckgrid input {
+  accent-color: #d6d0c4 !important;
 }

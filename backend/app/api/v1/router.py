@@ -8,6 +8,7 @@ from app.api.v1 import (
     auth,
     cases,
     documents,
+    risk_assessments,
     sessions,
     summary,
     tasks,
@@ -26,4 +27,5 @@ api_router.include_router(transcript.router)
 api_router.include_router(analysis.router)
 api_router.include_router(summary.router)
 api_router.include_router(documents.router)
+api_router.include_router(risk_assessments.router)
 api_router.include_router(tasks.router)

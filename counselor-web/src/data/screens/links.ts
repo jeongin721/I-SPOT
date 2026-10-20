@@ -34,3 +34,14 @@ export function screenHref(page: string, ids: Partial<ScreenIds> = {}): string {
 
   return query ? `${page}?${query}` : page;
 }
+
+/** 회차 하나를 다루는 화면. 이 화면으로 가는 링크에만 회차 ID 를 넘긴다. */
+const SESSION_PAGES = new Set(["/SessionDetail", "/SttReview", "/SignalReview", "/NoteWrite", "/FollowupQ", "/RiskProfile"]);
+
+/**
+ * 지금 화면의 사례 · 회차 ID 를 다음 화면 링크에 넘긴다. 사례 ID 는 늘, 회차 ID 는 회차 화면으로 갈 때만 넘긴다.
+ * 녹취 올리기(UploadModal)에 회차 ID 가 붙으면 '새 회차'가 아니라 '그 회차에 이어 올리기'가 되기 때문이다.
+ */
+export function carryScreenHref(page: string, ids: Partial<ScreenIds>): string {
+  return screenHref(page, { caseId: ids.caseId, sessionId: SESSION_PAGES.has(page) ? ids.sessionId : null });
+}

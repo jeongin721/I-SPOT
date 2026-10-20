@@ -20,7 +20,7 @@
 ```
 
 목록은 `data.items` + `data.meta` 구조를 사용한다.
-예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절)은 `data` 가 배열 그대로다(페이지 없음).
+예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절) · 위험도 판단 목록(11절)은 `data` 가 배열 그대로다(페이지 없음).
 
 ```json
 {
@@ -57,6 +57,7 @@
   ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
   `"JSON decode error"` 다. 본문 해석은 로그인 확인보다 먼저라, JSON 본문을 받는 창구는 token 이 없어도 `401` 이
   아니라 이 422 를 준다.
+- 글자 칸(본문의 모든 글자 · 글자 목록과 검색어 같은 글자 쿼리)에 NUL(`\u0000`) · 짝 없는 서로게이트(`\ud800`~`\udfff`)가 있으면 `422 VALIDATION_ERROR` 이고 아무것도 저장하지 않는다(비밀번호 확인 칸 — 로그인 `password` · 변경의 `current_password` — 제외). `field` 는 그 칸(예: `segments.0.text`, `query.search`)이고 받은 값은 응답에 넣지 않는다.
 - `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 세 가지가 더 있다. `message` 로 구분한다.
   - JSON 본문을 읽을 수 없음 — JSON 본문을 받는 창구에 `Content-Type` 이 JSON 인 본문을 보냈는데 UTF-8 로 읽을 수
     없는 바이트가 들어 있음(예: CP949 로 인코딩한 한글). 프레임워크는 JSON 문법 오류만 422 로 바꾸고 이런 해석 오류는
@@ -96,8 +97,10 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
 
 처리 중 상태가 제한 시간(`STT_TIMEOUT_SECONDS` / `AI_TIMEOUT_SECONDS`) + 60초가 지나도 끝나지 않으면
 (서버 재시작 등으로 작업이 사라진 경우) 위 조회나 재요청 시점에 `STT_FAILED` / `AI_FAILED` 로 바뀌고
-`error.code` 도 같은 값으로 내려온다. 회기 목록(`GET /cases/{case_id}/sessions`)과 처리 대기 업무(11절) 조회도
+`error.code` 도 같은 값으로 내려온다. 회기 목록(`GET /cases/{case_id}/sessions`)과 처리 대기 업무(12절) 조회도
 같은 판단으로 먼저 마감한 뒤 돌려준다. 재시도 버튼으로 다시 요청하면 된다.
+AI 분석은 살아 있는 작업이 이 판단보다 먼저 끝나도록 제한 시간을 요청 시각부터 맞추고(8절 "작업 전체 마감"),
+이렇게 마감된 뒤 늦게 끝난 작업의 결과 · 실패는 저장하지 않는다.
 
 ### 1.5 시각
 
@@ -108,11 +111,11 @@ Frontend 는 아래 중 하나를 주기적으로 조회한다(권장 2~3초).
   - SQLite(로컬 · 테스트): 대부분 표시 없이 온다(예: `2026-09-30T04:09:41.553068`). 이 값은 UTC 로 읽는다.
   - PostgreSQL: DB 연결 시간대의 오프셋이 붙는다. `docker-compose.yml` 의 db(`TZ: Asia/Seoul`)에서는
     `+09:00`(예: `2026-09-30T13:09:41.553068+09:00`), 연결 시간대가 UTC 이면 `Z` 다.
-  - 11절 `waiting_since` 는 DB 와 관계없이 항상 UTC(`Z`)로 준다. 방금 계산한 값을 그대로 돌려주는 칸도 `Z` 로 올 수 있다.
+  - 12절 `waiting_since` 는 DB 와 관계없이 항상 UTC(`Z`)로 준다. 방금 계산한 값을 그대로 돌려주는 칸도 `Z` 로 올 수 있다.
 - Frontend 는 표시가 없으면 UTC 로, 있으면 그 표시대로 읽는다. 표시가 있는 값에 `Z` 를 덧붙이지 않는다.
   같은 칸도 DB 에 따라 표시가 달라지니, 칸 이름으로 나누지 말고 값의 모양을 보고 읽는다.
   같은 순간도 칸마다 표시가 다를 수 있으니(`waiting_since` 는 `Z`, `consulted_at` 은 `+09:00`) 문자열로 비교 · 정렬하지 않는다.
-- 이 문서 예시의 `Z` 는 표기 예일 뿐이다(11절 `waiting_since` 는 항상 `Z` 다).
+- 이 문서 예시의 `Z` 는 표기 예일 뿐이다(12절 `waiting_since` 는 항상 `Z` 다).
 - 보낼 때(`consulted_at` 만들기 · 고치기, 감사 로그 조회의 `since` · `until`)는 UTC(`Z`)로 보내는 것을 권한다.
   서버는 이 값들을 모두 UTC 로 바꿔 읽으므로 `+09:00` 도 같은 순간으로 읽고, 표시 없는 값은 UTC 로 읽는다.
   `consulted_at` 도 DB 에 넣기 전에 UTC 로 바꿔 저장하므로 DB(SQLite · PostgreSQL)와 DB 시간대에 따라 어긋나지 않는다.
@@ -145,6 +148,12 @@ STT_FAILED    ← STT_PROCESSING 실패
 AI_FAILED     ← AI_PROCESSING 실패
 ```
 
+승인 풀기(9절 `POST .../summary/reopen`):
+
+```text
+APPROVED → AI_REVIEW_REQUIRED   요약을 다시 고친 뒤 다시 승인한다
+```
+
 실패 시 `error` 필드가 함께 내려온다.
 
 ```json
@@ -170,7 +179,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 | `STT_CONFIRMED` | AI 분석 실행 가능 |
 | `AI_PROCESSING` | Processing (Polling) |
 | `AI_REVIEW_REQUIRED` | AI Review / Summary Editor |
-| `APPROVED` | 읽기 전용 (완료) |
+| `APPROVED` | 읽기 전용 (완료). 요약 수정 버튼으로 승인을 풀 수 있다 |
 | `STT_FAILED` / `AI_FAILED` | Error + 재시도 버튼 |
 
 ---
@@ -424,7 +433,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 ```
 
 **비밀번호 원문은 응답 · 오류 · 로그 어디에도 담기지 않는다.**
-8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값과 128자 초과뿐이다(요청 형식 검사).
+8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값, 128자 초과, NUL · 짝 없는 서로게이트가 든 값뿐이다(요청 형식 검사, 1.2).
 
 ---
 
@@ -451,6 +460,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
         "child_gender": null,
         "guardian_type": "PARENTS",
         "guardian_note": null,
+        "intake_child_traits": ["불안", "우울"],
+        "intake_family_situations": ["스트레스"],
         "status": "ACTIVE",
         "notes": null,
         "counselor_id": "uuid",
@@ -488,6 +499,16 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   (유형을 골라놓고 자유 입력까지 하면 통계 기준이 갈라진다)
 - 목록에 없는 값을 보내면 `422`
 
+#### 초기면접 항목 (`intake_child_traits` / `intake_family_situations`)
+
+초기면접지(서식 4 ②)에서 고른 **아동 특성** · **가정상황**. 서식의 고르기 항목 이름을 문자열 목록으로 주고받는다.
+
+- 받는 값은 `app/core/intake.py` 의 서식 항목뿐이다(아동 특성 35개 · 가정상황 21개, 상담사 웹 `intakeItems.ts` 와 같음).
+  목록에 없는 글자(앞뒤 공백 포함) · 다른 칸의 항목 · 문자열이 아닌 값 · 101개 이상은 `422 VALIDATION_ERROR`(문구에 보낸 글자를 되풀이하지 않는다)
+- 겹친 항목은 처음 것만 남긴다(고른 순서 유지). 자유 글(‘기타’ 의 내용 등)은 받지 않는다
+- 응답은 늘 목록이다. 고르지 않았거나 이 칸이 생기기 전 사례면 `[]`
+- 감사 기록에는 바뀐 칸 이름(`changed_fields`)만 남고 고른 항목은 남지 않는다
+
 ### POST /api/v1/cases → 201
 
 ```json
@@ -498,6 +519,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   "child_gender": null,
   "guardian_type": "PARENTS",
   "guardian_note": null,
+  "intake_child_traits": [],
+  "intake_family_situations": [],
   "notes": null,
   "counselor_id": null,
   "case_number": null
@@ -506,6 +529,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 - `title`, `child_alias` 필수
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
+- `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
   - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
     "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
@@ -529,6 +553,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - 이미 `OTHER` 인 사례는 `guardian_note` 만 보내도 된다
   - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
   - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
+- `intake_child_traits` · `intake_family_situations` 는 보내면 목록을 통째로 바꾼다. 비우려면 `[]` 를 보낸다(`null` 은 `422`)
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
@@ -862,7 +887,11 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
         "risk_utterances": [],
         "abuse_signals": [],
         "risk_factors": [],
-        "warnings": ["추가 확인이 필요한 항목이 있습니다."]
+        "warnings": ["추가 확인이 필요한 항목이 있습니다."],
+        "severity_ratings": [],
+        "protective_factors": [],
+        "session_change_notes": [],
+        "followup_check_points": []
       },
       "summary_evidence": [
         { "key_point": "...", "segment_ids": ["seg_004"], "score": 0.75 }
@@ -875,7 +904,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 ```
 
 - `result` 는 **AI 담당의 Structured JSON Contract 원본**이다. Backend 가 변형하지 않는다.
-  - 예외: `AI_PROVIDER=langgraph` 결과는 저장 전에 **근거 발화가 없는 위험 항목을 뺀다**
+  - 예외: `AI_PROVIDER=langgraph` · `modeling` 결과는 저장 전에 **근거 발화가 없는 위험 항목을 뺀다**
     (`05_RULES.md` §1 "근거(`segment_id`) 없는 위험 신호 생성" 금지).
     `risk_utterances` / `abuse_signals` / `risk_factors` 의 각 항목 중 `segment_id` · `segment_ids` 가
     비었거나 Transcript 에 없는 번호를 하나라도 가리키면 제외하고,
@@ -884,16 +913,89 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `result.schema_version` 은 AI Output Contract 버전이다(지금 `"1.0"`). 성공한 분석의 `analysis.schema_version` 과 같다.
 - `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는
   `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 항목 구조(키 목록)를 검증하지 않는다.
-  다만 `langgraph` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
+  다만 `langgraph` · `modeling` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
   Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
+  `modeling` 은 `risk_utterances` · `abuse_signals` 를 채우지만 항목 구조는 위 합의 전이다(`risk_factors` 는 빈 배열).
+- 선택 필드 4개(`severity_ratings` · `protective_factors` · `session_change_notes` · `followup_check_points`)는 아래
+  "선택 필드" 를 본다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
 
+#### 선택 필드 (2026-10-16 추가)
+
+이경진 님 분석 결과(`AI_PROVIDER=modeling`)가 만드는 값을 담는 칸이다. 위험 3필드에 끼우지 않고 따로 둔다.
+모두 **선택**이라 AI 가 보내지 않으면 빈 배열(`[]`)이 된다. `schema_version` 은 `"1.0"` 그대로이고,
+이 필드가 생기기 전에 저장된 결과도 그대로 읽힌다(응답에는 빈 배열로 나온다).
+지금 `mock` · `pipeline` · `langgraph` 는 이 필드를 만들지 않아 모두 빈 배열이다.
+`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). 지금은 `severity_ratings` · `session_change_notes` · `followup_check_points` 의
+`segment_ids` 가 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 도 늘 빈 배열이다.
+
+| 필드 | 항목 모양 | 설명 |
+| --- | --- | --- |
+| `severity_ratings` | `{ major_type, level, reason, matched_evidence, segment_ids, reviewed }` | 학대 유형별 심각도 **참고값** |
+| `protective_factors` | `{ category, text, segment_ids }` | 보호 요인 |
+| `session_change_notes` | `{ text, segment_ids }` | 이전 회기와 달라진 점 메모 |
+| `followup_check_points` | `{ text, segment_ids }` | 다음에 확인할 점에 대한 **AI 확인 메모** |
+
+```json
+"severity_ratings": [
+  { "major_type": "신체학대", "level": null, "reason": "...", "matched_evidence": "...", "segment_ids": [], "reviewed": false }
+],
+"protective_factors": [ { "category": "...", "text": "...", "segment_ids": ["seg_003"] } ],
+"session_change_notes": [ { "text": "...", "segment_ids": [] } ],
+"followup_check_points": [ { "text": "...", "segment_ids": [] } ]
+```
+
+항목 규칙(어기면 다른 Contract 검사와 같이 `AI_INVALID_OUTPUT` 으로 분석이 실패한다)
+- `severity_ratings[].major_type` · `protective_factors[].category` · 모든 항목의 `text` 는 꼭 있어야 하는 문자열이다.
+- `severity_ratings[].level` 은 **1~5 정수 또는 `null`**(정보 부족). 범위 밖(0, 6 …)이거나 정수가 아니면
+  (`true`, `"3"`, `3.0` 등) 거절한다. 키가 없으면 `null` 이다.
+- `reason` · `matched_evidence` 는 문자열(없으면 `""`), `reviewed` 는 참/거짓(없으면 `false`)이다.
+  `matched_evidence` 는 AI 가 뽑은 발췌문이라 원문과 글자가 다를 수 있다. 근거 위치는 `segment_ids` 로 본다.
+- `segment_ids` 는 근거 발화 번호 목록이고 선택이다(없으면 `[]`). 지금은 비어 올 수 있다.
+- 위 키 말고 다른 키는 버린다(최상위 `result` 와 같다).
+- `severity_ratings[].major_type` 은 지금 한글 유형명(예: `"신체학대"`)이 그대로 온다.
+  대분류를 영문(`PHYSICAL` 등)으로 통일할지는 위험 3필드 항목 구조 합의(`PROPOSAL_risk_fields.md` §7)와 함께 정한다.
+
+근거와 화면 표시
+- **근거 없는 위험 항목 빼기는 위험 3필드에만 적용한다.** 이 4개 필드는 `segment_ids` 가 비어 있어도 빼지 않고
+  저장 · 전달한다(10/16 합의. 지금은 근거 번호가 비어 오는 항목이 많다).
+- 대신 **화면은 `segment_ids` 가 있는 항목만 근거 위치와 함께 보여 준다**(`counselor-web/README.md`
+  "지켜야 할 원칙" 3번: 모든 제안에는 근거 위치를 함께 보여 준다). `segment_ids` 가 빈 항목을 어떻게 보여 줄지는
+  화면을 연결할 때 정한다.
+- **모두 AI 제안이고 판단은 상담원이 한다.** `level` 은 심각도 참고값이지 학대 판정이 아니다.
+  화면에서는 "AI 제안" · "상담사 검토 필요" 로 표시하고 "위험 확정" 같은 표현은 쓰지 않는다(아래 "표현 주의").
+- `followup_check_points` 는 **질문 은행의 질문이 아니라** AI 가 남긴 확인 메모다.
+  화면 원칙 7번("추가 질문은 질문 은행에서만 제안")과의 관계(이 메모를 질문으로 보여 줘도 되는지, 질문 은행 문항과
+  어떻게 잇는지)는 **팀 결정 대기**다. 그 전까지 이 메모를 아이에게 할 질문으로 보여 주지 않는다.
+
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
+
+`AI_TIMEOUT` 은 아래 넷 가운데 하나다. 모두 재시도할 수 있다.
+- 분석이 제한 시간 안에 끝나지 않음 — `"외부 서비스 응답이 180.0초 안에 오지 않았습니다."`
+  제한 시간은 `AI_TIMEOUT_SECONDS`(기본 180초)이고, 작업 시작이 늦었거나 모델 불러오기가 길었으면 아래
+  "작업 전체 마감"에 맞춰 짧아진다(문구의 초도 그 값이다. 0.1초 단위로 내린다).
+- AI 쪽이 시간 초과 예외를 냄 — 팀 B 의 `SummaryTimeoutError` 는 그 문구 그대로, 파이썬 내장 `TimeoutError`
+  (`modeling` 이 마감 시각을 넘겼을 때 등)는 고정 문구 `"AI 분석이 제한 시간 안에 끝나지 않았습니다."`.
+  내장 예외의 문구에는 발화가 섞일 수 있어 담지 않는다.
+- `modeling` 모델을 아직 불러오는 중(서버 시작 직후 등) — `"AI 모델을 아직 불러오는 중입니다. 잠시 뒤 다시 시도해 주세요."`
+  모델 불러오기는 분석 제한 시간에 넣지 않고 따로 최대 45초 기다린다(작업 전체 마감까지 남은 시간이 더 짧으면 그만큼).
+- 작업이 시작할 때(또는 모델 불러오기를 마쳤을 때) 이미 작업 전체 마감이 지남(서버가 몹시 바빠 작업 시작이 늦은 경우 등)
+  — 분석을 부르지 않고 고정 문구 `"AI 분석이 제한 시간 안에 끝나지 않았습니다."`.
+
+작업 전체 마감: AI 분석 작업 하나는 요청 시각부터 모델 불러오기 제한(45초) + `AI_TIMEOUT_SECONDS` 안에 끝난다
+(기본 225초). 모델 불러오기 제한 · 분석 제한은 각각 그 마감까지 남은 시간을 넘지 않게 줄인다.
+1.4절의 멈춤 판단(요청 시각 + `AI_TIMEOUT_SECONDS` + 60초)보다 15초 앞이라, 살아 있는 작업은 그 전에 결과나 실패를 남긴다.
+그래도 멈춤 판단이 먼저 실패로 마감했거나(서버 시계 차이 등) 재시도로 새 작업이 시작됐으면, 옛 작업이 늦게 낸
+결과 · 실패는 저장하지 않고 버린다. 회차 · 분석 상태와 오류(멈춤 판단 문구)는 그대로이고, 재시도한 새 작업도 덮지 않는다.
+분석을 새로 요청하면 같은 회차에 아직 `PROCESSING` 으로 남은 옛 분석을 먼저 `FAILED`(`AI_FAILED`, 고정 문구
+`"같은 회기에 새 AI 분석을 요청해 이 분석은 중단된 것으로 처리했습니다."`)로 마감한다. 보통은 남은 분석이 없다.
+분석 중 원문 수정이 겹쳐 회차만 처리 중에서 벗어난 경우(기존 경합)에 남으며, 그 옛 작업의 늦은 결과 · 실패도
+버린다. 조회는 가장 최근 분석만 돌려주므로 이 문구는 보통 화면에 나오지 않는다.
 
 AI 쪽에서 알 수 없는 예외가 나면 `error.message` 에는 고정 문구와 예외 종류 이름만 담는다
 (예: `"AI 분석에 실패했습니다: RuntimeError"`). 예외 문구에 상담 발화가 섞일 수 있어서다.
-자세한 내용은 서버 로그에 `session_id` 와 함께 남는다. `pipeline` · `langgraph` 모두 같다.
+자세한 내용은 서버 로그에 `session_id` 와 함께 남는다. `pipeline` · `langgraph` · `modeling` 모두 같다.
 
 > **표현 주의**: AI 결과는 판정이 아니다. "AI 분석 참고정보", "관련 신호",
 > "추가 확인 필요", "근거 발화", "상담사 검토 필요" 로 표기하고
@@ -956,7 +1058,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 - 최소 1개 필드 필요(`422 VALIDATION_ERROR`)
 - 수정하면 `is_edited: true`
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
-- 승인 후 수정 시 `409 ALREADY_APPROVED`
+- 승인 후 수정 시 `409 ALREADY_APPROVED`. 고치려면 먼저 승인을 푼다(`POST .../summary/reopen`)
 
 > 수정한 Summary 는 AI 재분석으로 덮어써지지 않는다. 다만 `analysis_id` 와 `summary_evidence` 는
 > 새 분석 것으로 바뀐다. 새 AI 결과는 `GET .../analysis` 로 확인한다(8절 "재분석").
@@ -966,6 +1068,19 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 승인 → Summary `APPROVED`, Session `APPROVED`.
 
 오류: `404 SUMMARY_NOT_FOUND`, `409 ALREADY_APPROVED`, `409 INVALID_SESSION_STATE`
+
+### POST /api/v1/sessions/{session_id}/summary/reopen
+
+승인 풀기(화면의 '요약 수정'). Summary `APPROVED` → `DRAFT`, Session `APPROVED` → `AI_REVIEW_REQUIRED`.
+
+- 응답은 PATCH · approve 와 같은 Summary 하나다.
+- 내용(`overview` · `key_points` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
+- Summary 와 Session 의 `approved_at` · `approved_by_id` 는 `null` 로 비운다. 다시 승인하면 새로 채워진다.
+- 감사 기록을 따로 남기지 않는다. 다시 고치면 `SUMMARY_UPDATED`, 다시 승인하면 `SUMMARY_APPROVED` 가 남는다.
+- 푼 시각은 Session 에만 저장하고(`reopened_at`, 응답에는 없음) 처리 대기 업무가 검토 대기를 그때부터 센다(12절).
+- 권한은 approve 와 같다(담당 사례의 상담사 · 관리자).
+
+오류: `403 FORBIDDEN`, `404 SUMMARY_NOT_FOUND`, `409 NOT_APPROVED`(승인되지 않은 요약), `409 INVALID_SESSION_STATE`(요약은 승인됐는데 회기가 `APPROVED` 가 아님)
 
 ---
 
@@ -979,12 +1094,13 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | POST | `/api/v1/sessions/{session_id}/documents` | 생성 (201) |
 | PATCH | `/api/v1/sessions/{session_id}/documents/{document_id}` | 수정 |
 | POST | `/api/v1/sessions/{session_id}/documents/{document_id}/approve` | 승인 |
+| POST | `/api/v1/sessions/{session_id}/documents/{document_id}/reopen` | 승인 풀기(화면의 '일지 수정') |
 
 문서 하나를 조회하거나 삭제하는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 하나를 볼 때도 목록에서 찾는다.
 
 ### 응답
 
-생성 · 수정 · 승인은 문서 하나를 준다.
+생성 · 수정 · 승인 · 승인 풀기는 문서 하나를 준다.
 
 ```json
 {
@@ -1027,15 +1143,122 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 - 항상 `DRAFT` 로 만들어진다. 승인하면 `APPROVED` 가 되고 `approved_at` · `approved_by_id` 가 채워진다.
 - 승인된 문서는 수정하거나 다시 승인할 수 없다(`409 ALREADY_APPROVED`).
-- 회기 상태를 검사하지 않는다. 어느 상태(`CREATED` 포함)에서도 만들고 고치고 승인할 수 있다.
-- 요약 승인(9절)과 따로 동작한다. 문서를 승인해도 회기 상태는 바뀌지 않고, 회기가 `APPROVED` 여도 문서는 만들고 고칠 수 있다.
+- 고치려면 승인을 푼다(`POST .../reopen`). `DRAFT` 로 돌아가고 `approved_at` · `approved_by_id` 는 `null` 이 된다.
+  제목 · 본문은 그대로 두며, 고친 뒤 approve 로 다시 승인한다. 승인되지 않은 문서면 `409 NOT_APPROVED`.
+  감사 기록을 따로 남기지 않는다(다시 고치면 `DOCUMENT_UPDATED`, 다시 승인하면 `DOCUMENT_APPROVED` 가 남는다).
+- 회기 상태를 검사하지 않는다. 어느 상태(`CREATED` 포함)에서도 만들고 고치고 승인하고 승인을 풀 수 있다.
+- 요약 승인(9절)과 따로 동작한다. 문서를 승인하거나 승인을 풀어도 회기 상태는 바뀌지 않고, 회기가 `APPROVED` 여도 문서는 만들고 고칠 수 있다.
 
 오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `404 DOCUMENT_NOT_FOUND`(없는 문서, 다른 회기의 문서),
-`409 ALREADY_APPROVED`, `422 VALIDATION_ERROR`
+`409 ALREADY_APPROVED`, `409 NOT_APPROVED`, `422 VALIDATION_ERROR`
 
 ---
 
-## 11. Tasks (처리 대기 업무)
+## 11. Risk Assessments (상담원 위험도 판단)
+
+회차 · 학대 유형마다 **상담원이 내린 위험도 판단(상 · 중 · 하)** 을 저장한다.
+AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), 판단은 상담원이 한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/risk-assessments` | 그 회차의 유형별 판단 목록 |
+| PUT | `/api/v1/sessions/{session_id}/risk-assessments/{abuse_type}` | 한 유형의 판단 저장 · 수정 |
+
+판단 하나를 지우는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 판단을 바꿀 때는 PUT 으로 다시 저장한다.
+
+**아직 하지 않는 것(팀 결정 전)**: AI 단계(1~5)와 상 · 중 · 하를 서로 바꾸는 규칙, 사례 단위 위험도 계산.
+그래서 두 값을 따로 저장만 하고, 사례 목록의 위험도 칸은 지금처럼 비워 둔다(`—`).
+
+### 값
+
+| 칸 | 값 |
+|---|---|
+| `abuse_type` | `PHYSICAL`(신체학대) · `EMOTIONAL`(정서학대) · `SEXUAL`(성학대) · `NEGLECT`(방임) |
+| `counselor_level` | `HIGH`(상) · `MEDIUM`(중) · `LOW`(하) |
+
+- 영문 대문자 그대로 보낸다. 한글(`신체학대`, `상`)이나 소문자(`physical`, `high`)는 `422 VALIDATION_ERROR` 다.
+  한글 이름은 화면에서만 바꿔 보여 준다.
+
+### 응답
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "session_id": "uuid",
+    "abuse_type": "PHYSICAL",
+    "counselor_level": "HIGH",
+    "reason": "판단 이유(선택)",
+    "ai_level": 4,
+    "assessed_by_id": "uuid",
+    "assessed_at": "...",
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+- 목록은 `data` 가 **판단 배열 그대로**다(`items` · `meta` 가 없다 — 1.1 의 예외). **판단한 유형만** 오고,
+  순서는 `PHYSICAL` → `EMOTIONAL` → `SEXUAL` → `NEGLECT` 다. 아무것도 판단하지 않았으면 `[]` 다.
+  판단하지 않은 유형은 화면이 "선택 전" 으로 채운다.
+- `ai_level` 은 **판단을 저장할 때 그 회차 AI 분석 결과에 있던 같은 유형의 심각도(1~5)** 다. 서버가 채운다.
+  - 최신 분석(`GET …/analysis` 의 `analysis`)이 `COMPLETED` 일 때 `result.severity_ratings` 에서
+    `major_type` 이 같은 유형인 첫 항목의 `level` 을 읽는다. `major_type` 은 지금 한글 이름(`"신체학대"`)으로 오며,
+    띄어쓰기와 영문 값(`"PHYSICAL"`)도 같은 유형으로 본다.
+  - 분석이 없거나 · 처리 중이거나 · 실패했거나, 그 유형 항목이 없거나, `level` 이 `null`(정보 부족)이거나
+    1~5 정수가 아니면 `null` 이다.
+  - 다시 저장하면 그때의 AI 제안으로 다시 읽는다. 저장한 뒤 재분석해도 이미 저장한 `ai_level` 은 바뀌지 않는다
+    (판단할 때 무엇을 보고 판단했는지 남기는 기록이다).
+- `assessed_by_id` · `assessed_at` 은 마지막으로 저장한 사람과 시각이다. 관리자가 저장하면 관리자 ID 다.
+  계정이 DB 에서 지워지면 `assessed_by_id` 는 `null` 이 된다(계정을 지우는 API 는 지금 없다).
+- 회차를 지우면(5절 DELETE) 그 회차의 판단도 함께 지워진다. 사례를 지울 때도 같다.
+
+### PUT 요청
+
+```json
+{ "counselor_level": "HIGH", "reason": "판단 이유(선택)" }
+```
+
+| 칸 | 규칙 |
+|---|---|
+| `counselor_level` | 필수. `HIGH` · `MEDIUM` · `LOW` |
+| `reason` | 선택, 1000자 이하(코드 포인트로 센다 — 이모지 하나도 1자). 빼거나 `null` · 공백만 보내면 `null` 로 저장 |
+
+- `reason` 에 NUL(`\u0000`)이나 짝 없는 서로게이트(`\ud800`~`\udfff`)가 있으면 `422 VALIDATION_ERROR` 다.
+  PostgreSQL 에 저장할 수 없는 글자라 받지 않는다. 오류 응답에 이유 원문은 넣지 않는다.
+
+- 그 유형의 판단이 없으면 만들고, 있으면 고친다. 둘 다 `200` 이고 판단 하나를 준다.
+- PUT 은 판단 전체를 바꾼다. 다시 저장할 때 `reason` 을 빼면 전에 적은 이유도 지워진다.
+- `ai_level` 을 보내도 무시한다(서버가 분석 결과에서 읽는다).
+
+### 상태 규칙
+
+- 저장은 회차가 **`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`** 일 때만 된다.
+  그 밖의 상태(원문 확정 전, AI 분석 중 `AI_PROCESSING`)는 `409 INVALID_SESSION_STATE` 다.
+  - AI 분석 중에는 판단 당시 AI 제안이 무엇이었는지 흐려져 받지 않는다.
+  - AI 분석이 실패해도 판단은 받는다(AI 제안은 참고일 뿐이다. 이때 `ai_level` 은 `null`).
+  - 승인(`APPROVED`) 뒤에도 받는다. 요약 승인(9절)과 따로 동작하며, 저장해도 회기 상태는 바뀌지 않는다.
+- 목록 조회는 상태와 관계없이 된다.
+- 같은 유형을 두 요청이 동시에 처음 저장하면 늦은 쪽은 `409 DUPLICATE_RESOURCE` 다. 목록을 다시 받아 확인한다.
+
+### 권한 · 감사 기록
+
+- 상담사는 담당 사례의 회차만, 관리자는 전체를 보고 저장한다.
+- 저장하면 감사 기록이 남는다: 처음 저장 `RISK_ASSESSMENT_CREATED`, 고침 `RISK_ASSESSMENT_UPDATED`.
+  `detail` 에는 `abuse_type` · `counselor_level` · `ai_level`(고침이면 `previous_level` 도)만 남긴다.
+  **판단 이유(`reason`) 원문은 감사 기록에 넣지 않는다.**
+
+### 표현 주의
+
+`counselor_level` 은 상담원의 판단이고 `ai_level` 은 AI 의 참고값이다. 화면에서 `ai_level` 을 "AI 판정" 으로 쓰지 않고,
+상 · 중 · 하를 "학대 확정" · "위험 확정" 으로 쓰지 않는다. 색만으로 단계를 나타내지 않는다.
+
+오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`,
+`409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`(모르는 유형 · 단계, 1000자 넘는 이유, 저장할 수 없는 글자가 든 이유)
+
+---
+
+## 12. Tasks (처리 대기 업무)
 
 대시보드의 "나의 업무 목록"용. **사람이 처리할 차례인 Session** 을 오래 기다린 순서로 준다.
 업무는 따로 저장하지 않고 Session 상태에서 계산한다.
@@ -1046,13 +1269,15 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | `AUDIO_UPLOADED` | `REQUEST_STT` | 원문 변환 요청 | 가장 최근 음성 업로드 시각 |
 | `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정한 원문을 다시 고친 경우 되돌린 시각) |
 | `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 |
-| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 |
+| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 (승인한 요약을 푼 경우 푼 시각) |
 | `STT_FAILED` | `RETRY_STT` | 원문 변환 재시도 | 실패 시각 |
 | `AI_FAILED` | `RETRY_ANALYSIS` | AI 분석 재시도 | 실패 시각 |
 
 - `REVIEW_TRANSCRIPT` 는 STT 완료 · 최근 확정 · 되돌린 시각 중 가장 늦은 값이다. 되돌린 시각은 확정 뒤
   처음 고친(`PATCH …/transcript`) 시각이다. 오래전에 확정한 원문을 오늘 다시 고치면 오늘부터 세고,
   되돌린 뒤 더 고쳐도 다시 세지 않는다.
+- `REVIEW_ANALYSIS` 는 AI 완료 · 요약 승인을 푼(`POST …/summary/reopen`) 시각 중 늦은 값이다. 오래전에 분석한
+  회기의 승인을 오늘 풀면 오늘부터 세고, 푼 뒤 요약을 고쳐도 다시 세지 않는다. 푼 뒤 다시 분석하면 새 AI 완료 시각부터 센다.
 - `REQUEST_ANALYSIS` 는 AI 실패 뒤 이 상태로 되돌아오면 실패 시각이 더 늦을 때 그것을 쓴다.
   상태 전이 규칙에만 있는 대비용이고, 지금은 이 경로로 가는 API 가 없다.
 - 처리 중(`STT_PROCESSING`, `AI_PROCESSING`)과 `APPROVED` 는 업무가 아니다.
@@ -1120,7 +1345,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 
 ---
 
-## 12. Error Code 목록
+## 13. Error Code 목록
 
 | code | status | 설명 |
 |---|---|---|
@@ -1148,11 +1373,12 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
-| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version) |
+| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version / 같은 유형을 동시에 처음 저장한 위험도 판단) |
 | `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
+| `NOT_APPROVED` | 409 | 승인되지 않은 요약 · 문서의 승인 풀기(`reopen`) |
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
@@ -1162,15 +1388,19 @@ Query: `counselor_id` (목록과 같은 규칙)
 `INVALID_SESSION_STATE` 의 `message` 는 한국어 상태 이름으로 쓰고 상태 코드를 넣지 않는다. 화면에는 그대로 보여 주면 된다.
 예: `"지금 회기 상태(음성 업로드 대기)에서는 할 수 없는 요청입니다. 원문 검수 필요 · AI 분석 대기 상태에서만 할 수 있습니다."`
 승인된 회기에서는 `"승인이 끝난 회기는 바꿀 수 없습니다."` 로 온다.
+요약 승인을 푼 뒤(`AI_REVIEW_REQUIRED`) 해당 요청을 할 수 있을 때만
+`"상담 요약의 '요약 수정' 으로 승인을 풀면 다시 고칠 수 있습니다."` 안내를 덧붙인다.
+원문 수정처럼 승인을 풀어도 허용되지 않는 요청에는 이 안내가 붙지 않는다(원문 수정 가능 상태는 그대로다).
 
 - `details.current_status` 는 지금 상태 코드다.
 - `details.expected_status` 는 참고용 상태 코드 목록(`, ` 로 이음)이다. 요청에 따라 "이 요청을 할 수 있는 상태"이기도 하고
-  "지금 상태에서 넘어갈 수 있는 상태"이기도 해서, "필요한 상태"로 읽지 않는다. 뒤쪽 뜻인데 넘어갈 수 있는 상태가 없으면(`APPROVED`) `없음` 이다.
+  "지금 상태에서 넘어갈 수 있는 상태"이기도 해서, "필요한 상태"로 읽지 않는다. 뒤쪽 뜻인데 넘어갈 수 있는 상태가 없으면 `없음` 이다.
+  `APPROVED` 는 승인 풀기로 `AI_REVIEW_REQUIRED` 에 갈 수 있어 `AI_REVIEW_REQUIRED` 가 온다.
 - 동시에 들어온 요청과 겹친 경우 일부는 `details` 없이 `message` 만 온다.
 
 ---
 
-## 13. 전체 Flow 예시
+## 14. 전체 Flow 예시
 
 ```text
 POST /auth/login
@@ -1185,13 +1415,15 @@ POST /sessions/{id}/transcript/confirm        → STT_CONFIRMED
 POST /sessions/{id}/analysis                  → 202 / AI_PROCESSING
 GET  /sessions/{id}/analysis     (polling)    → AI_REVIEW_REQUIRED
 PATCH /sessions/{id}/summary                  → is_edited: true
+PUT  /sessions/{id}/risk-assessments/{type}  → 유형별 상담원 판단 (STT_CONFIRMED 부터)
 POST /sessions/{id}/summary/approve           → APPROVED
 GET  /sessions/{id}                           → 상태/데이터 유지 확인
+POST /sessions/{id}/summary/reopen            → AI_REVIEW_REQUIRED (고칠 일이 생기면. 고친 뒤 다시 approve)
 ```
 
 ---
 
-## 14. Contract 변경 요청
+## 15. Contract 변경 요청
 
 이 문서의 구조를 바꿔야 하면 코드 수정 전에 아래 형식으로 제안한다.
 

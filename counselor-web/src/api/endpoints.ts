@@ -7,6 +7,7 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  AbuseType,
   AnalysisEnvelope,
   AnalysisRequestResponse,
   AudioFile,
@@ -22,6 +23,8 @@ import type {
   LoginRequest,
   LoginResponse,
   PasswordChangeRequest,
+  RiskAssessment,
+  RiskAssessmentSaveRequest,
   TemporaryPassword,
   UserCreateRequest,
   UserUpdateRequest,
@@ -307,6 +310,14 @@ export const summary = {
   approve(sessionId: string): Promise<Summary> {
     return api.post<Summary>(`/sessions/${sessionId}/summary/approve`);
   },
+
+  /**
+   * 승인 풀기(수정). 내용은 그대로 DRAFT 로 돌아가고, 회차도 AI_REVIEW_REQUIRED 로 돌아간다. 고친 뒤 다시 승인한다.
+   * 승인되지 않은 요약이면 409 NOT_APPROVED.
+   */
+  reopen(sessionId: string): Promise<Summary> {
+    return api.post<Summary>(`/sessions/${sessionId}/summary/reopen`);
+  },
 };
 
 // =========================================================
@@ -360,8 +371,36 @@ export const documents = {
     return api.patch<Document>(`/sessions/${sessionId}/documents/${documentId}`, payload);
   },
 
-  /** 승인. 이후에는 수정할 수 없다. 이미 승인됐으면 409 ALREADY_APPROVED. */
+  /** 승인. 이후에는 reopen 으로 승인을 풀어야 고칠 수 있다. 이미 승인됐으면 409 ALREADY_APPROVED. */
   approve(sessionId: string, documentId: string): Promise<Document> {
     return api.post<Document>(`/sessions/${sessionId}/documents/${documentId}/approve`);
+  },
+
+  /** 승인 풀기(수정). 내용은 그대로 DRAFT 로 돌아간다. 회차 상태는 바뀌지 않는다. 승인 전이면 409 NOT_APPROVED. */
+  reopen(sessionId: string, documentId: string): Promise<Document> {
+    return api.post<Document>(`/sessions/${sessionId}/documents/${documentId}/reopen`);
+  },
+};
+
+// =========================================================
+// 상담원 위험도 판단 (유형별 상 · 중 · 하)
+// =========================================================
+
+export const riskAssessments = {
+  /**
+   * 회차의 판단 목록. 판단한 유형만 PHYSICAL → EMOTIONAL → SEXUAL → NEGLECT 순서로 온다(없으면 []).
+   * 회차 상태와 상관없이 조회할 수 있다.
+   */
+  list(sessionId: string): Promise<RiskAssessment[]> {
+    return api.get<RiskAssessment[]>(`/sessions/${sessionId}/risk-assessments`);
+  },
+
+  /**
+   * 한 유형의 판단을 저장한다. 없으면 만들고 있으면 고친다(둘 다 200).
+   * 원문 확정(STT_CONFIRMED) · 분석 검토(AI_REVIEW_REQUIRED) · 분석 실패(AI_FAILED) · 승인(APPROVED) 상태에서만 되고,
+   * 그 밖에는 409 INVALID_SESSION_STATE. 같은 유형을 동시에 처음 저장하면 늦은 쪽은 409 DUPLICATE_RESOURCE.
+   */
+  save(sessionId: string, abuseType: AbuseType, payload: RiskAssessmentSaveRequest): Promise<RiskAssessment> {
+    return api.put<RiskAssessment>(`/sessions/${sessionId}/risk-assessments/${abuseType}`, payload);
   },
 };

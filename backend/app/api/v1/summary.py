@@ -61,3 +61,19 @@ def approve_summary(
     summary = summary_service.approve_summary(db, session, current_user)
 
     return DataResponse(data=SummaryResponse.model_validate(summary))
+
+
+@router.post(
+    "/{session_id}/summary/reopen",
+    response_model=DataResponse[SummaryResponse],
+    summary="승인된 상담 요약을 다시 수정할 수 있게 되돌리기",
+)
+def reopen_summary(
+    session_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[SummaryResponse]:
+    session = get_session_or_404(db, session_id, current_user)
+    summary = summary_service.reopen_summary(db, session)
+
+    return DataResponse(data=SummaryResponse.model_validate(summary))
