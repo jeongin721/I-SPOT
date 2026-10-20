@@ -74,6 +74,18 @@ _NER_LABEL_TO_TOKEN_PREFIX = {
 _SCHOOL_KEYWORDS = ("학교", "유치원", "어린이집")
 _HOSPITAL_KEYWORDS = ("병원", "의원", "센터")
 
+# 이 모델이 가끔 사람이름(PS)으로 오탐하는, 실제로는 개인정보가 아닌
+# 상담 도메인 고정 표현. 특히 infer_audio_session.SPEAKER_LABEL_KO가
+# 매 줄 앞에 붙이는 화자표시("아동: ...", "상담사: ...")의 "아동"이
+# 걸린다 — 512 토큰 안의 짧은 글에서는 거의 안 보였는데, 창(window)이
+# 여러 개로 나뉘는 긴 글에서는 같은 "아동"이 창마다 다른 문맥으로
+# 들어가면서 어느 한 창에서는 PS로 잘못 잡힐 확률이 올라간다(2026-10-20,
+# T4에서 30분 분량 합성 축어록으로 재현 — 잔존 검사가 잡아 분석 전체가
+# PrivacyGatewayBlocked로 막혔음). 정규식/NER 판정이 끝난 뒤 정확히
+# 일치하는 경우만 걸러낸다 — "김아동"처럼 더 긴 문자열에 포함된 경우는
+# 안 걸러낸다.
+_KNOWN_FALSE_POSITIVE_ENTITIES = {"아동", "상담사"}
+
 
 def _refine_org_prefix(entity_text: str) -> str:
     """ORG 태그 중 학교/병원 이름은 더 구체적인 토큰으로 구분한다."""
@@ -228,7 +240,12 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
             ).logits
 
         pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
-        spans.extend(_merge_adjacent_same_tag_spans(offsets, pred_ids))
+        chunk_spans = _merge_adjacent_same_tag_spans(offsets, pred_ids)
+        spans.extend(
+            span
+            for span in chunk_spans
+            if text[span[0] : span[1]] not in _KNOWN_FALSE_POSITIVE_ENTITIES
+        )
 
     return _merge_overlapping_spans(spans)
 

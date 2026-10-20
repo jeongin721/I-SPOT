@@ -89,3 +89,41 @@ def test_fully_contained_span_is_absorbed():
     spans = [(0, 10, "PS"), (2, 5, "PS")]
 
     assert _merge_overlapping_spans(spans) == [(0, 10, "PS")]
+
+
+# "아동: ...", "상담사: ..." 화자표시(infer_audio_session.SPEAKER_LABEL_KO)가
+# 매 줄 앞에 반복되는 긴 축어록에서, 모델이 가끔 "아동"이라는 단어
+# 자체를 사람이름(PS)으로 오탐해 Privacy Gateway의 잔존 검사가 막는
+# 문제를 재현한다(2026-10-20, T4에서 30분 분량 합성 축어록으로 실제
+# 재현됨). 창이 하나뿐인 짧은 글에서는 거의 안 보이던 문제라, 여러
+# 창으로 나뉠 만큼 긴 글로 재현한다.
+
+
+def test_speaker_label_words_are_not_treated_as_pii():
+    counselor_lines = [
+        "오늘 기분은 어때?",
+        "요즘 집에서는 어떻게 지내?",
+        "학교에서 친구들하고는 잘 지내니?",
+    ]
+    child_lines = [
+        "그냥 그랬어요.",
+        "친구들하고는 잘 지내요.",
+        "할머니 댁에서 지낼 때도 있어요.",
+    ]
+
+    lines = []
+    for i in range(150):
+        lines.append(f"상담사: {counselor_lines[i % len(counselor_lines)]}")
+        lines.append(f"아동: {child_lines[i % len(child_lines)]}")
+    text = "\n".join(lines)
+
+    assert len(_ner_tokenizer(text)["input_ids"]) > 512
+
+    masked, entity_map = mask_pii(text)
+
+    assert "아동" not in entity_map.values()
+    assert "상담사" not in entity_map.values()
+    # 화자표시는 전부 그대로 남아 있어야 한다(지워지거나 토큰으로
+    # 바뀌면 안 됨).
+    assert masked.count("아동:") == 150
+    assert masked.count("상담사:") == 150
