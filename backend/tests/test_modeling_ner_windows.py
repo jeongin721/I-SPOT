@@ -2,7 +2,8 @@
 #
 # ai/modeling/abuse/pii_masking._decode_ner_spans 는 예전에 앞 512토큰만 모델에 넣어서, 긴 상담 축어록 뒷부분의
 # 이름 · 기관 · 지역이 가려지지 않은 채 OpenAI 로 나갔다. 이경진 님이 글을 겹치는 창(window)으로 나눠 전부 훑게
-# 고쳤고(ai-modeling 367beaf), 두 창의 판정이 어긋나게 겹치면 합집합으로 합치게 했다(91bfbeb).
+# 고쳤고(ai-modeling 367beaf), 두 창의 판정이 어긋나게 겹치면 합집합으로 합치게 했다(91bfbeb). 긴 글에서 화자 표시
+# "아동" · "상담사" 를 사람이름으로 잘못 보는 일이 늘어 그 말과 정확히 같은 범위는 거른다(fd7bd0f).
 #
 # CI 에는 torch · transformers · NER 모델이 없어서 둘 다 가짜로 바꾼다.
 #   - 가짜 tokenizer: 공백이 아닌 글자 하나가 토큰 하나다. return_overflowing_tokens · stride 를 HF 빠른 tokenizer
@@ -214,6 +215,44 @@ def test_mismatched_window_predictions_are_merged(ner) -> None:
 
     assert "수성구" not in masked and "대구" not in masked
     assert entity_map == {"[LOCATION_01]": place}
+
+
+def test_speaker_label_misread_as_name_is_not_masked(ner) -> None:
+    # 줄마다 붙는 화자 표시 "아동" 을 모델이 어느 한 창에서 사람이름으로 잘못 보는 경우(ai-modeling fd7bd0f).
+    # 걸러내지 않으면 "아동" 이 가려지고, 잔존 검사도 같은 판정으로 분석 전체를 막는다.
+    # 정확히 "아동" · "상담사" 인 범위만 거르므로 그 말을 품은 더 긴 이름("김아동")은 그대로 가린다.
+    module, state = ner
+    head = "상담사: 오늘은어땠어?\n아동: 좋았어요.\n" * 60
+    text = head + "아동: 친구 김아동이랑 놀았어요."
+    name_start = text.index("김아동")
+
+    def token_index(char_index: int) -> int:
+        return sum(1 for char in text[:char_index] if not char.isspace())
+
+    # 둘째 창(382 부터)에만 들어 있는 화자 표시 "아동" 하나를 고른다.
+    label_start = next(
+        index
+        for index in range(len(text))
+        if text.startswith("아동:", index) and CONTENT + 10 <= token_index(index) < CONTENT + 200
+    )
+
+    def labeler(window_start: int, char_index: int) -> Optional[str]:
+        if window_start == SECOND_WINDOW_START and label_start <= char_index < label_start + 2:
+            return "PS"
+
+        if name_start <= char_index < name_start + 3:
+            return "PS"
+
+        return None
+
+    state.labeler = labeler
+
+    masked, entity_map = module.mask_pii(text)
+
+    assert masked[label_start : label_start + 3] == "아동:"
+    assert masked.endswith("아동: 친구 [PERSON_01]이랑 놀았어요.")
+    assert entity_map == {"[PERSON_01]": "김아동"}
+    assert state.model_calls == 3
 
 
 def test_short_text_uses_one_window_as_before(ner) -> None:
