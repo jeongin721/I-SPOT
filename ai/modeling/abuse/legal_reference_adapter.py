@@ -232,6 +232,12 @@ def _load_target_law_articles(
     articles_by_law: Dict[str, List[Dict[str, Any]]] = {}
     warnings: List[str] = []
 
+    if not client.configured:
+        # LAW_API_OC가 아직 .env에 없는 상태 — 이건 "조회 실패"가 아니라
+        # 설정이 안 된 것뿐이라 매번 같은 경고를 남기지 않는다(2026-10-20
+        # Mingyu 지적 — 키 없음과 조회 실패가 경고 문구로 구분되지 않았음).
+        return articles_by_law, warnings
+
     for law_name in LAW_TARGET_LAWS:
         if deadline is not None and time.monotonic() >= deadline:
             warnings.append(_LAW_LOOKUP_FAILED_WARNING)
@@ -270,6 +276,24 @@ def build_legal_references(
     items: List[Dict[str, Any]] = []
     warnings: List[str] = []
 
+    # 근거 발화가 있는 유형이 하나도 없으면 law.go.kr를 부를 이유가
+    # 없다 — 캐시가 없으면 괜히 기다리고, 실패하면 유형이 없는데도
+    # 경고만 남는다(2026-10-20 Mingyu 지적).
+    usable_types: List[Tuple[str, str, str]] = []
+    for major_type in detected_major_types:
+        rag_abuse_type = MAJOR_TYPE_TO_RAG_ABUSE_TYPE.get(major_type)
+        if not rag_abuse_type:
+            continue
+        evidence_text = _evidence_text_for_major_type(
+            risk_signal_points, major_type
+        )
+        if not evidence_text.strip():
+            continue
+        usable_types.append((major_type, rag_abuse_type, evidence_text))
+
+    if not usable_types:
+        return items, warnings
+
     if (
         deadline is not None
         and (deadline - time.monotonic()) < _MIN_REMAINING_SECONDS_TO_ATTEMPT
@@ -283,19 +307,7 @@ def build_legal_references(
     if not articles_by_law:
         return items, warnings
 
-    for major_type in detected_major_types:
-        rag_abuse_type = MAJOR_TYPE_TO_RAG_ABUSE_TYPE.get(major_type)
-
-        if not rag_abuse_type:
-            continue
-
-        evidence_text = _evidence_text_for_major_type(
-            risk_signal_points, major_type
-        )
-
-        if not evidence_text.strip():
-            continue
-
+    for major_type, rag_abuse_type, evidence_text in usable_types:
         # 법령마다 최대 3개씩 랭킹한 뒤 합쳐서 점수순으로 정렬한다
         # (rag/pipeline.py의 기존 기본값과 동일 — 2026-10-19 Mingyu가
         # 이미 검토한 랭킹 동작은 그대로 유지).
