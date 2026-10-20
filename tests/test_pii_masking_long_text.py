@@ -9,7 +9,11 @@
 # backend CI 대상이 아님)와 무관하게, 이 모델링 코드가 실제로 돌아가는
 # 환경에서만 의미 있는 테스트다.
 
-from ai.modeling.abuse.pii_masking import _ner_tokenizer, mask_pii
+from ai.modeling.abuse.pii_masking import (
+    _merge_overlapping_spans,
+    _ner_tokenizer,
+    mask_pii,
+)
 
 
 def _make_long_transcript() -> str:
@@ -61,3 +65,27 @@ def test_short_text_still_works_unchanged():
         "[PERSON_01]": "김민수",
         "[LOCATION_01]": "역삼동",
     }
+
+
+# 서로 다른 창(window)이 같은 개체명의 경계를 다르게 보는 경우를
+# 모델 없이 직접 재현한다(2026-10-20 Mingyu 지적 — 예: 앞 창은
+# "대구광역시"까지만 보고, 뒤 창은 "광역시 수성구"로 봐서 겹치면, 전엔
+# 둘 중 하나만 남기고 나머지를 버려 "수성구"가 안 가려졌다).
+
+
+def test_overlapping_spans_from_different_windows_are_unioned():
+    spans = [(0, 5, "LC"), (2, 9, "LC")]
+
+    assert _merge_overlapping_spans(spans) == [(0, 9, "LC")]
+
+
+def test_non_overlapping_spans_are_untouched():
+    spans = [(0, 3, "PS"), (10, 15, "LC")]
+
+    assert _merge_overlapping_spans(spans) == spans
+
+
+def test_fully_contained_span_is_absorbed():
+    spans = [(0, 10, "PS"), (2, 5, "PS")]
+
+    assert _merge_overlapping_spans(spans) == [(0, 10, "PS")]

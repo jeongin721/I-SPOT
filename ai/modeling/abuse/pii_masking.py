@@ -158,15 +158,48 @@ def _merge_adjacent_same_tag_spans(
     return spans
 
 
+def _merge_overlapping_spans(
+    spans: List[Tuple[int, int, str]],
+) -> List[Tuple[int, int, str]]:
+    """
+    서로 다른 창(window)이 같은 개체명의 경계를 다르게 보면(예: 앞 창은
+    "대구광역시"까지만, 뒤 창은 "광역시 수성구"로) 겹치는 범위를
+    합집합으로 합친다. 창이 하나일 때는 생길 수 없던 경우다(2026-10-20
+    Mingyu 지적 — 호출부의 _select_non_overlapping_spans는 겹치면
+    먼저 시작하는 것만 남기고 나머지를 통째로 버려서, 두 범위 중 한쪽
+    범위에만 있던 부분(위 예의 "수성구")이 전혀 마스킹되지 않았다).
+    """
+
+    if not spans:
+        return []
+
+    ordered = sorted(spans, key=lambda span: span[0])
+
+    merged: List[Tuple[int, int, str]] = []
+    cur_start, cur_end, cur_tag = ordered[0]
+
+    for start, end, tag in ordered[1:]:
+        if start <= cur_end:
+            if (end - start) > (cur_end - cur_start):
+                cur_tag = tag
+            cur_end = max(cur_end, end)
+        else:
+            merged.append((cur_start, cur_end, cur_tag))
+            cur_start, cur_end, cur_tag = start, end, tag
+
+    merged.append((cur_start, cur_end, cur_tag))
+
+    return merged
+
+
 def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     """
     NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
     512 토큰을 넘는 입력은 겹치는 여러 창으로 나눠 전체를 훑는다(모듈
     상수 _NER_MAX_LENGTH/_NER_STRIDE 참고). return_overflowing_tokens이
     돌려주는 offset_mapping은 각 창이 원문 전체에서 어디였는지를 이미
-    반영하고 있어 따로 보정할 필요가 없다. 창끼리 겹치는 구간에서 같은
-    개체명이 중복 검출될 수 있는데, 그건 호출부의
-    _select_non_overlapping_spans가 걸러낸다.
+    반영하고 있어 따로 보정할 필요가 없다. 창끼리 겹치는 구간에서 경계가
+    어긋나게 검출되면 _merge_overlapping_spans가 합집합으로 합친다.
     """
 
     encoded = _ner_tokenizer(
@@ -197,7 +230,7 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
         pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
         spans.extend(_merge_adjacent_same_tag_spans(offsets, pred_ids))
 
-    return spans
+    return _merge_overlapping_spans(spans)
 
 
 # ============================================================
