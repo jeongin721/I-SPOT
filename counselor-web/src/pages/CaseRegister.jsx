@@ -3,7 +3,9 @@
 //
 // 서버 연결: '등록' 은 useCaseRegister(POST /cases)로 서버가 받는 칸만 저장하고 새 사례 상세(?case=새 ID)로 간다.
 // 화면에 쓸 값은 src/data/screens/caseRegister.ts(caseRegisterValues)가 만든다. 담당 상담원은 관리자만 고른다.
-// 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 초기면접 내용은 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// ② 초기면접 내용의 가정상황 · 아동 특성은 저장한다(상담 일지에 초기면접 항목으로 보인다).
+// 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족, ② 탭의 나머지 칸(관계 · 문제력 · 태도 · 소견)은
+// 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
 // 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
