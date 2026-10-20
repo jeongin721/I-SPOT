@@ -717,28 +717,27 @@ def analyze_audio_session(
     )
 
     # --------------------------------------------------------
-    # 관련 법령 · 매뉴얼 · 판례(rag/, law/ 포팅, 2026-10-19 추가)
+    # 관련 법령(law/ 포팅, 2026-10-19 추가 · 2026-10-20 law/만 직접 호출로 변경)
     # --------------------------------------------------------
-    # 탐지된 학대유형마다 그 유형의 위험 신호 근거 발화를 모아 한 번만
-    # 조회한다(세그먼트마다 부르지 않는 이유는 legal_reference_adapter.py
-    # 모듈 docstring 참고). LAW_API_OC가 없거나 매뉴얼/판례 원본 자료가
-    # 없으면 해당 부분만 빈 값으로 돌아온다 — 실패해도 세션 분석 전체를
-    # 막지 않는다.
+    # 탐지된 학대유형마다 그 유형의 위험 신호 근거 발화를 모아 랭킹한다
+    # (세그먼트마다 부르지 않는 이유는 legal_reference_adapter.py 모듈
+    # docstring 참고). LAW_API_OC가 없거나 law.go.kr 조회가 실패하면
+    # 해당 부분만 빈 값으로 돌아온다 — 실패해도 세션 분석 전체를 막지
+    # 않는다.
 
-    _check_deadline(deadline, "관련 법령·참고자료 조회")
+    _check_deadline(deadline, "관련 법령 조회")
 
     try:
         legal_references, legal_reference_warnings = build_legal_references(
             detected_major_types=detected_major_types,
             risk_signal_points=record_draft.get("risk_signal_points", []),
-            known_identifiers=known_identifiers,
             deadline=deadline,
         )
-    except Exception as error:
+    except Exception:
+        # 예외 문구에 law.go.kr 요청 주소(OC 인증값 포함)가 섞여 있을
+        # 수 있어 그대로 노출하지 않는다(2026-10-20 Mingyu 지적).
         legal_references = []
-        legal_reference_warnings = [
-            f"관련 법령 조회 실패: {error}"
-        ]
+        legal_reference_warnings = ["관련 법령을 불러오지 못했습니다."]
 
     # --------------------------------------------------------
     # 상담 요약 문단 종합(2026-10-13 추가)
