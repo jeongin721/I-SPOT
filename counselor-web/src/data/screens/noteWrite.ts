@@ -167,7 +167,9 @@ export interface NoteScreenInput extends SessionScreenInput {
  * 일지에서 추가로 고를 체크리스트 항목. 서식 항목 중 초기면접에서 고른 것은 뺀다.
  * 일지에 담긴 항목(kept)은 지울 수 있게 늘 남긴다. 서식 항목에 없는 것(예전 목록의 이름 등)은 뒤에 붙이고,
  * 초기면접 항목과 겹치는 것(일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 겹침)은 서식 순서 자리에 둔다.
- * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 체크를 풀어도 저장하기 전까지는 목록에 남아 다시 고를 수 있다.
+ * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 이미 저장된 일지에 담긴 겹친 항목은 체크를 풀어도 일지를 저장하기
+ * 전까지 목록에 남아 다시 고를 수 있다. 저장하지 않은 초안에만 있던 항목이 겹치게 된 경우는 체크를 풀면 바로 목록에서 빠진다
+ * (초기면접 항목으로는 그대로 보인다).
  */
 export function addableItems(options: string[], intake: string[], kept: string[]): string[] {
   const fromIntake = new Set(intake);
