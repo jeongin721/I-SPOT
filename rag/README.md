@@ -186,9 +186,18 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
       "page": 21,
       "url": "",
       "similarity": 0.30
+    },
+    {
+      "type": "precedent",
+      "origin": "law_api",
+      "title": "어린이집 교사인 피고인 甲이 아동인 피해자들의 입을 주먹으로 때리거나 …",
+      "case_name": "아동학대범죄의처벌등에관한특례법위반(아동복지시설종사자등의아동학대가중처벌)",
+      "summary": "공소사실의 요지 ...",
+      "citation": "○○지방법원 2020. 1. 1. 2019고단0000",
+      "url": "https://www.law.go.kr/LSW/precInfoP.do?precSeq=...",
+      "similarity": 0.43
     }
-  ],
-  "precedent_warning": "판례 API: ... 사용 신청이 되어 있지 않습니다. ..."
+  ]
 }
 ```
 
@@ -199,7 +208,7 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
 | 매뉴얼과 서식 | `manual_references` | `manual` / `guideline` / `form` 원문에서 유형별 상위 2개 (최대 6개) |
 | 매뉴얼과 서식 | `checklist_results` | 공식 체크리스트·서식 항목과 상담 일치 여부 |
 | 법령과 판례 | `related_laws` | 국가법령정보센터 현행 조문 |
-| 법령과 판례 | `precedents` | 유사 판례. 가이드북 판례(유사도순 최대 3건) 뒤에 법령 API 판례(최대 2건). 8-2 참고 |
+| 법령과 판례 | `precedents` | 유사 판례. 색인된 가이드북 · 판례 API 판례 중 유사도순 최대 3건. 8-2 참고 |
 
 `reference_materials`는 위 자료 중 핵심 2~3개만 섞어서 고른 요약용 필드다.
 
@@ -248,22 +257,27 @@ references = search_screen_manual("상담 문장", "closure", top_k=3)
 
 ## 8-2. 유사 판례
 
-`precedents.find_similar_precedents(text, abuse_type)`가 두 곳에서 찾아 합친다. 한쪽이 실패해도 다른 쪽 결과는 돌려주고 사유는 `precedent_warning`에 남긴다.
+`precedents.find_similar_precedents(text, abuse_type)`는 **미리 색인해 둔 판례**에서 상담 내용과 비슷한 사건을 찾는다(코사인 유사도 0.25 이상, 학대 유형 안에서 최대 3건). 분석할 때 국가법령정보센터를 부르지 않는다. API 검색은 최근 선고 순이라 비슷한 사건을 고를 수 없기 때문이다. 실패하면 빈 목록과 `precedent_warning`을 돌려준다.
 
-| origin | 출처 | 찾는 방법 |
+| origin | 출처 | 색인 방법 |
 |---|---|---|
-| `guidebook` | 교육부 「아동학대 예방 및 대처요령 교육부문 가이드북」 4판의 '판례로 보는 ○○ 사례'(신체 7 · 정서 7 · 성 3 · 방임 6, 23건) | 색인할 때 사건 하나당 조각 하나(`source_type=precedent`, `abuse_type`, `court`, `case_number`, `citation`)로 만든다(`precedents.build_precedent_documents`). 상담 문장과 코사인 유사도가 0.25 이상인 사건을 학대 유형 안에서 최대 3건 |
-| `law_api` | 국가법령정보센터 판례 API(`target=prec`) | 학대 유형별로 정해 둔 검색어(`PRECEDENT_API_QUERIES`)로 검색해 판결요지를 붙인다. **상담 문장은 국가법령정보센터로 보내지 않는다.** `url`은 포털 판례 화면(`precInfoP.do?precSeq=`) |
+| `guidebook` | 교육부 가이드북 4판 '판례로 보는 ○○ 사례' 23건(신체 7 · 정서 7 · 성 3 · 방임 6) | 색인할 때 PDF에서 사건 단위로 뽑는다(`precedents.build_precedent_documents`). 출처는 `source` · `page` |
+| `law_api` | 국가법령정보센터 판례 API에서 모은 아동학대 판례(2026-10 기준 98건) | `python -m rag.precedent_harvest`로 모아 `law_cache/precedent_index.json`에 저장하고, 인덱서가 읽는다. `url`은 포털 판례 화면(`precInfoP.do?precSeq=`) |
 
-- 가이드북 판례는 하급심 사건이라 포털에 원문이 없는 경우가 많아 `url`이 비어 있다. 출처는 `source` · `page`로 보여준다.
-- **판례 API는 OC 계정에 판례 사용 신청이 따로 필요하다.** 신청 전에는 `precedent_warning`에 "사용 신청이 되어 있지 않습니다"가 담기고 가이드북 판례만 나온다. open.law.go.kr → OPEN API 신청에서 판례를 체크하면 코드 변경 없이 붙는다.
-- 판례 본문은 `law_cache/precedents/`에 기한 없이 캐시한다(판례는 바뀌지 않는다).
-- 가이드북 판례를 처음 넣으려면 `python -m rag.indexer`로 다시 색인한다.
-- 기준점 0.25는 2026-10 측정값이다(맞는 문장 6개 0.27~0.40 / 무관한 문장 4개 0.13~0.32). 실제 상담 문장이 쌓이면 다시 맞춘다.
+판례 모으기(`rag/precedent_harvest.py`):
 
-### 유사도 점수
+```bash
+python -m rag.precedent_harvest   # 판례 API → law_cache/precedent_index.json
+python -m rag.indexer             # 가이드북 판례와 함께 색인
+```
 
-`search_evidence()` 결과의 `similarity`는 질문과 조각의 **코사인 유사도**다. 1에 가까울수록 뜻이 비슷하고, 0 근처면 관련이 거의 없다. Chroma 기본 거리(제곱 유클리드 거리 d²)를 `1 − d² / 2`로 바꾼 값이다(OpenAI 임베딩은 길이가 1이라 성립). `min_similarity`를 주면 그보다 낮은 결과를 뺀다.
+- 검색어 7개(사건명: 아동학대 · 아동복지법위반 · 아동학대처벌법위반 / 본문: 신체적 · 정서적 · 성적 학대행위 · 방임행위)의 모든 쪽을 받는다. **상담 문장은 보내지 않는다.**
+- 학대 유형은 사건명 · 판시사항 · 판결요지 · 사실관계 앞 3000자에 나온 표현(`TYPE_TERMS`)으로 정한다. 판결 뒤쪽은 제17조 각 호를 통째로 인용해 모든 유형이 걸리므로 앞부분만 본다. 아동 학대 문맥(`CHILD_CONTEXT`)이 없으면 뺀다(노인 방임 · 직무유기 등). 여러 유형이면 유형마다 조각을 하나씩 둔다.
+- 색인 내용은 '제목 + 사실관계(공소사실의 요지 · 【범죄사실】 · 【이유】 순으로 찾은 곳부터 1200자)'. 법리 문장(판결요지)보다 사실관계가 아동 발화와 더 비슷하다.
+- 제목은 판시사항 첫 항목. 판시사항이 없는 하급심은 사실관계 첫 문장('피고인은 …'), 그것도 아니면 사건명.
+- 판례 본문은 `law_cache/precedents/`에 기한 없이 캐시한다. 목록에는 있지만 본문 API가 "일치하는 판례가 없습니다"를 돌려주는 판례(3건)는 건너뛴다.
+- 판례 API 사용 신청(open.law.go.kr → OPEN API 신청 → 판례)이 필요하다. 새 판례를 반영하려면 두 명령을 다시 돌린다.
+- 기준점 0.25는 2026-10 측정값이다(맞는 문장 9개 1위 0.26~0.53 / 무관한 문장 5개 0.13~0.32, 무관한 5개 중 2개는 통과). 실제 상담 문장이 쌓이면 다시 맞춘다.
 
 ## 9. 상태값
 
@@ -314,7 +328,10 @@ rag/privacy.py
 - 외부 전송 전 비식별(privacy_gateway.mask_for_outbound)과 결과 복원
 
 rag/precedents.py
-- 가이드북 '판례로 보는 사례'를 사건 단위 조각으로 만들고, 유사 판례(가이드북 + 판례 API)를 찾는다
+- 가이드북 '판례로 보는 사례'를 사건 단위 조각으로 만들고, 색인된 판례에서 유사 판례를 찾는다
+
+rag/precedent_harvest.py
+- 판례 API에서 아동학대 판례를 모아 사실관계 · 학대 유형을 뽑고 색인용 파일로 저장한다
 ```
 
 ## 11. 팀 연동

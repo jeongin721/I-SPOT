@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 from .config import RAG_DATA_DIR
 from .loader import load_all_pdfs
+from .precedent_harvest import load_harvested_documents
 from .precedents import build_precedent_documents
 from .splitter import split_documents
 from .vector_store import get_vector_store
@@ -14,7 +15,8 @@ def build_index() -> dict[str, int]:
 
     pages = load_all_pdfs(RAG_DATA_DIR)
     # 가이드북 등의 '판례로 보는 사례'는 쪽 조각과 별도로 사건 하나당 조각 하나를 더 만든다.
-    chunks = split_documents(pages) + build_precedent_documents(pages)
+    # 법령 API 에서 모아 둔 판례(python -m rag.precedent_harvest)가 있으면 함께 넣는다.
+    chunks = split_documents(pages) + build_precedent_documents(pages) + load_harvested_documents()
 
     if not chunks:
         return {"pages": len(pages), "chunks": 0}

@@ -143,6 +143,7 @@ def build_precedent_documents(pages: list[Document]) -> list[Document]:
                 "court": case["court"],
                 "case_number": case["case_number"],
                 "case_title": case["title"],
+                "origin": "guidebook",
                 "citation": case["citation"],
                 "chunk_id": f"{document_id}_prec_{index:03d}",
             }
@@ -153,58 +154,56 @@ def build_precedent_documents(pages: list[Document]) -> list[Document]:
     return documents
 
 
-# 법령 API 판례 검색어. 상담 문장은 국가법령정보센터로 보내지 않고, 학대 유형별로 정해 둔 말만 보낸다.
-PRECEDENT_API_QUERIES = {
-    "physical": "아동 신체적 학대행위",
-    "emotional": "아동 정서적 학대행위",
-    "sexual": "아동 성적 학대행위",
-    "neglect": "아동 방임행위",
-    "multiple": "아동학대",
-}
-PRECEDENT_PORTAL_URL = "https://www.law.go.kr/LSW/precInfoP.do"
-
-# 가이드북 판례 최소 코사인 유사도. 이보다 낮으면 비슷한 사건이 없는 것으로 본다.
-# 2026-10 측정(학대 유형 필터 적용, 1위 점수): 맞는 문장 6개 0.27~0.40 / 무관한 문장 4개 0.13~0.32
-# 무관한 문장 4개 중 3개를 거르고 맞는 문장은 모두 남는 값이다. 실제 상담 문장이 쌓이면 다시 맞춘다.
+# 판례 최소 코사인 유사도. 이보다 낮으면 비슷한 사건이 없는 것으로 본다.
+# 2026-10 측정(가이드북 23건 + 법령 API 판례, 학대 유형 필터 적용, 1위 점수):
+#   맞는 문장 9개 0.26~0.53 / 무관한 문장 5개 0.13~0.32
+# 두 범위가 겹쳐서 무관한 문장 5개 중 2개는 걸러지지 않는다. 실제 상담 문장이 쌓이면 다시 맞춘다.
 PRECEDENT_MIN_SIMILARITY = 0.25
-
-
-def _clean_html(text: Any) -> str:
-    text = re.sub(r"<br\s*/?>", " ", str(text or ""), flags=re.I)
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
 
 def _shorten(text: str, limit: int = 500) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def search_guidebook_precedents(
+def search_precedents(
     text: str,
     abuse_type: str,
     *,
     top_k: int = 3,
     min_similarity: float | None = PRECEDENT_MIN_SIMILARITY,
 ) -> list[dict[str, Any]]:
-    """색인해 둔 가이드북 판례 중 상담 내용과 비슷한 사건을 찾는다. text 는 비식별한 문장이어야 한다."""
+    """색인해 둔 판례(가이드북 사례 + 법령 API 에서 모아 둔 판례) 중 상담 내용과 비슷한 사건을 찾는다.
+
+    분석할 때 국가법령정보센터를 부르지 않는다. text 는 비식별한 문장이어야 한다(임베딩을 위해 OpenAI 로 나간다).
+    한 판례가 여러 학대 유형에 걸리면 유형마다 조각이 있어, 유형 필터 없이 찾을 때는 같은 사건을 한 번만 남긴다.
+    """
     from .retriever import search_evidence
 
     found = search_evidence(
         text,
-        top_k=top_k,
+        top_k=top_k * 3,
         source_type="precedent",
         abuse_type=None if abuse_type == "multiple" else abuse_type,
         min_similarity=min_similarity,
     )
-    results = []
+
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for item in found:
         metadata = item.get("metadata", {})
+        key = str(metadata.get("case_number") or metadata.get("chunk_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+
         content = str(item.get("content", ""))
         title, _, facts = content.partition("\n")
         results.append(
             {
                 "type": "precedent",
-                "origin": "guidebook",
+                "origin": metadata.get("origin") or "guidebook",
                 "title": metadata.get("case_title") or title,
+                "case_name": metadata.get("case_name", ""),
                 "summary": _shorten(facts.strip() or content),
                 "court": metadata.get("court", ""),
                 "case_number": metadata.get("case_number", ""),
@@ -212,64 +211,12 @@ def search_guidebook_precedents(
                 "abuse_type": metadata.get("abuse_type", ""),
                 "perpetrator": metadata.get("subsection", ""),
                 "source": metadata.get("source", ""),
-                "page": metadata.get("page"),
-                "url": "",
+                "page": metadata.get("page") or None,
+                "url": metadata.get("url", ""),
                 "similarity": item.get("similarity"),
             }
         )
-    return results
-
-
-def search_api_precedents(
-    abuse_type: str,
-    *,
-    limit: int = 2,
-    client: Any = None,
-) -> list[dict[str, Any]]:
-    """국가법령정보센터 판례 API 에서 학대 유형 관련 판례를 찾는다.
-
-    검색어는 학대 유형별로 정해 둔 말만 쓴다(상담 문장을 보내지 않는다).
-    판례 API 사용 신청이 안 되어 있으면 LawApiError 가 난다.
-    """
-    from law.client import LawApiClient
-
-    client = client or LawApiClient()
-    if not client.configured:
-        return []
-
-    query = PRECEDENT_API_QUERIES.get(abuse_type, PRECEDENT_API_QUERIES["multiple"])
-    results = []
-    for item in client.search_precedents(query, display=limit):
-        prec_id = str(item.get("판례일련번호", "")).strip()
-        detail = client.get_precedent(prec_id)
-        summary = _clean_html(detail.get("판결요지")) or _clean_html(detail.get("판시사항"))
-        results.append(
-            {
-                "type": "precedent",
-                "origin": "law_api",
-                "title": _clean_html(detail.get("사건명") or item.get("사건명")),
-                "summary": _shorten(summary),
-                "court": _clean_html(detail.get("법원명") or item.get("법원명")),
-                "case_number": _clean_html(detail.get("사건번호") or item.get("사건번호")),
-                "citation": " ".join(
-                    part
-                    for part in (
-                        _clean_html(detail.get("법원명") or item.get("법원명")),
-                        _clean_html(detail.get("선고일자") or item.get("선고일자")),
-                        _clean_html(detail.get("사건번호") or item.get("사건번호")),
-                    )
-                    if part
-                ),
-                "related_articles": _clean_html(detail.get("참조조문")),
-                "abuse_type": abuse_type,
-                "perpetrator": "",
-                "source": "국가법령정보센터",
-                "page": None,
-                "url": f"{PRECEDENT_PORTAL_URL}?precSeq={prec_id}",
-                "similarity": None,
-            }
-        )
-        if len(results) >= limit:
+        if len(results) >= top_k:
             break
     return results
 
@@ -279,36 +226,9 @@ def find_similar_precedents(
     abuse_type: str,
     *,
     top_k: int = 3,
-    use_api: bool = True,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """관련 법령 옆에 보여 줄 유사 판례. 가이드북 판례(유사도순) 뒤에 법령 API 판례를 붙인다.
-
-    한쪽이 실패해도 다른 쪽 결과는 돌려주고, 실패 사유는 경고로 남긴다.
-    text 는 비식별한 문장이어야 한다(임베딩을 위해 OpenAI 로 나간다).
-    """
-    from law.client import LawApiError
-
-    precedents: list[dict[str, Any]] = []
-    warnings: list[str] = []
-
+    """관련 법령 옆에 보여 줄 유사 판례. 실패해도 분석 전체를 멈추지 않고 사유를 경고로 돌려준다."""
     try:
-        precedents.extend(search_guidebook_precedents(text, abuse_type, top_k=top_k))
+        return search_precedents(text, abuse_type, top_k=top_k), None
     except Exception as error:
-        warnings.append(f"가이드북 판례 검색 실패: {type(error).__name__}")
-
-    if use_api:
-        try:
-            precedents.extend(search_api_precedents(abuse_type))
-        except (LawApiError, OSError, ValueError) as error:
-            warnings.append(f"판례 API: {error}")
-
-    seen: set[str] = set()
-    unique = []
-    for item in precedents:
-        key = item.get("case_number") or item.get("title")
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(item)
-
-    return unique, "; ".join(warnings) if warnings else None
+        return [], f"판례 검색 실패: {type(error).__name__}"

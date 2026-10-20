@@ -205,6 +205,7 @@ class LawApiClient:
         *,
         search: int = 2,
         display: int = 5,
+        page: int = 1,
     ) -> list[dict[str, Any]]:
         """판례 목록을 검색한다(search=1 사건명, 2 본문). 판례 API 사용 신청이 따로 필요하다."""
         payload = self._get_json(
@@ -216,6 +217,7 @@ class LawApiClient:
                 "search": search,
                 "query": query,
                 "display": display,
+                "page": page,
             },
         )
         return [

@@ -108,3 +108,37 @@ def test_extract_precedent_cases_across_pages():
     assert first["page"] == 21
     assert second["case_number"] == "2021고정650"
     assert second["court"] == "수원지방법원"
+
+
+def test_harvest_record_reads_facts_and_abuse_types():
+    from rag.precedent_harvest import build_record
+
+    detail = {
+        "사건명": "아동복지법위반(아동학대)",
+        "법원명": "춘천지법",
+        "사건번호": "2015고단651",
+        "선고일자": "20160122",
+        "판시사항": "",
+        "판결요지": "",
+        "판례내용": (
+            "【피 고 인】 피고인 【주 문】 피고인을 벌금에 처한다. 【이 유】 "
+            "공소사실의 요지 가. 피고인은 어린이집에서 피해아동이 밥을 먹기 싫다고 하자 식판을 치웠다. "
+            "이로써 피고인은 아동의 정신건강 및 발달에 해를 끼치는 정서적 학대행위를 하였다."
+        ),
+    }
+
+    record = build_record("1", {}, detail)
+
+    assert record["abuse_types"] == ["emotional"]
+    assert record["title"] == "피고인은 어린이집에서 피해아동이 밥을 먹기 싫다고 하자 식판을 치웠다."
+    assert record["facts"].startswith("공소사실의 요지 가. 피고인은 어린이집에서")
+    assert record["citation"] == "춘천지법 2016. 1. 22. 2015고단651"
+    assert record["url"] == "https://www.law.go.kr/LSW/precInfoP.do?precSeq=1"
+
+
+def test_harvest_skips_cases_without_child_abuse_context():
+    from rag.precedent_harvest import build_record
+
+    detail = {"사건명": "노인복지법위반", "판례내용": "공소사실의 요지 피고인은 노인을 방임행위 하였다."}
+
+    assert build_record("2", {}, detail) is None
