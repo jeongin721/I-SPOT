@@ -53,6 +53,12 @@ export interface RemoteState<T> {
    * 값 대신 함수를 넘기면 지금 들고 있는 값으로 새 값을 만든다(요청을 보낼 때 읽은 값이 그사이 바뀌었을 수 있어서).
    */
   setData: (ticket: RemoteTicket, value: T | ((current: T | null) => T)) => boolean;
+  /**
+   * 화면이 아직 표의 key 를 보고 있으면(표가 지금 것이든, 갔다 돌아왔든, 다시 로그인했든) refresh() 로 조용히 다시 부른다.
+   * 다른 key 이거나 화면을 떠났으면 아무것도 하지 않는다. 쓰기 응답을 값에 합치지 못할 때(setData 가 false, 또는 합칠 값이 아직 없음)
+   * 서버에 반영된 값을 받아 오는 데 쓴다. 다시 부르는 조회는 지금 로그인 토큰으로 나가고, 옛 응답 본문은 쓰지 않는다.
+   */
+  resync: (ticket: RemoteTicket) => void;
   /** 표가 아직 지금 대상의 것인가(화면에 붙어 있고 key · 세대 · 로그인 토큰이 모두 같다). null 이면 false. */
   isCurrent: (ticket: RemoteTicket | null) => boolean;
   /**
@@ -220,12 +226,19 @@ export function useRemote<T>(
 
   const sameGeneration = useCallback((ticket: RemoteTicket) => generation.current === ticket.generation, []);
 
+  const resync = useCallback(
+    (ticket: RemoteTicket) => {
+      if (mounted.current && keyRef.current === ticket.key) refresh();
+    },
+    [refresh],
+  );
+
   const setData = useCallback(
     (ticket: RemoteTicket, value: T | ((current: T | null) => T)) => {
       // 요청을 보낸 뒤 대상이 바뀌었으면 앞 대상의 응답은 버린다(지금 대상의 값 · 오류 · settled 는 그대로).
       if (!isCurrent(ticket)) {
         // 같은 key 로 돌아왔으면 돌아와서 받은 값이 이 쓰기 전 값일 수 있다. 서버 값을 다시 받는다.
-        if (mounted.current && keyRef.current === ticket.key) refresh();
+        resync(ticket);
 
         return false;
       }
@@ -245,7 +258,7 @@ export function useRemote<T>(
 
       return true;
     },
-    [isCurrent, refresh],
+    [isCurrent, resync],
   );
 
   const waitingFirst = key !== null && data === null && error === null;
@@ -260,6 +273,7 @@ export function useRemote<T>(
     generation: generation.current,
     capture,
     setData,
+    resync,
     isCurrent,
     sameGeneration,
   };

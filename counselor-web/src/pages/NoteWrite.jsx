@@ -225,7 +225,10 @@ export default function NoteWrite(props) {
                   <Fragment key={tIndex}>
                     <label>
                       <input type="checkbox" checked={t.checked} onChange={t.onChange} disabled={t.disabled} />
-                      <span>{t.label}</span>
+                      <span>
+                        {t.label}
+                        {t.hint ? <span className="note"> · {t.hint}</span> : null}
+                      </span>
                     </label>
                   </Fragment>
                 ))}
@@ -260,7 +263,10 @@ export default function NoteWrite(props) {
                   <Fragment key={tIndex}>
                     <label>
                       <input type="checkbox" checked={t.checked} onChange={t.onChange} disabled={t.disabled} />
-                      <span>{t.label}</span>
+                      <span>
+                        {t.label}
+                        {t.hint ? <span className="note"> · {t.hint}</span> : null}
+                      </span>
                     </label>
                   </Fragment>
                 ))}
