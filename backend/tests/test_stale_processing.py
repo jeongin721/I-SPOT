@@ -12,10 +12,15 @@ import types
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from sqlalchemy import update
+
 from app.core.database import SessionLocal
+from app.core.enums import SessionStatus
+from app.core.errors import APIError
 from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
-from app.services import analysis_service, transcript_service
+from app.services import analysis_service, session_service, transcript_service
 from tests.conftest import upload_audio
 from tests.test_analysis import _get_analysis, _run_analysis, confirmed_session
 from tests.test_stt_transcript import (
@@ -200,3 +205,149 @@ def test_retry_request_recovers_stale_ai_processing_without_poll(
 
     assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
     assert _analysis_statuses(session["id"]) == ["FAILED", "COMPLETED"]
+
+
+# =========================================================
+# 옛 판단이 새 작업을 마감하지 않음
+# =========================================================
+#
+# 멈춘 처리 중 회차를 읽어 둔 사이, 다른 요청이 같은 회차를 먼저 마감하고 다시 요청하면 상태는 같은
+# 처리 중이지만 시작 시각은 새 요청의 것이다. 읽어 둔 판단(옛 시작 시각 기준 '멈춤')으로 마감하면
+# 막 시작한 새 작업까지 실패가 된다. 읽어 둔 시작 시각이 DB 에서도 그대로일 때만 마감한다.
+
+def _recent(value: datetime) -> bool:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+
+    return datetime.now(timezone.utc) - value < timedelta(seconds=LONG_AGO_SECONDS / 2)
+
+
+def test_stale_snapshot_does_not_expire_retried_analysis(
+    client, counselor_headers, counselor_id, session
+) -> None:
+    confirmed_session(client, counselor_headers, session["id"])
+    _start_analysis_without_worker(session["id"], counselor_id)
+    _started(session["id"], "ai_started_at", LONG_AGO_SECONDS)
+
+    with SessionLocal() as slow:
+        snapshot = slow.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert snapshot.status == SessionStatus.AI_PROCESSING
+
+        # 다른 요청이 먼저 들어와 멈춘 작업을 마감하고 새 분석을 예약한다(request_analysis 가 둘 다 한다).
+        _start_analysis_without_worker(session["id"], counselor_id)
+
+        assert session_service.expire_stale_processing(slow, snapshot) is False
+
+    with SessionLocal() as db:
+        current = db.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert current.status == SessionStatus.AI_PROCESSING
+        assert current.last_error_code is None
+        assert _recent(current.ai_started_at)
+
+    assert _analysis_statuses(session["id"]) == ["FAILED", "PROCESSING"]
+
+
+def test_stale_snapshot_does_not_expire_retried_stt(
+    client, counselor_headers, counselor_id, session
+) -> None:
+    assert upload_audio(client, counselor_headers, session["id"])[0] == 201
+    _start_stt_without_worker(session["id"], counselor_id)
+    _started(session["id"], "stt_started_at", LONG_AGO_SECONDS)
+
+    with SessionLocal() as slow:
+        snapshot = slow.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert snapshot.status == SessionStatus.STT_PROCESSING
+
+        # 다른 요청이 먼저 들어와 멈춘 STT 를 마감하고 다시 요청한다(request_stt 가 둘 다 한다).
+        _start_stt_without_worker(session["id"], counselor_id)
+
+        assert session_service.expire_stale_processing(slow, snapshot) is False
+
+    with SessionLocal() as db:
+        current = db.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert current.status == SessionStatus.STT_PROCESSING
+        assert current.last_error_code is None
+        assert _recent(current.stt_started_at)
+
+
+def test_stale_snapshot_of_the_same_job_still_expires(
+    client, counselor_headers, counselor_id, session
+) -> None:
+    """읽은 뒤 아무도 바꾸지 않았으면 전처럼 마감한다(DB 에서 읽은 시각을 그대로 비교해도 맞는지)."""
+
+    confirmed_session(client, counselor_headers, session["id"])
+    _start_analysis_without_worker(session["id"], counselor_id)
+    _started(session["id"], "ai_started_at", LONG_AGO_SECONDS)
+
+    with SessionLocal() as db:
+        snapshot = db.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert session_service.expire_stale_processing(db, snapshot) is True
+
+    with SessionLocal() as db:
+        assert db.get(ConsultationSession, uuid.UUID(session["id"])).status == SessionStatus.AI_FAILED
+
+    assert _analysis_statuses(session["id"]) == ["FAILED"]
+
+
+def test_request_with_stale_snapshot_after_retry_is_rejected_and_keeps_new_job(
+    client, counselor_headers, counselor_id, session
+) -> None:
+    """옛 판단이 False 를 돌려준 뒤 같은 요청이 다시 읽은 상태로 409 를 내고, 새 작업은 그대로 둔다."""
+
+    confirmed_session(client, counselor_headers, session["id"])
+    _start_analysis_without_worker(session["id"], counselor_id)
+    _started(session["id"], "ai_started_at", LONG_AGO_SECONDS)
+
+    with SessionLocal() as slow:
+        snapshot = slow.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert snapshot.status == SessionStatus.AI_PROCESSING
+
+        _start_analysis_without_worker(session["id"], counselor_id)
+
+        with pytest.raises(APIError) as rejected:
+            analysis_service.request_analysis(slow, snapshot, _user(counselor_id))
+
+    assert rejected.value.status_code == 409
+    assert _analysis_statuses(session["id"]) == ["FAILED", "PROCESSING"]
+
+    with SessionLocal() as db:
+        assert db.get(ConsultationSession, uuid.UUID(session["id"])).status == SessionStatus.AI_PROCESSING
+
+
+@pytest.mark.parametrize("field", ["stt_started_at", "ai_started_at"])
+def test_processing_without_started_at_still_expires(
+    client, counselor_headers, counselor_id, session, field: str
+) -> None:
+    """시작 시각이 비어 있는 처리 중 회차(옛 자료)는 전처럼 바로 멈춤으로 마감한다."""
+
+    if field == "stt_started_at":
+        assert upload_audio(client, counselor_headers, session["id"])[0] == 201
+        _start_stt_without_worker(session["id"], counselor_id)
+        failed = SessionStatus.STT_FAILED
+    else:
+        confirmed_session(client, counselor_headers, session["id"])
+        _start_analysis_without_worker(session["id"], counselor_id)
+        failed = SessionStatus.AI_FAILED
+
+    with SessionLocal() as db:
+        db.execute(
+            update(ConsultationSession)
+            .where(ConsultationSession.id == uuid.UUID(session["id"]))
+            .values({field: None})
+        )
+        db.commit()
+
+    with SessionLocal() as db:
+        item = db.get(ConsultationSession, uuid.UUID(session["id"]))
+
+        assert getattr(item, field) is None
+        assert session_service.expire_stale_processing(db, item) is True
+
+    with SessionLocal() as db:
+        assert db.get(ConsultationSession, uuid.UUID(session["id"])).status == failed

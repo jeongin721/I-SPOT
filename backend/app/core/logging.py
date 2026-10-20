@@ -4,10 +4,13 @@
 # 따라서 로그에는 식별자/개수/길이 등 metadata 만 남기고,
 # 발화 텍스트는 redact_text() 를 거친 형태만 허용한다.
 # 서버(uvicorn)의 접속 기록도 경로 · 상태 코드만 남기고 쿼리 값은 뺀다(install_server_log_filters).
+# 예외 trace 는 예외 종류 · 호출 위치만 남기고 예외 문구는 뺀다(install_safe_exception_text).
 
 import logging
 import sys
-from typing import Optional
+import traceback
+from types import TracebackType
+from typing import List, Optional, Tuple, Type
 
 from app.core.config import settings
 
@@ -41,6 +44,7 @@ def configure_logging() -> None:
     root.setLevel(settings.LOG_LEVEL.upper())
 
     install_server_log_filters()
+    install_safe_exception_text()
 
     _CONFIGURED = True
 
@@ -124,6 +128,135 @@ def install_server_log_filters() -> None:
 
         if not any(isinstance(existing, filter_class) for existing in logger.filters):
             logger.addFilter(filter_class())
+
+
+# 원인을 몇 단계까지 따라갈지. 원인이 서로를 가리키는 고리가 있어도 끝나게 한다.
+_MAX_EXCEPTION_CHAIN = 20
+
+# 파이썬 기본 trace 와 같은 머리말(원인 예외 → 다음 예외 사이에 붙는다).
+_CAUSE_HEADER = "The above exception was the direct cause of the following exception:"
+_CONTEXT_HEADER = "During handling of the above exception, another exception occurred:"
+
+_HIDDEN_MESSAGE = "<문구 생략>"
+
+ExcInfo = Tuple[Optional[Type[BaseException]], Optional[BaseException], Optional[TracebackType]]
+
+
+def _exception_name(error: BaseException) -> str:
+    kind = type(error)
+
+    if kind.__module__ in ("builtins", "__main__"):
+        return kind.__qualname__
+
+    return f"{kind.__module__}.{kind.__qualname__}"
+
+
+def _previous_exception(error: BaseException) -> Tuple[Optional[BaseException], Optional[str]]:
+    """파이썬 기본 trace 처럼 원인(__cause__)을 먼저, 없으면 감추지 않은 처리 중 예외(__context__)를 따라간다."""
+
+    if error.__cause__ is not None:
+        return error.__cause__, _CAUSE_HEADER
+
+    if error.__context__ is not None and not error.__suppress_context__:
+        return error.__context__, _CONTEXT_HEADER
+
+    return None, None
+
+
+def _exception_block(error: BaseException) -> str:
+    lines: List[str] = []
+
+    if error.__traceback__ is not None:
+        lines.append("Traceback (most recent call last):\n")
+        lines.extend(traceback.format_list(traceback.extract_tb(error.__traceback__)))
+
+    last = f"{_exception_name(error)}: {_HIDDEN_MESSAGE}"
+
+    if isinstance(error, BaseExceptionGroup):
+        last += " (하위 예외: " + ", ".join(_exception_name(inner) for inner in error.exceptions) + ")"
+
+    lines.append(last + "\n")
+
+    return "".join(lines)
+
+
+def safe_exception_text(exc_info: ExcInfo) -> str:
+    """
+    예외 trace 를 예외 문구 없이 적는다. 예외마다 종류 이름과 호출 위치(파일 · 줄 · 함수 · 그 줄의 코드)만 남긴다.
+
+    원인 예외(raise ... from · 처리 중 다시 난 예외)도 파이썬 기본 trace 와 같은 순서 · 머리말로 적되, 가까운 쪽부터
+    _MAX_EXCEPTION_CHAIN 개까지만 적고 더 앞선 원인이 있으면 생략했다고 맨 앞에 적는다.
+    예외 문구 · 메모(add_note) · 변수 값은 적지 않는다. 하위 예외(ExceptionGroup)는 종류 이름만 적고 각자의 trace 는 적지 않는다.
+    """
+
+    error = exc_info[1]
+
+    if error is None:
+        return ""
+
+    chain: List[BaseException] = []
+    seen = set()
+    current: Optional[BaseException] = error
+
+    while current is not None and id(current) not in seen and len(chain) < _MAX_EXCEPTION_CHAIN:
+        seen.add(id(current))
+        chain.append(current)
+        current, _ = _previous_exception(current)
+
+    # 개수 제한으로 멈췄으면(고리로 멈춘 것이 아니면) 맨 앞 블록이 최초 원인처럼 보이지 않게 표시한다.
+    truncated = current is not None and id(current) not in seen
+
+    # 원인부터 적는다. 두 번째부터는 바로 앞에 적은 예외(= _previous_exception)와의 관계 머리말을 붙인다.
+    chain.reverse()
+    parts = [f"(더 앞선 원인 예외는 생략, 가까운 {_MAX_EXCEPTION_CHAIN}개만 적음)\n\n"] if truncated else []
+    parts.append(_exception_block(chain[0]))
+
+    for later in chain[1:]:
+        _, header = _previous_exception(later)
+        parts.append(f"\n{header}\n\n")
+        parts.append(_exception_block(later))
+
+    return "".join(parts).rstrip("\n")
+
+
+_SAFE_FACTORY_MARK = "_ispot_safe_exception_text"
+
+
+def install_safe_exception_text() -> None:
+    """
+    로그 기록을 만들 때 예외 trace(record.exc_text)를 safe_exception_text 로 미리 채운다. 여러 번 불러도 한 번만 건다.
+
+    예외 문구에는 상담 발화가 섞일 수 있다(SQL 오류의 매개변수 · 입력 검증 오류의 입력 값 · AI 쪽 원인 예외 문구).
+    logger.exception 은 원인 예외까지 문구를 그대로 적으므로, 오류 응답 · DB 에서 문구를 빼도 서버 기록에 남았다.
+
+    logging.Formatter 는 record.exc_text 가 이미 있으면 그것을 쓰고 예외를 다시 적지 않는다. 기록을 만드는 단계
+    (LogRecord factory)에서 채우므로 로거(app · uvicorn.error · sqlalchemy 등)와 handler 에 상관없이, 표준
+    logging.Formatter 와 그 하위 형식(uvicorn 기본 형식, pytest caplog)이면 같은 글이 나간다. record.exc_info 는 그대로 둔다.
+
+    막지 못하는 것: 로그 메시지 인자에 예외를 직접 넣은 기록(앱 코드는 예외 종류 이름만 넣는다), logging 을 거치지 않는
+    출력(threading.excepthook · warnings · print), formatException 을 직접 부르는 형식(JSON 로거 등, 지금은 안 씀).
+    """
+
+    previous = logging.getLogRecordFactory()
+
+    if getattr(previous, _SAFE_FACTORY_MARK, False):
+        return
+
+    def factory(*args, **kwargs) -> logging.LogRecord:
+        record = previous(*args, **kwargs)
+
+        if record.exc_info and record.exc_info[1] is not None and not record.exc_text:
+            try:
+                record.exc_text = safe_exception_text(record.exc_info)
+            except Exception:
+                # trace 를 적다 실패해도 로그를 남긴 쪽(except 블록 등)으로 오류를 올리지 않는다.
+                # 비워 두면 Formatter 가 문구가 든 원래 trace 를 다시 만들므로 반드시 채운다.
+                record.exc_text = f"{type(record.exc_info[1]).__qualname__}: {_HIDDEN_MESSAGE} (trace 를 적지 못함)"
+
+        return record
+
+    setattr(factory, _SAFE_FACTORY_MARK, True)
+    logging.setLogRecordFactory(factory)
 
 
 def redact_text(text: Optional[str]) -> str:
