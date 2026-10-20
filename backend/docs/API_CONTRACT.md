@@ -57,6 +57,7 @@
   ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
   `"JSON decode error"` 다. 본문 해석은 로그인 확인보다 먼저라, JSON 본문을 받는 창구는 token 이 없어도 `401` 이
   아니라 이 422 를 준다.
+- 글자 칸(본문의 모든 글자 · 글자 목록과 검색어 같은 글자 쿼리)에 NUL(`\u0000`) · 짝 없는 서로게이트(`\ud800`~`\udfff`)가 있으면 `422 VALIDATION_ERROR` 이고 아무것도 저장하지 않는다(비밀번호 확인 칸 — 로그인 `password` · 변경의 `current_password` — 제외). `field` 는 그 칸(예: `segments.0.text`, `query.search`)이고 받은 값은 응답에 넣지 않는다.
 - `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 세 가지가 더 있다. `message` 로 구분한다.
   - JSON 본문을 읽을 수 없음 — JSON 본문을 받는 창구에 `Content-Type` 이 JSON 인 본문을 보냈는데 UTF-8 로 읽을 수
     없는 바이트가 들어 있음(예: CP949 로 인코딩한 한글). 프레임워크는 JSON 문법 오류만 422 로 바꾸고 이런 해석 오류는
@@ -430,7 +431,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 ```
 
 **비밀번호 원문은 응답 · 오류 · 로그 어디에도 담기지 않는다.**
-8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값과 128자 초과뿐이다(요청 형식 검사).
+8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값, 128자 초과, NUL · 짝 없는 서로게이트가 든 값뿐이다(요청 형식 검사, 1.2).
 
 ---
 

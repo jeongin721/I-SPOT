@@ -21,6 +21,7 @@ from app.core.intake import (
     normalize_intake,
 )
 from app.schemas.auth import UserResponse
+from app.schemas.common import RequestModel
 
 # 초기면접 고르기 항목 한 개 · 한 칸에 보낼 수 있는 개수. 서식 항목보다 넉넉하게 두고 실제 값은 normalize_intake 가 거른다.
 IntakeItem = Annotated[str, StringConstraints(max_length=50)]
@@ -39,7 +40,7 @@ def _intake(values: Optional[List[str]], field: str) -> Optional[List[str]]:
     return normalize_intake(values, INTAKE_FAMILY_SITUATIONS, "가정상황")
 
 
-class GuardianFields(BaseModel):
+class GuardianFields(RequestModel):
     """
     보호자 유형.
 
