@@ -925,7 +925,8 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 모두 **선택**이라 AI 가 보내지 않으면 빈 배열(`[]`)이 된다. `schema_version` 은 `"1.0"` 그대로이고,
 이 필드가 생기기 전에 저장된 결과도 그대로 읽힌다(응답에는 빈 배열로 나온다).
 지금 `mock` · `pipeline` · `langgraph` 는 이 필드를 만들지 않아 모두 빈 배열이다.
-`modeling` 도 아직 이 필드를 채우지 않는다(`ai/modeling/abuse/contract_adapter.py` 가 기본 6필드만 만든다). 채우는 일은 이경진 님 다음 작업이다.
+`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). 지금은 `severity_ratings` · `session_change_notes` · `followup_check_points` 의
+`segment_ids` 가 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 도 늘 빈 배열이다.
 
 | 필드 | 항목 모양 | 설명 |
 | --- | --- | --- |

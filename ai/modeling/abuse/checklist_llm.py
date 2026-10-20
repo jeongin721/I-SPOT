@@ -459,6 +459,7 @@ def generate_checklist_draft(
     max_retries: int = 3,
     timeout_seconds: float = 180.0,
     use_correction_hint: bool = True,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     상담 원문을 바탕으로 서식 체크리스트 초안을 생성한다.
@@ -537,6 +538,7 @@ def generate_checklist_draft(
         user_prompt=user_prompt,
         max_retries=max_retries,
         timeout_seconds=timeout_seconds,
+        deadline=deadline,
     )
 
     return {
