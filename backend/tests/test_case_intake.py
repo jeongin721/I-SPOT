@@ -8,6 +8,7 @@ import re
 import uuid
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 
@@ -189,18 +190,191 @@ def test_case_saved_before_intake_columns_reads_as_empty_lists(
     assert detail["intake_family_situations"] == []
 
 
+# 글자 항목 안에서 받는 이스케이프. 서식 항목에는 이스케이프가 없어 따옴표 · 역슬래시만 둔다.
+_TS_ESCAPABLE = ("\\", '"', "'")
+
+
+def _ts_string(source: str, start: int, name: str) -> tuple[str, int]:
+    """source[start] 의 따옴표로 시작하는 글자 항목을 읽어 (글자, 닫는 따옴표 다음 위치) 를 돌려준다."""
+
+    quote = source[start]
+    chars: list[str] = []
+    i = start + 1
+
+    while i < len(source):
+        ch = source[i]
+
+        if ch == quote:
+            return "".join(chars), i + 1
+
+        assert ch not in "\r\n", f"{name}: 글자 항목 안에서 줄이 바뀝니다."
+
+        if ch == "\\":
+            escaped = source[i + 1 : i + 2]
+            assert escaped in _TS_ESCAPABLE, f"{name}: 따옴표 · 역슬래시 말고 다른 이스케이프가 있습니다."
+            chars.append(escaped)
+            i += 2
+            continue
+
+        chars.append(ch)
+        i += 1
+
+    raise AssertionError(f"{name}: 닫히지 않은 글자 항목이 있습니다.")
+
+
+def _ts_string_array(source: str, name: str) -> list[str]:
+    """
+    TS 소스에서 `export const <name> = [ ... ];` 배열의 글자 항목을 순서대로 읽는다.
+
+    큰 · 작은따옴표, `=` 와 `[` 사이 줄바꿈, 끝 쉼표, // · /* */ 주석을 읽는다.
+    배열 안에 글자 · 쉼표 · 공백 · 주석 말고 다른 것(펼침 · 이름 · 숫자 · 템플릿 글자 · 빈 칸 · 쉼표 빠짐)이 있으면
+    실패한다. 그런 목록은 실제 값을 이 시험이 알 수 없어 서버 목록과 같은지 판단할 수 없다.
+    """
+
+    heads = list(re.finditer(rf"\bexport\s+const\s+{re.escape(name)}\s*=\s*\[", source))
+    assert len(heads) == 1, f"{name} 선언을 하나 찾아야 하는데 {len(heads)}개입니다."
+
+    items: list[str] = []
+    expect_item = True  # 배열 맨 앞이거나 쉼표 바로 뒤
+    i = heads[0].end()
+
+    while i < len(source):
+        ch = source[i]
+
+        if ch.isspace():
+            i += 1
+        elif source.startswith("//", i):
+            end = source.find("\n", i)
+            i = len(source) if end < 0 else end + 1
+        elif source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            assert end >= 0, f"{name}: 닫히지 않은 주석이 있습니다."
+            i = end + 2
+        elif ch in "\"'":
+            assert expect_item, f"{name}: 항목 사이에 쉼표가 없습니다."
+            text_item, i = _ts_string(source, i, name)
+            items.append(text_item)
+            expect_item = False
+        elif ch == ",":
+            assert not expect_item, f"{name}: 빈 항목(맨 앞 쉼표 또는 쉼표 두 개)이 있습니다."
+            expect_item = True
+            i += 1
+        elif ch == "]":
+            # 끝 쉼표(expect_item 이 참)는 JS 에서 항목을 늘리지 않는다.
+            return items
+        else:
+            raise AssertionError(f"{name}: 글자 항목이 아닌 것({ch!r})이 있습니다.")
+
+    raise AssertionError(f"{name}: 배열이 닫히지 않았습니다.")
+
+
 def _web_list(name: str) -> list[str]:
-    source = WEB_ITEMS.read_text(encoding="utf-8")
-    match = re.search(rf"export const {name} = \[(.*?)\];", source, re.S)
-
-    assert match, f"{WEB_ITEMS} 에서 {name} 을 찾지 못했습니다."
-
-    return re.findall(r'"([^"]*)"', match.group(1))
+    return _ts_string_array(WEB_ITEMS.read_text(encoding="utf-8"), name)
 
 
 def test_intake_items_match_counselor_web() -> None:
     assert _web_list("INTAKE_CHILD_ITEMS") == list(INTAKE_CHILD_TRAITS)
     assert _web_list("INTAKE_HOME_ITEMS") == list(INTAKE_FAMILY_SITUATIONS)
+
+
+def test_web_items_reader_sees_single_quoted_addition() -> None:
+    """작은따옴표로 더한 항목도 읽어야 서버 목록과 어긋난 것을 잡는다(Codex PR #56 낮음)."""
+
+    source = WEB_ITEMS.read_text(encoding="utf-8")
+    head = "export const INTAKE_CHILD_ITEMS = ["
+    assert source.count(head) == 1
+
+    changed = source.replace(head, head + "\n  '작은따옴표로 더한 항목',", 1)
+    items = _ts_string_array(changed, "INTAKE_CHILD_ITEMS")
+
+    assert items == ["작은따옴표로 더한 항목", *INTAKE_CHILD_TRAITS]
+    assert items != list(INTAKE_CHILD_TRAITS)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_web_items_reader_survives_line_break_after_equals(newline: str) -> None:
+    """`= [` 사이에 줄이 바뀌어도(같은 JS 값) 같은 목록으로 읽는다. CRLF 파일도 같다."""
+
+    source = WEB_ITEMS.read_text(encoding="utf-8").replace("\r\n", "\n")
+    head = "export const INTAKE_HOME_ITEMS = ["
+    assert source.count(head) == 1
+
+    changed = source.replace(head, "export const INTAKE_HOME_ITEMS =\n  [", 1).replace("\n", newline)
+
+    assert _ts_string_array(changed, "INTAKE_HOME_ITEMS") == list(INTAKE_FAMILY_SITUATIONS)
+
+
+def test_ts_array_reader_reads_quotes_comments_and_trailing_comma() -> None:
+    source = """
+const OTHER = ["무시"];
+export const SAMPLE_ITEMS =
+  [
+  "가", // 줄 끝 주석
+  '나',
+  /* 블록 주석 */ "다 · 라",
+  "큰따옴표 안 ' 작은따옴표",
+  '작은따옴표 안 " 큰따옴표',
+];
+"""
+
+    assert _ts_string_array(source, "SAMPLE_ITEMS") == [
+        "가",
+        "나",
+        "다 · 라",
+        "큰따옴표 안 ' 작은따옴표",
+        '작은따옴표 안 " 큰따옴표',
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '[...OTHER, "가"]',  # 펼침
+        '["가", OTHER_ITEM]',  # 이름
+        '["가", 1]',  # 숫자
+        '["가", `나`]',  # 템플릿 글자
+        '["가",, "나"]',  # 빈 칸
+        '[, "가"]',  # 맨 앞 쉼표
+        '["가" "나"]',  # 쉼표 빠짐
+        '["가", "나"',  # 배열이 닫히지 않음
+        '["가", "나]',  # 글자가 닫히지 않음
+        '["가\n나"]',  # 글자 안 줄바꿈
+        r'["\x41"]',  # 따옴표 · 역슬래시 말고 다른 이스케이프
+        '["가" /* 닫히지 않은 주석 ]',
+    ],
+    ids=[
+        "spread",
+        "identifier",
+        "number",
+        "template",
+        "hole",
+        "leading-comma",
+        "missing-comma",
+        "unclosed-array",
+        "unclosed-string",
+        "newline-in-string",
+        "other-escape",
+        "unclosed-comment",
+    ],
+)
+def test_ts_array_reader_rejects_anything_but_strings(body: str) -> None:
+    """글자 · 쉼표 · 공백 · 주석 말고 다른 것이 있으면 서버 목록과 비교할 수 없으므로 실패한다."""
+
+    with pytest.raises(AssertionError):
+        _ts_string_array(f"export const SAMPLE_ITEMS = {body};\n", "SAMPLE_ITEMS")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'export const OTHER_ITEMS = ["가"];\n',  # 없음
+        'export const SAMPLE_ITEMS = ["가"];\nexport const SAMPLE_ITEMS = ["나"];\n',  # 두 번
+    ],
+    ids=["missing", "twice"],
+)
+def test_ts_array_reader_needs_exactly_one_declaration(source: str) -> None:
+    with pytest.raises(AssertionError):
+        _ts_string_array(source, "SAMPLE_ITEMS")
 
 
 def test_migration_keeps_existing_cases_and_can_be_reverted(tmp_path) -> None:
