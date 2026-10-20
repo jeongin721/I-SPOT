@@ -16,6 +16,8 @@
 //  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
 //    나머지 서식 4 항목을 체크리스트로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
 //    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 체크리스트를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
+//    일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 일지 항목과 겹치면, 그 항목은 '초기면접에도 있음' 을 붙여 체크한 채 남긴다
+//    (체크를 풀고 저장하면 본문에서 빠진다. 저절로 지우지 않는다 — 승인한 일지도 있어서).
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
@@ -163,14 +165,16 @@ export interface NoteScreenInput extends SessionScreenInput {
 
 /**
  * 일지에서 추가로 고를 체크리스트 항목. 서식 항목 중 초기면접에서 고른 것은 뺀다.
- * 일지에 담긴 항목 중 서식 항목에 없는 것(예전 목록의 이름 등)은 지울 수 있게 고른 채로 뒤에 붙인다.
+ * 일지에 담긴 항목(kept)은 지울 수 있게 늘 남긴다. 서식 항목에 없는 것(예전 목록의 이름 등)은 뒤에 붙이고,
+ * 초기면접 항목과 겹치는 것(일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 겹침)은 서식 순서 자리에 둔다.
+ * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 체크를 풀어도 저장하기 전까지는 목록에 남아 다시 고를 수 있다.
  */
-export function addableItems(options: string[], intake: string[], picked: string[]): string[] {
+export function addableItems(options: string[], intake: string[], kept: string[]): string[] {
   const fromIntake = new Set(intake);
   const listed = new Set(options);
-  const extra = picked.filter((item) => !listed.has(item) && !fromIntake.has(item));
+  const held = new Set(kept);
 
-  return [...options.filter((item) => !fromIntake.has(item)), ...extra.filter((item, i) => extra.indexOf(item) === i)];
+  return [...options.filter((item) => !fromIntake.has(item) || held.has(item)), ...[...held].filter((item) => !listed.has(item))];
 }
 
 export function noteWriteValues(input: NoteScreenInput) {
@@ -276,12 +280,14 @@ export function noteWriteValues(input: NoteScreenInput) {
     return { words: words ?? [], note: empty };
   };
   const checklist = (key: ListKey, options: string[], fromIntake: string[]) =>
-    addableItems(options, fromIntake, note[key]).map((label) => {
+    addableItems(options, fromIntake, [...saved[key], ...note[key]]).map((label) => {
       const checked = note[key].includes(label);
       const locked = docLocked || intakeWaiting;
 
       return {
         label,
+        // 초기면접 항목과 겹친 채 일지에 남은 항목. 체크를 풀고 저장하면 목록에서 빠진다(초기면접 항목으로는 그대로 보인다).
+        hint: fromIntake.includes(label) ? "초기면접에도 있음" : "",
         checked,
         disabled: locked,
         onChange: () => {
