@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import threading
 from typing import Dict, Optional
 
 from openai import OpenAI
@@ -128,6 +129,7 @@ def generate_counseling_records(
     transcript: str,
     model: str,
     deadline: Optional[float] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, str]:
     """
     STT transcript를 상담 요약과 상담일지로 변환한다.
@@ -153,6 +155,7 @@ def generate_counseling_records(
         system_prompt=SYSTEM_PROMPT,
         user_prompt=user_prompt,
         deadline=deadline,
+        stop_event=stop_event,
     )
 
     summary = result.get(

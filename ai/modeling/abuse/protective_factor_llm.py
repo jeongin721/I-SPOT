@@ -52,6 +52,7 @@ infer_abuse_pipeline.py 참고). 그래서 record_draft_llm.py처럼 완전히
 분리된 모듈/호출로 만들었다.
 """
 
+import threading
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
@@ -249,6 +250,7 @@ def generate_protective_factors(
     masked_transcript_text: str,
     segments: List[Dict[str, Any]],
     deadline: Optional[float] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> List[Dict[str, Any]]:
     """
     masked_transcript_text: record_draft_llm.build_transcript_citation_text()로
@@ -278,6 +280,7 @@ def generate_protective_factors(
             max_retries=2,
             timeout_seconds=180.0,
             deadline=deadline,
+            stop_event=stop_event,
         )
     except Exception:
         parsed = {}

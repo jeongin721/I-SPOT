@@ -26,6 +26,7 @@ RAG로 찾아 보여주는 쪽이 훨씬 안전한데(아동 면담 질문은 �
 segment_id만 남기고 나머지는 버린다.
 """
 
+import threading
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
@@ -182,6 +183,7 @@ def generate_record_draft(
     subtype_analysis: Optional[Dict[str, Any]],
     session_overview: str = "",
     deadline: Optional[float] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
     """
     기록 초안 필드를 만든다("향후 계획"은 제외 — 모듈 docstring 참고,
@@ -218,6 +220,7 @@ def generate_record_draft(
             max_retries=2,
             timeout_seconds=180.0,
             deadline=deadline,
+            stop_event=stop_event,
         )
     except Exception:
         parsed = {}
