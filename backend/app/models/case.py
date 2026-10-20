@@ -10,7 +10,7 @@ from sqlalchemy import Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import CaseStatus, GuardianType
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -37,6 +37,13 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     guardian_note: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # 초기면접(서식 4 ②)에서 고른 아동 특성 · 가정상황. app/core/intake.py 의 항목만 담는다(자유 글 없음).
+    # 이 칸이 생기기 전에 만든 사례는 null 이고, 응답은 빈 목록으로 준다.
+    intake_child_traits: Mapped[Optional[List[str]]] = mapped_column(JSONType, nullable=True)
+    intake_family_situations: Mapped[Optional[List[str]]] = mapped_column(
+        JSONType, nullable=True
+    )
 
     status: Mapped[CaseStatus] = mapped_column(
         SAEnum(CaseStatus, name="case_status", native_enum=False, length=20),

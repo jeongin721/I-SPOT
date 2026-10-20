@@ -458,6 +458,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
         "child_gender": null,
         "guardian_type": "PARENTS",
         "guardian_note": null,
+        "intake_child_traits": ["불안", "우울"],
+        "intake_family_situations": ["스트레스"],
         "status": "ACTIVE",
         "notes": null,
         "counselor_id": "uuid",
@@ -495,6 +497,16 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   (유형을 골라놓고 자유 입력까지 하면 통계 기준이 갈라진다)
 - 목록에 없는 값을 보내면 `422`
 
+#### 초기면접 항목 (`intake_child_traits` / `intake_family_situations`)
+
+초기면접지(서식 4 ②)에서 고른 **아동 특성** · **가정상황**. 서식의 고르기 항목 이름을 문자열 목록으로 주고받는다.
+
+- 받는 값은 `app/core/intake.py` 의 서식 항목뿐이다(아동 특성 35개 · 가정상황 21개, 상담사 웹 `intakeItems.ts` 와 같음).
+  목록에 없는 글자(앞뒤 공백 포함) · 다른 칸의 항목 · 문자열이 아닌 값 · 101개 이상은 `422 VALIDATION_ERROR`(문구에 보낸 글자를 되풀이하지 않는다)
+- 겹친 항목은 처음 것만 남긴다(고른 순서 유지). 자유 글(‘기타’ 의 내용 등)은 받지 않는다
+- 응답은 늘 목록이다. 고르지 않았거나 이 칸이 생기기 전 사례면 `[]`
+- 감사 기록에는 바뀐 칸 이름(`changed_fields`)만 남고 고른 항목은 남지 않는다
+
 ### POST /api/v1/cases → 201
 
 ```json
@@ -505,6 +517,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   "child_gender": null,
   "guardian_type": "PARENTS",
   "guardian_note": null,
+  "intake_child_traits": [],
+  "intake_family_situations": [],
   "notes": null,
   "counselor_id": null,
   "case_number": null
@@ -513,6 +527,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 - `title`, `child_alias` 필수
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
+- `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
   - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
     "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
@@ -536,6 +551,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - 이미 `OTHER` 인 사례는 `guardian_note` 만 보내도 된다
   - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
   - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
+- `intake_child_traits` · `intake_family_situations` 는 보내면 목록을 통째로 바꾼다. 비우려면 `[]` 를 보낸다(`null` 은 `422`)
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
