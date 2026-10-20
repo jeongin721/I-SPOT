@@ -1461,7 +1461,7 @@ def api_analyze_audio(
                     "followup_check_points", []
                 ),
                 "legal_references": result.get(
-                    "legal_references", {}
+                    "legal_references", []
                 ),
                 "session_id": session_id,
             }

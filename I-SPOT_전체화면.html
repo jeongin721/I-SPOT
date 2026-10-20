@@ -1022,20 +1022,28 @@ renderVals() {
   // segment_ids로 어느 발화의 근거인지 찾고, 그 포인트의 major_type으로
   // legal_references(관련 법령 조문)를 찾아 그 발화에 붙인다. 발화 하나가
   // 여러 유형 근거면 법령도 여러 줄 쌓인다. 같은 조문이 두 번 붙지 않게 한다.
+  // 2026-10-19: legal_references가 유형별 dict에서 평평한 목록으로
+  // 바뀌었다(Mingyu와 Contract 모양 논의) — 항목마다 clause(호)가 붙어
+  // 있어서 "제17조" 전체가 아니라 "제17조 3호"처럼 구체적으로 보여준다.
   const lawsBySegment = {};
   if (real && real.record_draft && real.legal_references) {
-    const refsByType = real.legal_references;
+    const refsByType = {};
+    (real.legal_references || []).forEach((item) => {
+      const bucket = refsByType[item.major_type] || (refsByType[item.major_type] = []);
+      bucket.push(item);
+    });
     (real.record_draft.risk_signal_points || []).forEach((p) => {
       const refs = refsByType[p.major_type];
-      if (!refs || !refs.related_laws || !refs.related_laws.length) return;
+      if (!refs || !refs.length) return;
       const sig = (p.major_type || '').replace('학대', '') || p.major_type;
       (p.segment_ids || []).forEach((segId) => {
         const key = String(segId);
         const bucket = lawsBySegment[key] || (lawsBySegment[key] = []);
-        refs.related_laws.forEach((law) => {
-          const lawKey = law.law_name + law.article;
+        refs.forEach((law) => {
+          const lawKey = law.law_name + law.article + (law.clause || '');
           if (bucket.some((b) => b.key === lawKey)) return;
-          bucket.push({ key: lawKey, sig, lawName: law.law_name, article: law.article, title: law.title, portalUrl: law.portal_url || '' });
+          const articleLabel = law.clause ? (law.article + ' ' + law.clause) : law.article;
+          bucket.push({ key: lawKey, sig, lawName: law.law_name, article: articleLabel, title: law.title, portalUrl: law.url || '' });
         });
       });
     });

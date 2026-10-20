@@ -728,13 +728,17 @@ def analyze_audio_session(
     _check_deadline(deadline, "관련 법령·참고자료 조회")
 
     try:
-        legal_references = build_legal_references(
+        legal_references, legal_reference_warnings = build_legal_references(
             detected_major_types=detected_major_types,
             risk_signal_points=record_draft.get("risk_signal_points", []),
             known_identifiers=known_identifiers,
+            deadline=deadline,
         )
-    except Exception:
-        legal_references = {}
+    except Exception as error:
+        legal_references = []
+        legal_reference_warnings = [
+            f"관련 법령 조회 실패: {error}"
+        ]
 
     # --------------------------------------------------------
     # 상담 요약 문단 종합(2026-10-13 추가)
@@ -910,6 +914,7 @@ def analyze_audio_session(
         "record_draft": record_draft,
         "protective_factors": protective_factors,
         "legal_references": legal_references,
+        "legal_reference_warnings": legal_reference_warnings,
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,
