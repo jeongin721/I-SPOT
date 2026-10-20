@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.ai_adapter import (
+    AI_TIMEOUT_MESSAGE,
     AIAnalysisBundle,
     AIError,
     map_ai_error,
@@ -17,6 +18,7 @@ from app.adapters.ai_adapter import (
 from app.core.config import settings
 from app.core.errors import ErrorCode
 from app.schemas.contracts import AIAnalysisResult
+from app.services import analysis_service, session_service
 from tests.test_stt_transcript import transcribed_session
 
 AI_CONTRACT_KEYS = {
@@ -61,6 +63,23 @@ class SlowAIAdapter:
         time.sleep(1.0)
 
         return AIAnalysisBundle(result=AIAnalysisResult(), provider="slow")
+
+
+class SlowPrepareAIAdapter:
+    """준비 단계(모델 로드)가 오래 걸리는 어댑터. 분석 자체는 바로 끝난다."""
+
+    name = "slow-prepare"
+
+    def __init__(self) -> None:
+        self.analyzed = False
+
+    def prepare(self) -> None:
+        time.sleep(1.0)
+
+    def analyze(self, transcript_payload):
+        self.analyzed = True
+
+        return AIAnalysisBundle(result=AIAnalysisResult(), provider=self.name)
 
 
 # =========================================================
@@ -290,6 +309,38 @@ def test_ai_timeout_sets_timeout_error_code(
     assert envelope["error"]["code"] == "AI_TIMEOUT"
 
 
+def test_slow_prepare_has_its_own_time_limit(
+    client: TestClient, counselor_headers, session: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """준비 단계는 AI_TIMEOUT_SECONDS 밖이지만 따로 제한이 있다. 넘으면 분석을 부르지 않고 AI_TIMEOUT."""
+
+    confirmed_session(client, counselor_headers, session["id"])
+
+    monkeypatch.setattr(analysis_service, "PREPARE_TIMEOUT_SECONDS", 0.2)
+    adapter = SlowPrepareAIAdapter()
+    set_ai_adapter_override(adapter)
+
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+
+    envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
+
+    assert envelope["session_status"] == "AI_FAILED"
+    assert envelope["error"] == {
+        "code": "AI_TIMEOUT",
+        "message": analysis_service.PREPARE_TIMEOUT_MESSAGE,
+    }
+    assert adapter.analyzed is False
+
+
+def test_prepare_limit_ends_before_stale_processing_check() -> None:
+    """작업 전체 마감(요청 시각 + 준비 제한 + 분석 제한)이 처리 중 멈춤 판정(요청 시각 + 분석 제한 + 여유 시간)보다 앞이다.
+
+    뒤면 살아 있는 작업이 조회 때 '작업이 사라짐' 으로 실패 처리된다(그 뒤 늦은 결과는 저장하지 않는다).
+    """
+
+    assert 0 < analysis_service.PREPARE_TIMEOUT_SECONDS < session_service.STALE_GRACE_SECONDS
+
+
 def test_ai_invalid_output_sets_invalid_output_code(
     client: TestClient, counselor_headers, session: dict
 ) -> None:
@@ -368,6 +419,25 @@ def test_known_ai_error_keeps_fixed_message() -> None:
     mapped = map_ai_error(timeout("LLM 상담 요약 요청 시간이 초과되었습니다."))
 
     assert str(mapped) == "LLM 상담 요약 요청 시간이 초과되었습니다."
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError("아빠가 때렸어요 발화를 분석하다 마감 시각을 넘음"),
+        type("DeadlineExceeded", (TimeoutError,), {})("아빠가 때렸어요"),
+    ],
+)
+def test_builtin_timeout_error_maps_to_ai_timeout_with_fixed_message(error: Exception) -> None:
+    """파이썬 내장 TimeoutError(와 하위 예외)는 AI_TIMEOUT 이다. 문구는 버리고 고정 문구를 쓴다.
+
+    modeling 은 마감 시각(deadline)을 넘기면 이 예외를 던진다.
+    """
+
+    mapped = map_ai_error(error)
+
+    assert mapped.error_code == ErrorCode.AI_TIMEOUT
+    assert str(mapped) == AI_TIMEOUT_MESSAGE
 
 
 def test_unknown_ai_error_hides_exception_text() -> None:

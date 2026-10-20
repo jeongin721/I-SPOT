@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.database import SessionLocal
-from app.core.enums import SessionStatus
+from app.core.enums import AnalysisStatus, SessionStatus
 from app.core.errors import APIError, ErrorCode
 from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
@@ -76,7 +76,7 @@ def test_concurrent_analysis_requests_start_only_once(
     second = _load(second_db, session["id"])
     assert first.status == second.status == SessionStatus.STT_CONFIRMED
 
-    analysis_service.request_analysis(first_db, first, user)
+    first_analysis = analysis_service.request_analysis(first_db, first, user)
 
     with pytest.raises(APIError) as raised:
         analysis_service.request_analysis(second_db, second, user)
@@ -84,6 +84,10 @@ def test_concurrent_analysis_requests_start_only_once(
     assert raised.value.status_code == 409
     assert raised.value.code == ErrorCode.INVALID_SESSION_STATE
     assert _count(AIAnalysis, session["id"]) == 1
+
+    # 거절된 요청은 먼저 들어온 분석을 마감하지 않는다(옛 분석 마감은 claim_status 를 통과한 뒤에만).
+    with SessionLocal() as check:
+        assert check.get(AIAnalysis, first_analysis.id).status == AnalysisStatus.PROCESSING
 
 
 def test_concurrent_stt_requests_start_only_once(

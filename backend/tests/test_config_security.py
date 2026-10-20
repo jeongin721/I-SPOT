@@ -220,3 +220,49 @@ def test_modeling_error_does_not_print_input_values() -> None:
     assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
     assert "0123456789" not in message
     assert STRONG_SECRET[-8:] not in message
+
+
+# ---------------------------------------------------------
+# AI_DEADLINE_MARGIN_SECONDS 는 modeling 에 넘기는 마감 시각의 여유다
+# (마감 시각 = 분석 시작 + AI_TIMEOUT_SECONDS - 여유). 제한 시간보다 짧아야 한다.
+# ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("margin", [180.0, 200.0])
+def test_modeling_rejects_deadline_margin_not_shorter_than_time_limit(margin: float) -> None:
+    """여유가 제한 시간과 같거나 길면 마감 시각이 분석 시작 전이 되어 모든 분석이 바로 AI_TIMEOUT 으로 끝난다."""
+
+    with pytest.raises(ValidationError) as caught:
+        _settings(AI_PROVIDER="modeling", AI_TIMEOUT_SECONDS=180.0, AI_DEADLINE_MARGIN_SECONDS=margin)
+
+    message = str(caught.value)
+
+    # 막은 이유와 지금 값을 문구로 알려 준다.
+    assert "AI_DEADLINE_MARGIN_SECONDS 는 AI_TIMEOUT_SECONDS 보다 작아야 합니다" in message
+    assert "바로 AI_TIMEOUT 으로 끝납니다" in message
+    assert f"AI_DEADLINE_MARGIN_SECONDS={margin}, AI_TIMEOUT_SECONDS=180.0" in message
+
+
+def test_deadline_margin_must_not_be_negative() -> None:
+    with pytest.raises(ValidationError, match="AI_DEADLINE_MARGIN_SECONDS"):
+        _settings(AI_PROVIDER="modeling", AI_DEADLINE_MARGIN_SECONDS=-1.0)
+
+
+def test_default_deadline_margin_passes_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """기본값(제한 180초 · 여유 10초)은 검사를 통과한다. conftest 의 시험용 값은 지우고 본다."""
+
+    monkeypatch.delenv("AI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("AI_DEADLINE_MARGIN_SECONDS", raising=False)
+
+    settings = _settings(AI_PROVIDER="modeling")
+
+    assert (settings.AI_TIMEOUT_SECONDS, settings.AI_DEADLINE_MARGIN_SECONDS) == (180.0, 10.0)
+
+
+@pytest.mark.parametrize("provider", ["mock", "pipeline", "langgraph"])
+def test_other_providers_do_not_check_deadline_margin(provider: str) -> None:
+    """여유는 modeling 만 쓴다. 다른 provider 는 제한 시간을 짧게 잡아도 그대로 뜬다."""
+
+    settings = _settings(AI_PROVIDER=provider, AI_TIMEOUT_SECONDS=5.0, AI_DEADLINE_MARGIN_SECONDS=10.0)
+
+    assert settings.AI_PROVIDER == provider
