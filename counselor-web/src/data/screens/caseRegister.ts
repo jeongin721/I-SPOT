@@ -2,7 +2,8 @@
 //
 // 저장하는 칸: 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 자동) · 성별 · 출생연도 · 보호자 유형(기타면 보호자 메모) · 사례 메모,
 // ② 초기면접 내용의 아동 특성 · 가정상황(서식 4 항목 고르기), 담당 상담원(관리자만 고름, 상담원은 본인).
-// 등록되면 새 사례의 상세(?case=새 ID)로 간다. 초기면접 아동 특성 · 가정상황은 상담 일지(noteWrite.ts)에 단어로 보인다.
+// 등록되면 새 사례의 상세(?case=새 ID)로 간다. 초기면접 아동 특성 · 가정상황은 사례 상세(caseDetail.ts, 등록 뒤 고치기도 여기서)와
+// 상담 일지(noteWrite.ts)에 단어로 보인다.
 // 나머지 서식 4 칸은 개인정보 저장 범위가 팀 결정 전이라(specs 대응표 CaseRegister 줄) 입력을 막고 '준비 중' 으로 둔다:
 //  - 실명 · 생년월일(출생연도만 저장) · 사례관리대상자(보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다)
 //  - 신고접수일 · 사례연계일 · 최초면접일 · 학대유형 · 조치결과 · 면접대상자 · 위험도 · 사례연계 경위
@@ -23,6 +24,7 @@ import {
 } from "../useCaseRegister";
 import { NOT_READY, notice, screenNotice } from "./common";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
+import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 
 const TY = ["방임", "신체학대", "정서학대", "성학대"];
@@ -109,30 +111,9 @@ export function caseRegisterValues({ session, register, state, setState, go }: C
 
   /** 초기면접 아동 특성 · 가정상황 고르기 단추(눌러서 고르고 다시 눌러 뺀다). 등록 중에는 잠근다. */
   const intakePickers = (key: IntakeKey, options: string[]) =>
-    options.map((label) => {
-      const on = form[key].includes(label);
-
-      return {
-        label,
-        on,
-        mark: on ? "✓" : "+",
-        bg: on ? "#F1EADA" : "#FFFFFF",
-        bd: on ? "#2B2A26" : "#DAD5C9",
-        fg: "#2B2A26",
-        fw: on ? 700 : 400,
-        disabled: submitting,
-        toggle: () => {
-          if (submitting) return;
-          setState((current) => {
-            const list = current.form[key];
-
-            return {
-              form: { ...current.form, [key]: list.includes(label) ? list.filter((item) => item !== label) : [...list, label] },
-            };
-          });
-        },
-      };
-    });
+    intakeChoices(options, form[key], submitting, (label) =>
+      setState((current) => ({ form: { ...current.form, [key]: toggleItem(current.form[key], label) } })),
+    );
 
   const submit = async (event?: { preventDefault?: () => void }) => {
     if (event && event.preventDefault) event.preventDefault();
