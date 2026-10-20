@@ -168,9 +168,11 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
         });
         const held = latestData.current;
 
-        // 들고 있는 사례 정보가 없으면(그사이 다시 불러오다 실패) 고칠 값이 없다. 서버 값을 다시 받는다.
+        // 들고 있는 사례 정보가 없으면 응답을 합칠 곳이 없다 — 다른 사례에 갔다 돌아와 · 다시 로그인해 첫 조회를 기다리는 중이거나,
+        // 다시 불러오다 실패했다. 화면이 아직 이 사례를 보고 있으면(표가 지금 것이 아니어도) 지금 로그인으로 다시 조회해 저장한 값을
+        // 받는다. 기다리던 첫 조회는 저장 전에 읽은 값일 수 있어서다(그 응답은 useRemote 가 버린다). 옛 응답 본문은 합치지 않는다.
         if (!held) {
-          if (remote.isCurrent(ticket)) remote.refresh();
+          remote.resync(ticket);
           return false;
         }
 
@@ -204,7 +206,7 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
         }
       }
     },
-    [remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.refresh],
+    [remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.resync],
   );
 
   return {
