@@ -54,8 +54,9 @@ def map_ai_error(error: Exception) -> AIError:
 
     알 수 없는 예외는 문구를 버리고 고정 문구와 예외 종류 이름만 남긴다.
     예외 문구에는 상담 발화나 내부 경로가 섞일 수 있는데, AIError 의 문구는
-    DB(error_message)와 API 응답까지 그대로 간다. 자세한 내용은
-    analysis_service 가 session_id 와 함께 logger.exception 으로 남긴다.
+    DB(error_message)와 API 응답까지 그대로 간다. 원인 예외의 종류와 호출 위치는
+    analysis_service 가 session_id 와 함께 logger.exception 으로 남긴다(로그에도
+    문구는 빠진다 — core/logging.install_safe_exception_text).
     호출하는 쪽은 `raise map_ai_error(error) from error` 로 원인을 이어 둔다.
     """
 
