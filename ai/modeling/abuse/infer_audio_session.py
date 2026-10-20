@@ -54,6 +54,7 @@ from ai.modeling.abuse.session_change import (
 )
 from ai.modeling.abuse.legal_reference_adapter import (
     build_legal_references,
+    build_precedent_references,
 )
 from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
@@ -756,6 +757,29 @@ def analyze_audio_session(
         legal_reference_warnings = ["관련 법령을 불러오지 못했습니다."]
 
     # --------------------------------------------------------
+    # 유사 판례(jeongin님의 feature/rag 판례 색인 포팅, 2026-10-20 추가)
+    # --------------------------------------------------------
+    # 판례 색인(rag_storage/chroma, law_cache/precedent_index.json)이 이
+    # 환경에 없거나 판례 API 사용 신청 전이면 빈 값 + 경고로 돌아온다 —
+    # 실패해도 세션 분석 전체를 막지 않는다(legal_reference_adapter.py
+    # 모듈 docstring "유사 판례" 절 참고).
+
+    _check_deadline(deadline, "유사 판례 조회")
+
+    try:
+        precedent_references, precedent_reference_warnings = (
+            build_precedent_references(
+                detected_major_types=detected_major_types,
+                risk_signal_points=record_draft.get("risk_signal_points", []),
+                known_identifiers=known_identifiers,
+                deadline=deadline,
+            )
+        )
+    except Exception:
+        precedent_references = []
+        precedent_reference_warnings = ["유사 판례를 불러오지 못했습니다."]
+
+    # --------------------------------------------------------
     # 상담 요약 문단 종합(2026-10-13 추가)
     # --------------------------------------------------------
     # 이미 만든 보호요인/위험신호를 자연스러운 문단으로 "다시 쓰기"만
@@ -930,6 +954,8 @@ def analyze_audio_session(
         "protective_factors": protective_factors,
         "legal_references": legal_references,
         "legal_reference_warnings": legal_reference_warnings,
+        "precedent_references": precedent_references,
+        "precedent_reference_warnings": precedent_reference_warnings,
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,

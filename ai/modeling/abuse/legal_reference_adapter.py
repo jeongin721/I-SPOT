@@ -71,6 +71,32 @@ deadline에 걸리지 않도록 _MIN_REMAINING_SECONDS_TO_ATTEMPT 미만이면
 법령 조회 자체를 시작하지 않고 건너뛴다(2026-10-20 Mingyu 지적 — 전엔
 법령 조회가 늦어지면 그 뒤 필수 단계가 deadline에 걸려 '일부 건너뜀'
 경고조차 못 남기고 분석 전체가 TimeoutError로 사라졌음).
+
+[유사 판례 — 2026-10-20 jeongin님의 feature/rag 추가분 포팅]
+
+jeongin님이 feature/rag에 판례 색인(가이드북 23건 + 법령 API 판례
+98건)과 `rag.precedents.find_similar_precedents(text, abuse_type)`를
+새로 추가했다. 법령 조회와 달리 이건 OpenAI 임베딩으로 유사도를 재는
+거라 상담 텍스트가 외부로 나간다 — 그래서 law_references와 달리
+마스킹을 거친다(mask_for_outbound → 호출 → restore_pii, 이 프로젝트의
+다른 외부 LLM 호출과 같은 규칙). jeongin님도 같은 이유로
+`rag.privacy.mask_text`(우리 privacy_gateway.mask_for_outbound를
+그대로 감싼 것)를 이미 쓰고 있다 — 여기서는 그 래퍼를 또 거치지 않고
+privacy_gateway를 직접 부른다(이 프로젝트 안에서 이미 내가 소유한
+모듈이라 간접화할 이유가 없음).
+
+결과는 legal_references와 안 섞고 precedent_references로 따로
+반환한다(법령=조문 근거, 판례=유사사례라 성격이 다르고, Mingyu가
+Contract에 넣을 때도 따로 판단하기로 함).
+
+[지금 비어 있을 수 있는 것 — 판례]
+
+판례 색인(rag_storage/chroma, law_cache/precedent_index.json)이 이
+환경에 없으면 find_similar_precedents가 빈 결과 + 경고를 돌려준다
+(예외를 던지지 않음, jeongin님 쪽 설계). 판례 API(target=prec) 자체도
+국가법령정보센터에 별도 사용 신청이 필요하다(law/client.py 참고) —
+신청 전이면 law.go.kr에 직접 묻는 호출(캐시 미스일 때)만 실패하고,
+가이드북 판례(API 신청과 무관, 로컬 색인)는 영향받지 않는다.
 """
 
 import re
@@ -82,6 +108,10 @@ from law.mapper import build_law_keywords, rank_law_articles
 from law.parser import extract_articles
 from law.portal import attach_portal_urls
 from rag.config import LAW_TARGET_LAWS
+from rag.precedents import find_similar_precedents
+
+from ai.modeling.abuse.pii_masking import restore_pii
+from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 
 MAJOR_TYPE_TO_RAG_ABUSE_TYPE = {
     "신체학대": "physical",
@@ -107,6 +137,9 @@ _MIN_REMAINING_SECONDS_TO_ATTEMPT = 60
 # 요청 주소 전체(OC 인증값 포함)가 들어갈 수 있어 그대로 노출하지
 # 않는다(2026-10-20 Mingyu 지적).
 _LAW_LOOKUP_FAILED_WARNING = "관련 법령을 불러오지 못했습니다."
+
+# 유사 판례 검색 결과 상한 — rag/pipeline.py가 쓰던 기존 기본값과 동일.
+_PRECEDENT_TOP_K = 3
 
 # 조문 content 끝에 붙는 "제17조(금지행위) 누구든지 ... <개정 ...>" 같은
 # 머리말/개정이력 줄 — 호가 아니라서 버린다.
@@ -260,6 +293,32 @@ def _load_target_law_articles(
     return articles_by_law, warnings
 
 
+def _usable_major_types(
+    detected_major_types: List[str],
+    risk_signal_points: List[Dict[str, Any]],
+) -> List[Tuple[str, str, str]]:
+    """
+    근거 발화가 있는 유형만 (major_type, rag_abuse_type, evidence_text)
+    튜플로 골라낸다. 법령 조회·판례 검색 둘 다 이 목록을 그대로 써서,
+    근거 없는 유형 때문에 괜히 외부 호출을 하지 않는다(2026-10-20
+    Mingyu 지적).
+    """
+
+    usable_types: List[Tuple[str, str, str]] = []
+    for major_type in detected_major_types:
+        rag_abuse_type = MAJOR_TYPE_TO_RAG_ABUSE_TYPE.get(major_type)
+        if not rag_abuse_type:
+            continue
+        evidence_text = _evidence_text_for_major_type(
+            risk_signal_points, major_type
+        )
+        if not evidence_text.strip():
+            continue
+        usable_types.append((major_type, rag_abuse_type, evidence_text))
+
+    return usable_types
+
+
 def build_legal_references(
     detected_major_types: List[str],
     risk_signal_points: List[Dict[str, Any]],
@@ -276,20 +335,7 @@ def build_legal_references(
     items: List[Dict[str, Any]] = []
     warnings: List[str] = []
 
-    # 근거 발화가 있는 유형이 하나도 없으면 law.go.kr를 부를 이유가
-    # 없다 — 캐시가 없으면 괜히 기다리고, 실패하면 유형이 없는데도
-    # 경고만 남는다(2026-10-20 Mingyu 지적).
-    usable_types: List[Tuple[str, str, str]] = []
-    for major_type in detected_major_types:
-        rag_abuse_type = MAJOR_TYPE_TO_RAG_ABUSE_TYPE.get(major_type)
-        if not rag_abuse_type:
-            continue
-        evidence_text = _evidence_text_for_major_type(
-            risk_signal_points, major_type
-        )
-        if not evidence_text.strip():
-            continue
-        usable_types.append((major_type, rag_abuse_type, evidence_text))
+    usable_types = _usable_major_types(detected_major_types, risk_signal_points)
 
     if not usable_types:
         return items, warnings
@@ -353,5 +399,76 @@ def build_legal_references(
                         "url": law.get("portal_url", ""),
                     }
                 )
+
+    return items, warnings
+
+
+def build_precedent_references(
+    detected_major_types: List[str],
+    risk_signal_points: List[Dict[str, Any]],
+    known_identifiers: Optional[List[str]] = None,
+    deadline: Optional[float] = None,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """
+    탐지된 학대유형마다 유사 판례를 찾아 평평한 목록으로 돌려준다
+    (모듈 docstring의 "유사 판례" 절 참고 — jeongin님의
+    rag.precedents.find_similar_precedents 포팅).
+
+    법령 조회와 달리 OpenAI 임베딩을 쓰므로 호출 전에 마스킹하고 받은
+    뒤 복원한다. 반환값은 (items, warnings) 튜플이다.
+    """
+
+    items: List[Dict[str, Any]] = []
+    warnings: List[str] = []
+
+    usable_types = _usable_major_types(detected_major_types, risk_signal_points)
+
+    if not usable_types:
+        return items, warnings
+
+    if (
+        deadline is not None
+        and (deadline - time.monotonic()) < _MIN_REMAINING_SECONDS_TO_ATTEMPT
+    ):
+        warnings.append("시간이 부족해 유사 판례 조회를 건너뛰었습니다.")
+        return items, warnings
+
+    for major_type, rag_abuse_type, evidence_text in usable_types:
+        if deadline is not None and time.monotonic() >= deadline:
+            warnings.append(
+                "시간 부족으로 일부 학대유형의 유사 판례 조회를 건너뛰었습니다."
+            )
+            break
+
+        masked_text, entity_map = mask_for_outbound(
+            evidence_text, known_identifiers=known_identifiers
+        )
+
+        try:
+            results, error = find_similar_precedents(
+                masked_text, rag_abuse_type, top_k=_PRECEDENT_TOP_K
+            )
+        except Exception as exc:
+            error = f"판례 검색 실패: {type(exc).__name__}"
+            results = []
+
+        if error and error not in warnings:
+            warnings.append(error)
+
+        results = restore_pii(results, entity_map)
+
+        for precedent in results:
+            items.append(
+                {
+                    "major_type": major_type,
+                    "title": precedent.get("title", ""),
+                    "court": precedent.get("court", ""),
+                    "case_number": precedent.get("case_number", ""),
+                    "citation": precedent.get("citation", ""),
+                    "summary": precedent.get("summary", ""),
+                    "url": precedent.get("url", ""),
+                    "similarity": precedent.get("similarity"),
+                }
+            )
 
     return items, warnings
