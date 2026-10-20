@@ -131,7 +131,8 @@ def test_settings_error_does_not_print_input_values() -> None:
 
 # ---------------------------------------------------------
 # AI_PROVIDER=modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 불완전하다
-# (이름 인식이 앞 512토큰만 보고, 서버 경로는 등록 실명 대조를 안 쓴다). 운영에서는 일부러 풀 때만 뜬다.
+# (서버 경로는 등록 실명 대조를 안 쓴다. 이름 인식이 앞 512토큰만 보던 문제는 10/20 고쳐 문구에서 뺐다).
+# 운영에서는 일부러 풀 때만 뜬다.
 # ---------------------------------------------------------
 
 
@@ -146,6 +147,9 @@ def test_production_rejects_modeling_until_privacy_issues_are_fixed() -> None:
     assert "비식별" in message
     assert "개인정보 문제가 해결되기 전" in message
     assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
+    # 남은 이유는 등록 실명 대조다. 고친 '긴 상담 뒷부분' 은 더 이상 이유로 적지 않는다.
+    assert "등록 실명" in message
+    assert "뒷부분" not in message
 
 
 def test_production_allows_modeling_only_when_explicitly_allowed() -> None:
