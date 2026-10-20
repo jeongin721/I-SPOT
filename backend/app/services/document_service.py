@@ -148,3 +148,24 @@ def approve_document(
     db.refresh(document)
 
     return document
+
+
+def reopen_document(db: Session, document: Document) -> Document:
+    """
+    승인을 풀어 다시 고칠 수 있게 한다. 내용은 그대로 두고, 고친 뒤 다시 승인한다.
+
+    회차 상태는 바꾸지 않는다(문서 승인도 바꾸지 않는다). 따로 감사 기록은 남기지 않는다
+    (사용자 결정). 다시 고치면 DOCUMENT_UPDATED, 다시 승인하면 DOCUMENT_APPROVED 가 남는다.
+    """
+
+    if document.status != ReviewStatus.APPROVED:
+        raise conflict(ErrorCode.NOT_APPROVED, "승인된 문서만 수정할 수 있게 되돌릴 수 있습니다.")
+
+    document.status = ReviewStatus.DRAFT
+    document.approved_at = None
+    document.approved_by_id = None
+
+    db.commit()
+    db.refresh(document)
+
+    return document

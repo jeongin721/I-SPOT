@@ -409,6 +409,7 @@ backend/
 - 권한 검사는 Backend 에서 수행한다. 상담사는 담당 Case 만 조회·수정할 수 있다.
 - 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 저장한다.
 - 상담 원문을 일반 로그에 출력하지 않는다. 로그에는 식별자·개수만 남긴다.
+- 서버 접속 기록(uvicorn)은 경로 · 상태만 남기고 쿼리 값(`?search=` 등)은 남기지 않는다(`app/core/logging.py`, `tests/test_access_log_query.py`).
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.

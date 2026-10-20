@@ -47,7 +47,7 @@ FastAPI  ← 이 저장소
 | `app/adapters/` | **Adapter** | 외부 서비스(STT/AI) 연결. 갈아끼울 수 있게 분리 |
 | `app/core/` | **Core** | 설정, DB 연결, 인증, 오류, 상태 규칙 등 공통 기반 |
 | `alembic/` | **Migration** | DB 테이블 생성/변경 이력 |
-| `tests/` | **Test** | pytest 814개 |
+| `tests/` | **Test** | pytest 937개 |
 
 ### 왜 Router 를 얇게 만들었나
 
@@ -249,7 +249,7 @@ AI 생성 → 상담사 확인 → 수정 → 승인 → 저장
 | API 주소나 파라미터 변경 | `app/api/v1/` |
 | 비즈니스 로직 수정 | `app/services/` |
 | DB 컬럼 추가 | `app/models/` → `alembic revision --autogenerate` |
-| 요청/응답 필드 추가 | `app/schemas/` |
+| 요청/응답 필드 추가 | `app/schemas/` (요청 본문 모델은 `common.py` 의 `RequestModel`, 글자 쿼리는 `Annotated` 맨 뒤 — `Query(...)` 다음 — 에 `StorableQueryText` 를 붙인다) |
 | 새 오류 코드 추가 | `app/core/errors.py` 의 `ErrorCode` |
 | 상담 상태 순서 변경 | `app/core/enums.py` + `app/core/state_machine.py` |
 | 실제 STT/AI 연결 | `.env` 의 `STT_PROVIDER` / `AI_PROVIDER` |
@@ -284,7 +284,7 @@ DB 컬럼을 바꿨다면 migration 을 잊지 말 것. 안 만들면 CI 가 잡
 ./scripts/check.sh
 ```
 
-lint, 테스트 814개, migration 정합성을 한 번에 확인한다.
+lint, 테스트 937개, migration 정합성을 한 번에 확인한다.
 여기서 통과하면 CI 도 통과한다.
 
 ---

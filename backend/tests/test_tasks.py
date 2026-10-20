@@ -17,7 +17,7 @@ from app.models.audio import AudioFile
 from app.models.session import ConsultationSession
 from app.models.transcript import Transcript
 from tests.conftest import create_case, create_session, upload_audio
-from tests.test_analysis import confirmed_session
+from tests.test_analysis import analyzed_session, confirmed_session
 from tests.test_stt_transcript import transcribed_session
 
 TASKS = "/api/v1/tasks"
@@ -116,6 +116,14 @@ def _edit_transcript(client: TestClient, headers, session_id: str, text: str) ->
     assert response.status_code == 200, response.text
 
     return response.json()["data"]
+
+
+def _summary_action(client: TestClient, headers, session_id: str, action: str) -> None:
+    """요약을 승인(approve)하거나 승인을 푼다(reopen)."""
+
+    response = client.post(f"/api/v1/sessions/{session_id}/summary/{action}", headers=headers)
+
+    assert response.status_code == 200, response.text
 
 
 def _get(client: TestClient, headers, **params):
@@ -424,6 +432,82 @@ def test_analysis_request_after_ai_failure_waits_from_failure(
     data = _list(client, counselor_headers)
 
     assert _same_time(_waiting(data)[session["id"]], base + timedelta(days=3))
+
+
+def test_summary_reopened_long_after_analysis_waits_from_reopening(
+    client: TestClient, counselor_headers, session
+) -> None:
+    """오래전에 분석한 회기의 승인을 오늘 풀면 푼 시각부터 센다. 곧바로 "지연"이 되면 안 된다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_session(session["id"], ai_completed_at=_now() - timedelta(days=10))
+    _summary_action(client, counselor_headers, session["id"], "approve")
+
+    before = _now()
+    _summary_action(client, counselor_headers, session["id"], "reopen")
+    after = _now()
+
+    item = _list(client, counselor_headers)["items"][0]
+    waiting_since = _parse(item["waiting_since"])
+
+    assert item["task_type"] == "REVIEW_ANALYSIS"
+    assert before - timedelta(milliseconds=1) <= waiting_since <= after + timedelta(milliseconds=1)
+    assert item["is_overdue"] is False
+
+    summary = client.get(SUMMARY, headers=counselor_headers).json()["data"]
+
+    assert (summary["total"], summary["overdue"]) == (1, 0)
+
+
+def test_summary_edits_after_reopening_do_not_restart_the_wait(
+    client: TestClient, counselor_headers, session
+) -> None:
+    """승인을 푼 뒤 요약을 고쳐도 푼 시각부터 센다. 고칠 때마다 새로 세면 묵은 검토가 새것처럼 보인다."""
+
+    reopened_at = _now() - timedelta(days=3)
+
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_session(session["id"], ai_completed_at=_now() - timedelta(days=10))
+    _summary_action(client, counselor_headers, session["id"], "approve")
+    _summary_action(client, counselor_headers, session["id"], "reopen")
+    _set_session(session["id"], reopened_at=reopened_at)
+
+    response = client.patch(
+        f"/api/v1/sessions/{session['id']}/summary",
+        json={"overview": "승인을 풀고 다시 고친 요약"},
+        headers=counselor_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    item = _list(client, counselor_headers)["items"][0]
+
+    assert _same_time(_parse(item["waiting_since"]), reopened_at)
+    assert item["is_overdue"] is True
+
+
+def test_reanalysis_after_reopening_waits_from_new_analysis(
+    client: TestClient, counselor_headers, session
+) -> None:
+    """승인을 푼 뒤 다시 분석하면 새 분석 완료 시각이 더 늦으므로 그때부터 센다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+    _summary_action(client, counselor_headers, session["id"], "approve")
+    _summary_action(client, counselor_headers, session["id"], "reopen")
+
+    response = client.post(f"/api/v1/sessions/{session['id']}/analysis", headers=counselor_headers)
+    assert response.status_code == 202, response.text
+
+    reanalyzed_at = _now() - timedelta(days=1)
+    _set_session(
+        session["id"],
+        reopened_at=_now() - timedelta(days=5),
+        ai_completed_at=reanalyzed_at,
+    )
+
+    item = _list(client, counselor_headers)["items"][0]
+
+    assert item["task_type"] == "REVIEW_ANALYSIS"
+    assert _same_time(_parse(item["waiting_since"]), reanalyzed_at)
 
 
 # =========================================================
