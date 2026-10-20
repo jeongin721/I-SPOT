@@ -12,6 +12,8 @@ from law.portal import attach_portal_urls
 from .checklist_builder import build_next_session_checklist
 from .config import LAW_TARGET_LAWS
 from .evidence_analyzer import analyze_checklist_candidates
+from .precedents import find_similar_precedents
+from .privacy import mask_text, restore
 from .resource_ranker import build_reference_materials, format_document_reference
 from .retriever import search_evidence
 
@@ -21,9 +23,8 @@ DISCLAIMER = (
     "학대 여부를 확정하거나 법적 판단을 대신하지 않습니다."
 )
 
-# 화면의 '매뉴얼과 서식' / '법령과 판례' 섹션에 들어갈 RAG 원문 유형
+# 화면의 '매뉴얼과 서식' 섹션에 들어갈 RAG 원문 유형. 판례는 precedents.find_similar_precedents 가 찾는다.
 MANUAL_SOURCE_TYPES = ("manual", "guideline", "form")
-PRECEDENT_SOURCE_TYPES = ("precedent",)
 
 ABUSE_TYPE_KO = {
     "physical": "신체학대",
@@ -200,11 +201,43 @@ def analyze_consultation_evidence(
     use_law: bool = True,
     refresh_law: bool = False,
     reference_limit: int = 3,
+    known_identifiers: list[str] | None = None,
 ) -> dict[str, Any]:
+    """상담 문장의 근거 체크리스트 · 관련 법령 · 매뉴얼 · 유사 판례 · 다음 상담 질문을 만든다.
+
+    상담 문장은 OpenAI(임베딩 · 판정 LLM)로 나가므로 먼저 비식별한다(9/18 회의 결정).
+    가린 문장으로 분석한 뒤 결과의 토큰을 원문으로 되돌려 돌려준다.
+    비식별 검증을 통과하지 못하면 아무것도 보내지 않고 RagPrivacyBlocked 를 던진다.
+    known_identifiers: 사례에 등록된 아동 · 보호자 실명 등(정확 매칭으로 한 번 더 가린다).
+    """
     consultation_text = text.strip()
     if not consultation_text:
         raise ValueError("상담 문장이 비어 있습니다.")
 
+    masked_text, entity_map = mask_text(consultation_text, known_identifiers)
+    result = _analyze_masked(
+        masked_text,
+        abuse_type,
+        top_k=top_k,
+        source_type=source_type,
+        use_law=use_law,
+        refresh_law=refresh_law,
+        reference_limit=reference_limit,
+    )
+    return restore(result, entity_map)
+
+
+def _analyze_masked(
+    consultation_text: str,
+    abuse_type: str,
+    *,
+    top_k: int,
+    source_type: str,
+    use_law: bool,
+    refresh_law: bool,
+    reference_limit: int,
+) -> dict[str, Any]:
+    """비식별한 상담 문장으로 분석한다. 여기서 부르는 임베딩 · LLM 은 모두 가린 문장만 받는다."""
     rag_abuse_filter = None if abuse_type == "multiple" else abuse_type
     candidates = search_evidence(
         consultation_text,
@@ -233,13 +266,8 @@ def analyze_consultation_evidence(
         consultation_text,
         abuse_type,
     )
-    # rag_data/precedents/ 에 판례 원문이 없으면 빈 목록이 반환된다.
-    precedent_results = _load_supplementary_rag(
-        consultation_text,
-        abuse_type,
-        source_types=PRECEDENT_SOURCE_TYPES,
-        top_k=3,
-    )
+    # 가이드북 판례(색인)는 상담 내용과 비슷한 순으로, 법령 API 판례는 학대 유형 검색어로 찾는다.
+    precedents, precedent_warning = find_similar_precedents(consultation_text, abuse_type)
 
     next_session_checklist = build_next_session_checklist(
         consultation_text,
@@ -261,11 +289,11 @@ def analyze_consultation_evidence(
     result["manual_references"] = [
         format_document_reference(item) for item in supplementary_results
     ]
-    result["precedents"] = [
-        format_document_reference(item) for item in precedent_results
-    ]
+    result["precedents"] = precedents
     if law_warning:
         result["law_warning"] = law_warning
+    if precedent_warning:
+        result["precedent_warning"] = precedent_warning
 
     if not candidates:
         result["message"] = "조건에 맞는 체크리스트 검색 결과가 없습니다."
@@ -385,11 +413,18 @@ def _print_human_readable(
         empty_message="- 관련 매뉴얼·가이드·서식이 없습니다.",
     )
 
-    print("\n[8. 판례]")
-    _print_document_references(
-        result.get("precedents", []),
-        empty_message="- 관련 판례가 없습니다. (rag_data/precedents/ 원문 필요)",
-    )
+    print("\n[8. 유사 판례]")
+    precedents = result.get("precedents", [])
+    if precedents:
+        for item in precedents:
+            print(f"- {item.get('title', '')} ({item.get('citation', '')})")
+            print(f"  {item.get('summary', '')}")
+            origin = item.get("url") or f"{item.get('source', '')} p.{item.get('page')}"
+            print(f"  출처: {origin}")
+    else:
+        print("- 관련 판례가 없습니다.")
+    if result.get("precedent_warning"):
+        print(f"  참고: {result['precedent_warning']}")
 
     print("\n[참고]")
     print(result.get("disclaimer", DISCLAIMER))

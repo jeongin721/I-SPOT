@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from .config import ANALYZER_MODEL
 from .metadata import SCREEN_NAMES, SCREEN_PRIORITY_SECTIONS, strip_section_prefix
+from .privacy import mask_text, restore
 from .resource_ranker import format_document_reference
 from .retriever import search_evidence
 from .vector_store import get_vector_store
@@ -36,11 +37,13 @@ def build_screen_references(
     *,
     screens: tuple[str, ...] | None = None,
     top_k: int = 3,
+    known_identifiers: list[str] | None = None,
 ) -> dict[str, Any]:
     """세 화면의 매뉴얼 근거를 한 번에 만든다. 화면마다 LLM 확인이 3~5초 걸려 동시에 돌린다.
 
     상담사가 화면을 열 때마다 검색하지 말고, 회차 분석이 끝날 때 이 함수로 만들어 저장해 두고 읽는다.
     한 화면이 실패해도 다른 화면 결과는 돌려준다(실패한 화면은 빈 목록 + errors 에 오류 종류).
+    상담 문장은 OpenAI 로 나가기 전에 비식별한다. 비식별 검증에 실패하면 RagPrivacyBlocked 를 던진다.
 
     반환: {"references": {screen: [...]}, "errors": {screen: "오류"}}
     """
@@ -49,11 +52,12 @@ def build_screen_references(
     if not query:
         return {"references": {screen: [] for screen in targets}, "errors": {}}
 
+    query, entity_map = mask_text(query, known_identifiers)
     references: dict[str, list[dict[str, Any]]] = {}
     errors: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=len(targets)) as pool:
         futures = {
-            screen: pool.submit(search_screen_manual, query, screen, top_k=top_k)
+            screen: pool.submit(_search_masked, query, screen, top_k=top_k)
             for screen in targets
         }
         for screen, future in futures.items():
@@ -63,7 +67,7 @@ def build_screen_references(
                 references[screen] = []
                 errors[screen] = f"{type(error).__name__}: {error}"[:300]
 
-    return {"references": references, "errors": errors}
+    return {"references": restore(references, entity_map), "errors": errors}
 
 
 def search_screen_manual(
@@ -71,12 +75,25 @@ def search_screen_manual(
     screen: str,
     *,
     top_k: int = 3,
+    known_identifiers: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """업무 매뉴얼에서 해당 화면 구간(metadata.MANUAL_SCREEN_SECTIONS)만 검색한다.
 
     screen: followup(추가 확인 · 질문) / prebriefing(상담 전 브리핑) / closure(종결 검토)
     맞는 내용이 없으면 빈 목록을 돌려준다. 구간 밖 내용(전달체계, 입양 등)은 검색되지 않는다.
+    상담 문장은 OpenAI 로 나가기 전에 비식별한다.
     """
+    masked, entity_map = mask_text(text.strip(), known_identifiers)
+    return restore(_search_masked(masked, screen, top_k=top_k), entity_map)
+
+
+def _search_masked(
+    text: str,
+    screen: str,
+    *,
+    top_k: int = 3,
+) -> list[dict[str, Any]]:
+    """비식별한 문장으로 화면 구간을 검색한다. 임베딩 · LLM 은 가린 문장만 받는다."""
     if screen not in SCREEN_NAMES:
         raise ValueError(f"알 수 없는 화면입니다: {screen} ({', '.join(SCREEN_NAMES)})")
 
