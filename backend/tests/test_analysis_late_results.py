@@ -28,14 +28,15 @@ from app.adapters.ai_adapter import (
 )
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AuditAction
+from app.core.enums import AuditAction, SessionStatus
 from app.core.errors import ErrorCode
 from app.models.analysis import AIAnalysis
 from app.models.audit_log import AuditLog
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.schemas.contracts import AIAnalysisResult
-from app.services import analysis_service, session_service
+from app.schemas.transcript import TranscriptSegmentUpdate, TranscriptUpdateRequest
+from app.services import analysis_service, session_service, transcript_service
 from tests.test_analysis import _get_analysis, confirmed_session
 
 # 이벤트 · thread 를 기다리는 최대 초. 정상이면 금방 끝난다.
@@ -76,6 +77,36 @@ class _HeldAdapter:
             raise AIError(LATE_FAILURE_TEXT, ErrorCode.AI_FAILED)
 
         return _bundle(self.name)
+
+
+class _GatedAdapter:
+    """첫 분석 · 두 번째 분석을 각각 release 가 켜질 때까지 붙잡는다. 첫 분석만 outcome 대로 끝낸다.
+
+    entered[n] · release[n] 은 n 번째(0 부터) 분석의 시작 알림 · 풀어 주기다.
+    """
+
+    name = "gated"
+
+    def __init__(self, outcome: str) -> None:
+        self.outcome = outcome
+        self.entered = [threading.Event(), threading.Event()]
+        self.release = [threading.Event(), threading.Event()]
+        self.calls = 0
+        self.lock = threading.Lock()
+
+    def analyze(self, transcript_payload):
+        with self.lock:
+            index = self.calls
+            self.calls += 1
+
+        if index < len(self.entered):
+            self.entered[index].set()
+            self.release[index].wait(timeout=WAIT_SECONDS)
+
+        if index == 0 and self.outcome == "failure":
+            raise AIError(LATE_FAILURE_TEXT, ErrorCode.AI_FAILED)
+
+        return _bundle(f"{self.name}-{index}")
 
 
 class _TimedAdapter:
@@ -389,6 +420,177 @@ def test_worker_started_after_job_was_replaced_does_not_run(
     assert saved["session_status"] == "AI_PROCESSING"
     assert saved["analysis_status"] == "PROCESSING"
     assert _saved(session["id"], first_id)["analysis_status"] == "FAILED"
+
+
+# =========================================================
+# 늦은 결과 — 옛 분석이 PROCESSING 으로 남은 채 새로 요청한 경우
+# =========================================================
+
+@pytest.mark.parametrize("outcome", ["success", "failure"])
+def test_old_job_left_by_transcript_edit_race_does_not_finish_new_job(
+    client: TestClient, counselor_headers, counselor_id, session: dict, caplog, outcome: str
+) -> None:
+    """분석 중 전사 수정 경합으로 회차가 옛 분석을 마감하지 않고 처리 중에서 벗어났다가(STT 검수 → 확정)
+    다시 분석을 요청하면, 옛 작업이 새 작업보다 먼저 끝나도 그 성공 · 실패는 버리고 새 작업이 정상으로 끝난다.
+
+    전사 수정(transcript_service.update_transcript)은 읽어 둔 회차 상태로 전이를 판단하고 상태를 그대로 써서,
+    그 사이 커밋된 AI_PROCESSING 을 STT_REVIEW_REQUIRED 로 덮는다(이 시험 범위 밖의 기존 경합). 고치기 전에는
+    옛 작업이 옛 전사 판으로 만든 결과(또는 실패)로 회차를 마감하고, 새 작업은 영구 PROCESSING 으로 남았다
+    (PR #62 반박 검토 재현).
+    """
+
+    confirmed_session(client, counselor_headers, session["id"])
+    adapter = _GatedAdapter(outcome)
+    set_ai_adapter_override(adapter)
+
+    session_id = uuid.UUID(session["id"])
+    user = types.SimpleNamespace(id=counselor_id)
+    workers: List[threading.Thread] = []
+
+    # 전사 수정 요청이 회차(STT_CONFIRMED)를 읽은 직후 분석 요청이 먼저 커밋한다.
+    edit_db = SessionLocal()
+
+    with caplog.at_level(logging.WARNING):
+        try:
+            stale = edit_db.get(ConsultationSession, session_id)
+            segment_id = transcript_service.get_latest_transcript(edit_db, session_id).segments[0].segment_id
+
+            old_id = _reserve(session["id"], counselor_id)
+            workers.append(_start_worker(session["id"], old_id))
+            assert adapter.entered[0].wait(timeout=WAIT_SECONDS)
+
+            transcript_service.update_transcript(
+                edit_db,
+                stale,
+                user,
+                TranscriptUpdateRequest(
+                    segments=[TranscriptSegmentUpdate(segment_id=segment_id, text="가상 수정 문장")]
+                ),
+            )
+            edit_db.close()
+
+            # 경합이 재현됐다: 옛 분석이 PROCESSING 인 채 회차가 STT 검수로 돌아갔다.
+            assert _saved(session["id"], old_id)["session_status"] == "STT_REVIEW_REQUIRED"
+            assert _saved(session["id"], old_id)["analysis_status"] == "PROCESSING"
+
+            confirmed = client.post(
+                f"/api/v1/sessions/{session['id']}/transcript/confirm", headers=counselor_headers
+            )
+            assert confirmed.status_code == 200
+
+            new_id = _reserve(session["id"], counselor_id)
+            workers.append(_start_worker(session["id"], new_id))
+            assert adapter.entered[1].wait(timeout=WAIT_SECONDS)
+
+            # 새 작업이 분석하는 사이 옛 작업이 먼저 끝난다.
+            adapter.release[0].set()
+            workers[0].join(timeout=WAIT_SECONDS)
+
+            adapter.release[1].set()
+            workers[1].join(timeout=WAIT_SECONDS)
+        finally:
+            for event in adapter.release:
+                event.set()
+
+            for worker in workers:
+                worker.join(timeout=WAIT_SECONDS)
+
+            edit_db.close()
+
+    assert not any(worker.is_alive() for worker in workers)
+
+    new = _saved(session["id"], new_id)
+
+    # 회차는 새 작업의 결과(새 전사 판)로 마감된다.
+    assert new["session_status"] == "AI_REVIEW_REQUIRED"
+    assert new["analysis_status"] == "COMPLETED"
+    assert new["has_result"]
+    assert new["summary_analysis_id"] == new_id
+
+    old = _saved(session["id"], old_id)
+
+    # 옛 작업은 새 요청이 적은 실패 그대로다. 늦은 결과 · 실패 문구는 저장하지 않는다.
+    assert old["analysis_status"] == "FAILED"
+    assert old["analysis_error"] == "AI_FAILED"
+    assert old["analysis_message"] == analysis_service.SUPERSEDED_MESSAGE
+    assert not old["has_result"]
+    assert old_id not in new["completed_audits"]
+
+    envelope = _poll(client, counselor_headers, session["id"])
+
+    assert envelope["session_status"] == "AI_REVIEW_REQUIRED"
+    assert envelope["analysis"]["id"] == str(new_id)
+    assert envelope["analysis"]["transcript_version"] == 2
+    assert envelope["error"] is None
+
+    assert f"analysis_id={old_id}" in caplog.text
+    assert LATE_FAILURE_TEXT not in caplog.text
+
+
+def test_new_request_closes_analysis_left_processing(
+    client: TestClient, counselor_headers, counselor_id, session: dict
+) -> None:
+    """회차가 옛 분석을 마감하지 않은 채 처리 중에서 벗어나 있으면, 새 분석 요청이 새 행을 넣기 전에 그 분석을
+    고정 문구 AI_FAILED 로 마감하고 감사 기록을 남긴다. 그 뒤에야 시작한 옛 작업은 준비 · 분석을 하지 않는다.
+
+    전사 수정 경합이 남기는 상태(처리 중이 아닌 회차 + PROCESSING 분석)를 직접 만든다. 경합 자체는 바로 위
+    시험이 재현한다.
+    """
+
+    confirmed_session(client, counselor_headers, session["id"])
+    adapter = _RecordingAdapter()
+    set_ai_adapter_override(adapter)
+
+    old_id = _reserve(session["id"], counselor_id)
+
+    with SessionLocal() as db:
+        db.execute(
+            update(ConsultationSession)
+            .where(ConsultationSession.id == uuid.UUID(session["id"]))
+            .values(status=SessionStatus.STT_CONFIRMED)
+        )
+        db.commit()
+
+    new_id = _reserve(session["id"], counselor_id)
+
+    old = _saved(session["id"], old_id)
+
+    assert old["session_status"] == "AI_PROCESSING"
+    assert old["analysis_status"] == "FAILED"
+    assert old["analysis_error"] == "AI_FAILED"
+    assert old["analysis_message"] == analysis_service.SUPERSEDED_MESSAGE
+    assert _saved(session["id"], new_id)["analysis_status"] == "PROCESSING"
+
+    with SessionLocal() as db:
+        closed = db.scalars(
+            select(AuditLog).where(
+                AuditLog.action == AuditAction.ANALYSIS_FAILED,
+                AuditLog.entity_id == old_id,
+            )
+        ).all()
+        old_completed_at = db.get(AIAnalysis, old_id).completed_at
+
+    assert len(closed) == 1
+    assert closed[0].actor_id == counselor_id
+    assert closed[0].detail == {"error_code": "AI_FAILED", "reason": "superseded"}
+    assert old_completed_at is not None
+
+    # 옛 작업이 이제야 시작해도 준비 · 분석을 하지 않는다.
+    analysis_service.process_analysis(uuid.UUID(session["id"]), old_id)
+
+    assert adapter.prepared == 0
+    assert adapter.time_limits == []
+
+    # 새 작업은 정상으로 끝나고, 조회는 새 분석을 보여 준다.
+    analysis_service.process_analysis(uuid.UUID(session["id"]), new_id)
+
+    envelope = _poll(client, counselor_headers, session["id"])
+
+    assert envelope["session_status"] == "AI_REVIEW_REQUIRED"
+    assert envelope["analysis"]["id"] == str(new_id)
+    assert envelope["analysis"]["status"] == "COMPLETED"
+    assert envelope["error"] is None
+    assert adapter.prepared == 1
 
 
 # =========================================================
