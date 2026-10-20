@@ -367,6 +367,10 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
 
     서버 시작 시 일괄 정리하지 않는 이유: 여러 프로세스로 띄우면 다른 프로세스가
     처리 중인 작업까지 실패로 만든다. 그래서 조회·재요청 시점에 Session 별로 판단한다.
+
+    읽어 둔 시작 시각이 DB 에서도 그대로일 때만 마감한다. 읽은 뒤 다른 요청이 같은 작업을 먼저
+    마감하고 다시 요청했으면, 상태는 같은 처리 중이어도 시작 시각이 새 요청의 것이다. 상태만 보고
+    마감하면 옛 판단으로 막 시작한 새 작업까지 실패로 만든다.
     """
 
     rule = _PROCESSING_RULES.get(session.status)
@@ -376,7 +380,8 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
 
     now = datetime.now(timezone.utc)
     limit_seconds = getattr(settings, rule.timeout_setting) + STALE_GRACE_SECONDS
-    started_at = getattr(session, rule.started_field)
+    read_started_at = getattr(session, rule.started_field)
+    started_at = read_started_at
 
     if started_at is not None:
         if started_at.tzinfo is None:
@@ -387,19 +392,25 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
             return False
 
     processing = session.status
+    started_column = getattr(ConsultationSession, rule.started_field)
+
+    # 판단에 쓴 바로 그 작업인지 보려고 DB 에서 읽은 값 그대로 비교한다(위의 시간대 붙이기는 경과 시간 계산에만 쓴다).
+    # 시작 시각이 없으면(옛 자료) 위에서 바로 멈춤으로 보고, SQLAlchemy 가 `== None` 을 IS NULL 로 바꿔 여전히 없을 때만 마감한다.
+    same_job = started_column == read_started_at
 
     expired = db.execute(
         update(ConsultationSession)
         .where(
             ConsultationSession.id == session.id,
             ConsultationSession.status == processing,
+            same_job,
         )
         .values(status=rule.failed_status)
         .execution_options(synchronize_session=False)
     ).rowcount
 
     if expired != 1:
-        # 판단하는 사이에 작업이 끝나 상태가 바뀌었다.
+        # 판단하는 사이에 작업이 끝나 상태가 바뀌었거나, 다른 요청이 마감하고 새 작업을 시작했다.
         db.rollback()
         return False
 

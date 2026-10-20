@@ -424,6 +424,7 @@ backend/
 - 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 저장한다.
 - 상담 원문을 일반 로그에 출력하지 않는다. 로그에는 식별자·개수만 남긴다.
 - 서버 접속 기록(uvicorn)은 경로 · 상태만 남기고 쿼리 값(`?search=` 등)은 남기지 않는다(`app/core/logging.py`, `tests/test_access_log_query.py`).
+- 로그의 오류 trace 는 예외 종류와 호출 위치(파일 · 줄 · 함수 · 그 줄의 코드)만 남기고 예외 문구는 `<문구 생략>` 으로 뺀다. 원인 예외도 같고, 앱 · uvicorn · 라이브러리 로거의 `logging` 기록이 모두 해당한다(`app/core/logging.py` `install_safe_exception_text`, `tests/test_log_exception_text.py`). 예외 문구에는 SQL 매개변수 · 입력 검증 값 · AI 쪽 원인 문구처럼 상담 발화가 섞일 수 있다. 문구가 필요하면 가상 데이터로 로컬에서 재현한다. `logging` 을 거치지 않는 출력(`print` · `warnings` · thread 의 처리되지 않은 예외)과 로그 메시지 인자에 예외를 직접 넣은 기록은 막지 못하므로, 앱 코드는 로그 인자에 예외 종류 이름만 넣는다.
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.
