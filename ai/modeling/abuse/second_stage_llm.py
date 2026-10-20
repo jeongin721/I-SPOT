@@ -1253,9 +1253,19 @@ def _call_llm_with_retry(
                     max(0.0, deadline - time.monotonic()),
                 )
 
-            time.sleep(
-                wait_seconds
-            )
+            # stop_event.wait()는 time.sleep()과 똑같이 기다리지만, 그
+            # 사이 신호가 켜지면 바로 깨어난다 — 새 요청을 안 보내는 건
+            # 전과 같지만(다음 루프 맨 위에서 다시 확인), 대기를 다 채울
+            # 때까지 기다리지 않아도 된다(2026-10-20 Mingyu 지적).
+            if stop_event is not None:
+                if stop_event.wait(wait_seconds):
+                    raise RuntimeError(
+                        "병렬로 돌던 다른 호출이 먼저 실패해 재시도를 멈춤"
+                    )
+            else:
+                time.sleep(
+                    wait_seconds
+                )
 
     # 마지막 시도가 실패한 이유가 "API가 진짜로 실패해서"가 아니라
     # "마감을 넘겨서 더 기다릴 시간이 없어서"일 수 있다 — 이 경우
