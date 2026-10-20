@@ -188,6 +188,7 @@ def generate_followup_check_points_from_masked_text(
     client: OpenAI,
     model: str,
     masked_combined_text: str,
+    deadline: Optional[float] = None,
 ) -> List[str]:
     parts = masked_combined_text.split(SPLIT_MARKER)
     session_content_input = parts[0] if parts else "없음"
@@ -212,6 +213,7 @@ def generate_followup_check_points_from_masked_text(
             user_prompt="위 입력을 바탕으로 목록을 만들어.",
             max_retries=2,
             timeout_seconds=180.0,
+            deadline=deadline,
         )
     except Exception:
         parsed = {}

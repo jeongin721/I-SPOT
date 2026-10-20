@@ -1106,9 +1106,18 @@ def _call_llm_with_retry(
     user_prompt: str,
     max_retries: int = 3,
     timeout_seconds: float = 180.0,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     일시적 API 오류를 대비해 retry + exponential backoff 적용.
+
+    deadline: time.monotonic() 기준 마감 시각(2026-10-16, backend 요청 —
+    AI_TIMEOUT_SECONDS 초과 뒤에도 OpenAI 호출이 뒤에서 계속되는 문제를
+    막기 위함). None이면 기존과 똑같이 동작한다. 넘기면:
+    - 시도를 시작하기 전에 이미 마감이 지났으면 더 기다리지 않고
+      TimeoutError를 낸다(backoff sleep도 생략).
+    - 이번 시도의 실제 timeout은 min(timeout_seconds, 남은 시간)으로
+      줄어든다 — 마감을 넘기면서까지 응답을 기다리지 않는다.
     """
 
     last_error = None
@@ -1145,10 +1154,10 @@ def _call_llm_with_retry(
         else {}
     )
 
-    def _request():
+    def _request(request_timeout):
         response = client.chat.completions.create(
             model=model,
-            timeout=timeout_seconds,
+            timeout=request_timeout,
             response_format={"type": "json_object"},
             **extra_kwargs,
             messages=[
@@ -1162,6 +1171,18 @@ def _call_llm_with_retry(
         1,
         max_retries + 1,
     ):
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+
+            if remaining <= 0:
+                raise TimeoutError(
+                    "LLM 호출 전에 마감 시각을 넘김"
+                )
+
+            effective_timeout = min(timeout_seconds, remaining)
+        else:
+            effective_timeout = timeout_seconds
+
         try:
             # client.chat.completions.create(timeout=...)만 믿으면 안 된다 —
             # Ollama가 응답을 아주 느리게 나눠 보내면(특정 민감한 내용에서
@@ -1178,7 +1199,7 @@ def _call_llm_with_retry(
 
             def _run():
                 try:
-                    result_queue.put(("ok", _request()))
+                    result_queue.put(("ok", _request(effective_timeout)))
                 except Exception as thread_exc:
                     result_queue.put(("error", thread_exc))
 
@@ -1187,11 +1208,11 @@ def _call_llm_with_retry(
 
             try:
                 status, payload = result_queue.get(
-                    timeout=timeout_seconds + 5
+                    timeout=effective_timeout + 5
                 )
             except queue.Empty:
                 raise TimeoutError(
-                    f"LLM 호출이 {timeout_seconds + 5:.0f}초 안에 끝나지 않음"
+                    f"LLM 호출이 {effective_timeout + 5:.0f}초 안에 끝나지 않음"
                 )
 
             if status == "error":
@@ -1213,9 +1234,27 @@ def _call_llm_with_retry(
                 attempt - 1
             )
 
+            if deadline is not None:
+                wait_seconds = min(
+                    wait_seconds,
+                    max(0.0, deadline - time.monotonic()),
+                )
+
             time.sleep(
                 wait_seconds
             )
+
+    # 마지막 시도가 실패한 이유가 "API가 진짜로 실패해서"가 아니라
+    # "마감을 넘겨서 더 기다릴 시간이 없어서"일 수 있다 — 이 경우
+    # RuntimeError 대신 TimeoutError를 내서 backend가 AI_TIMEOUT으로
+    # 구분해 저장하게 한다(2026-10-19 Mingyu 리뷰, 실제 OpenAI
+    # 라이브러리로 재현 확인).
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError(
+            "2차 LLM 호출이 마감 시각을 넘겨 실패: {}".format(
+                last_error
+            )
+        )
 
     raise RuntimeError(
         "2차 LLM 호출 실패: {}".format(
@@ -1238,10 +1277,14 @@ def analyze_subtypes(
     max_retries: int = 3,
     timeout_seconds: float = 180.0,
     filter_low_confidence: bool = True,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     1차 모델에서 탐지된 major_types만 대상으로
     세부 위험신호를 분석한다.
+
+    deadline: time.monotonic() 기준 마감 시각. _call_llm_with_retry로
+    그대로 전달한다(모듈 docstring 참고).
 
     timeout_seconds 기본값은 로컬 Ollama 호출(수십~백여 초) 기준으로
     잡았다 — 예전 OpenAI 전용(30초) 그대로 두면 응답 전에 타임아웃되어
@@ -1315,6 +1358,7 @@ def analyze_subtypes(
         user_prompt=user_prompt,
         max_retries=max_retries,
         timeout_seconds=timeout_seconds,
+        deadline=deadline,
     )
 
     validated = (

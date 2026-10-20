@@ -248,6 +248,7 @@ def generate_protective_factors(
     model: str,
     masked_transcript_text: str,
     segments: List[Dict[str, Any]],
+    deadline: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """
     masked_transcript_text: record_draft_llm.build_transcript_citation_text()로
@@ -276,6 +277,7 @@ def generate_protective_factors(
             user_prompt=user_prompt,
             max_retries=2,
             timeout_seconds=180.0,
+            deadline=deadline,
         )
     except Exception:
         parsed = {}
