@@ -71,15 +71,20 @@ STT 결과는 화자 분리와 역할 판별을 거쳐, 안전하게 확정된 �
 학대 유형 분석 결과를 받아 공식 체크리스트·매뉴얼과 현행 법령을 근거로 상담사가 다음 상담에서 확인할 항목을 정리합니다. 학대 여부나 법 위반 여부를 확정하지 않습니다.
 
 ```text
-CHILD 발화 + 감지된 학대 유형
+STT 검수가 끝난 Transcript
+→ CHILD 발화만 추림 (보호자 · 상담원 · 미확정 화자 발화는 넣지 않음)
+→ 비식별 (privacy_gateway.mask_for_outbound — 통과 못 하면 외부 전송 안 함)
 → 체크리스트 RAG 검색 · 상담 문장과 비교 (matched / needs_confirmation / excluded)
-→ 국가법령정보센터 API 현행 조문 조회
+→ 국가법령정보센터 API 현행 조문 · 유사 판례
 → 다음 상담용 확인 질문 3~5개 · 참고자료
+→ 결과의 비식별 토큰을 원문으로 복원
 ```
 
-- 최상위 `main.py`의 `/api/v1/analyze` 응답에 `rag_analysis`로 포함됩니다. 감지된 학대 유형이 없으면 `null`, 실패하면 `{"error": ...}`이며 STT·학대 유형 결과는 그대로 반환됩니다.
-- 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents` (판례 원문 추가 전까지 빈 배열)
-- 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)는 같은 응답의 `manual_screen_references`에 담깁니다. 분석할 때 미리 만들어 화면에서 기다리지 않게 합니다. `backend/` 저장은 [제안서](I-SPOT_DOCS/docs/PROPOSAL_manual_references.md) 참고.
+- 최상위 `main.py`의 `POST /api/v1/rag/analyze`에 검수된 Transcript(`{"transcript": {...}, "abuse_type"?: ..., "known_identifiers"?: [...]}`)를 보냅니다. `abuse_type`을 빼면 검수된 아동 발화로 학대 유형을 다시 분류합니다.
+- `/api/v1/analyze`(업로드 직후, 검수 전)는 RAG를 돌리지 않습니다. 검수 전 발화는 화자 · 문장이 바뀔 수 있기 때문입니다.
+- 응답: `rag_analysis`(감지된 학대 유형이 없으면 `null`), `manual_screen_references`, `excluded_speakers`(뺀 화자별 발화 수), `child_segment_ids`. 실패하면 해당 필드가 `{"error": ...}`이고, 비식별 검증에 막히면 `privacy_blocked: true`와 사유(원문 없음)가 담깁니다.
+- 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents`(유사 판례)
+- 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)는 `manual_screen_references`에 담깁니다. 분석할 때 미리 만들어 화면에서 기다리지 않게 합니다. `backend/` 저장은 [제안서](I-SPOT_DOCS/docs/PROPOSAL_manual_references.md) 참고.
 - 설치: `pip install -r requirements.txt -r requirements-rag.txt` (최상위 `main.py`가 `rag.pipeline`을 import 하므로 둘 다 필요)
 - 환경 변수: `OPENAI_API_KEY`, `LAW_API_OC`, `RAG_*`, `LAW_*` — `.env.example` 참고
 - 원문 PDF(`rag_data/`), Vector DB(`rag_storage/`), 법령 캐시(`law_cache/`)는 커밋하지 않습니다.

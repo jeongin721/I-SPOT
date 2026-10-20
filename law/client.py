@@ -104,6 +104,11 @@ class LawApiClient:
         try:
             payload = response.json()
         except ValueError as exc:
+            if "미신청" in response.text:
+                raise LawApiError(
+                    f"국가법령정보센터 OPEN API에서 '{params.get('target')}' 사용 신청이 되어 있지 않습니다. "
+                    "open.law.go.kr → OPEN API 신청에서 해당 항목을 체크하세요."
+                ) from exc
             preview = response.text[:300].replace("\n", " ")
             raise LawApiError(
                 f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {preview}"
@@ -193,6 +198,55 @@ class LawApiClient:
             params["JO"] = article_code
 
         return self._get_json(LAW_SERVICE_URL, params)
+
+    def search_precedents(
+        self,
+        query: str,
+        *,
+        search: int = 2,
+        display: int = 5,
+    ) -> list[dict[str, Any]]:
+        """판례 목록을 검색한다(search=1 사건명, 2 본문). 판례 API 사용 신청이 따로 필요하다."""
+        payload = self._get_json(
+            LAW_SEARCH_URL,
+            {
+                "OC": self.oc,
+                "target": "prec",
+                "type": "JSON",
+                "search": search,
+                "query": query,
+                "display": display,
+            },
+        )
+        return [
+            item
+            for item in _walk_dicts(payload)
+            if str(item.get("판례일련번호", "")).strip() and item.get("사건명")
+        ]
+
+    def get_precedent(self, prec_id: str, *, refresh: bool = False) -> dict[str, Any]:
+        """판례 본문(판시사항·판결요지·참조조문)을 조회해 캐시한다. 판례는 바뀌지 않으므로 기한 없이 쓴다."""
+        cache_path = self.cache_dir / "precedents" / f"{_safe_filename(prec_id)}.json"
+        if not refresh and cache_path.exists():
+            try:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        payload = self._get_json(
+            LAW_SERVICE_URL,
+            {"OC": self.oc, "target": "prec", "type": "JSON", "ID": prec_id},
+        )
+        body = next(
+            (item for item in _walk_dicts(payload) if item.get("사건명") or item.get("판결요지")),
+            None,
+        )
+        if body is None:
+            raise LawApiError(f"판례 본문 응답에 내용이 없습니다: {prec_id}")
+
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+        return body
 
     def _cache_path(self, law_name: str) -> Path:
         return self.cache_dir / f"{_safe_filename(law_name)}.json"

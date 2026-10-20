@@ -5,15 +5,16 @@
 ## 1. 전체 흐름
 
 ```text
-상담 문장
+STT 검수 후 Transcript → CHILD 발화만 추림
 → 멀티라벨 모델 abuse_type
+→ 비식별 (외부 전송 전, 8-0)
 → RAG 체크리스트 검색
 → 상담 문장과 체크리스트 비교
 → 국가법령정보센터 API에서 현행 법령 조회
-→ 관련 조문 랭킹
+→ 관련 조문 랭킹 · 유사 판례 검색 (8-2)
 → 다음 상담용 확인 질문 3~5개 생성
 → 체크리스트 / 법령 / 매뉴얼·가이드 중 참고자료 2~3개 선택
-→ JSON 반환
+→ 비식별 토큰 복원 → JSON 반환
 ```
 
 AI는 학대 여부나 법 위반 여부를 확정하지 않는다. 공식 자료를 근거로 상담사가 다음 상담에서 확인할 항목을 정리하는 보조 역할만 수행한다.
@@ -170,7 +171,24 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
       "chunk_id": "..."
     }
   ],
-  "precedents": []
+  "precedents": [
+    {
+      "type": "precedent",
+      "origin": "guidebook",
+      "title": "친부가 욕설을 하는 자녀를 때림",
+      "summary": "피고인은 피해아동(13세)의 친부이다. ...",
+      "court": "인천지방법원",
+      "case_number": "2022고정1131",
+      "citation": "인천지방법원 2022고정1131",
+      "abuse_type": "physical",
+      "perpetrator": "부모 등",
+      "source": "(교육부) 아동학대 예방 및 대처요령 교육부문 가이드북_제4판.pdf",
+      "page": 21,
+      "url": "",
+      "similarity": 0.30
+    }
+  ],
+  "precedent_warning": "판례 API: ... 사용 신청이 되어 있지 않습니다. ..."
 }
 ```
 
@@ -181,9 +199,17 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
 | 매뉴얼과 서식 | `manual_references` | `manual` / `guideline` / `form` 원문에서 유형별 상위 2개 (최대 6개) |
 | 매뉴얼과 서식 | `checklist_results` | 공식 체크리스트·서식 항목과 상담 일치 여부 |
 | 법령과 판례 | `related_laws` | 국가법령정보센터 현행 조문 |
-| 법령과 판례 | `precedents` | `rag_data/precedents/` 원문 상위 3개. 원문이 없으면 빈 배열 |
+| 법령과 판례 | `precedents` | 유사 판례. 가이드북 판례(유사도순 최대 3건) 뒤에 법령 API 판례(최대 2건). 8-2 참고 |
 
 `reference_materials`는 위 자료 중 핵심 2~3개만 섞어서 고른 요약용 필드다.
+
+## 8-0. 입력 · 비식별 원칙
+
+- **STT 검수 후 Transcript만 쓴다.** `rag.session.analyze_reviewed_transcript(transcript, abuse_type)`가 진입점이고, 최상위 `main.py`의 `POST /api/v1/rag/analyze`가 이것을 부른다. 업로드 직후 `/api/v1/analyze`는 RAG를 돌리지 않는다.
+- **아동(`CHILD`) 발화만 넣는다**(`RAG_INPUT_SPEAKERS`). 보호자 진술은 아이에게 할 질문의 근거로 쓰지 않는다(화면 원칙 6). 상담원 · 기타 · 미확정 화자도 뺀다. 뺀 수는 `excluded_speakers`로 돌려준다.
+- **외부로 보내기 전에 비식별한다**(9/18 회의 결정). `analyze_consultation_evidence` · `build_screen_references` · `search_screen_manual`은 상담 문장을 `ai.modeling.abuse.privacy_gateway.mask_for_outbound`로 가린 뒤 임베딩 · LLM에 보내고, 결과의 토큰(`[PERSON_01]` 등)을 원문으로 되돌린다(`rag/privacy.py`). 가린 뒤 재검사에서 식별 정보가 남으면 아무것도 보내지 않고 `RagPrivacyBlocked`를 던진다.
+- `known_identifiers`(사례에 등록된 아동 · 보호자 실명)를 넘기면 NER이 놓친 이름도 정확 매칭으로 가린다. NER의 사람 이름 미탐률이 36.8%라(`privacy_gateway.py` 머리말) 실제 서비스에서는 넘기는 것이 좋다.
+- 비식별 모듈은 처음 부를 때 NER 모델(`Leo97/KoELECTRA-small-v3-modu-ner`)을 내려받아 올린다(약 15초, 이후 한 문장 0.1초 이내).
 
 ## 8-1. 화면별 업무 매뉴얼 검색
 
@@ -212,13 +238,28 @@ references = search_screen_manual("상담 문장", "closure", top_k=3)
   - `prebriefing` · `closure`: 벡터 검색 후보(최대 9개) 중 코사인 유사도가 기준점(브리핑 0.32, 종결 0.35) 미만인 것은 먼저 버리고(`SCREEN_MIN_SIMILARITY`), 남은 후보를 LLM이 화면 목적(`SCREEN_PURPOSES`)에 맞는지 확인해 맞는 것만 남긴다. 서식 작성 절차(작성자 · 시기 · 송부처)만 있는 후보는 뺀다. 결과에 `similarity`, `reason`이 붙는다. 기준점을 넘는 후보가 없으면 LLM을 부르지 않는다.
 - 화면 검색 한 번에 LLM 호출이 한 번 들어간다(`RAG_ANALYZER_MODEL`).
 - LLM 확인 때문에 화면 하나에 3~5초가 걸린다. **화면을 열 때 검색하지 말고 분석할 때 미리 만들어 저장한다.** `build_screen_references(text)`는 세 화면을 동시에 만들고(하나씩 10.4초 → 동시에 6.1초), 한 화면이 실패해도 나머지 결과를 돌려준다(`{"references": {...}, "errors": {...}}`). CLI: `--screen all`.
-- 최상위 `main.py`의 `/api/v1/analyze`는 아동 발화가 있으면 RAG 분석과 동시에 이 함수를 돌려 `manual_screen_references`로 응답에 담는다. `backend/`에 저장하는 방법은 `I-SPOT_DOCS/docs/PROPOSAL_manual_references.md`(제안, 합의 전)를 본다.
+- 최상위 `main.py`의 `/api/v1/rag/analyze`(STT 검수 후)는 아동 발화가 있으면 RAG 분석과 동시에 이 함수를 돌려 `manual_screen_references`로 응답에 담는다. `backend/`에 저장하는 방법은 `I-SPOT_DOCS/docs/PROPOSAL_manual_references.md`(제안, 합의 전)를 본다.
 - 아동 발화로는 추가 확인 · 질문만 결과가 나온다. 상담 전 브리핑 · 종결 검토는 지난 회차 요약 · 사례 요약처럼 다른 문장을 넣어야 한다(제안서 §1-3).
 - 매뉴얼은 색인 전에 원문을 정리한다(`splitter.clean_manual_text`: 쪽 머리말 · 표 머리글 · 벌어진 글자 · 서식 빈칸 제거). 화면용 구간 조각은 앞에 구간 이름을 붙여 색인하고, 화면에 보일 때는 뗀다.
 - 색인할 때 이번에 만들지 않은 예전 조각은 지운다.
 - 서식 8 · 9는 색인할 때 번호 항목 하나가 한 조각이 되도록 나눈다(`splitter._split_numbered_items`). 한 쪽 전체를 한 조각으로 두면 항목 8~10개가 섞여 검색 점수가 흐려진다.
 - 요약에서 인쇄본 쪽 머리말은 뺀다. 화면에는 쪽 번호를 보여주지 않는다.
 - 구간표를 바꾸거나 새 판 매뉴얼을 넣으면 `python -m rag.indexer`로 다시 색인한다.
+
+## 8-2. 유사 판례
+
+`precedents.find_similar_precedents(text, abuse_type)`가 두 곳에서 찾아 합친다. 한쪽이 실패해도 다른 쪽 결과는 돌려주고 사유는 `precedent_warning`에 남긴다.
+
+| origin | 출처 | 찾는 방법 |
+|---|---|---|
+| `guidebook` | 교육부 「아동학대 예방 및 대처요령 교육부문 가이드북」 4판의 '판례로 보는 ○○ 사례'(신체 7 · 정서 7 · 성 3 · 방임 6, 23건) | 색인할 때 사건 하나당 조각 하나(`source_type=precedent`, `abuse_type`, `court`, `case_number`, `citation`)로 만든다(`precedents.build_precedent_documents`). 상담 문장과 코사인 유사도가 0.25 이상인 사건을 학대 유형 안에서 최대 3건 |
+| `law_api` | 국가법령정보센터 판례 API(`target=prec`) | 학대 유형별로 정해 둔 검색어(`PRECEDENT_API_QUERIES`)로 검색해 판결요지를 붙인다. **상담 문장은 국가법령정보센터로 보내지 않는다.** `url`은 포털 판례 화면(`precInfoP.do?precSeq=`) |
+
+- 가이드북 판례는 하급심 사건이라 포털에 원문이 없는 경우가 많아 `url`이 비어 있다. 출처는 `source` · `page`로 보여준다.
+- **판례 API는 OC 계정에 판례 사용 신청이 따로 필요하다.** 신청 전에는 `precedent_warning`에 "사용 신청이 되어 있지 않습니다"가 담기고 가이드북 판례만 나온다. open.law.go.kr → OPEN API 신청에서 판례를 체크하면 코드 변경 없이 붙는다.
+- 판례 본문은 `law_cache/precedents/`에 기한 없이 캐시한다(판례는 바뀌지 않는다).
+- 가이드북 판례를 처음 넣으려면 `python -m rag.indexer`로 다시 색인한다.
+- 기준점 0.25는 2026-10 측정값이다(맞는 문장 6개 0.27~0.40 / 무관한 문장 4개 0.13~0.32). 실제 상담 문장이 쌓이면 다시 맞춘다.
 
 ### 유사도 점수
 
@@ -239,6 +280,7 @@ law/client.py
 - 법령 목록 조회
 - 본문 조회
 - 24시간 캐시
+- 판례 검색 · 본문 조회(판례 API 사용 신청 필요)
 
 law/parser.py
 - 법령 JSON을 조문 단위로 변환
@@ -263,21 +305,32 @@ rag/resource_ranker.py
 - 매뉴얼·판례 검색 결과를 화면 표시용 형식으로 변환
 
 rag/pipeline.py
-- 전체 기능 통합
+- 전체 기능 통합 (상담 문장을 비식별한 뒤 분석하고 결과를 복원)
+
+rag/session.py
+- STT 검수 후 Transcript에서 CHILD 발화만 추려 근거자료 분석과 화면별 매뉴얼 근거를 동시에 만든다
+
+rag/privacy.py
+- 외부 전송 전 비식별(privacy_gateway.mask_for_outbound)과 결과 복원
+
+rag/precedents.py
+- 가이드북 '판례로 보는 사례'를 사건 단위 조각으로 만들고, 유사 판례(가이드북 + 판례 API)를 찾는다
 ```
 
 ## 11. 팀 연동
 
 ```text
 입력
-- STT 상담 텍스트
+- STT 검수 후 Transcript (CHILD 발화만 사용)
 - 멀티라벨 모델의 abuse_type
+- (선택) 사례에 등록된 실명 known_identifiers
 
 출력
 - 상담 근거 문장
 - 확인된 체크리스트 항목
 - 추가 확인 필요 항목
 - 관련 현행 법령
+- 유사 판례
 - 다음 상담용 확인 체크리스트
 - 참고자료 2~3개
 ```

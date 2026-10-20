@@ -85,9 +85,9 @@ Login · Main · Schedule · ChildLink(목록) · CaseList · CaseRegister · Up
 ## 3. 지금 코드와 어긋나는 점
 
 1. **질문 생성 방식** — `feature/rag` 의 `rag/checklist_builder.py` 는 LLM 이 질문을 **새로 씁니다.** 화면 원칙 7(질문 은행에서만)과 다릅니다. 질문 은행 ⑩ 을 만들고, LLM 은 "어떤 문항을 고를지"만 하도록 바꿔야 합니다.
-2. **검수 전 텍스트 사용** — 9/22 연결(`main.py /api/v1/analyze`)은 STT **검수 전** 아동 발화로 RAG 를 돌립니다. 화면 흐름은 ① STT 검수 → ② 위험 신호 검토 순서이므로 검수 후 Transcript 로 옮겨야 합니다.
-3. **비식별** — 체크리스트 판정 · 임베딩에 아동 발화를 원문 그대로 외부 LLM 으로 보냅니다(`PLAN_langgraph_agent.md` 4-7). 사례 RAG(B)는 특히 **로컬 임베딩 또는 비식별 후 임베딩**이 필요합니다.
-4. **보호자 진술** — 원칙 6("보호자 진술은 아이에게 할 질문의 근거로 쓰지 않음")을 지키려면 사례 RAG 검색 때 `speaker=사례관리대상자` 를 질문 생성 입력에서 걸러야 합니다.
+2. ~~**검수 전 텍스트 사용**~~ → 10/20 반영. RAG 는 `/api/v1/analyze`(검수 전)에서 빠지고, 검수된 Transcript 를 받는 `POST /api/v1/rag/analyze`(`rag/session.py`)로 옮겼습니다.
+3. ~~**비식별**~~ → 10/20 반영. 임베딩 · 판정 LLM · 질문 생성 · 화면별 매뉴얼 검색 모두 `privacy_gateway.mask_for_outbound` 로 가린 문장만 보내고 결과를 복원합니다(`rag/privacy.py`). 검증에 막히면 보내지 않습니다. 사례 RAG(B)를 만들 때도 같은 관문을 거쳐야 합니다.
+4. ~~**보호자 진술**~~ → 10/20 반영. RAG 입력은 `CHILD` 발화만 씁니다(`rag/session.RAG_INPUT_SPEAKERS`). 사례 RAG(B)를 만들 때도 같은 규칙으로 `GUARDIAN` 발화를 질문 생성 입력에서 뺍니다.
 5. **hwpx 서식** — 서식 원본이 hwpx 라 현재 `rag/loader.py`(PDF 전용)로는 색인되지 않습니다.
 6. **`.gitignore`** — 이 브랜치 `.gitignore` 에는 `rag_data/` · `rag_storage/` · `law_cache/` 가 없습니다. 자료를 받기 전에 추가해야 원문 PDF 가 커밋되지 않습니다.
 

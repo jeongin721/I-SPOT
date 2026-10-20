@@ -1,11 +1,12 @@
 import os
 import sys
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Literal, Optional
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------
 # 콘솔 출력 인코딩을 UTF-8 로 고정한다.
@@ -31,8 +32,7 @@ from stt.ispot_postprocess import STTPostProcessor
 from child_analysis_text import ChildAnalysisTextBuilder
 from transcript_builder import TranscriptBuilder
 from abuse_model.infer_abuse import predict_abuse
-from rag.pipeline import analyze_consultation_evidence
-from rag.screen_manual import build_screen_references
+from rag.session import analyze_reviewed_transcript, child_text_from_transcript
 
 load_dotenv()
 
@@ -267,56 +267,9 @@ def analyze_audio(file: UploadFile = File(...)):
                 "학대 유형 분석을 건너뜁니다."
             )
 
-        # 9. RAG 근거자료 / 관련 법령 / 다음 상담 체크리스트 분석
-        #    + 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)
-        #
-        # 둘 다 LLM 을 부르므로(각 3~5초) 동시에 돌린다. 매뉴얼 근거는 화면을 열 때 검색하지 않고
-        # 여기서 미리 만들어 응답에 담는다. 학대 유형 감지 여부와 상관없이 아동 발화가 있으면 만든다.
-        rag_analysis = None
-        manual_screen_references = None
-        rag_abuse_type = resolve_rag_abuse_type(abuse_prediction)
-
-        if not rag_abuse_type:
-            print(
-                "⚠️ 감지된 학대 유형이 없어 "
-                "RAG 근거자료 분석을 건너뜁니다."
-            )
-
-        if child_analysis_text:
-            print("6️⃣ RAG 근거자료 · 법령 · 화면별 매뉴얼 근거 분석 중...")
-
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                rag_future = (
-                    pool.submit(
-                        analyze_consultation_evidence,
-                        text=child_analysis_text,
-                        abuse_type=rag_abuse_type,
-                    )
-                    if rag_abuse_type
-                    else None
-                )
-                manual_future = pool.submit(
-                    build_screen_references,
-                    child_analysis_text,
-                )
-
-                if rag_future is not None:
-                    try:
-                        rag_analysis = rag_future.result()
-                    except Exception as rag_err:
-                        # RAG는 보조 참고정보이므로 실패해도 STT/학대유형 분석 결과는 그대로 반환한다.
-                        print(f"❌ RAG 근거자료 분석 오류: {str(rag_err)}")
-                        rag_analysis = {
-                            "error": f"RAG 근거자료 분석 중 오류가 발생했습니다: {str(rag_err)}"
-                        }
-
-                try:
-                    manual_screen_references = manual_future.result()
-                except Exception as manual_err:
-                    print(f"❌ 화면별 매뉴얼 근거 분석 오류: {str(manual_err)}")
-                    manual_screen_references = {
-                        "error": f"화면별 매뉴얼 근거 분석 중 오류가 발생했습니다: {str(manual_err)}"
-                    }
+        # RAG(근거자료 · 법령 · 판례 · 화면별 매뉴얼 근거)는 여기서 돌리지 않는다.
+        # 이 단계의 발화는 STT 검수 전이라 화자 · 문장이 바뀔 수 있다.
+        # 상담사가 검수를 마친 Transcript 로 /api/v1/rag/analyze 를 부른다.
 
         return {
             "status": "success",
@@ -344,12 +297,6 @@ def analyze_audio(file: UploadFile = File(...)):
 
             "abuse_prediction":
                 abuse_prediction,
-
-            "rag_analysis":
-                rag_analysis,
-
-            "manual_screen_references":
-                manual_screen_references,
         }
 
     except HTTPException as http_ex:
@@ -369,6 +316,61 @@ def analyze_audio(file: UploadFile = File(...)):
                 print(f"🧹 임시 파일 정원 삭제 완료: {temp_file_path}")
             except Exception as remove_err:
                 print(f"⚠️ 임시 파일 삭제 실패: {str(remove_err)}")
+
+class ReviewedTranscriptRequest(BaseModel):
+    # 검수가 끝난 Transcript(팀 공용 Contract). segments[].speaker 는 CHILD/GUARDIAN/COUNSELOR/OTHER/UNKNOWN.
+    transcript: dict[str, Any]
+    # 학대 유형을 이미 알면 넘긴다. 없으면 검수된 아동 발화로 KLUE-RoBERTa 를 다시 돌려 정한다.
+    abuse_type: Optional[Literal["physical", "emotional", "sexual", "neglect", "multiple"]] = None
+    # 사례에 등록된 아동 · 보호자 실명 등. 비식별에서 정확 매칭으로 한 번 더 가린다.
+    known_identifiers: list[str] = Field(default_factory=list)
+
+
+@app.post("/api/v1/rag/analyze")
+def analyze_reviewed(request: ReviewedTranscriptRequest):
+    """STT 검수 후 Transcript 로 근거자료 · 관련 법령 · 유사 판례 · 화면별 매뉴얼 근거를 만든다.
+
+    - 아동(CHILD) 발화만 쓴다. 보호자 · 상담원 · 미확정 화자 발화는 넣지 않는다.
+    - OpenAI(임베딩 · LLM)로 보내기 전에 비식별한다. 비식별 검증에 실패하면 전송하지 않고
+      해당 결과에 privacy_blocked 와 사유를 담는다.
+    """
+    if not request.transcript.get("segments"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="분석할 Transcript segment 가 없습니다.",
+        )
+
+    abuse_type = request.abuse_type
+    abuse_prediction = None
+    if abuse_type is None:
+        child_text = child_text_from_transcript(request.transcript)["text"]
+        if child_text:
+            try:
+                abuse_prediction = predict_abuse(child_text)
+            except Exception as abuse_err:
+                print(f"❌ 학대 유형 분석 오류: {type(abuse_err).__name__}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"학대 유형 분석 중 오류가 발생했습니다: {type(abuse_err).__name__}",
+                )
+            abuse_type = resolve_rag_abuse_type(abuse_prediction)
+
+    if not abuse_type:
+        print("⚠️ 감지된 학대 유형이 없어 RAG 근거자료 분석을 건너뜁니다.")
+
+    result = analyze_reviewed_transcript(
+        request.transcript,
+        abuse_type,
+        known_identifiers=request.known_identifiers,
+    )
+
+    return {
+        "status": "success",
+        "abuse_type": abuse_type,
+        "abuse_prediction": abuse_prediction,
+        **result,
+    }
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
