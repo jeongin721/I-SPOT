@@ -42,6 +42,8 @@ os.environ["AI_PROVIDER"] = "mock"
 os.environ["AUDIO_MAX_SIZE_MB"] = "1"
 os.environ["STT_TIMEOUT_SECONDS"] = "5"
 os.environ["AI_TIMEOUT_SECONDS"] = "5"
+# AI_PROVIDER=modeling 이면 AI_TIMEOUT_SECONDS 보다 작아야 한다(config 검사). 기본 10초는 위 5초보다 길다.
+os.environ["AI_DEADLINE_MARGIN_SECONDS"] = "1"
 os.environ["LOG_LEVEL"] = "WARNING"
 
 from fastapi.testclient import TestClient  # noqa: E402

@@ -25,7 +25,7 @@ sudo bash deploy/web-deploy.sh
   - `-- 백엔드:` 줄에 `"status":"ok"` 와 `"database":"ok"` 가 있어야 합니다. 비어 있거나 다른 값이면 `sudo docker logs --tail 50 ispot-backend` 로 원인을 봅니다.
   - `-- HTTPS:` 줄도 같은 내용이어야 합니다. `(HTTPS 아직 준비 안 됨 …)` 이면 인증서 발급을 기다리는 중일 수 있으니 1~2분 뒤 브라우저에서 `https://<주소>/health` 로 다시 확인합니다.
 - **중간에 멈췄을 때**: 앞 단계는 이미 반영된 채로 남습니다. 예를 들어 3/5(DB 마이그레이션)에서 멈추면 화면(2/5)은 새것으로 바뀌었고 `backend.env` 의 `CORS_ORIGINS` 도 고쳐졌지만 Backend 는 옛 컨테이너 그대로입니다. 원인을 고친 뒤 스크립트를 다시 돌립니다.
-  - `ENV=production` 에서 `AI_PROVIDER=pipeline` 이고 `AI_PIPELINE_ALLOW_UNMASKED=true` 가 없으면(기본 false) Backend 설정 검사가 시작을 막아 3/5 에서 멈춥니다(상담 원문이 비식별 없이 외부로 나가는 경로라서). `AI_PROVIDER=modeling` 도 `AI_MODELING_ALLOW_IN_PRODUCTION=true` 가 없으면 같은 곳에서 멈춥니다(외부로 보내기 전 가리기가 아직 완전하지 않은 경로라서). 다시 배포 전에 `sudo grep -E '^(ENV|AI_PROVIDER|AI_PIPELINE_ALLOW_UNMASKED|AI_MODELING_ALLOW_IN_PRODUCTION)=' /opt/ispot/backend.env` 로 확인합니다.
+  - `ENV=production` 에서 `AI_PROVIDER=pipeline` 이고 `AI_PIPELINE_ALLOW_UNMASKED=true` 가 없으면(기본 false) Backend 설정 검사가 시작을 막아 3/5 에서 멈춥니다(상담 원문이 비식별 없이 외부로 나가는 경로라서). `AI_PROVIDER=modeling` 도 `AI_MODELING_ALLOW_IN_PRODUCTION=true` 가 없으면 같은 곳에서 멈춥니다(외부로 보내기 전 가리기가 아직 완전하지 않은 경로라서). `AI_PROVIDER=modeling` 이면 `AI_DEADLINE_MARGIN_SECONDS`(기본 10)가 `AI_TIMEOUT_SECONDS`(기본 180)보다 작지 않을 때도 같은 곳에서 멈춥니다. 다시 배포 전에 `sudo grep -E '^(ENV|AI_PROVIDER|AI_PIPELINE_ALLOW_UNMASKED|AI_MODELING_ALLOW_IN_PRODUCTION|AI_TIMEOUT_SECONDS|AI_DEADLINE_MARGIN_SECONDS)=' /opt/ispot/backend.env` 로 확인합니다.
 - 주소를 바꿀 때만 `SITE` 를 넘깁니다(기본값은 지금 주소, 영문 · 숫자 · 점 · 하이픈만). `sudo` 는 설정에 따라 환경변수를 넘기지 않을 수 있어 이렇게 씁니다.
 
   ```bash

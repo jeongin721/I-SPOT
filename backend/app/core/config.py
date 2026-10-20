@@ -141,8 +141,24 @@ class Settings(BaseSettings):
     #            Contract 에는 summary 와 위험 3필드만 담는다. 심각도 · 보호요인 · 회차 간 변화 ·
     #            다음 확인사항은 정식 선택 필드가 생길 때까지 담지 않고, risk_factors 는 빈 배열이다.
     #            근거 발화가 없는 위험 항목은 저장 전에 뺀다(langgraph 와 같음).
+    #            모듈 import(모델 로드)는 아래 제한 시간 밖에서 하고, 서버 시작 때 백그라운드로 미리 한다
+    #            (ai_adapter.start_ai_preload · analysis_service.PREPARE_TIMEOUT_SECONDS).
     AI_PROVIDER: Literal["mock", "pipeline", "langgraph", "modeling"] = "mock"
+    # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 작업 시작이 늦었거나 모델 준비가 길었으면
+    # 요청 시각부터 잰 작업 전체 마감(준비 제한 45초 + 이 값)에 맞춰 짧아진다(analysis_service._job_deadline).
+    # 다만 thread 는 멈추지 못해(run_with_timeout)
+    # 외부 호출이 뒤에서 계속될 수 있다. 그래서 modeling 함수가 deadline 을 받으면 마감 시각을 넘겨
+    # 스스로 멈추게 한다.
+    # 180초는 10/16 이경진 님 측정(V100 GPU, 30분 합성 녹취 122~134초)으로 여유가 25~45초다.
+    # 측정 장비가 실제 서버(t3.small, GPU 없음)와 달라, NER 수정 뒤 다시 재고 정한다.
     AI_TIMEOUT_SECONDS: float = 180.0
+    # modeling 에 넘기는 마감 시각 = 분석 시작 + 분석 제한(AI_TIMEOUT_SECONDS, 위처럼 짧아졌으면 그 값) - 이 값.
+    # 모듈이 스스로 멈춘 뒤 결과를 돌려줄 여유다. 함수가 deadline 을 받지 않으면 쓰지 않는다.
+    # 10초인 이유: #57(이경진 님)의 _call_llm_with_retry(ai/modeling/abuse/second_stage_llm.py)는 마감에 걸린
+    # LLM 호출의 응답을 '남은 시간 + 5초' 까지 기다린다. 여유가 5초 이하면 안쪽(모듈)과 바깥(run_with_timeout)
+    # 제한이 같은 순간 끝나 바깥이 먼저 잡는다. 10초면 모듈이 약 5초 먼저 멈춰 고정 문구 AI_TIMEOUT 으로 끝난다.
+    # AI_PROVIDER=modeling 이면 AI_TIMEOUT_SECONDS 보다 작아야 한다(아래 _deadline_margin_is_shorter_than_time_limit).
+    AI_DEADLINE_MARGIN_SECONDS: float = Field(default=10.0, ge=0)
     # pipeline 은 상담 원문을 비식별(가리기) 없이 OpenAI 로 보낸다(ai/services/summary_service.py).
     # ENV=production 에서는 이 값이 true 일 때만 pipeline 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
@@ -257,6 +273,26 @@ class Settings(BaseSettings):
             "아직 완전하지 않습니다 — 긴 상담 뒷부분은 가려지지 않고, 이름 인식이 놓친 이름도 그대로 나갈 수 있습니다. "
             "이 개인정보 문제가 해결되기 전에는 실제 상담 데이터에 AI_PROVIDER=mock 을 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 AI_MODELING_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _deadline_margin_is_shorter_than_time_limit(self) -> "Settings":
+        """modeling 의 마감 시각이 분석 시작보다 뒤에 오게 한다.
+
+        마감 시각 = 분석 시작 + AI_TIMEOUT_SECONDS - AI_DEADLINE_MARGIN_SECONDS 라서, 여유가 제한 시간과 같거나
+        길면 모듈이 첫 단계 전에 마감을 넘긴 것으로 보고 모든 분석이 바로 AI_TIMEOUT 으로 끝난다.
+        여유는 modeling 만 쓰므로 다른 provider 는 보지 않는다(짧은 제한 시간으로 mock 을 돌리는 설정을 막지 않게).
+        """
+
+        if self.AI_PROVIDER != "modeling" or self.AI_DEADLINE_MARGIN_SECONDS < self.AI_TIMEOUT_SECONDS:
+            return self
+
+        raise ValueError(
+            "AI_DEADLINE_MARGIN_SECONDS 는 AI_TIMEOUT_SECONDS 보다 작아야 합니다(AI_PROVIDER=modeling). "
+            "같거나 크면 modeling 에 넘기는 마감 시각이 분석 시작과 같거나 그보다 앞서 "
+            "모든 분석이 바로 AI_TIMEOUT 으로 끝납니다. "
+            f"지금 값: AI_DEADLINE_MARGIN_SECONDS={self.AI_DEADLINE_MARGIN_SECONDS}, "
+            f"AI_TIMEOUT_SECONDS={self.AI_TIMEOUT_SECONDS}"
         )
 
     @property
