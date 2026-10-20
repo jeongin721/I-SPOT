@@ -50,7 +50,7 @@ subtype_analysis의 원본 evidence 구조를 입력으로 쓴다 — 심각도 
 그 필드들을 이미 버린 뒤라서 못 쓴다.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -298,7 +298,9 @@ def _clean_ratings(
         matched_evidence = item.get("matched_evidence")
 
         if not isinstance(matched_evidence, str):
-            matched_evidence = None
+            # Contract의 SeverityRating.matched_evidence는 str(기본 "")라
+            # None을 넣으면 검증에서 거절된다(2026-10-16 Mingyu 리뷰).
+            matched_evidence = ""
 
         cleaned.append(
             {
@@ -322,6 +324,7 @@ def rate_severity_from_text(
     model: str,
     major_types: List[str],
     masked_evidence_text: str,
+    deadline: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """
     이미 build_evidence_block_text()로 만들고 호출부가 mask_for_outbound()로
@@ -358,6 +361,7 @@ def rate_severity_from_text(
             user_prompt=masked_evidence_text,
             max_retries=2,
             timeout_seconds=180.0,
+            deadline=deadline,
         )
     except Exception:
         parsed = {}

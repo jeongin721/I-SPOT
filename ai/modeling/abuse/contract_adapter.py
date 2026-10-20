@@ -19,10 +19,27 @@ severity_ratings/protective_factors/session_change_notes/
 followup_check_points를 risk_factors에 kind 태그로 욱여넣는 이전
 방식은 보류했다 — risk_factors는 "위험 요인" 칸이라 보호요인이
 섞이면 화면에서 위험 요인으로 보이고, 근거 발화 번호가 없는 항목은
-서버 근거 검사에서 빠질 수 있다는 지적을 받았다. 이번 머지는 위험
-3필드(risk_utterances/abuse_signals/risk_factors) + summary만
-채우고, 저 4개 필드는 Mingyu가 Contract/스키마/프론트 타입에 정식
-선택 필드로 따로 추가한다. 그 전까지 risk_factors는 비워 둔다.
+서버 근거 검사에서 빠질 수 있다는 지적을 받았다. risk_factors는
+계속 비워 둔다.
+
+[2026-10-19: PR #49 머지 반영 — 4개 필드를 정식 선택 필드로 채움]
+
+Mingyu가 Contract(backend/app/schemas/contracts.py)에 severity_ratings/
+protective_factors/session_change_notes/followup_check_points를
+정식 선택 필드로 추가했다(API_CONTRACT.md 8절). 이제 risk_factors가
+아니라 이 필드들에 직접 채운다:
+
+- severity_ratings: severity_llm.rate_severity_from_text()의 출력
+  키(major_type/level/reason/matched_evidence/reviewed)가 Contract의
+  SeverityRating과 이름이 같아 그대로 옮긴다. segment_ids는 아직
+  없어서 Contract 기본값(빈 배열)으로 비워 둔다.
+- protective_factors: protective_factor_llm.generate_protective_factors()의
+  출력(category/text/segment_ids)이 이미 ProtectiveFactor와 모양이
+  같아 그대로 옮긴다.
+- session_change_notes/followup_check_points: 네이티브 출력이
+  List[str]인데 Contract는 {text, segment_ids} 객체 목록을 받는다
+  (나중에 근거 번호를 붙여도 모양이 안 바뀌게 Mingyu가 이렇게
+  정했다) — 문자열마다 segment_ids는 빈 배열로 두고 감싼다.
 
 summary(overview/key_points)는 더 이상 이 모듈이 직접 만들지 않고
 agent/summary_converter.convert_summary()(Mingyu, PR #47 — 2026-10-16
@@ -134,10 +151,39 @@ def to_ai_output_contract(
         ).items()
     ]
 
-    # severity_ratings/protective_factors/session_change_notes/
-    # followup_check_points는 (10/16 합의) 당분간 Contract에 담지 않는다
-    # — Mingyu가 정식 선택 필드로 추가할 때까지 risk_factors는 비워 둔다.
+    # risk_factors는 계속 비워 둔다 — 아래 4개 필드가 정식 자리를
+    # 대신 받는다(모듈 docstring 참고).
     risk_factors: List[Dict[str, Any]] = []
+
+    severity_ratings = [
+        {
+            "major_type": rating.get("major_type"),
+            "level": rating.get("level"),
+            "reason": rating.get("reason", ""),
+            "matched_evidence": rating.get("matched_evidence", ""),
+            "reviewed": rating.get("reviewed", False),
+        }
+        for rating in result.get("severity_ratings") or []
+    ]
+
+    protective_factors = [
+        {
+            "category": factor.get("category"),
+            "text": factor.get("text", ""),
+            "segment_ids": factor.get("segment_ids", []),
+        }
+        for factor in result.get("protective_factors") or []
+    ]
+
+    session_change_notes = [
+        {"text": note, "segment_ids": []}
+        for note in result.get("session_change_notes") or []
+    ]
+
+    followup_check_points = [
+        {"text": point, "segment_ids": []}
+        for point in result.get("followup_check_points") or []
+    ]
 
     contract = {
         "schema_version": "1.0",
@@ -146,6 +192,10 @@ def to_ai_output_contract(
         "abuse_signals": abuse_signals,
         "risk_factors": risk_factors,
         "warnings": warnings,
+        "severity_ratings": severity_ratings,
+        "protective_factors": protective_factors,
+        "session_change_notes": session_change_notes,
+        "followup_check_points": followup_check_points,
     }
 
     return contract, summary_evidence, _model_name(result)
@@ -155,6 +205,7 @@ def analyze_audio_session_as_contract(
     stt_result: Dict[str, Any],
     client: Any = None,
     case_id: Optional[str] = None,
+    deadline: Optional[float] = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
@@ -164,12 +215,16 @@ def analyze_audio_session_as_contract(
     맞춰서 돌려준다. (contract_dict, summary_evidence, model_name) 튜플을
     돌려주므로 호출부는 contract_dict만 AIAnalysisResult.model_validate()에
     넘기고, 나머지 둘은 AIAnalysisBundle에 따로 담으면 된다.
+
+    deadline: time.monotonic() 기준 마감 시각. analyze_audio_session으로
+    그대로 전달한다(2026-10-16, backend AI_TIMEOUT_SECONDS 대응).
     """
 
     result = analyze_audio_session(
         stt_result=stt_result,
         client=client,
         case_id=case_id,
+        deadline=deadline,
     )
 
     return to_ai_output_contract(result, transcript=stt_result)

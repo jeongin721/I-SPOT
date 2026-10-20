@@ -105,13 +105,28 @@ def _native_result() -> Dict[str, Any]:
             ],
             "risk_signal_points": [dict(GROUNDED_POINT)],
         },
-        # Contract 에 담지 않는 값 — 결과에 새지 않아야 한다.
-        "severity_ratings": [{"major_type": "신체학대", "level": "가상 심각도"}],
+        # 선택 필드 4개(#49)로 옮겨지는 값. 모양은 각 모듈이 정리해 돌려주는 그대로다
+        # (severity_llm._clean_ratings: level 1~5 정수 또는 None · matched_evidence 문자열,
+        # session_change · followup_check_llm: 문자열 목록).
+        "severity_ratings": [
+            {
+                "major_type": "신체학대",
+                "level": 3,
+                "reason": "가상 심각도 근거",
+                "matched_evidence": "가상 발췌",
+                "reviewed": False,
+            },
+            {"major_type": "방임", "level": None, "reason": "", "matched_evidence": "", "reviewed": False},
+        ],
         "protective_factors": [
             {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
         ],
         "session_change_notes": ["가상 회차 변화"],
         "followup_check_points": ["가상 확인사항"],
+        # Contract 에 담지 않는 값 — 결과에 새지 않아야 한다.
+        "full_text": "가상 전체 원문",
+        "counseling_note": "가상 일지 본문",
+        "checklist_draft": {"items": ["가상 체크리스트 항목"]},
     }
 
 
@@ -201,23 +216,54 @@ def test_result_is_converted_to_contract(modeling) -> None:
     assert result.warnings == []
 
 
-def test_fields_outside_contract_do_not_leak(modeling) -> None:
-    """심각도 · 보호요인 · 회차 간 변화 · 다음 확인사항은 아직 담지 않는다.
+def test_optional_fields_are_filled_from_module_output(modeling) -> None:
+    """선택 필드 4개(#49)는 모듈 출력을 Contract 모양으로 옮긴다(#57).
 
-    #49 가 같은 이름의 정식 선택 필드(기본값 빈 배열)를 더해도 이 어댑터는 채우지 않으므로
-    기본 6필드 밖의 값은 모두 비어 있어야 한다. contract_adapter 가 채우기 시작하면
-    이 시험을 그때의 계약에 맞춰 바꾼다.
+    회차 간 변화 · 다음 확인사항은 문자열 목록이라 {text, segment_ids: []} 로 감싼다.
+    근거 없는 항목 빼기는 위험 3필드에만 적용하므로 segment_ids 가 빈 항목도 남는다.
     """
 
     stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
-    core = {"schema_version", "summary", "risk_utterances", "abuse_signals", "risk_factors", "warnings"}
 
-    assert core <= set(stored)
-    assert {key: value for key, value in stored.items() if key not in core and value} == {}
+    assert stored["severity_ratings"] == [
+        {
+            "major_type": "신체학대",
+            "level": 3,
+            "reason": "가상 심각도 근거",
+            "matched_evidence": "가상 발췌",
+            "segment_ids": [],
+            "reviewed": False,
+        },
+        {"major_type": "방임", "level": None, "reason": "", "matched_evidence": "", "segment_ids": [], "reviewed": False},
+    ]
+    assert stored["protective_factors"] == [
+        {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
+    ]
+    assert stored["session_change_notes"] == [{"text": "가상 회차 변화", "segment_ids": []}]
+    assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": []}]
+
+
+def test_module_only_fields_do_not_leak(modeling) -> None:
+    """Contract 의 10개 키만 남고, 모듈만 쓰는 값(전체 원문 · 일지 본문 · 체크리스트)은 결과에 새지 않는다."""
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert set(stored) == {
+        "schema_version",
+        "summary",
+        "risk_utterances",
+        "abuse_signals",
+        "risk_factors",
+        "warnings",
+        "severity_ratings",
+        "protective_factors",
+        "session_change_notes",
+        "followup_check_points",
+    }
 
     dumped = json.dumps(stored, ensure_ascii=False)
 
-    for leaked in ("담임 선생님", "가상 심각도", "가상 회차 변화", "가상 확인사항"):
+    for leaked in ("가상 전체 원문", "가상 일지 본문", "가상 체크리스트 항목"):
         assert leaked not in dumped
 
 

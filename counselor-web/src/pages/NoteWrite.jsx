@@ -208,21 +208,29 @@ export default function NoteWrite(props) {
             </label>
 
             <div className="grp">아동 특성</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {(v.traits || []).map((t, tIndex) => (
-                <Fragment key={tIndex}>
-                  <button
-                    type="button"
-                    className="chipck"
-                    onClick={t.toggle}
-                    disabled={t.disabled}
-                    style={{ background: t.bg, borderColor: t.bd, color: t.fg, fontWeight: t.fw }}
-                  >
-                    {t.mark} {t.label}
-                  </button>
-                </Fragment>
-              ))}
+            <div className="intake">
+              <span className="k">초기면접</span>
+              {v.traitIntake && v.traitIntake.words.length ? (
+                <span className="words">{v.traitIntake.words.join(', ')}</span>
+              ) : (
+                <span className="note">{v.traitIntake ? v.traitIntake.note : ''}</span>
+              )}
             </div>
+            <fieldset className="cklist">
+              <legend>
+                추가로 확인한 항목 <span className="note">초기면접에서 고른 항목은 목록에서 뺍니다</span>
+              </legend>
+              <div className="ckgrid">
+                {(v.traits || []).map((t, tIndex) => (
+                  <Fragment key={tIndex}>
+                    <label>
+                      <input type="checkbox" checked={t.checked} onChange={t.onChange} disabled={t.disabled} />
+                      <span>{t.label}</span>
+                    </label>
+                  </Fragment>
+                ))}
+              </div>
+            </fieldset>
             {(v.traitEv || []).map((e, eIndex) => (
               <Fragment key={eIndex}>
                 <span className="ev">
@@ -235,21 +243,29 @@ export default function NoteWrite(props) {
             ))}
 
             <div className="grp">가정상황</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {(v.homes || []).map((t, tIndex) => (
-                <Fragment key={tIndex}>
-                  <button
-                    type="button"
-                    className="chipck"
-                    onClick={t.toggle}
-                    disabled={t.disabled}
-                    style={{ background: t.bg, borderColor: t.bd, color: t.fg, fontWeight: t.fw }}
-                  >
-                    {t.mark} {t.label}
-                  </button>
-                </Fragment>
-              ))}
+            <div className="intake">
+              <span className="k">초기면접</span>
+              {v.homeIntake && v.homeIntake.words.length ? (
+                <span className="words">{v.homeIntake.words.join(', ')}</span>
+              ) : (
+                <span className="note">{v.homeIntake ? v.homeIntake.note : ''}</span>
+              )}
             </div>
+            <fieldset className="cklist">
+              <legend>
+                추가로 확인한 항목 <span className="note">초기면접에서 고른 항목은 목록에서 뺍니다</span>
+              </legend>
+              <div className="ckgrid">
+                {(v.homes || []).map((t, tIndex) => (
+                  <Fragment key={tIndex}>
+                    <label>
+                      <input type="checkbox" checked={t.checked} onChange={t.onChange} disabled={t.disabled} />
+                      <span>{t.label}</span>
+                    </label>
+                  </Fragment>
+                ))}
+              </div>
+            </fieldset>
             {(v.homeEv || []).map((e, eIndex) => (
               <Fragment key={eIndex}>
                 <span className="ev">

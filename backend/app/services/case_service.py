@@ -91,6 +91,8 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             child_gender=payload.child_gender,
             guardian_type=payload.guardian_type,
             guardian_note=payload.guardian_note,
+            intake_child_traits=payload.intake_child_traits,
+            intake_family_situations=payload.intake_family_situations,
             notes=payload.notes,
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
@@ -289,6 +291,8 @@ def update_case(
         "child_gender",
         "guardian_type",
         "guardian_note",
+        "intake_child_traits",
+        "intake_family_situations",
         "notes",
         "status",
     ):

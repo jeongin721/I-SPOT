@@ -11,7 +11,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enums import SessionStatus, Speaker, TranscriptSource
-from app.schemas.common import SessionErrorInfo
+from app.schemas.common import RequestModel, SessionErrorInfo
 from app.schemas.contracts import STTSegment
 
 
@@ -72,7 +72,7 @@ class TranscriptEnvelope(BaseModel):
     error: Optional[SessionErrorInfo] = None
 
 
-class TranscriptSegmentUpdate(BaseModel):
+class TranscriptSegmentUpdate(RequestModel):
     """상담사 수정 입력. 지정한 필드만 반영된다."""
 
     segment_id: str = Field(..., min_length=1, max_length=50)
@@ -101,7 +101,7 @@ class TranscriptSegmentUpdate(BaseModel):
         return self
 
 
-class TranscriptUpdateRequest(BaseModel):
+class TranscriptUpdateRequest(RequestModel):
     """
     수정 요청은 새로운 Transcript version 을 생성한다.
     기존 version 은 이력으로 보존된다.

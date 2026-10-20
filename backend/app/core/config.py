@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     # local/test 에서는 보지 않는다.
     AI_PIPELINE_ALLOW_UNMASKED: bool = False
     # modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않다(긴 상담 뒷부분은 이름 등이
-    # 가려지지 않고, 체크리스트 프롬프트에 다른 회기의 원문 인용이 섞일 수 있다).
+    # 가려지지 않고, 이름 인식이 놓친 이름을 잡아 줄 등록 실명 대조도 서버 경로에서는 돌지 않는다).
     # ENV=production 에서는 이 값이 true 일 때만 modeling 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_MODELING_ALLOW_IN_PRODUCTION: bool = False
@@ -258,8 +258,8 @@ class Settings(BaseSettings):
         """운영에서 비식별이 아직 불완전한 modeling 으로 서버가 뜨지 않게 한다.
 
         modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 이름 인식(NER)이 글 앞 512토큰만 봐서 긴 상담 뒷부분의
-        이름 · 기관 · 지역이 가려지지 않고 잔존 검사도 못 잡는다. 체크리스트 프롬프트에는 다른 회기의 원문 인용이
-        가리지 않은 채 들어갈 수 있다(specs ai-analysis-connect-research-1013.md 3-3 ④ ⑥).
+        이름 · 기관 · 지역이 가려지지 않고 잔존 검사도 못 잡는다. 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조도
+        돌지 않으므로, 앞부분에서도 이름 인식이 놓친 이름은 그대로 나간다(ai/modeling/abuse/pii_masking.py · privacy_gateway.py).
         이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
         함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).
         """
@@ -270,7 +270,7 @@ class Settings(BaseSettings):
         raise ValueError(
             "ENV=production 에서는 AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
             "modeling 은 상담 내용을 외부(OpenAI)로 보내는데, 그 전에 하는 비식별(이름 · 학교 · 주소 가리기)이 "
-            "아직 완전하지 않습니다 — 긴 상담 뒷부분은 가려지지 않고, 다른 회기의 원문 인용이 섞여 나갈 수 있습니다. "
+            "아직 완전하지 않습니다 — 긴 상담 뒷부분은 가려지지 않고, 이름 인식이 놓친 이름도 그대로 나갈 수 있습니다. "
             "이 개인정보 문제가 해결되기 전에는 실제 상담 데이터에 AI_PROVIDER=mock 을 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 AI_MODELING_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )

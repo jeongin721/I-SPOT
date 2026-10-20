@@ -52,7 +52,7 @@ def test_non_production_keeps_default_for_local_development(env: str) -> None:
 
 # ---------------------------------------------------------
 # AI_PROVIDER=pipeline 은 상담 원문을 비식별 없이 OpenAI 로 보낸다
-# (specs ai-analysis-connect-research-1013.md 3-3 ①). 운영에서는 일부러 풀 때만 뜬다.
+# (ai/services/summary_service.py). 운영에서는 일부러 풀 때만 뜬다.
 # ---------------------------------------------------------
 
 
@@ -131,7 +131,7 @@ def test_settings_error_does_not_print_input_values() -> None:
 
 # ---------------------------------------------------------
 # AI_PROVIDER=modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 불완전하다
-# (specs ai-analysis-connect-research-1013.md 3-3 ④ ⑥). 운영에서는 일부러 풀 때만 뜬다.
+# (이름 인식이 앞 512토큰만 보고, 서버 경로는 등록 실명 대조를 안 쓴다). 운영에서는 일부러 풀 때만 뜬다.
 # ---------------------------------------------------------
 
 

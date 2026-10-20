@@ -7,15 +7,16 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enums import ReviewStatus
+from app.schemas.common import RequestModel
 
 
-class DocumentCreateRequest(BaseModel):
+class DocumentCreateRequest(RequestModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(default="", max_length=50000)
     doc_type: str = Field(default="CONSULTATION_RECORD", max_length=50)
 
 
-class DocumentUpdateRequest(BaseModel):
+class DocumentUpdateRequest(RequestModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     content: Optional[str] = Field(default=None, max_length=50000)
 

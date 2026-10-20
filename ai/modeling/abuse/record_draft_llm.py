@@ -181,6 +181,7 @@ def generate_record_draft(
     segments: List[Dict[str, Any]],
     subtype_analysis: Optional[Dict[str, Any]],
     session_overview: str = "",
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     기록 초안 필드를 만든다("향후 계획"은 제외 — 모듈 docstring 참고,
@@ -216,6 +217,7 @@ def generate_record_draft(
             user_prompt=user_prompt,
             max_retries=2,
             timeout_seconds=180.0,
+            deadline=deadline,
         )
     except Exception:
         parsed = {}

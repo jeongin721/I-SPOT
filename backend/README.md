@@ -316,8 +316,8 @@ OPENAI_MODEL=...
 > `ENV=local` · `test` 는 이 검사를 하지 않는다(지금처럼 쓸 수 있다).
 
 > **주의: `modeling`(이경진 님 파이프라인, `ai/modeling/abuse/contract_adapter`)은 외부로 보내기 전에 가리지만 가리기가 아직
-> 완전하지 않다.** 이름 인식이 글 앞부분만 봐서 긴 상담 뒷부분의 이름 · 기관 · 지역이 가려지지 않고, 체크리스트 프롬프트에
-> 다른 회기의 원문 인용이 섞일 수 있다. 이 개인정보 문제가 해결되기 전에는 가상 데이터로만 쓰고, `ENV=production` 에서는
+> 완전하지 않다.** 이름 인식이 글 앞부분만 봐서 긴 상담 뒷부분의 이름 · 기관 · 지역이 가려지지 않고, 이름 인식이 놓친 이름을
+> 잡아 줄 등록 실명 대조도 서버 경로에서는 돌지 않는다. 이 개인정보 문제가 해결되기 전에는 가상 데이터로만 쓰고, `ENV=production` 에서는
 > `AI_MODELING_ALLOW_IN_PRODUCTION=true` 를 함께 적어야만 시작한다. torch · transformers · openai 와 가중치 파일은
 > backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
 > 근거 발화가 없는 위험 항목은 `langgraph` 와 같이 저장 전에 뺀다.
@@ -423,6 +423,7 @@ backend/
 - 권한 검사는 Backend 에서 수행한다. 상담사는 담당 Case 만 조회·수정할 수 있다.
 - 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 저장한다.
 - 상담 원문을 일반 로그에 출력하지 않는다. 로그에는 식별자·개수만 남긴다.
+- 서버 접속 기록(uvicorn)은 경로 · 상태만 남기고 쿼리 값(`?search=` 등)은 남기지 않는다(`app/core/logging.py`, `tests/test_access_log_query.py`).
 - Audit log 에 상담 원문/요약 본문을 저장하지 않고 변경 필드명만 남긴다.
 - API Key / Secret 은 `.env` 로만 주입한다.
 - 음성 파일은 `storage/` 에 저장되며 `.gitignore` 로 커밋을 차단한다.

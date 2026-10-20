@@ -16,7 +16,7 @@ ai-modeling 브랜치의 원본을 쓰면 된다.
 
 import json
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 from openai import OpenAI
 
@@ -113,6 +113,7 @@ def generate_counseling_records(
     client: OpenAI,
     transcript: str,
     model: str,
+    deadline: Optional[float] = None,
 ) -> Dict[str, str]:
     """
     STT transcript를 상담 요약과 상담일지로 변환한다.
@@ -137,6 +138,7 @@ def generate_counseling_records(
         model=model,
         system_prompt=SYSTEM_PROMPT,
         user_prompt=user_prompt,
+        deadline=deadline,
     )
 
     summary = result.get(
