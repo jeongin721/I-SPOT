@@ -57,6 +57,7 @@
   ("요청 값이 올바르지 않습니다."). 이때 `field` 는 필드 이름이 아니라 깨진 글자 위치(예: `"30"`), `reason` 은
   `"JSON decode error"` 다. 본문 해석은 로그인 확인보다 먼저라, JSON 본문을 받는 창구는 token 이 없어도 `401` 이
   아니라 이 422 를 준다.
+- 글자 칸(본문의 모든 글자 · 글자 목록과 검색어 같은 글자 쿼리)에 NUL(`\u0000`) · 짝 없는 서로게이트(`\ud800`~`\udfff`)가 있으면 `422 VALIDATION_ERROR` 이고 아무것도 저장하지 않는다(비밀번호 확인 칸 — 로그인 `password` · 변경의 `current_password` — 제외). `field` 는 그 칸(예: `segments.0.text`, `query.search`)이고 받은 값은 응답에 넣지 않는다.
 - `400 VALIDATION_ERROR`(`details` 없음)는 위 경우 말고도 세 가지가 더 있다. `message` 로 구분한다.
   - JSON 본문을 읽을 수 없음 — JSON 본문을 받는 창구에 `Content-Type` 이 JSON 인 본문을 보냈는데 UTF-8 로 읽을 수
     없는 바이트가 들어 있음(예: CP949 로 인코딩한 한글). 프레임워크는 JSON 문법 오류만 422 로 바꾸고 이런 해석 오류는
@@ -145,6 +146,12 @@ STT_FAILED    ← STT_PROCESSING 실패
 AI_FAILED     ← AI_PROCESSING 실패
 ```
 
+승인 풀기(9절 `POST .../summary/reopen`):
+
+```text
+APPROVED → AI_REVIEW_REQUIRED   요약을 다시 고친 뒤 다시 승인한다
+```
+
 실패 시 `error` 필드가 함께 내려온다.
 
 ```json
@@ -170,7 +177,7 @@ AI_FAILED     ← AI_PROCESSING 실패
 | `STT_CONFIRMED` | AI 분석 실행 가능 |
 | `AI_PROCESSING` | Processing (Polling) |
 | `AI_REVIEW_REQUIRED` | AI Review / Summary Editor |
-| `APPROVED` | 읽기 전용 (완료) |
+| `APPROVED` | 읽기 전용 (완료). 요약 수정 버튼으로 승인을 풀 수 있다 |
 | `STT_FAILED` / `AI_FAILED` | Error + 재시도 버튼 |
 
 ---
@@ -424,7 +431,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 ```
 
 **비밀번호 원문은 응답 · 오류 · 로그 어디에도 담기지 않는다.**
-8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값과 128자 초과뿐이다(요청 형식 검사).
+8자 미만도 `WEAK_PASSWORD` 로 나간다. `422 VALIDATION_ERROR` 는 빈 값, 128자 초과, NUL · 짝 없는 서로게이트가 든 값뿐이다(요청 형식 검사, 1.2).
 
 ---
 
@@ -1011,7 +1018,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 - 최소 1개 필드 필요(`422 VALIDATION_ERROR`)
 - 수정하면 `is_edited: true`
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
-- 승인 후 수정 시 `409 ALREADY_APPROVED`
+- 승인 후 수정 시 `409 ALREADY_APPROVED`. 고치려면 먼저 승인을 푼다(`POST .../summary/reopen`)
 
 > 수정한 Summary 는 AI 재분석으로 덮어써지지 않는다. 다만 `analysis_id` 와 `summary_evidence` 는
 > 새 분석 것으로 바뀐다. 새 AI 결과는 `GET .../analysis` 로 확인한다(8절 "재분석").
@@ -1021,6 +1028,19 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 승인 → Summary `APPROVED`, Session `APPROVED`.
 
 오류: `404 SUMMARY_NOT_FOUND`, `409 ALREADY_APPROVED`, `409 INVALID_SESSION_STATE`
+
+### POST /api/v1/sessions/{session_id}/summary/reopen
+
+승인 풀기(화면의 '요약 수정'). Summary `APPROVED` → `DRAFT`, Session `APPROVED` → `AI_REVIEW_REQUIRED`.
+
+- 응답은 PATCH · approve 와 같은 Summary 하나다.
+- 내용(`overview` · `key_points` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
+- Summary 와 Session 의 `approved_at` · `approved_by_id` 는 `null` 로 비운다. 다시 승인하면 새로 채워진다.
+- 감사 기록을 따로 남기지 않는다. 다시 고치면 `SUMMARY_UPDATED`, 다시 승인하면 `SUMMARY_APPROVED` 가 남는다.
+- 푼 시각은 Session 에만 저장하고(`reopened_at`, 응답에는 없음) 처리 대기 업무가 검토 대기를 그때부터 센다(12절).
+- 권한은 approve 와 같다(담당 사례의 상담사 · 관리자).
+
+오류: `403 FORBIDDEN`, `404 SUMMARY_NOT_FOUND`, `409 NOT_APPROVED`(승인되지 않은 요약), `409 INVALID_SESSION_STATE`(요약은 승인됐는데 회기가 `APPROVED` 가 아님)
 
 ---
 
@@ -1034,12 +1054,13 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 | POST | `/api/v1/sessions/{session_id}/documents` | 생성 (201) |
 | PATCH | `/api/v1/sessions/{session_id}/documents/{document_id}` | 수정 |
 | POST | `/api/v1/sessions/{session_id}/documents/{document_id}/approve` | 승인 |
+| POST | `/api/v1/sessions/{session_id}/documents/{document_id}/reopen` | 승인 풀기(화면의 '일지 수정') |
 
 문서 하나를 조회하거나 삭제하는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 하나를 볼 때도 목록에서 찾는다.
 
 ### 응답
 
-생성 · 수정 · 승인은 문서 하나를 준다.
+생성 · 수정 · 승인 · 승인 풀기는 문서 하나를 준다.
 
 ```json
 {
@@ -1082,11 +1103,14 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 - 항상 `DRAFT` 로 만들어진다. 승인하면 `APPROVED` 가 되고 `approved_at` · `approved_by_id` 가 채워진다.
 - 승인된 문서는 수정하거나 다시 승인할 수 없다(`409 ALREADY_APPROVED`).
-- 회기 상태를 검사하지 않는다. 어느 상태(`CREATED` 포함)에서도 만들고 고치고 승인할 수 있다.
-- 요약 승인(9절)과 따로 동작한다. 문서를 승인해도 회기 상태는 바뀌지 않고, 회기가 `APPROVED` 여도 문서는 만들고 고칠 수 있다.
+- 고치려면 승인을 푼다(`POST .../reopen`). `DRAFT` 로 돌아가고 `approved_at` · `approved_by_id` 는 `null` 이 된다.
+  제목 · 본문은 그대로 두며, 고친 뒤 approve 로 다시 승인한다. 승인되지 않은 문서면 `409 NOT_APPROVED`.
+  감사 기록을 따로 남기지 않는다(다시 고치면 `DOCUMENT_UPDATED`, 다시 승인하면 `DOCUMENT_APPROVED` 가 남는다).
+- 회기 상태를 검사하지 않는다. 어느 상태(`CREATED` 포함)에서도 만들고 고치고 승인하고 승인을 풀 수 있다.
+- 요약 승인(9절)과 따로 동작한다. 문서를 승인하거나 승인을 풀어도 회기 상태는 바뀌지 않고, 회기가 `APPROVED` 여도 문서는 만들고 고칠 수 있다.
 
 오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `404 DOCUMENT_NOT_FOUND`(없는 문서, 다른 회기의 문서),
-`409 ALREADY_APPROVED`, `422 VALIDATION_ERROR`
+`409 ALREADY_APPROVED`, `409 NOT_APPROVED`, `422 VALIDATION_ERROR`
 
 ---
 
@@ -1205,13 +1229,15 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 | `AUDIO_UPLOADED` | `REQUEST_STT` | 원문 변환 요청 | 가장 최근 음성 업로드 시각 |
 | `STT_REVIEW_REQUIRED` | `REVIEW_TRANSCRIPT` | 원문 검수 | STT 완료 시각 (확정한 원문을 다시 고친 경우 되돌린 시각) |
 | `STT_CONFIRMED` | `REQUEST_ANALYSIS` | AI 분석 요청 | 원문 확정 시각 |
-| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 |
+| `AI_REVIEW_REQUIRED` | `REVIEW_ANALYSIS` | 분석 결과 검토 | AI 완료 시각 (승인한 요약을 푼 경우 푼 시각) |
 | `STT_FAILED` | `RETRY_STT` | 원문 변환 재시도 | 실패 시각 |
 | `AI_FAILED` | `RETRY_ANALYSIS` | AI 분석 재시도 | 실패 시각 |
 
 - `REVIEW_TRANSCRIPT` 는 STT 완료 · 최근 확정 · 되돌린 시각 중 가장 늦은 값이다. 되돌린 시각은 확정 뒤
   처음 고친(`PATCH …/transcript`) 시각이다. 오래전에 확정한 원문을 오늘 다시 고치면 오늘부터 세고,
   되돌린 뒤 더 고쳐도 다시 세지 않는다.
+- `REVIEW_ANALYSIS` 는 AI 완료 · 요약 승인을 푼(`POST …/summary/reopen`) 시각 중 늦은 값이다. 오래전에 분석한
+  회기의 승인을 오늘 풀면 오늘부터 세고, 푼 뒤 요약을 고쳐도 다시 세지 않는다. 푼 뒤 다시 분석하면 새 AI 완료 시각부터 센다.
 - `REQUEST_ANALYSIS` 는 AI 실패 뒤 이 상태로 되돌아오면 실패 시각이 더 늦을 때 그것을 쓴다.
   상태 전이 규칙에만 있는 대비용이고, 지금은 이 경로로 가는 API 가 없다.
 - 처리 중(`STT_PROCESSING`, `AI_PROCESSING`)과 `APPROVED` 는 업무가 아니다.
@@ -1312,6 +1338,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
+| `NOT_APPROVED` | 409 | 승인되지 않은 요약 · 문서의 승인 풀기(`reopen`) |
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
@@ -1321,10 +1348,14 @@ Query: `counselor_id` (목록과 같은 규칙)
 `INVALID_SESSION_STATE` 의 `message` 는 한국어 상태 이름으로 쓰고 상태 코드를 넣지 않는다. 화면에는 그대로 보여 주면 된다.
 예: `"지금 회기 상태(음성 업로드 대기)에서는 할 수 없는 요청입니다. 원문 검수 필요 · AI 분석 대기 상태에서만 할 수 있습니다."`
 승인된 회기에서는 `"승인이 끝난 회기는 바꿀 수 없습니다."` 로 온다.
+요약 승인을 푼 뒤(`AI_REVIEW_REQUIRED`) 해당 요청을 할 수 있을 때만
+`"상담 요약의 '요약 수정' 으로 승인을 풀면 다시 고칠 수 있습니다."` 안내를 덧붙인다.
+원문 수정처럼 승인을 풀어도 허용되지 않는 요청에는 이 안내가 붙지 않는다(원문 수정 가능 상태는 그대로다).
 
 - `details.current_status` 는 지금 상태 코드다.
 - `details.expected_status` 는 참고용 상태 코드 목록(`, ` 로 이음)이다. 요청에 따라 "이 요청을 할 수 있는 상태"이기도 하고
-  "지금 상태에서 넘어갈 수 있는 상태"이기도 해서, "필요한 상태"로 읽지 않는다. 뒤쪽 뜻인데 넘어갈 수 있는 상태가 없으면(`APPROVED`) `없음` 이다.
+  "지금 상태에서 넘어갈 수 있는 상태"이기도 해서, "필요한 상태"로 읽지 않는다. 뒤쪽 뜻인데 넘어갈 수 있는 상태가 없으면 `없음` 이다.
+  `APPROVED` 는 승인 풀기로 `AI_REVIEW_REQUIRED` 에 갈 수 있어 `AI_REVIEW_REQUIRED` 가 온다.
 - 동시에 들어온 요청과 겹친 경우 일부는 `details` 없이 `message` 만 온다.
 
 ---
@@ -1347,6 +1378,7 @@ PATCH /sessions/{id}/summary                  → is_edited: true
 PUT  /sessions/{id}/risk-assessments/{type}  → 유형별 상담원 판단 (STT_CONFIRMED 부터)
 POST /sessions/{id}/summary/approve           → APPROVED
 GET  /sessions/{id}                           → 상태/데이터 유지 확인
+POST /sessions/{id}/summary/reopen            → AI_REVIEW_REQUIRED (고칠 일이 생기면. 고친 뒤 다시 approve)
 ```
 
 ---
