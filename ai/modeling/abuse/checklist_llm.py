@@ -13,6 +13,7 @@ AI가 초안(제안)으로 채운다.
 """
 
 import os
+import threading
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
@@ -460,6 +461,7 @@ def generate_checklist_draft(
     timeout_seconds: float = 180.0,
     use_correction_hint: bool = True,
     deadline: Optional[float] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
     """
     상담 원문을 바탕으로 서식 체크리스트 초안을 생성한다.
@@ -539,6 +541,7 @@ def generate_checklist_draft(
         max_retries=max_retries,
         timeout_seconds=timeout_seconds,
         deadline=deadline,
+        stop_event=stop_event,
     )
 
     return {

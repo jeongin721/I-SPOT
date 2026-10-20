@@ -1107,6 +1107,7 @@ def _call_llm_with_retry(
     max_retries: int = 3,
     timeout_seconds: float = 180.0,
     deadline: Optional[float] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
     """
     일시적 API 오류를 대비해 retry + exponential backoff 적용.
@@ -1118,6 +1119,13 @@ def _call_llm_with_retry(
       TimeoutError를 낸다(backoff sleep도 생략).
     - 이번 시도의 실제 timeout은 min(timeout_seconds, 남은 시간)으로
       줄어든다 — 마감을 넘기면서까지 응답을 기다리지 않는다.
+
+    stop_event: 병렬로 같이 도는 다른 호출이 먼저 실패해서 fail-fast로
+    전체가 이미 실패 처리됐다는 신호(2026-10-20 Mingyu 리뷰 — #57 머지
+    전엔 이 신호가 없어서, 먼저 실패한 뒤에도 아직 돌던 호출이 deadline
+    까지 재시도를 계속 보냈음). 이미 보낸 요청 자체를 중간에 끊지는
+    못하지만(스레드 한계, 위 deadline 설명과 같음), 다음 재시도를
+    시작하기 전에 이 신호를 보면 더 기다리지 않고 바로 포기한다.
     """
 
     last_error = None
@@ -1171,6 +1179,11 @@ def _call_llm_with_retry(
         1,
         max_retries + 1,
     ):
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError(
+                "병렬로 돌던 다른 호출이 먼저 실패해 재시도를 멈춤"
+            )
+
         if deadline is not None:
             remaining = deadline - time.monotonic()
 
