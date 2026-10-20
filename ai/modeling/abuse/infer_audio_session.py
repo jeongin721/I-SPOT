@@ -13,6 +13,7 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 토큰 제한이 훨씬 커서 세션 전체 transcript를 한 번에 사용한다.
 """
 
+import threading
 import time
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from typing import Any, Dict, List, Optional, Tuple
@@ -628,6 +629,11 @@ def analyze_audio_session(
     # 원문 인용을 mask_for_outbound 없이 시스템 프롬프트에 붙이므로, 외부
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
     executor = ThreadPoolExecutor(max_workers=4)
+    # 넷 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
+    # 계속 보내던 문제(2026-10-20 Mingyu 리뷰) — 실패가 확정되면 이
+    # 신호를 켜서, 아직 재시도 전인 호출들이 다음 시도를 시작하기 전에
+    # 바로 포기하게 한다(second_stage_llm._call_llm_with_retry 참고).
+    stop_event = threading.Event()
 
     try:
         counseling_future = executor.submit(
@@ -636,6 +642,7 @@ def analyze_audio_session(
             transcript=masked_full_text,
             model=note_model,
             deadline=deadline,
+            stop_event=stop_event,
         )
         checklist_future = executor.submit(
             generate_checklist_draft,
@@ -644,6 +651,7 @@ def analyze_audio_session(
             model=checklist_model,
             use_correction_hint=False,
             deadline=deadline,
+            stop_event=stop_event,
         )
         record_draft_future = executor.submit(
             generate_record_draft,
@@ -654,6 +662,7 @@ def analyze_audio_session(
             subtype_analysis=subtype_result,
             session_overview=session_overview,
             deadline=deadline,
+            stop_event=stop_event,
         )
         protective_factors_future = executor.submit(
             generate_protective_factors,
@@ -662,6 +671,7 @@ def analyze_audio_session(
             masked_transcript_text=masked_citation_text,
             segments=segments,
             deadline=deadline,
+            stop_event=stop_event,
         )
 
         all_futures = [
@@ -680,6 +690,12 @@ def analyze_audio_session(
         # 더 기다리지 않고 바로 돌아간다 — 그 스레드들도 각자 deadline으로
         # 묶여 있어 결국 끝난다.
         done, _not_done = wait(all_futures, return_when=FIRST_EXCEPTION)
+
+        # wait()가 돌아온 시점(전부 끝났거나 하나가 실패했거나)에 바로
+        # 켠다 — 전부 성공했으면 아무도 이 신호를 다시 보지 않으니
+        # 무해하고, 하나가 실패했으면 아직 재시도 전인 나머지가 바로
+        # 포기하게 된다.
+        stop_event.set()
 
         for future in done:
             future.result()
