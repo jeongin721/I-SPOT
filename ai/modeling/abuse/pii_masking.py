@@ -9,11 +9,21 @@ entity_map(토큰 -> 원문)은 외부로 전송하지 않고 호출 측(로컬)
 보관한다 — 외부 LLM에는 masked_text만 전달한다.
 """
 
+import logging
 import re
 from typing import Dict, List, Tuple
 
 import torch
 from transformers import AutoTokenizer, AutoModelForTokenClassification
+
+# "Token indices sequence length is longer than..." 경고를 끈다 — 긴
+# 입력을 겹치는 창으로 나눠 처리하도록 설계했으니(_decode_ner_spans
+# 참고) 이 경고에 쓰인 "indexing errors가 날 것" 문구는 우리 상황에는
+# 해당하지 않는다. 실제 처리에는 영향 없음(2026-10-20, 512 토큰 초과
+# 입력 처리 추가 때 확인).
+logging.getLogger("transformers.tokenization_utils_base").setLevel(
+    logging.ERROR
+)
 
 
 # ============================================================
@@ -77,26 +87,27 @@ def _refine_org_prefix(entity_text: str) -> str:
     return "ORG"
 
 
-def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
+# 모델의 최대 입력(512 토큰)을 넘는 긴 상담 축어록을 그냥 자르면
+# (truncation=True 한 번) 뒷부분 전체가 NER을 한 번도 안 거쳐 이름 등이
+# 그대로 노출된다(2026-10-20 Mingyu 지적 — "비식별이 완전하지 않다,
+# 긴 상담 뒷부분은 안 가려진다"). stride만큼 겹치는 창(window)으로 나눠
+# 전체를 다 돈다 — 겹치는 구간을 두는 이유는, 창 경계에 걸쳐 잘리는
+# 개체명이 있어도 그 옆 겹치는 창에서는 온전한 형태로 들어가 잡히게
+# 하기 위함이다(사람 이름·기관명은 보통 몇 토큰 안이라 128 겹침이면
+# 충분하다).
+_NER_MAX_LENGTH = 512
+_NER_STRIDE = 128
+
+
+def _merge_adjacent_same_tag_spans(
+    offsets: List[Tuple[int, int]],
+    pred_ids: List[int],
+) -> List[Tuple[int, int, str]]:
     """
-    NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
+    한 창(window) 안에서 토큰별 예측을 (시작, 끝, 태그) span으로 병합한다.
     subword(##) 경계는 offset_mapping으로 보정한다.
     """
 
-    encoded = _ner_tokenizer(
-        text,
-        return_offsets_mapping=True,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512,
-    )
-
-    offsets = encoded.pop("offset_mapping")[0].tolist()
-
-    with torch.no_grad():
-        logits = _ner_model(**encoded).logits
-
-    pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
     id2label = _ner_model.config.id2label
 
     # 체크포인트마다 라벨 표기 방식이 다르다("B-PS"처럼 앞에 B/I를
@@ -143,6 +154,48 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
             current_start, current_end, current_tag = start, end, tag
 
     _flush()
+
+    return spans
+
+
+def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
+    """
+    NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
+    512 토큰을 넘는 입력은 겹치는 여러 창으로 나눠 전체를 훑는다(모듈
+    상수 _NER_MAX_LENGTH/_NER_STRIDE 참고). return_overflowing_tokens이
+    돌려주는 offset_mapping은 각 창이 원문 전체에서 어디였는지를 이미
+    반영하고 있어 따로 보정할 필요가 없다. 창끼리 겹치는 구간에서 같은
+    개체명이 중복 검출될 수 있는데, 그건 호출부의
+    _select_non_overlapping_spans가 걸러낸다.
+    """
+
+    encoded = _ner_tokenizer(
+        text,
+        return_offsets_mapping=True,
+        truncation=True,
+        max_length=_NER_MAX_LENGTH,
+        stride=_NER_STRIDE,
+        return_overflowing_tokens=True,
+        padding=False,
+    )
+
+    spans: List[Tuple[int, int, str]] = []
+
+    for chunk_index in range(len(encoded["input_ids"])):
+        chunk_input_ids = torch.tensor([encoded["input_ids"][chunk_index]])
+        chunk_attention_mask = torch.tensor(
+            [encoded["attention_mask"][chunk_index]]
+        )
+        offsets = encoded["offset_mapping"][chunk_index]
+
+        with torch.no_grad():
+            logits = _ner_model(
+                input_ids=chunk_input_ids,
+                attention_mask=chunk_attention_mask,
+            ).logits
+
+        pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
+        spans.extend(_merge_adjacent_same_tag_spans(offsets, pred_ids))
 
     return spans
 
