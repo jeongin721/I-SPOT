@@ -230,7 +230,7 @@ def test_recheck_span_reaching_into_masked_token_is_cut(gateway) -> None:
 def test_name_inside_line_head_brackets_is_not_exempt(gateway, text: str) -> None:
     # 줄 머리 표식 정규식이 대괄호 안 아무 글자나 받으면, 그 안의 이름은 첫 가리기 · 다시 검사 · 정확 매칭이 모두 건너뛰어
     # 그대로 나간다(0ad9eb8 부터, 실제 모델로 재현). 저장소 안 STT 경로는 segment_id 를 "seg_숫자" 로 만들어서 대괄호는 그 꼴만
-    # 표식으로 본다(다른 꼴이면 표식으로 보지 않아 대괄호 안도 검사한다 — 새지는 않고 막히거나 가려질 수 있다).
+    # 표식으로 본다(다른 꼴이면 대괄호 안은 표식 예외 없이 보통 검사를 받는다).
     gw, pii, state = gateway
     state.rule = lambda t: _tags(t, "박영희", "PS")
 
@@ -240,4 +240,20 @@ def test_name_inside_line_head_brackets_is_not_exempt(gateway, text: str) -> Non
         return
 
     assert "박영희" not in masked
+    _assert_tokens_intact(pii, masked, entity_map, text)
+
+
+@pytest.mark.parametrize("segment_id", ["spk_0", "custom-001", "김민수"])
+def test_speaker_code_is_kept_when_segment_id_is_not_seg_number(gateway, segment_id: str) -> None:
+    # 바깥 STT 모듈은 "seg_숫자" 가 아닌 segment_id 를 줄 수 있다(STT Contract 는 형식을 강제하지 않는다). 대괄호를 "[seg_숫자]" 로
+    # 좁힌 95a192f 판은 그런 줄 머리를 통째로 표식에서 빼서, 화자 코드 조각("UNKNOWN" 의 "UN")까지 기관으로 가렸다(실제 모델 ID 6 ×
+    # 화자 5 중 12). adcafe6 은 대괄호 모양과 상관없이 "코드:" 는 늘 표식으로 보고, 대괄호 안은 보통 검사를 한다.
+    gw, pii, state = gateway
+    text = f"[{segment_id}] UNKNOWN: 친구 이영희랑 놀았어요.\n[seg_002] CHILD: 네."
+    state.rule = lambda t: {**_tags(t, "UN", "OG"), **_tags(t, "이영희", "PS"), **_tags(t, "김민수", "PS")}
+
+    masked, entity_map = _review(gw, text)
+
+    assert "] UNKNOWN: 친구 " in masked and masked.endswith("\n[seg_002] CHILD: 네.")
+    assert "이영희" not in masked and "김민수" not in masked
     _assert_tokens_intact(pii, masked, entity_map, text)
