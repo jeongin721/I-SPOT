@@ -74,17 +74,29 @@ _NER_LABEL_TO_TOKEN_PREFIX = {
 _SCHOOL_KEYWORDS = ("학교", "유치원", "어린이집")
 _HOSPITAL_KEYWORDS = ("병원", "의원", "센터")
 
-# 이 모델이 가끔 사람이름(PS)으로 오탐하는, 실제로는 개인정보가 아닌
-# 상담 도메인 고정 표현. 특히 infer_audio_session.SPEAKER_LABEL_KO가
-# 매 줄 앞에 붙이는 화자표시("아동: ...", "상담사: ...")의 "아동"이
-# 걸린다 — 512 토큰 안의 짧은 글에서는 거의 안 보였는데, 창(window)이
-# 여러 개로 나뉘는 긴 글에서는 같은 "아동"이 창마다 다른 문맥으로
-# 들어가면서 어느 한 창에서는 PS로 잘못 잡힐 확률이 올라간다(2026-10-20,
-# T4에서 30분 분량 합성 축어록으로 재현 — 잔존 검사가 잡아 분석 전체가
-# PrivacyGatewayBlocked로 막혔음). 정규식/NER 판정이 끝난 뒤 정확히
-# 일치하는 경우만 걸러낸다 — "김아동"처럼 더 긴 문자열에 포함된 경우는
-# 안 걸러낸다.
-_KNOWN_FALSE_POSITIVE_ENTITIES = {"아동", "상담사"}
+# 줄 머리의 "구조 표식"(화자 코드)은 PII가 아니다 — infer_audio_session
+# .build_full_transcript_text가 매 줄 앞에 붙이는 "아동: "/"상담사: "와,
+# record_draft_llm.build_transcript_citation_text가 붙이는
+# "[seg_001] CHILD: " 둘 다. 모델이 가끔 이 안의 조각을 사람·기관으로
+# 잘못 본다 — "아동"/"상담사" 전체뿐 아니라 "UNKNOWN"의 "UN"·"UNK",
+# "CHILD"의 "CH"·"ILD", "[seg_280]"의 "g"처럼 글자 일부만 잡히기도
+# 한다(2026-10-20 T4 30분 분량, 2026-10-21 Mingyu가 인용 글 300발화로
+# 재현·보고).
+#
+# 처음엔 "아동"·"상담사" 정확히 일치하는 경우만 걸러냈는데 두 가지
+# 한계가 있었다: (1) "UN"처럼 단어가 아닌 조각 오탐은 못 거른다. (2)
+# 본문에 그 단어를 포함하는 진짜 이름이 있을 때(예: "김아동") 모델이
+# "아동"만 잡으면, 그 걸러내기 때문에 "김아동" 전체가 하나도 안
+# 가려진 채 남는다(2026-10-21 Mingyu 지적, 가짜 모델로 재현 — 실제
+# 모델에선 아직 안 나타남). 그래서 단어 내용이 아니라 "줄 머리 구조
+# 표식의 글자 범위" 자체를 찾아서, 그 범위 안에 완전히 들어가는
+# 판정만 거른다 — 범위를 한 글자라도 벗어나면(예: 화자 코드 바로
+# 뒤에 실제 이름이 공백 없이 붙어 하나의 범위로 잡히면) 거르지 않고
+# 그대로 마스킹한다.
+_STRUCTURAL_PREFIX_RE = re.compile(
+    r"^(?:\[[^\]\n]*\][ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN)|상담사|아동):",
+    re.MULTILINE,
+)
 
 
 def _refine_org_prefix(entity_text: str) -> str:
@@ -180,6 +192,13 @@ def _merge_overlapping_spans(
     Mingyu 지적 — 호출부의 _select_non_overlapping_spans는 겹치면
     먼저 시작하는 것만 남기고 나머지를 통째로 버려서, 두 범위 중 한쪽
     범위에만 있던 부분(위 예의 "수성구")이 전혀 마스킹되지 않았다).
+
+    start < cur_end(겹칠 때만 합침)이지 start <= cur_end(맞닿기만
+    해도 합침)가 아니다 — 실제 모델로 짧은 글을 돌려보니(2026-10-21
+    Mingyu 지적) 안 겹치고 그냥 붙어만 있는 서로 다른 개체(이름 바로
+    뒤에 공백 없이 붙은 학교 이름 등)까지 하나로 합쳐지는 문제가
+    있었다. 둘 다 이미 가려지므로 새로 노출되는 건 없지만, 화면에
+    "김민수서울초등학교"처럼 한 덩어리로 보이는 건 맞지 않다.
     """
 
     if not spans:
@@ -191,7 +210,7 @@ def _merge_overlapping_spans(
     cur_start, cur_end, cur_tag = ordered[0]
 
     for start, end, tag in ordered[1:]:
-        if start <= cur_end:
+        if start < cur_end:
             if (end - start) > (cur_end - cur_start):
                 cur_tag = tag
             cur_end = max(cur_end, end)
@@ -204,6 +223,17 @@ def _merge_overlapping_spans(
     return merged
 
 
+def _is_within_structural_prefix(
+    span: Tuple[int, int],
+    zones: List[Tuple[int, int]],
+) -> bool:
+    start, end = span
+    return any(
+        zone_start <= start and end <= zone_end
+        for zone_start, zone_end in zones
+    )
+
+
 def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     """
     NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
@@ -212,7 +242,16 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     돌려주는 offset_mapping은 각 창이 원문 전체에서 어디였는지를 이미
     반영하고 있어 따로 보정할 필요가 없다. 창끼리 겹치는 구간에서 경계가
     어긋나게 검출되면 _merge_overlapping_spans가 합집합으로 합친다.
+
+    줄 머리 구조 표식("아동: ", "[seg_001] CHILD: " 등) 안에 완전히
+    들어가는 판정은 PII가 아니므로 거른다(_STRUCTURAL_PREFIX_RE 선언부
+    참고).
     """
+
+    structural_zones = [
+        (match.start(), match.end())
+        for match in _STRUCTURAL_PREFIX_RE.finditer(text)
+    ]
 
     encoded = _ner_tokenizer(
         text,
@@ -244,7 +283,9 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
         spans.extend(
             span
             for span in chunk_spans
-            if text[span[0] : span[1]] not in _KNOWN_FALSE_POSITIVE_ENTITIES
+            if not _is_within_structural_prefix(
+                (span[0], span[1]), structural_zones
+            )
         )
 
     return _merge_overlapping_spans(spans)

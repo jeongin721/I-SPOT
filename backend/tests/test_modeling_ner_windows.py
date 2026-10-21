@@ -2,8 +2,10 @@
 #
 # ai/modeling/abuse/pii_masking._decode_ner_spans 는 예전에 앞 512토큰만 모델에 넣어서, 긴 상담 축어록 뒷부분의
 # 이름 · 기관 · 지역이 가려지지 않은 채 OpenAI 로 나갔다. 이경진 님이 글을 겹치는 창(window)으로 나눠 전부 훑게
-# 고쳤고(ai-modeling 367beaf), 두 창의 판정이 어긋나게 겹치면 합집합으로 합치게 했다(91bfbeb). 긴 글에서 화자 표시
-# "아동" · "상담사" 를 사람이름으로 잘못 보는 일이 늘어 그 말과 정확히 같은 범위는 거른다(fd7bd0f).
+# 고쳤고(ai-modeling 367beaf), 두 창의 판정이 어긋나게 겹치면 합집합으로 합치게 했다(91bfbeb). 긴 글에서는 줄 머리
+# 화자 표시("아동:" · "상담사:" · "[seg_001] CHILD:")의 글자나 조각을 개체로 잘못 보는 일이 늘어, 그 표식 범위 안에
+# 완전히 들어가는 판정만 거른다(fd7bd0f 의 단어 거르기를 0ad9eb8 이 표식 범위 거르기로 바꿈). 맞닿기만 한 서로 다른
+# 개체는 합치지 않는다(0ad9eb8).
 #
 # CI 에는 torch · transformers · NER 모델이 없어서 둘 다 가짜로 바꾼다.
 #   - 가짜 tokenizer: 공백이 아닌 글자 하나가 토큰 하나다. return_overflowing_tokens · stride 를 HF 빠른 tokenizer
@@ -253,6 +255,75 @@ def test_speaker_label_misread_as_name_is_not_masked(ner) -> None:
     assert masked.endswith("아동: 친구 [PERSON_01]이랑 놀았어요.")
     assert entity_map == {"[PERSON_01]": "김아동"}
     assert state.model_calls == 3
+
+
+def test_citation_speaker_code_fragments_are_not_masked(ner) -> None:
+    # 인용 글("[seg_001] UNKNOWN: …")에서 모델이 화자 코드 조각("UN")을 기관으로, segment 표식 글자("g")를
+    # 사람으로 잘못 보는 경우(실제 모델에서 재현, ai-modeling 0ad9eb8). 줄 머리 표식 안이면 거르고, 본문의 이름은 가린다.
+    module, state = ner
+    speakers = ["COUNSELOR", "CHILD", "GUARDIAN", "OTHER", "UNKNOWN"]
+    lines = [f"[seg_{i:03d}] {speakers[i % 5]}: 오늘은좋았어요." for i in range(1, 80)]
+    text = "\n".join(lines) + "\n[seg_080] CHILD: 친구 김민수랑 놀았어요."
+    name_start = text.index("김민수")
+
+    def token_index(char_index: int) -> int:
+        return sum(1 for char in text[:char_index] if not char.isspace())
+
+    # 둘째 창(382 부터)에만 들어 있는 "UNKNOWN" 하나와 "[seg_…]" 하나를 고른다.
+    code_start = next(
+        index
+        for index in range(len(text))
+        if text.startswith("UNKNOWN:", index) and CONTENT + 10 <= token_index(index) < CONTENT + 200
+    )
+    seg_g = text.index("g", text.rindex("[seg_", 0, code_start))
+
+    def labeler(window_start: int, char_index: int) -> Optional[str]:
+        if window_start == SECOND_WINDOW_START and code_start <= char_index < code_start + 2:
+            return "OG"
+
+        if window_start == SECOND_WINDOW_START and char_index == seg_g:
+            return "PS"
+
+        if name_start <= char_index < name_start + 3:
+            return "PS"
+
+        return None
+
+    state.labeler = labeler
+
+    masked, entity_map = module.mask_pii(text)
+
+    assert masked[code_start : code_start + 8] == "UNKNOWN:"
+    assert masked[seg_g] == "g"
+    assert entity_map == {"[PERSON_01]": "김민수"}
+    assert state.model_calls > 1
+
+
+def test_label_word_inside_body_name_is_still_masked(ner) -> None:
+    # 줄 머리가 아닌 본문에서 "김아동" 의 "아동" 만 사람이름으로 잡힌 경우. 단어로 거르던 때(fd7bd0f)는 그 판정을
+    # 버려서 이름 전체가 남았다. 표식 범위로 거르면 본문 판정은 그대로 가린다.
+    module, state = ner
+    text = "아동: 친구 김아동이랑 놀았어요."
+    start = text.index("김아동") + 1
+    state.labeler = lambda window_start, char_index: "PS" if start <= char_index < start + 2 else None
+
+    masked, entity_map = module.mask_pii(text)
+
+    assert "김아동" not in masked
+    assert masked == "아동: 친구 김[PERSON_01]이랑 놀았어요."
+    assert entity_map == {"[PERSON_01]": "아동"}
+
+
+def test_touching_entities_stay_separate(ner) -> None:
+    # 맞닿기만 하고 겹치지 않는 서로 다른 개체(이름 바로 뒤에 공백 없이 붙은 학교 이름)는 따로 가린다(0ad9eb8).
+    module, state = ner
+    text = "친구 김민수서울초등학교 다녀요."
+    state.labeler = _labeler_for(text, {"김민수": "PS", "서울초등학교": "OG"})
+
+    masked, entity_map = module.mask_pii(text)
+
+    assert masked == "친구 [PERSON_01][SCHOOL_01] 다녀요."
+    assert entity_map == {"[PERSON_01]": "김민수", "[SCHOOL_01]": "서울초등학교"}
 
 
 def test_short_text_uses_one_window_as_before(ner) -> None:
