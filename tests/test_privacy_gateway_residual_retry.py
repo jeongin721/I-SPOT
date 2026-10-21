@@ -19,6 +19,90 @@ from ai.modeling.abuse.privacy_gateway import (
 )
 
 
+def test_exact_sweep_skips_structural_prefix_zone(monkeypatch):
+    # 2026-10-21 Mingyu 지적: "UN"이 (줄 머리가 아닌 자리에서) 기관으로
+    # 한 번 잘못 잡혀 global_original_to_token에 들어가면, 정확 매칭이
+    # 글 전체의 "UN"을 다 바꿔서 정상적인 "UNKNOWN:" 화자표시까지
+    # 깨진다. 1단계(NER)는 비워서 2단계(정확 매칭)만 본다.
+    monkeypatch.setattr(privacy_gateway, "_decode_ner_spans", lambda text: [])
+
+    global_original_to_token = {"UN": "[ORG_01]"}
+    global_counters = {"ORG": 1}
+
+    text = "[seg_001] UNKNOWN: 안녕하세요.\nUN이 여기선 그냥 낱말이다."
+
+    new_text, changed = _mask_residual_once(
+        text, [], global_original_to_token, global_counters
+    )
+
+    assert changed is True
+    # 줄 머리 구조 표식 "UNKNOWN:"은 그대로 남아야 한다.
+    assert "] UNKNOWN:" in new_text
+    # 구조 표식이 아닌 자리의 "UN"은 가려져야 한다.
+    assert "[ORG_01]이 여기선" in new_text
+
+
+def test_exact_sweep_blocklist_protects_compound_words(monkeypatch):
+    # 2026-10-21 Mingyu 지적: "아동"이 한 번 사람으로 잘못 잡히면,
+    # 정확 매칭이 "아동:" 화자표시와 "아동학대"·"아동보호전문기관"
+    # 같은 합성어 속 "아동"까지 전부 바꿔버린다. _SWEEP_TARGET_BLOCKLIST
+    # 에 있는 낱말은 정확 매칭 대상에서 아예 빠져야 한다.
+    monkeypatch.setattr(privacy_gateway, "_decode_ner_spans", lambda text: [])
+
+    global_original_to_token = {"아동": "[PERSON_99]"}
+    global_counters = {"PERSON": 99}
+
+    text = "아동: 저는 괜찮아요.\n아동학대 예방 교육을 받았다. 아동보호전문기관에 연락했다."
+
+    new_text, changed = _mask_residual_once(
+        text, [], global_original_to_token, global_counters
+    )
+
+    assert changed is False
+    assert new_text == text
+    assert "아동:" in new_text
+    assert "아동학대" in new_text
+    assert "아동보호전문기관" in new_text
+
+
+def test_ner_span_overlapping_mask_token_is_truncated_at_bullet(monkeypatch):
+    # 2026-10-21 Mingyu 지적(가짜 판정으로 재현): NER이 실제 글자
+    # ("박정")에서 시작해 이미 가린 토큰 자리(scan_text의 ●)까지
+    # 걸치는 범위를 잡으면, 그 범위를 그대로 잘라 쓸 때 토큰 괄호
+    # 일부("[P")가 섞여 들어가 기존 토큰("[PERSON_01]")이 깨진다.
+    # ● 앞까지만 남기고 잘라야 한다.
+    text = "박정[PERSON_01]이 다녀갔다."
+    # "박정[P"처럼 실제 글자 2개 + 가린 자리 일부까지 걸치는 범위를
+    # 모델이 돌려준 것처럼 흉내낸다(아래 scan_text 기준 offset).
+    bullet_start = text.index("[PERSON_01]")
+
+    def fake_decode(scan_text):
+        # scan_text는 "박정"+"●"*11(토큰과 같은 길이)+"이 다녀갔다."
+        assert scan_text[bullet_start] == "●"
+        return [(0, bullet_start + 2, "PS")]  # "박정" + ● 2개까지 걸침
+
+    monkeypatch.setattr(privacy_gateway, "_decode_ner_spans", fake_decode)
+
+    # PERSON_01은 이미 다른 원문("훈" 등, 이 테스트에서는 중요하지
+    # 않음)에 쓰인 토큰이라고 가정한다 — 안 그러면 "박정"에 새로
+    # 매기는 번호가 우연히 PERSON_01과 겹쳐 이 테스트 자체가
+    # 모호해진다.
+    global_original_to_token = {"훈": "[PERSON_01]"}
+    global_counters = {"PERSON": 1}
+
+    new_text, changed = _mask_residual_once(
+        text, [], global_original_to_token, global_counters
+    )
+
+    # 기존 토큰 "[PERSON_01]"이 깨지지 않고 그대로 남아야 한다.
+    assert "[PERSON_01]" in new_text
+    # "박정"은 새 토큰(PERSON_02)으로 가려지고, 괄호가 섞인 값이
+    # entity_map에 들어가면 안 된다.
+    assert global_original_to_token.get("박정") == "[PERSON_02]"
+    for original in global_original_to_token:
+        assert "[" not in original and "]" not in original
+
+
 def test_ner_runs_before_exact_sweep_so_fresh_full_name_wins(monkeypatch):
     # 짧은 조각("김철")이 이미 알려진 상태에서, 같은 라운드에 NER이
     # 더 긴 이름("김철수")을 통째로 잡으면 그 결과가 먼저 적용돼야
