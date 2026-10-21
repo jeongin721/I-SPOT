@@ -43,7 +43,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from ai.modeling.abuse.pii_masking import (
     _NER_LABEL_TO_TOKEN_PREFIX,
     _REGEX_RULES,
+    _STRUCTURAL_PREFIX_RE,
     _decode_ner_spans,
+    _is_within_structural_prefix,
     _refine_org_prefix,
     _select_non_overlapping_spans,
     mask_pii,
@@ -199,6 +201,15 @@ _MAX_RESIDUAL_MASK_ROUNDS = 3
 # (2026-10-21, 디버그 중 발견).
 _MIN_EXACT_SWEEP_LENGTH = 2
 
+# 상담 도메인 고정 표현 — NER이 한 번이라도 사람/기관으로 잘못 잡아
+# global_original_to_token에 들어가더라도, 정확 매칭 훑기 대상에서는
+# 아예 뺀다. 이 낱말들은 "아동학대"·"아동보호전문기관"·화자표시
+# "아동:"처럼 더 큰 낱말/구조 표식의 일부로 아주 자주 나와서, 문자열
+# 그대로 훑으면 그 안의 글자만 잘라 가린다(2026-10-21 Mingyu 지적 —
+# 실제 모델로 "아동"이 한 번 PS로 잘못 잡히자 본문의 "아동학대"·
+# "아동보호전문기관"까지 깨졌음).
+_SWEEP_TARGET_BLOCKLIST = {"아동", "상담사", "보호자"}
+
 
 def _mask_residual_once(
     masked_text: str,
@@ -235,6 +246,18 @@ def _mask_residual_once(
        남기지 않는 게 근본 해결이라 당장은 급한 요청 범위 밖으로
        남겨 둔다).
 
+       정확 매칭은 _SWEEP_TARGET_BLOCKLIST에 있는 상담 고정 표현은
+       아예 빼고, 그 외의 값도 줄 머리 구조 표식 범위 안의 일치는
+       건너뛴다 — 한 번이라도 문맥 없이 잘못 잡힌 짧은 값("UN" 등)이
+       글 전체의 같은 글자(화자표시 포함)를 몽땅 바꿔버리는 걸
+       막는다(2026-10-21 Mingyu 지적, 실제 모델로 확인 — "UN" 하나
+       오탐이 "UNKNOWN:" 119곳을 깨뜨렸음).
+
+    1단계(NER/정규식)에서 찾은 범위가 이미 가린 토큰 자리(scan_text의
+    ●)까지 걸치면, ● 앞까지만 남기고 자른다 — 안 그러면 실제 글자와
+    토큰 괄호 일부가 섞인 값("박정[P" 등)으로 새 토큰을 만들면서 기존
+    토큰이 깨진다(2026-10-21 Mingyu 지적, 가짜 판정으로 재현).
+
     반환: (다시 가린 텍스트, 이번 라운드에서 뭔가 더 가렸는지 여부).
     더 가릴 게 없으면 (masked_text, False) — 호출부가 더 반복해도
     소용없다는 걸 알고 멈출 수 있게 한다.
@@ -258,6 +281,20 @@ def _mask_residual_once(
         resolved: List[Tuple[int, int, str]] = []
 
         for start, end, tag in selected:
+            # 이미 가린 토큰 자리는 scan_text에서 ●로 바뀌어 있다(같은
+            # 글자 수 유지). NER이 실제 글자("박정")에서 시작해 그
+            # ● 구간까지 걸치는 범위를 잡으면, masked_text에서 그
+            # 자리를 그대로 잘라낼 때 토큰 괄호 일부("[P")까지 섞여
+            # 들어가 기존 토큰이 깨진다(2026-10-21 Mingyu 지적,
+            # 가짜 판정으로 재현 — entity_map에 "박정[P" 같은 값이
+            # 생기고 복원 결과가 원문과 달라짐). ● 앞까지만 남기고,
+            # ●로 시작하면(실제 글자가 하나도 없으면) 통째로 버린다.
+            bullet_index = scan_text.find("●", start, end)
+            if bullet_index != -1:
+                end = bullet_index
+            if end <= start:
+                continue
+
             original = masked_text[start:end]
             mapped = _NER_LABEL_TO_TOKEN_PREFIX.get(tag, tag)
             prefix = (
@@ -273,16 +310,18 @@ def _mask_residual_once(
 
             resolved.append((start, end, token))
 
-        for start, end, token in sorted(resolved, key=lambda s: -s[0]):
-            masked_text = masked_text[:start] + token + masked_text[end:]
+        if resolved:
+            for start, end, token in sorted(resolved, key=lambda s: -s[0]):
+                masked_text = masked_text[:start] + token + masked_text[end:]
 
-        changed = True
+            changed = True
 
     exact_targets = sorted(
         {
             name
             for name in set(known_identifiers) | set(global_original_to_token)
             if len(name) >= _MIN_EXACT_SWEEP_LENGTH
+            and name not in _SWEEP_TARGET_BLOCKLIST
         },
         key=len,
         reverse=True,  # 긴 문자열(“김철수”)부터 찾아야 그 안에 포함된
@@ -294,6 +333,33 @@ def _mask_residual_once(
         if name not in masked_text:
             continue
 
+        # 줄 머리 구조 표식 범위 안의 일치는 건너뛴다 — 그 범위를
+        # 벗어나는 글자가 한 번이라도 잘못 잡혀 global_original_to_token
+        # 에 들어가면(예: "UNKNOWN:"과 무관한 자리에서 "UN"이 기관으로
+        # 오탐), 문자열 그대로 바꿔치기할 때 올바른 자리의 "UNKNOWN:"
+        # 까지 전부 깨진다(2026-10-21 Mingyu 지적 — 실제 모델로
+        # 화자표시 299개 중 119개가 이렇게 깨짐).
+        structural_zones = [
+            (match.start(), match.end())
+            for match in _STRUCTURAL_PREFIX_RE.finditer(masked_text)
+        ]
+
+        matches: List[Tuple[int, int]] = []
+        search_start = 0
+        while True:
+            index = masked_text.find(name, search_start)
+            if index == -1:
+                break
+            end_index = index + len(name)
+            if not _is_within_structural_prefix(
+                (index, end_index), structural_zones
+            ):
+                matches.append((index, end_index))
+            search_start = end_index
+
+        if not matches:
+            continue
+
         token = global_original_to_token.get(name)
 
         if token is None:
@@ -301,7 +367,9 @@ def _mask_residual_once(
             token = f"[KNOWN_{global_counters['KNOWN']:02d}]"
             global_original_to_token[name] = token
 
-        masked_text = masked_text.replace(name, token)
+        for start, end in sorted(matches, key=lambda s: -s[0]):
+            masked_text = masked_text[:start] + token + masked_text[end:]
+
         changed = True
 
     return masked_text, changed
