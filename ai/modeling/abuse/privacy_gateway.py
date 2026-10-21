@@ -43,10 +43,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from ai.modeling.abuse.pii_masking import (
     _NER_LABEL_TO_TOKEN_PREFIX,
     _REGEX_RULES,
-    _STRUCTURAL_PREFIX_RE,
     _decode_ner_spans,
     _is_within_structural_prefix,
+    _overlaps_any,
     _refine_org_prefix,
+    _structural_prefix_zones,
     _select_non_overlapping_spans,
     mask_pii,
 )
@@ -333,20 +334,24 @@ def _mask_residual_once(
         if name not in masked_text:
             continue
 
-        # 줄 머리 구조 표식 범위와 이미 가린 토큰(예: "[SCHOOL_01]")
-        # 범위 안의 일치는 건너뛴다. 전자는 그 범위를 벗어나는 글자가
-        # 한 번이라도 잘못 잡혀 global_original_to_token에 들어가면
-        # (예: "UNKNOWN:"과 무관한 자리에서 "UN"이 기관으로 오탐),
-        # 문자열 그대로 바꿔치기할 때 올바른 자리의 "UNKNOWN:"까지
-        # 전부 깨진다(2026-10-21 Mingyu 지적 — 실제 모델로 화자표시
-        # 299개 중 119개가 이렇게 깨짐). 후자는 "CH"가 한 번 기관으로
-        # 잘못 잡히면 그 뒤로 이미 가린 "[SCHOOL_01]" 안의 "CH"까지
-        # 바꿔서 "[S[ORG_01]OOL_01]"처럼 토큰 자체가 깨진다(2026-10-21
-        # Mingyu 지적, 가짜 판정으로 재현).
-        protected_zones = [
-            (match.start(), match.end())
-            for match in _STRUCTURAL_PREFIX_RE.finditer(masked_text)
-        ] + [
+        # 줄 머리 구조 표식 범위 안에 완전히 들어가는 일치는 건너뛴다
+        # — 그 범위를 벗어나는 글자가 한 번이라도 잘못 잡혀
+        # global_original_to_token에 들어가면(예: "UNKNOWN:"과 무관한
+        # 자리에서 "UN"이 기관으로 오탐), 문자열 그대로 바꿔치기할 때
+        # 올바른 자리의 "UNKNOWN:"까지 전부 깨진다(2026-10-21 Mingyu
+        # 지적 — 실제 모델로 화자표시 299개 중 119개가 이렇게 깨짐).
+        # pii_masking._structural_prefix_zones를 그대로 써서
+        # _decode_ner_spans와 같은 범위 규칙을 따른다(2026-10-21
+        # Mingyu 요청 — 범위 만드는 곳을 하나로).
+        structural_zones = _structural_prefix_zones(masked_text)
+
+        # 이미 가린 토큰(예: "[SCHOOL_01]")은 완전히 포함될 때뿐 아니라
+        # 조금이라도 겹치면 건너뛴다 — "CH"가 토큰 안쪽 글자와 겹치면
+        # "[S[ORG_01]OOL_01]"처럼 토큰 괄호 구조 자체가 깨진다
+        # (2026-10-21 Mingyu 지적, 가짜 판정으로 재현). 원문에 우연히
+        # 대괄호가 섞여 들어온 값이 토큰과 한쪽만 겹치는 경우까지
+        # 막으려고 완전 포함이 아니라 겹침 여부로 본다.
+        mask_token_zones = [
             (match.start(), match.end())
             for match in _MASK_TOKEN_PATTERN.finditer(masked_text)
         ]
@@ -358,10 +363,11 @@ def _mask_residual_once(
             if index == -1:
                 break
             end_index = index + len(name)
+            span = (index, end_index)
             if not _is_within_structural_prefix(
-                (index, end_index), protected_zones
-            ):
-                matches.append((index, end_index))
+                span, structural_zones
+            ) and not _overlaps_any(span, mask_token_zones):
+                matches.append(span)
             search_start = end_index
 
         if not matches:

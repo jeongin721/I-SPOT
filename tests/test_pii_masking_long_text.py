@@ -15,6 +15,7 @@ from ai.modeling.abuse.pii_masking import (
     _is_within_structural_prefix,
     _merge_overlapping_spans,
     _ner_tokenizer,
+    _structural_prefix_zones,
     mask_pii,
 )
 
@@ -232,3 +233,41 @@ def test_name_inside_bracket_memo_is_still_masked():
 
     assert "박영희" not in masked
     assert "박영희" in entity_map.values()
+
+
+def test_speaker_code_protected_even_when_bracket_is_not_seg_format():
+    # 2026-10-21 Mingyu 지적: 대괄호를 "\[seg_\d+\]"로 좁히면서, 다른
+    # 꼴 ID("[spk_0]", "[custom-001]" 등) 줄의 화자 코드까지 보호가
+    # 풀려 "CHILD"/"UNKNOWN" 조각이 다시 기관으로 오탐됐다(30개 조합
+    # 중 12개 실제 모델로 재현됨). 화자 코드는 대괄호 모양과 무관하게
+    # 항상 표식 범위여야 한다.
+    zones = _structural_prefix_zones(
+        "[spk_0] CHILD: 안녕하세요.\n[custom-001] UNKNOWN: 네."
+    )
+
+    # "CHILD:"와 "UNKNOWN:" 둘 다 표식 범위 안에 있어야 한다(대괄호
+    # 자체는 seg_숫자가 아니라 범위 밖이어도 된다).
+    child_start = "[spk_0] CHILD: 안녕하세요.\n[custom-001] UNKNOWN: 네.".index(
+        "CHILD:"
+    )
+    unknown_text = "[spk_0] CHILD: 안녕하세요.\n[custom-001] UNKNOWN: 네."
+    unknown_start = unknown_text.index("UNKNOWN:")
+
+    assert _is_within_structural_prefix(
+        (child_start, child_start + len("CHILD:")), zones
+    )
+    assert _is_within_structural_prefix(
+        (unknown_start, unknown_start + len("UNKNOWN:")), zones
+    )
+
+
+def test_name_inside_non_seg_bracket_is_still_detectable():
+    # 대괄호 안(ID 자리)은 "seg_숫자"가 아니면 표식이 아니므로 보통
+    # 검사를 받는다 — 그 안에 이름이 들어 있어도 가려질 기회가
+    # 있어야 한다(2026-10-21 Mingyu 확인 — "[김민수] CHILD:" 꼴).
+    text = "[김민수] CHILD: 저는 괜찮아요."
+
+    masked, entity_map = mask_pii(text)
+
+    assert "CHILD:" in masked
+    assert "김민수" not in masked

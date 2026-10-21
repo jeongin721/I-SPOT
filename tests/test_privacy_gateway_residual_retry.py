@@ -19,6 +19,29 @@ from ai.modeling.abuse.privacy_gateway import (
 )
 
 
+def test_exact_sweep_skips_partial_overlap_with_mask_token(monkeypatch):
+    # 2026-10-21 Mingyu 지적(가짜 판정으로만 재현): 지금까지는 토큰
+    # 범위 안에 완전히 들어간 일치만 건너뛰었다. 원문에 대괄호가 섞인
+    # 값("민수[")이 토큰과 한쪽만 겹치면, 완전 포함이 아니라서
+    # 걸러지지 않고 그대로 바꿔치기돼 토큰 괄호 구조가 깨질 수 있다.
+    # 조금이라도 겹치면 건너뛰어야 한다.
+    monkeypatch.setattr(privacy_gateway, "_decode_ner_spans", lambda text: [])
+
+    global_original_to_token = {"수[PERSON": "[ORG_01]"}
+    global_counters = {"ORG": 1}
+
+    text = "민수[PERSON_02]가 다녀갔다."
+
+    new_text, changed = _mask_residual_once(
+        text, [], global_original_to_token, global_counters
+    )
+
+    # "수[PERSON"이 기존 토큰 "[PERSON_02]"와 겹치므로 건너뛰어야
+    # 하고, 그 토큰은 깨지지 않은 채 그대로 남아야 한다.
+    assert "[PERSON_02]" in new_text
+    assert changed is False
+
+
 def test_exact_sweep_skips_already_masked_token_zone(monkeypatch):
     # 2026-10-21 Mingyu 지적(가짜 판정으로 재현): "CH"가 본문에서 한
     # 번 기관으로 잘못 잡혀 global_original_to_token에 들어가면,
