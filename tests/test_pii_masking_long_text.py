@@ -11,6 +11,7 @@
 
 from ai.modeling.abuse.privacy_gateway import PrivacyGatewayBlocked, mask_for_outbound
 from ai.modeling.abuse.pii_masking import (
+    _STRUCTURAL_PREFIX_RE,
     _is_within_structural_prefix,
     _merge_overlapping_spans,
     _ner_tokenizer,
@@ -205,3 +206,29 @@ def test_structural_prefix_filter_does_not_swallow_longer_span():
     assert _is_within_structural_prefix(
         (body_start, body_start + 2), zones
     ) is False  # 본문 속 "아동"(구조 표식 밖)
+
+
+def test_structural_prefix_bracket_only_matches_segment_id_format():
+    # 대괄호 안은 "seg_숫자" 꼴만 구조 표식으로 본다 — 처음엔 대괄호
+    # 안 아무 글자나 받아서("\[[^\]\n]*\]"), 상담사가 고친 줄에
+    # "[메모: 보호자 박영희] GUARDIAN: 네." 처럼 대괄호 안에 실제
+    # 이름이 들어가면 그 대괄호 전체가 구조 표식으로 오인돼 이름이
+    # 마스킹·잔존 검사·정확 매칭을 전부 건너뛰고 그대로 나갔다
+    # (2026-10-21 Mingyu 지적 — 0ad9eb8에서 생겨 main(#71)에 들어가
+    # 있었음, 운영 잠금 중이라 실제 데이터가 나간 적은 없음).
+    bad_line = "[메모: 보호자 박영희] GUARDIAN: 네."
+    good_line = "[seg_034] CHILD: 네."
+
+    assert _STRUCTURAL_PREFIX_RE.match(bad_line) is None
+    assert _STRUCTURAL_PREFIX_RE.match(good_line) is not None
+
+
+def test_name_inside_bracket_memo_is_still_masked():
+    # 위 회귀의 실제 영향(마스킹 결과) 확인 — 대괄호 안의 이름이
+    # 구조 표식으로 오인돼 그대로 새나가면 안 된다.
+    text = "[메모: 보호자 박영희] GUARDIAN: 오늘은 제가 대신 왔어요."
+
+    masked, entity_map = mask_pii(text)
+
+    assert "박영희" not in masked
+    assert "박영희" in entity_map.values()

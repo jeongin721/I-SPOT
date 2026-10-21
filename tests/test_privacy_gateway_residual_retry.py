@@ -19,6 +19,30 @@ from ai.modeling.abuse.privacy_gateway import (
 )
 
 
+def test_exact_sweep_skips_already_masked_token_zone(monkeypatch):
+    # 2026-10-21 Mingyu 지적(가짜 판정으로 재현): "CH"가 본문에서 한
+    # 번 기관으로 잘못 잡혀 global_original_to_token에 들어가면,
+    # 정확 매칭이 이미 가린 토큰("[SCHOOL_01]") 안의 "CH"까지 바꿔서
+    # "[S[ORG_01]OOL_01]"처럼 토큰 자체가 깨진다. 이미 가린 토큰
+    # 범위 안의 일치는 건너뛰어야 한다.
+    monkeypatch.setattr(privacy_gateway, "_decode_ner_spans", lambda text: [])
+
+    global_original_to_token = {"CH": "[ORG_01]", "서울대학교병원": "[SCHOOL_01]"}
+    global_counters = {"ORG": 1, "SCHOOL": 1}
+
+    text = "[SCHOOL_01]에 다녀왔다. CH 수업도 들었다."
+
+    new_text, changed = _mask_residual_once(
+        text, [], global_original_to_token, global_counters
+    )
+
+    assert changed is True
+    # 기존 토큰은 안 깨지고 그대로 남아야 한다.
+    assert "[SCHOOL_01]" in new_text
+    # 구조 표식·기존 토큰 밖의 "CH"는 가려져야 한다.
+    assert "[ORG_01] 수업도" in new_text
+
+
 def test_exact_sweep_skips_structural_prefix_zone(monkeypatch):
     # 2026-10-21 Mingyu 지적: "UN"이 (줄 머리가 아닌 자리에서) 기관으로
     # 한 번 잘못 잡혀 global_original_to_token에 들어가면, 정확 매칭이
