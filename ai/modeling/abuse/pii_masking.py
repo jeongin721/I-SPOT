@@ -93,8 +93,18 @@ _HOSPITAL_KEYWORDS = ("병원", "의원", "센터")
 # 판정만 거른다 — 범위를 한 글자라도 벗어나면(예: 화자 코드 바로
 # 뒤에 실제 이름이 공백 없이 붙어 하나의 범위로 잡히면) 거르지 않고
 # 그대로 마스킹한다.
+#
+# 대괄호 안은 "\[seg_\d+\]"로 좁힌다 — segment_id는 어디서나 "seg_숫자"
+# 꼴이다(backend/app/adapters/stt_adapter.py:77,
+# ai/adapters/aihub_transcript.py:59). 처음엔 "\[[^\]\n]*\]"로 대괄호
+# 안 아무 글자나 받았는데, 그러면 상담사가 고친 줄에 "[메모: 보호자
+# 박영희] GUARDIAN: ..."처럼 대괄호 안에 실제 이름이 들어가도 그
+# 대괄호 전체가 "구조 표식"으로 오인돼 마스킹·잔존 검사·정확 매칭이
+# 전부 건너뛰어 이름이 그대로 나갔다(2026-10-21 Mingyu 지적 — 0ad9eb8
+# 에서 생겨 main에 들어가 있었음, 운영 잠금 중이라 실제로 나간 적은
+# 없음).
 _STRUCTURAL_PREFIX_RE = re.compile(
-    r"^(?:\[[^\]\n]*\][ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN)|상담사|아동):",
+    r"^(?:\[seg_\d+\][ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN)|상담사|아동):",
     re.MULTILINE,
 )
 
