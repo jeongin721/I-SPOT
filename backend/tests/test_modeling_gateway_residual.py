@@ -4,11 +4,10 @@
 # 이름이 다시 검사할 때 잡히는 일이 흔해 대부분 막혔다. 이경진 님이 잡힌 자리를 한 번 더 가리고 다시 검사하게 했다(ai-modeling
 # c1745a7). 그 판은 이미 찾은 값을 글 전체에서 정확 매칭으로 바꿔서, 한 번 잘못 잡힌 "아동" · "UN" · "CH" 가 줄 머리 화자 표시와
 # 다른 낱말, 이미 가린 토큰 안까지 바꿨다. 다시 검사가 가린 자리(●)까지 한 범위로 잡으면 토큰이 깨졌다. 9e6fa7d 가 줄 머리 표식
-# 범위 안의 일치를 건너뛰고 "아동" · "상담사" · "보호자" 를 정확 매칭에서 빼며, ● 에 걸친 범위는 ● 앞에서 자른다.
-#
-# 아직 안 고쳐진 두 가지는 xfail 로 둔다(고쳐지면 strict 라 실패로 알려 준다): 정확 매칭이 가린 토큰 안의 일치를 건너뛰지 않는 것,
-# 줄 머리 표식 정규식(pii_masking._STRUCTURAL_PREFIX_RE)이 대괄호 안 아무 글자나 받아 그 안의 이름이 모든 탐지에서 빠지는 것
-# (0ad9eb8 부터, 실제 모델로 재현 — 이 PR 전 main 에도 있다).
+# 범위 안의 일치를 건너뛰고 "아동" · "상담사" · "보호자" 를 정확 매칭에서 빼며, ● 에 걸친 범위는 ● 앞에서 자른다. 95a192f 가 이미
+# 가린 토큰 범위 안의 일치도 건너뛰고, 줄 머리 표식 정규식(pii_masking._STRUCTURAL_PREFIX_RE)의 대괄호를 "[seg_숫자]" 로 좁힌다.
+# 전에는 대괄호 안 아무 글자나 표식으로 봐서, 그 안의 이름이 모든 탐지에서 빠져 그대로 나갔다(0ad9eb8 부터, 실제 모델로 재현 —
+# 이 PR 전 main 에도 있다).
 #
 # CI 에는 torch · transformers · NER 모델이 없어서 tests/test_modeling_ner_windows.py 의 가짜 tokenizer · 모델을 쓴다. 판정은 글
 # 내용으로 정한다: 가린 자리(●, privacy_gateway._blank_out_mask_tokens)가 없는 글은 첫 가리기, 있는 글은 다시 검사다.
@@ -178,7 +177,6 @@ def test_speaker_code_fragment_misread_once_keeps_line_heads(gateway) -> None:
     _assert_tokens_intact(pii, masked, entity_map, text)
 
 
-@pytest.mark.xfail(strict=True, reason="정확 매칭이 이미 가린 토큰 안의 일치를 아직 건너뛰지 않는다(9e6fa7d 기준)")
 def test_recheck_does_not_rewrite_inside_masked_tokens(gateway) -> None:
     # 본문의 "CH" 를 기관으로 잘못 가린 뒤 다시 가릴 때, 정확 매칭이 이미 가린 "[SCHOOL_01]" 안의 "CH" 까지 바꾸면
     # "[S[ORG_01]OOL_01]" 처럼 토큰이 깨진다.
@@ -229,10 +227,10 @@ def test_recheck_span_reaching_into_masked_token_is_cut(gateway) -> None:
         "아동: 오늘은 좋았어요.\n상담사: 그랬구나.\n[보호자 박영희] GUARDIAN: 네.",
     ],
 )
-@pytest.mark.xfail(strict=True, reason="줄 머리 표식 정규식이 대괄호 안 아무 글자나 받는다(0ad9eb8 부터)")
 def test_name_inside_line_head_brackets_is_not_exempt(gateway, text: str) -> None:
     # 줄 머리 표식 정규식이 대괄호 안 아무 글자나 받으면, 그 안의 이름은 첫 가리기 · 다시 검사 · 정확 매칭이 모두 건너뛰어
-    # 그대로 나간다(0ad9eb8 부터, 실제 모델로 재현). segment_id 는 늘 "seg_숫자" 라 대괄호 안은 그 꼴만 표식으로 본다.
+    # 그대로 나간다(0ad9eb8 부터, 실제 모델로 재현). 저장소 안 STT 경로는 segment_id 를 "seg_숫자" 로 만들어서 대괄호는 그 꼴만
+    # 표식으로 본다(다른 꼴이면 표식으로 보지 않아 대괄호 안도 검사한다 — 새지는 않고 막히거나 가려질 수 있다).
     gw, pii, state = gateway
     state.rule = lambda t: _tags(t, "박영희", "PS")
 
