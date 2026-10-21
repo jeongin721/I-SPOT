@@ -20,13 +20,16 @@ summary/risk_factors/evidence/need_confirmation 같은 JSON 전체다. 문자열
      측정)라 이 단계가 실질적인 안전망 역할을 한다. 값은
      case_store.get_known_identifiers(case_id)로 가져와 넘기면 된다
      (case_store.set_known_identifiers로 등록/갱신).
-  3) 마스킹 후 텍스트를 같은 정규식/NER로 다시 검사한다. 이 재검사는
-     NER이 애초에 놓친 표현(NER의 근본적인 사각지대)까지 잡아주진
-     못한다 — 어차피 같은 탐지기이기 때문이다. 대신 "탐지는 됐는데
-     실제로 치환이 안 된" 구현상의 실수를 잡는 안전망 역할을 한다.
-     known_identifiers 쪽은 정확 매칭이라 이 재검사가 실질적인 효과가
-     있다.
-  4) 위 검사 중 하나라도 걸리면 PrivacyGatewayBlocked를 던진다. 예외
+  3) 마스킹 후 텍스트를 같은 정규식/NER로 다시 검사한다. 걸리면
+     막는 대신, 걸린 자리를 한 번 더 가리고 다시 검사한다(최대
+     _MAX_RESIDUAL_MASK_ROUNDS번 — 2026-10-21 Mingyu 요청). NER이
+     처음엔 놓쳤다가 재검사에서는 잡는 경우가 실제로 흔해서(긴
+     상담에는 거의 항상 이름이 있음), 한 번 걸렸다고 바로 막으면
+     긴 회기 분석이 대부분 실패한다. 반복해도 남으면 그때 막는다 —
+     "탐지는 됐는데 치환이 안 된" 경우(재검사 1회면 바로 사라짐)와
+     "재검사라야 보이는" 경우(반복 가리기로 사라짐) 둘 다 구제하고,
+     그래도 남는 건 여전히 차단한다.
+  4) 위 반복 끝에도 남아 있으면 PrivacyGatewayBlocked를 던진다. 예외
      메시지에는 실제 내용이 아니라 막힌 필드 경로와 사유만 담는다.
   5) 통과/차단 여부와 필드 개수만 로그로 남긴다. 원문·마스킹된 텍스트
      어느 쪽도 로그에 남기지 않는다.
@@ -38,8 +41,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from ai.modeling.abuse.pii_masking import (
+    _NER_LABEL_TO_TOKEN_PREFIX,
     _REGEX_RULES,
     _decode_ner_spans,
+    _refine_org_prefix,
+    _select_non_overlapping_spans,
     mask_pii,
 )
 from ai.modeling.abuse.second_stage_llm import SUBTYPE_DEFINITIONS
@@ -177,6 +183,130 @@ def _globalize_tokens(
     return masked_text
 
 
+# 잔존 검사에 걸린 뒤, 바로 막지 않고 몇 번 더 가려보고 그래도 남으면
+# 막는다. 처음 마스킹(mask_pii) 1번 + 이 상수만큼 추가 시도 = 최대
+# 1+_MAX_RESIDUAL_MASK_ROUNDS번(2026-10-21 Mingyu 요청 — "최대 2~3번,
+# 그래도 남으면 그때 막기". 아래 _mask_residual_once가 "이미 아는 값
+# 정확 매칭"을 먼저 하도록 바꾼 뒤에는 2~3번으로도 실제로 수렴한다 —
+# 바꾸기 전에는 같은 이름이 반복되는 긴 글에서 라운드가 더 필요했다,
+# 아래 설명 참고).
+_MAX_RESIDUAL_MASK_ROUNDS = 3
+
+# 정확 매칭으로 훑을 때 이 길이 미만인 값은 건너뛴다. 한 글자짜리
+# 조각("희", "g" 등 — NER이 창 경계에서 이름을 반쪽만 잡은 결과가
+# global_original_to_token에 섞여 들어올 수 있다)을 그대로 문자열
+# 치환하면 무관한 단어 속에서도 그 글자를 먹어버려 본문이 망가진다
+# (2026-10-21, 디버그 중 발견).
+_MIN_EXACT_SWEEP_LENGTH = 2
+
+
+def _mask_residual_once(
+    masked_text: str,
+    known_identifiers: List[str],
+    global_original_to_token: Dict[str, str],
+    global_counters: Dict[str, int],
+) -> Tuple[str, bool]:
+    """
+    이미 마스킹된 텍스트에 남은 개체를 찾아 한 번 더 가린다. 두 단계로
+    한다 — global_original_to_token/global_counters는 그대로 이어 써서,
+    같은 원문은 앞 단계와 같은 전역 토큰 규칙을 따르고 토큰 번호도 앞
+    단계와 겹치지 않는다(2026-10-21 Mingyu 요청).
+
+    1) NER/정규식으로 이 라운드에 새로 보이는 개체를 먼저 찾아 가린다
+       (기존 로직).
+    2) 그러고 나서 남은 자리에, known_identifiers와 지금까지 이
+       payload에서 이미 찾아낸 원문(global_original_to_token의 키) 중
+       2글자 이상인 것을 정확 매칭으로 훑어 가린다. 같은 이름이 긴
+       글에서 여러 번 나오면, 창(window) 경계 위치에 따라 어떤
+       자리에서는 NER이 전체를 잡고 어떤 자리에서는 조각만 잡는다
+       (2026-10-21 실제 모델로 확인 — "김철수"가 20번 나오는 글에서
+       일부는 "김철수", 일부는 "김철"만 잡힘). NER을 몇 번이고 다시
+       돌리는 것보다, 이미 안전하게 확인된 문자열을 직접 찾는 쪽이
+       더 빠르고 확실하게 수렴한다.
+
+       NER을 먼저 하는 이유: 순서를 반대로 하면 짧은 조각("김철")을
+       먼저 정확 매칭으로 치환하다가, 그 조각이 접두어로 들어간 더
+       긴 이름("김철수")의 일부까지 잘라 먹는다(2026-10-21 테스트로
+       발견 — "김철수"가 "[기존 김철 토큰]수"로 망가짐). NER을 먼저
+       돌려 그 라운드에 "김철수"를 통째로 잡을 기회를 먼저 준 뒤,
+       그래도 못 잡은 자리만 정확 매칭으로 보강하면 이 사고가 줄어든다
+       (완전히 없어지진 않는다 — NER이 그 라운드에도 "김철수"를 못
+       잡으면 여전히 "김철"에 먼저 걸릴 수 있다. 짧은 조각 자체를
+       남기지 않는 게 근본 해결이라 당장은 급한 요청 범위 밖으로
+       남겨 둔다).
+
+    반환: (다시 가린 텍스트, 이번 라운드에서 뭔가 더 가렸는지 여부).
+    더 가릴 게 없으면 (masked_text, False) — 호출부가 더 반복해도
+    소용없다는 걸 알고 멈출 수 있게 한다.
+    """
+
+    changed = False
+
+    scan_text = _blank_out_mask_tokens(masked_text)
+
+    spans: List[Tuple[int, int, str]] = []
+
+    for tag, pattern in _REGEX_RULES:
+        for match in pattern.finditer(scan_text):
+            spans.append((match.start(), match.end(), tag))
+
+    spans.extend(_decode_ner_spans(scan_text))
+
+    selected = _select_non_overlapping_spans(spans)
+
+    if selected:
+        resolved: List[Tuple[int, int, str]] = []
+
+        for start, end, tag in selected:
+            original = masked_text[start:end]
+            mapped = _NER_LABEL_TO_TOKEN_PREFIX.get(tag, tag)
+            prefix = (
+                _refine_org_prefix(original) if mapped == "ORG" else mapped
+            )
+
+            token = global_original_to_token.get(original)
+
+            if token is None:
+                global_counters[prefix] = global_counters.get(prefix, 0) + 1
+                token = f"[{prefix}_{global_counters[prefix]:02d}]"
+                global_original_to_token[original] = token
+
+            resolved.append((start, end, token))
+
+        for start, end, token in sorted(resolved, key=lambda s: -s[0]):
+            masked_text = masked_text[:start] + token + masked_text[end:]
+
+        changed = True
+
+    exact_targets = sorted(
+        {
+            name
+            for name in set(known_identifiers) | set(global_original_to_token)
+            if len(name) >= _MIN_EXACT_SWEEP_LENGTH
+        },
+        key=len,
+        reverse=True,  # 긴 문자열(“김철수”)부터 찾아야 그 안에 포함된
+        # 짧은 조각(“김철”)이 먼저 걸려 나머지 글자(“수”)만 덩그러니
+        # 남는 일이 없다.
+    )
+
+    for name in exact_targets:
+        if name not in masked_text:
+            continue
+
+        token = global_original_to_token.get(name)
+
+        if token is None:
+            global_counters["KNOWN"] = global_counters.get("KNOWN", 0) + 1
+            token = f"[KNOWN_{global_counters['KNOWN']:02d}]"
+            global_original_to_token[name] = token
+
+        masked_text = masked_text.replace(name, token)
+        changed = True
+
+    return masked_text, changed
+
+
 def _residual_reasons(text: str, known_identifiers: List[str]) -> List[str]:
     reasons = []
     scan_text = _blank_out_mask_tokens(text)
@@ -271,6 +401,26 @@ def review(
         )
 
         reasons = _residual_reasons(masked, known_identifiers)
+
+        # 잔존이 잡히면 바로 막지 않고, 잡힌 자리를 한 번 더 가리고
+        # 다시 검사한다(_MAX_RESIDUAL_MASK_ROUNDS번까지 — 모듈 docstring
+        # 3번 항목, 2026-10-21 Mingyu 요청).
+        rounds = 0
+        while reasons and rounds < _MAX_RESIDUAL_MASK_ROUNDS:
+            masked, changed = _mask_residual_once(
+                masked,
+                known_identifiers,
+                global_original_to_token,
+                global_counters,
+            )
+            rounds += 1
+
+            if not changed:
+                # 더 가릴 게 없는데 reasons가 남아 있으면(이론상 드묾,
+                # 예: NER 재검사 자체가 실패) 반복해도 소용없으니 멈춘다.
+                break
+
+            reasons = _residual_reasons(masked, known_identifiers)
 
         if reasons:
             blocked.append(f"{path}: {', '.join(reasons)}")
