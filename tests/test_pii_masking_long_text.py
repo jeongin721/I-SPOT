@@ -9,7 +9,9 @@
 # backend CI 대상이 아님)와 무관하게, 이 모델링 코드가 실제로 돌아가는
 # 환경에서만 의미 있는 테스트다.
 
+from ai.modeling.abuse.privacy_gateway import PrivacyGatewayBlocked, mask_for_outbound
 from ai.modeling.abuse.pii_masking import (
+    _is_within_structural_prefix,
     _merge_overlapping_spans,
     _ner_tokenizer,
     mask_pii,
@@ -91,6 +93,16 @@ def test_fully_contained_span_is_absorbed():
     assert _merge_overlapping_spans(spans) == [(0, 10, "PS")]
 
 
+def test_adjacent_but_not_overlapping_spans_stay_separate():
+    # start < cur_end(겹칠 때만 합침)이어야 한다 — start <= cur_end면
+    # 맞닿기만 한(겹치지 않는) 서로 다른 개체까지 하나로 합쳐진다
+    # (2026-10-21 Mingyu 지적, 실제 모델로 짧은 글 28개 중 4개에서
+    # 이름+학교 이름이 한 덩어리로 합쳐짐을 확인).
+    spans = [(0, 5, "PS"), (5, 12, "ORG")]
+
+    assert _merge_overlapping_spans(spans) == spans
+
+
 # "아동: ...", "상담사: ..." 화자표시(infer_audio_session.SPEAKER_LABEL_KO)가
 # 매 줄 앞에 반복되는 긴 축어록에서, 모델이 가끔 "아동"이라는 단어
 # 자체를 사람이름(PS)으로 오탐해 Privacy Gateway의 잔존 검사가 막는
@@ -127,3 +139,69 @@ def test_speaker_label_words_are_not_treated_as_pii():
     # 바뀌면 안 됨).
     assert masked.count("아동:") == 150
     assert masked.count("상담사:") == 150
+
+
+# record_draft_llm.build_transcript_citation_text가 만드는
+# "[seg_001] CHILD: ..." 형식(화자가 영문 코드)에서, 모델이 그 코드
+# 조각(UNKNOWN의 "UN"·"UNK", CHILD의 "CH"·"ILD", "[seg_280]"의 "g" 등)
+# 을 사람·기관으로 오탐해 Privacy Gateway가 분석 전체를 막던 문제를
+# 재현한다(2026-10-21 Mingyu가 실제 모델·300발화로 재현·보고). 단어
+# 단위 거르기("아동"/"상담사"만 정확히 일치)로는 이 조각 단위 오탐을
+# 못 막아서, 줄 머리 "구조 표식" 범위 자체를 거르는 방식으로 바꿨다.
+
+
+def test_citation_format_speaker_codes_are_not_treated_as_pii():
+    counselor_lines = [
+        "오늘 있었던 일을 천천히 이야기해 줄래?",
+        "친구와 함께 시간을 보내면서 기억에 남은 일이 있니?",
+    ]
+    child_lines = [
+        "책을 읽고 퍼즐을 맞추니까 마음이 편안했어요.",
+        "함께 이야기를 나누고 서로 도와주었어요.",
+    ]
+    pattern = [
+        ("COUNSELOR", counselor_lines),
+        ("CHILD", child_lines),
+        ("GUARDIAN", ["요즘 학교생활은 어떤가요?"]),
+        ("OTHER", ["다 같이 즐거운 시간을 보냈어요."]),
+        ("UNKNOWN", ["이번 주에 즐겁게 지낸 순간을 이야기해 줄래?"]),
+    ]
+
+    lines = []
+    seg = 1
+    while len(lines) < 300:
+        for code, texts in pattern:
+            lines.append(f"[seg_{seg:03d}] {code}: {texts[seg % len(texts)]}")
+            seg += 1
+
+    citation_text = "\n".join(lines[:300])
+
+    assert len(_ner_tokenizer(citation_text)["input_ids"]) > 512
+
+    # 전엔 여기서 PrivacyGatewayBlocked가 났다(구조 표식 조각이 사람·
+    # 기관으로 오탐되고, 잔존 검사가 그 조각을 다시 잡았음).
+    masked, entity_map = mask_for_outbound(citation_text)
+
+    for code, _ in pattern:
+        assert f"] {code}:" in masked
+
+
+def test_structural_prefix_filter_does_not_swallow_longer_span():
+    # 줄 머리의 "아동:"만 구조 표식 범위다. 본문 중간에 등장하는
+    # "아동"(줄 머리가 아님)은 구조 표식이 아니므로 거르지 않는다 —
+    # 단어 단위 거르기였다면 "아동"이라는 글자만 보고 걸렀겠지만,
+    # 범위 단위 거르기는 span 전체가 구조 표식 범위 안에 있어야만
+    # 거른다(2026-10-21 Mingyu 지적 — "김아동"처럼 그 단어를 포함하는
+    # 실제 이름이 있을 때 이름 전체가 안 가려지는 위험을 막음).
+    text = "아동: 네 이름이 뭐니?\n아동김말하는사람이 대답했다"
+    zones = [(0, 3)]  # "아동:" 범위만 구조 표식으로 가정
+
+    head_start = text.index("아동")
+    body_start = text.index("아동", head_start + 1)
+
+    assert _is_within_structural_prefix(
+        (head_start, head_start + 2), zones
+    ) is True  # 줄 머리 "아동"(구조 표식 안)
+    assert _is_within_structural_prefix(
+        (body_start, body_start + 2), zones
+    ) is False  # 본문 속 "아동"(구조 표식 밖)
