@@ -1,6 +1,7 @@
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import Overview from './Overview';
+import JobToast from './components/JobToast';
 
 // src/pages/*.jsx 를 모두 읽어 '/파일이름' 경로로 등록해요. (예: /CaseDetail)
 const modules = import.meta.glob('./pages/*.jsx', { eager: true });
@@ -30,6 +31,8 @@ export default function App() {
         ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {/* 녹취 올리기 · 녹음 저장 뒤 '분석 중 → 분석 완료' 알림(모든 화면 위, 10/22 디자인) */}
+      <JobToast />
     </HashRouter>
   );
 }
