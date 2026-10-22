@@ -1,0 +1,141 @@
+/* CaseIntake 화면에만 있는 규칙(디자인 CaseIntake.dc.html 의 "초기면접지 (새 사례 등록 서식 화면 그대로)" 묶음 = CaseRegister.css 와 같은 규칙). 공통 규칙은 src/styles/common.css. */
+.pg-CaseIntake .lb {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2b2a26;
+}
+.pg-CaseIntake .req {
+  color: #a33b2e;
+}
+.pg-CaseIntake .fl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pg-CaseIntake .g3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.pg-CaseIntake .pk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #dad5c9;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: #ffffff;
+  color: #2b2a26;
+}
+.pg-CaseIntake .tabb {
+  flex: 1;
+  min-height: 46px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  color: #66625a;
+}
+.pg-CaseIntake .ta2 {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid #dad5c9;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  background: #ffffff;
+  color: #2b2a26;
+  resize: vertical;
+}
+.pg-CaseIntake .ft {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pg-CaseIntake .ft th {
+  background: #f7f6f2;
+  font-weight: 500;
+  color: #66625a;
+  padding: 8px;
+  text-align: left;
+}
+.pg-CaseIntake .ft td {
+  border-bottom: 1px solid #eae7df;
+  padding: 4px;
+}
+.pg-CaseIntake .ft input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #e7e4dc;
+  border-radius: 8px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.pg-CaseIntake .sec {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+  background: #f2efe8;
+  border-radius: 10px;
+}
+.pg-CaseIntake .thm-root.dark .lb {
+  color: #ece8df !important;
+}
+.pg-CaseIntake .thm-root.dark .req {
+  color: #f0907f !important;
+}
+.pg-CaseIntake .thm-root.dark .pk {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-CaseIntake .thm-root.dark .pk.on {
+  border: 1px solid #d6d0c4 !important;
+  background: #4a463e !important;
+}
+.pg-CaseIntake .thm-root.dark .tabb {
+  color: #bdb7aa !important;
+}
+.pg-CaseIntake .thm-root.dark .ta2 {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-CaseIntake .thm-root.dark .ft th {
+  background: #33312c !important;
+  color: #bdb7aa !important;
+}
+.pg-CaseIntake .thm-root.dark .ft td {
+  border-bottom: 1px solid #45423b !important;
+}
+.pg-CaseIntake .thm-root.dark .ft input {
+  border: 1px solid #45423b !important;
+}
+.pg-CaseIntake .thm-root.dark .sec {
+  background: #393731 !important;
+}
+/* 준비 중(서버에 저장 칸이 없음)이라 막아 둔 칸. 라벨의 '준비 중' 과 함께 흐리게 보인다. */
+.pg-CaseIntake .inp:disabled,
+.pg-CaseIntake .ta2:disabled,
+.pg-CaseIntake .pk:disabled,
+.pg-CaseIntake fieldset:disabled input,
+.pg-CaseIntake fieldset:disabled .btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 개별사건번호는 고칠 수 없어(수정 요청이 받지 않음) 읽기 전용 칸으로 보인다. */
+.pg-CaseIntake .inp[readonly] {
+  background: #f7f6f2;
+}
+.pg-CaseIntake .thm-root.dark .inp[readonly] {
+  background: #33312c !important;
+}
