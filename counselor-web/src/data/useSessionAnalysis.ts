@@ -3,9 +3,9 @@
 // 분석 결과는 'AI 분석 참고정보' 다. 판정이 아니다(05_RULES §1, API_CONTRACT 8절 표현 주의).
 // 상담사가 고치고 승인하는 것은 요약(useSummaryReview)이고, 여기 값은 AI 원본이다.
 //
-// 위험 관련 배열(risk_utterances · abuse_signals · risk_factors)은 내보내지 않는다. 항목 구조가 팀 합의 전이고
-// (PROPOSAL_risk_fields.md §7) 지금은 mock · pipeline · langgraph 모두 빈 배열이다. 신호 검토 화면은
-// 팀 결정(specs 대응표 'AI 신호 · 검수') 뒤에 따로 만든다.
+// 위험 관련 배열(risk_utterances · abuse_signals · risk_factors)은 아직 내보내지 않는다. 항목 구조는 2026-10-22 에
+// 확정됐고(PROPOSAL_risk_fields.md §7-0, types.ts RiskUtterance · AbuseSignal) modeling 만 값을 채운다
+// (mock · pipeline · langgraph 는 빈 배열). 신호 검토 화면은 팀 결정(specs 대응표 'AI 신호 · 검수') 뒤에 따로 만들고 그때 내보낸다.
 
 import { useCallback, useRef, useState } from "react";
 
