@@ -32,6 +32,20 @@ def test_backend_image_copies_ai_and_agent_to_repo_root_of_container() -> None:
     assert "COPY backend/ ." in lines
 
 
+def test_backend_image_copies_stt_module_and_its_root_helper() -> None:
+    # STT_PROVIDER=module 은 stt.transcribe_service 를 부르고, stt/ispot_stt.py 는 저장소 루트의 speaker_role_runtime.py 를
+    # 함수 안에서 import 한다. 데모 서버에서 modeling 을 켠 뒤 STT 도 켜려다 "No module named 'stt'" 로 막혔다(2026-10-22 이경진 님).
+    lines = _active(BACKEND / "Dockerfile")
+
+    assert "COPY stt/ /stt/" in lines
+    assert "COPY speaker_role_runtime.py /speaker_role_runtime.py" in lines
+    assert {"!stt/", "!speaker_role_runtime.py"} <= set(_active(REPO / ".dockerignore"))
+    assert (REPO / "backend" / "requirements-stt.txt").exists()
+
+    deploy = (REPO / "deploy" / "web-deploy.sh").read_text(encoding="utf-8")
+    assert '--build-arg WITH_STT="$WITH_STT"' in deploy
+
+
 def test_root_dockerignore_sends_only_backend_ai_agent_and_keeps_secrets_out() -> None:
     lines = _active(REPO / ".dockerignore")
 
