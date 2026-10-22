@@ -90,3 +90,190 @@
 .pg-Stats .thm-root.dark .mini {
   background: #393731 !important;
 }
+/* 10/21 디자인: 시작 · 종료일 칸(글자 입력 + 달력 단추)과 연 → 월 → 일 팝업(components/StatsDateField.jsx). */
+.pg-Stats .dpw {
+  position: relative;
+  display: block;
+}
+.pg-Stats .dpw .dpi {
+  width: 100%;
+  padding-right: 46px;
+}
+.pg-Stats .dpw.st {
+  display: inline-block;
+}
+.pg-Stats .dpw.st .dpi {
+  width: 170px;
+}
+.pg-Stats .dp-btn {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dad5c9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.pg-Stats .dp-btn:hover {
+  border-color: #2b2a26;
+}
+.pg-Stats .dp-bd {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.pg-Stats .dp-pop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 41;
+  width: 100%;
+  min-width: 300px;
+  height: 318px;
+  box-sizing: border-box;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #dad5c9;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(43, 42, 38, 0.18);
+  color: #2b2a26;
+  font-size: 14px;
+}
+.pg-Stats .dp-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 2px;
+}
+.pg-Stats .dp-hd b {
+  font-size: 15px;
+}
+.pg-Stats .dp-nav {
+  width: 34px;
+  height: 32px;
+  border: 1px solid #dad5c9;
+  border-radius: 8px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 16px;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.pg-Stats .dp-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pg-Stats .dp-years {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+.pg-Stats .dp-y {
+  flex: none;
+  min-height: 40px;
+  border: 1px solid #dad5c9;
+  border-radius: 8px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.pg-Stats .dp-months {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+.pg-Stats .dp-m {
+  border: 1px solid #dad5c9;
+  border-radius: 8px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.pg-Stats .dp-days {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: min-content;
+  gap: 4px;
+  align-content: start;
+}
+.pg-Stats .dp-dow {
+  text-align: center;
+  font-size: 12px;
+  color: #7a776f;
+  padding: 2px 0 4px;
+}
+.pg-Stats .dp-d {
+  height: 34px;
+  border: 1px solid #dad5c9;
+  border-radius: 8px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  color: #2b2a26;
+  cursor: pointer;
+  padding: 0;
+}
+.pg-Stats .dp-y:hover,
+.pg-Stats .dp-m:hover,
+.pg-Stats .dp-d:hover {
+  border-color: #2b2a26;
+}
+.pg-Stats .dp-y.on,
+.pg-Stats .dp-m.on,
+.pg-Stats .dp-d.on {
+  background: #2b2a26;
+  border-color: #2b2a26;
+  color: #eadbb5;
+  font-weight: 700;
+}
+.pg-Stats .dp-m:disabled,
+.pg-Stats .dp-d:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pg-Stats .thm-root.dark .dp-btn,
+.pg-Stats .thm-root.dark .dp-nav,
+.pg-Stats .thm-root.dark .dp-y,
+.pg-Stats .thm-root.dark .dp-m,
+.pg-Stats .thm-root.dark .dp-d {
+  background: #2c2b27 !important;
+  border-color: #4e4b44 !important;
+  color: #ece8df !important;
+}
+.pg-Stats .thm-root.dark .dp-pop {
+  background: #2c2b27 !important;
+  border-color: #4e4b44 !important;
+  color: #ece8df !important;
+}
+.pg-Stats .thm-root.dark .dp-dow {
+  color: #a8a296;
+}
+.pg-Stats .thm-root.dark .dp-y.on,
+.pg-Stats .thm-root.dark .dp-m.on,
+.pg-Stats .thm-root.dark .dp-d.on {
+  background: #eadbb5 !important;
+  border-color: #eadbb5 !important;
+  color: #2b2a26 !important;
+}
