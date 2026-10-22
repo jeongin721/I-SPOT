@@ -4,6 +4,7 @@
 // 또 만들지 않는다. 끝나면 확인창에서 그 회차의 STT 검수(이동) · 회차 상세(나중에)로 간다.
 //
 // 화면 주소 ?case=…(&session=…) 로 열면 그 사례(회차)를 미리 고른 채 회차 단계부터 시작한다.
+// ?back=… 이 있으면 닫기 · 취소 · 나중에가 그 화면으로 돌아간다(10/21 디자인, links.ts 의 readBackHref).
 // 문서 파일(PDF · HWPX 등) 첨부는 Backend 에 없어 준비 중이다. 진행률(%)은 Backend 가 주지 않아 단계 이름으로 보인다.
 
 import { NOT_PROVIDED } from "../caseRows";
@@ -12,13 +13,38 @@ import type { AuthSession } from "../useAuthSession";
 import type { AudioUploadState } from "../useAudioUpload";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseListState } from "../useCaseList";
-import { canUploadAudio } from "../sessionRows";
+import { type SessionRow, canUploadAudio } from "../sessionRows";
 import { formatBytes, formatDuration } from "../time";
 import { NOT_READY, sidebarValues } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 새 회차를 고른 값. */
 export const NEW_SESSION = "new";
+
+export interface UploadTarget {
+  value: string;
+  label: string;
+  short: string;
+  meta: string;
+}
+
+/**
+ * 음성을 올릴 수 있는 회차 목록. 맨 위가 새 회차(10/21 디자인 순서), 그 아래 음성을 처음 올리거나 다시 올릴 수 있는 회차.
+ * 원문 검수 중인 회차는 원문을 새로 만들게 되므로 뺀다. 녹취 올리기 창과 사례 상세 '녹음하기' 창이 같이 쓴다.
+ */
+export function uploadTargets(rows: SessionRow[]): UploadTarget[] {
+  const open = rows.filter((row) => canUploadAudio(row.status) && row.status !== "STT_REVIEW_REQUIRED");
+
+  return [
+    { value: NEW_SESSION, label: "새 회차", short: "새 회차", meta: "새로 등록 · 회차 번호는 서버가 매깁니다" },
+    ...open.map((row) => ({
+      value: row.id,
+      label: `${row.numberLabel} · ${row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`}`,
+      short: row.numberLabel,
+      meta: row.statusLabel,
+    })),
+  ];
+}
 
 /** 화면이 들고 있는 상태(Logic.state). 사례 검색어 · 고른 사례는 훅에 넘겨야 해서 화면 함수의 useState 로 든다. */
 export interface UploadUiState {
@@ -33,6 +59,8 @@ export interface UploadUiState {
   measuring: boolean;
   /** 확인창(진행 · 완료 · 실패)을 보이는가. */
   dialog: boolean;
+  /** 파일 칸을 새로 그릴 때 바꾸는 값('빼기' 뒤 같은 파일을 다시 고를 수 있게). */
+  fileKey: number;
 }
 
 export function initialUploadState(ids: ScreenIds): UploadUiState {
@@ -44,6 +72,7 @@ export function initialUploadState(ids: ScreenIds): UploadUiState {
     durationMs: undefined,
     measuring: false,
     dialog: false,
+    fileKey: 0,
   };
 }
 
@@ -57,6 +86,8 @@ const radio = (on: boolean) => ({
 export interface UploadScreenInput {
   session: AuthSession;
   ids: ScreenIds;
+  /** 주소의 back(연 화면). 없으면 null. */
+  back: string | null;
   list: CaseListState;
   search: string;
   setSearch: (value: string) => void;
@@ -72,7 +103,7 @@ export interface UploadScreenInput {
 }
 
 export function uploadModalValues(input: UploadScreenInput) {
-  const { session, ids, list, search, setSearch, caseId, setCaseId, caseDetail, upload, state, setState, go } = input;
+  const { session, ids, back, list, search, setSearch, caseId, setCaseId, caseDetail, upload, state, setState, go } = input;
 
   const labels = ["사례 선택", "상담 회차", "파일 선택"];
   const steps = labels.map((label, i) => {
@@ -104,18 +135,9 @@ export function uploadModalValues(input: UploadScreenInput) {
   else if (list.error) casesNote = list.error;
   else if (cases.length === 0) casesNote = search.trim() ? "검색 결과가 없습니다." : "사례가 없습니다.";
 
-  // 2단계: 회차. 음성을 처음 올리거나 다시 올릴 수 있는 회차와 새 회차. 원문 검수 중인 회차는 원문을 새로 만들게 되므로 뺀다.
+  // 2단계: 회차(uploadTargets).
   const info = caseDetail.caseInfo;
-  const open = caseDetail.sessions.filter((row) => canUploadAudio(row.status) && row.status !== "STT_REVIEW_REQUIRED");
-  const options = [
-    ...open.map((row) => ({
-      value: row.id,
-      label: `${row.numberLabel} · ${row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`}`,
-      short: row.numberLabel,
-      meta: row.statusLabel,
-    })),
-    { value: NEW_SESSION, label: "새 회차", short: "새 회차", meta: "새로 등록 · 회차 번호는 서버가 매깁니다" },
-  ];
+  const options = uploadTargets(caseDetail.sessions);
   const choice = options.some((option) => option.value === state.choice) ? state.choice! : NEW_SESSION;
   const chosen = options.find((option) => option.value === choice)!;
   const sessions = options.map((option) => ({
@@ -152,8 +174,9 @@ export function uploadModalValues(input: UploadScreenInput) {
 
   // 확인창
   const sessionIds = { caseId, sessionId: upload.sessionId };
-  const laterHref = upload.sessionId ? screenHref("/SessionDetail", sessionIds) : screenHref("/CaseDetail", { caseId });
-  const closeHref = ids.caseId || caseId ? screenHref("/CaseDetail", { caseId: caseId ?? ids.caseId }) : "/Main";
+  const laterHref =
+    back ?? (upload.sessionId ? screenHref("/SessionDetail", sessionIds) : screenHref("/CaseDetail", { caseId }));
+  const closeHref = back ?? (ids.caseId || caseId ? screenHref("/CaseDetail", { caseId: caseId ?? ids.caseId }) : "/Main");
   const fileName = file ? file.name : "";
   // 새 회차를 만든 뒤에는 서버가 매긴 회차 번호로 보인다.
   const target = caseDetail.sessions.find((row) => row.id === upload.sessionId);
@@ -201,6 +224,9 @@ export function uploadModalValues(input: UploadScreenInput) {
     sesLabel: chosen.short,
     accept: AUDIO_ACCEPT,
     pickFile,
+    fileKey: state.fileKey,
+    clearFile: () =>
+      setState({ file: null, fileError: null, durationMs: undefined, measuring: false, fileKey: state.fileKey + 1 }),
     hasFile: file !== null,
     fileName,
     fileMeta,
