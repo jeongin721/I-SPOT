@@ -1,0 +1,28 @@
+# backend/Dockerfile 은 저장소 루트를 빌드 컨텍스트로 쓴다. 이미지에 넣을 폴더만 고르고,
+# 나머지(experiments · results · 화면 · node_modules · 음성 자료 등)는 빌드할 때 보내지 않는다.
+*
+!backend/
+!ai/
+!agent/
+
+# 넣은 폴더 안에서도 뺀다 — 비밀값 · 로컬 환경 · 로컬 DB · 음성(전에 backend/.dockerignore 에 있던 것)
+backend/.venv/
+backend/venv/
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/*.db
+backend/*.sqlite3
+backend/storage/
+backend/.alembic-tmp.db
+backend/.pytest_cache/
+backend/.ruff_cache/
+**/__pycache__/
+**/*.py[cod]
+
+# ai/ 의 학습 자료 · 결과 · 모델 파일(.gitignore 와 같음). 모델 파일은 띄울 때 붙인다(deploy/web-deploy.sh).
+ai/modeling/abuse/datasets/
+ai/modeling/abuse/results/
+ai/modeling/abuse/analysis_output/
+ai/modeling/abuse/weight/
+ai/modeling/abuse/audio_uploads_tmp/

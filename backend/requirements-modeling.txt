@@ -1,0 +1,9 @@
+# AI_PROVIDER=modeling 에만 필요한 것(backend/Dockerfile 의 WITH_MODELING=1 이 깐다). torch 는 CPU 판을 Dockerfile 이 따로 깐다.
+# 버전은 PR #72 에서 이름 가리기(pii_masking · privacy_gateway)를 실제 이름 인식 모델로 확인한 환경과 같다(2026-10-22).
+# 가리기 결과가 토크나이저 동작에 따라 달라질 수 있어, 확인하지 않은 판(예: 저장소 루트 requirements.txt 의
+# transformers 5.x)으로 올리지 않는다. 올릴 때는 가리기를 실제 모델로 다시 확인한다.
+openai==3.35.1
+transformers==4.57.6
+tokenizers==0.22.2
+huggingface_hub==0.36.2
+python-dotenv==1.2.3
