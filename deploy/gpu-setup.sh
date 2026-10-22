@@ -25,6 +25,11 @@ else
   # 서버용(화면 없음) 드라이버를 Ubuntu 가 고른 판으로 깐다. 어느 판을 골랐는지 기록에 남긴다.
   ubuntu-drivers devices || true
   setsid -w ubuntu-drivers install --gpgpu
+  # --gpgpu 는 커널 모듈(nvidia-headless-no-dkms-<판>-server-open)만 깔고 nvidia-smi(nvidia-utils)는 안 깐다.
+  # nvidia-container-toolkit 이 컨테이너에 넣어 주는 nvidia-smi 도 호스트 것이라, 같은 판의 utils 를 더 깐다.
+  DRV=$(dpkg-query -W 'nvidia-headless*' 'nvidia-driver-*' 2>/dev/null | cut -f1 | grep -oE '[0-9]+(-server)?(-open)?$' | head -1 | sed 's/-open$//')
+  [ -n "$DRV" ] || { echo "설치된 NVIDIA 드라이버 패키지를 못 찾았습니다(dpkg -l | grep nvidia 로 확인)"; exit 1; }
+  setsid -w apt-get install -y -q "nvidia-utils-$DRV"
   NEED_REBOOT=1
 fi
 
