@@ -94,7 +94,6 @@ export default function CaseHistory(props) {
               상담 이력
             </A>
             <A to={v.tabs.briefing}>상담 전 브리핑</A>
-            <A to={v.tabs.app}>아이 연계</A>
             <A to={v.tabs.docs}>문서함</A>
           </nav>
           <section className="card" aria-label="지금까지 상담" style={{ padding: '24px 26px' }}>

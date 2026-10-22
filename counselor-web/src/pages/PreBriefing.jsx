@@ -76,7 +76,6 @@ export default function PreBriefing(props) {
             <A className="on" aria-current="page" to={carry('/PreBriefing')}>
               상담 전 브리핑
             </A>
-            <A to={carry('/CaseApp')}>아이 연계</A>
             <A to={carry('/CaseDocs')}>문서함</A>
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 20px' }}>

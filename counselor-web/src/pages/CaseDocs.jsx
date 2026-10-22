@@ -1,4 +1,4 @@
-// 탭 5 · 문서함 (기관 서식 6종 + 파일)
+// 탭 4 · 문서함 (기관 서식 6종 + 파일)
 // 원본: 다솔 님 디자인 counselor-web-design/CaseDocs.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차 목록은 useCaseDetail, 회차마다 녹음 · 원문 · 상담일지는
@@ -92,7 +92,6 @@ export default function CaseDocs(props) {
             <A to={v.tabs.detail}>내담자 정보</A>
             <A to={v.tabs.history}>상담 이력</A>
             <A to={v.tabs.briefing}>상담 전 브리핑</A>
-            <A to={v.tabs.app}>아이 연계</A>
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
