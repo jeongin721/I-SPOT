@@ -257,3 +257,36 @@ def test_speaker_code_is_kept_when_segment_id_is_not_seg_number(gateway, segment
     assert "] UNKNOWN: 친구 " in masked and masked.endswith("\n[seg_002] CHILD: 네.")
     assert "이영희" not in masked and "김민수" not in masked
     _assert_tokens_intact(pii, masked, entity_map, text)
+
+
+@pytest.mark.xfail(strict=True, reason="5890b0b: 가린 이름 ID 줄의 화자 코드를 다시 가리기 정확 매칭이 깨뜨림(Codex 재검증(2))")
+def test_speaker_code_is_kept_after_name_id_is_masked(gateway) -> None:
+    # ID 안 이름은 보통 검사를 받아 "[김민수]" 가 "[[PERSON_01]]" 이 된다. 그 뒤 다시 가리기의 정확 매칭은 가린 글로 줄 머리
+    # 범위를 구하는데, 화자 코드 정규식은 ID 안에 "]" 가 있는 "[[PERSON_01]] COUNSELOR:" 를 못 잡는다. 본문에서 한 번 기관으로
+    # 잡힌 "UN" 이 "COUNSELOR" 안까지 바뀌어 "CO[ORG_01]SELOR:" 가 된다(Codex 재검증(2), 실제 모델로 재현). 다시 검사에서야
+    # 보이는 이름(이영희)이 있어야 다시 가리기가 돈다.
+    gw, pii, state = gateway
+    text = "[김민수] COUNSELOR: UN 캠프에서 이영희를 만났어요.\n[seg_002] CHILD: 네."
+    state.rule = lambda t: _tags(t, "이영희", "PS") if MASKED in t else {**_tags(t, "김민수", "PS"), **_tags(t, "UN", "OG")}
+
+    masked, entity_map = _review(gw, text)
+
+    assert "] COUNSELOR: " in masked and masked.endswith("\n[seg_002] CHILD: 네.")
+    assert "김민수" not in masked and "이영희" not in masked
+    _assert_tokens_intact(pii, masked, entity_map, text)
+
+
+@pytest.mark.xfail(strict=True, reason="5890b0b: 토큰 꼴 ID 를 ● 로 바꾼 잔존 검사 글에서 화자 코드 보호가 빠짐(Codex 재검증(2))")
+def test_speaker_code_is_kept_when_segment_id_looks_like_mask_token(gateway) -> None:
+    # "[SEG_001]" 처럼 가린 토큰과 꼴이 같은 ID 는 잔존 검사 글에서 통째로 ● 가 되어, 화자 코드 정규식이 기대는 대괄호가
+    # 사라진다. 그 줄의 "CHILD" 조각을 기관으로 본 판정이 잔존으로 잡혀 다시 가리기가 "[SEG_001] [ORG_01]ILD:" 로 바꾼다
+    # (Codex 재검증(2), 실제 모델로 재현). "seg_숫자" 줄은 줄 머리 표식이라 그대로다.
+    gw, pii, state = gateway
+    text = "[SEG_001] CHILD: 친구 이영희랑 놀았어요.\n[seg_002] CHILD: 네."
+    state.rule = lambda t: {**_tags(t, "CH", "OG"), **_tags(t, "이영희", "PS")}
+
+    masked, entity_map = _review(gw, text)
+
+    assert masked.startswith("[SEG_001] CHILD: 친구 ") and masked.endswith("\n[seg_002] CHILD: 네.")
+    assert "이영희" not in masked
+    _assert_tokens_intact(pii, masked, entity_map, text)
