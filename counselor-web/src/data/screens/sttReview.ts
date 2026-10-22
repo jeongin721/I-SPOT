@@ -127,7 +127,7 @@ export function sttReviewValues(input: SttScreenInput) {
   const unchecked = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]);
   const left = unchecked.length;
 
-  const lines = visible.map((row, index) => {
+  const lines = visible.map((row) => {
     const key = okKey(row.segmentId);
     const done = Boolean(state.ok[key]);
     const check = needsCheck(row);
@@ -157,8 +157,6 @@ export function sttReviewValues(input: SttScreenInput) {
       spFix: row.edited || row.dirty,
       canEdit: editable,
       spMenu: open,
-      // 전체 보기 스크롤 상자의 끝쪽 두 줄은 목록을 위로 연다(아래로 열면 상자 밖으로 잘린다).
-      spCls: state.view === "all" && visible.length > 3 && index >= visible.length - 2 ? "spmenu up" : "spmenu",
       toggleSp: () => setState({ spOpen: open ? null : key }),
       /** 목록에서 Esc 를 누르면 닫는다. */
       spKey: (event: { key: string }) => {

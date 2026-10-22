@@ -22,8 +22,10 @@ export interface TranscriptionJob {
   /** 올린 파일 이름(알림에 흐리게 보인다). */
   name: string;
   phase: TranscriptionJobPhase;
-  /** 맡긴 순서. 알림은 가장 최근 것 하나만 보인다. */
+  /** 맡긴 순서. 끝난 알림은 이 순서대로, '분석 중' 은 가장 최근 것 하나를 보인다. */
   seq: number;
+  /** 끝난 알림을 화면에 보이기 시작했는가(보이는 동안 다른 알림이 앞에 끼어들지 않는다). */
+  shown: boolean;
 }
 
 /** 완료 · 실패 알림을 보이는 시간. 디자인은 완료 3초. */
@@ -35,8 +37,6 @@ const MAX_FAILURES = 5;
 interface Entry extends TranscriptionJob {
   token: string;
   failures: number;
-  /** 끝난 알림을 화면에 보이기 시작했는가(그때부터 사라질 시간을 센다). */
-  shown: boolean;
 }
 
 let entries: Entry[] = [];
@@ -46,7 +46,14 @@ let timer: number | null = null;
 const listeners = new Set<() => void>();
 
 function emit(): void {
-  snapshot = entries.map(({ sessionId, caseId, name, phase, seq: order }) => ({ sessionId, caseId, name, phase, seq: order }));
+  snapshot = entries.map(({ sessionId, caseId, name, phase, seq: order, shown }) => ({
+    sessionId,
+    caseId,
+    name,
+    phase,
+    seq: order,
+    shown,
+  }));
   listeners.forEach((listener) => listener());
 }
 
@@ -135,6 +142,7 @@ export function markTranscriptionShown(sessionId: string, order: number): void {
   if (!entry || entry.phase === "run" || entry.shown) return;
 
   entry.shown = true;
+  emit();
   window.setTimeout(() => remove(sessionId, order), entry.phase === "done" ? DONE_MS : FAILED_MS);
 }
 

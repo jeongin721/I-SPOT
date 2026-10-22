@@ -1,8 +1,9 @@
 // 화면 위쪽 '분석 중입니다... → 분석 완료 [검수]' 알림(10/22 디자인의 job-toast). App.jsx 가 모든 화면 위에 한 번 그린다.
 // 값은 src/data/transcriptionJobs.ts(녹취 올리기 · 녹음 저장 뒤 원문 변환을 화면과 상관없이 따라가는 저장소)에서 온다.
-//  - 알림은 하나씩 보인다. 끝난(완료 · 실패) 회차가 있으면 맡긴 순서대로 먼저 보이고(보인 때부터 3 · 6초), 없으면 가장 최근의
-//    '분석 중' 을 보인다 — 여러 회차를 연달아 올려도 앞 회차의 끝 알림을 놓치지 않게. '검수' 를 누르면 그 회차의 STT 검수로 가고
-//    알림을 닫는다.
+//  - 알림은 하나씩 보인다. 끝난(완료 · 실패) 회차가 있으면 먼저 보이고, 한 번 보이기 시작한 끝난 알림은 제 시간(3 · 6초)이 다 될
+//    때까지 자리를 지킨다(그사이 앞 순서 회차가 끝나도 끼어들지 않는다). 그다음 아직 안 보인 끝난 알림을 맡긴 순서대로, 없으면 가장
+//    최근의 '분석 중' 을 보인다 — 여러 회차를 연달아 올려도 끝 알림을 놓치거나 짧게 지나가지 않게. '검수' 를 누르면 그 회차의
+//    STT 검수로 가고 알림을 닫는다.
 //  - 로그인 화면 · 시작 화면에서는 보이지 않는다(디자인: 로그인 제외).
 //  - 로그인은 useAuthSession 대신 토큰으로 본다(그 훅은 쓰는 곳마다 상태가 따로라, 로그인 화면에서 먼저 그려진 이 알림은 같은 탭의
 //    로그인을 모른다). 맡길 때의 토큰과 지금 토큰이 다르면(로그아웃 · 다른 계정 · 다시 로그인) 버린다 — 화면을 옮길 때, 다른 탭에서
@@ -43,7 +44,7 @@ export default function JobToast() {
   const hidden = HIDDEN_PAGES.has(pathname.toLowerCase());
   const finished = jobs.filter((item) => item.phase !== 'run').sort((a, b) => a.seq - b.seq);
   const running = jobs.filter((item) => item.phase === 'run').sort((a, b) => b.seq - a.seq);
-  const job = finished[0] ?? running[0] ?? null;
+  const job = finished.find((item) => item.shown) ?? finished[0] ?? running[0] ?? null;
 
   // 끝난 알림은 실제로 보인 때부터 사라질 시간을 센다(숨긴 화면에서는 세지 않는다).
   useEffect(() => {

@@ -10,7 +10,7 @@
 // 10/22 디자인: 아래 '위험 신호' 구역을 빼고, '전체 STT' 보기는 일정 높이 상자(.ln-box) 안에서 스크롤하고,
 // 하단 고정 재생 바(SttPlayer — 재생 단추는 준비 중, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
 // 저장 · 확정 단추는 디자인의 다음 단추 자리(STT 카드 아래)에 있다. 디자인의 분석 알림(job-toast)은 앱 전체 작업이라 여기 없다.
-import { Fragment, useEffect } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -40,6 +40,98 @@ class Logic extends DCLogic {
   renderVals() {
     return sttReviewValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
+}
+
+/**
+ * 줄의 화자 단추와 화자 고르기 목록. 목록은 단추 위치를 재어 화면 기준 고정 위치(position: fixed)에 띄운다 — 전체 보기
+ * 스크롤 상자나 카드 안에 두면 줄이 적거나 끝쪽일 때 상자 밖으로 잘렸다(Codex #75 F4 · R2). 아래 공간이 모자라면 위로 연다.
+ * 목록 밖을 스크롤하거나 창 크기가 바뀌면 닫는다(띄운 자리가 단추와 어긋나지 않게).
+ */
+function SpeakerPicker({ l }) {
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const [place, setPlace] = useState(null);
+  const open = l.spMenu;
+  // toggleSp 는 그릴 때마다 새 함수라 ref 로 들고, 아래 효과는 열림 여부에만 반응한다(재고 다시 그리기가 되풀이되지 않게).
+  const toggleRef = useRef(l.toggleSp);
+  toggleRef.current = l.toggleSp;
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null);
+      return undefined;
+    }
+    const button = buttonRef.current;
+    const menu = menuRef.current;
+    if (button && menu) {
+      const r = button.getBoundingClientRect();
+      const h = menu.offsetHeight;
+      const w = menu.offsetWidth;
+      const gap = 4;
+      const below = window.innerHeight - r.bottom;
+      const up = below < h + gap && r.top > below;
+      setPlace({
+        top: up ? Math.max(8, r.top - h - gap) : r.bottom + gap,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)),
+      });
+    }
+    const close = (event) => {
+      if (event && event.target instanceof Node && menuRef.current && menuRef.current.contains(event.target)) return;
+      toggleRef.current();
+    };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  return (
+    <span className="spw" onKeyDown={l.spKey}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="chip"
+        title="눌러서 화자 선택"
+        aria-haspopup="listbox"
+        aria-expanded={l.spMenu}
+        aria-label={`화자 바꾸기 · 지금 ${l.sp}`}
+        onClick={l.toggleSp}
+        disabled={!l.canEdit}
+        style={{
+          border: '0',
+          cursor: 'pointer',
+          font: 'inherit',
+          fontSize: '12px',
+          background: '#F2EFE8',
+          color: '#66625A',
+          fontWeight: l.spFw,
+        }}
+      >
+        {l.sp} ▾
+      </button>
+      {open ? (
+        <span
+          ref={menuRef}
+          className="spmenu"
+          role="listbox"
+          aria-label="화자 선택"
+          style={
+            place
+              ? { position: 'fixed', top: `${place.top}px`, left: `${place.left}px`, zIndex: 60 }
+              : { position: 'fixed', top: '0', left: '0', zIndex: 60, visibility: 'hidden' }
+          }
+        >
+          {(l.spOpts || []).map((o) => (
+            <button key={o.value} type="button" role="option" aria-selected={o.sel} className={o.cls} onClick={o.pick}>
+              {o.label}
+            </button>
+          ))}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 export default function SttReview(props) {
@@ -187,45 +279,7 @@ export default function SttReview(props) {
                           </button>
                         </span>
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-                          <span className="spw" onKeyDown={l.spKey}>
-                            <button
-                              type="button"
-                              className="chip"
-                              title="눌러서 화자 선택"
-                              aria-haspopup="listbox"
-                              aria-expanded={l.spMenu}
-                              aria-label={`화자 바꾸기 · 지금 ${l.sp}`}
-                              onClick={l.toggleSp}
-                              disabled={!l.canEdit}
-                              style={{
-                                border: '0',
-                                cursor: 'pointer',
-                                font: 'inherit',
-                                fontSize: '12px',
-                                background: '#F2EFE8',
-                                color: '#66625A',
-                                fontWeight: l.spFw,
-                              }}
-                            >
-                              {l.sp} ▾
-                            </button>
-                            {l.spMenu ? (
-                              <span className={l.spCls} role="listbox" aria-label="화자 선택">
-                                {(l.spOpts || []).map((o) => (
-                                  <button
-                                    key={o.value}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={o.sel}
-                                    className={o.cls}
-                                    onClick={o.pick}
-                                  >
-                                    {o.label}
-                                  </button>
-                                ))}
-                              </span>
-                            ) : null}
-                          </span>
+                          <SpeakerPicker l={l} />
                           {l.spFix ? (
                             <>
                               <span className="note" style={{ fontSize: '11px' }}>
