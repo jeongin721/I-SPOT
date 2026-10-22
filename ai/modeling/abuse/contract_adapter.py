@@ -90,6 +90,18 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
   합쳐지는 시점에 이미 확률이 버려져 있고(chunk 값만 남음), 세션
   단위로 어떻게 합칠지(chunk 최댓값 등) 설계가 따로 필요하다. 지금
   Agent·Backend 관문·화면 모두 detected만 보므로 당장 급하지 않다.
+
+[2026-10-22: Mingyu — 위험 3필드의 유형 · 근거 강도를 영문 대문자로]
+
+- 확정안(PROPOSAL_risk_fields.md §7, 10/22 합의)대로 risk_utterances ·
+  abuse_signals 의 유형 키를 major_type(한글) 대신 abuse_type(영문
+  PHYSICAL|EMOTIONAL|SEXUAL|NEGLECT)으로, evidence_strength 를
+  높음|중간|낮음 대신 HIGH|MEDIUM|LOW 로 내보낸다(02_ARCHITECTURE.md §7
+  "한글 표기는 화면에서만"). 변환은 이 Contract 경계에서만 하고
+  파이프라인 안(record_draft · subtype_analysis)은 한글 그대로다.
+  severity_ratings[].major_type 은 #49 로 따로 합의한 선택 필드라
+  여기서 바꾸지 않는다(API_CONTRACT.md 8절). subtype 은 2차 세부유형명
+  (한글)을 그대로 둔다.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -108,6 +120,35 @@ def _model_name(result: Dict[str, Any]) -> Optional[str]:
         (result.get("subtype_analysis") or {}).get("model")
         or result.get("counseling_record_model")
     )
+
+
+# 학대유형 대분류: 02_ARCHITECTURE.md §7 의 영문 enum. 파이프라인 안은
+# 한글 라벨(ABUSE_LABELS)이라 Contract 경계(여기)에서만 바꾼다.
+MAJOR_TYPE_TO_ENGLISH = {
+    "신체학대": "PHYSICAL",
+    "정서학대": "EMOTIONAL",
+    "성학대": "SEXUAL",
+    "방임": "NEGLECT",
+}
+
+# 근거 강도: second_stage_llm 이 내는 높음|중간|낮음(확률이 아니라 근거의
+# 직접성). second_stage_llm 은 셋 밖의 값을 "낮음"으로 고정하므로 여기서도
+# 모르는 값은 LOW 로 둔다.
+EVIDENCE_STRENGTH_TO_ENGLISH = {
+    "높음": "HIGH",
+    "중간": "MEDIUM",
+    "낮음": "LOW",
+}
+
+
+def _abuse_type(label: Any) -> Any:
+    """한글 대분류 → 영문 대문자. 모르는 값은 그대로 둔다(정보를 잃지 않게)."""
+
+    return MAJOR_TYPE_TO_ENGLISH.get(label, label)
+
+
+def _evidence_strength(value: Any) -> str:
+    return EVIDENCE_STRENGTH_TO_ENGLISH.get(value, "LOW")
 
 
 def to_ai_output_contract(
@@ -131,38 +172,39 @@ def to_ai_output_contract(
     warnings = list(converted.get("warnings", []))
 
     record_draft = result.get("record_draft") or {}
+    risk_signal_points = record_draft.get("risk_signal_points", [])
 
     risk_utterances = [
         {
             "text": point.get("text", ""),
             "segment_ids": point.get("segment_ids", []),
-            "major_type": point.get("major_type"),
+            "abuse_type": _abuse_type(point.get("major_type")),
             "subtype": point.get("subtype"),
-            "evidence_strength": point.get(
-                "evidence_strength"
+            "evidence_strength": _evidence_strength(
+                point.get("evidence_strength")
             ),
             "reason": point.get("strength_reason", ""),
             "evidence_verified": point.get(
                 "evidence_verified", False
             ),
         }
-        for point in record_draft.get(
-            "risk_signal_points", []
-        )
+        for point in risk_signal_points
     ]
 
-    # major_type별 근거 segment_id — 같은 유형 risk_utterances에서 모은다.
+    # major_type(한글)별 근거 segment_id — 같은 유형 risk_signal_points
+    # 에서 모은다. abuse_signals 는 major_types 의 한글 키로 찾으므로
+    # 변환 전 라벨로 묶는다.
     segment_ids_by_type: Dict[str, List[str]] = {}
 
-    for utterance in risk_utterances:
-        major_type = utterance.get("major_type")
+    for point in risk_signal_points:
+        major_type = point.get("major_type")
 
         if not major_type:
             continue
 
         bucket = segment_ids_by_type.setdefault(major_type, [])
 
-        for segment_id in utterance.get("segment_ids") or []:
+        for segment_id in point.get("segment_ids") or []:
             if segment_id not in bucket:
                 bucket.append(segment_id)
 
@@ -212,7 +254,7 @@ def to_ai_output_contract(
 
         abuse_signals.append(
             {
-                "major_type": major_type,
+                "abuse_type": _abuse_type(major_type),
                 "detected": info.get("detected", False),
                 "segment_ids": segment_ids_by_type.get(
                     major_type, []
