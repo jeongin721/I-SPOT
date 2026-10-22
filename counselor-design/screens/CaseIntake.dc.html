@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>I-SPOT 사례 상세 · 초기면접지</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&amp;family=Noto+Serif+KR:wght@500;600;700&amp;family=Gowun+Batang:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2F2F0}
+*{box-sizing:border-box}
+a{color:#8C7340}a:hover{color:#2B2A26}
+.side{flex:1 1 248px;background:#FAFAF8;border-right:1px solid #E2DED3;padding:22px 16px;display:flex;flex-direction:column;gap:8px}
+.logo{display:flex;align-items:center;gap:10px;padding:2px 6px 12px;text-decoration:none;color:#2B2A26}
+.mk{width:40px;height:40px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.cta{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:14px;background:#2B2A26;color:#EADBB5;font-weight:700;text-decoration:none;font-size:15px}
+.cta:hover{background:#3A3833;color:#EADBB5}
+.cta2{display:flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border-radius:14px;background:#FFFFFF;border:1.5px solid #2B2A26;color:#2B2A26;font-weight:700;text-decoration:none;font-size:15px}
+.cta2:hover{background:#F7F2E6;color:#2B2A26}
+.nav{display:flex;flex-direction:column;gap:2px;margin:14px 0}
+.nav a{display:flex;align-items:center;min-height:44px;padding:0 14px;border-radius:12px;color:#3A3833;text-decoration:none;font-size:15px}
+.nav a:hover{background:#F7F2E6;color:#3A3833}
+.nav a.on{background:#F1EADA;color:#2B2A26;font-weight:700}
+.cnt{margin-left:auto;min-width:22px;height:22px;border-radius:11px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+.me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 6px 0;border-top:1px solid #E2DED3;font-size:13px}
+.av{width:36px;height:36px;border-radius:50%;background:#F2EFE8;color:#66625A;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.card{background:#FFFFFF;border-radius:18px;border:1px solid #E7E4DC}
+.hd{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:18px 22px;border-bottom:1px solid #EAE7DF}
+.h2{margin:0;font-size:17px;font-weight:700;color:#2B2A26}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.c-hi{background:#F7E4DF;color:#A33B2E}
+.c-mid{background:#F3EAD3;color:#7A5F28}
+.c-lo{background:#F2EFE8;color:#66625A}
+.c-urgent{background:#F7E4DF;color:#A33B2E}
+.c-check{background:#F2EFE8;color:#66625A}
+.c-ing{background:#F2EFE8;color:#66625A}
+.c-ok{background:#F2EFE8;color:#66625A}
+.c-normal{background:#F2EFE8;color:#66625A}
+.c-sky{background:#F2EFE8;color:#66625A}
+.c-sand{background:#F2EFE8;color:#66625A}
+.c-ai{background:#FFFFFF;color:#7A776F;border:1px dashed #CFC9BB}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 18px;border-radius:12px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;text-decoration:none;white-space:nowrap}
+.btn-p{background:#2B2A26;color:#EADBB5;font-weight:700}.btn-p:hover{background:#3A3833;color:#EADBB5}
+.btn-s{background:#FFFFFF;color:#2B2A26;border-color:#DAD5C9}.btn-s:hover{border-color:#2B2A26;color:#2B2A26}
+.btn-y{background:#FFFFFF;color:#2B2A26;border-color:#DAD5C9}.btn-y:hover{border-color:#2B2A26;color:#2B2A26}
+.btn-sm{min-height:34px;padding:0 12px;font-size:13px}
+.sub{color:#6E6A62;font-size:13px}
+.note{font-size:12px;color:#7A776F}
+.demo{display:none}
+.acc{color:#A33B2E}
+.brn{color:inherit;font-weight:700}
+.inp{height:42px;border:1px solid #DAD5C9;border-radius:12px;padding:0 14px;font:inherit;font-size:14px;background:#FFFFFF;color:#2B2A26}
+.ta{width:100%;min-height:90px;border:1px solid #DAD5C9;border-radius:12px;padding:12px 14px;font:inherit;font-size:14px;line-height:1.7;background:#FFFFFF;color:#2B2A26;resize:vertical}
+.seg{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:12px;background:#EAE7DF}
+.seg button{border:0;border-radius:9px;min-height:34px;padding:0 13px;font:inherit;font-size:13px;background:transparent;color:#66625A;cursor:pointer}
+.seg button.on{background:#FFFFFF;color:#2B2A26;font-weight:700;box-shadow:0 1px 3px rgba(43, 42, 38,.14)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font-size:12px;color:#6E6A62;font-weight:500;text-align:left;padding:12px 18px;background:#F7F6F2;border-bottom:1px solid #EAE7DF}
+.tbl td{padding:14px 18px;border-bottom:1px solid #EAE7DF;vertical-align:middle}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #DAD5C9}
+.tabs a{display:inline-flex;align-items:center;padding:12px 18px;color:#6E6A62;text-decoration:none;font-size:15px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a:hover{color:#2B2A26}
+.tabs a.on{color:#2B2A26;font-weight:700;border-bottom-color:#C2A36B}
+.steps{display:flex;flex-wrap:wrap;gap:10px}
+.stp{flex:1 1 180px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;background:#FFFFFF;text-decoration:none;color:#2B2A26;border:1px solid #E7E4DC}
+.stp:hover{border-color:#2B2A26;color:#2B2A26}
+.stp.on{background:#FFFFFF;box-shadow:inset 0 0 0 2px #2B2A26;border-color:transparent}
+.sn{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:none;background:#E7E4DC;color:#7A776F}
+.stp.on .sn{background:#2B2A26;color:#EADBB5}
+.stp.done .sn{background:#F2EFE8;color:#66625A}
+.ainote{font-size:12px;color:#7A776F;margin:0}
+
+.ftab{border:0;border-radius:12px;min-height:40px;padding:0 16px;font:inherit;font-size:14px;background:#EAE7DF;color:#66625A;cursor:pointer}
+.ftab.on{background:#2B2A26;color:#EADBB5;font-weight:700}
+.fhead{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));border:1px solid #E7E4DC;border-radius:14px;overflow:hidden}
+.fhead > div{display:flex;border-bottom:1px solid #EAE7DF}
+.fhead .k{width:110px;flex:none;padding:10px 12px;background:#F7F6F2;color:#66625A;font-size:13px}
+.fhead .v{flex:1;padding:10px 12px;font-size:14px}
+.grp{padding:10px 14px;background:#F2EFE8;font-weight:700;font-size:14px;border-radius:10px}
+.item{display:grid;grid-template-columns:minmax(0,1.6fr) auto;gap:8px 14px;align-items:center;padding:12px 4px;border-bottom:1px solid #EAE7DF}
+.opt3{display:inline-flex;gap:4px;padding:3px;border-radius:10px;background:#EAE7DF}
+.opt3 button{border:0;border-radius:8px;min-width:44px;min-height:32px;padding:0 10px;font:inherit;font-size:13px;background:transparent;color:#66625A;cursor:pointer}
+.ev{grid-column:1 / -1;font-size:12px;color:#7A776F;display:flex;gap:6px;align-items:center}
+.ta2{width:100%;min-height:80px;border:1px solid #DAD5C9;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;background:#FFFFFF;color:#2B2A26}
+.sc{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 4px;border-bottom:1px solid #EAE7DF;font-size:14px}
+.sum{display:flex;flex-wrap:wrap;gap:12px}
+.sum > div{flex:1 1 180px;padding:14px 16px;border-radius:14px;background:#F7F6F2}
+.src{font-size:11.5px;color:#7A776F}
+/* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
+:root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
+body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
+h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+/* 좌측 레일 + 연결형 패널 */
+.side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
+.side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
+.side .logo b{font-family:'Noto Serif KR',serif;font-weight:600}
+.mk{background:#2B2A26 !important;color:#D9C08A !important;border-radius:50% !important;font-family:'Noto Serif KR',serif;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.cta{border-radius:999px !important;border:1px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s,transform .15s}
+.cta:active{transform:translateY(1px)}
+.cta2{border-radius:999px !important;background:#FFFFFF;border:1.5px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s}
+.cta2:hover{background:#F7F2E6;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.nav{gap:4px;margin:20px 0 14px}
+.nav a,.side[aria-label="관리자 메뉴"]>a:not(:first-child){position:relative;padding-left:34px;border-radius:999px !important;color:#5E5A52;transition:background .2s,color .2s}
+.nav a:hover,.side[aria-label="관리자 메뉴"]>a:not(:first-child):hover{background:rgba(255,255,255,.55);color:#2B2A26}
+.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{background:var(--base) radial-gradient(circle,#C2A36B 3px,transparent 3.6px) no-repeat 15px 50%/8px 8px !important;color:#2B2A26 !important;font-weight:700;border-radius:22px 0 0 22px !important;margin-right:-16px}
+.nav a.on::before,.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{content:"";position:absolute;right:0;width:24px;height:24px;pointer-events:none}
+.nav a.on::before,.side[aria-label="관리자 메뉴"]>a.on::before{top:-24px;background:radial-gradient(circle at 0 0,transparent 23.5px,var(--base) 24px)}
+.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::after{bottom:-24px;background:radial-gradient(circle at 0 100%,transparent 23.5px,var(--base) 24px)}
+.nav a.on .cnt,.side>a.on .badge{margin-right:16px}
+.cnt,.badge{box-shadow:0 2px 6px rgba(163,59,46,.28)}
+.grp{padding-left:34px !important}
+.me{border-top:1px solid #DAD5C9 !important}
+.av{box-shadow:inset 1px 1px 3px var(--sd),inset -1px -1px 3px var(--sl)}
+.top{background:transparent !important;border-bottom:0 !important}
+/* 카드: 모던 베이스(테두리) + 부드러운 그림자 */
+.card{background:#FFFFFF;border:1px solid #E2DED3;border-radius:20px !important;box-shadow:6px 6px 16px var(--sd),-6px -6px 16px var(--sl)}
+.hd{border-bottom-color:#EAE7DF}
+.box{background:#F7F6F2;border:1px solid #EAE7DF;box-shadow:inset 1px 1px 3px var(--sd)}
+/* 버튼: 경계 명확 */
+.btn{border-radius:999px !important;transition:box-shadow .2s,transform .15s,background .2s,border-color .2s}
+.btn-p{border:1px solid #2B2A26;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.btn-s,.btn-y{background:#FFFFFF;border:1px solid #CFC9BB;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.btn-s:hover,.btn-y:hover{border-color:#2B2A26;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,.cta:focus-visible,.cta2:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+/* 입력 */
+.inp,.ta{background:#FFFFFF;border:1px solid #DAD5C9;box-shadow:inset 2px 2px 4px var(--sd)}
+.inp{border-radius:999px}
+.inp:focus,.ta:focus{outline:2px solid #C2A36B;outline-offset:1px;border-color:#2B2A26}
+.seg{background:var(--base);border:1px solid #E2DED3;border-radius:999px;padding:4px;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.seg button{border-radius:999px}
+.seg button.on{background:#FFFFFF;box-shadow:0 0 0 1px #CFC9BB,2px 2px 6px var(--sd)}
+.pill{border:1px solid #DAD5C9;box-shadow:2px 2px 5px var(--sd),-2px -2px 5px var(--sl)}
+.pill.on{box-shadow:inset 0 0 0 1px #2B2A26}
+.tg{border-color:#CFC9BB;border-radius:999px;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+/* 표 */
+.tbl th{background:#F7F6F2;border-bottom:1px solid #E2DED3;letter-spacing:.02em}
+.tbl td{border-bottom-color:#F1EFEA}
+/* 탭 */
+.tabs{align-self:flex-start;gap:4px;padding:5px;border:1px solid #E2DED3;border-radius:999px;background:var(--base);box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.tabs a{border-bottom:0;margin-bottom:0;border-radius:999px;padding:9px 18px}
+.tabs a.on{background:#FFFFFF;border-bottom-color:transparent !important;box-shadow:0 0 0 1px #CFC9BB,2px 2px 6px var(--sd)}
+/* 단계 */
+.stp{border-radius:999px !important;border:1px solid #DAD5C9;background:#FFFFFF;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.stp:hover{border-color:#2B2A26}
+.stp.on{box-shadow:inset 0 0 0 1.5px #C2A36B,3px 3px 8px var(--sd),-3px -3px 8px var(--sl) !important;border-color:transparent}
+.stp.on .sn{background:#2B2A26 !important;color:#EADBB5 !important}
+/* 홈 소품 */
+.todo{background:#F7F6F2;border:1px solid #EAE7DF}
+.todo:hover{border-color:#CFC9BB}
+.qa{border:1px solid #DAD5C9;background:#FFFFFF;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl);transition:box-shadow .2s,border-color .2s}
+.qa:hover{border-color:#2B2A26;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+/* 다크 모드 */
+.thm-root.dark{--base:#23221F;--rail:#1B1A17;--sd:rgba(0,0,0,.45);--sl:rgba(255,255,255,.035);--line:#3A3832;color-scheme:dark}
+.thm-root.dark .thm-root,.thm-root.dark input,.thm-root.dark select,.thm-root.dark textarea{color:#ECE8DF}
+.thm-root.dark ::placeholder{color:#8E887C}
+.thm-root.dark .nav a:hover,.thm-root.dark .side>a:hover{background:rgba(255,255,255,.06) !important}
+.thm-root.dark a{color:#D9C08A !important}
+.thm-root.dark a:hover{color:#ECE8DF !important}
+.thm-root.dark .side{background:#24231F !important;border-right:1px solid #45423B !important}
+.thm-root.dark .logo{color:#ECE8DF !important}
+.thm-root.dark .mk{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .cta{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .cta:hover{background:#D9C08A !important;color:#2B2A26 !important}
+.thm-root.dark .cta2{background:#2C2B27 !important;border:1.5px solid #D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .cta2:hover{background:#3A3428 !important;color:#ECE8DF !important}
+.thm-root.dark .nav a{color:#DAD5C9 !important}
+.thm-root.dark .nav a:hover{background:#3A3428 !important;color:#DAD5C9 !important}
+.thm-root.dark .nav a.on{background:#3F3729 !important;color:#ECE8DF !important}
+.thm-root.dark .cnt{background:#C9503F !important}
+.thm-root.dark .me{border-top:1px solid #45423B !important}
+.thm-root.dark .av{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .card{background:#2C2B27 !important;border:1px solid #45423B !important}
+.thm-root.dark .hd{border-bottom:1px solid #45423B !important}
+.thm-root.dark .h2{color:#ECE8DF !important}
+.thm-root.dark .c-hi{background:#4A2B25 !important;color:#F0907F !important}
+.thm-root.dark .c-mid{background:#453A22 !important;color:#E3C77E !important}
+.thm-root.dark .c-lo{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-urgent{background:#4A2B25 !important;color:#F0907F !important}
+.thm-root.dark .c-check{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-ing{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-ok{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-normal{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-sky{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-sand{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-ai{background:#2C2B27 !important;color:#A8A296 !important;border:1px dashed #5A564E !important}
+.thm-root.dark .btn-p{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .btn-p:hover{background:#D9C08A !important;color:#2B2A26 !important}
+.thm-root.dark .btn-s{background:#2C2B27 !important;color:#ECE8DF !important;border-color:#4E4B44 !important}
+.thm-root.dark .btn-s:hover{border-color:#D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .btn-y{background:#2C2B27 !important;color:#ECE8DF !important;border-color:#4E4B44 !important}
+.thm-root.dark .btn-y:hover{border-color:#D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .sub{color:#B5AFA3 !important}
+.thm-root.dark .note{color:#A8A296 !important}
+.thm-root.dark .acc{color:#F0907F !important}
+.thm-root.dark .inp{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .ta{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .seg{background:#393731 !important}
+.thm-root.dark .seg button{color:#BDB7AA !important}
+.thm-root.dark .seg button.on{background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .tbl th{color:#B5AFA3 !important;background:#33312C !important;border-bottom:1px solid #45423B !important}
+.thm-root.dark .tbl td{border-bottom:1px solid #45423B !important}
+.thm-root.dark .tabs{border-bottom:1px solid #4E4B44 !important}
+.thm-root.dark .tabs a{color:#B5AFA3 !important}
+.thm-root.dark .tabs a:hover{color:#ECE8DF !important}
+.thm-root.dark .tabs a.on{color:#ECE8DF !important}
+.thm-root.dark .stp{background:#2C2B27 !important;color:#ECE8DF !important;border:1px solid #45423B !important}
+.thm-root.dark .stp:hover{border-color:#D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .stp.on{background:#2C2B27 !important;box-shadow:inset 0 0 0 2px #D6D0C4 !important}
+.thm-root.dark .sn{background:#45423B !important;color:#A8A296 !important}
+.thm-root.dark .stp.on .sn{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .stp.done .sn{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .ainote{color:#A8A296 !important}
+.thm-root.dark .ftab{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .ftab.on{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .fhead{border:1px solid #45423B !important}
+.thm-root.dark .fhead > div{border-bottom:1px solid #45423B !important}
+.thm-root.dark .fhead .k{background:#33312C !important;color:#BDB7AA !important}
+.thm-root.dark .grp{background:#393731 !important}
+.thm-root.dark .item{border-bottom:1px solid #45423B !important}
+.thm-root.dark .opt3{background:#393731 !important}
+.thm-root.dark .opt3 button{color:#BDB7AA !important}
+.thm-root.dark .ev{color:#A8A296 !important}
+.thm-root.dark .ta2{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .sc{border-bottom:1px solid #45423B !important}
+.thm-root.dark .sum > div{background:#33312C !important}
+.thm-root.dark .src{color:#A8A296 !important}
+.thm-root.dark .mk{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .cta{border:1px solid #D6D0C4 !important}
+.thm-root.dark .cta2{background:#2C2B27 !important;border:1.5px solid #D6D0C4 !important}
+.thm-root.dark .cta2:hover{background:#3A3428 !important}
+.thm-root.dark .nav a,.thm-root.dark .side[aria-label="관리자 메뉴"]>a:not(:first-child){color:#C9C3B6 !important}
+.thm-root.dark .nav a:hover,.thm-root.dark .side[aria-label="관리자 메뉴"]>a:not(:first-child):hover{color:#ECE8DF !important}
+.thm-root.dark .nav a.on,.thm-root.dark .side[aria-label="관리자 메뉴"]>a.on{color:#ECE8DF !important}
+.thm-root.dark .me{border-top:1px solid #4E4B44 !important}
+.thm-root.dark .card{background:#2C2B27 !important;border:1px solid #45423B !important}
+.thm-root.dark .hd{border-bottom-color:#45423B !important}
+.thm-root.dark .box{background:#33312C !important;border:1px solid #45423B !important}
+.thm-root.dark .btn-p{border:1px solid #D6D0C4 !important}
+.thm-root.dark .btn-s,.thm-root.dark .btn-y{background:#2C2B27 !important;border:1px solid #5A564E !important}
+.thm-root.dark .btn-s:hover,.thm-root.dark .btn-y:hover{border-color:#D6D0C4 !important}
+.thm-root.dark .inp,.thm-root.dark .ta{background:#2C2B27 !important;border:1px solid #4E4B44 !important}
+.thm-root.dark .inp:focus,.thm-root.dark .ta:focus{border-color:#D6D0C4 !important}
+.thm-root.dark .seg{border:1px solid #45423B !important}
+.thm-root.dark .seg button.on{background:#2C2B27 !important;box-shadow:0 0 0 1px #5A564E,2px 2px 6px var(--sd) !important}
+.thm-root.dark .pill{border:1px solid #4E4B44 !important}
+.thm-root.dark .pill.on{box-shadow:inset 0 0 0 1px #D6D0C4 !important}
+.thm-root.dark .tg{border-color:#5A564E !important}
+.thm-root.dark .tbl th{background:#33312C !important;border-bottom:1px solid #45423B !important}
+.thm-root.dark .tbl td{border-bottom-color:#3A3832 !important}
+.thm-root.dark .tabs{border:1px solid #45423B !important}
+.thm-root.dark .tabs a.on{background:#2C2B27 !important;box-shadow:0 0 0 1px #5A564E,2px 2px 6px var(--sd) !important}
+.thm-root.dark .stp{border:1px solid #4E4B44 !important;background:#2C2B27 !important}
+.thm-root.dark .stp:hover{border-color:#D6D0C4 !important}
+.thm-root.dark .stp.on .sn{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .todo{background:#33312C !important;border:1px solid #45423B !important}
+.thm-root.dark .todo:hover{border-color:#5A564E !important}
+.thm-root.dark .qa{border:1px solid #4E4B44 !important;background:#2C2B27 !important}
+.thm-root.dark .qa:hover{border-color:#D6D0C4 !important}
+.thm-root.dark[style*="background: #FFFFFF" i],.thm-root.dark [style*="background: #FFFFFF" i],.thm-root.dark[style*="background-color: #FFFFFF" i],.thm-root.dark [style*="background-color: #FFFFFF" i],.thm-root.dark[style*="background: rgb(255, 255, 255)"],.thm-root.dark [style*="background: rgb(255, 255, 255)"],.thm-root.dark[style*="background-color: rgb(255, 255, 255)"],.thm-root.dark [style*="background-color: rgb(255, 255, 255)"]{background-color:#2C2B27 !important;background-image:none !important}
+.thm-root.dark[style*="background: #FAFAF8" i],.thm-root.dark [style*="background: #FAFAF8" i],.thm-root.dark[style*="background-color: #FAFAF8" i],.thm-root.dark [style*="background-color: #FAFAF8" i],.thm-root.dark[style*="background: rgb(250, 250, 248)"],.thm-root.dark [style*="background: rgb(250, 250, 248)"],.thm-root.dark[style*="background-color: rgb(250, 250, 248)"],.thm-root.dark [style*="background-color: rgb(250, 250, 248)"]{background-color:#24231F !important;background-image:none !important}
+.thm-root.dark[style*="background: #F7F6F2" i],.thm-root.dark [style*="background: #F7F6F2" i],.thm-root.dark[style*="background-color: #F7F6F2" i],.thm-root.dark [style*="background-color: #F7F6F2" i],.thm-root.dark[style*="background: rgb(247, 246, 242)"],.thm-root.dark [style*="background: rgb(247, 246, 242)"],.thm-root.dark[style*="background-color: rgb(247, 246, 242)"],.thm-root.dark [style*="background-color: rgb(247, 246, 242)"]{background-color:#33312C !important;background-image:none !important}
+.thm-root.dark[style*="background: #F2F2F0" i],.thm-root.dark [style*="background: #F2F2F0" i],.thm-root.dark[style*="background-color: #F2F2F0" i],.thm-root.dark [style*="background-color: #F2F2F0" i],.thm-root.dark[style*="background: rgb(242, 242, 240)"],.thm-root.dark [style*="background: rgb(242, 242, 240)"],.thm-root.dark[style*="background-color: rgb(242, 242, 240)"],.thm-root.dark [style*="background-color: rgb(242, 242, 240)"]{background-color:#23221F !important;background-image:none !important}
+.thm-root.dark[style*="background: #F2EFE8" i],.thm-root.dark [style*="background: #F2EFE8" i],.thm-root.dark[style*="background-color: #F2EFE8" i],.thm-root.dark [style*="background-color: #F2EFE8" i],.thm-root.dark[style*="background: rgb(242, 239, 232)"],.thm-root.dark [style*="background: rgb(242, 239, 232)"],.thm-root.dark[style*="background-color: rgb(242, 239, 232)"],.thm-root.dark [style*="background-color: rgb(242, 239, 232)"]{background-color:#393731 !important;background-image:none !important}
+.thm-root.dark[style*="background: #EAE7DF" i],.thm-root.dark [style*="background: #EAE7DF" i],.thm-root.dark[style*="background-color: #EAE7DF" i],.thm-root.dark [style*="background-color: #EAE7DF" i],.thm-root.dark[style*="background: rgb(234, 231, 223)"],.thm-root.dark [style*="background: rgb(234, 231, 223)"],.thm-root.dark[style*="background-color: rgb(234, 231, 223)"],.thm-root.dark [style*="background-color: rgb(234, 231, 223)"]{background-color:#393731 !important;background-image:none !important}
+.thm-root.dark[style*="background: #E7E4DC" i],.thm-root.dark [style*="background: #E7E4DC" i],.thm-root.dark[style*="background-color: #E7E4DC" i],.thm-root.dark [style*="background-color: #E7E4DC" i],.thm-root.dark[style*="background: rgb(231, 228, 220)"],.thm-root.dark [style*="background: rgb(231, 228, 220)"],.thm-root.dark[style*="background-color: rgb(231, 228, 220)"],.thm-root.dark [style*="background-color: rgb(231, 228, 220)"]{background-color:#45423B !important;background-image:none !important}
+.thm-root.dark[style*="background: #E9E7E1" i],.thm-root.dark [style*="background: #E9E7E1" i],.thm-root.dark[style*="background-color: #E9E7E1" i],.thm-root.dark [style*="background-color: #E9E7E1" i],.thm-root.dark[style*="background: rgb(233, 231, 225)"],.thm-root.dark [style*="background: rgb(233, 231, 225)"],.thm-root.dark[style*="background-color: rgb(233, 231, 225)"],.thm-root.dark [style*="background-color: rgb(233, 231, 225)"]{background-color:#1B1A17 !important;background-image:none !important}
+.thm-root.dark[style*="background: #DAD5C9" i],.thm-root.dark [style*="background: #DAD5C9" i],.thm-root.dark[style*="background-color: #DAD5C9" i],.thm-root.dark [style*="background-color: #DAD5C9" i],.thm-root.dark[style*="background: rgb(218, 213, 201)"],.thm-root.dark [style*="background: rgb(218, 213, 201)"],.thm-root.dark[style*="background-color: rgb(218, 213, 201)"],.thm-root.dark [style*="background-color: rgb(218, 213, 201)"]{background-color:#55524A !important;background-image:none !important}
+.thm-root.dark[style*="background: #CFC9BB" i],.thm-root.dark [style*="background: #CFC9BB" i],.thm-root.dark[style*="background-color: #CFC9BB" i],.thm-root.dark [style*="background-color: #CFC9BB" i],.thm-root.dark[style*="background: rgb(207, 201, 187)"],.thm-root.dark [style*="background: rgb(207, 201, 187)"],.thm-root.dark[style*="background-color: rgb(207, 201, 187)"],.thm-root.dark [style*="background-color: rgb(207, 201, 187)"]{background-color:#5F5B52 !important;background-image:none !important}
+.thm-root.dark[style*="background: #E2DED3" i],.thm-root.dark [style*="background: #E2DED3" i],.thm-root.dark[style*="background-color: #E2DED3" i],.thm-root.dark [style*="background-color: #E2DED3" i],.thm-root.dark[style*="background: rgb(226, 222, 211)"],.thm-root.dark [style*="background: rgb(226, 222, 211)"],.thm-root.dark[style*="background-color: rgb(226, 222, 211)"],.thm-root.dark [style*="background-color: rgb(226, 222, 211)"]{background-color:#45423B !important;background-image:none !important}
+.thm-root.dark[style*="background: #ECEAE4" i],.thm-root.dark [style*="background: #ECEAE4" i],.thm-root.dark[style*="background-color: #ECEAE4" i],.thm-root.dark [style*="background-color: #ECEAE4" i],.thm-root.dark[style*="background: rgb(236, 234, 228)"],.thm-root.dark [style*="background: rgb(236, 234, 228)"],.thm-root.dark[style*="background-color: rgb(236, 234, 228)"],.thm-root.dark [style*="background-color: rgb(236, 234, 228)"]{background-color:#3A3832 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F1EFEA" i],.thm-root.dark [style*="background: #F1EFEA" i],.thm-root.dark[style*="background-color: #F1EFEA" i],.thm-root.dark [style*="background-color: #F1EFEA" i],.thm-root.dark[style*="background: rgb(241, 239, 234)"],.thm-root.dark [style*="background: rgb(241, 239, 234)"],.thm-root.dark[style*="background-color: rgb(241, 239, 234)"],.thm-root.dark [style*="background-color: rgb(241, 239, 234)"]{background-color:#363430 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F1EADA" i],.thm-root.dark [style*="background: #F1EADA" i],.thm-root.dark[style*="background-color: #F1EADA" i],.thm-root.dark [style*="background-color: #F1EADA" i],.thm-root.dark[style*="background: rgb(241, 234, 218)"],.thm-root.dark [style*="background: rgb(241, 234, 218)"],.thm-root.dark[style*="background-color: rgb(241, 234, 218)"],.thm-root.dark [style*="background-color: rgb(241, 234, 218)"]{background-color:#3F3729 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F7F2E6" i],.thm-root.dark [style*="background: #F7F2E6" i],.thm-root.dark[style*="background-color: #F7F2E6" i],.thm-root.dark [style*="background-color: #F7F2E6" i],.thm-root.dark[style*="background: rgb(247, 242, 230)"],.thm-root.dark [style*="background: rgb(247, 242, 230)"],.thm-root.dark[style*="background-color: rgb(247, 242, 230)"],.thm-root.dark [style*="background-color: rgb(247, 242, 230)"]{background-color:#3A3428 !important;background-image:none !important}
+.thm-root.dark[style*="background: #FAF6EC" i],.thm-root.dark [style*="background: #FAF6EC" i],.thm-root.dark[style*="background-color: #FAF6EC" i],.thm-root.dark [style*="background-color: #FAF6EC" i],.thm-root.dark[style*="background: rgb(250, 246, 236)"],.thm-root.dark [style*="background: rgb(250, 246, 236)"],.thm-root.dark[style*="background-color: rgb(250, 246, 236)"],.thm-root.dark [style*="background-color: rgb(250, 246, 236)"]{background-color:#33302A !important;background-image:none !important}
+.thm-root.dark[style*="background: #F7E4DF" i],.thm-root.dark [style*="background: #F7E4DF" i],.thm-root.dark[style*="background-color: #F7E4DF" i],.thm-root.dark [style*="background-color: #F7E4DF" i],.thm-root.dark[style*="background: rgb(247, 228, 223)"],.thm-root.dark [style*="background: rgb(247, 228, 223)"],.thm-root.dark[style*="background-color: rgb(247, 228, 223)"],.thm-root.dark [style*="background-color: rgb(247, 228, 223)"]{background-color:#4A2B25 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F3EAD3" i],.thm-root.dark [style*="background: #F3EAD3" i],.thm-root.dark[style*="background-color: #F3EAD3" i],.thm-root.dark [style*="background-color: #F3EAD3" i],.thm-root.dark[style*="background: rgb(243, 234, 211)"],.thm-root.dark [style*="background: rgb(243, 234, 211)"],.thm-root.dark[style*="background-color: rgb(243, 234, 211)"],.thm-root.dark [style*="background-color: rgb(243, 234, 211)"]{background-color:#453A22 !important;background-image:none !important}
+.thm-root.dark[style*="background: #2B2A26" i],.thm-root.dark [style*="background: #2B2A26" i],.thm-root.dark[style*="background-color: #2B2A26" i],.thm-root.dark [style*="background-color: #2B2A26" i],.thm-root.dark[style*="background: rgb(43, 42, 38)"],.thm-root.dark [style*="background: rgb(43, 42, 38)"],.thm-root.dark[style*="background-color: rgb(43, 42, 38)"],.thm-root.dark [style*="background-color: rgb(43, 42, 38)"]{background-color:#EADBB5 !important;background-image:none !important;color:#1B1A17 !important}
+.thm-root.dark[style*="background: #3A3833" i],.thm-root.dark [style*="background: #3A3833" i],.thm-root.dark[style*="background-color: #3A3833" i],.thm-root.dark [style*="background-color: #3A3833" i],.thm-root.dark[style*="background: rgb(58, 56, 51)"],.thm-root.dark [style*="background: rgb(58, 56, 51)"],.thm-root.dark[style*="background-color: rgb(58, 56, 51)"],.thm-root.dark [style*="background-color: rgb(58, 56, 51)"]{background-color:#D9C08A !important;background-image:none !important}
+.thm-root.dark[style*="background: #7A776F" i],.thm-root.dark [style*="background: #7A776F" i],.thm-root.dark[style*="background-color: #7A776F" i],.thm-root.dark [style*="background-color: #7A776F" i],.thm-root.dark[style*="background: rgb(122, 119, 111)"],.thm-root.dark [style*="background: rgb(122, 119, 111)"],.thm-root.dark[style*="background-color: rgb(122, 119, 111)"],.thm-root.dark [style*="background-color: rgb(122, 119, 111)"]{background-color:#A8A296 !important;background-image:none !important}
+.thm-root.dark[style*="background: #66625A" i],.thm-root.dark [style*="background: #66625A" i],.thm-root.dark[style*="background-color: #66625A" i],.thm-root.dark [style*="background-color: #66625A" i],.thm-root.dark[style*="background: rgb(102, 98, 90)"],.thm-root.dark [style*="background: rgb(102, 98, 90)"],.thm-root.dark[style*="background-color: rgb(102, 98, 90)"],.thm-root.dark [style*="background-color: rgb(102, 98, 90)"]{background-color:#B5AFA3 !important;background-image:none !important}
+.thm-root.dark[style*="background: #98948B" i],.thm-root.dark [style*="background: #98948B" i],.thm-root.dark[style*="background-color: #98948B" i],.thm-root.dark [style*="background-color: #98948B" i],.thm-root.dark[style*="background: rgb(152, 148, 139)"],.thm-root.dark [style*="background: rgb(152, 148, 139)"],.thm-root.dark[style*="background-color: rgb(152, 148, 139)"],.thm-root.dark [style*="background-color: rgb(152, 148, 139)"]{background-color:#8E887C !important;background-image:none !important}
+.thm-root.dark[style*="background: #B9B2A2" i],.thm-root.dark [style*="background: #B9B2A2" i],.thm-root.dark[style*="background-color: #B9B2A2" i],.thm-root.dark [style*="background-color: #B9B2A2" i],.thm-root.dark[style*="background: rgb(185, 178, 162)"],.thm-root.dark [style*="background: rgb(185, 178, 162)"],.thm-root.dark[style*="background-color: rgb(185, 178, 162)"],.thm-root.dark [style*="background-color: rgb(185, 178, 162)"]{background-color:#6A665D !important;background-image:none !important}
+.thm-root.dark[style*="background: #DCCB9F" i],.thm-root.dark [style*="background: #DCCB9F" i],.thm-root.dark[style*="background-color: #DCCB9F" i],.thm-root.dark [style*="background-color: #DCCB9F" i],.thm-root.dark[style*="background: rgb(220, 203, 159)"],.thm-root.dark [style*="background: rgb(220, 203, 159)"],.thm-root.dark[style*="background-color: rgb(220, 203, 159)"],.thm-root.dark [style*="background-color: rgb(220, 203, 159)"]{background-color:#6B5B3A !important;background-image:none !important}
+.thm-root.dark[style*="background: #A33B2E" i],.thm-root.dark [style*="background: #A33B2E" i],.thm-root.dark[style*="background-color: #A33B2E" i],.thm-root.dark [style*="background-color: #A33B2E" i],.thm-root.dark[style*="background: rgb(163, 59, 46)"],.thm-root.dark [style*="background: rgb(163, 59, 46)"],.thm-root.dark[style*="background-color: rgb(163, 59, 46)"],.thm-root.dark [style*="background-color: rgb(163, 59, 46)"]{background-color:#C9503F !important;background-image:none !important}
+.thm-root.dark[style*="background: #EADBB5" i],.thm-root.dark [style*="background: #EADBB5" i],.thm-root.dark[style*="background-color: #EADBB5" i],.thm-root.dark [style*="background-color: #EADBB5" i],.thm-root.dark[style*="background: rgb(234, 219, 181)"],.thm-root.dark [style*="background: rgb(234, 219, 181)"],.thm-root.dark[style*="background-color: rgb(234, 219, 181)"],.thm-root.dark [style*="background-color: rgb(234, 219, 181)"]{background-color:#3F3729 !important;background-image:none !important}
+.thm-root.dark[style*="solid #E7E4DC" i],.thm-root.dark [style*="solid #E7E4DC" i],.thm-root.dark[style*="dashed #E7E4DC" i],.thm-root.dark [style*="dashed #E7E4DC" i],.thm-root.dark[style*="border-color: #E7E4DC" i],.thm-root.dark [style*="border-color: #E7E4DC" i],.thm-root.dark[style*="solid rgb(231, 228, 220)"],.thm-root.dark [style*="solid rgb(231, 228, 220)"],.thm-root.dark[style*="dashed rgb(231, 228, 220)"],.thm-root.dark [style*="dashed rgb(231, 228, 220)"],.thm-root.dark[style*="border-color: rgb(231, 228, 220)"],.thm-root.dark [style*="border-color: rgb(231, 228, 220)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #EAE7DF" i],.thm-root.dark [style*="solid #EAE7DF" i],.thm-root.dark[style*="dashed #EAE7DF" i],.thm-root.dark [style*="dashed #EAE7DF" i],.thm-root.dark[style*="border-color: #EAE7DF" i],.thm-root.dark [style*="border-color: #EAE7DF" i],.thm-root.dark[style*="solid rgb(234, 231, 223)"],.thm-root.dark [style*="solid rgb(234, 231, 223)"],.thm-root.dark[style*="dashed rgb(234, 231, 223)"],.thm-root.dark [style*="dashed rgb(234, 231, 223)"],.thm-root.dark[style*="border-color: rgb(234, 231, 223)"],.thm-root.dark [style*="border-color: rgb(234, 231, 223)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #DAD5C9" i],.thm-root.dark [style*="solid #DAD5C9" i],.thm-root.dark[style*="dashed #DAD5C9" i],.thm-root.dark [style*="dashed #DAD5C9" i],.thm-root.dark[style*="border-color: #DAD5C9" i],.thm-root.dark [style*="border-color: #DAD5C9" i],.thm-root.dark[style*="solid rgb(218, 213, 201)"],.thm-root.dark [style*="solid rgb(218, 213, 201)"],.thm-root.dark[style*="dashed rgb(218, 213, 201)"],.thm-root.dark [style*="dashed rgb(218, 213, 201)"],.thm-root.dark[style*="border-color: rgb(218, 213, 201)"],.thm-root.dark [style*="border-color: rgb(218, 213, 201)"]{border-color:#4E4B44 !important}
+.thm-root.dark[style*="solid #CFC9BB" i],.thm-root.dark [style*="solid #CFC9BB" i],.thm-root.dark[style*="dashed #CFC9BB" i],.thm-root.dark [style*="dashed #CFC9BB" i],.thm-root.dark[style*="border-color: #CFC9BB" i],.thm-root.dark [style*="border-color: #CFC9BB" i],.thm-root.dark[style*="solid rgb(207, 201, 187)"],.thm-root.dark [style*="solid rgb(207, 201, 187)"],.thm-root.dark[style*="dashed rgb(207, 201, 187)"],.thm-root.dark [style*="dashed rgb(207, 201, 187)"],.thm-root.dark[style*="border-color: rgb(207, 201, 187)"],.thm-root.dark [style*="border-color: rgb(207, 201, 187)"]{border-color:#5A564E !important}
+.thm-root.dark[style*="solid #E2DED3" i],.thm-root.dark [style*="solid #E2DED3" i],.thm-root.dark[style*="dashed #E2DED3" i],.thm-root.dark [style*="dashed #E2DED3" i],.thm-root.dark[style*="border-color: #E2DED3" i],.thm-root.dark [style*="border-color: #E2DED3" i],.thm-root.dark[style*="solid rgb(226, 222, 211)"],.thm-root.dark [style*="solid rgb(226, 222, 211)"],.thm-root.dark[style*="dashed rgb(226, 222, 211)"],.thm-root.dark [style*="dashed rgb(226, 222, 211)"],.thm-root.dark[style*="border-color: rgb(226, 222, 211)"],.thm-root.dark [style*="border-color: rgb(226, 222, 211)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #ECEAE4" i],.thm-root.dark [style*="solid #ECEAE4" i],.thm-root.dark[style*="dashed #ECEAE4" i],.thm-root.dark [style*="dashed #ECEAE4" i],.thm-root.dark[style*="border-color: #ECEAE4" i],.thm-root.dark [style*="border-color: #ECEAE4" i],.thm-root.dark[style*="solid rgb(236, 234, 228)"],.thm-root.dark [style*="solid rgb(236, 234, 228)"],.thm-root.dark[style*="dashed rgb(236, 234, 228)"],.thm-root.dark [style*="dashed rgb(236, 234, 228)"],.thm-root.dark[style*="border-color: rgb(236, 234, 228)"],.thm-root.dark [style*="border-color: rgb(236, 234, 228)"]{border-color:#3A3832 !important}
+.thm-root.dark[style*="solid #F1EFEA" i],.thm-root.dark [style*="solid #F1EFEA" i],.thm-root.dark[style*="dashed #F1EFEA" i],.thm-root.dark [style*="dashed #F1EFEA" i],.thm-root.dark[style*="border-color: #F1EFEA" i],.thm-root.dark [style*="border-color: #F1EFEA" i],.thm-root.dark[style*="solid rgb(241, 239, 234)"],.thm-root.dark [style*="solid rgb(241, 239, 234)"],.thm-root.dark[style*="dashed rgb(241, 239, 234)"],.thm-root.dark [style*="dashed rgb(241, 239, 234)"],.thm-root.dark[style*="border-color: rgb(241, 239, 234)"],.thm-root.dark [style*="border-color: rgb(241, 239, 234)"]{border-color:#3A3832 !important}
+.thm-root.dark[style*="solid #F2EFE8" i],.thm-root.dark [style*="solid #F2EFE8" i],.thm-root.dark[style*="dashed #F2EFE8" i],.thm-root.dark [style*="dashed #F2EFE8" i],.thm-root.dark[style*="border-color: #F2EFE8" i],.thm-root.dark [style*="border-color: #F2EFE8" i],.thm-root.dark[style*="solid rgb(242, 239, 232)"],.thm-root.dark [style*="solid rgb(242, 239, 232)"],.thm-root.dark[style*="dashed rgb(242, 239, 232)"],.thm-root.dark [style*="dashed rgb(242, 239, 232)"],.thm-root.dark[style*="border-color: rgb(242, 239, 232)"],.thm-root.dark [style*="border-color: rgb(242, 239, 232)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #2B2A26" i],.thm-root.dark [style*="solid #2B2A26" i],.thm-root.dark[style*="dashed #2B2A26" i],.thm-root.dark [style*="dashed #2B2A26" i],.thm-root.dark[style*="border-color: #2B2A26" i],.thm-root.dark [style*="border-color: #2B2A26" i],.thm-root.dark[style*="solid rgb(43, 42, 38)"],.thm-root.dark [style*="solid rgb(43, 42, 38)"],.thm-root.dark[style*="dashed rgb(43, 42, 38)"],.thm-root.dark [style*="dashed rgb(43, 42, 38)"],.thm-root.dark[style*="border-color: rgb(43, 42, 38)"],.thm-root.dark [style*="border-color: rgb(43, 42, 38)"]{border-color:#D6D0C4 !important}
+.thm-root.dark[style*="solid #DCCB9F" i],.thm-root.dark [style*="solid #DCCB9F" i],.thm-root.dark[style*="dashed #DCCB9F" i],.thm-root.dark [style*="dashed #DCCB9F" i],.thm-root.dark[style*="border-color: #DCCB9F" i],.thm-root.dark [style*="border-color: #DCCB9F" i],.thm-root.dark[style*="solid rgb(220, 203, 159)"],.thm-root.dark [style*="solid rgb(220, 203, 159)"],.thm-root.dark[style*="dashed rgb(220, 203, 159)"],.thm-root.dark [style*="dashed rgb(220, 203, 159)"],.thm-root.dark[style*="border-color: rgb(220, 203, 159)"],.thm-root.dark [style*="border-color: rgb(220, 203, 159)"]{border-color:#6B5B3A !important}
+.thm-root.dark[style*="solid #A33B2E" i],.thm-root.dark [style*="solid #A33B2E" i],.thm-root.dark[style*="dashed #A33B2E" i],.thm-root.dark [style*="dashed #A33B2E" i],.thm-root.dark[style*="border-color: #A33B2E" i],.thm-root.dark [style*="border-color: #A33B2E" i],.thm-root.dark[style*="solid rgb(163, 59, 46)"],.thm-root.dark [style*="solid rgb(163, 59, 46)"],.thm-root.dark[style*="dashed rgb(163, 59, 46)"],.thm-root.dark [style*="dashed rgb(163, 59, 46)"],.thm-root.dark[style*="border-color: rgb(163, 59, 46)"],.thm-root.dark [style*="border-color: rgb(163, 59, 46)"]{border-color:#F0907F !important}
+.thm-root.dark[style*="solid #FFFFFF" i],.thm-root.dark [style*="solid #FFFFFF" i],.thm-root.dark[style*="dashed #FFFFFF" i],.thm-root.dark [style*="dashed #FFFFFF" i],.thm-root.dark[style*="border-color: #FFFFFF" i],.thm-root.dark [style*="border-color: #FFFFFF" i],.thm-root.dark[style*="solid rgb(255, 255, 255)"],.thm-root.dark [style*="solid rgb(255, 255, 255)"],.thm-root.dark[style*="dashed rgb(255, 255, 255)"],.thm-root.dark [style*="dashed rgb(255, 255, 255)"],.thm-root.dark[style*="border-color: rgb(255, 255, 255)"],.thm-root.dark [style*="border-color: rgb(255, 255, 255)"]{border-color:#2C2B27 !important}
+.thm-root.dark[style*="solid #F7F6F2" i],.thm-root.dark [style*="solid #F7F6F2" i],.thm-root.dark[style*="dashed #F7F6F2" i],.thm-root.dark [style*="dashed #F7F6F2" i],.thm-root.dark[style*="border-color: #F7F6F2" i],.thm-root.dark [style*="border-color: #F7F6F2" i],.thm-root.dark[style*="solid rgb(247, 246, 242)"],.thm-root.dark [style*="solid rgb(247, 246, 242)"],.thm-root.dark[style*="dashed rgb(247, 246, 242)"],.thm-root.dark [style*="dashed rgb(247, 246, 242)"],.thm-root.dark[style*="border-color: rgb(247, 246, 242)"],.thm-root.dark [style*="border-color: rgb(247, 246, 242)"]{border-color:#3A3832 !important}
+.thm-root.dark[style*=" color: #2B2A26" i],.thm-root.dark [style*=" color: #2B2A26" i],.thm-root.dark[style^="color: #2B2A26" i],.thm-root.dark [style^="color: #2B2A26" i],.thm-root.dark[style*=" color: rgb(43, 42, 38)"],.thm-root.dark [style*=" color: rgb(43, 42, 38)"],.thm-root.dark[style^="color: rgb(43, 42, 38)"],.thm-root.dark [style^="color: rgb(43, 42, 38)"]{color:#ECE8DF !important}
+.thm-root.dark[style*=" color: #3A3833" i],.thm-root.dark [style*=" color: #3A3833" i],.thm-root.dark[style^="color: #3A3833" i],.thm-root.dark [style^="color: #3A3833" i],.thm-root.dark[style*=" color: rgb(58, 56, 51)"],.thm-root.dark [style*=" color: rgb(58, 56, 51)"],.thm-root.dark[style^="color: rgb(58, 56, 51)"],.thm-root.dark [style^="color: rgb(58, 56, 51)"]{color:#DAD5C9 !important}
+.thm-root.dark[style*=" color: #5E5A52" i],.thm-root.dark [style*=" color: #5E5A52" i],.thm-root.dark[style^="color: #5E5A52" i],.thm-root.dark [style^="color: #5E5A52" i],.thm-root.dark[style*=" color: rgb(94, 90, 82)"],.thm-root.dark [style*=" color: rgb(94, 90, 82)"],.thm-root.dark[style^="color: rgb(94, 90, 82)"],.thm-root.dark [style^="color: rgb(94, 90, 82)"]{color:#C9C3B6 !important}
+.thm-root.dark[style*=" color: #66625A" i],.thm-root.dark [style*=" color: #66625A" i],.thm-root.dark[style^="color: #66625A" i],.thm-root.dark [style^="color: #66625A" i],.thm-root.dark[style*=" color: rgb(102, 98, 90)"],.thm-root.dark [style*=" color: rgb(102, 98, 90)"],.thm-root.dark[style^="color: rgb(102, 98, 90)"],.thm-root.dark [style^="color: rgb(102, 98, 90)"]{color:#BDB7AA !important}
+.thm-root.dark[style*=" color: #6E6A62" i],.thm-root.dark [style*=" color: #6E6A62" i],.thm-root.dark[style^="color: #6E6A62" i],.thm-root.dark [style^="color: #6E6A62" i],.thm-root.dark[style*=" color: rgb(110, 106, 98)"],.thm-root.dark [style*=" color: rgb(110, 106, 98)"],.thm-root.dark[style^="color: rgb(110, 106, 98)"],.thm-root.dark [style^="color: rgb(110, 106, 98)"]{color:#B5AFA3 !important}
+.thm-root.dark[style*=" color: #7A776F" i],.thm-root.dark [style*=" color: #7A776F" i],.thm-root.dark[style^="color: #7A776F" i],.thm-root.dark [style^="color: #7A776F" i],.thm-root.dark[style*=" color: rgb(122, 119, 111)"],.thm-root.dark [style*=" color: rgb(122, 119, 111)"],.thm-root.dark[style^="color: rgb(122, 119, 111)"],.thm-root.dark [style^="color: rgb(122, 119, 111)"]{color:#A8A296 !important}
+.thm-root.dark[style*=" color: #98948B" i],.thm-root.dark [style*=" color: #98948B" i],.thm-root.dark[style^="color: #98948B" i],.thm-root.dark [style^="color: #98948B" i],.thm-root.dark[style*=" color: rgb(152, 148, 139)"],.thm-root.dark [style*=" color: rgb(152, 148, 139)"],.thm-root.dark[style^="color: rgb(152, 148, 139)"],.thm-root.dark [style^="color: rgb(152, 148, 139)"]{color:#8E887C !important}
+.thm-root.dark[style*=" color: #A33B2E" i],.thm-root.dark [style*=" color: #A33B2E" i],.thm-root.dark[style^="color: #A33B2E" i],.thm-root.dark [style^="color: #A33B2E" i],.thm-root.dark[style*=" color: rgb(163, 59, 46)"],.thm-root.dark [style*=" color: rgb(163, 59, 46)"],.thm-root.dark[style^="color: rgb(163, 59, 46)"],.thm-root.dark [style^="color: rgb(163, 59, 46)"]{color:#F0907F !important}
+.thm-root.dark[style*=" color: #7A5F28" i],.thm-root.dark [style*=" color: #7A5F28" i],.thm-root.dark[style^="color: #7A5F28" i],.thm-root.dark [style^="color: #7A5F28" i],.thm-root.dark[style*=" color: rgb(122, 95, 40)"],.thm-root.dark [style*=" color: rgb(122, 95, 40)"],.thm-root.dark[style^="color: rgb(122, 95, 40)"],.thm-root.dark [style^="color: rgb(122, 95, 40)"]{color:#E3C77E !important}
+.thm-root.dark[style*=" color: #8C7340" i],.thm-root.dark [style*=" color: #8C7340" i],.thm-root.dark[style^="color: #8C7340" i],.thm-root.dark [style^="color: #8C7340" i],.thm-root.dark[style*=" color: rgb(140, 115, 64)"],.thm-root.dark [style*=" color: rgb(140, 115, 64)"],.thm-root.dark[style^="color: rgb(140, 115, 64)"],.thm-root.dark [style^="color: rgb(140, 115, 64)"]{color:#D9C08A !important}
+.thm-root.dark[style*=" color: #EADBB5" i],.thm-root.dark [style*=" color: #EADBB5" i],.thm-root.dark[style^="color: #EADBB5" i],.thm-root.dark [style^="color: #EADBB5" i],.thm-root.dark[style*=" color: rgb(234, 219, 181)"],.thm-root.dark [style*=" color: rgb(234, 219, 181)"],.thm-root.dark[style^="color: rgb(234, 219, 181)"],.thm-root.dark [style^="color: rgb(234, 219, 181)"]{color:#2B2A26 !important}
+.thm-root.dark[style*=" color: #D9C08A" i],.thm-root.dark [style*=" color: #D9C08A" i],.thm-root.dark[style^="color: #D9C08A" i],.thm-root.dark [style^="color: #D9C08A" i],.thm-root.dark[style*=" color: rgb(217, 192, 138)"],.thm-root.dark [style*=" color: rgb(217, 192, 138)"],.thm-root.dark[style^="color: rgb(217, 192, 138)"],.thm-root.dark [style^="color: rgb(217, 192, 138)"]{color:#2B2A26 !important}
+.thm-root.dark [fill="#2B2A26" i]{fill:#ECE8DF !important}
+.thm-root.dark [fill="#3A3833" i]{fill:#DAD5C9 !important}
+.thm-root.dark [fill="#5E5A52" i]{fill:#C9C3B6 !important}
+.thm-root.dark [fill="#66625A" i]{fill:#BDB7AA !important}
+.thm-root.dark [fill="#6E6A62" i]{fill:#B5AFA3 !important}
+.thm-root.dark [fill="#7A776F" i]{fill:#A8A296 !important}
+.thm-root.dark [fill="#98948B" i]{fill:#8E887C !important}
+.thm-root.dark [fill="#A33B2E" i]{fill:#F0907F !important}
+.thm-root.dark [fill="#7A5F28" i]{fill:#E3C77E !important}
+.thm-root.dark [fill="#8C7340" i]{fill:#D9C08A !important}
+.thm-root.dark [fill="#EADBB5" i]{fill:#2B2A26 !important}
+.thm-root.dark [fill="#D9C08A" i]{fill:#2B2A26 !important}
+.thm-root.dark [fill="#FFFFFF" i]{fill:#2C2B27 !important}
+.thm-root.dark [stroke="#FFFFFF" i]{stroke:#2C2B27 !important}
+.thm-root.dark [style*="linear-gradient(135deg, #F1EADA" i],.thm-root.dark [style*="linear-gradient(135deg, rgb(241, 234, 218)"]{background:#3A3428 !important}
+.thm-root.dark [style*="inset 0 4px 0 #A33B2E" i],.thm-root.dark [style*="inset 0px 4px 0px rgb(163, 59, 46)"]{box-shadow:inset 0 4px 0 #F0907F !important}
+/* 다크 모드 스위치 */
+.thm-bar{display:flex;justify-content:flex-end;margin:-10px 0 -8px}
+.thm-abs{position:absolute;top:20px;right:24px;z-index:5}
+.thm-tg{position:relative;width:68px;height:36px;flex:none;border-radius:999px;border:1px solid #2B2A26;background:#2B2A26;padding:0;cursor:pointer;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl);transition:background .25s,border-color .25s}
+.thm-knob{position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#FFFFFF;color:#2B2A26;display:flex;align-items:center;justify-content:center;transition:transform .25s,background .25s,color .25s}
+.thm-knob svg{width:16px;height:16px;display:block}
+.thm-tg .i-moon{display:none}
+.thm-tg:focus-visible{outline:2px solid #C2A36B;outline-offset:3px}
+.thm-root.dark .thm-tg{background:#EADBB5 !important;border-color:#EADBB5 !important}
+.thm-root.dark .thm-knob{transform:translateX(32px);background:#1B1A17 !important;color:#EADBB5 !important}
+.thm-root.dark .thm-tg .i-moon{display:block}
+.thm-root.dark .thm-tg .i-sun{display:none}
+/* 사이드바 스크롤 고정 · 메뉴 구분선 */
+.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.thm-root.dark:has(> .side){background-color:#24231F !important}
+.nav a:not(.on)+a:not(.on)::before{content:"";position:absolute;left:14px;right:14px;top:-3px;height:1px;background:rgba(43,42,38,.09);pointer-events:none}
+.thm-root.dark .nav a:not(.on)+a:not(.on)::before{background:rgba(236,232,223,.08)}
+@media (max-width:900px){.side{position:relative;height:auto;overflow:visible;align-self:stretch}}
+/* ===== 반응형 · 휴대폰 / 태블릿 ===== */
+img,video,canvas{max-width:100%;height:auto}
+svg{max-width:100%}
+main{min-width:0;overflow-wrap:anywhere}
+.mnav-tg{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.mnav-btn{display:none}
+@media (max-width:1100px){
+.side{flex-basis:13.75rem !important}
+.side+main,.side+div>main{padding:1.5rem 1.5rem 3rem !important}
+}
+@media (max-width:900px){
+.side{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:wrap !important;align-items:center !important;gap:.5rem .75rem !important;padding:.75rem 1rem !important}
+.side>.logo{padding:0 !important;margin-right:auto}
+.mnav-btn{display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem;padding:0 1rem;border-radius:999px;border:1px solid #CFC9BB;background:#FFFFFF;font-size:.875rem;font-weight:600;color:#2B2A26;cursor:pointer}
+.mnav-btn i{display:inline-block;width:1rem;height:2px;border-radius:1px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
+.mnav-tg:focus-visible+.mnav-btn{outline:2px solid #C2A36B;outline-offset:2px}
+.side>.cta,.side>.cta2,.side>.nav,.side>.me{display:none !important;flex:1 1 100%}
+.mnav-tg:checked~.cta,.mnav-tg:checked~.cta2,.mnav-tg:checked~.me{display:flex !important}
+.mnav-tg:checked~.nav{display:flex !important;margin:.25rem 0 0 !important}
+.nav a.on{margin-right:0 !important;border-radius:999px !important;background-color:#FFFFFF !important}
+.nav a.on::before,.nav a.on::after{display:none !important}
+.side+main,.side+div{flex:1 1 100% !important;border-radius:1.5rem 1.5rem 0 0 !important}
+.side+main,.side+div>main{padding:1.25rem 1rem 2.5rem !important}
+.top{padding:.5rem 1rem !important;min-height:auto !important}
+h1{font-size:clamp(1.375rem,5vw,1.75rem) !important}
+.tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap !important}
+.tabs a{white-space:nowrap;flex:none}
+.thm-root.dark .mnav-btn{background:#2C2B27 !important;border-color:#5A564E !important;color:#ECE8DF !important}
+.thm-root.dark .nav a.on{background-color:#2C2B27 !important}
+}
+@media (max-width:600px){
+[style*="minmax(420px"],[style*="minmax(380px"],[style*="minmax(320px"],[style*="minmax(300px"],[style*="minmax(280px"]{grid-template-columns:minmax(0,1fr) !important}
+.g3{grid-template-columns:minmax(0,1fr) !important}
+section[aria-label="폴더"]{max-width:none !important}
+.steps{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem !important}
+.stp{padding:.625rem .75rem !important;gap:.5rem !important;font-size:.8125rem}
+.stp.on::after{display:none !important}
+.ln{grid-template-columns:auto minmax(0,1fr) auto !important;gap:.5rem .75rem !important;padding:.75rem 1rem !important}
+.ln>:nth-child(3){grid-column:1/-1;grid-row:2}
+.ln>:nth-child(4){grid-column:3;grid-row:1}
+.qa-row{grid-template-columns:minmax(0,1fr) !important}
+.hd{padding:.875rem 1rem !important}
+.kpi b,.stat b.n{font-size:1.625rem !important}
+.law{grid-template-columns:auto minmax(0,1fr) auto !important}
+.law .sum{grid-column:1/-1;grid-row:2}
+.hb{grid-template-columns:5.5rem minmax(0,1fr) 5.25rem !important}
+.thm-bar{margin:-.25rem 0 -.5rem !important}
+.thm-abs{top:.625rem !important;right:.75rem !important}
+.thm-abs~section[role="dialog"],.thm-abs~form{margin-top:2.75rem}
+}
+/* ===== 모서리 정리 (덜 둥글게) · 색상/그림자 유지 ===== */
+.btn,.cta,.cta2,.mnav-btn{border-radius:10px !important}
+.btn-sm{border-radius:8px !important}
+.inp,input.inp,select.inp,textarea.inp,.mv{border-radius:10px !important}
+.chip,.sig,.opt,.orig{border-radius:6px !important}
+.chipck,.addq,.pk,.impb{border-radius:8px !important}
+.seg,.tabs,.lseg,.tg{border-radius:12px !important}
+.seg button,.seg a,.tabs a,.tabs button,.lseg button{border-radius:8px !important}
+.stp{border-radius:12px !important}
+.stp.on::after{border-radius:6px !important}
+.toast{border-radius:10px !important}
+.nav a{border-radius:10px !important}
+.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:12px 0 0 12px !important}
+.nav a.on::before,.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{width:12px !important;height:12px !important}
+.nav a.on::before,.side[aria-label="관리자 메뉴"]>a.on::before{top:-12px !important;background:radial-gradient(circle at 0 0,transparent 11.5px,var(--base) 12px) !important}
+.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::after{bottom:-12px !important;background:radial-gradient(circle at 0 100%,transparent 11.5px,var(--base) 12px) !important}
+.side+main,.side+div{border-radius:20px 0 0 20px !important}
+.card{border-radius:14px !important}
+.box,.quote,.qcard,.qa,.flag,.fhead,.sum>div,.scard,.rq,.pop,.pick,.kpi,.fmt,.empty,.doc,.big{border-radius:12px !important}
+.mk{border-radius:10px !important}
+[style*="border-radius: 999px"]{border-radius:8px !important}
+[style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
+[style*="border-radius: 16px"]{border-radius:12px !important}
+@media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+/* 위험수준 척도 · 상단 고정 목록 */
+.sumbar{position:sticky;top:0;z-index:6;background:#FFFFFF;padding:10px 0 0;margin:0 -4px;padding-left:4px;padding-right:4px;box-shadow:0 8px 12px -10px rgba(43,42,38,.25)}
+.sc-head{border-bottom:0 !important;padding-top:10px;padding-bottom:6px}
+.opt3-head{background:transparent !important}
+.opt3-head span{display:inline-flex;align-items:center;justify-content:center;width:84px;font-size:12px;font-weight:700;color:#66625A}
+.grp[id]{scroll-margin-top:190px}
+.thm-root.dark .sumbar{background:#2C2B27 !important}
+.thm-root.dark .opt3-head span{color:#BDB7AA !important}
+/* 초기면접지 (새 사례 등록 서식 화면 그대로) */
+.lb{font-size:13px;font-weight:500;color:#2B2A26}
+.req{color:#A33B2E}
+.fl{display:flex;flex-direction:column;gap:6px}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.pk{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid #DAD5C9;font:inherit;font-size:13px;cursor:pointer;background:#FFFFFF;color:#2B2A26}
+.tabb{flex:1;min-height:46px;border:0;border-bottom:3px solid transparent;background:transparent;font:inherit;font-size:14px;cursor:pointer;color:#66625A}
+.ta2{width:100%;min-height:72px;border:1px solid #DAD5C9;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;background:#FFFFFF;color:#2B2A26;resize:vertical}
+.ft{width:100%;border-collapse:collapse;font-size:13px}
+.ft th{background:#F7F6F2;font-weight:500;color:#66625A;padding:8px;text-align:left}
+.ft td{border-bottom:1px solid #EAE7DF;padding:4px}
+.ft input{width:100%;height:34px;border:1px solid #E7E4DC;border-radius:8px;padding:0 8px;font:inherit;font-size:13px}
+.dtw{position:relative;display:block}
+.dtw .dt{width:100%}
+.dt.empty::-webkit-datetime-edit{color:transparent}
+.dt.empty:focus::-webkit-datetime-edit{color:inherit}
+.dtph{display:none;position:absolute;left:15px;top:50%;transform:translateY(-50%);font-size:14px;color:#98948B;pointer-events:none}
+.dt.empty+.dtph{display:block}
+.dtw:focus-within .dtph{display:none}
+.sec{font-size:14px;font-weight:700;padding:8px 12px;background:#F2EFE8;border-radius:10px}
+.thm-root.dark .lb{color:#ECE8DF !important}
+.thm-root.dark .req{color:#F0907F !important}
+.thm-root.dark .pk{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .tabb{color:#BDB7AA !important}
+.thm-root.dark .ft th{background:#33312C !important;color:#BDB7AA !important}
+.thm-root.dark .ft td{border-bottom:1px solid #45423B !important}
+.thm-root.dark .ft input{border:1px solid #45423B !important}
+.thm-root.dark .sec{background:#393731 !important}
+.thm-root.dark .dtph{color:#8E887C !important}
+/* 날짜 선택 (연 → 월 → 일) */
+.dpw{position:relative;display:block}
+.dpw .dpi{width:100%;padding-right:46px}
+.dp-btn{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:34px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.dp-btn:hover{border-color:#2B2A26}
+.dp-bd{position:fixed;inset:0;z-index:40}
+.dp-pop{position:absolute;left:0;top:calc(100% + 6px);z-index:41;width:100%;min-width:300px;height:318px;box-sizing:border-box;padding:12px;display:flex;flex-direction:column;gap:8px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:12px;box-shadow:0 12px 32px rgba(43,42,38,.18);color:#2B2A26;font-size:14px}
+.dp-hd{display:flex;align-items:center;gap:8px;min-height:34px;padding:0 2px}
+.dp-hd b{font-size:15px}
+.dp-nav{width:34px;height:32px;border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;font:inherit;font-size:16px;color:#2B2A26;cursor:pointer}
+.dp-nav:disabled{opacity:.35;cursor:default}
+.dp-years{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+.dp-y{flex:none;min-height:40px;border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;font:inherit;font-size:15px;color:#2B2A26;cursor:pointer}
+.dp-months{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:1fr;gap:6px}
+.dp-m{border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;font:inherit;font-size:15px;color:#2B2A26;cursor:pointer}
+.dp-days{flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:min-content;gap:4px;align-content:start}
+.dp-dow{text-align:center;font-size:12px;color:#7A776F;padding:2px 0 4px}
+.dp-d{height:34px;border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;font:inherit;font-size:14px;color:#2B2A26;cursor:pointer;padding:0}
+.dp-y:hover,.dp-m:hover,.dp-d:hover{border-color:#2B2A26}
+.dp-y.on,.dp-m.on,.dp-d.on{background:#2B2A26;border-color:#2B2A26;color:#EADBB5;font-weight:700}
+.dp-m:disabled,.dp-d:disabled{opacity:.35;cursor:default}
+.thm-root.dark .dp-btn,.thm-root.dark .dp-nav,.thm-root.dark .dp-y,.thm-root.dark .dp-m,.thm-root.dark .dp-d{background:#2C2B27 !important;border-color:#4E4B44 !important;color:#ECE8DF !important}
+.thm-root.dark .dp-pop{background:#2C2B27 !important;border-color:#4E4B44 !important;color:#ECE8DF !important}
+.thm-root.dark .dp-dow{color:#A8A296}
+.thm-root.dark .dp-y.on,.thm-root.dark .dp-m.on,.thm-root.dark .dp-d.on{background:#EADBB5 !important;border-color:#EADBB5 !important;color:#2B2A26 !important}
+/* 분석 알림 (녹취 올리기 후 화면 상단) */
+.job-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:90;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 10px 28px rgba(43,42,38,.28);animation:jobIn .3s ease;transition:transform .45s ease,opacity .45s ease}
+.job-toast.out{transform:translate(-50%,-180%);opacity:0}
+@keyframes jobIn{from{transform:translate(-50%,-180%);opacity:0}}
+.job-spin{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid rgba(234,219,181,.35);border-top-color:#EADBB5;animation:jobSp .8s linear infinite}
+@keyframes jobSp{to{transform:rotate(360deg)}}
+.job-file{font-weight:400;font-size:12.5px;opacity:.75;overflow:hidden;text-overflow:ellipsis}
+.job-ok{font-weight:700}
+.job-go{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#EADBB5;color:#2B2A26 !important;text-decoration:none;font-weight:700}
+.thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
+.thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+</style>
+</helmet>
+<div class="{{ themeCls }}" style="min-height: 1880px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
+<sc-if value="{{ jobShow }}" hint-placeholder-val="{{ false }}"><div class="job-toast {{ jobCls }}" role="status" aria-live="polite"><sc-if value="{{ jobRun }}" hint-placeholder-val="{{ true }}"><span class="job-spin" aria-hidden="true"></span><span>분석 중입니다...</span><span class="job-file">{{ jobName }}</span></sc-if><sc-if value="{{ jobDone }}" hint-placeholder-val="{{ false }}"><span class="job-ok" aria-hidden="true">✓</span><span>분석 완료</span><a class="job-go" href="SttReview.dc.html" onClick="{{ jobGo }}">검수</a></sc-if></div></sc-if>
+<aside class="side" aria-label="주 메뉴">
+<a class="logo" href="Main.dc.html"><span class="mk">IS</span><b style="font-size: 17px;">I-SPOT</b></a>
+<input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
+<a class="cta" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 · 자료 올리기</a>
+<a class="cta2" href="CaseRegister.dc.html" onClick="{{ markBack }}">+ 새 사례 등록</a>
+<nav class="nav" aria-label="메뉴">
+<a href="Main.dc.html">홈</a>
+<a class="on" href="CaseList.dc.html">사례 관리</a>
+<a href="Schedule.dc.html">일정</a>
+<a href="ChildLink.dc.html">아이 연계<span class="cnt">4</span></a>
+<a href="Closure.dc.html">종결 검토<span class="cnt">2</span></a>
+<a href="DocBox.dc.html">문서함</a>
+<a href="Stats.dc.html">통계</a>
+<a href="Settings.dc.html">설정</a>
+</nav>
+<div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
+</aside>
+<main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
+<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<div><a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a></div>
+<nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
+<section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
+<a class="btn btn-sm btn-s" href="CaseDocs.dc.html" aria-label="문서함으로 돌아가기" title="문서함으로 돌아가기">←</a>
+<div style="flex: 1 1 320px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h1 style="margin: 0; font-size: 28px; font-weight: 700;">이서윤</h1><span class="sub">13세 · 중1</span><span class="chip c-hi">위험도 상</span></div>
+<div class="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
+</div>
+<a class="btn btn-s" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 올리기</a>
+</section>
+<nav class="tabs" aria-label="사례 상세 메뉴">
+<a href="CaseDetail.dc.html">내담자 정보</a>
+<a href="CaseHistory.dc.html">상담 이력</a>
+<a href="PreBriefing.dc.html">상담 전 브리핑</a>
+<a class="on" aria-current="page" href="CaseDocs.dc.html">문서함</a>
+</nav>
+<nav aria-label="위치" class="note" style="margin-top: -8px;"><a href="CaseDocs.dc.html">문서함</a> › 초기면접지 (아동용)</nav>
+
+<section class="card" aria-label="초기면접지 (아동용)" style="padding: 0 0 6px;">
+<div style="padding: 22px 30px 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;"><h2 class="h2">초기면접지 (아동용)</h2><span class="note">서식 4 · 확정 2026-07-29</span></div>
+<div role="tablist" style="display: flex; margin: 16px 30px 0; border-bottom: 1px solid #EAE7DF;">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2"><button type="button" role="tab" class="tabb" aria-selected="{{ t.sel }}" onClick="{{ t.go }}" style="border-bottom-color: {{ t.bd }}; color: {{ t.fg }}; font-weight: {{ t.fw }};">{{ t.label }}</button></sc-for>
+</div>
+
+<form style="padding: 22px 30px; display: flex; flex-direction: column; gap: 18px;">
+<sc-if value="{{ isA }}" hint-placeholder-val="{{ true }}">
+<div class="g3">
+<label class="fl"><span class="lb">신고접수일 <span class="req">*</span></span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.report }}" onChange="{{ fs.report }}" style="border-color: {{ fe.report }};" aria-invalid="{{ fi.report }}" aria-label="신고접수일"><button type="button" class="dp-btn" aria-label="신고접수일 달력 열기" aria-expanded="{{ dp.report.exp }}" onClick="{{ dp.report.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
+<sc-if value="{{ dp.report.open }}" hint-placeholder-val="{{ false }}"><span class="dp-bd" onClick="{{ dp.report.close }}"></span><span class="dp-pop" role="dialog" aria-label="신고접수일 선택">
+<sc-if value="{{ dp.report.isY }}" hint-placeholder-val="{{ true }}"><span class="dp-hd"><b>연도 선택</b></span><span class="dp-years" id="{{ dp.report.listId }}"><sc-for list="{{ dp.report.years }}" as="o" hint-placeholder-count="6"><button type="button" class="dp-y {{ o.cls }}" id="{{ o.id }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.report.isM }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="연도 선택으로" onClick="{{ dp.report.toY }}">←</button><b>{{ dp.report.yLabel }}</b></span><span class="dp-months"><sc-for list="{{ dp.report.months }}" as="o" hint-placeholder-count="12"><button type="button" class="dp-m {{ o.cls }}" disabled="{{ o.dis }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.report.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.report.toM }}">←</button><b>{{ dp.report.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.report.prevDis }}" onClick="{{ dp.report.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.report.nextDis }}" onClick="{{ dp.report.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.report.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.report.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
+</span></sc-if></span></label>
+<label class="fl"><span class="lb">사례연계일 <span class="req">*</span></span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.link }}" onChange="{{ fs.link }}" style="border-color: {{ fe.link }};" aria-invalid="{{ fi.link }}" aria-label="사례연계일"><button type="button" class="dp-btn" aria-label="사례연계일 달력 열기" aria-expanded="{{ dp.link.exp }}" onClick="{{ dp.link.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
+<sc-if value="{{ dp.link.open }}" hint-placeholder-val="{{ false }}"><span class="dp-bd" onClick="{{ dp.link.close }}"></span><span class="dp-pop" role="dialog" aria-label="사례연계일 선택">
+<sc-if value="{{ dp.link.isY }}" hint-placeholder-val="{{ true }}"><span class="dp-hd"><b>연도 선택</b></span><span class="dp-years" id="{{ dp.link.listId }}"><sc-for list="{{ dp.link.years }}" as="o" hint-placeholder-count="6"><button type="button" class="dp-y {{ o.cls }}" id="{{ o.id }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.link.isM }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="연도 선택으로" onClick="{{ dp.link.toY }}">←</button><b>{{ dp.link.yLabel }}</b></span><span class="dp-months"><sc-for list="{{ dp.link.months }}" as="o" hint-placeholder-count="12"><button type="button" class="dp-m {{ o.cls }}" disabled="{{ o.dis }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.link.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.link.toM }}">←</button><b>{{ dp.link.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.link.prevDis }}" onClick="{{ dp.link.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.link.nextDis }}" onClick="{{ dp.link.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.link.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.link.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
+</span></sc-if></span></label>
+<label class="fl"><span class="lb">최초면접일</span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.first }}" onChange="{{ fs.first }}" aria-label="최초면접일"><button type="button" class="dp-btn" aria-label="최초면접일 달력 열기" aria-expanded="{{ dp.first.exp }}" onClick="{{ dp.first.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
+<sc-if value="{{ dp.first.open }}" hint-placeholder-val="{{ false }}"><span class="dp-bd" onClick="{{ dp.first.close }}"></span><span class="dp-pop" role="dialog" aria-label="최초면접일 선택">
+<sc-if value="{{ dp.first.isY }}" hint-placeholder-val="{{ true }}"><span class="dp-hd"><b>연도 선택</b></span><span class="dp-years" id="{{ dp.first.listId }}"><sc-for list="{{ dp.first.years }}" as="o" hint-placeholder-count="6"><button type="button" class="dp-y {{ o.cls }}" id="{{ o.id }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.first.isM }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="연도 선택으로" onClick="{{ dp.first.toY }}">←</button><b>{{ dp.first.yLabel }}</b></span><span class="dp-months"><sc-for list="{{ dp.first.months }}" as="o" hint-placeholder-count="12"><button type="button" class="dp-m {{ o.cls }}" disabled="{{ o.dis }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.first.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.first.toM }}">←</button><b>{{ dp.first.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.first.prevDis }}" onClick="{{ dp.first.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.first.nextDis }}" onClick="{{ dp.first.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.first.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.first.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
+</span></sc-if></span></label>
+<label class="fl"><span class="lb">개별사건번호 <span class="req">*</span></span><input class="inp" type="text" value="{{ fv.no }}" onChange="{{ fs.no }}" style="border-color: {{ fe.no }};" aria-invalid="{{ fi.no }}"></label>
+<label class="fl"><span class="lb">대상아동 이름 <span class="req">*</span></span><input class="inp" type="text" placeholder="이름" value="{{ fv.child }}" onChange="{{ fs.child }}" style="border-color: {{ fe.child }};" aria-invalid="{{ fi.child }}"></label>
+<label class="fl"><span class="lb">성별 <span class="req">*</span></span><select class="inp" value="{{ fv.sex }}" onChange="{{ fs.sex }}" style="border-color: {{ fe.sex }};" aria-invalid="{{ fi.sex }}"><option>선택</option><option>여</option><option>남</option></select></label>
+<label class="fl"><span class="lb">생년월일 (나이) <span class="req">*</span></span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.birth }}" onChange="{{ fs.birth }}" style="border-color: {{ fe.birth }};" aria-invalid="{{ fi.birth }}" aria-label="생년월일"><button type="button" class="dp-btn" aria-label="생년월일 달력 열기" aria-expanded="{{ dp.birth.exp }}" onClick="{{ dp.birth.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
+<sc-if value="{{ dp.birth.open }}" hint-placeholder-val="{{ false }}"><span class="dp-bd" onClick="{{ dp.birth.close }}"></span><span class="dp-pop" role="dialog" aria-label="생년월일 선택">
+<sc-if value="{{ dp.birth.isY }}" hint-placeholder-val="{{ true }}"><span class="dp-hd"><b>연도 선택</b></span><span class="dp-years" id="{{ dp.birth.listId }}"><sc-for list="{{ dp.birth.years }}" as="o" hint-placeholder-count="6"><button type="button" class="dp-y {{ o.cls }}" id="{{ o.id }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.birth.isM }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="연도 선택으로" onClick="{{ dp.birth.toY }}">←</button><b>{{ dp.birth.yLabel }}</b></span><span class="dp-months"><sc-for list="{{ dp.birth.months }}" as="o" hint-placeholder-count="12"><button type="button" class="dp-m {{ o.cls }}" disabled="{{ o.dis }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.birth.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.birth.toM }}">←</button><b>{{ dp.birth.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.birth.prevDis }}" onClick="{{ dp.birth.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.birth.nextDis }}" onClick="{{ dp.birth.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.birth.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.birth.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
+</span></sc-if></span></label>
+<label class="fl"><span class="lb">사례관리대상자 <span class="req">*</span></span><input class="inp" type="text" placeholder="이름" value="{{ fv.target }}" onChange="{{ fs.target }}" style="border-color: {{ fe.target }};" aria-invalid="{{ fi.target }}"></label>
+<label class="fl"><span class="lb">관계 <span class="req">*</span></span><select class="inp" value="{{ fv.rel }}" onChange="{{ fs.rel }}" style="border-color: {{ fe.rel }};" aria-invalid="{{ fi.rel }}"><option>선택</option><option>친부</option><option>친모</option><option>계부</option><option>계모</option><option>조부모</option><option>친인척</option><option>기타</option></select></label>
+</div>
+
+<div class="g3">
+<label class="fl"><span class="lb">조치결과 · 피해아동 <span class="req">*</span></span><select class="inp" value="{{ fv.m1 }}" onChange="{{ fs.m1 }}" style="border-color: {{ fe.m1 }};" aria-invalid="{{ fi.m1 }}"><option>원가정보호</option><option>친인척보호</option><option>연고자에 의한 보호</option><option>가정위탁</option><option>시설입소</option><option>병원입원</option><option>기타</option></select></label>
+<label class="fl"><span class="lb">조치결과 · 사례관리대상자 <span class="req">*</span></span><select class="inp" value="{{ fv.m2 }}" onChange="{{ fs.m2 }}" style="border-color: {{ fe.m2 }};" aria-invalid="{{ fi.m2 }}"><option>지속관찰</option><option>아동과의 분리</option><option>고소 · 고발</option><option>기타</option></select></label>
+<label class="fl"><span class="lb">면접대상자 / 관계</span><input class="inp" type="text" placeholder="예: 이서윤 / 피해아동"></label>
+<label class="fl"><span class="lb">담당 상담원</span><input class="inp" type="text" value="이서연"></label>
+<label class="fl"><span class="lb">위험도 (우선)</span><select class="inp"><option>선택</option><option>상</option><option>중</option><option>하</option></select></label>
+</div>
+<label class="fl"><span class="lb">사례연계 경위 <span class="req">*</span></span><textarea class="ta2" placeholder="신고 경위 · 신고자 유형 · 연계 내용" value="{{ fv.how }}" onChange="{{ fs.how }}" style="border-color: {{ fe.how }};" aria-invalid="{{ fi.how }}"></textarea></label>
+</sc-if>
+
+<sc-if value="{{ isB }}" hint-placeholder-val="{{ false }}">
+<div class="sec">가정상황 <span class="note" style="font-weight: 400;">(복수응답 가능)</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ homes }}" as="o" hint-placeholder-count="21"><button type="button" class="pk" onClick="{{ o.toggle }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.mark }} {{ o.label }}</button></sc-for></div>
+<sc-if value="{{ hmEdit }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><input class="inp" type="text" placeholder="기타 내용 직접 입력" aria-label="가정상황 기타 직접 입력" value="{{ hmDraft }}" onChange="{{ hmDraftSet }}" style="flex: 1 1 280px; min-width: 0; height: 36px;"><button type="button" class="btn btn-p btn-sm" onClick="{{ hmOk }}">확인</button><button type="button" class="btn btn-s btn-sm" onClick="{{ hmCancel }}">취소</button></div></sc-if>
+<sc-if value="{{ hmShowOther }}" hint-placeholder-val="{{ false }}"><div style="font-size: 13px; color: #2B2A26;">✓ 기타 · {{ hmOther }}</div></sc-if>
+<label class="fl"><span class="lb">보호자와 아동과의 관계</span><textarea class="ta2"></textarea></label>
+
+<div class="sec">가족유형</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ fams }}" as="o" hint-placeholder-count="12"><button type="button" class="pk" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for></div>
+
+<div class="sec">가족관계</div>
+<div style="overflow-x: auto;"><table class="ft"><thead><tr><th>성명</th><th>관계</th><th>나이</th><th>종교</th><th>학력</th><th>직업</th><th>동거여부</th></tr></thead><tbody>
+<sc-for list="{{ famRows }}" as="r" hint-placeholder-count="3"><tr><td><input aria-label="성명"></td><td><input aria-label="관계"></td><td><input aria-label="나이"></td><td><input aria-label="종교"></td><td><input aria-label="학력"></td><td><input aria-label="직업"></td><td><input aria-label="동거여부"></td></tr></sc-for>
+</tbody></table></div>
+<button type="button" class="btn btn-sm btn-s" style="align-self: flex-start;" onClick="{{ addRow }}">+ 가족 추가</button>
+
+<div class="sec">아동 특성 <span class="note" style="font-weight: 400;">(복수응답 가능)</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ traits }}" as="o" hint-placeholder-count="34"><button type="button" class="pk" onClick="{{ o.toggle }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.mark }} {{ o.label }}</button></sc-for></div>
+<sc-if value="{{ trEdit }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><input class="inp" type="text" placeholder="기타 내용 직접 입력" aria-label="아동 특성 기타 직접 입력" value="{{ trDraft }}" onChange="{{ trDraftSet }}" style="flex: 1 1 280px; min-width: 0; height: 36px;"><button type="button" class="btn btn-p btn-sm" onClick="{{ trOk }}">확인</button><button type="button" class="btn btn-s btn-sm" onClick="{{ trCancel }}">취소</button></div></sc-if>
+<sc-if value="{{ trShowOther }}" hint-placeholder-val="{{ false }}"><div style="font-size: 13px; color: #2B2A26;">✓ 기타 · {{ trOther }}</div></sc-if>
+
+<div class="sec">문제력 · 건강정도</div>
+<div class="g3">
+<label class="fl"><span class="lb">현 상황</span><textarea class="ta2"></textarea></label>
+<label class="fl"><span class="lb">이유 인식</span><textarea class="ta2"></textarea></label>
+</div>
+<div class="g3">
+<label class="fl"><span class="lb">질병</span><input class="inp" type="text"></label>
+<label class="fl"><span class="lb">장애</span><input class="inp" type="text"></label>
+<label class="fl"><span class="lb">병원치료</span><input class="inp" type="text"></label>
+<label class="fl"><span class="lb">정신과 진단</span><input class="inp" type="text"></label>
+<label class="fl"><span class="lb">타기관 상담</span><input class="inp" type="text"></label>
+</div>
+
+<div class="sec">대상자 태도 및 관찰내용</div>
+<div class="g3">
+<label class="fl"><span class="lb">대상자 태도</span><textarea class="ta2"></textarea></label>
+<label class="fl"><span class="lb">물리적 환경</span><textarea class="ta2"></textarea></label>
+</div>
+<label class="fl"><span class="lb">상담원 소견 및 향후 계획</span><textarea class="ta2" style="min-height: 96px;"></textarea></label>
+</sc-if>
+
+<sc-if value="{{ showMiss }}" hint-placeholder-val="{{ false }}"><p class="req" role="alert" style="margin: 0; font-size: 13px; font-weight: 500;">기본 정보 필수 항목을 모두 입력해야 초기면접 내용으로 넘어갈 수 있어요 · 남은 항목: {{ missText }}</p></sc-if>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid #EAE7DF; padding-top: 18px;">
+<button type="button" class="btn btn-s" onClick="{{ goB }}">{{ midLabel }}</button>
+<button type="button" class="btn btn-s">임시 저장</button>
+<button type="button" class="btn btn-p">확정</button>
+</div>
+</form>
+</section>
+<p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+themeRead() {
+  const K = 'ispot-theme'; let v = null;
+  try { v = window.localStorage.getItem(K); } catch (e) {}
+  if (!v) { try { v = window.sessionStorage.getItem(K); } catch (e) {} }
+  if (!v) { try { v = window.top.__ispotTheme; } catch (e) {} }
+  if (!v) { v = window.__ispotTheme; }
+  return v === 'dark';
+}
+themeWrite(dark) {
+  const K = 'ispot-theme'; const v = dark ? 'dark' : 'light';
+  try { window.localStorage.setItem(K, v); } catch (e) {}
+  try { window.sessionStorage.setItem(K, v); } catch (e) {}
+  try { window.top.__ispotTheme = v; } catch (e) {}
+  window.__ispotTheme = v;
+}
+jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-job'); } catch (e) {} } if (!v) { try { v = window.top.__ispotJob; } catch (e) {} } if (!v) v = window.__ispotJob; try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
+jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
+componentDidMount() {
+  this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
+  if (this.componentDidMountBase) this.componentDidMountBase();
+}
+componentWillUnmount() {
+  clearInterval(this._thmT);
+  if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+renderVals() {
+  const v = this.renderValsBase() || {};
+  const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
+  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'CaseIntake.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+    toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
+}
+
+constructor(props) { super(props); this.state = { tab: 'A', ty: {}, hm: { '부적절한 양육태도': true, '스트레스': true }, hmEdit: false, hmDraft: '', hmOther: '', trEdit: false, trDraft: '', trOther: '', tr: { '불안': true }, fam: '부자가정', rows: 2, tried: false, f: { report: '2026-07-28', link: '2026-07-29', no: 'C-2026-0351', child: '이서윤', sex: '여', birth: '2013-03-14', target: '이정훈', rel: '친부', m1: '원가정보호', m2: '지속관찰', how: '학교 담임 신고 · 아동 팔 부위 멍 확인 후 연계', first: '2026-07-29' } }; }
+dpBuild(k, val, set, minS, maxS, defY) {
+  const st = this.state.dp || {}; const open = st.k === k;
+  const p = (x) => String(x).padStart(2, '0');
+  const parse = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return m ? { y: +m[1], m: +m[2], d: +m[3] } : null; };
+  const cur = parse(val); const mn = parse(minS); const mx = parse(maxS);
+  const key = (y, m, d) => y * 10000 + m * 100 + d; const mnK = mn ? key(mn.y, mn.m, mn.d) : 0; const mxK = mx ? key(mx.y, mx.m, mx.d) : 99999999;
+  const go = (o) => this.setState({ dp: { ...(this.state.dp || {}), ...o } });
+  const vy = open && st.y ? st.y : (cur ? cur.y : defY); const vm = open && st.m ? st.m : (cur ? cur.m : 1);
+  const mode = open ? (st.mode || 'y') : 'y';
+  const years = []; for (let y = mx.y; y >= mn.y; y--) years.push({ label: String(y), id: 'dpy-' + k + '-' + y, cls: y === vy ? 'on' : '', on: y === vy ? 'true' : 'false', pick: () => go({ y, mode: 'm' }) });
+  const months = Array.from({ length: 12 }, (_, i) => { const m = i + 1; const dis = key(vy, m, 31) < mnK || key(vy, m, 1) > mxK; const on = cur && cur.y === vy && cur.m === m;
+    return { label: m + '월', cls: on ? 'on' : '', dis, pick: () => { if (!dis) go({ m, mode: 'd' }); } }; });
+  const first = new Date(vy, vm - 1, 1).getDay(); const last = new Date(vy, vm, 0).getDate();
+  const days = []; for (let i = 0; i < first; i++) days.push({ blank: true, real: false });
+  for (let d = 1; d <= last; d++) { const kk = key(vy, vm, d); const dis = kk < mnK || kk > mxK; const on = cur && cur.y === vy && cur.m === vm && cur.d === d;
+    days.push({ blank: false, real: true, n: d, aria: vy + '년 ' + vm + '월 ' + d + '일', cls: on ? 'on' : '', dis, pick: () => { if (dis) return; set(vy + '-' + p(vm) + '-' + p(d)); this.setState({ dp: {} }); } }); }
+  const prevY = vm === 1 ? vy - 1 : vy, prevM = vm === 1 ? 12 : vm - 1, nextY = vm === 12 ? vy + 1 : vy, nextM = vm === 12 ? 1 : vm + 1;
+  return { open, exp: open ? 'true' : 'false', isY: mode === 'y', isM: mode === 'm', isD: mode === 'd', listId: 'dpl-' + k,
+    toggle: () => { if (open) this.setState({ dp: {} }); else { this._dpScroll = 'dpy-' + k + '-' + (cur ? cur.y : defY); this.setState({ dp: { k, mode: 'y', y: cur ? cur.y : defY, m: cur ? cur.m : 1 } }); } },
+    close: () => this.setState({ dp: {} }), toY: () => { this._dpScroll = 'dpy-' + k + '-' + vy; go({ mode: 'y' }); }, toM: () => go({ mode: 'm' }),
+    years, months, days, dows: ['일', '월', '화', '수', '목', '금', '토'], yLabel: vy + '년', ymLabel: vy + '년 ' + vm + '월',
+    prevDis: key(prevY, prevM, 31) < mnK, nextDis: key(nextY, nextM, 1) > mxK,
+    prev: () => go({ y: prevY, m: prevM }), next: () => go({ y: nextY, m: nextM }) };
+}
+componentDidUpdate() { if (this._dpScroll) { const id = this._dpScroll; this._dpScroll = null; setTimeout(() => { try { const el = document.getElementById(id); if (el && el.parentNode) el.parentNode.scrollTop = el.offsetTop - el.parentNode.offsetTop - 80; } catch (e) {} }, 0); } }
+renderValsBase() {
+  const s = this.state;
+  const on = (v) => ({ bg: v ? '#F1EADA' : '#FFFFFF', bd: v ? '#2B2A26' : '#DAD5C9', fg: v ? '#2B2A26' : '#2B2A26', fw: v ? 700 : 400, mark: v ? '✓' : '+' });
+  const multi = (list, key) => list.map((label) => { const v = !!s[key][label]; return { label, ...on(v), toggle: () => this.setState({ [key]: { ...s[key], [label]: !v } }) }; });
+  const TY = ['방임', '신체학대', '정서학대', '성학대'];
+  const HM = ['성격 및 기질 문제', '어릴적 학대경험', '알콜남용', '약물남용', '신체질환 및 장애', '정신질환 및 장애', '원치않은 아동', '부적절한 양육태도', '양육지식 및 기술부족', '부부 및 가족갈등', '성문제', '스트레스', '사회적 고립', '경제적 어려움', '배우자폭력', '존속학대', '전과력', '종교문제', '도박 · 게임중독', '특성없음', '기타'];
+  const FAM = ['일반가정', '부자가정', '모자가정', '미혼부 · 모 가정', '친부+계모', '친모+계부', '친인척보호', '친부+동거녀', '친모+동거남', '가정위탁', '입양가정', '시설보호', '기타'];
+  const TR = ['거짓말', '반항 · 충동 · 공격성', '도벽', '가출', '약물', '흡연', '음주', '인터넷(게임)중독', '성문제', '주의산만', '과잉행동', '늦은귀가', '불건전한 또래관계', '대인관계 기피', '학교부적응', '잦은결석', '학교폭력 가해자', '학교폭력 피해자', '불안', '애착문제', '무력감', '우울', '낮은자존감', '신체발달지연', '언어문제', '학습문제', '대소변문제', '성격 및 기질문제', '위생문제', '틱', '급(만)성질병', '영양결핍', '탐식 및 결식', '특성없음', '기타'];
+  const fams = FAM.map((label) => ({ label, ...on(s.fam === label), pick: () => this.setState({ fam: s.fam === label ? '' : label }) }));
+  const NAMES = { report: '신고접수일', link: '사례연계일', no: '개별사건번호', child: '대상아동 이름', sex: '성별', birth: '생년월일', target: '사례관리대상자', rel: '관계', m1: '조치결과 · 피해아동', m2: '조치결과 · 사례관리대상자', how: '사례연계 경위' };
+  const miss = Object.keys(NAMES).filter((k) => { const v = String(s.f[k] || '').trim(); return !v || v === '선택'; });
+  const go = (k) => { if (k === 'B' && miss.length) { this.setState({ tab: 'A', tried: true }); return; } this.setState({ tab: k }); };
+  const fv = {}, fs = {}, fe = {}, fi = {};
+  Object.keys(NAMES).forEach((k) => { fv[k] = s.f[k]; fs[k] = (e) => this.setState({ f: { ...this.state.f, [k]: e.target.value } }); const bad = s.tried && miss.includes(k); fe[k] = bad ? '#A33B2E' : ''; fi[k] = bad ? 'true' : 'false'; });
+  fv.first = s.f.first || ''; fs.first = (e) => this.setState({ f: { ...this.state.f, first: e.target.value } });
+  const fd = {}; ['report', 'link', 'birth', 'first'].forEach((k) => { fd[k] = s.f[k] ? '' : 'empty'; });
+  const dp = {}; ['report', 'link', 'birth', 'first'].forEach((k) => { dp[k] = this.dpBuild(k, s.f[k], (v) => this.setState({ f: { ...this.state.f, [k]: v } }), '2000-01-01', '2026-12-31', k === 'birth' ? 2013 : 2026); });
+  const tabs = [['A', '① 기본 정보 (필수)'], ['B', '② 초기면접 내용']].map(([k, label]) => ({ label, sel: s.tab === k ? 'true' : 'false', bd: s.tab === k ? '#C2A36B' : 'transparent', fg: s.tab === k ? '#2B2A26' : '#66625A', fw: s.tab === k ? 700 : 400, go: () => go(k) }));
+  return { dp, tabs, fv, fs, fe, fi, fd, showMiss: s.tab === 'A' && s.tried && miss.length > 0, missText: miss.map((k) => NAMES[k]).join(', '), isA: s.tab === 'A', isB: s.tab === 'B', homes: multi(HM, 'hm').map((o) => o.label !== '기타' ? o : { ...o, toggle: () => { if (this.state.hm['기타']) { this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }); } else { this.setState({ hm: { ...this.state.hm, '기타': true }, hmEdit: true, hmDraft: '' }); } } }),
+    hmEdit: s.hmEdit, hmDraft: s.hmDraft, hmDraftSet: (e) => this.setState({ hmDraft: e.target.value }),
+    hmOk: () => { const t = String(this.state.hmDraft || '').trim(); if (!t) return; this.setState({ hmEdit: false, hmOther: t }); },
+    hmCancel: () => this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }),
+    hmShowOther: !s.hmEdit && !!s.hm['기타'] && !!s.hmOther, hmOther: s.hmOther, traits: multi(TR, 'tr').map((o) => o.label !== '기타' ? o : { ...o, toggle: () => { if (this.state.tr['기타']) { this.setState({ tr: { ...this.state.tr, '기타': false }, trEdit: false, trDraft: '', trOther: '' }); } else { this.setState({ tr: { ...this.state.tr, '기타': true }, trEdit: true, trDraft: '' }); } } }),
+    trEdit: s.trEdit, trDraft: s.trDraft, trDraftSet: (e) => this.setState({ trDraft: e.target.value }),
+    trOk: () => { const t = String(this.state.trDraft || '').trim(); if (!t) return; this.setState({ trEdit: false, trOther: t }); },
+    trCancel: () => this.setState({ tr: { ...this.state.tr, '기타': false }, trEdit: false, trDraft: '', trOther: '' }),
+    trShowOther: !s.trEdit && !!s.tr['기타'] && !!s.trOther, trOther: s.trOther, fams,
+    famRows: Array.from({ length: s.rows }, (_, i) => i), addRow: () => this.setState({ rows: s.rows + 1 }),
+    midLabel: s.tab === 'A' ? '초기면접 내용 →' : '← 기본 정보', goB: () => go(s.tab === 'A' ? 'B' : 'A') };
+}
+}
+</script>
+</body>
+</html>

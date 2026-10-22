@@ -390,9 +390,22 @@ section[aria-label="폴더"]{max-width:none !important}
 [style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
 [style*="border-radius: 16px"]{border-radius:12px !important}
 @media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+/* 분석 알림 (녹취 올리기 후 화면 상단) */
+.job-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:90;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 10px 28px rgba(43,42,38,.28);animation:jobIn .3s ease;transition:transform .45s ease,opacity .45s ease}
+.job-toast.out{transform:translate(-50%,-180%);opacity:0}
+@keyframes jobIn{from{transform:translate(-50%,-180%);opacity:0}}
+.job-spin{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid rgba(234,219,181,.35);border-top-color:#EADBB5;animation:jobSp .8s linear infinite}
+@keyframes jobSp{to{transform:rotate(360deg)}}
+.job-file{font-weight:400;font-size:12.5px;opacity:.75;overflow:hidden;text-overflow:ellipsis}
+.job-ok{font-weight:700}
+.job-go{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#EADBB5;color:#2B2A26 !important;text-decoration:none;font-weight:700}
+.thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
+.thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1000px; background: rgba(47,58,68,0.40); font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; color: #2B2A26; display: flex; align-items: center; justify-content: center; padding: 48px 16px; position: relative;">
+<sc-if value="{{ jobShow }}" hint-placeholder-val="{{ false }}"><div class="job-toast {{ jobCls }}" role="status" aria-live="polite"><sc-if value="{{ jobRun }}" hint-placeholder-val="{{ true }}"><span class="job-spin" aria-hidden="true"></span><span>분석 중입니다...</span><span class="job-file">{{ jobName }}</span></sc-if><sc-if value="{{ jobDone }}" hint-placeholder-val="{{ false }}"><span class="job-ok" aria-hidden="true">✓</span><span>분석 완료</span><a class="job-go" href="SttReview.dc.html" onClick="{{ jobGo }}">검수</a></sc-if></div></sc-if>
 <div class="thm-abs"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <section role="dialog" aria-modal="true" aria-labelledby="up-title" style="width: 100%; max-width: 640px; background: #FFFFFF; border-radius: 24px; box-shadow: 0 20px 60px rgba(43, 42, 38,0.22); overflow: hidden;">
 <div style="padding: 24px 30px 18px; border-bottom: 1px solid #EAE7DF;">
@@ -407,12 +420,12 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-if value="{{ s1 }}" hint-placeholder-val="{{ true }}">
 <p class="lb">어느 아이의 자료인가요?</p>
 <input class="inp" type="search" aria-label="이름 또는 사례 ID 검색" placeholder="이름 또는 사례 ID 검색" style="width: 100%;">
-<div style="margin-top: 12px; display: flex; flex-direction: column; gap: 10px;">
+<div style="margin-top: 12px; display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; padding-right: 6px;">
 <sc-for list="{{ cases }}" as="c" hint-placeholder-count="3">
 <button type="button" class="opt" onClick="{{ c.pick }}" style="border-color: {{ c.bd }}; background: {{ c.bg }}; font: inherit; text-align: left;"><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid {{ c.dot }}; display: inline-flex; align-items: center; justify-content: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{ c.fill }};"></span></span><span><b style="font-weight: 500;">{{ c.name }}</b> <span class="note">{{ c.meta }}</span></span></button>
 </sc-for>
 </div>
-<div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; border: 1px dashed #DAD5C9; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;"><span style="flex: 1 1 240px; font-size: 13px;">찾는 아이가 없나요?</span><a class="btn btn-sm btn-s" href="CaseRegister.dc.html">+ 새 사례 등록</a></div>
+<div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; border: 1px dashed #DAD5C9; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;"><span style="flex: 1 1 240px; font-size: 13px;">찾는 아이가 없나요?</span><a class="btn btn-sm btn-s" href="CaseRegister.dc.html" onClick="{{ resetFlow }}">+ 새 사례 등록</a></div>
 </sc-if>
 <sc-if value="{{ s2 }}" hint-placeholder-val="{{ false }}">
 <div style="padding: 12px 16px; border-radius: 14px; background: #F7F6F2; margin-bottom: 16px;"><b style="font-weight: 500;">{{ caseName }}</b></div>
@@ -453,7 +466,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <span style="width: 48px; height: 48px; border-radius: 50%; background: #F2EFE8; color: #66625A; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">✓</span>
 <h2 id="ok-title" style="margin: 0; font-size: 20px; font-weight: 700;">업로드했어요</h2>
 <p style="margin: 0;">{{ caseName }} · {{ sesLabel }}{{ confirmFile }}<br>STT 분석 시작 · <b>검수 화면으로 이동할까요?</b></p>
-<div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;"><a class="btn btn-s" href="{{ backHref }}" onClick="{{ syncBack }}">나중에</a><a class="btn btn-p" href="SttReview.dc.html">이동</a></div>
+<div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;"><a class="btn btn-s" href="{{ backHref }}" onClick="{{ syncBack }}">나중에</a><a class="btn btn-p" href="SttReview.dc.html" onClick="{{ resetFlow }}">이동</a></div>
 </section>
 </div>
 </sc-if>
@@ -485,8 +498,11 @@ themeWrite(dark) {
   try { window.top.__ispotTheme = v; } catch (e) {}
   window.__ispotTheme = v;
 }
+jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-job'); } catch (e) {} } if (!v) { try { v = window.top.__ispotJob; } catch (e) {} } if (!v) v = window.__ispotJob; try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
+jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
-  this._thmT = setInterval(() => { if (this.themeRead() !== this._thmShown || this.backRead() !== this._backShown) this.setState({ __thmTick: Date.now() }); }, 200);
+  this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown || this.backRead() !== this._backShown) this.setState({ __thmTick: Date.now() }); }, 200);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
@@ -495,11 +511,12 @@ componentWillUnmount() {
 }
 renderVals() {
   const v = this.renderValsBase() || {};
-  const dark = this.themeRead(); this._thmShown = dark;
-  return Object.assign({}, v, { backHref: this.backShow(), syncBack: (e) => { try { const h = this.backRead(); if (e && e.currentTarget) e.currentTarget.setAttribute('href', h); } catch (err) {} }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
+  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), backHref: this.backShow(), syncBack: (e) => { try { const h = this.backRead(); if (e && e.currentTarget) e.currentTarget.setAttribute('href', h); } catch (err) {} this.resetFlow(); }, resetFlow: () => this.resetFlow(), themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
+resetFlow() { setTimeout(() => this.setState({ step: 1, c: 0, x: null, confirm: false, file: null }), 0); }
 constructor(props) { super(props); this.state = { step: 1, c: 0, x: null, confirm: false, file: null }; }
 renderValsBase() {
   const s = this.state;
@@ -507,11 +524,13 @@ renderValsBase() {
   const steps = labels.map((label, i) => { const n = i + 1, done = n < s.step, cur = n === s.step;
     return { label, mark: done ? '✓' : String(n), bg: cur ? '#F1EADA' : 'transparent', fg: cur ? '#2B2A26' : (done ? '#2B2A26' : '#7A776F'), fw: cur ? 700 : 400,
       dotBg: cur ? '#2B2A26' : (done ? '#F2EFE8' : '#EAE7DF'), dotFg: cur ? '#EADBB5' : (done ? '#66625A' : '#7A776F') }; });
-  const cs = [['이서윤', 'C-2026-0351 · 8회차까지 진행'], ['김도현', 'C-2026-0412 · 6회차까지 진행'], ['박지호', 'C-2026-0389 · 3회차까지 진행']];
+  const CS = [['이서윤', 'C-2026-0351', 8, null], ['김도현', 'C-2026-0412', 6, null], ['박지호', 'C-2026-0389', 3, null], ['장민준', 'C-2026-0277', 10, [10, 8]], ['정예린', 'C-2026-0338', 5, [10, 5]], ['최서준', 'C-2026-0374', 2, [10, 9]],
+    ['윤하은', 'C-2026-0298', 9, [10, 1]], ['신유나', 'C-2026-0229', 11, [9, 29]], ['강시우', 'C-2026-0312', 12, [10, 7]], ['조하린', 'C-2026-0251', 10, [10, 6]]];
+  const cs = CS.map((c) => [c[0], c[1] + ' · ' + c[2] + '회차까지 진행']);
   const radio = (on) => ({ bd: on ? '#2B2A26' : '#E7E4DC', bg: on ? '#F1EADA' : '#FFFFFF', dot: on ? '#2B2A26' : '#DAD5C9', fill: on ? '#2B2A26' : 'transparent' });
   const cases = cs.map((c, i) => ({ name: c[0], meta: c[1], ...radio(i === s.c), pick: () => this.setState({ c: i, x: null }) }));
-  const last = [8, 6, 3][s.c];
-  const DATES = { 0: ['10/2 방문상담', '9/18 정기상담', '9/4 정기상담', '8/21 정기상담', '8/7 정기상담', '7/24 정기상담', '7/10 정기상담', '6/26 초기상담'], 1: ['10/6 정기상담', '9/22 정기상담', '9/8 방문상담', '8/25 정기상담', '8/11 정기상담', '7/28 초기상담'], 2: ['9/30 정기상담', '9/16 정기상담', '9/2 초기상담'] }[s.c];
+  const last = CS[s.c][2];
+  const DATES = { 0: ['10/2 방문상담', '9/18 정기상담', '9/4 정기상담', '8/21 정기상담', '8/7 정기상담', '7/24 정기상담', '7/10 정기상담', '6/26 초기상담'], 1: ['10/6 정기상담', '9/22 정기상담', '9/8 방문상담', '8/25 정기상담', '8/11 정기상담', '7/28 초기상담'], 2: ['9/30 정기상담', '9/16 정기상담', '9/2 초기상담'] }[s.c] || (() => { const [mo, da] = CS[s.c][3]; const out = []; for (let n = last; n >= 1; n--) { const d = new Date(2026, mo - 1, da - (last - n) * 14); out.push((d.getMonth() + 1) + '/' + d.getDate() + (n === 1 ? ' 초기상담' : ' 정기상담')); } return out; })();
   const xs = [['새 회차 · ' + (last + 1) + '회차', '새로 등록']];
   for (let n = last; n >= 1; n--) xs.push([n + '회차 · ' + DATES[last - n], (s.c === 0 && n === last) ? '녹취 아직 없음' : '녹취 있음 · 추가 자료']);
   const xSel = s.x == null ? 1 : s.x;
@@ -524,7 +543,7 @@ renderValsBase() {
     confirmFile: fl ? ' · ' + fl.name : '',
     s1: s.step === 1, s2: s.step === 2, s3: s.step === 3, notFirst: s.step > 1, notLast: s.step < 3, confirm: s.confirm,
     next: () => this.setState({ step: Math.min(3, s.step + 1) }), prev: () => this.setState({ step: Math.max(1, s.step - 1) }),
-    upload: () => this.setState({ confirm: true }) };
+    upload: () => { this.jobWrite(JSON.stringify({ t: Date.now(), name: fl ? fl.name : '' })); this.setState({ confirm: true }); } };
 }
 }
 </script>

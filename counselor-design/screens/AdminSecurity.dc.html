@@ -423,9 +423,22 @@ section[aria-label="폴더"]{max-width:none !important}
 [style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
 [style*="border-radius: 16px"]{border-radius:12px !important}
 @media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+/* 분석 알림 (녹취 올리기 후 화면 상단) */
+.job-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:90;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 10px 28px rgba(43,42,38,.28);animation:jobIn .3s ease;transition:transform .45s ease,opacity .45s ease}
+.job-toast.out{transform:translate(-50%,-180%);opacity:0}
+@keyframes jobIn{from{transform:translate(-50%,-180%);opacity:0}}
+.job-spin{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid rgba(234,219,181,.35);border-top-color:#EADBB5;animation:jobSp .8s linear infinite}
+@keyframes jobSp{to{transform:rotate(360deg)}}
+.job-file{font-weight:400;font-size:12.5px;opacity:.75;overflow:hidden;text-overflow:ellipsis}
+.job-ok{font-weight:700}
+.job-go{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#EADBB5;color:#2B2A26 !important;text-decoration:none;font-weight:700}
+.thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
+.thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1100px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
+<sc-if value="{{ jobShow }}" hint-placeholder-val="{{ false }}"><div class="job-toast {{ jobCls }}" role="status" aria-live="polite"><sc-if value="{{ jobRun }}" hint-placeholder-val="{{ true }}"><span class="job-spin" aria-hidden="true"></span><span>분석 중입니다...</span><span class="job-file">{{ jobName }}</span></sc-if><sc-if value="{{ jobDone }}" hint-placeholder-val="{{ false }}"><span class="job-ok" aria-hidden="true">✓</span><span>분석 완료</span><a class="job-go" href="SttReview.dc.html" onClick="{{ jobGo }}">검수</a></sc-if></div></sc-if>
 <aside class="side" aria-label="주 메뉴">
 <a class="logo" href="AdminHome.dc.html"><span class="mk">IS</span><b style="font-size: 17px;">I-SPOT</b><span class="chip c-normal" style="margin-left: 2px;">관리자</span></a>
 <input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
@@ -493,8 +506,11 @@ themeWrite(dark) {
   try { window.top.__ispotTheme = v; } catch (e) {}
   window.__ispotTheme = v;
 }
+jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-job'); } catch (e) {} } if (!v) { try { v = window.top.__ispotJob; } catch (e) {} } if (!v) v = window.__ispotJob; try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
+jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
-  this._thmT = setInterval(() => { if (this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
+  this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
@@ -503,8 +519,8 @@ componentWillUnmount() {
 }
 renderVals() {
   const v = this.renderValsBase() || {};
-  const dark = this.themeRead(); this._thmShown = dark;
-  return Object.assign({}, v, { themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
+  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 

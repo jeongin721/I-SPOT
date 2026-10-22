@@ -394,6 +394,24 @@
    "w": 1440,
    "x": 7600,
    "y": 0
+  },
+  "CaseIntake.dc.html": {
+   "expand": "fill",
+   "h": 1900,
+   "is_interactive": true,
+   "title": "탭 5 › 초기면접지 (아동용) · 서식 4 (문서함에서 열기)",
+   "w": 1440,
+   "x": 10640,
+   "y": 4800
+  },
+  "Landing.dc.html": {
+   "expand": "fill",
+   "h": 1400,
+   "is_interactive": true,
+   "title": "시작 화면 (랜딩)",
+   "w": 1440,
+   "x": -1520,
+   "y": 0
   }
  },
  "createdOnFiles": {
@@ -423,7 +441,7 @@
   },
   "rowC": {
    "kind": "title1",
-   "maxW": 8000,
+   "maxW": 12080,
    "text": "③ 사례 상세 · 탭 5개 (내담자 정보 · 상담 이력 · 상담 전 브리핑 · 아이 연계 · 문서함) + 기관 서식 작성",
    "w": 240,
    "x": 0,
@@ -471,6 +489,7 @@
   }
  },
  "order": [
+  "Landing.dc.html",
   "Main.dc.html",
   "Login.dc.html",
   "Schedule.dc.html",
@@ -486,6 +505,7 @@
   "CaseApp.dc.html",
   "CaseDocs.dc.html",
   "CaseForm.dc.html",
+  "CaseIntake.dc.html",
   "UploadModal.dc.html",
   "SttReview.dc.html",
   "SignalReview.dc.html",

@@ -449,9 +449,53 @@ section[aria-label="폴더"]{max-width:none !important}
 [style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
 [style*="border-radius: 16px"]{border-radius:12px !important}
 @media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+/* 전체 STT 보기 · 구간 안에서 스크롤 */
+.ln-box.scroll{max-height:560px;overflow-y:auto;border-top:1px solid #DAD5C9;border-bottom:1px solid #DAD5C9;scrollbar-width:thin;overscroll-behavior:contain}
+.thm-root.dark .ln-box.scroll{border-color:#4E4B44}
+/* 분석 알림 (녹취 올리기 후 화면 상단) */
+.job-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:90;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 10px 28px rgba(43,42,38,.28);animation:jobIn .3s ease;transition:transform .45s ease,opacity .45s ease}
+.job-toast.out{transform:translate(-50%,-180%);opacity:0}
+@keyframes jobIn{from{transform:translate(-50%,-180%);opacity:0}}
+.job-spin{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid rgba(234,219,181,.35);border-top-color:#EADBB5;animation:jobSp .8s linear infinite}
+@keyframes jobSp{to{transform:rotate(360deg)}}
+.job-file{font-weight:400;font-size:12.5px;opacity:.75;overflow:hidden;text-overflow:ellipsis}
+.job-ok{font-weight:700}
+.job-go{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#EADBB5;color:#2B2A26 !important;text-decoration:none;font-weight:700}
+.thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
+.thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+/* 녹음 재생 바 (STT 검수 하단 고정) */
+.player{position:sticky;bottom:0;z-index:20;margin-top:auto;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:10px 20px 12px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px 14px 0 0;box-shadow:0 -8px 24px rgba(43,42,38,.12)}
+.pl-ctrls{position:relative;display:flex;justify-content:center;align-items:center;gap:10px;min-height:34px}
+.pl-b{width:38px;height:34px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #DAD5C9;border-radius:9px;background:#FFFFFF;color:#2B2A26;cursor:pointer;padding:0}
+.pl-b:hover{border-color:#2B2A26}
+.pl-b.pl-main{background:#2B2A26;border-color:#2B2A26;color:#EADBB5}
+.pl-time{display:flex;align-items:center;gap:12px}
+.pl-t{font-size:12.5px;font-variant-numeric:tabular-nums;color:#66625A;min-width:40px;text-align:center}
+.pl-range{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:#E7E4DC linear-gradient(#C2A36B,#C2A36B) no-repeat;cursor:pointer;margin:0}
+.pl-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#2B2A26;border:2px solid #FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.pl-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#2B2A26;border:2px solid #FFFFFF}
+.toast{bottom:120px !important}
+.thm-root.dark .player{background:#2C2B27;border-color:#4E4B44}
+.thm-root.dark .pl-b{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .pl-b.pl-main{background:#EADBB5;border-color:#EADBB5;color:#2B2A26}
+.thm-root.dark .pl-t{color:#BDB7AA}
+.thm-root.dark .pl-range{background-color:#45423B}
+/* 재생 바 · 미검수 저신뢰 구간 표시 */
+.pl-track{position:relative;flex:1;display:flex;align-items:center;height:22px}
+.pl-track .pl-range{width:100%}
+.pl-mark{position:absolute;top:50%;width:10px;height:18px;margin-left:-5px;transform:translateY(-50%);z-index:2;border:2px solid #FFFFFF;border-radius:3px;background:#C08A2E;box-shadow:0 1px 3px rgba(43,42,38,.35);cursor:pointer;padding:0}
+.pl-mark:hover{background:#A33B2E}
+.pl-legend{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#66625A}
+.pl-legend i{display:inline-block;width:8px;height:12px;border-radius:2px;background:#C08A2E}
+.thm-root.dark .pl-mark{border-color:#2C2B27;background:#E0B25A}
+.thm-root.dark .pl-legend{color:#BDB7AA}
+.thm-root.dark .pl-legend i{background:#E0B25A}
+@media (max-width:600px){.pl-ctrls{flex-wrap:wrap}.pl-legend{position:static !important;width:100%;justify-content:center}}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1250px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
+<sc-if value="{{ jobShow }}" hint-placeholder-val="{{ false }}"><div class="job-toast {{ jobCls }}" role="status" aria-live="polite"><sc-if value="{{ jobRun }}" hint-placeholder-val="{{ true }}"><span class="job-spin" aria-hidden="true"></span><span>분석 중입니다...</span><span class="job-file">{{ jobName }}</span></sc-if><sc-if value="{{ jobDone }}" hint-placeholder-val="{{ false }}"><span class="job-ok" aria-hidden="true">✓</span><span>분석 완료</span><a class="job-go" href="SttReview.dc.html" onClick="{{ jobGo }}">검수</a></sc-if></div></sc-if>
 <aside class="side" aria-label="주 메뉴">
 <a class="logo" href="Main.dc.html"><span class="mk">IS</span><b style="font-size: 17px;">I-SPOT</b></a>
 <input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
@@ -482,13 +526,6 @@ section[aria-label="폴더"]{max-width:none !important}
 <a class="stp" href="NoteWrite.dc.html"><span class="sn">3</span><b style="font-weight: 500;">요약 · 일지 작성</b></a>
 <a class="stp" href="FollowupQ.dc.html"><span class="sn">4</span><b style="font-weight: 500;">추가 확인 · 질문</b></a>
 </nav>
-<sc-if value="{{ analyzing }}" hint-placeholder-val="{{ false }}">
-<section class="card" aria-live="polite" style="padding: 28px 26px; display: flex; flex-direction: column; gap: 12px;">
-<div style="display: flex; align-items: center; gap: 10px;"><span class="chip c-sky">분석 중</span><b>{{ stageLabel }}</b><span class="note" style="margin-left: auto;">{{ pct }}%</span></div>
-<div class="prog"><span style="width: {{ pctW }};"></span></div>
-<button type="button" class="btn btn-sm btn-s" style="align-self: flex-start;" onClick="{{ skip }}">완료 화면 보기</button>
-</section>
-</sc-if>
 
 <sc-if value="{{ done }}" hint-placeholder-val="{{ true }}">
 <section class="card" aria-label="STT 검수" style="overflow: hidden;">
@@ -500,6 +537,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <button type="button" class="btn btn-sm {{ lowCls }}" onClick="{{ showLow }}">저신뢰 구간 보기 · {{ lowLeft }}</button>
 </div>
 </div>
+<div class="ln-box {{ boxCls }}">
 <sc-for list="{{ lines }}" as="l" hint-placeholder-count="4">
 <div class="ln" id="{{ l.lid }}" style="background: {{ l.bg }}; box-shadow: {{ l.ring }};">
 <span><button type="button" class="tbtn" aria-label="{{ l.t }}부터 듣기" onClick="{{ l.play }}">{{ l.t }}</button></span>
@@ -515,6 +553,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <span style="display: flex; align-items: center; gap: 6px;"><span class="note">{{ l.conf }}</span><sc-if value="{{ l.edit }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-s" onClick="{{ l.ok }}">{{ l.okLabel }}</button></sc-if></span>
 </div>
 </sc-for>
+</div>
 <div class="legend">
 <span>왼쪽 시간을 누르면 그 위치부터 녹음을 다시 들을 수 있습니다.</span>
 <span class="k"><span class="cue"><b>목소리 신호</b></span> 저신뢰 구간의 아동 발화에서만, 이 아동의 이번 상담 평소 목소리와 비교해 표시합니다. 다시 들어볼 곳을 알려주는 정보이며 감정 상태나 학대 여부를 판단하지 않습니다.</span>
@@ -523,34 +562,19 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 <div style="height: 16px;"></div>
 </section>
-<section aria-label="위험 신호" style="display: flex; flex-direction: column; gap: 14px;">
-<section style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-<h2 class="h2">위험 신호</h2><span class="chip c-ai">AI 분석 · 판정 아님</span>
-<span style="margin-left: auto; display: flex; gap: 6px;"><span class="chip c-ok">채택 {{ nA }}</span><span class="chip c-check">보류 {{ nH }}</span><span class="chip c-normal">제외 {{ nD }}</span></span>
-</section>
-<sc-for list="{{ sigs }}" as="g" hint-placeholder-count="4">
-<section class="card" style="padding: 18px 22px; display: flex; flex-direction: column; gap: 10px; box-shadow: {{ g.bar }};">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
-<span class="chip c-normal">{{ g.type }} 학대</span>
-<b style="font-size: 16px;">{{ g.title }}</b>
-<span class="{{ g.stCls }}">{{ g.st }}</span>
-<span role="group" aria-label="검토" class="seg" style="margin-left: auto;">
-<button type="button" class="{{ g.aCls }}" onClick="{{ g.adopt }}">채택</button>
-<button type="button" class="{{ g.hCls }}" onClick="{{ g.hold }}">보류</button>
-<button type="button" class="{{ g.dCls }}" onClick="{{ g.drop }}">제외</button>
-</span>
-</div>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px;">
-<div style="padding: 12px 14px; border-radius: 12px; background: #F7F6F2;"><div class="note">발화 · {{ g.at }}</div><div style="font-size: 15px;">"{{ g.quote }}"</div></div>
-<div style="padding: 12px 14px; border-radius: 12px; background: #F7F6F2;"><div class="note">근거</div><div style="font-size: 13px;">{{ g.why }}</div><div class="note">{{ g.check }}</div></div>
-</div>
-</section>
-</sc-for>
-</section>
 <div style="display: flex; flex-wrap: wrap; gap: 10px;"><a class="btn btn-p" href="SignalReview.dc.html" style="margin-left: auto;">유형별 위험도 →</a></div>
 </sc-if>
 <p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
 <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}"><div class="toast" role="status">{{ toast }}</div></sc-if>
+<div class="player" role="region" aria-label="녹음 재생">
+<div class="pl-ctrls"><sc-if value="{{ plHasMarks }}" hint-placeholder-val="{{ true }}"><span class="pl-legend" style="position: absolute; left: 20px;"><i aria-hidden="true"></i>저신뢰 구간 {{ plMarkCount }}곳</span></sc-if>
+<button type="button" class="pl-b" aria-label="5초 뒤로" title="5초 뒤로" onClick="{{ plBack }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M11 6v12L2.5 12z"></path><path d="M21 6v12l-8.5-6z"></path></svg></button>
+<button type="button" class="pl-b pl-main" aria-label="{{ plPlayLabel }}" title="{{ plPlayLabel }}" onClick="{{ plToggle }}"><sc-if value="{{ plOn }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></sc-if><sc-if value="{{ plOff }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></sc-if></button>
+<button type="button" class="pl-b" aria-label="정지" title="정지" onClick="{{ plStop }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"></rect></svg></button>
+<button type="button" class="pl-b" aria-label="5초 앞으로" title="5초 앞으로" onClick="{{ plFwd }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M13 6v12l8.5-6z"></path><path d="M3 6v12l8.5-6z"></path></svg></button>
+</div>
+<div class="pl-time"><span class="pl-t">{{ plCur }}</span><span class="pl-track"><input type="range" class="pl-range" min="0" max="{{ plMax }}" step="1" value="{{ plPos }}" onChange="{{ plSeek }}" aria-label="재생 위치" style="background-size: {{ plPct }} 100%;"><sc-for list="{{ plMarks }}" as="m" hint-placeholder-count="3"><button type="button" class="pl-mark" style="left: {{ m.left }};" aria-label="저신뢰 구간 {{ m.t }} 확인하기" title="저신뢰 구간 {{ m.t }}" onClick="{{ m.go }}"></button></sc-for></span><span class="pl-t">{{ plDur }}</span></div>
+</div>
 </main>
 </div>
 </x-dc>
@@ -574,9 +598,12 @@ themeWrite(dark) {
 sttRead() { let v = null; try { v = window.localStorage.getItem('ispot-stt'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-stt'); } catch (e) {} } if (!v) { try { v = window.top.__ispotStt; } catch (e) {} } if (!v) v = window.__ispotStt; return v || ''; }
 sttSync(first) { const v = this.sttRead(); if (first) { const ts = parseInt(String(v).split('|')[1] || '0', 10); if (!v || Date.now() - ts > 5000) { this._sttTok = v; return; } } if (v && v !== this._sttTok) { this._sttTok = v; const t = String(v).split('|')[0]; clearTimeout(this._toastT); this._scrollTo = t; this.setState({ pct: 100, view: 'all', focusT: t, toast: '근거 원문 위치 ' + t + '(으)로 이동했어요' }); this._toastT = setTimeout(() => this.setState({ toast: '' }), 2400); } }
 componentDidUpdate() { if (this._scrollTo) { const id = 'ln-' + this._scrollTo.replace(':', ''); this._scrollTo = null; setTimeout(() => { try { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }, 60); } }
+jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-job'); } catch (e) {} } if (!v) { try { v = window.top.__ispotJob; } catch (e) {} } if (!v) v = window.__ispotJob; try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
+jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
   this.sttSync(true);
-  this._thmT = setInterval(() => { this.sttSync(false); if (this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
+  this._thmT = setInterval(() => { this.sttSync(false); if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
@@ -585,16 +612,18 @@ componentWillUnmount() {
 }
 renderVals() {
   const v = this.renderValsBase() || {};
-  const dark = this.themeRead(); this._thmShown = dark;
-  return Object.assign({}, v, { markBack: () => { const v = 'SttReview.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
+  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'SttReview.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-constructor(props) { super(props); this.state = { pct: 0, view: 'key', ok: {}, sp: {}, dec: { 0: 'adopt', 1: 'adopt', 2: 'adopt', 3: 'hold' } }; }
-componentDidMountBase() { this.timer = setInterval(() => { if (this.state.pct >= 100) { clearInterval(this.timer); return; } this.setState({ pct: Math.min(100, this.state.pct + 20) }); }, 700); }
-componentWillUnmountBase() { clearInterval(this.timer); clearTimeout(this._toastT); }
+constructor(props) { super(props); this.state = { pct: 100, pl: false, pos: 0, view: 'key', ok: {}, sp: {}, dec: { 0: 'adopt', 1: 'adopt', 2: 'adopt', 3: 'hold' } }; }
+componentDidMountBase() {}
+plRun(on) { clearInterval(this._plT); if (on) this._plT = setInterval(() => { const p = this.state.pos + 0.25; if (p >= 200) { clearInterval(this._plT); this.setState({ pos: 200, pl: false }); } else this.setState({ pos: p }); }, 250); }
+componentWillUnmountBase() { clearInterval(this.timer); clearInterval(this._plT); clearTimeout(this._toastT); }
 renderValsBase() {
   const s = this.state;
+  const fmtT = (x) => { const t = Math.floor(x); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
   const all = [
     { t: '00:12', sp: '상담원', text: '오늘은 집에서 만나네. 요즘 어떻게 지냈어?', c: 0.97 },
     { t: '00:20', sp: '피해아동', text: '그냥… 학교는 괜찮아요.', c: 0.94 },
@@ -613,7 +642,7 @@ renderValsBase() {
   const SPK = ['피해아동', '상담원', '사례관리대상자', '보호자', '화자?'];
   const LAW = { 3: ['신체', '아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위'], 5: ['정서', '아동의 정신건강 및 발달에 해를 끼치는 정서적 학대행위'],
     6: ['방임', '자신의 보호ㆍ감독을 받는 아동을 유기하거나 의식주를 포함한 기본적 보호ㆍ양육ㆍ치료 및 교육을 소홀히 하는 방임행위'] };
-  const play = (t) => () => { clearTimeout(this._toastT); this.setState({ toast: `실제 화면에서는 ${t} 위치부터 녹음이 재생됩니다` }); this._toastT = setTimeout(() => this.setState({ toast: '' }), 2400); };
+  const play = (t) => () => { const [mm, ss] = t.split(':').map(Number); this.plRun(true); this.setState({ pos: mm * 60 + ss, pl: true }); };
   const cnt = {}; const numOf = {};
   all.forEach((l) => { const v = s.sp[l.i] || l.sp; if (v === '화자?') return; cnt[v] = (cnt[v] || 0) + 1; numOf[l.i] = cnt[v]; });
   const lines = pick.map((l) => { const done = !!s.ok[l.i]; const edit = s.view !== 'key' && l.low;
@@ -645,7 +674,15 @@ renderValsBase() {
   return { sigs, nA: decV.filter((x) => x === 'adopt').length, nH: decV.filter((x) => x === 'hold').length, nD: decV.filter((x) => x === 'drop').length, portal: 'https://www.law.go.kr/LSW/lsSideInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00&docCls=jo&urlMode=lsScJoRltInfoR', toast: s.toast || '', hasToast: !!s.toast, analyzing: s.pct < 100, done: s.pct >= 100, pct: s.pct, pctW: s.pct + '%', stageLabel: stages[Math.floor(s.pct / 20)],
     skip: () => this.setState({ pct: 100 }), lines, lowLeft: lowLeft + '곳', viewTitle: titles[s.view],
     chipText: s.view === 'key' ? '임시 · 검수 전' : (lowLeft ? `확인할 곳 ${lowLeft}` : '모두 확인'), chipCls: s.view === 'key' ? 'chip c-sand' : (lowLeft ? 'chip c-check' : 'chip c-ok'),
-    allCls: s.view === 'all' ? 'btn-p' : 'btn-s', lowCls: s.view === 'low' ? 'btn-p' : 'btn-s',
+    boxCls: s.view === 'all' ? 'scroll' : '', allCls: s.view === 'all' ? 'btn-p' : 'btn-s', lowCls: s.view === 'low' ? 'btn-p' : 'btn-s',
+    plMarks: all.filter((l) => l.low && !s.ok[l.i]).map((l) => { const [mm, ss] = l.t.split(':').map(Number); const sec = mm * 60 + ss;
+      return { t: l.t, left: (sec / 2) + '%', go: () => { this._scrollTo = l.t; this.setState({ view: 'low', focusT: l.t, pos: sec }); } }; }),
+    plHasMarks: lowLeft > 0, plMarkCount: lowLeft,
+    plOn: s.pl, plOff: !s.pl, plPlayLabel: s.pl ? '일시정지' : '재생', plPos: Math.floor(s.pos), plMax: 200, plPct: (s.pos / 2) + '%', plCur: fmtT(s.pos), plDur: fmtT(200),
+    plToggle: () => { if (this.state.pl) { this.plRun(false); this.setState({ pl: false }); } else { const p = this.state.pos >= 200 ? 0 : this.state.pos; this.plRun(true); this.setState({ pl: true, pos: p }); } },
+    plStop: () => { this.plRun(false); this.setState({ pl: false, pos: 0 }); },
+    plBack: () => this.setState({ pos: Math.max(0, this.state.pos - 5) }), plFwd: () => this.setState({ pos: Math.min(200, this.state.pos + 5) }),
+    plSeek: (e) => this.setState({ pos: Math.max(0, Math.min(200, Number(e.target.value) || 0)) }),
     showAll: () => this.setState({ view: s.view === 'all' ? 'key' : 'all' }), showLow: () => this.setState({ view: s.view === 'low' ? 'key' : 'low' }) };
 }
 }

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>I-SPOT 시작 화면</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#F2F2F0}
+.lp,.lp *{box-sizing:border-box;margin:0;padding:0}
+.lp a{color:inherit;text-decoration:none}
+.lp ul{list-style:none}
+.lp button{cursor:pointer;background:none;border:none;font-family:inherit}
+.lp .btn-primary{background-color:#2B2A26;color:#EADBB5;border-radius:20px;justify-content:center;align-items:center;gap:8px;padding:10px 20px;font-weight:500;transition:background .2s;display:inline-flex}
+.lp .btn-primary:hover{background-color:#3A3833;color:#EADBB5}
+.lp .btn-text{color:#2B2A26;align-items:center;gap:4px;font-weight:500;display:inline-flex}
+.lp .splash-nav{-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);background-color:rgba(255,255,255,.85);border-radius:32px;justify-content:space-between;align-items:center;margin-top:24px;padding:20px 32px;display:flex;box-shadow:0 8px 32px rgba(43,42,38,.05)}
+.lp .nav-logo{color:#2B2A26;letter-spacing:1px;align-items:center;gap:6px;font-size:1.4rem;font-weight:800;display:flex}
+.lp .logo-icon{background-color:#2B2A26;color:#EADBB5;border-radius:8px;justify-content:center;align-items:center;width:28px;height:28px;font-size:1.2rem;display:flex}
+.lp .nav-links{color:#2B2A26;gap:40px;font-size:.95rem;font-weight:600;display:flex}
+.lp .nav-links a{transition:color .2s}
+.lp .nav-links a:hover{color:#8C7340}
+.lp .login-btn{border-radius:24px;padding:12px 28px;font-size:.95rem}
+.lp .hero{text-align:center;flex-direction:column;flex:1;justify-content:center;align-items:center;margin-top:20px;padding:100px 0;display:flex}
+.lp .hero-subtitle{color:#8C7340;letter-spacing:.5px;background:#FFFFFF;border-radius:20px;margin-bottom:24px;padding:8px 16px;font-size:1.05rem;font-weight:700;box-shadow:0 4px 12px rgba(43,42,38,.08)}
+.lp .hero-title{color:#2B2A26;letter-spacing:-1.5px;margin-bottom:32px;font-size:4rem;font-weight:400;line-height:1.25}
+.lp .hero-title strong{font-weight:800}
+.lp .hero-description{color:#5A564E;margin-bottom:56px;font-size:1.25rem;line-height:1.6}
+.lp .hero-buttons{align-items:center;justify-content:center;gap:20px;margin-bottom:64px;display:flex}
+.lp .start-btn{border-radius:32px;padding:18px 40px;font-size:1.15rem;transition:all .3s;box-shadow:0 8px 24px rgba(43,42,38,.25)}
+.lp .start-btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(43,42,38,.35)}
+.lp .explore-btn{background:#FFFFFF;border-radius:32px;padding:18px 32px;font-size:1.15rem;box-shadow:0 4px 12px rgba(43,42,38,.03)}
+.lp .hero-footer-text{color:#7A776F;font-size:.95rem;font-weight:500}
+.lp .features{width:100%;max-width:1200px;margin:0 auto;padding:40px 0 100px}
+.lp .features-header{justify-content:space-between;align-items:flex-end;margin-bottom:40px;display:flex}
+.lp .features-header h2{color:#45423B;font-size:1.2rem;font-weight:700}
+.lp .with-ispot{color:#8C7340;letter-spacing:1.5px;font-size:.9rem;font-weight:800}
+.lp .cards-container{grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;display:grid}
+.lp .feature-card{background:#FFFFFF;border-radius:28px;padding:48px 36px;transition:all .3s cubic-bezier(.25,.8,.25,1);box-shadow:0 12px 40px rgba(43,42,38,.05)}
+.lp .feature-card:hover{transform:translateY(-8px);box-shadow:0 20px 48px rgba(43,42,38,.10)}
+.lp .card-top{color:#8C7340;justify-content:space-between;align-items:center;margin-bottom:40px;display:flex}
+.lp .card-number{font-size:1.2rem;font-weight:800}
+.lp .card-icon{opacity:.8}
+.lp .feature-card h3{color:#2B2A26;letter-spacing:-.5px;margin-bottom:16px;font-size:1.6rem;font-weight:700}
+.lp .feature-card p{color:#66625A;font-size:1.05rem;line-height:1.7}
+.lp .splash-footer{color:#7A776F;border-top:1px solid rgba(43,42,38,.08);justify-content:space-between;align-items:center;width:100%;max-width:1200px;margin:0 auto;padding:40px 0;font-size:.95rem;display:flex}
+.lp .footer-logo{color:#45423B;margin-right:8px;font-weight:800}
+.lp .footer-right{gap:32px;display:flex}
+.lp .footer-right a{transition:color .2s}
+.lp .footer-right a:hover{color:#2B2A26}
+@media (max-width:1024px){.lp .cards-container{grid-template-columns:repeat(2,minmax(0,1fr))}.lp .hero-title{font-size:3.2rem}}
+@media (max-width:768px){
+.lp{padding:0 16px !important}
+.lp .splash-nav{border-radius:20px;flex-wrap:wrap;margin-top:16px;padding:16px 20px}
+.lp .nav-links{display:none}
+.lp .hero{padding:60px 0}
+.lp .hero-subtitle{margin-bottom:20px;font-size:.9rem}
+.lp .hero-title{letter-spacing:-.5px;margin-bottom:24px;font-size:2.2rem}
+.lp .hero-description{margin-bottom:40px;padding:0 16px;font-size:1.05rem}
+.lp .hero-buttons{flex-direction:column;gap:16px;width:100%;padding:0 16px}
+.lp .start-btn,.lp .explore-btn{justify-content:center;width:100%;padding:16px;font-size:1.1rem}
+.lp .features{padding:40px 16px 60px}
+.lp .features-header{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:32px}
+.lp .cards-container{grid-template-columns:minmax(0,1fr);gap:20px}
+.lp .feature-card{border-radius:24px;padding:32px 24px}
+.lp .feature-card h3{font-size:1.4rem}
+.lp .splash-footer{text-align:center;flex-direction:column;gap:24px;padding:32px 16px}
+.lp .footer-right{flex-wrap:wrap;justify-content:center;gap:16px}
+}
+</style>
+</helmet>
+<div class="lp" style="background: linear-gradient(180deg, #F5ECDB 0%, #E6E9E8 100%); color: #2B2A26; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; font-size: 14px; display: flex; flex-direction: column; min-height: 100vh; padding: 0 40px; overflow-x: hidden;">
+<nav class="splash-nav" aria-label="주 메뉴">
+<div class="nav-logo"><span class="logo-icon">I</span><span class="logo-text">·SPOT</span></div>
+<ul class="nav-links">
+<li><a href="#">서비스 소개</a></li>
+<li><a href="#">상담 지원</a></li>
+<li><a href="#">이용 안내</a></li>
+<li><a href="#">자주 묻는 질문</a></li>
+</ul>
+<div class="nav-actions"><a class="btn-primary login-btn" href="Login.dc.html">로그인 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a></div>
+</nav>
+<section class="hero">
+<p class="hero-subtitle">아동 보호 상담을 위한 하나의 공간</p>
+<h1 class="hero-title">아이의 이야기가<br><strong>안전한 내일로 이어지도록.</strong></h1>
+<p class="hero-description">아이에게 필요한 관심이, 복잡한 업무 속에서 놓치지 않도록.<br>상담의 준비부터 기록과 후속 지원까지, I-SPOT이 함께합니다.</p>
+<div class="hero-buttons">
+<button type="button" class="btn-text explore-btn">서비스 둘러보기 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg></button>
+</div>
+<p class="hero-footer-text">상담사의 집중이 아이의 회복으로 이어지는 곳</p>
+</section>
+<section class="features">
+<div class="features-header">
+<h2>더 나은 돌봄을 위한, 차분한 업무의 시작</h2>
+<span class="with-ispot">WITH I-SPOT</span>
+</div>
+<div class="cards-container">
+<div class="feature-card">
+<div class="card-top"><span class="card-number">01</span><svg class="card-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle></svg></div>
+<h3>상담에 집중하고</h3>
+<p>일정과 사례를 한눈에 살펴보고,<br>오늘 만날 아이를 차분히 준비하세요.</p>
+</div>
+<div class="feature-card">
+<div class="card-top"><span class="card-number">02</span><svg class="card-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg></div>
+<h3>기록을 이어가고</h3>
+<p>상담의 맥락과 작은 변화를 기록해,<br>다음 만남으로 자연스럽게 이어가세요.</p>
+</div>
+<div class="feature-card">
+<div class="card-top"><span class="card-number">03</span><svg class="card-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></div>
+<h3>함께 돌봅니다</h3>
+<p>확인할 일과 후속 지원을 챙기며,<br>아이의 안전과 회복을 함께 살펴보세요.</p>
+</div>
+</div>
+</section>
+<footer class="splash-footer">
+<div class="footer-left"><span class="footer-logo">I·SPOT</span> 아이의 안전과 회복을 함께</div>
+<div class="footer-right">
+<a href="#">이용약관</a>
+<a href="#">개인정보 처리방침</a>
+<a href="#">문의하기</a>
+</div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
