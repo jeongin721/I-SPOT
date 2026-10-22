@@ -457,8 +457,8 @@ _RISK_FIELDS = ("risk_utterances", "abuse_signals", "risk_factors")
 def _segment_refs(item: Dict[str, Any]) -> List[Any]:
     """항목이 근거로 든 발화 번호. segment_id(단수)와 segment_ids(복수)를 모두 본다.
 
-    PROPOSAL_risk_fields.md §7 은 risk_utterances 만 단수, 나머지는 복수를 쓴다.
-    구조가 확정되기 전이라 어느 쪽으로 와도 읽는다.
+    확정안(PROPOSAL_risk_fields.md §7, 2026-10-22)은 세 필드 모두 복수 segment_ids 를 쓴다.
+    옛 결과 · langgraph 경로가 단수로 올 수 있어 어느 쪽으로 와도 읽는다.
     """
 
     refs: List[Any] = []

@@ -77,13 +77,61 @@ TRANSCRIPT = {
     ],
 }
 
+# record_draft.risk_signal_points 한 항목(모듈 안 모양 — 유형 · 근거 강도는 한글).
 GROUNDED_POINT = {
     "text": "아빠가 화나면 때려요.",
     "segment_ids": ["seg_002"],
     "major_type": "신체학대",
     "subtype": "직접 신체 가해",
     "evidence_strength": "높음",
+    "strength_reason": "때린 행위와 주체가 직접 진술됨",
+    "evidence_verified": True,
 }
+
+# 같은 항목이 Contract 로 나간 모양(PROPOSAL_risk_fields.md §7 2026-10-22 확정안).
+# 유형은 영문 대문자, 근거 강도는 HIGH|MEDIUM|LOW, reason 은 strength_reason.
+EXPECTED_UTTERANCE = {
+    "text": "아빠가 화나면 때려요.",
+    "segment_ids": ["seg_002"],
+    "abuse_type": "PHYSICAL",
+    "subtype": "직접 신체 가해",
+    "evidence_strength": "HIGH",
+    "reason": "때린 행위와 주체가 직접 진술됨",
+    "evidence_verified": True,
+}
+
+FILTERED_REASON = "아동이 관련 발화를 명확히 부정함"
+
+NOT_DETECTED = {"detected": False}
+
+
+def _chunk(major_types: Dict[str, Dict[str, Any]], index: int = 1) -> Dict[str, Any]:
+    """infer_audio_session 의 chunk_results 한 항목(1차 모델의 chunk 단위 판정)."""
+
+    return {
+        "chunk_index": index,
+        "segment_ids": ["seg_001", "seg_002", "seg_003"],
+        "has_low_confidence": False,
+        "major_types": major_types,
+    }
+
+
+def _signal(
+    abuse_type: str,
+    detected: bool,
+    segment_ids: List[str] = (),
+    detection_source: str = None,
+    filtered_reason: str = None,
+) -> Dict[str, Any]:
+    """abuse_signals 한 항목(확정안 모양)."""
+
+    return {
+        "abuse_type": abuse_type,
+        "detected": detected,
+        "segment_ids": list(segment_ids),
+        "detection_source": detection_source,
+        "filtered_reason": filtered_reason,
+    }
 
 
 def _native_result() -> Dict[str, Any]:
@@ -98,6 +146,11 @@ def _native_result() -> Dict[str, Any]:
             "성학대": {"detected": False},
             "방임": {"detected": False},
         },
+        # 세션 major_types 는 chunk 판정을 detected 만 남기고 합친 것이라, 검출 출처(detection_source)는
+        # contract_adapter 가 chunk_results 를 다시 보고 정한다.
+        "chunk_results": [
+            _chunk({"신체학대": {"detected": True}, "정서학대": NOT_DETECTED, "성학대": NOT_DETECTED, "방임": NOT_DETECTED}),
+        ],
         "subtype_analysis": {"model": "subtype-model-test", "results": []},
         "record_draft": {
             "child_statement_points": [
@@ -203,17 +256,132 @@ def test_result_is_converted_to_contract(modeling) -> None:
         ("아빠가 화나면 때린다고 말함.", ["seg_002"]),
     ]
 
-    assert result.risk_utterances == [GROUNDED_POINT]
+    assert result.risk_utterances == [EXPECTED_UTTERANCE]
     assert result.abuse_signals == [
-        {"major_type": "신체학대", "detected": True, "segment_ids": ["seg_002"]},
-        {"major_type": "정서학대", "detected": False, "segment_ids": []},
-        {"major_type": "성학대", "detected": False, "segment_ids": []},
-        {"major_type": "방임", "detected": False, "segment_ids": []},
+        _signal("PHYSICAL", True, ["seg_002"], "MODEL"),
+        _signal("EMOTIONAL", False),
+        _signal("SEXUAL", False),
+        _signal("NEGLECT", False),
     ]
     assert result.risk_factors == []
 
     # 검출되지 않은 유형은 근거가 없어도 남고 경고도 붙지 않는다.
     assert result.warnings == []
+
+
+# =========================================================
+# 위험 3필드 항목 구조 — PROPOSAL_risk_fields.md §7 확정안(2026-10-22)
+# =========================================================
+
+def test_risk_item_keys_match_contract(modeling) -> None:
+    """항목 키는 확정안 그대로다. 모듈 안 키(major_type · strength_reason)는 나가지 않는다."""
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert set(result.risk_utterances[0]) == {
+        "text",
+        "segment_ids",
+        "abuse_type",
+        "subtype",
+        "evidence_strength",
+        "reason",
+        "evidence_verified",
+    }
+    assert all(
+        set(signal) == {"abuse_type", "detected", "segment_ids", "detection_source", "filtered_reason"}
+        for signal in result.abuse_signals
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "abuse_type"),
+    [("신체학대", "PHYSICAL"), ("정서학대", "EMOTIONAL"), ("성학대", "SEXUAL"), ("방임", "NEGLECT")],
+)
+def test_abuse_type_is_english_in_both_risk_fields(modeling, label: str, abuse_type: str) -> None:
+    """유형은 Contract 경계에서 영문 대문자로 바뀐다(02_ARCHITECTURE §7). 모듈 안은 한글 그대로다."""
+
+    modeling["result"]["major_types"] = {label: {"detected": True}}
+    modeling["result"]["chunk_results"] = [_chunk({label: {"detected": True}})]
+    modeling["result"]["record_draft"]["risk_signal_points"] = [{**GROUNDED_POINT, "major_type": label}]
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.risk_utterances == [{**EXPECTED_UTTERANCE, "abuse_type": abuse_type}]
+    assert result.abuse_signals == [_signal(abuse_type, True, ["seg_002"], "MODEL")]
+
+
+def test_unknown_major_type_is_kept_as_is(modeling) -> None:
+    """모르는 유형명은 바꾸지 않고 그대로 둔다(정보를 잃지 않게). 근거가 있으면 관문도 지난다."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [{**GROUNDED_POINT, "major_type": "기타(가상)"}]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["abuse_type"] == "기타(가상)"
+
+
+@pytest.mark.parametrize(
+    ("native", "expected"),
+    [("높음", "HIGH"), ("중간", "MEDIUM"), ("낮음", "LOW"), ("아주 높음", "LOW"), (None, "LOW")],
+)
+def test_evidence_strength_is_three_level_english(modeling, native, expected: str) -> None:
+    """근거 강도는 확률이 아니라 3단계다. 2차 분석과 같이 모르는 값은 LOW 로 둔다."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [{**GROUNDED_POINT, "evidence_strength": native}]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["evidence_strength"] == expected
+
+
+def test_reason_and_evidence_verified_default_when_module_omits_them(modeling) -> None:
+    point = {key: value for key, value in GROUNDED_POINT.items() if key not in ("strength_reason", "evidence_verified")}
+    modeling["result"]["record_draft"]["risk_signal_points"] = [point]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["reason"] == ""
+    assert utterance["evidence_verified"] is False
+
+
+def test_detection_source_comes_from_chunk_results(modeling) -> None:
+    """MODEL: 어느 chunk 든 1차가 검출. FILTERED: 모두 아니고 부정 응답 필터로 빠진 chunk 가 있음.
+    둘 다 아니면 null. FILTERED 는 detected=false 라 근거가 없어도 관문을 지나고 경고도 없다."""
+
+    modeling["result"]["chunk_results"] = [
+        _chunk(
+            {
+                "신체학대": NOT_DETECTED,
+                "정서학대": {"detected": False, "filtered_reason": FILTERED_REASON},
+                "성학대": NOT_DETECTED,
+                "방임": NOT_DETECTED,
+            },
+        ),
+        _chunk({"신체학대": {"detected": True}, "정서학대": NOT_DETECTED, "성학대": NOT_DETECTED, "방임": NOT_DETECTED}, index=2),
+    ]
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.abuse_signals == [
+        _signal("PHYSICAL", True, ["seg_002"], "MODEL"),
+        _signal("EMOTIONAL", False, [], "FILTERED", FILTERED_REASON),
+        _signal("SEXUAL", False),
+        _signal("NEGLECT", False),
+    ]
+    assert result.warnings == []
+
+
+def test_model_detection_wins_over_filter_in_another_chunk(modeling) -> None:
+    """같은 유형이 한 chunk 에서 걸러지고 다른 chunk 에서 검출되면 MODEL 이고 걸러진 사유는 싣지 않는다."""
+
+    modeling["result"]["chunk_results"] = [
+        _chunk({"신체학대": {"detected": False, "filtered_reason": FILTERED_REASON}}),
+        _chunk({"신체학대": {"detected": True}}, index=2),
+    ]
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.abuse_signals[0] == _signal("PHYSICAL", True, ["seg_002"], "MODEL")
 
 
 def test_optional_fields_are_filled_from_module_output(modeling) -> None:
@@ -302,15 +470,16 @@ def test_unverified_evidence_and_signal_without_evidence_are_dropped(modeling, c
     draft = modeling["result"]["record_draft"]
     draft["risk_signal_points"].append({**GROUNDED_POINT, "text": "원문에 없는 인용(가상)", "segment_ids": []})
     modeling["result"]["major_types"]["정서학대"] = {"detected": True}
+    modeling["result"]["chunk_results"][0]["major_types"]["정서학대"] = {"detected": True}
 
     with caplog.at_level(logging.WARNING):
         result = ModelingAIAdapter().analyze(TRANSCRIPT).result
 
-    assert result.risk_utterances == [GROUNDED_POINT]
-    assert [(s["major_type"], s["detected"]) for s in result.abuse_signals] == [
-        ("신체학대", True),
-        ("성학대", False),
-        ("방임", False),
+    assert result.risk_utterances == [EXPECTED_UTTERANCE]
+    assert [(s["abuse_type"], s["detected"]) for s in result.abuse_signals] == [
+        ("PHYSICAL", True),
+        ("SEXUAL", False),
+        ("NEGLECT", False),
     ]
     assert result.warnings == ["segment 근거가 없는 신호 2건을 제외했습니다."]
 
@@ -326,8 +495,8 @@ def test_items_pointing_to_unknown_segment_are_dropped(modeling) -> None:
 
     result = ModelingAIAdapter().analyze(TRANSCRIPT).result
 
-    assert result.risk_utterances == [GROUNDED_POINT]
-    assert "성학대" not in [s["major_type"] for s in result.abuse_signals]
+    assert result.risk_utterances == [EXPECTED_UTTERANCE]
+    assert "SEXUAL" not in [s["abuse_type"] for s in result.abuse_signals]
     assert any(DROPPED_WARNING in warning for warning in result.warnings)
 
 
