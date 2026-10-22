@@ -35,14 +35,31 @@ sudo bash deploy/web-deploy.sh
   새 주소도 이 서버를 가리켜야 HTTPS 인증서가 발급됩니다. `backend.env` 의 `CORS_ORIGINS` 는 스크립트가 `https://<주소>` 로 고칩니다.
 - 이전 버전으로 되돌리는 기능은 없습니다. 되돌리려면 main 에서 되돌리는 커밋을 머지한 뒤 다시 배포합니다.
 
+## 모델까지 띄우기 (`AI_PROVIDER=modeling`)
+
+기본 이미지는 mock · pipeline 만 돌립니다. modeling(`ai/modeling/abuse`, 학대 유형 분류 모델 + 이름 가리기 + OpenAI)은 이미지에 torch · transformers · openai 와 모델 파일이 더 있어야 해서 따로 켭니다.
+
+1. **모델 파일 두 개를 서버에 둡니다.** `roberta_abuse_qa_child_v3_best.pth` · `roberta_abuse_note_v1_best.pth` 는 저장소에 없습니다(`.gitignore`). 기본 자리는 `/opt/ispot/I-SPOT/ai/modeling/abuse/weight/` 이고, 다른 폴더면 `MODELING_WEIGHT_DIR` 로 줍니다. 이미지에 넣지 않고 컨테이너의 `/ai/modeling/abuse/weight` 에 읽기 전용으로 붙입니다.
+2. **`backend.env` 를 고칩니다.** `AI_PROVIDER=modeling`, `OPENAI_API_KEY=<키>`. `ENV=production` 이면 `AI_MODELING_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만** 켭니다(가리기가 아직 완전하지 않음, 위 '중간에 멈췄을 때').
+3. **`WITH_MODELING=1` 로 배포합니다.**
+
+   ```bash
+   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
+   ```
+
+   - 이미지에 CPU 판 torch(`download.pytorch.org/whl/cpu`) · `backend/requirements-modeling.txt` 를 더 깝니다. 처음 빌드는 몇 분 더 걸리고 이미지가 커집니다.
+   - 모델 파일이 없으면 시작 전에 멈춥니다. `backend.env` 가 `AI_PROVIDER=modeling` 인데 `WITH_MODELING=1` 없이 돌려도 멈춥니다(torch 가 없는 이미지로 뜨면 첫 분석에서야 실패하므로).
+   - 이름 인식(`Leo97/KoELECTRA-small-v3-modu-ner`) · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받아 `/opt/ispot/hf-cache` 에 둡니다(서버에서 인터넷이 돼야 함). 첫 분석은 그만큼 늦습니다.
+   - 분류 모델 두 개와 이름 인식 모델을 메모리에 올리므로 서버 메모리가 넉넉해야 합니다(얼마나 쓰는지는 재지 않았습니다).
+
 ## 스크립트가 하는 일 (`web-deploy.sh`)
 
 | 단계 | 하는 일 |
 | --- | --- |
 | 1/5 | `/opt/ispot/I-SPOT` 에서 `origin/main` 을 받아 fast-forward |
 | 2/5 | Node 컨테이너(`node:22.12.0-alpine`)에서 `counselor-web` 을 `npm ci` · `npm run build` 하고 결과를 `/opt/ispot/web` 에 복사 |
-| 3/5 | Backend 이미지(`ispot-backend`)를 다시 만들고 `alembic upgrade head` 로 DB 를 최신 구조로 |
-| 4/5 | Backend 컨테이너를 `127.0.0.1:8000` 에서만 받도록 다시 띄움(`--proxy-headers --forwarded-allow-ips 127.0.0.1`) |
+| 3/5 | Backend 이미지(`ispot-backend`)를 저장소 루트에서 다시 만들고(`-f backend/Dockerfile`, 넣는 것은 루트 `.dockerignore`, `WITH_MODELING=1` 이면 modeling 패키지까지) `alembic upgrade head` 로 DB 를 최신 구조로 |
+| 4/5 | Backend 컨테이너를 `127.0.0.1:8000` 에서만 받도록 다시 띄움(`--proxy-headers --forwarded-allow-ips 127.0.0.1`, `WITH_MODELING=1` 이면 모델 파일 · Hugging Face 캐시 폴더를 붙임) |
 | 5/5 | Caddy 설정(`/opt/ispot/Caddyfile`)을 다시 쓰고 Caddy 컨테이너(`caddy:2.8.4`)를 다시 띄움 |
 
 ## 서버 구성

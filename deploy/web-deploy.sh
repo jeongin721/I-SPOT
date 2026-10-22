@@ -6,6 +6,9 @@
 # 서버에서: cd /opt/ispot/I-SPOT && sudo git pull --ff-only && sudo bash deploy/web-deploy.sh
 # 주소를 바꾸려면 SITE 를 넘긴다(sudo 는 설정에 따라 환경변수를 넘기지 않을 수 있어 sudo 뒤에 env 로 쓴다):
 #   sudo env SITE=<새 주소> bash deploy/web-deploy.sh
+# backend.env 가 AI_PROVIDER=modeling 이면 WITH_MODELING=1 을 넘긴다(torch · transformers 를 더 깔고 모델 파일을 붙인다,
+# deploy/README.md '모델까지 띄우기'):
+#   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
@@ -14,6 +17,24 @@ SITE="${SITE:-15-165-250-143.sslip.io}"
 [[ "$SITE" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "SITE 는 영문 · 숫자 · 점 · 하이픈만 쓸 수 있습니다: $SITE"; exit 1; }
 REPO=/opt/ispot/I-SPOT
 ENV_FILE=/opt/ispot/backend.env
+
+WITH_MODELING="${WITH_MODELING:-0}"
+[[ "$WITH_MODELING" =~ ^[01]$ ]] || { echo "WITH_MODELING 은 0 또는 1 입니다: $WITH_MODELING"; exit 1; }
+# 학대 분류 모델 파일은 저장소에 없다(.gitignore). 이 폴더에 두면 컨테이너의 /ai/modeling/abuse/weight 에 읽기 전용으로 붙인다.
+WEIGHT_DIR="${MODELING_WEIGHT_DIR:-$REPO/ai/modeling/abuse/weight}"
+MODELING_MOUNTS=()
+if [ "$WITH_MODELING" = 1 ]; then
+  for f in roberta_abuse_qa_child_v3_best.pth roberta_abuse_note_v1_best.pth; do
+    [ -f "$WEIGHT_DIR/$f" ] || { echo "modeling 모델 파일이 없습니다: $WEIGHT_DIR/$f (MODELING_WEIGHT_DIR 로 다른 폴더를 줄 수 있습니다)"; exit 1; }
+  done
+  # 이름 인식 · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받는다. 컨테이너를 다시 만들어도 다시 받지 않게 서버에 둔다.
+  mkdir -p /opt/ispot/hf-cache
+  MODELING_MOUNTS=(-v "$WEIGHT_DIR:/ai/modeling/abuse/weight:ro" -v /opt/ispot/hf-cache:/hf-cache)
+elif grep -qE '^AI_PROVIDER=modeling[[:space:]]*$' "$ENV_FILE"; then
+  echo "backend.env 가 AI_PROVIDER=modeling 입니다. torch · 모델 파일이 든 이미지가 필요해 WITH_MODELING=1 로 실행해 주세요:"
+  echo "  sudo env WITH_MODELING=1 bash deploy/web-deploy.sh"
+  exit 1
+fi
 
 echo "== 1/5 최신 main 받기"
 cd "$REPO"
@@ -31,14 +52,15 @@ find /opt/ispot/web -mindepth 1 -delete
 cp -r "$REPO/counselor-web/dist/." /opt/ispot/web/
 
 echo "== 3/5 백엔드 이미지 다시 만들기 + DB 마이그레이션"
-docker build -q -t ispot-backend "$REPO/backend"
+# 저장소 루트가 빌드 컨텍스트다(ai/ · agent/ 도 담음). 넣는 것은 루트 .dockerignore 가 고른다.
+docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" -f "$REPO/backend/Dockerfile" "$REPO"
 sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=https://$SITE|" "$ENV_FILE"
 docker run --rm --env-file "$ENV_FILE" ispot-backend alembic upgrade head
 
 echo "== 4/5 백엔드를 127.0.0.1:8000 으로만 다시 띄우기"
 docker rm -f ispot-backend >/dev/null 2>&1 || true
 docker run -d --name ispot-backend --restart unless-stopped --network host \
-  --env-file "$ENV_FILE" -v /opt/ispot/storage:/app/storage ispot-backend \
+  --env-file "$ENV_FILE" -v /opt/ispot/storage:/app/storage ${MODELING_MOUNTS[@]+"${MODELING_MOUNTS[@]}"} ispot-backend \
   uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
 
 echo "== 5/5 Caddy(화면 + API + HTTPS)"
