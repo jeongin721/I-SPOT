@@ -1,4 +1,5 @@
-/* CaseDetail 화면에만 있는 규칙(디자인 CaseDetail.dc.html). 공통 규칙은 src/styles/common.css. */
+/* CaseDetail 화면에만 있는 규칙(디자인 CaseDetail.dc.html). 공통 규칙은 src/styles/common.css.
+   맨 아래 '초기면접 내용' 카드(.intake)는 디자인에 없는 칸이라 CaseRegister.css 의 고르기 단추 · 칸 제목을 옮겨 쓴다. */
 .pg-CaseDetail .kv {
   display: grid;
   grid-template-columns: 96px 1fr;
@@ -60,4 +61,43 @@
 }
 .pg-CaseDetail .thm-root.dark .box {
   background: #33312c !important;
+}
+/* 초기면접 내용 카드: 고르기 단추 · 칸 제목(CaseRegister.css 의 .pk · .sec 와 같은 모양) */
+.pg-CaseDetail .intake .pk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #dad5c9;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: #ffffff;
+  color: #2b2a26;
+}
+.pg-CaseDetail .intake .sec {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+  background: #f2efe8;
+  border-radius: 10px;
+}
+.pg-CaseDetail .intake .pk:disabled,
+.pg-CaseDetail .intake .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pg-CaseDetail .thm-root.dark .intake .pk {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+.pg-CaseDetail .thm-root.dark .intake .pk.on {
+  border: 1px solid #d6d0c4 !important;
+  background: #4a463e !important;
+}
+.pg-CaseDetail .thm-root.dark .intake .sec {
+  background: #393731 !important;
 }

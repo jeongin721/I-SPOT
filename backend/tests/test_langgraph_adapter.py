@@ -392,14 +392,14 @@ def test_llm_node_before_deidentification_fails_safely(monkeypatch):
     assert "DeidentificationRequiredError" in str(exc.value)
 
 
-def test_graph_failure_detail_is_logged_with_session_id_not_stored(
+def test_graph_failure_type_is_logged_with_session_id_without_text(
     client: TestClient,
     counselor_headers,
     session: dict,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """예외 문구는 저장·응답에 싣지 않고, session_id 와 함께 로그에만 남긴다."""
+    """예외 문구는 저장 · 응답 · 로그 어디에도 싣지 않는다. 로그에는 session_id 와 원인 예외의 종류 · 호출 위치만 남긴다."""
 
     secret = "아빠가 때렸어요 라는 발화 처리 중 오류"
 
@@ -418,4 +418,6 @@ def test_graph_failure_detail_is_logged_with_session_id_not_stored(
 
     logged = [r for r in caplog.records if r.exc_info and session["id"] in r.getMessage()]
     assert logged, "원인 예외를 session_id 와 함께 남겨야 한다"
-    assert secret in caplog.text
+    assert secret not in caplog.text
+    assert "RuntimeError: <문구 생략>" in caplog.text
+    assert "Traceback (most recent call last):" in caplog.text

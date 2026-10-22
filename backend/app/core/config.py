@@ -163,8 +163,8 @@ class Settings(BaseSettings):
     # ENV=production 에서는 이 값이 true 일 때만 pipeline 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_PIPELINE_ALLOW_UNMASKED: bool = False
-    # modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않다(긴 상담 뒷부분은 이름 등이
-    # 가려지지 않고, 이름 인식이 놓친 이름을 잡아 줄 등록 실명 대조도 서버 경로에서는 돌지 않는다).
+    # modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않다(이름 인식이 놓친 이름을 잡아 줄
+    # 등록 실명 대조가 서버 경로에서는 돌지 않는다. 긴 상담 뒷부분을 못 가리던 문제는 10/20 겹치는 창으로 고쳤다).
     # ENV=production 에서는 이 값이 true 일 때만 modeling 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_MODELING_ALLOW_IN_PRODUCTION: bool = False
@@ -257,9 +257,10 @@ class Settings(BaseSettings):
     def _block_modeling_in_production(self) -> "Settings":
         """운영에서 비식별이 아직 불완전한 modeling 으로 서버가 뜨지 않게 한다.
 
-        modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 이름 인식(NER)이 글 앞 512토큰만 봐서 긴 상담 뒷부분의
-        이름 · 기관 · 지역이 가려지지 않고 잔존 검사도 못 잡는다. 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조도
-        돌지 않으므로, 앞부분에서도 이름 인식이 놓친 이름은 그대로 나간다(ai/modeling/abuse/pii_masking.py · privacy_gateway.py).
+        modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조(Privacy Gateway
+        Tier 2)가 돌지 않는다. 그래서 이름 인식(NER)이 놓친 이름 · 기관 · 지역은 그대로 나간다(ai/modeling/abuse/contract_adapter.py
+        '아직 못 채운 것' · privacy_gateway.py. 실명 저장 여부는 팀 결정 대기). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
+        못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
         이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
         함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).
         """
@@ -270,7 +271,8 @@ class Settings(BaseSettings):
         raise ValueError(
             "ENV=production 에서는 AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
             "modeling 은 상담 내용을 외부(OpenAI)로 보내는데, 그 전에 하는 비식별(이름 · 학교 · 주소 가리기)이 "
-            "아직 완전하지 않습니다 — 긴 상담 뒷부분은 가려지지 않고, 이름 인식이 놓친 이름도 그대로 나갈 수 있습니다. "
+            "아직 완전하지 않습니다 — 이름 인식이 놓친 이름을 등록 실명으로 한 번 더 잡는 대조가 서버에서는 돌지 않아, "
+            "놓친 이름이 그대로 나갈 수 있습니다. "
             "이 개인정보 문제가 해결되기 전에는 실제 상담 데이터에 AI_PROVIDER=mock 을 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 AI_MODELING_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )

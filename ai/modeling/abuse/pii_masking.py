@@ -9,11 +9,21 @@ entity_map(토큰 -> 원문)은 외부로 전송하지 않고 호출 측(로컬)
 보관한다 — 외부 LLM에는 masked_text만 전달한다.
 """
 
+import logging
 import re
 from typing import Dict, List, Tuple
 
 import torch
 from transformers import AutoTokenizer, AutoModelForTokenClassification
+
+# "Token indices sequence length is longer than..." 경고를 끈다 — 긴
+# 입력을 겹치는 창으로 나눠 처리하도록 설계했으니(_decode_ner_spans
+# 참고) 이 경고에 쓰인 "indexing errors가 날 것" 문구는 우리 상황에는
+# 해당하지 않는다. 실제 처리에는 영향 없음(2026-10-20, 512 토큰 초과
+# 입력 처리 추가 때 확인).
+logging.getLogger("transformers.tokenization_utils_base").setLevel(
+    logging.ERROR
+)
 
 
 # ============================================================
@@ -64,6 +74,30 @@ _NER_LABEL_TO_TOKEN_PREFIX = {
 _SCHOOL_KEYWORDS = ("학교", "유치원", "어린이집")
 _HOSPITAL_KEYWORDS = ("병원", "의원", "센터")
 
+# 줄 머리의 "구조 표식"(화자 코드)은 PII가 아니다 — infer_audio_session
+# .build_full_transcript_text가 매 줄 앞에 붙이는 "아동: "/"상담사: "와,
+# record_draft_llm.build_transcript_citation_text가 붙이는
+# "[seg_001] CHILD: " 둘 다. 모델이 가끔 이 안의 조각을 사람·기관으로
+# 잘못 본다 — "아동"/"상담사" 전체뿐 아니라 "UNKNOWN"의 "UN"·"UNK",
+# "CHILD"의 "CH"·"ILD", "[seg_280]"의 "g"처럼 글자 일부만 잡히기도
+# 한다(2026-10-20 T4 30분 분량, 2026-10-21 Mingyu가 인용 글 300발화로
+# 재현·보고).
+#
+# 처음엔 "아동"·"상담사" 정확히 일치하는 경우만 걸러냈는데 두 가지
+# 한계가 있었다: (1) "UN"처럼 단어가 아닌 조각 오탐은 못 거른다. (2)
+# 본문에 그 단어를 포함하는 진짜 이름이 있을 때(예: "김아동") 모델이
+# "아동"만 잡으면, 그 걸러내기 때문에 "김아동" 전체가 하나도 안
+# 가려진 채 남는다(2026-10-21 Mingyu 지적, 가짜 모델로 재현 — 실제
+# 모델에선 아직 안 나타남). 그래서 단어 내용이 아니라 "줄 머리 구조
+# 표식의 글자 범위" 자체를 찾아서, 그 범위 안에 완전히 들어가는
+# 판정만 거른다 — 범위를 한 글자라도 벗어나면(예: 화자 코드 바로
+# 뒤에 실제 이름이 공백 없이 붙어 하나의 범위로 잡히면) 거르지 않고
+# 그대로 마스킹한다.
+_STRUCTURAL_PREFIX_RE = re.compile(
+    r"^(?:\[[^\]\n]*\][ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN)|상담사|아동):",
+    re.MULTILINE,
+)
+
 
 def _refine_org_prefix(entity_text: str) -> str:
     """ORG 태그 중 학교/병원 이름은 더 구체적인 토큰으로 구분한다."""
@@ -77,26 +111,27 @@ def _refine_org_prefix(entity_text: str) -> str:
     return "ORG"
 
 
-def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
+# 모델의 최대 입력(512 토큰)을 넘는 긴 상담 축어록을 그냥 자르면
+# (truncation=True 한 번) 뒷부분 전체가 NER을 한 번도 안 거쳐 이름 등이
+# 그대로 노출된다(2026-10-20 Mingyu 지적 — "비식별이 완전하지 않다,
+# 긴 상담 뒷부분은 안 가려진다"). stride만큼 겹치는 창(window)으로 나눠
+# 전체를 다 돈다 — 겹치는 구간을 두는 이유는, 창 경계에 걸쳐 잘리는
+# 개체명이 있어도 그 옆 겹치는 창에서는 온전한 형태로 들어가 잡히게
+# 하기 위함이다(사람 이름·기관명은 보통 몇 토큰 안이라 128 겹침이면
+# 충분하다).
+_NER_MAX_LENGTH = 512
+_NER_STRIDE = 128
+
+
+def _merge_adjacent_same_tag_spans(
+    offsets: List[Tuple[int, int]],
+    pred_ids: List[int],
+) -> List[Tuple[int, int, str]]:
     """
-    NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
+    한 창(window) 안에서 토큰별 예측을 (시작, 끝, 태그) span으로 병합한다.
     subword(##) 경계는 offset_mapping으로 보정한다.
     """
 
-    encoded = _ner_tokenizer(
-        text,
-        return_offsets_mapping=True,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512,
-    )
-
-    offsets = encoded.pop("offset_mapping")[0].tolist()
-
-    with torch.no_grad():
-        logits = _ner_model(**encoded).logits
-
-    pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
     id2label = _ner_model.config.id2label
 
     # 체크포인트마다 라벨 표기 방식이 다르다("B-PS"처럼 앞에 B/I를
@@ -145,6 +180,115 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     _flush()
 
     return spans
+
+
+def _merge_overlapping_spans(
+    spans: List[Tuple[int, int, str]],
+) -> List[Tuple[int, int, str]]:
+    """
+    서로 다른 창(window)이 같은 개체명의 경계를 다르게 보면(예: 앞 창은
+    "대구광역시"까지만, 뒤 창은 "광역시 수성구"로) 겹치는 범위를
+    합집합으로 합친다. 창이 하나일 때는 생길 수 없던 경우다(2026-10-20
+    Mingyu 지적 — 호출부의 _select_non_overlapping_spans는 겹치면
+    먼저 시작하는 것만 남기고 나머지를 통째로 버려서, 두 범위 중 한쪽
+    범위에만 있던 부분(위 예의 "수성구")이 전혀 마스킹되지 않았다).
+
+    start < cur_end(겹칠 때만 합침)이지 start <= cur_end(맞닿기만
+    해도 합침)가 아니다 — 실제 모델로 짧은 글을 돌려보니(2026-10-21
+    Mingyu 지적) 안 겹치고 그냥 붙어만 있는 서로 다른 개체(이름 바로
+    뒤에 공백 없이 붙은 학교 이름 등)까지 하나로 합쳐지는 문제가
+    있었다. 둘 다 이미 가려지므로 새로 노출되는 건 없지만, 화면에
+    "김민수서울초등학교"처럼 한 덩어리로 보이는 건 맞지 않다.
+    """
+
+    if not spans:
+        return []
+
+    ordered = sorted(spans, key=lambda span: span[0])
+
+    merged: List[Tuple[int, int, str]] = []
+    cur_start, cur_end, cur_tag = ordered[0]
+
+    for start, end, tag in ordered[1:]:
+        if start < cur_end:
+            if (end - start) > (cur_end - cur_start):
+                cur_tag = tag
+            cur_end = max(cur_end, end)
+        else:
+            merged.append((cur_start, cur_end, cur_tag))
+            cur_start, cur_end, cur_tag = start, end, tag
+
+    merged.append((cur_start, cur_end, cur_tag))
+
+    return merged
+
+
+def _is_within_structural_prefix(
+    span: Tuple[int, int],
+    zones: List[Tuple[int, int]],
+) -> bool:
+    start, end = span
+    return any(
+        zone_start <= start and end <= zone_end
+        for zone_start, zone_end in zones
+    )
+
+
+def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
+    """
+    NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
+    512 토큰을 넘는 입력은 겹치는 여러 창으로 나눠 전체를 훑는다(모듈
+    상수 _NER_MAX_LENGTH/_NER_STRIDE 참고). return_overflowing_tokens이
+    돌려주는 offset_mapping은 각 창이 원문 전체에서 어디였는지를 이미
+    반영하고 있어 따로 보정할 필요가 없다. 창끼리 겹치는 구간에서 경계가
+    어긋나게 검출되면 _merge_overlapping_spans가 합집합으로 합친다.
+
+    줄 머리 구조 표식("아동: ", "[seg_001] CHILD: " 등) 안에 완전히
+    들어가는 판정은 PII가 아니므로 거른다(_STRUCTURAL_PREFIX_RE 선언부
+    참고).
+    """
+
+    structural_zones = [
+        (match.start(), match.end())
+        for match in _STRUCTURAL_PREFIX_RE.finditer(text)
+    ]
+
+    encoded = _ner_tokenizer(
+        text,
+        return_offsets_mapping=True,
+        truncation=True,
+        max_length=_NER_MAX_LENGTH,
+        stride=_NER_STRIDE,
+        return_overflowing_tokens=True,
+        padding=False,
+    )
+
+    spans: List[Tuple[int, int, str]] = []
+
+    for chunk_index in range(len(encoded["input_ids"])):
+        chunk_input_ids = torch.tensor([encoded["input_ids"][chunk_index]])
+        chunk_attention_mask = torch.tensor(
+            [encoded["attention_mask"][chunk_index]]
+        )
+        offsets = encoded["offset_mapping"][chunk_index]
+
+        with torch.no_grad():
+            logits = _ner_model(
+                input_ids=chunk_input_ids,
+                attention_mask=chunk_attention_mask,
+            ).logits
+
+        pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
+        chunk_spans = _merge_adjacent_same_tag_spans(offsets, pred_ids)
+        spans.extend(
+            span
+            for span in chunk_spans
+            if not _is_within_structural_prefix(
+                (span[0], span[1]), structural_zones
+            )
+        )
+
+    return _merge_overlapping_spans(spans)
 
 
 # ============================================================

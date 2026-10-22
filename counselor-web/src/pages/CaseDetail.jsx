@@ -4,6 +4,8 @@
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차는 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다(디자인이 바뀌면 JSX 만 바꾼다).
 // 서버에 없는 값(위험도 · 사례관리대상자 · 신고접수일 · 서비스 · 일정 등)은 '—', 종결 검토 등록은 준비 중.
+// '초기면접 내용' 카드는 디자인에 없어 더한 칸이다: 사례 등록 ② 탭의 가정상황 · 아동 특성을 단어로 보이고 '수정' 으로 고친다
+// (고르기 단추는 CaseRegister 와 같은 모양).
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -14,14 +16,19 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { caseDetailValues } from '../data/screens/caseDetail';
+import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import './CaseDetail.css';
 
 class Logic extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = INITIAL_CASE_DETAIL_STATE;
+  }
   renderVals() {
-    return caseDetailValues(this.props);
+    return caseDetailValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
 
@@ -31,6 +38,7 @@ export default function CaseDetail(props) {
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, detail, caseId });
+  useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDetail">
@@ -137,6 +145,90 @@ export default function CaseDetail(props) {
               </div>
             </section>
           </div>
+
+          <section className="card intake" aria-label="초기면접 내용" style={{ padding: '22px 24px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+              <h2 className="h2">초기면접 내용</h2>
+              <span className="note">서식 4 ②</span>
+              {v.intake.canEdit ? (
+                <button
+                  type="button"
+                  className="btn btn-s btn-sm"
+                  onClick={v.intake.startEdit}
+                  style={{ marginLeft: 'auto' }}
+                >
+                  수정
+                </button>
+              ) : null}
+            </div>
+            {v.intake.editing ? (
+              <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <p className="note" style={{ margin: 0 }}>
+                  {v.intake.editNote}
+                </p>
+                <div className="sec">
+                  가정상황{' '}
+                  <span className="note" style={{ fontWeight: '400' }}>
+                    (복수응답 가능)
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {v.intake.homes.map((o) => (
+                    <button
+                      key={o.label}
+                      type="button"
+                      className={o.on ? 'pk on' : 'pk'}
+                      aria-pressed={o.on}
+                      onClick={o.toggle}
+                      disabled={o.disabled}
+                      style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
+                    >
+                      {o.mark} {o.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="sec">
+                  아동 특성{' '}
+                  <span className="note" style={{ fontWeight: '400' }}>
+                    (복수응답 가능)
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {v.intake.traits.map((o) => (
+                    <button
+                      key={o.label}
+                      type="button"
+                      className={o.on ? 'pk on' : 'pk'}
+                      aria-pressed={o.on}
+                      onClick={o.toggle}
+                      disabled={o.disabled}
+                      style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
+                    >
+                      {o.mark} {o.label}
+                    </button>
+                  ))}
+                </div>
+                <Notice value={v.intake.error} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button type="button" className="btn btn-s btn-sm" onClick={v.intake.cancel} disabled={v.intake.saving}>
+                    취소
+                  </button>
+                  <button type="button" className="btn btn-p btn-sm" onClick={v.intake.save} disabled={v.intake.saving}>
+                    {v.intake.saveLabel}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
+                {v.intake.rows.map((r) => (
+                  <Fragment key={r.label}>
+                    <dt>{r.label}</dt>
+                    <dd className={r.empty ? 'note' : undefined}>{r.text}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            )}
+          </section>
 
           <section className="card" aria-label="현재 진행 상황" style={{ padding: '22px 24px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
