@@ -1916,3 +1916,45 @@ section[aria-label="폴더"]{max-width:none !important}
 .side[aria-label="관리자 메뉴"]>a.on{margin-right:0 !important}
 .side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{display:none !important}
 }
+
+/* 회차 처리 · 종결 단계 표시의 현재 단계 강조(먹색 칸 + '현재 단계' 표) — 10/21 디자인. SttReview · SignalReview · NoteWrite ·
+   FollowupQ · ClosureReview · ClosureDetail 이 같은 규칙이다. */
+.stp.on {
+  background: #2b2a26 !important;
+  border-color: #2b2a26 !important;
+  box-shadow: 0 6px 16px -6px rgba(43, 42, 38, 0.45) !important;
+}
+.stp.on b {
+  color: #eadbb5;
+}
+.stp.on .sn {
+  background: #c2a36b !important;
+  color: #2b2a26 !important;
+}
+.stp.on::after {
+  content: '현재 단계';
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(234, 219, 181, 0.18);
+  color: #eadbb5;
+}
+.thm-root.dark .stp.on {
+  background: #eadbb5 !important;
+  border-color: #eadbb5 !important;
+  box-shadow: none !important;
+}
+.thm-root.dark .stp.on b {
+  color: #2b2a26 !important;
+}
+.thm-root.dark .stp.on .sn {
+  background: #2b2a26 !important;
+  color: #eadbb5 !important;
+}
+.thm-root.dark .stp.on::after {
+  background: rgba(43, 42, 38, 0.12);
+  color: #2b2a26;
+}
