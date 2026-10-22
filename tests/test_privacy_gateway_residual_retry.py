@@ -12,6 +12,10 @@
 import pytest
 
 import ai.modeling.abuse.privacy_gateway as privacy_gateway
+from ai.modeling.abuse.pii_masking import (
+    _is_within_structural_prefix,
+    _structural_prefix_zones,
+)
 from ai.modeling.abuse.privacy_gateway import (
     PrivacyGatewayBlocked,
     _mask_residual_once,
@@ -296,6 +300,39 @@ def test_long_transcript_with_repeated_names_is_not_blocked():
 
     for original in ("김철수", "수원시", "박영희"):
         assert original not in masked
+
+
+def test_blank_out_mask_tokens_preserves_line_head_id_before_speaker_code():
+    # 2026-10-22 Mingyu PR #72 재검증 지적(실제 모델로 재현): 줄 머리
+    # ID가 우리가 만드는 마스킹 토큰과 우연히 같은 모양이면(예: STT가
+    # "[SEG_001]"처럼 대문자+숫자로 줌), 전에는 이것도 그대로 ●로
+    # 지워져서 그 줄의 화자 코드 보호 범위를 _structural_prefix_zones가
+    # 전혀 못 찾았다(대괄호 글자 자체가 없어지므로). 이 자리는 지우지
+    # 않고 그대로 둬야 한다 — 다른 자리의 진짜 마스킹 토큰은 여전히
+    # 지워야 한다.
+    text = "[SEG_001] CHILD: 안녕하세요. [PERSON_01]씨가 왔어요."
+
+    scan_text = privacy_gateway._blank_out_mask_tokens(text)
+
+    assert scan_text.startswith("[SEG_001] CHILD:")
+    assert "[PERSON_01]" not in scan_text
+    assert "●" in scan_text
+
+
+def test_structural_zone_survives_blanking_when_line_head_id_looks_like_mask_token():
+    # 위 수정의 실제 효과: _blank_out_mask_tokens가 내놓은 scan_text를
+    # 다시 _structural_prefix_zones에 넣어도 화자 코드가 여전히 구조
+    # 표식 범위 안에 있어야 한다 — 그래야 잔존 재시도의 NER 재검출이
+    # 그 코드 조각을 PII로 오탐해도 걸러진다.
+    text = "[SEG_001] UNKNOWN: 안녕하세요. [PERSON_01]씨가 왔어요."
+
+    scan_text = privacy_gateway._blank_out_mask_tokens(text)
+    zones = _structural_prefix_zones(scan_text)
+
+    code_start = scan_text.index("UNKNOWN:")
+    assert _is_within_structural_prefix(
+        (code_start, code_start + len("UNKNOWN:")), zones
+    )
 
 
 def test_unresolvable_residual_is_blocked_after_max_rounds(monkeypatch):

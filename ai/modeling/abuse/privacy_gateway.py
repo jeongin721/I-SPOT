@@ -142,9 +142,35 @@ def _rebuild(value: Any, replacements: Dict[str, str], path: str = "") -> Any:
 # 번호 등)의 위치 판단에 영향이 없게 하기 위함이다.
 _MASK_TOKEN_PATTERN = re.compile(r"\[[A-Z_]+_\d+\]")
 
+# 줄 머리 ID가 우리가 만드는 마스킹 토큰과 우연히 같은 모양이면(예:
+# STT가 "[SEG_001]"처럼 대문자+숫자로 준 경우) 이것도 위 패턴에 걸려
+# 똑같이 ●로 지워진다. 그런데 이 자리는 우리가 이번 라운드에 만든
+# 토큰이 아니라 원문 그대로의 줄 머리 ID라서, 지워버리면 대괄호 글자
+# 자체가 없어져 pii_masking._structural_prefix_zones가 그 줄의 화자
+# 코드("CHILD:" 등)를 구조 표식으로 전혀 인식하지 못한다 — 잔존
+# 재시도의 NER 재검출이 그 화자 코드를 PII로 오탐해도 보호할 방법이
+# 없어진다(2026-10-22 Mingyu PR #72 재검증 지적, 실제 모델로 재현).
+# 줄 머리에 있고 바로 뒤에 화자 코드가 오는 자리만 가리지 않고 그대로
+# 둔다 — ID 자리 글자는 애초에 구조 표식이 아니라서(pii_masking.py
+# _SPEAKER_CODE_ONLY_RE 선언부 참고) 그대로 둬도 보통 검사를 받는다.
+_LINE_HEAD_ID_BEFORE_SPEAKER_CODE_RE = re.compile(
+    r"^\[[A-Z_]+_\d+\](?=[ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN):)",
+    re.MULTILINE,
+)
+
 
 def _blank_out_mask_tokens(text: str) -> str:
-    return _MASK_TOKEN_PATTERN.sub(lambda m: "●" * len(m.group()), text)
+    protected_spans = {
+        match.span()
+        for match in _LINE_HEAD_ID_BEFORE_SPEAKER_CODE_RE.finditer(text)
+    }
+
+    def _replace(match: re.Match) -> str:
+        if match.span() in protected_spans:
+            return match.group()
+        return "●" * len(match.group())
+
+    return _MASK_TOKEN_PATTERN.sub(_replace, text)
 
 
 _TOKEN_PARTS_PATTERN = re.compile(r"^\[([A-Z]+)_(\d+)\]$")
