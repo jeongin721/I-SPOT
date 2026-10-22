@@ -93,10 +93,65 @@ _HOSPITAL_KEYWORDS = ("병원", "의원", "센터")
 # 판정만 거른다 — 범위를 한 글자라도 벗어나면(예: 화자 코드 바로
 # 뒤에 실제 이름이 공백 없이 붙어 하나의 범위로 잡히면) 거르지 않고
 # 그대로 마스킹한다.
+#
+# 대괄호 안은 "\[seg_\d+\]"일 때만 통째로(대괄호+ID+화자코드) 표식으로
+# 본다 — 저장소 안 STT 경로는 segment_id를 항상 "seg_숫자" 꼴로 만들고,
+# 상담사 수정 API도 없는 segment_id는 거부한다. 다만
+# stt/ispot_stt.py:534·602·2068은 앞단에서 받은 segment_id가 있으면
+# 그대로 쓰고, STT Contract(backend/app/schemas/contracts.py:23)도
+# 문자열 형식을 강제하지 않아서, STT 모듈을 바깥 걸로 바꾸면 "seg_숫자"
+# 가 아닌 꼴이 들어올 수 있다(2026-10-21 Mingyu 정정).
+#
+# 처음엔 "\[[^\]\n]*\]"로 대괄호 안 아무 글자나 받았는데, 그러면
+# 상담사가 고친 줄에 "[메모: 보호자 박영희] GUARDIAN: ..."처럼 대괄호
+# 안에 실제 이름이 들어가도 그 대괄호 전체가 "구조 표식"으로 오인돼
+# 마스킹·잔존 검사·정확 매칭이 전부 건너뛰어 이름이 그대로 나갔다
+# (2026-10-21 Mingyu 지적 — 0ad9eb8에서 생겨 main에 들어가 있었음,
+# 운영 잠금 중이라 실제로 나간 적은 없음).
 _STRUCTURAL_PREFIX_RE = re.compile(
-    r"^(?:\[[^\]\n]*\][ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN)|상담사|아동):",
+    r"^(?:\[seg_\d+\][ \t]+(?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN)|상담사|아동):",
     re.MULTILINE,
 )
+
+# 대괄호 안이 "seg_숫자"가 아니어도, 화자 코드("CHILD:" 등) 자체는
+# 항상 표식으로 본다 — 그룹 1(코드+콜론)만 범위로 쓴다. 대괄호를
+# "seg_숫자"로 좁히면서, 다른 꼴 ID("[spk_0]", "[custom-001]" 등) 줄의
+# 화자 코드까지 보호가 풀려 "CHILD" 조각이 다시 기관으로 오탐됐다
+# (2026-10-21 Mingyu 지적, 실제 모델로 재현 — 30개 조합 중 12개의
+# 줄 머리가 깨짐). 대괄호 안(ID 자리)은 이 패턴으로는 표식이 아니므로
+# 보통 검사를 그대로 받는다 — 다른 꼴 ID 안에 이름이 들어 있어도
+# (예: "[김민수] CHILD:") 잡힐 기회가 있다.
+#
+# 대괄호 안은 "]가 아닌 글자" 또는 "완전한 마스킹 토큰([PERSON_01] 등)
+# 하나"만 허용한다. 그냥 "]가 아닌 글자"만 허용했을 때는, ID 안의
+# 이름이 1차 검출에서 먼저 가려져 "[김민수]"가 "[[PERSON_01]]"처럼
+# 대괄호가 두 겹이 되면, "[^\]\n]*"가 안쪽 "]"에서 멈춰버려 바깥쪽
+# "]" 하나가 남아 이 패턴 전체가 매치되지 않았다 — 잔존 재시도 중
+# 그 줄의 화자 코드 보호가 통째로 풀렸다(2026-10-22 Mingyu PR #72
+# 재검증 지적, 실제 모델로 재현). 완전한 토큰 모양을 하나의 단위로
+# 허용하면 중첩 대괄호를 올바르게 한 쌍으로 다시 본다.
+_SPEAKER_CODE_ONLY_RE = re.compile(
+    r"^\[(?:[^\[\]\n]|\[[A-Z_]+_\d+\])*\][ \t]+"
+    r"((?:COUNSELOR|CHILD|GUARDIAN|OTHER|UNKNOWN):)",
+    re.MULTILINE,
+)
+
+
+def _structural_prefix_zones(text: str) -> List[Tuple[int, int]]:
+    """
+    줄 머리 구조 표식의 글자 범위를 전부 모은다. pii_masking(1차 검출)
+    과 privacy_gateway(잔존 재시도의 정확 매칭) 둘 다 같은 범위를
+    써야 해서 한 곳에 모아 둔다(2026-10-21 Mingyu 요청).
+    """
+
+    zones = [
+        (match.start(), match.end())
+        for match in _STRUCTURAL_PREFIX_RE.finditer(text)
+    ]
+    zones.extend(
+        match.span(1) for match in _SPEAKER_CODE_ONLY_RE.finditer(text)
+    )
+    return zones
 
 
 def _refine_org_prefix(entity_text: str) -> str:
@@ -234,6 +289,26 @@ def _is_within_structural_prefix(
     )
 
 
+def _overlaps_any(
+    span: Tuple[int, int],
+    zones: List[Tuple[int, int]],
+) -> bool:
+    """
+    span이 zones 중 하나와 조금이라도 겹치면 True. 완전히 포함될
+    때만 거르는 _is_within_structural_prefix와 달리, 이미 가린 토큰
+    (예: "[PERSON_01]") 범위를 지킬 때 쓴다 — 원문에 우연히 대괄호가
+    섞여 들어온 값("민수[" 등)이 토큰과 한쪽만 겹쳐도 그대로 두면
+    토큰 괄호 구조가 깨진다(2026-10-21 Mingyu 지적, 가짜 판정으로
+    재현).
+    """
+
+    start, end = span
+    return any(
+        start < zone_end and end > zone_start
+        for zone_start, zone_end in zones
+    )
+
+
 def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     """
     NER 모델 출력을 (시작, 끝, 태그) 형태의 원문 char span으로 복원한다.
@@ -248,10 +323,7 @@ def _decode_ner_spans(text: str) -> List[Tuple[int, int, str]]:
     참고).
     """
 
-    structural_zones = [
-        (match.start(), match.end())
-        for match in _STRUCTURAL_PREFIX_RE.finditer(text)
-    ]
+    structural_zones = _structural_prefix_zones(text)
 
     encoded = _ner_tokenizer(
         text,

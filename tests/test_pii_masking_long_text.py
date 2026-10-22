@@ -11,9 +11,11 @@
 
 from ai.modeling.abuse.privacy_gateway import PrivacyGatewayBlocked, mask_for_outbound
 from ai.modeling.abuse.pii_masking import (
+    _STRUCTURAL_PREFIX_RE,
     _is_within_structural_prefix,
     _merge_overlapping_spans,
     _ner_tokenizer,
+    _structural_prefix_zones,
     mask_pii,
 )
 
@@ -205,3 +207,84 @@ def test_structural_prefix_filter_does_not_swallow_longer_span():
     assert _is_within_structural_prefix(
         (body_start, body_start + 2), zones
     ) is False  # 본문 속 "아동"(구조 표식 밖)
+
+
+def test_structural_prefix_bracket_only_matches_segment_id_format():
+    # 대괄호 안은 "seg_숫자" 꼴만 구조 표식으로 본다 — 처음엔 대괄호
+    # 안 아무 글자나 받아서("\[[^\]\n]*\]"), 상담사가 고친 줄에
+    # "[메모: 보호자 박영희] GUARDIAN: 네." 처럼 대괄호 안에 실제
+    # 이름이 들어가면 그 대괄호 전체가 구조 표식으로 오인돼 이름이
+    # 마스킹·잔존 검사·정확 매칭을 전부 건너뛰고 그대로 나갔다
+    # (2026-10-21 Mingyu 지적 — 0ad9eb8에서 생겨 main(#71)에 들어가
+    # 있었음, 운영 잠금 중이라 실제 데이터가 나간 적은 없음).
+    bad_line = "[메모: 보호자 박영희] GUARDIAN: 네."
+    good_line = "[seg_034] CHILD: 네."
+
+    assert _STRUCTURAL_PREFIX_RE.match(bad_line) is None
+    assert _STRUCTURAL_PREFIX_RE.match(good_line) is not None
+
+
+def test_name_inside_bracket_memo_is_still_masked():
+    # 위 회귀의 실제 영향(마스킹 결과) 확인 — 대괄호 안의 이름이
+    # 구조 표식으로 오인돼 그대로 새나가면 안 된다.
+    text = "[메모: 보호자 박영희] GUARDIAN: 오늘은 제가 대신 왔어요."
+
+    masked, entity_map = mask_pii(text)
+
+    assert "박영희" not in masked
+    assert "박영희" in entity_map.values()
+
+
+def test_speaker_code_protected_even_when_bracket_is_not_seg_format():
+    # 2026-10-21 Mingyu 지적: 대괄호를 "\[seg_\d+\]"로 좁히면서, 다른
+    # 꼴 ID("[spk_0]", "[custom-001]" 등) 줄의 화자 코드까지 보호가
+    # 풀려 "CHILD"/"UNKNOWN" 조각이 다시 기관으로 오탐됐다(30개 조합
+    # 중 12개 실제 모델로 재현됨). 화자 코드는 대괄호 모양과 무관하게
+    # 항상 표식 범위여야 한다.
+    zones = _structural_prefix_zones(
+        "[spk_0] CHILD: 안녕하세요.\n[custom-001] UNKNOWN: 네."
+    )
+
+    # "CHILD:"와 "UNKNOWN:" 둘 다 표식 범위 안에 있어야 한다(대괄호
+    # 자체는 seg_숫자가 아니라 범위 밖이어도 된다).
+    child_start = "[spk_0] CHILD: 안녕하세요.\n[custom-001] UNKNOWN: 네.".index(
+        "CHILD:"
+    )
+    unknown_text = "[spk_0] CHILD: 안녕하세요.\n[custom-001] UNKNOWN: 네."
+    unknown_start = unknown_text.index("UNKNOWN:")
+
+    assert _is_within_structural_prefix(
+        (child_start, child_start + len("CHILD:")), zones
+    )
+    assert _is_within_structural_prefix(
+        (unknown_start, unknown_start + len("UNKNOWN:")), zones
+    )
+
+
+def test_name_inside_non_seg_bracket_is_still_detectable():
+    # 대괄호 안(ID 자리)은 "seg_숫자"가 아니면 표식이 아니므로 보통
+    # 검사를 받는다 — 그 안에 이름이 들어 있어도 가려질 기회가
+    # 있어야 한다(2026-10-21 Mingyu 확인 — "[김민수] CHILD:" 꼴).
+    text = "[김민수] CHILD: 저는 괜찮아요."
+
+    masked, entity_map = mask_pii(text)
+
+    assert "CHILD:" in masked
+    assert "김민수" not in masked
+
+
+def test_speaker_code_protected_when_id_bracket_already_masked():
+    # 2026-10-22 Mingyu PR #72 재검증 지적(실제 모델로 재현): 잔존
+    # 재시도 중 ID 대괄호 안의 이름이 먼저 가려지면 "[김민수]"가
+    # "[[PERSON_01]]"처럼 대괄호가 두 겹이 된다. 전에는 대괄호 안을
+    # "]가 아닌 글자"로만 받아서("[^\]\n]*"), 안쪽 "]"에서 멈추고
+    # 바깥쪽 "]" 하나가 남아 이 줄의 화자 코드 보호 범위를 전혀 못
+    # 찾았다. 완전한 토큰 모양을 하나의 단위로도 허용하게 고친 뒤를
+    # 고정한다.
+    text = "[[PERSON_01]] CHILD: 저는 괜찮아요."
+    zones = _structural_prefix_zones(text)
+
+    code_start = text.index("CHILD:")
+    assert _is_within_structural_prefix(
+        (code_start, code_start + len("CHILD:")), zones
+    )
