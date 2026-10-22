@@ -2,7 +2,8 @@
 //
 // Backend 에 없는 값은 지어내지 않고 '—' 또는 준비 중으로 둔다(specs 대응표 '팀 결정 — 사례 · 개인정보 / AI 신호 · 검수').
 //  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 신고접수일 · 사례연계일 · 아이 앱 · 다음 상담 일정
-//  - 위험도 · 학대 유형 · 주요 키워드 · 사정결과, 서비스 이행, 기관 서식 진행, 종결 검토 등록
+//  - 위험도 · 학대 유형 · 주요 키워드, 기관 서식 진행, 종결 검토 등록
+//    (10/21 디자인은 사정결과 줄과 서비스 이행 · 다음 일정 상자를 뺐다)
 //  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약 · 주제 비중 · 회차별 세부 신호
 // 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형(guardian_type)으로 채우지 않는다.
 //
@@ -19,6 +20,7 @@ import { COLUMN_OF, PROCESS_COLUMNS, continueLink } from "./flow";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
+import { uploadTargets } from "./uploadModal";
 
 interface CaseScreenInput {
   session: AuthSession;
@@ -31,6 +33,9 @@ export const MISSING_CASE = notice("사례가 정해지지 않았습니다. 사�
   href: "/CaseList",
   hrefLabel: "사례 관리로",
 });
+
+/** 사례 상세 '현재 진행 상황' 칸(PROCESS_COLUMNS 순서)마다 가는 화면. 0(녹취 올림)은 따로 정한다. */
+const STEP_PAGES = ["/UploadModal", "/SttReview", "/SignalReview", "/NoteWrite", "/FollowupQ"];
 
 /** 사례 상세 탭 공통: 위치 표시 · 머리 · 탭 링크 · 녹취 올리기 링크. */
 export function caseHeaderValues({ session, detail, caseId }: CaseScreenInput) {
@@ -189,8 +194,9 @@ export function caseDetailValues(input: CaseDetailInput) {
       ]
     : [];
 
-  // 현재 진행 상황: 가장 최근 회차가 어느 칸에 있는가.
+  // 현재 진행 상황: 가장 최근 회차가 어느 칸에 있는가. 칸을 누르면 그 회차의 그 단계 화면으로 간다(10/21 디자인).
   const column = latest ? COLUMN_OF[latest.step] : -1;
+  const latestIds = latest ? { caseId: latest.caseId, sessionId: latest.id } : null;
   const progress = PROCESS_COLUMNS.map((label, index) => {
     const done = latest !== null && index < column;
     const current = latest !== null && index === column && index < PROCESS_COLUMNS.length - 1;
@@ -206,6 +212,12 @@ export function caseDetailValues(input: CaseDetailInput) {
       current,
       pending: !done && !current,
       chip: current && latest ? latest.statusLabel : last ? NOT_READY : "",
+      // 녹취 올림 칸은 새로 올리기(사례만), 나머지는 가장 최근 회차의 단계 화면.
+      href: latestIds
+        ? index === 0
+          ? screenHref("/UploadModal", { caseId: latestIds.caseId })
+          : screenHref(STEP_PAGES[index], latestIds)
+        : null,
     };
   });
 
@@ -221,17 +233,17 @@ export function caseDetailValues(input: CaseDetailInput) {
     riskBy: dash,
     abuseTypes: [dash],
     keywords: [dash],
-    assessment: dash,
     latestLabel: latest ? `${latest.numberLabel} · ${latest.statusLabel}` : info ? "회차 없음" : "",
     continueHref: next ? next.href : screenHref("/UploadModal", { caseId: input.caseId }),
     continueLabel: next ? next.label : "녹취 올려 시작하기",
     progress,
-    services: [{ label: "서비스 계획 · 이행", value: dash }],
-    nextSchedule: dash,
-    briefingHref: screenHref("/PreBriefing", { caseId: input.caseId }),
     formsChip: NOT_READY,
     formsHref: screenHref("/CaseForm", { caseId: input.caseId }),
     notReady: NOT_READY,
+    // 녹음하기 창(components/RecordDialog.jsx)
+    recordCase: info ? `${info.alias} · ${info.caseNumber}` : "",
+    recordTargets: uploadTargets(detail.sessions),
+    canRecord: Boolean(info && input.caseId),
   };
 }
 
