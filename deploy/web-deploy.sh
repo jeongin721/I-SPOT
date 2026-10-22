@@ -9,6 +9,8 @@
 # backend.env 가 AI_PROVIDER=modeling 이면 WITH_MODELING=1 을 넘긴다(torch · transformers 를 더 깔고 모델 파일을 붙인다,
 # deploy/README.md '모델까지 띄우기'):
 #   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
+# backend.env 가 STT_PROVIDER=module 이면 WITH_STT=1 을 넘긴다(ElevenLabs · Deepgram SDK 를 더 깐다, deploy/README.md 'STT 까지 띄우기'):
+#   sudo env WITH_STT=1 bash deploy/web-deploy.sh      # 둘 다면 sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
@@ -20,6 +22,8 @@ ENV_FILE=/opt/ispot/backend.env
 
 WITH_MODELING="${WITH_MODELING:-0}"
 [[ "$WITH_MODELING" =~ ^[01]$ ]] || { echo "WITH_MODELING 은 0 또는 1 입니다: $WITH_MODELING"; exit 1; }
+WITH_STT="${WITH_STT:-0}"
+[[ "$WITH_STT" =~ ^[01]$ ]] || { echo "WITH_STT 은 0 또는 1 입니다: $WITH_STT"; exit 1; }
 # 학대 분류 모델 파일은 저장소에 없다(.gitignore). 이 폴더에 두면 컨테이너의 /ai/modeling/abuse/weight 에 읽기 전용으로 붙인다.
 WEIGHT_DIR="${MODELING_WEIGHT_DIR:-$REPO/ai/modeling/abuse/weight}"
 MODELING_MOUNTS=()
@@ -33,6 +37,16 @@ if [ "$WITH_MODELING" = 1 ]; then
 elif grep -qE '^AI_PROVIDER=modeling[[:space:]]*$' "$ENV_FILE"; then
   echo "backend.env 가 AI_PROVIDER=modeling 입니다. torch · 모델 파일이 든 이미지가 필요해 WITH_MODELING=1 로 실행해 주세요:"
   echo "  sudo env WITH_MODELING=1 bash deploy/web-deploy.sh"
+  exit 1
+fi
+# STT 모듈은 키를 backend.env 에서 읽는다(기본 ElevenLabs, 실패하면 Deepgram). 키가 없으면 전사 요청마다 실패하므로 미리 알린다.
+if [ "$WITH_STT" = 1 ]; then
+  if ! grep -qE '^(ELEVENLABS_API_KEY|DEEPGRAM_API_KEY|I_SPOT_STT_API_KEY)=.+' "$ENV_FILE"; then
+    echo "주의: backend.env 에 STT 키(ELEVENLABS_API_KEY · DEEPGRAM_API_KEY · I_SPOT_STT_API_KEY)가 없습니다. STT_PROVIDER=module 이면 전사가 실패합니다."
+  fi
+elif grep -qE '^STT_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
+  echo "backend.env 가 STT_PROVIDER=module 입니다. STT 패키지가 든 이미지가 필요해 WITH_STT=1 로 실행해 주세요:"
+  echo "  sudo env WITH_STT=1 bash deploy/web-deploy.sh"
   exit 1
 fi
 
@@ -65,7 +79,7 @@ cp -r "$REPO/counselor-web/dist/." /opt/ispot/web/
 
 echo "== 3/5 백엔드 이미지 다시 만들기 + DB 마이그레이션"
 # 저장소 루트가 빌드 컨텍스트다(ai/ · agent/ 도 담음). 넣는 것은 루트 .dockerignore 가 고른다.
-docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" -f "$REPO/backend/Dockerfile" "$REPO"
+docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" -f "$REPO/backend/Dockerfile" "$REPO"
 sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=https://$SITE|" "$ENV_FILE"
 docker run --rm --env-file "$ENV_FILE" ispot-backend alembic upgrade head
 

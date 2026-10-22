@@ -4,6 +4,8 @@
 !backend/
 !ai/
 !agent/
+!stt/
+!speaker_role_runtime.py
 
 # 넣은 폴더 안에서도 뺀다 — 비밀값 · 로컬 환경 · 로컬 DB · 음성(전에 backend/.dockerignore 에 있던 것)
 backend/.venv/

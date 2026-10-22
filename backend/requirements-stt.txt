@@ -1,0 +1,7 @@
+# STT_PROVIDER=module(stt/transcribe_service)에만 필요한 것(backend/Dockerfile 의 WITH_STT=1 이 깐다). 버전은 저장소 루트
+# requirements.txt(STT 쪽, 정담원 님)와 같다. deepgram-sdk 는 stt/ispot_stt.py 가 파일 맨 위에서 import 해 ElevenLabs 만 써도
+# 꼭 있어야 한다. openai-whisper(I_SPOT_STT_PROVIDER=whisper 일 때만) · pyannote(별도 화자 분리 때만) · ffmpeg(기본 꺼진
+# 선택적 되돌림 때만)는 넣지 않는다 — 필요해지면 그때 더한다.
+deepgram-sdk==7.8.0
+elevenlabs==2.68.0
+python-dotenv==1.2.3
