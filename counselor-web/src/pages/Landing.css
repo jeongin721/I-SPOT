@@ -24,7 +24,8 @@
 .pg-Landing .lp ul {
   list-style: none;
 }
-.pg-Landing .btn-primary {
+/* 단추는 .lp 를 붙여 위의 일반 링크 규칙(.lp a { color: inherit })보다 앞서게 한다(디자인과 같은 우선순위). */
+.pg-Landing .lp .btn-primary {
   background-color: #2b2a26;
   color: #eadbb5;
   border-radius: 20px;
@@ -36,11 +37,11 @@
   transition: background 0.2s;
   display: inline-flex;
 }
-.pg-Landing .btn-primary:hover {
+.pg-Landing .lp .btn-primary:hover {
   background-color: #3a3833;
   color: #eadbb5;
 }
-.pg-Landing .btn-text {
+.pg-Landing .lp .btn-text {
   color: #2b2a26;
   align-items: center;
   gap: 4px;

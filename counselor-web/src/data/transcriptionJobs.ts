@@ -5,7 +5,8 @@
 // 화면으로 가도 이 저장소가 GET /sessions/{id}/transcript 를 되풀이 조회해 끝을 안다(디자인은 8초 가짜 타이머 · 브라우저 저장소).
 //  - 맡길 때의 로그인 토큰을 같이 둔다. 토큰이 바뀌면(로그아웃 · 다른 계정 · 다시 로그인) 그 일은 버린다 — 앞 계정의 회차를
 //    새 계정 화면에 알리거나 새 토큰으로 조회하지 않게.
-//  - 끝나면(검수 차례) '완료' 로 바꾸고 DONE_MS 뒤 사라진다. 변환에 실패하면 '실패' 로 알리고 FAILED_MS 뒤 사라진다.
+//  - 끝나면(검수 차례) '완료', 변환에 실패하면 '실패' 로 바꾼다. 끝난 알림은 화면이 실제로 보인 때(markTranscriptionShown)부터
+//    DONE_MS · FAILED_MS 뒤 사라진다 — 다른 회차가 '분석 중' 으로 앞에 보이는 동안 앞 회차의 끝 알림이 보이지 않고 사라지지 않게.
 //  - 조회가 연달아 실패하면 조용히 그만둔다(화면의 회차 상태는 회차 상세 · STT 검수에서 다시 본다).
 // 화면 상태일 뿐 서버에 저장하지 않고, 새로고침하면 사라진다.
 
@@ -34,6 +35,8 @@ const MAX_FAILURES = 5;
 interface Entry extends TranscriptionJob {
   token: string;
   failures: number;
+  /** 끝난 알림을 화면에 보이기 시작했는가(그때부터 사라질 시간을 센다). */
+  shown: boolean;
 }
 
 let entries: Entry[] = [];
@@ -66,10 +69,6 @@ function dropStale(): void {
 function finish(entry: Entry, phase: "done" | "failed"): void {
   entry.phase = phase;
   emit();
-
-  const order = entry.seq;
-
-  window.setTimeout(() => remove(entry.sessionId, order), phase === "done" ? DONE_MS : FAILED_MS);
 }
 
 async function poll(): Promise<void> {
@@ -121,9 +120,22 @@ export function trackTranscription(job: { sessionId: string; caseId: string; nam
 
   entries = entries.filter((entry) => entry.sessionId !== job.sessionId);
   seq += 1;
-  entries.push({ ...job, phase: "run", seq, token, failures: 0 });
+  entries.push({ ...job, phase: "run", seq, token, failures: 0, shown: false });
   emit();
   schedule();
+}
+
+/**
+ * 화면이 끝난 알림(완료 · 실패)을 보이기 시작할 때 부른다. 그때부터 DONE_MS · FAILED_MS 뒤 사라진다. 한 번만 센다.
+ * 화면은 끝난 알림을 맡긴 순서대로(앞 회차 먼저) 하나씩 보이고, 끝난 것이 없으면 가장 최근의 '분석 중' 을 보인다(JobToast).
+ */
+export function markTranscriptionShown(sessionId: string, order: number): void {
+  const entry = entries.find((item) => item.sessionId === sessionId && item.seq === order);
+
+  if (!entry || entry.phase === "run" || entry.shown) return;
+
+  entry.shown = true;
+  window.setTimeout(() => remove(sessionId, order), entry.phase === "done" ? DONE_MS : FAILED_MS);
 }
 
 /** 알림을 닫는다('검수' 를 눌렀을 때). */
