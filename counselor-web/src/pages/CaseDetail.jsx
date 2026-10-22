@@ -6,14 +6,22 @@
 // 서버에 없는 값(위험도 · 사례관리대상자 · 신고접수일 · 서비스 · 일정 등)은 '—', 종결 검토 등록은 준비 중.
 // '초기면접 내용' 카드는 디자인에 없어 더한 칸이다: 사례 등록 ② 탭의 가정상황 · 아동 특성을 단어로 보이고 '수정' 으로 고친다
 // (고르기 단추는 CaseRegister 와 같은 모양).
-import { Fragment } from 'react';
+// 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
+// components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
+// 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
+// 녹음은 창을 연 계정 · 사례의 것이다. 다른 탭에서 계정이 바뀌거나 다른 사례로 가거나 사례를 볼 수 없게 되면(403 등) 녹음을
+// 버리고(마이크 끄기 · 들어 보기 주소 해제 · 올리기 멈춤) 창을 닫는다 — 앞 계정의 녹음을 새 계정이 듣거나 저장하지 않게.
+import { Fragment, useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import RecordDialog, { recordingUnsaved } from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { useAudioRecorder } from '../data/useAudioRecorder';
+import { useAudioUpload } from '../data/useAudioUpload';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
@@ -38,7 +46,25 @@ export default function CaseDetail(props) {
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, detail, caseId });
-  useLeaveGuard(v.unsaved);
+  const [recOpen, setRecOpen] = useState(false);
+  const recorder = useAudioRecorder();
+  const upload = useAudioUpload();
+  // 녹음의 주인: 창을 연 계정 · 사례. 지금 주인과 다르거나 사례를 볼 수 없으면 그 녹음은 낡았다.
+  const owner = session.status === 'signedIn' && session.me && caseId ? `${session.me.id}|${caseId}` : null;
+  const [recOwner, setRecOwner] = useState(null);
+  const recStale = recOpen && (owner === null || owner !== recOwner || !v.canRecord);
+  const { reset: resetRecorder } = recorder;
+  const { reset: resetUpload } = upload;
+  useEffect(() => {
+    if (!recStale) return;
+    resetRecorder();
+    resetUpload();
+    setRecOpen(false);
+    setRecOwner(null);
+  }, [recStale, resetRecorder, resetUpload]);
+  useLeaveGuard(
+    v.unsaved || (!recStale && (recordingUnsaved(recorder, upload) || (upload.busy && upload.phase !== 'transcribing'))),
+  );
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDetail">
@@ -86,9 +112,22 @@ export default function CaseDetail(props) {
               </div>
               <div className="note">{v.meta}</div>
             </div>
-            <A className="btn btn-s" to={v.uploadHref}>
-              ↑ 녹취 올리기
-            </A>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-s"
+                onClick={() => {
+                  setRecOwner(owner);
+                  setRecOpen(true);
+                }}
+                disabled={!v.canRecord || owner === null}
+              >
+                <span className="rec-dot" aria-hidden="true"></span> 녹음하기
+              </button>
+              <A className="btn btn-s" to={v.uploadHref}>
+                ↑ 녹취 올리기
+              </A>
+            </div>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A className="on" aria-current="page" to={v.tabs.detail}>
@@ -96,12 +135,16 @@ export default function CaseDetail(props) {
             </A>
             <A to={v.tabs.history}>상담 이력</A>
             <A to={v.tabs.briefing}>상담 전 브리핑</A>
-            <A to={v.tabs.app}>아이 연계</A>
             <A to={v.tabs.docs}>문서함</A>
           </nav>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
             <section className="card" aria-label="기본 정보" style={{ padding: '22px 24px' }}>
-              <h2 className="h2">기본 정보</h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                <h2 className="h2">기본 정보</h2>
+                <A className="btn btn-sm btn-s" to={v.tabs.app} style={{ marginLeft: 'auto' }}>
+                  아이 연계 →
+                </A>
+              </div>
               <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
                 {(v.basics || []).map((b, bIndex) => (
                   <Fragment key={bIndex}>
@@ -138,10 +181,6 @@ export default function CaseDetail(props) {
                     {k}
                   </span>
                 ))}
-              </div>
-              <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                <span className="note">사정결과</span>
-                <b>{v.assessment}</b>
               </div>
             </section>
           </div>
@@ -257,41 +296,28 @@ export default function CaseDetail(props) {
                     background: '#E7E4DC',
                   }}
                 />
-                {(v.progress || []).map((p, pIndex) => (
-                  <div key={pIndex} className="st">
-                    <span className="sd" style={p.dot}>
-                      {p.mark}
-                    </span>
-                    {p.done ? p.label : null}
-                    {p.current ? <b style={{ fontWeight: '700', color: '#2B2A26' }}>{p.label}</b> : null}
-                    {p.pending ? <span style={{ color: '#7A776F' }}>{p.label}</span> : null}
-                    {p.chip ? <span className="chip c-check">{p.chip}</span> : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div
-              style={{
-                marginTop: '18px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '12px',
-              }}
-            >
-              {(v.services || []).map((sv, svIndex) => (
-                <div key={svIndex} className="box">
-                  <div className="note">{sv.label}</div>
-                  <b>{sv.value}</b>
-                </div>
-              ))}
-              <div className="box">
-                <div className="note">다음 일정</div>
-                <b style={{ fontWeight: '500' }}>{v.nextSchedule}</b>
-                <div>
-                  <A to={v.briefingHref} style={{ fontSize: '13px' }}>
-                    상담 전 브리핑
-                  </A>
-                </div>
+                {(v.progress || []).map((p, pIndex) => {
+                  const inner = (
+                    <>
+                      <span className="sd" style={p.dot}>
+                        {p.mark}
+                      </span>
+                      {p.done ? <span>{p.label}</span> : null}
+                      {p.current ? <b style={{ fontWeight: '700', color: '#2B2A26' }}>{p.label}</b> : null}
+                      {p.pending ? <span style={{ color: '#7A776F' }}>{p.label}</span> : null}
+                      {p.chip ? <span className="chip c-check">{p.chip}</span> : null}
+                    </>
+                  );
+                  return p.href ? (
+                    <A key={pIndex} className="st stl" to={p.href}>
+                      {inner}
+                    </A>
+                  ) : (
+                    <div key={pIndex} className="st">
+                      {inner}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </section>
@@ -325,6 +351,17 @@ export default function CaseDetail(props) {
             </button>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+          {recOpen && !recStale ? (
+            <RecordDialog
+              caseId={caseId}
+              caseName={v.recordCase}
+              caseSub={v.sub}
+              targets={v.recordTargets}
+              recorder={recorder}
+              upload={upload}
+              onClose={() => setRecOpen(false)}
+            />
+          ) : null}
         </main>
       </div>
     </div>

@@ -27,7 +27,6 @@ import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 
-const TY = ["방임", "신체학대", "정서학대", "성학대"];
 const FAM = [
   "일반가정",
   "부자가정",
@@ -47,11 +46,22 @@ const FAM = [
 export interface RegisterUiState {
   tab: "A" | "B";
   form: CaseRegisterInput;
+  /** ② 탭으로 넘어가려다 필수 칸이 비어 막혔는가(그때부터 빈 필수 칸을 표시한다 — 10/21 디자인). */
+  tried: boolean;
 }
 
 export function initialRegisterState(): RegisterUiState {
-  return { tab: "A", form: { ...EMPTY_CASE_INPUT } };
+  return { tab: "A", form: { ...EMPTY_CASE_INPUT }, tried: false };
 }
+
+/** ① 기본 정보의 필수 칸. 서버가 받는 칸 중 비울 수 없는 것만 센다(준비 중 칸은 입력할 수 없어 뺀다). */
+const REQUIRED: [TextKey, string][] = [
+  ["title", "사례 제목"],
+  ["alias", "아동 별칭"],
+];
+
+/** 빈 필수 칸 테두리(디자인 값). */
+const INVALID_BORDER = "#A33B2E";
 
 /** 고를 수 없는(준비 중) 선택 단추. 모양은 고르지 않은 단추다. */
 const picker = (label: string) => ({ label, bg: "#FFFFFF", bd: "#DAD5C9", fg: "#2B2A26", fw: 400, mark: "+" });
@@ -62,25 +72,40 @@ type TextKey = Exclude<keyof CaseRegisterInput, IntakeKey>;
 interface CaseRegisterInputs {
   session: AuthSession;
   register: CaseRegisterState;
+  /** 주소의 back(이 팝업을 연 화면). 없으면 null — 닫기 · 취소는 사례 관리로 간다. */
+  back: string | null;
   state: RegisterUiState;
   setState: (patch: Partial<RegisterUiState> | ((current: RegisterUiState) => Partial<RegisterUiState>)) => void;
   /** 등록 뒤 새 사례 상세로 옮긴다(useScreenGo — 그사이 화면을 떠났으면 옮기지 않는다). */
   go: (href: string) => void;
 }
 
-export function caseRegisterValues({ session, register, state, setState, go }: CaseRegisterInputs) {
+export function caseRegisterValues({ session, register, back, state, setState, go }: CaseRegisterInputs) {
   const form = state.form;
   const me = session.me;
   const isAdmin = session.isAdmin;
+  const missing = REQUIRED.filter(([name]) => !String(form[name] ?? "").trim());
 
-  /** 입력칸 하나의 값과 바꾸는 함수. */
-  const field = (name: TextKey) => ({
-    value: form[name],
-    onChange: (event: { target: { value: string } }) => {
-      const value = event.target.value;
-      setState((current) => ({ form: { ...current.form, [name]: value } }));
-    },
-  });
+  /** 입력칸 하나의 값과 바꾸는 함수. 필수 칸이 비었는데 ② 탭으로 넘어가려 했으면 invalid 다. */
+  const field = (name: TextKey) => {
+    const invalid = state.tried && missing.some(([key]) => key === name);
+
+    return {
+      value: form[name],
+      onChange: (event: { target: { value: string } }) => {
+        const value = event.target.value;
+        setState((current) => ({ form: { ...current.form, [name]: value } }));
+      },
+      invalid: invalid ? "true" : "false",
+      border: invalid ? INVALID_BORDER : undefined,
+    };
+  };
+
+  /** 탭 옮기기. ② 탭은 필수 칸을 다 채워야 열린다(10/21 디자인). */
+  const goTab = (key: RegisterUiState["tab"]) => {
+    if (key === "B" && missing.length > 0) setState({ tab: "A", tried: true });
+    else setState({ tab: key });
+  };
 
   const tabs = (
     [
@@ -93,7 +118,7 @@ export function caseRegisterValues({ session, register, state, setState, go }: C
     bd: state.tab === key ? "#C2A36B" : "transparent",
     fg: state.tab === key ? "#2B2A26" : "#66625A",
     fw: state.tab === key ? 700 : 400,
-    go: () => setState({ tab: key }),
+    go: () => goTab(key),
   }));
 
   const guardianOptions = (Object.keys(GUARDIAN_LABELS) as GuardianType[]).map((type) => ({
@@ -135,13 +160,19 @@ export function caseRegisterValues({ session, register, state, setState, go }: C
     tabs,
     isA: state.tab === "A",
     isB: state.tab === "B",
-    types: TY.map(picker),
+    missNote:
+      state.tab === "A" && state.tried && missing.length > 0
+        ? `기본 정보 필수 항목을 모두 입력해야 초기면접 내용으로 넘어갈 수 있어요 · 남은 항목: ${missing
+            .map(([, label]) => label)
+            .join(", ")}`
+        : "",
+    closeHref: back ?? "/CaseList",
     homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
     traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
     fams: FAM.map(picker),
     famRows: [0, 1],
     midLabel: state.tab === "A" ? "초기면접 내용 →" : "← 기본 정보",
-    goB: () => setState({ tab: state.tab === "A" ? "B" : "A" }),
+    goB: () => goTab(state.tab === "A" ? "B" : "A"),
     title: { ...field("title"), max: CASE_TITLE_MAX },
     alias: { ...field("alias"), max: CASE_ALIAS_MAX },
     caseNumber: { ...field("caseNumber"), max: CASE_NUMBER_MAX },

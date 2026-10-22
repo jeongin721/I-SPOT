@@ -1,4 +1,4 @@
-// 사례 상세 탭 5(CaseDocs · 문서함) 화면 값. 머리는 useCaseDetail, 표는 useCaseDocuments(회차마다 음성 · 원문 · 문서)로 그린다.
+// 사례 상세 탭 4(CaseDocs · 문서함) 화면 값. 머리는 useCaseDetail, 표는 useCaseDocuments(회차마다 음성 · 원문 · 문서)로 그린다.
 //
 // 녹음 · 원문(STT) · 상담일지를 회차별로 한 줄씩 보이고, 누르면 그 회차의 검수 · 일지 화면으로 간다.
 // Backend 에 없는 것은 지어내지 않고 준비 중으로 둔다(specs 대응표 CaseDocs 줄 — 팀 결정 · 구현 필요):

@@ -4,7 +4,8 @@
 // 서버 연결: 화면 주소 ?case=…(&session=…) 로 열면 그 사례(회차)를 고른 채 시작한다. 사례 목록은 useCaseList,
 // 고른 사례의 회차는 useCaseDetail, 올리기 · 원문 변환은 useAudioUpload 가 하고, 화면에 쓸 값은
 // src/data/screens/uploadModal.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 끝나면 확인창에서 그 회차의 STT 검수(이동) 또는 회차 상세(나중에)로 간다.
+// 끝나면 확인창에서 그 회차의 STT 검수(이동) 또는 회차 상세(나중에)로 간다. ?back= 으로 열었으면 닫기 · 취소 · 나중에는 그 화면으로.
+// 10/21 디자인(counselor-design/screens/UploadModal.dc.html): 회차 목록 스크롤 · 새 회차 맨 위 · 고른 파일 '빼기' · 돌아갈 곳.
 import { Fragment, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -16,7 +17,7 @@ import { useAudioUpload } from '../data/useAudioUpload';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseList } from '../data/useCaseList';
 import { needsLogin, signedIn } from '../data/screens/common';
-import { readScreenIds } from '../data/screens/links';
+import { readBackHref, readScreenIds } from '../data/screens/links';
 import { initialUploadState, uploadModalValues } from '../data/screens/uploadModal';
 import './UploadModal.css';
 
@@ -31,9 +32,12 @@ class Logic extends DCLogic {
 }
 
 export default function UploadModal(props) {
-  const ids = readScreenIds(useSearchParams()[0]);
+  const [params] = useSearchParams();
+  const ids = readScreenIds(params);
   // 주소의 사례 · 회차가 바뀌면 처음부터 다시 그린다(고른 사례 · 단계를 앞 주소 것으로 두고 올리지 않게).
-  return <UploadModalScreen key={`${ids.caseId ?? ''}|${ids.sessionId ?? ''}`} {...props} ids={ids} />;
+  return (
+    <UploadModalScreen key={`${ids.caseId ?? ''}|${ids.sessionId ?? ''}`} {...props} ids={ids} back={readBackHref(params)} />
+  );
 }
 
 function UploadModalScreen(props) {
@@ -241,7 +245,16 @@ function UploadModalScreen(props) {
                   <b style={{ fontWeight: '500' }}>{v.caseName}</b>
                 </div>
                 <p className="lb">몇 회차 상담인가요?</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    maxHeight: '320px',
+                    overflowY: 'auto',
+                    paddingRight: '6px',
+                  }}
+                >
                   {(v.sessions || []).map((x, xIndex) => (
                     <Fragment key={xIndex}>
                       <button
@@ -320,6 +333,7 @@ function UploadModalScreen(props) {
                   </span>
                   <b style={{ fontWeight: '500' }}>파일을 끌어 놓거나 눌러서 선택</b>
                   <input
+                    key={v.fileKey}
                     type="file"
                     aria-label="파일 선택"
                     accept={v.accept}
@@ -340,8 +354,16 @@ function UploadModalScreen(props) {
                     }}
                   >
                     <span className="chip c-sky">음성</span>
-                    <span style={{ flex: '1' }}>{v.fileName}</span>
+                    <span style={{ flex: '1', minWidth: '0', overflowWrap: 'anywhere' }}>{v.fileName}</span>
                     <span className="note">{v.fileMeta}</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-s"
+                      onClick={v.clearFile}
+                      aria-label="선택한 파일 빼기"
+                    >
+                      빼기
+                    </button>
                   </div>
                 ) : null}
                 {v.fileError ? (

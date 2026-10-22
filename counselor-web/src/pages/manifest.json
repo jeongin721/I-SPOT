@@ -1,6 +1,12 @@
 {
   "pages": [
     "Admin",
+    "AdminAccounts",
+    "AdminHome",
+    "AdminSecurity",
+    "AdminStaffDetail",
+    "AdminStats",
+    "AdminTasks",
     "CaseApp",
     "CaseDetail",
     "CaseDocs",
@@ -28,20 +34,65 @@
     "RiskProfile"
   ],
   "boards": {
-    "Admin.dc.html": {
+    "AdminHome.dc.html": {
       "expand": "fill",
-      "h": 1000,
+      "h": 1820,
       "is_interactive": true,
-      "title": "관리자 대시보드",
+      "title": "관리자 · 홈 (기관 현황 · 업무 처리 현황 · 최근 접속 · 상담원별 업무량) — 옛 주소 #/Admin 도 여기로",
       "w": 1440,
       "x": 7600,
+      "y": 10100
+    },
+    "AdminAccounts.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 상담사 계정 관리 (만들기 · 목록 → 상세)",
+      "w": 1440,
+      "x": 9120,
+      "y": 10100
+    },
+    "AdminStaffDetail.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "관리자 · 상담사 상세 (계정 · 접속 정보 · 계정 요청)",
+      "w": 1440,
+      "x": 10640,
+      "y": 10100
+    },
+    "AdminSecurity.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 접속 기록 · 보안 이벤트",
+      "w": 1440,
+      "x": 12160,
+      "y": 10100
+    },
+    "AdminStats.dc.html": {
+      "expand": "fill",
+      "h": 2400,
+      "is_interactive": true,
+      "title": "관리자 · 통계 · 보고 (기관 단위)",
+      "w": 1440,
+      "x": 13680,
+      "y": 10100
+    },
+    "AdminTasks.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 업무 처리 현황 (디자인에 없고 앱에 있던 보기)",
+      "w": 1440,
+      "x": 15200,
       "y": 10100
     },
     "CaseApp.dc.html": {
       "expand": "fill",
       "h": 1650,
       "is_interactive": true,
-      "title": "탭 4 · 아이 연계 (아이 상세와 같은 화면)",
+      "title": "내담자 정보 › 아이 연계 (아이 상세와 같은 화면)",
       "w": 1440,
       "x": 6080,
       "y": 4800
@@ -59,7 +110,7 @@
       "expand": "fill",
       "h": 1350,
       "is_interactive": true,
-      "title": "탭 5 · 문서함 (기관 서식 6종 + 파일)",
+      "title": "탭 4 · 문서함 (기관 서식 6종 + 파일)",
       "w": 1440,
       "x": 7600,
       "y": 4800
@@ -68,7 +119,7 @@
       "expand": "fill",
       "h": 1880,
       "is_interactive": true,
-      "title": "탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)",
+      "title": "탭 4 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)",
       "w": 1440,
       "x": 9120,
       "y": 4800
@@ -283,7 +334,7 @@
     "rowC": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "③ 사례 상세 · 탭 5개 (내담자 정보 · 상담 이력 · 상담 전 브리핑 · 아이 연계 · 문서함) + 기관 서식 작성",
+      "text": "③ 사례 상세 · 탭 4개 (내담자 정보 · 상담 이력 · 상담 전 브리핑 · 문서함) + 아이 연계 · 기관 서식 작성",
       "w": 240,
       "x": 0,
       "y": 4500
@@ -331,6 +382,11 @@
     "ClosureDetail.dc.html",
     "Stats.dc.html",
     "Settings.dc.html",
-    "Admin.dc.html"
+    "AdminHome.dc.html",
+    "AdminAccounts.dc.html",
+    "AdminStaffDetail.dc.html",
+    "AdminSecurity.dc.html",
+    "AdminStats.dc.html",
+    "AdminTasks.dc.html"
   ]
 }

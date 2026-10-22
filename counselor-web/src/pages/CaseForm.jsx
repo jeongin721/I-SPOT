@@ -1,4 +1,4 @@
-// 탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)
+// 탭 4 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)
 // 원본: 다솔 님 디자인 counselor-web-design/CaseForm.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
@@ -336,7 +336,6 @@ export default function CaseForm(props) {
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
             <A to={carry('/PreBriefing')}>상담 전 브리핑</A>
-            <A to={carry('/CaseApp')}>아이 연계</A>
             <A className="on" aria-current="page" to={carry('/CaseDocs')}>
               문서함
             </A>

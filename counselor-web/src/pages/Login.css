@@ -34,3 +34,47 @@
 .pg-Login .thm-root.dark .lb {
   color: #bdb7aa !important;
 }
+/* 로그인 유형(상담사 · 관리자) — 10/21 디자인 */
+.pg-Login .lseg {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #f2f2f0;
+  border: 1px solid #e2ded3;
+  box-shadow:
+    inset 2px 2px 5px rgba(160, 154, 138, 0.3),
+    inset -2px -2px 5px rgba(255, 255, 255, 0.95);
+}
+.pg-Login .lseg button {
+  flex: 1;
+  border: 0;
+  border-radius: 999px;
+  min-height: 40px;
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  color: #66625a;
+  cursor: pointer;
+}
+.pg-Login .lseg button.on {
+  background: #ffffff;
+  color: #2b2a26;
+  font-weight: 700;
+  box-shadow:
+    0 0 0 1px #cfc9bb,
+    2px 2px 6px rgba(160, 154, 138, 0.3);
+}
+.pg-Login .thm-root.dark .lseg {
+  background: #23221f !important;
+  border-color: #45423b !important;
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.45) !important;
+}
+.pg-Login .thm-root.dark .lseg button {
+  color: #bdb7aa !important;
+}
+.pg-Login .thm-root.dark .lseg button.on {
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+  box-shadow: 0 0 0 1px #5a564e !important;
+}
