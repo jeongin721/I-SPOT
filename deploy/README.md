@@ -52,13 +52,29 @@ sudo bash deploy/web-deploy.sh
    - 이름 인식(`Leo97/KoELECTRA-small-v3-modu-ner`) · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받아 `/opt/ispot/hf-cache` 에 둡니다(서버에서 인터넷이 돼야 함). 첫 분석은 그만큼 늦습니다.
    - 분류 모델 두 개와 이름 인식 모델을 메모리에 올리므로 서버 메모리가 넉넉해야 합니다(얼마나 쓰는지는 재지 않았습니다).
 
+## STT 까지 띄우기 (`STT_PROVIDER=module`)
+
+기본 이미지의 STT 는 mock 입니다. 실제 STT 모듈(`stt/transcribe_service`, 기본 ElevenLabs · 실패하면 Deepgram)을 쓰려면 이미지에 `stt/` 와 두 SDK 가 더 있어야 해서 따로 켭니다.
+
+1. **`backend.env` 를 고칩니다.** `STT_PROVIDER=module`, `I_SPOT_STT_PROVIDER=elevenlabs`, `ELEVENLABS_API_KEY=<키>`(되돌림까지 살리려면 `DEEPGRAM_API_KEY` 도). 둘 다 유료 API 라 어느 키를 쓸지는 팀에서 정합니다. 키가 하나도 없으면 스크립트가 주의를 찍고 계속 가지만, 전사 요청은 모두 실패합니다.
+2. **`WITH_STT=1` 로 배포합니다.** modeling 과 같이 쓰면 둘 다 넘깁니다.
+
+   ```bash
+   sudo env WITH_STT=1 bash deploy/web-deploy.sh
+   sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
+   ```
+
+   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - `openai-whisper`(`I_SPOT_STT_PROVIDER=whisper` 일 때만) · `pyannote`(별도 화자 분리 때만) · `ffmpeg`(기본 꺼진 `I_SPOT_SINGLE_SPEAKER_FALLBACK` 때만)는 넣지 않았습니다. 그 설정을 켜려면 이미지에 더해야 합니다.
+   - 전사 한 번에 최대 `STT_TIMEOUT_SECONDS`(기본 600초)까지 기다립니다. 음성 파일은 `/opt/ispot/storage`(컨테이너 `/app/storage`)에 있어 그대로 읽습니다.
+
 ## 스크립트가 하는 일 (`web-deploy.sh`)
 
 | 단계 | 하는 일 |
 | --- | --- |
 | 1/5 | `/opt/ispot/I-SPOT` 에서 `origin/main` 을 받아 fast-forward. 스크립트 자신이 바뀌었으면 새 판으로 처음부터 다시 시작(한 번만) |
 | 2/5 | Node 컨테이너(`node:22.12.0-alpine`)에서 `counselor-web` 을 `npm ci` · `npm run build` 하고 결과를 `/opt/ispot/web` 에 복사 |
-| 3/5 | Backend 이미지(`ispot-backend`)를 저장소 루트에서 다시 만들고(`-f backend/Dockerfile`, 넣는 것은 루트 `.dockerignore`, `WITH_MODELING=1` 이면 modeling 패키지까지) `alembic upgrade head` 로 DB 를 최신 구조로 |
+| 3/5 | Backend 이미지(`ispot-backend`)를 저장소 루트에서 다시 만들고(`-f backend/Dockerfile`, 넣는 것은 루트 `.dockerignore`, `WITH_MODELING=1` 이면 modeling 패키지, `WITH_STT=1` 이면 STT SDK 까지) `alembic upgrade head` 로 DB 를 최신 구조로 |
 | 4/5 | Backend 컨테이너를 `127.0.0.1:8000` 에서만 받도록 다시 띄움(`--proxy-headers --forwarded-allow-ips 127.0.0.1`, `WITH_MODELING=1` 이면 모델 파일 · Hugging Face 캐시 폴더를 붙임) |
 | 5/5 | Caddy 설정(`/opt/ispot/Caddyfile`)을 다시 쓰고 Caddy 컨테이너(`caddy:2.8.4`)를 다시 띄움 |
 
