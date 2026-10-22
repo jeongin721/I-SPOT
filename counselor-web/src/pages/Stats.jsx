@@ -97,7 +97,7 @@ export default function Stats(props) {
               </div>
               <StatsDateField label="시작" name="시작일" field={v.fromField} />
               <span className="note">~</span>
-              <StatsDateField label="종료" name="종료일" field={v.toField} />
+              <StatsDateField label="종료" name="종료일" field={v.toField} align="end" />
               <button type="button" className={`btn btn-sm ${v.calCls}`} onClick={v.toggleCal}>
                 달력
               </button>

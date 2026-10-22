@@ -129,6 +129,11 @@
   inset: 0;
   z-index: 40;
 }
+/* 종료일 칸은 팝업을 칸 오른쪽 끝에 맞춘다(900px 에서 오른쪽이 화면 밖으로 5px 나가던 것). */
+.pg-Stats .dpw-end .dp-pop {
+  left: auto;
+  right: 0;
+}
 /* 700px 이하: 칸 아래에 붙이면 오른쪽이 화면 밖으로 나가서(600px 에서 시작일 팝업 오른쪽 끝 672px) 화면 가운데에 띄운다. */
 @media (max-width: 700px) {
   .pg-Stats .dpw .dp-pop {
