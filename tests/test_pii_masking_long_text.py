@@ -271,3 +271,20 @@ def test_name_inside_non_seg_bracket_is_still_detectable():
 
     assert "CHILD:" in masked
     assert "김민수" not in masked
+
+
+def test_speaker_code_protected_when_id_bracket_already_masked():
+    # 2026-10-22 Mingyu PR #72 재검증 지적(실제 모델로 재현): 잔존
+    # 재시도 중 ID 대괄호 안의 이름이 먼저 가려지면 "[김민수]"가
+    # "[[PERSON_01]]"처럼 대괄호가 두 겹이 된다. 전에는 대괄호 안을
+    # "]가 아닌 글자"로만 받아서("[^\]\n]*"), 안쪽 "]"에서 멈추고
+    # 바깥쪽 "]" 하나가 남아 이 줄의 화자 코드 보호 범위를 전혀 못
+    # 찾았다. 완전한 토큰 모양을 하나의 단위로도 허용하게 고친 뒤를
+    # 고정한다.
+    text = "[[PERSON_01]] CHILD: 저는 괜찮아요."
+    zones = _structural_prefix_zones(text)
+
+    code_start = text.index("CHILD:")
+    assert _is_within_structural_prefix(
+        (code_start, code_start + len("CHILD:")), zones
+    )
