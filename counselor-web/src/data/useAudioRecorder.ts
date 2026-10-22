@@ -123,16 +123,30 @@ export function useAudioRecorder(): AudioRecorderState {
           return;
         }
 
-        const chunks: Blob[] = [];
-        const recorder = new MediaRecorder(stream);
-
+        // 마이크를 먼저 맡아 둔다. 녹음기를 만들거나 시작하다 실패하면 바로 끈다(켜진 채 남지 않게).
         streamRef.current = stream;
+
+        const chunks: Blob[] = [];
+        let recorder: MediaRecorder;
+
+        try {
+          recorder = new MediaRecorder(stream);
+        } catch {
+          releaseMedia();
+          setError("이 브라우저에서 녹음을 시작하지 못했습니다. 녹음 파일을 '녹취 올리기' 로 올려 주세요.");
+          setStatus("idle");
+          return;
+        }
+
         recorderRef.current = recorder;
         recorder.ondataavailable = (event) => {
           if (event.data && event.data.size > 0) chunks.push(event.data);
         };
         recorder.onstop = () => {
           if (run !== runRef.current) return;
+
+          // 장치가 빠지는 등으로 저절로 멈춰도 시계를 멈춘다.
+          tick(false);
 
           const type = recorder.mimeType || "audio/webm";
           const blob = new Blob(chunks, { type });
@@ -145,7 +159,15 @@ export function useAudioRecorder(): AudioRecorderState {
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
         };
-        recorder.start();
+        try {
+          recorder.start();
+        } catch {
+          releaseMedia();
+          setError("이 브라우저에서 녹음을 시작하지 못했습니다. 녹음 파일을 '녹취 올리기' 로 올려 주세요.");
+          setStatus("idle");
+          return;
+        }
+
         setSeconds(0);
         tick(true);
         setStatus("recording");
@@ -158,7 +180,7 @@ export function useAudioRecorder(): AudioRecorderState {
         setError(denied ? "마이크 사용을 허락하지 않아 녹음할 수 없습니다." : "마이크를 열지 못했습니다.");
         setStatus("idle");
       });
-  }, [dropUrl, tick]);
+  }, [dropUrl, releaseMedia, tick]);
 
   const pause = useCallback(() => {
     const recorder = recorderRef.current;

@@ -22,9 +22,18 @@ const STATUS = {
 
 const KINDS = ['정기상담', '방문상담', '기관 면담', '전화상담'];
 
-/** 녹음해 둔 것이 있어 닫거나 떠나면 사라지는가. */
+/** 실패해도 음성은 이미 서버에 있는 단계(원문 변환 요청 · 변환). 그 앞(회차 만들기 · 업로드)에서 실패하면 음성이 없다. */
+const AUDIO_SAVED_STEPS = new Set(['requestStt', 'transcribing']);
+
+/**
+ * 녹음해 둔 것이 있어 닫거나 떠나면 사라지는가. 올리기 전, 그리고 음성을 서버에 올리기 전에 실패했으면 사라진다.
+ * 올리는 중(회차 만들기 · 업로드 · 변환 요청)은 창 닫기를 막고 화면 이탈은 사례 상세가 따로 묻는다.
+ */
 export function recordingUnsaved(recorder, upload) {
-  return recorder.status !== 'idle' && upload.phase === 'idle';
+  if (recorder.status === 'idle') return false;
+  if (upload.phase === 'idle') return true;
+  if (upload.phase === 'failed') return !AUDIO_SAVED_STEPS.has(upload.failedStep);
+  return false;
 }
 
 export default function RecordDialog({ caseId, caseName, caseSub, targets, recorder, upload, onClose }) {

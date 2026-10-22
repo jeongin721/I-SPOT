@@ -9,7 +9,9 @@
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
 // components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
-import { Fragment, useState } from 'react';
+// 녹음은 창을 연 계정 · 사례의 것이다. 다른 탭에서 계정이 바뀌거나 다른 사례로 가거나 사례를 볼 수 없게 되면(403 등) 녹음을
+// 버리고(마이크 끄기 · 들어 보기 주소 해제 · 올리기 멈춤) 창을 닫는다 — 앞 계정의 녹음을 새 계정이 듣거나 저장하지 않게.
+import { Fragment, useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -47,7 +49,22 @@ export default function CaseDetail(props) {
   const [recOpen, setRecOpen] = useState(false);
   const recorder = useAudioRecorder();
   const upload = useAudioUpload();
-  useLeaveGuard(v.unsaved || recordingUnsaved(recorder, upload) || (upload.busy && upload.phase !== 'transcribing'));
+  // 녹음의 주인: 창을 연 계정 · 사례. 지금 주인과 다르거나 사례를 볼 수 없으면 그 녹음은 낡았다.
+  const owner = session.status === 'signedIn' && session.me && caseId ? `${session.me.id}|${caseId}` : null;
+  const [recOwner, setRecOwner] = useState(null);
+  const recStale = recOpen && (owner === null || owner !== recOwner || !v.canRecord);
+  const { reset: resetRecorder } = recorder;
+  const { reset: resetUpload } = upload;
+  useEffect(() => {
+    if (!recStale) return;
+    resetRecorder();
+    resetUpload();
+    setRecOpen(false);
+    setRecOwner(null);
+  }, [recStale, resetRecorder, resetUpload]);
+  useLeaveGuard(
+    v.unsaved || (!recStale && (recordingUnsaved(recorder, upload) || (upload.busy && upload.phase !== 'transcribing'))),
+  );
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDetail">
@@ -96,7 +113,15 @@ export default function CaseDetail(props) {
               <div className="note">{v.meta}</div>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <button type="button" className="btn btn-s" onClick={() => setRecOpen(true)} disabled={!v.canRecord}>
+              <button
+                type="button"
+                className="btn btn-s"
+                onClick={() => {
+                  setRecOwner(owner);
+                  setRecOpen(true);
+                }}
+                disabled={!v.canRecord || owner === null}
+              >
                 <span className="rec-dot" aria-hidden="true"></span> 녹음하기
               </button>
               <A className="btn btn-s" to={v.uploadHref}>
@@ -326,7 +351,7 @@ export default function CaseDetail(props) {
             </button>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
-          {recOpen ? (
+          {recOpen && !recStale ? (
             <RecordDialog
               caseId={caseId}
               caseName={v.recordCase}
