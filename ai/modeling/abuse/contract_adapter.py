@@ -68,6 +68,28 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
   Tier 2(case_store에 등록된 실명 정확매칭)는 이 경로에서는 못 쓴다
   — NER(Tier 1)만 적용된다. 실명 저장 여부가 팀 결정 대기 중이라
   (10/16 Mingyu 답변) 지금은 이 상태로 둔다.
+
+[2026-10-22: PROPOSAL_risk_fields.md §7 확정안 반영]
+
+- risk_utterances에 reason(strength_reason 그대로)·evidence_verified를
+  추가했다. 둘 다 record_draft_llm.py가 이미 만들어 두던 값이라 새
+  LLM 호출 없이 옮기기만 했다 — record_draft는 restore_pii를 거친
+  뒤라(infer_audio_session.py) 실명이 복원된 값이다. needs_review는
+  record_draft_llm.py 어디에도 없어 Mingyu에게 출처를 다시 확인
+  요청했고, 답 오기 전까지는 넣지 않는다.
+- abuse_signals에 detection_source(MODEL|FILTERED)·filtered_reason을
+  추가했다. 세션 단위 major_types는 chunk별 1차 판정을 detected만
+  남기고 OR로 합치면서 filtered_reason을 버리고 있어서(기존 코드),
+  chunk_results를 다시 훑어 복원한다 — 어느 chunk든 1차가
+  detected=True면 MODEL, 전부 아니고 filtered_reason 있는 chunk가
+  있으면 FILTERED(그 사유를 옮긴다), 둘 다 아니면 둘 다 None(Mingyu
+  제안 규칙). 오디오 경로(analyze_audio_session)는 note 모드 전용인
+  _screen_missed_major_types를 타지 않아 llm_supplementary가 생길
+  일이 없으므로 LLM_SUPPLEMENTARY는 이번 판에서 쓰지 않는다(예약값).
+- confidence/threshold는 이번 판에서 뺐다 — 1차가 session_detected로
+  합쳐지는 시점에 이미 확률이 버려져 있고(chunk 값만 남음), 세션
+  단위로 어떻게 합칠지(chunk 최댓값 등) 설계가 따로 필요하다. 지금
+  Agent·Backend 관문·화면 모두 detected만 보므로 당장 급하지 않다.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -119,6 +141,10 @@ def to_ai_output_contract(
             "evidence_strength": point.get(
                 "evidence_strength"
             ),
+            "reason": point.get("strength_reason", ""),
+            "evidence_verified": point.get(
+                "evidence_verified", False
+            ),
         }
         for point in record_draft.get(
             "risk_signal_points", []
@@ -140,16 +166,61 @@ def to_ai_output_contract(
             if segment_id not in bucket:
                 bucket.append(segment_id)
 
-    abuse_signals = [
-        {
-            "major_type": major_type,
-            "detected": info.get("detected", False),
-            "segment_ids": segment_ids_by_type.get(major_type, []),
-        }
-        for major_type, info in (
-            result.get("major_types") or {}
-        ).items()
-    ]
+    chunk_results = result.get("chunk_results") or []
+
+    def _detection_source(
+        major_type: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        chunk별 1차 판정을 훑어 이 유형이 왜 detected인지/아닌지 찾는다.
+        세션 major_types는 chunk 판정을 detected만 남기고 OR로 합치면서
+        filtered_reason을 버리므로(위에서 다시 만듦), 여기서 chunk_results를
+        다시 본다. 어느 chunk든 1차가 detected=True면 MODEL, 전부 아니고
+        filtered_reason 있는 chunk가 있으면 FILTERED, 둘 다 아니면
+        (None, None) — PROPOSAL_risk_fields.md §7 2026-10-22 확정안.
+        """
+
+        filtered_reason = None
+
+        for chunk in chunk_results:
+            chunk_info = (
+                chunk.get("major_types") or {}
+            ).get(major_type) or {}
+
+            if chunk_info.get("detected"):
+                return "MODEL", None
+
+            if (
+                filtered_reason is None
+                and chunk_info.get("filtered_reason")
+            ):
+                filtered_reason = chunk_info["filtered_reason"]
+
+        if filtered_reason is not None:
+            return "FILTERED", filtered_reason
+
+        return None, None
+
+    abuse_signals = []
+
+    for major_type, info in (
+        result.get("major_types") or {}
+    ).items():
+        detection_source, filtered_reason = _detection_source(
+            major_type
+        )
+
+        abuse_signals.append(
+            {
+                "major_type": major_type,
+                "detected": info.get("detected", False),
+                "segment_ids": segment_ids_by_type.get(
+                    major_type, []
+                ),
+                "detection_source": detection_source,
+                "filtered_reason": filtered_reason,
+            }
+        )
 
     # risk_factors는 계속 비워 둔다 — 아래 4개 필드가 정식 자리를
     # 대신 받는다(모듈 docstring 참고).
