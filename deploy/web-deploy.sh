@@ -38,11 +38,23 @@ fi
 
 echo "== 1/5 최신 main 받기"
 cd "$REPO"
-OLD=$(git rev-parse --short HEAD)
-git fetch -q origin main
-git checkout -q main
-git merge -q --ff-only origin/main
-echo "code $OLD -> $(git rev-parse --short HEAD)"
+# main 을 받아 이 파일이 바뀌었으면 새 판으로 처음부터 다시 시작한다. 옛 판이 끝까지 돌면 새 main 의 Dockerfile 을
+# 옛 빌드 명령으로 만들다 멈춘다(2026-10-22 데모 서버: git pull 없이 돌려 3/5 의 COPY backend/requirements.txt 에서 멈춤).
+# { } 묶음은 bash 가 다 읽은 뒤 실행하므로, 그 안에서 이 파일이 바뀌어도 묶음은 읽은 그대로 끝까지 돈다.
+{
+  OLD=$(git rev-parse --short HEAD)
+  OLD_SCRIPT=$(git hash-object deploy/web-deploy.sh)
+  git fetch -q origin main
+  git checkout -q main
+  git merge -q --ff-only origin/main
+  echo "code $OLD -> $(git rev-parse --short HEAD)"
+  if [ "$(git hash-object deploy/web-deploy.sh)" != "$OLD_SCRIPT" ]; then
+    # 다시 시작한 판이 또 바뀌었으면(그사이 main 에 새 배포 스크립트가 들어옴) 되풀이하지 않고 멈춘다.
+    [ -z "${WEB_DEPLOY_RESTARTED:-}" ] || { echo "배포 스크립트가 다시 시작한 뒤에도 바뀌었습니다. 한 번 더 실행해 주세요."; exit 1; }
+    echo "배포 스크립트가 바뀌어 새 판으로 처음부터 다시 시작합니다"
+    exec env WEB_DEPLOY_RESTARTED=1 bash "$REPO/deploy/web-deploy.sh"
+  fi
+}
 
 echo "== 2/5 화면(counselor-web) 빌드"
 docker run --rm -v "$REPO/counselor-web:/w" -w /w node:22.12.0-alpine \
