@@ -93,6 +93,6 @@ def test_gpu_build_uses_cuda_torch_and_passes_gpu_to_container() -> None:
     assert '${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"}' in run_block
     # 서버 준비 스크립트가 있고 드라이버 · nvidia 런타임을 둘 다 깐다.
     setup = (REPO / "deploy" / "gpu-setup.sh").read_text(encoding="utf-8")
-    assert "ubuntu-drivers --gpgpu install" in setup
+    assert "ubuntu-drivers install --gpgpu" in setup
     assert "nvidia-container-toolkit" in setup
     assert "nvidia-ctk runtime configure --runtime=docker" in setup
