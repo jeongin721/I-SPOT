@@ -38,7 +38,7 @@ class Logic extends DCLogic {
       this.setState({ current: s.password, password: '', next: '', confirm: '', pwFor: user.id });
       this.props.session.recheck();
     } else {
-      this.props.navigate(s.role === 'admin' && user.role === 'ADMIN' ? '/Admin' : '/Main');
+      this.props.navigate(s.role === 'admin' && user.role === 'ADMIN' ? '/AdminHome' : '/Main');
     }
   }
 

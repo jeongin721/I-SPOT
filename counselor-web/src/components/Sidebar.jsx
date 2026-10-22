@@ -50,7 +50,7 @@ export default function Sidebar({ active, session }) {
           문서함
         </a>
         {MENU_AFTER_DOCBOX.map(menuLink)}
-        {session.isAdmin ? <A to="/Admin">관리자 메뉴</A> : null}
+        {session.isAdmin ? <A to="/AdminHome">관리자 메뉴</A> : null}
       </nav>
       <div className="me">
         <span className="av">{me.meInitial}</span>
