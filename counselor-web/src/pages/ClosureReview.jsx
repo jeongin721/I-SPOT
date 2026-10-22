@@ -439,20 +439,9 @@ export default function ClosureReview(props) {
                 {v.doneSub}
               </span>
             </div>
-            {v.allOk ? (
-              <>
-                <A className="btn btn-p" to="/ClosureDetail">
-                  종결보고서 작성 →
-                </A>
-              </>
-            ) : null}
-            {v.notAllOk ? (
-              <>
-                <span className="btn" style={{ background: '#F2EFE8', color: '#98948B', cursor: 'default' }}>
-                  종결보고서 작성 →
-                </span>
-              </>
-            ) : null}
+            <A className="btn btn-p" to="/ClosureDetail">
+              종결보고서 작성 →
+            </A>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>
