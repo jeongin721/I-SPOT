@@ -6,6 +6,8 @@
 //  - 연도 목록 굴리기: 디자인은 id + setTimeout + componentDidUpdate 로 했지만 앱 useDC 는 componentDidUpdate 를 부르지 않아
 //    목록 ref 와 useEffect 로 고른 해가 보이게 굴린다.
 //  - 닫기: 팝업 밖(투명 배경)을 누르거나 Esc. Esc · 날짜를 고른 뒤에는 달력 단추로 초점을 돌린다.
+//  - 팝업을 열거나 연 → 월 → 일로 넘어가면 누른 단추가 사라져 초점이 문서 처음으로 가므로, 그 단계의 고른 단추
+//    (없으면 고를 수 있는 첫 단추)로 옮긴다.
 //  - 모양 규칙은 src/pages/Stats.css(.pg-Stats .dpw · .dp-*)에 있다.
 import { Fragment, useEffect, useId, useRef } from 'react';
 
@@ -13,8 +15,17 @@ export default function StatsDateField({ label, name, field }) {
   const id = useId();
   const yearsRef = useRef(null);
   const btnRef = useRef(null);
+  const popRef = useRef(null);
   const dp = field.picker;
   const { open, close, scrollKey } = dp;
+  const mode = !open ? '' : dp.isY ? 'y' : dp.isM ? 'm' : 'd';
+
+  useEffect(() => {
+    const pop = popRef.current;
+    if (!mode || !pop || pop.contains(document.activeElement)) return;
+    const target = pop.querySelector(`.dp-${mode}.on:not(:disabled)`) ?? pop.querySelector(`.dp-${mode}:not(:disabled)`);
+    if (target) target.focus();
+  }, [mode]);
 
   // 연도 목록이 보이면 고른 해가 목록 위쪽에서 조금 내려온 자리에 오게 굴린다.
   useEffect(() => {
@@ -84,7 +95,7 @@ export default function StatsDateField({ label, name, field }) {
         {open ? (
           <>
             <span className="dp-bd" onClick={close}></span>
-            <span className="dp-pop" role="dialog" aria-label={`${name} 선택`}>
+            <span className="dp-pop" role="dialog" aria-label={`${name} 선택`} ref={popRef}>
               {dp.isY ? (
                 <>
                   <span className="dp-hd">

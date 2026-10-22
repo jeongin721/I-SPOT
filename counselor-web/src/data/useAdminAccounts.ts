@@ -292,7 +292,7 @@ export function useAdminAccounts(access: AdminAccess, { enabled = true }: AdminH
           // 계정은 만들어졌다. 같은 탭의 대시보드 · 접속 기록도 다시 부르게 알린다.
           notifyAccountsChanged();
           counts.refresh();
-          setActionError(`${created.name} 계정은 만들었지만 임시 비밀번호를 발급하지 못했습니다. 목록에서 '비밀번호 초기화'를 눌러 주세요.`);
+          setActionError(`${created.name} 계정은 만들었지만 임시 비밀번호를 발급하지 못했습니다. 목록에서 이름을 눌러 상담사 상세의 '비밀번호 초기화'를 눌러 주세요.`);
 
           return { account: toAccountRow(created, meId, null), temporaryPassword: null };
         },

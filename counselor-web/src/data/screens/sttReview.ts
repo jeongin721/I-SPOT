@@ -22,7 +22,7 @@ import { NOT_PROVIDED } from "../caseRows";
 import type { TranscriptReviewState } from "../useTranscriptReview";
 import { SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
 import { NOT_READY } from "./common";
-import { screenHref } from "./links";
+import { screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
 
@@ -76,7 +76,8 @@ export function sttReviewValues(input: SttScreenInput) {
         chip: "녹음 없음",
         stage: "녹음 파일을 먼저 올려 주세요.",
         actionLabel: "녹취 올리기",
-        action: () => go(screenHref("/UploadModal", ids)),
+        // 링크가 아니라 코드로 옮기므로 A.jsx 가 back 을 붙이지 못한다. 이 화면으로 돌아오게 직접 붙인다.
+        action: () => go(withBack(screenHref("/UploadModal", ids), screenHref("/SttReview", ids))),
       };
     } else {
       const failed = status === "STT_FAILED";

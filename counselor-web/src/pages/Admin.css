@@ -152,6 +152,12 @@
   color: #66625a;
   font-size: 13px;
 }
+/* 600px 이하: 칸 이름을 한 줄로 올려 값 · 안내가 남은 폭을 다 쓴다(390px 에서 안내가 한 글자 폭으로 세로로 늘어지던 것). */
+@media (max-width: 600px) {
+  .pg-Admin .lab {
+    width: 100%;
+  }
+}
 /* 통계의 분포 카드 3열(디자인 AdminStats). 600px 이하 1열은 common.css. */
 .pg-Admin .g3 {
   display: grid;

@@ -53,6 +53,13 @@ export function carryScreenHref(page: string, ids: Partial<ScreenIds>): string {
 export const POPUP_PAGES = new Set(["/UploadModal", "/CaseRegister"]);
 export const BACK_PARAM = "back";
 
+/** 팝업 화면 경로인가. 라우터가 대소문자를 가리지 않아(/uploadmodal 도 같은 화면) 소문자로 비교한다. */
+export function isPopupPage(path: string): boolean {
+  const lower = path.toLowerCase();
+
+  return [...POPUP_PAGES].some((page) => page.toLowerCase() === lower);
+}
+
 /** href 에 돌아갈 화면 주소(from)를 붙인다. 이미 back 이 있으면 그대로 둔다. */
 export function withBack(href: string, from: string): string {
   const [path, query = ""] = href.split("?");
@@ -72,5 +79,5 @@ export function readBackHref(search: URLSearchParams | string): string | null {
 
   const page = back.split("?")[0];
 
-  return POPUP_PAGES.has(page) || page === "/Login" ? null : back;
+  return isPopupPage(page) || page.toLowerCase() === "/login" ? null : back;
 }
