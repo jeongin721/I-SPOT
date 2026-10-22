@@ -14,7 +14,7 @@ cd /opt/ispot/I-SPOT && sudo git pull --ff-only
 sudo bash deploy/web-deploy.sh
 ```
 
-- 먼저 `git pull` 하는 것은 스크립트 자신도 최신으로 받기 위해서입니다. 스크립트도 시작할 때 `origin/main` 을 다시 받아 fast-forward 합니다(main 만 배포).
+- 먼저 `git pull` 하는 것은 스크립트 자신도 최신으로 받기 위해서입니다. 스크립트도 시작할 때 `origin/main` 을 다시 받아 fast-forward 합니다(main 만 배포). 그때 스크립트 자신이 바뀌었으면 새 판으로 처음부터 다시 시작합니다(`배포 스크립트가 바뀌어 새 판으로 처음부터 다시 시작합니다`). 이 기능은 2026-10-22 판부터라, 그보다 옛 판이 서버에 있으면 `git pull` 을 빼먹었을 때 옛 판이 끝까지 돌아 새 main 의 이미지를 옛 방식으로 만들다 멈출 수 있습니다(`COPY failed … backend/requirements.txt`). 그때는 한 번 더 돌리면 됩니다.
 - 여러 번 돌려도 됩니다. 돌릴 때마다 화면을 새로 빌드하고 Backend 컨테이너를 다시 만듭니다. 그동안 잠깐 접속이 끊깁니다.
 - **성공 판정은 직접 봅니다.** 1/5~5/5 중 한 단계라도 실패하면 스크립트는 그 자리에서 멈추고 0 이 아닌 값으로 끝납니다. 마지막 확인(`/health`)은 경우에 따라 다릅니다.
   - Backend 에 아예 연결되지 않으면(`curl` 연결 실패) 그 자리에서 멈춥니다. 0 이 아닌 값, `WEB-DEPLOY DONE` 없음.
@@ -56,7 +56,7 @@ sudo bash deploy/web-deploy.sh
 
 | 단계 | 하는 일 |
 | --- | --- |
-| 1/5 | `/opt/ispot/I-SPOT` 에서 `origin/main` 을 받아 fast-forward |
+| 1/5 | `/opt/ispot/I-SPOT` 에서 `origin/main` 을 받아 fast-forward. 스크립트 자신이 바뀌었으면 새 판으로 처음부터 다시 시작(한 번만) |
 | 2/5 | Node 컨테이너(`node:22.12.0-alpine`)에서 `counselor-web` 을 `npm ci` · `npm run build` 하고 결과를 `/opt/ispot/web` 에 복사 |
 | 3/5 | Backend 이미지(`ispot-backend`)를 저장소 루트에서 다시 만들고(`-f backend/Dockerfile`, 넣는 것은 루트 `.dockerignore`, `WITH_MODELING=1` 이면 modeling 패키지까지) `alembic upgrade head` 로 DB 를 최신 구조로 |
 | 4/5 | Backend 컨테이너를 `127.0.0.1:8000` 에서만 받도록 다시 띄움(`--proxy-headers --forwarded-allow-ips 127.0.0.1`, `WITH_MODELING=1` 이면 모델 파일 · Hugging Face 캐시 폴더를 붙임) |
