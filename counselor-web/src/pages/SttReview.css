@@ -86,6 +86,10 @@
   position: relative;
   display: inline-flex;
 }
+.pg-SttReview .spmenu.up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 .pg-SttReview .spmenu {
   position: absolute;
   top: calc(100% + 4px);

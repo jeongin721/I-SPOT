@@ -139,7 +139,7 @@ class Logic extends DCLogic {
       doneTitle: allOk ? '전체 내역 확인 완료' : `확인 ${okCount} / ${all.length}`,
       doneSub: allOk
         ? '확인한 내용으로 종결보고서 초안이 채워져요'
-        : '요약을 모두 확인하면 종결보고서를 작성할 수 있어요',
+        : '확인하지 않은 요약이 있어도 종결보고서를 작성할 수 있어요. 남은 요약도 확인해 주세요',
     };
   }
 }

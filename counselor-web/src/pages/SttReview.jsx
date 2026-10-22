@@ -10,7 +10,7 @@
 // 10/22 디자인: 아래 '위험 신호' 구역을 빼고, '전체 STT' 보기는 일정 높이 상자(.ln-box) 안에서 스크롤하고,
 // 하단 고정 재생 바(SttPlayer — 재생 단추는 준비 중, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
 // 저장 · 확정 단추는 디자인의 다음 단추 자리(STT 카드 아래)에 있다. 디자인의 분석 알림(job-toast)은 앱 전체 작업이라 여기 없다.
-import { Fragment } from 'react';
+import { Fragment, useEffect } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -56,6 +56,11 @@ export default function SttReview(props) {
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, review, go, focusSegment });
   // 주소의 seg, 또는 재생 바 표시를 눌러 고른 줄(v.focusId)로 스크롤한다. 누를 때마다 v.focusRequest 가 바뀐다.
   const focusRef = useSttFocus(ids.sessionId, v.focusId, v.focusRequest);
+  // 주소의 seg · 회차가 바뀌면(뒤로 가기 포함) 재생 바 표시로 옮겨 간 줄을 잊는다.
+  const { clearJump } = v;
+  useEffect(() => {
+    clearJump();
+  }, [focusSegment, ids.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -205,7 +210,7 @@ export default function SttReview(props) {
                               {l.sp} ▾
                             </button>
                             {l.spMenu ? (
-                              <span className="spmenu" role="listbox" aria-label="화자 선택">
+                              <span className={l.spCls} role="listbox" aria-label="화자 선택">
                                 {(l.spOpts || []).map((o) => (
                                   <button
                                     key={o.value}
