@@ -1,7 +1,9 @@
 /* SttReview 화면에만 있는 규칙(디자인 SttReview.dc.html). 공통 규칙은 src/styles/common.css.
    시간 단추(.tbtn) · 화자 목록(.spw · .spmenu · .spopt) · 범례(.legend · .cue · .sig)는(현재 단계 강조는 common.css)
    10/21 디자인(counselor-design/screens/SttReview.dc.html)에서 옮겼다. 목소리 신호 · 관련 조문 카드(.cues · .law*)와
-   토스트(.toast)는 그릴 값이 없어(준비 중) 옮기지 않았다. 600px 이하 줄 배치는 common.css 끝 블록에 있다. */
+   토스트(.toast)는 그릴 값이 없어(준비 중) 옮기지 않았다. 600px 이하 줄 배치는 common.css 끝 블록에 있다.
+   발화 줄 상자(.ln-box) · 하단 재생 바(.player · .pl-*)는 10/22 디자인에서 옮겼다(파일 끝). 재생 바 마크업은
+   components/SttPlayer.jsx 이고, 디자인의 분석 알림(.job-toast)은 앱 전체 작업이라 여기 두지 않는다. */
 .pg-SttReview .ln {
   display: grid;
   grid-template-columns: 52px 124px minmax(0, 1fr) auto;
@@ -198,3 +200,199 @@
 }
 /* 현재 단계 강조 — 10/21 디자인(회차 처리 · 종결 화면 8곳이 같은 규칙이라 common.css 로 옮길 후보).
    600px 이하에서 '현재 단계' 글자를 숨기는 규칙은 common.css 끝 블록에 있다. */
+/* 전체 STT 보기 · 일정 높이 상자 안에서 스크롤 — 10/22 디자인. '확인할 곳' 보기는 상자만 있고 스크롤하지 않는다. */
+.pg-SttReview .ln-box.scroll {
+  max-height: 560px;
+  overflow-y: auto;
+  border-top: 1px solid #dad5c9;
+  border-bottom: 1px solid #dad5c9;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.pg-SttReview .thm-root.dark .ln-box.scroll {
+  border-color: #4e4b44 !important;
+}
+/* 녹음 재생 바(하단 고정) — 10/22 디자인. 서버에 녹음 재생이 없어 재생 단추 · 재생 위치는 꺼져 있다(준비 중).
+   재생이 없으니 디자인의 재생 위치 채움(금색 그러데이션)은 옮기지 않았다. 위 표시(.pl-mark)는 눌러서 그 줄로 간다. */
+.pg-SttReview .player {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 20px 12px;
+  background: #ffffff;
+  border: 1px solid #dad5c9;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 24px rgba(43, 42, 38, 0.12);
+}
+.pg-SttReview .pl-ctrls {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+.pg-SttReview .pl-b {
+  width: 38px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dad5c9;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #2b2a26;
+  cursor: pointer;
+  padding: 0;
+}
+.pg-SttReview .pl-b:not(:disabled):hover {
+  border-color: #2b2a26;
+}
+.pg-SttReview .pl-b.pl-main {
+  background: #2b2a26;
+  border-color: #2b2a26;
+  color: #eadbb5;
+}
+.pg-SttReview .pl-b:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.pg-SttReview .pl-time {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pg-SttReview .pl-t {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: #66625a;
+  min-width: 40px;
+  text-align: center;
+}
+.pg-SttReview .pl-track {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 22px;
+}
+.pg-SttReview .pl-range {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #e7e4dc;
+  cursor: pointer;
+  margin: 0;
+}
+.pg-SttReview .pl-range:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.pg-SttReview .pl-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2b2a26;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.pg-SttReview .pl-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2b2a26;
+  border: 2px solid #ffffff;
+}
+.pg-SttReview .pl-mark {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 18px;
+  margin-left: -5px;
+  transform: translateY(-50%);
+  z-index: 2;
+  border: 2px solid #ffffff;
+  border-radius: 3px;
+  background: #c08a2e;
+  box-shadow: 0 1px 3px rgba(43, 42, 38, 0.35);
+  cursor: pointer;
+  padding: 0;
+}
+.pg-SttReview .pl-mark:hover {
+  background: #a33b2e;
+}
+.pg-SttReview .pl-mark:focus-visible {
+  outline: 2px solid #a33b2e;
+  outline-offset: 2px;
+}
+/* 표시 수(왼쪽) · '녹음 재생 준비 중'(오른쪽). 디자인은 표시 수를 인라인 style 로 왼쪽에 붙였다. */
+.pg-SttReview .pl-legend,
+.pg-SttReview .pl-note {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #66625a;
+}
+.pg-SttReview .pl-legend {
+  left: 20px;
+}
+.pg-SttReview .pl-note {
+  right: 20px;
+}
+.pg-SttReview .pl-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  background: #c08a2e;
+}
+.pg-SttReview .thm-root.dark .player {
+  background: #2c2b27 !important;
+  border-color: #4e4b44 !important;
+}
+.pg-SttReview .thm-root.dark .pl-b {
+  background: #2c2b27 !important;
+  border-color: #4e4b44 !important;
+  color: #ece8df !important;
+}
+.pg-SttReview .thm-root.dark .pl-b.pl-main {
+  background: #eadbb5 !important;
+  border-color: #eadbb5 !important;
+  color: #2b2a26 !important;
+}
+.pg-SttReview .thm-root.dark .pl-t,
+.pg-SttReview .thm-root.dark .pl-legend,
+.pg-SttReview .thm-root.dark .pl-note {
+  color: #bdb7aa !important;
+}
+.pg-SttReview .thm-root.dark .pl-range {
+  background-color: #45423b !important;
+}
+.pg-SttReview .thm-root.dark .pl-mark {
+  border-color: #2c2b27 !important;
+  background: #e0b25a !important;
+}
+.pg-SttReview .thm-root.dark .pl-legend i {
+  background: #e0b25a !important;
+}
+@media (max-width: 600px) {
+  .pg-SttReview .pl-ctrls {
+    flex-wrap: wrap;
+  }
+  .pg-SttReview .pl-legend,
+  .pg-SttReview .pl-note {
+    position: static;
+    width: 100%;
+    justify-content: center;
+  }
+}

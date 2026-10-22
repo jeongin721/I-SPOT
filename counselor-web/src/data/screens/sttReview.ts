@@ -11,14 +11,23 @@
 //  - 화자는 누를 때마다 바뀌던 것을 목록에서 고른다(연 목록은 화면 상태).
 //  - 주소의 seg(발화 ID)가 가리키는 줄을 금색 테두리로 표시하고 그 줄로 한 번 스크롤한다(useSttFocus). 디자인은 브라우저
 //    저장소(ispot-stt)를 300ms 마다 읽고 시간('00:41')으로 줄을 찾지만, 앱은 주소 쿼리와 발화 ID 로 한다.
-//  - 시간을 눌러 다시 듣기(서버에 녹음 재생 없음), 목소리 신호(서버에 구간별 값 없음), 관련 조문(팀 결정 전 보류),
-//    위험 신호 카드 · 채택/보류/제외(항목 구조 · 기록이 팀 결정 전)는 준비 중이다. 서버(AI_PROVIDER=modeling 일 때만)가 주는
-//    risk_utterances 도 항목 구조가 합의 전이라 useSessionAnalysis 가 내보내지 않는다.
+//  - 시간을 눌러 다시 듣기(서버에 녹음 재생 없음), 목소리 신호(서버에 구간별 값 없음), 관련 조문(팀 결정 전 보류)은 준비 중이다.
 //  - 옮기지 않은 것: 디자인 범례 끝줄의 예시 표시, 화자 라벨 뒤 번호(그 화자의 몇 번째 발화인지 — 뜻이 팀 확인 전),
 //    '핵심 발화' 보기, 가짜 진행률 · 토스트. 단계 이름 · 다음 단추는 앱 그대로다(분석 시작 흐름은 팀 결정 전이라
 //    원문 확정 뒤 위험 신호 검토 화면에서 AI 분석을 요청한다).
+//
+// 10/22 디자인 반영:
+//  - 아래쪽 '위험 신호' 구역(10/21 에 준비 중 안내로 옮겼던 것)을 뺐다.
+//  - '전체 STT' 보기는 일정 높이 상자(.ln-box.scroll) 안에서 스크롤한다. '확인할 곳' 보기는 높이 제한 없이 늘어놓는다(디자인과 같다).
+//  - 하단 고정 재생 바(player): 서버는 녹음 파일 · 재생 주소를 주지 않고 음성 정보(GET /sessions/{id}/audio, 길이 포함)만 준다.
+//    그래서 5초 뒤로 · 재생/일시정지 · 정지 · 5초 앞으로 · 재생 위치는 꺼 두고 '준비 중' 이라고 쓴다(가짜 재생 없음).
+//    재생 바 위 표시는 실제로 동작한다: 확인 안 한 저신뢰 · 화자 미확인 발화를 '시작 시각 ÷ 녹음 길이' 위치에 놓고,
+//    누르면 '확인할 곳' 보기로 바꿔 그 줄로 스크롤하고 금색 테두리를 옮긴다(주소 seg 와 같은 방법, useSttFocus).
+//    녹음 길이는 useSessionDetail 이 이미 부르는 음성 정보를 쓴다. 길이를 모르면 마지막 발화가 끝나는 시각으로 나누고,
+//    둘 다 없으면 표시를 숨긴다.
 
 import { NOT_PROVIDED } from "../caseRows";
+import { formatClock } from "../time";
 import type { TranscriptReviewState } from "../useTranscriptReview";
 import { SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
 import { NOT_READY } from "./common";
@@ -33,9 +42,21 @@ export interface SttUiState {
   ok: Record<string, boolean>;
   /** 화자 목록을 연 줄('회차 ID:발화 ID'). 닫혀 있으면 null. */
   spOpen: string | null;
+  /** 재생 바 표시를 눌러 옮겨 간 줄. 없으면 null(주소의 seg 를 따른다). */
+  jump: SttJump | null;
 }
 
-export const INITIAL_STT_STATE: SttUiState = { view: "all", ok: {}, spOpen: null };
+/** 재생 바 표시를 눌러 옮겨 간 줄. 그 회차이고 주소의 seg 가 누를 때와 같을 때만 주소의 seg 대신 쓴다. */
+export interface SttJump {
+  sessionId: string;
+  segmentId: string;
+  /** 누를 때 주소의 seg. 그사이 주소가 바뀌었으면(앞 · 뒤로 가기) 주소를 따른다. */
+  from: string | null;
+  /** 몇 번째 누름인가. 같은 표시를 다시 눌러도 다시 스크롤하게 useSttFocus 에 넘긴다. */
+  n: number;
+}
+
+export const INITIAL_STT_STATE: SttUiState = { view: "all", ok: {}, spOpen: null, jump: null };
 
 /** 가리킬 발화 ID 를 담는 주소 쿼리 이름(#/SttReview?case=…&session=…&seg=<발화 ID>). */
 export const SEGMENT_PARAM = "seg";
@@ -49,7 +70,7 @@ export function readFocusSegment(search: URLSearchParams | string): string | nul
 
 export interface SttScreenInput extends SessionScreenInput {
   review: TranscriptReviewState;
-  /** 주소의 seg(발화 ID). 그 줄을 표시하고, '확인할 곳' 보기에서도 숨기지 않는다. */
+  /** 주소의 seg(발화 ID). 그 줄을 표시하고, '확인할 곳' 보기에서도 숨기지 않는다(재생 바 표시를 눌러 다른 줄로 옮기기 전까지). */
   focusSegment: string | null;
   state: SttUiState;
   setState: (patch: Partial<SttUiState>) => void;
@@ -92,14 +113,19 @@ export function sttReviewValues(input: SttScreenInput) {
   }
 
   const needsCheck = (row: { lowConfidence: boolean; speakerUnknown: boolean }) => row.lowConfidence || row.speakerUnknown;
-  // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게). 주소가 가리킨 줄도 둔다.
+  // 표시할 줄: 재생 바 표시를 눌러 옮겨 간 줄(이 회차 · 누를 때와 같은 주소일 때), 아니면 주소의 seg 가 가리킨 줄.
+  const jump =
+    state.jump && state.jump.sessionId === ids.sessionId && state.jump.from === focusSegment ? state.jump : null;
+  const focusId = jump ? jump.segmentId : focusSegment;
+  // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게). 표시할 줄도 둔다.
   const visible = review.rows.filter(
-    (row) => !row.removed && (state.view === "all" || needsCheck(row) || row.dirty || row.segmentId === focusSegment),
+    (row) => !row.removed && (state.view === "all" || needsCheck(row) || row.dirty || row.segmentId === focusId),
   );
   // 저장 · 확정을 기다리는 동안에는 고치지 못하게 한다(보낸 내용 뒤에 친 글자가 저장되지 않고 사라지지 않게).
   const editable = review.canEdit && !review.submitting;
   const okKey = (segmentId: string) => `${ids.sessionId}:${segmentId}`;
-  const left = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]).length;
+  const unchecked = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]);
+  const left = unchecked.length;
 
   const lines = visible.map((row) => {
     const key = okKey(row.segmentId);
@@ -107,7 +133,7 @@ export function sttReviewValues(input: SttScreenInput) {
     const check = needsCheck(row);
     // 고칠 수 없을 때(확정 뒤 다음 단계 · 저장 중)는 목록을 닫는다.
     const open = editable && state.spOpen === key;
-    const focus = row.segmentId === focusSegment;
+    const focus = row.segmentId === focusId;
     let hint = "";
 
     if (done) hint = "확인했어요";
@@ -119,7 +145,8 @@ export function sttReviewValues(input: SttScreenInput) {
       /** React 줄 키. 보기를 바꿔도 줄(입력칸 · 연 목록)이 다른 발화로 옮겨 가지 않게 발화 ID 로 둔다. */
       key: row.segmentId,
       t: row.startLabel,
-      // 시간을 눌러 그 위치부터 다시 듣기: 서버에 녹음 재생이 없어 꺼 둔다(준비 중). 생기면 여기에 재생 함수를 넣는다.
+      // 시간을 눌러 그 위치부터 다시 듣기: 서버가 녹음 파일 · 재생 주소를 주지 않아 꺼 둔다(준비 중).
+      // 생기면 여기에 재생 함수를 넣고, 아래 재생 바(player)의 단추도 함께 켠다.
       play: null,
       playAria: `${row.startLabel}부터 듣기 · ${NOT_READY}`,
       focus,
@@ -160,6 +187,35 @@ export function sttReviewValues(input: SttScreenInput) {
     };
   });
 
+  // 재생 바 위 표시(10/22 디자인): 확인 안 한 저신뢰 · 화자 미확인 발화의 시작 위치. 녹음 길이는 useSessionDetail 이
+  // 이미 받은 음성 정보(GET /sessions/{id}/audio 의 duration_ms)다. 모르면 마지막 발화가 끝나는 시각으로 나누고,
+  // 둘 다 없으면 표시를 숨긴다.
+  const audioMs = input.detail.session?.audio?.durationMs ?? null;
+  const lastEndMs = review.rows.reduce((max, row) => Math.max(max, row.endMs), 0);
+  const spanMs = audioMs !== null && audioMs > 0 ? audioMs : lastEndMs > 0 ? lastEndMs : null;
+  const sessionId = ids.sessionId;
+  const marks =
+    spanMs !== null && sessionId
+      ? unchecked.map((row) => {
+          const kind = row.lowConfidence ? "저신뢰 구간" : "화자 미확인";
+          const ratio = Math.min(Math.max(row.startMs / spanMs, 0), 1);
+
+          return {
+            key: row.segmentId,
+            left: `${(ratio * 100).toFixed(2)}%`,
+            title: `${kind} ${row.startLabel}`,
+            aria: `${kind} ${row.startLabel} 확인하기`,
+            // 디자인처럼 '확인할 곳' 보기로 바꾸고 그 줄로 옮긴다(스크롤 · 금색 테두리는 주소 seg 와 같은 useSttFocus).
+            go: () =>
+              setState({
+                view: "check",
+                jump: { sessionId, segmentId: row.segmentId, from: focusSegment, n: (state.jump?.n ?? 0) + 1 },
+              }),
+          };
+        })
+      : [];
+  const notReady = (name: string) => `${name} · ${NOT_READY}`;
+
   const confirmed = review.info?.confirmed ?? false;
   let chipText = left ? `확인할 곳 ${left}` : "모두 확인";
   if (review.counts.pending) chipText = `저장 안 한 수정 ${review.counts.pending}`;
@@ -180,6 +236,28 @@ export function sttReviewValues(input: SttScreenInput) {
     progressActionLabel: progress?.actionLabel ?? "",
     progressAction: progress?.action ?? null,
     lines,
+    /** '전체 STT' 보기면 일정 높이 상자 안에서 스크롤한다. */
+    boxCls: state.view === "all" ? "ln-box scroll" : "ln-box",
+    /** 표시할 줄의 발화 ID 와 누른 횟수. 화면 파일이 useSttFocus 에 넘겨 그 줄로 스크롤한다. */
+    focusId,
+    focusRequest: jump?.n ?? 0,
+    // 하단 재생 바. 원문이 있을 때만 보인다. 재생 단추 · 재생 위치는 서버에 녹음 재생이 없어 꺼 둔다(ready: false).
+    player:
+      review.info === null
+        ? null
+        : {
+            ready: false,
+            note: `녹음 재생 ${NOT_READY}`,
+            back: notReady("5초 뒤로"),
+            play: notReady("재생"),
+            stop: notReady("정지"),
+            fwd: notReady("5초 앞으로"),
+            seek: notReady("재생 위치"),
+            cur: NOT_PROVIDED,
+            dur: (audioMs !== null && audioMs > 0 && formatClock(audioMs)) || NOT_PROVIDED,
+            marks,
+            markLabel: marks.length ? `확인할 곳 ${marks.length}곳` : "",
+          },
     lowLeft: `${left}곳`,
     viewTitle: state.view === "all" ? "전체 STT" : "확인할 곳(저신뢰 · 화자 미확인)",
     chipText,
@@ -192,16 +270,11 @@ export function sttReviewValues(input: SttScreenInput) {
       ? `원문 ${review.info.version}판 · 고친 발화 ${review.counts.edited} · 발화 ${review.counts.total}`
       : "",
     // 범례(디자인의 STT 카드 아래). 서버에 없는 기능은 준비 중이라고만 쓴다(디자인 끝줄의 예시 표시는 옮기지 않음).
-    playNote: `시간을 눌러 그 위치부터 녹음을 다시 듣기는 ${NOT_READY}입니다. 서버에 녹음 재생 기능이 없습니다.`,
+    playNote:
+      `왼쪽 시간이나 아래 재생 바로 녹음을 다시 듣기는 ${NOT_READY}입니다. ` +
+      "서버가 녹음 파일은 주지 않고 파일 정보(이름 · 크기 · 길이)만 줍니다.",
     cueNote: `${NOT_READY}입니다. 서버가 발화 구간별 목소리 값을 주지 않습니다.`,
     lawNote: `${NOT_READY}입니다. 발화별 관련 조문은 팀 결정 전입니다.`,
-    // 위험 신호 구역: 카드 · 채택/보류/제외 수는 준비 중(위험 신호 검토 화면과 같은 '—').
-    riskNote:
-      `위험 신호 카드(근거 발화 · 채택 · 보류 · 제외)는 ${NOT_READY}입니다. 신호 항목 구조와 채택 · 보류 · 제외 기록이 팀 결정 전입니다. ` +
-      "AI 분석은 원문을 확정한 뒤 위험 신호 검토 단계에서 요청합니다.",
-    nA: NOT_PROVIDED,
-    nH: NOT_PROVIDED,
-    nD: NOT_PROVIDED,
     error: review.error,
     canSave: review.canEdit && review.counts.pending > 0 && !review.submitting,
     // 저장 · 확정을 누르면 연 화자 목록을 닫는다(저장이 끝나 다시 고칠 수 있게 되어도 저절로 다시 열리지 않게).

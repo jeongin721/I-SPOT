@@ -5,15 +5,18 @@
 // 부르고, 화면에 쓸 값은 src/data/screens/sttReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 변환 중이면 단계 이름(진행률 % 는 Backend 에 없음), 끝나면 발화 줄. 고친 발화만 저장하고 확정한 뒤 위험 신호 검토로 간다.
 // 10/21 디자인(counselor-design/screens/SttReview.dc.html): 제목 옆 '←'(내담자 정보), 시간 단추(다시 듣기 — 준비 중),
-// 화자 고르기 목록, 주소 ?seg=<발화 ID> 가 가리키는 줄 표시 · 스크롤(useSttFocus), 범례, '위험 신호' 구역(준비 중),
+// 화자 고르기 목록, 주소 ?seg=<발화 ID> 가 가리키는 줄 표시 · 스크롤(useSttFocus), 범례,
 // 현재 단계 강조. 단계 이름 · '원문 확정 · 신호 분석' 단추와 그 뒤 흐름은 앱 그대로다(분석 시작 흐름은 팀 결정 전).
-// 저장 · 확정 단추는 디자인의 다음 단추 자리(위험 신호 구역 아래)로 옮겼다.
+// 10/22 디자인: 아래 '위험 신호' 구역을 빼고, '전체 STT' 보기는 일정 높이 상자(.ln-box) 안에서 스크롤하고,
+// 하단 고정 재생 바(SttPlayer — 재생 단추는 준비 중, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
+// 저장 · 확정 단추는 디자인의 다음 단추 자리(STT 카드 아래)에 있다. 디자인의 분석 알림(job-toast)은 앱 전체 작업이라 여기 없다.
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import SttPlayer from '../components/SttPlayer';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -44,7 +47,6 @@ export default function SttReview(props) {
   const [search] = useSearchParams();
   const ids = readScreenIds(search);
   const focusSegment = readFocusSegment(search);
-  const focusRef = useSttFocus(ids.sessionId, focusSegment);
   const go = useScreenGo(useNavigate());
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
@@ -52,6 +54,8 @@ export default function SttReview(props) {
   const review = useTranscriptReview(ids.sessionId, { enabled });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, review, go, focusSegment });
+  // 주소의 seg, 또는 재생 바 표시를 눌러 고른 줄(v.focusId)로 스크롤한다. 누를 때마다 v.focusRequest 가 바뀐다.
+  const focusRef = useSttFocus(ids.sessionId, v.focusId, v.focusRequest);
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -158,107 +162,109 @@ export default function SttReview(props) {
                     </button>
                   </div>
                 </div>
-                {(v.lines || []).map((l) => (
-                  <Fragment key={l.key}>
-                    <div
-                      className="ln"
-                      ref={l.focus ? focusRef : undefined}
-                      style={{ background: l.bg, boxShadow: l.ring }}
-                    >
-                      <span>
-                        <button
-                          type="button"
-                          className="tbtn"
-                          aria-label={l.playAria}
-                          onClick={l.play ?? undefined}
-                          disabled={!l.play}
-                        >
-                          {l.t}
-                        </button>
-                      </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-                        <span className="spw" onKeyDown={l.spKey}>
+                <div className={v.boxCls}>
+                  {(v.lines || []).map((l) => (
+                    <Fragment key={l.key}>
+                      <div
+                        className="ln"
+                        ref={l.focus ? focusRef : undefined}
+                        style={{ background: l.bg, boxShadow: l.ring }}
+                      >
+                        <span>
                           <button
                             type="button"
-                            className="chip"
-                            title="눌러서 화자 선택"
-                            aria-haspopup="listbox"
-                            aria-expanded={l.spMenu}
-                            aria-label={`화자 바꾸기 · 지금 ${l.sp}`}
-                            onClick={l.toggleSp}
-                            disabled={!l.canEdit}
-                            style={{
-                              border: '0',
-                              cursor: 'pointer',
-                              font: 'inherit',
-                              fontSize: '12px',
-                              background: '#F2EFE8',
-                              color: '#66625A',
-                              fontWeight: l.spFw,
-                            }}
+                            className="tbtn"
+                            aria-label={l.playAria}
+                            onClick={l.play ?? undefined}
+                            disabled={!l.play}
                           >
-                            {l.sp} ▾
+                            {l.t}
                           </button>
-                          {l.spMenu ? (
-                            <span className="spmenu" role="listbox" aria-label="화자 선택">
-                              {(l.spOpts || []).map((o) => (
-                                <button
-                                  key={o.value}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={o.sel}
-                                  className={o.cls}
-                                  onClick={o.pick}
-                                >
-                                  {o.label}
-                                </button>
-                              ))}
-                            </span>
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+                          <span className="spw" onKeyDown={l.spKey}>
+                            <button
+                              type="button"
+                              className="chip"
+                              title="눌러서 화자 선택"
+                              aria-haspopup="listbox"
+                              aria-expanded={l.spMenu}
+                              aria-label={`화자 바꾸기 · 지금 ${l.sp}`}
+                              onClick={l.toggleSp}
+                              disabled={!l.canEdit}
+                              style={{
+                                border: '0',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                                fontSize: '12px',
+                                background: '#F2EFE8',
+                                color: '#66625A',
+                                fontWeight: l.spFw,
+                              }}
+                            >
+                              {l.sp} ▾
+                            </button>
+                            {l.spMenu ? (
+                              <span className="spmenu" role="listbox" aria-label="화자 선택">
+                                {(l.spOpts || []).map((o) => (
+                                  <button
+                                    key={o.value}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={o.sel}
+                                    className={o.cls}
+                                    onClick={o.pick}
+                                  >
+                                    {o.label}
+                                  </button>
+                                ))}
+                              </span>
+                            ) : null}
+                          </span>
+                          {l.spFix ? (
+                            <>
+                              <span className="note" style={{ fontSize: '11px' }}>
+                                상담원 수정
+                              </span>
+                            </>
                           ) : null}
                         </span>
-                        {l.spFix ? (
-                          <>
-                            <span className="note" style={{ fontSize: '11px' }}>
-                              상담원 수정
-                            </span>
-                          </>
-                        ) : null}
-                      </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {l.edit ? (
-                          <>
-                            <input
-                              className="in"
-                              type="text"
-                              value={l.text}
-                              onChange={l.onText}
-                              readOnly={!l.canEdit}
-                              aria-label={l.aria}
-                            />
-                          </>
-                        ) : null}
-                        {l.read ? (
-                          <>
-                            <span style={{ fontSize: '15px' }}>{l.text}</span>
-                          </>
-                        ) : null}
-                        <span className="note" style={{ color: l.hintFg }}>
-                          {l.hint}
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {l.edit ? (
+                            <>
+                              <input
+                                className="in"
+                                type="text"
+                                value={l.text}
+                                onChange={l.onText}
+                                readOnly={!l.canEdit}
+                                aria-label={l.aria}
+                              />
+                            </>
+                          ) : null}
+                          {l.read ? (
+                            <>
+                              <span style={{ fontSize: '15px' }}>{l.text}</span>
+                            </>
+                          ) : null}
+                          <span className="note" style={{ color: l.hintFg }}>
+                            {l.hint}
+                          </span>
                         </span>
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span className="note">{l.conf}</span>
-                        {l.check ? (
-                          <>
-                            <button type="button" className="btn btn-sm btn-s" onClick={l.ok}>
-                              {l.okLabel}
-                            </button>
-                          </>
-                        ) : null}
-                      </span>
-                    </div>
-                  </Fragment>
-                ))}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="note">{l.conf}</span>
+                          {l.check ? (
+                            <>
+                              <button type="button" className="btn btn-sm btn-s" onClick={l.ok}>
+                                {l.okLabel}
+                              </button>
+                            </>
+                          ) : null}
+                        </span>
+                      </div>
+                    </Fragment>
+                  ))}
+                </div>
                 <div className="legend">
                   <span>{v.playNote}</span>
                   <span className="k">
@@ -272,25 +278,6 @@ export default function SttReview(props) {
                   </span>
                 </div>
                 <div style={{ height: '16px' }}></div>
-              </section>
-              <section aria-label="위험 신호" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <section style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-                  <h2 className="h2">위험 신호</h2>
-                  <span className="chip c-ai">AI 분석 · 판정 아님</span>
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
-                    <span className="chip c-ok">채택 {v.nA}</span>
-                    <span className="chip c-check">보류 {v.nH}</span>
-                    <span className="chip c-normal">제외 {v.nD}</span>
-                  </span>
-                </section>
-                <section
-                  className="card"
-                  style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}
-                >
-                  <p className="note" style={{ margin: 0 }}>
-                    {v.riskNote}
-                  </p>
-                </section>
               </section>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                 <span className="note">{v.versionLabel}</span>
@@ -315,6 +302,7 @@ export default function SttReview(props) {
             </>
           ) : null}
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+          <SttPlayer p={v.player} />
         </main>
       </div>
     </div>
