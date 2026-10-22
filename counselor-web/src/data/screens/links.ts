@@ -70,7 +70,15 @@ export function withBack(href: string, from: string): string {
   return `${path}?${params.toString()}`;
 }
 
-/** 주소의 back 쿼리가 앱 안 화면(팝업 · 로그인 제외)이면 그 주소를, 아니면 null. */
+/** 앱에 있는 화면 경로(소문자). App.jsx 가 src/pages/*.jsx 로 화면을 등록할 때 registerScreens 로 넘긴다. 넘기기 전에는 거르지 않는다. */
+let screenPaths: Set<string> | null = null;
+
+/** App.jsx 가 등록한 화면 이름(파일 이름)을 알려 준다. back 이 앱에 없는 화면을 가리키면 쓰지 않게(Codex #73 남은 것 1). */
+export function registerScreens(names: string[]): void {
+  screenPaths = new Set(names.map((name) => `/${name}`.toLowerCase()));
+}
+
+/** 주소의 back 쿼리가 앱에 있는 화면(팝업 · 로그인 제외)이면 그 주소를, 아니면 null. */
 export function readBackHref(search: URLSearchParams | string): string | null {
   const params = typeof search === "string" ? new URLSearchParams(search) : search;
   const back = params.get(BACK_PARAM)?.trim() ?? "";
@@ -78,6 +86,8 @@ export function readBackHref(search: URLSearchParams | string): string | null {
   if (!/^\/[A-Za-z]+(\?[^#]*)?$/.test(back)) return null;
 
   const page = back.split("?")[0];
+
+  if (screenPaths && !screenPaths.has(page.toLowerCase())) return null;
 
   return isPopupPage(page) || page.toLowerCase() === "/login" ? null : back;
 }

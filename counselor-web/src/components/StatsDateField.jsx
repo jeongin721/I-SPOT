@@ -11,7 +11,8 @@
 //  - 모양 규칙은 src/pages/Stats.css(.pg-Stats .dpw · .dp-*)에 있다.
 import { Fragment, useEffect, useId, useRef } from 'react';
 
-export default function StatsDateField({ label, name, field }) {
+// align="end" 면 팝업을 칸 오른쪽 끝에 맞춘다(화면 오른쪽에 있는 종료일 칸이 화면 밖으로 나가지 않게).
+export default function StatsDateField({ label, name, field, align }) {
   const id = useId();
   const yearsRef = useRef(null);
   const btnRef = useRef(null);
@@ -56,7 +57,7 @@ export default function StatsDateField({ label, name, field }) {
       <label className="note" htmlFor={id}>
         {label}
       </label>
-      <span className="dpw st">
+      <span className={align === 'end' ? 'dpw dpw-end st' : 'dpw st'}>
         <input
           id={id}
           className="inp dpi"

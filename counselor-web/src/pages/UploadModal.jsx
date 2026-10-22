@@ -184,7 +184,17 @@ function UploadModalScreen(props) {
                   style={{ width: '100%' }}
                   {...v.search}
                 />
-                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div
+                  style={{
+                    marginTop: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    maxHeight: '320px',
+                    overflowY: 'auto',
+                    paddingRight: '6px',
+                  }}
+                >
                   {(v.cases || []).map((c, cIndex) => (
                     <Fragment key={cIndex}>
                       <button

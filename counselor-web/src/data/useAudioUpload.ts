@@ -9,7 +9,8 @@
 //    그사이 생긴 빈 회차(CREATED)를 먼저 찾아 쓴다. 다만 그 회차 · 요청을 정한 뒤 로그인이 바뀌었으면(다른 탭에서 다시
 //    로그인) 다시 쓰지 않는다. 다시 시도는 막고 처음부터 다시 올리게 한다(앞 로그인이 고른 것을 새 토큰으로 보내지 않게).
 //  - 진행률(%)은 Backend 가 주지 않는다. 단계(phase)로 보여 준다.
-//  - 화면을 닫아도 서버의 변환은 계속된다. 결과는 회차 상세 · 처리 대기 업무에서 이어서 본다.
+//  - 화면을 닫아도 서버의 변환은 계속된다. 변환을 요청하면 그 회차를 transcriptionJobs 에 맡겨, 창을 닫거나 다른 화면으로 가도
+//    화면 위쪽 알림(components/JobToast.jsx)이 끝날 때까지 따라간다(10/22 디자인). 결과는 회차 상세 · 처리 대기 업무에서도 본다.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -18,6 +19,7 @@ import { cases, sessions, transcript } from "../api/endpoints";
 import type { SessionCreateRequest, SessionStatus } from "../api/types";
 import { checkAudioFile } from "./audioFile";
 import { notifySessionChanged } from "./sessionEvents";
+import { trackTranscription } from "./transcriptionJobs";
 import { parseBackendTime } from "./time";
 import { POLL_INTERVAL_MS, errorMessage } from "./useRemote";
 
@@ -255,6 +257,7 @@ export function useAudioUpload(): AudioUploadState {
 
       step = "transcribing";
       setPhase("transcribing");
+      trackTranscription({ sessionId: target, caseId: input.caseId, name: input.file.name });
 
       let failures = 0;
 

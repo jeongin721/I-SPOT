@@ -139,7 +139,7 @@ class Logic extends DCLogic {
       doneTitle: allOk ? '전체 내역 확인 완료' : `확인 ${okCount} / ${all.length}`,
       doneSub: allOk
         ? '확인한 내용으로 종결보고서 초안이 채워져요'
-        : '요약을 모두 확인하면 종결보고서를 작성할 수 있어요',
+        : '확인하지 않은 요약이 있어도 종결보고서를 작성할 수 있어요. 남은 요약도 확인해 주세요',
     };
   }
 }
@@ -439,20 +439,9 @@ export default function ClosureReview(props) {
                 {v.doneSub}
               </span>
             </div>
-            {v.allOk ? (
-              <>
-                <A className="btn btn-p" to="/ClosureDetail">
-                  종결보고서 작성 →
-                </A>
-              </>
-            ) : null}
-            {v.notAllOk ? (
-              <>
-                <span className="btn" style={{ background: '#F2EFE8', color: '#98948B', cursor: 'default' }}>
-                  종결보고서 작성 →
-                </span>
-              </>
-            ) : null}
+            <A className="btn btn-p" to="/ClosureDetail">
+              종결보고서 작성 →
+            </A>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>

@@ -11,12 +11,13 @@
 // 쓰기는 초기면접(서식 4 ②) 아동 특성 · 가정상황 고치기 하나다(saveIntake → PATCH /cases/{id}). 두 목록을 통째로 보낸다
 // (비우면 [] — API_CONTRACT 'PATCH /cases/{id}'). 다른 쓰기 훅처럼 보낼 때 표(capture)를 잡고, 응답이 오면 그 표가 아직
 // 지금 대상일 때만 반영한다(다른 사례로 옮김 · 다시 로그인 · 화면을 떠남이면 버린다).
+// 초기면접지 화면(CaseIntake)의 사례 정보 고치기(saveCase)도 같은 PATCH 로, 같은 표 기준을 따른다. 바꾼 칸만 받아 보낸다.
 
 import { useCallback, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { cases } from "../api/endpoints";
-import { GUARDIAN_LABELS, type CaseDetail } from "../api/types";
+import { GUARDIAN_LABELS, type CaseDetail, type CaseUpdateRequest, type GuardianType } from "../api/types";
 import { NOT_PROVIDED, toCaseRow, type CaseRow } from "./caseRows";
 import { isProcessing, toSessionRow, type SessionRow } from "./sessionRows";
 import { toDateOnly } from "./time";
@@ -43,6 +44,15 @@ export interface CaseDetailView extends CaseRow {
   /** 초기면접(서식 4 ②)에서 고른 아동 특성 · 가정상황. 고르지 않았으면 빈 목록. */
   intakeChildTraits: string[];
   intakeFamilySituations: string[];
+  /**
+   * 서버에 적힌 그대로의 값. 초기면접지 화면(CaseIntake)이 입력칸을 채우고 바꾼 칸을 가리는 데 쓴다.
+   * 없으면 빈 문자열 · null 이다(위 표시용 칸과 달리 NOT_PROVIDED 로 바꾸지 않는다).
+   */
+  childGender: string;
+  childBirthYear: number | null;
+  guardianType: GuardianType | null;
+  guardianNote: string;
+  counselorId: string;
 }
 
 export function toCaseDetailView(source: CaseDetail): CaseDetailView {
@@ -60,6 +70,11 @@ export function toCaseDetailView(source: CaseDetail): CaseDetailView {
     counselorEmail: source.counselor?.email ?? NOT_PROVIDED,
     intakeChildTraits: source.intake_child_traits ?? [],
     intakeFamilySituations: source.intake_family_situations ?? [],
+    childGender: source.child_gender ?? "",
+    childBirthYear: source.child_birth_year ?? null,
+    guardianType: source.guardian_type ?? null,
+    guardianNote: source.guardian_note ?? "",
+    counselorId: source.counselor_id,
   };
 }
 
@@ -88,6 +103,15 @@ export interface CaseDetailState {
    * 실패했거나, 이미 보내는 중이거나, 요청한 뒤 대상이 바뀌어(다른 사례, 다시 로그인, 화면을 떠남) 반영하지 못했으면 false.
    */
   saveIntake: (input: IntakeInput) => Promise<boolean>;
+  /** 사례 정보(초기면접지 화면의 칸)를 저장하는 중. */
+  savingCase: boolean;
+  /** 사례 정보를 저장하지 못한 까닭. 다른 사례로 옮기거나 다시 로그인하면 지운다. */
+  caseError: string | null;
+  /**
+   * 사례 정보에서 바꾼 칸만 보낸다(PATCH /cases/{id}, 보낼 값은 부르는 쪽이 만든다 — useCaseIntake 의 toCaseUpdateRequest).
+   * 반영했으면 true. 실패했거나, 이미 보내는 중이거나, 요청한 뒤 대상이 바뀌어 반영하지 못했으면 false(saveIntake 와 같다).
+   */
+  saveCase: (payload: CaseUpdateRequest) => Promise<boolean>;
   /** 지금 대상의 표(useRemote). 화면이 고치던 값을 그 대상에 묶어 두는 데 쓴다. */
   capture: () => RemoteTicket | null;
   isCurrent: (ticket: RemoteTicket | null) => boolean;
@@ -141,6 +165,10 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
   // 응답을 반영할 때 볼 지금 값(saveIntake 를 만든 그리기 뒤에 다시 부른 값이 들어왔을 수 있어서 ref 로 든다).
   const latestData = useRef(remote.data);
   latestData.current = remote.data;
+  // 사례 정보 저장(saveCase)의 진행 · 오류. 초기면접 항목 저장과 따로 든다.
+  const [savingCase, setSavingCase] = useState(false);
+  const caseInFlight = useRef(false);
+  const [caseError, setCaseError] = useState<string | null>(null);
 
   // 대상 세대가 바뀌면(다른 사례, 로그아웃 · 다시 로그인, 다른 사례에 갔다 돌아옴) 앞 대상의 오류 · 진행 표시를 푼다
   // (앞 대상에 보낸 요청의 응답은 반영하지 않는다).
@@ -149,6 +177,9 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
     setIntakeError(null);
     inFlight.current = false;
     setSavingIntake(false);
+    setCaseError(null);
+    caseInFlight.current = false;
+    setSavingCase(false);
   }
 
   const saveIntake = useCallback(
@@ -209,6 +240,79 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
     [remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.resync],
   );
 
+  const saveCase = useCallback(
+    async (payload: CaseUpdateRequest): Promise<boolean> => {
+      const ticket = remote.capture();
+
+      if (!ticket || caseInFlight.current) return false;
+
+      caseInFlight.current = true;
+      setSavingCase(true);
+      setCaseError(null);
+
+      try {
+        const saved = await cases.update(ticket.key, payload);
+        const held = latestData.current;
+
+        // 합칠 사례 정보가 없으면 saveIntake 와 같이 화면이 아직 이 사례를 보고 있을 때만 다시 조회한다(옛 응답 본문은 합치지 않는다).
+        if (!held) {
+          remote.resync(ticket);
+          return false;
+        }
+
+        // 수정 응답(Case)에는 담당자 이메일 · 회차 수가 없고 최근 상담일도 계산하지 않아(backend cases._case_response),
+        // 이 요청으로 바뀔 수 있는 칸만 바꿔 넣는다.
+        const applied = remote.setData(ticket, (current) => {
+          const base = current ?? held;
+          const view = toCaseDetailView({ ...saved, counselor: null, session_count: base.caseInfo.sessionCount });
+
+          return {
+            ...base,
+            caseInfo: {
+              ...base.caseInfo,
+              title: view.title,
+              alias: view.alias,
+              initial: view.initial,
+              birthYearLabel: view.birthYearLabel,
+              genderLabel: view.genderLabel,
+              guardianLabel: view.guardianLabel,
+              notes: view.notes,
+              counselorName: view.counselorName,
+              intakeChildTraits: view.intakeChildTraits,
+              intakeFamilySituations: view.intakeFamilySituations,
+              childGender: view.childGender,
+              childBirthYear: view.childBirthYear,
+              guardianType: view.guardianType,
+              guardianNote: view.guardianNote,
+              counselorId: view.counselorId,
+            },
+          };
+        });
+
+        // 담당자를 바꿨으면 새 담당자 이메일(상세 응답에만 있음)을 받으려고 조용히 다시 조회한다.
+        if (applied && payload.counselor_id !== undefined) remote.resync(ticket);
+
+        return applied;
+      } catch (caught) {
+        // 대상이 바뀌었으면 오류 문구를 남기지 않는다(새 대상 화면에 앞 대상의 오류가 보이지 않게).
+        if (!remote.isCurrent(ticket)) return false;
+
+        if (!(caught instanceof ApiError && caught.isUnauthorized)) {
+          setCaseError(errorMessage(caught, "사례 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        }
+
+        return false;
+      } finally {
+        // 대상 세대가 바뀌었으면 그때 이미 풀었다. 새 대상에서 보낸 요청의 표시를 끄지 않는다.
+        if (remote.sameGeneration(ticket)) {
+          caseInFlight.current = false;
+          setSavingCase(false);
+        }
+      }
+    },
+    [remote.capture, remote.setData, remote.isCurrent, remote.sameGeneration, remote.resync],
+  );
+
   return {
     caseInfo: remote.data?.caseInfo ?? null,
     sessions,
@@ -220,6 +324,9 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
     savingIntake,
     intakeError,
     saveIntake,
+    savingCase,
+    caseError,
+    saveCase,
     capture: remote.capture,
     isCurrent: remote.isCurrent,
   };

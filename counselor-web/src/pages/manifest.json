@@ -12,6 +12,7 @@
     "CaseDocs",
     "CaseForm",
     "CaseHistory",
+    "CaseIntake",
     "CaseList",
     "CaseRegister",
     "ChildDetail",
@@ -20,6 +21,7 @@
     "ClosureDetail",
     "ClosureReview",
     "FollowupQ",
+    "Landing",
     "Login",
     "Main",
     "NoteWrite",
@@ -133,6 +135,15 @@
       "x": 1520,
       "y": 4800
     },
+    "CaseIntake.dc.html": {
+      "expand": "fill",
+      "h": 1900,
+      "is_interactive": true,
+      "title": "탭 4 › 초기면접지 (아동용) · 서식 4 (문서함에서 열기 · 사례에 저장된 칸 고치기)",
+      "w": 1440,
+      "x": 10640,
+      "y": 4800
+    },
     "CaseList.dc.html": {
       "expand": "fill",
       "h": 960,
@@ -204,6 +215,15 @@
       "w": 1440,
       "x": 7600,
       "y": 7400
+    },
+    "Landing.dc.html": {
+      "expand": "fill",
+      "h": 1200,
+      "is_interactive": true,
+      "title": "시작 화면 (소개 · 로그인)",
+      "w": 1440,
+      "x": -1520,
+      "y": 0
     },
     "Login.dc.html": {
       "expand": "fill",
@@ -358,6 +378,7 @@
   },
   "order": [
     "Main.dc.html",
+    "Landing.dc.html",
     "Login.dc.html",
     "Schedule.dc.html",
     "ChildLink.dc.html",
@@ -371,6 +392,7 @@
     "CaseApp.dc.html",
     "CaseDocs.dc.html",
     "CaseForm.dc.html",
+    "CaseIntake.dc.html",
     "UploadModal.dc.html",
     "SttReview.dc.html",
     "SignalReview.dc.html",
