@@ -13,11 +13,16 @@
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
 //  - AI 일지 초안 · 아동 특성 · 가정상황 AI 제안은 Backend 에 없어 보이지 않는다(빈 칸에서 상담원이 쓴다).
+//    10/21 디자인은 AI 제안 항목('불안' 등)을 미리 골라 두지만 앱은 미리 고르지 않는다(AI 제안이 상담원 선택처럼 보이지 않게).
 //  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
-//    나머지 서식 4 항목을 체크리스트로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
-//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 체크리스트를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
-//    일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 일지 항목과 겹치면, 그 항목은 '초기면접에도 있음' 을 붙여 체크한 채 남긴다
-//    (체크를 풀고 저장하면 본문에서 빠진다. 저절로 지우지 않는다 — 승인한 일지도 있어서).
+//    나머지 서식 4 항목을 고르기 단추로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
+//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 고르기 단추를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
+//    일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 일지 항목과 겹치면, 그 항목은 '초기면접에도 있음' 을 붙여 고른 채 남긴다
+//    (풀고 저장하면 본문에서 빠진다. 저절로 지우지 않는다 — 승인한 일지도 있어서).
+//  - 10/21 디자인의 칸별 '수정 → 확인'(pickSection): '수정' 을 누르면 고르기 단추가 펼쳐지고, '확인' 을 누르면 접혀 고른 항목만
+//    ✓ 로 보인다. '확인' 은 화면 상태라 서버에 보내지 않는다 — 고른 항목은 누를 때 바로 일지 초안(draft)에 들어가고(떠날 때 확인 ·
+//    저장 대상), 저장 · 승인은 지금처럼 '일지 저장' · '일지 승인' · 아래 '저장 · …' 이 한다. 승인된 일지는 '일지 수정' 으로
+//    승인을 풀기 전에는 펼치지 않고, '일지 승인' 을 누르면 펼친 칸을 접는다.
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
@@ -25,6 +30,7 @@ import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryReviewState } from "../useSummaryReview";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
+import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -152,9 +158,13 @@ export interface NoteUiState {
   draft: NoteDraft | null;
   /** draft 를 쓴 대상의 표. */
   draftFor: RemoteTicket | null;
+  /** '수정' 을 눌러 고르기 단추를 펼친 칸(아동 특성 · 가정상황). 화면 상태라 서버에 보내지 않는다. */
+  picking: ListKey[];
+  /** picking 을 연 대상의 표. draftFor 와 같은 기준으로, 대상이 바뀌면 접힌 것으로 본다. */
+  pickingFor: RemoteTicket | null;
 }
 
-export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null };
+export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, picking: [], pickingFor: null };
 
 export interface NoteScreenInput extends SessionScreenInput {
   summary: SummaryReviewState;
@@ -164,11 +174,11 @@ export interface NoteScreenInput extends SessionScreenInput {
 }
 
 /**
- * 일지에서 추가로 고를 체크리스트 항목. 서식 항목 중 초기면접에서 고른 것은 뺀다.
+ * 일지에서 추가로 고를 항목(고르기 단추). 서식 항목 중 초기면접에서 고른 것은 뺀다.
  * 일지에 담긴 항목(kept)은 지울 수 있게 늘 남긴다. 서식 항목에 없는 것(예전 목록의 이름 등)은 뒤에 붙이고,
  * 초기면접 항목과 겹치는 것(일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 겹침)은 서식 순서 자리에 둔다.
- * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 이미 저장된 일지에 담긴 겹친 항목은 체크를 풀어도 일지를 저장하기
- * 전까지 목록에 남아 다시 고를 수 있다. 저장하지 않은 초안에만 있던 항목이 겹치게 된 경우는 체크를 풀면 바로 목록에서 빠진다
+ * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 이미 저장된 일지에 담긴 겹친 항목은 고른 것을 풀어도 일지를 저장하기
+ * 전까지 목록에 남아 다시 고를 수 있다. 저장하지 않은 초안에만 있던 항목이 겹치게 된 경우는 풀면 바로 목록에서 빠진다
  * (초기면접 항목으로는 그대로 보인다).
  */
 export function addableItems(options: string[], intake: string[], kept: string[]): string[] {
@@ -271,7 +281,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     readOnly: docLocked,
   });
-  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 체크리스트를 잠근다.
+  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 고르기 단추를 잠근다.
   // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
   const intakeWaiting = !info && !caseDetail.error;
   /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
@@ -281,22 +291,55 @@ export function noteWriteValues(input: NoteScreenInput) {
 
     return { words: words ?? [], note: empty };
   };
-  const checklist = (key: ListKey, options: string[], fromIntake: string[]) =>
-    addableItems(options, fromIntake, [...saved[key], ...note[key]]).map((label) => {
-      const checked = note[key].includes(label);
-      const locked = docLocked || intakeWaiting;
+  // 펼친 칸. 다른 회차로 옮기거나 다시 로그인하면(표가 지금 대상이 아니면) 접힌 것으로 본다.
+  const picking = docs.isCurrent(state.pickingFor) ? state.picking : [];
+  // 고르기 단추를 누를 수 없을 때(승인된 일지 · 불러오는 중 · 저장 중 · 사례 정보를 받기 전). 이때는 '수정' 으로 펼치지도 못한다.
+  const pickLocked = docLocked || intakeWaiting;
+  /**
+   * 아동 특성 · 가정상황 한 칸(10/21 디자인의 '수정 → 확인'). 펼치면 choices(고르기 단추), 접으면 picked(고른 항목만 ✓).
+   * 단추를 누르면 바로 일지 초안에 들어간다(edit). '확인' 은 접기만 한다.
+   */
+  const pickSection = (key: ListKey, options: string[], fromIntake: string[]) => {
+    // 승인된 일지는 펼치지 않는다('일지 수정' 으로 승인을 풀어야 고칠 수 있다).
+    const open = picking.includes(key) && !docReadOnly;
+    const choices = intakeChoices(
+      addableItems(options, fromIntake, [...saved[key], ...note[key]]),
+      note[key],
+      pickLocked,
+      (label) => edit({ [key]: toggleItem(note[key], label) }),
+    ).map((choice) => ({
+      ...choice,
+      // 초기면접 항목과 겹친 채 일지에 남은 항목. 풀고 저장하면 목록에서 빠진다(초기면접 항목으로는 그대로 보인다).
+      hint: fromIntake.includes(choice.label) ? "초기면접에도 있음" : "",
+    }));
+    // 접기는 늘 된다(저장 · 승인을 기다리는 중에도). 펼치기는 고를 수 있을 때만.
+    const canToggle = open || !pickLocked;
 
-      return {
-        label,
-        // 초기면접 항목과 겹친 채 일지에 남은 항목. 체크를 풀고 저장하면 목록에서 빠진다(초기면접 항목으로는 그대로 보인다).
-        hint: fromIntake.includes(label) ? "초기면접에도 있음" : "",
-        checked,
-        disabled: locked,
-        onChange: () => {
-          if (!locked) edit({ [key]: checked ? note[key].filter((item) => item !== label) : [...note[key], label] });
-        },
-      };
-    });
+    return {
+      open,
+      choices,
+      picked: choices.filter((choice) => choice.on),
+      btnLabel: open ? "확인" : "수정",
+      btnCls: open ? "btn-p" : "btn-s",
+      btnTitle: !open && docReadOnly ? "승인된 일지입니다. 아래 '일지 수정' 을 누르면 고칠 수 있습니다." : undefined,
+      canToggle,
+      toggle: () => {
+        if (!canToggle) return;
+        setState((current) => {
+          const now = docs.isCurrent(current.pickingFor) ? current.picking : [];
+
+          if (now.includes(key)) return { picking: now.filter((item) => item !== key) };
+
+          const ticket = now.length ? current.pickingFor : docs.capture();
+
+          // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 고른 것을 담을 일지도 없다.
+          if (!ticket) return {};
+
+          return { picking: [...now, key], pickingFor: ticket };
+        });
+      },
+    };
+  };
 
   /**
    * 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null.
@@ -358,8 +401,8 @@ export function noteWriteValues(input: NoteScreenInput) {
     opinion: textField("opinion"),
     traitIntake: intakeWords(info ? info.intakeChildTraits : null),
     homeIntake: intakeWords(info ? info.intakeFamilySituations : null),
-    traits: checklist("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
-    homes: checklist("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
+    traitPick: pickSection("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
+    homePick: pickSection("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
     traitEv: [] as { label: string; ev: string }[],
     homeEv: [] as { label: string; ev: string }[],
     aiDraft: false,
@@ -369,6 +412,8 @@ export function noteWriteValues(input: NoteScreenInput) {
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
     // 고친 일지를 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
     approveDoc: async () => {
+      // 승인하면 고를 칸도 끝난 것으로 보고 펼친 칸을 접는다('확인' 과 같다. 고른 항목은 이미 초안에 있다).
+      setState({ picking: [], pickingFor: null });
       // 저장하는 사이 대상이 바뀌면 새 로그인으로 앞 회차의 일지를 승인하지 않는다.
       const ticket = docs.capture();
       const target = await saveDoc();
