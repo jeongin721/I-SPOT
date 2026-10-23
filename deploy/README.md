@@ -52,6 +52,30 @@ sudo bash deploy/web-deploy.sh
    - 이름 인식(`Leo97/KoELECTRA-small-v3-modu-ner`) · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받아 `/opt/ispot/hf-cache` 에 둡니다(서버에서 인터넷이 돼야 함). 첫 분석은 그만큼 늦습니다.
    - 분류 모델 두 개와 이름 인식 모델을 메모리에 올리므로 서버 메모리가 넉넉해야 합니다(얼마나 쓰는지는 재지 않았습니다).
 
+## GPU 로 띄우기 (`WITH_GPU=1`)
+
+modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()` 이면 알아서 GPU 를 씁니다. 그러려면 서버 · 이미지 · 컨테이너 셋 다 준비돼야 합니다. STT 는 클라우드 API(ElevenLabs · Deepgram)라 GPU 와 상관없습니다.
+
+2026-10-22 `ispot-backend` 를 t3.xlarge 에서 **g4dn.xlarge**(T4 16 GB, 서울 온디맨드 시간당 0.647 USD, 켜 둔 시간만큼 요금)로 바꿨습니다. 쓰지 않을 때는 끕니다.
+
+1. **서버 한 번 준비** (드라이버 + nvidia-container-toolkit, 처음 한 번):
+
+   ```bash
+   cd /opt/ispot/I-SPOT && sudo git pull --ff-only && sudo bash deploy/gpu-setup.sh && sudo reboot
+   ```
+
+   재부팅 뒤 `nvidia-smi -L` 에 GPU 한 줄이 나오고, `sudo docker run --rm --gpus all python:3.12-slim nvidia-smi -L` 도 같은 줄을 찍어야 합니다. Ubuntu 의 `ubuntu-drivers --gpgpu install` 이 고른 드라이버를 씁니다(어느 판인지는 실행 기록에 남음).
+2. **`WITH_MODELING=1 WITH_GPU=1` 로 배포합니다.**
+
+   ```bash
+   sudo env WITH_MODELING=1 WITH_GPU=1 bash deploy/web-deploy.sh
+   ```
+
+   - 이미지에 CPU 판 대신 PyPI 의 CUDA 판 torch 를 깝니다(몇 GB 더 큼, 처음 빌드가 더 오래 걸림). 디스크가 모자라면 `sudo docker system prune -f` 로 옛 이미지를 지우거나 볼륨을 늘립니다.
+   - 컨테이너를 `--gpus all` 로 띄웁니다. 드라이버 · nvidia 런타임이 없으면 스크립트가 시작 전에 멈춥니다. `WITH_GPU=1` 은 `WITH_MODELING=1` 과 같이 써야 합니다.
+   - GPU 가 있는 서버에서 `WITH_GPU=1` 없이 돌리면 주의만 찍고 CPU 판으로 띄웁니다(돌긴 하지만 느림).
+   - 컨테이너 안에서 GPU 를 쓰는지 확인: `sudo docker exec ispot-backend python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"` → `True NVIDIA T4` 같은 한 줄.
+
 ## STT 까지 띄우기 (`STT_PROVIDER=module`)
 
 기본 이미지의 STT 는 mock 입니다. 실제 STT 모듈(`stt/transcribe_service`, 기본 ElevenLabs · 실패하면 Deepgram)을 쓰려면 이미지에 `stt/` 와 두 SDK 가 더 있어야 해서 따로 켭니다.
@@ -74,8 +98,8 @@ sudo bash deploy/web-deploy.sh
 | --- | --- |
 | 1/5 | `/opt/ispot/I-SPOT` 에서 `origin/main` 을 받아 fast-forward. 스크립트 자신이 바뀌었으면 새 판으로 처음부터 다시 시작(한 번만) |
 | 2/5 | Node 컨테이너(`node:22.12.0-alpine`)에서 `counselor-web` 을 `npm ci` · `npm run build` 하고 결과를 `/opt/ispot/web` 에 복사 |
-| 3/5 | Backend 이미지(`ispot-backend`)를 저장소 루트에서 다시 만들고(`-f backend/Dockerfile`, 넣는 것은 루트 `.dockerignore`, `WITH_MODELING=1` 이면 modeling 패키지, `WITH_STT=1` 이면 STT SDK 까지) `alembic upgrade head` 로 DB 를 최신 구조로 |
-| 4/5 | Backend 컨테이너를 `127.0.0.1:8000` 에서만 받도록 다시 띄움(`--proxy-headers --forwarded-allow-ips 127.0.0.1`, `WITH_MODELING=1` 이면 모델 파일 · Hugging Face 캐시 폴더를 붙임) |
+| 3/5 | Backend 이미지(`ispot-backend`)를 저장소 루트에서 다시 만들고(`-f backend/Dockerfile`, 넣는 것은 루트 `.dockerignore`, `WITH_MODELING=1` 이면 modeling 패키지(`WITH_GPU=1` 이면 CUDA 판 torch), `WITH_STT=1` 이면 STT SDK 까지) `alembic upgrade head` 로 DB 를 최신 구조로 |
+| 4/5 | Backend 컨테이너를 `127.0.0.1:8000` 에서만 받도록 다시 띄움(`--proxy-headers --forwarded-allow-ips 127.0.0.1`, `WITH_MODELING=1` 이면 모델 파일 · Hugging Face 캐시 폴더를 붙임, `WITH_GPU=1` 이면 `--gpus all`) |
 | 5/5 | Caddy 설정(`/opt/ispot/Caddyfile`)을 다시 쓰고 Caddy 컨테이너(`caddy:2.8.4`)를 다시 띄움 |
 
 ## 서버 구성

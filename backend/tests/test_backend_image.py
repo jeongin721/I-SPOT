@@ -72,3 +72,29 @@ def test_every_backend_image_build_uses_repo_root_context() -> None:
 
     assert "context: ." in backend_build
     assert "dockerfile: backend/Dockerfile" in backend_build
+
+
+def test_gpu_build_uses_cuda_torch_and_passes_gpu_to_container() -> None:
+    # 2026-10-22 ispot-backend 를 g4dn.xlarge 로 바꿨다. 모델 코드는 torch.cuda.is_available() 이면 GPU 를 쓰지만, 이미지가
+    # CPU 판 torch 이거나 컨테이너에 --gpus 가 없으면 GPU 인스턴스에서도 CPU 로 돈다. 둘 중 하나가 되돌아가면 여기서 실패한다.
+    dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+    assert "ARG WITH_GPU=0" in dockerfile
+    assert 'if [ "$WITH_GPU" = "1" ]' in dockerfile
+    # CPU 판은 기본값으로 남는다(GPU 없는 서버 · 로컬 docker-compose).
+    assert "--index-url https://download.pytorch.org/whl/cpu torch==" in dockerfile
+
+    deploy = (REPO / "deploy" / "web-deploy.sh").read_text(encoding="utf-8")
+    assert '--build-arg WITH_GPU="$WITH_GPU"' in deploy
+    assert "GPU_FLAGS=(--gpus all)" in deploy
+    run_lines = [line for line in deploy.splitlines() if "docker run -d --name ispot-backend" in line]
+    assert len(run_lines) == 1
+    run_block = deploy[deploy.index(run_lines[0]):]
+    run_block = run_block[:run_block.index("uvicorn")]
+    assert '${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"}' in run_block
+    # 서버 준비 스크립트가 있고 드라이버 · nvidia 런타임을 둘 다 깐다.
+    setup = (REPO / "deploy" / "gpu-setup.sh").read_text(encoding="utf-8")
+    assert "ubuntu-drivers install --gpgpu" in setup
+    # --gpgpu 는 nvidia-smi 를 안 깐다(2026-10-22 ispot-backend: 재부팅 뒤 nvidia-smi not found). 같은 판 utils 를 더 깐다.
+    assert '"nvidia-utils-$DRV"' in setup
+    assert "nvidia-container-toolkit" in setup
+    assert "nvidia-ctk runtime configure --runtime=docker" in setup
