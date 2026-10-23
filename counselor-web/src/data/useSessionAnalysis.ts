@@ -3,15 +3,24 @@
 // 분석 결과는 'AI 분석 참고정보' 다. 판정이 아니다(05_RULES §1, API_CONTRACT 8절 표현 주의).
 // 상담사가 고치고 승인하는 것은 요약(useSummaryReview)이고, 여기 값은 AI 원본이다.
 //
-// 위험 관련 배열(risk_utterances · abuse_signals · risk_factors)은 아직 내보내지 않는다. 항목 구조는 2026-10-22 에
-// 확정됐고(PROPOSAL_risk_fields.md §7-0, types.ts RiskUtterance · AbuseSignal) modeling 만 값을 채운다
-// (mock · pipeline · langgraph 는 빈 배열). 신호 검토 화면은 팀 결정(specs 대응표 'AI 신호 · 검수') 뒤에 따로 만들고 그때 내보낸다.
+// 위험 관련 배열(risk_utterances · abuse_signals)과 선택 필드(severity_ratings · protective_factors)는 Contract 모양 그대로
+// 내보낸다. 항목 구조는 2026-10-22 에 확정됐고(PROPOSAL_risk_fields.md §7-0, types.ts RiskUtterance · AbuseSignal) modeling 만
+// 값을 채운다(mock · pipeline · langgraph 는 빈 배열). 화면용 카드는 useRiskSignals · riskRows 가 만든다.
+// risk_factors 는 구조가 보류돼 늘 빈 배열이라 내보내지 않는다. 채택 · 보류 · 제외 기록은 서버에 없다(팀 결정 전).
 
 import { useCallback, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { analysis as analysisApi } from "../api/endpoints";
-import type { AnalysisEnvelope, AnalysisStatus, SessionStatus } from "../api/types";
+import type {
+  AbuseSignal,
+  AnalysisEnvelope,
+  AnalysisStatus,
+  ProtectiveFactor,
+  RiskUtterance,
+  SessionStatus,
+  SeverityRating,
+} from "../api/types";
 import { notifySessionChanged } from "./sessionEvents";
 import { canRequestAnalysis, isProcessing } from "./sessionRows";
 import { toDateTime } from "./time";
@@ -32,6 +41,14 @@ export interface AnalysisView {
   keyPoints: string[];
   /** AI 가 남긴 '추가 확인 필요' 같은 안내. */
   warnings: string[];
+  /** AI 가 찾은 위험 관련 발화(Contract 그대로). 서버가 근거 없는 항목은 이미 뺐다. 판정이 아니라 참고정보다. */
+  riskUtterances: RiskUtterance[];
+  /** 학대 유형별 종합 신호(Contract 그대로). 네 유형이 모두 오지만 근거 없는 검출 유형은 서버가 뺀다. */
+  abuseSignals: AbuseSignal[];
+  /** 유형별 심각도 참고값(선택 필드, major_type 은 한글). 판정이 아니다. */
+  severityRatings: SeverityRating[];
+  /** 보호 요인(선택 필드). */
+  protectiveFactors: ProtectiveFactor[];
   /** 분석에 쓴 원문 버전. */
   transcriptVersion: number | null;
   provider: string | null;
@@ -153,6 +170,10 @@ export function useSessionAnalysis(
           overview: source.result?.summary.overview ?? "",
           keyPoints: source.result?.summary.key_points ?? [],
           warnings: source.result?.warnings ?? [],
+          riskUtterances: source.result?.risk_utterances ?? [],
+          abuseSignals: source.result?.abuse_signals ?? [],
+          severityRatings: source.result?.severity_ratings ?? [],
+          protectiveFactors: source.result?.protective_factors ?? [],
           transcriptVersion: source.transcript_version,
           provider: source.provider,
           model: source.model,

@@ -1,9 +1,10 @@
 // 2 · 위험 신호 검토 (→ 유형별 위험도)
 // 원본: 다솔 님 디자인 counselor-web-design/SignalReview.dc.html (front_new 브랜치)
 //
-// 서버 연결: 화면 주소 ?case=…&session=…. AI 분석 요청 · 진행은 useSessionAnalysis, 머리는 useSessionDetail · useCaseDetail 이
-// 부르고, 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중이다(빈 목록).
+// 서버 연결: 화면 주소 ?case=…&session=…. AI 분석 요청 · 진행은 useSessionAnalysis, 위험 신호 카드 · 유형별 줄은
+// useRiskSignals(근거 위치는 원문에서), 머리는 useSessionDetail · useCaseDetail 이 부르고, 화면에 쓸 값은
+// src/data/screens/signalReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
+// 카드는 AI 결과(risk_utterances) 읽기 전용이다. 채택/보류/제외 기록은 서버에 없어 준비 중이다(팀 결정 뒤).
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -14,6 +15,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
@@ -36,8 +38,9 @@ export default function SignalReview(props) {
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, go });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-SignalReview">
@@ -145,9 +148,33 @@ export default function SignalReview(props) {
             <p className="note" style={{ margin: 0 }}>
               {v.signalNote}
             </p>
+            {v.signalError ? (
+              <div className="note" role="alert" style={{ color: '#A33B2E' }}>
+                {v.signalError}
+              </div>
+            ) : null}
           </section>
-          {(v.sigs || []).map((g, gIndex) => (
-            <Fragment key={gIndex}>
+          {(v.typeRows || []).length > 0 ? (
+            <section
+              className="card"
+              aria-label="유형별 신호"
+              style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '8px' }}
+            >
+              <b style={{ fontSize: '16px' }}>유형별 신호</b>
+              {v.typeRows.map((t) => (
+                <div key={t.key} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                  <span className="chip c-normal">{t.label}</span>
+                  <span style={{ fontSize: '13px' }}>{t.text}</span>
+                  {t.countLabel ? <span className="note">{t.countLabel}</span> : null}
+                </div>
+              ))}
+              <p className="note" style={{ margin: 0 }}>
+                {v.reviewNote}
+              </p>
+            </section>
+          ) : null}
+          {(v.sigs || []).map((g) => (
+            <Fragment key={g.key}>
               <section
                 className="card"
                 style={{
@@ -155,24 +182,29 @@ export default function SignalReview(props) {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
-                  boxShadow: g.bar,
                 }}
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                  <span className="chip c-normal">{g.type} 학대</span>
+                  <span className="chip c-normal">{g.type}</span>
                   <b style={{ fontSize: '16px' }}>{g.title}</b>
                   <span className={g.stCls}>{g.st}</span>
-                  <span role="group" aria-label="검토" className="seg" style={{ marginLeft: 'auto' }}>
-                    <button type="button" className={g.aCls} onClick={g.adopt}>
-                      채택
-                    </button>
-                    <button type="button" className={g.hCls} onClick={g.hold}>
-                      보류
-                    </button>
-                    <button type="button" className={g.dCls} onClick={g.drop}>
-                      제외
-                    </button>
-                  </span>
+                  {v.reviewReady ? (
+                    <span role="group" aria-label="검토" className="seg" style={{ marginLeft: 'auto' }}>
+                      <button type="button" className={g.aCls} onClick={g.adopt}>
+                        채택
+                      </button>
+                      <button type="button" className={g.hCls} onClick={g.hold}>
+                        보류
+                      </button>
+                      <button type="button" className={g.dCls} onClick={g.drop}>
+                        제외
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="chip c-ai" style={{ marginLeft: 'auto' }}>
+                      AI 제안 · 판정 아님
+                    </span>
+                  )}
                 </div>
                 <div
                   style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}
@@ -180,6 +212,13 @@ export default function SignalReview(props) {
                   <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                     <div className="note">발화 · {g.at}</div>
                     <div style={{ fontSize: '15px' }}>"{g.quote}"</div>
+                    {(g.evidence || [])
+                      .filter((e) => e.found && e.text && e.text !== g.quote)
+                      .map((e) => (
+                        <div key={e.segmentId} className="note" style={{ marginTop: '4px' }}>
+                          원문 {e.startLabel} {e.speakerLabel}: "{e.text}"
+                        </div>
+                      ))}
                   </div>
                   <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#F7F6F2' }}>
                     <div className="note">근거</div>
