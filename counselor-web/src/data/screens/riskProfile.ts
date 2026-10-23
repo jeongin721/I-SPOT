@@ -44,7 +44,8 @@ export function abuseTypeFromLabel(value: unknown): AbuseType | null {
 
   if ((ABUSE_TYPES as readonly string[]).includes(upper)) return upper as AbuseType;
 
-  return LABEL_TO_ABUSE_TYPE[key] ?? null;
+  // 표에 선언한 이름만 읽는다("__proto__" 같은 Object 상속 속성 이름이 와도 null, Codex #80 R1 과 같은 방어).
+  return Object.prototype.hasOwnProperty.call(LABEL_TO_ABUSE_TYPE, key) ? LABEL_TO_ABUSE_TYPE[key] : null;
 }
 
 /** AI 심각도 제안 한 유형. */
@@ -87,6 +88,7 @@ export const SIGNAL_STATE_CHIPS: Record<TypeSignal["state"], string> = {
   signal: "관련 신호",
   filtered: "부정 응답으로 뺌",
   none: "관련 신호 없음",
+  unknown: "검출 여부 미확인",
   missing: "근거 없어 제외",
 };
 
