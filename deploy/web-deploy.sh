@@ -11,6 +11,9 @@
 #   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
 # backend.env 가 STT_PROVIDER=module 이면 WITH_STT=1 을 넘긴다(ElevenLabs · Deepgram SDK 를 더 깐다, deploy/README.md 'STT 까지 띄우기'):
 #   sudo env WITH_STT=1 bash deploy/web-deploy.sh      # 둘 다면 sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
+# GPU 인스턴스(g4dn 등, deploy/gpu-setup.sh 로 드라이버 · nvidia-container-toolkit 을 깐 뒤)에서는 WITH_GPU=1 을 더한다
+# (CUDA 판 torch 이미지 + 컨테이너에 GPU 를 넘김, deploy/README.md 'GPU 로 띄우기'). WITH_MODELING=1 과 같이 쓴다:
+#   sudo env WITH_MODELING=1 WITH_GPU=1 bash deploy/web-deploy.sh
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
@@ -24,6 +27,19 @@ WITH_MODELING="${WITH_MODELING:-0}"
 [[ "$WITH_MODELING" =~ ^[01]$ ]] || { echo "WITH_MODELING 은 0 또는 1 입니다: $WITH_MODELING"; exit 1; }
 WITH_STT="${WITH_STT:-0}"
 [[ "$WITH_STT" =~ ^[01]$ ]] || { echo "WITH_STT 은 0 또는 1 입니다: $WITH_STT"; exit 1; }
+WITH_GPU="${WITH_GPU:-0}"
+[[ "$WITH_GPU" =~ ^[01]$ ]] || { echo "WITH_GPU 은 0 또는 1 입니다: $WITH_GPU"; exit 1; }
+# GPU 는 modeling 만 쓴다(STT 는 클라우드 API). 드라이버 · nvidia-container-toolkit 이 없으면 docker run --gpus 가 실패하므로
+# 미리 확인한다(둘 다 deploy/gpu-setup.sh 가 깐다).
+GPU_FLAGS=()
+if [ "$WITH_GPU" = 1 ]; then
+  [ "$WITH_MODELING" = 1 ] || { echo "WITH_GPU=1 은 WITH_MODELING=1 과 같이 써야 합니다(GPU 는 modeling 만 씁니다)"; exit 1; }
+  command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 || { echo "nvidia-smi 가 GPU 를 못 봅니다. 먼저 sudo bash deploy/gpu-setup.sh 를 돌리고 재부팅해 주세요."; exit 1; }
+  docker info 2>/dev/null | grep -q nvidia || { echo "Docker 에 nvidia 런타임이 없습니다. 먼저 sudo bash deploy/gpu-setup.sh 를 돌려 주세요."; exit 1; }
+  GPU_FLAGS=(--gpus all)
+elif [ "$WITH_MODELING" = 1 ] && command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1; then
+  echo "주의: 이 서버에 GPU 가 있는데 WITH_GPU=1 이 없어 CPU 판 torch 로 띄웁니다. GPU 를 쓰려면 WITH_GPU=1 을 더해 주세요."
+fi
 # 학대 분류 모델 파일은 저장소에 없다(.gitignore). 이 폴더에 두면 컨테이너의 /ai/modeling/abuse/weight 에 읽기 전용으로 붙인다.
 WEIGHT_DIR="${MODELING_WEIGHT_DIR:-$REPO/ai/modeling/abuse/weight}"
 MODELING_MOUNTS=()
@@ -79,14 +95,14 @@ cp -r "$REPO/counselor-web/dist/." /opt/ispot/web/
 
 echo "== 3/5 백엔드 이미지 다시 만들기 + DB 마이그레이션"
 # 저장소 루트가 빌드 컨텍스트다(ai/ · agent/ 도 담음). 넣는 것은 루트 .dockerignore 가 고른다.
-docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" -f "$REPO/backend/Dockerfile" "$REPO"
+docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" --build-arg WITH_GPU="$WITH_GPU" -f "$REPO/backend/Dockerfile" "$REPO"
 sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=https://$SITE|" "$ENV_FILE"
 docker run --rm --env-file "$ENV_FILE" ispot-backend alembic upgrade head
 
 echo "== 4/5 백엔드를 127.0.0.1:8000 으로만 다시 띄우기"
 docker rm -f ispot-backend >/dev/null 2>&1 || true
 docker run -d --name ispot-backend --restart unless-stopped --network host \
-  --env-file "$ENV_FILE" -v /opt/ispot/storage:/app/storage ${MODELING_MOUNTS[@]+"${MODELING_MOUNTS[@]}"} ispot-backend \
+  --env-file "$ENV_FILE" -v /opt/ispot/storage:/app/storage ${MODELING_MOUNTS[@]+"${MODELING_MOUNTS[@]}"} ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} ispot-backend \
   uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
 
 echo "== 5/5 Caddy(화면 + API + HTTPS)"
