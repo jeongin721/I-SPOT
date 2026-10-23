@@ -36,14 +36,17 @@ export function useRiskSignals(
   analysis: AnalysisView | null,
   { enabled = true }: RiskSignalsOptions = {},
 ): RiskSignalsState {
-  const utterances = analysis?.riskUtterances ?? [];
-  const signals = analysis?.abuseSignals ?? [];
+  // 끝난 분석(COMPLETED)만 값으로 본다. 처리 중 · 실패한 분석 행도 AnalysisView 로 오지만(위험 배열은 빈 배열)
+  // 그걸로 유형 줄을 만들면 네 유형이 모두 '응답에 없음' 이 된다(Codex R3).
+  const completed = analysis !== null && analysis.status === "COMPLETED";
+  const utterances = completed ? analysis.riskUtterances : [];
+  const signals = completed ? analysis.abuseSignals : [];
   const key = enabled && sessionId && utterances.length > 0 ? sessionId : null;
   const source = useRemote<TranscriptEnvelope>(key, transcriptApi.get, "근거 발화를 불러오지 못했습니다.");
   const segments = key ? (source.data?.transcript?.segments ?? null) : null;
 
   const cards = useMemo(() => toSignalCards(utterances, segments), [utterances, segments]);
-  const types = useMemo(() => (analysis ? toTypeSignals(signals, utterances) : []), [analysis, signals, utterances]);
+  const types = useMemo(() => (completed ? toTypeSignals(signals, utterances) : []), [completed, signals, utterances]);
 
   return {
     cards,

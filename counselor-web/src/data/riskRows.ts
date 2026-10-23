@@ -31,16 +31,25 @@ export const STRENGTH_LABELS: Record<string, string> = {
   LOW: "낮음",
 };
 
+/**
+ * 표에 선언한 값만 읽는다. `table[key]` 는 "__proto__" · "constructor" · "toString" 같은 이름에서 Object 의 상속 속성을
+ * 돌려주고, 그 값(객체 · 함수)이 화면에 들어가면 React 가 그리기를 멈춘다(Codex R1). 서버는 항목 키를 검증하지 않고
+ * 변환기는 모르는 유형명을 보존하므로 어떤 문자열이 와도 문자열 fallback 으로 떨어져야 한다.
+ */
+function lookup(table: Record<string, string>, key: string): string | null {
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : null;
+}
+
 export function abuseTypeLabel(abuseType: unknown): string {
   if (typeof abuseType !== "string" || !abuseType) return "유형 미확인";
 
-  return ABUSE_TYPE_LABELS[abuseType] ?? `기타(${abuseType})`;
+  return lookup(ABUSE_TYPE_LABELS, abuseType) ?? `기타(${abuseType})`;
 }
 
 export function strengthLabel(strength: unknown): string {
   if (typeof strength !== "string" || !strength) return "미확인";
 
-  return STRENGTH_LABELS[strength] ?? `미확인(${strength})`;
+  return lookup(STRENGTH_LABELS, strength) ?? `미확인(${strength})`;
 }
 
 /** 근거 발화 한 줄. 원문에서 찾았으면 위치 · 화자 · 문장이 있고, 못 찾았으면(원문 미수신 · 없는 번호) 번호만 있다. */
@@ -143,10 +152,12 @@ export function toSignalCards(utterances: RiskUtterance[], segments: TranscriptS
  * 유형별 줄의 상태.
  *  - signal: 관련 신호가 있고 근거 발화가 연결돼 있다(추가 확인 필요).
  *  - filtered: 모델은 짚었으나 아동이 명확히 부정한 발화라 신호로 내지 않았다(detected=false, FILTERED).
- *  - none: 관련 신호 없음.
+ *  - none: 관련 신호 없음(detected 가 분명히 false).
+ *  - unknown: detected 가 없거나 참/거짓이 아니다. 서버는 이런 항목을 근거가 맞을 때만 남기므로(API_CONTRACT 8절)
+ *    '없음' 으로 단정하지 않고 확인 필요로 둔다(Codex R2). 검출로 바꿔 쓰지도 않는다.
  *  - missing: 응답에 그 유형이 없다 — 근거 발화가 없는 신호를 서버가 뺀 경우다(warnings 에 건수가 남는다).
  */
-export type TypeSignalState = "signal" | "filtered" | "none" | "missing";
+export type TypeSignalState = "signal" | "filtered" | "none" | "unknown" | "missing";
 
 export interface TypeSignal {
   abuseType: string;
@@ -163,6 +174,7 @@ export const TYPE_STATE_LABELS: Record<TypeSignalState, string> = {
   signal: "관련 신호 · 추가 확인 필요",
   filtered: "관련 신호 없음 · 아동이 명확히 부정한 발화는 신호에서 뺌",
   none: "관련 신호 없음",
+  unknown: "검출 여부 미확인 · 근거 발화를 직접 확인",
   missing: "응답에 없음 · 근거 발화가 없는 신호는 서버가 뺌",
 };
 
@@ -192,8 +204,8 @@ export function toTypeSignals(signals: AbuseSignal[], utterances: RiskUtterance[
 
     if (!signal) state = "missing";
     else if (signal.detected === true) state = "signal";
-    else if (signal.detection_source === "FILTERED") state = "filtered";
-    else state = "none";
+    else if (signal.detected === false) state = signal.detection_source === "FILTERED" ? "filtered" : "none";
+    else state = "unknown";
 
     return {
       abuseType,
