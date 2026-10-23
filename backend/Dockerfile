@@ -15,11 +15,19 @@ COPY backend/requirements.txt backend/requirements-modeling.txt backend/requirem
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# modeling 은 ai/modeling/abuse 의 torch · transformers 모델과 OpenAI 를 쓴다. 서버에 GPU 가 없어 CPU 판 torch 를
-# 따로 받는다(PyPI 의 torch 는 CUDA 판이라 몇 GB 더 크다). 버전은 requirements-modeling.txt 와 같은 이유로 고정한다.
+# modeling 은 ai/modeling/abuse 의 torch · transformers 모델과 OpenAI 를 쓴다. 기본(WITH_GPU=0)은 CPU 판 torch 를
+# 따로 받는다(PyPI 의 torch 는 CUDA 판이라 몇 GB 더 크다). GPU 인스턴스(2026-10-22 ispot-backend g4dn.xlarge)에서는
+# WITH_GPU=1 로 PyPI 의 CUDA 판을 받는다 — 모델 코드(infer_abuse_qa_v3.py)는 torch.cuda.is_available() 이면 알아서 GPU 를 쓴다.
+# 컨테이너에서 GPU 가 보이려면 서버에 NVIDIA 드라이버 · nvidia-container-toolkit 이 있고 docker run 에 --gpus all 을 줘야
+# 한다(deploy/gpu-setup.sh · deploy/web-deploy.sh). 버전은 requirements-modeling.txt 와 같은 이유로 고정한다.
 ARG WITH_MODELING=0
+ARG WITH_GPU=0
 RUN if [ "$WITH_MODELING" = "1" ]; then \
-        pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.14.1 \
+        if [ "$WITH_GPU" = "1" ]; then \
+            pip install --no-cache-dir torch==2.14.1; \
+        else \
+            pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.14.1; \
+        fi \
         && pip install --no-cache-dir -r requirements-modeling.txt; \
     fi
 
