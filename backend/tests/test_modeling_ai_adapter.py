@@ -344,6 +344,20 @@ def test_reason_and_evidence_verified_default_when_module_omits_them(modeling) -
     assert utterance["evidence_verified"] is False
 
 
+def test_null_reason_and_verified_flag_become_contract_types(modeling) -> None:
+    """2차 분석은 비거나 문자열이 아닌 이유를 None 으로 넘긴다(_clean_optional_string). Contract 의 reason 은
+    문자열(없으면 ""), evidence_verified 는 참/거짓이라 키가 있고 값이 None 이어도 그 형으로 나간다(Codex R1)."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [
+        {**GROUNDED_POINT, "strength_reason": None, "evidence_verified": None},
+    ]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["reason"] == ""
+    assert utterance["evidence_verified"] is False
+
+
 def test_detection_source_comes_from_chunk_results(modeling) -> None:
     """MODEL: 어느 chunk 든 1차가 검출. FILTERED: 모두 아니고 부정 응답 필터로 빠진 chunk 가 있음.
     둘 다 아니면 null. FILTERED 는 detected=false 라 근거가 없어도 관문을 지나고 경고도 없다."""

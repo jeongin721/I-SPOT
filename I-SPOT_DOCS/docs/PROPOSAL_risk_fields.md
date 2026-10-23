@@ -390,7 +390,8 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 | 규칙 | 내용 |
 | --- | --- |
 | `segment_ids` | 세 필드 모두 복수. 9월 초안의 `risk_utterances.segment_id`(단수)는 쓰지 않는다. Backend 관문은 둘 다 읽는다 |
-| `abuse_type` | 파이프라인 안의 한글 대분류(`신체학대` …)를 Contract 경계(`contract_adapter.py`)에서 영문으로 바꾼다. `severity_ratings[].major_type`(선택 필드, 10/16 합의)은 한글 그대로 두고 영문화는 따로 정한다 |
+| `abuse_type` | 파이프라인 안의 한글 대분류(`신체학대` …)를 Contract 경계(`contract_adapter.py`)에서 영문으로 바꾼다. 넷 밖의 유형명이 오면 그대로 보존한다(정보를 잃지 않게, 화면은 "기타"). `severity_ratings[].major_type`(선택 필드, 10/16 합의)은 한글 그대로 두고 영문화는 따로 정한다 |
+| `reason` · `evidence_verified` | `reason` 은 문자열(없으면 `""`), `evidence_verified` 는 참/거짓. 2차가 `None` 으로 넘겨도 경계에서 이 형으로 맞춘다 |
 | `evidence_strength` | 2차 세부유형 분석의 `높음|중간|낮음` 을 `HIGH|MEDIUM|LOW` 로. 확률(0~1)이 아니다. 모르는 값은 2차와 같이 `LOW` |
 | `reason` | 2차가 만든 `strength_reason` 그대로(새 LLM 호출 없음) |
 | `detection_source` | 1차 모델이 어느 구간(chunk)에서든 검출했으면 `MODEL`. 모두 아니고 부정 응답 필터가 내린 구간이 있으면 `FILTERED`(`detected=false`, 사유는 `filtered_reason`). 둘 다 아니면 `null`. 세션 단위 `major_types` 가 구간 판정을 `detected` 만 남기고 합치므로 `chunk_results` 에서 되살린다. 안전망: `chunk_results` 가 없거나 어긋나도 `detected=true` 면 `MODEL`(출처 `null` 인 검출 신호는 나가지 않는다, 10/23 이경진 님 요청) |

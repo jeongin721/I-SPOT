@@ -951,10 +951,11 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 
 항목 규칙
 - `segment_ids` 는 세 필드 모두 **복수** 목록이다(발화 하나가 여러 번호에 걸칠 수 있다). 관문은 옛 결과의 단수 `segment_id` 도 읽는다.
-- `abuse_type` 은 `PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT`. `subtype` 은 2차 세부유형명(한글, 예: `"직접 신체 가해"`)이 그대로 온다.
+- `abuse_type` 은 `PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT`. 파이프라인이 이 넷 밖의 유형명을 내면 변환기는 그 값을 그대로 보존한다
+  (정보를 잃지 않게. 화면은 모르는 값을 "기타" 로 보여 준다). `subtype` 은 2차 세부유형명(한글, 예: `"직접 신체 가해"`)이 그대로 온다.
 - `evidence_strength` 는 `HIGH | MEDIUM | LOW` 로 **확률이 아니라 근거의 직접성**이다. 모델 확률 · 임계값은 이번 판에서 싣지 않는다
   (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
-- `reason` 은 AI 가 그 강도로 본 이유 한 문장, `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과다.
+- `reason` 은 AI 가 그 강도로 본 이유 한 문장(문자열, 없으면 `""`), `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과(참/거짓)다.
 - `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
   `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
   `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.

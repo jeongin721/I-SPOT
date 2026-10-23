@@ -183,9 +183,13 @@ def to_ai_output_contract(
             "evidence_strength": _evidence_strength(
                 point.get("evidence_strength")
             ),
-            "reason": point.get("strength_reason", ""),
-            "evidence_verified": point.get(
-                "evidence_verified", False
+            # second_stage_llm 은 비거나 문자열이 아닌 이유를 None 으로 정리해
+            # 넘기므로(_clean_optional_string) 키가 있어도 None 일 수 있다.
+            # Contract 의 reason 은 문자열(없으면 "")이라 여기서 맞춘다
+            # (Codex 교차검증 R1, 2026-10-23).
+            "reason": point.get("strength_reason") or "",
+            "evidence_verified": bool(
+                point.get("evidence_verified", False)
             ),
         }
         for point in risk_signal_points
