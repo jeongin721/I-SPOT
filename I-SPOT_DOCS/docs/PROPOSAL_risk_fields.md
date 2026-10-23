@@ -1,11 +1,15 @@
 # [제안] 위험 관련 필드 3종 구조 정의
 
 > `02_ARCHITECTURE.md` §8 Contract 변경 규칙에 따른 제안서입니다.
-> 확정 전이며, AI·Backend·Frontend 세 파트 합의가 필요합니다.
+> 위험 3필드의 **항목 구조는 2026-10-22 에 AI(이경진 님) · Backend(최민규)가 확정했습니다(§7-0).**
+> Frontend(다솔 님) 질문 9~11 과 팀장님 질문 7~8 은 아직 답이 없습니다(§8).
 >
 > 작성: 최민규 · 2026-09-11
 >
 > 갱신 · 2026-09-29 — `detected` 출처 필드 제안(§7-2 끝), 근거 판정 세 갈래(§7-4), §8 질문 6·8번
+>
+> 갱신 · 2026-10-22 — §7-0 확정안(이경진 님 답 1~6 을 코드와 대조해 정함, 이경진 님 동의 · 구현), §8 답변 기록.
+> §7-1 ~ §7-3 은 9월 초안이라 기록용으로 두고, 실제 구조는 §7-0 을 따릅니다.
 
 대상 필드 — `risk_utterances`, `abuse_signals`, `risk_factors`
 
@@ -355,7 +359,64 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 
 ## 7. 변경안
 
-### 기존 필드명과의 관계
+### 7-0. 확정안 (2026-10-22)
+
+이경진 님 답(§8 1~6, 10/22)을 `main` · `ai-modeling` 코드와 대조해 정했고, 이경진 님이 동의해
+`ai/modeling/abuse/contract_adapter.py` 에 구현했습니다. 값은 모두 **영문 대문자**이고 한글 표기는 화면에서만 바꿉니다
+(`02_ARCHITECTURE.md` §7). 모두 AI 참고정보이며 판정이 아닙니다.
+
+```jsonc
+// risk_utterances[] — 위험 관련 발화
+{
+  "segment_ids": ["seg_047"],            // 필수. 복수로 통일(발화 하나가 여러 번호에 걸칠 수 있음)
+  "text": "아빠가 막대기로 때렸어요",
+  "abuse_type": "PHYSICAL",              // 필수. PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT
+  "subtype": "도구·위험수단 사용",         // 선택. 2차 세부유형명(한글)을 그대로
+  "evidence_strength": "HIGH",           // 필수. HIGH | MEDIUM | LOW — 근거의 직접성, 확률 아님
+  "reason": "도구와 신체 부위가 직접 진술됨", // 필수. AI 가 그 강도로 본 이유 한 문장
+  "evidence_verified": true              // 인용문이 원문과 맞는지 대조한 결과
+}
+// abuse_signals[] — 학대 유형별 종합 신호. 네 유형이 모두 온다
+{
+  "abuse_type": "PHYSICAL",
+  "detected": true,
+  "detection_source": "MODEL",           // MODEL | FILTERED | null (LLM_SUPPLEMENTARY 는 예약)
+  "filtered_reason": null,               // FILTERED 일 때만 사유 문구
+  "segment_ids": ["seg_047", "seg_052"]  // 같은 유형 risk_utterances 의 근거를 모은 것
+}
+// risk_factors — 재료가 없어 구조는 보류. 늘 []
+```
+
+| 규칙 | 내용 |
+| --- | --- |
+| `segment_ids` | 세 필드 모두 복수. 9월 초안의 `risk_utterances.segment_id`(단수)는 쓰지 않는다. Backend 관문은 둘 다 읽는다 |
+| `abuse_type` | 파이프라인 안의 한글 대분류(`신체학대` …)를 Contract 경계(`contract_adapter.py`)에서 영문으로 바꾼다. 넷 밖의 유형명이 오면 그대로 보존한다(정보를 잃지 않게, 화면은 "기타"). `severity_ratings[].major_type`(선택 필드, 10/16 합의)은 한글 그대로 두고 영문화는 따로 정한다 |
+| `reason` · `evidence_verified` | `reason` 은 문자열(없으면 `""`), `evidence_verified` 는 참/거짓. 2차가 `None` 으로 넘겨도 경계에서 이 형으로 맞춘다 |
+| `evidence_strength` | 2차 세부유형 분석의 `높음|중간|낮음` 을 `HIGH|MEDIUM|LOW` 로. 확률(0~1)이 아니다. 모르는 값은 2차와 같이 `LOW` |
+| `reason` | 2차가 만든 `strength_reason` 그대로(새 LLM 호출 없음) |
+| `detection_source` | 1차 모델이 어느 구간(chunk)에서든 검출했으면 `MODEL`. 모두 아니고 부정 응답 필터가 내린 구간이 있으면 `FILTERED`(`detected=false`, 사유는 `filtered_reason`). 둘 다 아니면 `null`. 세션 단위 `major_types` 가 구간 판정을 `detected` 만 남기고 합치므로 `chunk_results` 에서 되살린다. 안전망: `chunk_results` 가 없거나 어긋나도 `detected=true` 면 `MODEL`(출처 `null` 인 검출 신호는 나가지 않는다, 10/23 이경진 님 요청) |
+| 근거 없는 신호 | 검출됐는데 같은 유형 `risk_utterances` 가 하나도 없으면 `segment_ids=[]` 가 되어 Backend 관문(`drop_ungrounded_risk_items`)에서 빠지고 `warnings` 에 건수만 남는다(제안 2 와 같은 결과). `FILTERED` 는 `detected=false` 라 남는다 |
+| `schema_version` | `"1.0"` 유지. 필드 이름 · 개수는 그대로이고 빈 배열의 내부 구조만 정한 것 |
+
+**9월 초안에서 뺀 것과 이유**
+
+| 초안 | 결정 | 이유 |
+| --- | --- | --- |
+| `risk_utterances.confidence`(0~1) | 뺌 → `evidence_strength` 3단계 | 발화 단위 확률은 파이프라인 어디에도 없다(1차 확률은 구간 · 유형 단위, 발화는 2차 LLM 이 뽑음). `evidence_strength` 는 "예측 확률이 아니라 근거의 직접성"(`second_stage_llm.py` 프롬프트) |
+| `abuse_signals.confidence` · `threshold` | 이번 판에서 뺌 | 1차 확률이 구간 단위라 세션 값 집계 규칙(최댓값 등)이 따로 필요하고, Agent · Backend 관문 · 화면 모두 `detected` 만 본다. 필요해지면 그때 정한다 |
+| `abuse_subtype: "physical_object"` 꼴 | `subtype` 한글 세부유형명 | 2차 LLM 이 한글 세부유형명(`직접 신체 가해` 등)으로 내고 영문 코드가 없다 |
+| `detection_source=LLM_SUPPLEMENTARY` | 예약값 | `llm_supplementary` 는 note 모드 LLM 보완 검출에서만 생기고 음성 회기 경로는 그 단계를 타지 않는다 |
+| `risk_factors{code,label,segment_ids,severity}` | 보류, 빈 배열 | 파이프라인에 "위험 요인" 개념이 없다. 심각도 · 보호요인 등은 10/16 합의로 정식 선택 필드 4개(`API_CONTRACT.md` 8절)에 따로 담는다 |
+
+**답 대조 요지(2026-10-22, `origin/main 40e09d4` · `origin/ai-modeling 6f3028c`)**
+
+- 이경진 님 답은 `ai-modeling` 10/15 판 기준이었고, `main` 에는 10/16~19 에 더 고친 판(PR #57)이 있어 `abuse_signals.segment_ids` 와 선택 필드 4개 채우기는 이미 돼 있었다. "`severity_ratings` · `protective_factors` 를 각자 정식 필드로" 제안은 PR #49(10/16)로 이미 반영된 것.
+- `reason` 은 "없음" 이 아니라 `strength_reason` 으로 이미 있었다(`record_draft_llm.py`). `needs_review` 는 2차 결과(`subtype_analysis…evidences[]`)에는 있지만 `record_draft.risk_signal_points` 로는 안 넘어와 이번 판에서 뺐다.
+- 적용 범위: `contract_adapter.py` 만. `ai/schemas/analysis.py` · `backend/app/schemas/contracts.py` 는 `List[Dict]` 그대로(구조가 굳은 뒤 모델화). Backend 는 시험(`backend/tests/test_modeling_ai_adapter.py`)과 문서(`API_CONTRACT.md` 8절 · `02_ARCHITECTURE.md` §7)를 맞췄다.
+
+**남은 것**: §8 7~11(팀장님 · 다솔 님) 답, §5-1-2 `key_points` 구조(별도 안건), 신호 검토 화면 연결(팀 결정 뒤).
+
+### 기존 필드명과의 관계 (9월 초안)
 
 이미 API 응답에 나가고 있는 `summary_evidence` 는 이런 모양입니다.
 
@@ -564,7 +625,13 @@ def evidence_verdict(state) -> str:
 
 ## 8. 확인 부탁드릴 사항
 
-**이경진 님**
+> **답변 기록 · 2026-10-22** — 이경진 님이 1~6 에 답했고(요지는 §7-0 "답 대조 요지"), 최민규가 코드로 대조해 §7-0 확정안을 정했으며
+> 이경진 님이 모두 동의하고 구현했다(`feat/risk-signal-contract-fields`, `9d3abd1`).
+> 7 · 8(팀장님) · 9 · 10 · 11(다솔 님)은 아직 답이 없다. 7 은 §7-0 이 영문 대문자를 쓰므로 사후 추인을 구한다.
+> 8 은 `agent/nodes.py` 의 `evidence_verdict` 가 이미 세 갈래로 돼 있어 같은 추인 대상이다.
+> 10 의 `CasesView` 는 `ispotvscode` 화면이라, 지금 화면(`counselor-web`) 기준으로 다시 묻는다.
+
+**이경진 님** — 2026-10-22 답 받음(§7-0)
 
 1. 위 세 구조에서 **실제로 산출 가능한 필드**는 어디까지인가요? 불가능한 항목은 빼겠습니다.
 2. `risk_factors` 의 `code` 를 고정 목록으로 둘 수 있을까요? 가능한 코드 목록을 주시면 Backend·Frontend 가 맞추겠습니다.

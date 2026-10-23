@@ -459,9 +459,10 @@ export interface TranscriptEnvelope {
 
 /**
  * 위험 관련 항목(risk_utterances · abuse_signals · risk_factors) 하나.
- * 항목 구조는 팀 합의 전(PROPOSAL_risk_fields.md §7)이라 Backend 는 항목 구조를 검증하지 않는다
- * (langgraph 결과만 근거 발화가 없는 항목을 빼고 넘긴다. API_CONTRACT 8절).
- * 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
+ * 항목 구조는 2026-10-22 에 확정됐다(PROPOSAL_risk_fields.md §7-0 · API_CONTRACT 8절 "위험 3필드 항목 구조":
+ * abuse_type 영문 대문자 · segment_ids 복수 · evidence_strength HIGH|MEDIUM|LOW · reason). Backend 는 아직 키를 검증하지 않고
+ * langgraph · modeling 결과의 근거 없는 항목만 빼고 넘긴다. 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다
+ * (riskAdapters.ts). 지금은 modeling 만 값을 채우고 mock · pipeline · langgraph 는 빈 배열이다.
  */
 export type RiskItem = Record<string, unknown>;
 

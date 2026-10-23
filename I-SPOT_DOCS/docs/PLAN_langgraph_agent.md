@@ -604,6 +604,7 @@ risk_factors: List[Dict[str, Any]]
 | `ispotvscode/src/api/types.ts:282-284` | `RiskUtterance[]` / `string[]` |
 
 **[PROPOSAL_risk_fields.md](./PROPOSAL_risk_fields.md) 가 합의되어야 착수 가능합니다.**
+→ 2026-10-22 위험 3필드 항목 구조 확정(§7-0). `AI_PROVIDER=modeling` 이 그 구조로 채운다.
 
 ### 6-2. 값이 비어 있어 그래프를 검증할 수 없습니다 🟡
 
@@ -628,7 +629,7 @@ Must Have 중 `위험 관련 발화 탐지` · `신체/정서/성/방임 관련 
 ## 7. 착수 순서
 
 ```text
-1.  PROPOSAL_risk_fields.md 합의            ← 여기서 막혀 있음
+1.  PROPOSAL_risk_fields.md 합의            ← 2026-10-22 항목 구조 확정(§7-0)
        ↓
 2.  mock provider 를 새 구조로 수정          (Backend, 반나절)
        ↓

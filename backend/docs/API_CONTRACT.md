@@ -913,15 +913,54 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
     `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 덧붙인다. 필드 모양은 바뀌지 않는다.
     `abuse_signals` 중 `detected` 가 명시적으로 `false` 인 항목은 위험 신호가 아니므로 근거가 없어도 남긴다.
 - `result.schema_version` 은 AI Output Contract 버전이다(지금 `"1.0"`). 성공한 분석의 `analysis.schema_version` 과 같다.
-- `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는
-  `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 항목 구조(키 목록)를 검증하지 않는다.
-  다만 `langgraph` · `modeling` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
-  Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
-  `modeling` 은 `risk_utterances` · `abuse_signals` 를 채우지만 항목 구조는 위 합의 전이다(`risk_factors` 는 빈 배열).
+- `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는 2026-10-22 에 확정했다
+  (`I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7-0, 아래 "위험 3필드 항목 구조"). Backend 는 항목 구조(키 목록)를 아직 검증하지 않고
+  그대로 저장 · 전달한다(구조가 굳은 뒤 따로 모델화한다). `langgraph` · `modeling` 결과는 위 근거 확인을 위해
+  `segment_id` · `segment_ids` · `detected` 를 본다.
+  Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 주고,
+  `modeling` 만 `risk_utterances` · `abuse_signals` 를 채운다(`risk_factors` 는 빈 배열).
 - 선택 필드 4개(`severity_ratings` · `protective_factors` · `session_change_notes` · `followup_check_points`)는 아래
   "선택 필드" 를 본다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
+
+#### 위험 3필드 항목 구조 (2026-10-22 확정)
+
+`AI_PROVIDER=modeling`(`ai/modeling/abuse/contract_adapter.py`)이 채운다. 값은 모두 **영문 대문자**이고 한글 이름은 화면에서만 바꾼다
+(`02_ARCHITECTURE.md` §7). 모두 **AI 참고정보**이며 판정이 아니다("관련 신호" · "추가 확인 필요" 로만 표시한다).
+
+| 필드 | 항목 모양 | 설명 |
+| --- | --- | --- |
+| `risk_utterances` | `{ segment_ids, text, abuse_type, subtype, evidence_strength, reason, evidence_verified }` | 위험 관련 발화. 근거 발화 번호가 있는 항목만 저장된다 |
+| `abuse_signals` | `{ abuse_type, detected, detection_source, filtered_reason, segment_ids }` | 학대 유형별 종합 신호. 네 유형이 모두 온다 |
+| `risk_factors` | (빈 배열) | 재료가 없어 구조는 보류. 늘 `[]` |
+
+```json
+"risk_utterances": [
+  { "segment_ids": ["seg_002"], "text": "아빠가 화나면 때려요.", "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해",
+    "evidence_strength": "HIGH", "reason": "때린 행위와 주체가 직접 진술됨", "evidence_verified": true }
+],
+"abuse_signals": [
+  { "abuse_type": "PHYSICAL", "detected": true, "detection_source": "MODEL", "filtered_reason": null, "segment_ids": ["seg_002"] },
+  { "abuse_type": "EMOTIONAL", "detected": false, "detection_source": "FILTERED", "filtered_reason": "아동이 관련 발화를 명확히 부정함", "segment_ids": [] },
+  { "abuse_type": "SEXUAL", "detected": false, "detection_source": null, "filtered_reason": null, "segment_ids": [] },
+  { "abuse_type": "NEGLECT", "detected": false, "detection_source": null, "filtered_reason": null, "segment_ids": [] }
+],
+"risk_factors": []
+```
+
+항목 규칙
+- `segment_ids` 는 세 필드 모두 **복수** 목록이다(발화 하나가 여러 번호에 걸칠 수 있다). 관문은 옛 결과의 단수 `segment_id` 도 읽는다.
+- `abuse_type` 은 `PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT`. 파이프라인이 이 넷 밖의 유형명을 내면 변환기는 그 값을 그대로 보존한다
+  (정보를 잃지 않게. 화면은 모르는 값을 "기타" 로 보여 준다). `subtype` 은 2차 세부유형명(한글, 예: `"직접 신체 가해"`)이 그대로 온다.
+- `evidence_strength` 는 `HIGH | MEDIUM | LOW` 로 **확률이 아니라 근거의 직접성**이다. 모델 확률 · 임계값은 이번 판에서 싣지 않는다
+  (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
+- `reason` 은 AI 가 그 강도로 본 이유 한 문장(문자열, 없으면 `""`), `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과(참/거짓)다.
+- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
+  `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
+  `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+- `abuse_signals[].segment_ids` 는 같은 유형 `risk_utterances` 의 근거를 모은 것이다. 검출됐는데 근거 발화가 하나도 없는 유형은
+  위 근거 관문에서 빠지고 `warnings` 에 건수만 남는다. `FILTERED` 는 `detected=false` 라 근거가 없어도 남는다.
 
 #### 선택 필드 (2026-10-16 추가)
 
@@ -957,7 +996,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `segment_ids` 는 근거 발화 번호 목록이고 선택이다(없으면 `[]`). 지금은 비어 올 수 있다.
 - 위 키 말고 다른 키는 버린다(최상위 `result` 와 같다).
 - `severity_ratings[].major_type` 은 지금 한글 유형명(예: `"신체학대"`)이 그대로 온다.
-  대분류를 영문(`PHYSICAL` 등)으로 통일할지는 위험 3필드 항목 구조 합의(`PROPOSAL_risk_fields.md` §7)와 함께 정한다.
+  위험 3필드의 `abuse_type` 은 2026-10-22 에 영문 대문자로 확정했고(위 "위험 3필드 항목 구조"), 이 필드까지 영문으로 바꿀지는 따로 정한다.
 
 근거와 화면 표시
 - **근거 없는 위험 항목 빼기는 위험 3필드에만 적용한다.** 이 4개 필드는 `segment_ids` 가 비어 있어도 빼지 않고
