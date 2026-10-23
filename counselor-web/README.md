@@ -41,7 +41,8 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 사례 수정 | `useCaseDetail` 의 `saveCase` · `useCaseIntake` | 초기면접지 화면에서 고친 칸만 `PATCH /cases/{id}` 로 보낸다(늦은 응답 방어는 `saveIntake` 와 같음) |
 | 마이크 녹음 | `useAudioRecorder` | 사례 상세 '녹음하기' 창. 브라우저 MediaRecorder 로 녹음해 파일을 만들고, 저장하면 `useAudioUpload` 로 올린다. 마이크는 HTTPS · localhost 에서만 열리고, 못 열면 이유를 알린다(녹음하는 척하지 않음) |
 | 원문(STT) 검수 | `useTranscriptReview` · `transcriptRows` | 발화 줄 · 저신뢰 · 화자 미확인, 고친 칸만 저장, 확정, 다시 변환 |
-| AI 분석 | `useSessionAnalysis` | 분석 요청 · 진행 · AI 원본 요약과 안내(위험 신호 배열은 팀 결정 전이라 내보내지 않음) |
+| AI 분석 | `useSessionAnalysis` | 분석 요청 · 진행 · AI 원본 요약과 안내 · 위험 관련 발화(`riskUtterances`) · 유형별 신호(`abuseSignals`) · 심각도 · 보호 요인(Contract 그대로, 10/23) |
+| 위험 신호 카드 | `useRiskSignals` · `riskRows.ts` | 위험 관련 발화를 카드(유형 · 세부 유형 · 근거 직접성 · 이유 · 원문 대조)로, 유형별 신호를 네 줄로. 근거 위치(몇 분 · 누구)는 원문(`GET …/transcript`)에서 찾는다. 읽기 전용 |
 | 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |
 | 상담일지 | `useSessionDocuments` | 문서 목록 · 만들기 · 고치기 · 승인(회차 상태와 따로 움직임) |
 | 유형별 위험도(상담원 판단) | `useRiskAssessments` | 네 유형(신체 · 정서 · 성 · 방임)의 상담원 판단(상 · 중 · 하) · 이유 · 판단 당시 AI 제안(1~5) 조회와 저장. 원문 확정 뒤에만 저장, 회차 상태는 바뀌지 않음. AI 단계 ↔ 상 · 중 · 하 대응과 사례 단위 위험도는 팀 결정 전이라 계산하지 않음. `RiskProfile` 화면에는 아직 연결하지 않음 |
@@ -117,7 +118,7 @@ export default function CaseDetail(props) {
 | 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
 | 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
 | 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
-| 2 · 위험 신호 검토 | `SignalReview.jsx` | `case` · `session` | `useSessionAnalysis` + 머리 | `signalReview.ts` `signalReviewValues` |
+| 2 · 위험 신호 검토 | `SignalReview.jsx` | `case` · `session` | `useSessionAnalysis` · `useRiskSignals` + 머리 | `signalReview.ts` `signalReviewValues` |
 | 3 · 요약 · 일지 작성 | `NoteWrite.jsx` | `case` · `session` | `useSummaryReview` · `useSessionDocuments` + 머리 | `noteWrite.ts` `noteWriteValues` |
 | 일정 | `Schedule.jsx` | — | `useAuthSession` · `useCaseOverview`(`sessions`) | `schedule.ts` `scheduleValues` |
 | 종결 검토 목록 | `Closure.jsx` | — | `useAuthSession` · `useCaseOverview`(`counts`) | `closure.ts` `closureValues` |
@@ -133,7 +134,7 @@ export default function CaseDetail(props) {
 
 - 회차 처리 흐름: 녹취 올리기 → STT 검수(고친 발화 저장 · 원문 확정) → 위험 신호 검토(AI 분석 요청 · 진행 · 실패 뒤 다시 분석) → 요약 · 일지 작성(요약 고치기 · 저장 · **요약 승인 = 회차 '승인 완료'**, 상담일지 저장 · 승인).
 - STT 검수(10/21 · 10/22 디자인): 화자는 목록에서 고르고(Esc 로 닫힘), 줄마다 시간 단추(다시 듣기 — 서버에 녹음 재생이 없어 꺼 둠)가 있습니다. 전체 보기는 정해진 높이 안에서 스크롤하고, 아래에 재생 바(`components/SttPlayer.jsx`)가 붙습니다. 재생 · 정지 · 5초 앞뒤 · 재생 위치는 서버에 음성 파일 API 가 없어 꺼 두고(준비 중), 확인하지 않은 저신뢰 · 화자 미확인 줄을 '시작 시각 ÷ 음성 길이' 자리에 표시해 누르면 '확인할 곳' 보기로 바뀌고 그 줄로 갑니다. 10/22 디자인대로 '위험 신호' 구역은 뺐습니다(범례에 목소리 신호 · 관련 조문 준비 중만). 저장 · '원문 확정 · 신호 분석 →' 단추는 범례 아래에 있습니다. 단계 이름은 분석 시작 흐름이 팀 결정 전이라 '위험 신호 검토' 그대로입니다. 현재 단계 강조(먹색 칸 + '현재 단계')는 `common.css` 의 공통 규칙입니다.
-- 위험 신호 카드 · 채택/보류/제외는 서버(AI)가 아직 신호를 주지 않아 준비 중입니다. 위험 신호 검토 화면은 AI 분석 상태와 AI 안내만 보입니다.
+- 위험 신호 검토(10/23): AI 결과의 위험 관련 발화(`risk_utterances`, `PROPOSAL_risk_fields.md` §7-0 확정 구조)를 카드로 보입니다 — 유형(영문 값을 한글로) · 세부 유형 · 근거 직접성(높음/중간/낮음, 확률 아님) · AI 가 든 발화와 원문 위치(몇 분 · 누구) · 이유 · 원문 대조 결과. 유형별 신호 네 줄은 '관련 신호 · 추가 확인 필요' / '관련 신호 없음'(`detected` 가 분명히 false) / '아동이 명확히 부정한 발화는 신호에서 뺌' / '검출 여부 미확인'(`detected` 가 없거나 참/거짓이 아님 — 없음으로 단정하지 않음) / '응답에 없음(근거 없는 신호는 서버가 뺌)' 으로 씁니다. 유형 · 강도 이름은 표에 선언한 값만 읽고 그 밖은 '기타(값)' · '미확인(값)' 으로 보입니다. 모두 AI 제안이고 판정이 아닙니다. 지금은 `AI_PROVIDER=modeling` 만 값을 채우고 mock · pipeline · langgraph 는 빈 배열이라 '찾지 못했습니다' 로 보입니다. 채택/보류/제외 기록은 서버에 없어(팀 결정 전) 단추를 보이지 않고 준비 중입니다. 유형별 위험도 화면은 아직 예시입니다.
 - '요약 승인' · '일지 승인' 은 누르면 (고친 칸을 저장하고) 바로 승인합니다. 요약 승인은 회차를 '승인 완료' 로 바꿉니다. 승인한 칸에는 '요약 수정' · '일지 수정' 단추만 보이고, 누르면 쓴 내용 그대로 승인이 풀려 고친 뒤 다시 승인합니다(요약을 풀면 회차는 'AI 결과 검수 필요' 로 돌아갑니다). '저장 · 추가 확인 · 질문 →' 은 저장만 합니다.
 - 관리자 화면(10/21 디자인): 화면을 나눠 홈(`AdminHome`) · 상담사 계정 관리 · 상담사 상세 · 접속 기록 · 보안 이벤트 · 통계 · 보고를 두고, 왼쪽 메뉴는 공용 `components/AdminSidebar.jsx` 입니다. 디자인 메뉴의 아이 연계 앱 관리 · 열람 기록은 서버가 없어(팀 결정 전) 링크 없는 '준비 중' 이고, 디자인에 없는 기존 기능(업무 처리 현황 `AdminTasks` · 전체 사례 현황 · 상담원 화면으로)은 아래 묶음으로 남겼습니다. 계정 요청(비활성화 · 다시 활성화 · 비밀번호 초기화 · 잠금 해제 · 휴면 해제 · 강제 로그아웃)은 상담사 상세 화면에 있습니다. 옛 주소 `#/Admin`(`?view=`)은 새 화면으로 넘겨 줍니다. 긴급 알림 · OTP · 접속 위치 · IP 차단 · 심각도 · 기관 지표는 서버에 없어 `—` · 준비 중입니다. 모든 관리자 화면은 상담원 계정이면 서버를 부르지 않고 안내만 보입니다. 대시보드 업무 탭은 Backend 가 종류를 하나만 거를 수 있어 두 종류씩 불러 오래 기다린 순서로 합칩니다(원문 변환 · 상담사 검토 · AI 분석). 계정 만들기 · 비밀번호 초기화 · 휴면 해제의 임시 비밀번호는 화면 상태에만 한 번 두고 '닫기' 로 버립니다(다른 관리자로 바뀌면 보이지 않음). 비밀번호 초기화 · 휴면 해제 · 비활성화 · 강제 로그아웃은 한 번 더 묻습니다. 미배정 사례 · 문서 승인 · 보안 경고 · 재처리 요청은 서버에 없어 `—` · 준비 중입니다.
 - 새 사례 등록: 서버에 저장하는 칸은 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 Backend 가 `C-YYYY-NNNN` 으로 만듦, 겹치면 거절 문구) · 성별 · 출생연도 · 보호자 유형(기타면 관계 메모) · 사례 메모, ② 초기면접 내용의 가정상황 · 아동 특성(서식 4 항목 고르기), 담당 상담원(관리자만 고름, 상담원은 본인)입니다. 등록되면 새 사례 상세(`?case=새 ID`)로 갑니다(가정상황 · 아동 특성은 등록 뒤 사례 상세에서 고칩니다). 서식 4 의 나머지 칸(실명 · 생년월일 · 사례관리대상자 · 신고 · 연계 · 면접일 · 학대유형 · 조치결과 · 위험도 · 사례연계 경위, ② 탭의 관계 · 가족 · 문제력 · 태도 · 소견)은 개인정보 저장 범위가 팀 결정 전이라 입력을 막고 '준비 중' 으로 둡니다. 그 내용을 사례 메모 등 다른 칸에 옮겨 담지 않습니다. 화면 칸 '대상아동 이름' · '생년월일' · '관계' 는 '아동 별칭' · '출생연도' · '보호자 유형' 으로 바꿨습니다(사례관리대상자는 보호자와 같은 뜻이 아니어서 따로 준비 중). 10/21 디자인대로 학대유형 칸은 뺐고, 필수 칸(사례 제목 · 아동 별칭)을 채워야 ② 탭으로 넘어갑니다(빈 칸 표시 · 남은 항목 안내). 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이라 옮기지 않았습니다.
