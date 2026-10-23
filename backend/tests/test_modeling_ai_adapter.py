@@ -384,6 +384,21 @@ def test_model_detection_wins_over_filter_in_another_chunk(modeling) -> None:
     assert result.abuse_signals[0] == _signal("PHYSICAL", True, ["seg_002"], "MODEL")
 
 
+@pytest.mark.parametrize("chunk_results", [None, []], ids=["없음", "빈 목록"])
+def test_detected_signal_without_chunk_results_is_marked_model(modeling, chunk_results) -> None:
+    """안전망: chunk_results 가 없어도 detected=true 인 신호는 출처 없이(null) 나가지 않고 MODEL 이 된다(10/23 이경진 님 요청)."""
+
+    if chunk_results is None:
+        modeling["result"].pop("chunk_results")
+    else:
+        modeling["result"]["chunk_results"] = chunk_results
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.abuse_signals[0] == _signal("PHYSICAL", True, ["seg_002"], "MODEL")
+    assert result.abuse_signals[1] == _signal("EMOTIONAL", False)
+
+
 def test_optional_fields_are_filled_from_module_output(modeling) -> None:
     """선택 필드 4개(#49)는 모듈 출력을 Contract 모양으로 옮긴다(#57).
 

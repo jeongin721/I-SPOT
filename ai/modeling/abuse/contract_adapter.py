@@ -252,6 +252,14 @@ def to_ai_output_contract(
             major_type
         )
 
+        # 안전망(2026-10-23, 이경진 님 요청): chunk_results 가 없거나 세션
+        # 판정과 어긋나도 detected=True 인 신호가 출처 없이(null) 나가지
+        # 않게 한다. 지금 파이프라인은 같은 루프에서 둘을 함께 채우므로
+        # 실제로는 걸리지 않고, 구조가 바뀌거나 손으로 만든 결과를 넣을
+        # 때만 작동한다.
+        if detection_source is None and info.get("detected", False):
+            detection_source = "MODEL"
+
         abuse_signals.append(
             {
                 "abuse_type": _abuse_type(major_type),

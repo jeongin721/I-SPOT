@@ -956,7 +956,8 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
   (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
 - `reason` 은 AI 가 그 강도로 본 이유 한 문장, `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과다.
 - `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
-  `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+  `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
+  `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
 - `abuse_signals[].segment_ids` 는 같은 유형 `risk_utterances` 의 근거를 모은 것이다. 검출됐는데 근거 발화가 하나도 없는 유형은
   위 근거 관문에서 빠지고 `warnings` 에 건수만 남는다. `FILTERED` 는 `detected=false` 라 근거가 없어도 남는다.
 
