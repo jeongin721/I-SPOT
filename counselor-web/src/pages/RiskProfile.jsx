@@ -145,6 +145,11 @@ export default function RiskProfile(props) {
               <span className="note">상담원 판단</span>
               <b style={{ fontSize: '16px' }}>{v.assessSummary}</b>
               <span className="sub2">{v.assessHint}</span>
+              {v.assessLoadError ? (
+                <button type="button" className="btn btn-sm btn-s" style={{ alignSelf: 'flex-start' }} onClick={v.reloadAssess}>
+                  판단 목록 다시 불러오기
+                </button>
+              ) : null}
             </div>
             {v.error ? (
               <div className="note" role="alert" style={{ color: '#A33B2E', width: '100%' }}>

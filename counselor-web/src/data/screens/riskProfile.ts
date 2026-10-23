@@ -150,6 +150,26 @@ export interface RiskTypeValues {
   rubric: { n: number; text: string; on: boolean }[];
 }
 
+/**
+ * 지금 판단 단추를 켤 수 있는가.
+ * 회차 상태가 저장 가능하고, 요청 중이 아니고, **서버 목록을 받은 뒤(loaded · 조회 오류 없음)** 여야 한다.
+ * 목록을 못 받은 채 저장하면 서버에 있던 판단 이유를 모른 채 PUT 으로 지운다(Codex #81 R1). 오류를 보이는 것만으로는
+ * 부족해서 단추 자체를 끈다.
+ */
+export function canAssessNow(
+  status: SessionStatus | null,
+  assessments: Pick<RiskAssessmentsState, "loaded" | "loading" | "loadError" | "submitting">,
+): boolean {
+  return (
+    status !== null &&
+    ASSESSABLE_STATUSES.includes(status) &&
+    assessments.loaded &&
+    !assessments.loading &&
+    assessments.loadError === null &&
+    !assessments.submitting
+  );
+}
+
 export function riskProfileValues(input: RiskProfileInput, openRubric: Partial<Record<AbuseType, boolean>> = {}) {
   const { analysis, signals, assessments } = input;
   const header = processHeaderValues(input, 1);
@@ -158,8 +178,8 @@ export function riskProfileValues(input: RiskProfileInput, openRubric: Partial<R
   const view = analysis.analysis;
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
   const completed = analyzed && view !== null && view.status === "COMPLETED";
-  const canAssess =
-    status !== null && ASSESSABLE_STATUSES.includes(status) && !assessments.submitting && !assessments.loading;
+  const canAssess = canAssessNow(status, assessments);
+  const assessLoadFailed = assessments.loadError !== null;
   const severity = severityByType(view?.severityRatings ?? []);
   const signalByType = new Map(signals.types.map((row) => [row.abuseType, row]));
   const cardsByType = new Map<string, SignalCard[]>();
@@ -187,7 +207,9 @@ export function riskProfileValues(input: RiskProfileInput, openRubric: Partial<R
 
     let assessNote: string;
 
-    if (row?.assessed) {
+    if (assessLoadFailed) {
+      assessNote = "판단 목록을 불러오지 못해 저장할 수 없습니다. 다시 불러온 뒤 판단해 주세요.";
+    } else if (row?.assessed) {
       assessNote = `저장 · ${row.assessedAt}${row.aiLevel !== null ? ` · 그때 AI 제안 ${row.aiLevel}/5` : ""}`;
     } else if (status !== null && ASSESSABLE_STATUSES.includes(status)) {
       assessNote = "아직 판단하지 않았습니다.";
@@ -227,8 +249,15 @@ export function riskProfileValues(input: RiskProfileInput, openRubric: Partial<R
     openRubric,
     /** 회차 전체 AI 위험도(상 · 중 · 하)는 AI 단계와 대응시키는 규칙이 팀 결정 전이라 없다. */
     aiOverallNote: `회차 전체 AI 위험도는 ${NOT_READY}입니다(AI 단계 1~5 와 상 · 중 · 하를 대응시키는 규칙은 팀 결정 전).`,
-    assessSummary: assessments.loading ? "불러오는 중…" : `유형별 상담원 판단 ${assessedCount}/4 저장됨`,
+    assessSummary: assessments.loading
+      ? "불러오는 중…"
+      : assessLoadFailed
+        ? "판단 목록을 불러오지 못했습니다"
+        : `유형별 상담원 판단 ${assessedCount}/4 저장됨`,
     assessHint: "판단은 유형마다 따로 저장되고, 저장할 때의 AI 제안이 함께 기록됩니다. 회차 전체 위험도는 팀 결정 전입니다.",
+    /** 판단 목록 조회 실패 문구. 있으면 '다시 불러오기' 단추를 보인다. */
+    assessLoadError: assessments.loadError,
+    reloadAssess: assessments.reload,
     rubricNote: "참고 기준은 디자인 초안의 단계 설명이며 팀이 확정한 기준이 아닙니다.",
     notReady: [
       `안전 플래그 · 재학대 요인 · 보호 요인 표시는 ${NOT_READY}입니다(서버에 안전 플래그 값이 없고 보호 요인은 표시 방식 결정 전).`,
