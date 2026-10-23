@@ -471,12 +471,47 @@ export interface TranscriptEnvelope {
 // =========================================================
 
 /**
- * 위험 관련 항목(risk_utterances · abuse_signals · risk_factors) 하나.
- * 항목 구조는 팀 합의 전(PROPOSAL_risk_fields.md §7)이라 Backend 는 항목 구조를 검증하지 않는다
- * (langgraph 결과만 근거 발화가 없는 항목을 빼고 넘긴다. API_CONTRACT 8절).
- * 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
+ * 위험 관련 항목 하나(risk_factors 용). 구조가 보류된 필드라 키를 정하지 않는다.
+ * Backend 는 위험 3필드의 항목 구조를 아직 검증하지 않으므로(API_CONTRACT 8절 "위험 3필드 항목 구조")
+ * 화면은 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
  */
 export type RiskItem = Record<string, unknown>;
+
+/**
+ * 위험 관련 발화 하나(PROPOSAL_risk_fields.md §7-0, 2026-10-22 확정). 판정이 아니라 '관련 신호' 다.
+ * 서버는 근거 발화 번호(segment_ids)가 없거나 원문에 없는 항목을 저장 전에 뺀다(API_CONTRACT 8절).
+ * 값은 영문 대문자이고 한글 이름은 화면에서만 바꾼다.
+ */
+export interface RiskUtterance {
+  segment_ids: string[];
+  text: string;
+  /** PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT */
+  abuse_type: string;
+  /** 2차 세부유형명(한글). 없으면 null. */
+  subtype: string | null;
+  /** 근거의 직접성. 확률이 아니다. */
+  evidence_strength: "HIGH" | "MEDIUM" | "LOW";
+  /** AI 가 그 강도로 본 이유 한 문장. */
+  reason: string;
+  /** 인용문이 원문과 맞는지 대조한 결과. */
+  evidence_verified: boolean;
+}
+
+/**
+ * 학대 유형별 종합 신호(PROPOSAL_risk_fields.md §7-0). 네 유형이 모두 오고 detected 로 검출 여부를 적는다.
+ * detected 는 모델 내부 값이므로 화면에는 "관련 신호" · "추가 확인 필요" 로만 표시한다(05_RULES).
+ */
+export interface AbuseSignal {
+  /** PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT */
+  abuse_type: string;
+  detected: boolean;
+  /** MODEL(1차 모델 검출) · FILTERED(아동이 명확히 부정해 필터가 내림, detected=false) · null(둘 다 아님). LLM_SUPPLEMENTARY 는 예약. */
+  detection_source: "MODEL" | "FILTERED" | "LLM_SUPPLEMENTARY" | null;
+  /** FILTERED 일 때만 사유 문구. */
+  filtered_reason: string | null;
+  /** 같은 유형 risk_utterances 의 근거를 모은 것. 검출됐는데 비어 있으면 서버가 뺀다. */
+  segment_ids: string[];
+}
 
 export interface AnalysisSummary {
   overview: string;
@@ -527,8 +562,9 @@ export interface AnalysisResult {
   /** AI Output Contract 버전. 지금은 "1.0". */
   schema_version: string;
   summary: AnalysisSummary;
-  risk_utterances: RiskItem[];
-  abuse_signals: RiskItem[];
+  risk_utterances: RiskUtterance[];
+  abuse_signals: AbuseSignal[];
+  /** 구조 보류. 지금은 늘 빈 배열이다. */
   risk_factors: RiskItem[];
   warnings: string[];
   severity_ratings: SeverityRating[];

@@ -68,6 +68,40 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
   Tier 2(case_store에 등록된 실명 정확매칭)는 이 경로에서는 못 쓴다
   — NER(Tier 1)만 적용된다. 실명 저장 여부가 팀 결정 대기 중이라
   (10/16 Mingyu 답변) 지금은 이 상태로 둔다.
+
+[2026-10-22: PROPOSAL_risk_fields.md §7 확정안 반영]
+
+- risk_utterances에 reason(strength_reason 그대로)·evidence_verified를
+  추가했다. 둘 다 record_draft_llm.py가 이미 만들어 두던 값이라 새
+  LLM 호출 없이 옮기기만 했다 — record_draft는 restore_pii를 거친
+  뒤라(infer_audio_session.py) 실명이 복원된 값이다. needs_review는
+  record_draft_llm.py 어디에도 없어 Mingyu에게 출처를 다시 확인
+  요청했고, 답 오기 전까지는 넣지 않는다.
+- abuse_signals에 detection_source(MODEL|FILTERED)·filtered_reason을
+  추가했다. 세션 단위 major_types는 chunk별 1차 판정을 detected만
+  남기고 OR로 합치면서 filtered_reason을 버리고 있어서(기존 코드),
+  chunk_results를 다시 훑어 복원한다 — 어느 chunk든 1차가
+  detected=True면 MODEL, 전부 아니고 filtered_reason 있는 chunk가
+  있으면 FILTERED(그 사유를 옮긴다), 둘 다 아니면 둘 다 None(Mingyu
+  제안 규칙). 오디오 경로(analyze_audio_session)는 note 모드 전용인
+  _screen_missed_major_types를 타지 않아 llm_supplementary가 생길
+  일이 없으므로 LLM_SUPPLEMENTARY는 이번 판에서 쓰지 않는다(예약값).
+- confidence/threshold는 이번 판에서 뺐다 — 1차가 session_detected로
+  합쳐지는 시점에 이미 확률이 버려져 있고(chunk 값만 남음), 세션
+  단위로 어떻게 합칠지(chunk 최댓값 등) 설계가 따로 필요하다. 지금
+  Agent·Backend 관문·화면 모두 detected만 보므로 당장 급하지 않다.
+
+[2026-10-22: Mingyu — 위험 3필드의 유형 · 근거 강도를 영문 대문자로]
+
+- 확정안(PROPOSAL_risk_fields.md §7, 10/22 합의)대로 risk_utterances ·
+  abuse_signals 의 유형 키를 major_type(한글) 대신 abuse_type(영문
+  PHYSICAL|EMOTIONAL|SEXUAL|NEGLECT)으로, evidence_strength 를
+  높음|중간|낮음 대신 HIGH|MEDIUM|LOW 로 내보낸다(02_ARCHITECTURE.md §7
+  "한글 표기는 화면에서만"). 변환은 이 Contract 경계에서만 하고
+  파이프라인 안(record_draft · subtype_analysis)은 한글 그대로다.
+  severity_ratings[].major_type 은 #49 로 따로 합의한 선택 필드라
+  여기서 바꾸지 않는다(API_CONTRACT.md 8절). subtype 은 2차 세부유형명
+  (한글)을 그대로 둔다.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -86,6 +120,35 @@ def _model_name(result: Dict[str, Any]) -> Optional[str]:
         (result.get("subtype_analysis") or {}).get("model")
         or result.get("counseling_record_model")
     )
+
+
+# 학대유형 대분류: 02_ARCHITECTURE.md §7 의 영문 enum. 파이프라인 안은
+# 한글 라벨(ABUSE_LABELS)이라 Contract 경계(여기)에서만 바꾼다.
+MAJOR_TYPE_TO_ENGLISH = {
+    "신체학대": "PHYSICAL",
+    "정서학대": "EMOTIONAL",
+    "성학대": "SEXUAL",
+    "방임": "NEGLECT",
+}
+
+# 근거 강도: second_stage_llm 이 내는 높음|중간|낮음(확률이 아니라 근거의
+# 직접성). second_stage_llm 은 셋 밖의 값을 "낮음"으로 고정하므로 여기서도
+# 모르는 값은 LOW 로 둔다.
+EVIDENCE_STRENGTH_TO_ENGLISH = {
+    "높음": "HIGH",
+    "중간": "MEDIUM",
+    "낮음": "LOW",
+}
+
+
+def _abuse_type(label: Any) -> Any:
+    """한글 대분류 → 영문 대문자. 모르는 값은 그대로 둔다(정보를 잃지 않게)."""
+
+    return MAJOR_TYPE_TO_ENGLISH.get(label, label)
+
+
+def _evidence_strength(value: Any) -> str:
+    return EVIDENCE_STRENGTH_TO_ENGLISH.get(value, "LOW")
 
 
 def to_ai_output_contract(
@@ -109,47 +172,109 @@ def to_ai_output_contract(
     warnings = list(converted.get("warnings", []))
 
     record_draft = result.get("record_draft") or {}
+    risk_signal_points = record_draft.get("risk_signal_points", [])
 
     risk_utterances = [
         {
             "text": point.get("text", ""),
             "segment_ids": point.get("segment_ids", []),
-            "major_type": point.get("major_type"),
+            "abuse_type": _abuse_type(point.get("major_type")),
             "subtype": point.get("subtype"),
-            "evidence_strength": point.get(
-                "evidence_strength"
+            "evidence_strength": _evidence_strength(
+                point.get("evidence_strength")
+            ),
+            # second_stage_llm 은 비거나 문자열이 아닌 이유를 None 으로 정리해
+            # 넘기므로(_clean_optional_string) 키가 있어도 None 일 수 있다.
+            # Contract 의 reason 은 문자열(없으면 "")이라 여기서 맞춘다
+            # (Codex 교차검증 R1, 2026-10-23).
+            "reason": point.get("strength_reason") or "",
+            "evidence_verified": bool(
+                point.get("evidence_verified", False)
             ),
         }
-        for point in record_draft.get(
-            "risk_signal_points", []
-        )
+        for point in risk_signal_points
     ]
 
-    # major_type별 근거 segment_id — 같은 유형 risk_utterances에서 모은다.
+    # major_type(한글)별 근거 segment_id — 같은 유형 risk_signal_points
+    # 에서 모은다. abuse_signals 는 major_types 의 한글 키로 찾으므로
+    # 변환 전 라벨로 묶는다.
     segment_ids_by_type: Dict[str, List[str]] = {}
 
-    for utterance in risk_utterances:
-        major_type = utterance.get("major_type")
+    for point in risk_signal_points:
+        major_type = point.get("major_type")
 
         if not major_type:
             continue
 
         bucket = segment_ids_by_type.setdefault(major_type, [])
 
-        for segment_id in utterance.get("segment_ids") or []:
+        for segment_id in point.get("segment_ids") or []:
             if segment_id not in bucket:
                 bucket.append(segment_id)
 
-    abuse_signals = [
-        {
-            "major_type": major_type,
-            "detected": info.get("detected", False),
-            "segment_ids": segment_ids_by_type.get(major_type, []),
-        }
-        for major_type, info in (
-            result.get("major_types") or {}
-        ).items()
-    ]
+    chunk_results = result.get("chunk_results") or []
+
+    def _detection_source(
+        major_type: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        chunk별 1차 판정을 훑어 이 유형이 왜 detected인지/아닌지 찾는다.
+        세션 major_types는 chunk 판정을 detected만 남기고 OR로 합치면서
+        filtered_reason을 버리므로(위에서 다시 만듦), 여기서 chunk_results를
+        다시 본다. 어느 chunk든 1차가 detected=True면 MODEL, 전부 아니고
+        filtered_reason 있는 chunk가 있으면 FILTERED, 둘 다 아니면
+        (None, None) — PROPOSAL_risk_fields.md §7 2026-10-22 확정안.
+        """
+
+        filtered_reason = None
+
+        for chunk in chunk_results:
+            chunk_info = (
+                chunk.get("major_types") or {}
+            ).get(major_type) or {}
+
+            if chunk_info.get("detected"):
+                return "MODEL", None
+
+            if (
+                filtered_reason is None
+                and chunk_info.get("filtered_reason")
+            ):
+                filtered_reason = chunk_info["filtered_reason"]
+
+        if filtered_reason is not None:
+            return "FILTERED", filtered_reason
+
+        return None, None
+
+    abuse_signals = []
+
+    for major_type, info in (
+        result.get("major_types") or {}
+    ).items():
+        detection_source, filtered_reason = _detection_source(
+            major_type
+        )
+
+        # 안전망(2026-10-23, 이경진 님 요청): chunk_results 가 없거나 세션
+        # 판정과 어긋나도 detected=True 인 신호가 출처 없이(null) 나가지
+        # 않게 한다. 지금 파이프라인은 같은 루프에서 둘을 함께 채우므로
+        # 실제로는 걸리지 않고, 구조가 바뀌거나 손으로 만든 결과를 넣을
+        # 때만 작동한다.
+        if detection_source is None and info.get("detected", False):
+            detection_source = "MODEL"
+
+        abuse_signals.append(
+            {
+                "abuse_type": _abuse_type(major_type),
+                "detected": info.get("detected", False),
+                "segment_ids": segment_ids_by_type.get(
+                    major_type, []
+                ),
+                "detection_source": detection_source,
+                "filtered_reason": filtered_reason,
+            }
+        )
 
     # risk_factors는 계속 비워 둔다 — 아래 4개 필드가 정식 자리를
     # 대신 받는다(모듈 docstring 참고).
