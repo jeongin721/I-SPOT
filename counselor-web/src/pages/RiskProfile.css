@@ -20,7 +20,12 @@
   gap: 4px;
   margin-top: 6px;
 }
-.pg-RiskProfile .meter button {
+.pg-RiskProfile .meter button,
+.pg-RiskProfile .meter span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   width: 30px;
   height: 26px;
   border-radius: 6px;
@@ -67,7 +72,8 @@
 .pg-RiskProfile .thm-root.dark .trow {
   border-bottom: 1px solid #45423b !important;
 }
-.pg-RiskProfile .thm-root.dark .meter button {
+.pg-RiskProfile .thm-root.dark .meter button,
+.pg-RiskProfile .thm-root.dark .meter span {
   border: 1px solid #4e4b44 !important;
 }
 .pg-RiskProfile .thm-root.dark .anchor {
