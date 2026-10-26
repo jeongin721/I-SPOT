@@ -521,8 +521,10 @@ export interface AnalysisSummary {
 
 // 아래 4개는 AI 분석 결과의 선택 필드다(API_CONTRACT 8절 "선택 필드", 10/16 추가).
 // 서버는 값이 없으면 빈 배열로 준다. 모두 AI 제안이고 판단은 상담원이 한다.
-// 화면은 segment_ids 가 있는 항목만 근거 위치와 함께 보여 준다(README "지켜야 할 원칙" 3번).
-// 근거 없는 항목을 서버가 빼지 않으므로 segment_ids 는 빈 배열일 수 있다.
+// 근거 없는 항목을 서버가 빼지 않으므로 segment_ids 는 빈 배열일 수 있다. 근거 위치가 있으면 함께 보여 주고(README "지켜야 할
+// 원칙" 3번), 빈 항목을 어떻게 보일지는 필드마다 정한다: severity_ratings 는 level · reason · matched_evidence 만 쓰고 근거 발화는
+// 같은 유형 risk_utterances 로, followup_check_points 는 "근거 위치 없음" 을 밝히고 보인다(10/26). protective_factors ·
+// session_change_notes 는 아직 정하지 않았다(화면에 안 보임).
 
 /** 학대 유형별 심각도 참고값. 판정이 아니다. */
 export interface SeverityRating {
