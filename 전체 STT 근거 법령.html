@@ -1,0 +1,197 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>전체 STT 근거 법령</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: 상담사 웹 '전체 STT' 목록 — 시간(재생) | 화자 | 발화 | 신뢰도.
+   학대 유형이 감지된 아동 발화 아래 → 법령 한 줄 + 원문보기(법령 포털) */
+:root {
+  --bg: #FFFFFF;
+  --row-line: #ECEAE4;
+  --low: #F1E4C3;
+  --ink: #2B2A26;
+  --ink-2: #66625A;
+  --ink-3: #8A867D;
+  --chip: #F2EFE8;
+  --field: #FFFFFF;
+  --field-line: #DAD5C9;
+  --dark-btn: #2B2A26; --dark-btn-fg: #EADBB5;
+  --risk: #A33B2E; --risk-bg: #F7E4DF;
+  --law-bg: #FBFAF7; --law-line: #E2DED3;
+  --cue: #3F5A73; --cue-bg: #E6EDF3;
+  --sans: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #23221F; --row-line: #393731; --low: #3A3326; --ink: #ECE8DF; --ink-2: #BDB7AA; --ink-3: #9C978C;
+    --chip: #393731; --field: #2C2B27; --field-line: #4E4B44; --dark-btn: #EADBB5; --dark-btn-fg: #2B2A26;
+    --risk: #F0907F; --risk-bg: #4A2B25; --law-bg: #2C2B27; --law-line: #45423B;
+    --cue: #A9C3DA; --cue-bg: #2B3540; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #23221F; --row-line: #393731; --low: #3A3326; --ink: #ECE8DF; --ink-2: #BDB7AA; --ink-3: #9C978C;
+  --chip: #393731; --field: #2C2B27; --field-line: #4E4B44; --dark-btn: #EADBB5; --dark-btn-fg: #2B2A26;
+  --risk: #F0907F; --risk-bg: #4A2B25; --law-bg: #2C2B27; --law-line: #45423B;
+  --cue: #A9C3DA; --cue-bg: #2B3540; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 48px; }
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-block: 6px 14px; border-bottom: 1px solid var(--row-line); }
+.bar-l { display: flex; align-items: center; gap: 10px; }
+.bar h1 { margin: 0; font-size: 16px; font-weight: 700; }
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--chip); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.bar-r { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { height: 32px; padding: 0 14px; border-radius: 999px; font: 600 12.5px var(--sans); border: 1px solid var(--field-line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.btn.on { background: var(--dark-btn); color: var(--dark-btn-fg); border-color: var(--dark-btn); }
+
+.row { display: grid; grid-template-columns: 56px 128px minmax(0, 1fr) 48px; align-items: start; gap: 4px 10px; padding: 12px 8px; border-bottom: 1px solid var(--row-line); }
+.row.low { background: var(--low); }
+.time { padding-top: 2px; }
+.t { padding: 1px 6px; margin-left: -6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font: 12.5px var(--sans); font-variant-numeric: tabular-nums; cursor: pointer; }
+.t:hover { background: var(--chip); color: var(--ink); }
+.t:hover::before { content: "▶ "; font-size: 9px; }
+.who .pill { font-weight: 600; color: var(--ink); }
+.who .pill::after { content: "▾"; font-size: 9px; margin-left: 3px; color: var(--ink-3); }
+.utt { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.utt .text { font-size: 14.5px; padding-top: 2px; }
+.utt input { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--field-line); border-radius: 10px; background: var(--field); color: var(--ink); font: 14.5px var(--sans); }
+.meta { font-size: 12px; color: var(--ink-3); }
+.meta.warn { color: var(--risk); }
+.conf { font-size: 12px; color: var(--ink-2); text-align: right; padding-top: 9px; font-variant-numeric: tabular-nums; }
+
+/* 법령 한 줄 */
+.laws { display: flex; flex-direction: column; gap: 6px; max-width: 860px; }
+.law { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 7px 8px 7px 12px; border: 1px solid var(--law-line); border-radius: 10px; background: var(--law-bg); }
+.sig { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; background: var(--risk-bg); color: var(--risk); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.ref { font-weight: 700; font-size: 13px; white-space: nowrap; }
+.ref .art { color: var(--risk); }
+.sum { font-size: 13px; color: var(--ink-2); min-width: 0; }
+.orig { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 11px; border-radius: 999px; background: var(--dark-btn); color: var(--dark-btn-fg); font: 600 11.5px var(--sans); text-decoration: none; white-space: nowrap; }
+.orig:hover { opacity: .9; }
+.t:focus-visible, .btn:focus-visible, .orig:focus-visible { outline: 2px solid var(--risk); outline-offset: 2px; }
+.hold { font-size: 12px; color: var(--ink-3); }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: var(--dark-btn); color: var(--dark-btn-fg); font-size: 12.5px; }
+.legend { margin-top: 14px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-3); max-width: 90ch; }
+.legend .k { display: inline-flex; gap: 6px; align-items: center; }
+
+@media (max-width: 720px) {
+  .row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .time { grid-column: 1; }
+  .who { grid-column: 2; }
+  .conf { grid-column: 3; padding-top: 3px; }
+  .utt { grid-column: 1 / -1; }
+  .law { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .sum { grid-column: 1 / -1; grid-row: 2; }
+}
+</style>
+
+<div class="wrap">
+  <div class="bar">
+    <div class="bar-l"><h1>전체 STT</h1><span class="pill">확인할 곳 3</span></div>
+    <div class="bar-r"><button class="btn on" type="button">전체 STT 보기</button><button class="btn" type="button">저신뢰 구간 보기 · 3</button></div>
+  </div>
+
+  <div class="row"><div class="time">00:12</div><div class="who"><span class="pill">상담원</span></div><div class="utt"><div class="text">오늘은 집에서 만나네. 요즘 어떻게 지냈어?</div></div><div></div></div>
+  <div class="row"><div class="time">00:20</div><div class="who"><span class="pill">피해아동</span></div><div class="utt"><div class="text">그냥… 학교는 괜찮아요.</div></div><div></div></div>
+  <div class="row"><div class="time">00:35</div><div class="who"><span class="pill">상담원</span></div><div class="utt"><div class="text">집에서는 어때?</div></div><div></div></div>
+
+  <div class="row low">
+    <div class="time">00:41</div><div class="who"><span class="pill">피해아동</span></div>
+    <div class="utt">
+      <input id="u-0041" type="text" value="아빠가 또 화났어요. 저한테 소리 지르고… 많이 때렸어요." aria-label="00:41 발화 수정">
+      <div class="meta">"많이" / "만이" 불분명 · 00:38부터 다시 듣기</div>
+      <div class="laws" data-laws="3:신체,5:정서"></div>
+    </div>
+    <div class="conf">62%</div>
+  </div>
+
+  <div class="row"><div class="time">00:58</div><div class="who"><span class="pill">상담원</span></div><div class="utt"><div class="text">어디가 아팠는지 말해 줄 수 있어?</div></div><div></div></div>
+
+  <div class="row low">
+    <div class="time">01:08</div><div class="who"><span class="pill">피해아동</span></div>
+    <div class="utt">
+      <input id="u-0108" type="text" value="등이랑 팔이요. 근데 말하면 더 혼난다고 했어요." aria-label="01:08 발화 수정">
+      <div class="meta">뒤 문장 겹침</div>
+      <div class="laws" data-laws="3:신체,5:정서"></div>
+    </div>
+    <div class="conf">58%</div>
+  </div>
+
+  <div class="row"><div class="time">01:30</div><div class="who"><span class="pill">상담원</span></div><div class="utt"><div class="text">그 말을 들었을 때 어떤 마음이었어?</div></div><div></div></div>
+  <div class="row"><div class="time">01:36</div><div class="who"><span class="pill">피해아동</span></div><div class="utt"><div class="text">무서웠어요.</div></div><div></div></div>
+
+  <div class="row low">
+    <div class="time">02:15</div><div class="who"><span class="pill">화자?</span></div>
+    <div class="utt">
+      <input id="u-0215" type="text" value="밥도 안 줄 때가 있어요." aria-label="02:15 발화 수정">
+      <div class="meta">화자 불확실 · 확인 전 근거 제외</div>
+      <div class="hold">화자를 피해아동으로 확인하면 근거 법령(방임)이 표시됩니다</div>
+    </div>
+    <div class="conf">70%</div>
+  </div>
+
+  <div class="row"><div class="time">02:40</div><div class="who"><span class="pill">피해아동</span></div><div class="utt"><div class="text">할머니 집에 가고 싶어요.</div></div><div></div></div>
+  <div class="row"><div class="time">03:05</div><div class="who"><span class="pill">사례관리대상자</span></div><div class="utt"><div class="text">(현관문 소리) 누구 왔어? 무슨 얘기 하는 거야?</div><div class="meta warn">신변안전 · 사례관리대상자 귀가 후 아동 발화 감소</div></div><div></div></div>
+  <div class="row"><div class="time">03:12</div><div class="who"><span class="pill">피해아동</span></div><div class="utt"><div class="text">…아무것도 아니에요.</div></div><div></div></div>
+
+  <div class="legend">
+    <span>왼쪽 시간을 누르면 그 위치부터 녹음을 다시 들을 수 있습니다.</span>
+    <span class="k"><span class="sig">신체</span> 학대 유형이 감지된 발화에 관련 조문을 표시합니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.</span>
+    <span>예시 화면 · 조문은 아동복지법 (2026. 10. 2. 시행)</span>
+  </div>
+</div>
+
+<script>
+  // 아동복지법 제17조 각 호 (law_cache 원문). 한 줄 표시는 괄호 안 부연을 뺀 문장.
+  var LAW = { name: '아동복지법', art: '제17조' };
+  var ITEMS = {
+    2: '아동에게 음란한 행위를 시키거나 이를 매개하는 행위 또는 아동을 대상으로 하는 성희롱 등의 성적 학대행위',
+    3: '아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위',
+    5: '아동의 정신건강 및 발달에 해를 끼치는 정서적 학대행위',
+    6: '자신의 보호ㆍ감독을 받는 아동을 유기하거나 의식주를 포함한 기본적 보호ㆍ양육ㆍ치료 및 교육을 소홀히 하는 방임행위'
+  };
+  // 원문보기 주소 = 백엔드 related_laws[].portal_url
+  // 법령 API(lawSearch) 응답의 법령일련번호(MST 290207)와 조문번호(0017)로 만든 국가법령정보센터 조문 페이지.
+  // API의 법령상세링크는 OC 인증값이 들어 있어 쓰지 않는다.
+  var PORTAL = 'https://www.law.go.kr/LSW/lsSideInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00&docCls=jo&urlMode=lsScJoRltInfoR';
+
+  document.querySelectorAll('.laws[data-laws]').forEach(function (box) {
+    box.getAttribute('data-laws').split(',').forEach(function (pair) {
+      var parts = pair.split(':'), no = Number(parts[0]);
+      var el = document.createElement('div');
+      el.className = 'law';
+      el.innerHTML =
+        '<span class="sig">' + parts[1] + '</span>' +
+        '<span class="ref">' + LAW.name + ' <span class="art">' + LAW.art + ' 제' + no + '호</span></span>' +
+        '<span class="sum">' + ITEMS[no] + '</span>' +
+        '<a class="orig" href="' + PORTAL + '" target="_blank" rel="noopener noreferrer">원문보기 ↗</a>';
+      box.appendChild(el);
+    });
+  });
+
+  // 시간 → 재생 버튼 (예시 화면에서는 안내만)
+  var toast;
+  document.querySelectorAll('.time').forEach(function (cell) {
+    var t = cell.textContent.trim();
+    cell.innerHTML = '<button class="t" type="button" aria-label="' + t + '부터 듣기">' + t + '</button>';
+  });
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.t');
+    if (!btn) return;
+    if (toast) toast.remove();
+    toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.setAttribute('role', 'status');
+    toast.textContent = '실제 화면에서는 ' + btn.textContent + ' 위치부터 녹음이 재생됩니다';
+    document.body.appendChild(toast);
+    setTimeout(function () { if (toast) { toast.remove(); toast = null; } }, 2400);
+  });
+</script>
+
+</body></html>
