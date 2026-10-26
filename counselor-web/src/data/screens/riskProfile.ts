@@ -5,10 +5,13 @@
 //  - 상담원 판단 상 · 중 · 하: useRiskAssessments(API_CONTRACT 11절). 유형마다 따로 저장하고, 저장할 때 서버가
 //    그때의 AI 제안(ai_level)을 함께 기록한다. 원문 확정 뒤(STT_CONFIRMED · AI_REVIEW_REQUIRED · AI_FAILED · APPROVED)에만 된다.
 //  - 유형별 관련 신호 · 근거 발화는 위험 신호 검토와 같은 useRiskSignals(riskRows) 값이다.
-//  - 서버에 없는 것(회차 전체 AI 위험도 · AI 단계와 상 · 중 · 하 대응 규칙 · 안전 플래그 · 재학대 요인 · 회차별 추이 ·
-//    다음 상담에서 확인할 것)은 팀 결정 전이라 '준비 중' 으로 두고 예시 값을 보이지 않는다.
+//  - 다음 상담에서 확인할 것: 선택 필드 followup_check_points(AI 확인 메모)를 읽기 전용으로 보인다. 질문 은행의 질문이 아니고
+//    아이에게 할 질문으로 보이지 않는다('AI 확인 메모 · 질문 아님' 으로만 보이면 원칙 7 과 어긋나지 않는다는 2026-10-26 결정).
+//    segment_ids 는 지금 서버가 늘 비워 보내 항목마다 '근거 위치 없음' 을 밝힌다(API_CONTRACT 8절 선택 필드).
+//  - 서버에 없는 것(회차 전체 AI 위험도 · AI 단계와 상 · 중 · 하 대응 규칙 · 안전 플래그 · 재학대 요인 · 회차별 추이)은
+//    팀 결정 전이라 '준비 중' 으로 두고 예시 값을 보이지 않는다.
 
-import type { AbuseType, RiskLevel, SessionStatus, SeverityRating } from "../../api/types";
+import type { AbuseType, FollowupCheckPoint, RiskLevel, SessionStatus, SeverityRating } from "../../api/types";
 import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVELS, RISK_LEVEL_LABELS } from "../../api/types";
 import type { SignalCard, TypeSignal } from "../riskRows";
 import type { RiskAssessmentsState } from "../useRiskAssessments";
@@ -129,6 +132,61 @@ export function evidenceLines(cards: SignalCard[]): { lines: string[]; more: num
   const lines = cards.slice(0, 3).map((card) => `${card.positionLabel || "발화 번호 없음"} "${card.quote || "(발화 문장 없음)"}"`);
 
   return { lines, more: Math.max(0, cards.length - 3) };
+}
+
+/** '다음 상담에서 확인할 것' 카드 한 항목. */
+export interface FollowupItem {
+  text: string;
+  /** 근거 위치. 서버가 segment_ids 를 비워 보내면 "근거 위치 없음". */
+  where: string;
+}
+
+/** 카드 머리 칩. 질문이 아니라 메모임을 늘 밝힌다(원칙 7). */
+export const FOLLOWUP_CHIP = "AI 확인 메모 · 질문 아님";
+
+/**
+ * followup_check_points → 카드 항목. text 가 빈 문자열이 아닌 항목만 쓰고 다른 키는 보지 않는다.
+ * segment_ids 는 지금 늘 빈 배열이라 "근거 위치 없음" 으로 적고, 채워져 오면 발화 번호를 그대로 적는다
+ * (원문 위치 "몇 분 · 누구" 는 위험 발화 카드처럼 원문을 받아야 해서 아직 하지 않는다).
+ */
+export function toFollowupItems(points: FollowupCheckPoint[]): FollowupItem[] {
+  const items: FollowupItem[] = [];
+
+  for (const point of points) {
+    if (!point || typeof point !== "object") continue;
+
+    const text = readText(point.text);
+
+    if (!text) continue;
+
+    const ids = Array.isArray(point.segment_ids)
+      ? point.segment_ids.filter((id): id is string => typeof id === "string" && id !== "")
+      : [];
+
+    items.push({ text, where: ids.length > 0 ? `발화 ${ids.join(" · ")}` : "근거 위치 없음" });
+  }
+
+  return items;
+}
+
+export interface FollowupValues {
+  chip: string;
+  note: string;
+  items: FollowupItem[];
+  /** 항목이 없을 때 문구. 항목이 있으면 "". */
+  empty: string;
+}
+
+/** '다음 상담에서 확인할 것' 카드 값. 분석이 끝난 회차에서만 항목을 보인다. 읽기 전용이다. */
+export function followupValues(completed: boolean, points: FollowupCheckPoint[]): FollowupValues {
+  const items = completed ? toFollowupItems(points) : [];
+
+  return {
+    chip: FOLLOWUP_CHIP,
+    note: "AI 가 다음 상담에서 확인해 두면 좋겠다고 남긴 메모입니다. 아이에게 할 질문이 아니고, 추가 질문은 질문 은행에서만 제안합니다. 확인할지는 상담원이 정합니다.",
+    items,
+    empty: !completed ? "AI 분석이 끝나면 보입니다." : items.length === 0 ? "AI 가 남긴 확인 메모가 없습니다." : "",
+  };
 }
 
 export interface RiskTypeValues {
@@ -259,10 +317,11 @@ export function riskProfileValues(input: RiskProfileInput, openRubric: Partial<R
     assessLoadError: assessments.loadError,
     reloadAssess: assessments.reload,
     rubricNote: "참고 기준은 디자인 초안의 단계 설명이며 팀이 확정한 기준이 아닙니다.",
+    /** 다음 상담에서 확인할 것(AI 확인 메모, 읽기 전용). */
+    followup: followupValues(completed, view?.followupCheckPoints ?? []),
     notReady: [
       `안전 플래그 · 재학대 요인 · 보호 요인 표시는 ${NOT_READY}입니다(서버에 안전 플래그 값이 없고 보호 요인은 표시 방식 결정 전).`,
       `회차별 추이는 ${NOT_READY}입니다(서버에 회차 간 비교 값이 없음).`,
-      `다음 상담에서 확인할 것은 ${NOT_READY}입니다(AI 확인 메모를 아이에게 할 질문으로 보일지 팀 결정 전).`,
     ],
     error: assessments.error ?? analysis.error,
     signalError: completed ? signals.evidenceError : null,
