@@ -311,8 +311,13 @@ def to_ai_output_contract(
         for note in result.get("session_change_notes") or []
     ]
 
+    # 예전 모양(List[str], 2026-10-26 이전 followup_check_llm.py 출력과
+    # backend 시험의 가짜 모듈 결과)도 받는다 — session_change_notes처럼
+    # segment_ids는 빈 배열로 감싼다.
     followup_check_points = [
-        {
+        {"text": point, "segment_ids": []}
+        if isinstance(point, str)
+        else {
             "text": point.get("text", ""),
             "segment_ids": point.get("segment_ids", []),
         }
