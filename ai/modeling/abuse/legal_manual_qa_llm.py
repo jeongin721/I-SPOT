@@ -30,7 +30,7 @@ OCR·수동 전사 대신 이미지를 그대로 멀티모달 LLM에 보여주�
 [1차 범위: 6장(서식·참고자료)만]
 
 5장(신변안전매뉴얼, 상담원 본인 안전)은 아직 포함하지 않는다 —
-project_law_qa_feature.md 참고. manual/manifest.py에 ManualPage를
+I-SPOT_DOCS/docs/LAW_MANUAL_QA.md 참고. manual/manifest.py에 ManualPage를
 추가하면 같은 구조로 확장된다.
 """
 
