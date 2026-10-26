@@ -38,7 +38,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
-from ai.modeling.abuse.pii_masking import restore_pii
 from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from law import LawApiClient, extract_articles
@@ -155,6 +154,14 @@ def answer_law_question(
 
     반환: {"answer": str, "law_names": [...], "cited_articles": [...]}
     """
+
+    # 2026-10-26 민규 리뷰: restore_pii(pii_masking.py)가 모듈 맨 위에
+    # 있으면 그걸 가져오는 순간 torch·transformers까지 딸려 들어와서,
+    # torch 없는 환경(Backend 가상환경)에서는 이 파일을 가져오기만 해도
+    # 실패한다 — 순수 함수 테스트(tests/test_law_qa_llm.py)까지 같이
+    # 막힌다. 실제로 쓰는 시점(여기, 답변에 PII 복원할 때)에만
+    # 가져오도록 늦춘다.
+    from ai.modeling.abuse.pii_masking import restore_pii
 
     names = law_names or list(LAW_TARGET_LAWS)
 

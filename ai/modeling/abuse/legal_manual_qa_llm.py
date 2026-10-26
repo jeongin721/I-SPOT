@@ -43,7 +43,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from openai import OpenAI
 
 from ai.modeling.abuse.law_qa_llm import _build_law_corpus, _verify_cited_articles
-from ai.modeling.abuse.pii_masking import restore_pii
 from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from law.config import LAW_TARGET_LAWS
@@ -225,6 +224,11 @@ def answer_legal_manual_question(
     반환: {"answer": str, "law_names": [...], "cited_articles": [...],
     "manual_references": [...]}
     """
+
+    # law_qa_llm.answer_law_question과 같은 이유로 지연 import —
+    # pii_masking이 끌고 오는 torch·transformers를 torch 없는 환경에서도
+    # 이 파일을 가져올 수 있게(순수 함수 테스트 포함) 늦춘다.
+    from ai.modeling.abuse.pii_masking import restore_pii
 
     names = law_names or list(LAW_TARGET_LAWS)
 
