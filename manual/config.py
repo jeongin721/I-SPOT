@@ -19,6 +19,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
+# law/config.py의 LAW_CACHE_DIR와 같은 규칙: 빈 값(MANUAL_IMAGE_DIR=)은
+# 기본값으로 보고, 상대경로는 실행 위치가 아니라 프로젝트 루트 기준으로 푼다.
 MANUAL_IMAGE_DIR = Path(
-    os.getenv("MANUAL_IMAGE_DIR", BASE_DIR / "사례관리_업무")
-)
+    os.getenv("MANUAL_IMAGE_DIR", "").strip() or "사례관리_업무"
+).expanduser()
+if not MANUAL_IMAGE_DIR.is_absolute():
+    MANUAL_IMAGE_DIR = BASE_DIR / MANUAL_IMAGE_DIR

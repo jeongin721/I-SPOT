@@ -35,7 +35,10 @@ LAW_PORTAL_URL = os.getenv(
 ).rstrip("/")
 # 상대경로(.env의 LAW_CACHE_DIR=law_cache 등)는 실행 위치가 아니라 프로젝트
 # 루트 기준으로 푼다 — 다른 폴더에서 실행해도 같은 캐시를 쓰게 하려는 목적.
-LAW_CACHE_DIR = Path(os.getenv("LAW_CACHE_DIR", "law_cache")).expanduser()
+# .env.example을 그대로 복사한 빈 값(LAW_CACHE_DIR=)도 기본값으로 본다.
+LAW_CACHE_DIR = Path(
+    os.getenv("LAW_CACHE_DIR", "").strip() or "law_cache"
+).expanduser()
 if not LAW_CACHE_DIR.is_absolute():
     LAW_CACHE_DIR = BASE_DIR / LAW_CACHE_DIR
 LAW_TIMEOUT_SECONDS = int(os.getenv("LAW_TIMEOUT_SECONDS", "15"))
