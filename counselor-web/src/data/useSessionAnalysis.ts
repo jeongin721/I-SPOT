@@ -3,10 +3,11 @@
 // 분석 결과는 'AI 분석 참고정보' 다. 판정이 아니다(05_RULES §1, API_CONTRACT 8절 표현 주의).
 // 상담사가 고치고 승인하는 것은 요약(useSummaryReview)이고, 여기 값은 AI 원본이다.
 //
-// 위험 관련 배열(risk_utterances · abuse_signals)과 선택 필드(severity_ratings · protective_factors)는 Contract 모양 그대로
-// 내보낸다. 항목 구조는 2026-10-22 에 확정됐고(PROPOSAL_risk_fields.md §7-0, types.ts RiskUtterance · AbuseSignal) modeling 만
-// 값을 채운다(mock · pipeline · langgraph 는 빈 배열). 화면용 카드는 useRiskSignals · riskRows 가 만든다.
-// risk_factors 는 구조가 보류돼 늘 빈 배열이라 내보내지 않는다. 채택 · 보류 · 제외 기록은 서버에 없다(팀 결정 전).
+// 위험 관련 배열(risk_utterances · abuse_signals)과 선택 필드(severity_ratings · protective_factors · followup_check_points)는
+// Contract 모양 그대로 내보낸다. 항목 구조는 2026-10-22 에 확정됐고(PROPOSAL_risk_fields.md §7-0, types.ts RiskUtterance ·
+// AbuseSignal) modeling 만 값을 채운다(mock · pipeline · langgraph 는 빈 배열). 화면용 카드는 useRiskSignals · riskRows 가 만든다.
+// risk_factors 는 구조가 보류돼 늘 빈 배열이라 내보내지 않는다. session_change_notes 는 서버 경로가 case_id 를 넘기지 않아
+// 늘 빈 배열이고 받는 화면도 아직 없어 내보내지 않는다(API_CONTRACT 8절). 채택 · 보류 · 제외 기록은 서버에 없다(팀 결정 전).
 
 import { useCallback, useRef, useState } from "react";
 
@@ -16,6 +17,7 @@ import type {
   AbuseSignal,
   AnalysisEnvelope,
   AnalysisStatus,
+  FollowupCheckPoint,
   ProtectiveFactor,
   RiskUtterance,
   SessionStatus,
@@ -49,6 +51,8 @@ export interface AnalysisView {
   severityRatings: SeverityRating[];
   /** 보호 요인(선택 필드). */
   protectiveFactors: ProtectiveFactor[];
+  /** 다음 상담에서 확인할 점에 대한 AI 확인 메모(선택 필드). 질문이 아니다. 지금은 segment_ids 가 늘 빈 배열이다. */
+  followupCheckPoints: FollowupCheckPoint[];
   /** 분석에 쓴 원문 버전. */
   transcriptVersion: number | null;
   provider: string | null;
@@ -174,6 +178,7 @@ export function useSessionAnalysis(
           abuseSignals: source.result?.abuse_signals ?? [],
           severityRatings: source.result?.severity_ratings ?? [],
           protectiveFactors: source.result?.protective_factors ?? [],
+          followupCheckPoints: source.result?.followup_check_points ?? [],
           transcriptVersion: source.transcript_version,
           provider: source.provider,
           model: source.model,

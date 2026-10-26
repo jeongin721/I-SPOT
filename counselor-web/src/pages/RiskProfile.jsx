@@ -1,10 +1,13 @@
 // 2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단)
 // 원본: 다솔 님 디자인 counselor-web-design/RiskProfile.dc.html (front_new 브랜치)
 //
-// 서버 연결: 화면 주소 ?case=…&session=…. AI 심각도(severity_ratings)는 useSessionAnalysis, 유형별 관련 신호 · 근거 발화는
+// 서버 연결: 화면 주소 ?case=…&session=…. AI 심각도(severity_ratings) · 다음 상담 확인 메모(followup_check_points)는
+// useSessionAnalysis, 유형별 관련 신호 · 근거 발화는
 // useRiskSignals, 상담원 판단(상 · 중 · 하)은 useRiskAssessments, 머리는 useSessionDetail · useCaseDetail 이 부르고,
 // 화면에 쓸 값은 src/data/screens/riskProfile.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 회차별 추이 · 다음 상담 확인 사항)은 준비 중이다.
+// 다음 상담에서 확인할 것은 서버의 followup_check_points(AI 확인 메모)를 읽기 전용으로 보인다. 질문이 아니라 메모로만 보여
+// 원칙 7(추가 질문은 질문 은행에서만)과 어긋나지 않는다는 10/26 결정이다. 서버가 segment_ids 를 비워 보내 '근거 위치 없음' 을 밝힌다.
+// 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 회차별 추이)은 준비 중이다.
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -273,6 +276,24 @@ export default function RiskProfile(props) {
                   </button>
                 </div>
               </Fragment>
+            ))}
+          </section>
+
+          <section
+            className="card"
+            aria-label="다음 상담에서 확인할 것"
+            style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '8px' }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+              <h2 className="h2">다음 상담에서 확인할 것</h2>
+              <span className="chip c-ai">{v.followup.chip}</span>
+            </div>
+            <span className="note">{v.followup.note}</span>
+            {v.followup.empty ? <span className="sub2">{v.followup.empty}</span> : null}
+            {(v.followup.items || []).map((f, fIndex) => (
+              <div key={fIndex}>
+                {f.text} <span className="sub2">{f.where}</span>
+              </div>
             ))}
           </section>
 
