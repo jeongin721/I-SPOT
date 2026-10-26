@@ -22,6 +22,24 @@ class LawApiError(RuntimeError):
     """국가법령정보센터 API 호출 또는 응답 처리 실패."""
 
 
+_OC_PARAM_RE = re.compile(r"(?i)([?&]OC=)[^&\s]*")
+
+
+def _redact_oc(text: str) -> str:
+    """요청 URL의 OC(인증값) 쿼리 파라미터를 ***로 가린다.
+
+    2026-10-26 민규 교차검증으로 발견: requests.RequestException을
+    그대로 str()로 찍으면(예: ConnectionError) 실패한 요청의 전체 URL이
+    메시지에 들어가는데, 그 URL에 OC=<실제 인증값>이 그대로 박혀 있다.
+    이 LawApiError 메시지가 law_qa_llm.py의 답변 텍스트로 그대로
+    나가거나 어딘가에 로그로 남으면 인증값이 유출된다. 예외 메시지를
+    만드는 시점(여기)에서 한 번만 가리면, 쓰는 쪽에서 매번 신경 쓰지
+    않아도 된다.
+    """
+
+    return _OC_PARAM_RE.sub(r"\1***", text)
+
+
 def _safe_filename(value: str) -> str:
     value = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", value.strip())
     return value.strip("_") or "law"
@@ -99,7 +117,9 @@ class LawApiClient:
             )
             response.raise_for_status()
         except requests.RequestException as exc:
-            raise LawApiError(f"국가법령정보센터 API 요청 실패: {exc}") from exc
+            raise LawApiError(
+                f"국가법령정보센터 API 요청 실패: {_redact_oc(str(exc))}"
+            ) from exc
 
         try:
             payload = response.json()
@@ -109,7 +129,7 @@ class LawApiClient:
                     f"국가법령정보센터 OPEN API에서 '{params.get('target')}' 사용 신청이 되어 있지 않습니다. "
                     "open.law.go.kr → OPEN API 신청에서 해당 항목을 체크하세요."
                 ) from exc
-            preview = response.text[:300].replace("\n", " ")
+            preview = _redact_oc(response.text[:300].replace("\n", " "))
             raise LawApiError(
                 f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {preview}"
             ) from exc

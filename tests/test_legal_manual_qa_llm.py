@@ -8,7 +8,9 @@
 # 조문 본문과 대조할 수 없고, "이번 호출에 실제로 첨부한 페이지인지"만
 # 확인할 수 있다 — _verify_manual_references가 이 역할을 한다.
 
+import ai.modeling.abuse.legal_manual_qa_llm as legal_manual_qa_llm
 from ai.modeling.abuse.legal_manual_qa_llm import (
+    _resolve_attached_pages,
     _select_manual_pages,
     _verify_manual_references,
 )
@@ -70,6 +72,36 @@ def test_select_manual_pages_respects_limit():
     selected = _select_manual_pages(question, pages, limit=2)
 
     assert len(selected) == 2
+
+
+def test_resolve_attached_pages_drops_pages_whose_image_is_missing(tmp_path, monkeypatch):
+    # 2026-10-26 민규 교차검증으로 발견: _select_manual_pages가 고른
+    # 후보 중 이미지 파일이 실제로 있는 페이지만 _build_manual_section
+    # (프롬프트 자료 목록)·_build_user_content(실제 첨부)·
+    # _verify_manual_references(인용 검증)가 똑같이 봐야 한다. 예전에는
+    # _build_user_content만 혼자 필터링해서, 후보 3장 중 이미지가 1장만
+    # 있어도 프롬프트엔 "첨부 자료 3개"로 나오고 나머지 2장도 인용
+    # 검증을 통과했다.
+    monkeypatch.setattr(legal_manual_qa_llm, "MANUAL_IMAGE_DIR", tmp_path)
+
+    pages = _make_pages()
+    (tmp_path / "risk_scale.jpg").write_bytes(b"fake-image-bytes")
+    # family_scale.jpg · initial_interview.jpg는 일부러 안 만든다 —
+    # "이미지가 실제로는 없는 후보" 상황을 재현한다.
+
+    resolved = _resolve_attached_pages(list(pages))
+
+    assert [page.id for page in resolved] == ["risk_scale"]
+
+
+def test_resolve_attached_pages_returns_empty_when_no_images_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr(legal_manual_qa_llm, "MANUAL_IMAGE_DIR", tmp_path)
+
+    pages = _make_pages()
+
+    resolved = _resolve_attached_pages(list(pages))
+
+    assert resolved == []
 
 
 def test_verify_manual_references_keeps_only_attached_pages():

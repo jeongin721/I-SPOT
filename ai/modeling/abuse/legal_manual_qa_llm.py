@@ -43,7 +43,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from openai import OpenAI
 
 from ai.modeling.abuse.law_qa_llm import _build_law_corpus, _verify_cited_articles
-from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from law.config import LAW_TARGET_LAWS
 from manual.config import MANUAL_IMAGE_DIR
@@ -122,6 +121,27 @@ def _encode_image_b64(path: Path) -> Optional[str]:
     return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
+def _resolve_attached_pages(pages: List[ManualPage]) -> List[ManualPage]:
+    """_select_manual_pages가 고른 후보 중, 이미지 파일이 실제로
+    존재하는 것만 남긴다.
+
+    2026-10-26 민규 교차검증으로 발견: 예전에는 이 필터링을
+    _build_user_content 안에서만 했는데, 그 결과를 프롬프트 자료
+    목록(_build_manual_section)과 인용 검증(_verify_manual_references)이
+    모르고 후보 목록(_select_manual_pages 결과) 그대로 썼다 — 그래서
+    후보 3장 중 이미지가 1장만 있어도 프롬프트엔 "첨부 자료 3개"로
+    나오고, 실제로는 1장만 보고 답한 LLM이 나머지 2장까지 "인용"하면
+    그대로 검증을 통과했다. 이 함수로 한 번만 걸러서 프롬프트·첨부·
+    검증이 항상 같은 목록을 보게 한다.
+    """
+
+    return [
+        page
+        for page in pages
+        if (MANUAL_IMAGE_DIR / page.filename).exists()
+    ]
+
+
 def _build_manual_section(pages: List[ManualPage]) -> str:
     if not pages:
         return "[첨부된 매뉴얼 자료]\n(이번 질문엔 첨부된 매뉴얼 자료가 없음 — 법령 전문만 근거로 답할 것)\n"
@@ -135,20 +155,26 @@ def _build_manual_section(pages: List[ManualPage]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _build_user_content(question: str, pages: List[ManualPage]) -> Any:
+def _build_user_content(question: str, attached_pages: List[ManualPage]) -> Any:
     """user_prompt로 넘길 content. 이미지가 없으면 순수 문자열,
     있으면 OpenAI 멀티모달 content 배열([text, image_url, ...])을 만든다.
+
+    attached_pages는 _resolve_attached_pages를 거친, 이미지가 실제로
+    존재하는 페이지만 들어온다고 가정한다 — 여기서 다시 필터링하지
+    않는다(프롬프트·첨부·검증이 같은 목록을 보게 하려는 목적, 모듈
+    docstring 참고).
     """
 
-    if not pages:
+    if not attached_pages:
         return question
 
     content: List[Dict[str, Any]] = [{"type": "text", "text": question}]
 
-    for page in pages:
-        image_path = MANUAL_IMAGE_DIR / page.filename
-        b64 = _encode_image_b64(image_path)
+    for page in attached_pages:
+        b64 = _encode_image_b64(MANUAL_IMAGE_DIR / page.filename)
         if b64 is None:
+            # _resolve_attached_pages를 거쳤으면 보통 일어나지 않지만,
+            # 호출 사이에 파일이 지워지는 등 경합이 생길 수 있어 방어적으로 둔다.
             continue
         content.append(
             {
@@ -157,8 +183,6 @@ def _build_user_content(question: str, pages: List[ManualPage]) -> Any:
             }
         )
 
-    # 선택된 페이지의 이미지 파일을 하나도 못 읽었으면(경로 문제 등)
-    # 텍스트만 보낸다 — 매뉴얼 자료 없이도 법령만으로는 답할 수 있다.
     if len(content) == 1:
         return question
 
@@ -226,16 +250,19 @@ def answer_legal_manual_question(
     """
 
     # law_qa_llm.answer_law_question과 같은 이유로 지연 import —
-    # pii_masking이 끌고 오는 torch·transformers를 torch 없는 환경에서도
-    # 이 파일을 가져올 수 있게(순수 함수 테스트 포함) 늦춘다.
+    # pii_masking·privacy_gateway가 끌고 오는 torch·transformers를 torch
+    # 없는 환경에서도 이 파일을 가져올 수 있게(순수 함수 테스트 포함)
+    # 늦춘다.
     from ai.modeling.abuse.pii_masking import restore_pii
+    from ai.modeling.abuse.privacy_gateway import mask_for_outbound
 
     names = law_names or list(LAW_TARGET_LAWS)
 
     masked_question, entity_map = mask_for_outbound(question)
 
     law_corpus, articles = _build_law_corpus(names)
-    manual_pages = _select_manual_pages(masked_question)
+    candidate_pages = _select_manual_pages(masked_question)
+    manual_pages = _resolve_attached_pages(candidate_pages)
     manual_section = _build_manual_section(manual_pages)
 
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
@@ -256,8 +283,10 @@ def answer_legal_manual_question(
             deadline=deadline,
         )
     except Exception as error:
+        # law_qa_llm.answer_law_question과 같은 이유 — str(error)를
+        # 그대로 답변에 넣지 않는다(민감한 내용 유출 방지).
         return {
-            "answer": f"법령·매뉴얼 질의에 실패했습니다: {error}",
+            "answer": f"법령·매뉴얼 질의에 실패했습니다({type(error).__name__}). 잠시 후 다시 시도해 주세요.",
             "law_names": names,
             "cited_articles": [],
             "manual_references": [],
@@ -268,6 +297,20 @@ def answer_legal_manual_question(
 
     answer_text = str(parsed.get("answer") or "").strip()
     answer_text = restore_pii(answer_text, entity_map)
+
+    # 2026-10-26 민규 교차검증으로 발견: 모듈 docstring은 "참고용으로만
+    # 쓰고 최종 판단은 원본을 봐야 한다는 점을 답변에도 명시한다"고
+    # 돼 있었지만, 실제로는 SYSTEM_PROMPT_TEMPLATE 원칙 4·5가 법률
+    # 자문 질문이거나 확신이 안 설 때만 붙이도록 돼 있어 "늘"이
+    # 아니었다. LLM 프롬프트 준수에 기대는 대신 코드에서 고정 안내를
+    # 항상 붙인다 — 원칙 4·5는 그와 별개로 구체적인 상황별 안내라
+    # 그대로 둔다.
+    if answer_text:
+        answer_text = (
+            f"{answer_text}\n\n"
+            "※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 "
+            "직접 확인하고, 최종 판단은 상담사가 내려야 합니다."
+        )
 
     return {
         "answer": answer_text,
