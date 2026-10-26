@@ -33,7 +33,11 @@ LAW_PORTAL_URL = os.getenv(
     "LAW_PORTAL_URL",
     "https://www.law.go.kr/LSW",
 ).rstrip("/")
-LAW_CACHE_DIR = Path(os.getenv("LAW_CACHE_DIR", BASE_DIR / "law_cache"))
+# 상대경로(.env의 LAW_CACHE_DIR=law_cache 등)는 실행 위치가 아니라 프로젝트
+# 루트 기준으로 푼다 — 다른 폴더에서 실행해도 같은 캐시를 쓰게 하려는 목적.
+LAW_CACHE_DIR = Path(os.getenv("LAW_CACHE_DIR", "law_cache")).expanduser()
+if not LAW_CACHE_DIR.is_absolute():
+    LAW_CACHE_DIR = BASE_DIR / LAW_CACHE_DIR
 LAW_TIMEOUT_SECONDS = int(os.getenv("LAW_TIMEOUT_SECONDS", "15"))
 LAW_CACHE_MAX_AGE_HOURS = int(os.getenv("LAW_CACHE_MAX_AGE_HOURS", "24"))
 LAW_TARGET_LAWS = tuple(
