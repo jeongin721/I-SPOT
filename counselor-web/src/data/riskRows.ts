@@ -1,5 +1,5 @@
 // AI 결과의 위험 관련 항목(risk_utterances · abuse_signals, PROPOSAL_risk_fields.md §7-0 · API_CONTRACT 8절 "위험 3필드 항목 구조")
-// → 위험 신호 검토 화면의 카드와 유형별 줄.
+// → 유형별 위험도 화면의 근거 발화와 유형별 칩.
 //
 //  - Contract 값은 영문 대문자(abuse_type · evidence_strength · detection_source)이고 한글 이름은 여기서만 붙인다
 //    (02_ARCHITECTURE §7). 넷 밖의 유형명이 오면 "기타(값)" 으로 보인다.
@@ -119,6 +119,16 @@ export function positionLabel(evidence: SignalEvidence[]): string {
   return evidence
     .map((item) => (item.found ? [item.startLabel, item.speakerLabel].filter(Boolean).join(" ") : `발화 ${item.segmentId}`))
     .join(" · ");
+}
+
+/**
+ * 아무 항목의 segment_ids(보호요인 · 확인 메모 등) → 근거 줄. 원문을 못 받았으면(segments 가 null) 번호만 남는다.
+ * 위험 신호 카드와 같은 규칙(중복 · 빈 값 · 문자열 아닌 값은 뺀다)이다.
+ */
+export function locateEvidence(ids: unknown, segments: TranscriptSegment[] | null): SignalEvidence[] {
+  const byId = segments ? new Map(segments.map((segment) => [segment.segment_id, segment])) : null;
+
+  return readIds(ids).map((segmentId) => evidenceOf(segmentId, byId));
 }
 
 /**

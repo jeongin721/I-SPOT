@@ -239,11 +239,11 @@ export function noteWriteValues(input: NoteScreenInput) {
   if (!summary.hasSummary && status !== null) {
     if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
     else if (status === "AI_FAILED") {
-      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 위험 신호 검토에서 다시 분석해 주세요.`;
-      summaryLink = { href: signalHref, label: "위험 신호 검토로" };
+      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 유형별 위험도에서 다시 분석해 주세요.`;
+      summaryLink = { href: signalHref, label: "유형별 위험도로" };
     } else {
-      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 위험 신호 검토에서 AI 분석을 요청해 주세요.";
-      summaryLink = { href: signalHref, label: "위험 신호 검토로" };
+      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 유형별 위험도에서 AI 분석을 요청해 주세요.";
+      summaryLink = { href: signalHref, label: "유형별 위험도로" };
     }
   } else if (summary.hasSummary && status === "AI_PROCESSING") {
     summaryNote = "AI 가 다시 분석하는 중입니다. 끝날 때까지 요약을 고칠 수 없습니다.";

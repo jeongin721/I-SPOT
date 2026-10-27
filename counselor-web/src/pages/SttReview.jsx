@@ -3,10 +3,11 @@
 //
 // 서버 연결: 화면 주소 ?case=…&session=…. 원문은 useTranscriptReview, 회차 · 사례 머리는 useSessionDetail · useCaseDetail 이
 // 부르고, 화면에 쓸 값은 src/data/screens/sttReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 변환 중이면 단계 이름(진행률 % 는 Backend 에 없음), 끝나면 발화 줄. 고친 발화만 저장하고 확정한 뒤 위험 신호 검토로 간다.
+// 변환 중이면 단계 이름(진행률 % 는 Backend 에 없음), 끝나면 발화 줄. 고친 발화만 저장하고 확정한 뒤 AI 분석을 요청하고
+// 유형별 위험도로 간다(10/27 디자인, 분석 요청은 useSessionAnalysis).
 // 10/21 디자인(counselor-design/screens/SttReview.dc.html): 제목 옆 '←'(내담자 정보), 시간 단추(다시 듣기 — 준비 중),
 // 화자 고르기 목록, 주소 ?seg=<발화 ID> 가 가리키는 줄 표시 · 스크롤(useSttFocus), 범례,
-// 현재 단계 강조. 단계 이름 · '원문 확정 · 신호 분석' 단추와 그 뒤 흐름은 앱 그대로다(분석 시작 흐름은 팀 결정 전).
+// 현재 단계 강조. 10/27 디자인: 단계 이름 '유형별 위험도', 다음 단추 '원문 확정 · 유형별 위험도 →'(확정 + AI 분석 요청 + 이동).
 // 10/22 디자인: 아래 '위험 신호' 구역을 빼고, '전체 STT' 보기는 일정 높이 상자(.ln-box) 안에서 스크롤하고,
 // 하단 고정 재생 바(SttPlayer — 재생 단추는 준비 중, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
 // 저장 · 확정 단추는 디자인의 다음 단추 자리(STT 카드 아래)에 있다. 디자인의 분석 알림(job-toast)은 앱 전체 작업이라 여기 없다.
@@ -22,6 +23,7 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
+import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useTranscriptReview } from '../data/useTranscriptReview';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -144,8 +146,9 @@ export default function SttReview(props) {
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const review = useTranscriptReview(ids.sessionId, { enabled });
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, review, go, focusSegment });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, review, analysis, go, focusSegment });
   // 주소의 seg, 또는 재생 바 표시를 눌러 고른 줄(v.focusId)로 스크롤한다. 누를 때마다 v.focusRequest 가 바뀐다.
   const focusRef = useSttFocus(ids.sessionId, v.focusId, v.focusRequest);
   // 주소의 seg · 회차가 바뀌면(뒤로 가기 포함) 재생 바 표시로 옮겨 간 줄을 잊는다.
@@ -354,9 +357,20 @@ export default function SttReview(props) {
                 >
                   저장
                 </button>
-                <button type="button" className="btn btn-p" onClick={v.next} disabled={!v.canNext}>
+                <button
+                  type="button"
+                  className="btn btn-p"
+                  onClick={v.next}
+                  disabled={!v.canNext}
+                  title={v.nextHint || undefined}
+                >
                   {v.nextLabel}
                 </button>
+                {v.nextHint ? (
+                  <span className="note" style={{ width: '100%', textAlign: 'right' }}>
+                    {v.nextHint}
+                  </span>
+                ) : null}
               </div>
             </>
           ) : null}
