@@ -154,7 +154,37 @@ class LawQAOutputError(ValueError):
     """
 
 
+class LawQALLMError(RuntimeError):
+    """LLM 호출이 실패했다. 문구는 고정이고 원인 예외의 종류 이름만 싣는다.
+
+    2026-10-27 민규 교차검증: _call_llm_with_retry 는 실패를 RuntimeError("2차 LLM 호출 실패:
+    {SDK 원문}")로 감싸 올리는데, 그 원문에 OpenAI SDK 메시지(요청 URL 등)가 실린다. 예전에는
+    answer_* 가 잡아 종류 이름만 남겼지만 §6-1 로 실패를 예외로 올리면서 원문이 str(error) ·
+    traceback · 부르는 쪽 로그로 나가게 됐다. second_stage_llm 은 분석 파이프라인이 같이 써서
+    건드리지 않고 여기(_call_llm_safely)에서 고정 문구로 바꾸고 체인을 끊는다(from None).
+    """
+
+
 EMPTY_ANSWER_MESSAGE = "법령 질의 답변을 만들지 못했습니다."
+LLM_TIMEOUT_MESSAGE = "법령 질의가 제한 시간 안에 끝나지 않았습니다."
+
+
+def _call_llm_safely(call: Any, **kwargs: Any) -> Any:
+    """call(_call_llm_with_retry)을 부르고, 실패는 문구가 고정된 예외로 바꿔 던진다.
+
+    - TimeoutError(마감 초과)는 종류를 그대로 두고 문구만 고정한다 — 제안서 §3 표에서 AI_TIMEOUT.
+      _call_llm_with_retry 의 TimeoutError 문구에도 SDK 원문이 실린다.
+    - 그 밖은 LawQALLMError("…(종류 이름)"). _call_llm_with_retry 가 감싸 올리면 종류는 RuntimeError 다.
+    두 경우 모두 from None 으로 원인 예외(SDK 원문)를 체인에 남기지 않는다.
+    call 을 인자로 받는 것은 두 모듈이 각자 가져온 _call_llm_with_retry 를 쓰게 하려는 것이다(시험의 바꿔치기).
+    """
+
+    try:
+        return call(**kwargs)
+    except TimeoutError:
+        raise TimeoutError(LLM_TIMEOUT_MESSAGE) from None
+    except Exception as error:  # noqa: BLE001 — 종류 이름만 남기고 고정 문구로 바꾼다
+        raise LawQALLMError(f"법령 질의 LLM 호출 실패({type(error).__name__})") from None
 
 #: 모든 답변 끝에 코드가 붙이는 고정 안내. LLM 프롬프트 준수에 기대지 않는다
 #: (2026-10-26 매뉴얼 질의에 먼저 넣었고, 2026-10-27 민규 교차검증 R3 으로 법령 전용 답변에도).
@@ -179,7 +209,8 @@ def answer_law_question(
     """법령 질문에 조문 근거를 달아 답한다.
 
     반환: {"answer": str, "law_names": [...], "cited_articles": [...]}. answer 는 늘 비어 있지 않다.
-    실패하면 예외를 던진다(LawQAOutputError 참고) — 실패를 answer 에 넣어 돌려주지 않는다.
+    실패하면 예외를 던진다 — TimeoutError · LawQALLMError · LawQAOutputError · LawApiError
+    (_call_llm_safely · LawQAOutputError 참고). 실패를 answer 에 넣어 돌려주지 않는다.
     """
 
     # 2026-10-26 민규 리뷰: restore_pii(pii_masking.py)와
@@ -205,7 +236,8 @@ def answer_law_question(
 
     # 실패는 예외로 올린다(LawQAOutputError docstring, §6-1). 예외 문구에는 OpenAI 인증 실패 메시지 ·
     # 요청 URL 같은 민감한 내용이 섞일 수 있어(2026-10-26 민규 교차검증) 부르는 쪽이 문구를 화면에 내지 않는다.
-    parsed = _call_llm_with_retry(
+    parsed = _call_llm_safely(
+        _call_llm_with_retry,
         client=client,
         model=model,
         system_prompt=system_prompt,
