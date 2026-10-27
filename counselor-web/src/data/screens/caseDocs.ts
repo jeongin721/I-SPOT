@@ -5,7 +5,9 @@
 //  - 기관 서식 6종의 작성 기록 · 상태(서식 구조 · 저장 의미가 팀 결정 전). 서식 이름 · 작성 시점은 매뉴얼 기준이라 그대로 둔다.
 //  - 상담 전 브리핑(다회차 브리핑 저장이 없다), 외부 문서(PDF · HWPX) 올리기 · 열기(첨부 파일 기능이 없다).
 // 10/22 디자인: '초기면접지 (아동용)' 줄의 '열기' 는 사례 상세 안의 초기면접지 화면(CaseIntake — 사례에 저장된 칸을 채워 고침)으로 간다.
-// 그 서식의 작성 기록 · 상태는 여전히 서버에 없어 다른 서식 줄과 같이 '—' · 준비 중으로 둔다.
+// 그 줄만은 사례 값으로 상태를 보인다(2026-10-27): 서식 4 는 새 사례 등록 때 쓰므로 '최근 작성' 은 사례 등록일,
+// 상태는 ② 초기면접 내용(아동 특성 · 가정상황)을 고른 적이 있으면 '작성', 없으면 '기본 정보만'. 따로 저장된 작성 기록은 아니다.
+// 나머지 서식의 작성 기록 · 상태는 여전히 서버에 없어 '—' · 준비 중으로 둔다.
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { CaseDocumentsState, SessionDocs } from "../useCaseDocuments";
@@ -31,7 +33,10 @@ const FORM_PAGES: Record<string, string> = {
   "초기면접지 (아동용)": "/CaseIntake",
 };
 
-/** 「아동학대 대응 업무 매뉴얼」 서식 목록(이름 · 번호 · 작성 시점). 작성 기록은 서버에 없어 모두 준비 중이다. */
+/** 사례 값으로 상태를 보이는 서식(초기면접지). */
+const INTAKE_FORM_NO = "서식 4";
+
+/** 「아동학대 대응 업무 매뉴얼」 서식 목록(이름 · 번호 · 작성 시점). 작성 기록은 서버에 없어 초기면접지 말고는 준비 중이다. */
 const FORMS = [
   ["초기면접지 (아동용)", "서식 4", "사례 등록 · 최초면접"],
   ["사정기록지 · 안전영역", "서식 6", "초기 사정 · 재사정"],
@@ -175,21 +180,24 @@ export function caseDocsValues(input: CaseDocsInput) {
     forms: FORMS.map(([name, no, when]) => {
       const page = FORM_PAGES[name];
       const href: string | null = page && input.caseId ? screenHref(page, { caseId: input.caseId }) : null;
+      const info = detail.caseInfo;
+      const intake = no === INTAKE_FORM_NO && info !== null;
+      const intakeFilled = intake && info.intakeChildTraits.length + info.intakeFamilySituations.length > 0;
 
       return {
         name,
         no,
         when,
-        date: NOT_PROVIDED,
-        st: NOT_READY,
-        stCls: "chip c-normal",
+        date: intake ? info.createdDate : NOT_PROVIDED,
+        st: intake ? (intakeFilled ? "작성" : "기본 정보만") : NOT_READY,
+        stCls: intake ? (intakeFilled ? "chip c-ok" : "chip c-check") : "chip c-normal",
         href,
         go: href ? "열기" : "",
       };
     }),
     formsNote:
-      "초기면접지는 사례에 저장된 칸으로 열어 고칠 수 있습니다. " +
-      `서식 작성 기록 · 상태와 나머지 서식 작성 · 보관은 ${NOT_READY}입니다(서식 구조가 팀 결정 전).`,
+      "초기면접지는 사례 등록 때 쓴 칸으로 상태를 보이고, 열어 고칠 수 있습니다. " +
+      `나머지 서식 작성 기록 · 상태와 작성 · 보관은 ${NOT_READY}입니다(서식 구조가 팀 결정 전).`,
     uploadNote: `지금은 녹음만 올릴 수 있습니다. 외부 문서 올리기는 ${NOT_READY}.`,
   };
 }

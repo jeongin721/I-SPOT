@@ -2,17 +2,28 @@
 //
 // Backend 에 없는 값은 지어내지 않고 '—' 또는 준비 중으로 둔다(specs 대응표 '팀 결정 — 사례 · 개인정보 / AI 신호 · 검수').
 //  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 신고접수일 · 사례연계일 · 아이 앱 · 다음 상담 일정
-//  - 위험도 · 학대 유형 · 주요 키워드, 기관 서식 진행, 종결 검토 등록
+//  - 기관 서식 진행, 종결 검토 등록
 //    (10/21 디자인은 사정결과 줄과 서비스 이행 · 다음 일정 상자를 뺐다)
 //  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약 · 주제 비중 · 회차별 세부 신호
 // 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형(guardian_type)으로 채우지 않는다.
+//
+// 위험도 · 학대 유형 · 주요 키워드(2026-10-27): 사례에 따로 저장된 값이 없어, 분석이 끝난 가장 최근 회차(useCaseSignals)의
+// 값으로 채운다 — 새 API 없음.
+//  - 머리 · 카드의 '위험도': 그 회차에서 상담원이 고른 유형별 판단(상 · 중 · 하) 중 가장 높은 것. 'AI 판단' 이 아니다.
+//    판단이 없으면 '—'. '상담사 지정 · 일시' 는 그 판단을 저장한 일시와 회차.
+//  - 학대 유형: 상담원이 판단을 저장한 유형, 그리고 AI 관련 신호만 있고 아직 판단하지 않은 유형은 '(확인 중)' 을 붙인다
+//    (10/27 디자인의 '방임 (확인 중)'). AI 신호를 판정처럼 보이지 않게 한다(05_RULES §1).
+//  - 주요 키워드: 그 회차 위험 관련 발화의 세부 유형 이름(예: #직접 신체 가해). 디자인의 자유 키워드(#체벌)를 만드는
+//    서버 값은 없어 새로 생성하지 않는다.
 //
 // 탭 1 의 '초기면접 내용' 카드는 디자인에 없는 칸이다(2026-10-20 추가). 사례 등록 ② 탭에서 고른 가정상황 · 아동 특성
 // (서식 4 항목 이름)을 단어로 보이고, '수정' 을 누르면 사례 등록과 같은 고르기 단추로 고쳐 저장한다(PATCH /cases/{id}).
 // 고친 항목은 상담 일지(noteWrite.ts)의 초기면접 항목에 그대로 보인다. ② 탭의 나머지 칸은 여전히 준비 중이라 여기에도 없다.
 
 import { NOT_PROVIDED } from "../caseRows";
+import { ABUSE_TYPES, type AbuseType, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
+import type { CaseSignalsState } from "../useCaseSignals";
 import type { AuthSession } from "../useAuthSession";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
@@ -26,6 +37,58 @@ interface CaseScreenInput {
   session: AuthSession;
   detail: CaseDetailState;
   caseId: string | null;
+  /** 분석이 끝난 가장 최근 회차의 값(useCaseSignals). 없으면 위험도는 '—'. */
+  signals?: CaseSignalsState;
+}
+
+/** 위험도 칩 색(10/27 디자인: 상 c-hi · 중 c-mid · 하 c-lo). 판단 전은 c-normal. */
+const RISK_CHIP: Record<RiskLevel, string> = { HIGH: "c-hi", MEDIUM: "c-mid", LOW: "c-lo" };
+
+/** 학대 유형 짧은 이름(디자인의 칩). */
+const TYPE_SHORT: Record<AbuseType, string> = { PHYSICAL: "신체", EMOTIONAL: "정서", SEXUAL: "성", NEGLECT: "방임" };
+
+/** 키워드 칩 최대 개수. */
+const MAX_KEYWORDS = 5;
+
+/** 주요 위험 요인 카드 값. 분석이 끝난 회차가 없거나 값을 받기 전이면 '—'. */
+export function riskCardValues(signals: CaseSignalsState | undefined) {
+  const dash = NOT_PROVIDED;
+
+  if (!signals || !signals.session) {
+    return { riskBy: dash, abuseTypes: [dash], keywords: [dash], riskNote: "" };
+  }
+
+  const { session, risk } = signals;
+  const assessed = new Set(risk.rows.filter((row) => row.assessed).map((row) => row.abuseType));
+  const flagged = new Set(
+    signals.signals.types.filter((row) => row.state === "signal").map((row) => row.abuseType),
+  );
+  const abuseTypes = ABUSE_TYPES.flatMap((type) => {
+    if (assessed.has(type)) return [TYPE_SHORT[type]];
+    if (flagged.has(type)) return [`${TYPE_SHORT[type]} (확인 중)`];
+    return [];
+  });
+
+  const keywords: string[] = [];
+  for (const card of signals.signals.cards) {
+    const tag = card.subtype ? `#${card.subtype}` : "";
+    if (tag && !keywords.includes(tag)) keywords.push(tag);
+    if (keywords.length >= MAX_KEYWORDS) break;
+  }
+
+  let riskBy = `${session.numberLabel} · 판단 전`;
+  if (signals.topLevelAt) riskBy = `${signals.topLevelAt} · ${session.numberLabel}`;
+
+  let riskNote = "";
+  if (risk.loadError) riskNote = risk.loadError;
+  else if (signals.analysis.error) riskNote = signals.analysis.error;
+
+  return {
+    riskBy,
+    abuseTypes: abuseTypes.length > 0 ? abuseTypes : [dash],
+    keywords: keywords.length > 0 ? keywords : [dash],
+    riskNote,
+  };
 }
 
 /** 주소에 사례 ID 가 없을 때 안내. */
@@ -38,7 +101,8 @@ export const MISSING_CASE = notice("사례가 정해지지 않았습니다. 사�
 const STEP_PAGES = ["/UploadModal", "/SttReview", "/SignalReview", "/NoteWrite", "/FollowupQ"];
 
 /** 사례 상세 탭 공통: 위치 표시 · 머리 · 탭 링크 · 녹취 올리기 링크. */
-export function caseHeaderValues({ session, detail, caseId }: CaseScreenInput) {
+export function caseHeaderValues(input: CaseScreenInput) {
+  const { session, detail, caseId } = input;
   const info = detail.caseInfo;
   const ids = { caseId };
 
@@ -54,7 +118,8 @@ export function caseHeaderValues({ session, detail, caseId }: CaseScreenInput) {
     crumb: info ? `${info.alias} ${info.caseNumber}` : "",
     title: info ? info.alias : "",
     sub: info ? info.birthYearLabel : "",
-    riskChip: `위험도 ${NOT_PROVIDED}`,
+    riskChip: `위험도 ${input.signals?.topLevelLabel || NOT_PROVIDED}`,
+    riskCls: input.signals?.topLevel ? RISK_CHIP[input.signals.topLevel] : "c-normal",
     meta: info ? `${info.caseNumber} · 다음 상담 ${NOT_PROVIDED}` : "",
     uploadHref: screenHref("/UploadModal", ids),
     tabs: {
@@ -230,9 +295,7 @@ export function caseDetailValues(input: CaseDetailInput) {
     basics,
     intake,
     unsaved: intake.unsaved,
-    riskBy: dash,
-    abuseTypes: [dash],
-    keywords: [dash],
+    ...riskCardValues(input.signals),
     latestLabel: latest ? `${latest.numberLabel} · ${latest.statusLabel}` : info ? "회차 없음" : "",
     continueHref: next ? next.href : screenHref("/UploadModal", { caseId: input.caseId }),
     continueLabel: next ? next.label : "녹취 올려 시작하기",

@@ -24,6 +24,7 @@ import { useAudioRecorder } from '../data/useAudioRecorder';
 import { useAudioUpload } from '../data/useAudioUpload';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseSignals } from '../data/useCaseSignals';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -44,8 +45,9 @@ export default function CaseDetail(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
+  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, caseId });
   const [recOpen, setRecOpen] = useState(false);
   const recorder = useAudioRecorder();
   const upload = useAudioUpload();
@@ -108,7 +110,7 @@ export default function CaseDetail(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
                 <span className="sub">{v.sub}</span>
-                <span className="chip c-normal">{v.riskChip}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
               <div className="note">{v.meta}</div>
             </div>
@@ -157,17 +159,22 @@ export default function CaseDetail(props) {
             <section className="card" aria-label="주요 위험 요인" style={{ padding: '22px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h2 className="h2">주요 위험 요인</h2>
-                <span className="chip c-normal" style={{ marginLeft: 'auto' }}>
+                <span className={`chip ${v.riskCls}`} style={{ marginLeft: 'auto' }}>
                   {v.riskChip}
                 </span>
               </div>
               <div className="note" style={{ marginTop: '4px', textAlign: 'right' }}>
                 상담사 지정 · {v.riskBy}
               </div>
+              {v.riskNote ? (
+                <div className="note" role="alert" style={{ marginTop: '4px', color: '#A33B2E' }}>
+                  {v.riskNote}
+                </div>
+              ) : null}
               <div className="note" style={{ marginTop: '10px' }}>
                 학대 유형
               </div>
-              <div style={{ margin: '6px 0 16px', display: 'flex', gap: '6px' }}>
+              <div style={{ margin: '6px 0 16px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {(v.abuseTypes || []).map((t, tIndex) => (
                   <span key={tIndex} className="chip c-normal">
                     {t}

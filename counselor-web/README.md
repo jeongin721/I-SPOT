@@ -2,7 +2,7 @@
 
 아동보호전문기관 상담원용 웹 화면입니다. 디자인 캔버스에서 함께 만든 26개 화면을 **React + Vite** 코드로 옮겼습니다.
 모든 화면은 예시(가상) 데이터로 동작하며, 버튼 · 탭 · 체크 · 수정 등 화면 안의 동작은 실제로 눌러 볼 수 있습니다.
-**로그인 · 홈 · 통합 사례 관리 · 새 사례 등록 · 사례 상세(내담자 정보 · 상담 이력 · 문서함) · 회차 상세 · 녹취 올리기 · STT 검수 · 유형별 위험도 · 요약 · 일지 작성 · 추가 확인 · 질문(AI 확인 메모) · 일정 · 종결 검토 목록 · 통계 · 설정 · 관리자 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
+**로그인 · 홈 · 통합 사례 관리 · 새 사례 등록 · 사례 상세(내담자 정보 · 상담 이력 · 상담 전 브리핑 · 문서함) · 회차 상세 · 녹취 올리기 · STT 검수 · 유형별 위험도 · 요약 · 일지 작성 · 추가 확인 · 질문(AI 확인 메모) · 일정 · 종결 검토 목록 · 통계 · 설정 · 관리자 화면은 Backend 와 연결돼 있습니다**(아래 "서버 연결"). 나머지 화면은 아직 예시 데이터입니다.
 
 ## 실행
 
@@ -32,6 +32,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 홈 | `useHomeDashboard` | 진행 중 사례 수, 미처리 업무(종류별 수 · 지연 · 오래 기다린 3건). 관리자는 전체 사례 · 모든 상담사의 업무 |
 | 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색 |
 | 새 사례 등록 | `useCaseRegister` | 서버가 받는 칸만 등록(`toCaseCreateRequest` 로 확인 · 변환). 관리자면 담당 상담사로 고를 활성 계정 목록도 부름. 한 번 만들면 다시 보내지 않음 |
+| 사례 상세 위험도 · 확인 메모 | `useCaseSignals` | 분석이 끝난 가장 최근 회차(결과 검수 중 · 승인 완료) 하나의 상담원 판단(risk-assessments) · AI 관련 신호 · 확인 메모. 내담자 정보의 주요 위험 요인 · 사례 머리 위험도 · 상담 전 브리핑 확인할 사항이 쓴다(새 API 없음) |
 | 사례 상세 · 상담 이력 | `useCaseDetail` · `sessionRows` | 사례 정보와 회차 목록. 처리 중인 회차가 있으면 끝날 때까지 다시 조회. 초기면접 아동 특성 · 가정상황 고치기(`saveIntake`, PATCH `/cases/{id}` 로 두 목록을 통째로) |
 | 일정 · 종결 검토 목록 · 통계 | `useCaseOverview` | 볼 수 있는 사례를 모두(100건씩 쪽마다) 모으고, 사례마다 회차 목록(`"sessions"`) 또는 회차 수만(`"counts"`) 부름(한 번에 4사례씩, 사례 2,000건 · 사례당 회차 1,000개까지). 집계 API 는 없음 |
 | 사례 문서함 | `useCaseDocuments` | 사례의 회차마다 회차 상세(녹음 · 원문 상태) + 문서 목록을 모음(한 번에 4회차씩). 사례 단위 문서 API 는 없음 |
@@ -77,7 +78,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 - 읽기는 `readScreenIds(useSearchParams()[0])`, 만들기는 `screenHref('/SessionDetail', { caseId, sessionId })`(`src/data/screens/links.ts`). 주소 문자열을 직접 이어 붙이지 않습니다.
 - 회차 화면은 `session` 만 있어도 됩니다. 사례는 회차 정보에서 찾고, 주소의 `case` 와 다르면 회차 쪽을 씁니다. 링크를 만들 때는 아는 ID 를 모두 넣습니다.
 - 필요한 ID 가 없거나 없는 사례 · 회차면 화면 위에 안내와 돌아갈 링크를 보입니다(`screenNotice` → `components/Notice.jsx`).
-- 아직 예시 데이터인 화면(상담 전 브리핑, 아이 연계, 서식)도 들어올 때 받은 ID 를 다음 화면 링크에 넘깁니다:
+- 아직 예시 데이터인 화면(아이 연계, 서식)도 들어올 때 받은 ID 를 다음 화면 링크에 넘깁니다:
   `const carry = useCarryHref();` → `<A to={carry('/NoteWrite')}>`(`src/data/useCarryHref.ts`). 회차 ID 는 회차 화면으로 갈 때만 넘깁니다
   (녹취 올리기에 회차 ID 가 붙으면 '그 회차에 이어 올리기'가 됩니다). 예시 화면을 연결된 화면 사이에 새로 둘 때도 이렇게 합니다.
 
@@ -113,6 +114,7 @@ export default function CaseDetail(props) {
 | 새 사례 등록 | `CaseRegister.jsx` | — | `useAuthSession` · `useCaseRegister` | `caseRegister.ts` `caseRegisterValues` |
 | 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseDetailValues` |
 | 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
+| 사례 상세 · 상담 전 브리핑 | `PreBriefing.jsx` | `case` | `useCaseDetail` · `useCaseSignals` | `preBriefing.ts` `preBriefingValues` |
 | 사례 상세 · 문서함 | `CaseDocs.jsx` | `case` | `useCaseDetail` · `useCaseDocuments` | `caseDocs.ts` `caseDocsValues` |
 | 사례 상세 · 초기면접지 | `CaseIntake.jsx` | `case` | `useCaseDetail`(`saveCase`) · `useIntakeCounselors` | `caseIntake.ts` `caseIntakeValues` |
 | 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
@@ -265,7 +267,7 @@ export default function Page(props) {
 | `/#/CaseDetail` | `src/pages/CaseDetail.jsx` | 탭 1 · 내담자 정보 + 기관 서식 + 종결 검토 등록 |
 | `/#/CaseHistory` | `src/pages/CaseHistory.jsx` | 탭 2 · 상담 이력 (① 지금까지 상담 → ② 상담 회차 → ③ 회차별 세부 신호) |
 | `/#/SessionDetail` | `src/pages/SessionDetail.jsx` | 탭 2 › 회차 상세 (1~4단계 처리로 바로 가기) |
-| `/#/PreBriefing` | `src/pages/PreBriefing.jsx` | 탭 3 · 상담 전 브리핑 (+ 신변안전 확인) |
+| `/#/PreBriefing` | `src/pages/PreBriefing.jsx` | 탭 3 · 상담 전 브리핑 |
 | `/#/CaseApp` | `src/pages/CaseApp.jsx` | 내담자 정보 › 아이 연계 (아이 상세와 같은 화면, 탭 없음) |
 | `/#/CaseDocs` | `src/pages/CaseDocs.jsx` | 탭 4 · 문서함 (기관 서식 6종 + 파일) |
 | `/#/CaseIntake` | `src/pages/CaseIntake.jsx` | 탭 4 › 초기면접지 (서식 4, 사례 값 채움 · 서버가 받는 칸 저장) |
