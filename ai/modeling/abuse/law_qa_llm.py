@@ -156,6 +156,17 @@ class LawQAOutputError(ValueError):
 
 EMPTY_ANSWER_MESSAGE = "법령 질의 답변을 만들지 못했습니다."
 
+#: 모든 답변 끝에 코드가 붙이는 고정 안내. LLM 프롬프트 준수에 기대지 않는다
+#: (2026-10-26 매뉴얼 질의에 먼저 넣었고, 2026-10-27 민규 교차검증 R3 으로 법령 전용 답변에도).
+REFERENCE_NOTICE = (
+    "※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 "
+    "직접 확인하고, 최종 판단은 상담사가 내려야 합니다."
+)
+
+
+def with_reference_notice(answer_text: str) -> str:
+    return f"{answer_text}\n\n{REFERENCE_NOTICE}"
+
 
 def answer_law_question(
     client: OpenAI,
@@ -211,7 +222,7 @@ def answer_law_question(
     if not answer_text:
         raise LawQAOutputError(EMPTY_ANSWER_MESSAGE)
 
-    answer_text = restore_pii(answer_text, entity_map)
+    answer_text = with_reference_notice(restore_pii(answer_text, entity_map))
 
     return {
         "answer": answer_text,
