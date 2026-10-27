@@ -79,7 +79,13 @@ def _clean_points(
     valid_segment_ids: set,
 ) -> List[Dict[str, Any]]:
     """followup_check_llm._clean_points와 같은 검증 — 실제 segment에 있는
-    번호만 남기고, 근거가 하나도 없는 항목은 뺀다."""
+    번호만 남기고, 근거가 하나도 없는 항목은 뺀다.
+
+    segment_ids가 list가 아니면(5 · true · {"seg_001": true}) 그 항목만
+    버린다. 이 호출은 _call_llm_with_retry의 try 바깥이라 여기서 TypeError가
+    나면 회차 분석 전체가 AI_FAILED가 된다(2026-10-27 민규 교차검증,
+    followup_check_llm 915b4e6과 같은 수정). bool은 int의 하위형이라 따로 뺀다.
+    """
 
     if not isinstance(raw_points, list):
         return []
@@ -95,10 +101,15 @@ def _clean_points(
         if not isinstance(text, str) or not text.strip():
             continue
 
+        raw_segment_ids = item.get("segment_ids")
+
+        if not isinstance(raw_segment_ids, list):
+            continue
+
         segment_ids = [
             str(sid)
-            for sid in (item.get("segment_ids") or [])
-            if isinstance(sid, (str, int))
+            for sid in raw_segment_ids
+            if isinstance(sid, (str, int)) and not isinstance(sid, bool)
             and str(sid) in valid_segment_ids
         ]
 

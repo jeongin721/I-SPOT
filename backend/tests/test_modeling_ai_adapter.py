@@ -477,6 +477,22 @@ def test_summary_assessment_is_empty_when_module_omits_it(modeling) -> None:
     assert set(assessment) == {"safety_changes", "strengths_resources", "safety_risks", "desired_changes"}
 
 
+def test_malformed_assessment_evidence_does_not_fail_analysis(modeling) -> None:
+    """4칸 근거 번호가 목록이 아니어도(숫자 · dict · 불리언) 분석은 성공하고 그 번호만 빠진다(민규 교차검증 2026-10-27)."""
+
+    result = _native_result()
+    result["record_draft"]["narrative_summary"]["strengths_citations"] = 5
+    result["record_draft"]["narrative_summary"]["risks_citations"] = {"seg_002": True}
+    result["desired_changes"] = {"text": "가상 원하는 변화", "segment_ids": [True, "seg_002"]}
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    assert assessment["strengths_resources"] == {"text": "가상 강점 문단", "segment_ids": []}
+    assert assessment["safety_risks"] == {"text": "가상 위험 문단", "segment_ids": []}
+    assert assessment["desired_changes"] == {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]}
+
+
 def test_module_only_fields_do_not_leak(modeling) -> None:
     """Contract 의 10개 키만 남고, 모듈만 쓰는 값(전체 원문 · 일지 본문 · 체크리스트)은 결과에 새지 않는다."""
 

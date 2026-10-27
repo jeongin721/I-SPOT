@@ -165,10 +165,13 @@ def _evidence_strength(value: Any) -> str:
 
 
 def _assessment_field(text: Any, segment_ids: Any) -> Dict[str, Any]:
+    # 목록이 아닌 근거 번호(숫자 · dict 등)는 버린다 — 여기서 TypeError 가 나면 분석 전체가 실패한다.
+    ids = segment_ids if isinstance(segment_ids, list) else []
+
     return {
         "text": text.strip() if isinstance(text, str) else "",
         "segment_ids": [
-            str(sid) for sid in (segment_ids or []) if isinstance(sid, (str, int))
+            str(sid) for sid in ids if isinstance(sid, (str, int)) and not isinstance(sid, bool)
         ],
     }
 

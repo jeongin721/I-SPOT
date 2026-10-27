@@ -18,6 +18,27 @@ def test_clean_points_keeps_only_valid_segment_ids():
     assert cleaned == [{"text": "할머니 집에 가고 싶다고 말함.", "segment_ids": ["seg_015"]}]
 
 
+def test_clean_points_drops_item_with_non_list_segment_ids_but_keeps_others():
+    # 2026-10-27 민규 교차검증: segment_ids 가 목록이 아니면 TypeError 로 회차 분석 전체가 실패했다
+    # (followup_check_llm 915b4e6 과 같은 버그). 그 항목만 버리고 나머지는 남아야 한다.
+    # dict 는 돌면 키만 나와 목록처럼 통과하면 안 되고, true 는 int 의 하위형이라 번호로 쓰면 안 된다.
+    cleaned = _clean_points(
+        [
+            {"text": "정상 항목", "segment_ids": ["seg_001"]},
+            {"text": "숫자형", "segment_ids": 5},
+            {"text": "불리언", "segment_ids": True},
+            {"text": "dict형", "segment_ids": {"seg_002": True}},
+            {"text": "목록 안 불리언", "segment_ids": [True, "seg_002"]},
+        ],
+        {"seg_001", "seg_002", "True"},
+    )
+
+    assert cleaned == [
+        {"text": "정상 항목", "segment_ids": ["seg_001"]},
+        {"text": "목록 안 불리언", "segment_ids": ["seg_002"]},
+    ]
+
+
 def test_join_points_merges_text_and_unique_ids_in_order():
     joined = join_points(
         [
