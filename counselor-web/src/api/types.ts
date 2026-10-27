@@ -560,7 +560,8 @@ export type SummaryAssessment = Record<SummaryAssessmentKey, SummaryAssessmentFi
 // 서버는 값이 없으면 빈 배열로 준다. 모두 AI 제안이고 판단은 상담원이 한다.
 // 근거 없는 항목을 서버가 빼지 않으므로 segment_ids 는 빈 배열일 수 있다. 근거 위치가 있으면 함께 보여 주고(README "지켜야 할
 // 원칙" 3번), 빈 항목을 어떻게 보일지는 필드마다 정한다: severity_ratings 는 level · reason · matched_evidence 만 쓰고 근거 발화는
-// 같은 유형 risk_utterances 로, followup_check_points 는 "근거 위치 없음" 을 밝히고 보인다(10/26). protective_factors ·
+// 같은 유형 risk_utterances 로, followup_check_points 는 segment_ids 가 있으면 원문 위치로 · 없으면(옛 결과) "근거 위치 없음" 으로
+// 보인다(10/26 · 10/27). protective_factors ·
 // session_change_notes 는 아직 정하지 않았다(화면에 안 보임).
 
 /** 학대 유형별 심각도 참고값. 판정이 아니다. */
@@ -590,9 +591,10 @@ export interface SessionChangeNote {
 
 /**
  * 다음에 확인할 점에 대한 AI 확인 메모. 질문 은행의 질문이 아니다.
- * 유형별 위험도 화면의 '다음 상담에서 확인할 것' 카드가 'AI 확인 메모 · 질문 아님' 으로 읽기 전용 표시한다
- * (2026-10-26 결정: 메모로만 보이면 원칙 7번(추가 질문은 질문 은행에서만)과 어긋나지 않는다). 아이에게 할 질문으로 보여 주지 않는다.
- * segment_ids 는 지금 서버가 늘 빈 배열로 보낸다(API_CONTRACT 8절 선택 필드).
+ * '추가 확인 · 질문' 화면의 '다음 상담 전 확인할 사항'(10/26 에는 유형별 위험도 카드)이 'AI 확인 메모 · 질문 아님' 으로
+ * 읽기 전용 표시한다(2026-10-26 결정: 메모로만 보이면 원칙 7번(추가 질문은 질문 은행에서만)과 어긋나지 않는다).
+ * 아이에게 할 질문으로 보여 주지 않는다. segment_ids 는 2026-10-27(#84)부터 modeling 이 채우고(근거 없는 메모는 모델이 뺌),
+ * 그 전 결과는 빈 배열이다(API_CONTRACT 8절 선택 필드).
  */
 export interface FollowupCheckPoint {
   text: string;

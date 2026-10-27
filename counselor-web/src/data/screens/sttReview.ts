@@ -90,7 +90,10 @@ export function lawsBySegment(utterances: RiskUtterance[]): Map<string, LawLine[
       const lines = bySegment.get(segmentId) ?? [];
 
       for (const reference of references) {
-        const art = [reference.article, reference.item_label].filter(Boolean).join(" ");
+        // item_label 은 Contract 상 문자열이지만 Backend 가 risk_utterances 의 중첩 값을 검사하지 않아 잘못 저장된 결과에서는
+        // 객체가 올 수 있다(교차검증 #87 L1: 그대로 join 하면 화면 전체가 멈춤). 문자열이 아니면 호 표시를 비운다.
+        const itemLabel = typeof reference.item_label === "string" ? reference.item_label : "";
+        const art = [reference.article, itemLabel].filter(Boolean).join(" ");
         const key = `${sig}|${reference.law_name}|${art}`;
         if (lines.some((line) => line.key === key)) continue;
 

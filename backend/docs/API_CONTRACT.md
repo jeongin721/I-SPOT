@@ -987,8 +987,10 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 모두 **선택**이라 AI 가 보내지 않으면 빈 배열(`[]`)이 된다. `schema_version` 은 `"1.0"` 그대로이고,
 이 필드가 생기기 전에 저장된 결과도 그대로 읽힌다(응답에는 빈 배열로 나온다).
 지금 `mock` · `pipeline` · `langgraph` 는 이 필드를 만들지 않아 모두 빈 배열이다.
-`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). 지금은 `severity_ratings` · `session_change_notes` · `followup_check_points` 의
-`segment_ids` 가 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 도 늘 빈 배열이다.
+`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). `severity_ratings` · `session_change_notes` 의 `segment_ids` 는
+아직 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 자체도 늘 빈 배열이다.
+`followup_check_points[].segment_ids` 는 2026-10-27(#84)부터 `modeling` 이 채운다 — LLM 이 인용한 발화 번호를 실제 발화 목록과
+대조해 남기고, 유효한 근거가 하나도 없는 메모는 모델 쪽에서 뺀다. 그 전에 저장된 결과는 빈 배열이다.
 
 | 필드 | 항목 모양 | 설명 |
 | --- | --- | --- |
@@ -1029,9 +1031,10 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
   화면에서는 "AI 제안" · "상담사 검토 필요" 로 표시하고 "위험 확정" 같은 표현은 쓰지 않는다(아래 "표현 주의").
 - `followup_check_points` 는 **질문 은행의 질문이 아니라** AI 가 남긴 확인 메모다.
   화면 원칙 7번("추가 질문은 질문 은행에서만 제안")과의 관계는 2026-10-26 에 정했다: **메모로만 보이면 원칙 7번과
-  어긋나지 않는다.** 유형별 위험도 화면의 '다음 상담에서 확인할 것' 카드가 "AI 확인 메모 · 질문 아님" 으로 읽기 전용
-  표시하고(`counselor-web` `screens/riskProfile.ts`), 아이에게 할 질문으로 보이거나 질문 은행 문항과 잇지는 않는다.
-  `segment_ids` 가 비어 오는 동안은 항목마다 "근거 위치 없음" 을 적는다(채워 오면 발화 번호를 그대로 적는다).
+  어긋나지 않는다.** '추가 확인 · 질문' 화면의 '다음 상담 전 확인할 사항'(10/26 에는 유형별 위험도 카드, 10/27 디자인에서 옮김)이
+  "AI 확인 메모 · 질문 아님" 으로 읽기 전용 표시하고(`counselor-web` `screens/followupQ.ts`), 아이에게 할 질문으로 보이거나
+  질문 은행 문항과 잇지는 않는다. `segment_ids` 가 있으면 원문 위치(몇 분 · 누구)로 보이고, 옛 결과처럼 비어 있으면
+  항목마다 "근거 위치 없음" 을 적는다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
