@@ -288,6 +288,67 @@ section[aria-label="폴더"]{max-width:none !important}
 [style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
 [style*="border-radius: 16px"]{border-radius:12px !important}
 @media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+/* 회원가입 단계형 팝업 */
+.sf-ov{position:absolute;inset:0;z-index:10;background:rgba(43,42,38,.40);display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
+.sf-dlg{width:100%;max-width:440px;min-height:520px;display:flex;flex-direction:column;gap:22px;padding:34px 32px 28px;border:1px solid #E2DED3;border-radius:14px;box-shadow:0 20px 60px rgba(43,42,38,.22);color:#2B2A26;animation:sfPop .25s ease}
+.sf-dlg.sf-small{min-height:0;align-items:center;gap:16px;max-width:380px}
+@keyframes sfPop{from{opacity:0;transform:translateY(8px) scale(.98)}}
+.sf-top{display:flex;align-items:flex-start;gap:12px}
+.sf-title{flex:1;margin:0;font-size:22px;font-weight:700;line-height:1.4}
+.sf-x{width:36px;height:36px;border:0;border-radius:9px;background:#F7F6F2;color:#2B2A26;font:inherit;font-size:18px;cursor:pointer;flex:none}
+.sf-body{flex:1;display:flex;flex-direction:column;gap:20px}
+.sf-row{animation:sfIn .38s cubic-bezier(.2,.7,.2,1)}
+@keyframes sfIn{from{opacity:0;transform:translateY(-10px);max-height:0}to{opacity:1;transform:none;max-height:160px}}
+.sf-f{display:flex;flex-direction:column;gap:4px}
+.sf-lb{font-size:12.5px;color:#7A776F}
+.sf-note{font-size:11.5px;color:#98948B;margin-left:4px}
+.sf-f input{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid #E2DED3;border-radius:0 !important;background:transparent;padding:6px 0 10px;font:inherit;font-size:18px;color:#2B2A26;outline:none}
+.sf-f.on input{border-bottom:2px solid #C2A36B}
+.sf-f input:focus{border-bottom:2px solid #C2A36B}
+.sf-f.lock input,.sf-f input[readonly]{color:#7A776F;cursor:not-allowed}
+.sf-sex{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
+.sf-sex button{height:46px;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;font:inherit;font-size:16px;color:#2B2A26;cursor:pointer}
+.sf-sex button.on{background:#2B2A26;border-color:#2B2A26;color:#EADBB5;font-weight:700}
+.sf-sub{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:13px;color:#66625A}
+.sf-time{font-weight:700;color:#A33B2E;font-variant-numeric:tabular-nums}
+.sf-time.out{color:#98948B}
+.sf-mini{height:32px;padding:0 12px;border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;font:inherit;font-size:13px;color:#2B2A26;cursor:pointer}
+.sf-err{margin:6px 0 0;font-size:12px;color:#A33B2E}
+.sf-next{width:100%;height:52px;border:0;border-radius:10px;background:#F2EFE8;color:#A8A296;font:inherit;font-size:16px;font-weight:700;cursor:default}
+.sf-next.on{background:#2B2A26;color:#EADBB5;cursor:pointer}
+.sf-btns{display:flex;gap:10px}
+.sf-btns .sf-next{flex:1}
+.sf-cancel{flex:1;height:52px;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;font:inherit;font-size:16px;font-weight:600;color:#2B2A26;cursor:pointer}
+.sf-check{width:52px;height:52px;border-radius:50%;background:#F1EADA;color:#2B2A26;display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:700}
+.thm-root.dark .sf-dlg{border-color:#45423B;color:#ECE8DF}
+.thm-root.dark .sf-x{background:#33312C;color:#ECE8DF}
+.thm-root.dark .sf-f input{color:#ECE8DF;border-bottom-color:#4E4B44}
+.thm-root.dark .sf-f.on input,.thm-root.dark .sf-f input:focus{border-bottom-color:#EADBB5}
+.thm-root.dark .sf-lb{color:#A8A296}
+.thm-root.dark .sf-sex button,.thm-root.dark .sf-mini,.thm-root.dark .sf-cancel{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .sf-sex button.on{background:#EADBB5;border-color:#EADBB5;color:#2B2A26}
+.thm-root.dark .sf-next{background:#33312C;color:#7A776F}
+.thm-root.dark .sf-next.on{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .sf-check{background:#3F3729;color:#EADBB5}
+.thm-root.dark .sf-time{color:#F0907F}
+.thm-root.dark .sf-err{color:#F0907F}
+.sf-mail{display:flex;align-items:flex-end;gap:8px}
+.sf-mail input{flex:1;min-width:0}
+.sf-get{flex:none;height:36px;margin-bottom:6px;padding:0 12px;border:1px solid #DAD5C9;border-radius:8px;background:#F2EFE8;color:#A8A296;font:inherit;font-size:13px;font-weight:700;cursor:default;white-space:nowrap}
+.sf-get.on{background:#2B2A26;border-color:#2B2A26;color:#EADBB5;cursor:pointer}
+.sf-rule{display:inline;margin-left:6px;font-size:11.5px;line-height:1.5;color:#98948B}
+.thm-root.dark .sf-get{background:#33312C;border-color:#4E4B44;color:#7A776F}
+.thm-root.dark .sf-get.on{background:#EADBB5;border-color:#EADBB5;color:#2B2A26}
+.sf-ov2{z-index:12;background:rgba(43,42,38,.30)}
+.sf-warn{background:#F7E4DF;color:#A33B2E}
+.thm-root.dark .sf-warn{background:#4A2F2A;color:#F0907F}
+.sf-pw{position:relative;display:flex;align-items:center}
+.sf-pw input{padding-right:40px !important}
+.sf-pw input::-ms-reveal,.sf-pw input::-ms-clear{display:none}
+.sf-eye{position:absolute;right:0;top:50%;transform:translateY(-55%);width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:#66625A;cursor:pointer;padding:0}
+.sf-eye:hover{background:#F2EFE8;color:#2B2A26}
+.thm-root.dark .sf-eye{color:#BDB7AA}
+.thm-root.dark .sf-eye:hover{background:#33312C;color:#ECE8DF}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 720px; background: #F2F2F0; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; align-items: center; justify-content: center; padding: 48px 24px; position: relative;">
@@ -301,17 +362,69 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}"><p class="lb" role="status" style="margin: -6px 0 0; font-weight: 400; text-align: center;">회원가입 인증이 완료됐어요. 로그인해 주세요.</p></sc-if>
 <div role="group" aria-label="로그인 유형" class="lseg"><sc-for list="{{ roles }}" as="r" hint-placeholder-count="2"><button type="button" class="{{ r.cls }}" aria-pressed="{{ r.pressed }}" onClick="{{ r.pick }}">{{ r.label }}</button></sc-for></div>
 </form>
-<sc-if value="{{ codeOpen }}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; inset: 0; z-index: 10; background: rgba(43,42,38,.40); display: flex; align-items: center; justify-content: center; padding: 24px;">
-<section role="dialog" aria-modal="true" aria-labelledby="code-title" style="width: 100%; max-width: 400px; background: #FFFFFF; border: 1px solid #E2DED3; border-radius: 24px; box-shadow: 0 20px 60px rgba(43,42,38,.22); padding: 30px 30px 26px; display: flex; flex-direction: column; gap: 16px;">
-<div><h2 id="code-title" style="margin: 0; font-size: 20px; font-weight: 700;">회원가입 인증번호 입력</h2><p class="lb" style="margin: 6px 0 0; font-weight: 400; line-height: 1.6;"><b style="font-weight: 700;">{{ email }}</b> 로 회원가입 인증번호 6자리를 보냈어요. 메일에서 확인 후 입력해 주세요.</p></div>
-<label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">인증번호</span><input class="inp" type="text" inputmode="numeric" maxlength="6" placeholder="6자리 숫자" value="{{ code }}" onChange="{{ setCode }}" style="letter-spacing: .2em; font-size: 18px; text-align: center;"></label>
-<div style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><span class="lb" style="font-weight: 400; flex: 1;">{{ sentNote }}</span><button type="button" class="btn btn-s" onClick="{{ resend }}" style="min-height: 34px; padding: 0 14px; font-size: 13px;">다시 보내기</button></div>
-<div style="display: flex; gap: 10px;">
-<button type="button" class="btn btn-s" onClick="{{ closeCode }}" style="flex: 1;">취소</button>
-<sc-if value="{{ codeOk }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-p" onClick="{{ confirmCode }}" style="flex: 1;">확인</button></sc-if>
-<sc-if value="{{ codeWait }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn btn-p" disabled="{{ true }}" style="flex: 1; opacity: .45; cursor: default;">확인</button></sc-if>
+<sc-if value="{{ suStep1 }}" hint-placeholder-val="{{ false }}">
+<div class="sf-ov">
+<section role="dialog" aria-modal="true" aria-labelledby="su-title" class="sf-dlg" style="background: #FFFFFF;">
+<div class="sf-top"><h2 id="su-title" class="sf-title" aria-live="polite">{{ suTitle }}</h2><button type="button" class="sf-x" aria-label="닫기" onClick="{{ suClose }}">×</button></div>
+<div class="sf-body">
+<sc-if value="{{ suShowCode }}" hint-placeholder-val="{{ false }}"><div class="sf-row">
+<label class="sf-f on"><span class="sf-lb">인증번호</span><input type="text" inputmode="numeric" maxlength="6" placeholder="6자리 숫자" value="{{ suCode }}" onChange="{{ suSetCode }}" aria-label="인증번호" style="letter-spacing: .2em;"></label>
+<div class="sf-sub"><span class="{{ suTimerCls }}">{{ suTimer }}</span><span style="flex: 1;">{{ suSentNote }}</span><button type="button" class="sf-mini" onClick="{{ suResend }}">다시 보내기</button></div>
+</div></sc-if>
+<sc-if value="{{ suShowEmail }}" hint-placeholder-val="{{ false }}"><div class="sf-row">
+<div class="sf-f {{ suEmailCls }}"><span class="sf-lb">이메일</span><div class="sf-mail"><input type="email" placeholder="name@기관.kr" value="{{ suEmail }}" onChange="{{ suSetEmail }}" readonly="{{ suEmailLock }}" aria-label="이메일"><sc-if value="{{ suSendOn }}" hint-placeholder-val="{{ false }}"><button type="button" class="sf-get on" onClick="{{ suResend }}">인증번호 받기</button></sc-if><sc-if value="{{ suSendOff }}" hint-placeholder-val="{{ true }}"><button type="button" class="sf-get" disabled="{{ true }}">{{ suSendLabel }}</button></sc-if></div></div>
+</div></sc-if>
+<sc-if value="{{ suShowSex }}" hint-placeholder-val="{{ false }}"><div class="sf-row">
+<div class="sf-f {{ suSexCls }}"><span class="sf-lb">성별</span><div class="sf-sex" role="radiogroup" aria-label="성별"><sc-for list="{{ suSexOpts }}" as="o" hint-placeholder-count="2"><button type="button" role="radio" aria-checked="{{ o.on }}" class="{{ o.cls }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></div></div>
+</div></sc-if>
+<sc-if value="{{ suShowBirth }}" hint-placeholder-val="{{ false }}"><div class="sf-row">
+<label class="sf-f {{ suBirthCls }}"><span class="sf-lb">생년월일</span><input type="text" inputmode="numeric" maxlength="8" placeholder="예: 19990919" value="{{ suBirth }}" onChange="{{ suSetBirth }}" aria-label="생년월일 8자리"></label>
+<sc-if value="{{ suBirthBad }}" hint-placeholder-val="{{ false }}"><p class="sf-err">올바른 날짜가 아닙니다.</p></sc-if>
+</div></sc-if>
+<div class="sf-row">
+<label class="sf-f {{ suNameCls }}"><span class="sf-lb">이름</span><input type="text" placeholder="이름" value="{{ suName }}" onChange="{{ suSetName }}" aria-label="이름"></label>
 </div>
+</div>
+<sc-if value="{{ suNextOn }}" hint-placeholder-val="{{ false }}"><button type="button" class="sf-next on" onClick="{{ suNext }}">다음</button></sc-if>
+<sc-if value="{{ suNextOff }}" hint-placeholder-val="{{ true }}"><button type="button" class="sf-next" disabled="{{ true }}">다음</button></sc-if>
+</section>
+<sc-if value="{{ suWrong }}" hint-placeholder-val="{{ false }}"><div class="sf-ov sf-ov2">
+<section role="alertdialog" aria-modal="true" aria-labelledby="su-wrong" class="sf-dlg sf-small" style="background: #FFFFFF;">
+<span class="sf-check sf-warn" aria-hidden="true">!</span>
+<h2 id="su-wrong" class="sf-title" style="text-align: center;">인증번호가 틀렸습니다.</h2>
+<button type="button" class="sf-next on" onClick="{{ suWrongOk }}">확인</button>
+</section>
+</div></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ suStep2 }}" hint-placeholder-val="{{ false }}">
+<div class="sf-ov">
+<section role="dialog" aria-modal="true" aria-labelledby="su2-title" class="sf-dlg" style="background: #FFFFFF;">
+<div class="sf-top"><h2 id="su2-title" class="sf-title">계정 정보를 입력하세요.</h2><button type="button" class="sf-x" aria-label="닫기" onClick="{{ suClose }}">×</button></div>
+<div class="sf-body sf-down">
+<label class="sf-f"><span class="sf-lb">이름</span><input type="text" placeholder="이름" value="{{ suName2 }}" onChange="{{ suSetName2 }}" aria-label="이름"></label>
+<label class="sf-f lock"><span class="sf-lb">아이디 <span class="sf-note">인증한 이메일 · 변경 불가</span></span><input type="text" value="{{ suEmail }}" readonly="{{ true }}" aria-readonly="true" aria-label="아이디"></label>
+<div><div class="sf-f"><label class="sf-lb" for="su-pw">비밀번호 <span class="sf-rule">8~16자의 영문 대소문자, 숫자, 특수문자 포함</span></label><div class="sf-pw"><input id="su-pw" type="{{ suPwType }}" value="{{ suPw }}" onChange="{{ suSetPw }}" maxlength="16"><button type="button" class="sf-eye" aria-label="{{ suPwEyeLab }}" title="{{ suPwEyeLab }}" aria-pressed="{{ suPwShowP }}" onClick="{{ suPwToggle }}"><sc-if value="{{ suPwShow }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.1 6.1C3.5 7.8 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.3-1"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg></sc-if><sc-if value="{{ suPwShowN }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg></sc-if></button></div></div>
+<sc-if value="{{ suPwRuleBad }}" hint-placeholder-val="{{ false }}"><p class="sf-err" role="alert">8~16자의 영문 대소문자, 숫자, 특수문자 포함</p></sc-if></div>
+<div><div class="sf-f"><label class="sf-lb" for="su-pw2">비밀번호 재입력</label><div class="sf-pw"><input id="su-pw2" type="{{ suPw2Type }}" value="{{ suPw2 }}" onChange="{{ suSetPw2 }}"><button type="button" class="sf-eye" aria-label="{{ suPw2EyeLab }}" title="{{ suPw2EyeLab }}" aria-pressed="{{ suPw2ShowP }}" onClick="{{ suPw2Toggle }}"><sc-if value="{{ suPw2Show }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.1 6.1C3.5 7.8 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.3-1"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg></sc-if><sc-if value="{{ suPw2ShowN }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg></sc-if></button></div></div>
+<sc-if value="{{ suPwBad }}" hint-placeholder-val="{{ false }}"><p class="sf-err" role="alert">동일한 비밀번호가 아닙니다.</p></sc-if></div>
+</div>
+<div class="sf-btns">
+<button type="button" class="sf-cancel" onClick="{{ suClose }}">취소</button>
+<sc-if value="{{ suDoneOn }}" hint-placeholder-val="{{ false }}"><button type="button" class="sf-next on" onClick="{{ suDone }}">완료</button></sc-if>
+<sc-if value="{{ suDoneOff }}" hint-placeholder-val="{{ true }}"><button type="button" class="sf-next" disabled="{{ true }}">완료</button></sc-if>
+</div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{ suStep3 }}" hint-placeholder-val="{{ false }}">
+<div class="sf-ov">
+<section role="alertdialog" aria-modal="true" aria-labelledby="su3-title" class="sf-dlg sf-small" style="background: #FFFFFF;">
+<span class="sf-check" aria-hidden="true">✓</span>
+<h2 id="su3-title" class="sf-title" style="text-align: center;">회원가입이 완료되었습니다.</h2>
+<button type="button" class="sf-next on" onClick="{{ suClose }}">확인</button>
 </section>
 </div>
 </sc-if>
@@ -349,6 +462,41 @@ renderVals() {
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
+suOpen() { clearInterval(this._cdT); this.setState({ su: 1, stage: 0, suName: '', suBirth: '', suSex: '', suEmail: '', suCode: '', suSent: 0, suSentAt: 0, suName2: '', suPw: '', suPw2: '', suPwV: false, suPw2V: false }); }
+suTick(on) { clearInterval(this._cdT); if (on) this._cdT = setInterval(() => this.setState({ __cd: Date.now() }), 1000); }
+componentWillUnmountBase() { clearInterval(this._cdT); }
+suVals() {
+  const st = this.state || {}; const su = st.su || 0; const stage = st.stage || 0;
+  const name = st.suName || '', birth = st.suBirth || '', sex = st.suSex || '', email = st.suEmail || '', code = st.suCode || '';
+  const bOk = (() => { if (!/^\d{8}$/.test(birth)) return false; const y = +birth.slice(0, 4), m = +birth.slice(4, 6), d = +birth.slice(6, 8); const dt = new Date(y, m - 1, d); return y >= 1900 && y <= 2026 && dt.getMonth() === m - 1 && dt.getDate() === d; })();
+  const eOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const left = st.suSentAt ? Math.max(0, 300 - Math.floor((Date.now() - st.suSentAt) / 1000)) : 300;
+  const cOk = code.length === 6 && left > 0;
+  const titles = ['이름을 입력하세요.', '생년월일 8자리를 입력하세요.', '성별을 선택하세요.', '이메일을 입력하세요.', '이메일로 받은 인증번호 6자리를 입력하세요.'];
+  const can = [name.trim().length > 0, bOk, !!sex, false, cOk][stage];
+  const cls = (k) => (stage === k ? 'on' : '');
+  const send = () => { this.suTick(true); this.setState({ stage: 4, suCode: '', suSent: (this.state.suSent || 0) + 1, suSentAt: Date.now() }); };
+  const next = () => { const s2 = this.state.stage || 0; if (s2 === 0) this.setState({ stage: 1 }); else if (s2 === 1) this.setState({ stage: 2 }); else if (s2 === 3) send(); else if (s2 === 4) { if ((this.state.suCode || '') !== '123456') { this.setState({ suWrong: true }); return; } this.suTick(false); this.setState({ su: 2, suName2: this.state.suName || '' }); } };
+  const pw = st.suPw || '', pw2 = st.suPw2 || '', name2 = st.suName2 || '';
+  const pwBad = pw2.length > 0 && pw !== pw2;
+  const pwOk = pw.length >= 8 && pw.length <= 16 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw) && /[!"#$%&'()*+,\-./:;<=>?@\[\\₩\]^_`{|}~]/.test(pw) && /^[A-Za-z0-9!"#$%&'()*+,\-./:;<=>?@\[\\₩\]^_`{|}~]+$/.test(pw);
+  const doneOk = name2.trim().length > 0 && pwOk && pw2.length > 0 && !pwBad;
+  const mmss = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+  return { suStep1: su === 1, suStep2: su === 2, suStep3: su === 3, suTitle: titles[stage],
+    suShowBirth: stage >= 1, suShowSex: stage >= 2, suShowEmail: stage >= 3, suShowCode: stage >= 4,
+    suNameCls: cls(0), suBirthCls: cls(1), suSexCls: cls(2), suEmailCls: stage === 3 ? 'on' : (stage === 4 ? 'lock' : ''), suEmailLock: stage === 4,
+    suName: name, suBirth: birth, suEmail: email, suCode: code, suBirthBad: birth.length === 8 && !bOk,
+    suSetName: (e) => this.setState({ suName: e.target.value }), suSetBirth: (e) => this.setState({ suBirth: String(e.target.value).replace(/[^0-9]/g, '').slice(0, 8) }),
+    suSetEmail: (e) => { if ((this.state.stage || 0) !== 4) this.setState({ suEmail: e.target.value }); }, suSetCode: (e) => this.setState({ suCode: String(e.target.value).replace(/[^0-9]/g, '').slice(0, 6) }),
+    suSexOpts: [['m', '남성'], ['f', '여성']].map(([v, l]) => ({ label: l, on: sex === v ? 'true' : 'false', cls: sex === v ? 'on' : '', pick: () => this.setState({ suSex: v, stage: Math.max(this.state.stage || 0, 3) }) })),
+    suTimer: mmss, suTimerCls: left > 0 ? 'sf-time' : 'sf-time out', suSentNote: left > 0 ? ((st.suSent || 1) > 1 ? '인증번호를 다시 보냈어요' : email + ' 로 보냈어요') : '인증 시간이 지났어요. 다시 보내 주세요.',
+    suResend: send, suSendOn: stage === 3 && eOk, suSendOff: !(stage === 3 && eOk), suSendLabel: stage === 4 ? '발송 완료' : '인증번호 받기', suPwRuleBad: pw.length > 0 && !pwOk,
+    suPwType: st.suPwV ? 'text' : 'password', suPwShow: !!st.suPwV, suPwShowN: !st.suPwV, suPwShowP: st.suPwV ? 'true' : 'false', suPwEyeLab: st.suPwV ? '비밀번호 숨기기' : '비밀번호 보기', suPwToggle: () => this.setState({ suPwV: !this.state.suPwV }),
+    suPw2Type: st.suPw2V ? 'text' : 'password', suPw2Show: !!st.suPw2V, suPw2ShowN: !st.suPw2V, suPw2ShowP: st.suPw2V ? 'true' : 'false', suPw2EyeLab: st.suPw2V ? '비밀번호 숨기기' : '비밀번호 보기', suPw2Toggle: () => this.setState({ suPw2V: !this.state.suPw2V }), suNextOn: !!can && stage !== 2, suNextOff: !can || stage === 2, suNext: next,
+    suName2: name2, suPw: pw, suPw2: pw2, suPwBad: pwBad, suDoneOn: doneOk, suDoneOff: !doneOk,
+    suSetName2: (e) => this.setState({ suName2: e.target.value }), suSetPw: (e) => this.setState({ suPw: e.target.value }), suSetPw2: (e) => this.setState({ suPw2: e.target.value }),
+    suWrong: !!st.suWrong, suWrongOk: () => this.setState({ suWrong: false, suCode: '' }), suDone: () => this.setState({ su: 3 }), suClose: () => { this.suTick(false); this.setState({ su: 0 }); } };
+}
 renderValsBase() {
   const st = this.state || {};
   const role = st.role || 'staff';
@@ -357,9 +505,7 @@ renderValsBase() {
   const roles = [['staff', '상담사 로그인'], ['admin', '관리자 로그인']].map(([v, l]) => ({ label: l, cls: role === v ? 'on' : '', pressed: role === v ? 'true' : 'false', pick: () => this.setState({ role: v }) }));
   return { roles, loginHref: role === 'admin' ? 'AdminHome.dc.html' : 'Main.dc.html', email, code,
     setEmail: (e) => this.setState({ email: e.target.value }), setCode: (e) => this.setState({ code: String(e.target.value).replace(/[^0-9]/g, '').slice(0, 6) }),
-    codeOpen: !!st.open, openCode: () => this.setState({ open: true, code: '', sent: 1 }), closeCode: () => this.setState({ open: false, code: '' }),
-    resend: () => this.setState({ sent: (st.sent || 1) + 1, code: '' }), sentNote: (st.sent || 1) > 1 ? '인증번호를 다시 보냈어요 · 유효 시간 5분' : '유효 시간 5분',
-    codeOk: code.length === 6, codeWait: code.length !== 6, joined: !!st.joined, confirmCode: () => this.setState({ open: false, code: '', joined: true }) };
+    joined: !!st.joined, openCode: () => this.suOpen(), ...this.suVals() };
 }
 }
 </script>

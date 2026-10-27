@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>I-SPOT 법령 · 매뉴얼</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&amp;family=Noto+Serif+KR:wght@500;600;700&amp;family=Gowun+Batang:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2F2F0}
+*{box-sizing:border-box}
+a{color:#8C7340}a:hover{color:#2B2A26}
+.side{flex:1 1 248px;background:#FAFAF8;border-right:1px solid #E2DED3;padding:22px 16px;display:flex;flex-direction:column;gap:8px}
+.logo{display:flex;align-items:center;gap:10px;padding:2px 6px 12px;text-decoration:none;color:#2B2A26}
+.mk{width:40px;height:40px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.cta{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:14px;background:#2B2A26;color:#EADBB5;font-weight:700;text-decoration:none;font-size:15px}
+.cta:hover{background:#3A3833;color:#EADBB5}
+.cta2{display:flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border-radius:14px;background:#FFFFFF;border:1.5px solid #2B2A26;color:#2B2A26;font-weight:700;text-decoration:none;font-size:15px}
+.cta2:hover{background:#F7F2E6;color:#2B2A26}
+.nav{display:flex;flex-direction:column;gap:2px;margin:14px 0}
+.nav a{display:flex;align-items:center;min-height:44px;padding:0 14px;border-radius:12px;color:#3A3833;text-decoration:none;font-size:15px}
+.nav a:hover{background:#F7F2E6;color:#3A3833}
+.nav a.on{background:#F1EADA;color:#2B2A26;font-weight:700}
+.cnt{margin-left:auto;min-width:22px;height:22px;border-radius:11px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+.me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 6px 0;border-top:1px solid #E2DED3;font-size:13px}
+.av{width:36px;height:36px;border-radius:50%;background:#F2EFE8;color:#66625A;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.card{background:#FFFFFF;border-radius:18px;border:1px solid #E7E4DC}
+.hd{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:18px 22px;border-bottom:1px solid #EAE7DF}
+.h2{margin:0;font-size:17px;font-weight:700;color:#2B2A26}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.c-hi{background:#F7E4DF;color:#A33B2E}
+.c-mid{background:#F3EAD3;color:#7A5F28}
+.c-lo{background:#F2EFE8;color:#66625A}
+.c-urgent{background:#F7E4DF;color:#A33B2E}
+.c-check{background:#F2EFE8;color:#66625A}
+.c-ing{background:#F2EFE8;color:#66625A}
+.c-ok{background:#F2EFE8;color:#66625A}
+.c-normal{background:#F2EFE8;color:#66625A}
+.c-sky{background:#F2EFE8;color:#66625A}
+.c-sand{background:#F2EFE8;color:#66625A}
+.c-ai{background:#FFFFFF;color:#7A776F;border:1px dashed #CFC9BB}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 18px;border-radius:12px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;text-decoration:none;white-space:nowrap}
+.btn-p{background:#2B2A26;color:#EADBB5;font-weight:700}.btn-p:hover{background:#3A3833;color:#EADBB5}
+.btn-s{background:#FFFFFF;color:#2B2A26;border-color:#DAD5C9}.btn-s:hover{border-color:#2B2A26;color:#2B2A26}
+.btn-y{background:#FFFFFF;color:#2B2A26;border-color:#DAD5C9}.btn-y:hover{border-color:#2B2A26;color:#2B2A26}
+.btn-sm{min-height:34px;padding:0 12px;font-size:13px}
+.sub{color:#6E6A62;font-size:13px}
+.note{font-size:12px;color:#7A776F}
+.demo{display:none}
+.acc{color:#A33B2E}
+.brn{color:inherit;font-weight:700}
+.inp{height:42px;border:1px solid #DAD5C9;border-radius:12px;padding:0 14px;font:inherit;font-size:14px;background:#FFFFFF;color:#2B2A26}
+.ta{width:100%;min-height:90px;border:1px solid #DAD5C9;border-radius:12px;padding:12px 14px;font:inherit;font-size:14px;line-height:1.7;background:#FFFFFF;color:#2B2A26;resize:vertical}
+.seg{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:12px;background:#EAE7DF}
+.seg button{border:0;border-radius:9px;min-height:34px;padding:0 13px;font:inherit;font-size:13px;background:transparent;color:#66625A;cursor:pointer}
+.seg button.on{background:#FFFFFF;color:#2B2A26;font-weight:700;box-shadow:0 1px 3px rgba(43, 42, 38,.14)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font-size:12px;color:#6E6A62;font-weight:500;text-align:left;padding:12px 18px;background:#F7F6F2;border-bottom:1px solid #EAE7DF}
+.tbl td{padding:14px 18px;border-bottom:1px solid #EAE7DF;vertical-align:middle}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #DAD5C9}
+.tabs a{display:inline-flex;align-items:center;padding:12px 18px;color:#6E6A62;text-decoration:none;font-size:15px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a:hover{color:#2B2A26}
+.tabs a.on{color:#2B2A26;font-weight:700;border-bottom-color:#C2A36B}
+.steps{display:flex;flex-wrap:wrap;gap:10px}
+.stp{flex:1 1 180px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;background:#FFFFFF;text-decoration:none;color:#2B2A26;border:1px solid #E7E4DC}
+.stp:hover{border-color:#2B2A26;color:#2B2A26}
+.stp.on{background:#FFFFFF;box-shadow:inset 0 0 0 2px #2B2A26;border-color:transparent}
+.sn{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:none;background:#E7E4DC;color:#7A776F}
+.stp.on .sn{background:#2B2A26;color:#EADBB5}
+.stp.done .sn{background:#F2EFE8;color:#66625A}
+.ainote{font-size:12px;color:#7A776F;margin:0}
+.seg-lb{display:inline-flex;align-items:center;padding:0 8px 0 12px;font-size:13px;font-weight:700;color:#66625A}
+.fold{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:0 12px;border:0;border-radius:10px;background:transparent;font:inherit;font-size:14px;color:#3A3833;cursor:pointer;text-align:left}
+.fold:hover{background:#F7F6F2}
+.fold.on{background:#F1EADA;color:#2B2A26;font-weight:700}
+.fold .n{margin-left:auto;font-size:12px;color:#7A776F;font-weight:400}
+.fico{width:18px;height:14px;flex:none;border-radius:2px 3px 3px 3px;background:#C2A36B;position:relative}
+.fico::before{content:"";position:absolute;left:0;top:-3px;width:8px;height:4px;border-radius:2px 2px 0 0;background:#C2A36B}
+.fold.on .fico,.fold.on .fico::before{background:#2B2A26}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.doc{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid #E2DED3;border-radius:16px;background:#FFFFFF}
+.pv{position:relative;aspect-ratio:1/1.32;border:1px solid #E7E4DC;border-radius:6px;background:#FFFFFF;overflow:hidden;box-shadow:0 2px 8px -4px rgba(43,42,38,.25)}
+.pv-page{position:absolute;inset:0;padding:12px 12px;font-size:7px;line-height:1.55;color:#3A3833;white-space:pre-wrap;word-break:keep-all;overflow:hidden}
+.pv-page b{display:block;font-size:9px;margin-bottom:6px;color:#2B2A26}
+.pv img{width:100%;height:100%;object-fit:cover;display:block}
+.pv-other{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:14px;background:#F7F6F2}
+.pv-ext{display:inline-flex;align-items:center;justify-content:center;min-width:52px;height:28px;padding:0 10px;border-radius:6px;background:#2B2A26;color:#EADBB5;font-size:12px;font-weight:700;letter-spacing:.04em}
+.pv-lines{width:70%;display:flex;flex-direction:column;gap:5px}
+.pv-lines i{display:block;height:4px;border-radius:2px;background:#DAD5C9}
+.dname{font-size:14px;font-weight:500;line-height:1.4;word-break:break-all;color:#2B2A26}
+.dmeta{font-size:12px;color:#7A776F}
+.mv{height:34px;border:1px solid #DAD5C9;border-radius:999px;padding:0 10px;font:inherit;font-size:12px;background:#FFFFFF;color:#2B2A26;min-width:96px;flex:1}
+.empty{padding:48px 20px;text-align:center;color:#7A776F;font-size:14px;border:1px dashed #DAD5C9;border-radius:16px}
+/* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
+:root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
+body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
+h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+/* 좌측 레일 + 연결형 패널 */
+.side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
+.side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
+.side .logo b{font-family:'Noto Serif KR',serif;font-weight:600}
+.mk{background:#2B2A26 !important;color:#D9C08A !important;border-radius:50% !important;font-family:'Noto Serif KR',serif;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.cta{border-radius:999px !important;border:1px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s,transform .15s}
+.cta:active{transform:translateY(1px)}
+.cta2{border-radius:999px !important;background:#FFFFFF;border:1.5px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s}
+.cta2:hover{background:#F7F2E6;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.nav{gap:4px;margin:20px 0 14px}
+.nav a,.side[aria-label="관리자 메뉴"]>a:not(:first-child){position:relative;padding-left:34px;border-radius:999px !important;color:#5E5A52;transition:background .2s,color .2s}
+.nav a:hover,.side[aria-label="관리자 메뉴"]>a:not(:first-child):hover{background:rgba(255,255,255,.55);color:#2B2A26}
+.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{background:var(--base) radial-gradient(circle,#C2A36B 3px,transparent 3.6px) no-repeat 15px 50%/8px 8px !important;color:#2B2A26 !important;font-weight:700;border-radius:22px 0 0 22px !important;margin-right:-16px}
+.nav a.on::before,.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{content:"";position:absolute;right:0;width:24px;height:24px;pointer-events:none}
+.nav a.on::before,.side[aria-label="관리자 메뉴"]>a.on::before{top:-24px;background:radial-gradient(circle at 0 0,transparent 23.5px,var(--base) 24px)}
+.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::after{bottom:-24px;background:radial-gradient(circle at 0 100%,transparent 23.5px,var(--base) 24px)}
+.nav a.on .cnt,.side>a.on .badge{margin-right:16px}
+.cnt,.badge{box-shadow:0 2px 6px rgba(163,59,46,.28)}
+.grp{padding-left:34px !important}
+.me{border-top:1px solid #DAD5C9 !important}
+.av{box-shadow:inset 1px 1px 3px var(--sd),inset -1px -1px 3px var(--sl)}
+.top{background:transparent !important;border-bottom:0 !important}
+/* 카드: 모던 베이스(테두리) + 부드러운 그림자 */
+.card{background:#FFFFFF;border:1px solid #E2DED3;border-radius:20px !important;box-shadow:6px 6px 16px var(--sd),-6px -6px 16px var(--sl)}
+.hd{border-bottom-color:#EAE7DF}
+.box{background:#F7F6F2;border:1px solid #EAE7DF;box-shadow:inset 1px 1px 3px var(--sd)}
+/* 버튼: 경계 명확 */
+.btn{border-radius:999px !important;transition:box-shadow .2s,transform .15s,background .2s,border-color .2s}
+.btn-p{border:1px solid #2B2A26;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.btn-s,.btn-y{background:#FFFFFF;border:1px solid #CFC9BB;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.btn-s:hover,.btn-y:hover{border-color:#2B2A26;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,.cta:focus-visible,.cta2:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+/* 입력 */
+.inp,.ta{background:#FFFFFF;border:1px solid #DAD5C9;box-shadow:inset 2px 2px 4px var(--sd)}
+.inp{border-radius:999px}
+.inp:focus,.ta:focus{outline:2px solid #C2A36B;outline-offset:1px;border-color:#2B2A26}
+.seg{background:var(--base);border:1px solid #E2DED3;border-radius:999px;padding:4px;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.seg button{border-radius:999px}
+.seg button.on{background:#FFFFFF;box-shadow:0 0 0 1px #CFC9BB,2px 2px 6px var(--sd)}
+.pill{border:1px solid #DAD5C9;box-shadow:2px 2px 5px var(--sd),-2px -2px 5px var(--sl)}
+.pill.on{box-shadow:inset 0 0 0 1px #2B2A26}
+.tg{border-color:#CFC9BB;border-radius:999px;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+/* 표 */
+.tbl th{background:#F7F6F2;border-bottom:1px solid #E2DED3;letter-spacing:.02em}
+.tbl td{border-bottom-color:#F1EFEA}
+/* 탭 */
+.tabs{align-self:flex-start;gap:4px;padding:5px;border:1px solid #E2DED3;border-radius:999px;background:var(--base);box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+.tabs a{border-bottom:0;margin-bottom:0;border-radius:999px;padding:9px 18px}
+.tabs a.on{background:#FFFFFF;border-bottom-color:transparent !important;box-shadow:0 0 0 1px #CFC9BB,2px 2px 6px var(--sd)}
+/* 단계 */
+.stp{border-radius:999px !important;border:1px solid #DAD5C9;background:#FFFFFF;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.stp:hover{border-color:#2B2A26}
+.stp.on{box-shadow:inset 0 0 0 1.5px #C2A36B,3px 3px 8px var(--sd),-3px -3px 8px var(--sl) !important;border-color:transparent}
+.stp.on .sn{background:#2B2A26 !important;color:#EADBB5 !important}
+/* 홈 소품 */
+.todo{background:#F7F6F2;border:1px solid #EAE7DF}
+.todo:hover{border-color:#CFC9BB}
+.qa{border:1px solid #DAD5C9;background:#FFFFFF;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl);transition:box-shadow .2s,border-color .2s}
+.qa:hover{border-color:#2B2A26;box-shadow:inset 2px 2px 5px var(--sd),inset -2px -2px 5px var(--sl)}
+/* 다크 모드 */
+.thm-root.dark{--base:#23221F;--rail:#1B1A17;--sd:rgba(0,0,0,.45);--sl:rgba(255,255,255,.035);--line:#3A3832;color-scheme:dark}
+.thm-root.dark .thm-root,.thm-root.dark input,.thm-root.dark select,.thm-root.dark textarea{color:#ECE8DF}
+.thm-root.dark ::placeholder{color:#8E887C}
+.thm-root.dark .nav a:hover,.thm-root.dark .side>a:hover{background:rgba(255,255,255,.06) !important}
+.thm-root.dark a{color:#D9C08A !important}
+.thm-root.dark a:hover{color:#ECE8DF !important}
+.thm-root.dark .side{background:#24231F !important;border-right:1px solid #45423B !important}
+.thm-root.dark .logo{color:#ECE8DF !important}
+.thm-root.dark .mk{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .cta{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .cta:hover{background:#D9C08A !important;color:#2B2A26 !important}
+.thm-root.dark .cta2{background:#2C2B27 !important;border:1.5px solid #D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .cta2:hover{background:#3A3428 !important;color:#ECE8DF !important}
+.thm-root.dark .nav a{color:#DAD5C9 !important}
+.thm-root.dark .nav a:hover{background:#3A3428 !important;color:#DAD5C9 !important}
+.thm-root.dark .nav a.on{background:#3F3729 !important;color:#ECE8DF !important}
+.thm-root.dark .cnt{background:#C9503F !important}
+.thm-root.dark .me{border-top:1px solid #45423B !important}
+.thm-root.dark .av{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .card{background:#2C2B27 !important;border:1px solid #45423B !important}
+.thm-root.dark .hd{border-bottom:1px solid #45423B !important}
+.thm-root.dark .h2{color:#ECE8DF !important}
+.thm-root.dark .c-hi{background:#4A2B25 !important;color:#F0907F !important}
+.thm-root.dark .c-mid{background:#453A22 !important;color:#E3C77E !important}
+.thm-root.dark .c-lo{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-urgent{background:#4A2B25 !important;color:#F0907F !important}
+.thm-root.dark .c-check{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-ing{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-ok{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-normal{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-sky{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-sand{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .c-ai{background:#2C2B27 !important;color:#A8A296 !important;border:1px dashed #5A564E !important}
+.thm-root.dark .btn-p{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .btn-p:hover{background:#D9C08A !important;color:#2B2A26 !important}
+.thm-root.dark .btn-s{background:#2C2B27 !important;color:#ECE8DF !important;border-color:#4E4B44 !important}
+.thm-root.dark .btn-s:hover{border-color:#D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .btn-y{background:#2C2B27 !important;color:#ECE8DF !important;border-color:#4E4B44 !important}
+.thm-root.dark .btn-y:hover{border-color:#D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .sub{color:#B5AFA3 !important}
+.thm-root.dark .note{color:#A8A296 !important}
+.thm-root.dark .acc{color:#F0907F !important}
+.thm-root.dark .inp{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .ta{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .seg{background:#393731 !important}
+.thm-root.dark .seg button{color:#BDB7AA !important}
+.thm-root.dark .seg button.on{background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .tbl th{color:#B5AFA3 !important;background:#33312C !important;border-bottom:1px solid #45423B !important}
+.thm-root.dark .tbl td{border-bottom:1px solid #45423B !important}
+.thm-root.dark .tabs{border-bottom:1px solid #4E4B44 !important}
+.thm-root.dark .tabs a{color:#B5AFA3 !important}
+.thm-root.dark .tabs a:hover{color:#ECE8DF !important}
+.thm-root.dark .tabs a.on{color:#ECE8DF !important}
+.thm-root.dark .stp{background:#2C2B27 !important;color:#ECE8DF !important;border:1px solid #45423B !important}
+.thm-root.dark .stp:hover{border-color:#D6D0C4 !important;color:#ECE8DF !important}
+.thm-root.dark .stp.on{background:#2C2B27 !important;box-shadow:inset 0 0 0 2px #D6D0C4 !important}
+.thm-root.dark .sn{background:#45423B !important;color:#A8A296 !important}
+.thm-root.dark .stp.on .sn{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .stp.done .sn{background:#393731 !important;color:#BDB7AA !important}
+.thm-root.dark .ainote{color:#A8A296 !important}
+.thm-root.dark .seg-lb{color:#BDB7AA !important}
+.thm-root.dark .fold{color:#DAD5C9 !important}
+.thm-root.dark .fold:hover{background:#33312C !important}
+.thm-root.dark .fold.on{background:#3F3729 !important;color:#ECE8DF !important}
+.thm-root.dark .fold .n{color:#A8A296 !important}
+.thm-root.dark .fold.on .fico,.thm-root.dark .fold.on .fico::before{background:#EADBB5 !important}
+.thm-root.dark .doc{border:1px solid #45423B !important;background:#2C2B27 !important}
+.thm-root.dark .pv{border:1px solid #45423B !important;background:#2C2B27 !important}
+.thm-root.dark .pv-page{color:#DAD5C9 !important}
+.thm-root.dark .pv-page b{color:#ECE8DF !important}
+.thm-root.dark .pv-other{background:#33312C !important}
+.thm-root.dark .pv-ext{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .pv-lines i{background:#55524A !important}
+.thm-root.dark .dname{color:#ECE8DF !important}
+.thm-root.dark .dmeta{color:#A8A296 !important}
+.thm-root.dark .mv{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
+.thm-root.dark .empty{color:#A8A296 !important;border:1px dashed #4E4B44 !important}
+.thm-root.dark .mk{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .cta{border:1px solid #D6D0C4 !important}
+.thm-root.dark .cta2{background:#2C2B27 !important;border:1.5px solid #D6D0C4 !important}
+.thm-root.dark .cta2:hover{background:#3A3428 !important}
+.thm-root.dark .nav a,.thm-root.dark .side[aria-label="관리자 메뉴"]>a:not(:first-child){color:#C9C3B6 !important}
+.thm-root.dark .nav a:hover,.thm-root.dark .side[aria-label="관리자 메뉴"]>a:not(:first-child):hover{color:#ECE8DF !important}
+.thm-root.dark .nav a.on,.thm-root.dark .side[aria-label="관리자 메뉴"]>a.on{color:#ECE8DF !important}
+.thm-root.dark .me{border-top:1px solid #4E4B44 !important}
+.thm-root.dark .card{background:#2C2B27 !important;border:1px solid #45423B !important}
+.thm-root.dark .hd{border-bottom-color:#45423B !important}
+.thm-root.dark .box{background:#33312C !important;border:1px solid #45423B !important}
+.thm-root.dark .btn-p{border:1px solid #D6D0C4 !important}
+.thm-root.dark .btn-s,.thm-root.dark .btn-y{background:#2C2B27 !important;border:1px solid #5A564E !important}
+.thm-root.dark .btn-s:hover,.thm-root.dark .btn-y:hover{border-color:#D6D0C4 !important}
+.thm-root.dark .inp,.thm-root.dark .ta{background:#2C2B27 !important;border:1px solid #4E4B44 !important}
+.thm-root.dark .inp:focus,.thm-root.dark .ta:focus{border-color:#D6D0C4 !important}
+.thm-root.dark .seg{border:1px solid #45423B !important}
+.thm-root.dark .seg button.on{background:#2C2B27 !important;box-shadow:0 0 0 1px #5A564E,2px 2px 6px var(--sd) !important}
+.thm-root.dark .pill{border:1px solid #4E4B44 !important}
+.thm-root.dark .pill.on{box-shadow:inset 0 0 0 1px #D6D0C4 !important}
+.thm-root.dark .tg{border-color:#5A564E !important}
+.thm-root.dark .tbl th{background:#33312C !important;border-bottom:1px solid #45423B !important}
+.thm-root.dark .tbl td{border-bottom-color:#3A3832 !important}
+.thm-root.dark .tabs{border:1px solid #45423B !important}
+.thm-root.dark .tabs a.on{background:#2C2B27 !important;box-shadow:0 0 0 1px #5A564E,2px 2px 6px var(--sd) !important}
+.thm-root.dark .stp{border:1px solid #4E4B44 !important;background:#2C2B27 !important}
+.thm-root.dark .stp:hover{border-color:#D6D0C4 !important}
+.thm-root.dark .stp.on .sn{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .todo{background:#33312C !important;border:1px solid #45423B !important}
+.thm-root.dark .todo:hover{border-color:#5A564E !important}
+.thm-root.dark .qa{border:1px solid #4E4B44 !important;background:#2C2B27 !important}
+.thm-root.dark .qa:hover{border-color:#D6D0C4 !important}
+.thm-root.dark[style*="background: #FFFFFF" i],.thm-root.dark [style*="background: #FFFFFF" i],.thm-root.dark[style*="background-color: #FFFFFF" i],.thm-root.dark [style*="background-color: #FFFFFF" i],.thm-root.dark[style*="background: rgb(255, 255, 255)"],.thm-root.dark [style*="background: rgb(255, 255, 255)"],.thm-root.dark[style*="background-color: rgb(255, 255, 255)"],.thm-root.dark [style*="background-color: rgb(255, 255, 255)"]{background-color:#2C2B27 !important;background-image:none !important}
+.thm-root.dark[style*="background: #FAFAF8" i],.thm-root.dark [style*="background: #FAFAF8" i],.thm-root.dark[style*="background-color: #FAFAF8" i],.thm-root.dark [style*="background-color: #FAFAF8" i],.thm-root.dark[style*="background: rgb(250, 250, 248)"],.thm-root.dark [style*="background: rgb(250, 250, 248)"],.thm-root.dark[style*="background-color: rgb(250, 250, 248)"],.thm-root.dark [style*="background-color: rgb(250, 250, 248)"]{background-color:#24231F !important;background-image:none !important}
+.thm-root.dark[style*="background: #F7F6F2" i],.thm-root.dark [style*="background: #F7F6F2" i],.thm-root.dark[style*="background-color: #F7F6F2" i],.thm-root.dark [style*="background-color: #F7F6F2" i],.thm-root.dark[style*="background: rgb(247, 246, 242)"],.thm-root.dark [style*="background: rgb(247, 246, 242)"],.thm-root.dark[style*="background-color: rgb(247, 246, 242)"],.thm-root.dark [style*="background-color: rgb(247, 246, 242)"]{background-color:#33312C !important;background-image:none !important}
+.thm-root.dark[style*="background: #F2F2F0" i],.thm-root.dark [style*="background: #F2F2F0" i],.thm-root.dark[style*="background-color: #F2F2F0" i],.thm-root.dark [style*="background-color: #F2F2F0" i],.thm-root.dark[style*="background: rgb(242, 242, 240)"],.thm-root.dark [style*="background: rgb(242, 242, 240)"],.thm-root.dark[style*="background-color: rgb(242, 242, 240)"],.thm-root.dark [style*="background-color: rgb(242, 242, 240)"]{background-color:#23221F !important;background-image:none !important}
+.thm-root.dark[style*="background: #F2EFE8" i],.thm-root.dark [style*="background: #F2EFE8" i],.thm-root.dark[style*="background-color: #F2EFE8" i],.thm-root.dark [style*="background-color: #F2EFE8" i],.thm-root.dark[style*="background: rgb(242, 239, 232)"],.thm-root.dark [style*="background: rgb(242, 239, 232)"],.thm-root.dark[style*="background-color: rgb(242, 239, 232)"],.thm-root.dark [style*="background-color: rgb(242, 239, 232)"]{background-color:#393731 !important;background-image:none !important}
+.thm-root.dark[style*="background: #EAE7DF" i],.thm-root.dark [style*="background: #EAE7DF" i],.thm-root.dark[style*="background-color: #EAE7DF" i],.thm-root.dark [style*="background-color: #EAE7DF" i],.thm-root.dark[style*="background: rgb(234, 231, 223)"],.thm-root.dark [style*="background: rgb(234, 231, 223)"],.thm-root.dark[style*="background-color: rgb(234, 231, 223)"],.thm-root.dark [style*="background-color: rgb(234, 231, 223)"]{background-color:#393731 !important;background-image:none !important}
+.thm-root.dark[style*="background: #E7E4DC" i],.thm-root.dark [style*="background: #E7E4DC" i],.thm-root.dark[style*="background-color: #E7E4DC" i],.thm-root.dark [style*="background-color: #E7E4DC" i],.thm-root.dark[style*="background: rgb(231, 228, 220)"],.thm-root.dark [style*="background: rgb(231, 228, 220)"],.thm-root.dark[style*="background-color: rgb(231, 228, 220)"],.thm-root.dark [style*="background-color: rgb(231, 228, 220)"]{background-color:#45423B !important;background-image:none !important}
+.thm-root.dark[style*="background: #E9E7E1" i],.thm-root.dark [style*="background: #E9E7E1" i],.thm-root.dark[style*="background-color: #E9E7E1" i],.thm-root.dark [style*="background-color: #E9E7E1" i],.thm-root.dark[style*="background: rgb(233, 231, 225)"],.thm-root.dark [style*="background: rgb(233, 231, 225)"],.thm-root.dark[style*="background-color: rgb(233, 231, 225)"],.thm-root.dark [style*="background-color: rgb(233, 231, 225)"]{background-color:#1B1A17 !important;background-image:none !important}
+.thm-root.dark[style*="background: #DAD5C9" i],.thm-root.dark [style*="background: #DAD5C9" i],.thm-root.dark[style*="background-color: #DAD5C9" i],.thm-root.dark [style*="background-color: #DAD5C9" i],.thm-root.dark[style*="background: rgb(218, 213, 201)"],.thm-root.dark [style*="background: rgb(218, 213, 201)"],.thm-root.dark[style*="background-color: rgb(218, 213, 201)"],.thm-root.dark [style*="background-color: rgb(218, 213, 201)"]{background-color:#55524A !important;background-image:none !important}
+.thm-root.dark[style*="background: #CFC9BB" i],.thm-root.dark [style*="background: #CFC9BB" i],.thm-root.dark[style*="background-color: #CFC9BB" i],.thm-root.dark [style*="background-color: #CFC9BB" i],.thm-root.dark[style*="background: rgb(207, 201, 187)"],.thm-root.dark [style*="background: rgb(207, 201, 187)"],.thm-root.dark[style*="background-color: rgb(207, 201, 187)"],.thm-root.dark [style*="background-color: rgb(207, 201, 187)"]{background-color:#5F5B52 !important;background-image:none !important}
+.thm-root.dark[style*="background: #E2DED3" i],.thm-root.dark [style*="background: #E2DED3" i],.thm-root.dark[style*="background-color: #E2DED3" i],.thm-root.dark [style*="background-color: #E2DED3" i],.thm-root.dark[style*="background: rgb(226, 222, 211)"],.thm-root.dark [style*="background: rgb(226, 222, 211)"],.thm-root.dark[style*="background-color: rgb(226, 222, 211)"],.thm-root.dark [style*="background-color: rgb(226, 222, 211)"]{background-color:#45423B !important;background-image:none !important}
+.thm-root.dark[style*="background: #ECEAE4" i],.thm-root.dark [style*="background: #ECEAE4" i],.thm-root.dark[style*="background-color: #ECEAE4" i],.thm-root.dark [style*="background-color: #ECEAE4" i],.thm-root.dark[style*="background: rgb(236, 234, 228)"],.thm-root.dark [style*="background: rgb(236, 234, 228)"],.thm-root.dark[style*="background-color: rgb(236, 234, 228)"],.thm-root.dark [style*="background-color: rgb(236, 234, 228)"]{background-color:#3A3832 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F1EFEA" i],.thm-root.dark [style*="background: #F1EFEA" i],.thm-root.dark[style*="background-color: #F1EFEA" i],.thm-root.dark [style*="background-color: #F1EFEA" i],.thm-root.dark[style*="background: rgb(241, 239, 234)"],.thm-root.dark [style*="background: rgb(241, 239, 234)"],.thm-root.dark[style*="background-color: rgb(241, 239, 234)"],.thm-root.dark [style*="background-color: rgb(241, 239, 234)"]{background-color:#363430 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F1EADA" i],.thm-root.dark [style*="background: #F1EADA" i],.thm-root.dark[style*="background-color: #F1EADA" i],.thm-root.dark [style*="background-color: #F1EADA" i],.thm-root.dark[style*="background: rgb(241, 234, 218)"],.thm-root.dark [style*="background: rgb(241, 234, 218)"],.thm-root.dark[style*="background-color: rgb(241, 234, 218)"],.thm-root.dark [style*="background-color: rgb(241, 234, 218)"]{background-color:#3F3729 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F7F2E6" i],.thm-root.dark [style*="background: #F7F2E6" i],.thm-root.dark[style*="background-color: #F7F2E6" i],.thm-root.dark [style*="background-color: #F7F2E6" i],.thm-root.dark[style*="background: rgb(247, 242, 230)"],.thm-root.dark [style*="background: rgb(247, 242, 230)"],.thm-root.dark[style*="background-color: rgb(247, 242, 230)"],.thm-root.dark [style*="background-color: rgb(247, 242, 230)"]{background-color:#3A3428 !important;background-image:none !important}
+.thm-root.dark[style*="background: #FAF6EC" i],.thm-root.dark [style*="background: #FAF6EC" i],.thm-root.dark[style*="background-color: #FAF6EC" i],.thm-root.dark [style*="background-color: #FAF6EC" i],.thm-root.dark[style*="background: rgb(250, 246, 236)"],.thm-root.dark [style*="background: rgb(250, 246, 236)"],.thm-root.dark[style*="background-color: rgb(250, 246, 236)"],.thm-root.dark [style*="background-color: rgb(250, 246, 236)"]{background-color:#33302A !important;background-image:none !important}
+.thm-root.dark[style*="background: #F7E4DF" i],.thm-root.dark [style*="background: #F7E4DF" i],.thm-root.dark[style*="background-color: #F7E4DF" i],.thm-root.dark [style*="background-color: #F7E4DF" i],.thm-root.dark[style*="background: rgb(247, 228, 223)"],.thm-root.dark [style*="background: rgb(247, 228, 223)"],.thm-root.dark[style*="background-color: rgb(247, 228, 223)"],.thm-root.dark [style*="background-color: rgb(247, 228, 223)"]{background-color:#4A2B25 !important;background-image:none !important}
+.thm-root.dark[style*="background: #F3EAD3" i],.thm-root.dark [style*="background: #F3EAD3" i],.thm-root.dark[style*="background-color: #F3EAD3" i],.thm-root.dark [style*="background-color: #F3EAD3" i],.thm-root.dark[style*="background: rgb(243, 234, 211)"],.thm-root.dark [style*="background: rgb(243, 234, 211)"],.thm-root.dark[style*="background-color: rgb(243, 234, 211)"],.thm-root.dark [style*="background-color: rgb(243, 234, 211)"]{background-color:#453A22 !important;background-image:none !important}
+.thm-root.dark[style*="background: #2B2A26" i],.thm-root.dark [style*="background: #2B2A26" i],.thm-root.dark[style*="background-color: #2B2A26" i],.thm-root.dark [style*="background-color: #2B2A26" i],.thm-root.dark[style*="background: rgb(43, 42, 38)"],.thm-root.dark [style*="background: rgb(43, 42, 38)"],.thm-root.dark[style*="background-color: rgb(43, 42, 38)"],.thm-root.dark [style*="background-color: rgb(43, 42, 38)"]{background-color:#EADBB5 !important;background-image:none !important;color:#1B1A17 !important}
+.thm-root.dark[style*="background: #3A3833" i],.thm-root.dark [style*="background: #3A3833" i],.thm-root.dark[style*="background-color: #3A3833" i],.thm-root.dark [style*="background-color: #3A3833" i],.thm-root.dark[style*="background: rgb(58, 56, 51)"],.thm-root.dark [style*="background: rgb(58, 56, 51)"],.thm-root.dark[style*="background-color: rgb(58, 56, 51)"],.thm-root.dark [style*="background-color: rgb(58, 56, 51)"]{background-color:#D9C08A !important;background-image:none !important}
+.thm-root.dark[style*="background: #7A776F" i],.thm-root.dark [style*="background: #7A776F" i],.thm-root.dark[style*="background-color: #7A776F" i],.thm-root.dark [style*="background-color: #7A776F" i],.thm-root.dark[style*="background: rgb(122, 119, 111)"],.thm-root.dark [style*="background: rgb(122, 119, 111)"],.thm-root.dark[style*="background-color: rgb(122, 119, 111)"],.thm-root.dark [style*="background-color: rgb(122, 119, 111)"]{background-color:#A8A296 !important;background-image:none !important}
+.thm-root.dark[style*="background: #66625A" i],.thm-root.dark [style*="background: #66625A" i],.thm-root.dark[style*="background-color: #66625A" i],.thm-root.dark [style*="background-color: #66625A" i],.thm-root.dark[style*="background: rgb(102, 98, 90)"],.thm-root.dark [style*="background: rgb(102, 98, 90)"],.thm-root.dark[style*="background-color: rgb(102, 98, 90)"],.thm-root.dark [style*="background-color: rgb(102, 98, 90)"]{background-color:#B5AFA3 !important;background-image:none !important}
+.thm-root.dark[style*="background: #98948B" i],.thm-root.dark [style*="background: #98948B" i],.thm-root.dark[style*="background-color: #98948B" i],.thm-root.dark [style*="background-color: #98948B" i],.thm-root.dark[style*="background: rgb(152, 148, 139)"],.thm-root.dark [style*="background: rgb(152, 148, 139)"],.thm-root.dark[style*="background-color: rgb(152, 148, 139)"],.thm-root.dark [style*="background-color: rgb(152, 148, 139)"]{background-color:#8E887C !important;background-image:none !important}
+.thm-root.dark[style*="background: #B9B2A2" i],.thm-root.dark [style*="background: #B9B2A2" i],.thm-root.dark[style*="background-color: #B9B2A2" i],.thm-root.dark [style*="background-color: #B9B2A2" i],.thm-root.dark[style*="background: rgb(185, 178, 162)"],.thm-root.dark [style*="background: rgb(185, 178, 162)"],.thm-root.dark[style*="background-color: rgb(185, 178, 162)"],.thm-root.dark [style*="background-color: rgb(185, 178, 162)"]{background-color:#6A665D !important;background-image:none !important}
+.thm-root.dark[style*="background: #DCCB9F" i],.thm-root.dark [style*="background: #DCCB9F" i],.thm-root.dark[style*="background-color: #DCCB9F" i],.thm-root.dark [style*="background-color: #DCCB9F" i],.thm-root.dark[style*="background: rgb(220, 203, 159)"],.thm-root.dark [style*="background: rgb(220, 203, 159)"],.thm-root.dark[style*="background-color: rgb(220, 203, 159)"],.thm-root.dark [style*="background-color: rgb(220, 203, 159)"]{background-color:#6B5B3A !important;background-image:none !important}
+.thm-root.dark[style*="background: #A33B2E" i],.thm-root.dark [style*="background: #A33B2E" i],.thm-root.dark[style*="background-color: #A33B2E" i],.thm-root.dark [style*="background-color: #A33B2E" i],.thm-root.dark[style*="background: rgb(163, 59, 46)"],.thm-root.dark [style*="background: rgb(163, 59, 46)"],.thm-root.dark[style*="background-color: rgb(163, 59, 46)"],.thm-root.dark [style*="background-color: rgb(163, 59, 46)"]{background-color:#C9503F !important;background-image:none !important}
+.thm-root.dark[style*="background: #EADBB5" i],.thm-root.dark [style*="background: #EADBB5" i],.thm-root.dark[style*="background-color: #EADBB5" i],.thm-root.dark [style*="background-color: #EADBB5" i],.thm-root.dark[style*="background: rgb(234, 219, 181)"],.thm-root.dark [style*="background: rgb(234, 219, 181)"],.thm-root.dark[style*="background-color: rgb(234, 219, 181)"],.thm-root.dark [style*="background-color: rgb(234, 219, 181)"]{background-color:#3F3729 !important;background-image:none !important}
+.thm-root.dark[style*="solid #E7E4DC" i],.thm-root.dark [style*="solid #E7E4DC" i],.thm-root.dark[style*="dashed #E7E4DC" i],.thm-root.dark [style*="dashed #E7E4DC" i],.thm-root.dark[style*="border-color: #E7E4DC" i],.thm-root.dark [style*="border-color: #E7E4DC" i],.thm-root.dark[style*="solid rgb(231, 228, 220)"],.thm-root.dark [style*="solid rgb(231, 228, 220)"],.thm-root.dark[style*="dashed rgb(231, 228, 220)"],.thm-root.dark [style*="dashed rgb(231, 228, 220)"],.thm-root.dark[style*="border-color: rgb(231, 228, 220)"],.thm-root.dark [style*="border-color: rgb(231, 228, 220)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #EAE7DF" i],.thm-root.dark [style*="solid #EAE7DF" i],.thm-root.dark[style*="dashed #EAE7DF" i],.thm-root.dark [style*="dashed #EAE7DF" i],.thm-root.dark[style*="border-color: #EAE7DF" i],.thm-root.dark [style*="border-color: #EAE7DF" i],.thm-root.dark[style*="solid rgb(234, 231, 223)"],.thm-root.dark [style*="solid rgb(234, 231, 223)"],.thm-root.dark[style*="dashed rgb(234, 231, 223)"],.thm-root.dark [style*="dashed rgb(234, 231, 223)"],.thm-root.dark[style*="border-color: rgb(234, 231, 223)"],.thm-root.dark [style*="border-color: rgb(234, 231, 223)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #DAD5C9" i],.thm-root.dark [style*="solid #DAD5C9" i],.thm-root.dark[style*="dashed #DAD5C9" i],.thm-root.dark [style*="dashed #DAD5C9" i],.thm-root.dark[style*="border-color: #DAD5C9" i],.thm-root.dark [style*="border-color: #DAD5C9" i],.thm-root.dark[style*="solid rgb(218, 213, 201)"],.thm-root.dark [style*="solid rgb(218, 213, 201)"],.thm-root.dark[style*="dashed rgb(218, 213, 201)"],.thm-root.dark [style*="dashed rgb(218, 213, 201)"],.thm-root.dark[style*="border-color: rgb(218, 213, 201)"],.thm-root.dark [style*="border-color: rgb(218, 213, 201)"]{border-color:#4E4B44 !important}
+.thm-root.dark[style*="solid #CFC9BB" i],.thm-root.dark [style*="solid #CFC9BB" i],.thm-root.dark[style*="dashed #CFC9BB" i],.thm-root.dark [style*="dashed #CFC9BB" i],.thm-root.dark[style*="border-color: #CFC9BB" i],.thm-root.dark [style*="border-color: #CFC9BB" i],.thm-root.dark[style*="solid rgb(207, 201, 187)"],.thm-root.dark [style*="solid rgb(207, 201, 187)"],.thm-root.dark[style*="dashed rgb(207, 201, 187)"],.thm-root.dark [style*="dashed rgb(207, 201, 187)"],.thm-root.dark[style*="border-color: rgb(207, 201, 187)"],.thm-root.dark [style*="border-color: rgb(207, 201, 187)"]{border-color:#5A564E !important}
+.thm-root.dark[style*="solid #E2DED3" i],.thm-root.dark [style*="solid #E2DED3" i],.thm-root.dark[style*="dashed #E2DED3" i],.thm-root.dark [style*="dashed #E2DED3" i],.thm-root.dark[style*="border-color: #E2DED3" i],.thm-root.dark [style*="border-color: #E2DED3" i],.thm-root.dark[style*="solid rgb(226, 222, 211)"],.thm-root.dark [style*="solid rgb(226, 222, 211)"],.thm-root.dark[style*="dashed rgb(226, 222, 211)"],.thm-root.dark [style*="dashed rgb(226, 222, 211)"],.thm-root.dark[style*="border-color: rgb(226, 222, 211)"],.thm-root.dark [style*="border-color: rgb(226, 222, 211)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #ECEAE4" i],.thm-root.dark [style*="solid #ECEAE4" i],.thm-root.dark[style*="dashed #ECEAE4" i],.thm-root.dark [style*="dashed #ECEAE4" i],.thm-root.dark[style*="border-color: #ECEAE4" i],.thm-root.dark [style*="border-color: #ECEAE4" i],.thm-root.dark[style*="solid rgb(236, 234, 228)"],.thm-root.dark [style*="solid rgb(236, 234, 228)"],.thm-root.dark[style*="dashed rgb(236, 234, 228)"],.thm-root.dark [style*="dashed rgb(236, 234, 228)"],.thm-root.dark[style*="border-color: rgb(236, 234, 228)"],.thm-root.dark [style*="border-color: rgb(236, 234, 228)"]{border-color:#3A3832 !important}
+.thm-root.dark[style*="solid #F1EFEA" i],.thm-root.dark [style*="solid #F1EFEA" i],.thm-root.dark[style*="dashed #F1EFEA" i],.thm-root.dark [style*="dashed #F1EFEA" i],.thm-root.dark[style*="border-color: #F1EFEA" i],.thm-root.dark [style*="border-color: #F1EFEA" i],.thm-root.dark[style*="solid rgb(241, 239, 234)"],.thm-root.dark [style*="solid rgb(241, 239, 234)"],.thm-root.dark[style*="dashed rgb(241, 239, 234)"],.thm-root.dark [style*="dashed rgb(241, 239, 234)"],.thm-root.dark[style*="border-color: rgb(241, 239, 234)"],.thm-root.dark [style*="border-color: rgb(241, 239, 234)"]{border-color:#3A3832 !important}
+.thm-root.dark[style*="solid #F2EFE8" i],.thm-root.dark [style*="solid #F2EFE8" i],.thm-root.dark[style*="dashed #F2EFE8" i],.thm-root.dark [style*="dashed #F2EFE8" i],.thm-root.dark[style*="border-color: #F2EFE8" i],.thm-root.dark [style*="border-color: #F2EFE8" i],.thm-root.dark[style*="solid rgb(242, 239, 232)"],.thm-root.dark [style*="solid rgb(242, 239, 232)"],.thm-root.dark[style*="dashed rgb(242, 239, 232)"],.thm-root.dark [style*="dashed rgb(242, 239, 232)"],.thm-root.dark[style*="border-color: rgb(242, 239, 232)"],.thm-root.dark [style*="border-color: rgb(242, 239, 232)"]{border-color:#45423B !important}
+.thm-root.dark[style*="solid #2B2A26" i],.thm-root.dark [style*="solid #2B2A26" i],.thm-root.dark[style*="dashed #2B2A26" i],.thm-root.dark [style*="dashed #2B2A26" i],.thm-root.dark[style*="border-color: #2B2A26" i],.thm-root.dark [style*="border-color: #2B2A26" i],.thm-root.dark[style*="solid rgb(43, 42, 38)"],.thm-root.dark [style*="solid rgb(43, 42, 38)"],.thm-root.dark[style*="dashed rgb(43, 42, 38)"],.thm-root.dark [style*="dashed rgb(43, 42, 38)"],.thm-root.dark[style*="border-color: rgb(43, 42, 38)"],.thm-root.dark [style*="border-color: rgb(43, 42, 38)"]{border-color:#D6D0C4 !important}
+.thm-root.dark[style*="solid #DCCB9F" i],.thm-root.dark [style*="solid #DCCB9F" i],.thm-root.dark[style*="dashed #DCCB9F" i],.thm-root.dark [style*="dashed #DCCB9F" i],.thm-root.dark[style*="border-color: #DCCB9F" i],.thm-root.dark [style*="border-color: #DCCB9F" i],.thm-root.dark[style*="solid rgb(220, 203, 159)"],.thm-root.dark [style*="solid rgb(220, 203, 159)"],.thm-root.dark[style*="dashed rgb(220, 203, 159)"],.thm-root.dark [style*="dashed rgb(220, 203, 159)"],.thm-root.dark[style*="border-color: rgb(220, 203, 159)"],.thm-root.dark [style*="border-color: rgb(220, 203, 159)"]{border-color:#6B5B3A !important}
+.thm-root.dark[style*="solid #A33B2E" i],.thm-root.dark [style*="solid #A33B2E" i],.thm-root.dark[style*="dashed #A33B2E" i],.thm-root.dark [style*="dashed #A33B2E" i],.thm-root.dark[style*="border-color: #A33B2E" i],.thm-root.dark [style*="border-color: #A33B2E" i],.thm-root.dark[style*="solid rgb(163, 59, 46)"],.thm-root.dark [style*="solid rgb(163, 59, 46)"],.thm-root.dark[style*="dashed rgb(163, 59, 46)"],.thm-root.dark [style*="dashed rgb(163, 59, 46)"],.thm-root.dark[style*="border-color: rgb(163, 59, 46)"],.thm-root.dark [style*="border-color: rgb(163, 59, 46)"]{border-color:#F0907F !important}
+.thm-root.dark[style*="solid #FFFFFF" i],.thm-root.dark [style*="solid #FFFFFF" i],.thm-root.dark[style*="dashed #FFFFFF" i],.thm-root.dark [style*="dashed #FFFFFF" i],.thm-root.dark[style*="border-color: #FFFFFF" i],.thm-root.dark [style*="border-color: #FFFFFF" i],.thm-root.dark[style*="solid rgb(255, 255, 255)"],.thm-root.dark [style*="solid rgb(255, 255, 255)"],.thm-root.dark[style*="dashed rgb(255, 255, 255)"],.thm-root.dark [style*="dashed rgb(255, 255, 255)"],.thm-root.dark[style*="border-color: rgb(255, 255, 255)"],.thm-root.dark [style*="border-color: rgb(255, 255, 255)"]{border-color:#2C2B27 !important}
+.thm-root.dark[style*="solid #F7F6F2" i],.thm-root.dark [style*="solid #F7F6F2" i],.thm-root.dark[style*="dashed #F7F6F2" i],.thm-root.dark [style*="dashed #F7F6F2" i],.thm-root.dark[style*="border-color: #F7F6F2" i],.thm-root.dark [style*="border-color: #F7F6F2" i],.thm-root.dark[style*="solid rgb(247, 246, 242)"],.thm-root.dark [style*="solid rgb(247, 246, 242)"],.thm-root.dark[style*="dashed rgb(247, 246, 242)"],.thm-root.dark [style*="dashed rgb(247, 246, 242)"],.thm-root.dark[style*="border-color: rgb(247, 246, 242)"],.thm-root.dark [style*="border-color: rgb(247, 246, 242)"]{border-color:#3A3832 !important}
+.thm-root.dark[style*=" color: #2B2A26" i],.thm-root.dark [style*=" color: #2B2A26" i],.thm-root.dark[style^="color: #2B2A26" i],.thm-root.dark [style^="color: #2B2A26" i],.thm-root.dark[style*=" color: rgb(43, 42, 38)"],.thm-root.dark [style*=" color: rgb(43, 42, 38)"],.thm-root.dark[style^="color: rgb(43, 42, 38)"],.thm-root.dark [style^="color: rgb(43, 42, 38)"]{color:#ECE8DF !important}
+.thm-root.dark[style*=" color: #3A3833" i],.thm-root.dark [style*=" color: #3A3833" i],.thm-root.dark[style^="color: #3A3833" i],.thm-root.dark [style^="color: #3A3833" i],.thm-root.dark[style*=" color: rgb(58, 56, 51)"],.thm-root.dark [style*=" color: rgb(58, 56, 51)"],.thm-root.dark[style^="color: rgb(58, 56, 51)"],.thm-root.dark [style^="color: rgb(58, 56, 51)"]{color:#DAD5C9 !important}
+.thm-root.dark[style*=" color: #5E5A52" i],.thm-root.dark [style*=" color: #5E5A52" i],.thm-root.dark[style^="color: #5E5A52" i],.thm-root.dark [style^="color: #5E5A52" i],.thm-root.dark[style*=" color: rgb(94, 90, 82)"],.thm-root.dark [style*=" color: rgb(94, 90, 82)"],.thm-root.dark[style^="color: rgb(94, 90, 82)"],.thm-root.dark [style^="color: rgb(94, 90, 82)"]{color:#C9C3B6 !important}
+.thm-root.dark[style*=" color: #66625A" i],.thm-root.dark [style*=" color: #66625A" i],.thm-root.dark[style^="color: #66625A" i],.thm-root.dark [style^="color: #66625A" i],.thm-root.dark[style*=" color: rgb(102, 98, 90)"],.thm-root.dark [style*=" color: rgb(102, 98, 90)"],.thm-root.dark[style^="color: rgb(102, 98, 90)"],.thm-root.dark [style^="color: rgb(102, 98, 90)"]{color:#BDB7AA !important}
+.thm-root.dark[style*=" color: #6E6A62" i],.thm-root.dark [style*=" color: #6E6A62" i],.thm-root.dark[style^="color: #6E6A62" i],.thm-root.dark [style^="color: #6E6A62" i],.thm-root.dark[style*=" color: rgb(110, 106, 98)"],.thm-root.dark [style*=" color: rgb(110, 106, 98)"],.thm-root.dark[style^="color: rgb(110, 106, 98)"],.thm-root.dark [style^="color: rgb(110, 106, 98)"]{color:#B5AFA3 !important}
+.thm-root.dark[style*=" color: #7A776F" i],.thm-root.dark [style*=" color: #7A776F" i],.thm-root.dark[style^="color: #7A776F" i],.thm-root.dark [style^="color: #7A776F" i],.thm-root.dark[style*=" color: rgb(122, 119, 111)"],.thm-root.dark [style*=" color: rgb(122, 119, 111)"],.thm-root.dark[style^="color: rgb(122, 119, 111)"],.thm-root.dark [style^="color: rgb(122, 119, 111)"]{color:#A8A296 !important}
+.thm-root.dark[style*=" color: #98948B" i],.thm-root.dark [style*=" color: #98948B" i],.thm-root.dark[style^="color: #98948B" i],.thm-root.dark [style^="color: #98948B" i],.thm-root.dark[style*=" color: rgb(152, 148, 139)"],.thm-root.dark [style*=" color: rgb(152, 148, 139)"],.thm-root.dark[style^="color: rgb(152, 148, 139)"],.thm-root.dark [style^="color: rgb(152, 148, 139)"]{color:#8E887C !important}
+.thm-root.dark[style*=" color: #A33B2E" i],.thm-root.dark [style*=" color: #A33B2E" i],.thm-root.dark[style^="color: #A33B2E" i],.thm-root.dark [style^="color: #A33B2E" i],.thm-root.dark[style*=" color: rgb(163, 59, 46)"],.thm-root.dark [style*=" color: rgb(163, 59, 46)"],.thm-root.dark[style^="color: rgb(163, 59, 46)"],.thm-root.dark [style^="color: rgb(163, 59, 46)"]{color:#F0907F !important}
+.thm-root.dark[style*=" color: #7A5F28" i],.thm-root.dark [style*=" color: #7A5F28" i],.thm-root.dark[style^="color: #7A5F28" i],.thm-root.dark [style^="color: #7A5F28" i],.thm-root.dark[style*=" color: rgb(122, 95, 40)"],.thm-root.dark [style*=" color: rgb(122, 95, 40)"],.thm-root.dark[style^="color: rgb(122, 95, 40)"],.thm-root.dark [style^="color: rgb(122, 95, 40)"]{color:#E3C77E !important}
+.thm-root.dark[style*=" color: #8C7340" i],.thm-root.dark [style*=" color: #8C7340" i],.thm-root.dark[style^="color: #8C7340" i],.thm-root.dark [style^="color: #8C7340" i],.thm-root.dark[style*=" color: rgb(140, 115, 64)"],.thm-root.dark [style*=" color: rgb(140, 115, 64)"],.thm-root.dark[style^="color: rgb(140, 115, 64)"],.thm-root.dark [style^="color: rgb(140, 115, 64)"]{color:#D9C08A !important}
+.thm-root.dark[style*=" color: #EADBB5" i],.thm-root.dark [style*=" color: #EADBB5" i],.thm-root.dark[style^="color: #EADBB5" i],.thm-root.dark [style^="color: #EADBB5" i],.thm-root.dark[style*=" color: rgb(234, 219, 181)"],.thm-root.dark [style*=" color: rgb(234, 219, 181)"],.thm-root.dark[style^="color: rgb(234, 219, 181)"],.thm-root.dark [style^="color: rgb(234, 219, 181)"]{color:#2B2A26 !important}
+.thm-root.dark[style*=" color: #D9C08A" i],.thm-root.dark [style*=" color: #D9C08A" i],.thm-root.dark[style^="color: #D9C08A" i],.thm-root.dark [style^="color: #D9C08A" i],.thm-root.dark[style*=" color: rgb(217, 192, 138)"],.thm-root.dark [style*=" color: rgb(217, 192, 138)"],.thm-root.dark[style^="color: rgb(217, 192, 138)"],.thm-root.dark [style^="color: rgb(217, 192, 138)"]{color:#2B2A26 !important}
+.thm-root.dark [fill="#2B2A26" i]{fill:#ECE8DF !important}
+.thm-root.dark [fill="#3A3833" i]{fill:#DAD5C9 !important}
+.thm-root.dark [fill="#5E5A52" i]{fill:#C9C3B6 !important}
+.thm-root.dark [fill="#66625A" i]{fill:#BDB7AA !important}
+.thm-root.dark [fill="#6E6A62" i]{fill:#B5AFA3 !important}
+.thm-root.dark [fill="#7A776F" i]{fill:#A8A296 !important}
+.thm-root.dark [fill="#98948B" i]{fill:#8E887C !important}
+.thm-root.dark [fill="#A33B2E" i]{fill:#F0907F !important}
+.thm-root.dark [fill="#7A5F28" i]{fill:#E3C77E !important}
+.thm-root.dark [fill="#8C7340" i]{fill:#D9C08A !important}
+.thm-root.dark [fill="#EADBB5" i]{fill:#2B2A26 !important}
+.thm-root.dark [fill="#D9C08A" i]{fill:#2B2A26 !important}
+.thm-root.dark [fill="#FFFFFF" i]{fill:#2C2B27 !important}
+.thm-root.dark [stroke="#FFFFFF" i]{stroke:#2C2B27 !important}
+.thm-root.dark [style*="linear-gradient(135deg, #F1EADA" i],.thm-root.dark [style*="linear-gradient(135deg, rgb(241, 234, 218)"]{background:#3A3428 !important}
+.thm-root.dark [style*="inset 0 4px 0 #A33B2E" i],.thm-root.dark [style*="inset 0px 4px 0px rgb(163, 59, 46)"]{box-shadow:inset 0 4px 0 #F0907F !important}
+/* 다크 모드 스위치 */
+.thm-bar{display:flex;justify-content:flex-end;margin:-10px 0 -8px}
+.thm-abs{position:absolute;top:20px;right:24px;z-index:5}
+.thm-tg{position:relative;width:68px;height:36px;flex:none;border-radius:999px;border:1px solid #2B2A26;background:#2B2A26;padding:0;cursor:pointer;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl);transition:background .25s,border-color .25s}
+.thm-knob{position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#FFFFFF;color:#2B2A26;display:flex;align-items:center;justify-content:center;transition:transform .25s,background .25s,color .25s}
+.thm-knob svg{width:16px;height:16px;display:block}
+.thm-tg .i-moon{display:none}
+.thm-tg:focus-visible{outline:2px solid #C2A36B;outline-offset:3px}
+.thm-root.dark .thm-tg{background:#EADBB5 !important;border-color:#EADBB5 !important}
+.thm-root.dark .thm-knob{transform:translateX(32px);background:#1B1A17 !important;color:#EADBB5 !important}
+.thm-root.dark .thm-tg .i-moon{display:block}
+.thm-root.dark .thm-tg .i-sun{display:none}
+/* 사이드바 스크롤 고정 · 메뉴 구분선 */
+.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.thm-root.dark:has(> .side){background-color:#24231F !important}
+.nav a:not(.on)+a:not(.on)::before{content:"";position:absolute;left:14px;right:14px;top:-3px;height:1px;background:rgba(43,42,38,.09);pointer-events:none}
+.thm-root.dark .nav a:not(.on)+a:not(.on)::before{background:rgba(236,232,223,.08)}
+@media (max-width:900px){.side{position:relative;height:auto;overflow:visible;align-self:stretch}}
+/* ===== 반응형 · 휴대폰 / 태블릿 ===== */
+img,video,canvas{max-width:100%;height:auto}
+svg{max-width:100%}
+main{min-width:0;overflow-wrap:anywhere}
+.mnav-tg{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.mnav-btn{display:none}
+@media (max-width:1100px){
+.side{flex-basis:13.75rem !important}
+.side+main,.side+div>main{padding:1.5rem 1.5rem 3rem !important}
+}
+@media (max-width:900px){
+.side{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:wrap !important;align-items:center !important;gap:.5rem .75rem !important;padding:.75rem 1rem !important}
+.side>.logo{padding:0 !important;margin-right:auto}
+.mnav-btn{display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem;padding:0 1rem;border-radius:999px;border:1px solid #CFC9BB;background:#FFFFFF;font-size:.875rem;font-weight:600;color:#2B2A26;cursor:pointer}
+.mnav-btn i{display:inline-block;width:1rem;height:2px;border-radius:1px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
+.mnav-tg:focus-visible+.mnav-btn{outline:2px solid #C2A36B;outline-offset:2px}
+.side>.cta,.side>.cta2,.side>.nav,.side>.me{display:none !important;flex:1 1 100%}
+.mnav-tg:checked~.cta,.mnav-tg:checked~.cta2,.mnav-tg:checked~.me{display:flex !important}
+.mnav-tg:checked~.nav{display:flex !important;margin:.25rem 0 0 !important}
+.nav a.on{margin-right:0 !important;border-radius:999px !important;background-color:#FFFFFF !important}
+.nav a.on::before,.nav a.on::after{display:none !important}
+.side+main,.side+div{flex:1 1 100% !important;border-radius:1.5rem 1.5rem 0 0 !important}
+.side+main,.side+div>main{padding:1.25rem 1rem 2.5rem !important}
+.top{padding:.5rem 1rem !important;min-height:auto !important}
+h1{font-size:clamp(1.375rem,5vw,1.75rem) !important}
+.tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap !important}
+.tabs a{white-space:nowrap;flex:none}
+.thm-root.dark .mnav-btn{background:#2C2B27 !important;border-color:#5A564E !important;color:#ECE8DF !important}
+.thm-root.dark .nav a.on{background-color:#2C2B27 !important}
+}
+@media (max-width:600px){
+[style*="minmax(420px"],[style*="minmax(380px"],[style*="minmax(320px"],[style*="minmax(300px"],[style*="minmax(280px"]{grid-template-columns:minmax(0,1fr) !important}
+.g3{grid-template-columns:minmax(0,1fr) !important}
+section[aria-label="폴더"]{max-width:none !important}
+.steps{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem !important}
+.stp{padding:.625rem .75rem !important;gap:.5rem !important;font-size:.8125rem}
+.stp.on::after{display:none !important}
+.ln{grid-template-columns:auto minmax(0,1fr) auto !important;gap:.5rem .75rem !important;padding:.75rem 1rem !important}
+.ln>:nth-child(3){grid-column:1/-1;grid-row:2}
+.ln>:nth-child(4){grid-column:3;grid-row:1}
+.qa-row{grid-template-columns:minmax(0,1fr) !important}
+.hd{padding:.875rem 1rem !important}
+.kpi b,.stat b.n{font-size:1.625rem !important}
+.law{grid-template-columns:auto minmax(0,1fr) auto !important}
+.law .sum{grid-column:1/-1;grid-row:2}
+.hb{grid-template-columns:5.5rem minmax(0,1fr) 5.25rem !important}
+.thm-bar{margin:-.25rem 0 -.5rem !important}
+.thm-abs{top:.625rem !important;right:.75rem !important}
+.thm-abs~section[role="dialog"],.thm-abs~form{margin-top:2.75rem}
+}
+/* ===== 모서리 정리 (덜 둥글게) · 색상/그림자 유지 ===== */
+.btn,.cta,.cta2,.mnav-btn{border-radius:10px !important}
+.btn-sm{border-radius:8px !important}
+.inp,input.inp,select.inp,textarea.inp,.mv{border-radius:10px !important}
+.chip,.sig,.opt,.orig{border-radius:6px !important}
+.chipck,.addq,.pk,.impb{border-radius:8px !important}
+.seg,.tabs,.lseg,.tg{border-radius:12px !important}
+.seg button,.seg a,.tabs a,.tabs button,.lseg button{border-radius:8px !important}
+.stp{border-radius:12px !important}
+.stp.on::after{border-radius:6px !important}
+.toast{border-radius:10px !important}
+.nav a{border-radius:10px !important}
+.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:12px 0 0 12px !important}
+.nav a.on::before,.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{width:12px !important;height:12px !important}
+.nav a.on::before,.side[aria-label="관리자 메뉴"]>a.on::before{top:-12px !important;background:radial-gradient(circle at 0 0,transparent 11.5px,var(--base) 12px) !important}
+.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::after{bottom:-12px !important;background:radial-gradient(circle at 0 100%,transparent 11.5px,var(--base) 12px) !important}
+.side+main,.side+div{border-radius:20px 0 0 20px !important}
+.card{border-radius:14px !important}
+.box,.quote,.qcard,.qa,.flag,.fhead,.sum>div,.scard,.rq,.pop,.pick,.kpi,.fmt,.empty,.doc,.big{border-radius:12px !important}
+.mk{border-radius:10px !important}
+[style*="border-radius: 999px"]{border-radius:8px !important}
+[style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
+[style*="border-radius: 16px"]{border-radius:12px !important}
+@media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+/* 분석 알림 (녹취 올리기 후 화면 상단) */
+.job-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:90;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 10px 28px rgba(43,42,38,.28);animation:jobIn .3s ease;transition:transform .45s ease,opacity .45s ease}
+.job-toast.out{transform:translate(-50%,-180%);opacity:0}
+@keyframes jobIn{from{transform:translate(-50%,-180%);opacity:0}}
+.job-spin{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid rgba(234,219,181,.35);border-top-color:#EADBB5;animation:jobSp .8s linear infinite}
+@keyframes jobSp{to{transform:rotate(360deg)}}
+.job-file{font-weight:400;font-size:12.5px;opacity:.75;overflow:hidden;text-overflow:ellipsis}
+.job-ok{font-weight:700}
+.job-go{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#EADBB5;color:#2B2A26 !important;text-decoration:none;font-weight:700}
+.thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
+.thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+/* 법령 · 매뉴얼 */
+.lg-chat{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.lg-chat-hd{display:flex;align-items:flex-start;gap:12px}
+.lg-ai{flex:none;width:40px;height:40px;border-radius:10px;background:#2B2A26;color:#EADBB5;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:.04em}
+.lg-msgs{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:420px;overflow-y:auto;padding:14px;border:1px solid #E7E4DC;border-radius:12px;background:#F7F6F2;scrollbar-width:thin}
+.lg-msg{display:flex}
+.lg-msg.lg-u{justify-content:flex-end}
+.lg-bub{max-width:min(78%,720px);padding:12px 14px;border-radius:12px;background:#FFFFFF;border:1px solid #E7E4DC;font-size:14.5px;line-height:1.7;display:flex;flex-direction:column;gap:10px}
+.lg-msg.lg-u .lg-bub{background:#2B2A26;border-color:#2B2A26;color:#EADBB5}
+.lg-refs{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.lg-refl{font-size:12px;font-weight:700;color:#7A776F;margin-right:2px}
+.lg-ref{display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid #DAD5C9;border-radius:6px;background:#FFFFFF;font:inherit;font-size:12px;color:#2B2A26;text-decoration:none;cursor:pointer}
+.lg-ref:hover{border-color:#2B2A26}
+.lg-ref.law{background:#F1EADA;border-color:#E3D6B8}
+.lg-ref.static{cursor:default;background:#F2EFE8;border-color:#E7E4DC}
+.lg-typing{flex-direction:row;align-items:center;gap:4px}
+.lg-typing i{width:6px;height:6px;border-radius:50%;background:#A8A296;animation:lgDot 1s infinite}
+.lg-typing i:nth-child(2){animation-delay:.15s}.lg-typing i:nth-child(3){animation-delay:.3s}
+@keyframes lgDot{50%{opacity:.25;transform:translateY(-2px)}}
+.lg-sugg{display:flex;flex-wrap:wrap;gap:6px}
+.lg-chip{display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid #DAD5C9;border-radius:8px;background:#FFFFFF;font:inherit;font-size:13px;color:#2B2A26;text-decoration:none;cursor:pointer}
+.lg-chip:hover{border-color:#2B2A26}
+.lg-ask{display:flex;gap:8px}
+.lg-ask .inp{flex:1;min-width:0}
+.lg-refbox{padding:0;overflow:hidden}
+.lg-ref-hd{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px;padding:20px 24px 14px;border-bottom:1px solid #EAE7DF}
+.lg-src{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.lg-item{border-bottom:1px solid #EAE7DF}
+.lg-item:last-child{border-bottom:0}
+.lg-row{width:100%;display:grid;grid-template-columns:112px minmax(0,1fr) auto 24px;align-items:center;gap:14px;padding:16px 24px;border:0;background:transparent;font:inherit;color:#2B2A26;text-align:left;cursor:pointer}
+.lg-row:hover{background:#F7F6F2}
+.lg-item.open .lg-row{background:#F7F6F2}
+.lg-step{justify-self:start;white-space:nowrap;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;background:#F1EADA;color:#7A5F28;font-size:12px;font-weight:700}
+.lg-tt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lg-tt b{font-size:15px}
+.lg-pg{font-size:12px;color:#7A776F;white-space:nowrap}
+.lg-chev{font-size:18px;color:#7A776F;transition:transform .2s;justify-self:center;line-height:1}
+.lg-item.open .lg-chev{transform:rotate(180deg)}
+.lg-body{padding:4px 24px 20px 134px;display:flex;flex-direction:column;gap:12px;animation:lgOpen .25s ease}
+@keyframes lgOpen{from{opacity:0;transform:translateY(-4px)}}
+.lg-body ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.7}
+.lg-item{scroll-margin-top:16px}
+@media (max-width:900px){.lg-row{grid-template-columns:minmax(0,1fr) 24px;padding:14px 16px}.lg-step,.lg-pg{display:none}.lg-body{padding:4px 16px 18px}.lg-bub{max-width:92%}.lg-ref-hd{padding:16px}}
+.thm-root.dark .lg-msgs{background:#33312C;border-color:#45423B}
+.thm-root.dark .lg-bub{background:#2C2B27;border-color:#45423B;color:#ECE8DF}
+.thm-root.dark .lg-msg.lg-u .lg-bub{background:#EADBB5;border-color:#EADBB5;color:#2B2A26}
+.thm-root.dark .lg-ref,.thm-root.dark .lg-chip{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .lg-ref.law{background:#3F3729;border-color:#5A4F38}
+.thm-root.dark .lg-ref.static{background:#393731}
+.thm-root.dark .lg-ai{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .lg-row{color:#ECE8DF}
+.thm-root.dark .lg-row:hover,.thm-root.dark .lg-item.open .lg-row{background:#33312C}
+.thm-root.dark .lg-step{background:#3F3729;color:#EADBB5}
+.thm-root.dark .lg-item,.thm-root.dark .lg-ref-hd{border-color:#45423B}
+.lg-filter{padding:12px 24px;border-bottom:1px solid #EAE7DF}
+.lg-step.k-law{background:#2B2A26;color:#EADBB5}
+.thm-root.dark .lg-filter{border-color:#45423B}
+.thm-root.dark .lg-step.k-law{background:#EADBB5;color:#2B2A26}
+</style>
+</helmet>
+<div class="{{ themeCls }}" style="min-height: 1000px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
+<sc-if value="{{ jobShow }}" hint-placeholder-val="{{ false }}"><div class="job-toast {{ jobCls }}" role="status" aria-live="polite"><sc-if value="{{ jobRun }}" hint-placeholder-val="{{ true }}"><span class="job-spin" aria-hidden="true"></span><span>분석 중입니다...</span><span class="job-file">{{ jobName }}</span></sc-if><sc-if value="{{ jobDone }}" hint-placeholder-val="{{ false }}"><span class="job-ok" aria-hidden="true">✓</span><span>분석 완료</span><a class="job-go" href="SttReview.dc.html" onClick="{{ jobGo }}">검수</a></sc-if></div></sc-if>
+<aside class="side" aria-label="주 메뉴">
+<a class="logo" href="Main.dc.html"><span class="mk">IS</span><b style="font-size: 17px;">I-SPOT</b></a>
+<input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
+<a class="cta" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 · 자료 올리기</a>
+<a class="cta2" href="CaseRegister.dc.html" onClick="{{ markBack }}">+ 새 사례 등록</a>
+<nav class="nav" aria-label="메뉴">
+<a href="Main.dc.html">홈</a>
+<a href="CaseList.dc.html">사례 관리</a>
+<a href="Schedule.dc.html">일정</a>
+<a href="ChildLink.dc.html">아이 연계<span class="cnt">4</span></a>
+<a href="Closure.dc.html">종결 검토<span class="cnt">2</span></a>
+<a href="DocBox.dc.html">문서함</a>
+<a class="on" href="LawGuide.dc.html">법령 · 매뉴얼</a>
+<a href="Stats.dc.html">통계</a>
+<a href="Settings.dc.html">설정</a>
+</nav>
+<div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
+</aside>
+<main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
+<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px;">
+<div style="flex: 1 1 260px;"><div class="sub">2026 아동학대 대응 업무 매뉴얼 · 아동복지법 · 아동학대처벌법</div><h1 style="margin: 2px 0 0; font-size: 28px; font-weight: 700;">법령 · 매뉴얼</h1></div>
+</header>
+
+<section class="card lg-chat" aria-label="AI에게 묻기">
+<div class="lg-chat-hd"><span class="lg-ai" aria-hidden="true">AI</span><div style="flex: 1; min-width: 0;"><h2 class="h2">법령 · 매뉴얼 AI에게 묻기</h2><span class="note">2026 아동학대 대응 업무 매뉴얼 · 아동복지법 · 아동학대범죄의 처벌 등에 관한 특례법을 함께 참조해 답해요. 답변마다 매뉴얼 쪽수와 조문을 근거로 보여 드려요.</span></div><button type="button" class="btn btn-sm btn-s" onClick="{{ chatReset }}">새 대화</button></div>
+<div class="lg-msgs" id="lg-msgs" aria-live="polite">
+<sc-for list="{{ msgs }}" as="m" hint-placeholder-count="2">
+<div class="lg-msg {{ m.cls }}"><div class="lg-bub"><span style="white-space: pre-line;">{{ m.text }}</span>
+<sc-if value="{{ m.hasRefs }}" hint-placeholder-val="{{ false }}"><div class="lg-refs"><span class="lg-refl">근거</span><sc-for list="{{ m.refs }}" as="r" hint-placeholder-count="2"><button type="button" class="lg-ref" onClick="{{ r.open }}">{{ r.label }}</button></sc-for><sc-for list="{{ m.laws }}" as="w" hint-placeholder-count="1"><a class="lg-ref law" href="{{ w.url }}" target="_blank" rel="noopener">{{ w.label }} ↗</a></sc-for></div></sc-if>
+</div></div>
+</sc-for>
+<sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}"><div class="lg-msg lg-b"><div class="lg-bub lg-typing"><i></i><i></i><i></i><span class="note" style="margin-left: 6px;">매뉴얼과 법령에서 찾는 중</span></div></div></sc-if>
+</div>
+<div class="lg-sugg"><sc-for list="{{ suggs }}" as="q" hint-placeholder-count="4"><button type="button" class="lg-chip" onClick="{{ q.ask }}">{{ q.label }}</button></sc-for></div>
+<form class="lg-ask" onSubmit="{{ submit }}"><input class="inp" type="text" placeholder="예: 즉각분리 요건이 뭐예요?" value="{{ draft }}" onChange="{{ setDraft }}" aria-label="질문 입력"><button type="submit" class="btn btn-p">보내기</button></form>
+<p class="note" style="margin: 0;">AI 답변은 참고용입니다. 최종 판단은 매뉴얼 원문과 법령을 확인해 주세요.</p>
+</section>
+
+<section class="card lg-refbox" aria-label="업무 단계별 참고사항">
+<div class="lg-ref-hd"><div style="flex: 1 1 280px;"><h2 class="h2">업무 단계별 참고사항 · 주요 조문</h2><span class="note">자주 찾는 기준과 아동복지법 · 아동학대처벌법 주요 조문을 정리했어요. 줄을 누르면 펼쳐져요.</span></div>
+<div class="lg-src"><span class="note">원문 자료</span><button type="button" class="lg-chip" onClick="{{ openToc }}">매뉴얼 목차</button><a class="lg-chip" href="https://www.law.go.kr/법령/아동복지법" target="_blank" rel="noopener">아동복지법 ↗</a><a class="lg-chip" href="https://www.law.go.kr/법령/아동학대범죄의처벌등에관한특례법" target="_blank" rel="noopener">아동학대처벌법 ↗</a></div></div>
+<div class="lg-filter"><div class="seg" role="group" aria-label="분류"><sc-for list="{{ filters }}" as="p" hint-placeholder-count="4"><button type="button" class="{{ p.cls }}" aria-pressed="{{ p.on }}" onClick="{{ p.pick }}">{{ p.label }}</button></sc-for></div></div>
+<sc-for list="{{ refs }}" as="r" hint-placeholder-count="10">
+<div class="lg-item {{ r.cls }}" id="{{ r.domId }}">
+<button type="button" class="lg-row" aria-expanded="{{ r.exp }}" onClick="{{ r.toggle }}"><span class="lg-step {{ r.stepCls }}">{{ r.step }}</span><span class="lg-tt"><b>{{ r.title }}</b><span class="note">{{ r.sum }}</span></span><span class="lg-pg">{{ r.pages }}</span><span class="lg-chev" aria-hidden="true">⌄</span></button>
+<sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}"><div class="lg-body">
+<ul><sc-for list="{{ r.items }}" as="it" hint-placeholder-count="5"><li>{{ it }}</li></sc-for></ul>
+<div class="lg-refs"><span class="lg-refl">근거</span><span class="lg-ref static">{{ r.pages }}</span><sc-for list="{{ r.laws }}" as="w" hint-placeholder-count="2"><a class="lg-ref law" href="{{ w.url }}" target="_blank" rel="noopener">{{ w.label }} ↗</a></sc-for></div>
+</div></sc-if>
+</div>
+</sc-for>
+</section>
+<p class="ainote">요약과 조문은 2026 아동학대 대응 업무 매뉴얼(보건복지부)과 매뉴얼에 인용된 법령을 바탕으로 정리했습니다. 개정 여부는 국가법령정보센터 원문으로 확인하세요.</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+themeRead() {
+  const K = 'ispot-theme'; let v = null;
+  try { v = window.localStorage.getItem(K); } catch (e) {}
+  if (!v) { try { v = window.sessionStorage.getItem(K); } catch (e) {} }
+  if (!v) { try { v = window.top.__ispotTheme; } catch (e) {} }
+  if (!v) { v = window.__ispotTheme; }
+  return v === 'dark';
+}
+themeWrite(dark) {
+  const K = 'ispot-theme'; const v = dark ? 'dark' : 'light';
+  try { window.localStorage.setItem(K, v); } catch (e) {}
+  try { window.sessionStorage.setItem(K, v); } catch (e) {}
+  try { window.top.__ispotTheme = v; } catch (e) {}
+  window.__ispotTheme = v;
+}
+jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-job'); } catch (e) {} } if (!v) { try { v = window.top.__ispotJob; } catch (e) {} } if (!v) v = window.__ispotJob; try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
+jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
+componentDidMount() {
+  this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
+  if (this.componentDidMountBase) this.componentDidMountBase();
+}
+componentWillUnmount() {
+  clearInterval(this._thmT);
+  if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+renderVals() {
+  const v = this.renderValsBase() || {};
+  const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
+  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'LawGuide.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+    toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
+}
+
+constructor(props) { super(props); this.state = { open: { report: true }, msgs: [{ role: 'bot', text: '안녕하세요. 2026 아동학대 대응 업무 매뉴얼과 아동복지법 · 아동학대처벌법을 바탕으로 답해 드려요.\n아래 예시를 누르거나 직접 질문해 보세요.' }], draft: '', typing: false }; }
+componentDidMountBase() {}
+componentWillUnmountBase() { clearTimeout(this._tyT); }
+componentDidUpdate() { const id = this._scrollTo; if (id) { this._scrollTo = null; setTimeout(() => { try { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 60); } if (this._msgScroll) { this._msgScroll = false; setTimeout(() => { try { const box = document.getElementById('lg-msgs'); if (box) box.scrollTop = box.scrollHeight; } catch (e) {} }, 30); } }
+renderValsBase() {
+  const s = this.state;
+  const LAW = { cw: ['아동복지법', 'https://www.law.go.kr/법령/아동복지법'], cp: ['아동학대처벌법', 'https://www.law.go.kr/법령/아동학대범죄의처벌등에관한특례법'], pi: ['공익신고자 보호법', 'https://www.law.go.kr/법령/공익신고자보호법'], pr: ['개인정보 보호법', 'https://www.law.go.kr/법령/개인정보보호법'] };
+  const REFS = [
+    { id: 'report', step: '신고접수', title: '신고접수 시 파악할 정보 · 익명 신고', pages: '매뉴얼 p.36–51', sum: '아동의 현재 상황부터 신고자 정보까지, 접수 단계에서 최대한 파악',
+      items: ['피해(의심)아동의 현재 상황: 안전 여부, 응급조치 · 즉각분리 필요 여부, 심신 상태, 가정 상황',
+        '아동 인적사항(성명 · 성별 · 추정연령 · 주소 · 연락처), 피신고자(아동과의 관계 · 동거 여부 · 특성 및 성향), 신고자(연락처 · 관계 · 신고 목적)',
+        '아동 · 피신고자 정보를 제공받는 것은 개인정보 보호법 위반이 아님을 신고자에게 안내',
+        '구체적 증거(사진 · 녹취)가 없어도 의심 정황만으로 신고 가능',
+        '익명 신고 요청 시 신고자 비밀보장 원칙을 설명하고, 재차 원하면 신원 확인을 생략하되 인지 경위 · 아동 · 피신고자 정보를 충분히 파악',
+        '타 관할 아동이라도 우선 접수 · 현장출동 후 관할 시군구로 이관(112 안내로 미루지 않음)',
+        '의료인 · 교사에게 소견서 · 진단서는 신고 후 첫 대면조사에서 요청하지 않음'],
+      laws: [['cp', '제10조 (신고의무와 절차)'], ['cp', '제62조제2항 (비밀엄수)'], ['pr', '제18조제2항제2호']] },
+    { id: 'protect', step: '신고접수', title: '신고자 보호 · 신고인 정보 노출 처벌', pages: '매뉴얼 p.46–48, 54–55', sum: '현장에서도 신고인을 짐작할 수 있는 말과 행동 금지',
+      items: ['누구든지 신고인의 인적사항이나 신고인임을 미루어 알 수 있는 사실을 알리거나 공개 · 보도할 수 없음 → 3년 이하 징역 또는 3천만원 이하 벌금',
+        '현장에서 "신고자가 누구냐"고 물어도 답하지 않고 "아동학대 신고가 접수되어 방문했다"고만 안내, 계속 물으면 바로 조사에 착수',
+        '"학교(병원)에서 신고가 들어왔다"처럼 출처를 짐작하게 하는 말, 신고인 이름 부르기, 아동 · 보호자 앞 신고인 대면 금지',
+        '조사 안내문은 현관문 밑 등에 넣고 문 앞에 붙여 제3자 눈에 띄게 하지 않음',
+        '공익신고 요건을 갖춘 신고를 공개 · 보도하면 5년 이하 징역 또는 5천만원 이하 벌금. 익명 · 가명 신고는 공익신고로 보지 않음'],
+      laws: [['cp', '제10조제3항'], ['pi', '제12조 · 제30조']] },
+    { id: 'field', step: '조사', title: '현장출동 · 동행출동 · 조사', pages: '매뉴얼 p.52–96', sum: '지체 없이 출동, 권한 증표 제시, 조사는 최장 2개월 이내',
+      items: ['신고를 접수한 경찰 · 아동학대전담공무원은 지체 없이 현장에 출동, 서로 동행 요청 가능(정당한 사유 없으면 동행)',
+        '권한을 표시하는 증표를 제시하고 조사 · 질문 권한이 있음을 고지한 뒤 현장 또는 아동 보호에 필요한 장소에 출입',
+        '필요 시 아동보호전문기관 직원 동행 요청 가능(피해아동 보호 · 사례관리 범위에서 조사 참여)',
+        '피신고자를 만나지 못하면 조사 안내문을 남기고 시간을 조정해 조사에 응하도록 요청',
+        '준비물: 응급조치결과보고서, 조사안내문, 업무절차 안내문, 아동보호동의서 / 카메라 · 녹취기, 조사원증',
+        '조사는 신고접수 이후 최장 2개월 이내 완료하도록 노력(피신고자 회피, 아동 가출 등 특별한 사유 제외)'],
+      laws: [['cp', '제11조 (현장출동)']] },
+    { id: 'emergency', step: '응급조치', title: '응급조치 유형 · 기간 · 보호시설 인도 기준', pages: '매뉴얼 p.196–206', sum: '제지 · 격리 · 보호시설 인도 · 의료기관 인도, 원칙 72시간',
+      items: ['유형: ① 학대행위 제지 ② 행위자를 피해아동으로부터 격리 ③ 아동학대 관련 보호시설로 인도 ④ 긴급치료가 필요한 아동을 의료기관으로 인도 (연고자 등에게 인도도 가능)',
+        '기간: 72시간 이내(주말 · 공휴일 포함 시 48시간 범위에서 연장 가능), 검사가 임시조치를 청구하면 법원 결정 시까지',
+        '제지는 언어적 통제를 우선하고, 위해가 명백하면 최소한의 유형력 행사 가능',
+        '보호시설 인도를 적극 고려: 행위자 외 보호할 성인이 없거나 보호력 부족, 물리적 환경의 즉각적 위험, 아동이 귀가를 두려워함, 멍 · 상흔 등 신체학대 정황, 2회 이상 재신고, 알코올 · 약물 관련 등',
+        '36개월 미만 아동이 보호자 없이 방치될 위험이 있으면 반드시 보호시설로 인도',
+        '의료기관 인도: 중상해 · 생명 위험, 즉각 치료 필요, 도구 사용 · 누적 상흔, 골절 추정 등. 성학대는 해바라기센터, 다발성 상흔은 2차 이상 의료기관'],
+      laws: [['cp', '제12조 (응급조치)'], ['cp', '제13조 (긴급임시조치)'], ['cw', '제27조의3']] },
+    { id: 'separate', step: '응급조치', title: '즉각분리(일시보호) 요건 · 응급조치와 비교', pages: '매뉴얼 p.246–261', sum: '응급조치까지는 아니지만 보호가 필요할 때, 보호조치 결정 시까지',
+      items: ['1호: 1년 이내 2회 이상 신고된 아동으로, 현장조사에서 학대피해가 강하게 의심되고 재학대 우려가 있는 경우',
+        '2호: 응급조치 · 긴급임시조치가 끝났으나 임시조치가 청구되지 않은 경우',
+        '3호: 보호자가 아동에게 답변을 거부 · 기피 또는 거짓 답변을 하게 하거나 답변을 방해한 경우(아동 면담 자체를 막는 경우 포함)',
+        '4호: 그 밖에 보호조치를 할 때까지 일시보호가 필요한 경우(응급조치 72시간 이후 추가 보호 필요 등)',
+        '비교: 응급조치는 아동학대처벌법 제12조 · 경찰과 전담공무원 · 72시간 / 즉각분리는 아동복지법 제15조제6항 · 전담공무원 · 보호조치 결정 시까지',
+        '명확한 학대로 재학대 위험이 급박 · 현저하면 즉각분리가 아니라 응급조치를 실시'],
+      laws: [['cw', '제15조제6항 (일시보호)'], ['cp', '제12조']] },
+    { id: 'judge', step: '사례판단', title: '사례판단 기준 · 유형', pages: '매뉴얼 p.97–120', sum: '조사 완료 후 3~5일 이내, 구성요건과 고의 확인',
+      items: ['조사 완료 후 특별한 사유가 없으면 3~5일 이내 판단, 지연되면 정당한 사유를 기록',
+        '아동학대사례: 신체학대 · 정서학대 · 성학대 · 방임 4가지(2가지 이상 중복 판단 가능) / 일반사례: 학대 사실이 확인되지 않은 사례',
+        '신체 · 정서 · 성학대 구성요건: ① 보호자를 포함한 성인이 ② 고의로 ③ 아동의 ④ 건강 · 복지를 해치거나 발달을 저해할 수 있는 ⑤ 폭력이나 가혹행위',
+        '방임 구성요건: ① 아동의 보호자가 ② 고의로 ③ 아동을 ④ 유기하거나 방임',
+        '미필적 고의도 고의에 해당(결과 발생 가능성을 인식하고 용인한 경우)',
+        '일반사례라도 경제적 어려움 · 알코올 · 정신질환 등 위험요인이 있으면 드림스타트, 정신건강복지센터 등 서비스 연계'],
+      laws: [['cw', '제3조제7호 (아동학대 정의)'], ['cw', '제17조 (금지행위)']] },
+    { id: 'plan', step: '보호계획', title: '피해아동보호계획 수립', pages: '매뉴얼 p.121–138', sum: '사례판단 직후 수립해 아동보호전문기관에 통보',
+      items: ['아동학대사례로 판단되면 즉시 피해아동보호계획을 수립하고, 아동보호전문기관에 사례 연계 시 통보(서식 11)',
+        '분리보호 여부는 아동학대 위험도 평가척도 결과를 고려해 결정(사례판단 때 쓰는 판단척도와 다른 척도)',
+        '자체사례회의 · 통합사례회의 · 아동학대사례 전문가자문단을 활용해 수립',
+        '조치계획뿐 아니라 대상자별 문제와 욕구에 따른 지원계획, 지역사회 자원 연계를 함께 포함',
+        '사례관리 중 조치 변경, 즉각분리 후 보호조치 결정, 전원 등이 생기면 추가(변경) 계획 수립'],
+      laws: [['cw', '제22조의4 (피해아동보호계획의 수립 등)'], ['cw', '제15조 (보호조치)']] },
+    { id: 'close', step: '종결', title: '사례관리 종결 절차', pages: '매뉴얼 p.190–193', sum: '종결 평가회의 → 3개월 모니터링 → 종결보고서 → 지자체 결정',
+      items: ['아동보호전문기관이 사례점검 후 지자체(아동보호팀)와 사례관리 종결 평가회의를 열어 종결 여부 결정',
+        '종결이 적합하면 3개월간 방문상담 · 불시 방문으로 아동 · 사례관리대상자 · 양육환경을 점검(위험수준별 개입사정 척도, 가족회의 활용)',
+        '아동 사망, 만 18세 도래, 필요한 서비스 연계 완료 시에는 종결 전 모니터링 생략 가능',
+        '모니터링 결과를 담은 사례관리 종결보고서를 지자체가 검토해 사례종결 결정(필요 시 사례회의)',
+        '가정 외 보호(시설 · 가정위탁) 상태면 아동보호전담요원에게 연계',
+        '아동학대전담공무원은 사례종결 후 7일 이내 아동통합정보시스템에 입력'],
+      laws: [] },
+    { id: 'safety', step: '신변안전', title: '대응 인력 신변안전 수칙', pages: '매뉴얼 p.291–300', sum: '2인 출동, 사전 위험사정, 위험하면 경찰 동행',
+      items: ['출동 전 사례기록을 숙지해 신변위협 · 폭력 · 음주 · 약물 이력을 확인하고 수퍼바이저와 방문 계획을 협의',
+        '행선지와 복귀 예정 시간을 동료에게 알리고, 인근 지구대 · 관공서 등 대피 지점을 미리 확인',
+        '대응 인력 2인이 함께 출동 · 조사, 피신고자가 폭력적이거나 정신질환이 의심되면 경찰과 동행',
+        '피신고자보다 아동 · 주변인을 먼저 면담해 위험 수준을 파악, 위험하면 가정 대신 지구대 · 주민센터에서 면담',
+        '가급적 기관 차량 이용, 대낮 · 주중 방문, 바로 출발할 수 있게 주차하고 열쇠는 주머니에 보관',
+        '현장 위험 유형: 언어적 괴롭힘, 성적 괴롭힘, 신체적 공격(시도 포함), 기물 파손'],
+      laws: [['cp', '제61조 (업무수행 방해죄)']] },
+    { id: 'cw3', kind: 'cw', step: '아동복지법', title: '제3조 (정의) 제7호 · 제7호의2', pages: '매뉴얼 p.10, 183', sum: '아동학대 · 아동학대관련범죄의 정의',
+      items: ['7. "아동학대"란 보호자를 포함한 성인이 아동의 건강 또는 복지를 해치거나 정상적 발달을 저해할 수 있는 신체적 · 정신적 · 성적 폭력이나 가혹행위를 하는 것과 아동의 보호자가 아동을 유기하거나 방임하는 것을 말한다.',
+        '7의2. "아동학대관련범죄"란 「아동학대범죄의 처벌 등에 관한 특례법」 제2조제4호에 따른 아동학대범죄, 아동에 대한 「형법」 제250조부터 제255조까지(살인의 죄)의 죄를 말한다.'],
+      laws: [['cw', '제3조']] },
+    { id: 'cw15', kind: 'cw', step: '아동복지법', title: '제15조 (보호조치) · 제6항 일시보호', pages: '매뉴얼 p.246–261', sum: '보호조치 결정 시까지 일시보호(즉각분리)의 근거',
+      items: ['시 · 도지사 또는 시장 · 군수 · 구청장은 보호조치를 할 때까지 필요하면 아동을 일시보호시설 · 학대피해아동쉼터에 입소시키거나 적합한 위탁가정 등에 일시위탁할 수 있다(제6항, 매뉴얼에서는 "즉각분리"로 표기).',
+        '일시보호 사유: 1년 이내 2회 이상 신고 + 재학대 우려(1호), 응급조치 · 긴급임시조치 종료 후 임시조치 미청구(2호), 보호자의 답변 거부 · 방해(3호), 그 밖에 보호조치 때까지 필요한 경우(4호)',
+        '제1항제3호~제6호의 보호조치를 하기 전에 상담 · 건강검진 · 심리검사 · 가정환경 조사를 하고, 보호조치 과정과 목적, 예상기간 등을 아동이 이해할 수 있게 설명해야 한다(제3항, 시행규칙 제10조).'],
+      laws: [['cw', '제15조']] },
+    { id: 'cw17', kind: 'cw', step: '아동복지법', title: '제17조 (금지행위)', pages: '매뉴얼 p.13, 183', sum: '누구든지 해서는 안 되는 행위 11가지',
+      items: ['누구든지 다음 각 호의 어느 하나에 해당하는 행위를 하여서는 아니 된다.',
+        '1. 아동을 매매하는 행위 / 2. 아동에게 음란한 행위를 시키거나 이를 매개하는 행위 또는 아동을 대상으로 하는 성희롱 등의 성적 학대행위',
+        '3. 아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위 / 5. 아동의 정신건강 및 발달에 해를 끼치는 정서적 학대행위',
+        '6. 자신의 보호 · 감독을 받는 아동을 유기하거나 의식주를 포함한 기본적 보호 · 양육 · 치료 및 교육을 소홀히 하는 방임행위',
+        '7. 장애를 가진 아동을 공중에 관람시키는 행위 / 8. 아동에게 구걸을 시키거나 아동을 이용하여 구걸하는 행위 / 9. 아동의 건강 또는 안전에 유해한 곡예를 시키는 행위',
+        '10. 정당한 권한을 가진 알선기관 외의 자가 아동의 양육을 알선하고 금품을 취득하거나 요구 · 약속하는 행위 / 11. 아동을 위하여 증여 또는 급여된 금품을 목적 외 용도로 사용하는 행위 (4호는 삭제)',
+        '위반하면 누구든지(미성년자 포함) 제71조에 따라 처벌된다. 보호자가 아닌 미성년자의 위반은 법령상 아동학대에는 해당하지 않으나 필요 시 관련기관 연계'],
+      laws: [['cw', '제17조'], ['cw', '제71조 (벌칙)']] },
+    { id: 'cw71', kind: 'cw', step: '아동복지법', title: '제71조 (벌칙) 제3항제7호 · 제27조의3', pages: '매뉴얼 p.76, 199', sum: '조사 거부 · 아동 답변 방해 처벌, 보호시설 · 의료기관 인수 거부 금지',
+      items: ['제71조③7. 제66조제1항에 따른 조사를 거부 · 방해 또는 기피하거나 질문에 답변을 거부 · 기피 또는 거짓 답변을 하거나, 아동에게 답변을 거부 · 기피 또는 거짓 답변을 하게 하거나 그 답변을 방해한 자 → 1년 이하의 징역 또는 1천만원 이하의 벌금',
+        '제27조의3: 사법경찰관리 또는 아동학대전담공무원이 피해아동을 인도하는 경우 보호시설 · 의료기관은 정당한 사유 없이 거부하여서는 아니 된다.'],
+      laws: [['cw', '제71조'], ['cw', '제27조의3']] },
+    { id: 'cp10', kind: 'cp', step: '아동학대처벌법', title: '제10조 (아동학대범죄 신고의무와 절차)', pages: '매뉴얼 p.36–54, 419', sum: '누구든지 신고 가능, 신고의무자, 신고인 보호',
+      items: ['누구든지 아동학대범죄를 알게 된 경우나 그 의심이 있는 경우에는 신고할 수 있다(제1항).',
+        '교원 · 의료인 · 보육교직원 · 시설종사자 등 신고의무자는 직무를 수행하면서 아동학대범죄를 알게 되거나 의심이 있으면 즉시 신고하여야 한다(제2항, 직군은 매뉴얼 참고자료 1).',
+        '③ 누구든지 제1항 및 제2항에 따른 신고인의 인적 사항 또는 신고인임을 미루어 알 수 있는 사실을 다른 사람에게 알려주거나 공개 또는 보도하여서는 아니 된다.'],
+      laws: [['cp', '제10조']] },
+    { id: 'cp11', kind: 'cp', step: '아동학대처벌법', title: '제11조 (현장출동)', pages: '매뉴얼 p.55', sum: '지체 없는 출동, 상호 동행, 조사 · 질문 권한',
+      items: ['① 아동학대범죄 신고를 접수한 경찰이나 아동학대전담공무원은 지체 없이 아동학대범죄의 현장에 출동하여야 한다. 이 경우 서로 동행하여 줄 것을 요청할 수 있으며, 요청을 받으면 정당한 사유가 없으면 동행하도록 조치하여야 한다.',
+        '② 신고된 현장 또는 피해아동을 보호하기 위하여 필요한 장소에 출입하여 아동 또는 아동학대행위자 등 관계인에게 조사하거나 질문할 수 있다. 다만, 아동학대전담공무원은 피해아동의 보호, 사례관리를 위한 범위에서만 조사 또는 질문할 수 있다.',
+        '③ 필요한 경우 아동보호전문기관의 장에게 직원 동행을 요청할 수 있고, 직원은 피해아동 보호 및 사례관리를 위한 범위에서 조사에 참여할 수 있다.'],
+      laws: [['cp', '제11조']] },
+    { id: 'cp12', kind: 'cp', step: '아동학대처벌법', title: '제12조 (피해아동 등에 대한 응급조치)', pages: '매뉴얼 p.196–206', sum: '응급조치 5가지와 72시간 · 48시간 연장',
+      items: ['① 현장에 출동하거나 학대현장을 발견한 경우 또는 학대현장 이외의 장소에서 학대피해가 확인되고 재학대의 위험이 급박 · 현저한 경우, 피해아동등의 보호를 위하여 즉시 다음 조치를 하여야 한다.',
+        '1. 아동학대범죄 행위의 제지 2. 아동학대행위자를 피해아동등으로부터 격리 3. 피해아동등을 아동학대 관련 보호시설로 인도 4. 긴급치료가 필요한 피해아동을 의료기관으로 인도 5. 피해아동등을 연고자 등에게 인도',
+        '제3호 · 제5호 조치 시 피해아동등의 이익을 최우선으로 고려하고, 특별한 사정이 없으면 피해아동등의 의사를 존중하여야 한다.',
+        '③ 제2호부터 제5호까지의 응급조치는 72시간을 넘을 수 없다. 다만, 공휴일이나 토요일이 포함되고 보호를 위해 필요하면 48시간의 범위에서 연장할 수 있다.',
+        '④ 검사가 임시조치를 법원에 청구한 경우에는 법원의 임시조치 결정 시까지 응급조치 기간이 연장된다.'],
+      laws: [['cp', '제12조']] },
+    { id: 'cp13', kind: 'cp', step: '아동학대처벌법', title: '제13조 (긴급임시조치) · 제19조 (임시조치)', pages: '매뉴얼 p.220–234', sum: '법원 결정 전 긴급임시조치, 판사의 임시조치 7가지',
+      items: ['제13조① 사법경찰관은 응급조치에도 불구하고 재발 우려가 있고 긴급하여 법원의 임시조치 결정을 받을 수 없을 때 직권 또는 신청에 따라 제19조제1항제1호~제3호의 조치(긴급임시조치)를 할 수 있다.',
+        '제19조① 판사는 피해아동등의 보호를 위해 필요하면 결정으로 다음 조치를 할 수 있다: 1. 주거로부터 퇴거 등 격리 2. 주거 · 학교 · 보호시설 등에서 100미터 이내 접근 금지 3. 전기통신을 이용한 접근 금지 4. 친권 또는 후견인 권한 행사의 제한 또는 정지 5. 아동보호전문기관 등에의 상담 및 교육 위탁 6. 의료기관이나 요양시설에의 위탁 7. 경찰관서의 유치장 또는 구치소에의 유치',
+        '② 제1항 각 호의 처분은 병과할 수 있다.'],
+      laws: [['cp', '제13조'], ['cp', '제19조']] },
+    { id: 'cp59', kind: 'cp', step: '아동학대처벌법', title: '제59조 · 제61조 · 제63조 (처벌 · 과태료)', pages: '매뉴얼 p.81–83, 198', sum: '임시조치 불이행, 업무수행 방해, 긴급임시조치 불이행',
+      items: ['제59조① 제19조제1항제1호~제4호의 임시조치를 이행하지 아니한 아동학대행위자 → 2년 이하의 징역 또는 2천만원 이하의 벌금 또는 구류',
+        '제61조① 현장조사 · 응급조치 · 임시조치 등의 업무를 수행 중인 사법경찰관리, 아동학대전담공무원, 아동보호전문기관 직원을 폭행 · 협박하거나 위계 · 위력으로 업무수행을 방해한 사람 → 5년 이하의 징역 또는 5천만원 이하의 벌금',
+        '제63조①4. 정당한 사유 없이 긴급임시조치를 이행하지 아니한 사람 → 1천만원 이하의 과태료',
+        '응급조치 상 격리를 위반한 경우는 형사처벌 대상이 아님(긴급임시조치 위반은 과태료, 임시조치 위반은 형사처벌)'],
+      laws: [['cp', '제59조'], ['cp', '제61조'], ['cp', '제63조']] },
+    { id: 'toc', step: '원문', title: '2026 아동학대 대응 업무 매뉴얼 (1권) · 목차', pages: '전체 494쪽', sum: '장별 쪽수로 원문 위치 찾기',
+      items: ['1장 아동학대예방사업 및 아동학대의 이해 — 정의 · 유형(p.10–27), 용어(p.28–32), 대응 체계(p.33)',
+        '2장 단계별 업무수행 절차 — 신고접수(p.36), 조사(p.52), 사례판단(p.97), 피해아동보호계획(p.121), 조치(p.162), 사례관리 · 종결(p.190)',
+        '3장 「아동학대처벌법」 세부 절차 — 응급조치(p.196), 피해아동보호명령(p.207), 긴급임시조치(p.220), 임시조치(p.224), 보호처분(p.235), 조건부 기소유예(p.242)',
+        '4장 업무수행 세부 지침 — 즉각분리(p.246), 관할 · 이관(p.262), 과태료(p.267), 취학 지원(p.270), 회의 운영(p.276), 신변안전(p.291), 정보공개청구(p.301), 장애아동(p.324), 판단 참고 가이드(p.327)',
+        '5장 서식 및 참고자료 — 동행요청서 · 조사 안내문 · 출석 · 진술요구서 등(p.354~)'],
+      laws: [['cw', '전문'], ['cp', '전문']] }
+  ];
+  const QA = [
+    { k: ['금지행위', '제17조', '구걸', '매매'], ref: 'cw17', a: '아동복지법 제17조는 누구든지 해서는 안 되는 행위로 아동 매매, 성적 학대, 신체적 학대, 정서적 학대, 방임, 장애아동 공중 관람, 구걸 강요, 유해한 곡예, 무자격 양육 알선, 아동 몫 금품의 목적 외 사용 등을 정하고 있어요(4호는 삭제). 위반하면 미성년자를 포함해 누구든지 제71조에 따라 처벌돼요.' },
+    { k: ['임시조치', '긴급임시조치', '접근금지', '접근 금지', '퇴거'], ref: 'cp13', a: '긴급임시조치는 응급조치에도 재발 우려가 있고 법원 결정을 기다릴 수 없을 때 사법경찰관이 하는 조치예요(퇴거 · 격리, 100미터 이내 접근 금지, 전기통신 접근 금지). 임시조치는 판사가 결정하며 퇴거 · 격리, 접근 금지, 친권 제한 · 정지, 상담 · 교육 위탁, 의료기관 위탁, 유치장 · 구치소 유치 7가지이고 함께 내릴 수 있어요.' },
+    { k: ['벌칙', '처벌', '방해', '과태료', '불이행'], ref: 'cp59', a: '업무를 수행 중인 경찰 · 전담공무원 · 아보전 직원을 폭행 · 협박하거나 위계 · 위력으로 방해하면 5년 이하 징역 또는 5천만원 이하 벌금이에요(아동학대처벌법 제61조). 임시조치 불이행은 2년 이하 징역 또는 2천만원 이하 벌금, 긴급임시조치 불이행은 1천만원 이하 과태료예요. 조사 거부나 아동 답변 방해는 아동복지법 제71조로 1년 이하 징역 또는 1천만원 이하 벌금이에요.' },
+    { k: ['신고의무', '신고의무자', '의무자'], ref: 'cp10', a: '누구든지 아동학대를 알거나 의심되면 신고할 수 있고, 교원 · 의료인 · 보육교직원 · 시설종사자 등 신고의무자는 직무 중 알게 되면 즉시 신고해야 해요(아동학대처벌법 제10조). 신고의무자 직군은 매뉴얼 참고자료 1에 정리돼 있어요.' },
+    { k: ['즉각분리', '일시보호', '분리'], ref: 'separate', a: '즉각분리(일시보호)는 응급조치까지는 아니지만 보호가 필요한 아동을, 보호조치 결정이 있을 때까지 일시보호시설 · 학대피해아동쉼터 등에 보호하는 제도예요. 요건은 ① 1년 이내 2회 이상 신고 + 학대피해 강한 의심 · 재학대 우려 ② 응급조치 · 긴급임시조치 종료 후 임시조치 미청구 ③ 보호자의 답변 방해 ④ 그 밖에 일시보호가 필요한 경우예요. 재학대 위험이 급박 · 현저하면 응급조치를 실시해요.' },
+    { k: ['응급조치', '72시간', '격리', '보호시설'], ref: 'emergency', a: '응급조치는 학대행위 제지, 행위자 격리, 보호시설 인도, 의료기관 인도로 이뤄지고 기간은 72시간이에요. 주말 · 공휴일이 끼면 48시간 범위에서 연장할 수 있고, 검사가 임시조치를 청구하면 법원 결정 때까지 이어져요. 36개월 미만 아동이 방치될 위험이 있으면 반드시 보호시설로 인도해요.' },
+    { k: ['신고자', '신고인', '익명', '공익'], ref: 'protect', a: '신고인의 인적사항이나 신고인임을 짐작할 수 있는 사실은 누구에게도 알리거나 공개할 수 없어요(위반 시 3년 이하 징역 또는 3천만원 이하 벌금). 현장에서 신고자를 물어도 "아동학대 신고가 접수되어 방문했다"고만 답하고, 공익신고에 해당하면 공개 · 보도 시 5년 이하 징역 또는 5천만원 이하 벌금이에요.' },
+    { k: ['사례판단', '판단', '구성요건', '고의'], ref: 'judge', a: '조사 완료 후 특별한 사유가 없으면 3~5일 이내에 판단해요. 아동학대사례는 신체 · 정서 · 성학대 · 방임 4가지로 나누고 중복 판단도 가능해요. 신체 · 정서 · 성학대는 보호자를 포함한 성인의 고의적 폭력 · 가혹행위, 방임은 보호자의 고의적 유기 · 방임이 확인돼야 하며, 미필적 고의도 고의로 봐요.' },
+    { k: ['종결', '모니터링'], ref: 'close', a: '아동보호전문기관이 지자체와 종결 평가회의를 열어 종결 여부를 정하고, 적합하면 3개월간 종결 전 모니터링을 해요. 그 결과를 담은 사례관리 종결보고서를 지자체가 검토해 최종 결정하고, 전담공무원은 종결 후 7일 이내 아동통합정보시스템에 입력해요.' },
+    { k: ['현장', '출동', '동행', '조사 기간', '2개월'], ref: 'field', a: '신고를 받은 경찰 · 아동학대전담공무원은 지체 없이 현장에 출동하고, 서로 동행을 요청할 수 있어요(아동학대처벌법 제11조). 현장에서는 권한 증표를 보여 주고 조사 · 질문 권한을 알린 뒤 출입해요. 조사는 신고접수 후 최장 2개월 안에 마치도록 노력해요.' },
+    { k: ['신변', '안전', '위험', '폭력'], ref: 'safety', a: '출동 전에 사례기록으로 폭력 · 음주 · 약물 이력을 확인하고, 행선지와 복귀 시간을 동료에게 알려요. 2인이 함께 출동하고, 피신고자가 폭력적이거나 정신질환이 의심되면 경찰과 동행해요. 위험하다고 판단되면 가정 대신 지구대 · 주민센터에서 면담해요.' },
+    { k: ['보호계획', '위험도', '평가척도'], ref: 'plan', a: '아동학대사례로 판단되면 즉시 피해아동보호계획을 세우고 아동보호전문기관에 사례를 연계할 때 함께 통보해요. 분리보호 여부는 아동학대 위험도 평가척도 결과를 고려하고, 자체사례회의 · 통합사례회의 · 전문가자문단을 활용해요.' },
+    { k: ['신고접수', '접수', '파악', '정보', '개인정보'], ref: 'report', a: '접수할 때는 아동의 현재 안전과 응급조치 필요 여부, 아동 · 피신고자 · 신고자 정보를 가능한 한 많이 파악해요. 아동 · 피신고자 정보를 받는 것은 개인정보 보호법 위반이 아니라고 신고자에게 안내하고, 증거가 없어도 의심 정황만으로 신고할 수 있어요.' },
+    { k: ['정의', '유형', '신체학대', '정서학대', '성학대', '방임'], ref: 'judge', a: '아동학대는 보호자를 포함한 성인이 아동의 건강 · 복지를 해치거나 정상적 발달을 저해할 수 있는 신체적 · 정신적 · 성적 폭력이나 가혹행위를 하는 것과, 보호자가 아동을 유기 · 방임하는 것을 말해요(아동복지법 제3조제7호). 유형은 신체학대 · 정서학대 · 성학대 · 방임 4가지예요.' }
+  ];
+
+  const byId = {}; REFS.forEach((r) => { byId[r.id] = r; });
+  const law = (pair) => ({ label: LAW[pair[0]][0] + ' ' + pair[1], url: LAW[pair[0]][1] });
+  const openRef = (id) => { this._scrollTo = 'ref-' + id; this.setState({ open: { ...this.state.open, [id]: true }, f: 'all' }); };
+  const answer = (q) => { const t = String(q || '').replace(/\s+/g, ''); let best = null, score = 0;
+    QA.forEach((x) => { const sc = x.k.filter((k) => t.includes(k.replace(/\s+/g, ''))).length; if (sc > score) { score = sc; best = x; } });
+    if (!best) return { role: 'bot', text: '매뉴얼과 법령에서 딱 맞는 내용을 찾지 못했어요. 아래 참고사항의 조문 · 목차를 확인해 보시거나, 단어를 바꿔 다시 물어봐 주세요.', refs: ['toc'], laws: [['cw', '전문'], ['cp', '전문']] };
+    const r = byId[best.ref]; const extra = { separate: 'cw15', emergency: 'cp12', protect: 'cp10', field: 'cp11', judge: 'cw3' }[best.ref]; return { role: 'bot', text: best.a, refs: extra ? [best.ref, extra] : [best.ref], laws: r.laws.slice(0, 2) }; };
+  const ask = (q) => { const text = String(q || '').trim(); if (!text || this.state.typing) return; clearTimeout(this._tyT); this._msgScroll = true;
+    this.setState({ msgs: [...this.state.msgs, { role: 'me', text }], draft: '', typing: true });
+    this._tyT = setTimeout(() => { this._msgScroll = true; this.setState({ msgs: [...this.state.msgs, answer(text)], typing: false }); }, 700); };
+  const msgs = s.msgs.map((m) => { const refs = (m.refs || []).map((id) => ({ label: byId[id].kind ? byId[id].step + ' ' + byId[id].title.split(' (')[0] : byId[id].step + ' · ' + byId[id].pages, open: () => openRef(id) })); const laws = (m.laws || []).map(law);
+    return { cls: m.role === 'me' ? 'lg-u' : 'lg-b', text: m.text, refs, laws, hasRefs: refs.length + laws.length > 0 }; });
+  const suggs = ['즉각분리 요건이 뭐예요?', '응급조치 기간은 얼마나 돼요?', '현장에서 신고자를 물어보면?', '사례판단은 언제까지 해야 해요?', '사례 종결 절차 알려주세요', '가정방문 때 신변안전 수칙은?', '아동복지법 금지행위는?', '임시조치 종류가 궁금해요', '조사를 방해하면 처벌은?'].map((label) => ({ label, ask: () => ask(label) }));
+  const F = s.f || 'all'; const shown = REFS.filter((r) => F === 'all' || (F === 'step' ? !r.kind : r.kind === F));
+  const filters = [['all', '전체'], ['step', '업무 단계'], ['cw', '아동복지법'], ['cp', '아동학대처벌법']].map(([k, label]) => ({ label, cls: F === k ? 'on' : '', on: F === k ? 'true' : 'false', pick: () => this.setState({ f: k }) }));
+  const refs = shown.map((r) => { const open = !!s.open[r.id];
+    return { ...r, stepCls: r.kind ? 'k-law' : '', domId: 'ref-' + r.id, open, cls: open ? 'open' : '', exp: open ? 'true' : 'false', laws: r.laws.map(law), toggle: () => this.setState({ open: { ...this.state.open, [r.id]: !this.state.open[r.id] } }) }; });
+  return { filters, msgs, suggs, refs, typing: s.typing, draft: s.draft, setDraft: (e) => this.setState({ draft: e.target.value }),
+    submit: (e) => { if (e && e.preventDefault) e.preventDefault(); ask(this.state.draft); }, openToc: () => openRef('toc'),
+    chatReset: () => { clearTimeout(this._tyT); this.setState({ msgs: [this.state.msgs[0]], typing: false, draft: '' }); } };
+}
+}
+</script>
+</body>
+</html>

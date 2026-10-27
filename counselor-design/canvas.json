@@ -412,6 +412,15 @@
    "w": 1440,
    "x": -1520,
    "y": 0
+  },
+  "LawGuide.dc.html": {
+   "expand": "fill",
+   "h": 1700,
+   "is_interactive": true,
+   "title": "법령 · 매뉴얼 (AI 질문 · 업무 단계별 참고사항 · 원문 자료)",
+   "w": 1440,
+   "x": 9120,
+   "y": 10100
   }
  },
  "createdOnFiles": {
@@ -457,8 +466,8 @@
   },
   "rowE": {
    "kind": "title1",
-   "maxW": 9040,
-   "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 문서함",
+   "maxW": 10560,
+   "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 문서함 · 법령 · 매뉴얼",
    "w": 240,
    "x": 0,
    "y": 9800
@@ -515,6 +524,7 @@
   "ClosureReview.dc.html",
   "ClosureDetail.dc.html",
   "DocBox.dc.html",
+  "LawGuide.dc.html",
   "Stats.dc.html",
   "Settings.dc.html",
   "AdminHome.dc.html",
