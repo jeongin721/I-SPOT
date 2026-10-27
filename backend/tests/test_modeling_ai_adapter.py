@@ -157,7 +157,16 @@ def _native_result() -> Dict[str, Any]:
                 {"text": "아빠가 화나면 때린다고 말함.", "segment_ids": ["seg_002"]},
             ],
             "risk_signal_points": [dict(GROUNDED_POINT)],
+            # 상담 요약 4칸 중 강점 · 위험 문단(narrative_summary_llm, infer_audio_session 이 붙인다).
+            "narrative_summary": {
+                "strengths_narrative": "가상 강점 문단",
+                "risks_narrative": "가상 위험 문단",
+                "strengths_citations": ["seg_002"],
+                "risks_citations": ["seg_002"],
+            },
         },
+        # 상담 요약 '원하는 변화' 칸(desired_change_llm.join_points 결과).
+        "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
         # 선택 필드 4개(#49)로 옮겨지는 값. 모양은 각 모듈이 정리해 돌려주는 그대로다
         # (severity_llm._clean_ratings: level 1~5 정수 또는 None · matched_evidence 문자열,
         # session_change · followup_check_llm: 문자열 목록).
@@ -438,6 +447,34 @@ def test_optional_fields_are_filled_from_module_output(modeling) -> None:
     ]
     assert stored["session_change_notes"] == [{"text": "가상 회차 변화", "segment_ids": []}]
     assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": []}]
+
+
+def test_summary_assessment_is_filled_from_module_output(modeling) -> None:
+    """상담 요약 4칸(summary.assessment)은 강점 · 위험 문단, 회차 변화, 원하는 변화를 옮긴다(2026-10-27)."""
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["summary"]["assessment"] == {
+        "safety_changes": {"text": "가상 회차 변화", "segment_ids": []},
+        "strengths_resources": {"text": "가상 강점 문단", "segment_ids": ["seg_002"]},
+        "safety_risks": {"text": "가상 위험 문단", "segment_ids": ["seg_002"]},
+        "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
+    }
+
+
+def test_summary_assessment_is_empty_when_module_omits_it(modeling) -> None:
+    """예전 모듈 결과(문단 · 원하는 변화 없음)도 Contract 를 만족하고 4칸은 빈 칸이다."""
+
+    result = _native_result()
+    del result["record_draft"]["narrative_summary"]
+    del result["desired_changes"]
+    result["session_change_notes"] = []
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    assert assessment == {key: {"text": "", "segment_ids": []} for key in assessment}
+    assert set(assessment) == {"safety_changes", "strengths_resources", "safety_risks", "desired_changes"}
 
 
 def test_module_only_fields_do_not_leak(modeling) -> None:

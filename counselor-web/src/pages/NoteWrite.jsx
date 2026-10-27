@@ -230,14 +230,6 @@ export default function NoteWrite(props) {
                 </label>
               </Fragment>
             ))}
-            {(v.summaryEv || []).map((e, eIndex) => (
-              <span key={eIndex} className="ev">
-                <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                  {e.label}
-                </span>
-                {e.ev}
-              </span>
-            ))}
             {v.summaryError ? (
               <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>
                 {v.summaryError}

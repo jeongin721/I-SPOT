@@ -7,7 +7,7 @@
 
 import uuid
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -42,6 +42,10 @@ class ConsultationSummary(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     overview: Mapped[str] = mapped_column(Text, default="", nullable=False)
     key_points: Mapped[List[str]] = mapped_column(JSONType, default=list, nullable=False)
+
+    # 상담 요약 사정 관점 4칸(contracts.SummaryAssessment 모양, {칸 이름: {text, segment_ids}}).
+    # 2026-10-27 이전에 만든 요약은 null 이고 응답에서 빈 칸으로 보인다.
+    assessment: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
 
     # 상담사 추가 의견. AI 결과와 구분해서 보관한다.
     counselor_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

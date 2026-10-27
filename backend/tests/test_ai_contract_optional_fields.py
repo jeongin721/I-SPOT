@@ -323,7 +323,9 @@ def test_old_stored_result_without_optional_fields_is_still_readable(
     result = response.json()["data"]["analysis"]["result"]
 
     assert result["schema_version"] == "1.0"
-    assert result["summary"] == OLD_RESULT["summary"]
+    # 요약 4칸(assessment, 2026-10-27)이 없던 결과도 읽히고 4칸은 빈 칸으로 보인다.
+    assert {key: result["summary"][key] for key in OLD_RESULT["summary"]} == OLD_RESULT["summary"]
+    assert all(field == {"text": "", "segment_ids": []} for field in result["summary"]["assessment"].values())
 
     for name in OPTIONAL_FIELDS:
         assert result[name] == []

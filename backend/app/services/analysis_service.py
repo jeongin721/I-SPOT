@@ -529,6 +529,7 @@ def _sync_summary_draft(
                 analysis_id=analysis.id,
                 overview=bundle.result.summary.overview,
                 key_points=list(bundle.result.summary.key_points),
+                assessment=bundle.result.summary.assessment.model_dump(),
                 status=ReviewStatus.DRAFT,
                 is_edited=False,
             )
@@ -549,6 +550,7 @@ def _sync_summary_draft(
 
     summary.overview = bundle.result.summary.overview
     summary.key_points = list(bundle.result.summary.key_points)
+    summary.assessment = bundle.result.summary.assessment.model_dump()
     summary.status = ReviewStatus.DRAFT
 
 
