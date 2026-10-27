@@ -47,6 +47,13 @@ protective_factors/session_change_notes/followup_check_points를
   "증거 위치 표시"를 막는 지점이라고 지적받아 추가). protective_factors
   처럼 그대로 옮기면 된다.
 
+[2026-10-27: 상담 요약 4칸(summary.assessment)]
+
+10/27 디자인의 상담 요약은 사정 관점 4칸이다. 파이프라인이 이미 만들던
+강점·위험 문단(narrative_summary)과 session_change_notes, 새로 추가한
+desired_change_llm.py 결과를 summary.assessment 로 옮긴다
+(_summary_assessment 참고).
+
 summary(overview/key_points)는 더 이상 이 모듈이 직접 만들지 않고
 agent/summary_converter.convert_summary()(Mingyu, PR #47 — 2026-10-16
 main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남기고
@@ -153,6 +160,58 @@ def _abuse_type(label: Any) -> Any:
 
 def _evidence_strength(value: Any) -> str:
     return EVIDENCE_STRENGTH_TO_ENGLISH.get(value, "LOW")
+
+
+def _assessment_field(text: Any, segment_ids: Any) -> Dict[str, Any]:
+    # 목록이 아닌 근거 번호(숫자 · dict 등)는 버린다 — 여기서 TypeError 가 나면 분석 전체가 실패한다.
+    ids = segment_ids if isinstance(segment_ids, list) else []
+
+    return {
+        "text": text.strip() if isinstance(text, str) else "",
+        "segment_ids": [
+            str(sid) for sid in ids if isinstance(sid, (str, int)) and not isinstance(sid, bool)
+        ],
+    }
+
+
+def _summary_assessment(result: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """
+    상담 요약 사정 관점 4칸(2026-10-27, 10/27 디자인 NoteWrite.dc.html).
+    새로 분석하지 않고 파이프라인이 이미 만든 값을 옮긴다:
+
+    - safety_changes(조사 후 변화된 사항) ← session_change_notes. 이전
+      회차가 case_store 에 있어야 생기는 값이라 서버 경로(case_id 없음)
+      에서는 빈 문자열이다 — 상담원이 쓴다.
+    - strengths_resources(강점과 자원) · safety_risks(위험요인)
+      ← record_draft.narrative_summary 의 두 문단과 근거 번호.
+    - desired_changes(원하는 변화 · 서비스/지원) ← desired_change_llm.py.
+    """
+
+    # 변환 경계라 모양을 믿지 않는다 — dict 가 아니면 빈 칸으로 둔다(.get 에서 AttributeError 로
+    # 분석 전체가 실패하지 않게, 2026-10-27 민규 교차검증).
+    record_draft = result.get("record_draft")
+    narrative = record_draft.get("narrative_summary") if isinstance(record_draft, dict) else None
+    narrative = narrative if isinstance(narrative, dict) else {}
+    desired = result.get("desired_changes")
+    desired = desired if isinstance(desired, dict) else {}
+    change_notes = [
+        note for note in result.get("session_change_notes") or [] if isinstance(note, str)
+    ]
+
+    return {
+        "safety_changes": _assessment_field("\n".join(change_notes), []),
+        "strengths_resources": _assessment_field(
+            narrative.get("strengths_narrative"),
+            narrative.get("strengths_citations"),
+        ),
+        "safety_risks": _assessment_field(
+            narrative.get("risks_narrative"),
+            narrative.get("risks_citations"),
+        ),
+        "desired_changes": _assessment_field(
+            desired.get("text"), desired.get("segment_ids")
+        ),
+    }
 
 
 def to_ai_output_contract(
@@ -321,6 +380,8 @@ def to_ai_output_contract(
         }
         for point in result.get("followup_check_points") or []
     ]
+
+    summary = {**summary, "assessment": _summary_assessment(result)}
 
     contract = {
         "schema_version": "1.0",

@@ -885,7 +885,16 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
       "completed_at": "...",
       "result": {
         "schema_version": "1.0",
-        "summary": { "overview": "...", "key_points": ["...", "..."] },
+        "summary": {
+          "overview": "...",
+          "key_points": ["...", "..."],
+          "assessment": {
+            "safety_changes": { "text": "", "segment_ids": [] },
+            "strengths_resources": { "text": "...", "segment_ids": ["seg_002"] },
+            "safety_risks": { "text": "...", "segment_ids": ["seg_004"] },
+            "desired_changes": { "text": "...", "segment_ids": ["seg_007"] }
+          }
+        },
         "risk_utterances": [],
         "abuse_signals": [],
         "risk_factors": [],
@@ -1066,6 +1075,12 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
       "analysis_id": "uuid",
       "overview": "요약 본문",
       "key_points": ["항목 1", "항목 2"],
+      "assessment": {
+        "safety_changes": { "text": "", "segment_ids": [] },
+        "strengths_resources": { "text": "조모에게 연락하는 방법을 알고 있음.", "segment_ids": ["seg_012"] },
+        "safety_risks": { "text": "보호자(부)의 체벌 진술.", "segment_ids": ["seg_004"] },
+        "desired_changes": { "text": "할머니 집에 가고 싶다고 말함.", "segment_ids": ["seg_015"] }
+      },
       "counselor_note": null,
       "status": "DRAFT",
       "is_edited": false,
@@ -1084,6 +1099,21 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 `status`: `DRAFT | APPROVED` — AI 결과는 항상 `DRAFT` 로 시작하며 자동 승인되지 않는다.
 
+#### 사정 관점 4칸 (`assessment`, 2026-10-27 추가)
+
+상담 요약 화면(10/27 디자인 NoteWrite)의 4칸이다. 칸마다 `{text, segment_ids}` 이고, 응답에는 늘 4칸이 다 있다.
+
+| 키 | 화면 이름 | AI 초안 출처 |
+|---|---|---|
+| `safety_changes` | (안전관련) 조사 후 변화된 사항 | 이전 회차와 비교한 변화(`session_change_notes`). 서버 경로는 이전 회차를 넘기지 않아 **지금은 늘 빈 칸** — 상담원이 쓴다 |
+| `strengths_resources` | 아동안전과 관련된 강점과 자원 | 보호요인을 문단으로 다시 쓴 것 |
+| `safety_risks` | 아동안전과 관련된 위험요인 | 위험 신호를 문단으로 다시 쓴 것. 최상위 `risk_factors`(늘 빈 배열)와 다른 칸이다 |
+| `desired_changes` | 앞으로 원하는 변화 · 원하는 서비스/지원 | 아동(보호자)이 직접 말한 바람 · 진술에서 바로 드러나는 필요 |
+
+- 근거가 없으면 AI 는 `"확인된 내용 없음"` 을 쓰거나 빈 칸으로 둔다. 판정이 아니라 AI 초안이다.
+- 이 필드가 생기기 전에 만든 요약 · 분석 결과는 4칸이 모두 `{ "text": "", "segment_ids": [] }` 로 보인다.
+- `segment_ids` 는 AI 초안의 근거 발화다. 상담사가 `text` 를 고쳐도 바뀌지 않는다.
+
 `summary_evidence` 는 `summary.analysis_id` 가 가리키는 분석(마지막으로 성공한 분석)의 근거 정보를 그대로 준다.
 재분석이 도는 중이거나 실패해도 이전 근거는 사라지지 않는다.
 
@@ -1097,11 +1127,13 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 {
   "overview": "상담사가 검토한 요약",
   "key_points": ["확인된 내용", "추가 확인 필요"],
+  "assessment": { "strengths_resources": "상담사가 고친 문장", "safety_changes": "조사 후 변화" },
   "counselor_note": "다음 회기 확인 예정"
 }
 ```
 
 - 최소 1개 필드 필요(`422 VALIDATION_ERROR`)
+- `assessment` 는 고칠 칸의 **문장만** 보낸다. 보내지 않은 칸 · 근거 번호(`segment_ids`)는 그대로다. 4칸 밖의 이름은 `422`
 - 수정하면 `is_edited: true`
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
 - 승인 후 수정 시 `409 ALREADY_APPROVED`. 고치려면 먼저 승인을 푼다(`POST .../summary/reopen`)
@@ -1120,7 +1152,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 승인 풀기(화면의 '요약 수정'). Summary `APPROVED` → `DRAFT`, Session `APPROVED` → `AI_REVIEW_REQUIRED`.
 
 - 응답은 PATCH · approve 와 같은 Summary 하나다.
-- 내용(`overview` · `key_points` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
+- 내용(`overview` · `key_points` · `assessment` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
 - Summary 와 Session 의 `approved_at` · `approved_by_id` 는 `null` 로 비운다. 다시 승인하면 새로 채워진다.
 - 감사 기록을 따로 남기지 않는다. 다시 고치면 `SUMMARY_UPDATED`, 다시 승인하면 `SUMMARY_APPROVED` 가 남는다.
 - 푼 시각은 Session 에만 저장하고(`reopened_at`, 응답에는 없음) 처리 대기 업무가 검토 대기를 그때부터 센다(12절).

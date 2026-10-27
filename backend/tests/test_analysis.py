@@ -194,7 +194,7 @@ def test_mock_ai_stores_contract_compliant_result(
     # AI Output Contract 의 최상위 key 가 그대로 유지되어야 한다.
     assert set(result.keys()) == AI_CONTRACT_KEYS
     assert result["schema_version"] == "1.0"
-    assert set(result["summary"].keys()) == {"overview", "key_points"}
+    assert set(result["summary"].keys()) == {"overview", "key_points", "assessment"}
     assert result["summary"]["overview"]
 
     # 9월 범위에서는 위험 관련 항목이 빈 배열이다.
