@@ -69,6 +69,25 @@ def test_clean_points_handles_malformed_input():
     assert _clean_points([{"text": "   ", "segment_ids": ["seg_001"]}], valid_segment_ids) == []
 
 
+def test_clean_points_drops_item_with_non_list_segment_ids_but_keeps_others():
+    # 2026-10-27 민규 교차검증: segment_ids가 5나 true처럼 list가 아니면
+    # `for sid in (... or [])`에서 TypeError가 나서 회차 분석 전체가
+    # AI_FAILED로 끝났다. 그 항목만 버리고 나머지는 그대로 통과해야 한다.
+    # {"seg_001": true} 같은 dict도 돌면 키만 나와서 list처럼 통과해
+    # 버리면 안 된다.
+    valid_segment_ids = {"seg_001", "seg_002"}
+    raw_points = [
+        {"text": "정상 항목", "segment_ids": ["seg_001"]},
+        {"text": "숫자형 segment_ids", "segment_ids": 5},
+        {"text": "불리언 segment_ids", "segment_ids": True},
+        {"text": "dict형 segment_ids", "segment_ids": {"seg_002": True}},
+    ]
+
+    cleaned = _clean_points(raw_points, valid_segment_ids)
+
+    assert cleaned == [{"text": "정상 항목", "segment_ids": ["seg_001"]}]
+
+
 def test_clean_points_deduplicates_nothing_but_preserves_order():
     # 항목 자체의 중복 제거는 하지 않는다(LLM 출력 그대로 몇 개 왔는지
     # 보존) — law_qa_llm/legal_manual_qa_llm의 인용 중복 제거와는 다른

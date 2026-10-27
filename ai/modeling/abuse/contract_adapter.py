@@ -112,8 +112,6 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from openai import OpenAI
-
 from agent.summary_converter import convert_summary
 
 from ai.modeling.abuse.infer_audio_session import analyze_audio_session
