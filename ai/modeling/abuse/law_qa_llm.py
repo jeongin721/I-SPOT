@@ -75,6 +75,8 @@ SYSTEM_PROMPT_TEMPLATE = """너는 아동보호전문기관 상담사의 법령 
 
 def _build_law_corpus(
     law_names: Optional[List[str]] = None,
+    *,
+    cache_only: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """law_cache에서 대상 법령 전체 조문을 모아 LLM 컨텍스트용 텍스트로 만든다.
 
@@ -89,7 +91,7 @@ def _build_law_corpus(
     all_articles: List[Dict[str, Any]] = []
 
     for law_name in names:
-        cached = client.get_law_by_name(law_name)
+        cached = client.get_law_by_name(law_name, cache_only=cache_only)
         articles = extract_articles(
             cached.get("body", {}), fallback_law_name=law_name
         )

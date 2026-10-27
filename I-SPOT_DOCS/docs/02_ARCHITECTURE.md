@@ -161,7 +161,8 @@ PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT
 ```jsonc
 // risk_utterances[] — 위험 관련 발화
 { "segment_ids": ["seg_047"], "text": "...", "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해",
-  "evidence_strength": "HIGH", "reason": "...", "evidence_verified": true }
+  "evidence_strength": "HIGH", "reason": "...", "evidence_verified": true,
+  "legal_references": [{ "law_name": "아동복지법", "article": "제17조", "item_label": "제3호", "text": "...", "portal_url": "https://www.law.go.kr/..." }] }  // 선택, 2026-10-27
 // abuse_signals[] — 학대 유형별 종합 신호. 네 유형이 모두 온다
 { "abuse_type": "PHYSICAL", "detected": true, "detection_source": "MODEL", "filtered_reason": null, "segment_ids": ["seg_047"] }
 // risk_factors — 재료가 없어 구조 보류, 빈 배열

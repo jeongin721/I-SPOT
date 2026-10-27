@@ -374,7 +374,11 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
   "subtype": "도구·위험수단 사용",         // 선택. 2차 세부유형명(한글)을 그대로
   "evidence_strength": "HIGH",           // 필수. HIGH | MEDIUM | LOW — 근거의 직접성, 확률 아님
   "reason": "도구와 신체 부위가 직접 진술됨", // 필수. AI 가 그 강도로 본 이유 한 문장
-  "evidence_verified": true              // 인용문이 원문과 맞는지 대조한 결과
+  "evidence_verified": true,             // 인용문이 원문과 맞는지 대조한 결과
+  "legal_references": [                  // 선택(2026-10-27). 관련 조문 — 아래 표 참고
+    { "law_name": "아동복지법", "article": "제17조", "item_label": "제3호",
+      "text": "아동의 신체에 손상을 주거나 …", "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?…" }
+  ]
 }
 // abuse_signals[] — 학대 유형별 종합 신호. 네 유형이 모두 온다
 {
@@ -396,6 +400,7 @@ Mock provider(`AI_PROVIDER=mock`)도 새 구조에 맞는 예시 데이터를 �
 | `reason` | 2차가 만든 `strength_reason` 그대로(새 LLM 호출 없음) |
 | `detection_source` | 1차 모델이 어느 구간(chunk)에서든 검출했으면 `MODEL`. 모두 아니고 부정 응답 필터가 내린 구간이 있으면 `FILTERED`(`detected=false`, 사유는 `filtered_reason`). 둘 다 아니면 `null`. 세션 단위 `major_types` 가 구간 판정을 `detected` 만 남기고 합치므로 `chunk_results` 에서 되살린다. 안전망: `chunk_results` 가 없거나 어긋나도 `detected=true` 면 `MODEL`(출처 `null` 인 검출 신호는 나가지 않는다, 10/23 이경진 님 요청) |
 | 근거 없는 신호 | 검출됐는데 같은 유형 `risk_utterances` 가 하나도 없으면 `segment_ids=[]` 가 되어 Backend 관문(`drop_ungrounded_risk_items`)에서 빠지고 `warnings` 에 건수만 남는다(제안 2 와 같은 결과). `FILTERED` 는 `detected=false` 라 남는다 |
+| `legal_references` | **선택 키(2026-10-27, PR #87, 최민규 수락).** STT 검수 "관련 조문"용. 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조 해당 호) **하나까지**. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고 분석 도중에는 캐시만 읽는다(국가법령정보센터 호출 없음, 갱신은 `python -m law.refresh_cache`). 캐시가 없으면 `[]` + `warnings` 한 줄. 이 키가 생기기 전 결과에는 없다. 법 위반 확정이 아니라 참고 링크다 |
 | `schema_version` | `"1.0"` 유지. 필드 이름 · 개수는 그대로이고 빈 배열의 내부 구조만 정한 것 |
 
 **9월 초안에서 뺀 것과 이유**

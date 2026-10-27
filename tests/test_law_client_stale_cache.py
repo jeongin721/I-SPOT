@@ -36,3 +36,25 @@ def test_missing_cache_still_fails_without_oc(tmp_path):
 
     with pytest.raises(LawApiError):
         client.get_law_by_name("아동복지법")
+
+
+def test_cache_only_reads_stale_cache_without_network(tmp_path, monkeypatch):
+    # 회차 분석 경로(cache_only=True)는 오래된 캐시도 그대로 읽고 국가법령정보센터를 부르지 않는다
+    # (2026-10-27 민규 리뷰 — 요청이 분석 마감을 보지 않아 최대 60초가 더해질 수 있었다).
+    _stale_cache(tmp_path)
+    client = LawApiClient(oc="있는 척", cache_dir=tmp_path)
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("cache_only 인데 네트워크를 불렀습니다")
+
+    monkeypatch.setattr(client, "find_law", no_network)
+
+    assert client.get_law_by_name("아동복지법", cache_only=True)["law_name"] == "아동복지법"
+
+
+def test_cache_only_without_cache_fails_without_network(tmp_path, monkeypatch):
+    client = LawApiClient(oc="있는 척", cache_dir=tmp_path)
+    monkeypatch.setattr(client, "find_law", lambda *a, **k: (_ for _ in ()).throw(AssertionError("네트워크")))
+
+    with pytest.raises(LawApiError):
+        client.get_law_by_name("아동복지법", cache_only=True)

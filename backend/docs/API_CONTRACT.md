@@ -966,7 +966,8 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
   `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
 - `legal_references`(2026-10-27 제안, STT 검수 "관련 조문")는 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호)
   **하나까지**다. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고, 법 위반을 확정하는 값이 아니라 참고 링크다.
-  법령 데이터를 못 쓰면 빈 배열이고 `warnings` 에 "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." 가 남는다.
+  분석 도중에는 캐시만 읽고 국가법령정보센터를 부르지 않는다(분석 시간이 늘지 않게). 캐시 갱신은 분석 밖에서 `python -m law.refresh_cache`.
+  캐시가 없으면 빈 배열이고 `warnings` 에 "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." 가 남는다.
   이 키가 생기기 전 결과에는 없다.
 - `abuse_signals[].segment_ids` 는 같은 유형 `risk_utterances` 의 근거를 모은 것이다. 검출됐는데 근거 발화가 하나도 없는 유형은
   위 근거 관문에서 빠지고 `warnings` 에 건수만 남는다. `FILTERED` 는 `detected=false` 라 근거가 없어도 남는다.

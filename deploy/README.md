@@ -51,7 +51,7 @@ sudo bash deploy/web-deploy.sh
    - 모델 파일이 없으면 시작 전에 멈춥니다. `backend.env` 가 `AI_PROVIDER=modeling` 인데 `WITH_MODELING=1` 없이 돌려도 멈춥니다(torch 가 없는 이미지로 뜨면 첫 분석에서야 실패하므로).
    - 이름 인식(`Leo97/KoELECTRA-small-v3-modu-ner`) · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받아 `/opt/ispot/hf-cache` 에 둡니다(서버에서 인터넷이 돼야 함). 첫 분석은 그만큼 늦습니다.
    - 분류 모델 두 개와 이름 인식 모델을 메모리에 올리므로 서버 메모리가 넉넉해야 합니다(얼마나 쓰는지는 재지 않았습니다).
-   - **STT 검수의 '관련 조문'** 은 법령 캐시(`law_cache/아동복지법.json` 등, `.gitignore`)를 읽습니다. `/opt/ispot/I-SPOT/law_cache/` 에 두면(다른 폴더면 `LAW_CACHE_HOST_DIR`) 컨테이너의 `/law_cache` 에 붙입니다. 캐시를 만드는 곳에서 복사해 오거나, `backend.env` 에 `LAW_API_OC=<국가법령정보센터 OC>` 를 넣으면 컨테이너가 받아 씁니다. 둘 다 없으면 분석은 되고 조문만 비어 오며 분석 경고에 한 줄 남습니다.
+   - **STT 검수의 '관련 조문'** 은 법령 캐시(`law_cache/아동복지법.json` 등, `.gitignore`)를 읽습니다. `/opt/ispot/I-SPOT/law_cache/` 에 두면(다른 폴더면 `LAW_CACHE_HOST_DIR`) 컨테이너의 `/law_cache` 에 붙입니다. 캐시를 만드는 곳에서 복사해 오거나, 분석은 캐시만 읽고(오래됐어도) 국가법령정보센터를 부르지 않습니다. 법령이 개정돼 캐시를 새로 받으려면 `backend.env` 에 `LAW_API_OC=<국가법령정보센터 OC>` 를 넣고 `docker exec ispot-backend python -m law.refresh_cache` 를 돌립니다. 캐시가 없으면 분석은 되고 조문만 비어 오며 분석 경고에 한 줄 남습니다.
 
 ## GPU 로 띄우기 (`WITH_GPU=1`)
 

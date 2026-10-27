@@ -115,7 +115,7 @@ def test_attach_legal_references_does_not_mutate_input(monkeypatch):
     monkeypatch.setattr(
         adapter_module,
         "_build_law_corpus",
-        lambda names: ("", [_ARTICLE_17]),
+        lambda names, **kwargs: ("", [_ARTICLE_17]),
     )
 
     points = [

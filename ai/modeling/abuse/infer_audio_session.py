@@ -405,7 +405,8 @@ def _attach_legal_references(
       "신고의무"처럼 발화와 상관없는 절차 조문이 오거나 "아동학대중상해"
       처럼 죄명을 단정하는 조문이 와서 화면에 보이지 않는다(실제 법령
       캐시로 확인, 2026-10-27).
-    - 법령 데이터(law_cache · 국가법령정보센터 API)를 못 쓰면 분석을
+    - 법령 캐시(law_cache)만 읽는다 — 분석 도중 국가법령정보센터를 부르지 않는다.
+      캐시가 없으면 분석을
       실패시키지 않고 조문 없이 돌려준다. 두 번째 값이 True면 그런 경우다.
     """
 
@@ -417,7 +418,9 @@ def _attach_legal_references(
             attach_legal_references,
         )
 
-        enriched = attach_legal_references(risk_signal_points)
+        # 분석 도중에는 캐시만 읽는다(오래됐어도). 국가법령정보센터 요청은 분석 마감을 보지 않아
+        # 최대 60초가 더해질 수 있다(2026-10-27 민규 리뷰). 갱신은 python -m law.refresh_cache.
+        enriched = attach_legal_references(risk_signal_points, cache_only=True)
     except Exception:  # noqa: BLE001 — 조문은 보조 정보라 분석을 멈추지 않는다
         return [
             {**point, "legal_references": []}

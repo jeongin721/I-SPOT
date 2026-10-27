@@ -51,7 +51,7 @@ if [ "$WITH_MODELING" = 1 ]; then
   mkdir -p /opt/ispot/hf-cache
   MODELING_MOUNTS=(-v "$WEIGHT_DIR:/ai/modeling/abuse/weight:ro" -v /opt/ispot/hf-cache:/hf-cache)
   # STT 검수의 '관련 조문'은 법령 캐시(law_cache/, .gitignore)를 읽는다. 있으면 컨테이너의 /law_cache 에 붙인다.
-  # 없어도 분석은 되고 조문만 비어 온다(backend.env 에 LAW_API_OC 가 있으면 컨테이너 안에서 받아 쓴다).
+  # 없어도 분석은 되고 조문만 비어 온다. 분석은 캐시만 읽는다 — 갱신은 docker exec ispot-backend python -m law.refresh_cache.
   LAW_CACHE_HOST="${LAW_CACHE_HOST_DIR:-$REPO/law_cache}"
   if [ -d "$LAW_CACHE_HOST" ]; then
     MODELING_MOUNTS+=(-v "$LAW_CACHE_HOST:/law_cache")

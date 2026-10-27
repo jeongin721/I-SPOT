@@ -284,9 +284,22 @@ class LawApiClient:
         law_name: str,
         *,
         refresh: bool = False,
+        cache_only: bool = False,
     ) -> dict[str, Any]:
-        """법령 목록 조회 → 본문 조회 → 로컬 캐시 저장을 한 번에 수행한다."""
+        """법령 목록 조회 → 본문 조회 → 로컬 캐시 저장을 한 번에 수행한다.
+
+        cache_only=True 면 네트워크를 부르지 않고 캐시만 읽는다(오래됐어도). 캐시가 없으면 LawApiError.
+        회차 분석 도중(STT 검수 관련 조문)에 쓴다 — 국가법령정보센터 요청은 분석 마감(deadline)을
+        보지 않아 법령 2개 × (검색 + 본문) × 15초까지 분석이 늘 수 있다(2026-10-27 민규 리뷰).
+        캐시 갱신은 분석 밖에서 python -m law.refresh_cache 로 한다.
+        """
         cache_path = self._cache_path(law_name)
+
+        if cache_only:
+            try:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise LawApiError(f"법령 캐시를 읽지 못했습니다: {law_name}") from exc
 
         if not refresh and self._is_cache_fresh(cache_path):
             try:
