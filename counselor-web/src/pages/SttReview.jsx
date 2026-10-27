@@ -312,6 +312,25 @@ export default function SttReview(props) {
                           <span className="note" style={{ color: l.hintFg }}>
                             {l.hint}
                           </span>
+                          {l.laws.length > 0 ? (
+                            <span className="laws">
+                              {l.laws.map((w) => (
+                                <span key={w.key} className="law">
+                                  <span className="sig">{w.sig}</span>
+                                  <span className="ref">
+                                    {w.law} <span className="art">{w.art}</span>
+                                  </span>
+                                  <span className="sum">{w.sum}</span>
+                                  {w.url ? (
+                                    <a className="orig" href={w.url} target="_blank" rel="noopener noreferrer">
+                                      원문보기 ↗
+                                    </a>
+                                  ) : null}
+                                </span>
+                              ))}
+                            </span>
+                          ) : null}
+                          {l.hold ? <span className="hold">{l.hold}</span> : null}
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span className="note">{l.conf}</span>

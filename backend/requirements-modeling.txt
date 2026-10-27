@@ -7,3 +7,5 @@ transformers==4.57.6
 tokenizers==0.22.2
 huggingface_hub==0.36.2
 python-dotenv==1.2.3
+# law/client.py(STT 검수 관련 조문이 법령 캐시가 오래됐을 때 국가법령정보센터에서 다시 받기). huggingface_hub 도 깔지만 직접 쓰므로 적어 둔다.
+requests==2.32.5

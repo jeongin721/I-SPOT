@@ -135,6 +135,7 @@ def attach_legal_references(
     *,
     law_names: Optional[List[str]] = None,
     limit: int = DEFAULT_LIMIT,
+    cache_only: bool = False,
 ) -> List[Dict[str, Any]]:
     """risk_signal_points(record_draft_llm._build_risk_signal_points 출력)
     각 항목에 관련 법조문 목록(legal_references)을 붙인 새 리스트를
@@ -149,7 +150,8 @@ def attach_legal_references(
         return []
 
     names = law_names or list(LAW_TARGET_LAWS)
-    _, articles = _build_law_corpus(names)
+    # cache_only: 회차 분석 경로는 국가법령정보센터를 부르지 않는다(law/client.get_law_by_name 참고).
+    _, articles = _build_law_corpus(names, cache_only=cache_only)
 
     enriched: List[Dict[str, Any]] = []
 

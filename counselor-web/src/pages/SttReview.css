@@ -125,7 +125,7 @@
   background: #f1eada;
   font-weight: 700;
 }
-/* 범례 — 10/21 디자인. 목소리 신호(.cue) · 관련 조문(.sig) 표시는 범례의 견본으로만 쓴다(준비 중). */
+/* 범례 — 10/21 디자인. 목소리 신호(.cue)는 범례의 견본으로만 쓴다(준비 중). .sig 는 관련 조문 줄 머리에도 쓴다. */
 .pg-SttReview .legend {
   display: flex;
   flex-direction: column;
@@ -166,6 +166,88 @@
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+}
+/* 관련 조문 — 10/27 디자인(.laws · .law · .ref · .art · .sum · .orig · .hold) */
+.pg-SttReview .laws {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 860px;
+}
+.pg-SttReview .law {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid #e2ded3;
+  border-radius: 10px;
+  background: #fbfaf7;
+}
+.pg-SttReview .ref {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pg-SttReview .ref .art {
+  color: #a33b2e;
+}
+.pg-SttReview .sum {
+  font-size: 13px;
+  color: #66625a;
+  min-width: 0;
+}
+.pg-SttReview .orig {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 6px;
+  background: #2b2a26;
+  color: #eadbb5;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pg-SttReview .orig:hover {
+  opacity: 0.9;
+  color: #eadbb5;
+}
+.pg-SttReview .orig:focus-visible {
+  outline: 2px solid #a33b2e;
+  outline-offset: 2px;
+}
+.pg-SttReview .hold {
+  font-size: 12px;
+  color: #8a867d;
+}
+@media (max-width: 720px) {
+  .pg-SttReview .law {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .pg-SttReview .law .sum {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+.pg-SttReview .thm-root.dark .law {
+  background: #2c2b27 !important;
+  border-color: #45423b !important;
+}
+.pg-SttReview .thm-root.dark .ref .art {
+  color: #f0907f !important;
+}
+.pg-SttReview .thm-root.dark .sum {
+  color: #bdb7aa !important;
+}
+.pg-SttReview .thm-root.dark .hold {
+  color: #9c978c !important;
+}
+.pg-SttReview .thm-root.dark .orig {
+  background: #eadbb5 !important;
+  color: #2b2a26 !important;
 }
 .pg-SttReview .thm-root.dark .tbtn {
   color: #a8a296 !important;
