@@ -36,10 +36,16 @@ protective_factors/session_change_notes/followup_check_points를
 - protective_factors: protective_factor_llm.generate_protective_factors()의
   출력(category/text/segment_ids)이 이미 ProtectiveFactor와 모양이
   같아 그대로 옮긴다.
-- session_change_notes/followup_check_points: 네이티브 출력이
-  List[str]인데 Contract는 {text, segment_ids} 객체 목록을 받는다
-  (나중에 근거 번호를 붙여도 모양이 안 바뀌게 Mingyu가 이렇게
-  정했다) — 문자열마다 segment_ids는 빈 배열로 두고 감싼다.
+- session_change_notes: 네이티브 출력이 List[str]인데 Contract는
+  {text, segment_ids} 객체 목록을 받는다(나중에 근거 번호를 붙여도
+  모양이 안 바뀌게 Mingyu가 이렇게 정했다) — 문자열마다 segment_ids는
+  빈 배열로 두고 감싼다. session_change.py는 LLM 없이 원문을 그대로
+  나란히 보여주는 기계적 비교라, 근거 발화를 따로 짚을 필요가 없다고
+  보고 segment_ids는 아직 안 채운다.
+- followup_check_points: 2026-10-26부터 followup_check_llm.py가
+  네이티브로 {text, segment_ids} 객체를 돌려준다(민규 PR #82 리뷰 —
+  "증거 위치 표시"를 막는 지점이라고 지적받아 추가). protective_factors
+  처럼 그대로 옮기면 된다.
 
 summary(overview/key_points)는 더 이상 이 모듈이 직접 만들지 않고
 agent/summary_converter.convert_summary()(Mingyu, PR #47 — 2026-10-16
@@ -305,8 +311,16 @@ def to_ai_output_contract(
         for note in result.get("session_change_notes") or []
     ]
 
+    # 예전 모양(List[str], 2026-10-26 이전 followup_check_llm.py 출력과
+    # backend 시험의 가짜 모듈 결과)도 받는다 — session_change_notes처럼
+    # segment_ids는 빈 배열로 감싼다.
     followup_check_points = [
         {"text": point, "segment_ids": []}
+        if isinstance(point, str)
+        else {
+            "text": point.get("text", ""),
+            "segment_ids": point.get("segment_ids", []),
+        }
         for point in result.get("followup_check_points") or []
     ]
 
