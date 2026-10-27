@@ -16,6 +16,7 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import StepNav from '../components/StepNav';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -187,14 +188,7 @@ export default function NoteWrite(props) {
               </div>
             </div>
           </header>
-          <nav className="steps" aria-label="회차 처리 단계">
-            {(v.steps || []).map((t, tIndex) => (
-              <A key={tIndex} className={t.cls} to={t.href} aria-current={t.current}>
-                <span className="sn">{t.mark}</span>
-                <b style={{ fontWeight: t.weight }}>{t.label}</b>
-              </A>
-            ))}
-          </nav>
+          <StepNav steps={v.steps} />
           <section
             className="card"
             aria-label="상담 요약"

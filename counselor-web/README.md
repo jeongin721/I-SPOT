@@ -103,7 +103,7 @@ export default function CaseDetail(props) {
 
 - 디자인이 바뀌면 위 훅 몇 줄과 `renderVals()` 를 그대로 두고 JSX 만 바꿉니다. 새 배치에 필요한 값이 없으면 값 함수에 더합니다(화면 파일에서 계산하지 않습니다).
 - 화면만의 상태(단계 · 고른 항목 · 펼침 등)는 `Logic.state` 에 두고, 처음 값 · 바꾸는 함수는 값 함수가 줍니다(`uploadModal.ts` 의 `initialUploadState` · `setState`). 훅에 넘겨야 하는 상태(검색어 · 고른 사례)는 화면 함수의 `useState` 로 듭니다.
-- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(요청할 때 잡은 표가 지금 대상이 아니면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
+- 공용: 사이드바 내 이름 · 로그아웃 `sidebarValues`, 로그인 화면으로 보낼지 `needsLogin`, 화면 위 안내 `screenNotice`, 회차 상태 칩 `TONE_CHIP`(`common.ts`), 회차 단계 → 다음 화면 `continueLink` · 회차 처리 단계 표시 `processNav`(`flow.ts`; 끝난 단계 ✓ 와 지금 할 단계만 누를 수 있고 그 뒤 단계는 잠김 — 다음 단계로는 화면 아래 단추로만 간다. 그리는 것은 `components/StepNav.jsx`, 회차 상세의 단계 카드도 같은 규칙), 회차 처리 화면 머리 `processHeaderValues`(`process.ts`). 요청 응답 뒤 이동 `useScreenGo`(요청할 때 잡은 표가 지금 대상이 아니면 옮기지 않음), 저장하지 않은 수정이 있을 때 떠나기 전 확인 `useLeaveGuard`(값 함수의 `unsaved` 를 넘김, 뒤로 가기는 못 막음).
 - `Login.jsx` 는 아직 값 계산이 화면 파일 안에 있습니다(이 규칙 전에 연결).
 
 | 화면 | 화면 파일 | 주소 | 훅 | 값 함수(`src/data/screens/`) |
@@ -202,7 +202,7 @@ export default function Page(props) {
 
 - 아직 연결하지 않은 화면은 예시 데이터가 `renderVals()` 안에 있습니다. 연결할 때는 위 "화면 파일과 값 함수" 대로 값 함수로 바꿉니다.
 - 원하면 화면별로 `useState` / 커스텀 훅 / 컴포넌트로 자유롭게 리팩터링해도 됩니다. (자동 변환이라 인라인 style 이 많습니다 — 공통 컴포넌트로 묶어 가며 정리 추천)
-- 사이드바 · 사례 상세 탭 · 회차 처리 4단계 표시는 지금 각 화면에 복사돼 있습니다. 첫 리팩터링으로 `components/` 로 빼는 걸 추천합니다.
+- 사이드바 · 사례 상세 탭은 지금 각 화면에 복사돼 있습니다. 첫 리팩터링으로 `components/` 로 빼는 걸 추천합니다. 회차 처리 4단계 표시는 `components/StepNav.jsx` 로 뺐습니다(10/27).
 
 ## 디자인 기준
 
