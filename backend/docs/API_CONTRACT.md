@@ -1133,7 +1133,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 ```
 
 - 최소 1개 필드 필요(`422 VALIDATION_ERROR`)
-- `assessment` 는 고칠 칸의 **문장만** 보낸다. 보내지 않은 칸 · 근거 번호(`segment_ids`)는 그대로다. 4칸 밖의 이름은 `422`
+- `assessment` 는 고칠 칸의 **문장만** 보낸다. 보내지 않은 칸 · 근거 번호(`segment_ids`)는 그대로다. 4칸 밖의 이름은 `422`. 빈 객체나 네 칸이 모두 `null` 이면(고칠 칸 없음) `422`
 - 수정하면 `is_edited: true`
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
 - 승인 후 수정 시 `409 ALREADY_APPROVED`. 고치려면 먼저 승인을 푼다(`POST .../summary/reopen`)
