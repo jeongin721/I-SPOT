@@ -59,6 +59,15 @@ class SummaryAssessmentUpdate(RequestModel):
     safety_risks: Optional[str] = Field(default=None, max_length=20000)
     desired_changes: Optional[str] = Field(default=None, max_length=20000)
 
+    @model_validator(mode="after")
+    def _require_field(self) -> "SummaryAssessmentUpdate":
+        # 빈 객체 · 네 칸 모두 null 은 고칠 것이 없는데도 바깥의 "최소 1개 필드" 검사를 통과해 200 으로 끝났다
+        # (아무것도 안 바뀌는데 성공처럼 보임 — 민규 #86 리뷰, 2026-10-27). 칸이 하나도 없으면 422 로 알린다.
+        if not self.model_dump(exclude_none=True):
+            raise ValueError("assessment 에 고칠 칸을 최소 1개 지정해야 합니다.")
+
+        return self
+
 
 class SummaryUpdateRequest(RequestModel):
     overview: Optional[str] = Field(default=None, max_length=20000)
