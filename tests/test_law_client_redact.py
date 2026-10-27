@@ -50,3 +50,70 @@ def test_redact_oc_only_masks_oc_not_other_params():
     assert "secret" not in redacted
     assert "target=law" in redacted
     assert "type=JSON" in redacted
+
+
+# ------------------------------------------------------------
+# 2026-10-27 민규 교차검증 R2: 인증값이 새는 두 경로
+#  1) JSON 이 아닌 본문 미리보기에 인증값이 ?OC= 가 아닌 모양으로 들어 있을 때
+#  2) raise … from exc 로 원인 예외(요청 URL · 본문)가 __cause__ 에 이어질 때
+# ------------------------------------------------------------
+
+import pytest
+import requests
+
+from law.client import LawApiClient, LawApiError, _redact_secret
+
+SECRET = "realsecretvalue123"
+
+
+class _FakeResponse:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        raise ValueError("not json")
+
+
+def _client():
+    return LawApiClient(oc=SECRET)
+
+
+def test_redact_secret_masks_value_in_any_shape():
+    text = f'{{"OC":"{SECRET}"}} key={SECRET} /path/{SECRET}/x'
+
+    assert SECRET not in _redact_secret(text, SECRET)
+
+
+def test_redact_secret_with_empty_secret_only_masks_query_param():
+    assert _redact_secret("plain text", "") == "plain text"
+
+
+def test_non_json_preview_does_not_leak_secret_or_chain(monkeypatch):
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: _FakeResponse(f"<html>인증키 {SECRET} 오류</html>")
+    )
+
+    with pytest.raises(LawApiError) as caught:
+        _client()._get_json("https://www.law.go.kr/DRF/lawSearch.do", {"OC": SECRET, "target": "law"})
+
+    assert SECRET not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True
+
+
+def test_request_error_does_not_leak_secret_or_chain(monkeypatch):
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError(f"Max retries exceeded with url: /DRF/lawSearch.do?OC={SECRET}&target=law")
+
+    monkeypatch.setattr(requests, "get", fail)
+
+    with pytest.raises(LawApiError) as caught:
+        _client()._get_json("https://www.law.go.kr/DRF/lawSearch.do", {"OC": SECRET, "target": "law"})
+
+    assert SECRET not in str(caught.value)
+    assert "ConnectionError" in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True

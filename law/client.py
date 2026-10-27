@@ -40,6 +40,21 @@ def _redact_oc(text: str) -> str:
     return _OC_PARAM_RE.sub(r"\1***", text)
 
 
+def _redact_secret(text: str, secret: str) -> str:
+    """OC 쿼리 파라미터에 더해, 인증값 자체가 어떤 모양으로든(본문 · "OC":"…" · 경로) 나오면 가린다.
+
+    2026-10-27 민규 교차검증 R2: 국가법령정보센터가 JSON 이 아닌 본문을 돌려줄 때 그 본문이
+    인증값을 ?OC= 가 아닌 모양으로 담을 수 있다. _redact_oc 의 정규식만으로는 못 가린다.
+    """
+
+    text = _redact_oc(text)
+
+    if secret:
+        text = text.replace(secret, "***")
+
+    return text
+
+
 def _safe_filename(value: str) -> str:
     value = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", value.strip())
     return value.strip("_") or "law"
@@ -117,22 +132,27 @@ class LawApiClient:
             )
             response.raise_for_status()
         except requests.RequestException as exc:
+            # from None: 원인 예외(요청 URL 에 OC=<인증값>)가 __cause__ 로 이어지면 traceback ·
+            # logger.exception 이 그 문구를 그대로 찍는다(2026-10-27 민규 교차검증 R2).
+            # 대신 가린 문구와 예외 종류만 남긴다.
             raise LawApiError(
-                f"국가법령정보센터 API 요청 실패: {_redact_oc(str(exc))}"
-            ) from exc
+                f"국가법령정보센터 API 요청 실패({type(exc).__name__}): "
+                f"{_redact_secret(str(exc), self.oc)}"
+            ) from None
 
         try:
             payload = response.json()
-        except ValueError as exc:
+        except ValueError:
+            # from None: JSONDecodeError 는 받은 본문 전체(.doc)를 들고 있어 체인으로 남기지 않는다(R2).
             if "미신청" in response.text:
                 raise LawApiError(
                     f"국가법령정보센터 OPEN API에서 '{params.get('target')}' 사용 신청이 되어 있지 않습니다. "
                     "open.law.go.kr → OPEN API 신청에서 해당 항목을 체크하세요."
-                ) from exc
-            preview = _redact_oc(response.text[:300].replace("\n", " "))
+                ) from None
+            preview = _redact_secret(response.text[:300].replace("\n", " "), self.oc)
             raise LawApiError(
                 f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {preview}"
-            ) from exc
+            ) from None
 
         if not isinstance(payload, dict):
             raise LawApiError("국가법령정보센터 JSON 응답 형식이 예상과 다릅니다.")

@@ -45,6 +45,7 @@ from openai import OpenAI
 from ai.modeling.abuse.law_qa_llm import (
     LawQAOutputError,
     _build_law_corpus,
+    with_reference_notice,
     _verify_cited_articles,
 )
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
@@ -311,11 +312,7 @@ def answer_legal_manual_question(
     # 아니었다. LLM 프롬프트 준수에 기대는 대신 코드에서 고정 안내를
     # 항상 붙인다 — 원칙 4·5는 그와 별개로 구체적인 상황별 안내라
     # 그대로 둔다.
-    answer_text = (
-        f"{answer_text}\n\n"
-        "※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 "
-        "직접 확인하고, 최종 판단은 상담사가 내려야 합니다."
-    )
+    answer_text = with_reference_notice(answer_text)
 
     return {
         "answer": answer_text,

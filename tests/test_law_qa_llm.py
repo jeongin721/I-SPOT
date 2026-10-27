@@ -155,5 +155,6 @@ def test_success_keeps_answer_and_verified_citations(stub_law):
 
     result = _ask()
 
-    assert result["answer"] == "즉시 신고하여야 합니다."
+    # R3(2026-10-27): 법령 전용 답변에도 고정 안내가 늘 붙는다.
+    assert result["answer"] == f"즉시 신고하여야 합니다.\n\n{law_qa_llm.REFERENCE_NOTICE}"
     assert [item["title"] for item in result["cited_articles"]] == ["아동학대범죄 신고의무와 절차"]
