@@ -7,7 +7,7 @@
 import A from './A';
 import { sidebarValues, NOT_READY } from '../data/screens/common';
 
-// 디자인 순서: 홈 · 사례 관리 · 일정 · 아이 연계 · 종결 검토 · 문서함 · 통계 · 설정.
+// 디자인 순서(10/27): 홈 · 사례 관리 · 일정 · 아이 연계 · 종결 검토 · 문서함 · 법령 · 매뉴얼 · 통계 · 설정.
 // 문서함(DocBox) 화면은 아직 없어서 링크 대신 '준비 중' 항목으로 두고, 그 앞뒤 메뉴를 두 묶음으로 나눈다.
 const MENU_BEFORE_DOCBOX = [
   ['Main', '홈'],
@@ -17,6 +17,7 @@ const MENU_BEFORE_DOCBOX = [
   ['Closure', '종결 검토'],
 ];
 const MENU_AFTER_DOCBOX = [
+  ['LawGuide', '법령 · 매뉴얼'],
   ['Stats', '통계'],
   ['Settings', '설정'],
 ];
