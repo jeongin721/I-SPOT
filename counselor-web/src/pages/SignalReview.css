@@ -1,10 +1,10 @@
-/* RiskProfile 화면에만 있는 규칙(디자인 RiskProfile.dc.html). 공통 규칙은 src/styles/common.css. */
-.pg-RiskProfile .sub2 {
+/* SignalReview(유형별 위험도) 화면에만 있는 규칙(10/27 디자인 SignalReview.dc.html). 공통 규칙은 src/styles/common.css. */
+.pg-SignalReview .sub2 {
   font-size: 11.5px;
   color: #98948b;
   line-height: 1.5;
 }
-.pg-RiskProfile .trow {
+.pg-SignalReview .trow {
   display: grid;
   grid-template-columns: 150px 200px minmax(0, 1fr) auto;
   gap: 14px 20px;
@@ -12,16 +12,16 @@
   padding: 18px 22px;
   border-bottom: 1px solid #eae7df;
 }
-.pg-RiskProfile .trow:last-child {
+.pg-SignalReview .trow:last-child {
   border-bottom: 0;
 }
-.pg-RiskProfile .meter {
+.pg-SignalReview .meter {
   display: flex;
   gap: 4px;
   margin-top: 6px;
 }
-.pg-RiskProfile .meter button,
-.pg-RiskProfile .meter span {
+.pg-SignalReview .meter button,
+.pg-SignalReview .meter span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -35,7 +35,7 @@
   cursor: pointer;
   padding: 0;
 }
-.pg-RiskProfile .anchor {
+.pg-SignalReview .anchor {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 6px;
@@ -44,7 +44,7 @@
   font-size: 12.5px;
   color: #7a776f;
 }
-.pg-RiskProfile .lvbtn {
+.pg-SignalReview .lvbtn {
   min-width: 64px;
   min-height: 44px;
   border-radius: 12px;
@@ -56,30 +56,30 @@
   cursor: pointer;
   color: #66625a;
 }
-.pg-RiskProfile .mx td,
-.pg-RiskProfile .mx th {
+.pg-SignalReview .mx td,
+.pg-SignalReview .mx th {
   padding: 9px 12px;
   text-align: center;
   font-size: 13px;
 }
-.pg-RiskProfile .mx th:first-child,
-.pg-RiskProfile .mx td:first-child {
+.pg-SignalReview .mx th:first-child,
+.pg-SignalReview .mx td:first-child {
   text-align: left;
 }
-.pg-RiskProfile .thm-root.dark .sub2 {
+.pg-SignalReview .thm-root.dark .sub2 {
   color: #8e887c !important;
 }
-.pg-RiskProfile .thm-root.dark .trow {
+.pg-SignalReview .thm-root.dark .trow {
   border-bottom: 1px solid #45423b !important;
 }
-.pg-RiskProfile .thm-root.dark .meter button,
-.pg-RiskProfile .thm-root.dark .meter span {
+.pg-SignalReview .thm-root.dark .meter button,
+.pg-SignalReview .thm-root.dark .meter span {
   border: 1px solid #4e4b44 !important;
 }
-.pg-RiskProfile .thm-root.dark .anchor {
+.pg-SignalReview .thm-root.dark .anchor {
   color: #a8a296 !important;
 }
-.pg-RiskProfile .thm-root.dark .lvbtn {
+.pg-SignalReview .thm-root.dark .lvbtn {
   border: 1.5px solid #4e4b44 !important;
   background: #2c2b27 !important;
   color: #bdb7aa !important;

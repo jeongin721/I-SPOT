@@ -9,7 +9,7 @@
 // 10/21 디자인(counselor-design/screens/NoteWrite.dc.html): 제목 옆 '←'(내담자 정보로), 칸 이름 괄호 삭제, 현재 단계 강조,
 // 아동 특성 · 가정상황의 '수정 → 확인'(펼치면 고르기 단추, 접으면 고른 항목만 ✓ — 값은 noteWrite.ts 의 pickSection).
 // 디자인에 없는 '요약 승인' · '일지 승인' · '요약 수정' · '일지 수정' 단추와 AI 초안 · AI 근거 표시는 그대로 둔다(AI 생성 → 상담사
-// 확인 → 승인 흐름). 단계 이름 '위험 신호 검토' 는 분석 시작 흐름을 팀이 정할 때까지 그대로다(디자인은 '유형별 위험도').
+// 확인 → 승인 흐름). 단계 이름은 10/27 디자인대로 '유형별 위험도' 다(칸 이름 '위험 신호 검토 결과' 는 디자인 그대로).
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -346,7 +346,7 @@ export default function NoteWrite(props) {
           </section>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <A className="btn btn-s" to={v.backHref}>
-              ← 위험 신호 검토
+              ← 유형별 위험도
             </A>
             <button
               type="button"

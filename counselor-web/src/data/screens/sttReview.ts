@@ -2,8 +2,8 @@
 //
 //  - 변환 중이면 진행 카드(단계 이름만. Backend 가 진행률 %를 주지 않는다), 끝나면 발화 줄을 보인다.
 //  - 변환 전 · 실패면 진행 카드에서 변환 요청 · 다시 변환, 녹음이 없으면 녹취 올리기로 보낸다.
-//  - 화자 · 문장을 고치면 '저장' 으로 바꾼 발화만 보낸다. '원문 확정 · 신호 분석' 은 저장하지 않은 수정을 먼저 저장하고
-//    확정한 뒤 위험 신호 검토(AI 분석) 화면으로 간다.
+//  - 화자 · 문장을 고치면 '저장' 으로 바꾼 발화만 보낸다. '원문 확정 · 유형별 위험도 →' 는 저장하지 않은 수정을 먼저 저장하고
+//    확정한 뒤 AI 분석을 요청하고 유형별 위험도 화면으로 간다(10/27 디자인에는 분석 요청 단계가 따로 없다).
 //  - 줄별 '확인' 표시는 화면 상태다(서버에는 '원문 확정' 하나만 있다). 핵심 · 안전 발화 고르기는 팀 결정 전이라 없다.
 //  - 화자는 Backend 5종(아동 · 상담원 · 보호자 · 기타 · 화자 미확인)만 쓴다. '사례관리대상자' 는 Backend 에 없다.
 //
@@ -13,8 +13,12 @@
 //    저장소(ispot-stt)를 300ms 마다 읽고 시간('00:41')으로 줄을 찾지만, 앱은 주소 쿼리와 발화 ID 로 한다.
 //  - 시간을 눌러 다시 듣기(서버에 녹음 재생 없음), 목소리 신호(서버에 구간별 값 없음), 관련 조문(팀 결정 전 보류)은 준비 중이다.
 //  - 옮기지 않은 것: 디자인 범례 끝줄의 예시 표시, 화자 라벨 뒤 번호(그 화자의 몇 번째 발화인지 — 뜻이 팀 확인 전),
-//    '핵심 발화' 보기, 가짜 진행률 · 토스트. 단계 이름 · 다음 단추는 앱 그대로다(분석 시작 흐름은 팀 결정 전이라
-//    원문 확정 뒤 위험 신호 검토 화면에서 AI 분석을 요청한다).
+//    '핵심 발화' 보기(원문 확정 전 미리 분석하는 API 가 없음), 가짜 진행률 · 토스트.
+//
+// 10/27 디자인 반영: 단계 이름 '유형별 위험도'. 다음 단추가 원문 확정 + AI 분석 요청 + 이동을 한 번에 한다.
+//  - 이미 확정했고 분석을 아직 요청하지 않았으면(STT_CONFIRMED) 요청하고 간다. 분석 중 · 끝남 · 실패면 그냥 간다
+//    (실패한 분석을 저절로 다시 돌리지 않는다 — 다시 분석은 유형별 위험도 화면에서 상담원이 누른다).
+//  - 분석 요청이 실패해도 원문 확정은 끝났으므로 유형별 위험도로 간다. 그 화면이 '분석 대기' 와 다시 요청 단추를 보인다.
 //
 // 10/22 디자인 반영:
 //  - 아래쪽 '위험 신호' 구역(10/21 에 준비 중 안내로 옮겼던 것)을 뺐다.
@@ -28,10 +32,11 @@
 
 import { NOT_PROVIDED } from "../caseRows";
 import { formatClock } from "../time";
+import type { SessionAnalysisState } from "../useSessionAnalysis";
 import type { TranscriptReviewState } from "../useTranscriptReview";
 import { SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
 import { NOT_READY } from "./common";
-import { screenHref, withBack } from "./links";
+import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
 
@@ -68,8 +73,19 @@ export function readFocusSegment(search: URLSearchParams | string): string | nul
   return params.get(SEGMENT_PARAM)?.trim() || null;
 }
 
+/** 그 회차 STT 검수에서 발화 하나를 가리키는 주소(근거 발화 링크). 회차 ID 가 없으면 발화를 붙이지 않는다. */
+export function segmentHref(ids: Partial<ScreenIds>, segmentId: string): string {
+  const href = screenHref("/SttReview", ids);
+
+  if (!ids.sessionId || !segmentId) return href;
+
+  return `${href}&${SEGMENT_PARAM}=${encodeURIComponent(segmentId)}`;
+}
+
 export interface SttScreenInput extends SessionScreenInput {
   review: TranscriptReviewState;
+  /** 원문 확정 뒤 AI 분석을 요청한다. */
+  analysis: Pick<SessionAnalysisState, "run" | "submitting">;
   /** 주소의 seg(발화 ID). 그 줄을 표시하고, '확인할 곳' 보기에서도 숨기지 않는다(재생 바 표시를 눌러 다른 줄로 옮기기 전까지). */
   focusSegment: string | null;
   state: SttUiState;
@@ -77,7 +93,7 @@ export interface SttScreenInput extends SessionScreenInput {
 }
 
 export function sttReviewValues(input: SttScreenInput) {
-  const { review, state, setState, go, focusSegment } = input;
+  const { review, analysis, state, setState, go, focusSegment } = input;
   const header = processHeaderValues(input, 0);
   const ids = header.ids;
   const status = review.sessionStatus;
@@ -225,7 +241,7 @@ export function sttReviewValues(input: SttScreenInput) {
   // 이미 확정했고 고친 칸이 없으면 그냥 이동.
   const mustConfirm = review.canConfirm || (review.canEdit && review.counts.pending > 0);
   const canGoOn = status !== null && status !== "STT_REVIEW_REQUIRED" && confirmed;
-  const nextLabel = mustConfirm ? "원문 확정 · 신호 분석 →" : "신호 분석 →";
+  const nextLabel = mustConfirm ? "원문 확정 · 유형별 위험도 →" : "유형별 위험도 →";
 
   return {
     ...header,
@@ -286,8 +302,9 @@ export function sttReviewValues(input: SttScreenInput) {
       setState({ spOpen: null });
       void review.save();
     },
-    canNext: (mustConfirm || canGoOn) && !review.submitting,
-    nextLabel: review.submitting ? "처리 중…" : nextLabel,
+    canNext: (mustConfirm || canGoOn) && !review.submitting && !analysis.submitting,
+    nextLabel: review.submitting || analysis.submitting ? "처리 중…" : nextLabel,
+    nextHint: mustConfirm ? "누르면 원문을 확정하고 AI 분석을 요청합니다." : "",
     next: async () => {
       setState({ spOpen: null });
 
@@ -297,8 +314,13 @@ export function sttReviewValues(input: SttScreenInput) {
         const ticket = review.capture();
         const ok = await review.confirm();
 
-        if (ok) go(signalHref, () => review.isCurrent(ticket));
+        if (!ok || !review.isCurrent(ticket)) return;
+
+        await analysis.run();
+        go(signalHref, () => review.isCurrent(ticket));
       } else if (canGoOn) {
+        if (status === "STT_CONFIRMED") await analysis.run();
+
         go(signalHref);
       }
     },

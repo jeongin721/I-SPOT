@@ -292,7 +292,7 @@
       "expand": "fill",
       "h": 1350,
       "is_interactive": true,
-      "title": "2 · 위험 신호 검토 (→ 유형별 위험도)",
+      "title": "2 · 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단)",
       "w": 1440,
       "x": 3040,
       "y": 7400
@@ -322,15 +322,6 @@
       "title": "녹취 · 자료 올리기 (팝업 3단계 + 확인창)",
       "w": 1440,
       "x": 0,
-      "y": 7400
-    },
-    "RiskProfile.dc.html": {
-      "expand": "fill",
-      "h": 1900,
-      "is_interactive": true,
-      "title": "2 › 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단)",
-      "w": 1440,
-      "x": 4560,
       "y": 7400
     }
   },
@@ -362,7 +353,7 @@
     "rowD": {
       "kind": "title1",
       "maxW": 9040,
-      "text": "④ 회차 처리 · 녹취 올리기 → STT 검수 → 위험 신호 검토 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문",
+      "text": "④ 회차 처리 · 녹취 올리기 → STT 검수 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문",
       "w": 240,
       "x": 0,
       "y": 7100
@@ -396,7 +387,6 @@
     "UploadModal.dc.html",
     "SttReview.dc.html",
     "SignalReview.dc.html",
-    "RiskProfile.dc.html",
     "NoteWrite.dc.html",
     "FollowupQ.dc.html",
     "Closure.dc.html",
