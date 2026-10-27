@@ -159,7 +159,16 @@ def _native_result() -> Dict[str, Any]:
                 {"text": "아빠가 화나면 때린다고 말함.", "segment_ids": ["seg_002"]},
             ],
             "risk_signal_points": [dict(GROUNDED_POINT)],
+            # 상담 요약 4칸 중 강점 · 위험 문단(narrative_summary_llm, infer_audio_session 이 붙인다).
+            "narrative_summary": {
+                "strengths_narrative": "가상 강점 문단",
+                "risks_narrative": "가상 위험 문단",
+                "strengths_citations": ["seg_002"],
+                "risks_citations": ["seg_002"],
+            },
         },
+        # 상담 요약 '원하는 변화' 칸(desired_change_llm.join_points 결과).
+        "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
         # 선택 필드 4개(#49)로 옮겨지는 값. 모양은 각 모듈이 정리해 돌려주는 그대로다
         # (severity_llm._clean_ratings: level 1~5 정수 또는 None · matched_evidence 문자열,
         # session_change · followup_check_llm: 문자열 목록).
@@ -480,6 +489,67 @@ def test_unavailable_legal_data_adds_warning(modeling) -> None:
 
     assert "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." in stored.warnings
     assert stored.risk_utterances[0]["legal_references"] == []
+
+
+def test_summary_assessment_is_filled_from_module_output(modeling) -> None:
+    """상담 요약 4칸(summary.assessment)은 강점 · 위험 문단, 회차 변화, 원하는 변화를 옮긴다(2026-10-27)."""
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["summary"]["assessment"] == {
+        "safety_changes": {"text": "가상 회차 변화", "segment_ids": []},
+        "strengths_resources": {"text": "가상 강점 문단", "segment_ids": ["seg_002"]},
+        "safety_risks": {"text": "가상 위험 문단", "segment_ids": ["seg_002"]},
+        "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
+    }
+
+
+def test_summary_assessment_is_empty_when_module_omits_it(modeling) -> None:
+    """예전 모듈 결과(문단 · 원하는 변화 없음)도 Contract 를 만족하고 4칸은 빈 칸이다."""
+
+    result = _native_result()
+    del result["record_draft"]["narrative_summary"]
+    del result["desired_changes"]
+    result["session_change_notes"] = []
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    assert assessment == {key: {"text": "", "segment_ids": []} for key in assessment}
+    assert set(assessment) == {"safety_changes", "strengths_resources", "safety_risks", "desired_changes"}
+
+
+def test_malformed_assessment_evidence_does_not_fail_analysis(modeling) -> None:
+    """4칸 근거 번호가 목록이 아니어도(숫자 · dict · 불리언) 분석은 성공하고 그 번호만 빠진다(민규 교차검증 2026-10-27)."""
+
+    result = _native_result()
+    result["record_draft"]["narrative_summary"]["strengths_citations"] = 5
+    result["record_draft"]["narrative_summary"]["risks_citations"] = {"seg_002": True}
+    result["desired_changes"] = {"text": "가상 원하는 변화", "segment_ids": [True, "seg_002"]}
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    assert assessment["strengths_resources"] == {"text": "가상 강점 문단", "segment_ids": []}
+    assert assessment["safety_risks"] == {"text": "가상 위험 문단", "segment_ids": []}
+    assert assessment["desired_changes"] == {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]}
+
+
+@pytest.mark.parametrize("desired", ["문자열", ["목록"], 5])
+def test_non_dict_desired_changes_and_narrative_become_empty(modeling, desired) -> None:
+    """원하는 변화 · 강점/위험 문단이 dict 가 아니어도 분석은 성공하고 그 칸만 빈 칸이다(민규 교차검증 2026-10-27)."""
+
+    result = _native_result()
+    result["desired_changes"] = desired
+    result["record_draft"]["narrative_summary"] = "문자열"
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    empty = {"text": "", "segment_ids": []}
+    assert assessment["desired_changes"] == empty
+    assert assessment["strengths_resources"] == empty
+    assert assessment["safety_risks"] == empty
 
 
 def test_module_only_fields_do_not_leak(modeling) -> None:

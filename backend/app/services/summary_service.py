@@ -19,7 +19,7 @@ from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.models.user import User
-from app.schemas.contracts import SummaryEvidenceItem
+from app.schemas.contracts import SummaryAssessment, SummaryEvidenceItem
 from app.schemas.summary import SummaryEnvelope, SummaryResponse, SummaryUpdateRequest
 from app.services import audit_service, session_service
 
@@ -94,6 +94,19 @@ def update_summary(
     if "key_points" in data and data["key_points"] is not None:
         summary.key_points = list(data["key_points"])
         changed_fields.append("key_points")
+
+    if payload.assessment is not None:
+        texts = payload.assessment.model_dump(exclude_unset=True, exclude_none=True)
+
+        if texts:
+            # JSON 열은 제자리 수정을 감지하지 못하므로 새 dict 를 넣는다.
+            current = SummaryAssessment.model_validate(summary.assessment or {}).model_dump()
+
+            for key, text in texts.items():
+                current[key] = {**current[key], "text": text}
+
+            summary.assessment = current
+            changed_fields.append("assessment")
 
     if "counselor_note" in data and data["counselor_note"] is not None:
         summary.counselor_note = data["counselor_note"]

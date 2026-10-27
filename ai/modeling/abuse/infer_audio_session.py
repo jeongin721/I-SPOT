@@ -41,6 +41,10 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.desired_change_llm import (
+    generate_desired_changes,
+    join_points as join_desired_change_points,
+)
 from ai.modeling.abuse.severity_llm import (
     build_evidence_block_text,
     rate_severity_from_text,
@@ -676,8 +680,10 @@ def analyze_audio_session(
     # use_correction_hint=False: build_correction_hint_text()가 과거 회차
     # 원문 인용을 mask_for_outbound 없이 시스템 프롬프트에 붙이므로, 외부
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
-    executor = ThreadPoolExecutor(max_workers=4)
-    # 넷 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
+    # desired_changes(상담 요약 '앞으로 원하는 변화', 2026-10-27)는 보호요인과
+    # 같은 마스킹된 축어록을 받으므로 같이 띄운다 — 분석 시간이 늘지 않게.
+    executor = ThreadPoolExecutor(max_workers=5)
+    # 다섯 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
     # 계속 보내던 문제(2026-10-20 Mingyu 리뷰) — 실패가 확정되면 이
     # 신호를 켜서, 아직 재시도 전인 호출들이 다음 시도를 시작하기 전에
     # 바로 포기하게 한다(second_stage_llm._call_llm_with_retry 참고).
@@ -721,15 +727,25 @@ def analyze_audio_session(
             deadline=deadline,
             stop_event=stop_event,
         )
+        desired_changes_future = executor.submit(
+            generate_desired_changes,
+            client=client,
+            model=note_model,
+            masked_transcript_text=masked_citation_text,
+            segments=segments,
+            deadline=deadline,
+            stop_event=stop_event,
+        )
 
         all_futures = [
             counseling_future,
             checklist_future,
             record_draft_future,
             protective_factors_future,
+            desired_changes_future,
         ]
 
-        # 넷 중 하나라도 실패하면(record_draft/protective_factors는 내부에서
+        # 다섯 중 하나라도 실패하면(record_draft/protective_factors/desired_changes는 내부에서
         # 이미 실패를 삼키므로 사실상 counseling_records/checklist_draft만
         # 해당) 나머지가 아직 안 끝났어도 기다리지 않고 바로 실패 처리한다
         # (2026-10-19 Mingyu 리뷰) — wait(..)가 반환하자마자 shutdown을
@@ -752,6 +768,7 @@ def analyze_audio_session(
         checklist_draft = checklist_future.result()
         record_draft = record_draft_future.result()
         protective_factors = protective_factors_future.result()
+        desired_change_points = desired_changes_future.result()
     finally:
         # cancel_futures는 Python 3.9+에서만 있다(이 저장소는 환경마다
         # 3.8/3.9/3.12가 섞여 있다) — 없으면 그냥 wait=False만 쓴다.
@@ -781,6 +798,10 @@ def analyze_audio_session(
     )
     protective_factors = restore_pii(
         protective_factors,
+        citation_entity_map,
+    )
+    desired_change_points = restore_pii(
+        desired_change_points,
         citation_entity_map,
     )
 
@@ -958,6 +979,11 @@ def analyze_audio_session(
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
         "protective_factors": protective_factors,
+        # 상담 요약 '앞으로 원하는 변화 · 원하는 서비스/지원' 칸
+        # (desired_change_llm.py, 2026-10-27). {text, segment_ids} 하나.
+        "desired_changes": join_desired_change_points(
+            desired_change_points
+        ),
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,

@@ -535,7 +535,26 @@ export interface AnalysisSummary {
   overview: string;
   /** 현재 Contract 는 문자열 배열이다. 근거 연결 구조로 바꾸려면 팀 협의가 필요하다. */
   key_points: string[];
+  /** 사정 관점 4칸(2026-10-27). 이 필드가 생기기 전 서버 · 결과에는 없다. */
+  assessment?: SummaryAssessment;
 }
+
+/**
+ * 상담 요약 사정 관점 4칸의 키(API_CONTRACT 9절 "사정 관점 4칸", 2026-10-27).
+ *  - safety_changes: (안전관련) 조사 후 변화된 사항
+ *  - strengths_resources: 아동안전과 관련된 강점과 자원
+ *  - safety_risks: 아동안전과 관련된 위험요인
+ *  - desired_changes: 앞으로 원하는 변화 · 원하는 서비스/지원
+ */
+export type SummaryAssessmentKey = "safety_changes" | "strengths_resources" | "safety_risks" | "desired_changes";
+
+/** 4칸 중 한 칸. segment_ids 는 AI 초안의 근거 발화이고 상담사가 문장을 고쳐도 그대로다. */
+export interface SummaryAssessmentField {
+  text: string;
+  segment_ids: string[];
+}
+
+export type SummaryAssessment = Record<SummaryAssessmentKey, SummaryAssessmentField>;
 
 // 아래 4개는 AI 분석 결과의 선택 필드다(API_CONTRACT 8절 "선택 필드", 10/16 추가).
 // 서버는 값이 없으면 빈 배열로 준다. 모두 AI 제안이고 판단은 상담원이 한다.
@@ -647,6 +666,8 @@ export interface Summary {
   analysis_id: string | null;
   overview: string;
   key_points: string[];
+  /** 사정 관점 4칸. 이 필드가 생기기 전 서버(2026-10-27 이전 배포)에는 없다. */
+  assessment?: SummaryAssessment;
   counselor_note: string | null;
   status: ReviewStatus;
   is_edited: boolean;
@@ -659,6 +680,8 @@ export interface Summary {
 export interface SummaryUpdateRequest {
   overview?: string;
   key_points?: string[];
+  /** 고친 칸의 문장만 보낸다. 근거 번호는 서버가 그대로 둔다. */
+  assessment?: Partial<Record<SummaryAssessmentKey, string>>;
   counselor_note?: string;
 }
 

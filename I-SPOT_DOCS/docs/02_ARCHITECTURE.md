@@ -141,7 +141,13 @@ COUNSELOR | CHILD | GUARDIAN | OTHER | UNKNOWN
   "schema_version": "1.0",
   "summary": {
     "overview": "",
-    "key_points": []
+    "key_points": [],
+    "assessment": {
+      "safety_changes": { "text": "", "segment_ids": [] },
+      "strengths_resources": { "text": "", "segment_ids": [] },
+      "safety_risks": { "text": "", "segment_ids": [] },
+      "desired_changes": { "text": "", "segment_ids": [] }
+    }
   },
   "risk_utterances": [],
   "abuse_signals": [],
@@ -156,6 +162,9 @@ PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT
 ```
 
 근거가 있는 결과는 가능한 한 `segment_id`로 STT와 연결한다.
+
+`summary.assessment`(2026-10-27, 선택)는 상담 요약 사정 관점 4칸이다 — 조사 후 변화된 사항 · 강점과 자원 · 위험요인 ·
+원하는 변화/서비스. 칸마다 `{text, segment_ids}` 이고 없으면 빈 칸이다(자세한 규칙은 `backend/docs/API_CONTRACT.md` 9절).
 
 위험 3필드 항목 구조(2026-10-22 확정. 자세한 규칙은 `PROPOSAL_risk_fields.md` §7-0 · `backend/docs/API_CONTRACT.md` 8절):
 ```jsonc

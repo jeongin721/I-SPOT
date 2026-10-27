@@ -217,6 +217,15 @@ def _clean_points(
     segment_id) 없는 항목은 엄격하게 제외한다 — "증거 위치 표시"가
     이 카드의 핵심 요구사항이라 느슨하게 둘 이유가 없다(모듈
     docstring 2026-10-26 참고).
+
+    [2026-10-27 민규 교차검증으로 발견]
+    segment_ids가 list라고 그냥 믿고 돌았었다. LLM이
+    "segment_ids": 5나 true처럼 list가 아닌 값을 보내면 `for sid in
+    (... or [])`에서 TypeError가 나고, 이 호출은 _call_llm_with_retry의
+    try/except 바깥이라 예외가 infer_audio_session까지 올라가 회차
+    분석 전체가 AI_FAILED로 끝난다. {"seg_001": true} 같은 dict는
+    돌면 키만 나와서 list인 것처럼 통과해 버린다 — 그래서 list인지
+    먼저 확인하고, 아니면 그 항목만(전체가 아니라) 건너뛴다.
     """
 
     if not isinstance(raw_points, list):
@@ -233,10 +242,15 @@ def _clean_points(
         if not isinstance(text, str) or not text.strip():
             continue
 
+        raw_segment_ids = item.get("segment_ids")
+
+        if not isinstance(raw_segment_ids, list):
+            continue
+
         segment_ids = [
             str(sid)
-            for sid in (item.get("segment_ids") or [])
-            if isinstance(sid, (str, int))
+            for sid in raw_segment_ids
+            if isinstance(sid, (str, int)) and not isinstance(sid, bool)
             and str(sid) in valid_segment_ids
         ]
 

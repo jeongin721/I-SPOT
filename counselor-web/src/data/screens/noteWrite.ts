@@ -1,13 +1,16 @@
 // 3 · 상담 요약 · 상담 일지(NoteWrite) 화면 값.
 //
-// 상담 요약 카드 = useSummaryReview. AI 요약 초안(개요 · 핵심 내용) · 상담사 메모를 고치고 저장 · 승인한다.
+// 상담 요약 카드 = useSummaryReview. 10/27 디자인대로 사정 관점 4칸(조사 후 변화 · 강점과 자원 · 위험요인 · 원하는 변화)의
+// AI 초안을 고치고 저장 · 승인한다(summary.assessment, 2026-10-27).
 //  - **요약 승인은 회차를 '승인 완료' 로 바꾼다.** '요약 승인' 단추를 누르면 (고친 칸을 저장하고) 바로 승인한다.
 //    한 번 더 묻지 않는다 — 승인한 뒤에도 '요약 수정' 으로 풀 수 있어서다(2026-10-16 최민규 결정).
 //    승인한 뒤에는 '요약 수정' 단추만 보인다. 누르면 승인이 풀려 쓴 내용 그대로 다시 고칠 수 있고(회차는 'AI 결과 검수 필요'),
 //    고친 뒤 다시 승인한다. 상담 일지도 같다('일지 수정', 회차 상태는 바뀌지 않는다).
 //    아래 '저장 · 추가 확인 · 질문 →' 단추는 저장만 하고 승인하지 않는다(specs 대응표 '승인 시점').
-//  - 근거 발화는 AI 원본 요약 문장별로 보인다(고친 요약 문장과 글자로 맞추지 않는다).
-//  - 화면의 사정 관점 4영역(조사 후 변화 · 강점 · 위험요인 · 원하는 변화)은 Backend 요약에 없다. 개요 · 핵심 내용 · 메모로 보인다.
+//  - 칸마다 AI 초안의 근거 위치('근거 · 01:08 아동')를 칸 이름 옆에 보인다(디자인의 src). 상담사가 문장을 고쳐도 근거는 AI 초안 것이다.
+//  - 개요 · 핵심 내용 · 상담사 메모와 핵심 내용별 'AI 근거' 줄은 디자인에 없어 보이지 않는다(서버에는 그대로 남는다).
+//    핵심 내용의 근거 발화는 유형별 위험도 화면에서 본다.
+//  - '조사 후 변화된 사항' 은 이전 회차와의 비교라 서버 경로에서는 AI 초안이 비어 온다 — 상담원이 쓴다.
 //
 // 상담 일지 카드 = useSessionDocuments 의 상담일지(CONSULTATION_RECORD) 한 건. 문서는 제목 · 본문 텍스트뿐이라
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
@@ -28,7 +31,9 @@
 import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
-import type { SummaryReviewState } from "../useSummaryReview";
+import type { SummaryAssessmentKey } from "../../api/types";
+import { positionLabel } from "../riskRows";
+import { ASSESSMENT_KEYS, type SummaryReviewState } from "../useSummaryReview";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
@@ -189,6 +194,14 @@ export function addableItems(options: string[], intake: string[], kept: string[]
   return [...options.filter((item) => !fromIntake.has(item) || held.has(item)), ...[...held].filter((item) => !listed.has(item))];
 }
 
+/** 사정 관점 4칸의 화면 이름(10/27 디자인 NoteWrite 그대로). */
+export const ASSESSMENT_LABELS: Record<SummaryAssessmentKey, string> = {
+  safety_changes: "(안전관련) 조사 후 변화된 사항",
+  strengths_resources: "아동안전과 관련된 강점과 자원",
+  safety_risks: "아동안전과 관련된 위험요인",
+  desired_changes: "앞으로 원하는 변화 · 원하는 서비스/지원",
+};
+
 export function noteWriteValues(input: NoteScreenInput) {
   const { summary, docs, state, setState, go, detail, caseDetail } = input;
   const header = processHeaderValues(input, 2);
@@ -204,29 +217,14 @@ export function noteWriteValues(input: NoteScreenInput) {
   const readOnly = !summary.canEdit || busy;
   const fields = summary.fields;
   const sums = summary.hasSummary
-    ? [
-        { k: "요약", v: fields.overview, onChange: (e: { target: { value: string } }) => summary.setOverview(e.target.value) },
-        ...fields.keyPoints.map((point, index) => ({
-          k: `핵심 내용 ${index + 1}`,
-          v: point,
-          onChange: (e: { target: { value: string } }) => summary.setKeyPoint(index, e.target.value),
-        })),
-        {
-          k: "상담사 메모",
-          v: fields.counselorNote,
-          onChange: (e: { target: { value: string } }) => summary.setCounselorNote(e.target.value),
-        },
-      ].map((row) => ({ ...row, src: "", readOnly }))
+    ? ASSESSMENT_KEYS.map((key) => ({
+        k: ASSESSMENT_LABELS[key],
+        v: fields.assessment[key],
+        src: positionLabel(summary.assessmentEvidence[key]),
+        onChange: (e: { target: { value: string } }) => summary.setAssessment(key, e.target.value),
+        readOnly,
+      }))
     : [];
-
-  const summaryEv = summary.evidence.map((item) => ({
-    label: "AI 근거",
-    ev: `${item.keyPoint} — ${item.segments
-      .map((segment) =>
-        segment.found ? `${segment.startLabel} ${segment.speakerLabel} "${segment.text}"` : "원문에서 찾지 못한 발화",
-      )
-      .join(" / ")}`,
-  }));
 
   let summaryChip = "요약 없음";
   if (summary.status === "APPROVED") summaryChip = `승인 · ${summary.approvedAt}`;
@@ -377,7 +375,6 @@ export function noteWriteValues(input: NoteScreenInput) {
     // 상담 요약
     summaryChip,
     sums,
-    summaryEv,
     summaryNote,
     summaryLink,
     summaryError: summary.error,

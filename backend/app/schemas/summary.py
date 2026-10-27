@@ -4,13 +4,13 @@
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.enums import ReviewStatus, SessionStatus
 from app.schemas.common import RequestModel, SessionErrorInfo
-from app.schemas.contracts import SummaryEvidenceItem
+from app.schemas.contracts import SummaryAssessment, SummaryEvidenceItem
 
 
 class SummaryResponse(BaseModel):
@@ -21,6 +21,8 @@ class SummaryResponse(BaseModel):
     analysis_id: Optional[uuid.UUID]
     overview: str
     key_points: List[str]
+    # 사정 관점 4칸. 2026-10-27 이전 요약(null)은 빈 칸으로 보인다.
+    assessment: SummaryAssessment = Field(default_factory=SummaryAssessment)
     counselor_note: Optional[str]
     status: ReviewStatus
     is_edited: bool
@@ -28,6 +30,12 @@ class SummaryResponse(BaseModel):
     approved_by_id: Optional[uuid.UUID]
     created_at: datetime
     updated_at: datetime
+
+
+    @field_validator("assessment", mode="before")
+    @classmethod
+    def _empty_assessment(cls, value: Any) -> Any:
+        return {} if value is None else value
 
 
 class SummaryEnvelope(BaseModel):
@@ -40,14 +48,32 @@ class SummaryEnvelope(BaseModel):
     error: Optional[SessionErrorInfo] = None
 
 
+class SummaryAssessmentUpdate(RequestModel):
+    """사정 관점 4칸 중 고칠 칸의 문장. 보낸 칸만 바꾸고 근거 번호(segment_ids)는 AI 초안 것을 둔다."""
+
+    # 4칸 밖의 이름은 조용히 버리지 않고 422 로 알린다(오타로 저장이 안 된 줄 모르는 일이 없게).
+    model_config = ConfigDict(extra="forbid")
+
+    safety_changes: Optional[str] = Field(default=None, max_length=20000)
+    strengths_resources: Optional[str] = Field(default=None, max_length=20000)
+    safety_risks: Optional[str] = Field(default=None, max_length=20000)
+    desired_changes: Optional[str] = Field(default=None, max_length=20000)
+
+
 class SummaryUpdateRequest(RequestModel):
     overview: Optional[str] = Field(default=None, max_length=20000)
     key_points: Optional[List[str]] = None
+    assessment: Optional[SummaryAssessmentUpdate] = None
     counselor_note: Optional[str] = Field(default=None, max_length=20000)
 
     @model_validator(mode="after")
     def _require_change(self) -> "SummaryUpdateRequest":
-        if self.overview is None and self.key_points is None and self.counselor_note is None:
+        if (
+            self.overview is None
+            and self.key_points is None
+            and self.assessment is None
+            and self.counselor_note is None
+        ):
             raise ValueError("수정할 필드를 최소 1개 지정해야 합니다.")
 
         if self.key_points is not None and len(self.key_points) > 100:
