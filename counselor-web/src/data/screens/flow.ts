@@ -1,8 +1,8 @@
 // 회차 상태 → 다음에 갈 화면. 사례 상세의 '이어서 하기' · 회차 상세의 단계 카드가 쓴다.
 //
-// 화면의 회차 처리 단계(녹취 올림 → STT 검수 → 위험 신호 검토 → 요약 · 일지 작성 → 추가 확인 · 질문)와
+// 화면의 회차 처리 단계(녹취 올림 → STT 검수 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문, 10/27 디자인)와
 // Backend 상태(sessionRows 의 SessionStep)를 맞춘다.
-//  - AI 분석 요청 · 진행은 '위험 신호 검토' 화면에서 한다(위험 신호 자체는 서버가 아직 빈 목록이라 준비 중).
+//  - AI 분석은 STT 검수의 '유형별 위험도 →' 가 원문 확정과 함께 요청하고, 진행 · 실패 · 다시 요청은 '유형별 위험도' 화면에서 본다.
 //  - 요약 검수 · 승인은 '요약 · 일지 작성' 화면에서 한다.
 //  - '추가 확인 · 질문' 은 Backend 에 없다(회차 상태에 '질문 처리 완료' 단계가 없다). 늘 준비 중이다.
 
@@ -10,7 +10,7 @@ import type { SessionRow, SessionStep } from "../sessionRows";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 화면의 회차 처리 단계. index 는 사례 상세 '현재 진행 상황' 의 칸 순서다. */
-export const PROCESS_COLUMNS = ["녹취 올림", "STT 검수", "위험 신호 검토", "요약 · 일지 작성", "추가 확인 · 질문"] as const;
+export const PROCESS_COLUMNS = ["녹취 올림", "STT 검수", "유형별 위험도", "요약 · 일지 작성", "추가 확인 · 질문"] as const;
 
 /** 회차 단계가 화면의 몇 번째 칸인가. 승인 완료(done)는 앞 네 칸을 모두 지난 것으로 본다. */
 export const COLUMN_OF: Record<SessionStep, number> = {
@@ -36,7 +36,7 @@ const CONTINUE_LABEL: Record<SessionStep, string> = {
   upload: "녹취 올리기",
   stt: "STT 검수",
   sttReview: "STT 검수",
-  analysis: "위험 신호 검토 · AI 분석",
+  analysis: "유형별 위험도 · AI 분석",
   summaryReview: "요약 · 일지 작성",
   done: "회차 보기",
 };
@@ -50,7 +50,7 @@ export function continueLink(row: Pick<SessionRow, "id" | "caseId" | "step">): {
 }
 
 /**
- * 회차 처리 단계 카드 · 탭 4개(STT 검수 · 위험 신호 검토 · 요약 · 일지 작성 · 추가 확인 · 질문)에서 회차가 있는 칸.
+ * 회차 처리 단계 카드 · 탭 4개(STT 검수 · 유형별 위험도 · 요약 · 일지 작성 · 추가 확인 · 질문)에서 회차가 있는 칸.
  * 승인 완료면 -1(앞 세 칸을 모두 지났다). '추가 확인 · 질문' 칸에 오는 상태는 없다.
  */
 export const CARD_OF: Record<SessionStep, number> = {
@@ -64,7 +64,7 @@ export const CARD_OF: Record<SessionStep, number> = {
 
 const PROCESS_SCREENS = [
   { page: "/SttReview", label: "STT 검수" },
-  { page: "/SignalReview", label: "위험 신호 검토" },
+  { page: "/SignalReview", label: "유형별 위험도" },
   { page: "/NoteWrite", label: "요약 · 일지 작성" },
   { page: "/FollowupQ", label: "추가 확인 · 질문" },
 ] as const;

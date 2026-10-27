@@ -877,6 +877,7 @@ def analyze_audio_session(
         client=client,
         model=note_model,
         masked_combined_text=followup_masked_text,
+        segments=segments,
         deadline=deadline,
     )
 

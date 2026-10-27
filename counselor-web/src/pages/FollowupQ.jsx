@@ -1,163 +1,47 @@
-// 4 · 추가 확인 · 질문 (모두 승인 / 수정 가능)
-// 원본: 다솔 님 디자인 counselor-web-design/FollowupQ.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
-import { Fragment } from 'react';
+// 4 · 추가 확인 · 질문
+// 원본: 10/27 디자인 counselor-design/screens/FollowupQ.dc.html (frontend261021 브랜치).
+//
+// 서버 연결: 화면 주소 ?case=…&session=…. 다음 상담 전 확인할 사항은 AI 분석 결과의 followup_check_points(AI 확인 메모,
+// useSessionAnalysis)이고, 근거 위치는 useRiskSignals 가 원문에서 찾는다. 머리는 useSessionDetail · useCaseDetail 이 부르고,
+// 화면에 쓸 값은 src/data/screens/followupQ.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
+// 이 파일은 훅을 부르고 배치만 한다. 확인 사항 수정 · 직접 추가 · 브리핑에 넣기와 추가 질문은 서버에 없어 준비 중이다.
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
-import { useAuthSession } from '../data/useAuthSession';
-import { useCarryHref } from '../data/useCarryHref';
 import { useTheme } from '../theme';
+import { useAuthSession } from '../data/useAuthSession';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { useRiskSignals } from '../data/useRiskSignals';
+import { useSessionAnalysis } from '../data/useSessionAnalysis';
+import { useSessionDetail } from '../data/useSessionDetail';
+import { needsLogin, signedIn } from '../data/screens/common';
+import { followupQValues } from '../data/screens/followupQ';
+import { readScreenIds } from '../data/screens/links';
+import { useScreenGo } from '../data/screens/useScreenGo';
+import { sessionCaseId } from '../data/screens/sessionDetail';
 import './FollowupQ.css';
 
 class Logic extends DCLogic {
-  constructor(props) {
-    super(props);
-    this.state = {
-      tab: 'meet',
-      on: { 0: true, 1: true, 2: false },
-      extra: [],
-      qok: {},
-      qe: {},
-      qEdit: null,
-      dText: '',
-      dOpts: '',
-      ne: {},
-      nEdit: null,
-      nText: '',
-    };
-  }
   renderVals() {
-    const s = this.state;
-    const ALL = [
-      {
-        g: 'meet',
-        id: '열린 질문',
-        text: '등이랑 팔이 아팠던 건 지금은 어때? 누가 봐 준 적 있어?',
-        opts: [],
-        why: '8회차 01:08',
-      },
-      { g: 'meet', id: '열린 질문', text: '그 이야기를 하면 어떤 일이 생길 것 같아?', opts: [], why: '8회차 01:08' },
-      { g: 'meet', id: 'QB-N-01', text: '요즘 밥은 주로 어떻게 먹어?', opts: [], why: '8회차 02:15' },
-      {
-        g: 'app',
-        id: 'QB-N-01',
-        text: '어제 밥을 몇 번 먹었어?',
-        opts: ['0번', '1번', '2번', '3번', '말하기 어려워'],
-        why: '8회차 02:15',
-        sendNote: '오늘 저녁 발송',
-      },
-      {
-        g: 'app',
-        id: 'QB-E-05',
-        text: '누가 "이 일 말하면 혼난다"처럼 겁을 준 적 있어?',
-        opts: ['없어', '1번', '여러 번', '말하기 어려워'],
-        why: '8회차 01:08',
-        sendNote: '오늘 저녁 발송',
-      },
-    ];
-    const hasOptsAt = (i) => (ALL.at(i).opts || []).length > 0;
-
-    const mkQs = (list) =>
-      list.map((q0, i) => {
-        const cur = s.qe[i] || {};
-        const text = cur.text || q0.text;
-        const opts = cur.opts || q0.opts || [];
-        const ok = !!s.qok[i],
-          editing = s.qEdit === i;
-        return {
-          id: q0.id,
-          why: q0.why,
-          text,
-          opts,
-          hasOpts: opts.length > 0,
-          edited: !!cur.text || !!cur.opts,
-          st: ok ? (q0.sendNote ? '승인됨 · ' + q0.sendNote : '승인됨') : 'AI 초안',
-          stCls: ok ? 'chip c-sel' : 'chip c-ai',
-          ring: editing ? 'inset 0 0 0 2px #2B2A26' : 'none',
-          okCls: ok ? 'btn-p' : 'btn-s',
-          okLabel: ok ? '승인됨 ✓' : '승인',
-          isEdit: editing,
-          notEdit: !editing,
-          draftText: s.dText,
-          draftOpts: s.dOpts,
-          approve: () => this.setState({ qok: { ...s.qok, [i]: !ok } }),
-          startEdit: () => this.setState({ qEdit: i, dText: text, dOpts: opts.join(', ') }),
-          setText: (e) => this.setState({ dText: e.target.value }),
-          setOpts: (e) => this.setState({ dOpts: e.target.value }),
-          save: () =>
-            this.setState({
-              qEdit: null,
-              qok: { ...s.qok, [i]: false },
-              qe: {
-                ...s.qe,
-                [i]: {
-                  text: s.dText,
-                  opts: hasOptsAt(i)
-                    ? s.dOpts
-                        .split(',')
-                        .map((x) => x.trim())
-                        .filter(Boolean)
-                    : null,
-                },
-              },
-            }),
-          cancel: () => this.setState({ qEdit: null }),
-        };
-      });
-    const mkNotes = (list) =>
-      list.map((n0, i) => {
-        const text = s.ne[i] || n0;
-        const editing = s.nEdit === i;
-        return {
-          text,
-          edited: s.ne[i] !== undefined,
-          isEdit: editing,
-          notEdit: !editing,
-          draft: s.nText,
-          startEdit: () => this.setState({ nEdit: i, nText: text }),
-          setDraft: (e) => this.setState({ nText: e.target.value }),
-          save: () => this.setState({ nEdit: null, ne: { ...s.ne, [i]: s.nText } }),
-          cancel: () => this.setState({ nEdit: null }),
-        };
-      });
-
-    const allQs = mkQs(ALL);
-    const qs = allQs.filter((q, i) => ALL.at(i).g === s.tab);
-    const base = [
-      { t: '등 · 팔 통증 이후 치료를 받았는지', why: '8회차 01:08' },
-      { t: '02:15 발화의 화자 · 식사 상황', why: '8회차 02:15 · 화자 불확실' },
-      { t: '조모 연락 체계가 실제로 쓰였는지', why: '7회차 안전 계획 · 8회차 02:40' },
-    ].concat(s.extra.map(() => ({ t: '새 확인 사항을 적어 주세요', why: '상담사 직접 추가' })));
-    const notes = mkNotes(base.map((b) => b.t));
-    const checks = base.map((b, i) => ({
-      why: b.why,
-      n: notes.at(i),
-      on: !!s.on[i],
-      ring: s.nEdit === i ? 'inset 0 0 0 2px #2B2A26' : 'none',
-      toggle: () => this.setState({ on: { ...s.on, [i]: !s.on[i] } }),
-    }));
-    return {
-      checks,
-      qs,
-      meetCls: s.tab === 'meet' ? 'on' : '',
-      appCls: s.tab === 'app' ? 'on' : '',
-      showMeet: () => this.setState({ tab: 'meet', qEdit: null }),
-      showApp: () => this.setState({ tab: 'app', qEdit: null }),
-      addCheck: () => {
-        const n = base.length;
-        this.setState({ extra: [...s.extra, 1], on: { ...s.on, [n]: true }, nEdit: n, nText: '' });
-      },
-    };
+    return followupQValues(this.props);
   }
 }
 
 export default function FollowupQ(props) {
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
-  const carry = useCarryHref();
+  const ids = readScreenIds(useSearchParams()[0]);
+  const go = useScreenGo(useNavigate());
+  const enabled = signedIn(session);
+  const detail = useSessionDetail(ids.sessionId, { enabled });
+  const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, go });
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-FollowupQ">
       <div
@@ -189,33 +73,35 @@ export default function FollowupQ(props) {
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › <A to={carry('/CaseDetail')}>이서윤 C-2026-0351</A> ›{' '}
-            <A to={carry('/CaseHistory')}>상담 이력</A> › <A to={carry('/SessionDetail')}>8회차</A>
+            <A to="/CaseList">사례 관리</A> › <A to={v.caseHref}>{v.caseLabel}</A> › <A to={v.historyHref}>상담 이력</A>{' '}
+            › <A to={v.sessionHref}>{v.sessionLabel}</A>
           </nav>
+          <Notice value={v.notice} />
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 280px' }}>
-              <div className="sub">10/2(금) 방문상담</div>
-              <h1 style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: '700' }}>8회차 처리 · 이서윤</h1>
+              <div className="sub">{v.sub}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
+                <A
+                  className="btn btn-sm btn-s"
+                  to={v.caseHref}
+                  aria-label="내담자 정보로 돌아가기"
+                  title="내담자 정보로 돌아가기"
+                >
+                  ←
+                </A>
+                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
+              </div>
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <A className="stp done" to={carry('/SttReview')}>
-              <span className="sn">✓</span>
-              <b style={{ fontWeight: '500' }}>STT 검수</b>
-            </A>
-            <A className="stp done" to={carry('/SignalReview')}>
-              <span className="sn">✓</span>
-              <b style={{ fontWeight: '500' }}>위험 신호 검토</b>
-            </A>
-            <A className="stp done" to={carry('/NoteWrite')}>
-              <span className="sn">✓</span>
-              <b style={{ fontWeight: '500' }}>요약 · 일지 작성</b>
-            </A>
-            <A className="stp on" to={carry('/FollowupQ')} aria-current="step">
-              <span className="sn">4</span>
-              <b style={{ fontWeight: '700' }}>추가 확인 · 질문</b>
-            </A>
+            {(v.steps || []).map((t, tIndex) => (
+              <A key={tIndex} className={t.cls} to={t.href} aria-current={t.current}>
+                <span className="sn">{t.mark}</span>
+                <b style={{ fontWeight: t.weight }}>{t.label}</b>
+              </A>
+            ))}
           </nav>
+
           <section
             className="card"
             aria-label="다음 상담 전 확인할 사항"
@@ -223,66 +109,37 @@ export default function FollowupQ(props) {
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
               <h2 className="h2">다음 상담 전 확인할 사항</h2>
-              <span className="chip c-ai">AI 초안</span>
+              <span className="chip c-ai">{v.chip}</span>
             </div>
-            {(v.checks || []).map((c, cIndex) => (
-              <Fragment key={cIndex}>
-                <div
-                  className="qcard"
-                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: '12px', boxShadow: c.ring }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={c.on}
-                    onChange={c.toggle}
-                    aria-label="브리핑에 넣기"
-                    style={{ width: '18px', height: '18px', marginTop: '4px', accentColor: '#C2A36B' }}
-                  />
-                  <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {c.n.notEdit ? (
-                      <>
-                        <span style={{ fontSize: '15px' }}>{c.n.text}</span>
-                      </>
-                    ) : null}
-                    {c.n.isEdit ? (
-                      <>
-                        <textarea
-                          className="edit-in"
-                          rows="2"
-                          aria-label="확인 사항 수정"
-                          value={c.n.draft}
-                          onChange={c.n.setDraft}
-                        ></textarea>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button type="button" className="btn btn-sm btn-p" onClick={c.n.save}>
-                            저장
-                          </button>
-                          <button type="button" className="btn btn-sm btn-s" onClick={c.n.cancel}>
-                            취소
-                          </button>
-                        </div>
-                      </>
-                    ) : null}
+            <span className="note">{v.checkNote}</span>
+            {v.checksEmpty ? <span className="note">{v.checksEmpty}</span> : null}
+            {(v.checks || []).map((c) => (
+              <div key={c.key} className="qcard" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: '12px' }}>
+                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '15px' }}>{c.text}</span>
+                  {c.href ? (
+                    <A className="note" to={c.href}>
+                      근거 · {c.why}
+                    </A>
+                  ) : (
                     <span className="note">근거 · {c.why}</span>
-                  </div>
-                  {c.n.edited ? (
-                    <>
-                      <span className="chip c-sand">상담사 수정</span>
-                    </>
-                  ) : null}
-                  {c.n.notEdit ? (
-                    <>
-                      <button type="button" className="btn btn-sm btn-s" onClick={c.n.startEdit}>
-                        수정
-                      </button>
-                    </>
-                  ) : null}
+                  )}
                 </div>
-              </Fragment>
+              </div>
             ))}
-            <button type="button" className="btn btn-sm btn-s" style={{ alignSelf: 'flex-start' }} onClick={v.addCheck}>
-              + 확인 사항 직접 추가
-            </button>
+            {v.error ? (
+              <div className="note" role="alert" style={{ color: '#A33B2E' }}>
+                {v.error}
+              </div>
+            ) : null}
+            {v.signalError ? (
+              <div className="note" role="alert" style={{ color: '#A33B2E' }}>
+                {v.signalError}
+              </div>
+            ) : null}
+            <span className="note" style={{ alignSelf: 'flex-end' }}>
+              {v.checkEditNote}
+            </span>
           </section>
 
           <section
@@ -292,101 +149,16 @@ export default function FollowupQ(props) {
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
               <h2 className="h2">추가 질문</h2>
-              <span className="chip c-ai">AI 초안</span>
-              <div role="tablist" className="seg" style={{ marginLeft: 'auto' }}>
-                <button type="button" role="tab" className={v.meetCls} onClick={v.showMeet}>
-                  다음 상담에서 직접
-                </button>
-                <button type="button" role="tab" className={v.appCls} onClick={v.showApp}>
-                  아이 앱으로 먼저
-                </button>
-              </div>
             </div>
-            {(v.qs || []).map((q, qIndex) => (
-              <Fragment key={qIndex}>
-                <div className="qcard" style={{ boxShadow: q.ring }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                    <span className="chip c-sky">{q.id}</span>
-                    <span className={q.stCls}>{q.st}</span>
-                    {q.edited ? (
-                      <>
-                        <span className="chip c-sand">상담사 수정</span>
-                      </>
-                    ) : null}
-                    <span className="note" style={{ marginLeft: 'auto' }}>
-                      근거 · {q.why}
-                    </span>
-                  </div>
-                  {q.notEdit ? (
-                    <>
-                      <div style={{ fontSize: '16px', fontWeight: '500' }}>"{q.text}"</div>
-                      {q.hasOpts ? (
-                        <>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                            {(q.opts || []).map((o, oIndex) => (
-                              <Fragment key={oIndex}>
-                                <span className="opt">{o}</span>
-                              </Fragment>
-                            ))}
-                          </div>
-                        </>
-                      ) : null}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        <button type="button" className={`btn btn-sm ${q.okCls}`} onClick={q.approve}>
-                          {q.okLabel}
-                        </button>
-                        <button type="button" className="btn btn-sm btn-s" onClick={q.startEdit}>
-                          수정
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-                  {q.isEdit ? (
-                    <>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span className="note">질문 문장</span>
-                        <textarea
-                          className="edit-in"
-                          rows="2"
-                          aria-label="질문 문장 수정"
-                          value={q.draftText}
-                          onChange={q.setText}
-                        ></textarea>
-                      </label>
-                      {q.hasOpts ? (
-                        <>
-                          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span className="note">답 보기 (쉼표로 구분)</span>
-                            <input
-                              className="edit-in"
-                              type="text"
-                              aria-label="답 보기 수정"
-                              value={q.draftOpts}
-                              onChange={q.setOpts}
-                            />
-                          </label>
-                        </>
-                      ) : null}
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="button" className="btn btn-sm btn-p" onClick={q.save}>
-                          저장
-                        </button>
-                        <button type="button" className="btn btn-sm btn-s" onClick={q.cancel}>
-                          취소
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              </Fragment>
-            ))}
+            <span className="note">{v.questionNote}</span>
           </section>
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-            <A className="btn btn-s" to={carry('/NoteWrite')}>
+            <A className="btn btn-s" to={v.backHref}>
               ← 요약 · 일지 작성
             </A>
-            <A className="btn btn-p" to={carry('/PreBriefing')} style={{ marginLeft: 'auto' }}>
-              8회차 처리 완료 · 브리핑 보기
+            <A className="btn btn-p" to={v.doneHref} style={{ marginLeft: 'auto' }}>
+              {v.doneLabel}
             </A>
           </div>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>

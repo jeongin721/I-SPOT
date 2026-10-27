@@ -40,6 +40,18 @@ FollowupQ("추가 확인 · 질문" 단계)는 아동에게 실제로 건넬 질
   것"을 찾으려면 근거 강도와 무관하게 전체 맥락이 필요하다.
 - 신뢰도가 낮거나 화자가 불확실한 발화(segments) — 별도 카테고리로
   남겨서 "화자/의미가 불확실하다" 종류는 계속 잡아낸다.
+
+[2026-10-26 segment_ids 추가 — 왜 지금까지 비어 있었나]
+
+민규(Backend) 리뷰(PR #82)에서 지적된 지점이다: 이 카드의 각 항목이
+어느 발화에서 나온 건지 화면에서 보여주려면(README 원칙 3,
+API_CONTRACT §8의 증거 위치 표시 요구) segment_ids가 있어야 하는데,
+지금까지는 contract_adapter.py가 무조건 빈 배열을 채워 넣고 있었다
+(이 모듈이 plain string 목록만 반환했기 때문). protective_factor_llm.py·
+record_draft_llm.py와 같은 패턴(LLM이 segment_id를 직접 인용 → 실제
+segment 목록에 있는 id만 남기고 나머지는 버림)을 그대로 가져왔다 —
+근거 없는 항목은 protective_factor_llm.py처럼 엄격하게 제외한다(이
+카드도 "증거 위치"가 핵심 요구사항이라 느슨하게 둘 이유가 없다).
 """
 
 from typing import Any, Dict, List, Optional
@@ -78,6 +90,11 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
 6. 입력 항목이 비어 있으면 빈 리스트를 반환한다 — 억지로 만들지 않는다.
 7. 사소한 것까지 전부 나열하지 말고, 실제로 다음 상담에서 챙길 만한
    가치가 있는 것만 최대 5개까지 고른다.
+8. 항목마다 그 내용이 나온 입력 줄의 segment_id를 정확히 인용한다.
+   줄 앞에 [seg_001]처럼 적혀 있다 — 여러 줄에 걸쳐 있으면
+   segment_id를 여러 개 적어도 된다. 근거 없는 segment_id는 지어내지
+   않는다. 인용할 segment_id가 없으면 그 항목 자체를 결과에 넣지
+   않는다.
 
 [입력 — 이번 상담에서 확인된 아동 진술 · 위험 신호 요지]
 {session_content_input}
@@ -87,7 +104,9 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
 
 반드시 아래 JSON 형식으로만 답한다:
 {{
-  "check_points": ["...", "..."]
+  "check_points": [
+    {{"text": "...", "segment_ids": ["seg_001"]}}
+  ]
 }}
 """
 
@@ -132,8 +151,9 @@ def _format_low_confidence(
             if segment.get("speaker") == "UNKNOWN"
             else f"신뢰도 {segment.get('confidence', 0):.2f}"
         )
+        segment_id = segment.get("segment_id", "")
         lines.append(
-            f"- {ts} \"{segment.get('text', '')}\" ({reason})"
+            f"- [{segment_id}] {ts} \"{segment.get('text', '')}\" ({reason})"
         )
 
     return "\n".join(lines)
@@ -148,8 +168,11 @@ def _format_session_content(
     for p in child_statement_points or []:
         text = (p.get("text") or "").strip()
 
-        if text:
-            lines.append(f"- (아동 진술) {text}")
+        if not text:
+            continue
+
+        tag = ",".join(p.get("segment_ids") or [])
+        lines.append(f"- [{tag}] (아동 진술) {text}")
 
     for p in risk_signal_points or []:
         text = (p.get("text") or "").strip()
@@ -157,8 +180,9 @@ def _format_session_content(
         if not text:
             continue
 
+        tag = ",".join(p.get("segment_ids") or [])
         label = f"{p.get('major_type', '')} · {p.get('subtype', '')}"
-        lines.append(f"- ({label}) \"{text}\"")
+        lines.append(f"- [{tag}] ({label}) \"{text}\"")
 
     if not lines:
         return "없음"
@@ -184,12 +208,61 @@ def format_inputs_for_masking(
     )
 
 
+def _clean_points(
+    raw_points: Any,
+    valid_segment_ids: set,
+) -> List[Dict[str, Any]]:
+    """protective_factor_llm._clean_points와 같은 패턴 — LLM이 주장한
+    segment_id를 실제 segment 목록과 대조해 검증한다. 근거(유효한
+    segment_id) 없는 항목은 엄격하게 제외한다 — "증거 위치 표시"가
+    이 카드의 핵심 요구사항이라 느슨하게 둘 이유가 없다(모듈
+    docstring 2026-10-26 참고).
+    """
+
+    if not isinstance(raw_points, list):
+        return []
+
+    cleaned: List[Dict[str, Any]] = []
+
+    for item in raw_points:
+        if not isinstance(item, dict):
+            continue
+
+        text = item.get("text")
+
+        if not isinstance(text, str) or not text.strip():
+            continue
+
+        segment_ids = [
+            str(sid)
+            for sid in (item.get("segment_ids") or [])
+            if isinstance(sid, (str, int))
+            and str(sid) in valid_segment_ids
+        ]
+
+        if not segment_ids:
+            continue
+
+        cleaned.append({"text": text.strip(), "segment_ids": segment_ids})
+
+    return cleaned
+
+
 def generate_followup_check_points_from_masked_text(
     client: OpenAI,
     model: str,
     masked_combined_text: str,
+    segments: List[Dict[str, Any]],
     deadline: Optional[float] = None,
-) -> List[str]:
+) -> List[Dict[str, Any]]:
+    """segments: 원본 segment 목록 — segment_id 검증에만 쓴다
+    (protective_factor_llm.generate_protective_factors와 같은 이유).
+    """
+
+    valid_segment_ids = {
+        str(segment.get("segment_id", "")) for segment in segments
+    }
+
     parts = masked_combined_text.split(SPLIT_MARKER)
     session_content_input = parts[0] if parts else "없음"
     low_confidence_input = parts[1] if len(parts) > 1 else "없음"
@@ -221,16 +294,7 @@ def generate_followup_check_points_from_masked_text(
     if not isinstance(parsed, dict):
         parsed = {}
 
-    points = parsed.get("check_points")
-
-    if not isinstance(points, list):
-        return []
-
-    return [
-        point.strip()
-        for point in points
-        if isinstance(point, str) and point.strip()
-    ]
+    return _clean_points(parsed.get("check_points"), valid_segment_ids)
 
 
 def generate_followup_check_points(
@@ -239,7 +303,7 @@ def generate_followup_check_points(
     segments: List[Dict[str, Any]],
     child_statement_points: List[Dict[str, Any]],
     risk_signal_points: List[Dict[str, Any]],
-) -> List[str]:
+) -> List[Dict[str, Any]]:
     """**독립 테스트/데모 전용** — 마스킹 없이 바로 LLM을 부른다.
     실제 서비스 경로(infer_audio_session.py)는 format_inputs_for_masking
     → mask_for_outbound → generate_followup_check_points_from_masked_text
@@ -250,7 +314,7 @@ def generate_followup_check_points(
     )
 
     return generate_followup_check_points_from_masked_text(
-        client, model, combined
+        client, model, combined, segments
     )
 
 
@@ -263,15 +327,21 @@ if __name__ == "__main__":
 
     from ai.modeling.abuse.llm_backend import build_openai_client_and_model
 
+    # segments는 데모용으로 축약했지만, 실제 서비스 경로(infer_audio_session.py)
+    # 에서는 전체 축어록 segment 목록이 들어온다 — child_statement_points/
+    # risk_signal_points의 segment_ids는 그 전체 목록을 가리키므로, 여기서도
+    # seg_019·seg_020뿐 아니라 seg_050·seg_015까지 다 넣어둬야 검증을 통과한다.
     segments = [
+        {"segment_id": "seg_015", "start_ms": 110000, "speaker": "CHILD", "text": "등이랑 팔이요.", "confidence": 0.95, "is_low_confidence": False},
         {"segment_id": "seg_019", "start_ms": 135000, "speaker": "UNKNOWN", "text": "밥도 안 줄 때가 있어요.", "confidence": 0.70, "is_low_confidence": True},
         {"segment_id": "seg_020", "start_ms": 383000, "speaker": "CHILD", "text": "아니요", "confidence": 0.59, "is_low_confidence": True},
+        {"segment_id": "seg_050", "start_ms": 610000, "speaker": "CHILD", "text": "할머니 집에 가고 싶어요.", "confidence": 0.93, "is_low_confidence": False},
     ]
     child_statement_points = [
         {"text": "할머니 집에 가고 싶다고 말했다.", "segment_ids": ["seg_050"]},
     ]
     risk_signal_points = [
-        {"major_type": "신체학대", "subtype": "직접 신체 가해", "text": "등이랑 팔이요.", "evidence_strength": "높음", "evidence_verified": True},
+        {"major_type": "신체학대", "subtype": "직접 신체 가해", "text": "등이랑 팔이요.", "evidence_strength": "높음", "evidence_verified": True, "segment_ids": ["seg_015"]},
     ]
 
     client, model = build_openai_client_and_model(DEFAULT_MODEL)
