@@ -120,9 +120,17 @@ LawGuide 화면 위쪽의 **AI 질문 채팅**이 대상입니다. 디자인 REA
 - `AI_*` 코드는 지금 13절에서 'Session `error` 필드로 전달(status —)' 인데, 이 API 에서는 HTTP 응답 코드로도 씁니다. 13절 표에 이 API 용 줄을 따로 추가합니다.
 - **오류 문구는 고정 문구만** 씁니다(`map_ai_error` 와 같은 원칙). 예외 문구에는 질문 원문 · OC 인증값 · 내부 경로가 섞일 수 있습니다.
 
-> ⚠️ 이 때문에 **PR #83 모듈 쪽 수정이 먼저 필요합니다.** 지금 `answer_legal_manual_question` 은 LLM 호출이 실패하면 예외를 삼키고
-> `answer` 에 `"법령·매뉴얼 질의에 실패했습니다: {error}"` 를 넣어 **성공처럼** 돌려줍니다. Backend 는 이걸 실패로 구분할 수 없고,
-> 예외 문구가 화면까지 갑니다. 모듈이 예외를 그대로 던지게(또는 `error` 키를 따로 두게) 바꿔야 합니다(§6-1).
+> ✅ **2026-10-27 반영(§6-1).** 예전에는 `answer_*` 가 LLM 실패를 삼키고 `answer` 에 실패 문구를 넣어 성공처럼 돌려줬습니다.
+> 이제 실패는 **예외로** 올라갑니다. adapter 는 예외 종류로 코드를 정하고 문구는 버립니다.
+>
+> | 예외 | 언제 | 코드(제안) |
+> | --- | --- | --- |
+> | `TimeoutError` | `deadline` 을 넘김 | `AI_TIMEOUT` |
+> | `law_qa_llm.LawQAOutputError` | LLM 응답에 답변이 없음 | `AI_INVALID_OUTPUT` |
+> | `law.client.LawApiError` | 법령 캐시 · API 실패 | `AI_FAILED` |
+> | 그 밖(OpenAI 인증 · 연결 등) | | `map_ai_error` 와 같게 |
+>
+> 성공하면 `answer` 는 늘 비어 있지 않습니다.
 
 ---
 
@@ -144,7 +152,7 @@ backend/app/
     (분석 adapter 의 `_load_pipeline` 과 같이 지연 import, `export_llm_env` · `build_openai_client_and_model` 사용).
     `deadline` 은 `시작 + LAW_QA_TIMEOUT_SECONDS - AI_DEADLINE_MARGIN_SECONDS` 로 넘깁니다.
 - **응답 변환**은 adapter 가 합니다. 모듈의 `cited_articles` 에서 `law_name · article · title · content · portal_url` 만 골라 옮기고(그 밖의 키는 버림),
-  `manual_references`(제목 문자열)는 `manual.manifest.CHAPTER6_PAGES` 와 맞춰 `id · title · page` 로 바꿉니다.
+  `manual_references` 는 모듈이 `{id, title, page}` 로 주므로(§6-2, 2026-10-27 반영) 그대로 옮깁니다.
 - **동시 실행 제한**: 호출 하나가 큰 입력(§5-4)이라 서버 전체 동시 2건(`LAW_QA_MAX_CONCURRENCY`)으로 묶습니다. 자리가 없으면 잠깐 기다렸다가 시간 안에 못 들어가면 `AI_TIMEOUT`.
 - 엔드포인트는 `def`(동기)로 두어 FastAPI 스레드풀에서 돕니다. 분석의 BackgroundTasks 와 섞지 않습니다.
 
@@ -200,8 +208,8 @@ backend/app/
 
 ## 6. 먼저 필요한 AI 모듈 수정 (PR #83 쪽)
 
-1. **실패를 성공처럼 돌려주지 않기** — 예외를 그대로 던지거나 `{"error": "<고정 코드>"}` 를 따로 둡니다. `answer` 에 예외 문구를 넣지 않습니다(§3).
-2. **`manual_references` 에 id · page 같이 주기** — 지금은 제목 문자열만 줘서 adapter 가 제목으로 다시 찾아야 합니다. `{id, title, page}` 로 주면 쪽수 표시가 간단해집니다.
+1. ✅ (2026-10-27) **실패를 성공처럼 돌려주지 않기** — 예외를 그대로 던지고, 빈 답변은 `LawQAOutputError`(고정 문구). `answer` 에 예외 문구를 넣지 않습니다(§3 표).
+2. ✅ (2026-10-27) **`manual_references` 에 id · page 같이 주기** — `{id, title, page}`(`manual.manifest.ManualPage` 값). 쪽수를 모르면 `page` 가 `"?"`.
 3. **추천 질문 · 범위** — §5-2 의 범위 차이를 정한 뒤, 화면 추천 질문을 지금 자료로 답할 수 있는 것으로 고르거나 매뉴얼 페이지를 추가합니다.
 
 ---

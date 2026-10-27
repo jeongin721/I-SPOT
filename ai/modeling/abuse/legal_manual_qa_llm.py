@@ -42,7 +42,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
-from ai.modeling.abuse.law_qa_llm import _build_law_corpus, _verify_cited_articles
+from ai.modeling.abuse.law_qa_llm import (
+    LawQAOutputError,
+    _build_law_corpus,
+    _verify_cited_articles,
+)
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from law.config import LAW_TARGET_LAWS
 from manual.config import MANUAL_IMAGE_DIR
@@ -189,12 +193,18 @@ def _build_user_content(question: str, attached_pages: List[ManualPage]) -> Any:
     return content
 
 
-def _verify_manual_references(claimed: Any, attached_pages: List[ManualPage]) -> List[str]:
+def _verify_manual_references(
+    claimed: Any, attached_pages: List[ManualPage]
+) -> List[Dict[str, str]]:
     """LLM이 주장한 매뉴얼 인용을, 이번 호출에 실제로 첨부한 페이지
     제목 목록과 대조한다. 첨부하지 않은 자료를 인용했다고 하면(지어낸
     것이므로) 조용히 뺀다. law_qa_llm._verify_cited_articles와 같은
     목적이지만, 매뉴얼 쪽은 원본이 이미지라 내용 자체의 사실 검증은
     못 하고 "존재하는 첨부 자료를 가리켰는지"만 확인한다.
+
+    반환은 {id, title, page}(manual.manifest.ManualPage 값 그대로) 목록이다 — 2026-10-27
+    §6-2(PROPOSAL_law_guide_api.md): 예전에는 제목 문자열만 줘서 Backend 가 제목으로 다시
+    찾아야 했다. page 는 문자열이고 쪽수를 모르면 "?"(서식29 두 장).
     """
 
     if not isinstance(claimed, list):
@@ -207,8 +217,7 @@ def _verify_manual_references(claimed: Any, attached_pages: List[ManualPage]) ->
     # 외에 "claimed가 title로 시작하는 경우"(뒤에 페이지 등 접미사가
     # 붙은 경우)도 같은 자료로 인정한다. law_qa_llm의 같은 법령 내
     # 동일 조문번호 버그와 같은 종류 — 실제 호출해보기 전엔 안 보였다.
-    attached_titles = [page.title for page in attached_pages]
-    verified: List[str] = []
+    verified: List[Dict[str, str]] = []
     seen = set()
 
     for item in claimed:
@@ -219,18 +228,20 @@ def _verify_manual_references(claimed: Any, attached_pages: List[ManualPage]) ->
         if not text:
             continue
 
-        matched_title = next(
+        matched = next(
             (
-                title
-                for title in attached_titles
-                if text == title or text.startswith(title)
+                page
+                for page in attached_pages
+                if text == page.title or text.startswith(page.title)
             ),
             None,
         )
 
-        if matched_title is not None and matched_title not in seen:
-            verified.append(matched_title)
-            seen.add(matched_title)
+        if matched is not None and matched.id not in seen:
+            verified.append(
+                {"id": matched.id, "title": matched.title, "page": matched.page}
+            )
+            seen.add(matched.id)
 
     return verified
 
@@ -246,7 +257,8 @@ def answer_legal_manual_question(
     """법령·매뉴얼 질문에 조문·자료 근거를 달아 답한다.
 
     반환: {"answer": str, "law_names": [...], "cited_articles": [...],
-    "manual_references": [...]}
+    "manual_references": [{"id", "title", "page"}, ...]}. answer 는 늘 비어 있지 않다.
+    실패하면 예외를 던진다(law_qa_llm.LawQAOutputError 참고, §6-1).
     """
 
     # law_qa_llm.answer_law_question과 같은 이유로 지연 import —
@@ -272,30 +284,24 @@ def answer_legal_manual_question(
 
     user_content = _build_user_content(masked_question, manual_pages)
 
-    try:
-        parsed = _call_llm_with_retry(
-            client=client,
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=user_content,
-            max_retries=2,
-            timeout_seconds=180.0,
-            deadline=deadline,
-        )
-    except Exception as error:
-        # law_qa_llm.answer_law_question과 같은 이유 — str(error)를
-        # 그대로 답변에 넣지 않는다(민감한 내용 유출 방지).
-        return {
-            "answer": f"법령·매뉴얼 질의에 실패했습니다({type(error).__name__}). 잠시 후 다시 시도해 주세요.",
-            "law_names": names,
-            "cited_articles": [],
-            "manual_references": [],
-        }
+    # law_qa_llm.answer_law_question 과 같다 — 실패는 예외로 올리고 answer 에 넣지 않는다(§6-1).
+    parsed = _call_llm_with_retry(
+        client=client,
+        model=model,
+        system_prompt=system_prompt,
+        user_prompt=user_content,
+        max_retries=2,
+        timeout_seconds=180.0,
+        deadline=deadline,
+    )
 
-    if not isinstance(parsed, dict):
-        parsed = {}
+    answer_text = (
+        str(parsed.get("answer") or "").strip() if isinstance(parsed, dict) else ""
+    )
 
-    answer_text = str(parsed.get("answer") or "").strip()
+    if not answer_text:
+        raise LawQAOutputError("법령·매뉴얼 질의 답변을 만들지 못했습니다.")
+
     answer_text = restore_pii(answer_text, entity_map)
 
     # 2026-10-26 민규 교차검증으로 발견: 모듈 docstring은 "참고용으로만
@@ -305,12 +311,11 @@ def answer_legal_manual_question(
     # 아니었다. LLM 프롬프트 준수에 기대는 대신 코드에서 고정 안내를
     # 항상 붙인다 — 원칙 4·5는 그와 별개로 구체적인 상황별 안내라
     # 그대로 둔다.
-    if answer_text:
-        answer_text = (
-            f"{answer_text}\n\n"
-            "※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 "
-            "직접 확인하고, 최종 판단은 상담사가 내려야 합니다."
-        )
+    answer_text = (
+        f"{answer_text}\n\n"
+        "※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 "
+        "직접 확인하고, 최종 판단은 상담사가 내려야 합니다."
+    )
 
     return {
         "answer": answer_text,
