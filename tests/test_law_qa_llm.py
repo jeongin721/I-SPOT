@@ -92,3 +92,68 @@ def test_non_list_or_malformed_input_returns_empty():
     assert _verify_cited_articles("제10조", articles) == []
     assert _verify_cited_articles([{"article": "제10조"}], articles) == []
     assert _verify_cited_articles(["제10조"], articles) == []
+
+
+# ------------------------------------------------------------
+# 2026-10-27 §6-1(PROPOSAL_law_guide_api.md): 실패를 성공처럼 돌려주지 않는다
+# ------------------------------------------------------------
+
+import sys
+import types
+
+import pytest
+
+import ai.modeling.abuse.law_qa_llm as law_qa_llm
+from ai.modeling.abuse.law_qa_llm import LawQAOutputError
+
+
+@pytest.fixture
+def stub_law(monkeypatch):
+    gateway = types.ModuleType("ai.modeling.abuse.privacy_gateway")
+    gateway.mask_for_outbound = lambda text, **kwargs: (text, {})
+    masking = types.ModuleType("ai.modeling.abuse.pii_masking")
+    masking.restore_pii = lambda value, entity_map: value
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.privacy_gateway", gateway)
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.pii_masking", masking)
+    monkeypatch.setattr(law_qa_llm, "_build_law_corpus", lambda names, **kwargs: ("", _make_articles()))
+
+    return lambda behavior: monkeypatch.setattr(law_qa_llm, "_call_llm_with_retry", behavior)
+
+
+def _ask():
+    return law_qa_llm.answer_law_question(client=None, model="test", question="신고의무는?")
+
+
+def test_llm_failure_is_raised_not_put_in_answer(stub_law):
+    class AuthenticationError(Exception):
+        pass
+
+    def fail(**kwargs):
+        raise AuthenticationError("Incorrect API key: sk-…")
+
+    stub_law(fail)
+
+    with pytest.raises(AuthenticationError):
+        _ask()
+
+
+@pytest.mark.parametrize("parsed", [{}, {"answer": ""}, [], None])
+def test_empty_answer_raises_output_error(stub_law, parsed):
+    stub_law(lambda **kwargs: parsed)
+
+    with pytest.raises(LawQAOutputError, match="^법령 질의 답변을 만들지 못했습니다.$"):
+        _ask()
+
+
+def test_success_keeps_answer_and_verified_citations(stub_law):
+    stub_law(
+        lambda **kwargs: {
+            "answer": "즉시 신고하여야 합니다.",
+            "cited_articles": [{"law_name": "아동학대범죄의 처벌 등에 관한 특례법", "article": "제10조"}],
+        }
+    )
+
+    result = _ask()
+
+    assert result["answer"] == "즉시 신고하여야 합니다."
+    assert [item["title"] for item in result["cited_articles"]] == ["아동학대범죄 신고의무와 절차"]

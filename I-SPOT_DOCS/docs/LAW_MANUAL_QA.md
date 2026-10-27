@@ -98,7 +98,9 @@ python3 -m pytest tests/test_law_qa_llm.py tests/test_legal_manual_qa_llm.py -q
 
 - counselor-web 질의 화면, Backend 엔드포인트 — Contract 변경 제안서
   (7단계)로 별도 정리 예정. 입력 `question`(+선택 `law_names`), 출력은
-  `{answer, law_names, cited_articles, manual_references}` 그대로.
+  `{answer, law_names, cited_articles, manual_references}` 그대로
+  (`manual_references` 는 `{id, title, page}` 목록, 실패는 예외 —
+  2026-10-27, PROPOSAL_law_guide_api.md §6-1 · §6-2).
 - 질문·답변을 서버에 저장할지(개인정보 범위) — 팀 결정 필요.
 - 매뉴얼 촬영본을 서버에 둘 수 있는지(저작권 있는 발간물) — 팀장님 확인
   필요.

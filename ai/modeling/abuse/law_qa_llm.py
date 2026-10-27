@@ -141,6 +141,20 @@ def _verify_cited_articles(
     return verified
 
 
+class LawQAOutputError(ValueError):
+    """LLM 응답에 답변(answer)이 없다. 문구는 고정이다(질문 원문 · 인증값을 싣지 않는다).
+
+    2026-10-27 §6-1(PROPOSAL_law_guide_api.md): 예전에는 실패를 answer 에 "질의에
+    실패했습니다" 로 넣어 성공처럼 돌려줘서 Backend 가 실패를 구분할 수 없었다. 이제 실패는
+    예외로 올라간다 — LLM 호출 실패는 _call_llm_with_retry 의 예외 그대로(마감을 넘기면
+    TimeoutError), 법령 데이터 실패는 LawApiError, 빈 답변은 이 예외. Backend 는
+    map_ai_error 처럼 예외 종류로 오류 코드를 정하고 문구는 화면에 내지 않는다.
+    """
+
+
+EMPTY_ANSWER_MESSAGE = "법령 질의 답변을 만들지 못했습니다."
+
+
 def answer_law_question(
     client: OpenAI,
     model: str,
@@ -151,7 +165,8 @@ def answer_law_question(
 ) -> Dict[str, Any]:
     """법령 질문에 조문 근거를 달아 답한다.
 
-    반환: {"answer": str, "law_names": [...], "cited_articles": [...]}
+    반환: {"answer": str, "law_names": [...], "cited_articles": [...]}. answer 는 늘 비어 있지 않다.
+    실패하면 예외를 던진다(LawQAOutputError 참고) — 실패를 answer 에 넣어 돌려주지 않는다.
     """
 
     # 2026-10-26 민규 리뷰: restore_pii(pii_masking.py)와
@@ -175,32 +190,25 @@ def answer_law_question(
         law_corpus=law_corpus,
     )
 
-    try:
-        parsed = _call_llm_with_retry(
-            client=client,
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=masked_question,
-            max_retries=2,
-            timeout_seconds=180.0,
-            deadline=deadline,
-        )
-    except Exception as error:
-        # 2026-10-26 민규 교차검증으로 발견: 예전엔 str(error)를 답변에
-        # 그대로 넣었는데, OpenAI 인증 실패(401) 메시지나
-        # LawApiError(국가법령정보센터 API 요청 실패 메시지)에 요청
-        # URL·키 같은 민감한 내용이 섞여 들어올 수 있다. 종류만
-        # (type(error).__name__) 알려주고 내용은 노출하지 않는다.
-        return {
-            "answer": f"법령 질의에 실패했습니다({type(error).__name__}). 잠시 후 다시 시도해 주세요.",
-            "law_names": names,
-            "cited_articles": [],
-        }
+    # 실패는 예외로 올린다(LawQAOutputError docstring, §6-1). 예외 문구에는 OpenAI 인증 실패 메시지 ·
+    # 요청 URL 같은 민감한 내용이 섞일 수 있어(2026-10-26 민규 교차검증) 부르는 쪽이 문구를 화면에 내지 않는다.
+    parsed = _call_llm_with_retry(
+        client=client,
+        model=model,
+        system_prompt=system_prompt,
+        user_prompt=masked_question,
+        max_retries=2,
+        timeout_seconds=180.0,
+        deadline=deadline,
+    )
 
-    if not isinstance(parsed, dict):
-        parsed = {}
+    answer_text = (
+        str(parsed.get("answer") or "").strip() if isinstance(parsed, dict) else ""
+    )
 
-    answer_text = str(parsed.get("answer") or "").strip()
+    if not answer_text:
+        raise LawQAOutputError(EMPTY_ANSWER_MESSAGE)
+
     answer_text = restore_pii(answer_text, entity_map)
 
     return {

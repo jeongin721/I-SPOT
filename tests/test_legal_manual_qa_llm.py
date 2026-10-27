@@ -116,7 +116,10 @@ def test_verify_manual_references_keeps_only_attached_pages():
 
     verified = _verify_manual_references(claimed, attached)
 
-    assert verified == ["참고자료3 아동학대 위험수준별 개입 사정 척도"]
+    # 2026-10-27 §6-2: 제목만이 아니라 id · title · page 를 준다.
+    assert verified == [
+        {"id": "risk_scale", "title": "참고자료3 아동학대 위험수준별 개입 사정 척도", "page": "350"}
+    ]
 
 
 def test_verify_manual_references_accepts_title_with_page_suffix():
@@ -130,7 +133,7 @@ def test_verify_manual_references_accepts_title_with_page_suffix():
 
     verified = _verify_manual_references(claimed, attached)
 
-    assert verified == ["참고자료3 아동학대 위험수준별 개입 사정 척도"]
+    assert [item["id"] for item in verified] == ["risk_scale"]
 
 
 def test_verify_manual_references_deduplicates():
@@ -154,3 +157,83 @@ def test_verify_manual_references_handles_malformed_input():
     assert _verify_manual_references(None, attached) == []
     assert _verify_manual_references("문자열", attached) == []
     assert _verify_manual_references([{"title": "없는 자료"}], attached) == []
+
+
+# ------------------------------------------------------------
+# 2026-10-27 §6-1(PROPOSAL_law_guide_api.md): 실패를 성공처럼 돌려주지 않는다
+# ------------------------------------------------------------
+
+import sys
+import types
+
+import pytest
+
+from ai.modeling.abuse.law_qa_llm import LawQAOutputError
+
+
+@pytest.fixture
+def stub_qa(monkeypatch, tmp_path):
+    """torch 없이 answer_legal_manual_question 을 부르게 가리기 · 법령 · 첨부를 가짜로 바꾼다."""
+
+    gateway = types.ModuleType("ai.modeling.abuse.privacy_gateway")
+    gateway.mask_for_outbound = lambda text, **kwargs: (text, {})
+    masking = types.ModuleType("ai.modeling.abuse.pii_masking")
+    masking.restore_pii = lambda value, entity_map: value
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.privacy_gateway", gateway)
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.pii_masking", masking)
+
+    pages = _make_pages()
+    for page in pages:
+        (tmp_path / page.filename).write_bytes(b"jpg")
+    monkeypatch.setattr(legal_manual_qa_llm, "MANUAL_IMAGE_DIR", tmp_path)
+    # _select_manual_pages 의 기본 인자(CHAPTER6_PAGES)는 정의 때 묶이므로 함수째 바꾼다.
+    select = legal_manual_qa_llm._select_manual_pages
+    monkeypatch.setattr(legal_manual_qa_llm, "_select_manual_pages", lambda question: select(question, pages))
+    monkeypatch.setattr(legal_manual_qa_llm, "_build_law_corpus", lambda names, **kwargs: ("", []))
+
+    def set_llm(behavior):
+        monkeypatch.setattr(legal_manual_qa_llm, "_call_llm_with_retry", behavior)
+
+    return set_llm
+
+
+def _ask():
+    return legal_manual_qa_llm.answer_legal_manual_question(
+        client=None, model="test", question="위험수준별 개입사정척도 위험요인은?"
+    )
+
+
+def test_llm_failure_is_raised_not_put_in_answer(stub_qa):
+    def fail(**kwargs):
+        raise TimeoutError("마감")
+
+    stub_qa(fail)
+
+    with pytest.raises(TimeoutError):
+        _ask()
+
+
+@pytest.mark.parametrize("parsed", [{}, {"answer": "   "}, "문자열", None])
+def test_empty_answer_raises_output_error(stub_qa, parsed):
+    stub_qa(lambda **kwargs: parsed)
+
+    with pytest.raises(LawQAOutputError):
+        _ask()
+
+
+def test_success_returns_answer_with_notice_and_page_ids(stub_qa):
+    stub_qa(
+        lambda **kwargs: {
+            "answer": "위험요인 문항은 …",
+            "cited_articles": [],
+            "manual_references": ["참고자료3 아동학대 위험수준별 개입 사정 척도"],
+        }
+    )
+
+    result = _ask()
+
+    assert result["answer"].startswith("위험요인 문항은 …")
+    assert "참고용" in result["answer"]
+    assert result["manual_references"] == [
+        {"id": "risk_scale", "title": "참고자료3 아동학대 위험수준별 개입 사정 척도", "page": "350"}
+    ]
