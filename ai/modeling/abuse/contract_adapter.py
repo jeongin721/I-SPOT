@@ -189,8 +189,13 @@ def _summary_assessment(result: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     - desired_changes(원하는 변화 · 서비스/지원) ← desired_change_llm.py.
     """
 
-    narrative = (result.get("record_draft") or {}).get("narrative_summary") or {}
-    desired = result.get("desired_changes") or {}
+    # 변환 경계라 모양을 믿지 않는다 — dict 가 아니면 빈 칸으로 둔다(.get 에서 AttributeError 로
+    # 분석 전체가 실패하지 않게, 2026-10-27 민규 교차검증).
+    record_draft = result.get("record_draft")
+    narrative = record_draft.get("narrative_summary") if isinstance(record_draft, dict) else None
+    narrative = narrative if isinstance(narrative, dict) else {}
+    desired = result.get("desired_changes")
+    desired = desired if isinstance(desired, dict) else {}
     change_notes = [
         note for note in result.get("session_change_notes") or [] if isinstance(note, str)
     ]

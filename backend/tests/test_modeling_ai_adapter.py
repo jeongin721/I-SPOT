@@ -493,6 +493,23 @@ def test_malformed_assessment_evidence_does_not_fail_analysis(modeling) -> None:
     assert assessment["desired_changes"] == {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]}
 
 
+@pytest.mark.parametrize("desired", ["문자열", ["목록"], 5])
+def test_non_dict_desired_changes_and_narrative_become_empty(modeling, desired) -> None:
+    """원하는 변화 · 강점/위험 문단이 dict 가 아니어도 분석은 성공하고 그 칸만 빈 칸이다(민규 교차검증 2026-10-27)."""
+
+    result = _native_result()
+    result["desired_changes"] = desired
+    result["record_draft"]["narrative_summary"] = "문자열"
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    empty = {"text": "", "segment_ids": []}
+    assert assessment["desired_changes"] == empty
+    assert assessment["strengths_resources"] == empty
+    assert assessment["safety_risks"] == empty
+
+
 def test_module_only_fields_do_not_leak(modeling) -> None:
     """Contract 의 10개 키만 남고, 모듈만 쓰는 값(전체 원문 · 일지 본문 · 체크리스트)은 결과에 새지 않는다."""
 
