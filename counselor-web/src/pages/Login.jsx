@@ -6,7 +6,8 @@
 //  - 로그인은 이메일(Backend 계약). 10/21 디자인(counselor-design/screens/Login.dc.html)대로 OTP 칸은 뺐다.
 //  - 임시 비밀번호로 들어오면 같은 카드가 비밀번호 변경 단계로 바뀐다. 바꾸면 다시 로그인한다.
 //  - 로그인 유형(상담사 · 관리자)은 들어갈 화면만 고른다. 관리자 화면은 서버 역할이 관리자일 때만 가고, 아니면 /Main.
-//  - 회원가입(인증번호 메일)은 Backend 에 없어 준비 중이다(가입 방식 팀 결정 대기).
+//  - 회원가입(인증번호 메일)은 Backend 에 없어 준비 중이다(가입 방식 팀 결정 대기). 10/27 디자인의 3단계 팝업(본인 인증 →
+//    계정 정보 → 완료)도 같은 이유로 옮기지 않았다.
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';

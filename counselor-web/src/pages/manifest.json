@@ -22,6 +22,7 @@
     "ClosureReview",
     "FollowupQ",
     "Landing",
+    "LawGuide",
     "Login",
     "Main",
     "NoteWrite",
@@ -225,6 +226,15 @@
       "x": -1520,
       "y": 0
     },
+    "LawGuide.dc.html": {
+      "expand": "fill",
+      "h": 1700,
+      "is_interactive": true,
+      "title": "법령 · 매뉴얼 (AI 질문 준비 중 · 업무 단계별 참고사항 · 주요 조문 · 원문 자료)",
+      "w": 1440,
+      "x": 16720,
+      "y": 10100
+    },
     "Login.dc.html": {
       "expand": "fill",
       "h": 720,
@@ -360,8 +370,8 @@
     },
     "rowE": {
       "kind": "title1",
-      "maxW": 8000,
-      "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 관리자",
+      "maxW": 18160,
+      "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 관리자 · 법령 · 매뉴얼",
       "w": 240,
       "x": 0,
       "y": 9800
@@ -394,6 +404,7 @@
     "ClosureDetail.dc.html",
     "Stats.dc.html",
     "Settings.dc.html",
+    "LawGuide.dc.html",
     "AdminHome.dc.html",
     "AdminAccounts.dc.html",
     "AdminStaffDetail.dc.html",
