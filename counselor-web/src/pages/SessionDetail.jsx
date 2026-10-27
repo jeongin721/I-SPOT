@@ -108,9 +108,9 @@ export default function SessionDetail(props) {
             aria-label="회차 처리 단계"
             style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '18px' }}
           >
-            {(v.steps || []).map((t, tIndex) => (
-              <Fragment key={tIndex}>
-                <A className="big" to={t.href} style={{ boxShadow: t.ring, background: t.bg }}>
+            {(v.steps || []).map((t, tIndex) => {
+              const body = (
+                <Fragment>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <span className="bn" style={{ background: t.nBg, color: t.nFg }}>
                       {t.mark}
@@ -119,9 +119,26 @@ export default function SessionDetail(props) {
                     <span className={t.stCls}>{t.st}</span>
                   </span>
                   <span style={{ fontSize: '15px', lineHeight: '1.7' }}>{t.preview}</span>
+                </Fragment>
+              );
+
+              // 앞 단계가 끝나지 않은 칸은 링크가 아니다(sessionDetail.ts 의 locked). 다음 단계로는 그 화면 아래 단추로 간다.
+              return t.href ? (
+                <A key={tIndex} className="big" to={t.href} style={{ boxShadow: t.ring, background: t.bg }}>
+                  {body}
                 </A>
-              </Fragment>
-            ))}
+              ) : (
+                <div
+                  key={tIndex}
+                  className="big lock"
+                  aria-disabled="true"
+                  title={t.title}
+                  style={{ boxShadow: t.ring, background: t.bg }}
+                >
+                  {body}
+                </div>
+              );
+            })}
           </nav>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>

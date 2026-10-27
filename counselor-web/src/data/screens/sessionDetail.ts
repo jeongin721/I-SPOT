@@ -11,7 +11,7 @@ import type { SessionDetailState, SessionDetailView } from "../useSessionDetail"
 import { NOT_PROVIDED } from "../caseRows";
 import type { ScreenGo } from "./useScreenGo";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
-import { CARD_OF } from "./flow";
+import { CARD_OF, LOCKED_HINT } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 회차 화면이 쓸 사례 ID. 회차 정보를 받았으면 그 사례, 아직이면 주소의 사례. */
@@ -154,13 +154,21 @@ export function sessionDetailValues(input: SessionScreenInput) {
       },
     ];
     const lastDone = current === -1 ? 2 : current - 1;
+    // 누를 수 있는 마지막 칸: 끝난 칸 다음(지금 할 단계). 그 뒤 칸은 잠긴다 — 회차 처리 화면의 단계 표시(flow.ts processNav)와
+    // 같은 규칙. 승인 완료(current -1)면 앞 세 칸이 끝났으니 '추가 확인 · 질문' 까지 누를 수 있다.
+    const reach = lastDone + 1;
 
     steps = defs.map((d, i) => {
       const done = i <= lastDone;
       const cur = i === current;
+      const locked = !done && i > reach;
 
       return {
         ...d,
+        /** 누르면 갈 주소. 잠긴 칸은 null(링크를 그리지 않는다). */
+        href: locked ? null : d.href,
+        locked,
+        title: locked ? LOCKED_HINT : undefined,
         stCls: done ? "chip c-ok" : cur ? TONE_CHIP[sv.tone] : "chip c-normal",
         mark: done ? "✓" : String(i + 1),
         nBg: done ? "#F2EFE8" : cur ? "#2B2A26" : "#EAE7DF",
