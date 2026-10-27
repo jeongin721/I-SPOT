@@ -171,7 +171,7 @@ def _native_result() -> Dict[str, Any]:
         "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
         # 선택 필드 4개(#49)로 옮겨지는 값. 모양은 각 모듈이 정리해 돌려주는 그대로다
         # (severity_llm._clean_ratings: level 1~5 정수 또는 None · matched_evidence 문자열,
-        # session_change · followup_check_llm: 문자열 목록).
+        # session_change: 문자열 목록 · followup_check_llm: {text, segment_ids} 객체 목록(2026-10-27 #84 부터, 옛 문자열도 받음)).
         "severity_ratings": [
             {
                 "major_type": "신체학대",
@@ -186,7 +186,7 @@ def _native_result() -> Dict[str, Any]:
             {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
         ],
         "session_change_notes": ["가상 회차 변화"],
-        "followup_check_points": ["가상 확인사항"],
+        "followup_check_points": [{"text": "가상 확인사항", "segment_ids": ["seg_002"]}],
         # Contract 에 담지 않는 값 — 결과에 새지 않아야 한다.
         "full_text": "가상 전체 원문",
         "counseling_note": "가상 일지 본문",
@@ -428,7 +428,8 @@ def test_detected_signal_without_chunk_results_is_marked_model(modeling, chunk_r
 def test_optional_fields_are_filled_from_module_output(modeling) -> None:
     """선택 필드 4개(#49)는 모듈 출력을 Contract 모양으로 옮긴다(#57).
 
-    회차 간 변화 · 다음 확인사항은 문자열 목록이라 {text, segment_ids: []} 로 감싼다.
+    회차 간 변화는 문자열 목록이라 {text, segment_ids: []} 로 감싸고, 다음 확인사항은 모듈이 주는 {text, segment_ids} 를
+    그대로 옮긴다(#84, 2026-10-27). 둘 다 근거 발화 번호를 서버가 다시 대조하지 않는다.
     근거 없는 항목 빼기는 위험 3필드에만 적용하므로 segment_ids 가 빈 항목도 남는다.
     """
 
@@ -449,7 +450,22 @@ def test_optional_fields_are_filled_from_module_output(modeling) -> None:
         {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
     ]
     assert stored["session_change_notes"] == [{"text": "가상 회차 변화", "segment_ids": []}]
-    assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": []}]
+    assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": ["seg_002"]}]
+
+
+def test_followup_check_points_accept_legacy_strings(modeling) -> None:
+    """옛 모듈 결과(문자열 목록, 2026-10-26 이전)도 {text, segment_ids: []} 로 감싼다(#84 의 호환 경로)."""
+
+    result = _native_result()
+    result["followup_check_points"] = ["옛 확인사항", {"text": "새 확인사항", "segment_ids": ["seg_002"]}]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["followup_check_points"] == [
+        {"text": "옛 확인사항", "segment_ids": []},
+        {"text": "새 확인사항", "segment_ids": ["seg_002"]},
+    ]
 
 
 LEGAL_REFERENCE = {
