@@ -294,11 +294,22 @@ class LawApiClient:
             except (OSError, json.JSONDecodeError):
                 pass
 
-        search_item = self.find_law(law_name)
-        law_id = str(search_item.get("법령ID", "")).strip() or None
-        mst = str(search_item.get("법령일련번호", "")).strip() or None
+        try:
+            search_item = self.find_law(law_name)
+            law_id = str(search_item.get("법령ID", "")).strip() or None
+            mst = str(search_item.get("법령일련번호", "")).strip() or None
 
-        body = self.fetch_law_body(law_id=law_id, mst=mst)
+            body = self.fetch_law_body(law_id=law_id, mst=mst)
+        except LawApiError:
+            # 새로 받지 못하면(OC 없음 · API 장애) 오래된 캐시라도 쓴다. 법령은 자주 바뀌지 않고,
+            # 데모 서버처럼 OC 없이 캐시만 붙여 둔 곳에서 24시간 뒤 조문이 사라지지 않게 한다(2026-10-27).
+            # refresh=True 로 일부러 새로 받으려 한 경우와 캐시가 없는 경우는 그대로 실패시킨다.
+            if refresh or not cache_path.exists():
+                raise
+            try:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raise
         result = {
             "law_name": law_name,
             "search_item": search_item,

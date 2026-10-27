@@ -931,14 +931,19 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 
 | 필드 | 항목 모양 | 설명 |
 | --- | --- | --- |
-| `risk_utterances` | `{ segment_ids, text, abuse_type, subtype, evidence_strength, reason, evidence_verified }` | 위험 관련 발화. 근거 발화 번호가 있는 항목만 저장된다 |
+| `risk_utterances` | `{ segment_ids, text, abuse_type, subtype, evidence_strength, reason, evidence_verified, legal_references }` | 위험 관련 발화. 근거 발화 번호가 있는 항목만 저장된다 |
 | `abuse_signals` | `{ abuse_type, detected, detection_source, filtered_reason, segment_ids }` | 학대 유형별 종합 신호. 네 유형이 모두 온다 |
 | `risk_factors` | (빈 배열) | 재료가 없어 구조는 보류. 늘 `[]` |
 
 ```json
 "risk_utterances": [
   { "segment_ids": ["seg_002"], "text": "아빠가 화나면 때려요.", "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해",
-    "evidence_strength": "HIGH", "reason": "때린 행위와 주체가 직접 진술됨", "evidence_verified": true }
+    "evidence_strength": "HIGH", "reason": "때린 행위와 주체가 직접 진술됨", "evidence_verified": true,
+    "legal_references": [
+      { "law_name": "아동복지법", "article": "제17조", "item_label": "제3호",
+        "text": "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위",
+        "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00" }
+    ] }
 ],
 "abuse_signals": [
   { "abuse_type": "PHYSICAL", "detected": true, "detection_source": "MODEL", "filtered_reason": null, "segment_ids": ["seg_002"] },
@@ -959,6 +964,10 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
   `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
   `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+- `legal_references`(2026-10-27 제안, STT 검수 "관련 조문")는 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호)
+  **하나까지**다. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고, 법 위반을 확정하는 값이 아니라 참고 링크다.
+  법령 데이터를 못 쓰면 빈 배열이고 `warnings` 에 "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." 가 남는다.
+  이 키가 생기기 전 결과에는 없다.
 - `abuse_signals[].segment_ids` 는 같은 유형 `risk_utterances` 의 근거를 모은 것이다. 검출됐는데 근거 발화가 하나도 없는 유형은
   위 근거 관문에서 빠지고 `warnings` 에 건수만 남는다. `FILTERED` 는 `detected=false` 라 근거가 없어도 남는다.
 

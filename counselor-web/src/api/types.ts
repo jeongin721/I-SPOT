@@ -495,6 +495,24 @@ export interface RiskUtterance {
   reason: string;
   /** 인용문이 원문과 맞는지 대조한 결과. */
   evidence_verified: boolean;
+  /**
+   * 관련 조문(2026-10-27). 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호) 하나까지.
+   * 법 위반을 확정하는 값이 아니라 참고 링크다. 이 필드가 생기기 전 결과 · 법령 데이터를 못 쓴 서버에서는 없거나 빈 배열이다.
+   */
+  legal_references?: LegalReference[];
+}
+
+export interface LegalReference {
+  /** "아동복지법" */
+  law_name: string;
+  /** "제17조" */
+  article: string;
+  /** "제3호". 해당 호를 못 찾았으면 "". */
+  item_label: string;
+  /** 호의 본문(또는 조 제목). */
+  text: string;
+  /** 국가법령정보센터 조문 주소. 없으면 "". */
+  portal_url: string;
 }
 
 /**

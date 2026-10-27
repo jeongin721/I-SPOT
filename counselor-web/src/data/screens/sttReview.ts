@@ -11,7 +11,10 @@
 //  - 화자는 누를 때마다 바뀌던 것을 목록에서 고른다(연 목록은 화면 상태).
 //  - 주소의 seg(발화 ID)가 가리키는 줄을 금색 테두리로 표시하고 그 줄로 한 번 스크롤한다(useSttFocus). 디자인은 브라우저
 //    저장소(ispot-stt)를 300ms 마다 읽고 시간('00:41')으로 줄을 찾지만, 앱은 주소 쿼리와 발화 ID 로 한다.
-//  - 시간을 눌러 다시 듣기(서버에 녹음 재생 없음), 목소리 신호(서버에 구간별 값 없음), 관련 조문(팀 결정 전 보류)은 준비 중이다.
+//  - 시간을 눌러 다시 듣기(서버에 녹음 재생 없음), 목소리 신호(서버에 구간별 값 없음)는 준비 중이다.
+//  - 관련 조문(2026-10-27): AI 분석 결과 risk_utterances[].legal_references 를 그 근거 발화(segment_ids) 줄 아래에 보인다
+//    (디자인의 .laws). 디자인처럼 아동 발화에만 보이고, 화자가 아동이 아닌 줄은 '아동으로 확인하면 표시' 안내만 둔다.
+//    분석 전에는 없다(원문 확정 뒤 분석이 끝나야 생긴다). '원문보기' 는 서버가 준 국가법령정보센터 주소다.
 //  - 옮기지 않은 것: 디자인 범례 끝줄의 예시 표시, 화자 라벨 뒤 번호(그 화자의 몇 번째 발화인지 — 뜻이 팀 확인 전),
 //    '핵심 발화' 보기(원문 확정 전 미리 분석하는 API 가 없음), 가짜 진행률 · 토스트.
 //
@@ -30,6 +33,7 @@
 //    녹음 길이는 useSessionDetail 이 이미 부르는 음성 정보를 쓴다. 길이를 모르면 마지막 발화가 끝나는 시각으로 나누고,
 //    둘 다 없으면 표시를 숨긴다.
 
+import type { LegalReference, RiskUtterance } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import { formatClock } from "../time";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
@@ -39,6 +43,75 @@ import { NOT_READY } from "./common";
 import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
+
+/** 관련 조문 줄 머리의 짧은 유형 이름(디자인의 .sig). */
+const LAW_TYPE_LABELS: Record<string, string> = {
+  PHYSICAL: "신체",
+  EMOTIONAL: "정서",
+  SEXUAL: "성",
+  NEGLECT: "방임",
+};
+
+export interface LawLine {
+  key: string;
+  sig: string;
+  law: string;
+  art: string;
+  sum: string;
+  /** '원문보기' 주소. 없으면 null(단추를 숨긴다). */
+  url: string | null;
+}
+
+function isLegalReference(value: unknown): value is LegalReference {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.law_name === "string" && typeof item.article === "string";
+}
+
+/**
+ * risk_utterances → 발화 ID 별 관련 조문. 같은 발화에 같은 유형 · 조문이 여러 번 오면 하나만 둔다.
+ * 국가법령정보센터(https://www.law.go.kr) 주소만 링크로 쓴다.
+ */
+export function lawsBySegment(utterances: RiskUtterance[]): Map<string, LawLine[]> {
+  const bySegment = new Map<string, LawLine[]>();
+
+  for (const item of utterances) {
+    const references = Array.isArray(item.legal_references) ? item.legal_references.filter(isLegalReference) : [];
+    if (references.length === 0) continue;
+
+    const sig =
+      typeof item.abuse_type === "string" && Object.prototype.hasOwnProperty.call(LAW_TYPE_LABELS, item.abuse_type)
+        ? LAW_TYPE_LABELS[item.abuse_type]
+        : "관련";
+
+    for (const segmentId of Array.isArray(item.segment_ids) ? item.segment_ids : []) {
+      if (typeof segmentId !== "string" || !segmentId) continue;
+
+      const lines = bySegment.get(segmentId) ?? [];
+
+      for (const reference of references) {
+        const art = [reference.article, reference.item_label].filter(Boolean).join(" ");
+        const key = `${sig}|${reference.law_name}|${art}`;
+        if (lines.some((line) => line.key === key)) continue;
+
+        const url = typeof reference.portal_url === "string" ? reference.portal_url : "";
+
+        lines.push({
+          key,
+          sig,
+          law: reference.law_name,
+          art,
+          sum: typeof reference.text === "string" ? reference.text : "",
+          url: url.startsWith("https://www.law.go.kr/") ? url : null,
+        });
+      }
+
+      bySegment.set(segmentId, lines);
+    }
+  }
+
+  return bySegment;
+}
 
 export interface SttUiState {
   /** all 전체 STT · check 확인할 곳(저신뢰 · 화자 미확인)만. */
@@ -85,7 +158,7 @@ export function segmentHref(ids: Partial<ScreenIds>, segmentId: string): string 
 export interface SttScreenInput extends SessionScreenInput {
   review: TranscriptReviewState;
   /** 원문 확정 뒤 AI 분석을 요청한다. */
-  analysis: Pick<SessionAnalysisState, "run" | "submitting">;
+  analysis: Pick<SessionAnalysisState, "run" | "submitting" | "analysis">;
   /** 주소의 seg(발화 ID). 그 줄을 표시하고, '확인할 곳' 보기에서도 숨기지 않는다(재생 바 표시를 눌러 다른 줄로 옮기기 전까지). */
   focusSegment: string | null;
   state: SttUiState;
@@ -143,7 +216,11 @@ export function sttReviewValues(input: SttScreenInput) {
   const unchecked = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]);
   const left = unchecked.length;
 
+  const laws = lawsBySegment(analysis.analysis?.riskUtterances ?? []);
+
   const lines = visible.map((row) => {
+    const rowLaws = laws.get(row.segmentId) ?? [];
+    const child = row.speaker === "CHILD";
     const key = okKey(row.segmentId);
     const done = Boolean(state.ok[key]);
     const check = needsCheck(row);
@@ -200,6 +277,8 @@ export function sttReviewValues(input: SttScreenInput) {
       bg: check && !done ? "#F1E3BF" : "#FFFFFF",
       okLabel: done ? "확인됨 ✓" : "확인",
       ok: () => setState({ ok: { ...state.ok, [key]: !done } }),
+      laws: child ? rowLaws : [],
+      hold: !child && rowLaws.length > 0 ? "화자를 아동으로 확인하면 관련 조문이 표시됩니다." : "",
     };
   });
 
@@ -294,7 +373,9 @@ export function sttReviewValues(input: SttScreenInput) {
       `왼쪽 시간이나 아래 재생 바로 녹음을 다시 듣기는 ${NOT_READY}입니다. ` +
       "서버가 녹음 파일은 주지 않고 파일 정보(이름 · 크기 · 길이)만 줍니다.",
     cueNote: `${NOT_READY}입니다. 서버가 발화 구간별 목소리 값을 주지 않습니다.`,
-    lawNote: `${NOT_READY}입니다. 발화별 관련 조문은 팀 결정 전입니다.`,
+    lawNote:
+      "학대 유형이 감지된 발화에 관련 조문을 표시합니다(AI 분석이 끝난 뒤). 원문보기를 누르면 국가법령정보센터에서 " +
+      "조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
     error: review.error,
     canSave: review.canEdit && review.counts.pending > 0 && !review.submitting,
     // 저장 · 확정을 누르면 연 화자 목록을 닫는다(저장이 끝나 다시 고칠 수 있게 되어도 저절로 다시 열리지 않게).

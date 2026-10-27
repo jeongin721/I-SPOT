@@ -50,6 +50,14 @@ if [ "$WITH_MODELING" = 1 ]; then
   # 이름 인식 · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받는다. 컨테이너를 다시 만들어도 다시 받지 않게 서버에 둔다.
   mkdir -p /opt/ispot/hf-cache
   MODELING_MOUNTS=(-v "$WEIGHT_DIR:/ai/modeling/abuse/weight:ro" -v /opt/ispot/hf-cache:/hf-cache)
+  # STT 검수의 '관련 조문'은 법령 캐시(law_cache/, .gitignore)를 읽는다. 있으면 컨테이너의 /law_cache 에 붙인다.
+  # 없어도 분석은 되고 조문만 비어 온다(backend.env 에 LAW_API_OC 가 있으면 컨테이너 안에서 받아 쓴다).
+  LAW_CACHE_HOST="${LAW_CACHE_HOST_DIR:-$REPO/law_cache}"
+  if [ -d "$LAW_CACHE_HOST" ]; then
+    MODELING_MOUNTS+=(-v "$LAW_CACHE_HOST:/law_cache")
+  else
+    echo "주의: 법령 캐시 폴더가 없습니다: $LAW_CACHE_HOST (LAW_CACHE_HOST_DIR 로 다른 폴더를 줄 수 있습니다). 관련 조문이 비어 옵니다."
+  fi
 elif grep -qE '^AI_PROVIDER=modeling[[:space:]]*$' "$ENV_FILE"; then
   echo "backend.env 가 AI_PROVIDER=modeling 입니다. torch · 모델 파일이 든 이미지가 필요해 WITH_MODELING=1 로 실행해 주세요:"
   echo "  sudo env WITH_MODELING=1 bash deploy/web-deploy.sh"

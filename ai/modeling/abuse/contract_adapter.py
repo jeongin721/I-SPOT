@@ -47,6 +47,13 @@ protective_factors/session_change_notes/followup_check_points를
   "증거 위치 표시"를 막는 지점이라고 지적받아 추가). protective_factors
   처럼 그대로 옮기면 된다.
 
+[2026-10-27: 발화별 관련 조문(risk_utterances[].legal_references)]
+
+STT 검수 화면(10/27 디자인)의 "관련 조문"용이다. infer_audio_session 이
+legal_reference_adapter 로 위험 신호마다 아동복지법 제17조의 해당 호를
+붙이고(_attach_legal_references), 여기서는 다섯 키만 옮긴다
+(_legal_references). 법령 데이터를 못 쓰면 빈 배열 + warnings 한 줄.
+
 summary(overview/key_points)는 더 이상 이 모듈이 직접 만들지 않고
 agent/summary_converter.convert_summary()(Mingyu, PR #47 — 2026-10-16
 main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남기고
@@ -157,6 +164,40 @@ def _evidence_strength(value: Any) -> str:
     return EVIDENCE_STRENGTH_TO_ENGLISH.get(value, "LOW")
 
 
+LEGAL_REFERENCES_UNAVAILABLE_WARNING = (
+    "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다."
+)
+
+_LEGAL_REFERENCE_KEYS = ("law_name", "article", "item_label", "text", "portal_url")
+
+
+def _legal_references(value: Any) -> List[Dict[str, str]]:
+    """
+    risk_utterances[].legal_references(2026-10-27) — 발화마다 관련 조문.
+    legal_reference_adapter 출력에서 화면이 쓰는 다섯 키만 문자열로 옮긴다
+    (short_label 은 화면이 abuse_type 으로 붙인다). 법 위반을 확정하는
+    값이 아니라 해당 금지행위 조문을 가리키는 참고 링크다.
+    """
+
+    if not isinstance(value, list):
+        return []
+
+    references = []
+
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+
+        references.append(
+            {
+                key: item.get(key) if isinstance(item.get(key), str) else ""
+                for key in _LEGAL_REFERENCE_KEYS
+            }
+        )
+
+    return references
+
+
 def to_ai_output_contract(
     result: Dict[str, Any],
     transcript: Dict[str, Any],
@@ -197,9 +238,15 @@ def to_ai_output_contract(
             "evidence_verified": bool(
                 point.get("evidence_verified", False)
             ),
+            "legal_references": _legal_references(
+                point.get("legal_references")
+            ),
         }
         for point in risk_signal_points
     ]
+
+    if result.get("legal_references_unavailable"):
+        warnings.append(LEGAL_REFERENCES_UNAVAILABLE_WARNING)
 
     # major_type(한글)별 근거 segment_id — 같은 유형 risk_signal_points
     # 에서 모은다. abuse_signals 는 major_types 의 한글 키로 찾으므로

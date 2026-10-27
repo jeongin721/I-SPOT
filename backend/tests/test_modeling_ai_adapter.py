@@ -98,6 +98,8 @@ EXPECTED_UTTERANCE = {
     "evidence_strength": "HIGH",
     "reason": "때린 행위와 주체가 직접 진술됨",
     "evidence_verified": True,
+    # 관련 조문(2026-10-27). 모듈이 붙이지 않았으면 빈 배열이다.
+    "legal_references": [],
 }
 
 FILTERED_REASON = "아동이 관련 발화를 명확히 부정함"
@@ -286,6 +288,7 @@ def test_risk_item_keys_match_contract(modeling) -> None:
         "evidence_strength",
         "reason",
         "evidence_verified",
+        "legal_references",
     }
     assert all(
         set(signal) == {"abuse_type", "detected", "segment_ids", "detection_source", "filtered_reason"}
@@ -438,6 +441,45 @@ def test_optional_fields_are_filled_from_module_output(modeling) -> None:
     ]
     assert stored["session_change_notes"] == [{"text": "가상 회차 변화", "segment_ids": []}]
     assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": []}]
+
+
+LEGAL_REFERENCE = {
+    "law_name": "아동복지법",
+    "article": "제17조",
+    "item_label": "제3호",
+    "text": "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위",
+    "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00",
+}
+
+
+def test_legal_references_are_passed_with_contract_keys_only(modeling) -> None:
+    """관련 조문은 다섯 키만 문자열로 옮긴다. 모듈 안 표시용 키(short_label)와 문자열 아닌 값은 나가지 않는다."""
+
+    result = _native_result()
+    result["record_draft"]["risk_signal_points"] = [
+        {
+            **GROUNDED_POINT,
+            "legal_references": [{**LEGAL_REFERENCE, "short_label": "신체", "item_label": None}, "문자열"],
+        }
+    ]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert stored.risk_utterances[0]["legal_references"] == [{**LEGAL_REFERENCE, "item_label": ""}]
+
+
+def test_unavailable_legal_data_adds_warning(modeling) -> None:
+    """법령 데이터를 못 써 조문을 못 붙였으면 분석은 성공하고 경고 한 줄을 남긴다."""
+
+    result = _native_result()
+    result["legal_references_unavailable"] = True
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." in stored.warnings
+    assert stored.risk_utterances[0]["legal_references"] == []
 
 
 def test_module_only_fields_do_not_leak(modeling) -> None:
