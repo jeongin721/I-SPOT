@@ -6,7 +6,17 @@
 # 매칭하면 엉뚱한 법령의 조문이 붙는 버그를 발견했다 — 이 테스트가 그 회귀를
 # 고정한다.
 
-from ai.modeling.abuse.law_qa_llm import _verify_cited_articles
+import sys
+import types
+
+import pytest
+
+from ai.modeling.abuse import law_qa_llm
+from ai.modeling.abuse.law_qa_llm import (
+    LawQALLMError,
+    LawQAOutputError,
+    _verify_cited_articles,
+)
 
 
 def _make_articles():
@@ -98,14 +108,6 @@ def test_non_list_or_malformed_input_returns_empty():
 # 2026-10-27 §6-1(PROPOSAL_law_guide_api.md): 실패를 성공처럼 돌려주지 않는다
 # ------------------------------------------------------------
 
-import sys
-import types
-
-import pytest
-
-import ai.modeling.abuse.law_qa_llm as law_qa_llm
-from ai.modeling.abuse.law_qa_llm import LawQAOutputError
-
 
 @pytest.fixture
 def stub_law(monkeypatch):
@@ -124,17 +126,56 @@ def _ask():
     return law_qa_llm.answer_law_question(client=None, model="test", question="신고의무는?")
 
 
+SDK_TEXT = "Error code: 401 - Incorrect API key provided: sk-secret123 url=https://api.openai.com/v1/chat/completions"
+
+
 def test_llm_failure_is_raised_not_put_in_answer(stub_law):
+    """LLM 실패는 고정 문구의 LawQALLMError 로 올라가고 SDK 원문 · 원인 체인은 남지 않는다(2026-10-27 민규 교차검증)."""
+
     class AuthenticationError(Exception):
         pass
 
     def fail(**kwargs):
-        raise AuthenticationError("Incorrect API key: sk-…")
+        raise AuthenticationError(SDK_TEXT)
 
     stub_law(fail)
 
-    with pytest.raises(AuthenticationError):
+    with pytest.raises(LawQALLMError) as caught:
         _ask()
+
+    assert str(caught.value) == "법령 질의 LLM 호출 실패(AuthenticationError)"
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True
+
+
+def test_retry_wrapper_error_text_does_not_leak(stub_law):
+    """_call_llm_with_retry 가 감싼 RuntimeError("2차 LLM 호출 실패: {SDK 원문}")도 원문이 빠진다."""
+
+    def fail(**kwargs):
+        raise RuntimeError(f"2차 LLM 호출 실패: {SDK_TEXT}")
+
+    stub_law(fail)
+
+    with pytest.raises(LawQALLMError) as caught:
+        _ask()
+
+    assert "sk-secret123" not in str(caught.value)
+    assert caught.value.__cause__ is None
+
+
+def test_timeout_keeps_type_with_fixed_text(stub_law):
+    """마감 초과는 TimeoutError 그대로(AI_TIMEOUT), 문구는 고정이다 — 재시도 함수의 TimeoutError 문구에도 SDK 원문이 실린다."""
+
+    def fail(**kwargs):
+        raise TimeoutError(f"2차 LLM 호출이 마감 시각을 넘겨 실패: {SDK_TEXT}")
+
+    stub_law(fail)
+
+    with pytest.raises(TimeoutError) as caught:
+        _ask()
+
+    assert str(caught.value) == law_qa_llm.LLM_TIMEOUT_MESSAGE
+    assert caught.value.__cause__ is None
 
 
 @pytest.mark.parametrize("parsed", [{}, {"answer": ""}, [], None])

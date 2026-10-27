@@ -62,6 +62,9 @@
   페이지에 실제로 그 내용이 있다는 보장은 아니다. 이 한계를 답변
   자체에도 명시하게 시스템 프롬프트를 짰다("확신이 서지 않는 부분은
   원본을 직접 확인하라고 안내").
+- (한계, 2026-10-27) 이미지가 있는지 확인(`_resolve_attached_pages`)한 뒤 실제로
+  읽기(`_encode_image_b64`) 전에 파일이 사라지면, 그 페이지는 첨부되지 않는데 자료
+  목록 · 인용 검증에는 남는다. 서버에서 매뉴얼 폴더를 실행 중에 지우지 않는 한 생기지 않아 고치지 않았다.
 
 ## 1차 범위: 6장(서식·참고자료)만
 
@@ -91,7 +94,10 @@ LLM이 페이지 표시까지 그대로 베껴 반환해서 제목 완전일치 
 
 ```bash
 python3 -m pytest tests/test_law_qa_llm.py tests/test_legal_manual_qa_llm.py -q
-# 11 passed
+# 28 passed (2026-10-27)
+python3 -m pytest tests/test_law_qa_llm.py tests/test_legal_manual_qa_llm.py \
+  tests/test_legal_reference_adapter.py tests/test_law_client_redact.py -q
+# 47 passed (2026-10-27)
 ```
 
 ## 아직 안 된 것 / 정해야 할 것 (Backend, 민규)

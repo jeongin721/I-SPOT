@@ -125,12 +125,14 @@ LawGuide 화면 위쪽의 **AI 질문 채팅**이 대상입니다. 디자인 REA
 >
 > | 예외 | 언제 | 코드(제안) |
 > | --- | --- | --- |
-> | `TimeoutError` | `deadline` 을 넘김 | `AI_TIMEOUT` |
+> | `TimeoutError` | `deadline` 을 넘김(문구 고정) | `AI_TIMEOUT` |
 > | `law_qa_llm.LawQAOutputError` | LLM 응답에 답변이 없음 | `AI_INVALID_OUTPUT` |
-> | `law.client.LawApiError` | 법령 캐시 · API 실패 | `AI_FAILED` |
-> | 그 밖(OpenAI 인증 · 연결 등) | | `map_ai_error` 와 같게 |
+> | `law_qa_llm.LawQALLMError` | 그 밖의 LLM 호출 실패(OpenAI 인증 · 연결 등). 문구는 `"법령 질의 LLM 호출 실패(종류 이름)"` | `AI_FAILED` |
+> | `law.client.LawApiError` | 법령 캐시가 없고 국가법령정보센터 조회도 실패 | `LAW_SOURCE_UNAVAILABLE`(503, 위 표와 같음) |
 >
-> 성공하면 `answer` 는 늘 비어 있지 않습니다.
+> 성공하면 `answer` 는 늘 비어 있지 않습니다. 세 `LawQA*` · `TimeoutError` 는 원인 예외를 체인에 남기지 않습니다(`from None`) —
+> `_call_llm_with_retry` 가 감싼 문구에 OpenAI SDK 원문(요청 URL 등)이 실리기 때문입니다(2026-10-27 민규 교차검증).
+> `AI_AUTH_ERROR` · `AI_QUOTA_ERROR` 로 나누려면 종류 이름이 필요한데, 재시도 함수가 `RuntimeError` 로 감싸 올려 지금은 구분되지 않습니다.
 
 ---
 

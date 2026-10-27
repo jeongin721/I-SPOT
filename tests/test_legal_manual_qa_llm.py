@@ -8,7 +8,17 @@
 # 조문 본문과 대조할 수 없고, "이번 호출에 실제로 첨부한 페이지인지"만
 # 확인할 수 있다 — _verify_manual_references가 이 역할을 한다.
 
+import sys
+import types
+
+import pytest
+
 import ai.modeling.abuse.legal_manual_qa_llm as legal_manual_qa_llm
+from ai.modeling.abuse.law_qa_llm import (
+    LLM_TIMEOUT_MESSAGE,
+    LawQALLMError,
+    LawQAOutputError,
+)
 from ai.modeling.abuse.legal_manual_qa_llm import (
     _resolve_attached_pages,
     _select_manual_pages,
@@ -163,13 +173,6 @@ def test_verify_manual_references_handles_malformed_input():
 # 2026-10-27 §6-1(PROPOSAL_law_guide_api.md): 실패를 성공처럼 돌려주지 않는다
 # ------------------------------------------------------------
 
-import sys
-import types
-
-import pytest
-
-from ai.modeling.abuse.law_qa_llm import LawQAOutputError
-
 
 @pytest.fixture
 def stub_qa(monkeypatch, tmp_path):
@@ -205,12 +208,29 @@ def _ask():
 
 def test_llm_failure_is_raised_not_put_in_answer(stub_qa):
     def fail(**kwargs):
-        raise TimeoutError("마감")
+        raise TimeoutError("2차 LLM 호출이 마감 시각을 넘겨 실패: Error code: 401 sk-secret123")
 
     stub_qa(fail)
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(TimeoutError) as caught:
         _ask()
+
+    # 종류는 그대로(AI_TIMEOUT), 문구는 고정 · 체인 없음(2026-10-27 민규 교차검증).
+    assert str(caught.value) == LLM_TIMEOUT_MESSAGE
+    assert caught.value.__cause__ is None
+
+
+def test_other_llm_failure_becomes_fixed_text_error(stub_qa):
+    def fail(**kwargs):
+        raise RuntimeError("2차 LLM 호출 실패: Error code: 401 sk-secret123")
+
+    stub_qa(fail)
+
+    with pytest.raises(LawQALLMError) as caught:
+        _ask()
+
+    assert str(caught.value) == "법령 질의 LLM 호출 실패(RuntimeError)"
+    assert caught.value.__cause__ is None
 
 
 @pytest.mark.parametrize("parsed", [{}, {"answer": "   "}, "문자열", None])

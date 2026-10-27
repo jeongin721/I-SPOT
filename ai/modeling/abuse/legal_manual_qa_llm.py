@@ -45,13 +45,14 @@ from openai import OpenAI
 from ai.modeling.abuse.law_qa_llm import (
     LawQAOutputError,
     _build_law_corpus,
-    with_reference_notice,
+    _call_llm_safely,
     _verify_cited_articles,
+    with_reference_notice,
 )
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from law.config import LAW_TARGET_LAWS
 from manual.config import MANUAL_IMAGE_DIR
-from manual.manifest import ManualPage, CHAPTER6_PAGES
+from manual.manifest import CHAPTER6_PAGES, ManualPage
 
 DEFAULT_MODEL = "gpt-5.6-luna"
 
@@ -286,7 +287,8 @@ def answer_legal_manual_question(
     user_content = _build_user_content(masked_question, manual_pages)
 
     # law_qa_llm.answer_law_question 과 같다 — 실패는 예외로 올리고 answer 에 넣지 않는다(§6-1).
-    parsed = _call_llm_with_retry(
+    parsed = _call_llm_safely(
+        _call_llm_with_retry,
         client=client,
         model=model,
         system_prompt=system_prompt,

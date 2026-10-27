@@ -149,7 +149,8 @@ class LawApiClient:
                     f"국가법령정보센터 OPEN API에서 '{params.get('target')}' 사용 신청이 되어 있지 않습니다. "
                     "open.law.go.kr → OPEN API 신청에서 해당 항목을 체크하세요."
                 ) from None
-            preview = _redact_secret(response.text[:300].replace("\n", " "), self.oc)
+            # 가린 뒤에 자른다 — 먼저 자르면 300자 경계에 걸친 인증값 앞부분이 남는다(민규 교차검증).
+            preview = _redact_secret(response.text.replace("\n", " "), self.oc)[:300]
             raise LawApiError(
                 f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {preview}"
             ) from None
