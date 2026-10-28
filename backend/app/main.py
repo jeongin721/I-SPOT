@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.adapters.ai_adapter import start_ai_preload
+from app.adapters.law_qa_adapter import start_law_qa_preload
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
@@ -66,6 +67,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.ai_preload = start_ai_preload()
     # VOICE_MARKS_PROVIDER=module 이면 numba 컴파일을 미리 끝낸다(stt/voice_marks.warm_up). 역시 기다리지 않는다.
     app.state.voice_marks_warmup = start_voice_marks_warmup()
+    # LAW_QA_PROVIDER=modeling 이면 법령 질의 모듈과 법령 캐시도 미리 준비한다(law_qa_adapter.start_law_qa_preload).
+    app.state.law_qa_preload = start_law_qa_preload()
 
     yield
 
