@@ -1,18 +1,19 @@
 // 법령 · 매뉴얼
 // 원본: 10/27 디자인 counselor-design/screens/LawGuide.dc.html(다솔 님, frontend261021 브랜치).
 //
-// 서버 연결: 없음. 화면에 쓸 값은 src/data/screens/lawGuide.ts(lawGuideValues), 참고 자료 목록은 lawGuideRefs.ts.
-//  - 'AI에게 묻기' 는 서버에 법령 · 매뉴얼 질의 API 가 아직 없어 준비 중이다(이경진 님 제안서
-//    I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md, AI 모듈은 PR #83). 디자인의 키워드 답변(예시)은 옮기지 않았다 —
-//    안내 말풍선 · 예시 질문 · 입력칸은 보이되 모두 꺼 둔다.
+// 서버 연결: POST /law-guide/questions(useLawGuide). 화면에 쓸 값은 src/data/screens/lawGuide.ts(lawGuideValues),
+// 참고 자료 목록은 lawGuideRefs.ts.
+//  - 'AI에게 묻기' 는 질문 하나에 서버 답변 하나다. 디자인의 키워드 답변(예시) 대신 서버 답변과 근거 조문 칩을 보이고,
+//    기다리는 동안 디자인의 점 세 개를 보인다. 오류는 서버 문구를 말풍선으로 보인다.
 //  - '업무 단계별 참고사항 · 주요 조문' 은 디자인의 정리 문구를 그대로 보인다(서버 값 아님). 펼침 · 분류는 화면 상태다.
 //    '원문보기' · 원문 자료는 국가법령정보센터로 간다.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useLawGuide } from '../data/useLawGuide';
 import { initialLawGuideState, lawGuideValues } from '../data/screens/lawGuide';
 import { needsLogin } from '../data/screens/common';
 import { useTheme } from '../theme';
@@ -31,7 +32,14 @@ class Logic extends DCLogic {
 export default function LawGuide(props) {
   const session = useAuthSession();
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session });
+  const chat = useLawGuide();
+  const v = useDC(Logic, { ...props, session, chat });
+  // 새 말풍선 · 기다림 점이 생기면 대화 칸을 맨 아래로 내린다(디자인의 _msgScroll). 화면 전체는 움직이지 않는다.
+  const msgsRef = useRef(null);
+  useEffect(() => {
+    const el = msgsRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [v.chat.messages.length, v.chat.pending]);
   // '매뉴얼 목차' 를 누르면 목차 항목을 펼친 뒤 그 줄로 한 번 스크롤한다(디자인의 componentDidUpdate).
   // 디자인의 smooth 대신 바로 옮긴다 — 부드러운 스크롤은 브라우저 · 자동화 환경에 따라 무시된다(.lg-item 의 scroll-margin-top 이 여백).
   useEffect(() => {
@@ -88,50 +96,81 @@ export default function LawGuide(props) {
                 <h2 className="h2">법령 · 매뉴얼 AI에게 묻기</h2>
                 <span className="note">{v.chat.lead}</span>
               </div>
-              <button
-                type="button"
-                className="btn btn-sm btn-s"
-                disabled
-                title={v.chat.notReadyShort}
-                style={{ opacity: 0.6, cursor: 'not-allowed' }}
-              >
+              <button type="button" className="btn btn-sm btn-s" onClick={v.chat.reset}>
                 새 대화
               </button>
             </div>
-            <div className="lg-msgs" aria-live="polite">
+            <div className="lg-msgs" aria-live="polite" ref={msgsRef}>
               <div className="lg-msg lg-b">
                 <div className="lg-bub">
                   <span style={{ whiteSpace: 'pre-line' }}>{v.chat.intro}</span>
                 </div>
               </div>
-              <div className="lg-msg lg-b">
-                <div className="lg-bub">
-                  <span>
-                    <span className="chip c-ai" style={{ marginRight: '8px' }}>
-                      {v.chat.notReadyChip}
-                    </span>
-                    {v.chat.notReady}
-                  </span>
+              {v.chat.messages.map((m) => (
+                <div key={m.key} className={`lg-msg ${m.cls}`}>
+                  <div className="lg-bub">
+                    <span style={{ whiteSpace: 'pre-line' }}>{m.text}</span>
+                    {m.hasRefs ? (
+                      <div className="lg-refs">
+                        <span className="lg-refl">근거</span>
+                        {m.laws.map((w, i) =>
+                          w.url ? (
+                            <a key={`${w.key}-${i}`} className="lg-ref law" href={w.url} target="_blank" rel="noopener noreferrer" title={w.title}>
+                              {w.label} ↗
+                            </a>
+                          ) : (
+                            <span key={`${w.key}-${i}`} className="lg-ref law static" title={w.title}>
+                              {w.label}
+                            </span>
+                          ),
+                        )}
+                        {m.manual.map((r, i) => (
+                          <span key={`${r.key}-${i}`} className="lg-ref static">
+                            {r.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              ))}
+              {v.chat.pending ? (
+                <div className="lg-msg lg-b">
+                  <div className="lg-bub lg-typing">
+                    <i />
+                    <i />
+                    <i />
+                    <span className="note" style={{ marginLeft: '6px' }}>
+                      {v.chat.pendingText}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="lg-sugg">
               {v.chat.suggs.map((q) => (
-                <button key={q} type="button" className="lg-chip" disabled title={v.chat.notReadyShort}>
-                  {q}
+                <button key={q.label} type="button" className="lg-chip" onClick={q.ask} disabled={v.chat.pending}>
+                  {q.label}
                 </button>
               ))}
             </div>
-            <form className="lg-ask" onSubmit={(e) => e.preventDefault()}>
+            <form
+              className="lg-ask"
+              onSubmit={(e) => {
+                e.preventDefault();
+                v.chat.submit();
+              }}
+            >
               <input
                 className="inp"
                 type="text"
                 placeholder={v.chat.placeholder}
                 aria-label="질문 입력"
-                disabled
-                title={v.chat.notReadyShort}
+                value={v.chat.draft}
+                maxLength={v.chat.maxLength}
+                onChange={(e) => v.chat.setDraft(e.target.value)}
               />
-              <button type="submit" className="btn btn-p" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+              <button type="submit" className="btn btn-p" disabled={!v.chat.canSend}>
                 보내기
               </button>
             </form>
