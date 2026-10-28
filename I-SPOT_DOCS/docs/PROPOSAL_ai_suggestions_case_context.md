@@ -1,7 +1,8 @@
 # 제안 — 사례 정보를 쓰는 AI 제안 3가지 (아동 특성 · 가정상황 추천 · 확인 메모 · 추가 질문)
 
-> 작성 2026-10-28 · 이경진(AI) · 검토 요청: 최민규(Backend)
-> 상태: **제안(결정 전)**. 팀 논의(2026-10-28)에서 나온 세 가지입니다. 모두 #93 의 `case_context`(민규 님 PR 1) 위에 올립니다.
+> 작성 2026-10-28 · 이경진(AI) · 검토: 최민규(Backend)
+> 상태: **합의(2026-10-28)**. 팀 논의에서 나온 세 가지입니다. 모두 #93 의 `case_context` 위에 올립니다. §7 에 민규 님 답을 적었습니다.
+> 담당(2026-10-28 역할 나누기): case_context(#93 PR 1) · 이 문서 A · B · C 전부 경진(Backend 포함), 리뷰 · 교차검증 · 머지는 민규 님.
 > **#93 §4 제안 B(아동 특성 · 가정상황 AI 제안)의 보류를 풉니다** — 이 문서 §2 가 그 자리를 대신합니다.
 
 ---
@@ -96,12 +97,12 @@
 
 | PR | 누가(제안) | 내용 | 먼저 필요한 것 |
 | --- | --- | --- | --- |
-| 0 | 민규 | `case_context`(#93 PR 1) | — |
+| 0 | 경진 | `case_context`(#93 PR 1, Backend) | — |
 | A | 경진 | §3 확인 메모에 `case_context` 넣기(Contract 그대로) | 0 |
 | B-1 | 경진 | §2 `intake_suggestions` — checklist 결과 이름 맞추기 · 근거 → segment_ids · 초기면접 빼기 · Contract 문서 | 0 |
 | B-2 | 경진 | §2 화면 — 일지 '추가로 확인한 항목' 에 AI 추천 · [추가] | B-1 |
 | C-1 | 경진 | §4 `followup_question_llm.py` · 유도 질문 코드 검사 · Contract `followup_questions` | 0 |
-| C-2 | 민규 | §4 승인 · 직접 추가 · 수정 저장 API | — |
+| C-2 | 경진 | §4 승인 · 직접 추가 · 수정 저장 API(§7 답 4 모양) | — |
 | C-3 | 경진 | §4 화면 — 추가 확인 · 질문 '추가 질문' · 브리핑 '추가 질문' | C-1 · C-2 |
 
 ## 6. 질문 (민규 님)
@@ -113,3 +114,17 @@
 | 3 | 확인 메모(§3) 중 근거가 **지난 회차 확정 요약뿐**인 것은 이번 회차 `segment_ids` 가 비는데, "근거 · 지난 회차 확정 요약" 으로 보이게 둘까요, 버릴까요? |
 | 4 | 추가 질문 저장 API(§4, C-2)를 `GET/PUT /sessions/{id}/followup-questions` 한 벌로 가도 될까요? 승인 · 수정 · 직접 추가를 목록 통째 PUT 으로(risk-assessments 처럼) 하면 단순합니다 |
 | 5 | 추가 질문 생성은 유도 질문 위험 때문에 **질문 은행 RAG 를 기다릴지**, 위 코드 검사 + 상담사 승인으로 먼저 갈지 — 저는 후자로 먼저 가고 은행은 `kind: BANK` 자리만 예약하는 쪽을 제안합니다 |
+
+## 7. 합의 (민규 님 답, 2026-10-28)
+
+| # | 질문 | 답 |
+| --- | --- | --- |
+| 1 | #93 B 보류 해제 | **동의.** 조건은 §0 그대로(미리 고르지 않음 · [추가] 는 상담사 · 근거 segment_ids 필수). **Backend 관문 두 겹**(AI 경계 + 서버): item 은 `core/intake.py` 목록 재검증, segment_ids 는 전사본 대조, 초기면접 항목 제거, 칸당 5개 상한 — B-1 PR 에 같이 |
+| 2 | 가정상황 근거에 보호자 발화 | **가정상황은 보호자 발화 허용, 아동 특성은 아동 발화만.** 상담원 발화는 둘 다 근거에서 뺌. 화면 근거 라벨에 화자가 보이게("1회차 02:10 보호자") |
+| 3 | 지난 회차 요약만 근거인 확인 메모 | **버리지 말고 보이기.** `followup_check_points[]` 에 선택 키 `previous_session_label`("7회차")을 두고, `segment_ids` 가 빈 메모는 이 키가 있을 때만 통과. 화면은 "근거 · 7회차 확정 요약". Backend 는 `FollowupCheckPoint` 스키마 한 줄 — A PR 에 같이 |
+| 4 | 추가 질문 저장 API | **GET/PUT 한 벌, 목록 통째 PUT.** 승인된 질문만 저장(AI 원본은 분석 결과에). PUT 본문 `{ "questions": [ { "text", "kind": "OPEN"\|"BANK", "source": "AI"\|"COUNSELOR", "segment_ids": [], "bank_code": null } ] }`, `approved_at` 은 서버가 찍음. 검증: 상한 20개 · text 1~300자 · segment_ids 는 전사본에 있는 것만 · kind 밖 값 422. 상태는 원문 확정 뒤 ~ 종결 전(요약 PATCH 와 같은 범위). 권한은 회차와 같고 감사 기록 1건(`FOLLOWUP_QUESTIONS_UPDATED`). 저장은 회차당 한 행(JSON 목록 + updated_at · updated_by) 새 표, 마이그레이션 1 |
+| 5 | 질문 은행 RAG 기다릴지 | **코드 검사 + 상담사 승인으로 먼저**, `kind: BANK` 자리만 예약. 코드 검사 규칙(닫힌 질문 꼴 · 원문에 없는 인물 · 행위 · 근거 없음)은 시험으로 고정. Backend 는 분석 결과에서 kind 가 OPEN · BANK 밖이면 그 질문을 버림(C-2 에) |
+
+Backend PR 공통(민규 님 요청): 접근 검사 `get_session_or_404` / `get_case_or_404`, 응답 `DataResponse`, 오류는 `app/core/errors.py` 코드 표.
+열이 늘면 alembic 마이그레이션 1 + API_CONTRACT.md 해당 절 + CODE_GUIDE.md 시험 수(check.sh 실측). 시험은 기존 fixture
+(client · counselor_headers · other_counselor_headers · create_session)로 권한 403 · 404 · 상태 제한까지. Backend 가 든 PR 은 교차검증 뒤 머지.
