@@ -58,6 +58,7 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
+from ai.modeling.abuse.case_context import format_case_context
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 
 DEFAULT_MODEL = "gpt-5.6-luna"
@@ -94,7 +95,8 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
    줄 앞에 [seg_001]처럼 적혀 있다 — 여러 줄에 걸쳐 있으면
    segment_id를 여러 개 적어도 된다. 근거 없는 segment_id는 지어내지
    않는다. 인용할 segment_id가 없으면 그 항목 자체를 결과에 넣지
-   않는다.
+   않는다 — 단 하나의 예외는 아래 '사례 정보를 쓰는 법' 의 근거가 지난
+   회차 확정 요약뿐인 항목이다(segment_ids 빈 배열 + from_previous_session).
 
 [입력 — 이번 상담에서 확인된 아동 진술 · 위험 신호 요지]
 {session_content_input}
@@ -102,10 +104,24 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
 [입력 — 신뢰도가 낮거나 화자가 불확실한 발화]
 {low_confidence_input}
 
+[입력 — 사례 정보(초기면접 · 지난 회차 확정 요약), 없으면 "없음"]
+{case_context_input}
+
+[사례 정보를 쓰는 법]
+- 사례 정보는 이번 상담 내용을 읽는 **배경**으로만 쓴다. 예: 초기면접에 '알콜남용' 이 있고 이번에
+  음주 뒤 체벌 진술이 나오면 "보호자 음주 빈도 · 음주 뒤 상황 확인 필요" 처럼 이어 짚을 수 있다.
+- 지난 회차 요약에 있던 것(예: 안전 계획)이 이번 상담에 안 나왔으면 "유지 여부 확인 필요" 라고
+  짚을 수 있다. 이번 상담의 관련 줄이 있으면 그 segment_id 를 인용하고, **근거가 지난 회차 확정
+  요약뿐이면** segment_ids 를 빈 배열로 두고 "from_previous_session": true 를 붙인다.
+- 초기면접 항목에만 있고 이번 상담 · 지난 회차 요약 어디에도 근거가 없는 항목은 만들지 않는다.
+- segment_id 는 이번 상담 줄에서만 인용한다(지난 회차 줄 번호는 없다).
+- 사례 정보의 내용을 이번 상담에서 새로 확인된 사실처럼 쓰지 않는다.
+
 반드시 아래 JSON 형식으로만 답한다:
 {{
   "check_points": [
-    {{"text": "...", "segment_ids": ["seg_001"]}}
+    {{"text": "...", "segment_ids": ["seg_001"]}},
+    {{"text": "...", "segment_ids": [], "from_previous_session": true}}
   ]
 }}
 """
@@ -198,19 +214,26 @@ def format_inputs_for_masking(
     segments: List[Dict[str, Any]],
     child_statement_points: List[Dict[str, Any]],
     risk_signal_points: List[Dict[str, Any]],
+    case_context: Any = None,
 ) -> str:
+    """case_context(2026-10-28, case_context.py): 사례 정보. 없으면 세 번째 칸은 "없음".
+    지난 회차 요약은 상담원 글이라 이름이 섞일 수 있어, 이 글 전체를 부르는 쪽이 한 번에 마스킹한다."""
+
     return (
         _format_session_content(
             child_statement_points, risk_signal_points
         )
         + SPLIT_MARKER
         + _format_low_confidence(segments)
+        + SPLIT_MARKER
+        + format_case_context(case_context)
     )
 
 
 def _clean_points(
     raw_points: Any,
     valid_segment_ids: set,
+    previous_session_label: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """protective_factor_llm._clean_points와 같은 패턴 — LLM이 주장한
     segment_id를 실제 segment 목록과 대조해 검증한다. 근거(유효한
@@ -254,10 +277,21 @@ def _clean_points(
             and str(sid) in valid_segment_ids
         ]
 
-        if not segment_ids:
+        if segment_ids:
+            cleaned.append({"text": text.strip(), "segment_ids": segment_ids})
             continue
 
-        cleaned.append({"text": text.strip(), "segment_ids": segment_ids})
+        # 2026-10-28 민규 리뷰(#100 §7 답 3): 근거가 지난 회차 확정 요약뿐인 메모는 버리지 않고
+        # previous_session_label("7회차")을 붙여 통과시킨다. 라벨은 LLM 이 쓴 글이 아니라 사례 정보에서
+        # 온 값을 쓴다(지어낸 회차가 붙지 않게). 지난 회차가 없거나 표시가 없으면 지금처럼 뺀다.
+        if previous_session_label and item.get("from_previous_session") is True:
+            cleaned.append(
+                {
+                    "text": text.strip(),
+                    "segment_ids": [],
+                    "previous_session_label": previous_session_label,
+                }
+            )
 
     return cleaned
 
@@ -268,9 +302,12 @@ def generate_followup_check_points_from_masked_text(
     masked_combined_text: str,
     segments: List[Dict[str, Any]],
     deadline: Optional[float] = None,
+    previous_session_label: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """segments: 원본 segment 목록 — segment_id 검증에만 쓴다
     (protective_factor_llm.generate_protective_factors와 같은 이유).
+    previous_session_label: 사례 정보의 직전 승인 회차 이름("7회차"). 있을 때만 근거가 지난 회차
+    요약뿐인 메모를 남긴다(_clean_points).
     """
 
     valid_segment_ids = {
@@ -280,16 +317,23 @@ def generate_followup_check_points_from_masked_text(
     parts = masked_combined_text.split(SPLIT_MARKER)
     session_content_input = parts[0] if parts else "없음"
     low_confidence_input = parts[1] if len(parts) > 1 else "없음"
+    # 예전 판(두 칸)으로 만든 글도 받는다.
+    case_context_input = parts[2] if len(parts) > 2 else "없음"
 
+    # 이번 회차 요지 · 저신뢰 발화가 모두 없어도 지난 회차 확정 요약이 있으면 LLM 을 부른다
+    # (지난 요약만 근거인 메모 허용 — #100 §7 답 3, 민규 #102 R1). 초기면접 항목만 있으면 지금처럼 건너뛴다
+    # (근거 없는 메모를 만들지 않게). previous_session_label 은 그 요약에 글이 있을 때만 온다.
     if (
         session_content_input.strip() == "없음"
         and low_confidence_input.strip() == "없음"
+        and not previous_session_label
     ):
         return []
 
     system_prompt = SYSTEM_PROMPT.format(
         session_content_input=session_content_input,
         low_confidence_input=low_confidence_input,
+        case_context_input=case_context_input,
     )
 
     try:
@@ -308,7 +352,7 @@ def generate_followup_check_points_from_masked_text(
     if not isinstance(parsed, dict):
         parsed = {}
 
-    return _clean_points(parsed.get("check_points"), valid_segment_ids)
+    return _clean_points(parsed.get("check_points"), valid_segment_ids, previous_session_label)
 
 
 def generate_followup_check_points(
