@@ -171,8 +171,13 @@ export default function CaseDetail(props) {
                   {v.riskNote}
                 </div>
               ) : null}
-              <div className="note" style={{ marginTop: '10px' }}>
+              <div className="note" style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 학대 유형
+                {v.typesAi ? (
+                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                    AI 제안
+                  </span>
+                ) : null}
               </div>
               <div style={{ margin: '6px 0 16px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {(v.abuseTypes || []).map((t, tIndex) => (
@@ -181,7 +186,14 @@ export default function CaseDetail(props) {
                   </span>
                 ))}
               </div>
-              <div className="note">주요 키워드</div>
+              <div className="note" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                주요 키워드
+                {v.keywordsAi ? (
+                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                    AI 제안
+                  </span>
+                ) : null}
+              </div>
               <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {(v.keywords || []).map((k, kIndex) => (
                   <span key={kIndex} className="chip c-normal">
@@ -189,6 +201,11 @@ export default function CaseDetail(props) {
                   </span>
                 ))}
               </div>
+              {v.typesAi || v.keywordsAi ? (
+                <div className="note" style={{ marginTop: '10px' }}>
+                  {v.aiNote}
+                </div>
+              ) : null}
             </section>
           </div>
 

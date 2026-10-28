@@ -15,6 +15,8 @@
 //    (10/27 디자인의 '방임 (확인 중)'). AI 신호를 판정처럼 보이지 않게 한다(05_RULES §1).
 //  - 주요 키워드: 그 회차 위험 관련 발화의 세부 유형 이름(예: #직접 신체 가해). 디자인의 자유 키워드(#체벌)를 만드는
 //    서버 값은 없어 새로 생성하지 않는다.
+//  - '(확인 중)' 유형과 주요 키워드는 AI 결과라 그 줄 옆에 'AI 제안' 칩과 안내를 붙인다(README 원칙 2 — 상담원 판단인
+//    '상담사 지정' 과 섞여 보이지 않게, 2026-10-28 민규 리뷰).
 //
 // 탭 1 의 '초기면접 내용' 카드는 디자인에 없는 칸이다(2026-10-20 추가). 사례 등록 ② 탭에서 고른 가정상황 · 아동 특성
 // (서식 4 항목 이름)을 단어로 보이고, '수정' 을 누르면 사례 등록과 같은 고르기 단추로 고쳐 저장한다(PATCH /cases/{id}).
@@ -55,7 +57,7 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
   const dash = NOT_PROVIDED;
 
   if (!signals || !signals.session) {
-    return { riskBy: dash, abuseTypes: [dash], keywords: [dash], riskNote: "" };
+    return { riskBy: dash, abuseTypes: [dash], keywords: [dash], riskNote: "", typesAi: false, keywordsAi: false, aiNote: "" };
   }
 
   const { session, risk } = signals;
@@ -83,11 +85,17 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
   if (risk.loadError) riskNote = risk.loadError;
   else if (signals.analysis.error) riskNote = signals.analysis.error;
 
+  const typesAi = ABUSE_TYPES.some((type) => flagged.has(type) && !assessed.has(type));
+  const keywordsAi = keywords.length > 0;
+
   return {
     riskBy,
     abuseTypes: abuseTypes.length > 0 ? abuseTypes : [dash],
     keywords: keywords.length > 0 ? keywords : [dash],
     riskNote,
+    typesAi,
+    keywordsAi,
+    aiNote: `'(확인 중)' 유형과 주요 키워드는 ${session.numberLabel} AI 분석 결과입니다. 판정이 아니며, 위험도 · 상담사 지정은 상담원 판단입니다.`,
   };
 }
 
