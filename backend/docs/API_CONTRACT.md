@@ -1524,6 +1524,10 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
+| `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_FAILED` | 504 / 502 / 502 | 법령 · 매뉴얼 AI 질문(17절)에서만 HTTP 상태로 온다(동기 응답) |
+| `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
+| `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
+| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
@@ -1578,3 +1582,154 @@ AI 영향
 Test 영향
 권장 변경안
 ```
+
+---
+
+## 16. Voice Marks (구간별 음성 참고 표시)
+
+아동 발화 구간에서 떨림 · 웅얼거림 · 작은 소리가 **그 녹음 안에서** 두드러지는 구간을 알려 주는 참고 표시다
+(정담원 님 `stt/voice_marks`, 제안서 `I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md`). 상담사가 다시 들어 볼 구간을 찾도록
+돕는 정보이며 **학대 · 위험을 판정하지 않는다.** 기준값은 모두 합성 음성으로 정한 잠정값이다(`stt/voice_marks.md` 7절).
+
+### 언제 계산하나
+
+- STT 결과를 저장한 직후 같은 백그라운드 작업에서 `analyze_voice_marks(audio_path, segments)` 를 부르고, 결과를
+  `audio_features` 표에 **새 행**(`extractor = "stt.voice_marks"`, `schema_version = "1.0"`, `features` = 결과 dict 그대로)으로
+  저장한다. 행에는 `audio_file_id` · `transcript_id` · `transcript_version` 이 있다. 기존 행(`ispot_audio_features`)과
+  전사본(7절)의 `segments` 는 건드리지 않는다.
+- 원문 확정(`POST …/transcript/confirm`) 때 확정본의 아동 구간(`segment_id` · `start_ms` · `end_ms`)이 마지막 분석 때와
+  다르면 백그라운드로 한 번 더 돌려 새 행으로 저장한다(STT 직후엔 화자가 `UNKNOWN` 이라 아동 구간이 0개였다가 검수에서
+  정해지는 경우). 행은 쌓고, 조회는 **가장 최신 전사본 version 의 행**(같은 version 이면 나중 것)이다 — 느린 옛 분석이
+  새 분석보다 늦게 저장돼도 새 version 의 결과를 가리지 않는다. 같은 회차를 다시 STT 해도 쌓는다.
+- `VOICE_MARKS_PROVIDER=off`(기본)면 아무것도 하지 않는다(행도 없다). `module` 이면 `stt.voice_marks` 를 부른다
+  (librosa · numba · soundfile — `requirements-stt.txt`, 이미지는 `WITH_STT=1`). 서버 시작 때 `warm_up()` 을
+  백그라운드로 한 번 부른다(numba 컴파일 지연 방지, 캐시 자리는 `NUMBA_CACHE_DIR`).
+- 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
+  안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
+  그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
+- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
+  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
+  재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
+
+### GET /api/v1/sessions/{session_id}/voice-marks
+
+가장 최신 전사본 version 의 행 하나(같은 version 이면 나중 것). 아직 계산 전이면 `200` 에 `{"data": null}` 이다(정상 상태라 `404` 를 쓰지 않는다). 권한은 사례 접근 규칙과 같다.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "audio_file_id": "uuid",
+    "transcript_id": "uuid",
+    "transcript_version": 1,
+    "extractor": "stt.voice_marks",
+    "schema_version": "1.0",
+    "created_at": "2026-10-28T10:00:00Z",
+    "result": {
+      "schema_version": "1.0",
+      "analyzer": "stt.voice_marks",
+      "analyzer_version": "0.1.0",
+      "status": "ANALYZED",
+      "reason": null,
+      "reference": { "child_segments_total": 30, "child_segments_used": 28, "min_required": 8, "note": "..." },
+      "thresholds": { "tremor_z_above": 1.6066, "mumble_z_below": -1.619, "soft_z_below": -2.5, "basis": "..." },
+      "segments": [
+        { "segment_id": "seg_003", "speaker": "CHILD", "start_ms": 12000, "end_ms": 15200,
+          "status": "ANALYZED", "reason": null,
+          "tremor": { "value": 21.4, "unit": "cent", "z": 0.3, "flag": false },
+          "mumble": { "value": 1850.0, "unit": "Hz", "z": -1.9, "flag": true },
+          "soft": { "value": -38.2, "unit": "LUFS", "z": -0.2, "flag": false },
+          "flag_any": true },
+        { "segment_id": "seg_001", "speaker": "COUNSELOR", "start_ms": 0, "end_ms": 4000,
+          "status": "UNDETERMINED", "reason": "NOT_CHILD_SEGMENT",
+          "tremor": null, "mumble": null, "soft": null, "flag_any": null }
+      ]
+    }
+  }
+}
+```
+
+- `result` 는 분석 모듈이 돌려준 dict 그대로다(모양 · `reason` 목록 · 지표 뜻은 `stt/voice_marks.md` 3~5절). Backend 는 그 안을
+  다시 해석하지 않는다.
+- `result.status` 는 `ANALYZED` | `UNDETERMINED`(최상위 · 구간 모두). **"탐지 없음"** 은 `ANALYZED` 이면서 모든 `flag` 가
+  `false` 인 경우이고 `UNDETERMINED`(분석하지 못함)와 다르다.
+- `result.segments[]` 는 전사본 순서 그대로이며 `segment_id` 로 전사본 구간과 잇는다. `speaker` 는 분석 당시 값이라 참고만 하고,
+  화면은 최신 전사본의 화자를 쓴다.
+- 기준값은 `result.thresholds` 에서 읽는다(화면 코드에 숫자를 적지 않는다). Backend 실패 행은 기준값이 `null` 이다.
+- 화면 표현: "음성 참고 표시" · "다시 들어 볼 구간" · "상담사 검토 필요" · "분석 불가(이유)". `UNDETERMINED` 는 '탐지 없음' 과
+  다르게 보여 주고 `reason` 은 사람 말로 바꾼다. 아이콘 + 글자로 표시한다(색만으로 구분하지 않음). 0~1 점수 · % · 위험도 같은
+  값은 만들지 않는다. 쓰지 않는 문구: "학대 확정" · "위험 확정" · "AI 판정" · "자동 결정".
+- 한계(합성 음성 기준 · 효과 없는 음성에서도 약 10% 표시 · 떨림은 놓치는 경우가 많음)를 화면 안내문에 함께 적는다
+  (`I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md` §1-4).
+
+---
+
+## 17. Law Guide (법령 · 매뉴얼 AI 질문)
+
+LawGuide 화면 위쪽의 **AI 질문 채팅**이 쓴다(2026-10-28 추가, 설계 `I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md`, AI 모듈 `ai/modeling/abuse/legal_manual_qa_llm.py`).
+상담 회차 · 사례와 묶이지 않는 독립 질의이고, 로그인한 사용자(COUNSELOR · ADMIN)면 누구나 부른다. **질문 · 답변은 서버에 저장하지 않는다**
+(자유 입력에 개인정보가 섞일 수 있어서). 감사 기록(`LAW_QA_ASKED`)에는 사용자 · 시각 · 성공/실패 코드 · 걸린 시간 · provider · 모델 · 근거 수만 남는다.
+
+### POST /api/v1/law-guide/questions → 200
+
+**1.4 의 예외로 동기 200** 이다(202 + polling 아님): 붙일 회차가 없고 저장하지도 않으며, 한 번에 걸리는 시간이 분석보다 훨씬 짧다.
+화면은 '찾는 중' 을 보이고 응답을 기다린다. 서버 제한 시간은 `LAW_QA_TIMEOUT_SECONDS`(기본 60초).
+
+Request
+
+```json
+{ "question": "응급조치 기간은 얼마나 돼요?" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `question` | 필수. 앞뒤 공백을 뺀 뒤 1~500자. 비거나 넘으면 `422 VALIDATION_ERROR`. 한 번에 질문 하나(대화 맥락 없음 — '새 대화' 는 화면의 말풍선만 지운다) |
+
+Response
+
+```json
+{
+  "data": {
+    "answer": "응급조치는 … 72시간을 넘을 수 없습니다(아동학대범죄의 처벌 등에 관한 특례법 제12조). …\n\n※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 직접 확인하고, 최종 판단은 상담사가 내려야 합니다.",
+    "sources": {
+      "laws": [
+        { "law_name": "아동학대범죄의 처벌 등에 관한 특례법", "article": "제12조", "title": "피해아동 등에 대한 응급조치",
+          "content": "① 제11조제1항에 따라 현장에 출동하거나 …", "effective_date": "20261002",
+          "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=…&joNo=0012&joBrNo=00" }
+      ],
+      "manual": []
+    },
+    "model": "gpt-5.6-luna",
+    "answered_at": "2026-10-28T03:12:45Z"
+  }
+}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `answer` | 답변 본문. 비어 있지 않다(빈 답은 `502 AI_INVALID_OUTPUT`). 끝에 모듈이 붙인 참고용 안내 문장이 있다 — **참고용이며 판정이 아니다**(05_RULES §1) |
+| `sources.laws[]` | 답변이 근거로 쓴 조문. **실제 조문 목록과 대조해 통과한 것만**(법령명 + 조문번호가 둘 다 맞아야 함). 없으면 `[]`. `effective_date` 는 조문시행일자(자료에 없으면 `null`), `portal_url` 은 국가법령정보센터 조문 주소(없으면 `null`) |
+| `sources.manual[]` | 답변이 근거로 쓴 매뉴얼 자료 `{ id, title, page }`(`page` 는 문자열, 모르면 `"?"`). 매뉴얼 사진은 기관 대외비라 **기본으로 첨부하지 않으므로 늘 `[]`** 다(모듈 설정 `MANUAL_QA_ATTACH_IMAGES` 를 켰을 때만 채워진다). 내용이 그 페이지에 있다는 보장은 아니다 — 화면은 조문 근거와 구분해 '참고 자료' 로 보인다 |
+| `model` | 답한 모델 이름(`mock` 이면 `"mock"`) |
+| `answered_at` | 서버가 답을 만든 시각(UTC) |
+
+제안서 §2 의 `law_versions` · `notice` 는 넣지 않는다(모듈이 주지 않는 값 · 안내는 `answer` 끝에 이미 있음). 필요해지면 선택 키로 더한다.
+
+오류(코드 · 문구는 고정이고 질문 원문 · 예외 문구를 싣지 않는다)
+
+| code | status | 언제 |
+|---|---|---|
+| `VALIDATION_ERROR` | 422 | 질문이 비었거나 500자 초과 |
+| `LAW_QA_DISABLED` | 503 | `LAW_QA_PROVIDER=off` |
+| `RATE_LIMITED` | 429 | 같은 사용자가 1분 안에 `LAW_QA_RATE_LIMIT_PER_MINUTE`(기본 6)회를 넘김 |
+| `AI_TIMEOUT` | 504 | `LAW_QA_TIMEOUT_SECONDS` 안에 답이 안 옴, 또는 동시 실행 자리(`LAW_QA_MAX_CONCURRENCY`, 기본 2)를 그 시간 안에 못 얻음 |
+| `AI_INVALID_OUTPUT` | 502 | LLM 응답에 답변이 없음 |
+| `AI_FAILED` | 502 | 그 밖의 LLM 호출 실패(OpenAI 인증 · 연결 등 — 종류를 나누지 않는다), 모듈을 불러올 수 없음 |
+| `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패 |
+| `UNAUTHORIZED` · `PASSWORD_CHANGE_REQUIRED` 등 | 401 · 403 | 다른 API 와 같음 |
+
+서버 설정(`backend/.env.example`): `LAW_QA_PROVIDER`(off · mock · modeling, 기본 mock) · `LAW_QA_TIMEOUT_SECONDS` · `LAW_QA_RATE_LIMIT_PER_MINUTE` · `LAW_QA_MAX_CONCURRENCY` ·
+`LAW_QA_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 modeling 은 이 값이 true 일 때만 뜬다, 분석 modeling 과 같은 방식) · `LAW_API_OC` · `LAW_CACHE_DIR`.
+`LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다(실패해도 서버는 뜨고 첫 질문 때 다시 시도).
+한도는 서버 메모리 기준(서버 1대 전제)이다.

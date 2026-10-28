@@ -42,6 +42,8 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 사례 수정 | `useCaseDetail` 의 `saveCase` · `useCaseIntake` | 초기면접지 화면에서 고친 칸만 `PATCH /cases/{id}` 로 보낸다(늦은 응답 방어는 `saveIntake` 와 같음) |
 | 마이크 녹음 | `useAudioRecorder` | 사례 상세 '녹음하기' 창. 브라우저 MediaRecorder 로 녹음해 파일을 만들고, 저장하면 `useAudioUpload` 로 올린다. 마이크는 HTTPS · localhost 에서만 열리고, 못 열면 이유를 알린다(녹음하는 척하지 않음) |
 | 원문(STT) 검수 | `useTranscriptReview` · `transcriptRows` | 발화 줄 · 저신뢰 · 화자 미확인, 고친 칸만 저장, 확정, 다시 변환 |
+| 녹음 다시 듣기 | `useSessionAudio` · `useAudioPlayer` | 음성 파일(`GET /sessions/{id}/audio/file`)을 Authorization 헤더로 받아 Blob URL 로 재생. STT 검수의 시간 단추(그 발화부터)와 하단 재생 바(재생 · 정지 · 5초 이동 · 위치 이동). 원문이 보이면 파일을 미리 받아 둔다(브라우저가 사용자 조작 직후에만 재생을 허용해서). 회차를 바꾸면 URL 을 거둔다 |
+| 음성 참고 표시 | `useVoiceMarks` · `voiceMarkRows` | 정담원 님 `stt/voice_marks` 결과(`GET /sessions/{id}/voice-marks`, API_CONTRACT 16절)를 아동 발화 줄 아래 칩으로(떨림 · 웅얼거림 · 작게 말함, flag 가 켜진 것만. 기준값은 응답의 thresholds). '분석 전'(결과 없음, 잠시 되풀이 조회) · '분석 불가(이유)' · '탐지 없음' 을 구분하고, 결과의 원문 판이 지금 판과 다르면 알린다. 다시 들어 볼 구간을 알려 주는 참고 표시이며 판정이 아니다 |
 | AI 분석 | `useSessionAnalysis` | 분석 요청 · 진행 · AI 원본 요약과 안내 · 위험 관련 발화(`riskUtterances`) · 유형별 신호(`abuseSignals`) · 심각도 · 보호 요인 · 다음 상담 확인 메모(`followupCheckPoints`)(Contract 그대로, 10/23 · 10/26) |
 | 위험 신호 카드 | `useRiskSignals` · `riskRows.ts` | 위험 관련 발화를 카드(유형 · 세부 유형 · 근거 직접성 · 이유 · 원문 대조)로, 유형별 신호를 네 줄로. 근거 위치(몇 분 · 누구)는 원문(`GET …/transcript`)에서 찾는다. 읽기 전용 |
 | 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |

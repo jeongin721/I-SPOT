@@ -89,7 +89,8 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
    sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
    ```
 
-   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs · librosa · numba · soundfile)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - 구간별 음성 참고 표시(정담원 님 `stt/voice_marks`)까지 켜려면 `backend.env` 에 `VOICE_MARKS_PROVIDER=module` 을 더합니다. 같은 `WITH_STT=1` 이미지에 librosa · numba · soundfile 이 들어 있고, numba 캐시 자리(`NUMBA_CACHE_DIR=/tmp/numba-cache`)는 이미지가 정합니다. 기본(`off`)이면 아무것도 하지 않습니다. 참고 표시일 뿐 판정이 아닙니다(`backend/docs/API_CONTRACT.md` 16절).
    - `openai-whisper`(`I_SPOT_STT_PROVIDER=whisper` 일 때만) · `pyannote`(별도 화자 분리 때만) · `ffmpeg`(기본 꺼진 `I_SPOT_SINGLE_SPEAKER_FALLBACK` 때만)는 넣지 않았습니다. 그 설정을 켜려면 이미지에 더해야 합니다.
    - 전사 한 번에 최대 `STT_TIMEOUT_SECONDS`(기본 600초)까지 기다립니다. 음성 파일은 `/opt/ispot/storage`(컨테이너 `/app/storage`)에 있어 그대로 읽습니다.
 
@@ -129,3 +130,15 @@ Backend ──▶ PostgreSQL(RDS)
 | 22 | 관리용(범위는 AWS 콘솔 설정) | SSH 접속 · 배포 |
 
 Backend 포트 8000 은 열지 않습니다(Caddy 만 서버 안에서 부릅니다).
+
+## 법령 · 매뉴얼 AI 질문 켜기 (`LAW_QA_PROVIDER=modeling`)
+
+LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고정 답변)으로 뜹니다. 실제로 켜려면:
+
+1. 이미지는 `WITH_MODELING=1` 로 만든 것이어야 합니다(openai 가 들어 있음). 이미지에 `law/` · `manual/` 이 복사됩니다(사진 폴더는 넣지 않음).
+2. `backend.env` 에 `LAW_QA_PROVIDER=modeling`, `OPENAI_API_KEY=<키>`. `ENV=production` 이면 `LAW_QA_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만**(질문이 가려진 채 OpenAI 로 나가지만 등록 실명 대조는 돌지 않음).
+3. 법령 캐시: 위 '관련 조문' 과 같은 `/law_cache` 를 씁니다. 캐시가 없으면 서버 시작 때(그리고 첫 질문 때) 국가법령정보센터를 조회하므로 `LAW_API_OC=<OC>` 를 넣거나 캐시를 복사해 둡니다. 조회에 실패하면 질문은 `503 LAW_SOURCE_UNAVAILABLE` 입니다.
+4. **매뉴얼 사진은 올리지 않습니다.** 기관 대외비라 `MANUAL_QA_ATTACH_IMAGES` 는 기본 끔이고 `backend.env` 에 적지 않습니다(기관 허락 전에는 켜지 않음). 꺼져 있으면 법령만으로 답하고 응답의 `sources.manual` 은 빈 목록입니다.
+5. 비용 · 한도: 호출마다 법령 전문(약 9.8만 자)이 OpenAI 로 나갑니다. 사용자당 분당 6회(`LAW_QA_RATE_LIMIT_PER_MINUTE`) · 서버 동시 2건(`LAW_QA_MAX_CONCURRENCY`)이 기본이고, 데모 서버의 키가 개인 키면 비용이 그 키로 나갑니다.
+
+확인: `curl -s -X POST http://localhost:8000/api/v1/law-guide/questions -H "Authorization: Bearer <토큰>" -H "Content-Type: application/json" -d '{"question":"응급조치 기간은 얼마나 돼요?"}'` 가 200 과 `sources.laws` 를 돌려주면 됩니다.

@@ -20,6 +20,7 @@ import type {
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
+  LawGuideAnswer,
   LoginRequest,
   LoginResponse,
   PasswordChangeRequest,
@@ -47,6 +48,7 @@ import type {
   TranscriptEnvelope,
   TranscriptUpdateRequest,
   User,
+  VoiceMarks,
 } from "./types";
 
 /**
@@ -240,6 +242,28 @@ export const sessions = {
   getAudio(sessionId: string): Promise<AudioFile> {
     return api.get<AudioFile>(`/sessions/${sessionId}/audio`);
   },
+
+  /**
+   * 최신 음성 파일 본문(재생용, API_CONTRACT 6절). Authorization 헤더로 받아 Blob URL 로 재생한다(useSessionAudio).
+   * 음성이 없거나 저장소에 파일이 없으면 404 AUDIO_NOT_FOUND.
+   */
+  getAudioFile(sessionId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/sessions/${sessionId}/audio/file`, signal);
+  },
+};
+
+// =========================================================
+// 구간별 음성 참고 표시 (API_CONTRACT 16절)
+// =========================================================
+
+export const voiceMarks = {
+  /**
+   * 가장 최신 원문 판의 음성 참고 표시(떨림 · 웅얼거림 · 작게 말함). 아직 계산 전이면 null(정상 상태라 404 가 아니다).
+   * 분석 실패 · 시간 초과는 null 이 아니라 result.status UNDETERMINED · reason ANALYSIS_ERROR 로 온다.
+   */
+  get(sessionId: string): Promise<VoiceMarks | null> {
+    return api.get<VoiceMarks | null>(`/sessions/${sessionId}/voice-marks`);
+  },
 };
 
 // =========================================================
@@ -408,5 +432,20 @@ export const riskAssessments = {
    */
   save(sessionId: string, abuseType: AbuseType, payload: RiskAssessmentSaveRequest): Promise<RiskAssessment> {
     return api.put<RiskAssessment>(`/sessions/${sessionId}/risk-assessments/${abuseType}`, payload);
+  },
+};
+
+// =========================================================
+// 법령 · 매뉴얼 AI 질문 (LawGuide 화면)
+// =========================================================
+
+export const lawGuide = {
+  /**
+   * 질문 하나(1~500자)에 조문 근거를 달아 답한다(API_CONTRACT 17절). 동기 응답이라 '찾는 중' 은 화면이 보인다.
+   * 꺼져 있으면 503 LAW_QA_DISABLED, 분당 한도 초과 429 RATE_LIMITED, 제한 시간 초과 504 AI_TIMEOUT,
+   * LLM 실패 502 AI_FAILED · AI_INVALID_OUTPUT, 법령 자료 없음 503 LAW_SOURCE_UNAVAILABLE. 오류 문구는 고정 문구라 그대로 보여도 된다.
+   */
+  ask(question: string): Promise<LawGuideAnswer> {
+    return api.post<LawGuideAnswer>("/law-guide/questions", { question });
   },
 };
