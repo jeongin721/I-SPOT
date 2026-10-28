@@ -10,7 +10,7 @@
 // 아동 특성 · 가정상황의 '수정 → 확인'(펼치면 고르기 단추, 접으면 고른 항목만 ✓ — 값은 noteWrite.ts 의 pickSection).
 // 디자인에 없는 '요약 승인' · '일지 승인' · '요약 수정' · '일지 수정' 단추와 AI 초안 · AI 근거 표시는 그대로 둔다(AI 생성 → 상담사
 // 확인 → 승인 흐름). 단계 이름은 10/27 디자인대로 '유형별 위험도' 다(칸 이름 '위험 신호 검토 결과' 는 디자인 그대로).
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -21,12 +21,15 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useRiskAssessments } from '../data/useRiskAssessments';
+import { useRiskSignals } from '../data/useRiskSignals';
+import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { useSessionDocuments } from '../data/useSessionDocuments';
 import { useSummaryReview } from '../data/useSummaryReview';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
-import { INITIAL_NOTE_STATE, noteWriteValues } from '../data/screens/noteWrite';
+import { INITIAL_NOTE_STATE, noteAiDraft, noteWriteValues } from '../data/screens/noteWrite';
 import { sessionCaseId } from '../data/screens/sessionDetail';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useScreenGo } from '../data/screens/useScreenGo';
@@ -133,8 +136,16 @@ export default function NoteWrite(props) {
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const summary = useSummaryReview(ids.sessionId, { enabled });
   const docs = useSessionDocuments(ids.sessionId, { enabled });
+  // 일지 '아동 진술' · '위험 신호 검토 결과' AI 초안 재료(noteWrite.ts 머리 주석).
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
+  const risk = useRiskAssessments(ids.sessionId, { enabled });
+  const aiDraft = useMemo(
+    () => noteAiDraft(summary.evidence, signals.cards, risk.loaded && !risk.loadError ? risk.rows : null),
+    [summary.evidence, signals.cards, risk.loaded, risk.loadError, risk.rows],
+  );
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, go });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, aiDraft, go });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
