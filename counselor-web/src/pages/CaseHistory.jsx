@@ -3,7 +3,8 @@
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 회차 목록은 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseDetail.ts(caseHistoryValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 누적 요약 · 주제 비중 · 회차별 세부 신호 · 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
+// 회차 카드 신호 · 회차별 세부 신호는 사례 단위 신호 이력(useSignalHistory), 누적 요약은 승인된 회차 요약 모음
+// (useApprovedSummaries — AI 생성 아님)이다. 주제 비중 · 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -15,6 +16,8 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useSignalHistory } from '../data/useSignalHistory';
+import { useApprovedSummaries } from '../data/useApprovedSummaries';
 import { caseHistoryValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -35,10 +38,12 @@ export default function CaseHistory(props) {
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
+  const history = useSignalHistory(caseId, { enabled: signedIn(session) });
+  const approved = useApprovedSummaries(history.sessions, { enabled: signedIn(session) });
   const theme = useTheme();
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
-  const v = useDC(Logic, { ...props, session, detail, signals, caseId, historyOpen, setHistoryOpen });
+  const v = useDC(Logic, { ...props, session, detail, signals, history, approved, caseId, historyOpen, setHistoryOpen });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseHistory">
@@ -102,9 +107,9 @@ export default function CaseHistory(props) {
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
               <span className="secno">1</span>
               <h2 className="h2">지금까지 상담</h2>
-              <span className="chip c-ai">{v.overviewChip}</span>
+              <span className="chip c-normal">{v.overviewChip}</span>
               <span className="src" style={{ marginLeft: 'auto' }}>
-                근거 · 확정 일지 · 검수본 · 체크인
+                {v.overviewSrc}
               </span>
             </div>
             <div
@@ -270,7 +275,8 @@ export default function CaseHistory(props) {
             >
               <span className="secno">3</span>
               <h2 className="h2">회차별 세부 신호</h2>
-              <span className="src">채택 신호 · 근거 발화 수</span>
+              <span className="chip c-ai">AI 제안</span>
+              <span className="src">관련 신호 · AI 심각도 제안(1~5)</span>
             </div>
             {v.signalNote ? (
               <p className="note" style={{ margin: '0 0 10px' }}>
@@ -278,8 +284,8 @@ export default function CaseHistory(props) {
               </p>
             ) : null}
             <div style={{ overflowX: 'auto' }}>
-              <div className="mx" style={{ minWidth: '640px' }}>
-                <span className="rl note">세부 신호</span>
+              <div className="mx" style={{ minWidth: '640px', gridTemplateColumns: v.mxCols }}>
+                <span className="rl note">유형</span>
                 {(v.cols || []).map((c, cIndex) => (
                   <Fragment key={cIndex}>
                     <A to={c.href} className="note" style={{ textDecoration: 'none', color: '#6E6A62' }}>
@@ -323,10 +329,10 @@ export default function CaseHistory(props) {
               }}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="dot" style={{ width: '18px', height: '18px', background: '#EAE7DF' }}></span>1번
+                <span className="dot" style={{ width: '18px', height: '18px', background: '#EAE7DF' }}></span>심각도 1~3
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="dot" style={{ width: '18px', height: '18px', background: '#7A776F' }}></span>2번 이상
+                <span className="dot" style={{ width: '18px', height: '18px', background: '#7A776F' }}></span>심각도 4~5
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <span
@@ -338,7 +344,7 @@ export default function CaseHistory(props) {
                     boxShadow: 'inset 0 0 0 1.5px #7A776F',
                   }}
                 ></span>
-                보류 (화자 확인 중)
+                관련 신호만(심각도 제안 없음)
               </span>
             </div>
           </section>

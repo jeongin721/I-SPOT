@@ -26,9 +26,13 @@
 // 고친 항목은 상담 일지(noteWrite.ts)의 초기면접 항목에 그대로 보인다. ② 탭의 나머지 칸은 여전히 준비 중이라 여기에도 없다.
 
 import { NOT_PROVIDED } from "../caseRows";
-import { ABUSE_TYPES, type AbuseType, type RiskLevel } from "../../api/types";
+import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseSignalsState } from "../useCaseSignals";
+import type { SignalHistoryState } from "../useSignalHistory";
+import { MAX_APPROVED, type ApprovedSummariesState } from "../useApprovedSummaries";
+import { toDateOnly } from "../time";
+import { TREND_TYPES, TYPE_SHORT, counselorTop, detectedTypeLabels, historyCell, pendingLabel } from "../signalHistoryRows";
 import type { AuthSession } from "../useAuthSession";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
@@ -50,8 +54,6 @@ interface CaseScreenInput {
 /** 위험도 칩 색(10/27 디자인: 상 c-hi · 중 c-mid · 하 c-lo). 판단 전은 c-normal. */
 const RISK_CHIP: Record<RiskLevel, string> = { HIGH: "c-hi", MEDIUM: "c-mid", LOW: "c-lo" };
 
-/** 학대 유형 짧은 이름(디자인의 칩). */
-const TYPE_SHORT: Record<AbuseType, string> = { PHYSICAL: "신체", EMOTIONAL: "정서", SEXUAL: "성", NEGLECT: "방임" };
 
 /** 키워드 칩 최대 개수. */
 const MAX_KEYWORDS = 5;
@@ -345,15 +347,46 @@ export function caseDetailValues(input: CaseDetailInput) {
   };
 }
 
+/** 세부 신호 행렬 칸 색: 4단계 이상 진하게, 1~3단계 옅게, 심각도 제안 없이 관련 신호만 있으면 테두리. */
+const DOT_STRONG = { bg: "#7A776F", fg: "#FFFFFF", ring: "none" };
+const DOT_LIGHT = { bg: "#EAE7DF", fg: "#2B2A26", ring: "none" };
+const DOT_RING = { bg: "#FFFFFF", fg: "#7A776F", ring: "inset 0 0 0 1.5px #7A776F" };
+const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
+
 /**
- * 탭 2 · 상담 이력. 누적 요약 · 주제 비중 · 세부 신호는 Backend 에 없어 빈 목록과 준비 중 안내를 준다.
+ * 탭 2 · 상담 이력.
+ *  - 회차 카드 '신호' · 회차별 세부 신호 행렬(2026-10-28): 사례 단위 signal-history API(#99, useSignalHistory).
+ *    카드는 'AI 신호 · 신체 · 정서'(관련 신호가 있는 유형) 옆에 상담원 판단이 있으면 '판단 상' 을 따로 붙인다(섞이지 않게,
+ *    민규 님 리뷰). 행렬은 줄 = 네 학대 유형 × 열 = 회차, 칸 = AI 심각도 제안(1~5).
+ *    디자인은 줄이 세부 유형 · 칸이 근거 발화 수인데, 세부 유형은 고정 목록이 아니라(2차 모델이 쓴 한글 문구) 회차 간 줄을
+ *    맞추기 어려워 네 유형으로 채운다(2026-10-28 민규 님 합의 ①). 세부 유형은 목록을 고정한 뒤 subtypes 선택 키로.
+ *    디자인의 '채택 · 보류' 는 서버에 기록이 없어 쓰지 않는다. 모두 AI 제안이라 'AI 제안' 칩을 붙인다.
+ *  - 누적 요약(2026-10-28): 승인 완료한 최근 회차들의 상담 요약 4칸(상담원 확정 문장, useApprovedSummaries)을 회차마다 한 상자로.
+ *    AI 가 새로 만든 요약이 아니라 칩 · 안내에 '승인된 회차 요약 모음 · AI 생성 아님' 이라고 밝힌다(민규 님 합의).
+ *  - 주제 비중은 AI 가 필요해 준비 중이다.
  * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
  * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
  */
 export function caseHistoryValues(
-  input: CaseScreenInput & { historyOpen?: boolean; setHistoryOpen?: (open: boolean) => void },
+  input: CaseScreenInput & {
+    historyOpen?: boolean;
+    setHistoryOpen?: (open: boolean) => void;
+    history?: SignalHistoryState;
+    approved?: ApprovedSummariesState;
+  },
 ) {
-  const { detail } = input;
+  const { detail, history } = input;
+  const historyBySession = new Map((history?.sessions ?? []).map((row) => [row.session_id, row]));
+  const sigOf = (sessionId: string) => {
+    const row = historyBySession.get(sessionId);
+    if (!row) return `신호 ${NOT_PROVIDED}`;
+    const pending = pendingLabel(row);
+    if (pending) return `AI 신호 · ${pending}`;
+    const labels = detectedTypeLabels(row);
+    const ai = labels.length > 0 ? `AI 신호 · ${labels.join(" · ")}` : "AI 관련 신호 없음";
+    const top = counselorTop(row);
+    return top ? `${ai} / 판단 ${RISK_LEVEL_LABELS[top]}` : ai;
+  };
   const open = Boolean(input.historyOpen);
   const dash = NOT_PROVIDED;
 
@@ -365,15 +398,43 @@ export function caseHistoryValues(
     kindShort: dash,
     status: row.statusLabel,
     st: TONE_CHIP[row.tone],
-    sig: `신호 ${dash}`,
+    sig: sigOf(row.id),
     href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
   }));
 
-  // 세부 신호 행렬의 열(회차). 오래된 회차부터.
-  const cols = [...detail.sessions].reverse().map((row) => ({
-    label: `${row.sessionNumber}회`,
-    href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
-  }));
+  // 세부 신호 행렬: 열은 회차(오래된 회차부터, 신호 이력을 받았으면 그 회차 전부), 줄은 네 학대 유형.
+  const historyRows = history?.loaded ? history.sessions : [];
+  const cols =
+    historyRows.length > 0
+      ? historyRows.map((row) => ({
+          label: `${row.session_number}회`,
+          href: screenHref("/SessionDetail", { caseId: input.caseId, sessionId: row.session_id }),
+        }))
+      : [...detail.sessions].reverse().map((row) => ({
+          label: `${row.sessionNumber}회`,
+          href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
+        }));
+  const mrows = historyRows.length
+    ? TREND_TYPES.map((type) => ({
+        type: TYPE_SHORT[type],
+        name: ABUSE_TYPE_LABELS[type],
+        cells: historyRows.map((row) => {
+          const cell = historyCell(row, type);
+          const tone = cell.level !== null ? (cell.level >= 4 ? DOT_STRONG : DOT_LIGHT) : cell.detected ? DOT_RING : DOT_NONE;
+          return {
+            v: cell.level !== null ? String(cell.level) : cell.detected ? "·" : pendingLabel(row) ? "" : "–",
+            tip: `${row.session_number}회차 ${ABUSE_TYPE_LABELS[type]} · ${cell.text}`,
+            ...tone,
+          };
+        }),
+      }))
+    : [];
+  let signalNote = "";
+  if (history?.error) signalNote = history.error;
+  else if (history && !history.loaded) signalNote = history.loading ? "회차별 신호를 불러오는 중…" : "";
+  else if (historyRows.length > 0 && !historyRows.some((row) => row.types.length > 0)) {
+    signalNote = "AI 분석이 끝난 회차가 없습니다.";
+  }
 
   let sessionsNote = "";
   if (detail.caseInfo && sessions.length === 0) sessionsNote = "회차가 없습니다. 녹취를 올리면 회차가 생깁니다.";
@@ -381,11 +442,34 @@ export function caseHistoryValues(
     sessionsNote = `최근 ${sessions.length}회차만 보입니다(전체 ${detail.sessionTotal}회차).`;
   }
 
+  // 누적 요약: 승인 회차마다 한 상자(위험요인 → 제목, 강점과 자원 → 아래 줄). 칸이 비면 다른 칸으로.
+  const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
+  const approved = input.approved;
+  const periods = (approved?.items ?? []).map((item) => {
+    const a = item.assessment;
+    const risks = a?.safety_risks?.text?.trim() ?? "";
+    const strengths = a?.strengths_resources?.text?.trim() ?? "";
+    const desired = a?.desired_changes?.text?.trim() ?? "";
+    const date = item.consultedAt ? ` · ${toDateOnly(item.consultedAt)}` : "";
+
+    return {
+      range: `${item.sessionNumber}회차${date}`,
+      title: risks ? `위험요인 · ${clip(risks, 80)}` : strengths ? `강점과 자원 · ${clip(strengths, 80)}` : "요약 4칸이 비어 있습니다",
+      note: risks && strengths ? `강점과 자원 · ${clip(strengths, 80)}` : desired ? `원하는 변화 · ${clip(desired, 80)}` : "",
+    };
+  });
+  let overviewNote = `주제 비중은 ${NOT_READY}입니다(AI 가 필요한 기능).`;
+  if (approved?.error) overviewNote = `${approved.error} ${overviewNote}`;
+  else if (approved?.loading) overviewNote = "승인된 회차 요약을 불러오는 중…";
+  else if (periods.length === 0 && history?.loaded) overviewNote = `승인한 회차가 아직 없습니다. ${overviewNote}`;
+  else if (approved?.truncated) overviewNote = `승인한 최근 ${MAX_APPROVED}회차만 모았습니다. ${overviewNote}`;
+
   return {
     ...caseHeaderValues(input),
-    overviewChip: `AI 분석 · ${NOT_READY}`,
-    overviewNote: `지금까지 상담의 누적 요약 · 주제 비중은 ${NOT_READY}입니다(서버에 아직 없는 기능).`,
-    periods: [] as { range: string; title: string; note: string }[],
+    overviewChip: "승인된 회차 요약 모음 · AI 생성 아님",
+    overviewSrc: "근거 · 승인된 회차의 상담 요약",
+    overviewNote,
+    periods,
     topics: [] as { label: string; width: string; pct: string }[],
     insights: [] as { title: string; text: string; src: string }[],
     sessions,
@@ -398,7 +482,9 @@ export function caseHistoryValues(
     notReady: NOT_READY,
     sessionsNote,
     cols,
-    mrows: [] as { type: string; name: string; cells: { v: string; tip: string; bg: string; fg: string; ring: string }[] }[],
-    signalNote: `회차별 세부 신호는 ${NOT_READY}입니다(AI 위험 신호를 서버가 아직 주지 않음).`,
+    mrows,
+    /** 행렬 열 수에 맞춘 격자(디자인은 8회차 고정). */
+    mxCols: `150px repeat(${Math.max(cols.length, 1)}, minmax(44px, 1fr))`,
+    signalNote,
   };
 }
