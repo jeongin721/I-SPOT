@@ -9,6 +9,7 @@
 # 여기서 하는 일이 실패해도 회차 상태(STT_REVIEW_REQUIRED · STT_CONFIRMED)에는 영향을 주지 않는다.
 # 로그에는 식별자와 예외 종류만 남기고 상담 발화 · 파일 경로는 남기지 않는다.
 
+import json
 import threading
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -33,7 +34,9 @@ EXTRACTOR = "stt.voice_marks"
 SCHEMA_VERSION = "1.0"
 
 # 분석 모듈이 쓰는 상태 · 이유 값(stt/voice_marks.md 4절 · 5절). Backend 가 실패 행을 만들 때도 같은 값을 쓴다.
+STATUS_ANALYZED = "ANALYZED"
 STATUS_UNDETERMINED = "UNDETERMINED"
+KNOWN_STATUSES = (STATUS_ANALYZED, STATUS_UNDETERMINED)
 REASON_ANALYSIS_ERROR = "ANALYSIS_ERROR"
 
 Analyzer = Callable[[str, List[Dict[str, Any]]], Dict[str, Any]]
@@ -123,13 +126,25 @@ def error_result(
 
 
 def _looks_like_result(value: Any) -> bool:
-    """모듈 결과의 최소 모양만 본다(dict · status · segments 목록). 세부 칸은 모듈 문서가 보장한다."""
+    """모듈 결과의 최소 모양만 본다(dict · 아는 status 값 · segments 목록 · JSON 으로 저장 가능).
 
-    return (
+    세부 칸은 모듈 문서가 보장한다. JSON 으로 못 바꾸는 값(set · NaN 등)이 섞이면 저장 때 깨져 행이 없어지므로
+    여기서 걸러 ANALYSIS_ERROR 행으로 남긴다.
+    """
+
+    if not (
         isinstance(value, dict)
-        and isinstance(value.get("status"), str)
+        and value.get("status") in KNOWN_STATUSES
         and isinstance(value.get("segments"), list)
-    )
+    ):
+        return False
+
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError):
+        return False
+
+    return True
 
 
 def _run_analyzer(audio_path: str, segments: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -224,22 +239,43 @@ def analyze_for_transcript(session_id: uuid.UUID, transcript_id: uuid.UUID) -> N
 
 
 def latest_for_session(db: Session, session_id: uuid.UUID) -> Optional[AudioFeature]:
-    """가장 최근 voice_marks 행. 없으면 None(아직 계산 전 — 화면은 '분석 전')."""
+    """가장 최신 전사본 version 의 voice_marks 행. 없으면 None(아직 계산 전 — 화면은 '분석 전').
+
+    저장 시각이 아니라 전사본 version 을 먼저 본다. 느린 옛 분석(v1)이 새 분석(v2, 확정 · 재STT)보다 늦게 끝나
+    저장돼도 최신 version 의 결과가 가려지지 않게 하기 위해서다. 같은 version 안에서만 나중 것을 쓴다.
+    """
 
     return db.scalar(
         select(AudioFeature)
         .where(AudioFeature.session_id == session_id, AudioFeature.extractor == EXTRACTOR)
-        .order_by(AudioFeature.created_at.desc(), AudioFeature.id.desc())
+        .order_by(
+            AudioFeature.transcript_version.desc().nulls_last(),
+            AudioFeature.created_at.desc(),
+            AudioFeature.id.desc(),
+        )
         .limit(1)
     )
 
 
-def _child_keys(segments: List[Dict[str, Any]]) -> Set[Tuple[Any, Any, Any]]:
-    return {
-        (segment.get("segment_id"), segment.get("start_ms"), segment.get("end_ms"))
-        for segment in segments
-        if isinstance(segment, dict) and segment.get("speaker") == Speaker.CHILD.value
-    }
+def _child_keys(segments: List[Dict[str, Any]]) -> Set[Tuple[str, int, int]]:
+    """아동 구간의 (segment_id, start_ms, end_ms) 집합. 모양이 어긋난 항목은 빼서 집합 비교가 깨지지 않게 한다."""
+
+    keys: Set[Tuple[str, int, int]] = set()
+
+    for segment in segments:
+        if not isinstance(segment, dict) or segment.get("speaker") != Speaker.CHILD.value:
+            continue
+
+        segment_id, start_ms, end_ms = (
+            segment.get("segment_id"),
+            segment.get("start_ms"),
+            segment.get("end_ms"),
+        )
+
+        if isinstance(segment_id, str) and type(start_ms) is int and type(end_ms) is int:
+            keys.add((segment_id, start_ms, end_ms))
+
+    return keys
 
 
 def needs_reanalysis_after_confirm(db: Session, transcript: Transcript) -> bool:
@@ -252,14 +288,23 @@ def needs_reanalysis_after_confirm(db: Session, transcript: Transcript) -> bool:
     if not is_enabled():
         return False
 
-    latest = latest_for_session(db, transcript.session_id)
+    try:
+        latest = latest_for_session(db, transcript.session_id)
 
-    if latest is None:
+        if latest is None:
+            return True
+
+        previous = latest.features.get("segments", []) if isinstance(latest.features, dict) else []
+
+        return _child_keys(previous) != _child_keys(segment_inputs(transcript))
+    except Exception as error:
+        # 확정은 이미 커밋됐다. 판정이 어떤 이유로든 깨지면 확정 응답을 막지 말고 한 번 더 돌리는 쪽을 택한다.
+        logger.warning(
+            "음성 참고 표시 재분석 판정 중 오류. session_id=%s type=%s",
+            transcript.session_id,
+            type(error).__name__,
+        )
         return True
-
-    previous = latest.features.get("segments", []) if isinstance(latest.features, dict) else []
-
-    return _child_keys(previous) != _child_keys(segment_inputs(transcript))
 
 
 def start_voice_marks_warmup() -> Optional[threading.Thread]:
