@@ -47,7 +47,8 @@ export function preBriefingValues(input: BriefingScreenInput) {
     : [];
 
   let checksNote = "";
-  if (!source) checksNote = info ? "AI 분석이 끝난 회차가 없습니다. 회차를 분석하면 확인할 사항이 생깁니다." : "";
+  if (!source && signals.truncated) checksNote = `최근 ${signals.shownCount}회차 안에 AI 분석이 끝난 회차가 없습니다.`;
+  else if (!source) checksNote = info ? "AI 분석이 끝난 회차가 없습니다. 회차를 분석하면 확인할 사항이 생깁니다." : "";
   else if (signals.analysis.error) checksNote = signals.analysis.error;
   else if (!completed) checksNote = "확인할 사항을 불러오는 중…";
   else if (checks.length === 0) checksNote = `${source.numberLabel} AI 분석에 확인 메모가 없습니다.`;

@@ -14,7 +14,10 @@
 //  - 학대 유형: 상담원이 판단을 저장한 유형, 그리고 AI 관련 신호만 있고 아직 판단하지 않은 유형은 '(확인 중)' 을 붙인다
 //    (10/27 디자인의 '방임 (확인 중)'). AI 신호를 판정처럼 보이지 않게 한다(05_RULES §1).
 //  - 주요 키워드: 그 회차 위험 관련 발화의 세부 유형 이름(예: #직접 신체 가해). 디자인의 자유 키워드(#체벌)를 만드는
-//    서버 값은 없어 새로 생성하지 않는다.
+//    서버 값은 없어 새로 생성하지 않는다. 키워드마다 첫 근거 위치('N회차 01:08 아동')를 붙이고 누르면 STT 검수의 그 발화로
+//    간다(README 원칙 3 '모든 제안에는 근거 위치', 2026-10-28 민규 리뷰).
+//  - 회차 목록은 최신 100개까지만 온다(useCaseDetail). 그 안에 분석 끝난 회차가 없는데 목록이 잘렸으면 '최근 N회차 안에'
+//    라고 밝힌다(사례 단위 signal-history API 가 생기면 그쪽을 쓴다).
 //  - '(확인 중)' 유형과 주요 키워드는 AI 결과라 그 줄 옆에 'AI 제안' 칩과 안내를 붙인다(README 원칙 2 — 상담원 판단인
 //    '상담사 지정' 과 섞여 보이지 않게, 2026-10-28 민규 리뷰).
 //
@@ -33,6 +36,7 @@ import { COLUMN_OF, PROCESS_COLUMNS, continueLink } from "./flow";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
+import { segmentHref } from "./sttReview";
 import { uploadTargets } from "./uploadModal";
 
 interface CaseScreenInput {
@@ -52,12 +56,28 @@ const TYPE_SHORT: Record<AbuseType, string> = { PHYSICAL: "신체", EMOTIONAL: "
 /** 키워드 칩 최대 개수. */
 const MAX_KEYWORDS = 5;
 
+/** 주요 키워드 칩 하나. where · href 는 첫 근거 발화(없으면 빈 값 · null). */
+export interface RiskKeyword {
+  text: string;
+  where: string;
+  href: string | null;
+}
+
 /** 주요 위험 요인 카드 값. 분석이 끝난 회차가 없거나 값을 받기 전이면 '—'. */
 export function riskCardValues(signals: CaseSignalsState | undefined) {
   const dash = NOT_PROVIDED;
+  const none: RiskKeyword[] = [{ text: dash, where: "", href: null }];
 
   if (!signals || !signals.session) {
-    return { riskBy: dash, abuseTypes: [dash], keywords: [dash], riskNote: "", typesAi: false, keywordsAi: false, aiNote: "" };
+    return {
+      riskBy: signals?.truncated ? `최근 ${signals.shownCount}회차 안에 분석 끝난 회차가 없습니다` : dash,
+      abuseTypes: [dash],
+      keywords: none,
+      riskNote: "",
+      typesAi: false,
+      keywordsAi: false,
+      aiNote: "",
+    };
   }
 
   const { session, risk } = signals;
@@ -71,10 +91,17 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
     return [];
   });
 
-  const keywords: string[] = [];
+  const ids = { caseId: session.caseId, sessionId: session.id };
+  const keywords: RiskKeyword[] = [];
   for (const card of signals.signals.cards) {
     const tag = card.subtype ? `#${card.subtype}` : "";
-    if (tag && !keywords.includes(tag)) keywords.push(tag);
+    if (!tag || keywords.some((k) => k.text === tag)) continue;
+    const first = card.evidence[0] ?? null;
+    keywords.push({
+      text: tag,
+      where: card.positionLabel ? `${session.numberLabel} ${card.positionLabel.split(" · ")[0]}` : "",
+      href: first ? segmentHref(ids, first.segmentId) : null,
+    });
     if (keywords.length >= MAX_KEYWORDS) break;
   }
 
@@ -91,7 +118,7 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
   return {
     riskBy,
     abuseTypes: abuseTypes.length > 0 ? abuseTypes : [dash],
-    keywords: keywords.length > 0 ? keywords : [dash],
+    keywords: keywords.length > 0 ? keywords : none,
     riskNote,
     typesAi,
     keywordsAi,
