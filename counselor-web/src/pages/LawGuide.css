@@ -121,7 +121,7 @@
 .pg-LawGuide .lg-chip:hover {
   border-color: #2b2a26;
 }
-/* 답을 기다리는 동안 예시 질문은 꺼 둔다(한 번에 하나만 묻는다). */
+/* 질의 API 가 생기기 전까지 예시 질문은 꺼 둔다(준비 중). */
 .pg-LawGuide .lg-chip:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -137,7 +137,7 @@
   flex: 1;
   min-width: 0;
 }
-.pg-LawGuide .lg-ask .btn:disabled {
+.pg-LawGuide .lg-ask .inp:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

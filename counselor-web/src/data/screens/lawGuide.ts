@@ -7,8 +7,8 @@
 //    펼침(open) · 분류(filter)는 화면 상태다. '매뉴얼 목차' 를 누르면 목차 항목을 펼치고 그 줄로 한 번 스크롤한다(scrollTo).
 //  - '원문보기' · 원문 자료 링크는 국가법령정보센터(www.law.go.kr)로 간다.
 
-import type { LawSource, ManualSource } from "../../api/types";
-import { QUESTION_MAX, type LawGuideState } from "../useLawGuide";
+import type { LawSource } from "../../api/types";
+import type { LawGuideState } from "../useLawGuide";
 import { LAW_GUIDE_REFS, LAW_SOURCES, type LawGuideRef, type LawKey } from "./lawGuideRefs";
 
 export type LawGuideFilter = "all" | "step" | "cw" | "cp";
@@ -70,18 +70,10 @@ export function lawLink(pair: [LawKey, string]): { label: string; url: string } 
   return { label: `${name} ${pair[1]}`, url };
 }
 
-/** 근거 조문 칩. 서버가 준 조문 링크가 없으면 법령 전문 링크, 그것도 모르면 링크 없는 칩. */
-export function lawSourceChip(source: LawSource): { key: string; label: string; title: string; url: string | null } {
+/** 근거 조문 칩(디자인의 '아동복지법 제17조 ↗'). 서버가 준 조문 링크가 없으면 국가법령정보센터의 그 법령 전문으로 간다. */
+export function lawSourceChip(source: LawSource): { key: string; label: string; url: string } {
   const label = `${source.law_name} ${source.article}`.trim();
-  // 서버의 법령 이름은 정식 이름(아동학대범죄의 처벌 등에 관한 특례법)일 수 있다.
-  const name = source.law_name.replace(/\s+/g, "");
-  const fallback = name.includes("아동학대범죄") ? LAW_SOURCES.cp[1] : name === "아동복지법" ? LAW_SOURCES.cw[1] : null;
-  return { key: label, label, title: source.title ? `${label}(${source.title})` : label, url: source.portal_url || fallback };
-}
-
-/** 매뉴얼 근거 칩(지금은 매뉴얼을 AI 에 보내지 않아 보통 비어 있다). */
-export function manualSourceChip(source: ManualSource): { key: string; label: string } {
-  return { key: `${source.id}-${source.page}`, label: `매뉴얼 p.${source.page}` };
+  return { key: label, label, url: source.portal_url || `https://www.law.go.kr/법령/${source.law_name.replace(/\s+/g, "")}` };
 }
 
 /** 분류 — all 전체 · step 업무 단계(kind 없음) · cw · cp 그 법령의 조문 항목만. */
@@ -131,19 +123,18 @@ export function lawGuideValues(input: LawGuideInput) {
 
   const messages = chat.messages.map((message) => {
     const laws = message.laws.map(lawSourceChip);
-    const manual = message.manual.map(manualSourceChip);
+    // 디자인의 매뉴얼 근거 단추(누르면 아래 참고사항의 매뉴얼 목차를 편다). 매뉴얼을 AI 에 보내지 않아(#107) 보통 비어 있다.
+    const refs = message.manual.map((source) => ({ key: `${source.id}-${source.page}`, label: `매뉴얼 p.${source.page}`, open: openToc }));
     return {
       key: message.id,
       cls: message.role === "user" ? "lg-u" : "lg-b",
       text: message.text,
       error: message.error,
+      refs,
       laws,
-      manual,
-      hasRefs: laws.length + manual.length > 0,
+      hasRefs: refs.length + laws.length > 0,
     };
   });
-
-  const canSend = !chat.pending && state.draft.trim().length > 0;
 
   return {
     title: "법령 · 매뉴얼",
@@ -157,17 +148,15 @@ export function lawGuideValues(input: LawGuideInput) {
       intro: "안녕하세요. 아동복지법 · 아동학대처벌법을 바탕으로 답해 드리는 자리예요.",
       messages,
       pending: chat.pending,
-      pendingText: "법령에서 찾는 중",
+      pendingText: "매뉴얼과 법령에서 찾는 중",
       reset: () => {
         chat.reset();
         setState({ draft: "" });
       },
       suggs: SUGGESTED_QUESTIONS.map((label) => ({ label, ask: () => ask(label) })),
       draft: state.draft,
-      maxLength: QUESTION_MAX,
       setDraft: (value: string) => setState({ draft: value }),
       submit: () => ask(state.draft),
-      canSend,
       placeholder: "예: 응급조치 기간은 얼마나 돼요?",
       note: "AI 답변은 참고용입니다. 최종 판단은 매뉴얼 원문과 법령을 확인해 주세요.",
     },
