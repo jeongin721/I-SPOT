@@ -133,6 +133,17 @@ class Settings(BaseSettings):
     STT_FUNCTION: str = "transcribe"
     STT_TIMEOUT_SECONDS: float = 600.0
 
+    # 구간별 음성 참고 표시(stt/voice_marks, 정담원 님). STT 결과를 저장한 직후 같은 백그라운드 작업에서 부르고
+    # 결과를 audio_features 에 새 행(extractor "stt.voice_marks")으로 저장한다. 원문 확정 때 아동 구간이 바뀌었으면
+    # 한 번 더 돌린다(API_CONTRACT 16절 · I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md). 참고 표시일 뿐 판정이 아니다.
+    # off   : 아무것도 하지 않는다(행도 없다)
+    # module: stt.voice_marks.analyze_voice_marks 호출(librosa · numba · soundfile — requirements-stt.txt, 이미지는 WITH_STT=1)
+    VOICE_MARKS_PROVIDER: Literal["off", "module"] = "off"
+    VOICE_MARKS_MODULE: str = "stt.voice_marks"
+    VOICE_MARKS_FUNCTION: str = "analyze_voice_marks"
+    # 한 번의 제한 시간. 넘기면 결과 없이 끝내지 않고 UNDETERMINED · ANALYSIS_ERROR 행을 남긴다. 회차 상태엔 영향 없다.
+    VOICE_MARKS_TIMEOUT_SECONDS: float = 600.0
+
     # mock     : Transcript 에서 파생한 합성 요약 반환
     # pipeline : ai/services/analysis_pipeline.run_analysis_pipeline 호출
     # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)

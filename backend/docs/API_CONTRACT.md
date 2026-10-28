@@ -1578,3 +1578,83 @@ AI 영향
 Test 영향
 권장 변경안
 ```
+
+---
+
+## 16. Voice Marks (구간별 음성 참고 표시)
+
+아동 발화 구간에서 떨림 · 웅얼거림 · 작은 소리가 **그 녹음 안에서** 두드러지는 구간을 알려 주는 참고 표시다
+(정담원 님 `stt/voice_marks`, 제안서 `I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md`). 상담사가 다시 들어 볼 구간을 찾도록
+돕는 정보이며 **학대 · 위험을 판정하지 않는다.** 기준값은 모두 합성 음성으로 정한 잠정값이다(`stt/voice_marks.md` 7절).
+
+### 언제 계산하나
+
+- STT 결과를 저장한 직후 같은 백그라운드 작업에서 `analyze_voice_marks(audio_path, segments)` 를 부르고, 결과를
+  `audio_features` 표에 **새 행**(`extractor = "stt.voice_marks"`, `schema_version = "1.0"`, `features` = 결과 dict 그대로)으로
+  저장한다. 행에는 `audio_file_id` · `transcript_id` · `transcript_version` 이 있다. 기존 행(`ispot_audio_features`)과
+  전사본(7절)의 `segments` 는 건드리지 않는다.
+- 원문 확정(`POST …/transcript/confirm`) 때 확정본의 아동 구간(`segment_id` · `start_ms` · `end_ms`)이 마지막 분석 때와
+  다르면 백그라운드로 한 번 더 돌려 새 행으로 저장한다(STT 직후엔 화자가 `UNKNOWN` 이라 아동 구간이 0개였다가 검수에서
+  정해지는 경우). 행은 쌓고, 조회는 **가장 최신 전사본 version 의 행**(같은 version 이면 나중 것)이다 — 느린 옛 분석이
+  새 분석보다 늦게 저장돼도 새 version 의 결과를 가리지 않는다. 같은 회차를 다시 STT 해도 쌓는다.
+- `VOICE_MARKS_PROVIDER=off`(기본)면 아무것도 하지 않는다(행도 없다). `module` 이면 `stt.voice_marks` 를 부른다
+  (librosa · numba · soundfile — `requirements-stt.txt`, 이미지는 `WITH_STT=1`). 서버 시작 때 `warm_up()` 을
+  백그라운드로 한 번 부른다(numba 컴파일 지연 방지, 캐시 자리는 `NUMBA_CACHE_DIR`).
+- 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
+  안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
+  그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
+- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
+  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
+  재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
+
+### GET /api/v1/sessions/{session_id}/voice-marks
+
+가장 최신 전사본 version 의 행 하나(같은 version 이면 나중 것). 아직 계산 전이면 `200` 에 `{"data": null}` 이다(정상 상태라 `404` 를 쓰지 않는다). 권한은 사례 접근 규칙과 같다.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "audio_file_id": "uuid",
+    "transcript_id": "uuid",
+    "transcript_version": 1,
+    "extractor": "stt.voice_marks",
+    "schema_version": "1.0",
+    "created_at": "2026-10-28T10:00:00Z",
+    "result": {
+      "schema_version": "1.0",
+      "analyzer": "stt.voice_marks",
+      "analyzer_version": "0.1.0",
+      "status": "ANALYZED",
+      "reason": null,
+      "reference": { "child_segments_total": 30, "child_segments_used": 28, "min_required": 8, "note": "..." },
+      "thresholds": { "tremor_z_above": 1.6066, "mumble_z_below": -1.619, "soft_z_below": -2.5, "basis": "..." },
+      "segments": [
+        { "segment_id": "seg_003", "speaker": "CHILD", "start_ms": 12000, "end_ms": 15200,
+          "status": "ANALYZED", "reason": null,
+          "tremor": { "value": 21.4, "unit": "cent", "z": 0.3, "flag": false },
+          "mumble": { "value": 1850.0, "unit": "Hz", "z": -1.9, "flag": true },
+          "soft": { "value": -38.2, "unit": "LUFS", "z": -0.2, "flag": false },
+          "flag_any": true },
+        { "segment_id": "seg_001", "speaker": "COUNSELOR", "start_ms": 0, "end_ms": 4000,
+          "status": "UNDETERMINED", "reason": "NOT_CHILD_SEGMENT",
+          "tremor": null, "mumble": null, "soft": null, "flag_any": null }
+      ]
+    }
+  }
+}
+```
+
+- `result` 는 분석 모듈이 돌려준 dict 그대로다(모양 · `reason` 목록 · 지표 뜻은 `stt/voice_marks.md` 3~5절). Backend 는 그 안을
+  다시 해석하지 않는다.
+- `result.status` 는 `ANALYZED` | `UNDETERMINED`(최상위 · 구간 모두). **"탐지 없음"** 은 `ANALYZED` 이면서 모든 `flag` 가
+  `false` 인 경우이고 `UNDETERMINED`(분석하지 못함)와 다르다.
+- `result.segments[]` 는 전사본 순서 그대로이며 `segment_id` 로 전사본 구간과 잇는다. `speaker` 는 분석 당시 값이라 참고만 하고,
+  화면은 최신 전사본의 화자를 쓴다.
+- 기준값은 `result.thresholds` 에서 읽는다(화면 코드에 숫자를 적지 않는다). Backend 실패 행은 기준값이 `null` 이다.
+- 화면 표현: "음성 참고 표시" · "다시 들어 볼 구간" · "상담사 검토 필요" · "분석 불가(이유)". `UNDETERMINED` 는 '탐지 없음' 과
+  다르게 보여 주고 `reason` 은 사람 말로 바꾼다. 아이콘 + 글자로 표시한다(색만으로 구분하지 않음). 0~1 점수 · % · 위험도 같은
+  값은 만들지 않는다. 쓰지 않는 문구: "학대 확정" · "위험 확정" · "AI 판정" · "자동 결정".
+- 한계(합성 음성 기준 · 효과 없는 음성에서도 약 10% 표시 · 떨림은 놓치는 경우가 많음)를 화면 안내문에 함께 적는다
+  (`I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md` §1-4).
