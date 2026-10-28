@@ -185,6 +185,25 @@ class RiskLevel(str, Enum):
     LOW = "LOW"        # 하
 
 
+class FollowupQuestionKind(str, Enum):
+    """
+    추가 질문 종류(2026-10-28, PROPOSAL_ai_suggestions_case_context.md §4 · §7 답 4 · 5).
+
+    OPEN 은 아동이 한 말을 이어받는 열린 질문이다. BANK 는 검증된 질문 은행의 질문 자리로,
+    은행이 생길 때까지 AI 가 내지 않는다(bank_code 와 함께 예약만 해 둔다).
+    """
+
+    OPEN = "OPEN"
+    BANK = "BANK"
+
+
+class FollowupQuestionSource(str, Enum):
+    """승인한 추가 질문이 어디서 왔는가. AI 초안을 고쳐 승인해도 AI 다."""
+
+    AI = "AI"
+    COUNSELOR = "COUNSELOR"
+
+
 class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
@@ -214,6 +233,8 @@ class AuditAction(str, Enum):
     # 법령 · 매뉴얼 AI 질문(17절, 2026-10-28). detail 에는 걸린 시간 · provider · 모델 · 근거 수만 남긴다(질문 원문은 넣지 않는다).
     # 실패는 status=FAILED + error_code 다.
     LAW_QA_ASKED = "LAW_QA_ASKED"
+    # 승인한 추가 질문 목록 저장(18절, 2026-10-28). detail 에는 질문 수 · 출처별 수만 남긴다(질문 원문은 넣지 않는다).
+    FOLLOWUP_QUESTIONS_UPDATED = "FOLLOWUP_QUESTIONS_UPDATED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

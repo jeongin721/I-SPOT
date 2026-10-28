@@ -124,6 +124,20 @@ class FollowupCheckPoint(BaseModel):
     segment_ids: List[str] = Field(default_factory=list)
 
 
+class FollowupQuestionDraft(BaseModel):
+    """
+    AI 추가 질문 초안 하나(2026-10-28 선택 필드, API_CONTRACT 18절). 상담사가 승인해야 질문 목록에 들어간다.
+
+    kind 는 OPEN(열린 질문) · BANK(질문 은행, 예약). 그 밖의 값이면 AIAnalysisResult 가 그 질문만 버린다.
+    """
+
+    text: str
+    kind: Literal["OPEN", "BANK"] = "OPEN"
+    segment_ids: List[str] = Field(default_factory=list)
+    reason: str = ""
+    bank_code: Optional[str] = None
+
+
 class AIAnalysisResult(BaseModel):
     """
     AI 담당의 Structured JSON Contract.
@@ -144,6 +158,24 @@ class AIAnalysisResult(BaseModel):
     protective_factors: List[ProtectiveFactor] = Field(default_factory=list)
     session_change_notes: List[SessionChangeNote] = Field(default_factory=list)
     followup_check_points: List[FollowupCheckPoint] = Field(default_factory=list)
+    followup_questions: List[FollowupQuestionDraft] = Field(default_factory=list)
+
+    @field_validator("followup_questions", mode="before")
+    @classmethod
+    def _drop_unknown_question_kinds(cls, value: Any) -> Any:
+        # 모르는 종류(kind) · 문장 없는 질문은 결과 전체를 실패시키지 않고 그 질문만 버린다(§7 답 5).
+        # kind 가 없으면 OPEN 으로 본다.
+        if not isinstance(value, list):
+            return value
+
+        return [
+            item
+            for item in value
+            if isinstance(item, dict)
+            and item.get("kind", "OPEN") in ("OPEN", "BANK")
+            and isinstance(item.get("text"), str)
+            and item["text"].strip()
+        ]
 
 
 class SummaryEvidenceItem(BaseModel):
