@@ -69,7 +69,7 @@ STT 검수 화면에 '목소리 신호' 칸은 자리만 있고(`counselor-web/s
 - 행에 `audio_file_id` · `transcript_id` · `transcript_version` 을 채우고, 한 오디오에 이 `extractor` 의 행이 여러 개일 수 있게 합니다(§7-0).
 - 조회 API 를 추가합니다(§7-2). 상담사 화면의 구간 재생을 위한 음성 파일 API(`GET /sessions/{id}/audio/file`, Range 지원)는 Backend 가 따로 PR 로 올립니다.
 - 의존성(scipy · librosa · numba · soundfile)을 `backend/requirements-stt.txt` 에 넣고, Docker 이미지에 `NUMBA_CACHE_DIR` 를 지정하고, 서버 시작 때 `warm_up()` 을 부릅니다.
-- 처리 시간은 측정한 곳마다 다릅니다(담이 PC 오디오 1분당 약 1.3~1.6초, Backend PC 약 5초, 아동 구간 비율에 따라 다름). Backend 쪽 시간 제한(10분)을 넘기거나 예외가 나면 행을 남기지 않는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장하고, 회차 상태에는 영향을 주지 않습니다(Backend 결정, §7-0).
+- 처리 시간은 측정한 곳마다 다릅니다(실험 PC 오디오 1분당 약 1.3~1.6초, Backend PC 약 5초, 아동 구간 비율에 따라 다름). Backend 쪽 시간 제한(10분)을 넘기거나 예외가 나면 행을 남기지 않는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장하고, 회차 상태에는 영향을 주지 않습니다(Backend 결정, §7-0).
 - m4a · mp4 · webm 은 ffmpeg 가 없으면 `DECODE_FAILED` 입니다. **이번에는 ffmpeg 를 넣지 않습니다.** 시연은 wav 업로드로 하고, 브라우저 녹음(webm)은 '분석 불가(형식)' 으로 보입니다. 다만 상담사 웹의 녹음 기능이 webm 이라 실제 사용에서는 녹음 회차 전부가 분석 불가가 됩니다. 시연 뒤에 ① 이미지에 ffmpeg 를 넣고 읽기 대체 경로를 두는 방법과 ② 업로드 때 Backend 가 wav 로 바꿔 저장하는 방법 중 하나를 팀에서 정합니다(§8).
 - mp3 는 값이 조금 다를 수 있어 다음 PR 에서 읽는 방식을 고칩니다.
 
