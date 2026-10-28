@@ -198,7 +198,9 @@ const MAX_DRAFT_QUOTES = 8;
 
 /**
  * 이 회차 분석 값 → 일지 두 칸의 AI 초안.
- *  - statement: 요약 근거(summary_evidence, 서버가 아동 발화만 남긴다)의 원문을 위치 순으로 '· 00:41 "원문"'.
+ *  - statement: 요약 근거(summary_evidence)의 원문을 위치 순으로 '· 00:41 "원문"'. 정상 생성 경로는 아동 발화만 남기지만
+ *    저장된 결과에 다른 화자가 섞여 있을 수 있어 **아동(CHILD) 발화만** 쓴다 — 상담원 질문 · 화자 미확인 발화가 아동 말처럼
+ *    일지에 들어가지 않게(2026-10-28 민규 #95 교차검증).
  *  - signals: 위험 관련 발화 카드를 유형별로 묶어 '· 신체학대 — 직접 신체 가해(00:41 아동) · 상담원 판단 중'.
  * 원문을 못 찾은 근거 · 유형을 모르는 카드는 뺀다(번호만 있는 줄을 일지에 넣지 않는다).
  * riskRows 가 null 이면(상담원 판단을 아직 못 받음) signals 는 비운다 — '판단 전' 으로 잘못 적지 않게.
@@ -212,7 +214,7 @@ export function noteAiDraft(
 
   for (const item of evidence) {
     for (const segment of item.segments) {
-      if (!segment.found || quotes.has(segment.segmentId)) continue;
+      if (!segment.found || segment.speaker !== "CHILD" || quotes.has(segment.segmentId)) continue;
       quotes.set(segment.segmentId, { at: segment.startMs, line: `· ${segment.startLabel} "${segment.text}"` });
     }
   }
