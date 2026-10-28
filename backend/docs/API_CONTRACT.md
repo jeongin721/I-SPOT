@@ -1524,6 +1524,10 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
+| `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_FAILED` | 504 / 502 / 502 | 법령 · 매뉴얼 AI 질문(16절)에서만 HTTP 상태로 온다(동기 응답) |
+| `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 16절) |
+| `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(16절) |
+| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(16절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
@@ -1578,3 +1582,72 @@ AI 영향
 Test 영향
 권장 변경안
 ```
+
+## 16. Law Guide (법령 · 매뉴얼 AI 질문)
+
+LawGuide 화면 위쪽의 **AI 질문 채팅**이 쓴다(2026-10-28 추가, 설계 `I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md`, AI 모듈 `ai/modeling/abuse/legal_manual_qa_llm.py`).
+상담 회차 · 사례와 묶이지 않는 독립 질의이고, 로그인한 사용자(COUNSELOR · ADMIN)면 누구나 부른다. **질문 · 답변은 서버에 저장하지 않는다**
+(자유 입력에 개인정보가 섞일 수 있어서). 감사 기록(`LAW_QA_ASKED`)에는 사용자 · 시각 · 성공/실패 코드 · 걸린 시간 · provider · 모델 · 근거 수만 남는다.
+
+### POST /api/v1/law-guide/questions → 200
+
+**1.4 의 예외로 동기 200** 이다(202 + polling 아님): 붙일 회차가 없고 저장하지도 않으며, 한 번에 걸리는 시간이 분석보다 훨씬 짧다.
+화면은 '찾는 중' 을 보이고 응답을 기다린다. 서버 제한 시간은 `LAW_QA_TIMEOUT_SECONDS`(기본 60초).
+
+Request
+
+```json
+{ "question": "응급조치 기간은 얼마나 돼요?" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `question` | 필수. 앞뒤 공백을 뺀 뒤 1~500자. 비거나 넘으면 `422 VALIDATION_ERROR`. 한 번에 질문 하나(대화 맥락 없음 — '새 대화' 는 화면의 말풍선만 지운다) |
+
+Response
+
+```json
+{
+  "data": {
+    "answer": "응급조치는 … 72시간을 넘을 수 없습니다(아동학대범죄의 처벌 등에 관한 특례법 제12조). …\n\n※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 직접 확인하고, 최종 판단은 상담사가 내려야 합니다.",
+    "sources": {
+      "laws": [
+        { "law_name": "아동학대범죄의 처벌 등에 관한 특례법", "article": "제12조", "title": "피해아동 등에 대한 응급조치",
+          "content": "① 제11조제1항에 따라 현장에 출동하거나 …", "effective_date": "20261002",
+          "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=…&joNo=0012&joBrNo=00" }
+      ],
+      "manual": []
+    },
+    "model": "gpt-5.6-luna",
+    "answered_at": "2026-10-28T03:12:45Z"
+  }
+}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `answer` | 답변 본문. 비어 있지 않다(빈 답은 `502 AI_INVALID_OUTPUT`). 끝에 모듈이 붙인 참고용 안내 문장이 있다 — **참고용이며 판정이 아니다**(05_RULES §1) |
+| `sources.laws[]` | 답변이 근거로 쓴 조문. **실제 조문 목록과 대조해 통과한 것만**(법령명 + 조문번호가 둘 다 맞아야 함). 없으면 `[]`. `effective_date` 는 조문시행일자(자료에 없으면 `null`), `portal_url` 은 국가법령정보센터 조문 주소(없으면 `null`) |
+| `sources.manual[]` | 답변이 근거로 쓴 매뉴얼 자료 `{ id, title, page }`(`page` 는 문자열, 모르면 `"?"`). 매뉴얼 사진은 기관 대외비라 **기본으로 첨부하지 않으므로 늘 `[]`** 다(모듈 설정 `MANUAL_QA_ATTACH_IMAGES` 를 켰을 때만 채워진다). 내용이 그 페이지에 있다는 보장은 아니다 — 화면은 조문 근거와 구분해 '참고 자료' 로 보인다 |
+| `model` | 답한 모델 이름(`mock` 이면 `"mock"`) |
+| `answered_at` | 서버가 답을 만든 시각(UTC) |
+
+제안서 §2 의 `law_versions` · `notice` 는 넣지 않는다(모듈이 주지 않는 값 · 안내는 `answer` 끝에 이미 있음). 필요해지면 선택 키로 더한다.
+
+오류(코드 · 문구는 고정이고 질문 원문 · 예외 문구를 싣지 않는다)
+
+| code | status | 언제 |
+|---|---|---|
+| `VALIDATION_ERROR` | 422 | 질문이 비었거나 500자 초과 |
+| `LAW_QA_DISABLED` | 503 | `LAW_QA_PROVIDER=off` |
+| `RATE_LIMITED` | 429 | 같은 사용자가 1분 안에 `LAW_QA_RATE_LIMIT_PER_MINUTE`(기본 6)회를 넘김 |
+| `AI_TIMEOUT` | 504 | `LAW_QA_TIMEOUT_SECONDS` 안에 답이 안 옴, 또는 동시 실행 자리(`LAW_QA_MAX_CONCURRENCY`, 기본 2)를 그 시간 안에 못 얻음 |
+| `AI_INVALID_OUTPUT` | 502 | LLM 응답에 답변이 없음 |
+| `AI_FAILED` | 502 | 그 밖의 LLM 호출 실패(OpenAI 인증 · 연결 등 — 종류를 나누지 않는다), 모듈을 불러올 수 없음 |
+| `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패 |
+| `UNAUTHORIZED` · `PASSWORD_CHANGE_REQUIRED` 등 | 401 · 403 | 다른 API 와 같음 |
+
+서버 설정(`backend/.env.example`): `LAW_QA_PROVIDER`(off · mock · modeling, 기본 mock) · `LAW_QA_TIMEOUT_SECONDS` · `LAW_QA_RATE_LIMIT_PER_MINUTE` · `LAW_QA_MAX_CONCURRENCY` ·
+`LAW_QA_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 modeling 은 이 값이 true 일 때만 뜬다, 분석 modeling 과 같은 방식) · `LAW_API_OC` · `LAW_CACHE_DIR`.
+`LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다(실패해도 서버는 뜨고 첫 질문 때 다시 시도).
+한도는 서버 메모리 기준(서버 1대 전제)이다.

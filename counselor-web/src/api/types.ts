@@ -904,3 +904,40 @@ export interface RiskAssessmentSaveRequest {
   /** 1000자 이하. 빼거나 null · 공백만이면 null 로 저장. */
   reason?: string | null;
 }
+
+/**
+ * 법령 · 매뉴얼 AI 질문(POST /law-guide/questions, API_CONTRACT 16절, 2026-10-28). 질문 하나(앞뒤 공백 뺀 뒤 1~500자).
+ * 답변은 참고용이고 판정이 아니다(05_RULES §1). 서버는 질문 · 답변을 저장하지 않는다.
+ */
+export interface LawGuideQuestionRequest {
+  question: string;
+}
+
+/** 답변이 근거로 쓴 조문. 실제 조문 목록과 대조해 통과한 것만 온다. */
+export interface LawSource {
+  law_name: string;
+  article: string;
+  title: string;
+  content: string;
+  /** 조문시행일자("20261002" 꼴). 자료에 없으면 null. */
+  effective_date: string | null;
+  /** 국가법령정보센터 조문 주소. 없으면 null. */
+  portal_url: string | null;
+}
+
+/** 답변이 근거로 쓴 매뉴얼 자료. 매뉴얼 사진은 기관 대외비라 기본으로 첨부하지 않으므로 보통 빈 배열이다. */
+export interface ManualSource {
+  id: string;
+  title: string;
+  /** 쪽수 문자열. 모르면 "?". */
+  page: string;
+}
+
+export interface LawGuideAnswer {
+  /** 끝에 모듈이 붙인 참고용 안내 문장이 있다. */
+  answer: string;
+  sources: { laws: LawSource[]; manual: ManualSource[] };
+  /** 답한 모델 이름(mock 이면 "mock"). */
+  model: string;
+  answered_at: string;
+}

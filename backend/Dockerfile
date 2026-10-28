@@ -46,6 +46,9 @@ COPY stt/ /stt/
 # law/ 는 STT 검수 '관련 조문'(ai/modeling/abuse/legal_reference_adapter.py)이 쓴다. 법령 본문 캐시(law_cache/)는
 # 저장소에 없어 이미지에 넣지 않고 띄울 때 /law_cache 에 붙인다(deploy/web-deploy.sh, law/config.py 의 기본 자리).
 COPY law/ /law/
+# 법령 · 매뉴얼 AI 질문(LAW_QA_PROVIDER=modeling)이 manual/config · manifest 를 읽는다. 매뉴얼 사진 폴더는 넣지 않는다(기관 대외비,
+# MANUAL_QA_ATTACH_IMAGES 기본 끔 — 사진 없이 법령만으로 답한다).
+COPY manual/ /manual/
 COPY speaker_role_runtime.py /speaker_role_runtime.py
 COPY backend/ .
 

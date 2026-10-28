@@ -1,6 +1,6 @@
 # [제안] 법령 · 매뉴얼 AI 질문 API (LawGuide 화면)
 
-> `02_ARCHITECTURE.md` §8 Contract 변경 규칙에 따른 제안서입니다. **아직 확정 전입니다.**
+> `02_ARCHITECTURE.md` §8 Contract 변경 규칙에 따른 제안서입니다. **합의 · 구현(2026-10-28, Backend 최민규 — §9 구현 메모 · API_CONTRACT 16절).**
 > 화면은 `frontend261021` 브랜치 `counselor-design/screens/LawGuide.dc.html`(2026-10-27 판),
 > AI 쪽은 PR #83(`feat/law-qa`, `fdfbf8f` 기준)의 `ai/modeling/abuse/legal_manual_qa_llm.py` 를 기준으로 썼습니다.
 >
@@ -235,3 +235,11 @@ backend/app/
 | 2 | Backend · 팀장님 | 운영 잠금(§5-1)을 분석과 같은 방식으로 둘까요? |
 | 3 | 팀장님 · Frontend(다솔 님) | 매뉴얼 범위 차이(§5-2) — 추천 질문을 바꿀까요, 매뉴얼 2~4장을 먼저 넣을까요? 촬영본이 디자인과 같은 책 · 판인가요? |
 | 4 | Backend | 사용자당 호출 한도 · 동시 실행 제한 기본값(분당 6회 · 2건)이 괜찮을까요? |
+
+## 9. 구현 메모 (최민규, 2026-10-28 — PR feat/law-guide-api)
+
+§8 답: **1** 동기 200(1.4 예외) · **2** 운영 잠금은 분석과 같은 방식(`LAW_QA_ALLOW_IN_PRODUCTION`) · **4** 기본값 분당 6회 · 동시 2건 그대로. **3** 은 2026-10-28 결정으로 매뉴얼 사진을 외부로 보내지 않기로 해(기관 대외비, #107 `MANUAL_QA_ATTACH_IMAGES` 기본 끔) 예시 질문을 공개 법령으로 답할 수 있는 것으로 바꿨다(#106).
+
+§2 응답과 다른 점: `sources.manual[]` 은 유지하되 첨부가 꺼져 있으면 늘 `[]` 이고, `law_versions` · `notice` 는 넣지 않았다(모듈이 주지 않는 값 · 안내는 `answer` 끝에 이미 있음). 필요하면 선택 키로 더한다. 모듈 함수 이름은 `answer_legal_manual_question`(파일 `legal_manual_qa_llm.py`)이다.
+
+§5-5 배포: Dockerfile 에 `COPY manual/ /manual/` 을 더했다(설정 모듈). 매뉴얼 사진 폴더는 마운트하지 않는다. `LAW_API_OC` · `LAW_CACHE_DIR` 는 Backend 설정에 두고 서버가 process 환경으로 넘긴다. `LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다. 자세한 절차는 `deploy/README.md` '법령 · 매뉴얼 AI 질문 켜기'. 정식 문서는 `backend/docs/API_CONTRACT.md` 16절.

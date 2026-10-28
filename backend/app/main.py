@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.adapters.ai_adapter import start_ai_preload
+from app.adapters.law_qa_adapter import start_law_qa_preload
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
@@ -63,6 +64,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # AI_PROVIDER=modeling 이면 모델을 백그라운드로 미리 올린다. 기다리지 않으므로 /health 는 바로
     # 응답하고, 실패해도 서버는 뜬다(ai_adapter.start_ai_preload). 다른 provider 는 아무것도 하지 않는다.
     app.state.ai_preload = start_ai_preload()
+    # LAW_QA_PROVIDER=modeling 이면 법령 질의 모듈과 법령 캐시도 미리 준비한다(law_qa_adapter.start_law_qa_preload).
+    app.state.law_qa_preload = start_law_qa_preload()
 
     yield
 

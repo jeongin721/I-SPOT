@@ -8,6 +8,7 @@ from app.api.v1 import (
     auth,
     cases,
     documents,
+    law_guide,
     risk_assessments,
     sessions,
     summary,
@@ -29,3 +30,5 @@ api_router.include_router(summary.router)
 api_router.include_router(documents.router)
 api_router.include_router(risk_assessments.router)
 api_router.include_router(tasks.router)
+# /law-guide/questions — 회차 · 사례와 묶이지 않는 법령 · 매뉴얼 AI 질문(16절).
+api_router.include_router(law_guide.router)

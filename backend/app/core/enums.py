@@ -211,6 +211,9 @@ class AuditAction(str, Enum):
     # 상담원 위험도 판단. detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
     RISK_ASSESSMENT_CREATED = "RISK_ASSESSMENT_CREATED"
     RISK_ASSESSMENT_UPDATED = "RISK_ASSESSMENT_UPDATED"
+    # 법령 · 매뉴얼 AI 질문(16절, 2026-10-28). detail 에는 걸린 시간 · provider · 모델 · 근거 수만 남긴다(질문 원문은 넣지 않는다).
+    # 실패는 status=FAILED + error_code 다.
+    LAW_QA_ASKED = "LAW_QA_ASKED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.
