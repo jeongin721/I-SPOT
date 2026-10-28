@@ -136,10 +136,12 @@ export default function NoteWrite(props) {
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const summary = useSummaryReview(ids.sessionId, { enabled });
   const docs = useSessionDocuments(ids.sessionId, { enabled });
-  // 일지 '아동 진술' · '위험 신호 검토 결과' AI 초안 재료(noteWrite.ts 머리 주석).
-  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
-  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
-  const risk = useRiskAssessments(ids.sessionId, { enabled });
+  // 일지 '아동 진술' · '위험 신호 검토 결과' AI 초안 재료(noteWrite.ts 머리 주석). 초안은 저장한 일지가 없을 때만 쓰므로
+  // 일지 목록을 받았고 저장한 일지가 없을 때만 부른다(요청 수 — 민규 #95 리뷰).
+  const draftNeeded = enabled && !docs.loading && !docs.error && docs.consultationRecord === null;
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled: draftNeeded });
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: draftNeeded });
+  const risk = useRiskAssessments(ids.sessionId, { enabled: draftNeeded });
   const aiDraft = useMemo(
     () => noteAiDraft(summary.evidence, signals.cards, risk.loaded && !risk.loadError ? risk.rows : null),
     [summary.evidence, signals.cards, risk.loaded, risk.loadError, risk.rows],

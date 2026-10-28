@@ -208,17 +208,18 @@ export function noteAiDraft(
   cards: SignalCard[],
   riskRows: RiskAssessmentRow[] | null,
 ): NoteAiDraft {
-  const quotes = new Map<string, { at: string; line: string }>();
+  const quotes = new Map<string, { at: number; line: string }>();
 
   for (const item of evidence) {
     for (const segment of item.segments) {
       if (!segment.found || quotes.has(segment.segmentId)) continue;
-      quotes.set(segment.segmentId, { at: segment.startLabel, line: `· ${segment.startLabel} "${segment.text}"` });
+      quotes.set(segment.segmentId, { at: segment.startMs, line: `· ${segment.startLabel} "${segment.text}"` });
     }
   }
 
   const statement = [...quotes.values()]
-    .sort((a, b) => a.at.localeCompare(b.at))
+    // 위치 라벨 문자열이 아니라 시작 ms 로 정렬한다(1:02:15 가 00:41 앞에 오지 않게, 민규 #95 리뷰).
+    .sort((a, b) => a.at - b.at)
     .slice(0, MAX_DRAFT_QUOTES)
     .map((q) => q.line)
     .join("\n");

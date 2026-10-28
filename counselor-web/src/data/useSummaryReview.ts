@@ -43,6 +43,8 @@ export interface EvidenceSegment {
    * 원문을 아직 못 받았으면(evidenceLoading · evidenceError) 모두 false 다 — 그때는 '없음' 이 아니라 '모름' 이다.
    */
   found: boolean;
+  /** 음성 안 시작 위치(ms). 못 찾았으면 -1. 정렬에 쓴다(startLabel 문자열은 1시간을 넘으면 순서가 어긋난다). */
+  startMs: number;
   startLabel: string;
   speakerLabel: string;
   text: string;
@@ -234,11 +236,12 @@ export function useSummaryReview(
           ? {
               segmentId,
               found: true,
+              startMs: segment.start_ms,
               startLabel: formatClock(segment.start_ms),
               speakerLabel: SPEAKER_LABELS[segment.speaker] ?? segment.speaker,
               text: segment.text,
             }
-          : { segmentId, found: false, startLabel: "", speakerLabel: "", text: "" };
+          : { segmentId, found: false, startMs: -1, startLabel: "", speakerLabel: "", text: "" };
       });
   }, [source.data]);
 
