@@ -17,6 +17,8 @@ export interface ApprovedSummary {
   sessionNumber: number;
   consultedAt: string | null;
   assessment: SummaryAssessment | null;
+  /** 이 회차 요약을 못 받았는가(한 회차가 실패해도 나머지는 보인다). */
+  failed: boolean;
 }
 
 export interface ApprovedSummariesState {
@@ -46,24 +48,32 @@ export function useApprovedSummaries(
 
     let alive = true;
 
-    Promise.all(picked.map((row) => summaryApi.get(row.session_id)))
-      .then((envelopes) => {
-        if (!alive) return;
-        setState({
-          key,
-          error: null,
-          items: picked.map((row, index) => ({
-            sessionId: row.session_id,
-            sessionNumber: row.session_number,
-            consultedAt: row.consulted_at,
-            assessment: envelopes[index]?.summary?.assessment ?? null,
-          })),
-        });
-      })
-      .catch((caught: unknown) => {
-        if (!alive) return;
-        setState({ key, items: [], error: errorMessage(caught, "승인된 회차 요약을 불러오지 못했습니다.") });
+    // allSettled: 한 회차 요약이 실패해도 나머지 상자는 보인다(민규 #104 리뷰). 모두 실패하면 오류 문구.
+    Promise.allSettled(picked.map((row) => summaryApi.get(row.session_id))).then((results) => {
+      if (!alive) return;
+
+      const items = picked.map((row, index) => {
+        const result = results[index];
+        const ok = result.status === "fulfilled";
+        return {
+          sessionId: row.session_id,
+          sessionNumber: row.session_number,
+          consultedAt: row.consulted_at,
+          assessment: ok ? result.value?.summary?.assessment ?? null : null,
+          failed: !ok,
+        };
       });
+      const firstError = results.find((result) => result.status === "rejected");
+      const allFailed = items.length > 0 && items.every((item) => item.failed);
+
+      setState({
+        key,
+        items: allFailed ? [] : items,
+        error: allFailed && firstError?.status === "rejected"
+          ? errorMessage(firstError.reason, "승인된 회차 요약을 불러오지 못했습니다.")
+          : null,
+      });
+    });
 
     return () => {
       alive = false;

@@ -32,7 +32,15 @@ import type { CaseSignalsState } from "../useCaseSignals";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { MAX_APPROVED, type ApprovedSummariesState } from "../useApprovedSummaries";
 import { toDateOnly } from "../time";
-import { TREND_TYPES, TYPE_SHORT, counselorTop, detectedTypeLabels, historyCell, pendingLabel } from "../signalHistoryRows";
+import {
+  TREND_TYPES,
+  TYPE_SHORT,
+  counselorTop,
+  detectedTypeLabels,
+  historyCell,
+  pendingLabel,
+  signalsClearlyAbsent,
+} from "../signalHistoryRows";
 import type { AuthSession } from "../useAuthSession";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
@@ -383,7 +391,10 @@ export function caseHistoryValues(
     const pending = pendingLabel(row);
     if (pending) return `AI 신호 · ${pending}`;
     const labels = detectedTypeLabels(row);
-    const ai = labels.length > 0 ? `AI 신호 · ${labels.join(" · ")}` : "AI 관련 신호 없음";
+    // 관련 신호가 없을 때 detected 가 모두 null 이면 '없음' 으로 단정하지 않는다(민규 #104 리뷰).
+    let ai = "AI 신호 · 검출 여부 미확인";
+    if (labels.length > 0) ai = `AI 신호 · ${labels.join(" · ")}`;
+    else if (signalsClearlyAbsent(row)) ai = "AI 관련 신호 없음";
     const top = counselorTop(row);
     return top ? `${ai} / 판단 ${RISK_LEVEL_LABELS[top]}` : ai;
   };
@@ -454,7 +465,13 @@ export function caseHistoryValues(
 
     return {
       range: `${item.sessionNumber}회차${date}`,
-      title: risks ? `위험요인 · ${clip(risks, 80)}` : strengths ? `강점과 자원 · ${clip(strengths, 80)}` : "요약 4칸이 비어 있습니다",
+      title: item.failed
+        ? "요약을 불러오지 못했습니다"
+        : risks
+          ? `위험요인 · ${clip(risks, 80)}`
+          : strengths
+            ? `강점과 자원 · ${clip(strengths, 80)}`
+            : "요약 4칸이 비어 있습니다",
       note: risks && strengths ? `강점과 자원 · ${clip(strengths, 80)}` : desired ? `원하는 변화 · ${clip(desired, 80)}` : "",
     };
   });

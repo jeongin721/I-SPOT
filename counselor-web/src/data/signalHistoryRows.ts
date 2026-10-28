@@ -60,6 +60,14 @@ export function counselorTopLabel(session: SignalHistorySession): string {
   return top ? RISK_LEVEL_LABELS[top] : DASH;
 }
 
+/**
+ * 관련 신호를 '없음' 으로 단정할 수 있는가 — detected 가 하나라도 false 이고 true 는 없을 때.
+ * 전부 null(근거 없어 서버가 뺀 유형 · 검출 미확인)이면 false — 화면은 '검출 여부 미확인' 으로 쓴다(유형별 위험도와 같은 규칙).
+ */
+export function signalsClearlyAbsent(session: SignalHistorySession): boolean {
+  return session.types.some((item) => item.detected === false) && !session.types.some((item) => item.detected === true);
+}
+
 /** 관련 신호(AI)가 있는 유형의 짧은 이름. 줄 순서는 TREND_TYPES. */
 export function detectedTypeLabels(session: SignalHistorySession): string[] {
   return TREND_TYPES.filter((type) => session.types.some((item) => item.abuse_type === type && item.detected === true)).map(
