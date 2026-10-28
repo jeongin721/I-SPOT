@@ -892,6 +892,22 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `409 TRANSCRIPT_NOT_CONFIRMED` — 확정 전. Transcript 검사는 상태 검사보다 먼저 한다
 - `409 INVALID_SESSION_STATE` — 처리 중(`AI_PROCESSING`), 승인된 회기(`APPROVED`), 또는 동시에 들어온 같은 요청이 먼저 처리됨
 
+#### 분석에 넘기는 사례 정보 (`case_context`, 2026-10-28)
+
+API 모양은 바뀌지 않는다. 분석 작업이 회차의 사례에서 아래만 골라 **`case_context` 를 받는 어댑터(`ModelingAIAdapter`)에만**
+키워드로 넘긴다(`app/services/case_context_service.py`, 설계 `PROPOSAL_case_context_analysis.md` §3). STT Contract 는 그대로다.
+
+| 키 | 값 |
+| --- | --- |
+| `child_age_band` | 출생연도로 센 나이의 나이대(`만 0~5세` · `만 6~9세` · `만 10~13세` · `만 14~17세` · `만 18세 이상`). 정확한 나이 · 출생연도는 넘기지 않음 |
+| `child_gender` · `guardian_type` | 사례 값 그대로(없으면 `null`) |
+| `intake_child_traits` · `intake_family_situations` | 초기면접 서식 4 항목 |
+| `previous_session` | 이 회차보다 앞선 **승인 완료** 회차 중 가장 최근 것 `{session_label: "N회차", consulted_on, assessment: {요약 4칸 문장}}`. 없으면 `null` |
+
+- **넘기지 않는 값**: 아동 가명 · 사건번호 · 제목 · 메모 · 보호자 메모 · 상담원 정보.
+- 지난 회차 문장은 상담원 글이라 AI 쪽이 원문과 같은 마스킹을 거쳐 보낸다.
+- 사례 정보를 만들다 실패해도 분석은 사례 정보 없이 계속한다(서버 로그에만 남김). mock · pipeline · langgraph 어댑터에는 넘기지 않는다.
+
 #### 재분석 (`AI_REVIEW_REQUIRED` 에서 다시 요청)
 
 - 새 분석을 만든다. `GET …/analysis` 는 가장 최근 분석을 주므로, 요청한 뒤로는 이전 결과를 API 로 다시 볼 수 없다
