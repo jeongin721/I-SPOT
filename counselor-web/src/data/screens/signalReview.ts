@@ -2,7 +2,9 @@
 // 예전 '위험 신호 검토' 와 '유형별 위험도'(RiskProfile) 두 화면이 디자인에서 이 화면 하나가 됐다.
 //
 // 디자인 칸 → 서버 값:
-//  - 위쪽 카드 'AI 초안': 회차 전체 AI 위험도 · 안전 플래그 수 · 회차 비교는 서버에 없어 준비 중이다. 그 자리에 AI 분석 상태
+//  - 위쪽 카드 'AI 초안': 분석이 끝났으면 유형별 심각도 중 가장 높은 단계와 그 유형을 보인다(2026-10-28, severity_ratings —
+//    1~5 단계를 상 · 중 · 하로 바꾸는 규칙은 정하지 않아 단계 숫자 그대로). 안전 플래그 수 · 회차 비교는 서버에 없어
+//    준비 중이다(회차 비교는 사례 단위 signal-history API 뒤에). 그 자리에 AI 분석 상태
 //    (분석 중 · 실패 · 요청 대기 · 완료)를 보인다 — 디자인에는 분석 요청 단계가 없고, STT 검수의 '유형별 위험도 →' 가
 //    원문 확정과 분석 요청을 같이 한다(sttReview.ts). 여기서는 실패 · 대기일 때 다시 요청할 수 있게만 둔다.
 //  - 위쪽 카드 '상담원 판단': 디자인은 회차 전체 상 · 중 · 하 하나지만 서버(API_CONTRACT 11절)는 유형마다 저장한다.
@@ -270,6 +272,18 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiActionLabel = "AI 분석 요청";
   } else if (analyzed) {
     aiText = view?.completedAt ? `AI 분석 완료 · ${view.completedAt}` : "AI 분석이 끝났습니다.";
+
+    // 유형별 심각도(AI 제안) 중 가장 높은 단계. 같은 단계면 유형 순서(신체 · 정서 · 성 · 방임)대로 함께 적는다.
+    let top = 0;
+    const topTypes: string[] = [];
+    for (const type of ABUSE_TYPES) {
+      const level = completed ? severity.get(type)?.level ?? null : null;
+      if (level === null || level < top) continue;
+      if (level > top) topTypes.length = 0;
+      top = level;
+      topTypes.push(ABUSE_TYPE_LABELS[type]);
+    }
+    if (top > 0) aiText = `회차 최고 심각도 ${top}단계 · ${topTypes.join(" · ")} — ${aiText}`;
   } else {
     aiText = "STT 검수에서 원문을 확정하면 AI 분석이 시작됩니다.";
     aiActionLabel = "STT 검수로";
@@ -381,7 +395,7 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiActionLabel: analysis.submitting ? "요청 중…" : aiActionLabel,
     aiAction,
     aiWarnings: completed ? (view?.warnings ?? []) : [],
-    aiOverallNote: `회차 전체 AI 위험도 · 안전 플래그 · 지난 회차와 비교는 ${NOT_READY}입니다.`,
+    aiOverallNote: `심각도는 아래 유형별 AI 제안 중 가장 높은 값입니다. 안전 플래그 · 지난 회차와 비교는 ${NOT_READY}입니다.`,
     assessSummary: assessments.loading
       ? "불러오는 중…"
       : assessLoadFailed
