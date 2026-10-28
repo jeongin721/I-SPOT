@@ -26,3 +26,9 @@ MANUAL_IMAGE_DIR = Path(
 ).expanduser()
 if not MANUAL_IMAGE_DIR.is_absolute():
     MANUAL_IMAGE_DIR = BASE_DIR / MANUAL_IMAGE_DIR
+
+# 매뉴얼 사진을 LLM(OpenAI)에 첨부할지. **기본은 끔(false).**
+# 2026-10-28: 이 매뉴얼 사진은 기관 내부에서 쓰는 대외비 자료라, 기관 허락 · 팀 결정 전에는 외부 API 로 보내지 않는다.
+# 끄면 법령 · 매뉴얼 질의는 법령(아동복지법 · 아동학대처벌법)만으로 답하고 manual_references 는 빈 목록이다.
+# 허락을 받으면 .env 에 MANUAL_QA_ATTACH_IMAGES=true 를 넣어 켠다.
+MANUAL_QA_ATTACH_IMAGES = os.getenv("MANUAL_QA_ATTACH_IMAGES", "").strip().lower() in {"1", "true", "yes", "on"}
