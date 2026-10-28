@@ -38,7 +38,7 @@ import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
-import type { SessionScreenInput } from "./sessionDetail";
+import { sessionCaseId, type SessionScreenInput } from "./sessionDetail";
 
 export interface NoteDraft {
   statement: string;
@@ -280,12 +280,20 @@ export function noteWriteValues(input: NoteScreenInput) {
     readOnly: docLocked,
   });
   // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 고르기 단추를 잠근다.
-  // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
-  const intakeWaiting = !info && !caseDetail.error;
+  // 사례 정보를 못 받았으면(오류) · 이 회차에 연결된 사례가 없으면 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
+  // 예전에는 '정보도 오류도 없음' 을 모두 받는 중으로 봐서, 받을 사례가 없을 때 '불러오는 중…' 이 끝나지 않고 고르기도 잠겼다.
+  const caseKnown = sessionCaseId(input.ids, detail) !== null;
+  const intakeWaiting =
+    !info && !caseDetail.error && (caseDetail.loading || detail.loading || (caseKnown && !detail.error));
+  const noCase = !info && !caseDetail.error && !intakeWaiting;
   /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
   const intakeWords = (words: string[] | null) => {
     let empty = "초기면접에서 고른 항목 없음";
-    if (words === null) empty = intakeWaiting ? "초기면접 항목을 불러오는 중…" : "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+    if (words === null) {
+      if (intakeWaiting) empty = "초기면접 항목을 불러오는 중…";
+      else if (noCase) empty = "연결된 사례 정보가 없어 초기면접 항목이 없습니다.";
+      else empty = "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+    }
 
     return { words: words ?? [], note: empty };
   };
