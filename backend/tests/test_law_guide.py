@@ -258,6 +258,48 @@ def test_slow_adapter_is_504(client: TestClient, counselor_headers, monkeypatch:
     assert response.json()["error"]["code"] == "AI_TIMEOUT"
 
 
+def test_timed_out_work_keeps_its_slot_until_it_finishes(
+    client: TestClient, counselor_headers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """시간을 넘긴 작업이 뒤에서 도는 동안 그 자리는 비지 않는다 — 실제 작업 수도 LAW_QA_MAX_CONCURRENCY 를 넘지 않는다(#109 교차검증 R2)."""
+
+    monkeypatch.setattr(settings, "LAW_QA_MAX_CONCURRENCY", 1)
+    monkeypatch.setattr(settings, "LAW_QA_TIMEOUT_SECONDS", 0.2)
+    law_guide_service.reset_limits()
+
+    counter = {"active": 0, "peak": 0}
+    lock = threading.Lock()
+
+    class Slow:
+        name = "slow"
+
+        def answer(self, question: str, *, time_limit_seconds: float) -> LawQAAnswer:
+            with lock:
+                counter["active"] += 1
+                counter["peak"] = max(counter["peak"], counter["active"])
+
+            try:
+                time.sleep(0.8)
+                return LawQAAnswer(answer="늦은 답", model="slow")
+            finally:
+                with lock:
+                    counter["active"] -= 1
+
+    set_law_qa_adapter_override(Slow())
+
+    first = _ask(client, counselor_headers)  # 0.2초에 504, 작업은 뒤에서 계속 돈다
+    second = _ask(client, counselor_headers)  # 자리가 없어 0.2초 기다리다 504 — 작업을 시작하지 않는다
+
+    assert first.status_code == 504 and second.status_code == 504
+    assert counter["peak"] == 1
+
+    time.sleep(1.0)  # 첫 작업이 끝나 자리를 돌려준다
+
+    assert counter["active"] == 0
+    set_law_qa_adapter_override(None)  # mock
+    assert _ask(client, counselor_headers).status_code == 200
+
+
 # =========================================================
 # modeling — 가짜 모듈
 # =========================================================

@@ -153,17 +153,45 @@ def ask(
         raise APIError(ErrorCode.RATE_LIMITED, RATE_LIMITED_MESSAGE, status_code=429)
 
     # 호출 하나가 큰 입력(법령 전문 약 9.8만 자)이라 서버 전체 동시 LAW_QA_MAX_CONCURRENCY 건으로 묶는다.
-    # 자리가 나기를 제한 시간만큼 기다리고, 못 들어가면 AI_TIMEOUT.
-    if not _limits.slots.acquire(timeout=timeout):
+    # 자리가 나기를 제한 시간만큼 기다리고, 못 들어가면 AI_TIMEOUT. 얻은 자리는 같은 semaphore 객체에 돌려준다
+    # (reset_limits 로 바뀐 뒤에도 — 뒤늦게 끝난 작업이 새 semaphore 를 늘리지 않게).
+    slots = _limits.slots
+
+    if not slots.acquire(timeout=timeout):
         raise _fail(db, user, LawQAError(ErrorCode.AI_TIMEOUT, "NoSlot"), provider=adapter.name, started=started)
 
     error: Optional[LawQAError] = None
     result: Optional[LawQAAnswer] = None
 
+    # 자리는 **실제 작업이 끝날 때** 돌려준다. run_with_timeout 은 thread 를 멈추지 못해 시간을 넘긴 작업이 뒤에서
+    # 계속 도는데, 그때 자리를 먼저 돌려주면 실제 작업 수가 LAW_QA_MAX_CONCURRENCY 를 넘는다(#109 교차검증 R2).
+    # 그래서 작업 thread 가 자기 finally 에서 돌려주고, 서비스는 작업이 시작조차 못 한 경우(취소됨)만 돌려준다.
+    work_started = threading.Event()
+    release_lock = threading.Lock()
+    released = False
+
+    def release_slot() -> None:
+        nonlocal released
+
+        with release_lock:
+            if released:
+                return
+
+            released = True
+            slots.release()
+
+    def work() -> LawQAAnswer:
+        work_started.set()
+
+        try:
+            # 자리를 얻은 뒤부터 제한 시간을 다시 잰다(기다린 시간은 포함하지 않는다). thread 는 멈추지 못하므로
+            # modeling 은 마감 시각을 받아 스스로 멈춘다(law_qa_adapter.ModelingLawQAAdapter).
+            return adapter.answer(question, time_limit_seconds=timeout)
+        finally:
+            release_slot()
+
     try:
-        # 자리를 얻은 뒤부터 제한 시간을 다시 잰다(기다린 시간은 포함하지 않는다). thread 는 멈추지 못하므로
-        # modeling 은 마감 시각을 받아 스스로 멈춘다(law_qa_adapter.ModelingLawQAAdapter).
-        result = run_with_timeout(lambda: adapter.answer(question, time_limit_seconds=timeout), timeout)
+        result = run_with_timeout(work, timeout)
     except OperationTimeout:
         error = LawQAError(ErrorCode.AI_TIMEOUT, "OperationTimeout")
     except LawQAError as caught:
@@ -171,8 +199,11 @@ def ask(
     except Exception as caught:  # noqa: BLE001 — 종류 이름만 남기고 고정 문구로 바꾼다
         logger.warning("법령 질의 처리 중 예상하지 못한 오류. type=%s", type(caught).__name__)
         error = map_law_qa_error(caught)
-    finally:
-        _limits.slots.release()
+
+    if error is not None and not work_started.is_set():
+        # 작업이 시작되기 전에 끝난 경우(시간 초과로 취소됨 · executor 오류)에만 서비스가 돌려준다.
+        # 돌고 있는 작업은 끝날 때 스스로 돌려주고, 두 번 돌려주지 않게 release_slot 이 한 번만 센다.
+        release_slot()
 
     if error is not None or result is None:
         raise _fail(
