@@ -26,10 +26,12 @@ class FollowupQuestionIn(RequestModel):
     segment_ids 는 그 회차 최신 전사본에 있는 번호만 받는다(서비스에서 확인, 없으면 400).
     """
 
-    text: str = Field(max_length=FOLLOWUP_QUESTION_TEXT_MAX_LENGTH)
+    # 길이 상한은 앞뒤 공백을 뺀 뒤 validator 에서 잰다(Field(max_length) 는 strip 전에 돌아 302자 공백 포함 질문을 막는다).
+    text: str
     kind: FollowupQuestionKind
     source: FollowupQuestionSource
-    segment_ids: List[str] = Field(default_factory=list, max_length=FOLLOWUP_QUESTION_SEGMENTS_MAX)
+    # 개수 상한도 중복 · 빈 번호를 뺀 뒤 validator 에서 잰다.
+    segment_ids: List[str] = Field(default_factory=list)
     bank_code: Optional[str] = Field(default=None, max_length=BANK_CODE_MAX_LENGTH)
 
     @field_validator("text")
@@ -39,6 +41,9 @@ class FollowupQuestionIn(RequestModel):
 
         if not value:
             raise ValueError("질문 문장이 비어 있습니다.")
+
+        if len(value) > FOLLOWUP_QUESTION_TEXT_MAX_LENGTH:
+            raise ValueError(f"질문 문장은 {FOLLOWUP_QUESTION_TEXT_MAX_LENGTH}자까지 쓸 수 있습니다.")
 
         return value
 
@@ -53,6 +58,9 @@ class FollowupQuestionIn(RequestModel):
 
             if segment_id and segment_id not in seen:
                 seen.append(segment_id)
+
+        if len(seen) > FOLLOWUP_QUESTION_SEGMENTS_MAX:
+            raise ValueError(f"근거 발화 번호는 {FOLLOWUP_QUESTION_SEGMENTS_MAX}개까지 둘 수 있습니다.")
 
         return seen
 
