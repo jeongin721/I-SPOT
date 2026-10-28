@@ -115,10 +115,9 @@ export function lawGuideValues(input: LawGuideInput) {
   const openToc = () =>
     setState((current) => ({ open: { ...current.open, [TOC_ID]: true }, filter: "all", scrollTo: refDomId(TOC_ID) }));
 
+  // 받아들이면 그 자리에서 입력칸을 비운다(답을 기다리는 동안 친 다음 질문이 지워지지 않게).
   const ask = (question: string) => {
-    void chat.ask(question).then((sent) => {
-      if (sent) setState({ draft: "" });
-    });
+    if (chat.ask(question)) setState({ draft: "" });
   };
 
   const messages = chat.messages.map((message) => {
