@@ -187,6 +187,22 @@ def test_text_at_max_length_is_accepted(client: TestClient, counselor_headers, r
     assert response.status_code == 200, response.text
 
 
+def test_text_length_is_measured_after_strip(client: TestClient, counselor_headers, ready_session: dict) -> None:
+    # 앞뒤 공백 포함 302자, 뺀 뒤 300자 — 계약서는 '앞뒤 공백을 뺀 뒤 1~300자'.
+    response = _put(client, counselor_headers, ready_session["id"], [_q(" " + "가" * 300 + " ")])
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["questions"][0]["text"] == "가" * 300
+
+
+def test_segment_count_is_measured_after_dedupe(client: TestClient, counselor_headers, ready_session: dict) -> None:
+    # 같은 번호 25개는 한 개다.
+    response = _put(client, counselor_headers, ready_session["id"], [_q(segment_ids=["seg_001"] * 25)])
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["questions"][0]["segment_ids"] == ["seg_001"]
+
+
 def test_more_than_twenty_questions_are_rejected(
     client: TestClient, counselor_headers, ready_session: dict
 ) -> None:
