@@ -568,6 +568,80 @@ def test_non_dict_desired_changes_and_narrative_become_empty(modeling, desired) 
     assert assessment["safety_risks"] == empty
 
 
+# =========================================================
+# STT 검수 '1차 임시 핵심 발화'(key_scan_as_contract, PROPOSAL_stt_key_scan.md §8)
+# =========================================================
+
+KEY_SCAN_STT = {
+    "schema_version": "1.0",
+    "segments": [
+        {"segment_id": "seg_001", "speaker": "COUNSELOR", "start_ms": 0, "end_ms": 1000, "text": "아빠가 때렸어?", "confidence": 0.95},
+        {"segment_id": "seg_002", "speaker": "CHILD", "start_ms": 1000, "end_ms": 2000, "text": "네 많이요.", "confidence": 0.9},
+        {"segment_id": "seg_003", "speaker": "GUARDIAN", "start_ms": 2000, "end_ms": 3000, "text": "아니에요.", "confidence": 0.9},
+        {"segment_id": "seg_004", "speaker": "UNKNOWN", "start_ms": 3000, "end_ms": 4000, "text": "밥도 안 줘요.", "confidence": 0.6},
+        {"segment_id": "seg_005", "speaker": "CHILD", "start_ms": 4000, "end_ms": 5000, "text": "학교 갔어요.", "confidence": 0.9},
+    ],
+}
+
+
+def _key_scan(monkeypatch: pytest.MonkeyPatch, flagged: Any) -> tuple:
+    """가짜 1차 모듈에 quick_risk_scan 을 붙이고 key_scan_as_contract 와 받은 인자 목록을 준다."""
+
+    calls: List[Any] = []
+
+    def quick_risk_scan(stt_result):
+        calls.append(stt_result)
+        if isinstance(flagged, Exception):
+            raise flagged
+        return flagged
+
+    monkeypatch.setattr(sys.modules[HEAVY_MODULE], "quick_risk_scan", quick_risk_scan, raising=False)
+
+    return importlib.import_module(CONTRACT_ADAPTER).key_scan_as_contract, calls
+
+
+def test_key_scan_keeps_child_and_unknown_speakers_in_order(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """검출 chunk 의 상담원 · 보호자 줄은 빼고 아동 · 화자 미확인 줄만, 원문 순서 · 영문 유형으로 준다."""
+
+    scan, calls = _key_scan(
+        monkeypatch,
+        {
+            "seg_004": ["방임"],
+            "seg_001": ["신체학대"],
+            "seg_002": ["신체학대", "정서학대", "신체학대"],
+            "seg_003": ["신체학대"],
+        },
+    )
+
+    assert scan(KEY_SCAN_STT) == {
+        "model": "roberta_abuse_qa_child_v3",
+        "segments": [
+            {"segment_id": "seg_002", "abuse_types": ["PHYSICAL", "EMOTIONAL"]},
+            {"segment_id": "seg_004", "abuse_types": ["NEGLECT"]},
+        ],
+    }
+    assert calls == [KEY_SCAN_STT]
+
+
+def test_key_scan_drops_unknown_types_and_empty_results(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """영문 4종 밖의 유형만 걸린 발화는 빠지고, 아무것도 없으면 빈 배열이다."""
+
+    scan, _ = _key_scan(monkeypatch, {"seg_002": ["기타유형"], "seg_005": []})
+    assert scan(KEY_SCAN_STT) == {"model": "roberta_abuse_qa_child_v3", "segments": []}
+
+    scan, _ = _key_scan(monkeypatch, {})
+    assert scan(KEY_SCAN_STT)["segments"] == []
+
+
+def test_key_scan_failure_is_raised_for_backend_to_mark_failed(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """모델 실패는 그대로 올린다 — status(FAILED)는 Backend 가 붙인다."""
+
+    scan, _ = _key_scan(monkeypatch, RuntimeError("모델 실패"))
+
+    with pytest.raises(RuntimeError):
+        scan(KEY_SCAN_STT)
+
+
 def test_module_only_fields_do_not_leak(modeling) -> None:
     """Contract 의 10개 키만 남고, 모듈만 쓰는 값(전체 원문 · 일지 본문 · 체크리스트)은 결과에 새지 않는다."""
 
