@@ -48,6 +48,7 @@ import type {
   TranscriptEnvelope,
   TranscriptUpdateRequest,
   User,
+  VoiceMarks,
 } from "./types";
 
 /**
@@ -240,6 +241,28 @@ export const sessions = {
   /** 최신 음성 파일 정보(파일 이름 · 크기 · 길이). 파일 자체는 주지 않는다. 음성이 없으면 404 AUDIO_NOT_FOUND. */
   getAudio(sessionId: string): Promise<AudioFile> {
     return api.get<AudioFile>(`/sessions/${sessionId}/audio`);
+  },
+
+  /**
+   * 최신 음성 파일 본문(재생용, API_CONTRACT 6절). Authorization 헤더로 받아 Blob URL 로 재생한다(useSessionAudio).
+   * 음성이 없거나 저장소에 파일이 없으면 404 AUDIO_NOT_FOUND.
+   */
+  getAudioFile(sessionId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/sessions/${sessionId}/audio/file`, signal);
+  },
+};
+
+// =========================================================
+// 구간별 음성 참고 표시 (API_CONTRACT 16절)
+// =========================================================
+
+export const voiceMarks = {
+  /**
+   * 가장 최신 원문 판의 음성 참고 표시(떨림 · 웅얼거림 · 작게 말함). 아직 계산 전이면 null(정상 상태라 404 가 아니다).
+   * 분석 실패 · 시간 초과는 null 이 아니라 result.status UNDETERMINED · reason ANALYSIS_ERROR 로 온다.
+   */
+  get(sessionId: string): Promise<VoiceMarks | null> {
+    return api.get<VoiceMarks | null>(`/sessions/${sessionId}/voice-marks`);
   },
 };
 

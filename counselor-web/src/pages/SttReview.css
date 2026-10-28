@@ -155,6 +155,28 @@
 .pg-SttReview .cue b {
   font-weight: 600;
 }
+/* 줄의 음성 참고 표시(10/21 디자인의 .cues) — flag 가 켜진 지표만 칩으로. .na 는 '분석 불가(이유)' 칩. */
+.pg-SttReview .cues {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pg-SttReview .cue .num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.pg-SttReview .cue .cmp {
+  color: #8a867d;
+}
+.pg-SttReview .cue.na {
+  background: #f2efe8;
+  color: #66625a;
+}
+.pg-SttReview .thm-root.dark .cue.na {
+  background: #2f2e2a !important;
+  color: #9c978c !important;
+}
 .pg-SttReview .sig {
   display: inline-flex;
   align-items: center;
