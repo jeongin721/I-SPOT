@@ -691,6 +691,21 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 
 최신 음성 metadata. 없으면 `404 AUDIO_NOT_FOUND`.
 
+### GET /api/v1/sessions/{session_id}/audio/file
+
+최신 음성 파일의 **본문을 그대로** 돌려준다(다시 듣기용). 1.1 의 `{"data": ...}` 감싸기 예외다.
+
+- `Content-Type` 은 올릴 때의 MIME(`mime_type`), `Content-Disposition: inline; filename="..."` 은 원래 파일 이름이다.
+- `Range` 요청을 받는다(`Accept-Ranges: bytes`). 일부 구간이면 `206 Partial Content` 와 `Content-Range: bytes 시작-끝/전체`,
+  범위가 파일 밖이면 `416` 과 `Content-Range: bytes */전체`, 형식이 틀리면 `400`. 화면은 구간 재생 때 앞에서부터
+  다 받지 않고 그 자리로 건너뛸 수 있다.
+- 인증은 다른 창구와 같이 `Authorization: Bearer` 헤더뿐이다. 주소에 token 을 넣는 방식은 쓰지 않는다
+  (접속 로그 · 브라우저 기록에 token 이 남는다). `<audio src>` 는 헤더를 못 붙이므로 화면은 `fetch` 로 받아
+  `Blob` URL 로 재생한다.
+- `Cache-Control: no-store` — 상담 음성을 브라우저 캐시에 남기지 않는다.
+- 권한은 metadata 조회와 같다(사례 접근 규칙). 음성이 없거나, DB 에는 있는데 저장소에 파일이 없으면
+  `404 AUDIO_NOT_FOUND`(후자는 문구 "음성 파일이 저장소에 없습니다. 다시 올려 주세요.").
+
 ---
 
 ## 7. Transcript (STT)
