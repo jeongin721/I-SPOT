@@ -165,6 +165,7 @@ export default function FollowupQ(props) {
               <div key={q.key} className="qcard">
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                   <span className="chip c-sky">{q.id}</span>
+                  {q.aiDraft ? <span className="chip c-ai">AI 초안</span> : null}
                   {q.ok ? <span className="chip c-sel">{q.st}</span> : null}
                   {q.edited ? <span className="chip c-sand">상담사 수정</span> : null}
                   {q.whyHref ? (

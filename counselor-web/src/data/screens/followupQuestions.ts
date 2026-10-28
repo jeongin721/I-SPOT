@@ -35,10 +35,12 @@ export interface QuestionUiState {
   localEdits: Record<string, string>;
   localExtras: LocalQuestion[];
   nextLocalId: number;
+  /** 저장할 수 없어 [승인] · [확인] 이 멈췄을 때의 안내. 다음 동작에서 지운다. */
+  qNotice: string | null;
 }
 
 export function initialQuestionState(): QuestionUiState {
-  return { qTab: "meet", qEditing: false, qDraft: {}, qNew: [], localEdits: {}, localExtras: [], nextLocalId: 1 };
+  return { qTab: "meet", qEditing: false, qDraft: {}, qNew: [], localEdits: {}, localExtras: [], nextLocalId: 1, qNotice: null };
 }
 
 type Patch = Partial<QuestionUiState> | ((current: QuestionUiState) => Partial<QuestionUiState>);
@@ -151,6 +153,14 @@ export function questionValues(input: QuestionInput) {
   const cards = buildQuestionCards(drafts, saved.questions, state);
   const savedInputs = saved.questions.map(savedInput);
   const canSave = saved.loaded && !saved.loadError && !saved.submitting && !blockedReason;
+  // 저장할 수 없을 때 조용히 멈추지 않고 이유를 보인다(민규 #113 리뷰).
+  const cannotSave = () =>
+    setState({
+      qNotice:
+        blockedReason ??
+        saved.loadError ??
+        (saved.submitting ? "저장 중입니다. 잠시 뒤 다시 눌러 주세요." : "추가 질문을 불러온 뒤 다시 눌러 주세요."),
+    });
 
   const why = (card: QuestionCard) => {
     if (card.input.source === "COUNSELOR" && card.input.segment_ids.length === 0) return { text: "상담사 직접 추가", href: null };
@@ -164,7 +174,12 @@ export function questionValues(input: QuestionInput) {
   };
 
   const approve = (card: QuestionCard) => {
-    if (!canSave) return;
+    if (!canSave) {
+      cannotSave();
+      return;
+    }
+
+    setState({ qNotice: null });
 
     if (card.approved && card.savedIndex !== null) {
       const next = savedInputs.filter((_, at) => at !== card.savedIndex);
@@ -203,6 +218,8 @@ export function questionValues(input: QuestionInput) {
       text: card.input.text,
       ok: card.approved,
       st: "승인됨",
+      // 승인 전 AI 초안은 'AI 초안' 칩을 단다(18절 표현 주의 · 05_RULES — AI 결과는 AI 표시).
+      aiDraft: card.origin === "draft" && !card.approved,
       edited: card.edited,
       okCls: card.approved ? "btn-p" : "btn-s",
       okLabel: card.approved ? "승인됨 ✓" : "승인",
@@ -214,7 +231,7 @@ export function questionValues(input: QuestionInput) {
 
   const draftAll = () => Object.fromEntries(cards.map((card) => [card.key, card.input.text]));
 
-  const startQ = () => setState({ qEditing: true, qDraft: draftAll(), qNew: [] });
+  const startQ = () => setState({ qEditing: true, qDraft: draftAll(), qNew: [], qNotice: null });
 
   const addQ = () =>
     setState((current) => ({
@@ -223,7 +240,7 @@ export function questionValues(input: QuestionInput) {
       qNew: [...(current.qEditing ? current.qNew : []), ""],
     }));
 
-  const qCancel = () => setState({ qEditing: false, qDraft: {}, qNew: [] });
+  const qCancel = () => setState({ qEditing: false, qDraft: {}, qNew: [], qNotice: null });
 
   const qOk = () => {
     const localEdits = { ...state.localEdits };
@@ -262,14 +279,19 @@ export function questionValues(input: QuestionInput) {
         });
       });
 
-    const apply = () => setState({ localEdits, localExtras, nextLocalId, qEditing: false, qDraft: {}, qNew: [] });
+    const apply = () =>
+      setState({ localEdits, localExtras, nextLocalId, qEditing: false, qDraft: {}, qNew: [], qNotice: null });
 
     if (removeSaved.size === 0) {
       apply();
       return;
     }
 
-    if (!canSave) return;
+    // 승인한 질문을 고쳐 승인을 풀어야 하는데 저장할 수 없으면 수정 모드를 그대로 두고 이유를 보인다.
+    if (!canSave) {
+      cannotSave();
+      return;
+    }
 
     void saved.save(savedInputs.filter((_, at) => !removeSaved.has(at))).then((ok) => {
       if (ok) apply();
@@ -302,11 +324,11 @@ export function questionValues(input: QuestionInput) {
     qOk,
     qCancel,
     qNote,
-    qError: saved.error,
+    qError: saved.error ?? state.qNotice,
     qSaving: saved.submitting,
     meetCls: isMeet ? "on" : "",
     appCls: isMeet ? "" : "on",
-    showMeet: () => setState({ qTab: "meet" }),
-    showApp: () => setState({ qTab: "app", qEditing: false, qDraft: {}, qNew: [] }),
+    showMeet: () => setState({ qTab: "meet", qNotice: null }),
+    showApp: () => setState({ qTab: "app", qEditing: false, qDraft: {}, qNew: [], qNotice: null }),
   };
 }
