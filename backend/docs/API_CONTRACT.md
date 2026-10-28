@@ -543,6 +543,42 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 오류: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`
 
+### GET /api/v1/cases/{case_id}/signal-history
+
+사례의 **회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력**을 한 번에 준다(2026-10-28 추가, `I-SPOT_DOCS/docs/PROPOSAL_signal_history_api.md`).
+유형별 위험도의 회차별 추이 · 상담 이력의 회차 카드 신호 · 세부 신호 행렬(유형 × 회차)이 쓴다. **AI 를 새로 돌리지 않고**
+저장된 최신 분석 결과(8절)와 상담원 판단(11절)만 모은다 — 회차마다 `GET …/analysis` · `GET …/risk-assessments` 를 부른 것과 같은 값이다.
+
+```json
+{
+  "data": {
+    "case_id": "…",
+    "sessions": [
+      {
+        "session_id": "…", "session_number": 1, "consulted_at": "2026-10-20T10:00:00+09:00",
+        "status": "APPROVED", "analysis_status": "COMPLETED",
+        "types": [
+          { "abuse_type": "PHYSICAL", "detected": true, "ai_level": 3, "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00" },
+          { "abuse_type": "EMOTIONAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
+          { "abuse_type": "SEXUAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
+          { "abuse_type": "NEGLECT", "detected": false, "ai_level": null, "counselor_level": null, "assessed_at": null }
+        ]
+      },
+      { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null, "types": [] }
+    ]
+  }
+}
+```
+
+- 회차는 **전부** 주고 `session_number` 오름차순이다(추이 그래프에 분석 전 회차도 자리가 있어야 한다). 목록 상한이 없다.
+- `analysis_status` 는 그 회차의 가장 최근 분석 상태(`PROCESSING` · `COMPLETED` · `FAILED`). 분석을 요청한 적이 없으면 `null`.
+- `types` 는 네 유형이 늘 `PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT` 순서로 온다 — 단, 분석이 `COMPLETED` 도 아니고 상담원 판단도 없는 회차는 `[]`.
+  - `detected`: `abuse_signals[].detected`(같은 유형 첫 항목, 참/거짓이 아니면 `null`). 근거 없어 서버가 뺀 유형(8절 근거 관문)은 `null`.
+  - `ai_level`: `severity_ratings[].level`(같은 유형 첫 항목, 1~5 정수가 아니면 `null`) — 11절 `ai_level` 과 같은 규칙. **AI 제안이지 판정이 아니다.**
+  - `counselor_level` · `assessed_at`: 11절 상담원 판단. 판단 전이면 둘 다 `null`.
+- 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
+- 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
+
 ### PATCH /api/v1/cases/{case_id}
 
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.

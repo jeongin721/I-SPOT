@@ -473,3 +473,61 @@ def analyze_audio_session_as_contract(
     )
 
     return to_ai_output_contract(result, transcript=stt_result)
+
+
+# ============================================================
+# STT 검수 '1차 임시 핵심 발화'(key_scan, 2026-10-28)
+# ============================================================
+# I-SPOT_DOCS/docs/PROPOSAL_stt_key_scan.md §8 합의. Backend(transcript_service.process_stt)가
+# STT 결과를 저장한 같은 작업 끝에서 부르고, 시간 제한 · 설정으로 status(DONE · FAILED · SKIPPED)를
+# 붙여 transcripts.key_scan 에 둔다. 판정이 아니라 '먼저 들어볼 곳' 이다(05_RULES §1).
+
+#: 1차 분류기 이름(infer_abuse_qa_v3.py 의 roberta_abuse_qa_child_v3_best.pth).
+KEY_SCAN_MODEL = "roberta_abuse_qa_child_v3"
+
+#: 핵심 발화로 남기는 화자. 검출된 chunk 안의 상담원 · 보호자 · 기타 줄은 '다시 들어볼 아동 발화' 가
+#: 아니라 뺀다. 화자 미확인 줄은 아동 발화일 수 있어 남긴다(저신뢰 보기와 겹쳐도 괜찮음).
+KEY_SCAN_SPEAKERS = {"CHILD", "UNKNOWN"}
+
+
+def key_scan_as_contract(stt_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    원문 확정 전 1차 스캔. infer_audio_session.quick_risk_scan(1차 RoBERTa 만, LLM 없음, 로컬 —
+    정식 분석과 같은 chunk 분할)의 {segment_id: [한글 대분류]} 를 Contract 모양으로 바꾼다.
+
+    stt_result: 분석에 넘기는 것과 같은 STT Contract({"segments": [...]}).
+    반환: {"model": KEY_SCAN_MODEL, "segments": [{"segment_id", "abuse_types": [영문 4종]}]} —
+    원문 순서, 아동 · 화자 미확인 발화만, 없으면 빈 배열. 영문 4종 밖의 유형은 버린다.
+    status 는 붙이지 않는다(Backend 가 정함). 모델 실패는 예외를 그대로 올린다.
+    """
+
+    # 지연 import: backend 시험은 infer_audio_session 을 가짜 모듈로 바꾸는데, 모듈 맨 위에서
+    # 가져오면 그 가짜에 이 함수가 없을 때 contract_adapter import 자체가 깨진다.
+    from ai.modeling.abuse.infer_audio_session import quick_risk_scan
+
+    flagged = quick_risk_scan(stt_result) or {}
+    segments = stt_result.get("segments") if isinstance(stt_result, dict) else None
+    known = set(MAJOR_TYPE_TO_ENGLISH.values())
+    picked: List[Dict[str, Any]] = []
+
+    for segment in segments if isinstance(segments, list) else []:
+        if not isinstance(segment, dict):
+            continue
+
+        segment_id = str(segment.get("segment_id", ""))
+        speaker = segment.get("speaker")
+
+        if not segment_id or segment_id not in flagged or speaker not in KEY_SCAN_SPEAKERS:
+            continue
+
+        abuse_types: List[str] = []
+
+        for label in flagged.get(segment_id) or []:
+            english = MAJOR_TYPE_TO_ENGLISH.get(label)
+            if english in known and english not in abuse_types:
+                abuse_types.append(english)
+
+        if abuse_types:
+            picked.append({"segment_id": segment_id, "abuse_types": abuse_types})
+
+    return {"model": KEY_SCAN_MODEL, "segments": picked}

@@ -844,6 +844,36 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
   LOW: "하",
 };
 
+/**
+ * 사례 단위 신호 이력(GET /cases/{id}/signal-history, API_CONTRACT 4절, 2026-10-28) — 한 회차 · 한 유형.
+ * detected · ai_level 은 AI 제안이지 판정이 아니고, 위험도 표시는 counselor_level 만 쓴다(05_RULES §1).
+ * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11절 ai_level 규칙), 판단은 risk-assessments.
+ */
+export interface SignalHistoryType {
+  abuse_type: AbuseType;
+  detected: boolean | null;
+  ai_level: number | null;
+  counselor_level: RiskLevel | null;
+  assessed_at: string | null;
+}
+
+/** 회차 한 줄. 분석이 끝나지 않았고 판단도 없으면 types 는 빈 배열(분석 전). */
+export interface SignalHistorySession {
+  session_id: string;
+  session_number: number;
+  consulted_at: string | null;
+  status: SessionStatus;
+  /** 가장 최근 분석 상태. 요청한 적 없으면 null. */
+  analysis_status: AnalysisStatus | null;
+  types: SignalHistoryType[];
+}
+
+/** session_number 오름차순, 분석 전 회차 포함 전부. */
+export interface SignalHistory {
+  case_id: string;
+  sessions: SignalHistorySession[];
+}
+
 /** 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse). */
 export interface RiskAssessment {
   id: string;
