@@ -6,13 +6,14 @@
 
 ```text
 STT 검수 후 Transcript → CHILD 발화만 추림
+→ (선택) 이전 회차 기록 · 아이 앱 응답을 사례 기록으로 모음 (8-3)
 → 멀티라벨 모델 abuse_type
-→ 비식별 (외부 전송 전, 8-0)
+→ 비식별 (외부 전송 전, 상담 문장 · 사례 기록을 한 번에, 8-0)
 → RAG 체크리스트 검색
 → 상담 문장과 체크리스트 비교
 → 국가법령정보센터 API에서 현행 법령 조회
 → 관련 조문 랭킹 · 유사 판례 검색 (8-2)
-→ 다음 상담용 확인 질문 3~5개 생성
+→ 다음 상담 전 확인할 사항 추출 → 추가 질문 생성 → 규칙 · LLM 검증 (8-3)
 → 체크리스트 / 법령 / 매뉴얼·가이드 중 참고자료 2~3개 선택
 → 비식별 토큰 복원 → JSON 반환
 ```
@@ -136,14 +137,37 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
     }
   ],
   "next_session_checklist": {
+    "check_items": [
+      {
+        "id": "check:1",
+        "item": "등 · 팔 통증 이후 치료를 받았는지",
+        "kind": "info_gap",
+        "priority": "high",
+        "reason": "통증을 말했지만 치료 여부가 확인되지 않음",
+        "case_refs": ["case:2"],
+        "knowledge_refs": ["checklist:1"],
+        "basis": [
+          {"ref": "case:2", "type": "case", "source": "transcript", "label": "8회차 01:08", "session_no": 8, "segment_id": "seg_014", "start_ms": 68000},
+          {"ref": "checklist:1", "type": "checklist", "label": "아동학대 의심 체크리스트.pdf p.3"}
+        ]
+      }
+    ],
     "items": [
       {
-        "question": "이러한 말을 얼마나 자주 듣나요?",
+        "question": "등이랑 팔이 아팠던 건 지금은 어때? 누가 봐 준 적 있어?",
+        "audience": "counselor",
+        "question_type": "open",
         "priority": "high",
-        "rationale": "현재 상담에서 반복성 확인이 필요함",
-        "basis_refs": ["checklist:1", "law:1"]
+        "rationale": "치료 여부와 현재 상태를 확인",
+        "check_item_id": "check:1",
+        "case_refs": ["case:2"],
+        "knowledge_refs": ["manual:1", "checklist:1"],
+        "basis_refs": ["case:2", "manual:1", "checklist:1"],
+        "basis": [{"ref": "case:2", "type": "case", "label": "8회차 01:08"}, {"ref": "manual:1", "type": "manual", "label": "업무 매뉴얼 · 상담·조사·사정 p.125"}],
+        "review_status": "passed"
       }
-    ]
+    ],
+    "validation": {"generated": 7, "rule_rejected": 2, "review_rejected": 1, "rounds": 2, "reviewed": true}
   },
   "reference_materials": [
     {
@@ -279,6 +303,76 @@ python -m rag.indexer             # 가이드북 판례와 함께 색인
 - 판례 API 사용 신청(open.law.go.kr → OPEN API 신청 → 판례)이 필요하다. 새 판례를 반영하려면 두 명령을 다시 돌린다.
 - 기준점 0.25는 2026-10 측정값이다(맞는 문장 9개 1위 0.26~0.53 / 무관한 문장 5개 0.13~0.32, 무관한 5개 중 2개는 통과). 실제 상담 문장이 쌓이면 다시 맞춘다.
 
+## 8-3. 다음 상담 체크리스트 (추가 확인 · 질문 화면)
+
+`rag/checklist_builder.build_next_session_checklist`가 화면의 **다음 상담 전 확인할 사항**(`check_items`)과 **추가 질문**(`items`)을 만든다. 질문은 질문 은행에서 고르지 않고 LLM이 직접 쓴다. 대신 근거 ID와 검증을 강제한다.
+
+### 입력 — 사례 기록 (`rag/case_context.build_case_records`)
+
+`POST /api/v1/rag/analyze`에 아래 필드를 함께 보내면 질문 근거로 쓴다. 없으면 이번 회차 아동 발화만 쓴다.
+
+```json
+{
+  "transcript": {"segments": [...]},
+  "session_no": 8,
+  "previous_sessions": [
+    {
+      "session_no": 7,
+      "summary": "상담사가 확정한 회차 요약",
+      "safety_plan": "위험할 때 조모에게 연락하기로 함",
+      "check_items": [{"item": "조모 연락처를 아는지", "status": "open", "note": ""}],
+      "transcript": {"segments": [...]}
+    }
+  ],
+  "child_app_responses": [
+    {"response_id": "r1", "question": "요즘 기분은 어때?", "answer": "조금 무서워요", "answered_at": "2026-10-07"}
+  ]
+}
+```
+
+| 사례 기록 | 쓰는 것 | 화면 근거 표기(`basis[].label`) |
+|---|---|---|
+| 이번 회차 | 검수된 Transcript의 `CHILD` 발화만. 발화마다 `segment_id` · `start_ms` | `8회차 01:08` |
+| 이전 회차 | 최근 3개 회차의 확정 요약 · 안전 계획 · 확인 사항(`status`) · `CHILD` 발화(회차당 최근 40개) | `7회차 안전 계획`, `7회차 확인 사항`, `7회차 00:10` |
+| 아이 앱 응답 | 답이 있는 최근 10개 | `10/7 아이 앱 응답` |
+
+- 기록마다 `case:N` 번호를 붙여 LLM에 보낸다. 기록 하나는 600자에서 자른다.
+- 보호자 · 상담원 · 미확정 화자 발화는 이전 회차 검수본에서도 뺀다. 요약 · 안전 계획은 상담사가 확정한 문장을 넣는다.
+- 화자 미확정(`UNKNOWN`) 발화는 질문 근거로 쓰지 않고, 응답 최상위 `speaker_check_items`("02:15 발화의 화자", 근거 `8회차 02:15 · 화자 불확실")로 따로 돌려준다. 발화 내용은 외부로 보내지 않는다.
+
+### 비식별
+
+- 상담 문장과 사례 기록 전체를 `rag/privacy.mask_payload`(`privacy_gateway.review`)로 **한 번에** 가린다. 따로 가리면 다른 사람이 같은 토큰(`[PERSON_01]`)을 받아 복원이 꼬인다.
+- 이전 회차 · 아이 앱 기록 때문에 비식별 검증에 막히면 이번 회차 기록만으로 다시 하고 `case_context_warning`을 붙인다. 이번 회차 발화가 막히면 지금처럼 `RagPrivacyBlocked`.
+
+### 생성 단계
+
+```text
+1) 확인할 사항 추출 (LLM 1회)
+   사례 기록 + 체크리스트 needs_confirmation
+   → info_gap(시기 · 빈도 · 치료 여부 미확인) / plan_followup(이전 계획 · status=open 확인 사항)
+     / change(이전 회차 · 앱과 달라진 점) / inconsistency(기록끼리 안 맞음) / checklist_gap
+   → 사례 근거(case:N)가 없는 항목은 버린다. 최대 6개.
+2) 질문 생성 (LLM 1회)
+   확인할 사항 + 사례 기록 + 공식 근거
+   공식 근거: manual:N(업무 매뉴얼 '상담·조사·사정' 구간의 면담 원칙 + 매뉴얼·가이드·서식 검색 결과)
+             checklist:N / law:N / precedent:N
+   → audience: counselor(다음 상담에서 직접, 3~5개) / child_app(아이 앱으로 먼저, 0~3개)
+3) 검증
+   규칙: 사례 근거 + 공식 근거 ID 각 1개 이상, 길이(상담 120자 · 앱 50자), 판단 · 법률 용어(학대 · 처벌 · 신고 …),
+        꼬리 · 부정형 질문("~했지?", "~맞지?", "~하지 않았어?"),
+        아동이 말하지 않은 행위자 + 행위 조합(아동 표현을 되묻는 것은 허용, 활용형 차이는 같은 행위로 봄),
+        아이 앱 질문의 특정 행위(때림 · 만짐 · 욕 …)
+   LLM 검토(1회): leading / presupposes / age_inappropriate / judgmental — 하나라도 걸리거나 판정이 빠지면 탈락
+   → 상담사용 질문이 3개 미만이면 탈락 질문 · 사유를 알려 주고 한 번 더 만든다(최대 2회)
+```
+
+- LLM 호출은 3~5회(`RAG_ANALYZER_MODEL`). 회차 분석이 끝날 때 만들어 저장해 두고 화면에서 읽는다.
+- `review_status`: `passed`(검토 통과) / `not_reviewed`(검토 호출 실패, 규칙만 통과) / `fallback`(질문 생성 실패 시 체크리스트 판정 단계의 추가 질문을 규칙 검증만 거쳐 씀).
+- 법령은 배경 근거로만, 판례는 어떤 사실(반복성 · 상처 정도 · 시기)이 중요한지 참고로만 쓰게 프롬프트로 막는다. 판례 속 사건 내용이 질문에 들어가지 않게 한다.
+- 모든 질문은 상담사가 승인해야 쓰인다. 승인 · 수정한 질문과 체크한 확인 사항은 다음 회차 `previous_sessions[].check_items`로 다시 넣는다.
+- `validation`에는 생성 · 탈락 수만 담는다(질문 문장은 싣지 않는다).
+
 ## 9. 상태값
 
 - `matched`: 상담 원문에서 체크리스트 항목을 직접 뒷받침하는 근거가 확인됨
@@ -312,7 +406,11 @@ rag/evidence_analyzer.py
 - 상담 문장과 체크리스트 비교
 
 rag/checklist_builder.py
-- 체크리스트 + 법령을 바탕으로 다음 상담 질문 3~5개 구성
+- 다음 상담 전 확인할 사항 추출 → 추가 질문 생성(상담 · 아이 앱) → 규칙 · LLM 검증 (8-3)
+
+rag/case_context.py
+- 이번 회차 CHILD 발화 · 이전 회차 기록 · 아이 앱 응답을 case:N 사례 기록으로 모으고 화면 근거 표기를 만든다
+- 화자 미확정 발화를 '확인할 사항'으로 만든다(외부 전송 없음)
 
 rag/resource_ranker.py
 - 상담사에게 보여줄 공식 참고자료 2~3개 선택
@@ -325,7 +423,7 @@ rag/session.py
 - STT 검수 후 Transcript에서 CHILD 발화만 추려 근거자료 분석과 화면별 매뉴얼 근거를 동시에 만든다
 
 rag/privacy.py
-- 외부 전송 전 비식별(privacy_gateway.mask_for_outbound)과 결과 복원
+- 외부 전송 전 비식별(privacy_gateway.mask_for_outbound · 여러 문장은 mask_payload)과 결과 복원
 
 rag/precedents.py
 - 가이드북 '판례로 보는 사례'를 사건 단위 조각으로 만들고, 색인된 판례에서 유사 판례를 찾는다
@@ -341,6 +439,7 @@ rag/precedent_harvest.py
 - STT 검수 후 Transcript (CHILD 발화만 사용)
 - 멀티라벨 모델의 abuse_type
 - (선택) 사례에 등록된 실명 known_identifiers
+- (선택) session_no · previous_sessions · child_app_responses (다음 상담 질문 근거, 8-3)
 
 출력
 - 상담 근거 문장
@@ -348,7 +447,7 @@ rag/precedent_harvest.py
 - 추가 확인 필요 항목
 - 관련 현행 법령
 - 유사 판례
-- 다음 상담용 확인 체크리스트
+- 다음 상담 전 확인할 사항 · 추가 질문(상담 / 아이 앱, 근거 시각 포함)
 - 참고자료 2~3개
 ```
 

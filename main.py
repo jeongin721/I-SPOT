@@ -317,6 +317,30 @@ def analyze_audio(file: UploadFile = File(...)):
             except Exception as remove_err:
                 print(f"⚠️ 임시 파일 삭제 실패: {str(remove_err)}")
 
+class PreviousCheckItem(BaseModel):
+    # 이전 회차 '다음 상담 전 확인할 사항'과 처리 상태. open 이면 다음 질문에서 이행 여부를 다시 확인한다.
+    item: str
+    status: Literal["confirmed", "open"] = "open"
+    note: str = ""
+
+
+class PreviousSession(BaseModel):
+    session_no: int
+    # 상담사가 확정한 회차 요약 · 안전 계획. 보호자 진술을 그대로 옮기지 않은 확정본을 넣는다.
+    summary: str = ""
+    safety_plan: str = ""
+    check_items: list[PreviousCheckItem] = Field(default_factory=list)
+    # 이전 회차 검수본. 넣으면 아동(CHILD) 발화만 근거로 쓴다.
+    transcript: Optional[dict[str, Any]] = None
+
+
+class ChildAppResponse(BaseModel):
+    response_id: str = ""
+    question: str = ""
+    answer: str
+    answered_at: str = ""  # ISO 날짜(2026-10-07). 화면 근거 표기 "10/7 아이 앱 응답" 에 쓴다.
+
+
 class ReviewedTranscriptRequest(BaseModel):
     # 검수가 끝난 Transcript(팀 공용 Contract). segments[].speaker 는 CHILD/GUARDIAN/COUNSELOR/OTHER/UNKNOWN.
     transcript: dict[str, Any]
@@ -324,6 +348,10 @@ class ReviewedTranscriptRequest(BaseModel):
     abuse_type: Optional[Literal["physical", "emotional", "sexual", "neglect", "multiple"]] = None
     # 사례에 등록된 아동 · 보호자 실명 등. 비식별에서 정확 매칭으로 한 번 더 가린다.
     known_identifiers: list[str] = Field(default_factory=list)
+    # 다음 상담 질문의 근거로 함께 쓸 사례 기록. 없으면 이번 회차 아동 발화만 쓴다.
+    session_no: Optional[int] = None
+    previous_sessions: list[PreviousSession] = Field(default_factory=list)
+    child_app_responses: list[ChildAppResponse] = Field(default_factory=list)
 
 
 @app.post("/api/v1/rag/analyze")
@@ -333,6 +361,7 @@ def analyze_reviewed(request: ReviewedTranscriptRequest):
     - 아동(CHILD) 발화만 쓴다. 보호자 · 상담원 · 미확정 화자 발화는 넣지 않는다.
     - OpenAI(임베딩 · LLM)로 보내기 전에 비식별한다. 비식별 검증에 실패하면 전송하지 않고
       해당 결과에 privacy_blocked 와 사유를 담는다.
+    - previous_sessions · child_app_responses 를 주면 다음 상담 질문이 이전 회차 · 아이 앱 응답까지 근거로 쓴다.
     """
     if not request.transcript.get("segments"):
         raise HTTPException(
@@ -362,6 +391,9 @@ def analyze_reviewed(request: ReviewedTranscriptRequest):
         request.transcript,
         abuse_type,
         known_identifiers=request.known_identifiers,
+        session_no=request.session_no,
+        previous_sessions=[session.model_dump() for session in request.previous_sessions],
+        child_app_responses=[response.model_dump() for response in request.child_app_responses],
     )
 
     return {

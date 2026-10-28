@@ -4,13 +4,10 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from .case_context import RAG_INPUT_SPEAKERS, build_case_records, sorted_segments, speaker_of, speaker_check_items
 from .pipeline import analyze_consultation_evidence
 from .privacy import RagPrivacyBlocked
 from .screen_manual import build_screen_references
-
-# RAG 입력으로 쓰는 화자. 보호자(GUARDIAN) 진술은 아이에게 할 질문의 근거로 쓰지 않는다(화면 원칙 6).
-# 상담원 · 기타 · 미확정(UNKNOWN) 발화도 넣지 않는다. 화자 확인은 STT 검수에서 끝난 상태여야 한다.
-RAG_INPUT_SPEAKERS = frozenset({"CHILD"})
 
 
 def child_text_from_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
@@ -18,19 +15,12 @@ def child_text_from_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
 
     반환: text(아동 발화), child_segment_ids, excluded_speakers({화자: 뺀 발화 수})
     """
-    segments = [
-        segment
-        for segment in (transcript or {}).get("segments") or []
-        if isinstance(segment, dict)
-    ]
-    segments.sort(key=lambda segment: int(segment.get("start_ms") or 0))
-
     texts: list[str] = []
     child_segment_ids: list[str] = []
     excluded: Counter[str] = Counter()
 
-    for segment in segments:
-        speaker = str(segment.get("speaker") or "UNKNOWN").upper()
+    for segment in sorted_segments(transcript):
+        speaker = speaker_of(segment)
         text = str(segment.get("text") or "").strip()
         if not text:
             continue
@@ -63,16 +53,23 @@ def analyze_reviewed_transcript(
     abuse_type: str | None,
     *,
     known_identifiers: list[str] | None = None,
+    session_no: int | None = None,
+    previous_sessions: list[dict[str, Any]] | None = None,
+    child_app_responses: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """STT 검수가 끝난 Transcript 로 근거자료 · 법령 · 판례 · 화면별 매뉴얼 근거를 만든다.
+    """STT 검수가 끝난 Transcript 로 근거자료 · 법령 · 판례 · 화면별 매뉴얼 근거 · 다음 상담 질문을 만든다.
 
     abuse_type 이 없으면(감지된 학대 유형 없음) 근거자료 분석은 건너뛰고 화면별 매뉴얼 근거만 만든다.
     두 분석 모두 아동 발화를 비식별한 뒤 OpenAI 로 보낸다.
+    session_no · previous_sessions · child_app_responses 를 주면 다음 상담 질문
+    (rag_analysis.next_session_checklist)이 이번 회차 아동 발화와 함께 이전 회차 기록 · 아이 앱 응답을 근거로 쓴다.
+    speaker_check_items 는 화자 미확정 발화를 '확인할 사항'으로 만든 것으로, 외부로 보내지 않고 로컬에서 만든다.
     """
     child = child_text_from_transcript(transcript)
     result: dict[str, Any] = {
         "child_segment_ids": child["child_segment_ids"],
         "excluded_speakers": child["excluded_speakers"],
+        "speaker_check_items": speaker_check_items(transcript, session_no=session_no),
         "rag_analysis": None,
         "manual_screen_references": None,
     }
@@ -86,6 +83,12 @@ def analyze_reviewed_transcript(
                 text=child["text"],
                 abuse_type=abuse_type,
                 known_identifiers=known_identifiers,
+                case_records=build_case_records(
+                    transcript,
+                    session_no=session_no,
+                    previous_sessions=previous_sessions,
+                    child_app_responses=child_app_responses,
+                ),
             )
             if abuse_type
             else None

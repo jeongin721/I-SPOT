@@ -13,7 +13,7 @@ from .checklist_builder import build_next_session_checklist
 from .config import LAW_TARGET_LAWS
 from .evidence_analyzer import analyze_checklist_candidates
 from .precedents import find_similar_precedents
-from .privacy import mask_text, restore
+from .privacy import RagPrivacyBlocked, mask_payload, restore
 from .resource_ranker import build_reference_materials, format_document_reference
 from .retriever import search_evidence
 
@@ -43,7 +43,7 @@ def _empty_result(consultation_text: str, abuse_type: str) -> dict[str, Any]:
         "checklist_results": [],
         "additional_questions": [],
         "related_laws": [],
-        "next_session_checklist": {"items": []},
+        "next_session_checklist": {"check_items": [], "items": [], "validation": {}},
         "reference_materials": [],
         "manual_references": [],
         "precedents": [],
@@ -202,6 +202,7 @@ def analyze_consultation_evidence(
     refresh_law: bool = False,
     reference_limit: int = 3,
     known_identifiers: list[str] | None = None,
+    case_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """상담 문장의 근거 체크리스트 · 관련 법령 · 매뉴얼 · 유사 판례 · 다음 상담 질문을 만든다.
 
@@ -209,12 +210,31 @@ def analyze_consultation_evidence(
     가린 문장으로 분석한 뒤 결과의 토큰을 원문으로 되돌려 돌려준다.
     비식별 검증을 통과하지 못하면 아무것도 보내지 않고 RagPrivacyBlocked 를 던진다.
     known_identifiers: 사례에 등록된 아동 · 보호자 실명 등(정확 매칭으로 한 번 더 가린다).
+    case_records: 다음 상담 질문의 근거가 될 사례 기록(case_context.build_case_records).
+        없으면 상담 문장 하나를 사례 기록으로 쓴다. 상담 문장과 함께 한 번에 비식별한다.
     """
     consultation_text = text.strip()
     if not consultation_text:
         raise ValueError("상담 문장이 비어 있습니다.")
 
-    masked_text, entity_map = mask_text(consultation_text, known_identifiers)
+    records = case_records or [
+        {"ref": "case:1", "source": "consultation", "current": True, "label": "이번 상담", "text": consultation_text}
+    ]
+    context_warning = None
+    try:
+        masked_records, masked_text, entity_map = _mask_case(consultation_text, records, known_identifiers)
+    except RagPrivacyBlocked:
+        # 이전 회차 · 아이 앱 기록 때문에 막혔다면 이번 회차 기록만으로 다시 해 본다.
+        # 이번 회차 발화가 막힌 것이면 다시 막혀 그대로 위로 올라간다.
+        current = [record for record in records if record.get("current")]
+        if not current or len(current) == len(records):
+            raise
+        masked_records, masked_text, entity_map = _mask_case(consultation_text, current, known_identifiers)
+        context_warning = (
+            "이전 회차 · 아이 앱 기록이 비식별 검증을 통과하지 못해 "
+            "다음 상담 질문에 이번 회차 아동 발화만 썼습니다."
+        )
+
     result = _analyze_masked(
         masked_text,
         abuse_type,
@@ -223,8 +243,25 @@ def analyze_consultation_evidence(
         use_law=use_law,
         refresh_law=refresh_law,
         reference_limit=reference_limit,
+        case_records=masked_records,
     )
+    if context_warning:
+        result["case_context_warning"] = context_warning
     return restore(result, entity_map)
+
+
+def _mask_case(
+    consultation_text: str,
+    records: list[dict[str, Any]],
+    known_identifiers: list[str] | None,
+) -> tuple[list[dict[str, Any]], str, dict[str, str]]:
+    """상담 문장과 사례 기록을 한 번에 비식별한다(같은 사람 = 같은 토큰)."""
+    masked, entity_map = mask_payload(
+        {"text": consultation_text, "case": {record["ref"]: record.get("text", "") for record in records}},
+        known_identifiers,
+    )
+    masked_records = [{**record, "text": masked["case"][record["ref"]]} for record in records]
+    return masked_records, masked["text"], entity_map
 
 
 def _analyze_masked(
@@ -236,8 +273,9 @@ def _analyze_masked(
     use_law: bool,
     refresh_law: bool,
     reference_limit: int,
+    case_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """비식별한 상담 문장으로 분석한다. 여기서 부르는 임베딩 · LLM 은 모두 가린 문장만 받는다."""
+    """비식별한 상담 문장 · 사례 기록으로 분석한다. 여기서 부르는 임베딩 · LLM 은 모두 가린 문장만 받는다."""
     rag_abuse_filter = None if abuse_type == "multiple" else abuse_type
     candidates = search_evidence(
         consultation_text,
@@ -270,9 +308,11 @@ def _analyze_masked(
     precedents, precedent_warning = find_similar_precedents(consultation_text, abuse_type)
 
     next_session_checklist = build_next_session_checklist(
-        consultation_text,
+        case_records,
         result["checklist_results"],
         law_articles,
+        manual_results=supplementary_results,
+        precedents=precedents,
         fallback_questions=result["additional_questions"],
     )
 
@@ -383,14 +423,31 @@ def _print_human_readable(
     if result.get("law_warning"):
         print(f"  참고: {result['law_warning']}")
 
-    print("\n[5. 다음 상담용 확인 체크리스트]")
-    items = result.get("next_session_checklist", {}).get("items", [])
+    checklist = result.get("next_session_checklist", {})
+
+    def basis_labels(item: dict[str, Any]) -> str:
+        return " · ".join(basis.get("label", "") for basis in item.get("basis", [])) or "-"
+
+    print("\n[5. 다음 상담 전 확인할 사항]")
+    check_items = checklist.get("check_items", [])
+    if check_items:
+        for item in check_items:
+            mark = "!" if item.get("priority") == "high" else "-"
+            print(f"{mark} {item.get('item', '')} ({item.get('kind', '')})")
+            print(f"  근거: {basis_labels(item)}")
+    else:
+        print("- 정리된 확인할 사항이 없습니다.")
+
+    print("\n[5-1. 추가 질문]")
+    items = checklist.get("items", [])
+    audience_names = {"counselor": "다음 상담에서 직접", "child_app": "아이 앱으로 먼저"}
     if items:
         for item in items:
             mark = "!" if item.get("priority") == "high" else "-"
-            print(f"{mark} {item.get('question', '')}")
+            audience = audience_names.get(item.get("audience", ""), item.get("audience", ""))
+            print(f"{mark} [{audience}] {item.get('question', '')}")
             print(f"  이유: {item.get('rationale', '')}")
-            print(f"  근거: {', '.join(item.get('basis_refs', []))}")
+            print(f"  근거: {basis_labels(item)}")
     else:
         print("- 생성된 후속 확인 질문이 없습니다.")
 

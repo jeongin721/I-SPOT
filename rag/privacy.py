@@ -38,6 +38,25 @@ def mask_text(
         raise RagPrivacyBlocked(list(error.reasons)) from None
 
 
+def mask_payload(
+    payload: dict[str, Any],
+    known_identifiers: list[str] | None = None,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """여러 문장(상담 문장 · 이전 회차 기록 · 아이 앱 응답 …)을 한 번에 가린다.
+
+    문장마다 따로 가리면 서로 다른 사람이 같은 토큰([PERSON_01])을 받아 복원이 꼬인다.
+    privacy_gateway.review 는 payload 전체에서 같은 원문 = 같은 토큰으로 맞춘다.
+    payload 의 문자열 값만 가린다(키는 그대로). 남은 식별 정보가 있으면 RagPrivacyBlocked.
+    """
+    from ai.modeling.abuse.privacy_gateway import PrivacyGatewayBlocked, review
+
+    try:
+        result = review(payload, known_identifiers=known_identifiers)
+    except PrivacyGatewayBlocked as error:
+        raise RagPrivacyBlocked(list(error.reasons)) from None
+    return result.payload, result.entity_map
+
+
 def restore(value: Any, entity_map: dict[str, str]) -> Any:
     """결과(str/dict/list)에 남은 비식별 토큰을 원문으로 되돌린다. 상담사 화면에는 원문이 보여야 한다."""
     if not entity_map:
