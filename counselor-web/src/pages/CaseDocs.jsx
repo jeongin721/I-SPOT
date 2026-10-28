@@ -13,6 +13,7 @@ import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseSignals } from '../data/useCaseSignals';
 import { useCaseDocuments } from '../data/useCaseDocuments';
 import { caseDocsValues } from '../data/screens/caseDocs';
 import { needsLogin, signedIn } from '../data/screens/common';
@@ -34,9 +35,10 @@ export default function CaseDocs(props) {
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const enabled = signedIn(session);
   const detail = useCaseDetail(caseId, { enabled });
+  const signals = useCaseSignals(detail, { enabled });
   const docs = useCaseDocuments(caseId, detail.caseInfo ? detail.sessions : null, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, docs, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, docs, caseId });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDocs">
@@ -80,7 +82,7 @@ export default function CaseDocs(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
                 <span className="sub">{v.sub}</span>
-                <span className="chip c-normal">{v.riskChip}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
               <div className="note">{v.meta}</div>
             </div>

@@ -16,6 +16,7 @@ import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseSignals } from '../data/useCaseSignals';
 import { useIntakeCounselors } from '../data/useCaseIntake';
 import { INITIAL_CASE_INTAKE_STATE, caseIntakeValues } from '../data/screens/caseIntake';
 import { needsLogin, signedIn } from '../data/screens/common';
@@ -49,9 +50,10 @@ export default function CaseIntake(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
+  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const counselors = useIntakeCounselors(session);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, counselors, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, counselors, caseId });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -106,7 +108,7 @@ export default function CaseIntake(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
                 <span className="sub">{v.sub}</span>
-                <span className="chip c-normal">{v.riskChip}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
               <div className="note">{v.meta}</div>
             </div>
