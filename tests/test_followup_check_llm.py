@@ -174,3 +174,54 @@ def test_previous_session_only_point_dropped_without_previous_session():
     raw = [{"text": "안전 계획 유지 여부 확인 필요", "segment_ids": [], "from_previous_session": True}]
 
     assert _clean_points(raw, {"seg_001"}) == []
+
+
+# 민규 #102 R1: 이번 회차 요지 · 저신뢰 발화가 모두 없어도 지난 회차 확정 요약이 있으면 LLM 을 부른다.
+
+PREVIOUS = {
+    "previous_session": {
+        "session_label": "7회차",
+        "consulted_on": "2026-10-20",
+        "assessment": {"strengths_resources": "조모에게 연락하는 안전 계획을 세움"},
+    }
+}
+
+
+def test_previous_summary_alone_still_calls_llm(monkeypatch):
+    from ai.modeling.abuse.case_context import previous_session_label
+
+    segments = [{"segment_id": "seg_001", "speaker": "CHILD", "text": "학교 갔다 왔어요.", "start_ms": 0}]
+    combined = format_inputs_for_masking(segments, [], [], case_context=PREVIOUS)
+    calls = []
+
+    def fake_llm(**kwargs):
+        calls.append(kwargs["system_prompt"])
+        return {"check_points": [{"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "from_previous_session": True}]}
+
+    monkeypatch.setattr(followup_module, "_call_llm_with_retry", fake_llm)
+
+    result = followup_module.generate_followup_check_points_from_masked_text(
+        client=None,
+        model="test",
+        masked_combined_text=combined,
+        segments=segments,
+        previous_session_label=previous_session_label(PREVIOUS),
+    )
+
+    assert len(calls) == 1
+    assert "조모에게 연락하는 안전 계획" in calls[0]
+    assert result == [{"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "7회차"}]
+
+
+def test_intake_only_without_session_content_skips_llm(monkeypatch):
+    segments = [{"segment_id": "seg_001", "speaker": "CHILD", "text": "학교 갔다 왔어요.", "start_ms": 0}]
+    combined = format_inputs_for_masking(segments, [], [], case_context={"intake_family_situations": ["알콜남용"]})
+
+    def must_not_call(**kwargs):
+        raise AssertionError("초기면접 항목만 있으면 부르지 않는다")
+
+    monkeypatch.setattr(followup_module, "_call_llm_with_retry", must_not_call)
+
+    assert followup_module.generate_followup_check_points_from_masked_text(
+        client=None, model="test", masked_combined_text=combined, segments=segments, previous_session_label=None
+    ) == []

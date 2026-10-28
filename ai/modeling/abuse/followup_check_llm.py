@@ -95,7 +95,8 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
    줄 앞에 [seg_001]처럼 적혀 있다 — 여러 줄에 걸쳐 있으면
    segment_id를 여러 개 적어도 된다. 근거 없는 segment_id는 지어내지
    않는다. 인용할 segment_id가 없으면 그 항목 자체를 결과에 넣지
-   않는다.
+   않는다 — 단 하나의 예외는 아래 '사례 정보를 쓰는 법' 의 근거가 지난
+   회차 확정 요약뿐인 항목이다(segment_ids 빈 배열 + from_previous_session).
 
 [입력 — 이번 상담에서 확인된 아동 진술 · 위험 신호 요지]
 {session_content_input}
@@ -319,9 +320,13 @@ def generate_followup_check_points_from_masked_text(
     # 예전 판(두 칸)으로 만든 글도 받는다.
     case_context_input = parts[2] if len(parts) > 2 else "없음"
 
+    # 이번 회차 요지 · 저신뢰 발화가 모두 없어도 지난 회차 확정 요약이 있으면 LLM 을 부른다
+    # (지난 요약만 근거인 메모 허용 — #100 §7 답 3, 민규 #102 R1). 초기면접 항목만 있으면 지금처럼 건너뛴다
+    # (근거 없는 메모를 만들지 않게). previous_session_label 은 그 요약에 글이 있을 때만 온다.
     if (
         session_content_input.strip() == "없음"
         and low_confidence_input.strip() == "없음"
+        and not previous_session_label
     ):
         return []
 

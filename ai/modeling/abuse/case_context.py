@@ -32,6 +32,10 @@ from typing import Any, Dict, List, Optional
 #: 프롬프트에 쓰는 성별 · 보호자 유형 이름. 모르는 값은 쓰지 않는다.
 GENDER_LABELS = {"F": "여", "M": "남", "여": "여", "남": "남"}
 
+# 합의한 나이대 5구간(backend case_context_service.age_band). 밖의 값은 버린다 —
+# 정확한 나이 · 생년월일 문자열이 프롬프트로 들어오는 길을 막는다(민규 #102 C1).
+AGE_BANDS = ("만 0~5세", "만 6~9세", "만 10~13세", "만 14~17세", "만 18세 이상")
+
 GUARDIAN_LABELS = {
     "PARENTS": "부모",
     "FATHER": "부",
@@ -60,6 +64,12 @@ EMPTY = "없음"
 
 def _text(value: Any, limit: int = MAX_TEXT_CHARS) -> str:
     return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _label(value: Any, labels: Dict[str, str]) -> str:
+    """정해진 값만 이름으로 바꾼다. 문자열이 아니거나(list · dict 등) 목록 밖이면 빈 값(민규 #102 C2)."""
+
+    return labels.get(value, "") if isinstance(value, str) else ""
 
 
 def _words(value: Any) -> List[str]:
@@ -101,9 +111,9 @@ def normalize_case_context(case_context: Any) -> Optional[Dict[str, Any]]:
             }
 
     view = {
-        "child_age_band": _text(case_context.get("child_age_band"), 20),
-        "child_gender": GENDER_LABELS.get(case_context.get("child_gender"), ""),
-        "guardian_type": GUARDIAN_LABELS.get(case_context.get("guardian_type"), ""),
+        "child_age_band": _label(case_context.get("child_age_band"), {band: band for band in AGE_BANDS}),
+        "child_gender": _label(case_context.get("child_gender"), GENDER_LABELS),
+        "guardian_type": _label(case_context.get("guardian_type"), GUARDIAN_LABELS),
         "intake_child_traits": _words(case_context.get("intake_child_traits")),
         "intake_family_situations": _words(case_context.get("intake_family_situations")),
         "previous_session": previous_view,
@@ -116,13 +126,19 @@ def normalize_case_context(case_context: Any) -> Optional[Dict[str, Any]]:
 
 
 def previous_session_label(case_context: Any) -> Optional[str]:
-    """직전 승인 회차 이름("7회차"). 없으면 None. 확인 메모의 '근거 · 7회차 확정 요약' 에 쓴다."""
+    """직전 승인 회차 이름("7회차"). 확인 메모의 '근거 · 7회차 확정 요약' 에 쓴다.
+
+    그 회차의 확정 요약(사정 4칸)에 글이 하나도 없으면 None 이다 — 근거로 삼을 지난 요약이 없다.
+    확인 메모 모듈은 이 값이 있을 때만 이번 회차 요지가 비어도 LLM 을 부른다(민규 #102 R1).
+    """
 
     view = normalize_case_context(case_context)
     previous = view["previous_session"] if view else None
-    label = previous["session_label"] if previous else ""
 
-    return label or None
+    if not previous or not previous["assessment"]:
+        return None
+
+    return previous["session_label"] or None
 
 
 def format_case_context(case_context: Any) -> str:
