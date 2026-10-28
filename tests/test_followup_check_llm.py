@@ -101,3 +101,53 @@ def test_clean_points_deduplicates_nothing_but_preserves_order():
     cleaned = _clean_points(raw_points, valid_segment_ids)
 
     assert [item["text"] for item in cleaned] == ["첫 번째", "두 번째"]
+
+
+# 2026-10-28: 사례 정보(case_context)를 세 번째 칸으로 넣는다.
+
+from ai.modeling.abuse import followup_check_llm as followup_module
+from ai.modeling.abuse.followup_check_llm import SPLIT_MARKER, format_inputs_for_masking
+
+
+def test_case_context_goes_into_third_part_and_prompt(monkeypatch):
+    segments = [{"segment_id": "seg_001", "speaker": "CHILD", "text": "아빠가 술 마시고 와서 때려요.", "start_ms": 0}]
+    points = [{"text": "아빠가 술 마시고 와서 때린다고 말함.", "segment_ids": ["seg_001"]}]
+    combined = format_inputs_for_masking(
+        segments, points, [], case_context={"intake_family_situations": ["알콜남용"]}
+    )
+
+    parts = combined.split(SPLIT_MARKER)
+    assert len(parts) == 3
+    assert "초기면접 가정상황: 알콜남용" in parts[2]
+
+    seen = {}
+
+    def fake_llm(**kwargs):
+        seen["prompt"] = kwargs["system_prompt"]
+        return {"check_points": [{"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_001"]}]}
+
+    monkeypatch.setattr(followup_module, "_call_llm_with_retry", fake_llm)
+
+    result = followup_module.generate_followup_check_points_from_masked_text(
+        client=None, model="test", masked_combined_text=combined, segments=segments
+    )
+
+    assert "초기면접 가정상황: 알콜남용" in seen["prompt"]
+    assert result == [{"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_001"]}]
+
+
+def test_old_two_part_text_still_works(monkeypatch):
+    segments = [{"segment_id": "seg_001", "speaker": "CHILD", "text": "무서웠어요.", "start_ms": 0}]
+    old = "- [seg_001] (아동 진술) 무서웠다고 말함." + SPLIT_MARKER + "없음"
+    seen = {}
+
+    def fake_llm(**kwargs):
+        seen["prompt"] = kwargs["system_prompt"]
+        return {"check_points": []}
+
+    monkeypatch.setattr(followup_module, "_call_llm_with_retry", fake_llm)
+    followup_module.generate_followup_check_points_from_masked_text(
+        client=None, model="test", masked_combined_text=old, segments=segments
+    )
+
+    assert '사례 정보(초기면접 · 지난 회차 확정 요약), 없으면 "없음"]\n없음' in seen["prompt"]

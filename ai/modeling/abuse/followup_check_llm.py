@@ -58,6 +58,7 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
+from ai.modeling.abuse.case_context import format_case_context
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 
 DEFAULT_MODEL = "gpt-5.6-luna"
@@ -101,6 +102,17 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
 
 [입력 — 신뢰도가 낮거나 화자가 불확실한 발화]
 {low_confidence_input}
+
+[입력 — 사례 정보(초기면접 · 지난 회차 확정 요약), 없으면 "없음"]
+{case_context_input}
+
+[사례 정보를 쓰는 법]
+- 사례 정보는 이번 상담 내용을 읽는 **배경**으로만 쓴다. 예: 초기면접에 '알콜남용' 이 있고 이번에
+  음주 뒤 체벌 진술이 나오면 "보호자 음주 빈도 · 음주 뒤 상황 확인 필요" 처럼 이어 짚을 수 있다.
+- 지난 회차 요약에 있던 것(예: 안전 계획)이 이번 상담에 안 나왔으면 "유지 여부 확인 필요" 라고
+  짚을 수 있다 — 단, 이번 상담의 관련 줄 segment_id 를 인용할 수 있을 때만.
+- 사례 정보에만 있고 이번 상담에 근거 줄이 없는 항목은 만들지 않는다(segment_id 는 이번 상담 줄에서만).
+- 사례 정보의 내용을 이번 상담에서 새로 확인된 사실처럼 쓰지 않는다.
 
 반드시 아래 JSON 형식으로만 답한다:
 {{
@@ -198,13 +210,19 @@ def format_inputs_for_masking(
     segments: List[Dict[str, Any]],
     child_statement_points: List[Dict[str, Any]],
     risk_signal_points: List[Dict[str, Any]],
+    case_context: Any = None,
 ) -> str:
+    """case_context(2026-10-28, case_context.py): 사례 정보. 없으면 세 번째 칸은 "없음".
+    지난 회차 요약은 상담원 글이라 이름이 섞일 수 있어, 이 글 전체를 부르는 쪽이 한 번에 마스킹한다."""
+
     return (
         _format_session_content(
             child_statement_points, risk_signal_points
         )
         + SPLIT_MARKER
         + _format_low_confidence(segments)
+        + SPLIT_MARKER
+        + format_case_context(case_context)
     )
 
 
@@ -280,6 +298,8 @@ def generate_followup_check_points_from_masked_text(
     parts = masked_combined_text.split(SPLIT_MARKER)
     session_content_input = parts[0] if parts else "없음"
     low_confidence_input = parts[1] if len(parts) > 1 else "없음"
+    # 예전 판(두 칸)으로 만든 글도 받는다.
+    case_context_input = parts[2] if len(parts) > 2 else "없음"
 
     if (
         session_content_input.strip() == "없음"
@@ -290,6 +310,7 @@ def generate_followup_check_points_from_masked_text(
     system_prompt = SYSTEM_PROMPT.format(
         session_content_input=session_content_input,
         low_confidence_input=low_confidence_input,
+        case_context_input=case_context_input,
     )
 
     try:
