@@ -36,6 +36,7 @@ import type {
   SessionCreateRequest,
   SessionDetail,
   SessionStatus,
+  SignalHistory,
   Summary,
   SummaryEnvelope,
   SummaryUpdateRequest,
@@ -198,6 +199,11 @@ export const cases = {
 
   createSession(caseId: string, payload: SessionCreateRequest): Promise<Session> {
     return api.post<Session>(`/cases/${caseId}/sessions`, payload);
+  },
+
+  /** 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessments 를 부르지 않아도 된다. */
+  signalHistory(caseId: string): Promise<SignalHistory> {
+    return api.get<SignalHistory>(`/cases/${caseId}/signal-history`);
   },
 };
 
