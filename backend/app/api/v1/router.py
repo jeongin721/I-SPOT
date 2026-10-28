@@ -13,6 +13,7 @@ from app.api.v1 import (
     summary,
     tasks,
     transcript,
+    voice_marks,
 )
 
 api_router = APIRouter()
@@ -29,3 +30,4 @@ api_router.include_router(summary.router)
 api_router.include_router(documents.router)
 api_router.include_router(risk_assessments.router)
 api_router.include_router(tasks.router)
+api_router.include_router(voice_marks.router)
