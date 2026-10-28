@@ -56,6 +56,7 @@ from ai.modeling.abuse.narrative_summary_llm import (
 from ai.modeling.abuse.session_change import (
     build_session_change_notes,
 )
+from ai.modeling.abuse.case_context import previous_session_label
 from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
@@ -960,6 +961,7 @@ def analyze_audio_session(
         masked_combined_text=followup_masked_text,
         segments=segments,
         deadline=deadline,
+        previous_session_label=previous_session_label(case_context),
     )
 
     followup_check_points = restore_pii(

@@ -5,7 +5,8 @@
 //    (10/26 까지는 유형별 위험도 화면에 있던 카드). 질문 은행의 질문이 아니고 아이에게 할 질문으로 보이지 않는다
 //    ('AI 확인 메모 · 질문 아님' 으로만 보이면 원칙 7 과 어긋나지 않는다는 2026-10-26 결정).
 //    근거 · 위치는 segment_ids 를 원문에서 찾아 '몇 분 · 누구' 로 보이고 누르면 STT 검수의 그 발화로 간다.
-//    서버가 segment_ids 를 비워 보내면(2026-10-27 #84 이전에 저장된 결과) '근거 위치 없음' 이다.
+//    서버가 segment_ids 를 비워 보내면(2026-10-27 #84 이전에 저장된 결과) '근거 위치 없음' 이고, 근거가 지난 회차 확정 요약뿐인
+//    메모(previous_session_label, 2026-10-28)는 '근거 · 7회차 확정 요약' 이다.
 //  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가: 저장할 API 가 없어 보이지 않고 준비 중이라고만 쓴다(가짜 저장 없음).
 //  - 추가 질문(다음 상담에서 직접 · 아이 앱으로 먼저): 질문 은행 · 아이 앱 발송이 서버에 없어 준비 중이다(예시 질문을 보이지 않는다).
 //  - 아래 'n회차 처리 완료 · 브리핑 보기': 회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면이라
@@ -36,6 +37,8 @@ export interface FollowupItem {
   why: string;
   /** 근거 발화로 가는 STT 검수 주소. 번호가 없으면 null. */
   href: string | null;
+  /** 근거가 지난 회차 확정 요약뿐인가(why 가 'N회차 확정 요약'). */
+  fromPrevious: boolean;
 }
 
 /**
@@ -58,12 +61,18 @@ export function toFollowupItems(
 
     const located = locate(point.segment_ids);
     const first = located.evidence[0]?.segmentId ?? null;
+    // 근거가 지난 회차 확정 요약뿐인 메모(previous_session_label, #100 §7 답 3).
+    const previous =
+      !first && typeof point.previous_session_label === "string" && point.previous_session_label
+        ? point.previous_session_label
+        : "";
 
     items.push({
       key: `f${index}`,
       text,
-      why: located.label || "근거 위치 없음",
+      why: located.label || (previous ? `${previous} 확정 요약` : "근거 위치 없음"),
       href: first ? segmentHref(ids, first) : null,
+      fromPrevious: Boolean(previous),
     });
   });
 

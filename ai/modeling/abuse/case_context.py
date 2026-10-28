@@ -115,6 +115,16 @@ def normalize_case_context(case_context: Any) -> Optional[Dict[str, Any]]:
     return view
 
 
+def previous_session_label(case_context: Any) -> Optional[str]:
+    """직전 승인 회차 이름("7회차"). 없으면 None. 확인 메모의 '근거 · 7회차 확정 요약' 에 쓴다."""
+
+    view = normalize_case_context(case_context)
+    previous = view["previous_session"] if view else None
+    label = previous["session_label"] if previous else ""
+
+    return label or None
+
+
 def format_case_context(case_context: Any) -> str:
     """
     프롬프트에 넣을 사례 정보 글. 마스킹 전 글이다 — 부르는 쪽이 mask_for_outbound 를 거쳐 보낸다.

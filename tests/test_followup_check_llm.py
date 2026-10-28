@@ -151,3 +151,26 @@ def test_old_two_part_text_still_works(monkeypatch):
     )
 
     assert '사례 정보(초기면접 · 지난 회차 확정 요약), 없으면 "없음"]\n없음' in seen["prompt"]
+
+
+# 2026-10-28 민규 리뷰(#100 §7 답 3): 근거가 지난 회차 확정 요약뿐인 메모는 previous_session_label 로 남긴다.
+
+def test_previous_session_only_point_kept_with_label_from_case_context():
+    raw = [
+        {"text": "안전 계획 유지 여부 확인 필요", "segment_ids": [], "from_previous_session": True},
+        {"text": "근거 없는 메모", "segment_ids": []},
+        {"text": "지어낸 회차를 붙인 메모", "segment_ids": [], "from_previous_session": True, "previous_session_label": "99회차"},
+    ]
+
+    cleaned = _clean_points(raw, {"seg_001"}, previous_session_label="7회차")
+
+    assert cleaned == [
+        {"text": "안전 계획 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "7회차"},
+        {"text": "지어낸 회차를 붙인 메모", "segment_ids": [], "previous_session_label": "7회차"},
+    ]
+
+
+def test_previous_session_only_point_dropped_without_previous_session():
+    raw = [{"text": "안전 계획 유지 여부 확인 필요", "segment_ids": [], "from_previous_session": True}]
+
+    assert _clean_points(raw, {"seg_001"}) == []

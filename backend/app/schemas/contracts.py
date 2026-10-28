@@ -6,7 +6,7 @@
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_serializer, model_validator
 
 from app.core.enums import Speaker
 
@@ -118,10 +118,24 @@ class SessionChangeNote(BaseModel):
 
 
 class FollowupCheckPoint(BaseModel):
-    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다."""
+    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다.
+
+    previous_session_label(2026-10-28, 선택): 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차").
+    이때 segment_ids 는 빈 배열이다. AI 경계(followup_check_llm)가 사례 정보의 직전 승인 회차 이름만 붙이고,
+    segment_ids 도 이 값도 없는 메모는 만들지 않는다.
+    """
 
     text: str
     segment_ids: List[str] = Field(default_factory=list)
+    previous_session_label: Optional[str] = Field(default=None, max_length=20)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_label(self, handler: Any) -> Dict[str, Any]:
+        # 선택 키라 값이 있을 때만 싣는다 — 예전 메모 · 저장 결과의 모양({text, segment_ids})이 바뀌지 않게.
+        data = handler(self)
+        if data.get("previous_session_label") is None:
+            data.pop("previous_session_label", None)
+        return data
 
 
 class AIAnalysisResult(BaseModel):

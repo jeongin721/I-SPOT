@@ -424,6 +424,12 @@ def to_ai_output_contract(
         else {
             "text": point.get("text", ""),
             "segment_ids": point.get("segment_ids", []),
+            # 근거가 지난 회차 확정 요약뿐인 메모(2026-10-28, #100 §7 답 3). 있을 때만 키를 둔다.
+            **(
+                {"previous_session_label": point["previous_session_label"]}
+                if isinstance(point.get("previous_session_label"), str) and point["previous_session_label"]
+                else {}
+            ),
         }
         for point in result.get("followup_check_points") or []
     ]

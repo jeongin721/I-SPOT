@@ -110,14 +110,17 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
 - 사례 정보는 이번 상담 내용을 읽는 **배경**으로만 쓴다. 예: 초기면접에 '알콜남용' 이 있고 이번에
   음주 뒤 체벌 진술이 나오면 "보호자 음주 빈도 · 음주 뒤 상황 확인 필요" 처럼 이어 짚을 수 있다.
 - 지난 회차 요약에 있던 것(예: 안전 계획)이 이번 상담에 안 나왔으면 "유지 여부 확인 필요" 라고
-  짚을 수 있다 — 단, 이번 상담의 관련 줄 segment_id 를 인용할 수 있을 때만.
-- 사례 정보에만 있고 이번 상담에 근거 줄이 없는 항목은 만들지 않는다(segment_id 는 이번 상담 줄에서만).
+  짚을 수 있다. 이번 상담의 관련 줄이 있으면 그 segment_id 를 인용하고, **근거가 지난 회차 확정
+  요약뿐이면** segment_ids 를 빈 배열로 두고 "from_previous_session": true 를 붙인다.
+- 초기면접 항목에만 있고 이번 상담 · 지난 회차 요약 어디에도 근거가 없는 항목은 만들지 않는다.
+- segment_id 는 이번 상담 줄에서만 인용한다(지난 회차 줄 번호는 없다).
 - 사례 정보의 내용을 이번 상담에서 새로 확인된 사실처럼 쓰지 않는다.
 
 반드시 아래 JSON 형식으로만 답한다:
 {{
   "check_points": [
-    {{"text": "...", "segment_ids": ["seg_001"]}}
+    {{"text": "...", "segment_ids": ["seg_001"]}},
+    {{"text": "...", "segment_ids": [], "from_previous_session": true}}
   ]
 }}
 """
@@ -229,6 +232,7 @@ def format_inputs_for_masking(
 def _clean_points(
     raw_points: Any,
     valid_segment_ids: set,
+    previous_session_label: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """protective_factor_llm._clean_points와 같은 패턴 — LLM이 주장한
     segment_id를 실제 segment 목록과 대조해 검증한다. 근거(유효한
@@ -272,10 +276,21 @@ def _clean_points(
             and str(sid) in valid_segment_ids
         ]
 
-        if not segment_ids:
+        if segment_ids:
+            cleaned.append({"text": text.strip(), "segment_ids": segment_ids})
             continue
 
-        cleaned.append({"text": text.strip(), "segment_ids": segment_ids})
+        # 2026-10-28 민규 리뷰(#100 §7 답 3): 근거가 지난 회차 확정 요약뿐인 메모는 버리지 않고
+        # previous_session_label("7회차")을 붙여 통과시킨다. 라벨은 LLM 이 쓴 글이 아니라 사례 정보에서
+        # 온 값을 쓴다(지어낸 회차가 붙지 않게). 지난 회차가 없거나 표시가 없으면 지금처럼 뺀다.
+        if previous_session_label and item.get("from_previous_session") is True:
+            cleaned.append(
+                {
+                    "text": text.strip(),
+                    "segment_ids": [],
+                    "previous_session_label": previous_session_label,
+                }
+            )
 
     return cleaned
 
@@ -286,9 +301,12 @@ def generate_followup_check_points_from_masked_text(
     masked_combined_text: str,
     segments: List[Dict[str, Any]],
     deadline: Optional[float] = None,
+    previous_session_label: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """segments: 원본 segment 목록 — segment_id 검증에만 쓴다
     (protective_factor_llm.generate_protective_factors와 같은 이유).
+    previous_session_label: 사례 정보의 직전 승인 회차 이름("7회차"). 있을 때만 근거가 지난 회차
+    요약뿐인 메모를 남긴다(_clean_points).
     """
 
     valid_segment_ids = {
@@ -329,7 +347,7 @@ def generate_followup_check_points_from_masked_text(
     if not isinstance(parsed, dict):
         parsed = {}
 
-    return _clean_points(parsed.get("check_points"), valid_segment_ids)
+    return _clean_points(parsed.get("check_points"), valid_segment_ids, previous_session_label)
 
 
 def generate_followup_check_points(

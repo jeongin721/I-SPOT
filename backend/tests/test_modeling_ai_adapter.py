@@ -679,6 +679,24 @@ def test_case_context_is_not_passed_when_absent(modeling, monkeypatch: pytest.Mo
     assert "case_context" not in seen[-1]
 
 
+def test_previous_session_label_is_kept_only_when_present(modeling) -> None:
+    """근거가 지난 회차 확정 요약뿐인 메모(#100 §7 답 3)는 previous_session_label 을 싣고, 없으면 키가 없다."""
+
+    result = _native_result()
+    result["followup_check_points"] = [
+        {"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "1회차"},
+        {"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_002"]},
+    ]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["followup_check_points"] == [
+        {"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "1회차"},
+        {"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_002"]},
+    ]
+
+
 def test_module_only_fields_do_not_leak(modeling) -> None:
     """Contract 의 10개 키만 남고, 모듈만 쓰는 값(전체 원문 · 일지 본문 · 체크리스트)은 결과에 새지 않는다."""
 
