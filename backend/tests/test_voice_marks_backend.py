@@ -419,3 +419,103 @@ def test_get_voice_marks_requires_login_and_case_access(
     missing = client.get(f"/api/v1/sessions/{uuid.uuid4()}/voice-marks", headers=counselor_headers)
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "SESSION_NOT_FOUND"
+
+
+# =========================================================
+# 교차검증(10/28)에서 잡힌 것 — 느린 옛 분석 · 계약을 어긴 분석기 출력
+# =========================================================
+
+def test_late_result_for_older_version_does_not_hide_newer_row(
+    client: TestClient, counselor_headers, session: dict, db
+) -> None:
+    """v1 분석이 v2(확정 재분석)보다 늦게 저장돼도 조회는 v2 를 준다(저장 시각이 아니라 version 기준)."""
+
+    import uuid as _uuid
+
+    analyzer = FakeAnalyzer()
+    set_voice_marks_analyzer_override(analyzer)
+    _run_stt(client, counselor_headers, session["id"])
+
+    transcript_v1 = _get_transcript(client, counselor_headers, session["id"])["transcript"]
+    changed = next(s for s in transcript_v1["segments"] if s["speaker"] != "CHILD")
+    client.patch(
+        f"/api/v1/sessions/{session['id']}/transcript",
+        headers=counselor_headers,
+        json={"segments": [{"segment_id": changed["segment_id"], "speaker": "CHILD"}]},
+    )
+    assert (
+        client.post(
+            f"/api/v1/sessions/{session['id']}/transcript/confirm", headers=counselor_headers
+        ).status_code
+        == 200
+    )
+    assert _get_marks(client, counselor_headers, session["id"]).json()["data"]["transcript_version"] == 2
+
+    # 느린 v1 분석이 이제야 끝나 저장되는 상황을 그대로 재현한다.
+    voice_marks_service.analyze_for_transcript(
+        _uuid.UUID(session["id"]), _uuid.UUID(transcript_v1["id"])
+    )
+
+    assert _row_count(db, session["id"]) == 3  # 이력은 남긴다
+    data = _get_marks(client, counselor_headers, session["id"]).json()["data"]
+    assert data["transcript_version"] == 2
+    assert data["transcript_id"] != transcript_v1["id"]
+
+
+def test_result_with_unknown_status_is_stored_as_error_row(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    def odd_status(audio_path, segments):
+        result = make_result(segments)
+        result["status"] = "DONE /tmp/secret-path"
+
+        return result
+
+    set_voice_marks_analyzer_override(odd_status)
+    _run_stt(client, counselor_headers, session["id"])
+
+    _assert_error_row(client, counselor_headers, session["id"])
+
+
+def test_result_that_cannot_be_saved_as_json_is_stored_as_error_row(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    def with_set(audio_path, segments):
+        result = make_result(segments)
+        result["reference"]["note"] = {"not", "json"}
+
+        return result
+
+    set_voice_marks_analyzer_override(with_set)
+    _run_stt(client, counselor_headers, session["id"])
+
+    # 행이 없어지는 것이 아니라 ANALYSIS_ERROR 행이 남는다.
+    _assert_error_row(client, counselor_headers, session["id"])
+
+
+def test_confirm_survives_malformed_segment_keys_in_previous_row(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """저장된 결과의 아동 구간 시각이 정수가 아니어도(계약 위반) 확정은 200 이고, 재분석을 한 번 돌린다."""
+
+    calls = []
+
+    def malformed(audio_path, segments):
+        calls.append(segments)
+        result = make_result(segments)
+        child = next(entry for entry in result["segments"] if entry["speaker"] == "CHILD")
+        child["start_ms"] = []
+
+        return result
+
+    set_voice_marks_analyzer_override(malformed)
+    _run_stt(client, counselor_headers, session["id"])
+    assert len(calls) == 1
+
+    response = client.post(
+        f"/api/v1/sessions/{session['id']}/transcript/confirm", headers=counselor_headers
+    )
+
+    assert response.status_code == 200, response.text
+    assert _get_transcript(client, counselor_headers, session["id"])["session_status"] == "STT_CONFIRMED"
+    assert len(calls) == 2
