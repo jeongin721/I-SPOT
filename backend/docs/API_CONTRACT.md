@@ -1595,7 +1595,8 @@ Test 영향
   전사본(7절)의 `segments` 는 건드리지 않는다.
 - 원문 확정(`POST …/transcript/confirm`) 때 확정본의 아동 구간(`segment_id` · `start_ms` · `end_ms`)이 마지막 분석 때와
   다르면 백그라운드로 한 번 더 돌려 새 행으로 저장한다(STT 직후엔 화자가 `UNKNOWN` 이라 아동 구간이 0개였다가 검수에서
-  정해지는 경우). 행은 쌓고, 조회는 가장 최근 행이다. 같은 회차를 다시 STT 해도 쌓는다.
+  정해지는 경우). 행은 쌓고, 조회는 **가장 최신 전사본 version 의 행**(같은 version 이면 나중 것)이다 — 느린 옛 분석이
+  새 분석보다 늦게 저장돼도 새 version 의 결과를 가리지 않는다. 같은 회차를 다시 STT 해도 쌓는다.
 - `VOICE_MARKS_PROVIDER=off`(기본)면 아무것도 하지 않는다(행도 없다). `module` 이면 `stt.voice_marks` 를 부른다
   (librosa · numba · soundfile — `requirements-stt.txt`, 이미지는 `WITH_STT=1`). 서버 시작 때 `warm_up()` 을
   백그라운드로 한 번 부른다(numba 컴파일 지연 방지, 캐시 자리는 `NUMBA_CACHE_DIR`).
@@ -1604,11 +1605,12 @@ Test 영향
   그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
 - 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
   (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
-- 상담사가 검수에서 시각을 고쳐도 표시는 갱신되지 않는다(결과 안에 분석 당시의 `start_ms` · `end_ms` 가 있다).
+- 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
+  재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
 
 ### GET /api/v1/sessions/{session_id}/voice-marks
 
-가장 최근 행 하나. 아직 계산 전이면 `200` 에 `{"data": null}` 이다(정상 상태라 `404` 를 쓰지 않는다). 권한은 사례 접근 규칙과 같다.
+가장 최신 전사본 version 의 행 하나(같은 version 이면 나중 것). 아직 계산 전이면 `200` 에 `{"data": null}` 이다(정상 상태라 `404` 를 쓰지 않는다). 권한은 사례 접근 규칙과 같다.
 
 ```json
 {

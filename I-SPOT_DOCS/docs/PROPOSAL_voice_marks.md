@@ -113,7 +113,7 @@ STT 검수 화면에 '목소리 신호' 칸은 자리만 있고(`counselor-web/s
 | --- | --- |
 | 저장 | `audio_features` 새 행. `extractor = "stt.voice_marks"`, `schema_version = "1.0"`, `features` = 함수가 돌려주는 dict 전체. 기존 행과 transcript 의 `segments` 는 건드리지 않는다 |
 | 행 식별 | 행마다 `audio_file_id` · `transcript_id` · `transcript_version` 이 있다. 한 오디오에 이 `extractor` 행이 여러 개일 수 있다 |
-| 다시 STT 할 때 | 행을 **쌓는다**(교체하지 않음). 조회는 가장 최근 행을 준다. 확정 때 재분석도 새 행이다 |
+| 다시 STT 할 때 | 행을 **쌓는다**(교체하지 않음). 조회는 가장 최신 전사본 version 의 행을 준다(같은 version 이면 나중 것). 확정 때 재분석도 새 행이다 |
 | 돌리는 시점 | STT 직후 1회. 이때 화자 역할이 정해지지 않아 아동 구간이 없으면 결과 전체가 `TOO_FEW_CHILD_SEGMENTS` 가 된다. 그래서 상담사가 원문을 확정할 때 확정본의 아동 구간(`segment_id` · `speaker` · `start_ms` · `end_ms`)이 STT 직후와 다르면 한 번 더 돌려 새 행으로 저장한다. 화면은 가장 최근 행을 쓴다. 함수 쪽 변경은 없다 |
 | 기준값 | 화면은 응답의 `thresholds` 와 `flag` 만 쓰고 코드에 숫자를 적지 않는다 |
 | 시간 제한 · 실패 | Backend 쪽에서 10분. 넘기거나 예외가 나면 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(그래야 화면이 '분석 전' 과 '분석 불가(이유)' 를 구분한다). 회차 상태에는 영향이 없다. 60분을 넘는 음성은 함수가 `AUDIO_TOO_LONG` 으로 돌려준다 |
@@ -181,7 +181,7 @@ GET /api/v1/sessions/{session_id}/voice-marks
 }
 ```
 
-- 가장 최근 행 하나를 돌려줍니다(재분석으로 행이 여러 개일 수 있음, §7-0).
+- 가장 최신 전사본 version 의 행 하나를 돌려줍니다(재분석으로 행이 여러 개일 수 있음, §7-0. 느린 옛 분석이 늦게 저장돼도 새 version 결과를 가리지 않음).
 - 행이 없으면 `200` 에 `{"data": null}` 입니다. 시간 초과나 실패는 행이 없는 것이 아니라 `UNDETERMINED` · `ANALYSIS_ERROR` 행입니다(§7-0).
 - 결과(`result`)는 함수가 돌려준 dict 를 그대로 담고, 기존 규칙대로 `data` 로 감쌉니다.
 
