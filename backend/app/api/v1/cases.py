@@ -17,7 +17,8 @@ from app.schemas.case import (
 from app.schemas.auth import UserResponse
 from app.schemas.common import StorableQueryText
 from app.schemas.session import SessionCreateRequest, SessionResponse
-from app.services import case_service, session_service
+from app.schemas.signal_history import SignalHistoryResponse
+from app.services import case_service, session_service, signal_history_service
 from app.services.access import get_case_or_404
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -120,6 +121,24 @@ def get_case(
     detail.counselor_name = case.counselor.name if case.counselor else None
 
     return DataResponse(data=detail)
+
+
+@router.get("/{case_id}/signal-history", response_model=DataResponse[SignalHistoryResponse])
+def get_signal_history(
+    case_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[SignalHistoryResponse]:
+    """
+    사례의 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력(API_CONTRACT 4절, 2026-10-28).
+
+    회차마다 analysis · risk-assessments 를 부르던 것을 한 번에 준다. AI 를 새로 돌리지 않는다.
+    권한 · 오류는 GET /cases/{case_id} 와 같다.
+    """
+
+    case = get_case_or_404(db, case_id, current_user)
+
+    return DataResponse(data=signal_history_service.build_signal_history(db, case))
 
 
 @router.patch("/{case_id}", response_model=DataResponse[CaseResponse])
