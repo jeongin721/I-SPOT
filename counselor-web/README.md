@@ -114,12 +114,12 @@ export default function CaseDetail(props) {
 | 홈 | `Main.jsx` | — | `useAuthSession` · `useHomeDashboard` | `main.ts` `mainValues` |
 | 통합 사례 관리 | `CaseList.jsx` | — | `useAuthSession` · `useCaseList` | `caseList.ts` `caseListValues` |
 | 새 사례 등록 | `CaseRegister.jsx` | — | `useAuthSession` · `useCaseRegister` | `caseRegister.ts` `caseRegisterValues` |
-| 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseDetailValues` |
+| 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` · `useFollowupQuestions`(최근 회차 승인 질문 수) | `caseDetail.ts` `caseDetailValues` |
 | 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
 | 사례 상세 · 상담 전 브리핑 | `PreBriefing.jsx` | `case` | `useCaseDetail` · `useCaseSignals` · `useFollowupQuestions` | `preBriefing.ts` `preBriefingValues` |
 | 사례 상세 · 문서함 | `CaseDocs.jsx` | `case` | `useCaseDetail` · `useCaseDocuments` | `caseDocs.ts` `caseDocsValues` |
 | 사례 상세 · 초기면접지 | `CaseIntake.jsx` | `case` | `useCaseDetail`(`saveCase`) · `useIntakeCounselors` | `caseIntake.ts` `caseIntakeValues` |
-| 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
+| 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) · `useFollowupQuestions`(승인 질문 수) | `sessionDetail.ts` `sessionDetailValues` |
 | 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
 | 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
 | 2 · 유형별 위험도 | `SignalReview.jsx`(옛 `RiskProfile` 주소는 여기로 넘김) | `case` · `session` | `useSessionAnalysis` · `useRiskSignals` · `useRiskAssessments` + 머리 | `signalReview.ts` `signalReviewValues` |

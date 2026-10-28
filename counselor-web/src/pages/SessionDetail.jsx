@@ -15,6 +15,7 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
+import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { useScreenGo } from '../data/screens/useScreenGo';
@@ -35,7 +36,8 @@ export default function SessionDetail(props) {
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, go });
+  const questions = useFollowupQuestions(ids.sessionId, { enabled });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, questions, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-SessionDetail">
