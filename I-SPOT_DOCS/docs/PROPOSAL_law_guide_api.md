@@ -242,4 +242,4 @@ backend/app/
 
 §2 응답과 다른 점: `sources.manual[]` 은 유지하되 첨부가 꺼져 있으면 늘 `[]` 이고, `law_versions` · `notice` 는 넣지 않았다(모듈이 주지 않는 값 · 안내는 `answer` 끝에 이미 있음). 필요하면 선택 키로 더한다. 모듈 함수 이름은 `answer_legal_manual_question`(파일 `legal_manual_qa_llm.py`)이다.
 
-§5-5 배포: Dockerfile 에 `COPY manual/ /manual/` 을 더했다(설정 모듈). 매뉴얼 사진 폴더는 마운트하지 않는다. `LAW_API_OC` · `LAW_CACHE_DIR` 는 Backend 설정에 두고 서버가 process 환경으로 넘긴다. `LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다. 자세한 절차는 `deploy/README.md` '법령 · 매뉴얼 AI 질문 켜기'. 정식 문서는 `backend/docs/API_CONTRACT.md` 16절.
+§5-5 배포: Dockerfile 에 `COPY manual/ /manual/` 을 더했다(설정 모듈). 매뉴얼 사진 폴더는 마운트하지 않는다. `LAW_API_OC` · `LAW_CACHE_DIR` 는 Backend 설정에 두고 서버가 process 환경으로 넘긴다. `LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다. 자세한 절차는 `deploy/README.md` '법령 · 매뉴얼 AI 질문 켜기'. 정식 문서는 `backend/docs/API_CONTRACT.md` 17절(16절은 Voice Marks).
