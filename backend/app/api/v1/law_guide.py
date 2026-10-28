@@ -1,4 +1,4 @@
-# 법령 · 매뉴얼 AI 질문 Router — API_CONTRACT 16절 (2026-10-28).
+# 법령 · 매뉴얼 AI 질문 Router — API_CONTRACT 17절 (2026-10-28).
 from fastapi import APIRouter
 
 from app.core.deps import CurrentUser, DbSession

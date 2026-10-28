@@ -418,7 +418,7 @@ export const riskAssessments = {
 
 export const lawGuide = {
   /**
-   * 질문 하나(1~500자)에 조문 근거를 달아 답한다(API_CONTRACT 16절). 동기 응답이라 '찾는 중' 은 화면이 보인다.
+   * 질문 하나(1~500자)에 조문 근거를 달아 답한다(API_CONTRACT 17절). 동기 응답이라 '찾는 중' 은 화면이 보인다.
    * 꺼져 있으면 503 LAW_QA_DISABLED, 분당 한도 초과 429 RATE_LIMITED, 제한 시간 초과 504 AI_TIMEOUT,
    * LLM 실패 502 AI_FAILED · AI_INVALID_OUTPUT, 법령 자료 없음 503 LAW_SOURCE_UNAVAILABLE. 오류 문구는 고정 문구라 그대로 보여도 된다.
    */

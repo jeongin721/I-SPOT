@@ -71,7 +71,7 @@ class ErrorCode(str, Enum):
     AI_AUTH_ERROR = "AI_AUTH_ERROR"
     AI_QUOTA_ERROR = "AI_QUOTA_ERROR"
 
-    # 법령 · 매뉴얼 AI 질문 (16절, 2026-10-28). 이 창구는 동기 응답이라 AI_* 도 HTTP 상태로 쓴다.
+    # 법령 · 매뉴얼 AI 질문 (17절, 2026-10-28). 이 창구는 동기 응답이라 AI_* 도 HTTP 상태로 쓴다.
     LAW_QA_DISABLED = "LAW_QA_DISABLED"
     LAW_SOURCE_UNAVAILABLE = "LAW_SOURCE_UNAVAILABLE"
     RATE_LIMITED = "RATE_LIMITED"

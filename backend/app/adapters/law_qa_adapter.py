@@ -1,4 +1,4 @@
-# 법령 · 매뉴얼 AI 질문 Adapter — LawGuide 화면의 'AI 에게 묻기' (API_CONTRACT 16절, 2026-10-28).
+# 법령 · 매뉴얼 AI 질문 Adapter — LawGuide 화면의 'AI 에게 묻기' (API_CONTRACT 17절, 2026-10-28).
 #
 # ai/modeling/abuse/legal_manual_qa_llm.answer_legal_manual_question(이경진 님, PR #83)을 부른다. 분석 어댑터
 # (ai_adapter)와 같은 모양(Protocol + mock + modeling + provider 스위치)이고 설계는 I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md §4 다.

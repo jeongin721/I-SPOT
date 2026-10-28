@@ -1,4 +1,4 @@
-# 법령 · 매뉴얼 AI 질문 Schema — POST /law-guide/questions (API_CONTRACT 16절, 2026-10-28).
+# 법령 · 매뉴얼 AI 질문 Schema — POST /law-guide/questions (API_CONTRACT 17절, 2026-10-28).
 #
 # LawGuide 화면의 'AI 에게 묻기'. 질문 하나를 받아 조문 근거를 단 답을 돌려준다(이경진 님 제안서
 # I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md). 답은 참고용이고 판정이 아니다(05_RULES §1).

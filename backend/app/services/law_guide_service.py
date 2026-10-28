@@ -1,4 +1,4 @@
-# 법령 · 매뉴얼 AI 질문 — POST /law-guide/questions (API_CONTRACT 16절, 2026-10-28).
+# 법령 · 매뉴얼 AI 질문 — POST /law-guide/questions (API_CONTRACT 17절, 2026-10-28).
 #
 # 상담 회차 · 사례와 묶이지 않는 독립 질의다. 검증 · 사용자별 호출 한도 · 동시 실행 제한 · 시간 제한 · 감사 기록을
 # 여기서 하고, 실제 답은 law_qa_adapter 가 만든다. 설계는 I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md §4 · §5.

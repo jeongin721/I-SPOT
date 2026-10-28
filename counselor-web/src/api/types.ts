@@ -906,7 +906,7 @@ export interface RiskAssessmentSaveRequest {
 }
 
 /**
- * 법령 · 매뉴얼 AI 질문(POST /law-guide/questions, API_CONTRACT 16절, 2026-10-28). 질문 하나(앞뒤 공백 뺀 뒤 1~500자).
+ * 법령 · 매뉴얼 AI 질문(POST /law-guide/questions, API_CONTRACT 17절, 2026-10-28). 질문 하나(앞뒤 공백 뺀 뒤 1~500자).
  * 답변은 참고용이고 판정이 아니다(05_RULES §1). 서버는 질문 · 답변을 저장하지 않는다.
  */
 export interface LawGuideQuestionRequest {

@@ -5,9 +5,12 @@
 # 더한다(deploy/README.md '모델까지 띄우기' · 'STT 까지 띄우기').
 FROM python:3.12-slim
 
+# NUMBA_CACHE_DIR: 구간별 음성 참고 표시(stt/voice_marks, VOICE_MARKS_PROVIDER=module)가 쓰는 numba 의 컴파일 캐시 자리.
+# 컨테이너는 root 로 돌아 /tmp 에 쓸 수 있다. 없으면 numba 가 패키지 폴더에 쓰려다 실패할 수 있다.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    HF_HOME=/hf-cache
+    HF_HOME=/hf-cache \
+    NUMBA_CACHE_DIR=/tmp/numba-cache
 
 WORKDIR /app
 

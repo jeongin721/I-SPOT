@@ -1,6 +1,6 @@
 # [제안] 법령 · 매뉴얼 AI 질문 API (LawGuide 화면)
 
-> `02_ARCHITECTURE.md` §8 Contract 변경 규칙에 따른 제안서입니다. **합의 · 구현(2026-10-28, Backend 최민규 — §9 구현 메모 · API_CONTRACT 16절).**
+> `02_ARCHITECTURE.md` §8 Contract 변경 규칙에 따른 제안서입니다. **합의 · 구현(2026-10-28, Backend 최민규 — §9 구현 메모 · API_CONTRACT 17절).**
 > 화면은 `frontend261021` 브랜치 `counselor-design/screens/LawGuide.dc.html`(2026-10-27 판),
 > AI 쪽은 PR #83(`feat/law-qa`, `fdfbf8f` 기준)의 `ai/modeling/abuse/legal_manual_qa_llm.py` 를 기준으로 썼습니다.
 >

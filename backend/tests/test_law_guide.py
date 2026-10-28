@@ -1,4 +1,4 @@
-# POST /law-guide/questions — 법령 · 매뉴얼 AI 질문(API_CONTRACT 16절, 2026-10-28).
+# POST /law-guide/questions — 법령 · 매뉴얼 AI 질문(API_CONTRACT 17절, 2026-10-28).
 #
 # 실제 AI 모듈(openai · law · manual 패키지)은 CI 에 없다. modeling 경로는 가짜 모듈을 sys.modules 에 넣어 돌린다
 # (test_modeling_ai_adapter 와 같은 방식). mock 경로는 그대로 돈다.

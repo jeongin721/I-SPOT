@@ -29,6 +29,7 @@ from app.core.errors import APIError, ErrorCode
 from app.core.logging import configure_logging, get_logger
 from app.core.responses import DataResponse
 from app.schemas.common import HealthStatus
+from app.services.voice_marks_service import start_voice_marks_warmup
 
 logger = get_logger(__name__)
 
@@ -64,6 +65,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # AI_PROVIDER=modeling 이면 모델을 백그라운드로 미리 올린다. 기다리지 않으므로 /health 는 바로
     # 응답하고, 실패해도 서버는 뜬다(ai_adapter.start_ai_preload). 다른 provider 는 아무것도 하지 않는다.
     app.state.ai_preload = start_ai_preload()
+    # VOICE_MARKS_PROVIDER=module 이면 numba 컴파일을 미리 끝낸다(stt/voice_marks.warm_up). 역시 기다리지 않는다.
+    app.state.voice_marks_warmup = start_voice_marks_warmup()
     # LAW_QA_PROVIDER=modeling 이면 법령 질의 모듈과 법령 캐시도 미리 준비한다(law_qa_adapter.start_law_qa_preload).
     app.state.law_qa_preload = start_law_qa_preload()
 

@@ -89,7 +89,8 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
    sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
    ```
 
-   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs · librosa · numba · soundfile)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - 구간별 음성 참고 표시(정담원 님 `stt/voice_marks`)까지 켜려면 `backend.env` 에 `VOICE_MARKS_PROVIDER=module` 을 더합니다. 같은 `WITH_STT=1` 이미지에 librosa · numba · soundfile 이 들어 있고, numba 캐시 자리(`NUMBA_CACHE_DIR=/tmp/numba-cache`)는 이미지가 정합니다. 기본(`off`)이면 아무것도 하지 않습니다. 참고 표시일 뿐 판정이 아닙니다(`backend/docs/API_CONTRACT.md` 16절).
    - `openai-whisper`(`I_SPOT_STT_PROVIDER=whisper` 일 때만) · `pyannote`(별도 화자 분리 때만) · `ffmpeg`(기본 꺼진 `I_SPOT_SINGLE_SPEAKER_FALLBACK` 때만)는 넣지 않았습니다. 그 설정을 켜려면 이미지에 더해야 합니다.
    - 전사 한 번에 최대 `STT_TIMEOUT_SECONDS`(기본 600초)까지 기다립니다. 음성 파일은 `/opt/ispot/storage`(컨테이너 `/app/storage`)에 있어 그대로 읽습니다.
 
@@ -132,7 +133,7 @@ Backend 포트 8000 은 열지 않습니다(Caddy 만 서버 안에서 부릅니
 
 ## 법령 · 매뉴얼 AI 질문 켜기 (`LAW_QA_PROVIDER=modeling`)
 
-LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 16절)는 기본 `mock`(고정 답변)으로 뜹니다. 실제로 켜려면:
+LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고정 답변)으로 뜹니다. 실제로 켜려면:
 
 1. 이미지는 `WITH_MODELING=1` 로 만든 것이어야 합니다(openai 가 들어 있음). 이미지에 `law/` · `manual/` 이 복사됩니다(사진 폴더는 넣지 않음).
 2. `backend.env` 에 `LAW_QA_PROVIDER=modeling`, `OPENAI_API_KEY=<키>`. `ENV=production` 이면 `LAW_QA_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만**(질문이 가려진 채 OpenAI 로 나가지만 등록 실명 대조는 돌지 않음).
