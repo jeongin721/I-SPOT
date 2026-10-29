@@ -273,6 +273,8 @@ export function sttReviewValues(input: SttScreenInput) {
   const hasKey = keyRows.length > 0;
   let view: "key" | "all" | "check" = state.view === "auto" ? (hasKey && !focusSegment ? "key" : "all") : state.view;
   if (view === "key" && !hasKey) view = "all";
+  // 가리킬 발화(주소의 seg · 재생 바 표시)가 핵심 목록에 없으면 전체 보기로 — 핵심 보기를 남긴 채 &seg= 로 와도 그 줄이 보이게(민규 #115 R4).
+  if (view === "key" && focusId && !keyRows.some((row) => row.segmentId === focusId)) view = "all";
   const home = hasKey ? "key" : "all";
   // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게). 표시할 줄도 둔다.
   const visible =
@@ -283,6 +285,8 @@ export function sttReviewValues(input: SttScreenInput) {
         );
   // 저장 · 확정을 기다리는 동안에는 고치지 못하게 한다(보낸 내용 뒤에 친 글자가 저장되지 않고 사라지지 않게).
   const editable = review.canEdit && !review.submitting;
+  // 핵심 발화 보기의 줄은 읽기만 한다 — 문장뿐 아니라 화자도 못 바꾼다(민규 #115 R3).
+  const lineEditable = editable && view !== "key";
   const okKey = (segmentId: string) => `${ids.sessionId}:${segmentId}`;
   const unchecked = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]);
   const left = unchecked.length;
@@ -301,7 +305,7 @@ export function sttReviewValues(input: SttScreenInput) {
     const done = Boolean(state.ok[key]);
     const check = needsCheck(row);
     // 고칠 수 없을 때(확정 뒤 다음 단계 · 저장 중)는 목록을 닫는다.
-    const open = editable && state.spOpen === key;
+    const open = lineEditable && state.spOpen === key;
     const focus = row.segmentId === focusId;
     let hint = "";
 
@@ -323,7 +327,7 @@ export function sttReviewValues(input: SttScreenInput) {
       aria: `${row.startLabel} 발화 고치기`,
       spFw: row.speaker === "CHILD" ? 700 : 500,
       spFix: row.edited || row.dirty,
-      canEdit: editable,
+      canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),
       /** 목록에서 Esc 를 누르면 닫는다. */
