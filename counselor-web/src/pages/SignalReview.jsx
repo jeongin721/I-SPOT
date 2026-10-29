@@ -7,7 +7,8 @@
 // 상담원 판단(회차 전체 상 · 중 · 하 하나, 2026-10-29)은 useOverallRiskAssessment, 머리는 useSessionDetail · useCaseDetail 이 부르고,
 // 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
 // 이 파일은 훅을 부르고 배치만 한다. 판단 없이 다음 단계로 가려 하면(nextBlocked) 옮기지 않고 팝업 "위험도를 선택해주세요." 를 띄운다.
-// 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 위험요인 · 회차별 추이 · 심각도 상담사 수정)은 준비 중이다.
+// 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 위험요인 · 심각도 상담사 수정)은 준비 중이다.
+// 회차별 추이는 사례 단위 신호 이력(useSignalHistory)으로 채운다.
 import { Fragment, useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -19,6 +20,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useSignalHistory } from '../data/useSignalHistory';
 import { useOverallRiskAssessment } from '../data/useOverallRiskAssessment';
 import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
@@ -142,6 +144,7 @@ export default function SignalReview(props) {
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
+  const history = useSignalHistory(sessionCaseId(ids, detail), { enabled });
   const analysis = useSessionAnalysis(ids.sessionId, { enabled });
   const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
   const overall = useOverallRiskAssessment(ids.sessionId, { enabled });
@@ -155,6 +158,7 @@ export default function SignalReview(props) {
     analysis,
     signals,
     overall,
+    history,
     go,
     askInitially,
     clearAsk,
@@ -386,9 +390,35 @@ export default function SignalReview(props) {
               <div className="hd">
                 <h2 className="h2">회차별 추이</h2>
               </div>
-              <p className="note" style={{ margin: 0, padding: '0 22px 18px' }}>
-                {v.trendNote}
-              </p>
+              {v.trend ? (
+                <table className="tbl mx">
+                  <thead>
+                    <tr>
+                      <th>유형</th>
+                      {v.trend.cols.map((c) => (
+                        <th key={c.key}>{c.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {v.trend.rows.map((r) => (
+                      <tr key={r.key}>
+                        <td>{r.label}</td>
+                        {r.cells.map((x) => (
+                          <td key={x.key} className={x.muted ? 'note' : undefined}>
+                            {x.bold && !x.muted ? <b>{x.text}</b> : x.text}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+              {v.trendNote ? (
+                <p className="note" style={{ margin: 0, padding: '10px 22px 18px' }}>
+                  {v.trendNote}
+                </p>
+              ) : null}
             </section>
 
             <section

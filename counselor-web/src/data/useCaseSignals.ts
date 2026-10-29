@@ -4,7 +4,8 @@
 // AI 분석이 끝난 가장 최근 회차(결과 검수 중 · 승인 완료) 하나를 골라, 그 회차의 값을 기존 API 로 부른다(새 API 없음).
 //  - 상담원 판단(회차 전체 상 · 중 · 하 하나, 2026-10-29): GET /sessions/{id}/risk-assessment (useOverallRiskAssessment)
 //  - AI 관련 신호 · 근거 발화 · 확인 메모: GET /sessions/{id}/analysis (useSessionAnalysis · useRiskSignals)
-// 그보다 새 회차가 아직 분석 전이어도 이 회차를 쓴다(그 사실은 sessionLabel 로 화면에 밝힌다).
+// 그보다 새 회차가 아직 분석 전이어도 이 회차를 쓴다(화면은 session.numberLabel 로 어느 회차 값인지 밝힌다).
+// 회차 목록은 최신 100개까지라(useCaseDetail), 그 안에 분석 끝난 회차가 없고 목록이 잘렸으면 truncated 로 알린다.
 // 여러 회차를 모으는 값(회차별 추이 · 처음 나온 이야기)은 회차마다 부르게 되므로 여기서 하지 않는다(사례 단위 API 제안 중).
 
 import type { RiskLevel } from "../api/types";
@@ -35,6 +36,10 @@ export interface CaseSignalsState {
   topLevelLabel: string;
   /** 그 판단을 저장한 일시. 없으면 "". */
   topLevelAt: string;
+  /** 분석 끝난 회차를 못 찾았는데 회차 목록이 잘렸는가(더 오래된 회차에 있을 수 있다). */
+  truncated: boolean;
+  /** 받은 회차 수(잘렸을 때 '최근 N회차' 문구용). */
+  shownCount: number;
 }
 
 export function useCaseSignals(detail: CaseDetailState, { enabled = true }: { enabled?: boolean } = {}): CaseSignalsState {
@@ -52,5 +57,7 @@ export function useCaseSignals(detail: CaseDetailState, { enabled = true }: { en
     topLevel: risk.assessment?.level ?? null,
     topLevelLabel: risk.assessment?.levelLabel ?? "",
     topLevelAt: risk.assessment?.assessedAt ?? "",
+    truncated: session === null && detail.sessionTotal !== null && detail.sessionTotal > detail.sessions.length,
+    shownCount: detail.sessions.length,
   };
 }

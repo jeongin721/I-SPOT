@@ -3,7 +3,8 @@
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차는 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다(디자인이 바뀌면 JSX 만 바꾼다).
-// 서버에 없는 값(위험도 · 사례관리대상자 · 신고접수일 · 서비스 · 일정 등)은 '—', 종결 검토 등록은 준비 중.
+// 서버에 없는 값(사례관리대상자 · 신고접수일 · 서비스 · 일정 등)은 '—', 종결 검토 등록은 준비 중.
+// 위험도 · 학대 유형 · 주요 키워드는 분석이 끝난 가장 최근 회차(useCaseSignals)의 상담원 판단 · AI 결과로 채운다(caseDetail.ts 머리 주석).
 // '초기면접 내용' 카드는 디자인에 없어 더한 칸이다: 사례 등록 ② 탭의 가정상황 · 아동 특성을 단어로 보이고 '수정' 으로 고친다
 // (고르기 단추는 CaseRegister 와 같은 모양).
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
@@ -197,11 +198,18 @@ export default function CaseDetail(props) {
                 ) : null}
               </div>
               <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {(v.keywords || []).map((k, kIndex) => (
-                  <span key={kIndex} className="chip c-normal">
-                    {k}
-                  </span>
-                ))}
+                {(v.keywords || []).map((k, kIndex) =>
+                  k.href ? (
+                    <A key={kIndex} className="chip c-normal" to={k.href} title={`근거 · ${k.where}`}>
+                      {k.text}
+                      <span style={{ marginLeft: '6px', fontSize: '11px', opacity: 0.75 }}>{k.where}</span>
+                    </A>
+                  ) : (
+                    <span key={kIndex} className="chip c-normal">
+                      {k.text}
+                    </span>
+                  ),
+                )}
               </div>
               {v.typesAi || v.keywordsAi ? (
                 <div className="note" style={{ marginTop: '10px' }}>

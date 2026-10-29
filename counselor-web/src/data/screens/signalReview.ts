@@ -18,13 +18,16 @@
 //    없다 — 디자인의 '눌러서 상담사 수정' 은 저장할 API 가 없어 하지 않음) · 해당 기준(단계 설명) · AI 이유 · 근거 발화
 //    (누르면 STT 검수의 그 발화로) · 기준 보기(단계 설명 전체 + 근거 발화 전체와 세부 유형 · 근거 직접성).
 //    안전 플래그 칩은 서버에 값이 없어 보이지 않는다.
-//  - 회차별 추이 · 안전 플래그 · 재학대 요인 · 위험요인: 서버에 없어 준비 중(예시 값을 보이지 않는다).
+//  - 회차별 추이(2026-10-28, 사례 단위 signal-history API #99): 이 회차까지 최근 3회차 × 유형(신체 · 정서 · 방임 · 성).
+//    칸은 AI 심각도 숫자 · '확인 필요'(관련 신호만) · '–' · '분석 전'(signalHistoryRows), 맨 아래 '위험도 (상담원)' 줄은
+//    회차마다 상담원 판단 중 가장 높은 것. 이 회차 열은 굵게(디자인).
+//  - 안전 플래그 · 재학대 요인 · 위험요인: 서버에 없어 준비 중(예시 값을 보이지 않는다).
 //  - 보호요인: protective_factors 를 읽기 전용으로 보인다(근거 위치는 원문에서).
 //  - 다음 상담에서 확인할 것(followup_check_points)은 4 · 추가 확인 · 질문 화면으로 옮겼다(followupQ.ts).
 //  - 아래 '확정 · 요약 · 일지 작성 →' 의 '확정' 은 서버에 위험 신호 확정 기록이 없어 빼고 '요약 · 일지 작성 →' 으로만 간다.
 // 모두 AI 제안이고 판정이 아니다(05_RULES §1). 채택 · 보류 · 제외 기록은 서버에 없다(팀 결정 전).
 
-import type { AbuseType, RiskLevel, SeverityRating } from "../../api/types";
+import type { AbuseType, RiskLevel, SeverityRating, SignalHistorySession } from "../../api/types";
 import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVELS, RISK_LEVEL_LABELS } from "../../api/types";
 import type { SignalCard, TypeSignal } from "../riskRows";
 import {
@@ -35,6 +38,8 @@ import {
 } from "../useOverallRiskAssessment";
 import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
+import type { SignalHistoryState } from "../useSignalHistory";
+import { DASH, TREND_TYPES, TYPE_SHORT, counselorTopLabel, historyCell } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 import { processHeaderValues } from "./process";
@@ -46,6 +51,48 @@ export interface SignalScreenInput extends SessionScreenInput {
   signals: RiskSignalsState;
   /** 회차 전체 상담원 판단(상 · 중 · 하 하나). */
   overall: OverallRiskAssessmentState;
+  /** 사례 단위 신호 이력(회차별 추이). 없으면 추이 칸은 안내만. */
+  history?: SignalHistoryState;
+}
+
+/** 회차별 추이에 보이는 회차 수(디자인: 이 회차까지 3회차). */
+const TREND_SESSIONS = 3;
+
+/** 회차별 추이 표 값. 이 회차(sessionId)까지 최근 TREND_SESSIONS 회차. */
+export function trendValues(history: SignalHistoryState | undefined, sessionId: string | null | undefined) {
+  if (!history) return { trend: null, trendNote: "" };
+  if (history.error) return { trend: null, trendNote: history.error };
+  if (!history.loaded) return { trend: null, trendNote: history.loading ? "회차별 추이를 불러오는 중…" : "" };
+
+  const index = history.sessions.findIndex((row) => row.session_id === sessionId);
+  const upto = index >= 0 ? history.sessions.slice(0, index + 1) : history.sessions;
+  const shown = upto.slice(-TREND_SESSIONS);
+
+  if (shown.length === 0) return { trend: null, trendNote: "회차가 없습니다." };
+
+  const current = (row: SignalHistorySession) => row.session_id === sessionId;
+
+  return {
+    trend: {
+      cols: shown.map((row) => ({ key: row.session_id, label: `${row.session_number}회차`, current: current(row) })),
+      rows: [
+        ...TREND_TYPES.map((type) => ({
+          key: type,
+          label: TYPE_SHORT[type],
+          cells: shown.map((row) => ({ key: row.session_id, ...historyCell(row, type), bold: current(row) })),
+        })),
+        {
+          key: "counselor",
+          label: "위험도 (상담원)",
+          cells: shown.map((row) => {
+            const text = counselorTopLabel(row);
+            return { key: row.session_id, text, muted: text === DASH, level: null, detected: false, bold: current(row) };
+          }),
+        },
+      ],
+    },
+    trendNote: "숫자는 AI 심각도 제안(1~5), '확인 필요' 는 관련 신호만 있고 심각도 제안이 없는 유형입니다. 위험도는 상담원 판단입니다.",
+  };
 }
 
 /** 팝업 문구(2026-10-29 사용자 요청 그대로). */
@@ -429,7 +476,7 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     reloadAssess: overall.reload,
     types,
     rubricNote: "단계 설명은 디자인 초안의 참고 기준이며 팀이 확정한 기준이 아닙니다.",
-    trendNote: `회차별 추이는 ${NOT_READY}입니다(서버에 회차 간 비교 값이 없음).`,
+    ...trendValues(input.history, ids.sessionId),
     flagNote: `안전 플래그 · 재학대 요인은 ${NOT_READY}입니다(서버에 값이 없음).`,
     factorTitle: completed ? `위험요인 ${NOT_READY} · 보호요인 ${protective.length}` : "위험요인 · 보호요인",
     protective,
