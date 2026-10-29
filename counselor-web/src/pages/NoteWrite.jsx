@@ -21,7 +21,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { useRiskAssessments } from '../data/useRiskAssessments';
+import { useJudgmentGate, useOverallRiskAssessment } from '../data/useOverallRiskAssessment';
 import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
@@ -31,6 +31,7 @@ import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { INITIAL_NOTE_STATE, noteAiDraft, noteWriteValues } from '../data/screens/noteWrite';
 import { sessionCaseId } from '../data/screens/sessionDetail';
+import { askLevelHref } from '../data/screens/signalReview';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import './NoteWrite.css';
@@ -141,15 +142,23 @@ export default function NoteWrite(props) {
   const draftNeeded = enabled && !docs.loading && !docs.error && docs.consultationRecord === null;
   const analysis = useSessionAnalysis(ids.sessionId, { enabled: draftNeeded });
   const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: draftNeeded });
-  const risk = useRiskAssessments(ids.sessionId, { enabled: draftNeeded });
+  // 회차 전체 상담원 판단. 일지 초안 재료이면서, 판단 없는 회차를 유형별 위험도로 돌려보내는 근거라 늘 부른다.
+  const overall = useOverallRiskAssessment(ids.sessionId, { enabled });
+  // 들어올 때 한 번만 판정한다 — 화면 안에서 '요약 수정' 으로 승인을 풀어 상태가 바뀌어도 돌려보내지 않는다(useJudgmentGate).
+  const sendBack = useJudgmentGate(ids.sessionId, detail.session?.status ?? null, overall);
+  const judgmentLoaded = overall.loaded && !overall.loadError;
+  const judgmentLabel = overall.assessment?.levelLabel ?? '';
   const aiDraft = useMemo(
-    () => noteAiDraft(summary.evidence, signals.cards, risk.loaded && !risk.loadError ? risk.rows : null),
-    [summary.evidence, signals.cards, risk.loaded, risk.loadError, risk.rows],
+    () => noteAiDraft(summary.evidence, signals.cards, { loaded: judgmentLoaded, label: judgmentLabel }),
+    [summary.evidence, signals.cards, judgmentLoaded, judgmentLabel],
   );
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, aiDraft, go });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  // 분석이 끝나 검수 중인데 회차 전체 판단이 없으면 이 화면에 머물지 않는다(2026-10-29). 유형별 위험도로 돌려보내며
+  // '위험도를 선택해주세요.' 팝업을 연다(?ask=1). 승인 완료 회차 · 값을 못 받은 동안은 막지 않는다(needsJudgment).
+  if (sendBack) return <Navigate to={askLevelHref(ids)} replace />;
   return (
     <div className="pg-NoteWrite">
       <div

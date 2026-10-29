@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from app.models.case import Case
     from app.models.document import Document
     from app.models.followup_question import SessionFollowupQuestions
-    from app.models.risk_assessment import SessionRiskAssessment
+    from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
     from app.models.summary import ConsultationSummary
     from app.models.transcript import Transcript
     from app.models.user import User
@@ -140,6 +140,13 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         passive_deletes=True,
     )
     followup_questions: Mapped[Optional["SessionFollowupQuestions"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    # 회차 전체 상담원 판단 하나(11.1절). 유형별 판단(risk_assessments)과 따로 둔다.
+    overall_risk_assessment: Mapped[Optional["SessionOverallRiskAssessment"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,

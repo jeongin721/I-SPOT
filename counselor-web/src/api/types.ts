@@ -484,7 +484,20 @@ export interface Transcript {
   edited_segment_ids: string[];
   /** 아동 발화 인계 보기. Backend 가 STT 모듈(stt/)을 불러오지 못하는 배포에서는 null. */
   child_handoff: ChildHandoff | null;
+  /** STT 검수 '1차 임시 핵심 발화'(7절). 이 기능 전 전사본 · 이전 서버는 null 또는 없음. */
+  key_scan?: KeyScan | null;
   created_at: string;
+}
+
+/**
+ * 원문 확정 전 1차 모델 스캔으로 고른 '먼저 들어볼 곳'(API_CONTRACT 7절 key_scan). 판정이 아니다.
+ * DONE 성공(segments 가 비어도) · FAILED 실패(STT 는 성공) · SKIPPED modeling 이 아님.
+ * abuse_types 는 화면에 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3).
+ */
+export interface KeyScan {
+  status: "DONE" | "FAILED" | "SKIPPED";
+  model: string | null;
+  segments: { segment_id: string; abuse_types: string[] }[];
 }
 
 /**
@@ -930,7 +943,8 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
 /**
  * 사례 단위 신호 이력(GET /cases/{id}/signal-history, API_CONTRACT 4절, 2026-10-28) — 한 회차 · 한 유형.
  * detected · ai_level 은 AI 제안이지 판정이 아니고, 위험도 표시는 counselor_level 만 쓴다(05_RULES §1).
- * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11절 ai_level 규칙), 판단은 risk-assessments.
+ * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11.2절 ai_level 규칙), 판단은 유형별
+ * …/risk-assessments(11.2절). 회차 전체 판단은 회차 줄(SignalHistorySession)의 counselor_level · assessed_at(11.1절)이다.
  */
 export interface SignalHistoryType {
   abuse_type: AbuseType;
@@ -940,7 +954,7 @@ export interface SignalHistoryType {
   assessed_at: string | null;
 }
 
-/** 회차 한 줄. 분석이 끝나지 않았고 판단도 없으면 types 는 빈 배열(분석 전). */
+/** 회차 한 줄. 분석이 끝나지 않았고 유형별 판단도 없으면 types 는 빈 배열(분석 전 — 회차 전체 판단과는 무관). */
 export interface SignalHistorySession {
   session_id: string;
   session_number: number;
@@ -948,6 +962,9 @@ export interface SignalHistorySession {
   status: SessionStatus;
   /** 가장 최근 분석 상태. 요청한 적 없으면 null. */
   analysis_status: AnalysisStatus | null;
+  /** 회차 전체 상담원 판단(11.1절, 2026-10-29). 판단 전이면 둘 다 null. 유형별 판단은 types[].counselor_level. */
+  counselor_level: RiskLevel | null;
+  assessed_at: string | null;
   types: SignalHistoryType[];
 }
 
@@ -957,7 +974,10 @@ export interface SignalHistory {
   sessions: SignalHistorySession[];
 }
 
-/** 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse). */
+/**
+ * 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse, API_CONTRACT 11.2절).
+ * 화면은 2026-10-29 부터 회차 전체 판단(OverallRiskAssessment)만 저장하고 유형별 판단은 쓰지 않는다. 창구는 기록 · signal-history 용으로 남아 있다.
+ */
 export interface RiskAssessment {
   id: string;
   session_id: string;
@@ -979,13 +999,37 @@ export interface RiskAssessment {
 }
 
 /**
- * 판단 저장 · 수정 요청(PUT /sessions/{id}/risk-assessments/{abuse_type}). 판단 전체를 바꾼다.
- * reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
+ * 판단 저장 · 수정 요청(회차 전체 PUT /sessions/{id}/risk-assessment, 유형별 PUT /sessions/{id}/risk-assessments/{abuse_type}).
+ * 판단 전체를 바꾼다. reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
  */
 export interface RiskAssessmentSaveRequest {
   counselor_level: RiskLevel;
   /** 1000자 이하. 빼거나 null · 공백만이면 null 로 저장. */
   reason?: string | null;
+}
+
+/**
+ * 회차 전체 상담원 판단(GET/PUT /sessions/{id}/risk-assessment, API_CONTRACT 11.1절, 2026-10-29) — 회차마다 하나.
+ * 상담사가 유형별 심각도(AI 제안)를 보고 이 회차 전체를 상 · 중 · 하로 판단한 것. 유형별 판단(11.2절)과 따로 저장된다.
+ * 판단이 없으면 GET 은 data 가 null 이다.
+ */
+export interface OverallRiskAssessment {
+  id: string;
+  session_id: string;
+  counselor_level: RiskLevel;
+  /** 판단 이유. 적지 않았으면 null. */
+  reason: string | null;
+  /**
+   * 판단을 저장할 때 그 회차 AI 분석 결과의 유형별 심각도(1~5) 중 가장 높은 값. 서버가 채운다.
+   * 분석이 없거나 · 실패했거나 · 유효한 단계가 하나도 없으면 null. 저장한 뒤 재분석해도 바뀌지 않는다(판단 당시 기록).
+   * 'AI 판정' 이 아니라 'AI 제안' 이다.
+   */
+  ai_level: number | null;
+  /** 마지막으로 저장한 사람. 계정이 삭제되었으면 null. */
+  assessed_by_id: string | null;
+  assessed_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /**

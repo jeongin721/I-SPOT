@@ -174,7 +174,7 @@ def abuse_type_from_label(label: object) -> Optional[AbuseType]:
 
 class RiskLevel(str, Enum):
     """
-    상담원이 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
+    상담원이 회차 전체 또는 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
 
     AI 가 제안하는 심각도(1~5)와 척도가 다르다. 둘을 대응시키는 규칙은 팀 결정 전이라
     따로 저장만 하고 서로 바꾸지 않는다.
@@ -227,9 +227,12 @@ class AuditAction(str, Enum):
     DOCUMENT_CREATED = "DOCUMENT_CREATED"
     DOCUMENT_UPDATED = "DOCUMENT_UPDATED"
     DOCUMENT_APPROVED = "DOCUMENT_APPROVED"
-    # 상담원 위험도 판단. detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
+    # 상담원 위험도 판단(유형별). detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
     RISK_ASSESSMENT_CREATED = "RISK_ASSESSMENT_CREATED"
     RISK_ASSESSMENT_UPDATED = "RISK_ASSESSMENT_UPDATED"
+    # 상담원 위험도 판단(회차 전체, 2026-10-29). detail 에는 단계 값과 ai_level 만 남긴다(판단 이유 원문은 넣지 않는다).
+    OVERALL_RISK_ASSESSMENT_CREATED = "OVERALL_RISK_ASSESSMENT_CREATED"
+    OVERALL_RISK_ASSESSMENT_UPDATED = "OVERALL_RISK_ASSESSMENT_UPDATED"
     # 법령 · 매뉴얼 AI 질문(17절, 2026-10-28). detail 에는 걸린 시간 · provider · 모델 · 근거 수만 남긴다(질문 원문은 넣지 않는다).
     # 실패는 status=FAILED + error_code 다.
     LAW_QA_ASKED = "LAW_QA_ASKED"

@@ -20,7 +20,7 @@
 ```
 
 목록은 `data.items` + `data.meta` 구조를 사용한다.
-예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절) · 위험도 판단 목록(11절)은 `data` 가 배열 그대로다(페이지 없음).
+예외: 계정 목록(3절 `GET /auth/users`) · 문서 목록(10절) · 유형별 위험도 판단 목록(11.2절)은 `data` 가 배열 그대로다(페이지 없음).
 
 ```json
 {
@@ -547,7 +547,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 사례의 **회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력**을 한 번에 준다(2026-10-28 추가, `I-SPOT_DOCS/docs/PROPOSAL_signal_history_api.md`).
 유형별 위험도의 회차별 추이 · 상담 이력의 회차 카드 신호 · 세부 신호 행렬(유형 × 회차)이 쓴다. **AI 를 새로 돌리지 않고**
-저장된 최신 분석 결과(8절)와 상담원 판단(11절)만 모은다 — 회차마다 `GET …/analysis` · `GET …/risk-assessments` 를 부른 것과 같은 값이다.
+저장된 최신 분석 결과(8절)와 상담원 판단(11절 — 회차 전체 · 유형별)만 모은다 — 회차마다 `GET …/analysis` · `GET …/risk-assessment` ·
+`GET …/risk-assessments` 를 부른 것과 같은 값이다.
 
 ```json
 {
@@ -557,6 +558,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
       {
         "session_id": "…", "session_number": 1, "consulted_at": "2026-10-20T10:00:00+09:00",
         "status": "APPROVED", "analysis_status": "COMPLETED",
+        "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00",
         "types": [
           { "abuse_type": "PHYSICAL", "detected": true, "ai_level": 3, "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00" },
           { "abuse_type": "EMOTIONAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
@@ -564,7 +566,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
           { "abuse_type": "NEGLECT", "detected": false, "ai_level": null, "counselor_level": null, "assessed_at": null }
         ]
       },
-      { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null, "types": [] }
+      { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null,
+        "counselor_level": null, "assessed_at": null, "types": [] }
     ]
   }
 }
@@ -572,10 +575,12 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 - 회차는 **전부** 주고 `session_number` 오름차순이다(추이 그래프에 분석 전 회차도 자리가 있어야 한다). 목록 상한이 없다.
 - `analysis_status` 는 그 회차의 가장 최근 분석 상태(`PROCESSING` · `COMPLETED` · `FAILED`). 분석을 요청한 적이 없으면 `null`.
-- `types` 는 네 유형이 늘 `PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT` 순서로 온다 — 단, 분석이 `COMPLETED` 도 아니고 상담원 판단도 없는 회차는 `[]`.
+- 회차 줄의 `counselor_level` · `assessed_at` 은 **회차 전체 판단**(11.1절, 2026-10-29 추가 — 화면이 쓰는 것)이다. 판단 전이면 둘 다 `null`.
+  `types` 를 `[]` 로 두는 아래 규칙과는 무관하다(회차 전체 판단만 있고 분석 · 유형별 판단이 없으면 `types` 는 그대로 `[]`).
+- `types` 는 네 유형이 늘 `PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT` 순서로 온다 — 단, 분석이 `COMPLETED` 도 아니고 유형별 상담원 판단도 없는 회차는 `[]`.
   - `detected`: `abuse_signals[].detected`(같은 유형 첫 항목, 참/거짓이 아니면 `null`). 근거 없어 서버가 뺀 유형(8절 근거 관문)은 `null`.
-  - `ai_level`: `severity_ratings[].level`(같은 유형 첫 항목, 1~5 정수가 아니면 `null`) — 11절 `ai_level` 과 같은 규칙. **AI 제안이지 판정이 아니다.**
-  - `counselor_level` · `assessed_at`: 11절 상담원 판단. 판단 전이면 둘 다 `null`.
+  - `ai_level`: `severity_ratings[].level`(같은 유형 첫 항목, 1~5 정수가 아니면 `null`) — 11.2절 `ai_level` 과 같은 규칙. **AI 제안이지 판정이 아니다.**
+  - `counselor_level` · `assessed_at`: 11.2절 유형별 상담원 판단. 판단 전이면 둘 다 `null`. 회차 줄의 회차 전체 판단과는 따로다.
 - 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
 - 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
 
@@ -796,7 +801,8 @@ STT 가 발화를 하나도 찾지 못하면(무음 · 잡음만 있는 음성) 
         }
       ],
       "edited_segment_ids": [],
-      "child_handoff": { "...": "아래 child_handoff 참고" }
+      "child_handoff": { "...": "아래 child_handoff 참고" },
+      "key_scan": { "...": "아래 key_scan 참고" }
     },
     "error": null
   }
@@ -847,6 +853,34 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 - `child_analysis_text`: 문장이 있는 `CHILD` 발화를 시간 순으로 공백 하나로 이은 문장. 없으면 `""`.
 - `child_handoff` 는 `null` 일 수 있다. Backend 가 STT 모듈(`stt/`)을 불러오지 못하는 배포(예: backend 폴더만 담은 이미지)에서는 비워서 준다.
 - 분류 모델의 판단이 아니라 `speaker` 값을 옮겨 담은 참고용 보기다. 화자 확인은 상담사가 한다.
+
+#### key_scan (1차 임시 핵심 발화, 2026-10-28)
+
+STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SPOT_DOCS/docs/PROPOSAL_stt_key_scan.md). STT 작업이 전사를 마친 뒤
+**같은 작업 안에서** 1차 분류기(서버 안 로컬 모델, LLM 없음 — 원문이 밖으로 나가지 않음)를 돌려 고르고, 끝나면 `STT_REVIEW_REQUIRED` 로 넘긴다.
+응답마다 계산하지 않고 **저장한 값**이다.
+
+```json
+"key_scan": {
+  "status": "DONE",
+  "model": "roberta_abuse_qa_child_v3",
+  "segments": [ { "segment_id": "seg_014", "abuse_types": ["PHYSICAL"] } ]
+}
+```
+
+| `status` | 뜻 |
+|---|---|
+| `DONE` | 스캔 성공. `segments` 가 비어 있을 수 있다(고른 발화 없음) |
+| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만) |
+| `SKIPPED` | `AI_PROVIDER` 가 `modeling` 이 아니라 부르지 않음 |
+
+- `segments` 는 원문 순서이고, 아동 · 화자 미확인(`CHILD` · `UNKNOWN`) 발화만 온다(AI 함수가 거름). 서버는 원문에 없는 번호 · 모르는 유형을 버린다.
+  같은 발화가 두 번 오면 **유형이 남는 첫 것**만 둔다(첫 것의 유형이 모두 걸러지면 다음 것).
+- `abuse_types` 는 `PHYSICAL` · `EMOTIONAL` · `SEXUAL` · `NEGLECT`. **판정이 아니고 화면에 그리지 않는다**(판정처럼 읽힘 — 제안서 §8 답 3). 화면 문구는 "먼저 들어볼 곳" · "임시 · 검수 전".
+- 이 기능 전 전사본은 `null` 이다. 화면은 `null` · `FAILED` · `SKIPPED` · 빈 `segments` 면 전체 STT 로 연다.
+- 원문 수정(PATCH)으로 새 version 을 만들면 **직전 값에서 `removed_segment_ids` 만 빼고 복사**한다(문장이 바뀐 발화를 다시 스캔하지 않음 — 임시 표시라서). 확정은 값을 바꾸지 않는다.
+- 감사 기록은 두지 않는다(STT 작업의 일부).
+- 멈춘 STT 작업 마감 기준(`STT_TIMEOUT_SECONDS` + 여유 60초)에 `modeling` 이면 `KEY_SCAN_TIMEOUT_SECONDS` 를 더한다.
 
 ### PATCH /api/v1/sessions/{session_id}/transcript
 
@@ -1323,20 +1357,128 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 ## 11. Risk Assessments (상담원 위험도 판단)
 
-회차 · 학대 유형마다 **상담원이 내린 위험도 판단(상 · 중 · 하)** 을 저장한다.
+**상담원이 내린 위험도 판단(상 · 중 · 하)** 을 저장한다.
 AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), 판단은 상담원이 한다.
+
+- **11.1 회차 전체 판단**(2026-10-29 추가, 화면이 쓰는 것) — 회차마다 판단 하나.
+- **11.2 유형별 판단**(기존 그대로 — 화면은 2026-10-29 부터 쓰지 않고 기록 · signal-history 용으로 남긴다) — 회차 · 학대 유형마다 판단 하나.
+
+두 판단은 표 · API · 감사 기록이 모두 따로이며 서로 영향을 주지 않는다(회차 전체 판단을 저장해도 유형별 목록은 그대로고, 반대도 같다).
+어느 쪽도 판단을 지우는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 판단을 바꿀 때는 PUT 으로 다시 저장한다.
+
+**아직 하지 않는 것(팀 결정 전)**: AI 단계(1~5)와 상 · 중 · 하를 서로 바꾸는 규칙, 사례 단위 위험도 계산.
+그래서 두 값을 따로 저장만 하고, 사례 목록의 위험도 칸은 지금처럼 비워 둔다(`—`).
+
+### 11.1 회차 전체 판단 (2026-10-29 추가, 화면이 쓰는 것)
+
+SignalReview 화면이 회차마다 **상 · 중 · 하 하나**를 고르는 10/27 디자인에 맞춘 창구다. 회차당 판단 하나다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/risk-assessment` | 그 회차의 판단 하나. 판단 전이면 `data: null` |
+| PUT | `/api/v1/sessions/{session_id}/risk-assessment` | 판단 저장 · 수정 |
+
+경로가 `risk-assessment`(단수)다. 유형별(11.2)은 `risk-assessments`(복수)다.
+
+#### 값
+
+| 칸 | 값 |
+|---|---|
+| `counselor_level` | `HIGH`(상) · `MEDIUM`(중) · `LOW`(하) |
+
+- 영문 대문자 그대로 보낸다. 한글(`상`)이나 소문자(`high`)는 `422 VALIDATION_ERROR` 다. 한글 이름은 화면에서만 바꿔 보여 준다.
+
+#### 응답
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "session_id": "uuid",
+    "counselor_level": "HIGH",
+    "reason": "판단 이유(선택)",
+    "ai_level": 4,
+    "assessed_by_id": "uuid",
+    "assessed_at": "...",
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+- `abuse_type` 칸이 없다. GET 은 판단이 있으면 이 객체 하나, **아직 판단 전이면 `{ "data": null }`** 이다(정상 상태라 `404` 가 아니다 —
+  16절 `GET …/voice-marks` 와 같은 모양). 회차 상태와 관계없이 조회된다.
+- `ai_level` 은 **판단을 저장할 때 그 회차 AI 분석 결과에 있던 유형별 심각도(1~5) 가운데 가장 높은 값**이다. 서버가 채운다.
+  - 최신 분석(`GET …/analysis` 의 `analysis`)이 `COMPLETED` 일 때 `result.severity_ratings` 를 유형별로 읽는다. 유형별 읽기 규칙은
+    11.2 의 `ai_level` 과 같다 — 같은 유형은 첫 항목이 정하고(`major_type` 은 한글 이름 · 띄어쓰기 · 영문 값을 같은 유형으로 본다),
+    그 항목의 `level` 이 1~5 정수가 아니면(`null` · 범위 밖 · 문자열 · 참/거짓) 그 유형은 값이 없는 것으로 본다.
+    그렇게 읽은 유형별 값 가운데 가장 높은 값이다(예: 신체학대 2 · 정서학대 4 · 방임 `null` → `4`).
+  - 분석이 없거나 · 처리 중이거나 · 실패했거나, `severity_ratings` 가 없거나, 유효한 값이 하나도 없으면 `null` 이다.
+  - 다시 저장하면 그때의 AI 제안으로 다시 읽는다. 저장한 뒤 재분석해도 이미 저장한 `ai_level` 은 바뀌지 않는다
+    (판단할 때 무엇을 보고 판단했는지 남기는 기록이다).
+  - **AI 제안이지 판정이 아니다.** 상 · 중 · 하와 대응시키는 규칙은 없다(팀 결정 전).
+- `assessed_by_id` · `assessed_at` 은 마지막으로 저장한 사람과 시각이다. 관리자가 저장하면 관리자 ID 다.
+  계정이 DB 에서 지워지면 `assessed_by_id` 는 `null` 이 된다(계정을 지우는 API 는 지금 없다).
+- 회차를 지우면(5절 DELETE) 그 회차의 판단도 함께 지워진다. 사례를 지울 때도 같다.
+- 사례의 회차별 판단을 한 번에 보려면 4절 `GET /cases/{case_id}/signal-history` 의 회차 줄 `counselor_level` · `assessed_at` 을 쓴다.
+
+#### PUT 요청
+
+```json
+{ "counselor_level": "HIGH", "reason": "판단 이유(선택)" }
+```
+
+11.2 의 PUT 요청과 같은 본문이다.
+
+| 칸 | 규칙 |
+|---|---|
+| `counselor_level` | 필수. `HIGH` · `MEDIUM` · `LOW` |
+| `reason` | 선택, 1000자 이하(코드 포인트로 센다 — 이모지 하나도 1자). 빼거나 `null` · 공백만 보내면 `null` 로 저장 |
+
+- `reason` 에 NUL(`\u0000`)이나 짝 없는 서로게이트(`\ud800`~`\udfff`)가 있으면 `422 VALIDATION_ERROR` 다.
+  PostgreSQL 에 저장할 수 없는 글자라 받지 않는다. 오류 응답에 이유 원문은 넣지 않는다.
+- 그 회차의 판단이 없으면 만들고, 있으면 고친다. 둘 다 `200` 이고 판단 하나를 준다.
+- PUT 은 판단 전체를 바꾼다. 다시 저장할 때 `reason` 을 빼면 전에 적은 이유도 지워진다.
+- `ai_level` 을 보내도 무시한다(서버가 분석 결과에서 읽는다).
+
+#### 상태 규칙
+
+11.2 와 같다.
+
+- 저장은 회차가 **`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`** 일 때만 된다.
+  그 밖의 상태(원문 확정 전, AI 분석 중 `AI_PROCESSING`)는 `409 INVALID_SESSION_STATE` 다.
+  - AI 분석 중에는 판단 당시 AI 제안이 무엇이었는지 흐려져 받지 않는다.
+  - AI 분석이 실패해도 판단은 받는다(AI 제안은 참고일 뿐이다. 이때 `ai_level` 은 `null`).
+  - 승인(`APPROVED`) 뒤에도 받는다. 요약 승인(9절)과 따로 동작하며, 저장해도 회기 상태는 바뀌지 않는다.
+- 조회는 상태와 관계없이 된다.
+- 같은 회차를 두 요청이 동시에 처음 저장하면 늦은 쪽은 `409 DUPLICATE_RESOURCE` 다. 다시 조회해 확인한다.
+
+#### 권한 · 감사 기록
+
+- 상담사는 담당 사례의 회차만, 관리자는 전체를 보고 저장한다.
+- 저장하면 감사 기록이 남는다: 처음 저장 `OVERALL_RISK_ASSESSMENT_CREATED`, 고침 `OVERALL_RISK_ASSESSMENT_UPDATED`
+  (`entity_type` 은 `SessionOverallRiskAssessment`). `detail` 에는 `counselor_level` · `ai_level`(고침이면 `previous_level` 도)만 남긴다.
+  **판단 이유(`reason`) 원문은 감사 기록에 넣지 않는다.**
+
+#### 표현 주의
+
+11.2 와 같다. `counselor_level` 은 상담원의 판단이고 `ai_level` 은 AI 의 참고값이다. 화면에서 `ai_level` 을 "AI 판정" 으로 쓰지 않고,
+상 · 중 · 하를 "학대 확정" · "위험 확정" 으로 쓰지 않는다. 색만으로 단계를 나타내지 않는다.
+
+오류: `403 FORBIDDEN`(담당이 아닌 사례), `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`,
+`409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`(모르는 단계, 1000자 넘는 이유, 저장할 수 없는 글자가 든 이유)
+
+### 11.2 유형별 판단 (기존 그대로 — 화면은 2026-10-29 부터 쓰지 않고 기록 · signal-history 용으로 남긴다)
+
+회차 · 학대 유형마다 **상담원이 내린 위험도 판단(상 · 중 · 하)** 을 저장한다. 4절 `signal-history` 의 `types[]` 와
+유형별 신호를 보는 화면이 읽는다. 회차 전체 판단(11.1)과는 표 · API 가 따로다.
 
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/api/v1/sessions/{session_id}/risk-assessments` | 그 회차의 유형별 판단 목록 |
 | PUT | `/api/v1/sessions/{session_id}/risk-assessments/{abuse_type}` | 한 유형의 판단 저장 · 수정 |
 
-판단 하나를 지우는 API 는 없다(`405 METHOD_NOT_ALLOWED`). 판단을 바꿀 때는 PUT 으로 다시 저장한다.
-
-**아직 하지 않는 것(팀 결정 전)**: AI 단계(1~5)와 상 · 중 · 하를 서로 바꾸는 규칙, 사례 단위 위험도 계산.
-그래서 두 값을 따로 저장만 하고, 사례 목록의 위험도 칸은 지금처럼 비워 둔다(`—`).
-
-### 값
+#### 값
 
 | 칸 | 값 |
 |---|---|
@@ -1346,7 +1488,7 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 - 영문 대문자 그대로 보낸다. 한글(`신체학대`, `상`)이나 소문자(`physical`, `high`)는 `422 VALIDATION_ERROR` 다.
   한글 이름은 화면에서만 바꿔 보여 준다.
 
-### 응답
+#### 응답
 
 ```json
 {
@@ -1380,7 +1522,7 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
   계정이 DB 에서 지워지면 `assessed_by_id` 는 `null` 이 된다(계정을 지우는 API 는 지금 없다).
 - 회차를 지우면(5절 DELETE) 그 회차의 판단도 함께 지워진다. 사례를 지울 때도 같다.
 
-### PUT 요청
+#### PUT 요청
 
 ```json
 { "counselor_level": "HIGH", "reason": "판단 이유(선택)" }
@@ -1398,7 +1540,7 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 - PUT 은 판단 전체를 바꾼다. 다시 저장할 때 `reason` 을 빼면 전에 적은 이유도 지워진다.
 - `ai_level` 을 보내도 무시한다(서버가 분석 결과에서 읽는다).
 
-### 상태 규칙
+#### 상태 규칙
 
 - 저장은 회차가 **`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`** 일 때만 된다.
   그 밖의 상태(원문 확정 전, AI 분석 중 `AI_PROCESSING`)는 `409 INVALID_SESSION_STATE` 다.
@@ -1408,14 +1550,14 @@ AI 는 유형별 심각도(1~5)를 제안만 하고(8절 `severity_ratings`), �
 - 목록 조회는 상태와 관계없이 된다.
 - 같은 유형을 두 요청이 동시에 처음 저장하면 늦은 쪽은 `409 DUPLICATE_RESOURCE` 다. 목록을 다시 받아 확인한다.
 
-### 권한 · 감사 기록
+#### 권한 · 감사 기록
 
 - 상담사는 담당 사례의 회차만, 관리자는 전체를 보고 저장한다.
-- 저장하면 감사 기록이 남는다: 처음 저장 `RISK_ASSESSMENT_CREATED`, 고침 `RISK_ASSESSMENT_UPDATED`.
+- 저장하면 감사 기록이 남는다: 처음 저장 `RISK_ASSESSMENT_CREATED`, 고침 `RISK_ASSESSMENT_UPDATED`(`entity_type` 은 `SessionRiskAssessment`).
   `detail` 에는 `abuse_type` · `counselor_level` · `ai_level`(고침이면 `previous_level` 도)만 남긴다.
   **판단 이유(`reason`) 원문은 감사 기록에 넣지 않는다.**
 
-### 표현 주의
+#### 표현 주의
 
 `counselor_level` 은 상담원의 판단이고 `ai_level` 은 AI 의 참고값이다. 화면에서 `ai_level` 을 "AI 판정" 으로 쓰지 않고,
 상 · 중 · 하를 "학대 확정" · "위험 확정" 으로 쓰지 않는다. 색만으로 단계를 나타내지 않는다.
@@ -1540,7 +1682,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
-| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version / 같은 유형을 동시에 처음 저장한 위험도 판단) |
+| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version / 동시에 처음 저장한 위험도 판단 — 같은 회차(11.1) · 같은 유형(11.2)) |
 | `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
@@ -1586,7 +1728,8 @@ POST /sessions/{id}/transcript/confirm        → STT_CONFIRMED
 POST /sessions/{id}/analysis                  → 202 / AI_PROCESSING
 GET  /sessions/{id}/analysis     (polling)    → AI_REVIEW_REQUIRED
 PATCH /sessions/{id}/summary                  → is_edited: true
-PUT  /sessions/{id}/risk-assessments/{type}  → 유형별 상담원 판단 (STT_CONFIRMED 부터)
+PUT  /sessions/{id}/risk-assessment          → 회차 전체 상담원 판단 (STT_CONFIRMED 부터, 화면이 쓰는 것, 11.1절)
+PUT  /sessions/{id}/risk-assessments/{type}  → 유형별 상담원 판단 (STT_CONFIRMED 부터, 기록 · signal-history 용, 11.2절)
 PUT  /sessions/{id}/followup-questions       → 승인한 추가 질문 목록 (STT_CONFIRMED 부터, 18절)
 POST /sessions/{id}/summary/approve           → APPROVED
 GET  /sessions/{id}                           → 상태/데이터 유지 확인

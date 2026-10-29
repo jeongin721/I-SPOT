@@ -24,6 +24,16 @@ def _put_assessment(client: TestClient, headers, session_id: str, abuse_type: st
     )
 
 
+def _put_overall_assessment(client: TestClient, headers, session_id: str, level: str):
+    """회차 전체 판단(11.1절). 회차 줄의 counselor_level · assessed_at 이 된다."""
+
+    return client.put(
+        f"/api/v1/sessions/{session_id}/risk-assessment",
+        json={"counselor_level": level},
+        headers=headers,
+    )
+
+
 def _set_result(db, session_id: str, **fields: Any) -> None:
     """최신 분석 결과에 선택 필드를 넣는다. mock AI 는 abuse_signals · severity_ratings 를 이렇게 만들지 않으므로 직접 고친다."""
 
@@ -63,7 +73,71 @@ def test_session_before_analysis_has_no_types(
     assert row["session_number"] == session["session_number"]
     assert row["status"] == session["status"]
     assert row["analysis_status"] is None
+    # 회차 전체 판단(11.1절)도 아직 없다.
+    assert row["counselor_level"] is None
+    assert row["assessed_at"] is None
     assert row["types"] == []
+
+
+def test_session_row_carries_overall_assessment_apart_from_types(
+    client: TestClient, counselor_headers, case: dict, session: dict
+) -> None:
+    """회차 줄의 counselor_level · assessed_at 은 회차 전체 판단(11.1절)이다. types[] 의 유형별 판단과는 따로다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    # 분석은 끝났지만 아직 어떤 판단도 없다.
+    assert row["analysis_status"] == "COMPLETED"
+    assert row["counselor_level"] is None and row["assessed_at"] is None
+    assert [item["abuse_type"] for item in row["types"]] == TYPE_ORDER
+
+    assert _put_overall_assessment(client, counselor_headers, session["id"], "HIGH").status_code == 200
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["counselor_level"] == "HIGH"
+    assert row["assessed_at"] is not None
+    # 회차 전체 판단은 types[] 에 들어가지 않는다 — 유형별 counselor_level · assessed_at 은 그대로 null 이다.
+    assert [item["abuse_type"] for item in row["types"]] == TYPE_ORDER
+    assert all(item["counselor_level"] is None and item["assessed_at"] is None for item in row["types"])
+
+    # 유형별 판단을 하나 저장하면 그 유형에만 들어가고, 회차 줄의 회차 전체 판단은 그대로다.
+    assert _put_assessment(client, counselor_headers, session["id"], "PHYSICAL", "LOW").status_code == 200
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["counselor_level"] == "HIGH"
+    types = _by_type(row["types"])
+    assert types["PHYSICAL"]["counselor_level"] == "LOW"
+    assert all(types[name]["counselor_level"] is None for name in ("EMOTIONAL", "SEXUAL", "NEGLECT"))
+    assert all(types[name]["assessed_at"] is None for name in ("EMOTIONAL", "SEXUAL", "NEGLECT"))
+
+
+def test_overall_assessment_is_read_per_session_row(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    """
+    회차가 여럿이면 각 줄에 그 회차의 회차 전체 판단만 실린다. 판단 전 회차는 null 이다.
+    회차 전체 판단은 types 를 채우는 규칙에 들어가지 않는다 — 분석 전이고 유형별 판단도 없으면 그대로 [] 다.
+    """
+
+    first = create_session(client, counselor_headers, case["id"])
+    second = create_session(client, counselor_headers, case["id"])
+    third = create_session(client, counselor_headers, case["id"])
+    confirmed_session(client, counselor_headers, first["id"])
+    confirmed_session(client, counselor_headers, third["id"])
+    assert _put_overall_assessment(client, counselor_headers, first["id"], "MEDIUM").status_code == 200
+    assert _put_overall_assessment(client, counselor_headers, third["id"], "LOW").status_code == 200
+
+    rows = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"]
+
+    assert [row["session_id"] for row in rows] == [first["id"], second["id"], third["id"]]
+    assert [row["counselor_level"] for row in rows] == ["MEDIUM", None, "LOW"]
+    assert rows[0]["assessed_at"] is not None and rows[2]["assessed_at"] is not None
+    assert rows[1]["assessed_at"] is None
+    assert all(row["types"] == [] for row in rows)
 
 
 def test_analyzed_session_rows_follow_contract_rules(
@@ -95,6 +169,8 @@ def test_analyzed_session_rows_follow_contract_rules(
     assert len(rows) == 1
     row = rows[0]
     assert row["analysis_status"] == "COMPLETED"
+    # 유형별 판단만 저장했으니 회차 전체 판단은 없다.
+    assert row["counselor_level"] is None and row["assessed_at"] is None
     assert [item["abuse_type"] for item in row["types"]] == TYPE_ORDER
 
     types = _by_type(row["types"])
