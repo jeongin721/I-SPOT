@@ -2,7 +2,7 @@
 # 넣는 것은 루트 .dockerignore 가 고른다.
 #   docker build -t ispot-backend -f backend/Dockerfile .
 # AI_PROVIDER=modeling 으로 띄울 이미지는 --build-arg WITH_MODELING=1, STT_PROVIDER=module 이면 --build-arg WITH_STT=1 을
-# 더한다(deploy/README.md '모델까지 띄우기' · 'STT 까지 띄우기').
+# 더한다(deploy/README.md '모델까지 띄우기' · 'STT 까지 띄우기'). FOLLOWUP_PROVIDER=module 이면 --build-arg WITH_RAG=1 도 더한다.
 FROM python:3.12-slim
 
 # NUMBA_CACHE_DIR: 구간별 음성 참고 표시(stt/voice_marks, VOICE_MARKS_PROVIDER=module)가 쓰는 numba 의 컴파일 캐시 자리.
@@ -40,6 +40,14 @@ RUN if [ "$WITH_STT" = "1" ]; then \
         pip install --no-cache-dir -r requirements-stt.txt; \
     fi
 
+# 다음 상담 체크리스트(FOLLOWUP_PROVIDER=module, API_CONTRACT 18절)는 rag/ 의 langchain · chromadb 를 쓴다.
+# 비식별(ai/modeling/abuse/privacy_gateway)이 torch · transformers 를 쓰므로 WITH_MODELING=1 과 같이 쓴다.
+COPY requirements-rag.txt ./
+ARG WITH_RAG=0
+RUN if [ "$WITH_RAG" = "1" ]; then \
+        pip install --no-cache-dir -r requirements-rag.txt; \
+    fi
+
 # app.core.config 의 REPO_ROOT 는 /app 의 부모(/)라서, module_loader 가 ai/ · agent/ · stt/ 를 찾는 자리도 / 이다.
 # 학대 분류 모델 파일(ai/modeling/abuse/weight/)은 저장소에 없어 이미지에 넣지 않고, 띄울 때 붙인다(deploy/web-deploy.sh).
 # speaker_role_runtime.py 는 stt/ispot_stt.py 가 부르는 저장소 루트 파일이다.
@@ -52,6 +60,9 @@ COPY law/ /law/
 # 법령 · 매뉴얼 AI 질문(LAW_QA_PROVIDER=modeling)이 manual/config · manifest 를 읽는다. 매뉴얼 사진 폴더는 넣지 않는다(기관 대외비,
 # MANUAL_QA_ATTACH_IMAGES 기본 끔 — 사진 없이 법령만으로 답한다).
 COPY manual/ /manual/
+# rag/ 는 다음 상담 체크리스트(FOLLOWUP_PROVIDER=module)가 부른다. 색인(rag_storage/)은 저장소에 없어 띄울 때 /rag_storage 에
+# 붙인다(deploy/web-deploy.sh, rag/config.py 의 기본 자리 <repo>/rag_storage/chroma).
+COPY rag/ /rag/
 COPY speaker_role_runtime.py /speaker_role_runtime.py
 COPY backend/ .
 

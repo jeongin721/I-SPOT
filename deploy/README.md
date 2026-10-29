@@ -157,3 +157,22 @@ LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고�
 5. 비용 · 한도: 호출마다 법령 전문(약 9.8만 자)이 OpenAI 로 나갑니다. 사용자당 분당 6회(`LAW_QA_RATE_LIMIT_PER_MINUTE`) · 서버 동시 2건(`LAW_QA_MAX_CONCURRENCY`)이 기본이고, 데모 서버의 키가 개인 키면 비용이 그 키로 나갑니다.
 
 확인: `curl -s -X POST http://localhost:8000/api/v1/law-guide/questions -H "Authorization: Bearer <토큰>" -H "Content-Type: application/json" -d '{"question":"응급조치 기간은 얼마나 돼요?"}'` 가 200 과 `sources.laws` 를 돌려주면 됩니다.
+
+## 다음 상담 체크리스트 켜기 (`FOLLOWUP_PROVIDER=module`)
+
+추가 확인 · 질문 화면의 '다음 상담 전 확인할 사항' · '추가 질문'(API_CONTRACT 18절)은 기본 `mock`(고정 문구)으로 뜹니다. 실제로 켜려면:
+
+1. **색인을 서버에 만듭니다.** 원문 PDF(업무 매뉴얼 · 가이드북 · 체크리스트 — `I-SPOT_DOCS/rag_sources.csv`)를 `/opt/ispot/I-SPOT/rag_data/` 아래 폴더(`manuals/` · `checklists/` 등, `rag/README.md` 2절)에 두고 `python -m rag.indexer` 로 `/opt/ispot/I-SPOT/rag_storage/chroma` 를 만듭니다(임베딩에 `OPENAI_API_KEY` 필요). 판례까지 쓰려면 먼저 `python -m rag.precedent_harvest`(판례 API 사용 신청 필요). 원문 · 색인은 저장소에 넣지 않습니다.
+2. **`backend.env` 를 고칩니다.** `FOLLOWUP_PROVIDER=module`, `OPENAI_API_KEY=<키>`. 법령 조문까지 쓰려면 `LAW_API_OC=<OC>` 또는 법령 캐시(`/law_cache`). `ENV=production` 이면 `FOLLOWUP_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만**(아동 발화 · 이전 회차 요약이 가려진 채 OpenAI 로 나가지만 등록 실명 대조는 돌지 않음).
+3. **`WITH_MODELING=1 WITH_RAG=1` 로 배포합니다.**
+
+   ```bash
+   sudo env WITH_MODELING=1 WITH_RAG=1 bash deploy/web-deploy.sh
+   ```
+
+   - 이미지에 `requirements-rag.txt`(langchain · chromadb · pypdf)를 더 깔고, 색인 폴더(`RAG_STORAGE_HOST_DIR`, 기본 `/opt/ispot/I-SPOT/rag_storage`)를 컨테이너 `/rag_storage` 에 붙입니다. 색인이 없으면 멈춥니다. 비식별(이름 인식)이 torch 를 써서 `WITH_MODELING=1` 이 필요합니다.
+   - `backend.env` 가 `FOLLOWUP_PROVIDER=module` 인데 `WITH_RAG=1` 없이 돌리면 멈춥니다.
+4. 비용 · 시간: AI 분석이 끝날 때마다 LLM 을 3~5번(질문) + 3번(화면별 매뉴얼 근거) 부릅니다. 한 번에 최대 `FOLLOWUP_TIMEOUT_SECONDS`(기본 240초). 실패해도 회차 상태에는 영향이 없고 화면에서 다시 만들 수 있습니다.
+
+확인: 분석이 끝난 회차에서 `curl -s http://localhost:8000/api/v1/sessions/<회차 ID>/followup-suggestions -H "Authorization: Bearer <토큰>"` 가 `"provider": "module"` · `"status": "COMPLETED"` 를 돌려주면 됩니다.
+

@@ -29,7 +29,7 @@ from app.models.user import User
 from app.schemas.analysis import AnalysisEnvelope, AnalysisResponse
 from app.schemas.common import SessionErrorInfo
 from app.schemas.contracts import SummaryEvidenceItem
-from app.services import audit_service, session_service, transcript_service
+from app.services import audit_service, followup_service, session_service, transcript_service
 
 logger = get_logger(__name__)
 
@@ -235,6 +235,7 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
     """
 
     db = SessionLocal()
+    saved = False
 
     try:
         session = db.scalar(
@@ -286,7 +287,7 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
                 time_limit,
             )
 
-            _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
+            saved = _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
 
         except OperationTimeout as error:
             _fail_analysis(db, session, analysis, ErrorCode.AI_TIMEOUT, str(error), error)
@@ -311,6 +312,10 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             )
     finally:
         db.close()
+
+    # 분석을 저장했으면 같은 작업에서 다음 상담 체크리스트를 만든다(18절). 실패해도 분석 · 회차 상태는 그대로다.
+    if saved:
+        followup_service.generate_after_analysis(session_id, analysis_id)
 
 
 def _job_deadline(session: ConsultationSession) -> float:
@@ -447,7 +452,9 @@ def _save_analysis_result(
     session: ConsultationSession,
     analysis: AIAnalysis,
     bundle,
-) -> None:
+) -> bool:
+    """분석 결과를 저장한다. 저장했으면 True, 이미 마감된 작업이라 버렸으면 False."""
+
     # 버린 경우 rollback 으로 ORM 객체가 만료되므로 id 는 미리 읽어 둔다.
     analysis_id = analysis.id
 
@@ -459,7 +466,7 @@ def _save_analysis_result(
             "이미 마감된 AI 분석의 늦은 결과를 버렸습니다. analysis_id=%s",
             analysis_id,
         )
-        return
+        return False
 
     evidence: List[SummaryEvidenceItem] = list(bundle.summary_evidence or [])
 
@@ -502,6 +509,8 @@ def _save_analysis_result(
         bundle.provider,
         len(bundle.result.summary.key_points),
     )
+
+    return True
 
 
 def _sync_summary_draft(

@@ -1526,6 +1526,8 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
 | `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_FAILED` | 504 / 502 / 502 | 법령 · 매뉴얼 AI 질문(17절)에서만 HTTP 상태로 온다(동기 응답) |
 | `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
+| `FOLLOWUP_DISABLED` | 503 | 다음 상담 체크리스트가 꺼져 있음(`FOLLOWUP_PROVIDER=off`, 18절) |
+| `AI_PRIVACY_BLOCKED` | — | **행 오류 전용.** 비식별 검증을 통과하지 못해 외부(OpenAI)로 보내지 않음(18절 행의 `error.code`) |
 | `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
 | `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
@@ -1733,3 +1735,115 @@ Response
 `LAW_QA_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 modeling 은 이 값이 true 일 때만 뜬다, 분석 modeling 과 같은 방식) · `LAW_API_OC` · `LAW_CACHE_DIR`.
 `LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다(실패해도 서버는 뜨고 첫 질문 때 다시 시도).
 한도는 서버 메모리 기준(서버 1대 전제)이다.
+
+---
+
+## 18. Followup Suggestions (다음 상담 체크리스트)
+
+추가 확인 · 질문 화면(FollowupQ)의 **다음 상담 전 확인할 사항**과 **추가 질문** 초안이다(2026-10-29 추가, 생성 모듈 `rag/` — `rag/README.md` 8-3).
+이번 회차 아동 발화 · 같은 사례 이전 회차 기록을 비식별한 뒤, 공식 근거(업무 매뉴얼 면담 지침 · 체크리스트 · 법령 · 판례)를 찾아 LLM 이 질문을 쓰고,
+규칙(근거 ID 필수 · 유도 · 판단 용어 · 아동이 말하지 않은 행위자/행위) + LLM 검토를 통과한 것만 담는다. **AI 제안이며 상담사가 확인 · 승인한다.** 학대 여부를 확정하는 값은 없다.
+
+> 질문을 질문 은행에서만 고르던 화면 원칙 7(`03_UI_UX.md`)과 방향이 다르다. 팀 합의 전이며(`I-SPOT_DOCS/docs/RAG_MAP.md` §3-1), 합의 결과에 따라 화면 표시를 정한다.
+
+### 언제 만드나
+
+- AI 분석 결과를 저장한 직후 같은 백그라운드 작업에서 만들어 `followup_suggestions` 표에 **새 행**으로 저장한다. 분석이 버려지면(늦은 결과) 만들지 않는다.
+- 상담사가 `POST` 로 다시 만들 수 있다(새 행). 조회는 가장 최근 행이다.
+- 실패 · 시간 초과(`FOLLOWUP_TIMEOUT_SECONDS`, 기본 240초)는 행의 `status: FAILED` 와 `error` 로 남는다. **회차 상태 · 분석 결과에는 영향이 없다.**
+  처리 중 행이 제한 시간 + 60초를 넘기면(서버 재시작 등) 조회 때 `AI_TIMEOUT` 실패로 마감하고, 그 뒤 끝난 결과는 버린다.
+- 설정 `FOLLOWUP_PROVIDER`: `off`(만들지 않음) · `mock`(OpenAI 없이 고정 문구, 화면 개발 · CI, 기본) · `module`(`rag.session.analyze_reviewed_transcript`).
+  `module` 은 `requirements-rag.txt` · 색인(`RAG_VECTOR_DB_DIR`, 기본 `<repo>/rag_storage/chroma`) · `OPENAI_API_KEY` 가 필요하고, 법령은 `LAW_API_OC` 또는 `law_cache/` 를 쓴다.
+  `ENV=production` 에서는 `FOLLOWUP_ALLOW_IN_PRODUCTION=true` 가 없으면 서버가 시작하지 않는다(분석 modeling 과 같은 비식별 이유).
+
+### rag 에 넘기는 값
+
+| 값 | 출처 |
+|---|---|
+| 이번 회차 전사본 | 분석에 쓴 확정 전사본. rag 는 `CHILD` 발화만 쓴다. `UNKNOWN` 발화는 내용 없이 `speaker_check_items` 로만 |
+| 학대 유형 | 최신 AI 분석의 `abuse_signals[].detected == true` · `severity_ratings[].level` 이 있는 유형. 둘 이상이면 `multiple`, 없으면 질문을 만들지 않고 `notice` 로 알린다 |
+| 이전 회차 (최근 3개) | 승인된 요약(`overview` · `key_points` · 사정 관점 4칸) · 그 회차 확인할 사항(체크리스트, 없으면 AI 확인 메모 — 체크 저장이 아직 없어 모두 open) · 확정 전사본 |
+| 회차 ID | 근거 링크용. 외부로 보내지 않는다 |
+| 아이 앱 응답 | 아직 Backend 에 없어 빈 목록 |
+
+### GET /api/v1/sessions/{session_id}/followup-suggestions
+
+가장 최근 행 하나. 아직 만들기 전이면 `200` 에 `{"data": null}`. 권한은 사례 접근 규칙과 같다(다른 상담사 403). 만드는 중이면 `status: PROCESSING` 이므로 화면은 Polling 한다.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "session_id": "uuid",
+    "analysis_id": "uuid",
+    "transcript_version": 2,
+    "status": "COMPLETED",
+    "schema_version": "1.0",
+    "provider": "module",
+    "created_at": "2026-10-29T10:00:00Z",
+    "completed_at": "2026-10-29T10:00:41Z",
+    "error": null,
+    "result": {
+      "abuse_type": "physical",
+      "notice": null,
+      "check_items": [
+        {
+          "id": "check:1",
+          "item": "등 · 팔 통증 이후 치료를 받았는지",
+          "kind": "info_gap",
+          "priority": "high",
+          "reason": "통증을 말했지만 치료 여부가 확인되지 않음",
+          "case_refs": ["case:2"],
+          "knowledge_refs": ["checklist:1"],
+          "basis": [
+            {"ref": "case:2", "type": "case", "source": "transcript", "label": "8회차 01:08",
+             "session_no": 8, "session_id": "uuid", "segment_id": "seg_014", "start_ms": 68000, "excerpt": "등이랑 팔이 아파요."},
+            {"ref": "checklist:1", "type": "checklist", "label": "아동학대 예방 및 대처요령 가이드북(4판) p.18",
+             "source": "…", "page": 18, "excerpt": "…"}
+          ]
+        }
+      ],
+      "items": [
+        {
+          "question": "등이랑 팔이 아팠던 건 지금은 어때? 누가 봐 준 적 있어?",
+          "audience": "counselor",
+          "question_type": "open",
+          "priority": "high",
+          "rationale": "통증의 현재 상태와 치료 여부를 아동의 말로 확인",
+          "check_item_id": "check:1",
+          "case_refs": ["case:2"],
+          "knowledge_refs": ["manual:1", "checklist:1"],
+          "basis_refs": ["case:2", "manual:1", "checklist:1"],
+          "basis": ["…"],
+          "review_status": "passed"
+        }
+      ],
+      "validation": {"generated": 9, "rule_rejected": 3, "review_rejected": 1, "rounds": 1, "reviewed": true},
+      "speaker_check_items": [
+        {"id": "speaker:1", "item": "02:15 발화의 화자", "kind": "uncertain_speaker", "priority": "medium",
+         "basis": [{"type": "case", "label": "8회차 02:15 · 화자 불확실", "session_id": "uuid", "segment_id": "seg_019", "start_ms": 135000}]}
+      ],
+      "manual_screen_references": {"followup": [], "prebriefing": [], "closure": []}
+    }
+  }
+}
+```
+
+- `result` 는 rag 결과 그대로다(칸 뜻은 `rag/README.md` 8-3). Backend 는 그 안을 다시 해석하지 않는다.
+- `items[].audience`: `counselor`(다음 상담에서 직접) · `child_app`(아이 앱으로 먼저). `question_type`: `open` · `clarify`.
+- `items[].review_status`: `passed`(LLM 검토 통과) · `not_reviewed`(검토 호출 실패, 규칙만 통과) · `fallback`(질문 생성 실패 시 대체 질문).
+- `basis[]` 는 화면의 '근거 · …' 칩이다. 누르면: 회차 발화 → STT 검수의 그 발화(`session_id` · `segment_id`), 이전 회차 요약 · 확인 사항 → 그 회차 상세(`session_id`),
+  법령 · 판례 → `url`(국가법령정보센터), 매뉴얼 · 체크리스트 → `excerpt` 를 그 자리에서 펼친다(원본 PDF 는 올리지 않는다).
+- `validation` 에는 생성 · 탈락 수만 있다(질문 문장은 싣지 않는다).
+- `mock` 결과는 `notice` 에 예시라고 적고 질문 문장이 고정이다.
+
+### POST /api/v1/sessions/{session_id}/followup-suggestions → 202
+
+다시 만들기. 본문 없음. 새 행(`status: PROCESSING`)을 돌려주고 백그라운드로 만든다. 이미 만드는 중이면 새로 시작하지 않고 그 행을 돌려준다.
+
+| code | status | 언제 |
+|---|---|---|
+| `INVALID_SESSION_STATE` | 409 | 최신 AI 분석이 완료(`COMPLETED`)가 아님 |
+| `FOLLOWUP_DISABLED` | 503 | `FOLLOWUP_PROVIDER=off` |
+
+행의 `error.code`(실패 이유): `AI_TIMEOUT` · `AI_PRIVACY_BLOCKED`(비식별 검증 실패로 외부 전송 안 함) · `AI_INVALID_OUTPUT` · `AI_FAILED`. 문구는 코드별 고정 문구다(발화 · 예외 원문을 싣지 않는다).

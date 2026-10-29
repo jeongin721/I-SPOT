@@ -202,6 +202,23 @@ class Settings(BaseSettings):
     LAW_API_OC: str = ""
     LAW_CACHE_DIR: str = ""
 
+    # ---- 다음 상담 체크리스트 (추가 확인 · 질문 화면, API_CONTRACT 18절, 2026-10-29) ----
+    # AI 분석이 끝난 뒤 같은 백그라운드 작업에서 만들어 followup_suggestions 에 저장한다(followup_service).
+    # 실패해도 회차 상태에는 영향이 없다.
+    # off   : 만들지 않는다(조회는 data: null, 다시 만들기는 503 FOLLOWUP_DISABLED)
+    # mock  : OpenAI 없이 이번 회차 아동 발화로 고정 문구 결과(화면 개발 · CI)
+    # module: rag.session.analyze_reviewed_transcript 호출(rag/ — requirements-rag.txt, 색인 rag_storage/,
+    #         OPENAI_API_KEY, 법령은 LAW_API_OC 또는 law_cache/). 아동 발화를 가린 뒤 OpenAI 로 보낸다.
+    FOLLOWUP_PROVIDER: Literal["off", "mock", "module"] = "mock"
+    # 한 번 만드는 제한 시간. LLM 을 3~5번 부르고(질문) 화면별 매뉴얼 근거도 함께 만든다.
+    FOLLOWUP_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
+    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true(분석 modeling 과 같은 이유 · 같은 잠금).
+    FOLLOWUP_ALLOW_IN_PRODUCTION: bool = False
+    # rag/config.py 가 os.getenv 로 읽는 값. 여기 적으면 followup_adapter 가 process 환경으로 넘긴다(비어 있으면 넘기지 않음).
+    # RAG_VECTOR_DB_DIR: 색인(Chroma) 폴더(기본 <repo>/rag_storage/chroma). RAG_ANALYZER_MODEL: 질문 생성 · 판정 LLM.
+    RAG_VECTOR_DB_DIR: str = ""
+    RAG_ANALYZER_MODEL: str = ""
+
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
     # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
     OPENAI_API_KEY: str = ""
@@ -347,6 +364,26 @@ class Settings(BaseSettings):
             "법령 질문은 상담사가 쓴 글을 외부(OpenAI)로 보내는데, 사례와 묶이지 않아 등록 실명 대조가 돌지 않습니다. "
             "실제 상담 데이터가 있는 서버에서는 LAW_QA_PROVIDER=mock 또는 off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_followup_module_in_production(self) -> "Settings":
+        """운영에서 다음 상담 체크리스트 module 로 서버가 뜨지 않게 한다(분석 modeling 과 같은 이유 · 같은 방식).
+
+        rag 는 아동 발화 · 이전 회차 요약을 가린 뒤 OpenAI 로 보내지만, 서버에는 등록 실명이 없어 이름 인식이 놓친 이름을
+        한 번 더 잡는 대조가 돌지 않는다. .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
+        FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어야만 뜬다. local/test 는 그대로 둔다.
+        """
+
+        if self.ENV != "production" or self.FOLLOWUP_PROVIDER != "module" or self.FOLLOWUP_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 FOLLOWUP_PROVIDER=module 로 서버를 시작하지 않습니다. "
+            "다음 상담 체크리스트는 아동 발화와 이전 회차 요약을 외부(OpenAI)로 보내는데, 그 전에 하는 비식별이 "
+            "아직 완전하지 않습니다(등록 실명 대조가 서버에서 돌지 않음). "
+            "실제 상담 데이터가 있는 서버에서는 FOLLOWUP_PROVIDER=mock 또는 off 를 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @model_validator(mode="after")

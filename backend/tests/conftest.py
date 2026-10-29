@@ -42,6 +42,8 @@ os.environ["AI_PROVIDER"] = "mock"
 os.environ["AUDIO_MAX_SIZE_MB"] = "1"
 os.environ["STT_TIMEOUT_SECONDS"] = "5"
 os.environ["AI_TIMEOUT_SECONDS"] = "5"
+os.environ["FOLLOWUP_PROVIDER"] = "mock"
+os.environ["FOLLOWUP_TIMEOUT_SECONDS"] = "5"
 # AI_PROVIDER=modeling 이면 AI_TIMEOUT_SECONDS 보다 작아야 한다(config 검사). 기본 10초는 위 5초보다 길다.
 os.environ["AI_DEADLINE_MARGIN_SECONDS"] = "1"
 os.environ["LOG_LEVEL"] = "WARNING"
@@ -49,6 +51,7 @@ os.environ["LOG_LEVEL"] = "WARNING"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.adapters.ai_adapter import set_ai_adapter_override  # noqa: E402
+from app.adapters.followup_adapter import set_followup_adapter_override  # noqa: E402
 from app.adapters.stt_adapter import set_stt_adapter_override  # noqa: E402
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.core.enums import UserRole  # noqa: E402
@@ -84,11 +87,13 @@ def _reset_state() -> Iterator[None]:
 
     set_stt_adapter_override(None)
     set_ai_adapter_override(None)
+    set_followup_adapter_override(None)
 
     yield
 
     set_stt_adapter_override(None)
     set_ai_adapter_override(None)
+    set_followup_adapter_override(None)
 
     with engine.begin() as connection:
         for table in reversed(Base.metadata.sorted_tables):
