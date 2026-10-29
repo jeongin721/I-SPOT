@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from typing import Any
 
 from law.client import LawApiClient, LawApiError
@@ -17,6 +18,7 @@ from .privacy import RagPrivacyBlocked, mask_payload, restore
 from .resource_ranker import build_reference_materials, format_document_reference
 from .retriever import search_evidence
 
+logger = logging.getLogger(__name__)
 
 DISCLAIMER = (
     "본 결과는 상담사의 판단을 지원하기 위한 참고정보이며 "
@@ -88,15 +90,18 @@ def _merge_results(
         }
         checklist_results.append(item)
 
-        if judgement.status == "matched" and judgement.evidence:
-            if judgement.evidence not in seen_evidence:
-                evidence_sentences.append(
-                    {
-                        "text": judgement.evidence,
-                        "reason": judgement.reason,
-                    }
-                )
-                seen_evidence.add(judgement.evidence)
+        if (
+            judgement.status == "matched"
+            and judgement.evidence
+            and judgement.evidence not in seen_evidence
+        ):
+            evidence_sentences.append(
+                {
+                    "text": judgement.evidence,
+                    "reason": judgement.reason,
+                }
+            )
+            seen_evidence.add(judgement.evidence)
 
     result["checklist_results"] = checklist_results
     result["evidence_sentences"] = evidence_sentences
@@ -178,7 +183,9 @@ def _load_supplementary_rag(
                 top_k=top_k,
                 source_type=source_type,
             )
-        except Exception:
+        except Exception as error:  # noqa: BLE001 — 한 원문 유형 검색이 실패해도 다른 유형은 찾는다
+            # 예외 문구에는 검색어(가린 상담 문장)가 섞일 수 있어 종류만 남긴다.
+            logger.warning("보조 근거 검색 실패 source_type=%s type=%s", source_type, type(error).__name__)
             continue
 
         for item in found:
@@ -313,7 +320,6 @@ def _analyze_masked(
         law_articles,
         manual_results=supplementary_results,
         precedents=precedents,
-        fallback_questions=result["additional_questions"],
     )
 
     reference_materials = build_reference_materials(

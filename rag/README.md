@@ -240,6 +240,7 @@ python -m rag.pipeline "상담 문장" --abuse-type emotional --json
 
 - **STT 검수 후 Transcript만 쓴다.** `rag.session.analyze_reviewed_transcript(transcript, abuse_type)`가 진입점이고, 최상위 `main.py`의 `POST /api/v1/rag/analyze`가 이것을 부른다. 업로드 직후 `/api/v1/analyze`는 RAG를 돌리지 않는다.
 - **아동(`CHILD`) 발화만 넣는다**(`RAG_INPUT_SPEAKERS`). 보호자 진술은 아이에게 할 질문의 근거로 쓰지 않는다(화면 원칙 6). 상담원 · 기타 · 미확정 화자도 뺀다. 뺀 수는 `excluded_speakers`로 돌려준다.
+- `analyze_reviewed_transcript` 결과의 `privacy_blocked` · `privacy_reasons`: 근거자료 분석 · 화면별 매뉴얼 근거 중 어느 쪽이든 비식별 검증에 막혀 보내지 않았으면 `true` 와 사유(원문 없음). 학대 유형이 없어 근거자료 분석이 돌지 않을 때도 매뉴얼 근거가 막힌 것을 여기서 알 수 있으므로, 호출하는 쪽은 `rag_analysis` 만 보지 말고 이 값을 본다.
 - **외부로 보내기 전에 비식별한다**(9/18 회의 결정). `analyze_consultation_evidence` · `build_screen_references` · `search_screen_manual`은 상담 문장을 `ai.modeling.abuse.privacy_gateway.mask_for_outbound`로 가린 뒤 임베딩 · LLM에 보내고, 결과의 토큰(`[PERSON_01]` 등)을 원문으로 되돌린다(`rag/privacy.py`). 가린 뒤 재검사에서 식별 정보가 남으면 아무것도 보내지 않고 `RagPrivacyBlocked`를 던진다.
 - `known_identifiers`(사례에 등록된 아동 · 보호자 실명)를 넘기면 NER이 놓친 이름도 정확 매칭으로 가린다. NER의 사람 이름 미탐률이 36.8%라(`privacy_gateway.py` 머리말) 실제 서비스에서는 넘기는 것이 좋다.
 - 비식별 모듈은 처음 부를 때 NER 모델(`Leo97/KoELECTRA-small-v3-modu-ner`)을 내려받아 올린다(약 15초, 이후 한 문장 0.1초 이내).
@@ -376,8 +377,8 @@ Backend 는 이번 회차 확정 전사본 · AI 분석의 학대 유형 · 같�
    사례 기록 + 체크리스트 needs_confirmation
    → info_gap(시기 · 빈도 · 치료 여부 미확인) / plan_followup(이전 계획 · status=open 확인 사항)
      / change(이전 회차 · 앱과 달라진 점) / inconsistency(기록끼리 안 맞음) / checklist_gap
-   → 사례 근거(case:N)가 없는 항목은 버린다. 최대 6개.
-2) 질문 생성 (LLM 1회)
+   → 사례 근거(case:N)가 없는 항목, item · reason 에 판정 · 단정 표현이 든 항목은 버린다. 최대 6개.
+2) 질문 생성 (LLM 1회) — 공식 근거가 하나도 없으면(검색 0건) 부르지 않고 질문 없이 끝낸다
    확인할 사항 + 사례 기록 + 공식 근거
    공식 근거: manual:N(업무 매뉴얼 '상담·조사·사정' 구간의 면담 원칙 + 매뉴얼·가이드·서식 검색 결과)
              checklist:N / law:N / precedent:N
@@ -386,13 +387,16 @@ Backend 는 이번 회차 확정 전사본 · AI 분석의 학대 유형 · 같�
    규칙: 사례 근거 + 공식 근거 ID 각 1개 이상, 길이(상담 120자 · 앱 50자), 판단 · 법률 용어(학대 · 처벌 · 신고 …),
         꼬리 · 부정형 질문("~했지?", "~맞지?", "~하지 않았어?"),
         아동이 말하지 않은 행위자 + 행위 조합(아동 표현을 되묻는 것은 허용, 활용형 차이는 같은 행위로 봄),
-        아이 앱 질문의 특정 행위(때림 · 만짐 · 욕 …)
+        아이 앱 질문의 특정 행위(때림 · 만짐 · 욕 …),
+        rationale 의 판정 · 단정 표현
    LLM 검토(1회): leading / presupposes / age_inappropriate / judgmental — 하나라도 걸리거나 판정이 빠지면 탈락
    → 상담사용 질문이 3개 미만이면 탈락 질문 · 사유를 알려 주고 한 번 더 만든다(최대 2회)
 ```
 
 - LLM 호출은 3~5회(`RAG_ANALYZER_MODEL`). 회차 분석이 끝날 때 만들어 저장해 두고 화면에서 읽는다.
-- `review_status`: `passed`(검토 통과) / `not_reviewed`(검토 호출 실패, 규칙만 통과) / `fallback`(질문 생성 실패 시 체크리스트 판정 단계의 추가 질문을 규칙 검증만 거쳐 씀).
+- `review_status`: `passed`(검토 통과) / `not_reviewed`(검토 호출 실패, 규칙만 통과).
+- **질문은 사례 근거와 공식 근거를 각각 하나 이상 단 것만 남긴다.** 공식 근거가 없으면 `validation.skipped`, 질문 생성이 실패하면 `validation.error` 와 함께 질문 없이 끝낸다(근거 없는 대체 질문을 쓰지 않는다). 확인할 사항은 공식 근거 없이도 만든다.
+- **화면에 보이는 칸의 판정 · 단정 표현(`checklist_builder.judgment_reason`)**: 질문 문장 · `rationale`, 확인할 사항 `item` · `reason` 모두 검사한다. "학대 확정" · "위험 확정" · "AI 판정" · "자동 결정"(API_CONTRACT 표현 주의), "학대로 판단" · "범죄에 해당" 같은 확정 · 단정, "가해자" · "피해자" 를 막는다. 유형 이름(신체학대) · 체크리스트 · 법령 언급과 "확정 요약" 은 상담원용 칸에서 허용한다. 아이에게 할 질문 문장은 여기에 더해 판단 · 법률 낱말 자체(`JUDGMENT_TERMS`: 학대 · 신고 …)를 쓰지 않는다. 뺀 확인할 사항 수는 `validation.check_rule_rejected`.
 - 법령은 배경 근거로만, 판례는 어떤 사실(반복성 · 상처 정도 · 시기)이 중요한지 참고로만 쓰게 프롬프트로 막는다. 판례 속 사건 내용이 질문에 들어가지 않게 한다.
 - 모든 질문은 상담사가 승인해야 쓰인다. 승인 · 수정한 질문과 체크한 확인 사항은 다음 회차 `previous_sessions[].check_items`로 다시 넣는다.
 - `validation`에는 생성 · 탈락 수만 담는다(질문 문장은 싣지 않는다).

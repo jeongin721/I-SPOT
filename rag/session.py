@@ -72,6 +72,10 @@ def analyze_reviewed_transcript(
     (rag_analysis.next_session_checklist)이 이번 회차 아동 발화와 함께 이전 회차 기록 · 아이 앱 응답을 근거로 쓴다.
     speaker_check_items 는 화자 미확정 발화를 '확인할 사항'으로 만든 것으로, 외부로 보내지 않고 로컬에서 만든다.
     session_id(Backend 회차 ID)는 근거 링크용으로 결과에만 싣고 외부로 보내지 않는다.
+
+    privacy_blocked · privacy_reasons: 어느 쪽(근거자료 분석 · 화면별 매뉴얼 근거)이든 비식별 검증에 막혀 외부로 보내지 않았으면
+    True 와 막힌 사유(원문 없음). 학대 유형이 없어 근거자료 분석은 돌지 않고 매뉴얼 근거만 막힌 경우도 여기서 알 수 있다 —
+    호출하는 쪽은 rag_analysis 만 보지 말고 이 값을 본다.
     """
     child = child_text_from_transcript(transcript)
     result: dict[str, Any] = {
@@ -80,6 +84,8 @@ def analyze_reviewed_transcript(
         "speaker_check_items": speaker_check_items(transcript, session_no=session_no, session_id=session_id),
         "rag_analysis": None,
         "manual_screen_references": None,
+        "privacy_blocked": False,
+        "privacy_reasons": [],
     }
     if not child["text"]:
         return result
@@ -108,15 +114,23 @@ def analyze_reviewed_transcript(
             known_identifiers=known_identifiers,
         )
 
+        # 한 쪽이 실패해도 다른 쪽 결과는 돌려준다. 실패는 원문 없는 오류 칸으로 바꾼다(_error_payload).
         if rag_future is not None:
             try:
                 result["rag_analysis"] = rag_future.result()
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001
                 result["rag_analysis"] = _error_payload("RAG 근거자료 분석", error)
 
         try:
             result["manual_screen_references"] = manual_future.result()
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             result["manual_screen_references"] = _error_payload("화면별 매뉴얼 근거 분석", error)
 
+    blocked = [
+        part
+        for part in (result["rag_analysis"], result["manual_screen_references"])
+        if isinstance(part, dict) and part.get("privacy_blocked")
+    ]
+    result["privacy_blocked"] = bool(blocked)
+    result["privacy_reasons"] = list(dict.fromkeys(reason for part in blocked for reason in part.get("reasons") or []))
     return result
