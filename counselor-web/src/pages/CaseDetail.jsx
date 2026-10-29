@@ -26,6 +26,7 @@ import { useAudioUpload } from '../data/useAudioUpload';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -48,7 +49,8 @@ export default function CaseDetail(props) {
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, signals, caseId });
+  const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
   const [recOpen, setRecOpen] = useState(false);
   const recorder = useAudioRecorder();
   const upload = useAudioUpload();

@@ -15,7 +15,15 @@
 // 상담 일지 카드 = useSessionDocuments 의 상담일지(CONSULTATION_RECORD) 한 건. 문서는 제목 · 본문 텍스트뿐이라
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
-//  - AI 일지 초안 · 아동 특성 · 가정상황 AI 제안은 Backend 에 없어 보이지 않는다(빈 칸에서 상담원이 쓴다).
+//  - AI 초안(2026-10-28, 10/27 디자인의 일지 카드 'AI 초안'): 아직 저장한 일지가 없을 때만 두 칸을 이 회차 분석 값으로 채워 둔다.
+//    '아동 진술' ← 요약 근거 발화(아동 발화, '· 00:41 "원문"'), '위험 신호 검토 결과' ← 위험 관련 발화의 유형 · 세부 유형 · 위치와
+//    이 회차의 상담원 판단(회차 전체 상 · 중 · 하 하나, 2026-10-29 — useOverallRiskAssessment). 디자인의 '채택 · 보류' 는 서버에
+//    채택 기록이 없어 상담원 판단으로 대신한다.
+//  - 판단 없이는 이 화면에 머물지 않는다(2026-10-29): 분석이 끝나 검수 중인데 회차 전체 판단이 없으면(needsJudgment) 화면이
+//    유형별 위험도로 돌려보내며 '위험도를 선택해주세요.' 팝업을 연다(askLevelHref, NoteWrite.jsx). 승인 완료 회차는 막지 않는다.
+//    상담원이 고치거나 그대로 '일지 저장' 해야 저장된다(저장 전에는 서버에 없다). 저장한 일지가 있으면 덮어쓰지 않는다.
+//    대상자 태도 · 물리적 환경 · 소견은 채우지 않는다(목소리 값 · 현장 정보가 없고, 소견은 상담원 몫).
+//  - 아동 특성 · 가정상황 AI 제안은 하지 않는다(상담원이 직접 고른다, 2026-10-27 결정).
 //    10/21 디자인은 AI 제안 항목('불안' 등)을 미리 골라 두지만 앱은 미리 고르지 않는다(AI 제안이 상담원 선택처럼 보이지 않게).
 //  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
 //    나머지 서식 4 항목을 고르기 단추로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
@@ -32,13 +40,14 @@ import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryAssessmentKey } from "../../api/types";
-import { positionLabel } from "../riskRows";
+import { positionLabel, type SignalCard } from "../riskRows";
+import type { EvidenceItem } from "../useSummaryReview";
 import { ASSESSMENT_KEYS, type SummaryReviewState } from "../useSummaryReview";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
-import type { SessionScreenInput } from "./sessionDetail";
+import { sessionCaseId, type SessionScreenInput } from "./sessionDetail";
 
 export interface NoteDraft {
   statement: string;
@@ -174,8 +183,71 @@ export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, pi
 export interface NoteScreenInput extends SessionScreenInput {
   summary: SummaryReviewState;
   docs: SessionDocumentsState;
+  /** 아직 저장한 일지가 없을 때 채워 둘 AI 초안(noteAiDraft). 없으면 빈 칸. */
+  aiDraft?: NoteAiDraft | null;
   state: NoteUiState;
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
+}
+
+/** 일지 두 칸의 AI 초안. 둘 다 비면 초안이 없는 것이다. */
+export interface NoteAiDraft {
+  statement: string;
+  signals: string;
+}
+
+/** '아동 진술' 초안에 넣을 발화 수. */
+const MAX_DRAFT_QUOTES = 8;
+
+/**
+ * 이 회차 분석 값 → 일지 두 칸의 AI 초안.
+ *  - statement: 요약 근거(summary_evidence)의 원문을 위치 순으로 '· 00:41 "원문"'. 정상 생성 경로는 아동 발화만 남기지만
+ *    저장된 결과에 다른 화자가 섞여 있을 수 있어 **아동(CHILD) 발화만** 쓴다 — 상담원 질문 · 화자 미확인 발화가 아동 말처럼
+ *    일지에 들어가지 않게(2026-10-28 민규 #95 교차검증).
+ *  - signals: 위험 관련 발화 카드를 유형별로 묶어 '· 신체학대 — 직접 신체 가해(00:41 아동)' 로 적고, 맨 아래에 이 회차의
+ *    상담원 판단(회차 전체 하나) '· 상담원 판단(회차 전체) — 상' 을 붙인다. 판단 전이면 '아직 판단하지 않음'.
+ * 원문을 못 찾은 근거 · 유형을 모르는 카드는 뺀다(번호만 있는 줄을 일지에 넣지 않는다).
+ * judgment.loaded 가 false 면(상담원 판단을 아직 못 받음) signals 는 비운다 — '판단 전' 으로 잘못 적지 않게.
+ */
+export function noteAiDraft(
+  evidence: EvidenceItem[],
+  cards: SignalCard[],
+  judgment: { loaded: boolean; label: string },
+): NoteAiDraft {
+  const quotes = new Map<string, { at: number; line: string }>();
+
+  for (const item of evidence) {
+    for (const segment of item.segments) {
+      if (!segment.found || segment.speaker !== "CHILD" || quotes.has(segment.segmentId)) continue;
+      quotes.set(segment.segmentId, { at: segment.startMs, line: `· ${segment.startLabel} "${segment.text}"` });
+    }
+  }
+
+  const statement = [...quotes.values()]
+    // 위치 라벨 문자열이 아니라 시작 ms 로 정렬한다(1:02:15 가 00:41 앞에 오지 않게, 민규 #95 리뷰).
+    .sort((a, b) => a.at - b.at)
+    .slice(0, MAX_DRAFT_QUOTES)
+    .map((q) => q.line)
+    .join("\n");
+
+  const byType = new Map<string, { label: string; parts: string[] }>();
+
+  for (const card of cards) {
+    if (!card.abuseType) continue;
+    const entry = byType.get(card.abuseType) ?? { label: card.typeLabel, parts: [] };
+    const where = card.positionLabel ? `(${card.positionLabel})` : "";
+    const part = `${card.subtype || "관련 발화"}${where}`;
+    if (!entry.parts.includes(part)) entry.parts.push(part);
+    byType.set(card.abuseType, entry);
+  }
+
+  if (!judgment.loaded) return { statement, signals: "" };
+
+  const lines = [...byType.values()].map((entry) => `· ${entry.label} — ${entry.parts.join(", ")}`);
+
+  // 위험 관련 발화가 하나도 없으면 판단 줄도 적지 않는다(빈 칸으로 두어 상담원이 쓴다).
+  if (lines.length > 0) lines.push(`· 상담원 판단(회차 전체) — ${judgment.label || "아직 판단하지 않음"}`);
+
+  return { statement, signals: lines.join("\n") };
 }
 
 /**
@@ -253,11 +325,21 @@ export function noteWriteValues(input: NoteScreenInput) {
 
   // ---------------- 상담 일지 ----------------
   const record = docs.consultationRecord;
-  const saved = record ? parseNote(record.content) : EMPTY_NOTE;
+  // 저장한 일지가 없고 일지 목록을 받았을 때만 AI 초안을 채워 둔다(받기 전이면 있는 일지를 모르는 채 덮을 수 있다).
+  const ai = input.aiDraft ?? null;
+  const aiFilled = !record && !docs.loading && !docs.error && ai !== null && Boolean(ai.statement || ai.signals);
+  const saved = record
+    ? parseNote(record.content)
+    : aiFilled
+      ? { ...EMPTY_NOTE, statement: ai.statement, signals: ai.signals }
+      : EMPTY_NOTE;
   const draft = state.draft && docs.isCurrent(state.draftFor) ? state.draft : null;
   const note = draft ?? saved;
   const content = formatNote(note);
-  const docDirty = draft !== null && content !== (record?.content ?? "");
+  // AI 초안을 고치지 않고 그대로 저장할 수 있게, 초안이 채워졌으면 저장할 거리가 있는 것으로 본다.
+  const docDirty = (draft !== null || aiFilled) && content !== (record?.content ?? "");
+  // 떠날 때 묻는 것은 상담원이 고친 경우만(AI 초안만 있는 채로 떠나면 다음에 다시 만들어진다).
+  const docEdited = draft !== null && content !== (record?.content ?? "");
   const docReadOnly = record ? !record.editable : false;
   // 일지를 불러오는 중이거나 저장 · 승인을 기다리는 동안에도 잠근다. 불러오기 전에 쓰면 빈 일지를 바탕으로 초안이 생겨
   // 저장할 때 원래 있던 다른 칸이 지워진다.
@@ -280,12 +362,20 @@ export function noteWriteValues(input: NoteScreenInput) {
     readOnly: docLocked,
   });
   // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 고르기 단추를 잠근다.
-  // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
-  const intakeWaiting = !info && !caseDetail.error;
+  // 사례 정보를 못 받았으면(오류) · 이 회차에 연결된 사례가 없으면 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
+  // 예전에는 '정보도 오류도 없음' 을 모두 받는 중으로 봐서, 받을 사례가 없을 때 '불러오는 중…' 이 끝나지 않고 고르기도 잠겼다.
+  const caseKnown = sessionCaseId(input.ids, detail) !== null;
+  const intakeWaiting =
+    !info && !caseDetail.error && (caseDetail.loading || detail.loading || (caseKnown && !detail.error));
+  const noCase = !info && !caseDetail.error && !intakeWaiting;
   /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
   const intakeWords = (words: string[] | null) => {
     let empty = "초기면접에서 고른 항목 없음";
-    if (words === null) empty = intakeWaiting ? "초기면접 항목을 불러오는 중…" : "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+    if (words === null) {
+      if (intakeWaiting) empty = "초기면접 항목을 불러오는 중…";
+      else if (noCase) empty = "연결된 사례 정보가 없어 초기면접 항목이 없습니다.";
+      else empty = "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+    }
 
     return { words: words ?? [], note: empty };
   };
@@ -358,8 +448,12 @@ export function noteWriteValues(input: NoteScreenInput) {
   };
 
   const docApproved = record !== null && record.status === "APPROVED";
-  const docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
-  const docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
+  let docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
+  let docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
+  if (aiFilled) {
+    docChip = "AI 초안 · 작성 전";
+    docNote = `아동 진술 · 위험 신호 검토 결과는 ${sv ? sv.numberLabel : "이 회차"} AI 분석으로 채운 초안입니다. 확인 · 수정 후 저장해 주세요.`;
+  }
 
   const fhead = [
     { k: "사건번호", v: info ? info.caseNumber : NOT_PROVIDED },
@@ -440,6 +534,6 @@ export function noteWriteValues(input: NoteScreenInput) {
       go(screenHref("/FollowupQ", ids), stillHere);
     },
     /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
-    unsaved: (summary.canEdit && summary.dirty) || docDirty,
+    unsaved: (summary.canEdit && summary.dirty) || docEdited,
   };
 }

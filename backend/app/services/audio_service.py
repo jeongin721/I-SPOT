@@ -6,9 +6,10 @@
 # 외부 native 의존성(libmagic 등)을 추가하지 않기 위해
 # container signature(magic bytes)를 직접 확인한다.
 
+import logging
 import struct
-from pathlib import PurePosixPath
-from typing import BinaryIO, Iterator, Optional, Set
+from pathlib import Path, PurePosixPath
+from typing import BinaryIO, Iterator, Optional, Set, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +23,8 @@ from app.models.audio import AudioFile
 from app.models.session import ConsultationSession
 from app.models.user import User
 from app.services import audit_service
+
+logger = logging.getLogger(__name__)
 
 _HEADER_READ_BYTES = 8192
 _STREAM_CHUNK_BYTES = 1024 * 1024
@@ -293,3 +296,25 @@ def get_latest_audio(db: Session, session_id) -> AudioFile:
         )
 
     return audio
+
+
+def get_latest_audio_file(db: Session, session_id) -> Tuple[AudioFile, Path]:
+    """최신 음성의 metadata 와 저장소 안의 실제 파일 경로를 돌려준다(다시 듣기용).
+
+    DB 에는 있는데 파일이 저장소에 없으면(지워졌거나 다른 서버의 저장소를 보고 있으면)
+    404 AUDIO_NOT_FOUND 로 답한다. 로그에는 식별자만 남긴다(경로 · 파일 이름은 남기지 않는다).
+    """
+
+    audio = get_latest_audio(db, session_id)
+    path = storage.resolve_stored_path(audio.path)
+
+    if not path.is_file():
+        logger.warning(
+            "음성 파일이 저장소에 없습니다. audio_id=%s session_id=%s", audio.id, session_id
+        )
+        raise not_found(
+            ErrorCode.AUDIO_NOT_FOUND,
+            "음성 파일이 저장소에 없습니다. 다시 올려 주세요.",
+        )
+
+    return audio, path

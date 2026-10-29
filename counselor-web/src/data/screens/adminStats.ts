@@ -116,7 +116,7 @@ const AGE_GROUPS: readonly { label: string; min: number; max: number }[] = [
 /** 서버에 원천 데이터가 없어 비워 두는 카드. 디자인의 자리만 남긴다. */
 const PENDING_CARDS = {
   types: { title: "학대 유형별", note: "학대 판단 사례 기준", text: "사례 단위 학대 판단을 입력 · 저장하는 곳이 없습니다. AI 신호로 대신 세지 않습니다." },
-  risk: { title: "위험도별", note: "학대 판단 시점 기준", text: "사례 단위 위험도 규칙이 없습니다(회차 · 유형별 상담원 판단만 있음)." },
+  risk: { title: "위험도별", note: "학대 판단 시점 기준", text: "사례 단위 위험도 규칙이 없습니다(회차 단위 상담원 판단만 있음)." },
   more: [
     { title: "학대 행위자 관계별", note: "", text: "행위자 관계를 저장하는 칸이 없습니다(보호자 유형과 다름)." },
     { title: "신고자 유형별", note: "", text: "신고자 정보를 저장하는 칸이 없습니다." },

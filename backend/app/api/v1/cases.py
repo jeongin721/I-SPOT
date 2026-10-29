@@ -132,7 +132,8 @@ def get_signal_history(
     """
     사례의 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력(API_CONTRACT 4절, 2026-10-28).
 
-    회차마다 analysis · risk-assessments 를 부르던 것을 한 번에 준다. AI 를 새로 돌리지 않는다.
+    회차마다 analysis · risk-assessment(회차 전체 판단) · risk-assessments(유형별 판단)를 부르던 것을 한 번에 준다.
+    AI 를 새로 돌리지 않는다.
     권한 · 오류는 GET /cases/{case_id} 와 같다.
     """
 

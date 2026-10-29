@@ -357,6 +357,73 @@ export interface AudioUploadResponse {
 }
 
 // =========================================================
+// 구간별 음성 참고 표시 (stt/voice_marks, API_CONTRACT 16절)
+// =========================================================
+
+/** 분석 상태. "탐지 없음" 은 ANALYZED 이면서 모든 flag 가 false 인 경우이고, UNDETERMINED(분석하지 못함)와 다르다. */
+export type VoiceMarkStatus = "ANALYZED" | "UNDETERMINED";
+
+/** 지표 하나(떨림 cent · 웅얼거림 Hz · 작은 소리 LUFS). z 는 이 녹음 안의 아동 구간끼리 비교한 상대값. */
+export interface VoiceMarkMetric {
+  value: number | null;
+  unit: string;
+  z: number | null;
+  flag: boolean | null;
+}
+
+export interface VoiceMarkSegment {
+  segment_id: string;
+  /** 분석 당시의 화자. 화면은 최신 원문의 화자를 쓰고 이 값은 참고만 한다. */
+  speaker: Speaker | string;
+  start_ms: number;
+  end_ms: number;
+  status: VoiceMarkStatus;
+  /** UNDETERMINED 일 때 이유 코드(stt/voice_marks.md 5절). ANALYZED 면 null. */
+  reason: string | null;
+  tremor: VoiceMarkMetric | null;
+  mumble: VoiceMarkMetric | null;
+  soft: VoiceMarkMetric | null;
+  /** 하나라도 표시면 true, 계산된 flag 가 모두 false 면 false, UNDETERMINED 면 null. */
+  flag_any: boolean | null;
+}
+
+/** 분석 모듈이 돌려준 결과 그대로(`stt/voice_marks.md` 3절). Backend 는 안을 바꾸지 않는다. */
+export interface VoiceMarksResult {
+  schema_version: string;
+  analyzer: string;
+  analyzer_version: string | null;
+  status: VoiceMarkStatus;
+  reason: string | null;
+  reference: {
+    child_segments_total: number;
+    child_segments_used: number;
+    min_required: number | null;
+    note: string;
+  };
+  /** 표시 기준값. 화면 코드에 숫자를 적지 않고 여기서 읽는다. Backend 실패 행은 null. */
+  thresholds: {
+    tremor_z_above: number | null;
+    mumble_z_below: number | null;
+    soft_z_below: number | null;
+    basis: string;
+  };
+  segments: VoiceMarkSegment[];
+}
+
+/** GET /sessions/{id}/voice-marks 의 data. 아직 계산 전이면 data 자체가 null. */
+export interface VoiceMarks {
+  id: string;
+  audio_file_id: string;
+  transcript_id: string | null;
+  /** 분석할 때 쓴 원문 판. 지금 보는 원문과 다르면 화면이 알린다. */
+  transcript_version: number | null;
+  extractor: string | null;
+  schema_version: string;
+  created_at: string;
+  result: VoiceMarksResult;
+}
+
+// =========================================================
 // 전사본 (STT 결과)
 // =========================================================
 
@@ -417,7 +484,20 @@ export interface Transcript {
   edited_segment_ids: string[];
   /** 아동 발화 인계 보기. Backend 가 STT 모듈(stt/)을 불러오지 못하는 배포에서는 null. */
   child_handoff: ChildHandoff | null;
+  /** STT 검수 '1차 임시 핵심 발화'(7절). 이 기능 전 전사본 · 이전 서버는 null 또는 없음. */
+  key_scan?: KeyScan | null;
   created_at: string;
+}
+
+/**
+ * 원문 확정 전 1차 모델 스캔으로 고른 '먼저 들어볼 곳'(API_CONTRACT 7절 key_scan). 판정이 아니다.
+ * DONE 성공(segments 가 비어도) · FAILED 실패(STT 는 성공) · SKIPPED modeling 이 아님.
+ * abuse_types 는 화면에 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3).
+ */
+export interface KeyScan {
+  status: "DONE" | "FAILED" | "SKIPPED";
+  model: string | null;
+  segments: { segment_id: string; abuse_types: string[] }[];
 }
 
 /**
@@ -599,6 +679,20 @@ export interface SessionChangeNote {
 export interface FollowupCheckPoint {
   text: string;
   segment_ids: string[];
+  /** 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차", 2026-10-28). 이때 segment_ids 는 빈 배열. */
+  previous_session_label?: string;
+}
+
+/**
+ * AI 추가 질문 초안(선택 필드, 2026-10-28, API_CONTRACT 8절). 상담사가 [승인] 해야 질문 목록(18절)에 들어간다.
+ * kind 는 OPEN(열린 질문) · BANK(질문 은행 — 자리만 예약). 질문 생성 모듈(#100 C-1)이 붙기 전까지 늘 빈 배열이다.
+ */
+export interface FollowupQuestionDraft {
+  text: string;
+  kind: FollowupQuestionKind;
+  segment_ids: string[];
+  reason: string;
+  bank_code: string | null;
 }
 
 export interface AnalysisResult {
@@ -614,6 +708,8 @@ export interface AnalysisResult {
   protective_factors: ProtectiveFactor[];
   session_change_notes: SessionChangeNote[];
   followup_check_points: FollowupCheckPoint[];
+  /** 옛 결과 · 이전 서버에는 없다. */
+  followup_questions?: FollowupQuestionDraft[];
 }
 
 /**
@@ -847,7 +943,8 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
 /**
  * 사례 단위 신호 이력(GET /cases/{id}/signal-history, API_CONTRACT 4절, 2026-10-28) — 한 회차 · 한 유형.
  * detected · ai_level 은 AI 제안이지 판정이 아니고, 위험도 표시는 counselor_level 만 쓴다(05_RULES §1).
- * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11절 ai_level 규칙), 판단은 risk-assessments.
+ * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11.2절 ai_level 규칙), 판단은 유형별
+ * …/risk-assessments(11.2절). 회차 전체 판단은 회차 줄(SignalHistorySession)의 counselor_level · assessed_at(11.1절)이다.
  */
 export interface SignalHistoryType {
   abuse_type: AbuseType;
@@ -857,7 +954,7 @@ export interface SignalHistoryType {
   assessed_at: string | null;
 }
 
-/** 회차 한 줄. 분석이 끝나지 않았고 판단도 없으면 types 는 빈 배열(분석 전). */
+/** 회차 한 줄. 분석이 끝나지 않았고 유형별 판단도 없으면 types 는 빈 배열(분석 전 — 회차 전체 판단과는 무관). */
 export interface SignalHistorySession {
   session_id: string;
   session_number: number;
@@ -865,6 +962,9 @@ export interface SignalHistorySession {
   status: SessionStatus;
   /** 가장 최근 분석 상태. 요청한 적 없으면 null. */
   analysis_status: AnalysisStatus | null;
+  /** 회차 전체 상담원 판단(11.1절, 2026-10-29). 판단 전이면 둘 다 null. 유형별 판단은 types[].counselor_level. */
+  counselor_level: RiskLevel | null;
+  assessed_at: string | null;
   types: SignalHistoryType[];
 }
 
@@ -874,7 +974,10 @@ export interface SignalHistory {
   sessions: SignalHistorySession[];
 }
 
-/** 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse). */
+/**
+ * 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse, API_CONTRACT 11.2절).
+ * 화면은 2026-10-29 부터 회차 전체 판단(OverallRiskAssessment)만 저장하고 유형별 판단은 쓰지 않는다. 창구는 기록 · signal-history 용으로 남아 있다.
+ */
 export interface RiskAssessment {
   id: string;
   session_id: string;
@@ -896,11 +999,101 @@ export interface RiskAssessment {
 }
 
 /**
- * 판단 저장 · 수정 요청(PUT /sessions/{id}/risk-assessments/{abuse_type}). 판단 전체를 바꾼다.
- * reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
+ * 판단 저장 · 수정 요청(회차 전체 PUT /sessions/{id}/risk-assessment, 유형별 PUT /sessions/{id}/risk-assessments/{abuse_type}).
+ * 판단 전체를 바꾼다. reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
  */
 export interface RiskAssessmentSaveRequest {
   counselor_level: RiskLevel;
   /** 1000자 이하. 빼거나 null · 공백만이면 null 로 저장. */
   reason?: string | null;
+}
+
+/**
+ * 회차 전체 상담원 판단(GET/PUT /sessions/{id}/risk-assessment, API_CONTRACT 11.1절, 2026-10-29) — 회차마다 하나.
+ * 상담사가 유형별 심각도(AI 제안)를 보고 이 회차 전체를 상 · 중 · 하로 판단한 것. 유형별 판단(11.2절)과 따로 저장된다.
+ * 판단이 없으면 GET 은 data 가 null 이다.
+ */
+export interface OverallRiskAssessment {
+  id: string;
+  session_id: string;
+  counselor_level: RiskLevel;
+  /** 판단 이유. 적지 않았으면 null. */
+  reason: string | null;
+  /**
+   * 판단을 저장할 때 그 회차 AI 분석 결과의 유형별 심각도(1~5) 중 가장 높은 값. 서버가 채운다.
+   * 분석이 없거나 · 실패했거나 · 유효한 단계가 하나도 없으면 null. 저장한 뒤 재분석해도 바뀌지 않는다(판단 당시 기록).
+   * 'AI 판정' 이 아니라 'AI 제안' 이다.
+   */
+  ai_level: number | null;
+  /** 마지막으로 저장한 사람. 계정이 삭제되었으면 null. */
+  assessed_by_id: string | null;
+  assessed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 법령 · 매뉴얼 AI 질문(POST /law-guide/questions, API_CONTRACT 17절, 2026-10-28). 질문 하나(앞뒤 공백 뺀 뒤 1~500자).
+ * 답변은 참고용이고 판정이 아니다(05_RULES §1). 서버는 질문 · 답변을 저장하지 않는다.
+ */
+export interface LawGuideQuestionRequest {
+  question: string;
+}
+
+/** 답변이 근거로 쓴 조문. 실제 조문 목록과 대조해 통과한 것만 온다. */
+export interface LawSource {
+  law_name: string;
+  article: string;
+  title: string;
+  content: string;
+  /** 조문시행일자("20261002" 꼴). 자료에 없으면 null. */
+  effective_date: string | null;
+  /** 국가법령정보센터 조문 주소. 없으면 null. */
+  portal_url: string | null;
+}
+
+/** 답변이 근거로 쓴 매뉴얼 자료. 매뉴얼 사진은 기관 대외비라 기본으로 첨부하지 않으므로 보통 빈 배열이다. */
+export interface ManualSource {
+  id: string;
+  title: string;
+  /** 쪽수 문자열. 모르면 "?". */
+  page: string;
+}
+
+export interface LawGuideAnswer {
+  /** 끝에 모듈이 붙인 참고용 안내 문장이 있다. */
+  answer: string;
+  sources: { laws: LawSource[]; manual: ManualSource[] };
+  /** 답한 모델 이름(mock 이면 "mock"). */
+  model: string;
+  answered_at: string;
+}
+
+// =========================================================
+// 승인한 추가 질문 (API_CONTRACT 18절)
+// =========================================================
+
+export type FollowupQuestionKind = "OPEN" | "BANK";
+/** AI 초안을 승인(고쳐서 승인해도 AI) · 상담사가 직접 씀. */
+export type FollowupQuestionSource = "AI" | "COUNSELOR";
+
+export interface FollowupQuestionInput {
+  text: string;
+  kind: FollowupQuestionKind;
+  source: FollowupQuestionSource;
+  segment_ids: string[];
+  bank_code: string | null;
+}
+
+export interface FollowupQuestion extends FollowupQuestionInput {
+  /** 서버가 찍은 승인 일시. 같은 질문을 다시 저장하면 처음 일시를 그대로 둔다. */
+  approved_at: string;
+}
+
+export interface FollowupQuestionList {
+  session_id: string;
+  questions: FollowupQuestion[];
+  /** 저장한 적이 없으면 null. */
+  updated_at: string | null;
+  updated_by_id: string | null;
 }

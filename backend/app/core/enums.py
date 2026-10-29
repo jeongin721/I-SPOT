@@ -174,7 +174,7 @@ def abuse_type_from_label(label: object) -> Optional[AbuseType]:
 
 class RiskLevel(str, Enum):
     """
-    상담원이 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
+    상담원이 회차 전체 또는 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
 
     AI 가 제안하는 심각도(1~5)와 척도가 다르다. 둘을 대응시키는 규칙은 팀 결정 전이라
     따로 저장만 하고 서로 바꾸지 않는다.
@@ -183,6 +183,25 @@ class RiskLevel(str, Enum):
     HIGH = "HIGH"      # 상
     MEDIUM = "MEDIUM"  # 중
     LOW = "LOW"        # 하
+
+
+class FollowupQuestionKind(str, Enum):
+    """
+    추가 질문 종류(2026-10-28, PROPOSAL_ai_suggestions_case_context.md §4 · §7 답 4 · 5).
+
+    OPEN 은 아동이 한 말을 이어받는 열린 질문이다. BANK 는 검증된 질문 은행의 질문 자리로,
+    은행이 생길 때까지 AI 가 내지 않는다(bank_code 와 함께 예약만 해 둔다).
+    """
+
+    OPEN = "OPEN"
+    BANK = "BANK"
+
+
+class FollowupQuestionSource(str, Enum):
+    """승인한 추가 질문이 어디서 왔는가. AI 초안을 고쳐 승인해도 AI 다."""
+
+    AI = "AI"
+    COUNSELOR = "COUNSELOR"
 
 
 class AuditAction(str, Enum):
@@ -208,9 +227,17 @@ class AuditAction(str, Enum):
     DOCUMENT_CREATED = "DOCUMENT_CREATED"
     DOCUMENT_UPDATED = "DOCUMENT_UPDATED"
     DOCUMENT_APPROVED = "DOCUMENT_APPROVED"
-    # 상담원 위험도 판단. detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
+    # 상담원 위험도 판단(유형별). detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
     RISK_ASSESSMENT_CREATED = "RISK_ASSESSMENT_CREATED"
     RISK_ASSESSMENT_UPDATED = "RISK_ASSESSMENT_UPDATED"
+    # 상담원 위험도 판단(회차 전체, 2026-10-29). detail 에는 단계 값과 ai_level 만 남긴다(판단 이유 원문은 넣지 않는다).
+    OVERALL_RISK_ASSESSMENT_CREATED = "OVERALL_RISK_ASSESSMENT_CREATED"
+    OVERALL_RISK_ASSESSMENT_UPDATED = "OVERALL_RISK_ASSESSMENT_UPDATED"
+    # 법령 · 매뉴얼 AI 질문(17절, 2026-10-28). detail 에는 걸린 시간 · provider · 모델 · 근거 수만 남긴다(질문 원문은 넣지 않는다).
+    # 실패는 status=FAILED + error_code 다.
+    LAW_QA_ASKED = "LAW_QA_ASKED"
+    # 승인한 추가 질문 목록 저장(18절, 2026-10-28). detail 에는 질문 수 · 출처별 수만 남긴다(질문 원문은 넣지 않는다).
+    FOLLOWUP_QUESTIONS_UPDATED = "FOLLOWUP_QUESTIONS_UPDATED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

@@ -46,8 +46,13 @@ export function historyCell(session: SignalHistorySession, type: AbuseType): His
   return { text: DASH, muted: true, level: null, detected: false };
 }
 
-/** 상담원 판단 중 가장 높은 것. 없으면 null. */
+/**
+ * 그 회차의 상담원 판단. 회차 전체 판단(회차 줄 counselor_level, 11.1절 — #119 부터 화면은 이것만 저장)을 먼저 보고,
+ * 없으면 예전 회차의 유형별 판단(types[].counselor_level, 11.2절) 가운데 가장 높은 것. 둘 다 없으면 null.
+ */
 export function counselorTop(session: SignalHistorySession): RiskLevel | null {
+  if (session.counselor_level) return session.counselor_level;
+
   for (const level of LEVEL_ORDER) {
     if (session.types.some((item) => item.counselor_level === level)) return level;
   }

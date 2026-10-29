@@ -51,7 +51,7 @@ from ai.modeling.abuse.law_qa_llm import (
 )
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from law.config import LAW_TARGET_LAWS
-from manual.config import MANUAL_IMAGE_DIR
+from manual.config import MANUAL_IMAGE_DIR, MANUAL_QA_ATTACH_IMAGES
 from manual.manifest import CHAPTER6_PAGES, ManualPage
 
 DEFAULT_MODEL = "gpt-5.6-luna"
@@ -275,7 +275,9 @@ def answer_legal_manual_question(
     masked_question, entity_map = mask_for_outbound(question)
 
     law_corpus, articles = _build_law_corpus(names)
-    candidate_pages = _select_manual_pages(masked_question)
+    # 매뉴얼 사진은 기관 대외비라 설정으로 켰을 때만 외부 LLM 에 첨부한다(manual/config.MANUAL_QA_ATTACH_IMAGES,
+    # 기본 끔, 2026-10-28). 끄면 첨부 · 자료 목록 · 인용 검증이 모두 빈 목록을 본다 — 법령만으로 답한다.
+    candidate_pages = _select_manual_pages(masked_question) if MANUAL_QA_ATTACH_IMAGES else []
     manual_pages = _resolve_attached_pages(candidate_pages)
     manual_section = _build_manual_section(manual_pages)
 

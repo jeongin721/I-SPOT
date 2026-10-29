@@ -89,9 +89,25 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
    sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
    ```
 
-   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - 이미지에 `backend/requirements-stt.txt`(deepgram-sdk · elevenlabs · librosa · numba · soundfile)를 더 깝니다. `backend.env` 가 `STT_PROVIDER=module` 인데 `WITH_STT=1` 없이 돌리면 멈춥니다.
+   - 구간별 음성 참고 표시(정담원 님 `stt/voice_marks`)까지 켜려면 `backend.env` 에 `VOICE_MARKS_PROVIDER=module` 을 더합니다. 같은 `WITH_STT=1` 이미지에 librosa · numba · soundfile 이 들어 있고, numba 캐시 자리(`NUMBA_CACHE_DIR=/tmp/numba-cache`)는 이미지가 정합니다. 기본(`off`)이면 아무것도 하지 않습니다. 참고 표시일 뿐 판정이 아닙니다(`backend/docs/API_CONTRACT.md` 16절).
    - `openai-whisper`(`I_SPOT_STT_PROVIDER=whisper` 일 때만) · `pyannote`(별도 화자 분리 때만) · `ffmpeg`(기본 꺼진 `I_SPOT_SINGLE_SPEAKER_FALLBACK` 때만)는 넣지 않았습니다. 그 설정을 켜려면 이미지에 더해야 합니다.
    - 전사 한 번에 최대 `STT_TIMEOUT_SECONDS`(기본 600초)까지 기다립니다. 음성 파일은 `/opt/ispot/storage`(컨테이너 `/app/storage`)에 있어 그대로 읽습니다.
+
+## 디스크 · 빌더
+
+2026-10-28 에 빌드가 두 번 `no space left on device` 로 끊긴 뒤 바꾼 것입니다.
+
+- **루트 볼륨 64GB**(30GB 에서 늘림, gp3). modeling · GPU · STT 를 다 넣은 이미지가 약 9.5GB 라, 돌고 있는 이미지 한 벌 + 새 이미지 한 벌 + 빌드 캐시(약 10GB)가 함께 있어야 배포가 됩니다. 배포 전 `df -h /` 로 여유를 보고, 도커가 얼마나 쓰는지는 `sudo docker system df` 로 봅니다. 볼륨을 더 늘리면 콘솔 '볼륨 수정' 뒤 서버에서 `sudo growpart /dev/nvme0n1 1 && sudo resize2fs /dev/nvme0n1p1`(끄지 않고 됨).
+- **BuildKit**: 서버에 `docker-buildx`(0.30.1, apt)를 깔았고, 스크립트는 buildx 가 있으면 `DOCKER_BUILDKIT=1` 로 이미지를 만듭니다. 옛 빌더는 RUN 층을 commit 할 때 한 번 더 복사해 디스크를 두 배로 쓰고, 그러다 끊기면 그 단계의 임시 컨테이너(무작위 이름, 5.9GB)가 `sudo docker ps -a` 에 `Exited` 로 남습니다 — `sudo docker rm <이름>` 으로 지우고, 태그 없는 이미지는 `sudo docker image prune -f` 로 지웁니다. 빌드 캐시가 커지면 `sudo docker buildx prune -f`(다음 빌드가 torch 를 다시 받습니다).
+- g4dn 에 달린 116GB 로컬 NVMe(`nvme1n1`)는 서버를 끄면 비워지는 임시 디스크라 이미지 저장소로 쓰지 않습니다.
+- 구간별 음성 참고 표시 모듈의 시험(루트 `tests/test_voice_marks.py`, 22개)은 이미지에 들어 있지 않습니다. 이미지 안의 librosa · numba 로 돌려 보려면:
+
+  ```bash
+  sudo docker run --rm -v /opt/ispot/I-SPOT/tests:/tests:ro -w / ispot-backend sh -c "pip install -q pytest==9.1.1 && python -B -m pytest /tests/test_voice_marks.py -q -p no:cacheprovider"
+  ```
+
+  켜진 뒤에는 `sudo docker logs ispot-backend 2>&1 | grep '음성 참고 표시'` 에 "모듈 준비 완료"(warm-up) 가 찍히고, 업로드 · STT 뒤 "저장 … status=ANALYZED" 가 찍힙니다.
 
 ## 스크립트가 하는 일 (`web-deploy.sh`)
 
@@ -129,3 +145,15 @@ Backend ──▶ PostgreSQL(RDS)
 | 22 | 관리용(범위는 AWS 콘솔 설정) | SSH 접속 · 배포 |
 
 Backend 포트 8000 은 열지 않습니다(Caddy 만 서버 안에서 부릅니다).
+
+## 법령 · 매뉴얼 AI 질문 켜기 (`LAW_QA_PROVIDER=modeling`)
+
+LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고정 답변)으로 뜹니다. 실제로 켜려면:
+
+1. 이미지는 `WITH_MODELING=1` 로 만든 것이어야 합니다(openai 가 들어 있음). 이미지에 `law/` · `manual/` 이 복사됩니다(사진 폴더는 넣지 않음).
+2. `backend.env` 에 `LAW_QA_PROVIDER=modeling`, `OPENAI_API_KEY=<키>`. `ENV=production` 이면 `LAW_QA_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만**(질문이 가려진 채 OpenAI 로 나가지만 등록 실명 대조는 돌지 않음).
+3. 법령 캐시: 위 '관련 조문' 과 같은 `/law_cache` 를 씁니다. 캐시가 없으면 서버 시작 때(그리고 첫 질문 때) 국가법령정보센터를 조회하므로 `LAW_API_OC=<OC>` 를 넣거나 캐시를 복사해 둡니다. 조회에 실패하면 질문은 `503 LAW_SOURCE_UNAVAILABLE` 입니다.
+4. **매뉴얼 사진은 올리지 않습니다.** 기관 대외비라 `MANUAL_QA_ATTACH_IMAGES` 는 기본 끔이고 `backend.env` 에 적지 않습니다(기관 허락 전에는 켜지 않음). 꺼져 있으면 법령만으로 답하고 응답의 `sources.manual` 은 빈 목록입니다.
+5. 비용 · 한도: 호출마다 법령 전문(약 9.8만 자)이 OpenAI 로 나갑니다. 사용자당 분당 6회(`LAW_QA_RATE_LIMIT_PER_MINUTE`) · 서버 동시 2건(`LAW_QA_MAX_CONCURRENCY`)이 기본이고, 데모 서버의 키가 개인 키면 비용이 그 키로 나갑니다.
+
+확인: `curl -s -X POST http://localhost:8000/api/v1/law-guide/questions -H "Authorization: Bearer <토큰>" -H "Content-Type: application/json" -d '{"question":"응급조치 기간은 얼마나 돼요?"}'` 가 200 과 `sources.laws` 를 돌려주면 됩니다.

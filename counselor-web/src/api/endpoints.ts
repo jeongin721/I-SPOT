@@ -20,8 +20,12 @@ import type {
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
+  FollowupQuestionInput,
+  FollowupQuestionList,
+  LawGuideAnswer,
   LoginRequest,
   LoginResponse,
+  OverallRiskAssessment,
   PasswordChangeRequest,
   RiskAssessment,
   RiskAssessmentSaveRequest,
@@ -47,6 +51,7 @@ import type {
   TranscriptEnvelope,
   TranscriptUpdateRequest,
   User,
+  VoiceMarks,
 } from "./types";
 
 /**
@@ -201,7 +206,10 @@ export const cases = {
     return api.post<Session>(`/cases/${caseId}/sessions`, payload);
   },
 
-  /** 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessments 를 부르지 않아도 된다. */
+  /**
+   * 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessment(회차 전체 판단) ·
+   * risk-assessments(유형별 판단)를 부르지 않아도 된다. 회차 줄의 counselor_level · assessed_at 이 회차 전체 판단이다(2026-10-29).
+   */
   signalHistory(caseId: string): Promise<SignalHistory> {
     return api.get<SignalHistory>(`/cases/${caseId}/signal-history`);
   },
@@ -239,6 +247,28 @@ export const sessions = {
   /** 최신 음성 파일 정보(파일 이름 · 크기 · 길이). 파일 자체는 주지 않는다. 음성이 없으면 404 AUDIO_NOT_FOUND. */
   getAudio(sessionId: string): Promise<AudioFile> {
     return api.get<AudioFile>(`/sessions/${sessionId}/audio`);
+  },
+
+  /**
+   * 최신 음성 파일 본문(재생용, API_CONTRACT 6절). Authorization 헤더로 받아 Blob URL 로 재생한다(useSessionAudio).
+   * 음성이 없거나 저장소에 파일이 없으면 404 AUDIO_NOT_FOUND.
+   */
+  getAudioFile(sessionId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/sessions/${sessionId}/audio/file`, signal);
+  },
+};
+
+// =========================================================
+// 구간별 음성 참고 표시 (API_CONTRACT 16절)
+// =========================================================
+
+export const voiceMarks = {
+  /**
+   * 가장 최신 원문 판의 음성 참고 표시(떨림 · 웅얼거림 · 작게 말함). 아직 계산 전이면 null(정상 상태라 404 가 아니다).
+   * 분석 실패 · 시간 초과는 null 이 아니라 result.status UNDETERMINED · reason ANALYSIS_ERROR 로 온다.
+   */
+  get(sessionId: string): Promise<VoiceMarks | null> {
+    return api.get<VoiceMarks | null>(`/sessions/${sessionId}/voice-marks`);
   },
 };
 
@@ -408,5 +438,55 @@ export const riskAssessments = {
    */
   save(sessionId: string, abuseType: AbuseType, payload: RiskAssessmentSaveRequest): Promise<RiskAssessment> {
     return api.put<RiskAssessment>(`/sessions/${sessionId}/risk-assessments/${abuseType}`, payload);
+  },
+
+  /**
+   * 회차 전체 판단 하나(API_CONTRACT 11.1절, 2026-10-29). 아직 판단하지 않았으면 null(404 가 아니다).
+   * 회차 상태와 상관없이 조회할 수 있다. 화면(유형별 위험도 · 사례 상세 위험도 · 요약 · 일지 작성)은 이것만 쓴다.
+   */
+  getOverall(sessionId: string): Promise<OverallRiskAssessment | null> {
+    return api.get<OverallRiskAssessment | null>(`/sessions/${sessionId}/risk-assessment`);
+  },
+
+  /**
+   * 회차 전체 판단을 저장한다. 없으면 만들고 있으면 고친다(둘 다 200). 상태 규칙 · 동시 저장 409 는 유형별 save 와 같다.
+   * ai_level 은 서버가 그때 유형별 AI 심각도 중 가장 높은 값으로 채운다.
+   */
+  saveOverall(sessionId: string, payload: RiskAssessmentSaveRequest): Promise<OverallRiskAssessment> {
+    return api.put<OverallRiskAssessment>(`/sessions/${sessionId}/risk-assessment`, payload);
+  },
+};
+
+// =========================================================
+// 승인한 추가 질문 (추가 확인 · 질문 · 상담 전 브리핑)
+// =========================================================
+
+export const followupQuestions = {
+  /** 승인한 질문 목록. 저장한 적이 없으면 questions 가 []. 회차 상태와 상관없이 조회한다. */
+  get(sessionId: string): Promise<FollowupQuestionList> {
+    return api.get<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`);
+  },
+
+  /**
+   * 목록을 통째로 바꾼다(빈 목록이면 모두 지움). 0~20개, 문장 1~300자, segment_ids 는 그 회차 전사본에 있는 번호만(422).
+   * 원문 확정(STT_CONFIRMED) · 분석 검토 · 분석 실패 · 승인 상태에서만 되고 그 밖에는 409 INVALID_SESSION_STATE.
+   */
+  save(sessionId: string, questions: FollowupQuestionInput[]): Promise<FollowupQuestionList> {
+    return api.put<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`, { questions });
+  },
+};
+
+// =========================================================
+// 법령 · 매뉴얼 AI 질문 (LawGuide 화면)
+// =========================================================
+
+export const lawGuide = {
+  /**
+   * 질문 하나(1~500자)에 조문 근거를 달아 답한다(API_CONTRACT 17절). 동기 응답이라 '찾는 중' 은 화면이 보인다.
+   * 꺼져 있으면 503 LAW_QA_DISABLED, 분당 한도 초과 429 RATE_LIMITED, 제한 시간 초과 504 AI_TIMEOUT,
+   * LLM 실패 502 AI_FAILED · AI_INVALID_OUTPUT, 법령 자료 없음 503 LAW_SOURCE_UNAVAILABLE. 오류 문구는 고정 문구라 그대로 보여도 된다.
+   */
+  ask(question: string): Promise<LawGuideAnswer> {
+    return api.post<LawGuideAnswer>("/law-guide/questions", { question });
   },
 };

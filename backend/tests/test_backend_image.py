@@ -59,6 +59,24 @@ def test_root_dockerignore_sends_only_backend_ai_agent_and_keeps_secrets_out() -
     assert not (BACKEND / ".dockerignore").exists()
 
 
+def test_every_copied_top_level_path_is_allowed_in_root_dockerignore() -> None:
+    # 2026-10-28 #109 교차검증 R1: Dockerfile 에 COPY manual/ 을 더했는데 루트 .dockerignore 가 `*` 로 빼고 다시 넣지 않아
+    # 이미지 빌드가 깨질 뻔했다. Dockerfile 이 COPY 하는 최상위 폴더 · 파일은 모두 .dockerignore 에서 다시 허용돼야 한다.
+    ignore = set(_active(REPO / ".dockerignore"))
+    copies = [line for line in _active(BACKEND / "Dockerfile") if line.startswith("COPY ")]
+    sources = {source for line in copies for source in line.split()[1:-1]}
+
+    assert sources, "Dockerfile 에서 COPY 를 찾지 못했다"
+    for source in sorted(sources):
+        top = source.split("/")[0]
+        assert f"!{top}/" in ignore or f"!{top}" in ignore, f"{source} 는 루트 .dockerignore 에서 허용되지 않아 빌드 컨텍스트에 없다"
+
+    # 법령 · 매뉴얼 AI 질문 모듈이 manual/config · manifest 를 읽는다. 매뉴얼 사진 폴더는 넣지 않는다(기관 대외비).
+    assert "!manual/" in ignore
+    assert "COPY manual/ /manual/" in _active(BACKEND / "Dockerfile")
+    assert not any("사례관리_업무" in line for line in copies)
+
+
 def test_every_backend_image_build_uses_repo_root_context() -> None:
     deploy = (REPO / "deploy" / "web-deploy.sh").read_text(encoding="utf-8")
     builds = [line for line in deploy.splitlines() if re.search(r"^\s*docker build\b", line)]

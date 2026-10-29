@@ -8,7 +8,8 @@ from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.case import Case
 from app.models.document import Document
-from app.models.risk_assessment import SessionRiskAssessment
+from app.models.followup_question import SessionFollowupQuestions
+from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.models.transcript import Transcript, TranscriptSegment
@@ -25,6 +26,8 @@ __all__ = [
     "ConsultationSession",
     "ConsultationSummary",
     "Document",
+    "SessionFollowupQuestions",
+    "SessionOverallRiskAssessment",
     "SessionRiskAssessment",
     "Transcript",
     "TranscriptSegment",

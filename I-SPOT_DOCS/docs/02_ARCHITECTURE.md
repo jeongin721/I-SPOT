@@ -88,10 +88,12 @@ Base:
 /cases
 /cases/{case_id}/sessions
 /sessions/{session_id}/audio
+/sessions/{session_id}/audio/file
 /sessions/{session_id}/transcript
 /sessions/{session_id}/analysis
 /sessions/{session_id}/summary
 /sessions/{session_id}/documents
+/sessions/{session_id}/voice-marks
 ```
 
 성공:
