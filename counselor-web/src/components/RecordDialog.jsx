@@ -10,6 +10,8 @@ import A from './A';
 import { NOT_READY } from '../data/screens/common';
 import { screenHref } from '../data/screens/links';
 import { NEW_SESSION } from '../data/screens/uploadModal';
+import { recordingUnsaved } from '../data/useRecordFlow';
+import './RecordDialog.css';
 
 const STATUS = {
   idle: '녹음 대기',
@@ -22,19 +24,8 @@ const STATUS = {
 
 const KINDS = ['정기상담', '방문상담', '기관 면담', '전화상담'];
 
-/** 실패해도 음성은 이미 서버에 있는 단계(원문 변환 요청 · 변환). 그 앞(회차 만들기 · 업로드)에서 실패하면 음성이 없다. */
-const AUDIO_SAVED_STEPS = new Set(['requestStt', 'transcribing']);
-
-/**
- * 녹음해 둔 것이 있어 닫거나 떠나면 사라지는가. 올리기 전, 그리고 음성을 서버에 올리기 전에 실패했으면 사라진다.
- * 올리는 중(회차 만들기 · 업로드 · 변환 요청)은 창 닫기를 막고 화면 이탈은 사례 상세가 따로 묻는다.
- */
-export function recordingUnsaved(recorder, upload) {
-  if (recorder.status === 'idle') return false;
-  if (upload.phase === 'idle') return true;
-  if (upload.phase === 'failed') return !AUDIO_SAVED_STEPS.has(upload.failedStep);
-  return false;
-}
+/** 녹음해 둔 것이 있어 닫거나 떠나면 사라지는가(data/useRecordFlow.ts). */
+export { recordingUnsaved };
 
 export default function RecordDialog({ caseId, caseName, caseSub, targets, recorder, upload, onClose }) {
   const [choice, setChoice] = useState(NEW_SESSION);

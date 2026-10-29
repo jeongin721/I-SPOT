@@ -166,6 +166,10 @@ export function caseHeaderValues(input: CaseScreenInput) {
     riskCls: input.signals?.topLevel ? RISK_CHIP[input.signals.topLevel] : "c-normal",
     meta: info ? `${info.caseNumber} · 다음 상담 ${NOT_PROVIDED}` : "",
     uploadHref: screenHref("/UploadModal", ids),
+    // 녹음하기 창(사례 상세 · 상담 이력 · 문서함, 10/29 디자인).
+    recordCase: info ? `${info.alias} · ${info.caseNumber}` : "",
+    recordTargets: uploadTargets(detail.sessions).filter((target) => target.uploadable),
+    canRecord: Boolean(info && caseId),
     tabs: {
       detail: screenHref("/CaseDetail", ids),
       history: screenHref("/CaseHistory", ids),
@@ -359,9 +363,6 @@ export function caseDetailValues(input: CaseDetailInput) {
     formsHref: screenHref("/CaseForm", { caseId: input.caseId }),
     notReady: NOT_READY,
     // 녹음하기 창(components/RecordDialog.jsx)
-    recordCase: info ? `${info.alias} · ${info.caseNumber}` : "",
-    recordTargets: uploadTargets(detail.sessions).filter((target) => target.uploadable),
-    canRecord: Boolean(info && input.caseId),
   };
 }
 

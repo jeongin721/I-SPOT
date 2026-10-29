@@ -13,20 +13,17 @@
 // 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
 // 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 사례 별칭만 — 서버에 실명이 없다).
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
-// 녹음은 창을 연 계정 · 사례의 것이다. 다른 탭에서 계정이 바뀌거나 다른 사례로 가거나 사례를 볼 수 없게 되면(403 등) 녹음을
-// 버리고(마이크 끄기 · 들어 보기 주소 해제 · 올리기 멈춤) 창을 닫는다 — 앞 계정의 녹음을 새 계정이 듣거나 저장하지 않게.
+// 녹음하기 창의 주인 · 버리기 규칙은 data/useRecordFlow.ts(상담 이력 · 문서함과 같이 쓴다).
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
-import RecordDialog, { recordingUnsaved } from '../components/RecordDialog';
+import RecordDialog from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
-import { useAudioRecorder } from '../data/useAudioRecorder';
-import { useAudioUpload } from '../data/useAudioUpload';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
@@ -36,6 +33,7 @@ import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
+import { useRecordFlow } from '../data/useRecordFlow';
 import './CaseDetail.css';
 
 class Logic extends DCLogic {
@@ -107,25 +105,8 @@ export default function CaseDetail(props) {
   useEffect(() => {
     if (wantBrief && briefReady && briefRef.current) briefRef.current.scrollIntoView({ block: 'start' });
   }, [wantBrief, briefReady]);
-  const [recOpen, setRecOpen] = useState(false);
-  const recorder = useAudioRecorder();
-  const upload = useAudioUpload();
-  // 녹음의 주인: 창을 연 계정 · 사례. 지금 주인과 다르거나 사례를 볼 수 없으면 그 녹음은 낡았다.
-  const owner = session.status === 'signedIn' && session.me && caseId ? `${session.me.id}|${caseId}` : null;
-  const [recOwner, setRecOwner] = useState(null);
-  const recStale = recOpen && (owner === null || owner !== recOwner || !v.canRecord);
-  const { reset: resetRecorder } = recorder;
-  const { reset: resetUpload } = upload;
-  useEffect(() => {
-    if (!recStale) return;
-    resetRecorder();
-    resetUpload();
-    setRecOpen(false);
-    setRecOwner(null);
-  }, [recStale, resetRecorder, resetUpload]);
-  useLeaveGuard(
-    v.unsaved || (!recStale && (recordingUnsaved(recorder, upload) || (upload.busy && upload.phase !== 'transcribing'))),
-  );
+  const rec = useRecordFlow(session, caseId, v.canRecord);
+  useLeaveGuard(v.unsaved || rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDetail">
@@ -180,11 +161,8 @@ export default function CaseDetail(props) {
               <button
                 type="button"
                 className="btn btn-s"
-                onClick={() => {
-                  setRecOwner(owner);
-                  setRecOpen(true);
-                }}
-                disabled={!v.canRecord || owner === null}
+                onClick={rec.start}
+                disabled={!rec.canOpen}
               >
                 <span className="rec-dot" aria-hidden="true"></span> 녹음하기
               </button>
@@ -565,15 +543,15 @@ export default function CaseDetail(props) {
             </button>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
-          {recOpen && !recStale ? (
+          {rec.show ? (
             <RecordDialog
               caseId={caseId}
               caseName={v.recordCase}
               caseSub={v.sub}
               targets={v.recordTargets}
-              recorder={recorder}
-              upload={upload}
-              onClose={() => setRecOpen(false)}
+              recorder={rec.recorder}
+              upload={rec.upload}
+              onClose={rec.close}
             />
           ) : null}
         </main>

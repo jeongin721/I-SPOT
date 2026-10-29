@@ -5,11 +5,15 @@
 // src/data/screens/caseDetail.ts(caseHistoryValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 회차 카드 신호 · 회차별 세부 신호는 사례 단위 신호 이력(useSignalHistory), 누적 요약은 승인된 회차 요약 모음
 // (useApprovedSummaries — AI 생성 아님)이다. 주제 비중 · 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
+// 10/29 디자인: 머리 단추가 '녹음하기'(components/RecordDialog, useRecordFlow) · '+ 새 상담 등록'(components/NewSessionDialog —
+// 녹음 없이 상담 내용 · 소견을 회차 메모에 저장)으로 바뀌었다.
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import NewSessionDialog from '../components/NewSessionDialog';
 import Notice from '../components/Notice';
+import RecordDialog from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
@@ -22,6 +26,8 @@ import { useApprovedSummaries } from '../data/useApprovedSummaries';
 import { caseHistoryValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
+import { useRecordFlow } from '../data/useRecordFlow';
 import './CaseHistory.css';
 
 class Logic extends DCLogic {
@@ -45,6 +51,9 @@ export default function CaseHistory(props) {
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
   const v = useDC(Logic, { ...props, session, detail, signals, history, approved, caseId, historyOpen, setHistoryOpen });
+  const rec = useRecordFlow(session, caseId, v.canRecord);
+  const [nsOpen, setNsOpen] = useState(false);
+  useLeaveGuard(rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseHistory">
@@ -93,9 +102,14 @@ export default function CaseHistory(props) {
               </div>
               <div className="note">{v.meta}</div>
             </div>
-            <A className="btn btn-s" to={v.uploadHref}>
-              ↑ 녹취 올리기
-            </A>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button type="button" className="btn btn-s" onClick={rec.start} disabled={!rec.canOpen}>
+                <span className="rec-dot" aria-hidden="true"></span> 녹음하기
+              </button>
+              <button type="button" className="btn btn-s" onClick={() => setNsOpen(true)} disabled={!v.canRecord}>
+                + 새 상담 등록
+              </button>
+            </div>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={v.tabs.detail}>내담자 정보</A>
@@ -350,6 +364,30 @@ export default function CaseHistory(props) {
             </div>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+          {rec.show ? (
+            <RecordDialog
+              caseId={caseId}
+              caseName={v.recordCase}
+              caseSub={v.sub}
+              targets={v.recordTargets}
+              recorder={rec.recorder}
+              upload={rec.upload}
+              onClose={rec.close}
+            />
+          ) : null}
+          {nsOpen && v.canRecord ? (
+            <NewSessionDialog
+              caseId={caseId}
+              caseName={v.recordCase}
+              caseSub={v.sub}
+              rows={detail.sessions}
+              onClose={() => setNsOpen(false)}
+              onSaved={() => {
+                detail.reload();
+                history.reload();
+              }}
+            />
+          ) : null}
         </main>
       </div>
     </div>
