@@ -117,23 +117,30 @@ export function sessionDetailValues(input: SessionScreenInput) {
   const header = sessionHeaderValues(input);
   const sv = detail.session;
 
-  // 같은 사례의 회차를 오래된 것부터. 누르면 그 회차 주소로 옮긴다.
-  const picks = [...caseDetail.sessions].reverse().map((row) => {
-    const on = sv !== null && row.id === sv.id;
-    const href = screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id });
+  // '다른 회차' 고르기(10/29 디자인 sl-*): 같은 사례의 회차를 최근 것부터. 고르면 그 회차 주소로 옮긴다.
+  const dateOf = (row: { consultedDate: string; createdDate: string }) =>
+    row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`;
+  const picks = [...caseDetail.sessions]
+    .sort((a, b) => b.sessionNumber - a.sessionNumber)
+    .map((row) => {
+      const on = sv !== null && row.id === sv.id;
+      const href = screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id });
 
-    return {
-      label: `${row.sessionNumber}회`,
-      on: on ? "true" : "false",
-      bg: on ? "#F1EADA" : "#FFFFFF",
-      bd: on ? "#2B2A26" : "#E7E4DC",
-      fg: "#2B2A26",
-      fw: on ? 700 : 400,
-      go: () => {
-        if (!on) go(href);
-      },
-    };
-  });
+      return {
+        no: row.numberLabel,
+        meta: dateOf(row),
+        st: row.statusLabel,
+        stCls: TONE_CHIP[row.tone],
+        on: on ? "true" : "false",
+        cls: on ? "on" : "",
+        pick: () => {
+          if (!on) go(href);
+        },
+      };
+    });
+  const curRow = sv ? caseDetail.sessions.find((row) => row.id === sv.id) : undefined;
+  const pickLabel = sv ? `${sv.numberLabel}${curRow ? ` · ${dateOf(curRow)}` : ""}` : "회차 선택";
+  const pickHead = caseDetail.caseInfo ? `${caseDetail.caseInfo.alias} · 총 ${caseDetail.caseInfo.sessionCount}회` : "";
 
   let steps: Record<string, unknown>[] = [];
 
@@ -192,6 +199,8 @@ export function sessionDetailValues(input: SessionScreenInput) {
   return {
     ...header,
     picks,
+    pickLabel,
+    pickHead,
     steps,
     cur: sv
       ? {
