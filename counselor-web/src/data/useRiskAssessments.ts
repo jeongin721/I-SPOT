@@ -79,9 +79,18 @@ export interface RiskAssessmentsOptions {
 export interface RiskAssessmentsState {
   /** 네 유형 고정 순서(신체 · 정서 · 성 · 방임). */
   rows: RiskAssessmentRow[];
+  /**
+   * 서버 목록을 한 번이라도 받았는가. 받기 전(또는 받지 못한 채)에는 rows 가 '판단 전' 으로 보여도 실제 판단이 있을 수
+   * 있으므로, 화면은 이 값이 true 이고 loadError 가 없을 때만 저장 단추를 켠다. 그래야 서버에 있는 이유를 모른 채
+   * PUT 으로 덮어쓰지 않는다(PUT 은 판단 전체를 바꾼다 — Codex #81 R1).
+   */
+  loaded: boolean;
   submitting: boolean;
   loading: boolean;
+  /** 저장 실패 또는 목록 조회 실패 문구. */
   error: string | null;
+  /** 목록 조회 실패 문구만. 저장 실패는 들어가지 않는다. reload() 로 다시 부른다. */
+  loadError: string | null;
   /**
    * 한 유형의 판단을 저장한다(없으면 만들고 있으면 고침). 판단 전체를 바꾸므로 이유를 빼면 지워진다.
    * 성공하면 그 유형의 줄, 실패하면 null.
@@ -182,9 +191,11 @@ export function useRiskAssessments(
 
   return {
     rows,
+    loaded: remote.data !== null,
     submitting,
     loading: remote.loading,
     error: actionError ?? remote.error,
+    loadError: remote.error,
     save,
     reload: remote.reload,
   };

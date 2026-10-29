@@ -3,14 +3,17 @@
 //
 // 서버 연결: 로그인 · 로그인 상태 · 비밀번호 변경은 src/data 의 훅이 하고, 이 파일은 배치만 한다.
 // 디자인을 바꿀 때는 아래 Login 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
-//  - 로그인은 이메일(Backend 계약). OTP 는 Backend 에 없어 칸만 두고 막아 둔다(팀 결정 대기).
+//  - 로그인은 이메일(Backend 계약). 10/21 디자인(counselor-design/screens/Login.dc.html)대로 OTP 칸은 뺐다.
 //  - 임시 비밀번호로 들어오면 같은 카드가 비밀번호 변경 단계로 바뀐다. 바꾸면 다시 로그인한다.
-//  - 역할과 상관없이 로그인하면 /Main 으로 간다.
+//  - 로그인 유형(상담사 · 관리자)은 들어갈 화면만 고른다. 관리자 화면은 서버 역할이 관리자일 때만 가고, 아니면 /Main.
+//  - 회원가입(인증번호 메일)은 Backend 에 없어 준비 중이다(가입 방식 팀 결정 대기). 10/27 디자인의 3단계 팝업(본인 인증 →
+//    계정 정보 → 완료)도 같은 이유로 옮기지 않았다.
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { NOT_READY } from '../data/screens/common';
 import { useAuthSession } from '../data/useAuthSession';
 import { useLogin } from '../data/useLogin';
 import { useLogoutNotice } from '../data/useLogoutNotice';
@@ -21,7 +24,7 @@ class Logic extends DCLogic {
   constructor(props) {
     super(props);
     // pwFor: 변경 단계 칸(current · next · confirm)이 어느 계정 것인가(설정 화면의 pwFor 와 같은 방식).
-    this.state = { email: '', password: '', current: '', next: '', confirm: '', pwFor: null };
+    this.state = { email: '', password: '', current: '', next: '', confirm: '', pwFor: null, role: 'staff' };
   }
 
   async signIn() {
@@ -36,7 +39,7 @@ class Logic extends DCLogic {
       this.setState({ current: s.password, password: '', next: '', confirm: '', pwFor: user.id });
       this.props.session.recheck();
     } else {
-      this.props.navigate('/Main');
+      this.props.navigate(s.role === 'admin' && user.role === 'ADMIN' ? '/AdminHome' : '/Main');
     }
   }
 
@@ -76,6 +79,15 @@ class Logic extends DCLogic {
       errors: changing ? pwChange.errors : [],
       meName: session.me ? session.me.name : '',
       ruleText: PASSWORD_RULE_TEXT,
+      roles: [
+        ['staff', '상담사 로그인'],
+        ['admin', '관리자 로그인'],
+      ].map(([value, label]) => ({
+        label,
+        cls: s.role === value ? 'on' : '',
+        pressed: s.role === value ? 'true' : 'false',
+        pick: () => this.setState({ role: value }),
+      })),
       busy,
       submitLabel: changing ? (busy ? '바꾸는 중…' : '비밀번호 바꾸기') : busy ? '로그인 중…' : '로그인',
       submit: (e) => {
@@ -167,16 +179,12 @@ export default function Login(props) {
           ) : (
             <Fragment key="login">
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span className="lb">이메일</span>
-                <input className="inp" type="email" autoComplete="username" {...v.email} />
+                <span className="lb">기관 이메일</span>
+                <input className="inp" type="email" autoComplete="username" placeholder="name@기관.kr" {...v.email} />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span className="lb">비밀번호</span>
                 <input className="inp" type="password" autoComplete="current-password" {...v.password} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span className="lb">OTP 인증번호</span>
-                <input className="inp" type="text" inputMode="numeric" placeholder="준비 중" disabled />
               </label>
             </Fragment>
           )}
@@ -200,6 +208,26 @@ export default function Login(props) {
           >
             {v.submitLabel}
           </button>
+          {v.changing ? null : (
+            <>
+              <button
+                type="button"
+                className="btn btn-s"
+                disabled
+                title={NOT_READY}
+                style={{ width: '100%', opacity: 0.6, cursor: 'not-allowed' }}
+              >
+                회원가입 ({NOT_READY})
+              </button>
+              <div role="group" aria-label="로그인 유형" className="lseg">
+                {v.roles.map((r) => (
+                  <button key={r.label} type="button" className={r.cls} aria-pressed={r.pressed} onClick={r.pick}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {v.changing ? (
             <button
               type="button"

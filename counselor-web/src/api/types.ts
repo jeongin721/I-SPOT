@@ -357,6 +357,73 @@ export interface AudioUploadResponse {
 }
 
 // =========================================================
+// 구간별 음성 참고 표시 (stt/voice_marks, API_CONTRACT 16절)
+// =========================================================
+
+/** 분석 상태. "탐지 없음" 은 ANALYZED 이면서 모든 flag 가 false 인 경우이고, UNDETERMINED(분석하지 못함)와 다르다. */
+export type VoiceMarkStatus = "ANALYZED" | "UNDETERMINED";
+
+/** 지표 하나(떨림 cent · 웅얼거림 Hz · 작은 소리 LUFS). z 는 이 녹음 안의 아동 구간끼리 비교한 상대값. */
+export interface VoiceMarkMetric {
+  value: number | null;
+  unit: string;
+  z: number | null;
+  flag: boolean | null;
+}
+
+export interface VoiceMarkSegment {
+  segment_id: string;
+  /** 분석 당시의 화자. 화면은 최신 원문의 화자를 쓰고 이 값은 참고만 한다. */
+  speaker: Speaker | string;
+  start_ms: number;
+  end_ms: number;
+  status: VoiceMarkStatus;
+  /** UNDETERMINED 일 때 이유 코드(stt/voice_marks.md 5절). ANALYZED 면 null. */
+  reason: string | null;
+  tremor: VoiceMarkMetric | null;
+  mumble: VoiceMarkMetric | null;
+  soft: VoiceMarkMetric | null;
+  /** 하나라도 표시면 true, 계산된 flag 가 모두 false 면 false, UNDETERMINED 면 null. */
+  flag_any: boolean | null;
+}
+
+/** 분석 모듈이 돌려준 결과 그대로(`stt/voice_marks.md` 3절). Backend 는 안을 바꾸지 않는다. */
+export interface VoiceMarksResult {
+  schema_version: string;
+  analyzer: string;
+  analyzer_version: string | null;
+  status: VoiceMarkStatus;
+  reason: string | null;
+  reference: {
+    child_segments_total: number;
+    child_segments_used: number;
+    min_required: number | null;
+    note: string;
+  };
+  /** 표시 기준값. 화면 코드에 숫자를 적지 않고 여기서 읽는다. Backend 실패 행은 null. */
+  thresholds: {
+    tremor_z_above: number | null;
+    mumble_z_below: number | null;
+    soft_z_below: number | null;
+    basis: string;
+  };
+  segments: VoiceMarkSegment[];
+}
+
+/** GET /sessions/{id}/voice-marks 의 data. 아직 계산 전이면 data 자체가 null. */
+export interface VoiceMarks {
+  id: string;
+  audio_file_id: string;
+  transcript_id: string | null;
+  /** 분석할 때 쓴 원문 판. 지금 보는 원문과 다르면 화면이 알린다. */
+  transcript_version: number | null;
+  extractor: string | null;
+  schema_version: string;
+  created_at: string;
+  result: VoiceMarksResult;
+}
+
+// =========================================================
 // 전사본 (STT 결과)
 // =========================================================
 
@@ -471,23 +538,98 @@ export interface TranscriptEnvelope {
 // =========================================================
 
 /**
- * 위험 관련 항목(risk_utterances · abuse_signals · risk_factors) 하나.
- * 항목 구조는 팀 합의 전(PROPOSAL_risk_fields.md §7)이라 Backend 는 항목 구조를 검증하지 않는다
- * (langgraph 결과만 근거 발화가 없는 항목을 빼고 넘긴다. API_CONTRACT 8절).
- * 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
+ * 위험 관련 항목 하나(risk_factors 용). 구조가 보류된 필드라 키를 정하지 않는다.
+ * Backend 는 위험 3필드의 항목 구조를 아직 검증하지 않으므로(API_CONTRACT 8절 "위험 3필드 항목 구조")
+ * 화면은 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 mock · pipeline · langgraph 모두 빈 배열이다.
  */
 export type RiskItem = Record<string, unknown>;
+
+/**
+ * 위험 관련 발화 하나(PROPOSAL_risk_fields.md §7-0, 2026-10-22 확정). 판정이 아니라 '관련 신호' 다.
+ * 서버는 근거 발화 번호(segment_ids)가 없거나 원문에 없는 항목을 저장 전에 뺀다(API_CONTRACT 8절).
+ * 값은 영문 대문자이고 한글 이름은 화면에서만 바꾼다.
+ */
+export interface RiskUtterance {
+  segment_ids: string[];
+  text: string;
+  /** PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT */
+  abuse_type: string;
+  /** 2차 세부유형명(한글). 없으면 null. */
+  subtype: string | null;
+  /** 근거의 직접성. 확률이 아니다. */
+  evidence_strength: "HIGH" | "MEDIUM" | "LOW";
+  /** AI 가 그 강도로 본 이유 한 문장. */
+  reason: string;
+  /** 인용문이 원문과 맞는지 대조한 결과. */
+  evidence_verified: boolean;
+  /**
+   * 관련 조문(2026-10-27). 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호) 하나까지.
+   * 법 위반을 확정하는 값이 아니라 참고 링크다. 이 필드가 생기기 전 결과 · 법령 데이터를 못 쓴 서버에서는 없거나 빈 배열이다.
+   */
+  legal_references?: LegalReference[];
+}
+
+export interface LegalReference {
+  /** "아동복지법" */
+  law_name: string;
+  /** "제17조" */
+  article: string;
+  /** "제3호". 해당 호를 못 찾았으면 "". */
+  item_label: string;
+  /** 호의 본문(또는 조 제목). */
+  text: string;
+  /** 국가법령정보센터 조문 주소. 없으면 "". */
+  portal_url: string;
+}
+
+/**
+ * 학대 유형별 종합 신호(PROPOSAL_risk_fields.md §7-0). 네 유형이 모두 오고 detected 로 검출 여부를 적는다.
+ * detected 는 모델 내부 값이므로 화면에는 "관련 신호" · "추가 확인 필요" 로만 표시한다(05_RULES).
+ */
+export interface AbuseSignal {
+  /** PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT */
+  abuse_type: string;
+  detected: boolean;
+  /** MODEL(1차 모델 검출) · FILTERED(아동이 명확히 부정해 필터가 내림, detected=false) · null(둘 다 아님). LLM_SUPPLEMENTARY 는 예약. */
+  detection_source: "MODEL" | "FILTERED" | "LLM_SUPPLEMENTARY" | null;
+  /** FILTERED 일 때만 사유 문구. */
+  filtered_reason: string | null;
+  /** 같은 유형 risk_utterances 의 근거를 모은 것. 검출됐는데 비어 있으면 서버가 뺀다. */
+  segment_ids: string[];
+}
 
 export interface AnalysisSummary {
   overview: string;
   /** 현재 Contract 는 문자열 배열이다. 근거 연결 구조로 바꾸려면 팀 협의가 필요하다. */
   key_points: string[];
+  /** 사정 관점 4칸(2026-10-27). 이 필드가 생기기 전 서버 · 결과에는 없다. */
+  assessment?: SummaryAssessment;
 }
+
+/**
+ * 상담 요약 사정 관점 4칸의 키(API_CONTRACT 9절 "사정 관점 4칸", 2026-10-27).
+ *  - safety_changes: (안전관련) 조사 후 변화된 사항
+ *  - strengths_resources: 아동안전과 관련된 강점과 자원
+ *  - safety_risks: 아동안전과 관련된 위험요인
+ *  - desired_changes: 앞으로 원하는 변화 · 원하는 서비스/지원
+ */
+export type SummaryAssessmentKey = "safety_changes" | "strengths_resources" | "safety_risks" | "desired_changes";
+
+/** 4칸 중 한 칸. segment_ids 는 AI 초안의 근거 발화이고 상담사가 문장을 고쳐도 그대로다. */
+export interface SummaryAssessmentField {
+  text: string;
+  segment_ids: string[];
+}
+
+export type SummaryAssessment = Record<SummaryAssessmentKey, SummaryAssessmentField>;
 
 // 아래 4개는 AI 분석 결과의 선택 필드다(API_CONTRACT 8절 "선택 필드", 10/16 추가).
 // 서버는 값이 없으면 빈 배열로 준다. 모두 AI 제안이고 판단은 상담원이 한다.
-// 화면은 segment_ids 가 있는 항목만 근거 위치와 함께 보여 준다(README "지켜야 할 원칙" 3번).
-// 근거 없는 항목을 서버가 빼지 않으므로 segment_ids 는 빈 배열일 수 있다.
+// 근거 없는 항목을 서버가 빼지 않으므로 segment_ids 는 빈 배열일 수 있다. 근거 위치가 있으면 함께 보여 주고(README "지켜야 할
+// 원칙" 3번), 빈 항목을 어떻게 보일지는 필드마다 정한다: severity_ratings 는 level · reason · matched_evidence 만 쓰고 근거 발화는
+// 같은 유형 risk_utterances 로, followup_check_points 는 segment_ids 가 있으면 원문 위치로 · 없으면(옛 결과) "근거 위치 없음" 으로
+// 보인다(10/26 · 10/27). protective_factors ·
+// session_change_notes 는 아직 정하지 않았다(화면에 안 보임).
 
 /** 학대 유형별 심각도 참고값. 판정이 아니다. */
 export interface SeverityRating {
@@ -515,20 +657,26 @@ export interface SessionChangeNote {
 }
 
 /**
- * 다음에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다.
- * 원칙 7번(추가 질문은 질문 은행에서만)과의 관계는 팀 결정 대기라 아이에게 할 질문으로 보여 주지 않는다.
+ * 다음에 확인할 점에 대한 AI 확인 메모. 질문 은행의 질문이 아니다.
+ * '추가 확인 · 질문' 화면의 '다음 상담 전 확인할 사항'(10/26 에는 유형별 위험도 카드)이 'AI 확인 메모 · 질문 아님' 으로
+ * 읽기 전용 표시한다(2026-10-26 결정: 메모로만 보이면 원칙 7번(추가 질문은 질문 은행에서만)과 어긋나지 않는다).
+ * 아이에게 할 질문으로 보여 주지 않는다. segment_ids 는 2026-10-27(#84)부터 modeling 이 채우고(근거 없는 메모는 모델이 뺌),
+ * 그 전 결과는 빈 배열이다(API_CONTRACT 8절 선택 필드).
  */
 export interface FollowupCheckPoint {
   text: string;
   segment_ids: string[];
+  /** 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차", 2026-10-28). 이때 segment_ids 는 빈 배열. */
+  previous_session_label?: string;
 }
 
 export interface AnalysisResult {
   /** AI Output Contract 버전. 지금은 "1.0". */
   schema_version: string;
   summary: AnalysisSummary;
-  risk_utterances: RiskItem[];
-  abuse_signals: RiskItem[];
+  risk_utterances: RiskUtterance[];
+  abuse_signals: AbuseSignal[];
+  /** 구조 보류. 지금은 늘 빈 배열이다. */
   risk_factors: RiskItem[];
   warnings: string[];
   severity_ratings: SeverityRating[];
@@ -589,6 +737,8 @@ export interface Summary {
   analysis_id: string | null;
   overview: string;
   key_points: string[];
+  /** 사정 관점 4칸. 이 필드가 생기기 전 서버(2026-10-27 이전 배포)에는 없다. */
+  assessment?: SummaryAssessment;
   counselor_note: string | null;
   status: ReviewStatus;
   is_edited: boolean;
@@ -601,6 +751,8 @@ export interface Summary {
 export interface SummaryUpdateRequest {
   overview?: string;
   key_points?: string[];
+  /** 고친 칸의 문장만 보낸다. 근거 번호는 서버가 그대로 둔다. */
+  assessment?: Partial<Record<SummaryAssessmentKey, string>>;
   counselor_note?: string;
 }
 
@@ -761,6 +913,36 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
   LOW: "하",
 };
 
+/**
+ * 사례 단위 신호 이력(GET /cases/{id}/signal-history, API_CONTRACT 4절, 2026-10-28) — 한 회차 · 한 유형.
+ * detected · ai_level 은 AI 제안이지 판정이 아니고, 위험도 표시는 counselor_level 만 쓴다(05_RULES §1).
+ * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11절 ai_level 규칙), 판단은 risk-assessments.
+ */
+export interface SignalHistoryType {
+  abuse_type: AbuseType;
+  detected: boolean | null;
+  ai_level: number | null;
+  counselor_level: RiskLevel | null;
+  assessed_at: string | null;
+}
+
+/** 회차 한 줄. 분석이 끝나지 않았고 판단도 없으면 types 는 빈 배열(분석 전). */
+export interface SignalHistorySession {
+  session_id: string;
+  session_number: number;
+  consulted_at: string | null;
+  status: SessionStatus;
+  /** 가장 최근 분석 상태. 요청한 적 없으면 null. */
+  analysis_status: AnalysisStatus | null;
+  types: SignalHistoryType[];
+}
+
+/** session_number 오름차순, 분석 전 회차 포함 전부. */
+export interface SignalHistory {
+  case_id: string;
+  sessions: SignalHistorySession[];
+}
+
 /** 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse). */
 export interface RiskAssessment {
   id: string;
@@ -790,4 +972,41 @@ export interface RiskAssessmentSaveRequest {
   counselor_level: RiskLevel;
   /** 1000자 이하. 빼거나 null · 공백만이면 null 로 저장. */
   reason?: string | null;
+}
+
+/**
+ * 법령 · 매뉴얼 AI 질문(POST /law-guide/questions, API_CONTRACT 17절, 2026-10-28). 질문 하나(앞뒤 공백 뺀 뒤 1~500자).
+ * 답변은 참고용이고 판정이 아니다(05_RULES §1). 서버는 질문 · 답변을 저장하지 않는다.
+ */
+export interface LawGuideQuestionRequest {
+  question: string;
+}
+
+/** 답변이 근거로 쓴 조문. 실제 조문 목록과 대조해 통과한 것만 온다. */
+export interface LawSource {
+  law_name: string;
+  article: string;
+  title: string;
+  content: string;
+  /** 조문시행일자("20261002" 꼴). 자료에 없으면 null. */
+  effective_date: string | null;
+  /** 국가법령정보센터 조문 주소. 없으면 null. */
+  portal_url: string | null;
+}
+
+/** 답변이 근거로 쓴 매뉴얼 자료. 매뉴얼 사진은 기관 대외비라 기본으로 첨부하지 않으므로 보통 빈 배열이다. */
+export interface ManualSource {
+  id: string;
+  title: string;
+  /** 쪽수 문자열. 모르면 "?". */
+  page: string;
+}
+
+export interface LawGuideAnswer {
+  /** 끝에 모듈이 붙인 참고용 안내 문장이 있다. */
+  answer: string;
+  sources: { laws: LawSource[]; manual: ManualSource[] };
+  /** 답한 모델 이름(mock 이면 "mock"). */
+  model: string;
+  answered_at: string;
 }

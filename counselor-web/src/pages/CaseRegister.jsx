@@ -4,11 +4,13 @@
 // 서버 연결: '등록' 은 useCaseRegister(POST /cases)로 서버가 받는 칸만 저장하고 새 사례 상세(?case=새 ID)로 간다.
 // 화면에 쓸 값은 src/data/screens/caseRegister.ts(caseRegisterValues)가 만든다. 담당 상담원은 관리자만 고른다.
 // ② 초기면접 내용의 가정상황 · 아동 특성은 저장한다(상담 일지에 초기면접 항목으로 보인다).
-// 실명 · 생년월일 · 신고 · 연계일 · 학대유형 · 조치 · 가족, ② 탭의 나머지 칸(관계 · 문제력 · 태도 · 소견)은
+// 실명 · 생년월일 · 신고 · 연계일 · 조치 · 가족, ② 탭의 나머지 칸(관계 · 문제력 · 태도 · 소견)은
 // 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// 10/21 디자인(counselor-design/screens/CaseRegister.dc.html): 학대유형 칸 삭제, 필수 칸을 채워야 ② 탭으로 넘어감(빈 칸 표시 ·
+// 남은 항목 안내), 닫기 · 취소는 이 팝업을 연 화면(?back=)으로. 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이라 옮기지 않았다.
 // 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
@@ -17,6 +19,7 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useCaseRegister } from '../data/useCaseRegister';
 import { caseRegisterValues, initialRegisterState } from '../data/screens/caseRegister';
 import { needsLogin, screenNotice } from '../data/screens/common';
+import { readBackHref } from '../data/screens/links';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import { useTheme } from '../theme';
 import './CaseRegister.css';
@@ -80,7 +83,8 @@ function CaseRegisterForm(props) {
   const register = useCaseRegister(session);
   const go = useScreenGo(useNavigate());
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, register, go });
+  const back = readBackHref(useSearchParams()[0]);
+  const v = useDC(Logic, { ...props, session, register, go, back });
   return (
     <div className="pg-CaseRegister">
       <div
@@ -123,7 +127,7 @@ function CaseRegisterForm(props) {
               <div className="note">초기면접지(아동용) · 서식 4</div>
             </div>
             <A
-              to="/CaseList"
+              to={v.closeHref}
               aria-label="닫기"
               style={{
                 marginLeft: 'auto',
@@ -181,6 +185,8 @@ function CaseRegisterForm(props) {
                     placeholder="예: 2026 상반기 신고 사례 (실명 · 주소는 넣지 마세요)"
                     value={v.title.value}
                     onChange={v.title.onChange}
+                    aria-invalid={v.title.invalid}
+                    style={{ borderColor: v.title.border }}
                   />
                 </label>
                 <div className="g3">
@@ -225,6 +231,8 @@ function CaseRegisterForm(props) {
                       placeholder="실명 대신 부를 이름"
                       value={v.alias.value}
                       onChange={v.alias.onChange}
+                      aria-invalid={v.alias.invalid}
+                      style={{ borderColor: v.alias.border }}
                     />
                   </label>
                   <label className="fl">
@@ -278,26 +286,6 @@ function CaseRegisterForm(props) {
                       />
                     </label>
                   ) : null}
-                </div>
-
-                <div className="fl">
-                  <span className="lb">
-                    학대유형 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                  </span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {(v.types || []).map((o, oIndex) => (
-                      <Fragment key={oIndex}>
-                        <button
-                          type="button"
-                          className="pk"
-                          disabled
-                          style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
-                        >
-                          {o.mark} {o.label}
-                        </button>
-                      </Fragment>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="g3">
@@ -593,6 +581,11 @@ function CaseRegisterForm(props) {
             ) : null}
 
             <Notice value={v.formError} />
+            {v.missNote ? (
+              <p className="req" role="alert" style={{ margin: 0, fontSize: '13px', fontWeight: '500' }}>
+                {v.missNote}
+              </p>
+            ) : null}
             <div
               style={{
                 display: 'flex',
@@ -604,7 +597,7 @@ function CaseRegisterForm(props) {
                 paddingTop: '18px',
               }}
             >
-              <A className="btn btn-s" to="/CaseList">
+              <A className="btn btn-s" to={v.closeHref}>
                 취소
               </A>
               <button type="button" className="btn btn-s" onClick={v.goB}>

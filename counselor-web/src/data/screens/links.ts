@@ -45,3 +45,49 @@ const SESSION_PAGES = new Set(["/SessionDetail", "/SttReview", "/SignalReview", 
 export function carryScreenHref(page: string, ids: Partial<ScreenIds>): string {
   return screenHref(page, { caseId: ids.caseId, sessionId: SESSION_PAGES.has(page) ? ids.sessionId : null });
 }
+
+/**
+ * 팝업 화면(녹취 · 자료 올리기, 새 사례 등록). 이 화면으로 가는 링크는 연 화면 주소를 back 쿼리로 넘기고, 팝업을 닫으면
+ * 그 화면으로 돌아간다(10/21 디자인의 markBack — 디자인은 브라우저 저장소 ispot-back 을 쓰지만 앱은 주소 쿼리로 넘긴다).
+ */
+export const POPUP_PAGES = new Set(["/UploadModal", "/CaseRegister"]);
+export const BACK_PARAM = "back";
+
+/** 팝업 화면 경로인가. 라우터가 대소문자를 가리지 않아(/uploadmodal 도 같은 화면) 소문자로 비교한다. */
+export function isPopupPage(path: string): boolean {
+  const lower = path.toLowerCase();
+
+  return [...POPUP_PAGES].some((page) => page.toLowerCase() === lower);
+}
+
+/** href 에 돌아갈 화면 주소(from)를 붙인다. 이미 back 이 있으면 그대로 둔다. */
+export function withBack(href: string, from: string): string {
+  const [path, query = ""] = href.split("?");
+  const params = new URLSearchParams(query);
+
+  if (!params.has(BACK_PARAM)) params.set(BACK_PARAM, from);
+
+  return `${path}?${params.toString()}`;
+}
+
+/** 앱에 있는 화면 경로(소문자). App.jsx 가 src/pages/*.jsx 로 화면을 등록할 때 registerScreens 로 넘긴다. 넘기기 전에는 거르지 않는다. */
+let screenPaths: Set<string> | null = null;
+
+/** App.jsx 가 등록한 화면 이름(파일 이름)을 알려 준다. back 이 앱에 없는 화면을 가리키면 쓰지 않게(Codex #73 남은 것 1). */
+export function registerScreens(names: string[]): void {
+  screenPaths = new Set(names.map((name) => `/${name}`.toLowerCase()));
+}
+
+/** 주소의 back 쿼리가 앱에 있는 화면(팝업 · 로그인 제외)이면 그 주소를, 아니면 null. */
+export function readBackHref(search: URLSearchParams | string): string | null {
+  const params = typeof search === "string" ? new URLSearchParams(search) : search;
+  const back = params.get(BACK_PARAM)?.trim() ?? "";
+
+  if (!/^\/[A-Za-z]+(\?[^#]*)?$/.test(back)) return null;
+
+  const page = back.split("?")[0];
+
+  if (screenPaths && !screenPaths.has(page.toLowerCase())) return null;
+
+  return isPopupPage(page) || page.toLowerCase() === "/login" ? null : back;
+}

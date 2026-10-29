@@ -35,7 +35,7 @@ from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptUpdateRequest,
 )
-from app.services import audit_service, audio_service, session_service
+from app.services import audit_service, audio_service, session_service, voice_marks_service
 
 logger = get_logger(__name__)
 
@@ -256,6 +256,8 @@ def process_stt(session_id: uuid.UUID) -> None:
             )
             return
 
+        transcript: Optional[Transcript] = None
+
         try:
             audio = audio_service.get_latest_audio(db, session.id)
             audio_path = storage.resolve_stored_path(audio.path)
@@ -276,7 +278,7 @@ def process_stt(session_id: uuid.UUID) -> None:
             if not result.segments:
                 raise STTError(EMPTY_STT_RESULT_MESSAGE)
 
-            _save_stt_result(
+            transcript = _save_stt_result(
                 db,
                 session=session,
                 result=result,
@@ -298,6 +300,10 @@ def process_stt(session_id: uuid.UUID) -> None:
                 ErrorCode.STT_FAILED,
                 f"STT 처리 중 오류가 발생했습니다: {type(error).__name__}",
             )
+        if transcript is not None:
+            # 구간별 음성 참고 표시(정담원 님 모듈)는 STT 가 끝나 회차가 검수 필요로 바뀐 뒤 같은 작업에서 돌린다.
+            # 꺼져 있으면 바로 돌아오고, 실패해도 회차 상태는 그대로다(voice_marks_service).
+            voice_marks_service.analyze_for_transcript(session.id, transcript.id)
     finally:
         db.close()
 

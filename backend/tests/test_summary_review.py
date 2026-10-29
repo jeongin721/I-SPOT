@@ -4,10 +4,12 @@
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.adapters.ai_adapter import set_ai_adapter_override
 from app.core.enums import AuditAction
 from app.models.audit_log import AuditLog
+from app.models.summary import ConsultationSummary
 from tests.test_analysis import FailingAIAdapter, analyzed_session, confirmed_session
 
 
@@ -62,6 +64,109 @@ def test_counselor_can_edit_summary(
     assert summary["counselor_note"] == "다음 회기에 재확인 예정"
     assert summary["is_edited"] is True
     assert summary["status"] == "DRAFT"
+
+
+ASSESSMENT_KEYS = {"safety_changes", "strengths_resources", "safety_risks", "desired_changes"}
+
+
+def test_summary_has_empty_assessment_when_ai_gives_none(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """Mock AI 는 4칸을 주지 않는다. 응답에는 늘 4칸이 빈 칸으로 있다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+
+    summary = client.get(
+        f"/api/v1/sessions/{session['id']}/summary", headers=counselor_headers
+    ).json()["data"]["summary"]
+
+    assert summary["assessment"] == {key: {"text": "", "segment_ids": []} for key in ASSESSMENT_KEYS}
+
+
+def test_counselor_can_edit_assessment_and_keep_evidence(
+    client: TestClient, counselor_headers, session: dict, db
+) -> None:
+    """보낸 칸의 문장만 바뀌고, 보내지 않은 칸과 근거 번호(segment_ids)는 그대로다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+
+    stored = db.scalar(
+        select(ConsultationSummary).where(ConsultationSummary.session_id == uuid.UUID(session["id"]))
+    )
+    stored.assessment = {
+        "safety_changes": {"text": "", "segment_ids": []},
+        "strengths_resources": {"text": "AI 강점", "segment_ids": ["seg_001"]},
+        "safety_risks": {"text": "AI 위험", "segment_ids": ["seg_002"]},
+        "desired_changes": {"text": "AI 원하는 변화", "segment_ids": []},
+    }
+    db.commit()
+
+    response = client.patch(
+        f"/api/v1/sessions/{session['id']}/summary",
+        json={"assessment": {"strengths_resources": "상담사가 고친 강점", "safety_changes": "조사 후 변화"}},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 200
+
+    summary = response.json()["data"]
+
+    assert summary["assessment"] == {
+        "safety_changes": {"text": "조사 후 변화", "segment_ids": []},
+        "strengths_resources": {"text": "상담사가 고친 강점", "segment_ids": ["seg_001"]},
+        "safety_risks": {"text": "AI 위험", "segment_ids": ["seg_002"]},
+        "desired_changes": {"text": "AI 원하는 변화", "segment_ids": []},
+    }
+    assert summary["is_edited"] is True
+
+    audit = db.scalar(
+        select(AuditLog)
+        .where(AuditLog.action == AuditAction.SUMMARY_UPDATED)
+        .order_by(AuditLog.created_at.desc())
+    )
+    assert audit.detail["changed_fields"] == ["assessment"]
+
+
+def test_assessment_rejects_unknown_field(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+
+    response = client.patch(
+        f"/api/v1/sessions/{session['id']}/summary",
+        json={"assessment": {"overview": "4칸 밖의 이름"}},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_assessment_without_any_field_is_rejected(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """assessment 객체를 보냈는데 고칠 칸이 없으면(빈 객체 · 네 칸 모두 null) 422 다.
+    예전엔 "최소 1개 필드" 검사를 통과해 200 으로 끝나며 아무것도 바꾸지 않았다(민규 #86 리뷰, 2026-10-27)."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+
+    for payload in (
+        {"assessment": {}},
+        {"assessment": {"safety_changes": None, "desired_changes": None}},
+        {"overview": "개요는 멀쩡해도 assessment 에 칸이 없으면 거절", "assessment": {}},
+    ):
+        response = client.patch(
+            f"/api/v1/sessions/{session['id']}/summary",
+            json=payload,
+            headers=counselor_headers,
+        )
+
+        assert response.status_code == 422, payload
+
+    summary = client.get(
+        f"/api/v1/sessions/{session['id']}/summary", headers=counselor_headers
+    ).json()["data"]["summary"]
+
+    assert summary["is_edited"] is False
 
 
 def test_summary_edit_requires_at_least_one_field(

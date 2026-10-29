@@ -1,7 +1,8 @@
 // 요약 검수 · 승인 훅(GET · PATCH /sessions/{id}/summary, POST …/approve · …/reopen). 근거 발화를 보이려고 원문(GET …/transcript)도 함께 받는다.
 //
 // AI 요약은 항상 초안(DRAFT)으로 시작하고 자동 승인되지 않는다(AI 생성 → 상담사 확인 → 수정 → 승인 → 저장).
-// 화면은 overview · keyPoints · counselorNote 를 고치고(set…), save() 로 바꾼 칸만 보낸다.
+// 화면은 overview · keyPoints · counselorNote · 사정 관점 4칸(assessment)을 고치고(set…), save() 로 바꾼 칸만 보낸다.
+// 10/27 디자인의 상담 요약은 4칸만 보인다(noteWrite.ts). 4칸의 근거 발화는 assessmentEvidence 로 준다.
 //
 //  - 고칠 수 있는 것은 회차가 'AI 결과 검수 필요' 이고 요약이 초안일 때뿐이다. 재분석이 도는 중이거나 실패하면 막힌다.
 //  - 상담사가 고친 요약은 재분석이 덮어쓰지 않는다. 근거(evidence)는 새 분석 것으로 바뀐다(API_CONTRACT 9절).
@@ -15,7 +16,15 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { summary as summaryApi, transcript as transcriptApi } from "../api/endpoints";
-import type { ReviewStatus, SessionStatus, SummaryEnvelope, SummaryUpdateRequest, TranscriptEnvelope } from "../api/types";
+import type {
+  ReviewStatus,
+  SessionStatus,
+  SummaryAssessment,
+  SummaryAssessmentKey,
+  SummaryEnvelope,
+  SummaryUpdateRequest,
+  TranscriptEnvelope,
+} from "../api/types";
 import { notifySessionChanged } from "./sessionEvents";
 import { isProcessing } from "./sessionRows";
 import { formatClock, toDateTime } from "./time";
@@ -34,7 +43,11 @@ export interface EvidenceSegment {
    * 원문을 아직 못 받았으면(evidenceLoading · evidenceError) 모두 false 다 — 그때는 '없음' 이 아니라 '모름' 이다.
    */
   found: boolean;
+  /** 음성 안 시작 위치(ms). 못 찾았으면 -1. 정렬에 쓴다(startLabel 문자열은 1시간을 넘으면 순서가 어긋난다). */
+  startMs: number;
   startLabel: string;
+  /** 화자 코드(CHILD · COUNSELOR · GUARDIAN · OTHER · UNKNOWN). 못 찾았으면 "". */
+  speaker: string;
   speakerLabel: string;
   text: string;
 }
@@ -46,9 +59,21 @@ export interface EvidenceItem {
   segments: EvidenceSegment[];
 }
 
+/** 사정 관점 4칸의 화면 순서(10/27 디자인 NoteWrite). */
+export const ASSESSMENT_KEYS: SummaryAssessmentKey[] = [
+  "safety_changes",
+  "strengths_resources",
+  "safety_risks",
+  "desired_changes",
+];
+
+export type AssessmentTexts = Record<SummaryAssessmentKey, string>;
+
 export interface SummaryFields {
   overview: string;
   keyPoints: string[];
+  /** 사정 관점 4칸의 문장. 서버가 4칸을 주지 않으면(이전 배포 · 이전 요약) 빈 문자열. */
+  assessment: AssessmentTexts;
   /** 상담사 메모. 없으면 빈 문자열. */
   counselorNote: string;
 }
@@ -70,6 +95,8 @@ export interface SummaryReviewState {
   edited: boolean;
   approvedAt: string;
   evidence: EvidenceItem[];
+  /** 사정 관점 4칸별 AI 초안 근거 발화. 근거가 없으면 빈 배열. found 의 뜻은 evidence 와 같다. */
+  assessmentEvidence: Record<SummaryAssessmentKey, EvidenceSegment[]>;
   /** 근거 발화를 찾을 원문을 불러오는 중. */
   evidenceLoading: boolean;
   /** 근거 발화를 찾을 원문을 못 불러왔으면 그 문구. 이때 evidence 의 found 는 믿을 수 없다. reload() 로 다시 부른다. */
@@ -89,6 +116,7 @@ export interface SummaryReviewState {
   addKeyPoint: (value?: string) => void;
   removeKeyPoint: (index: number) => void;
   setCounselorNote: (value: string) => void;
+  setAssessment: (key: SummaryAssessmentKey, value: string) => void;
   discardChanges: () => void;
   /**
    * 바꾼 칸만 저장한다. 바꾼 것이 없으면 아무것도 보내지 않고 true.
@@ -103,7 +131,26 @@ export interface SummaryReviewState {
   reload: () => void;
 }
 
-const EMPTY_FIELDS: SummaryFields = { overview: "", keyPoints: [], counselorNote: "" };
+const EMPTY_ASSESSMENT: AssessmentTexts = {
+  safety_changes: "",
+  strengths_resources: "",
+  safety_risks: "",
+  desired_changes: "",
+};
+
+const EMPTY_FIELDS: SummaryFields = { overview: "", keyPoints: [], assessment: EMPTY_ASSESSMENT, counselorNote: "" };
+
+/** 서버 4칸 → 칸별 문장. 칸이 없거나 문자열이 아니면 빈 문자열. */
+function assessmentTexts(assessment: SummaryAssessment | undefined): AssessmentTexts {
+  const texts = { ...EMPTY_ASSESSMENT };
+
+  for (const key of ASSESSMENT_KEYS) {
+    const text = assessment?.[key]?.text;
+    if (typeof text === "string") texts[key] = text;
+  }
+
+  return texts;
+}
 
 function sameList(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
@@ -150,7 +197,12 @@ export function useSummaryReview(
   const savedFields: SummaryFields = useMemo(
     () =>
       saved
-        ? { overview: saved.overview, keyPoints: saved.key_points, counselorNote: saved.counselor_note ?? "" }
+        ? {
+            overview: saved.overview,
+            keyPoints: saved.key_points,
+            assessment: assessmentTexts(saved.assessment),
+            counselorNote: saved.counselor_note ?? "",
+          }
         : EMPTY_FIELDS,
     [saved],
   );
@@ -165,6 +217,9 @@ export function useSummaryReview(
     if (!sameList(draft.keyPoints, savedFields.keyPoints)) payload.key_points = draft.keyPoints;
     if (draft.counselorNote !== savedFields.counselorNote) payload.counselor_note = draft.counselorNote;
 
+    const assessment = ASSESSMENT_KEYS.filter((key) => draft.assessment[key] !== savedFields.assessment[key]);
+    if (assessment.length > 0) payload.assessment = Object.fromEntries(assessment.map((key) => [key, draft.assessment[key]]));
+
     return payload;
   }, [draft, savedFields]);
 
@@ -172,27 +227,48 @@ export function useSummaryReview(
   const canEdit = saved !== null && saved.status === "DRAFT" && sessionStatus === "AI_REVIEW_REQUIRED";
   const canReopen = saved !== null && saved.status === "APPROVED" && sessionStatus === "APPROVED";
 
-  const evidence = useMemo<EvidenceItem[]>(() => {
+  const locate = useMemo(() => {
     const segments = new Map((source.data?.transcript?.segments ?? []).map((segment) => [segment.segment_id, segment]));
 
-    return (envelope?.summary_evidence ?? []).map((item) => ({
-      keyPoint: item.key_point,
-      score: item.score,
-      segments: item.segment_ids.map((segmentId) => {
+    return (segmentIds: string[]): EvidenceSegment[] =>
+      segmentIds.map((segmentId) => {
         const segment = segments.get(segmentId);
 
         return segment
           ? {
               segmentId,
               found: true,
+              startMs: segment.start_ms,
+              speaker: segment.speaker,
               startLabel: formatClock(segment.start_ms),
               speakerLabel: SPEAKER_LABELS[segment.speaker] ?? segment.speaker,
               text: segment.text,
             }
-          : { segmentId, found: false, startLabel: "", speakerLabel: "", text: "" };
-      }),
-    }));
-  }, [envelope, source.data]);
+          : { segmentId, found: false, startMs: -1, startLabel: "", speaker: "", speakerLabel: "", text: "" };
+      });
+  }, [source.data]);
+
+  const evidence = useMemo<EvidenceItem[]>(
+    () =>
+      (envelope?.summary_evidence ?? []).map((item) => ({
+        keyPoint: item.key_point,
+        score: item.score,
+        segments: locate(item.segment_ids),
+      })),
+    [envelope, locate],
+  );
+
+  const assessmentEvidence = useMemo(() => {
+    const ids = (key: SummaryAssessmentKey) => {
+      const value = saved?.assessment?.[key]?.segment_ids;
+      return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string" && id !== "") : [];
+    };
+
+    return Object.fromEntries(ASSESSMENT_KEYS.map((key) => [key, locate(ids(key))])) as Record<
+      SummaryAssessmentKey,
+      EvidenceSegment[]
+    >;
+  }, [saved, locate]);
 
   const edit = useCallback(
     (change: (current: SummaryFields) => SummaryFields) => setDraft((current) => change(current ?? savedFields)),
@@ -221,6 +297,12 @@ export function useSummaryReview(
   );
 
   const setCounselorNote = useCallback((value: string) => edit((current) => ({ ...current, counselorNote: value })), [edit]);
+
+  const setAssessment = useCallback(
+    (key: SummaryAssessmentKey, value: string) =>
+      edit((current) => ({ ...current, assessment: { ...current.assessment, [key]: value } })),
+    [edit],
+  );
 
   const discardChanges = useCallback(() => {
     setDraft(null);
@@ -391,6 +473,7 @@ export function useSummaryReview(
     edited: saved?.is_edited ?? false,
     approvedAt: toDateTime(saved?.approved_at),
     evidence,
+    assessmentEvidence,
     evidenceLoading: source.loading,
     evidenceError: source.error,
     dirty,
@@ -406,6 +489,7 @@ export function useSummaryReview(
     addKeyPoint,
     removeKeyPoint,
     setCounselorNote,
+    setAssessment,
     discardChanges,
     save,
     approve,

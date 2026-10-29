@@ -5,8 +5,10 @@
 // src/data/screens/settings.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 //  - 이름 · 이메일 바꾸기, 소속 기관, 마지막 비밀번호 변경일, 알림 설정은 서버에 없어 '—' · 준비 중이다.
 //  - 비밀번호는 현재 비밀번호를 넣고 바꾼다. 바꾸면 로그아웃되어 로그인 화면으로 간다.
+// 10/21 디자인(counselor-design/screens/Settings.dc.html): 왼쪽 메뉴를 누르면 설정 첫 화면으로(leaveReset — 같은 주소인 '설정' 도,
+// settings.ts 의 navKey). '계정' 진입 전 비밀번호 확인 창은 서버에 확인 API 가 없어 만들지 않았다(settings.ts 머리말).
 import { Fragment } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
@@ -32,8 +34,9 @@ class Logic extends DCLogic {
 export default function Settings(props) {
   const session = useAuthSession();
   const pwChange = usePasswordChange();
+  const navKey = useLocation().key;
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, pwChange });
+  const v = useDC(Logic, { ...props, session, pwChange, navKey });
   // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다. 비밀번호를 바꾼 뒤에도 여기로 간다.
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   const off = { opacity: 0.5, cursor: 'not-allowed' };

@@ -6,7 +6,7 @@
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_serializer, model_validator
 
 from app.core.enums import Speaker
 
@@ -56,9 +56,33 @@ class STTResult(BaseModel):
 # AI Output Contract
 # =========================================================
 
+class SummaryAssessmentField(BaseModel):
+    """상담 요약 사정 관점 한 칸. text 는 AI 초안 문장, segment_ids 는 근거 발화 번호(비어 올 수 있다)."""
+
+    text: str = ""
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+class SummaryAssessment(BaseModel):
+    """상담 요약 사정 관점 4칸(2026-10-27, 10/27 디자인 NoteWrite).
+
+    safety_changes: (안전관련) 조사 후 변화된 사항
+    strengths_resources: 아동안전과 관련된 강점과 자원
+    safety_risks: 아동안전과 관련된 위험요인(최상위 risk_factors 와 다른 칸이다)
+    desired_changes: 앞으로 원하는 변화 · 원하는 서비스/지원
+    없으면 모두 빈 칸이다. 이 필드가 없던 때 저장한 결과도 그대로 읽힌다.
+    """
+
+    safety_changes: SummaryAssessmentField = Field(default_factory=SummaryAssessmentField)
+    strengths_resources: SummaryAssessmentField = Field(default_factory=SummaryAssessmentField)
+    safety_risks: SummaryAssessmentField = Field(default_factory=SummaryAssessmentField)
+    desired_changes: SummaryAssessmentField = Field(default_factory=SummaryAssessmentField)
+
+
 class AISummaryBody(BaseModel):
     overview: str = ""
     key_points: List[str] = Field(default_factory=list)
+    assessment: SummaryAssessment = Field(default_factory=SummaryAssessment)
 
 
 # 아래 4개는 2026-10-16 합의로 추가한 선택 필드다(API_CONTRACT.md 8절).
@@ -94,10 +118,24 @@ class SessionChangeNote(BaseModel):
 
 
 class FollowupCheckPoint(BaseModel):
-    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다."""
+    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다.
+
+    previous_session_label(2026-10-28, 선택): 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차").
+    이때 segment_ids 는 빈 배열이다. AI 경계(followup_check_llm)가 사례 정보의 직전 승인 회차 이름만 붙이고,
+    segment_ids 도 이 값도 없는 메모는 만들지 않는다.
+    """
 
     text: str
     segment_ids: List[str] = Field(default_factory=list)
+    previous_session_label: Optional[str] = Field(default=None, max_length=20)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_label(self, handler: Any) -> Dict[str, Any]:
+        # 선택 키라 값이 있을 때만 싣는다 — 예전 메모 · 저장 결과의 모양({text, segment_ids})이 바뀌지 않게.
+        data = handler(self)
+        if data.get("previous_session_label") is None:
+            data.pop("previous_session_label", None)
+        return data
 
 
 class AIAnalysisResult(BaseModel):

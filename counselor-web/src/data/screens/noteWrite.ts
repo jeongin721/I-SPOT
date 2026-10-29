@@ -1,33 +1,51 @@
 // 3 · 상담 요약 · 상담 일지(NoteWrite) 화면 값.
 //
-// 상담 요약 카드 = useSummaryReview. AI 요약 초안(개요 · 핵심 내용) · 상담사 메모를 고치고 저장 · 승인한다.
+// 상담 요약 카드 = useSummaryReview. 10/27 디자인대로 사정 관점 4칸(조사 후 변화 · 강점과 자원 · 위험요인 · 원하는 변화)의
+// AI 초안을 고치고 저장 · 승인한다(summary.assessment, 2026-10-27).
 //  - **요약 승인은 회차를 '승인 완료' 로 바꾼다.** '요약 승인' 단추를 누르면 (고친 칸을 저장하고) 바로 승인한다.
 //    한 번 더 묻지 않는다 — 승인한 뒤에도 '요약 수정' 으로 풀 수 있어서다(2026-10-16 최민규 결정).
 //    승인한 뒤에는 '요약 수정' 단추만 보인다. 누르면 승인이 풀려 쓴 내용 그대로 다시 고칠 수 있고(회차는 'AI 결과 검수 필요'),
 //    고친 뒤 다시 승인한다. 상담 일지도 같다('일지 수정', 회차 상태는 바뀌지 않는다).
 //    아래 '저장 · 추가 확인 · 질문 →' 단추는 저장만 하고 승인하지 않는다(specs 대응표 '승인 시점').
-//  - 근거 발화는 AI 원본 요약 문장별로 보인다(고친 요약 문장과 글자로 맞추지 않는다).
-//  - 화면의 사정 관점 4영역(조사 후 변화 · 강점 · 위험요인 · 원하는 변화)은 Backend 요약에 없다. 개요 · 핵심 내용 · 메모로 보인다.
+//  - 칸마다 AI 초안의 근거 위치('근거 · 01:08 아동')를 칸 이름 옆에 보인다(디자인의 src). 상담사가 문장을 고쳐도 근거는 AI 초안 것이다.
+//  - 개요 · 핵심 내용 · 상담사 메모와 핵심 내용별 'AI 근거' 줄은 디자인에 없어 보이지 않는다(서버에는 그대로 남는다).
+//    핵심 내용의 근거 발화는 유형별 위험도 화면에서 본다.
+//  - '조사 후 변화된 사항' 은 이전 회차와의 비교라 서버 경로에서는 AI 초안이 비어 온다 — 상담원이 쓴다.
 //
 // 상담 일지 카드 = useSessionDocuments 의 상담일지(CONSULTATION_RECORD) 한 건. 문서는 제목 · 본문 텍스트뿐이라
 // 화면의 칸(아동 진술 · 대상자 태도 · … · 소견)을 '[칸 이름]' 머리줄로 나눠 본문 하나에 담는다(formatNote · parseNote).
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
-//  - AI 일지 초안 · 아동 특성 · 가정상황 AI 제안은 Backend 에 없어 보이지 않는다(빈 칸에서 상담원이 쓴다).
+//  - AI 초안(2026-10-28, 10/27 디자인의 일지 카드 'AI 초안'): 아직 저장한 일지가 없을 때만 두 칸을 이 회차 분석 값으로 채워 둔다.
+//    '아동 진술' ← 요약 근거 발화(아동 발화, '· 00:41 "원문"'), '위험 신호 검토 결과' ← 위험 관련 발화의 유형 · 세부 유형 · 위치와
+//    그 유형의 상담원 판단(상 · 중 · 하). 디자인의 '채택 · 보류' 는 서버에 채택 기록이 없어 상담원 판단으로 대신한다.
+//    상담원이 고치거나 그대로 '일지 저장' 해야 저장된다(저장 전에는 서버에 없다). 저장한 일지가 있으면 덮어쓰지 않는다.
+//    대상자 태도 · 물리적 환경 · 소견은 채우지 않는다(목소리 값 · 현장 정보가 없고, 소견은 상담원 몫).
+//  - 아동 특성 · 가정상황 AI 제안은 하지 않는다(상담원이 직접 고른다, 2026-10-27 결정).
+//    10/21 디자인은 AI 제안 항목('불안' 등)을 미리 골라 두지만 앱은 미리 고르지 않는다(AI 제안이 상담원 선택처럼 보이지 않게).
 //  - 아동 특성 · 가정상황: 사례의 초기면접(서식 4 ②, 사례 등록 때 고름 · useCaseDetail)에서 고른 항목은 단어로만 보이고,
-//    나머지 서식 4 항목을 체크리스트로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
-//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 체크리스트를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
-//    일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 일지 항목과 겹치면, 그 항목은 '초기면접에도 있음' 을 붙여 체크한 채 남긴다
-//    (체크를 풀고 저장하면 본문에서 빠진다. 저절로 지우지 않는다 — 승인한 일지도 있어서).
+//    나머지 서식 4 항목을 고르기 단추로 추가해 고른다. 본문 '[아동 특성]' · '[가정상황]' 에는 이 일지에서 추가로 고른 항목만 담는다
+//    (초기면접 항목은 사례에 속한다). 사례 정보를 받기 전에는 고르기 단추를 잠근다(받은 뒤 빠질 항목을 고르지 않게).
+//    일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 일지 항목과 겹치면, 그 항목은 '초기면접에도 있음' 을 붙여 고른 채 남긴다
+//    (풀고 저장하면 본문에서 빠진다. 저절로 지우지 않는다 — 승인한 일지도 있어서).
+//  - 10/21 디자인의 칸별 '수정 → 확인'(pickSection): '수정' 을 누르면 고르기 단추가 펼쳐지고, '확인' 을 누르면 접혀 고른 항목만
+//    ✓ 로 보인다. '확인' 은 화면 상태라 서버에 보내지 않는다 — 고른 항목은 누를 때 바로 일지 초안(draft)에 들어가고(떠날 때 확인 ·
+//    저장 대상), 저장 · 승인은 지금처럼 '일지 저장' · '일지 승인' · 아래 '저장 · …' 이 한다. 승인된 일지는 '일지 수정' 으로
+//    승인을 풀기 전에는 펼치지 않고, '일지 승인' 을 누르면 펼친 칸을 접는다.
 //  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
-import type { SummaryReviewState } from "../useSummaryReview";
+import type { SummaryAssessmentKey } from "../../api/types";
+import { positionLabel, type SignalCard } from "../riskRows";
+import type { RiskAssessmentRow } from "../useRiskAssessments";
+import type { EvidenceItem } from "../useSummaryReview";
+import { ASSESSMENT_KEYS, type SummaryReviewState } from "../useSummaryReview";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
+import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
-import type { SessionScreenInput } from "./sessionDetail";
+import { sessionCaseId, type SessionScreenInput } from "./sessionDetail";
 
 export interface NoteDraft {
   statement: string;
@@ -152,23 +170,92 @@ export interface NoteUiState {
   draft: NoteDraft | null;
   /** draft 를 쓴 대상의 표. */
   draftFor: RemoteTicket | null;
+  /** '수정' 을 눌러 고르기 단추를 펼친 칸(아동 특성 · 가정상황). 화면 상태라 서버에 보내지 않는다. */
+  picking: ListKey[];
+  /** picking 을 연 대상의 표. draftFor 와 같은 기준으로, 대상이 바뀌면 접힌 것으로 본다. */
+  pickingFor: RemoteTicket | null;
 }
 
-export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null };
+export const INITIAL_NOTE_STATE: NoteUiState = { draft: null, draftFor: null, picking: [], pickingFor: null };
 
 export interface NoteScreenInput extends SessionScreenInput {
   summary: SummaryReviewState;
   docs: SessionDocumentsState;
+  /** 아직 저장한 일지가 없을 때 채워 둘 AI 초안(noteAiDraft). 없으면 빈 칸. */
+  aiDraft?: NoteAiDraft | null;
   state: NoteUiState;
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
 
+/** 일지 두 칸의 AI 초안. 둘 다 비면 초안이 없는 것이다. */
+export interface NoteAiDraft {
+  statement: string;
+  signals: string;
+}
+
+/** '아동 진술' 초안에 넣을 발화 수. */
+const MAX_DRAFT_QUOTES = 8;
+
 /**
- * 일지에서 추가로 고를 체크리스트 항목. 서식 항목 중 초기면접에서 고른 것은 뺀다.
+ * 이 회차 분석 값 → 일지 두 칸의 AI 초안.
+ *  - statement: 요약 근거(summary_evidence)의 원문을 위치 순으로 '· 00:41 "원문"'. 정상 생성 경로는 아동 발화만 남기지만
+ *    저장된 결과에 다른 화자가 섞여 있을 수 있어 **아동(CHILD) 발화만** 쓴다 — 상담원 질문 · 화자 미확인 발화가 아동 말처럼
+ *    일지에 들어가지 않게(2026-10-28 민규 #95 교차검증).
+ *  - signals: 위험 관련 발화 카드를 유형별로 묶어 '· 신체학대 — 직접 신체 가해(00:41 아동) · 상담원 판단 중'.
+ * 원문을 못 찾은 근거 · 유형을 모르는 카드는 뺀다(번호만 있는 줄을 일지에 넣지 않는다).
+ * riskRows 가 null 이면(상담원 판단을 아직 못 받음) signals 는 비운다 — '판단 전' 으로 잘못 적지 않게.
+ */
+export function noteAiDraft(
+  evidence: EvidenceItem[],
+  cards: SignalCard[],
+  riskRows: RiskAssessmentRow[] | null,
+): NoteAiDraft {
+  const quotes = new Map<string, { at: number; line: string }>();
+
+  for (const item of evidence) {
+    for (const segment of item.segments) {
+      if (!segment.found || segment.speaker !== "CHILD" || quotes.has(segment.segmentId)) continue;
+      quotes.set(segment.segmentId, { at: segment.startMs, line: `· ${segment.startLabel} "${segment.text}"` });
+    }
+  }
+
+  const statement = [...quotes.values()]
+    // 위치 라벨 문자열이 아니라 시작 ms 로 정렬한다(1:02:15 가 00:41 앞에 오지 않게, 민규 #95 리뷰).
+    .sort((a, b) => a.at - b.at)
+    .slice(0, MAX_DRAFT_QUOTES)
+    .map((q) => q.line)
+    .join("\n");
+
+  const byType = new Map<string, { label: string; parts: string[] }>();
+
+  for (const card of cards) {
+    if (!card.abuseType) continue;
+    const entry = byType.get(card.abuseType) ?? { label: card.typeLabel, parts: [] };
+    const where = card.positionLabel ? `(${card.positionLabel})` : "";
+    const part = `${card.subtype || "관련 발화"}${where}`;
+    if (!entry.parts.includes(part)) entry.parts.push(part);
+    byType.set(card.abuseType, entry);
+  }
+
+  if (riskRows === null) return { statement, signals: "" };
+
+  const signals = [...byType.entries()]
+    .map(([type, entry]) => {
+      const row = riskRows.find((r) => r.abuseType === type);
+      const judged = row && row.levelLabel ? `상담원 판단 ${row.levelLabel}` : "상담원 판단 전";
+      return `· ${entry.label} — ${entry.parts.join(", ")} · ${judged}`;
+    })
+    .join("\n");
+
+  return { statement, signals };
+}
+
+/**
+ * 일지에서 추가로 고를 항목(고르기 단추). 서식 항목 중 초기면접에서 고른 것은 뺀다.
  * 일지에 담긴 항목(kept)은 지울 수 있게 늘 남긴다. 서식 항목에 없는 것(예전 목록의 이름 등)은 뒤에 붙이고,
  * 초기면접 항목과 겹치는 것(일지를 쓴 뒤 사례 상세에서 초기면접을 고쳐 겹침)은 서식 순서 자리에 둔다.
- * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 이미 저장된 일지에 담긴 겹친 항목은 체크를 풀어도 일지를 저장하기
- * 전까지 목록에 남아 다시 고를 수 있다. 저장하지 않은 초안에만 있던 항목이 겹치게 된 경우는 체크를 풀면 바로 목록에서 빠진다
+ * kept 에는 저장된 일지의 항목과 지금 고친 항목을 함께 넘긴다 — 이미 저장된 일지에 담긴 겹친 항목은 고른 것을 풀어도 일지를 저장하기
+ * 전까지 목록에 남아 다시 고를 수 있다. 저장하지 않은 초안에만 있던 항목이 겹치게 된 경우는 풀면 바로 목록에서 빠진다
  * (초기면접 항목으로는 그대로 보인다).
  */
 export function addableItems(options: string[], intake: string[], kept: string[]): string[] {
@@ -178,6 +265,14 @@ export function addableItems(options: string[], intake: string[], kept: string[]
 
   return [...options.filter((item) => !fromIntake.has(item) || held.has(item)), ...[...held].filter((item) => !listed.has(item))];
 }
+
+/** 사정 관점 4칸의 화면 이름(10/27 디자인 NoteWrite 그대로). */
+export const ASSESSMENT_LABELS: Record<SummaryAssessmentKey, string> = {
+  safety_changes: "(안전관련) 조사 후 변화된 사항",
+  strengths_resources: "아동안전과 관련된 강점과 자원",
+  safety_risks: "아동안전과 관련된 위험요인",
+  desired_changes: "앞으로 원하는 변화 · 원하는 서비스/지원",
+};
 
 export function noteWriteValues(input: NoteScreenInput) {
   const { summary, docs, state, setState, go, detail, caseDetail } = input;
@@ -194,29 +289,14 @@ export function noteWriteValues(input: NoteScreenInput) {
   const readOnly = !summary.canEdit || busy;
   const fields = summary.fields;
   const sums = summary.hasSummary
-    ? [
-        { k: "요약", v: fields.overview, onChange: (e: { target: { value: string } }) => summary.setOverview(e.target.value) },
-        ...fields.keyPoints.map((point, index) => ({
-          k: `핵심 내용 ${index + 1}`,
-          v: point,
-          onChange: (e: { target: { value: string } }) => summary.setKeyPoint(index, e.target.value),
-        })),
-        {
-          k: "상담사 메모",
-          v: fields.counselorNote,
-          onChange: (e: { target: { value: string } }) => summary.setCounselorNote(e.target.value),
-        },
-      ].map((row) => ({ ...row, src: "", readOnly }))
+    ? ASSESSMENT_KEYS.map((key) => ({
+        k: ASSESSMENT_LABELS[key],
+        v: fields.assessment[key],
+        src: positionLabel(summary.assessmentEvidence[key]),
+        onChange: (e: { target: { value: string } }) => summary.setAssessment(key, e.target.value),
+        readOnly,
+      }))
     : [];
-
-  const summaryEv = summary.evidence.map((item) => ({
-    label: "AI 근거",
-    ev: `${item.keyPoint} — ${item.segments
-      .map((segment) =>
-        segment.found ? `${segment.startLabel} ${segment.speakerLabel} "${segment.text}"` : "원문에서 찾지 못한 발화",
-      )
-      .join(" / ")}`,
-  }));
 
   let summaryChip = "요약 없음";
   if (summary.status === "APPROVED") summaryChip = `승인 · ${summary.approvedAt}`;
@@ -229,11 +309,11 @@ export function noteWriteValues(input: NoteScreenInput) {
   if (!summary.hasSummary && status !== null) {
     if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
     else if (status === "AI_FAILED") {
-      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 위험 신호 검토에서 다시 분석해 주세요.`;
-      summaryLink = { href: signalHref, label: "위험 신호 검토로" };
+      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 유형별 위험도에서 다시 분석해 주세요.`;
+      summaryLink = { href: signalHref, label: "유형별 위험도로" };
     } else {
-      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 위험 신호 검토에서 AI 분석을 요청해 주세요.";
-      summaryLink = { href: signalHref, label: "위험 신호 검토로" };
+      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 유형별 위험도에서 AI 분석을 요청해 주세요.";
+      summaryLink = { href: signalHref, label: "유형별 위험도로" };
     }
   } else if (summary.hasSummary && status === "AI_PROCESSING") {
     summaryNote = "AI 가 다시 분석하는 중입니다. 끝날 때까지 요약을 고칠 수 없습니다.";
@@ -245,11 +325,21 @@ export function noteWriteValues(input: NoteScreenInput) {
 
   // ---------------- 상담 일지 ----------------
   const record = docs.consultationRecord;
-  const saved = record ? parseNote(record.content) : EMPTY_NOTE;
+  // 저장한 일지가 없고 일지 목록을 받았을 때만 AI 초안을 채워 둔다(받기 전이면 있는 일지를 모르는 채 덮을 수 있다).
+  const ai = input.aiDraft ?? null;
+  const aiFilled = !record && !docs.loading && !docs.error && ai !== null && Boolean(ai.statement || ai.signals);
+  const saved = record
+    ? parseNote(record.content)
+    : aiFilled
+      ? { ...EMPTY_NOTE, statement: ai.statement, signals: ai.signals }
+      : EMPTY_NOTE;
   const draft = state.draft && docs.isCurrent(state.draftFor) ? state.draft : null;
   const note = draft ?? saved;
   const content = formatNote(note);
-  const docDirty = draft !== null && content !== (record?.content ?? "");
+  // AI 초안을 고치지 않고 그대로 저장할 수 있게, 초안이 채워졌으면 저장할 거리가 있는 것으로 본다.
+  const docDirty = (draft !== null || aiFilled) && content !== (record?.content ?? "");
+  // 떠날 때 묻는 것은 상담원이 고친 경우만(AI 초안만 있는 채로 떠나면 다음에 다시 만들어진다).
+  const docEdited = draft !== null && content !== (record?.content ?? "");
   const docReadOnly = record ? !record.editable : false;
   // 일지를 불러오는 중이거나 저장 · 승인을 기다리는 동안에도 잠근다. 불러오기 전에 쓰면 빈 일지를 바탕으로 초안이 생겨
   // 저장할 때 원래 있던 다른 칸이 지워진다.
@@ -271,32 +361,73 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     readOnly: docLocked,
   });
-  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 체크리스트를 잠근다.
-  // 사례 정보를 못 받았으면(오류) 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
-  const intakeWaiting = !info && !caseDetail.error;
+  // 초기면접 항목은 사례 정보에서 온다. 받기 전(불러오는 중)에는 고르기 단추를 잠근다.
+  // 사례 정보를 못 받았으면(오류) · 이 회차에 연결된 사례가 없으면 초기면접 항목 없이 전 항목을 고르게 둔다(일지 쓰기를 막지 않는다).
+  // 예전에는 '정보도 오류도 없음' 을 모두 받는 중으로 봐서, 받을 사례가 없을 때 '불러오는 중…' 이 끝나지 않고 고르기도 잠겼다.
+  const caseKnown = sessionCaseId(input.ids, detail) !== null;
+  const intakeWaiting =
+    !info && !caseDetail.error && (caseDetail.loading || detail.loading || (caseKnown && !detail.error));
+  const noCase = !info && !caseDetail.error && !intakeWaiting;
   /** 초기면접에서 고른 항목(단어로만 보인다). 없거나 아직 모르면 words 는 비고 note 로 까닭을 보인다. */
   const intakeWords = (words: string[] | null) => {
     let empty = "초기면접에서 고른 항목 없음";
-    if (words === null) empty = intakeWaiting ? "초기면접 항목을 불러오는 중…" : "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+    if (words === null) {
+      if (intakeWaiting) empty = "초기면접 항목을 불러오는 중…";
+      else if (noCase) empty = "연결된 사례 정보가 없어 초기면접 항목이 없습니다.";
+      else empty = "사례 정보를 불러오지 못해 초기면접 항목을 보일 수 없습니다.";
+    }
 
     return { words: words ?? [], note: empty };
   };
-  const checklist = (key: ListKey, options: string[], fromIntake: string[]) =>
-    addableItems(options, fromIntake, [...saved[key], ...note[key]]).map((label) => {
-      const checked = note[key].includes(label);
-      const locked = docLocked || intakeWaiting;
+  // 펼친 칸. 다른 회차로 옮기거나 다시 로그인하면(표가 지금 대상이 아니면) 접힌 것으로 본다.
+  const picking = docs.isCurrent(state.pickingFor) ? state.picking : [];
+  // 고르기 단추를 누를 수 없을 때(승인된 일지 · 불러오는 중 · 저장 중 · 사례 정보를 받기 전). 이때는 '수정' 으로 펼치지도 못한다.
+  const pickLocked = docLocked || intakeWaiting;
+  /**
+   * 아동 특성 · 가정상황 한 칸(10/21 디자인의 '수정 → 확인'). 펼치면 choices(고르기 단추), 접으면 picked(고른 항목만 ✓).
+   * 단추를 누르면 바로 일지 초안에 들어간다(edit). '확인' 은 접기만 한다.
+   */
+  const pickSection = (key: ListKey, options: string[], fromIntake: string[]) => {
+    // 승인된 일지는 펼치지 않는다('일지 수정' 으로 승인을 풀어야 고칠 수 있다).
+    const open = picking.includes(key) && !docReadOnly;
+    const choices = intakeChoices(
+      addableItems(options, fromIntake, [...saved[key], ...note[key]]),
+      note[key],
+      pickLocked,
+      (label) => edit({ [key]: toggleItem(note[key], label) }),
+    ).map((choice) => ({
+      ...choice,
+      // 초기면접 항목과 겹친 채 일지에 남은 항목. 풀고 저장하면 목록에서 빠진다(초기면접 항목으로는 그대로 보인다).
+      hint: fromIntake.includes(choice.label) ? "초기면접에도 있음" : "",
+    }));
+    // 접기는 늘 된다(저장 · 승인을 기다리는 중에도). 펼치기는 고를 수 있을 때만.
+    const canToggle = open || !pickLocked;
 
-      return {
-        label,
-        // 초기면접 항목과 겹친 채 일지에 남은 항목. 체크를 풀고 저장하면 목록에서 빠진다(초기면접 항목으로는 그대로 보인다).
-        hint: fromIntake.includes(label) ? "초기면접에도 있음" : "",
-        checked,
-        disabled: locked,
-        onChange: () => {
-          if (!locked) edit({ [key]: checked ? note[key].filter((item) => item !== label) : [...note[key], label] });
-        },
-      };
-    });
+    return {
+      open,
+      choices,
+      picked: choices.filter((choice) => choice.on),
+      btnLabel: open ? "확인" : "수정",
+      btnCls: open ? "btn-p" : "btn-s",
+      btnTitle: !open && docReadOnly ? "승인된 일지입니다. 아래 '일지 수정' 을 누르면 고칠 수 있습니다." : undefined,
+      canToggle,
+      toggle: () => {
+        if (!canToggle) return;
+        setState((current) => {
+          const now = docs.isCurrent(current.pickingFor) ? current.picking : [];
+
+          if (now.includes(key)) return { picking: now.filter((item) => item !== key) };
+
+          const ticket = now.length ? current.pickingFor : docs.capture();
+
+          // 대상이 없으면(회차 ID 없음 · 로그인 확인 중) 고른 것을 담을 일지도 없다.
+          if (!ticket) return {};
+
+          return { picking: [...now, key], pickingFor: ticket };
+        });
+      },
+    };
+  };
 
   /**
    * 일지를 저장한다. 성공하면 저장된 문서, 바꾼 것이 없으면 지금 문서, 실패하면 null.
@@ -317,8 +448,12 @@ export function noteWriteValues(input: NoteScreenInput) {
   };
 
   const docApproved = record !== null && record.status === "APPROVED";
-  const docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
-  const docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
+  let docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
+  let docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
+  if (aiFilled) {
+    docChip = "AI 초안 · 작성 전";
+    docNote = `아동 진술 · 위험 신호 검토 결과는 ${sv ? sv.numberLabel : "이 회차"} AI 분석으로 채운 초안입니다. 확인 · 수정 후 저장해 주세요.`;
+  }
 
   const fhead = [
     { k: "사건번호", v: info ? info.caseNumber : NOT_PROVIDED },
@@ -334,7 +469,6 @@ export function noteWriteValues(input: NoteScreenInput) {
     // 상담 요약
     summaryChip,
     sums,
-    summaryEv,
     summaryNote,
     summaryLink,
     summaryError: summary.error,
@@ -358,8 +492,8 @@ export function noteWriteValues(input: NoteScreenInput) {
     opinion: textField("opinion"),
     traitIntake: intakeWords(info ? info.intakeChildTraits : null),
     homeIntake: intakeWords(info ? info.intakeFamilySituations : null),
-    traits: checklist("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
-    homes: checklist("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
+    traitPick: pickSection("traits", INTAKE_CHILD_ITEMS, info ? info.intakeChildTraits : []),
+    homePick: pickSection("homes", INTAKE_HOME_ITEMS, info ? info.intakeFamilySituations : []),
     traitEv: [] as { label: string; ev: string }[],
     homeEv: [] as { label: string; ev: string }[],
     aiDraft: false,
@@ -369,6 +503,8 @@ export function noteWriteValues(input: NoteScreenInput) {
     canApproveDoc: !docReadOnly && (record !== null || docDirty) && !busy,
     // 고친 일지를 먼저 저장하고 바로 승인한다(한 번 더 묻지 않는다).
     approveDoc: async () => {
+      // 승인하면 고를 칸도 끝난 것으로 보고 펼친 칸을 접는다('확인' 과 같다. 고른 항목은 이미 초안에 있다).
+      setState({ picking: [], pickingFor: null });
       // 저장하는 사이 대상이 바뀌면 새 로그인으로 앞 회차의 일지를 승인하지 않는다.
       const ticket = docs.capture();
       const target = await saveDoc();
@@ -398,6 +534,6 @@ export function noteWriteValues(input: NoteScreenInput) {
       go(screenHref("/FollowupQ", ids), stillHere);
     },
     /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
-    unsaved: (summary.canEdit && summary.dirty) || docDirty,
+    unsaved: (summary.canEdit && summary.dirty) || docEdited,
   };
 }

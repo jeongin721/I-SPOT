@@ -77,13 +77,63 @@ TRANSCRIPT = {
     ],
 }
 
+# record_draft.risk_signal_points 한 항목(모듈 안 모양 — 유형 · 근거 강도는 한글).
 GROUNDED_POINT = {
     "text": "아빠가 화나면 때려요.",
     "segment_ids": ["seg_002"],
     "major_type": "신체학대",
     "subtype": "직접 신체 가해",
     "evidence_strength": "높음",
+    "strength_reason": "때린 행위와 주체가 직접 진술됨",
+    "evidence_verified": True,
 }
+
+# 같은 항목이 Contract 로 나간 모양(PROPOSAL_risk_fields.md §7 2026-10-22 확정안).
+# 유형은 영문 대문자, 근거 강도는 HIGH|MEDIUM|LOW, reason 은 strength_reason.
+EXPECTED_UTTERANCE = {
+    "text": "아빠가 화나면 때려요.",
+    "segment_ids": ["seg_002"],
+    "abuse_type": "PHYSICAL",
+    "subtype": "직접 신체 가해",
+    "evidence_strength": "HIGH",
+    "reason": "때린 행위와 주체가 직접 진술됨",
+    "evidence_verified": True,
+    # 관련 조문(2026-10-27). 모듈이 붙이지 않았으면 빈 배열이다.
+    "legal_references": [],
+}
+
+FILTERED_REASON = "아동이 관련 발화를 명확히 부정함"
+
+NOT_DETECTED = {"detected": False}
+
+
+def _chunk(major_types: Dict[str, Dict[str, Any]], index: int = 1) -> Dict[str, Any]:
+    """infer_audio_session 의 chunk_results 한 항목(1차 모델의 chunk 단위 판정)."""
+
+    return {
+        "chunk_index": index,
+        "segment_ids": ["seg_001", "seg_002", "seg_003"],
+        "has_low_confidence": False,
+        "major_types": major_types,
+    }
+
+
+def _signal(
+    abuse_type: str,
+    detected: bool,
+    segment_ids: List[str] = (),
+    detection_source: str = None,
+    filtered_reason: str = None,
+) -> Dict[str, Any]:
+    """abuse_signals 한 항목(확정안 모양)."""
+
+    return {
+        "abuse_type": abuse_type,
+        "detected": detected,
+        "segment_ids": list(segment_ids),
+        "detection_source": detection_source,
+        "filtered_reason": filtered_reason,
+    }
 
 
 def _native_result() -> Dict[str, Any]:
@@ -98,16 +148,30 @@ def _native_result() -> Dict[str, Any]:
             "성학대": {"detected": False},
             "방임": {"detected": False},
         },
+        # 세션 major_types 는 chunk 판정을 detected 만 남기고 합친 것이라, 검출 출처(detection_source)는
+        # contract_adapter 가 chunk_results 를 다시 보고 정한다.
+        "chunk_results": [
+            _chunk({"신체학대": {"detected": True}, "정서학대": NOT_DETECTED, "성학대": NOT_DETECTED, "방임": NOT_DETECTED}),
+        ],
         "subtype_analysis": {"model": "subtype-model-test", "results": []},
         "record_draft": {
             "child_statement_points": [
                 {"text": "아빠가 화나면 때린다고 말함.", "segment_ids": ["seg_002"]},
             ],
             "risk_signal_points": [dict(GROUNDED_POINT)],
+            # 상담 요약 4칸 중 강점 · 위험 문단(narrative_summary_llm, infer_audio_session 이 붙인다).
+            "narrative_summary": {
+                "strengths_narrative": "가상 강점 문단",
+                "risks_narrative": "가상 위험 문단",
+                "strengths_citations": ["seg_002"],
+                "risks_citations": ["seg_002"],
+            },
         },
+        # 상담 요약 '원하는 변화' 칸(desired_change_llm.join_points 결과).
+        "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
         # 선택 필드 4개(#49)로 옮겨지는 값. 모양은 각 모듈이 정리해 돌려주는 그대로다
         # (severity_llm._clean_ratings: level 1~5 정수 또는 None · matched_evidence 문자열,
-        # session_change · followup_check_llm: 문자열 목록).
+        # session_change: 문자열 목록 · followup_check_llm: {text, segment_ids} 객체 목록(2026-10-27 #84 부터, 옛 문자열도 받음)).
         "severity_ratings": [
             {
                 "major_type": "신체학대",
@@ -122,7 +186,7 @@ def _native_result() -> Dict[str, Any]:
             {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
         ],
         "session_change_notes": ["가상 회차 변화"],
-        "followup_check_points": ["가상 확인사항"],
+        "followup_check_points": [{"text": "가상 확인사항", "segment_ids": ["seg_002"]}],
         # Contract 에 담지 않는 값 — 결과에 새지 않아야 한다.
         "full_text": "가상 전체 원문",
         "counseling_note": "가상 일지 본문",
@@ -203,12 +267,12 @@ def test_result_is_converted_to_contract(modeling) -> None:
         ("아빠가 화나면 때린다고 말함.", ["seg_002"]),
     ]
 
-    assert result.risk_utterances == [GROUNDED_POINT]
+    assert result.risk_utterances == [EXPECTED_UTTERANCE]
     assert result.abuse_signals == [
-        {"major_type": "신체학대", "detected": True, "segment_ids": ["seg_002"]},
-        {"major_type": "정서학대", "detected": False, "segment_ids": []},
-        {"major_type": "성학대", "detected": False, "segment_ids": []},
-        {"major_type": "방임", "detected": False, "segment_ids": []},
+        _signal("PHYSICAL", True, ["seg_002"], "MODEL"),
+        _signal("EMOTIONAL", False),
+        _signal("SEXUAL", False),
+        _signal("NEGLECT", False),
     ]
     assert result.risk_factors == []
 
@@ -216,10 +280,156 @@ def test_result_is_converted_to_contract(modeling) -> None:
     assert result.warnings == []
 
 
+# =========================================================
+# 위험 3필드 항목 구조 — PROPOSAL_risk_fields.md §7 확정안(2026-10-22)
+# =========================================================
+
+def test_risk_item_keys_match_contract(modeling) -> None:
+    """항목 키는 확정안 그대로다. 모듈 안 키(major_type · strength_reason)는 나가지 않는다."""
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert set(result.risk_utterances[0]) == {
+        "text",
+        "segment_ids",
+        "abuse_type",
+        "subtype",
+        "evidence_strength",
+        "reason",
+        "evidence_verified",
+        "legal_references",
+    }
+    assert all(
+        set(signal) == {"abuse_type", "detected", "segment_ids", "detection_source", "filtered_reason"}
+        for signal in result.abuse_signals
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "abuse_type"),
+    [("신체학대", "PHYSICAL"), ("정서학대", "EMOTIONAL"), ("성학대", "SEXUAL"), ("방임", "NEGLECT")],
+)
+def test_abuse_type_is_english_in_both_risk_fields(modeling, label: str, abuse_type: str) -> None:
+    """유형은 Contract 경계에서 영문 대문자로 바뀐다(02_ARCHITECTURE §7). 모듈 안은 한글 그대로다."""
+
+    modeling["result"]["major_types"] = {label: {"detected": True}}
+    modeling["result"]["chunk_results"] = [_chunk({label: {"detected": True}})]
+    modeling["result"]["record_draft"]["risk_signal_points"] = [{**GROUNDED_POINT, "major_type": label}]
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.risk_utterances == [{**EXPECTED_UTTERANCE, "abuse_type": abuse_type}]
+    assert result.abuse_signals == [_signal(abuse_type, True, ["seg_002"], "MODEL")]
+
+
+def test_unknown_major_type_is_kept_as_is(modeling) -> None:
+    """모르는 유형명은 바꾸지 않고 그대로 둔다(정보를 잃지 않게). 근거가 있으면 관문도 지난다."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [{**GROUNDED_POINT, "major_type": "기타(가상)"}]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["abuse_type"] == "기타(가상)"
+
+
+@pytest.mark.parametrize(
+    ("native", "expected"),
+    [("높음", "HIGH"), ("중간", "MEDIUM"), ("낮음", "LOW"), ("아주 높음", "LOW"), (None, "LOW")],
+)
+def test_evidence_strength_is_three_level_english(modeling, native, expected: str) -> None:
+    """근거 강도는 확률이 아니라 3단계다. 2차 분석과 같이 모르는 값은 LOW 로 둔다."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [{**GROUNDED_POINT, "evidence_strength": native}]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["evidence_strength"] == expected
+
+
+def test_reason_and_evidence_verified_default_when_module_omits_them(modeling) -> None:
+    point = {key: value for key, value in GROUNDED_POINT.items() if key not in ("strength_reason", "evidence_verified")}
+    modeling["result"]["record_draft"]["risk_signal_points"] = [point]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["reason"] == ""
+    assert utterance["evidence_verified"] is False
+
+
+def test_null_reason_and_verified_flag_become_contract_types(modeling) -> None:
+    """2차 분석은 비거나 문자열이 아닌 이유를 None 으로 넘긴다(_clean_optional_string). Contract 의 reason 은
+    문자열(없으면 ""), evidence_verified 는 참/거짓이라 키가 있고 값이 None 이어도 그 형으로 나간다(Codex R1)."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [
+        {**GROUNDED_POINT, "strength_reason": None, "evidence_verified": None},
+    ]
+
+    [utterance] = ModelingAIAdapter().analyze(TRANSCRIPT).result.risk_utterances
+
+    assert utterance["reason"] == ""
+    assert utterance["evidence_verified"] is False
+
+
+def test_detection_source_comes_from_chunk_results(modeling) -> None:
+    """MODEL: 어느 chunk 든 1차가 검출. FILTERED: 모두 아니고 부정 응답 필터로 빠진 chunk 가 있음.
+    둘 다 아니면 null. FILTERED 는 detected=false 라 근거가 없어도 관문을 지나고 경고도 없다."""
+
+    modeling["result"]["chunk_results"] = [
+        _chunk(
+            {
+                "신체학대": NOT_DETECTED,
+                "정서학대": {"detected": False, "filtered_reason": FILTERED_REASON},
+                "성학대": NOT_DETECTED,
+                "방임": NOT_DETECTED,
+            },
+        ),
+        _chunk({"신체학대": {"detected": True}, "정서학대": NOT_DETECTED, "성학대": NOT_DETECTED, "방임": NOT_DETECTED}, index=2),
+    ]
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.abuse_signals == [
+        _signal("PHYSICAL", True, ["seg_002"], "MODEL"),
+        _signal("EMOTIONAL", False, [], "FILTERED", FILTERED_REASON),
+        _signal("SEXUAL", False),
+        _signal("NEGLECT", False),
+    ]
+    assert result.warnings == []
+
+
+def test_model_detection_wins_over_filter_in_another_chunk(modeling) -> None:
+    """같은 유형이 한 chunk 에서 걸러지고 다른 chunk 에서 검출되면 MODEL 이고 걸러진 사유는 싣지 않는다."""
+
+    modeling["result"]["chunk_results"] = [
+        _chunk({"신체학대": {"detected": False, "filtered_reason": FILTERED_REASON}}),
+        _chunk({"신체학대": {"detected": True}}, index=2),
+    ]
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.abuse_signals[0] == _signal("PHYSICAL", True, ["seg_002"], "MODEL")
+
+
+@pytest.mark.parametrize("chunk_results", [None, []], ids=["없음", "빈 목록"])
+def test_detected_signal_without_chunk_results_is_marked_model(modeling, chunk_results) -> None:
+    """안전망: chunk_results 가 없어도 detected=true 인 신호는 출처 없이(null) 나가지 않고 MODEL 이 된다(10/23 이경진 님 요청)."""
+
+    if chunk_results is None:
+        modeling["result"].pop("chunk_results")
+    else:
+        modeling["result"]["chunk_results"] = chunk_results
+
+    result = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert result.abuse_signals[0] == _signal("PHYSICAL", True, ["seg_002"], "MODEL")
+    assert result.abuse_signals[1] == _signal("EMOTIONAL", False)
+
+
 def test_optional_fields_are_filled_from_module_output(modeling) -> None:
     """선택 필드 4개(#49)는 모듈 출력을 Contract 모양으로 옮긴다(#57).
 
-    회차 간 변화 · 다음 확인사항은 문자열 목록이라 {text, segment_ids: []} 로 감싼다.
+    회차 간 변화는 문자열 목록이라 {text, segment_ids: []} 로 감싸고, 다음 확인사항은 모듈이 주는 {text, segment_ids} 를
+    그대로 옮긴다(#84, 2026-10-27). 둘 다 근거 발화 번호를 서버가 다시 대조하지 않는다.
     근거 없는 항목 빼기는 위험 3필드에만 적용하므로 segment_ids 가 빈 항목도 남는다.
     """
 
@@ -240,7 +450,251 @@ def test_optional_fields_are_filled_from_module_output(modeling) -> None:
         {"category": "지지 관계", "text": "담임 선생님과 가깝다.", "segment_ids": ["seg_002"]},
     ]
     assert stored["session_change_notes"] == [{"text": "가상 회차 변화", "segment_ids": []}]
-    assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": []}]
+    assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": ["seg_002"]}]
+
+
+def test_followup_check_points_accept_legacy_strings(modeling) -> None:
+    """옛 모듈 결과(문자열 목록, 2026-10-26 이전)도 {text, segment_ids: []} 로 감싼다(#84 의 호환 경로)."""
+
+    result = _native_result()
+    result["followup_check_points"] = ["옛 확인사항", {"text": "새 확인사항", "segment_ids": ["seg_002"]}]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["followup_check_points"] == [
+        {"text": "옛 확인사항", "segment_ids": []},
+        {"text": "새 확인사항", "segment_ids": ["seg_002"]},
+    ]
+
+
+LEGAL_REFERENCE = {
+    "law_name": "아동복지법",
+    "article": "제17조",
+    "item_label": "제3호",
+    "text": "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위",
+    "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00",
+}
+
+
+def test_legal_references_are_passed_with_contract_keys_only(modeling) -> None:
+    """관련 조문은 다섯 키만 문자열로 옮긴다. 모듈 안 표시용 키(short_label)와 문자열 아닌 값은 나가지 않는다."""
+
+    result = _native_result()
+    result["record_draft"]["risk_signal_points"] = [
+        {
+            **GROUNDED_POINT,
+            "legal_references": [{**LEGAL_REFERENCE, "short_label": "신체", "item_label": None}, "문자열"],
+        }
+    ]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert stored.risk_utterances[0]["legal_references"] == [{**LEGAL_REFERENCE, "item_label": ""}]
+
+
+def test_unavailable_legal_data_adds_warning(modeling) -> None:
+    """법령 데이터를 못 써 조문을 못 붙였으면 분석은 성공하고 경고 한 줄을 남긴다."""
+
+    result = _native_result()
+    result["legal_references_unavailable"] = True
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result
+
+    assert "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." in stored.warnings
+    assert stored.risk_utterances[0]["legal_references"] == []
+
+
+def test_summary_assessment_is_filled_from_module_output(modeling) -> None:
+    """상담 요약 4칸(summary.assessment)은 강점 · 위험 문단, 회차 변화, 원하는 변화를 옮긴다(2026-10-27)."""
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["summary"]["assessment"] == {
+        "safety_changes": {"text": "가상 회차 변화", "segment_ids": []},
+        "strengths_resources": {"text": "가상 강점 문단", "segment_ids": ["seg_002"]},
+        "safety_risks": {"text": "가상 위험 문단", "segment_ids": ["seg_002"]},
+        "desired_changes": {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]},
+    }
+
+
+def test_summary_assessment_is_empty_when_module_omits_it(modeling) -> None:
+    """예전 모듈 결과(문단 · 원하는 변화 없음)도 Contract 를 만족하고 4칸은 빈 칸이다."""
+
+    result = _native_result()
+    del result["record_draft"]["narrative_summary"]
+    del result["desired_changes"]
+    result["session_change_notes"] = []
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    assert assessment == {key: {"text": "", "segment_ids": []} for key in assessment}
+    assert set(assessment) == {"safety_changes", "strengths_resources", "safety_risks", "desired_changes"}
+
+
+def test_malformed_assessment_evidence_does_not_fail_analysis(modeling) -> None:
+    """4칸 근거 번호가 목록이 아니어도(숫자 · dict · 불리언) 분석은 성공하고 그 번호만 빠진다(민규 교차검증 2026-10-27)."""
+
+    result = _native_result()
+    result["record_draft"]["narrative_summary"]["strengths_citations"] = 5
+    result["record_draft"]["narrative_summary"]["risks_citations"] = {"seg_002": True}
+    result["desired_changes"] = {"text": "가상 원하는 변화", "segment_ids": [True, "seg_002"]}
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    assert assessment["strengths_resources"] == {"text": "가상 강점 문단", "segment_ids": []}
+    assert assessment["safety_risks"] == {"text": "가상 위험 문단", "segment_ids": []}
+    assert assessment["desired_changes"] == {"text": "가상 원하는 변화", "segment_ids": ["seg_002"]}
+
+
+@pytest.mark.parametrize("desired", ["문자열", ["목록"], 5])
+def test_non_dict_desired_changes_and_narrative_become_empty(modeling, desired) -> None:
+    """원하는 변화 · 강점/위험 문단이 dict 가 아니어도 분석은 성공하고 그 칸만 빈 칸이다(민규 교차검증 2026-10-27)."""
+
+    result = _native_result()
+    result["desired_changes"] = desired
+    result["record_draft"]["narrative_summary"] = "문자열"
+    modeling["result"] = result
+
+    assessment = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()["summary"]["assessment"]
+
+    empty = {"text": "", "segment_ids": []}
+    assert assessment["desired_changes"] == empty
+    assert assessment["strengths_resources"] == empty
+    assert assessment["safety_risks"] == empty
+
+
+# =========================================================
+# STT 검수 '1차 임시 핵심 발화'(key_scan_as_contract, PROPOSAL_stt_key_scan.md §8)
+# =========================================================
+
+KEY_SCAN_STT = {
+    "schema_version": "1.0",
+    "segments": [
+        {"segment_id": "seg_001", "speaker": "COUNSELOR", "start_ms": 0, "end_ms": 1000, "text": "아빠가 때렸어?", "confidence": 0.95},
+        {"segment_id": "seg_002", "speaker": "CHILD", "start_ms": 1000, "end_ms": 2000, "text": "네 많이요.", "confidence": 0.9},
+        {"segment_id": "seg_003", "speaker": "GUARDIAN", "start_ms": 2000, "end_ms": 3000, "text": "아니에요.", "confidence": 0.9},
+        {"segment_id": "seg_004", "speaker": "UNKNOWN", "start_ms": 3000, "end_ms": 4000, "text": "밥도 안 줘요.", "confidence": 0.6},
+        {"segment_id": "seg_005", "speaker": "CHILD", "start_ms": 4000, "end_ms": 5000, "text": "학교 갔어요.", "confidence": 0.9},
+    ],
+}
+
+
+def _key_scan(monkeypatch: pytest.MonkeyPatch, flagged: Any) -> tuple:
+    """가짜 1차 모듈에 quick_risk_scan 을 붙이고 key_scan_as_contract 와 받은 인자 목록을 준다."""
+
+    calls: List[Any] = []
+
+    def quick_risk_scan(stt_result):
+        calls.append(stt_result)
+        if isinstance(flagged, Exception):
+            raise flagged
+        return flagged
+
+    monkeypatch.setattr(sys.modules[HEAVY_MODULE], "quick_risk_scan", quick_risk_scan, raising=False)
+
+    return importlib.import_module(CONTRACT_ADAPTER).key_scan_as_contract, calls
+
+
+def test_key_scan_keeps_child_and_unknown_speakers_in_order(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """검출 chunk 의 상담원 · 보호자 줄은 빼고 아동 · 화자 미확인 줄만, 원문 순서 · 영문 유형으로 준다."""
+
+    scan, calls = _key_scan(
+        monkeypatch,
+        {
+            "seg_004": ["방임"],
+            "seg_001": ["신체학대"],
+            "seg_002": ["신체학대", "정서학대", "신체학대"],
+            "seg_003": ["신체학대"],
+        },
+    )
+
+    assert scan(KEY_SCAN_STT) == {
+        "model": "roberta_abuse_qa_child_v3",
+        "segments": [
+            {"segment_id": "seg_002", "abuse_types": ["PHYSICAL", "EMOTIONAL"]},
+            {"segment_id": "seg_004", "abuse_types": ["NEGLECT"]},
+        ],
+    }
+    assert calls == [KEY_SCAN_STT]
+
+
+def test_key_scan_drops_unknown_types_and_empty_results(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """영문 4종 밖의 유형만 걸린 발화는 빠지고, 아무것도 없으면 빈 배열이다."""
+
+    scan, _ = _key_scan(monkeypatch, {"seg_002": ["기타유형"], "seg_005": []})
+    assert scan(KEY_SCAN_STT) == {"model": "roberta_abuse_qa_child_v3", "segments": []}
+
+    scan, _ = _key_scan(monkeypatch, {})
+    assert scan(KEY_SCAN_STT)["segments"] == []
+
+
+def test_key_scan_failure_is_raised_for_backend_to_mark_failed(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """모델 실패는 그대로 올린다 — status(FAILED)는 Backend 가 붙인다."""
+
+    scan, _ = _key_scan(monkeypatch, RuntimeError("모델 실패"))
+
+    with pytest.raises(RuntimeError):
+        scan(KEY_SCAN_STT)
+
+
+def _capture_pipeline_kwargs(monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
+    """가짜 analyze_audio_session 이 받은 키워드를 모은다."""
+
+    seen: List[Dict[str, Any]] = []
+
+    def analyze_audio_session(stt_result, **kwargs):
+        seen.append(kwargs)
+        return _native_result()
+
+    monkeypatch.setattr(sys.modules[HEAVY_MODULE], "analyze_audio_session", analyze_audio_session)
+
+    return seen
+
+
+def test_case_context_is_passed_to_pipeline_when_given(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """사례 정보(case_context, 2026-10-28)는 주면 그대로 분석 모듈에 넘긴다."""
+
+    seen = _capture_pipeline_kwargs(monkeypatch)
+    context = {"child_age_band": "만 10~13세", "intake_family_situations": ["알콜남용"]}
+
+    importlib.import_module(CONTRACT_ADAPTER).analyze_audio_session_as_contract(
+        stt_result=TRANSCRIPT, case_context=context
+    )
+
+    assert seen[-1]["case_context"] == context
+
+
+def test_case_context_is_not_passed_when_absent(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """주지 않으면 키 자체를 넘기지 않는다 — 예전 판 모듈(case_context 를 모르는 함수)과도 맞는다."""
+
+    seen = _capture_pipeline_kwargs(monkeypatch)
+
+    importlib.import_module(CONTRACT_ADAPTER).analyze_audio_session_as_contract(stt_result=TRANSCRIPT)
+
+    assert "case_context" not in seen[-1]
+
+
+def test_previous_session_label_is_kept_only_when_present(modeling) -> None:
+    """근거가 지난 회차 확정 요약뿐인 메모(#100 §7 답 3)는 previous_session_label 을 싣고, 없으면 키가 없다."""
+
+    result = _native_result()
+    result["followup_check_points"] = [
+        {"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "1회차"},
+        {"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_002"]},
+    ]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["followup_check_points"] == [
+        {"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "1회차"},
+        {"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_002"]},
+    ]
 
 
 def test_module_only_fields_do_not_leak(modeling) -> None:
@@ -302,15 +756,16 @@ def test_unverified_evidence_and_signal_without_evidence_are_dropped(modeling, c
     draft = modeling["result"]["record_draft"]
     draft["risk_signal_points"].append({**GROUNDED_POINT, "text": "원문에 없는 인용(가상)", "segment_ids": []})
     modeling["result"]["major_types"]["정서학대"] = {"detected": True}
+    modeling["result"]["chunk_results"][0]["major_types"]["정서학대"] = {"detected": True}
 
     with caplog.at_level(logging.WARNING):
         result = ModelingAIAdapter().analyze(TRANSCRIPT).result
 
-    assert result.risk_utterances == [GROUNDED_POINT]
-    assert [(s["major_type"], s["detected"]) for s in result.abuse_signals] == [
-        ("신체학대", True),
-        ("성학대", False),
-        ("방임", False),
+    assert result.risk_utterances == [EXPECTED_UTTERANCE]
+    assert [(s["abuse_type"], s["detected"]) for s in result.abuse_signals] == [
+        ("PHYSICAL", True),
+        ("SEXUAL", False),
+        ("NEGLECT", False),
     ]
     assert result.warnings == ["segment 근거가 없는 신호 2건을 제외했습니다."]
 
@@ -326,8 +781,8 @@ def test_items_pointing_to_unknown_segment_are_dropped(modeling) -> None:
 
     result = ModelingAIAdapter().analyze(TRANSCRIPT).result
 
-    assert result.risk_utterances == [GROUNDED_POINT]
-    assert "성학대" not in [s["major_type"] for s in result.abuse_signals]
+    assert result.risk_utterances == [EXPECTED_UTTERANCE]
+    assert "SEXUAL" not in [s["abuse_type"] for s in result.abuse_signals]
     assert any(DROPPED_WARNING in warning for warning in result.warnings)
 
 

@@ -14,6 +14,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseSignals } from '../data/useCaseSignals';
 import { caseHistoryValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -33,10 +34,11 @@ export default function CaseHistory(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
+  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
-  const v = useDC(Logic, { ...props, session, detail, caseId, historyOpen, setHistoryOpen });
+  const v = useDC(Logic, { ...props, session, detail, signals, caseId, historyOpen, setHistoryOpen });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseHistory">
@@ -80,7 +82,7 @@ export default function CaseHistory(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
                 <span className="sub">{v.sub}</span>
-                <span className="chip c-normal">{v.riskChip}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
               <div className="note">{v.meta}</div>
             </div>
@@ -94,7 +96,6 @@ export default function CaseHistory(props) {
               상담 이력
             </A>
             <A to={v.tabs.briefing}>상담 전 브리핑</A>
-            <A to={v.tabs.app}>아이 연계</A>
             <A to={v.tabs.docs}>문서함</A>
           </nav>
           <section className="card" aria-label="지금까지 상담" style={{ padding: '24px 26px' }}>

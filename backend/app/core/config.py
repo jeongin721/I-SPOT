@@ -133,6 +133,17 @@ class Settings(BaseSettings):
     STT_FUNCTION: str = "transcribe"
     STT_TIMEOUT_SECONDS: float = 600.0
 
+    # 구간별 음성 참고 표시(stt/voice_marks, 정담원 님). STT 결과를 저장한 직후 같은 백그라운드 작업에서 부르고
+    # 결과를 audio_features 에 새 행(extractor "stt.voice_marks")으로 저장한다. 원문 확정 때 아동 구간이 바뀌었으면
+    # 한 번 더 돌린다(API_CONTRACT 16절 · I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md). 참고 표시일 뿐 판정이 아니다.
+    # off   : 아무것도 하지 않는다(행도 없다)
+    # module: stt.voice_marks.analyze_voice_marks 호출(librosa · numba · soundfile — requirements-stt.txt, 이미지는 WITH_STT=1)
+    VOICE_MARKS_PROVIDER: Literal["off", "module"] = "off"
+    VOICE_MARKS_MODULE: str = "stt.voice_marks"
+    VOICE_MARKS_FUNCTION: str = "analyze_voice_marks"
+    # 한 번의 제한 시간. 넘기면 결과 없이 끝내지 않고 UNDETERMINED · ANALYSIS_ERROR 행을 남긴다. 회차 상태엔 영향 없다.
+    VOICE_MARKS_TIMEOUT_SECONDS: float = 600.0
+
     # mock     : Transcript 에서 파생한 합성 요약 반환
     # pipeline : ai/services/analysis_pipeline.run_analysis_pipeline 호출
     # langgraph: agent/graph.run 호출 (분석 → 근거판정 → RAG → 재분석)
@@ -168,6 +179,28 @@ class Settings(BaseSettings):
     # ENV=production 에서는 이 값이 true 일 때만 modeling 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_MODELING_ALLOW_IN_PRODUCTION: bool = False
+
+    # ---- 법령 · 매뉴얼 AI 질문 (LawGuide 화면, API_CONTRACT 17절, 2026-10-28) ----
+    # off      : 창구를 막는다(503 LAW_QA_DISABLED)
+    # mock     : OpenAI 없이 고정 답변 + 조문 1개(화면 개발 · CI)
+    # modeling : ai/modeling/abuse/legal_manual_qa_llm 호출(이경진 님). openai 와 law/ · manual/ 패키지가 필요하고,
+    #            법령 캐시(law_cache/)가 없으면 국가법령정보센터를 조회한다(LAW_API_OC). 질문은 가린 뒤 OpenAI 로 나간다.
+    #            매뉴얼 사진은 기관 대외비라 모듈 설정(MANUAL_QA_ATTACH_IMAGES, 기본 끔)이 켜졌을 때만 첨부된다.
+    # AI_PROVIDER 와 따로 둔다(분석은 mock 인데 법령 질의만 켜거나 그 반대가 가능하게).
+    LAW_QA_PROVIDER: Literal["off", "mock", "modeling"] = "mock"
+    # 질문 한 번의 제한 시간. 넘으면 504 AI_TIMEOUT. 동시 실행 자리를 기다리는 시간도 이 값까지다.
+    LAW_QA_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
+    # 사용자당 분당 호출 한도(넘으면 429 RATE_LIMITED). 호출마다 법령 전문(약 9.8만 자)이 나가 비용이 크다.
+    LAW_QA_RATE_LIMIT_PER_MINUTE: int = Field(default=6, ge=1)
+    # 서버 전체 동시 실행 건수. 자리가 없으면 제한 시간만큼 기다렸다가 504 AI_TIMEOUT.
+    LAW_QA_MAX_CONCURRENCY: int = Field(default=2, ge=1)
+    # ENV=production 에서 LAW_QA_PROVIDER=modeling 을 일부러 쓸 때만 true. 질문은 사례와 묶이지 않아 등록 실명 대조(Tier 2)가
+    # 돌 수 없어 분석 modeling 과 같은 잠금을 둔다(아래 _block_law_qa_modeling_in_production).
+    LAW_QA_ALLOW_IN_PRODUCTION: bool = False
+    # law/config.py 가 os.getenv 로 읽는 값. 여기 적으면 law_qa_adapter 가 process 환경으로 넘긴다(비어 있으면 넘기지 않음).
+    # LAW_API_OC: 국가법령정보센터 OPEN API 인증값(캐시가 없거나 오래됐을 때만 필요). LAW_CACHE_DIR: 법령 캐시 폴더.
+    LAW_API_OC: str = ""
+    LAW_CACHE_DIR: str = ""
 
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
     # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
@@ -295,6 +328,39 @@ class Settings(BaseSettings):
             "모든 분석이 바로 AI_TIMEOUT 으로 끝납니다. "
             f"지금 값: AI_DEADLINE_MARGIN_SECONDS={self.AI_DEADLINE_MARGIN_SECONDS}, "
             f"AI_TIMEOUT_SECONDS={self.AI_TIMEOUT_SECONDS}"
+        )
+
+    @model_validator(mode="after")
+    def _block_law_qa_modeling_in_production(self) -> "Settings":
+        """운영에서 법령 질의 modeling 으로 서버가 뜨지 않게 한다(분석 modeling 과 같은 이유 · 같은 방식).
+
+        질문은 상담사가 직접 쓰는 글이라 아동 이름 같은 사례 내용이 섞일 수 있고, 사례와 묶이지 않아 등록 실명 대조(Tier 2)가
+        돌 수 없다. 모듈이 이름 인식으로 가린 뒤 OpenAI 로 보내지만 놓친 이름은 그대로 나간다. .env 의 LAW_QA_PROVIDER 만
+        바꿔 실수로 켜지 않도록 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어야만 뜬다. local/test 는 그대로 둔다.
+        """
+
+        if self.ENV != "production" or self.LAW_QA_PROVIDER != "modeling" or self.LAW_QA_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 LAW_QA_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
+            "법령 질문은 상담사가 쓴 글을 외부(OpenAI)로 보내는데, 사례와 묶이지 않아 등록 실명 대조가 돌지 않습니다. "
+            "실제 상담 데이터가 있는 서버에서는 LAW_QA_PROVIDER=mock 또는 off 를 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _law_qa_margin_is_shorter_than_time_limit(self) -> "Settings":
+        """법령 질의 modeling 의 마감 시각이 질문 시작보다 뒤에 오게 한다(분석의 같은 검사와 같은 이유)."""
+
+        if self.LAW_QA_PROVIDER != "modeling" or self.AI_DEADLINE_MARGIN_SECONDS < self.LAW_QA_TIMEOUT_SECONDS:
+            return self
+
+        raise ValueError(
+            "AI_DEADLINE_MARGIN_SECONDS 는 LAW_QA_TIMEOUT_SECONDS 보다 작아야 합니다(LAW_QA_PROVIDER=modeling). "
+            "같거나 크면 법령 질의에 넘기는 마감 시각이 시작과 같거나 앞서 모든 질문이 바로 AI_TIMEOUT 으로 끝납니다. "
+            f"지금 값: AI_DEADLINE_MARGIN_SECONDS={self.AI_DEADLINE_MARGIN_SECONDS}, "
+            f"LAW_QA_TIMEOUT_SECONDS={self.LAW_QA_TIMEOUT_SECONDS}"
         )
 
     @property

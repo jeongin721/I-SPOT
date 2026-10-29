@@ -6,6 +6,14 @@
 # 서버에서: cd /opt/ispot/I-SPOT && sudo git pull --ff-only && sudo bash deploy/web-deploy.sh
 # 주소를 바꾸려면 SITE 를 넘긴다(sudo 는 설정에 따라 환경변수를 넘기지 않을 수 있어 sudo 뒤에 env 로 쓴다):
 #   sudo env SITE=<새 주소> bash deploy/web-deploy.sh
+# backend.env 가 AI_PROVIDER=modeling 이면 WITH_MODELING=1 을 넘긴다(torch · transformers 를 더 깔고 모델 파일을 붙인다,
+# deploy/README.md '모델까지 띄우기'):
+#   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
+# backend.env 가 STT_PROVIDER=module 이면 WITH_STT=1 을 넘긴다(ElevenLabs · Deepgram SDK 를 더 깐다, deploy/README.md 'STT 까지 띄우기'):
+#   sudo env WITH_STT=1 bash deploy/web-deploy.sh      # 둘 다면 sudo env WITH_MODELING=1 WITH_STT=1 bash deploy/web-deploy.sh
+# GPU 인스턴스(g4dn 등, deploy/gpu-setup.sh 로 드라이버 · nvidia-container-toolkit 을 깐 뒤)에서는 WITH_GPU=1 을 더한다
+# (CUDA 판 torch 이미지 + 컨테이너에 GPU 를 넘김, deploy/README.md 'GPU 로 띄우기'). WITH_MODELING=1 과 같이 쓴다:
+#   sudo env WITH_MODELING=1 WITH_GPU=1 bash deploy/web-deploy.sh
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
@@ -15,13 +23,76 @@ SITE="${SITE:-15-165-250-143.sslip.io}"
 REPO=/opt/ispot/I-SPOT
 ENV_FILE=/opt/ispot/backend.env
 
+WITH_MODELING="${WITH_MODELING:-0}"
+[[ "$WITH_MODELING" =~ ^[01]$ ]] || { echo "WITH_MODELING 은 0 또는 1 입니다: $WITH_MODELING"; exit 1; }
+WITH_STT="${WITH_STT:-0}"
+[[ "$WITH_STT" =~ ^[01]$ ]] || { echo "WITH_STT 은 0 또는 1 입니다: $WITH_STT"; exit 1; }
+WITH_GPU="${WITH_GPU:-0}"
+[[ "$WITH_GPU" =~ ^[01]$ ]] || { echo "WITH_GPU 은 0 또는 1 입니다: $WITH_GPU"; exit 1; }
+# GPU 는 modeling 만 쓴다(STT 는 클라우드 API). 드라이버 · nvidia-container-toolkit 이 없으면 docker run --gpus 가 실패하므로
+# 미리 확인한다(둘 다 deploy/gpu-setup.sh 가 깐다).
+GPU_FLAGS=()
+if [ "$WITH_GPU" = 1 ]; then
+  [ "$WITH_MODELING" = 1 ] || { echo "WITH_GPU=1 은 WITH_MODELING=1 과 같이 써야 합니다(GPU 는 modeling 만 씁니다)"; exit 1; }
+  command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 || { echo "nvidia-smi 가 GPU 를 못 봅니다. 먼저 sudo bash deploy/gpu-setup.sh 를 돌리고 재부팅해 주세요."; exit 1; }
+  docker info 2>/dev/null | grep -q nvidia || { echo "Docker 에 nvidia 런타임이 없습니다. 먼저 sudo bash deploy/gpu-setup.sh 를 돌려 주세요."; exit 1; }
+  GPU_FLAGS=(--gpus all)
+elif [ "$WITH_MODELING" = 1 ] && command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1; then
+  echo "주의: 이 서버에 GPU 가 있는데 WITH_GPU=1 이 없어 CPU 판 torch 로 띄웁니다. GPU 를 쓰려면 WITH_GPU=1 을 더해 주세요."
+fi
+# 학대 분류 모델 파일은 저장소에 없다(.gitignore). 이 폴더에 두면 컨테이너의 /ai/modeling/abuse/weight 에 읽기 전용으로 붙인다.
+WEIGHT_DIR="${MODELING_WEIGHT_DIR:-$REPO/ai/modeling/abuse/weight}"
+MODELING_MOUNTS=()
+if [ "$WITH_MODELING" = 1 ]; then
+  for f in roberta_abuse_qa_child_v3_best.pth roberta_abuse_note_v1_best.pth; do
+    [ -f "$WEIGHT_DIR/$f" ] || { echo "modeling 모델 파일이 없습니다: $WEIGHT_DIR/$f (MODELING_WEIGHT_DIR 로 다른 폴더를 줄 수 있습니다)"; exit 1; }
+  done
+  # 이름 인식 · klue 토크나이저는 첫 분석 때 Hugging Face 에서 받는다. 컨테이너를 다시 만들어도 다시 받지 않게 서버에 둔다.
+  mkdir -p /opt/ispot/hf-cache
+  MODELING_MOUNTS=(-v "$WEIGHT_DIR:/ai/modeling/abuse/weight:ro" -v /opt/ispot/hf-cache:/hf-cache)
+  # STT 검수의 '관련 조문'은 법령 캐시(law_cache/, .gitignore)를 읽는다. 있으면 컨테이너의 /law_cache 에 붙인다.
+  # 없어도 분석은 되고 조문만 비어 온다. 분석은 캐시만 읽는다 — 갱신은 docker exec ispot-backend python -m law.refresh_cache.
+  LAW_CACHE_HOST="${LAW_CACHE_HOST_DIR:-$REPO/law_cache}"
+  if [ -d "$LAW_CACHE_HOST" ]; then
+    MODELING_MOUNTS+=(-v "$LAW_CACHE_HOST:/law_cache")
+  else
+    echo "주의: 법령 캐시 폴더가 없습니다: $LAW_CACHE_HOST (LAW_CACHE_HOST_DIR 로 다른 폴더를 줄 수 있습니다). 관련 조문이 비어 옵니다."
+  fi
+elif grep -qE '^AI_PROVIDER=modeling[[:space:]]*$' "$ENV_FILE"; then
+  echo "backend.env 가 AI_PROVIDER=modeling 입니다. torch · 모델 파일이 든 이미지가 필요해 WITH_MODELING=1 로 실행해 주세요:"
+  echo "  sudo env WITH_MODELING=1 bash deploy/web-deploy.sh"
+  exit 1
+fi
+# STT 모듈은 키를 backend.env 에서 읽는다(기본 ElevenLabs, 실패하면 Deepgram). 키가 없으면 전사 요청마다 실패하므로 미리 알린다.
+if [ "$WITH_STT" = 1 ]; then
+  if ! grep -qE '^(ELEVENLABS_API_KEY|DEEPGRAM_API_KEY|I_SPOT_STT_API_KEY)=.+' "$ENV_FILE"; then
+    echo "주의: backend.env 에 STT 키(ELEVENLABS_API_KEY · DEEPGRAM_API_KEY · I_SPOT_STT_API_KEY)가 없습니다. STT_PROVIDER=module 이면 전사가 실패합니다."
+  fi
+elif grep -qE '^STT_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
+  echo "backend.env 가 STT_PROVIDER=module 입니다. STT 패키지가 든 이미지가 필요해 WITH_STT=1 로 실행해 주세요:"
+  echo "  sudo env WITH_STT=1 bash deploy/web-deploy.sh"
+  exit 1
+fi
+
 echo "== 1/5 최신 main 받기"
 cd "$REPO"
-OLD=$(git rev-parse --short HEAD)
-git fetch -q origin main
-git checkout -q main
-git merge -q --ff-only origin/main
-echo "code $OLD -> $(git rev-parse --short HEAD)"
+# main 을 받아 이 파일이 바뀌었으면 새 판으로 처음부터 다시 시작한다. 옛 판이 끝까지 돌면 새 main 의 Dockerfile 을
+# 옛 빌드 명령으로 만들다 멈춘다(2026-10-22 데모 서버: git pull 없이 돌려 3/5 의 COPY backend/requirements.txt 에서 멈춤).
+# { } 묶음은 bash 가 다 읽은 뒤 실행하므로, 그 안에서 이 파일이 바뀌어도 묶음은 읽은 그대로 끝까지 돈다.
+{
+  OLD=$(git rev-parse --short HEAD)
+  OLD_SCRIPT=$(git hash-object deploy/web-deploy.sh)
+  git fetch -q origin main
+  git checkout -q main
+  git merge -q --ff-only origin/main
+  echo "code $OLD -> $(git rev-parse --short HEAD)"
+  if [ "$(git hash-object deploy/web-deploy.sh)" != "$OLD_SCRIPT" ]; then
+    # 다시 시작한 판이 또 바뀌었으면(그사이 main 에 새 배포 스크립트가 들어옴) 되풀이하지 않고 멈춘다.
+    [ -z "${WEB_DEPLOY_RESTARTED:-}" ] || { echo "배포 스크립트가 다시 시작한 뒤에도 바뀌었습니다. 한 번 더 실행해 주세요."; exit 1; }
+    echo "배포 스크립트가 바뀌어 새 판으로 처음부터 다시 시작합니다"
+    exec env WEB_DEPLOY_RESTARTED=1 bash "$REPO/deploy/web-deploy.sh"
+  fi
+}
 
 echo "== 2/5 화면(counselor-web) 빌드"
 docker run --rm -v "$REPO/counselor-web:/w" -w /w node:22.12.0-alpine \
@@ -30,15 +101,24 @@ mkdir -p /opt/ispot/web
 find /opt/ispot/web -mindepth 1 -delete
 cp -r "$REPO/counselor-web/dist/." /opt/ispot/web/
 
+# 이미지는 BuildKit 으로 만든다(2026-10-28, docker-buildx 가 있을 때). 옛 빌더는 RUN 층(CUDA 판 torch 약 6GB)을 commit 할 때
+# 한 번 더 복사해 디스크를 두 배로 쓰고, 모자라 끊기면 그 단계의 임시 컨테이너(5.9GB)가 docker ps -a 에 남는다
+# (deploy/README.md '디스크 · 빌더'). Ubuntu 의 docker.io 패키지에는 buildx 가 없어 따로 깐다: sudo apt-get install -y docker-buildx
+if docker buildx version >/dev/null 2>&1; then
+  export DOCKER_BUILDKIT=1
+else
+  echo "주의: docker-buildx 가 없어 옛 빌더로 만듭니다(디스크를 두 배로 씁니다). sudo apt-get install -y docker-buildx 를 권합니다."
+fi
 echo "== 3/5 백엔드 이미지 다시 만들기 + DB 마이그레이션"
-docker build -q -t ispot-backend "$REPO/backend"
+# 저장소 루트가 빌드 컨텍스트다(ai/ · agent/ 도 담음). 넣는 것은 루트 .dockerignore 가 고른다.
+docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" --build-arg WITH_GPU="$WITH_GPU" -f "$REPO/backend/Dockerfile" "$REPO"
 sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=https://$SITE|" "$ENV_FILE"
 docker run --rm --env-file "$ENV_FILE" ispot-backend alembic upgrade head
 
 echo "== 4/5 백엔드를 127.0.0.1:8000 으로만 다시 띄우기"
 docker rm -f ispot-backend >/dev/null 2>&1 || true
 docker run -d --name ispot-backend --restart unless-stopped --network host \
-  --env-file "$ENV_FILE" -v /opt/ispot/storage:/app/storage ispot-backend \
+  --env-file "$ENV_FILE" -v /opt/ispot/storage:/app/storage ${MODELING_MOUNTS[@]+"${MODELING_MOUNTS[@]}"} ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} ispot-backend \
   uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
 
 echo "== 5/5 Caddy(화면 + API + HTTPS)"

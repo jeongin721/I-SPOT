@@ -25,7 +25,9 @@ services:
 
   backend:
     build:
-      context: ./backend
+      # ai/ · agent/ 도 담아야 해서 저장소 루트에서 빌드한다(넣는 것은 루트 .dockerignore).
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: ispot-backend
     depends_on:
       db:

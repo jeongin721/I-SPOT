@@ -1,0 +1,300 @@
+/* Landing 화면에만 있는 규칙(10/22 디자인 Landing.dc.html). 공통 사이드바 · 카드 규칙은 쓰지 않는다. */
+.pg-Landing .lp {
+  background: linear-gradient(180deg, #f5ecdb 0%, #e6e9e8 100%);
+  color: #2b2a26;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 0 40px;
+  overflow-x: hidden;
+}
+.pg-Landing .lp,
+.pg-Landing .lp * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+.pg-Landing .lp a {
+  color: inherit;
+  text-decoration: none;
+}
+.pg-Landing .lp ul {
+  list-style: none;
+}
+/* 단추는 .lp 를 붙여 위의 일반 링크 규칙(.lp a { color: inherit })보다 앞서게 한다(디자인과 같은 우선순위). */
+.pg-Landing .lp .btn-primary {
+  background-color: #2b2a26;
+  color: #eadbb5;
+  border-radius: 20px;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-weight: 500;
+  transition: background 0.2s;
+  display: inline-flex;
+}
+.pg-Landing .lp .btn-primary:hover {
+  background-color: #3a3833;
+  color: #eadbb5;
+}
+.pg-Landing .lp .btn-text {
+  color: #2b2a26;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  display: inline-flex;
+}
+.pg-Landing .splash-nav {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  background-color: rgba(255, 255, 255, 0.85);
+  border-radius: 32px;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding: 20px 32px;
+  display: flex;
+  box-shadow: 0 8px 32px rgba(43, 42, 38, 0.05);
+}
+.pg-Landing .nav-logo {
+  color: #2b2a26;
+  letter-spacing: 1px;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.4rem;
+  font-weight: 800;
+  display: flex;
+}
+.pg-Landing .nav-links {
+  color: #2b2a26;
+  gap: 40px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+}
+.pg-Landing .login-btn {
+  border-radius: 24px;
+  padding: 12px 28px;
+  font-size: 0.95rem;
+}
+.pg-Landing .hero {
+  text-align: center;
+  flex-direction: column;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px;
+  padding: 100px 0;
+  display: flex;
+}
+.pg-Landing .hero-subtitle {
+  color: #8c7340;
+  letter-spacing: 0.5px;
+  background: #ffffff;
+  border-radius: 20px;
+  margin-bottom: 24px;
+  padding: 8px 16px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(43, 42, 38, 0.08);
+}
+.pg-Landing .hero-title {
+  color: #2b2a26;
+  letter-spacing: -1.5px;
+  margin-bottom: 32px;
+  font-size: 4rem;
+  font-weight: 400;
+  line-height: 1.25;
+}
+.pg-Landing .hero-title strong {
+  font-weight: 800;
+}
+.pg-Landing .hero-description {
+  color: #5a564e;
+  margin-bottom: 56px;
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+.pg-Landing .hero-buttons {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 64px;
+  display: flex;
+}
+.pg-Landing .explore-btn {
+  background: #ffffff;
+  border-radius: 32px;
+  padding: 18px 32px;
+  font-size: 1.15rem;
+  box-shadow: 0 4px 12px rgba(43, 42, 38, 0.03);
+}
+.pg-Landing .hero-footer-text {
+  color: #7a776f;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.pg-Landing .features {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 0 100px;
+}
+.pg-Landing .features-header {
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 40px;
+  display: flex;
+}
+.pg-Landing .features-header h2 {
+  color: #45423b;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.pg-Landing .with-ispot {
+  color: #8c7340;
+  letter-spacing: 1.5px;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+.pg-Landing .cards-container {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  display: grid;
+}
+.pg-Landing .feature-card {
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 48px 36px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 12px 40px rgba(43, 42, 38, 0.05);
+}
+.pg-Landing .feature-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 48px rgba(43, 42, 38, 0.1);
+}
+.pg-Landing .card-top {
+  color: #8c7340;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+  display: flex;
+}
+.pg-Landing .card-number {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.pg-Landing .feature-card h3 {
+  color: #2b2a26;
+  letter-spacing: -0.5px;
+  margin-bottom: 16px;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+.pg-Landing .feature-card p {
+  color: #66625a;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+.pg-Landing .splash-footer {
+  color: #7a776f;
+  border-top: 1px solid rgba(43, 42, 38, 0.08);
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 0;
+  font-size: 0.95rem;
+  display: flex;
+}
+.pg-Landing .footer-logo {
+  color: #45423b;
+  margin-right: 8px;
+  font-weight: 800;
+}
+.pg-Landing .footer-right {
+  gap: 32px;
+  display: flex;
+}
+@media (max-width: 1024px) {
+  .pg-Landing .cards-container {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pg-Landing .hero-title {
+    font-size: 3.2rem;
+  }
+}
+@media (max-width: 768px) {
+  .pg-Landing .lp {
+    padding: 0 16px;
+  }
+  .pg-Landing .splash-nav {
+    border-radius: 20px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding: 16px 20px;
+  }
+  .pg-Landing .nav-links {
+    display: none;
+  }
+  .pg-Landing .hero {
+    padding: 60px 0;
+  }
+  .pg-Landing .hero-subtitle {
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+  }
+  .pg-Landing .hero-title {
+    letter-spacing: -0.5px;
+    margin-bottom: 24px;
+    font-size: 2.2rem;
+  }
+  .pg-Landing .hero-description {
+    margin-bottom: 40px;
+    padding: 0 16px;
+    font-size: 1.05rem;
+  }
+  .pg-Landing .hero-buttons {
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    padding: 0 16px;
+  }
+  .pg-Landing .explore-btn {
+    justify-content: center;
+    width: 100%;
+    padding: 16px;
+    font-size: 1.1rem;
+  }
+  .pg-Landing .features {
+    padding: 40px 16px 60px;
+  }
+  .pg-Landing .features-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .pg-Landing .cards-container {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .pg-Landing .feature-card {
+    border-radius: 24px;
+    padding: 32px 24px;
+  }
+  .pg-Landing .feature-card h3 {
+    font-size: 1.4rem;
+  }
+  .pg-Landing .splash-footer {
+    text-align: center;
+    flex-direction: column;
+    gap: 24px;
+    padding: 32px 16px;
+  }
+}

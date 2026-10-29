@@ -543,6 +543,42 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 오류: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`
 
+### GET /api/v1/cases/{case_id}/signal-history
+
+사례의 **회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력**을 한 번에 준다(2026-10-28 추가, `I-SPOT_DOCS/docs/PROPOSAL_signal_history_api.md`).
+유형별 위험도의 회차별 추이 · 상담 이력의 회차 카드 신호 · 세부 신호 행렬(유형 × 회차)이 쓴다. **AI 를 새로 돌리지 않고**
+저장된 최신 분석 결과(8절)와 상담원 판단(11절)만 모은다 — 회차마다 `GET …/analysis` · `GET …/risk-assessments` 를 부른 것과 같은 값이다.
+
+```json
+{
+  "data": {
+    "case_id": "…",
+    "sessions": [
+      {
+        "session_id": "…", "session_number": 1, "consulted_at": "2026-10-20T10:00:00+09:00",
+        "status": "APPROVED", "analysis_status": "COMPLETED",
+        "types": [
+          { "abuse_type": "PHYSICAL", "detected": true, "ai_level": 3, "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00" },
+          { "abuse_type": "EMOTIONAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
+          { "abuse_type": "SEXUAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
+          { "abuse_type": "NEGLECT", "detected": false, "ai_level": null, "counselor_level": null, "assessed_at": null }
+        ]
+      },
+      { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null, "types": [] }
+    ]
+  }
+}
+```
+
+- 회차는 **전부** 주고 `session_number` 오름차순이다(추이 그래프에 분석 전 회차도 자리가 있어야 한다). 목록 상한이 없다.
+- `analysis_status` 는 그 회차의 가장 최근 분석 상태(`PROCESSING` · `COMPLETED` · `FAILED`). 분석을 요청한 적이 없으면 `null`.
+- `types` 는 네 유형이 늘 `PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT` 순서로 온다 — 단, 분석이 `COMPLETED` 도 아니고 상담원 판단도 없는 회차는 `[]`.
+  - `detected`: `abuse_signals[].detected`(같은 유형 첫 항목, 참/거짓이 아니면 `null`). 근거 없어 서버가 뺀 유형(8절 근거 관문)은 `null`.
+  - `ai_level`: `severity_ratings[].level`(같은 유형 첫 항목, 1~5 정수가 아니면 `null`) — 11절 `ai_level` 과 같은 규칙. **AI 제안이지 판정이 아니다.**
+  - `counselor_level` · `assessed_at`: 11절 상담원 판단. 판단 전이면 둘 다 `null`.
+- 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
+- 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
+
 ### PATCH /api/v1/cases/{case_id}
 
 변경할 필드만 보낸다. `status` 로 사례를 종결(`CLOSED`)할 수 있다.
@@ -690,6 +726,21 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 ### GET /api/v1/sessions/{session_id}/audio
 
 최신 음성 metadata. 없으면 `404 AUDIO_NOT_FOUND`.
+
+### GET /api/v1/sessions/{session_id}/audio/file
+
+최신 음성 파일의 **본문을 그대로** 돌려준다(다시 듣기용). 1.1 의 `{"data": ...}` 감싸기 예외다.
+
+- `Content-Type` 은 올릴 때의 MIME(`mime_type`), `Content-Disposition: inline; filename="..."` 은 원래 파일 이름이다.
+- `Range` 요청을 받는다(`Accept-Ranges: bytes`). 일부 구간이면 `206 Partial Content` 와 `Content-Range: bytes 시작-끝/전체`,
+  범위가 파일 밖이면 `416` 과 `Content-Range: bytes */전체`, 형식이 틀리면 `400`. 화면은 구간 재생 때 앞에서부터
+  다 받지 않고 그 자리로 건너뛸 수 있다.
+- 인증은 다른 창구와 같이 `Authorization: Bearer` 헤더뿐이다. 주소에 token 을 넣는 방식은 쓰지 않는다
+  (접속 로그 · 브라우저 기록에 token 이 남는다). `<audio src>` 는 헤더를 못 붙이므로 화면은 `fetch` 로 받아
+  `Blob` URL 로 재생한다.
+- `Cache-Control: no-store` — 상담 음성을 브라우저 캐시에 남기지 않는다.
+- 권한은 metadata 조회와 같다(사례 접근 규칙). 음성이 없거나, DB 에는 있는데 저장소에 파일이 없으면
+  `404 AUDIO_NOT_FOUND`(후자는 문구 "음성 파일이 저장소에 없습니다. 다시 올려 주세요.").
 
 ---
 
@@ -885,7 +936,16 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
       "completed_at": "...",
       "result": {
         "schema_version": "1.0",
-        "summary": { "overview": "...", "key_points": ["...", "..."] },
+        "summary": {
+          "overview": "...",
+          "key_points": ["...", "..."],
+          "assessment": {
+            "safety_changes": { "text": "", "segment_ids": [] },
+            "strengths_resources": { "text": "...", "segment_ids": ["seg_002"] },
+            "safety_risks": { "text": "...", "segment_ids": ["seg_004"] },
+            "desired_changes": { "text": "...", "segment_ids": ["seg_007"] }
+          }
+        },
         "risk_utterances": [],
         "abuse_signals": [],
         "risk_factors": [],
@@ -913,15 +973,64 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
     `warnings` 에 `"segment 근거가 없는 신호 N건을 제외했습니다."` 를 덧붙인다. 필드 모양은 바뀌지 않는다.
     `abuse_signals` 중 `detected` 가 명시적으로 `false` 인 항목은 위험 신호가 아니므로 근거가 없어도 남긴다.
 - `result.schema_version` 은 AI Output Contract 버전이다(지금 `"1.0"`). 성공한 분석의 `analysis.schema_version` 과 같다.
-- `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는
-  `I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7 의 합의를 기다리고 있어 Backend 는 항목 구조(키 목록)를 검증하지 않는다.
-  다만 `langgraph` · `modeling` 결과는 위 근거 확인을 위해 `segment_id` · `segment_ids` · `detected` 를 본다.
-  Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 준다.
-  `modeling` 은 `risk_utterances` · `abuse_signals` 를 채우지만 항목 구조는 위 합의 전이다(`risk_factors` 는 빈 배열).
+- `risk_utterances` / `abuse_signals` / `risk_factors` 는 **객체 배열**이다. 항목 구조는 2026-10-22 에 확정했다
+  (`I-SPOT_DOCS/docs/PROPOSAL_risk_fields.md` §7-0, 아래 "위험 3필드 항목 구조"). Backend 는 항목 구조(키 목록)를 아직 검증하지 않고
+  그대로 저장 · 전달한다(구조가 굳은 뒤 따로 모델화한다). `langgraph` · `modeling` 결과는 위 근거 확인을 위해
+  `segment_id` · `segment_ids` · `detected` 를 본다.
+  Frontend 는 키가 없을 수 있다고 보고 하나씩 확인하며 읽는다. 지금은 `mock` · `pipeline` · `langgraph` 모두 빈 배열을 주고,
+  `modeling` 만 `risk_utterances` · `abuse_signals` 를 채운다(`risk_factors` 는 빈 배열).
 - 선택 필드 4개(`severity_ratings` · `protective_factors` · `session_change_notes` · `followup_check_points`)는 아래
   "선택 필드" 를 본다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
+
+#### 위험 3필드 항목 구조 (2026-10-22 확정)
+
+`AI_PROVIDER=modeling`(`ai/modeling/abuse/contract_adapter.py`)이 채운다. 값은 모두 **영문 대문자**이고 한글 이름은 화면에서만 바꾼다
+(`02_ARCHITECTURE.md` §7). 모두 **AI 참고정보**이며 판정이 아니다("관련 신호" · "추가 확인 필요" 로만 표시한다).
+
+| 필드 | 항목 모양 | 설명 |
+| --- | --- | --- |
+| `risk_utterances` | `{ segment_ids, text, abuse_type, subtype, evidence_strength, reason, evidence_verified, legal_references }` | 위험 관련 발화. 근거 발화 번호가 있는 항목만 저장된다 |
+| `abuse_signals` | `{ abuse_type, detected, detection_source, filtered_reason, segment_ids }` | 학대 유형별 종합 신호. 네 유형이 모두 온다 |
+| `risk_factors` | (빈 배열) | 재료가 없어 구조는 보류. 늘 `[]` |
+
+```json
+"risk_utterances": [
+  { "segment_ids": ["seg_002"], "text": "아빠가 화나면 때려요.", "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해",
+    "evidence_strength": "HIGH", "reason": "때린 행위와 주체가 직접 진술됨", "evidence_verified": true,
+    "legal_references": [
+      { "law_name": "아동복지법", "article": "제17조", "item_label": "제3호",
+        "text": "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위",
+        "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=290207&joNo=0017&joBrNo=00" }
+    ] }
+],
+"abuse_signals": [
+  { "abuse_type": "PHYSICAL", "detected": true, "detection_source": "MODEL", "filtered_reason": null, "segment_ids": ["seg_002"] },
+  { "abuse_type": "EMOTIONAL", "detected": false, "detection_source": "FILTERED", "filtered_reason": "아동이 관련 발화를 명확히 부정함", "segment_ids": [] },
+  { "abuse_type": "SEXUAL", "detected": false, "detection_source": null, "filtered_reason": null, "segment_ids": [] },
+  { "abuse_type": "NEGLECT", "detected": false, "detection_source": null, "filtered_reason": null, "segment_ids": [] }
+],
+"risk_factors": []
+```
+
+항목 규칙
+- `segment_ids` 는 세 필드 모두 **복수** 목록이다(발화 하나가 여러 번호에 걸칠 수 있다). 관문은 옛 결과의 단수 `segment_id` 도 읽는다.
+- `abuse_type` 은 `PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT`. 파이프라인이 이 넷 밖의 유형명을 내면 변환기는 그 값을 그대로 보존한다
+  (정보를 잃지 않게. 화면은 모르는 값을 "기타" 로 보여 준다). `subtype` 은 2차 세부유형명(한글, 예: `"직접 신체 가해"`)이 그대로 온다.
+- `evidence_strength` 는 `HIGH | MEDIUM | LOW` 로 **확률이 아니라 근거의 직접성**이다. 모델 확률 · 임계값은 이번 판에서 싣지 않는다
+  (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
+- `reason` 은 AI 가 그 강도로 본 이유 한 문장(문자열, 없으면 `""`), `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과(참/거짓)다.
+- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
+  `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
+  `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+- `legal_references`(2026-10-27 제안, STT 검수 "관련 조문")는 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호)
+  **하나까지**다. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고, 법 위반을 확정하는 값이 아니라 참고 링크다.
+  분석 도중에는 캐시만 읽고 국가법령정보센터를 부르지 않는다(분석 시간이 늘지 않게). 캐시 갱신은 분석 밖에서 `python -m law.refresh_cache`.
+  캐시가 없으면 빈 배열이고 `warnings` 에 "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다." 가 남는다.
+  이 키가 생기기 전 결과에는 없다.
+- `abuse_signals[].segment_ids` 는 같은 유형 `risk_utterances` 의 근거를 모은 것이다. 검출됐는데 근거 발화가 하나도 없는 유형은
+  위 근거 관문에서 빠지고 `warnings` 에 건수만 남는다. `FILTERED` 는 `detected=false` 라 근거가 없어도 남는다.
 
 #### 선택 필드 (2026-10-16 추가)
 
@@ -929,15 +1038,17 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 모두 **선택**이라 AI 가 보내지 않으면 빈 배열(`[]`)이 된다. `schema_version` 은 `"1.0"` 그대로이고,
 이 필드가 생기기 전에 저장된 결과도 그대로 읽힌다(응답에는 빈 배열로 나온다).
 지금 `mock` · `pipeline` · `langgraph` 는 이 필드를 만들지 않아 모두 빈 배열이다.
-`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). 지금은 `severity_ratings` · `session_change_notes` · `followup_check_points` 의
-`segment_ids` 가 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 도 늘 빈 배열이다.
+`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). `severity_ratings` · `session_change_notes` 의 `segment_ids` 는
+아직 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 자체도 늘 빈 배열이다.
+`followup_check_points[].segment_ids` 는 2026-10-27(#84)부터 `modeling` 이 채운다 — LLM 이 인용한 발화 번호를 실제 발화 목록과
+대조해 남기고, 유효한 근거가 하나도 없는 메모는 모델 쪽에서 뺀다. 그 전에 저장된 결과는 빈 배열이다.
 
 | 필드 | 항목 모양 | 설명 |
 | --- | --- | --- |
 | `severity_ratings` | `{ major_type, level, reason, matched_evidence, segment_ids, reviewed }` | 학대 유형별 심각도 **참고값** |
 | `protective_factors` | `{ category, text, segment_ids }` | 보호 요인 |
 | `session_change_notes` | `{ text, segment_ids }` | 이전 회기와 달라진 점 메모 |
-| `followup_check_points` | `{ text, segment_ids }` | 다음에 확인할 점에 대한 **AI 확인 메모** |
+| `followup_check_points` | `{ text, segment_ids, previous_session_label? }` | 다음에 확인할 점에 대한 **AI 확인 메모**. `previous_session_label`(선택, 2026-10-28)은 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차")이고 이때 `segment_ids` 는 `[]` — 값이 있을 때만 키가 실린다. 화면은 "근거 · 7회차 확정 요약" |
 
 ```json
 "severity_ratings": [
@@ -957,19 +1068,24 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `segment_ids` 는 근거 발화 번호 목록이고 선택이다(없으면 `[]`). 지금은 비어 올 수 있다.
 - 위 키 말고 다른 키는 버린다(최상위 `result` 와 같다).
 - `severity_ratings[].major_type` 은 지금 한글 유형명(예: `"신체학대"`)이 그대로 온다.
-  대분류를 영문(`PHYSICAL` 등)으로 통일할지는 위험 3필드 항목 구조 합의(`PROPOSAL_risk_fields.md` §7)와 함께 정한다.
+  위험 3필드의 `abuse_type` 은 2026-10-22 에 영문 대문자로 확정했고(위 "위험 3필드 항목 구조"), 이 필드까지 영문으로 바꿀지는 따로 정한다.
 
 근거와 화면 표시
 - **근거 없는 위험 항목 빼기는 위험 3필드에만 적용한다.** 이 4개 필드는 `segment_ids` 가 비어 있어도 빼지 않고
   저장 · 전달한다(10/16 합의. 지금은 근거 번호가 비어 오는 항목이 많다).
 - 대신 **화면은 `segment_ids` 가 있는 항목만 근거 위치와 함께 보여 준다**(`counselor-web/README.md`
   "지켜야 할 원칙" 3번: 모든 제안에는 근거 위치를 함께 보여 준다). `segment_ids` 가 빈 항목을 어떻게 보여 줄지는
-  화면을 연결할 때 정한다.
+  화면을 연결할 때 정한다(`followup_check_points` 는 아래처럼 "근거 위치 없음" 을 밝히고 보인다. `severity_ratings` 는
+  유형별 위험도 화면이 `level` · `reason` · `matched_evidence` 만 쓰고 근거 발화는 같은 유형 `risk_utterances` 로 보인다.
+  `protective_factors` 는 아직 정하지 않았다).
 - **모두 AI 제안이고 판단은 상담원이 한다.** `level` 은 심각도 참고값이지 학대 판정이 아니다.
   화면에서는 "AI 제안" · "상담사 검토 필요" 로 표시하고 "위험 확정" 같은 표현은 쓰지 않는다(아래 "표현 주의").
 - `followup_check_points` 는 **질문 은행의 질문이 아니라** AI 가 남긴 확인 메모다.
-  화면 원칙 7번("추가 질문은 질문 은행에서만 제안")과의 관계(이 메모를 질문으로 보여 줘도 되는지, 질문 은행 문항과
-  어떻게 잇는지)는 **팀 결정 대기**다. 그 전까지 이 메모를 아이에게 할 질문으로 보여 주지 않는다.
+  화면 원칙 7번("추가 질문은 질문 은행에서만 제안")과의 관계는 2026-10-26 에 정했다: **메모로만 보이면 원칙 7번과
+  어긋나지 않는다.** '추가 확인 · 질문' 화면의 '다음 상담 전 확인할 사항'(10/26 에는 유형별 위험도 카드, 10/27 디자인에서 옮김)이
+  "AI 확인 메모 · 질문 아님" 으로 읽기 전용 표시하고(`counselor-web` `screens/followupQ.ts`), 아이에게 할 질문으로 보이거나
+  질문 은행 문항과 잇지는 않는다. `segment_ids` 가 있으면 원문 위치(몇 분 · 누구)로 보이고, 옛 결과처럼 비어 있으면
+  항목마다 "근거 위치 없음" 을 적는다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
@@ -1023,6 +1139,12 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
       "analysis_id": "uuid",
       "overview": "요약 본문",
       "key_points": ["항목 1", "항목 2"],
+      "assessment": {
+        "safety_changes": { "text": "", "segment_ids": [] },
+        "strengths_resources": { "text": "조모에게 연락하는 방법을 알고 있음.", "segment_ids": ["seg_012"] },
+        "safety_risks": { "text": "보호자(부)의 체벌 진술.", "segment_ids": ["seg_004"] },
+        "desired_changes": { "text": "할머니 집에 가고 싶다고 말함.", "segment_ids": ["seg_015"] }
+      },
       "counselor_note": null,
       "status": "DRAFT",
       "is_edited": false,
@@ -1041,6 +1163,21 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 `status`: `DRAFT | APPROVED` — AI 결과는 항상 `DRAFT` 로 시작하며 자동 승인되지 않는다.
 
+#### 사정 관점 4칸 (`assessment`, 2026-10-27 추가)
+
+상담 요약 화면(10/27 디자인 NoteWrite)의 4칸이다. 칸마다 `{text, segment_ids}` 이고, 응답에는 늘 4칸이 다 있다.
+
+| 키 | 화면 이름 | AI 초안 출처 |
+|---|---|---|
+| `safety_changes` | (안전관련) 조사 후 변화된 사항 | 이전 회차와 비교한 변화(`session_change_notes`). 서버 경로는 이전 회차를 넘기지 않아 **지금은 늘 빈 칸** — 상담원이 쓴다 |
+| `strengths_resources` | 아동안전과 관련된 강점과 자원 | 보호요인을 문단으로 다시 쓴 것 |
+| `safety_risks` | 아동안전과 관련된 위험요인 | 위험 신호를 문단으로 다시 쓴 것. 최상위 `risk_factors`(늘 빈 배열)와 다른 칸이다 |
+| `desired_changes` | 앞으로 원하는 변화 · 원하는 서비스/지원 | 아동(보호자)이 직접 말한 바람 · 진술에서 바로 드러나는 필요 |
+
+- 근거가 없으면 AI 는 `"확인된 내용 없음"` 을 쓰거나 빈 칸으로 둔다. 판정이 아니라 AI 초안이다.
+- 이 필드가 생기기 전에 만든 요약 · 분석 결과는 4칸이 모두 `{ "text": "", "segment_ids": [] }` 로 보인다.
+- `segment_ids` 는 AI 초안의 근거 발화다. 상담사가 `text` 를 고쳐도 바뀌지 않는다.
+
 `summary_evidence` 는 `summary.analysis_id` 가 가리키는 분석(마지막으로 성공한 분석)의 근거 정보를 그대로 준다.
 재분석이 도는 중이거나 실패해도 이전 근거는 사라지지 않는다.
 
@@ -1054,11 +1191,13 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 {
   "overview": "상담사가 검토한 요약",
   "key_points": ["확인된 내용", "추가 확인 필요"],
+  "assessment": { "strengths_resources": "상담사가 고친 문장", "safety_changes": "조사 후 변화" },
   "counselor_note": "다음 회기 확인 예정"
 }
 ```
 
 - 최소 1개 필드 필요(`422 VALIDATION_ERROR`)
+- `assessment` 는 고칠 칸의 **문장만** 보낸다. 보내지 않은 칸 · 근거 번호(`segment_ids`)는 그대로다. 4칸 밖의 이름은 `422`. 빈 객체나 네 칸이 모두 `null` 이면(고칠 칸 없음) `422`
 - 수정하면 `is_edited: true`
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
 - 승인 후 수정 시 `409 ALREADY_APPROVED`. 고치려면 먼저 승인을 푼다(`POST .../summary/reopen`)
@@ -1077,7 +1216,7 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 승인 풀기(화면의 '요약 수정'). Summary `APPROVED` → `DRAFT`, Session `APPROVED` → `AI_REVIEW_REQUIRED`.
 
 - 응답은 PATCH · approve 와 같은 Summary 하나다.
-- 내용(`overview` · `key_points` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
+- 내용(`overview` · `key_points` · `assessment` · `counselor_note` · `is_edited`)은 그대로 둔다. 고친 뒤 approve 로 다시 승인한다.
 - Summary 와 Session 의 `approved_at` · `approved_by_id` 는 `null` 로 비운다. 다시 승인하면 새로 채워진다.
 - 감사 기록을 따로 남기지 않는다. 다시 고치면 `SUMMARY_UPDATED`, 다시 승인하면 `SUMMARY_APPROVED` 가 남는다.
 - 푼 시각은 Session 에만 저장하고(`reopened_at`, 응답에는 없음) 처리 대기 업무가 검토 대기를 그때부터 센다(12절).
@@ -1385,6 +1524,10 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
+| `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_FAILED` | 504 / 502 / 502 | 법령 · 매뉴얼 AI 질문(17절)에서만 HTTP 상태로 온다(동기 응답) |
+| `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
+| `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
+| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
@@ -1439,3 +1582,154 @@ AI 영향
 Test 영향
 권장 변경안
 ```
+
+---
+
+## 16. Voice Marks (구간별 음성 참고 표시)
+
+아동 발화 구간에서 떨림 · 웅얼거림 · 작은 소리가 **그 녹음 안에서** 두드러지는 구간을 알려 주는 참고 표시다
+(정담원 님 `stt/voice_marks`, 제안서 `I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md`). 상담사가 다시 들어 볼 구간을 찾도록
+돕는 정보이며 **학대 · 위험을 판정하지 않는다.** 기준값은 모두 합성 음성으로 정한 잠정값이다(`stt/voice_marks.md` 7절).
+
+### 언제 계산하나
+
+- STT 결과를 저장한 직후 같은 백그라운드 작업에서 `analyze_voice_marks(audio_path, segments)` 를 부르고, 결과를
+  `audio_features` 표에 **새 행**(`extractor = "stt.voice_marks"`, `schema_version = "1.0"`, `features` = 결과 dict 그대로)으로
+  저장한다. 행에는 `audio_file_id` · `transcript_id` · `transcript_version` 이 있다. 기존 행(`ispot_audio_features`)과
+  전사본(7절)의 `segments` 는 건드리지 않는다.
+- 원문 확정(`POST …/transcript/confirm`) 때 확정본의 아동 구간(`segment_id` · `start_ms` · `end_ms`)이 마지막 분석 때와
+  다르면 백그라운드로 한 번 더 돌려 새 행으로 저장한다(STT 직후엔 화자가 `UNKNOWN` 이라 아동 구간이 0개였다가 검수에서
+  정해지는 경우). 행은 쌓고, 조회는 **가장 최신 전사본 version 의 행**(같은 version 이면 나중 것)이다 — 느린 옛 분석이
+  새 분석보다 늦게 저장돼도 새 version 의 결과를 가리지 않는다. 같은 회차를 다시 STT 해도 쌓는다.
+- `VOICE_MARKS_PROVIDER=off`(기본)면 아무것도 하지 않는다(행도 없다). `module` 이면 `stt.voice_marks` 를 부른다
+  (librosa · numba · soundfile — `requirements-stt.txt`, 이미지는 `WITH_STT=1`). 서버 시작 때 `warm_up()` 을
+  백그라운드로 한 번 부른다(numba 컴파일 지연 방지, 캐시 자리는 `NUMBA_CACHE_DIR`).
+- 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
+  안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
+  그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
+- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
+  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
+  재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
+
+### GET /api/v1/sessions/{session_id}/voice-marks
+
+가장 최신 전사본 version 의 행 하나(같은 version 이면 나중 것). 아직 계산 전이면 `200` 에 `{"data": null}` 이다(정상 상태라 `404` 를 쓰지 않는다). 권한은 사례 접근 규칙과 같다.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "audio_file_id": "uuid",
+    "transcript_id": "uuid",
+    "transcript_version": 1,
+    "extractor": "stt.voice_marks",
+    "schema_version": "1.0",
+    "created_at": "2026-10-28T10:00:00Z",
+    "result": {
+      "schema_version": "1.0",
+      "analyzer": "stt.voice_marks",
+      "analyzer_version": "0.1.0",
+      "status": "ANALYZED",
+      "reason": null,
+      "reference": { "child_segments_total": 30, "child_segments_used": 28, "min_required": 8, "note": "..." },
+      "thresholds": { "tremor_z_above": 1.6066, "mumble_z_below": -1.619, "soft_z_below": -2.5, "basis": "..." },
+      "segments": [
+        { "segment_id": "seg_003", "speaker": "CHILD", "start_ms": 12000, "end_ms": 15200,
+          "status": "ANALYZED", "reason": null,
+          "tremor": { "value": 21.4, "unit": "cent", "z": 0.3, "flag": false },
+          "mumble": { "value": 1850.0, "unit": "Hz", "z": -1.9, "flag": true },
+          "soft": { "value": -38.2, "unit": "LUFS", "z": -0.2, "flag": false },
+          "flag_any": true },
+        { "segment_id": "seg_001", "speaker": "COUNSELOR", "start_ms": 0, "end_ms": 4000,
+          "status": "UNDETERMINED", "reason": "NOT_CHILD_SEGMENT",
+          "tremor": null, "mumble": null, "soft": null, "flag_any": null }
+      ]
+    }
+  }
+}
+```
+
+- `result` 는 분석 모듈이 돌려준 dict 그대로다(모양 · `reason` 목록 · 지표 뜻은 `stt/voice_marks.md` 3~5절). Backend 는 그 안을
+  다시 해석하지 않는다.
+- `result.status` 는 `ANALYZED` | `UNDETERMINED`(최상위 · 구간 모두). **"탐지 없음"** 은 `ANALYZED` 이면서 모든 `flag` 가
+  `false` 인 경우이고 `UNDETERMINED`(분석하지 못함)와 다르다.
+- `result.segments[]` 는 전사본 순서 그대로이며 `segment_id` 로 전사본 구간과 잇는다. `speaker` 는 분석 당시 값이라 참고만 하고,
+  화면은 최신 전사본의 화자를 쓴다.
+- 기준값은 `result.thresholds` 에서 읽는다(화면 코드에 숫자를 적지 않는다). Backend 실패 행은 기준값이 `null` 이다.
+- 화면 표현: "음성 참고 표시" · "다시 들어 볼 구간" · "상담사 검토 필요" · "분석 불가(이유)". `UNDETERMINED` 는 '탐지 없음' 과
+  다르게 보여 주고 `reason` 은 사람 말로 바꾼다. 아이콘 + 글자로 표시한다(색만으로 구분하지 않음). 0~1 점수 · % · 위험도 같은
+  값은 만들지 않는다. 쓰지 않는 문구: "학대 확정" · "위험 확정" · "AI 판정" · "자동 결정".
+- 한계(합성 음성 기준 · 효과 없는 음성에서도 약 10% 표시 · 떨림은 놓치는 경우가 많음)를 화면 안내문에 함께 적는다
+  (`I-SPOT_DOCS/docs/PROPOSAL_voice_marks.md` §1-4).
+
+---
+
+## 17. Law Guide (법령 · 매뉴얼 AI 질문)
+
+LawGuide 화면 위쪽의 **AI 질문 채팅**이 쓴다(2026-10-28 추가, 설계 `I-SPOT_DOCS/docs/PROPOSAL_law_guide_api.md`, AI 모듈 `ai/modeling/abuse/legal_manual_qa_llm.py`).
+상담 회차 · 사례와 묶이지 않는 독립 질의이고, 로그인한 사용자(COUNSELOR · ADMIN)면 누구나 부른다. **질문 · 답변은 서버에 저장하지 않는다**
+(자유 입력에 개인정보가 섞일 수 있어서). 감사 기록(`LAW_QA_ASKED`)에는 사용자 · 시각 · 성공/실패 코드 · 걸린 시간 · provider · 모델 · 근거 수만 남는다.
+
+### POST /api/v1/law-guide/questions → 200
+
+**1.4 의 예외로 동기 200** 이다(202 + polling 아님): 붙일 회차가 없고 저장하지도 않으며, 한 번에 걸리는 시간이 분석보다 훨씬 짧다.
+화면은 '찾는 중' 을 보이고 응답을 기다린다. 서버 제한 시간은 `LAW_QA_TIMEOUT_SECONDS`(기본 60초).
+
+Request
+
+```json
+{ "question": "응급조치 기간은 얼마나 돼요?" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `question` | 필수. 앞뒤 공백을 뺀 뒤 1~500자. 비거나 넘으면 `422 VALIDATION_ERROR`. 한 번에 질문 하나(대화 맥락 없음 — '새 대화' 는 화면의 말풍선만 지운다) |
+
+Response
+
+```json
+{
+  "data": {
+    "answer": "응급조치는 … 72시간을 넘을 수 없습니다(아동학대범죄의 처벌 등에 관한 특례법 제12조). …\n\n※ 이 답변은 참고용입니다. 실제 적용 전 원본 자료를 직접 확인하고, 최종 판단은 상담사가 내려야 합니다.",
+    "sources": {
+      "laws": [
+        { "law_name": "아동학대범죄의 처벌 등에 관한 특례법", "article": "제12조", "title": "피해아동 등에 대한 응급조치",
+          "content": "① 제11조제1항에 따라 현장에 출동하거나 …", "effective_date": "20261002",
+          "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=…&joNo=0012&joBrNo=00" }
+      ],
+      "manual": []
+    },
+    "model": "gpt-5.6-luna",
+    "answered_at": "2026-10-28T03:12:45Z"
+  }
+}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `answer` | 답변 본문. 비어 있지 않다(빈 답은 `502 AI_INVALID_OUTPUT`). 끝에 모듈이 붙인 참고용 안내 문장이 있다 — **참고용이며 판정이 아니다**(05_RULES §1) |
+| `sources.laws[]` | 답변이 근거로 쓴 조문. **실제 조문 목록과 대조해 통과한 것만**(법령명 + 조문번호가 둘 다 맞아야 함). 없으면 `[]`. `effective_date` 는 조문시행일자(자료에 없으면 `null`), `portal_url` 은 국가법령정보센터 조문 주소(없으면 `null`) |
+| `sources.manual[]` | 답변이 근거로 쓴 매뉴얼 자료 `{ id, title, page }`(`page` 는 문자열, 모르면 `"?"`). 매뉴얼 사진은 기관 대외비라 **기본으로 첨부하지 않으므로 늘 `[]`** 다(모듈 설정 `MANUAL_QA_ATTACH_IMAGES` 를 켰을 때만 채워진다). 내용이 그 페이지에 있다는 보장은 아니다 — 화면은 조문 근거와 구분해 '참고 자료' 로 보인다 |
+| `model` | 답한 모델 이름(`mock` 이면 `"mock"`) |
+| `answered_at` | 서버가 답을 만든 시각(UTC) |
+
+제안서 §2 의 `law_versions` · `notice` 는 넣지 않는다(모듈이 주지 않는 값 · 안내는 `answer` 끝에 이미 있음). 필요해지면 선택 키로 더한다.
+
+오류(코드 · 문구는 고정이고 질문 원문 · 예외 문구를 싣지 않는다)
+
+| code | status | 언제 |
+|---|---|---|
+| `VALIDATION_ERROR` | 422 | 질문이 비었거나 500자 초과 |
+| `LAW_QA_DISABLED` | 503 | `LAW_QA_PROVIDER=off` |
+| `RATE_LIMITED` | 429 | 같은 사용자가 1분 안에 `LAW_QA_RATE_LIMIT_PER_MINUTE`(기본 6)회를 넘김 |
+| `AI_TIMEOUT` | 504 | `LAW_QA_TIMEOUT_SECONDS` 안에 답이 안 옴, 또는 동시 실행 자리(`LAW_QA_MAX_CONCURRENCY`, 기본 2)를 그 시간 안에 못 얻음 |
+| `AI_INVALID_OUTPUT` | 502 | LLM 응답에 답변이 없음 |
+| `AI_FAILED` | 502 | 그 밖의 LLM 호출 실패(OpenAI 인증 · 연결 등 — 종류를 나누지 않는다), 모듈을 불러올 수 없음 |
+| `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패 |
+| `UNAUTHORIZED` · `PASSWORD_CHANGE_REQUIRED` 등 | 401 · 403 | 다른 API 와 같음 |
+
+서버 설정(`backend/.env.example`): `LAW_QA_PROVIDER`(off · mock · modeling, 기본 mock) · `LAW_QA_TIMEOUT_SECONDS` · `LAW_QA_RATE_LIMIT_PER_MINUTE` · `LAW_QA_MAX_CONCURRENCY` ·
+`LAW_QA_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 modeling 은 이 값이 true 일 때만 뜬다, 분석 modeling 과 같은 방식) · `LAW_API_OC` · `LAW_CACHE_DIR`.
+`LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다(실패해도 서버는 뜨고 첫 질문 때 다시 시도).
+한도는 서버 메모리 기준(서버 1대 전제)이다.

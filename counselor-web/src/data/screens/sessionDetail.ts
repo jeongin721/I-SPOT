@@ -11,7 +11,7 @@ import type { SessionDetailState, SessionDetailView } from "../useSessionDetail"
 import { NOT_PROVIDED } from "../caseRows";
 import type { ScreenGo } from "./useScreenGo";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
-import { CARD_OF } from "./flow";
+import { CARD_OF, LOCKED_HINT } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 회차 화면이 쓸 사례 ID. 회차 정보를 받았으면 그 사례, 아직이면 주소의 사례. */
@@ -85,16 +85,15 @@ function sttCard(sv: SessionDetailView): { st: string; preview: string } {
 }
 
 function analysisCard(sv: SessionDetailView): { st: string; preview: string } {
-  const signals = `위험 신호는 ${NOT_READY}입니다(서버가 아직 신호를 주지 않음).`;
-
-  if (CARD_OF[sv.step] === 0) return { st: "대기", preview: signals };
+  // STT 검수의 '원문 확정 · 유형별 위험도 →' 가 원문 확정과 함께 AI 분석을 요청한다(10/27 디자인).
+  if (CARD_OF[sv.step] === 0) return { st: "대기", preview: "원문을 확정하면 AI 분석이 시작됩니다." };
   if (sv.step === "analysis") {
     const failed = sv.phase === "failed" && sv.errorMessage ? ` · ${sv.errorMessage}` : "";
 
-    return { st: sv.statusLabel, preview: `${signals}${failed}` };
+    return { st: sv.statusLabel, preview: `유형별 심각도 · 근거 발화 · 상담원 판단${failed}` };
   }
 
-  return { st: "AI 분석 완료", preview: signals };
+  return { st: "AI 분석 완료", preview: "유형별 심각도 · 근거 발화 · 상담원 판단" };
 }
 
 function noteCard(sv: SessionDetailView): { st: string; preview: string } {
@@ -143,19 +142,33 @@ export function sessionDetailValues(input: SessionScreenInput) {
         label: "STT 검수",
         ...sttCard(sv),
       },
-      { href: screenHref("/SignalReview", ids), label: "위험 신호 검토", ...analysisCard(sv) },
+      { href: screenHref("/SignalReview", ids), label: "유형별 위험도", ...analysisCard(sv) },
       { href: screenHref("/NoteWrite", ids), label: "요약 · 일지 작성", ...noteCard(sv) },
-      // '추가 확인 · 질문' 은 Backend 에 없다(회차 상태에 '질문 처리 완료' 단계가 없다).
-      { href: screenHref("/FollowupQ", ids), label: "추가 확인 · 질문", st: NOT_READY, preview: `추가 확인 · 질문은 ${NOT_READY}입니다.` },
+      // 회차 상태에 '질문 처리 완료' 단계가 없어 칸 상태는 늘 '확인 메모' 다. 화면은 AI 확인 메모(followup_check_points)를
+      // 읽기 전용으로 보이고, 수정 · 추가 질문은 준비 중이다(followupQ.ts).
+      {
+        href: screenHref("/FollowupQ", ids),
+        label: "추가 확인 · 질문",
+        st: "확인 메모",
+        preview: `AI 확인 메모를 봅니다. 수정 · 추가 질문은 ${NOT_READY}입니다.`,
+      },
     ];
     const lastDone = current === -1 ? 2 : current - 1;
+    // 누를 수 있는 마지막 칸: 끝난 칸 다음(지금 할 단계). 그 뒤 칸은 잠긴다 — 회차 처리 화면의 단계 표시(flow.ts processNav)와
+    // 같은 규칙. 승인 완료(current -1)면 앞 세 칸이 끝났으니 '추가 확인 · 질문' 까지 누를 수 있다.
+    const reach = lastDone + 1;
 
     steps = defs.map((d, i) => {
       const done = i <= lastDone;
       const cur = i === current;
+      const locked = !done && i > reach;
 
       return {
         ...d,
+        /** 누르면 갈 주소. 잠긴 칸은 null(링크를 그리지 않는다). */
+        href: locked ? null : d.href,
+        locked,
+        title: locked ? LOCKED_HINT : undefined,
         stCls: done ? "chip c-ok" : cur ? TONE_CHIP[sv.tone] : "chip c-normal",
         mark: done ? "✓" : String(i + 1),
         nBg: done ? "#F2EFE8" : cur ? "#2B2A26" : "#EAE7DF",

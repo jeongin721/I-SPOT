@@ -8,7 +8,7 @@ from typing import Any
 
 import requests
 
-from rag.config import (
+from .config import (
     LAW_API_OC,
     LAW_CACHE_DIR,
     LAW_CACHE_MAX_AGE_HOURS,
@@ -20,6 +20,39 @@ from rag.config import (
 
 class LawApiError(RuntimeError):
     """국가법령정보센터 API 호출 또는 응답 처리 실패."""
+
+
+_OC_PARAM_RE = re.compile(r"(?i)([?&]OC=)[^&\s]*")
+
+
+def _redact_oc(text: str) -> str:
+    """요청 URL의 OC(인증값) 쿼리 파라미터를 ***로 가린다.
+
+    2026-10-26 민규 교차검증으로 발견: requests.RequestException을
+    그대로 str()로 찍으면(예: ConnectionError) 실패한 요청의 전체 URL이
+    메시지에 들어가는데, 그 URL에 OC=<실제 인증값>이 그대로 박혀 있다.
+    이 LawApiError 메시지가 law_qa_llm.py의 답변 텍스트로 그대로
+    나가거나 어딘가에 로그로 남으면 인증값이 유출된다. 예외 메시지를
+    만드는 시점(여기)에서 한 번만 가리면, 쓰는 쪽에서 매번 신경 쓰지
+    않아도 된다.
+    """
+
+    return _OC_PARAM_RE.sub(r"\1***", text)
+
+
+def _redact_secret(text: str, secret: str) -> str:
+    """OC 쿼리 파라미터에 더해, 인증값 자체가 어떤 모양으로든(본문 · "OC":"…" · 경로) 나오면 가린다.
+
+    2026-10-27 민규 교차검증 R2: 국가법령정보센터가 JSON 이 아닌 본문을 돌려줄 때 그 본문이
+    인증값을 ?OC= 가 아닌 모양으로 담을 수 있다. _redact_oc 의 정규식만으로는 못 가린다.
+    """
+
+    text = _redact_oc(text)
+
+    if secret:
+        text = text.replace(secret, "***")
+
+    return text
 
 
 def _safe_filename(value: str) -> str:
@@ -99,20 +132,28 @@ class LawApiClient:
             )
             response.raise_for_status()
         except requests.RequestException as exc:
-            raise LawApiError(f"국가법령정보센터 API 요청 실패: {exc}") from exc
+            # from None: 원인 예외(요청 URL 에 OC=<인증값>)가 __cause__ 로 이어지면 traceback ·
+            # logger.exception 이 그 문구를 그대로 찍는다(2026-10-27 민규 교차검증 R2).
+            # 대신 가린 문구와 예외 종류만 남긴다.
+            raise LawApiError(
+                f"국가법령정보센터 API 요청 실패({type(exc).__name__}): "
+                f"{_redact_secret(str(exc), self.oc)}"
+            ) from None
 
         try:
             payload = response.json()
-        except ValueError as exc:
+        except ValueError:
+            # from None: JSONDecodeError 는 받은 본문 전체(.doc)를 들고 있어 체인으로 남기지 않는다(R2).
             if "미신청" in response.text:
                 raise LawApiError(
                     f"국가법령정보센터 OPEN API에서 '{params.get('target')}' 사용 신청이 되어 있지 않습니다. "
                     "open.law.go.kr → OPEN API 신청에서 해당 항목을 체크하세요."
-                ) from exc
-            preview = response.text[:300].replace("\n", " ")
+                ) from None
+            # 가린 뒤에 자른다 — 먼저 자르면 300자 경계에 걸친 인증값 앞부분이 남는다(민규 교차검증).
+            preview = _redact_secret(response.text.replace("\n", " "), self.oc)[:300]
             raise LawApiError(
                 f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {preview}"
-            ) from exc
+            ) from None
 
         if not isinstance(payload, dict):
             raise LawApiError("국가법령정보센터 JSON 응답 형식이 예상과 다릅니다.")
@@ -264,9 +305,22 @@ class LawApiClient:
         law_name: str,
         *,
         refresh: bool = False,
+        cache_only: bool = False,
     ) -> dict[str, Any]:
-        """법령 목록 조회 → 본문 조회 → 로컬 캐시 저장을 한 번에 수행한다."""
+        """법령 목록 조회 → 본문 조회 → 로컬 캐시 저장을 한 번에 수행한다.
+
+        cache_only=True 면 네트워크를 부르지 않고 캐시만 읽는다(오래됐어도). 캐시가 없으면 LawApiError.
+        회차 분석 도중(STT 검수 관련 조문)에 쓴다 — 국가법령정보센터 요청은 분석 마감(deadline)을
+        보지 않아 법령 2개 × (검색 + 본문) × 15초까지 분석이 늘 수 있다(2026-10-27 민규 리뷰).
+        캐시 갱신은 분석 밖에서 python -m law.refresh_cache 로 한다.
+        """
         cache_path = self._cache_path(law_name)
+
+        if cache_only:
+            try:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise LawApiError(f"법령 캐시를 읽지 못했습니다: {law_name}") from exc
 
         if not refresh and self._is_cache_fresh(cache_path):
             try:
@@ -274,11 +328,22 @@ class LawApiClient:
             except (OSError, json.JSONDecodeError):
                 pass
 
-        search_item = self.find_law(law_name)
-        law_id = str(search_item.get("법령ID", "")).strip() or None
-        mst = str(search_item.get("법령일련번호", "")).strip() or None
+        try:
+            search_item = self.find_law(law_name)
+            law_id = str(search_item.get("법령ID", "")).strip() or None
+            mst = str(search_item.get("법령일련번호", "")).strip() or None
 
-        body = self.fetch_law_body(law_id=law_id, mst=mst)
+            body = self.fetch_law_body(law_id=law_id, mst=mst)
+        except LawApiError:
+            # 새로 받지 못하면(OC 없음 · API 장애) 오래된 캐시라도 쓴다. 법령은 자주 바뀌지 않고,
+            # 데모 서버처럼 OC 없이 캐시만 붙여 둔 곳에서 24시간 뒤 조문이 사라지지 않게 한다(2026-10-27).
+            # refresh=True 로 일부러 새로 받으려 한 경우와 캐시가 없는 경우는 그대로 실패시킨다.
+            if refresh or not cache_path.exists():
+                raise
+            try:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raise
         result = {
             "law_name": law_name,
             "search_item": search_item,

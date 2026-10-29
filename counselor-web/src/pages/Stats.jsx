@@ -4,11 +4,15 @@
 // 서버 연결: 사례 · 회차는 useCaseOverview(사례마다 회차 목록을 모음), 화면에 쓸 값은 src/data/screens/stats.ts(statsValues).
 // 지금 셀 수 있는 것: 사례 수 · 진행/종결 수, 기간 안 사례 등록 수(사례 등록일 기준 — 신고접수일 아님), 기간 안 상담 회차 수(상담일 기준).
 // 신고 · 학대 판단 · 재신고 · 서비스 지표와 유형 · 연령 · 행위자 · 서비스 분포, AI 요약은 준비 중.
+// 10/21 디자인(counselor-design/screens/Stats.dc.html): 기간 프리셋 순서(전체 · 이번 달 · 최근 3개월 · 직접 선택),
+// 시작 · 종료일을 글자 입력 + 연 → 월 → 일 팝업으로(components/StatsDateField.jsx). 치는 중인 글자는 셈에 넣지 않고
+// 올바른 날짜가 되었을 때만 기간에 넣는다(stats.ts). 기존 '달력'(기간을 두 번 눌러 고르기)도 디자인대로 남겼다.
 import { Fragment } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import StatsDateField from '../components/StatsDateField';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseOverview } from '../data/useCaseOverview';
@@ -91,29 +95,9 @@ export default function Stats(props) {
                   </Fragment>
                 ))}
               </div>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="note">시작</span>
-                <input
-                  className="inp"
-                  type="date"
-                  max={v.today}
-                  value={v.from}
-                  onChange={v.setFrom}
-                  aria-label="시작일"
-                />
-              </label>
+              <StatsDateField label="시작" name="시작일" field={v.fromField} />
               <span className="note">~</span>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="note">종료</span>
-                <input
-                  className="inp"
-                  type="date"
-                  max={v.today}
-                  value={v.to}
-                  onChange={v.setTo}
-                  aria-label="종료일"
-                />
-              </label>
+              <StatsDateField label="종료" name="종료일" field={v.toField} align="end" />
               <button type="button" className={`btn btn-sm ${v.calCls}`} onClick={v.toggleCal}>
                 달력
               </button>
@@ -121,6 +105,11 @@ export default function Stats(props) {
                 {v.rangeLabel}
               </span>
             </div>
+            {v.dateHint ? (
+              <p className="note" role="status" style={{ margin: '0' }}>
+                {v.dateHint}
+              </p>
+            ) : null}
             {v.showCal ? (
               <>
                 <div

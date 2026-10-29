@@ -416,6 +416,25 @@ a:hover {
   background: #f2efe8;
   color: #66625a;
 }
+/* 아직 열리지 않은 단계(앞 단계가 끝나지 않음). 링크가 아니라 눌러도 옮기지 않는다 — flow.ts processNav. */
+.stp.lock {
+  color: #9a968c;
+  background: #f7f5f0;
+  cursor: not-allowed;
+}
+.stp.lock:hover {
+  border-color: #e7e4dc;
+  color: #9a968c;
+}
+.stp.lock .sn {
+  background: #eeebe4;
+  color: #b3ada2;
+}
+/* 회차 상세의 단계 카드가 잠겼을 때(sessionDetail.ts). */
+.big.lock {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 .ainote {
   font-size: 12px;
   color: #7a776f;
@@ -980,6 +999,18 @@ h1 {
 .thm-root.dark .stp.done .sn {
   background: #393731 !important;
   color: #bdb7aa !important;
+}
+.thm-root.dark .stp.lock {
+  color: #8f8a7f !important;
+  background: #26251f !important;
+}
+.thm-root.dark .stp.lock:hover {
+  border-color: #4e4b44 !important;
+  color: #8f8a7f !important;
+}
+.thm-root.dark .stp.lock .sn {
+  background: #33312c !important;
+  color: #7f7a70 !important;
 }
 .thm-root.dark .ainote {
   color: #a8a296 !important;
@@ -1825,4 +1856,212 @@ html.thm-dark body {
 /* 디자인 화면은 캔버스 높이(min-height 960px 등)로 그려져 있다. 창이 더 길면 아래에 바탕이 드러나지 않게 창 높이까지 채운다. */
 .thm-root {
   min-height: 100vh !important;
+}
+
+/* 공통 틀 (10/21 새 디자인 counselor-design 의 공통 블록을 그대로 옮김): 사이드바 고정 · 메뉴 구분선 → 반응형 1100/900/600 → 각진 모서리.
+   화면 규칙보다 뒤에 와야 덮는다. */
+/* 사이드바 스크롤 고정 · 메뉴 구분선 */
+.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.thm-root.dark:has(> .side){background-color:#24231F !important}
+.nav a:not(.on)+a:not(.on)::before{content:"";position:absolute;left:14px;right:14px;top:-3px;height:1px;background:rgba(43,42,38,.09);pointer-events:none}
+.thm-root.dark .nav a:not(.on)+a:not(.on)::before{background:rgba(236,232,223,.08)}
+@media (max-width:900px){.side{position:relative;height:auto;overflow:visible;align-self:stretch}}
+/* ===== 반응형 · 휴대폰 / 태블릿 ===== */
+img,video,canvas{max-width:100%;height:auto}
+svg{max-width:100%}
+main{min-width:0;overflow-wrap:anywhere}
+.mnav-tg{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.mnav-btn{display:none}
+@media (max-width:1100px){
+.side{flex-basis:13.75rem !important}
+.side+main,.side+div>main{padding:1.5rem 1.5rem 3rem !important}
+}
+@media (max-width:900px){
+.side{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:wrap !important;align-items:center !important;gap:.5rem .75rem !important;padding:.75rem 1rem !important}
+.side>.logo{padding:0 !important;margin-right:auto}
+.mnav-btn{display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem;padding:0 1rem;border-radius:999px;border:1px solid #CFC9BB;background:#FFFFFF;font-size:.875rem;font-weight:600;color:#2B2A26;cursor:pointer}
+.mnav-btn i{display:inline-block;width:1rem;height:2px;border-radius:1px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
+.mnav-tg:focus-visible+.mnav-btn{outline:2px solid #C2A36B;outline-offset:2px}
+.side>.cta,.side>.cta2,.side>.nav,.side>.me{display:none !important;flex:1 1 100%}
+.mnav-tg:checked~.cta,.mnav-tg:checked~.cta2,.mnav-tg:checked~.me{display:flex !important}
+.mnav-tg:checked~.nav{display:flex !important;margin:.25rem 0 0 !important}
+.nav a.on{margin-right:0 !important;border-radius:999px !important;background-color:#FFFFFF !important}
+.nav a.on::before,.nav a.on::after{display:none !important}
+.side+main,.side+div{flex:1 1 100% !important;border-radius:1.5rem 1.5rem 0 0 !important}
+.side+main,.side+div>main{padding:1.25rem 1rem 2.5rem !important}
+.top{padding:.5rem 1rem !important;min-height:auto !important}
+h1{font-size:clamp(1.375rem,5vw,1.75rem) !important}
+.tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap !important}
+.tabs a{white-space:nowrap;flex:none}
+.thm-root.dark .mnav-btn{background:#2C2B27 !important;border-color:#5A564E !important;color:#ECE8DF !important}
+.thm-root.dark .nav a.on{background-color:#2C2B27 !important}
+}
+@media (max-width:600px){
+[style*="minmax(420px"],[style*="minmax(380px"],[style*="minmax(320px"],[style*="minmax(300px"],[style*="minmax(280px"]{grid-template-columns:minmax(0,1fr) !important}
+.g3{grid-template-columns:minmax(0,1fr) !important}
+section[aria-label="폴더"]{max-width:none !important}
+.steps{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem !important}
+.stp{padding:.625rem .75rem !important;gap:.5rem !important;font-size:.8125rem}
+.stp.on::after{display:none !important}
+.ln{grid-template-columns:auto minmax(0,1fr) auto !important;gap:.5rem .75rem !important;padding:.75rem 1rem !important}
+.ln>:nth-child(3){grid-column:1/-1;grid-row:2}
+.ln>:nth-child(4){grid-column:3;grid-row:1}
+.qa-row{grid-template-columns:minmax(0,1fr) !important}
+.hd{padding:.875rem 1rem !important}
+.kpi b,.stat b.n{font-size:1.625rem !important}
+.law{grid-template-columns:auto minmax(0,1fr) auto !important}
+.law .sum{grid-column:1/-1;grid-row:2}
+.hb{grid-template-columns:5.5rem minmax(0,1fr) 5.25rem !important}
+.thm-bar{margin:-.25rem 0 -.5rem !important}
+.thm-abs{top:.625rem !important;right:.75rem !important}
+.thm-abs~section[role="dialog"],.thm-abs~form{margin-top:2.75rem}
+}
+/* ===== 모서리 정리 (덜 둥글게) · 색상/그림자 유지 ===== */
+.btn,.cta,.cta2,.mnav-btn{border-radius:10px !important}
+.btn-sm{border-radius:8px !important}
+.inp,input.inp,select.inp,textarea.inp,.mv{border-radius:10px !important}
+.chip,.sig,.opt,.orig{border-radius:6px !important}
+.chipck,.addq,.pk,.impb{border-radius:8px !important}
+.seg,.tabs,.lseg,.tg{border-radius:12px !important}
+.seg button,.seg a,.tabs a,.tabs button,.lseg button{border-radius:8px !important}
+.stp{border-radius:12px !important}
+.stp.on::after{border-radius:6px !important}
+.toast{border-radius:10px !important}
+.nav a{border-radius:10px !important}
+.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:12px 0 0 12px !important}
+.nav a.on::before,.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{width:12px !important;height:12px !important}
+.nav a.on::before,.side[aria-label="관리자 메뉴"]>a.on::before{top:-12px !important;background:radial-gradient(circle at 0 0,transparent 11.5px,var(--base) 12px) !important}
+.nav a.on::after,.side[aria-label="관리자 메뉴"]>a.on::after{bottom:-12px !important;background:radial-gradient(circle at 0 100%,transparent 11.5px,var(--base) 12px) !important}
+.side+main,.side+div{border-radius:20px 0 0 20px !important}
+.card{border-radius:14px !important}
+.box,.quote,.qcard,.qa,.flag,.fhead,.sum>div,.scard,.rq,.pop,.pick,.kpi,.fmt,.empty,.doc,.big{border-radius:12px !important}
+.mk{border-radius:10px !important}
+[style*="border-radius: 999px"]{border-radius:8px !important}
+[style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
+[style*="border-radius: 16px"]{border-radius:12px !important}
+@media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
+
+/* 관리자 메뉴(Admin.jsx 의 aside)는 자기 목록 구조라 위 블록의 띠 배치에 맞지 않는다. 900px 이하는 예전처럼 세로 목록으로 둔다. */
+@media (max-width:900px){
+.side[aria-label="관리자 메뉴"]{flex:1 1 100% !important;flex-direction:column !important;flex-wrap:nowrap !important;align-items:stretch !important;gap:2px !important;padding:24px 16px !important}
+.side[aria-label="관리자 메뉴"]>a.on{margin-right:0 !important}
+.side[aria-label="관리자 메뉴"]>a.on::before,.side[aria-label="관리자 메뉴"]>a.on::after{display:none !important}
+}
+
+/* 회차 처리 · 종결 단계 표시의 현재 단계 강조(먹색 칸 + '현재 단계' 표) — 10/21 디자인. SttReview · SignalReview · NoteWrite ·
+   FollowupQ · ClosureReview · ClosureDetail 이 같은 규칙이다. */
+.stp.on {
+  background: #2b2a26 !important;
+  border-color: #2b2a26 !important;
+  box-shadow: 0 6px 16px -6px rgba(43, 42, 38, 0.45) !important;
+}
+.stp.on b {
+  color: #eadbb5;
+}
+.stp.on .sn {
+  background: #c2a36b !important;
+  color: #2b2a26 !important;
+}
+.stp.on::after {
+  content: '현재 단계';
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(234, 219, 181, 0.18);
+  color: #eadbb5;
+}
+.thm-root.dark .stp.on {
+  background: #eadbb5 !important;
+  border-color: #eadbb5 !important;
+  box-shadow: none !important;
+}
+.thm-root.dark .stp.on b {
+  color: #2b2a26 !important;
+}
+.thm-root.dark .stp.on .sn {
+  background: #2b2a26 !important;
+  color: #eadbb5 !important;
+}
+.thm-root.dark .stp.on::after {
+  background: rgba(43, 42, 38, 0.12);
+  color: #2b2a26;
+}
+
+/* 화면 위쪽 '분석 중 → 분석 완료' 알림(components/JobToast.jsx) — 10/22 디자인 */
+.job-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 12px;
+  background: #2b2a26;
+  color: #eadbb5;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 10px 28px rgba(43, 42, 38, 0.28);
+  animation: job-in 0.3s ease;
+}
+@keyframes job-in {
+  from {
+    transform: translate(-50%, -180%);
+    opacity: 0;
+  }
+}
+.job-spin {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(234, 219, 181, 0.35);
+  border-top-color: #eadbb5;
+  animation: job-spin 0.8s linear infinite;
+}
+@keyframes job-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.job-file {
+  font-weight: 400;
+  font-size: 12.5px;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.job-ok {
+  font-weight: 700;
+}
+.job-go {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #eadbb5;
+  color: #2b2a26 !important;
+  text-decoration: none;
+  font-weight: 700;
+}
+.thm-root.dark .job-toast {
+  background: #eadbb5;
+  color: #2b2a26;
+}
+.thm-root.dark .job-spin {
+  border-color: rgba(43, 42, 38, 0.25);
+  border-top-color: #2b2a26;
+}
+.thm-root.dark .job-go {
+  background: #2b2a26;
+  color: #eadbb5 !important;
 }

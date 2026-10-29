@@ -1,4 +1,5 @@
-/* NoteWrite 화면에만 있는 규칙(디자인 NoteWrite.dc.html). 공통 규칙은 src/styles/common.css. */
+/* NoteWrite 화면에만 있는 규칙(디자인 NoteWrite.dc.html). 공통 규칙은 src/styles/common.css.
+   고르기 단추(.chipck)는 10/21 디자인(counselor-design/screens/NoteWrite.dc.html)에서 옮겼다. 현재 단계 강조는 common.css. */
 .pg-NoteWrite .fhead {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -147,30 +148,32 @@
   margin-left: 6px;
   font-weight: 400;
 }
-.pg-NoteWrite .ckgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 2px 12px;
-}
-.pg-NoteWrite .ckgrid label {
+/* 10/21 디자인: 칸별 '수정 → 확인'. 펼치면 고르기 단추(.chipck), 접으면 고른 항목만 ✓ 칸으로 */
+.pg-NoteWrite .picks {
   display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  padding: 5px 0;
-  font-size: 14px;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.pg-NoteWrite .chipck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #dad5c9;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
+  color: #2b2a26;
 }
-.pg-NoteWrite .ckgrid input {
-  width: 18px;
-  height: 18px;
-  margin: 1px 0 0;
-  flex: none;
-  accent-color: #2b2a26;
+.pg-NoteWrite .chipck:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
-.pg-NoteWrite .ckgrid input:disabled,
-.pg-NoteWrite .ckgrid input:disabled + span {
-  cursor: default;
-}
+/* 10/21 디자인: 현재 단계 강조(먹색 칸 + '현재 단계' 표). 600px 이하에서 표를 숨기는 규칙과 모서리는 common.css 끝 블록 */
 .pg-NoteWrite .thm-root.dark .fhead {
   border: 1px solid #45423b !important;
 }
@@ -217,6 +220,13 @@
 .pg-NoteWrite .thm-root.dark .cklist legend {
   color: #bdb7aa !important;
 }
-.pg-NoteWrite .thm-root.dark .ckgrid input {
-  accent-color: #d6d0c4 !important;
+.pg-NoteWrite .thm-root.dark .chipck {
+  border: 1px solid #4e4b44 !important;
+  background: #2c2b27 !important;
+  color: #ece8df !important;
+}
+/* 다크에서 고른 단추가 안 고른 단추와 같은 바탕이 되지 않게(사례 상세 초기면접의 .pk.on 과 같은 값) */
+.pg-NoteWrite .thm-root.dark .chipck.on {
+  border: 1px solid #d6d0c4 !important;
+  background: #4a463e !important;
 }

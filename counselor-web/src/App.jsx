@@ -1,6 +1,8 @@
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import Overview from './Overview';
+import JobToast from './components/JobToast';
+import { registerScreens } from './data/screens/links';
 
 // src/pages/*.jsx 를 모두 읽어 '/파일이름' 경로로 등록해요. (예: /CaseDetail)
 const modules = import.meta.glob('./pages/*.jsx', { eager: true });
@@ -8,6 +10,8 @@ const pages = Object.entries(modules).map(([file, mod]) => ({
   name: file.replace('./pages/', '').replace('.jsx', ''),
   Component: mod.default,
 }));
+// 팝업의 돌아갈 곳(back)이 있는 화면만 받게 화면 목록을 알린다(links.ts readBackHref).
+registerScreens(pages.map((page) => page.name));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -30,6 +34,8 @@ export default function App() {
         ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {/* 녹취 올리기 · 녹음 저장 뒤 '분석 중 → 분석 완료' 알림(모든 화면 위, 10/22 디자인) */}
+      <JobToast />
     </HashRouter>
   );
 }

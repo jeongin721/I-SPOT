@@ -41,6 +41,10 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.desired_change_llm import (
+    generate_desired_changes,
+    join_points as join_desired_change_points,
+)
 from ai.modeling.abuse.severity_llm import (
     build_evidence_block_text,
     rate_severity_from_text,
@@ -52,6 +56,7 @@ from ai.modeling.abuse.narrative_summary_llm import (
 from ai.modeling.abuse.session_change import (
     build_session_change_notes,
 )
+from ai.modeling.abuse.case_context import previous_session_label
 from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
@@ -392,6 +397,54 @@ def link_evidence_timestamps(
 # 3. 세션 전체 분석
 # ============================================================
 
+def _attach_legal_references(
+    risk_signal_points: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], bool]:
+    """
+    위험 신호마다 관련 조문(아동복지법 제17조의 해당 호)을 붙인다
+    (STT 검수 화면의 "관련 조문", 2026-10-27 — legal_reference_adapter.py
+    모듈 docstring 참고). LLM을 쓰지 않는 결정적 키워드 매칭이다.
+
+    - 조(條)가 아니라 그 유형을 직접 가리키는 호(項)를 찾은 조문만 남기고
+      첫 하나만 쓴다. rank_law_articles의 두 번째 후보는 "아동학대 예방교육",
+      "신고의무"처럼 발화와 상관없는 절차 조문이 오거나 "아동학대중상해"
+      처럼 죄명을 단정하는 조문이 와서 화면에 보이지 않는다(실제 법령
+      캐시로 확인, 2026-10-27).
+    - 법령 캐시(law_cache)만 읽는다 — 분석 도중 국가법령정보센터를 부르지 않는다.
+      캐시가 없으면 분석을
+      실패시키지 않고 조문 없이 돌려준다. 두 번째 값이 True면 그런 경우다.
+    """
+
+    if not risk_signal_points:
+        return risk_signal_points, False
+
+    try:
+        from ai.modeling.abuse.legal_reference_adapter import (
+            attach_legal_references,
+        )
+
+        # 분석 도중에는 캐시만 읽는다(오래됐어도). 국가법령정보센터 요청은 분석 마감을 보지 않아
+        # 최대 60초가 더해질 수 있다(2026-10-27 민규 리뷰). 갱신은 python -m law.refresh_cache.
+        enriched = attach_legal_references(risk_signal_points, cache_only=True)
+    except Exception:  # noqa: BLE001 — 조문은 보조 정보라 분석을 멈추지 않는다
+        return [
+            {**point, "legal_references": []}
+            for point in risk_signal_points
+        ], True
+
+    return [
+        {
+            **point,
+            "legal_references": [
+                reference
+                for reference in point.get("legal_references") or []
+                if reference.get("item_label")
+            ][:1],
+        }
+        for point in enriched
+    ], False
+
+
 def _check_deadline(
     deadline: Optional[float],
     stage_name: str,
@@ -416,6 +469,7 @@ def analyze_audio_session(
     checklist_model: str = DEFAULT_CHECKLIST_MODEL,
     case_id: str = None,
     deadline: Optional[float] = None,
+    case_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
@@ -438,6 +492,9 @@ def analyze_audio_session(
     OpenAI 호출에는 남은 시간을 실제 timeout으로 넘긴다
     (_call_llm_with_retry 참고) — 마감을 넘긴 뒤에도 호출이 뒤에서
     계속되는 걸 막는다.
+
+    case_context: 사례 정보(2026-10-28, case_context.py). 지금은 '다음 상담 전 확인할
+    사항'(followup_check_llm)의 배경 입력으로만 쓴다 — 마스킹을 거쳐 보낸다. None 이면 예전과 같다.
     """
 
     subtype_model = "gpt-5.6-luna"
@@ -628,8 +685,10 @@ def analyze_audio_session(
     # use_correction_hint=False: build_correction_hint_text()가 과거 회차
     # 원문 인용을 mask_for_outbound 없이 시스템 프롬프트에 붙이므로, 외부
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
-    executor = ThreadPoolExecutor(max_workers=4)
-    # 넷 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
+    # desired_changes(상담 요약 '앞으로 원하는 변화', 2026-10-27)는 보호요인과
+    # 같은 마스킹된 축어록을 받으므로 같이 띄운다 — 분석 시간이 늘지 않게.
+    executor = ThreadPoolExecutor(max_workers=5)
+    # 다섯 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
     # 계속 보내던 문제(2026-10-20 Mingyu 리뷰) — 실패가 확정되면 이
     # 신호를 켜서, 아직 재시도 전인 호출들이 다음 시도를 시작하기 전에
     # 바로 포기하게 한다(second_stage_llm._call_llm_with_retry 참고).
@@ -673,15 +732,25 @@ def analyze_audio_session(
             deadline=deadline,
             stop_event=stop_event,
         )
+        desired_changes_future = executor.submit(
+            generate_desired_changes,
+            client=client,
+            model=note_model,
+            masked_transcript_text=masked_citation_text,
+            segments=segments,
+            deadline=deadline,
+            stop_event=stop_event,
+        )
 
         all_futures = [
             counseling_future,
             checklist_future,
             record_draft_future,
             protective_factors_future,
+            desired_changes_future,
         ]
 
-        # 넷 중 하나라도 실패하면(record_draft/protective_factors는 내부에서
+        # 다섯 중 하나라도 실패하면(record_draft/protective_factors/desired_changes는 내부에서
         # 이미 실패를 삼키므로 사실상 counseling_records/checklist_draft만
         # 해당) 나머지가 아직 안 끝났어도 기다리지 않고 바로 실패 처리한다
         # (2026-10-19 Mingyu 리뷰) — wait(..)가 반환하자마자 shutdown을
@@ -704,6 +773,7 @@ def analyze_audio_session(
         checklist_draft = checklist_future.result()
         record_draft = record_draft_future.result()
         protective_factors = protective_factors_future.result()
+        desired_change_points = desired_changes_future.result()
     finally:
         # cancel_futures는 Python 3.9+에서만 있다(이 저장소는 환경마다
         # 3.8/3.9/3.12가 섞여 있다) — 없으면 그냥 wait=False만 쓴다.
@@ -724,8 +794,19 @@ def analyze_audio_session(
         record_draft,
         citation_entity_map,
     )
+    # 관련 조문은 실명 복원 뒤에 붙인다(조문 본문이 마스킹 표지와 섞이지 않게).
+    (
+        record_draft["risk_signal_points"],
+        legal_references_unavailable,
+    ) = _attach_legal_references(
+        record_draft.get("risk_signal_points", [])
+    )
     protective_factors = restore_pii(
         protective_factors,
+        citation_entity_map,
+    )
+    desired_change_points = restore_pii(
+        desired_change_points,
         citation_entity_map,
     )
 
@@ -867,6 +948,7 @@ def analyze_audio_session(
             segments,
             record_draft.get("child_statement_points", []),
             record_draft.get("risk_signal_points", []),
+            case_context=case_context,
         ),
         known_identifiers=known_identifiers,
     )
@@ -877,7 +959,9 @@ def analyze_audio_session(
         client=client,
         model=note_model,
         masked_combined_text=followup_masked_text,
+        segments=segments,
         deadline=deadline,
+        previous_session_label=previous_session_label(case_context),
     )
 
     followup_check_points = restore_pii(
@@ -902,10 +986,16 @@ def analyze_audio_session(
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
         "protective_factors": protective_factors,
+        # 상담 요약 '앞으로 원하는 변화 · 원하는 서비스/지원' 칸
+        # (desired_change_llm.py, 2026-10-27). {text, segment_ids} 하나.
+        "desired_changes": join_desired_change_points(
+            desired_change_points
+        ),
         "severity_ratings": severity_ratings,
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,
         "followup_check_points": followup_check_points,
+        "legal_references_unavailable": legal_references_unavailable,
         "chunk_results": chunk_results,
     }
 

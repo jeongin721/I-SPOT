@@ -1,0 +1,129 @@
+# law/client.py의 OC(국가법령정보센터 인증값) 가리기 로직을 테스트한다.
+#
+# 2026-10-26 민규 교차검증으로 발견: requests.RequestException을 그대로
+# str()로 찍으면 실패한 요청의 전체 URL이 메시지에 들어가는데, 그 URL에
+# OC=<실제 인증값>이 그대로 박혀 있다. 이 메시지가 law_qa_llm.py의 답변
+# 텍스트로 그대로 나가거나 로그에 남으면 인증값이 유출된다 — 이 테스트가
+# 그 가리기 로직을 고정한다.
+
+import pytest
+import requests
+
+from law.client import LawApiClient, LawApiError, _redact_oc, _redact_secret
+
+
+def test_redact_oc_masks_query_param_value():
+    url = "https://www.law.go.kr/DRF/lawSearch.do?OC=realsecretvalue123&target=law"
+
+    redacted = _redact_oc(url)
+
+    assert "realsecretvalue123" not in redacted
+    assert "OC=***" in redacted
+
+
+def test_redact_oc_handles_oc_as_first_param():
+    url = "https://www.law.go.kr/DRF/lawSearch.do?OC=realsecretvalue123"
+
+    redacted = _redact_oc(url)
+
+    assert "realsecretvalue123" not in redacted
+
+
+def test_redact_oc_is_case_insensitive():
+    # requests 예외 메시지나 서버가 쿼리 문자열을 그대로 돌려줄 때
+    # 대소문자가 달라질 수 있어 둘 다 가린다.
+    url = "https://www.law.go.kr/DRF/lawSearch.do?oc=realsecretvalue123&target=law"
+
+    redacted = _redact_oc(url)
+
+    assert "realsecretvalue123" not in redacted
+
+
+def test_redact_oc_leaves_text_without_oc_param_unchanged():
+    text = "ConnectionError: Max retries exceeded with no OC in it"
+
+    assert _redact_oc(text) == text
+
+
+def test_redact_oc_only_masks_oc_not_other_params():
+    url = "https://www.law.go.kr/DRF/lawSearch.do?target=law&OC=secret&type=JSON"
+
+    redacted = _redact_oc(url)
+
+    assert "secret" not in redacted
+    assert "target=law" in redacted
+    assert "type=JSON" in redacted
+
+
+# ------------------------------------------------------------
+# 2026-10-27 민규 교차검증 R2: 인증값이 새는 두 경로
+#  1) JSON 이 아닌 본문 미리보기에 인증값이 ?OC= 가 아닌 모양으로 들어 있을 때
+#  2) raise … from exc 로 원인 예외(요청 URL · 본문)가 __cause__ 에 이어질 때
+# ------------------------------------------------------------
+
+
+SECRET = "realsecretvalue123"
+
+
+class _FakeResponse:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        raise ValueError("not json")
+
+
+def _client():
+    return LawApiClient(oc=SECRET)
+
+
+def test_redact_secret_masks_value_in_any_shape():
+    text = f'{{"OC":"{SECRET}"}} key={SECRET} /path/{SECRET}/x'
+
+    assert SECRET not in _redact_secret(text, SECRET)
+
+
+def test_redact_secret_with_empty_secret_only_masks_query_param():
+    assert _redact_secret("plain text", "") == "plain text"
+
+
+def test_non_json_preview_does_not_leak_secret_or_chain(monkeypatch):
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: _FakeResponse(f"<html>인증키 {SECRET} 오류</html>")
+    )
+
+    with pytest.raises(LawApiError) as caught:
+        _client()._get_json("https://www.law.go.kr/DRF/lawSearch.do", {"OC": SECRET, "target": "law"})
+
+    assert SECRET not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True
+
+
+def test_secret_on_300_char_boundary_is_not_partly_left(monkeypatch):
+    # 가린 뒤에 자른다 — 먼저 자르면 경계에 걸친 인증값 앞부분이 남는다(2026-10-27 민규 교차검증).
+    body = "x" * (300 - 6) + SECRET + " 뒤"
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _FakeResponse(body))
+
+    with pytest.raises(LawApiError) as caught:
+        _client()._get_json("https://www.law.go.kr/DRF/lawSearch.do", {"OC": SECRET, "target": "law"})
+
+    assert SECRET[:6] not in str(caught.value)
+
+
+def test_request_error_does_not_leak_secret_or_chain(monkeypatch):
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError(f"Max retries exceeded with url: /DRF/lawSearch.do?OC={SECRET}&target=law")
+
+    monkeypatch.setattr(requests, "get", fail)
+
+    with pytest.raises(LawApiError) as caught:
+        _client()._get_json("https://www.law.go.kr/DRF/lawSearch.do", {"OC": SECRET, "target": "law"})
+
+    assert SECRET not in str(caught.value)
+    assert "ConnectionError" in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True

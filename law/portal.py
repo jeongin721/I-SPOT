@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
-from rag.config import LAW_PORTAL_URL
+from .config import LAW_PORTAL_URL
 
 
 def _pad_number(value: Any, width: int) -> str:

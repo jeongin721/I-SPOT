@@ -1,4 +1,4 @@
-// 탭 5 · 문서함 (기관 서식 6종 + 파일)
+// 탭 4 · 문서함 (기관 서식 6종 + 파일)
 // 원본: 다솔 님 디자인 counselor-web-design/CaseDocs.dc.html (front_new 브랜치)
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차 목록은 useCaseDetail, 회차마다 녹음 · 원문 · 상담일지는
@@ -13,6 +13,7 @@ import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseSignals } from '../data/useCaseSignals';
 import { useCaseDocuments } from '../data/useCaseDocuments';
 import { caseDocsValues } from '../data/screens/caseDocs';
 import { needsLogin, signedIn } from '../data/screens/common';
@@ -34,9 +35,10 @@ export default function CaseDocs(props) {
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const enabled = signedIn(session);
   const detail = useCaseDetail(caseId, { enabled });
+  const signals = useCaseSignals(detail, { enabled });
   const docs = useCaseDocuments(caseId, detail.caseInfo ? detail.sessions : null, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, docs, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, docs, caseId });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDocs">
@@ -80,7 +82,7 @@ export default function CaseDocs(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
                 <span className="sub">{v.sub}</span>
-                <span className="chip c-normal">{v.riskChip}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
               <div className="note">{v.meta}</div>
             </div>
@@ -92,7 +94,6 @@ export default function CaseDocs(props) {
             <A to={v.tabs.detail}>내담자 정보</A>
             <A to={v.tabs.history}>상담 이력</A>
             <A to={v.tabs.briefing}>상담 전 브리핑</A>
-            <A to={v.tabs.app}>아이 연계</A>
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>

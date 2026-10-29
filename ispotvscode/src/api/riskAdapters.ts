@@ -1,9 +1,10 @@
 // AI 결과의 위험 관련 항목(risk_utterances · abuse_signals · risk_factors)을 화면 형태로 바꾼다.
 //
 // AI 분석 검토 화면과 사례 관리의 분석 탭이 같은 결과를 같은 모양으로 보여 주도록 한 곳에 둔다.
-// 세 필드의 항목 구조는 아직 팀 합의 전이라(PROPOSAL_risk_fields.md §7) Backend 는 객체를 그대로
-// 넘긴다. 그래서 필드를 하나씩 확인하며 읽고, 합의되면 이 파일만 고친다.
-// types.ts 도 세 필드를 항목 구조를 정하지 않은 객체 배열(RiskItem[])로 적어 두었다(API_CONTRACT.md 8절).
+// 세 필드의 항목 구조는 2026-10-22 에 확정됐다(PROPOSAL_risk_fields.md §7-0 · API_CONTRACT.md 8절 "위험 3필드 항목 구조").
+// 이 파일이 읽는 키(abuse_type 영문 대문자 · reason · segment_ids · detected)는 확정안과 같다. Backend 는 키를 검증하지
+// 않고 객체를 그대로 넘기므로 필드를 하나씩 확인하며 읽는 방식은 그대로 둔다.
+// types.ts 는 세 필드를 아직 객체 배열(RiskItem[])로 적어 두었다.
 //
 // ⚠️ AI 결과는 판정이 아니라 참고정보다. "관련 신호", "추가 확인 필요" 로만 쓴다.
 // ⚠️ 근거 발화 번호가 없는 항목은 보여 주지 않는다(05_RULES.md "근거 없는 위험 신호를 생성하지 않는다").

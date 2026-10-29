@@ -88,10 +88,12 @@ Base:
 /cases
 /cases/{case_id}/sessions
 /sessions/{session_id}/audio
+/sessions/{session_id}/audio/file
 /sessions/{session_id}/transcript
 /sessions/{session_id}/analysis
 /sessions/{session_id}/summary
 /sessions/{session_id}/documents
+/sessions/{session_id}/voice-marks
 ```
 
 성공:
@@ -141,7 +143,13 @@ COUNSELOR | CHILD | GUARDIAN | OTHER | UNKNOWN
   "schema_version": "1.0",
   "summary": {
     "overview": "",
-    "key_points": []
+    "key_points": [],
+    "assessment": {
+      "safety_changes": { "text": "", "segment_ids": [] },
+      "strengths_resources": { "text": "", "segment_ids": [] },
+      "safety_risks": { "text": "", "segment_ids": [] },
+      "desired_changes": { "text": "", "segment_ids": [] }
+    }
   },
   "risk_utterances": [],
   "abuse_signals": [],
@@ -156,6 +164,22 @@ PHYSICAL | EMOTIONAL | SEXUAL | NEGLECT
 ```
 
 근거가 있는 결과는 가능한 한 `segment_id`로 STT와 연결한다.
+
+`summary.assessment`(2026-10-27, 선택)는 상담 요약 사정 관점 4칸이다 — 조사 후 변화된 사항 · 강점과 자원 · 위험요인 ·
+원하는 변화/서비스. 칸마다 `{text, segment_ids}` 이고 없으면 빈 칸이다(자세한 규칙은 `backend/docs/API_CONTRACT.md` 9절).
+
+위험 3필드 항목 구조(2026-10-22 확정. 자세한 규칙은 `PROPOSAL_risk_fields.md` §7-0 · `backend/docs/API_CONTRACT.md` 8절):
+```jsonc
+// risk_utterances[] — 위험 관련 발화
+{ "segment_ids": ["seg_047"], "text": "...", "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해",
+  "evidence_strength": "HIGH", "reason": "...", "evidence_verified": true,
+  "legal_references": [{ "law_name": "아동복지법", "article": "제17조", "item_label": "제3호", "text": "...", "portal_url": "https://www.law.go.kr/..." }] }  // 선택, 2026-10-27
+// abuse_signals[] — 학대 유형별 종합 신호. 네 유형이 모두 온다
+{ "abuse_type": "PHYSICAL", "detected": true, "detection_source": "MODEL", "filtered_reason": null, "segment_ids": ["seg_047"] }
+// risk_factors — 재료가 없어 구조 보류, 빈 배열
+```
+`evidence_strength` 는 `HIGH | MEDIUM | LOW`(근거의 직접성, 확률 아님), `detection_source` 는 `MODEL | FILTERED | null`(`LLM_SUPPLEMENTARY` 는 예약).
+값은 모두 영문 대문자이고 한글 표기는 화면에서만 바꾼다. 모두 AI 참고정보이며 판정이 아니다.
 
 ## 8. Contract 변경 규칙
 
