@@ -307,6 +307,13 @@ python -m rag.indexer             # 가이드북 판례와 함께 색인
 
 `rag/checklist_builder.build_next_session_checklist`가 화면의 **다음 상담 전 확인할 사항**(`check_items`)과 **추가 질문**(`items`)을 만든다. 질문은 질문 은행에서 고르지 않고 LLM이 직접 쓴다. 대신 근거 ID와 검증을 강제한다.
 
+### Backend 연동 (2026-10-29)
+
+`backend/` 가 AI 분석을 저장한 직후 같은 백그라운드 작업에서 `rag.session.analyze_reviewed_transcript` 를 불러 `followup_suggestions` 표에 저장하고,
+상담사 웹 추가 확인 · 질문 화면(`counselor-web` FollowupQ)이 `GET /api/v1/sessions/{id}/followup-suggestions` 로 읽는다(`backend/docs/API_CONTRACT.md` 18절).
+Backend 설정 `FOLLOWUP_PROVIDER`: `mock`(기본, 고정 문구) · `module`(이 패키지) · `off`. 서버에서 켜는 법은 `deploy/README.md` '다음 상담 체크리스트 켜기'.
+Backend 는 이번 회차 확정 전사본 · AI 분석의 학대 유형 · 같은 사례 이전 회차(승인 요약 · 확인 사항 · 확정 전사본) · 회차 ID 를 넘긴다(아이 앱 응답은 아직 없음).
+
 ### 입력 — 사례 기록 (`rag/case_context.build_case_records`)
 
 `POST /api/v1/rag/analyze`에 아래 필드를 함께 보내면 질문 근거로 쓴다. 없으면 이번 회차 아동 발화만 쓴다.

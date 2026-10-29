@@ -20,6 +20,7 @@ import type {
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
+  FollowupSuggestion,
   LawGuideAnswer,
   LoginRequest,
   LoginResponse,
@@ -319,6 +320,22 @@ export const analysis = {
 
   get(sessionId: string): Promise<AnalysisEnvelope> {
     return api.get<AnalysisEnvelope>(`/sessions/${sessionId}/analysis`);
+  },
+};
+
+// =========================================================
+// 다음 상담 체크리스트 (API_CONTRACT 18절)
+// =========================================================
+
+export const followupSuggestions = {
+  /** 가장 최근 행. 아직 만들기 전이면 null. 만드는 중이면 status 가 PROCESSING 이라 polling 한다. */
+  get(sessionId: string): Promise<FollowupSuggestion | null> {
+    return api.get<FollowupSuggestion | null>(`/sessions/${sessionId}/followup-suggestions`);
+  },
+
+  /** 다시 만들기(202). AI 분석이 끝난 회차에서만 받는다. 이미 만드는 중이면 그 행이 온다. */
+  run(sessionId: string): Promise<FollowupSuggestion> {
+    return api.post<FollowupSuggestion>(`/sessions/${sessionId}/followup-suggestions`);
   },
 };
 

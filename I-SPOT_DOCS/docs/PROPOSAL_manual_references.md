@@ -30,6 +30,7 @@
 ### 1-2. 지금 이 데이터를 저장할 곳이 없습니다
 
 - `backend/`는 RAG(`rag/`)를 부르지 않습니다. 매뉴얼 근거는 최상위 `main.py`(단독 확인용 앱)의 `/api/v1/rag/analyze` 응답(`manual_screen_references`, STT 검수 후 Transcript 입력)에만 있습니다.
+  - (2026-10-29 갱신) Backend 가 AI 분석 뒤 다음 상담 체크리스트를 만들 때 `manual_screen_references` 도 함께 받아 `followup_suggestions.result` 에 저장합니다(API_CONTRACT 18절). 화면별로 읽는 곳은 아직 없습니다.
 - `AIAnalysis.result`(`AnalysisResult`)에는 매뉴얼 근거 필드가 없습니다. 필드를 더하면 AI Output Contract 변경입니다.
 
 ### 1-3. 화면마다 검색에 넣을 문장이 다릅니다

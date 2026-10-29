@@ -129,3 +129,38 @@
   background: #453a22 !important;
   color: #e3c77e !important;
 }
+/* 다음 상담 체크리스트 근거(2026-10-29). 공식 근거 칩: 법령 · 판례는 원문 링크, 매뉴얼 · 체크리스트는 발췌를 펼친다. */
+.pg-FollowupQ .evi-line a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pg-FollowupQ .src {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: #f2efe8;
+  color: #66625a;
+  font-size: 12px;
+  text-decoration: none;
+}
+.pg-FollowupQ details.src summary {
+  cursor: pointer;
+}
+.pg-FollowupQ details.src[open] {
+  flex-basis: 100%;
+}
+.pg-FollowupQ details.src p {
+  margin: 6px 0 2px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #2b2a26;
+}
+.pg-FollowupQ .thm-root.dark .src {
+  background: #393731 !important;
+  color: #bdb7aa !important;
+}
+.pg-FollowupQ .thm-root.dark details.src p {
+  color: #ece8df !important;
+}
+

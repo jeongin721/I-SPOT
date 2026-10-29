@@ -728,6 +728,80 @@ export interface AnalysisEnvelope {
 }
 
 // =========================================================
+// 다음 상담 체크리스트 (API_CONTRACT 18절, rag/README.md 8-3)
+// =========================================================
+
+/**
+ * 근거 하나(화면의 '근거 · …' 칩). type 이 case 면 사례 기록(회차 발화 · 이전 회차 요약 · 아이 앱 응답),
+ * 그 밖(manual · checklist · law · precedent · guideline · form)은 공식 근거다.
+ * 회차 발화는 session_id + segment_id 로 STT 검수의 그 발화로, 이전 회차 기록은 session_id 로 회차 상세로 간다.
+ * 법령 · 판례는 url(국가법령정보센터), 매뉴얼 · 체크리스트는 원본을 올리지 않아 excerpt 를 그 자리에서 보인다.
+ */
+export interface FollowupBasis {
+  ref?: string;
+  type: string;
+  /** case 일 때: transcript · summary · safety_plan · check_item · app_response */
+  source?: string;
+  label: string;
+  session_no?: number | null;
+  session_id?: string | null;
+  segment_id?: string | null;
+  start_ms?: number | null;
+  response_id?: string | null;
+  page?: number | null;
+  url?: string;
+  /** 근거 원문 발췌. 화자 미확정 발화는 내용을 싣지 않아 null 이다. */
+  excerpt?: string | null;
+}
+
+/** 다음 상담 전 확인할 사항. kind 는 info_gap · plan_followup · change · inconsistency · checklist_gap · uncertain_speaker. */
+export interface FollowupCheckItem {
+  id: string;
+  item: string;
+  kind: string;
+  priority: "high" | "medium";
+  reason?: string;
+  basis: FollowupBasis[];
+}
+
+/** 추가 질문 초안. AI 가 쓰고 규칙 · LLM 검토를 통과한 것이다. 상담사가 확인 · 승인한다. */
+export interface FollowupQuestion {
+  question: string;
+  audience: "counselor" | "child_app";
+  question_type: "open" | "clarify";
+  priority: "high" | "medium";
+  rationale: string;
+  check_item_id: string | null;
+  basis: FollowupBasis[];
+  /** passed(LLM 검토 통과) · not_reviewed(검토 호출 실패, 규칙만 통과) · fallback(대체 질문) */
+  review_status: string;
+}
+
+export interface FollowupSuggestionResult {
+  abuse_type?: string | null;
+  /** mock 결과 · 학대 유형 없음 · 이전 기록 제외 같은 안내 */
+  notice?: string | null;
+  check_items: FollowupCheckItem[];
+  items: FollowupQuestion[];
+  validation?: Record<string, unknown>;
+  speaker_check_items: FollowupCheckItem[];
+}
+
+export interface FollowupSuggestion {
+  id: string;
+  session_id: string;
+  analysis_id: string | null;
+  transcript_version: number | null;
+  status: AnalysisStatus;
+  schema_version: string;
+  provider: string | null;
+  created_at: string;
+  completed_at: string | null;
+  result: FollowupSuggestionResult | null;
+  error: SessionErrorInfo | null;
+}
+
+// =========================================================
 // 요약 (상담사 검수 대상)
 // =========================================================
 

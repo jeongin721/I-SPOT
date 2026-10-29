@@ -85,6 +85,7 @@ Login · Main · Schedule · ChildLink(목록) · CaseList · CaseRegister · Up
 ## 3. 지금 코드와 어긋나는 점
 
 1. ~~**질문 생성 방식**~~ → 10/28 방향 변경. 질문 은행 없이 **LLM 이 직접 질문을 쓰는 방식**으로 갑니다(화면 원칙 7 수정 필요). 대신 근거와 검증을 강제합니다: 이번 회차 아동 발화 · 이전 회차 기록 · 아이 앱 응답(사례 근거 `case:N`)과 매뉴얼 면담 지침 · 체크리스트 · 법령 · 판례(공식 근거)를 각각 하나 이상 달아야 하고, 규칙(유도 · 판단 용어 · 아동이 말하지 않은 행위자/행위) + LLM 검토를 통과해야 화면에 올라갑니다. 자세한 내용은 `rag/README.md` 8-3. 질문 은행 ⑩ 이 생기면 예시 문항으로 프롬프트에 함께 넣어 표현을 맞출 수 있습니다.
+   10/29: Backend 연동(`followup_suggestions`, API_CONTRACT 18절)과 FollowupQ 화면 표시('AI 초안 · 상담원 확인' 칩)까지 붙였습니다. 원칙 7 수정은 여전히 팀 합의가 필요합니다.
 2. ~~**검수 전 텍스트 사용**~~ → 10/20 반영. RAG 는 `/api/v1/analyze`(검수 전)에서 빠지고, 검수된 Transcript 를 받는 `POST /api/v1/rag/analyze`(`rag/session.py`)로 옮겼습니다.
 3. ~~**비식별**~~ → 10/20 반영. 임베딩 · 판정 LLM · 질문 생성 · 화면별 매뉴얼 검색 모두 `privacy_gateway.mask_for_outbound` 로 가린 문장만 보내고 결과를 복원합니다(`rag/privacy.py`). 검증에 막히면 보내지 않습니다. 사례 RAG(B)를 만들 때도 같은 관문을 거쳐야 합니다.
 4. ~~**보호자 진술**~~ → 10/20 반영. RAG 입력은 `CHILD` 발화만 씁니다(`rag/session.RAG_INPUT_SPEAKERS`). 사례 RAG(B)를 만들 때도 같은 규칙으로 `GUARDIAN` 발화를 질문 생성 입력에서 뺍니다.
