@@ -424,6 +424,12 @@ def to_ai_output_contract(
         else {
             "text": point.get("text", ""),
             "segment_ids": point.get("segment_ids", []),
+            # 근거가 지난 회차 확정 요약뿐인 메모(2026-10-28, #100 §7 답 3). 있을 때만 키를 둔다.
+            **(
+                {"previous_session_label": point["previous_session_label"]}
+                if isinstance(point.get("previous_session_label"), str) and point["previous_session_label"]
+                else {}
+            ),
         }
         for point in result.get("followup_check_points") or []
     ]
@@ -451,6 +457,7 @@ def analyze_audio_session_as_contract(
     client: Any = None,
     case_id: Optional[str] = None,
     deadline: Optional[float] = None,
+    case_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
@@ -463,13 +470,23 @@ def analyze_audio_session_as_contract(
 
     deadline: time.monotonic() 기준 마감 시각. analyze_audio_session으로
     그대로 전달한다(2026-10-16, backend AI_TIMEOUT_SECONDS 대응).
+
+    case_context: 사례 정보(2026-10-28, case_context.py · PROPOSAL_case_context_analysis.md §3).
+    Backend 가 받는 어댑터에만 키워드로 넘긴다. 없으면(None) 넘기지 않아 예전 판 모듈과도 맞는다.
+    지금은 '다음 상담 전 확인할 사항'(followup_check_llm)만 쓴다.
     """
+
+    options: Dict[str, Any] = {}
+
+    if case_context is not None:
+        options["case_context"] = case_context
 
     result = analyze_audio_session(
         stt_result=stt_result,
         client=client,
         case_id=case_id,
         deadline=deadline,
+        **options,
     )
 
     return to_ai_output_contract(result, transcript=stt_result)

@@ -1076,7 +1076,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 | `severity_ratings` | `{ major_type, level, reason, matched_evidence, segment_ids, reviewed }` | 학대 유형별 심각도 **참고값** |
 | `protective_factors` | `{ category, text, segment_ids }` | 보호 요인 |
 | `session_change_notes` | `{ text, segment_ids }` | 이전 회기와 달라진 점 메모 |
-| `followup_check_points` | `{ text, segment_ids }` | 다음에 확인할 점에 대한 **AI 확인 메모** |
+| `followup_check_points` | `{ text, segment_ids, previous_session_label? }` | 다음에 확인할 점에 대한 **AI 확인 메모**. `previous_session_label`(선택, 2026-10-28)은 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차")이고 이때 `segment_ids` 는 `[]` — 값이 있을 때만 키가 실린다. 화면은 "근거 · 7회차 확정 요약" |
 
 ```json
 "severity_ratings": [

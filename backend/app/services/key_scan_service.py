@@ -58,7 +58,13 @@ def _clean(raw: Any, known_ids: Iterable[str]) -> Optional[Dict[str, Any]]:
         segment_id = item.get("segment_id")
         abuse_types = item.get("abuse_types")
 
-        if not isinstance(segment_id, str) or not isinstance(abuse_types, list):
+        # 유형 목록 안도 문자열만이다. list · dict 같은 값은 모양 오류다(dict.fromkeys 의 TypeError 로 STT 까지
+        # 실패하지 않게 — 민규 #114).
+        if (
+            not isinstance(segment_id, str)
+            or not isinstance(abuse_types, list)
+            or not all(isinstance(value, str) for value in abuse_types)
+        ):
             return None
 
         if segment_id not in order or segment_id in picked:
@@ -104,7 +110,12 @@ def scan(stt_contract: Dict[str, Any]) -> Dict[str, Any]:
         logger.warning("1차 핵심 발화 스캔 중 오류. type=%s", type(error).__name__)
         return _result(STATUS_FAILED)
 
-    cleaned = _clean(raw, known_ids)
+    # 다듬기에서 뜻밖의 예외가 나도 STT 는 성공으로 두고 FAILED 로 떨어뜨린다.
+    try:
+        cleaned = _clean(raw, known_ids)
+    except Exception as error:
+        logger.warning("1차 핵심 발화 스캔 결과를 다듬지 못했습니다. type=%s", type(error).__name__)
+        return _result(STATUS_FAILED)
 
     if cleaned is None:
         logger.warning("1차 핵심 발화 스캔 결과가 기대한 모양이 아닙니다. type=%s", type(raw).__name__)
