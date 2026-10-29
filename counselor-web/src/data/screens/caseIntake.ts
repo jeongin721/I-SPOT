@@ -33,12 +33,20 @@ import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 
-/** 가족유형 단추(준비 중이라 고를 수 없다). 이름은 새 사례 등록과 같은 서식 항목이다. */
+/** 가족유형 단추(준비 중이라 고를 수 없다). 10/29 디자인의 서식 항목(21개). */
 const FAM = [
   "일반가정",
-  "부자가정",
-  "모자가정",
-  "미혼부 · 모 가정",
+  "부자가정(사별)",
+  "부자가정(이혼)",
+  "부자가정(가출)",
+  "부자가정(별거)",
+  "모자가정(사별)",
+  "모자가정(이혼)",
+  "모자가정(가출)",
+  "모자가정(별거)",
+  "미혼부가정",
+  "미혼모가정",
+  "미혼부모가정",
   "친부+계모",
   "친모+계부",
   "친인척보호",
@@ -49,6 +57,18 @@ const FAM = [
   "시설보호",
   "기타",
 ];
+
+/** 건강정도 표(10/29 디자인 hs-*)의 고르기 칸. 준비 중이라 고를 수 없다. */
+const HEALTH = {
+  dis: ["무", "유"],
+  dsb: ["무", "유"],
+  dsbLv: ["심한", "심하지 않은"],
+  hosp: ["무", "유"],
+  hospT: ["입원", "통원"],
+  psy: ["무", "유"],
+  med: ["무", "유"],
+  cns: ["무", "유"],
+};
 
 /** 성별 고르기. 서버에 다른 글자가 적혀 있으면 그 값도 고를 수 있게 붙인다(지어내지 않고 그대로 보인다). */
 const GENDERS = ["여", "남"];
@@ -266,6 +286,7 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
     traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
     fams: FAM.map(picker),
+    hs: Object.fromEntries(Object.entries(HEALTH).map(([key, labels]) => [key, labels.map(picker)])),
     famRows: [0, 1],
     formError: problem
       ? notice(problem, { alert: true })
