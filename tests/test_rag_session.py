@@ -1,9 +1,10 @@
 # 검수된 Transcript 에서 RAG 입력을 만드는 규칙과 가이드북 판례 추출을 테스트한다.
 # 외부 호출(OpenAI · 국가법령정보센터)은 하지 않는다.
 
+import pytest
 from langchain_core.documents import Document
 
-import rag.session as session
+from rag import session
 from rag.precedents import extract_precedent_cases
 from rag.privacy import RagPrivacyBlocked
 
@@ -57,6 +58,33 @@ def test_privacy_block_is_reported_without_content(monkeypatch):
         assert result[key]["privacy_blocked"] is True
         assert result[key]["reasons"] == ["text: NER 개체 잔존(PS)"]
         assert "아빠" not in result[key]["error"]
+    assert result["privacy_blocked"] is True
+    assert result["privacy_reasons"] == ["text: NER 개체 잔존(PS)"]  # 같은 사유는 한 번만
+
+
+def test_privacy_block_without_abuse_type_is_not_a_normal_completion(monkeypatch):
+    # 학대 유형이 없어 근거자료 분석은 돌지 않고(rag_analysis None), 매뉴얼 근거만 비식별에 막힌 경우.
+    def blocked(*args, **kwargs):
+        raise RagPrivacyBlocked(["text: 등록된 실명 잔존"])
+
+    monkeypatch.setattr(session, "analyze_consultation_evidence", lambda **k: pytest.fail("유형이 없으면 부르지 않는다"))
+    monkeypatch.setattr(session, "build_screen_references", blocked)
+
+    result = session.analyze_reviewed_transcript(make_transcript(), None)
+
+    assert result["rag_analysis"] is None
+    assert result["privacy_blocked"] is True
+    assert result["privacy_reasons"] == ["text: 등록된 실명 잔존"]
+
+
+def test_no_privacy_block_by_default(monkeypatch):
+    monkeypatch.setattr(session, "analyze_consultation_evidence", lambda **k: {"next_session_checklist": {}})
+    monkeypatch.setattr(session, "build_screen_references", lambda *a, **k: {"references": {}, "errors": {}})
+
+    result = session.analyze_reviewed_transcript(make_transcript(), "physical")
+
+    assert result["privacy_blocked"] is False
+    assert result["privacy_reasons"] == []
 
 
 def test_other_errors_keep_only_exception_type(monkeypatch):
@@ -142,3 +170,21 @@ def test_harvest_skips_cases_without_child_abuse_context():
     detail = {"사건명": "노인복지법위반", "판례내용": "공소사실의 요지 피고인은 노인을 방임행위 하였다."}
 
     assert build_record("2", {}, detail) is None
+
+
+def test_screen_manual_errors_keep_only_exception_type(monkeypatch):
+    from rag import screen_manual
+
+    def broken(query, screen, top_k=3):
+        if screen == "closure":
+            raise ValueError("아빠가 때렸어요 원문이 섞인 문구")
+        return []
+
+    monkeypatch.setattr(screen_manual, "mask_text", lambda text, known=None: (text, {}))
+    monkeypatch.setattr(screen_manual, "restore", lambda value, entity_map: value)
+    monkeypatch.setattr(screen_manual, "_search_masked", broken)
+
+    built = screen_manual.build_screen_references("등이 아파요")
+
+    assert built["errors"] == {"closure": "ValueError"}
+    assert built["references"]["closure"] == []

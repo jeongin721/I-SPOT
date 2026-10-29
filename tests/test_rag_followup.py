@@ -4,8 +4,7 @@
 import pytest
 
 import rag.checklist_builder as builder
-import rag.pipeline as pipeline
-import rag.session as session
+from rag import pipeline, session
 from rag.case_context import build_case_records, format_time, speaker_check_items
 from rag.checklist_builder import (
     CheckItemDraft,
@@ -143,6 +142,19 @@ def child_app(question):
 )
 def test_rule_check_rejects_leading_and_judgmental_questions(question):
     assert rule_check(counselor(question), "아빠가 때렸어요.") is not None
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ({"question": "그때 이야기를 더 해 줄래?", "audience": "counselor", "rationale": "AI 판정 근거 보강"}, False),
+        ({"question": "그때 이야기를 더 해 줄래?", "audience": "counselor", "rationale": "위험 확정 전 확인"}, False),
+        ({"question": "그때 이야기를 더 해 줄래?", "audience": "counselor", "rationale": "정서학대 징후 체크리스트 관련"}, True),
+        ({"question": "그때 이야기를 더 해 줄래?", "audience": "counselor"}, True),
+    ],
+)
+def test_rule_check_rationale(question, expected):
+    assert (rule_check(question, "") is None) is expected
 
 
 def test_rule_check_allows_child_words_but_not_new_actor_or_act():
@@ -302,7 +314,6 @@ def test_two_stage_generation_validates_refs_rules_and_review(monkeypatch, no_ve
         CHECKLIST_RESULTS,
         LAW_ARTICLES,
         precedents=PRECEDENTS,
-        fallback_questions=["쓰이면 안 되는 대체 질문"],
     )
 
     # 면담 지침은 업무 매뉴얼 '상담·조사·사정' 구간에서 찾는다.
@@ -334,6 +345,7 @@ def test_two_stage_generation_validates_refs_rules_and_review(monkeypatch, no_ve
     assert validation["rounds"] == 2
     assert validation["rule_rejected"] == 2
     assert validation["review_rejected"] == 2
+    assert validation["check_rule_rejected"] == 0
     second_prompt = [prompt for schema, prompt in fake.prompts if schema is QuestionDrafts][1]
     assert "병원에 갔지?" in second_prompt and "답을 정해 두고" in second_prompt
 
@@ -361,20 +373,120 @@ def test_review_failure_keeps_rule_checked_questions_marked_not_reviewed(monkeyp
     assert result["validation"]["rounds"] == 1  # 다시 만들기가 실패해도 앞 회차 결과는 남긴다
 
 
-def test_generation_failure_falls_back_to_rule_checked_questions(monkeypatch, no_vector_db):
-    fake = FakeLLM({CheckItemDrafts: [CheckItemDrafts()], QuestionDrafts: [RuntimeError("timeout")]})
+def test_generation_failure_returns_no_questions_but_keeps_check_items(monkeypatch, no_vector_db):
+    records = masked_records()
+    pain = ref_of(records, "8회차 01:08")
+    fake = FakeLLM(
+        {
+            CheckItemDrafts: [
+                CheckItemDrafts(items=[CheckItemDraft(item="치료를 받았는지", kind="info_gap", priority="high",
+                                                      reason="치료 여부 미확인", case_refs=[pain])])
+            ],
+            QuestionDrafts: [RuntimeError("timeout")],
+        }
+    )
     monkeypatch.setattr(builder, "_invoke", fake)
 
-    result = builder.build_next_session_checklist(
-        masked_records(),
-        CHECKLIST_RESULTS,
-        [],
-        fallback_questions=["그때 이야기를 더 해 줄래?", "아빠가 때렸지?"],
-    )
+    result = builder.build_next_session_checklist(records, CHECKLIST_RESULTS, [])
 
-    assert [item["question"] for item in result["items"]] == ["그때 이야기를 더 해 줄래?"]
-    assert result["items"][0]["review_status"] == "fallback"
-    assert result["validation"]["fallback"] is True
+    # 근거 없는 대체 질문을 쓰지 않는다(질문은 사례 근거 + 공식 근거가 각각 있어야 한다).
+    assert result["items"] == []
+    assert result["validation"]["error"] == "질문 생성 실패: RuntimeError"
+    assert [item["item"] for item in result["check_items"]] == ["치료를 받았는지"]
+
+
+def test_no_official_basis_skips_questions(monkeypatch):
+    # 면담 지침 검색 0건 · 체크리스트 · 법령 · 판례도 없음.
+    monkeypatch.setattr(builder, "search_evidence", lambda query, **kwargs: [])
+    records = masked_records()
+    pain = ref_of(records, "8회차 01:08")
+    fake = FakeLLM(
+        {
+            CheckItemDrafts: [
+                CheckItemDrafts(items=[CheckItemDraft(item="치료를 받았는지", kind="info_gap", priority="high",
+                                                      reason="", case_refs=[pain])])
+            ],
+            QuestionDrafts: [AssertionError("공식 근거가 없으면 질문 생성을 부르지 않는다")],
+        }
+    )
+    monkeypatch.setattr(builder, "_invoke", fake)
+
+    result = builder.build_next_session_checklist(records, [], [], precedents=[])
+
+    assert result["items"] == []
+    assert result["validation"]["skipped"] == "공식 근거가 없어 질문을 만들지 않았습니다."
+    assert [item["item"] for item in result["check_items"]] == ["치료를 받았는지"]
+    assert [schema for schema, _ in fake.prompts] == [CheckItemDrafts]
+
+
+def test_question_without_official_basis_is_rejected(monkeypatch, no_vector_db):
+    records = masked_records()
+    pain = ref_of(records, "8회차 01:08")
+    fake = FakeLLM(
+        {
+            CheckItemDrafts: [CheckItemDrafts()],
+            QuestionDrafts: [
+                QuestionDrafts(items=[QuestionDraft(question="지금은 어때?", audience="counselor", question_type="open",
+                                                    priority="high", rationale="", case_refs=[pain], knowledge_refs=[])]),
+                QuestionDrafts(),
+            ],
+            QuestionReviews: [],
+        }
+    )
+    monkeypatch.setattr(builder, "_invoke", fake)
+
+    result = builder.build_next_session_checklist(records, [], [])
+
+    assert result["items"] == []
+    assert result["validation"]["rule_rejected"] == 1
+
+
+def test_judgment_phrases_in_screen_fields_are_filtered(monkeypatch, no_vector_db):
+    records = masked_records()
+    pain = ref_of(records, "8회차 01:08")
+    fake = FakeLLM(
+        {
+            CheckItemDrafts: [
+                CheckItemDrafts(
+                    items=[
+                        CheckItemDraft(item="신체학대 확정 여부", kind="info_gap", priority="high", reason="", case_refs=[pain]),
+                        CheckItemDraft(item="치료를 받았는지", kind="info_gap", priority="high",
+                                       reason="학대로 판단되므로 확인 필요", case_refs=[pain]),
+                        CheckItemDraft(item="통증이 계속되는지", kind="info_gap", priority="medium",
+                                       reason="신체학대 징후 체크리스트 항목과 관련", case_refs=[pain]),
+                    ]
+                )
+            ],
+            QuestionDrafts: [
+                QuestionDrafts(
+                    items=[
+                        QuestionDraft(question="지금은 어때?", audience="counselor", question_type="open", priority="high",
+                                      rationale="학대 확정을 위해 필요", case_refs=[pain], knowledge_refs=["manual:1"]),
+                        QuestionDraft(question="그때 이야기를 더 해 줄래?", audience="counselor", question_type="open",
+                                      priority="high", rationale="가해자 특정", case_refs=[pain], knowledge_refs=["manual:1"]),
+                        QuestionDraft(question="아픈 곳은 지금 어때?", audience="counselor", question_type="open",
+                                      priority="high", rationale="7회차 확정 요약의 통증 이후 상태 확인", case_refs=[pain],
+                                      knowledge_refs=["manual:1"]),
+                    ]
+                ),
+                QuestionDrafts(),
+            ],
+            QuestionReviews: [
+                QuestionReviews(reviews=[QuestionReview(question_id=1, leading=False, presupposes=False,
+                                                        age_inappropriate=False, judgmental=False)])
+            ],
+        }
+    )
+    monkeypatch.setattr(builder, "_invoke", fake)
+
+    result = builder.build_next_session_checklist(records, [], [])
+
+    # 유형 이름 · 체크리스트 언급은 남기고, 확정 · 단정 표현이 든 item · reason 은 항목째 뺀다.
+    assert [item["item"] for item in result["check_items"]] == ["통증이 계속되는지"]
+    assert result["validation"]["check_rule_rejected"] == 2
+    # rationale 에 판정 표현이 든 질문은 규칙에서 떨어진다('확정 요약' 은 판정 표현이 아니다).
+    assert [item["question"] for item in result["items"]] == ["아픈 곳은 지금 어때?"]
+    assert result["validation"]["rule_rejected"] == 2
 
 
 def test_no_case_records_skips_llm(monkeypatch):

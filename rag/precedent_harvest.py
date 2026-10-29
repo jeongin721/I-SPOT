@@ -59,7 +59,7 @@ CLASSIFY_LENGTH = 3000
 
 
 def clean_html(text: Any) -> str:
-    text = re.sub(r"<br\s*/?>", " ", str(text or ""), flags=re.I)
+    text = re.sub(r"<br\s*/?>", " ", str(text or ""), flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
 

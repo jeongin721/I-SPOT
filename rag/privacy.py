@@ -30,7 +30,10 @@ def mask_text(
     if not text or not text.strip():
         return text, {}
 
-    from ai.modeling.abuse.privacy_gateway import PrivacyGatewayBlocked, mask_for_outbound
+    from ai.modeling.abuse.privacy_gateway import (
+        PrivacyGatewayBlocked,
+        mask_for_outbound,
+    )
 
     try:
         return mask_for_outbound(text, known_identifiers=known_identifiers)
