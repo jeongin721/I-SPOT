@@ -122,3 +122,10 @@ results/
 /data_prep/evaluation/ground_truth/gt_2876.csv
 /data_prep/evaluation/ground_truth/gt_2876.jsonl
 /data_prep/metadata/original_dataset_2876.csv
+
+# RAG 원문 PDF와 생성된 Vector DB
+rag_data/
+rag_storage/
+
+# 국가법령정보센터 Open API 응답 캐시
+law_cache/

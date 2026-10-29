@@ -380,6 +380,10 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
 
     now = datetime.now(timezone.utc)
     limit_seconds = getattr(settings, rule.timeout_setting) + STALE_GRACE_SECONDS
+
+    # STT 작업은 전사 뒤 같은 작업에서 1차 핵심 발화 스캔을 돌린다(modeling 일 때만, key_scan_service).
+    if session.status == SessionStatus.STT_PROCESSING and settings.AI_PROVIDER == "modeling":
+        limit_seconds += settings.KEY_SCAN_TIMEOUT_SECONDS
     read_started_at = getattr(session, rule.started_field)
     started_at = read_started_at
 

@@ -33,6 +33,8 @@ AI_CONTRACT_KEYS = {
     "protective_factors",
     "session_change_notes",
     "followup_check_points",
+    # 2026-10-28 추가 질문 초안(8절, 18절과 짝).
+    "followup_questions",
 }
 
 

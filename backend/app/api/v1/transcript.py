@@ -15,7 +15,7 @@ from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptUpdateRequest,
 )
-from app.services import transcript_service
+from app.services import transcript_service, voice_marks_service
 from app.services.access import get_session_or_404
 
 router = APIRouter(prefix="/sessions", tags=["transcript"])
@@ -88,8 +88,14 @@ def confirm_transcript(
     session_id: uuid.UUID,
     db: DbSession,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ) -> DataResponse[TranscriptResponse]:
     session = get_session_or_404(db, session_id, current_user)
     transcript = transcript_service.confirm_transcript(db, session, current_user)
+
+    # 확정본의 아동 구간이 STT 직후와 다르면(검수에서 화자 · 시각을 고침) 음성 참고 표시를 한 번 더 돌린다.
+    # 응답을 막지 않도록 백그라운드로 돌리고, 실패해도 확정 상태는 그대로다(API_CONTRACT 16절).
+    if voice_marks_service.needs_reanalysis_after_confirm(db, transcript):
+        background_tasks.add_task(voice_marks_service.analyze_for_transcript, session.id, transcript.id)
 
     return DataResponse(data=transcript_service.to_transcript_response(transcript))

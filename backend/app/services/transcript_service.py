@@ -35,7 +35,7 @@ from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptUpdateRequest,
 )
-from app.services import audit_service, audio_service, session_service
+from app.services import audit_service, audio_service, key_scan_service, session_service, voice_marks_service
 
 logger = get_logger(__name__)
 
@@ -147,6 +147,7 @@ def to_transcript_response(transcript: Transcript) -> TranscriptResponse:
             segment.segment_id for segment in segments if segment.is_edited
         ],
         child_handoff=_build_child_handoff(contract_segments),
+        key_scan=transcript.key_scan,
     )
 
 
@@ -256,6 +257,8 @@ def process_stt(session_id: uuid.UUID) -> None:
             )
             return
 
+        transcript: Optional[Transcript] = None
+
         try:
             audio = audio_service.get_latest_audio(db, session.id)
             audio_path = storage.resolve_stored_path(audio.path)
@@ -276,12 +279,17 @@ def process_stt(session_id: uuid.UUID) -> None:
             if not result.segments:
                 raise STTError(EMPTY_STT_RESULT_MESSAGE)
 
-            _save_stt_result(
+            # '1차 임시 핵심 발화' 스캔(디자인의 '핵심 발화 고르는 중' 단계). 검수 필요로 넘기기 전에 같은 작업에서 돌려
+            # 화면이 한 번에 열리게 한다. 실패해도 예외를 올리지 않고 status=FAILED 로 STT 는 성공한다.
+            key_scan = key_scan_service.scan(result.model_dump(mode="json"))
+
+            transcript = _save_stt_result(
                 db,
                 session=session,
                 result=result,
                 provider=getattr(adapter, "name", "unknown"),
                 model=getattr(adapter, "model", None),
+                key_scan=key_scan,
             )
 
         except OperationTimeout as error:
@@ -298,6 +306,10 @@ def process_stt(session_id: uuid.UUID) -> None:
                 ErrorCode.STT_FAILED,
                 f"STT 처리 중 오류가 발생했습니다: {type(error).__name__}",
             )
+        if transcript is not None:
+            # 구간별 음성 참고 표시(정담원 님 모듈)는 STT 가 끝나 회차가 검수 필요로 바뀐 뒤 같은 작업에서 돌린다.
+            # 꺼져 있으면 바로 돌아오고, 실패해도 회차 상태는 그대로다(voice_marks_service).
+            voice_marks_service.analyze_for_transcript(session.id, transcript.id)
     finally:
         db.close()
 
@@ -309,6 +321,7 @@ def _save_stt_result(
     result: STTResult,
     provider: str,
     model: Optional[str],
+    key_scan: Optional[Dict[str, Any]] = None,
 ) -> Transcript:
     next_version = (
         db.scalar(
@@ -327,6 +340,7 @@ def _save_stt_result(
         is_confirmed=False,
         stt_provider=provider,
         stt_model=model,
+        key_scan=key_scan,
     )
 
     db.add(transcript)
@@ -454,6 +468,8 @@ def update_transcript(
         stt_provider=latest.stt_provider,
         stt_model=latest.stt_model,
         created_by_id=current_user.id,
+        # 지운 발화만 빼고 복사한다(문장이 바뀐 발화를 다시 스캔하지 않음 — 임시 표시라서).
+        key_scan=key_scan_service.copy_for_new_version(latest.key_scan, removed),
     )
 
     db.add(new_transcript)

@@ -263,3 +263,119 @@ def test_upload_to_missing_session_returns_not_found(
 
     assert status_code == 404
     assert body["error"]["code"] == "SESSION_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# 다시 듣기: GET /sessions/{id}/audio/file (파일 본문 · Range)
+# ---------------------------------------------------------------------------
+
+
+def _get_audio_file(client: TestClient, headers: dict, session_id: str, **extra_headers):
+    return client.get(
+        f"/api/v1/sessions/{session_id}/audio/file",
+        headers={**headers, **extra_headers},
+    )
+
+
+def test_get_audio_file_returns_whole_file_for_playback(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    content = make_wav_bytes(duration_ms=500)
+    status_code, _ = upload_audio(
+        client, counselor_headers, session["id"], filename="recording.wav", content=content
+    )
+
+    assert status_code == 201
+
+    response = _get_audio_file(client, counselor_headers, session["id"])
+
+    assert response.status_code == 200
+    assert response.content == content
+    assert response.headers["content-type"] == "audio/wav"
+    assert response.headers["content-length"] == str(len(content))
+    # 화면이 구간 위치로 건너뛸 수 있게 Range 를 받는다.
+    assert response.headers["accept-ranges"] == "bytes"
+    # 상담 음성은 브라우저 캐시에 남기지 않는다.
+    assert response.headers["cache-control"] == "no-store"
+    # 내려받기 창이 아니라 재생용이고, 원래 파일 이름을 알려 준다.
+    assert response.headers["content-disposition"] == 'inline; filename="recording.wav"'
+
+
+def test_get_audio_file_supports_range_requests(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    content = make_wav_bytes(duration_ms=500)
+    upload_audio(client, counselor_headers, session["id"], content=content)
+    size = len(content)
+
+    head = _get_audio_file(client, counselor_headers, session["id"], Range="bytes=0-99")
+
+    assert head.status_code == 206
+    assert head.content == content[:100]
+    assert head.headers["content-range"] == f"bytes 0-99/{size}"
+    assert head.headers["content-length"] == "100"
+
+    tail = _get_audio_file(client, counselor_headers, session["id"], Range="bytes=-50")
+
+    assert tail.status_code == 206
+    assert tail.content == content[-50:]
+    assert tail.headers["content-range"] == f"bytes {size - 50}-{size - 1}/{size}"
+
+    beyond = _get_audio_file(
+        client, counselor_headers, session["id"], Range=f"bytes={size + 10}-"
+    )
+
+    assert beyond.status_code == 416
+    assert beyond.headers["content-range"] == f"bytes */{size}"
+
+
+def test_get_audio_file_before_upload_returns_not_found(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    response = _get_audio_file(client, counselor_headers, session["id"])
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "AUDIO_NOT_FOUND"
+
+
+def test_get_audio_file_missing_on_disk_returns_not_found(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    _, body = upload_audio(client, counselor_headers, session["id"])
+    (_storage_root() / body["data"]["audio"]["path"]).unlink()
+
+    response = _get_audio_file(client, counselor_headers, session["id"])
+
+    assert response.status_code == 404
+    error = response.json()["error"]
+    assert error["code"] == "AUDIO_NOT_FOUND"
+    assert error["message"] == "음성 파일이 저장소에 없습니다. 다시 올려 주세요."
+
+
+def test_get_audio_file_requires_login_and_case_access(
+    client: TestClient, counselor_headers, other_counselor_headers, session: dict
+) -> None:
+    upload_audio(client, counselor_headers, session["id"])
+    url = f"/api/v1/sessions/{session['id']}/audio/file"
+
+    assert client.get(url).status_code == 401
+
+    forbidden = client.get(url, headers=other_counselor_headers)
+
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_get_audio_file_returns_latest_upload(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    first = make_wav_bytes(duration_ms=200)
+    second = make_wav_bytes(duration_ms=300)
+    upload_audio(client, counselor_headers, session["id"], filename="first.wav", content=first)
+    upload_audio(client, counselor_headers, session["id"], filename="second.wav", content=second)
+
+    response = _get_audio_file(client, counselor_headers, session["id"])
+
+    assert response.status_code == 200
+    assert response.content == second
+    assert response.headers["content-disposition"] == 'inline; filename="second.wav"'

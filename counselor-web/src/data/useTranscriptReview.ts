@@ -54,6 +54,8 @@ export interface TranscriptInfo {
   /** "STT" 면 변환 결과 그대로, "COUNSELOR_EDIT" 면 상담사가 고친 버전. */
   source: Transcript["source"];
   sttProvider: string | null;
+  /** '1차 임시 핵심 발화' 로 고른 발화 ID(원문 순서). 스캔 성공(DONE)일 때만 차고, 그 밖에는 빈 배열. */
+  keySegmentIds: string[];
 }
 
 export interface TranscriptReviewOptions {
@@ -427,6 +429,10 @@ export function useTranscriptReview(
           confirmedAt: toDateTime(saved.confirmed_at),
           source: saved.source,
           sttProvider: saved.stt_provider,
+          keySegmentIds:
+            saved.key_scan?.status === "DONE" && Array.isArray(saved.key_scan.segments)
+              ? saved.key_scan.segments.map((item) => item.segment_id)
+              : [],
         }
       : null,
     rows,

@@ -5,11 +5,12 @@
 // 부르고, 화면에 쓸 값은 src/data/screens/sttReview.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 변환 중이면 단계 이름(진행률 % 는 Backend 에 없음), 끝나면 발화 줄. 고친 발화만 저장하고 확정한 뒤 AI 분석을 요청하고
 // 유형별 위험도로 간다(10/27 디자인, 분석 요청은 useSessionAnalysis).
-// 10/21 디자인(counselor-design/screens/SttReview.dc.html): 제목 옆 '←'(내담자 정보), 시간 단추(다시 듣기 — 준비 중),
+// 10/21 디자인(counselor-design/screens/SttReview.dc.html): 제목 옆 '←'(내담자 정보), 시간 단추(그 발화부터 다시 듣기 — 10/28 동작),
 // 화자 고르기 목록, 주소 ?seg=<발화 ID> 가 가리키는 줄 표시 · 스크롤(useSttFocus), 범례,
 // 현재 단계 강조. 10/27 디자인: 단계 이름 '유형별 위험도', 다음 단추 '원문 확정 · 유형별 위험도 →'(확정 + AI 분석 요청 + 이동).
 // 10/22 디자인: 아래 '위험 신호' 구역을 빼고, '전체 STT' 보기는 일정 높이 상자(.ln-box) 안에서 스크롤하고,
-// 하단 고정 재생 바(SttPlayer — 재생 단추는 준비 중, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
+// 하단 고정 재생 바(SttPlayer — 10/28 부터 실제 재생, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
+// 10/28: 녹음 재생(useSessionAudio → Blob URL, useAudioPlayer)과 아동 발화 줄의 음성 참고 표시(useVoiceMarks, 칩 .cues).
 // 저장 · 확정 단추는 디자인의 다음 단추 자리(STT 카드 아래)에 있다. 디자인의 분석 알림(job-toast)은 앱 전체 작업이라 여기 없다.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -21,11 +22,14 @@ import StepNav from '../components/StepNav';
 import SttPlayer from '../components/SttPlayer';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { useAudioPlayer } from '../data/useAudioPlayer';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
+import { useSessionAudio } from '../data/useSessionAudio';
 import { useTranscriptReview } from '../data/useTranscriptReview';
+import { useVoiceMarks } from '../data/useVoiceMarks';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { sessionCaseId } from '../data/screens/sessionDetail';
@@ -148,8 +152,29 @@ export default function SttReview(props) {
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const review = useTranscriptReview(ids.sessionId, { enabled });
   const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  const hasAudio = detail.session?.hasAudio ?? false;
+  const audio = useSessionAudio(ids.sessionId, { enabled: enabled && hasAudio });
+  // 원문이 보이면 녹음 파일을 미리 받아 둔다 — 브라우저는 사용자 조작 직후에만 재생을 허용해, 누른 뒤 받기 시작하면 늦을 수 있다.
+  const player = useAudioPlayer(audio, { prefetch: review.info !== null });
+  const marks = useVoiceMarks(ids.sessionId, {
+    enabled,
+    waiting: review.info !== null,
+    transcriptVersion: review.info?.version ?? null,
+  });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, review, analysis, go, focusSegment });
+  const v = useDC(Logic, {
+    ...props,
+    session,
+    ids,
+    detail,
+    caseDetail,
+    review,
+    analysis,
+    player,
+    marks,
+    go,
+    focusSegment,
+  });
   // 주소의 seg, 또는 재생 바 표시를 눌러 고른 줄(v.focusId)로 스크롤한다. 누를 때마다 v.focusRequest 가 바뀐다.
   const focusRef = useSttFocus(ids.sessionId, v.focusId, v.focusRequest);
   // 주소의 seg · 회차가 바뀌면(뒤로 가기 포함) 재생 바 표시로 옮겨 간 줄을 잊는다.
@@ -320,6 +345,17 @@ export default function SttReview(props) {
                                       원문보기 ↗
                                     </a>
                                   ) : null}
+                                </span>
+                              ))}
+                            </span>
+                          ) : null}
+                          {l.cues.length > 0 ? (
+                            <span className="cues" aria-label="음성 참고 표시">
+                              {l.cues.map((c) => (
+                                <span key={c.key} className={c.cls} title={c.title || undefined}>
+                                  <b>{c.name}</b>
+                                  {c.num ? <span className="num">{c.num}</span> : null}
+                                  {c.cmp ? <span className="cmp">{c.cmp}</span> : null}
                                 </span>
                               ))}
                             </span>

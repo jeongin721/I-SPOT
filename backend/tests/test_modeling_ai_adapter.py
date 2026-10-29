@@ -642,6 +642,61 @@ def test_key_scan_failure_is_raised_for_backend_to_mark_failed(modeling, monkeyp
         scan(KEY_SCAN_STT)
 
 
+def _capture_pipeline_kwargs(monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
+    """가짜 analyze_audio_session 이 받은 키워드를 모은다."""
+
+    seen: List[Dict[str, Any]] = []
+
+    def analyze_audio_session(stt_result, **kwargs):
+        seen.append(kwargs)
+        return _native_result()
+
+    monkeypatch.setattr(sys.modules[HEAVY_MODULE], "analyze_audio_session", analyze_audio_session)
+
+    return seen
+
+
+def test_case_context_is_passed_to_pipeline_when_given(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """사례 정보(case_context, 2026-10-28)는 주면 그대로 분석 모듈에 넘긴다."""
+
+    seen = _capture_pipeline_kwargs(monkeypatch)
+    context = {"child_age_band": "만 10~13세", "intake_family_situations": ["알콜남용"]}
+
+    importlib.import_module(CONTRACT_ADAPTER).analyze_audio_session_as_contract(
+        stt_result=TRANSCRIPT, case_context=context
+    )
+
+    assert seen[-1]["case_context"] == context
+
+
+def test_case_context_is_not_passed_when_absent(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """주지 않으면 키 자체를 넘기지 않는다 — 예전 판 모듈(case_context 를 모르는 함수)과도 맞는다."""
+
+    seen = _capture_pipeline_kwargs(monkeypatch)
+
+    importlib.import_module(CONTRACT_ADAPTER).analyze_audio_session_as_contract(stt_result=TRANSCRIPT)
+
+    assert "case_context" not in seen[-1]
+
+
+def test_previous_session_label_is_kept_only_when_present(modeling) -> None:
+    """근거가 지난 회차 확정 요약뿐인 메모(#100 §7 답 3)는 previous_session_label 을 싣고, 없으면 키가 없다."""
+
+    result = _native_result()
+    result["followup_check_points"] = [
+        {"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "1회차"},
+        {"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_002"]},
+    ]
+    modeling["result"] = result
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["followup_check_points"] == [
+        {"text": "안전 계획(조모 연락) 유지 여부 확인 필요", "segment_ids": [], "previous_session_label": "1회차"},
+        {"text": "보호자 음주 빈도 확인 필요", "segment_ids": ["seg_002"]},
+    ]
+
+
 def test_module_only_fields_do_not_leak(modeling) -> None:
     """Contract 의 10개 키만 남고, 모듈만 쓰는 값(전체 원문 · 일지 본문 · 체크리스트)은 결과에 새지 않는다."""
 
@@ -658,6 +713,7 @@ def test_module_only_fields_do_not_leak(modeling) -> None:
         "protective_factors",
         "session_change_notes",
         "followup_check_points",
+        "followup_questions",
     }
 
     dumped = json.dumps(stored, ensure_ascii=False)

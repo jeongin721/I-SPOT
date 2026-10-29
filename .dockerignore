@@ -6,6 +6,9 @@
 !agent/
 !stt/
 !law/
+# 법령 · 매뉴얼 AI 질문 모듈이 읽는 설정 · 목차(manual/config · manifest)만. 매뉴얼 사진 폴더(사례관리_업무/)는 기관 대외비라
+# 이미지에 넣지 않는다(.gitignore 에도 없고 `*` 로 빠진다).
+!manual/
 !speaker_role_runtime.py
 
 # 넣은 폴더 안에서도 뺀다 — 비밀값 · 로컬 환경 · 로컬 DB · 음성(전에 backend/.dockerignore 에 있던 것)

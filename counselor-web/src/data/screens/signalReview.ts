@@ -2,11 +2,18 @@
 // 예전 '위험 신호 검토' 와 '유형별 위험도'(RiskProfile) 두 화면이 디자인에서 이 화면 하나가 됐다.
 //
 // 디자인 칸 → 서버 값:
-//  - 위쪽 카드 'AI 초안': 회차 전체 AI 위험도 · 안전 플래그 수 · 회차 비교는 서버에 없어 준비 중이다. 그 자리에 AI 분석 상태
+//  - 위쪽 카드 'AI 초안': 분석이 끝났으면 유형별 심각도 중 가장 높은 단계와 그 유형을 보인다(2026-10-28, severity_ratings —
+//    1~5 단계를 상 · 중 · 하로 바꾸는 규칙은 정하지 않아 단계 숫자 그대로). 안전 플래그 수 · 회차 비교는 서버에 없어
+//    준비 중이다(회차 비교는 사례 단위 signal-history API 뒤에). 그 자리에 AI 분석 상태
 //    (분석 중 · 실패 · 요청 대기 · 완료)를 보인다 — 디자인에는 분석 요청 단계가 없고, STT 검수의 '유형별 위험도 →' 가
 //    원문 확정과 분석 요청을 같이 한다(sttReview.ts). 여기서는 실패 · 대기일 때 다시 요청할 수 있게만 둔다.
-//  - 위쪽 카드 '상담원 판단': 디자인은 회차 전체 상 · 중 · 하 하나지만 서버(API_CONTRACT 11절)는 유형마다 저장한다.
-//    그래서 상 · 중 · 하 단추는 유형 줄마다 두고, 위쪽에는 저장한 수와 안내만 둔다.
+//  - 위쪽 카드 '상담원 판단': 디자인대로 회차 전체 상 · 중 · 하 **하나**(2026-10-29, 서버 API_CONTRACT 11.1절 회차 전체 판단 —
+//    useOverallRiskAssessment). 유형 줄마다 있던 상담원 판단 단추는 뺐다(유형별 판단 창구는 서버에 남아 있지만 화면은 쓰지 않는다).
+//    저장 뒤에는 '저장 · 시각 · 그때 AI 최고 심각도 n/5' 를 보인다. 디자인의 'AI 제안과 같음/다름' 은 AI 단계 ↔ 상 · 중 · 하
+//    대응 규칙이 팀 결정 전이라 쓰지 않는다.
+//  - 판단 없이는 다음으로 못 간다(2026-10-29 사용자 결정): 분석이 끝나 검수 중인데 판단이 없으면(needsJudgment) 아래
+//    '요약 · 일지 작성 →' 와 단계 표시 3단계는 옮기지 않고 팝업 "위험도를 선택해주세요." 를 띄운다(nextBlocked). 요약 · 일지 작성에
+//    바로 들어온 경우(이어서 하기 · 주소 입력)는 그 화면이 이리로 돌려보내며 ?ask=1 을 붙여 같은 팝업을 연다(askLevelHref).
 //  - 유형 줄: 관련 신호 칩(abuse_signals + risk_utterances, riskRows) · 심각도 1~5(severity_ratings, AI 제안이라 고칠 수
 //    없다 — 디자인의 '눌러서 상담사 수정' 은 저장할 API 가 없어 하지 않음) · 해당 기준(단계 설명) · AI 이유 · 근거 발화
 //    (누르면 STT 검수의 그 발화로) · 기준 보기(단계 설명 전체 + 근거 발화 전체와 세부 유형 · 근거 직접성).
@@ -17,14 +24,19 @@
 //  - 아래 '확정 · 요약 · 일지 작성 →' 의 '확정' 은 서버에 위험 신호 확정 기록이 없어 빼고 '요약 · 일지 작성 →' 으로만 간다.
 // 모두 AI 제안이고 판정이 아니다(05_RULES §1). 채택 · 보류 · 제외 기록은 서버에 없다(팀 결정 전).
 
-import type { AbuseType, RiskLevel, SessionStatus, SeverityRating } from "../../api/types";
+import type { AbuseType, RiskLevel, SeverityRating } from "../../api/types";
 import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVELS, RISK_LEVEL_LABELS } from "../../api/types";
 import type { SignalCard, TypeSignal } from "../riskRows";
-import type { RiskAssessmentsState } from "../useRiskAssessments";
+import {
+  ASSESSABLE_STATUSES,
+  canAssessNow,
+  needsJudgment,
+  type OverallRiskAssessmentState,
+} from "../useOverallRiskAssessment";
 import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
 import { NOT_READY } from "./common";
-import { screenHref } from "./links";
+import { type ScreenIds, screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
 import { segmentHref } from "./sttReview";
@@ -32,11 +44,31 @@ import { segmentHref } from "./sttReview";
 export interface SignalScreenInput extends SessionScreenInput {
   analysis: SessionAnalysisState;
   signals: RiskSignalsState;
-  assessments: RiskAssessmentsState;
+  /** 회차 전체 상담원 판단(상 · 중 · 하 하나). */
+  overall: OverallRiskAssessmentState;
 }
 
-/** 상담원 판단을 저장할 수 있는 회차 상태(API_CONTRACT 11절). */
-export const ASSESSABLE_STATUSES: readonly SessionStatus[] = ["STT_CONFIRMED", "AI_REVIEW_REQUIRED", "AI_FAILED", "APPROVED"];
+/** 팝업 문구(2026-10-29 사용자 요청 그대로). */
+export const ASK_LEVEL_TEXT = "위험도를 선택해주세요.";
+
+/** 유형별 위험도 주소에 붙여 판단 팝업을 연 채 열게 하는 쿼리. 요약 · 일지 작성이 판단 없는 회차를 돌려보낼 때 붙인다. */
+export const ASK_PARAM = "ask";
+
+/** 주소에 ?ask=1 이 있는가(판단 팝업을 연 채 시작). */
+export function readAskLevel(search: URLSearchParams | string): boolean {
+  const params = typeof search === "string" ? new URLSearchParams(search) : search;
+
+  return params.get(ASK_PARAM) === "1";
+}
+
+/** 그 회차 유형별 위험도를 판단 팝업을 연 채 여는 주소. 회차 ID 가 없으면 팝업 쿼리를 붙이지 않는다. */
+export function askLevelHref(ids: Partial<ScreenIds>): string {
+  const href = screenHref("/SignalReview", ids);
+
+  if (!ids.sessionId) return href;
+
+  return `${href}&${ASK_PARAM}=1`;
+}
 
 const LABEL_TO_ABUSE_TYPE: Record<string, AbuseType> = {
   신체학대: "PHYSICAL",
@@ -199,29 +231,18 @@ export interface RiskTypeValues {
   /** 근거 발화가 없을 때 문구(언급 없음 ≠ 학대 없음). */
   noRef: string;
   anchors: { n: number; text: string; bg: string; fg: string; fw: number }[];
-  /** 상담원 판단 상 · 중 · 하 단추(서버는 유형마다 저장). */
-  levels: { key: RiskLevel; label: string; on: boolean; disabled: boolean; bg: string; bd: string; fg: string; pick: () => void }[];
-  assessNote: string;
 }
 
-/**
- * 지금 판단 단추를 켤 수 있는가.
- * 회차 상태가 저장 가능하고, 요청 중이 아니고, **서버 목록을 받은 뒤(loaded · 조회 오류 없음)** 여야 한다.
- * 목록을 못 받은 채 저장하면 서버에 있던 판단 이유를 모른 채 PUT 으로 지운다(Codex #81 R1). 오류를 보이는 것만으로는
- * 부족해서 단추 자체를 끈다.
- */
-export function canAssessNow(
-  status: SessionStatus | null,
-  assessments: Pick<RiskAssessmentsState, "loaded" | "loading" | "loadError" | "submitting">,
-): boolean {
-  return (
-    status !== null &&
-    ASSESSABLE_STATUSES.includes(status) &&
-    assessments.loaded &&
-    !assessments.loading &&
-    assessments.loadError === null &&
-    !assessments.submitting
-  );
+/** 상담원 판단 상 · 중 · 하 단추 하나(위 카드, 회차 전체). */
+export interface LevelButton {
+  key: RiskLevel;
+  label: string;
+  on: boolean;
+  disabled: boolean;
+  bg: string;
+  bd: string;
+  fg: string;
+  pick: () => void;
 }
 
 /** 상 · 중 · 하 단추 색(디자인). */
@@ -232,7 +253,7 @@ const LEVEL_TONES: Record<RiskLevel, { tone: string; bg: string }> = {
 };
 
 export function signalReviewValues(input: SignalScreenInput, open: Partial<Record<AbuseType, boolean>> = {}) {
-  const { analysis, signals, assessments, go } = input;
+  const { analysis, signals, overall, go } = input;
   const header = processHeaderValues(input, 1);
   const ids = header.ids;
   const status = analysis.sessionStatus;
@@ -240,8 +261,9 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
   const sttHref = screenHref("/SttReview", ids);
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
   const completed = analyzed && view !== null && view.status === "COMPLETED";
-  const canAssess = canAssessNow(status, assessments);
-  const assessLoadFailed = assessments.loadError !== null;
+  const canAssess = canAssessNow(status, overall);
+  const assessLoadFailed = overall.loadError !== null;
+  const judged = overall.assessment;
   const severity = severityByType(view?.severityRatings ?? []);
   const signalByType = new Map(signals.types.map((row) => [row.abuseType, row]));
   const cardsByType = new Map<string, SignalCard[]>();
@@ -270,6 +292,18 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiActionLabel = "AI 분석 요청";
   } else if (analyzed) {
     aiText = view?.completedAt ? `AI 분석 완료 · ${view.completedAt}` : "AI 분석이 끝났습니다.";
+
+    // 유형별 심각도(AI 제안) 중 가장 높은 단계. 같은 단계면 유형 순서(신체 · 정서 · 성 · 방임)대로 함께 적는다.
+    let top = 0;
+    const topTypes: string[] = [];
+    for (const type of ABUSE_TYPES) {
+      const level = completed ? severity.get(type)?.level ?? null : null;
+      if (level === null || level < top) continue;
+      if (level > top) topTypes.length = 0;
+      top = level;
+      topTypes.push(ABUSE_TYPE_LABELS[type]);
+    }
+    if (top > 0) aiText = `회차 최고 심각도 ${top}단계 · ${topTypes.join(" · ")} — ${aiText}`;
   } else {
     aiText = "STT 검수에서 원문을 확정하면 AI 분석이 시작됩니다.";
     aiActionLabel = "STT 검수로";
@@ -290,7 +324,6 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     const cards = cardsByType.get(type) ?? [];
     const lines = cards.map((card) => refLine(card, sessionLabel, ids));
     const shown = isOpen ? lines : lines.slice(0, REFS_SHOWN);
-    const row = assessments.rows.find((candidate) => candidate.abuseType === type);
     const [evBg, evFg] = CHIP_TONES[completed ? STATE_TONE[state] : "none"];
 
     let matched: string;
@@ -299,20 +332,6 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     else if (level !== null) matched = `${level}단계 · ${SEVERITY_RUBRIC[type][level - 1]}`;
     else if (suggestion) matched = "근거가 약해 단계를 매기지 않았어요(정보 부족).";
     else matched = state === "signal" || state === "unknown" ? "AI 심각도 제안이 없습니다." : "해당 내용 없음";
-
-    let assessNote: string;
-
-    if (assessLoadFailed) {
-      assessNote = "판단 목록을 불러오지 못해 저장할 수 없습니다. 다시 불러온 뒤 판단해 주세요.";
-    } else if (row?.assessed) {
-      assessNote = `저장 · ${row.assessedAt}${row.aiLevel !== null ? ` · 그때 AI 제안 ${row.aiLevel}/5` : ""}`;
-    } else if (status !== null && ASSESSABLE_STATUSES.includes(status)) {
-      assessNote = "아직 판단하지 않았습니다.";
-    } else if (status === "AI_PROCESSING") {
-      assessNote = "AI 분석이 끝난 뒤 판단을 저장할 수 있습니다.";
-    } else {
-      assessNote = "원문을 확정하면 판단을 저장할 수 있습니다.";
-    }
 
     return {
       key: type,
@@ -343,26 +362,45 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
 
         return { n: index + 1, text, bg: on ? "#F1EADA" : "transparent", fg: on ? "#2B2A26" : "#7A776F", fw: on ? 700 : 400 };
       }),
-      levels: RISK_LEVELS.map((candidate) => {
-        const on = row?.level === candidate;
-        const tone = LEVEL_TONES[candidate];
-
-        return {
-          key: candidate,
-          label: RISK_LEVEL_LABELS[candidate],
-          on,
-          disabled: !canAssess,
-          bg: on ? tone.bg : "#FFFFFF",
-          bd: on ? tone.tone : "#DAD5C9",
-          fg: on ? tone.tone : "#66625A",
-          pick: () => void assessments.save(type, { level: candidate, reason: row?.reason || undefined }),
-        };
-      }),
-      assessNote,
     };
   });
 
-  const assessedCount = assessments.rows.filter((row) => row.assessed).length;
+  // 위쪽 카드 '상담원 판단': 회차 전체 상 · 중 · 하 하나. 이미 고른 단추를 다시 눌러도 보내지 않는다(지우는 API 가 없다).
+  const levels: LevelButton[] = RISK_LEVELS.map((candidate) => {
+    const on = judged?.level === candidate;
+    const tone = LEVEL_TONES[candidate];
+
+    return {
+      key: candidate,
+      label: RISK_LEVEL_LABELS[candidate],
+      on,
+      disabled: !canAssess,
+      bg: on ? tone.bg : "#FFFFFF",
+      bd: on ? tone.tone : "#DAD5C9",
+      fg: on ? tone.tone : "#66625A",
+      pick: () => {
+        if (!on) void overall.save({ level: candidate, reason: judged?.reason || undefined });
+      },
+    };
+  });
+
+  let assessNote: string;
+
+  if (assessLoadFailed) {
+    assessNote = "판단을 불러오지 못해 저장할 수 없습니다. 다시 불러온 뒤 판단해 주세요.";
+  } else if (overall.loading) {
+    assessNote = "불러오는 중…";
+  } else if (judged) {
+    // 고른 단계 이름을 글로도 적는다(색만으로 나타내지 않는다 — 05_RULES).
+    assessNote = `저장 · ${judged.levelLabel} · ${judged.assessedAt}${judged.aiLevel !== null ? ` · 그때 AI 최고 심각도 ${judged.aiLevel}/5` : ""}`;
+  } else if (status !== null && ASSESSABLE_STATUSES.includes(status)) {
+    assessNote = "아직 판단하지 않았습니다.";
+  } else if (status === "AI_PROCESSING") {
+    assessNote = "AI 분석이 끝난 뒤 판단을 저장할 수 있습니다.";
+  } else {
+    assessNote = "원문을 확정하면 판단을 저장할 수 있습니다.";
+  }
+
   const protective = completed
     ? (view?.protectiveFactors ?? [])
         .map((factor, index) => {
@@ -381,15 +419,14 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiActionLabel: analysis.submitting ? "요청 중…" : aiActionLabel,
     aiAction,
     aiWarnings: completed ? (view?.warnings ?? []) : [],
-    aiOverallNote: `회차 전체 AI 위험도 · 안전 플래그 · 지난 회차와 비교는 ${NOT_READY}입니다.`,
-    assessSummary: assessments.loading
-      ? "불러오는 중…"
-      : assessLoadFailed
-        ? "판단 목록을 불러오지 못했습니다"
-        : `유형별 상담원 판단 ${assessedCount}/4 저장됨`,
-    assessHint: "판단은 아래 유형마다 저장되고, 저장할 때의 AI 제안이 함께 기록됩니다.",
-    assessLoadError: assessments.loadError,
-    reloadAssess: assessments.reload,
+    aiOverallNote: `심각도는 아래 유형별 AI 제안 중 가장 높은 값입니다. 안전 플래그 · 지난 회차와 비교는 ${NOT_READY}입니다.`,
+    /** 위 카드 상담원 판단: 상 · 중 · 하 단추(회차 전체 하나), 상태 안내, 저장 중 표시. */
+    levels,
+    assessNote,
+    assessHint: "유형별 심각도(AI 제안)를 보고 이 회차 전체를 상 · 중 · 하 하나로 판단합니다. 저장할 때의 AI 최고 심각도가 함께 기록됩니다.",
+    assessSaving: overall.submitting,
+    assessLoadError: overall.loadError,
+    reloadAssess: overall.reload,
     types,
     rubricNote: "단계 설명은 디자인 초안의 참고 기준이며 팀이 확정한 기준이 아닙니다.",
     trendNote: `회차별 추이는 ${NOT_READY}입니다(서버에 회차 간 비교 값이 없음).`,
@@ -397,11 +434,15 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     factorTitle: completed ? `위험요인 ${NOT_READY} · 보호요인 ${protective.length}` : "위험요인 · 보호요인",
     protective,
     protectiveEmpty: !completed ? "AI 분석이 끝나면 보호요인이 보입니다." : protective.length === 0 ? "AI 가 찾은 보호요인이 없습니다." : "",
-    error: assessments.error ?? analysis.error,
+    error: overall.error ?? analysis.error,
     signalError: completed ? signals.evidenceError : null,
     sttHref,
     nextHref: screenHref("/NoteWrite", ids),
     nextLabel: "요약 · 일지 작성 →",
     canNext: analyzed,
+    /** 분석은 끝났는데 판단이 없어 다음 단추 · 단계 표시 3단계를 팝업으로 막는가. */
+    nextBlocked: needsJudgment(status, overall),
+    askText: ASK_LEVEL_TEXT,
+    askHint: "상담원 판단(상 · 중 · 하)을 고르면 요약 · 일지 작성으로 넘어갈 수 있습니다.",
   };
 }

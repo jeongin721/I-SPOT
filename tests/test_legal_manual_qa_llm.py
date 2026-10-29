@@ -241,7 +241,31 @@ def test_empty_answer_raises_output_error(stub_qa, parsed):
         _ask()
 
 
-def test_success_returns_answer_with_notice_and_page_ids(stub_qa):
+def test_manual_images_are_not_sent_by_default(stub_qa):
+    """매뉴얼 사진은 기관 대외비라 기본(MANUAL_QA_ATTACH_IMAGES=false)에는 LLM 에 첨부하지 않는다(2026-10-28).
+    법령만으로 답하고, LLM 이 매뉴얼을 인용해도 첨부한 자료가 없으니 manual_references 는 비어 있다."""
+
+    assert legal_manual_qa_llm.MANUAL_QA_ATTACH_IMAGES is False
+    seen = {}
+
+    def fake_llm(**kwargs):
+        seen["user_prompt"] = kwargs["user_prompt"]
+        return {
+            "answer": "응급조치는 72시간을 넘을 수 없어요.",
+            "cited_articles": [],
+            "manual_references": ["참고자료3 아동학대 위험수준별 개입 사정 척도"],
+        }
+
+    stub_qa(fake_llm)
+    result = _ask()
+
+    assert isinstance(seen["user_prompt"], str)  # 이미지 배열이 아니라 글만 보냄
+    assert result["manual_references"] == []
+
+
+def test_success_returns_answer_with_notice_and_page_ids(stub_qa, monkeypatch):
+    # 기관 허락을 받아 첨부를 켠 경우.
+    monkeypatch.setattr(legal_manual_qa_llm, "MANUAL_QA_ATTACH_IMAGES", True)
     stub_qa(
         lambda **kwargs: {
             "answer": "위험요인 문항은 …",

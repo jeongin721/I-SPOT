@@ -1,0 +1,38 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 국가법령정보센터 Open API 설정은 law/config.py 하나만 쓴다(빈 값 · 상대경로 처리가 그쪽에 있다).
+# rag/ 에서 쓰는 값만 다시 내보낸다.
+from law.config import LAW_CACHE_DIR, LAW_TARGET_LAWS  # noqa: F401
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load project .env before reading any RAG/law environment variables.
+load_dotenv(BASE_DIR / ".env")
+
+RAG_DATA_DIR = Path(os.getenv("RAG_DATA_DIR", BASE_DIR / "rag_data"))
+VECTOR_DB_DIR = Path(
+    os.getenv(
+        "RAG_VECTOR_DB_DIR",
+        BASE_DIR / "rag_storage" / "chroma",
+    )
+)
+
+EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "text-embedding-3-small")
+ANALYZER_MODEL = os.getenv("RAG_ANALYZER_MODEL", "gpt-5.6-luna")
+COLLECTION_NAME = os.getenv("RAG_COLLECTION_NAME", "ispot_child_abuse")
+
+CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "900"))
+CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "120"))
+TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+
+SOURCE_TYPE_MAP = {
+    "guidelines": "guideline",
+    "manuals": "manual",
+    "checklists": "checklist",
+    "precedents": "precedent",
+    "research": "research",
+    "forms": "form",
+}

@@ -9,16 +9,19 @@
 //  - 확인할 사항(AI 초안): 그 회차의 followup_check_points(AI 확인 메모, 4 · 추가 확인 화면과 같은 값)를 읽기 전용으로.
 //    근거는 '그 회차 · 몇 분 · 누구' 이고 누르면 STT 검수의 그 발화로 간다. 디자인의 체크(브리핑에 넣기)는 저장할 API 가
 //    없어 두지 않는다(가짜 체크 없음).
-//  - 추가 질문(AI 초안): 질문 은행이 서버에 없어 준비 중. '질문 수정' 은 그 회차의 4 · 추가 확인 화면으로 간다.
+//  - 추가 질문: 그 회차에서 상담사가 승인한 질문 목록(GET …/followup-questions, 18절)을 디자인의 줄(.rq)로 보인다.
+//    승인 전 AI 초안은 보이지 않는다. '질문 수정' 은 그 회차의 4 · 추가 확인 화면으로 간다.
 //  - 인쇄 · PDF: 브라우저 인쇄(window.print)로 지금 화면을 그대로 인쇄한다.
 
 import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseSignalsState } from "../useCaseSignals";
+import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import { NOT_PROVIDED } from "../caseRows";
 import { caseHeaderValues } from "./caseDetail";
 import { NOT_READY } from "./common";
 import { toFollowupItems } from "./followupQ";
+import { questionChip } from "./followupQuestions";
 import { screenHref } from "./links";
 
 export interface BriefingScreenInput {
@@ -26,6 +29,8 @@ export interface BriefingScreenInput {
   detail: CaseDetailState;
   caseId: string | null;
   signals: CaseSignalsState;
+  /** 값을 가져온 회차(signals.session)의 승인한 추가 질문. */
+  questions: FollowupQuestionsState;
 }
 
 export function preBriefingValues(input: BriefingScreenInput) {
@@ -41,7 +46,7 @@ export function preBriefingValues(input: BriefingScreenInput) {
     ? toFollowupItems(view.followupCheckPoints ?? [], signals.signals.locate, ids).map((item) => ({
         key: item.key,
         text: item.text,
-        why: `${source?.numberLabel ?? ""} ${item.why}`.trim(),
+        why: item.fromPrevious ? item.why : `${source?.numberLabel ?? ""} ${item.why}`.trim(),
         href: item.href,
       }))
     : [];
@@ -52,6 +57,20 @@ export function preBriefingValues(input: BriefingScreenInput) {
   else if (!completed) checksNote = "확인할 사항을 불러오는 중…";
   else if (checks.length === 0) checksNote = `${source.numberLabel} AI 분석에 확인 메모가 없습니다.`;
   else checksNote = `${source.numberLabel} AI 분석의 확인 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.`;
+
+  const questions = source
+    ? input.questions.questions.map((question, index) => ({
+        key: `${index}-${question.approved_at}`,
+        chip: questionChip(question),
+        text: question.text,
+      }))
+    : [];
+
+  let questionNote = "";
+  if (!source) questionNote = "";
+  else if (input.questions.loadError) questionNote = input.questions.loadError;
+  else if (!input.questions.loaded) questionNote = "추가 질문을 불러오는 중…";
+  else if (questions.length === 0) questionNote = `${source.numberLabel}에 승인한 추가 질문이 없습니다. '질문 수정' 에서 승인해 주세요.`;
 
   const nextNumber = info ? `${info.sessionCount + 1}회차` : "";
 
@@ -66,7 +85,8 @@ export function preBriefingValues(input: BriefingScreenInput) {
     checks,
     checksNote,
     checksError: completed ? signals.signals.evidenceError : null,
-    questionNote: `추가 질문은 ${NOT_READY}입니다(질문 은행이 서버에 없음).`,
+    questions,
+    questionNote,
     questionHref: source ? screenHref("/FollowupQ", ids) : null,
     print: () => window.print(),
   };

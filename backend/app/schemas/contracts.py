@@ -6,7 +6,7 @@
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_serializer, model_validator
 
 from app.core.enums import Speaker
 
@@ -118,10 +118,38 @@ class SessionChangeNote(BaseModel):
 
 
 class FollowupCheckPoint(BaseModel):
-    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다."""
+    """다음 회기에 확인할 점에 대한 AI 메모. 질문 은행의 질문이 아니다.
+
+    previous_session_label(2026-10-28, 선택): 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차").
+    이때 segment_ids 는 빈 배열이다. AI 경계(followup_check_llm)가 사례 정보의 직전 승인 회차 이름만 붙이고,
+    segment_ids 도 이 값도 없는 메모는 만들지 않는다.
+    """
 
     text: str
     segment_ids: List[str] = Field(default_factory=list)
+    previous_session_label: Optional[str] = Field(default=None, max_length=20)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_label(self, handler: Any) -> Dict[str, Any]:
+        # 선택 키라 값이 있을 때만 싣는다 — 예전 메모 · 저장 결과의 모양({text, segment_ids})이 바뀌지 않게.
+        data = handler(self)
+        if data.get("previous_session_label") is None:
+            data.pop("previous_session_label", None)
+        return data
+
+
+class FollowupQuestionDraft(BaseModel):
+    """
+    AI 추가 질문 초안 하나(2026-10-28 선택 필드, API_CONTRACT 18절). 상담사가 승인해야 질문 목록에 들어간다.
+
+    kind 는 OPEN(열린 질문) · BANK(질문 은행, 예약). 그 밖의 값이면 AIAnalysisResult 가 그 질문만 버린다.
+    """
+
+    text: str
+    kind: Literal["OPEN", "BANK"] = "OPEN"
+    segment_ids: List[str] = Field(default_factory=list)
+    reason: str = ""
+    bank_code: Optional[str] = None
 
 
 class AIAnalysisResult(BaseModel):
@@ -144,6 +172,24 @@ class AIAnalysisResult(BaseModel):
     protective_factors: List[ProtectiveFactor] = Field(default_factory=list)
     session_change_notes: List[SessionChangeNote] = Field(default_factory=list)
     followup_check_points: List[FollowupCheckPoint] = Field(default_factory=list)
+    followup_questions: List[FollowupQuestionDraft] = Field(default_factory=list)
+
+    @field_validator("followup_questions", mode="before")
+    @classmethod
+    def _drop_unknown_question_kinds(cls, value: Any) -> Any:
+        # 모르는 종류(kind) · 문장 없는 질문은 결과 전체를 실패시키지 않고 그 질문만 버린다(§7 답 5).
+        # kind 가 없으면 OPEN 으로 본다.
+        if not isinstance(value, list):
+            return value
+
+        return [
+            item
+            for item in value
+            if isinstance(item, dict)
+            and item.get("kind", "OPEN") in ("OPEN", "BANK")
+            and isinstance(item.get("text"), str)
+            and item["text"].strip()
+        ]
 
 
 class SummaryEvidenceItem(BaseModel):

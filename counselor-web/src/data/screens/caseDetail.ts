@@ -9,10 +9,10 @@
 //
 // 위험도 · 학대 유형 · 주요 키워드(2026-10-27): 사례에 따로 저장된 값이 없어, 분석이 끝난 가장 최근 회차(useCaseSignals)의
 // 값으로 채운다 — 새 API 없음.
-//  - 머리 · 카드의 '위험도': 그 회차에서 상담원이 고른 유형별 판단(상 · 중 · 하) 중 가장 높은 것. 'AI 판단' 이 아니다.
-//    판단이 없으면 '—'. '상담사 지정 · 일시' 는 그 판단을 저장한 일시와 회차.
-//  - 학대 유형: 상담원이 판단을 저장한 유형, 그리고 AI 관련 신호만 있고 아직 판단하지 않은 유형은 '(확인 중)' 을 붙인다
-//    (10/27 디자인의 '방임 (확인 중)'). AI 신호를 판정처럼 보이지 않게 한다(05_RULES §1).
+//  - 머리 · 카드의 '위험도': 그 회차에서 상담원이 고른 회차 전체 판단(상 · 중 · 하 하나, 2026-10-29 — useOverallRiskAssessment).
+//    'AI 판단' 이 아니다. 판단이 없으면 '—'. '상담사 지정 · 일시' 는 그 판단을 저장한 일시와 회차.
+//  - 학대 유형: AI 관련 신호가 있는 유형에 '(확인 중)' 을 붙인다(10/27 디자인의 '방임 (확인 중)'). 2026-10-29 부터 상담원 판단은
+//    유형별이 아니라 회차 전체 하나라 유형을 확정하는 기록이 없다. AI 신호를 판정처럼 보이지 않게 한다(05_RULES §1).
 //  - 주요 키워드: 그 회차 위험 관련 발화의 세부 유형 이름(예: #직접 신체 가해). 디자인의 자유 키워드(#체벌)를 만드는
 //    서버 값은 없어 새로 생성하지 않는다.
 //  - '(확인 중)' 유형과 주요 키워드는 AI 결과라 그 줄 옆에 'AI 제안' 칩과 안내를 붙인다(README 원칙 2 — 상담원 판단인
@@ -26,6 +26,7 @@ import { NOT_PROVIDED } from "../caseRows";
 import { ABUSE_TYPES, type AbuseType, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseSignalsState } from "../useCaseSignals";
+import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { AuthSession } from "../useAuthSession";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
@@ -41,6 +42,8 @@ interface CaseScreenInput {
   caseId: string | null;
   /** 분석이 끝난 가장 최근 회차의 값(useCaseSignals). 없으면 위험도는 '—'. */
   signals?: CaseSignalsState;
+  /** 가장 최근 회차(sessions[0])의 승인한 추가 질문(18절). '추가 확인 · 질문' 칸 칩에 쓴다. */
+  questions?: FollowupQuestionsState;
 }
 
 /** 위험도 칩 색(10/27 디자인: 상 c-hi · 중 c-mid · 하 c-lo). 판단 전은 c-normal. */
@@ -61,15 +64,11 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
   }
 
   const { session, risk } = signals;
-  const assessed = new Set(risk.rows.filter((row) => row.assessed).map((row) => row.abuseType));
+  // 상담원 판단은 회차 전체 하나라 유형을 확정하는 기록이 없다. AI 관련 신호가 있는 유형만 '(확인 중)' 으로 보인다(AI 제안).
   const flagged = new Set(
     signals.signals.types.filter((row) => row.state === "signal").map((row) => row.abuseType),
   );
-  const abuseTypes = ABUSE_TYPES.flatMap((type) => {
-    if (assessed.has(type)) return [TYPE_SHORT[type]];
-    if (flagged.has(type)) return [`${TYPE_SHORT[type]} (확인 중)`];
-    return [];
-  });
+  const abuseTypes = ABUSE_TYPES.flatMap((type) => (flagged.has(type) ? [`${TYPE_SHORT[type]} (확인 중)`] : []));
 
   const keywords: string[] = [];
   for (const card of signals.signals.cards) {
@@ -85,7 +84,7 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
   if (risk.loadError) riskNote = risk.loadError;
   else if (signals.analysis.error) riskNote = signals.analysis.error;
 
-  const typesAi = ABUSE_TYPES.some((type) => flagged.has(type) && !assessed.has(type));
+  const typesAi = abuseTypes.length > 0;
   const keywordsAi = keywords.length > 0;
 
   return {
@@ -95,7 +94,7 @@ export function riskCardValues(signals: CaseSignalsState | undefined) {
     riskNote,
     typesAi,
     keywordsAi,
-    aiNote: `'(확인 중)' 유형과 주요 키워드는 ${session.numberLabel} AI 분석 결과입니다. 판정이 아니며, 위험도 · 상담사 지정은 상담원 판단입니다.`,
+    aiNote: `'(확인 중)' 유형과 주요 키워드는 ${session.numberLabel} AI 분석 결과입니다. 판정이 아니며, 위험도(회차 전체 상 · 중 · 하) · 상담사 지정은 상담원 판단입니다.`,
   };
 }
 
@@ -273,8 +272,10 @@ export function caseDetailValues(input: CaseDetailInput) {
   const progress = PROCESS_COLUMNS.map((label, index) => {
     const done = latest !== null && index < column;
     const current = latest !== null && index === column && index < PROCESS_COLUMNS.length - 1;
-    // '추가 확인 · 질문' 칸은 Backend 에 없어 늘 준비 중이다.
+    // '추가 확인 · 질문' 칸: 회차 상태에 '질문 처리 완료' 가 없어 진행 표시는 그대로 두고, 가장 최근 회차에 승인한
+    // 추가 질문이 있으면 그 수를 칩으로 보인다(18절).
     const last = index === PROCESS_COLUMNS.length - 1;
+    const approved = last ? input.questions?.questions.length ?? 0 : 0;
 
     return {
       label,
@@ -284,7 +285,7 @@ export function caseDetailValues(input: CaseDetailInput) {
       done,
       current,
       pending: !done && !current,
-      chip: current && latest ? latest.statusLabel : last ? NOT_READY : "",
+      chip: current && latest ? latest.statusLabel : approved > 0 ? `질문 ${approved}개 승인` : "",
       // 녹취 올림 칸은 새로 올리기(사례만), 나머지는 가장 최근 회차의 단계 화면.
       href: latestIds
         ? index === 0

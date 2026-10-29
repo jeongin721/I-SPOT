@@ -262,9 +262,56 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (payload as DataResponse<T>).data;
 }
 
+/**
+ * 파일 본문을 그대로 받는 GET(음성 재생용 `GET /sessions/{id}/audio/file`, API_CONTRACT 6절).
+ * 인증은 다른 요청과 같이 Authorization 헤더로 보낸다 — `<audio src>` 는 헤더를 못 붙여 주소에 token 을 넣는 대신
+ * 이렇게 받아 Blob URL 로 재생한다(token 이 접속 기록 · 브라우저 기록에 남지 않게). 실패 응답은 JSON 이라 request 와
+ * 같은 방식으로 ApiError 를 만든다(401 처리도 같다).
+ */
+export async function requestBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+
+  try {
+    response = await fetch(buildUrl(path), { method: "GET", headers, signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+
+    throw new ApiError("NETWORK_ERROR", "서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해 주세요.", 0);
+  }
+
+  if (response.ok) return response.blob();
+
+  let failure: Partial<ErrorResponse> = {};
+
+  try {
+    failure = (await response.json()) as Partial<ErrorResponse>;
+  } catch {
+    // 본문이 JSON 이 아니면 아래 기본 문구를 쓴다.
+  }
+
+  if (response.status === 401 && getToken() === token) {
+    notifyUnauthorized(token ? failure.error?.message : undefined);
+  }
+
+  throw new ApiError(
+    failure.error?.code ?? "UNKNOWN_ERROR",
+    failure.error?.message ?? "파일을 받지 못했습니다.",
+    response.status,
+    failure.error?.details,
+  );
+}
+
 export const api = {
   get: <T>(path: string, query?: RequestOptions["query"], signal?: AbortSignal) =>
     request<T>(path, { method: "GET", query, signal }),
+
+  /** 파일 본문(Blob)을 받는 GET. */
+  blob: (path: string, signal?: AbortSignal) => requestBlob(path, signal),
 
   post: <T>(path: string, json?: unknown) => request<T>(path, { method: "POST", json }),
 

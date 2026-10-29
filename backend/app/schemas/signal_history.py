@@ -18,15 +18,15 @@ class SignalHistoryType(BaseModel):
     abuse_type: AbuseType
     # abuse_signals[].detected. 같은 유형 첫 항목. 참/거짓이 아니거나 항목이 없으면 null(근거 없어 서버가 뺀 유형 포함).
     detected: Optional[bool]
-    # severity_ratings[].level 1~5. 11절 ai_level 과 같은 규칙(risk_assessment_service.ai_level_for). 정보 부족 · 없음 → null.
+    # severity_ratings[].level 1~5. 11.2절 ai_level 과 같은 규칙(risk_assessment_service.ai_levels_by_type). 정보 부족 · 없음 → null.
     ai_level: Optional[int]
-    # 상담원 판단(11절). 판단 전이면 둘 다 null.
+    # 유형별 상담원 판단(11.2절). 판단 전이면 둘 다 null. 회차 전체 판단(11.1절)은 회차 줄의 같은 이름 칸에 있다.
     counselor_level: Optional[RiskLevel]
     assessed_at: Optional[datetime]
 
 
 class SignalHistorySession(BaseModel):
-    """회차 한 줄. 분석이 끝나지 않았고 상담원 판단도 없으면 types 는 빈 목록이다."""
+    """회차 한 줄. 분석이 끝나지 않았고 유형별 상담원 판단도 없으면 types 는 빈 목록이다."""
 
     session_id: uuid.UUID
     session_number: int
@@ -34,6 +34,9 @@ class SignalHistorySession(BaseModel):
     status: SessionStatus
     # 그 회차의 가장 최근 분석 상태. 분석을 요청한 적이 없으면 null.
     analysis_status: Optional[AnalysisStatus]
+    # 회차 전체 상담원 판단(11.1절, 2026-10-29). 판단 전이면 둘 다 null. types 를 비우는 규칙과는 무관하다.
+    counselor_level: Optional[RiskLevel]
+    assessed_at: Optional[datetime]
     types: List[SignalHistoryType]
 
 
