@@ -214,6 +214,8 @@ export default function Page(props) {
 
 원본은 다솔 님 디자인 `counselor-web-design/*.dc.html`(Claude Design 캔버스, `front_new` 브랜치)입니다. 화면 JSX 는 그 마크업을, `src/styles/common.css` 는 20개 이상 화면이 똑같이 쓰는 규칙을, `src/pages/<화면>.css` 는 그 화면에만 있는 규칙을 옮긴 것입니다. 10/21 새 디자인(`origin/frontend261021` 의 `counselor-design/`)의 공통 틀(왼쪽 메뉴 · 반응형 · 모서리)은 `Sidebar.jsx` 와 `common.css` 끝 블록으로 옮겼습니다. 10/27 판(같은 브랜치 `c766848`)에서 더해진 법령 · 매뉴얼 화면 · 메뉴와 시작 화면 장식 제거도 옮겼습니다.
 
+10/29 판(프론트팀이 zip 으로 전달, 저장소에는 올리지 않음)에서 옮긴 것: 제목 글꼴(IBM Plex Sans KR), 위쪽 바 알림 종(`components/NotiBell` — 판정 뒤 법정 기한이 서버에 없어 늘 '새 알림이 없습니다.'), 단계 이름(기록 확인 · 학대 신호 확인 · 상담일지 작성 · 다음 상담 준비, 진행 칸 '상담 녹음'), 사례 탭에서 '상담 전 브리핑' 을 빼고 내담자 정보 탭 안으로(`?view=brief`, 인쇄 때 이름 가리기), 상담 이력 '녹음하기' · '+ 새 상담 등록'(`components/NewSessionDialog` — 상담 내용 · 소견을 회차 메모에 저장), 문서함 '녹음하기'(`data/useRecordFlow`), 회차 상세 · 기록 확인의 회차 선택 목록(`components/SessionPick`), 서식 · 초기면접지 · 상담일지 칸 복사(`components/CopyButton`, 이름 가려서 복사), 초기면접지 칸 묶음 · 가족유형 21개 · 건강정도 표(새 칸은 서버에 없어 준비 중), 녹취 올리기 회차 목록(새 회차 번호 · 모든 회차).
+
 | 용도 | 색 |
 |---|---|
 | 본문 바탕 / 왼쪽 레일 | `#F2F2F0` / `#E9E7E1` (본문이 레일에 이어진 모양, 현재 메뉴는 금색 점) |
