@@ -152,13 +152,26 @@ class FollowupQuestionDraft(BaseModel):
     bank_code: Optional[str] = None
 
 
+class TopicTag(BaseModel):
+    """
+    아동 발화 대화 주제 하나(2026-10-29 선택 필드, API_CONTRACT 9절 topic_tags). 상담 이력 주제 비중 ·
+    상담 전 브리핑 '처음 나온 이야기' 의 재료다. topic 은 AI 의 고정 목록(topic_tag_llm.TOPICS) 이름이다.
+    """
+
+    topic: str
+    segment_ids: List[str] = Field(default_factory=list)
+    # 첫 근거 발화 원문 앞부분과 시작 시각(ms). 없으면 빈 글 · null.
+    quote: str = ""
+    start_ms: Optional[int] = None
+
+
 class AIAnalysisResult(BaseModel):
     """
     AI 담당의 Structured JSON Contract.
 
     9월에는 위험 관련 필드가 빈 배열일 수 있다.
     Backend 는 내용을 판단하지 않고 그대로 저장/전달한다.
-    선택 필드 4개(severity_ratings 등)는 없으면 빈 배열이다. 이 필드가 없던
+    선택 필드 4개(severity_ratings 등)는 없으면 빈 배열이다(topic_tags 만 없으면 null). 이 필드가 없던
     때 저장한 결과도 그대로 읽힌다(schema_version 은 "1.0" 그대로).
     """
 
@@ -173,6 +186,25 @@ class AIAnalysisResult(BaseModel):
     session_change_notes: List[SessionChangeNote] = Field(default_factory=list)
     followup_check_points: List[FollowupCheckPoint] = Field(default_factory=list)
     followup_questions: List[FollowupQuestionDraft] = Field(default_factory=list)
+    # null 이면 주제를 분류하지 않았다(이 필드 전의 결과 · 분류 실패 · mock 등). [] 는 분류했지만 해당 주제 없음.
+    topic_tags: Optional[List[TopicTag]] = None
+
+    @field_validator("topic_tags", mode="before")
+    @classmethod
+    def _drop_bad_topic_tags(cls, value: Any) -> Any:
+        # 주제 이름이 없거나 근거 발화가 없는 항목은 결과 전체를 실패시키지 않고 그 항목만 버린다.
+        if not isinstance(value, list):
+            return value
+
+        return [
+            item
+            for item in value
+            if isinstance(item, dict)
+            and isinstance(item.get("topic"), str)
+            and item["topic"].strip()
+            and isinstance(item.get("segment_ids"), list)
+            and item["segment_ids"]
+        ]
 
     @field_validator("followup_questions", mode="before")
     @classmethod

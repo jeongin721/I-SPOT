@@ -216,6 +216,8 @@ export default function Page(props) {
 
 10/29 판(프론트팀이 zip 으로 전달, 저장소에는 올리지 않음)에서 옮긴 것: 제목 글꼴(IBM Plex Sans KR), 위쪽 바 알림 종(`components/NotiBell` — 판정 뒤 법정 기한이 서버에 없어 늘 '새 알림이 없습니다.'), 단계 이름(기록 확인 · 학대 신호 확인 · 상담일지 작성 · 다음 상담 준비, 진행 칸 '상담 녹음'), 사례 탭에서 '상담 전 브리핑' 을 빼고 내담자 정보 탭 안으로(`?view=brief`, 인쇄 때 이름 가리기), 상담 이력 '녹음하기' · '+ 새 상담 등록'(`components/NewSessionDialog` — 상담 내용 · 소견을 회차 메모에 저장), 문서함 '녹음하기'(`data/useRecordFlow`), 회차 상세 · 기록 확인의 회차 선택 목록(`components/SessionPick`), 서식 · 초기면접지 · 상담일지 칸 복사(`components/CopyButton`, 이름 가려서 복사), 초기면접지 칸 묶음 · 가족유형 21개 · 건강정도 표(새 칸은 서버에 없어 준비 중), 녹취 올리기 회차 목록(새 회차 번호 · 모든 회차).
 
+주제 비중 · 처음 나온 이야기(2026-10-29): 회차 AI 분석이 아동 발화를 고정 주제 목록으로 나누고(`ai/modeling/abuse/topic_tag_llm.py`, 결과 `topic_tags`), 신호 이력(`GET /cases/{id}/signal-history`)의 회차 줄 `topics` 로 온다. 상담 이력 '지금까지 상담' 의 주제 비중은 회차들의 주제별 아동 발화 수를 더한 비율, '덜 다룬 부분' 은 비중이 가장 작은 주제와 첫 언급 회차 · 시각이다. 내담자 정보 탭 브리핑의 '처음 나온 이야기' 는 분석이 끝난 가장 최근 회차의 주제 중 앞 회차들에 없던 것과 그 첫 발화다(`signalHistoryRows.ts` 의 `topicShares` · `firstMentions` · `newTopicsIn`). 모두 AI 제안이고, 이 기능 전에 분석한 회차에는 주제가 없어(다시 분석하면 생김) 세지 않는다.
+
 | 용도 | 색 |
 |---|---|
 | 본문 바탕 / 왼쪽 레일 | `#F2F2F0` / `#E9E7E1` (본문이 레일에 이어진 모양, 현재 메뉴는 금색 점) |

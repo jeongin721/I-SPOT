@@ -25,6 +25,18 @@ class SignalHistoryType(BaseModel):
     assessed_at: Optional[datetime]
 
 
+class SignalHistoryTopic(BaseModel):
+    """한 회차의 아동 발화 대화 주제 하나(분석 결과 topic_tags, 2026-10-29). 'AI 제안' 이다."""
+
+    topic: str
+    # 그 주제로 나눈 아동 발화 수(= segment_ids 길이). 주제 비중은 화면이 회차들을 더해 계산한다.
+    count: int
+    segment_ids: List[str]
+    # 첫 근거 발화 앞부분 · 시작 시각(ms). '처음 나온 이야기' · '첫 언급' 에 쓴다.
+    quote: str
+    start_ms: Optional[int]
+
+
 class SignalHistorySession(BaseModel):
     """회차 한 줄. 분석이 끝나지 않았고 유형별 상담원 판단도 없으면 types 는 빈 목록이다."""
 
@@ -38,6 +50,9 @@ class SignalHistorySession(BaseModel):
     counselor_level: Optional[RiskLevel]
     assessed_at: Optional[datetime]
     types: List[SignalHistoryType]
+    # 아동 발화 대화 주제(분석 결과 topic_tags). 분석이 끝나지 않았거나 그 분석에 주제 분류가 없으면(이 필드 전 분석 ·
+    # 분류 실패) null, 분류했지만 해당 주제가 없으면 [].
+    topics: Optional[List[SignalHistoryTopic]] = None
 
 
 class SignalHistoryResponse(BaseModel):

@@ -79,3 +79,87 @@ export function detectedTypeLabels(session: SignalHistorySession): string[] {
     (type) => TYPE_SHORT[type],
   );
 }
+
+// ------------------------------------------------------------
+// 대화 주제(topics, 2026-10-29) — 상담 이력 '주제 비중' · '덜 다룬 부분', 상담 전 브리핑 '처음 나온 이야기'
+// ------------------------------------------------------------
+// 회차마다 AI 가 고정 주제 목록으로 나눈 아동 발화 수(topics[].count)를 더해 비율을 낸다. 주제 분류가 없는 회차(topics null —
+// 이 기능 전 분석 · 분류 실패 · 분석 전)는 세지 않는다. 모두 AI 제안이다.
+
+export interface TopicShare {
+  topic: string;
+  count: number;
+  /** 0~100 정수(반올림). */
+  pct: number;
+}
+
+export interface TopicMention {
+  topic: string;
+  sessionId: string;
+  sessionNumber: number;
+  quote: string;
+  startMs: number | null;
+}
+
+/** 주제 분류가 있는 회차(오름차순). */
+export function taggedSessions(sessions: SignalHistorySession[]): SignalHistorySession[] {
+  return [...sessions]
+    .filter((session) => Array.isArray(session.topics))
+    .sort((a, b) => a.session_number - b.session_number);
+}
+
+/** 회차들을 더한 주제 비중(큰 것부터). 발화가 하나도 없으면 []. */
+export function topicShares(sessions: SignalHistorySession[]): TopicShare[] {
+  const counts = new Map<string, number>();
+
+  for (const session of taggedSessions(sessions)) {
+    for (const item of session.topics ?? []) counts.set(item.topic, (counts.get(item.topic) ?? 0) + item.count);
+  }
+
+  const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+  if (total === 0) return [];
+
+  return [...counts.entries()]
+    .map(([topic, count]) => ({ topic, count, pct: Math.round((count / total) * 100) }))
+    .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+}
+
+/** 주제마다 처음 나온 회차 · 그 발화. */
+export function firstMentions(sessions: SignalHistorySession[]): Map<string, TopicMention> {
+  const first = new Map<string, TopicMention>();
+
+  for (const session of taggedSessions(sessions)) {
+    for (const item of session.topics ?? []) {
+      if (first.has(item.topic)) continue;
+      first.set(item.topic, {
+        topic: item.topic,
+        sessionId: session.session_id,
+        sessionNumber: session.session_number,
+        quote: item.quote,
+        startMs: item.start_ms,
+      });
+    }
+  }
+
+  return first;
+}
+
+/**
+ * 그 회차에서 처음 나온 주제(앞 회차들에 없던 것). 그 회차 앞에 주제 분류가 있는 회차가 없으면 비교할 수 없어
+ * comparable 이 false 다(첫 회차의 모든 주제를 '처음' 이라 하지 않는다).
+ */
+export function newTopicsIn(
+  sessions: SignalHistorySession[],
+  sessionId: string,
+): { comparable: boolean; tagged: boolean; items: TopicMention[] } {
+  const tagged = taggedSessions(sessions);
+  const index = tagged.findIndex((session) => session.session_id === sessionId);
+
+  if (index < 0) return { comparable: false, tagged: false, items: [] };
+  if (index === 0) return { comparable: false, tagged: true, items: [] };
+
+  const first = firstMentions(tagged);
+  const items = [...first.values()].filter((mention) => mention.sessionId === sessionId);
+
+  return { comparable: true, tagged: true, items };
+}

@@ -446,6 +446,24 @@ def to_ai_output_contract(
         if isinstance(question, dict)
     ]
 
+    # 아동 발화 대화 주제(topic_tag_llm.py, 2026-10-29). None(분류하지 못함)은 그대로 None 으로 둔다 —
+    # 빈 목록(분류했지만 해당 주제 없음)과 구분한다.
+    raw_topic_tags = result.get("topic_tags")
+    topic_tags = (
+        [
+            {
+                "topic": tag.get("topic", ""),
+                "segment_ids": tag.get("segment_ids", []),
+                "quote": tag.get("quote", ""),
+                "start_ms": tag.get("start_ms"),
+            }
+            for tag in raw_topic_tags
+            if isinstance(tag, dict)
+        ]
+        if isinstance(raw_topic_tags, list)
+        else None
+    )
+
     summary = {**summary, "assessment": _summary_assessment(result)}
 
     contract = {
@@ -460,6 +478,7 @@ def to_ai_output_contract(
         "session_change_notes": session_change_notes,
         "followup_check_points": followup_check_points,
         "followup_questions": followup_questions,
+        "topic_tags": topic_tags,
     }
 
     return contract, summary_evidence, _model_name(result)

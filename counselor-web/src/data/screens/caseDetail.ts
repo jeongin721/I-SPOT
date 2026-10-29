@@ -4,7 +4,7 @@
 //  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 신고접수일 · 사례연계일 · 아이 앱 · 다음 상담 일정
 //  - 기관 서식 진행, 종결 검토 등록
 //    (10/21 디자인은 사정결과 줄과 서비스 이행 · 다음 일정 상자를 뺐다)
-//  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약 · 주제 비중 · 회차별 세부 신호
+//  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약(주제 비중 · 세부 신호는 2026-10-28 · 29 연결)
 // 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형(guardian_type)으로 채우지 않는다.
 //
 // 위험도 · 학대 유형 · 주요 키워드(2026-10-27): 사례에 따로 저장된 값이 없어, 분석이 끝난 가장 최근 회차(useCaseSignals)의
@@ -31,15 +31,18 @@ import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseSignalsState } from "../useCaseSignals";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { MAX_APPROVED, type ApprovedSummariesState } from "../useApprovedSummaries";
-import { toDateOnly } from "../time";
+import { formatClock, toDateOnly } from "../time";
 import {
   TREND_TYPES,
   TYPE_SHORT,
   counselorTop,
   detectedTypeLabels,
+  firstMentions,
   historyCell,
   pendingLabel,
   signalsClearlyAbsent,
+  taggedSessions,
+  topicShares,
 } from "../signalHistoryRows";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { AuthSession } from "../useAuthSession";
@@ -382,7 +385,7 @@ const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
  *    디자인의 '채택 · 보류' 는 서버에 기록이 없어 쓰지 않는다. 모두 AI 제안이라 'AI 제안' 칩을 붙인다.
  *  - 누적 요약(2026-10-28): 승인 완료한 최근 회차들의 상담 요약 4칸(상담원 확정 문장, useApprovedSummaries)을 회차마다 한 상자로.
  *    AI 가 새로 만든 요약이 아니라 칩 · 안내에 '승인된 회차 요약 모음 · AI 생성 아님' 이라고 밝힌다(민규 님 합의).
- *  - 주제 비중은 AI 가 필요해 준비 중이다.
+ *  - 주제 비중 · 덜 다룬 부분(2026-10-29): 회차 분석의 대화 주제(topic_tags → signal-history topics)를 더한 비율(AI 제안).
  * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
  * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
  */
@@ -486,11 +489,35 @@ export function caseHistoryValues(
       note: risks && strengths ? `강점과 자원 · ${clip(strengths, 80)}` : desired ? `원하는 변화 · ${clip(desired, 80)}` : "",
     };
   });
-  let overviewNote = `주제 비중은 ${NOT_READY}입니다(AI 가 필요한 기능).`;
-  if (approved?.error) overviewNote = `${approved.error} ${overviewNote}`;
+  let overviewNote = "";
+  if (approved?.error) overviewNote = approved.error;
   else if (approved?.loading) overviewNote = "승인된 회차 요약을 불러오는 중…";
-  else if (periods.length === 0 && history?.loaded) overviewNote = `승인한 회차가 아직 없습니다. ${overviewNote}`;
-  else if (approved?.truncated) overviewNote = `승인한 최근 ${MAX_APPROVED}회차만 모았습니다. ${overviewNote}`;
+  else if (periods.length === 0 && history?.loaded) overviewNote = "승인한 회차가 아직 없습니다.";
+  else if (approved?.truncated) overviewNote = `승인한 최근 ${MAX_APPROVED}회차만 모았습니다.`;
+
+  // 주제 비중 · 덜 다룬 부분(2026-10-29): 회차마다 AI 가 고정 주제로 나눈 아동 발화 수를 더한다(signalHistoryRows.topicShares).
+  const historySessions = history?.loaded ? history.sessions : [];
+  const shares = topicShares(historySessions);
+  const taggedCount = taggedSessions(historySessions).length;
+  const topics = shares.map((share) => ({ label: share.topic, width: `${share.pct}%`, pct: `${share.pct}%` }));
+  const insights: { title: string; text: string; src: string }[] = [];
+  if (shares.length >= 2) {
+    const least = shares[shares.length - 1];
+    const first = firstMentions(historySessions).get(least.topic);
+    const at = first ? [`${first.sessionNumber}회차`, formatClock(first.startMs)].filter(Boolean).join(" ") : "";
+    insights.push({ title: "덜 다룬 부분", text: least.topic, src: at ? `${at} 첫 언급` : "" });
+  }
+  let topicNote = "";
+  if (history && !history.loaded) topicNote = history.loading ? "주제를 불러오는 중…" : "";
+  else if (taggedCount === 0) {
+    topicNote = historySessions.some((row) => row.analysis_status === "COMPLETED")
+      ? "AI 주제 분류가 있는 회차가 없습니다. 이 기능 전에 분석한 회차는 다시 분석하면 생깁니다."
+      : "AI 분석이 끝난 회차가 없습니다.";
+  } else if (shares.length === 0) topicNote = `AI 제안 · ${taggedCount}회차에서 주제로 나눈 아동 발화가 없습니다.`;
+  else {
+    const total = shares.reduce((sum, share) => sum + share.count, 0);
+    topicNote = `AI 제안 · 주제 분류가 있는 ${taggedCount}회차의 아동 발화 ${total}개 기준`;
+  }
 
   return {
     ...caseHeaderValues(input),
@@ -498,8 +525,9 @@ export function caseHistoryValues(
     overviewSrc: "근거 · 승인된 회차의 상담 요약",
     overviewNote,
     periods,
-    topics: [] as { label: string; width: string; pct: string }[],
-    insights: [] as { title: string; text: string; src: string }[],
+    topics,
+    topicNote,
+    insights,
     sessions,
     recent: sessions.slice(0, 3),
     all: sessions,

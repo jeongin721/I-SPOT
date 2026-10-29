@@ -28,6 +28,7 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
+import { useSignalHistory } from '../data/useSignalHistory';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -82,7 +83,8 @@ export default function CaseDetail(props) {
   const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
-  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId });
+  const history = useSignalHistory(caseId, { enabled: signedIn(session) });
+  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history });
   const briefRef = useRef(null);
   const [outOpen, setOutOpen] = useState(false);
   const [outMask, setOutMask] = useState(true);
@@ -442,7 +444,9 @@ export default function CaseDetail(props) {
                 {(brief.firstCards || []).map((c) => (
                   <div key={c.key} className="card lead">
                     <span className="lead-tag">{c.title}</span>
-                    <span className="src">{c.note}</span>
+                    {c.q ? <span className="lead-q">{c.q}</span> : null}
+                    {c.main ? <b className="lead-main">{c.main}</b> : null}
+                    <span className="src">{c.src || c.note}</span>
                   </div>
                 ))}
               </div>

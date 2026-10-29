@@ -35,6 +35,8 @@ AI_CONTRACT_KEYS = {
     "followup_check_points",
     # 2026-10-28 추가 질문 초안(8절, 18절과 짝).
     "followup_questions",
+    # 2026-10-29 아동 발화 대화 주제(8절). 없으면 null.
+    "topic_tags",
 }
 
 
@@ -203,6 +205,8 @@ def test_mock_ai_stores_contract_compliant_result(
     assert result["risk_utterances"] == []
     assert result["abuse_signals"] == []
     assert result["risk_factors"] == []
+    # Mock AI 는 주제를 나누지 않는다 — 빈 목록이 아니라 null(분류 없음).
+    assert result["topic_tags"] is None
 
     # 학대 확정 같은 판정 필드를 만들지 않는다.
     assert "abuse_confirmed" not in result

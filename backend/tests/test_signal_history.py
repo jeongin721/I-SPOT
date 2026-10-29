@@ -266,3 +266,60 @@ def test_unknown_case_is_404(client: TestClient, counselor_headers) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "CASE_NOT_FOUND"
+
+
+# ------------------------------------------------------------
+# 대화 주제(topics, 2026-10-29) — 분석 결과 topic_tags
+# ------------------------------------------------------------
+
+
+def test_session_before_analysis_has_no_topics(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] is None
+
+
+def test_analysis_without_topic_tags_has_null_topics(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    """이 필드 전 분석 · 분류 실패(null)는 '분류 없음' — 빈 목록과 구분한다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], topic_tags=None)
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] is None
+
+
+def test_topic_tags_become_topic_rows(client: TestClient, counselor_headers, db, case: dict, session: dict) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(
+        db,
+        session["id"],
+        topic_tags=[
+            {"topic": "신체 체벌 경험", "segment_ids": ["seg_001", "seg_003"], "quote": "때렸어요", "start_ms": 41000},
+            {"topic": "식사 · 돌봄", "segment_ids": ["seg_004", 7], "quote": "밥도 안 줘요", "start_ms": True},
+            {"topic": "  ", "segment_ids": ["seg_005"]},  # 이름 없음 → 뺌
+            {"topic": "학교생활", "segment_ids": []},  # 근거 없음 → 뺌
+            "bad",
+        ],
+    )
+
+    topics = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["topics"]
+
+    assert topics == [
+        {"topic": "신체 체벌 경험", "count": 2, "segment_ids": ["seg_001", "seg_003"], "quote": "때렸어요", "start_ms": 41000},
+        {"topic": "식사 · 돌봄", "count": 1, "segment_ids": ["seg_004"], "quote": "밥도 안 줘요", "start_ms": None},
+    ]
+
+
+def test_empty_topic_tags_mean_no_topics_found(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], topic_tags=[])
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] == []

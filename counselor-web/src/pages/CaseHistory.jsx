@@ -4,7 +4,8 @@
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 회차 목록은 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseDetail.ts(caseHistoryValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 회차 카드 신호 · 회차별 세부 신호는 사례 단위 신호 이력(useSignalHistory), 누적 요약은 승인된 회차 요약 모음
-// (useApprovedSummaries — AI 생성 아님)이다. 주제 비중 · 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
+// (useApprovedSummaries — AI 생성 아님)이다. 주제 비중 · 덜 다룬 부분은 신호 이력의 회차별 대화 주제(AI 제안, 2026-10-29).
+// 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
 // 10/29 디자인: 머리 단추가 '녹음하기'(components/RecordDialog, useRecordFlow) · '+ 새 상담 등록'(components/NewSessionDialog —
 // 녹음 없이 상담 내용 · 소견을 회차 메모에 저장)으로 바뀌었다.
 import { Fragment, useState } from 'react';
@@ -151,6 +152,7 @@ export default function CaseHistory(props) {
             <div style={{ marginTop: '18px', display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
               <div style={{ flex: '1 1 360px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div className="note">주제 비중</div>
+                {v.topicNote ? <div className="src">{v.topicNote}</div> : null}
                 {(v.topics || []).map((t, tIndex) => (
                   <div
                     key={tIndex}

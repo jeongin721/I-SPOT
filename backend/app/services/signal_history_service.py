@@ -9,6 +9,7 @@
 #  - ai_level: severity_ratings[].level 1~5 — risk_assessment_service.ai_level_for 와 같은 규칙(같은 유형 첫 항목이 정함)
 #  - types[].counselor_level · assessed_at: session_risk_assessments(11.2절, 유형별)
 #  - 회차 줄의 counselor_level · assessed_at: session_overall_risk_assessments(11.1절, 회차 전체. 2026-10-29 추가)
+#  - 회차 줄의 topics: 최신 완료 분석 결과 topic_tags(아동 발화 대화 주제, 2026-10-29). 없으면 null
 # 처리 중 회기의 작업 유실 마감(expire_stale_processing)은 여기서 하지 않는다 — 회차 목록 · 상세가 이미 하고,
 # 이 창구는 읽기만 한다.
 import uuid
@@ -27,6 +28,7 @@ from app.services.risk_assessment_service import ai_levels_by_type
 from app.schemas.signal_history import (
     SignalHistoryResponse,
     SignalHistorySession,
+    SignalHistoryTopic,
     SignalHistoryType,
 )
 
@@ -104,7 +106,41 @@ def _session_row(
         counselor_level=overall.counselor_level if overall is not None else None,
         assessed_at=overall.assessed_at if overall is not None else None,
         types=types,
+        topics=_topic_rows(result.get("topic_tags")) if completed else None,
     )
+
+
+def _topic_rows(tags: Any) -> Optional[List[SignalHistoryTopic]]:
+    """topic_tags → 회차 줄 topics. 목록이 아니면 null(분류 없음). 주제 이름 · 근거 발화가 없는 항목은 뺀다."""
+
+    if not isinstance(tags, list):
+        return None
+
+    rows: List[SignalHistoryTopic] = []
+
+    for tag in tags:
+        if not isinstance(tag, dict):
+            continue
+
+        topic = tag.get("topic")
+        segment_ids = [sid for sid in tag.get("segment_ids") or [] if isinstance(sid, str)]
+
+        if not isinstance(topic, str) or not topic.strip() or not segment_ids:
+            continue
+
+        start_ms = tag.get("start_ms")
+        quote = tag.get("quote")
+        rows.append(
+            SignalHistoryTopic(
+                topic=topic.strip(),
+                count=len(segment_ids),
+                segment_ids=segment_ids,
+                quote=quote if isinstance(quote, str) else "",
+                start_ms=start_ms if isinstance(start_ms, int) and not isinstance(start_ms, bool) else None,
+            )
+        )
+
+    return rows
 
 
 def _type_rows(

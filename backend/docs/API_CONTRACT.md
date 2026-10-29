@@ -559,6 +559,10 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
         "session_id": "…", "session_number": 1, "consulted_at": "2026-10-20T10:00:00+09:00",
         "status": "APPROVED", "analysis_status": "COMPLETED",
         "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00",
+        "topics": [
+          { "topic": "신체 체벌 경험", "count": 3, "segment_ids": ["seg_004", "seg_007", "seg_012"], "quote": "아빠가 또 화났어요…", "start_ms": 41000 },
+          { "topic": "식사 · 돌봄", "count": 1, "segment_ids": ["seg_015"], "quote": "밥도 안 줄 때가 있어요", "start_ms": 135000 }
+        ],
         "types": [
           { "abuse_type": "PHYSICAL", "detected": true, "ai_level": 3, "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00" },
           { "abuse_type": "EMOTIONAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
@@ -567,7 +571,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
         ]
       },
       { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null,
-        "counselor_level": null, "assessed_at": null, "types": [] }
+        "counselor_level": null, "assessed_at": null, "topics": null, "types": [] }
     ]
   }
 }
@@ -581,6 +585,10 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `detected`: `abuse_signals[].detected`(같은 유형 첫 항목, 참/거짓이 아니면 `null`). 근거 없어 서버가 뺀 유형(8절 근거 관문)은 `null`.
   - `ai_level`: `severity_ratings[].level`(같은 유형 첫 항목, 1~5 정수가 아니면 `null`) — 11.2절 `ai_level` 과 같은 규칙. **AI 제안이지 판정이 아니다.**
   - `counselor_level` · `assessed_at`: 11.2절 유형별 상담원 판단. 판단 전이면 둘 다 `null`. 회차 줄의 회차 전체 판단과는 따로다.
+- `topics`(2026-10-29): 최신 분석이 `COMPLETED` 일 때 그 결과의 `topic_tags`(8절 — 아동 발화 대화 주제)를 옮긴 것이다.
+  `count` 는 그 주제로 나눈 아동 발화 수(`segment_ids` 길이), `quote` · `start_ms` 는 첫 근거 발화 앞부분 · 시작 시각.
+  분석이 끝나지 않았거나 그 분석에 `topic_tags` 가 없으면(이 필드 전 분석 · 분류 실패) **`null`**, 분류했지만 해당 주제가 없으면 `[]`.
+  주제 비중(회차들을 더한 비율) · 첫 언급 회차는 화면이 계산한다. **AI 제안이다.**
 - 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
 - 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
 
@@ -1161,6 +1169,22 @@ API 모양은 바뀌지 않는다. 분석 작업이 회차의 사례에서 아�
   Mock AI · LangGraph 어댑터는 지금도 `[]` 다.
 - **알려진 한계**: 표지 · 낱말 목록만 보는 검사라 "어디 아팠지?" · "몇 번 맞았어?" 같은 꼴은 지나가고, 목록 밖 행위(밟 · 찔 …)와
   판정 표현은 거르지 못한다. 초안은 상담사 승인을 거쳐야만 쓰이는 것이 마지막 관문이다.
+
+**아동 발화 대화 주제 `topic_tags`(선택, 2026-10-29)** — 상담 이력 '주제 비중' · 상담 전 브리핑 '처음 나온 이야기' 의 재료다(4절 signal-history `topics`).
+
+```json
+"topic_tags": [
+  { "topic": "식사 · 돌봄", "segment_ids": ["seg_015"], "quote": "밥도 안 줄 때가 있어요", "start_ms": 135000 }
+]
+```
+
+- **없으면 `null`**(이 필드 전 결과 · 분류 실패 · Mock AI · LangGraph) — 다른 선택 필드와 달리 `[]` 와 구분한다. `[]` 는 분류했지만 해당 주제 없음.
+- 주제 이름이 비었거나 `segment_ids` 가 비었거나 객체가 아닌 항목은 그 항목만 버린다.
+- 만드는 곳은 `ai/modeling/abuse/topic_tag_llm.py`. 이번 회차 **아동 발화(speaker `CHILD`)만** 마스킹해 LLM 에 보내고,
+  주제는 고정 목록(학교생활 · 친구 관계 · 보호자 관계 · 형제 · 가족 · 신체 체벌 경험 · 두려움 · 정서 · 식사 · 돌봄 · 성 관련 경험 ·
+  건강 · 병원 · 놀이 · 일상)에서만 고른다(목록 밖 이름 · 아동 발화가 아닌 번호는 모듈이 버린다). 회차 사이를 맞춰 세려고 목록을 고정했다.
+  `quote` 는 그 주제 첫 근거 발화 원문 앞 80자, `start_ms` 는 그 발화 시작 시각이다.
+  추가 질문 초안과 병렬로 부르고 마감 전까지만 기다린다. 실패 · 늦음이면 `null` 이고 분석은 그대로 끝난다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
