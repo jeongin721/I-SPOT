@@ -61,6 +61,10 @@ from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
 )
+from ai.modeling.abuse.followup_question_llm import (
+    child_age_band,
+    generate_followup_questions_from_masked_text,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -955,17 +959,35 @@ def analyze_audio_session(
 
     _check_deadline(deadline, "다음 상담 확인사항 생성")
 
-    followup_check_points = generate_followup_check_points_from_masked_text(
-        client=client,
-        model=note_model,
-        masked_combined_text=followup_masked_text,
-        segments=segments,
-        deadline=deadline,
-        previous_session_label=previous_session_label(case_context),
-    )
+    # '추가 질문' AI 초안(followup_question_llm.py, 2026-10-29 C-1)은 같은 마스킹 글을 받아 확인 메모와
+    # 동시에 부른다 — 분석 시간이 한 번의 LLM 호출만큼 늘지 않게. 실패하면 빈 목록이다(모듈 안에서 잡는다).
+    with ThreadPoolExecutor(max_workers=1) as question_executor:
+        followup_questions_future = question_executor.submit(
+            generate_followup_questions_from_masked_text,
+            client=client,
+            model=note_model,
+            masked_combined_text=followup_masked_text,
+            segments=segments,
+            age_band=child_age_band(case_context),
+            deadline=deadline,
+        )
+
+        followup_check_points = generate_followup_check_points_from_masked_text(
+            client=client,
+            model=note_model,
+            masked_combined_text=followup_masked_text,
+            segments=segments,
+            deadline=deadline,
+            previous_session_label=previous_session_label(case_context),
+        )
+
+        followup_questions = followup_questions_future.result()
 
     followup_check_points = restore_pii(
         followup_check_points, followup_entity_map
+    )
+    followup_questions = restore_pii(
+        followup_questions, followup_entity_map
     )
 
     _check_deadline(deadline, "결과 조립")
@@ -995,6 +1017,8 @@ def analyze_audio_session(
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,
         "followup_check_points": followup_check_points,
+        # '추가 질문' AI 초안(followup_question_llm.py). 상담사가 승인해야 질문 목록에 들어간다.
+        "followup_questions": followup_questions,
         "legal_references_unavailable": legal_references_unavailable,
         "chunk_results": chunk_results,
     }

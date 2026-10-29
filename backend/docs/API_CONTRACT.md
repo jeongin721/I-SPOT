@@ -1098,8 +1098,16 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `kind` 는 `OPEN`(열린 질문) · `BANK`(질문 은행 — 자리만 예약, 은행이 생길 때까지 AI 가 내지 않음). 키가 없으면 `OPEN`.
 - **모르는 `kind` · 문장이 비었거나 없는 항목 · 객체가 아닌 항목은 그 질문만 버린다**(분석 전체를 실패시키지 않는다).
   그 밖의 모양 오류(`segment_ids` 가 목록이 아님 등)는 다른 필드처럼 `AI_INVALID_OUTPUT` 이다.
-- 없으면 `[]` 이고, 이 필드가 없던 때 저장한 결과도 그대로 읽힌다. 질문 생성 모듈(`followup_question_llm`)은 따로 붙인다
-  (PROPOSAL_ai_suggestions_case_context.md §4 C-1). 그 전까지는 늘 `[]` 다.
+- 없으면 `[]` 이고, 이 필드가 없던 때 저장한 결과도 그대로 읽힌다.
+- 만드는 곳은 `ai/modeling/abuse/followup_question_llm.py`(2026-10-29, PROPOSAL_ai_suggestions_case_context.md §4 C-1)다.
+  최대 5개, 늘 `kind: "OPEN"`, `segment_ids` 는 1개 이상이다. 아래에 하나라도 걸린 초안은 모듈이 버린다.
+  - 근거 발화가 없거나 실제 발화 목록에 없는 번호만 있음
+  - 열린 질문 표지(무엇 · 어떻게 · 어디 · 언제 · 누구 · 어땠 · 이야기해 줄래 …)가 없음 — 예/아니오 질문
+  - 물음표가 둘 이상(한 번에 여러 질문)
+  - 근거 발화에 없는 인물(아빠 · 엄마 …) · 행위(때리 · 만지 …) 낱말을 질문이 먼저 꺼냄
+  - 300자 넘음
+  입력은 이번 회차 아동 진술 · 위험 신호 요지와 사례 정보의 나이대뿐이다(초기면접 항목 · 지난 회차 요약은 넣지 않는다).
+  모듈이 실패하면 `[]` 이고 분석은 그대로 끝난다. Mock AI · LangGraph 어댑터는 지금도 `[]` 다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
