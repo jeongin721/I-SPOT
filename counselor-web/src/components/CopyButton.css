@@ -1,0 +1,25 @@
+/* 칸 복사 단추(.cp-*) — 10/29 디자인 CaseForm · CaseIntake. */
+label:has(> .cp-btn){position:relative}
+.cp-btn{position:absolute;right:0;top:-5px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:8px;background:transparent;color:#7A776F;cursor:pointer}
+.cp-btn:hover{background:#EFECE5;color:#2B2A26}
+.cp-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:1px}
+.cp-btn .cp-ok{display:none}
+.cp-btn.done{color:#8A6D2F}
+.cp-btn.done .cp-i{display:none}
+.cp-btn.done .cp-ok{display:block}
+.thm-root.dark .cp-btn{color:#A8A296}
+.thm-root.dark .cp-btn:hover{background:#3A3833;color:#ECE8DF}
+.thm-root.dark .cp-btn.done{color:#EADBB5}
+.cp-menu{display:none;position:absolute;right:0;top:26px;z-index:30;flex-direction:column;min-width:168px;padding:4px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:10px;box-shadow:0 10px 24px rgba(43,42,38,.14)}
+.cp-menu.open{display:flex}
+.cp-menu button{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:13px;color:#2B2A26;text-align:left;cursor:pointer;white-space:nowrap}
+.cp-menu button:hover,.cp-menu button:focus-visible{background:#F7F6F2;outline:none}
+.cp-ex{font-size:11.5px;color:#7A776F}
+.thm-root.dark .cp-menu{background:#2C2B27;border-color:#45423B;box-shadow:0 10px 24px rgba(0,0,0,.4)}
+.thm-root.dark .cp-menu button{color:#ECE8DF}
+.thm-root.dark .cp-menu button:hover,.thm-root.dark .cp-menu button:focus-visible{background:#33312C}
+.thm-root.dark .cp-ex{color:#A8A296}
+label.cp-in > .cp-btn{top:6px;right:6px}
+label.cp-in > .cp-menu{top:38px}
+label.cp-in > textarea{padding-right:42px}
+@media print{.cp-btn,.cp-menu{display:none !important}}

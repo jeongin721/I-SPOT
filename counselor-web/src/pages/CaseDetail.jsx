@@ -32,6 +32,7 @@ import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/cas
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
+import { maskExample, maskName } from '../data/maskName';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
 import './CaseDetail.css';
@@ -44,21 +45,6 @@ class Logic extends DCLogic {
   renderVals() {
     return caseDetailValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
-}
-
-/** 이름 가리기: 둘째 글자를 ○ 로(10/29 디자인 nmMask — 예) 이서윤 → 이○윤, 서윤 → 서○). */
-function maskName(text, name) {
-  if (!name || name.length < 2) return text;
-  const given = name.slice(1);
-  return text
-    .split(name)
-    .join(name[0] + '○' + name.slice(2))
-    .split(given)
-    .join(given.length >= 2 ? given[0] + '○' + given.slice(2) : given);
-}
-
-function maskExample(name) {
-  return name.length >= 3 ? `${maskName(name, name)} · ${maskName(name.slice(1), name)}` : maskName(name, name);
 }
 
 /** 브리핑만 인쇄한다(body.print-brief). 이름 가리기면 인쇄하는 동안만 브리핑 글자를 바꾸고 되돌린다. */

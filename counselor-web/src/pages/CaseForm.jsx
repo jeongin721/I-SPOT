@@ -5,6 +5,7 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
+import CopyButton from '../components/CopyButton';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCarryHref } from '../data/useCarryHref';
@@ -465,6 +466,7 @@ export default function CaseForm(props) {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <b style={{ fontSize: '14px' }}>담당자 소견</b>
                   <textarea className="ta2" placeholder="직접 작성"></textarea>
+                  <CopyButton name="이서윤" />
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                   <b style={{ fontSize: '14px' }}>사정결과</b>
@@ -579,6 +581,7 @@ export default function CaseForm(props) {
                       '8회차(10/2)에 신체 학대 진술이 새로 나왔고, 체크인 QB-E-05 응답이 "없어"에서 "1번"으로 바뀌어 학대 위험이 감소했다고 보기 어려움. 보호자 부모교육은 2회 연속 결석함.'
                     }
                   ></textarea>
+                  <CopyButton name="이서윤" />
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -591,6 +594,7 @@ export default function CaseForm(props) {
                     className="ta2"
                     defaultValue={'재사정 실시 · 부모교육 일정 재조율(가정방문 시) · 등 · 팔 통증 의료 연계 여부 확인.'}
                   ></textarea>
+                  <CopyButton name="이서윤" />
                 </label>
               </section>
             </>
