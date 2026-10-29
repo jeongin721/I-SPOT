@@ -4,7 +4,13 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from .case_context import RAG_INPUT_SPEAKERS, build_case_records, sorted_segments, speaker_of, speaker_check_items
+from .case_context import (
+    RAG_INPUT_SPEAKERS,
+    build_case_records,
+    sorted_segments,
+    speaker_check_items,
+    speaker_of,
+)
 from .pipeline import analyze_consultation_evidence
 from .privacy import RagPrivacyBlocked
 from .screen_manual import build_screen_references
