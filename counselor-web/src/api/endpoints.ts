@@ -25,6 +25,7 @@ import type {
   LawGuideAnswer,
   LoginRequest,
   LoginResponse,
+  OverallRiskAssessment,
   PasswordChangeRequest,
   RiskAssessment,
   RiskAssessmentSaveRequest,
@@ -205,7 +206,10 @@ export const cases = {
     return api.post<Session>(`/cases/${caseId}/sessions`, payload);
   },
 
-  /** 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessments 를 부르지 않아도 된다. */
+  /**
+   * 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessment(회차 전체 판단) ·
+   * risk-assessments(유형별 판단)를 부르지 않아도 된다. 회차 줄의 counselor_level · assessed_at 이 회차 전체 판단이다(2026-10-29).
+   */
   signalHistory(caseId: string): Promise<SignalHistory> {
     return api.get<SignalHistory>(`/cases/${caseId}/signal-history`);
   },
@@ -434,6 +438,22 @@ export const riskAssessments = {
    */
   save(sessionId: string, abuseType: AbuseType, payload: RiskAssessmentSaveRequest): Promise<RiskAssessment> {
     return api.put<RiskAssessment>(`/sessions/${sessionId}/risk-assessments/${abuseType}`, payload);
+  },
+
+  /**
+   * 회차 전체 판단 하나(API_CONTRACT 11.1절, 2026-10-29). 아직 판단하지 않았으면 null(404 가 아니다).
+   * 회차 상태와 상관없이 조회할 수 있다. 화면(유형별 위험도 · 사례 상세 위험도 · 요약 · 일지 작성)은 이것만 쓴다.
+   */
+  getOverall(sessionId: string): Promise<OverallRiskAssessment | null> {
+    return api.get<OverallRiskAssessment | null>(`/sessions/${sessionId}/risk-assessment`);
+  },
+
+  /**
+   * 회차 전체 판단을 저장한다. 없으면 만들고 있으면 고친다(둘 다 200). 상태 규칙 · 동시 저장 409 는 유형별 save 와 같다.
+   * ai_level 은 서버가 그때 유형별 AI 심각도 중 가장 높은 값으로 채운다.
+   */
+  saveOverall(sessionId: string, payload: RiskAssessmentSaveRequest): Promise<OverallRiskAssessment> {
+    return api.put<OverallRiskAssessment>(`/sessions/${sessionId}/risk-assessment`, payload);
   },
 };
 
