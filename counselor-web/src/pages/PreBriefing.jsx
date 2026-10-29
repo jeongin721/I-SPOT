@@ -15,6 +15,7 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
@@ -32,7 +33,8 @@ export default function PreBriefing(props) {
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, signals, caseId });
+  const questions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-PreBriefing">
@@ -163,7 +165,13 @@ export default function PreBriefing(props) {
                   </A>
                 ) : null}
               </div>
-              <span className="note">{v.questionNote}</span>
+              {v.questions.map((q) => (
+                <div key={q.key} className="rq">
+                  <span className="chip c-normal">{q.chip}</span>
+                  <span>"{q.text}"</span>
+                </div>
+              ))}
+              {v.questionNote ? <span className="note">{v.questionNote}</span> : null}
             </section>
           </div>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>

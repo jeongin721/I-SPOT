@@ -160,7 +160,7 @@ LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고�
 
 ## 다음 상담 체크리스트 켜기 (`FOLLOWUP_PROVIDER=module`)
 
-추가 확인 · 질문 화면의 '다음 상담 전 확인할 사항' · '추가 질문'(API_CONTRACT 18절)은 기본 `mock`(고정 문구)으로 뜹니다. 실제로 켜려면:
+추가 확인 · 질문 화면의 '다음 상담 전 확인할 사항' · '추가 질문'(API_CONTRACT 19절)은 기본 `mock`(고정 문구)으로 뜹니다. 실제로 켜려면:
 
 1. **색인을 서버에 만듭니다.** 원문 PDF(업무 매뉴얼 · 가이드북 · 체크리스트 — `I-SPOT_DOCS/rag_sources.csv`)를 `/opt/ispot/I-SPOT/rag_data/` 아래 폴더(`manuals/` · `checklists/` 등, `rag/README.md` 2절)에 두고 `python -m rag.indexer` 로 `/opt/ispot/I-SPOT/rag_storage/chroma` 를 만듭니다(임베딩에 `OPENAI_API_KEY` 필요). 판례까지 쓰려면 먼저 `python -m rag.precedent_harvest`(판례 API 사용 신청 필요). 원문 · 색인은 저장소에 넣지 않습니다.
 2. **`backend.env` 를 고칩니다.** `FOLLOWUP_PROVIDER=module`, `OPENAI_API_KEY=<키>`. 법령 조문까지 쓰려면 `LAW_API_OC=<OC>` 또는 법령 캐시(`/law_cache`). `ENV=production` 이면 `FOLLOWUP_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만**(아동 발화 · 이전 회차 요약이 가려진 채 OpenAI 로 나가지만 등록 실명 대조는 돌지 않음).

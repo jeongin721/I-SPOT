@@ -1,4 +1,4 @@
-# 다음 상담 체크리스트(추가 확인 · 질문 화면) 만들기 · 저장 · 조회. API_CONTRACT.md 18절.
+# 다음 상담 체크리스트(추가 확인 · 질문 화면) 만들기 · 저장 · 조회. API_CONTRACT.md 19절.
 #
 # AI 분석이 저장된 직후 같은 백그라운드 작업에서 만든다(analysis_service.process_analysis → generate_after_analysis).
 # 상담사가 '다시 만들기'를 누르면 새 행을 더한다(request_generation → process_followup). 조회는 가장 최근 행이다.

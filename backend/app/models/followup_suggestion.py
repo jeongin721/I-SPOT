@@ -4,7 +4,7 @@
 # AI 분석이 끝난 뒤 같은 백그라운드 작업에서 만들고(followup_service), 상담사가 다시 만들기를 누르면 새 행을 더한다.
 # 조회는 가장 최근 행이다. 행이 실패해도 회차 상태에는 영향을 주지 않는다.
 #
-# result 는 rag 가 돌려준 모양 그대로 담는다(API_CONTRACT.md 18절):
+# result 는 rag 가 돌려준 모양 그대로 담는다(API_CONTRACT.md 19절):
 #   check_items · items(질문) · validation · speaker_check_items · notice
 # AI 제안이며 상담사가 확인 · 승인한다. 학대 여부를 확정하는 값은 없다.
 

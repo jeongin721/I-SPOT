@@ -9,6 +9,7 @@ from app.models.base import Base
 from app.models.case import Case
 from app.models.document import Document
 from app.models.followup_suggestion import FollowupSuggestion
+from app.models.followup_question import SessionFollowupQuestions
 from app.models.risk_assessment import SessionRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
@@ -27,6 +28,7 @@ __all__ = [
     "ConsultationSummary",
     "Document",
     "FollowupSuggestion",
+    "SessionFollowupQuestions",
     "SessionRiskAssessment",
     "Transcript",
     "TranscriptSegment",

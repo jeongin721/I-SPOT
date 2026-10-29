@@ -1,4 +1,4 @@
-// 다음 상담 체크리스트 훅(GET · POST /sessions/{id}/followup-suggestions, API_CONTRACT 18절).
+// 다음 상담 체크리스트 훅(GET · POST /sessions/{id}/followup-suggestions, API_CONTRACT 19절).
 //
 // Backend 가 AI 분석을 저장한 직후 같은 백그라운드 작업에서 만든다. 만드는 중(PROCESSING)이면 되풀이 조회하고,
 // AI 분석이 진행 중인 동안에도(watch) 되풀이 조회해 분석이 끝나자마자 생기는 행을 받는다. 분석이 끝난 그리기에서 한 번 더 받는다.
@@ -21,7 +21,7 @@ export const FOLLOWUP_STATUS_LABELS: Record<AnalysisStatus, string> = {
 export interface FollowupView {
   status: AnalysisStatus;
   statusLabel: string;
-  /** 완료됐을 때만 있다. 칸 모양은 API_CONTRACT 18절 그대로다. */
+  /** 완료됐을 때만 있다. 칸 모양은 API_CONTRACT 19절 그대로다. */
   result: FollowupSuggestionResult | null;
   /** 실패 문구(서버 고정 문구). */
   errorMessage: string | null;

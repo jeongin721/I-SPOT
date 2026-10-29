@@ -5,7 +5,7 @@
 
 import uuid
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import Speaker, TranscriptSource
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -58,6 +58,9 @@ class Transcript(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     stt_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     stt_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # STT 검수 '1차 임시 핵심 발화'(API_CONTRACT 7절): {status, model, segments[{segment_id, abuse_types}]}.
+    # 응답마다 계산하지 않고 저장한 값을 준다. 이 기능 전 전사본은 null(스캔 안 함). 원문 수정 때는 지운 발화만 빼고 복사한다.
+    key_scan: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
 
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

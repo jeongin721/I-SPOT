@@ -3,14 +3,16 @@
 // 회차 정보는 useSessionDetail, 사례 별칭 · 다른 회차 목록은 useCaseDetail(회차의 사례)로 그린다.
 // 화면 주소에 session 만 있어도 된다. 사례는 회차 정보의 case_id 를 믿는다(주소의 case 와 다르면 회차 쪽을 쓴다).
 //
-// Backend 에 없는 값: 상담 유형(정기 · 방문) · 위험 신호 채택/보류 · 추가 확인 · 질문 → '—' · 준비 중.
+// Backend 에 없는 값: 상담 유형(정기 · 방문) · 위험 신호 채택/보류 → '—' · 준비 중.
+// '추가 확인 · 질문' 칸은 승인한 추가 질문 수(useFollowupQuestions, 18절)를 보인다.
 
 import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { SessionDetailState, SessionDetailView } from "../useSessionDetail";
+import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ScreenGo } from "./useScreenGo";
-import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
+import { TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
 import { CARD_OF, LOCKED_HINT } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
 
@@ -37,6 +39,8 @@ export interface SessionScreenInput {
    * (다른 회차 · 화면, 갔다 돌아옴, 다시 로그인) 옮기지 않는다(useScreenGo). 화면 파일은 useScreenGo(useNavigate()) 로 만들어 넘긴다.
    */
   go: ScreenGo;
+  /** 이 회차의 승인한 추가 질문(회차 상세 화면만 넘긴다). */
+  questions?: FollowupQuestionsState;
 }
 
 /** 회차 화면 공통: 위치 표시 링크 · 머리 · 안내. */
@@ -136,6 +140,7 @@ export function sessionDetailValues(input: SessionScreenInput) {
   if (sv) {
     const ids = header.ids;
     const current = CARD_OF[sv.step];
+    const approvedQuestions = input.questions?.questions.length ?? 0;
     const defs = [
       {
         href: screenHref(sv.step === "upload" ? "/UploadModal" : "/SttReview", ids),
@@ -144,13 +149,16 @@ export function sessionDetailValues(input: SessionScreenInput) {
       },
       { href: screenHref("/SignalReview", ids), label: "유형별 위험도", ...analysisCard(sv) },
       { href: screenHref("/NoteWrite", ids), label: "요약 · 일지 작성", ...noteCard(sv) },
-      // 회차 상태에 '질문 처리 완료' 단계가 없어 칸 상태는 늘 '확인 메모' 다. 화면은 AI 확인 메모(followup_check_points)를
-      // 읽기 전용으로 보이고, 수정 · 추가 질문은 준비 중이다(followupQ.ts).
+      // 회차 상태에 '질문 처리 완료' 단계가 없어 칸 상태는 승인한 추가 질문 수로 보인다(없으면 '확인 메모').
+      // 화면은 AI 확인 메모(읽기 전용)와 추가 질문 승인 · 수정 · 직접 추가다(followupQ.ts).
       {
         href: screenHref("/FollowupQ", ids),
         label: "추가 확인 · 질문",
-        st: "확인 메모",
-        preview: `AI 확인 메모를 봅니다. 수정 · 추가 질문은 ${NOT_READY}입니다.`,
+        st: approvedQuestions > 0 ? `질문 ${approvedQuestions}개 승인` : "확인 메모",
+        preview:
+          approvedQuestions > 0
+            ? `AI 확인 메모와 승인한 추가 질문 ${approvedQuestions}개를 봅니다.`
+            : "AI 확인 메모를 보고 다음 상담의 추가 질문을 승인 · 직접 추가합니다.",
       },
     ];
     const lastDone = current === -1 ? 2 : current - 1;

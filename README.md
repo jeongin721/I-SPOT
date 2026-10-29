@@ -81,7 +81,7 @@ STT 검수가 끝난 Transcript
 ```
 
 - 최상위 `main.py`의 `POST /api/v1/rag/analyze`에 검수된 Transcript(`{"transcript": {...}, "abuse_type"?: ..., "known_identifiers"?: [...]}`)를 보냅니다. `abuse_type`을 빼면 검수된 아동 발화로 학대 유형을 다시 분류합니다. `session_no` · `previous_sessions` · `child_app_responses`를 함께 보내면 다음 상담 질문이 이전 회차 기록 · 아이 앱 응답까지 근거로 씁니다(`rag/README.md` 8-3).
-- Backend(`backend/`)는 AI 분석이 끝나면 다음 상담 체크리스트를 만들어 저장하고, 상담사 웹 추가 확인 · 질문 화면이 읽습니다(`GET /api/v1/sessions/{id}/followup-suggestions`, `backend/docs/API_CONTRACT.md` 18절, 기본 `FOLLOWUP_PROVIDER=mock`).
+- Backend(`backend/`)는 AI 분석이 끝나면 다음 상담 체크리스트를 만들어 저장하고, 상담사 웹 추가 확인 · 질문 화면이 읽습니다(`GET /api/v1/sessions/{id}/followup-suggestions`, `backend/docs/API_CONTRACT.md` 19절, 기본 `FOLLOWUP_PROVIDER=mock`).
 - `/api/v1/analyze`(업로드 직후, 검수 전)는 RAG를 돌리지 않습니다. 검수 전 발화는 화자 · 문장이 바뀔 수 있기 때문입니다.
 - 응답: `rag_analysis`(감지된 학대 유형이 없으면 `null`), `manual_screen_references`, `excluded_speakers`(뺀 화자별 발화 수), `child_segment_ids`, `speaker_check_items`(화자 미확정 발화를 확인할 사항으로 만든 것). 실패하면 해당 필드가 `{"error": ...}`이고, 비식별 검증에 막히면 `privacy_blocked: true`와 사유(원문 없음)가 담깁니다.
 - 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents`(유사 판례)

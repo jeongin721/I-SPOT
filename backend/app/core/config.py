@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     #            모듈 import(모델 로드)는 아래 제한 시간 밖에서 하고, 서버 시작 때 백그라운드로 미리 한다
     #            (ai_adapter.start_ai_preload · analysis_service.PREPARE_TIMEOUT_SECONDS).
     AI_PROVIDER: Literal["mock", "pipeline", "langgraph", "modeling"] = "mock"
+    # STT 검수 '1차 임시 핵심 발화' 스캔(API_CONTRACT 7절 key_scan). AI_PROVIDER=modeling 일 때만 process_stt 끝에서
+    # 1차 분류기(로컬)를 돌린다. 한 번의 제한 시간 — 넘기면 key_scan.status=FAILED 이고 STT 는 그대로 성공이다.
+    # 멈춘 STT 작업 마감 기준(STT_TIMEOUT_SECONDS + 여유)에 이 값을 더한다(session_service).
+    KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 작업 시작이 늦었거나 모델 준비가 길었으면
     # 요청 시각부터 잰 작업 전체 마감(준비 제한 45초 + 이 값)에 맞춰 짧아진다(analysis_service._job_deadline).
     # 다만 thread 는 멈추지 못해(run_with_timeout)
@@ -202,7 +206,7 @@ class Settings(BaseSettings):
     LAW_API_OC: str = ""
     LAW_CACHE_DIR: str = ""
 
-    # ---- 다음 상담 체크리스트 (추가 확인 · 질문 화면, API_CONTRACT 18절, 2026-10-29) ----
+    # ---- 다음 상담 체크리스트 (추가 확인 · 질문 화면, API_CONTRACT 19절, 2026-10-29) ----
     # AI 분석이 끝난 뒤 같은 백그라운드 작업에서 만들어 followup_suggestions 에 저장한다(followup_service).
     # 실패해도 회차 상태에는 영향이 없다.
     # off   : 만들지 않는다(조회는 data: null, 다시 만들기는 503 FOLLOWUP_DISABLED)

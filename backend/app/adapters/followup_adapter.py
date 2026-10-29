@@ -1,4 +1,4 @@
-# 다음 상담 체크리스트 Adapter — 추가 확인 · 질문 화면 (API_CONTRACT 18절, 2026-10-29).
+# 다음 상담 체크리스트 Adapter — 추가 확인 · 질문 화면 (API_CONTRACT 19절, 2026-10-29).
 #
 # rag/session.analyze_reviewed_transcript(공식 근거 RAG)를 부른다. 분석 어댑터(ai_adapter)와 같은 모양
 # (Protocol + mock + module + provider 스위치)이다.

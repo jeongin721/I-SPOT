@@ -313,7 +313,7 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
     finally:
         db.close()
 
-    # 분석을 저장했으면 같은 작업에서 다음 상담 체크리스트를 만든다(18절). 실패해도 분석 · 회차 상태는 그대로다.
+    # 분석을 저장했으면 같은 작업에서 다음 상담 체크리스트를 만든다(19절). 실패해도 분석 · 회차 상태는 그대로다.
     if saved:
         followup_service.generate_after_analysis(session_id, analysis_id)
 

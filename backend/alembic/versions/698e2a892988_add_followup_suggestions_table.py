@@ -1,7 +1,7 @@
 """add followup_suggestions table
 
 Revision ID: 698e2a892988
-Revises: b7e4c2d91f05
+Revises: d8a3b6c1e4f2
 Create Date: 2026-10-29 06:18:08.347542
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = '698e2a892988'
-down_revision: Union[str, None] = 'b7e4c2d91f05'
+down_revision: Union[str, None] = 'd8a3b6c1e4f2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

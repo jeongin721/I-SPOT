@@ -32,6 +32,7 @@ BACKEND_ONLY_OPTIONAL_FIELDS = {
     "protective_factors",
     "session_change_notes",
     "followup_check_points",
+    "followup_questions",
 }
 
 TRANSCRIPT = {

@@ -1,4 +1,4 @@
-# 다음 상담 체크리스트(추가 확인 · 질문 화면) 응답. API_CONTRACT.md 18절.
+# 다음 상담 체크리스트(추가 확인 · 질문 화면) 응답. API_CONTRACT.md 19절.
 #
 # result 는 rag 가 돌려준 모양 그대로다(check_items · items · validation · speaker_check_items ·
 # manual_screen_references · notice). Backend 는 그 안의 칸을 다시 해석하지 않는다.

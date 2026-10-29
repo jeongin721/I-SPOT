@@ -1,12 +1,13 @@
 // 4 · 추가 확인 · 질문
 // 원본: 10/27 디자인 counselor-design/screens/FollowupQ.dc.html (frontend261021 브랜치).
 //
-// 서버 연결: 화면 주소 ?case=…&session=…. 다음 상담 전 확인할 사항 · 추가 질문은 다음 상담 체크리스트
-// (GET /followup-suggestions, useFollowupSuggestions — rag 가 공식 근거를 찾아 쓴 AI 초안)이고, 없으면 AI 분석 결과의
-// followup_check_points(AI 확인 메모, useSessionAnalysis)를 보인다. 메모의 근거 위치는 useRiskSignals 가 원문에서 찾는다.
-// 머리는 useSessionDetail · useCaseDetail 이 부르고, 화면에 쓸 값은 src/data/screens/followupQ.ts 가 만든다(디자인 칸 → 서버 값
-// 대응도 그 파일 머리에 있다). 이 파일은 훅을 부르고 배치만 한다. 승인 · 수정 · 직접 추가 · 브리핑에 넣기 · 아이 앱 발송은
-// 서버에 없어 준비 중이다.
+// 서버 연결: 화면 주소 ?case=…&session=…. 다음 상담 전 확인할 사항은 다음 상담 체크리스트(useFollowupSuggestions, 19절 —
+// rag 가 공식 근거를 찾아 쓴 AI 초안)이고, 없으면 AI 분석 결과의 followup_check_points(AI 확인 메모, useSessionAnalysis)다.
+// 메모 · 질문 카드의 근거 위치는 useRiskSignals 가 원문에서 찾는다. 머리는 useSessionDetail · useCaseDetail 이 부르고,
+// 화면에 쓸 값은 src/data/screens/followupQ.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
+// 이 파일은 훅을 부르고 배치만 한다. 확인 사항 수정 · 직접 추가 · 브리핑에 넣기는 서버에 없어 준비 중이다.
+// 추가 질문은 승인 목록(useFollowupQuestions, 18절)에 저장한다 — 카드 · 승인 · 수정 · 직접 추가는 디자인 마크업 그대로.
+// 체크리스트의 상담 질문 초안도 같은 AI 초안 카드가 되고, 공식 근거 칩 · 이유가 더 붙는다.
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -17,12 +18,14 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useFollowupSuggestions } from '../data/useFollowupSuggestions';
 import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
-import { INITIAL_FOLLOWUP_STATE, followupQValues } from '../data/screens/followupQ';
+import { followupQValues, suggestionsNeedEvidence } from '../data/screens/followupQ';
+import { initialQuestionState, questionsNeedEvidence } from '../data/screens/followupQuestions';
 import { readScreenIds } from '../data/screens/links';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import { sessionCaseId } from '../data/screens/sessionDetail';
@@ -31,7 +34,7 @@ import './FollowupQ.css';
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = INITIAL_FOLLOWUP_STATE;
+    this.state = initialQuestionState();
   }
   renderVals() {
     return followupQValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
@@ -39,11 +42,11 @@ class Logic extends DCLogic {
 }
 
 /** 근거 칩 줄. 화면 안 주소는 링크, 국가법령정보센터는 새 창, 그 밖은 글자(발췌는 마우스를 올리면 보인다). */
-function Evidence({ items }) {
+function Evidence({ items, lead = '근거 · ' }) {
   if (!items.length) return <span className="note">근거 위치 없음</span>;
   return (
     <span className="note evi-line">
-      근거 ·{' '}
+      {lead}
       {items.map((e, index) => (
         <span key={e.key}>
           {index ? ' · ' : ''}
@@ -92,16 +95,27 @@ function Sources({ items }) {
 export default function FollowupQ(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
+  // 회차 · 로그인 계정이 바뀌면 처음부터 다시 그린다. 승인 전 질문 · 고치던 문장(화면 상태)이 다른 회차로 넘어가
+  // 그 회차에 저장되지 않게 한다(민규 #113 R1 — 녹취 올리기 창과 같은 방법).
+  return <FollowupQScreen key={`${ids.sessionId ?? ''}|${session.me?.id ?? ''}`} {...props} session={session} ids={ids} />;
+}
+
+function FollowupQScreen(props) {
+  const { session, ids } = props;
   const go = useScreenGo(useNavigate());
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const analysis = useSessionAnalysis(ids.sessionId, { enabled });
-  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
-  // AI 분석이 끝나면 Backend 가 같은 작업에서 체크리스트를 만든다. 분석 중에도 되풀이 조회해 바로 받는다.
+  const questions = useFollowupQuestions(ids.sessionId, { enabled });
+  // AI 분석이 끝나면 Backend 가 같은 작업에서 다음 상담 체크리스트를 만든다. 분석 중에도 되풀이 조회해 바로 받는다.
   const followup = useFollowupSuggestions(ids.sessionId, { enabled, watch: analysis.processing });
+  // 추가 질문(초안 · 승인 목록 · 체크리스트 초안)에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
+  const needEvidence =
+    questionsNeedEvidence(analysis.analysis, questions.questions) || suggestionsNeedEvidence(followup, ids.sessionId);
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled, needEvidence });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, followup, go });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, followup, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-FollowupQ">
@@ -216,23 +230,66 @@ export default function FollowupQ(props) {
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
               <h2 className="h2">추가 질문</h2>
-              <span className="chip c-ai">AI 초안 · 상담원 확인</span>
-              <div role="tablist" aria-label="질문 대상" className="seg" style={{ marginLeft: 'auto' }}>
-                {v.tabs.map((t) => (
-                  <button key={t.key} type="button" role="tab" aria-selected={t.on} className={t.on ? 'on' : ''} onClick={t.select}>
-                    {t.label} {t.count}
-                  </button>
-                ))}
+              <div role="tablist" className="seg" style={{ marginLeft: 'auto' }}>
+                <button type="button" role="tab" className={v.meetCls} onClick={v.showMeet}>
+                  다음 상담에서 직접
+                </button>
+                <button type="button" role="tab" className={v.appCls} onClick={v.showApp}>
+                  아이 앱으로 먼저
+                </button>
               </div>
             </div>
-            {v.questionNote ? <span className="note">{v.questionNote}</span> : null}
-            {v.questionsEmpty ? <span className="note">{v.questionsEmpty}</span> : null}
-            {v.questions.map((q) => (
+            {v.qNote ? <span className="note">{v.qNote}</span> : null}
+            {v.qs.map((q) => (
               <div key={q.key} className="qcard">
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 8px' }}>
-                  <span className="chip c-sky">{q.typeLabel}</span>
-                  {q.priorityHigh ? <span className="chip c-hi">우선</span> : null}
-                  {q.reviewLabel ? <span className="chip c-ai">{q.reviewLabel}</span> : null}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                  <span className="chip c-sky">{q.id}</span>
+                  {q.aiDraft ? <span className="chip c-ai">AI 초안</span> : null}
+                  {q.originLabel ? <span className="chip c-sand">{q.originLabel}</span> : null}
+                  {q.ok ? <span className="chip c-sel">{q.st}</span> : null}
+                  {q.edited ? <span className="chip c-sand">상담사 수정</span> : null}
+                  {q.whyHref ? (
+                    <A className="note" to={q.whyHref} style={{ marginLeft: 'auto' }}>
+                      근거 · {q.why}
+                    </A>
+                  ) : (
+                    <span className="note" style={{ marginLeft: 'auto' }}>
+                      근거 · {q.why}
+                    </span>
+                  )}
+                </div>
+                {v.qNotEdit ? (
+                  <>
+                    <div style={{ fontSize: '16px', fontWeight: '500' }}>"{q.text}"</div>
+                    {q.rationale ? <span className="note">{q.rationale}</span> : null}
+                    {q.moreEvidence.length ? <Evidence items={q.moreEvidence} lead="함께 본 기록 · " /> : null}
+                    <Sources items={q.sources} />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
+                      <button type="button" className={`btn btn-sm ${q.okCls}`} onClick={q.approve}>
+                        {q.okLabel}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span className="note">질문 문장</span>
+                    <textarea
+                      className="edit-in"
+                      rows={2}
+                      aria-label="질문 문장 수정"
+                      value={q.draftText}
+                      onChange={(e) => q.setText(e.target.value)}
+                    />
+                  </label>
+                )}
+              </div>
+            ))}
+            {v.appQs.map((q) => (
+              <div key={q.key} className="qcard">
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                  <span className="chip c-sky">열린 질문</span>
+                  <span className="chip c-ai">AI 초안</span>
+                  <span className="chip c-sand">공식 근거</span>
                   <span style={{ marginLeft: 'auto' }}>
                     <Evidence items={q.evidence} />
                   </span>
@@ -242,9 +299,51 @@ export default function FollowupQ(props) {
                 <Sources items={q.sources} />
               </div>
             ))}
-            <span className="note" style={{ alignSelf: 'flex-end' }}>
-              {v.questionActionNote}
-            </span>
+            {v.qNewRows.map((r) => (
+              <div key={r.key} className="qcard" style={{ boxShadow: 'inset 0 0 0 2px #2B2A26' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                  <span className="chip c-sky">직접 작성</span>
+                </div>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span className="note">질문 문장</span>
+                  <textarea
+                    className="edit-in"
+                    rows={2}
+                    aria-label="새 질문 문장"
+                    placeholder="아이에게 물어볼 질문을 적어 주세요"
+                    value={r.text}
+                    onChange={(e) => r.setText(e.target.value)}
+                  />
+                </label>
+              </div>
+            ))}
+            {v.qError ? (
+              <div className="note" role="alert" style={{ color: '#A33B2E' }}>
+                {v.qError}
+              </div>
+            ) : null}
+            {v.qActions ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" className="btn btn-sm btn-s" onClick={v.addQ}>
+                  + 질문 직접 추가
+                </button>
+                {v.qNotEdit ? (
+                  <button type="button" className="btn btn-sm btn-s" onClick={v.startQ}>
+                    수정
+                  </button>
+                ) : null}
+                {v.qIsEdit ? (
+                  <>
+                    <button type="button" className="btn btn-sm btn-p" onClick={v.qOk}>
+                      확인
+                    </button>
+                    <button type="button" className="btn btn-sm btn-s" onClick={v.qCancel}>
+                      취소
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>

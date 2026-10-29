@@ -1,4 +1,4 @@
-# /sessions/{session_id}/followup-suggestions — 다음 상담 체크리스트(추가 확인 · 질문 화면). API_CONTRACT.md 18절.
+# /sessions/{session_id}/followup-suggestions — 다음 상담 체크리스트(추가 확인 · 질문 화면). API_CONTRACT.md 19절.
 #
 # AI 분석이 끝나면 Backend 가 같은 백그라운드 작업에서 만들어 저장한다(followup_service.generate_after_analysis).
 # 여기서는 가장 최근 행을 읽고, 상담사가 누른 '다시 만들기'를 받는다. AI 제안이며 상담사가 확인 · 승인한다.

@@ -6,7 +6,7 @@
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -33,6 +33,22 @@ class TranscriptResponse(BaseModel):
     edited_segment_ids: List[str] = Field(default_factory=list)
     # Additive handoff view. The existing ``segments`` Contract is unchanged.
     child_handoff: Optional["ChildHandoffResponse"] = None
+    # STT 검수 '1차 임시 핵심 발화'(7절). 저장한 값이고 없으면 null(이 기능 전 전사본).
+    key_scan: Optional["KeyScanResponse"] = None
+
+
+class KeyScanSegment(BaseModel):
+    segment_id: str
+    # PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT. 화면에는 그리지 않는다(판정처럼 읽힘, 제안서 §8 답 3).
+    abuse_types: List[str] = Field(default_factory=list)
+
+
+class KeyScanResponse(BaseModel):
+    """1차 모델 스캔으로 고른 '먼저 들어볼 곳'. 판정이 아니다. status 는 DONE · FAILED · SKIPPED."""
+
+    status: Literal["DONE", "FAILED", "SKIPPED"]
+    model: Optional[str] = None
+    segments: List[KeyScanSegment] = Field(default_factory=list)
 
 
 class ChildHandoffSegment(BaseModel):
