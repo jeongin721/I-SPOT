@@ -93,6 +93,28 @@ def test_request_to_tell_with_object_particle_is_open():
     assert len(fq._clean_questions([_q(text)], SEGMENTS)) == 1
 
 
+@pytest.mark.parametrize("text", ["친구들이랑은 어떻게 지내?", "형들은 뭐라고 했어?", "동생들이랑 어디서 놀아?"])
+def test_plural_short_person_word_needs_evidence(text):
+    # '들' 이 붙어도 인물이다 — 근거 발화에 없으면 버린다(민규 #118 R3).
+    segments = [{"segment_id": "seg_001", "text": "오늘 그림을 그렸어요."}]
+
+    assert fq._clean_questions([_q(text, ["seg_001"])], segments) == []
+
+
+def test_plural_person_word_said_by_child_is_kept():
+    segments = [{"segment_id": "seg_001", "text": "친구들이랑 놀았어요."}]
+
+    assert len(fq._clean_questions([_q("친구들이랑 뭐 하고 놀았어?", ["seg_001"])], segments)) == 1
+
+
+@pytest.mark.parametrize("text", ["집 형편이 어려운 건 어떤 때 느껴?", "그림 형태는 어떻게 그렸어?"])
+def test_words_containing_short_person_word_are_not_people(text):
+    # 형편 · 형태 오탐 회귀.
+    segments = [{"segment_id": "seg_001", "text": "그림을 그렸어요."}]
+
+    assert len(fq._clean_questions([_q(text, ["seg_001"])], segments)) == 1
+
+
 def test_short_person_word_inside_other_word_is_not_a_person():
     # '형편' 의 '형' 은 사람이 아니다.
     segments = [{"segment_id": "seg_001", "text": "집 형편이 어려워요."}]

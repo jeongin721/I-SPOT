@@ -961,7 +961,7 @@ def analyze_audio_session(
     _check_deadline(deadline, "다음 상담 확인사항 생성")
 
     # '추가 질문' AI 초안(followup_question_llm.py, 2026-10-29 C-1)은 같은 마스킹 글을 받아 확인 메모와
-    # 동시에 부른다 — 분석 시간이 한 번의 LLM 호출만큼 늘지 않게. 실패하면 빈 목록이다(모듈 안에서 잡는다).
+    # 병렬로 부른다(두 LLM 호출을 겹쳐 돌림). 실패하면 빈 목록이다(모듈 안에서 잡는다).
     # 질문을 마감 전까지만 기다리므로(wait_for_questions) with 블록(끝에서 끝까지 기다림)이 아니라 wait=False 로 닫는다.
     question_executor = ThreadPoolExecutor(max_workers=1)
 
