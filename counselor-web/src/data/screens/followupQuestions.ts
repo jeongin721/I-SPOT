@@ -13,6 +13,7 @@ import type { FollowupQuestion, FollowupQuestionDraft, FollowupQuestionInput } f
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
 import { NOT_READY } from "./common";
+import { positionLabel } from "../riskRows";
 import { segmentHref } from "./sttReview";
 
 export type QuestionTab = "meet" | "app";
@@ -94,25 +95,37 @@ export function buildQuestionCards(
 ): QuestionCard[] {
   const used = new Set<number>();
   const cards: QuestionCard[] = [];
+  const valid = drafts
+    .map((draft, index) => ({ index, draft }))
+    .filter(({ draft }) => draft && typeof draft.text === "string" && draft.text.trim())
+    .map(({ index, draft }) => ({ key: `ai-${index}`, input: draftInput(draft) }));
+  const matched = new Map<string, { at: number; edited: boolean }>();
+  const pick = (match: (item: FollowupQuestion) => boolean) =>
+    saved.findIndex((item, at) => !used.has(at) && item.source === "AI" && match(item));
 
-  drafts.forEach((draft, index) => {
-    if (!draft || typeof draft.text !== "string" || !draft.text.trim()) return;
-
-    const key = `ai-${index}`;
-    const input = draftInput(draft);
-    const pick = (match: (item: FollowupQuestion) => boolean) =>
-      saved.findIndex((item, at) => !used.has(at) && item.source === "AI" && match(item));
-    let at = pick((item) => item.text === input.text);
-    let edited = false;
-
-    if (at < 0) {
-      at = pick((item) => item.kind === input.kind && input.segment_ids.length > 0 && sameIds(item.segment_ids, input.segment_ids));
-      edited = at >= 0;
-    }
-
+  // 1단계: 모든 초안의 '문장 같음' 짝을 먼저 잡는다. 2단계: 남은 초안만 종류 + 근거 번호로 짝짓는다('상담사 수정').
+  // 한 번에 하면 앞 초안이 뒤 초안의 정확히 같은 저장 항목을 2단계로 먼저 가져간다(민규 #113 R2).
+  valid.forEach(({ key, input }) => {
+    const at = pick((item) => item.text === input.text);
     if (at >= 0) {
       used.add(at);
-      cards.push({ key, origin: "draft", input: savedInput(saved[at]), approved: true, edited, savedIndex: at, localId: null });
+      matched.set(key, { at, edited: false });
+    }
+  });
+  valid.forEach(({ key, input }) => {
+    if (matched.has(key) || input.segment_ids.length === 0) return;
+    const at = pick((item) => item.kind === input.kind && sameIds(item.segment_ids, input.segment_ids));
+    if (at >= 0) {
+      used.add(at);
+      matched.set(key, { at, edited: true });
+    }
+  });
+
+  valid.forEach(({ key, input }) => {
+    const hit = matched.get(key);
+
+    if (hit) {
+      cards.push({ key, origin: "draft", input: savedInput(saved[hit.at]), approved: true, edited: hit.edited, savedIndex: hit.at, localId: null });
       return;
     }
 
@@ -141,6 +154,17 @@ export function buildQuestionCards(
   return cards;
 }
 
+/** 추가 질문(AI 초안 · 승인 목록)에 근거 번호가 있어 원문을 받아야 하는가(useRiskSignals needEvidence). */
+export function questionsNeedEvidence(
+  analysis: { status: string; followupQuestions?: FollowupQuestionDraft[] } | null,
+  saved: FollowupQuestion[],
+): boolean {
+  const drafts = analysis && analysis.status === "COMPLETED" ? analysis.followupQuestions ?? [] : [];
+  const hasIds = (item: { segment_ids?: unknown }) => Array.isArray(item?.segment_ids) && item.segment_ids.length > 0;
+
+  return drafts.some(hasIds) || saved.some(hasIds);
+}
+
 /** 카드 머리 칩(디자인 q.id): 열린 질문 · 질문 은행 코드 · 직접 작성. */
 export function questionChip(input: FollowupQuestionInput): string {
   if (input.source === "COUNSELOR") return "직접 작성";
@@ -165,12 +189,12 @@ export function questionValues(input: QuestionInput) {
   const why = (card: QuestionCard) => {
     if (card.input.source === "COUNSELOR" && card.input.segment_ids.length === 0) return { text: "상담사 직접 추가", href: null };
 
-    const located = locate(card.input.segment_ids);
-    const first = located.evidence[0]?.segmentId ?? null;
+    // 지금 원문에서 찾은 근거만 위치 · 링크로 쓴다. 옛 판 번호처럼 없으면 '근거 위치 없음'(민규 #113 R4).
+    const found = locate(card.input.segment_ids).evidence.filter((item) => item.found);
 
-    if (!located.label) return { text: "근거 위치 없음", href: null };
+    if (found.length === 0) return { text: "근거 위치 없음", href: null };
 
-    return { text: `${sessionLabel} ${located.label}`.trim(), href: first ? segmentHref(ids, first) : null };
+    return { text: `${sessionLabel} ${positionLabel(found)}`.trim(), href: segmentHref(ids, found[0].segmentId) };
   };
 
   const approve = (card: QuestionCard) => {

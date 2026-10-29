@@ -22,7 +22,7 @@ import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { followupQValues } from '../data/screens/followupQ';
-import { initialQuestionState } from '../data/screens/followupQuestions';
+import { initialQuestionState, questionsNeedEvidence } from '../data/screens/followupQuestions';
 import { readScreenIds } from '../data/screens/links';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import { sessionCaseId } from '../data/screens/sessionDetail';
@@ -41,13 +41,22 @@ class Logic extends DCLogic {
 export default function FollowupQ(props) {
   const session = useAuthSession();
   const ids = readScreenIds(useSearchParams()[0]);
+  // 회차 · 로그인 계정이 바뀌면 처음부터 다시 그린다. 승인 전 질문 · 고치던 문장(화면 상태)이 다른 회차로 넘어가
+  // 그 회차에 저장되지 않게 한다(민규 #113 R1 — 녹취 올리기 창과 같은 방법).
+  return <FollowupQScreen key={`${ids.sessionId ?? ''}|${session.me?.id ?? ''}`} {...props} session={session} ids={ids} />;
+}
+
+function FollowupQScreen(props) {
+  const { session, ids } = props;
   const go = useScreenGo(useNavigate());
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
   const analysis = useSessionAnalysis(ids.sessionId, { enabled });
-  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled });
   const questions = useFollowupQuestions(ids.sessionId, { enabled });
+  // 추가 질문(초안 · 승인 목록)에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
+  const needEvidence = questionsNeedEvidence(analysis.analysis, questions.questions);
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled, needEvidence });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
