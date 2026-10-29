@@ -8,7 +8,7 @@
 // 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
 // 이 파일은 훅을 부르고 배치만 한다. 판단 없이 다음 단계로 가려 하면(nextBlocked) 옮기지 않고 팝업 "위험도를 선택해주세요." 를 띄운다.
 // 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 위험요인 · 회차별 추이 · 심각도 상담사 수정)은 준비 중이다.
-import { Fragment, useEffect } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -81,8 +81,8 @@ class Logic extends DCLogic {
   closeAsk() {
     this.setState({ ask: false });
     // ?ask=1 로 왔으면 주소에서 떼어 새로고침 · 뒤로 가기에 팝업이 다시 뜨지 않게 한다.
+    // 닫은 뒤 초점은 화면 쪽 effect 가 상담원 판단 첫 단추로 옮긴다.
     if (this.props.askInitially) this.props.clearAsk();
-    window.requestAnimationFrame(() => document.getElementById(LEVEL_FIRST_ID)?.focus());
   }
   renderVals() {
     const v = signalReviewValues(this.props, this.state.open);
@@ -135,9 +135,13 @@ export default function SignalReview(props) {
     askInitially,
     clearAsk,
   });
-  // 팝업이 보이게 되는 모든 경우(아래 단추 · 단계 표시 · ?ask=1 로 돌려보내짐)에 '확인' 단추로 초점을 옮긴다(aria-modal).
+  // 팝업이 보이게 되는 모든 경우(아래 단추 · 단계 표시 · ?ask=1 로 돌려보내짐)에 '확인' 단추로 초점을 옮기고(aria-modal),
+  // 닫히면 고를 곳인 상담원 판단 첫 단추로 옮긴다. 그린 뒤에 옮기려고 effect 에서 한다(requestAnimationFrame 은 숨은 탭에서 돌지 않는다).
+  const askWasShown = useRef(false);
   useEffect(() => {
     if (v.ask) document.getElementById(ASK_OK_ID)?.focus();
+    else if (askWasShown.current) document.getElementById(LEVEL_FIRST_ID)?.focus();
+    askWasShown.current = v.ask;
   }, [v.ask]);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
