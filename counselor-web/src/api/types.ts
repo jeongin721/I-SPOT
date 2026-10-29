@@ -670,6 +670,18 @@ export interface FollowupCheckPoint {
   previous_session_label?: string;
 }
 
+/**
+ * AI 추가 질문 초안(선택 필드, 2026-10-28, API_CONTRACT 8절). 상담사가 [승인] 해야 질문 목록(18절)에 들어간다.
+ * kind 는 OPEN(열린 질문) · BANK(질문 은행 — 자리만 예약). 질문 생성 모듈(#100 C-1)이 붙기 전까지 늘 빈 배열이다.
+ */
+export interface FollowupQuestionDraft {
+  text: string;
+  kind: FollowupQuestionKind;
+  segment_ids: string[];
+  reason: string;
+  bank_code: string | null;
+}
+
 export interface AnalysisResult {
   /** AI Output Contract 버전. 지금은 "1.0". */
   schema_version: string;
@@ -683,6 +695,8 @@ export interface AnalysisResult {
   protective_factors: ProtectiveFactor[];
   session_change_notes: SessionChangeNote[];
   followup_check_points: FollowupCheckPoint[];
+  /** 옛 결과 · 이전 서버에는 없다. */
+  followup_questions?: FollowupQuestionDraft[];
 }
 
 /**
@@ -1009,4 +1023,33 @@ export interface LawGuideAnswer {
   /** 답한 모델 이름(mock 이면 "mock"). */
   model: string;
   answered_at: string;
+}
+
+// =========================================================
+// 승인한 추가 질문 (API_CONTRACT 18절)
+// =========================================================
+
+export type FollowupQuestionKind = "OPEN" | "BANK";
+/** AI 초안을 승인(고쳐서 승인해도 AI) · 상담사가 직접 씀. */
+export type FollowupQuestionSource = "AI" | "COUNSELOR";
+
+export interface FollowupQuestionInput {
+  text: string;
+  kind: FollowupQuestionKind;
+  source: FollowupQuestionSource;
+  segment_ids: string[];
+  bank_code: string | null;
+}
+
+export interface FollowupQuestion extends FollowupQuestionInput {
+  /** 서버가 찍은 승인 일시. 같은 질문을 다시 저장하면 처음 일시를 그대로 둔다. */
+  approved_at: string;
+}
+
+export interface FollowupQuestionList {
+  session_id: string;
+  questions: FollowupQuestion[];
+  /** 저장한 적이 없으면 null. */
+  updated_at: string | null;
+  updated_by_id: string | null;
 }
