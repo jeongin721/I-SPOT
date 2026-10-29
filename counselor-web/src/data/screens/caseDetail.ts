@@ -26,6 +26,7 @@ import { NOT_PROVIDED } from "../caseRows";
 import { ABUSE_TYPES, type AbuseType, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseSignalsState } from "../useCaseSignals";
+import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { AuthSession } from "../useAuthSession";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
@@ -41,6 +42,8 @@ interface CaseScreenInput {
   caseId: string | null;
   /** 분석이 끝난 가장 최근 회차의 값(useCaseSignals). 없으면 위험도는 '—'. */
   signals?: CaseSignalsState;
+  /** 가장 최근 회차(sessions[0])의 승인한 추가 질문(18절). '추가 확인 · 질문' 칸 칩에 쓴다. */
+  questions?: FollowupQuestionsState;
 }
 
 /** 위험도 칩 색(10/27 디자인: 상 c-hi · 중 c-mid · 하 c-lo). 판단 전은 c-normal. */
@@ -269,8 +272,10 @@ export function caseDetailValues(input: CaseDetailInput) {
   const progress = PROCESS_COLUMNS.map((label, index) => {
     const done = latest !== null && index < column;
     const current = latest !== null && index === column && index < PROCESS_COLUMNS.length - 1;
-    // '추가 확인 · 질문' 칸은 Backend 에 없어 늘 준비 중이다.
+    // '추가 확인 · 질문' 칸: 회차 상태에 '질문 처리 완료' 가 없어 진행 표시는 그대로 두고, 가장 최근 회차에 승인한
+    // 추가 질문이 있으면 그 수를 칩으로 보인다(18절).
     const last = index === PROCESS_COLUMNS.length - 1;
+    const approved = last ? input.questions?.questions.length ?? 0 : 0;
 
     return {
       label,
@@ -280,7 +285,7 @@ export function caseDetailValues(input: CaseDetailInput) {
       done,
       current,
       pending: !done && !current,
-      chip: current && latest ? latest.statusLabel : last ? NOT_READY : "",
+      chip: current && latest ? latest.statusLabel : approved > 0 ? `질문 ${approved}개 승인` : "",
       // 녹취 올림 칸은 새로 올리기(사례만), 나머지는 가장 최근 회차의 단계 화면.
       href: latestIds
         ? index === 0

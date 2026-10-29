@@ -1,7 +1,7 @@
 """add session_overall_risk_assessments table
 
 Revision ID: 1a685a4ac64a
-Revises: b7e4c2d91f05
+Revises: d8a3b6c1e4f2
 Create Date: 2026-10-29 14:29:39.336372
 
 회차 전체 상담원 위험도 판단(상/중/하 하나, API_CONTRACT 11.1절). 10/27 디자인의 SignalReview 화면이 쓴다.
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 
 revision: str = '1a685a4ac64a'
-down_revision: Union[str, None] = 'b7e4c2d91f05'
+down_revision: Union[str, None] = 'd8a3b6c1e4f2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

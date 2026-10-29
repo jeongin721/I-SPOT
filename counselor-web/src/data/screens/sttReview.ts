@@ -4,7 +4,11 @@
 //  - 변환 전 · 실패면 진행 카드에서 변환 요청 · 다시 변환, 녹음이 없으면 녹취 올리기로 보낸다.
 //  - 화자 · 문장을 고치면 '저장' 으로 바꾼 발화만 보낸다. '원문 확정 · 유형별 위험도 →' 는 저장하지 않은 수정을 먼저 저장하고
 //    확정한 뒤 AI 분석을 요청하고 유형별 위험도 화면으로 간다(10/27 디자인에는 분석 요청 단계가 따로 없다).
-//  - 줄별 '확인' 표시는 화면 상태다(서버에는 '원문 확정' 하나만 있다). 핵심 · 안전 발화 고르기는 팀 결정 전이라 없다.
+//  - 줄별 '확인' 표시는 화면 상태다(서버에는 '원문 확정' 하나만 있다). 안전 발화 고르기는 팀 결정 전이라 없다.
+//  - '1차 임시 핵심 발화'(2026-10-28, API_CONTRACT 7절 key_scan): STT 작업 끝에 1차 모델(로컬)이 고른 아동 발화가 있고
+//    원문 확정 전이면 이 보기로 먼저 연다(디자인 view 'key' — 제목 '1차 임시 핵심 발화' · 칩 '임시 · 검수 전'). 이 보기의 줄은
+//    디자인처럼 고치지 않고 읽기만 한다. '전체 STT 보기' · '저신뢰 구간 보기' 를 다시 누르면 이 보기로 돌아온다(디자인 토글).
+//    스캔이 없거나(null · FAILED · SKIPPED · 빈 목록) 확정 뒤 · 주소에 seg 가 있으면 전체 STT 로 연다. 유형 이름은 보이지 않는다.
 //  - 화자는 Backend 5종(아동 · 상담원 · 보호자 · 기타 · 화자 미확인)만 쓴다. '사례관리대상자' 는 Backend 에 없다.
 //
 // 10/21 디자인(counselor-design/screens/SttReview.dc.html) 반영:
@@ -22,7 +26,7 @@
 //    (디자인의 .laws). 디자인처럼 아동 발화에만 보이고, 화자가 아동이 아닌 줄은 '아동으로 확인하면 표시' 안내만 둔다.
 //    분석 전에는 없다(원문 확정 뒤 분석이 끝나야 생긴다). '원문보기' 는 서버가 준 국가법령정보센터 주소다.
 //  - 옮기지 않은 것: 디자인 범례 끝줄의 예시 표시, 화자 라벨 뒤 번호(그 화자의 몇 번째 발화인지 — 뜻이 팀 확인 전),
-//    '핵심 발화' 보기(원문 확정 전 미리 분석하는 API 가 없음), 가짜 진행률 · 토스트.
+//    가짜 진행률 · 토스트.
 //
 // 10/27 디자인 반영: 단계 이름 '유형별 위험도'. 다음 단추가 원문 확정 + AI 분석 요청 + 이동을 한 번에 한다.
 //  - 이미 확정했고 분석을 아직 요청하지 않았으면(STT_CONFIRMED) 요청하고 간다. 분석 중 · 끝남 · 실패면 그냥 간다
@@ -125,8 +129,10 @@ export function lawsBySegment(utterances: RiskUtterance[]): Map<string, LawLine[
 }
 
 export interface SttUiState {
-  /** all 전체 STT · check 확인할 곳(저신뢰 · 화자 미확인)만. */
-  view: "all" | "check";
+  /**
+   * auto 처음(핵심 발화가 있으면 key, 없으면 all) · key 1차 임시 핵심 발화 · all 전체 STT · check 확인할 곳(저신뢰 · 화자 미확인)만.
+   */
+  view: "auto" | "key" | "all" | "check";
   /** 줄별 '확인' 표시(화면 상태). '회차 ID:발화 ID' → true(발화 ID 는 회차마다 seg_001 부터라 회차 ID 를 붙인다). */
   ok: Record<string, boolean>;
   /** 화자 목록을 연 줄('회차 ID:발화 ID'). 닫혀 있으면 null. */
@@ -145,7 +151,7 @@ export interface SttJump {
   n: number;
 }
 
-export const INITIAL_STT_STATE: SttUiState = { view: "all", ok: {}, spOpen: null, jump: null };
+export const INITIAL_STT_STATE: SttUiState = { view: "auto", ok: {}, spOpen: null, jump: null };
 
 /** 가리킬 발화 ID 를 담는 주소 쿼리 이름(#/SttReview?case=…&session=…&seg=<발화 ID>). */
 export const SEGMENT_PARAM = "seg";
@@ -261,12 +267,26 @@ export function sttReviewValues(input: SttScreenInput) {
   const jump =
     state.jump && state.jump.sessionId === ids.sessionId && state.jump.from === focusSegment ? state.jump : null;
   const focusId = jump ? jump.segmentId : focusSegment;
+  // 1차 임시 핵심 발화: 원문 확정 전이고 지금 원문에 남은 발화만. 없으면 이 보기를 쓰지 않는다.
+  const keyIds = new Set(review.info && !review.info.confirmed ? review.info.keySegmentIds : []);
+  const keyRows = review.rows.filter((row) => !row.removed && keyIds.has(row.segmentId));
+  const hasKey = keyRows.length > 0;
+  let view: "key" | "all" | "check" = state.view === "auto" ? (hasKey && !focusSegment ? "key" : "all") : state.view;
+  if (view === "key" && !hasKey) view = "all";
+  // 가리킬 발화(주소의 seg · 재생 바 표시)가 핵심 목록에 없으면 전체 보기로 — 핵심 보기를 남긴 채 &seg= 로 와도 그 줄이 보이게(민규 #115 R4).
+  if (view === "key" && focusId && !keyRows.some((row) => row.segmentId === focusId)) view = "all";
+  const home = hasKey ? "key" : "all";
   // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게). 표시할 줄도 둔다.
-  const visible = review.rows.filter(
-    (row) => !row.removed && (state.view === "all" || needsCheck(row) || row.dirty || row.segmentId === focusId),
-  );
+  const visible =
+    view === "key"
+      ? keyRows
+      : review.rows.filter(
+          (row) => !row.removed && (view === "all" || needsCheck(row) || row.dirty || row.segmentId === focusId),
+        );
   // 저장 · 확정을 기다리는 동안에는 고치지 못하게 한다(보낸 내용 뒤에 친 글자가 저장되지 않고 사라지지 않게).
   const editable = review.canEdit && !review.submitting;
+  // 핵심 발화 보기의 줄은 읽기만 한다 — 문장뿐 아니라 화자도 못 바꾼다(민규 #115 R3).
+  const lineEditable = editable && view !== "key";
   const okKey = (segmentId: string) => `${ids.sessionId}:${segmentId}`;
   const unchecked = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]);
   const left = unchecked.length;
@@ -285,7 +305,7 @@ export function sttReviewValues(input: SttScreenInput) {
     const done = Boolean(state.ok[key]);
     const check = needsCheck(row);
     // 고칠 수 없을 때(확정 뒤 다음 단계 · 저장 중)는 목록을 닫는다.
-    const open = editable && state.spOpen === key;
+    const open = lineEditable && state.spOpen === key;
     const focus = row.segmentId === focusId;
     let hint = "";
 
@@ -307,7 +327,7 @@ export function sttReviewValues(input: SttScreenInput) {
       aria: `${row.startLabel} 발화 고치기`,
       spFw: row.speaker === "CHILD" ? 700 : 500,
       spFix: row.edited || row.dirty,
-      canEdit: editable,
+      canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),
       /** 목록에서 Esc 를 누르면 닫는다. */
@@ -327,13 +347,14 @@ export function sttReviewValues(input: SttScreenInput) {
       })),
       onText: (event: { target: { value: string } }) => review.editText(row.segmentId, event.target.value),
       conf: row.confidenceLabel,
-      edit: review.canEdit,
-      read: !review.canEdit,
+      // 핵심 발화 보기의 줄은 디자인처럼 읽기만 한다(고치려면 전체 · 저신뢰 보기로).
+      edit: review.canEdit && view !== "key",
+      read: !review.canEdit || view === "key",
       text: row.text,
       check,
       hint,
       hintFg: "#7A776F",
-      bg: check && !done ? "#F1E3BF" : "#FFFFFF",
+      bg: check && !done && view !== "key" ? "#F1E3BF" : "#FFFFFF",
       okLabel: done ? "확인됨 ✓" : "확인",
       ok: () => setState({ ok: { ...state.ok, [key]: !done } }),
       laws: child ? rowLaws : [],
@@ -399,7 +420,7 @@ export function sttReviewValues(input: SttScreenInput) {
     progressAction: progress?.action ?? null,
     lines,
     /** '전체 STT' 보기면 일정 높이 상자 안에서 스크롤한다. */
-    boxCls: state.view === "all" ? "ln-box scroll" : "ln-box",
+    boxCls: view === "all" ? "ln-box scroll" : "ln-box",
     /** 표시할 줄의 발화 ID 와 누른 횟수. 화면 파일이 useSttFocus 에 넘겨 그 줄로 스크롤한다. */
     focusId,
     focusRequest: jump?.n ?? 0,
@@ -433,13 +454,19 @@ export function sttReviewValues(input: SttScreenInput) {
             markLabel: marks.length ? `확인할 곳 ${marks.length}곳` : "",
           },
     lowLeft: `${left}곳`,
-    viewTitle: state.view === "all" ? "전체 STT" : "확인할 곳(저신뢰 · 화자 미확인)",
-    chipText,
-    chipCls: review.counts.pending || left ? "chip c-check" : "chip c-ok",
-    allCls: state.view === "all" ? "btn-p" : "btn-s",
-    lowCls: state.view === "check" ? "btn-p" : "btn-s",
-    showAll: () => setState({ view: "all" }),
-    showLow: () => setState({ view: state.view === "check" ? "all" : "check" }),
+    viewTitle: view === "key" ? "1차 임시 핵심 발화" : view === "all" ? "전체 STT" : "확인할 곳(저신뢰 · 화자 미확인)",
+    chipText: view === "key" && !review.counts.pending ? "임시 · 검수 전" : chipText,
+    chipCls:
+      view === "key" && !review.counts.pending
+        ? "chip c-sand"
+        : review.counts.pending || left
+          ? "chip c-check"
+          : "chip c-ok",
+    allCls: view === "all" ? "btn-p" : "btn-s",
+    lowCls: view === "check" ? "btn-p" : "btn-s",
+    // 디자인처럼 같은 단추를 다시 누르면 처음 보기(핵심 발화가 있으면 그 보기)로 돌아온다.
+    showAll: () => setState({ view: view === "all" ? home : "all" }),
+    showLow: () => setState({ view: view === "check" ? home : "check" }),
     versionLabel: review.info
       ? `원문 ${review.info.version}판 · 고친 발화 ${review.counts.edited} · 발화 ${review.counts.total}`
       : "",

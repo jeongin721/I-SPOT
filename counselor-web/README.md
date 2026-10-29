@@ -115,17 +115,17 @@ export default function CaseDetail(props) {
 | 홈 | `Main.jsx` | — | `useAuthSession` · `useHomeDashboard` | `main.ts` `mainValues` |
 | 통합 사례 관리 | `CaseList.jsx` | — | `useAuthSession` · `useCaseList` | `caseList.ts` `caseListValues` |
 | 새 사례 등록 | `CaseRegister.jsx` | — | `useAuthSession` · `useCaseRegister` | `caseRegister.ts` `caseRegisterValues` |
-| 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseDetailValues` |
+| 사례 상세 · 내담자 정보 | `CaseDetail.jsx` | `case` | `useCaseDetail` · `useFollowupQuestions`(최근 회차 승인 질문 수) | `caseDetail.ts` `caseDetailValues` |
 | 사례 상세 · 상담 이력 | `CaseHistory.jsx` | `case` | `useCaseDetail` | `caseDetail.ts` `caseHistoryValues` |
-| 사례 상세 · 상담 전 브리핑 | `PreBriefing.jsx` | `case` | `useCaseDetail` · `useCaseSignals` | `preBriefing.ts` `preBriefingValues` |
+| 사례 상세 · 상담 전 브리핑 | `PreBriefing.jsx` | `case` | `useCaseDetail` · `useCaseSignals` · `useFollowupQuestions` | `preBriefing.ts` `preBriefingValues` |
 | 사례 상세 · 문서함 | `CaseDocs.jsx` | `case` | `useCaseDetail` · `useCaseDocuments` | `caseDocs.ts` `caseDocsValues` |
 | 사례 상세 · 초기면접지 | `CaseIntake.jsx` | `case` | `useCaseDetail`(`saveCase`) · `useIntakeCounselors` | `caseIntake.ts` `caseIntakeValues` |
-| 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) | `sessionDetail.ts` `sessionDetailValues` |
+| 회차 상세 | `SessionDetail.jsx` | `case` · `session` | `useSessionDetail` · `useCaseDetail`(회차의 사례) · `useFollowupQuestions`(승인 질문 수) | `sessionDetail.ts` `sessionDetailValues` |
 | 녹취 · 자료 올리기 | `UploadModal.jsx` | (`case` · `session`) | `useCaseList` · `useCaseDetail`(고른 사례) · `useAudioUpload` | `uploadModal.ts` `uploadModalValues` |
 | 1 · STT 검수 | `SttReview.jsx` | `case` · `session` | `useTranscriptReview` + 머리 `useSessionDetail` · `useCaseDetail` | `sttReview.ts` `sttReviewValues` |
 | 2 · 유형별 위험도 | `SignalReview.jsx`(옛 `RiskProfile` 주소는 여기로 넘김) | `case` · `session`(· `ask`) | `useSessionAnalysis` · `useRiskSignals` · `useOverallRiskAssessment` + 머리 | `signalReview.ts` `signalReviewValues` |
 | 3 · 요약 · 일지 작성 | `NoteWrite.jsx` | `case` · `session` | `useSummaryReview` · `useSessionDocuments` · `useOverallRiskAssessment`(판단 없는 회차는 유형별 위험도 `?ask=1` 로 돌려보냄) + 머리 | `noteWrite.ts` `noteWriteValues` |
-| 4 · 추가 확인 · 질문 | `FollowupQ.jsx` | `case` · `session` | `useSessionAnalysis` · `useRiskSignals`(근거 위치) + 머리 | `followupQ.ts` `followupQValues` |
+| 4 · 추가 확인 · 질문 | `FollowupQ.jsx` | `case` · `session` | `useSessionAnalysis` · `useRiskSignals`(근거 위치) · `useFollowupQuestions` + 머리 | `followupQ.ts` `followupQValues` · 추가 질문 `followupQuestions.ts` |
 | 일정 | `Schedule.jsx` | — | `useAuthSession` · `useCaseOverview`(`sessions`) | `schedule.ts` `scheduleValues` |
 | 종결 검토 목록 | `Closure.jsx` | — | `useAuthSession` · `useCaseOverview`(`counts`) | `closure.ts` `closureValues` |
 | 통계 | `Stats.jsx` | — | `useAuthSession` · `useCaseOverview`(`sessions`) | `stats.ts` `statsValues` |
@@ -140,9 +140,9 @@ export default function CaseDetail(props) {
 | (옛 주소) | `Admin.jsx` | (`view`) | — | 새 관리자 화면으로 넘겨 주기만 함 |
 
 - 회차 처리 흐름(10/27 디자인): 녹취 올리기 → STT 검수(고친 발화 저장 · '원문 확정 · 유형별 위험도 →' 가 원문 확정 + AI 분석 요청 + 이동) → 유형별 위험도(AI 분석 진행 · 실패 뒤 다시 분석, 심각도 · 근거 발화 · 상담원 판단) → 요약 · 일지 작성(요약 고치기 · 저장 · **요약 승인 = 회차 '승인 완료'**, 상담일지 저장 · 승인).
-- STT 검수(10/21 · 10/22 디자인): 화자는 목록에서 고르고(Esc 로 닫힘), 줄마다 시간 단추(다시 듣기 — 서버에 녹음 재생이 없어 꺼 둠)가 있습니다. 전체 보기는 정해진 높이 안에서 스크롤하고, 아래에 재생 바(`components/SttPlayer.jsx`)가 붙습니다. 재생 · 정지 · 5초 앞뒤 · 재생 위치는 서버에 음성 파일 API 가 없어 꺼 두고(준비 중), 확인하지 않은 저신뢰 · 화자 미확인 줄을 '시작 시각 ÷ 음성 길이' 자리에 표시해 누르면 '확인할 곳' 보기로 바뀌고 그 줄로 갑니다. 10/22 디자인대로 '위험 신호' 구역은 뺐습니다(범례에 목소리 신호 · 관련 조문 준비 중만). 저장 · '원문 확정 · 유형별 위험도 →' 단추는 범례 아래에 있고, 누르면 원문 확정 + AI 분석 요청 + 이동을 한 번에 합니다(10/27 디자인 — 분석 요청 단계가 따로 없음. 이미 확정했고 분석 전이면 요청하고, 분석 중 · 끝남 · 실패면 그냥 갑니다). 현재 단계 강조(먹색 칸 + '현재 단계')는 `common.css` 의 공통 규칙입니다.
+- STT 검수(10/21 · 10/22 디자인): 화자는 목록에서 고르고(Esc 로 닫힘), 줄마다 시간 단추(다시 듣기 — 서버에 녹음 재생이 없어 꺼 둠)가 있습니다. 전체 보기는 정해진 높이 안에서 스크롤하고, 아래에 재생 바(`components/SttPlayer.jsx`)가 붙습니다. 재생 · 정지 · 5초 앞뒤 · 재생 위치는 서버에 음성 파일 API 가 없어 꺼 두고(준비 중), 확인하지 않은 저신뢰 · 화자 미확인 줄을 '시작 시각 ÷ 음성 길이' 자리에 표시해 누르면 '확인할 곳' 보기로 바뀌고 그 줄로 갑니다. 10/22 디자인대로 '위험 신호' 구역은 뺐습니다(범례에 목소리 신호 · 관련 조문 준비 중만). 저장 · '원문 확정 · 유형별 위험도 →' 단추는 범례 아래에 있고, 누르면 원문 확정 + AI 분석 요청 + 이동을 한 번에 합니다(10/27 디자인 — 분석 요청 단계가 따로 없음. 이미 확정했고 분석 전이면 요청하고, 분석 중 · 끝남 · 실패면 그냥 갑니다). 현재 단계 강조(먹색 칸 + '현재 단계')는 `common.css` 의 공통 규칙입니다. 원문 확정 전이고 STT 작업 끝의 1차 모델 스캔(`transcript.key_scan`, API_CONTRACT 7절)이 고른 아동 발화가 있으면 디자인대로 **'1차 임시 핵심 발화'** 보기(칩 '임시 · 검수 전', 줄은 읽기만)로 먼저 열고, '전체 STT 보기' · '저신뢰 구간 보기' 를 다시 누르면 이 보기로 돌아옵니다. 스캔이 없거나(이전 전사본 · FAILED · SKIPPED · 빈 목록) 확정 뒤 · 주소에 `seg` 가 있으면 전체 STT 로 엽니다. 1차 유형 이름은 판정처럼 읽혀 보이지 않습니다.
 - 유형별 위험도(10/27 디자인, `SignalReview`): 10/23 의 '위험 신호 검토' 와 '유형별 위험도' 두 화면을 디자인대로 한 화면으로 합쳤습니다. 위쪽 'AI 초안' 자리는 AI 분석 상태(분석 중 · 실패 · 대기, 실패 · 대기면 다시 요청 단추)이고 회차 전체 AI 위험도 · 안전 플래그 수 · 지난 회차 비교는 서버에 없어 준비 중입니다. 상담원 판단(상 · 중 · 하)은 디자인대로 위 카드에 **회차 전체 하나**만 둡니다(2026-10-29, `GET/PUT …/risk-assessment` — 원문 확정 뒤에만, 저장 뒤 '그때 AI 최고 심각도 n/5', 기존 판단 이유는 그대로 보냄). 유형 줄마다 있던 상담원 판단 단추는 뺐습니다(유형별 판단 창구는 서버에 남아 있지만 화면은 쓰지 않습니다). 유형 줄: 관련 신호 칩('관련 신호' / '관련 신호 없음' / '부정 응답으로 뺌' / '검출 여부 미확인' / '근거 없어 제외' — 없음으로 단정하지 않음) · AI 심각도 1~5(`severity_ratings`, 읽기 전용 — 디자인의 '눌러서 상담사 수정' 은 저장할 API 가 없어 하지 않음, `null` 은 '정보 부족') · 해당 기준(단계 설명, 디자인 초안 문구이며 팀이 확정한 기준이 아님) · AI 이유 · 근거 발화(`risk_utterances`, 원문 위치 '몇 분 · 누구', 누르면 STT 검수의 그 발화로 `?seg=`) · 기준 보기(단계 설명 전체 + 근거 발화 전체와 세부 유형 · 근거 직접성 · 원문 대조 · 이유). 근거 발화가 없는 유형은 '언급 없음 ≠ 학대 없음' 을 적습니다. 보호요인(`protective_factors`)은 읽기 전용으로 보이고, 회차별 추이 · 안전 플래그 · 재학대 요인 · 위험요인은 준비 중입니다. 디자인 아래 단추의 '확정' 은 서버에 위험 신호 확정 기록이 없어 빼고 '요약 · 일지 작성 →' 으로만 갑니다. **상담원 판단을 고르기 전에는 다음으로 못 갑니다**(2026-10-29): 분석이 끝나 검수 중인데 판단이 없으면 아래 단추와 단계 표시 3단계는 옮기지 않고 "위험도를 선택해주세요." 팝업(`role="dialog"`, Esc · 확인 · 바깥 누름으로 닫힘)을 띄우고, 요약 · 일지 작성에 바로 들어와도(이어서 하기 · 주소 입력) 이 화면으로 돌려보냅니다(`?ask=1`). 승인 완료 회차는 막지 않습니다. 채택/보류/제외 기록도 서버에 없습니다(팀 결정 전). 모두 AI 제안이고 판정이 아닙니다. 지금은 `AI_PROVIDER=modeling` 만 값을 채우고 mock · pipeline · langgraph 는 빈 배열입니다.
-- 추가 확인 · 질문(10/27 디자인, `FollowupQ`): '다음 상담 전 확인할 사항' 에 분석 결과의 `followup_check_points`(AI 가 남긴 확인 메모)를 읽기 전용으로 보입니다(10/26 까지는 유형별 위험도 화면의 카드). 'AI 확인 메모 · 질문 아님' 칩을 붙이고 아이에게 할 질문으로 보이거나 질문 은행과 잇지 않습니다(메모로만 보이면 원칙 7 과 어긋나지 않는다는 10/26 결정). 근거는 `segment_ids` 를 원문에서 찾아 '몇 분 · 누구' 로 보이고 누르면 STT 검수의 그 발화로 갑니다(비어 있으면 '근거 위치 없음'). 브리핑에 넣기 · 수정 · 직접 추가와 추가 질문(다음 상담에서 직접 · 아이 앱으로 먼저)은 서버에 없어 준비 중이고 예시 질문은 보이지 않습니다. 아래 단추는 회차 상세로 갑니다(회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면).
+- 추가 확인 · 질문(10/27 디자인, `FollowupQ`): '다음 상담 전 확인할 사항' 에 분석 결과의 `followup_check_points`(AI 가 남긴 확인 메모)를 읽기 전용으로 보입니다(10/26 까지는 유형별 위험도 화면의 카드). 'AI 확인 메모 · 질문 아님' 칩을 붙이고 아이에게 할 질문으로 보이거나 질문 은행과 잇지 않습니다(메모로만 보이면 원칙 7 과 어긋나지 않는다는 10/26 결정). 근거는 `segment_ids` 를 원문에서 찾아 '몇 분 · 누구' 로 보이고 누르면 STT 검수의 그 발화로 갑니다(비어 있으면 '근거 위치 없음'). 브리핑에 넣기 · 수정 · 직접 추가는 서버에 없어 준비 중입니다. '추가 질문' 은 디자인의 카드 · [승인] · [수정] · [+ 질문 직접 추가] 그대로이고, AI 초안(분석 결과 `followup_questions`, 생성 모듈 #100 C-1 전에는 비어 있음)과 승인 목록(`GET/PUT /sessions/{id}/followup-questions`, API_CONTRACT 18절, `useFollowupQuestions`)을 합쳐 보입니다. [승인] 을 누르면 승인 목록에 저장되고 다시 누르면 빠집니다. 승인한 질문의 문장을 고치면 승인이 풀리고(디자인 그대로), 승인 전 질문 · 직접 쓴 질문은 화면에만 있다가 [승인] 해야 저장됩니다. '아이 앱으로 먼저' 탭은 아이 앱 발송이 서버에 없어 준비 중입니다. 상담 전 브리핑의 '추가 질문' 은 그 회차의 승인 목록을 보입니다. 아래 단추는 회차 상세로 갑니다(회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면).
 - '요약 승인' · '일지 승인' 은 누르면 (고친 칸을 저장하고) 바로 승인합니다. 요약 승인은 회차를 '승인 완료' 로 바꿉니다. 승인한 칸에는 '요약 수정' · '일지 수정' 단추만 보이고, 누르면 쓴 내용 그대로 승인이 풀려 고친 뒤 다시 승인합니다(요약을 풀면 회차는 'AI 결과 검수 필요' 로 돌아갑니다). '저장 · 추가 확인 · 질문 →' 은 저장만 합니다. → 추가 확인 · 질문(AI 확인 메모 보기).
 - 관리자 화면(10/21 디자인): 화면을 나눠 홈(`AdminHome`) · 상담사 계정 관리 · 상담사 상세 · 접속 기록 · 보안 이벤트 · 통계 · 보고를 두고, 왼쪽 메뉴는 공용 `components/AdminSidebar.jsx` 입니다. 디자인 메뉴의 아이 연계 앱 관리 · 열람 기록은 서버가 없어(팀 결정 전) 링크 없는 '준비 중' 이고, 디자인에 없는 기존 기능(업무 처리 현황 `AdminTasks` · 전체 사례 현황 · 상담원 화면으로)은 아래 묶음으로 남겼습니다. 계정 요청(비활성화 · 다시 활성화 · 비밀번호 초기화 · 잠금 해제 · 휴면 해제 · 강제 로그아웃)은 상담사 상세 화면에 있습니다. 옛 주소 `#/Admin`(`?view=`)은 새 화면으로 넘겨 줍니다. 긴급 알림 · OTP · 접속 위치 · IP 차단 · 심각도 · 기관 지표는 서버에 없어 `—` · 준비 중입니다. 모든 관리자 화면은 상담원 계정이면 서버를 부르지 않고 안내만 보입니다. 대시보드 업무 탭은 Backend 가 종류를 하나만 거를 수 있어 두 종류씩 불러 오래 기다린 순서로 합칩니다(원문 변환 · 상담사 검토 · AI 분석). 계정 만들기 · 비밀번호 초기화 · 휴면 해제의 임시 비밀번호는 화면 상태에만 한 번 두고 '닫기' 로 버립니다(다른 관리자로 바뀌면 보이지 않음). 비밀번호 초기화 · 휴면 해제 · 비활성화 · 강제 로그아웃은 한 번 더 묻습니다. 미배정 사례 · 문서 승인 · 보안 경고 · 재처리 요청은 서버에 없어 `—` · 준비 중입니다.
 - 새 사례 등록: 서버에 저장하는 칸은 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 Backend 가 `C-YYYY-NNNN` 으로 만듦, 겹치면 거절 문구) · 성별 · 출생연도 · 보호자 유형(기타면 관계 메모) · 사례 메모, ② 초기면접 내용의 가정상황 · 아동 특성(서식 4 항목 고르기), 담당 상담원(관리자만 고름, 상담원은 본인)입니다. 등록되면 새 사례 상세(`?case=새 ID`)로 갑니다(가정상황 · 아동 특성은 등록 뒤 사례 상세에서 고칩니다). 서식 4 의 나머지 칸(실명 · 생년월일 · 사례관리대상자 · 신고 · 연계 · 면접일 · 학대유형 · 조치결과 · 위험도 · 사례연계 경위, ② 탭의 관계 · 가족 · 문제력 · 태도 · 소견)은 개인정보 저장 범위가 팀 결정 전이라 입력을 막고 '준비 중' 으로 둡니다. 그 내용을 사례 메모 등 다른 칸에 옮겨 담지 않습니다. 화면 칸 '대상아동 이름' · '생년월일' · '관계' 는 '아동 별칭' · '출생연도' · '보호자 유형' 으로 바꿨습니다(사례관리대상자는 보호자와 같은 뜻이 아니어서 따로 준비 중). 10/21 디자인대로 학대유형 칸은 뺐고, 필수 칸(사례 제목 · 아동 별칭)을 채워야 ② 탭으로 넘어갑니다(빈 칸 표시 · 남은 항목 안내). 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이라 옮기지 않았습니다.
@@ -240,7 +240,7 @@ export default function Page(props) {
 4. 서로 다른 진술은 합치지 않고 그대로 나란히 둡니다.
 5. 아이의 무응답은 위험 신호가 아닙니다.
 6. 보호자 진술은 아이에게 할 질문의 근거로 쓰지 않습니다.
-7. 추가 질문은 질문 은행에서만 제안하고, 상담원이 고친 질문은 `상담사 수정` 으로 표시합니다. AI 확인 메모(`followup_check_points`)는 질문이 아니라 '메모' 로만 보입니다(10/26).
+7. 추가 질문은 질문 은행에서만 제안하고, 상담원이 고친 질문은 `상담사 수정` 으로 표시합니다. 질문 은행이 생기기 전에는 AI 열린 질문 초안을 코드 검사 + 상담사 승인으로 먼저 씁니다(#100 §7 답 5, 2026-10-28 — 승인한 질문만 브리핑에 들어감). AI 확인 메모(`followup_check_points`)는 질문이 아니라 '메모' 로만 보입니다(10/26).
 8. 화면의 모든 내용은 상담원이 고칠 수 있어야 합니다.
 
 ## 화면 목록
@@ -285,7 +285,7 @@ export default function Page(props) {
 | `/#/SignalReview` | `src/pages/SignalReview.jsx` | 2 · 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단) |
 | `/#/RiskProfile` | `src/pages/RiskProfile.jsx` | 옛 주소 — 유형별 위험도(`SignalReview`)로 넘김 |
 | `/#/NoteWrite` | `src/pages/NoteWrite.jsx` | 3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식) |
-| `/#/FollowupQ` | `src/pages/FollowupQ.jsx` | 4 · 추가 확인 · 질문 (AI 확인 메모 · 수정 · 추가 질문은 준비 중) |
+| `/#/FollowupQ` | `src/pages/FollowupQ.jsx` | 4 · 추가 확인 · 질문 (AI 확인 메모 · 추가 질문 승인 · 수정 · 직접 추가) |
 
 **⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 법령 · 매뉴얼 · 관리자**
 
