@@ -9,10 +9,13 @@
 // (고르기 단추는 CaseRegister 와 같은 모양).
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
 // components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
+// 10/29 디자인: 상담 전 브리핑이 탭에서 빠지고 이 화면 '현재 진행 상황' 아래(#brief)로 들어왔다. 값은 예전 브리핑 화면과
+// 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
+// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 사례 별칭만 — 서버에 실명이 없다).
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
 // 녹음은 창을 연 계정 · 사례의 것이다. 다른 탭에서 계정이 바뀌거나 다른 사례로 가거나 사례를 볼 수 없게 되면(403 등) 녹음을
 // 버리고(마이크 끄기 · 들어 보기 주소 해제 · 올리기 멈춤) 창을 닫는다 — 앞 계정의 녹음을 새 계정이 듣거나 저장하지 않게.
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -31,6 +34,7 @@ import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import './CaseDetail.css';
 
@@ -44,6 +48,46 @@ class Logic extends DCLogic {
   }
 }
 
+/** 이름 가리기: 둘째 글자를 ○ 로(10/29 디자인 nmMask — 예) 이서윤 → 이○윤, 서윤 → 서○). */
+function maskName(text, name) {
+  if (!name || name.length < 2) return text;
+  const given = name.slice(1);
+  return text
+    .split(name)
+    .join(name[0] + '○' + name.slice(2))
+    .split(given)
+    .join(given.length >= 2 ? given[0] + '○' + given.slice(2) : given);
+}
+
+function maskExample(name) {
+  return name.length >= 3 ? `${maskName(name, name)} · ${maskName(name.slice(1), name)}` : maskName(name, name);
+}
+
+/** 브리핑만 인쇄한다(body.print-brief). 이름 가리기면 인쇄하는 동안만 브리핑 글자를 바꾸고 되돌린다. */
+function printBrief(root, name, mask) {
+  const changed = [];
+  if (root && mask && name) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const next = maskName(node.nodeValue, name);
+      if (next !== node.nodeValue) {
+        changed.push([node, node.nodeValue]);
+        node.nodeValue = next;
+      }
+    }
+  }
+  document.body.classList.add('print-brief');
+  try {
+    window.print();
+  } finally {
+    document.body.classList.remove('print-brief');
+    changed.forEach(([node, value]) => {
+      node.nodeValue = value;
+    });
+  }
+}
+
 export default function CaseDetail(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
@@ -52,6 +96,17 @@ export default function CaseDetail(props) {
   const theme = useTheme();
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
   const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
+  const [params] = useSearchParams();
+  const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
+  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId });
+  const briefRef = useRef(null);
+  const [outOpen, setOutOpen] = useState(false);
+  const [outMask, setOutMask] = useState(true);
+  const wantBrief = params.get('view') === 'brief';
+  const briefReady = Boolean(detail.caseInfo);
+  useEffect(() => {
+    if (wantBrief && briefReady && briefRef.current) briefRef.current.scrollIntoView({ block: 'start' });
+  }, [wantBrief, briefReady]);
   const [recOpen, setRecOpen] = useState(false);
   const recorder = useAudioRecorder();
   const upload = useAudioUpload();
@@ -113,7 +168,9 @@ export default function CaseDetail(props) {
             </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
+                <h1 className="h1-sans" style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>
+                  {v.title}
+                </h1>
                 <span className="sub">{v.sub}</span>
                 <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
@@ -356,6 +413,128 @@ export default function CaseDetail(props) {
               </div>
             </div>
           </section>
+
+          <div className="brief-wrap" id="brief" ref={briefRef} aria-label="상담 전 브리핑" role="region">
+            <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 20px' }}>
+              <div style={{ flex: '1 1 380px' }}>
+                <div className="sub">{brief.lead}</div>
+                <h2 style={{ margin: '2px 0 0', fontSize: '22px', fontWeight: '700' }}>상담 전 브리핑</h2>
+              </div>
+              <button type="button" className="btn btn-s" aria-haspopup="dialog" onClick={() => setOutOpen(true)}>
+                인쇄 · PDF
+              </button>
+              {outOpen ? (
+                <div className="out-ov">
+                  <div className="out-dlg" role="dialog" aria-modal="true" aria-labelledby="out-t">
+                    <b id="out-t" style={{ fontSize: '18px' }}>
+                      인쇄 · PDF
+                    </b>
+                    <span className="note" style={{ marginTop: '-6px' }}>
+                      출력물에 들어갈 이름 표시 방식을 고르세요.
+                    </span>
+                    <div role="radiogroup" aria-label="이름 표시 방식" className="out-opts">
+                      {[
+                        [false, '실명 그대로', `예) ${v.title || '이서윤'}`],
+                        [true, '이름 가리기', `예) ${maskExample(v.title || '이서윤')}`],
+                      ].map(([m, label, ex]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          role="radio"
+                          aria-checked={outMask === m ? 'true' : 'false'}
+                          className={`out-opt ${outMask === m ? 'on' : ''}`}
+                          onClick={() => setOutMask(m)}
+                        >
+                          <span className="out-rd" aria-hidden="true"></span>
+                          <span style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <b style={{ fontSize: '14px' }}>{label}</b>
+                            <span className="note">{ex}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                      <button type="button" className="btn btn-s" onClick={() => setOutOpen(false)}>
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-p"
+                        onClick={() => {
+                          setOutOpen(false);
+                          printBrief(briefRef.current, v.title, outMask);
+                        }}
+                      >
+                        인쇄
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+            <section aria-label="먼저 볼 것" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <h2 className="h2">먼저 볼 것</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+                {(brief.firstCards || []).map((c) => (
+                  <div key={c.key} className="card lead">
+                    <span className="lead-tag">{c.title}</span>
+                    <span className="src">{c.note}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '18px' }}>
+              <section
+                className="card"
+                style={{ padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: '12px' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h2 className="h2">확인할 사항</h2>
+                </div>
+                {brief.checksNote ? <span className="note">{brief.checksNote}</span> : null}
+                {(brief.checks || []).map((c) => (
+                  <div key={c.key} className="rq">
+                    <span>
+                      {c.text}
+                      {c.href ? (
+                        <A className="src" to={c.href}>
+                          근거 · {c.why}
+                        </A>
+                      ) : (
+                        <span className="src">근거 · {c.why}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+                {brief.checksError ? (
+                  <span className="note" role="alert" style={{ color: '#A33B2E' }}>
+                    {brief.checksError}
+                  </span>
+                ) : null}
+              </section>
+              <section
+                className="card"
+                style={{ padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: '12px' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h2 className="h2">추가 질문</h2>
+                  <span className="chip c-ai">AI 초안</span>
+                  {brief.questionHref ? (
+                    <A to={brief.questionHref} style={{ marginLeft: 'auto', fontSize: '13px' }}>
+                      질문 수정
+                    </A>
+                  ) : null}
+                </div>
+                {brief.questions.map((q) => (
+                  <div key={q.key} className="rq">
+                    <span className="chip c-normal">{q.chip}</span>
+                    <span>"{q.text}"</span>
+                  </div>
+                ))}
+                {brief.questionNote ? <span className="note">{brief.questionNote}</span> : null}
+              </section>
+            </div>
+          </div>
 
           <section
             className="card"

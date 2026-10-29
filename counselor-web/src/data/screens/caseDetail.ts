@@ -169,11 +169,18 @@ export function caseHeaderValues(input: CaseScreenInput) {
     tabs: {
       detail: screenHref("/CaseDetail", ids),
       history: screenHref("/CaseHistory", ids),
-      briefing: screenHref("/PreBriefing", ids),
+      // 10/29 디자인: 상담 전 브리핑은 탭이 아니라 내담자 정보 탭 안(#brief). HashRouter 라 주소 # 대신 view=brief 로 연다.
+      briefing: briefingHref(ids.caseId ?? null),
       app: screenHref("/CaseApp", ids),
       docs: screenHref("/CaseDocs", ids),
     },
   };
+}
+
+/** 내담자 정보 탭의 상담 전 브리핑 자리로 가는 주소(CaseDetail 이 view=brief 면 그 자리로 스크롤한다). */
+export function briefingHref(caseId: string | null): string {
+  const href = screenHref("/CaseDetail", { caseId });
+  return `${href}${href.includes("?") ? "&" : "?"}view=brief`;
 }
 
 const DOT_DONE = { background: "#F2EFE8", color: "#66625A" };
@@ -294,9 +301,11 @@ export function caseDetailValues(input: CaseDetailInput) {
         { label: "생년월일", value: info.birthYearLabel },
         { label: "사례관리대상자", value: dash },
         { label: "가족유형", value: dash },
+        { label: "조치결과", value: dash },
         { label: "담당 상담원", value: info.counselorName },
         { label: "신고접수일", value: dash },
         { label: "사례연계일", value: dash },
+        { label: "최초면접일", value: dash },
         { label: "상담 회차", value: `${info.sessionCount}회`, strong: true },
         { label: "최근 상담", value: lastConsulted },
         { label: "아이 앱", value: dash },
