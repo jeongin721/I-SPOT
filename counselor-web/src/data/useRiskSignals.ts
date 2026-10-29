@@ -17,6 +17,11 @@ import type { AnalysisView } from "./useSessionAnalysis";
 export interface RiskSignalsOptions {
   /** false 면 부르지 않는다(로그인 확인 전 등). 기본 true. */
   enabled?: boolean;
+  /**
+   * 분석 결과 밖에 근거 번호가 있어 원문이 필요한가(추가 질문 초안 · 승인 목록 — 승인은 분석 없이도 된다). 기본 false.
+   * true 면 분석이 끝나지 않았어도 원문을 받는다.
+   */
+  needEvidence?: boolean;
 }
 
 /** segment_ids 를 원문에서 찾은 결과. */
@@ -49,7 +54,7 @@ function hasIds(items: { segment_ids?: unknown }[]): boolean {
 export function useRiskSignals(
   sessionId: string | null | undefined,
   analysis: AnalysisView | null,
-  { enabled = true }: RiskSignalsOptions = {},
+  { enabled = true, needEvidence = false }: RiskSignalsOptions = {},
 ): RiskSignalsState {
   // 끝난 분석(COMPLETED)만 값으로 본다. 처리 중 · 실패한 분석 행도 AnalysisView 로 오지만(위험 배열은 빈 배열)
   // 그걸로 유형 줄을 만들면 네 유형이 모두 '응답에 없음' 이 된다(Codex R3).
@@ -57,7 +62,8 @@ export function useRiskSignals(
   const utterances = completed ? analysis.riskUtterances : [];
   const signals = completed ? analysis.abuseSignals : [];
   const needSource =
-    completed && (utterances.length > 0 || hasIds(analysis.protectiveFactors) || hasIds(analysis.followupCheckPoints));
+    (completed && (utterances.length > 0 || hasIds(analysis.protectiveFactors) || hasIds(analysis.followupCheckPoints))) ||
+    needEvidence;
   const key = enabled && sessionId && needSource ? sessionId : null;
   const source = useRemote<TranscriptEnvelope>(key, transcriptApi.get, "근거 발화를 불러오지 못했습니다.");
   const segments = key ? (source.data?.transcript?.segments ?? null) : null;

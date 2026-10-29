@@ -713,6 +713,7 @@ def test_module_only_fields_do_not_leak(modeling) -> None:
         "protective_factors",
         "session_change_notes",
         "followup_check_points",
+        "followup_questions",
     }
 
     dumped = json.dumps(stored, ensure_ascii=False)

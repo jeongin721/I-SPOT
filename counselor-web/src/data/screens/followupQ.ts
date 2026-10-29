@@ -8,14 +8,17 @@
 //    서버가 segment_ids 를 비워 보내면(2026-10-27 #84 이전에 저장된 결과) '근거 위치 없음' 이고, 근거가 지난 회차 확정 요약뿐인
 //    메모(previous_session_label, 2026-10-28)는 '근거 · 7회차 확정 요약' 이다.
 //  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가: 저장할 API 가 없어 보이지 않고 준비 중이라고만 쓴다(가짜 저장 없음).
-//  - 추가 질문(다음 상담에서 직접 · 아이 앱으로 먼저): 질문 은행 · 아이 앱 발송이 서버에 없어 준비 중이다(예시 질문을 보이지 않는다).
+//  - 추가 질문: AI 초안(분석 결과 followup_questions) · 승인 목록(GET/PUT …/followup-questions, 18절)을 디자인의 카드 ·
+//    [승인] · [수정] · [+ 질문 직접 추가] 로 보인다(followupQuestions.ts). '아이 앱으로 먼저' 탭은 준비 중이다.
 //  - 아래 'n회차 처리 완료 · 브리핑 보기': 회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면이라
 //    회차 상세로 가는 단추로 둔다.
 
-import type { FollowupCheckPoint } from "../../api/types";
+import type { FollowupCheckPoint, SessionStatus } from "../../api/types";
+import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
 import { NOT_READY } from "./common";
+import { questionValues, type QuestionUiState } from "./followupQuestions";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -24,6 +27,19 @@ import { segmentHref } from "./sttReview";
 export interface FollowupScreenInput extends SessionScreenInput {
   analysis: SessionAnalysisState;
   signals: RiskSignalsState;
+  questions: FollowupQuestionsState;
+  state: QuestionUiState;
+  setState: (patch: Partial<QuestionUiState> | ((current: QuestionUiState) => Partial<QuestionUiState>)) => void;
+}
+
+/** 승인한 추가 질문을 저장할 수 있는 회차 상태(API_CONTRACT 18절). */
+const QUESTION_EDITABLE: SessionStatus[] = ["STT_CONFIRMED", "AI_REVIEW_REQUIRED", "AI_FAILED", "APPROVED"];
+
+/** 저장할 수 없는 상태면 그 이유. 상태를 아직 모르면 null(서버가 409 로 거른다). */
+export function questionBlockedReason(status: SessionStatus | null | undefined): string | null {
+  if (!status || QUESTION_EDITABLE.includes(status)) return null;
+  if (status === "AI_PROCESSING") return "AI 분석 중에는 질문을 승인할 수 없습니다. 분석이 끝난 뒤 승인해 주세요.";
+  return "원문(STT)을 확정한 뒤 질문을 승인할 수 있습니다.";
 }
 
 /** 카드 머리 칩. 질문이 아니라 메모임을 늘 밝힌다(원칙 7). */
@@ -105,7 +121,16 @@ export function followupQValues(input: FollowupScreenInput) {
     checks,
     checksEmpty: empty,
     checkEditNote: `브리핑에 넣기 · 수정 · 확인 사항 직접 추가는 ${NOT_READY}입니다(저장할 서버 기능이 없음).`,
-    questionNote: `추가 질문(다음 상담에서 직접 · 아이 앱으로 먼저)은 ${NOT_READY}입니다(질문 은행 · 아이 앱 발송이 서버에 없음).`,
+    ...questionValues({
+      state: input.state,
+      setState: input.setState,
+      drafts: completed ? view?.followupQuestions ?? [] : [],
+      saved: input.questions,
+      locate: signals.locate,
+      ids,
+      sessionLabel,
+      blockedReason: questionBlockedReason(status),
+    }),
     error: analysis.error,
     signalError: completed ? signals.evidenceError : null,
     backHref: screenHref("/NoteWrite", ids),

@@ -20,6 +20,8 @@ import type {
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
+  FollowupQuestionInput,
+  FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
   LoginResponse,
@@ -432,6 +434,25 @@ export const riskAssessments = {
    */
   save(sessionId: string, abuseType: AbuseType, payload: RiskAssessmentSaveRequest): Promise<RiskAssessment> {
     return api.put<RiskAssessment>(`/sessions/${sessionId}/risk-assessments/${abuseType}`, payload);
+  },
+};
+
+// =========================================================
+// 승인한 추가 질문 (추가 확인 · 질문 · 상담 전 브리핑)
+// =========================================================
+
+export const followupQuestions = {
+  /** 승인한 질문 목록. 저장한 적이 없으면 questions 가 []. 회차 상태와 상관없이 조회한다. */
+  get(sessionId: string): Promise<FollowupQuestionList> {
+    return api.get<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`);
+  },
+
+  /**
+   * 목록을 통째로 바꾼다(빈 목록이면 모두 지움). 0~20개, 문장 1~300자, segment_ids 는 그 회차 전사본에 있는 번호만(422).
+   * 원문 확정(STT_CONFIRMED) · 분석 검토 · 분석 실패 · 승인 상태에서만 되고 그 밖에는 409 INVALID_SESSION_STATE.
+   */
+  save(sessionId: string, questions: FollowupQuestionInput[]): Promise<FollowupQuestionList> {
+    return api.put<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`, { questions });
   },
 };
 
