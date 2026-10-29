@@ -484,7 +484,20 @@ export interface Transcript {
   edited_segment_ids: string[];
   /** 아동 발화 인계 보기. Backend 가 STT 모듈(stt/)을 불러오지 못하는 배포에서는 null. */
   child_handoff: ChildHandoff | null;
+  /** STT 검수 '1차 임시 핵심 발화'(7절). 이 기능 전 전사본 · 이전 서버는 null 또는 없음. */
+  key_scan?: KeyScan | null;
   created_at: string;
+}
+
+/**
+ * 원문 확정 전 1차 모델 스캔으로 고른 '먼저 들어볼 곳'(API_CONTRACT 7절 key_scan). 판정이 아니다.
+ * DONE 성공(segments 가 비어도) · FAILED 실패(STT 는 성공) · SKIPPED modeling 이 아님.
+ * abuse_types 는 화면에 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3).
+ */
+export interface KeyScan {
+  status: "DONE" | "FAILED" | "SKIPPED";
+  model: string | null;
+  segments: { segment_id: string; abuse_types: string[] }[];
 }
 
 /**
