@@ -101,6 +101,14 @@ mkdir -p /opt/ispot/web
 find /opt/ispot/web -mindepth 1 -delete
 cp -r "$REPO/counselor-web/dist/." /opt/ispot/web/
 
+# 이미지는 BuildKit 으로 만든다(2026-10-28, docker-buildx 가 있을 때). 옛 빌더는 RUN 층(CUDA 판 torch 약 6GB)을 commit 할 때
+# 한 번 더 복사해 디스크를 두 배로 쓰고, 모자라 끊기면 그 단계의 임시 컨테이너(5.9GB)가 docker ps -a 에 남는다
+# (deploy/README.md '디스크 · 빌더'). Ubuntu 의 docker.io 패키지에는 buildx 가 없어 따로 깐다: sudo apt-get install -y docker-buildx
+if docker buildx version >/dev/null 2>&1; then
+  export DOCKER_BUILDKIT=1
+else
+  echo "주의: docker-buildx 가 없어 옛 빌더로 만듭니다(디스크를 두 배로 씁니다). sudo apt-get install -y docker-buildx 를 권합니다."
+fi
 echo "== 3/5 백엔드 이미지 다시 만들기 + DB 마이그레이션"
 # 저장소 루트가 빌드 컨텍스트다(ai/ · agent/ 도 담음). 넣는 것은 루트 .dockerignore 가 고른다.
 docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" --build-arg WITH_GPU="$WITH_GPU" -f "$REPO/backend/Dockerfile" "$REPO"

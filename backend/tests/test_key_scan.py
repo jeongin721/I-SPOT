@@ -116,6 +116,9 @@ def test_empty_scan_is_done_with_no_segments(
         {"model": "x", "segments": ["seg_001"]},
         {"model": "x", "segments": [{"segment_id": 1, "abuse_types": ["PHYSICAL"]}]},
         {"model": "x", "segments": [{"segment_id": "seg_001", "abuse_types": "PHYSICAL"}]},
+        # 해시 불가 원소(list · dict) — 예외가 STT 까지 올라가지 않는다(민규 #114).
+        {"model": "x", "segments": [{"segment_id": "seg_001", "abuse_types": [["PHYSICAL"]]}]},
+        {"model": "x", "segments": [{"segment_id": "seg_001", "abuse_types": [{"t": "PHYSICAL"}]}]},
     ],
 )
 def test_bad_shape_fails_scan_but_stt_succeeds(
