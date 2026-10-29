@@ -314,7 +314,7 @@ export function caseDetailValues(input: CaseDetailInput) {
     notReady: NOT_READY,
     // 녹음하기 창(components/RecordDialog.jsx)
     recordCase: info ? `${info.alias} · ${info.caseNumber}` : "",
-    recordTargets: uploadTargets(detail.sessions),
+    recordTargets: uploadTargets(detail.sessions).filter((target) => target.uploadable),
     canRecord: Boolean(info && input.caseId),
   };
 }
