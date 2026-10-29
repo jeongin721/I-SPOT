@@ -19,6 +19,7 @@ import A from '../components/A';
 import Notice from '../components/Notice';
 import RecordDialog, { recordingUnsaved } from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAudioRecorder } from '../data/useAudioRecorder';
@@ -99,6 +100,7 @@ export default function CaseDetail(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -139,7 +141,6 @@ export default function CaseDetail(props) {
               내담자 정보
             </A>
             <A to={v.tabs.history}>상담 이력</A>
-            <A to={v.tabs.briefing}>상담 전 브리핑</A>
             <A to={v.tabs.docs}>문서함</A>
           </nav>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>

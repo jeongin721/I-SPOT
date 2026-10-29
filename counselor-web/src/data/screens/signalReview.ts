@@ -352,8 +352,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     }
     if (top > 0) aiText = `회차 최고 심각도 ${top}단계 · ${topTypes.join(" · ")} — ${aiText}`;
   } else {
-    aiText = "STT 검수에서 원문을 확정하면 AI 분석이 시작됩니다.";
-    aiActionLabel = "STT 검수로";
+    aiText = "기록 확인에서 원문을 확정하면 AI 분석이 시작됩니다.";
+    aiActionLabel = "기록 확인으로";
     aiAction = () => go(sttHref);
   }
 
@@ -485,11 +485,11 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     signalError: completed ? signals.evidenceError : null,
     sttHref,
     nextHref: screenHref("/NoteWrite", ids),
-    nextLabel: "요약 · 일지 작성 →",
+    nextLabel: "상담일지 작성 →",
     canNext: analyzed,
     /** 분석은 끝났는데 판단이 없어 다음 단추 · 단계 표시 3단계를 팝업으로 막는가. */
     nextBlocked: needsJudgment(status, overall),
     askText: ASK_LEVEL_TEXT,
-    askHint: "상담원 판단(상 · 중 · 하)을 고르면 요약 · 일지 작성으로 넘어갈 수 있습니다.",
+    askHint: "상담원 판단(상 · 중 · 하)을 고르면 상담일지 작성으로 넘어갈 수 있습니다.",
   };
 }

@@ -144,16 +144,16 @@ export function sessionDetailValues(input: SessionScreenInput) {
     const defs = [
       {
         href: screenHref(sv.step === "upload" ? "/UploadModal" : "/SttReview", ids),
-        label: "STT 검수",
+        label: "기록 확인",
         ...sttCard(sv),
       },
-      { href: screenHref("/SignalReview", ids), label: "유형별 위험도", ...analysisCard(sv) },
-      { href: screenHref("/NoteWrite", ids), label: "요약 · 일지 작성", ...noteCard(sv) },
+      { href: screenHref("/SignalReview", ids), label: "학대 신호 확인", ...analysisCard(sv) },
+      { href: screenHref("/NoteWrite", ids), label: "상담일지 작성", ...noteCard(sv) },
       // 회차 상태에 '질문 처리 완료' 단계가 없어 칸 상태는 승인한 추가 질문 수로 보인다(없으면 '확인 메모').
       // 화면은 AI 확인 메모(읽기 전용)와 추가 질문 승인 · 수정 · 직접 추가다(followupQ.ts).
       {
         href: screenHref("/FollowupQ", ids),
-        label: "추가 확인 · 질문",
+        label: "다음 상담 준비",
         st: approvedQuestions > 0 ? `질문 ${approvedQuestions}개 승인` : "확인 메모",
         preview:
           approvedQuestions > 0

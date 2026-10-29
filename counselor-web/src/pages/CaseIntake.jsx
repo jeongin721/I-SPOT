@@ -13,6 +13,7 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
@@ -84,6 +85,7 @@ export default function CaseIntake(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <div>
@@ -119,7 +121,6 @@ export default function CaseIntake(props) {
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={v.tabs.detail}>내담자 정보</A>
             <A to={v.tabs.history}>상담 이력</A>
-            <A to={v.tabs.briefing}>상담 전 브리핑</A>
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>

@@ -354,7 +354,7 @@ export default function NoteWrite(props) {
           </section>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <A className="btn btn-s" to={v.backHref}>
-              ← 유형별 위험도
+              ← 학대 신호 확인
             </A>
             <button
               type="button"

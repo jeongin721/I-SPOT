@@ -408,7 +408,7 @@ export function sttReviewValues(input: SttScreenInput) {
   // 이미 확정했고 고친 칸이 없으면 그냥 이동.
   const mustConfirm = review.canConfirm || (review.canEdit && review.counts.pending > 0);
   const canGoOn = status !== null && status !== "STT_REVIEW_REQUIRED" && confirmed;
-  const nextLabel = mustConfirm ? "원문 확정 · 유형별 위험도 →" : "유형별 위험도 →";
+  const nextLabel = mustConfirm ? "원문 확정 · 학대 신호 확인 →" : "학대 신호 확인 →";
 
   return {
     ...header,

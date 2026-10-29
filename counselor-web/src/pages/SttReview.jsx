@@ -268,7 +268,7 @@ export default function SttReview(props) {
 
           {v.done ? (
             <>
-              <section className="card" aria-label="STT 검수" style={{ overflow: 'hidden' }}>
+              <section className="card" aria-label="기록 확인" style={{ overflow: 'hidden' }}>
                 <div className="hd">
                   <h2 className="h2">{v.viewTitle}</h2>
                   <span className={v.chipCls}>{v.chipText}</span>

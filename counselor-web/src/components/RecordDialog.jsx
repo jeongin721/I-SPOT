@@ -227,14 +227,14 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
                 <p style={{ margin: '0', textAlign: 'center' }}>
                   녹음을 저장했어요 · {summary}
                   <br />
-                  <b>원문 변환이 끝났어요. STT 검수로 이동할까요?</b>
+                  <b>원문 변환이 끝났어요. 기록 확인으로 이동할까요?</b>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px' }}>
                   <button type="button" className="btn btn-s" onClick={close}>
                     나중에
                   </button>
                   <A className="btn btn-p" to={screenHref('/SttReview', { caseId, sessionId: upload.sessionId })}>
-                    STT 검수로 →
+                    기록 확인으로 →
                   </A>
                 </div>
               </>
