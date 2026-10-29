@@ -4,7 +4,10 @@
 # 걸리면 그 질문만 빠지고 나머지는 남아야 한다. LLM 호출은 가짜 함수로 바꿔 시험한다(CI 에 openai 가 없다).
 
 import sys
+import threading
+import time
 import types
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -234,3 +237,74 @@ def test_unknown_age_band_is_not_sent(fake_llm):
     )
 
     assert "2015-03-01" not in calls[0]["system_prompt"]
+
+
+def test_generate_returns_empty_when_llm_module_import_fails(monkeypatch):
+    # import 도 try 안이다 — 불러오기가 실패해도 분석 thread 에 예외가 올라가지 않는다(민규 #118).
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.second_stage_llm", None)
+
+    assert fq.generate_followup_questions_from_masked_text(None, "m", _masked("- [seg_012] 등"), SEGMENTS) == []
+
+
+# ------------------------------------------------------------
+# 확인 메모와 동시 호출 — 마감 전까지만 기다림
+# ------------------------------------------------------------
+
+
+def test_wait_for_questions_gives_up_at_deadline():
+    # 질문 LLM 이 늦어도 마감까지만 기다리고 [] — 선택 필드 때문에 분석 전체가 AI_TIMEOUT 이 되지 않게(민규 #118).
+    release = threading.Event()
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
+        future = executor.submit(lambda: release.wait(5) and [_q("지금은 어때?")])
+        deadline = time.monotonic() + fq.DEADLINE_MARGIN_SECONDS + 0.2
+        started = time.monotonic()
+
+        assert fq.wait_for_questions(future, deadline) == []
+        assert time.monotonic() - started < 1.0
+    finally:
+        release.set()
+        executor.shutdown(wait=True)
+
+
+def test_wait_for_questions_returns_result_in_time():
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
+        future = executor.submit(lambda: [{"text": "지금은 어때?"}])
+
+        assert fq.wait_for_questions(future, time.monotonic() + 10) == [{"text": "지금은 어때?"}]
+        assert fq.wait_for_questions(future, None) == [{"text": "지금은 어때?"}]
+    finally:
+        executor.shutdown(wait=True)
+
+
+@pytest.mark.parametrize("outcome", [RuntimeError("boom"), {"not": "list"}])
+def test_wait_for_questions_returns_empty_on_error_or_bad_value(outcome):
+    def work():
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
+        assert fq.wait_for_questions(executor.submit(work), None) == []
+    finally:
+        executor.shutdown(wait=True)
+
+
+def test_wait_for_questions_past_deadline_does_not_block():
+    release = threading.Event()
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
+        future = executor.submit(release.wait, 5)
+        started = time.monotonic()
+
+        assert fq.wait_for_questions(future, time.monotonic() - 1) == []
+        assert time.monotonic() - started < 0.5
+    finally:
+        release.set()
+        executor.shutdown(wait=True)

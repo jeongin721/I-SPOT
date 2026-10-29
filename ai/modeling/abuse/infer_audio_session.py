@@ -64,6 +64,7 @@ from ai.modeling.abuse.followup_check_llm import (
 from ai.modeling.abuse.followup_question_llm import (
     child_age_band,
     generate_followup_questions_from_masked_text,
+    wait_for_questions,
 )
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
@@ -961,7 +962,10 @@ def analyze_audio_session(
 
     # '추가 질문' AI 초안(followup_question_llm.py, 2026-10-29 C-1)은 같은 마스킹 글을 받아 확인 메모와
     # 동시에 부른다 — 분석 시간이 한 번의 LLM 호출만큼 늘지 않게. 실패하면 빈 목록이다(모듈 안에서 잡는다).
-    with ThreadPoolExecutor(max_workers=1) as question_executor:
+    # 질문을 마감 전까지만 기다리므로(wait_for_questions) with 블록(끝에서 끝까지 기다림)이 아니라 wait=False 로 닫는다.
+    question_executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
         followup_questions_future = question_executor.submit(
             generate_followup_questions_from_masked_text,
             client=client,
@@ -981,7 +985,9 @@ def analyze_audio_session(
             previous_session_label=previous_session_label(case_context),
         )
 
-        followup_questions = followup_questions_future.result()
+        followup_questions = wait_for_questions(followup_questions_future, deadline)
+    finally:
+        question_executor.shutdown(wait=False)
 
     followup_check_points = restore_pii(
         followup_check_points, followup_entity_map

@@ -33,6 +33,8 @@ openai 는 CI 에 없다. 검사 함수를 backend/tests 에서 시험할 수 �
 """
 
 import re
+import time
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ai.modeling.abuse.case_context import AGE_BANDS
@@ -256,15 +258,16 @@ def generate_followup_questions_from_masked_text(
     if not session_content_input.strip() or session_content_input.strip() == "없음":
         return []
 
-    from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
-
     system_prompt = SYSTEM_PROMPT.format(
         age_band=age_band if age_band in AGE_BANDS else "알 수 없음",
         max_questions=MAX_QUESTIONS,
         session_content_input=session_content_input,
     )
 
+    # import 도 try 안 — 불러오기가 실패해도 [] 로 분석을 계속한다(민규 #118).
     try:
+        from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
+
         parsed = _call_llm_with_retry(
             client=client,
             model=model,
@@ -284,3 +287,25 @@ def generate_followup_questions_from_masked_text(
         return _clean_questions(parsed.get("questions"), segments)
     except Exception:
         return []
+
+
+#: 마감 직전 이만큼은 남겨 두고 질문을 포기한다 — 뒤의 PII 복원 · 결과 조립이 마감을 넘기지 않게.
+DEADLINE_MARGIN_SECONDS = 1.0
+
+
+def wait_for_questions(future: "Future", deadline: Optional[float]) -> List[Dict[str, Any]]:
+    """확인 메모와 동시에 띄운 질문 생성을 기다린다. 마감 전까지만 기다리고, 늦거나 실패하면 [] (민규 #118).
+
+    질문 초안은 선택 필드라, 질문 LLM 이 느리다고 분석 전체가 마감을 넘겨 AI_TIMEOUT 이 되면 안 된다.
+    늦은 호출은 뒤에서 끝나고 버려진다(_call_llm_with_retry 도 마감 + 5초 안에 스스로 멈춘다).
+    """
+
+    timeout = None if deadline is None else max(0.0, deadline - time.monotonic() - DEADLINE_MARGIN_SECONDS)
+
+    try:
+        result = future.result(timeout=timeout)
+    except Exception:
+        future.cancel()
+        return []
+
+    return result if isinstance(result, list) else []
