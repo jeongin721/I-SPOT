@@ -499,3 +499,61 @@ def test_blocked_previous_records_fall_back_to_current_session(monkeypatch):
     records[0]["text"] = "박○○ 선생님이 때렸어요"
     with pytest.raises(RagPrivacyBlocked):
         pipeline.analyze_consultation_evidence("박○○ 선생님이 때렸어요", "physical", case_records=records)
+
+
+def test_basis_carries_link_targets_and_excerpts(monkeypatch, no_vector_db):
+    previous = make_previous_sessions()[2:3]
+    previous[0]["session_id"] = "sess-7"
+    records = build_case_records(
+        make_transcript(),
+        session_no=8,
+        session_id="sess-8",
+        previous_sessions=previous,
+        child_app_responses=make_app_responses(),
+    )
+    pain = ref_of(records, "8회차 01:08")
+    plan = ref_of(records, "7회차 안전 계획")
+    app = ref_of(records, "10/7 아이 앱 응답")
+    fake = FakeLLM(
+        {
+            CheckItemDrafts: [CheckItemDrafts()],
+            QuestionDrafts: [
+                QuestionDrafts(
+                    items=[
+                        QuestionDraft(question="등이랑 팔이 아팠던 건 지금은 어때?", audience="counselor",
+                                      question_type="open", priority="high", rationale="",
+                                      case_refs=[pain, plan, app], knowledge_refs=["manual:1", "law:1", "precedent:1"]),
+                    ]
+                )
+            ],
+            QuestionReviews: [
+                QuestionReviews(reviews=[QuestionReview(question_id=1, leading=False, presupposes=False,
+                                                        age_inappropriate=False, judgmental=False)])
+            ],
+        }
+    )
+    monkeypatch.setattr(builder, "_invoke", fake)
+    law = [{**LAW_ARTICLES[0], "portal_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=1&joNo=0017"}]
+    precedent = [{**PRECEDENTS[0], "url": "https://www.law.go.kr/LSW/precInfoP.do?precSeq=1"}]
+
+    result = builder.build_next_session_checklist(records, [], law, precedents=precedent)
+    basis = {item["ref"]: item for item in result["items"][0]["basis"]}
+
+    # 이번 회차 발화 → STT 검수 링크(회차 ID + 발화 ID), 원문 발췌
+    assert basis[pain]["session_id"] == "sess-8"
+    assert basis[pain]["segment_id"] == "seg_2"
+    assert basis[pain]["excerpt"] == "등이랑 팔이 아파요."
+    # 이전 회차 안전 계획 → 그 회차 상세 링크
+    assert basis[plan]["session_id"] == "sess-7"
+    assert basis[plan]["excerpt"] == "위험할 때 할머니에게 연락하기로 함"
+    # 아이 앱 응답
+    assert basis[app]["response_id"] == "r1"
+    # 매뉴얼은 발췌 · 쪽, 법령 · 판례는 원문 주소
+    assert basis["manual:1"]["excerpt"] == "아동 면담 시 개방형 질문을 먼저 사용한다."
+    assert basis["manual:1"]["page"] == 125
+    assert basis["law:1"]["url"].startswith("https://www.law.go.kr/LSW/lsInfoP.do")
+    assert basis["precedent:1"]["url"].startswith("https://www.law.go.kr/LSW/precInfoP.do")
+
+    # 회차 ID 는 링크용으로 결과에만 싣고 LLM 에는 보내지 않는다.
+    assert not any("sess-" in prompt for _, prompt in fake.prompts)
+    assert speaker_check_items(make_transcript(), session_no=8, session_id="sess-8")[0]["basis"][0]["session_id"] == "sess-8"

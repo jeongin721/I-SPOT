@@ -67,6 +67,7 @@ def _segment_records(
     session_no: int | None,
     *,
     current: bool,
+    session_id: str | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
@@ -79,6 +80,7 @@ def _segment_records(
                 "source": "transcript",
                 "current": current,
                 "session_no": session_no,
+                "session_id": session_id,
                 "segment_id": str(segment.get("segment_id", "")),
                 "start_ms": int(segment.get("start_ms") or 0),
                 "label": f"{_session_label(session_no, current)} {format_time(segment.get('start_ms'))}",
@@ -92,7 +94,7 @@ def _segment_records(
 def _previous_session_records(session: dict[str, Any]) -> list[dict[str, Any]]:
     session_no = session.get("session_no")
     prefix = _session_label(session_no, current=False)
-    base = {"current": False, "session_no": session_no}
+    base = {"current": False, "session_no": session_no, "session_id": session.get("session_id")}
     records: list[dict[str, Any]] = []
 
     if str(session.get("summary") or "").strip():
@@ -118,7 +120,13 @@ def _previous_session_records(session: dict[str, Any]) -> list[dict[str, Any]]:
         )
 
     records.extend(
-        _segment_records(session.get("transcript"), session_no, current=False, limit=MAX_PREVIOUS_SEGMENTS)
+        _segment_records(
+            session.get("transcript"),
+            session_no,
+            current=False,
+            session_id=session.get("session_id"),
+            limit=MAX_PREVIOUS_SEGMENTS,
+        )
     )
     return records
 
@@ -152,6 +160,7 @@ def build_case_records(
     transcript: dict[str, Any] | None,
     *,
     session_no: int | None = None,
+    session_id: str | None = None,
     previous_sessions: list[dict[str, Any]] | None = None,
     child_app_responses: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
@@ -160,9 +169,10 @@ def build_case_records(
     - 이번 회차: 검수된 Transcript 의 아동(CHILD) 발화만. 발화마다 근거 시각을 단다.
     - 이전 회차: 확정 요약 · 안전 계획 · 확인 사항(처리 상태) · 아동 발화. 최근 회차부터 MAX_PREVIOUS_SESSIONS 개.
     - 아이 앱 응답: 최근 MAX_APP_RESPONSES 개.
+    session_id(Backend 회차 ID)는 LLM 에 보내지 않고 근거 링크(STT 검수 · 회차 상세)를 만들 때만 쓴다.
     text 는 아직 원문이다. 외부로 보내기 전에 pipeline 이 비식별한다.
     """
-    records = _segment_records(transcript, session_no, current=True)
+    records = _segment_records(transcript, session_no, current=True, session_id=session_id)
 
     previous = [session for session in previous_sessions or [] if isinstance(session, dict)]
     previous.sort(key=lambda session: int(session.get("session_no") or 0), reverse=True)
@@ -180,6 +190,7 @@ def speaker_check_items(
     transcript: dict[str, Any] | None,
     *,
     session_no: int | None = None,
+    session_id: str | None = None,
     limit: int = MAX_SPEAKER_CHECK_ITEMS,
 ) -> list[dict[str, Any]]:
     """검수 후에도 화자가 미확정(UNKNOWN)인 발화를 '확인할 사항'으로 만든다.
@@ -204,6 +215,7 @@ def speaker_check_items(
                         "source": "transcript",
                         "label": f"{label} · 화자 불확실",
                         "session_no": session_no,
+                        "session_id": session_id,
                         "segment_id": str(segment.get("segment_id", "")),
                         "start_ms": int(segment.get("start_ms") or 0),
                     }

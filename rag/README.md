@@ -315,9 +315,11 @@ python -m rag.indexer             # 가이드북 판례와 함께 색인
 {
   "transcript": {"segments": [...]},
   "session_no": 8,
+  "session_id": "Backend 회차 ID (근거 링크용, 선택)",
   "previous_sessions": [
     {
       "session_no": 7,
+      "session_id": "Backend 회차 ID (근거 링크용, 선택)",
       "summary": "상담사가 확정한 회차 요약",
       "safety_plan": "위험할 때 조모에게 연락하기로 함",
       "check_items": [{"item": "조모 연락처를 아는지", "status": "open", "note": ""}],
@@ -339,6 +341,21 @@ python -m rag.indexer             # 가이드북 판례와 함께 색인
 - 기록마다 `case:N` 번호를 붙여 LLM에 보낸다. 기록 하나는 600자에서 자른다.
 - 보호자 · 상담원 · 미확정 화자 발화는 이전 회차 검수본에서도 뺀다. 요약 · 안전 계획은 상담사가 확정한 문장을 넣는다.
 - 화자 미확정(`UNKNOWN`) 발화는 질문 근거로 쓰지 않고, 응답 최상위 `speaker_check_items`("02:15 발화의 화자", 근거 `8회차 02:15 · 화자 불확실")로 따로 돌려준다. 발화 내용은 외부로 보내지 않는다.
+
+### 근거 링크 (`basis[]`)
+
+질문 · 확인할 사항의 `basis[]` 하나하나가 화면의 '근거 · …' 칩이다. 누르면 아래로 보낸다.
+
+| 근거 | `basis` 필드 | 누르면 (counselor-web) |
+|---|---|---|
+| 회차 발화 (`source: transcript`) | `session_id` · `segment_id` · `start_ms` · `excerpt` | STT 검수의 그 발화 — `segmentHref({caseId, sessionId: session_id}, segment_id)` (`/SttReview?…&seg=`) |
+| 이전 회차 요약 · 안전 계획 · 확인 사항 | `session_id` · `session_no` · `excerpt` | 그 회차 상세 — `screenHref("/SessionDetail", {caseId, sessionId: session_id})` |
+| 아이 앱 응답 (`source: app_response`) | `response_id` · `excerpt` | 아이 연계 화면(응답 하나를 가리키는 주소는 아직 없음) |
+| 법령 · 판례 | `url` · `excerpt` | 국가법령정보센터 원문(새 창). 법령은 그 조문 위치로 열린다 |
+| 매뉴얼 · 체크리스트 | `source` · `page` · `excerpt` | 원본 PDF는 저작권 · 대외비라 올리지 않는다. `excerpt`(LLM에 준 발췌)와 쪽을 그 자리에서 펼쳐 보인다 |
+
+- `session_id`를 안 보내면 발화 근거는 링크 없이 `excerpt`만 보인다. `session_id`는 LLM에 보내지 않는다.
+- 사례 기록 `excerpt`는 결과를 돌려줄 때 비식별 토큰을 원문으로 되돌린 문장이다(상담사 화면 전용).
 
 ### 비식별
 

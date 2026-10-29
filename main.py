@@ -326,6 +326,8 @@ class PreviousCheckItem(BaseModel):
 
 class PreviousSession(BaseModel):
     session_no: int
+    # Backend 회차 ID. 근거를 누르면 그 회차 STT 검수 · 상세로 가는 링크에 쓴다(외부로 보내지 않음).
+    session_id: Optional[str] = None
     # 상담사가 확정한 회차 요약 · 안전 계획. 보호자 진술을 그대로 옮기지 않은 확정본을 넣는다.
     summary: str = ""
     safety_plan: str = ""
@@ -350,6 +352,7 @@ class ReviewedTranscriptRequest(BaseModel):
     known_identifiers: list[str] = Field(default_factory=list)
     # 다음 상담 질문의 근거로 함께 쓸 사례 기록. 없으면 이번 회차 아동 발화만 쓴다.
     session_no: Optional[int] = None
+    session_id: Optional[str] = None  # 이번 회차 Backend ID(근거 링크용)
     previous_sessions: list[PreviousSession] = Field(default_factory=list)
     child_app_responses: list[ChildAppResponse] = Field(default_factory=list)
 
@@ -392,6 +395,7 @@ def analyze_reviewed(request: ReviewedTranscriptRequest):
         abuse_type,
         known_identifiers=request.known_identifiers,
         session_no=request.session_no,
+        session_id=request.session_id,
         previous_sessions=[session.model_dump() for session in request.previous_sessions],
         child_app_responses=[response.model_dump() for response in request.child_app_responses],
     )

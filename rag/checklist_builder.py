@@ -202,6 +202,7 @@ def build_knowledge_entries(
                 "type": str(metadata.get("source_type") or "manual"),
                 "label": f"{label} p.{page}" if page else label,
                 "text": _shorten(result.get("content"), 600),
+                "excerpt": _shorten(result.get("content"), 600),
                 "source": metadata.get("source", ""),
                 "page": page,
                 "chunk_id": chunk_id,
@@ -219,6 +220,7 @@ def build_knowledge_entries(
                 "type": "checklist",
                 "label": f"{item.get('source') or '체크리스트'} p.{page}" if page else str(item.get("source") or "체크리스트"),
                 "text": f"[{item.get('status')}] {_shorten(item.get('item'), 400)}",
+                "excerpt": _shorten(item.get("item"), 400),
                 "source": item.get("source", ""),
                 "page": page,
                 "chunk_id": item.get("chunk_id", ""),
@@ -235,6 +237,7 @@ def build_knowledge_entries(
                 "type": "law",
                 "label": label,
                 "text": _shorten(article.get("content"), 500),
+                "excerpt": _shorten(article.get("content"), 500),
                 "url": article.get("portal_url", ""),
             }
         )
@@ -246,7 +249,10 @@ def build_knowledge_entries(
                 "type": "precedent",
                 "label": str(precedent.get("citation") or precedent.get("title") or "판례"),
                 "text": f"{_shorten(precedent.get('title'), 120)}: {_shorten(precedent.get('summary'), 300)}",
+                "excerpt": f"{_shorten(precedent.get('title'), 120)} — {_shorten(precedent.get('summary'), 300)}",
                 "url": precedent.get("url", ""),
+                "source": precedent.get("source", ""),
+                "page": precedent.get("page"),
             }
         )
 
@@ -563,7 +569,13 @@ def generate_validated_questions(
 
 
 def _basis(refs: list[str], record_by_ref: dict[str, dict[str, Any]], entry_by_ref: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """화면 '근거 · 8회차 01:08 · 7회차 안전 계획' 표기에 쓸 근거 목록."""
+    """화면 '근거 · 8회차 01:08 · 7회차 안전 계획' 표기와 근거 링크에 쓸 목록.
+
+    - 사례 기록: session_id + segment_id 로 STT 검수의 그 발화(segmentHref), session_id 만 있으면 회차 상세,
+      response_id 로 아이 앱 응답을 연다. excerpt 는 그 기록 원문(결과를 돌려줄 때 비식별 토큰을 되돌린다).
+    - 공식 근거: 법령 · 판례는 url(국가법령정보센터)로 연다. 매뉴얼 · 체크리스트 원본 PDF 는 올릴 수 없어
+      excerpt(LLM 에 준 발췌)와 source · page 를 그 자리에서 보여 준다.
+    """
     basis = []
     for ref in refs:
         if ref in record_by_ref:
@@ -575,9 +587,11 @@ def _basis(refs: list[str], record_by_ref: dict[str, dict[str, Any]], entry_by_r
                     "source": record.get("source", ""),
                     "label": record.get("label", ""),
                     "session_no": record.get("session_no"),
+                    "session_id": record.get("session_id"),
                     "segment_id": record.get("segment_id"),
                     "start_ms": record.get("start_ms"),
                     "response_id": record.get("response_id"),
+                    "excerpt": record.get("text", ""),
                 }
             )
         elif ref in entry_by_ref:
@@ -585,7 +599,7 @@ def _basis(refs: list[str], record_by_ref: dict[str, dict[str, Any]], entry_by_r
             basis.append(
                 {
                     key: entry.get(key)
-                    for key in ("ref", "type", "label", "source", "page", "chunk_id", "url")
+                    for key in ("ref", "type", "label", "source", "page", "chunk_id", "url", "excerpt")
                     if entry.get(key) not in (None, "")
                 }
             )

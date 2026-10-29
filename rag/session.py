@@ -60,6 +60,7 @@ def analyze_reviewed_transcript(
     *,
     known_identifiers: list[str] | None = None,
     session_no: int | None = None,
+    session_id: str | None = None,
     previous_sessions: list[dict[str, Any]] | None = None,
     child_app_responses: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -70,12 +71,13 @@ def analyze_reviewed_transcript(
     session_no · previous_sessions · child_app_responses 를 주면 다음 상담 질문
     (rag_analysis.next_session_checklist)이 이번 회차 아동 발화와 함께 이전 회차 기록 · 아이 앱 응답을 근거로 쓴다.
     speaker_check_items 는 화자 미확정 발화를 '확인할 사항'으로 만든 것으로, 외부로 보내지 않고 로컬에서 만든다.
+    session_id(Backend 회차 ID)는 근거 링크용으로 결과에만 싣고 외부로 보내지 않는다.
     """
     child = child_text_from_transcript(transcript)
     result: dict[str, Any] = {
         "child_segment_ids": child["child_segment_ids"],
         "excluded_speakers": child["excluded_speakers"],
-        "speaker_check_items": speaker_check_items(transcript, session_no=session_no),
+        "speaker_check_items": speaker_check_items(transcript, session_no=session_no, session_id=session_id),
         "rag_analysis": None,
         "manual_screen_references": None,
     }
@@ -92,6 +94,7 @@ def analyze_reviewed_transcript(
                 case_records=build_case_records(
                     transcript,
                     session_no=session_no,
+                    session_id=session_id,
                     previous_sessions=previous_sessions,
                     child_app_responses=child_app_responses,
                 ),
