@@ -58,13 +58,24 @@ function moveLevelFocus(event) {
   buttons[(index + step + buttons.length) % buttons.length].focus();
 }
 
+/** 팝업 상태를 맞출 기준: 회차 ID 와 주소의 ask. */
+function askKeyOf(props) {
+  return `${props.ids?.sessionId ?? ''}|${props.askInitially ? 1 : 0}`;
+}
+
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
     // 기준 보기(단계 설명 · 근거 발화 전체) 펼침과 판단 팝업(ask)은 화면 상태다. ask 는 주소의 ?ask=1 로도 켜진다.
     this.state = { open: {}, ask: !!props.askInitially };
+    // 팝업 상태가 어느 회차 · 주소(ask) 것인가. useDC 는 회차가 바뀌어도 이 인스턴스를 그대로 쓰므로, 이 값이 바뀌면
+    // renderVals 가 팝업을 새 주소에 맞춘다(Codex #119 R1 — A 회차에서 연 팝업이 B 회차에 남고, 같은 화면에서 ?ask=1 을
+    // 붙여도 열리지 않던 것).
+    this.askKey = askKeyOf(props);
     // 팝업이 실제로 그려져 있는가(ask 이고 막을 이유가 있을 때). Esc 는 보이는 팝업만 닫는다.
     this.shown = false;
+    // 사람이 팝업을 닫았는가. 닫은 뒤에만 초점을 상담원 판단 첫 단추로 옮긴다(회차를 바꿔 저절로 닫힌 때는 옮기지 않는다).
+    this.refocusLevel = false;
     this.onKey = (event) => {
       if (event.key === 'Escape' && this.shown) this.closeAsk();
     };
@@ -79,12 +90,19 @@ class Logic extends DCLogic {
     this.setState({ ask: true });
   }
   closeAsk() {
+    this.refocusLevel = true;
     this.setState({ ask: false });
     // ?ask=1 로 왔으면 주소에서 떼어 새로고침 · 뒤로 가기에 팝업이 다시 뜨지 않게 한다.
     // 닫은 뒤 초점은 화면 쪽 effect 가 상담원 판단 첫 단추로 옮긴다.
     if (this.props.askInitially) this.props.clearAsk();
   }
   renderVals() {
+    // 회차가 바뀌었거나 주소의 ask 가 바뀌었으면 팝업 상태를 새 주소대로 둔다(그리는 중이라 setState 대신 state 를 바로 고친다).
+    const askKey = askKeyOf(this.props);
+    if (askKey !== this.askKey) {
+      this.askKey = askKey;
+      this.state = { ...this.state, ask: !!this.props.askInitially };
+    }
     const v = signalReviewValues(this.props, this.state.open);
     const ask = () => this.openAsk();
     // 팝업은 막을 이유가 있을 때만 보인다 — ?ask=1 로 왔어도 판단이 있거나 승인 완료면 띄우지 않는다.
@@ -96,6 +114,12 @@ class Logic extends DCLogic {
       ask: this.shown,
       askLevel: ask,
       closeAsk: () => this.closeAsk(),
+      // 사람이 닫은 뒤 한 번만 참(effect 가 초점을 옮길지 묻는다).
+      takeRefocus: () => {
+        const refocus = this.refocusLevel;
+        this.refocusLevel = false;
+        return refocus;
+      },
       types: v.types.map((t) => ({
         ...t,
         open: !!this.state.open[t.key],
@@ -140,7 +164,7 @@ export default function SignalReview(props) {
   const askWasShown = useRef(false);
   useEffect(() => {
     if (v.ask) document.getElementById(ASK_OK_ID)?.focus();
-    else if (askWasShown.current) document.getElementById(LEVEL_FIRST_ID)?.focus();
+    else if (askWasShown.current && v.takeRefocus()) document.getElementById(LEVEL_FIRST_ID)?.focus();
     askWasShown.current = v.ask;
   }, [v.ask]);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
