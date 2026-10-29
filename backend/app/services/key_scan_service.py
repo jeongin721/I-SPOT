@@ -40,7 +40,8 @@ def _load_scanner() -> Callable[[Dict[str, Any]], Any]:
 def _clean(raw: Any, known_ids: Iterable[str]) -> Optional[Dict[str, Any]]:
     """모듈 결과를 저장할 모양으로 다듬는다. 모양이 틀리면 None(→ FAILED).
 
-    원문에 없는 segment_id · 모르는 유형은 버리고, 같은 발화가 두 번 오면 처음 것만 둔다. 유형이 남지 않은 발화는 뺀다.
+    원문에 없는 segment_id · 모르는 유형은 버린다. 같은 발화가 두 번 오면 **유형이 남는 첫 것**만 둔다 — 첫 것의 유형이
+    모두 걸러지면(예: ["UNKNOWN"]) 다음 것을 본다(민규 #114 R5). 유형이 남지 않은 발화는 뺀다.
     순서는 원문 순서로 맞춘다.
     """
 
@@ -95,16 +96,16 @@ def scan(stt_contract: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(segment, dict)
     ]
 
+    # 모듈 불러오기도 같은 제한 시간 안에서 한다 — 첫 STT 는 import 시간이 제한에 들어간다(제안서 §4, 민규 #114 R2).
+    # ImportError 가 아닌 예외(모델 파일 · CUDA 초기화의 OSError · RuntimeError 등)도 STT 를 실패시키지 않게
+    # 모두 FAILED 로 받는다(민규 #114 R1).
     try:
-        scanner = _load_scanner()
-    except ModuleLoadError as error:
-        logger.warning("1차 핵심 발화 스캔 모듈을 불러오지 못했습니다. type=%s", type(error).__name__)
-        return _result(STATUS_FAILED)
-
-    try:
-        raw = run_with_timeout(lambda: scanner(stt_contract), settings.KEY_SCAN_TIMEOUT_SECONDS)
+        raw = run_with_timeout(lambda: _load_scanner()(stt_contract), settings.KEY_SCAN_TIMEOUT_SECONDS)
     except OperationTimeout:
         logger.warning("1차 핵심 발화 스캔이 제한 시간(%.0f초)을 넘겼습니다.", settings.KEY_SCAN_TIMEOUT_SECONDS)
+        return _result(STATUS_FAILED)
+    except ModuleLoadError as error:
+        logger.warning("1차 핵심 발화 스캔 모듈을 불러오지 못했습니다. type=%s", type(error).__name__)
         return _result(STATUS_FAILED)
     except Exception as error:
         logger.warning("1차 핵심 발화 스캔 중 오류. type=%s", type(error).__name__)

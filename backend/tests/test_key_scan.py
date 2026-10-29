@@ -80,7 +80,7 @@ def test_scan_result_is_saved_in_transcript_order(
     envelope = transcribed_session(client, counselor_headers, session["id"])
 
     assert envelope["session_status"] == "STT_REVIEW_REQUIRED"
-    # 원문 순서 · 원문에 있는 번호만 · 모르는 유형 버림 · 같은 발화는 처음 것만 · 유형이 남지 않은 발화는 뺌.
+    # 원문 순서 · 원문에 있는 번호만 · 모르는 유형 버림 · 같은 발화는 유형이 남는 첫 것만 · 유형이 남지 않은 발화는 뺌.
     assert _key_scan(envelope) == {
         "status": "DONE",
         "model": "roberta_test",
@@ -174,6 +174,40 @@ def test_timeout_fails_scan_but_stt_succeeds(
         return {"model": "late", "segments": [{"segment_id": "seg_001", "abuse_types": ["PHYSICAL"]}]}
 
     _use_scanner(monkeypatch, slow)
+
+    envelope = transcribed_session(client, counselor_headers, session["id"])
+
+    assert envelope["session_status"] == "STT_REVIEW_REQUIRED"
+    assert _key_scan(envelope) == {"status": "FAILED", "model": None, "segments": []}
+
+
+def test_module_load_runtime_error_fails_scan_but_stt_succeeds(
+    client: TestClient, counselor_headers, session: dict, modeling, monkeypatch
+) -> None:
+    # ImportError 가 아닌 예외(모델 파일 · CUDA 초기화 등)도 STT 를 실패시키지 않는다(민규 #114 R1).
+    def broken():
+        raise RuntimeError("가상 CUDA 초기화 실패")
+
+    monkeypatch.setattr(key_scan_service, "_load_scanner", broken)
+
+    envelope = transcribed_session(client, counselor_headers, session["id"])
+
+    assert envelope["session_status"] == "STT_REVIEW_REQUIRED"
+    assert envelope["transcript"]["segments"]
+    assert _key_scan(envelope) == {"status": "FAILED", "model": None, "segments": []}
+
+
+def test_slow_module_load_counts_toward_timeout(
+    client: TestClient, counselor_headers, session: dict, modeling, monkeypatch
+) -> None:
+    # 불러오기 시간도 제한 안에 든다 — 스캐너 자체는 빨라도 불러오기가 길면 FAILED(민규 #114 R2).
+    monkeypatch.setattr(settings, "KEY_SCAN_TIMEOUT_SECONDS", 0.05)
+
+    def slow_load():
+        time.sleep(0.35)
+        return lambda stt_result: {"model": "late", "segments": [{"segment_id": "seg_001", "abuse_types": ["PHYSICAL"]}]}
+
+    monkeypatch.setattr(key_scan_service, "_load_scanner", slow_load)
 
     envelope = transcribed_session(client, counselor_headers, session["id"])
 

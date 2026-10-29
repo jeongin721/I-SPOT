@@ -866,10 +866,11 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
 | `status` | 뜻 |
 |---|---|
 | `DONE` | 스캔 성공. `segments` 가 비어 있을 수 있다(고른 발화 없음) |
-| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초) · 모듈 오류 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만) |
+| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만) |
 | `SKIPPED` | `AI_PROVIDER` 가 `modeling` 이 아니라 부르지 않음 |
 
 - `segments` 는 원문 순서이고, 아동 · 화자 미확인(`CHILD` · `UNKNOWN`) 발화만 온다(AI 함수가 거름). 서버는 원문에 없는 번호 · 모르는 유형을 버린다.
+  같은 발화가 두 번 오면 **유형이 남는 첫 것**만 둔다(첫 것의 유형이 모두 걸러지면 다음 것).
 - `abuse_types` 는 `PHYSICAL` · `EMOTIONAL` · `SEXUAL` · `NEGLECT`. **판정이 아니고 화면에 그리지 않는다**(판정처럼 읽힘 — 제안서 §8 답 3). 화면 문구는 "먼저 들어볼 곳" · "임시 · 검수 전".
 - 이 기능 전 전사본은 `null` 이다. 화면은 `null` · `FAILED` · `SKIPPED` · 빈 `segments` 면 전체 STT 로 연다.
 - 원문 수정(PATCH)으로 새 version 을 만들면 **직전 값에서 `removed_segment_ids` 만 빼고 복사**한다(문장이 바뀐 발화를 다시 스캔하지 않음 — 임시 표시라서). 확정은 값을 바꾸지 않는다.
