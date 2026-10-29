@@ -1115,6 +1115,20 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
   질문 은행 문항과 잇지는 않는다. `segment_ids` 가 있으면 원문 위치(몇 분 · 누구)로 보이고, 옛 결과처럼 비어 있으면
   항목마다 "근거 위치 없음" 을 적는다.
 
+**추가 질문 초안 `followup_questions`(선택, 2026-10-28)** — AI 가 만든 열린 질문 초안이다. 상담사가 승인해야 질문 목록(18절)에 들어간다.
+
+```json
+"followup_questions": [
+  { "text": "등이랑 팔이 아팠던 건 지금은 어때?", "kind": "OPEN", "segment_ids": ["seg_012"], "reason": "통증 이후 치료 여부가 안 나옴", "bank_code": null }
+]
+```
+
+- `kind` 는 `OPEN`(열린 질문) · `BANK`(질문 은행 — 자리만 예약, 은행이 생길 때까지 AI 가 내지 않음). 키가 없으면 `OPEN`.
+- **모르는 `kind` · 문장이 비었거나 없는 항목 · 객체가 아닌 항목은 그 질문만 버린다**(분석 전체를 실패시키지 않는다).
+  그 밖의 모양 오류(`segment_ids` 가 목록이 아님 등)는 다른 필드처럼 `AI_INVALID_OUTPUT` 이다.
+- 없으면 `[]` 이고, 이 필드가 없던 때 저장한 결과도 그대로 읽힌다. 질문 생성 모듈(`followup_question_llm`)은 따로 붙인다
+  (PROPOSAL_ai_suggestions_case_context.md §4 C-1). 그 전까지는 늘 `[]` 다.
+
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
 `AI_TIMEOUT` 은 아래 넷 가운데 하나다. 모두 재시도할 수 있다.
@@ -1590,6 +1604,7 @@ POST /sessions/{id}/analysis                  → 202 / AI_PROCESSING
 GET  /sessions/{id}/analysis     (polling)    → AI_REVIEW_REQUIRED
 PATCH /sessions/{id}/summary                  → is_edited: true
 PUT  /sessions/{id}/risk-assessments/{type}  → 유형별 상담원 판단 (STT_CONFIRMED 부터)
+PUT  /sessions/{id}/followup-questions       → 승인한 추가 질문 목록 (STT_CONFIRMED 부터, 18절)
 POST /sessions/{id}/summary/approve           → APPROVED
 GET  /sessions/{id}                           → 상태/데이터 유지 확인
 POST /sessions/{id}/summary/reopen            → AI_REVIEW_REQUIRED (고칠 일이 생기면. 고친 뒤 다시 approve)
@@ -1761,3 +1776,91 @@ Response
 `LAW_QA_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 modeling 은 이 값이 true 일 때만 뜬다, 분석 modeling 과 같은 방식) · `LAW_API_OC` · `LAW_CACHE_DIR`.
 `LAW_QA_PROVIDER=modeling` 이면 서버 시작 때 모듈 import 와 법령 캐시 받기를 백그라운드로 미리 한다(실패해도 서버는 뜨고 첫 질문 때 다시 시도).
 한도는 서버 메모리 기준(서버 1대 전제)이다.
+
+---
+
+## 18. Followup Questions (승인한 추가 질문)
+
+회차마다 **상담사가 승인 · 고친 · 직접 쓴 추가 질문 목록**을 저장한다(2026-10-28, PROPOSAL_ai_suggestions_case_context.md §4 · §7 답 4).
+AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기에는 들어오지 않는다 — 상담사가 [승인] 해야 들어온다.
+상담 전 브리핑의 '추가 질문' 칸은 이 목록을 보인다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/followup-questions` | 승인한 질문 목록 |
+| PUT | `/api/v1/sessions/{session_id}/followup-questions` | 목록 통째 저장(빈 목록이면 모두 지움) |
+
+### 응답 (GET · PUT 같음)
+
+```json
+{
+  "data": {
+    "session_id": "uuid",
+    "questions": [
+      {
+        "text": "등이랑 팔이 아팠던 건 지금은 어때?",
+        "kind": "OPEN",
+        "source": "AI",
+        "segment_ids": ["seg_012"],
+        "bank_code": null,
+        "approved_at": "2026-10-28T06:00:00+00:00"
+      }
+    ],
+    "updated_at": "...",
+    "updated_by_id": "uuid"
+  }
+}
+```
+
+- 저장한 적이 없으면 `questions` 는 `[]`, `updated_at` · `updated_by_id` 는 `null` 이다(404 가 아니다).
+- 순서는 보낸 순서 그대로다.
+- `approved_at` 은 **서버가 찍는다.** 다시 저장할 때 전과 똑같은 질문(`text` · `kind` · `source` · `segment_ids` · `bank_code` 가 모두 같음)은
+  처음 승인한 일시를 그대로 둔다. 고친 질문 · 새 질문은 저장한 시각이다.
+- `updated_by_id` 는 마지막으로 저장한 사람(관리자가 저장하면 관리자 ID)이다.
+- 회차를 지우면(5절 DELETE) 함께 지워진다. 사례를 지울 때도 같다.
+
+### PUT 요청
+
+```json
+{
+  "questions": [
+    { "text": "등이랑 팔이 아팠던 건 지금은 어때?", "kind": "OPEN", "source": "AI", "segment_ids": ["seg_012"], "bank_code": null },
+    { "text": "요즘 학교 끝나고 집에 가면 보통 뭐 해?", "kind": "OPEN", "source": "COUNSELOR", "segment_ids": [] }
+  ]
+}
+```
+
+| 칸 | 규칙 |
+|---|---|
+| `questions` | 필수, 0~20개 |
+| `text` | 필수. 앞뒤 공백을 뺀 뒤 1~300자(공백을 뺀 뒤 잰다) |
+| `kind` | 필수. `OPEN` · `BANK` |
+| `source` | 필수. `AI`(AI 초안을 승인 — 고쳐서 승인해도 `AI`) · `COUNSELOR`(직접 씀) |
+| `segment_ids` | 선택(없으면 `[]`), **그 회차 최신 전사본에 있는 번호만.** 같은 번호 · 빈 번호는 빼고(순서는 지킴) 뺀 뒤 20개 이하. 빼기 전 목록은 1000개 이하 |
+| `bank_code` | `kind=BANK` 일 때 필수(40자 이하), `OPEN` 이면 보내지 않는다(`null` · 공백은 없음으로 본다) |
+
+- 위 규칙을 어기면 `422 VALIDATION_ERROR` 이고 아무것도 바뀌지 않는다. 전사본에 없는 근거 번호도 422 이며, 문구에 받은 번호를 넣지 않는다.
+- `approved_at` 을 보내도 무시한다.
+- 글자 칸에 NUL · 짝 없는 서로게이트가 있으면 `422 VALIDATION_ERROR`(1절).
+
+### 상태 규칙
+
+- 저장은 회차가 **`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`** 일 때만 된다(11절 위험도 판단과 같다).
+  원문 확정 전 · AI 분석 중(`AI_PROCESSING`)은 `409 INVALID_SESSION_STATE` 다.
+  - AI 실패에도 받는다(AI 초안 없이 직접 쓸 수 있다). 승인 뒤에도 받는다(다음 상담 전에 고친다). 저장해도 회기 상태는 바뀌지 않는다.
+- 조회는 상태와 관계없이 된다.
+- 종결 사례는 따로 막지 않는다(다른 쓰기 API — 회차 만들기 · 위험도 판단 · 요약 수정 — 와 같다. 막으려면 쓰기 API 전부를 함께 바꿔야 해 팀 결정으로 남김).
+- 같은 회차를 두 요청이 동시에 처음 저장하면 늦은 쪽은 `409 DUPLICATE_RESOURCE` 다. 다시 받아 확인한다.
+
+### 권한 · 감사 기록
+
+- 상담사는 담당 사례의 회차만, 관리자는 전체를 보고 저장한다.
+- 저장하면 감사 기록 `FOLLOWUP_QUESTIONS_UPDATED` 1건이 남는다. `detail` 은 `count` · `ai_count` · `counselor_count` · `previous_count`(저장 전 질문 수)뿐이고
+  **질문 문장은 넣지 않는다**(아동 진술을 이어받은 문장이다).
+
+### 표현 주의
+
+질문은 상담사가 승인한 것만 화면에 '추가 질문' 으로 보인다. AI 초안은 'AI 초안' 칩을 달고, 승인 전에는 브리핑에 넣지 않는다.
+예/아니오 질문 · 가해자나 행위를 먼저 꺼내는 질문은 AI 초안 단계에서 거른다(C-1 모듈의 코드 검사). 상담사가 직접 쓴 질문은 서버가 문장을 고치거나 거르지 않는다.
+
+오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
