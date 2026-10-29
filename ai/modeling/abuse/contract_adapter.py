@@ -434,6 +434,18 @@ def to_ai_output_contract(
         for point in result.get("followup_check_points") or []
     ]
 
+    # '추가 질문' AI 초안(followup_question_llm.py, 2026-10-29 C-1). 모듈이 이미 검사한 값이라 모양만 옮긴다.
+    followup_questions = [
+        {
+            "text": question.get("text", ""),
+            "kind": "OPEN",
+            "segment_ids": question.get("segment_ids", []),
+            "reason": question.get("reason", ""),
+        }
+        for question in result.get("followup_questions") or []
+        if isinstance(question, dict)
+    ]
+
     summary = {**summary, "assessment": _summary_assessment(result)}
 
     contract = {
@@ -447,6 +459,7 @@ def to_ai_output_contract(
         "protective_factors": protective_factors,
         "session_change_notes": session_change_notes,
         "followup_check_points": followup_check_points,
+        "followup_questions": followup_questions,
     }
 
     return contract, summary_evidence, _model_name(result)
@@ -473,7 +486,7 @@ def analyze_audio_session_as_contract(
 
     case_context: 사례 정보(2026-10-28, case_context.py · PROPOSAL_case_context_analysis.md §3).
     Backend 가 받는 어댑터에만 키워드로 넘긴다. 없으면(None) 넘기지 않아 예전 판 모듈과도 맞는다.
-    지금은 '다음 상담 전 확인할 사항'(followup_check_llm)만 쓴다.
+    '다음 상담 전 확인할 사항'(followup_check_llm)이 쓰고, '추가 질문' 초안(followup_question_llm)은 나이대만 쓴다.
     """
 
     options: Dict[str, Any] = {}
