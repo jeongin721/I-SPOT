@@ -666,6 +666,8 @@ export interface SessionChangeNote {
 export interface FollowupCheckPoint {
   text: string;
   segment_ids: string[];
+  /** 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차", 2026-10-28). 이때 segment_ids 는 빈 배열. */
+  previous_session_label?: string;
 }
 
 /**

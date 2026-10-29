@@ -46,7 +46,7 @@ export function preBriefingValues(input: BriefingScreenInput) {
     ? toFollowupItems(view.followupCheckPoints ?? [], signals.signals.locate, ids).map((item) => ({
         key: item.key,
         text: item.text,
-        why: `${source?.numberLabel ?? ""} ${item.why}`.trim(),
+        why: item.fromPrevious ? item.why : `${source?.numberLabel ?? ""} ${item.why}`.trim(),
         href: item.href,
       }))
     : [];

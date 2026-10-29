@@ -16,6 +16,8 @@ from app.schemas.common import RequestModel
 
 # 질문 은행 코드 길이 상한(예: QB-N-01). 은행이 생기면 형식을 다시 정한다.
 BANK_CODE_MAX_LENGTH = 40
+# 중복을 빼기 전 근거 번호 목록의 넉넉한 상한. 큰 목록이 validator 까지 오지 않게 막는다(민규 #112 R3).
+SEGMENT_IDS_RAW_MAX = 1000
 
 
 class FollowupQuestionIn(RequestModel):
@@ -30,8 +32,8 @@ class FollowupQuestionIn(RequestModel):
     text: str
     kind: FollowupQuestionKind
     source: FollowupQuestionSource
-    # 개수 상한도 중복 · 빈 번호를 뺀 뒤 validator 에서 잰다.
-    segment_ids: List[str] = Field(default_factory=list)
+    # 개수 상한(20)은 중복 · 빈 번호를 뺀 뒤 validator 에서 잰다. 빼기 전 목록은 1000개까지만 받는다.
+    segment_ids: List[str] = Field(default_factory=list, max_length=SEGMENT_IDS_RAW_MAX)
     bank_code: Optional[str] = Field(default=None, max_length=BANK_CODE_MAX_LENGTH)
 
     @field_validator("text")
@@ -50,19 +52,24 @@ class FollowupQuestionIn(RequestModel):
     @field_validator("segment_ids")
     @classmethod
     def _dedupe_segment_ids(cls, value: List[str]) -> List[str]:
-        # 순서를 지키며 같은 번호와 빈 번호를 뺀다.
-        seen: List[str] = []
+        # 순서를 지키며 같은 번호와 빈 번호를 뺀다. 확인은 set 으로 하고(목록 검사는 제곱 시간 — 민규 #112 R3),
+        # 서로 다른 번호가 상한을 넘는 순간 바로 멈춘다.
+        seen = set()
+        ordered: List[str] = []
 
         for segment_id in value:
             segment_id = segment_id.strip()
 
-            if segment_id and segment_id not in seen:
-                seen.append(segment_id)
+            if not segment_id or segment_id in seen:
+                continue
 
-        if len(seen) > FOLLOWUP_QUESTION_SEGMENTS_MAX:
-            raise ValueError(f"근거 발화 번호는 {FOLLOWUP_QUESTION_SEGMENTS_MAX}개까지 둘 수 있습니다.")
+            if len(ordered) >= FOLLOWUP_QUESTION_SEGMENTS_MAX:
+                raise ValueError(f"근거 발화 번호는 {FOLLOWUP_QUESTION_SEGMENTS_MAX}개까지 둘 수 있습니다.")
 
-        return seen
+            seen.add(segment_id)
+            ordered.append(segment_id)
+
+        return ordered
 
     @field_validator("bank_code")
     @classmethod

@@ -195,6 +195,19 @@ def test_text_length_is_measured_after_strip(client: TestClient, counselor_heade
     assert response.json()["data"]["questions"][0]["text"] == "가" * 300
 
 
+def test_huge_segment_list_is_rejected_quickly(client: TestClient, counselor_headers, ready_session: dict) -> None:
+    # 빼기 전 목록은 1000개까지. 서로 다른 번호 10만 개도 오래 걸리지 않고 422 다(민규 #112 R3).
+    import time
+
+    started = time.monotonic()
+    many = _put(client, counselor_headers, ready_session["id"], [_q(segment_ids=[f"s{index}" for index in range(100_000)])])
+    over = _put(client, counselor_headers, ready_session["id"], [_q(segment_ids=["seg_001"] * 1001)])
+
+    assert many.status_code == 422
+    assert over.status_code == 422
+    assert time.monotonic() - started < 10
+
+
 def test_segment_count_is_measured_after_dedupe(client: TestClient, counselor_headers, ready_session: dict) -> None:
     # 같은 번호 25개는 한 개다.
     response = _put(client, counselor_headers, ready_session["id"], [_q(segment_ids=["seg_001"] * 25)])

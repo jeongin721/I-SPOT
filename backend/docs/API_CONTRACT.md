@@ -1048,7 +1048,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 | `severity_ratings` | `{ major_type, level, reason, matched_evidence, segment_ids, reviewed }` | 학대 유형별 심각도 **참고값** |
 | `protective_factors` | `{ category, text, segment_ids }` | 보호 요인 |
 | `session_change_notes` | `{ text, segment_ids }` | 이전 회기와 달라진 점 메모 |
-| `followup_check_points` | `{ text, segment_ids }` | 다음에 확인할 점에 대한 **AI 확인 메모** |
+| `followup_check_points` | `{ text, segment_ids, previous_session_label? }` | 다음에 확인할 점에 대한 **AI 확인 메모**. `previous_session_label`(선택, 2026-10-28)은 근거가 지난 회차 확정 요약뿐인 메모의 그 회차 이름("7회차")이고 이때 `segment_ids` 는 `[]` — 값이 있을 때만 키가 실린다. 화면은 "근거 · 7회차 확정 요약" |
 
 ```json
 "severity_ratings": [
@@ -1808,7 +1808,7 @@ AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기
 | `text` | 필수. 앞뒤 공백을 뺀 뒤 1~300자(공백을 뺀 뒤 잰다) |
 | `kind` | 필수. `OPEN` · `BANK` |
 | `source` | 필수. `AI`(AI 초안을 승인 — 고쳐서 승인해도 `AI`) · `COUNSELOR`(직접 씀) |
-| `segment_ids` | 선택(없으면 `[]`), **그 회차 최신 전사본에 있는 번호만.** 같은 번호 · 빈 번호는 빼고(순서는 지킴) 뺀 뒤 20개 이하 |
+| `segment_ids` | 선택(없으면 `[]`), **그 회차 최신 전사본에 있는 번호만.** 같은 번호 · 빈 번호는 빼고(순서는 지킴) 뺀 뒤 20개 이하. 빼기 전 목록은 1000개 이하 |
 | `bank_code` | `kind=BANK` 일 때 필수(40자 이하), `OPEN` 이면 보내지 않는다(`null` · 공백은 없음으로 본다) |
 
 - 위 규칙을 어기면 `422 VALIDATION_ERROR` 이고 아무것도 바뀌지 않는다. 전사본에 없는 근거 번호도 422 이며, 문구에 받은 번호를 넣지 않는다.
