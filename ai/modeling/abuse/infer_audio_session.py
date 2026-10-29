@@ -56,6 +56,7 @@ from ai.modeling.abuse.narrative_summary_llm import (
 from ai.modeling.abuse.session_change import (
     build_session_change_notes,
 )
+from ai.modeling.abuse.case_context import previous_session_label
 from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
@@ -468,6 +469,7 @@ def analyze_audio_session(
     checklist_model: str = DEFAULT_CHECKLIST_MODEL,
     case_id: str = None,
     deadline: Optional[float] = None,
+    case_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
@@ -490,6 +492,9 @@ def analyze_audio_session(
     OpenAI 호출에는 남은 시간을 실제 timeout으로 넘긴다
     (_call_llm_with_retry 참고) — 마감을 넘긴 뒤에도 호출이 뒤에서
     계속되는 걸 막는다.
+
+    case_context: 사례 정보(2026-10-28, case_context.py). 지금은 '다음 상담 전 확인할
+    사항'(followup_check_llm)의 배경 입력으로만 쓴다 — 마스킹을 거쳐 보낸다. None 이면 예전과 같다.
     """
 
     subtype_model = "gpt-5.6-luna"
@@ -943,6 +948,7 @@ def analyze_audio_session(
             segments,
             record_draft.get("child_statement_points", []),
             record_draft.get("risk_signal_points", []),
+            case_context=case_context,
         ),
         known_identifiers=known_identifiers,
     )
@@ -955,6 +961,7 @@ def analyze_audio_session(
         masked_combined_text=followup_masked_text,
         segments=segments,
         deadline=deadline,
+        previous_session_label=previous_session_label(case_context),
     )
 
     followup_check_points = restore_pii(
