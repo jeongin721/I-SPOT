@@ -54,7 +54,7 @@ import { marksBySegment, reasonLabel, type SegmentMarks, type VoiceCue, voiceMar
 import { type SegmentRow, SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
 import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
-import type { SessionScreenInput } from "./sessionDetail";
+import { type SessionScreenInput, sessionPickValues } from "./sessionDetail";
 
 /** 관련 조문 줄 머리의 짧은 유형 이름(디자인의 .sig). */
 const LAW_TYPE_LABELS: Record<string, string> = {
@@ -412,6 +412,8 @@ export function sttReviewValues(input: SttScreenInput) {
 
   return {
     ...header,
+    // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 기록 확인 화면으로).
+    ...sessionPickValues(input, "/SttReview"),
     analyzing: progress !== null,
     done: review.info !== null,
     progressChip: progress?.chip ?? "",

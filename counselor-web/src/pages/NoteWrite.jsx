@@ -15,8 +15,10 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import CopyButton from '../components/CopyButton';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -187,6 +189,7 @@ export default function NoteWrite(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -243,6 +246,7 @@ export default function NoteWrite(props) {
                     ) : null}
                   </span>
                   <textarea className="ta2" aria-label={r.k} value={r.v} onChange={r.onChange} readOnly={r.readOnly} />
+                  <CopyButton name={v.alias} />
                 </label>
               </Fragment>
             ))}
@@ -291,6 +295,7 @@ export default function NoteWrite(props) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>아동 진술</b>
               <textarea className="ta2" style={{ minHeight: '104px' }} {...v.statement} />
+              <CopyButton name={v.alias} />
             </label>
 
             <div className="grp">대상자 태도 및 관찰내용</div>
@@ -304,10 +309,12 @@ export default function NoteWrite(props) {
                 ) : null}
               </span>
               <textarea className="ta2" {...v.attitude} />
+              <CopyButton name={v.alias} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>물리적 환경</b>
               <textarea className="ta2" placeholder="상담원 작성" {...v.environment} />
+              <CopyButton name={v.alias} />
               <span className="note acc">신변안전 · 기관 복귀 후 기록 (현장 기록 금지)</span>
             </label>
 
@@ -318,6 +325,7 @@ export default function NoteWrite(props) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>위험 신호 검토 결과</b>
               <textarea className="ta2" {...v.signals} />
+              <CopyButton name={v.alias} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -329,6 +337,7 @@ export default function NoteWrite(props) {
                 ) : null}
               </span>
               <textarea className="ta2" style={{ minHeight: '96px' }} {...v.opinion} />
+              <CopyButton name={v.alias} />
             </label>
             {v.docError ? (
               <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>

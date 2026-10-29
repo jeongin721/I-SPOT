@@ -17,9 +17,11 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import SessionPick from '../components/SessionPick';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
 import SttPlayer from '../components/SttPlayer';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAudioPlayer } from '../data/useAudioPlayer';
@@ -212,6 +214,7 @@ export default function SttReview(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -222,7 +225,7 @@ export default function SttReview(props) {
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
             <div style={{ flex: '1 1 280px' }}>
               <div className="sub">{v.sub}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
                 <A
                   className="btn btn-sm btn-s"
                   to={v.caseHref}
@@ -232,6 +235,7 @@ export default function SttReview(props) {
                   ←
                 </A>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
+                <SessionPick label={v.pickLabel} head={v.pickHead} items={v.picks || []} />
               </div>
             </div>
           </header>

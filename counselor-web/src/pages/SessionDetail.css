@@ -53,25 +53,3 @@
   border-color: #d6d0c4 !important;
   color: #ece8df !important;
 }
-
-/* 10/29 디자인: 다른 회차 고르기(.sl-*) */
-.pg-SessionDetail .sl-wrap{position:relative;display:inline-flex}
-.pg-SessionDetail .sl-btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;font:inherit;font-size:13.5px;font-weight:500;color:#2B2A26;cursor:pointer;white-space:nowrap}
-.pg-SessionDetail .sl-btn:hover{border-color:#2B2A26}
-.pg-SessionDetail .sl-btn[aria-expanded="true"] .sl-car{transform:rotate(180deg)}
-.pg-SessionDetail .sl-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:50;width:min(340px,calc(100vw - 32px));background:#FFFFFF;border:1px solid #DAD5C9;border-radius:12px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden}
-.pg-SessionDetail .sl-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid #EAE7DF;font-size:13px;font-weight:700}
-.pg-SessionDetail .sl-list{max-height:320px;overflow-y:auto;padding:4px}
-.pg-SessionDetail .sl-opt{width:100%;display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:13px;color:#2B2A26;text-align:left;cursor:pointer}
-.pg-SessionDetail .sl-opt:hover{background:#F7F6F2}
-.pg-SessionDetail .sl-opt.on{background:#F1EADA}
-.pg-SessionDetail .sl-meta{color:#66625A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media (max-width:600px){.pg-SessionDetail .sl-pop{left:auto;right:0}}
-.pg-SessionDetail .thm-root.dark .sl-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
-.pg-SessionDetail .thm-root.dark .sl-btn:hover{border-color:#D6D0C4}
-.pg-SessionDetail .thm-root.dark .sl-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
-.pg-SessionDetail .thm-root.dark .sl-hd{border-color:#3A3833;color:#ECE8DF}
-.pg-SessionDetail .thm-root.dark .sl-opt{color:#ECE8DF}
-.pg-SessionDetail .thm-root.dark .sl-opt:hover{background:#33312C}
-.pg-SessionDetail .thm-root.dark .sl-opt.on{background:#3F3729}
-.pg-SessionDetail .thm-root.dark .sl-meta{color:#A8A296}

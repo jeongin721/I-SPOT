@@ -4,11 +4,12 @@
 // 서버 연결: 화면 주소 ?case=<사례 ID>&session=<회차 ID>. 회차는 useSessionDetail, 사례 별칭 · 다른 회차는
 // useCaseDetail 이 부르고, 화면에 쓸 값은 src/data/screens/sessionDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // '다른 회차' 를 누르면 그 회차 주소로 옮긴다. 처리 중이면 끝날 때까지 다시 조회한다.
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import SessionPick from '../components/SessionPick';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
@@ -27,79 +28,6 @@ class Logic extends DCLogic {
   renderVals() {
     return sessionDetailValues(this.props);
   }
-}
-
-/** '다른 회차' 고르기(10/29 디자인 sl-*). 바깥을 누르거나 Esc 면 닫힌다. */
-function SessionPick({ label, head, items }) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (e) => {
-      if (e.type === 'keydown' ? e.key === 'Escape' : !(wrap.current && wrap.current.contains(e.target))) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', close);
-    };
-  }, [open]);
-  return (
-    <div className="sl-wrap" ref={wrap}>
-      <button
-        type="button"
-        className="sl-btn"
-        aria-haspopup="listbox"
-        aria-expanded={open ? 'true' : 'false'}
-        onClick={() => setOpen(!open)}
-      >
-        {label}
-        <svg
-          className="sl-car"
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M6 9l6 6 6-6"></path>
-        </svg>
-      </button>
-      {open ? (
-        <div className="sl-pop" role="listbox" aria-label="회차 선택">
-          <div className="sl-hd">
-            회차 선택 <span className="note">{head}</span>
-          </div>
-          <div className="sl-list">
-            {items.map((o) => (
-              <button
-                key={o.no}
-                type="button"
-                role="option"
-                aria-selected={o.on}
-                className={`sl-opt ${o.cls}`}
-                onClick={() => {
-                  setOpen(false);
-                  o.pick();
-                }}
-              >
-                <b className="sl-no">{o.no}</b>
-                <span className="sl-meta">{o.meta}</span>
-                <span className={o.stCls} style={{ height: '22px', fontSize: '11.5px' }}>
-                  {o.st}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 export default function SessionDetail(props) {

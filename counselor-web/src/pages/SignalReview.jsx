@@ -16,6 +16,7 @@ import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -200,6 +201,7 @@ export default function SignalReview(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -459,7 +461,7 @@ export default function SignalReview(props) {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
             <A className="btn btn-s" to={v.sttHref}>
-              ← 기록 확인
+              ← 기록 확인 · 위험 신호
             </A>
             {v.canNext && !v.nextBlocked ? (
               <A className="btn btn-p" to={v.nextHref} style={{ marginLeft: 'auto' }}>

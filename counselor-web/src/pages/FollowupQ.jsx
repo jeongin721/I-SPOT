@@ -12,6 +12,7 @@ import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -88,6 +89,7 @@ function FollowupQScreen(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
