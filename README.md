@@ -15,7 +15,9 @@ I-SPOT/
 │  └─ modeling/              # 학대 / 위기 / 상호작용 모델링
 ├─ stt/                      # STT 파이프라인 모듈 (팀 A)
 ├─ data_prep/                # GT 구축 및 STT Provider 평가 코드·산출물
-├─ main.py                   # STT + 학대분석 단독 확인용 앱 — Backend 아님
+├─ rag/                      # 공식 체크리스트·매뉴얼 RAG + 다음 상담 체크리스트 — rag/README.md
+├─ law/                      # 국가법령정보센터 Open API 연동 (현행 조문 조회·랭킹)
+├─ main.py                   # STT + 학대분석 + RAG 근거자료 단독 확인용 앱 — Backend 아님
 ├─ docker-compose.yml        # Local 실행용 최소 구성
 ├─ deploy/                   # AWS 시연 서버 배포 스크립트 — 다시 배포하는 법은 deploy/README.md
 └─ I-SPOT_DOCS/              # 공통 기획·아키텍처·개발 규칙 문서
@@ -26,7 +28,7 @@ I-SPOT/
 | 파일 | 무엇인가 | 포트 |
 | --- | --- | --- |
 | `backend/app/main.py` | **Backend 본체.** 사례·회차·전사·분석·요약 API | 8000 |
-| `main.py` (최상위) | STT + 학대분석만 확인하는 단독 앱 | 8000 |
+| `main.py` (최상위) | STT + 학대분석 + RAG 근거자료만 확인하는 단독 앱 | 8000 |
 
 둘 다 8000 포트를 사용하므로 **동시에 실행할 수 없습니다.** 최상위 `main.py`를 실행한 상태에서 <http://localhost:8000/docs>를 열면 Backend가 아닌 `/api/v1/analyze`만 보입니다.
 
@@ -63,6 +65,37 @@ STT 결과는 화자 분리와 역할 판별을 거쳐, 안전하게 확정된 �
 - ElevenLabs는 100건 API 처리를 완료했지만, 100건 전체 GT 평가는 아직 완료되지 않았습니다. 현재 18건 비교 결과는 전체 성능 지표로 해석하지 않습니다.
 
 상세 평가 절차·스크립트·산출물은 `data_prep/`을 확인합니다.
+
+## RAG · 법령 근거자료
+
+학대 유형 분석 결과를 받아 공식 체크리스트·매뉴얼과 현행 법령을 근거로 상담사가 다음 상담에서 확인할 항목을 정리합니다. 학대 여부나 법 위반 여부를 확정하지 않습니다.
+
+```text
+STT 검수가 끝난 Transcript
+→ CHILD 발화만 추림 (보호자 · 상담원 · 미확정 화자 발화는 넣지 않음)
+→ 비식별 (privacy_gateway.mask_for_outbound — 통과 못 하면 외부 전송 안 함)
+→ 체크리스트 RAG 검색 · 상담 문장과 비교 (matched / needs_confirmation / excluded)
+→ 국가법령정보센터 API 현행 조문 · 유사 판례
+→ 다음 상담 전 확인할 사항 · 추가 질문(상담 / 아이 앱, 이전 회차 · 아이 앱 응답까지 근거) · 참고자료
+→ 결과의 비식별 토큰을 원문으로 복원
+```
+
+- 최상위 `main.py`의 `POST /api/v1/rag/analyze`에 검수된 Transcript(`{"transcript": {...}, "abuse_type"?: ..., "known_identifiers"?: [...]}`)를 보냅니다. `abuse_type`을 빼면 검수된 아동 발화로 학대 유형을 다시 분류합니다. `session_no` · `previous_sessions` · `child_app_responses`를 함께 보내면 다음 상담 질문이 이전 회차 기록 · 아이 앱 응답까지 근거로 씁니다(`rag/README.md` 8-3).
+- `/api/v1/analyze`(업로드 직후, 검수 전)는 RAG를 돌리지 않습니다. 검수 전 발화는 화자 · 문장이 바뀔 수 있기 때문입니다.
+- 응답: `rag_analysis`(감지된 학대 유형이 없으면 `null`), `manual_screen_references`, `excluded_speakers`(뺀 화자별 발화 수), `child_segment_ids`, `speaker_check_items`(화자 미확정 발화를 확인할 사항으로 만든 것). 실패하면 해당 필드가 `{"error": ...}`이고, 비식별 검증에 막히면 `privacy_blocked: true`와 사유(원문 없음)가 담깁니다.
+- 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents`(유사 판례)
+- 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)는 `manual_screen_references`에 담깁니다. 분석할 때 미리 만들어 화면에서 기다리지 않게 합니다. `backend/` 저장은 [제안서](I-SPOT_DOCS/docs/PROPOSAL_manual_references.md) 참고.
+- 설치: `pip install -r requirements.txt -r requirements-rag.txt` (최상위 `main.py`가 `rag.pipeline`을 import 하므로 둘 다 필요)
+- 환경 변수: `OPENAI_API_KEY`, `LAW_API_OC`, `RAG_*`, `LAW_*` — `.env.example` 참고
+- 원문 PDF(`rag_data/`), Vector DB(`rag_storage/`), 법령 캐시(`law_cache/`)는 커밋하지 않습니다.
+
+```bash
+python -m rag.indexer                                              # rag_data/ PDF → Vector DB
+python -m rag.pipeline "상담 문장" --abuse-type emotional --json     # 단독 실행
+python -m law.query "아동복지법" --abuse-type emotional --text "상담 문장"
+```
+
+상세 흐름과 출력 스키마는 [rag/README.md](rag/README.md)를 확인합니다.
 
 ## 문서 안내와 협업 규칙
 
