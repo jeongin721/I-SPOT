@@ -1966,7 +1966,9 @@ AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기
 
 - `result` 는 rag 결과 그대로다(칸 뜻은 `rag/README.md` 8-3). Backend 는 그 안을 다시 해석하지 않는다.
 - `items[].audience`: `counselor`(다음 상담에서 직접) · `child_app`(아이 앱으로 먼저). `question_type`: `open` · `clarify`.
-- `items[].review_status`: `passed`(LLM 검토 통과) · `not_reviewed`(검토 호출 실패, 규칙만 통과) · `fallback`(질문 생성 실패 시 대체 질문).
+- `items[].review_status`: `passed`(LLM 검토 통과) · `not_reviewed`(검토 호출 실패, 규칙만 통과). 질문은 사례 근거 + 공식 근거를 각각 하나 이상 단 것만 온다 —
+  공식 근거가 없으면 `validation.skipped`, 질문 생성이 실패하면 `validation.error` 와 함께 `items` 가 빈다(대체 질문 없음).
+- 확인할 사항 `item` · `reason`, 질문 `rationale` 도 판정 · 단정 표현을 거른 뒤 온다(`rag/README.md` 8-3). 뺀 확인할 사항 수는 `validation.check_rule_rejected`.
 - `basis[]` 는 화면의 '근거 · …' 칩이다. 누르면: 회차 발화 → STT 검수의 그 발화(`session_id` · `segment_id`), 이전 회차 요약 · 확인 사항 → 그 회차 상세(`session_id`),
   법령 · 판례 → `url`(국가법령정보센터), 매뉴얼 · 체크리스트 → `excerpt` 를 그 자리에서 펼친다(원본 PDF 는 올리지 않는다).
 - `validation` 에는 생성 · 탈락 수만 있다(질문 문장은 싣지 않는다).

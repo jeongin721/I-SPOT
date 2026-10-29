@@ -803,7 +803,7 @@ export interface FollowupSuggestionQuestion {
   rationale: string;
   check_item_id: string | null;
   basis: FollowupBasis[];
-  /** passed(LLM 검토 통과) · not_reviewed(검토 호출 실패, 규칙만 통과) · fallback(대체 질문) */
+  /** passed(LLM 검토 통과) · not_reviewed(검토 호출 실패, 규칙만 통과) */
   review_status: string;
 }
 

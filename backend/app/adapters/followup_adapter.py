@@ -308,10 +308,18 @@ class ModuleFollowupAdapter:
         if not isinstance(output, dict):
             raise FollowupError(ErrorCode.AI_INVALID_OUTPUT, type(output).__name__)
 
+        # rag 결과 맨 위의 privacy_blocked: 근거자료 분석 · 화면별 매뉴얼 근거 중 어느 쪽이든 비식별에 막혔다.
+        # 근거자료 분석이 돌지 않았는데(학대 유형 없음) 막혔으면 정상 완료가 아니라 차단으로 끝낸다(교차검증 #117).
+        blocked = bool(output.get("privacy_blocked"))
+        if blocked and not isinstance(rag, dict):
+            raise FollowupError(ErrorCode.AI_PRIVACY_BLOCKED, "RagPrivacyBlocked")
+
         checklist = (rag or {}).get("next_session_checklist") or {}
         notices = []
         if rag is None:
             notices.append("감지된 학대 유형이 없어 다음 상담 질문을 만들지 않았습니다.")
+        if blocked:
+            notices.append("화면별 매뉴얼 근거는 비식별 검증을 통과하지 못해 외부로 보내지 않았습니다.")
         for key in ("case_context_warning",):
             if isinstance(rag, dict) and rag.get(key):
                 notices.append(str(rag[key]))

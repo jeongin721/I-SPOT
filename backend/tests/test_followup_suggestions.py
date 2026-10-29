@@ -367,6 +367,44 @@ def test_module_adapter_without_abuse_type_returns_notice(monkeypatch) -> None:
     assert "감지된 학대 유형이 없어" in result["notice"]
 
 
+def test_module_adapter_without_abuse_type_but_privacy_blocked_is_blocked(monkeypatch) -> None:
+    # 유형이 없어 근거자료 분석은 돌지 않고 매뉴얼 근거만 비식별에 막힘 → 정상 완료가 아니라 차단(교차검증 #117).
+    _fake_rag(
+        monkeypatch,
+        {
+            "rag_analysis": None,
+            "speaker_check_items": [],
+            "manual_screen_references": {"error": "...", "privacy_blocked": True, "reasons": ["text: NER"]},
+            "privacy_blocked": True,
+            "privacy_reasons": ["text: NER"],
+        },
+    )
+
+    with pytest.raises(FollowupError) as raised:
+        ModuleFollowupAdapter().build(_input())
+
+    assert raised.value.code == ErrorCode.AI_PRIVACY_BLOCKED
+
+
+def test_module_adapter_keeps_questions_when_only_manual_is_blocked(monkeypatch) -> None:
+    _fake_rag(
+        monkeypatch,
+        {
+            "rag_analysis": {"next_session_checklist": {"check_items": [], "items": [{"question": "지금은 어때?"}]}},
+            "speaker_check_items": [],
+            "manual_screen_references": {"error": "...", "privacy_blocked": True, "reasons": ["text: NER"]},
+            "privacy_blocked": True,
+            "privacy_reasons": ["text: NER"],
+        },
+    )
+
+    result = ModuleFollowupAdapter().build(_input())
+
+    assert result["items"] == [{"question": "지금은 어때?"}]
+    assert result["manual_screen_references"] is None
+    assert "화면별 매뉴얼 근거는 비식별 검증을 통과하지 못해" in result["notice"]
+
+
 @pytest.mark.parametrize(
     ("output", "code"),
     [
