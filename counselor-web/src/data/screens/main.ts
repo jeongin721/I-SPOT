@@ -2,16 +2,19 @@
 //
 // Backend 에 없는 값은 지어내지 않는다(specs 대응표 Main 줄 — 팀 결정: 일정 · 아이 앱 긴급 상태 · 일지 대기 기준).
 //  - 오늘 일정 · 다음 상담까지 남은 시간: 일정 기능이 없다. 시간 칸과 '지금' 줄만 두고 일정은 준비 중.
-//  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'.
+//  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'(10/30 디자인의 머리 링크 '아이 연계 ›' 만 둔다).
+//  - 진행 중 내담자 카드 아래 줄(10/30): 최근 등록 사례 3건의 위험도(상담원 판단) · 마지막 회차 상태. 디자인의
+//    '오늘 16:00 상담' 같은 일정 문구는 일정이 서버에 없어 쓰지 않는다.
 //  - 미처리 업무는 회차 처리 대기(/tasks)만 센다. 디자인의 '상담 일지 작성' · '앱 확인' 은 업무 종류에 없다.
 //    오래 기다린 업무는 '지연' 이라고 쓴다(위험 신호와 헷갈리지 않게 '긴급' 이라고 쓰지 않는다 — API types TaskItem).
 // 시계 · 빠른 실행은 서버와 상관없는 화면 상태다(빠른 실행 편집은 저장하지 않는다).
 
-import { TASK_LABELS, type TaskType } from "../../api/types";
+import { RISK_LEVEL_LABELS, TASK_LABELS, type RiskLevel, type TaskType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import type { HomeDashboardState, HomeTask } from "../useHomeDashboard";
 import type { AuthSession } from "../useAuthSession";
 import { pad2 } from "../time";
+import { SESSION_STATUS_LABELS } from "../sessionRows";
 import { NOT_READY, screenNotice } from "./common";
 import { STEP_SCREEN } from "./flow";
 import { screenHref } from "./links";
@@ -26,6 +29,8 @@ const QUICK_POOL = {
 } as const;
 
 type QuickKey = keyof typeof QUICK_POOL;
+
+const HOME_RISK_CHIP: Record<RiskLevel, string> = { HIGH: "c-hi", MEDIUM: "c-mid", LOW: "c-lo" };
 
 export interface MainUiState {
   now: Date;
@@ -88,7 +93,8 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
   }
 
   const todos = (data?.tasks ?? []).map((task) => ({
-    label: task.stageLabel,
+    // 10/30 디자인: 홈에서는 원문 검수를 단계 이름 '기록 확인' 으로 쓴다(관리자 화면은 디자인이 안 바뀌어 그대로).
+    label: task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.stageLabel,
     chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
     text: [`${task.childAlias} ${task.sessionNumber}회차`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
       .filter(Boolean)
@@ -139,6 +145,13 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
     tasksCount: data ? String(data.summary.total) : NOT_PROVIDED,
     todos,
     todoNote,
+    // '진행 중 내담자' 카드 아래 줄(10/30 디자인): 위험도(가장 최근 상담원 판단) · 별칭 · 마지막 회차 상태.
+    caseTodos: (data?.cases ?? []).map((item) => ({
+      href: screenHref("/CaseDetail", { caseId: item.id }),
+      chip: `chip ${item.level ? HOME_RISK_CHIP[item.level] : "c-normal"}`,
+      label: `위험도 ${item.level ? RISK_LEVEL_LABELS[item.level] : NOT_PROVIDED}`,
+      text: `${item.alias} · ${item.latest ? `${item.latest.number}회차 ${SESSION_STATUS_LABELS[item.latest.status]}` : "회차 없음"}`,
+    })),
     urgentCount: NOT_PROVIDED,
     urgentText: `아이 앱 연계 ${NOT_READY}`,
     remain: NOT_PROVIDED,
