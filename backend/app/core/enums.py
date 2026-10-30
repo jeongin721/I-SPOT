@@ -197,6 +197,16 @@ class FollowupQuestionKind(str, Enum):
     BANK = "BANK"
 
 
+class ConsultationType(str, Enum):
+    """상담 유형(2026-10-30, 10/29 디자인 녹음하기 창 · 상담 이력). 회차마다 하나, 비울 수 있다."""
+
+    INITIAL = "INITIAL"  # 초기면담
+    REGULAR = "REGULAR"  # 정기상담
+    VISIT = "VISIT"  # 방문상담
+    OFFICE = "OFFICE"  # 기관 면담
+    PHONE = "PHONE"  # 전화상담
+
+
 class FollowupQuestionSource(str, Enum):
     """승인한 추가 질문이 어디서 왔는가. AI 초안을 고쳐 승인해도 AI 다."""
 
@@ -209,6 +219,10 @@ class AuditAction(str, Enum):
 
     CASE_CREATED = "CASE_CREATED"
     CASE_UPDATED = "CASE_UPDATED"
+    CLOSURE_REVIEW_REGISTERED = "CLOSURE_REVIEW_REGISTERED"
+    CLOSURE_REVIEW_CANCELED = "CLOSURE_REVIEW_CANCELED"
+    CLOSURE_SUMMARY_GENERATED = "CLOSURE_SUMMARY_GENERATED"
+    CLOSURE_SUMMARY_UPDATED = "CLOSURE_SUMMARY_UPDATED"
     CASE_DELETED = "CASE_DELETED"
     SESSION_CREATED = "SESSION_CREATED"
     SESSION_UPDATED = "SESSION_UPDATED"
@@ -238,6 +252,7 @@ class AuditAction(str, Enum):
     LAW_QA_ASKED = "LAW_QA_ASKED"
     # 승인한 추가 질문 목록 저장(18절, 2026-10-28). detail 에는 질문 수 · 출처별 수만 남긴다(질문 원문은 넣지 않는다).
     FOLLOWUP_QUESTIONS_UPDATED = "FOLLOWUP_QUESTIONS_UPDATED"
+    FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

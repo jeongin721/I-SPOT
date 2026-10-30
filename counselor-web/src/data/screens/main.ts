@@ -9,9 +9,9 @@
 //    오래 기다린 업무는 '지연' 이라고 쓴다(위험 신호와 헷갈리지 않게 '긴급' 이라고 쓰지 않는다 — API types TaskItem).
 // 시계 · 빠른 실행은 서버와 상관없는 화면 상태다(빠른 실행 편집은 저장하지 않는다).
 
-import { RISK_LEVEL_LABELS, TASK_LABELS, type RiskLevel, type TaskType } from "../../api/types";
+import { RISK_LEVEL_LABELS, type RiskLevel, type TaskType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
-import type { HomeDashboardState, HomeTask } from "../useHomeDashboard";
+import { HOME_TASK_COUNT, type HomeDashboardState, type HomeTask } from "../useHomeDashboard";
 import type { AuthSession } from "../useAuthSession";
 import { pad2 } from "../time";
 import { SESSION_STATUS_LABELS } from "../sessionRows";
@@ -92,29 +92,30 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
     });
   }
 
-  const todos = (data?.tasks ?? []).map((task) => ({
-    // 10/30 디자인: 홈에서는 원문 검수를 단계 이름 '기록 확인' 으로 쓴다(관리자 화면은 디자인이 안 바뀌어 그대로).
-    label: task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.stageLabel,
-    chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
-    text: [`${task.childAlias} ${task.sessionNumber}회차`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
-      .filter(Boolean)
-      .join(" · "),
-    waited: task.waitingFor,
-    waitedTitle: `${task.waitingSinceFull}부터 기다림`,
-    href: homeTaskHref(task),
-  }));
+  // 10/30 디자인: 업무 종류별 한 줄 — 칩(업무 이름) · 가장 오래 기다린 회차('외' 는 더 있을 때) · 오른쪽 건수.
+  const groups = data?.tasks ?? [];
+  // 홈에서는 원문 검수를 단계 이름 '기록 확인' 으로 쓴다(관리자 화면은 디자인이 안 바뀌어 그대로).
+  const homeLabel = (task: HomeTask) => (task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.stageLabel);
+  const todos = groups.slice(0, HOME_TASK_COUNT).map((task) => {
+    const label = homeLabel(task);
+    return {
+      label,
+      chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
+      text: [`${task.childAlias} ${task.sessionNumber}회차${task.count > 1 ? " 외" : ""}`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
+        .filter(Boolean)
+        .join(" · "),
+      waited: String(task.count),
+      waitedTitle: `${label} ${task.count}건 — 가장 오래 기다린 회차는 ${task.waitingSinceFull}부터`,
+      href: homeTaskHref(task),
+    };
+  });
 
   let todoNote = "";
   if (data) {
-    const total = data.summary.total;
-    const byType = (Object.keys(TASK_LABELS) as TaskType[])
-      .filter((type) => (data.summary.by_type[type] ?? 0) > 0)
-      .map((type) => `${TASK_LABELS[type]} ${data.summary.by_type[type]}`);
-
-    if (total === 0) todoNote = "처리할 업무가 없습니다.";
+    if (data.summary.total === 0) todoNote = "처리할 업무가 없습니다.";
     else {
-      // 줄로 다 보이면 종류별 수는 줄과 같아 적지 않는다.
-      const parts = total > todos.length ? [`오래 기다린 ${todos.length}건만 보입니다`, byType.join(" · ")] : [];
+      const rest = groups.slice(HOME_TASK_COUNT).map((task) => `${homeLabel(task)} ${task.count}`);
+      const parts = rest.length ? [`그 밖 ${rest.join(" · ")}`] : [];
       if (data.summary.overdue > 0) parts.push(`지연 ${data.summary.overdue}건`);
       todoNote = parts.join(" — ");
     }

@@ -60,6 +60,7 @@ from openai import OpenAI
 
 from ai.modeling.abuse.case_context import format_case_context
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
+from ai.modeling.abuse.text_script import has_foreign_script
 
 DEFAULT_MODEL = "gpt-5.6-luna"
 
@@ -117,6 +118,7 @@ SYSTEM_PROMPT = """너는 아동 상담 기록에서 "다음 상담에서 확인
 - segment_id 는 이번 상담 줄에서만 인용한다(지난 회차 줄 번호는 없다).
 - 사례 정보의 내용을 이번 상담에서 새로 확인된 사실처럼 쓰지 않는다.
 
+문장은 한국어로만 쓴다(다른 나라 글자를 섞지 않는다).
 반드시 아래 JSON 형식으로만 답한다:
 {{
   "check_points": [
@@ -263,6 +265,10 @@ def _clean_points(
         text = item.get("text")
 
         if not isinstance(text, str) or not text.strip():
+            continue
+
+        # 2026-10-30 데모: LLM 이 다른 나라 문자를 섞어 쓴 메모("재발 방지 ব্যবস্থা")는 버린다(text_script).
+        if has_foreign_script(text):
             continue
 
         raw_segment_ids = item.get("segment_ids")

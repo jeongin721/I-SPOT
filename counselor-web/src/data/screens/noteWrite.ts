@@ -34,7 +34,7 @@
 //    ✓ 로 보인다. '확인' 은 화면 상태라 서버에 보내지 않는다 — 고른 항목은 누를 때 바로 일지 초안(draft)에 들어가고(떠날 때 확인 ·
 //    저장 대상), 저장 · 승인은 지금처럼 '일지 저장' · '일지 승인' · 아래 '저장 · …' 이 한다. 승인된 일지는 '일지 수정' 으로
 //    승인을 풀기 전에는 펼치지 않고, '일지 승인' 을 누르면 펼친 칸을 접는다.
-//  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
+//  - 면접대상자/관계는 Backend 에 없어 '—'. 상담 유형은 회차 consultation_type(2026-10-30).
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
@@ -459,7 +459,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     { k: "사건번호", v: info ? info.caseNumber : NOT_PROVIDED },
     { k: "대상아동", v: info ? `${info.alias} (${info.genderLabel}, ${info.birthYearLabel})` : NOT_PROVIDED },
     { k: "상담일시", v: sv ? sv.consultedAt : NOT_PROVIDED },
-    { k: "장소 · 유형", v: sv ? `${sv.location} · 상담 유형 ${NOT_PROVIDED} · ${sv.numberLabel}` : NOT_PROVIDED },
+    { k: "장소 · 유형", v: sv ? `${sv.location} · 상담 유형 ${sv.kindLabel} · ${sv.numberLabel}` : NOT_PROVIDED },
     { k: "면접대상자/관계", v: NOT_PROVIDED },
     { k: "담당 상담원", v: info ? info.counselorName : NOT_PROVIDED },
   ];

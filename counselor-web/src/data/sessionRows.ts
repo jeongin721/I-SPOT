@@ -8,7 +8,7 @@
 //  - 상담 유형(정기 · 방문 등): 회차에 없다. 제목(title)이나 장소(location)로 짐작하지 않는다.
 //  - 신호 채택 · 보류 수, '질문 처리' 단계: Backend 에 없다(팀 결정 전).
 
-import type { Session, SessionStatus } from "../api/types";
+import { CONSULTATION_TYPE_LABELS, type ConsultationType, type Session, type SessionStatus } from "../api/types";
 import { NOT_PROVIDED } from "./caseRows";
 import { toDateOnly, toDateTime } from "./time";
 
@@ -129,6 +129,9 @@ export interface SessionRow {
   location: string;
   /** 회차 메모. 없으면 빈 문자열. */
   memo: string;
+  /** 상담 유형 코드 · 이름(2026-10-30). 없으면 null · NOT_PROVIDED. */
+  consultationType: ConsultationType | null;
+  kindLabel: string;
   /** 회차를 등록한 날짜(YYYY-MM-DD). */
   createdDate: string;
   /** 승인한 일시. 승인 전이면 NOT_PROVIDED. */
@@ -154,6 +157,8 @@ export function toSessionRow(source: Session): SessionRow {
     consultedDate: toDateOnly(source.consulted_at) || NOT_PROVIDED,
     location: source.location?.trim() || NOT_PROVIDED,
     memo: source.memo ?? "",
+    consultationType: source.consultation_type ?? null,
+    kindLabel: source.consultation_type ? CONSULTATION_TYPE_LABELS[source.consultation_type] : NOT_PROVIDED,
     createdDate: toDateOnly(source.created_at),
     approvedAt: toDateTime(source.approved_at) || NOT_PROVIDED,
   };

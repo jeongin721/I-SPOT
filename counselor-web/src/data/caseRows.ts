@@ -39,8 +39,12 @@ export interface CaseRow {
   counselorName: string;
   status: CaseStatus;
   statusLabel: string;
-  /** Backend 에 없는 값. 팀 결정 전까지 항상 NOT_PROVIDED. */
+  /** 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①, 2026-10-30). 없으면 NOT_PROVIDED. */
   reportDate: string;
+  linkedDate: string;
+  firstInterviewDate: string;
+  /** 종결 검토 등록일(YYYY-MM-DD). 등록 전이면 ""(2026-10-30). */
+  closureReviewDate: string;
   /** Backend 에 없는 값. 팀 결정 전까지 항상 NOT_PROVIDED. */
   riskLabel: string;
 }
@@ -58,7 +62,10 @@ export function toCaseRow(source: Case): CaseRow {
     counselorName: source.counselor_name ?? NOT_PROVIDED,
     status: source.status,
     statusLabel: CASE_STATUS_LABELS[source.status],
-    reportDate: NOT_PROVIDED,
+    reportDate: source.report_date || NOT_PROVIDED,
+    linkedDate: source.linked_date || NOT_PROVIDED,
+    firstInterviewDate: source.first_interview_date || NOT_PROVIDED,
+    closureReviewDate: toDateOnly(source.closure_review_at ?? null),
     riskLabel: NOT_PROVIDED,
   };
 }

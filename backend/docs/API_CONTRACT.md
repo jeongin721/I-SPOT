@@ -532,6 +532,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `title`, `child_alias` 필수
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
+- `report_date` · `linked_date` · `first_interview_date`(2026-10-30, 서식 4 ① 신고접수일 · 사례연계일 · 최초면접일) 선택. `"YYYY-MM-DD"` 날짜만,
+  1900-01-01 ~ 2100-12-31(그 밖 · 시각이 붙은 값은 `422`). 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
   - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
     "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
@@ -615,6 +617,38 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `OTHER` 가 아닌 사례에 `guardian_note` 만 보내면 `422`
   - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
 - `intake_child_traits` · `intake_family_situations` 는 보내면 목록을 통째로 바꾼다. 비우려면 `[]` 를 보낸다(`null` 은 `422`)
+- 날짜 셋(`report_date` · `linked_date` · `first_interview_date`)은 보낸 것만 바뀌고 `null` 을 보내면 비운다
+
+### POST · DELETE /api/v1/cases/{case_id}/closure-review (2026-10-30)
+
+종결 검토 등록 · 취소(내담자 정보 '종결 검토 등록', 종결 검토 목록). 응답은 사례(위 `GET /cases/{id}` 의 사례 칸)이고,
+등록하면 `closure_review_at` 에 서버가 찍은 시각, 취소하면 `null` 이다(사례 목록 · 상세에도 같은 이름으로 온다).
+
+- 진행 중(`ACTIVE`) 사례만 등록한다. 종결 사례는 `409 INVALID_CASE_STATE`.
+- 이미 등록한 사례를 다시 등록하거나 등록 전 사례를 취소하면 그대로 둔다(첫 등록 시각 유지, 감사 기록도 남지 않음).
+- 권한은 사례 수정과 같다(담당 상담원 · 관리자). 감사 기록 `CLOSURE_REVIEW_REGISTERED` · `CLOSURE_REVIEW_CANCELED`(사례 번호만).
+- 종결(사례 상태 `CLOSED`)은 이 등록과 별개다 — 종결은 그대로 `PATCH /cases/{id}` 의 `status`.
+
+### GET · POST · PUT /api/v1/cases/{case_id}/closure-summary (2026-10-30)
+
+종결 검토 ① '핵심 요약' · ② 종결보고서. 사례마다 한 기록이다. 권한은 사례 조회 · 수정과 같다.
+
+- `GET`: `{ case_id, summary, checks, edits, report, updated_at }`. 만들기 전이면 `summary: null`, `checks` · `edits` `{}`.
+- `POST`(만들기 · 다시 만들기, **동기 200**): 종결 검토에 등록한 사례(`closure_review_at`)의 **승인 완료 회차 요약**(상담원 확정 4칸)과
+  회차별 AI 관련 신호를 모은다. 등록 전 · 승인 요약이 없으면 `409 INVALID_CASE_STATE`.
+  - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(별칭을 가릴 이름으로) → LLM → 검사(근거 회차가 실제
+    승인 회차 중 LLM 에 실제로 넣은 회차인 문장만 — 입력이 넘쳐 뺀 앞 회차는 제외, 묶음 이름 고정, 다른 나라 문자가 섞인 문장은 버림)로
+    AI 초안. `summary.source = "AI"`. 사례마다 한 번에 하나, 서버 전체 `CLOSURE_SUMMARY_MAX_CONCURRENCY`(기본 2)건 — 넘으면
+    `429 RATE_LIMITED`(제한 시간이 지나도 실제 호출이 끝날 때까지 자리를 잡는다). 제한 시간 `CLOSURE_SUMMARY_TIMEOUT_SECONDS`(기본 150초) — 넘으면
+    `504 AI_TIMEOUT`, 쓸 문장이 없으면 `502 AI_INVALID_OUTPUT`, 그 밖 `502 AI_FAILED`(문구에 원문 · 예외 문구 없음).
+  - 그 밖(mock 등): LLM 없이 승인 요약 4칸을 묶는다. `source = "APPROVED_SUMMARIES"`(AI 생성 아님, 묶음 이름이 4칸 이름).
+  - 문장 `key` 는 만들 때마다 새 무작위 앞머리 + 자리 번호(예: `3f9a1c-0-0`)다. 다시 만들면 `key` 가 모두 바뀌므로 `checks` · `edits` 를
+    비우고, 예전 요약을 띄운 화면이 옛 `key` 로 `PUT` 하면 `422`(새 문장에 붙지 않는다). `report`(상담원이 쓴 보고서 칸)는 남긴다.
+- `summary`: `{ source, model, generated_at, sessions: [회차 번호], groups: [{title, items: [{key, text, sessions}]}],
+  report: {initial_situation, closing_situation} }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
+- `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
+  `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD`).
+- 감사 기록 `CLOSURE_SUMMARY_GENERATED`(출처 · 회차 수 · 문장 수 · 걸린 초) · `CLOSURE_SUMMARY_UPDATED`(수 · 바뀐 보고서 칸 이름) — 문장은 남기지 않는다.
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
@@ -633,8 +667,11 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 ### POST /api/v1/cases/{case_id}/sessions → 201
 
 ```json
-{ "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null }
+{ "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null, "consultation_type": "VISIT" }
 ```
+
+`consultation_type`(2026-10-30, 상담 유형)은 `INITIAL`(초기면담) · `REGULAR`(정기상담) · `VISIT`(방문상담) · `OFFICE`(기관 면담) · `PHONE`(전화상담)
+가운데 하나이고 빼면 `null` 이다(그 밖의 값은 `422`). 회차 응답(목록 · 상세)에 같은 이름으로 온다. `PATCH` 에서 `null` 을 보내면 비운다.
 
 `consulted_at` 은 UTC 로 바꿔 저장하고, UTC 기준 1900-01-01 ~ 2100-12-31 밖이면 `422 VALIDATION_ERROR` 다(1.5). `PATCH /sessions/{id}` 도 같다.
 
@@ -892,6 +929,10 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
 | `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만) |
 | `SKIPPED` | `AI_PROVIDER` 가 `modeling` 이 아니라 부르지 않음 |
 
+- 고르는 방식(2026-10-30, `ai/modeling/abuse/key_scan_refine.py`): 1차 분류기는 여러 문답 덩어리 단위로 판정하므로, 덩어리 안 아동 발화를
+  줄마다(바로 앞 상담사 질문과 묶어) 다시 판정해 **걸린 줄에만** 그 유형을 붙인다(덩어리 판정이 놓친 유형도 줄에서 걸리면 붙인다).
+  덩어리에서는 걸렸는데 어느 줄에서도 다시 걸리지 않은 유형은 예전처럼 그 덩어리 아동 발화 전체에 붙인다. 줄 판정은 한 번에 80줄까지이고,
+  넘으면 남은 덩어리는 예전 방식(걸린 덩어리 전체 · 안 걸린 덩어리는 건너뜀)이다.
 - `segments` 는 원문 순서이고, 아동 · 화자 미확인(`CHILD` · `UNKNOWN`) 발화만 온다(AI 함수가 거름). 서버는 원문에 없는 번호 · 모르는 유형을 버린다.
   같은 발화가 두 번 오면 **유형이 남는 첫 것**만 둔다(첫 것의 유형이 모두 걸러지면 다음 것).
 - `abuse_types` 는 `PHYSICAL` · `EMOTIONAL` · `SEXUAL` · `NEGLECT`. **판정이 아니고 화면에 그리지 않는다**(판정처럼 읽힘 — 제안서 §8 답 3). 화면 문구는 "먼저 들어볼 곳" · "임시 · 검수 전".
@@ -2041,5 +2082,34 @@ AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기
 
 질문은 상담사가 승인한 것만 화면에 '추가 질문' 으로 보인다. AI 초안은 'AI 초안' 칩을 달고, 승인 전에는 브리핑에 넣지 않는다.
 예/아니오 질문 · 가해자나 행위를 먼저 꺼내는 질문은 AI 초안 단계에서 거른다(C-1 모듈의 코드 검사). 상담사가 직접 쓴 질문은 서버가 문장을 고치거나 거르지 않는다.
+
+오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
+
+### 18.1 Followup Checks (다음 상담 전 확인할 사항, 2026-10-30)
+
+'다음 상담 준비' 화면의 확인 사항 카드 — **브리핑에 넣기 · 수정 · 확인 사항 직접 추가** 를 저장한다. 18절(추가 질문)과 같은 꼴이다.
+AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대로 남고, 여기에는 상담사가 고른 · 고친 · 직접 쓴 목록이 회차마다 한 행에 저장된다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/followup-checks` | 저장한 목록. 저장한 적이 없으면 `saved: false`, `items: []` |
+| PUT | `/api/v1/sessions/{session_id}/followup-checks` | 목록을 통째로 바꾼다(빈 목록이면 '확인 사항 없음' 으로 저장) |
+
+```json
+{
+  "items": [
+    { "text": "등 · 팔 통증 이후 치료 여부 확인 필요.", "source": "AI", "segment_ids": ["seg_012"], "edited": true, "in_briefing": true },
+    { "text": "학교 담임과 통화해 최근 결석 여부 확인.", "source": "COUNSELOR", "segment_ids": [], "edited": false, "in_briefing": false }
+  ]
+}
+```
+
+- 응답: `{ session_id, saved, items: [{text, source, segment_ids, edited, in_briefing}], updated_at, updated_by_id }`.
+- `source` 는 `AI`(AI 확인 메모에서 옴 — 고쳐도 AI) · `COUNSELOR`(직접 추가). `edited` 는 AI 메모를 상담사가 고쳤는가(COUNSELOR 는 늘 `false` 로 저장).
+  `in_briefing` 은 상담 전 브리핑에 넣기 — 브리핑 '확인할 사항' 은 저장한 회차면 이것이 `true` 인 것만 보인다.
+- 0~20개, `text` 는 앞뒤 공백을 뺀 뒤 1~300자, `segment_ids` 는 겹침 · 빈 번호를 뺀 뒤 20개까지이고 그 회차 최신 전사본에 있는 번호만(`422`).
+- 받는 회차 상태는 18절과 같다(`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`, 그 밖에는 `409 INVALID_SESSION_STATE`). 조회는 상태와 관계없다.
+- 감사 기록(`FOLLOWUP_CHECKS_UPDATED`)에는 수(전체 · AI · 상담사 · 고친 수 · 브리핑 수 · 이전 수)만 남기고 문장은 남기지 않는다.
+- 저장은 회차 상태를 바꾸지 않는다.
 
 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`

@@ -53,6 +53,10 @@ export interface CaseDetailView extends CaseRow {
   guardianType: GuardianType | null;
   guardianNote: string;
   counselorId: string;
+  /** 날짜 셋 원래 값(YYYY-MM-DD, 없으면 ""). */
+  reportDateValue: string;
+  linkedDateValue: string;
+  firstInterviewDateValue: string;
 }
 
 export function toCaseDetailView(source: CaseDetail): CaseDetailView {
@@ -75,6 +79,9 @@ export function toCaseDetailView(source: CaseDetail): CaseDetailView {
     guardianType: source.guardian_type ?? null,
     guardianNote: source.guardian_note ?? "",
     counselorId: source.counselor_id,
+    reportDateValue: source.report_date ?? "",
+    linkedDateValue: source.linked_date ?? "",
+    firstInterviewDateValue: source.first_interview_date ?? "",
   };
 }
 

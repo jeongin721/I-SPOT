@@ -226,6 +226,12 @@ export interface Case {
   intake_child_traits: string[];
   /** 초기면접(서식 4 ②)에서 고른 가정상황(서식 항목 이름). 없으면 빈 목록. */
   intake_family_situations: string[];
+  /** 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①, YYYY-MM-DD, 2026-10-30). 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
+  /** 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null. */
+  closure_review_at?: string | null;
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
@@ -255,6 +261,10 @@ export interface CaseCreateRequest {
   intake_child_traits?: string[];
   intake_family_situations?: string[];
   notes?: string | null;
+  /** 날짜 셋(YYYY-MM-DD, 1900~2100). 빼면 null. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
   /**
    * 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403).
    * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만, API_CONTRACT 4절).
@@ -281,6 +291,10 @@ export interface CaseUpdateRequest {
   intake_child_traits?: string[];
   intake_family_situations?: string[];
   notes?: string | null;
+  /** 날짜 셋. 보낸 것만 바뀌고 null 이면 비운다. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
   /** CLOSED 로 바꾸면 사례 종결. */
   status?: CaseStatus;
   /**
@@ -294,6 +308,17 @@ export interface CaseUpdateRequest {
 // 회차
 // =========================================================
 
+/** 상담 유형(API_CONTRACT 5절, 2026-10-30). */
+export type ConsultationType = "INITIAL" | "REGULAR" | "VISIT" | "OFFICE" | "PHONE";
+
+export const CONSULTATION_TYPE_LABELS: Record<ConsultationType, string> = {
+  INITIAL: "초기면담",
+  REGULAR: "정기상담",
+  VISIT: "방문상담",
+  OFFICE: "기관 면담",
+  PHONE: "전화상담",
+};
+
 export interface Session {
   id: string;
   case_id: string;
@@ -304,6 +329,8 @@ export interface Session {
   consulted_at: string | null;
   location: string | null;
   memo: string | null;
+  /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  consultation_type?: ConsultationType | null;
   created_at: string;
   updated_at: string;
   stt_started_at: string | null;
@@ -319,6 +346,7 @@ export interface SessionCreateRequest {
   consulted_at?: string | null;
   location?: string | null;
   memo?: string | null;
+  consultation_type?: ConsultationType | null;
 }
 
 /**
@@ -1114,6 +1142,72 @@ export interface FollowupQuestionInput {
 export interface FollowupQuestion extends FollowupQuestionInput {
   /** 서버가 찍은 승인 일시. 같은 질문을 다시 저장하면 처음 일시를 그대로 둔다. */
   approved_at: string;
+}
+
+/** 종결 검토 요약 · 보고서(API_CONTRACT 4절 closure-summary, 2026-10-30). */
+export interface ClosureItem {
+  key: string;
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureDraft {
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureSummaryBody {
+  /** AI: 종결 요약 AI 초안 · APPROVED_SUMMARIES: LLM 없이 승인 요약 4칸 묶음(AI 생성 아님). */
+  source: "AI" | "APPROVED_SUMMARIES";
+  model: string | null;
+  generated_at: string;
+  sessions: number[];
+  groups: { title: string; items: ClosureItem[] }[];
+  report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+}
+
+export interface ClosureReportFields {
+  initial_situation?: string | null;
+  closing_situation?: string | null;
+  opinion?: string | null;
+  review_date?: string | null;
+  closing_date?: string | null;
+}
+
+export interface ClosureSummaryRecord {
+  case_id: string;
+  summary: ClosureSummaryBody | null;
+  checks: Record<string, boolean>;
+  edits: Record<string, string>;
+  report: ClosureReportFields;
+  updated_at: string | null;
+}
+
+export interface ClosureSummarySave {
+  checks?: Record<string, boolean>;
+  edits?: Record<string, string>;
+  report?: ClosureReportFields;
+}
+
+/** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
+export interface FollowupCheck {
+  text: string;
+  /** AI(AI 확인 메모에서 옴 — 고쳐도 AI) · COUNSELOR(직접 추가). */
+  source: FollowupQuestionSource;
+  segment_ids: string[];
+  /** AI 메모를 상담사가 고쳤는가. */
+  edited: boolean;
+  /** 상담 전 브리핑에 넣기. */
+  in_briefing: boolean;
+}
+
+export interface FollowupCheckList {
+  session_id: string;
+  /** 한 번이라도 저장했는가. false 면 화면은 AI 확인 메모 초안을 보인다. */
+  saved: boolean;
+  items: FollowupCheck[];
+  updated_at: string | null;
+  updated_by_id: string | null;
 }
 
 export interface FollowupQuestionList {
