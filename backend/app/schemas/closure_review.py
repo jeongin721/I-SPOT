@@ -44,6 +44,16 @@ class ClosureReport(BaseModel):
     closing_date: Optional[date] = None
 
 
+class ClosureReportIn(RequestModel):
+    """저장 요청의 보고서 칸(요청 본문은 RequestModel — 저장할 수 없는 글자 등을 거른다). 보낸 칸만 바뀐다."""
+
+    initial_situation: Optional[str] = None
+    closing_situation: Optional[str] = None
+    opinion: Optional[str] = None
+    review_date: Optional[date] = None
+    closing_date: Optional[date] = None
+
+
 class ClosureSummaryResponse(BaseModel):
     """만들기 전이면 summary null, checks · edits {}, report 빈 칸."""
 
@@ -60,7 +70,7 @@ class ClosureSummarySaveRequest(RequestModel):
 
     checks: Optional[Dict[str, bool]] = Field(default=None, max_length=100)
     edits: Optional[Dict[str, str]] = Field(default=None, max_length=100)
-    report: Optional[ClosureReport] = None
+    report: Optional[ClosureReportIn] = None
 
     @field_validator("edits")
     @classmethod
@@ -71,7 +81,7 @@ class ClosureSummarySaveRequest(RequestModel):
 
     @field_validator("report")
     @classmethod
-    def _limit_report(cls, value: Optional[ClosureReport]) -> Optional[ClosureReport]:
+    def _limit_report(cls, value: Optional[ClosureReportIn]) -> Optional[ClosureReportIn]:
         if value is not None:
             for text in (value.initial_situation, value.closing_situation, value.opinion):
                 if text is not None and len(text) > CLOSURE_TEXT_MAX_LENGTH:
