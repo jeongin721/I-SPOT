@@ -43,6 +43,8 @@ export interface CaseRow {
   reportDate: string;
   linkedDate: string;
   firstInterviewDate: string;
+  /** 종결 검토 등록일(YYYY-MM-DD). 등록 전이면 ""(2026-10-30). */
+  closureReviewDate: string;
   /** Backend 에 없는 값. 팀 결정 전까지 항상 NOT_PROVIDED. */
   riskLabel: string;
 }
@@ -63,6 +65,7 @@ export function toCaseRow(source: Case): CaseRow {
     reportDate: source.report_date || NOT_PROVIDED,
     linkedDate: source.linked_date || NOT_PROVIDED,
     firstInterviewDate: source.first_interview_date || NOT_PROVIDED,
+    closureReviewDate: toDateOnly(source.closure_review_at ?? null),
     riskLabel: NOT_PROVIDED,
   };
 }

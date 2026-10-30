@@ -1,9 +1,8 @@
-// 종결 검토(Closure) 목록 화면 값. useCaseOverview(mode "counts") 의 사례 기본정보 · 회차 수만 보인다.
+// 종결 검토(Closure) 목록 화면 값(10/30 디자인). 내담자 정보 '종결 검토 등록'(POST /cases/{id}/closure-review)으로 등록한 사례만 보인다.
 //
-// 종결 검토 등록 · 진행 단계 · 내역 검토 진행률은 Backend 에 없다(specs 대응표 Closure 줄 '팀: 검토 등록 · 상태 · 진행률').
-// 그래서 이 목록은 '종결 검토 대상' 이 아니라 볼 수 있는 사례 목록이다 — 종결(CLOSED) 사례를 '검토 대기' 로 쓰지 않는다
-// (사례 상태 종결은 상담사가 사례를 닫은 것이지 종결 검토를 기다리는 것이 아니다). 진행 단계 · 내역 검토는 준비 중으로 둔다.
-// 이름은 아동 별칭(실명 없음), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다. 등록일은 사례 등록일이다.
+// 사례 기본정보 · 회차 수는 useCaseOverview(mode "counts"), 등록일은 사례의 closure_review_at.
+// 진행 단계는 등록하면 '① 내역 검토' 다. 내역 검토 진행률(확인한 요약 수)과 '요약 만드는 중' 은 종결 요약 AI · 저장이 아직 없어 '—'.
+// 이름은 아동 별칭(실명 없음), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다.
 // 누르면 사례 상세로 간다(전체 상담 내역 검토 화면은 아직 예시 데이터라 그 사례로 보내지 않는다).
 // 검색어는 입력한 계정에 묶는다(useAccountSearch) — 앞 계정이 친 별칭 · 사례 ID 가 다음 계정에 보이지 않게.
 
@@ -45,7 +44,10 @@ export function closureValues(input: ClosureInput) {
   const { session, overview, search } = input;
   const query = search.trim().toLowerCase();
   const items = overview.data?.items ?? [];
-  const rows = items
+  const registered = items
+    .filter(({ caseRow }) => Boolean(caseRow.closureReviewDate))
+    .sort((a, b) => b.caseRow.closureReviewDate.localeCompare(a.caseRow.closureReviewDate));
+  const rows = registered
     .filter(
       ({ caseRow }) =>
         !query || caseRow.alias.toLowerCase().includes(query) || caseRow.caseNumber.toLowerCase().includes(query),
@@ -59,27 +61,27 @@ export function closureValues(input: ClosureInput) {
         .join(" · "),
       href: screenHref("/CaseDetail", { caseId: caseRow.id }),
       sessions: `${sessionTotal}회차`,
-      date: createdDate || NOT_PROVIDED,
-      stage: NOT_READY,
-      stageCls: "chip c-normal",
+      date: caseRow.closureReviewDate || createdDate || NOT_PROVIDED,
+      stage: "① 내역 검토",
+      stageCls: "chip c-ok",
       review: NOT_PROVIDED,
     }));
 
   let countLabel = "";
   if (overview.data) {
-    countLabel = `${overview.wholeOrg ? "전체" : "담당"} 사례 ${overview.data.caseTotal}건`;
+    countLabel = `종결 검토 ${registered.length}건 · ${overview.wholeOrg ? "전체" : "담당"} 사례 ${overview.data.caseTotal}건 중`;
     if (overview.data.casesTruncated) countLabel += ` · 최근 등록한 ${items.length}건 표시`;
   }
 
   let emptyText = "";
-  if (overview.data && rows.length === 0) emptyText = query ? "검색 결과가 없습니다." : "사례가 없습니다.";
+  if (overview.data && rows.length === 0) {
+    emptyText = query ? "검색 결과가 없습니다." : "종결 검토에 등록한 사례가 없습니다. 사례 상세(내담자 정보)에서 '종결 검토 등록' 을 눌러 주세요.";
+  }
 
   return {
     ...sidebarValues(session),
     notice: screenNotice({ session, loading: overview.loading, error: overview.error, retry: overview.reload }),
-    listNote:
-      `종결 검토 등록 · 진행 단계 · 내역 검토는 ${NOT_READY}입니다(종결 검토 절차가 팀 결정 전). ` +
-      "아래는 사례 기본정보 · 회차 수이며 종결 검토 대상 목록이 아닙니다.",
+    listNote: `내역 검토 진행률은 ${NOT_READY}입니다(종결 요약 AI 가 아직 없음).`,
     countLabel,
     search: {
       value: search,
@@ -89,9 +91,6 @@ export function closureValues(input: ClosureInput) {
     },
     rows,
     emptyText,
-    real: false,
-    tgBg: "#DAD5C9",
-    tgX: "2px",
     notReady: NOT_READY,
   };
 }

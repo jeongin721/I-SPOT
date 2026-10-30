@@ -204,6 +204,16 @@ export const cases = {
     return api.get<Paged<Session>>(`/cases/${caseId}/sessions`, params);
   },
 
+  /** 종결 검토 등록(2026-10-30). 진행 중 사례만(409 INVALID_CASE_STATE), 이미 등록이면 그대로. */
+  registerClosureReview(caseId: string): Promise<Case> {
+    return api.post<Case>(`/cases/${caseId}/closure-review`);
+  },
+
+  /** 종결 검토 등록 취소. 등록 전이면 그대로. */
+  cancelClosureReview(caseId: string): Promise<Case> {
+    return api.delete<Case>(`/cases/${caseId}/closure-review`);
+  },
+
   createSession(caseId: string, payload: SessionCreateRequest): Promise<Session> {
     return api.post<Session>(`/cases/${caseId}/sessions`, payload);
   },

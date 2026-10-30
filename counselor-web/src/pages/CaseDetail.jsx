@@ -13,12 +13,15 @@
 // 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
 // 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 사례 별칭만 — 서버에 실명이 없다).
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
+// '종결 검토 등록'(10/30): 등록 · 취소를 서버에 저장하고 등록됨 · 등록일 · '종결 검토 보기' 를 보인다(디자인의 '초안 생성 중' 은
+// 종결 요약 AI 가 아직 없어 쓰지 않는다).
 // 녹음하기 창의 주인 · 버리기 규칙은 data/useRecordFlow.ts(상담 이력 · 문서함과 같이 쓴다).
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import RecordDialog from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
@@ -34,9 +37,10 @@ import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/cas
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
-import { maskExample, maskName } from '../data/maskName';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
+import { cases } from '../api/endpoints';
+import { errorMessage } from '../data/useRemote';
 import './CaseDetail.css';
 
 class Logic extends DCLogic {
@@ -46,31 +50,6 @@ class Logic extends DCLogic {
   }
   renderVals() {
     return caseDetailValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
-  }
-}
-
-/** 브리핑만 인쇄한다(body.print-brief). 이름 가리기면 인쇄하는 동안만 브리핑 글자를 바꾸고 되돌린다. */
-function printBrief(root, name, mask) {
-  const changed = [];
-  if (root && mask && name) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = walker.nextNode())) {
-      const next = maskName(node.nodeValue, name);
-      if (next !== node.nodeValue) {
-        changed.push([node, node.nodeValue]);
-        node.nodeValue = next;
-      }
-    }
-  }
-  document.body.classList.add('print-brief');
-  try {
-    window.print();
-  } finally {
-    document.body.classList.remove('print-brief');
-    changed.forEach(([node, value]) => {
-      node.nodeValue = value;
-    });
   }
 }
 
@@ -89,13 +68,29 @@ export default function CaseDetail(props) {
   const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history, checks: briefChecks });
   const briefRef = useRef(null);
   const [outOpen, setOutOpen] = useState(false);
-  const [outMask, setOutMask] = useState(true);
   const wantBrief = params.get('view') === 'brief';
   const briefReady = Boolean(detail.caseInfo);
   useEffect(() => {
     if (wantBrief && briefReady && briefRef.current) briefRef.current.scrollIntoView({ block: 'start' });
   }, [wantBrief, briefReady]);
   const rec = useRecordFlow(session, caseId, v.canRecord);
+  // 종결 검토 등록 · 취소(10/30 디자인 · POST/DELETE /cases/{id}/closure-review). 끝나면 사례를 다시 부른다.
+  const [closureBusy, setClosureBusy] = useState(false);
+  const [closureError, setClosureError] = useState(null);
+  const closureDate = detail.caseInfo?.closureReviewDate || '';
+  const setClosure = async (register) => {
+    if (!caseId || closureBusy) return;
+    setClosureBusy(true);
+    setClosureError(null);
+    try {
+      await (register ? cases.registerClosureReview(caseId) : cases.cancelClosureReview(caseId));
+      detail.reload();
+    } catch (caught) {
+      setClosureError(errorMessage(caught, '종결 검토 등록을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.'));
+    } finally {
+      setClosureBusy(false);
+    }
+  };
   useLeaveGuard(v.unsaved || rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -392,52 +387,16 @@ export default function CaseDetail(props) {
                 인쇄 · PDF
               </button>
               {outOpen ? (
-                <div className="out-ov">
-                  <div className="out-dlg" role="dialog" aria-modal="true" aria-labelledby="out-t">
-                    <b id="out-t" style={{ fontSize: '18px' }}>
-                      인쇄 · PDF
-                    </b>
-                    <span className="note" style={{ marginTop: '-6px' }}>
-                      출력물에 들어갈 이름 표시 방식을 고르세요.
-                    </span>
-                    <div role="radiogroup" aria-label="이름 표시 방식" className="out-opts">
-                      {[
-                        [false, '실명 그대로', `예) ${v.title || '이서윤'}`],
-                        [true, '이름 가리기', `예) ${maskExample(v.title || '이서윤')}`],
-                      ].map(([m, label, ex]) => (
-                        <button
-                          key={label}
-                          type="button"
-                          role="radio"
-                          aria-checked={outMask === m ? 'true' : 'false'}
-                          className={`out-opt ${outMask === m ? 'on' : ''}`}
-                          onClick={() => setOutMask(m)}
-                        >
-                          <span className="out-rd" aria-hidden="true"></span>
-                          <span style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <b style={{ fontSize: '14px' }}>{label}</b>
-                            <span className="note">{ex}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                      <button type="button" className="btn btn-s" onClick={() => setOutOpen(false)}>
-                        취소
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-p"
-                        onClick={() => {
-                          setOutOpen(false);
-                          printBrief(briefRef.current, v.title, outMask);
-                        }}
-                      >
-                        인쇄
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <PrintNameDialog
+                  title="인쇄 · PDF"
+                  goLabel="인쇄"
+                  name={v.title}
+                  onClose={() => setOutOpen(false)}
+                  onRun={(mask) => {
+                    setOutOpen(false);
+                    printMasked({ root: briefRef.current, name: v.title, mask, bodyClass: 'print-brief' });
+                  }}
+                />
               ) : null}
             </section>
             <section aria-label="먼저 볼 것" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -524,15 +483,32 @@ export default function CaseDetail(props) {
             style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <b style={{ flex: '1 1 200px' }}>종결 검토</b>
-            <button
-              type="button"
-              className="btn btn-y"
-              disabled
-              title={v.notReady}
-              style={{ opacity: 0.5, cursor: 'not-allowed' }}
-            >
-              종결 검토 등록 · {v.notReady}
-            </button>
+            {closureDate ? (
+              <>
+                <span className="chip c-ok">등록됨 · {closureDate}</span>
+                <A className="btn btn-s" to="/Closure">
+                  종결 검토 보기
+                </A>
+                <button type="button" className="btn btn-sm btn-s" onClick={() => setClosure(false)} disabled={closureBusy}>
+                  등록 취소
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-y"
+                onClick={() => setClosure(true)}
+                disabled={closureBusy || !detail.caseInfo || detail.caseInfo.status !== 'ACTIVE'}
+                title={detail.caseInfo && detail.caseInfo.status !== 'ACTIVE' ? '진행 중인 사례만 등록할 수 있습니다.' : undefined}
+              >
+                종결 검토 등록
+              </button>
+            )}
+            {closureError ? (
+              <span className="note" role="alert" style={{ flexBasis: '100%', color: '#A33B2E' }}>
+                {closureError}
+              </span>
+            ) : null}
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
           {rec.show ? (

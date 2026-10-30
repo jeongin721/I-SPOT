@@ -1,9 +1,12 @@
 // 종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안)
 // 원본: 다솔 님 디자인 counselor-web-design/ClosureDetail.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import CopyButton from '../components/CopyButton';
+import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useTheme } from '../theme';
@@ -104,6 +107,7 @@ class Logic extends DCLogic {
 }
 
 export default function ClosureDetail(props) {
+  const [outOpen, setOutOpen] = useState(false);
   // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
   const theme = useTheme();
@@ -136,6 +140,7 @@ export default function ClosureDetail(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -350,6 +355,7 @@ export default function ClosureDetail(props) {
                     '보호자(모)의 잦은 고성 · 위협적 언어로 아동이 위축됨. 아동은 "엄마가 소리 지르면 숨고 싶어요"라고 진술함. 보호자는 훈육이라고 인식함.'
                   }
                 ></textarea>
+                <CopyButton name="강시우" />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -365,6 +371,7 @@ export default function ClosureDetail(props) {
                     '9~12회차 상담과 체크인에서 새 학대 진술 없음. 아동이 안전 계획을 스스로 설명함. 보호자는 부모교육 8회를 이수하고 고성이 상처였다고 말함.'
                   }
                 ></textarea>
+                <CopyButton name="강시우" />
               </label>
             </div>
 
@@ -387,6 +394,7 @@ export default function ClosureDetail(props) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>담당 상담원 종합의견</b>
               <textarea className="ta2" style={{ minHeight: '110px' }} placeholder="상담원 작성"></textarea>
+              <CopyButton name="강시우" />
             </label>
 
             <div
@@ -398,9 +406,21 @@ export default function ClosureDetail(props) {
                 gap: '10px',
               }}
             >
-              <button type="button" className="btn btn-s">
+              <button type="button" className="btn btn-s" aria-haspopup="dialog" onClick={() => setOutOpen(true)}>
                 PDF · HWP로 내보내기
               </button>
+              {outOpen ? (
+                <PrintNameDialog
+                  title="PDF · HWP로 내보내기"
+                  goLabel="내보내기"
+                  name="강시우"
+                  onClose={() => setOutOpen(false)}
+                  onRun={(mask) => {
+                    setOutOpen(false);
+                    printMasked({ name: '강시우', mask });
+                  }}
+                />
+              ) : null}
               <A className="btn btn-s" to="/Schedule">
                 종결평가 회의 일정 잡기
               </A>

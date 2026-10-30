@@ -230,6 +230,8 @@ export interface Case {
   report_date?: string | null;
   linked_date?: string | null;
   first_interview_date?: string | null;
+  /** 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null. */
+  closure_review_at?: string | null;
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
