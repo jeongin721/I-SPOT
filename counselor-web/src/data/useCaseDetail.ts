@@ -94,6 +94,8 @@ export interface CaseDetailState {
   loading: boolean;
   error: string | null;
   reload: () => void;
+  /** 값을 그대로 둔 채 조용히 다시 받는다(다른 창구의 저장이 사례 값을 바꿨을 때 — 실명 PUT 의 출생연도 등). */
+  refresh: () => void;
   /** 초기면접 항목을 저장하는 중. */
   savingIntake: boolean;
   /** 초기면접 항목을 저장하지 못한 까닭. 다른 사례로 옮기거나 다시 로그인하면 지운다. */
@@ -321,6 +323,7 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
     loading: remote.loading,
     error: remote.error,
     reload: remote.reload,
+    refresh: remote.refresh,
     savingIntake,
     intakeError,
     saveIntake,

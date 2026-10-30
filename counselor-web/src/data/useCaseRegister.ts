@@ -2,9 +2,9 @@
 //
 // 서버가 받는 칸만 보낸다: 제목 · 아동 별칭(필수), 사례번호 · 출생연도 · 성별 · 보호자 유형 · 보호자 메모(기타일 때만) · 사례 메모,
 // 초기면접(서식 4 ②)의 아동 특성 · 가정상황(서식 항목만), 담당 상담사(관리자만, 빼면 요청자 본인).
-// Backend 는 아동 · 보호자 실명을 저장하지 않는다(API types Case · GuardianType).
-// 서식 4(초기면접지)의 나머지 칸(실명 · 생년월일 · 사례관리대상자 · 신고 · 연계일 · 학대유형 · 조치 · 가족 · 문제력 · 태도 · 소견)은
-// 개인정보 저장 범위가 팀 결정 전이라 보내지 않는다. 다른 칸(사례 메모 등)에 옮겨 담지도 않는다.
+// 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 personal_info 로 사례와 한 거래로 보낸다
+// (서버가 암호화해 저장, API_CONTRACT 4절 '개인 식별 정보'). 모두 비었으면 보내지 않는다. 생년월일이 있으면 출생연도는 그 해다.
+// 서식 4 의 나머지 칸(신고 · 연계일 · 조치 · 문제력 · 태도 · 소견 등)은 서버에 칸이 없어 보내지 않는다. 다른 칸에 옮겨 담지도 않는다.
 //
 // 한 번에 한 요청만 보낸다. 성공하면 만든 사례를 돌려주고, 그 뒤에는 다시 보내지 않는다(같은 사례를 두 번 만들지 않게).
 // 입력 · 요청 상태는 로그인한 계정 하나의 것이다. 화면은 계정이 확인된 동안에만 이 훅을 쓰고, 계정이 바뀌면 새로 만든다
@@ -18,6 +18,7 @@ import { GUARDIAN_LABELS, type Case, type CaseCreateRequest, type GuardianType, 
 import type { AuthSession } from "./useAuthSession";
 import { adminKey } from "./adminAccess";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./screens/intakeItems";
+import { isBlankPersonalRequest, toPersonalInfoRequest, todayKst, type PersonalInput } from "./personalInfo";
 import { errorMessage, useRemote } from "./useRemote";
 
 /** Backend 제한(backend/app/schemas/case.py CaseCreateRequest). */
@@ -64,11 +65,18 @@ export const EMPTY_CASE_INPUT: CaseRegisterInput = {
 /**
  * 보낼 값으로 바꾼다. 문제가 있으면 { problem } 에 화면에 보일 문장. 서버가 최종으로 거절한다(422).
  * meId 는 로그인한 사람. 관리자가 아니면 담당 상담사를 보내지 않는다.
+ * personal 은 서식 4 의 실명 · 가족 칸(없으면 보내지 않음). 생년월일이 있으면 출생연도 칸 대신 그 해를 보낸다.
  */
 export function toCaseCreateRequest(
   input: CaseRegisterInput,
-  { isAdmin, meId, thisYear = new Date().getFullYear() }: { isAdmin: boolean; meId: string | null; thisYear?: number },
+  {
+    isAdmin,
+    meId,
+    personal = null,
+    today = todayKst(),
+  }: { isAdmin: boolean; meId: string | null; personal?: PersonalInput | null; today?: string },
 ): { payload: CaseCreateRequest; problem: null } | { payload: null; problem: string } {
+  const thisYear = Number(today.slice(0, 4));
   const fail = (problem: string) => ({ payload: null, problem });
   const title = input.title.trim();
   const alias = input.alias.trim();
@@ -80,13 +88,20 @@ export function toCaseCreateRequest(
 
   if (!title) return fail("사례 제목을 입력해 주세요.");
   if (title.length > CASE_TITLE_MAX) return fail(`사례 제목은 ${CASE_TITLE_MAX}자까지 쓸 수 있습니다.`);
-  if (!alias) return fail("아동 별칭을 입력해 주세요(실명은 저장하지 않습니다).");
+  if (!alias) return fail("아동 별칭을 입력해 주세요(실명은 '대상아동 이름' 칸에 적습니다).");
   if (alias.length > CASE_ALIAS_MAX) return fail(`아동 별칭은 ${CASE_ALIAS_MAX}자까지 쓸 수 있습니다.`);
   if (caseNumber.length > CASE_NUMBER_MAX) return fail(`개별사건번호는 ${CASE_NUMBER_MAX}자까지 쓸 수 있습니다.`);
   if (gender.length > CASE_GENDER_MAX) return fail(`성별은 ${CASE_GENDER_MAX}자까지 쓸 수 있습니다.`);
 
+  const personalChecked = personal ? toPersonalInfoRequest(personal, { today }) : null;
+  if (personalChecked && personalChecked.problem !== null) return fail(personalChecked.problem);
+  const personalInfo = personalChecked && !isBlankPersonalRequest(personalChecked.payload) ? personalChecked.payload : null;
+
   let birthYear: number | null = null;
-  if (birthYearText) {
+  if (personalInfo?.child_birth_date) {
+    // 생년월일이 우선이다(서버도 생년월일의 해로 출생연도를 맞춘다). 화면의 출생연도 칸은 그 해를 읽기 전용으로 보인다.
+    birthYear = Number(personalInfo.child_birth_date.slice(0, 4));
+  } else if (birthYearText) {
     if (!/^\d{4}$/.test(birthYearText)) return fail("출생연도는 네 자리 숫자로 입력해 주세요(예: 2015).");
     birthYear = Number(birthYearText);
     if (birthYear < BIRTH_YEAR_MIN || birthYear > thisYear) {
@@ -115,6 +130,7 @@ export function toCaseCreateRequest(
   if (childTraits.length) payload.intake_child_traits = childTraits;
   if (familySituations.length) payload.intake_family_situations = familySituations;
   if (isAdmin && input.counselorId && input.counselorId !== meId) payload.counselor_id = input.counselorId;
+  if (personalInfo) payload.personal_info = personalInfo;
 
   return { payload, problem: null };
 }
@@ -135,8 +151,8 @@ export interface CaseRegisterState {
   error: string | null;
   /** 만든 사례. 만들기 전이면 null. */
   created: Case | null;
-  /** 성공하면 만든 사례, 실패하거나 이미 보내는 중 · 이미 만들었으면 null. */
-  submit: (input: CaseRegisterInput) => Promise<Case | null>;
+  /** 성공하면 만든 사례, 실패하거나 이미 보내는 중 · 이미 만들었으면 null. personal 은 서식 4 실명 · 가족 칸. */
+  submit: (input: CaseRegisterInput, personal?: PersonalInput | null) => Promise<Case | null>;
 }
 
 export function useCaseRegister(session: AuthSession): CaseRegisterState {
@@ -177,10 +193,10 @@ export function useCaseRegister(session: AuthSession): CaseRegisterState {
   }, [session.isAdmin, users.data, me?.id]);
 
   const submit = useCallback(
-    async (input: CaseRegisterInput) => {
+    async (input: CaseRegisterInput, personal: PersonalInput | null = null) => {
       if (!me || inFlight.current || done.current) return null;
 
-      const checked = toCaseCreateRequest(input, { isAdmin: session.isAdmin, meId: me.id });
+      const checked = toCaseCreateRequest(input, { isAdmin: session.isAdmin, meId: me.id, personal });
 
       if (checked.problem !== null) {
         setError(checked.problem);

@@ -11,7 +11,7 @@
 // components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
 // 10/29 디자인: 상담 전 브리핑이 탭에서 빠지고 이 화면 '현재 진행 상황' 아래(#brief)로 들어왔다. 값은 예전 브리핑 화면과
 // 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
-// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 사례 별칭만 — 서버에 실명이 없다).
+// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 등록된 이름 전부와 별칭 — maskNames).
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
 // 녹음하기 창의 주인 · 버리기 규칙은 data/useRecordFlow.ts(상담 이력 · 문서함과 같이 쓴다).
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -26,6 +26,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
@@ -33,7 +34,7 @@ import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/cas
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
-import { maskExample, maskName } from '../data/maskName';
+import { maskExample, maskNames } from '../data/maskName';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
 import './CaseDetail.css';
@@ -49,13 +50,13 @@ class Logic extends DCLogic {
 }
 
 /** 브리핑만 인쇄한다(body.print-brief). 이름 가리기면 인쇄하는 동안만 브리핑 글자를 바꾸고 되돌린다. */
-function printBrief(root, name, mask) {
+function printBrief(root, names, mask) {
   const changed = [];
-  if (root && mask && name) {
+  if (root && mask && names.length) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      const next = maskName(node.nodeValue, name);
+      const next = maskNames(node.nodeValue, names);
       if (next !== node.nodeValue) {
         changed.push([node, node.nodeValue]);
         node.nodeValue = next;
@@ -80,7 +81,8 @@ export default function CaseDetail(props) {
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId });
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
@@ -131,6 +133,7 @@ export default function CaseDetail(props) {
             <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
           <Notice value={v.notice} />
+          <Notice value={v.personalNote} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
             <A className="btn btn-sm btn-s" to="/CaseList">
               ← 목록
@@ -419,6 +422,11 @@ export default function CaseDetail(props) {
                         </button>
                       ))}
                     </div>
+                    {outMask && !v.namesReady ? (
+                      <span className="note" role="alert" style={{ color: '#A33B2E' }}>
+                        등록된 이름 목록을 아직 받지 못해 이름을 가릴 수 없습니다. 실명 정보를 다시 불러온 뒤 인쇄해 주세요.
+                      </span>
+                    ) : null}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                       <button type="button" className="btn btn-s" onClick={() => setOutOpen(false)}>
                         취소
@@ -426,9 +434,12 @@ export default function CaseDetail(props) {
                       <button
                         type="button"
                         className="btn btn-p"
+                        disabled={outMask && !v.namesReady}
                         onClick={() => {
+                          // 등록 이름 전부를 받기 전에는 가린 출력을 내지 않는다(위 안내, Codex #129 R3).
+                          if (outMask && !v.namesReady) return;
                           setOutOpen(false);
-                          printBrief(briefRef.current, v.title, outMask);
+                          printBrief(briefRef.current, v.maskNames, outMask);
                         }}
                       >
                         인쇄

@@ -1,8 +1,9 @@
 // 칸 복사 단추(10/29 디자인 cp-btn · cp-menu). 같은 <label> 안 textarea 의 글을 '그대로' 또는 '이름 가려서' 복사한다.
 // 단추는 그 label 의 마지막 자식으로 둔다(디자인 CSS 가 label:has(> .cp-btn) 로 자리를 잡는다).
 // 바깥 누름 · Esc 로 메뉴가 닫히고, 복사되면 1.5초 동안 ✓ 로 바뀐다.
+// 가릴 이름은 names(그 사례에 등록된 이름 전부 — 실명 · 가족 · 별칭)가 있으면 그것, 없으면 name 하나다.
 import { useEffect, useRef, useState } from 'react';
-import { maskName } from '../data/maskName';
+import { maskName, maskNames } from '../data/maskName';
 import './CopyButton.css';
 
 function writeClipboard(text) {
@@ -22,7 +23,9 @@ function writeClipboard(text) {
   return fallback();
 }
 
-export default function CopyButton({ name }) {
+export default function CopyButton({ name, names }) {
+  const list = names && names.length ? names : name ? [name] : [];
+  const sample = list[0] || '이서윤';
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(null);
   const btn = useRef(null);
@@ -53,7 +56,7 @@ export default function CopyButton({ name }) {
     setOpen(false);
     const area = btn.current?.closest('label')?.querySelector('textarea');
     if (!area) return;
-    const text = mask ? maskName(area.value, name || '') : area.value;
+    const text = mask ? maskNames(area.value, list) : area.value;
     writeClipboard(text).then(
       () => setDone(mask ? '이름 가려서 복사됨' : '복사됨'),
       () => {},
@@ -109,7 +112,7 @@ export default function CopyButton({ name }) {
           그대로 복사
         </button>
         <button type="button" role="menuitem" onClick={(e) => copy(e, true)}>
-          이름 가려서 복사<span className="cp-ex">예) {maskName(name || '이서윤', name || '이서윤')}</span>
+          이름 가려서 복사<span className="cp-ex">예) {maskName(sample, sample)}</span>
         </button>
       </span>
     </>

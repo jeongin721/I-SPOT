@@ -16,6 +16,7 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useCaseDocuments } from '../data/useCaseDocuments';
 import { caseDocsValues } from '../data/screens/caseDocs';
@@ -43,7 +44,8 @@ export default function CaseDocs(props) {
   const signals = useCaseSignals(detail, { enabled });
   const docs = useCaseDocuments(caseId, detail.caseInfo ? detail.sessions : null, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, signals, docs, caseId });
+  const personal = usePersonalInfo(caseId, { enabled });
+  const v = useDC(Logic, { ...props, session, detail, signals, docs, personal, caseId });
   const rec = useRecordFlow(session, caseId, v.canRecord);
   useLeaveGuard(rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;

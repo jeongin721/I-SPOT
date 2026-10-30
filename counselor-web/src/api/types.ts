@@ -62,7 +62,7 @@ export type CaseStatus = "ACTIVE" | "CLOSED";
 /**
  * 보호자 유형.
  * 목록에 없는 관계는 OTHER 로 두고 guardian_note 에 적는다.
- * Backend 는 보호자 실명을 저장하지 않는다(아동 실명과 같은 원칙).
+ * 보호자 실명은 이 칸에 넣지 않는다. 실명은 개인 식별 정보 창구(PersonalInfo, 암호화 저장)로만 오간다.
  */
 export type GuardianType =
   | "PARENTS"
@@ -215,7 +215,7 @@ export interface Case {
   id: string;
   case_number: string;
   title: string;
-  /** 실명이 아닌 별칭. Backend 는 아동 실명을 저장하지 않는다. */
+  /** 실명이 아닌 별칭. 실명은 사례 응답에 없고 개인 식별 정보 창구(PersonalInfo)로만 오간다. */
   child_alias: string;
   child_birth_year: number | null;
   child_gender: string | null;
@@ -262,6 +262,74 @@ export interface CaseCreateRequest {
   counselor_id?: string;
   /** 개별사건번호. 빼면 Backend 가 C-YYYY-NNNN 으로 만든다. 1~50자, 이미 있는 번호면 409 DUPLICATE_RESOURCE. */
   case_number?: string;
+  /** 서식 4 의 실명 · 생년월일 · 가족 정보. 사례와 한 거래로 암호화해 저장한다(검증 실패면 사례도 만들지 않는다). 응답에는 없다. */
+  personal_info?: PersonalInfoRequest | null;
+}
+
+// ---------------------------------------------------------
+// 사례 개인 식별 정보(GET · PUT /cases/{id}/personal-info, API_CONTRACT 4절 '개인 식별 정보')
+// 서버는 칸마다 암호화해 저장하고, 권한을 통과한 요청에만 풀어서 준다. 부를 때마다 열람 기록이 남는다.
+// 화면은 이 값을 상태에만 두고 브라우저 저장소에 넣지 않는다.
+// ---------------------------------------------------------
+
+/** 건강정도 항목(서식 4 이름 그대로). 같은 항목은 한 번만 보낸다. */
+export const PERSONAL_HEALTH_KINDS = ["질병", "장애", "병원치료", "정신과 진단", "타기관 상담"] as const;
+export type PersonalHealthKind = (typeof PERSONAL_HEALTH_KINDS)[number];
+
+/** 사례관리대상자(대개 보호자). */
+export interface PersonalTargetPerson {
+  name: string | null;
+  relation: string | null;
+  /** YYYY-MM-DD */
+  birth_date: string | null;
+}
+
+/** 면접대상자 / 관계. */
+export interface PersonalInterviewee {
+  name: string | null;
+  relation: string | null;
+}
+
+/** 가족관계 표 한 줄. 이름은 필수다. */
+export interface PersonalFamilyMember {
+  name: string;
+  relation: string | null;
+  age: number | null;
+  religion: string | null;
+  education: string | null;
+  job: string | null;
+  living_together: boolean | null;
+}
+
+/** 건강정도 한 칸 — 있음(present) · 세부(200자). */
+export interface PersonalHealthItem {
+  kind: PersonalHealthKind;
+  present: boolean | null;
+  detail: string | null;
+}
+
+export interface PersonalHealth {
+  subject_name: string | null;
+  items: PersonalHealthItem[];
+}
+
+/**
+ * PUT 본문 · POST /cases 의 personal_info. 보낸 값으로 통째로 바꾼다(빠진 칸 · null 은 지운다).
+ * 이름 1~50자(빈 이름은 null), 생년월일 1900-01-01 ~ 오늘, relation · religion · education 30자, job 50자, age 0~150, 가족 30줄.
+ */
+export interface PersonalInfoRequest {
+  child_name: string | null;
+  child_birth_date: string | null;
+  target_person: PersonalTargetPerson | null;
+  interviewee: PersonalInterviewee | null;
+  family_members: PersonalFamilyMember[];
+  health: PersonalHealth | null;
+}
+
+/** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */
+export interface PersonalInfo extends PersonalInfoRequest {
+  registered: boolean;
+  updated_at: string | null;
 }
 
 /**

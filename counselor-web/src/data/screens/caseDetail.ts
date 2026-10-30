@@ -1,7 +1,9 @@
 // 사례 상세 탭 1(CaseDetail · 내담자 정보)과 탭 2(CaseHistory · 상담 이력) 화면 값. 둘 다 useCaseDetail 하나로 그린다.
 //
 // Backend 에 없는 값은 지어내지 않고 '—' 또는 준비 중으로 둔다(specs 대응표 '팀 결정 — 사례 · 개인정보 / AI 신호 · 검수').
-//  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 신고접수일 · 사례연계일 · 아이 앱 · 다음 상담 일정
+//  - 가족유형 · 신고접수일 · 사례연계일 · 아이 앱 · 다음 상담 일정
+// 실명 · 생년월일 · 사례관리대상자는 등록돼 있으면 usePersonalInfo(암호화 저장, 2026-10-30)의 값을 보이고, 없거나 아직 못 받았으면
+// 별칭 · 출생연도 · '—'. 실명을 받은 탭(내담자 정보 · 상담 이력 · 문서함 · 초기면접지)만 머리에 실명을 보인다.
 //  - 기관 서식 진행, 종결 검토 등록
 //    (10/21 디자인은 사정결과 줄과 서비스 이행 · 다음 일정 상자를 뺐다)
 //  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약(주제 비중 · 세부 신호는 2026-10-28 · 29 연결)
@@ -28,6 +30,8 @@
 import { NOT_PROVIDED } from "../caseRows";
 import { ABUSE_TYPES, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
+import { personalNames } from "../personalInfo";
+import type { PersonalInfoState } from "../usePersonalInfo";
 import type { CaseSignalsState } from "../useCaseSignals";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { MAX_APPROVED, type ApprovedSummariesState } from "../useApprovedSummaries";
@@ -63,6 +67,8 @@ interface CaseScreenInput {
   signals?: CaseSignalsState;
   /** 가장 최근 회차(sessions[0])의 승인한 추가 질문(18절). '추가 확인 · 질문' 칸 칩에 쓴다. */
   questions?: FollowupQuestionsState;
+  /** 실명 · 생년월일 · 가족 정보(usePersonalInfo). 없거나 못 받았으면 별칭 · 출생연도를 보인다. */
+  personal?: PersonalInfoState;
 }
 
 /** 위험도 칩 색(10/27 디자인: 상 c-hi · 중 c-mid · 하 c-lo). 판단 전은 c-normal. */
@@ -152,6 +158,8 @@ export function caseHeaderValues(input: CaseScreenInput) {
   const { session, detail, caseId } = input;
   const info = detail.caseInfo;
   const ids = { caseId };
+  const real = input.personal?.info ?? null;
+  const name = info ? (real?.child_name ?? info.alias) : "";
 
   return {
     ...sidebarValues(session),
@@ -162,9 +170,19 @@ export function caseHeaderValues(input: CaseScreenInput) {
       error: detail.error,
       retry: detail.reload,
     }),
-    crumb: info ? `${info.alias} ${info.caseNumber}` : "",
-    title: info ? info.alias : "",
-    sub: info ? info.birthYearLabel : "",
+    crumb: info ? `${name} ${info.caseNumber}` : "",
+    title: name,
+    sub: info ? (real?.child_birth_date ?? info.birthYearLabel) : "",
+    // 인쇄 · 복사 '이름 가리기' 에 쓸 이름 — 등록된 이름 전부와 별칭. namesReady 가 아니면(실명을 아직 못 받음 · 실패)
+    // 별칭만 든 목록이라 '등록 이름 전부' 가 아니다 — 가린 출력을 막는다(Codex #129 R3). 미등록 사례는 받은 뒤 ready 다.
+    maskNames: personalNames(real, info ? [info.alias] : []),
+    namesReady: Boolean(input.personal && real),
+    personalNote: input.personal?.error
+      ? notice(`${input.personal.error} 실명 대신 별칭을 보이고, 이름 가리기 인쇄는 할 수 없습니다.`, {
+          alert: true,
+          retry: input.personal.reload,
+        })
+      : null,
     riskChip: `위험도 ${input.signals?.topLevelLabel || NOT_PROVIDED}`,
     riskCls: input.signals?.topLevel ? RISK_CHIP[input.signals.topLevel] : "c-normal",
     meta: info ? `${info.caseNumber} · 다음 상담 ${NOT_PROVIDED}` : "",
@@ -301,12 +319,17 @@ export function caseDetailValues(input: CaseDetailInput) {
   const consulted = detail.sessions.map((row) => row.consultedDate).filter((date) => date !== NOT_PROVIDED);
   const lastConsulted = consulted.length > 0 ? [...consulted].sort().reverse()[0] : dash;
 
+  const real = input.personal?.info ?? null;
+  const target = real?.target_person ?? null;
+  const targetText = target?.name ? (target.relation ? `${target.name} (${target.relation})` : target.name) : dash;
+
   const basics: { label: string; value: string; strong?: boolean }[] = info
     ? [
         { label: "개별사건번호", value: info.caseNumber },
-        { label: "이름", value: `${info.alias} (${info.genderLabel})` },
-        { label: "생년월일", value: info.birthYearLabel },
-        { label: "사례관리대상자", value: dash },
+        { label: "이름", value: `${real?.child_name ?? info.alias} (${info.genderLabel})` },
+        ...(real?.child_name ? [{ label: "별칭", value: info.alias }] : []),
+        { label: "생년월일", value: real?.child_birth_date ?? info.birthYearLabel },
+        { label: "사례관리대상자", value: targetText },
         { label: "가족유형", value: dash },
         { label: "조치결과", value: dash },
         { label: "담당 상담원", value: info.counselorName },

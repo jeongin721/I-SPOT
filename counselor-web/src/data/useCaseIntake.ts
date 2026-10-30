@@ -7,7 +7,8 @@
 //  - ② 가정상황 · 아동 특성: 보내면 목록을 통째로 바꾼다(모두 빼면 []). 서식 순서로 보낸다(새 사례 등록과 같음).
 //  - 담당 상담원: 관리자만 바꾼다(상담원이 보내면 403). 담당자를 비우는 기능은 없다.
 // 개별사건번호는 수정 요청이 받지 않아(backend CaseUpdateRequest 에 칸이 없음) 읽기만 한다.
-// 서식 4 의 나머지 칸은 새 사례 등록처럼 개인정보 저장 범위가 팀 결정 전이라 보내지 않는다(useCaseRegister.ts 머리말).
+// 실명 · 가족 칸은 이 요청이 아니라 usePersonalInfo(PUT …/personal-info)로 보낸다(screens/caseIntake.ts). 서식 4 의 나머지 칸은
+// 서버에 칸이 없어 보내지 않는다(useCaseRegister.ts 머리말).
 // 입력 확인 문구 · 길이 제한은 새 사례 등록(toCaseCreateRequest)과 같다.
 
 import { useMemo } from "react";
@@ -81,7 +82,7 @@ export function toCaseUpdateRequest(
   if (edits.alias !== undefined) {
     const alias = edits.alias.trim();
 
-    if (!alias) return fail("아동 별칭을 입력해 주세요(실명은 저장하지 않습니다).");
+    if (!alias) return fail("아동 별칭을 입력해 주세요(실명은 '대상아동 이름' 칸에 적습니다).");
     if (alias.length > CASE_ALIAS_MAX) return fail(`아동 별칭은 ${CASE_ALIAS_MAX}자까지 쓸 수 있습니다.`);
     if (alias !== saved.alias.trim()) payload.child_alias = alias;
   }
