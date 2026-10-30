@@ -7,6 +7,8 @@ from typing import Annotated, List, Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.pii_keys import decode_key, parse_key_ring
+
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
 
@@ -23,6 +25,13 @@ _PUBLIC_JWT_SECRETS = frozenset(
 
 # HS256 서명 키 권장 길이(32 byte).
 _MIN_JWT_SECRET_LENGTH = 32
+
+# 저장소에 공개된 개인 식별 정보 키(base64). 기본값(아래 Settings) · backend/.env.example · docker-compose.yml.
+# 앞이 암호화 키, 뒤가 검색 색인 키다. 운영에서 이 값(같은 32바이트)을 쓰면 서버가 뜨지 않는다.
+_PUBLIC_PII_KEYS = (
+    "aXNwb3QtbG9jYWwtZGV2LW9ubHktcGlpLWtleS0wMDE=",  # b"ispot-local-dev-only-pii-key-001"
+    "aXNwb3QtbG9jYWwtZGV2LW9ubHktaW5kZXgta2V5LTE=",  # b"ispot-local-dev-only-index-key-1"
+)
 
 # 긴 비밀번호의 문자 종류 면제 길이로 받을 수 있는 범위. 0 은 면제 없음이다.
 # 12자보다 짧으면 사실상 종류 규칙을 끄는 셈이고, 72 는 bcrypt 가 받는 최대 byte 다.
@@ -62,6 +71,16 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-env-file"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
+
+    # ---------------------------------------------------------
+    # 개인 식별 정보 암호화 (실명 · 생년월일 · 가족 정보, app/core/pii_crypto.py)
+    # ---------------------------------------------------------
+    # PII_ENCRYPTION_KEYS: "키이름:32바이트 base64,키이름:…". 첫 키로 암호화하고 나머지는 풀기만 한다(키 바꾸기).
+    # PII_INDEX_KEY: 이름 정확 검색 색인(HMAC-SHA256)용 32바이트 base64. 암호화 키와 다른 값이어야 한다.
+    # 운영에서는 반드시 .env(AWS SSM 에서 넣음)로 주입한다. 기본값은 저장소에 공개된 local 개발 전용 값이다.
+    # 키를 잃으면 저장한 실명을 되살릴 수 없다 — 사본을 DB · 저장소 밖에 따로 둔다(backend/README.md).
+    PII_ENCRYPTION_KEYS: str = "dev1:" + _PUBLIC_PII_KEYS[0]
+    PII_INDEX_KEY: str = _PUBLIC_PII_KEYS[1]
 
     # ---------------------------------------------------------
     # Password Policy
@@ -267,6 +286,46 @@ class Settings(BaseSettings):
                 "ENV=production 에서는 JWT_SECRET_KEY 를 저장소에 없는 "
                 f"{_MIN_JWT_SECRET_LENGTH}자 이상 임의 값으로 설정해야 합니다. "
                 'python -c "import secrets; print(secrets.token_urlsafe(48))" 로 만들 수 있습니다.'
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def _pii_keys_are_well_formed(self) -> "Settings":
+        """개인 식별 정보 키 형식을 모든 환경에서 본다.
+
+        틀린 키로 떠서 실명을 저장 · 조회할 때 처음 실패하지 않게, 서버 시작 때 멈춘다.
+        검색 색인 키가 암호화 키와 같으면 한 키가 새도 둘 다 무너지므로 막는다.
+        """
+
+        _, ring = parse_key_ring(self.PII_ENCRYPTION_KEYS)
+        index_key = decode_key(self.PII_INDEX_KEY, "PII_INDEX_KEY")
+
+        if index_key in ring.values():
+            raise ValueError("PII_INDEX_KEY 는 PII_ENCRYPTION_KEYS 의 키와 다른 값이어야 합니다.")
+
+        return self
+
+    @model_validator(mode="after")
+    def _require_private_pii_keys_in_production(self) -> "Settings":
+        """운영에서 저장소에 공개된 개발용 키로 실명을 암호화하지 않게 한다(JWT 비밀키 검사와 같은 까닭).
+
+        .env 에 키를 빠뜨리면 기본값으로 뜨고, 저장소를 본 사람은 DB 사본만으로 실명을 풀 수 있다.
+        local/test 는 .env 없이 바로 실행되도록 검사하지 않는다(가상 데이터 전용).
+        """
+
+        if self.ENV != "production":
+            return self
+
+        public = {decode_key(value, "PII 공개 키") for value in _PUBLIC_PII_KEYS}
+        _, ring = parse_key_ring(self.PII_ENCRYPTION_KEYS)
+        used = set(ring.values()) | {decode_key(self.PII_INDEX_KEY, "PII_INDEX_KEY")}
+
+        if public & used:
+            raise ValueError(
+                "ENV=production 에서는 PII_ENCRYPTION_KEYS · PII_INDEX_KEY 를 저장소에 없는 임의 키로 설정해야 합니다. "
+                'python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())" '
+                "로 만들 수 있습니다."
             )
 
         return self
