@@ -241,7 +241,8 @@ function FollowupQScreen(props) {
                   {q.aiDraft ? <span className="chip c-ai">AI 초안</span> : null}
                   {q.ok ? <span className="chip c-sel">{q.st}</span> : null}
                   {q.edited ? <span className="chip c-sand">상담사 수정</span> : null}
-                  {q.sourceChip ? <span className="chip c-ai">{q.sourceChip}</span> : null}
+                  {/* 고치는 중에는 숨긴다 — 고친 문장은 검토를 거치지 않았다(#125 교차검증 R4). */}
+                  {q.sourceChip && v.qNotEdit ? <span className="chip c-ai">{q.sourceChip}</span> : null}
                   {q.whyHref ? (
                     <A className="note" to={q.whyHref} style={{ marginLeft: 'auto' }}>
                       근거 · {q.why}

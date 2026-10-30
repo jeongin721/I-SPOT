@@ -198,7 +198,10 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
       return;
     }
 
-    extra.push({ ...item, chips: [...item.chips], sources: [...item.sources] });
+    // 더한 rag 항목도 색인에 넣어 뒤에 오는 같은 문장(rag 끼리)이 한 번만 보이게 한다(#125 교차검증 R2).
+    const added = { ...item, chips: [...item.chips], sources: [...item.sources] };
+    extra.push(added);
+    byText.set(normalizeCheckText(item.text), added);
   });
 
   const all = [...merged, ...extra];
