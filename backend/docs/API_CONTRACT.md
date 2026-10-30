@@ -629,6 +629,24 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - 권한은 사례 수정과 같다(담당 상담원 · 관리자). 감사 기록 `CLOSURE_REVIEW_REGISTERED` · `CLOSURE_REVIEW_CANCELED`(사례 번호만).
 - 종결(사례 상태 `CLOSED`)은 이 등록과 별개다 — 종결은 그대로 `PATCH /cases/{id}` 의 `status`.
 
+### GET · POST · PUT /api/v1/cases/{case_id}/closure-summary (2026-10-30)
+
+종결 검토 ① '핵심 요약' · ② 종결보고서. 사례마다 한 기록이다. 권한은 사례 조회 · 수정과 같다.
+
+- `GET`: `{ case_id, summary, checks, edits, report, updated_at }`. 만들기 전이면 `summary: null`, `checks` · `edits` `{}`.
+- `POST`(만들기 · 다시 만들기, **동기 200**): 종결 검토에 등록한 사례(`closure_review_at`)의 **승인 완료 회차 요약**(상담원 확정 4칸)과
+  회차별 AI 관련 신호를 모은다. 등록 전 · 승인 요약이 없으면 `409 INVALID_CASE_STATE`.
+  - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(별칭을 가릴 이름으로) → LLM → 검사(근거 회차가 실제
+    승인 회차인 문장만, 묶음 이름 고정)로 AI 초안. `summary.source = "AI"`. 제한 시간 `CLOSURE_SUMMARY_TIMEOUT_SECONDS`(기본 150초) — 넘으면
+    `504 AI_TIMEOUT`, 쓸 문장이 없으면 `502 AI_INVALID_OUTPUT`, 그 밖 `502 AI_FAILED`(문구에 원문 · 예외 문구 없음).
+  - 그 밖(mock 등): LLM 없이 승인 요약 4칸을 묶는다. `source = "APPROVED_SUMMARIES"`(AI 생성 아님, 묶음 이름이 4칸 이름).
+  - 다시 만들면 문장 `key` 가 바뀌므로 `checks` · `edits` 를 비운다. `report`(상담원이 쓴 보고서 칸)는 남긴다.
+- `summary`: `{ source, model, generated_at, sessions: [회차 번호], groups: [{title, items: [{key, text, sessions}]}],
+  report: {initial_situation, closing_situation} }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
+- `PUT`(보낸 칸만): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
+  `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD`).
+- 감사 기록 `CLOSURE_SUMMARY_GENERATED`(출처 · 회차 수 · 문장 수 · 걸린 초) · `CLOSURE_SUMMARY_UPDATED`(수 · 바뀐 보고서 칸 이름) — 문장은 남기지 않는다.
+
 ### DELETE /api/v1/cases/{case_id} → 204
 
 관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다.

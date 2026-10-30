@@ -14,6 +14,7 @@ from app.core.enums import CaseStatus, GuardianType
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.closure_review import CaseClosureReview
     from app.models.session import ConsultationSession
     from app.models.user import User
 
@@ -75,6 +76,12 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     counselor: Mapped["User"] = relationship(
         back_populates="assigned_cases",
         foreign_keys=[counselor_id],
+    )
+    closure_review: Mapped[Optional["CaseClosureReview"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
     )
     sessions: Mapped[List["ConsultationSession"]] = relationship(
         back_populates="case",

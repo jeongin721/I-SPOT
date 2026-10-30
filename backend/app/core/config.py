@@ -159,6 +159,8 @@ class Settings(BaseSettings):
     # 1차 분류기(로컬)를 돌린다. 한 번의 제한 시간 — 넘기면 key_scan.status=FAILED 이고 STT 는 그대로 성공이다.
     # 멈춘 STT 작업 마감 기준(STT_TIMEOUT_SECONDS + 여유)에 이 값을 더한다(session_service).
     KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
+    # 종결 검토 요약(POST /cases/{id}/closure-summary) 제한 시간(2026-10-30). 동기 응답이라 넘으면 504.
+    CLOSURE_SUMMARY_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
     # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 작업 시작이 늦었거나 모델 준비가 길었으면
     # 요청 시각부터 잰 작업 전체 마감(준비 제한 45초 + 이 값)에 맞춰 짧아진다(analysis_service._job_deadline).
     # 다만 thread 는 멈추지 못해(run_with_timeout)
