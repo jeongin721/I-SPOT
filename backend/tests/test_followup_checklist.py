@@ -305,6 +305,54 @@ def test_stale_processing_row_is_failed_on_get_and_can_be_retried(
     assert client.get(_url(analyzed["id"]), headers=counselor_headers).json()["data"]["checklist"]["status"] == "COMPLETED"
 
 
+def test_late_callback_of_an_older_analysis_does_not_overwrite_the_newer_checklist(
+    client: TestClient, counselor_headers, session: dict, mock_on, monkeypatch, db
+) -> None:
+    # #125 교차검증 R1: 분석 A 저장 → A 체크리스트 시작이 늦어짐 → 재분석 B 저장 · B 체크리스트 완료 → 이제야 A 콜백.
+    # A 는 여전히 COMPLETED 라 예전에는 supersede 로 새 attempt 를 얻어 B 결과를 A 로 덮었다.
+    delayed: List[Any] = []
+    real = service.generate_after_analysis
+    monkeypatch.setattr(service, "generate_after_analysis", lambda session_id, analysis_id: delayed.append((session_id, analysis_id)))
+
+    analyzed_session(client, counselor_headers, session["id"])
+    older = _latest_analysis(db, session["id"])
+    assert delayed == [(older.session_id, older.id)]
+    assert _rows(db) == []
+
+    monkeypatch.setattr(service, "generate_after_analysis", real)
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+    newer = _latest_analysis(db, session["id"])
+    row = _rows(db)[0]
+    assert newer.id != older.id
+    assert (row.analysis_id, row.status) == (newer.id, AnalysisStatus.COMPLETED)
+    attempt = row.attempt
+
+    real(*delayed[0])  # A 의 늦은 콜백
+
+    row = _rows(db)[0]
+    assert (row.analysis_id, row.status, row.attempt) == (newer.id, AnalysisStatus.COMPLETED, attempt)
+    # 예전 분석으로는 POST 경로도 차지하지 않는다.
+    assert service._claim(db, _session_row(db, session["id"]), older, "mock", supersede=False) is None
+    assert service._claim(db, _session_row(db, session["id"]), older, "mock", supersede=True) is None
+    assert _rows(db)[0].attempt == attempt
+
+
+def test_older_analysis_cannot_create_the_first_row_either(
+    client: TestClient, counselor_headers, session: dict, mock_on, monkeypatch, db
+) -> None:
+    # 행이 아직 없을 때(INSERT 경로)도 같다. B 는 아직 체크리스트를 만들기 전이다.
+    monkeypatch.setattr(service, "generate_after_analysis", lambda session_id, analysis_id: None)
+    analyzed_session(client, counselor_headers, session["id"])
+    older = _latest_analysis(db, session["id"])
+    assert _run_analysis(client, counselor_headers, session["id"]).status_code == 202
+    newer = _latest_analysis(db, session["id"])
+    assert newer.id != older.id
+
+    assert service._claim(db, _session_row(db, session["id"]), older, "mock", supersede=True) is None
+    assert _rows(db) == []
+    assert service._claim(db, _session_row(db, session["id"]), newer, "mock", supersede=True) == 1
+
+
 # =========================================================
 # 동시 실행 상한 (#117 R4)
 # =========================================================

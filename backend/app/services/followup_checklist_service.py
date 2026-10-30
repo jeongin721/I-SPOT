@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -364,7 +364,22 @@ def _claim(
 
     supersede=False(POST): 다른 작업이 처리 중(멈춤 아님)이면 차지하지 않는다.
     supersede=True(분석 저장 직후): 분석이 새로 저장됐으므로 처리 중인 앞 작업이 있어도 차지한다(앞 결과는 버려진다).
+
+    어느 쪽이든 **그 회차에 이 분석보다 새 분석이 있으면 차지하지 않는다**(#125 교차검증 R1 — 저장이 끝난 예전 분석 A 의
+    콜백이 늦게 와서, 그 사이 새 분석 B 로 만든 체크리스트를 A 로 덮던 문제). 새 분석이 없다는 조건을 차지하는 UPDATE 의
+    WHERE 에 같이 넣어 한 문장으로 판단한다(미리 읽기만 하면 그 사이 B 가 들어오는 경합이 남는다). 새 분석의 기준은
+    get_latest_analysis 와 같은 순서(created_at, id)다. 처음 만드는 INSERT 는 미리 확인하고, 그 사이 B 가 먼저 행을 만들면
+    유일 조건으로 실패해 UPDATE 경로로 와서 같은 조건에 걸린다.
     """
+
+    newer = exists().where(
+        AIAnalysis.session_id == session.id,
+        AIAnalysis.id != analysis.id,
+        or_(
+            AIAnalysis.created_at > analysis.created_at,
+            and_(AIAnalysis.created_at == analysis.created_at, AIAnalysis.id > analysis.id),
+        ),
+    )
 
     values = {
         "status": AnalysisStatus.PROCESSING,
@@ -379,6 +394,11 @@ def _claim(
     }
 
     for _ in range(CLAIM_RETRIES):
+        if db.scalar(select(newer)):
+            # 이 분석은 더는 최신이 아니다. 새 분석의 체크리스트를 건드리지 않는다.
+            db.rollback()
+            return None
+
         row = get_row(db, session.id)
 
         if row is None:
@@ -403,6 +423,7 @@ def _claim(
             .where(
                 SessionFollowupChecklist.id == row.id,
                 SessionFollowupChecklist.attempt == expected,
+                ~newer,
             )
             .values(attempt=expected + 1, **values)
             .execution_options(synchronize_session=False)
