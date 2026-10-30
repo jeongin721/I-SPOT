@@ -619,6 +619,16 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `intake_child_traits` · `intake_family_situations` 는 보내면 목록을 통째로 바꾼다. 비우려면 `[]` 를 보낸다(`null` 은 `422`)
 - 날짜 셋(`report_date` · `linked_date` · `first_interview_date`)은 보낸 것만 바뀌고 `null` 을 보내면 비운다
 
+### POST · DELETE /api/v1/cases/{case_id}/closure-review (2026-10-30)
+
+종결 검토 등록 · 취소(내담자 정보 '종결 검토 등록', 종결 검토 목록). 응답은 사례(위 `GET /cases/{id}` 의 사례 칸)이고,
+등록하면 `closure_review_at` 에 서버가 찍은 시각, 취소하면 `null` 이다(사례 목록 · 상세에도 같은 이름으로 온다).
+
+- 진행 중(`ACTIVE`) 사례만 등록한다. 종결 사례는 `409 INVALID_CASE_STATE`.
+- 이미 등록한 사례를 다시 등록하거나 등록 전 사례를 취소하면 그대로 둔다(첫 등록 시각 유지, 감사 기록도 남지 않음).
+- 권한은 사례 수정과 같다(담당 상담원 · 관리자). 감사 기록 `CLOSURE_REVIEW_REGISTERED` · `CLOSURE_REVIEW_CANCELED`(사례 번호만).
+- 종결(사례 상태 `CLOSED`)은 이 등록과 별개다 — 종결은 그대로 `PATCH /cases/{id}` 의 `status`.
+
 ### DELETE /api/v1/cases/{case_id} → 204
 
 관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다.

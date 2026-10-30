@@ -4,10 +4,10 @@
 # 아동 실명 대신 alias 를 사용하고, 생년월일 대신 출생연도만 보관한다.
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Date, Enum as SAEnum, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import CaseStatus, GuardianType
@@ -50,6 +50,9 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     report_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 신고접수일
     linked_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 사례연계일
     first_interview_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 최초면접일
+
+    # 종결 검토에 등록한 시각(2026-10-30, 내담자 정보 '종결 검토 등록'). 등록 전 · 취소하면 null.
+    closure_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     status: Mapped[CaseStatus] = mapped_column(
         SAEnum(CaseStatus, name="case_status", native_enum=False, length=20),

@@ -196,6 +196,8 @@ class CaseResponse(BaseModel):
     report_date: Optional[date] = None
     linked_date: Optional[date] = None
     first_interview_date: Optional[date] = None
+    # 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null.
+    closure_review_at: Optional[datetime] = None
     status: CaseStatus
     notes: Optional[str]
     counselor_id: uuid.UUID
