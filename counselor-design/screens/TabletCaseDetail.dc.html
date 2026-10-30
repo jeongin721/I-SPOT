@@ -90,7 +90,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -444,6 +444,75 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
+.rq{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:14px;border:1px solid #E7E4DC;background:#FFFFFF}
+.rq input{width:18px;height:18px;margin-top:3px;accent-color:#2B2A26;flex:none}
+.src{display:block;font-size:12px;color:#7A776F}
+.thm-root.dark .rq{border:1px solid #45423B !important;background:#2C2B27 !important}
+.thm-root.dark .rq input{accent-color:#D6D0C4 !important}
+.thm-root.dark .src{color:#A8A296 !important}
+.card.lead{padding:26px 28px;display:flex;flex-direction:column;gap:10px;min-height:190px}
+.lead-tag{align-self:flex-start;display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;background:#2B2A26;color:#EADBB5;font-size:13px;font-weight:700}
+.lead-q{font-size:14px;color:#66625A;margin-top:4px}
+.lead-main{font-size:22px;font-weight:700;line-height:1.45;color:#2B2A26;flex:1}
+.lead-arrow{color:#A33B2E;margin:0 4px}
+.lead .src{font-size:12.5px}
+.rq{padding:14px 18px;font-size:15px}
+.thm-root.dark .lead-tag{background:#EADBB5 !important;color:#2B2A26 !important}
+.thm-root.dark .lead-q{color:#B5AFA3 !important}
+.thm-root.dark .lead-main{color:#ECE8DF !important}
+.thm-root.dark .lead-arrow{color:#F0907F !important}
+.out-ov{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(43,42,38,.42)}
+.out-dlg{width:min(420px,100%);display:flex;flex-direction:column;gap:14px;padding:22px 22px 18px;border-radius:14px;background:#FFFFFF;color:#2B2A26;box-shadow:0 18px 48px rgba(43,42,38,.25)}
+.out-opts{display:flex;flex-direction:column;gap:8px}
+.out-opt{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 14px;border:1.5px solid #DAD5C9;border-radius:12px;background:#FFFFFF;font:inherit;color:#2B2A26;text-align:left;cursor:pointer}
+.out-opt.on{border-color:#2B2A26;background:#F1EADA}
+.out-rd{flex:none;width:18px;height:18px;border-radius:50%;border:1.5px solid #B9B2A2;background:#FFFFFF}
+.out-opt.on .out-rd{border:5px solid #2B2A26}
+.thm-root.dark .out-dlg{background:#2C2B27;color:#ECE8DF}
+.thm-root.dark .out-opt{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .out-opt.on{border-color:#EADBB5;background:#3F3729}
+.thm-root.dark .out-rd{background:#2C2B27;border-color:#7A776F}
+.thm-root.dark .out-opt.on .out-rd{border-color:#EADBB5}
+@media print{.out-ov,.nt-wrap,.thm-tg,.cp-btn,.cp-menu{display:none !important}}
+.brief-wrap{display:flex;flex-direction:column;gap:18px}
+@media print{body.print-brief *{visibility:hidden !important}body.print-brief .brief-wrap,body.print-brief .brief-wrap *{visibility:visible !important}body.print-brief .brief-wrap{position:absolute;left:0;top:0;width:100%}body.print-brief .brief-wrap button{display:none !important}}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1350px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
@@ -467,7 +536,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
-<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
 <section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
 <a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a>
@@ -480,13 +549,12 @@ section[aria-label="폴더"]{max-width:none !important}
 <nav class="tabs" aria-label="사례 상세 메뉴">
 <a class="on" aria-current="page" href="CaseDetail.dc.html">내담자 정보</a>
 <a href="CaseHistory.dc.html">상담 이력</a>
-<a href="PreBriefing.dc.html">상담 전 브리핑</a>
 <a href="CaseDocs.dc.html">문서함</a>
 </nav>
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px;">
 <section class="card" aria-label="기본 정보" style="padding: 22px 24px;">
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">기본 정보</h2><a class="btn btn-sm btn-s" href="CaseApp.dc.html" style="margin-left: auto;">아이 연계 →</a></div>
-<dl class="kv" style="grid-template-columns: 120px 1fr;"><dt>개별사건번호</dt><dd>C-2026-0351</dd><dt>이름</dt><dd>이서윤 (여)</dd><dt>생년월일</dt><dd>2013-03-14 (만 13세 · 중1)</dd><dt>사례관리대상자</dt><dd>이정훈 / 친부</dd><dt>가족유형</dt><dd>부자가정 · 원가정보호</dd><dt>담당 상담원</dt><dd>이서연</dd><dt>신고접수일</dt><dd>2026-07-28</dd><dt>사례연계일</dt><dd>2026-07-29</dd><dt>상담 회차</dt><dd style="font-weight: 700;">8회</dd><dt>최근 상담</dt><dd>2026-10-02 · 방문상담</dd><dt>아이 앱</dt><dd>연결됨 (9/18) · 2주 응답 12/14</dd></dl>
+<dl class="kv" style="grid-template-columns: 120px 1fr;"><dt>개별사건번호</dt><dd>C-2026-0351</dd><dt>이름</dt><dd>이서윤 (여)</dd><dt>생년월일</dt><dd>2013-03-14 (만 13세 · 중1)</dd><dt>사례관리대상자</dt><dd>이정훈 / 친부 · 1981-05-22 (만 45세)</dd><dt>가족유형</dt><dd>부자가정(이혼)</dd><dt>조치결과</dt><dd>피해아동 원가정보호 · 사례관리대상자 지속관찰</dd><dt>담당 상담원</dt><dd>이서연</dd><dt>신고접수일</dt><dd>2026-07-28</dd><dt>사례연계일</dt><dd>2026-07-29</dd><dt>최초면접일</dt><dd>2026-07-29</dd><dt>상담 회차</dt><dd style="font-weight: 700;">8회</dd><dt>최근 상담</dt><dd>2026-10-02 · 방문상담</dd><dt>아이 앱</dt><dd>연결됨 (9/18) · 2주 응답 12/14</dd></dl>
 </section>
 <section class="card" aria-label="주요 위험 요인" style="padding: 22px 24px;">
 <div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">주요 위험 요인</h2><span class="chip c-hi" style="margin-left: auto;">위험도 상</span></div>
@@ -499,18 +567,57 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 
 <section class="card" aria-label="현재 진행 상황" style="padding: 22px 24px;">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px;"><h2 class="h2">현재 진행 상황</h2><span class="note">8회차 (10/2)</span><a class="btn btn-p btn-sm" href="SttReview.dc.html" style="margin-left: auto;">이어서 하기 · STT 검수</a></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px;"><h2 class="h2">현재 진행 상황</h2><span class="note">8회차 (10/2)</span><a class="btn btn-p btn-sm" href="SttReview.dc.html" style="margin-left: auto;">이어서 하기 · 기록 확인</a></div>
 <div style="overflow-x: auto;">
 <div style="min-width: 660px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: relative;">
 <div style="position: absolute; left: 10%; right: 10%; top: 17px; height: 2px; background: #E7E4DC;"></div>
-<div class="st"><span class="sd" style="background: #F2EFE8; color: #66625A;">✓</span>녹취 올림<span class="note">10/7</span></div>
-<a class="st stl" href="SttReview.dc.html"><span class="sd" style="background: #FFFFFF; border: 2px solid #2B2A26; color: #2B2A26;">1</span><b style="font-weight: 700; color: #2B2A26;">STT 검수</b><span class="chip c-check">저신뢰 3곳</span></a>
-<a class="st stl" href="SignalReview.dc.html"><span class="sd" style="background: #EAE7DF; color: #7A776F;">2</span><span style="color: #7A776F;">유형별 위험도</span></a>
-<a class="st stl" href="NoteWrite.dc.html"><span class="sd" style="background: #EAE7DF; color: #7A776F;">3</span><span style="color: #7A776F;">요약 · 일지 작성</span></a>
-<a class="st stl" href="FollowupQ.dc.html"><span class="sd" style="background: #EAE7DF; color: #7A776F;">4</span><span style="color: #7A776F;">추가 확인 · 질문</span></a>
+<div class="st"><span class="sd" style="background: #F2EFE8; color: #66625A;">✓</span>상담 녹음<span class="note">10/7</span></div>
+<a class="st stl" href="SttReview.dc.html"><span class="sd" style="background: #FFFFFF; border: 2px solid #2B2A26; color: #2B2A26;">1</span><b style="font-weight: 700; color: #2B2A26;">기록 확인</b><span class="chip c-check">저신뢰 3곳</span></a>
+<a class="st stl" href="SignalReview.dc.html"><span class="sd" style="background: #EAE7DF; color: #7A776F;">2</span><span style="color: #7A776F;">학대 신호 확인</span></a>
+<a class="st stl" href="NoteWrite.dc.html"><span class="sd" style="background: #EAE7DF; color: #7A776F;">3</span><span style="color: #7A776F;">상담일지 작성</span></a>
+<a class="st stl" href="FollowupQ.dc.html"><span class="sd" style="background: #EAE7DF; color: #7A776F;">4</span><span style="color: #7A776F;">다음 상담 준비</span></a>
 </div>
 </div>
 </section>
+
+<div class="brief-wrap" id="brief" aria-label="상담 전 브리핑" role="region">
+<section style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 20px;">
+<div style="flex: 1 1 380px;">
+<div class="sub">오늘 16:00 · 9회차 정기상담 · 면담실 B</div>
+<h2 style="margin: 2px 0 0; font-size: 22px; font-weight: 700;">상담 전 브리핑</h2>
+</div>
+<button type="button" class="btn btn-s" aria-haspopup="dialog" onClick="{{ outOpen }}">인쇄 · PDF</button><sc-if value="{{ outShow }}" hint-placeholder-val="{{ false }}"><div class="out-ov"><div class="out-dlg" role="dialog" aria-modal="true" aria-labelledby="out-t">
+<b id="out-t" style="font-size: 18px;">{{ outTitle }}</b>
+<span class="note" style="margin-top: -6px;">출력물에 들어갈 이름 표시 방식을 고르세요.</span>
+<div role="radiogroup" aria-label="이름 표시 방식" class="out-opts"><sc-for list="{{ outOpts }}" as="o" hint-placeholder-count="2"><button type="button" role="radio" aria-checked="{{ o.on }}" class="out-opt {{ o.cls }}" onClick="{{ o.pick }}"><span class="out-rd" aria-hidden="true"></span><span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><b style="font-size: 14px;">{{ o.label }}</b><span class="note">{{ o.ex }}</span></span></button></sc-for></div>
+<div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ outClose }}">취소</button><button type="button" class="btn btn-p" onClick="{{ outRun }}">{{ outGo }}</button></div>
+</div></div></sc-if>
+</section>
+
+<section aria-label="먼저 볼 것" style="display: flex; flex-direction: column; gap: 14px;">
+<h2 class="h2">먼저 볼 것</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px;">
+<div class="card lead"><span class="lead-tag">아이가 보낸 말</span><b class="lead-main">"다음 상담 때 말할 게 있어요"</b><span class="src">10/7 22:10 · 아이 앱</span></div>
+<div class="card lead"><span class="lead-tag">체크인 응답 변화</span><span class="lead-q">겁을 준 적 있어?</span><b class="lead-main">없어 <span class="lead-arrow">→</span> 1번</b><span class="src">10/6 · QB-E-05</span></div>
+<div class="card lead"><span class="lead-tag">처음 나온 이야기</span><span class="lead-q">식사 · 돌봄</span><b class="lead-main">"밥도 안 줄 때가 있어요"</b><span class="src">8회차 02:15 · 화자 확인 중</span></div>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px;">
+<section class="card" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">확인할 사항</h2></div>
+<label class="rq"><input type="checkbox" checked><span>등 · 팔 통증 치료 여부<span class="src">근거 · 8회차 01:08</span></span></label>
+<label class="rq"><input type="checkbox" checked><span>02:15 발화 화자 · 식사 상황<span class="src">근거 · 8회차 02:15</span></span></label>
+<label class="rq"><input type="checkbox"><span>아이가 꺼내고 싶은 이야기부터<span class="src">근거 · 10/7 아이 메시지</span></span></label>
+</section>
+<section class="card" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">추가 질문</h2><span class="chip c-ai">AI 초안</span><a href="FollowupQ.dc.html" style="margin-left: auto; font-size: 13px;">질문 수정</a></div>
+<div class="rq"><span class="chip c-normal">열린 질문</span><span>"등이랑 팔이 아팠던 건 지금은 어때? 누가 봐 준 적 있어?"</span></div>
+<div class="rq"><span class="chip c-normal">열린 질문</span><span>"그 이야기를 하면 어떤 일이 생길 것 같아?"</span></div>
+<div class="rq"><span class="chip c-normal">QB-N-01</span><span>"요즘 밥은 주로 어떻게 먹어?"</span></div>
+</section>
+</div>
+</div>
 
 <section class="card" aria-label="기관 서식" style="padding: 20px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
 <b style="flex: 1 1 200px;">기관 서식</b>
@@ -551,7 +658,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </sc-if>
 <sc-if value="{{ recSaved }}" hint-placeholder-val="{{ false }}">
 <p style="margin: 0; text-align: center;">녹음을 저장했어요 · {{ recSummary }}<br><b>STT 분석을 시작할까요?</b></p>
-<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recClose }}">나중에</button><a class="btn btn-p" href="SttReview.dc.html" onClick="{{ recClose }}">STT 검수로 →</a></div>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recClose }}">나중에</button><a class="btn btn-p" href="SttReview.dc.html" onClick="{{ recClose }}">기록 확인으로 →</a></div>
 </sc-if>
 <sc-if value="{{ recSim }}" hint-placeholder-val="{{ false }}"><span class="note" style="text-align: center;">이 미리보기에서는 마이크를 쓸 수 없어 녹음 흐름만 보여 드려요. 실제 화면에서는 마이크로 바로 녹음돼요.</span></sc-if>
 </div>
@@ -562,7 +669,7 @@ section[aria-label="폴더"]{max-width:none !important}
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":820,"height":1480}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":820,"height":2250}}'>
 class Component extends DCLogic {
 themeRead() {
   const K = 'ispot-theme'; let v = null;
@@ -583,17 +690,85 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  try { if (String(window.location.hash || '') === '#brief') setTimeout(() => { try { const el = document.getElementById('brief'); if (el) el.scrollIntoView({ block: 'start' }); } catch (e) {} }, 120); } catch (e) {}
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+ntGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+ntSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+ntRecs() { try { const a = JSON.parse(this.ntGet('ispot-intake') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+ntSave(a) { this.ntSet('ispot-intake', JSON.stringify(a)); }
+ntTasks() { return [[3, '아동과 유선(전화) 상담'], [7, '아동 주변 인물 만남'], [30, '계획서 제출']]; }
+ntReadIds() { try { return JSON.parse(this.ntGet('ispot-noti-read') || '[]'); } catch (e) { return []; } }
+ntGo0() { let g = null; try { g = JSON.parse(this.ntGet('ispot-sched-go') || 'null'); } catch (e) {} if (!g || !g.t || Date.now() - g.t > 15000) return null; this.ntSet('ispot-sched-go', ''); return g; }
+ntVals() {
+  const recs = this.ntRecs(); const read = this.ntReadIds(); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const items = [];
+  recs.forEach((r) => this.ntTasks().forEach(([n, task]) => { if ((r.done || {})[n]) return; const due = new Date(r.y, r.m, r.d + n); const diff = Math.round((due - t0) / 86400000); const id = r.id + '-' + n;
+    items.push({ id, due, diff, unread: read.indexOf(id) < 0, title: r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (due.getMonth() + 1) + '/' + due.getDate() + '(' + days[due.getDay()] + ')까지', y: due.getFullYear(), m: due.getMonth(), d: due.getDate() }); }));
+  items.sort((a, b) => a.due - b.due);
+  const unread = items.filter((x) => x.unread).length; const open = !!(this.state && this.state.__ntOpen);
+  const markRead = (ids) => { const cur = this.ntReadIds(); this.ntSet('ispot-noti-read', JSON.stringify([...cur, ...ids.filter((i) => cur.indexOf(i) < 0)])); };
+  return {
+    ntOpen: open, ntExp: open ? 'true' : 'false', ntHasBadge: unread > 0, ntBadge: unread > 9 ? '9+' : String(unread),
+    ntLabel: unread > 0 ? '알림 ' + unread + '건 읽지 않음' : '알림',
+    ntSub: items.length ? '법정 기한 ' + items.length + '건' : '', ntEmpty: items.length === 0,
+    ntToggle: () => this.setState({ __ntOpen: !open }),
+    ntReadAll: () => { markRead(items.map((x) => x.id)); this.setState({ __ntTick: Date.now() }); },
+    ntItems: items.map((x) => ({ title: x.title, sub: x.sub, cls: x.unread ? 'unread' : 'read',
+      dd: x.diff < 0 ? '기한 지남' : x.diff === 0 ? '오늘 마감' : 'D-' + x.diff, ddCls: x.diff <= 0 ? 'urgent' : x.diff <= 2 ? 'soon' : '',
+      go: (e) => { markRead([x.id]); this.ntSet('ispot-sched-go', JSON.stringify({ y: x.y, m: x.m, d: x.d, t: Date.now() })); this.setState({ __ntOpen: false, __ntTick: Date.now() }); if (this.schedGo) { if (e && e.preventDefault) e.preventDefault(); this.ntSet('ispot-sched-go', ''); this.schedGo(x.y, x.m, x.d); } } }))
+  };
+}
+nmMask(t) { let r = String(t || ''); const F = ['장민준', '이서윤', '김도현', '박지호', '정예린', '최서준', '윤하은', '신유나', '강시우', '조하린']; F.forEach((n) => { r = r.split(n).join(n[0] + '○' + n.slice(2)); }); F.forEach((n) => { const g = n.slice(1); r = r.split(g).join(g[0] + '○'); }); return r; }
+outPrint(mask) { const done = []; try { if (mask) { const root = document.body; const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const v = this.nmMask(n.nodeValue); if (v !== n.nodeValue) { done.push([n, 'nodeValue', n.nodeValue]); n.nodeValue = v; } } root.querySelectorAll('textarea, input').forEach((el) => { const v = this.nmMask(el.value); if (v !== el.value) { done.push([el, 'value', el.value]); el.value = v; } }); } } catch (e) {}
+  try { document.body.classList.add('print-brief'); } catch (e) {} try { window.print(); } catch (e) {} try { document.body.classList.remove('print-brief'); } catch (e) {} done.forEach(([el, k, v]) => { try { el[k] = v; } catch (e) {} }); }
+recTick(on) { clearInterval(this._recT); if (on) this._recT = setInterval(() => this.setState({ rs: this.state.rs + 1 }), 1000); }
+recStopMedia() { try { if (this._mr && this._mr.state !== 'inactive') this._mr.stop(); } catch (e) {} try { if (this._stream) this._stream.getTracks().forEach((t) => t.stop()); } catch (e) {} this._stream = null; }
+recCleanup() { this.recTick(false); this._noUrl = true; this.recStopMedia(); this._mr = null; try { if (this.state.rUrl) URL.revokeObjectURL(this.state.rUrl); } catch (e) {} }
+recVals() {
+  const s = Object.assign({ rec: false, rp: 'idle', rs: 0, rSes: 'new', rKind: '정기상담', rCon: false, rErr: false, rUrl: '', rSim: false }, this.state || {});
+  const mm = String(Math.floor(s.rs / 60)).padStart(2, '0') + ':' + String(s.rs % 60).padStart(2, '0');
+  const begin = (sim) => { this._noUrl = false; this.recTick(true); this.setState({ rp: 'rec', rs: 0, rSim: sim, rErr: false }); };
+  const start = () => {
+    if (!this.state.rCon) { this.setState({ rErr: true }); return; }
+    let md = null; try { md = navigator.mediaDevices; } catch (e) {}
+    if (!md || !md.getUserMedia || typeof MediaRecorder === 'undefined') { begin(true); return; }
+    md.getUserMedia({ audio: true }).then((stream) => {
+      this._stream = stream; const chunks = []; const mr = new MediaRecorder(stream); this._mr = mr;
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      mr.onstop = () => { if (this._noUrl) return; try { const url = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/webm' })); this.setState({ rUrl: url }); } catch (e) {} };
+      mr.start(); begin(false);
+    }).catch(() => begin(true));
+  };
+  const status = { idle: '녹음 대기', rec: '녹음 중', paused: '일시정지', done: '녹음 완료', saved: '저장 완료' }[s.rp];
+  return {
+    recShow: s.rec, recOpen: () => this.setState({ rec: true, rp: 'idle', rs: 0, rErr: false, rUrl: '', rSim: false, rCon: false }),
+    recClose: () => { this.recCleanup(); this.setState({ rec: false, rp: 'idle', rs: 0, rUrl: '', rSim: false, rErr: false }); },
+    recSes: s.rSes, recSesSet: (e) => this.setState({ rSes: e.target.value }), recKind: s.rKind, recKindSet: (e) => this.setState({ rKind: e.target.value }),
+    recLock: s.rp !== 'idle', recConsent: s.rCon, recConsentSet: (e) => this.setState({ rCon: !!e.target.checked, rErr: false }), recErr: s.rErr,
+    recTime: mm, recStatus: status, recDotCls: s.rp === 'rec' ? 'live' : (s.rp === 'idle' ? 'idle' : 'off'),
+    recIdle: s.rp === 'idle', recRunning: s.rp === 'rec' || s.rp === 'paused', recDone: s.rp === 'done', recSaved: s.rp === 'saved', recSim: s.rSim && s.rp !== 'saved',
+    recStart: start,
+    recPauseLabel: s.rp === 'paused' ? '계속 녹음' : '일시정지',
+    recPause: () => { if (this.state.rp === 'rec') { try { if (this._mr && this._mr.pause) this._mr.pause(); } catch (e) {} this.recTick(false); this.setState({ rp: 'paused' }); } else { try { if (this._mr && this._mr.resume) this._mr.resume(); } catch (e) {} this.recTick(true); this.setState({ rp: 'rec' }); } },
+    recStop: () => { this.recTick(false); this.recStopMedia(); this.setState({ rp: 'done' }); },
+    recReset: () => { try { if (this.state.rUrl) URL.revokeObjectURL(this.state.rUrl); } catch (e) {} this.setState({ rp: 'idle', rs: 0, rUrl: '' }); },
+    recSave: () => { const st = this.state; this.jobWrite(JSON.stringify({ t: Date.now(), name: '이서윤 ' + (st.rSes === 'new' ? '9' : st.rSes) + '회차 녹음' })); this.setState({ rp: 'saved' }); }, recHasUrl: !!s.rUrl, recUrl: s.rUrl,
+    recSummary: '이서윤 · ' + (s.rSes === 'new' ? '9회차 (새 회차)' : s.rSes + '회차') + ' · ' + s.rKind + ' · ' + mm };
 }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), goForm: () => { const v = 'B|' + Date.now(); try { window.localStorage.setItem('ispot-form', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-form', v); } catch (e) {} try { window.top.__ispotForm = v; } catch (e) {} window.__ispotForm = v; }, markBack: () => { const v = 'CaseDetail.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, (() => { const st = this.state || {}; const mk = st.__outMask !== false; return { outShow: !!st.__outOpen, outTitle: '인쇄 · PDF', outGo: '인쇄', outOpen: () => this.setState({ __outOpen: true }), outClose: () => this.setState({ __outOpen: false }), outOpts: [[false, '실명 그대로', '예) 이서윤'], [true, '이름 가리기', '예) 이○윤 · 서○']].map(([m, label, ex]) => ({ label, ex, on: mk === m ? 'true' : 'false', cls: mk === m ? 'on' : '', pick: () => this.setState({ __outMask: m }) })), outRun: () => { this.setState({ __outOpen: false }); setTimeout(() => this.outPrint(mk), 120); } }; })(), this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), goForm: () => { const v = 'B|' + Date.now(); try { window.localStorage.setItem('ispot-form', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-form', v); } catch (e) {} try { window.top.__ispotForm = v; } catch (e) {} window.__ispotForm = v; }, markBack: () => { const v = 'CaseDetail.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 

@@ -56,7 +56,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -363,6 +363,66 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+@media (max-width:900px){aside.card[aria-label="선택한 날 일정"]{order:-1}}
+.dl-box{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:12px;background:#F7F6F2;border:1px solid #EAE7DF}
+.dl-row{display:flex;align-items:center;gap:8px;font-size:13px}
+.dl-n{display:inline-flex;align-items:center;justify-content:center;min-width:64px;height:22px;padding:0 8px;border-radius:6px;background:#F7E4DF;color:#A33B2E;font-size:12px;font-weight:700}
+.ev-clk{cursor:pointer;border-radius:8px;margin:0 -8px;padding-left:8px;padding-right:8px}
+.ev-clk:hover{background:#F7F6F2}
+.ev-clk:focus-visible{outline:2px solid #C2A36B;outline-offset:1px}
+.pill{cursor:pointer}
+.vd-box{display:flex;flex-direction:column;border:1px solid #EAE7DF;border-radius:12px;overflow:hidden}
+.vd-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;padding:10px 14px;border-top:1px solid #EAE7DF;font-size:14px}
+.vd-row:first-child{border-top:0}
+.vd-k{color:#7A776F;font-size:13px}
+.vd-v{overflow-wrap:anywhere}
+.vd-del{color:#A33B2E !important}
+.vd-ask{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:12px;background:#F7E4DF}
+.vd-del-go{background:#A33B2E !important;color:#FFFFFF !important;border-color:#A33B2E !important}
+.thm-root.dark .ev-clk:hover{background:#33312C}
+.thm-root.dark .vd-box,.thm-root.dark .vd-row{border-color:#45423B}
+.thm-root.dark .vd-k{color:#A8A296}
+.thm-root.dark .vd-del{color:#F2B8AC !important}
+.thm-root.dark .vd-ask{background:#4A2B26}
+.thm-root.dark .dl-box{background:#2C2B27;border-color:#45423B}
+.thm-root.dark .dl-n{background:#4A2B26;color:#F2B8AC}
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1200px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
@@ -388,7 +448,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </aside>
 
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 18px;">
-<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px;">
 <div style="flex: 1 1 260px;"><h1 style="margin: 0; font-size: 28px; font-weight: 700;">일정</h1></div>
 </header>
@@ -416,7 +476,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <button type="button" class="cell" onClick="{{ c.pick }}" aria-label="{{ c.aria }}" style="background: {{ c.bg }}; box-shadow: {{ c.ring }};">
 <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: {{ c.fw }}; background: {{ c.numBg }}; color: {{ c.numFg }};">{{ c.num }}</span><span style="font-size: 10px; color: #7A776F;">{{ c.holiday }}</span></span>
 <sc-for list="{{ c.pills }}" as="p" hint-placeholder-count="2">
-<span class="pill" style="background: {{ p.bg }}; color: {{ p.fg }}; font-weight: {{ p.fw }};"><span style="width: 7px; height: 7px; flex: none; border-radius: {{ p.radius }}; background: {{ p.dot }};"></span>{{ p.label }}</span>
+<span class="pill" onClick="{{ p.open }}" title="{{ p.tip }}" style="background: {{ p.bg }}; color: {{ p.fg }}; font-weight: {{ p.fw }};"><span style="width: 7px; height: 7px; flex: none; border-radius: {{ p.radius }}; background: {{ p.dot }};"></span>{{ p.label }}</span>
 </sc-for>
 <span style="font-size: 11px; color: #6E6A62; padding-left: 4px;">{{ c.more }}</span>
 </button>
@@ -438,7 +498,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 <div>
 <sc-for list="{{ dayEvents }}" as="e" hint-placeholder-count="3">
-<div class="ev">
+<div class="ev ev-clk" role="button" tabindex="0" aria-label="{{ e.aria }}" onClick="{{ e.open }}" onKeyDown="{{ e.key }}">
 <span style="font-size: 13px; color: #66625A;">{{ e.time }}</span>
 <span style="margin-top: 5px; width: 12px; height: 12px; border-radius: {{ e.radius }}; background: {{ e.dot }};"></span>
 <span style="display: flex; flex-direction: column; gap: 4px;"><b style="font-weight: {{ e.fw }}; color: {{ e.titleFg }};">{{ e.title }}</b><span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="chip" style="background: {{ e.tagBg }}; color: {{ e.tagFg }};">{{ e.tag }}</span><span class="note">{{ e.sub }}</span></span></span>
@@ -449,8 +509,29 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 </sc-if>
 
+<sc-if value="{{ viewing }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 10px;"><button type="button" class="btn btn-sm btn-s" onClick="{{ vBack }}" aria-label="일정 목록으로 돌아가기">← 목록</button><span class="note" style="margin-left: auto;">{{ v.kind }}</span></div>
+<div style="display: flex; align-items: flex-start; gap: 10px;"><span style="margin-top: 8px; width: 12px; height: 12px; flex: none; border-radius: {{ v.radius }}; background: {{ v.dot }};"></span><b style="font-size: 20px; line-height: 1.4; color: {{ v.titleFg }};">{{ v.title }}</b></div>
+<div class="vd-box">
+<sc-for list="{{ v.rows }}" as="r" hint-placeholder-count="5"><div class="vd-row"><span class="vd-k">{{ r.k }}</span><span class="vd-v">{{ r.v }}</span></div></sc-for>
+</div>
+<sc-if value="{{ v.isDl }}" hint-placeholder-val="{{ false }}">
+<p class="note" style="margin: 0;">법정 기한 일정은 최초접수 일정에 맞춰 자동으로 만들어져요. 날짜를 바꾸거나 지우려면 최초접수 일정에서 수정 · 삭제해 주세요.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-s" onClick="{{ v.goBase }}">최초접수 일정 보기</button><button type="button" class="btn {{ v.doneCls }}" onClick="{{ v.toggleDone }}">{{ v.doneLabel }}</button></div>
+</sc-if>
+<sc-if value="{{ v.canEdit }}" hint-placeholder-val="{{ true }}">
+<sc-if value="{{ v.noAsk }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-p" onClick="{{ v.edit }}">수정</button><button type="button" class="btn btn-s vd-del" onClick="{{ v.askDel }}">삭제</button></div>
+</sc-if>
+<sc-if value="{{ v.ask }}" hint-placeholder-val="{{ false }}">
+<div class="vd-ask" role="alertdialog" aria-label="일정 삭제 확인"><b>이 일정을 삭제할까요?</b><span class="note">{{ v.askNote }}</span>
+<div style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-s" onClick="{{ v.cancelDel }}">취소</button><button type="button" class="btn vd-del-go" onClick="{{ v.del }}">삭제</button></div></div>
+</sc-if>
+</sc-if>
+</sc-if>
+
 <sc-if value="{{ adding }}" hint-placeholder-val="{{ false }}">
-<div style="display: flex; align-items: center; gap: 10px;"><b style="font-size: 19px; flex: 1;">일정 추가</b><span class="note">{{ selLabel }}</span></div>
+<div style="display: flex; align-items: center; gap: 10px;"><b style="font-size: 19px; flex: 1;">{{ formTitle }}</b><span class="note">{{ formDateLabel }}</span></div>
 <div role="radiogroup" aria-label="일정 종류" style="display: flex; gap: 8px;">
 <button type="button" role="radio" aria-checked="{{ isC }}" class="kind" onClick="{{ kindC }}" style="border-color: {{ kcBorder }}; background: {{ kcBg }};"><b style="font-weight: 700;">● 상담 일정</b></button>
 <button type="button" role="radio" aria-checked="{{ isP }}" class="kind" onClick="{{ kindP }}" style="border-color: {{ kpBorder }}; background: {{ kpBg }};"><b style="font-weight: 700;">■ 개인 · 기관 일정</b></button>
@@ -464,10 +545,20 @@ section[aria-label="폴더"]{max-width:none !important}
 </sc-if>
 <sc-if value="{{ isP }}" hint-placeholder-val="{{ false }}">
 <label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">분류</span>
-<select class="in" value="{{ form.pcat }}" onChange="{{ setPcat }}"><option>기관 회의</option><option>사례회의</option><option>슈퍼비전</option><option>교육</option><option>외근</option><option>휴가</option><option>기타</option></select></label>
+<select class="in" value="{{ form.pcat }}" onChange="{{ setPcat }}"><option>기관 회의</option><option>사례회의</option><option>최초접수</option><option>슈퍼비전</option><option>교육</option><option>외근</option><option>휴가</option><option>기타</option></select></label>
+<sc-if value="{{ isIntake }}" hint-placeholder-val="{{ false }}">
+<label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">아이 (사례)</span>
+<select class="in" value="{{ form.child }}" onChange="{{ setChild }}"><option>서윤</option><option>지호</option><option>도현</option><option>예린</option><option>하은</option><option>서준</option><option>시우</option><option>하린</option><option>유나</option><option>민준</option></select></label>
+<div class="dl-box"><b style="font-size: 13px;">학대 판정 후 법정 기한 · 자동 추가</b>
+<sc-for list="{{ dlPreview }}" as="p" hint-placeholder-count="3"><div class="dl-row"><span class="dl-n">{{ p.n }}</span><span style="flex: 1;">{{ p.task }}</span><span class="note">{{ p.due }}까지</span></div></sc-for>
+<span class="note">저장하면 기한 일정이 달력에 표시되고 알림에 추가돼요.</span></div>
+</sc-if>
+<sc-if value="{{ notIntake }}" hint-placeholder-val="{{ true }}">
 <label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">제목</span><input class="in" type="text" placeholder="예) 팀 회의" value="{{ form.title }}" onChange="{{ setTitle }}"></label>
 </sc-if>
+</sc-if>
 
+<sc-if value="{{ isEdit }}" hint-placeholder-val="{{ false }}"><label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">날짜</span><input class="in" type="date" value="{{ form.date }}" onChange="{{ setDate }}"></label></sc-if>
 <div style="display: flex; gap: 10px;">
 <label style="flex: 1; display: flex; flex-direction: column; gap: 6px;"><span class="lb">시간</span><input class="in" type="time" value="{{ form.time }}" onChange="{{ setTime }}"></label>
 <label style="flex: 1.4; display: flex; flex-direction: column; gap: 6px;"><span class="lb">장소</span><input class="in" type="text" placeholder="예) 면담실 A" value="{{ form.place }}" onChange="{{ setPlace }}"></label>
@@ -475,7 +566,7 @@ section[aria-label="폴더"]{max-width:none !important}
 
 <sc-if value="{{ isC }}" hint-placeholder-val="{{ true }}">
 <div style="padding: 12px 14px; border-radius: 12px; background: #F7F6F2; font-size: 13px; display: flex; flex-direction: column; gap: 6px;">
-<label style="display: flex; gap: 8px; align-items: center;"><input type="checkbox" checked style="width: 16px; height: 16px; accent-color: #2B2A26;">상담 전날 <a href="PreBriefing.dc.html">브리핑</a> 자동 준비</label>
+<label style="display: flex; gap: 8px; align-items: center;"><input type="checkbox" checked style="width: 16px; height: 16px; accent-color: #2B2A26;">상담 전날 <a href="CaseDetail.dc.html#brief">브리핑</a> 자동 준비</label>
 <span class="note">아이 앱 알림 없음 (보호자 노출 방지)</span>
 </div>
 </sc-if>
@@ -515,17 +606,47 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+ntGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+ntSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+ntRecs() { try { const a = JSON.parse(this.ntGet('ispot-intake') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+ntSave(a) { this.ntSet('ispot-intake', JSON.stringify(a)); }
+ntTasks() { return [[3, '아동과 유선(전화) 상담'], [7, '아동 주변 인물 만남'], [30, '계획서 제출']]; }
+ntReadIds() { try { return JSON.parse(this.ntGet('ispot-noti-read') || '[]'); } catch (e) { return []; } }
+ntGo0() { let g = null; try { g = JSON.parse(this.ntGet('ispot-sched-go') || 'null'); } catch (e) {} if (!g || !g.t || Date.now() - g.t > 15000) return null; this.ntSet('ispot-sched-go', ''); return g; }
+ntVals() {
+  const recs = this.ntRecs(); const read = this.ntReadIds(); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const items = [];
+  recs.forEach((r) => this.ntTasks().forEach(([n, task]) => { if ((r.done || {})[n]) return; const due = new Date(r.y, r.m, r.d + n); const diff = Math.round((due - t0) / 86400000); const id = r.id + '-' + n;
+    items.push({ id, due, diff, unread: read.indexOf(id) < 0, title: r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (due.getMonth() + 1) + '/' + due.getDate() + '(' + days[due.getDay()] + ')까지', y: due.getFullYear(), m: due.getMonth(), d: due.getDate() }); }));
+  items.sort((a, b) => a.due - b.due);
+  const unread = items.filter((x) => x.unread).length; const open = !!(this.state && this.state.__ntOpen);
+  const markRead = (ids) => { const cur = this.ntReadIds(); this.ntSet('ispot-noti-read', JSON.stringify([...cur, ...ids.filter((i) => cur.indexOf(i) < 0)])); };
+  return {
+    ntOpen: open, ntExp: open ? 'true' : 'false', ntHasBadge: unread > 0, ntBadge: unread > 9 ? '9+' : String(unread),
+    ntLabel: unread > 0 ? '알림 ' + unread + '건 읽지 않음' : '알림',
+    ntSub: items.length ? '법정 기한 ' + items.length + '건' : '', ntEmpty: items.length === 0,
+    ntToggle: () => this.setState({ __ntOpen: !open }),
+    ntReadAll: () => { markRead(items.map((x) => x.id)); this.setState({ __ntTick: Date.now() }); },
+    ntItems: items.map((x) => ({ title: x.title, sub: x.sub, cls: x.unread ? 'unread' : 'read',
+      dd: x.diff < 0 ? '기한 지남' : x.diff === 0 ? '오늘 마감' : 'D-' + x.diff, ddCls: x.diff <= 0 ? 'urgent' : x.diff <= 2 ? 'soon' : '',
+      go: (e) => { markRead([x.id]); this.ntSet('ispot-sched-go', JSON.stringify({ y: x.y, m: x.m, d: x.d, t: Date.now() })); this.setState({ __ntOpen: false, __ntTick: Date.now() }); if (this.schedGo) { if (e && e.preventDefault) e.preventDefault(); this.ntSet('ispot-sched-go', ''); this.schedGo(x.y, x.m, x.d); } } }))
+  };
 }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'Schedule.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'Schedule.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
@@ -565,7 +686,9 @@ renderVals() {
         C(29, '14:00', '민준 · 정기상담', '면담실 B')
       ]
     };
+    try { const g = this.ntGo0(); if (g) { this.state.y = g.y; this.state.m = g.m; this.state.sel = g.d; } } catch (e) {}
   }
+  schedGo(y, m, d) { this.setState({ y, m, sel: d, adding: false }); }
   renderValsBase() {
     const s = this.state;
     const days = ['일', '월', '화', '수', '목', '금', '토'];
@@ -574,8 +697,19 @@ renderVals() {
     const first = new Date(s.y, s.m, 1).getDay();
     const dim = new Date(s.y, s.m + 1, 0).getDate();
     const total = Math.ceil((first + dim) / 7) * 7;
+    const recs = this.ntRecs();
+    const updRec = (id, fn) => { this.ntSave(this.ntRecs().map((r) => (r.id === id ? fn(r) : r))); this.setState({ __ntTick: Date.now() }); };
+    const derived = [];
+    recs.forEach((r) => {
+      derived.push({ y: r.y, m: r.m, d: r.d, time: r.time || '10:00', t: 'p', title: r.child + ' · 최초접수', sub: r.place ? '최초접수 · ' + r.place : '최초접수 · 학대 판정 후 이관', tag: '최초접수', imp: !!r.imp, rid: r.id });
+      this.ntTasks().forEach(([n, task]) => { const dd = new Date(r.y, r.m, r.d + n); const done = !!(r.done || {})[n];
+        derived.push({ y: dd.getFullYear(), m: dd.getMonth(), d: dd.getDate(), time: '기한', t: 'p', title: (done ? '✓ ' : '') + r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (r.m + 1) + '/' + r.d + ' 접수', tag: '법정 기한', imp: !done, rid: r.id, dl: n, done }); });
+    });
+    const allEv = [...s.events.map((e, i) => ({ ...e, i })), ...derived];
+    const keyOf = (e) => (e.dl ? { src: 'dl', id: e.rid, n: e.dl } : e.rid ? { src: 'rec', id: e.rid } : { src: 'ev', i: e.i });
+    const findKey = (k) => (!k ? null : allEv.find((e) => (k.src === 'ev' ? e.i === k.i && !e.rid : k.src === 'rec' ? e.rid === k.id && !e.dl : e.rid === k.id && e.dl === k.n)) || null);
     const show = (e) => s.filter === 'all' || (s.filter === 'i' ? !!e.imp : e.t === s.filter);
-    const sortT = (a, b) => (a.time === '종일' ? -1 : b.time === '종일' ? 1 : a.time.localeCompare(b.time));
+    const rk = (t) => (t === '종일' ? 0 : t === '기한' ? 1 : 2); const sortT = (a, b) => (rk(a.time) - rk(b.time) || a.time.localeCompare(b.time));
     const style = (e) => e.imp
       ? { bg: '#F7E4DF', fg: '#A33B2E', dot: '#A33B2E', radius: e.t === 'c' ? '50%' : '2px', tagBg: '#F7E4DF', tagFg: '#A33B2E', fw: 700 }
       : e.t === 'c'
@@ -586,7 +720,7 @@ renderVals() {
       const d = i - first + 1;
       const valid = d >= 1 && d <= dim;
       const dow = i % 7;
-      const evs = valid ? s.events.filter((e) => e.y === s.y && e.m === s.m && e.d === d && show(e)).sort(sortT) : [];
+      const evs = valid ? allEv.filter((e) => e.y === s.y && e.m === s.m && e.d === d && show(e)).sort(sortT) : [];
       const isToday = valid && now.getFullYear() === s.y && now.getMonth() === s.m && now.getDate() === d;
       const isSel = valid && d === s.sel;
       const hol = valid ? (holidays[`${s.y}-${s.m}-${d}`] || '') : '';
@@ -599,19 +733,52 @@ renderVals() {
         numBg: isToday ? '#2B2A26' : 'transparent',
         numFg: isToday ? '#FFFFFF' : (hol || dow === 0 ? '#7A776F' : '#2B2A26'),
         fw: isToday || isSel ? 700 : 400,
-        pills: evs.slice(0, 3).map((e) => { const st = style(e); return { label: `${e.time === '종일' ? '' : e.time + ' '}${e.title}`, bg: st.bg, fg: st.fg, fw: st.fw, dot: st.dot, radius: st.radius }; }),
+        pills: evs.slice(0, 3).map((e) => { const st = style(e); return { label: `${e.time === '종일' ? '' : e.time + ' '}${e.title}`, bg: st.bg, fg: st.fg, fw: st.fw, dot: st.dot, radius: st.radius, tip: e.title + ' · 자세히 보기', open: (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); this.setState({ sel: d, view: keyOf(e), adding: false, edit: null, delAsk: false }); } }; }),
         more: evs.length > 3 ? `+${evs.length - 3}건 더` : '',
-        pick: () => { if (valid) this.setState({ sel: d }); }
+        pick: () => { if (valid) this.setState({ sel: d, view: null, delAsk: false }); }
       });
     }
     const selDate = new Date(s.y, s.m, s.sel);
-    const dayEvents = s.events.map((e, i) => ({ ...e, i })).filter((e) => e.y === s.y && e.m === s.m && e.d === s.sel && show(e)).sort(sortT).map((e) => { const st = style(e); const on = !!e.imp;
-      return { time: e.time, title: e.title, sub: e.sub, tag: e.tag, dot: st.dot, radius: st.radius, tagBg: st.tagBg, tagFg: st.tagFg, fw: on ? 700 : 500, titleFg: on ? '#A33B2E' : '#2B2A26',
+    const wrapRow = (e, out) => { const stop = (fn) => (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); fn(ev); }; const go = () => this.setState({ view: keyOf(e), adding: false, edit: null, delAsk: false });
+      return { ...out, toggleImp: stop(out.toggleImp), open: go, key: (ev) => { if (ev && (ev.key === 'Enter' || ev.key === ' ')) { if (ev.preventDefault) ev.preventDefault(); go(); } }, aria: e.title + ' 자세히 보기' }; };
+    const dayEvents = allEv.filter((e) => e.y === s.y && e.m === s.m && e.d === s.sel && show(e)).sort(sortT).map((e) => wrapRow(e, ((e) => { const st = style(e); const on = !!e.imp;
+      const row = { time: e.time, title: e.title, sub: e.sub, tag: e.tag, dot: st.dot, radius: st.radius, tagBg: st.tagBg, tagFg: st.tagFg, fw: on ? 700 : 500, titleFg: on ? '#A33B2E' : '#2B2A26',
         impOn: on ? 'true' : 'false', impLabel: on ? '! 중요' : '중요 표시', impBg: on ? '#A33B2E' : '#FFFFFF', impFg: on ? '#FFFFFF' : '#7A776F', impBd: on ? '#A33B2E' : '#DAD5C9',
-        toggleImp: () => this.setState({ events: s.events.map((x, j) => (j === e.i ? { ...x, imp: !x.imp } : x)) }) }; });
-    const monthEv = s.events.filter((e) => e.y === s.y && e.m === s.m);
+        toggleImp: () => this.setState({ events: s.events.map((x, j) => (j === e.i ? { ...x, imp: !x.imp } : x)) }) };
+      if (e.rid && !e.dl) return { ...row, toggleImp: () => updRec(e.rid, (r) => ({ ...r, imp: !r.imp })) };
+      if (e.dl) { const dn = !!e.done; return { ...row, fw: dn ? 500 : 700, titleFg: dn ? '#7A776F' : '#A33B2E', impOn: dn ? 'true' : 'false', impLabel: dn ? '✓ 완료' : '완료 표시', impBg: dn ? '#2B2A26' : '#FFFFFF', impFg: dn ? '#FFFFFF' : '#7A776F', impBd: dn ? '#2B2A26' : '#DAD5C9',
+        toggleImp: () => updRec(e.rid, (r) => ({ ...r, done: { ...(r.done || {}), [e.dl]: !dn } })) }; }
+      return row; })(e)));
+    const monthEv = allEv.filter((e) => e.y === s.y && e.m === s.m);
     const setF = (k) => (ev) => this.setState({ form: { ...s.form, [k]: ev.target.value } });
     const isC = s.kind === 'c';
+    const vItem = s.view ? findKey(s.view) : null;
+    const dLabel = (e) => { const dt = new Date(e.y, e.m, e.d); return `${e.y}년 ${e.m + 1}월 ${e.d}일 ${days[dt.getDay()]}요일`; };
+    const pad = (n) => String(n).padStart(2, '0');
+    const placeOf = (e) => (e.rid ? (e.dl ? '' : (recs.find((r) => r.id === e.rid) || {}).place || '') : e.t === 'c' ? e.sub : (e.sub && e.sub.indexOf(e.tag + ' · ') === 0 ? e.sub.slice(e.tag.length + 3) : ''));
+    let vVals = {};
+    if (vItem) {
+      const e = vItem; const st = style(e); const isDl = !!e.dl; const rec = e.rid ? recs.find((r) => r.id === e.rid) : null;
+      const rows = [['날짜', dLabel(e)], ['시간', isDl ? '마감일' : e.time]];
+      if (isDl) { rows.push(['내용', e.sub]); rows.push(['상태', e.done ? '완료' : '진행 전']); }
+      else if (e.t === 'c') { rows.push(['아이', e.title.split(' · ')[0]]); rows.push(['상담 유형', e.title.split(' · ').slice(1).join(' · ') || '—']); rows.push(['장소', placeOf(e) || '—']); }
+      else { if (rec) rows.push(['아이', rec.child]); rows.push(['분류', e.tag]); rows.push(['장소', placeOf(e) || '—']); }
+      rows.push(['중요', e.imp ? '중요 일정' : '—']);
+      const askNote = rec && !isDl ? '최초접수와 함께 만들어진 법정 기한 일정 3건도 같이 삭제되고, 알림에서도 빠져요.' : '삭제하면 되돌릴 수 없어요.';
+      const ask = !!s.delAsk;
+      vVals = { kind: isDl ? '법정 기한' : e.t === 'c' ? '상담 일정' : '개인 · 기관 일정', title: e.title, dot: st.dot, radius: st.radius, titleFg: e.imp ? '#A33B2E' : 'inherit',
+        rows: rows.map(([k, v]) => ({ k, v })), isDl, canEdit: !isDl, ask, noAsk: !ask, askNote,
+        doneLabel: e.done ? '✓ 완료 취소' : '완료 표시', doneCls: e.done ? 'btn-s' : 'btn-p',
+        toggleDone: () => updRec(e.rid, (r) => ({ ...r, done: { ...(r.done || {}), [e.dl]: !e.done } })),
+        goBase: () => { if (rec) this.setState({ y: rec.y, m: rec.m, sel: rec.d, view: { src: 'rec', id: rec.id } }); },
+        askDel: () => this.setState({ delAsk: true }), cancelDel: () => this.setState({ delAsk: false }),
+        del: () => { if (e.rid) { this.ntSave(this.ntRecs().filter((r) => r.id !== e.rid)); this.setState({ view: null, delAsk: false, __ntTick: Date.now() }); } else { this.setState({ events: s.events.filter((x, j) => j !== e.i), view: null, delAsk: false }); } },
+        edit: () => { const isRec = !!rec; const c = e.t === 'c'; const ttl = e.title.split(' · ');
+          const CT = ['정기상담', '초기면담', '방문상담', '전화상담', '종결 상담']; const rest = ttl.slice(1).join(' · '); const ct = CT.find((x) => rest.indexOf(x) === 0) || '정기상담';
+          const form = { ...s.form, date: `${e.y}-${pad(e.m + 1)}-${pad(e.d)}`, time: e.time === '종일' ? '' : e.time, imp: !!e.imp, place: placeOf(e),
+            child: isRec ? rec.child : (c ? ttl[0] : s.form.child), ctype: c ? ct : s.form.ctype, pcat: isRec ? '최초접수' : (c ? s.form.pcat : e.tag), title: isRec || c ? '' : e.title };
+          this.setState({ adding: true, kind: c ? 'c' : 'p', form, edit: { key: keyOf(e), suffix: c && rest.indexOf(ct) === 0 ? rest.slice(ct.length) : '', allDay: e.time === '종일', done: rec ? rec.done || {} : {} }, delAsk: false }); } };
+    }
     return {
       monthLabel: `${s.y}년 ${s.m + 1}월`,
       cells, dayEvents, noEvents: dayEvents.length === 0,
@@ -624,10 +791,13 @@ renderVals() {
       prevMonth: () => { const m = s.m === 0 ? 11 : s.m - 1; const y = s.m === 0 ? s.y - 1 : s.y; this.setState({ m, y, sel: 1 }); },
       nextMonth: () => { const m = s.m === 11 ? 0 : s.m + 1; const y = s.m === 11 ? s.y + 1 : s.y; this.setState({ m, y, sel: 1 }); },
       goToday: () => { const n = new Date(); this.setState({ y: n.getFullYear(), m: n.getMonth(), sel: n.getDate() }); },
-      adding: s.adding, notAdding: !s.adding,
-      openAdd: () => this.setState({ adding: true }),
-      cancelAdd: () => this.setState({ adding: false }),
-      isC, isP: !isC,
+      adding: s.adding, notAdding: !s.adding && !vItem, viewing: !s.adding && !!vItem, v: vVals, vBack: () => this.setState({ view: null, delAsk: false }),
+      isEdit: !!s.edit, formTitle: s.edit ? '일정 수정' : '일정 추가', formDateLabel: s.edit ? '' : `${s.m + 1}월 ${s.sel}일 ${days[selDate.getDay()]}요일`,
+      setDate: setF('date'),
+      openAdd: () => this.setState({ adding: true, edit: null, form: { ...s.form, title: '', place: '', imp: false } }),
+      cancelAdd: () => this.setState({ adding: false, edit: null }),
+      isC, isP: !isC, isIntake: !isC && s.form.pcat === '최초접수', notIntake: !(!isC && s.form.pcat === '최초접수'),
+      dlPreview: this.ntTasks().map(([n, task]) => { const dd = new Date(s.y, s.m, s.sel + n); return { n: n + '일 이내', task, due: (dd.getMonth() + 1) + '/' + dd.getDate() + '(' + days[dd.getDay()] + ')' }; }),
       kindC: () => this.setState({ kind: 'c' }), kindP: () => this.setState({ kind: 'p' }),
       kcBorder: isC ? '#2B2A26' : '#DAD5C9', kcBg: isC ? '#F1EADA' : '#FFFFFF',
       kpBorder: !isC ? '#2B2A26' : '#DAD5C9', kpBg: !isC ? '#F1EADA' : '#FFFFFF',
@@ -637,6 +807,20 @@ renderVals() {
       setChild: setF('child'), setCtype: setF('ctype'), setPcat: setF('pcat'), setTitle: setF('title'), setTime: setF('time'), setPlace: setF('place'),
       save: () => {
         const f = s.form;
+        if (s.edit) {
+          const ed = s.edit; const dp = String(f.date || '').split('-').map((x) => parseInt(x, 10)); const ok = dp.length === 3 && dp.every((x) => x > 0);
+          const Y = ok ? dp[0] : s.y, M = ok ? dp[1] - 1 : s.m, D = ok ? dp[2] : s.sel; const T = f.time || (ed.allDay ? '종일' : '10:00');
+          let events = s.events; let recsN = this.ntRecs();
+          if (ed.key.src === 'ev') events = events.filter((x, j) => j !== ed.key.i); else recsN = recsN.filter((r) => r.id !== ed.key.id);
+          if (!isC && f.pcat === '최초접수') recsN = [...recsN, { id: ed.key.src === 'rec' ? ed.key.id : 'r' + Date.now().toString(36), child: f.child, y: Y, m: M, d: D, time: T, place: f.place || '', imp: !!f.imp, done: ed.key.src === 'rec' ? ed.done : {} }];
+          else { const ev = isC ? { y: Y, m: M, d: D, time: T, t: 'c', title: `${f.child} · ${f.ctype}${ed.suffix || ''}`, sub: f.place || '장소 미정', tag: '상담', imp: !!f.imp }
+              : { y: Y, m: M, d: D, time: T, t: 'p', title: f.title || f.pcat, sub: f.place ? `${f.pcat} · ${f.place}` : f.pcat, tag: f.pcat, imp: !!f.imp };
+            if (ed.key.src === 'ev') { events = s.events.slice(); events.splice(ed.key.i, 1, ev); } else events = [...events, ev]; }
+          this.ntSave(recsN);
+          this.setState({ events, adding: false, edit: null, view: null, y: Y, m: M, sel: D, form: { ...f, title: '', place: '', imp: false }, __ntTick: Date.now() }); return;
+        }
+        if (!isC && f.pcat === '최초접수') { this.ntSave([...this.ntRecs(), { id: 'r' + Date.now().toString(36), child: f.child, y: s.y, m: s.m, d: s.sel, time: f.time || '10:00', place: f.place || '', imp: !!f.imp, done: {} }]);
+          this.setState({ adding: false, form: { ...f, title: '', place: '', imp: false }, __ntTick: Date.now() }); return; }
         const ev = isC
           ? { y: s.y, m: s.m, d: s.sel, time: f.time || '10:00', t: 'c', title: `${f.child} · ${f.ctype}`, sub: f.place || '장소 미정', tag: '상담', imp: f.imp }
           : { y: s.y, m: s.m, d: s.sel, time: f.time || '10:00', t: 'p', title: f.title || f.pcat, sub: f.place ? `${f.pcat} · ${f.place}` : f.pcat, tag: f.pcat, imp: f.imp };

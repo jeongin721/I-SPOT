@@ -93,7 +93,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -441,6 +441,64 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+label:has(> .cp-btn){position:relative}
+
+.cp-btn{position:absolute;right:0;top:-5px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:8px;background:transparent;color:#7A776F;cursor:pointer}
+.cp-btn:hover{background:#EFECE5;color:#2B2A26}
+.cp-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:1px}
+.cp-btn .cp-ok{display:none}
+.cp-btn.done{color:#8A6D2F}
+.cp-btn.done .cp-i{display:none}
+.cp-btn.done .cp-ok{display:block}
+.thm-root.dark .cp-btn{color:#A8A296}
+.thm-root.dark .cp-btn:hover{background:#3A3833;color:#ECE8DF}
+.thm-root.dark .cp-btn.done{color:#EADBB5}
+.cp-menu{display:none;position:absolute;right:0;top:26px;z-index:30;flex-direction:column;min-width:168px;padding:4px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:10px;box-shadow:0 10px 24px rgba(43,42,38,.14)}
+label.cp-open > .cp-menu{display:flex}
+.cp-menu button{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:13px;color:#2B2A26;text-align:left;cursor:pointer;white-space:nowrap}
+.cp-menu button:hover,.cp-menu button:focus-visible{background:#F7F6F2;outline:none}
+.cp-ex{font-size:11.5px;color:#7A776F}
+.thm-root.dark .cp-menu{background:#2C2B27;border-color:#45423B;box-shadow:0 10px 24px rgba(0,0,0,.4)}
+.thm-root.dark .cp-menu button{color:#ECE8DF}
+.thm-root.dark .cp-menu button:hover,.thm-root.dark .cp-menu button:focus-visible{background:#33312C}
+.thm-root.dark .cp-ex{color:#A8A296}
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1880px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
@@ -464,7 +522,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
-<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <div><a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a></div>
 <nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
 <section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
@@ -478,7 +536,6 @@ section[aria-label="폴더"]{max-width:none !important}
 <nav class="tabs" aria-label="사례 상세 메뉴">
 <a href="CaseDetail.dc.html">내담자 정보</a>
 <a href="CaseHistory.dc.html">상담 이력</a>
-<a href="PreBriefing.dc.html">상담 전 브리핑</a>
 <a class="on" aria-current="page" href="CaseDocs.dc.html">문서함</a>
 </nav>
 <nav aria-label="위치" class="note" style="margin-top: -8px;"><a href="CaseDocs.dc.html">문서함</a> › 기관 서식 작성</nav>
@@ -505,7 +562,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </sc-for>
 <div class="grp">아동학대 위험수준별 개입 사정 척도</div>
 <div class="item" style="grid-template-columns: 1fr auto;"><span>위험요인 <b class="brn">{{ riskSum }}점</b> / 보호요인 <b class="brn">{{ protSum }}점</b> <span class="note">· {{ filled }}/43 입력</span></span><button type="button" class="btn btn-sm btn-s" onClick="{{ goC }}">척도 열기</button></div>
-<label style="display: flex; flex-direction: column; gap: 6px;"><b style="font-size: 14px;">담당자 소견</b><textarea class="ta2" placeholder="직접 작성"></textarea></label>
+<label style="display: flex; flex-direction: column; gap: 6px;"><b style="font-size: 14px;">담당자 소견</b><textarea class="ta2" placeholder="직접 작성"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;"><b style="font-size: 14px;">사정결과</b>
 <span class="opt3"><sc-for list="{{ resultOpts }}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{ o.pick }}" style="background: {{ o.bg }}; color: {{ o.fg }}; font-weight: {{ o.fw }}; box-shadow: {{ o.bd }};">{{ o.label }}</button></sc-for></span>
 <span class="note">상담원 판정</span></div>
@@ -525,8 +582,8 @@ section[aria-label="폴더"]{max-width:none !important}
 <span class="opt3" role="group" aria-label="{{ c.q }}"><sc-for list="{{ c.opts }}" as="o" hint-placeholder-count="2"><button type="button" onClick="{{ o.pick }}" style="background: {{ o.bg }}; color: {{ o.fg }}; font-weight: {{ o.fw }}; box-shadow: {{ o.bd }};">{{ o.label }}</button></sc-for></span>
 </div>
 </sc-for>
-<label style="display: flex; flex-direction: column; gap: 6px;"><span style="display: flex; gap: 8px; align-items: center;"><b style="font-size: 14px;">담당 상담원 소견</b><span class="chip c-ai" style="height: 20px; font-size: 11px;">AI 초안</span></span><textarea class="ta2">8회차(10/2)에 신체 학대 진술이 새로 나왔고, 체크인 QB-E-05 응답이 "없어"에서 "1번"으로 바뀌어 학대 위험이 감소했다고 보기 어려움. 보호자 부모교육은 2회 연속 결석함.</textarea></label>
-<label style="display: flex; flex-direction: column; gap: 6px;"><span style="display: flex; gap: 8px; align-items: center;"><b style="font-size: 14px;">추후 계획</b><span class="chip c-ai" style="height: 20px; font-size: 11px;">AI 초안</span></span><textarea class="ta2">재사정 실시 · 부모교육 일정 재조율(가정방문 시) · 등 · 팔 통증 의료 연계 여부 확인.</textarea></label>
+<label style="display: flex; flex-direction: column; gap: 6px;"><span style="display: flex; gap: 8px; align-items: center;"><b style="font-size: 14px;">담당 상담원 소견</b><span class="chip c-ai" style="height: 20px; font-size: 11px;">AI 초안</span></span><textarea class="ta2">8회차(10/2)에 신체 학대 진술이 새로 나왔고, 체크인 QB-E-05 응답이 "없어"에서 "1번"으로 바뀌어 학대 위험이 감소했다고 보기 어려움. 보호자 부모교육은 2회 연속 결석함.</textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
+<label style="display: flex; flex-direction: column; gap: 6px;"><span style="display: flex; gap: 8px; align-items: center;"><b style="font-size: 14px;">추후 계획</b><span class="chip c-ai" style="height: 20px; font-size: 11px;">AI 초안</span></span><textarea class="ta2">재사정 실시 · 부모교육 일정 재조율(가정방문 시) · 등 · 팔 통증 의료 연계 여부 확인.</textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
 </section>
 </sc-if>
 
@@ -591,18 +648,55 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  this._cpDoc = (e) => { if (e.type === 'keydown' && e.key !== 'Escape') return; if (e.type === 'mousedown' && e.target && e.target.closest && e.target.closest('.cp-btn, .cp-menu')) return; try { document.querySelectorAll('label.cp-open').forEach((x) => x.classList.remove('cp-open')); } catch (er) {} }; try { document.addEventListener('mousedown', this._cpDoc); document.addEventListener('keydown', this._cpDoc); } catch (e) {}
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this.formSync();
   this._thmT = setInterval(() => { this.formSync(); if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  try { document.removeEventListener('mousedown', this._cpDoc); document.removeEventListener('keydown', this._cpDoc); } catch (e) {}
+  clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
 }
+ntGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+ntSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+ntRecs() { try { const a = JSON.parse(this.ntGet('ispot-intake') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+ntSave(a) { this.ntSet('ispot-intake', JSON.stringify(a)); }
+ntTasks() { return [[3, '아동과 유선(전화) 상담'], [7, '아동 주변 인물 만남'], [30, '계획서 제출']]; }
+ntReadIds() { try { return JSON.parse(this.ntGet('ispot-noti-read') || '[]'); } catch (e) { return []; } }
+ntGo0() { let g = null; try { g = JSON.parse(this.ntGet('ispot-sched-go') || 'null'); } catch (e) {} if (!g || !g.t || Date.now() - g.t > 15000) return null; this.ntSet('ispot-sched-go', ''); return g; }
+ntVals() {
+  const recs = this.ntRecs(); const read = this.ntReadIds(); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const items = [];
+  recs.forEach((r) => this.ntTasks().forEach(([n, task]) => { if ((r.done || {})[n]) return; const due = new Date(r.y, r.m, r.d + n); const diff = Math.round((due - t0) / 86400000); const id = r.id + '-' + n;
+    items.push({ id, due, diff, unread: read.indexOf(id) < 0, title: r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (due.getMonth() + 1) + '/' + due.getDate() + '(' + days[due.getDay()] + ')까지', y: due.getFullYear(), m: due.getMonth(), d: due.getDate() }); }));
+  items.sort((a, b) => a.due - b.due);
+  const unread = items.filter((x) => x.unread).length; const open = !!(this.state && this.state.__ntOpen);
+  const markRead = (ids) => { const cur = this.ntReadIds(); this.ntSet('ispot-noti-read', JSON.stringify([...cur, ...ids.filter((i) => cur.indexOf(i) < 0)])); };
+  return {
+    ntOpen: open, ntExp: open ? 'true' : 'false', ntHasBadge: unread > 0, ntBadge: unread > 9 ? '9+' : String(unread),
+    ntLabel: unread > 0 ? '알림 ' + unread + '건 읽지 않음' : '알림',
+    ntSub: items.length ? '법정 기한 ' + items.length + '건' : '', ntEmpty: items.length === 0,
+    ntToggle: () => this.setState({ __ntOpen: !open }),
+    ntReadAll: () => { markRead(items.map((x) => x.id)); this.setState({ __ntTick: Date.now() }); },
+    ntItems: items.map((x) => ({ title: x.title, sub: x.sub, cls: x.unread ? 'unread' : 'read',
+      dd: x.diff < 0 ? '기한 지남' : x.diff === 0 ? '오늘 마감' : 'D-' + x.diff, ddCls: x.diff <= 0 ? 'urgent' : x.diff <= 2 ? 'soon' : '',
+      go: (e) => { markRead([x.id]); this.ntSet('ispot-sched-go', JSON.stringify({ y: x.y, m: x.m, d: x.d, t: Date.now() })); this.setState({ __ntOpen: false, __ntTick: Date.now() }); if (this.schedGo) { if (e && e.preventDefault) e.preventDefault(); this.ntSet('ispot-sched-go', ''); this.schedGo(x.y, x.m, x.d); } } }))
+  };
+}
+nmMask(t) { let r = String(t || ''); const F = ['장민준', '이서윤', '김도현', '박지호', '정예린', '최서준', '윤하은', '신유나', '강시우', '조하린']; F.forEach((n) => { r = r.split(n).join(n[0] + '○' + n.slice(2)); }); F.forEach((n) => { const g = n.slice(1); r = r.split(g).join(g[0] + '○'); }); return r; }
+cpDo(e, mask) { const l = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('label') : null; if (!l) return; l.classList.remove('cp-open'); const b = l.querySelector('.cp-btn'); const ta = l.querySelector('textarea'); if (!ta || !b) return; const t = mask ? this.nmMask(ta.value || '') : (ta.value || '');
+  const ok = () => { b.classList.add('done'); b.setAttribute('aria-label', mask ? '이름 가려서 복사됨' : '복사됨'); b.title = mask ? '이름 가려서 복사됨' : '복사됨'; clearTimeout(b._cpT); b._cpT = setTimeout(() => { b.classList.remove('done'); b.setAttribute('aria-label', '내용 복사'); b.title = '복사'; }, 1500); };
+  const fb = () => { try { const x = document.createElement('textarea'); x.value = t; x.setAttribute('readonly', ''); x.style.position = 'fixed'; x.style.left = '-9999px'; document.body.appendChild(x); x.select(); document.execCommand('copy'); document.body.removeChild(x); ok(); } catch (err) {} };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, fb); else fb(); } catch (err) { fb(); } }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'CaseForm.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, this.ntVals(), { copyMenu: (e) => { const l = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('label') : null; if (!l) return; const was = l.classList.contains('cp-open'); try { document.querySelectorAll('label.cp-open').forEach((x) => x.classList.remove('cp-open')); } catch (er) {} if (!was) l.classList.add('cp-open'); }, copyRaw: (e) => this.cpDo(e, false), copyMask: (e) => this.cpDo(e, true), jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'CaseForm.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 

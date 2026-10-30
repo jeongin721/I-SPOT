@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>I-SPOT 사례 상세 · 상담 전 브리핑</title>
+<title>I-SPOT 관리자 · 사례 목록</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -73,14 +73,31 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 .stp.on .sn{background:#2B2A26;color:#EADBB5}
 .stp.done .sn{background:#F2EFE8;color:#66625A}
 .ainote{font-size:12px;color:#7A776F;margin:0}
-
-.rq{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:14px;border:1px solid #E7E4DC;background:#FFFFFF}
-.rq input{width:18px;height:18px;margin-top:3px;accent-color:#2B2A26;flex:none}
-.src{display:block;font-size:12px;color:#7A776F}
+.grp{font-size:11px;font-weight:700;color:#98948B;padding:14px 14px 4px;letter-spacing:.04em}
+.kpi{padding:18px 20px;display:flex;flex-direction:column;gap:2px;text-decoration:none;color:#2B2A26}
+.kpi b{font-size:30px;line-height:1.2}
+.hb{display:grid;grid-template-columns:120px 1fr 92px;gap:10px;align-items:center;font-size:13px}
+.track{height:16px;border-radius:0 4px 4px 0;background:#F2EFE8;overflow:hidden}
+.track span{display:block;height:100%;border-radius:0 4px 4px 0;background:#C2A36B}
+.vb{display:flex;align-items:flex-end;gap:10px;height:200px;padding:0 4px;border-bottom:1px solid #DAD5C9}
+.vb .col{flex:1;min-width:0;display:flex;align-items:flex-end;justify-content:center;gap:4px;height:100%}
+.bx{flex:1;max-width:28px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:100%;font-size:11px;color:#66625A}
+.bx .b{width:100%;border-radius:4px 4px 0 0}
+.mini{height:8px;border-radius:4px;background:#F2EFE8;overflow:hidden}
+.mini span{display:block;height:100%;background:#C2A36B}
+.tbl tr:hover td{background:#F7F6F2}
+.lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#66625A}
+.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.stack{display:flex;height:24px;border-radius:6px;overflow:hidden;background:#F2EFE8}
+.stack span{display:block;height:100%}
+.warn{color:#A33B2E;font-weight:700}
+.fl{display:flex;flex-direction:column;gap:6px}
+.lb{font-size:13px;font-weight:500;color:#66625A}
+.nm{display:flex;align-items:center;gap:10px;text-decoration:none;color:#2B2A26;font-weight:500}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -202,9 +219,18 @@ h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weigh
 .thm-root.dark .stp.on .sn{background:#EADBB5 !important;color:#2B2A26 !important}
 .thm-root.dark .stp.done .sn{background:#393731 !important;color:#BDB7AA !important}
 .thm-root.dark .ainote{color:#A8A296 !important}
-.thm-root.dark .rq{border:1px solid #45423B !important;background:#2C2B27 !important}
-.thm-root.dark .rq input{accent-color:#D6D0C4 !important}
-.thm-root.dark .src{color:#A8A296 !important}
+.thm-root.dark .grp{color:#8E887C !important}
+.thm-root.dark .kpi{color:#ECE8DF !important}
+.thm-root.dark .track{background:#393731 !important}
+.thm-root.dark .vb{border-bottom:1px solid #4E4B44 !important}
+.thm-root.dark .bx{color:#BDB7AA !important}
+.thm-root.dark .mini{background:#393731 !important}
+.thm-root.dark .tbl tr:hover td{background:#33312C !important}
+.thm-root.dark .lg{color:#BDB7AA !important}
+.thm-root.dark .stack{background:#393731 !important}
+.thm-root.dark .warn{color:#F0907F !important}
+.thm-root.dark .lb{color:#BDB7AA !important}
+.thm-root.dark .nm{color:#ECE8DF !important}
 .thm-root.dark .mk{background:#EADBB5 !important;color:#2B2A26 !important}
 .thm-root.dark .cta{border:1px solid #D6D0C4 !important}
 .thm-root.dark .cta2{background:#2C2B27 !important;border:1.5px solid #D6D0C4 !important}
@@ -397,18 +423,6 @@ section[aria-label="폴더"]{max-width:none !important}
 [style*="border-radius: 24px"],[style*="border-radius: 22px"],[style*="border-radius: 20px"],[style*="border-radius: 18px"]{border-radius:14px !important}
 [style*="border-radius: 16px"]{border-radius:12px !important}
 @media (max-width:900px){.nav a.on,.side[aria-label="관리자 메뉴"]>a.on{border-radius:10px !important}.mnav-btn{border-radius:10px !important}}
-/* 상담 전 브리핑 · 먼저 볼 것 강조 */
-.card.lead{padding:26px 28px;display:flex;flex-direction:column;gap:10px;min-height:190px}
-.lead-tag{align-self:flex-start;display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;background:#2B2A26;color:#EADBB5;font-size:13px;font-weight:700}
-.lead-q{font-size:14px;color:#66625A;margin-top:4px}
-.lead-main{font-size:22px;font-weight:700;line-height:1.45;color:#2B2A26;flex:1}
-.lead-arrow{color:#A33B2E;margin:0 4px}
-.lead .src{font-size:12.5px}
-.rq{padding:14px 18px;font-size:15px}
-.thm-root.dark .lead-tag{background:#EADBB5 !important;color:#2B2A26 !important}
-.thm-root.dark .lead-q{color:#B5AFA3 !important}
-.thm-root.dark .lead-main{color:#ECE8DF !important}
-.thm-root.dark .lead-arrow{color:#F0907F !important}
 /* 분석 알림 (녹취 올리기 후 화면 상단) */
 .job-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:90;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:12px;background:#2B2A26;color:#EADBB5;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 10px 28px rgba(43,42,38,.28);animation:jobIn .3s ease;transition:transform .45s ease,opacity .45s ease}
 .job-toast.out{transform:translate(-50%,-180%);opacity:0}
@@ -421,82 +435,70 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+.ac-lb{display:inline-flex;align-items:center;padding:0 8px 0 12px;font-size:13px;font-weight:700;color:#66625A}
+.thm-root.dark .ac-lb{color:#BDB7AA}
 </style>
 </helmet>
-<div class="{{ themeCls }}" style="min-height: 1550px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
+<div class="{{ themeCls }}" style="min-height: 1100px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
 <sc-if value="{{ jobShow }}" hint-placeholder-val="{{ false }}"><div class="job-toast {{ jobCls }}" role="status" aria-live="polite"><sc-if value="{{ jobRun }}" hint-placeholder-val="{{ true }}"><span class="job-spin" aria-hidden="true"></span><span>분석 중입니다...</span><span class="job-file">{{ jobName }}</span></sc-if><sc-if value="{{ jobDone }}" hint-placeholder-val="{{ false }}"><span class="job-ok" aria-hidden="true">✓</span><span>분석 완료</span><a class="job-go" href="SttReview.dc.html" onClick="{{ jobGo }}">검수</a></sc-if></div></sc-if>
 <aside class="side" aria-label="주 메뉴">
-<a class="logo" href="Main.dc.html"><span class="mk">IS</span><b style="font-size: 17px;">I-SPOT</b></a>
+<a class="logo" href="AdminHome.dc.html"><span class="mk">IS</span><b style="font-size: 17px;">I-SPOT</b><span class="chip c-normal" style="margin-left: 2px;">관리자</span></a>
 <input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
-<a class="cta" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 · 자료 올리기</a>
-<a class="cta2" href="CaseRegister.dc.html" onClick="{{ markBack }}">+ 새 사례 등록</a>
-<nav class="nav" aria-label="메뉴">
-<a href="Main.dc.html">홈</a>
-<a class="on" href="CaseList.dc.html">사례 관리</a>
-<a href="Schedule.dc.html">일정</a>
-<a href="ChildLink.dc.html">아이 연계<span class="cnt">4</span></a>
-<a href="Closure.dc.html">종결 검토<span class="cnt">2</span></a>
-<a href="DocBox.dc.html">문서함</a>
-<a href="LawGuide.dc.html">법령 · 매뉴얼</a>
-<a href="Stats.dc.html">통계</a>
-<a href="Settings.dc.html">설정</a>
+<nav class="nav" aria-label="관리자 메뉴">
+<a href="AdminHome.dc.html">홈</a>
+<a class="on" href="AdminCases.dc.html">사례 목록</a>
+<a href="AdminApp.dc.html">아이 연계 앱 관리<span class="cnt">2</span></a>
+<a href="AdminAccounts.dc.html">상담사 계정 관리</a>
+<a href="AdminViewLog.dc.html">열람 기록</a>
+<a href="AdminSecurity.dc.html">접속 기록 · 보안 이벤트<span class="cnt">3</span></a>
+<a href="AdminStats.dc.html">통계 · 보고</a>
 </nav>
-<div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
+<div class="me"><span class="av">김</span><b style="font-weight: 500;">김민준 관리자</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
 <div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
-<nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
-<section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
-<a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a>
-<div style="flex: 1 1 320px;">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h1 style="margin: 0; font-size: 28px; font-weight: 700;">이서윤</h1><span class="sub">13세 · 중1</span><span class="chip c-hi">위험도 상</span></div>
-<div class="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
-</div>
-<a class="btn btn-s" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 올리기</a>
-</section>
-<nav class="tabs" aria-label="사례 상세 메뉴">
-<a href="CaseDetail.dc.html">내담자 정보</a>
-<a href="CaseHistory.dc.html">상담 이력</a>
-<a class="on" aria-current="page" href="PreBriefing.dc.html">상담 전 브리핑</a>
-<a href="CaseDocs.dc.html">문서함</a>
-</nav>
-<section style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 20px;">
-<div style="flex: 1 1 380px;">
-<div class="sub">오늘 16:00 · 9회차 정기상담 · 면담실 B</div>
-<h2 style="margin: 2px 0 0; font-size: 22px; font-weight: 700;">상담 전 브리핑</h2>
-</div>
-<button type="button" class="btn btn-s">인쇄 · PDF</button>
+<header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px;">
+<div style="flex: 1 1 260px;"><div class="sub">상담원별 담당 사례 전체</div><h1 style="margin: 2px 0 0; font-size: 28px; font-weight: 700;">사례 목록</h1></div>
+</header>
+
+<section aria-label="사례 요약" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+<sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4"><div class="card kpi" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 2px; box-shadow: {{ k.bar }};"><span class="sub">{{ k.label }}</span><b style="font-size: 28px; line-height: 1.2; color: {{ k.fg }};">{{ k.v }}</b><span class="note">{{ k.note }}</span></div></sc-for>
 </section>
 
-<section aria-label="먼저 볼 것" style="display: flex; flex-direction: column; gap: 14px;">
-<h2 class="h2">먼저 볼 것</h2>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px;">
-<div class="card lead"><span class="lead-tag">아이가 보낸 말</span><b class="lead-main">"다음 상담 때 말할 게 있어요"</b><span class="src">10/7 22:10 · 아이 앱</span></div>
-<div class="card lead"><span class="lead-tag">체크인 응답 변화</span><span class="lead-q">겁을 준 적 있어?</span><b class="lead-main">없어 <span class="lead-arrow">→</span> 1번</b><span class="src">10/6 · QB-E-05</span></div>
-<div class="card lead"><span class="lead-tag">처음 나온 이야기</span><span class="lead-q">식사 · 돌봄</span><b class="lead-main">"밥도 안 줄 때가 있어요"</b><span class="src">8회차 02:15 · 화자 확인 중</span></div>
+<section style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;">
+<input class="inp" type="search" aria-label="아동 이름 또는 사례 ID 검색" placeholder="아동 이름 · 사례 ID 검색" value="{{ q }}" onChange="{{ setQ }}" style="flex: 1 1 240px;">
+<div role="group" aria-label="위험도" class="seg"><sc-for list="{{ riskF }}" as="f" hint-placeholder-count="4"><button type="button" class="{{ f.cls }}" aria-pressed="{{ f.pressed }}" onClick="{{ f.pick }}">{{ f.label }}</button></sc-for></div>
+<div role="group" aria-label="정렬" class="seg"><span class="ac-lb">정렬</span><sc-for list="{{ sortF }}" as="f" hint-placeholder-count="3"><button type="button" class="{{ f.cls }}" aria-pressed="{{ f.pressed }}" onClick="{{ f.pick }}">{{ f.label }}</button></sc-for></div>
 </div>
+<div role="group" aria-label="담당 상담원" class="seg" style="align-self: flex-start;"><sc-for list="{{ staffF }}" as="f" hint-placeholder-count="6"><button type="button" class="{{ f.cls }}" aria-pressed="{{ f.pressed }}" onClick="{{ f.pick }}">{{ f.label }}</button></sc-for></div>
 </section>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px;">
-<section class="card" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 12px;">
-<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">확인할 사항</h2></div>
-<label class="rq"><input type="checkbox" checked><span>등 · 팔 통증 치료 여부<span class="src">근거 · 8회차 01:08</span></span></label>
-<label class="rq"><input type="checkbox" checked><span>02:15 발화 화자 · 식사 상황<span class="src">근거 · 8회차 02:15</span></span></label>
-<label class="rq"><input type="checkbox"><span>아이가 꺼내고 싶은 이야기부터<span class="src">근거 · 10/7 아이 메시지</span></span></label>
+<section class="card" aria-label="사례 목록" style="overflow-x: auto;">
+<table class="tbl" style="min-width: 980px;">
+<thead><tr><th scope="col">사례 ID</th><th scope="col">아동</th><th scope="col">담당 상담원</th><th scope="col">위험도</th><th scope="col">신고접수일</th><th scope="col">관리 기간</th><th scope="col">최근 상담</th><th scope="col">진행 단계</th></tr></thead>
+<tbody>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+<tr>
+<td class="note">{{ r.id }}</td>
+<td><span class="nm" style="cursor: default;"><span class="av" style="width: 34px; height: 34px; font-size: 13px;">{{ r.ini }}</span><span>{{ r.name }} <span class="note">{{ r.age }}</span></span></span></td>
+<td><a href="AdminStaffDetail.dc.html" onClick="{{ r.pick }}">{{ r.who }}</a></td>
+<td><span class="{{ r.rCls }}">{{ r.risk }}</span></td>
+<td>{{ r.date }}</td>
+<td>{{ r.period }}</td>
+<td>{{ r.last }}</td>
+<td><span class="{{ r.stCls }}">{{ r.stage }}</span></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+<sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}"><p class="note" style="margin: 0; padding: 22px; text-align: center;">조건에 맞는 사례가 없어요.</p></sc-if>
 </section>
-<section class="card" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 12px;">
-<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">추가 질문</h2><span class="chip c-ai">AI 초안</span><a href="FollowupQ.dc.html" style="margin-left: auto; font-size: 13px;">질문 수정</a></div>
-<div class="rq"><span class="chip c-normal">열린 질문</span><span>"등이랑 팔이 아팠던 건 지금은 어때? 누가 봐 준 적 있어?"</span></div>
-<div class="rq"><span class="chip c-normal">열린 질문</span><span>"그 이야기를 하면 어떤 일이 생길 것 같아?"</span></div>
-<div class="rq"><span class="chip c-normal">QB-N-01</span><span>"요즘 밥은 주로 어떻게 먹어?"</span></div>
-</section>
-</div>
-
-<p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+<p class="note" style="margin: -8px 0 0;">{{ countLabel }}</p>
 </main>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1550}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
 class Component extends DCLogic {
 themeRead() {
   const K = 'ispot-theme'; let v = null;
@@ -527,11 +529,63 @@ componentWillUnmount() {
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'PreBriefing.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-renderValsBase() { return {}; }
+constructor(props) { super(props); this.state = { who: 'all', risk: 'all', sort: 'date', q: '' }; }
+renderValsBase() {
+  const s = this.state;
+  const segOf = (key, cur, opts) => opts.map(([v, l]) => ({ label: l, cls: cur === v ? 'on' : '', pressed: cur === v ? 'true' : 'false', pick: () => this.setState({ [key]: v }) }));
+  const TODAY = Date.parse('2026-10-15');
+  const STAFF = [['이서연', 'lee.seoyeon', '2026-10-15 09:14', '192.168.1.12', true], ['정다은', 'jung.daeun', '2026-10-15 09:01', '192.168.1.8', true], ['한승호', 'han.seungho', '2026-10-15 08:52', '192.168.1.21', true], ['박지훈', 'park.jihoon', '2026-10-14 22:03', '211.36.142.9', true], ['오유진', 'oh.yujin', '2026-09-12 17:30', '192.168.1.30', false]];
+  // [사례 ID, 이름, 나이, 담당, 위험도, 신고접수일, 최근 상담, 진행 단계]
+  const C = [
+    ['C-2026-0277', '장민준', 9, '이서연', '상', '2026-06-02', '10/13', 'ing'], ['C-2026-0351', '이서윤', 13, '이서연', '상', '2026-07-28', '10/08', 'ing'],
+    ['C-2026-0412', '김도현', 8, '이서연', '상', '2026-08-19', '10/06', 'ing'], ['C-2026-0389', '박지호', 11, '이서연', '중', '2026-09-03', '10/08', 'ing'],
+    ['C-2026-0338', '정예린', 9, '이서연', '중', '2026-08-05', '10/07', 'ing'], ['C-2026-0374', '최서준', 6, '이서연', '중', '2026-09-25', '10/08', 'ing'],
+    ['C-2026-0298', '윤하은', 10, '이서연', '중', '2026-06-20', '10/13', 'ing'], ['C-2026-0229', '신유나', 8, '이서연', '하', '2026-05-14', '10/02', 'ing'],
+    ['C-2026-0312', '강시우', 7, '이서연', '하', '2026-04-08', '10/14', 'close'], ['C-2026-0251', '조하린', 14, '이서연', '하', '2026-05-30', '10/15', 'close'],
+    ['C-2026-0418', '한준서', 12, '정다은', '상', '2026-09-22', '10/14', 'ing'], ['C-2026-0425', '홍지안', 7, '정다은', '중', '2026-10-06', '10/10', 'new'],
+    ['C-2026-0347', '송태오', 9, '정다은', '중', '2026-07-21', '10/07', 'ing'], ['C-2026-0361', '김서아', 5, '정다은', '중', '2026-08-11', '10/09', 'ing'],
+    ['C-2026-0302', '이주원', 11, '정다은', '하', '2026-06-24', '10/01', 'ing'], ['C-2026-0244', '박하율', 13, '정다은', '하', '2026-05-22', '10/12', 'close'],
+    ['C-2026-0395', '최지율', 8, '정다은', '상', '2026-09-08', '10/13', 'ing'], ['C-2026-0326', '정우진', 15, '정다은', '중', '2026-07-30', '10/02', 'ing'],
+    ['C-2026-0218', '강예준', 10, '정다은', '하', '2026-05-06', '09/29', 'ing'],
+    ['C-2026-0402', '오하준', 8, '한승호', '상', '2026-09-30', '10/13', 'ing'], ['C-2026-0359', '문로아', 6, '한승호', '중', '2026-08-20', '10/06', 'ing'],
+    ['C-2026-0431', '노은우', 10, '한승호', '중', '2026-10-09', '10/11', 'new'], ['C-2026-0285', '윤채원', 12, '한승호', '하', '2026-06-12', '10/05', 'ing'],
+    ['C-2026-0408', '장시현', 9, '한승호', '상', '2026-09-26', '10/14', 'ing'], ['C-2026-0333', '임건우', 14, '한승호', '중', '2026-08-02', '10/08', 'ing'],
+    ['C-2026-0267', '한지유', 7, '한승호', '하', '2026-06-05', '10/10', 'ing'], ['C-2026-0236', '오서진', 11, '한승호', '하', '2026-05-19', '10/13', 'close'],
+    ['C-2026-0381', '신태윤', 5, '한승호', '중', '2026-08-28', '10/09', 'ing'], ['C-2026-0414', '권나은', 13, '한승호', '중', '2026-09-24', '10/12', 'ing'],
+    ['C-2026-0273', '황이안', 8, '한승호', '하', '2026-06-09', '10/01', 'ing'],
+    ['C-2026-0366', '임소율', 10, '박지훈', '상', '2026-08-26', '10/14', 'ing'], ['C-2026-0384', '배다온', 7, '박지훈', '중', '2026-08-30', '10/04', 'ing'],
+    ['C-2026-0428', '남다인', 9, '박지훈', '중', '2026-10-08', '10/13', 'new'], ['C-2026-0309', '안도윤', 12, '박지훈', '하', '2026-07-03', '10/07', 'ing'],
+    ['C-2026-0354', '송하람', 6, '박지훈', '중', '2026-08-13', '10/10', 'ing'], ['C-2026-0291', '류민서', 15, '박지훈', '하', '2026-06-17', '10/08', 'ing'],
+    ['C-2026-0399', '전유찬', 11, '박지훈', '상', '2026-09-15', '10/14', 'ing'], ['C-2026-0257', '고은서', 8, '박지훈', '하', '2026-06-01', '10/02', 'close'],
+    ['C-2026-0377', '서시아', 9, '오유진', '중', '2026-08-18', '09/11', 'move'], ['C-2026-0342', '문지후', 12, '오유진', '중', '2026-07-24', '09/09', 'move'],
+    ['C-2026-0318', '양서하', 7, '오유진', '하', '2026-07-08', '09/04', 'move'], ['C-2026-0393', '손라온', 10, '오유진', '상', '2026-09-05', '09/10', 'move']
+  ];
+  const ST = { ing: ['사례관리 진행', 'chip c-normal'], new: ['초기 조사', 'chip c-mid'], close: ['종결 검토', 'chip c-check'], move: ['재배정 필요', 'chip c-urgent'] };
+  const RC = { '상': 'chip c-hi', '중': 'chip c-mid', '하': 'chip c-lo' }; const RK = { '상': 0, '중': 1, '하': 2 };
+  const period = (d) => { const days = Math.round((TODAY - Date.parse(d)) / 864e5); if (days < 30) return days + '일'; const m = Math.max(1, Math.floor(days / 30.44)); return m >= 12 ? '1년 ' + (m - 12) + '개월' : m + '개월'; };
+  const q = (s.q || '').trim();
+  let list = C.filter((c) => (s.who === 'all' || c[3] === s.who) && (s.risk === 'all' || c[4] === s.risk) && (!q || c[1].indexOf(q) >= 0 || c[0].indexOf(q) >= 0));
+  list = list.slice().sort((a, b) => s.sort === 'risk' ? (RK[a[4]] - RK[b[4]] || b[5].localeCompare(a[5])) : s.sort === 'long' ? a[5].localeCompare(b[5]) : b[5].localeCompare(a[5]));
+  const remember = (st) => { const o = { name: st[0], uid: st[1], cases: String(C.filter((c) => c[3] === st[0]).length) + (st[4] ? '' : ' · 재배정 필요'), last: st[2], ip: st[3], on: st[4] }; const v = JSON.stringify(o); try { window.localStorage.setItem('ispot-staff', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-staff', v); } catch (e) {} try { window.top.__ispotStaff = v; } catch (e) {} window.__ispotStaff = v; };
+  const rows = list.map((c) => { const st = STAFF.find((x) => x[0] === c[3]);
+    return { id: c[0], name: c[1], ini: c[1].slice(0, 1), age: c[2] + '세', who: c[3], risk: c[4], rCls: RC[c[4]], date: c[5], period: period(c[5]), last: c[6], stage: ST[c[7]][0], stCls: ST[c[7]][1], pick: () => remember(st) }; });
+  const hi = C.filter((c) => c[4] === '상').length, cl = C.filter((c) => c[7] === 'close').length, mv = C.filter((c) => c[7] === 'move').length;
+  return { rows, empty: rows.length === 0, q: s.q, setQ: (e) => this.setState({ q: e.target.value }),
+    kpis: [
+      { label: '전체 사례', v: C.length + '건', note: '상담원 ' + STAFF.length + '명 담당', fg: 'inherit', bar: '' },
+      { label: '위험도 상', v: hi + '건', note: '전체의 ' + Math.round(hi / C.length * 100) + '%', fg: '#A33B2E', bar: 'inset 0 4px 0 #A33B2E' },
+      { label: '종결 검토', v: cl + '건', note: '종결 평가 대상', fg: 'inherit', bar: '' },
+      { label: '재배정 필요', v: mv + '건', note: '담당 상담원 비활성', fg: 'inherit', bar: '' }
+    ],
+    staffF: segOf('who', s.who, [['all', '전체 ' + C.length]].concat(STAFF.map((x) => [x[0], x[0] + ' ' + C.filter((c) => c[3] === x[0]).length]))),
+    riskF: segOf('risk', s.risk, [['all', '전체'], ['상', '상'], ['중', '중'], ['하', '하']]),
+    sortF: segOf('sort', s.sort, [['date', '최근 접수'], ['risk', '위험도'], ['long', '관리 기간']]),
+    countLabel: '사례 ' + rows.length + '건 표시 · 2026-10-15 기준' };
+}
 }
 </script>
 </body>

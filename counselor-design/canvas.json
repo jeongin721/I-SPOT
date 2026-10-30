@@ -1,552 +1,605 @@
 {
- "v": 3,
- "attachments": {},
- "boards": {
-  "CaseApp.dc.html": {
-   "expand": "fill",
-   "h": 1650,
-   "is_interactive": true,
-   "title": "탭 4 · 아이 연계 (아이 상세와 같은 화면)",
-   "w": 1440,
-   "x": 6080,
-   "y": 4800
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "AdminAccounts.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 상담사 계정 관리 (생성 · 목록 → 상세)",
+      "w": 1440,
+      "x": 4560,
+      "y": 13000
+    },
+    "AdminApp.dc.html": {
+      "expand": "fill",
+      "h": 1500,
+      "is_interactive": true,
+      "title": "관리자 · 아이 연계 앱 관리 (연결 현황 · 장기 무응답)",
+      "w": 1440,
+      "x": 3040,
+      "y": 13000
+    },
+    "AdminCases.dc.html": {
+      "expand": "fill",
+      "h": 1500,
+      "is_interactive": true,
+      "title": "관리자 · 사례 목록 (상담원별 담당 사례 전체 · 위험도 · 관리 기간)",
+      "w": 1440,
+      "x": 1520,
+      "y": 13000
+    },
+    "AdminHome.dc.html": {
+      "expand": "fill",
+      "h": 1820,
+      "is_interactive": true,
+      "title": "관리자 · 홈 (긴급 알림 현황 · 최근 접속 활동 · 상담원별 업무량)",
+      "w": 1440,
+      "x": 0,
+      "y": 13000
+    },
+    "AdminSecurity.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 접속 기록 · 보안 이벤트",
+      "w": 1440,
+      "x": 7600,
+      "y": 13000
+    },
+    "AdminStaffDetail.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "관리자 · 상담사 상세 (마이페이지 정보 · 접속 정보 · 알림 설정)",
+      "w": 1440,
+      "x": 10640,
+      "y": 13000
+    },
+    "AdminStats.dc.html": {
+      "expand": "fill",
+      "h": 2400,
+      "is_interactive": true,
+      "title": "관리자 · 통계 · 보고 (기관 단위)",
+      "w": 1440,
+      "x": 9120,
+      "y": 13000
+    },
+    "AdminViewLog.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 열람 기록 (실명 보기 · 녹취)",
+      "w": 1440,
+      "x": 6080,
+      "y": 13000
+    },
+    "CaseApp.dc.html": {
+      "expand": "fill",
+      "h": 1650,
+      "is_interactive": true,
+      "title": "탭 4 · 아이 연계 (아이 상세와 같은 화면)",
+      "w": 1440,
+      "x": 4560,
+      "y": 4800
+    },
+    "CaseDetail.dc.html": {
+      "expand": "fill",
+      "h": 1960,
+      "is_interactive": true,
+      "title": "탭 1 · 내담자 정보 + 상담 전 브리핑 + 기관 서식 + 종결 검토 등록",
+      "w": 1440,
+      "x": 0,
+      "y": 4800
+    },
+    "CaseDocs.dc.html": {
+      "expand": "fill",
+      "h": 1350,
+      "is_interactive": true,
+      "title": "탭 5 · 문서함 (기관 서식 6종 + 파일)",
+      "w": 1440,
+      "x": 6080,
+      "y": 4800
+    },
+    "CaseForm.dc.html": {
+      "expand": "fill",
+      "h": 1880,
+      "is_interactive": true,
+      "title": "탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)",
+      "w": 1440,
+      "x": 7600,
+      "y": 4800
+    },
+    "CaseHistory.dc.html": {
+      "expand": "fill",
+      "h": 1550,
+      "is_interactive": true,
+      "title": "탭 2 · 상담 이력 (① 지금까지 상담 → ② 상담 회차 → ③ 회차별 세부 신호)",
+      "w": 1440,
+      "x": 1520,
+      "y": 4800
+    },
+    "CaseIntake.dc.html": {
+      "expand": "fill",
+      "h": 1900,
+      "is_interactive": true,
+      "title": "탭 5 › 초기면접지 (아동용) · 서식 4 (문서함에서 열기)",
+      "w": 1440,
+      "x": 9120,
+      "y": 4800
+    },
+    "CaseList.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)",
+      "w": 1440,
+      "x": 0,
+      "y": 2450
+    },
+    "CaseRegister.dc.html": {
+      "expand": "fill",
+      "h": 1700,
+      "is_interactive": true,
+      "title": "새 사례 등록 (팝업 · 서식 4 초기면접지)",
+      "w": 1440,
+      "x": 1520,
+      "y": 2450
+    },
+    "ChildAnswers.dc.html": {
+      "expand": "fill",
+      "h": 1400,
+      "is_interactive": true,
+      "title": "아이 연계 › 아이 상세 › 과거 답변 기록 (문항별 · 날짜별)",
+      "w": 1440,
+      "x": 7600,
+      "y": 0
+    },
+    "ChildDetail.dc.html": {
+      "expand": "fill",
+      "h": 1600,
+      "is_interactive": true,
+      "title": "아이 연계 › 아이 상세 (아이가 쓴 글 · 질문과 답 · 확인할 답변 · 추가 질문)",
+      "w": 1440,
+      "x": 6080,
+      "y": 0
+    },
+    "ChildLink.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태)",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "Closure.dc.html": {
+      "expand": "fill",
+      "h": 640,
+      "is_interactive": true,
+      "title": "종결 검토 · 대상 아동 목록",
+      "w": 1440,
+      "x": 0,
+      "y": 10100
+    },
+    "ClosureDetail.dc.html": {
+      "expand": "fill",
+      "h": 2250,
+      "is_interactive": true,
+      "title": "종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안)",
+      "w": 1440,
+      "x": 3040,
+      "y": 10100
+    },
+    "ClosureReview.dc.html": {
+      "expand": "fill",
+      "h": 2300,
+      "is_interactive": true,
+      "title": "종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로)",
+      "w": 1440,
+      "x": 1520,
+      "y": 10100
+    },
+    "DocBox.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "문서함 (폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)",
+      "w": 1440,
+      "x": 7600,
+      "y": 10100
+    },
+    "FollowupQ.dc.html": {
+      "expand": "fill",
+      "h": 1550,
+      "is_interactive": true,
+      "title": "4 · 다음 상담 준비 (모두 승인 / 수정 가능)",
+      "w": 1440,
+      "x": 7600,
+      "y": 7400
+    },
+    "Landing.dc.html": {
+      "expand": "fill",
+      "h": 1400,
+      "is_interactive": true,
+      "title": "시작 화면 (랜딩)",
+      "w": 1440,
+      "x": -1520,
+      "y": 0
+    },
+    "LawGuide.dc.html": {
+      "expand": "fill",
+      "h": 1700,
+      "is_interactive": true,
+      "title": "법령 · 매뉴얼 (AI 질문 · 업무 단계별 참고사항 · 원문 자료)",
+      "w": 1440,
+      "x": 9120,
+      "y": 10100
+    },
+    "Login.dc.html": {
+      "expand": "fill",
+      "h": 720,
+      "is_interactive": true,
+      "title": "로그인",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 1060,
+      "is_interactive": true,
+      "title": "홈 (대시보드)",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "NoteWrite.dc.html": {
+      "expand": "fill",
+      "h": 2000,
+      "is_interactive": true,
+      "title": "3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식)",
+      "w": 1440,
+      "x": 6080,
+      "y": 7400
+    },
+    "PhoneAdminHome.dc.html": {
+      "h": 2400,
+      "is_interactive": true,
+      "title": "휴대폰 · 관리자 홈",
+      "w": 390,
+      "x": 2350,
+      "y": 16000
+    },
+    "PhoneCaseDetail.dc.html": {
+      "h": 3400,
+      "is_interactive": true,
+      "title": "휴대폰 · 사례 상세 · 내담자 정보 + 상담 전 브리핑",
+      "w": 390,
+      "x": 1410,
+      "y": 16000
+    },
+    "PhoneCaseList.dc.html": {
+      "h": 1140,
+      "is_interactive": true,
+      "title": "휴대폰 · 통합 사례 관리",
+      "w": 390,
+      "x": 940,
+      "y": 16000
+    },
+    "PhoneLogin.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "휴대폰 · 로그인",
+      "w": 390,
+      "x": 0,
+      "y": 16000
+    },
+    "PhoneMain.dc.html": {
+      "h": 2220,
+      "is_interactive": true,
+      "title": "휴대폰 · 홈",
+      "w": 390,
+      "x": 470,
+      "y": 16000
+    },
+    "PhoneSttReview.dc.html": {
+      "h": 3300,
+      "is_interactive": true,
+      "title": "휴대폰 · 기록 확인",
+      "w": 390,
+      "x": 1880,
+      "y": 16000
+    },
+    "Schedule.dc.html": {
+      "expand": "fill",
+      "h": 1200,
+      "is_interactive": true,
+      "title": "일정 · 월간 달력 + 일정 추가",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "SessionDetail.dc.html": {
+      "expand": "fill",
+      "h": 950,
+      "is_interactive": true,
+      "title": "탭 2 › 회차 상세 (1~4단계 처리로 바로 가기)",
+      "w": 1440,
+      "x": 3040,
+      "y": 4800
+    },
+    "Settings.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "is_interactive": true,
+      "title": "설정 · 계정 / 알림 설정",
+      "w": 1440,
+      "x": 6080,
+      "y": 10100
+    },
+    "SignalReview.dc.html": {
+      "expand": "fill",
+      "h": 1900,
+      "is_interactive": true,
+      "title": "2 · 학대 신호 확인 (AI 제안 · 심각도 1~5 · 상담원 판단)",
+      "w": 1440,
+      "x": 3040,
+      "y": 7400
+    },
+    "Stats.dc.html": {
+      "expand": "fill",
+      "h": 1990,
+      "is_interactive": true,
+      "title": "통계 (기간 직접 선택 · 원형 · 가로/세로 막대 · 표)",
+      "w": 1440,
+      "x": 4560,
+      "y": 10100
+    },
+    "SttReview.dc.html": {
+      "expand": "fill",
+      "h": 2500,
+      "is_interactive": true,
+      "title": "1 · 기록 확인 + 위험 신호 (화자: 피해아동 · 사례관리대상자 · 상담원)",
+      "w": 1440,
+      "x": 1520,
+      "y": 7400
+    },
+    "TabletAdminHome.dc.html": {
+      "h": 2120,
+      "is_interactive": true,
+      "title": "태블릿 · 관리자 홈",
+      "w": 820,
+      "x": 4500,
+      "y": 19000
+    },
+    "TabletCaseDetail.dc.html": {
+      "h": 2250,
+      "is_interactive": true,
+      "title": "태블릿 · 사례 상세 · 내담자 정보 + 상담 전 브리핑",
+      "w": 820,
+      "x": 2700,
+      "y": 19000
+    },
+    "TabletCaseList.dc.html": {
+      "h": 1040,
+      "is_interactive": true,
+      "title": "태블릿 · 통합 사례 관리",
+      "w": 820,
+      "x": 1800,
+      "y": 19000
+    },
+    "TabletLogin.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "태블릿 · 로그인",
+      "w": 820,
+      "x": 0,
+      "y": 19000
+    },
+    "TabletMain.dc.html": {
+      "h": 1900,
+      "is_interactive": true,
+      "title": "태블릿 · 홈",
+      "w": 820,
+      "x": 900,
+      "y": 19000
+    },
+    "TabletSttReview.dc.html": {
+      "h": 2340,
+      "is_interactive": true,
+      "title": "태블릿 · 기록 확인",
+      "w": 820,
+      "x": 3600,
+      "y": 19000
+    },
+    "UploadModal.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "녹취 · 자료 올리기 (팝업 3단계 + 확인창)",
+      "w": 1440,
+      "x": 0,
+      "y": 7400
+    },
+    "AppSchedule.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "앱 · 일정 (시작 화면 /app · 오늘 상담 → 브리핑 · 녹음 / 일정 추가 · 수정 · 삭제)",
+      "w": 390,
+      "x": 0,
+      "y": 22000
+    },
+    "AppBrief.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "앱 · 상담 전 브리핑 (읽기 전용 · 확인할 사항 체크)",
+      "w": 390,
+      "x": 470,
+      "y": 22000
+    },
+    "AppRecord.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "앱 · 녹음 (아이 · 회차 선택 → 녹음 → 저장하고 올리기)",
+      "w": 390,
+      "x": 940,
+      "y": 22000
+    },
+    "AppUpload.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "앱 · 업로드 (사진 찍기 · 파일 선택 · 실패 시 다시 올리기)",
+      "w": 390,
+      "x": 1410,
+      "y": 22000
+    },
+    "AppMemo.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "앱 · 메모 (작성 · 수정 · 삭제)",
+      "w": 390,
+      "x": 1880,
+      "y": 22000
+    }
   },
-  "CaseDetail.dc.html": {
-   "expand": "fill",
-   "h": 1350,
-   "is_interactive": true,
-   "title": "탭 1 · 내담자 정보 + 기관 서식 + 종결 검토 등록",
-   "w": 1440,
-   "x": 0,
-   "y": 4800
+  "createdOnFiles": {
+    "at": "2026-10-07T02:10:00Z",
+    "v": 1
   },
-  "CaseDocs.dc.html": {
-   "expand": "fill",
-   "h": 1350,
-   "is_interactive": true,
-   "title": "탭 5 · 문서함 (기관 서식 6종 + 파일)",
-   "w": 1440,
-   "x": 7600,
-   "y": 4800
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
   },
-  "CaseForm.dc.html": {
-   "expand": "fill",
-   "h": 1880,
-   "is_interactive": true,
-   "title": "탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)",
-   "w": 1440,
-   "x": 9120,
-   "y": 4800
+  "notes": {
+    "rowA": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "① 하루 시작 · 로그인 → 홈 → 일정 → 아이 연계 → 아이 상세 → 과거 답변 기록",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "rowB": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "② 사례 관리 · 통합 목록 → 새 사례 등록",
+      "w": 240,
+      "x": 0,
+      "y": 2150
+    },
+    "rowC": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "③ 사례 상세 · 탭 4개 (내담자 정보 + 상담 전 브리핑 · 상담 이력 · 아이 연계 · 문서함) + 기관 서식 작성",
+      "w": 240,
+      "x": 0,
+      "y": 4500
+    },
+    "rowD": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "④ 회차 처리 · 녹취 올리기 → 기록 확인 · 위험 신호 → 학대 신호 확인 → 상담일지 작성 → 다음 상담 준비",
+      "w": 240,
+      "x": 0,
+      "y": 7100
+    },
+    "rowE": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 문서함 · 법령 · 매뉴얼",
+      "w": 240,
+      "x": 0,
+      "y": 9800
+    },
+    "rowF": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "⑥ 관리자 · 로그인(관리자 선택) → 홈 → 사례 목록 → 아이 연계 앱 관리 → 상담사 계정 관리 → 열람 기록 → 접속 · 보안 → 통계 · 보고 → 상담사 상세",
+      "w": 240,
+      "x": 0,
+      "y": 12700
+    },
+    "rowG": {
+      "kind": "title1",
+      "maxW": 2740,
+      "text": "⑦ 휴대폰 (390px) · 대표 화면",
+      "w": 240,
+      "x": 0,
+      "y": 15700
+    },
+    "rowH": {
+      "kind": "title1",
+      "maxW": 5320,
+      "text": "⑧ 태블릿 (820px) · 대표 화면",
+      "w": 240,
+      "x": 0,
+      "y": 18700
+    },
+    "rowI": {
+      "kind": "title1",
+      "maxW": 2300,
+      "text": "⑨ 모바일 앱 (/app · 설치형 PWA) · 메뉴 4개(녹음 · 업로드 · 일정 · 메모) + 상담 전 브리핑 + 업로드 실패 알림",
+      "w": 240,
+      "x": 0,
+      "y": 21700
+    }
   },
-  "CaseHistory.dc.html": {
-   "expand": "fill",
-   "h": 1550,
-   "is_interactive": true,
-   "title": "탭 2 · 상담 이력 (① 지금까지 상담 → ② 상담 회차 → ③ 회차별 세부 신호)",
-   "w": 1440,
-   "x": 1520,
-   "y": 4800
-  },
-  "CaseList.dc.html": {
-   "expand": "fill",
-   "h": 960,
-   "is_interactive": true,
-   "title": "통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)",
-   "w": 1440,
-   "x": 0,
-   "y": 2450
-  },
-  "CaseRegister.dc.html": {
-   "expand": "fill",
-   "h": 1700,
-   "is_interactive": true,
-   "title": "새 사례 등록 (팝업 · 서식 4 초기면접지)",
-   "w": 1440,
-   "x": 1520,
-   "y": 2450
-  },
-  "ChildDetail.dc.html": {
-   "expand": "fill",
-   "h": 1600,
-   "is_interactive": true,
-   "title": "아이 연계 › 아이 상세 (아이가 쓴 글 · 질문과 답 · 확인할 답변 · 추가 질문)",
-   "w": 1440,
-   "x": 6080,
-   "y": 0
-  },
-  "ChildLink.dc.html": {
-   "expand": "fill",
-   "h": 1000,
-   "is_interactive": true,
-   "title": "아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태)",
-   "w": 1440,
-   "x": 4560,
-   "y": 0
-  },
-  "Closure.dc.html": {
-   "expand": "fill",
-   "h": 640,
-   "is_interactive": true,
-   "title": "종결 검토 · 대상 아동 목록",
-   "w": 1440,
-   "x": 0,
-   "y": 10100
-  },
-  "ClosureDetail.dc.html": {
-   "expand": "fill",
-   "h": 2250,
-   "is_interactive": true,
-   "title": "종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안)",
-   "w": 1440,
-   "x": 3040,
-   "y": 10100
-  },
-  "ClosureReview.dc.html": {
-   "expand": "fill",
-   "h": 2300,
-   "is_interactive": true,
-   "title": "종결 검토 › ① 전체 상담 내역 검토 (핵심 요약 + 근거 · 확인 후 보고서로)",
-   "w": 1440,
-   "x": 1520,
-   "y": 10100
-  },
-  "FollowupQ.dc.html": {
-   "expand": "fill",
-   "h": 1550,
-   "is_interactive": true,
-   "title": "4 · 추가 확인 · 질문 (모두 승인 / 수정 가능)",
-   "w": 1440,
-   "x": 7600,
-   "y": 7400
-  },
-  "Login.dc.html": {
-   "expand": "fill",
-   "h": 720,
-   "is_interactive": true,
-   "title": "로그인",
-   "w": 1440,
-   "x": 0,
-   "y": 0
-  },
-  "Main.dc.html": {
-   "expand": "fill",
-   "h": 1060,
-   "is_interactive": true,
-   "title": "홈 (대시보드)",
-   "w": 1440,
-   "x": 1520,
-   "y": 0
-  },
-  "NoteWrite.dc.html": {
-   "expand": "fill",
-   "h": 2000,
-   "is_interactive": true,
-   "title": "3 · 상담 요약 (사정 관점) · 상담 일지 (기관 양식)",
-   "w": 1440,
-   "x": 6080,
-   "y": 7400
-  },
-  "PreBriefing.dc.html": {
-   "expand": "fill",
-   "h": 1550,
-   "is_interactive": true,
-   "title": "탭 3 · 상담 전 브리핑 (+ 신변안전 확인)",
-   "w": 1440,
-   "x": 4560,
-   "y": 4800
-  },
-  "Schedule.dc.html": {
-   "expand": "fill",
-   "h": 1200,
-   "is_interactive": true,
-   "title": "일정 · 월간 달력 + 일정 추가",
-   "w": 1440,
-   "x": 3040,
-   "y": 0
-  },
-  "SessionDetail.dc.html": {
-   "expand": "fill",
-   "h": 950,
-   "is_interactive": true,
-   "title": "탭 2 › 회차 상세 (1~4단계 처리로 바로 가기)",
-   "w": 1440,
-   "x": 3040,
-   "y": 4800
-  },
-  "Settings.dc.html": {
-   "expand": "fill",
-   "h": 800,
-   "is_interactive": true,
-   "title": "설정 · 계정 / 알림 설정",
-   "w": 1440,
-   "x": 6080,
-   "y": 10100
-  },
-  "SignalReview.dc.html": {
-   "expand": "fill",
-   "h": 1900,
-   "is_interactive": true,
-   "title": "2 · 유형별 위험도 (AI 제안 · 심각도 1~5 · 상담원 판단)",
-   "w": 1440,
-   "x": 3040,
-   "y": 7400
-  },
-  "Stats.dc.html": {
-   "expand": "fill",
-   "h": 1990,
-   "is_interactive": true,
-   "title": "통계 (기간 직접 선택 · 원형 · 가로/세로 막대 · 표)",
-   "w": 1440,
-   "x": 4560,
-   "y": 10100
-  },
-  "SttReview.dc.html": {
-   "expand": "fill",
-   "h": 2500,
-   "is_interactive": true,
-   "title": "1 · STT 검수 + 위험 신호 (화자: 피해아동 · 사례관리대상자 · 상담원)",
-   "w": 1440,
-   "x": 1520,
-   "y": 7400
-  },
-  "UploadModal.dc.html": {
-   "expand": "fill",
-   "h": 1000,
-   "is_interactive": true,
-   "title": "녹취 · 자료 올리기 (팝업 3단계 + 확인창)",
-   "w": 1440,
-   "x": 0,
-   "y": 7400
-  },
-  "AdminHome.dc.html": {
-   "expand": "fill",
-   "h": 1820,
-   "is_interactive": true,
-   "title": "관리자 · 홈 (긴급 알림 현황 · 최근 접속 활동 · 상담원별 업무량)",
-   "w": 1440,
-   "x": 0,
-   "y": 13000
-  },
-  "AdminApp.dc.html": {
-   "expand": "fill",
-   "h": 1500,
-   "is_interactive": true,
-   "title": "관리자 · 아이 연계 앱 관리 (연결 현황 · 장기 무응답)",
-   "w": 1440,
-   "x": 1520,
-   "y": 13000
-  },
-  "AdminAccounts.dc.html": {
-   "expand": "fill",
-   "h": 1100,
-   "is_interactive": true,
-   "title": "관리자 · 상담사 계정 관리 (생성 · 목록 → 상세)",
-   "w": 1440,
-   "x": 3040,
-   "y": 13000
-  },
-  "AdminViewLog.dc.html": {
-   "expand": "fill",
-   "h": 1100,
-   "is_interactive": true,
-   "title": "관리자 · 열람 기록 (실명 보기 · 녹취)",
-   "w": 1440,
-   "x": 4560,
-   "y": 13000
-  },
-  "AdminSecurity.dc.html": {
-   "expand": "fill",
-   "h": 1100,
-   "is_interactive": true,
-   "title": "관리자 · 접속 기록 · 보안 이벤트",
-   "w": 1440,
-   "x": 6080,
-   "y": 13000
-  },
-  "AdminStats.dc.html": {
-   "expand": "fill",
-   "h": 2400,
-   "is_interactive": true,
-   "title": "관리자 · 통계 · 보고 (기관 단위)",
-   "w": 1440,
-   "x": 7600,
-   "y": 13000
-  },
-  "AdminStaffDetail.dc.html": {
-   "expand": "fill",
-   "h": 900,
-   "is_interactive": true,
-   "title": "관리자 · 상담사 상세 (마이페이지 정보 · 접속 정보 · 알림 설정)",
-   "w": 1440,
-   "x": 9120,
-   "y": 13000
-  },
-  "DocBox.dc.html": {
-   "expand": "fill",
-   "h": 1000,
-   "is_interactive": true,
-   "title": "문서함 (폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)",
-   "w": 1440,
-   "x": 7600,
-   "y": 10100
-  },
-  "PhoneLogin.dc.html": {
-   "h": 720,
-   "is_interactive": true,
-   "title": "휴대폰 · 로그인",
-   "w": 390,
-   "x": 0,
-   "y": 16000
-  },
-  "TabletLogin.dc.html": {
-   "h": 720,
-   "is_interactive": true,
-   "title": "태블릿 · 로그인",
-   "w": 820,
-   "x": 0,
-   "y": 19000
-  },
-  "PhoneMain.dc.html": {
-   "h": 2220,
-   "is_interactive": true,
-   "title": "휴대폰 · 홈",
-   "w": 390,
-   "x": 470,
-   "y": 16000
-  },
-  "TabletMain.dc.html": {
-   "h": 1900,
-   "is_interactive": true,
-   "title": "태블릿 · 홈",
-   "w": 820,
-   "x": 900,
-   "y": 19000
-  },
-  "PhoneCaseList.dc.html": {
-   "h": 1140,
-   "is_interactive": true,
-   "title": "휴대폰 · 통합 사례 관리",
-   "w": 390,
-   "x": 940,
-   "y": 16000
-  },
-  "TabletCaseList.dc.html": {
-   "h": 1040,
-   "is_interactive": true,
-   "title": "태블릿 · 통합 사례 관리",
-   "w": 820,
-   "x": 1800,
-   "y": 19000
-  },
-  "PhoneCaseDetail.dc.html": {
-   "h": 2100,
-   "is_interactive": true,
-   "title": "휴대폰 · 사례 상세 · 내담자 정보",
-   "w": 390,
-   "x": 1410,
-   "y": 16000
-  },
-  "TabletCaseDetail.dc.html": {
-   "h": 1480,
-   "is_interactive": true,
-   "title": "태블릿 · 사례 상세 · 내담자 정보",
-   "w": 820,
-   "x": 2700,
-   "y": 19000
-  },
-  "PhoneSttReview.dc.html": {
-   "h": 3300,
-   "is_interactive": true,
-   "title": "휴대폰 · STT 검수",
-   "w": 390,
-   "x": 1880,
-   "y": 16000
-  },
-  "TabletSttReview.dc.html": {
-   "h": 2340,
-   "is_interactive": true,
-   "title": "태블릿 · STT 검수",
-   "w": 820,
-   "x": 3600,
-   "y": 19000
-  },
-  "PhoneAdminHome.dc.html": {
-   "h": 2400,
-   "is_interactive": true,
-   "title": "휴대폰 · 관리자 홈",
-   "w": 390,
-   "x": 2350,
-   "y": 16000
-  },
-  "TabletAdminHome.dc.html": {
-   "h": 2120,
-   "is_interactive": true,
-   "title": "태블릿 · 관리자 홈",
-   "w": 820,
-   "x": 4500,
-   "y": 19000
-  },
-  "ChildAnswers.dc.html": {
-   "expand": "fill",
-   "h": 1400,
-   "is_interactive": true,
-   "title": "아이 연계 › 아이 상세 › 과거 답변 기록 (문항별 · 날짜별)",
-   "w": 1440,
-   "x": 7600,
-   "y": 0
-  },
-  "CaseIntake.dc.html": {
-   "expand": "fill",
-   "h": 1900,
-   "is_interactive": true,
-   "title": "탭 5 › 초기면접지 (아동용) · 서식 4 (문서함에서 열기)",
-   "w": 1440,
-   "x": 10640,
-   "y": 4800
-  },
-  "Landing.dc.html": {
-   "expand": "fill",
-   "h": 1400,
-   "is_interactive": true,
-   "title": "시작 화면 (랜딩)",
-   "w": 1440,
-   "x": -1520,
-   "y": 0
-  },
-  "LawGuide.dc.html": {
-   "expand": "fill",
-   "h": 1700,
-   "is_interactive": true,
-   "title": "법령 · 매뉴얼 (AI 질문 · 업무 단계별 참고사항 · 원문 자료)",
-   "w": 1440,
-   "x": 9120,
-   "y": 10100
-  }
- },
- "createdOnFiles": {
-  "at": "2026-10-07T02:10:00Z",
-  "v": 1
- },
- "designSystems": [],
- "launch": {
-  "view": "canvas"
- },
- "notes": {
-  "rowA": {
-   "kind": "title1",
-   "maxW": 9040,
-   "text": "① 하루 시작 · 로그인 → 홈 → 일정 → 아이 연계 → 아이 상세 → 과거 답변 기록",
-   "w": 240,
-   "x": 0,
-   "y": -300
-  },
-  "rowB": {
-   "kind": "title1",
-   "maxW": 7520,
-   "text": "② 사례 관리 · 통합 목록 → 새 사례 등록",
-   "w": 240,
-   "x": 0,
-   "y": 2150
-  },
-  "rowC": {
-   "kind": "title1",
-   "maxW": 12080,
-   "text": "③ 사례 상세 · 탭 5개 (내담자 정보 · 상담 이력 · 상담 전 브리핑 · 아이 연계 · 문서함) + 기관 서식 작성",
-   "w": 240,
-   "x": 0,
-   "y": 4500
-  },
-  "rowD": {
-   "kind": "title1",
-   "maxW": 8000,
-   "text": "④ 회차 처리 · 녹취 올리기 → STT 검수 · 위험 신호 → 유형별 위험도 → 요약 · 일지 작성 → 추가 확인 · 질문",
-   "w": 240,
-   "x": 0,
-   "y": 7100
-  },
-  "rowE": {
-   "kind": "title1",
-   "maxW": 10560,
-   "text": "⑤ 종결 검토 (목록 → 전체 내역 검토 → 종결보고서) · 통계 · 설정 · 문서함 · 법령 · 매뉴얼",
-   "w": 240,
-   "x": 0,
-   "y": 9800
-  },
-  "rowF": {
-   "kind": "title1",
-   "maxW": 10560,
-   "text": "⑥ 관리자 · 로그인(관리자 선택) → 홈 → 아이 연계 앱 관리 → 상담사 계정 관리 → 열람 기록 → 접속 · 보안 → 통계 · 보고 → 상담사 상세",
-   "w": 240,
-   "x": 0,
-   "y": 12700
-  },
-  "rowG": {
-   "kind": "title1",
-   "maxW": 2740,
-   "text": "⑦ 휴대폰 (390px) · 대표 화면",
-   "w": 240,
-   "x": 0,
-   "y": 15700
-  },
-  "rowH": {
-   "kind": "title1",
-   "maxW": 5320,
-   "text": "⑧ 태블릿 (820px) · 대표 화면",
-   "w": 240,
-   "x": 0,
-   "y": 18700
-  }
- },
- "order": [
-  "Landing.dc.html",
-  "Main.dc.html",
-  "Login.dc.html",
-  "Schedule.dc.html",
-  "ChildLink.dc.html",
-  "ChildDetail.dc.html",
-  "ChildAnswers.dc.html",
-  "CaseList.dc.html",
-  "CaseRegister.dc.html",
-  "CaseDetail.dc.html",
-  "CaseHistory.dc.html",
-  "SessionDetail.dc.html",
-  "PreBriefing.dc.html",
-  "CaseApp.dc.html",
-  "CaseDocs.dc.html",
-  "CaseForm.dc.html",
-  "CaseIntake.dc.html",
-  "UploadModal.dc.html",
-  "SttReview.dc.html",
-  "SignalReview.dc.html",
-  "NoteWrite.dc.html",
-  "FollowupQ.dc.html",
-  "Closure.dc.html",
-  "ClosureReview.dc.html",
-  "ClosureDetail.dc.html",
-  "DocBox.dc.html",
-  "LawGuide.dc.html",
-  "Stats.dc.html",
-  "Settings.dc.html",
-  "AdminHome.dc.html",
-  "AdminApp.dc.html",
-  "AdminAccounts.dc.html",
-  "AdminViewLog.dc.html",
-  "AdminSecurity.dc.html",
-  "AdminStats.dc.html",
-  "AdminStaffDetail.dc.html",
-  "PhoneLogin.dc.html",
-  "TabletLogin.dc.html",
-  "PhoneMain.dc.html",
-  "TabletMain.dc.html",
-  "PhoneCaseList.dc.html",
-  "TabletCaseList.dc.html",
-  "PhoneCaseDetail.dc.html",
-  "TabletCaseDetail.dc.html",
-  "PhoneSttReview.dc.html",
-  "TabletSttReview.dc.html",
-  "PhoneAdminHome.dc.html",
-  "TabletAdminHome.dc.html"
- ],
- "pages": [],
- "title": "I-SPOT 상담사 웹 화면 설계 · 각진 UI"
+  "order": [
+    "Landing.dc.html",
+    "Main.dc.html",
+    "Login.dc.html",
+    "Schedule.dc.html",
+    "ChildLink.dc.html",
+    "ChildDetail.dc.html",
+    "ChildAnswers.dc.html",
+    "CaseList.dc.html",
+    "CaseRegister.dc.html",
+    "CaseDetail.dc.html",
+    "CaseHistory.dc.html",
+    "SessionDetail.dc.html",
+    "CaseApp.dc.html",
+    "CaseDocs.dc.html",
+    "CaseForm.dc.html",
+    "CaseIntake.dc.html",
+    "UploadModal.dc.html",
+    "SttReview.dc.html",
+    "SignalReview.dc.html",
+    "NoteWrite.dc.html",
+    "FollowupQ.dc.html",
+    "Closure.dc.html",
+    "ClosureReview.dc.html",
+    "ClosureDetail.dc.html",
+    "DocBox.dc.html",
+    "LawGuide.dc.html",
+    "Stats.dc.html",
+    "Settings.dc.html",
+    "AdminHome.dc.html",
+    "AdminCases.dc.html",
+    "AdminApp.dc.html",
+    "AdminAccounts.dc.html",
+    "AdminViewLog.dc.html",
+    "AdminSecurity.dc.html",
+    "AdminStats.dc.html",
+    "AdminStaffDetail.dc.html",
+    "PhoneLogin.dc.html",
+    "TabletLogin.dc.html",
+    "PhoneMain.dc.html",
+    "TabletMain.dc.html",
+    "PhoneCaseList.dc.html",
+    "TabletCaseList.dc.html",
+    "PhoneCaseDetail.dc.html",
+    "TabletCaseDetail.dc.html",
+    "PhoneSttReview.dc.html",
+    "TabletSttReview.dc.html",
+    "PhoneAdminHome.dc.html",
+    "TabletAdminHome.dc.html",
+    "AppSchedule.dc.html",
+    "AppBrief.dc.html",
+    "AppRecord.dc.html",
+    "AppUpload.dc.html",
+    "AppMemo.dc.html"
+  ],
+  "pages": [],
+  "title": "I-SPOT 상담사 웹 화면 설계 · 각진 UI"
 }

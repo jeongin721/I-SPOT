@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>I-SPOT 앱 · 일정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2F2F0}
+*{box-sizing:border-box}
+.app{--bg:#F2F2F0;--card:#FFFFFF;--line:#E7E4DC;--fg:#2B2A26;--mut:#7A776F;--soft:#F7F6F2;--sand:#F1EADA;--gold:#C2A36B;--ink:#2B2A26;--onink:#EADBB5;--red:#A33B2E;--redsoft:#F7E4DF;
+  min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans KR',sans-serif;font-size:15px;line-height:1.55;position:relative}
+.app.dark{--bg:#22211E;--card:#2C2B27;--line:#45423B;--fg:#ECE8DF;--mut:#A8A296;--soft:#33312C;--sand:#3F3729;--ink:#EADBB5;--onink:#2B2A26;--red:#F0907F;--redsoft:#4A2B26}
+.app a{color:inherit;text-decoration:none}
+.app a.btn-p{color:var(--onink)}
+.app a.fail{color:var(--red)}
+.ahd{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:14px 16px 12px;background:var(--bg)}
+.ahd h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.ahd .sub{font-size:12.5px;color:var(--mut)}
+.ibtn{position:relative;width:40px;height:40px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);cursor:pointer;padding:0}
+.badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.amain{flex:1;padding:4px 16px 24px;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.sec-t{margin:4px 0 0;font-size:14px;font-weight:700;color:var(--mut)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.btn-p{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.btn-sm{min-height:36px;padding:0 12px;font-size:13.5px;border-radius:8px}
+.btn-red{color:var(--red)}
+.btn-block{width:100%}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:700;background:var(--soft);color:var(--mut);white-space:nowrap}
+.chip.red{background:var(--redsoft);color:var(--red)}
+.chip.gold{background:var(--sand);color:var(--fg)}
+.note{font-size:12.5px;color:var(--mut)}
+.inp{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:15px;background:var(--card);color:var(--fg)}
+textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
+.fl{display:flex;flex-direction:column;gap:6px}
+.lb{font-size:13px;font-weight:700}
+.seg{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}
+.seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;font:inherit;font-size:14px;color:var(--mut);cursor:pointer}
+.seg button.on{background:var(--card);color:var(--fg);font-weight:700;box-shadow:0 1px 3px rgba(43,42,38,.14)}
+.fail{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--redsoft);color:var(--red);font-size:14px;font-weight:700}
+.fail span{flex:1}
+.tabs{position:sticky;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(8px + env(safe-area-inset-bottom,0px))}
+.tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border-radius:10px;font-size:12px;font-weight:500;color:var(--mut)}
+.tab.on{color:var(--fg);font-weight:700}
+.tab.on svg{color:var(--gold)}
+.ov{position:fixed;inset:0;z-index:50;background:rgba(43,42,38,.42);display:flex;align-items:flex-end}
+.sheet{width:100%;max-height:86vh;overflow-y:auto;background:var(--card);color:var(--fg);border-radius:16px 16px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line)}
+.sh-hd{display:flex;align-items:center;gap:10px}
+.sh-hd b{flex:1;font-size:18px}
+.nt{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;border:1px solid var(--line)}
+.nt.red{border-color:var(--red)}
+.nt b{font-size:14.5px}
+.row-k{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14.5px}
+.row-k:first-child{border-top:0}
+.row-k span:first-child{color:var(--mut);font-size:13px}
+
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.day{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:12px;border:1px solid transparent;background:transparent;font:inherit;color:var(--fg);cursor:pointer}
+.day small{font-size:11.5px;color:var(--mut)}
+.day b{font-size:16px}
+.day.on{background:var(--ink);color:var(--onink)}
+.day.on small{color:var(--onink)}
+.day.today b{text-decoration:underline;text-underline-offset:3px}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--gold)}
+.dot.no{background:transparent}
+.ev{display:flex;flex-direction:column;gap:10px;padding:14px;cursor:pointer}
+.ev-top{display:flex;align-items:flex-start;gap:12px}
+.ev-time{min-width:48px;font-size:14px;font-weight:700}
+.ev-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ev-body b{font-size:15.5px}
+.ev-act{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.empty{padding:28px 16px;text-align:center;color:var(--mut);font-size:14px}
+.fab{position:sticky;bottom:78px;align-self:flex-end;margin-right:2px;z-index:15;box-shadow:0 8px 20px rgba(43,42,38,.25)}
+</style>
+</helmet>
+<div class="{{ rootCls }}">
+<header class="ahd"><div style="flex: 1;"><div class="sub">{{ monthLabel }}</div><h1>일정</h1></div><button type="button" class="ibtn" aria-label="알림 {{ ntCount }}건" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHas }}" hint-placeholder-val="{{ true }}"><span class="badge">{{ ntCount }}</span></sc-if></button></header>
+<main class="amain">
+<sc-if value="{{ hasFail }}" hint-placeholder-val="{{ true }}"><a class="fail" href="AppUpload.dc.html"><span>{{ failText }}</span>다시 올리기 ›</a></sc-if>
+<div class="days" role="tablist" aria-label="이번 주"><sc-for list="{{ days }}" as="d" hint-placeholder-count="7"><button type="button" role="tab" aria-selected="{{ d.sel }}" class="{{ d.cls }}" onClick="{{ d.pick }}"><small>{{ d.dow }}</small><b>{{ d.n }}</b><span class="{{ d.dot }}"></span></button></sc-for></div>
+<p class="sec-t">{{ dayLabel }}</p>
+<sc-for list="{{ evs }}" as="e" hint-placeholder-count="3"><div class="card ev" role="button" tabindex="0" aria-label="{{ e.aria }}" onClick="{{ e.open }}">
+<div class="ev-top"><span class="ev-time">{{ e.time }}</span><span class="ev-body"><b>{{ e.title }}</b><span class="note">{{ e.sub }}</span></span><span class="{{ e.chipCls }}">{{ e.tag }}</span></div>
+<sc-if value="{{ e.isC }}" hint-placeholder-val="{{ true }}"><div class="ev-act"><sc-if value="{{ e.brief }}" hint-placeholder-val="{{ true }}"><a class="btn btn-sm" href="AppBrief.dc.html" onClick="{{ e.stop }}">상담 전 브리핑</a></sc-if><sc-if value="{{ e.noBrief }}" hint-placeholder-val="{{ false }}"><span class="btn btn-sm" style="color: var(--mut); cursor: default;" onClick="{{ e.stop }}">브리핑 준비 중</span></sc-if><a class="btn btn-sm btn-p" href="AppRecord.dc.html" onClick="{{ e.rec }}">녹음 시작</a></div></sc-if>
+</div></sc-for>
+<sc-if value="{{ noEv }}" hint-placeholder-val="{{ false }}"><div class="card empty">일정이 없어요</div></sc-if>
+<button type="button" class="btn btn-p fab" onClick="{{ openAdd }}">+ 일정 추가</button>
+</main>
+<nav class="tabs" aria-label="앱 메뉴"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a class="{{ t.cls }}" href="{{ t.href }}" aria-current="{{ t.cur }}"><sc-if value="{{ t.isRec }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></sc-if><sc-if value="{{ t.isUp }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg></sc-if><sc-if value="{{ t.isCal }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></sc-if><sc-if value="{{ t.isMemo }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"></path><path d="M9 11h6M9 15h6"></path></svg></sc-if><span>{{ t.label }}</span></a></sc-for></nav>
+<sc-if value="{{ shView }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ shClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="일정 상세" onClick="{{ stop }}">
+<span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>{{ v.title }}</b><span class="{{ v.chipCls }}">{{ v.tag }}</span></div>
+<div><sc-for list="{{ v.rows }}" as="r" hint-placeholder-count="4"><div class="row-k"><span>{{ r.k }}</span><span>{{ r.v }}</span></div></sc-for></div>
+<sc-if value="{{ noAsk }}" hint-placeholder-val="{{ true }}"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><button type="button" class="btn btn-p" onClick="{{ v.edit }}">수정</button><button type="button" class="btn btn-red" onClick="{{ v.askDel }}">삭제</button></div></sc-if>
+<sc-if value="{{ ask }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: var(--redsoft);"><b style="color: var(--red);">이 일정을 삭제할까요?</b><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><button type="button" class="btn" onClick="{{ v.cancelDel }}">취소</button><button type="button" class="btn" style="background: var(--red); border-color: var(--red); color: #FFFFFF;" onClick="{{ v.del }}">삭제</button></div></div></sc-if>
+</section></div></sc-if>
+<sc-if value="{{ shForm }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ shClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="{{ formTitle }}" onClick="{{ stop }}">
+<span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>{{ formTitle }}</b></div>
+<div class="seg" role="radiogroup" aria-label="일정 종류"><button type="button" role="radio" aria-checked="{{ kC }}" class="{{ kCcls }}" onClick="{{ kindC }}">상담</button><button type="button" role="radio" aria-checked="{{ kP }}" class="{{ kPcls }}" onClick="{{ kindP }}">개인 · 기관</button></div>
+<sc-if value="{{ isC }}" hint-placeholder-val="{{ true }}"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><label class="fl"><span class="lb">아이</span><select class="inp" value="{{ f.child }}" onChange="{{ setChild }}"><sc-for list="{{ kidOpts }}" as="k" hint-placeholder-count="10"><option>{{ k }}</option></sc-for></select></label><label class="fl"><span class="lb">상담 유형</span><select class="inp" value="{{ f.ctype }}" onChange="{{ setCtype }}"><option>정기상담</option><option>방문상담</option><option>전화상담</option><option>초기면담</option></select></label></div></sc-if>
+<sc-if value="{{ isP }}" hint-placeholder-val="{{ false }}"><label class="fl"><span class="lb">제목</span><input class="inp" type="text" placeholder="예) 팀 회의" value="{{ f.title }}" onChange="{{ setTitle }}"></label></sc-if>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><label class="fl"><span class="lb">날짜</span><select class="inp" value="{{ f.day }}" onChange="{{ setDay }}"><sc-for list="{{ dayOpts }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for></select></label><label class="fl"><span class="lb">시간</span><input class="inp" type="time" value="{{ f.time }}" onChange="{{ setTime }}"></label></div>
+<label class="fl"><span class="lb">장소</span><input class="inp" type="text" placeholder="예) 면담실 A" value="{{ f.place }}" onChange="{{ setPlace }}"></label>
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px;"><button type="button" class="btn" onClick="{{ shClose }}">취소</button><button type="button" class="btn btn-p" onClick="{{ save }}">저장</button></div>
+</section></div></sc-if>
+<sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ ntClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="알림" onClick="{{ stop }}">
+<span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>알림</b><button type="button" class="btn btn-sm" onClick="{{ ntClose }}">닫기</button></div>
+<sc-for list="{{ notes }}" as="n" hint-placeholder-count="2"><div class="nt {{ n.red }}"><b>{{ n.title }}</b><span class="note">{{ n.sub }}</span><sc-if value="{{ n.desc }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13.5px;">{{ n.desc }}</span></sc-if>
+<sc-if value="{{ n.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-p" style="align-self: flex-start;" onClick="{{ n.go }}">{{ n.act }}</button></sc-if>
+<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}">브리핑 보기</a></sc-if></div></sc-for>
+</section></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+
+stGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+stSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+themeRead() { let v = null; try { v = window.localStorage.getItem('ispot-theme'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-theme'); } catch (e) {} } if (!v) { try { v = window.top.__ispotTheme; } catch (e) {} } if (!v) v = window.__ispotTheme; return v === 'dark'; }
+qRead() { let a = null; try { a = JSON.parse(this.stGet('ispot-app-q') || 'null'); } catch (e) {} if (!Array.isArray(a)) { a = [
+  { id: 'q1', name: '서윤_8회차_방문상담.m4a', kind: '녹음', who: '이서윤 · 8회차', size: '23.4MB', status: 'fail', err: '네트워크 연결이 끊겨 올리지 못했어요', t: '오늘 15:42' },
+  { id: 'q2', name: '가정방문_사진_01.jpg', kind: '사진', who: '김도현', size: '2.1MB', status: 'done', t: '오늘 11:05' },
+  { id: 'q3', name: '학교_상담확인서.pdf', kind: '문서', who: '박지호', size: '480KB', status: 'done', t: '어제 17:20' }]; this.stSet('ispot-app-q', JSON.stringify(a)); } return a; }
+qWrite(a) { this.stSet('ispot-app-q', JSON.stringify(a)); this.setState({ __q: Date.now() }); }
+qSet(id, patch) { this.qWrite(this.qRead().map((x) => (x.id === id ? { ...x, ...patch } : x))); }
+qRetry(id) { this.qSet(id, { status: 'run', err: '' }); setTimeout(() => { try { this.qSet(id, { status: 'done', t: '방금' }); } catch (e) {} }, 1800); }
+qAdd(item) { const id = 'q' + Date.now().toString(36); this.qWrite([{ id, status: 'run', t: '방금', ...item }, ...this.qRead()]); setTimeout(() => { try { this.qSet(id, { status: 'done' }); } catch (e) {} }, 2000); return id; }
+kids() { return ['서윤', '지호', '도현', '예린', '하은', '서준', '시우', '하린', '유나', '민준']; }
+componentDidMount() {
+  this._raw = this.stGet('ispot-app-q') + '|' + this.themeRead();
+  this._t = setInterval(() => { const r = this.stGet('ispot-app-q') + '|' + this.themeRead(); if (r !== this._raw) { this._raw = r; this.setState({ __t: Date.now() }); } }, 600);
+  if (this.mountExtra) this.mountExtra();
+}
+componentWillUnmount() { clearInterval(this._t); clearInterval(this._recT); }
+commonVals(cur) {
+  const q = this.qRead(); const fails = q.filter((x) => x.status === 'fail'); const st = this.state || {};
+  const T = [['rec', '녹음', 'AppRecord.dc.html'], ['up', '업로드', 'AppUpload.dc.html'], ['cal', '일정', 'AppSchedule.dc.html'], ['memo', '메모', 'AppMemo.dc.html']];
+  const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '' }))
+    .concat([{ red: '', title: '상담 전 브리핑이 준비됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html' }]);
+  return {
+    rootCls: this.themeRead() ? 'app dark' : 'app',
+    tabs: T.map(([k, label, href]) => ({ label, href, cls: k === cur ? 'tab on' : 'tab', cur: k === cur ? 'page' : 'false', isRec: k === 'rec', isUp: k === 'up', isCal: k === 'cal', isMemo: k === 'memo' })),
+    ntCount: String(notes.length), ntHas: notes.length > 0, ntOpen: !!st.__nt, ntToggle: () => this.setState({ __nt: !st.__nt }), ntClose: () => this.setState({ __nt: false }), notes,
+    failN: fails.length, hasFail: fails.length > 0, failText: '업로드 실패 ' + fails.length + '건 · 다시 올려 주세요'
+  };
+}
+
+
+constructor(props) { super(props); const now = new Date(); const td = now.getFullYear() === 2026 && now.getMonth() === 9 && now.getDate() >= 26 ? now.getDate() - 26 : (now.getFullYear() === 2026 && now.getMonth() === 10 && now.getDate() === 1 ? 6 : 3);
+  this.state = { day: td, today: td, sheet: null, ask: false, f: {}, events: [
+    { id: 1, day: 0, time: '10:00', t: 'p', title: '기관 사례회의', place: '3층 회의실' },
+    { id: 2, day: 1, time: '16:00', t: 'c', child: '도현', ctype: '정기상담 8회차', place: '면담실 A' },
+    { id: 3, day: 2, time: '13:00', t: 'c', child: '예린', ctype: '방문상담', place: '가정 방문' },
+    { id: 4, day: 3, time: '10:00', t: 'p', title: '슈퍼비전', place: '팀장실' },
+    { id: 5, day: 3, time: '14:00', t: 'c', child: '지호', ctype: '정기상담 6회차', place: '면담실 A' },
+    { id: 6, day: 3, time: '16:00', t: 'c', child: '서윤', ctype: '정기상담 9회차', place: '면담실 B', brief: true },
+    { id: 7, day: 4, time: '15:00', t: 'c', child: '하은', ctype: '전화상담', place: '전화' }] }; }
+renderVals() {
+  const s = this.state; const DOW = ['월', '화', '수', '목', '금', '토', '일'];
+  const dateOf = (i) => { const d = new Date(2026, 9, 26 + i); return { m: d.getMonth() + 1, n: d.getDate() }; };
+  const lab = (i) => { const d = dateOf(i); return d.m + '월 ' + d.n + '일 ' + DOW[i] + '요일'; };
+  const titleOf = (e) => (e.t === 'c' ? e.child + ' · ' + e.ctype : e.title);
+  const stop = (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); };
+  const days = DOW.map((dow, i) => ({ dow, n: String(dateOf(i).n), sel: i === s.day ? 'true' : 'false', cls: 'day' + (i === s.day ? ' on' : '') + (i === s.today ? ' today' : ''), dot: s.events.some((e) => e.day === i) ? 'dot' : 'dot no', pick: () => this.setState({ day: i }) }));
+  const evs = s.events.filter((e) => e.day === s.day).sort((a, b) => a.time.localeCompare(b.time)).map((e) => ({ time: e.time, title: titleOf(e), sub: e.place || '장소 미정', tag: e.t === 'c' ? '상담' : '개인 · 기관', chipCls: e.t === 'c' ? 'chip gold' : 'chip', isC: e.t === 'c', brief: !!e.brief, noBrief: !e.brief, aria: titleOf(e) + ' 자세히 보기',
+    open: () => this.setState({ sheet: { mode: 'view', id: e.id }, ask: false }), stop, rec: (ev) => { stop(ev); this.stSet('ispot-app-rec', JSON.stringify({ child: e.child, t: Date.now() })); } }));
+  const cur = s.sheet && s.sheet.id ? s.events.find((e) => e.id === s.sheet.id) : null;
+  const v = cur ? { title: titleOf(cur), tag: cur.t === 'c' ? '상담' : '개인 · 기관', chipCls: cur.t === 'c' ? 'chip gold' : 'chip',
+    rows: [['날짜', lab(cur.day)], ['시간', cur.time], ['장소', cur.place || '—']].concat(cur.t === 'c' ? [['브리핑', cur.brief ? '준비됨' : '준비 중']] : []).map(([k, val]) => ({ k, v: val })),
+    edit: () => this.setState({ sheet: { mode: 'form', id: cur.id }, f: { t: cur.t, child: cur.child || '서윤', ctype: cur.t === 'c' ? cur.ctype.split(' ')[0] : '정기상담', suffix: cur.t === 'c' ? cur.ctype.split(' ').slice(1).join(' ') : '', title: cur.title || '', day: String(cur.day), time: cur.time, place: cur.place || '' } }),
+    askDel: () => this.setState({ ask: true }), cancelDel: () => this.setState({ ask: false }), del: () => this.setState({ events: s.events.filter((e) => e.id !== cur.id), sheet: null, ask: false }) } : {};
+  const f = s.f || {}; const isC = (f.t || 'c') === 'c'; const setF = (k) => (ev) => this.setState({ f: { ...this.state.f, [k]: ev.target.value } });
+  return Object.assign(this.commonVals('cal'), { stop, monthLabel: '2026년 10월 · 이번 주', days, dayLabel: lab(s.day), evs, noEv: evs.length === 0,
+    shView: !!(s.sheet && s.sheet.mode === 'view' && cur), shForm: !!(s.sheet && s.sheet.mode === 'form'), shClose: () => this.setState({ sheet: null, ask: false }), v, ask: !!s.ask, noAsk: !s.ask,
+    openAdd: () => this.setState({ sheet: { mode: 'form', id: null }, f: { t: 'c', child: '서윤', ctype: '정기상담', suffix: '', title: '', day: String(s.day), time: '10:00', place: '' } }),
+    formTitle: s.sheet && s.sheet.id ? '일정 수정' : '일정 추가', isC, isP: !isC, kC: isC ? 'true' : 'false', kP: isC ? 'false' : 'true', kCcls: isC ? 'on' : '', kPcls: isC ? '' : 'on',
+    kindC: () => this.setState({ f: { ...f, t: 'c' } }), kindP: () => this.setState({ f: { ...f, t: 'p' } }), f, kidOpts: this.kids(),
+    dayOpts: DOW.map((d, i) => ({ v: String(i), label: dateOf(i).m + '/' + dateOf(i).n + ' (' + d + ')' })),
+    setChild: setF('child'), setCtype: setF('ctype'), setTitle: setF('title'), setDay: setF('day'), setTime: setF('time'), setPlace: setF('place'),
+    save: () => { const ff = this.state.f; const day = parseInt(ff.day, 10) || 0; const base = ff.t === 'c' ? { t: 'c', child: ff.child, ctype: ff.ctype + (ff.suffix ? ' ' + ff.suffix : ''), title: '' } : { t: 'p', title: (ff.title || '').trim() || '개인 일정' };
+      const id = s.sheet && s.sheet.id; const old = id ? s.events.find((e) => e.id === id) : null; const ev = { ...(old || {}), ...base, id: id || Date.now(), day, time: ff.time || '10:00', place: ff.place || '' };
+      this.setState({ events: id ? s.events.map((e) => (e.id === id ? ev : e)) : [...s.events, ev], sheet: null, day }); } });
+}
+
+}
+</script>
+</body>
+</html>

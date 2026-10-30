@@ -94,7 +94,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -433,6 +433,91 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
+/* 녹음하기 팝업 */
+.rec-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#A33B2E;vertical-align:0}
+.rec-dot.live{animation:recp 1s infinite}
+.rec-dot.off{background:#A8A296}
+@keyframes recp{50%{opacity:.2}}
+.rec-ov{position:fixed;inset:0;z-index:60;background:rgba(47,58,68,.40);display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto}
+.rec-dlg{width:100%;max-width:560px;background:#FFFFFF;border-radius:14px;box-shadow:0 20px 60px rgba(43,42,38,.22);overflow:hidden;color:#2B2A26}
+.rec-x{margin-left:auto;width:40px;height:40px;border:0;border-radius:10px;background:#F7F6F2;font:inherit;font-size:18px;color:#2B2A26;cursor:pointer}
+.rec-case{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:12px 16px;border-radius:12px;background:#F7F6F2}
+.lb2{font-size:13px;font-weight:700}
+.rec-box{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:22px 20px;border:1px solid #E7E4DC;border-radius:12px;text-align:center}
+.rec-status{font-size:14px;font-weight:700}
+.rec-time{font-size:44px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.rec-consent{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;cursor:pointer}
+.rec-consent input{width:18px;height:18px;accent-color:#2B2A26}
+.rec-main{align-self:center;min-width:180px}
+.thm-root.dark .rec-dlg{background:#2C2B27 !important;color:#ECE8DF}
+.thm-root.dark .rec-hd{border-bottom:1px solid #45423B !important}
+.thm-root.dark .rec-x{background:#33312C;color:#ECE8DF}
+.thm-root.dark .rec-case{background:#33312C}
+.thm-root.dark .rec-box{border-color:#45423B}
+.thm-root.dark .rec-consent input{accent-color:#D6D0C4}
+.lb2{font-size:13px;font-weight:700}
+.ns-step{display:inline-flex;align-items:center;gap:6px;padding:6px 12px 6px 6px;border-radius:999px;font-size:13px;background:#F7F6F2;color:#7A776F}
+.ns-dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#E7E4DC;color:#7A776F}
+.ns-step.on{background:#F1EADA;color:#2B2A26;font-weight:700}
+.ns-step.on .ns-dot{background:#2B2A26;color:#EADBB5}
+.ns-step.done .ns-dot{background:#F2EFE8;color:#66625A}
+.ns-opt{display:flex;gap:14px;align-items:center;padding:14px 18px;border-radius:14px;border:1px solid #E7E4DC;background:#FFFFFF;font:inherit;color:#2B2A26;text-align:left;cursor:pointer}
+.ns-opt.on{border-color:#2B2A26;background:#F1EADA}
+.ns-rd{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid #CFC9BB;background:#FFFFFF}
+.ns-opt.on .ns-rd{border:5px solid #2B2A26}
+.ns-ta{width:100%;border:1px solid #DAD5C9;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;background:#FFFFFF;color:#2B2A26;resize:vertical}
+.ns-cf-ov{position:absolute;inset:0;background:rgba(47,58,68,.30);display:flex;align-items:center;justify-content:center;padding:16px}
+.ns-cf{width:100%;max-width:420px;background:#FFFFFF;border-radius:14px;box-shadow:0 20px 60px rgba(43,42,38,.28);padding:26px 26px 20px;display:flex;flex-direction:column;gap:12px;color:#2B2A26}
+.ns-ok-i{width:48px;height:48px;border-radius:50%;background:#F2EFE8;color:#66625A;display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:700}
+.rec-dlg{position:relative}
+.thm-root.dark .ns-step{background:#33312C;color:#A8A296}
+.thm-root.dark .ns-dot{background:#45423B;color:#A8A296}
+.thm-root.dark .ns-step.on{background:#3F3729;color:#ECE8DF}
+.thm-root.dark .ns-step.on .ns-dot{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .ns-opt{background:#2C2B27;border-color:#45423B;color:#ECE8DF}
+.thm-root.dark .ns-opt.on{background:#3F3729;border-color:#EADBB5}
+.thm-root.dark .ns-rd{background:#2C2B27;border-color:#7A776F}
+.thm-root.dark .ns-opt.on .ns-rd{border-color:#EADBB5}
+.thm-root.dark .ns-ta{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .ns-cf{background:#2C2B27;color:#ECE8DF}
+.thm-root.dark .ns-ok-i{background:#393731;color:#BDB7AA}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1550px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
@@ -456,7 +541,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
-<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
 <section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
 <a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a>
@@ -464,12 +549,11 @@ section[aria-label="폴더"]{max-width:none !important}
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h1 style="margin: 0; font-size: 28px; font-weight: 700;">이서윤</h1><span class="sub">13세 · 중1</span><span class="chip c-hi">위험도 상</span></div>
 <div class="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
 </div>
-<a class="btn btn-s" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 올리기</a>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recOpen }}"><span class="rec-dot" aria-hidden="true"></span> 녹음하기</button><button type="button" class="btn btn-s" onClick="{{ nsOpen }}">+ 새 상담 등록</button></div>
 </section>
 <nav class="tabs" aria-label="사례 상세 메뉴">
 <a href="CaseDetail.dc.html">내담자 정보</a>
 <a class="on" aria-current="page" href="CaseHistory.dc.html">상담 이력</a>
-<a href="PreBriefing.dc.html">상담 전 브리핑</a>
 <a href="CaseDocs.dc.html">문서함</a>
 </nav>
 <section class="card" aria-label="지금까지 상담" style="padding: 24px 26px;">
@@ -533,6 +617,81 @@ section[aria-label="폴더"]{max-width:none !important}
 <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; color: #7A776F;"><span style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="width: 18px; height: 18px; background: #EAE7DF;"></span>1번</span><span style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="width: 18px; height: 18px; background: #7A776F;"></span>2번 이상</span><span style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="width: 18px; height: 18px; background: #FFFFFF; box-shadow: inset 0 0 0 1.5px #7A776F;"></span>보류 (화자 확인 중)</span></div>
 </section>
 <p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+<sc-if value="{{ recShow }}" hint-placeholder-val="{{ false }}">
+<div class="rec-ov">
+<section role="dialog" aria-modal="true" aria-labelledby="rec-title" class="rec-dlg">
+<div style="padding: 20px 24px 16px; border-bottom: 1px solid #EAE7DF; display: flex; align-items: center; gap: 12px;" class="rec-hd"><h2 id="rec-title" style="margin: 0; font-size: 20px; font-weight: 700;">녹음하기</h2><button type="button" class="rec-x" aria-label="닫기" onClick="{{ recClose }}">×</button></div>
+<div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+<div class="rec-case"><span class="note">사례</span><b>이서윤 · C-2026-0351</b><span class="sub">13세 · 중1</span></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+<label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb2">상담 회차</span><select class="inp" value="{{ recSes }}" onChange="{{ recSesSet }}" disabled="{{ recLock }}"><option value="new">새 회차 · 9회차</option><option value="8">8회차 · 10/2 방문상담</option><option value="7">7회차 · 9/18 정기상담</option><option value="6">6회차 · 9/4 정기상담</option><option value="5">5회차 · 8/28 정기상담</option><option value="4">4회차 · 8/21 정기상담</option><option value="3">3회차 · 8/14 정기상담</option><option value="2">2회차 · 8/7 정기상담</option><option value="1">1회차 · 7/31 초기면담</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb2">상담 유형</span><select class="inp" value="{{ recKind }}" onChange="{{ recKindSet }}" disabled="{{ recLock }}"><option>정기상담</option><option>방문상담</option><option>기관 면담</option><option>전화상담</option></select></label>
+</div>
+<div class="rec-box">
+<div style="display: flex; align-items: center; justify-content: center; gap: 10px;"><span class="rec-dot {{ recDotCls }}" aria-hidden="true"></span><span class="rec-status">{{ recStatus }}</span></div>
+<div class="rec-time" aria-live="polite">{{ recTime }}</div>
+<sc-if value="{{ recIdle }}" hint-placeholder-val="{{ true }}">
+<label class="rec-consent"><input type="checkbox" checked="{{ recConsent }}" onChange="{{ recConsentSet }}"><span>상대방에게 녹음 사실을 알리고 동의를 받았어요</span></label>
+<sc-if value="{{ recErr }}" hint-placeholder-val="{{ false }}"><span class="acc" style="font-size: 13px;">녹음 동의를 먼저 확인해 주세요.</span></sc-if>
+<button type="button" class="btn btn-p rec-main" onClick="{{ recStart }}"><span class="rec-dot" aria-hidden="true"></span> 녹음 시작</button>
+</sc-if>
+<sc-if value="{{ recRunning }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recPause }}">{{ recPauseLabel }}</button><button type="button" class="btn btn-p" onClick="{{ recStop }}">■ 정지</button></div>
+</sc-if>
+<sc-if value="{{ recDone }}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{ recHasUrl }}" hint-placeholder-val="{{ false }}"><audio controls="" src="{{ recUrl }}" style="width: 100%;"></audio></sc-if>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recReset }}">다시 녹음</button><button type="button" class="btn btn-p" onClick="{{ recSave }}">저장</button></div>
+</sc-if>
+<sc-if value="{{ recSaved }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; text-align: center;">녹음을 저장했어요 · {{ recSummary }}<br><b>STT 분석을 시작할까요?</b></p>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recClose }}">나중에</button><a class="btn btn-p" href="SttReview.dc.html" onClick="{{ recClose }}">기록 확인으로 →</a></div>
+</sc-if>
+<sc-if value="{{ recSim }}" hint-placeholder-val="{{ false }}"><span class="note" style="text-align: center;">이 미리보기에서는 마이크를 쓸 수 없어 녹음 흐름만 보여 드려요. 실제 화면에서는 마이크로 바로 녹음돼요.</span></sc-if>
+</div>
+</div>
+</section>
+</div>
+</sc-if>
+<sc-if value="{{ nsShow }}" hint-placeholder-val="{{ false }}">
+<div class="rec-ov">
+<section role="dialog" aria-modal="true" aria-labelledby="ns-title" class="rec-dlg" style="max-width: 640px;">
+<div style="padding: 22px 26px 16px; border-bottom: 1px solid #EAE7DF;" class="rec-hd">
+<div style="display: flex; align-items: center; gap: 12px;"><h2 id="ns-title" style="margin: 0; font-size: 20px; font-weight: 700;">새 상담 등록</h2><button type="button" class="rec-x" aria-label="닫기" onClick="{{ nsClose }}">×</button></div>
+<ol aria-label="등록 단계" style="list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px;">
+<sc-for list="{{ nsSteps }}" as="t" hint-placeholder-count="2"><li class="ns-step {{ t.cls }}"><span class="ns-dot">{{ t.mark }}</span>{{ t.label }}</li></sc-for>
+</ol>
+</div>
+<div style="padding: 22px 26px; min-height: 340px; display: flex; flex-direction: column; gap: 14px;">
+<div class="rec-case"><span class="note">사례</span><b>이서윤 · C-2026-0351</b><span class="sub">13세 · 중1</span><sc-if value="{{ nsS2 }}" hint-placeholder-val="{{ false }}"><span class="chip c-sand" style="margin-left: auto;">{{ nsSesLabel }}</span></sc-if></div>
+<sc-if value="{{ nsS1 }}" hint-placeholder-val="{{ true }}">
+<p class="lb2" style="margin: 0;">몇 회차 상담인가요?</p>
+<div style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; padding-right: 6px;">
+<sc-for list="{{ nsSessions }}" as="x" hint-placeholder-count="4"><button type="button" class="ns-opt {{ x.cls }}" role="radio" aria-checked="{{ x.on }}" onClick="{{ x.pick }}"><span class="ns-rd" aria-hidden="true"></span><span><b style="font-weight: 500;">{{ x.label }}</b><span class="note" style="display: block;">{{ x.meta }}</span></span></button></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ nsS2 }}" hint-placeholder-val="{{ false }}">
+<label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb2">상담 내용 <span class="acc">*</span></span><textarea class="ns-ta" rows="6" placeholder="상담 일시 · 장소, 아동 진술, 주요 대화 내용 등을 적어 주세요" value="{{ nsBody }}" onChange="{{ nsBodySet }}" style="border-color: {{ nsBodyBd }};"></textarea><sc-if value="{{ nsErr }}" hint-placeholder-val="{{ false }}"><span class="acc" style="font-size: 13px;">상담 내용을 입력해 주세요.</span></sc-if></label>
+<label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb2">상담사 소견</span><textarea class="ns-ta" rows="4" placeholder="아동 상태에 대한 판단, 위험 요인, 향후 계획 등을 적어 주세요" value="{{ nsNote }}" onChange="{{ nsNoteSet }}"></textarea></label>
+</sc-if>
+</div>
+<div style="padding: 16px 26px 22px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #EAE7DF;" class="rec-hd">
+<sc-if value="{{ nsS1 }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn btn-s" onClick="{{ nsClose }}">취소</button></sc-if>
+<sc-if value="{{ nsS2 }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-s" onClick="{{ nsPrev }}">이전</button></sc-if>
+<span style="flex: 1;"></span>
+<sc-if value="{{ nsS1 }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn btn-p" onClick="{{ nsNext }}">다음</button></sc-if>
+<sc-if value="{{ nsS2 }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-p" onClick="{{ nsSave }}">저장</button></sc-if>
+</div>
+<sc-if value="{{ nsDone }}" hint-placeholder-val="{{ false }}">
+<div class="ns-cf-ov"><section role="alertdialog" aria-labelledby="ns-ok" class="ns-cf">
+<span class="ns-ok-i" aria-hidden="true">✓</span>
+<h2 id="ns-ok" style="margin: 0; font-size: 20px; font-weight: 700;">상담을 등록했어요</h2>
+<p style="margin: 0;">이서윤 · {{ nsSesLabel }}<br>상담 내용 {{ nsBodyLen }}자 · 상담사 소견 {{ nsNoteLen }}자</p>
+<div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;"><button type="button" class="btn btn-p" onClick="{{ nsClose }}">확인</button></div>
+</section></div>
+</sc-if>
+</section>
+</div>
+</sc-if>
 </main>
 </div>
 </x-dc>
@@ -557,17 +716,103 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  if (this.state && this.state.open) this.setState({ open: false });
+  this._histNav = (e) => { const t = e.target && e.target.closest ? e.target.closest('a[href]') : null; if (t && this.state && this.state.open) this.setState({ open: false }); }; try { document.addEventListener('click', this._histNav, true); } catch (e) {}
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  try { document.removeEventListener('click', this._histNav, true); } catch (e) {} if (this.state && this.state.open) this.setState({ open: false });
+  this.recCleanup();
+  clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+ntGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+ntSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+ntRecs() { try { const a = JSON.parse(this.ntGet('ispot-intake') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+ntSave(a) { this.ntSet('ispot-intake', JSON.stringify(a)); }
+ntTasks() { return [[3, '아동과 유선(전화) 상담'], [7, '아동 주변 인물 만남'], [30, '계획서 제출']]; }
+ntReadIds() { try { return JSON.parse(this.ntGet('ispot-noti-read') || '[]'); } catch (e) { return []; } }
+ntGo0() { let g = null; try { g = JSON.parse(this.ntGet('ispot-sched-go') || 'null'); } catch (e) {} if (!g || !g.t || Date.now() - g.t > 15000) return null; this.ntSet('ispot-sched-go', ''); return g; }
+ntVals() {
+  const recs = this.ntRecs(); const read = this.ntReadIds(); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const items = [];
+  recs.forEach((r) => this.ntTasks().forEach(([n, task]) => { if ((r.done || {})[n]) return; const due = new Date(r.y, r.m, r.d + n); const diff = Math.round((due - t0) / 86400000); const id = r.id + '-' + n;
+    items.push({ id, due, diff, unread: read.indexOf(id) < 0, title: r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (due.getMonth() + 1) + '/' + due.getDate() + '(' + days[due.getDay()] + ')까지', y: due.getFullYear(), m: due.getMonth(), d: due.getDate() }); }));
+  items.sort((a, b) => a.due - b.due);
+  const unread = items.filter((x) => x.unread).length; const open = !!(this.state && this.state.__ntOpen);
+  const markRead = (ids) => { const cur = this.ntReadIds(); this.ntSet('ispot-noti-read', JSON.stringify([...cur, ...ids.filter((i) => cur.indexOf(i) < 0)])); };
+  return {
+    ntOpen: open, ntExp: open ? 'true' : 'false', ntHasBadge: unread > 0, ntBadge: unread > 9 ? '9+' : String(unread),
+    ntLabel: unread > 0 ? '알림 ' + unread + '건 읽지 않음' : '알림',
+    ntSub: items.length ? '법정 기한 ' + items.length + '건' : '', ntEmpty: items.length === 0,
+    ntToggle: () => this.setState({ __ntOpen: !open }),
+    ntReadAll: () => { markRead(items.map((x) => x.id)); this.setState({ __ntTick: Date.now() }); },
+    ntItems: items.map((x) => ({ title: x.title, sub: x.sub, cls: x.unread ? 'unread' : 'read',
+      dd: x.diff < 0 ? '기한 지남' : x.diff === 0 ? '오늘 마감' : 'D-' + x.diff, ddCls: x.diff <= 0 ? 'urgent' : x.diff <= 2 ? 'soon' : '',
+      go: (e) => { markRead([x.id]); this.ntSet('ispot-sched-go', JSON.stringify({ y: x.y, m: x.m, d: x.d, t: Date.now() })); this.setState({ __ntOpen: false, __ntTick: Date.now() }); if (this.schedGo) { if (e && e.preventDefault) e.preventDefault(); this.ntSet('ispot-sched-go', ''); this.schedGo(x.y, x.m, x.d); } } }))
+  };
+}
+recTick(on) { clearInterval(this._recT); if (on) this._recT = setInterval(() => this.setState({ rs: this.state.rs + 1 }), 1000); }
+recStopMedia() { try { if (this._mr && this._mr.state !== 'inactive') this._mr.stop(); } catch (e) {} try { if (this._stream) this._stream.getTracks().forEach((t) => t.stop()); } catch (e) {} this._stream = null; }
+recCleanup() { this.recTick(false); this._noUrl = true; this.recStopMedia(); this._mr = null; try { if (this.state.rUrl) URL.revokeObjectURL(this.state.rUrl); } catch (e) {} }
+recVals() {
+  const s = Object.assign({ rec: false, rp: 'idle', rs: 0, rSes: 'new', rKind: '정기상담', rCon: false, rErr: false, rUrl: '', rSim: false }, this.state || {});
+  const mm = String(Math.floor(s.rs / 60)).padStart(2, '0') + ':' + String(s.rs % 60).padStart(2, '0');
+  const begin = (sim) => { this._noUrl = false; this.recTick(true); this.setState({ rp: 'rec', rs: 0, rSim: sim, rErr: false }); };
+  const start = () => {
+    if (!this.state.rCon) { this.setState({ rErr: true }); return; }
+    let md = null; try { md = navigator.mediaDevices; } catch (e) {}
+    if (!md || !md.getUserMedia || typeof MediaRecorder === 'undefined') { begin(true); return; }
+    md.getUserMedia({ audio: true }).then((stream) => {
+      this._stream = stream; const chunks = []; const mr = new MediaRecorder(stream); this._mr = mr;
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      mr.onstop = () => { if (this._noUrl) return; try { const url = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/webm' })); this.setState({ rUrl: url }); } catch (e) {} };
+      mr.start(); begin(false);
+    }).catch(() => begin(true));
+  };
+  const status = { idle: '녹음 대기', rec: '녹음 중', paused: '일시정지', done: '녹음 완료', saved: '저장 완료' }[s.rp];
+  return {
+    recShow: s.rec, recOpen: () => this.setState({ rec: true, rp: 'idle', rs: 0, rErr: false, rUrl: '', rSim: false, rCon: false }),
+    recClose: () => { this.recCleanup(); this.setState({ rec: false, rp: 'idle', rs: 0, rUrl: '', rSim: false, rErr: false }); },
+    recSes: s.rSes, recSesSet: (e) => this.setState({ rSes: e.target.value }), recKind: s.rKind, recKindSet: (e) => this.setState({ rKind: e.target.value }),
+    recLock: s.rp !== 'idle', recConsent: s.rCon, recConsentSet: (e) => this.setState({ rCon: !!e.target.checked, rErr: false }), recErr: s.rErr,
+    recTime: mm, recStatus: status, recDotCls: s.rp === 'rec' ? 'live' : (s.rp === 'idle' ? 'idle' : 'off'),
+    recIdle: s.rp === 'idle', recRunning: s.rp === 'rec' || s.rp === 'paused', recDone: s.rp === 'done', recSaved: s.rp === 'saved', recSim: s.rSim && s.rp !== 'saved',
+    recStart: start,
+    recPauseLabel: s.rp === 'paused' ? '계속 녹음' : '일시정지',
+    recPause: () => { if (this.state.rp === 'rec') { try { if (this._mr && this._mr.pause) this._mr.pause(); } catch (e) {} this.recTick(false); this.setState({ rp: 'paused' }); } else { try { if (this._mr && this._mr.resume) this._mr.resume(); } catch (e) {} this.recTick(true); this.setState({ rp: 'rec' }); } },
+    recStop: () => { this.recTick(false); this.recStopMedia(); this.setState({ rp: 'done' }); },
+    recReset: () => { try { if (this.state.rUrl) URL.revokeObjectURL(this.state.rUrl); } catch (e) {} this.setState({ rp: 'idle', rs: 0, rUrl: '' }); },
+    recSave: () => { const st = this.state; this.jobWrite(JSON.stringify({ t: Date.now(), name: '이서윤 ' + (st.rSes === 'new' ? '9' : st.rSes) + '회차 녹음' })); this.setState({ rp: 'saved' }); }, recHasUrl: !!s.rUrl, recUrl: s.rUrl,
+    recSummary: '이서윤 · ' + (s.rSes === 'new' ? '9회차 (새 회차)' : s.rSes + '회차') + ' · ' + s.rKind + ' · ' + mm };
+}
+nsVals() {
+  const s = this.state || {}; const step = s.nsStep || 1; const ses = s.nsSes || 'new';
+  const LIST = [['new', '새 회차 · 9회차', '오늘 10/27 · 새 회차 만들기'], ['8', '8회차', '10/2 방문상담'], ['7', '7회차', '9/18 정기상담'], ['6', '6회차', '9/4 정기상담'], ['5', '5회차', '8/28 정기상담'], ['4', '4회차', '8/21 정기상담'], ['3', '3회차', '8/14 정기상담'], ['2', '2회차', '8/7 정기상담'], ['1', '1회차', '7/31 초기면담']];
+  const cur = LIST.find((x) => x[0] === ses) || LIST[0];
+  const reset = { nsShow: false, nsStep: 1, nsSes: 'new', nsBody: '', nsNote: '', nsErr: false, nsDone: false };
+  return {
+    nsShow: !!s.nsShow, nsS1: step === 1, nsS2: step === 2, nsDone: !!s.nsDone,
+    nsOpen: () => this.setState({ ...reset, nsShow: true }), nsClose: () => this.setState(reset),
+    nsSteps: [['상담 회차', 1], ['상담 내용 · 소견', 2]].map(([label, n]) => ({ label, mark: step > n ? '✓' : String(n), cls: step === n ? 'on' : step > n ? 'done' : '' })),
+    nsSessions: LIST.map(([v, label, meta]) => ({ label, meta, on: ses === v ? 'true' : 'false', cls: ses === v ? 'on' : '', pick: () => this.setState({ nsSes: v }) })),
+    nsSesLabel: ses === 'new' ? '9회차 (새 회차)' : cur[1] + ' · ' + cur[2],
+    nsNext: () => this.setState({ nsStep: 2 }), nsPrev: () => this.setState({ nsStep: 1, nsErr: false }),
+    nsBody: s.nsBody || '', nsBodySet: (e) => this.setState({ nsBody: e.target.value, nsErr: false }), nsNote: s.nsNote || '', nsNoteSet: (e) => this.setState({ nsNote: e.target.value }),
+    nsErr: !!s.nsErr, nsBodyBd: s.nsErr ? '#A33B2E' : '#DAD5C9',
+    nsSave: () => { if (!(this.state.nsBody || '').trim()) { this.setState({ nsErr: true }); return; } this.setState({ nsDone: true }); },
+    nsBodyLen: (s.nsBody || '').trim().length, nsNoteLen: (s.nsNote || '').trim().length
+  };
 }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'CaseHistory.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, this.recVals(), this.nsVals(), this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'CaseHistory.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
@@ -577,7 +822,7 @@ renderValsBase() {
     8: { date: '2026-10-02', kind: '방문상담 · 24분', status: '처리 중', st: 'chip c-check', sig: '채택 3 · 보류 1', proc: true,
       sttState: '검수 중 · 저신뢰 3곳', sttCls: 'chip c-check',
       lines: [{ t: '00:41', sp: '아동', s: '아빠가 또 화났어요. 저한테 소리 지르고… 많이 때렸어요.', c: '62%' }, { t: '01:08', sp: '아동', s: '등이랑 팔이요. 근데 말하면 더 혼난다고 했어요.', c: '58%' }, { t: '01:36', sp: '아동', s: '무서웠어요.', c: '91%' }, { t: '02:15', sp: '화자?', s: '밥도 안 줄 때가 있어요.', c: '70%' }],
-      diaryState: '작성 전', diaryCls: 'chip c-check', diary: '아직 작성하지 않았어요. 회차 처리 3단계에서 AI 초안을 받아 작성해요.', diaryBtn: '요약 · 일지 작성하러 가기',
+      diaryState: '작성 전', diaryCls: 'chip c-check', diary: '아직 작성하지 않았어요. 회차 처리 3단계에서 AI 초안을 받아 작성해요.', diaryBtn: '상담일지 작성하러 가기',
       sumState: '작성 전', sumCls: 'chip c-check', summary: '요약은 회차 처리 3단계에서 확정돼요.',
       ai: '아동이 가정 내 상황에 대한 불안감을 표현하였으며 신체적 증상(등 · 팔 통증)을 호소함. 보호자에게서 "말하면 더 혼난다"는 말을 들었다고 진술함. 식사 관련 발화는 화자 확인 필요.',
       sigs: [['신체', '직접 신체 가해 · 00:41'], ['신체', '상해 부위 진술 · 01:08'], ['정서', '위협 · 공포 유발 · 01:08, 01:36'], ['방임', '기본 보호 · 양육 (보류) · 02:15']] },

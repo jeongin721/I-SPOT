@@ -90,7 +90,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -447,6 +447,49 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
+.rg-pair{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 14px;border-radius:10px;background:#F7F6F2;font-size:13px}
+.rg-std{margin-left:auto;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#66625A}
+.rg-std .inp{width:72px;height:34px;padding:0 10px;text-align:center}
+.rg-kpi{padding:14px 16px;border-radius:12px;background:#F7F6F2}
+.thm-root.dark .rg-pair,.thm-root.dark .rg-kpi{background:#33312C}
+.thm-root.dark .rg-std{color:#A8A296}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1990px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
@@ -470,7 +513,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
-<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px;">
 <div style="flex: 1 1 300px;"><h1 style="margin: 0; font-size: 28px; font-weight: 700;">통계</h1></div>
 </header>
@@ -557,6 +600,46 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 </section>
 
+<section class="card" aria-label="지역별 통계" style="overflow: hidden;">
+<div class="hd"><h2 class="h2">지역별 통계</h2><span class="note">아동 거주 구 기준 · 보호자가 다른 기관 관할에 살면 두 기관이 공동사례관리</span><span class="note" style="margin-left: auto;">{{ rgSum }}</span></div>
+<div style="overflow-x: auto;">
+<table class="tbl" style="min-width: 760px;">
+<thead><tr><th>아동 거주 지역</th><th>관할 기관</th><th>사례 수</th><th style="width: 22%;">비율</th><th>보호자 타 지역 거주</th><th>공동사례관리</th></tr></thead>
+<tbody>
+<sc-for list="{{ regions }}" as="r" hint-placeholder-count="5">
+<tr><td><b style="font-weight: 500;">{{ r.name }}</b></td><td class="note">{{ r.org }}</td><td>{{ r.v }}건</td><td><div style="display: flex; align-items: center; gap: 8px;"><span class="mini" style="flex: 1;"><span style="width: {{ r.w }};"></span></span><span class="note" style="width: 44px;">{{ r.p }}</span></div></td><td>{{ r.away }}건</td><td><b class="brn">{{ r.joint }}건</b></td></tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="padding: 16px 22px 20px; border-top: 1px solid #EAE7DF; display: flex; flex-direction: column; gap: 10px;">
+<b style="font-size: 14px;">공동사례관리 현황</b>
+<sc-for list="{{ joints }}" as="j" hint-placeholder-count="4"><div class="rg-pair"><span><b style="font-weight: 500;">아동</b> {{ j.cg }} · {{ j.co }}</span><span class="note" aria-hidden="true">↔</span><span><b style="font-weight: 500;">보호자</b> {{ j.pg }} · {{ j.po }}</span><b class="brn" style="margin-left: auto;">{{ j.v }}건</b></div></sc-for>
+<sc-if value="{{ noJoint }}" hint-placeholder-val="{{ false }}"><span class="note">이 기간 공동사례관리 사례 없음</span></sc-if>
+</div>
+</section>
+
+<section class="card" aria-label="사례관리 기간" style="overflow: hidden;">
+<div class="hd"><h2 class="h2">사례관리 기간</h2><span class="note">{{ mgAsOf }} 기준 관리 중 사례</span>
+<label class="rg-std"><span>1인당 적정 사례 수</span><input class="inp" type="number" min="1" max="99" value="{{ mgStd }}" onChange="{{ setMgStd }}" aria-label="1인당 적정 사례 수"><span>건</span></label></div>
+<div style="padding: 18px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+<sc-for list="{{ mgKpi }}" as="m" hint-placeholder-count="4"><div class="rg-kpi"><div class="sub">{{ m.label }}</div><b class="brn" style="font-size: 24px;">{{ m.v }}</b><div class="note">{{ m.note }}</div></div></sc-for>
+</div>
+<div style="padding: 0 22px 18px; display: flex; flex-direction: column; gap: 10px;">
+<sc-for list="{{ mgBins }}" as="g" hint-placeholder-count="4"><div class="hb" style="grid-template-columns: 110px 1fr 96px;" title="{{ g.tip }}"><span>{{ g.name }}</span><span class="track"><span style="width: {{ g.w }};"></span></span><span class="note" style="color: #2B2A26;">{{ g.v }}건 · {{ g.p }}</span></div></sc-for>
+</div>
+<div style="overflow-x: auto; border-top: 1px solid #EAE7DF;">
+<table class="tbl" style="min-width: 720px;">
+<thead><tr><th>상담원</th><th>관리 중</th><th style="width: 26%;">적정 사례 수 대비</th><th>6개월 이상</th><th>1년 이상</th><th>평균 기간</th></tr></thead>
+<tbody>
+<sc-for list="{{ mgStaff }}" as="r" hint-placeholder-count="6">
+<tr><td><b style="font-weight: 500;">{{ r.name }}</b></td><td>{{ r.v }}건</td><td><div style="display: flex; align-items: center; gap: 8px;"><span class="mini" style="flex: 1;"><span style="width: {{ r.w }}; background: {{ r.bar }};"></span></span><span class="chip {{ r.cls }}" style="height: 22px; font-size: 11.5px;">{{ r.state }}</span></div></td><td>{{ r.m6 }}건</td><td>{{ r.y1 }}건</td><td>{{ r.avg }}</td></tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px;">
 <section class="card" aria-label="서비스 제공 현황" style="padding: 20px 22px;">
 <h2 class="h2">서비스 제공 현황</h2>
@@ -603,17 +686,47 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+ntGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+ntSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+ntRecs() { try { const a = JSON.parse(this.ntGet('ispot-intake') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+ntSave(a) { this.ntSet('ispot-intake', JSON.stringify(a)); }
+ntTasks() { return [[3, '아동과 유선(전화) 상담'], [7, '아동 주변 인물 만남'], [30, '계획서 제출']]; }
+ntReadIds() { try { return JSON.parse(this.ntGet('ispot-noti-read') || '[]'); } catch (e) { return []; } }
+ntGo0() { let g = null; try { g = JSON.parse(this.ntGet('ispot-sched-go') || 'null'); } catch (e) {} if (!g || !g.t || Date.now() - g.t > 15000) return null; this.ntSet('ispot-sched-go', ''); return g; }
+ntVals() {
+  const recs = this.ntRecs(); const read = this.ntReadIds(); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const items = [];
+  recs.forEach((r) => this.ntTasks().forEach(([n, task]) => { if ((r.done || {})[n]) return; const due = new Date(r.y, r.m, r.d + n); const diff = Math.round((due - t0) / 86400000); const id = r.id + '-' + n;
+    items.push({ id, due, diff, unread: read.indexOf(id) < 0, title: r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (due.getMonth() + 1) + '/' + due.getDate() + '(' + days[due.getDay()] + ')까지', y: due.getFullYear(), m: due.getMonth(), d: due.getDate() }); }));
+  items.sort((a, b) => a.due - b.due);
+  const unread = items.filter((x) => x.unread).length; const open = !!(this.state && this.state.__ntOpen);
+  const markRead = (ids) => { const cur = this.ntReadIds(); this.ntSet('ispot-noti-read', JSON.stringify([...cur, ...ids.filter((i) => cur.indexOf(i) < 0)])); };
+  return {
+    ntOpen: open, ntExp: open ? 'true' : 'false', ntHasBadge: unread > 0, ntBadge: unread > 9 ? '9+' : String(unread),
+    ntLabel: unread > 0 ? '알림 ' + unread + '건 읽지 않음' : '알림',
+    ntSub: items.length ? '법정 기한 ' + items.length + '건' : '', ntEmpty: items.length === 0,
+    ntToggle: () => this.setState({ __ntOpen: !open }),
+    ntReadAll: () => { markRead(items.map((x) => x.id)); this.setState({ __ntTick: Date.now() }); },
+    ntItems: items.map((x) => ({ title: x.title, sub: x.sub, cls: x.unread ? 'unread' : 'read',
+      dd: x.diff < 0 ? '기한 지남' : x.diff === 0 ? '오늘 마감' : 'D-' + x.diff, ddCls: x.diff <= 0 ? 'urgent' : x.diff <= 2 ? 'soon' : '',
+      go: (e) => { markRead([x.id]); this.ntSet('ispot-sched-go', JSON.stringify({ y: x.y, m: x.m, d: x.d, t: Date.now() })); this.setState({ __ntOpen: false, __ntTick: Date.now() }); if (this.schedGo) { if (e && e.preventDefault) e.preventDefault(); this.ntSet('ispot-sched-go', ''); this.schedGo(x.y, x.m, x.d); } } }))
+  };
 }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'Stats.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'Stats.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
@@ -706,10 +819,45 @@ renderValsBase() {
   const sm = Math.max(1, ...SVC.map(([nm]) => svcAll.filter((x) => x.x === nm).length));
   const svc = SVC.map(([nm, target]) => { const all = svcAll.filter((x) => x.x === nm); const dn = all.filter((x) => x.done).length;
     return { label: nm, target, v: all.length, h: Math.round(all.length / sm * 150) + 'px', tip: `${nm} ${all.length}회`, done: dn, ing: all.length - dn, rate: pct(dn, all.length) }; });
+
+  // 지역별 (아동 거주 구 기준, 예시 관할)
+  const GU = [['남구', 0.36], ['동구', 0.2], ['서구', 0.17], ['북구', 0.15], ['광산구', 0.12]];
+  const ORG = { '남구': '빛고을아동보호전문기관', '동구': '빛고을아동보호전문기관', '서구': 'A 아동보호전문기관', '광산구': 'A 아동보호전문기관', '북구': 'B 아동보호전문기관' };
+  let rs = 7310; const rr = () => { rs = (rs * 1103515245 + 12345) % 2147483648; return rs / 2147483648; };
+  const rpick = (w) => { const r = rr(); let x = 0; for (const [k, p] of w) { x += p; if (r < x) return k; } return w.at(-1)[0]; };
+  const RG = DATA.filter((d) => d.judged).map((d) => { const cg = rpick(GU); const pg = rr() < 0.8 ? cg : rpick(GU.filter((g) => g[0] !== cg).map((g) => [g[0], 1 / 4])); return { t: d.t, cg, pg }; }).filter((d) => d.t >= a && d.t <= b);
+  const rgMax = Math.max(1, ...GU.map(([g]) => RG.filter((d) => d.cg === g).length));
+  const regions = GU.map(([g]) => { const sub = RG.filter((d) => d.cg === g); const v = sub.length;
+    return { name: g, org: ORG[g], v, p: pct(v, RG.length), w: Math.round(v / rgMax * 100) + '%', away: sub.filter((d) => d.pg !== g).length, joint: sub.filter((d) => ORG[d.pg] !== ORG[g]).length }; }).sort((p, q) => q.v - p.v);
+  const JT = RG.filter((d) => ORG[d.pg] !== ORG[d.cg]);
+  const jmap = {}; JT.forEach((d) => { const key = d.cg + '|' + d.pg; jmap[key] = (jmap[key] || 0) + 1; });
+  const joints = Object.entries(jmap).sort((p, q) => q[1] - p[1]).slice(0, 5).map(([key, v]) => { const [cg, pg] = key.split('|'); return { cg, co: ORG[cg], pg, po: ORG[pg], v }; });
+  // 사례관리 기간 (기간 끝 날짜 기준 관리 중 사례)
+  const STAFF = ['이서연', '김도윤', '박지민', '최하늘', '정민서', '한유진'];
+  let ms = 4021; const mr = () => { ms = (ms * 1103515245 + 12345) % 2147483648; return ms / 2147483648; };
+  const MG = []; for (let i = 0; i < 260; i++) { const st = Date.parse('2024-07-01') + Math.floor(mr() * ((dayN - Date.parse('2024-07-01')) / 864e5)) * 864e5; const dur = (90 + mr() * 600) * 864e5; MG.push({ st, en: st + dur, who: STAFF[Math.floor(mr() * STAFF.length)] }); }
+  const OPEN = MG.filter((c) => c.st <= b && c.en > b).map((c) => ({ ...c, mon: (b - c.st) / (864e5 * 30.44) }));
+  const BINS = [['3개월 미만', 0, 3], ['3~6개월', 3, 6], ['6개월~1년', 6, 12], ['1년 이상', 12, 999]];
+  const bmax = Math.max(1, ...BINS.map(([, x, y]) => OPEN.filter((c) => c.mon >= x && c.mon < y).length));
+  const mgBins = BINS.map(([name, x, y]) => { const v = OPEN.filter((c) => c.mon >= x && c.mon < y).length; return { name, v, p: pct(v, OPEN.length), w: Math.round(v / bmax * 100) + '%', tip: `${name} ${v}건` }; });
+  const std = Math.max(1, Number(s.mgStd) || 25);
+  const avgM = (arr) => (arr.length ? (arr.reduce((x, c) => x + c.mon, 0) / arr.length).toFixed(1) + '개월' : '—');
+  const mgStaff = STAFF.map((name) => { const sub = OPEN.filter((c) => c.who === name); const v = sub.length; const r = v / std;
+    return { name, v, w: Math.min(100, Math.round(r * 100)) + '%', bar: r > 1 ? '#A33B2E' : '#C2A36B', state: r > 1 ? `${v - std}건 초과` : r >= 0.9 ? '적정 근접' : '적정', cls: r > 1 ? 'c-hi' : r >= 0.9 ? 'c-mid' : 'c-lo',
+      m6: sub.filter((c) => c.mon >= 6).length, y1: sub.filter((c) => c.mon >= 12).length, avg: avgM(sub) }; }).sort((p, q) => q.v - p.v);
+  const over = mgStaff.filter((x) => x.v > std).length;
+  const mgKpi = [
+    { label: '관리 중 사례', v: OPEN.length + '건', note: '상담원 ' + STAFF.length + '명' },
+    { label: '평균 관리 기간', v: avgM(OPEN), note: '판정 후 경과' },
+    { label: '6개월 이상', v: OPEN.filter((c) => c.mon >= 6).length + '건', note: '1년 이상 ' + OPEN.filter((c) => c.mon >= 12).length + '건' },
+    { label: '1인당 평균', v: (OPEN.length / STAFF.length).toFixed(1) + '건', note: over ? '적정 초과 ' + over + '명' : '모두 적정 이내' }
+  ];
   const insights = [
     `신고 접수 ${k.total}건 · 하루 평균 ${k.perDay}건`,
     types.length ? `최다 유형: ${types.at(0).name} ${types.at(0).p}` : '',
-    actors.length ? `최다 행위자: ${actors.at(0).name} ${actors.at(0).p} · ${actors.at(0).top.split(' (').at(0)}` : ''
+    actors.length ? `최다 행위자: ${actors.at(0).name} ${actors.at(0).p} · ${actors.at(0).top.split(' (').at(0)}` : '',
+    RG.length ? `공동사례관리 ${JT.length}건 (판단 사례 중 ${pct(JT.length, RG.length)})` : '',
+    OPEN.length ? `관리 중 ${OPEN.length}건 중 6개월 이상 ${mgBins[2].v + mgBins[3].v}건${over ? ` · 적정 사례 수 초과 상담원 ${over}명` : ''}` : ''
   ].filter(Boolean);
   // 기간 프리셋 · 달력
   const presets = [['all', '전체', '2026-01-01', TODAY], ['m1', '이번 달', '2026-10-01', TODAY], ['m3', '최근 3개월', '2026-07-13', TODAY], ['custom', '직접 선택', null, null]]
@@ -729,6 +877,7 @@ renderValsBase() {
     calLabel: `${s.cy}년 ${s.cm + 1}월`, cal, pickHint: s.pickStage === 1 ? '종료일 선택' : '',
     calPrev: () => this.setState(s.cm === 0 ? { cy: s.cy - 1, cm: 11 } : { cm: s.cm - 1 }), calNext: () => this.setState(s.cm === 11 ? { cy: s.cy + 1, cm: 0 } : { cm: s.cm + 1 }),
     k, trend, binLabel: weekly ? '주별' : '월별', trendAria: trend.map((t) => `${t.label} ${t.v}건`).join(', '),
+    regions, joints, noJoint: joints.length === 0, rgSum: `공동사례관리 ${JT.length}건 · ${pct(JT.length, RG.length)}`, mgAsOf: fmt(b), mgStd: String(std), setMgStd: (e) => this.setState({ mgStd: e.target.value }), mgKpi, mgBins, mgStaff,
     types, ages, ageAria: ages.map((x) => `${x.name} ${x.p}`).join(', '), actors, svc, svcAria: svc.map((x) => `${x.label} ${x.v}회`).join(', '), insights };
 }
 }

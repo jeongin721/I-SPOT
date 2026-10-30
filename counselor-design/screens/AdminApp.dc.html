@@ -96,7 +96,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -442,6 +442,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
 <nav class="nav" aria-label="관리자 메뉴">
 <a href="AdminHome.dc.html">홈</a>
+<a href="AdminCases.dc.html">사례 목록</a>
 <a class="on" href="AdminApp.dc.html">아이 연계 앱 관리<span class="cnt">2</span></a>
 <a href="AdminAccounts.dc.html">상담사 계정 관리</a>
 <a href="AdminViewLog.dc.html">열람 기록</a>
@@ -552,24 +553,24 @@ renderValsBase() {
   const s = this.state;
   const segOf = (key, cur, opts) => opts.map(([v, l]) => ({ label: l, cls: cur === v ? 'on' : '', pressed: cur === v ? 'true' : 'false', pick: () => this.setState({ [key]: v }) }));
   const C = [
-    ['c1', '○민준', 'C-2026-0277', '이서연', 'on', '9/02', '오늘 08:12'], ['c2', '○소율', 'C-2026-0366', '박지훈', 'on', '9/05', '오늘 07:50'],
-    ['c3', '○서윤', 'C-2026-0351', '이서연', 'on', '9/18', '어제 22:10'], ['c4', '○준서', 'C-2026-0418', '정다은', 'on', '9/22', '어제 21:40'],
-    ['c5', '○하준', 'C-2026-0402', '한승호', 'on', '9/30', '10/13 22:31'], ['c6', '○로아', 'C-2026-0359', '한승호', 'on', '8/20', '10/06'],
-    ['c7', '○다온', 'C-2026-0384', '박지훈', 'on', '8/30', '10/04'], ['c8', '○시아', 'C-2026-0377', '오유진', 'on', '8/15', '9/30'],
-    ['c9', '○하은', 'C-2026-0298', '이서연', 'on', '7/01', '9/28'], ['c10', '○지안', 'C-2026-0425', '정다은', 'wait', '—', '—'],
-    ['c11', '○다인', 'C-2026-0428', '박지훈', 'wait', '—', '—'], ['c12', '○하린', 'C-2026-0251', '이서연', 'off', '—', '—'],
-    ['c13', '○은우', 'C-2026-0431', '한승호', 'off', '—', '—']
+    ['c1', '장민준', 'C-2026-0277', '이서연', 'on', '9/02', '오늘 08:12'], ['c2', '임소율', 'C-2026-0366', '박지훈', 'on', '9/05', '오늘 07:50'],
+    ['c3', '이서윤', 'C-2026-0351', '이서연', 'on', '9/18', '어제 22:10'], ['c4', '한준서', 'C-2026-0418', '정다은', 'on', '9/22', '어제 21:40'],
+    ['c5', '오하준', 'C-2026-0402', '한승호', 'on', '9/30', '10/13 22:31'], ['c6', '문로아', 'C-2026-0359', '한승호', 'on', '8/20', '10/06'],
+    ['c7', '배다온', 'C-2026-0384', '박지훈', 'on', '8/30', '10/04'], ['c8', '서시아', 'C-2026-0377', '오유진', 'on', '8/15', '9/30'],
+    ['c9', '윤하은', 'C-2026-0298', '이서연', 'on', '7/01', '9/28'], ['c10', '홍지안', 'C-2026-0425', '정다은', 'wait', '—', '—'],
+    ['c11', '남다인', 'C-2026-0428', '박지훈', 'wait', '—', '—'], ['c12', '조하린', 'C-2026-0251', '이서연', 'off', '—', '—'],
+    ['c13', '노은우', 'C-2026-0431', '한승호', 'off', '—', '—']
   ];
   const ST = { on: ['연결됨', 'chip c-ok'], wait: ['초대 대기', 'chip c-sand'], off: ['미연결', 'chip c-check'] };
   const conn = C.filter((c) => s.cf === 'all' || c[4] === s.cf).map((c) => { const sent = !!s.inv[c[0]];
     return { kid: c[1], cid: c[2], who: c[3], st: ST[c[4]][0], stCls: ST[c[4]][1], since: c[5], last: c[6], canInvite: c[4] !== 'on',
       invLabel: sent ? '초대 코드 보냄 ✓' : (c[4] === 'wait' ? '초대 코드 다시 보내기' : '초대 코드 보내기'), invite: () => this.setState({ inv: { ...s.inv, [c[0]]: !sent } }) }; });
   const S = [
-    ['s1', '○하은', 'C-2026-0298', '이서연', '9/28', 17, 'done', '10/13 통화 · 언니와 휴대폰을 같이 써서 응답이 어려움 → 주 1회 응답으로 조정'],
-    ['s2', '○시아', 'C-2026-0377', '오유진', '9/30', 15, 'open', '담당 상담원 비활성 · 재배정 후 연락 필요'],
-    ['s3', '○다온', 'C-2026-0384', '박지훈', '10/04', 11, 'try', '10/12 부재중 · 보호자 문자 남김'],
-    ['s4', '○로아', 'C-2026-0359', '한승호', '10/06', 9, 'open', '—'],
-    ['s5', '○태오', 'C-2026-0347', '정다은', '10/07', 8, 'done', '10/14 통화 · 앱 삭제 후 다시 설치 안내']
+    ['s1', '윤하은', 'C-2026-0298', '이서연', '9/28', 17, 'done', '10/13 통화 · 언니와 휴대폰을 같이 써서 응답이 어려움 → 주 1회 응답으로 조정'],
+    ['s2', '서시아', 'C-2026-0377', '오유진', '9/30', 15, 'open', '담당 상담원 비활성 · 재배정 후 연락 필요'],
+    ['s3', '배다온', 'C-2026-0384', '박지훈', '10/04', 11, 'try', '10/12 부재중 · 보호자 문자 남김'],
+    ['s4', '문로아', 'C-2026-0359', '한승호', '10/06', 9, 'open', '—'],
+    ['s5', '송태오', 'C-2026-0347', '정다은', '10/07', 8, 'done', '10/14 통화 · 앱 삭제 후 다시 설치 안내']
   ];
   const isDone = (r) => (s.done[r[0]] === undefined ? r[6] === 'done' : s.done[r[0]]);
   const silentAll = S.map((r) => { const d = isDone(r);

@@ -97,7 +97,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -444,6 +444,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
 <nav class="nav" aria-label="관리자 메뉴">
 <a href="AdminHome.dc.html">홈</a>
+<a href="AdminCases.dc.html">사례 목록</a>
 <a href="AdminApp.dc.html">아이 연계 앱 관리<span class="cnt">2</span></a>
 <a href="AdminAccounts.dc.html">상담사 계정 관리</a>
 <a class="on" href="AdminViewLog.dc.html">열람 기록</a>
@@ -454,11 +455,10 @@ section[aria-label="폴더"]{max-width:none !important}
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
 <div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
-<header><h1 style="margin: 0; font-size: 28px; font-weight: 700;">열람 기록</h1><p class="sub" style="margin: 4px 0 0;">상담원 화면의 ‘실명 보기’와 녹취 재생 · 내려받기가 모두 남아요.</p></header>
+<header><h1 style="margin: 0; font-size: 28px; font-weight: 700;">열람 기록</h1><p class="sub" style="margin: 4px 0 0;">상담원 화면의 녹취 재생 · 내려받기가 모두 남아요.</p></header>
 
 <section aria-label="열람 요약" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
-<div class="card kpi"><span class="sub">최근 7일 열람</span><b>{{ total }}</b><span class="note">상담원 5명 · 관리자 1명</span></div>
-<div class="card kpi"><span class="sub">실명 보기</span><b>{{ realCnt }}</b><span class="note">사례 관리 · 아이 연계 · 종결 검토 목록</span></div>
+<div class="card kpi"><span class="sub">최근 7일 열람</span><b>{{ total }}</b><span class="note">상담원 3명</span></div>
 <div class="card kpi"><span class="sub">녹취 재생 · 내려받기</span><b>{{ recCnt }}</b><span class="note">내려받기 {{ dlCnt }}건 포함</span></div>
 <div class="card kpi" style="box-shadow: inset 0 4px 0 #A33B2E;"><span class="sub acc" style="font-weight: 700;">담당 외 사례 열람</span><b class="acc">{{ otherCnt }}</b><span class="note">사유 확인 필요</span></div>
 </section>
@@ -530,25 +530,18 @@ renderValsBase() {
   const s = this.state;
   const segOf = (key, cur, opts) => opts.map(([v, l]) => ({ label: l, cls: cur === v ? 'on' : '', pressed: cur === v ? 'true' : 'false', pick: () => this.setState({ [key]: v }) }));
   const L = [
-    ['10/15 09:21', '이서연', '선임 상담원', '○서윤', 'C-2026-0351', 'real', '사례 관리 목록', '192.168.1.12', 'own'],
-    ['10/15 09:18', '이서연', '선임 상담원', '○서윤', 'C-2026-0351', 'play', 'STT 검수', '192.168.1.12', 'own'],
-    ['10/15 08:57', '한승호', '상담원', '○민준', 'C-2026-0277', 'real', '아이 연계 목록', '192.168.1.21', 'other'],
-    ['10/14 17:42', '정다은', '상담원', '○준서', 'C-2026-0418', 'dl', '문서함', '192.168.1.8', 'own'],
-    ['10/14 16:10', '박지훈', '상담원', '○소율', 'C-2026-0366', 'real', '종결 검토 목록', '192.168.1.15', 'own'],
-    ['10/14 11:03', '김민준', '관리자', '○시우', 'C-2026-0312', 'real', '종결 검토 목록', '192.168.1.2', 'admin'],
-    ['10/13 20:15', '박지훈', '상담원', '○서윤', 'C-2026-0351', 'play', '상담 이력', '211.36.142.9', 'other'],
-    ['10/13 15:30', '이서연', '선임 상담원', '○도현', 'C-2026-0412', 'play', 'STT 검수', '192.168.1.12', 'own'],
-    ['10/12 10:05', '한승호', '상담원', '○하준', 'C-2026-0402', 'real', '사례 관리 목록', '192.168.1.21', 'own'],
-    ['10/11 14:22', '정다은', '상담원', '○지안', 'C-2026-0425', 'real', '사례 관리 목록', '192.168.1.8', 'own']
+    ['10/15 09:18', '이서연', '선임 상담원', '이서윤', 'C-2026-0351', 'play', '기록 확인', '192.168.1.12', 'own'],
+    ['10/14 17:42', '정다은', '상담원', '한준서', 'C-2026-0418', 'dl', '문서함', '192.168.1.8', 'own'],
+    ['10/13 20:15', '박지훈', '상담원', '이서윤', 'C-2026-0351', 'play', '상담 이력', '211.36.142.9', 'other'],
+    ['10/13 15:30', '이서연', '선임 상담원', '김도현', 'C-2026-0412', 'play', '기록 확인', '192.168.1.12', 'own']
   ];
-  const KN = { real: ['실명 보기', 'chip c-mid'], play: ['녹취 재생', 'chip c-normal'], dl: ['녹취 내려받기', 'chip c-check'] };
+  const KN = { play: ['녹취 재생', 'chip c-normal'], dl: ['녹취 내려받기', 'chip c-check'] };
   const OWN = { own: ['담당', 'chip c-ok'], other: ['담당 외', 'chip c-urgent'], admin: ['관리 권한', 'chip c-normal'] };
-  const rows = L.filter((r) => (s.k === 'all' || (s.k === 'real' ? r[5] === 'real' : r[5] !== 'real')) && (!s.other || r[8] === 'other')).map((r) => ({
+  const rows = L.filter((r) => (s.k === 'all' || r[5] === s.k) && (!s.other || r[8] === 'other')).map((r) => ({
     t: r[0], who: r[1], rank: r[2], kid: r[3], cid: r[4], kind: KN[r[5]][0], kCls: KN[r[5]][1], screen: r[6], ip: r[7], ext: !r[7].startsWith('192.168.'), own: OWN[r[8]][0], oCls: OWN[r[8]][1] }));
-  const realCnt = L.filter((r) => r[5] === 'real').length;
-  return { rows, total: L.length, realCnt, recCnt: L.length - realCnt, dlCnt: L.filter((r) => r[5] === 'dl').length, otherCnt: L.filter((r) => r[8] === 'other').length,
+    return { rows, total: L.length, recCnt: L.length, dlCnt: L.filter((r) => r[5] === 'dl').length, otherCnt: L.filter((r) => r[8] === 'other').length,
     onlyOther: s.other, tgBg: s.other ? '#2B2A26' : '#DAD5C9', tgX: s.other ? '16px' : '2px', toggleOther: () => this.setState({ other: !s.other }),
-    kFilters: segOf('k', s.k, [['all', '전체'], ['real', '실명 보기'], ['rec', '녹취']]) };
+    kFilters: segOf('k', s.k, [['all', '전체'], ['play', '녹취 재생'], ['dl', '녹취 내려받기']]) };
 }
 }
 </script>

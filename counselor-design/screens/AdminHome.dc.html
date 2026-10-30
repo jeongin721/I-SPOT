@@ -96,7 +96,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -442,6 +442,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <input type="checkbox" id="mnav" class="mnav-tg" aria-label="메뉴 열기"><label for="mnav" class="mnav-btn"><i aria-hidden="true"></i>메뉴</label>
 <nav class="nav" aria-label="관리자 메뉴">
 <a class="on" href="AdminHome.dc.html">홈</a>
+<a href="AdminCases.dc.html">사례 목록</a>
 <a href="AdminApp.dc.html">아이 연계 앱 관리<span class="cnt">2</span></a>
 <a href="AdminAccounts.dc.html">상담사 계정 관리</a>
 <a href="AdminViewLog.dc.html">열람 기록</a>
@@ -508,7 +509,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="hd"><h2 class="h2">상담원별 업무량</h2><a href="AdminAccounts.dc.html" style="margin-left: auto; font-size: 13px;">계정 관리</a></div>
 <div style="overflow-x: auto;">
 <table class="tbl" style="min-width: 900px;">
-<thead><tr><th scope="col">상담원</th><th scope="col" style="width: 22%;">담당 사례</th><th scope="col">위험도 상</th><th scope="col">이번 주 상담</th><th scope="col">STT 검수 대기</th><th scope="col">일지 미작성</th></tr></thead>
+<thead><tr><th scope="col">상담원</th><th scope="col" style="width: 22%;">담당 사례</th><th scope="col">위험도 상</th><th scope="col">이번 주 상담</th><th scope="col">기록 확인 대기</th><th scope="col">일지 미작성</th></tr></thead>
 <tbody>
 <sc-for list="{{ load }}" as="r" hint-placeholder-count="5">
 <tr>
@@ -569,10 +570,10 @@ renderValsBase() {
   const now = new Date(); const W = ['일', '월', '화', '수', '목', '금', '토'];
   const dateLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${W[now.getDay()]}요일`;
   const U = [
-    { id: 'u1', t: '오늘 08:12', kid: '○민준', cid: 'C-2026-0277', msg: '“물건으로 맞았어 · 여러 번”', who: '이서연', ok: false, wait: '1시간 50분 경과' },
-    { id: 'u2', t: '어제 21:40', kid: '○준서', cid: 'C-2026-0418', msg: '“집에 들어가기 무서워”', who: '정다은', ok: true, at: '어제 21:58 확인' },
-    { id: 'u3', t: '어제 17:05', kid: '○소율', cid: 'C-2026-0366', msg: '연락 요청 버튼 3회 연속', who: '박지훈', ok: true, at: '어제 17:20 확인' },
-    { id: 'u4', t: '10/13 22:31', kid: '○하준', cid: 'C-2026-0402', msg: '“밥을 이틀째 못 먹었어”', who: '한승호', ok: false, wait: '1일 11시간 경과' }
+    { id: 'u1', t: '오늘 08:12', kid: '장민준', cid: 'C-2026-0277', msg: '“물건으로 맞았어 · 여러 번”', who: '이서연', ok: false, wait: '1시간 50분 경과' },
+    { id: 'u2', t: '어제 21:40', kid: '한준서', cid: 'C-2026-0418', msg: '“집에 들어가기 무서워”', who: '정다은', ok: true, at: '어제 21:58 확인' },
+    { id: 'u3', t: '어제 17:05', kid: '임소율', cid: 'C-2026-0366', msg: '연락 요청 버튼 3회 연속', who: '박지훈', ok: true, at: '어제 17:20 확인' },
+    { id: 'u4', t: '10/13 22:31', kid: '오하준', cid: 'C-2026-0402', msg: '“밥을 이틀째 못 먹었어”', who: '한승호', ok: false, wait: '1일 11시간 경과' }
   ];
   const pend = U.filter((u) => !u.ok);
   const urgent = (s.uf === 'pending' ? pend : U).map((u) => { const n = !!s.nudged[u.id];

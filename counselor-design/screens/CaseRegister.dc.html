@@ -96,7 +96,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -451,6 +451,65 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
+label:has(> .cp-btn){position:relative}
+
+.cp-btn{position:absolute;right:0;top:-5px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:8px;background:transparent;color:#7A776F;cursor:pointer}
+.cp-btn:hover{background:#EFECE5;color:#2B2A26}
+.cp-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:1px}
+.cp-btn .cp-ok{display:none}
+.cp-btn.done{color:#8A6D2F}
+.cp-btn.done .cp-i{display:none}
+.cp-btn.done .cp-ok{display:block}
+.thm-root.dark .cp-btn{color:#A8A296}
+.thm-root.dark .cp-btn:hover{background:#3A3833;color:#ECE8DF}
+.thm-root.dark .cp-btn.done{color:#EADBB5}
+.cp-menu{display:none;position:absolute;right:0;top:26px;z-index:30;flex-direction:column;min-width:168px;padding:4px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:10px;box-shadow:0 10px 24px rgba(43,42,38,.14)}
+label.cp-open > .cp-menu{display:flex}
+.cp-menu button{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:13px;color:#2B2A26;text-align:left;cursor:pointer;white-space:nowrap}
+.cp-menu button:hover,.cp-menu button:focus-visible{background:#F7F6F2;outline:none}
+.cp-ex{font-size:11.5px;color:#7A776F}
+.thm-root.dark .cp-menu{background:#2C2B27;border-color:#45423B;box-shadow:0 10px 24px rgba(0,0,0,.4)}
+.thm-root.dark .cp-menu button{color:#ECE8DF}
+.thm-root.dark .cp-menu button:hover,.thm-root.dark .cp-menu button:focus-visible{background:#33312C}
+.thm-root.dark .cp-ex{color:#A8A296}
+.rg-grp{display:flex;flex-direction:column;gap:8px}
+.rg-lb{font-size:12.5px;font-weight:700;color:#7A776F;letter-spacing:.02em}
+.rg4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.rg3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rg2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:900px){.rg4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.rg4,.rg3,.rg2{grid-template-columns:minmax(0,1fr)}}
+.thm-root.dark .rg-lb{color:#A8A296}
+.ta1{min-height:42px !important;height:42px;resize:none;overflow:hidden;white-space:nowrap;padding-top:9px !important;padding-bottom:9px !important}
+.ftg{border:1px solid #DAD5C9;border-radius:0;table-layout:fixed;min-width:640px}
+.ftg th{border:1px solid #DAD5C9;text-align:center !important;padding:8px 6px !important}
+.ftg td{border:1px solid #DAD5C9 !important;padding:0 !important}
+.ftg input{border:0 !important;border-radius:0 !important;height:38px !important;background:transparent;color:inherit;padding:0 10px !important}
+.ftg input:focus{outline:2px solid #C2A36B;outline-offset:-2px}
+.thm-root.dark .ftg,.thm-root.dark .ftg th,.thm-root.dark .ftg td{border-color:#45423B !important}
+label.cp-in > .cp-btn{top:6px;right:6px}
+label.cp-in > .cp-menu{top:38px}
+label.cp-in > textarea{padding-right:42px}
+.hs-sec{display:flex;align-items:center;gap:6px}
+.hs-name{width:120px;height:30px;border:1px solid #DAD5C9;border-radius:8px;padding:0 10px;font:inherit;font-size:13px;font-weight:500;background:#FFFFFF;color:#2B2A26}
+.hs-tbl{display:flex;flex-direction:column;border:1px solid #DAD5C9}
+.hs-row{display:grid;grid-template-columns:110px minmax(0,1fr);border-top:1px solid #DAD5C9}
+.hs-row:first-child{border-top:0}
+.hs-k{display:flex;align-items:center;justify-content:center;padding:10px 8px;background:#F7F6F2;font-size:13px;font-weight:700;text-align:center;border-right:1px solid #DAD5C9}
+.hs-v{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:10px 12px;min-width:0}
+.hs-pk{min-height:32px !important;padding:0 12px !important}
+.hs-t{font-size:13px;color:#66625A;white-space:nowrap}
+.hs-in{height:32px;border:1px solid #DAD5C9;border-radius:8px;padding:0 10px;font:inherit;font-size:13px;background:#FFFFFF;color:#2B2A26;min-width:0}
+.hs-in:disabled{background:#F2F2F0;color:#A8A296;cursor:not-allowed}
+.hs-w{flex:1 1 140px;max-width:240px}
+.hs-g{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.hs-n{width:56px;text-align:center;padding:0 6px}
+@media (max-width:600px){.hs-row{grid-template-columns:minmax(0,1fr)}.hs-k{justify-content:flex-start;border-right:0;border-bottom:1px solid #DAD5C9}}
+.thm-root.dark .hs-name,.thm-root.dark .hs-in{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .hs-in:disabled{background:#33312C;color:#7A776F}
+.thm-root.dark .hs-tbl,.thm-root.dark .hs-row,.thm-root.dark .hs-k{border-color:#45423B}
+.thm-root.dark .hs-k{background:#33312C}
+.thm-root.dark .hs-t{color:#A8A296}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1700px; background: rgba(47,58,68,0.40); font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; color: #2B2A26; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; position: relative;">
@@ -467,7 +526,7 @@ section[aria-label="폴더"]{max-width:none !important}
 
 <form style="padding: 22px 30px; display: flex; flex-direction: column; gap: 18px;">
 <sc-if value="{{ isA }}" hint-placeholder-val="{{ true }}">
-<div class="g3">
+<div class="rg-grp"><div class="rg4">
 <label class="fl"><span class="lb">신고접수일 <span class="req">*</span></span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.report }}" onChange="{{ fs.report }}" style="border-color: {{ fe.report }};" aria-invalid="{{ fi.report }}" aria-label="신고접수일"><button type="button" class="dp-btn" aria-label="신고접수일 달력 열기" aria-expanded="{{ dp.report.exp }}" onClick="{{ dp.report.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
 <sc-if value="{{ dp.report.open }}" hint-placeholder-val="{{ false }}"><span class="dp-bd" onClick="{{ dp.report.close }}"></span><span class="dp-pop" role="dialog" aria-label="신고접수일 선택">
 <sc-if value="{{ dp.report.isY }}" hint-placeholder-val="{{ true }}"><span class="dp-hd"><b>연도 선택</b></span><span class="dp-years" id="{{ dp.report.listId }}"><sc-for list="{{ dp.report.years }}" as="o" hint-placeholder-count="6"><button type="button" class="dp-y {{ o.cls }}" id="{{ o.id }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
@@ -487,6 +546,8 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-if value="{{ dp.first.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.first.toM }}">←</button><b>{{ dp.first.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.first.prevDis }}" onClick="{{ dp.first.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.first.nextDis }}" onClick="{{ dp.first.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.first.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.first.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
 </span></sc-if></span></label>
 <label class="fl"><span class="lb">개별사건번호 <span class="req">*</span></span><input class="inp" type="text" value="{{ fv.no }}" onChange="{{ fs.no }}" style="border-color: {{ fe.no }};" aria-invalid="{{ fi.no }}"></label>
+</div></div>
+<div class="rg-grp"><div class="rg3">
 <label class="fl"><span class="lb">대상아동 이름 <span class="req">*</span></span><input class="inp" type="text" placeholder="이름" value="{{ fv.child }}" onChange="{{ fs.child }}" style="border-color: {{ fe.child }};" aria-invalid="{{ fi.child }}"></label>
 <label class="fl"><span class="lb">성별 <span class="req">*</span></span><select class="inp" value="{{ fv.sex }}" onChange="{{ fs.sex }}" style="border-color: {{ fe.sex }};" aria-invalid="{{ fi.sex }}"><option>선택</option><option>여</option><option>남</option></select></label>
 <label class="fl"><span class="lb">생년월일 (나이) <span class="req">*</span></span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.birth }}" onChange="{{ fs.birth }}" style="border-color: {{ fe.birth }};" aria-invalid="{{ fi.birth }}" aria-label="생년월일"><button type="button" class="dp-btn" aria-label="생년월일 달력 열기" aria-expanded="{{ dp.birth.exp }}" onClick="{{ dp.birth.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
@@ -495,32 +556,41 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-if value="{{ dp.birth.isM }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="연도 선택으로" onClick="{{ dp.birth.toY }}">←</button><b>{{ dp.birth.yLabel }}</b></span><span class="dp-months"><sc-for list="{{ dp.birth.months }}" as="o" hint-placeholder-count="12"><button type="button" class="dp-m {{ o.cls }}" disabled="{{ o.dis }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
 <sc-if value="{{ dp.birth.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.birth.toM }}">←</button><b>{{ dp.birth.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.birth.prevDis }}" onClick="{{ dp.birth.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.birth.nextDis }}" onClick="{{ dp.birth.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.birth.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.birth.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
 </span></sc-if></span></label>
+</div></div>
+<div class="rg-grp"><div class="rg3">
 <label class="fl"><span class="lb">사례관리대상자 <span class="req">*</span></span><input class="inp" type="text" placeholder="이름" value="{{ fv.target }}" onChange="{{ fs.target }}" style="border-color: {{ fe.target }};" aria-invalid="{{ fi.target }}"></label>
 <label class="fl"><span class="lb">관계 <span class="req">*</span></span><select class="inp" value="{{ fv.rel }}" onChange="{{ fs.rel }}" style="border-color: {{ fe.rel }};" aria-invalid="{{ fi.rel }}"><option>선택</option><option>친부</option><option>친모</option><option>계부</option><option>계모</option><option>조부모</option><option>친인척</option><option>기타</option></select></label>
-</div>
-
-<div class="g3">
+<label class="fl"><span class="lb">생년월일 (나이)</span><span class="dpw"><input class="inp dpi" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="{{ fv.tbirth }}" onChange="{{ fs.tbirth }}" aria-label="사례관리대상자 생년월일"><button type="button" class="dp-btn" aria-label="사례관리대상자 생년월일 달력 열기" aria-expanded="{{ dp.tbirth.exp }}" onClick="{{ dp.tbirth.toggle }}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></button>
+<sc-if value="{{ dp.tbirth.open }}" hint-placeholder-val="{{ false }}"><span class="dp-bd" onClick="{{ dp.tbirth.close }}"></span><span class="dp-pop" role="dialog" aria-label="사례관리대상자 생년월일 선택">
+<sc-if value="{{ dp.tbirth.isY }}" hint-placeholder-val="{{ true }}"><span class="dp-hd"><b>연도 선택</b></span><span class="dp-years" id="{{ dp.tbirth.listId }}"><sc-for list="{{ dp.tbirth.years }}" as="o" hint-placeholder-count="6"><button type="button" class="dp-y {{ o.cls }}" id="{{ o.id }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.tbirth.isM }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="연도 선택으로" onClick="{{ dp.tbirth.toY }}">←</button><b>{{ dp.tbirth.yLabel }}</b></span><span class="dp-months"><sc-for list="{{ dp.tbirth.months }}" as="o" hint-placeholder-count="12"><button type="button" class="dp-m {{ o.cls }}" disabled="{{ o.dis }}" onClick="{{ o.pick }}">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ dp.tbirth.isD }}" hint-placeholder-val="{{ false }}"><span class="dp-hd"><button type="button" class="dp-nav" aria-label="월 선택으로" onClick="{{ dp.tbirth.toM }}">←</button><b>{{ dp.tbirth.ymLabel }}</b><span style="margin-left: auto; display: inline-flex; gap: 6px;"><button type="button" class="dp-nav" aria-label="이전 달" disabled="{{ dp.tbirth.prevDis }}" onClick="{{ dp.tbirth.prev }}">‹</button><button type="button" class="dp-nav" aria-label="다음 달" disabled="{{ dp.tbirth.nextDis }}" onClick="{{ dp.tbirth.next }}">›</button></span></span><span class="dp-days"><sc-for list="{{ dp.tbirth.dows }}" as="w" hint-placeholder-count="7"><span class="dp-dow">{{ w }}</span></sc-for><sc-for list="{{ dp.tbirth.days }}" as="o" hint-placeholder-count="31"><sc-if value="{{ o.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if><sc-if value="{{ o.real }}" hint-placeholder-val="{{ true }}"><button type="button" class="dp-d {{ o.cls }}" disabled="{{ o.dis }}" aria-label="{{ o.aria }}" onClick="{{ o.pick }}">{{ o.n }}</button></sc-if></sc-for></span></sc-if>
+</span></sc-if></span></label>
+</div></div>
+<div class="rg-grp"><div class="rg2">
 <label class="fl"><span class="lb">조치결과 · 피해아동 <span class="req">*</span></span><select class="inp" value="{{ fv.m1 }}" onChange="{{ fs.m1 }}" style="border-color: {{ fe.m1 }};" aria-invalid="{{ fi.m1 }}"><option>원가정보호</option><option>친인척보호</option><option>연고자에 의한 보호</option><option>가정위탁</option><option>시설입소</option><option>병원입원</option><option>기타</option></select></label>
 <label class="fl"><span class="lb">조치결과 · 사례관리대상자 <span class="req">*</span></span><select class="inp" value="{{ fv.m2 }}" onChange="{{ fs.m2 }}" style="border-color: {{ fe.m2 }};" aria-invalid="{{ fi.m2 }}"><option>지속관찰</option><option>아동과의 분리</option><option>고소 · 고발</option><option>기타</option></select></label>
+</div></div>
+<div class="rg-grp"><div class="rg3">
 <label class="fl"><span class="lb">면접대상자 / 관계</span><input class="inp" type="text" placeholder="예: 이서윤 / 피해아동"></label>
 <label class="fl"><span class="lb">담당 상담원</span><input class="inp" type="text" value="이서연"></label>
 <label class="fl"><span class="lb">위험도 (우선)</span><select class="inp"><option>선택</option><option>상</option><option>중</option><option>하</option></select></label>
-</div>
-<label class="fl"><span class="lb">사례연계 경위 <span class="req">*</span></span><textarea class="ta2" placeholder="신고 경위 · 신고자 유형 · 연계 내용" value="{{ fv.how }}" onChange="{{ fs.how }}" style="border-color: {{ fe.how }};" aria-invalid="{{ fi.how }}"></textarea></label>
+</div></div>
+<label class="fl"><span class="lb">사례연계 경위 <span class="req">*</span></span><textarea class="ta2" rows="7" placeholder="신고 경위 · 신고자 유형 · 연계 내용" value="{{ fv.how }}" onChange="{{ fs.how }}" style="border-color: {{ fe.how }}; min-height: 180px;" aria-invalid="{{ fi.how }}"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
 </sc-if>
 
 <sc-if value="{{ isB }}" hint-placeholder-val="{{ false }}">
 <div class="sec">가정상황 <span class="note" style="font-weight: 400;">(복수응답 가능)</span></div>
 <div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ homes }}" as="o" hint-placeholder-count="21"><button type="button" class="pk" onClick="{{ o.toggle }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.mark }} {{ o.label }}</button></sc-for></div>
 <sc-if value="{{ hmEdit }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><input class="inp" type="text" placeholder="기타 내용 직접 입력" aria-label="가정상황 기타 직접 입력" value="{{ hmDraft }}" onChange="{{ hmDraftSet }}" style="flex: 1 1 280px; min-width: 0; height: 36px;"><button type="button" class="btn btn-p btn-sm" onClick="{{ hmOk }}">확인</button><button type="button" class="btn btn-s btn-sm" onClick="{{ hmCancel }}">취소</button></div></sc-if>
-<sc-if value="{{ hmShowOther }}" hint-placeholder-val="{{ false }}"><div style="font-size: 13px; color: #2B2A26;">✓ 기타 · {{ hmOther }}</div></sc-if>
-<label class="fl"><span class="lb">보호자와 아동과의 관계</span><textarea class="ta2"></textarea></label>
+<label class="fl"><span class="lb">보호자와 아동과의 관계</span><textarea class="ta2 ta1" rows="1" aria-label="보호자와 아동과의 관계"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
 
 <div class="sec">가족유형</div>
-<div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ fams }}" as="o" hint-placeholder-count="12"><button type="button" class="pk" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for></div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ fams }}" as="o" hint-placeholder-count="21"><button type="button" class="pk" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for></div>
+<sc-if value="{{ famEdit }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><sc-if value="{{ famIsInst }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13px; font-weight: 700;">기관:</span></sc-if><input class="inp" type="text" placeholder="{{ famPh }}" aria-label="{{ famAria }}" value="{{ famDraft }}" onChange="{{ famDraftSet }}" style="flex: 1 1 260px; min-width: 0; height: 36px;"><button type="button" class="btn btn-p btn-sm" onClick="{{ famOk }}">확인</button><button type="button" class="btn btn-s btn-sm" onClick="{{ famCancel }}">취소</button></div></sc-if>
 
 <div class="sec">가족관계</div>
-<div style="overflow-x: auto;"><table class="ft"><thead><tr><th>성명</th><th>관계</th><th>나이</th><th>종교</th><th>학력</th><th>직업</th><th>동거여부</th></tr></thead><tbody>
+<div style="overflow-x: auto;"><table class="ft ftg"><thead><tr><th>성명</th><th>관계</th><th>나이</th><th>종교</th><th>학력</th><th>직업</th><th>동거여부</th></tr></thead><tbody>
 <sc-for list="{{ famRows }}" as="r" hint-placeholder-count="3"><tr><td><input aria-label="성명"></td><td><input aria-label="관계"></td><td><input aria-label="나이"></td><td><input aria-label="종교"></td><td><input aria-label="학력"></td><td><input aria-label="직업"></td><td><input aria-label="동거여부"></td></tr></sc-for>
 </tbody></table></div>
 <button type="button" class="btn btn-sm btn-s" style="align-self: flex-start;" onClick="{{ addRow }}">+ 가족 추가</button>
@@ -528,27 +598,25 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="sec">아동 특성 <span class="note" style="font-weight: 400;">(복수응답 가능)</span></div>
 <div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ traits }}" as="o" hint-placeholder-count="34"><button type="button" class="pk" onClick="{{ o.toggle }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.mark }} {{ o.label }}</button></sc-for></div>
 <sc-if value="{{ trEdit }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><input class="inp" type="text" placeholder="기타 내용 직접 입력" aria-label="아동 특성 기타 직접 입력" value="{{ trDraft }}" onChange="{{ trDraftSet }}" style="flex: 1 1 280px; min-width: 0; height: 36px;"><button type="button" class="btn btn-p btn-sm" onClick="{{ trOk }}">확인</button><button type="button" class="btn btn-s btn-sm" onClick="{{ trCancel }}">취소</button></div></sc-if>
-<sc-if value="{{ trShowOther }}" hint-placeholder-val="{{ false }}"><div style="font-size: 13px; color: #2B2A26;">✓ 기타 · {{ trOther }}</div></sc-if>
 
-<div class="sec">문제력 · 건강정도</div>
-<div class="g3">
-<label class="fl"><span class="lb">현 상황</span><textarea class="ta2"></textarea></label>
-<label class="fl"><span class="lb">이유 인식</span><textarea class="ta2"></textarea></label>
-</div>
-<div class="g3">
-<label class="fl"><span class="lb">질병</span><input class="inp" type="text"></label>
-<label class="fl"><span class="lb">장애</span><input class="inp" type="text"></label>
-<label class="fl"><span class="lb">병원치료</span><input class="inp" type="text"></label>
-<label class="fl"><span class="lb">정신과 진단</span><input class="inp" type="text"></label>
-<label class="fl"><span class="lb">타기관 상담</span><input class="inp" type="text"></label>
+<div class="sec">문제력</div>
+<label class="fl cp-in"><textarea class="ta2" placeholder="피해아동/사례관리대상자/비가해보호자/가족구성원 등이 생각하는 현 상황, 현 상황이 초래된 이유 등에 대한 기재" aria-label="문제력"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
+<div class="sec hs-sec"><span aria-hidden="true">(</span><input class="hs-name" type="text" placeholder="이름" aria-label="건강정도 대상자 이름"><span aria-hidden="true">)</span>건강정도</div>
+<p class="note" style="margin: -8px 0 0;">*피해아동, 사례관리대상자, 가족구성원 중 해당하는 사람에 대해 기재</p>
+<div class="hs-tbl">
+<div class="hs-row"><span class="hs-k">질병</span><div class="hs-v"><sc-for list="{{ hs.dis }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-t">질병명</span><input class="hs-in hs-w" type="text" aria-label="질병명" placeholder="질병명 입력" disabled="{{ hs.off.dis }}"></div></div>
+<div class="hs-row"><span class="hs-k">장애</span><div class="hs-v"><sc-for list="{{ hs.dsb }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-t">장애명</span><input class="hs-in hs-w" type="text" aria-label="장애명" placeholder="장애명 입력" disabled="{{ hs.off.dsb }}"><span class="hs-t">장애 [</span><sc-for list="{{ hs.dsbLv }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-t">] 장애</span></div></div>
+<div class="hs-row"><span class="hs-k">병원치료</span><div class="hs-v"><sc-for list="{{ hs.hosp }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="병원치료 횟수" disabled="{{ hs.off.hosp }}"><span class="hs-t">회 / 병력:</span><sc-for list="{{ hs.hospT }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-g"><span class="hs-t">/ 총</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="병원치료 기간 년" disabled="{{ hs.off.hosp }}"><span class="hs-t">년</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="병원치료 기간 개월" disabled="{{ hs.off.hosp }}"><span class="hs-t">개월</span></span></div></div>
+<div class="hs-row"><span class="hs-k">정신과 진단</span><div class="hs-v"><sc-for list="{{ hs.psy }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-t">진단명</span><input class="hs-in hs-w" type="text" aria-label="진단명" placeholder="진단명 입력" disabled="{{ hs.off.psy }}"><span class="hs-t">/ 약물복용여부:</span><sc-for list="{{ hs.med }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-g"><span class="hs-t">(총</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="약물복용 기간 년" disabled="{{ hs.off.med }}"><span class="hs-t">년</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="약물복용 기간 개월" disabled="{{ hs.off.med }}"><span class="hs-t">개월)</span></span></div></div>
+<div class="hs-row"><span class="hs-k">타기관 상담</span><div class="hs-v"><sc-for list="{{ hs.cns }}" as="o" hint-placeholder-count="2"><button type="button" class="pk hs-pk" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="background: {{ o.bg }}; border-color: {{ o.bd }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for><span class="hs-t">상담사유</span><input class="hs-in hs-w" type="text" aria-label="상담사유" placeholder="상담사유 입력" disabled="{{ hs.off.cns }}"><span class="hs-t">/</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="타기관 상담 횟수" disabled="{{ hs.off.cns }}"><span class="hs-g"><span class="hs-t">회 / 기간 총</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="타기관 상담 기간 년" disabled="{{ hs.off.cns }}"><span class="hs-t">년</span><input class="hs-in hs-n" type="text" inputmode="numeric" aria-label="타기관 상담 기간 개월" disabled="{{ hs.off.cns }}"><span class="hs-t">개월</span></span></div></div>
 </div>
 
 <div class="sec">대상자 태도 및 관찰내용</div>
 <div class="g3">
-<label class="fl"><span class="lb">대상자 태도</span><textarea class="ta2"></textarea></label>
-<label class="fl"><span class="lb">물리적 환경</span><textarea class="ta2"></textarea></label>
+<label class="fl"><span class="lb">대상자 태도</span><textarea class="ta2"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
+<label class="fl"><span class="lb">물리적 환경</span><textarea class="ta2"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
 </div>
-<label class="fl"><span class="lb">상담원 소견 및 향후 계획</span><textarea class="ta2" style="min-height: 96px;"></textarea></label>
+<label class="fl"><span class="lb">상담원 소견 및 향후 계획</span><textarea class="ta2" style="min-height: 96px;"></textarea><button type="button" class="cp-btn" title="복사" aria-label="내용 복사" onClick="{{ copyMenu }}" aria-haspopup="true"><svg class="cp-i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><rect x="3.5" y="9.5" width="11" height="11" rx="2"></rect></svg><svg class="cp-ok" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button><span class="cp-menu" role="menu" aria-label="복사 방식"><button type="button" role="menuitem" onClick="{{ copyRaw }}">그대로 복사</button><button type="button" role="menuitem" onClick="{{ copyMask }}">이름 가려서 복사<span class="cp-ex">예) 이○윤</span></button></span></label>
 </sc-if>
 
 <sc-if value="{{ showMiss }}" hint-placeholder-val="{{ false }}"><p class="req" role="alert" style="margin: 0; font-size: 13px; font-weight: 500;">기본 정보 필수 항목을 모두 입력해야 초기면접 내용으로 넘어갈 수 있어요 · 남은 항목: {{ missText }}</p></sc-if>
@@ -591,21 +659,28 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  this._cpDoc = (e) => { if (e.type === 'keydown' && e.key !== 'Escape') return; if (e.type === 'mousedown' && e.target && e.target.closest && e.target.closest('.cp-btn, .cp-menu')) return; try { document.querySelectorAll('label.cp-open').forEach((x) => x.classList.remove('cp-open')); } catch (er) {} }; try { document.addEventListener('mousedown', this._cpDoc); document.addEventListener('keydown', this._cpDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown || this.backRead() !== this._backShown) this.setState({ __thmTick: Date.now() }); }, 200);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  try { document.removeEventListener('mousedown', this._cpDoc); document.removeEventListener('keydown', this._cpDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
 }
+nmMask(t) { let r = String(t || ''); const F = ['장민준', '이서윤', '김도현', '박지호', '정예린', '최서준', '윤하은', '신유나', '강시우', '조하린']; F.forEach((n) => { r = r.split(n).join(n[0] + '○' + n.slice(2)); }); F.forEach((n) => { const g = n.slice(1); r = r.split(g).join(g[0] + '○'); }); return r; }
+cpDo(e, mask) { const l = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('label') : null; if (!l) return; l.classList.remove('cp-open'); const b = l.querySelector('.cp-btn'); const ta = l.querySelector('textarea'); if (!ta || !b) return; const t = mask ? this.nmMask(ta.value || '') : (ta.value || '');
+  const ok = () => { b.classList.add('done'); b.setAttribute('aria-label', mask ? '이름 가려서 복사됨' : '복사됨'); b.title = mask ? '이름 가려서 복사됨' : '복사됨'; clearTimeout(b._cpT); b._cpT = setTimeout(() => { b.classList.remove('done'); b.setAttribute('aria-label', '내용 복사'); b.title = '복사'; }, 1500); };
+  const fb = () => { try { const x = document.createElement('textarea'); x.value = t; x.setAttribute('readonly', ''); x.style.position = 'fixed'; x.style.left = '-9999px'; document.body.appendChild(x); x.select(); document.execCommand('copy'); document.body.removeChild(x); ok(); } catch (err) {} };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, fb); else fb(); } catch (err) { fb(); } }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), backHref: this.backShow(), syncBack: (e) => { try { const h = this.backRead(); if (e && e.currentTarget) e.currentTarget.setAttribute('href', h); } catch (err) {} }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, { copyMenu: (e) => { const l = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('label') : null; if (!l) return; const was = l.classList.contains('cp-open'); try { document.querySelectorAll('label.cp-open').forEach((x) => x.classList.remove('cp-open')); } catch (er) {} if (!was) l.classList.add('cp-open'); }, copyRaw: (e) => this.cpDo(e, false), copyMask: (e) => this.cpDo(e, true), jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), backHref: this.backShow(), syncBack: (e) => { try { const h = this.backRead(); if (e && e.currentTarget) e.currentTarget.setAttribute('href', h); } catch (err) {} }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-constructor(props) { super(props); this.state = { tab: 'A', ty: {}, hm: {}, hmEdit: false, hmDraft: '', hmOther: '', trEdit: false, trDraft: '', trOther: '', tr: {}, fam: '', rows: 2, tried: false, f: { report: '2026-10-12', link: '2026-10-12', no: 'C-2026-0352', child: '', sex: '선택', birth: '', target: '', rel: '선택', m1: '원가정보호', m2: '지속관찰', how: '', first: '' } }; }
+constructor(props) { super(props); this.state = { tab: 'A', ty: {}, hm: {}, hmEdit: false, hmDraft: '', hmOther: '', trEdit: false, trDraft: '', trOther: '', tr: {}, fam: '', rows: 2, tried: false, f: { report: '2026-10-12', link: '2026-10-12', no: 'C-2026-0352', child: '', sex: '선택', birth: '', target: '', rel: '선택', m1: '원가정보호', m2: '지속관찰', how: '', first: '', tbirth: '' } }; }
 dpBuild(k, val, set, minS, maxS, defY) {
   const st = this.state.dp || {}; const open = st.k === k;
   const p = (x) => String(x).padStart(2, '0');
@@ -637,27 +712,40 @@ renderValsBase() {
   const multi = (list, key) => list.map((label) => { const v = !!s[key][label]; return { label, ...on(v), toggle: () => this.setState({ [key]: { ...s[key], [label]: !v } }) }; });
   const TY = ['방임', '신체학대', '정서학대', '성학대'];
   const HM = ['성격 및 기질 문제', '어릴적 학대경험', '알콜남용', '약물남용', '신체질환 및 장애', '정신질환 및 장애', '원치않은 아동', '부적절한 양육태도', '양육지식 및 기술부족', '부부 및 가족갈등', '성문제', '스트레스', '사회적 고립', '경제적 어려움', '배우자폭력', '존속학대', '전과력', '종교문제', '도박 · 게임중독', '특성없음', '기타'];
-  const FAM = ['일반가정', '부자가정', '모자가정', '미혼부 · 모 가정', '친부+계모', '친모+계부', '친인척보호', '친부+동거녀', '친모+동거남', '가정위탁', '입양가정', '시설보호', '기타'];
+  const FAM = ['일반가정', '부자가정(사별)', '부자가정(이혼)', '부자가정(가출)', '부자가정(별거)', '모자가정(사별)', '모자가정(이혼)', '모자가정(가출)', '모자가정(별거)', '미혼부가정', '미혼모가정', '미혼부모가정', '친부+계모', '친모+계부', '친인척보호', '친부+동거녀', '친모+동거남', '가정위탁', '입양가정', '시설보호', '기타'];
   const TR = ['거짓말', '반항 · 충동 · 공격성', '도벽', '가출', '약물', '흡연', '음주', '인터넷(게임)중독', '성문제', '주의산만', '과잉행동', '늦은귀가', '불건전한 또래관계', '대인관계 기피', '학교부적응', '잦은결석', '학교폭력 가해자', '학교폭력 피해자', '불안', '애착문제', '무력감', '우울', '낮은자존감', '신체발달지연', '언어문제', '학습문제', '대소변문제', '성격 및 기질문제', '위생문제', '틱', '급(만)성질병', '영양결핍', '탐식 및 결식', '특성없음', '기타'];
-  const fams = FAM.map((label) => ({ label, ...on(s.fam === label), pick: () => this.setState({ fam: s.fam === label ? '' : label }) }));
+  const EDITF = { '시설보호': 1, '기타': 1 };
+  const fams = FAM.map((label) => ({ label: s.fam === label && !s.famEdit && s.famOther ? label + ': ' + s.famOther : label, ...on(s.fam === label), pick: () => { if (s.fam === label) { this.setState({ fam: '', famEdit: '', famDraft: '', famOther: '' }); return; } this.setState(EDITF[label] ? { fam: label, famEdit: label, famDraft: '', famOther: '' } : { fam: label, famEdit: '', famDraft: '', famOther: '' }); } }));
   const NAMES = { report: '신고접수일', link: '사례연계일', no: '개별사건번호', child: '대상아동 이름', sex: '성별', birth: '생년월일', target: '사례관리대상자', rel: '관계', m1: '조치결과 · 피해아동', m2: '조치결과 · 사례관리대상자', how: '사례연계 경위' };
   const miss = Object.keys(NAMES).filter((k) => { const v = String(s.f[k] || '').trim(); return !v || v === '선택'; });
   const go = (k) => { if (k === 'B' && miss.length) { this.setState({ tab: 'A', tried: true }); return; } this.setState({ tab: k }); };
   const fv = {}, fs = {}, fe = {}, fi = {};
   Object.keys(NAMES).forEach((k) => { fv[k] = s.f[k]; fs[k] = (e) => this.setState({ f: { ...this.state.f, [k]: e.target.value } }); const bad = s.tried && miss.includes(k); fe[k] = bad ? '#A33B2E' : ''; fi[k] = bad ? 'true' : 'false'; });
   fv.first = s.f.first || ''; fs.first = (e) => this.setState({ f: { ...this.state.f, first: e.target.value } });
-  const fd = {}; ['report', 'link', 'birth', 'first'].forEach((k) => { fd[k] = s.f[k] ? '' : 'empty'; });
-  const dp = {}; ['report', 'link', 'birth', 'first'].forEach((k) => { dp[k] = this.dpBuild(k, s.f[k], (v) => this.setState({ f: { ...this.state.f, [k]: v } }), '2000-01-01', '2026-12-31', k === 'birth' ? 2013 : 2026); });
+  fv.tbirth = s.f.tbirth || ''; fs.tbirth = (e) => this.setState({ f: { ...this.state.f, tbirth: e.target.value } });
+  const fd = {}; ['report', 'link', 'birth', 'first', 'tbirth'].forEach((k) => { fd[k] = s.f[k] ? '' : 'empty'; });
+  const dp = {}; ['report', 'link', 'birth', 'first', 'tbirth'].forEach((k) => { dp[k] = this.dpBuild(k, s.f[k], (v) => this.setState({ f: { ...this.state.f, [k]: v } }), k === 'tbirth' ? '1930-01-01' : '2000-01-01', '2026-12-31', k === 'birth' ? 2013 : k === 'tbirth' ? 1985 : 2026); });
   const tabs = [['A', '① 기본 정보 (필수)'], ['B', '② 초기면접 내용']].map(([k, label]) => ({ label, sel: s.tab === k ? 'true' : 'false', bd: s.tab === k ? '#C2A36B' : 'transparent', fg: s.tab === k ? '#2B2A26' : '#66625A', fw: s.tab === k ? 700 : 400, go: () => go(k) }));
-  return { dp, tabs, fv, fs, fe, fi, fd, showMiss: s.tab === 'A' && s.tried && miss.length > 0, missText: miss.map((k) => NAMES[k]).join(', '), isA: s.tab === 'A', isB: s.tab === 'B', homes: multi(HM, 'hm').map((o) => o.label !== '기타' ? o : { ...o, toggle: () => { if (this.state.hm['기타']) { this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }); } else { this.setState({ hm: { ...this.state.hm, '기타': true }, hmEdit: true, hmDraft: '' }); } } }),
+  return { dp, tabs, fv, fs, fe, fi, fd, showMiss: s.tab === 'A' && s.tried && miss.length > 0, missText: miss.map((k) => NAMES[k]).join(', '), isA: s.tab === 'A', isB: s.tab === 'B', homes: multi(HM, 'hm').map((o) => o.label !== '기타' ? o : { ...o, label: !s.hmEdit && s.hm['기타'] && s.hmOther ? '기타: ' + s.hmOther : '기타', toggle: () => { if (this.state.hm['기타']) { this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }); } else { this.setState({ hm: { ...this.state.hm, '기타': true }, hmEdit: true, hmDraft: '' }); } } }),
     hmEdit: s.hmEdit, hmDraft: s.hmDraft, hmDraftSet: (e) => this.setState({ hmDraft: e.target.value }),
     hmOk: () => { const t = String(this.state.hmDraft || '').trim(); if (!t) return; this.setState({ hmEdit: false, hmOther: t }); },
     hmCancel: () => this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }),
-    hmShowOther: !s.hmEdit && !!s.hm['기타'] && !!s.hmOther, hmOther: s.hmOther, traits: multi(TR, 'tr').map((o) => o.label !== '기타' ? o : { ...o, toggle: () => { if (this.state.tr['기타']) { this.setState({ tr: { ...this.state.tr, '기타': false }, trEdit: false, trDraft: '', trOther: '' }); } else { this.setState({ tr: { ...this.state.tr, '기타': true }, trEdit: true, trDraft: '' }); } } }),
+    hmShowOther: !s.hmEdit && !!s.hm['기타'] && !!s.hmOther, hmOther: s.hmOther, traits: multi(TR, 'tr').map((o) => o.label !== '기타' ? o : { ...o, label: !s.trEdit && s.tr['기타'] && s.trOther ? '기타: ' + s.trOther : '기타', toggle: () => { if (this.state.tr['기타']) { this.setState({ tr: { ...this.state.tr, '기타': false }, trEdit: false, trDraft: '', trOther: '' }); } else { this.setState({ tr: { ...this.state.tr, '기타': true }, trEdit: true, trDraft: '' }); } } }),
     trEdit: s.trEdit, trDraft: s.trDraft, trDraftSet: (e) => this.setState({ trDraft: e.target.value }),
     trOk: () => { const t = String(this.state.trDraft || '').trim(); if (!t) return; this.setState({ trEdit: false, trOther: t }); },
     trCancel: () => this.setState({ tr: { ...this.state.tr, '기타': false }, trEdit: false, trDraft: '', trOther: '' }),
+    hs: (() => { const H = s.hs || {}; const set = (k, v) => this.setState({ hs: { ...(this.state.hs || {}), [k]: v } });
+      const one = (k, vals) => vals.map((v) => ({ label: v, ...on(H[k] === v), on: H[k] === v ? 'true' : 'false', pick: () => set(k, H[k] === v ? '' : v) }));
+      const T = H.hospT || {}; const yes = (k) => H[k] === '유';
+      return { dis: one('dis', ['무', '유']), dsb: one('dsb', ['무', '유']), dsbLv: one('dsbLv', ['심한', '심하지 않은']), hosp: one('hosp', ['무', '유']), psy: one('psy', ['무', '유']), med: one('med', ['무', '유']), cns: one('cns', ['무', '유']),
+        hospT: ['입원', '통원'].map((v) => ({ label: v, ...on(!!T[v]), on: T[v] ? 'true' : 'false', pick: () => set('hospT', { ...T, [v]: !T[v] }) })),
+        off: { dis: !yes('dis'), dsb: !yes('dsb'), hosp: !yes('hosp'), psy: !yes('psy'), med: !yes('med'), cns: !yes('cns') } }; })(),
     trShowOther: !s.trEdit && !!s.tr['기타'] && !!s.trOther, trOther: s.trOther, fams,
+    famEdit: !!s.famEdit, famIsInst: s.famEdit === '시설보호', famPh: s.famEdit === '시설보호' ? '보호 중인 시설(기관) 이름 입력' : '기타 내용 직접 입력', famAria: s.famEdit === '시설보호' ? '시설보호 기관 입력' : '가족유형 기타 직접 입력',
+    famDraft: s.famDraft || '', famDraftSet: (e) => this.setState({ famDraft: e.target.value }),
+    famOk: () => { const t = String(this.state.famDraft || '').trim(); if (!t) return; this.setState({ famEdit: '', famOther: t }); },
+    famCancel: () => this.setState({ fam: '', famEdit: '', famDraft: '', famOther: '' }),
+    famShowOther: !s.famEdit && !!EDITF[s.fam] && !!s.famOther, famOtherText: '✓ ' + (s.fam === '시설보호' ? '시설보호 · 기관: ' : '기타 · ') + (s.famOther || ''),
     famRows: Array.from({ length: s.rows }, (_, i) => i), addRow: () => this.setState({ rows: s.rows + 1 }),
     midLabel: s.tab === 'A' ? '초기면접 내용 →' : '← 기본 정보', goB: () => go(s.tab === 'A' ? 'B' : 'A') };
 }

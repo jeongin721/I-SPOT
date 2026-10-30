@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>I-SPOT 회차 처리 · STT 검수 · 휴대폰</title>
+<title>I-SPOT 회차 처리 · 기록 확인 · 휴대폰</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -108,7 +108,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 /* ===== 모던 베이스 + 부분 뉴모피즘 · 색상 팔레트 유지 ===== */
 :root{--base:#F2F2F0;--rail:#E9E7E1;--sd:rgba(160,154,138,.30);--sl:rgba(255,255,255,.95);--line:#ECEAE4}
 body{font-family:'IBM Plex Sans KR',sans-serif !important;-webkit-font-smoothing:antialiased}
-h1{font-family:'Noto Serif KR',serif !important;letter-spacing:-.01em;font-weight:500 !important}
+h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;font-weight:500 !important}
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
@@ -464,7 +464,7 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .job-toast{background:#EADBB5;color:#2B2A26}
 .thm-root.dark .job-spin{border-color:rgba(43,42,38,.25);border-top-color:#2B2A26}
 .thm-root.dark .job-go{background:#2B2A26;color:#EADBB5 !important}
-/* 녹음 재생 바 (STT 검수 하단 고정) */
+/* 녹음 재생 바 (기록 확인 하단 고정) */
 .player{position:sticky;bottom:0;z-index:20;margin-top:auto;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:10px 20px 12px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px 14px 0 0;box-shadow:0 -8px 24px rgba(43,42,38,.12)}
 .pl-ctrls{position:relative;display:flex;justify-content:center;align-items:center;gap:10px;min-height:34px}
 .pl-b{width:38px;height:34px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #DAD5C9;border-radius:9px;background:#FFFFFF;color:#2B2A26;cursor:pointer;padding:0}
@@ -492,6 +492,63 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .pl-legend{color:#BDB7AA}
 .thm-root.dark .pl-legend i{background:#E0B25A}
 @media (max-width:600px){.pl-ctrls{flex-wrap:wrap}.pl-legend{position:static !important;width:100%;justify-content:center}}
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
+.sl-wrap{position:relative;display:inline-flex}
+.sl-btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;font:inherit;font-size:13.5px;font-weight:500;color:#2B2A26;cursor:pointer;white-space:nowrap}
+.sl-btn:hover{border-color:#2B2A26}
+.sl-btn[aria-expanded="true"] .sl-car{transform:rotate(180deg)}
+.sl-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:50;width:min(340px,calc(100vw - 32px));background:#FFFFFF;border:1px solid #DAD5C9;border-radius:12px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden}
+.sl-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid #EAE7DF;font-size:13px;font-weight:700}
+.sl-list{max-height:320px;overflow-y:auto;padding:4px}
+.sl-opt{width:100%;display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:13px;color:#2B2A26;text-align:left;cursor:pointer}
+.sl-opt:hover{background:#F7F6F2}
+.sl-opt.on{background:#F1EADA}
+.sl-meta{color:#66625A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thm-root.dark .sl-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .sl-btn:hover{border-color:#D6D0C4}
+.thm-root.dark .sl-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .sl-hd{border-color:#3A3833;color:#ECE8DF}
+.thm-root.dark .sl-opt{color:#ECE8DF}
+.thm-root.dark .sl-opt:hover{background:#33312C}
+.thm-root.dark .sl-opt.on{background:#3F3729}
+.thm-root.dark .sl-meta{color:#A8A296}
+@media (max-width:600px){.sl-pop{left:auto;right:0}}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1250px; background: #E9E7E1; color: #2B2A26; font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: stretch;">
@@ -515,21 +572,22 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="me"><span class="av">이</span><b style="font-weight: 500;">이서연 상담원</b><a href="Login.dc.html" class="note" style="margin-left: auto;">로그아웃</a></div>
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
-<div class="thm-bar"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
-<nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › <a href="CaseDetail.dc.html">이서윤 C-2026-0351</a> › <a href="CaseHistory.dc.html">상담 이력</a> › <a href="SessionDetail.dc.html">8회차</a></nav>
+<div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
+<nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › <a href="CaseDetail.dc.html">이서윤 C-2026-0351</a> › <a href="CaseHistory.dc.html">상담 이력</a> › <a href="SessionDetail.dc.html">{{ slNo }}</a></nav>
 <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px;">
-<div style="flex: 1 1 280px;"><div class="sub">10/2(금) 방문상담</div><div style="display: flex; align-items: center; gap: 10px; margin-top: 2px;"><a class="btn btn-sm btn-s" href="CaseDetail.dc.html" aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">←</a><h1 style="margin: 0; font-size: 28px; font-weight: 700;">8회차 처리 · 이서윤</h1></div></div>
+<div style="flex: 1 1 280px;"><div class="sub">{{ slSub }}</div><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 2px;"><a class="btn btn-sm btn-s" href="CaseDetail.dc.html" aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">←</a><h1 style="margin: 0; font-size: 28px; font-weight: 700;">{{ slNo }} 처리 · 이서윤</h1><div class="sl-wrap"><button type="button" class="sl-btn" aria-haspopup="listbox" aria-expanded="{{ slExp }}" onClick="{{ slToggle }}">{{ slBtn }}<svg class="sl-car" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<sc-if value="{{ slOpen }}" hint-placeholder-val="{{ false }}"><div class="sl-pop" role="listbox" aria-label="회차 선택"><div class="sl-hd">회차 선택 <span class="note">이서윤 · 총 8회</span></div><div class="sl-list"><sc-for list="{{ slItems }}" as="o" hint-placeholder-count="8"><button type="button" role="option" aria-selected="{{ o.on }}" class="sl-opt {{ o.cls }}" onClick="{{ o.pick }}"><b class="sl-no">{{ o.no }}</b><span class="sl-meta">{{ o.meta }}</span><span class="{{ o.stCls }}" style="height: 22px; font-size: 11.5px;">{{ o.st }}</span></button></sc-for></div></div></sc-if></div></div></div>
 
 </header>
 <nav class="steps" aria-label="회차 처리 단계">
-<a class="stp on" href="SttReview.dc.html" aria-current="step"><span class="sn">1</span><b style="font-weight: 700;">STT 검수</b></a>
-<a class="stp" href="SignalReview.dc.html"><span class="sn">2</span><b style="font-weight: 500;">유형별 위험도</b></a>
-<a class="stp" href="NoteWrite.dc.html"><span class="sn">3</span><b style="font-weight: 500;">요약 · 일지 작성</b></a>
-<a class="stp" href="FollowupQ.dc.html"><span class="sn">4</span><b style="font-weight: 500;">추가 확인 · 질문</b></a>
+<a class="stp on" href="SttReview.dc.html" aria-current="step"><span class="sn">1</span><b style="font-weight: 700;">기록 확인</b></a>
+<a class="stp" href="SignalReview.dc.html"><span class="sn">2</span><b style="font-weight: 500;">학대 신호 확인</b></a>
+<a class="stp" href="NoteWrite.dc.html"><span class="sn">3</span><b style="font-weight: 500;">상담일지 작성</b></a>
+<a class="stp" href="FollowupQ.dc.html"><span class="sn">4</span><b style="font-weight: 500;">다음 상담 준비</b></a>
 </nav>
 
 <sc-if value="{{ done }}" hint-placeholder-val="{{ true }}">
-<section class="card" aria-label="STT 검수" style="overflow: hidden;">
+<section class="card" aria-label="기록 확인" style="overflow: hidden;">
 <div class="hd">
 <h2 class="h2">{{ viewTitle }}</h2>
 <span class="{{ chipCls }}">{{ chipText }}</span>
@@ -563,7 +621,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 <div style="height: 16px;"></div>
 </section>
-<div style="display: flex; flex-wrap: wrap; gap: 10px;"><a class="btn btn-p" href="SignalReview.dc.html" style="margin-left: auto;">유형별 위험도 →</a></div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;"><a class="btn btn-p" href="SignalReview.dc.html" style="margin-left: auto;">학대 신호 확인 →</a></div>
 </sc-if>
 <p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
 <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}"><div class="toast" role="status">{{ toast }}</div></sc-if>
@@ -600,17 +658,55 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
+  this._slDoc = (e) => { if (!(this.state && this.state.__slOpen)) return; if (e.type === 'keydown' ? e.key === 'Escape' : !(e.target && e.target.closest && e.target.closest('.sl-wrap'))) this.setState({ __slOpen: false }); }; try { document.addEventListener('mousedown', this._slDoc); document.addEventListener('keydown', this._slDoc); } catch (e) {}
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  try { document.removeEventListener('mousedown', this._slDoc); document.removeEventListener('keydown', this._slDoc); } catch (e) {}
+  clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
+}
+ntGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+ntSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+ntRecs() { try { const a = JSON.parse(this.ntGet('ispot-intake') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+ntSave(a) { this.ntSet('ispot-intake', JSON.stringify(a)); }
+ntTasks() { return [[3, '아동과 유선(전화) 상담'], [7, '아동 주변 인물 만남'], [30, '계획서 제출']]; }
+ntReadIds() { try { return JSON.parse(this.ntGet('ispot-noti-read') || '[]'); } catch (e) { return []; } }
+ntGo0() { let g = null; try { g = JSON.parse(this.ntGet('ispot-sched-go') || 'null'); } catch (e) {} if (!g || !g.t || Date.now() - g.t > 15000) return null; this.ntSet('ispot-sched-go', ''); return g; }
+ntVals() {
+  const recs = this.ntRecs(); const read = this.ntReadIds(); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const items = [];
+  recs.forEach((r) => this.ntTasks().forEach(([n, task]) => { if ((r.done || {})[n]) return; const due = new Date(r.y, r.m, r.d + n); const diff = Math.round((due - t0) / 86400000); const id = r.id + '-' + n;
+    items.push({ id, due, diff, unread: read.indexOf(id) < 0, title: r.child + ' · ' + task, sub: '판정 후 ' + n + '일 이내 · ' + (due.getMonth() + 1) + '/' + due.getDate() + '(' + days[due.getDay()] + ')까지', y: due.getFullYear(), m: due.getMonth(), d: due.getDate() }); }));
+  items.sort((a, b) => a.due - b.due);
+  const unread = items.filter((x) => x.unread).length; const open = !!(this.state && this.state.__ntOpen);
+  const markRead = (ids) => { const cur = this.ntReadIds(); this.ntSet('ispot-noti-read', JSON.stringify([...cur, ...ids.filter((i) => cur.indexOf(i) < 0)])); };
+  return {
+    ntOpen: open, ntExp: open ? 'true' : 'false', ntHasBadge: unread > 0, ntBadge: unread > 9 ? '9+' : String(unread),
+    ntLabel: unread > 0 ? '알림 ' + unread + '건 읽지 않음' : '알림',
+    ntSub: items.length ? '법정 기한 ' + items.length + '건' : '', ntEmpty: items.length === 0,
+    ntToggle: () => this.setState({ __ntOpen: !open }),
+    ntReadAll: () => { markRead(items.map((x) => x.id)); this.setState({ __ntTick: Date.now() }); },
+    ntItems: items.map((x) => ({ title: x.title, sub: x.sub, cls: x.unread ? 'unread' : 'read',
+      dd: x.diff < 0 ? '기한 지남' : x.diff === 0 ? '오늘 마감' : 'D-' + x.diff, ddCls: x.diff <= 0 ? 'urgent' : x.diff <= 2 ? 'soon' : '',
+      go: (e) => { markRead([x.id]); this.ntSet('ispot-sched-go', JSON.stringify({ y: x.y, m: x.m, d: x.d, t: Date.now() })); this.setState({ __ntOpen: false, __ntTick: Date.now() }); if (this.schedGo) { if (e && e.preventDefault) e.preventDefault(); this.ntSet('ispot-sched-go', ''); this.schedGo(x.y, x.m, x.d); } } }))
+  };
+}
+slVals(cur, pick, btnFn) {
+  const L = [[1, '7/31(금) 초기면담'], [2, '8/7(금) 정기상담'], [3, '8/14(금) 정기상담'], [4, '8/21(금) 정기상담'], [5, '8/28(금) 정기상담'], [6, '9/4(금) 정기상담'], [7, '9/18(금) 정기상담'], [8, '10/2(금) 방문상담']];
+  const open = !!(this.state && this.state.__slOpen); const c = L.find((x) => x[0] === cur) || L[7];
+  return { slOpen: open, slExp: open ? 'true' : 'false', slToggle: () => this.setState({ __slOpen: !open }), slBtn: btnFn(c), slNo: cur + '회차', slSub: c[1],
+    slItems: L.slice().reverse().map(([n, meta]) => ({ no: n + '회차', meta, st: n === 8 ? '처리 중' : '확정', stCls: n === 8 ? 'chip c-check' : 'chip c-ok', on: n === cur ? 'true' : 'false', cls: n === cur ? 'on' : '', pick: () => { this.setState({ __slOpen: false }); pick(n); } })) };
 }
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'SttReview.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  return Object.assign({}, v, this.slVals((this.state && this.state.__sn) || 8, (n) => this.setState({ __sn: n }), () => '회차 선택'), this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), markBack: () => { const v = 'SttReview.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
