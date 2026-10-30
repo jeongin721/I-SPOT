@@ -19,11 +19,13 @@ import type { AuthSession } from "./useAuthSession";
 import type { CaseDetailView } from "./useCaseDetail";
 import {
   BIRTH_YEAR_MIN,
+  CASE_DATE_FIELDS,
   CASE_ALIAS_MAX,
   CASE_GENDER_MAX,
   CASE_NOTES_MAX,
   CASE_TITLE_MAX,
   GUARDIAN_NOTE_MAX,
+  checkCaseDate,
   type CaseRegisterInput,
   type CounselorOption,
 } from "./useCaseRegister";
@@ -50,6 +52,9 @@ export function intakeFormOf(info: CaseDetailView): IntakeForm {
     childTraits: info.intakeChildTraits,
     familySituations: info.intakeFamilySituations,
     counselorId: info.counselorId,
+    reportDate: info.reportDateValue,
+    linkedDate: info.linkedDateValue,
+    firstInterviewDate: info.firstInterviewDateValue,
   };
 }
 
@@ -119,6 +124,14 @@ export function toCaseUpdateRequest(
 
     if (note.length > GUARDIAN_NOTE_MAX) return fail(`보호자 메모는 ${GUARDIAN_NOTE_MAX}자까지 쓸 수 있습니다.`);
     if (note !== savedNote) payload.guardian_note = note || null;
+  }
+
+  for (const field of CASE_DATE_FIELDS) {
+    const edited = edits[field.key];
+    if (edited === undefined) continue;
+    const checked = checkCaseDate(edited, field.label);
+    if (checked.problem) return fail(checked.problem);
+    if ((checked.value ?? "") !== saved[field.key].trim()) payload[field.api] = checked.value;
   }
 
   if (edits.notes !== undefined) {

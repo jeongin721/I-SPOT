@@ -1,7 +1,7 @@
 // 사례 상세 탭 1(CaseDetail · 내담자 정보)과 탭 2(CaseHistory · 상담 이력) 화면 값. 둘 다 useCaseDetail 하나로 그린다.
 //
 // Backend 에 없는 값은 지어내지 않고 '—' 또는 준비 중으로 둔다(specs 대응표 '팀 결정 — 사례 · 개인정보 / AI 신호 · 검수').
-//  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 신고접수일 · 사례연계일 · 아이 앱 · 다음 상담 일정
+//  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 아이 앱 · 다음 상담 일정
 //  - 기관 서식 진행, 종결 검토 등록
 //    (10/21 디자인은 사정결과 줄과 서비스 이행 · 다음 일정 상자를 뺐다)
 //  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약(주제 비중 · 세부 신호는 2026-10-28 · 29 연결)
@@ -310,9 +310,9 @@ export function caseDetailValues(input: CaseDetailInput) {
         { label: "가족유형", value: dash },
         { label: "조치결과", value: dash },
         { label: "담당 상담원", value: info.counselorName },
-        { label: "신고접수일", value: dash },
-        { label: "사례연계일", value: dash },
-        { label: "최초면접일", value: dash },
+        { label: "신고접수일", value: info.reportDate },
+        { label: "사례연계일", value: info.linkedDate },
+        { label: "최초면접일", value: info.firstInterviewDate },
         { label: "상담 회차", value: `${info.sessionCount}회`, strong: true },
         { label: "최근 상담", value: lastConsulted },
         { label: "아이 앱", value: dash },
