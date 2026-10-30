@@ -353,6 +353,80 @@ def test_older_analysis_cannot_create_the_first_row_either(
     assert service._claim(db, _session_row(db, session["id"]), newer, "mock", supersede=True) == 1
 
 
+def _add_analysis(session_id, after: AIAnalysis, status: AnalysisStatus) -> uuid.UUID:
+    """재분석 B 가 들어온 것처럼 분석 행을 더한다(다른 DB 세션에서 커밋 — 동시에 들어온 요청 흉내)."""
+
+    from app.core.database import SessionLocal
+
+    other = SessionLocal()
+    try:
+        row = AIAnalysis(
+            session_id=after.session_id,
+            transcript_id=after.transcript_id,
+            transcript_version=after.transcript_version,
+            status=status,
+            result=dict(after.result or {}) if status == AnalysisStatus.COMPLETED else None,
+            created_at=after.created_at + timedelta(seconds=1),
+        )
+        other.add(row)
+        other.commit()
+        return row.id
+    finally:
+        other.close()
+
+
+@pytest.mark.parametrize(
+    ("new_status", "expected"),
+    [(AnalysisStatus.PROCESSING, 409), (AnalysisStatus.COMPLETED, 202)],
+)
+def test_post_that_loses_to_a_new_analysis_is_not_a_server_error(
+    client: TestClient, counselor_headers, analyzed: dict, mock_on, monkeypatch, db, new_status, expected
+) -> None:
+    # #125 재검증 N1: 행이 아직 없는 회차에서 POST 가 분석 A 를 읽은 직후 재분석 B 가 들어오면 _claim 이 A 를 거절하는데,
+    # 호출자가 없는 행을 refresh 해 500 이 났다. B 가 처리 중이면 409, 이미 끝났으면 B 로 만든다.
+    older = _latest_analysis(db, analyzed["id"])
+    real_latest = service._latest_analysis
+    added: List[uuid.UUID] = []
+
+    def latest_then_new_analysis(db_, session_id):
+        found = real_latest(db_, session_id)
+        if not added:
+            added.append(_add_analysis(session_id, older, new_status))
+        return found
+
+    monkeypatch.setattr(service, "_latest_analysis", latest_then_new_analysis)
+
+    response = client.post(_url(analyzed["id"]), headers=counselor_headers)
+
+    assert response.status_code == expected, response.text
+    rows = _rows(db)
+    if expected == 409:
+        assert response.json()["error"]["code"] == "INVALID_SESSION_STATE"
+        assert rows == []
+    else:
+        assert [row.analysis_id for row in rows] == added
+
+
+def test_first_insert_is_refused_when_a_new_analysis_arrives_after_the_precheck(
+    client: TestClient, counselor_headers, analyzed: dict, mock_on, monkeypatch, db
+) -> None:
+    # #125 재검증 N2: 미리 확인(새 분석 없음)을 지난 뒤 INSERT 직전에 B 가 들어오면, 조건 없는 INSERT 가 A 로 첫 행을 만들었다.
+    older = _latest_analysis(db, analyzed["id"])
+    real_get_row = service.get_row
+    added: List[uuid.UUID] = []
+
+    def get_row_then_new_analysis(db_, session_id):
+        row = real_get_row(db_, session_id)
+        if row is None and not added:
+            added.append(_add_analysis(session_id, older, AnalysisStatus.PROCESSING))
+        return row
+
+    monkeypatch.setattr(service, "get_row", get_row_then_new_analysis)
+
+    assert service._claim(db, _session_row(db, analyzed["id"]), older, "mock", supersede=True) is None
+    assert added and _rows(db) == []
+
+
 # =========================================================
 # 동시 실행 상한 (#117 R4)
 # =========================================================

@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import and_, exists, insert, literal, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -402,14 +402,42 @@ def _claim(
         row = get_row(db, session.id)
 
         if row is None:
+            # 첫 행도 '새 분석 없음' 을 같은 문장 안에서 본다(INSERT … SELECT … WHERE NOT EXISTS). 미리 확인한 뒤
+            # INSERT 직전에 새 분석 B 가 들어오면(B 가 아직 체크리스트를 만들기 전이라 유일 조건에도 안 걸림) 예전 분석으로
+            # 첫 행을 만들던 경계(#125 재검증 N2)를 막는다. 0행이면 다음 바퀴의 미리 확인에서 None 으로 끝난다.
+            inserted_values = {
+                key: value
+                for key, value in {
+                    "id": uuid.uuid4(),
+                    "session_id": session.id,
+                    "attempt": 1,
+                    "created_at": values["started_at"],
+                    "updated_at": values["started_at"],
+                    **values,
+                }.items()
+                if value is not None
+            }
+            columns = SessionFollowupChecklist.__table__.c
             try:
-                db.add(SessionFollowupChecklist(session_id=session.id, attempt=1, **values))
-                db.commit()
-                return 1
+                inserted = db.execute(
+                    insert(SessionFollowupChecklist).from_select(
+                        list(inserted_values),
+                        select(
+                            *(literal(value, type_=columns[key].type) for key, value in inserted_values.items())
+                        ).where(~newer),
+                    )
+                ).rowcount
             except IntegrityError:
                 # 같은 회차에 동시에 처음 만들었다. 다시 읽어 UPDATE 로 차지해 본다.
                 db.rollback()
                 continue
+
+            if inserted == 1:
+                db.commit()
+                return 1
+
+            db.rollback()
+            continue
 
         expected = row.attempt
 
@@ -488,16 +516,29 @@ def request_generation(
     if not is_enabled():
         raise APIError(ErrorCode.FOLLOWUP_DISABLED, DISABLED_MESSAGE, status_code=503)
 
-    analysis = _latest_analysis(db, session.id)
-
-    if analysis is None or analysis.status != AnalysisStatus.COMPLETED:
-        raise APIError(ErrorCode.INVALID_SESSION_STATE, NOT_READY_MESSAGE, status_code=409)
-
-    expire_stale(db, get_row(db, session.id))
-
     adapter = get_followup_checklist_adapter()
-    attempt = _claim(db, session, analysis, adapter.name, supersede=False)
-    row = get_row(db, session.id)
+    attempt: Optional[int] = None
+    row: Optional[SessionFollowupChecklist] = None
+
+    # 최신 분석을 읽은 뒤 차지하기 전에 재분석이 들어오면 _claim 이 예전 분석을 거절한다. 행이 아직 없으면 돌려줄 것이
+    # 없으므로 최신 분석을 다시 읽어 한 번 더 해 본다 — 새 분석이 처리 중 · 실패면 409, 끝났으면 그 분석으로 만든다
+    # (#125 재검증 N1 — 예전에는 없는 행을 refresh 해 500 이었다).
+    for _ in range(2):
+        analysis = _latest_analysis(db, session.id)
+
+        if analysis is None or analysis.status != AnalysisStatus.COMPLETED:
+            raise APIError(ErrorCode.INVALID_SESSION_STATE, NOT_READY_MESSAGE, status_code=409)
+
+        expire_stale(db, get_row(db, session.id))
+
+        attempt = _claim(db, session, analysis, adapter.name, supersede=False)
+        row = get_row(db, session.id)
+
+        if row is not None:
+            break
+
+    if row is None:
+        raise APIError(ErrorCode.INVALID_SESSION_STATE, NOT_READY_MESSAGE, status_code=409)
 
     if attempt is not None:
         audit_service.record(
