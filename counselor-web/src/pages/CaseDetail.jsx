@@ -27,6 +27,7 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
@@ -84,7 +85,17 @@ export default function CaseDetail(props) {
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
-  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history });
+  // 브리핑의 확인할 사항은 4 · 추가 확인 화면과 같은 목록(AI 확인 메모 + 다음 상담 체크리스트, 19절)이다.
+  const briefChecklist = useFollowupChecklist(signals.session?.id ?? null, { enabled: signedIn(session) });
+  const brief = preBriefingValues({
+    session,
+    detail,
+    signals,
+    questions: briefQuestions,
+    checklist: briefChecklist,
+    caseId,
+    history,
+  });
   const briefRef = useRef(null);
   const [outOpen, setOutOpen] = useState(false);
   const [outMask, setOutMask] = useState(true);

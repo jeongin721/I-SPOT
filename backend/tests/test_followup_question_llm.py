@@ -330,3 +330,28 @@ def test_wait_for_questions_past_deadline_does_not_block():
     finally:
         release.set()
         executor.shutdown(wait=True)
+
+
+# =========================================================
+# rag 질문 검증 규칙 연결(2026-10-30, ai/modeling/abuse/question_rules)
+# =========================================================
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "어디가 아팠지?",  # 열린 표지가 있어도 답을 정해 둔 꼬리형
+        "등이랑 팔은 어디가 아팠던 거 맞지?",
+        "어떻게 하다가 아프지 않았어?",
+        "학대받은 일을 이야기해 줄래?",  # 판단 · 법률 용어
+        "신고한 다음에는 어떻게 됐어?",
+    ],
+)
+def test_drops_leading_tails_and_legal_terms(text):
+    assert fq._clean_questions([_q(text)], SEGMENTS) == []
+
+
+def test_drops_question_whose_reason_is_a_judgment():
+    assert fq._clean_questions([_q("등이랑 팔이 아팠던 건 지금은 어때?", reason="신체학대로 판단됨")], SEGMENTS) == []
+    # 유형 이름만 있는 이유는 그대로 둔다(판정이 아니다).
+    kept = fq._clean_questions([_q("등이랑 팔이 아팠던 건 지금은 어때?", reason="신체학대 관련 신호의 경과 확인")], SEGMENTS)
+    assert [item["text"] for item in kept] == ["등이랑 팔이 아팠던 건 지금은 어때?"]

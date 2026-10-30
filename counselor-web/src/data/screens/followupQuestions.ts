@@ -9,10 +9,11 @@
 // 승인을 풀고(디자인 qOk), 새로 쓴 질문은 승인 전 카드로 더한다. 승인 목록이 바뀌었을 때만 PUT 한다.
 // '아이 앱으로 먼저' 탭은 아이 앱 발송이 서버에 없어 준비 중이다(예시 질문을 보이지 않는다).
 
-import type { FollowupQuestion, FollowupQuestionDraft, FollowupQuestionInput } from "../../api/types";
+import type { FollowupQuestion, FollowupQuestionDraft, FollowupQuestionInput, QuestionEvidence } from "../../api/types";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
 import { NOT_READY } from "./common";
+import { officialSources, type SourceView } from "./followupEvidence";
 import { positionLabel } from "../riskRows";
 import { segmentHref } from "./sttReview";
 
@@ -57,6 +58,11 @@ export interface QuestionInput {
   sessionLabel: string;
   /** 회차 상태가 저장을 받는가(원문 확정 뒤 · AI 분석 중 아님). 아니면 그 이유. */
   blockedReason: string | null;
+  /**
+   * 다음 상담 체크리스트(19절)가 초안에 붙인 공식 근거. 지금 분석으로 만든 것만 넘긴다(checklistValues).
+   * 카드에는 초안 문장이 이것과 똑같고 상담사가 고치지 않았을 때만 보인다(questionSources).
+   */
+  questionEvidence?: QuestionEvidence[];
 }
 
 /** 카드 하나(내부 모양). */
@@ -69,6 +75,10 @@ export interface QuestionCard {
   /** origin=saved 면 승인 목록에서의 자리. */
   savedIndex: number | null;
   localId: number | null;
+  /** origin=draft 면 분석 followup_questions 안의 자리(19절 question_evidence.draft_index). */
+  draftIndex: number | null;
+  /** origin=draft 면 그 초안의 원래 문장(공백을 뺀 것). 공식 근거를 붙일지 대조한다. */
+  draftText: string | null;
 }
 
 const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, index) => id === b[index]);
@@ -98,7 +108,7 @@ export function buildQuestionCards(
   const valid = drafts
     .map((draft, index) => ({ index, draft }))
     .filter(({ draft }) => draft && typeof draft.text === "string" && draft.text.trim())
-    .map(({ index, draft }) => ({ key: `ai-${index}`, input: draftInput(draft) }));
+    .map(({ index, draft }) => ({ key: `ai-${index}`, index, input: draftInput(draft) }));
   const matched = new Map<string, { at: number; edited: boolean }>();
   const pick = (match: (item: FollowupQuestion) => boolean) =>
     saved.findIndex((item, at) => !used.has(at) && item.source === "AI" && match(item));
@@ -121,11 +131,12 @@ export function buildQuestionCards(
     }
   });
 
-  valid.forEach(({ key, input }) => {
+  valid.forEach(({ key, index, input }) => {
     const hit = matched.get(key);
+    const draft = { draftIndex: index, draftText: input.text };
 
     if (hit) {
-      cards.push({ key, origin: "draft", input: savedInput(saved[hit.at]), approved: true, edited: hit.edited, savedIndex: hit.at, localId: null });
+      cards.push({ key, origin: "draft", input: savedInput(saved[hit.at]), approved: true, edited: hit.edited, savedIndex: hit.at, localId: null, ...draft });
       return;
     }
 
@@ -138,17 +149,18 @@ export function buildQuestionCards(
       edited: local !== undefined,
       savedIndex: null,
       localId: null,
+      ...draft,
     });
   });
 
   saved.forEach((item, at) => {
     if (used.has(at)) return;
 
-    cards.push({ key: `s-${at}-${item.approved_at}`, origin: "saved", input: savedInput(item), approved: true, edited: false, savedIndex: at, localId: null });
+    cards.push({ key: `s-${at}-${item.approved_at}`, origin: "saved", input: savedInput(item), approved: true, edited: false, savedIndex: at, localId: null, draftIndex: null, draftText: null });
   });
 
   state.localExtras.forEach((local) => {
-    cards.push({ key: `x-${local.id}`, origin: "local", input: local.input, approved: false, edited: local.edited, savedIndex: null, localId: local.id });
+    cards.push({ key: `x-${local.id}`, origin: "local", input: local.input, approved: false, edited: local.edited, savedIndex: null, localId: local.id, draftIndex: null, draftText: null });
   });
 
   return cards;
@@ -172,8 +184,35 @@ export function questionChip(input: FollowupQuestionInput): string {
   return "열린 질문";
 }
 
+/** 카드에 보일 공식 근거. sources 가 비어 있고 hidden 이 true 면 '문장을 고쳐 숨겼다' 고 알린다. */
+export interface CardSources {
+  sources: SourceView[];
+  hidden: boolean;
+}
+
+/**
+ * 초안 카드의 공식 근거(19절 question_evidence). 세 조건이 모두 맞을 때만 붙인다:
+ *  ① 지금 분석으로 만든 것(호출부가 거른 evidence 만 받는다) ② 근거를 붙일 때의 초안 문장이 지금 초안 문장과 똑같다
+ *  ③ 카드 문장이 초안 그대로다(상담사가 고쳤거나 고쳐서 승인한 질문이면 숨긴다 — 고친 문장은 검토를 거치지 않았다).
+ * 직접 쓴 질문 · 짝 없는 승인 질문에는 공식 근거가 없다.
+ */
+export function questionSources(card: QuestionCard, evidence: QuestionEvidence[] | undefined): CardSources {
+  if (card.origin !== "draft" || card.draftIndex === null || !Array.isArray(evidence)) return { sources: [], hidden: false };
+
+  const found = evidence.find((entry) => entry && entry.draft_index === card.draftIndex);
+
+  if (!found || typeof found.text !== "string" || found.text.trim() !== card.draftText) return { sources: [], hidden: false };
+
+  const sources = officialSources(found.basis, `${card.key}-src`);
+
+  if (sources.length === 0) return { sources: [], hidden: false };
+  if (card.edited || card.input.text !== card.draftText) return { sources: [], hidden: true };
+
+  return { sources, hidden: false };
+}
+
 export function questionValues(input: QuestionInput) {
-  const { state, setState, drafts, saved, locate, ids, sessionLabel, blockedReason } = input;
+  const { state, setState, drafts, saved, locate, ids, sessionLabel, blockedReason, questionEvidence } = input;
   const cards = buildQuestionCards(drafts, saved.questions, state);
   const savedInputs = saved.questions.map(savedInput);
   const canSave = saved.loaded && !saved.loadError && !saved.submitting && !blockedReason;
@@ -234,6 +273,7 @@ export function questionValues(input: QuestionInput) {
 
   const meetCards = cards.map((card) => {
     const where = why(card);
+    const official = questionSources(card, questionEvidence);
     return {
       key: card.key,
       id: questionChip(card.input),
@@ -245,6 +285,10 @@ export function questionValues(input: QuestionInput) {
       // 승인 전 AI 초안은 'AI 초안' 칩을 단다(18절 표현 주의 · 05_RULES — AI 결과는 AI 표시).
       aiDraft: card.origin === "draft" && !card.approved,
       edited: card.edited,
+      // 검토를 통과한 공식 근거(19절). 칩 글자는 실제 개수다.
+      sources: official.sources,
+      sourceChip: official.sources.length > 0 ? `공식 근거 ${official.sources.length}` : "",
+      sourcesHidden: official.hidden,
       okCls: card.approved ? "btn-p" : "btn-s",
       okLabel: card.approved ? "승인됨 ✓" : "승인",
       draftText: state.qDraft[card.key] ?? "",

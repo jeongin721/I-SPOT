@@ -129,3 +129,26 @@
   background: #453a22 !important;
   color: #e3c77e !important;
 }
+/* 공식 근거 펼침(다음 상담 체크리스트 19절). 발췌는 원문 줄바꿈을 지킨다. */
+.pg-FollowupQ .src summary {
+  cursor: pointer;
+}
+.pg-FollowupQ .src ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pg-FollowupQ .src-label {
+  font-weight: 500;
+}
+.pg-FollowupQ .src-excerpt {
+  margin-top: 2px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  color: #5b5850;
+}
+.pg-FollowupQ .thm-root.dark .src-excerpt {
+  color: #bdb7aa !important;
+}

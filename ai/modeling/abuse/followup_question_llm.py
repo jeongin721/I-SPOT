@@ -16,6 +16,9 @@ followup_check_llm 은 질문 문장을 만들지 않고 "무엇이 확인이 �
    - 물음표가 둘 이상(한 번에 여러 질문).
    - 인물(아빠 · 엄마 · 선생님 …) · 행위(때리 · 만지 · 굶 …) 낱말이 질문에 있는데 근거 발화에는 없다 —
      아이가 꺼내지 않은 사람 · 행위를 질문이 먼저 꺼내는 것.
+   - (2026-10-30, 팀장님 10/29 결정 ② — rag 의 질문 검증 규칙 연결, question_rules) 질문에 판단 · 법률 용어(학대 ·
+     신고 · 처벌 …)나 판정 · 단정 표현이 있다, 답을 정해 둔 꼬리 · 부정형 질문이다("어디 아팠지?" · "~맞지?" ·
+     "~하지 않았어?"), 이유(reason)에 판정 · 단정 표현이 있다.
 3. 상담사 승인 — 초안은 분석 결과에만 남고, 상담사가 [승인] 해야 질문 목록(API_CONTRACT 18절)에 들어간다.
 
 질문 은행(검증된 문항)이 생기면 RAG 로 섞을 수 있게 Contract 의 kind 에 "BANK" · bank_code 를
@@ -39,6 +42,7 @@ from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ai.modeling.abuse.case_context import AGE_BANDS
+from ai.modeling.abuse.question_rules import judgment_reason, leading_reason, question_term_reason
 
 if TYPE_CHECKING:  # pragma: no cover
     from openai import OpenAI
@@ -220,8 +224,16 @@ def _clean_questions(
         if _introduces_new_word(text, evidence_text):
             continue
 
+        # rag 의 질문 검증 규칙(question_rules): 판단 · 법률 용어 · 판정 표현, 답을 정해 둔 꼬리 · 부정형 질문.
+        if question_term_reason(text) or leading_reason(text):
+            continue
+
         reason = item.get("reason")
         reason = " ".join(reason.split())[:MAX_TEXT_CHARS] if isinstance(reason, str) else ""
+
+        # 이유도 공식 근거 연결(19절)에 넘기고 화면에 쓰일 수 있어 같은 기준으로 본다.
+        if judgment_reason(reason):
+            continue
 
         seen_texts.add(text)
         cleaned.append(

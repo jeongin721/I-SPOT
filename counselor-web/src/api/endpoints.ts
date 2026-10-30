@@ -20,6 +20,8 @@ import type {
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
+  FollowupChecklist,
+  FollowupChecklistEnvelope,
   FollowupQuestionInput,
   FollowupQuestionList,
   LawGuideAnswer,
@@ -473,6 +475,25 @@ export const followupQuestions = {
    */
   save(sessionId: string, questions: FollowupQuestionInput[]): Promise<FollowupQuestionList> {
     return api.put<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`, { questions });
+  },
+};
+
+// =========================================================
+// 다음 상담 체크리스트 (추가 확인 · 질문 · 상담 전 브리핑, 19절)
+// =========================================================
+
+export const followupChecklist = {
+  /** 켜져 있는지 + 체크리스트(만든 적이 없으면 null). 처리 중이 너무 오래됐으면 이 조회 때 FAILED · AI_TIMEOUT 으로 바뀐다. */
+  get(sessionId: string): Promise<FollowupChecklistEnvelope> {
+    return api.get<FollowupChecklistEnvelope>(`/sessions/${sessionId}/followup-checklist`);
+  },
+
+  /**
+   * 만들기 · 다시 만들기(202). 이미 만드는 중이면 새 작업 없이 그 행을 돌려준다.
+   * 최신 분석이 COMPLETED 가 아니면 409 INVALID_SESSION_STATE, 꺼져 있으면 503 FOLLOWUP_DISABLED.
+   */
+  create(sessionId: string): Promise<FollowupChecklist> {
+    return api.post<FollowupChecklist>(`/sessions/${sessionId}/followup-checklist`);
   },
 };
 

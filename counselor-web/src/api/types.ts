@@ -1123,3 +1123,76 @@ export interface FollowupQuestionList {
   updated_at: string | null;
   updated_by_id: string | null;
 }
+
+// =========================================================
+// 다음 상담 체크리스트 (API_CONTRACT 19절, 2026-10-30)
+// =========================================================
+
+export type ChecklistKind = "info_gap" | "plan_followup" | "change" | "inconsistency" | "checklist_gap";
+
+/**
+ * 근거 하나. type="case" 는 사례 기록(segment_id 가 있으면 그 발화, session_id 만 있으면 그 회차).
+ * 그 밖(manual · guideline · form · checklist · law · precedent)은 공식 근거 — 서버가 검토를 통과한 것만 보낸다.
+ * url 이 있으면(법령 · 판례) 새 창으로, 없으면 excerpt 를 펼쳐 보인다. why 는 질문에 붙인 공식 근거의 연결 이유.
+ */
+export interface ChecklistBasis {
+  type: string;
+  ref?: string | null;
+  label?: string | null;
+  session_no?: number | null;
+  session_id?: string | null;
+  segment_id?: string | null;
+  start_ms?: number | null;
+  source?: string | null;
+  page?: number | string | null;
+  url?: string | null;
+  excerpt?: string | null;
+  why?: string | null;
+}
+
+/** 다음 상담 전 확인할 사항 하나(rag). 화면에서 AI 확인 메모와 한 목록으로 합쳐 보인다. basis 는 1개 이상. */
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  kind: ChecklistKind;
+  priority: "high" | "medium";
+  reason: string;
+  basis: ChecklistBasis[];
+}
+
+/** 추가 질문 AI 초안(분석 followup_questions[draft_index])에 붙인 공식 근거. text 는 만들 때의 초안 문장 그대로. */
+export interface QuestionEvidence {
+  draft_index: number;
+  text: string;
+  basis: ChecklistBasis[];
+}
+
+export interface ChecklistResult {
+  schema_version: string;
+  check_items: ChecklistItem[];
+  question_evidence: QuestionEvidence[];
+  notice: string | null;
+  dropped: Record<string, number>;
+}
+
+export interface FollowupChecklist {
+  status: AnalysisStatus;
+  attempt: number;
+  /** 만들 때 쓴 분석. 지금 분석과 다르면 화면은 결과를 숨기고 다시 만들기를 보인다. */
+  analysis_id: string | null;
+  transcript_version: number | null;
+  provider: string | null;
+  /** COMPLETED 일 때만. */
+  result: ChecklistResult | null;
+  /** FAILED 일 때만. message 는 고정 문구. */
+  error: SessionErrorInfo | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface FollowupChecklistEnvelope {
+  /** false 면 서버에서 꺼져 있다(FOLLOWUP_PROVIDER=off). 만들기 단추를 보이지 않는다. */
+  enabled: boolean;
+  /** 만든 적이 없으면 null. */
+  checklist: FollowupChecklist | null;
+}

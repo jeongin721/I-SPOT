@@ -393,6 +393,31 @@ python -m rag.indexer             # 가이드북 판례와 함께 색인
 - 법령은 배경 근거로만, 판례는 어떤 사실(반복성 · 상처 정도 · 시기)이 중요한지 참고로만 쓰게 프롬프트로 막는다. 판례 속 사건 내용이 질문에 들어가지 않게 한다.
 - 모든 질문은 상담사가 승인해야 쓰인다. 승인 · 수정한 질문과 체크한 확인 사항은 다음 회차 `previous_sessions[].check_items`로 다시 넣는다.
 - `validation`에는 생성 · 탈락 수만 담는다(질문 문장은 싣지 않는다).
+- 판단 · 법률 용어(`JUDGMENT_TERMS`) · 판정 표현(`judgment_reason`) · 꼬리형 질문 검사는 2026-10-30 `ai/modeling/abuse/question_rules.py` 로 옮겼다
+  (추가 질문 AI 초안 · AI 확인 메모와 같은 기준으로 쓰려고). `checklist_builder` 는 그것을 import 해 같은 이름으로 쓴다 — 동작은 같다.
+
+### Backend 연동 (2026-10-30, backend API_CONTRACT 19절)
+
+Backend 는 분석이 저장되면 `analyze_reviewed_transcript(..., with_questions=False, with_manual_references=False, link_questions=[...])` 로 부른다.
+추가 질문은 Backend 쪽 #118 초안 하나에서만 만들기 때문에(팀장님 10/29 결정 ②) **이 경로에서는 질문을 만들지 않는다.**
+대신 확인할 사항과 넘겨받은 초안(`link_questions` — `[{draft_index, text, reason}]`)에 **검토를 통과한 공식 근거만** 붙인다(`rag/official_evidence.py`).
+
+```text
+1) 확인할 사항 추출 (위 1과 같다) — 실패하면 validation.check_error 를 달고 끝낸다(Backend 가 실패로 마감)
+2) 후보: 같은 분석에서 찾은 공식 근거 목록(build_knowledge_entries)만. 0개면 아래 LLM 을 부르지 않는다(validation.official_skipped)
+3) 연결 (LLM 1회, 모든 초안 한 번에): 초안마다 뒷받침하는 공식 근거 0~2개 + 이유 한 줄. 0개도 정상 답
+   코드 검사: 후보에 있는 번호 · 같은 초안 두 번 답 없음 · 이유 있음 · 이유에 판정 표현 없음 → 걸리면 그 연결을 뺀다(official_unlinked)
+4) 검토 (LLM 1회): 확인할 사항의 공식 근거(1의 knowledge_refs)와 3의 연결을 (문장, 발췌) 쌍마다 예/아니오
+   → '예' 인 쌍만 남긴다. 답이 빠졌거나 두 번 답한 쌍은 '아니오'(official_review_rejected)
+   → 검토 호출이 실패하면 공식 근거를 모두 뺀다(official_review_error). 검토하지 않은 공식 근거는 내보내지 않는다
+```
+
+- 반환 `next_session_checklist` 에 `question_evidence: [{draft_index, knowledge_refs, basis}]` 가 더해진다. `basis` 는 공식 근거만이고 각각 `why`(연결 이유)가 있다.
+  공식 근거가 1개 이상 남은 초안만 싣는다. `items`(질문)는 늘 빈 목록이다.
+- 초안 문장 · 이유도 사례 기록과 **한 묶음으로 비식별**한다(같은 사람 = 같은 토큰). 비식별 시도 순서는
+  (전체 기록 + 초안) → (전체 기록) → (이번 회차 + 초안) → (이번 회차)이고, 초안을 빼고 통과했으면 `question_link_warning` 을 단다.
+- `with_manual_references=False` 면 화면별 매뉴얼 근거(8-1)를 만들지 않는다(`manual_screen_references` 는 `null`).
+- 세 플래그 모두 기본값이면 지금까지와 같다(루트 `main.py` · CLI 영향 없음).
 
 ## 9. 상태값
 
@@ -445,6 +470,9 @@ rag/session.py
 
 rag/privacy.py
 - 외부 전송 전 비식별(privacy_gateway.mask_for_outbound · 여러 문장은 mask_payload)과 결과 복원
+
+rag/official_evidence.py
+- Backend 연동 경로: 확인할 사항 · 추가 질문 초안에 공식 근거를 연결 → 코드 검사 → 검토해 통과한 것만 남긴다(8-3 'Backend 연동')
 
 rag/precedents.py
 - 가이드북 '판례로 보는 사례'를 사건 단위 조각으로 만들고, 색인된 판례에서 유사 판례를 찾는다
