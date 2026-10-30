@@ -1,7 +1,9 @@
 # 사례(Case).
 #
-# 개인정보 최소 저장 원칙(docs/05_RULES.md)에 따라
+# 개인정보 최소 저장 원칙(docs/05_RULES.md)에 따라 이 표에는
 # 아동 실명 대신 alias 를 사용하고, 생년월일 대신 출생연도만 보관한다.
+# 실명 · 생년월일 · 가족 정보는 2026-10-30 팀 결정으로 암호화해 case_personal_infos 에 따로 둔다
+# (app/models/case_personal_info.py). 이 표의 alias · 출생연도는 그대로 평문이다.
 
 import uuid
 from typing import List, Optional, TYPE_CHECKING
@@ -13,6 +15,7 @@ from app.core.enums import CaseStatus, GuardianType
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.case_personal_info import CasePersonalInfo
     from app.models.session import ConsultationSession
     from app.models.user import User
 
@@ -71,6 +74,13 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="case",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    # 암호화한 개인 식별 정보(없으면 None). 사례를 지우면 함께 지운다.
+    personal_info: Mapped[Optional["CasePersonalInfo"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
     )
 
     def __repr__(self) -> str:
