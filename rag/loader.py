@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document

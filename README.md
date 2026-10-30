@@ -82,7 +82,7 @@ STT 검수가 끝난 Transcript
 
 - 최상위 `main.py`의 `POST /api/v1/rag/analyze`에 검수된 Transcript(`{"transcript": {...}, "abuse_type"?: ..., "known_identifiers"?: [...]}`)를 보냅니다. `abuse_type`을 빼면 검수된 아동 발화로 학대 유형을 다시 분류합니다. `session_no` · `previous_sessions` · `child_app_responses`를 함께 보내면 다음 상담 질문이 이전 회차 기록 · 아이 앱 응답까지 근거로 씁니다(`rag/README.md` 8-3).
 - `/api/v1/analyze`(업로드 직후, 검수 전)는 RAG를 돌리지 않습니다. 검수 전 발화는 화자 · 문장이 바뀔 수 있기 때문입니다.
-- 응답: `rag_analysis`(감지된 학대 유형이 없으면 `null`), `manual_screen_references`, `excluded_speakers`(뺀 화자별 발화 수), `child_segment_ids`, `speaker_check_items`(화자 미확정 발화를 확인할 사항으로 만든 것). 실패하면 해당 필드가 `{"error": ...}`이고, 비식별 검증에 막히면 `privacy_blocked: true`와 사유(원문 없음)가 담깁니다.
+- 응답: `rag_analysis`(감지된 학대 유형이 없으면 `null`), `manual_screen_references`, `excluded_speakers`(뺀 화자별 발화 수), `child_segment_ids`, `privacy_blocked` · `privacy_reasons`(어느 쪽이든 비식별에 막혔는지), `speaker_check_items`(화자 미확정 발화를 확인할 사항으로 만든 것). 실패하면 해당 필드가 `{"error": ...}`이고, 비식별 검증에 막히면 `privacy_blocked: true`와 사유(원문 없음)가 담깁니다.
 - 화면 섹션별 필드: 매뉴얼과 서식 → `manual_references`, `checklist_results` / 법령과 판례 → `related_laws`, `precedents`(유사 판례)
 - 화면별 업무 매뉴얼 근거(추가 확인 질문 · 상담 전 브리핑 · 종결 검토)는 `manual_screen_references`에 담깁니다. 분석할 때 미리 만들어 화면에서 기다리지 않게 합니다. `backend/` 저장은 [제안서](I-SPOT_DOCS/docs/PROPOSAL_manual_references.md) 참고.
 - 설치: `pip install -r requirements.txt -r requirements-rag.txt` (최상위 `main.py`가 `rag.pipeline`을 import 하므로 둘 다 필요)
