@@ -9,7 +9,9 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import SessionPick from '../components/SessionPick';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -67,6 +69,7 @@ export default function SessionDetail(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -92,19 +95,7 @@ export default function SessionDetail(props) {
             <span className="note" style={{ marginLeft: '6px' }}>
               다른 회차
             </span>
-            {(v.picks || []).map((p, pIndex) => (
-              <Fragment key={pIndex}>
-                <button
-                  type="button"
-                  className="pick"
-                  onClick={p.go}
-                  aria-pressed={p.on}
-                  style={{ background: p.bg, borderColor: p.bd, color: p.fg, fontWeight: p.fw }}
-                >
-                  {p.label}
-                </button>
-              </Fragment>
-            ))}
+            <SessionPick label={v.pickLabel} head={v.pickHead} items={v.picks || []} />
           </section>
           <nav
             aria-label="회차 처리 단계"

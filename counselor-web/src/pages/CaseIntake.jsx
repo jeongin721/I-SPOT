@@ -6,6 +6,8 @@
 // 새 사례 등록(CaseRegister)과 같은 서식을 사례 값으로 채워 사례 상세 안에서 연다. 고칠 수 있는 칸은 사례에 저장된 칸뿐이고
 // (담당 상담원은 관리자만), 개별사건번호는 읽기만 한다. 나머지 칸은 새 사례 등록처럼 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
 // 디자인의 '임시 저장' · '확정' 은 서식 작성 기록 · 확정 상태가 서버에 없어 '저장' 하나로 두었다.
+// 10/29 디자인: ① 칸 묶음(rg-*) · 사례관리대상자 생년월일, ② 가족유형 21개 · 문제력 한 칸 · 건강정도 표(hs-*) · 칸 복사 단추.
+// 새로 생긴 칸도 서버에 없어 준비 중(막음)이다. 복사 단추의 '이름 가려서' 는 사례 별칭을 가린다.
 // 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard). 다른 사례로 옮기거나 다시 로그인하면 고치던 것을 버린다.
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -13,6 +15,8 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import CopyButton from '../components/CopyButton';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
@@ -84,6 +88,7 @@ export default function CaseIntake(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <div>
@@ -119,7 +124,6 @@ export default function CaseIntake(props) {
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={v.tabs.detail}>내담자 정보</A>
             <A to={v.tabs.history}>상담 이력</A>
-            <A to={v.tabs.briefing}>상담 전 브리핑</A>
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
@@ -176,7 +180,8 @@ export default function CaseIntake(props) {
                         style={{ borderColor: v.caseTitle.border }}
                       />
                     </label>
-                    <div className="g3">
+                    <div className="rg-grp">
+                      <div className="rg4">
                       <label className="fl">
                         <span className="lb">
                           신고접수일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
@@ -201,6 +206,10 @@ export default function CaseIntake(props) {
                         </span>
                         <input className="inp" type="text" readOnly value={v.caseNumber} />
                       </label>
+                      </div>
+                    </div>
+                    <div className="rg-grp">
+                      <div className="rg3">
                       <label className="fl">
                         <span className="lb">
                           아동 별칭 <span className="req">*</span>
@@ -241,6 +250,10 @@ export default function CaseIntake(props) {
                           onChange={v.birthYear.onChange}
                         />
                       </label>
+                      </div>
+                    </div>
+                    <div className="rg-grp">
+                      <div className="rg3">
                       <label className="fl">
                         <span className="lb">
                           사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
@@ -271,9 +284,16 @@ export default function CaseIntake(props) {
                           />
                         </label>
                       ) : null}
+                      <label className="fl">
+                        <span className="lb">
+                          생년월일 (나이) {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                        </span>
+                        <input className="inp" type="text" placeholder="YYYY-MM-DD" disabled aria-label="사례관리대상자 생년월일" />
+                      </label>
+                      </div>
                     </div>
-
-                    <div className="g3">
+                    <div className="rg-grp">
+                      <div className="rg2">
                       <label className="fl">
                         <span className="lb">
                           조치결과 · 피해아동 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
@@ -299,6 +319,10 @@ export default function CaseIntake(props) {
                           <option>기타</option>
                         </select>
                       </label>
+                      </div>
+                    </div>
+                    <div className="rg-grp">
+                      <div className="rg3">
                       <label className="fl">
                         <span className="lb">
                           면접대상자 / 관계 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
@@ -343,12 +367,13 @@ export default function CaseIntake(props) {
                           <option>하</option>
                         </select>
                       </label>
+                      </div>
                     </div>
                     <label className="fl">
                       <span className="lb">
                         사례연계 경위 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                       </span>
-                      <textarea className="ta2" disabled></textarea>
+                      <textarea className="ta2" rows="7" disabled style={{ minHeight: '180px' }}></textarea>
                     </label>
                     <label className="fl">
                       <span className="lb">사례 메모</span>
@@ -393,7 +418,8 @@ export default function CaseIntake(props) {
                     <fieldset disabled style={LOCKED_GROUP}>
                       <label className="fl">
                         <span className="lb">보호자와 아동과의 관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></span>
-                        <textarea className="ta2"></textarea>
+                        <textarea className="ta2 ta1" rows="1" aria-label="보호자와 아동과의 관계"></textarea>
+                        <CopyButton name={v.title} />
                       </label>
 
                       <div className="sec">가족유형{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
@@ -413,7 +439,7 @@ export default function CaseIntake(props) {
 
                       <div className="sec">가족관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
                       <div style={{ overflowX: 'auto' }}>
-                        <table className="ft">
+                        <table className="ft ftg">
                           <thead>
                             <tr>
                               <th>성명</th>
@@ -485,38 +511,125 @@ export default function CaseIntake(props) {
                     </div>
 
                     <fieldset disabled style={LOCKED_GROUP}>
-                      <div className="sec">문제력 · 건강정도{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div className="g3">
-                        <label className="fl">
-                          <span className="lb">현 상황</span>
-                          <textarea className="ta2"></textarea>
-                        </label>
-                        <label className="fl">
-                          <span className="lb">이유 인식</span>
-                          <textarea className="ta2"></textarea>
-                        </label>
+                      <div className="sec">문제력{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
+                      <label className="fl cp-in">
+                        <textarea
+                          className="ta2"
+                          placeholder="피해아동/사례관리대상자/비가해보호자/가족구성원 등이 생각하는 현 상황, 현 상황이 초래된 이유 등에 대한 기재"
+                          aria-label="문제력"
+                        ></textarea>
+                        <CopyButton name={v.title} />
+                      </label>
+                      <div className="sec hs-sec">
+                        <span aria-hidden="true">(</span>
+                        <input className="hs-name" type="text" placeholder="이름" aria-label="건강정도 대상자 이름" />
+                        <span aria-hidden="true">)</span>건강정도{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
                       </div>
-                      <div className="g3">
-                        <label className="fl">
-                          <span className="lb">질병</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">장애</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">병원치료</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">정신과 진단</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">타기관 상담</span>
-                          <input className="inp" type="text" />
-                        </label>
+                      <p className="note" style={{ margin: '-8px 0 0' }}>
+                        *피해아동, 사례관리대상자, 가족구성원 중 해당하는 사람에 대해 기재
+                      </p>
+                      <div className="hs-tbl">
+                        <div className="hs-row">
+                          <span className="hs-k">질병</span>
+                          <div className="hs-v">
+                            {(v.hs?.dis || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-t">질병명</span>
+                            <input className="hs-in hs-w" type="text" aria-label="질병명" placeholder="질병명 입력" />
+                          </div>
+                        </div>
+                        <div className="hs-row">
+                          <span className="hs-k">장애</span>
+                          <div className="hs-v">
+                            {(v.hs?.dsb || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-t">장애명</span>
+                            <input className="hs-in hs-w" type="text" aria-label="장애명" placeholder="장애명 입력" />
+                            <span className="hs-t">장애 [</span>
+                            {(v.hs?.dsbLv || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-t">] 장애</span>
+                          </div>
+                        </div>
+                        <div className="hs-row">
+                          <span className="hs-k">병원치료</span>
+                          <div className="hs-v">
+                            {(v.hs?.hosp || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="병원치료 횟수" />
+                            <span className="hs-t">회 / 병력:</span>
+                            {(v.hs?.hospT || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-g">
+                              <span className="hs-t">/ 총</span>
+                              <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="병원치료 기간 년" />
+                              <span className="hs-t">년</span>
+                              <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="병원치료 기간 개월" />
+                              <span className="hs-t">개월</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="hs-row">
+                          <span className="hs-k">정신과 진단</span>
+                          <div className="hs-v">
+                            {(v.hs?.psy || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-t">진단명</span>
+                            <input className="hs-in hs-w" type="text" aria-label="진단명" placeholder="진단명 입력" />
+                            <span className="hs-t">/ 약물복용여부:</span>
+                            {(v.hs?.med || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-g">
+                              <span className="hs-t">(총</span>
+                              <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="약물복용 기간 년" />
+                              <span className="hs-t">년</span>
+                              <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="약물복용 기간 개월" />
+                              <span className="hs-t">개월)</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="hs-row">
+                          <span className="hs-k">타기관 상담</span>
+                          <div className="hs-v">
+                            {(v.hs?.cns || []).map((o) => (
+                              <button key={o.label} type="button" className="pk hs-pk" style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <span className="hs-t">상담사유</span>
+                            <input className="hs-in hs-w" type="text" aria-label="상담사유" placeholder="상담사유 입력" />
+                            <span className="hs-t">/</span>
+                            <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 횟수" />
+                            <span className="hs-g">
+                              <span className="hs-t">회 / 기간 총</span>
+                              <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 기간 년" />
+                              <span className="hs-t">년</span>
+                              <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 기간 개월" />
+                              <span className="hs-t">개월</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="sec">대상자 태도 및 관찰내용{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
@@ -524,15 +637,18 @@ export default function CaseIntake(props) {
                         <label className="fl">
                           <span className="lb">대상자 태도</span>
                           <textarea className="ta2"></textarea>
+                          <CopyButton name={v.title} />
                         </label>
                         <label className="fl">
                           <span className="lb">물리적 환경</span>
                           <textarea className="ta2"></textarea>
+                          <CopyButton name={v.title} />
                         </label>
                       </div>
                       <label className="fl">
                         <span className="lb">상담원 소견 및 향후 계획</span>
                         <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
+                        <CopyButton name={v.title} />
                       </label>
                     </fieldset>
                   </fieldset>

@@ -453,7 +453,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 h1 {
-  font-family: 'Noto Serif KR', serif !important;
+  font-family: 'IBM Plex Sans KR', sans-serif !important;
   letter-spacing: -0.01em;
   font-weight: 500 !important;
 }
@@ -2065,3 +2065,44 @@ section[aria-label="폴더"]{max-width:none !important}
   background: #2b2a26;
   color: #eadbb5 !important;
 }
+
+/* 위쪽 바 알림(10/29 디자인, components/NotiBell.jsx) */
+.thm-bar:has(.nt-wrap){position:relative;align-items:center;gap:10px}
+.nt-wrap{position:static;flex:none}
+.nt-btn{position:relative;width:38px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid #DAD5C9;border-radius:10px;background:#FFFFFF;color:#2B2A26;cursor:pointer}
+.nt-btn:hover{background:#F7F6F2}
+.nt-btn:focus-visible{outline:2px solid #C2A36B;outline-offset:2px}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#A33B2E;color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nt-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,100%);background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.nt-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.nt-sub{font-size:12px;color:#7A776F}
+.nt-all{margin-left:auto;border:0;background:transparent;padding:4px 6px;border-radius:6px;font:inherit;font-size:12px;color:#7A5F28;cursor:pointer}
+.nt-all:hover{background:#F1EADA}
+.nt-list{max-height:380px;overflow-y:auto}
+.nt-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.nt-item:last-child{border-bottom:0}
+.nt-item:hover{background:#F7F6F2}
+.nt-dot{flex:none;width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}
+.nt-item.unread .nt-dot{background:#A33B2E}
+.nt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nt-t{font-size:13.5px;font-weight:700}
+.nt-item.read .nt-t{font-weight:500}
+.nt-s{font-size:12px;color:#7A776F}
+.nt-dd{flex:none;height:22px;padding:0 8px;border-radius:6px;background:#F2EFE8;color:#66625A;font-size:11.5px;font-weight:700;line-height:22px;white-space:nowrap}
+.nt-dd.soon{background:#F1EADA;color:#7A5F28}
+.nt-dd.urgent{background:#F7E4DF;color:#A33B2E}
+.nt-empty{margin:0;padding:22px 16px;font-size:13px;color:#7A776F;text-align:center;line-height:1.7}
+.thm-root.dark .nt-btn{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .nt-btn:hover{background:#33312C}
+.thm-root.dark .nt-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.thm-root.dark .nt-hd,.thm-root.dark .nt-item{border-color:#3A3833}
+.thm-root.dark .nt-item{color:#ECE8DF !important}
+.thm-root.dark .nt-item:hover{background:#33312C}
+.thm-root.dark .nt-all{color:#EADBB5}
+.thm-root.dark .nt-all:hover{background:#3F3729}
+.thm-root.dark .nt-sub,.thm-root.dark .nt-s,.thm-root.dark .nt-empty{color:#A8A296}
+.thm-root.dark .nt-dd{background:#3A3833;color:#D6D0C4}
+.thm-root.dark .nt-dd.soon{background:#3F3729;color:#EADBB5}
+.thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
+/* 인쇄할 때만 위쪽 바 단추를 숨긴다(복사 단추는 CopyButton.css). */
+@media print{.nt-wrap,.thm-tg{display:none !important}}

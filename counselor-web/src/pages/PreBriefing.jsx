@@ -4,6 +4,8 @@
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 · 회차는 useCaseDetail, 분석이 끝난 가장 최근 회차의 확인 메모 · 위험도는
 // useCaseSignals 가 부르고, 화면에 쓸 값은 src/data/screens/preBriefing.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에).
 // 이 파일은 훅을 부르고 배치만 한다. 아이 앱 · 회차 비교 · 질문 은행 · 일정은 서버에 없어 준비 중 · '—'.
+// 10/29 디자인: 브리핑은 탭에서 빠지고 내담자 정보 탭 안으로 들어갔다. 사례가 있는 주소로 오면 그리로 넘긴다
+// (사례 없이 여는 홈 화면 링크만 이 화면을 쓴다).
 // 10/27 디자인은 예전 판의 '신변안전 확인' · '그대로 남겨 둔 진술' 칸을 뺐다.
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -15,11 +17,11 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
-import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
+import { briefingHref } from '../data/screens/caseDetail';
 import './PreBriefing.css';
 
 class Logic extends DCLogic {
@@ -35,10 +37,9 @@ export default function PreBriefing(props) {
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
   const questions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
-  // 확인할 사항은 4 · 추가 확인 화면과 같은 목록(AI 확인 메모 + 다음 상담 체크리스트, 19절)을 보인다.
-  const checklist = useFollowupChecklist(signals.session?.id ?? null, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, checklist, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  if (caseId) return <Navigate to={briefingHref(caseId)} replace />;
   return (
     <div className="pg-PreBriefing">
       <div

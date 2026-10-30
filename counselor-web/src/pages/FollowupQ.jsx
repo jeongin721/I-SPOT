@@ -14,6 +14,7 @@ import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
@@ -117,6 +118,7 @@ function FollowupQScreen(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -324,7 +326,7 @@ function FollowupQScreen(props) {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <A className="btn btn-s" to={v.backHref}>
-              ← 요약 · 일지 작성
+              ← 상담일지 작성
             </A>
             <A className="btn btn-p" to={v.doneHref} style={{ marginLeft: 'auto' }}>
               {v.doneLabel}

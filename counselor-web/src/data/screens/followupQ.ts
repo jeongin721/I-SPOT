@@ -24,6 +24,7 @@ import type { SessionAnalysisState } from "../useSessionAnalysis";
 import { NOT_READY } from "./common";
 import { caseWhy, officialSources, type SourceView } from "./followupEvidence";
 import { questionValues, type QuestionUiState } from "./followupQuestions";
+import { briefingHref } from "./caseDetail";
 import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -336,7 +337,8 @@ export function followupQValues(input: FollowupScreenInput) {
     error: analysis.error,
     signalError: completed ? signals.evidenceError : null,
     backHref: screenHref("/NoteWrite", ids),
-    doneHref: screenHref("/SessionDetail", ids),
-    doneLabel: sessionLabel ? `${sessionLabel} 보기 →` : "회차 보기 →",
+    // 10/29 디자인: 마지막 단추는 상담 전 브리핑(내담자 정보 탭 안)으로 간다.
+    doneHref: briefingHref(ids.caseId ?? null),
+    doneLabel: sessionLabel ? `${sessionLabel} 처리 완료 · 브리핑 보기` : "처리 완료 · 브리핑 보기",
   };
 }

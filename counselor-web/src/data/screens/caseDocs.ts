@@ -117,7 +117,7 @@ export function sessionDocRows({ session, documents }: SessionDocs): DocRow[] {
       st,
       stCls,
       href: screenHref("/SttReview", ids),
-      go: st === "검수 필요" ? "STT 검수" : "열기",
+      go: st === "검수 필요" ? "기록 확인" : "열기",
       filter: "rec",
     });
   }

@@ -3,21 +3,32 @@
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 회차 목록은 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseDetail.ts(caseHistoryValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 누적 요약 · 주제 비중 · 회차별 세부 신호 · 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
+// 회차 카드 신호 · 회차별 세부 신호는 사례 단위 신호 이력(useSignalHistory), 누적 요약은 승인된 회차 요약 모음
+// (useApprovedSummaries — AI 생성 아님)이다. 주제 비중 · 덜 다룬 부분은 신호 이력의 회차별 대화 주제(AI 제안, 2026-10-29).
+// 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
+// 10/29 디자인: 머리 단추가 '녹음하기'(components/RecordDialog, useRecordFlow) · '+ 새 상담 등록'(components/NewSessionDialog —
+// 녹음 없이 상담 내용 · 소견을 회차 메모에 저장)으로 바뀌었다.
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import NewSessionDialog from '../components/NewSessionDialog';
 import Notice from '../components/Notice';
+import RecordDialog from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useSignalHistory } from '../data/useSignalHistory';
+import { useApprovedSummaries } from '../data/useApprovedSummaries';
 import { caseHistoryValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
+import { useRecordFlow } from '../data/useRecordFlow';
 import './CaseHistory.css';
 
 class Logic extends DCLogic {
@@ -35,10 +46,15 @@ export default function CaseHistory(props) {
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
+  const history = useSignalHistory(caseId, { enabled: signedIn(session) });
+  const approved = useApprovedSummaries(history.sessions, { enabled: signedIn(session) });
   const theme = useTheme();
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
-  const v = useDC(Logic, { ...props, session, detail, signals, caseId, historyOpen, setHistoryOpen });
+  const v = useDC(Logic, { ...props, session, detail, signals, history, approved, caseId, historyOpen, setHistoryOpen });
+  const rec = useRecordFlow(session, caseId, v.canRecord);
+  const [nsOpen, setNsOpen] = useState(false);
+  useLeaveGuard(rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseHistory">
@@ -68,6 +84,7 @@ export default function CaseHistory(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -86,25 +103,29 @@ export default function CaseHistory(props) {
               </div>
               <div className="note">{v.meta}</div>
             </div>
-            <A className="btn btn-s" to={v.uploadHref}>
-              ↑ 녹취 올리기
-            </A>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button type="button" className="btn btn-s" onClick={rec.start} disabled={!rec.canOpen}>
+                <span className="rec-dot" aria-hidden="true"></span> 녹음하기
+              </button>
+              <button type="button" className="btn btn-s" onClick={() => setNsOpen(true)} disabled={!v.canRecord}>
+                + 새 상담 등록
+              </button>
+            </div>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={v.tabs.detail}>내담자 정보</A>
             <A className="on" aria-current="page" to={v.tabs.history}>
               상담 이력
             </A>
-            <A to={v.tabs.briefing}>상담 전 브리핑</A>
             <A to={v.tabs.docs}>문서함</A>
           </nav>
           <section className="card" aria-label="지금까지 상담" style={{ padding: '24px 26px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
               <span className="secno">1</span>
               <h2 className="h2">지금까지 상담</h2>
-              <span className="chip c-ai">{v.overviewChip}</span>
+              <span className="chip c-normal">{v.overviewChip}</span>
               <span className="src" style={{ marginLeft: 'auto' }}>
-                근거 · 확정 일지 · 검수본 · 체크인
+                {v.overviewSrc}
               </span>
             </div>
             <div
@@ -131,6 +152,7 @@ export default function CaseHistory(props) {
             <div style={{ marginTop: '18px', display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
               <div style={{ flex: '1 1 360px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div className="note">주제 비중</div>
+                {v.topicNote ? <div className="src">{v.topicNote}</div> : null}
                 {(v.topics || []).map((t, tIndex) => (
                   <div
                     key={tIndex}
@@ -270,7 +292,8 @@ export default function CaseHistory(props) {
             >
               <span className="secno">3</span>
               <h2 className="h2">회차별 세부 신호</h2>
-              <span className="src">채택 신호 · 근거 발화 수</span>
+              <span className="chip c-ai">AI 제안</span>
+              <span className="src">관련 신호 · 근거 발화 수</span>
             </div>
             {v.signalNote ? (
               <p className="note" style={{ margin: '0 0 10px' }}>
@@ -278,7 +301,7 @@ export default function CaseHistory(props) {
               </p>
             ) : null}
             <div style={{ overflowX: 'auto' }}>
-              <div className="mx" style={{ minWidth: '640px' }}>
+              <div className="mx" style={{ minWidth: '640px', gridTemplateColumns: v.mxCols }}>
                 <span className="rl note">세부 신호</span>
                 {(v.cols || []).map((c, cIndex) => (
                   <Fragment key={cIndex}>
@@ -343,6 +366,30 @@ export default function CaseHistory(props) {
             </div>
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+          {rec.show ? (
+            <RecordDialog
+              caseId={caseId}
+              caseName={v.recordCase}
+              caseSub={v.sub}
+              targets={v.recordTargets}
+              recorder={rec.recorder}
+              upload={rec.upload}
+              onClose={rec.close}
+            />
+          ) : null}
+          {nsOpen && v.canRecord ? (
+            <NewSessionDialog
+              caseId={caseId}
+              caseName={v.recordCase}
+              caseSub={v.sub}
+              rows={detail.sessions}
+              onClose={() => setNsOpen(false)}
+              onSaved={() => {
+                detail.reload();
+                history.reload();
+              }}
+            />
+          ) : null}
         </main>
       </div>
     </div>

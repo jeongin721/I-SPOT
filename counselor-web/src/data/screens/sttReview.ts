@@ -54,7 +54,7 @@ import { marksBySegment, reasonLabel, type SegmentMarks, type VoiceCue, voiceMar
 import { type SegmentRow, SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
 import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
-import type { SessionScreenInput } from "./sessionDetail";
+import { type SessionScreenInput, sessionPickValues } from "./sessionDetail";
 
 /** 관련 조문 줄 머리의 짧은 유형 이름(디자인의 .sig). */
 const LAW_TYPE_LABELS: Record<string, string> = {
@@ -408,10 +408,12 @@ export function sttReviewValues(input: SttScreenInput) {
   // 이미 확정했고 고친 칸이 없으면 그냥 이동.
   const mustConfirm = review.canConfirm || (review.canEdit && review.counts.pending > 0);
   const canGoOn = status !== null && status !== "STT_REVIEW_REQUIRED" && confirmed;
-  const nextLabel = mustConfirm ? "원문 확정 · 유형별 위험도 →" : "유형별 위험도 →";
+  const nextLabel = mustConfirm ? "원문 확정 · 학대 신호 확인 →" : "학대 신호 확인 →";
 
   return {
     ...header,
+    // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 기록 확인 화면으로).
+    ...sessionPickValues(input, "/SttReview"),
     analyzing: progress !== null,
     done: review.info !== null,
     progressChip: progress?.chip ?? "",

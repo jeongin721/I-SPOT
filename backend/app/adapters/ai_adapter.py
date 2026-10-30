@@ -381,9 +381,13 @@ class ModelingAIAdapter:
         transcript_payload: Dict[str, Any],
         *,
         time_limit_seconds: Optional[float] = None,
+        case_context: Optional[Dict[str, Any]] = None,
     ) -> AIAnalysisBundle:
         """time_limit_seconds: 이 분석의 제한 시간. analysis_service 가 작업 전체 마감에 맞춰 줄인 값을
         넘긴다(run_with_timeout 에 준 값과 같다). 직접 부르면 AI_TIMEOUT_SECONDS 다.
+
+        case_context: 사례 정보(case_context_service, 2026-10-28). 모듈이 받는 판(case_context 키워드)에만
+        넘긴다 — 받지 않는 예전 판에 넘기면 TypeError 로 분석이 실패한다(deadline 과 같은 방식).
         """
 
         # analysis_service 의 run_with_timeout 이 시간을 재기 시작한 직후다. 마감 시각은 이때부터 잰다.
@@ -409,6 +413,9 @@ class ModelingAIAdapter:
             options["deadline"] = (
                 started + time_limit_seconds - settings.AI_DEADLINE_MARGIN_SECONDS
             )
+
+        if case_context is not None and accepts_keyword(analyze_audio_session_as_contract, "case_context"):
+            options["case_context"] = case_context
 
         try:
             (

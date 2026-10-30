@@ -1,4 +1,4 @@
-// 녹취 · 자료 올리기(UploadModal) 화면 값. 사례 고르기 → 회차 고르기(있는 회차 · 새 회차) → 파일 고르기 → 올리기.
+// 녹취 · 자료 올리기(UploadModal) 화면 값. 사례 고르기 → 회차 고르기(새 회차 · 모든 회차, 녹취 있는 회차는 못 넘어감) → 파일 고르기 → 올리기.
 //
 // 올리기 · 원문 변환 · 끝날 때까지 기다리기는 useAudioUpload 가 한다. 실패하면 그 단계부터 다시 하고, 새 회차를
 // 또 만들지 않는다. 끝나면 확인창에서 그 회차의 STT 검수(이동) · 회차 상세(나중에)로 간다.
@@ -26,23 +26,35 @@ export interface UploadTarget {
   label: string;
   short: string;
   meta: string;
+  /** 이 회차에 음성을 올릴 수 있는가(새 회차 · 음성을 처음 올리거나 다시 올릴 수 있는 회차). */
+  uploadable: boolean;
 }
 
+/** 녹취가 이미 있는 회차를 골랐을 때 보이는 말(문서 첨부는 Backend 에 없다). */
+export const HAS_AUDIO_NOTE = "녹취가 이미 있는 회차입니다. 추가 자료(문서) 올리기는 준비 중입니다.";
+
 /**
- * 음성을 올릴 수 있는 회차 목록. 맨 위가 새 회차(10/21 디자인 순서), 그 아래 음성을 처음 올리거나 다시 올릴 수 있는 회차.
- * 원문 검수 중인 회차는 원문을 새로 만들게 되므로 뺀다. 녹취 올리기 창과 사례 상세 '녹음하기' 창이 같이 쓴다.
+ * 회차 목록(10/21 디자인): 맨 위가 새 회차(서버가 매길 번호 = 지금 가장 큰 회차 + 1), 그 아래 모든 회차를 최근 것부터.
+ * 음성을 올릴 수 있는 회차는 CREATED · AUDIO_UPLOADED · STT_FAILED 다. 원문 검수 중 · 그 뒤 회차는 원문을 새로 만들게
+ * 되므로 uploadable 이 false 다(녹취 올리기 창은 보이되 다음으로 못 가고, 사례 상세 '녹음하기' 창은 뺀다).
  */
 export function uploadTargets(rows: SessionRow[]): UploadTarget[] {
-  const open = rows.filter((row) => canUploadAudio(row.status) && row.status !== "STT_REVIEW_REQUIRED");
+  const sorted = [...rows].sort((a, b) => b.sessionNumber - a.sessionNumber);
+  const nextNumber = (sorted[0]?.sessionNumber ?? 0) + 1;
 
   return [
-    { value: NEW_SESSION, label: "새 회차", short: "새 회차", meta: "새로 등록 · 회차 번호는 서버가 매깁니다" },
-    ...open.map((row) => ({
-      value: row.id,
-      label: `${row.numberLabel} · ${row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`}`,
-      short: row.numberLabel,
-      meta: row.statusLabel,
-    })),
+    { value: NEW_SESSION, label: `새 회차 · ${nextNumber}회차`, short: `${nextNumber}회차 (새 회차)`, meta: "새로 등록", uploadable: true },
+    ...sorted.map((row) => {
+      const uploadable = canUploadAudio(row.status) && row.status !== "STT_REVIEW_REQUIRED";
+
+      return {
+        value: row.id,
+        label: `${row.numberLabel} · ${row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`}`,
+        short: row.numberLabel,
+        meta: row.status === "CREATED" ? "녹취 아직 없음" : uploadable ? row.statusLabel : "녹취 있음 · 추가 자료",
+        uploadable,
+      };
+    }),
   ];
 }
 
@@ -149,6 +161,7 @@ export function uploadModalValues(input: UploadScreenInput) {
   let sessionsNote = "";
   if (caseDetail.loading) sessionsNote = "불러오는 중…";
   else if (caseDetail.error) sessionsNote = caseDetail.error;
+  else if (!chosen.uploadable) sessionsNote = HAS_AUDIO_NOTE;
 
   const caseName = info ? `${info.alias} · ${info.caseNumber}` : "";
 
@@ -210,7 +223,7 @@ export function uploadModalValues(input: UploadScreenInput) {
   }
 
   const canNext =
-    (state.step === 1 && caseId !== null) || (state.step === 2 && info !== null && !caseDetail.loading);
+    (state.step === 1 && caseId !== null) || (state.step === 2 && info !== null && !caseDetail.loading && chosen.uploadable);
 
   return {
     ...sidebarValues(session),
@@ -246,9 +259,9 @@ export function uploadModalValues(input: UploadScreenInput) {
     },
     prev: () => setState({ step: Math.max(1, state.step - 1) as UploadUiState["step"] }),
     // 길이를 읽는 중에는 막는다(WAV 가 아니면 서버가 길이를 재지 않아 그대로 올리면 길이가 빠진다).
-    canUpload: Boolean(caseId && file && !state.fileError && !state.measuring && !upload.busy),
+    canUpload: Boolean(caseId && file && chosen.uploadable && !state.fileError && !state.measuring && !upload.busy),
     upload: () => {
-      if (!caseId || !file || state.fileError || state.measuring || upload.busy) return;
+      if (!caseId || !file || !chosen.uploadable || state.fileError || state.measuring || upload.busy) return;
       setState({ dialog: true });
       void upload.start({
         caseId,

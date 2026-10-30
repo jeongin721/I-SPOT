@@ -309,11 +309,11 @@ export function noteWriteValues(input: NoteScreenInput) {
   if (!summary.hasSummary && status !== null) {
     if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
     else if (status === "AI_FAILED") {
-      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 유형별 위험도에서 다시 분석해 주세요.`;
-      summaryLink = { href: signalHref, label: "유형별 위험도로" };
+      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 학대 신호 확인에서 다시 분석해 주세요.`;
+      summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
     } else {
-      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 유형별 위험도에서 AI 분석을 요청해 주세요.";
-      summaryLink = { href: signalHref, label: "유형별 위험도로" };
+      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 학대 신호 확인에서 AI 분석을 요청해 주세요.";
+      summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
     }
   } else if (summary.hasSummary && status === "AI_PROCESSING") {
     summaryNote = "AI 가 다시 분석하는 중입니다. 끝날 때까지 요약을 고칠 수 없습니다.";
@@ -519,7 +519,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     // 아래 단추
     backHref: signalHref,
-    nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",
+    nextLabel: busy ? "저장 중…" : "저장 · 다음 상담 준비 →",
     canNext: !busy,
     next: async () => {
       // 누를 때의 대상(표). 저장을 기다리는 사이 대상이 바뀌었으면(다른 회차 · 화면, 갔다 돌아옴, 다시 로그인)

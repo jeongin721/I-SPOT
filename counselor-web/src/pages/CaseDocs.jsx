@@ -4,12 +4,15 @@
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차 목록은 useCaseDetail, 회차마다 녹음 · 원문 · 상담일지는
 // useCaseDocuments 가 부르고, 화면에 쓸 값은 src/data/screens/caseDocs.ts(caseDocsValues)가 만든다.
 // 기관 서식 작성 기록 · 브리핑 · 외부 문서 올리기는 서버에 없어 준비 중.
+// 10/29 디자인: 머리에 '녹음하기'(components/RecordDialog, useRecordFlow)가 더해졌다.
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import RecordDialog from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
@@ -18,6 +21,8 @@ import { useCaseDocuments } from '../data/useCaseDocuments';
 import { caseDocsValues } from '../data/screens/caseDocs';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
+import { useRecordFlow } from '../data/useRecordFlow';
 import { useTheme } from '../theme';
 
 class Logic extends DCLogic {
@@ -39,6 +44,8 @@ export default function CaseDocs(props) {
   const docs = useCaseDocuments(caseId, detail.caseInfo ? detail.sessions : null, { enabled });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, detail, signals, docs, caseId });
+  const rec = useRecordFlow(session, caseId, v.canRecord);
+  useLeaveGuard(rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseDocs">
@@ -68,6 +75,7 @@ export default function CaseDocs(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -86,14 +94,18 @@ export default function CaseDocs(props) {
               </div>
               <div className="note">{v.meta}</div>
             </div>
-            <A className="btn btn-s" to={v.uploadHref}>
-              ↑ 녹취 올리기
-            </A>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button type="button" className="btn btn-s" onClick={rec.start} disabled={!rec.canOpen}>
+                <span className="rec-dot" aria-hidden="true"></span> 녹음하기
+              </button>
+              <A className="btn btn-s" to={v.uploadHref}>
+                ↑ 녹취 올리기
+              </A>
+            </div>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={v.tabs.detail}>내담자 정보</A>
             <A to={v.tabs.history}>상담 이력</A>
-            <A to={v.tabs.briefing}>상담 전 브리핑</A>
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
@@ -197,6 +209,17 @@ export default function CaseDocs(props) {
               </p>
             ) : null}
           </section>
+          {rec.show ? (
+            <RecordDialog
+              caseId={caseId}
+              caseName={v.recordCase}
+              caseSub={v.sub}
+              targets={v.recordTargets}
+              recorder={rec.recorder}
+              upload={rec.upload}
+              onClose={rec.close}
+            />
+          ) : null}
         </main>
       </div>
     </div>

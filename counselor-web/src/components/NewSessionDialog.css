@@ -1,0 +1,25 @@
+/* 새 상담 등록 창(.ns-*) — 10/29 디자인 CaseHistory.dc.html. 창 틀은 RecordDialog.css 의 .rec-* 를 같이 쓴다. */
+.ns-step{display:inline-flex;align-items:center;gap:6px;padding:6px 12px 6px 6px;border-radius:999px;font-size:13px;background:#F7F6F2;color:#7A776F}
+.ns-dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#E7E4DC;color:#7A776F}
+.ns-step.on{background:#F1EADA;color:#2B2A26;font-weight:700}
+.ns-step.on .ns-dot{background:#2B2A26;color:#EADBB5}
+.ns-step.done .ns-dot{background:#F2EFE8;color:#66625A}
+.ns-opt{display:flex;gap:14px;align-items:center;padding:14px 18px;border-radius:14px;border:1px solid #E7E4DC;background:#FFFFFF;font:inherit;color:#2B2A26;text-align:left;cursor:pointer}
+.ns-opt.on{border-color:#2B2A26;background:#F1EADA}
+.ns-rd{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid #CFC9BB;background:#FFFFFF}
+.ns-opt.on .ns-rd{border:5px solid #2B2A26}
+.ns-ta{width:100%;border:1px solid #DAD5C9;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;background:#FFFFFF;color:#2B2A26;resize:vertical}
+.ns-cf-ov{position:absolute;inset:0;background:rgba(47,58,68,.30);display:flex;align-items:center;justify-content:center;padding:16px}
+.ns-cf{width:100%;max-width:420px;background:#FFFFFF;border-radius:14px;box-shadow:0 20px 60px rgba(43,42,38,.28);padding:26px 26px 20px;display:flex;flex-direction:column;gap:12px;color:#2B2A26}
+.ns-ok-i{width:48px;height:48px;border-radius:50%;background:#F2EFE8;color:#66625A;display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:700}
+.thm-root.dark .ns-step{background:#33312C;color:#A8A296}
+.thm-root.dark .ns-dot{background:#45423B;color:#A8A296}
+.thm-root.dark .ns-step.on{background:#3F3729;color:#ECE8DF}
+.thm-root.dark .ns-step.on .ns-dot{background:#EADBB5;color:#2B2A26}
+.thm-root.dark .ns-opt{background:#2C2B27;border-color:#45423B;color:#ECE8DF}
+.thm-root.dark .ns-opt.on{background:#3F3729;border-color:#EADBB5}
+.thm-root.dark .ns-rd{background:#2C2B27;border-color:#7A776F}
+.thm-root.dark .ns-opt.on .ns-rd{border-color:#EADBB5}
+.thm-root.dark .ns-ta{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .ns-cf{background:#2C2B27;color:#ECE8DF}
+.thm-root.dark .ns-ok-i{background:#393731;color:#BDB7AA}
