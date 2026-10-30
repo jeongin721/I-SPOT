@@ -12,7 +12,7 @@
 }
 
 [코드 검사(clean_output)]
-- 묶음 이름은 GROUP_TITLES 만, 문장 1~MAX_ITEM_CHARS 자, 묶음마다 MAX_ITEMS_PER_GROUP 개.
+- 묶음 이름은 GROUP_TITLES 만, 문장 1~MAX_ITEM_CHARS 자, 묶음마다 MAX_ITEMS_PER_GROUP 개. 다른 나라 문자가 섞인 문장은 버림.
 - sessions 는 입력에 있던 승인 회차 번호만 남기고, 하나도 안 남으면 그 문장을 버린다(근거 없는 문장 금지).
 - 보고서 칸도 같은 규칙. 남는 것이 하나도 없으면 ClosureSummaryOutputError.
 
@@ -24,6 +24,8 @@ openai · privacy_gateway(NER 모델)는 CI 에 없다. 검사 함수를 backend
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from ai.modeling.abuse.text_script import has_foreign_script
 
 if TYPE_CHECKING:  # pragma: no cover
     from openai import OpenAI
@@ -66,6 +68,7 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 사례를 종결
 [입력]
 {case_input}
 
+문장은 한국어로만 쓴다(다른 나라 글자를 섞지 않는다).
 반드시 아래 JSON 형식으로만 답한다:
 {{
   "groups": [{{"title": "학대 관련 진술", "items": [{{"text": "...", "sessions": [1, 3]}}]}}],
@@ -118,7 +121,8 @@ def _clean_text(raw: Any, limit: int) -> str:
     if not isinstance(raw, str):
         return ""
     text = " ".join(raw.split())
-    return text if 0 < len(text) <= limit else ""
+    # 다른 나라 문자가 섞인 문장은 버린다(2026-10-30, text_script).
+    return text if 0 < len(text) <= limit and not has_foreign_script(text) else ""
 
 
 def clean_output(raw: Any, session_numbers: List[int]) -> Dict[str, Any]:

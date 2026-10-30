@@ -39,6 +39,7 @@ from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ai.modeling.abuse.case_context import AGE_BANDS
+from ai.modeling.abuse.text_script import has_foreign_script
 
 if TYPE_CHECKING:  # pragma: no cover
     from openai import OpenAI
@@ -76,6 +77,7 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 다음 상담에
 [입력 — 이번 상담에서 확인된 아동 진술 · 위험 신호 요지]
 {session_content_input}
 
+문장은 한국어로만 쓴다(다른 나라 글자를 섞지 않는다).
 반드시 아래 JSON 형식으로만 답한다:
 {{
   "questions": [
@@ -193,6 +195,10 @@ def _clean_questions(
         text = " ".join(text.split())
 
         if not text or len(text) > MAX_TEXT_CHARS or text in seen_texts:
+            continue
+
+        # 다른 나라 문자가 섞인 초안은 버린다(2026-10-30 데모 확인 메모 사례, text_script).
+        if has_foreign_script(text):
             continue
 
         raw_segment_ids = item.get("segment_ids")
