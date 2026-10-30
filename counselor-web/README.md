@@ -49,7 +49,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 위험 신호 카드 | `useRiskSignals` · `riskRows.ts` | 위험 관련 발화를 카드(유형 · 세부 유형 · 근거 직접성 · 이유 · 원문 대조)로, 유형별 신호를 네 줄로. 근거 위치(몇 분 · 누구)는 원문(`GET …/transcript`)에서 찾는다. 읽기 전용 |
 | 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |
 | 상담일지 | `useSessionDocuments` | 문서 목록 · 만들기 · 고치기 · 승인(회차 상태와 따로 움직임) |
-| 유형별 위험도(상담원 판단) | `useOverallRiskAssessment` | 회차 전체 상담원 판단 **하나**(상 · 중 · 하) · 이유 · 판단 당시 AI 최고 심각도(1~5) 조회와 저장(`GET/PUT /sessions/{id}/risk-assessment`, API_CONTRACT 11.1절, 2026-10-29). 원문 확정 뒤에만 저장, 회차 상태는 바뀌지 않음. AI 단계 ↔ 상 · 중 · 하 대응과 사례 단위 위험도는 팀 결정 전이라 계산하지 않음. 유형별 위험도(`SignalReview`) 위 카드의 단추 하나로 저장. 유형별 판단 창구(`…/risk-assessments`)는 화면에서 더 쓰지 않는다. `needsJudgment` — 분석이 끝나 검수 중인데 판단이 없으면 요약 · 일지 작성으로 못 넘어간다(아래 '화면 주소' 의 `ask`) |
+| 유형별 위험도(상담원 판단) | `useOverallRiskAssessment` | 회차 전체 상담원 판단 **하나**(상 · 중 · 하) · 이유 · 판단 당시 AI 최고 심각도(1~5) 조회와 저장(`GET/PUT /sessions/{id}/risk-assessment`, API_CONTRACT 11.1절, 2026-10-29). 원문 확정 뒤에만 저장, 회차 상태는 바뀌지 않음. 저장에 성공하면 회차 변경 알림(`sessionEvents`)을 보내 같은 화면의 회차별 추이(`useSignalHistory`)가 새 판단을 조용히 다시 불러온다. AI 단계 ↔ 상 · 중 · 하 대응과 사례 단위 위험도는 팀 결정 전이라 계산하지 않음. 유형별 위험도(`SignalReview`) 위 카드의 단추 하나로 저장. 유형별 판단 창구(`…/risk-assessments`)는 화면에서 더 쓰지 않는다. `needsJudgment` — 분석이 끝나 검수 중인데 판단이 없으면 요약 · 일지 작성으로 못 넘어간다(아래 '화면 주소' 의 `ask`) |
 | 설정 | `useAuthSession` + `profile` · `usePasswordChange` | 내 정보 표시, 비밀번호 변경 |
 | 관리자 대시보드 | `useAdminDashboard` · `adminRows` | 전체 사례 · 처리 대기 업무(지연 · 종류별) · 활성 상담사 · 최근 접속 5건. 미배정 · 문서 승인 · 보안 경고는 `—` |
 | 관리자 · 업무 처리 현황 | `useAdminTasks` | 모든 상담사의 처리 대기 회차(종류 · 지연 · 상담사로 거르기). 재처리 요청은 넣지 않음(팀 결정) |
