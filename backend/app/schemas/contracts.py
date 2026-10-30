@@ -154,7 +154,7 @@ class FollowupQuestionDraft(BaseModel):
 
 class TopicTag(BaseModel):
     """
-    아동 발화 대화 주제 하나(2026-10-29 선택 필드, API_CONTRACT 9절 topic_tags). 상담 이력 주제 비중 ·
+    아동 발화 대화 주제 하나(2026-10-29 선택 필드, API_CONTRACT 8절 topic_tags). 상담 이력 주제 비중 ·
     상담 전 브리핑 '처음 나온 이야기' 의 재료다. topic 은 AI 의 고정 목록(topic_tag_llm.TOPICS) 이름이다.
     """
 

@@ -125,3 +125,22 @@ def test_stops_instead_of_restarting_twice(repos) -> None:
     assert result.returncode == 1
     assert "다시 시작한 뒤에도 바뀌었습니다" in result.stdout
     assert "NEW-SCRIPT" not in result.stdout
+
+
+def test_deploys_named_branch_with_deploy_branch(repos) -> None:
+    """DEPLOY_BRANCH 를 넘기면 main 대신 그 브랜치를 받아 바꾼다(머지 전 브랜치를 데모로 확인, 2026-10-30)."""
+
+    origin, work, server = repos
+    _git(work, "checkout", "-q", "-b", "feature/x")
+    _write(work / "README.md", "브랜치에만 있는 변경\n")
+    _git(work, "add", ".")
+    _git(work, "commit", "-q", "-m", "branch change")
+    _git(work, "push", "-q", str(origin), "feature/x")
+    branch_head = _git(work, "rev-parse", "HEAD")
+
+    result = _run(server, {"DEPLOY_BRANCH": "feature/x"})
+
+    assert result.returncode == 0, result.stderr
+    assert "OLD-SCRIPT-CONTINUED" in result.stdout
+    assert _git(server, "rev-parse", "--abbrev-ref", "HEAD") == "feature/x"
+    assert _git(server, "rev-parse", "HEAD") == branch_head

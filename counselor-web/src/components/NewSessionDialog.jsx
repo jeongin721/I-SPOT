@@ -21,7 +21,12 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
   const tooLong = memo.length > MEMO_MAX;
   const done = save.savedNumber !== null;
 
+  // 적던 글(불러온 메모와 다른 글)이 있는데 다른 회차를 고르면 그 회차 메모로 바뀌므로 먼저 묻는다(민규 #122 리뷰).
+  const loaded = parseMemo(cur.memo);
+  const dirty = body !== loaded.body || note !== loaded.note;
   const pick = (t) => {
+    if (t.value === ses) return;
+    if (dirty && !window.confirm('적던 상담 내용은 지워지고 고른 회차의 내용으로 바뀝니다. 바꿀까요?')) return;
     setSes(t.value);
     const parsed = parseMemo(t.memo);
     setBody(parsed.body);

@@ -177,3 +177,27 @@ def test_modeling_adapter_skips_case_context_for_old_module(monkeypatch: pytest.
     bundle = _modeling_with(monkeypatch, pipeline).analyze(TRANSCRIPT, case_context=CONTEXT)
 
     assert bundle.model == "test-model"
+
+
+@pytest.mark.parametrize(
+    ("consulted_at", "expected"),
+    [
+        ("2026-10-20T23:30:00+00:00", "2026-10-21"),  # 한국 10/21 08:30 — UTC 날짜(10/20)로 나가면 안 된다
+        ("2026-10-21T05:00:00+00:00", "2026-10-21"),
+    ],
+)
+def test_previous_session_date_is_korean_date(
+    client: TestClient, counselor_headers, db, consulted_at: str, expected: str
+) -> None:
+    case = _case_with_intake(client, counselor_headers)
+    first = create_session(client, counselor_headers, case["id"])
+    second = create_session(client, counselor_headers, case["id"])
+    assert (
+        client.patch(f"/api/v1/sessions/{first['id']}", json={"consulted_at": consulted_at}, headers=counselor_headers).status_code
+        == 200
+    )
+    _approve_with_assessment(client, counselor_headers, first["id"])
+
+    session = db.get(ConsultationSession, uuid.UUID(second["id"]))
+
+    assert build_case_context(db, session)["previous_session"]["consulted_on"] == expected

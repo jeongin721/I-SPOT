@@ -60,7 +60,9 @@ function firstStoryCard(source: { id: string } | null, history: SignalHistorySta
   if (!source) return { ...base, note: "AI 분석이 끝난 회차가 없습니다." };
 
   const found = newTopicsIn(history.sessions, source.id);
-  if (!found.tagged) return { ...base, note: "이 회차에는 AI 주제 분류가 없습니다(이 기능 전 분석)." };
+  if (!found.tagged) return { ...base, note: "이 회차에는 AI 주제 분류가 없습니다(이 기능 전 분석이거나 분류 실패)." };
+  if (found.skipped > 0)
+    return { ...base, note: `앞 회차 중 ${found.skipped}개는 주제 분류가 없어 처음 나온 이야기인지 비교할 수 없습니다.` };
   if (!found.comparable) return { ...base, note: "주제 분류가 있는 앞 회차가 없어 비교할 수 없습니다." };
   if (found.items.length === 0) return { ...base, note: "앞 회차에 없던 주제가 없습니다." };
 

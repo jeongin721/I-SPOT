@@ -211,3 +211,47 @@ def test_wait_gives_none_on_error_or_non_list():
     with ThreadPoolExecutor(max_workers=1) as pool:
         assert tt.wait_for_topic_tags(pool.submit(lambda: 1 / 0), None) is None
         assert tt.wait_for_topic_tags(pool.submit(lambda: None), None) is None
+
+
+def test_generate_returns_none_when_no_tag_survives_checks(fake_llm):
+    """주제를 냈는데 목록 밖 이름 · 아동 아닌 번호뿐이면 '해당 없음'([]) 이 아니라 분류 실패(None)."""
+
+    _, response = fake_llm
+    response["value"] = {"tags": [{"topic": "가정 내 체벌", "segment_ids": ["seg_002"]}, {"topic": "학교생활", "segment_ids": ["seg_001"]}]}
+
+    assert tt.generate_topic_tags_from_masked_text(None, "m", "[seg_002] 글", SEGMENTS) is None
+
+
+# ------------------------------------------------------------
+# 아동 발화 마스킹 — 막혀도 분석 전체를 멈추지 않는다(민규 #122 리뷰)
+# ------------------------------------------------------------
+
+
+class _Blocked(Exception):
+    """privacy_gateway.PrivacyGatewayBlocked 대신."""
+
+
+def test_mask_child_lines_returns_masked_child_text():
+    seen = {}
+
+    def fake_mask(text, known_identifiers=None):
+        seen["text"], seen["known"] = text, known_identifiers
+        return text.replace("아빠", "[관계1]"), {"[관계1]": "아빠"}
+
+    masked = tt.mask_child_lines(fake_mask, SEGMENTS, known_identifiers=["김데모"])
+
+    assert masked.startswith("[seg_002] [관계1]가 또 화났어요.")
+    assert seen["text"] == tt.format_child_lines(SEGMENTS)
+    assert seen["known"] == ["김데모"]
+
+
+def test_mask_child_lines_gives_none_when_gateway_blocks():
+    def blocked(text, known_identifiers=None):
+        raise _Blocked("비식별 검사가 막음")
+
+    assert tt.mask_child_lines(blocked, SEGMENTS) is None
+
+
+@pytest.mark.parametrize("value", [None, ("x",), (3, {})])
+def test_mask_child_lines_gives_none_on_bad_result(value):
+    assert tt.mask_child_lines(lambda text, known_identifiers=None: value, SEGMENTS) is None

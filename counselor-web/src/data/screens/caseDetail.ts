@@ -43,6 +43,7 @@ import {
   signalsClearlyAbsent,
   taggedSessions,
   topicShares,
+  untaggedAnalyzed,
 } from "../signalHistoryRows";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { AuthSession } from "../useAuthSession";
@@ -467,26 +468,29 @@ export function caseHistoryValues(
     sessionsNote = `최근 ${sessions.length}회차만 보입니다(전체 ${detail.sessionTotal}회차).`;
   }
 
-  // 누적 요약: 승인 회차마다 한 상자(위험요인 → 제목, 강점과 자원 → 아래 줄). 칸이 비면 다른 칸으로.
+  // 누적 요약: 승인 회차마다 한 상자. 요약 4칸을 위험요인 → 강점과 자원 → 조사 후 변화 → 원하는 변화 순서로 보고,
+  // 채워진 첫 칸이 제목 · 둘째 칸이 아래 줄이다. 4칸이 다 비었을 때만 '비어 있습니다'(민규 #104 R3).
   const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
   const approved = input.approved;
+  const SUMMARY_ORDER = [
+    ["safety_risks", "위험요인"],
+    ["strengths_resources", "강점과 자원"],
+    ["safety_changes", "조사 후 변화"],
+    ["desired_changes", "원하는 변화"],
+  ] as const;
   const periods = (approved?.items ?? []).map((item) => {
     const a = item.assessment;
-    const risks = a?.safety_risks?.text?.trim() ?? "";
-    const strengths = a?.strengths_resources?.text?.trim() ?? "";
-    const desired = a?.desired_changes?.text?.trim() ?? "";
+    const filled = SUMMARY_ORDER.map(([key, label]) => ({ label, text: a?.[key]?.text?.trim() ?? "" })).filter(
+      (field) => field.text,
+    );
     const date = item.consultedAt ? ` · ${toDateOnly(item.consultedAt)}` : "";
+    const line = (field: { label: string; text: string } | undefined) =>
+      field ? `${field.label} · ${clip(field.text, 80)}` : "";
 
     return {
       range: `${item.sessionNumber}회차${date}`,
-      title: item.failed
-        ? "요약을 불러오지 못했습니다"
-        : risks
-          ? `위험요인 · ${clip(risks, 80)}`
-          : strengths
-            ? `강점과 자원 · ${clip(strengths, 80)}`
-            : "요약 4칸이 비어 있습니다",
-      note: risks && strengths ? `강점과 자원 · ${clip(strengths, 80)}` : desired ? `원하는 변화 · ${clip(desired, 80)}` : "",
+      title: item.failed ? "요약을 불러오지 못했습니다" : filled.length > 0 ? line(filled[0]) : "요약 4칸이 비어 있습니다",
+      note: item.failed ? "" : line(filled[1]),
     };
   });
   let overviewNote = "";
@@ -505,18 +509,23 @@ export function caseHistoryValues(
     const least = shares[shares.length - 1];
     const first = firstMentions(historySessions).get(least.topic);
     const at = first ? [`${first.sessionNumber}회차`, formatClock(first.startMs)].filter(Boolean).join(" ") : "";
-    insights.push({ title: "덜 다룬 부분", text: least.topic, src: at ? `${at} 첫 언급` : "" });
+    // 앞에 주제 분류가 없는 분석 회차가 있으면 '첫 언급' 이라 단정하지 않는다(민규 #122 리뷰).
+    const src = !at ? "" : first?.certain ? `${at} 첫 언급` : `주제 분류가 있는 회차 중 ${at} 처음`;
+    insights.push({ title: "덜 다룬 부분", text: least.topic, src });
   }
+  const skippedCount = untaggedAnalyzed(historySessions).length;
+  const skippedNote = skippedCount > 0 ? ` · 분석했지만 주제 분류가 없는 ${skippedCount}회차는 뺐습니다` : "";
   let topicNote = "";
   if (history && !history.loaded) topicNote = history.loading ? "주제를 불러오는 중…" : "";
   else if (taggedCount === 0) {
-    topicNote = historySessions.some((row) => row.analysis_status === "COMPLETED")
-      ? "AI 주제 분류가 있는 회차가 없습니다. 이 기능 전에 분석한 회차는 다시 분석하면 생깁니다."
-      : "AI 분석이 끝난 회차가 없습니다.";
-  } else if (shares.length === 0) topicNote = `AI 제안 · ${taggedCount}회차에서 주제로 나눈 아동 발화가 없습니다.`;
+    topicNote =
+      skippedCount > 0
+        ? "AI 주제 분류가 있는 회차가 없습니다(이 기능 전 분석이거나 분류 실패). 'AI 결과 검수 필요' 회차는 다시 분석하면 생깁니다."
+        : "AI 분석이 끝난 회차가 없습니다.";
+  } else if (shares.length === 0) topicNote = `AI 제안 · ${taggedCount}회차에서 주제로 나눈 아동 발화가 없습니다${skippedNote}.`;
   else {
     const total = shares.reduce((sum, share) => sum + share.count, 0);
-    topicNote = `AI 제안 · 주제 분류가 있는 ${taggedCount}회차의 아동 발화 ${total}개 기준`;
+    topicNote = `AI 제안 · 주제 분류가 있는 ${taggedCount}회차의 아동 발화 ${total}개 기준${skippedNote}`;
   }
 
   return {

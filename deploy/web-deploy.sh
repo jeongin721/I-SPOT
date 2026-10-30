@@ -77,13 +77,14 @@ elif grep -qE '^STT_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
   exit 1
 fi
 
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
-echo "== 1/5 최신 $DEPLOY_BRANCH 받기"
+echo "== 1/5 최신 ${DEPLOY_BRANCH:-main} 받기"
 cd "$REPO"
 # main 을 받아 이 파일이 바뀌었으면 새 판으로 처음부터 다시 시작한다. 옛 판이 끝까지 돌면 새 main 의 Dockerfile 을
 # 옛 빌드 명령으로 만들다 멈춘다(2026-10-22 데모 서버: git pull 없이 돌려 3/5 의 COPY backend/requirements.txt 에서 멈춤).
 # { } 묶음은 bash 가 다 읽은 뒤 실행하므로, 그 안에서 이 파일이 바뀌어도 묶음은 읽은 그대로 끝까지 돈다.
 {
+  # 배포할 브랜치(기본 main). 이 묶음만 떼어 시험하므로(test_deploy_self_restart) 기본값도 묶음 안에서 정한다.
+  DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
   OLD=$(git rev-parse --short HEAD)
   OLD_SCRIPT=$(git hash-object deploy/web-deploy.sh)
   git fetch -q origin "$DEPLOY_BRANCH"

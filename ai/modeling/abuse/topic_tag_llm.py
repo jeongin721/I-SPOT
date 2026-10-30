@@ -26,8 +26,11 @@ LLM 답에는 주제 이름 · segment_id 만 쓰므로 복원할 것이 없다.
 다른 결과 필드(risk_utterances 등)와 같이 분석 결과에만 남는다.
 
 [실패]
-LLM 이 실패하거나 마감 전에 못 끝내면 None — '분류하지 못함' 이다(빈 목록 [] 은 '분류했지만 해당 주제 없음').
-분석 전체를 멈추지 않는다.
+아래는 모두 None — '분류하지 못함' 이다(빈 목록 [] 은 '분류했지만 해당 주제 없음'). 분석 전체를 멈추지 않는다.
+- 아동 발화 마스킹이 막히거나 실패함(mask_child_lines — 아동 줄만 모은 글은 앞 단계 글과 입력이 달라 비식별 검사 결과가
+  다를 수 있다. 민규 #122 리뷰: 이 하나 때문에 요약 · 확인 메모까지 된 분석이 실패하면 안 된다)
+- LLM 이 실패하거나 마감 전에 못 끝냄
+- LLM 이 주제를 냈는데 검사에서 하나도 남지 않음(목록 밖 이름뿐 · 아동 발화가 아닌 번호뿐) — 분류 실패에 가깝다
 
 openai 는 CI 에 없다. 검사 함수를 backend/tests 에서 시험할 수 있게 LLM 호출 쪽 import 는 함수 안에 둔다.
 """
@@ -122,6 +125,20 @@ def format_child_lines(segments: Any) -> str:
         total += len(line) + 1
 
     return "\n".join(lines)
+
+
+def mask_child_lines(mask_fn: Any, segments: Any, known_identifiers: Any = None) -> Optional[str]:
+    """아동 발화 줄(format_child_lines)을 mask_fn(privacy_gateway.mask_for_outbound)으로 가린 글. 막히거나 실패하면 None.
+
+    mask_fn 을 받아 쓰는 까닭: privacy_gateway 는 NER 모델을 불러와 CI 에서 import 할 수 없다. 이 함수를 가짜 함수로 시험한다.
+    """
+
+    try:
+        masked, _ = mask_fn(format_child_lines(segments), known_identifiers=known_identifiers)
+    except Exception:
+        return None
+
+    return masked if isinstance(masked, str) else None
 
 
 def _clean_tags(raw_tags: Any, segments: Any) -> List[Dict[str, Any]]:
@@ -222,10 +239,15 @@ def generate_topic_tags_from_masked_text(
     if not isinstance(parsed, dict) or not isinstance(parsed.get("tags"), list):
         return None
 
+    raw_tags = parsed.get("tags")
+
     try:
-        return _clean_tags(parsed.get("tags"), segments)
+        tags = _clean_tags(raw_tags, segments)
     except Exception:
         return None
+
+    # 주제를 냈는데 하나도 남지 않으면(목록 밖 이름뿐 등) '해당 주제 없음' 이 아니라 분류 실패로 본다(민규 #122 리뷰).
+    return None if raw_tags and not tags else tags
 
 
 def wait_for_topic_tags(future: "Future", deadline: Optional[float]) -> Optional[List[Dict[str, Any]]]:

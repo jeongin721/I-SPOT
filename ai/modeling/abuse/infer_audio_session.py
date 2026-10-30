@@ -62,8 +62,8 @@ from ai.modeling.abuse.followup_check_llm import (
     generate_followup_check_points_from_masked_text,
 )
 from ai.modeling.abuse.topic_tag_llm import (
-    format_child_lines,
     generate_topic_tags_from_masked_text,
+    mask_child_lines,
     wait_for_topic_tags,
 )
 from ai.modeling.abuse.followup_question_llm import (
@@ -969,21 +969,23 @@ def analyze_audio_session(
     # 병렬로 부른다(두 LLM 호출을 겹쳐 돌림). 실패하면 빈 목록이다(모듈 안에서 잡는다).
     # 질문을 마감 전까지만 기다리므로(wait_for_questions) with 블록(끝에서 끝까지 기다림)이 아니라 wait=False 로 닫는다.
     # 대화 주제 분류(topic_tag_llm.py, 2026-10-29 — 주제 비중 · 처음 나온 이야기)도 같이 띄운다. 아동 발화만
-    # 따로 마스킹해 보낸다. 실패 · 마감이면 None(분류하지 못함)이다.
-    masked_child_lines, _ = mask_for_outbound(
-        format_child_lines(segments),
-        known_identifiers=known_identifiers,
-    )
+    # 따로 마스킹해 보낸다. 마스킹이 막히거나(비식별 검사) 실패 · 마감이면 None(분류하지 못함)이고 분석은 그대로 끝난다
+    # — 이 선택 필드 하나 때문에 분석 전체가 실패하지 않게 마스킹도 mask_child_lines 안에서 잡는다(민규 #122 리뷰).
+    masked_child_lines = mask_child_lines(mask_for_outbound, segments, known_identifiers)
     question_executor = ThreadPoolExecutor(max_workers=2)
 
     try:
-        topic_tags_future = question_executor.submit(
-            generate_topic_tags_from_masked_text,
-            client=client,
-            model=note_model,
-            masked_child_lines=masked_child_lines,
-            segments=segments,
-            deadline=deadline,
+        topic_tags_future = (
+            question_executor.submit(
+                generate_topic_tags_from_masked_text,
+                client=client,
+                model=note_model,
+                masked_child_lines=masked_child_lines,
+                segments=segments,
+                deadline=deadline,
+            )
+            if masked_child_lines is not None
+            else None
         )
         followup_questions_future = question_executor.submit(
             generate_followup_questions_from_masked_text,
@@ -1005,7 +1007,7 @@ def analyze_audio_session(
         )
 
         followup_questions = wait_for_questions(followup_questions_future, deadline)
-        topic_tags = wait_for_topic_tags(topic_tags_future, deadline)
+        topic_tags = wait_for_topic_tags(topic_tags_future, deadline) if topic_tags_future is not None else None
     finally:
         question_executor.shutdown(wait=False)
 

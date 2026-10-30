@@ -66,11 +66,12 @@ export function counselorTopLabel(session: SignalHistorySession): string {
 }
 
 /**
- * 관련 신호를 '없음' 으로 단정할 수 있는가 — detected 가 하나라도 false 이고 true 는 없을 때.
- * 전부 null(근거 없어 서버가 뺀 유형 · 검출 미확인)이면 false — 화면은 '검출 여부 미확인' 으로 쓴다(유형별 위험도와 같은 규칙).
+ * 관련 신호를 '없음' 으로 단정할 수 있는가 — 네 유형 모두 detected 가 false 일 때만.
+ * 하나라도 null(근거 없어 서버가 뺀 유형 · 검출 미확인)이면 false — 화면은 '검출 여부 미확인' 으로 쓴다
+ * (false 와 null 이 섞인 회차를 '없음' 으로 단정하지 않는다, 민규 #104 R2).
  */
 export function signalsClearlyAbsent(session: SignalHistorySession): boolean {
-  return session.types.some((item) => item.detected === false) && !session.types.some((item) => item.detected === true);
+  return session.types.length > 0 && session.types.every((item) => item.detected === false);
 }
 
 /** 관련 신호(AI)가 있는 유형의 짧은 이름. 줄 순서는 TREND_TYPES. */
@@ -85,6 +86,8 @@ export function detectedTypeLabels(session: SignalHistorySession): string[] {
 // ------------------------------------------------------------
 // 회차마다 AI 가 고정 주제 목록으로 나눈 아동 발화 수(topics[].count)를 더해 비율을 낸다. 주제 분류가 없는 회차(topics null —
 // 이 기능 전 분석 · 분류 실패 · 분석 전)는 세지 않는다. 모두 AI 제안이다.
+// '처음 나온 이야기' · '첫 언급' 은 그 회차 앞에 분석은 끝났는데 주제 분류가 없는 회차(analysis_status COMPLETED · topics null)가
+// 있으면 단정하지 않는다 — 그 회차에 이미 나왔을 수 있어서다(민규 #122 리뷰). 분석 전 회차는 비교할 AI 값이 원래 없어 막지 않는다.
 
 export interface TopicShare {
   topic: string;
@@ -99,6 +102,8 @@ export interface TopicMention {
   sessionNumber: number;
   quote: string;
   startMs: number | null;
+  /** 이 회차 앞에 주제 분류가 없는 분석 회차가 없어 '첫 언급' 이라 할 수 있는가. */
+  certain: boolean;
 }
 
 /** 주제 분류가 있는 회차(오름차순). */
@@ -106,6 +111,11 @@ export function taggedSessions(sessions: SignalHistorySession[]): SignalHistoryS
   return [...sessions]
     .filter((session) => Array.isArray(session.topics))
     .sort((a, b) => a.session_number - b.session_number);
+}
+
+/** 분석은 끝났는데 주제 분류가 없는 회차(이 기능 전 분석 · 분류 실패). */
+export function untaggedAnalyzed(sessions: SignalHistorySession[]): SignalHistorySession[] {
+  return sessions.filter((session) => session.analysis_status === "COMPLETED" && !Array.isArray(session.topics));
 }
 
 /** 회차들을 더한 주제 비중(큰 것부터). 발화가 하나도 없으면 []. */
@@ -124,9 +134,10 @@ export function topicShares(sessions: SignalHistorySession[]): TopicShare[] {
     .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
 }
 
-/** 주제마다 처음 나온 회차 · 그 발화. */
+/** 주제마다 처음 나온 회차 · 그 발화. certain 은 그 앞에 주제 분류 없는 분석 회차가 없을 때만 true. */
 export function firstMentions(sessions: SignalHistorySession[]): Map<string, TopicMention> {
   const first = new Map<string, TopicMention>();
+  const gaps = untaggedAnalyzed(sessions).map((session) => session.session_number);
 
   for (const session of taggedSessions(sessions)) {
     for (const item of session.topics ?? []) {
@@ -137,6 +148,7 @@ export function firstMentions(sessions: SignalHistorySession[]): Map<string, Top
         sessionNumber: session.session_number,
         quote: item.quote,
         startMs: item.start_ms,
+        certain: !gaps.some((number) => number < session.session_number),
       });
     }
   }
@@ -145,21 +157,26 @@ export function firstMentions(sessions: SignalHistorySession[]): Map<string, Top
 }
 
 /**
- * 그 회차에서 처음 나온 주제(앞 회차들에 없던 것). 그 회차 앞에 주제 분류가 있는 회차가 없으면 비교할 수 없어
- * comparable 이 false 다(첫 회차의 모든 주제를 '처음' 이라 하지 않는다).
+ * 그 회차에서 처음 나온 주제(앞 회차들에 없던 것). 비교할 수 없으면 comparable 이 false 다:
+ *  - 그 회차 앞에 주제 분류가 있는 회차가 없음(첫 회차의 모든 주제를 '처음' 이라 하지 않는다)
+ *  - 그 회차 앞에 분석은 끝났는데 주제 분류가 없는 회차가 있음(skipped — 그 회차 수)
  */
 export function newTopicsIn(
   sessions: SignalHistorySession[],
   sessionId: string,
-): { comparable: boolean; tagged: boolean; items: TopicMention[] } {
+): { comparable: boolean; tagged: boolean; skipped: number; items: TopicMention[] } {
   const tagged = taggedSessions(sessions);
   const index = tagged.findIndex((session) => session.session_id === sessionId);
 
-  if (index < 0) return { comparable: false, tagged: false, items: [] };
-  if (index === 0) return { comparable: false, tagged: true, items: [] };
+  if (index < 0) return { comparable: false, tagged: false, skipped: 0, items: [] };
 
-  const first = firstMentions(tagged);
+  const number = tagged[index].session_number;
+  const skipped = untaggedAnalyzed(sessions).filter((session) => session.session_number < number).length;
+
+  if (skipped > 0 || index === 0) return { comparable: false, tagged: true, skipped, items: [] };
+
+  const first = firstMentions(sessions);
   const items = [...first.values()].filter((mention) => mention.sessionId === sessionId);
 
-  return { comparable: true, tagged: true, items };
+  return { comparable: true, tagged: true, skipped: 0, items };
 }

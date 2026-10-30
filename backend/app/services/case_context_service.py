@@ -11,13 +11,14 @@
 # 넘기지 않는 것: 아동 가명(child_alias) · 사건번호 · 제목 · 메모 · 보호자 메모(guardian_note) · 상담원 정보.
 # 지난 회차 문장은 상담원이 쓴 글이라 이름이 섞일 수 있다 — AI 쪽이 원문과 같은 마스킹을 거쳐 보낸다(case_context.py).
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import ReviewStatus, SessionStatus
+from app.models.base import to_utc
 from app.models.case import Case
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
@@ -86,9 +87,22 @@ def _previous_session(db: Session, session: ConsultationSession) -> Optional[Dic
 
     return {
         "session_label": f"{previous.session_number}회차",
-        "consulted_on": previous.consulted_at.date().isoformat() if previous.consulted_at else None,
+        "consulted_on": _korean_date(previous.consulted_at),
         "assessment": assessment,
     }
+
+
+#: 상담 날짜는 기관 기준(한국 시각)으로 쓴다. UTC 날짜를 쓰면 오전 9시 전 상담이 전날로 나간다(민규 #105 리뷰).
+KST = timezone(timedelta(hours=9))
+
+
+def _korean_date(value: Optional[datetime]) -> Optional[str]:
+    """저장된 상담 시각(UTC, 표시 없으면 UTC 로 봄) → 한국 날짜 'YYYY-MM-DD'. 없으면 None."""
+
+    if value is None:
+        return None
+
+    return to_utc(value).astimezone(KST).date().isoformat()
 
 
 def build_case_context(
