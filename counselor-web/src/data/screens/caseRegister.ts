@@ -2,13 +2,15 @@
 //
 // 저장하는 칸: 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 자동) · 성별 · 출생연도 · 보호자 유형(기타면 보호자 메모) · 사례 메모,
 // ② 초기면접 내용의 아동 특성 · 가정상황(서식 4 항목 고르기), 담당 상담원(관리자만 고름, 상담원은 본인).
+// 실명 · 가족 칸(2026-10-30 팀 결정 — 서버가 암호화해 저장): 대상아동 이름 · 생년월일 · 사례관리대상자(이름 · 관계 · 생년월일) ·
+// 면접대상자 / 관계, ② 가족관계 표 · 건강정도. 칸 값 · 확인은 personalFields.ts · personalInfo.ts, 사례와 한 요청(personal_info)으로 보낸다.
+// 생년월일을 넣으면 출생연도 칸은 그 해를 읽기 전용으로 보인다(서버도 생년월일의 해로 맞춘다).
 // 등록되면 새 사례의 상세(?case=새 ID)로 간다. 초기면접 아동 특성 · 가정상황은 사례 상세(caseDetail.ts, 등록 뒤 고치기도 여기서)와
 // 상담 일지(noteWrite.ts)에 단어로 보인다.
-// 나머지 서식 4 칸은 개인정보 저장 범위가 팀 결정 전이라(specs 대응표 CaseRegister 줄) 입력을 막고 '준비 중' 으로 둔다:
-//  - 실명 · 생년월일(출생연도만 저장) · 사례관리대상자(보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다)
-//  - 신고접수일 · 사례연계일 · 최초면접일 · 학대유형 · 조치결과 · 면접대상자 · 위험도 · 사례연계 경위
-//  - ② 초기면접 내용 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 가족관계 · 문제력 · 태도 · 소견)
-// 이 칸들의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않는다.
+// 나머지 서식 4 칸은 서버에 칸이 없어(specs 대응표 CaseRegister 줄) 입력을 막고 '준비 중' 으로 둔다:
+//  - 신고접수일 · 사례연계일 · 최초면접일 · 조치결과 · 위험도 · 사례연계 경위
+//  - ② 초기면접 내용 탭의 보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견
+// 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다. 막은 칸의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않는다.
 
 import { GUARDIAN_LABELS, type GuardianType } from "../../api/types";
 import type { AuthSession } from "../useAuthSession";
@@ -22,10 +24,12 @@ import {
   type CaseRegisterInput,
   type CaseRegisterState,
 } from "../useCaseRegister";
+import { emptyPersonalInput, type PersonalInput } from "../personalInfo";
 import { NOT_READY, notice, screenNotice } from "./common";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
+import { personalFieldValues } from "./personalFields";
 
 const FAM = [
   "일반가정",
@@ -46,12 +50,14 @@ const FAM = [
 export interface RegisterUiState {
   tab: "A" | "B";
   form: CaseRegisterInput;
+  /** 서식 4 실명 · 가족 칸. 화면 상태에만 두고 브라우저 저장소에 넣지 않는다. */
+  personal: PersonalInput;
   /** ② 탭으로 넘어가려다 필수 칸이 비어 막혔는가(그때부터 빈 필수 칸을 표시한다 — 10/21 디자인). */
   tried: boolean;
 }
 
 export function initialRegisterState(): RegisterUiState {
-  return { tab: "A", form: { ...EMPTY_CASE_INPUT }, tried: false };
+  return { tab: "A", form: { ...EMPTY_CASE_INPUT }, personal: emptyPersonalInput(), tried: false };
 }
 
 /** ① 기본 정보의 필수 칸. 서버가 받는 칸 중 비울 수 없는 것만 센다(준비 중 칸은 입력할 수 없어 뺀다). */
@@ -142,7 +148,7 @@ export function caseRegisterValues({ session, register, back, state, setState, g
 
   const submit = async (event?: { preventDefault?: () => void }) => {
     if (event && event.preventDefault) event.preventDefault();
-    const created = await register.submit(form);
+    const created = await register.submit(form, state.personal);
     if (created) go(screenHref("/CaseDetail", { caseId: created.id }));
   };
 
@@ -151,11 +157,12 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     formError: register.error ? notice(register.error, { alert: true }) : null,
     savedNote:
       "서버에 저장하는 칸: 사례 제목 · 아동 별칭 · 개별사건번호 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원, " +
-      "② 초기면접 내용의 가정상황 · 아동 특성. " +
-      `'${NOT_READY}' 칸은 개인정보 저장 범위가 팀 결정 전이라 입력할 수 없습니다.`,
+      "② 초기면접 내용의 가정상황 · 아동 특성. 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 " +
+      "암호화해 저장하고 담당 상담원 · 관리자만 봅니다. " +
+      `'${NOT_READY}' 칸은 서버에 칸이 없어 입력할 수 없습니다.`,
     tabNote:
-      "가정상황 · 아동 특성은 서버에 저장하고 상담 일지에서 초기면접 항목으로 보입니다. " +
-      `나머지 칸(관계 · 가족 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
+      "가정상황 · 아동 특성은 서버에 저장하고 상담 일지에서 초기면접 항목으로 보입니다. 가족관계 · 건강정도는 암호화해 저장합니다. " +
+      `나머지 칸(관계 · 가족유형 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
     notReady: NOT_READY,
     tabs,
     isA: state.tab === "A",
@@ -170,14 +177,21 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
     traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
     fams: FAM.map(picker),
-    famRows: [0, 1],
     midLabel: state.tab === "A" ? "초기면접 내용 →" : "← 기본 정보",
     goB: () => goTab(state.tab === "A" ? "B" : "A"),
     title: { ...field("title"), max: CASE_TITLE_MAX },
     alias: { ...field("alias"), max: CASE_ALIAS_MAX },
     caseNumber: { ...field("caseNumber"), max: CASE_NUMBER_MAX },
     gender: field("gender"),
-    birthYear: { ...field("birthYear"), max: new Date().getFullYear() },
+    // 생년월일을 넣으면 출생연도는 그 해로 정해진다(읽기 전용).
+    birthYear: state.personal.childBirthDate
+      ? { ...field("birthYear"), value: state.personal.childBirthDate.slice(0, 4), readOnly: true, max: new Date().getFullYear() }
+      : { ...field("birthYear"), readOnly: false, max: new Date().getFullYear() },
+    ...personalFieldValues(
+      state.personal,
+      (next) => setState((current) => ({ personal: next(current.personal) })),
+      submitting,
+    ),
     guardianType: field("guardianType"),
     guardianOptions,
     showGuardianNote: form.guardianType === "OTHER",

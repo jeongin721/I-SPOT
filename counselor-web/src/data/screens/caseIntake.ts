@@ -5,9 +5,13 @@
 // 고칠 수 있는 칸은 사례에 저장된 칸뿐이다(사례 제목 · 아동 별칭 · 성별 · 출생연도 · 보호자 유형(기타면 관계 메모) · 사례 메모,
 // ② 가정상황 · 아동 특성, 담당 상담원은 관리자만). 바꾼 칸만 보낸다(useCaseIntake 의 toCaseUpdateRequest).
 // 개별사건번호는 수정 요청이 받지 않아 읽기만 한다.
-// 나머지 서식 4 칸은 새 사례 등록(caseRegister.ts)과 같이 개인정보 저장 범위가 팀 결정 전이라 입력을 막고 '준비 중' 으로 둔다:
-//  - 실명 · 생년월일(출생연도만 저장) · 사례관리대상자 · 신고접수일 · 사례연계일 · 최초면접일 · 조치결과 · 면접대상자 · 위험도 · 사례연계 경위
-//  - ② 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 가족관계 · 문제력 · 태도 · 소견)
+// 실명 · 가족 칸(대상아동 이름 · 생년월일 · 사례관리대상자 · 면접대상자 · ② 가족관계 · 건강정도)은 usePersonalInfo 로 불러와
+// 고치고 PUT …/personal-info 로 통째로 저장한다(서버가 암호화, 2026-10-30 팀 결정). 값을 받기 전 · 못 받았으면 막는다
+// (모르는 값을 빈 칸으로 덮어 지우지 않게). '저장' 은 사례 칸(PATCH)을 먼저, 그다음 실명 · 가족 칸(PUT)을 보낸다.
+// 생년월일을 고치면 출생연도는 그 해로 함께 보낸다(서버도 생년월일의 해로 맞춘다).
+// 나머지 서식 4 칸은 서버에 칸이 없어 입력을 막고 '준비 중' 으로 둔다:
+//  - 신고접수일 · 사례연계일 · 최초면접일 · 조치결과 · 위험도 · 사례연계 경위
+//  - ② 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견)
 // 이 칸들의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않고, AI 가 미리 고르거나 채우지 않는다.
 // 디자인의 '임시 저장' · '확정' 은 서식의 작성 기록 · 확정 상태가 서버에 없어(문서함 기관 서식 줄과 같은 까닭) '저장' 하나로 둔다.
 // 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이거나 서버가 자유 글을 받지 않아 옮기지 않았다(새 사례 등록과 같음).
@@ -18,6 +22,15 @@
 import { GUARDIAN_LABELS, type GuardianType } from "../../api/types";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseDetailState } from "../useCaseDetail";
+import {
+  personalInputOf,
+  personalNames,
+  requestOf,
+  samePersonalRequest,
+  toPersonalInfoRequest,
+  type PersonalInput,
+} from "../personalInfo";
+import type { PersonalInfoState } from "../usePersonalInfo";
 import {
   intakeFormOf,
   toCaseUpdateRequest,
@@ -32,6 +45,7 @@ import { NOT_READY, notice } from "./common";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
+import { personalFieldValues } from "./personalFields";
 
 /** 가족유형 단추(준비 중이라 고를 수 없다). 10/29 디자인의 서식 항목(21개). */
 const FAM = [
@@ -57,18 +71,6 @@ const FAM = [
   "시설보호",
   "기타",
 ];
-
-/** 건강정도 표(10/29 디자인 hs-*)의 고르기 칸. 준비 중이라 고를 수 없다. */
-const HEALTH = {
-  dis: ["무", "유"],
-  dsb: ["무", "유"],
-  dsbLv: ["심한", "심하지 않은"],
-  hosp: ["무", "유"],
-  hospT: ["입원", "통원"],
-  psy: ["무", "유"],
-  med: ["무", "유"],
-  cns: ["무", "유"],
-};
 
 /** 성별 고르기. 서버에 다른 글자가 적혀 있으면 그 값도 고를 수 있게 붙인다(지어내지 않고 그대로 보인다). */
 const GENDERS = ["여", "남"];
@@ -101,6 +103,10 @@ export interface CaseIntakeUiState {
   problem: string | null;
   /** 마지막으로 저장이 반영된 대상 표('저장했습니다' 안내를 그 대상에서만 보인다). */
   savedFor: RemoteTicket | null;
+  /** 고친 실명 · 가족 칸(통째로). 고치지 않았으면 null — 서버 값을 그대로 보인다. */
+  personalEdits: PersonalInput | null;
+  /** 실명 · 가족 칸을 처음 고칠 때의 대상 표(usePersonalInfo). 지금 대상이 아니면 personalEdits 를 쓰지 않는다. */
+  personalFor: RemoteTicket | null;
 }
 
 export const INITIAL_CASE_INTAKE_STATE: CaseIntakeUiState = {
@@ -110,29 +116,49 @@ export const INITIAL_CASE_INTAKE_STATE: CaseIntakeUiState = {
   tried: false,
   problem: null,
   savedFor: null,
+  personalEdits: null,
+  personalFor: null,
 };
 
 interface CaseIntakeInput {
   session: AuthSession;
   detail: CaseDetailState;
   counselors: IntakeCounselors;
+  personal: PersonalInfoState;
   caseId: string | null;
   state: CaseIntakeUiState;
   setState: (patch: Partial<CaseIntakeUiState> | ((current: CaseIntakeUiState) => Partial<CaseIntakeUiState>)) => void;
 }
 
 export function caseIntakeValues(input: CaseIntakeInput) {
-  const { session, detail, counselors, caseId, state, setState } = input;
+  const { session, detail, counselors, personal, caseId, state, setState } = input;
   const header = caseHeaderValues(input);
   const info = detail.caseInfo;
   const isAdmin = session.isAdmin;
-  const saving = detail.savingCase;
-  const edits = detail.isCurrent(state.editsFor) ? state.edits : {};
+  const saving = detail.savingCase || personal.saving;
+
+  // 실명 · 가족 칸: 고친 값(지금 대상의 것만), 없으면 서버 값. 서버 값을 받기 전이면 null(칸을 막는다).
+  const personalSaved = personal.info ? personalInputOf(personal.info) : null;
+  const personalEdits = personal.isCurrent(state.personalFor) ? state.personalEdits : null;
+  const personalForm = personalSaved ? (personalEdits ?? personalSaved) : null;
+  const personalChecked = personalForm ? toPersonalInfoRequest(personalForm) : null;
+  const personalSavedRequest = requestOf(personal.info);
+  const personalDirty =
+    personalChecked !== null &&
+    (personalChecked.problem !== null ||
+      personalSavedRequest === null ||
+      !samePersonalRequest(personalChecked.payload, personalSavedRequest));
+  // 생년월일을 고쳤으면 출생연도는 그 해다(칸은 읽기 전용, 사례 칸 저장에 함께 보낸다).
+  const birthDate = personalForm ? personalForm.childBirthDate : "";
+  const birthDateEdited = personalEdits !== null && personalSaved !== null && birthDate !== personalSaved.childBirthDate;
+
+  const edits: Partial<IntakeForm> = detail.isCurrent(state.editsFor) ? state.edits : {};
+  const caseEdits = birthDateEdited && birthDate ? { ...edits, birthYear: birthDate.slice(0, 4) } : edits;
   const saved = info ? intakeFormOf(info) : null;
-  const form: IntakeForm | null = saved ? { ...saved, ...edits } : null;
-  const checked = saved ? toCaseUpdateRequest(edits, saved, { isAdmin }) : { payload: null, problem: null };
+  const form: IntakeForm | null = saved ? { ...saved, ...caseEdits } : null;
+  const checked = saved ? toCaseUpdateRequest(caseEdits, saved, { isAdmin }) : { payload: null, problem: null };
   // 저장하지 않은 수정: 보낼 칸이 있거나, 고친 칸이 입력 확인에 걸린다(예: 사례 제목을 비움).
-  const dirty = checked.payload !== null || checked.problem !== null;
+  const dirty = checked.payload !== null || checked.problem !== null || personalDirty;
   const missing = form ? REQUIRED.filter(([name]) => !form[name].trim()) : [];
 
   /**
@@ -143,7 +169,7 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     setState((current) => {
       const now = detail.caseInfo;
 
-      if (detail.savingCase || !now) return {};
+      if (saving || !now) return {};
 
       const keep = detail.isCurrent(current.editsFor);
       const ticket = keep ? current.editsFor : detail.capture();
@@ -216,28 +242,54 @@ export function caseIntakeValues(input: CaseIntakeInput) {
   else if (isAdmin && counselors.error) counselorNote = counselors.error;
   else if (!isAdmin) counselorNote = "담당 상담원은 관리자만 바꿀 수 있습니다.";
 
+  /** 실명 · 가족 칸을 고친다. 저장 중이거나 서버 값을 받기 전이면 무시한다. 대상이 바뀐 뒤의 첫 수정은 새 대상의 표로 시작한다. */
+  const changePersonal = (next: (current: PersonalInput) => PersonalInput) =>
+    setState((current) => {
+      if (saving || !personal.info) return {};
+
+      const keep = personal.isCurrent(current.personalFor) && current.personalEdits !== null;
+      const ticket = keep ? current.personalFor : personal.capture();
+
+      if (!ticket) return {};
+
+      const base = keep && current.personalEdits ? current.personalEdits : personalInputOf(personal.info);
+
+      return { personalEdits: next(base), personalFor: ticket, problem: null, savedFor: null };
+    });
+
   const save = async (event?: { preventDefault?: () => void }) => {
     if (event && event.preventDefault) event.preventDefault();
     if (!info || saving) return;
-    if (checked.problem !== null) {
-      setState({ problem: checked.problem });
+    const problem = checked.problem ?? personalChecked?.problem ?? null;
+    if (problem !== null) {
+      setState({ problem });
       return;
     }
-    if (checked.payload === null) return;
+    if (checked.payload === null && !personalDirty) return;
 
     const sent = state.edits;
-    const sentFor = state.editsFor;
-    const ok = await detail.saveCase(checked.payload);
+    const sentPersonal = state.personalEdits;
+    const doneFor = state.editsFor ?? detail.capture();
 
-    // 반영됐으면 고친 칸을 비운다(서버 값이 그 값이 됐다). 그사이 대상이 바뀌었으면 위 표 확인이 이미 고친 칸을 버린다.
-    if (ok) {
+    // 사례 칸 먼저. 반영됐으면 고친 칸을 비운다(서버 값이 그 값이 됐다). 그사이 대상이 바뀌었으면 위 표 확인이 이미 고친 칸을 버린다.
+    if (checked.payload !== null) {
+      if (!(await detail.saveCase(checked.payload))) return;
+      setState((current) => (current.edits === sent ? { edits: {}, editsFor: null, problem: null } : {}));
+    }
+
+    // 그다음 실명 · 가족 칸(통째로). 실패하면 고친 값과 오류 문구가 남는다(사례 칸은 이미 저장됨).
+    if (personalDirty && personalChecked && personalChecked.payload) {
+      if (!(await personal.save(personalChecked.payload))) return;
       setState((current) =>
-        current.edits === sent ? { edits: {}, editsFor: null, problem: null, savedFor: sentFor } : {},
+        current.personalEdits === sentPersonal ? { personalEdits: null, personalFor: null, problem: null } : {},
       );
     }
+
+    setState({ savedFor: doneFor });
   };
 
-  const problem = detail.isCurrent(state.editsFor) && state.problem ? state.problem : null;
+  const problem =
+    (detail.isCurrent(state.editsFor) || personal.isCurrent(state.personalFor)) && state.problem ? state.problem : null;
   const savedOk = !dirty && detail.isCurrent(state.savedFor);
 
   return {
@@ -246,11 +298,17 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     headNote: info ? `서식 4 · 사례 등록 ${info.createdDate}` : "서식 4",
     savedNote:
       "사례에 저장하는 칸: 사례 제목 · 아동 별칭 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원(관리자), " +
-      "② 초기면접 내용의 가정상황 · 아동 특성. 바꾼 칸만 저장합니다. 개별사건번호는 바꿀 수 없습니다. " +
-      `'${NOT_READY}' 칸은 개인정보 저장 범위가 팀 결정 전이라 입력할 수 없습니다.`,
+      "② 초기면접 내용의 가정상황 · 아동 특성. 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 " +
+      "암호화해 저장하고 담당 상담원 · 관리자만 봅니다(열 때마다 열람 기록이 남습니다). 개별사건번호는 바꿀 수 없습니다. " +
+      `'${NOT_READY}' 칸은 서버에 칸이 없어 입력할 수 없습니다.`,
+    personalNote: personal.loading
+      ? notice("실명 · 가족 정보를 불러오는 중…")
+      : personal.error
+        ? notice(`${personal.error} 그동안 실명 · 가족 칸은 고칠 수 없습니다.`, { alert: true, retry: personal.reload })
+        : null,
     tabNote:
-      "가정상황 · 아동 특성은 사례에 저장되고 상담 일지에서 초기면접 항목으로 보입니다. " +
-      `나머지 칸(관계 · 가족 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
+      "가정상황 · 아동 특성은 사례에 저장되고 상담 일지에서 초기면접 항목으로 보입니다. 가족관계 · 건강정도는 암호화해 저장합니다. " +
+      `나머지 칸(관계 · 가족유형 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
     notReady: NOT_READY,
     formTabs: tabs,
     isA: state.tab === "A",
@@ -271,7 +329,13 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     caseNumber: info ? info.caseNumber : "",
     gender: field("gender"),
     genderOptions,
-    birthYear: { ...field("birthYear"), max: new Date().getFullYear() },
+    // 생년월일이 있으면 출생연도는 그 해로 정해진다(읽기 전용).
+    birthYear: birthDate
+      ? { ...field("birthYear"), value: birthDate.slice(0, 4), readOnly: true, max: new Date().getFullYear() }
+      : { ...field("birthYear"), readOnly: false, max: new Date().getFullYear() },
+    ...personalFieldValues(personalForm, changePersonal, saving || info === null),
+    // 복사 '이름 가려서' 에 쓸 이름 — 고치는 중인 값까지(새로 적은 이름도 가린다)와 별칭.
+    maskNames: personalNames(personalChecked?.payload ?? personalSavedRequest, info ? [info.alias] : []),
     guardianType: field("guardianType"),
     guardianOptions,
     showGuardianNote: form !== null && form.guardianType === "OTHER",
@@ -286,13 +350,13 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
     traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
     fams: FAM.map(picker),
-    hs: Object.fromEntries(Object.entries(HEALTH).map(([key, labels]) => [key, labels.map(picker)])),
-    famRows: [0, 1],
     formError: problem
       ? notice(problem, { alert: true })
       : detail.caseError
         ? notice(detail.caseError, { alert: true })
-        : null,
+        : personal.saveError
+          ? notice(personal.saveError, { alert: true })
+          : null,
     statusNote: savedOk ? "저장했습니다." : dirty ? "저장하지 않은 수정이 있습니다." : "",
     save,
     saving,
@@ -301,7 +365,9 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     canReset: dirty && !saving,
     // 고친 칸을 버리고 서버 값으로 되돌린다.
     reset: () => {
-      if (!detail.savingCase) setState({ edits: {}, editsFor: null, problem: null, tried: false });
+      if (!saving) {
+        setState({ edits: {}, editsFor: null, personalEdits: null, personalFor: null, problem: null, tried: false });
+      }
     },
     /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
     unsaved: dirty,
