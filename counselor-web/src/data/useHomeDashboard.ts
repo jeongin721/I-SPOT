@@ -8,10 +8,11 @@
 // 업무는 회차 처리 대기(녹음 업로드 · 원문 변환 · 검수 · AI 분석 · 재시도)뿐이다. 상담일지 작성 · 앱 확인은 업무 종류에 없다.
 //
 // 같은 탭에서 회차 상태가 바뀌면(sessionEvents) 조용히 다시 부른다.
-// 10/30 디자인: '진행 중 내담자' 카드 아래 사례 몇 건(최근 등록순 HOME_CASE_COUNT 건). 사례마다 신호 이력(signal-history)으로
-// 가장 최근 상담원 판단(위험도) · 마지막 회차 상태를 붙인다. 한 사례가 실패해도 그 줄만 값 없이 둔다.
+// 10/30 디자인: '진행 중 내담자' 카드 아래 사례 몇 건(최근 등록순 HOME_CASE_COUNT 건). 사례마다 **마지막 회차 하나**와 그 회차의
+// 회차 전체 상담원 판단(11.1)만 부른다 — 사례 단위 위험도는 팀 결정 전이라 만들지 않고 'n회차 판단' 으로 밝혀 보인다.
+// signal-history 는 분석 결과 · 전사본 화자까지 읽어 홈에 쓰기엔 무겁다(민규 #122 리뷰). 한 사례가 실패해도 그 줄만 값 없이 둔다.
 
-import { cases, tasks } from "../api/endpoints";
+import { cases, riskAssessments, tasks } from "../api/endpoints";
 import type { RiskLevel, SessionStatus, TaskSummary } from "../api/types";
 import type { AuthSession } from "./useAuthSession";
 import { toTaskRow, type TaskRow } from "./adminRows";
@@ -32,7 +33,7 @@ export const HOME_CASE_COUNT = 3;
 export interface HomeCase {
   id: string;
   alias: string;
-  /** 가장 최근 회차 전체 상담원 판단. 없거나 이력을 못 불렀으면 null. */
+  /** 마지막 회차의 회차 전체 상담원 판단. 판단 전이거나 못 불렀으면 null. */
   level: RiskLevel | null;
   /** 마지막 회차 번호 · 상태. 회차가 없거나 이력을 못 불렀으면 null. */
   latest: { number: number; status: SessionStatus } | null;
@@ -66,18 +67,19 @@ async function loadHomeDashboard(): Promise<HomeDashboardData> {
   const now = Date.now();
   const homeCases = await Promise.all(
     casePage.items.map(async (item): Promise<HomeCase> => {
+      const base = { id: item.id, alias: item.child_alias, level: null, latest: null };
       try {
-        const history = await cases.signalHistory(item.id);
-        const judged = [...history.sessions].reverse().find((row) => row.counselor_level !== null);
-        const last = history.sessions[history.sessions.length - 1];
+        const page = await cases.listSessions(item.id, { page: 1, page_size: 1 });
+        const last = page.items[0];
+        if (!last) return base;
+        const judged = await riskAssessments.getOverall(last.id).catch(() => null);
         return {
-          id: item.id,
-          alias: item.child_alias,
+          ...base,
           level: judged?.counselor_level ?? null,
-          latest: last ? { number: last.session_number, status: last.status } : null,
+          latest: { number: last.session_number, status: last.status },
         };
       } catch {
-        return { id: item.id, alias: item.child_alias, level: null, latest: null };
+        return base;
       }
     }),
   );

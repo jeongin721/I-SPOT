@@ -360,6 +360,9 @@ def _build_case_context(db: Session, session: ConsultationSession) -> Optional[d
         return case_context_service.build_case_context(db, session)
     except Exception:  # noqa: BLE001 — 사례 정보는 보조 입력이라 분석을 멈추지 않는다
         logger.exception("분석에 넘길 사례 정보를 만들지 못했습니다. session_id=%s", session.id)
+        # PostgreSQL 은 SQL 오류 뒤 거래가 깨져(InFailedSqlTransaction) 뒤 결과 저장까지 실패한다. 이 앞은 읽기만 해서
+        # 되돌려도 잃는 변경이 없다(민규 #122 교차검증 — SQLite 는 재현되지 않음).
+        db.rollback()
         return None
 
 

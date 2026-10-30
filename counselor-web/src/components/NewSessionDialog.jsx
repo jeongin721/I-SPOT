@@ -3,7 +3,7 @@
 // 저장한 뒤 '확인' 을 누르면 onSaved 로 사례 상세를 다시 부른다.
 import { useState } from 'react';
 import { useNewSession } from '../data/useNewSession';
-import { APPROVED_NOTE, MEMO_MAX, composeMemo, newSessionTargets, parseMemo } from '../data/screens/newSession';
+import { APPROVED_NOTE, MEMO_MAX, composeMemo, memoLength, newSessionTargets, parseMemo } from '../data/screens/newSession';
 import { NEW_SESSION } from '../data/screens/uploadModal';
 import './RecordDialog.css';
 import './NewSessionDialog.css';
@@ -18,7 +18,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
   const save = useNewSession();
   const cur = targets.find((t) => t.value === ses) ?? targets[0];
   const memo = composeMemo(body, note);
-  const tooLong = memo.length > MEMO_MAX;
+  const tooLong = memoLength(memo) > MEMO_MAX;
   const done = save.savedNumber !== null;
 
   // 적던 글(불러온 메모와 다른 글)이 있는데 다른 회차를 고르면 그 회차 메모로 바뀌므로 먼저 묻는다(민규 #122 리뷰).
@@ -151,7 +151,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
               </label>
               {tooLong ? (
                 <span className="acc" style={{ fontSize: '13px' }}>
-                  상담 내용과 소견을 합쳐 {MEMO_MAX}자까지 저장할 수 있습니다(지금 {memo.length}자).
+                  상담 내용과 소견을 합쳐 {MEMO_MAX}자까지 저장할 수 있습니다(지금 {memoLength(memo)}자).
                 </span>
               ) : null}
               {save.error ? (
@@ -210,7 +210,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
               <p style={{ margin: '0' }}>
                 {caseName} · {save.savedNumber}회차
                 <br />
-                상담 내용 {body.trim().length}자 · 상담사 소견 {note.trim().length}자
+                상담 내용 {memoLength(body.trim())}자 · 상담사 소견 {memoLength(note.trim())}자
               </p>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
                 <button

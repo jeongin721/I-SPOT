@@ -32,16 +32,16 @@ def test_format_child_lines_keeps_only_child_utterances():
     text = tt.format_child_lines(SEGMENTS)
 
     assert text.splitlines() == [
-        "[seg_002] 아빠가 또 화났어요. 많이 때렸어요.",
-        "[seg_003] 무서웠어요.",
-        "[seg_004] 밥도 안 줄 때가 있어요.",
+        "[seg_002] CHILD: 아빠가 또 화났어요. 많이 때렸어요.",
+        "[seg_003] CHILD: 무서웠어요.",
+        "[seg_004] CHILD: 밥도 안 줄 때가 있어요.",
     ]
 
 
 def test_format_child_lines_stops_before_limit(monkeypatch):
-    monkeypatch.setattr(tt, "MAX_INPUT_CHARS", 40)
+    monkeypatch.setattr(tt, "MAX_INPUT_CHARS", 45)
 
-    assert tt.format_child_lines(SEGMENTS).splitlines() == ["[seg_002] 아빠가 또 화났어요. 많이 때렸어요."]
+    assert tt.format_child_lines(SEGMENTS).splitlines() == ["[seg_002] CHILD: 아빠가 또 화났어요. 많이 때렸어요."]
 
 
 @pytest.mark.parametrize("value", [None, "seg", {"a": 1}, [None, 3]])
@@ -159,7 +159,7 @@ def test_generate_sends_masked_lines_and_topic_list(fake_llm):
     assert "[seg_004] [이름1] 밥도 안 줘요" in prompt
     assert all(f"- {topic}" in prompt for topic in tt.TOPICS)
     # 원본 발화(마스킹 전)는 보내지 않는다.
-    assert "[seg_004] 밥도 안 줄 때가 있어요" not in prompt
+    assert "[seg_004] CHILD: 밥도 안 줄 때가 있어요" not in prompt
 
 
 def test_generate_skips_llm_without_child_lines(fake_llm):
@@ -240,7 +240,7 @@ def test_mask_child_lines_returns_masked_child_text():
 
     masked = tt.mask_child_lines(fake_mask, SEGMENTS, known_identifiers=["김데모"])
 
-    assert masked.startswith("[seg_002] [관계1]가 또 화났어요.")
+    assert masked.startswith("[seg_002] CHILD: [관계1]가 또 화났어요.")
     assert seen["text"] == tt.format_child_lines(SEGMENTS)
     assert seen["known"] == ["김데모"]
 

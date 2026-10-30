@@ -110,13 +110,15 @@ def child_segments(segments: Any) -> List[Dict[str, Any]]:
 
 
 def format_child_lines(segments: Any) -> str:
-    """LLM 입력(마스킹 전): 아동 발화를 '[seg_001] 글' 줄로. MAX_INPUT_CHARS 를 넘으면 뒤 줄을 뺀다."""
+    """LLM 입력(마스킹 전): 아동 발화를 '[seg_001] CHILD: 글' 줄로. MAX_INPUT_CHARS 를 넘으면 뒤 줄을 뺀다."""
 
     lines: List[str] = []
     total = 0
 
     for segment in child_segments(segments):
-        line = f"[{segment['segment_id']}] {' '.join(str(segment['text']).split())}"
+        # 다른 단계 원문 줄과 같은 '[seg_001] CHILD: 글' 꼴 — 비식별 처리(pii_masking 구조 표식)가 줄 머리 ID ·
+        # 화자 코드를 이름으로 잘못 가리지 않게 같은 꼴을 쓴다(민규 #122 교차검증).
+        line = f"[{segment['segment_id']}] {CHILD_SPEAKER}: {' '.join(str(segment['text']).split())}"
 
         if total + len(line) + 1 > MAX_INPUT_CHARS:
             break

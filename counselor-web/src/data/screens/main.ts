@@ -3,7 +3,7 @@
 // Backend 에 없는 값은 지어내지 않는다(specs 대응표 Main 줄 — 팀 결정: 일정 · 아이 앱 긴급 상태 · 일지 대기 기준).
 //  - 오늘 일정 · 다음 상담까지 남은 시간: 일정 기능이 없다. 시간 칸과 '지금' 줄만 두고 일정은 준비 중.
 //  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'(10/30 디자인의 머리 링크 '아이 연계 ›' 만 둔다).
-//  - 진행 중 내담자 카드 아래 줄(10/30): 최근 등록 사례 3건의 위험도(상담원 판단) · 마지막 회차 상태. 디자인의
+//  - 진행 중 내담자 카드 아래 줄(10/30): 최근 등록 사례 3건의 마지막 회차 판단('n회차 판단 · 상') · 그 회차 상태. 디자인의
 //    '오늘 16:00 상담' 같은 일정 문구는 일정이 서버에 없어 쓰지 않는다.
 //  - 미처리 업무는 회차 처리 대기(/tasks)만 센다. 디자인의 '상담 일지 작성' · '앱 확인' 은 업무 종류에 없다.
 //    오래 기다린 업무는 '지연' 이라고 쓴다(위험 신호와 헷갈리지 않게 '긴급' 이라고 쓰지 않는다 — API types TaskItem).
@@ -145,12 +145,17 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
     tasksCount: data ? String(data.summary.total) : NOT_PROVIDED,
     todos,
     todoNote,
-    // '진행 중 내담자' 카드 아래 줄(10/30 디자인): 위험도(가장 최근 상담원 판단) · 별칭 · 마지막 회차 상태.
+    // '진행 중 내담자' 카드 아래 줄(10/30 디자인): 마지막 회차의 상담원 판단 · 별칭 · 그 회차 상태.
+    // 사례 단위 위험도로 읽히지 않게 칩에 'n회차 판단' 을 밝힌다(민규 #122 리뷰 — 사례 위험도는 팀 결정 전).
     caseTodos: (data?.cases ?? []).map((item) => ({
       href: screenHref("/CaseDetail", { caseId: item.id }),
       chip: `chip ${item.level ? HOME_RISK_CHIP[item.level] : "c-normal"}`,
-      label: `위험도 ${item.level ? RISK_LEVEL_LABELS[item.level] : NOT_PROVIDED}`,
-      text: `${item.alias} · ${item.latest ? `${item.latest.number}회차 ${SESSION_STATUS_LABELS[item.latest.status]}` : "회차 없음"}`,
+      label: item.latest
+        ? item.level
+          ? `${item.latest.number}회차 판단 · ${RISK_LEVEL_LABELS[item.level]}`
+          : `${item.latest.number}회차 판단 전`
+        : "회차 없음",
+      text: `${item.alias} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
     })),
     urgentCount: NOT_PROVIDED,
     urgentText: `아이 앱 연계 ${NOT_READY}`,

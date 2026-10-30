@@ -201,3 +201,27 @@ def test_previous_session_date_is_korean_date(
     session = db.get(ConsultationSession, uuid.UUID(second["id"]))
 
     assert build_case_context(db, session)["previous_session"]["consulted_on"] == expected
+
+
+def test_case_context_failure_rolls_back_session(monkeypatch) -> None:
+    """사례 정보를 만들다 DB 오류가 나면 거래를 되돌린다 — PostgreSQL 은 안 되돌리면 뒤 결과 저장까지 실패한다(민규 #122)."""
+
+    from app.services import analysis_service
+
+    class FakeDb:
+        rolled_back = 0
+
+        def rollback(self) -> None:
+            self.rolled_back += 1
+
+    def broken(db, session):
+        raise RuntimeError("SQL 오류")
+
+    monkeypatch.setattr(case_context_service, "build_case_context", broken)
+    db = FakeDb()
+
+    class FakeSession:
+        id = uuid.uuid4()
+
+    assert analysis_service._build_case_context(db, FakeSession()) is None
+    assert db.rolled_back == 1
