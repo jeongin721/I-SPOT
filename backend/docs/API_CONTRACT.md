@@ -1684,6 +1684,8 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
 | `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
 | `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
+| `FOLLOWUP_DISABLED` | 503 | 다음 상담 체크리스트가 꺼져 있음(`FOLLOWUP_PROVIDER=off`, 19절) |
+| `AI_PRIVACY_BLOCKED` | — | 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않음. 19절 체크리스트 행의 `error` 로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
@@ -1979,3 +1981,136 @@ AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기
 예/아니오 질문 · 가해자나 행위를 먼저 꺼내는 질문은 AI 초안 단계에서 거른다(C-1 모듈의 코드 검사). 상담사가 직접 쓴 질문은 서버가 문장을 고치거나 거르지 않는다.
 
 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
+
+---
+
+## 19. Followup Checklist (다음 상담 체크리스트 — 확인할 사항 · 추가 질문 공식 근거)
+
+회차마다 rag(팀장님 공식 근거 RAG)로 만든 **다음 상담 전 확인할 사항**과, **추가 질문 AI 초안(8절 `followup_questions`)에 붙인 공식 근거**를 둔다
+(2026-10-30, 팀장님 10/29 결정 ①~④, 설계 `specs/I-SPOT/followup-rag-checklist.md`). 학대 여부를 확정하는 값은 없다.
+
+- 추가 질문은 **#118 초안 하나에서만** 만든다. 이 절은 질문을 만들지 않고, 초안에 공식 근거만 붙인다.
+- 화면 '다음 상담 전 확인할 사항' 은 8절 `followup_check_points`(AI 확인 메모)와 이 절의 `check_items` 를 한 목록으로 합쳐 보인다(같은 문장은 한 번).
+- **공식 근거(type 이 `case` 가 아닌 근거)는 rag 의 검토를 통과한 것만 들어온다**: 같은 분석에서 찾은 공식 근거 목록만 후보로 → 연결(LLM, 질문마다 0~2개) →
+  코드 검사(후보에 있는 번호 · 이유 있음 · 판정 표현 없음) → 검토(LLM, 문장 · 근거 쌍마다 예/아니오, '예' 만 남김). 검토가 실패하면 공식 근거를 모두 뺀다.
+  그래서 공식 근거가 없는 확인 사항 · 질문에는 '공식 근거' 표시가 붙지 않는다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/followup-checklist` | 켜져 있는지 + 체크리스트(없으면 null) |
+| POST | `/api/v1/sessions/{session_id}/followup-checklist` | 만들기 · 다시 만들기(202, 본문 없음) |
+
+### 언제 만드나
+
+- **분석이 저장되면** 같은 백그라운드 작업에서 바로 만든다(늦게 와서 버린 분석 결과면 만들지 않는다). 분석 · 회차 상태는 체크리스트와 관계없이 먼저 끝난다.
+  체크리스트가 실패해도 분석 · 회차 상태는 바뀌지 않는다.
+- 상담사가 POST 로 만들기 · 다시 만들기를 할 수 있다(최신 분석이 `COMPLETED` 일 때). 승인(`APPROVED`) 회차도 된다(참고 정보이고 승인 내용에 들어가지 않는다).
+- 회차마다 한 행이다. 다시 만들면 같은 행을 고쳐 쓰고 `attempt` 가 1 오른다. 재분석이 저장되면 처리 중인 앞 작업이 있어도 새로 시작하고, 앞 작업의 늦은 결과는 버린다.
+
+### GET 응답
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "checklist": {
+      "status": "COMPLETED",
+      "attempt": 1,
+      "analysis_id": "uuid",
+      "transcript_version": 2,
+      "provider": "module",
+      "result": {
+        "schema_version": "1.0",
+        "check_items": [
+          {
+            "id": "check:1",
+            "text": "등 · 팔 통증 이후 치료를 받았는지",
+            "kind": "info_gap",
+            "priority": "high",
+            "reason": "치료 여부가 확인되지 않음",
+            "basis": [
+              { "type": "case", "ref": "case:2", "label": "8회차 01:08", "session_no": 8, "session_id": "uuid",
+                "segment_id": "seg_012", "start_ms": 68000, "excerpt": "등이랑 팔이 아파요." },
+              { "type": "checklist", "ref": "checklist:1", "label": "체크리스트.pdf p.3", "excerpt": "상처의 치료 여부" }
+            ]
+          }
+        ],
+        "question_evidence": [
+          {
+            "draft_index": 0,
+            "text": "등이랑 팔이 아팠던 건 지금은 어때?",
+            "basis": [
+              { "type": "manual", "ref": "manual:1", "label": "업무 매뉴얼.pdf · 상담·조사·사정 p.125",
+                "excerpt": "아동 면담 시 개방형 질문을 먼저 사용한다.", "why": "열린 질문으로 통증 이후 경과를 묻는 근거" }
+            ]
+          }
+        ],
+        "notice": null,
+        "dropped": { "official_review_rejected": 1 }
+      },
+      "error": null,
+      "started_at": "...",
+      "completed_at": "..."
+    }
+  }
+}
+```
+
+- `enabled=false` 면 서버에서 꺼져 있다(`FOLLOWUP_PROVIDER=off`, 기본). 화면은 만들기 단추를 보이지 않고 AI 확인 메모만 보인다.
+- `checklist` 는 만든 적이 없으면 `null` 이다(404 가 아니다). `enabled=true` 이고 `null` 이면 화면은 [만들기] 를 보인다.
+- `status`: `PROCESSING`(만드는 중) · `COMPLETED` · `FAILED`. `result` 는 `COMPLETED` 일 때만 있고, `error`(`{code, message}`)는 `FAILED` 일 때만 있다.
+  `message` 는 코드별 고정 문구다(발화 · 예외 원문 없음).
+- 처리 중인 행이 `started_at` + `FOLLOWUP_TIMEOUT_SECONDS` + 60초보다 오래되면 이 조회 때 `FAILED` · `AI_TIMEOUT` 으로 마감한다(서버 재시작 등).
+- `analysis_id` 가 지금 분석과 다르면(재분석 뒤 아직 안 만듦) 화면은 결과를 숨기고 '분석이 바뀌었습니다' + [다시 만들기] 를 보인다.
+
+`result` 칸:
+
+| 칸 | 설명 |
+|---|---|
+| `check_items[]` | 확인할 사항. `kind`: `info_gap`(정보 공백) · `plan_followup`(계획 이행) · `change`(변화) · `inconsistency`(기록 불일치) · `checklist_gap`(체크리스트). `priority`: `high` · `medium`. `basis` 는 1개 이상(근거 없는 항목은 빼고 `dropped.no_basis` 로 센다) |
+| `basis[]` | `type=case`: 사례 기록(이번 · 앞 회차). `segment_id` 가 있으면 STT 검수의 그 발화, `session_id` 만 있으면 그 회차. 그 밖(`manual` · `guideline` · `form` · `checklist` · `law` · `precedent`): 공식 근거 — `url` 이 있으면(법령 · 판례) 새 창, 없으면 `excerpt` 를 펼쳐 보인다 |
+| `question_evidence[]` | 추가 질문 AI 초안(분석 `result.followup_questions[draft_index]`)에 붙인 공식 근거. `text` 는 만들 때의 초안 문장 그대로. **공식 근거가 1개 이상인 초안만** 들어 있고, `basis` 에는 공식 근거만 · 각각 `why`(연결 이유, 검토 통과)가 있다 |
+| `notice` | 안내 문구(고정 문구): mock 예시 · 학대 유형 신호 없음 · 아동 발화 없음 · 이전 회차 기록 비식별 차단 · 추가 질문 문장 비식별 차단 · 공식 근거 검토 실패 · 연결 실패 · 공식 근거 후보 없음 |
+| `dropped` | 뺀 수(문장 없음): `no_basis` · `judgment`(판정 · 단정 표현) · `invalid`(모양 틀림) · `official_unlinked`(연결 코드 검사) · `official_review_rejected`(검토 '아니오') |
+
+화면 표시 규칙(counselor-web):
+- 질문 카드의 공식 근거는 ① `checklist.analysis_id` 가 지금 분석과 같고 ② `question_evidence.text` 가 지금 초안 문장과 똑같고 ③ 상담사가 카드 문장을 고치지 않았을 때만 보인다.
+  고치면 숨긴다. 18절에 저장한 질문에는 공식 근거를 저장하지 않는다(18절 모양은 그대로).
+- '공식 근거 N' 칩은 실제로 붙은 공식 근거 수로 계산한다(고정 문구로 붙이지 않는다).
+
+### POST
+
+- 202 `{"data": <checklist 와 같은 모양>}`. 새 작업을 시작했으면 `status=PROCESSING` · 새 `attempt` 다.
+- **이미 만드는 중이면(멈춤 아님) 새 작업 없이 그 행을 그대로 돌려준다.** 행 차지는 읽어 둔 `attempt` 와 같을 때만 바꾸는 조건부 UPDATE 한 번이라
+  동시에 들어온 POST 둘 중 하나만 작업을 띄운다.
+- 서버 전체 동시 실행은 `FOLLOWUP_MAX_CONCURRENCY`(기본 1)건이다. 시간을 넘긴 작업도 실제로 끝날 때까지 자리를 쥔다(17절과 같은 방식).
+  자리를 제한 시간 안에 못 얻으면 그 행은 `FAILED` · `AI_TIMEOUT` 이다.
+- 감사 기록 `FOLLOWUP_CHECKLIST_REQUESTED` 1건(새 작업을 시작했을 때만). `detail` 은 `provider` · `attempt` 뿐이다.
+
+### rag 에 넘기는 값 · 외부 전송
+
+- 이번 회차 확정 전사본(분석에 쓴 버전 — rag 는 CHILD 발화만 쓴다), 학대 유형(그 분석의 `abuse_signals[].detected` · `severity_ratings[].level>=1`, 둘 이상이면 multiple),
+  같은 사례 앞 회차 최근 3개(승인 요약 · 그 회차 확인 사항 · 확정 전사본), 그 분석의 추가 질문 초안(`text` · `reason`).
+- **학대 유형 신호가 없으면 rag 를 부르지 않는다**(외부 전송 0) — `COMPLETED` · 빈 목록 · 안내 문구.
+- 아동 발화 · 앞 회차 기록 · 초안 문장은 rag 가 한 묶음으로 가린 뒤(같은 사람 = 같은 토큰) OpenAI 로 보낸다. 이번 회차 발화가 비식별 검증을 통과하지 못하면
+  보내지 않고 `FAILED` · `AI_PRIVACY_BLOCKED` 다. 앞 회차 기록이나 초안 문장만 막히면 그것을 빼고 만들고 `notice` 로 알린다.
+- 등록 실명은 넘기지 않는다(`known_identifiers=[]`). 그래서 운영 잠금이 있다(아래).
+- 로그에는 회차 ID · 오류 코드 · 예외 종류만 남긴다.
+
+### 오류 (행의 `error.code`)
+
+| code | 뜻 |
+|---|---|
+| `AI_TIMEOUT` | 제한 시간(`FOLLOWUP_TIMEOUT_SECONDS`, 기본 240초) 초과 · 동시 실행 자리 못 얻음 · 멈춤 판정 |
+| `AI_PRIVACY_BLOCKED` | 비식별 검증을 통과하지 못해 외부로 보내지 않음 |
+| `AI_INVALID_OUTPUT` | rag 결과 모양이 틀림 |
+| `AI_FAILED` | 그 밖(rag 를 불러오지 못함 · 확인할 사항 추출 실패 등) |
+
+HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`(POST — 최신 분석이 `COMPLETED` 가 아님), `503 FOLLOWUP_DISABLED`(POST — 꺼져 있음).
+권한은 18절과 같다(상담사는 담당 사례의 회차만, 관리자는 전체). 회차를 지우면 함께 지워진다.
+
+### 서버 설정 (`backend/.env.example`)
+
+`FOLLOWUP_PROVIDER`(`off` · `mock` · `module`, **기본 off**) · `FOLLOWUP_TIMEOUT_SECONDS` · `FOLLOWUP_MAX_CONCURRENCY` ·
+`FOLLOWUP_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 module 은 이 값이 true 일 때만 뜬다) · `RAG_VECTOR_DB_DIR` · `RAG_ANALYZER_MODEL`(비우면 rag 기본값).
+`module` 은 requirements-rag.txt 패키지와 rag 색인이 있어야 한다. 배포 이미지에 넣는 일은 서버 디스크 · 메모리를 잰 뒤 따로 한다.
