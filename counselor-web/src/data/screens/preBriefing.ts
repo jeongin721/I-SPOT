@@ -101,6 +101,7 @@ export function preBriefingValues(input: BriefingScreenInput) {
           // rag 근거 위치는 이미 '8회차 01:08' 처럼 회차가 붙어 있다.
           why: item.fromPrevious || item.origin === "rag" ? item.why : `${source?.numberLabel ?? ""} ${item.why}`.trim(),
           href: item.href,
+          rag: item.origin === "rag" || item.sources.length > 0,
         }),
       )
     : [];
@@ -111,6 +112,8 @@ export function preBriefingValues(input: BriefingScreenInput) {
   else if (signals.analysis.error) checksNote = signals.analysis.error;
   else if (!completed) checksNote = "확인할 사항을 불러오는 중…";
   else if (checks.length === 0) checksNote = `${source.numberLabel} AI 분석에 확인 메모가 없습니다.`;
+  else if (checks.some((item) => item.rag))
+    checksNote = `${source.numberLabel} AI 확인 메모와 공식 근거를 함께 본 AI 초안입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.`;
   else checksNote = `${source.numberLabel} AI 분석의 확인 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.`;
 
   const questions = source
