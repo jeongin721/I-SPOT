@@ -433,8 +433,11 @@ backend/
     사본 1부를 AWS 밖 비밀번호 관리자에 둔다. 키 값은 메신저 · 메일 · 저장소로 주고받지 않는다.
   - 만들기: `python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
   - 키 바꾸기: 새 키를 맨 앞에 넣고(`new:…,old:…`) 서버를 다시 띄운 뒤 `python -m scripts.reencrypt_personal_info`(먼저 `--dry-run`).
-    풀지 못한 사례가 0 이면 옛 키를 뺀다. 색인 키를 바꿨으면 `--reindex` 도 준다. 값은 출력하지 않는다.
+    색인 키를 바꿨으면 `--reindex` 도 준다. 값은 출력하지 않는다.
     서비스 중에 돌려도 된다 — 사례마다 읽은 값이 그대로일 때만 바꾸고, 그사이 저장이 끼면 다시 읽는다(저장을 덮지 않음).
+    세 번 다시 읽어도 저장이 끼면 그 사례는 '겹쳐 못 바꿈(busy)' 으로 남기고 종료 코드 1 이다.
+    **옛 키는 모든 서버가 새 키로 다시 뜬 뒤 스크립트를 다시 돌려 종료 코드 0(풀지 못한 사례 · 겹쳐 못 바꾼 사례 모두 0)이 나왔을 때만 뺀다.**
+    그 전에 빼면 아직 옛 키로 된 값이 `PERSONAL_INFO_UNAVAILABLE` 이 된다.
   - 실명을 풀어서 내줄 때마다 감사 로그(`CASE_PERSONAL_INFO_VIEWED` · 목록은 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄)를 남기고, 값은 넣지 않는다.
   - migration `5c9e2f7a1b30` 을 되돌리면(downgrade) 표를 지워 **저장한 실명이 모두 사라진다.**
   - 녹취 원문 · 요약 · 상담일지 같은 자유 글 속 이름은 이 암호화 대상이 아니다(DB 저장 암호화 · 접근 권한으로 지킨다).
