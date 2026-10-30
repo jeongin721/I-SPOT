@@ -27,6 +27,8 @@ import type {
   LoginResponse,
   OverallRiskAssessment,
   PasswordChangeRequest,
+  PersonalInfo,
+  PersonalInfoRequest,
   RiskAssessment,
   RiskAssessmentSaveRequest,
   TemporaryPassword,
@@ -184,6 +186,16 @@ export const cases = {
 
   create(payload: CaseCreateRequest): Promise<Case> {
     return api.post<Case>("/cases", payload);
+  },
+
+  /** 실명 · 생년월일 · 가족 정보(복호화한 값). 부를 때마다 서버에 열람 기록이 남는다. 권한은 사례 조회와 같다. */
+  getPersonalInfo(caseId: string): Promise<PersonalInfo> {
+    return api.get<PersonalInfo>(`/cases/${caseId}/personal-info`);
+  },
+
+  /** 보낸 값으로 통째로 바꾼다(빠진 칸은 지운다). 응답은 getPersonalInfo 와 같다. */
+  putPersonalInfo(caseId: string, payload: PersonalInfoRequest): Promise<PersonalInfo> {
+    return api.put<PersonalInfo>(`/cases/${caseId}/personal-info`, payload);
   },
 
   /** 바꿀 필드만 보낸다. status 로 종결, counselor_id 로 담당자 변경(관리자만). */
