@@ -94,6 +94,9 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             intake_child_traits=payload.intake_child_traits,
             intake_family_situations=payload.intake_family_situations,
             notes=payload.notes,
+            report_date=payload.report_date,
+            linked_date=payload.linked_date,
+            first_interview_date=payload.first_interview_date,
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
             created_by_id=current_user.id,
@@ -294,6 +297,9 @@ def update_case(
         "intake_child_traits",
         "intake_family_situations",
         "notes",
+        "report_date",
+        "linked_date",
+        "first_interview_date",
         "status",
     ):
         if field in data:

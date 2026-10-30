@@ -13,7 +13,8 @@ from app.core.enums import AuditAction, SessionStatus
 from app.models.audit_log import AuditLog
 from app.models.followup_check import SessionFollowupChecks
 from tests.conftest import create_case, create_session
-from tests.test_followup_questions import _set_status, ready_session  # noqa: F401 — 픽스처
+from tests.test_analysis import confirmed_session
+from tests.test_followup_questions import _set_status
 
 AI_CHECK = "등 · 팔 통증 이후 치료 여부 확인 필요."
 OWN_CHECK = "학교 담임과 통화해 최근 결석 여부 확인."
@@ -31,6 +32,14 @@ def _c(text: str = AI_CHECK, **extra: Any) -> Dict[str, Any]:
 
 def _put(client: TestClient, headers, session_id: str, items: List[Dict[str, Any]]):
     return client.put(_url(session_id), json={"items": items}, headers=headers)
+
+
+@pytest.fixture
+def ready_session(client: TestClient, counselor_headers, session: dict) -> dict:
+    """원문을 확정해 확인 사항을 저장할 수 있는 회차(mock 전사본 seg_001 ~)."""
+
+    confirmed_session(client, counselor_headers, session["id"])
+    return session
 
 
 def test_get_before_any_save_is_not_saved(client: TestClient, counselor_headers, ready_session: dict) -> None:
@@ -136,8 +145,6 @@ def test_other_counselor_is_forbidden(
 def test_deleting_case_deletes_checks(client: TestClient, counselor_headers, admin_headers, db) -> None:
     case = create_case(client, counselor_headers)
     session = create_session(client, counselor_headers, case["id"])
-    from tests.test_analysis import confirmed_session
-
     confirmed_session(client, counselor_headers, session["id"])
     assert _put(client, counselor_headers, session["id"], [_c()]).status_code == 200
 
