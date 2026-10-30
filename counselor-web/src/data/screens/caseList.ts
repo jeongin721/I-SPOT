@@ -1,6 +1,8 @@
 // 통합 사례 관리(CaseList) 화면 값.
 //  - 이름은 아동 별칭이다(Backend 는 실명을 저장하지 않는다). 나이 대신 출생연도를 보여 준다.
-//  - 신고접수일 · 위험도 · 실명 보기는 Backend 에 값이 없어 자리만 두고 '—' · 준비 중으로 둔다(팀 결정 대기).
+//  - 신고접수일 · 위험도는 Backend 에 값이 없어 자리만 두고 '—' · 준비 중으로 둔다(팀 결정 대기).
+//  - '실명 보기' 토글은 10/30 디자인에서 빠졌다(화면에는 이름을 그대로 보이고 인쇄 · 복사 때만 가린다).
+//    Backend 에는 실명이 없어 이름 칸은 계속 별칭이다 — 실명을 저장할지는 팀 결정.
 //  - 이름 · 상세 링크는 사례 ID 를 넘긴다(#/CaseDetail?case=…).
 
 import type { AuthSession } from "../useAuthSession";
@@ -50,9 +52,6 @@ export function caseListValues(input: {
     ...sidebarValues(session),
     rows,
     filters,
-    real: false,
-    tgBg: "#DAD5C9",
-    tgX: "2px",
     notReady: NOT_READY,
     countLabel,
     search: { value: search, onChange: (e: { target: { value: string } }) => setSearch(e.target.value) },

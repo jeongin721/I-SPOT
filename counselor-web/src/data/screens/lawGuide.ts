@@ -1,5 +1,6 @@
-// 법령 · 매뉴얼(LawGuide) 화면 값(10/27 디자인 counselor-design/screens/LawGuide.dc.html).
+// 법령 · 매뉴얼(LawGuide) 화면 값(10/27 디자인 counselor-design/screens/LawGuide.dc.html, 10/30 판의 위쪽 탭).
 //
+//  - 10/30 디자인: 'AI에게 묻기' 와 '참고사항 · 주요 조문' 을 위쪽 탭으로 나눠 하나씩 보인다(tab). 처음엔 AI에게 묻기.
 //  - 'AI에게 묻기' 는 POST /law-guide/questions(useLawGuide, API_CONTRACT 17절)에 붙는다. 디자인의 키워드 답변(예시)
 //    대신 서버 답변을 보이고, 근거 조문은 '아동복지법 제17조 ↗' 칩(국가법령정보센터 조문 링크)으로 단다.
 //    입력칸 글(draft)은 화면 상태, 말풍선 목록 · 기다림(pending)은 훅이 든다. 서버는 질문 · 답변을 저장하지 않는다.
@@ -13,7 +14,11 @@ import { LAW_GUIDE_REFS, LAW_SOURCES, type LawGuideRef, type LawKey } from "./la
 
 export type LawGuideFilter = "all" | "step" | "cw" | "cp";
 
+/** 위쪽 탭(10/30 디자인) — ai 'AI에게 묻기' · ref '참고사항 · 주요 조문'. 한 번에 하나만 보인다. */
+export type LawGuideTab = "ai" | "ref";
+
 export interface LawGuideUiState {
+  tab: LawGuideTab;
   /** 펼친 항목(id → true). 처음엔 디자인대로 '신고접수 시 파악할 정보' 만 펼친다. */
   open: Record<string, boolean>;
   filter: LawGuideFilter;
@@ -24,8 +29,13 @@ export interface LawGuideUiState {
 }
 
 export function initialLawGuideState(): LawGuideUiState {
-  return { open: { report: true }, filter: "all", scrollTo: null, draft: "" };
+  return { tab: "ai", open: { report: true }, filter: "all", scrollTo: null, draft: "" };
 }
+
+const TABS: [LawGuideTab, string][] = [
+  ["ai", "법령 · 매뉴얼 AI에게 묻기"],
+  ["ref", "업무 단계별 참고사항 · 주요 조문"],
+];
 
 interface LawGuideInput {
   state: LawGuideUiState;
@@ -86,6 +96,14 @@ export function filterRefs(refs: LawGuideRef[], filter: LawGuideFilter): LawGuid
 export function lawGuideValues(input: LawGuideInput) {
   const { state, setState, chat } = input;
 
+  const tabs = TABS.map(([key, label]) => ({
+    key,
+    label,
+    cls: state.tab === key ? "on" : "",
+    selected: state.tab === key,
+    pick: () => setState({ tab: key }),
+  }));
+
   const filters = FILTERS.map(([key, label]) => ({
     key,
     label,
@@ -112,8 +130,14 @@ export function lawGuideValues(input: LawGuideInput) {
     };
   });
 
+  // 답변의 매뉴얼 근거 단추도 이것을 부르므로 참고사항 탭으로 옮긴다(디자인의 openRef).
   const openToc = () =>
-    setState((current) => ({ open: { ...current.open, [TOC_ID]: true }, filter: "all", scrollTo: refDomId(TOC_ID) }));
+    setState((current) => ({
+      tab: "ref",
+      open: { ...current.open, [TOC_ID]: true },
+      filter: "all",
+      scrollTo: refDomId(TOC_ID),
+    }));
 
   // 받아들이면 그 자리에서 입력칸을 비운다(답을 기다리는 동안 친 다음 질문이 지워지지 않게).
   const ask = (question: string) => {
@@ -138,6 +162,9 @@ export function lawGuideValues(input: LawGuideInput) {
   return {
     title: "법령 · 매뉴얼",
     sub: "2026 아동학대 대응 업무 매뉴얼 · 아동복지법 · 아동학대처벌법",
+    tabs,
+    tabAi: state.tab === "ai",
+    tabRef: state.tab === "ref",
     chat: {
       lead:
         // 2026-10-28: 매뉴얼 사진은 기관 대외비라 AI 에 보내지 않는다(MANUAL_QA_ATTACH_IMAGES 기본 끔, #107).

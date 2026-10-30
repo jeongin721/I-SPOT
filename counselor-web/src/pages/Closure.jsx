@@ -74,42 +74,9 @@ export default function Closure(props) {
               onChange={v.search.onChange}
               disabled={v.search.disabled}
             />
-            <button
-              type="button"
-              className="tg"
-              aria-pressed={v.real}
-              disabled
-              title={v.notReady}
-              style={{ opacity: 0.5, cursor: 'not-allowed' }}
-            >
-              <span
-                style={{
-                  width: '34px',
-                  height: '20px',
-                  borderRadius: '10px',
-                  background: v.tgBg,
-                  position: 'relative',
-                  display: 'inline-block',
-                }}
-              >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: v.tgX,
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: '#FFFFFF',
-                    boxShadow: '0 1px 2px rgba(0,0,0,.2)',
-                  }}
-                ></span>
-              </span>
-              실명 보기
-            </button>
           </section>
           <p className="note" style={{ margin: '-8px 0 0' }}>
-            {v.listNote} 실명 보기도 {v.notReady}입니다.
+            {v.listNote}
             {v.countLabel ? <> · {v.countLabel}</> : null}
           </p>
           <section className="card" style={{ overflowX: 'auto' }}>
