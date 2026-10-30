@@ -189,7 +189,8 @@ class CaseResponse(BaseModel):
 
 class CaseListItemResponse(CaseResponse):
     # 아동 실명(API_CONTRACT 4절 '개인 식별 정보'). GET /cases?with_child_name=true 일 때만 채운다(그때 열람 기록 1줄). 없거나 안 물으면 null.
-    child_name: Optional[str] = None
+    # repr · str 에는 넣지 않는다(디버그 로그에 객체를 찍어도 실명이 새지 않게, Codex #127 R4).
+    child_name: Optional[str] = Field(default=None, repr=False)
 
 
 class CaseDetailResponse(CaseResponse):

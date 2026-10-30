@@ -7,7 +7,7 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, List, Literal, Optional
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.schemas.common import RequestModel
 
@@ -39,7 +39,33 @@ def _check_birth_date(value: Optional[date]) -> Optional[date]:
     return value
 
 
-class TargetPerson(RequestModel):
+class _Hidden:
+    def __repr__(self) -> str:
+        return "<가림>"
+
+
+_HIDDEN = _Hidden()
+
+
+class _HidesValues:
+    """repr · str 에 값을 넣지 않는다(칸 이름만). 객체를 디버그 로그에 찍어도 실명이 새지 않게(Codex #127 R4).
+
+    검증 오류 문구에도 입력값을 넣지 않는다(hide_input_in_errors) — 422 응답은 원래 값을 빼지만(main.py),
+    ValidationError 를 그대로 문자열로 남기는 곳이 생겨도 새지 않게.
+    """
+
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+    def __repr_args__(self):
+        for name in type(self).model_fields:
+            yield name, _HIDDEN
+
+
+class _PersonalRequest(_HidesValues, RequestModel):
+    pass
+
+
+class TargetPerson(_PersonalRequest):
     """사례관리대상자(대개 보호자)."""
 
     name: Optional[NameText] = None
@@ -49,14 +75,14 @@ class TargetPerson(RequestModel):
     check_birth_date = field_validator("birth_date")(_check_birth_date)
 
 
-class Interviewee(RequestModel):
+class Interviewee(_PersonalRequest):
     """면접대상자 / 관계."""
 
     name: Optional[NameText] = None
     relation: Optional[ShortText] = None
 
 
-class FamilyMember(RequestModel):
+class FamilyMember(_PersonalRequest):
     """가족관계 표 한 줄(성명 · 관계 · 나이 · 종교 · 학력 · 직업 · 동거여부)."""
 
     name: NameText
@@ -68,7 +94,7 @@ class FamilyMember(RequestModel):
     living_together: Optional[bool] = None
 
 
-class HealthItem(RequestModel):
+class HealthItem(_PersonalRequest):
     """건강정도 한 칸 — 있음(present) · 세부(횟수 · 기간 · 진단명 등)."""
 
     kind: HealthKind
@@ -76,7 +102,7 @@ class HealthItem(RequestModel):
     detail: Optional[DetailText] = None
 
 
-class HealthInfo(RequestModel):
+class HealthInfo(_PersonalRequest):
     """건강정도(대상자 이름 + 세부 항목). 같은 항목은 한 번만."""
 
     subject_name: Optional[NameText] = None
@@ -92,7 +118,7 @@ class HealthInfo(RequestModel):
         return self
 
 
-class PersonalInfoRequest(RequestModel):
+class PersonalInfoRequest(_PersonalRequest):
     """PUT /cases/{id}/personal-info 본문 · POST /cases 의 personal_info. 보낸 값으로 통째로 바꾼다(빠진 칸은 지움)."""
 
     child_name: Optional[NameText] = None
@@ -105,7 +131,7 @@ class PersonalInfoRequest(RequestModel):
     check_birth_date = field_validator("child_birth_date")(_check_birth_date)
 
 
-class PersonalInfoResponse(BaseModel):
+class PersonalInfoResponse(_HidesValues, BaseModel):
     """복호화한 값. registered=false 면 아직 아무 칸도 저장하지 않은 사례다."""
 
     registered: bool = False

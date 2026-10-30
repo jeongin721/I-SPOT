@@ -1,7 +1,7 @@
 # 사례 개인 식별 정보(암호화 저장) 서비스. API_CONTRACT 4절 '개인 식별 정보', specs case-personal-info-encryption.
 #
 # - 저장: 칸마다 pii_crypto.encrypt_text(묶음 값 = 사례 ID + 칸 이름). 묶음 칸(사례관리대상자 · 면접대상자 ·
-#   가족관계 · 건강정도)은 JSON 을 통째로 암호화한다. 바뀐 칸만 다시 암호화한다.
+#   가족관계 · 건강정도)은 JSON 을 통째로 암호화한다. 저장할 때마다 모든 칸을 다시 쓴다(겹친 저장이 섞이지 않게).
 # - 권한은 호출부가 먼저 본다(get_case_or_404 — 상담사는 담당 사례만, 관리자는 전체).
 # - 복호화해서 내준 때마다 열람 기록을 남긴다: 한 사례 CASE_PERSONAL_INFO_VIEWED, 목록 CASE_LIST_PERSONAL_INFO_VIEWED 1줄.
 # - 값은 로그 · 감사 detail · 오류 문구에 넣지 않는다. 칸 이름 · 사례 ID · 키 이름만 남긴다.
@@ -12,11 +12,12 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import ColumnElement, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import pii_crypto
 from app.core.enums import AuditAction
-from app.core.errors import APIError, ErrorCode
+from app.core.errors import APIError, ErrorCode, conflict
 from app.core.pii_crypto import PersonalInfoCryptoError
 from app.models.case import Case
 from app.models.case_personal_info import ENCRYPTED_FIELDS, CasePersonalInfo
@@ -146,10 +147,15 @@ def apply_personal_info(
     """보낸 값으로 통째로 바꾼다(commit 은 호출부). 바뀐 칸 이름을 돌려준다.
 
     POST /cases(사례와 한 거래)와 PUT /cases/{id}/personal-info 가 함께 쓴다. case.id 가 있어야 한다(flush 뒤).
+
+    행이 있으면 바뀐 칸만이 아니라 **모든 칸을 다시 쓴다.** 두 요청이 같은 옛 값을 읽고 저장이 겹쳐도 나중에 커밋한 요청의
+    본문이 통째로 남는다(바뀐 칸만 쓰면 두 본문이 칸별로 섞인다 — Codex #127 R2). 바뀐 칸은 감사 기록에만 쓴다.
+    같은 사례에 처음 저장이 겹쳐 다른 요청이 먼저 행을 만들었으면 409 DUPLICATE_RESOURCE(회차 전체 판단 저장과 같은 방식).
     """
 
+    case_id = case.id
     new = _plain_values(payload)
-    row = db.get(CasePersonalInfo, case.id)
+    row = db.get(CasePersonalInfo, case_id)
     old: Dict[str, Any] = {field: None for field in ENCRYPTED_FIELDS}
 
     if row is not None:
@@ -160,32 +166,50 @@ def apply_personal_info(
                 old[field] = _UNREADABLE
 
     changed = [field for field in ENCRYPTED_FIELDS if old[field] != new[field]]
+    creating = row is None
 
-    if not changed:
+    if creating and not changed:
+        # 저장 전 사례에 빈 값을 보냄 — 행을 만들지 않는다.
         return []
 
-    if row is None:
-        row = CasePersonalInfo(case_id=case.id)
+    if creating:
+        row = CasePersonalInfo(case_id=case_id)
         db.add(row)
 
-    for field in changed:
+    for field in ENCRYPTED_FIELDS:
         value = new[field]
         setattr(
             row,
             f"{field}_enc",
-            None if value is None else pii_crypto.encrypt_text(value, case_id=case.id, field=field),
+            None if value is None else pii_crypto.encrypt_text(value, case_id=case_id, field=field),
         )
 
-    if "child_name" in changed:
-        row.child_name_index = pii_crypto.name_index(new["child_name"]) if new["child_name"] else None
-
+    row.child_name_index = pii_crypto.name_index(new["child_name"]) if new["child_name"] else None
     row.updated_by_id = current_user.id
 
-    # 생년월일을 새로 넣었으면 사례의 출생연도(평문, 나이대 · 통계용)를 그 해로 맞춘다.
-    if "child_birth_date" in changed and payload.child_birth_date is not None:
-        if case.child_birth_year != payload.child_birth_date.year:
-            case.child_birth_year = payload.child_birth_date.year
-            changed.append("child_birth_year")
+    if creating:
+        try:
+            db.flush()
+        except IntegrityError as error:
+            db.rollback()
+
+            # 그사이 다른 요청이 이 사례의 행을 먼저 만들었으면 500 대신 409 로 알린다. 그 밖의 무결성 오류는 그대로 올린다.
+            if db.get(CasePersonalInfo, case_id) is None:
+                raise
+
+            raise conflict(
+                ErrorCode.DUPLICATE_RESOURCE,
+                "다른 요청이 먼저 이 사례의 개인 식별 정보를 저장했습니다. 새로고침 후 다시 저장해 주세요.",
+            ) from error
+
+    # 생년월일이 있으면 사례의 출생연도(평문, 나이대 · 통계용)를 늘 그 해로 맞춘다. 날짜가 바뀌지 않았어도 맞춘다 —
+    # 그사이 출생연도만 따로 고쳤으면 같은 날짜를 다시 저장해 되돌릴 수 있게(Codex #127 R3). 생년월일이 우선이다.
+    if payload.child_birth_date is not None and case.child_birth_year != payload.child_birth_date.year:
+        case.child_birth_year = payload.child_birth_date.year
+        changed.append("child_birth_year")
+
+    if not changed:
+        return []
 
     audit_service.record(
         db,
@@ -206,12 +230,13 @@ def put_personal_info(
     current_user: User,
     payload: PersonalInfoRequest,
 ) -> PersonalInfoResponse:
+    case_id = case.id
     apply_personal_info(db, case, current_user, payload)
     db.commit()
 
-    row = db.get(CasePersonalInfo, case.id)
+    row = db.get(CasePersonalInfo, case_id)
 
-    # 보낸 값이 곧 저장한 값이다(통째로 바꿈). 다시 풀지 않는다.
+    # 보낸 값이 곧 이 요청이 저장한 값이다(모든 칸을 다시 씀). 다시 풀지 않는다.
     return _to_response(row, _plain_values(payload))
 
 
