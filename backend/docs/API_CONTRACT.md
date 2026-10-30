@@ -636,8 +636,11 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 ### POST /api/v1/cases/{case_id}/sessions → 201
 
 ```json
-{ "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null }
+{ "title": "1회기 상담", "consulted_at": null, "location": null, "memo": null, "consultation_type": "VISIT" }
 ```
+
+`consultation_type`(2026-10-30, 상담 유형)은 `INITIAL`(초기면담) · `REGULAR`(정기상담) · `VISIT`(방문상담) · `OFFICE`(기관 면담) · `PHONE`(전화상담)
+가운데 하나이고 빼면 `null` 이다(그 밖의 값은 `422`). 회차 응답(목록 · 상세)에 같은 이름으로 온다. `PATCH` 에서 `null` 을 보내면 비운다.
 
 `consulted_at` 은 UTC 로 바꿔 저장하고, UTC 기준 1900-01-01 ~ 2100-12-31 밖이면 `422 VALIDATION_ERROR` 다(1.5). `PATCH /sessions/{id}` 도 같다.
 

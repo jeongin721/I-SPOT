@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import SessionStatus
+from app.core.enums import ConsultationType, SessionStatus
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -66,6 +66,11 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # 상담 유형(2026-10-30). 넣지 않았으면 null.
+    consultation_type: Mapped[Optional[ConsultationType]] = mapped_column(
+        SAEnum(ConsultationType, name="consultation_type", native_enum=False, length=20),
+        nullable=True,
+    )
     memo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # 재시도 가능한 오류 정보
