@@ -238,6 +238,7 @@ class AuditAction(str, Enum):
     LAW_QA_ASKED = "LAW_QA_ASKED"
     # 승인한 추가 질문 목록 저장(18절, 2026-10-28). detail 에는 질문 수 · 출처별 수만 남긴다(질문 원문은 넣지 않는다).
     FOLLOWUP_QUESTIONS_UPDATED = "FOLLOWUP_QUESTIONS_UPDATED"
+    FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

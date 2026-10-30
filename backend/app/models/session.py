@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from app.models.audio_feature import AudioFeature
     from app.models.case import Case
     from app.models.document import Document
+    from app.models.followup_check import SessionFollowupChecks
     from app.models.followup_question import SessionFollowupQuestions
     from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
     from app.models.summary import ConsultationSummary
@@ -140,6 +141,12 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         passive_deletes=True,
     )
     followup_questions: Mapped[Optional["SessionFollowupQuestions"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    followup_checks: Mapped[Optional["SessionFollowupChecks"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,
