@@ -10,6 +10,8 @@
 #  - types[].counselor_level · assessed_at: session_risk_assessments(11.2절, 유형별)
 #  - 회차 줄의 counselor_level · assessed_at: session_overall_risk_assessments(11.1절, 회차 전체. 2026-10-29 추가)
 #  - 회차 줄의 topics: 최신 완료 분석 결과 topic_tags(아동 발화 대화 주제, 2026-10-29). 없으면 null
+#  - 회차 줄의 subtypes: 최신 완료 분석 결과 risk_utterances 를 (유형, 세부 유형)으로 묶은 근거 발화 수(2026-10-30).
+#    pending 은 근거 발화가 모두 화자 미확인(분석이 쓴 전사본의 speaker UNKNOWN)일 때 — 화면 '보류 (화자 확인 중)'.
 # 처리 중 회기의 작업 유실 마감(expire_stale_processing)은 여기서 하지 않는다 — 회차 목록 · 상세가 이미 하고,
 # 이 창구는 읽기만 한다.
 import uuid
@@ -19,15 +21,17 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.enums import AbuseType, AnalysisStatus, abuse_type_from_label
+from app.core.enums import AbuseType, AnalysisStatus, Speaker, abuse_type_from_label
 from app.models.analysis import AIAnalysis
 from app.models.case import Case
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
+from app.models.transcript import TranscriptSegment
 from app.services.risk_assessment_service import ai_levels_by_type
 from app.schemas.signal_history import (
     SignalHistoryResponse,
     SignalHistorySession,
+    SignalHistorySubtype,
     SignalHistoryTopic,
     SignalHistoryType,
 )
@@ -71,12 +75,29 @@ def build_signal_history(db: Session, case: Case) -> SignalHistoryResponse:
         ):
             overall[assessment.session_id] = assessment
 
+    # 분석이 쓴 전사본의 발화 화자(세부 신호 '보류' 판단용). 완료 분석의 전사본만 한 번에 읽는다.
+    speakers: Dict[uuid.UUID, Dict[str, Speaker]] = defaultdict(dict)
+    transcript_ids = {
+        analysis.transcript_id
+        for analysis in latest_analysis.values()
+        if analysis.status == AnalysisStatus.COMPLETED and analysis.transcript_id is not None
+    }
+
+    if transcript_ids:
+        for transcript_id, segment_id, speaker in db.execute(
+            select(TranscriptSegment.transcript_id, TranscriptSegment.segment_id, TranscriptSegment.speaker).where(
+                TranscriptSegment.transcript_id.in_(transcript_ids)
+            )
+        ):
+            speakers[transcript_id][segment_id] = speaker
+
     rows = [
         _session_row(
             session,
             latest_analysis.get(session.id),
             judged.get(session.id, {}),
             overall.get(session.id),
+            speakers,
         )
         for session in sessions
     ]
@@ -89,6 +110,7 @@ def _session_row(
     analysis: Optional[AIAnalysis],
     judged: Dict[AbuseType, SessionRiskAssessment],
     overall: Optional[SessionOverallRiskAssessment],
+    speakers: Dict[uuid.UUID, Dict[str, Speaker]],
 ) -> SignalHistorySession:
     completed = analysis is not None and analysis.status == AnalysisStatus.COMPLETED
     result = analysis.result if completed and isinstance(analysis.result, dict) else {}
@@ -107,7 +129,43 @@ def _session_row(
         assessed_at=overall.assessed_at if overall is not None else None,
         types=types,
         topics=_topic_rows(result.get("topic_tags")) if completed else None,
+        subtypes=(
+            _subtype_rows(result.get("risk_utterances"), speakers.get(analysis.transcript_id, {}))
+            if completed and analysis is not None
+            else None
+        ),
     )
+
+
+def _subtype_rows(utterances: Any, speakers: Dict[str, Speaker]) -> List[SignalHistorySubtype]:
+    """risk_utterances → (유형, 세부 유형)마다 근거 발화 수. 유형 · 세부 유형 · 근거 발화가 없는 항목은 뺀다. 처음 나온 순서."""
+
+    grouped: Dict[tuple, List[str]] = {}
+
+    for item in utterances if isinstance(utterances, list) else []:
+        if not isinstance(item, dict):
+            continue
+
+        abuse_type = abuse_type_from_label(item.get("abuse_type"))
+        subtype = item.get("subtype")
+        ids = [sid for sid in item.get("segment_ids") or [] if isinstance(sid, str) and sid]
+
+        if abuse_type is None or not isinstance(subtype, str) or not subtype.strip() or not ids:
+            continue
+
+        bucket = grouped.setdefault((abuse_type, subtype.strip()), [])
+        bucket.extend(sid for sid in ids if sid not in bucket)
+
+    return [
+        SignalHistorySubtype(
+            abuse_type=abuse_type,
+            subtype=subtype,
+            count=len(ids),
+            segment_ids=ids,
+            pending=all(speakers.get(sid, Speaker.UNKNOWN) == Speaker.UNKNOWN for sid in ids),
+        )
+        for (abuse_type, subtype), ids in grouped.items()
+    ]
 
 
 def _topic_rows(tags: Any) -> Optional[List[SignalHistoryTopic]]:

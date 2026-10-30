@@ -26,7 +26,7 @@
 // 고친 항목은 상담 일지(noteWrite.ts)의 초기면접 항목에 그대로 보인다. ② 탭의 나머지 칸은 여전히 준비 중이라 여기에도 없다.
 
 import { NOT_PROVIDED } from "../caseRows";
-import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
+import { ABUSE_TYPES, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseSignalsState } from "../useCaseSignals";
 import type { SignalHistoryState } from "../useSignalHistory";
@@ -38,7 +38,6 @@ import {
   counselorTop,
   detectedTypeLabels,
   firstMentions,
-  historyCell,
   pendingLabel,
   signalsClearlyAbsent,
   taggedSessions,
@@ -380,10 +379,10 @@ const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
  * 탭 2 · 상담 이력.
  *  - 회차 카드 '신호' · 회차별 세부 신호 행렬(2026-10-28): 사례 단위 signal-history API(#99, useSignalHistory).
  *    카드는 'AI 신호 · 신체 · 정서'(관련 신호가 있는 유형) 옆에 상담원 판단이 있으면 '판단 상' 을 따로 붙인다(섞이지 않게,
- *    민규 님 리뷰). 행렬은 줄 = 네 학대 유형 × 열 = 회차, 칸 = AI 심각도 제안(1~5).
- *    디자인은 줄이 세부 유형 · 칸이 근거 발화 수인데, 세부 유형은 고정 목록이 아니라(2차 모델이 쓴 한글 문구) 회차 간 줄을
- *    맞추기 어려워 네 유형으로 채운다(2026-10-28 민규 님 합의 ①). 세부 유형은 목록을 고정한 뒤 subtypes 선택 키로.
- *    디자인의 '채택 · 보류' 는 서버에 기록이 없어 쓰지 않는다. 모두 AI 제안이라 'AI 제안' 칩을 붙인다.
+ *    민규 님 리뷰). 행렬(2026-10-30, 디자인 그대로)은 줄 = 세부 신호 × 열 = 회차, 칸 = 근거 발화 수(1번 · 2번 이상),
+ *    근거가 모두 화자 미확인이면 '보류'(signal-history subtypes). 10/28 에는 세부 유형이 고정 목록이 아니라고 보고 네 유형 ×
+ *    AI 심각도로 채웠는데(민규 님 합의 ①), 2차 모델 세부 유형은 고정 14종이고 목록 밖 이름은 코드가 버린다(second_stage_llm).
+ *    디자인 설명의 '채택 신호' 는 서버에 채택 기록이 없어 '관련 신호' 로 쓰고 'AI 제안' 칩을 붙인다. AI 심각도는 유형별 위험도 화면.
  *  - 누적 요약(2026-10-28): 승인 완료한 최근 회차들의 상담 요약 4칸(상담원 확정 문장, useApprovedSummaries)을 회차마다 한 상자로.
  *    AI 가 새로 만든 요약이 아니라 칩 · 안내에 '승인된 회차 요약 모음 · AI 생성 아님' 이라고 밝힌다(민규 님 합의).
  *  - 주제 비중 · 덜 다룬 부분(2026-10-29): 회차 분석의 대화 주제(topic_tags → signal-history topics)를 더한 비율(AI 제안).
@@ -440,26 +439,36 @@ export function caseHistoryValues(
           label: `${row.sessionNumber}회`,
           href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
         }));
-  const mrows = historyRows.length
-    ? TREND_TYPES.map((type) => ({
-        type: TYPE_SHORT[type],
-        name: ABUSE_TYPE_LABELS[type],
-        cells: historyRows.map((row) => {
-          const cell = historyCell(row, type);
-          const tone = cell.level !== null ? (cell.level >= 4 ? DOT_STRONG : DOT_LIGHT) : cell.detected ? DOT_RING : DOT_NONE;
-          return {
-            v: cell.level !== null ? String(cell.level) : cell.detected ? "·" : pendingLabel(row) ? "" : "–",
-            tip: `${row.session_number}회차 ${ABUSE_TYPE_LABELS[type]} · ${cell.text}`,
-            ...tone,
-          };
-        }),
-      }))
-    : [];
+  // 세부 신호 행렬(10/30, 디자인 그대로): 줄 = 세부 신호(2차 모델 고정 14종 중 나온 것, 유형 순서 → 처음 나온 순서),
+  // 칸 = 그 회차 근거 발화 수(1번 · 2번 이상), 근거가 모두 화자 미확인이면 '보류'(?). signal-history subtypes.
+  const rowKeys: { type: (typeof TREND_TYPES)[number]; subtype: string }[] = [];
+  for (const type of TREND_TYPES) {
+    for (const row of historyRows) {
+      for (const item of row.subtypes ?? []) {
+        if (item.abuse_type === type && !rowKeys.some((key) => key.type === type && key.subtype === item.subtype)) {
+          rowKeys.push({ type, subtype: item.subtype });
+        }
+      }
+    }
+  }
+  const mrows = rowKeys.map((key) => ({
+    type: TYPE_SHORT[key.type],
+    name: key.subtype,
+    cells: historyRows.map((row) => {
+      const item = (row.subtypes ?? []).find((s) => s.abuse_type === key.type && s.subtype === key.subtype);
+      const at = `${row.session_number}회차 · ${key.subtype}`;
+      if (!item) return { v: "", tip: `${at} · ${row.subtypes ? "없음" : pendingLabel(row) || "분석 전"}`, ...DOT_NONE };
+      if (item.pending) return { v: "?", tip: `${at} · 보류(화자 확인 중) · 근거 ${item.count}번`, ...DOT_RING };
+      return { v: String(item.count), tip: `${at} · 근거 ${item.count}번`, ...(item.count >= 2 ? DOT_STRONG : DOT_LIGHT) };
+    }),
+  }));
   let signalNote = "";
   if (history?.error) signalNote = history.error;
   else if (history && !history.loaded) signalNote = history.loading ? "회차별 신호를 불러오는 중…" : "";
-  else if (historyRows.length > 0 && !historyRows.some((row) => row.types.length > 0)) {
+  else if (historyRows.length > 0 && !historyRows.some((row) => Array.isArray(row.subtypes))) {
     signalNote = "AI 분석이 끝난 회차가 없습니다.";
+  } else if (historyRows.length > 0 && mrows.length === 0) {
+    signalNote = "분석한 회차에 근거 발화가 있는 세부 신호가 없습니다.";
   }
 
   let sessionsNote = "";

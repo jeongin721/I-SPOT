@@ -37,6 +37,19 @@ class SignalHistoryTopic(BaseModel):
     start_ms: Optional[int]
 
 
+class SignalHistorySubtype(BaseModel):
+    """한 회차의 세부 신호 하나(분석 결과 risk_utterances 의 세부 유형, 2026-10-30). 'AI 제안' 이다."""
+
+    abuse_type: AbuseType
+    # 2차 모델의 세부 유형 이름(고정 14종, second_stage_llm.SUBTYPE_DEFINITIONS).
+    subtype: str
+    # 그 세부 유형 근거 발화 수(segment_ids 를 겹치지 않게 센 수).
+    count: int
+    segment_ids: List[str]
+    # 근거 발화가 모두 화자 미확인(UNKNOWN)이면 true — 화면 '보류 (화자 확인 중)'. 화자를 찾지 못한 발화도 미확인으로 본다.
+    pending: bool
+
+
 class SignalHistorySession(BaseModel):
     """회차 한 줄. 분석이 끝나지 않았고 유형별 상담원 판단도 없으면 types 는 빈 목록이다."""
 
@@ -53,6 +66,8 @@ class SignalHistorySession(BaseModel):
     # 아동 발화 대화 주제(분석 결과 topic_tags). 분석이 끝나지 않았거나 그 분석에 주제 분류가 없으면(이 필드 전 분석 ·
     # 분류 실패) null, 분류했지만 해당 주제가 없으면 [].
     topics: Optional[List[SignalHistoryTopic]] = None
+    # 세부 신호(상담 이력 '회차별 세부 신호' 행렬, 2026-10-30). 분석이 끝나지 않았으면 null, 세부 신호가 없으면 [].
+    subtypes: Optional[List[SignalHistorySubtype]] = None
 
 
 class SignalHistoryResponse(BaseModel):

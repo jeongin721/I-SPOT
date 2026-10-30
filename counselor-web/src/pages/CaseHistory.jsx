@@ -293,7 +293,7 @@ export default function CaseHistory(props) {
               <span className="secno">3</span>
               <h2 className="h2">회차별 세부 신호</h2>
               <span className="chip c-ai">AI 제안</span>
-              <span className="src">관련 신호 · AI 심각도 제안(1~5)</span>
+              <span className="src">관련 신호 · 근거 발화 수</span>
             </div>
             {v.signalNote ? (
               <p className="note" style={{ margin: '0 0 10px' }}>
@@ -302,7 +302,7 @@ export default function CaseHistory(props) {
             ) : null}
             <div style={{ overflowX: 'auto' }}>
               <div className="mx" style={{ minWidth: '640px', gridTemplateColumns: v.mxCols }}>
-                <span className="rl note">유형</span>
+                <span className="rl note">세부 신호</span>
                 {(v.cols || []).map((c, cIndex) => (
                   <Fragment key={cIndex}>
                     <A to={c.href} className="note" style={{ textDecoration: 'none', color: '#6E6A62' }}>
@@ -346,10 +346,10 @@ export default function CaseHistory(props) {
               }}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="dot" style={{ width: '18px', height: '18px', background: '#EAE7DF' }}></span>심각도 1~3
+                <span className="dot" style={{ width: '18px', height: '18px', background: '#EAE7DF' }}></span>1번
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span className="dot" style={{ width: '18px', height: '18px', background: '#7A776F' }}></span>심각도 4~5
+                <span className="dot" style={{ width: '18px', height: '18px', background: '#7A776F' }}></span>2번 이상
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <span
@@ -361,7 +361,7 @@ export default function CaseHistory(props) {
                     boxShadow: 'inset 0 0 0 1.5px #7A776F',
                   }}
                 ></span>
-                관련 신호만(심각도 제안 없음)
+                보류 (화자 확인 중)
               </span>
             </div>
           </section>

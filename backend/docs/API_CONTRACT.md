@@ -563,6 +563,10 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
           { "topic": "신체 체벌 경험", "count": 3, "segment_ids": ["seg_004", "seg_007", "seg_012"], "quote": "아빠가 또 화났어요…", "start_ms": 41000 },
           { "topic": "식사 · 돌봄", "count": 1, "segment_ids": ["seg_015"], "quote": "밥도 안 줄 때가 있어요", "start_ms": 135000 }
         ],
+        "subtypes": [
+          { "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해", "count": 2, "segment_ids": ["seg_004", "seg_007"], "pending": false },
+          { "abuse_type": "NEGLECT", "subtype": "기본적 보호·양육 방임", "count": 1, "segment_ids": ["seg_015"], "pending": true }
+        ],
         "types": [
           { "abuse_type": "PHYSICAL", "detected": true, "ai_level": 3, "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00" },
           { "abuse_type": "EMOTIONAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
@@ -571,7 +575,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
         ]
       },
       { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null,
-        "counselor_level": null, "assessed_at": null, "topics": null, "types": [] }
+        "counselor_level": null, "assessed_at": null, "topics": null, "subtypes": null, "types": [] }
     ]
   }
 }
@@ -591,6 +595,10 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   주제 비중(회차들을 더한 비율) · 첫 언급 회차는 화면이 계산한다. **AI 제안이다.**
   화면은 대상 회차 앞에 `analysis_status` 가 `COMPLETED` 인데 `topics` 가 `null` 인 회차가 있으면 '처음 나온 이야기' · '첫 언급' 을
   단정하지 않는다(그 회차에 이미 나왔을 수 있어서).
+- `subtypes`(2026-10-30, 상담 이력 '회차별 세부 신호'): 최신 분석이 `COMPLETED` 일 때 그 결과의 `risk_utterances`(8절)를
+  `(abuse_type, subtype)` 으로 묶은 것이다. `count` 는 근거 발화 수(`segment_ids` 를 겹치지 않게 센 수), 처음 나온 순서.
+  `pending` 은 근거 발화가 **모두** 화자 미확인(그 분석이 쓴 전사본의 `speaker` 가 `UNKNOWN` 이거나 전사본에 없는 번호)일 때 `true` — 화면 '보류 (화자 확인 중)'.
+  유형 · 세부 유형 · 근거 발화가 없는 항목은 뺀다. 분석이 끝나지 않았으면 `null`, 세부 신호가 없으면 `[]`. 세부 유형 이름은 2차 모델의 고정 14종이다. **AI 제안이다.**
 - 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
 - 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
 
