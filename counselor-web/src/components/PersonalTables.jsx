@@ -25,7 +25,6 @@ export function FamilyTable({ family }) {
                     <input
                       aria-label={`${rIndex + 1}번째 줄 ${c.label}`}
                       value={c.value}
-                      maxLength={c.max}
                       inputMode={c.numeric ? 'numeric' : undefined}
                       onChange={c.onChange}
                       disabled={family.locked}
@@ -85,7 +84,6 @@ export function HealthTable({ health }) {
           placeholder="이름"
           aria-label="건강정도 대상자 이름"
           value={health.subject.value}
-          maxLength={health.subject.max}
           onChange={health.subject.onChange}
           disabled={health.locked}
         />
@@ -119,7 +117,6 @@ export function HealthTable({ health }) {
                 aria-label={`${row.kind} 세부 내용`}
                 placeholder={row.detail.placeholder}
                 value={row.detail.value}
-                maxLength={row.detail.max}
                 onChange={row.detail.onChange}
                 disabled={health.locked}
               />

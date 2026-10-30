@@ -223,7 +223,6 @@ export default function CaseIntake(props) {
                           className="inp"
                           type="text"
                           autoComplete="off"
-                          maxLength={v.childName.max}
                           placeholder="이름"
                           value={v.childName.value}
                           onChange={v.childName.onChange}
@@ -293,7 +292,6 @@ export default function CaseIntake(props) {
                           className="inp"
                           type="text"
                           autoComplete="off"
-                          maxLength={v.targetName.max}
                           placeholder="이름"
                           value={v.targetName.value}
                           onChange={v.targetName.onChange}
@@ -391,7 +389,6 @@ export default function CaseIntake(props) {
                           className="inp"
                           type="text"
                           autoComplete="off"
-                          maxLength={v.intervieweeName.max}
                           placeholder="이름"
                           value={v.intervieweeName.value}
                           onChange={v.intervieweeName.onChange}
@@ -403,7 +400,6 @@ export default function CaseIntake(props) {
                         <input
                           className="inp"
                           type="text"
-                          maxLength={v.intervieweeRelation.max}
                           placeholder="예: 피해아동"
                           value={v.intervieweeRelation.value}
                           onChange={v.intervieweeRelation.onChange}

@@ -169,17 +169,22 @@ function topic(label: string): string {
   return `${label}${code >= 0 && code < 11172 && code % 28 !== 0 ? "은" : "는"}`;
 }
 
+/** 글자 수. 서버(Python len)처럼 코드 포인트로 센다 — 확장 한자 · 이모지가 2 로 세여 맞는 값을 거절하지 않게(Codex #129 R5). */
+export function charCount(text: string): number {
+  return [...text].length;
+}
+
 /** 이름 칸: 앞뒤 공백을 떼고 50자까지, 비었으면 null. */
 function nameOf(value: string, label: string): string | null {
   const trimmed = value.trim();
-  need(trimmed.length <= PERSON_NAME_MAX, `${topic(label)} ${PERSON_NAME_MAX}자까지 쓸 수 있습니다.`);
+  need(charCount(trimmed) <= PERSON_NAME_MAX, `${topic(label)} ${PERSON_NAME_MAX}자까지 쓸 수 있습니다.`);
   return trimmed || null;
 }
 
 /** 짧은 글 칸(관계 · 종교 · 학력 · 직업): 비었으면 null. */
 function shortOf(value: string, label: string, max = PERSON_SHORT_MAX): string | null {
   const trimmed = value.trim();
-  need(trimmed.length <= max, `${topic(label)} ${max}자까지 쓸 수 있습니다.`);
+  need(charCount(trimmed) <= max, `${topic(label)} ${max}자까지 쓸 수 있습니다.`);
   return trimmed || null;
 }
 
@@ -188,7 +193,10 @@ function dateOf(value: string, label: string, today: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   need(
-    /^\d{4}-\d{2}-\d{2}$/.test(trimmed) && !Number.isNaN(Date.parse(`${trimmed}T00:00:00Z`)),
+    // 없는 날짜(2015-02-29 등)는 Date 가 다음 달로 넘기므로, 다시 글자로 바꿔 같은지 본다.
+    /^\d{4}-\d{2}-\d{2}$/.test(trimmed) &&
+      !Number.isNaN(Date.parse(`${trimmed}T00:00:00Z`)) &&
+      new Date(`${trimmed}T00:00:00Z`).toISOString().slice(0, 10) === trimmed,
     `${topic(label)} YYYY-MM-DD 로 입력해 주세요.`,
   );
   need(trimmed >= BIRTH_DATE_MIN && trimmed <= today, `${topic(label)} ${BIRTH_DATE_MIN} 부터 오늘까지 입력할 수 있습니다.`);
