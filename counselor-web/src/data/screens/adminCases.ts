@@ -8,7 +8,8 @@
 //  - 진행 단계(초기 조사 · 종결 검토): 없다. 사례 상태(진행 · 종결)만 보인다.
 //  - 재배정 필요(디자인: 담당 상담원 비활성): 진행 중 사례의 담당 계정이 비활성이거나 지워졌으면 그렇게 보인다.
 //    계정 목록을 받지 못하면 비활성은 알 수 없어 지워진 계정만 센다.
-// 이름은 아동 별칭이다(Backend 는 실명을 저장하지 않는다). 디자인처럼 이름은 링크가 아니고, 담당 상담원은 상담사 상세로 간다.
+// 이름은 아동 실명(등록된 사례), 없으면 별칭이다(실명과 함께 부름). 검색은 받은 목록 안에서 이름 · 별칭 · 사례 ID 의 일부로 찾는다.
+// 디자인처럼 이름은 링크가 아니고, 담당 상담원은 상담사 상세로 간다.
 
 import type { User } from "../../api/types";
 import { NOT_PROVIDED, toCaseRow, type CaseRow } from "../caseRows";
@@ -83,13 +84,19 @@ export function adminCasesValues(input: AdminCasesInput) {
   const q = state.q.trim().toLowerCase();
   const rows = all
     .filter(({ source }) => who === ALL_STAFF || source.counselor_id === who)
-    .filter(({ row }) => !q || row.alias.toLowerCase().includes(q) || row.caseNumber.toLowerCase().includes(q))
+    .filter(
+      ({ row }) =>
+        !q ||
+        row.name.toLowerCase().includes(q) ||
+        row.alias.toLowerCase().includes(q) ||
+        row.caseNumber.toLowerCase().includes(q),
+    )
     .map(({ source, row }) => {
       const reassign = needsReassign(row, source.counselor_id, users);
       return {
         key: row.id,
         id: row.caseNumber,
-        name: row.alias,
+        name: row.name,
         ini: row.initial,
         age: row.birthYearLabel,
         who: row.counselorName,

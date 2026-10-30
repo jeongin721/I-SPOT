@@ -6,14 +6,14 @@
 //    계정 목록을 받지 못해도 사례 목록은 그대로 보인다(usersError 만 채움).
 
 import { auth } from "../api/endpoints";
-import type { Case, User } from "../api/types";
+import type { CaseListItem, User } from "../api/types";
 import { adminKey, type AdminAccess, type AdminHookOptions } from "./adminAccess";
 import { loadAllCases } from "./useAdminAccounts";
 import { useRemote } from "./useRemote";
 
 export interface AdminCasesState {
   /** 기관 전체 사례(등록 최신순, 서버 순서 그대로). 아직 못 받았으면 null. */
-  cases: Case[] | null;
+  cases: CaseListItem[] | null;
   /** 계정 목록. 못 받았으면 null. */
   users: User[] | null;
   /** 사례 목록을 처음 받거나 다시 받는 중. */
@@ -26,9 +26,10 @@ export interface AdminCasesState {
 }
 
 export function useAdminCases(access: AdminAccess, { enabled = true }: AdminHookOptions = {}): AdminCasesState {
-  const cases = useRemote<Case[]>(
+  // 이름 칸에 실명을 보이려고 실명과 함께 부른다(쪽마다 서버에 목록 열람 기록).
+  const cases = useRemote<CaseListItem[]>(
     adminKey(access, enabled, "cases:all"),
-    loadAllCases,
+    () => loadAllCases({ withNames: true }),
     "사례 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     () => false,
   );

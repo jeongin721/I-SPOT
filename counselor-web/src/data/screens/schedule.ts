@@ -62,7 +62,7 @@ export function sessionEvents(overview: CaseOverviewState): { events: SessionEve
       events.push({
         date: row.consultedDate,
         time: row.consultedAt.slice(11, 16),
-        title: `${item.caseRow.alias} · ${row.numberLabel}`,
+        title: `${item.caseRow.name} · ${row.numberLabel}`,
         // 관리자는 여러 상담사의 회차를 함께 보므로 담당자를 붙인다.
         sub: overview.wholeOrg ? `${place} · ${item.caseRow.counselorName}` : place,
         href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),

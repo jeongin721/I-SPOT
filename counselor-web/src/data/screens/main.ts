@@ -155,7 +155,7 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
           ? `${item.latest.number}회차 판단 · ${RISK_LEVEL_LABELS[item.level]}`
           : `${item.latest.number}회차 판단 전`
         : "회차 없음",
-      text: `${item.alias} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
+      text: `${item.name} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
     })),
     urgentCount: NOT_PROVIDED,
     urgentText: `아이 앱 연계 ${NOT_READY}`,

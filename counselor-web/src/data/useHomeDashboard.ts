@@ -32,7 +32,8 @@ export const HOME_CASE_COUNT = 3;
 
 export interface HomeCase {
   id: string;
-  alias: string;
+  /** 이름 칸: 아동 실명, 없으면 별칭(목록을 실명과 함께 부른다 — 서버에 목록 열람 기록 1줄). */
+  name: string;
   /** 마지막 회차의 회차 전체 상담원 판단. 판단 전이거나 못 불렀으면 null. */
   level: RiskLevel | null;
   /** 마지막 회차 번호 · 상태. 회차가 없거나 이력을 못 불렀으면 null. */
@@ -60,14 +61,14 @@ export interface HomeDashboardState {
 
 async function loadHomeDashboard(): Promise<HomeDashboardData> {
   const [casePage, summary, taskPage] = await Promise.all([
-    cases.list({ status: "ACTIVE", page: 1, page_size: HOME_CASE_COUNT }),
+    cases.list({ status: "ACTIVE", page: 1, page_size: HOME_CASE_COUNT, with_child_name: true }),
     tasks.summary(),
     tasks.list({ page: 1, page_size: HOME_TASK_COUNT }),
   ]);
   const now = Date.now();
   const homeCases = await Promise.all(
     casePage.items.map(async (item): Promise<HomeCase> => {
-      const base = { id: item.id, alias: item.child_alias, level: null, latest: null };
+      const base = { id: item.id, name: item.child_name?.trim() || item.child_alias, level: null, latest: null };
       try {
         const page = await cases.listSessions(item.id, { page: 1, page_size: 1 });
         const last = page.items[0];

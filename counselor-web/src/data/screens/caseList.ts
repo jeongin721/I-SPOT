@@ -1,8 +1,8 @@
 // 통합 사례 관리(CaseList) 화면 값.
-//  - 이름은 아동 별칭이다(Backend 는 실명을 저장하지 않는다). 나이 대신 출생연도를 보여 준다.
+//  - 이름은 아동 실명(등록된 사례), 없으면 별칭이다(목록을 with_child_name=true 로 부름). 나이 대신 출생연도를 보여 준다.
 //  - 신고접수일 · 위험도는 Backend 에 값이 없어 자리만 두고 '—' · 준비 중으로 둔다(팀 결정 대기).
 //  - '실명 보기' 토글은 10/30 디자인에서 빠졌다(화면에는 이름을 그대로 보이고 인쇄 · 복사 때만 가린다).
-//    Backend 에는 실명이 없어 이름 칸은 계속 별칭이다 — 실명을 저장할지는 팀 결정.
+//  - 검색은 서버가 한다: 제목 · 사례 ID · 별칭(부분)과 실명(공백 무시 정확히 같을 때). 실명 일부로는 찾지 않는다(암호화 저장).
 //  - 이름 · 상세 링크는 사례 ID 를 넘긴다(#/CaseDetail?case=…).
 
 import type { AuthSession } from "../useAuthSession";
@@ -21,7 +21,7 @@ export function caseListValues(input: {
   const rows = list.rows.map((r) => ({
     id: r.caseNumber,
     ini: r.initial,
-    name: r.alias,
+    name: r.name,
     age: r.birthYearLabel,
     date: r.reportDate,
     risk: r.riskLabel,
@@ -58,6 +58,6 @@ export function caseListValues(input: {
     phase,
     errorText: sessionError ? session.error : list.error,
     retry: sessionError ? session.recheck : list.reload,
-    emptyText: search.trim() ? "검색 결과가 없습니다." : "사례가 없습니다.",
+    emptyText: search.trim() ? "검색 결과가 없습니다. 이름은 전체 이름으로만 찾습니다(일부로는 찾지 않음)." : "사례가 없습니다.",
   };
 }

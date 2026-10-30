@@ -30,7 +30,7 @@ class Logic extends DCLogic {
 
 export default function Schedule(props) {
   const session = useAuthSession();
-  const overview = useCaseOverview(session, 'sessions');
+  const overview = useCaseOverview(session, 'sessions', { withNames: true });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, overview });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;

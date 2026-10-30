@@ -26,7 +26,7 @@ class Logic extends DCLogic {
 
 export default function Closure(props) {
   const session = useAuthSession();
-  const overview = useCaseOverview(session, 'counts');
+  const overview = useCaseOverview(session, 'counts', { withNames: true });
   const [search, setSearch] = useAccountSearch(session);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, overview, search, setSearch });

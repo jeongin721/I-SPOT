@@ -3,10 +3,11 @@
 // 종결 검토 등록 · 진행 단계 · 내역 검토 진행률은 Backend 에 없다(specs 대응표 Closure 줄 '팀: 검토 등록 · 상태 · 진행률').
 // 그래서 이 목록은 '종결 검토 대상' 이 아니라 볼 수 있는 사례 목록이다 — 종결(CLOSED) 사례를 '검토 대기' 로 쓰지 않는다
 // (사례 상태 종결은 상담사가 사례를 닫은 것이지 종결 검토를 기다리는 것이 아니다). 진행 단계 · 내역 검토는 준비 중으로 둔다.
-// 이름은 아동 별칭(실명 없음), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다. 등록일은 사례 등록일이다.
+// 이름은 아동 실명(등록된 사례), 없으면 별칭(useCaseOverview withNames), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다. 등록일은 사례 등록일이다.
 // '실명 보기' 토글은 10/30 디자인에서 빠졌다(CaseList 와 같음).
 // 누르면 사례 상세로 간다(전체 상담 내역 검토 화면은 아직 예시 데이터라 그 사례로 보내지 않는다).
-// 검색어는 입력한 계정에 묶는다(useAccountSearch) — 앞 계정이 친 별칭 · 사례 ID 가 다음 계정에 보이지 않게.
+// 검색어는 입력한 계정에 묶는다(useAccountSearch) — 앞 계정이 친 이름 · 사례 ID 가 다음 계정에 보이지 않게.
+// 검색은 받은 목록 안에서 이름 · 별칭 · 사례 ID 의 일부로 찾는다(화면에 이미 보이는 값).
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -49,11 +50,14 @@ export function closureValues(input: ClosureInput) {
   const rows = items
     .filter(
       ({ caseRow }) =>
-        !query || caseRow.alias.toLowerCase().includes(query) || caseRow.caseNumber.toLowerCase().includes(query),
+        !query ||
+        caseRow.name.toLowerCase().includes(query) ||
+        caseRow.alias.toLowerCase().includes(query) ||
+        caseRow.caseNumber.toLowerCase().includes(query),
     )
     .map(({ caseRow, createdDate, sessionTotal }) => ({
       ini: caseRow.initial,
-      name: caseRow.alias,
+      name: caseRow.name,
       age: caseRow.birthYearLabel,
       sub: [caseRow.caseNumber, `사례 ${caseRow.statusLabel}`, overview.wholeOrg ? caseRow.counselorName : ""]
         .filter(Boolean)
