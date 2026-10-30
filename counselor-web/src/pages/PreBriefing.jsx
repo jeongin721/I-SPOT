@@ -15,6 +15,7 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -34,7 +35,9 @@ export default function PreBriefing(props) {
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const theme = useTheme();
   const questions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
+  // 확인할 사항은 4 · 추가 확인 화면과 같은 목록(AI 확인 메모 + 다음 상담 체크리스트, 19절)을 보인다.
+  const checklist = useFollowupChecklist(signals.session?.id ?? null, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, checklist, caseId });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-PreBriefing">
