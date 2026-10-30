@@ -47,7 +47,7 @@ FastAPI  ← 이 저장소
 | `app/adapters/` | **Adapter** | 외부 서비스(STT/AI) 연결. 갈아끼울 수 있게 분리 |
 | `app/core/` | **Core** | 설정, DB 연결, 인증, 오류, 상태 규칙 등 공통 기반 |
 | `alembic/` | **Migration** | DB 테이블 생성/변경 이력 |
-| `tests/` | **Test** | pytest 1385개 |
+| `tests/` | **Test** | pytest 1450개 |
 
 ### 왜 Router 를 얇게 만들었나
 
@@ -275,7 +275,7 @@ DB 컬럼을 바꿨다면 migration 을 잊지 말 것. 안 만들면 CI 가 잡
 **절대 하면 안 되는 것**
 - 상담 원문을 로그에 출력 — 개인정보다. `app/core/logging.py` 참고
 - API Key 를 코드에 적기 — `.env` 만 사용
-- 아동 실명 저장 — `child_alias` 만 쓴다
+- 아동 · 가족 실명을 **평문으로** 저장 — `cases` 에는 `child_alias` 만 쓰고, 실명은 암호화해 `case_personal_infos` 에만 둔다(`app/core/pii_crypto.py`, 2026-10-30 팀 결정)
 - AI 가 학대 여부를 확정하는 필드 만들기
 
 **고친 뒤에는**
@@ -284,7 +284,7 @@ DB 컬럼을 바꿨다면 migration 을 잊지 말 것. 안 만들면 CI 가 잡
 ./scripts/check.sh
 ```
 
-lint, 테스트 1385개, migration 정합성을 한 번에 확인한다.
+lint, 테스트 1450개, migration 정합성을 한 번에 확인한다.
 여기서 통과하면 CI 도 통과한다.
 
 ---

@@ -76,6 +76,9 @@ class ErrorCode(str, Enum):
     LAW_SOURCE_UNAVAILABLE = "LAW_SOURCE_UNAVAILABLE"
     RATE_LIMITED = "RATE_LIMITED"
 
+    # 개인 식별 정보 (API_CONTRACT 4절 '개인 식별 정보', 2026-10-30). 저장한 암호문을 풀 수 없음(키가 설정에 없음 · 값이 바뀜). 500.
+    PERSONAL_INFO_UNAVAILABLE = "PERSONAL_INFO_UNAVAILABLE"
+
     # 기타
     INTERNAL_ERROR = "INTERNAL_ERROR"
 

@@ -36,9 +36,29 @@ TARGET_STATES = [
 ]
 
 # 합성 사례 정보. 실제 인물과 무관하다.
+# 앞 두 사례에는 가상 실명 · 가족 정보(personal_info, API_CONTRACT 4절 '개인 식별 정보')를 넣어 실명 표시 · 가리기 화면을 볼 수 있게 한다.
 DEMO_CASES: List[Dict[str, Any]] = [
-    {"title": "초기 상담", "child_alias": "아동_A001", "child_birth_year": 2015},
-    {"title": "정기 상담", "child_alias": "아동_A002", "child_birth_year": 2013},
+    {
+        "title": "초기 상담",
+        "child_alias": "아동_A001",
+        "child_birth_year": 2015,
+        "personal_info": {
+            "child_name": "한가람",
+            "child_birth_date": "2015-04-12",
+            "target_person": {"name": "한누리", "relation": "부", "birth_date": "1983-09-02"},
+            "interviewee": {"name": "한누리", "relation": "부"},
+            "family_members": [
+                {"name": "한누리", "relation": "부", "age": 43, "living_together": True},
+                {"name": "한바다", "relation": "형제", "age": 14, "living_together": True},
+            ],
+        },
+    },
+    {
+        "title": "정기 상담",
+        "child_alias": "아동_A002",
+        "child_birth_year": 2013,
+        "personal_info": {"child_name": "오솔빛", "child_birth_date": "2013-11-30"},
+    },
     {"title": "정기 상담", "child_alias": "아동_A003", "child_birth_year": 2016},
     {"title": "추가 면담", "child_alias": "아동_A004", "child_birth_year": 2012},
     {"title": "정기 상담", "child_alias": "아동_A005", "child_birth_year": 2014},

@@ -105,6 +105,19 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
    - `openai-whisper`(`I_SPOT_STT_PROVIDER=whisper` 일 때만) · `pyannote`(별도 화자 분리 때만) · `ffmpeg`(기본 꺼진 `I_SPOT_SINGLE_SPEAKER_FALLBACK` 때만)는 넣지 않았습니다. 그 설정을 켜려면 이미지에 더해야 합니다.
    - 전사 한 번에 최대 `STT_TIMEOUT_SECONDS`(기본 600초)까지 기다립니다. 음성 파일은 `/opt/ispot/storage`(컨테이너 `/app/storage`)에 있어 그대로 읽습니다.
 
+## 개인 식별 정보 키 (`PII_ENCRYPTION_KEYS` · `PII_INDEX_KEY`)
+
+아동 실명 · 생년월일 · 가족 정보는 이 두 키로 암호화해 저장합니다(2026-10-30, `backend/README.md` 7절). `backend.env` 가
+`ENV=production` 인데 두 키가 없으면 스크립트가 1/5 전에 멈춥니다(키 없이 Backend 가 뜨지 않으므로). **처음 한 번만** 아래를 합니다.
+
+1. 키 두 개를 만듭니다(각각 따로, 서로 다른 값): `python3 -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
+2. AWS SSM Parameter Store 에 **SecureString** 으로 둡니다(예: `/ispot/backend/PII_ENCRYPTION_KEYS` 값 `k1:<첫 키>`, `/ispot/backend/PII_INDEX_KEY` 값 `<둘째 키>`).
+3. **사본 1부를 AWS 밖 비밀번호 관리자**에 둡니다. 키를 잃으면 저장한 실명을 되살릴 수 없습니다. 키 값은 메신저 · 메일 · 저장소로 주고받지 않습니다.
+4. 서버의 `/opt/ispot/backend.env` 에 두 줄(`PII_ENCRYPTION_KEYS=k1:…`, `PII_INDEX_KEY=…`)을 넣고 스크립트를 다시 돌립니다. 터미널 기록에 남지 않게 편집기로 넣습니다.
+
+- 한 번 저장을 시작한 뒤 키를 바꾸면 옛 값을 풀 수 없습니다. 바꿀 때는 `backend/README.md` 7절의 '키 바꾸기' 순서(새 키를 맨 앞에 넣고 `scripts.reencrypt_personal_info`)를 따릅니다.
+- 개발용 키(`backend/.env.example` 의 값)는 `ENV=production` 에서 거절됩니다.
+
 ## 디스크 · 빌더
 
 2026-10-28 에 빌드가 두 번 `no space left on device` 로 끊긴 뒤 바꾼 것입니다.

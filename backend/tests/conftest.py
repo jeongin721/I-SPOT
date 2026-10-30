@@ -4,6 +4,7 @@
 # app import 전에 환경변수를 설정해 SQLite + 임시 Storage 를 사용한다.
 # TEST_DATABASE_URL 이 있으면 그 DB(PostgreSQL 등)로 돌린다(README 3절).
 
+import base64
 import os
 import shutil
 import struct
@@ -37,6 +38,9 @@ os.environ["DEBUG"] = "false"
 os.environ["DATABASE_URL"] = _test_database_url()
 os.environ["AUDIO_STORAGE_ROOT"] = str(_TMP_ROOT / "audio")
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-key-not-for-production-use-0123456789"
+# 개인 식별 정보 키(32바이트). 저장소의 공개 개발용 키와 달라 ENV=production 설정 시험도 이 키로 뜬다.
+os.environ["PII_ENCRYPTION_KEYS"] = "test1:" + base64.b64encode(b"test-only-pii-encrypt-key-000001").decode()
+os.environ["PII_INDEX_KEY"] = base64.b64encode(b"test-only-pii-index-key-00000001").decode()
 os.environ["STT_PROVIDER"] = "mock"
 os.environ["AI_PROVIDER"] = "mock"
 os.environ["AUDIO_MAX_SIZE_MB"] = "1"

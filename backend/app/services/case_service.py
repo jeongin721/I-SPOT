@@ -16,7 +16,7 @@ from app.models.case import Case
 from app.models.session import ConsultationSession
 from app.models.user import User
 from app.schemas.case import CaseCreateRequest, CaseUpdateRequest
-from app.services import audit_service
+from app.services import audit_service, personal_info_service
 from app.services.access import ensure_case_access
 
 _CASE_NUMBER_MAX_RETRY = 5
@@ -125,6 +125,10 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             detail={"case_number": case.case_number},
         )
 
+        # 실명 · 생년월일 · 가족 정보는 암호화해 따로 둔다(API_CONTRACT 4절 '개인 식별 정보'). 사례와 같은 거래라 하나가 실패하면 둘 다 남지 않는다.
+        if payload.personal_info is not None:
+            personal_info_service.apply_personal_info(db, case, current_user, payload.personal_info)
+
         db.commit()
         db.refresh(case)
 
@@ -160,11 +164,16 @@ def list_cases(
         # 해석이 달라 SQLite 와 PostgreSQL 에서 결과가 갈릴 수 있다.
         escaped = term.replace("/", "//").replace("%", "/%").replace("_", "/_")
         pattern = f"%{escaped}%"
-        conditions.append(
+        matches = (
             Case.title.ilike(pattern, escape="/")
             | Case.case_number.ilike(pattern, escape="/")
             | Case.child_alias.ilike(pattern, escape="/")
         )
+
+        # 아동 실명은 암호화돼 있어 부분 검색을 할 수 없다. 이름과 정확히 같은(공백 무시) 검색어만 찾는다(API_CONTRACT 4절 '개인 식별 정보').
+        by_name = personal_info_service.name_search_condition(term)
+
+        conditions.append(matches if by_name is None else matches | by_name)
 
     total = db.scalar(
         select(func.count()).select_from(Case).where(*conditions)

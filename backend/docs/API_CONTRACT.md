@@ -443,9 +443,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
+  - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
+  열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
+  빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
 - 상담사: 담당 Case 만 반환
 - 관리자: 전체 반환
 
@@ -470,7 +474,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
         "counselor_name": "이서연",
         "created_at": "...",
         "updated_at": "...",
-        "last_session_at": "2026-09-01T14:30:00Z"
+        "last_session_at": "2026-09-01T14:30:00Z",
+        "child_name": null
       }
     ],
     "meta": { "total": 1, "page": 1, "page_size": 20, "total_pages": 1 }
@@ -478,8 +483,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
 }
 ```
 
-> 개인정보 최소화 원칙에 따라 아동 실명 필드는 없다. `child_alias` 를 사용한다.
-> 같은 이유로 **보호자 실명도 저장하지 않는다.** 관계 유형만 기록한다.
+> 개인정보 최소화 원칙에 따라 **사례 응답에는 아동 실명 필드가 없다.** `child_alias` 를 사용한다(예외: 목록 `with_child_name=true` 의 `child_name`).
+> 실명 · 생년월일 · 보호자 · 가족 이름은 2026-10-30 팀 결정으로 **암호화해 따로 저장**하고 아래 '개인 식별 정보' 창구로만 주고받는다.
 
 `last_session_at` 은 Case List 화면(`03_UI_UX.md` S02)의 **최근 상담일**이다.
 목록 조회에서 함께 계산되므로 Case 별로 Session 을 다시 호출할 필요가 없다.
@@ -525,11 +530,13 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   "intake_family_situations": [],
   "notes": null,
   "counselor_id": null,
-  "case_number": null
+  "case_number": null,
+  "personal_info": null
 }
 ```
 
 - `title`, `child_alias` 필수
+- `personal_info` 선택: 아래 '개인 식별 정보' 의 `PUT` 본문과 같은 모양. 사례와 **한 거래로** 암호화해 저장한다(검증 실패면 사례도 만들지 않는다). 응답에는 싣지 않는다
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
@@ -618,7 +625,50 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
-관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다.
+관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다. 개인 식별 정보(아래)도 함께 삭제된다.
+
+### 개인 식별 정보 — GET · PUT /api/v1/cases/{case_id}/personal-info
+
+서식 4 의 **아동 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 표 · 건강정도**(2026-10-30 추가, 팀 결정 —
+`specs/I-SPOT/case-personal-info-encryption.md`). 서버는 칸마다 **AES-256-GCM 으로 암호화해** 저장하고(평문 칸 없음),
+권한을 통과한 요청에만 풀어서 준다. 키는 DB 밖(설정 `PII_ENCRYPTION_KEYS` · `PII_INDEX_KEY`)에 있다.
+
+```json
+{
+  "data": {
+    "registered": true,
+    "child_name": "한가람",
+    "child_birth_date": "2015-04-12",
+    "target_person": { "name": "한누리", "relation": "부", "birth_date": "1983-09-02" },
+    "interviewee": { "name": "한누리", "relation": "부" },
+    "family_members": [
+      { "name": "한누리", "relation": "부", "age": 43, "religion": null, "education": null, "job": null, "living_together": true }
+    ],
+    "health": {
+      "subject_name": "한바다",
+      "items": [{ "kind": "정신과 진단", "present": true, "detail": "…" }]
+    },
+    "updated_at": "…"
+  }
+}
+```
+
+- **GET**: 풀어서 준다. 저장 전이면 `registered: false`, 모든 칸 `null` · `family_members: []`. 부를 때마다 열람 기록
+  `CASE_PERSONAL_INFO_VIEWED`(detail 은 채워진 칸 이름만)를 남긴다
+- **PUT**: 본문(위 `data` 에서 `registered` · `updated_at` 을 뺀 모양)으로 **통째로 바꾼다** — 빠진 칸 · `null` 은 지운다.
+  바뀐 칸이 있으면 `CASE_PERSONAL_INFO_UPDATED`(detail 은 `changed_fields` 칸 이름만). 응답은 GET 과 같다
+  - `child_birth_date` 가 있으면 사례의 `child_birth_year` 를 늘 그 해로 맞춘다(생년월일이 우선 — 출생연도만 `PATCH` 로 바꿨어도 같은 날짜를 다시 저장하면 돌아온다)
+  - 저장마다 모든 칸(빈 칸 · 이름 검색 색인 · 생년월일의 출생연도 포함)을 다시 쓴다. 두 저장이 겹치면 나중에 커밋한 본문이 통째로 남는다(칸별로 섞이지 않음).
+    같은 사례의 저장은 읽는 행을 잠가 차례로 돈다(PostgreSQL) — 수정 기록의 `changed_fields` 는 앞 저장이 남긴 값과 견준 칸이다
+  - 저장 전 사례에 처음 저장이 겹쳐 다른 요청이 먼저 저장했으면 `409 DUPLICATE_RESOURCE`(새로고침 후 다시 저장)
+- 값 규칙(어기면 `422 VALIDATION_ERROR`, 문구에 보낸 값을 되풀이하지 않는다)
+  - 이름 칸(`child_name` · `name` · `subject_name`)은 앞뒤 공백을 떼고 1~50자. 빈 이름은 `null` 로 보낸다
+  - 생년월일은 `YYYY-MM-DD`, 1900-01-01 ~ 오늘(한국 날짜)
+  - `relation` · `religion` · `education` 30자, `job` 50자, `age` 0~150, `family_members` 30줄 이하(`name` 필수)
+  - `health.items[].kind` 는 `질병` · `장애` · `병원치료` · `정신과 진단` · `타기관 상담` 가운데 하나, 같은 항목은 한 번만. `detail` 200자
+- 권한: `GET /api/v1/cases/{case_id}` 와 같다 — 상담사는 담당 사례만(`403 FORBIDDEN`), 관리자는 전체. 없는 사례 `404 CASE_NOT_FOUND`
+- 저장된 값을 풀 수 없으면(키가 설정에 없음 · 값이 바뀜) `500 PERSONAL_INFO_UNAVAILABLE`. 목록 `with_child_name` 은 그 줄만 `null` 로 둔다
+- 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name` 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
 
 ---
 
@@ -1749,6 +1799,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
 | `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
+| `PERSONAL_INFO_UNAVAILABLE` | 500 | 저장한 개인 식별 정보를 풀 수 없음(키가 설정에 없음 · 값이 바뀜, 4절 '개인 식별 정보'). 서버 로그에 사례 ID · 칸 · 키 이름만 남는다 |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
 `INVALID_SESSION_STATE` 의 `message` 는 한국어 상태 이름으로 쓰고 상태 코드를 넣지 않는다. 화면에는 그대로 보여 주면 된다.

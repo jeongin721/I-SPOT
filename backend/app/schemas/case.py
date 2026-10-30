@@ -1,5 +1,7 @@
 # Case Schema.
-# 개인정보 최소 저장 원칙에 따라 아동 실명 필드를 두지 않는다.
+# 개인정보 최소 저장 원칙에 따라 일반 사례 응답에는 아동 실명 필드를 두지 않는다.
+# 실명 · 생년월일 · 가족 정보는 암호화해 따로 두고(case_personal_info.py) 전용 창구로만 오간다.
+# 예외: 새 사례 등록의 personal_info(요청), 목록 with_child_name=true 의 child_name(CaseListItemResponse).
 
 import uuid
 from datetime import datetime
@@ -21,6 +23,7 @@ from app.core.intake import (
     normalize_intake,
 )
 from app.schemas.auth import UserResponse
+from app.schemas.case_personal_info import PersonalInfoRequest
 from app.schemas.common import RequestModel
 
 # 초기면접 고르기 항목 한 개 · 한 칸에 보낼 수 있는 개수. 서식 항목보다 넉넉하게 두고 실제 값은 normalize_intake 가 거른다.
@@ -62,6 +65,10 @@ class GuardianFields(RequestModel):
 
 
 class CaseCreateRequest(GuardianFields):
+    # personal_info(실명 · 가족)를 실을 수 있어 검증 오류 문구에 입력값을 넣지 않는다 — 하위 모델만 가리면 부모 오류에 값이
+    # 남는다(Codex #127 재검증 R4). 422 응답은 원래 값을 빼고 보낸다(main.py).
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     title: str = Field(..., min_length=1, max_length=200)
     child_alias: str = Field(..., min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
@@ -81,6 +88,9 @@ class CaseCreateRequest(GuardianFields):
 
     # 미지정 시 Backend 가 C-YYYY-NNNN 형식으로 생성한다.
     case_number: Optional[str] = Field(default=None, min_length=1, max_length=50)
+
+    # 새 사례 등록 화면의 실명 · 생년월일 · 가족 정보(API_CONTRACT 4절 '개인 식별 정보'). 사례와 한 거래로 암호화해 저장한다. 응답에는 싣지 않는다.
+    personal_info: Optional[PersonalInfoRequest] = None
 
     @field_validator("intake_child_traits", "intake_family_situations")
     @classmethod
@@ -179,6 +189,12 @@ class CaseResponse(BaseModel):
     @classmethod
     def _null_as_empty(cls, value):
         return [] if value is None else value
+
+
+class CaseListItemResponse(CaseResponse):
+    # 아동 실명(API_CONTRACT 4절 '개인 식별 정보'). GET /cases?with_child_name=true 일 때만 채운다(그때 열람 기록 1줄). 없거나 안 물으면 null.
+    # repr · str 에는 넣지 않는다(디버그 로그에 객체를 찍어도 실명이 새지 않게, Codex #127 R4).
+    child_name: Optional[str] = Field(default=None, repr=False)
 
 
 class CaseDetailResponse(CaseResponse):
