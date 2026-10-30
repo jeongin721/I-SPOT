@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>I-SPOT 앱 · 설정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2F2F0;overflow-x:hidden}
+body:has(.app.dark){background:#22211E}
+*{box-sizing:border-box}
+.app{--bg:#F2F2F0;--card:#FFFFFF;--line:#E7E4DC;--fg:#2B2A26;--mut:#7A776F;--soft:#F7F6F2;--sand:#F1EADA;--gold:#C2A36B;--ink:#2B2A26;--onink:#EADBB5;--red:#A33B2E;--redsoft:#F7E4DF;
+  min-height:100vh;min-height:100dvh;width:100%;max-width:600px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans KR',sans-serif;font-size:clamp(14px,4.1vw,15px);line-height:1.55;position:relative}
+.app.dark{--bg:#22211E;--card:#2C2B27;--line:#45423B;--fg:#ECE8DF;--mut:#A8A296;--soft:#33312C;--sand:#3F3729;--ink:#EADBB5;--onink:#2B2A26;--red:#F0907F;--redsoft:#4A2B26}
+.app a{color:inherit;text-decoration:none}
+.app a.btn-p{color:var(--onink)}
+.app a.fail{color:var(--red)}
+.ahd{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:12px 16px 10px;padding-top:max(12px,env(safe-area-inset-top,0px));background:var(--bg)}
+.ahd h1{margin:0;font-size:clamp(18px,5.6vw,21px);font-weight:700;letter-spacing:-.01em}
+.ahd .sub{font-size:12.5px;color:var(--mut)}
+.ibtn{position:relative;width:38px;height:38px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);cursor:pointer;padding:0}
+.badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.amain{flex:1;padding:4px 16px 24px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.sec-t{margin:4px 0 0;font-size:14px;font-weight:700;color:var(--mut)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.btn-p{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.btn-sm{min-height:36px;padding:0 12px;font-size:13.5px;border-radius:8px}
+.btn-red{color:var(--red)}
+.btn-block{width:100%}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:700;background:var(--soft);color:var(--mut);white-space:nowrap}
+.chip.red{background:var(--redsoft);color:var(--red)}
+.chip.gold{background:var(--sand);color:var(--fg)}
+.chip.ai{gap:4px;background:#F3EAD3;color:#7A5F28}
+.app.dark .chip.ai{background:#3F3729;color:#EADBB5}
+.chip.ai::before{content:"";width:11px;height:11px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat}
+.note{font-size:12.5px;color:var(--mut)}
+.inp{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:15px;background:var(--card);color:var(--fg)}
+textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
+.fl{display:flex;flex-direction:column;gap:6px}
+.lb{font-size:13px;font-weight:700}
+.seg{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}
+.seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;font:inherit;font-size:14px;color:var(--mut);cursor:pointer}
+.seg button.on{background:var(--card);color:var(--fg);font-weight:700;box-shadow:0 1px 3px rgba(43,42,38,.14)}
+.fail{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--redsoft);color:var(--red);font-size:14px;font-weight:700}
+.fail span{flex:1}
+.ibtn.on{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.ahd .tl{flex:1;min-width:0}
+.ahd .tl h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amain{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.ov{position:fixed;inset:0;z-index:50;background:rgba(43,42,38,.42);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:600px;max-height:86vh;max-height:86dvh;overflow-y:auto;background:var(--card);color:var(--fg);border-radius:16px 16px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line)}
+.sh-hd{display:flex;align-items:center;gap:10px}
+.sh-hd b{flex:1;font-size:18px}
+.nt{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;border:1px solid var(--line)}
+.nt.red{border-color:var(--red)}
+.nt b{font-size:14.5px}
+.row-k{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14.5px}
+.row-k:first-child{border-top:0}
+.row-k span:first-child{color:var(--mut);font-size:13px}
+
+.prof{display:flex;align-items:center;gap:14px;padding:16px}
+.av{width:52px;height:52px;border-radius:50%;background:var(--ink);color:var(--onink);display:inline-flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex:none}
+.grp{display:flex;flex-direction:column}
+.sr{display:flex;align-items:center;gap:12px;padding:14px;border-top:1px solid var(--line);font-size:15px}
+.sr:first-child{border-top:0}
+.sr .st{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tg{position:relative;width:50px;height:30px;flex:none;border-radius:999px;border:0;background:var(--line);cursor:pointer;padding:0;transition:background .15s}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 3px rgba(43,42,38,.3);transition:transform .15s}
+.tg.on{background:var(--gold)}
+.tg.on::after{transform:translateX(20px)}
+@media (prefers-reduced-motion: reduce){.tg,.tg::after{transition:none}}
+</style>
+</helmet>
+<div class="{{ rootCls }}">
+<header class="ahd"><a class="{{ homeCls }}" href="AppHome.dc.html" aria-label="홈으로" aria-current="{{ homeCur }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11L12 4l8.5 7"></path><path d="M6 9.5V20h4.5v-5.5h3V20H18V9.5"></path></svg></a><div class="tl"><div class="sub">계정 · 알림 · 앱</div><h1>설정</h1></div><button type="button" class="ibtn" aria-label="알림 {{ ntCount }}건" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHas }}" hint-placeholder-val="{{ true }}"><span class="badge">{{ ntCount }}</span></sc-if></button><a class="{{ setCls }}" href="AppSettings.dc.html" aria-label="설정" aria-current="{{ setCur }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></a></header>
+<main class="amain">
+<section class="card prof" aria-label="내 정보"><span class="av">이</span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><b style="font-size: 17px;">이서연 상담원</b><span class="note">○○아동보호전문기관</span><span class="note" style="overflow-wrap: anywhere;">lee.seoyeon@ispot-center.kr</span></span></section>
+<p class="sec-t">화면</p>
+<section class="card grp"><div class="sr"><span class="st"><b style="font-weight: 500;">어두운 화면</b><span class="note">웹과 같은 설정을 써요</span></span><button type="button" class="{{ darkCls }}" role="switch" aria-checked="{{ darkA }}" aria-label="어두운 화면" onClick="{{ toggleDark }}"></button></div></section>
+<p class="sec-t">알림</p>
+<section class="card grp"><sc-for list="{{ tgs }}" as="t" hint-placeholder-count="3"><div class="sr"><span class="st"><b style="font-weight: 500;">{{ t.label }}</b><span class="note">{{ t.desc }}</span></span><button type="button" class="{{ t.cls }}" role="switch" aria-checked="{{ t.on }}" aria-label="{{ t.label }}" onClick="{{ t.toggle }}"></button></div></sc-for></section>
+<p class="sec-t">업로드</p>
+<section class="card grp"><div class="sr"><span class="st"><b style="font-weight: 500;">Wi-Fi에서만 올리기</b><span class="note">모바일 데이터를 아껴요. 녹음은 휴대폰에 먼저 저장돼요.</span></span><button type="button" class="{{ wifiCls }}" role="switch" aria-checked="{{ wifiA }}" aria-label="Wi-Fi에서만 올리기" onClick="{{ toggleWifi }}"></button></div></section>
+<p class="sec-t">앱 정보</p>
+<section class="card grp"><div class="sr"><span class="st">버전</span><span class="note">1.0.0</span></div><div class="sr"><span class="st">계정 정보 변경</span><span class="note">웹 설정에서 할 수 있어요</span></div></section>
+<a class="btn btn-block btn-red" href="Login.dc.html">로그아웃</a>
+</main>
+<sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ ntClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="알림" onClick="{{ stop }}">
+<span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>알림</b><button type="button" class="btn btn-sm" onClick="{{ ntClose }}">닫기</button></div>
+<sc-for list="{{ notes }}" as="n" hint-placeholder-count="2"><div class="nt {{ n.red }}"><b>{{ n.title }}</b><span class="note">{{ n.sub }}</span><sc-if value="{{ n.desc }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13.5px;">{{ n.desc }}</span></sc-if>
+<sc-if value="{{ n.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-p" style="align-self: flex-start;" onClick="{{ n.go }}">{{ n.act }}</button></sc-if>
+<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}">{{ n.linkLabel }}</a></sc-if></div></sc-for>
+</section></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":360,"height":800}}'>
+class Component extends DCLogic {
+
+stGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
+stSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
+themeRead() { let v = null; try { v = window.localStorage.getItem('ispot-theme'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-theme'); } catch (e) {} } if (!v) { try { v = window.top.__ispotTheme; } catch (e) {} } if (!v) v = window.__ispotTheme; return v === 'dark'; }
+qRead() { let a = null; try { a = JSON.parse(this.stGet('ispot-app-q') || 'null'); } catch (e) {} if (!Array.isArray(a)) { a = [
+  { id: 'q1', name: '서윤_8회차_방문상담.m4a', kind: '녹음', who: '이서윤 · 8회차', size: '23.4MB', status: 'fail', err: '네트워크 연결이 끊겨 올리지 못했어요', t: '오늘 15:42' },
+  { id: 'q2', name: '가정방문_사진_01.jpg', kind: '사진', who: '김도현', size: '2.1MB', status: 'done', t: '오늘 11:05' },
+  { id: 'q3', name: '학교_상담확인서.pdf', kind: '문서', who: '박지호', size: '480KB', status: 'done', t: '어제 17:20' }]; this.stSet('ispot-app-q', JSON.stringify(a)); } return a; }
+qWrite(a) { this.stSet('ispot-app-q', JSON.stringify(a)); this.setState({ __q: Date.now() }); }
+qSet(id, patch) { this.qWrite(this.qRead().map((x) => (x.id === id ? { ...x, ...patch } : x))); }
+qRetry(id) { this.qSet(id, { status: 'run', err: '' }); setTimeout(() => { try { this.qSet(id, { status: 'done', t: '방금' }); } catch (e) {} }, 1800); }
+qAdd(item) { const id = 'q' + Date.now().toString(36); this.qWrite([{ id, status: 'run', t: '방금', ...item }, ...this.qRead()]); setTimeout(() => { try { this.qSet(id, { status: 'done' }); } catch (e) {} }, 2000); return id; }
+kids() { return ['서윤', '지호', '도현', '예린', '하은', '서준', '시우', '하린', '유나', '민준']; }
+componentDidMount() {
+  this._raw = this.stGet('ispot-app-q') + '|' + this.themeRead();
+  this._t = setInterval(() => { const r = this.stGet('ispot-app-q') + '|' + this.themeRead(); if (r !== this._raw) { this._raw = r; this.setState({ __t: Date.now() }); } }, 600);
+  if (this.mountExtra) this.mountExtra();
+}
+componentWillUnmount() { clearInterval(this._t); clearInterval(this._recT); }
+commonVals(cur) {
+  const q = this.qRead(); const fails = q.filter((x) => x.status === 'fail'); const st = this.state || {};
+  const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '', linkLabel: '' }))
+    .concat([{ red: '', title: '상담 전 브리핑이 준비됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html', linkLabel: '브리핑 보기' },
+      { red: '', title: '오늘 남은 상담 2건', sub: '14:00 박지호 · 16:00 이서윤', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppSchedule.dc.html', linkLabel: '일정 보기' }]);
+  return {
+    rootCls: this.themeRead() ? 'app dark' : 'app',
+    homeCls: cur === 'home' ? 'ibtn on' : 'ibtn', setCls: cur === 'set' ? 'ibtn on' : 'ibtn', homeCur: cur === 'home' ? 'page' : 'false', setCur: cur === 'set' ? 'page' : 'false',
+    ntCount: String(notes.length), ntHas: notes.length > 0, ntOpen: !!st.__nt, ntToggle: () => this.setState({ __nt: !st.__nt }), ntClose: () => this.setState({ __nt: false }), notes,
+    failN: fails.length, hasFail: fails.length > 0, failText: '업로드 실패 ' + fails.length + '건 · 다시 올려 주세요'
+  };
+}
+
+
+constructor(props) { super(props); this.state = {}; }
+renderVals() {
+  const s = this.state; const c = this.commonVals('set'); let p = {}; try { p = JSON.parse(this.stGet('ispot-app-set') || '{}') || {}; } catch (e) {}
+  const get = (k, d) => (p[k] === undefined ? d : p[k]); const put = (k) => { const o = { ...p, [k]: !get(k, true) }; this.stSet('ispot-app-set', JSON.stringify(o)); this.setState({ __s: Date.now() }); };
+  const dark = this.themeRead(); const wifi = get('wifi', false);
+  const T = [['push', '알림 받기', '브리핑 준비 · 일정 · 공지사항'], ['fail', '업로드 실패 알림', '실패하면 바로 알려 드려요'], ['brief', '상담 30분 전 알림', '상담 전 브리핑을 먼저 보여 드려요']];
+  return Object.assign(c, { stop: (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
+    darkCls: dark ? 'tg on' : 'tg', darkA: dark ? 'true' : 'false',
+    toggleDark: () => { const v = this.themeRead() ? 'light' : 'dark'; try { window.localStorage.setItem('ispot-theme', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-theme', v); } catch (e) {} try { window.top.__ispotTheme = v; } catch (e) {} window.__ispotTheme = v; this.setState({ __d: Date.now() }); },
+    tgs: T.map(([k, label, desc]) => ({ label, desc, on: get(k, true) ? 'true' : 'false', cls: get(k, true) ? 'tg on' : 'tg', toggle: () => put(k) })),
+    wifiCls: wifi ? 'tg on' : 'tg', wifiA: wifi ? 'true' : 'false', toggleWifi: () => { const o = { ...p, wifi: !wifi }; this.stSet('ispot-app-set', JSON.stringify(o)); this.setState({ __s: Date.now() }); } });
+}
+
+}
+</script>
+</body>
+</html>

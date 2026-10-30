@@ -216,6 +216,10 @@ h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;fo
 .thm-root.dark .flow span.now{background:#393731 !important;color:#ECE8DF !important}
 .thm-root.dark .aibox{border:1px dashed #4E4B44 !important;background:#33312C !important}
 .thm-root.dark .qcard{border:1px solid #45423B !important;background:#2C2B27 !important}
+.del-x{flex:none;width:28px;height:28px;margin-top:1px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:#7A776F;cursor:pointer;padding:0}
+.del-x:hover{background:#F2EFE8;color:#A33B2E}
+.thm-root.dark .del-x{color:#A8A296 !important}
+.thm-root.dark .del-x:hover{background:#3A3832 !important;color:#F0907F !important}
 .thm-root.dark .opt{background:#2C2B27 !important;border:1px solid #4E4B44 !important;color:#BDB7AA !important}
 .thm-root.dark .edit-in{border:1px solid #4E4B44 !important;background:#2C2B27 !important;color:#ECE8DF !important}
 .thm-root.dark .c-sel{background:#3F3729 !important;color:#ECE8DF !important;border:1px solid #D6D0C4 !important}
@@ -516,6 +520,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <span class="note">근거 · {{ c.why }}</span>
 </div>
 <sc-if value="{{ c.edited }}" hint-placeholder-val="{{ false }}"><span class="chip c-sand">상담사 수정</span></sc-if>
+<button type="button" class="del-x" aria-label="확인 사항 삭제" title="삭제" onClick="{{ c.del }}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
 </div>
 </sc-for>
 <sc-for list="{{ nNewRows }}" as="r" hint-placeholder-count="0">
@@ -677,10 +682,12 @@ renderValsBase() {
   ].concat(s.extraNotes.map((t) => ({ t, why: '상담사 직접 추가' })));
   const nText = (i) => (s.ne[i] !== undefined ? s.ne[i] : base[i].t);
   const nDraftAll = () => { const d = {}; base.forEach((b, i) => { d[i] = nText(i); }); return d; };
-  const checks = base.map((b, i) => ({ why: b.why, text: nText(i), edited: s.ne[i] !== undefined, on: !!s.on[i],
+  const nDel = s.nDel || {};
+  const checks = base.map((b, i) => ({ i, b })).filter((x) => !nDel[x.i]).map(({ b, i }) => ({ why: b.why, text: nText(i), edited: s.ne[i] !== undefined, on: !!s.on[i],
     isEdit: s.nEditing, notEdit: !s.nEditing, draft: s.nDraft[i] !== undefined ? s.nDraft[i] : '',
     setDraft: (e) => { const v = e.target.value; this.setState({ nDraft: { ...this.state.nDraft, [i]: v } }); },
-    toggle: () => this.setState({ on: { ...this.state.on, [i]: !this.state.on[i] } }) }));
+    toggle: () => this.setState({ on: { ...this.state.on, [i]: !this.state.on[i] } }),
+    del: () => this.setState({ nDel: { ...(this.state.nDel || {}), [i]: true } }) }));
   const nNewRows = s.nNew.map((t, j) => ({ draft: t, setDraft: (e) => { const v = e.target.value; const n = this.state.nNew.slice(); n[j] = v; this.setState({ nNew: n }); } }));
   const startN = () => this.setState({ nEditing: true, nDraft: nDraftAll(), nNew: [] });
   const addN = () => { const st = this.state; this.setState({ nEditing: true, nDraft: st.nEditing ? st.nDraft : nDraftAll(), nNew: (st.nEditing ? st.nNew : []).concat(['']) }); };

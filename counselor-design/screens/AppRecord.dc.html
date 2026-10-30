@@ -11,20 +11,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap" rel="stylesheet">
 <style>
-body{margin:0;background:#F2F2F0}
+body{margin:0;background:#F2F2F0;overflow-x:hidden}
+body:has(.app.dark){background:#22211E}
 *{box-sizing:border-box}
 .app{--bg:#F2F2F0;--card:#FFFFFF;--line:#E7E4DC;--fg:#2B2A26;--mut:#7A776F;--soft:#F7F6F2;--sand:#F1EADA;--gold:#C2A36B;--ink:#2B2A26;--onink:#EADBB5;--red:#A33B2E;--redsoft:#F7E4DF;
-  min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans KR',sans-serif;font-size:15px;line-height:1.55;position:relative}
+  min-height:100vh;min-height:100dvh;width:100%;max-width:600px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans KR',sans-serif;font-size:clamp(14px,4.1vw,15px);line-height:1.55;position:relative}
 .app.dark{--bg:#22211E;--card:#2C2B27;--line:#45423B;--fg:#ECE8DF;--mut:#A8A296;--soft:#33312C;--sand:#3F3729;--ink:#EADBB5;--onink:#2B2A26;--red:#F0907F;--redsoft:#4A2B26}
 .app a{color:inherit;text-decoration:none}
 .app a.btn-p{color:var(--onink)}
 .app a.fail{color:var(--red)}
-.ahd{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:14px 16px 12px;background:var(--bg)}
-.ahd h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.ahd{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:12px 16px 10px;padding-top:max(12px,env(safe-area-inset-top,0px));background:var(--bg)}
+.ahd h1{margin:0;font-size:clamp(18px,5.6vw,21px);font-weight:700;letter-spacing:-.01em}
 .ahd .sub{font-size:12.5px;color:var(--mut)}
-.ibtn{position:relative;width:40px;height:40px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);cursor:pointer;padding:0}
+.ibtn{position:relative;width:38px;height:38px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);cursor:pointer;padding:0}
 .badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
-.amain{flex:1;padding:4px 16px 24px;display:flex;flex-direction:column;gap:14px}
+.amain{flex:1;padding:4px 16px 24px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
 .sec-t{margin:4px 0 0;font-size:14px;font-weight:700;color:var(--mut)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap}
@@ -35,6 +36,9 @@ body{margin:0;background:#F2F2F0}
 .chip{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:700;background:var(--soft);color:var(--mut);white-space:nowrap}
 .chip.red{background:var(--redsoft);color:var(--red)}
 .chip.gold{background:var(--sand);color:var(--fg)}
+.chip.ai{gap:4px;background:#F3EAD3;color:#7A5F28}
+.app.dark .chip.ai{background:#3F3729;color:#EADBB5}
+.chip.ai::before{content:"";width:11px;height:11px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat}
 .note{font-size:12.5px;color:var(--mut)}
 .inp{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:15px;background:var(--card);color:var(--fg)}
 textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
@@ -45,12 +49,12 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .seg button.on{background:var(--card);color:var(--fg);font-weight:700;box-shadow:0 1px 3px rgba(43,42,38,.14)}
 .fail{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--redsoft);color:var(--red);font-size:14px;font-weight:700}
 .fail span{flex:1}
-.tabs{position:sticky;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(8px + env(safe-area-inset-bottom,0px))}
-.tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border-radius:10px;font-size:12px;font-weight:500;color:var(--mut)}
-.tab.on{color:var(--fg);font-weight:700}
-.tab.on svg{color:var(--gold)}
-.ov{position:fixed;inset:0;z-index:50;background:rgba(43,42,38,.42);display:flex;align-items:flex-end}
-.sheet{width:100%;max-height:86vh;overflow-y:auto;background:var(--card);color:var(--fg);border-radius:16px 16px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.ibtn.on{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.ahd .tl{flex:1;min-width:0}
+.ahd .tl h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amain{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.ov{position:fixed;inset:0;z-index:50;background:rgba(43,42,38,.42);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:600px;max-height:86vh;max-height:86dvh;overflow-y:auto;background:var(--card);color:var(--fg);border-radius:16px 16px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
 .grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line)}
 .sh-hd{display:flex;align-items:center;gap:10px}
 .sh-hd b{flex:1;font-size:18px}
@@ -66,8 +70,8 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .rdot{width:10px;height:10px;border-radius:50%;background:var(--mut)}
 .rdot.live{background:#C0392B;animation:rp 1s infinite}
 @keyframes rp{50%{opacity:.25}}
-.rtime{font-size:52px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:.02em}
-.rbig{width:96px;height:96px;border-radius:50%;border:6px solid var(--soft);background:#C0392B;color:#FFFFFF;font:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(192,57,43,.35)}
+.rtime{font-size:clamp(40px,13vw,52px);font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.rbig{width:clamp(80px,24vw,96px);height:clamp(80px,24vw,96px);border-radius:50%;border:6px solid var(--soft);background:#C0392B;color:#FFFFFF;font:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(192,57,43,.35)}
 .rbig.stop{background:var(--ink);color:var(--onink);box-shadow:none}
 .con{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px;text-align:left;cursor:pointer}
 .con input{width:20px;height:20px;accent-color:#2B2A26;flex:none}
@@ -79,7 +83,7 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 </style>
 </helmet>
 <div class="{{ rootCls }}">
-<header class="ahd"><div style="flex: 1;"><div class="sub">현장 상담 녹음</div><h1>녹음</h1></div><button type="button" class="ibtn" aria-label="알림 {{ ntCount }}건" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHas }}" hint-placeholder-val="{{ true }}"><span class="badge">{{ ntCount }}</span></sc-if></button></header>
+<header class="ahd"><a class="{{ homeCls }}" href="AppHome.dc.html" aria-label="홈으로" aria-current="{{ homeCur }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11L12 4l8.5 7"></path><path d="M6 9.5V20h4.5v-5.5h3V20H18V9.5"></path></svg></a><div class="tl"><div class="sub">현장 상담 녹음</div><h1>녹음</h1></div><button type="button" class="ibtn" aria-label="알림 {{ ntCount }}건" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHas }}" hint-placeholder-val="{{ true }}"><span class="badge">{{ ntCount }}</span></sc-if></button><a class="{{ setCls }}" href="AppSettings.dc.html" aria-label="설정" aria-current="{{ setCur }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></a></header>
 <main class="amain">
 <sc-if value="{{ hasFail }}" hint-placeholder-val="{{ false }}"><a class="fail" href="AppUpload.dc.html"><span>{{ failText }}</span>보기 ›</a></sc-if>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -106,15 +110,15 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 </section>
 <p class="note" style="margin: 0;">이 시안은 녹음 흐름을 보여 드려요. 실제 앱에서는 휴대폰 마이크로 녹음하고, 연결이 끊기면 다시 연결될 때 자동으로 다시 올려요.</p>
 </main>
-<nav class="tabs" aria-label="앱 메뉴"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a class="{{ t.cls }}" href="{{ t.href }}" aria-current="{{ t.cur }}"><sc-if value="{{ t.isRec }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></sc-if><sc-if value="{{ t.isUp }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg></sc-if><sc-if value="{{ t.isCal }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></sc-if><sc-if value="{{ t.isMemo }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"></path><path d="M9 11h6M9 15h6"></path></svg></sc-if><span>{{ t.label }}</span></a></sc-for></nav><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ ntClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="알림" onClick="{{ stop }}">
+<sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ ntClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="알림" onClick="{{ stop }}">
 <span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>알림</b><button type="button" class="btn btn-sm" onClick="{{ ntClose }}">닫기</button></div>
 <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2"><div class="nt {{ n.red }}"><b>{{ n.title }}</b><span class="note">{{ n.sub }}</span><sc-if value="{{ n.desc }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13.5px;">{{ n.desc }}</span></sc-if>
 <sc-if value="{{ n.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-p" style="align-self: flex-start;" onClick="{{ n.go }}">{{ n.act }}</button></sc-if>
-<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}">브리핑 보기</a></sc-if></div></sc-for>
+<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}">{{ n.linkLabel }}</a></sc-if></div></sc-for>
 </section></div></sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":360,"height":800}}'>
 class Component extends DCLogic {
 
 stGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem(k); } catch (e) {} } if (!v) { try { v = (window.top.__ispotSt || {})[k]; } catch (e) {} } if (!v) v = (window.__ispotSt || {})[k]; return v || ''; }
@@ -137,12 +141,12 @@ componentDidMount() {
 componentWillUnmount() { clearInterval(this._t); clearInterval(this._recT); }
 commonVals(cur) {
   const q = this.qRead(); const fails = q.filter((x) => x.status === 'fail'); const st = this.state || {};
-  const T = [['rec', '녹음', 'AppRecord.dc.html'], ['up', '업로드', 'AppUpload.dc.html'], ['cal', '일정', 'AppSchedule.dc.html'], ['memo', '메모', 'AppMemo.dc.html']];
-  const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '' }))
-    .concat([{ red: '', title: '상담 전 브리핑이 준비됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html' }]);
+  const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '', linkLabel: '' }))
+    .concat([{ red: '', title: '상담 전 브리핑이 준비됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html', linkLabel: '브리핑 보기' },
+      { red: '', title: '오늘 남은 상담 2건', sub: '14:00 박지호 · 16:00 이서윤', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppSchedule.dc.html', linkLabel: '일정 보기' }]);
   return {
     rootCls: this.themeRead() ? 'app dark' : 'app',
-    tabs: T.map(([k, label, href]) => ({ label, href, cls: k === cur ? 'tab on' : 'tab', cur: k === cur ? 'page' : 'false', isRec: k === 'rec', isUp: k === 'up', isCal: k === 'cal', isMemo: k === 'memo' })),
+    homeCls: cur === 'home' ? 'ibtn on' : 'ibtn', setCls: cur === 'set' ? 'ibtn on' : 'ibtn', homeCur: cur === 'home' ? 'page' : 'false', setCur: cur === 'set' ? 'page' : 'false',
     ntCount: String(notes.length), ntHas: notes.length > 0, ntOpen: !!st.__nt, ntToggle: () => this.setState({ __nt: !st.__nt }), ntClose: () => this.setState({ __nt: false }), notes,
     failN: fails.length, hasFail: fails.length > 0, failText: '업로드 실패 ' + fails.length + '건 · 다시 올려 주세요'
   };

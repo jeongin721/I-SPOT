@@ -423,43 +423,67 @@
       "y": 7400
     },
     "AppSchedule.dc.html": {
-      "h": 844,
+      "h": 800,
       "is_interactive": true,
-      "title": "앱 · 일정 (시작 화면 /app · 오늘 상담 → 브리핑 · 녹음 / 일정 추가 · 수정 · 삭제)",
-      "w": 390,
-      "x": 0,
+      "title": "앱 · 일정 (펼치기 → 월간 달력 · 오늘 상담 → 브리핑 · 녹음 / 일정 추가 · 수정 · 삭제)",
+      "w": 360,
+      "x": 880,
       "y": 22000
     },
     "AppBrief.dc.html": {
-      "h": 844,
+      "h": 800,
       "is_interactive": true,
       "title": "앱 · 상담 전 브리핑 (읽기 전용 · 확인할 사항 체크)",
-      "w": 390,
-      "x": 470,
+      "w": 360,
+      "x": 1320,
       "y": 22000
     },
     "AppRecord.dc.html": {
-      "h": 844,
+      "h": 800,
       "is_interactive": true,
-      "title": "앱 · 녹음 (아이 · 회차 선택 → 녹음 → 저장하고 올리기)",
-      "w": 390,
-      "x": 940,
+      "title": "앱 · 녹음 (아이 · 회차 선택 → 녹음 → 저장하고 올리기 · 업로드 실패 알림)",
+      "w": 360,
+      "x": 1760,
       "y": 22000
     },
     "AppUpload.dc.html": {
-      "h": 844,
+      "h": 800,
       "is_interactive": true,
       "title": "앱 · 업로드 (사진 찍기 · 파일 선택 · 실패 시 다시 올리기)",
-      "w": 390,
-      "x": 1410,
+      "w": 360,
+      "x": 2200,
       "y": 22000
     },
     "AppMemo.dc.html": {
-      "h": 844,
+      "h": 800,
       "is_interactive": true,
       "title": "앱 · 메모 (작성 · 수정 · 삭제)",
-      "w": 390,
-      "x": 1880,
+      "w": 360,
+      "x": 2640,
+      "y": 22000
+    },
+    "AppHome.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "앱 · 홈 (시작 화면 /app · 인사 · 기능 4개 · 사례 목록 · 사내 공지사항 · 알림)",
+      "w": 360,
+      "x": 0,
+      "y": 22000
+    },
+    "AppCases.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "앱 · 사례 목록 (찾기 · 이번 주 상담 → 사례 요약 · 브리핑 · 녹음)",
+      "w": 360,
+      "x": 440,
+      "y": 22000
+    },
+    "AppSettings.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "앱 · 설정 (내 정보 · 어두운 화면 · 알림 · 업로드)",
+      "w": 360,
+      "x": 3080,
       "y": 22000
     }
   },
@@ -538,8 +562,8 @@
     },
     "rowI": {
       "kind": "title1",
-      "maxW": 2300,
-      "text": "⑨ 모바일 앱 (/app · 설치형 PWA) · 메뉴 4개(녹음 · 업로드 · 일정 · 메모) + 상담 전 브리핑 + 업로드 실패 알림",
+      "maxW": 3800,
+      "text": "⑨ 모바일 앱 (/app · 설치형 PWA) · 홈(시작) → 사례 목록 · 일정 · 상담 전 브리핑 · 녹음 · 업로드 · 메모 · 설정 (상단: 홈 · 알림 · 설정)",
       "w": 240,
       "x": 0,
       "y": 21700
@@ -594,11 +618,14 @@
     "TabletSttReview.dc.html",
     "PhoneAdminHome.dc.html",
     "TabletAdminHome.dc.html",
+    "AppHome.dc.html",
+    "AppCases.dc.html",
     "AppSchedule.dc.html",
     "AppBrief.dc.html",
     "AppRecord.dc.html",
     "AppUpload.dc.html",
-    "AppMemo.dc.html"
+    "AppMemo.dc.html",
+    "AppSettings.dc.html"
   ],
   "pages": [],
   "title": "I-SPOT 상담사 웹 화면 설계 · 각진 UI"
