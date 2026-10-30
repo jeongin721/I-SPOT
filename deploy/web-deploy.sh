@@ -6,6 +6,9 @@
 # 서버에서: cd /opt/ispot/I-SPOT && sudo git pull --ff-only && sudo bash deploy/web-deploy.sh
 # 주소를 바꾸려면 SITE 를 넘긴다(sudo 는 설정에 따라 환경변수를 넘기지 않을 수 있어 sudo 뒤에 env 로 쓴다):
 #   sudo env SITE=<새 주소> bash deploy/web-deploy.sh
+# 머지 전 브랜치를 데모로 확인하려면 DEPLOY_BRANCH 를 넘긴다(기본 main). 먼저 그 브랜치로 바꿔 이 옵션이 든 스크립트를 쓴다:
+#   sudo git fetch origin && sudo git checkout <브랜치> && sudo env DEPLOY_BRANCH=<브랜치> WITH_MODELING=1 ... bash deploy/web-deploy.sh
+# 다시 main 으로 돌아갈 때는 DEPLOY_BRANCH 없이 실행하면 main 으로 바꿔 배포한다.
 # backend.env 가 AI_PROVIDER=modeling 이면 WITH_MODELING=1 을 넘긴다(torch · transformers 를 더 깔고 모델 파일을 붙인다,
 # deploy/README.md '모델까지 띄우기'):
 #   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
@@ -74,7 +77,8 @@ elif grep -qE '^STT_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
   exit 1
 fi
 
-echo "== 1/5 최신 main 받기"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+echo "== 1/5 최신 $DEPLOY_BRANCH 받기"
 cd "$REPO"
 # main 을 받아 이 파일이 바뀌었으면 새 판으로 처음부터 다시 시작한다. 옛 판이 끝까지 돌면 새 main 의 Dockerfile 을
 # 옛 빌드 명령으로 만들다 멈춘다(2026-10-22 데모 서버: git pull 없이 돌려 3/5 의 COPY backend/requirements.txt 에서 멈춤).
@@ -82,9 +86,9 @@ cd "$REPO"
 {
   OLD=$(git rev-parse --short HEAD)
   OLD_SCRIPT=$(git hash-object deploy/web-deploy.sh)
-  git fetch -q origin main
-  git checkout -q main
-  git merge -q --ff-only origin/main
+  git fetch -q origin "$DEPLOY_BRANCH"
+  git checkout -q "$DEPLOY_BRANCH"
+  git merge -q --ff-only "origin/$DEPLOY_BRANCH"
   echo "code $OLD -> $(git rev-parse --short HEAD)"
   if [ "$(git hash-object deploy/web-deploy.sh)" != "$OLD_SCRIPT" ]; then
     # 다시 시작한 판이 또 바뀌었으면(그사이 main 에 새 배포 스크립트가 들어옴) 되풀이하지 않고 멈춘다.
