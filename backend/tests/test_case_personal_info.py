@@ -5,19 +5,31 @@
 import base64
 import json
 import logging
+import re
+import shutil
+import subprocess
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select, text
 
+import scripts.reencrypt_personal_info as reencrypt_script
 from app.core import pii_crypto
-from app.core.config import Settings, _PUBLIC_PII_KEYS, settings
+from app.core.config import REPO_ROOT, Settings, _PUBLIC_PII_KEYS, settings
+from app.core.database import SessionLocal
 from app.core.enums import AuditAction
+from app.core.errors import APIError
 from app.core.pii_crypto import PersonalInfoCryptoError
 from app.models.audit_log import AuditLog
+from app.models.case import Case
 from app.models.case_personal_info import CasePersonalInfo
+from app.models.user import User
+from app.schemas.case import CaseCreateRequest, CaseListItemResponse
+from app.schemas.case_personal_info import PersonalInfoRequest, PersonalInfoResponse
+from app.services import personal_info_service
 from scripts.reencrypt_personal_info import reencrypt_all
 from tests.conftest import create_case
 
@@ -528,3 +540,176 @@ def test_reindex_after_index_key_change(
     assert not found()
     assert reencrypt_all(db, reindex=True).reindexed_rows == 1
     assert found()
+
+
+# =========================================================
+# Codex #127 교차검증 지적 재현(R1 ~ R5)
+# =========================================================
+
+
+def _two_sessions(counselor_id, case_id: str):
+    first, second = SessionLocal(), SessionLocal()
+    users = (first.get(User, counselor_id), second.get(User, counselor_id))
+    cases = (first.get(Case, uuid.UUID(case_id)), second.get(Case, uuid.UUID(case_id)))
+    return (first, second), users, cases
+
+
+def test_overlapping_puts_keep_the_last_body_whole(
+    client: TestClient, counselor_headers, counselor_id, case: dict
+) -> None:
+    """R2: 두 저장이 같은 옛 값을 읽고 겹쳐도 나중 커밋의 본문이 통째로 남는다(칸별로 섞이지 않음)."""
+
+    _put(client, counselor_headers, case["id"], {"child_name": CHILD, "interviewee": {"name": GUARDIAN}})
+    (first, second), (user1, user2), (case1, case2) = _two_sessions(counselor_id, case["id"])
+
+    try:
+        personal_info_service.apply_personal_info(
+            first, case1, user1, PersonalInfoRequest(child_name="한가온", interviewee={"name": GUARDIAN})
+        )
+        personal_info_service.apply_personal_info(
+            second, case2, user2, PersonalInfoRequest(child_name=CHILD, interviewee={"name": SIBLING})
+        )
+        first.commit()
+        second.commit()
+    finally:
+        first.close()
+        second.close()
+
+    data = _get(client, counselor_headers, case["id"]).json()["data"]
+
+    assert (data["child_name"], data["interviewee"]["name"]) == (CHILD, SIBLING)
+
+
+def test_overlapping_first_saves_answer_409_not_500(
+    client: TestClient, counselor_headers, counselor_id, case: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R2: 행이 없는 사례에 처음 저장이 겹치면 늦은 쪽은 409 DUPLICATE_RESOURCE, 먼저 저장한 값은 그대로."""
+
+    (first, second), (user1, user2), (case1, case2) = _two_sessions(counselor_id, case["id"])
+    original = pii_crypto.encrypt_text
+    state = {"done": False}
+
+    def encrypt_after_other_save(plaintext, *, case_id, field):
+        # 늦은 요청이 '행 없음' 을 읽은 뒤 · 넣기 전에 먼저 요청이 저장을 마친다.
+        if not state["done"]:
+            state["done"] = True
+            personal_info_service.apply_personal_info(first, case1, user1, PersonalInfoRequest(child_name=CHILD))
+            first.commit()
+        return original(plaintext, case_id=case_id, field=field)
+
+    monkeypatch.setattr(pii_crypto, "encrypt_text", encrypt_after_other_save)
+
+    try:
+        with pytest.raises(APIError) as caught:
+            personal_info_service.apply_personal_info(second, case2, user2, PersonalInfoRequest(child_name=SIBLING))
+    finally:
+        first.close()
+        second.close()
+
+    assert caught.value.status_code == 409
+    assert caught.value.code.value == "DUPLICATE_RESOURCE"
+    monkeypatch.setattr(pii_crypto, "encrypt_text", original)
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["child_name"] == CHILD
+
+
+def test_reencrypt_does_not_overwrite_a_save_made_meanwhile(
+    client: TestClient, counselor_headers, case: dict, db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R1: script 가 행을 읽은 뒤 API 저장이 끼면, script 는 옛 값으로 덮지 않고 다시 읽는다."""
+
+    _put(client, counselor_headers, case["id"], {"child_name": CHILD})
+    monkeypatch.setattr(settings, "PII_ENCRYPTION_KEYS", f"{NEW_KEY},{OLD_KEYS}")
+    original = reencrypt_script._decrypt_row
+    state = {"done": False}
+
+    def decrypt_then_api_saves(row):
+        plain = original(row)
+        if not state["done"]:
+            state["done"] = True
+            assert _put(client, counselor_headers, case["id"], {"child_name": SIBLING}).status_code == 200
+        return plain
+
+    monkeypatch.setattr(reencrypt_script, "_decrypt_row", decrypt_then_api_saves)
+
+    result = reencrypt_all(db)
+
+    assert result.busy_case_ids == [] and result.failed_case_ids == []
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["child_name"] == SIBLING
+
+    db.expire_all()
+    row = db.get(CasePersonalInfo, uuid.UUID(case["id"]))
+
+    assert row.child_name_enc.startswith("v1.new2.")
+    assert row.child_name_index == pii_crypto.name_index(SIBLING)
+
+
+def test_same_birth_date_restores_birth_year(client: TestClient, counselor_headers, case: dict, db) -> None:
+    """R3: 출생연도만 따로 고쳐도 같은 생년월일을 다시 저장하면 그 해로 돌아온다."""
+
+    _put(client, counselor_headers, case["id"], {"child_birth_date": "2016-01-05"})
+    client.patch(f"/api/v1/cases/{case['id']}", json={"child_birth_year": 2020}, headers=counselor_headers)
+    _put(client, counselor_headers, case["id"], {"child_birth_date": "2016-01-05"})
+
+    detail = client.get(f"/api/v1/cases/{case['id']}", headers=counselor_headers).json()["data"]
+    last = _audit(db, AuditAction.CASE_PERSONAL_INFO_UPDATED)[-1]
+
+    assert detail["child_birth_year"] == 2016
+    assert last.detail == {"changed_fields": ["child_birth_year"]}
+
+
+def test_schemas_do_not_print_values() -> None:
+    """R4: 요청 · 응답 · 중첩 스키마를 repr · str 로 찍어도 값이 나오지 않는다. 검증 오류 문구에도 입력값이 없다."""
+
+    request = PersonalInfoRequest.model_validate(FULL)
+    texts = [
+        repr(request),
+        str(request),
+        repr(request.family_members[0]),
+        repr(request.health),
+        repr(PersonalInfoResponse(child_name=CHILD, family_members=FULL["family_members"])),
+        repr(CaseCreateRequest(title="t", child_alias="a", personal_info=FULL)),
+        repr(CaseListItemResponse.model_construct(child_name=CHILD)),
+    ]
+
+    with pytest.raises(ValidationError) as caught:
+        PersonalInfoRequest.model_validate({**FULL, "child_birth_date": "2999-01-01"})
+
+    texts.append(str(caught.value))
+
+    for item in texts:
+        _assert_no_secret(item)
+    assert "2999" not in texts[-1]
+
+
+_BASH = shutil.which("bash")
+
+
+@pytest.mark.skipif(_BASH is None, reason="bash 가 있어야 돌릴 수 있다")
+@pytest.mark.parametrize(
+    ("env", "stops"),
+    [
+        ("ENV=production\n", True),
+        ("ENV=production\nPII_ENCRYPTION_KEYS=   \nPII_INDEX_KEY=   \n", True),
+        ("ENV=production\nPII_ENCRYPTION_KEYS=k1:abc\nPII_INDEX_KEY=\n", True),
+        ("ENV=production\nPII_ENCRYPTION_KEYS=k1:abc\nPII_INDEX_KEY=xyz\n", False),
+        ("ENV=local\n", False),
+    ],
+)
+def test_deploy_stops_before_switching_when_keys_are_missing(tmp_path: Path, env: str, stops: bool) -> None:
+    """R5: 배포 스크립트의 키 검사(공백뿐인 값도 없는 것으로 봄). 스크립트의 그 덩어리만 떼어 돌린다."""
+
+    script = (REPO_ROOT / "deploy" / "web-deploy.sh").read_text(encoding="utf-8")
+    block = re.search(r"^# 개인 식별 정보 키\(2026-10-30\).*?^fi$", script, re.S | re.M)
+
+    assert block is not None
+
+    env_file = tmp_path / "backend.env"
+    env_file.write_bytes(env.encode("utf-8"))
+    runner = tmp_path / "guard.sh"
+    runner.write_bytes(f'ENV_FILE="{env_file.as_posix()}"\n{block.group(0)}\necho PASSED\n'.encode("utf-8"))
+
+    result = subprocess.run([_BASH, str(runner)], capture_output=True, text=True, encoding="utf-8")
+
+    assert (result.returncode == 1) is stops
+    assert ("PASSED" in result.stdout) is not stops
+    assert "abc" not in result.stdout + result.stderr
