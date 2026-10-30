@@ -133,6 +133,7 @@ export default function CaseDetail(props) {
             <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
           <Notice value={v.notice} />
+          <Notice value={v.personalNote} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
             <A className="btn btn-sm btn-s" to="/CaseList">
               ← 목록
@@ -421,6 +422,11 @@ export default function CaseDetail(props) {
                         </button>
                       ))}
                     </div>
+                    {outMask && !v.namesReady ? (
+                      <span className="note" role="alert" style={{ color: '#A33B2E' }}>
+                        등록된 이름 목록을 아직 받지 못해 이름을 가릴 수 없습니다. 실명 정보를 다시 불러온 뒤 인쇄해 주세요.
+                      </span>
+                    ) : null}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                       <button type="button" className="btn btn-s" onClick={() => setOutOpen(false)}>
                         취소
@@ -428,7 +434,10 @@ export default function CaseDetail(props) {
                       <button
                         type="button"
                         className="btn btn-p"
+                        disabled={outMask && !v.namesReady}
                         onClick={() => {
+                          // 등록 이름 전부를 받기 전에는 가린 출력을 내지 않는다(위 안내, Codex #129 R3).
+                          if (outMask && !v.namesReady) return;
                           setOutOpen(false);
                           printBrief(briefRef.current, v.maskNames, outMask);
                         }}
