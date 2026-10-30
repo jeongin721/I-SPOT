@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from .config import ANALYZER_MODEL
 
-
 ChecklistStatus = Literal["matched", "needs_confirmation", "excluded"]
 
 

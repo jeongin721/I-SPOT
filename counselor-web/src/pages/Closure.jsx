@@ -3,7 +3,7 @@
 //
 // 서버 연결: 사례 기본정보 · 회차 수는 useCaseOverview(mode 'counts'), 화면에 쓸 값은 src/data/screens/closure.ts(closureValues).
 // 10/30: 종결 검토 등록(closure_review_at)한 사례만 보이고 등록일 · '① 내역 검토' 를 보인다. 내역 검토 진행률은 준비 중.
-// 10/30 디자인대로 '실명 보기' 토글을 뺐다. 이름을 누르면 사례 상세로 간다. 검색어는 계정에 묶는다(useAccountSearch).
+// 10/30 디자인대로 '실명 보기' 토글을 뺐다. 이름을 누르면 그 사례의 ① 전체 상담 내역 검토로 간다. 검색어는 계정에 묶는다(useAccountSearch).
 import { Fragment } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';

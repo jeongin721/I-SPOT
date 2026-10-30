@@ -6,8 +6,12 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .config import CHUNK_OVERLAP, CHUNK_SIZE
-from .metadata import enrich_chunk_metadata, infer_manual_screen, make_chunk_id, section_prefix
-
+from .metadata import (
+    enrich_chunk_metadata,
+    infer_manual_screen,
+    make_chunk_id,
+    section_prefix,
+)
 
 DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", "다. ", "한다. ", " ", ""]
 

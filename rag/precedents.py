@@ -230,5 +230,5 @@ def find_similar_precedents(
     """관련 법령 옆에 보여 줄 유사 판례. 실패해도 분석 전체를 멈추지 않고 사유를 경고로 돌려준다."""
     try:
         return search_precedents(text, abuse_type, top_k=top_k), None
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 — 판례 검색 실패는 경고로 돌려주고 분석은 계속한다
         return [], f"판례 검색 실패: {type(error).__name__}"

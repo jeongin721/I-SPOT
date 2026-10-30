@@ -16,7 +16,6 @@ from .resource_ranker import format_document_reference
 from .retriever import search_evidence
 from .vector_store import get_vector_store
 
-
 # 화면별 최소 코사인 유사도. 이보다 낮으면 '맞는 내용 없음'으로 보고 빈 목록을 돌려준다.
 # 2026-10 측정(원문 정리 + 구간 이름 색인, 화면별 맞는 질문 4개 · 무관한 문장 3개의 1위 점수):
 #   prebriefing 맞음 0.37~0.47 / 무관 0.15~0.28
@@ -45,7 +44,7 @@ def build_screen_references(
     한 화면이 실패해도 다른 화면 결과는 돌려준다(실패한 화면은 빈 목록 + errors 에 오류 종류).
     상담 문장은 OpenAI 로 나가기 전에 비식별한다. 비식별 검증에 실패하면 RagPrivacyBlocked 를 던진다.
 
-    반환: {"references": {screen: [...]}, "errors": {screen: "오류"}}
+    반환: {"references": {screen: [...]}, "errors": {screen: "오류 종류"}}
     """
     targets = tuple(screens or SCREEN_NAMES)
     query = text.strip()
@@ -63,9 +62,10 @@ def build_screen_references(
         for screen, future in futures.items():
             try:
                 references[screen] = future.result()
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 — 한 화면이 실패해도 다른 화면 결과는 돌려준다
                 references[screen] = []
-                errors[screen] = f"{type(error).__name__}: {error}"[:300]
+                # 예외 문구에는 상담 문장 · 내부 경로가 섞일 수 있어 종류만 남긴다(session._error_payload 와 같은 원칙).
+                errors[screen] = type(error).__name__
 
     return {"references": restore(references, entity_map), "errors": errors}
 
@@ -235,7 +235,7 @@ def _load_form_items(screen: str) -> list[dict[str, Any]]:
 
     grouped: dict[tuple[str, int], dict[str, Any]] = {}
     rows = sorted(
-        zip(stored["documents"], stored["metadatas"]),
+        zip(stored["documents"], stored["metadatas"], strict=True),
         key=lambda row: (int(row[1].get("page", 0) or 0), str(row[1].get("chunk_id", ""))),
     )
     for content, metadata in rows:

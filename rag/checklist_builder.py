@@ -14,8 +14,10 @@ from .retriever import search_evidence
 #   1) 확인할 사항 추출: 사례 기록(이번 회차 아동 발화 · 이전 회차 · 아이 앱 응답)에서 정보 공백 · 미이행 계획 ·
 #      변화 · 불일치를 뽑는다.
 #   2) 질문 생성: 확인할 사항마다 공식 근거(매뉴얼 면담 지침 · 체크리스트 · 법령 · 판례)를 보고 LLM 이 질문을 쓴다.
-#   3) 검증: 규칙(근거 ID · 유도 표현 · 판단 용어 · 아동이 말하지 않은 행위자/행위) → LLM 검토.
+#   3) 검증: 규칙(사례 근거 + 공식 근거 ID · 유도 표현 · 판단 용어 · 아동이 말하지 않은 행위자/행위) → LLM 검토.
 #      상담사용 질문이 모자라면 탈락 사유를 알려 주고 한 번 더 만든다.
+#      화면에 보이는 칸(확인할 사항 item · reason, 질문 rationale)도 판정 · 단정 표현을 거른다(judgment_reason).
+#   공식 근거가 하나도 없으면(검색 0건) 질문을 만들지 않는다. 질문 생성이 실패해도 근거 없는 대체 질문을 쓰지 않는다.
 #
 # 여기 들어오는 사례 기록 · 체크리스트 근거는 모두 비식별된 상태여야 한다(pipeline 이 가린다).
 
@@ -171,7 +173,7 @@ def load_interview_guidance(top_k: int = 3) -> list[dict[str, Any]]:
             screen="followup",
             screen_section=INTERVIEW_GUIDANCE_SECTION,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — 색인이 없거나 벡터 DB 오류여도 다른 공식 근거로 계속 만든다
         return []
 
 
@@ -312,7 +314,8 @@ def _filter_refs(refs: list[str], valid: set[str]) -> list[str]:
 def extract_check_items(
     case_records: list[dict[str, Any]],
     knowledge: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int]:
+    """(확인할 사항, 판정 · 단정 표현으로 뺀 수). 사례 근거가 없는 항목도 뺀다."""
     case_refs = {record["ref"] for record in case_records}
     knowledge_refs = {entry["ref"] for entry in knowledge}
     checklist_text = _knowledge_text(knowledge, {"checklist"}) or "(없음)"
@@ -325,10 +328,16 @@ def extract_check_items(
 
     items: list[dict[str, Any]] = []
     seen: set[str] = set()
+    rejected = 0
     for draft in raw.items:
         text = draft.item.strip()
+        reason = draft.reason.strip()
         refs = _filter_refs(draft.case_refs, case_refs)
         if not text or text in seen or not refs:
+            continue
+        # item · reason 은 화면에 그대로 보인다. 판정 · 단정 표현이 있으면 항목째 뺀다.
+        if judgment_reason(text) or judgment_reason(reason):
+            rejected += 1
             continue
         seen.add(text)
         items.append(
@@ -337,22 +346,41 @@ def extract_check_items(
                 "item": text,
                 "kind": draft.kind,
                 "priority": draft.priority,
-                "reason": draft.reason.strip(),
+                "reason": reason,
                 "case_refs": refs,
                 "knowledge_refs": _filter_refs(draft.knowledge_refs, knowledge_refs),
             }
         )
         if len(items) >= MAX_CHECK_ITEMS:
             break
-    return items
+    return items, rejected
 
 
 # ---------------------------------------------------------------------------
 # 3) 규칙 검증
 # ---------------------------------------------------------------------------
 
-# 판단 · 법률 용어. 질문 문장에만 적용한다(rationale 은 상담사만 본다).
+# 판단 · 법률 용어. 아이에게 할 질문 문장에만 적용한다(질문에는 이 낱말 자체를 쓰지 않는다).
 JUDGMENT_TERMS = ("학대", "처벌", "신고", "범죄", "가해", "피해자", "폭행", "위반", "고소", "법적", "법률")
+
+# 화면에 보이는 모든 칸(질문 문장 · rationale, 확인할 사항 item · reason)에서 막는 판정 · 단정 표현.
+# 유형 이름(신체학대) · 체크리스트 · 법령을 말하는 것은 상담원용 칸에서 허용하고, 학대 · 위험 · 법 위반을 확정 · 단정하거나
+# 사람을 행위자 · 피해자로 못박는 표현만 막는다(05_RULES §1 'AI 가 학대 여부를 최종 확정' 금지,
+# API_CONTRACT 표현 주의 — "학대 확정" · "위험 확정" · "AI 판정" · "자동 결정").
+JUDGMENT_PHRASES = ("AI 판정", "자동 결정")
+_DEFINITIVE_JUDGMENT = re.compile(
+    r"(?:학대|위험|범죄|위반|처벌)\s*(?:으로|로|가|이|를|을|은|는)?\s*(?:확정|단정|판정|판단|인정|확실|분명|명백|성립)"
+    r"|(?:학대|범죄|위반)(?:이다|입니다|임이|에\s*해당)"
+    r"|처벌\s*(?:대상|해야|받아야)"
+    r"|가해자|피해자"
+)
+
+
+def judgment_reason(text: str) -> str | None:
+    """판정 · 단정 표현이 있으면 그 사유, 없으면 None."""
+    if any(phrase in text for phrase in JUDGMENT_PHRASES) or _DEFINITIVE_JUDGMENT.search(text):
+        return "판정 · 단정 표현이 들어 있습니다"
+    return None
 
 # 답을 정해 두고 확인받는 꼬리 · 부정형 질문("~했지?", "~맞지?", "~하지 않았어?")
 _LEADING_ENDING = re.compile(
@@ -395,8 +423,11 @@ def rule_check(question: dict[str, Any], cited_text: str) -> str | None:
     limit = MAX_APP_QUESTION_CHARS if audience == "child_app" else MAX_COUNSELOR_QUESTION_CHARS
     if len(text) > limit:
         return "질문이 너무 깁니다"
-    if any(term in text for term in JUDGMENT_TERMS):
+    if any(term in text for term in JUDGMENT_TERMS) or judgment_reason(text):
         return "판단 · 법률 용어가 들어 있습니다"
+    # rationale 도 화면(질문 카드의 이유)에 보인다.
+    if judgment_reason(str(question.get("rationale") or "")):
+        return "이유 칸에 판정 · 단정 표현이 있습니다"
     if _LEADING_ENDING.search(text):
         return "답을 정해 두고 확인받는 질문입니다"
 
@@ -444,11 +475,11 @@ def _review_questions(
 ) -> dict[int, str | None] | None:
     """LLM 검토. {질문 번호: 탈락 사유 또는 None}. 검토 호출 자체가 실패하면 None."""
     lines = []
-    for index, (question, cited) in enumerate(zip(questions, cited_texts), start=1):
+    for index, (question, cited) in enumerate(zip(questions, cited_texts, strict=True), start=1):
         lines.append(f"[{index}] ({question['audience']}) {question['question']}\n    [아동 기록] {cited}")
     try:
         raw = _invoke(QuestionReviews, REVIEW_SYSTEM_PROMPT, "\n".join(lines))
-    except Exception:
+    except Exception:  # noqa: BLE001 — 검토 호출이 실패하면 규칙만 통과한 질문을 not_reviewed 로 표시한다
         return None
 
     verdicts: dict[int, str | None] = {}
@@ -468,12 +499,12 @@ def _clean_draft(
     case_refs: set[str],
     knowledge_refs: set[str],
     check_ids: set[str],
-    require_knowledge: bool,
 ) -> dict[str, Any] | None:
+    """사례 근거(case:N)와 공식 근거(manual · checklist · law · precedent)가 각각 하나 이상 있어야 남긴다."""
     question = draft.question.strip()
     refs = _filter_refs(draft.case_refs, case_refs)
     knowledge = _filter_refs(draft.knowledge_refs, knowledge_refs)
-    if not question or not refs or (require_knowledge and not knowledge):
+    if not question or not refs or not knowledge:
         return None
     check_id = (draft.check_item_id or "").strip()
     return {
@@ -515,7 +546,7 @@ def generate_validated_questions(
         try:
             drafts = _generate_questions(check_items, case_records, knowledge, rejected)
         except Exception:
-            # 첫 회차 실패는 호출부가 대체 질문으로 처리한다. 다시 만들기가 실패하면 앞 회차 결과를 그대로 쓴다.
+            # 첫 회차 실패는 호출부가 질문 없이 끝낸다(근거 없는 대체 질문을 쓰지 않는다).
             if not stats["rounds"]:
                 raise
             break
@@ -525,7 +556,7 @@ def generate_validated_questions(
         candidates: list[dict[str, Any]] = []
         cited_texts: list[str] = []
         for draft in drafts:
-            item = _clean_draft(draft, set(record_by_ref), knowledge_refs, check_ids, bool(knowledge_refs))
+            item = _clean_draft(draft, set(record_by_ref), knowledge_refs, check_ids)
             if item is None:
                 stats["rule_rejected"] += 1
                 continue
@@ -606,31 +637,6 @@ def _basis(refs: list[str], record_by_ref: dict[str, dict[str, Any]], entry_by_r
     return basis
 
 
-def _fallback_questions(
-    fallback_questions: list[str],
-    knowledge: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """질문 생성 LLM 이 실패했을 때 체크리스트 판정 단계의 추가 질문을 규칙 검증만 거쳐 쓴다."""
-    refs = [knowledge[0]["ref"]] if knowledge else []
-    items = []
-    for question in fallback_questions[:MAX_COUNSELOR_QUESTIONS]:
-        item = {
-            "question": question.strip(),
-            "audience": "counselor",
-            "question_type": "open",
-            "priority": "medium",
-            "rationale": "현재 상담에서 관련 정보를 추가로 확인할 필요가 있습니다.",
-            "check_item_id": None,
-            "case_refs": [],
-            "knowledge_refs": refs,
-            "basis_refs": refs,
-            "review_status": "fallback",
-        }
-        if item["question"] and rule_check(item, "") is None:
-            items.append(item)
-    return items
-
-
 def build_next_session_checklist(
     case_records: list[dict[str, Any]],
     checklist_results: list[dict[str, Any]],
@@ -638,7 +644,6 @@ def build_next_session_checklist(
     *,
     manual_results: list[dict[str, Any]] | None = None,
     precedents: list[dict[str, Any]] | None = None,
-    fallback_questions: list[str] | None = None,
 ) -> dict[str, Any]:
     """다음 상담 전 확인할 사항(check_items)과 추가 질문(items)을 만든다.
 
@@ -646,8 +651,10 @@ def build_next_session_checklist(
     반환:
       check_items  — 확인할 사항. 각 항목에 근거(basis)가 붙는다.
       items        — 추가 질문. audience(counselor | child_app), question_type(open | clarify),
-                     근거(basis · case_refs · knowledge_refs), review_status(passed | not_reviewed | fallback)
-      validation   — 생성 · 탈락 수(질문 문장은 싣지 않는다)
+                     근거(basis · case_refs · knowledge_refs), review_status(passed | not_reviewed)
+      validation   — 생성 · 탈락 수(질문 문장은 싣지 않는다). 질문을 만들지 않았으면 skipped(사유) · error.
+    질문은 사례 근거와 공식 근거를 각각 하나 이상 단 것만 남긴다. 공식 근거가 하나도 없으면(검색 0건) 질문을 만들지 않고,
+    질문 생성이 실패하면 질문 없이 끝낸다(근거 없는 대체 질문을 쓰지 않는다). 확인할 사항은 공식 근거 없이도 만든다.
     """
     records = [record for record in case_records if str(record.get("text") or "").strip()]
     if not records:
@@ -659,16 +666,20 @@ def build_next_session_checklist(
     entry_by_ref = {entry["ref"]: entry for entry in knowledge}
 
     try:
-        check_items = extract_check_items(records, knowledge)
-    except Exception:
-        check_items = []
+        check_items, check_rejected = extract_check_items(records, knowledge)
+    except Exception:  # noqa: BLE001 — 확인할 사항 추출이 실패해도 질문은 만들어 본다
+        check_items, check_rejected = [], 0
 
+    questions: list[dict[str, Any]] = []
     validation: dict[str, Any]
-    try:
-        questions, validation = generate_validated_questions(check_items, records, knowledge)
-    except Exception as error:
-        questions = _fallback_questions(fallback_questions or [], knowledge)
-        validation = {"error": f"질문 생성 실패: {type(error).__name__}", "fallback": True}
+    if not knowledge:
+        validation = {"skipped": "공식 근거가 없어 질문을 만들지 않았습니다."}
+    else:
+        try:
+            questions, validation = generate_validated_questions(check_items, records, knowledge)
+        except Exception as error:  # noqa: BLE001 — 질문 생성이 실패해도 확인할 사항은 돌려준다
+            validation = {"error": f"질문 생성 실패: {type(error).__name__}"}
+    validation["check_rule_rejected"] = check_rejected
 
     for item in check_items:
         item["basis"] = _basis(item["case_refs"] + item["knowledge_refs"], record_by_ref, entry_by_ref)

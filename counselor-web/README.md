@@ -49,9 +49,10 @@ npm run build      # dist/ 에 배포용 파일 생성
 | 위험 신호 카드 | `useRiskSignals` · `riskRows.ts` | 위험 관련 발화를 카드(유형 · 세부 유형 · 근거 직접성 · 이유 · 원문 대조)로, 유형별 신호를 네 줄로. 근거 위치(몇 분 · 누구)는 원문(`GET …/transcript`)에서 찾는다. 읽기 전용 |
 | 요약 검수 · 승인 | `useSummaryReview` | 요약 고치기 · 근거 발화 · 승인(승인하면 회차가 '승인 완료' 가 되어 더 고칠 수 없음) |
 | 상담일지 | `useSessionDocuments` | 문서 목록 · 만들기 · 고치기 · 승인(회차 상태와 따로 움직임) |
-| 유형별 위험도(상담원 판단) | `useOverallRiskAssessment` | 회차 전체 상담원 판단 **하나**(상 · 중 · 하) · 이유 · 판단 당시 AI 최고 심각도(1~5) 조회와 저장(`GET/PUT /sessions/{id}/risk-assessment`, API_CONTRACT 11.1절, 2026-10-29). 원문 확정 뒤에만 저장, 회차 상태는 바뀌지 않음. AI 단계 ↔ 상 · 중 · 하 대응과 사례 단위 위험도는 팀 결정 전이라 계산하지 않음. 유형별 위험도(`SignalReview`) 위 카드의 단추 하나로 저장. 유형별 판단 창구(`…/risk-assessments`)는 화면에서 더 쓰지 않는다. `needsJudgment` — 분석이 끝나 검수 중인데 판단이 없으면 요약 · 일지 작성으로 못 넘어간다(아래 '화면 주소' 의 `ask`) |
+| 유형별 위험도(상담원 판단) | `useOverallRiskAssessment` | 회차 전체 상담원 판단 **하나**(상 · 중 · 하) · 이유 · 판단 당시 AI 최고 심각도(1~5) 조회와 저장(`GET/PUT /sessions/{id}/risk-assessment`, API_CONTRACT 11.1절, 2026-10-29). 원문 확정 뒤에만 저장, 회차 상태는 바뀌지 않음. 저장에 성공하면 회차 변경 알림(`sessionEvents`)을 보내 같은 화면의 회차별 추이(`useSignalHistory`)가 새 판단을 조용히 다시 불러온다. AI 단계 ↔ 상 · 중 · 하 대응과 사례 단위 위험도는 팀 결정 전이라 계산하지 않음. 유형별 위험도(`SignalReview`) 위 카드의 단추 하나로 저장. 유형별 판단 창구(`…/risk-assessments`)는 화면에서 더 쓰지 않는다. `needsJudgment` — 분석이 끝나 검수 중인데 판단이 없으면 요약 · 일지 작성으로 못 넘어간다(아래 '화면 주소' 의 `ask`) |
 | 설정 | `useAuthSession` + `profile` · `usePasswordChange` | 내 정보 표시, 비밀번호 변경 |
 | 관리자 대시보드 | `useAdminDashboard` · `adminRows` | 전체 사례 · 처리 대기 업무(지연 · 종류별) · 활성 상담사 · 최근 접속 5건. 미배정 · 문서 승인 · 보안 경고는 `—` |
+| 관리자 · 사례 목록 | `useAdminCases` | 기관 전체 사례(GET /cases 전체 쪽) + 계정 목록으로 상담원 거르기 · 재배정 필요(진행 중 사례의 담당 계정이 비활성 · 없음). 위험도 · 신고접수일 · 관리 기간 · 진행 단계는 Backend 에 없어 `—` |
 | 관리자 · 업무 처리 현황 | `useAdminTasks` | 모든 상담사의 처리 대기 회차(종류 · 지연 · 상담사로 거르기). 재처리 요청은 넣지 않음(팀 결정) |
 | 관리자 · 상담사 계정 관리 | `useAdminAccounts` · `initialPassword` | 계정 목록 · 담당 사례 수, 등록(임시 비밀번호 발급) · 이름 · 역할 · 활성/비활성, 비밀번호 초기화 · 잠금 해제 · 휴면 해제 · 강제 로그아웃. 자기 계정은 막음 |
 | 관리자 · 접속 기록 | `useAuditLogs` | 로그인 기록(성공 · 실패 · 기간 · 쪽), `action` 을 바꾸면 계정 관리 기록. 보안 이벤트 심각도는 Backend 에 없음 |
@@ -133,6 +134,7 @@ export default function CaseDetail(props) {
 | 설정 | `Settings.jsx` | — | `useAuthSession` · `usePasswordChange` | `settings.ts` `settingsValues` |
 | 법령 · 매뉴얼 | `LawGuide.jsx` | — | `useAuthSession` · `useLawGuide` | `lawGuide.ts` `lawGuideValues` · 목록 `lawGuideRefs.ts` |
 | 관리자 · 홈 | `AdminHome.jsx` | — | `useAdminDashboard` · `useAdminTasks`(업무 구역) · `useAdminAccounts`(활성 상담사 · 업무량) · `useCaseList`(진행 중 사례) | `adminHome.ts` |
+| 관리자 · 사례 목록 | `AdminCases.jsx` | — | `useAdminCases` | `adminCases.ts` |
 | 관리자 · 상담사 계정 관리 | `AdminAccounts.jsx` | — | `useAdminAccounts` | `adminAccounts.ts` |
 | 관리자 · 상담사 상세 | `AdminStaffDetail.jsx` | `user` | `useAdminAccounts` | `adminStaffDetail.ts` |
 | 관리자 · 접속 기록 · 보안 이벤트 | `AdminSecurity.jsx` | — | `useAuditLogs` · `useAdminAccounts`(잠긴 계정) | `adminSecurity.ts` |
@@ -215,6 +217,8 @@ export default function Page(props) {
 원본은 다솔 님 디자인 `counselor-web-design/*.dc.html`(Claude Design 캔버스, `front_new` 브랜치)입니다. 화면 JSX 는 그 마크업을, `src/styles/common.css` 는 20개 이상 화면이 똑같이 쓰는 규칙을, `src/pages/<화면>.css` 는 그 화면에만 있는 규칙을 옮긴 것입니다. 10/21 새 디자인(`origin/frontend261021` 의 `counselor-design/`)의 공통 틀(왼쪽 메뉴 · 반응형 · 모서리)은 `Sidebar.jsx` 와 `common.css` 끝 블록으로 옮겼습니다. 10/27 판(같은 브랜치 `c766848`)에서 더해진 법령 · 매뉴얼 화면 · 메뉴와 시작 화면 장식 제거도 옮겼습니다.
 
 10/29 판(프론트팀이 zip 으로 전달, 저장소에는 올리지 않음)에서 옮긴 것: 제목 글꼴(IBM Plex Sans KR), 위쪽 바 알림 종(`components/NotiBell` — 판정 뒤 법정 기한이 서버에 없어 늘 '새 알림이 없습니다.'), 단계 이름(기록 확인 · 학대 신호 확인 · 상담일지 작성 · 다음 상담 준비, 진행 칸 '상담 녹음'), 사례 탭에서 '상담 전 브리핑' 을 빼고 내담자 정보 탭 안으로(`?view=brief`, 인쇄 때 이름 가리기), 상담 이력 '녹음하기' · '+ 새 상담 등록'(`components/NewSessionDialog` — 상담 내용 · 소견을 회차 메모에 저장), 문서함 '녹음하기'(`data/useRecordFlow`), 회차 상세 · 기록 확인의 회차 선택 목록(`components/SessionPick`), 서식 · 초기면접지 · 상담일지 칸 복사(`components/CopyButton`, 이름 가려서 복사), 초기면접지 칸 묶음 · 가족유형 21개 · 건강정도 표(새 칸은 서버에 없어 준비 중), 녹취 올리기 회차 목록(새 회차 번호 · 모든 회차).
+
+10/30 오후 판(같은 브랜치 `3744617`)에서 옮긴 것: 'AI 초안 · AI 분석 · AI 제안' 칩을 회색 점선에서 연한 금색 바탕 + ✦ 로(`common.css` 의 `.c-ai`), 종결보고서(예시 화면)의 초기상황 · 종결상황 · 종합의견 칸 복사(10/29 판에 있던 것). 새 사례 등록의 칸 복사는 그 칸들이 준비 중(입력 막음)이라 칸을 열 때 함께 붙입니다. 모바일 앱(`/app`) 홈 · 사례 목록 · 설정, 회원가입 휴대폰 번호, 다음 상담 전 확인 사항 삭제는 서버 · 팀 결정이 필요해 옮기지 않았습니다.
 
 주제 비중 · 처음 나온 이야기(2026-10-29): 회차 AI 분석이 아동 발화를 고정 주제 목록으로 나누고(`ai/modeling/abuse/topic_tag_llm.py`, 결과 `topic_tags`), 신호 이력(`GET /cases/{id}/signal-history`)의 회차 줄 `topics` 로 온다. 상담 이력 '지금까지 상담' 의 주제 비중은 회차들의 주제별 아동 발화 수를 더한 비율, '덜 다룬 부분' 은 비중이 가장 작은 주제와 첫 언급 회차 · 시각이다. 내담자 정보 탭 브리핑의 '처음 나온 이야기' 는 분석이 끝난 가장 최근 회차의 주제 중 앞 회차들에 없던 것과 그 첫 발화다(`signalHistoryRows.ts` 의 `topicShares` · `firstMentions` · `newTopicsIn`). 모두 AI 제안이고, 이 기능 전에 분석한 회차에는 주제가 없어(다시 분석하면 생김) 세지 않는다.
 
