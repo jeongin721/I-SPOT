@@ -2043,3 +2043,32 @@ AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기
 예/아니오 질문 · 가해자나 행위를 먼저 꺼내는 질문은 AI 초안 단계에서 거른다(C-1 모듈의 코드 검사). 상담사가 직접 쓴 질문은 서버가 문장을 고치거나 거르지 않는다.
 
 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
+
+### 18.1 Followup Checks (다음 상담 전 확인할 사항, 2026-10-30)
+
+'다음 상담 준비' 화면의 확인 사항 카드 — **브리핑에 넣기 · 수정 · 확인 사항 직접 추가** 를 저장한다. 18절(추가 질문)과 같은 꼴이다.
+AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대로 남고, 여기에는 상담사가 고른 · 고친 · 직접 쓴 목록이 회차마다 한 행에 저장된다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/followup-checks` | 저장한 목록. 저장한 적이 없으면 `saved: false`, `items: []` |
+| PUT | `/api/v1/sessions/{session_id}/followup-checks` | 목록을 통째로 바꾼다(빈 목록이면 '확인 사항 없음' 으로 저장) |
+
+```json
+{
+  "items": [
+    { "text": "등 · 팔 통증 이후 치료 여부 확인 필요.", "source": "AI", "segment_ids": ["seg_012"], "edited": true, "in_briefing": true },
+    { "text": "학교 담임과 통화해 최근 결석 여부 확인.", "source": "COUNSELOR", "segment_ids": [], "edited": false, "in_briefing": false }
+  ]
+}
+```
+
+- 응답: `{ session_id, saved, items: [{text, source, segment_ids, edited, in_briefing}], updated_at, updated_by_id }`.
+- `source` 는 `AI`(AI 확인 메모에서 옴 — 고쳐도 AI) · `COUNSELOR`(직접 추가). `edited` 는 AI 메모를 상담사가 고쳤는가(COUNSELOR 는 늘 `false` 로 저장).
+  `in_briefing` 은 상담 전 브리핑에 넣기 — 브리핑 '확인할 사항' 은 저장한 회차면 이것이 `true` 인 것만 보인다.
+- 0~20개, `text` 는 앞뒤 공백을 뺀 뒤 1~300자, `segment_ids` 는 겹침 · 빈 번호를 뺀 뒤 20개까지이고 그 회차 최신 전사본에 있는 번호만(`422`).
+- 받는 회차 상태는 18절과 같다(`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`, 그 밖에는 `409 INVALID_SESSION_STATE`). 조회는 상태와 관계없다.
+- 감사 기록(`FOLLOWUP_CHECKS_UPDATED`)에는 수(전체 · AI · 상담사 · 고친 수 · 브리핑 수 · 이전 수)만 남기고 문장은 남기지 않는다.
+- 저장은 회차 상태를 바꾸지 않는다.
+
+오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`

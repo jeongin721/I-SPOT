@@ -27,6 +27,7 @@ import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupChecks } from '../data/useFollowupChecks';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
@@ -84,7 +85,8 @@ export default function CaseDetail(props) {
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
-  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history });
+  const briefChecks = useFollowupChecks(signals.session?.id ?? null, { enabled: signedIn(session) });
+  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history, checks: briefChecks });
   const briefRef = useRef(null);
   const [outOpen, setOutOpen] = useState(false);
   const [outMask, setOutMask] = useState(true);

@@ -1116,6 +1116,27 @@ export interface FollowupQuestion extends FollowupQuestionInput {
   approved_at: string;
 }
 
+/** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
+export interface FollowupCheck {
+  text: string;
+  /** AI(AI 확인 메모에서 옴 — 고쳐도 AI) · COUNSELOR(직접 추가). */
+  source: FollowupQuestionSource;
+  segment_ids: string[];
+  /** AI 메모를 상담사가 고쳤는가. */
+  edited: boolean;
+  /** 상담 전 브리핑에 넣기. */
+  in_briefing: boolean;
+}
+
+export interface FollowupCheckList {
+  session_id: string;
+  /** 한 번이라도 저장했는가. false 면 화면은 AI 확인 메모 초안을 보인다. */
+  saved: boolean;
+  items: FollowupCheck[];
+  updated_at: string | null;
+  updated_by_id: string | null;
+}
+
 export interface FollowupQuestionList {
   session_id: string;
   questions: FollowupQuestion[];

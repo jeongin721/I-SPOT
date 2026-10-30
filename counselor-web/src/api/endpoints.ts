@@ -21,6 +21,8 @@ import type {
   DocumentCreateRequest,
   DocumentUpdateRequest,
   FollowupQuestionInput,
+  FollowupCheck,
+  FollowupCheckList,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -473,6 +475,19 @@ export const followupQuestions = {
    */
   save(sessionId: string, questions: FollowupQuestionInput[]): Promise<FollowupQuestionList> {
     return api.put<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`, { questions });
+  },
+};
+
+/** 다음 상담 전 확인할 사항(API_CONTRACT 18.1절, 2026-10-30). 추가 질문과 같은 규칙. */
+export const followupChecks = {
+  /** 저장한 적이 없으면 saved false · items []. 회차 상태와 상관없이 조회한다. */
+  get(sessionId: string): Promise<FollowupCheckList> {
+    return api.get<FollowupCheckList>(`/sessions/${sessionId}/followup-checks`);
+  },
+
+  /** 목록을 통째로 바꾼다. 0~20개, 문장 1~300자, segment_ids 는 그 회차 전사본 번호만(422). 상태는 추가 질문과 같다(409). */
+  save(sessionId: string, items: FollowupCheck[]): Promise<FollowupCheckList> {
+    return api.put<FollowupCheckList>(`/sessions/${sessionId}/followup-checks`, { items });
   },
 };
 
