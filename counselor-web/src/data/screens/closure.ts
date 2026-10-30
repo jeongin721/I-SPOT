@@ -3,7 +3,7 @@
 // 사례 기본정보 · 회차 수는 useCaseOverview(mode "counts"), 등록일은 사례의 closure_review_at.
 // 진행 단계는 등록하면 '① 내역 검토' 다. 내역 검토 진행률(확인한 요약 수)과 '요약 만드는 중' 은 종결 요약 AI · 저장이 아직 없어 '—'.
 // 이름은 아동 별칭(실명 없음), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다.
-// 누르면 사례 상세로 간다(전체 상담 내역 검토 화면은 아직 예시 데이터라 그 사례로 보내지 않는다).
+// 누르면 그 사례의 ① 전체 상담 내역 검토(?case=)로 간다.
 // 검색어는 입력한 계정에 묶는다(useAccountSearch) — 앞 계정이 친 별칭 · 사례 ID 가 다음 계정에 보이지 않게.
 
 import { useCallback, useEffect, useState } from "react";
@@ -59,7 +59,7 @@ export function closureValues(input: ClosureInput) {
       sub: [caseRow.caseNumber, `사례 ${caseRow.statusLabel}`, overview.wholeOrg ? caseRow.counselorName : ""]
         .filter(Boolean)
         .join(" · "),
-      href: screenHref("/CaseDetail", { caseId: caseRow.id }),
+      href: screenHref("/ClosureReview", { caseId: caseRow.id }),
       sessions: `${sessionTotal}회차`,
       date: caseRow.closureReviewDate || createdDate || NOT_PROVIDED,
       stage: "① 내역 검토",
