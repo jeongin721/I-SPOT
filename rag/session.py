@@ -63,6 +63,9 @@ def analyze_reviewed_transcript(
     session_id: str | None = None,
     previous_sessions: list[dict[str, Any]] | None = None,
     child_app_responses: list[dict[str, Any]] | None = None,
+    with_questions: bool = True,
+    with_manual_references: bool = True,
+    link_questions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """STT 검수가 끝난 Transcript 로 근거자료 · 법령 · 판례 · 화면별 매뉴얼 근거 · 다음 상담 질문을 만든다.
 
@@ -76,6 +79,12 @@ def analyze_reviewed_transcript(
     privacy_blocked · privacy_reasons: 어느 쪽(근거자료 분석 · 화면별 매뉴얼 근거)이든 비식별 검증에 막혀 외부로 보내지 않았으면
     True 와 막힌 사유(원문 없음). 학대 유형이 없어 근거자료 분석은 돌지 않고 매뉴얼 근거만 막힌 경우도 여기서 알 수 있다 —
     호출하는 쪽은 rag_analysis 만 보지 말고 이 값을 본다.
+
+    Backend 연동(backend API_CONTRACT 19절)은 with_questions=False · with_manual_references=False 로 부른다:
+    질문은 만들지 않고(추가 질문은 #118 초안 하나에서만 — 팀장님 10/29 결정 ②) 화면별 매뉴얼 근거도 만들지 않는다.
+    link_questions(#118 초안 [{draft_index, text, reason?}])를 주면 검토를 통과한 공식 근거만 붙여
+    rag_analysis.next_session_checklist.question_evidence 로 돌려준다(official_evidence.attach_official_evidence).
+    기본값이면 지금까지와 같다.
     """
     child = child_text_from_transcript(transcript)
     result: dict[str, Any] = {
@@ -104,14 +113,20 @@ def analyze_reviewed_transcript(
                     previous_sessions=previous_sessions,
                     child_app_responses=child_app_responses,
                 ),
+                with_questions=with_questions,
+                link_questions=link_questions,
             )
             if abuse_type
             else None
         )
-        manual_future = pool.submit(
-            build_screen_references,
-            child["text"],
-            known_identifiers=known_identifiers,
+        manual_future = (
+            pool.submit(
+                build_screen_references,
+                child["text"],
+                known_identifiers=known_identifiers,
+            )
+            if with_manual_references
+            else None
         )
 
         # 한 쪽이 실패해도 다른 쪽 결과는 돌려준다. 실패는 원문 없는 오류 칸으로 바꾼다(_error_payload).
@@ -121,10 +136,11 @@ def analyze_reviewed_transcript(
             except Exception as error:  # noqa: BLE001
                 result["rag_analysis"] = _error_payload("RAG 근거자료 분석", error)
 
-        try:
-            result["manual_screen_references"] = manual_future.result()
-        except Exception as error:  # noqa: BLE001
-            result["manual_screen_references"] = _error_payload("화면별 매뉴얼 근거 분석", error)
+        if manual_future is not None:
+            try:
+                result["manual_screen_references"] = manual_future.result()
+            except Exception as error:  # noqa: BLE001
+                result["manual_screen_references"] = _error_payload("화면별 매뉴얼 근거 분석", error)
 
     blocked = [
         part

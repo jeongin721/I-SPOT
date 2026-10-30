@@ -6,7 +6,14 @@ from typing import Any, Literal
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
+from ai.modeling.abuse.question_rules import (
+    JUDGMENT_TERMS,
+    judgment_reason,
+    leading_reason,
+)
+
 from .config import ANALYZER_MODEL
+from .official_evidence import attach_official_evidence
 from .retriever import search_evidence
 
 # 다음 상담 체크리스트(추가 확인 · 질문 화면)를 만든다.
@@ -360,32 +367,9 @@ def extract_check_items(
 # 3) 규칙 검증
 # ---------------------------------------------------------------------------
 
-# 판단 · 법률 용어. 아이에게 할 질문 문장에만 적용한다(질문에는 이 낱말 자체를 쓰지 않는다).
-JUDGMENT_TERMS = ("학대", "처벌", "신고", "범죄", "가해", "피해자", "폭행", "위반", "고소", "법적", "법률")
-
-# 화면에 보이는 모든 칸(질문 문장 · rationale, 확인할 사항 item · reason)에서 막는 판정 · 단정 표현.
-# 유형 이름(신체학대) · 체크리스트 · 법령을 말하는 것은 상담원용 칸에서 허용하고, 학대 · 위험 · 법 위반을 확정 · 단정하거나
-# 사람을 행위자 · 피해자로 못박는 표현만 막는다(05_RULES §1 'AI 가 학대 여부를 최종 확정' 금지,
-# API_CONTRACT 표현 주의 — "학대 확정" · "위험 확정" · "AI 판정" · "자동 결정").
-JUDGMENT_PHRASES = ("AI 판정", "자동 결정")
-_DEFINITIVE_JUDGMENT = re.compile(
-    r"(?:학대|위험|범죄|위반|처벌)\s*(?:으로|로|가|이|를|을|은|는)?\s*(?:확정|단정|판정|판단|인정|확실|분명|명백|성립)"
-    r"|(?:학대|범죄|위반)(?:이다|입니다|임이|에\s*해당)"
-    r"|처벌\s*(?:대상|해야|받아야)"
-    r"|가해자|피해자"
-)
-
-
-def judgment_reason(text: str) -> str | None:
-    """판정 · 단정 표현이 있으면 그 사유, 없으면 None."""
-    if any(phrase in text for phrase in JUDGMENT_PHRASES) or _DEFINITIVE_JUDGMENT.search(text):
-        return "판정 · 단정 표현이 들어 있습니다"
-    return None
-
-# 답을 정해 두고 확인받는 꼬리 · 부정형 질문("~했지?", "~맞지?", "~하지 않았어?")
-_LEADING_ENDING = re.compile(
-    r"(?:[가-힣]지|죠|맞아|맞나요|잖아요?|않았어요?|않았니|않았나요|않니|아니야|아니지)\s*\?*\s*$"
-)
+# 판단 · 법률 용어(JUDGMENT_TERMS), 판정 · 단정 표현(judgment_reason), 꼬리 · 부정형 질문(leading_reason)은
+# 추가 질문 AI 초안(#118) · AI 확인 메모와 같이 쓰려고 ai/modeling/abuse/question_rules.py 로 옮겼다(2026-10-30).
+# 이 모듈에서도 같은 이름으로 쓴다(맨 위 import).
 
 # 행위자 · 행위가 한 질문에 같이 나오면, 둘 다 아동이 이미 쓴 표현일 때만 허용한다.
 PERSON_TERMS = (
@@ -428,7 +412,7 @@ def rule_check(question: dict[str, Any], cited_text: str) -> str | None:
     # rationale 도 화면(질문 카드의 이유)에 보인다.
     if judgment_reason(str(question.get("rationale") or "")):
         return "이유 칸에 판정 · 단정 표현이 있습니다"
-    if _LEADING_ENDING.search(text):
+    if leading_reason(text):
         return "답을 정해 두고 확인받는 질문입니다"
 
     acts = _acts_in(text)
@@ -644,6 +628,8 @@ def build_next_session_checklist(
     *,
     manual_results: list[dict[str, Any]] | None = None,
     precedents: list[dict[str, Any]] | None = None,
+    with_questions: bool = True,
+    link_questions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """다음 상담 전 확인할 사항(check_items)과 추가 질문(items)을 만든다.
 
@@ -655,15 +641,25 @@ def build_next_session_checklist(
       validation   — 생성 · 탈락 수(질문 문장은 싣지 않는다). 질문을 만들지 않았으면 skipped(사유) · error.
     질문은 사례 근거와 공식 근거를 각각 하나 이상 단 것만 남긴다. 공식 근거가 하나도 없으면(검색 0건) 질문을 만들지 않고,
     질문 생성이 실패하면 질문 없이 끝낸다(근거 없는 대체 질문을 쓰지 않는다). 확인할 사항은 공식 근거 없이도 만든다.
+
+    with_questions=False(Backend 연동, API_CONTRACT 19절): 질문을 만들지 않는다. 대신 확인할 사항과 link_questions
+    (Backend 가 넘긴 #118 추가 질문 초안 [{draft_index, text, reason?}], 비식별된 문장)에 검토를 통과한 공식 근거만
+    붙인다(official_evidence.attach_official_evidence). 이때 반환에 question_evidence
+    ([{draft_index, knowledge_refs, basis}] — basis 는 공식 근거만, 각각 why 가 붙는다)가 더해진다.
     """
     records = [record for record in case_records if str(record.get("text") or "").strip()]
     if not records:
-        return {"check_items": [], "items": [], "validation": {}}
+        if with_questions:
+            return {"check_items": [], "items": [], "validation": {}}
+        return {"check_items": [], "items": [], "question_evidence": [], "validation": {}}
 
     manual = [*load_interview_guidance(), *(manual_results or [])]
     knowledge = build_knowledge_entries(checklist_results, law_articles, manual, precedents or [])
     record_by_ref = {record["ref"]: record for record in records}
     entry_by_ref = {entry["ref"]: entry for entry in knowledge}
+
+    if not with_questions:
+        return _checklist_with_official_evidence(records, knowledge, link_questions or [], record_by_ref, entry_by_ref)
 
     try:
         check_items, check_rejected = extract_check_items(records, knowledge)
@@ -687,3 +683,39 @@ def build_next_session_checklist(
         item["basis"] = _basis(item["basis_refs"], record_by_ref, entry_by_ref)
 
     return {"check_items": check_items, "items": questions, "validation": validation}
+
+
+def _checklist_with_official_evidence(
+    records: list[dict[str, Any]],
+    knowledge: list[dict[str, Any]],
+    link_questions: list[dict[str, Any]],
+    record_by_ref: dict[str, dict[str, Any]],
+    entry_by_ref: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Backend 연동 경로(with_questions=False). 질문은 만들지 않고 공식 근거는 검토를 통과한 것만 붙인다.
+
+    확인할 사항 추출이 실패하면 validation.check_error 를 달고 공식 근거 단계는 건너뛴다(Backend 가 실패로 마감한다 —
+    빈 목록을 '확인할 사항 없음' 으로 보이지 않게).
+    """
+    validation: dict[str, Any] = {}
+    try:
+        check_items, check_rejected = extract_check_items(records, knowledge)
+    except Exception as error:  # noqa: BLE001 — 예외 종류만 남긴다(문구에 상담 문장이 섞일 수 있다)
+        validation["check_error"] = f"확인할 사항 추출 실패: {type(error).__name__}"
+        return {"check_items": [], "items": [], "question_evidence": [], "validation": validation}
+    validation["check_rule_rejected"] = check_rejected
+
+    attached = attach_official_evidence(check_items, link_questions, knowledge)
+    validation.update(attached["validation"])
+
+    for item in check_items:
+        item["basis"] = _basis(item["case_refs"] + item["knowledge_refs"], record_by_ref, entry_by_ref)
+
+    question_evidence = []
+    for link in attached["question_links"]:
+        basis = [{**entry, "why": link["why"]} for entry in _basis(link["knowledge_refs"], {}, entry_by_ref)]
+        question_evidence.append(
+            {"draft_index": link["draft_index"], "knowledge_refs": link["knowledge_refs"], "basis": basis}
+        )
+
+    return {"check_items": check_items, "items": [], "question_evidence": question_evidence, "validation": validation}
