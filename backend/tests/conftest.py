@@ -49,6 +49,7 @@ os.environ["LOG_LEVEL"] = "WARNING"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.adapters.ai_adapter import set_ai_adapter_override  # noqa: E402
+from app.adapters.followup_checklist_adapter import set_followup_checklist_adapter_override  # noqa: E402
 from app.adapters.stt_adapter import set_stt_adapter_override  # noqa: E402
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.core.enums import UserRole  # noqa: E402
@@ -84,11 +85,13 @@ def _reset_state() -> Iterator[None]:
 
     set_stt_adapter_override(None)
     set_ai_adapter_override(None)
+    set_followup_checklist_adapter_override(None)
 
     yield
 
     set_stt_adapter_override(None)
     set_ai_adapter_override(None)
+    set_followup_checklist_adapter_override(None)
 
     with engine.begin() as connection:
         for table in reversed(Base.metadata.sorted_tables):

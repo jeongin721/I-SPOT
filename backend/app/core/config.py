@@ -206,6 +206,25 @@ class Settings(BaseSettings):
     LAW_API_OC: str = ""
     LAW_CACHE_DIR: str = ""
 
+    # ---- 다음 상담 체크리스트 (FollowupQ '다음 상담 전 확인할 사항' · 추가 질문 공식 근거, API_CONTRACT 19절, 2026-10-30) ----
+    # off    : 만들지 않는다(기본). GET 은 enabled=false, POST 는 503 FOLLOWUP_DISABLED. 화면은 AI 확인 메모만 보인다.
+    # mock   : OpenAI 없이 이번 회차 첫 아동 발화로 '(예시)' 결과를 만든다(화면 개발 · CI).
+    # module : rag/session.analyze_reviewed_transcript 를 부른다(팀장님 rag 패키지). requirements-rag.txt 패키지와
+    #          색인 폴더(RAG_VECTOR_DB_DIR)가 필요하다. 아동 발화 · 이전 회차 기록 · 추가 질문 초안은 가린 뒤 OpenAI 로 나간다.
+    # 기본이 off 인 이유: 서버에 rag 를 넣는 일(이미지 · 색인)은 서버 디스크 · 메모리를 잰 뒤 다음 PR 로 한다(10/29 팀장님 결정 ④).
+    FOLLOWUP_PROVIDER: Literal["off", "mock", "module"] = "off"
+    # 한 번 만들기의 제한 시간. 넘으면 그 행은 FAILED · AI_TIMEOUT. 동시 실행 자리를 기다리는 시간도 이 값까지다.
+    FOLLOWUP_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
+    # 서버 전체 동시 실행 건수. 시간을 넘긴 작업도 실제로 끝날 때까지 자리를 쥔다(법령 질문 #109 R2 와 같은 방식).
+    FOLLOWUP_MAX_CONCURRENCY: int = Field(default=1, ge=1)
+    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true. rag 에 등록 실명을 넘기지 않아(known_identifiers=[])
+    # 이름 대조(Tier 2)가 돌지 않으므로 분석 modeling 과 같은 잠금을 둔다(아래 _block_followup_module_in_production).
+    FOLLOWUP_ALLOW_IN_PRODUCTION: bool = False
+    # rag/config.py 가 os.getenv 로 읽는 값. 여기 적으면 followup_checklist_adapter 가 process 환경으로 넘긴다
+    # (비어 있으면 넘기지 않아 rag 기본값을 쓴다 — 빈 값이 기본값을 덮지 않게, #117 교차검증 R6).
+    RAG_VECTOR_DB_DIR: str = ""
+    RAG_ANALYZER_MODEL: str = ""
+
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
     # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
     OPENAI_API_KEY: str = ""
@@ -351,6 +370,25 @@ class Settings(BaseSettings):
             "법령 질문은 상담사가 쓴 글을 외부(OpenAI)로 보내는데, 사례와 묶이지 않아 등록 실명 대조가 돌지 않습니다. "
             "실제 상담 데이터가 있는 서버에서는 LAW_QA_PROVIDER=mock 또는 off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_followup_module_in_production(self) -> "Settings":
+        """운영에서 다음 상담 체크리스트 module 로 서버가 뜨지 않게 한다(분석 modeling · 법령 질의와 같은 방식).
+
+        rag 는 아동 발화 · 이전 회차 기록 · 추가 질문 초안을 이름 인식으로 가린 뒤 OpenAI 로 보내는데, Backend 가 등록 실명을
+        넘기지 않아(known_identifiers=[]) 놓친 이름은 그대로 나간다. .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
+        FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어야만 뜬다. local/test 는 그대로 둔다.
+        """
+
+        if self.ENV != "production" or self.FOLLOWUP_PROVIDER != "module" or self.FOLLOWUP_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 FOLLOWUP_PROVIDER=module 로 서버를 시작하지 않습니다. "
+            "다음 상담 체크리스트는 아동 발화 · 이전 회차 기록을 외부(OpenAI)로 보내는데, 등록 실명 대조가 돌지 않습니다. "
+            "실제 상담 데이터가 있는 서버에서는 FOLLOWUP_PROVIDER=off 를 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @model_validator(mode="after")

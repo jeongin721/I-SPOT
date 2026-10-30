@@ -76,6 +76,11 @@ class ErrorCode(str, Enum):
     LAW_SOURCE_UNAVAILABLE = "LAW_SOURCE_UNAVAILABLE"
     RATE_LIMITED = "RATE_LIMITED"
 
+    # 다음 상담 체크리스트 (19절, 2026-10-30). 만들기 실패는 행의 error 로 남고, HTTP 로는 꺼져 있을 때만 쓴다.
+    FOLLOWUP_DISABLED = "FOLLOWUP_DISABLED"
+    # 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않았다(19절 행의 error.code).
+    AI_PRIVACY_BLOCKED = "AI_PRIVACY_BLOCKED"
+
     # 기타
     INTERNAL_ERROR = "INTERNAL_ERROR"
 

@@ -8,6 +8,7 @@ from app.api.v1 import (
     auth,
     cases,
     documents,
+    followup_checklist,
     followup_questions,
     law_guide,
     risk_assessments,
@@ -33,6 +34,8 @@ api_router.include_router(documents.router)
 api_router.include_router(risk_assessments.router)
 # /sessions/{session_id}/followup-questions — 승인한 추가 질문 목록(18절).
 api_router.include_router(followup_questions.router)
+# /sessions/{session_id}/followup-checklist — 다음 상담 체크리스트(rag 확인 사항 · 추가 질문 공식 근거, 19절).
+api_router.include_router(followup_checklist.router)
 api_router.include_router(tasks.router)
 api_router.include_router(voice_marks.router)
 # /law-guide/questions — 회차 · 사례와 묶이지 않는 법령 · 매뉴얼 AI 질문(17절).
