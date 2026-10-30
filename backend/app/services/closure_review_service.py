@@ -4,10 +4,15 @@
 #  - AI_PROVIDER=modeling 이면 ai/modeling/abuse/closure_summary_llm.generate_closure_summary(마스킹 → LLM → 검사)로 AI 초안,
 #  - 아니면 rule_based_summary(LLM 없이 4칸 묶음, AI 생성 아님)로 만든다.
 # 동기 응답이고 CLOSURE_SUMMARY_TIMEOUT_SECONDS 를 넘으면 504. 실패 문구에는 원문 · 예외 문구를 넣지 않는다(종류로 코드만).
-# 다시 만들면 요약 문장 key 가 바뀌므로 확인 체크 · 고친 문장은 비운다. 보고서 칸(상담원이 쓴 글 · 날짜)은 남긴다.
+# 다시 만들면 요약 문장 key 가 바뀌므로(만들 때마다 새 무작위 앞머리) 확인 체크 · 고친 문장은 비운다. 예전 요약을 띄운
+# 탭이 옛 key 로 저장하면 422 로 막힌다. 보고서 칸(상담원이 쓴 글 · 날짜)은 남긴다.
+# AI 만들기는 사례마다 한 번에 하나, 서버 전체 CLOSURE_SUMMARY_MAX_CONCURRENCY 건까지(504 뒤 다시 눌러도 뒤에서 쌓이지 않게).
+# 자리는 실제 호출이 끝날 때 돌려준다(제한 시간이 지나도 thread 는 계속 돌기 때문).
 # 감사 기록에는 수 · 출처만 남긴다(요약 문장은 아동 진술을 이어받아 넣지 않는다).
 
 import logging
+import secrets
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -41,6 +46,68 @@ _ERRORS = {
     ErrorCode.AI_INVALID_OUTPUT: (502, "AI 가 종결 요약을 만들지 못했습니다. 다시 시도해 주세요."),
     ErrorCode.AI_FAILED: (502, "종결 요약을 만들지 못했습니다. 잠시 후 다시 시도해 주세요."),
 }
+
+
+BUSY_CASE_MESSAGE = "이 사례의 종결 요약을 이미 만들고 있습니다. 잠시 후 새로고침해 주세요."
+BUSY_SERVER_MESSAGE = "다른 종결 요약을 만드는 중입니다. 잠시 후 다시 시도해 주세요."
+
+
+class _Limits:
+    """만드는 중인 사례와 서버 전체 동시 실행 자리. 시험에서 설정을 바꾸면 reset_limits 로 새로 만든다."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.running: set = set()
+        self.slots = threading.BoundedSemaphore(settings.CLOSURE_SUMMARY_MAX_CONCURRENCY)
+
+
+_limits = _Limits()
+
+
+def reset_limits() -> None:
+    global _limits
+    _limits = _Limits()
+
+
+def _run_ai(case: Case, sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    limits = _limits
+    with limits.lock:
+        if case.id in limits.running:
+            raise APIError(ErrorCode.RATE_LIMITED, BUSY_CASE_MESSAGE, status_code=429)
+        if not limits.slots.acquire(blocking=False):
+            raise APIError(ErrorCode.RATE_LIMITED, BUSY_SERVER_MESSAGE, status_code=429)
+        limits.running.add(case.id)
+
+    started = threading.Event()
+    released = []
+
+    def release() -> None:
+        with limits.lock:
+            if released:
+                return
+            released.append(True)
+            limits.running.discard(case.id)
+        limits.slots.release()
+
+    try:
+        deadline = time.monotonic() + settings.CLOSURE_SUMMARY_TIMEOUT_SECONDS
+        run = load_callable(MODULE, "generate_closure_summary")
+    except BaseException:
+        release()
+        raise
+
+    def work() -> Dict[str, Any]:
+        started.set()
+        try:
+            return run(sessions, known_identifiers=[case.child_alias], deadline=deadline)
+        finally:
+            release()
+
+    try:
+        return run_with_timeout(work, settings.CLOSURE_SUMMARY_TIMEOUT_SECONDS)
+    finally:
+        if not started.is_set():  # 시작도 못 하고 취소됐으면 여기서 돌려준다
+            release()
 
 
 def _ai_error(code: ErrorCode) -> APIError:
@@ -112,10 +179,13 @@ def _approved_sessions(db: Session, case: Case) -> List[Dict[str, Any]]:
 
 
 def _with_keys(groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """문장 key = 만들 때마다 새 무작위 앞머리 + 자리 번호("3f9a1c-0-0"). 다시 만들면 옛 key 가 모두 무효가 된다."""
+
+    prefix = secrets.token_hex(3)
     return [
         {
             "title": group["title"],
-            "items": [{"key": f"{gi}-{ii}", **item} for ii, item in enumerate(group["items"])],
+            "items": [{"key": f"{prefix}-{gi}-{ii}", **item} for ii, item in enumerate(group["items"])],
         }
         for gi, group in enumerate(groups)
     ]
@@ -133,14 +203,11 @@ def generate(db: Session, case: Case, current_user: User) -> CaseClosureReview:
     started = time.monotonic()
     try:
         if use_ai:
-            deadline = time.monotonic() + settings.CLOSURE_SUMMARY_TIMEOUT_SECONDS
-            run = load_callable(MODULE, "generate_closure_summary")
-            result = run_with_timeout(
-                lambda: run(sessions, known_identifiers=[case.child_alias], deadline=deadline),
-                settings.CLOSURE_SUMMARY_TIMEOUT_SECONDS,
-            )
+            result = _run_ai(case, sessions)
         else:
             result = load_callable(MODULE, "rule_based_summary")(sessions)
+    except APIError:
+        raise
     except (OperationTimeout, TimeoutError) as error:
         raise _ai_error(ErrorCode.AI_TIMEOUT) from error
     except ModuleLoadError as error:
@@ -194,6 +261,10 @@ def generate(db: Session, case: Case, current_user: User) -> CaseClosureReview:
 
 
 def save(db: Session, case: Case, current_user: User, payload: ClosureSummarySaveRequest) -> CaseClosureReview:
+    # 만들기(POST)와 같이 종결 검토에 등록한 사례만 기록한다(취소한 사례도 409, 민규 #128 리뷰).
+    if case.closure_review_at is None:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "종결 검토에 등록한 사례만 저장할 수 있습니다.")
+
     row = get_row(db, case.id)
     keys = {item["key"] for group in ((row.summary or {}).get("groups") or []) for item in group["items"]} if row else set()
 

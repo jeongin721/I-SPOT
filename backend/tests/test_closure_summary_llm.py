@@ -76,3 +76,14 @@ def test_rule_based_summary_groups_approved_fields():
         "initial_situation": {"text": "보호자 고성 · 위협", "sessions": [1]},
         "closing_situation": {"text": "새 학대 진술 없음", "sessions": [3]},
     }
+
+
+def test_fit_sessions_drops_front_sessions_like_input(monkeypatch):
+    """민규 #128 리뷰: 넘쳐서 뺀 앞 회차 번호는 근거 회차 검사에서도 허용하지 않게, 실제로 넣은 회차 목록을 준다."""
+
+    monkeypatch.setattr(cs, "MAX_INPUT_CHARS", 60)
+
+    kept = cs.fit_sessions(SESSIONS)
+
+    assert [session["number"] for session in kept] == [3]
+    assert "## 1회차" not in cs.format_case_input(SESSIONS)

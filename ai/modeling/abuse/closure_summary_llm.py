@@ -13,7 +13,7 @@
 
 [코드 검사(clean_output)]
 - 묶음 이름은 GROUP_TITLES 만, 문장 1~MAX_ITEM_CHARS 자, 묶음마다 MAX_ITEMS_PER_GROUP 개. 다른 나라 문자가 섞인 문장은 버림.
-- sessions 는 입력에 있던 승인 회차 번호만 남기고, 하나도 안 남으면 그 문장을 버린다(근거 없는 문장 금지).
+- sessions 는 LLM 에 실제로 넣은 승인 회차 번호만 남기고(fit_sessions 로 뺀 앞 회차 제외), 하나도 안 남으면 그 문장을 버린다(근거 없는 문장 금지).
 - 보고서 칸도 같은 규칙. 남는 것이 하나도 없으면 ClosureSummaryOutputError.
 
 [LLM 없이(rule_based_summary)]
@@ -23,12 +23,9 @@ AI_PROVIDER 가 modeling 이 아니면(시험 · 데모 mock) LLM 을 부르지 
 openai · privacy_gateway(NER 모델)는 CI 에 없다. 검사 함수를 backend/tests 에서 시험할 수 있게 그 import 는 함수 안에 둔다.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ai.modeling.abuse.text_script import has_foreign_script
-
-if TYPE_CHECKING:  # pragma: no cover
-    from openai import OpenAI
 
 DEFAULT_MODEL = "gpt-5.6-luna"
 
@@ -80,29 +77,36 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 사례를 종결
 """
 
 
+def _session_block(session: Dict[str, Any]) -> str:
+    lines = [f"## {session['number']}회차" + (f" ({session['date']})" if session.get("date") else "")]
+    assessment = session.get("assessment") or {}
+    for key, label in ASSESSMENT_FIELDS:
+        text = " ".join(str(assessment.get(key) or "").split())
+        if text:
+            lines.append(f"- {label}: {text}")
+    signals = [str(label) for label in session.get("signals") or [] if str(label).strip()]
+    lines.append(f"- AI 관련 신호: {' · '.join(signals) if signals else '없음'}")
+    return "\n".join(lines)
+
+
+def fit_sessions(sessions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """입력 글이 MAX_INPUT_CHARS 를 넘으면 앞 회차부터 뺀 목록(최근 회차가 종결 판단에 더 중요). 근거 회차 검사도 이 목록만 쓴다."""
+
+    kept = list(sessions)
+    blocks = [_session_block(session) for session in kept]
+    while len(blocks) > 1 and len("\n\n".join(blocks)) > MAX_INPUT_CHARS:
+        blocks.pop(0)
+        kept.pop(0)
+    return kept
+
+
 def format_case_input(sessions: List[Dict[str, Any]]) -> str:
     """
     sessions: [{"number": int, "date": "YYYY-MM-DD"|"", "assessment": {4칸 키: 글}, "signals": ["신체", ...]}] (회차 순).
-    LLM 입력 글(마스킹 전). MAX_INPUT_CHARS 를 넘으면 앞 회차부터 뺀다(최근 회차가 종결 판단에 더 중요).
+    LLM 입력 글(마스킹 전). 넘치는 앞 회차는 fit_sessions 로 뺀다.
     """
 
-    blocks: List[str] = []
-
-    for session in sessions:
-        lines = [f"## {session['number']}회차" + (f" ({session['date']})" if session.get("date") else "")]
-        assessment = session.get("assessment") or {}
-        for key, label in ASSESSMENT_FIELDS:
-            text = " ".join(str(assessment.get(key) or "").split())
-            if text:
-                lines.append(f"- {label}: {text}")
-        signals = [str(label) for label in session.get("signals") or [] if str(label).strip()]
-        lines.append(f"- AI 관련 신호: {' · '.join(signals) if signals else '없음'}")
-        blocks.append("\n".join(lines))
-
-    while len(blocks) > 1 and len("\n\n".join(blocks)) > MAX_INPUT_CHARS:
-        blocks.pop(0)
-
-    return "\n\n".join(blocks)
+    return "\n\n".join(_session_block(session) for session in fit_sessions(sessions))
 
 
 def _clean_sessions(raw: Any, allowed: set) -> List[int]:
@@ -201,6 +205,8 @@ def generate_closure_summary(
     from ai.modeling.abuse.privacy_gateway import mask_for_outbound
     from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 
+    # 근거 회차는 LLM 이 실제로 받은 회차만 허용한다(넘쳐서 뺀 앞 회차 번호를 단 문장은 버림, 민규 #128 리뷰).
+    sessions = fit_sessions(sessions)
     masked, entity_map = mask_for_outbound(format_case_input(sessions), known_identifiers=known_identifiers or [])
     client, model_name = build_openai_client_and_model(model or DEFAULT_MODEL)
     prompt = SYSTEM_PROMPT.format(

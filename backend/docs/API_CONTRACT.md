@@ -637,13 +637,16 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `POST`(만들기 · 다시 만들기, **동기 200**): 종결 검토에 등록한 사례(`closure_review_at`)의 **승인 완료 회차 요약**(상담원 확정 4칸)과
   회차별 AI 관련 신호를 모은다. 등록 전 · 승인 요약이 없으면 `409 INVALID_CASE_STATE`.
   - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(별칭을 가릴 이름으로) → LLM → 검사(근거 회차가 실제
-    승인 회차인 문장만, 묶음 이름 고정)로 AI 초안. `summary.source = "AI"`. 제한 시간 `CLOSURE_SUMMARY_TIMEOUT_SECONDS`(기본 150초) — 넘으면
+    승인 회차 중 LLM 에 실제로 넣은 회차인 문장만 — 입력이 넘쳐 뺀 앞 회차는 제외, 묶음 이름 고정, 다른 나라 문자가 섞인 문장은 버림)로
+    AI 초안. `summary.source = "AI"`. 사례마다 한 번에 하나, 서버 전체 `CLOSURE_SUMMARY_MAX_CONCURRENCY`(기본 2)건 — 넘으면
+    `429 RATE_LIMITED`(제한 시간이 지나도 실제 호출이 끝날 때까지 자리를 잡는다). 제한 시간 `CLOSURE_SUMMARY_TIMEOUT_SECONDS`(기본 150초) — 넘으면
     `504 AI_TIMEOUT`, 쓸 문장이 없으면 `502 AI_INVALID_OUTPUT`, 그 밖 `502 AI_FAILED`(문구에 원문 · 예외 문구 없음).
   - 그 밖(mock 등): LLM 없이 승인 요약 4칸을 묶는다. `source = "APPROVED_SUMMARIES"`(AI 생성 아님, 묶음 이름이 4칸 이름).
-  - 다시 만들면 문장 `key` 가 바뀌므로 `checks` · `edits` 를 비운다. `report`(상담원이 쓴 보고서 칸)는 남긴다.
+  - 문장 `key` 는 만들 때마다 새 무작위 앞머리 + 자리 번호(예: `3f9a1c-0-0`)다. 다시 만들면 `key` 가 모두 바뀌므로 `checks` · `edits` 를
+    비우고, 예전 요약을 띄운 화면이 옛 `key` 로 `PUT` 하면 `422`(새 문장에 붙지 않는다). `report`(상담원이 쓴 보고서 칸)는 남긴다.
 - `summary`: `{ source, model, generated_at, sessions: [회차 번호], groups: [{title, items: [{key, text, sessions}]}],
   report: {initial_situation, closing_situation} }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
-- `PUT`(보낸 칸만): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
+- `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
   `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD`).
 - 감사 기록 `CLOSURE_SUMMARY_GENERATED`(출처 · 회차 수 · 문장 수 · 걸린 초) · `CLOSURE_SUMMARY_UPDATED`(수 · 바뀐 보고서 칸 이름) — 문장은 남기지 않는다.
 
