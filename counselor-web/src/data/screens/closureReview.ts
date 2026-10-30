@@ -7,11 +7,13 @@
 //    기관 서식 기록이 서버에 없어 준비 중.
 //  - 회차별 흐름: 회차 · 날짜 · 유형 · 핵심(승인한 상담 요약 4칸 중 처음 채워진 칸, 상담원 확정 문장) · 근거(그 칸 이름 또는
 //    AI 관련 신호). 승인 전 회차는 핵심 '승인 전'.
-//  - 핵심 요약 · 서로 다른 진술(여러 회차를 묶는 AI) · 아이 연계는 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
+//  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
+//  - 서로 다른 진술 · 아이 연계는 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
 
 import { CONSULTATION_TYPE_LABELS, type ConsultationType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ApprovedSummariesState } from "../useApprovedSummaries";
+import type { ClosureSummaryState } from "../useClosureSummary";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { detectedTypeLabels } from "../signalHistoryRows";
@@ -117,6 +119,175 @@ export function closureReviewValues(input: ClosureReviewInput) {
     canFold: rowsAll.length > 6,
     tlLabel: input.all ? "접기" : `${rowsAll.length}회차 모두 보기`,
     flowNote: approved.truncated ? "승인 회차가 많아 최근 회차 요약만 불러왔습니다." : approved.error ?? "",
-    aiNote: `여러 회차를 묶는 종결 요약 AI 가 아직 없어 ${NOT_READY}입니다. 회차별 흐름의 '핵심' 은 상담원이 승인한 회차 요약입니다.`,
+  };
+}
+
+// ------------------------------------------------------------
+// ① 핵심 요약(2026-10-30 연결) — closure-summary 의 묶음 · 확인 체크 · 고친 문장
+// ------------------------------------------------------------
+
+export interface ClosureSummaryUi {
+  editKey: string | null;
+  draft: string;
+  setEdit: (key: string | null, draft?: string) => void;
+  setDraft: (draft: string) => void;
+}
+
+export function closureSummaryValues(
+  summary: ClosureSummaryState,
+  ui: ClosureSummaryUi,
+  registered: boolean,
+) {
+  const record = summary.record;
+  const body = record?.summary ?? null;
+  const checks = record?.checks ?? {};
+  const edits = record?.edits ?? {};
+  const allKeys = body ? body.groups.flatMap((group) => group.items.map((item) => item.key)) : [];
+  const okCount = allKeys.filter((key) => checks[key]).length;
+  const allOk = allKeys.length > 0 && okCount === allKeys.length;
+  const canEdit = summary.loaded && !summary.busy;
+
+  const groups = (body?.groups ?? [])
+    .filter((group) => group.items.length > 0)
+    .map((group) => ({
+      title: group.title,
+      items: group.items.map((item) => {
+        const on = Boolean(checks[item.key]);
+        const text = edits[item.key] ?? item.text;
+        const editing = ui.editKey === item.key;
+        return {
+          key: item.key,
+          text,
+          src: `근거 · ${item.sessions.map((number) => `${number}회차`).join(" · ")}`,
+          on: on ? "true" : "false",
+          mark: on ? "✓" : "",
+          ckBg: on ? "#C2A36B" : "#FFFFFF",
+          ckBd: on ? "#C2A36B" : "#CFC9BB",
+          fixed: item.key in edits,
+          view: !editing,
+          editing,
+          toggle: () => canEdit && void summary.save({ checks: { [item.key]: !on } }),
+          edit: () => ui.setEdit(item.key, text),
+        };
+      }),
+    }));
+
+  let note = "";
+  if (summary.loadError) note = summary.loadError;
+  else if (!summary.loaded) note = "불러오는 중…";
+  else if (summary.busy === "generate") note = "승인한 회차 요약으로 종결 요약을 만드는 중입니다(AI 면 1~2분 걸릴 수 있습니다).";
+  else if (!registered) note = "종결 검토에 등록한 사례만 요약을 만들 수 있습니다(내담자 정보 '종결 검토 등록').";
+  else if (!body) note = "아직 만들지 않았습니다. '요약 만들기' 를 누르면 승인 완료한 회차 요약으로 만듭니다.";
+  else if (groups.length === 0) note = "요약에 남은 문장이 없습니다.";
+
+  return {
+    sumChip: body ? (body.source === "AI" ? "AI 초안" : "승인 요약 모음 · AI 생성 아님") : "",
+    sumChipCls: body?.source === "AI" ? "chip c-ai" : "chip c-normal",
+    sumNote: note,
+    sumError: summary.loaded ? summary.error : null,
+    groups,
+    okCount,
+    total: allKeys.length,
+    hasSummary: Boolean(body),
+    checkAllLabel: allOk ? "모두 해제" : "모두 확인",
+    checkAll: () => canEdit && void summary.save({ checks: Object.fromEntries(allKeys.map((key) => [key, !allOk])) }),
+    draft: ui.draft,
+    setDraft: (event: { target: { value: string } }) => ui.setDraft(event.target.value),
+    saveEdit: async () => {
+      if (!ui.editKey || !canEdit) return;
+      if (await summary.save({ edits: { [ui.editKey]: ui.draft } })) ui.setEdit(null);
+    },
+    cancelEdit: () => ui.setEdit(null),
+    genLabel: summary.busy === "generate" ? "만드는 중…" : body ? "다시 만들기" : "요약 만들기",
+    canGenerate: registered && summary.loaded && !summary.busy,
+    generate: () => {
+      if (body && !window.confirm("다시 만들면 확인 체크와 고친 문장이 지워집니다. 다시 만들까요?")) return;
+      void summary.generate();
+    },
+    doneTitle: !body ? "종결보고서 작성" : allOk ? "전체 내역 확인 완료" : `확인 ${okCount} / ${allKeys.length}`,
+    doneSub: !body
+      ? "회차별 흐름을 확인한 뒤 종결보고서(서식 29)를 작성합니다."
+      : allOk
+        ? "확인한 내용으로 종결보고서 초안이 채워져요"
+        : "확인하지 않은 요약이 있어도 종결보고서를 작성할 수 있어요. 남은 요약도 확인해 주세요",
+  };
+}
+
+// ------------------------------------------------------------
+// ② 종결보고서(2026-10-30 연결) — closure-summary.report(상담원이 쓴 칸) · summary.report(AI 초안)
+// ------------------------------------------------------------
+
+export type ReportDraft = Partial<Record<"initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date", string>>;
+
+export function closureReportValues(
+  caseId: string | null,
+  detail: CaseDetailState,
+  summary: ClosureSummaryState,
+  draft: ReportDraft,
+  setDraft: (patch: ReportDraft) => void,
+  resetDraft: () => void,
+) {
+  const info = detail.caseInfo;
+  const record = summary.record;
+  const saved = record?.report ?? {};
+  const ai = record?.summary?.report ?? {};
+  const aiSource = record?.summary?.source;
+
+  /** 고치는 중인 값 → 저장된 값 → (글 칸은) AI 초안 순. */
+  const value = (key: keyof ReportDraft, aiText?: string) => draft[key] ?? (saved[key] ?? aiText ?? "");
+  const aiChip = (key: "initial_situation" | "closing_situation") => {
+    const item = ai[key];
+    if (saved[key] || draft[key] !== undefined || !item) return "";
+    const where = item.sessions.map((number) => `${number}회차`).join(" · ");
+    return `${aiSource === "AI" ? "AI 초안" : "승인 요약"} · ${where}`;
+  };
+  const field = (key: keyof ReportDraft, aiText?: string) => ({
+    value: value(key, aiText),
+    onChange: (event: { target: { value: string } }) => setDraft({ [key]: event.target.value }),
+  });
+
+  let note = "";
+  if (!caseId) note = "종결 검토 목록에서 사례를 골라 주세요.";
+  else if (summary.loadError) note = summary.loadError;
+  else if (summary.error) note = summary.error;
+  else if (summary.busy === "save") note = "저장 중…";
+  else if (!record?.summary) note = "① 전체 상담 내역 검토에서 '요약 만들기' 를 하면 초기상황 · 종결상황 초안이 채워집니다.";
+
+  return {
+    connected: Boolean(caseId && info),
+    crumb: info ? info.alias : "",
+    alias: info?.alias ?? "",
+    head: info
+      ? {
+          caseNumber: info.caseNumber,
+          counselor: info.counselorName,
+          child: `${info.alias} (${info.birthYearLabel})`,
+          today: new Date().toISOString().slice(0, 10),
+          firstInterview: info.firstInterviewDate,
+        }
+      : null,
+    reviewHref: screenHref("/ClosureReview", { caseId }),
+    detailHref: screenHref("/ClosureDetail", { caseId }),
+    caseHref: screenHref("/CaseDetail", { caseId }),
+    initial: field("initial_situation", ai.initial_situation?.text),
+    closing: field("closing_situation", ai.closing_situation?.text),
+    opinion: field("opinion"),
+    reviewDate: field("review_date"),
+    closingDate: field("closing_date"),
+    initialChip: aiChip("initial_situation"),
+    closingChip: aiChip("closing_situation"),
+    reportNote: note,
+    canSave: Boolean(caseId && summary.loaded && !summary.busy),
+    saveLabel: summary.busy === "save" ? "저장 중…" : "보고서 저장",
+    save: async () => {
+      const report = {
+        initial_situation: value("initial_situation", ai.initial_situation?.text) || null,
+        closing_situation: value("closing_situation", ai.closing_situation?.text) || null,
+        opinion: value("opinion") || null,
+        review_date: value("review_date") || null,
+        closing_date: value("closing_date") || null,
+      };
+      if (await summary.save({ report })) resetDraft();
+    },
   };
 }

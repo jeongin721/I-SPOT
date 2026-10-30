@@ -1,5 +1,8 @@
 // 종결 검토 › ② 사례관리 종결보고서 (서식 29 · AI 초안)
-// 원본: 다솔 님 디자인 counselor-web-design/ClosureDetail.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 원본: 10/30 디자인 ClosureDetail.dc.html(프론트팀 zip). 화면 주소 ?case=<사례 ID>.
+// 서버 연결(2026-10-30): 머리(사건번호 · 담당 · 아동 별칭 · 작성일 · 초기면접일), 초기상황 · 종결상황(저장한 글이 없으면 closure-summary
+// AI 초안) · 종결 심의일 · 종결 상담일 · 종합의견 · '보고서 저장'(PUT closure-summary report). closureReview.ts closureReportValues.
+// 종결사유 · 서비스 요약 · 안전평가 · 안전점수는 저장할 서버 칸이 아직 없다 — 실제 사례로 열면 예시 AI 제안 · 근거 · 기본값을 지운다.
 import { Fragment, useState } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -8,7 +11,13 @@ import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
+import { useSearchParams } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { useClosureSummary } from '../data/useClosureSummary';
+import { closureReportValues } from '../data/screens/closureReview';
+import { signedIn } from '../data/screens/common';
+import { readScreenIds } from '../data/screens/links';
 import { useTheme } from '../theme';
 import './ClosureDetail.css';
 
@@ -19,6 +28,8 @@ class Logic extends DCLogic {
   }
   renderVals() {
     const s = this.state;
+    // 실제 사례(?case=)로 열면 예시 AI 제안 · 근거 · 기본값을 지운다(가상 사례 문장이 실제 사례 옆에 보이지 않게).
+    const real = Boolean(this.props.connected);
     const sel = (on) => ({ bg: on ? '#FFFFFF' : 'transparent', fg: on ? '#2B2A26' : '#66625A', fw: on ? 700 : 400 });
     const R = [
       [
@@ -39,7 +50,9 @@ class Logic extends DCLogic {
       ],
       ['피해아동이 사망하였을 경우', false, ''],
     ];
-    const reasons = R.map(([t, ai, ev], i) => {
+    const reasons = R.map(([t, aiRaw, evRaw], i) => {
+      const ai = real ? false : aiRaw;
+      const ev = real ? '' : evRaw;
       const on = s.rs[i] !== undefined ? s.rs[i] : ai;
       return { t, on, hasEv: !!ev, ev, toggle: () => this.setState({ rs: { ...s.rs, [i]: !on } }) };
     });
@@ -86,7 +99,9 @@ class Logic extends DCLogic {
     let idx = 0;
     const safety = SA.map(([name, items]) => ({
       name,
-      items: items.map(([q, ai, ev]) => {
+      items: items.map(([q, aiRaw, evRaw]) => {
+        const ai = real ? '' : aiRaw;
+        const ev = real ? '' : evRaw;
         const k = idx++;
         const cur = s.sa[k] !== undefined ? s.sa[k] : ai;
         return {
@@ -102,16 +117,29 @@ class Logic extends DCLogic {
         };
       }),
     }));
-    return { reasons, goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
+    return { reasons, goals: real ? [] : goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
   }
 }
 
 export default function ClosureDetail(props) {
   const [outOpen, setOutOpen] = useState(false);
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  const enabled = signedIn(session);
+  const detail = useCaseDetail(caseId, { enabled });
+  const summary = useClosureSummary(caseId, { enabled });
+  const [draft, setDraftState] = useState({});
+  const r = closureReportValues(
+    caseId,
+    detail,
+    summary,
+    draft,
+    (patch) => setDraftState((current) => ({ ...current, ...patch })),
+    () => setDraftState({}),
+  );
+  const v = useDC(Logic, { ...props, connected: r.connected });
+  const name = r.alias || '강시우';
   return (
     <div className="pg-ClosureDetail">
       <div
@@ -144,29 +172,28 @@ export default function ClosureDetail(props) {
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
-            <A to="/Closure">종결 검토</A> › 강시우
+            <A to="/Closure">종결 검토</A> › {r.crumb}
           </nav>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 16px' }}>
-            <A className="btn btn-sm btn-s" to="/ClosureReview">
+            <A className="btn btn-sm btn-s" to={r.reviewHref}>
               ← 전체 상담 내역 검토
             </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>사례관리 종결보고서</h1>
-                <span className="chip c-ai">AI 초안</span>
               </div>
               <div className="note">서식 29</div>
             </div>
-            <A className="btn btn-s" to="/CaseDetail">
+            <A className="btn btn-s" to={r.caseHref}>
               사례 상세 보기
             </A>
           </header>
           <nav className="steps" aria-label="종결 검토 단계">
-            <A className="stp done" to="/ClosureReview">
+            <A className="stp done" to={r.reviewHref}>
               <span className="sn">✓</span>
               <b style={{ fontWeight: '500' }}>전체 상담 내역 검토</b>
             </A>
-            <A className="stp on" to="/ClosureDetail" aria-current="step">
+            <A className="stp on" to={r.detailHref} aria-current="step">
               <span className="sn">2</span>
               <b style={{ fontWeight: '700' }}>종결보고서 작성</b>
             </A>
@@ -179,30 +206,36 @@ export default function ClosureDetail(props) {
             <div className="fhead">
               <div>
                 <span className="k">사건번호</span>
-                <span className="v">C-2026-0312</span>
+                <span className="v">{r.head ? r.head.caseNumber : '—'}</span>
               </div>
               <div>
                 <span className="k">학대유형</span>
-                <span className="v">정서</span>
+                <span className="v">—</span>
               </div>
               <div>
                 <span className="k">담당 상담원</span>
-                <span className="v">이서연</span>
+                <span className="v">{r.head ? r.head.counselor : '—'}</span>
               </div>
               <div>
-                <span className="k">아동성명</span>
-                <span className="v">강시우 (만 7세)</span>
+                <span className="k">아동 별칭</span>
+                <span className="v">{r.head ? r.head.child : '—'}</span>
               </div>
               <div>
                 <span className="k">작성일</span>
-                <span className="v">2026-10-12</span>
+                <span className="v">{r.head ? r.head.today : '—'}</span>
               </div>
               <div>
                 <span className="k">초기면접일</span>
-                <span className="v">2026-04-10</span>
+                <span className="v">{r.head ? r.head.firstInterview : '—'}</span>
               </div>
             </div>
 
+            {r.connected ? (
+              <p className="note" style={{ margin: 0 }}>
+                종결사유 · 사례관리 제공 요약 · 안전평가 · 안전점수는 아직 저장되지 않습니다(준비 중). 저장되는 칸은 대상자 변화상황 ·
+                날짜 · 종합의견입니다.
+              </p>
+            ) : null}
             <div className="grp">종결사유</div>
             {(v.reasons || []).map((r, rIndex) => (
               <Fragment key={rIndex}>
@@ -236,6 +269,11 @@ export default function ClosureDetail(props) {
                   </span>
                 </span>
               </div>
+              {r.connected ? (
+                <div className="goal">
+                  <span className="note">개입목표 · 서비스 기록이 서버에 없어 준비 중입니다.</span>
+                </div>
+              ) : null}
               {(v.goals || []).map((g, gIndex) => (
                 <Fragment key={gIndex}>
                   <div className="goal">
@@ -296,16 +334,18 @@ export default function ClosureDetail(props) {
               <input
                 className="inp"
                 type="text"
-                defaultValue="있음 · 외조모 (주 2회 돌봄)"
+                defaultValue={r.connected ? '' : '있음 · 외조모 (주 2회 돌봄)'}
                 aria-label="Key Person"
                 style={{ width: '100%' }}
               />
-              <span className="ev">
-                <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                  AI 제안
+              {r.connected ? null : (
+                <span className="ev">
+                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                    AI 제안
+                  </span>
+                  보호자 상담 3회차 · 서비스 기록
                 </span>
-                보호자 상담 3회차 · 서비스 기록
-              </span>
+              )}
             </div>
 
             <div className="grp">
@@ -333,10 +373,14 @@ export default function ClosureDetail(props) {
             ))}
             <div className="item" style={{ gridTemplateColumns: '160px minmax(0, 1fr)' }}>
               <span>가족관계척도</span>
-              <span>
-                평균 <b className="brn">3.60</b>점{' '}
-                <span className="note">· 10/1 응답 (모) · 초기 4/12 응답 2.40점</span>
-              </span>
+              {r.connected ? (
+                <span className="note">— · 기관 서식(가족관계척도) 기록이 서버에 없음</span>
+              ) : (
+                <span>
+                  평균 <b className="brn">3.60</b>점{' '}
+                  <span className="note">· 10/1 응답 (모) · 초기 4/12 응답 2.40점</span>
+                </span>
+              )}
             </div>
 
             <div className="grp">대상자 변화상황</div>
@@ -344,57 +388,43 @@ export default function ClosureDetail(props) {
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <b style={{ fontSize: '14px' }}>초기상황</b>
-                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                    AI 초안 · 초기면접지 4/10
-                  </span>
+                  {r.initialChip ? (
+                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                      {r.initialChip}
+                    </span>
+                  ) : null}
                 </span>
-                <textarea
-                  className="ta2"
-                  style={{ minHeight: '120px' }}
-                  defaultValue={
-                    '보호자(모)의 잦은 고성 · 위협적 언어로 아동이 위축됨. 아동은 "엄마가 소리 지르면 숨고 싶어요"라고 진술함. 보호자는 훈육이라고 인식함.'
-                  }
-                ></textarea>
-                <CopyButton name="강시우" />
+                <textarea className="ta2" style={{ minHeight: '120px' }} value={r.initial.value} onChange={r.initial.onChange}></textarea>
+                <CopyButton name={name} />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <b style={{ fontSize: '14px' }}>종결상황</b>
-                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                    AI 초안 · 9~12회차
-                  </span>
+                  {r.closingChip ? (
+                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                      {r.closingChip}
+                    </span>
+                  ) : null}
                 </span>
-                <textarea
-                  className="ta2"
-                  style={{ minHeight: '120px' }}
-                  defaultValue={
-                    '9~12회차 상담과 체크인에서 새 학대 진술 없음. 아동이 안전 계획을 스스로 설명함. 보호자는 부모교육 8회를 이수하고 고성이 상처였다고 말함.'
-                  }
-                ></textarea>
-                <CopyButton name="강시우" />
+                <textarea className="ta2" style={{ minHeight: '120px' }} value={r.closing.value} onChange={r.closing.onChange}></textarea>
+                <CopyButton name={name} />
               </label>
             </div>
 
             <div className="two">
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <b style={{ fontSize: '14px' }}>종결 심의일</b>
-                <input className="inp" type="date" aria-label="종결 심의일" />
+                <input className="inp" type="date" aria-label="종결 심의일" value={r.reviewDate.value} onChange={r.reviewDate.onChange} />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <b style={{ fontSize: '14px' }}>종결 상담일</b>
-                <input className="inp" type="date" defaultValue="2026-10-14" aria-label="종결 상담일" />
-                <span className="ev">
-                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                    AI 제안
-                  </span>
-                  일정 · 10/14 종결 상담
-                </span>
+                <input className="inp" type="date" aria-label="종결 상담일" value={r.closingDate.value} onChange={r.closingDate.onChange} />
               </label>
             </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>담당 상담원 종합의견</b>
-              <textarea className="ta2" style={{ minHeight: '110px' }} placeholder="상담원 작성"></textarea>
-              <CopyButton name="강시우" />
+              <textarea className="ta2" style={{ minHeight: '110px' }} placeholder="상담원 작성" value={r.opinion.value} onChange={r.opinion.onChange}></textarea>
+              <CopyButton name={name} />
             </label>
 
             <div
@@ -413,22 +443,27 @@ export default function ClosureDetail(props) {
                 <PrintNameDialog
                   title="PDF · HWP로 내보내기"
                   goLabel="내보내기"
-                  name="강시우"
+                  name={name}
                   onClose={() => setOutOpen(false)}
                   onRun={(mask) => {
                     setOutOpen(false);
-                    printMasked({ name: '강시우', mask });
+                    printMasked({ name, mask });
                   }}
                 />
               ) : null}
               <A className="btn btn-s" to="/Schedule">
                 종결평가 회의 일정 잡기
               </A>
-              <button type="button" className="btn btn-p">
-                보고서 저장
+              <button type="button" className="btn btn-p" onClick={r.save} disabled={!r.canSave}>
+                {r.saveLabel}
               </button>
             </div>
           </section>
+          {r.reportNote ? (
+            <p className="note" role="status" style={{ margin: 0 }}>
+              {r.reportNote}
+            </p>
+          ) : null}
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>
       </div>

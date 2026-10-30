@@ -3,7 +3,8 @@
 //
 // 서버 연결(2026-10-30): 머리 · 한눈에(상담 횟수 · 유형별 수 · 새 학대 진술) · 회차별 흐름은 useCaseDetail · useSignalHistory ·
 // useApprovedSummaries 의 값으로 src/data/screens/closureReview.ts 가 만든다(디자인 칸 → 서버 값은 그 파일 머리).
-// 핵심 요약 · 서로 다른 진술(여러 회차를 묶는 AI) · 아이 연계 · 위험수준 척도는 서버에 없어 준비 중 — 실제 사례 옆에 예시 문장을
+// 핵심 요약은 closure-summary(만들기 · 확인 체크 · 고친 문장, useClosureSummary). 서로 다른 진술 · 아이 연계 · 위험수준 척도는
+// 서버에 없어 준비 중 — 실제 사례 옆에 예시 문장을
 // 보이지 않는다.
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -16,7 +17,8 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useApprovedSummaries } from '../data/useApprovedSummaries';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSignalHistory } from '../data/useSignalHistory';
-import { closureReviewValues } from '../data/screens/closureReview';
+import { closureReviewValues, closureSummaryValues } from '../data/screens/closureReview';
+import { useClosureSummary } from '../data/useClosureSummary';
 import { NOT_READY, needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { useTheme } from '../theme';
@@ -32,6 +34,18 @@ export default function ClosureReview() {
   const approved = useApprovedSummaries(history.sessions, { enabled, max: 100 });
   const [all, setAll] = useState(false);
   const v = closureReviewValues({ caseId, detail, history, approved, all });
+  const summary = useClosureSummary(caseId, { enabled });
+  const [edit, setEditState] = useState({ key: null, draft: '' });
+  const sv = closureSummaryValues(
+    summary,
+    {
+      editKey: edit.key,
+      draft: edit.draft,
+      setEdit: (key, draft = '') => setEditState({ key, draft }),
+      setDraft: (draft) => setEditState((current) => ({ ...current, draft })),
+    },
+    Boolean(detail.caseInfo?.closureReviewDate),
+  );
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-ClosureReview">
@@ -111,10 +125,91 @@ export default function ClosureReview() {
               style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px', marginBottom: '4px' }}
             >
               <h2 className="h2">핵심 요약</h2>
+              {sv.sumChip ? <span className={sv.sumChipCls}>{sv.sumChip}</span> : null}
+              {sv.hasSummary ? (
+                <>
+                  <span style={{ marginLeft: 'auto', fontSize: '14px' }}>
+                    확인 <b>{sv.okCount}</b> / {sv.total}
+                  </span>
+                  <button type="button" className="btn btn-sm btn-s" onClick={sv.checkAll}>
+                    {sv.checkAllLabel}
+                  </button>
+                </>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-sm btn-s"
+                style={sv.hasSummary ? undefined : { marginLeft: 'auto' }}
+                onClick={sv.generate}
+                disabled={!sv.canGenerate}
+              >
+                {sv.genLabel}
+              </button>
             </div>
-            <p className="note" style={{ margin: '8px 0 0' }}>
-              {v.aiNote}
-            </p>
+            {sv.sumNote ? (
+              <p className="note" role="status" style={{ margin: '8px 0 0' }}>
+                {sv.sumNote}
+              </p>
+            ) : null}
+            {sv.sumError ? (
+              <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#A33B2E' }}>
+                {sv.sumError}
+              </p>
+            ) : null}
+            {sv.groups.map((g) => (
+              <div key={g.title} style={{ marginTop: '16px' }}>
+                <b style={{ fontSize: '15px' }}>{g.title}</b>
+                {g.items.map((it) => (
+                  <div key={it.key} className="pt">
+                    <button
+                      type="button"
+                      className="ck"
+                      role="checkbox"
+                      aria-checked={it.on}
+                      aria-label="확인"
+                      onClick={it.toggle}
+                      style={{ background: it.ckBg, borderColor: it.ckBd }}
+                    >
+                      {it.mark}
+                    </button>
+                    <div>
+                      {it.view ? (
+                        <>
+                          <span style={{ fontSize: '14.5px' }}>{it.text}</span>
+                          {it.fixed ? (
+                            <>
+                              {' '}
+                              <span className="chip c-normal" style={{ height: '20px', fontSize: '11px' }}>
+                                상담사 수정
+                              </span>
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {it.editing ? (
+                        <>
+                          <textarea className="ta3" aria-label="요약 고치기" value={sv.draft} onChange={sv.setDraft}></textarea>
+                          <span style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                            <button type="button" className="btn btn-sm btn-p" onClick={sv.saveEdit}>
+                              저장
+                            </button>
+                            <button type="button" className="btn btn-sm btn-s" onClick={sv.cancelEdit}>
+                              취소
+                            </button>
+                          </span>
+                        </>
+                      ) : null}
+                      <span className="src">{it.src}</span>
+                    </div>
+                    {it.view ? (
+                      <button type="button" className="ed" onClick={it.edit}>
+                        수정
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ))}
           </section>
 
           <section
@@ -195,9 +290,9 @@ export default function ClosureReview() {
             style={{ padding: '18px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <div style={{ flex: '1 1 300px' }}>
-              <b>종결보고서 작성</b>
+              <b>{sv.doneTitle}</b>
               <span className="note" style={{ display: 'block' }}>
-                회차별 흐름을 확인한 뒤 종결보고서(서식 29)를 작성합니다.
+                {sv.doneSub}
               </span>
             </div>
             <A className="btn btn-p" to={v.detailHref}>

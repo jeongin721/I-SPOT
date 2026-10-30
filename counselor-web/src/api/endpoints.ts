@@ -21,6 +21,8 @@ import type {
   DocumentCreateRequest,
   DocumentUpdateRequest,
   FollowupQuestionInput,
+  ClosureSummaryRecord,
+  ClosureSummarySave,
   FollowupCheck,
   FollowupCheckList,
   FollowupQuestionList,
@@ -212,6 +214,21 @@ export const cases = {
   /** 종결 검토 등록 취소. 등록 전이면 그대로. */
   cancelClosureReview(caseId: string): Promise<Case> {
     return api.delete<Case>(`/cases/${caseId}/closure-review`);
+  },
+
+  /** 종결 검토 요약 · 보고서. 만들기 전이면 summary null. */
+  getClosureSummary(caseId: string): Promise<ClosureSummaryRecord> {
+    return api.get<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`);
+  },
+
+  /** 종결 요약 (다시) 만들기. 동기 — AI 면 오래 걸릴 수 있다(504 AI_TIMEOUT). 등록 전 · 승인 요약 없음은 409. */
+  generateClosureSummary(caseId: string): Promise<ClosureSummaryRecord> {
+    return api.post<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`);
+  },
+
+  /** 확인 체크 · 고친 문장 · 보고서 칸 저장(보낸 칸만). */
+  saveClosureSummary(caseId: string, payload: ClosureSummarySave): Promise<ClosureSummaryRecord> {
+    return api.put<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`, payload);
   },
 
   createSession(caseId: string, payload: SessionCreateRequest): Promise<Session> {

@@ -1144,6 +1144,51 @@ export interface FollowupQuestion extends FollowupQuestionInput {
   approved_at: string;
 }
 
+/** 종결 검토 요약 · 보고서(API_CONTRACT 4절 closure-summary, 2026-10-30). */
+export interface ClosureItem {
+  key: string;
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureDraft {
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureSummaryBody {
+  /** AI: 종결 요약 AI 초안 · APPROVED_SUMMARIES: LLM 없이 승인 요약 4칸 묶음(AI 생성 아님). */
+  source: "AI" | "APPROVED_SUMMARIES";
+  model: string | null;
+  generated_at: string;
+  sessions: number[];
+  groups: { title: string; items: ClosureItem[] }[];
+  report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+}
+
+export interface ClosureReportFields {
+  initial_situation?: string | null;
+  closing_situation?: string | null;
+  opinion?: string | null;
+  review_date?: string | null;
+  closing_date?: string | null;
+}
+
+export interface ClosureSummaryRecord {
+  case_id: string;
+  summary: ClosureSummaryBody | null;
+  checks: Record<string, boolean>;
+  edits: Record<string, string>;
+  report: ClosureReportFields;
+  updated_at: string | null;
+}
+
+export interface ClosureSummarySave {
+  checks?: Record<string, boolean>;
+  edits?: Record<string, string>;
+  report?: ClosureReportFields;
+}
+
 /** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
 export interface FollowupCheck {
   text: string;
