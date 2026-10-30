@@ -65,6 +65,10 @@ class GuardianFields(RequestModel):
 
 
 class CaseCreateRequest(GuardianFields):
+    # personal_info(실명 · 가족)를 실을 수 있어 검증 오류 문구에 입력값을 넣지 않는다 — 하위 모델만 가리면 부모 오류에 값이
+    # 남는다(Codex #127 재검증 R4). 422 응답은 원래 값을 빼고 보낸다(main.py).
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     title: str = Field(..., min_length=1, max_length=200)
     child_alias: str = Field(..., min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
