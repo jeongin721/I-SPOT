@@ -76,6 +76,14 @@ elif grep -qE '^STT_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
   echo "  sudo env WITH_STT=1 bash deploy/web-deploy.sh"
   exit 1
 fi
+# 개인 식별 정보 키(2026-10-30). ENV=production 이면 키가 없을 때 Backend 설정 검사가 시작을 막아 3/5 에서 멈춘다.
+# 화면을 바꾸기 전에 미리 멈춘다. 키 값은 출력하지 않는다(backend/README.md 7절 '개인 식별 정보 키').
+if grep -qE '^ENV=production[[:space:]]*$' "$ENV_FILE" \
+  && ! { grep -qE '^PII_ENCRYPTION_KEYS=.+' "$ENV_FILE" && grep -qE '^PII_INDEX_KEY=.+' "$ENV_FILE"; }; then
+  echo "backend.env 가 ENV=production 인데 PII_ENCRYPTION_KEYS · PII_INDEX_KEY 가 없습니다. Backend 가 뜨지 않습니다."
+  echo "AWS SSM Parameter Store 의 키를 backend.env 에 넣은 뒤 다시 실행해 주세요(deploy/README.md '개인 식별 정보 키')."
+  exit 1
+fi
 
 echo "== 1/5 최신 ${DEPLOY_BRANCH:-main} 받기"
 cd "$REPO"

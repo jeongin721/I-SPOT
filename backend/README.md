@@ -422,7 +422,24 @@ backend/
 
 - 자유 회원가입 없음. 계정은 관리자 또는 seed script 로만 생성한다.
 - 권한 검사는 Backend 에서 수행한다. 상담사는 담당 Case 만 조회·수정할 수 있다.
-- 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 저장한다.
+- `cases` 표에는 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 평문으로 저장한다.
+  실명 · 생년월일 · 보호자 · 가족 이름 · 건강정도(서식 4)는 2026-10-30 팀 결정으로 **암호화해** `case_personal_infos` 에 따로 둔다
+  (아래 '개인 식별 정보 키', API_CONTRACT 4절 '개인 식별 정보').
+- **개인 식별 정보 키**
+  - AES-256-GCM(`cryptography`), 값마다 새 nonce, 묶음 값(AAD)에 사례 ID · 칸 이름을 넣어 다른 사례 · 칸으로 옮긴 암호문은 풀리지 않는다(`app/core/pii_crypto.py`).
+  - 키는 설정 `PII_ENCRYPTION_KEYS`(`키이름:base64 32바이트`, 쉼표로 여러 개 — 첫 키로 암호화) · `PII_INDEX_KEY`(이름 정확 검색 색인 HMAC 키,
+    암호화 키와 다른 값)에만 있다. DB · 저장소 · 이미지에 두지 않는다. 운영(ENV=production)에서 키가 없거나 저장소의 개발용 값이면 서버가 뜨지 않는다.
+  - 운영 키는 AWS SSM Parameter Store(SecureString)에 두고 서버 시작 때 환경 변수로 넣는다. **키를 잃으면 저장한 실명을 되살릴 수 없다** —
+    사본 1부를 AWS 밖 비밀번호 관리자에 둔다. 키 값은 메신저 · 메일 · 저장소로 주고받지 않는다.
+  - 만들기: `python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
+  - 키 바꾸기: 새 키를 맨 앞에 넣고(`new:…,old:…`) 서버를 다시 띄운 뒤 `python -m scripts.reencrypt_personal_info`(먼저 `--dry-run`).
+    풀지 못한 사례가 0 이면 옛 키를 뺀다. 색인 키를 바꿨으면 `--reindex` 도 준다. 값은 출력하지 않는다.
+  - 실명을 풀어서 내줄 때마다 감사 로그(`CASE_PERSONAL_INFO_VIEWED` · 목록은 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄)를 남기고, 값은 넣지 않는다.
+  - migration `5c9e2f7a1b30` 을 되돌리면(downgrade) 표를 지워 **저장한 실명이 모두 사라진다.**
+  - 녹취 원문 · 요약 · 상담일지 같은 자유 글 속 이름은 이 암호화 대상이 아니다(DB 저장 암호화 · 접근 권한으로 지킨다).
+  - 알고 둘 한계: ① 이름 검색은 `GET /cases?search=` 쿼리로 오가므로 앞단 프록시(Caddy 등)에 접속 기록을 켤 때는 쿼리 값을 빼야 한다
+    (지금 `deploy/web-deploy.sh` 의 Caddy 는 접속 기록을 켜지 않는다). ② 색인은 같은 이름이면 같은 값이라, DB 만 본 사람도 '같은 이름의 사례' 는 알 수 있다.
+    ③ 색인 키와 DB 가 함께 새면 이름 목록으로 대입해 맞혀 볼 수 있다 — 그래서 색인 키를 암호화 키와 따로 둔다.
 - 상담 원문을 일반 로그에 출력하지 않는다. 로그에는 식별자·개수만 남긴다.
 - 서버 접속 기록(uvicorn)은 경로 · 상태만 남기고 쿼리 값(`?search=` 등)은 남기지 않는다(`app/core/logging.py`, `tests/test_access_log_query.py`).
 - 로그의 오류 trace 는 예외 종류와 호출 위치(파일 · 줄 · 함수 · 그 줄의 코드)만 남기고 예외 문구는 `<문구 생략>` 으로 뺀다. 원인 예외도 같고, 앱 · uvicorn · 라이브러리 로거의 `logging` 기록이 모두 해당한다(`app/core/logging.py` `install_safe_exception_text`, `tests/test_log_exception_text.py`). 예외 문구에는 SQL 매개변수 · 입력 검증 값 · AI 쪽 원인 문구처럼 상담 발화가 섞일 수 있다. 문구가 필요하면 가상 데이터로 로컬에서 재현한다. `logging` 을 거치지 않는 출력(`print` · `warnings` · thread 의 처리되지 않은 예외)과 로그 메시지 인자에 예외를 직접 넣은 기록은 막지 못하므로, 앱 코드는 로그 인자에 예외 종류 이름만 넣는다.
