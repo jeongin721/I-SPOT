@@ -14,18 +14,18 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 
 import scripts.reencrypt_personal_info as reencrypt_script
 from app.core import pii_crypto
 from app.core.config import REPO_ROOT, Settings, _PUBLIC_PII_KEYS, settings
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app.core.enums import AuditAction
 from app.core.errors import APIError
 from app.core.pii_crypto import PersonalInfoCryptoError
 from app.models.audit_log import AuditLog
 from app.models.case import Case
-from app.models.case_personal_info import CasePersonalInfo
+from app.models.case_personal_info import ENCRYPTED_FIELDS, CasePersonalInfo
 from app.models.user import User
 from app.schemas.case import CaseCreateRequest, CaseListItemResponse
 from app.schemas.case_personal_info import PersonalInfoRequest, PersonalInfoResponse
@@ -580,6 +580,115 @@ def test_overlapping_puts_keep_the_last_body_whole(
     assert (data["child_name"], data["interviewee"]["name"]) == (CHILD, SIBLING)
 
 
+def _overlap(counselor_id, case_id: str, first_body: dict, last_body: dict) -> None:
+    """두 요청이 같은 값을 읽은 뒤 first_body 가 먼저, last_body 가 나중에 커밋한다."""
+
+    (first, second), (user1, user2), (case1, case2) = _two_sessions(counselor_id, case_id)
+
+    try:
+        personal_info_service.apply_personal_info(first, case1, user1, PersonalInfoRequest(**first_body))
+        personal_info_service.apply_personal_info(second, case2, user2, PersonalInfoRequest(**last_body))
+        first.commit()
+        second.commit()
+    finally:
+        first.close()
+        second.close()
+
+
+@pytest.mark.parametrize("field", ENCRYPTED_FIELDS)
+def test_overlapping_puts_clear_fields_the_last_body_left_empty(
+    client: TestClient, counselor_headers, counselor_id, case: dict, field: str
+) -> None:
+    """재검증 R2: 비어 있던 칸을 앞 요청이 채워도 그 칸을 뺀 나중 요청이 커밋되면 비어 있다(UPDATE 에 NULL 도 실린다)."""
+
+    base = {"child_name": CHILD} if field != "child_name" else {"interviewee": {"name": GUARDIAN}}
+    _put(client, counselor_headers, case["id"], base)
+
+    _overlap(counselor_id, case["id"], {**base, field: FULL[field]}, base)
+
+    data = _get(client, counselor_headers, case["id"]).json()["data"]
+
+    assert data[field] in (None, [])
+
+
+def test_overlapping_puts_keep_name_index_of_the_last_body(
+    client: TestClient, counselor_headers, counselor_id, case: dict, db
+) -> None:
+    """재검증 R2: 앞 요청이 이름을 바꿔도 나중 요청(읽은 이름 그대로)이 커밋되면 검색 색인도 그 이름이다."""
+
+    _put(client, counselor_headers, case["id"], {"child_name": CHILD})
+
+    _overlap(
+        counselor_id,
+        case["id"],
+        {"child_name": "한가온"},
+        {"child_name": CHILD, "interviewee": {"name": GUARDIAN}},
+    )
+
+    db.expire_all()
+    row = db.get(CasePersonalInfo, uuid.UUID(case["id"]))
+
+    assert row.child_name_index == pii_crypto.name_index(CHILD)
+
+    def search(term: str):
+        response = client.get("/api/v1/cases", params={"search": term}, headers=counselor_headers)
+        return [item["id"] for item in response.json()["data"]["items"]]
+
+    assert search(CHILD) == [case["id"]]
+    assert search("한가온") == []
+
+
+def test_overlapping_puts_keep_birth_year_of_the_last_body(
+    client: TestClient, counselor_headers, counselor_id, case: dict, db
+) -> None:
+    """재검증 R2: 앞 요청이 생년월일의 해를 바꿔도 나중 요청(읽은 날짜 그대로)이 커밋되면 출생연도도 그 해다."""
+
+    _put(client, counselor_headers, case["id"], {"child_birth_date": "2016-01-05"})
+
+    _overlap(
+        counselor_id,
+        case["id"],
+        {"child_birth_date": "2017-01-05"},
+        {"child_birth_date": "2016-01-05", "interviewee": {"name": GUARDIAN}},
+    )
+
+    db.expire_all()
+
+    assert db.get(Case, uuid.UUID(case["id"])).child_birth_year == 2016
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["child_birth_date"] == "2016-01-05"
+
+
+def test_save_locks_the_row_it_reads(client: TestClient, counselor_headers, counselor_id, case: dict) -> None:
+    """재검증 N1: 저장은 읽는 행을 잠근다(PostgreSQL FOR UPDATE) — 같은 사례의 저장이 차례로 돌아 감사의 바뀐 칸이 실제와 맞는다."""
+
+    _put(client, counselor_headers, case["id"], {"child_name": CHILD})
+    statements: list = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    session = SessionLocal()
+    event.listen(engine, "before_cursor_execute", capture)
+
+    try:
+        personal_info_service.apply_personal_info(
+            session,
+            session.get(Case, uuid.UUID(case["id"])),
+            session.get(User, counselor_id),
+            PersonalInfoRequest(child_name=SIBLING),
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+        session.rollback()
+        session.close()
+
+    reads = [s for s in statements if s.lstrip().upper().startswith("SELECT") and "case_personal_infos" in s]
+
+    assert reads
+    if engine.dialect.name == "postgresql":
+        assert any("FOR UPDATE" in s.upper() for s in reads)
+
+
 def test_overlapping_first_saves_answer_409_not_500(
     client: TestClient, counselor_headers, counselor_id, case: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -674,11 +783,20 @@ def test_schemas_do_not_print_values() -> None:
     with pytest.raises(ValidationError) as caught:
         PersonalInfoRequest.model_validate({**FULL, "child_birth_date": "2999-01-01"})
 
-    texts.append(str(caught.value))
+    child_error = str(caught.value)
+    texts.append(child_error)
+
+    # 재검증 R4: 부모 요청(새 사례 등록)의 중첩 검증 오류 문구에도 입력값이 없다.
+    with pytest.raises(ValidationError) as parent:
+        CaseCreateRequest.model_validate({"title": "t", "child_alias": "a", "personal_info": {**FULL, "child_name": CHILD * 30}})
+
+    parent_text = str(parent.value)
+    texts.append(parent_text)
+    assert "child_name" in parent_text
 
     for item in texts:
         _assert_no_secret(item)
-    assert "2999" not in texts[-1]
+    assert "2999" not in child_error
 
 
 _BASH = shutil.which("bash")
