@@ -10,6 +10,7 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useHomeDashboard } from '../data/useHomeDashboard';
@@ -68,6 +69,7 @@ export default function Main(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
@@ -89,10 +91,22 @@ export default function Main(props) {
               alignItems: 'stretch',
             }}
           >
-            <A className="card stat" to="/CaseList">
-              <span className="sub">{v.casesLabel}</span>
+            <div className="card stat">
+              <A className="stat-hd" to="/CaseList">
+                <span className="sub">{v.casesLabel}</span>
+                <span className="stat-more">전체 보기 ›</span>
+              </A>
               <b className="n brn">{v.casesCount}</b>
-            </A>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                {(v.caseTodos || []).map((t) => (
+                  <A key={t.href} className="todo" to={t.href}>
+                    <span className={t.chip}>{t.label}</span>
+                    <span style={{ flex: '1' }}>{t.text}</span>
+                    <b className="brn">›</b>
+                  </A>
+                ))}
+              </div>
+            </div>
             <div className="card stat">
               <span className="sub">{v.tasksLabel}</span>
               <b className="n brn">{v.tasksCount}</b>
@@ -109,13 +123,16 @@ export default function Main(props) {
                 {v.todoNote ? <span className="note">{v.todoNote}</span> : null}
               </div>
             </div>
-            <A className="card stat" to="/ChildLink" style={{ boxShadow: 'inset 0 4px 0 #A33B2E' }}>
-              <span className="sub acc" style={{ fontWeight: '700' }}>
-                긴급 업무
-              </span>
+            <div className="card stat" style={{ boxShadow: 'inset 0 4px 0 #A33B2E' }}>
+              <A className="stat-hd" to="/ChildLink">
+                <span className="sub acc" style={{ fontWeight: '700' }}>
+                  긴급 업무
+                </span>
+                <span className="stat-more">아이 연계 ›</span>
+              </A>
               <b className="n acc">{v.urgentCount}</b>
-              <span style={{ fontSize: '14px' }}>{v.urgentText}</span>
-            </A>
+              <span className="note">{v.urgentText}</span>
+            </div>
           </section>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>

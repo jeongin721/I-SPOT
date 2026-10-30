@@ -955,6 +955,28 @@ export interface SignalHistoryType {
 }
 
 /** 회차 한 줄. 분석이 끝나지 않았고 유형별 판단도 없으면 types 는 빈 배열(분석 전 — 회차 전체 판단과는 무관). */
+/** 한 회차의 아동 발화 대화 주제(분석 결과 topic_tags, 4절 2026-10-29). AI 제안이다. */
+export interface SignalHistoryTopic {
+  topic: string;
+  /** 그 주제로 나눈 아동 발화 수. */
+  count: number;
+  segment_ids: string[];
+  /** 첫 근거 발화 앞부분 · 시작 시각(ms). */
+  quote: string;
+  start_ms: number | null;
+}
+
+/** 한 회차의 세부 신호(risk_utterances 를 세부 유형으로 묶음, 4절 2026-10-30). AI 제안이다. */
+export interface SignalHistorySubtype {
+  abuse_type: AbuseType;
+  subtype: string;
+  /** 근거 발화 수. */
+  count: number;
+  segment_ids: string[];
+  /** 근거 발화가 모두 화자 미확인 — '보류 (화자 확인 중)'. */
+  pending: boolean;
+}
+
 export interface SignalHistorySession {
   session_id: string;
   session_number: number;
@@ -966,6 +988,10 @@ export interface SignalHistorySession {
   counselor_level: RiskLevel | null;
   assessed_at: string | null;
   types: SignalHistoryType[];
+  /** 대화 주제. 분석 전 · 주제 분류가 없는 분석(이 필드 전 · 실패)이면 null, 분류했지만 없으면 []. 옛 서버면 키가 없다. */
+  topics?: SignalHistoryTopic[] | null;
+  /** 세부 신호. 분석 전이면 null, 없으면 []. 옛 서버면 키가 없다. */
+  subtypes?: SignalHistorySubtype[] | null;
 }
 
 /** session_number 오름차순, 분석 전 회차 포함 전부. */

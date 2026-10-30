@@ -61,6 +61,16 @@ from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
 )
+from ai.modeling.abuse.topic_tag_llm import (
+    generate_topic_tags_from_masked_text,
+    mask_child_lines,
+    wait_for_topic_tags,
+)
+from ai.modeling.abuse.followup_question_llm import (
+    child_age_band,
+    generate_followup_questions_from_masked_text,
+    wait_for_questions,
+)
 from ai.modeling.abuse.llm_backend import (
     build_openai_client_and_model,
 )
@@ -955,17 +965,57 @@ def analyze_audio_session(
 
     _check_deadline(deadline, "다음 상담 확인사항 생성")
 
-    followup_check_points = generate_followup_check_points_from_masked_text(
-        client=client,
-        model=note_model,
-        masked_combined_text=followup_masked_text,
-        segments=segments,
-        deadline=deadline,
-        previous_session_label=previous_session_label(case_context),
-    )
+    # '추가 질문' AI 초안(followup_question_llm.py, 2026-10-29 C-1)은 같은 마스킹 글을 받아 확인 메모와
+    # 병렬로 부른다(두 LLM 호출을 겹쳐 돌림). 실패하면 빈 목록이다(모듈 안에서 잡는다).
+    # 질문을 마감 전까지만 기다리므로(wait_for_questions) with 블록(끝에서 끝까지 기다림)이 아니라 wait=False 로 닫는다.
+    # 대화 주제 분류(topic_tag_llm.py, 2026-10-29 — 주제 비중 · 처음 나온 이야기)도 같이 띄운다. 아동 발화만
+    # 따로 마스킹해 보낸다. 마스킹이 막히거나(비식별 검사) 실패 · 마감이면 None(분류하지 못함)이고 분석은 그대로 끝난다
+    # — 이 선택 필드 하나 때문에 분석 전체가 실패하지 않게 마스킹도 mask_child_lines 안에서 잡는다(민규 #122 리뷰).
+    masked_child_lines = mask_child_lines(mask_for_outbound, segments, known_identifiers)
+    question_executor = ThreadPoolExecutor(max_workers=2)
+
+    try:
+        topic_tags_future = (
+            question_executor.submit(
+                generate_topic_tags_from_masked_text,
+                client=client,
+                model=note_model,
+                masked_child_lines=masked_child_lines,
+                segments=segments,
+                deadline=deadline,
+            )
+            if masked_child_lines is not None
+            else None
+        )
+        followup_questions_future = question_executor.submit(
+            generate_followup_questions_from_masked_text,
+            client=client,
+            model=note_model,
+            masked_combined_text=followup_masked_text,
+            segments=segments,
+            age_band=child_age_band(case_context),
+            deadline=deadline,
+        )
+
+        followup_check_points = generate_followup_check_points_from_masked_text(
+            client=client,
+            model=note_model,
+            masked_combined_text=followup_masked_text,
+            segments=segments,
+            deadline=deadline,
+            previous_session_label=previous_session_label(case_context),
+        )
+
+        followup_questions = wait_for_questions(followup_questions_future, deadline)
+        topic_tags = wait_for_topic_tags(topic_tags_future, deadline) if topic_tags_future is not None else None
+    finally:
+        question_executor.shutdown(wait=False)
 
     followup_check_points = restore_pii(
         followup_check_points, followup_entity_map
+    )
+    followup_questions = restore_pii(
+        followup_questions, followup_entity_map
     )
 
     _check_deadline(deadline, "결과 조립")
@@ -995,6 +1045,10 @@ def analyze_audio_session(
         "session_change_notes": session_change_notes,
         "current_round_label": current_round_label,
         "followup_check_points": followup_check_points,
+        # '추가 질문' AI 초안(followup_question_llm.py). 상담사가 승인해야 질문 목록에 들어간다.
+        "followup_questions": followup_questions,
+        # 아동 발화 대화 주제(topic_tag_llm.py). None 이면 분류하지 못함.
+        "topic_tags": topic_tags,
         "legal_references_unavailable": legal_references_unavailable,
         "chunk_results": chunk_results,
     }

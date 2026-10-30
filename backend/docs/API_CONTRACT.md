@@ -559,6 +559,14 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
         "session_id": "…", "session_number": 1, "consulted_at": "2026-10-20T10:00:00+09:00",
         "status": "APPROVED", "analysis_status": "COMPLETED",
         "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00",
+        "topics": [
+          { "topic": "신체 체벌 경험", "count": 3, "segment_ids": ["seg_004", "seg_007", "seg_012"], "quote": "아빠가 또 화났어요…", "start_ms": 41000 },
+          { "topic": "식사 · 돌봄", "count": 1, "segment_ids": ["seg_015"], "quote": "밥도 안 줄 때가 있어요", "start_ms": 135000 }
+        ],
+        "subtypes": [
+          { "abuse_type": "PHYSICAL", "subtype": "직접 신체 가해", "count": 2, "segment_ids": ["seg_004", "seg_007"], "pending": false },
+          { "abuse_type": "NEGLECT", "subtype": "기본적 보호·양육 방임", "count": 1, "segment_ids": ["seg_015"], "pending": true }
+        ],
         "types": [
           { "abuse_type": "PHYSICAL", "detected": true, "ai_level": 3, "counselor_level": "HIGH", "assessed_at": "2026-10-21T09:12:00+09:00" },
           { "abuse_type": "EMOTIONAL", "detected": null, "ai_level": null, "counselor_level": null, "assessed_at": null },
@@ -567,7 +575,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
         ]
       },
       { "session_id": "…", "session_number": 2, "consulted_at": null, "status": "STT_REVIEW_REQUIRED", "analysis_status": null,
-        "counselor_level": null, "assessed_at": null, "types": [] }
+        "counselor_level": null, "assessed_at": null, "topics": null, "subtypes": null, "types": [] }
     ]
   }
 }
@@ -581,6 +589,16 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `detected`: `abuse_signals[].detected`(같은 유형 첫 항목, 참/거짓이 아니면 `null`). 근거 없어 서버가 뺀 유형(8절 근거 관문)은 `null`.
   - `ai_level`: `severity_ratings[].level`(같은 유형 첫 항목, 1~5 정수가 아니면 `null`) — 11.2절 `ai_level` 과 같은 규칙. **AI 제안이지 판정이 아니다.**
   - `counselor_level` · `assessed_at`: 11.2절 유형별 상담원 판단. 판단 전이면 둘 다 `null`. 회차 줄의 회차 전체 판단과는 따로다.
+- `topics`(2026-10-29): 최신 분석이 `COMPLETED` 일 때 그 결과의 `topic_tags`(8절 — 아동 발화 대화 주제)를 옮긴 것이다.
+  `count` 는 그 주제로 나눈 아동 발화 수(`segment_ids` 길이), `quote` · `start_ms` 는 첫 근거 발화 앞부분 · 시작 시각.
+  분석이 끝나지 않았거나 그 분석에 `topic_tags` 가 없으면(이 필드 전 분석 · 분류 실패) **`null`**, 분류했지만 해당 주제가 없으면 `[]`.
+  주제 비중(회차들을 더한 비율) · 첫 언급 회차는 화면이 계산한다. **AI 제안이다.**
+  화면은 대상 회차 앞에 `analysis_status` 가 `COMPLETED` 인데 `topics` 가 `null` 인 회차가 있으면 '처음 나온 이야기' · '첫 언급' 을
+  단정하지 않는다(그 회차에 이미 나왔을 수 있어서).
+- `subtypes`(2026-10-30, 상담 이력 '회차별 세부 신호'): 최신 분석이 `COMPLETED` 일 때 그 결과의 `risk_utterances`(8절)를
+  `(abuse_type, subtype)` 으로 묶은 것이다. `count` 는 근거 발화 수(`segment_ids` 를 겹치지 않게 센 수), 처음 나온 순서.
+  `pending` 은 근거 발화가 **모두** 화자 미확인(그 분석이 쓴 전사본의 `speaker` 가 `UNKNOWN` 이거나 전사본에 없는 번호)일 때 `true` — 화면 '보류 (화자 확인 중)'.
+  유형 · 세부 유형 · 근거 발화가 없는 항목은 뺀다. 분석이 끝나지 않았으면 `null`, 세부 신호가 없으면 `[]`. 세부 유형 이름은 2차 모델의 고정 14종이다. **AI 제안이다.**
 - 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
 - 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
 
@@ -941,6 +959,22 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `409 TRANSCRIPT_NOT_CONFIRMED` — 확정 전. Transcript 검사는 상태 검사보다 먼저 한다
 - `409 INVALID_SESSION_STATE` — 처리 중(`AI_PROCESSING`), 승인된 회기(`APPROVED`), 또는 동시에 들어온 같은 요청이 먼저 처리됨
 
+#### 분석에 넘기는 사례 정보 (`case_context`, 2026-10-28)
+
+API 모양은 바뀌지 않는다. 분석 작업이 회차의 사례에서 아래만 골라 **`case_context` 를 받는 어댑터(`ModelingAIAdapter`)에만**
+키워드로 넘긴다(`app/services/case_context_service.py`, 설계 `PROPOSAL_case_context_analysis.md` §3). STT Contract 는 그대로다.
+
+| 키 | 값 |
+| --- | --- |
+| `child_age_band` | 출생연도로 센 나이의 나이대(`만 0~5세` · `만 6~9세` · `만 10~13세` · `만 14~17세` · `만 18세 이상`). 정확한 나이 · 출생연도는 넘기지 않음 |
+| `child_gender` · `guardian_type` | 사례 값 그대로(없으면 `null`) |
+| `intake_child_traits` · `intake_family_situations` | 초기면접 서식 4 항목 |
+| `previous_session` | 이 회차보다 앞선 **승인 완료** 회차 중 가장 최근 것 `{session_label: "N회차", consulted_on, assessment: {요약 4칸 문장}}`. `consulted_on` 은 상담 시각의 **한국 날짜**(없으면 `null`). 없으면 `null` |
+
+- **넘기지 않는 값**: 아동 가명 · 사건번호 · 제목 · 메모 · 보호자 메모 · 상담원 정보.
+- 지난 회차 문장은 상담원 글이라 AI 쪽이 원문과 같은 마스킹을 거쳐 보낸다.
+- 사례 정보를 만들다 실패해도 분석은 사례 정보 없이 계속한다(서버 로그에만 남김). mock · pipeline · langgraph 어댑터에는 넘기지 않는다.
+
 #### 재분석 (`AI_REVIEW_REQUIRED` 에서 다시 요청)
 
 - 새 분석을 만든다. `GET …/analysis` 는 가장 최근 분석을 주므로, 요청한 뒤로는 이전 결과를 API 로 다시 볼 수 없다
@@ -1132,8 +1166,38 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 - `kind` 는 `OPEN`(열린 질문) · `BANK`(질문 은행 — 자리만 예약, 은행이 생길 때까지 AI 가 내지 않음). 키가 없으면 `OPEN`.
 - **모르는 `kind` · 문장이 비었거나 없는 항목 · 객체가 아닌 항목은 그 질문만 버린다**(분석 전체를 실패시키지 않는다).
   그 밖의 모양 오류(`segment_ids` 가 목록이 아님 등)는 다른 필드처럼 `AI_INVALID_OUTPUT` 이다.
-- 없으면 `[]` 이고, 이 필드가 없던 때 저장한 결과도 그대로 읽힌다. 질문 생성 모듈(`followup_question_llm`)은 따로 붙인다
-  (PROPOSAL_ai_suggestions_case_context.md §4 C-1). 그 전까지는 늘 `[]` 다.
+- 없으면 `[]` 이고, 이 필드가 없던 때 저장한 결과도 그대로 읽힌다.
+- 만드는 곳은 `ai/modeling/abuse/followup_question_llm.py`(2026-10-29, PROPOSAL_ai_suggestions_case_context.md §4 C-1)다.
+  최대 5개, 늘 `kind: "OPEN"`, `segment_ids` 는 1개 이상이다. 아래에 하나라도 걸린 초안은 모듈이 버린다.
+  - 근거 발화가 없거나 실제 발화 목록에 없는 번호만 있음
+  - 열린 질문 표지(무엇 · 어떻게 · 어디 · 언제 · 누구 · 어땠 · 이야기해 줄래 …)가 없음 — 예/아니오 질문
+  - 물음표가 둘 이상(한 번에 여러 질문)
+  - 근거 발화에 없는 인물(아빠 · 엄마 …) · 행위(때리 · 만지 …) 낱말을 질문이 먼저 꺼냄
+  - 300자 넘음
+  입력은 이번 회차 아동 진술 · 위험 신호 요지와 사례 정보의 나이대뿐이다(초기면접 항목 · 지난 회차 요약은 넣지 않는다).
+  모듈이 실패하거나 마감 전에 끝나지 않으면 `[]` 이고 분석은 그대로 끝난다(확인 메모와 병렬로 부르고 마감 전까지만 기다린다).
+  Mock AI · LangGraph 어댑터는 지금도 `[]` 다.
+- **알려진 한계**: 표지 · 낱말 목록만 보는 검사라 "어디 아팠지?" · "몇 번 맞았어?" 같은 꼴은 지나가고, 목록 밖 행위(밟 · 찔 …)와
+  판정 표현은 거르지 못한다. 초안은 상담사 승인을 거쳐야만 쓰이는 것이 마지막 관문이다.
+
+**아동 발화 대화 주제 `topic_tags`(선택, 2026-10-29)** — 상담 이력 '주제 비중' · 상담 전 브리핑 '처음 나온 이야기' 의 재료다(4절 signal-history `topics`).
+
+```json
+"topic_tags": [
+  { "topic": "식사 · 돌봄", "segment_ids": ["seg_015"], "quote": "밥도 안 줄 때가 있어요", "start_ms": 135000 }
+]
+```
+
+- **없으면 `null`**(이 필드 전 결과 · 분류 실패 · Mock AI · LangGraph) — 다른 선택 필드와 달리 `[]` 와 구분한다. `[]` 는 분류했지만 해당 주제 없음.
+- 주제 이름이 비었거나 `segment_ids` 가 비었거나 객체가 아닌 항목은 그 항목만 버린다.
+- 만드는 곳은 `ai/modeling/abuse/topic_tag_llm.py`. 이번 회차 **아동 발화(speaker `CHILD`)만** 마스킹해 LLM 에 보내고,
+  주제는 고정 목록(학교생활 · 친구 관계 · 보호자 관계 · 형제 · 가족 · 신체 체벌 경험 · 두려움 · 정서 · 식사 · 돌봄 · 성 관련 경험 ·
+  건강 · 병원 · 놀이 · 일상)에서만 고른다(목록 밖 이름 · 아동 발화가 아닌 번호는 모듈이 버린다). 회차 사이를 맞춰 세려고 목록을 고정했다.
+  `quote` 는 그 주제 첫 근거 발화 원문 앞 80자, `start_ms` 는 그 발화 시작 시각이다.
+  추가 질문 초안과 병렬로 부르고 마감 전까지만 기다린다. 아래는 모두 `null` 이고 분석은 그대로 끝난다.
+  - 아동 발화 마스킹이 비식별 검사에 막히거나 실패함(앞 단계 글과 입력이 달라 결과가 다를 수 있다)
+  - LLM 실패 · 마감까지 못 끝냄
+  - LLM 이 주제를 냈는데 검사에서 하나도 남지 않음(목록 밖 이름뿐 등 — 분류 실패로 본다)
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 

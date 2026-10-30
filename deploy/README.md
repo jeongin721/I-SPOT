@@ -35,6 +35,17 @@ sudo bash deploy/web-deploy.sh
   새 주소도 이 서버를 가리켜야 HTTPS 인증서가 발급됩니다. `backend.env` 의 `CORS_ORIGINS` 는 스크립트가 `https://<주소>` 로 고칩니다.
 - 이전 버전으로 되돌리는 기능은 없습니다. 되돌리려면 main 에서 되돌리는 커밋을 머지한 뒤 다시 배포합니다.
 
+### 머지 전 브랜치를 데모로 확인하기 (`DEPLOY_BRANCH`)
+
+스크립트는 1/5 단계에서 기본으로 `main` 으로 바꿔 빌드합니다. PR 브랜치를 머지 전에 데모로 보려면 그 브랜치로 바꾼 뒤(옵션이 든 스크립트를 쓰려고) `DEPLOY_BRANCH` 를 넘깁니다. 저장소(GitHub)에는 아무것도 올리지 않습니다.
+
+```bash
+cd /opt/ispot/I-SPOT && sudo git fetch origin && sudo git checkout feature/infra-integration
+sudo env DEPLOY_BRANCH=feature/infra-integration WITH_MODELING=1 WITH_STT=1 WITH_GPU=1 bash deploy/web-deploy.sh
+```
+
+머지된 뒤 `DEPLOY_BRANCH` 없이 실행하면 다시 `main` 으로 바꿔 배포합니다. DB 구조가 다른 브랜치면 migration 이 그 브랜치 기준으로 돌기 때문에, main 으로 돌아오기 전에 확인합니다.
+
 ## 모델까지 띄우기 (`AI_PROVIDER=modeling`)
 
 기본 이미지는 mock · pipeline 만 돌립니다. modeling(`ai/modeling/abuse`, 학대 유형 분류 모델 + 이름 가리기 + OpenAI)은 이미지에 torch · transformers · openai 와 모델 파일이 더 있어야 해서 따로 켭니다.

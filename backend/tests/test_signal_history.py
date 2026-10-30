@@ -266,3 +266,141 @@ def test_unknown_case_is_404(client: TestClient, counselor_headers) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "CASE_NOT_FOUND"
+
+
+# ------------------------------------------------------------
+# 대화 주제(topics, 2026-10-29) — 분석 결과 topic_tags
+# ------------------------------------------------------------
+
+
+def test_session_before_analysis_has_no_topics(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] is None
+
+
+def test_analysis_without_topic_tags_has_null_topics(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    """이 필드 전 분석 · 분류 실패(null)는 '분류 없음' — 빈 목록과 구분한다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], topic_tags=None)
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] is None
+
+
+def test_topic_tags_become_topic_rows(client: TestClient, counselor_headers, db, case: dict, session: dict) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(
+        db,
+        session["id"],
+        topic_tags=[
+            {"topic": "신체 체벌 경험", "segment_ids": ["seg_001", "seg_003"], "quote": "때렸어요", "start_ms": 41000},
+            {"topic": "식사 · 돌봄", "segment_ids": ["seg_004", 7], "quote": "밥도 안 줘요", "start_ms": True},
+            {"topic": "  ", "segment_ids": ["seg_005"]},  # 이름 없음 → 뺌
+            {"topic": "학교생활", "segment_ids": []},  # 근거 없음 → 뺌
+            "bad",
+        ],
+    )
+
+    topics = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["topics"]
+
+    assert topics == [
+        {"topic": "신체 체벌 경험", "count": 2, "segment_ids": ["seg_001", "seg_003"], "quote": "때렸어요", "start_ms": 41000},
+        {"topic": "식사 · 돌봄", "count": 1, "segment_ids": ["seg_004"], "quote": "밥도 안 줘요", "start_ms": None},
+    ]
+
+
+def test_empty_topic_tags_mean_no_topics_found(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], topic_tags=[])
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] == []
+
+
+# ------------------------------------------------------------
+# 세부 신호(subtypes, 2026-10-30) — risk_utterances 를 세부 유형으로 묶은 근거 발화 수 · 보류(화자 미확인)
+# ------------------------------------------------------------
+
+
+def _analysis_segments(db, session_id: str) -> List[Any]:
+    from app.models.transcript import TranscriptSegment
+
+    analysis = db.scalar(
+        select(AIAnalysis).where(AIAnalysis.session_id == uuid.UUID(session_id)).order_by(AIAnalysis.created_at.desc()).limit(1)
+    )
+    return list(
+        db.scalars(
+            select(TranscriptSegment)
+            .where(TranscriptSegment.transcript_id == analysis.transcript_id)
+            .order_by(TranscriptSegment.order_index)
+        )
+    )
+
+
+def test_session_before_analysis_has_no_subtypes(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"] is None
+
+
+def test_subtypes_count_evidence_and_mark_unknown_speaker_as_pending(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    from app.core.enums import Speaker
+
+    analyzed_session(client, counselor_headers, session["id"])
+    segments = _analysis_segments(db, session["id"])
+    assert len(segments) >= 2
+    known, unknown = segments[0], segments[1]
+    known.speaker = Speaker.CHILD
+    unknown.speaker = Speaker.UNKNOWN
+    db.commit()
+    _set_result(
+        db,
+        session["id"],
+        risk_utterances=[
+            {"abuse_type": "신체학대", "subtype": "직접 신체 가해", "segment_ids": [known.segment_id], "text": "a"},
+            {"abuse_type": "PHYSICAL", "subtype": "직접 신체 가해", "segment_ids": [known.segment_id, unknown.segment_id]},
+            {"abuse_type": "방임", "subtype": "기본적 보호·양육 방임", "segment_ids": [unknown.segment_id]},
+            {"abuse_type": "정서학대", "subtype": "위협·공포 유발", "segment_ids": ["seg_없는번호"]},  # 전사본에 없음 → 미확인
+            {"abuse_type": "정서학대", "subtype": "", "segment_ids": [known.segment_id]},  # 세부 유형 없음 → 뺌
+            {"abuse_type": "모름", "subtype": "x", "segment_ids": [known.segment_id]},  # 유형 모름 → 뺌
+            {"abuse_type": "신체학대", "subtype": "도구·위험수단 사용", "segment_ids": []},  # 근거 없음 → 뺌
+            "bad",
+        ],
+    )
+
+    subtypes = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"]
+
+    assert subtypes == [
+        {
+            "abuse_type": "PHYSICAL",
+            "subtype": "직접 신체 가해",
+            "count": 2,
+            "segment_ids": [known.segment_id, unknown.segment_id],
+            "pending": False,
+        },
+        {
+            "abuse_type": "NEGLECT",
+            "subtype": "기본적 보호·양육 방임",
+            "count": 1,
+            "segment_ids": [unknown.segment_id],
+            "pending": True,
+        },
+        {"abuse_type": "EMOTIONAL", "subtype": "위협·공포 유발", "count": 1, "segment_ids": ["seg_없는번호"], "pending": True},
+    ]
+
+
+def test_analysis_without_risk_utterances_has_empty_subtypes(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], risk_utterances=[])
+
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"] == []

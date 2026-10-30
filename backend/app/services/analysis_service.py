@@ -29,7 +29,7 @@ from app.models.user import User
 from app.schemas.analysis import AnalysisEnvelope, AnalysisResponse
 from app.schemas.common import SessionErrorInfo
 from app.schemas.contracts import SummaryEvidenceItem
-from app.services import audit_service, session_service, transcript_service
+from app.services import audit_service, case_context_service, session_service, transcript_service
 
 logger = get_logger(__name__)
 
@@ -276,13 +276,14 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
                 raise AIError("Transcript 가 없습니다.", ErrorCode.AI_FAILED)
 
             payload = transcript_service.transcript_to_contract(transcript)
+            case_context = _build_case_context(db, session)
             adapter = get_ai_adapter()
 
             _prepare_adapter(adapter, job_deadline)
 
             time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
             bundle = run_with_timeout(
-                lambda: _analyze(adapter, payload, time_limit),
+                lambda: _analyze(adapter, payload, time_limit, case_context),
                 time_limit,
             )
 
@@ -352,13 +353,31 @@ def _time_limit(job_deadline: float, limit: float) -> float:
     return min(limit, left)
 
 
-def _analyze(adapter, payload, time_limit: float):
-    """분석 제한 시간을 받는 어댑터(ModelingAIAdapter)에는 줄어든 제한 시간을 넘긴다. 다른 어댑터는 그대로 부른다."""
+def _build_case_context(db: Session, session: ConsultationSession) -> Optional[dict]:
+    """분석에 넘길 사례 정보(case_context_service). 만들다 실패해도 분석은 사례 정보 없이 계속한다(보조 입력이라서)."""
+
+    try:
+        return case_context_service.build_case_context(db, session)
+    except Exception:  # noqa: BLE001 — 사례 정보는 보조 입력이라 분석을 멈추지 않는다
+        logger.exception("분석에 넘길 사례 정보를 만들지 못했습니다. session_id=%s", session.id)
+        # PostgreSQL 은 SQL 오류 뒤 거래가 깨져(InFailedSqlTransaction) 뒤 결과 저장까지 실패한다. 이 앞은 읽기만 해서
+        # 되돌려도 잃는 변경이 없다(민규 #122 교차검증 — SQLite 는 재현되지 않음).
+        db.rollback()
+        return None
+
+
+def _analyze(adapter, payload, time_limit: float, case_context: Optional[dict] = None):
+    """받는 어댑터(ModelingAIAdapter)에만 줄어든 제한 시간 · 사례 정보를 키워드로 넘긴다. 다른 어댑터는 그대로 부른다."""
+
+    options = {}
 
     if accepts_keyword(adapter.analyze, "time_limit_seconds"):
-        return adapter.analyze(payload, time_limit_seconds=time_limit)
+        options["time_limit_seconds"] = time_limit
 
-    return adapter.analyze(payload)
+    if case_context is not None and accepts_keyword(adapter.analyze, "case_context"):
+        options["case_context"] = case_context
+
+    return adapter.analyze(payload, **options)
 
 
 def _prepare_adapter(adapter, job_deadline: float) -> None:

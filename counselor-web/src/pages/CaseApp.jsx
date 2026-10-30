@@ -4,6 +4,7 @@ import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCarryHref } from '../data/useCarryHref';
@@ -196,6 +197,7 @@ export default function CaseApp(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -220,7 +222,6 @@ export default function CaseApp(props) {
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
-            <A to={carry('/PreBriefing')}>상담 전 브리핑</A>
             <A to={carry('/CaseDocs')}>문서함</A>
           </nav>
           {v.k.hasQuote ? (

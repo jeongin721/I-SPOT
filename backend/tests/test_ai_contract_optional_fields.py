@@ -329,3 +329,29 @@ def test_old_stored_result_without_optional_fields_is_still_readable(
 
     for name in OPTIONAL_FIELDS:
         assert result[name] == []
+
+
+# ------------------------------------------------------------
+# topic_tags(2026-10-29) — 없으면 null(분류 없음), 빈 목록과 구분
+# ------------------------------------------------------------
+
+
+def test_missing_topic_tags_stay_null():
+    assert AIAnalysisResult.model_validate(OLD_RESULT).model_dump()["topic_tags"] is None
+
+
+def test_topic_tags_are_kept_and_bad_items_dropped():
+    result = _validate(
+        topic_tags=[
+            {"topic": "학교생활", "segment_ids": ["seg_001"], "quote": "학교 가요", "start_ms": 1200},
+            {"topic": "", "segment_ids": ["seg_002"]},
+            {"topic": "놀이 · 일상", "segment_ids": []},
+            "bad",
+        ]
+    ).model_dump()
+
+    assert result["topic_tags"] == [{"topic": "학교생활", "segment_ids": ["seg_001"], "quote": "학교 가요", "start_ms": 1200}]
+
+
+def test_empty_topic_tags_stay_empty():
+    assert _validate(topic_tags=[]).model_dump()["topic_tags"] == []
