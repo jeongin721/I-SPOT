@@ -5,6 +5,7 @@
 //  - mode "sessions": 사례마다 GET /cases/{id}/sessions 를 쪽마다 불러 회차를 모두 모은다(통계의 상담일별 회차 수 · 일정 달력).
 //  - mode "counts":   사례마다 회차 수만(page_size=1 의 meta.total) 부른다(종결 검토 목록의 회차 수).
 // 요청이 사례 수만큼 늘어나서 한 번에 OVERVIEW_CONCURRENCY 사례씩 부르고, 사례 · 회차 수에 상한을 둔다(넘으면 truncated).
+// withNames: 이름을 보이는 화면(종결 검토 · 일정)만 실명과 함께 부른다(쪽마다 서버에 목록 열람 기록). 통계는 부르지 않는다.
 //
 // 다른 계정으로 바뀌면 key 가 null 을 거쳐 바뀌므로 앞 계정의 값을 보이지 않는다(useRemote).
 // 같은 탭에서 회차 상태가 바뀌면(sessionEvents) 조용히 다시 부른다.
@@ -89,9 +90,9 @@ async function loadPages<T extends { id: string }>(
   return { items, total, truncated: needed > maxPages };
 }
 
-async function loadCaseOverview(mode: OverviewMode): Promise<CaseOverviewData> {
+async function loadCaseOverview(mode: OverviewMode, withNames: boolean): Promise<CaseOverviewData> {
   const caseList = await loadPages(
-    (page) => cases.list({ page, page_size: OVERVIEW_PAGE_SIZE }),
+    (page) => cases.list({ page, page_size: OVERVIEW_PAGE_SIZE, ...(withNames ? { with_child_name: true } : {}) }),
     MAX_CASE_PAGES,
     OVERVIEW_CONCURRENCY,
   );
@@ -121,11 +122,15 @@ async function loadCaseOverview(mode: OverviewMode): Promise<CaseOverviewData> {
 }
 
 /** session 은 useAuthSession() 결과. 로그인이 확인된 뒤에만 부르고, 다른 계정으로 바뀌면 앞 계정의 값을 보이지 않는다. */
-export function useCaseOverview(session: AuthSession, mode: OverviewMode): CaseOverviewState {
+export function useCaseOverview(
+  session: AuthSession,
+  mode: OverviewMode,
+  { withNames = false }: { withNames?: boolean } = {},
+): CaseOverviewState {
   const me = session.status === "signedIn" ? session.me : null;
   const remote = useRemote(
-    me ? `${me.id}:overview:${mode}` : null,
-    () => loadCaseOverview(mode),
+    me ? `${me.id}:overview:${mode}:${withNames ? "names" : "plain"}` : null,
+    () => loadCaseOverview(mode, withNames),
     "사례 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     () => true,
   );

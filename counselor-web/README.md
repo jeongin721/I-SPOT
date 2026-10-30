@@ -30,13 +30,13 @@ npm run build      # dist/ 에 배포용 파일 생성
 | --- | --- | --- |
 | 로그인 | `useAuthSession` · `useLogin` · `useLogoutNotice` | 로그인 상태(401 · 임시 비밀번호 · 다른 탭), 로그인, 로그아웃 이유 |
 | 홈 | `useHomeDashboard` | 진행 중 사례 수, 미처리 업무(종류별 수 · 지연 · 오래 기다린 3건). 관리자는 전체 사례 · 모든 상담사의 업무 |
-| 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색 |
+| 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색. 이름 칸은 실명(등록된 사례), 없으면 별칭 — `with_child_name=true` 로 부른다(부를 때마다 서버에 목록 열람 기록 1줄). 검색은 제목 · 사례 ID · 별칭(부분)과 실명(공백 무시 정확히) |
 | 새 사례 등록 | `useCaseRegister` | 서버가 받는 칸만 등록(`toCaseCreateRequest` 로 확인 · 변환). 실명 · 가족 칸은 `personal_info` 로 같은 요청에(비었으면 빼고). 관리자면 담당 상담사로 고를 활성 계정 목록도 부름. 한 번 만들면 다시 보내지 않음 |
 | 실명 · 가족 정보 | `usePersonalInfo` · `personalInfo` | `GET · PUT /cases/{id}/personal-info`(서버가 칸마다 암호화, 부를 때마다 열람 기록). 값은 화면 상태에만 두고 브라우저 저장소에 넣지 않음. 통째로 바꾸는 PUT 이라 값을 받기 전에는 저장하지 않음. 입력 ↔ 보낼 값 · 입력 확인 · 가릴 이름 목록은 `personalInfo.ts` |
 | 사례 상세 위험도 · 확인 메모 | `useCaseSignals` | 분석이 끝난 가장 최근 회차(결과 검수 중 · 승인 완료) 하나의 상담원 판단(회차 전체 상 · 중 · 하, risk-assessment) · AI 관련 신호 · 확인 메모. 내담자 정보의 주요 위험 요인 · 사례 머리 위험도 · 상담 전 브리핑 확인할 사항이 쓴다(새 API 없음) |
 | 사례 신호 이력 | `useSignalHistory` · `signalHistoryRows` | `GET /cases/{id}/signal-history`(#99) — 회차별 AI 관련 신호 · 심각도 제안 · 상담원 판단(회차 줄의 회차 전체 판단을 먼저, 없으면 예전 회차의 유형별 판단 중 가장 높은 것). 유형별 위험도 '회차별 추이' · 상담 이력 회차 카드 신호 · 세부 신호 행렬(줄 = 네 유형). 승인 회차 요약 모음(`useApprovedSummaries`, 최근 4회차 · AI 생성 아님)은 누적 요약 |
 | 사례 상세 · 상담 이력 | `useCaseDetail` · `sessionRows` | 사례 정보와 회차 목록. 처리 중인 회차가 있으면 끝날 때까지 다시 조회. 초기면접 아동 특성 · 가정상황 고치기(`saveIntake`, PATCH `/cases/{id}` 로 두 목록을 통째로) |
-| 일정 · 종결 검토 목록 · 통계 | `useCaseOverview` | 볼 수 있는 사례를 모두(100건씩 쪽마다) 모으고, 사례마다 회차 목록(`"sessions"`) 또는 회차 수만(`"counts"`) 부름(한 번에 4사례씩, 사례 2,000건 · 사례당 회차 1,000개까지). 집계 API 는 없음 |
+| 일정 · 종결 검토 목록 · 통계 | `useCaseOverview` | 볼 수 있는 사례를 모두(100건씩 쪽마다) 모으고(이름을 보이는 일정 · 종결 검토만 `withNames` 로 실명과 함께, 통계는 실명 없이), 사례마다 회차 목록(`"sessions"`) 또는 회차 수만(`"counts"`) 부름(한 번에 4사례씩, 사례 2,000건 · 사례당 회차 1,000개까지). 집계 API 는 없음 |
 | 사례 문서함 | `useCaseDocuments` | 사례의 회차마다 회차 상세(녹음 · 원문 상태) + 문서 목록을 모음(한 번에 4회차씩). 사례 단위 문서 API 는 없음 |
 | 회차 상세 | `useSessionDetail` | 회차 진행 단계 · 실패 문구 · 음성 파일 정보, 지금 할 수 있는 요청 |
 | 녹음 업로드 | `useAudioUpload` · `audioFile` | (새 회차) → 음성 올리기 → 원문 변환 요청 → 끝날 때까지 기다리기. 실패하면 그 단계부터 다시(새 회차를 또 만들지 않음). 변환을 요청하면 그 회차를 `transcriptionJobs` 에 맡긴다 |

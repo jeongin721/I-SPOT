@@ -21,7 +21,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ApiError, getToken } from "../api/client";
 import { auth, cases } from "../api/endpoints";
-import type { Case, User, UserRole, UserUpdateRequest } from "../api/types";
+import type { CaseListItem, User, UserRole, UserUpdateRequest } from "../api/types";
 import { adminKey, type AdminAccess, type AdminHookOptions } from "./adminAccess";
 import { notifyAccountsChanged } from "./adminEvents";
 import {
@@ -51,16 +51,19 @@ class SessionChangedError extends Error {
   }
 }
 
-/** 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다. */
-export async function loadAllCases(): Promise<Case[]> {
-  const all: Case[] = [];
+/**
+ * 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다.
+ * withNames 면 줄마다 실명을 싣는다(쪽마다 서버에 목록 열람 기록) — 이름을 보이는 화면만. 상담원별 사례 수는 부르지 않는다.
+ */
+export async function loadAllCases({ withNames = false }: { withNames?: boolean } = {}): Promise<CaseListItem[]> {
+  const all: CaseListItem[] = [];
   // 첫 쪽을 보낼 때의 로그인. 다음 쪽을 보내기 전에 바뀌었으면 멈춘다(결과는 useRemote 가 어차피 버린다).
   const token = getToken();
 
   for (let page = 1; ; page += 1) {
     if (page > 1 && getToken() !== token) throw new SessionChangedError();
 
-    const result = await cases.list({ page, page_size: CASE_PAGE_SIZE });
+    const result = await cases.list({ page, page_size: CASE_PAGE_SIZE, ...(withNames ? { with_child_name: true } : {}) });
 
     all.push(...result.items);
 

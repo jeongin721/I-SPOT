@@ -15,6 +15,7 @@ import type {
   Case,
   CaseCreateRequest,
   CaseDetail,
+  CaseListItem,
   CaseStatus,
   CaseUpdateRequest,
   Document,
@@ -175,9 +176,14 @@ export const auth = {
 // =========================================================
 
 export const cases = {
-  /** search 는 제목·사례번호·아동 별칭에서 찾는다. */
-  list(params?: PageQuery & { status?: CaseStatus; search?: string }): Promise<Paged<Case>> {
-    return api.get<Paged<Case>>("/cases", params);
+  /**
+   * search 는 제목·사례번호·아동 별칭(부분)과 아동 실명(공백 무시 정확히 같을 때)에서 찾는다.
+   * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
+   */
+  list(
+    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean },
+  ): Promise<Paged<CaseListItem>> {
+    return api.get<Paged<CaseListItem>>("/cases", params);
   },
 
   get(caseId: string): Promise<CaseDetail> {

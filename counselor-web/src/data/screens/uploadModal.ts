@@ -136,7 +136,7 @@ export function uploadModalValues(input: UploadScreenInput) {
 
   // 1단계: 사례
   const cases = list.rows.map((row) => ({
-    name: row.alias,
+    name: row.name,
     // 최근 상담일은 쓰지 않는다(목록의 last_session_at 은 상담일이 없으면 회차 등록일로 채워진다).
     meta: `${row.caseNumber} · ${row.birthYearLabel}`,
     ...radio(row.id === caseId),

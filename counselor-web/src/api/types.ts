@@ -326,6 +326,11 @@ export interface PersonalInfoRequest {
   health: PersonalHealth | null;
 }
 
+/** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
+export interface CaseListItem extends Case {
+  child_name?: string | null;
+}
+
 /** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */
 export interface PersonalInfo extends PersonalInfoRequest {
   registered: boolean;

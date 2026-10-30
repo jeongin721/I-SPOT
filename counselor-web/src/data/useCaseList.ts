@@ -1,7 +1,8 @@
 // 사례 목록 훅(GET /cases). 화면은 검색어만 넘기고 rows · total · 상태를 받아 그린다.
 //
 // 상담사는 담당 사례만, 관리자는 전체 사례가 온다(Backend 가 거른다).
-// 검색은 제목 · 사례번호 · 아동 별칭에서 찾는다. 입력이 멈춘 뒤(SEARCH_DELAY_MS) 한 번만 부른다.
+// 검색은 제목 · 사례번호 · 아동 별칭(부분)과 아동 실명(정확히)에서 찾는다. 입력이 멈춘 뒤(SEARCH_DELAY_MS) 한 번만 부른다.
+// 이름 칸에 실명을 보이려고 with_child_name=true 로 부른다(부를 때마다 서버에 목록 열람 기록 1줄).
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -63,7 +64,7 @@ export function useCaseList({ search = "", status, page = 1, enabled = true }: C
     const timer = window.setTimeout(
       () => {
         cases
-          .list({ page, page_size: CASE_PAGE_SIZE, status, search: query || undefined })
+          .list({ page, page_size: CASE_PAGE_SIZE, status, search: query || undefined, with_child_name: true })
           .then((result) => {
             if (cancelled) return;
 
