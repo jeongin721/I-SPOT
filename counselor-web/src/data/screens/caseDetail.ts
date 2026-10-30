@@ -4,7 +4,7 @@
 //  - 실명 · 생년월일(출생연도만 있음) · 사례관리대상자 · 가족유형 · 아이 앱 · 다음 상담 일정
 //  - 기관 서식 진행, 종결 검토 등록
 //    (10/21 디자인은 사정결과 줄과 서비스 이행 · 다음 일정 상자를 뺐다)
-//  - 상담 유형(정기 · 방문), 회차별 신호 채택 · 보류 수, 누적 AI 요약(주제 비중 · 세부 신호는 2026-10-28 · 29 연결)
+//  - 회차별 신호 채택 · 보류 수, 누적 AI 요약(주제 비중 · 세부 신호는 2026-10-28 · 29 연결)
 // 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형(guardian_type)으로 채우지 않는다.
 //
 // 위험도 · 학대 유형 · 주요 키워드(2026-10-27): 사례에 따로 저장된 값이 없어, 분석이 끝난 가장 최근 회차(useCaseSignals)의
@@ -413,14 +413,13 @@ export function caseHistoryValues(
     return top ? `${ai} / 판단 ${RISK_LEVEL_LABELS[top]}` : ai;
   };
   const open = Boolean(input.historyOpen);
-  const dash = NOT_PROVIDED;
 
   const sessions = detail.sessions.map((row) => ({
     no: row.numberLabel,
     // 상담 일시를 넣지 않은 회차는 등록일을 '등록' 이라고 밝혀 보여 준다(상담일로 대신하지 않는다).
     date: row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`,
-    kind: `상담 유형 ${dash}`,
-    kindShort: dash,
+    kind: `상담 유형 ${row.kindLabel}`,
+    kindShort: row.kindLabel,
     status: row.statusLabel,
     st: TONE_CHIP[row.tone],
     sig: sigOf(row.id),

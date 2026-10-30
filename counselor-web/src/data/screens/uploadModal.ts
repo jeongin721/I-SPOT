@@ -49,7 +49,10 @@ export function uploadTargets(rows: SessionRow[]): UploadTarget[] {
 
       return {
         value: row.id,
-        label: `${row.numberLabel} · ${row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`}`,
+        // 디자인 '8회차 · 10/2 방문상담' — 상담 유형이 있으면 붙인다.
+        label: `${row.numberLabel} · ${row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`}${
+          row.consultationType ? ` ${row.kindLabel}` : ""
+        }`,
         short: row.numberLabel,
         meta: row.status === "CREATED" ? "녹취 아직 없음" : uploadable ? row.statusLabel : "녹취 있음 · 추가 자료",
         uploadable,

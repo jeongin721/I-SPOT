@@ -306,6 +306,17 @@ export interface CaseUpdateRequest {
 // 회차
 // =========================================================
 
+/** 상담 유형(API_CONTRACT 5절, 2026-10-30). */
+export type ConsultationType = "INITIAL" | "REGULAR" | "VISIT" | "OFFICE" | "PHONE";
+
+export const CONSULTATION_TYPE_LABELS: Record<ConsultationType, string> = {
+  INITIAL: "초기면담",
+  REGULAR: "정기상담",
+  VISIT: "방문상담",
+  OFFICE: "기관 면담",
+  PHONE: "전화상담",
+};
+
 export interface Session {
   id: string;
   case_id: string;
@@ -316,6 +327,8 @@ export interface Session {
   consulted_at: string | null;
   location: string | null;
   memo: string | null;
+  /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  consultation_type?: ConsultationType | null;
   created_at: string;
   updated_at: string;
   stt_started_at: string | null;
@@ -331,6 +344,7 @@ export interface SessionCreateRequest {
   consulted_at?: string | null;
   location?: string | null;
   memo?: string | null;
+  consultation_type?: ConsultationType | null;
 }
 
 /**
