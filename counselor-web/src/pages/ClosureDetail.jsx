@@ -3,6 +3,7 @@
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import CopyButton from '../components/CopyButton';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
@@ -350,6 +351,7 @@ export default function ClosureDetail(props) {
                     '보호자(모)의 잦은 고성 · 위협적 언어로 아동이 위축됨. 아동은 "엄마가 소리 지르면 숨고 싶어요"라고 진술함. 보호자는 훈육이라고 인식함.'
                   }
                 ></textarea>
+                <CopyButton name="강시우" />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -365,6 +367,7 @@ export default function ClosureDetail(props) {
                     '9~12회차 상담과 체크인에서 새 학대 진술 없음. 아동이 안전 계획을 스스로 설명함. 보호자는 부모교육 8회를 이수하고 고성이 상처였다고 말함.'
                   }
                 ></textarea>
+                <CopyButton name="강시우" />
               </label>
             </div>
 
@@ -387,6 +390,7 @@ export default function ClosureDetail(props) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>담당 상담원 종합의견</b>
               <textarea className="ta2" style={{ minHeight: '110px' }} placeholder="상담원 작성"></textarea>
+              <CopyButton name="강시우" />
             </label>
 
             <div
