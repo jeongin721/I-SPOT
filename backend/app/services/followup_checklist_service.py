@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, exists, insert, literal, or_, select, update
+from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -368,8 +368,8 @@ def _claim(
     어느 쪽이든 **그 회차에 이 분석보다 새 분석이 있으면 차지하지 않는다**(#125 교차검증 R1 — 저장이 끝난 예전 분석 A 의
     콜백이 늦게 와서, 그 사이 새 분석 B 로 만든 체크리스트를 A 로 덮던 문제). 새 분석이 없다는 조건을 차지하는 UPDATE 의
     WHERE 에 같이 넣어 한 문장으로 판단한다(미리 읽기만 하면 그 사이 B 가 들어오는 경합이 남는다). 새 분석의 기준은
-    get_latest_analysis 와 같은 순서(created_at, id)다. 처음 만드는 INSERT 는 미리 확인하고, 그 사이 B 가 먼저 행을 만들면
-    유일 조건으로 실패해 UPDATE 경로로 와서 같은 조건에 걸린다.
+    get_latest_analysis 와 같은 순서(created_at, id)다. 처음 만드는 INSERT 는 미리 확인하고 넣은 뒤 커밋 전에 한 번 더
+    확인한다(#125 재검증 N2). 그 사이 B 가 먼저 행을 만들면 유일 조건으로 실패해 UPDATE 경로로 와서 같은 조건에 걸린다.
     """
 
     newer = exists().where(
@@ -402,42 +402,24 @@ def _claim(
         row = get_row(db, session.id)
 
         if row is None:
-            # 첫 행도 '새 분석 없음' 을 같은 문장 안에서 본다(INSERT … SELECT … WHERE NOT EXISTS). 미리 확인한 뒤
-            # INSERT 직전에 새 분석 B 가 들어오면(B 가 아직 체크리스트를 만들기 전이라 유일 조건에도 안 걸림) 예전 분석으로
-            # 첫 행을 만들던 경계(#125 재검증 N2)를 막는다. 0행이면 다음 바퀴의 미리 확인에서 None 으로 끝난다.
-            inserted_values = {
-                key: value
-                for key, value in {
-                    "id": uuid.uuid4(),
-                    "session_id": session.id,
-                    "attempt": 1,
-                    "created_at": values["started_at"],
-                    "updated_at": values["started_at"],
-                    **values,
-                }.items()
-                if value is not None
-            }
-            columns = SessionFollowupChecklist.__table__.c
+            # 첫 행: 넣은 뒤 커밋하기 전에 '새 분석 없음' 을 한 번 더 본다. 미리 확인한 뒤 INSERT 직전에 새 분석 B 가
+            # 들어오면(B 가 아직 체크리스트를 만들기 전이라 유일 조건에도 안 걸림) 예전 분석으로 첫 행을 만들던 경계
+            # (#125 재검증 N2)를 막는다 — 걸리면 되돌리고 None. INSERT … SELECT … WHERE NOT EXISTS 로 한 문장에 넣는 방식은
+            # PostgreSQL CI 에서 0행으로 끝나(ORM 일괄 삽입 경로의 행 수) 쓰지 않는다.
             try:
-                inserted = db.execute(
-                    insert(SessionFollowupChecklist).from_select(
-                        list(inserted_values),
-                        select(
-                            *(literal(value, type_=columns[key].type) for key, value in inserted_values.items())
-                        ).where(~newer),
-                    )
-                ).rowcount
+                db.add(SessionFollowupChecklist(session_id=session.id, attempt=1, **values))
+                db.flush()
             except IntegrityError:
                 # 같은 회차에 동시에 처음 만들었다. 다시 읽어 UPDATE 로 차지해 본다.
                 db.rollback()
                 continue
 
-            if inserted == 1:
-                db.commit()
-                return 1
+            if db.scalar(select(newer)):
+                db.rollback()
+                return None
 
-            db.rollback()
-            continue
+            db.commit()
+            return 1
 
         expected = row.attempt
 
