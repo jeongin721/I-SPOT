@@ -657,7 +657,9 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   `CASE_PERSONAL_INFO_VIEWED`(detail 은 채워진 칸 이름만)를 남긴다
 - **PUT**: 본문(위 `data` 에서 `registered` · `updated_at` 을 뺀 모양)으로 **통째로 바꾼다** — 빠진 칸 · `null` 은 지운다.
   바뀐 칸이 있으면 `CASE_PERSONAL_INFO_UPDATED`(detail 은 `changed_fields` 칸 이름만). 응답은 GET 과 같다
-  - `child_birth_date` 를 넣으면 사례의 `child_birth_year` 를 그 해로 맞춘다
+  - `child_birth_date` 가 있으면 사례의 `child_birth_year` 를 늘 그 해로 맞춘다(생년월일이 우선 — 출생연도만 `PATCH` 로 바꿨어도 같은 날짜를 다시 저장하면 돌아온다)
+  - 저장마다 모든 칸을 다시 쓴다. 두 저장이 겹치면 나중에 커밋한 본문이 통째로 남는다(칸별로 섞이지 않음)
+  - 저장 전 사례에 처음 저장이 겹쳐 다른 요청이 먼저 저장했으면 `409 DUPLICATE_RESOURCE`(새로고침 후 다시 저장)
 - 값 규칙(어기면 `422 VALIDATION_ERROR`, 문구에 보낸 값을 되풀이하지 않는다)
   - 이름 칸(`child_name` · `name` · `subject_name`)은 앞뒤 공백을 떼고 1~50자. 빈 이름은 `null` 로 보낸다
   - 생년월일은 `YYYY-MM-DD`, 1900-01-01 ~ 오늘(한국 날짜)

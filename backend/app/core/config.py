@@ -355,7 +355,7 @@ class Settings(BaseSettings):
 
         modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조(Privacy Gateway
         Tier 2)가 돌지 않는다. 그래서 이름 인식(NER)이 놓친 이름 · 기관 · 지역은 그대로 나간다(ai/modeling/abuse/contract_adapter.py
-        '아직 못 채운 것' · privacy_gateway.py. 실명 저장 여부는 팀 결정 대기). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
+        '아직 못 채운 것' · privacy_gateway.py. 실명은 암호화해 저장하지만 분석에 등록 이름을 넘기는 연결은 후속 PR). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
         못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
         이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
         함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).

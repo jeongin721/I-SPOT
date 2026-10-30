@@ -317,7 +317,7 @@ OPENAI_MODEL=...
 
 > **주의: `modeling`(이경진 님 파이프라인, `ai/modeling/abuse/contract_adapter`)은 외부로 보내기 전에 가리지만 가리기가 아직
 > 완전하지 않다.** 이름 인식이 놓친 이름 · 기관 · 지역을 잡아 줄 등록 실명 대조가 서버 경로에서는 돌지 않는다(서버가 `case_id` 를
-> 넘기지 않음, 실명 저장 여부는 팀 결정 대기). 긴 상담 뒷부분을 이름 인식이 보지 않던 문제는 10/20 겹치는 창으로 고쳤다.
+> 넘기지 않음. 실명은 2026-10-30 부터 암호화해 저장하지만(7절) 분석에 등록 이름을 넘기는 연결은 후속 PR). 긴 상담 뒷부분을 이름 인식이 보지 않던 문제는 10/20 겹치는 창으로 고쳤다.
 > 이 개인정보 문제가 해결되기 전에는 가상 데이터로만 쓰고, `ENV=production` 에서는
 > `AI_MODELING_ALLOW_IN_PRODUCTION=true` 를 함께 적어야만 시작한다. torch · transformers · openai 와 가중치 파일은
 > backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
@@ -434,6 +434,7 @@ backend/
   - 만들기: `python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
   - 키 바꾸기: 새 키를 맨 앞에 넣고(`new:…,old:…`) 서버를 다시 띄운 뒤 `python -m scripts.reencrypt_personal_info`(먼저 `--dry-run`).
     풀지 못한 사례가 0 이면 옛 키를 뺀다. 색인 키를 바꿨으면 `--reindex` 도 준다. 값은 출력하지 않는다.
+    서비스 중에 돌려도 된다 — 사례마다 읽은 값이 그대로일 때만 바꾸고, 그사이 저장이 끼면 다시 읽는다(저장을 덮지 않음).
   - 실명을 풀어서 내줄 때마다 감사 로그(`CASE_PERSONAL_INFO_VIEWED` · 목록은 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄)를 남기고, 값은 넣지 않는다.
   - migration `5c9e2f7a1b30` 을 되돌리면(downgrade) 표를 지워 **저장한 실명이 모두 사라진다.**
   - 녹취 원문 · 요약 · 상담일지 같은 자유 글 속 이름은 이 암호화 대상이 아니다(DB 저장 암호화 · 접근 권한으로 지킨다).
