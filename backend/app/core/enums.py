@@ -254,6 +254,11 @@ class AuditAction(str, Enum):
     CLOSURE_SUMMARY_GENERATED = "CLOSURE_SUMMARY_GENERATED"
     CLOSURE_SUMMARY_UPDATED = "CLOSURE_SUMMARY_UPDATED"
     CASE_DELETED = "CASE_DELETED"
+    # 개인 식별 정보(암호화한 실명 등, API_CONTRACT 4절 '개인 식별 정보'). 복호화해서 내준 열람도 남긴다.
+    # detail 에는 칸 이름 · 사례 ID 만 넣고 값은 넣지 않는다. 목록은 조회 1번에 1줄(case_ids · count).
+    CASE_PERSONAL_INFO_VIEWED = "CASE_PERSONAL_INFO_VIEWED"
+    CASE_PERSONAL_INFO_UPDATED = "CASE_PERSONAL_INFO_UPDATED"
+    CASE_LIST_PERSONAL_INFO_VIEWED = "CASE_LIST_PERSONAL_INFO_VIEWED"
     SESSION_CREATED = "SESSION_CREATED"
     SESSION_UPDATED = "SESSION_UPDATED"
     SESSION_DELETED = "SESSION_DELETED"
@@ -283,6 +288,8 @@ class AuditAction(str, Enum):
     # 승인한 추가 질문 목록 저장(18절, 2026-10-28). detail 에는 질문 수 · 출처별 수만 남긴다(질문 원문은 넣지 않는다).
     FOLLOWUP_QUESTIONS_UPDATED = "FOLLOWUP_QUESTIONS_UPDATED"
     FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
+    # 다음 상담 체크리스트 만들기 · 다시 만들기 요청(19절, 2026-10-30). detail 에는 provider · 시도 번호만 남긴다(문장은 넣지 않는다).
+    FOLLOWUP_CHECKLIST_REQUESTED = "FOLLOWUP_CHECKLIST_REQUESTED"
     # 일정(2026-11-02). detail 에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 넣지 않는다).
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"

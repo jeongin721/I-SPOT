@@ -1,4 +1,4 @@
-# 일정(GET/POST/PATCH/DELETE /schedule/events, API_CONTRACT 19절, 2026-11-02). 데이터는 모두 가상이다.
+# 일정(GET/POST/PATCH/DELETE /schedule/events, API_CONTRACT 20절, 2026-11-02). 데이터는 모두 가상이다.
 
 from typing import Any, Dict
 

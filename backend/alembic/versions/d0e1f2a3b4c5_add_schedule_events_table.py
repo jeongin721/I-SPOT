@@ -1,10 +1,10 @@
 """add schedule_events table
 
 Revision ID: d0e1f2a3b4c5
-Revises: c9d0e1f2a3b4
+Revises: 5c9e2f7a1b30
 Create Date: 2026-11-02 10:00:00.000000
 
-일정(상담 일정 · 개인 · 기관 일정 · 최초접수 법정 기한 완료 표시). API_CONTRACT 19절.
+일정(상담 일정 · 개인 · 기관 일정 · 최초접수 처리 기한 완료 표시). API_CONTRACT 20절.
 """
 from typing import Sequence, Union
 
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = 'd0e1f2a3b4c5'
-down_revision: Union[str, None] = 'c9d0e1f2a3b4'
+down_revision: Union[str, None] = '5c9e2f7a1b30'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

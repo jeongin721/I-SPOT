@@ -29,12 +29,14 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { useCaseSignals } from '../data/useCaseSignals';
+import { latestAnalyzedSession, useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupChecks } from '../data/useFollowupChecks';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
+import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
@@ -57,15 +59,32 @@ export default function CaseDetail(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
-  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
+  // 브리핑 회차(분석이 끝난 가장 최근 회차)는 useCaseSignals 와 같은 함수로 먼저 정한다 — 저장한 확인 사항 · 체크리스트에만
+  // 발화 근거가 있어도 원문을 받아 '근거 · 00:02 아동' 으로 보이게(#125 재검증).
+  const briefSessionId = latestAnalyzedSession(detail.sessions)?.id ?? null;
+  const briefChecks = useFollowupChecks(briefSessionId, { enabled: signedIn(session) });
+  // 브리핑의 확인할 사항 초안은 4 · 다음 상담 준비 화면과 같은 목록(AI 확인 메모 + 다음 상담 체크리스트, 19절)이다.
+  const briefChecklist = useFollowupChecklist(briefSessionId, { enabled: signedIn(session) });
+  const needEvidence =
+    briefChecks.items.some((item) => item.in_briefing && Array.isArray(item.segment_ids) && item.segment_ids.length > 0) ||
+    checklistNeedsEvidence(briefChecklist.checklist, briefSessionId);
+  const signals = useCaseSignals(detail, { enabled: signedIn(session), needEvidence });
   const theme = useTheme();
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
   const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
-  const briefChecks = useFollowupChecks(signals.session?.id ?? null, { enabled: signedIn(session) });
-  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history, checks: briefChecks });
+  const brief = preBriefingValues({
+    session,
+    detail,
+    signals,
+    questions: briefQuestions,
+    caseId,
+    history,
+    checks: briefChecks,
+    checklist: briefChecklist,
+  });
   const briefRef = useRef(null);
   const [outOpen, setOutOpen] = useState(false);
   const wantBrief = params.get('view') === 'brief';

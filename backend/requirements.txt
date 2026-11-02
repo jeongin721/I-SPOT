@@ -10,3 +10,5 @@ email-validator==2.3.0
 python-multipart==0.0.32
 bcrypt==5.0.0
 PyJWT==2.13.0
+# 개인 식별 정보 칸 암호화(AES-256-GCM, app/core/pii_crypto.py). 2026-10-30 팀 결정.
+cryptography==50.0.2

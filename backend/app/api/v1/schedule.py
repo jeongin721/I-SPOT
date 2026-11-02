@@ -1,4 +1,4 @@
-# /schedule/events — 일정(19절, 2026-11-02)
+# /schedule/events — 일정(20절, 2026-11-02)
 
 import uuid
 from datetime import date

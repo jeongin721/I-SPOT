@@ -1,4 +1,4 @@
-// 일정 훅(GET/POST/PATCH/DELETE /schedule/events, API_CONTRACT 19절, 2026-11-02).
+// 일정 훅(GET/POST/PATCH/DELETE /schedule/events, API_CONTRACT 20절, 2026-11-02).
 //
 // 보이는 달 앞뒤를 덮는 기간(range)의 일정과, 일정에 붙일 사례(진행 중 사례 · 별칭)를 함께 부른다.
 // 쓰기(만들기 · 고치기 · 지우기)는 끝나면 조용히 다시 부른다(처리 기한 · 공유 일정까지 서버 값으로 맞춘다).

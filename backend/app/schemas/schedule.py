@@ -1,4 +1,4 @@
-# 일정 Schema(API_CONTRACT 19절, 2026-11-02).
+# 일정 Schema(API_CONTRACT 20절, 2026-11-02).
 
 import re
 import uuid

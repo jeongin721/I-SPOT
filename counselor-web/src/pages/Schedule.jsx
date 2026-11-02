@@ -1,7 +1,7 @@
 // 일정 · 월간 달력 + 일정 추가
 // 원본: 11/02 프론트팀 디자인 '일정 · 월간 달력 + 일정 추가'(Schedule.dc.html)
 //
-// 서버 연결(2026-11-02): 일정은 useSchedule(GET/POST/PATCH/DELETE /schedule/events, API_CONTRACT 19절), 화면 값은
+// 서버 연결(2026-11-02): 일정은 useSchedule(GET/POST/PATCH/DELETE /schedule/events, API_CONTRACT 20절), 화면 값은
 // src/data/screens/schedule.ts(scheduleValues). 상담 · 개인 · 기관 일정 추가 · 수정 · 삭제, 중요 표시, 팀 공유,
 // 최초접수의 처리 기한(3 · 7 · 30일) 완료 표시가 서버에 저장된다. 종결보고서의 '종결평가 회의 일정 잡기' 는
 // ?case=&preset=closure-meeting 으로 와서 추가 창이 열린 채 시작한다. '상담 전날 브리핑 자동 준비' 는 준비 중.

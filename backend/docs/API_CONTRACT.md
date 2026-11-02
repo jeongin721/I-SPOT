@@ -443,9 +443,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
+  - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
+  열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
+  빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
 - 상담사: 담당 Case 만 반환
 - 관리자: 전체 반환
 
@@ -470,7 +474,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
         "counselor_name": "이서연",
         "created_at": "...",
         "updated_at": "...",
-        "last_session_at": "2026-09-01T14:30:00Z"
+        "last_session_at": "2026-09-01T14:30:00Z",
+        "child_name": null
       }
     ],
     "meta": { "total": 1, "page": 1, "page_size": 20, "total_pages": 1 }
@@ -478,8 +483,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
 }
 ```
 
-> 개인정보 최소화 원칙에 따라 아동 실명 필드는 없다. `child_alias` 를 사용한다.
-> 같은 이유로 **보호자 실명도 저장하지 않는다.** 관계 유형만 기록한다.
+> 개인정보 최소화 원칙에 따라 **사례 응답에는 아동 실명 필드가 없다.** `child_alias` 를 사용한다(예외: 목록 `with_child_name=true` 의 `child_name`).
+> 실명 · 생년월일 · 보호자 · 가족 이름은 2026-10-30 팀 결정으로 **암호화해 따로 저장**하고 아래 '개인 식별 정보' 창구로만 주고받는다.
 
 `last_session_at` 은 Case List 화면(`03_UI_UX.md` S02)의 **최근 상담일**이다.
 목록 조회에서 함께 계산되므로 Case 별로 Session 을 다시 호출할 필요가 없다.
@@ -525,11 +530,13 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   "intake_family_situations": [],
   "notes": null,
   "counselor_id": null,
-  "case_number": null
+  "case_number": null,
+  "personal_info": null
 }
 ```
 
 - `title`, `child_alias` 필수
+- `personal_info` 선택: 아래 '개인 식별 정보' 의 `PUT` 본문과 같은 모양. 사례와 **한 거래로** 암호화해 저장한다(검증 실패면 사례도 만들지 않는다). 응답에는 싣지 않는다
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `report_date` · `linked_date` · `first_interview_date`(2026-10-30, 서식 4 ① 신고접수일 · 사례연계일 · 최초면접일) 선택. `"YYYY-MM-DD"` 날짜만,
@@ -653,7 +660,50 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 
 ### DELETE /api/v1/cases/{case_id} → 204
 
-관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다.
+관리자 전용. Session 이하 데이터가 함께 삭제되고, 저장소의 음성 파일도 함께 삭제된다. 개인 식별 정보(아래)도 함께 삭제된다.
+
+### 개인 식별 정보 — GET · PUT /api/v1/cases/{case_id}/personal-info
+
+서식 4 의 **아동 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 표 · 건강정도**(2026-10-30 추가, 팀 결정 —
+`specs/I-SPOT/case-personal-info-encryption.md`). 서버는 칸마다 **AES-256-GCM 으로 암호화해** 저장하고(평문 칸 없음),
+권한을 통과한 요청에만 풀어서 준다. 키는 DB 밖(설정 `PII_ENCRYPTION_KEYS` · `PII_INDEX_KEY`)에 있다.
+
+```json
+{
+  "data": {
+    "registered": true,
+    "child_name": "한가람",
+    "child_birth_date": "2015-04-12",
+    "target_person": { "name": "한누리", "relation": "부", "birth_date": "1983-09-02" },
+    "interviewee": { "name": "한누리", "relation": "부" },
+    "family_members": [
+      { "name": "한누리", "relation": "부", "age": 43, "religion": null, "education": null, "job": null, "living_together": true }
+    ],
+    "health": {
+      "subject_name": "한바다",
+      "items": [{ "kind": "정신과 진단", "present": true, "detail": "…" }]
+    },
+    "updated_at": "…"
+  }
+}
+```
+
+- **GET**: 풀어서 준다. 저장 전이면 `registered: false`, 모든 칸 `null` · `family_members: []`. 부를 때마다 열람 기록
+  `CASE_PERSONAL_INFO_VIEWED`(detail 은 채워진 칸 이름만)를 남긴다
+- **PUT**: 본문(위 `data` 에서 `registered` · `updated_at` 을 뺀 모양)으로 **통째로 바꾼다** — 빠진 칸 · `null` 은 지운다.
+  바뀐 칸이 있으면 `CASE_PERSONAL_INFO_UPDATED`(detail 은 `changed_fields` 칸 이름만). 응답은 GET 과 같다
+  - `child_birth_date` 가 있으면 사례의 `child_birth_year` 를 늘 그 해로 맞춘다(생년월일이 우선 — 출생연도만 `PATCH` 로 바꿨어도 같은 날짜를 다시 저장하면 돌아온다)
+  - 저장마다 모든 칸(빈 칸 · 이름 검색 색인 · 생년월일의 출생연도 포함)을 다시 쓴다. 두 저장이 겹치면 나중에 커밋한 본문이 통째로 남는다(칸별로 섞이지 않음).
+    같은 사례의 저장은 읽는 행을 잠가 차례로 돈다(PostgreSQL) — 수정 기록의 `changed_fields` 는 앞 저장이 남긴 값과 견준 칸이다
+  - 저장 전 사례에 처음 저장이 겹쳐 다른 요청이 먼저 저장했으면 `409 DUPLICATE_RESOURCE`(새로고침 후 다시 저장)
+- 값 규칙(어기면 `422 VALIDATION_ERROR`, 문구에 보낸 값을 되풀이하지 않는다)
+  - 이름 칸(`child_name` · `name` · `subject_name`)은 앞뒤 공백을 떼고 1~50자. 빈 이름은 `null` 로 보낸다
+  - 생년월일은 `YYYY-MM-DD`, 1900-01-01 ~ 오늘(한국 날짜)
+  - `relation` · `religion` · `education` 30자, `job` 50자, `age` 0~150, `family_members` 30줄 이하(`name` 필수)
+  - `health.items[].kind` 는 `질병` · `장애` · `병원치료` · `정신과 진단` · `타기관 상담` 가운데 하나, 같은 항목은 한 번만. `detail` 200자
+- 권한: `GET /api/v1/cases/{case_id}` 와 같다 — 상담사는 담당 사례만(`403 FORBIDDEN`), 관리자는 전체. 없는 사례 `404 CASE_NOT_FOUND`
+- 저장된 값을 풀 수 없으면(키가 설정에 없음 · 값이 바뀜) `500 PERSONAL_INFO_UNAVAILABLE`. 목록 `with_child_name` 은 그 줄만 `null` 로 둔다
+- 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name` 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
 
 ---
 
@@ -872,9 +922,11 @@ STT 가 발화를 하나도 찾지 못하면(무음 · 잡음만 있는 음성) 
 `source`: `STT | COUNSELOR_EDIT`
 
 `confidence` 가 `0.0` 이면 **STT 공급자가 신뢰도를 주지 않았다는 뜻**이다(0% 가 아니다).
-`STT_PROVIDER=module` 일 때 STT 모듈(`stt/`)의 기본 공급자인 ElevenLabs 결과는 모든 발화가 `0.0` 이며,
-이 값은 저신뢰로 표시하지 않는다.
-저신뢰 구간은 `0 < confidence < 0.7` 로 판단한다(Mock AI 의 저신뢰 경고와 같은 기준).
+`STT_PROVIDER=module` 일 때 STT 모듈(`stt/`)의 기본 공급자인 ElevenLabs 결과는 단어 `logprob` 이 있으면
+구간 `confidence` 가 그 구간 단어 확률(`exp(logprob)`, 0.01~1.0)의 최솟값이고, `logprob` 이 없으면 `0.0` 이다(#133).
+이 값은 모델이 내는 확률이며 실제 오인식과의 관계는 검증하지 않았다. 개발용 응답 기준으로 구간의 약 1.5% 가 저신뢰로 나오고,
+구간이 길수록(화자 구분이 실패해 한 구간으로 합쳐진 녹음 등) 최솟값이 낮아져 저신뢰가 되기 쉽다.
+저신뢰 구간은 `0 < confidence < 0.7` 로 판단한다(Mock AI 의 저신뢰 경고 · 상담사 화면 · AI 체크리스트 입력이 같은 기준).
 `edited_segment_ids` 에 포함된 segment 는 상담사가 확인했으므로 경고를 해제해도 된다.
 
 #### child_handoff (아동 발화 인계 보기)
@@ -1215,12 +1267,15 @@ API 모양은 바뀌지 않는다. 분석 작업이 회차의 사례에서 아�
   - 열린 질문 표지(무엇 · 어떻게 · 어디 · 언제 · 누구 · 어땠 · 이야기해 줄래 …)가 없음 — 예/아니오 질문
   - 물음표가 둘 이상(한 번에 여러 질문)
   - 근거 발화에 없는 인물(아빠 · 엄마 …) · 행위(때리 · 만지 …) 낱말을 질문이 먼저 꺼냄
+  - 판단 · 법률 용어(학대 · 신고 · 처벌 …) · 판정 · 단정 표현이 있음, 답을 정해 둔 꼬리 · 부정형 질문("어디 아팠지?" · "~맞지?" ·
+    "~하지 않았어?"), 이유(`reason`)에 판정 · 단정 표현(2026-10-30, rag 의 질문 검증 규칙 — `ai/modeling/abuse/question_rules.py`)
   - 300자 넘음
   입력은 이번 회차 아동 진술 · 위험 신호 요지와 사례 정보의 나이대뿐이다(초기면접 항목 · 지난 회차 요약은 넣지 않는다).
   모듈이 실패하거나 마감 전에 끝나지 않으면 `[]` 이고 분석은 그대로 끝난다(확인 메모와 병렬로 부르고 마감 전까지만 기다린다).
   Mock AI · LangGraph 어댑터는 지금도 `[]` 다.
-- **알려진 한계**: 표지 · 낱말 목록만 보는 검사라 "어디 아팠지?" · "몇 번 맞았어?" 같은 꼴은 지나가고, 목록 밖 행위(밟 · 찔 …)와
-  판정 표현은 거르지 못한다. 초안은 상담사 승인을 거쳐야만 쓰이는 것이 마지막 관문이다.
+- **알려진 한계**: 표지 · 낱말 목록만 보는 검사라 "몇 번 맞았어?" 처럼 아이가 이미 말한 행위를 횟수 · 정도로 되묻는 꼴은 지나가고,
+  목록 밖 행위(밟 · 찔 …)도 거르지 못한다(2026-10-30 부터 "어디 아팠지?" 같은 꼬리형과 판정 표현은 거른다).
+  초안은 상담사 승인을 거쳐야만 쓰이는 것이 마지막 관문이다. 공식 근거는 19절이 검토를 통과한 것만 따로 붙인다.
 
 **아동 발화 대화 주제 `topic_tags`(선택, 2026-10-29)** — 상담 이력 '주제 비중' · 상담 전 브리핑 '처음 나온 이야기' 의 재료다(4절 signal-history `topics`).
 
@@ -1790,7 +1845,10 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
 | `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
 | `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
+| `FOLLOWUP_DISABLED` | 503 | 다음 상담 체크리스트가 꺼져 있음(`FOLLOWUP_PROVIDER=off`, 19절) |
+| `AI_PRIVACY_BLOCKED` | — | 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않음. 19절 체크리스트 행의 `error` 로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
+| `PERSONAL_INFO_UNAVAILABLE` | 500 | 저장한 개인 식별 정보를 풀 수 없음(키가 설정에 없음 · 값이 바뀜, 4절 '개인 식별 정보'). 서버 로그에 사례 ID · 칸 · 키 이름만 남는다 |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (5xx 에만 쓴다) |
 
 `INVALID_SESSION_STATE` 의 `message` 는 한국어 상태 이름으로 쓰고 상태 코드를 넣지 않는다. 화면에는 그대로 보여 주면 된다.
@@ -2119,7 +2177,150 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
 
 ---
 
-## 19. Schedule (일정, 2026-11-02)
+## 19. Followup Checklist (다음 상담 체크리스트 — 확인할 사항 · 추가 질문 공식 근거)
+
+회차마다 rag(팀장님 공식 근거 RAG)로 만든 **다음 상담 전 확인할 사항**과, **추가 질문 AI 초안(8절 `followup_questions`)에 붙인 공식 근거**를 둔다
+(2026-10-30, 팀장님 10/29 결정 ①~④, 설계 `specs/I-SPOT/followup-rag-checklist.md`). 학대 여부를 확정하는 값은 없다.
+
+- 추가 질문은 **#118 초안 하나에서만** 만든다. 이 절은 질문을 만들지 않고, 초안에 공식 근거만 붙인다.
+- 화면 '다음 상담 전 확인할 사항' 은 8절 `followup_check_points`(AI 확인 메모)와 이 절의 `check_items` 를 한 목록으로 합쳐 보인다(같은 문장은 한 번).
+- **공식 근거(type 이 `case` 가 아닌 근거)는 rag 의 검토를 통과한 것만 들어온다**: 같은 분석에서 찾은 공식 근거 목록만 후보로 → 연결(LLM, 질문마다 0~2개) →
+  코드 검사(후보에 있는 번호 · 이유 있음 · 판정 표현 없음) → 검토(LLM, 문장 · 근거 쌍마다 예/아니오, '예' 만 남김). 검토가 실패하면 공식 근거를 모두 뺀다.
+  그래서 공식 근거가 없는 확인 사항 · 질문에는 '공식 근거' 표시가 붙지 않는다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/v1/sessions/{session_id}/followup-checklist` | 켜져 있는지 + 체크리스트(없으면 null) |
+| POST | `/api/v1/sessions/{session_id}/followup-checklist` | 만들기 · 다시 만들기(202, 본문 없음) |
+
+### 언제 만드나
+
+- **분석이 저장되면** 같은 백그라운드 작업에서 바로 만든다(늦게 와서 버린 분석 결과면 만들지 않는다). 분석 · 회차 상태는 체크리스트와 관계없이 먼저 끝난다.
+  체크리스트가 실패해도 분석 · 회차 상태는 바뀌지 않는다.
+- 상담사가 POST 로 만들기 · 다시 만들기를 할 수 있다(최신 분석이 `COMPLETED` 일 때). 승인(`APPROVED`) 회차도 된다(참고 정보이고 승인 내용에 들어가지 않는다).
+- 회차마다 한 행이다. 다시 만들면 같은 행을 고쳐 쓰고 `attempt` 가 1 오른다. 재분석이 저장되면 처리 중인 앞 작업이 있어도 새로 시작하고, 앞 작업의 늦은 결과는 버린다.
+
+### GET 응답
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "checklist": {
+      "status": "COMPLETED",
+      "attempt": 1,
+      "analysis_id": "uuid",
+      "transcript_version": 2,
+      "provider": "module",
+      "result": {
+        "schema_version": "1.0",
+        "check_items": [
+          {
+            "id": "check:1",
+            "text": "등 · 팔 통증 이후 치료를 받았는지",
+            "kind": "info_gap",
+            "priority": "high",
+            "reason": "치료 여부가 확인되지 않음",
+            "basis": [
+              { "type": "case", "ref": "case:2", "label": "8회차 01:08", "session_no": 8, "session_id": "uuid",
+                "segment_id": "seg_012", "start_ms": 68000, "excerpt": "등이랑 팔이 아파요." },
+              { "type": "checklist", "ref": "checklist:1", "label": "체크리스트.pdf p.3", "excerpt": "상처의 치료 여부" }
+            ]
+          }
+        ],
+        "question_evidence": [
+          {
+            "draft_index": 0,
+            "text": "등이랑 팔이 아팠던 건 지금은 어때?",
+            "basis": [
+              { "type": "manual", "ref": "manual:1", "label": "업무 매뉴얼.pdf · 상담·조사·사정 p.125",
+                "excerpt": "아동 면담 시 개방형 질문을 먼저 사용한다.", "why": "열린 질문으로 통증 이후 경과를 묻는 근거" }
+            ]
+          }
+        ],
+        "notice": null,
+        "dropped": { "official_review_rejected": 1 }
+      },
+      "error": null,
+      "started_at": "...",
+      "completed_at": "..."
+    }
+  }
+}
+```
+
+- `enabled=false` 면 서버에서 꺼져 있다(`FOLLOWUP_PROVIDER=off`, 기본). 화면은 만들기 단추를 보이지 않고 AI 확인 메모만 보인다.
+- `checklist` 는 만든 적이 없으면 `null` 이다(404 가 아니다). `enabled=true` 이고 `null` 이면 화면은 [만들기] 를 보인다.
+- `status`: `PROCESSING`(만드는 중) · `COMPLETED` · `FAILED`. `result` 는 `COMPLETED` 일 때만 있고, `error`(`{code, message}`)는 `FAILED` 일 때만 있다.
+  `message` 는 코드별 고정 문구다(발화 · 예외 원문 없음).
+- 처리 중인 행이 `started_at` + `FOLLOWUP_TIMEOUT_SECONDS` + 60초보다 오래되면 이 조회 때 `FAILED` · `AI_TIMEOUT` 으로 마감한다(서버 재시작 등).
+- `analysis_id` 가 지금 분석과 다르면(재분석 뒤 아직 안 만듦) 화면은 결과를 숨기고 '분석이 바뀌었습니다' + [다시 만들기] 를 보인다.
+
+`result` 칸:
+
+| 칸 | 설명 |
+|---|---|
+| `check_items[]` | 확인할 사항. `kind`: `info_gap`(정보 공백) · `plan_followup`(계획 이행) · `change`(변화) · `inconsistency`(기록 불일치) · `checklist_gap`(체크리스트). `priority`: `high` · `medium`. `basis` 는 1개 이상(근거 없는 항목은 빼고 `dropped.no_basis` 로 센다) |
+| `basis[]` | `type=case`: 사례 기록(이번 · 앞 회차). `segment_id` 가 있으면 STT 검수의 그 발화, `session_id` 만 있으면 그 회차. 그 밖(`manual` · `guideline` · `form` · `checklist` · `law` · `precedent`): 공식 근거 — `url` 이 있으면(법령 · 판례) 새 창, 없으면 `excerpt` 를 펼쳐 보인다 |
+| `question_evidence[]` | 추가 질문 AI 초안(분석 `result.followup_questions[draft_index]`)에 붙인 공식 근거. `text` 는 만들 때의 초안 문장 그대로. **공식 근거가 1개 이상인 초안만** 들어 있고, `basis` 에는 공식 근거만 · 각각 `why`(연결 이유, 검토 통과)가 있다 |
+| `notice` | 안내 문구(고정 문구): mock 예시 · 학대 유형 신호 없음 · 아동 발화 없음 · 이전 회차 기록 비식별 차단 · 추가 질문 문장 비식별 차단 · 공식 근거 검토 실패 · 연결 실패 · 공식 근거 후보 없음 |
+| `dropped` | 뺀 수(문장 없음): `no_basis` · `judgment`(판정 · 단정 표현) · `foreign_script`(다른 나라 문자 섞임 — 18.1 확인 메모와 같은 기준) · `invalid`(모양 틀림) · `official_unlinked`(연결 코드 검사) · `official_review_rejected`(검토 '아니오') |
+
+화면 표시 규칙(counselor-web):
+- 질문 카드의 공식 근거는 ① `checklist.analysis_id` 가 지금 분석과 같고 ② `question_evidence.text` 가 지금 초안 문장과 똑같고 ③ 상담사가 카드 문장을 고치지 않았을 때만 보인다.
+  고치면 숨긴다. 18절에 저장한 질문에는 공식 근거를 저장하지 않는다(18절 모양은 그대로).
+- '공식 근거 N' 칩은 실제로 붙은 공식 근거 수로 계산한다(고정 문구로 붙이지 않는다).
+- 18.1 확인 사항 저장과의 관계(2026-11-02, #128 위에 맞춤): 저장 전 초안은 AI 확인 메모 + 이 절의 `check_items`(같은 문장은 한 번)이고,
+  체크 · 수정 · 직접 추가로 저장하면 rag 항목도 `source: AI` 로 18.1 에 들어간다(`segment_ids` 는 이번 회차 사례 근거의 발화 번호만 — 18.1 은
+  그 회차 최신 전사본의 번호만 받는다 — 화면은 원문을 받았으면 원문에 없는 번호를 빼고 보낸다). 저장한 뒤에는 18.1 목록이 기준이다.
+  18.1 은 줄이 어느 체크리스트에서 왔는지 남기지 않으므로, 저장한 줄에 칩 · 이유 · 공식 근거 · 사례 근거 위치를 다시 붙이는 것은
+  ① 고치지 않은 AI 줄이고 ② 문장(공백 · 문장부호 무시)과 `segment_ids` 가 지금 체크리스트 항목과 같고 ③ 그 항목의 사례 근거가 모두 이번 회차
+  발화라 18.1 값에 남고(앞 회차 · 아이 앱 근거가 섞이거나 최신 전사본에 없어 뺀 발화가 있으면 같은 항목인지 알 수 없어 붙이지 않는다 —
+  같은 문장의 메모와 합쳐진 경우 포함) ④ 18.1
+  `updated_at` 이 이 체크리스트의 `completed_at` 보다 나중(목록을 이 체크리스트를 본 뒤 저장, 마이크로초까지 비교)일 때만이다. 메모와 rag 가
+  같은 문장이면 저장할 `segment_ids` 는 둘의 합집합이다. 목록을 저장한 뒤 체크리스트를 만들었으면(다시 만들기 · 재분석) 저장한 줄은 저장한
+  값으로만 보이고, 목록에 없는 rag 항목(같은 문장으로 메모와 합쳐진 것 포함)을 화면이 [목록에 더하기] 로 내놓는다. 이 안내는 목록을 바꿔
+  저장하면(체크 · 수정 · 더하기) 사라진다 — 내용이 같은 PUT 은 행을 고치지 않아 `updated_at` 이 그대로다.
+  상담 전 브리핑은 18.1 규칙 그대로(저장했으면 '브리핑에 넣기' 로 체크한 것만, 저장 전이면 합친 초안).
+
+### POST
+
+- 202 `{"data": <checklist 와 같은 모양>}`. 새 작업을 시작했으면 `status=PROCESSING` · 새 `attempt` 다.
+- **이미 만드는 중이면(멈춤 아님) 새 작업 없이 그 행을 그대로 돌려준다.** 행 차지는 읽어 둔 `attempt` 와 같을 때만 바꾸는 조건부 UPDATE 한 번이라
+  동시에 들어온 POST 둘 중 하나만 작업을 띄운다.
+- 서버 전체 동시 실행은 `FOLLOWUP_MAX_CONCURRENCY`(기본 1)건이다. 시간을 넘긴 작업도 실제로 끝날 때까지 자리를 쥔다(17절과 같은 방식).
+  자리를 제한 시간 안에 못 얻으면 그 행은 `FAILED` · `AI_TIMEOUT` 이다.
+- 감사 기록 `FOLLOWUP_CHECKLIST_REQUESTED` 1건(새 작업을 시작했을 때만). `detail` 은 `provider` · `attempt` 뿐이다.
+
+### rag 에 넘기는 값 · 외부 전송
+
+- 이번 회차 확정 전사본(분석에 쓴 버전 — rag 는 CHILD 발화만 쓴다), 학대 유형(그 분석의 `abuse_signals[].detected` · `severity_ratings[].level>=1`, 둘 이상이면 multiple),
+  같은 사례 앞 회차 최근 3개(승인 요약 · 그 회차 확인 사항 · 확정 전사본), 그 분석의 추가 질문 초안(`text` · `reason`).
+- **학대 유형 신호가 없으면 rag 를 부르지 않는다**(외부 전송 0) — `COMPLETED` · 빈 목록 · 안내 문구.
+- 아동 발화 · 앞 회차 기록 · 초안 문장은 rag 가 한 묶음으로 가린 뒤(같은 사람 = 같은 토큰) OpenAI 로 보낸다. 이번 회차 발화가 비식별 검증을 통과하지 못하면
+  보내지 않고 `FAILED` · `AI_PRIVACY_BLOCKED` 다. 앞 회차 기록이나 초안 문장만 막히면 그것을 빼고 만들고 `notice` 로 알린다.
+- 등록 실명은 넘기지 않는다(`known_identifiers=[]`). 그래서 운영 잠금이 있다(아래).
+- 로그에는 회차 ID · 오류 코드 · 예외 종류만 남긴다.
+
+### 오류 (행의 `error.code`)
+
+| code | 뜻 |
+|---|---|
+| `AI_TIMEOUT` | 제한 시간(`FOLLOWUP_TIMEOUT_SECONDS`, 기본 240초) 초과 · 동시 실행 자리 못 얻음 · 멈춤 판정 |
+| `AI_PRIVACY_BLOCKED` | 비식별 검증을 통과하지 못해 외부로 보내지 않음 |
+| `AI_INVALID_OUTPUT` | rag 결과 모양이 틀림 |
+| `AI_FAILED` | 그 밖(rag 를 불러오지 못함 · 확인할 사항 추출 실패 등) |
+
+HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`(POST — 최신 분석이 `COMPLETED` 가 아님), `503 FOLLOWUP_DISABLED`(POST — 꺼져 있음).
+권한은 18절과 같다(상담사는 담당 사례의 회차만, 관리자는 전체). 회차를 지우면 함께 지워진다.
+
+### 서버 설정 (`backend/.env.example`)
+
+`FOLLOWUP_PROVIDER`(`off` · `mock` · `module`, **기본 off**) · `FOLLOWUP_TIMEOUT_SECONDS` · `FOLLOWUP_MAX_CONCURRENCY` ·
+`FOLLOWUP_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 module 은 이 값이 true 일 때만 뜬다) · `RAG_VECTOR_DB_DIR` · `RAG_ANALYZER_MODEL`(비우면 rag 기본값).
+`module` 은 requirements-rag.txt 패키지와 rag 색인이 있어야 한다. 배포 이미지에 넣는 일은 서버 디스크 · 메모리를 잰 뒤 따로 한다.
+
+## 20. Schedule (일정, 2026-11-02)
 
 11/02 일정 디자인(월간 달력 + 일정 추가)과 홈 '오늘 일정 · 다음 상담까지', 알림 종(처리 기한), 종결보고서의 '종결평가 회의 일정 잡기' 가 쓴다.
 

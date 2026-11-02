@@ -7,6 +7,8 @@ from typing import Annotated, List, Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.pii_keys import decode_key, parse_key_ring
+
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
 
@@ -23,6 +25,13 @@ _PUBLIC_JWT_SECRETS = frozenset(
 
 # HS256 서명 키 권장 길이(32 byte).
 _MIN_JWT_SECRET_LENGTH = 32
+
+# 저장소에 공개된 개인 식별 정보 키(base64). 기본값(아래 Settings) · backend/.env.example · docker-compose.yml.
+# 앞이 암호화 키, 뒤가 검색 색인 키다. 운영에서 이 값(같은 32바이트)을 쓰면 서버가 뜨지 않는다.
+_PUBLIC_PII_KEYS = (
+    "aXNwb3QtbG9jYWwtZGV2LW9ubHktcGlpLWtleS0wMDE=",  # b"ispot-local-dev-only-pii-key-001"
+    "aXNwb3QtbG9jYWwtZGV2LW9ubHktaW5kZXgta2V5LTE=",  # b"ispot-local-dev-only-index-key-1"
+)
 
 # 긴 비밀번호의 문자 종류 면제 길이로 받을 수 있는 범위. 0 은 면제 없음이다.
 # 12자보다 짧으면 사실상 종류 규칙을 끄는 셈이고, 72 는 bcrypt 가 받는 최대 byte 다.
@@ -62,6 +71,16 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-env-file"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
+
+    # ---------------------------------------------------------
+    # 개인 식별 정보 암호화 (실명 · 생년월일 · 가족 정보, app/core/pii_crypto.py)
+    # ---------------------------------------------------------
+    # PII_ENCRYPTION_KEYS: "키이름:32바이트 base64,키이름:…". 첫 키로 암호화하고 나머지는 풀기만 한다(키 바꾸기).
+    # PII_INDEX_KEY: 이름 정확 검색 색인(HMAC-SHA256)용 32바이트 base64. 암호화 키와 다른 값이어야 한다.
+    # 운영에서는 반드시 .env(AWS SSM 에서 넣음)로 주입한다. 기본값은 저장소에 공개된 local 개발 전용 값이다.
+    # 키를 잃으면 저장한 실명을 되살릴 수 없다 — 사본을 DB · 저장소 밖에 따로 둔다(backend/README.md).
+    PII_ENCRYPTION_KEYS: str = "dev1:" + _PUBLIC_PII_KEYS[0]
+    PII_INDEX_KEY: str = _PUBLIC_PII_KEYS[1]
 
     # ---------------------------------------------------------
     # Password Policy
@@ -210,6 +229,25 @@ class Settings(BaseSettings):
     LAW_API_OC: str = ""
     LAW_CACHE_DIR: str = ""
 
+    # ---- 다음 상담 체크리스트 (FollowupQ '다음 상담 전 확인할 사항' · 추가 질문 공식 근거, API_CONTRACT 19절, 2026-10-30) ----
+    # off    : 만들지 않는다(기본). GET 은 enabled=false, POST 는 503 FOLLOWUP_DISABLED. 화면은 AI 확인 메모만 보인다.
+    # mock   : OpenAI 없이 이번 회차 첫 아동 발화로 '(예시)' 결과를 만든다(화면 개발 · CI).
+    # module : rag/session.analyze_reviewed_transcript 를 부른다(팀장님 rag 패키지). requirements-rag.txt 패키지와
+    #          색인 폴더(RAG_VECTOR_DB_DIR)가 필요하다. 아동 발화 · 이전 회차 기록 · 추가 질문 초안은 가린 뒤 OpenAI 로 나간다.
+    # 기본이 off 인 이유: 서버에 rag 를 넣는 일(이미지 · 색인)은 서버 디스크 · 메모리를 잰 뒤 다음 PR 로 한다(10/29 팀장님 결정 ④).
+    FOLLOWUP_PROVIDER: Literal["off", "mock", "module"] = "off"
+    # 한 번 만들기의 제한 시간. 넘으면 그 행은 FAILED · AI_TIMEOUT. 동시 실행 자리를 기다리는 시간도 이 값까지다.
+    FOLLOWUP_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
+    # 서버 전체 동시 실행 건수. 시간을 넘긴 작업도 실제로 끝날 때까지 자리를 쥔다(법령 질문 #109 R2 와 같은 방식).
+    FOLLOWUP_MAX_CONCURRENCY: int = Field(default=1, ge=1)
+    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true. rag 에 등록 실명을 넘기지 않아(known_identifiers=[])
+    # 이름 대조(Tier 2)가 돌지 않으므로 분석 modeling 과 같은 잠금을 둔다(아래 _block_followup_module_in_production).
+    FOLLOWUP_ALLOW_IN_PRODUCTION: bool = False
+    # rag/config.py 가 os.getenv 로 읽는 값. 여기 적으면 followup_checklist_adapter 가 process 환경으로 넘긴다
+    # (비어 있으면 넘기지 않아 rag 기본값을 쓴다 — 빈 값이 기본값을 덮지 않게, #117 교차검증 R6).
+    RAG_VECTOR_DB_DIR: str = ""
+    RAG_ANALYZER_MODEL: str = ""
+
     # AI_PROVIDER=pipeline 일 때 팀 B pipeline 이 사용하는 LLM 설정.
     # 팀 B 코드는 os.getenv 로 직접 읽기 때문에 ai_adapter 가 process 환경으로 넘겨준다.
     OPENAI_API_KEY: str = ""
@@ -276,6 +314,46 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _pii_keys_are_well_formed(self) -> "Settings":
+        """개인 식별 정보 키 형식을 모든 환경에서 본다.
+
+        틀린 키로 떠서 실명을 저장 · 조회할 때 처음 실패하지 않게, 서버 시작 때 멈춘다.
+        검색 색인 키가 암호화 키와 같으면 한 키가 새도 둘 다 무너지므로 막는다.
+        """
+
+        _, ring = parse_key_ring(self.PII_ENCRYPTION_KEYS)
+        index_key = decode_key(self.PII_INDEX_KEY, "PII_INDEX_KEY")
+
+        if index_key in ring.values():
+            raise ValueError("PII_INDEX_KEY 는 PII_ENCRYPTION_KEYS 의 키와 다른 값이어야 합니다.")
+
+        return self
+
+    @model_validator(mode="after")
+    def _require_private_pii_keys_in_production(self) -> "Settings":
+        """운영에서 저장소에 공개된 개발용 키로 실명을 암호화하지 않게 한다(JWT 비밀키 검사와 같은 까닭).
+
+        .env 에 키를 빠뜨리면 기본값으로 뜨고, 저장소를 본 사람은 DB 사본만으로 실명을 풀 수 있다.
+        local/test 는 .env 없이 바로 실행되도록 검사하지 않는다(가상 데이터 전용).
+        """
+
+        if self.ENV != "production":
+            return self
+
+        public = {decode_key(value, "PII 공개 키") for value in _PUBLIC_PII_KEYS}
+        _, ring = parse_key_ring(self.PII_ENCRYPTION_KEYS)
+        used = set(ring.values()) | {decode_key(self.PII_INDEX_KEY, "PII_INDEX_KEY")}
+
+        if public & used:
+            raise ValueError(
+                "ENV=production 에서는 PII_ENCRYPTION_KEYS · PII_INDEX_KEY 를 저장소에 없는 임의 키로 설정해야 합니다. "
+                'python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())" '
+                "로 만들 수 있습니다."
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def _block_unmasked_pipeline_in_production(self) -> "Settings":
         """운영에서 상담 원문이 비식별 없이 외부(OpenAI)로 나가는 pipeline 으로 서버가 뜨지 않게 한다.
 
@@ -300,7 +378,7 @@ class Settings(BaseSettings):
 
         modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조(Privacy Gateway
         Tier 2)가 돌지 않는다. 그래서 이름 인식(NER)이 놓친 이름 · 기관 · 지역은 그대로 나간다(ai/modeling/abuse/contract_adapter.py
-        '아직 못 채운 것' · privacy_gateway.py. 실명 저장 여부는 팀 결정 대기). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
+        '아직 못 채운 것' · privacy_gateway.py. 실명은 암호화해 저장하지만 분석에 등록 이름을 넘기는 연결은 후속 PR). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
         못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
         이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
         함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).
@@ -355,6 +433,25 @@ class Settings(BaseSettings):
             "법령 질문은 상담사가 쓴 글을 외부(OpenAI)로 보내는데, 사례와 묶이지 않아 등록 실명 대조가 돌지 않습니다. "
             "실제 상담 데이터가 있는 서버에서는 LAW_QA_PROVIDER=mock 또는 off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_followup_module_in_production(self) -> "Settings":
+        """운영에서 다음 상담 체크리스트 module 로 서버가 뜨지 않게 한다(분석 modeling · 법령 질의와 같은 방식).
+
+        rag 는 아동 발화 · 이전 회차 기록 · 추가 질문 초안을 이름 인식으로 가린 뒤 OpenAI 로 보내는데, Backend 가 등록 실명을
+        넘기지 않아(known_identifiers=[]) 놓친 이름은 그대로 나간다. .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
+        FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어야만 뜬다. local/test 는 그대로 둔다.
+        """
+
+        if self.ENV != "production" or self.FOLLOWUP_PROVIDER != "module" or self.FOLLOWUP_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 FOLLOWUP_PROVIDER=module 로 서버를 시작하지 않습니다. "
+            "다음 상담 체크리스트는 아동 발화 · 이전 회차 기록을 외부(OpenAI)로 보내는데, 등록 실명 대조가 돌지 않습니다. "
+            "실제 상담 데이터가 있는 서버에서는 FOLLOWUP_PROVIDER=off 를 쓰세요. "
+            "가상 데이터로 일부러 시험할 때만 FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @model_validator(mode="after")
