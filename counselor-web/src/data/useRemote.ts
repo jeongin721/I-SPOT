@@ -70,6 +70,27 @@ export interface RemoteState<T> {
   sameGeneration: (ticket: RemoteTicket) => boolean;
 }
 
+/**
+ * 여러 요청을 차례로 보내는 조회(쪽마다 부르기 등)가 다음 요청 직전에 로그인이 바뀐 것을 알았을 때 던진다.
+ * 앞 계정의 조회가 새 계정 토큰으로 다음 쪽을 읽어 열람 기록을 남기지 않게 하려고서다(Codex #130 M1).
+ * useRemote 는 이 오류를 화면에 보이지 않는다(곧 로그인 확인으로 key 가 바뀐다).
+ */
+export class SessionChangedError extends Error {
+  constructor() {
+    super("로그인이 바뀌어 요청을 멈췄습니다.");
+    this.name = "SessionChangedError";
+  }
+}
+
+/** 지금 로그인 토큰을 잡아 두고, 돌려준 함수를 부르면 그대로인지 본다. 바뀌었으면 SessionChangedError. */
+export function loginGuard(): () => void {
+  const token = getToken();
+
+  return () => {
+    if (getToken() !== token) throw new SessionChangedError();
+  };
+}
+
 /** 오류를 화면에 보여 줄 문장으로. Backend 문구가 있으면 그대로, 없으면 fallback. */
 export function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback;
@@ -183,7 +204,7 @@ export function useRemote<T>(
         setSettled((count) => count + 1);
       })
       .catch((caught) => {
-        if (requestId !== latest.current) return;
+        if (requestId !== latest.current || caught instanceof SessionChangedError) return;
 
         // 조용한 refresh 가 실패하면 들고 있던 값은 두고 오류만 알린다.
         if (!quiet) setEntry({ key, generation: gen, data: null });

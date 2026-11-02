@@ -33,7 +33,7 @@ import {
   type TemporaryPasswordView,
 } from "./adminRows";
 import { generateInitialPassword } from "./initialPassword";
-import { errorMessage, useRemote } from "./useRemote";
+import { errorMessage, SessionChangedError, useRemote } from "./useRemote";
 
 /** Backend 제한(UserCreateRequest · UserUpdateRequest). */
 export const ACCOUNT_NAME_MAX = 100;
@@ -42,14 +42,6 @@ export const ACCOUNT_NAME_MAX = 100;
 const CREATE_ATTEMPTS = 3;
 
 const CASE_PAGE_SIZE = 100;
-
-/** 요청을 보내기 직전에 로그인이 그대로인지 볼 때 던진다. 받은 쪽은 조용히 그만둔다. */
-class SessionChangedError extends Error {
-  constructor() {
-    super("로그인이 바뀌어 요청을 멈췄습니다.");
-    this.name = "SessionChangedError";
-  }
-}
 
 /**
  * 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다.
