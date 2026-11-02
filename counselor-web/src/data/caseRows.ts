@@ -35,6 +35,8 @@ export interface CaseRow {
   initial: string;
   /** "2016년생". 출생연도가 없으면 NOT_PROVIDED. */
   birthYearLabel: string;
+  /** 출생연도(통계 연령 비율, 2026-11-02). 없으면 null. */
+  birthYear: number | null;
   /**
    * 사례의 last_session_at(YYYY-MM-DD). 회차가 없으면 NOT_PROVIDED.
    * Backend 는 상담 일시를 넣지 않은 회차를 등록일로 채워 계산하므로 '최근 상담일' 로 보이면 안 된다.
@@ -73,6 +75,7 @@ export function toCaseRow(source: CaseListItem): CaseRow {
     name,
     initial: name ? Array.from(name)[0] : NOT_PROVIDED,
     birthYearLabel: source.child_birth_year ? `${source.child_birth_year}년생` : NOT_PROVIDED,
+    birthYear: source.child_birth_year ?? null,
     lastSessionDate: toDateOnly(source.last_session_at) || NOT_PROVIDED,
     counselorName: source.counselor_name ?? NOT_PROVIDED,
     status: source.status,
