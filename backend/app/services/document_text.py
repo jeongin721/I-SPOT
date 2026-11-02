@@ -6,7 +6,9 @@
 # docx · hwpx 는 zip 안의 XML 이라 표준 라이브러리로 읽는다. zip 폭탄을 막으려고 읽는 XML 크기에 상한을 둔다.
 
 import io
+import logging
 import re
+import warnings
 import zipfile
 import zlib
 from typing import List
@@ -26,9 +28,17 @@ MAX_PDF_PAGES = 50
 
 ALLOWED_EXTENSIONS = (".txt", ".docx", ".hwpx", ".pdf")
 
+# pypdf 는 깨진 파일 · 글꼴 이름을 WARNING 으로 남기는데, 그 안에 파일에서 나온 글자(앞 몇 바이트 · 글꼴 인코딩 이름)가 섞인다.
+# 서버 로그에 올린 문서 내용이 남지 않게 이 서버에서는 pypdf 로그를 끈다(민규 #137 R4). pypdf 는 여기서만 쓴다.
+logging.getLogger("pypdf").setLevel(logging.CRITICAL + 1)
+
 
 def _invalid(message: str) -> APIError:
     return APIError(ErrorCode.VALIDATION_ERROR, message, status_code=422)
+
+
+def _too_long() -> APIError:
+    return _invalid(f"문서 글자가 {MAX_DOCUMENT_CHARS:,}자를 넘습니다. 이 회차 상담 기록만 올려 주세요.")
 
 
 def _clean(text: str) -> str:
@@ -103,8 +113,9 @@ def _docx(data: bytes) -> str:
 def _hwpx(data: bytes) -> str:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            # 번호는 6자리까지만 본다(아주 긴 숫자를 정수로 바꾸다 500 이 나지 않게, 민규 #137 R8).
             sections = sorted(
-                (name for name in archive.namelist() if re.fullmatch(r"Contents/section\d+\.xml", name)),
+                (name for name in archive.namelist() if re.fullmatch(r"Contents/section\d{1,6}\.xml", name)),
                 key=lambda name: int(re.search(r"\d+", name.rsplit("/", 1)[-1]).group()),
             )
     except zipfile.BadZipFile as error:
@@ -121,24 +132,31 @@ def _pdf(data: bytes) -> str:
     except ImportError as error:  # pragma: no cover — requirements.txt 에 있다
         raise _invalid("PDF 를 읽을 수 없는 서버입니다. Word · 한글(HWPX) · 텍스트 파일로 올려 주세요.") from error
     try:
-        reader = PdfReader(io.BytesIO(data))
-        if reader.is_encrypted:
-            raise _invalid("암호가 걸린 PDF 는 읽지 못합니다. 암호를 풀어 다시 올려 주세요.")
-        if len(reader.pages) > MAX_PDF_PAGES:
-            raise _invalid(f"PDF 가 {MAX_PDF_PAGES}쪽을 넘습니다. 이 회차 상담 기록만 올려 주세요.")
-        parts: List[str] = []
-        total = 0
-        for page in reader.pages:
-            text = page.extract_text() or ""
-            parts.append(text)
-            total += len(text)
-            # 글자 상한을 넘으면 더 읽지 않는다(어차피 422 — extract_text 가 길이로 막는다).
-            if total > MAX_DOCUMENT_CHARS:
-                break
-        return "\n".join(parts)
+        with warnings.catch_warnings():
+            # 경고 문구에도 파일 내용이 섞일 수 있다(R4).
+            warnings.simplefilter("ignore")
+            return _pdf_pages(PdfReader, data)
     except (PdfReadError, ValueError, KeyError, TypeError, RecursionError) as error:
         # 깨진 PDF 는 pypdf 안에서 여러 종류 예외로 끝난다. 문구는 고정(원인 문구에 파일 내용이 섞일 수 있다).
         raise _invalid("PDF 파일이 손상됐거나 형식이 맞지 않습니다.") from error
+
+
+def _pdf_pages(reader_class, data: bytes) -> str:
+    reader = reader_class(io.BytesIO(data))
+    if reader.is_encrypted:
+        raise _invalid("암호가 걸린 PDF 는 읽지 못합니다. 암호를 풀어 다시 올려 주세요.")
+    if len(reader.pages) > MAX_PDF_PAGES:
+        raise _invalid(f"PDF 가 {MAX_PDF_PAGES}쪽을 넘습니다. 이 회차 상담 기록만 올려 주세요.")
+    parts: List[str] = []
+    total = 0
+    for page in reader.pages:
+        text = _clean(page.extract_text() or "")
+        parts.append(text)
+        total += len(text)
+        # 정리한 글자 수로 센다. 상한을 넘으면 더 읽지 않고 422 다 — 앞 쪽만 저장하면 뒤 쪽이 조용히 빠진다(민규 #137 R2).
+        if total > MAX_DOCUMENT_CHARS:
+            raise _too_long()
+    return "\n".join(parts)
 
 
 def extract_text(filename: str, data: bytes) -> str:
@@ -167,5 +185,5 @@ def extract_text(filename: str, data: bytes) -> str:
     if not text:
         raise _invalid("문서에서 글자를 찾지 못했습니다(스캔한 그림 PDF 는 읽지 못합니다).")
     if len(text) > MAX_DOCUMENT_CHARS:
-        raise _invalid(f"문서 글자가 {MAX_DOCUMENT_CHARS:,}자를 넘습니다. 이 회차 상담 기록만 올려 주세요.")
+        raise _too_long()
     return text

@@ -3,7 +3,8 @@
 //   (새 회차면) POST /cases/{id}/sessions → POST /sessions/{id}/source-document(동기 — 서버가 글자를 뽑고 AI 가 3단계 칸을 채운다)
 //
 // 끝나면 그 회차는 1 · 2단계 없이 3단계(상담 요약 · 상담 일지 검수)다. 실패한 뒤 다시 시도하면 **이미 만든 회차를 다시 쓴다**
-// (useAudioUpload 와 같다 — 빈 회차가 쌓이지 않게). 진행률은 없고 단계 이름으로 보인다.
+// (useAudioUpload 와 같다 — 빈 회차가 쌓이지 않게). 파일을 바꿔 새로 올려도 같은 사례면 이 창에서 만든 회차를 다시 쓴다
+// (민규 #137 R5 — 전에는 손상 파일로 실패한 뒤 다른 파일을 올리면 빈 회차가 하나 더 남았다). 진행률은 없고 단계 이름으로 보인다.
 
 import { useCallback, useRef, useState } from "react";
 
@@ -48,6 +49,8 @@ export function useDocumentUpload(): DocumentUploadState {
   const [canRetry, setCanRetry] = useState(false);
   const last = useRef<{ request: DocumentUploadRequest; sessionId: string | null } | null>(null);
   const running = useRef(false);
+  /** 이 창에서 만든 회차(자료가 아직 없다). 같은 사례에 다시 올리면 새로 만들지 않고 쓴다. */
+  const created = useRef<{ caseId: string; sessionId: string } | null>(null);
 
   const run = useCallback(async (request: DocumentUploadRequest, knownSession: string | null): Promise<boolean> => {
     if (running.current) return false;
@@ -68,6 +71,7 @@ export function useDocumentUpload(): DocumentUploadState {
       if (!target) {
         setPhase("creatingSession");
         target = (await cases.createSession(request.caseId, {})).id;
+        created.current = { caseId: request.caseId, sessionId: target };
         setSessionId(target);
         last.current = { request, sessionId: target };
         notifySessionChanged({ sessionId: target, caseId: request.caseId });
@@ -77,6 +81,7 @@ export function useDocumentUpload(): DocumentUploadState {
       setPhase("reading");
       await sourceDocuments.upload(target, request.file);
       notifySessionChanged({ sessionId: target, caseId: request.caseId });
+      created.current = null;
       setPhase("done");
       return true;
     } catch (caught) {
@@ -91,9 +96,11 @@ export function useDocumentUpload(): DocumentUploadState {
 
   const start = useCallback(
     (request: DocumentUploadRequest) => {
-      last.current = { request, sessionId: request.sessionId ?? null };
-      setSessionId(request.sessionId ?? null);
-      return run(request, request.sessionId ?? null);
+      const reuse = !request.sessionId && created.current?.caseId === request.caseId ? created.current.sessionId : null;
+      const target = request.sessionId ?? reuse;
+      last.current = { request, sessionId: target };
+      setSessionId(target);
+      return run(request, target);
     },
     [run],
   );

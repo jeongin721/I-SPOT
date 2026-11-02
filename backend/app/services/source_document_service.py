@@ -15,6 +15,7 @@
 # 감사 기록에는 형식 · 글자 수 · 채운 칸 이름 · 초안 수만 남긴다(문서 글은 남기지 않는다).
 
 import logging
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -210,6 +211,8 @@ def claim_document_session(db: Session, session: ConsultationSession) -> None:
 
 
 def upload(db: Session, session: ConsultationSession, current_user: User, *, filename: str, data: bytes) -> SessionSourceDocument:
+    # 파일 이름의 제어 문자(NUL 등)는 뺀다 — PostgreSQL 은 NUL 이 든 글을 저장하지 못해 500 이 났다(민규 #137 R7).
+    filename = re.sub(r"[\x00-\x1f\x7f]", "", filename or "")
     # 새 회차(음성 · 문서 없음)에만 올린다. 녹음 회차를 문서 회차로 바꾸지 않는다.
     assert_status_in(session.status, {SessionStatus.CREATED})
     has_audio = db.scalar(select(AudioFile.id).where(AudioFile.session_id == session.id).limit(1)) is not None
@@ -309,7 +312,8 @@ def _followup_input(db: Session, session: ConsultationSession, row: SessionSourc
         .order_by(Document.created_at.desc())
         .limit(1)
     )
-    return {"assessment": assessment, "note": dict(row.note_draft or {}), "record": record.content if record else ""}
+    # 일지 행이 없으면(None) 아직 저장 전이라 초안을 쓴다. 빈 글로 저장했으면 상담사가 지운 것이라 초안으로 되돌아가지 않는다(R3).
+    return {"assessment": assessment, "note": dict(row.note_draft or {}), "record": record.content if record else None}
 
 
 def draft_followups(db: Session, session: ConsultationSession, current_user: User) -> SessionSourceDocument:
@@ -323,10 +327,12 @@ def draft_followups(db: Session, session: ConsultationSession, current_user: Use
         note_input_text = load_callable(MODULE, "note_input_text")
     except ModuleLoadError as error:
         raise _ai_error(ErrorCode.AI_FAILED) from error
-    # 저장한 상담 일지가 있으면 그것을, 없으면 일지 초안 칸을 쓴다.
-    text = note_input_text(inputs["assessment"], {} if inputs["record"] else inputs["note"])
-    if inputs["record"]:
-        text = "\n".join(part for part in (text, f"- 상담 일지:\n{inputs['record']}") if part)
+    # 저장한 상담 일지가 있으면(빈 글이어도) 그것을, 저장 전이면 일지 초안 칸을 쓴다 — 상담사가 지운 초안 글이 모델 입력으로
+    # 다시 들어가지 않게 한다(민규 #137 R3).
+    record = inputs["record"]
+    text = note_input_text(inputs["assessment"], {} if record is not None else inputs["note"])
+    if record and record.strip():
+        text = "\n".join(part for part in (text, f"- 상담 일지:\n{record}") if part)
     if not text.strip():
         raise conflict(ErrorCode.INVALID_SESSION_STATE, "3단계 상담 요약 · 상담 일지에 쓴 내용이 없습니다. 먼저 채워 주세요.")
 

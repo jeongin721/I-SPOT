@@ -2411,14 +2411,14 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ### POST /api/v1/sessions/{session_id}/source-document → 201 (multipart `file`)
 
 - **새 회차만**: 상태 `CREATED` 이고 음성 · 문서가 없는 회차(그 밖 `409 INVALID_SESSION_STATE`).
-- 형식: `.txt`(UTF-8 · CP949) · `.docx` · `.hwpx` · `.pdf`(글자가 든 PDF, **50쪽까지**). 10 MB 까지, 뽑은 글 30,000자까지.
+- 형식: `.txt`(UTF-8 · CP949) · `.docx` · `.hwpx` · `.pdf`(글자가 든 PDF, **50쪽까지**). 10 MB 까지, 뽑은 글 30,000자까지(PDF 도 정리한 글자로 세고, 넘으면 앞 쪽만 저장하지 않고 `422`). 파일 이름의 제어 문자는 빼고 저장한다. 서버 로그에는 pypdf 로그를 남기지 않는다(파일 글자가 섞여서).
   글자 뽑기에는 LLM 과 따로 제한 시간 `DOCUMENT_TEXT_TIMEOUT_SECONDS`(기본 20초)이 있다 — 넘으면 `422`(파일 문제로 본다).
   서버 전체에서 동시에 `DOCUMENT_TEXT_MAX_CONCURRENCY`(기본 2)건까지 읽고, 넘으면 `429`(제한 시간을 넘긴 글자 뽑기도 실제로 끝날 때까지 자리를 쓴다).
   압축 본문이 손상된 docx · hwpx(zlib · CRC · 암호 · 지원 안 하는 압축)도 `422`.
   `.hwp` · 다른 확장자 · 빈 파일 · 글자 없는 PDF(스캔) · 손상 파일 · 암호 PDF 는 `422`(문구에 안내). 원본 파일은 저장하지 않는다.
 - **동기 요청**(종결 요약과 같다). `AI_PROVIDER=modeling` 이면 `ai/modeling/abuse/document_note_llm.fill_note` 가
   마스킹(사례 별칭을 가릴 이름으로) → LLM → 검사로 문서 문장을 칸에 **그대로 옮긴다**(요약 · 창작 없음).
-  검사: 칸 이름 고정 · 길이 · 다른 나라 문자 · **원문 복사 검사**(문장의 글자 두 개 조각 60% 이상이 원문에 있어야 남긴다).
+  검사: 칸 이름 고정 · 길이 · 다른 나라 문자 · **원문 복사 검사**(문장마다 공백 · 문장 부호를 뺀 글이 원문에 그대로 있어야 남긴다 — 부정어가 빠지거나 낱말이 바뀐 문장은 버린다).
   그 밖(mock 등)은 `[칸 이름]` · `칸 이름:` 머리줄로 나눈 글만 옮긴다(`fill_source: "HEADINGS"`, AI 아님).
   제한 시간 `DOCUMENT_NOTE_TIMEOUT_SECONDS`(기본 150초) — 넘으면 `504 AI_TIMEOUT`, 옮길 칸이 없으면 `502 AI_INVALID_OUTPUT`,
   그 밖 `502 AI_FAILED`(문구에 원문 · 예외 문구 없음). 실패하면 회차는 `CREATED` 그대로(다시 올릴 수 있다). 회차마다 한 번에 하나(`429`).
@@ -2444,7 +2444,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ### POST /api/v1/sessions/{session_id}/source-document/followups → 200
 
 - 문서 회차만(그 밖 `409`), 상태 `AI_REVIEW_REQUIRED` · `APPROVED`. 동기 요청, 오류 코드는 위와 같다.
-- 입력은 **3단계에서 상담사가 저장한 칸**: 상담 요약 4칸 + 저장한 상담 일지(없으면 `note_draft`). 모두 비면 `409`.
+- 입력은 **3단계에서 상담사가 저장한 칸**: 상담 요약 4칸 + 저장한 상담 일지(저장한 적이 없을 때만 `note_draft`. 빈 글로 저장했으면 초안으로 되돌아가지 않는다). 모두 비면 `409`.
 - `followup_draft = { checks: [{text}], questions: [{text, reason}], source: "AI" | "NONE", model, generated_at }`.
   추가 질문은 `followup_question_llm` 의 유도 질문 검사(열린 질문 · 입력에 없는 인물 · 행위 낱말 금지)를 거친다. 근거 위치(segment_ids)는 없다.
   LLM 을 쓰지 않는 서버는 `source: "NONE"` · 빈 목록(상담사가 직접 쓴다). 다시 부르면 초안을 새로 만든다(저장한 확인 사항 · 승인한 질문은 그대로).

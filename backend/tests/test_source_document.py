@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.adapters.module_loader import ensure_repo_root_on_path
 from app.core.config import settings
 from app.core.enums import AuditAction
+from app.core.errors import APIError
 from app.models.audit_log import AuditLog
 from app.services import source_document_service
 from tests.conftest import create_session, make_wav_bytes, upload_audio
@@ -127,10 +128,18 @@ def test_docx_and_hwpx_are_read(client: TestClient, counselor_headers, session: 
         ("a.docx", "CORRUPT_DOCX", "손상"),
         ("a.hwpx", "CORRUPT_HWPX", "손상"),
         ("a.pdf", b"%PDF-1.4 broken", "PDF"),
+        ("a.hwpx", "LONG_SECTION_NUMBER", "한글"),
     ],
+    # 매개변수(긴 bytes)가 시험 이름이 되면 Windows 의 PYTEST_CURRENT_TEST 한도(32,767자)를 넘는다(민규 #137 R6).
+    ids=["hwp", "png", "empty", "nul", "too-long", "not-zip", "corrupt-docx", "corrupt-hwpx", "broken-pdf", "long-section-no"],
 )
 def test_bad_files_are_rejected(client: TestClient, counselor_headers, session: dict, name, data, needle) -> None:
-    data = {"CORRUPT_DOCX": _corrupt(DOCX), "CORRUPT_HWPX": _corrupt(HWPX)}.get(data, data)
+    data = {
+        "CORRUPT_DOCX": _corrupt(DOCX),
+        "CORRUPT_HWPX": _corrupt(HWPX),
+        # section 번호가 아주 길면 정수로 바꾸다 500 이 났다(민규 #137 R8).
+        "LONG_SECTION_NUMBER": _zip({"Contents/section" + "9" * 5000 + ".xml": "<hs:sec/>"}),
+    }.get(data, data)
     response = _upload(client, counselor_headers, session["id"], name, data)
 
     assert response.status_code == 422, response.text
@@ -283,6 +292,20 @@ def test_copied_from_source_drops_invented_text() -> None:
     assert not dn.copied_from_source("아동이 학교에서 따돌림을 당했다고 진술함.", source)
 
 
+def test_keep_copied_drops_sentences_with_flipped_meaning() -> None:
+    """부정어가 빠지거나 낱말이 바뀐 문장은 원문 복사로 보지 않는다(민규 #137 R1)."""
+
+    source = "보호자가 방문하지 않음.\n- 아동은 집에서 밥을 먹지 못함. 학교는 다님."
+
+    assert not dn.copied_from_source("보호자가 방문함.", source)
+    assert dn.keep_copied("보호자가 방문함.", source) == ""
+    assert dn.keep_copied("보호자가 방문하지 않음. 아동은 집에서 밥을 먹음.", source) == "보호자가 방문하지 않음."
+    assert dn.keep_copied("아동은 집에서 밥을 먹지 못함.\n학교는 다님", source) == "아동은 집에서 밥을 먹지 못함.\n학교는 다님"
+    raw = {"note": {"attitude": "보호자가 방문함.", "statement": "아동은  집에서 밥을 먹지 못함"}}
+    cleaned = dn.clean_note(raw, source)
+    assert cleaned["note"]["attitude"] == "" and cleaned["note"]["statement"] == "아동은 집에서 밥을 먹지 못함"
+
+
 def test_clean_note_keeps_only_copied_fields() -> None:
     source = "보호자는 협조적이었음. 다음 회차에 치료 여부 확인 필요."
     raw = {
@@ -345,12 +368,95 @@ def _pdf(pages: int) -> bytes:
         (b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF", "PDF"),  # 깨진 구조
         (b"%PDF-1.4\n" + b"\x00" * 2048, "PDF"),
     ],
+    ids=["51-pages", "no-text", "broken-structure", "nul-body"],
 )
 def test_pdf_limits_and_broken_files(client: TestClient, counselor_headers, session: dict, data, needle) -> None:
     response = _upload(client, counselor_headers, session["id"], "a.pdf", data)
 
     assert response.status_code == 422, response.text
     assert needle in response.json()["error"]["message"]
+
+
+class _FakePage:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def extract_text(self) -> str:
+        return self.text
+
+
+def _fake_pdf(monkeypatch, pages) -> None:
+    import pypdf
+
+    class Reader:
+        is_encrypted = False
+
+        def __init__(self, _stream) -> None:
+            self.pages = [_FakePage(text) for text in pages]
+
+    monkeypatch.setattr(pypdf, "PdfReader", Reader)
+
+
+def test_pdf_counts_cleaned_characters_and_never_drops_pages(monkeypatch) -> None:
+    """공백이 많은 첫 쪽 뒤의 짧은 쪽이 빠지지 않고, 정리한 글이 상한을 넘으면 앞 쪽만 남기지 않고 422(민규 #137 R2)."""
+
+    from app.services import document_text
+
+    _fake_pdf(monkeypatch, ["첫 쪽" + " " * 31000 + "끝", "마지막 쪽"])
+    text = document_text.extract_text("a.pdf", b"%PDF-1.4")
+    assert text.endswith("마지막 쪽")
+
+    _fake_pdf(monkeypatch, ["가" * 20000, "나" * 20000, "다"])
+    with pytest.raises(APIError) as caught:
+        document_text.extract_text("a.pdf", b"%PDF-1.4")
+    assert caught.value.status_code == 422 and "30,000" in caught.value.message
+
+
+def test_pdf_reading_leaves_no_file_text_in_logs(client: TestClient, counselor_headers, session: dict, caplog) -> None:
+    """pypdf 로그 · 경고에 파일에서 나온 글자(앞 바이트 등)가 서버 로그로 나가지 않는다 — 실패 · 성공 모두(민규 #137 R4)."""
+
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    broken = _upload(client, counselor_headers, session["id"], "a.pdf", b"QZXWV" + b"\x00" * 200)
+    blank = _upload(client, counselor_headers, session["id"], "a.pdf", _pdf(1))
+
+    assert broken.status_code == 422 and blank.status_code == 422
+    assert "QZXWV" not in caplog.text
+    assert not [record for record in caplog.records if record.name.startswith("pypdf")]
+
+
+def test_control_characters_in_filename_are_dropped(client: TestClient, counselor_headers, session: dict) -> None:
+    """파일 이름의 NUL 등 제어 문자는 빼고 저장한다(PostgreSQL 500 막기, 민규 #137 R7)."""
+
+    # 브라우저처럼 파일 이름 바이트를 그대로 보낸다(TestClient 는 % 로 바꿔 보낸다).
+    boundary = "ispotboundary"
+    body = (
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="기록\x00\x07.txt"\r\n'
+        f"Content-Type: text/plain\r\n\r\n{RECORD}\r\n--{boundary}--\r\n"
+    ).encode()
+    headers = {**counselor_headers, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+    response = client.post(_url(session["id"]), content=body, headers=headers)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["filename"] == "기록.txt"
+
+
+def test_followups_respect_a_note_the_counselor_emptied(client: TestClient, counselor_headers, session: dict, modeling) -> None:
+    """일지를 빈 글로 저장하면 문서 일지 초안으로 되돌아가지 않는다. 요약까지 비었으면 409(민규 #137 R3)."""
+
+    assert _upload(client, counselor_headers, session["id"]).status_code == 201
+    sid = session["id"]
+    emptied = {key: "" for key in ("safety_changes", "strengths_resources", "safety_risks", "desired_changes")}
+    patched = client.patch(f"/api/v1/sessions/{sid}/summary", json={"assessment": emptied}, headers=counselor_headers)
+    assert patched.status_code == 200, patched.text
+    saved = client.post(f"/api/v1/sessions/{sid}/documents", json={"title": "상담 일지", "content": ""}, headers=counselor_headers)
+    assert saved.status_code == 201, saved.text
+
+    response = client.post(_url(sid, "/followups"), headers=counselor_headers)
+
+    assert response.status_code == 409, response.text
+    assert "draft" not in modeling or modeling["draft"] is None
 
 
 def test_text_extraction_has_its_own_time_limit(client: TestClient, counselor_headers, session: dict, monkeypatch) -> None:

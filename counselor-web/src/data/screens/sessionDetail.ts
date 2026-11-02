@@ -103,8 +103,9 @@ function analysisCard(sv: SessionDetailView): { st: string; preview: string } {
 function noteCard(sv: SessionDetailView): { st: string; preview: string } {
   let preview = "AI 분석이 끝나면 요약 초안이 생깁니다.";
 
-  if (sv.source === "DOCUMENT") preview = "올린 상담 기록 문서로 상담 요약 · 일지 초안을 채웠습니다. 확인하고 승인해 주세요.";
+  // 문서 회차의 요약은 AI 가 새로 쓴 것이 아니라 문서에서 옮긴 것이다 — 'AI 요약 초안' 으로 보이지 않게 한다(민규 #137 R9).
   if (sv.summaryApproved) preview = `요약 승인 · ${sv.approvedAt}`;
+  else if (sv.source === "DOCUMENT") preview = "올린 상담 기록 문서로 상담 요약 · 일지 초안을 채웠습니다. 확인하고 승인해 주세요.";
   else if (sv.hasSummary) preview = "AI 요약 초안이 있습니다. 검수하고 승인해 주세요.";
 
   if (sv.step === "summaryReview") return { st: "요약 검수 필요", preview };

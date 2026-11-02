@@ -307,7 +307,8 @@ export function noteWriteValues(input: NoteScreenInput) {
 
   let summaryChip = "요약 없음";
   if (summary.status === "APPROVED") summaryChip = `승인 · ${summary.approvedAt}`;
-  else if (summary.hasSummary && input.aiDraft?.fromDocument)
+  // 문서 회차는 일지를 저장한 뒤(초안이 없어도) 출처를 '문서에서 옮김' 으로 둔다(민규 #137 R9).
+  else if (summary.hasSummary && (input.aiDraft?.fromDocument || sv?.source === "DOCUMENT"))
     summaryChip = summary.edited ? "문서에서 옮김 · 상담사 수정" : "문서에서 옮김";
   else if (summary.hasSummary) summaryChip = summary.edited ? "AI 초안 · 상담사 수정" : "AI 초안";
 

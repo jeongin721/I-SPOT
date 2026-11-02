@@ -12,8 +12,9 @@
   "overview": "...",
 }
 코드 검사(clean_note): 칸 이름은 위 키만, 글 길이 상한, 다른 나라 문자 섞이면 버림,
-**원문에 없는 문장은 버림**(copied_from_source — 글자 두 개씩 묶은 조각의 COPY_MIN_OVERLAP 이상이 원문에 있어야 한다).
-LLM 이 지어낸 문장이 상담 일지에 들어가지 않게 하는 장치다. 문서에 없는 칸은 빈 칸으로 둔다.
+**원문에 그대로 없는 문장은 버림**(keep_copied — 문장마다 공백 · 문장 부호를 뺀 글이 원문에 이어진 구간으로 있어야 한다).
+LLM 이 지어내거나 뜻을 바꾼 문장('방문하지 않음' → '방문함')이 상담 일지에 들어가지 않게 하는 장치다(민규 #137 R1 — 전에는
+글자 두 개 조각 60% 겹침이라 부정어가 빠진 문장도 통과했다). 문서에 없는 칸은 빈 칸으로 둔다.
 
 [4단계 — draft_followups]
 입력: 상담사가 3단계에서 확정 · 저장한 칸(요약 4칸 + 일지). 출력: {"checks": [{text}], "questions": [{text, reason}]}.
@@ -66,8 +67,6 @@ MAX_FIELD_CHARS = 2000
 MAX_OVERVIEW_CHARS = 500
 #: 문서 글 상한(업로드 서버도 같은 값으로 막는다).
 MAX_DOCUMENT_CHARS = 30000
-#: 원문 복사 검사 — 문장의 '글자 두 개 조각' 중 원문에 있는 비율이 이 값 이상이어야 남긴다.
-COPY_MIN_OVERLAP = 0.6
 
 MAX_CHECKS = 5
 MAX_QUESTIONS = 5
@@ -92,20 +91,31 @@ def _squash(value: Any, limit: int) -> str:
     return text
 
 
-def _bigrams(text: str) -> List[str]:
-    chars = re.sub(r"\s+", "", text)
-    return [chars[i : i + 2] for i in range(len(chars) - 1)]
+#: 옮겨 적은 문장을 원문과 맞출 때 빼는 것 — 공백 · 문장 부호 · 글머리표(줄 바꿈 · 글머리 정리는 바꿔 쓰기가 아니다).
+_IGNORED = re.compile(r"[\s.,!?;:·•‧∙\-–—*~'\"“”‘’()\[\]{}<>「」『』…]+")
+#: 문장 경계(마침표 · 물음표 · 느낌표 뒤 공백, 줄 바꿈).
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|\n+")
+
+
+def _bare(text: str) -> str:
+    return _IGNORED.sub("", text)
+
+
+def keep_copied(text: str, source: str) -> str:
+    """text 에서 원문(source)에 그대로 있는 문장만 남긴다(공백 · 문장 부호는 보지 않는다). 낱말 하나라도 다르면 그 문장은 버린다."""
+
+    compact = _bare(source)
+    pieces = [piece.strip() for piece in _SENTENCE_END.split(text) if _bare(piece)]
+    kept = [piece for piece in pieces if _bare(piece) in compact]
+    # 다 맞으면 줄 바꿈까지 그대로 둔다.
+    return text if kept and len(kept) == len(pieces) else " ".join(kept)
 
 
 def copied_from_source(text: str, source: str) -> bool:
-    """text 가 source 에서 옮긴 글인가(글자 두 개 조각의 COPY_MIN_OVERLAP 이상이 source 에 있다). 짧은 글은 통째로 본다."""
+    """text 의 모든 문장이 원문에 그대로 있는가."""
 
-    compact = re.sub(r"\s+", "", source)
-    pieces = _bigrams(text)
-    if not pieces:
-        return re.sub(r"\s+", "", text) in compact
-    found = sum(1 for piece in pieces if piece in compact)
-    return found / len(pieces) >= COPY_MIN_OVERLAP
+    pieces = [piece for piece in _SENTENCE_END.split(text) if _bare(piece)]
+    return bool(pieces) and all(_bare(piece) in _bare(source) for piece in pieces)
 
 
 def clean_note(raw: Any, source: str) -> Dict[str, Any]:
@@ -118,13 +128,13 @@ def clean_note(raw: Any, source: str) -> Dict[str, Any]:
         out = {}
         for key, _label in fields:
             text = _squash(group.get(key), MAX_FIELD_CHARS)
-            out[key] = text if text and copied_from_source(text, source) else ""
+            out[key] = keep_copied(text, source) if text else ""
         return out
 
     assessment = pick(raw.get("assessment"), ASSESSMENT_FIELDS)
     note = pick(raw.get("note"), NOTE_FIELDS)
     overview = _squash(raw.get("overview"), MAX_OVERVIEW_CHARS)
-    overview = overview if overview and copied_from_source(overview, source) else ""
+    overview = keep_copied(overview, source) if overview else ""
 
     if not any(assessment.values()) and not any(note.values()) and not overview:
         raise DocumentNoteOutputError("남는 칸이 없습니다.")

@@ -577,11 +577,12 @@ export function followupQValues(input: FollowupScreenInput) {
       : withRag
         ? "AI 확인 메모와, 공식 근거(매뉴얼 · 체크리스트 · 법령 · 판례)를 함께 본 AI 초안입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다."
         : "AI 가 다음 상담에서 확인해 두면 좋겠다고 남긴 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.",
-    // 문서 회차: 3단계를 고친 뒤 초안을 다시 만든다(저장한 확인 사항 · 승인한 질문은 그대로).
+    // 문서 회차: 3단계를 고친 뒤 초안을 다시 만든다(저장한 확인 사항 · 승인한 질문은 그대로). 첫 초안이 실패했을 때도 보인다 —
+    // 자동 만들기는 한 번만 하므로 이 단추가 없으면 새로고침해야 했다(민규 #137 R10).
     redraft:
-      fromDocument && input.sourceDoc && docDraft
+      fromDocument && input.sourceDoc && (docDraft || input.sourceDoc.draftError)
         ? {
-            label: input.sourceDoc.drafting ? "만드는 중…" : "3단계 내용으로 초안 다시 만들기",
+            label: input.sourceDoc.drafting ? "만드는 중…" : docDraft ? "3단계 내용으로 초안 다시 만들기" : "초안 다시 만들기",
             disabled: input.sourceDoc.drafting,
             run: () => void input.sourceDoc!.draftFollowups(),
           }
