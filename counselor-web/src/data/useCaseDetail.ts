@@ -101,6 +101,8 @@ export interface CaseDetailState {
   loading: boolean;
   error: string | null;
   reload: () => void;
+  /** 값을 그대로 둔 채 조용히 다시 받는다(다른 창구의 저장이 사례 값을 바꿨을 때 — 실명 PUT 의 출생연도 등). */
+  refresh: () => void;
   /** 초기면접 항목을 저장하는 중. */
   savingIntake: boolean;
   /** 초기면접 항목을 저장하지 못한 까닭. 다른 사례로 옮기거나 다시 로그인하면 지운다. */
@@ -292,6 +294,13 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
               guardianType: view.guardianType,
               guardianNote: view.guardianNote,
               counselorId: view.counselorId,
+              // 날짜 셋(초기면접지에서 고침). 빠뜨리면 저장한 뒤에도 앞 날짜가 보인다(Codex #129 재검증 D1).
+              reportDate: view.reportDate,
+              linkedDate: view.linkedDate,
+              firstInterviewDate: view.firstInterviewDate,
+              reportDateValue: view.reportDateValue,
+              linkedDateValue: view.linkedDateValue,
+              firstInterviewDateValue: view.firstInterviewDateValue,
             },
           };
         });
@@ -328,6 +337,7 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
     loading: remote.loading,
     error: remote.error,
     reload: remote.reload,
+    refresh: remote.refresh,
     savingIntake,
     intakeError,
     saveIntake,
