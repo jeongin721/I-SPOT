@@ -294,6 +294,13 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
               guardianType: view.guardianType,
               guardianNote: view.guardianNote,
               counselorId: view.counselorId,
+              // 날짜 셋(초기면접지에서 고침). 빠뜨리면 저장한 뒤에도 앞 날짜가 보인다(Codex #129 재검증 D1).
+              reportDate: view.reportDate,
+              linkedDate: view.linkedDate,
+              firstInterviewDate: view.firstInterviewDate,
+              reportDateValue: view.reportDateValue,
+              linkedDateValue: view.linkedDateValue,
+              firstInterviewDateValue: view.firstInterviewDateValue,
             },
           };
         });
