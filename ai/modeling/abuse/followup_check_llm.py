@@ -59,6 +59,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 
 from ai.modeling.abuse.case_context import format_case_context
+from ai.modeling.abuse.question_rules import judgment_reason
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from ai.modeling.abuse.text_script import has_foreign_script
 
@@ -269,6 +270,11 @@ def _clean_points(
 
         # 2026-10-30 데모: LLM 이 다른 나라 문자를 섞어 쓴 메모("재발 방지 ব্যবস্থা")는 버린다(text_script).
         if has_foreign_script(text):
+            continue
+
+        # 2026-10-30 연동(specs followup-rag-checklist 5번): 화면 '다음 상담 전 확인할 사항' 에 rag 확인 사항과
+        # 한 목록으로 보이므로 같은 기준으로 판정 · 단정 표현("학대 확정" 등)이 있는 메모는 뺀다(question_rules).
+        if judgment_reason(text):
             continue
 
         raw_segment_ids = item.get("segment_ids")

@@ -29,7 +29,7 @@ from app.models.user import User
 from app.schemas.analysis import AnalysisEnvelope, AnalysisResponse
 from app.schemas.common import SessionErrorInfo
 from app.schemas.contracts import SummaryEvidenceItem
-from app.services import audit_service, case_context_service, session_service, transcript_service
+from app.services import audit_service, case_context_service, followup_checklist_service, session_service, transcript_service
 
 logger = get_logger(__name__)
 
@@ -232,8 +232,12 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
     어떤 예외가 발생해도 Session 을 AI_REVIEW_REQUIRED 또는 AI_FAILED 로 마감한다.
     다만 그 사이 멈춤 판정이나 새 분석 요청이 이 작업을 실패로 마감했거나 회차가 더는 처리 중이
     아니면 결과 · 실패를 저장하지 않고 버린다(_claim_finish).
+
+    결과를 저장했으면 끝에서(DB 세션을 닫은 뒤) 같은 작업 안에서 다음 상담 체크리스트를 만든다(19절,
+    followup_checklist_service.generate_after_analysis — 꺼져 있으면 아무것도 하지 않고, 예외를 내지 않는다).
     """
 
+    saved = False
     db = SessionLocal()
 
     try:
@@ -287,7 +291,7 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
                 time_limit,
             )
 
-            _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
+            saved = _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
 
         except OperationTimeout as error:
             _fail_analysis(db, session, analysis, ErrorCode.AI_TIMEOUT, str(error), error)
@@ -312,6 +316,9 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             )
     finally:
         db.close()
+
+    if saved:
+        followup_checklist_service.generate_after_analysis(session_id, analysis_id)
 
 
 def _job_deadline(session: ConsultationSession) -> float:
@@ -466,7 +473,9 @@ def _save_analysis_result(
     session: ConsultationSession,
     analysis: AIAnalysis,
     bundle,
-) -> None:
+) -> bool:
+    """결과를 저장했으면 True, 늦은 결과라 버렸으면 False(다음 상담 체크리스트를 만들지 않는다)."""
+
     # 버린 경우 rollback 으로 ORM 객체가 만료되므로 id 는 미리 읽어 둔다.
     analysis_id = analysis.id
 
@@ -478,7 +487,7 @@ def _save_analysis_result(
             "이미 마감된 AI 분석의 늦은 결과를 버렸습니다. analysis_id=%s",
             analysis_id,
         )
-        return
+        return False
 
     evidence: List[SummaryEvidenceItem] = list(bundle.summary_evidence or [])
 
@@ -521,6 +530,8 @@ def _save_analysis_result(
         bundle.provider,
         len(bundle.result.summary.key_points),
     )
+
+    return True
 
 
 def _sync_summary_draft(

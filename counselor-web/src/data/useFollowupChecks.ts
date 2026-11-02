@@ -27,6 +27,8 @@ export interface FollowupChecksState {
   items: FollowupCheck[];
   /** 한 번이라도 저장했는가. */
   saved: boolean;
+  /** 마지막으로 저장한 시각(서버 updated_at). 저장 전이면 null. */
+  updatedAt: string | null;
   /** 서버 목록을 받았는가. 화면은 이 값이 true 이고 loadError 가 없을 때만 저장한다. */
   loaded: boolean;
   submitting: boolean;
@@ -122,6 +124,7 @@ export function useFollowupChecks(
   return {
     items: remote.data?.items ?? [],
     saved: remote.data?.saved ?? false,
+    updatedAt: remote.data?.updated_at ?? null,
     loaded: remote.data !== null,
     submitting,
     loading: remote.loading,
