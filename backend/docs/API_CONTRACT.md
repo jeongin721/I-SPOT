@@ -314,7 +314,7 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 
 만든 관리자와 함께 감사 로그 `USER_CREATED` 로 남는다(아래 감사 로그 절).
 
-> 자유 회원가입 endpoint 는 존재하지 않는다.
+> 바로 계정이 생기는 가입 창구는 없다. 회원가입은 대기 신청 → 관리자 승인이다(아래 '회원가입').
 
 ### 계정 관리 (관리자 전용)
 
@@ -350,6 +350,149 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 - **잠김 여부는 `is_locked` 로 본다.** 기본 설정(`LOGIN_LOCK_MINUTES`=0)에서는 시간이 지나도 풀리지 않아
   `locked_until` 이 비어 있다. `locked_until` 은 시간 잠금일 때 풀리는 시각이고, 그 시각이 지나면 `is_locked` 는 `false` 다.
 - 로그인은 잠김을 알려주지 않으므로(위 로그인 절) 관리자 화면이 잠긴 계정을 알 수 있는 곳은 이 값과 감사 로그뿐이다.
+
+### 회원가입 — 이메일 인증번호 → 대기 신청 → 관리자 승인 (2026-11-02)
+
+새 로그인 화면의 회원가입 팝업이 쓴다. **신청만으로는 계정이 생기지 않는다.** 신청은 대기(`PENDING`)로 저장되고,
+관리자가 승인할 때 역할을 정해 계정을 만든다. 승인 전에는 로그인할 수 없다(없는 계정과 같은 `401 INVALID_CREDENTIALS`).
+받는 칸은 이름 · 이메일 · 비밀번호뿐이다(생년월일 · 성별 · 휴대폰은 받지 않는다 — 개인정보 최소 저장).
+
+서버 설정 `SIGNUP_ENABLED` 가 꺼져 있으면(기본) 공개 창구 셋(보내기 · 확인 · 신청)은 `503 SIGNUP_DISABLED` 다.
+설정 조회와 관리자 창구는 늘 동작한다(끈 뒤에도 남은 신청을 처리할 수 있게).
+
+| 순서 | 창구 | 로그인 | 응답 |
+| --- | --- | --- | --- |
+| 0 | `GET /api/v1/auth/signup-requests/settings` | 없음 | `200` 켜짐 여부 · 받는 도메인 |
+| 1 | `POST /api/v1/auth/signup-requests/send-code` | 없음 | `202` |
+| 2 | `POST /api/v1/auth/signup-requests/verify-code` | 없음 | `200` 확인 토큰 |
+| 3 | `POST /api/v1/auth/signup-requests` | 없음 | `201` `PENDING` |
+| 관리 | `GET /api/v1/auth/signup-requests` | 관리자 | `200` 목록 |
+| 관리 | `POST /api/v1/auth/signup-requests/{id}/approve` | 관리자 | `200` |
+| 관리 | `POST /api/v1/auth/signup-requests/{id}/reject` | 관리자 | `200` |
+
+#### 0. 설정 조회
+
+```json
+{ "data": { "enabled": true, "allowed_email_domains": [] } }
+```
+
+`enabled` 가 `false` 면 화면은 회원가입 단추를 숨기거나 막는다. `allowed_email_domains` 가 비면 모든 도메인을 받는다
+(소문자, 정확히 일치 — 하위 도메인은 따로 적혀 있어야 받는다).
+
+#### 1. 인증번호 보내기 → 202
+
+```json
+{ "email": "new@example.com" }
+```
+
+```json
+{ "data": { "resend_after_seconds": 60, "expires_in_seconds": 300 } }
+```
+
+- 인증번호는 숫자 6자리이고 5분 동안 쓸 수 있다. 서버에는 해시만 남는다.
+- **받아들인 요청은 늘 이 응답이다.** 이미 계정이 있거나 승인을 기다리는 이메일이어도 같은 응답 · 같은 횟수 제한이고,
+  그때는 메일만 보내지 않는다(가입 여부가 드러나지 않게). 화면 안내 예: "메일이 오지 않으면 스팸함을 확인하고,
+  이미 가입했거나 승인을 기다리는 중이면 관리자에게 문의하세요."
+- 메일은 응답을 보낸 뒤 보낸다. 발송이 실패해도 응답은 이미 `202` 다 — 60초 뒤 다시 보내면 된다.
+- 새로 보내면 앞 번호는 더 맞지 않고(틀린 번호로 센다) 틀린 횟수도 처음부터 센다.
+- 이메일은 소문자로 맞춘다. 앞뒤 공백은 뗀다.
+- 오류
+  - `429 RATE_LIMITED` — 같은 이메일을 60초 안에 다시 보냄 · 같은 이메일로 24시간(첫 보내기부터) 안에 5번 넘게 보냄 ·
+    같은 IP 에서 1시간에 20번 넘게 보냄. `details.retry_after_seconds` 는 다시 될 때까지 남은 초(1 이상). 세 경우 문구가 같다.
+  - `422 SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED` — 받는 도메인 목록이 있는데 그 밖의 이메일.
+  - `422 VALIDATION_ERROR`(이메일 형식), `503 SIGNUP_DISABLED`.
+
+```json
+{ "error": { "code": "RATE_LIMITED", "message": "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.", "details": { "retry_after_seconds": 42 } } }
+```
+
+#### 2. 인증번호 확인 → 200
+
+```json
+{ "email": "new@example.com", "code": "123456" }
+```
+
+```json
+{ "data": { "verification_token": "…", "expires_in_seconds": 1800 } }
+```
+
+- 맞으면 그 번호는 더 쓸 수 없고 확인 토큰을 준다. 토큰은 30분 동안 3단계에 한 번만 쓴다. 화면은 저장하지 말고 메모리에만 둔다.
+- 확인한 뒤 새 번호를 받아도 이미 받은 토큰은 그대로 쓸 수 있다.
+- 오류
+  - `422 VERIFICATION_CODE_MISMATCH` — 틀림. `details.remaining_attempts`(4 → 0). 번호마다 5번까지 틀릴 수 있고,
+    0 이면 문구가 "인증번호를 여러 번 틀렸습니다. 새 인증번호를 받아 주세요." 다.
+  - `422 VERIFICATION_CODE_EXPIRED` — 쓸 수 있는 번호가 없음(5분 지남 · 이미 맞힘 · 5번 틀림 · 요청한 적 없음 모두 같다). 1단계부터 다시.
+  - `429 RATE_LIMITED` — 같은 IP 에서 1시간에 30번 넘게 확인. `422 VALIDATION_ERROR` — `code` 가 ASCII 숫자 6자리가 아님.
+    `503 SIGNUP_DISABLED`.
+
+```json
+{ "error": { "code": "VERIFICATION_CODE_MISMATCH", "message": "인증번호가 맞지 않습니다.", "details": { "remaining_attempts": 3 } } }
+```
+
+#### 3. 대기 신청 → 201
+
+```json
+{ "verification_token": "…", "name": "홍길동", "password": "아래 비밀번호 규칙" }
+```
+
+```json
+{ "data": { "status": "PENDING" } }
+```
+
+- 이름은 앞뒤 공백을 떼고 1~100자. 비밀번호는 아래 '비밀번호 규칙' 그대로다(이메일 아이디 · 이름이 든 것도 막는다).
+- 역할은 보내지 않는다(보내도 무시한다). 승인하는 관리자가 정한다.
+- 약한 비밀번호로 거절돼도(`422 WEAK_PASSWORD`) 토큰은 그대로라 같은 토큰으로 다시 내면 된다.
+- 오류: `422 SIGNUP_TOKEN_INVALID`(토큰 없음 · 30분 지남 · 이미 씀 — 1단계부터 다시), `422 WEAK_PASSWORD`, `422 VALIDATION_ERROR`,
+  `409 DUPLICATE_RESOURCE`(확인한 뒤 그사이 같은 이메일로 계정이 생겼거나 대기 신청이 들어감), `503 SIGNUP_DISABLED`.
+
+#### 관리자 — 목록 · 승인 · 거절
+
+`GET /api/v1/auth/signup-requests` — Query: `status`(`PENDING`(기본) | `APPROVED` | `REJECTED`), `page`, `page_size`(≤100). 오래된 신청부터.
+
+```json
+{
+  "data": {
+    "items": [{
+      "id": "uuid", "email": "new@example.com", "name": "홍길동", "status": "PENDING",
+      "created_at": "...", "expires_at": "...",
+      "decided_at": null, "decided_by_id": null, "decided_by_name": null,
+      "role": null, "user_id": null
+    }],
+    "meta": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+  }
+}
+```
+
+`expires_at` 은 대기 신청이 지워지는 시각(신청 + 14일)이다. 처리한 신청은 `null`.
+
+`POST /api/v1/auth/signup-requests/{id}/approve` — 본문 `{ "role": "COUNSELOR" }`(`COUNSELOR | ADMIN`, **필수** — 기본값 없음).
+응답은 목록의 항목 하나 모양(`status` `APPROVED`, `role`, `user_id`, `decided_*` 채워짐).
+
+- 신청 때 비밀번호 그대로 계정이 생긴다(`must_change_password` `false`). 신청자는 그 비밀번호로 바로 로그인한다.
+- 오류: `404 NOT_FOUND`(없음 · 보관 기한으로 지워짐), `409 SIGNUP_ALREADY_DECIDED`(이미 승인 · 거절 — 두 관리자가 동시에 눌러도 하나만 된다),
+  `409 DUPLICATE_RESOURCE`(그사이 같은 이메일 계정이 생김 — 신청은 `PENDING` 그대로이니 거절하면 된다), `422 VALIDATION_ERROR`(`role` 빠짐),
+  `403 FORBIDDEN`.
+
+`POST /api/v1/auth/signup-requests/{id}/reject` — 본문 없음. 응답은 같은 모양(`status` `REJECTED`). 오류는 승인과 같다(`DUPLICATE_RESOURCE` 빼고).
+신청자에게 메일로 알리지 않는다. 거절된 사람은 처음부터 다시 신청할 수 있다.
+
+**보관 기한** — 대기 신청은 14일, 승인 · 거절한 신청은 처리 30일 뒤 지운다(비밀번호 해시는 승인 · 거절할 때 바로 지운다).
+인증번호 기록은 마지막 보내기에서 24시간 뒤 지운다. 감사 로그는 지우지 않는다(이메일 · 이름이 없다).
+
+**감사 로그**(아래 절) — 공개 창구 기록은 `actor_id` 가 비어 있다. **이메일 · 이름 · 인증번호 · 토큰은 담기지 않는다.**
+
+| action | 언제 | `status` · `error_code` · `detail` |
+| --- | --- | --- |
+| `SIGNUP_CODE_SENT` | 인증번호를 만듦 | `SUCCESS`, `detail.mail` = `QUEUED`(보냄) · `SKIPPED`(계정이나 대기 신청이 있어 안 보냄) |
+| `SIGNUP_CODE_SENT` | 메일 발송 실패 | `FAILURE` · `MAIL_SEND_FAILED`, `detail.provider` · `detail.cause`(SES 오류 코드나 예외 종류) |
+| `SIGNUP_CODE_VERIFIED` | 맞힘 · 살아 있는 번호를 틀림 | `SUCCESS` / `FAILURE` · `VERIFICATION_CODE_MISMATCH`, `detail.failed_attempts` |
+| `SIGNUP_REQUESTED` | 대기 신청 | `SUCCESS` |
+| `SIGNUP_APPROVED` | 승인 | `actor_id` 관리자, `detail.role` · `detail.user_id`. `USER_CREATED`(`detail.via` = `signup_request`)도 함께 남는다 |
+| `SIGNUP_REJECTED` | 거절 | `actor_id` 관리자 |
+
+요청 수 제한으로 막힌 요청과 쓸 수 있는 번호가 없는 확인은 감사 로그를 남기지 않는다(마구 보내는 요청이 하나하나 DB 쓰기가 되지 않게).
+
+**인증번호 · 토큰 · 비밀번호는 응답(토큰은 2단계 응답 한 번만) · 오류 · 로그 어디에도 담기지 않는다.**
 
 ### GET /api/v1/auth/audit-logs (관리자 전용)
 
@@ -1817,7 +1960,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TEMP_PASSWORD_EXPIRED` | 403 | 임시 비밀번호 사용 기간 경과 (비밀번호가 맞았을 때만) |
 | `PASSWORD_CHANGE_REQUIRED` | 403 | 임시 비밀번호 상태에서 비밀번호 변경 외의 요청 |
 | `FORBIDDEN` | 403 | 권한 없음 (담당 아닌 Case 포함) |
-| `NOT_FOUND` | 404 | 존재하지 않는 경로 |
+| `NOT_FOUND` | 404 | 존재하지 않는 경로 · 가입 신청 없음(3절 '회원가입') |
 | `CASE_NOT_FOUND` | 404 | 사례 없음 |
 | `SESSION_NOT_FOUND` | 404 | Session 없음 |
 | `AUDIO_NOT_FOUND` | 404 | 음성 없음 |
@@ -1832,7 +1975,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
-| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version / 동시에 처음 저장한 위험도 판단 — 같은 회차(11.1) · 같은 유형(11.2)) |
+| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 — 계정 생성 · 회원가입 신청 · 승인 / 사례번호 / 동시에 수정된 Transcript version / 동시에 처음 저장한 위험도 판단 — 같은 회차(11.1) · 같은 유형(11.2)) |
 | `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
@@ -1844,7 +1987,14 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_FAILED` | 504 / 502 / 502 | 법령 · 매뉴얼 AI 질문(17절)에서만 HTTP 상태로 온다(동기 응답) |
 | `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
 | `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
-| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
+| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`). 회원가입 인증번호 보내기 · 확인 횟수 초과(3절 '회원가입', `details.retry_after_seconds`) |
+| `SIGNUP_DISABLED` | 503 | 회원가입이 꺼져 있음(`SIGNUP_ENABLED=false`, 3절 '회원가입') |
+| `SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED` | 422 | 받는 도메인 목록 밖의 이메일(`SIGNUP_ALLOWED_EMAIL_DOMAINS`) |
+| `VERIFICATION_CODE_MISMATCH` | 422 | 인증번호 틀림(`details.remaining_attempts`) |
+| `VERIFICATION_CODE_EXPIRED` | 422 | 쓸 수 있는 인증번호 없음(5분 지남 · 이미 맞힘 · 5번 틀림 · 요청한 적 없음) |
+| `SIGNUP_TOKEN_INVALID` | 422 | 회원가입 확인 토큰 없음 · 30분 지남 · 이미 씀 |
+| `SIGNUP_ALREADY_DECIDED` | 409 | 이미 승인 · 거절한 가입 신청 |
+| `MAIL_SEND_FAILED` | — | **감사 로그 전용.** 인증번호 메일 발송 실패(`SIGNUP_CODE_SENT` 의 `error_code`). 메일은 응답 뒤에 보내 응답에는 쓰지 않는다 |
 | `FOLLOWUP_DISABLED` | 503 | 다음 상담 체크리스트가 꺼져 있음(`FOLLOWUP_PROVIDER=off`, 19절) |
 | `AI_PRIVACY_BLOCKED` | — | 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않음. 19절 체크리스트 행의 `error` 로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
