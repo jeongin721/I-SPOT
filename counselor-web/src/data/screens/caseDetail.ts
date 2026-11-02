@@ -59,7 +59,7 @@ import { screenHref } from "./links";
 import { segmentHref } from "./sttReview";
 import { uploadTargets } from "./uploadModal";
 
-interface CaseScreenInput {
+export interface CaseScreenInput {
   session: AuthSession;
   detail: CaseDetailState;
   caseId: string | null;
@@ -386,8 +386,6 @@ export function caseDetailValues(input: CaseDetailInput) {
     continueHref: next ? next.href : screenHref("/UploadModal", { caseId: input.caseId }),
     continueLabel: next ? next.label : "녹취 올려 시작하기",
     progress,
-    formsChip: NOT_READY,
-    formsHref: screenHref("/CaseForm", { caseId: input.caseId }),
     notReady: NOT_READY,
     // 녹음하기 창(components/RecordDialog.jsx)
   };

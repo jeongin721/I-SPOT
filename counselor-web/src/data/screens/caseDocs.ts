@@ -7,14 +7,18 @@
 // 10/22 디자인: '초기면접지 (아동용)' 줄의 '열기' 는 사례 상세 안의 초기면접지 화면(CaseIntake — 사례에 저장된 칸을 채워 고침)으로 간다.
 // 그 줄만은 사례 값으로 상태를 보인다(2026-10-27): 서식 4 는 새 사례 등록 때 쓰므로 '최근 작성' 은 사례 등록일,
 // 상태는 ② 초기면접 내용(아동 특성 · 가정상황)을 고른 적이 있으면 '작성', 없으면 '기본 정보만'. 따로 저장된 작성 기록은 아니다.
-// 나머지 서식의 작성 기록 · 상태는 여전히 서버에 없어 '—' · 준비 중으로 둔다.
+// 11/02: 사정기록지 · 점검표 · 위험수준 척도 · 가족관계 척도는 서식 기록(useCaseForms, API_CONTRACT 22절)으로 '최근 작성' · 상태를
+// 보이고, '작성' 은 기관 서식 작성 화면(CaseForm ?form=A~D)으로 간다. 종결보고서는 종결 검토 화면 몫이라 그대로 둔다.
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { CaseDocumentsState, SessionDocs } from "../useCaseDocuments";
+import { currentForm, type CaseFormsState } from "../useCaseForms";
+import { toDateOnly } from "../time";
 import type { CaseDetailState } from "../useCaseDetail";
 import { findConsultationRecord } from "../useSessionDocuments";
 import type { AuthSession } from "../useAuthSession";
 import { caseHeaderValues } from "./caseDetail";
+import { FORM_TYPES, caseFormHref, type FormTab } from "./caseForm";
 import { NOT_READY, notice } from "./common";
 import { screenHref } from "./links";
 
@@ -32,6 +36,27 @@ const FILTERS: [DocsFilter, string][] = [
 const FORM_PAGES: Record<string, string> = {
   "초기면접지 (아동용)": "/CaseIntake",
 };
+
+/** 기관 서식 작성 화면(CaseForm)에서 쓰는 서식 — 서식 번호 → 화면의 서식(form=A~D). */
+const CASE_FORM_TABS: Record<string, FormTab> = {
+  "서식 6": "A",
+  "서식 27": "B",
+  "참고자료 3": "C",
+  "참고자료 1": "D",
+};
+
+/** 서식 기록 한 줄의 최근 작성 · 상태. 기록이 없으면 '작성 전'. */
+export function caseFormRow(forms: CaseFormsState | undefined, tab: FormTab) {
+  if (!forms || !forms.loaded) {
+    return { date: NOT_PROVIDED, st: forms?.loadError ? "불러오지 못함" : NOT_PROVIDED, stCls: "chip c-normal" };
+  }
+  const row = currentForm(forms.items, FORM_TYPES[tab]);
+  if (!row) return { date: NOT_PROVIDED, st: "작성 전", stCls: "chip c-normal" };
+  if (row.status === "DRAFT") {
+    return { date: `${toDateOnly(row.updated_at)} (${row.round}차)`, st: `${row.round}차 임시 저장`, stCls: "chip c-check" };
+  }
+  return { date: `${toDateOnly(row.confirmed_at)} (${row.round}차)`, st: `${row.round}차 확정`, stCls: "chip c-ok" };
+}
 
 /** 사례 값으로 상태를 보이는 서식(초기면접지). */
 const INTAKE_FORM_NO = "서식 4";
@@ -146,6 +171,8 @@ interface CaseDocsInput {
   session: AuthSession;
   detail: CaseDetailState;
   docs: CaseDocumentsState;
+  /** 기관 서식 작성 기록(useCaseForms). */
+  forms?: CaseFormsState;
   caseId: string | null;
   filter: DocsFilter;
   setFilter: (filter: DocsFilter) => void;
@@ -178,6 +205,11 @@ export function caseDocsValues(input: CaseDocsInput) {
     rowsNote,
     filters: FILTERS.map(([key, label]) => ({ label, cls: filter === key ? "on" : "", pick: () => setFilter(key) })),
     forms: FORMS.map(([name, no, when]) => {
+      const tab = CASE_FORM_TABS[no];
+      if (tab) {
+        const href = input.caseId ? caseFormHref(input.caseId, tab) : null;
+        return { name, no, when, ...caseFormRow(input.forms, tab), href, go: href ? "작성" : "" };
+      }
       const page = FORM_PAGES[name];
       const href: string | null = page && input.caseId ? screenHref(page, { caseId: input.caseId }) : null;
       const info = detail.caseInfo;
@@ -197,7 +229,7 @@ export function caseDocsValues(input: CaseDocsInput) {
     }),
     formsNote:
       "초기면접지는 사례 등록 때 쓴 칸으로 상태를 보이고, 열어 고칠 수 있습니다. " +
-      `나머지 서식 작성 기록 · 상태와 작성 · 보관은 ${NOT_READY}입니다(서식 구조가 팀 결정 전).`,
+      `사정기록지 · 점검표 · 척도는 차수마다 임시 저장 · 확정한 기록을 보입니다. 종결보고서는 ${NOT_READY}입니다.`,
     uploadNote: `지금은 녹음만 올릴 수 있습니다. 외부 문서 올리기는 ${NOT_READY}.`,
   };
 }
