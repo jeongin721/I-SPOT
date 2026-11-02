@@ -21,7 +21,13 @@ import type {
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
+  FollowupChecklist,
+  FollowupChecklistEnvelope,
   FollowupQuestionInput,
+  ClosureSummaryRecord,
+  ClosureSummarySave,
+  FollowupCheck,
+  FollowupCheckList,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -218,6 +224,31 @@ export const cases = {
     params?: PageQuery & { status?: SessionStatus },
   ): Promise<Paged<Session>> {
     return api.get<Paged<Session>>(`/cases/${caseId}/sessions`, params);
+  },
+
+  /** 종결 검토 등록(2026-10-30). 진행 중 사례만(409 INVALID_CASE_STATE), 이미 등록이면 그대로. */
+  registerClosureReview(caseId: string): Promise<Case> {
+    return api.post<Case>(`/cases/${caseId}/closure-review`);
+  },
+
+  /** 종결 검토 등록 취소. 등록 전이면 그대로. */
+  cancelClosureReview(caseId: string): Promise<Case> {
+    return api.delete<Case>(`/cases/${caseId}/closure-review`);
+  },
+
+  /** 종결 검토 요약 · 보고서. 만들기 전이면 summary null. */
+  getClosureSummary(caseId: string): Promise<ClosureSummaryRecord> {
+    return api.get<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`);
+  },
+
+  /** 종결 요약 (다시) 만들기. 동기 — AI 면 오래 걸릴 수 있다(504 AI_TIMEOUT). 등록 전 · 승인 요약 없음은 409. */
+  generateClosureSummary(caseId: string): Promise<ClosureSummaryRecord> {
+    return api.post<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`);
+  },
+
+  /** 확인 체크 · 고친 문장 · 보고서 칸 저장(보낸 칸만). */
+  saveClosureSummary(caseId: string, payload: ClosureSummarySave): Promise<ClosureSummaryRecord> {
+    return api.put<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`, payload);
   },
 
   createSession(caseId: string, payload: SessionCreateRequest): Promise<Session> {
@@ -491,6 +522,38 @@ export const followupQuestions = {
    */
   save(sessionId: string, questions: FollowupQuestionInput[]): Promise<FollowupQuestionList> {
     return api.put<FollowupQuestionList>(`/sessions/${sessionId}/followup-questions`, { questions });
+  },
+};
+
+/** 다음 상담 전 확인할 사항(API_CONTRACT 18.1절, 2026-10-30). 추가 질문과 같은 규칙. */
+export const followupChecks = {
+  /** 저장한 적이 없으면 saved false · items []. 회차 상태와 상관없이 조회한다. */
+  get(sessionId: string): Promise<FollowupCheckList> {
+    return api.get<FollowupCheckList>(`/sessions/${sessionId}/followup-checks`);
+  },
+
+  /** 목록을 통째로 바꾼다. 0~20개, 문장 1~300자, segment_ids 는 그 회차 전사본 번호만(422). 상태는 추가 질문과 같다(409). */
+  save(sessionId: string, items: FollowupCheck[]): Promise<FollowupCheckList> {
+    return api.put<FollowupCheckList>(`/sessions/${sessionId}/followup-checks`, { items });
+  },
+};
+
+// =========================================================
+// 다음 상담 체크리스트 (추가 확인 · 질문 · 상담 전 브리핑, 19절)
+// =========================================================
+
+export const followupChecklist = {
+  /** 켜져 있는지 + 체크리스트(만든 적이 없으면 null). 처리 중이 너무 오래됐으면 이 조회 때 FAILED · AI_TIMEOUT 으로 바뀐다. */
+  get(sessionId: string): Promise<FollowupChecklistEnvelope> {
+    return api.get<FollowupChecklistEnvelope>(`/sessions/${sessionId}/followup-checklist`);
+  },
+
+  /**
+   * 만들기 · 다시 만들기(202). 이미 만드는 중이면 새 작업 없이 그 행을 돌려준다.
+   * 최신 분석이 COMPLETED 가 아니면 409 INVALID_SESSION_STATE, 꺼져 있으면 503 FOLLOWUP_DISABLED.
+   */
+  create(sessionId: string): Promise<FollowupChecklist> {
+    return api.post<FollowupChecklist>(`/sessions/${sessionId}/followup-checklist`);
   },
 };
 

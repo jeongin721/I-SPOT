@@ -226,6 +226,12 @@ export interface Case {
   intake_child_traits: string[];
   /** 초기면접(서식 4 ②)에서 고른 가정상황(서식 항목 이름). 없으면 빈 목록. */
   intake_family_situations: string[];
+  /** 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①, YYYY-MM-DD, 2026-10-30). 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
+  /** 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null. */
+  closure_review_at?: string | null;
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
@@ -255,6 +261,10 @@ export interface CaseCreateRequest {
   intake_child_traits?: string[];
   intake_family_situations?: string[];
   notes?: string | null;
+  /** 날짜 셋(YYYY-MM-DD, 1900~2100). 빼면 null. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
   /**
    * 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403).
    * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만, API_CONTRACT 4절).
@@ -354,6 +364,10 @@ export interface CaseUpdateRequest {
   intake_child_traits?: string[];
   intake_family_situations?: string[];
   notes?: string | null;
+  /** 날짜 셋. 보낸 것만 바뀌고 null 이면 비운다. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
   /** CLOSED 로 바꾸면 사례 종결. */
   status?: CaseStatus;
   /**
@@ -367,6 +381,17 @@ export interface CaseUpdateRequest {
 // 회차
 // =========================================================
 
+/** 상담 유형(API_CONTRACT 5절, 2026-10-30). */
+export type ConsultationType = "INITIAL" | "REGULAR" | "VISIT" | "OFFICE" | "PHONE";
+
+export const CONSULTATION_TYPE_LABELS: Record<ConsultationType, string> = {
+  INITIAL: "초기면담",
+  REGULAR: "정기상담",
+  VISIT: "방문상담",
+  OFFICE: "기관 면담",
+  PHONE: "전화상담",
+};
+
 export interface Session {
   id: string;
   case_id: string;
@@ -377,6 +402,8 @@ export interface Session {
   consulted_at: string | null;
   location: string | null;
   memo: string | null;
+  /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  consultation_type?: ConsultationType | null;
   created_at: string;
   updated_at: string;
   stt_started_at: string | null;
@@ -392,6 +419,7 @@ export interface SessionCreateRequest {
   consulted_at?: string | null;
   location?: string | null;
   memo?: string | null;
+  consultation_type?: ConsultationType | null;
 }
 
 /**
@@ -507,7 +535,7 @@ export interface TranscriptSegment {
   end_ms: number;
   text: string;
   /**
-   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 모두 0.0).
+   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 단어 logprob 이 없을 때만 0.0).
    * 저신뢰 표시는 0 < confidence < 0.7 로 한다(API_CONTRACT.md 7절).
    */
   confidence: number;
@@ -1189,10 +1217,151 @@ export interface FollowupQuestion extends FollowupQuestionInput {
   approved_at: string;
 }
 
+/** 종결 검토 요약 · 보고서(API_CONTRACT 4절 closure-summary, 2026-10-30). */
+export interface ClosureItem {
+  key: string;
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureDraft {
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureSummaryBody {
+  /** AI: 종결 요약 AI 초안 · APPROVED_SUMMARIES: LLM 없이 승인 요약 4칸 묶음(AI 생성 아님). */
+  source: "AI" | "APPROVED_SUMMARIES";
+  model: string | null;
+  generated_at: string;
+  sessions: number[];
+  groups: { title: string; items: ClosureItem[] }[];
+  report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+}
+
+export interface ClosureReportFields {
+  initial_situation?: string | null;
+  closing_situation?: string | null;
+  opinion?: string | null;
+  review_date?: string | null;
+  closing_date?: string | null;
+}
+
+export interface ClosureSummaryRecord {
+  case_id: string;
+  summary: ClosureSummaryBody | null;
+  checks: Record<string, boolean>;
+  edits: Record<string, string>;
+  report: ClosureReportFields;
+  updated_at: string | null;
+}
+
+export interface ClosureSummarySave {
+  checks?: Record<string, boolean>;
+  edits?: Record<string, string>;
+  report?: ClosureReportFields;
+}
+
+/** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
+export interface FollowupCheck {
+  text: string;
+  /** AI(AI 확인 메모에서 옴 — 고쳐도 AI) · COUNSELOR(직접 추가). */
+  source: FollowupQuestionSource;
+  segment_ids: string[];
+  /** AI 메모를 상담사가 고쳤는가. */
+  edited: boolean;
+  /** 상담 전 브리핑에 넣기. */
+  in_briefing: boolean;
+  /** 근거가 지난 회차 확정 요약뿐인 AI 메모의 회차 이름('7회차'). 없으면 null · 빠짐. */
+  previous_session_label?: string | null;
+}
+
+export interface FollowupCheckList {
+  session_id: string;
+  /** 한 번이라도 저장했는가. false 면 화면은 AI 확인 메모 초안을 보인다. */
+  saved: boolean;
+  items: FollowupCheck[];
+  updated_at: string | null;
+  updated_by_id: string | null;
+}
+
 export interface FollowupQuestionList {
   session_id: string;
   questions: FollowupQuestion[];
   /** 저장한 적이 없으면 null. */
   updated_at: string | null;
   updated_by_id: string | null;
+}
+
+// =========================================================
+// 다음 상담 체크리스트 (API_CONTRACT 19절, 2026-10-30)
+// =========================================================
+
+export type ChecklistKind = "info_gap" | "plan_followup" | "change" | "inconsistency" | "checklist_gap";
+
+/**
+ * 근거 하나. type="case" 는 사례 기록(segment_id 가 있으면 그 발화, session_id 만 있으면 그 회차).
+ * 그 밖(manual · guideline · form · checklist · law · precedent)은 공식 근거 — 서버가 검토를 통과한 것만 보낸다.
+ * url 이 있으면(법령 · 판례) 새 창으로, 없으면 excerpt 를 펼쳐 보인다. why 는 질문에 붙인 공식 근거의 연결 이유.
+ */
+export interface ChecklistBasis {
+  type: string;
+  ref?: string | null;
+  label?: string | null;
+  session_no?: number | null;
+  session_id?: string | null;
+  segment_id?: string | null;
+  start_ms?: number | null;
+  source?: string | null;
+  page?: number | string | null;
+  url?: string | null;
+  excerpt?: string | null;
+  why?: string | null;
+}
+
+/** 다음 상담 전 확인할 사항 하나(rag). 화면에서 AI 확인 메모와 한 목록으로 합쳐 보인다. basis 는 1개 이상. */
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  kind: ChecklistKind;
+  priority: "high" | "medium";
+  reason: string;
+  basis: ChecklistBasis[];
+}
+
+/** 추가 질문 AI 초안(분석 followup_questions[draft_index])에 붙인 공식 근거. text 는 만들 때의 초안 문장 그대로. */
+export interface QuestionEvidence {
+  draft_index: number;
+  text: string;
+  basis: ChecklistBasis[];
+}
+
+export interface ChecklistResult {
+  schema_version: string;
+  check_items: ChecklistItem[];
+  question_evidence: QuestionEvidence[];
+  notice: string | null;
+  dropped: Record<string, number>;
+}
+
+export interface FollowupChecklist {
+  status: AnalysisStatus;
+  attempt: number;
+  /** 만들 때 쓴 분석. 지금 분석과 다르면 화면은 결과를 숨기고 다시 만들기를 보인다. */
+  analysis_id: string | null;
+  transcript_version: number | null;
+  provider: string | null;
+  /** COMPLETED 일 때만. */
+  result: ChecklistResult | null;
+  /** FAILED 일 때만. message 는 고정 문구. */
+  error: SessionErrorInfo | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface FollowupChecklistEnvelope {
+  /** false 면 서버에서 꺼져 있다(FOLLOWUP_PROVIDER=off). 만들기 단추를 보이지 않는다. */
+  enabled: boolean;
+  /** 만든 적이 없으면 null. */
+  checklist: FollowupChecklist | null;
 }
