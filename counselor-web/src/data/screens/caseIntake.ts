@@ -16,7 +16,8 @@
 //  - ② 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견)
 // 이 칸들의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않고, AI 가 미리 고르거나 채우지 않는다.
 // 디자인의 '임시 저장' · '확정' 은 서식의 작성 기록 · 확정 상태가 서버에 없어(문서함 기관 서식 줄과 같은 까닭) '저장' 하나로 둔다.
-// 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이거나 서버가 자유 글을 받지 않아 옮기지 않았다(새 사례 등록과 같음).
+// 디자인의 달력 창 · '기타' 직접 입력은 옮기지 않았다 — 날짜 셋은 브라우저 날짜 입력칸이고, '기타' 는 서버가 자유 글을 받지 않는다
+// (새 사례 등록과 같음).
 //
 // 고친 칸은 처음 고칠 때의 대상 표(detail.capture())와 함께 두고, 표가 지금 대상일 때만 쓴다(다른 사례로 옮기거나 다시 로그인하면
 // 고치던 것을 버린다 — 사례 상세 초기면접 수정과 같은 기준). 고치지 않은 칸은 늘 지금 서버 값을 보인다.
@@ -155,9 +156,14 @@ export function caseIntakeValues(input: CaseIntakeInput) {
       !samePersonalRequest(personalChecked.payload, personalSavedRequest));
   // 생년월일이 있으면 출생연도 칸은 그 해(읽기 전용). 저장은 PUT 이 맞춘다(위 머리 주석).
   const birthDate = personalForm ? personalForm.childBirthDate : "";
+  // 출생연도를 손으로 고칠 수 있는 때: 실명 정보를 받았고, 저장된 생년월일도 고치는 중인 생년월일도 없을 때만.
+  // 실명 정보를 못 받았으면 생년월일이 있는지 모르고, 저장된 생년월일을 지우는 중이면 PUT 이 실패할 수 있다 —
+  // 그때 출생연도만 PATCH 로 먼저 바뀌면 생년월일과 어긋난다(Codex #129 재검증 R2 잔여). 지운 생년월일을 저장한 뒤 고친다.
+  const savedBirthDate = personalSaved ? personalSaved.childBirthDate : "";
+  const yearEditable = personalSaved !== null && !savedBirthDate && !birthDate;
 
   const edits: Partial<IntakeForm> = detail.isCurrent(state.editsFor) ? state.edits : {};
-  const caseEdits: Partial<IntakeForm> = birthDate ? { ...edits, birthYear: undefined } : edits;
+  const caseEdits: Partial<IntakeForm> = yearEditable ? edits : { ...edits, birthYear: undefined };
   const saved = info ? intakeFormOf(info) : null;
   const form: IntakeForm | null = saved ? { ...saved, ...edits } : null;
   const checked = saved ? toCaseUpdateRequest(caseEdits, saved, { isAdmin }) : { payload: null, problem: null };
@@ -310,7 +316,7 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     ready: info !== null,
     headNote: info ? `서식 4 · 사례 등록 ${info.createdDate}` : "서식 4",
     savedNote:
-      "사례에 저장하는 칸: 사례 제목 · 아동 별칭 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원(관리자), " +
+      "사례에 저장하는 칸: 사례 제목 · 신고접수일 · 사례연계일 · 최초면접일 · 아동 별칭 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원(관리자), " +
       "② 초기면접 내용의 가정상황 · 아동 특성. 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 " +
       "암호화해 저장하고 담당 상담원 · 관리자만 봅니다(열 때마다 열람 기록이 남습니다). 개별사건번호는 바꿀 수 없습니다. " +
       `'${NOT_READY}' 칸은 서버에 칸이 없어 입력할 수 없습니다.`,
@@ -342,10 +348,18 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     caseNumber: info ? info.caseNumber : "",
     gender: field("gender"),
     genderOptions,
-    // 생년월일이 있으면 출생연도는 그 해로 정해진다(읽기 전용).
+    // 생년월일이 있으면 출생연도는 그 해로 정해진다(읽기 전용). 손으로 못 고치는 때(위 yearEditable)는 저장된 해를 보인다.
     birthYear: birthDate
-      ? { ...field("birthYear"), value: birthDate.slice(0, 4), readOnly: true, max: new Date().getFullYear() }
-      : { ...field("birthYear"), readOnly: false, max: new Date().getFullYear() },
+      ? { ...field("birthYear"), value: birthDate.slice(0, 4), readOnly: true, hint: " (생년월일의 해)", max: new Date().getFullYear() }
+      : yearEditable
+        ? { ...field("birthYear"), readOnly: false, hint: "", max: new Date().getFullYear() }
+        : {
+            ...field("birthYear"),
+            value: saved ? saved.birthYear : "",
+            readOnly: true,
+            hint: savedBirthDate ? " (생년월일을 지워 저장한 뒤 고칠 수 있음)" : " (실명 정보를 받은 뒤 고칠 수 있음)",
+            max: new Date().getFullYear(),
+          },
     ...personalFieldValues(personalForm, changePersonal, saving || info === null),
     // 복사 '이름 가려서' 에 쓸 이름 — 저장된 이름 · 고치는 중인 이름(지우거나 바꾼 이름도 계속 가린다)과 별칭.
     maskNames: personalNames(personalChecked?.payload ?? null, [
