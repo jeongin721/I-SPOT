@@ -192,21 +192,21 @@ function CaseRegisterForm(props) {
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">
-                      신고접수일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                      신고접수일
                     </span>
-                    <input className="inp" type="date" disabled />
+                    <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.reportDate.value} onChange={v.reportDate.onChange} />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      사례연계일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                      사례연계일
                     </span>
-                    <input className="inp" type="date" disabled />
+                    <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.linkedDate.value} onChange={v.linkedDate.onChange} />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      최초면접일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                      최초면접일
                     </span>
-                    <input className="inp" type="date" disabled />
+                    <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.firstInterviewDate.value} onChange={v.firstInterviewDate.onChange} />
                   </label>
                   <label className="fl">
                     <span className="lb">개별사건번호</span>

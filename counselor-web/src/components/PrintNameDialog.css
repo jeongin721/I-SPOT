@@ -1,0 +1,14 @@
+/* 이름 표시 방식 고르기 창(.out-*) — 10/29 디자인. 브리핑 · 종결보고서가 같이 쓴다. */
+.out-ov{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(43,42,38,.42)}
+.out-dlg{width:min(420px,100%);display:flex;flex-direction:column;gap:14px;padding:22px 22px 18px;border-radius:14px;background:#FFFFFF;color:#2B2A26;box-shadow:0 18px 48px rgba(43,42,38,.25)}
+.out-opts{display:flex;flex-direction:column;gap:8px}
+.out-opt{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 14px;border:1.5px solid #DAD5C9;border-radius:12px;background:#FFFFFF;font:inherit;color:#2B2A26;text-align:left;cursor:pointer}
+.out-opt.on{border-color:#2B2A26;background:#F1EADA}
+.out-rd{flex:none;width:18px;height:18px;border-radius:50%;border:1.5px solid #B9B2A2;background:#FFFFFF}
+.out-opt.on .out-rd{border:5px solid #2B2A26}
+.thm-root.dark .out-dlg{background:#2C2B27;color:#ECE8DF}
+.thm-root.dark .out-opt{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.thm-root.dark .out-opt.on{border-color:#EADBB5;background:#3F3729}
+.thm-root.dark .out-rd{background:#2C2B27;border-color:#7A776F}
+.thm-root.dark .out-opt.on .out-rd{border-color:#EADBB5}
+@media print{.out-ov,.nt-wrap,.thm-tg,.cp-btn,.cp-menu{display:none !important}}

@@ -4,15 +4,17 @@
 # 아동 실명 대신 alias 를 사용하고, 생년월일 대신 출생연도만 보관한다.
 
 import uuid
+from datetime import date, datetime
 from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Enum as SAEnum, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import CaseStatus, GuardianType
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.closure_review import CaseClosureReview
     from app.models.session import ConsultationSession
     from app.models.user import User
 
@@ -45,6 +47,14 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         JSONType, nullable=True
     )
 
+    # 서식 4 ① 의 날짜 셋(2026-10-30, 팀장님 '준비 중 이어서'). 사람을 가리키는 정보가 아니라 사례 진행 날짜다.
+    report_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 신고접수일
+    linked_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 사례연계일
+    first_interview_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 최초면접일
+
+    # 종결 검토에 등록한 시각(2026-10-30, 내담자 정보 '종결 검토 등록'). 등록 전 · 취소하면 null.
+    closure_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     status: Mapped[CaseStatus] = mapped_column(
         SAEnum(CaseStatus, name="case_status", native_enum=False, length=20),
         default=CaseStatus.ACTIVE,
@@ -66,6 +76,12 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     counselor: Mapped["User"] = relationship(
         back_populates="assigned_cases",
         foreign_keys=[counselor_id],
+    )
+    closure_review: Mapped[Optional["CaseClosureReview"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
     )
     sessions: Mapped[List["ConsultationSession"]] = relationship(
         back_populates="case",

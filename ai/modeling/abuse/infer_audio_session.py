@@ -61,6 +61,7 @@ from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
 )
+from ai.modeling.abuse.key_scan_refine import MAX_LINE_PREDICTIONS, child_line_inputs, pick_segments
 from ai.modeling.abuse.topic_tag_llm import (
     generate_topic_tags_from_masked_text,
     mask_child_lines,
@@ -250,6 +251,8 @@ def quick_risk_scan(
     chunks = build_qa_chunks(lines)
 
     risk_by_segment: Dict[str, List[str]] = {}
+    # 줄마다 다시 판정한 횟수(key_scan_refine.MAX_LINE_PREDICTIONS 까지).
+    line_calls = 0
 
     for chunk in chunks:
         chunk_prediction = predict_major_types(
@@ -263,13 +266,27 @@ def quick_risk_scan(
             if chunk_prediction.get(label, {}).get("detected", False)
         ]
 
-        if not detected_labels:
+        # 덩어리 안의 아동 발화를 줄마다 다시 판정해 걸린 줄만 고른다(key_scan_refine, 2026-10-30). 덩어리 판정이 놓친 유형도
+        # 줄에서 걸리면 살린다. 상한을 넘으면 걸린 덩어리는 예전처럼 발화를 모두 표시하고, 안 걸린 덩어리는 건너뛴다.
+        inputs = child_line_inputs(chunk)
+
+        if inputs and line_calls + len(inputs) <= MAX_LINE_PREDICTIONS:
+            line_calls += len(inputs)
+            picked = pick_segments(
+                detected_labels,
+                [(segment_id, predict_major_types(text=text, input_mode="qa")) for segment_id, text in inputs],
+            )
+        elif detected_labels:
+            picked = {
+                str(segment.get("segment_id", "")): list(detected_labels)
+                for _, _, segment in chunk
+            }
+        else:
             continue
 
-        for _, _, segment in chunk:
-            segment_id = str(segment.get("segment_id", ""))
+        for segment_id, labels in picked.items():
             risk_by_segment.setdefault(segment_id, [])
-            for label in detected_labels:
+            for label in labels:
                 if label not in risk_by_segment[segment_id]:
                     risk_by_segment[segment_id].append(label)
 

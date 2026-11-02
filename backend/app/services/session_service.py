@@ -60,6 +60,7 @@ def create_session(
             consulted_at=payload.consulted_at,
             location=payload.location,
             memo=payload.memo,
+            consultation_type=payload.consultation_type,
         )
 
         db.add(session)
@@ -156,7 +157,7 @@ def update_session(
     data = payload.model_dump(exclude_unset=True)
     changed_fields = []
 
-    for field in ("title", "consulted_at", "location", "memo"):
+    for field in ("title", "consulted_at", "location", "memo", "consultation_type"):
         if field in data:
             setattr(session, field, data[field])
             changed_fields.append(field)

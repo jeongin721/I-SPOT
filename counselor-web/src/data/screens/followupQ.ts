@@ -7,17 +7,18 @@
 //    근거 · 위치는 segment_ids 를 원문에서 찾아 '몇 분 · 누구' 로 보이고 누르면 STT 검수의 그 발화로 간다.
 //    서버가 segment_ids 를 비워 보내면(2026-10-27 #84 이전에 저장된 결과) '근거 위치 없음' 이고, 근거가 지난 회차 확정 요약뿐인
 //    메모(previous_session_label, 2026-10-28)는 '근거 · 7회차 확정 요약' 이다.
-//  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가: 저장할 API 가 없어 보이지 않고 준비 중이라고만 쓴다(가짜 저장 없음).
+//  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가(2026-10-30): GET/PUT …/followup-checks(18.1절)에 저장(followupChecks.ts).
 //  - 추가 질문: AI 초안(분석 결과 followup_questions) · 승인 목록(GET/PUT …/followup-questions, 18절)을 디자인의 카드 ·
 //    [승인] · [수정] · [+ 질문 직접 추가] 로 보인다(followupQuestions.ts). '아이 앱으로 먼저' 탭은 준비 중이다.
 //  - 아래 'n회차 처리 완료 · 브리핑 보기': 회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면이라
 //    회차 상세로 가는 단추로 둔다.
 
 import type { FollowupCheckPoint, SessionStatus } from "../../api/types";
+import type { FollowupChecksState } from "../useFollowupChecks";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
-import { NOT_READY } from "./common";
+import { checkValues, type CheckUiState } from "./followupChecks";
 import { questionValues, type QuestionUiState } from "./followupQuestions";
 import { briefingHref } from "./caseDetail";
 import { screenHref } from "./links";
@@ -29,8 +30,13 @@ export interface FollowupScreenInput extends SessionScreenInput {
   analysis: SessionAnalysisState;
   signals: RiskSignalsState;
   questions: FollowupQuestionsState;
-  state: QuestionUiState;
-  setState: (patch: Partial<QuestionUiState> | ((current: QuestionUiState) => Partial<QuestionUiState>)) => void;
+  checks: FollowupChecksState;
+  state: QuestionUiState & CheckUiState;
+  setState: (
+    patch:
+      | Partial<QuestionUiState & CheckUiState>
+      | ((current: QuestionUiState & CheckUiState) => Partial<QuestionUiState & CheckUiState>),
+  ) => void;
 }
 
 /** 승인한 추가 질문을 저장할 수 있는 회차 상태(API_CONTRACT 18절). */
@@ -104,13 +110,22 @@ export function followupQValues(input: FollowupScreenInput) {
   const view = analysis.analysis;
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
   const completed = analyzed && view !== null && view.status === "COMPLETED";
-  const checks = completed ? toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids) : [];
+  const checkCard = checkValues({
+    state: input.state,
+    setState: input.setState,
+    checks: input.checks,
+    points: completed ? view?.followupCheckPoints ?? [] : [],
+    locate: signals.locate,
+    ids,
+    status,
+  });
 
   let empty = "";
 
-  if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
+  if (checkCard.checks.length > 0 || input.checks.saved) empty = input.checks.saved && checkCard.checks.length === 0 ? "저장한 확인 사항이 없습니다." : "";
+  else if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
   else if (!completed) empty = "AI 분석이 끝나면 확인 메모가 보입니다.";
-  else if (checks.length === 0) empty = "AI 가 남긴 확인 메모가 없습니다.";
+  else empty = "AI 가 남긴 확인 메모가 없습니다. '+ 확인 사항 직접 추가' 로 쓸 수 있습니다.";
 
   const sessionLabel = input.detail.session?.numberLabel ?? "";
 
@@ -119,9 +134,8 @@ export function followupQValues(input: FollowupScreenInput) {
     chip: FOLLOWUP_CHIP,
     checkNote:
       "AI 가 다음 상담에서 확인해 두면 좋겠다고 남긴 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.",
-    checks,
+    ...checkCard,
     checksEmpty: empty,
-    checkEditNote: `브리핑에 넣기 · 수정 · 확인 사항 직접 추가는 ${NOT_READY}입니다(저장할 서버 기능이 없음).`,
     ...questionValues({
       state: input.state,
       setState: input.setState,
