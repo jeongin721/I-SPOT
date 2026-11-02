@@ -175,8 +175,9 @@ export function caseHeaderValues(input: CaseScreenInput) {
     sub: info ? (real?.child_birth_date ?? info.birthYearLabel) : "",
     // 인쇄 · 복사 '이름 가리기' 에 쓸 이름 — 등록된 이름 전부와 별칭. namesReady 가 아니면(실명을 아직 못 받음 · 실패)
     // 별칭만 든 목록이라 '등록 이름 전부' 가 아니다 — 가린 출력을 막는다(Codex #129 R3). 미등록 사례는 받은 뒤 ready 다.
+    // 별칭은 사례 정보에서 오므로 지금 대상 세대의 사례 정보도 받아야 ready 다(useRemote 가 옛 값을 돌려주지 않음, #129 재검증 D2).
     maskNames: personalNames(real, info ? [info.alias] : []),
-    namesReady: Boolean(input.personal && real),
+    namesReady: Boolean(input.personal && real && info),
     personalNote: input.personal?.error
       ? notice(`${input.personal.error} 실명 대신 별칭을 보이고, 이름 가리기 인쇄는 할 수 없습니다.`, {
           alert: true,
