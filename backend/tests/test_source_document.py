@@ -382,7 +382,12 @@ def test_upload_fills_ai_completed_at_for_task_waiting_time(client: TestClient, 
     item = client.get("/api/v1/tasks", headers=counselor_headers).json()["data"]["items"][0]
 
     assert row.ai_completed_at is not None
-    assert item["waiting_since"].startswith(row.ai_completed_at.strftime("%Y-%m-%dT%H:%M"))
+    # PostgreSQL 은 세션 시간대(+09)로 돌려준다 — UTC 로 맞춰 비교한다(SQLite 는 시간대 없는 UTC).
+    from datetime import timezone
+
+    done = row.ai_completed_at
+    done_utc = done.astimezone(timezone.utc) if done.tzinfo else done
+    assert item["waiting_since"].startswith(done_utc.strftime("%Y-%m-%dT%H:%M"))
 
 
 def test_created_to_review_is_not_open_to_audio_paths() -> None:
