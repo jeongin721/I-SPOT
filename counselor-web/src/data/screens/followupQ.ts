@@ -281,6 +281,7 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
  * 저장에서 뺀 발화로 가는 링크가 남지 않게 한다(L4). 원문을 못 받았으면(sourceReady false) 번호를 지우지 않는다(서버가 거른다).
  *  - 메모(와 합쳐진 rag): 원문 위치 → 지난 회차 확정 요약 → '근거 위치 없음'(toFollowupItems 와 같은 규칙).
  *  - rag 줄: rag 사례 근거의 위치를 쓰되, 그 위치가 이번 회차 발화인데 원문에 없으면 남은 번호(없으면 '근거 위치 없음')로 바꾼다.
+ * 뺀 번호가 하나라도 있으면 exact 를 끈다 — 그 근거는 18.1 값에 남지 않으므로 저장한 뒤에는 rag 표시를 붙이지 않는다(#125 재검증 5 L6).
  */
 export function settleCheckItems(
   items: FollowupItem[],
@@ -292,9 +293,10 @@ export function settleCheckItems(
     const segmentIds = sourceReady
       ? locate(item.segmentIds).evidence.filter((entry) => entry.found).map((entry) => entry.segmentId)
       : item.segmentIds;
+    const exact = item.exact && item.segmentIds.every((id) => segmentIds.includes(id));
 
     if (item.origin === "rag" && !(sourceReady && item.whereSegment && !segmentIds.includes(item.whereSegment))) {
-      return { ...item, segmentIds };
+      return { ...item, segmentIds, exact };
     }
 
     const located = locate(segmentIds);
@@ -304,6 +306,7 @@ export function settleCheckItems(
     return {
       ...item,
       segmentIds,
+      exact,
       why: located.label || (previous ? `${previous} 확정 요약` : "근거 위치 없음"),
       href: first ? segmentHref(ids, first) : null,
       fromPrevious: Boolean(previous),
