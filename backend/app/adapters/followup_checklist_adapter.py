@@ -422,6 +422,8 @@ class ModuleFollowupChecklistAdapter:
     """rag.session.analyze_reviewed_transcript 를 부르고 결과를 정리한다."""
 
     name = "module"
+    # 외부(OpenAI)로 보내므로 서비스가 등록 이름을 풀어 payload.known_identifiers 에 넣는다(followup_checklist_service).
+    uses_known_identifiers = True
 
     def _load(self):
         ensure_repo_root_on_path()

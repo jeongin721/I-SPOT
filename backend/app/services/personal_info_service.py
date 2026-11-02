@@ -79,7 +79,7 @@ def _unavailable(row: CasePersonalInfo, field: str, error: Exception) -> APIErro
         "개인 식별 정보를 풀지 못했습니다. case_id=%s field=%s key_id=%s reason=%s",
         row.case_id,
         field,
-        pii_crypto.key_id_of(getattr(row, f"{field}_enc") or ""),
+        pii_crypto.key_id_for_log(getattr(row, f"{field}_enc") or ""),
         type(error).__name__,
     )
 
@@ -355,14 +355,17 @@ def _variants(name: str) -> List[str]:
 
     한 글자는 뺀다 — 다른 낱말 속 같은 글자까지 가린다(privacy_gateway 의 정확 매칭도 두 글자부터 본다).
     이름 칸에 적은 관계말(_NOT_NAMES)도 뺀다. 한글 이름을 '한 가람' 처럼 띄어 적었으면 붙여 쓴 '한가람' 도 가린다.
+    가리기는 글자를 그대로 견주므로 적은 그대로의 표기(두 칸 공백 등)와 한글을 자모로 풀어 쓴 표기(NFD)도 함께 넣는다
+    (Codex #138 H1 — 원문이 등록과 같은 표기인데 정리한 표기만 넣어 통과했다).
     """
 
-    name = " ".join(unicodedata.normalize("NFC", name).split())
+    raw = name.strip()
+    name = " ".join(unicodedata.normalize("NFC", raw).split())
 
     if len(name) < 2 or name in _NOT_NAMES:
         return []
 
-    variants = [name]
+    variants = [raw, name]
     compact = name.replace(" ", "")
 
     if _is_hangul(compact):
@@ -373,7 +376,9 @@ def _variants(name: str) -> List[str]:
             given = [compact[1:]] + ([compact[2:]] if compact[:2] in _COMPOUND_SURNAMES else [])
             variants += [part for part in given if len(part) >= 2 and part not in _NOT_NAMES]
 
-    return variants
+    variants += [unicodedata.normalize("NFD", variant) for variant in variants]
+
+    return list(dict.fromkeys(variants))
 
 
 def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Optional[str]] = ()) -> List[str]:
@@ -403,7 +408,7 @@ def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Option
                     "가리기에 넘길 등록 이름을 풀지 못해 그 칸은 빼고 보냅니다. case_id=%s field=%s key_id=%s reason=%s",
                     case_id,
                     field,
-                    pii_crypto.key_id_of(getattr(row, f"{field}_enc") or ""),
+                    pii_crypto.key_id_for_log(getattr(row, f"{field}_enc") or ""),
                     type(error).__name__,
                 )
                 continue
