@@ -26,7 +26,7 @@ class Logic extends DCLogic {
 export default function CaseList(props) {
   const session = useAuthSession();
   const [search, setSearch] = useState('');
-  const list = useCaseList({ search, enabled: session.status === 'signedIn' });
+  const list = useCaseList({ search, enabled: session.status === 'signedIn', withNames: true });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, list, search, setSearch });
   // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다.

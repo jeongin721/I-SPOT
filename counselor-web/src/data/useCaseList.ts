@@ -2,7 +2,8 @@
 //
 // 상담사는 담당 사례만, 관리자는 전체 사례가 온다(Backend 가 거른다).
 // 검색은 제목 · 사례번호 · 아동 별칭(부분)과 아동 실명(정확히)에서 찾는다. 입력이 멈춘 뒤(SEARCH_DELAY_MS) 한 번만 부른다.
-// 이름 칸에 실명을 보이려고 with_child_name=true 로 부른다(부를 때마다 서버에 목록 열람 기록 1줄).
+// withNames: 이름 칸에 실명을 보이는 화면(사례 목록 · 녹취 올리기)만 with_child_name=true 로 부른다(부를 때마다 서버에 목록
+// 열람 기록 1줄). 건수만 쓰는 관리자 홈은 싣지 않는다.
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -22,6 +23,8 @@ export interface CaseListOptions {
   page?: number;
   /** false 면 부르지 않는다(로그인 확인 전 등). 기본 true. */
   enabled?: boolean;
+  /** 이름 칸에 실명을 보이는 화면만 true(with_child_name=true, 서버가 목록 열람 기록을 남김). 기본 false. */
+  withNames?: boolean;
 }
 
 export interface CaseListState {
@@ -34,7 +37,13 @@ export interface CaseListState {
   reload: () => void;
 }
 
-export function useCaseList({ search = "", status, page = 1, enabled = true }: CaseListOptions = {}): CaseListState {
+export function useCaseList({
+  search = "",
+  status,
+  page = 1,
+  enabled = true,
+  withNames = false,
+}: CaseListOptions = {}): CaseListState {
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(enabled);
@@ -64,7 +73,13 @@ export function useCaseList({ search = "", status, page = 1, enabled = true }: C
     const timer = window.setTimeout(
       () => {
         cases
-          .list({ page, page_size: CASE_PAGE_SIZE, status, search: query || undefined, with_child_name: true })
+          .list({
+            page,
+            page_size: CASE_PAGE_SIZE,
+            status,
+            search: query || undefined,
+            ...(withNames ? { with_child_name: true } : {}),
+          })
           .then((result) => {
             if (cancelled) return;
 
@@ -91,7 +106,7 @@ export function useCaseList({ search = "", status, page = 1, enabled = true }: C
       window.clearTimeout(timer);
       cancelled = true;
     };
-  }, [enabled, query, status, page, reloadKey]);
+  }, [enabled, query, status, page, withNames, reloadKey]);
 
   // 켜진 직후 첫 조회가 시작되기 전 한 번의 그리기에서도 '불러오는 중'으로 보이게 한다(빈 목록으로 깜빡이지 않게).
   const waitingFirst = enabled && total === null && error === null;

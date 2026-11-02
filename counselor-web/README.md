@@ -30,7 +30,7 @@ npm run build      # dist/ 에 배포용 파일 생성
 | --- | --- | --- |
 | 로그인 | `useAuthSession` · `useLogin` · `useLogoutNotice` | 로그인 상태(401 · 임시 비밀번호 · 다른 탭), 로그인, 로그아웃 이유 |
 | 홈 | `useHomeDashboard` | 진행 중 사례 수, 미처리 업무(종류별 수 · 지연 · 오래 기다린 3건). 관리자는 전체 사례 · 모든 상담사의 업무 |
-| 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색. 이름 칸은 실명(등록된 사례), 없으면 별칭 — `with_child_name=true` 로 부른다(부를 때마다 서버에 목록 열람 기록 1줄). 검색은 제목 · 사례 ID · 별칭(부분)과 실명(공백 무시 정확히) |
+| 사례 목록 | `useCaseList` · `caseRows` | 사례 목록 · 검색. 이름 칸은 실명(등록된 사례), 없으면 별칭 — 이름을 보이는 화면(사례 목록 · 녹취 올리기)만 `withNames` 로 `with_child_name=true` 를 싣는다(부를 때마다 서버에 목록 열람 기록 1줄). 진행 중 사례 수만 쓰는 관리자 홈은 싣지 않는다. 검색은 제목 · 사례 ID · 별칭(부분)과 실명(공백 무시 정확히) |
 | 새 사례 등록 | `useCaseRegister` | 서버가 받는 칸만 등록(`toCaseCreateRequest` 로 확인 · 변환). 실명 · 가족 칸은 `personal_info` 로 같은 요청에(비었으면 빼고). 관리자면 담당 상담사로 고를 활성 계정 목록도 부름. 한 번 만들면 다시 보내지 않음 |
 | 실명 · 가족 정보 | `usePersonalInfo` · `personalInfo` | `GET · PUT /cases/{id}/personal-info`(서버가 칸마다 암호화, 부를 때마다 열람 기록). 값은 화면 상태에만 두고 브라우저 저장소에 넣지 않음. 통째로 바꾸는 PUT 이라 값을 받기 전에는 저장하지 않음. 입력 ↔ 보낼 값 · 입력 확인 · 가릴 이름 목록은 `personalInfo.ts` |
 | 사례 상세 위험도 · 확인 메모 | `useCaseSignals` | 분석이 끝난 가장 최근 회차(결과 검수 중 · 승인 완료) 하나의 상담원 판단(회차 전체 상 · 중 · 하, risk-assessment) · AI 관련 신호 · 확인 메모. 내담자 정보의 주요 위험 요인 · 사례 머리 위험도 · 상담 전 브리핑 확인할 사항이 쓴다(새 API 없음) |

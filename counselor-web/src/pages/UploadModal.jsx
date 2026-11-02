@@ -47,7 +47,7 @@ function UploadModalScreen(props) {
   const enabled = signedIn(session);
   const [search, setSearch] = useState('');
   const [caseId, setCaseId] = useState(ids.caseId);
-  const list = useCaseList({ search, enabled });
+  const list = useCaseList({ search, enabled, withNames: true });
   const caseDetail = useCaseDetail(caseId, { enabled });
   const upload = useAudioUpload();
   const theme = useTheme();
