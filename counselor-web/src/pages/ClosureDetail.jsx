@@ -2,7 +2,10 @@
 // 원본: 10/30 디자인 ClosureDetail.dc.html(프론트팀 zip). 화면 주소 ?case=<사례 ID>.
 // 서버 연결(2026-10-30): 머리(사건번호 · 담당 · 아동 별칭 · 작성일 · 초기면접일), 초기상황 · 종결상황(저장한 글이 없으면 closure-summary
 // AI 초안) · 종결 심의일 · 종결 상담일 · 종합의견 · '보고서 저장'(PUT closure-summary report). closureReview.ts closureReportValues.
-// 종결사유 · 서비스 요약 · 안전평가 · 안전점수는 저장할 서버 칸이 아직 없다 — 실제 사례로 열면 예시 AI 제안 · 근거 · 기본값을 지운다.
+// 실제 사례로 열면 예시 AI 제안 · 근거 · 기본값을 지운다.
+// 11/03: 종결사유 · 안전평가 · Key Person · 안전점수도 report 에 저장한다(상담원이 고른 값만, AI 가 채우지 않음). 저장하면 카드 아래에
+// '저장했습니다' 를 보이고, 저장하지 않은 수정이 있으면 떠날 때 묻는다(useLeaveGuard). 사례관리 제공 요약은 서버 칸이 없어 준비 중.
+// 가족관계척도 줄은 기관 서식(가족관계 척도, useCaseForms) 가장 최근 기록의 평균을 보인다.
 import { Fragment, useState } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -14,10 +17,13 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseForms } from '../data/useCaseForms';
 import { useClosureSummary } from '../data/useClosureSummary';
 import { closureReportValues } from '../data/screens/closureReview';
+import { familyScaleLine } from '../data/screens/caseForm';
 import { signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useTheme } from '../theme';
 import './ClosureDetail.css';
 
@@ -53,6 +59,8 @@ class Logic extends DCLogic {
     const reasons = R.map(([t, aiRaw, evRaw], i) => {
       const ai = real ? false : aiRaw;
       const ev = real ? '' : evRaw;
+      // 실제 사례는 서버에 저장한 값(r.reasons)을 쓴다.
+      if (real) return { t, on: Boolean(this.props.report.reasons[i]), hasEv: false, ev: '', toggle: () => this.props.report.toggleReason(i) };
       const on = s.rs[i] !== undefined ? s.rs[i] : ai;
       return { t, on, hasEv: !!ev, ev, toggle: () => this.setState({ rs: { ...s.rs, [i]: !on } }) };
     });
@@ -103,7 +111,7 @@ class Logic extends DCLogic {
         const ai = real ? '' : aiRaw;
         const ev = real ? '' : evRaw;
         const k = idx++;
-        const cur = s.sa[k] !== undefined ? s.sa[k] : ai;
+        const cur = real ? this.props.report.safety[k] : s.sa[k] !== undefined ? s.sa[k] : ai;
         return {
           q,
           ai,
@@ -112,7 +120,7 @@ class Logic extends DCLogic {
           opts: ['높음', '보통', '낮음'].map((o) => ({
             label: o,
             ...sel(cur === o),
-            pick: () => this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } }),
+            pick: () => (real ? this.props.report.pickSafety(k, o) : this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } })),
           })),
         };
       }),
@@ -138,7 +146,18 @@ export default function ClosureDetail(props) {
     (patch) => setDraftState((current) => ({ ...current, ...patch })),
     () => setDraftState({}),
   );
-  const v = useDC(Logic, { ...props, connected: r.connected });
+  const v = useDC(Logic, { ...props, connected: r.connected, report: r });
+  const forms = useCaseForms(caseId, { enabled: enabled && r.connected });
+  const family = familyScaleLine(forms);
+  const [savedNote, setSavedNote] = useState('');
+  useLeaveGuard(r.unsaved);
+  const save = async () => {
+    setSavedNote('');
+    if (await r.save()) {
+      const now = new Date();
+      setSavedNote(`보고서를 저장했습니다 · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+    }
+  };
   const name = r.alias || '강시우';
   return (
     <div className="pg-ClosureDetail">
@@ -232,8 +251,7 @@ export default function ClosureDetail(props) {
 
             {r.connected ? (
               <p className="note" style={{ margin: 0 }}>
-                종결사유 · 사례관리 제공 요약 · 안전평가 · 안전점수는 아직 저장되지 않습니다(준비 중). 저장되는 칸은 대상자 변화상황 ·
-                날짜 · 종합의견입니다.
+                사례관리 제공 요약은 아직 저장되지 않습니다(준비 중). 나머지 칸은 '보고서 저장' 을 누르면 저장됩니다.
               </p>
             ) : null}
             <div className="grp">종결사유</div>
@@ -336,7 +354,9 @@ export default function ClosureDetail(props) {
                 key={r.connected ? 'live' : 'sample'}
                 className="inp"
                 type="text"
-                defaultValue={r.connected ? '' : '있음 · 외조모 (주 2회 돌봄)'}
+                {...(r.connected
+                  ? { value: r.keyPerson.value, onChange: r.keyPerson.onChange, maxLength: 300 }
+                  : { defaultValue: '있음 · 외조모 (주 2회 돌봄)' })}
                 aria-label="Key Person"
                 style={{ width: '100%' }}
               />
@@ -356,10 +376,10 @@ export default function ClosureDetail(props) {
                 (최소안전 1점 – 가장안전 10점)
               </span>
             </div>
-            {(v.scoreRows || []).map((r, rIndex) => (
+            {(v.scoreRows || []).map((row, rIndex) => (
               <Fragment key={rIndex}>
                 <div className="item" style={{ gridTemplateColumns: '160px 110px minmax(0, 1fr)' }}>
-                  <span>{r}</span>
+                  <span>{row}</span>
                   <input
                     className="inp"
                     type="number"
@@ -368,15 +388,37 @@ export default function ClosureDetail(props) {
                     placeholder="( )점"
                     aria-label="안전점수"
                     style={{ width: '100px' }}
+                    {...(r.connected
+                      ? { value: r.scores[rIndex].score, onChange: (e) => r.scores[rIndex].setScore(e.target.value) }
+                      : {})}
                   />
-                  <input className="inp" type="text" placeholder="이유" aria-label="이유" style={{ width: '100%' }} />
+                  <input
+                    className="inp"
+                    type="text"
+                    placeholder="이유"
+                    aria-label="이유"
+                    style={{ width: '100%' }}
+                    {...(r.connected
+                      ? {
+                          value: r.scores[rIndex].reason,
+                          onChange: (e) => r.scores[rIndex].setReason(e.target.value),
+                          maxLength: 300,
+                        }
+                      : {})}
+                  />
                 </div>
               </Fragment>
             ))}
             <div className="item" style={{ gridTemplateColumns: '160px minmax(0, 1fr)' }}>
               <span>가족관계척도</span>
               {r.connected ? (
-                <span className="note">— · 기관 서식(가족관계척도) 기록이 서버에 없음</span>
+                family.avg ? (
+                  <span>
+                    평균 <b className="brn">{family.avg}</b>점 <span className="note">· {family.sub}</span>
+                  </span>
+                ) : (
+                  <span className="note">{family.sub}</span>
+                )
               ) : (
                 <span>
                   평균 <b className="brn">3.60</b>점{' '}
@@ -457,14 +499,14 @@ export default function ClosureDetail(props) {
               <A className="btn btn-s" to={r.meetingHref}>
                 종결평가 회의 일정 잡기
               </A>
-              <button type="button" className="btn btn-p" onClick={r.save} disabled={!r.canSave}>
+              <button type="button" className="btn btn-p" onClick={save} disabled={!r.canSave}>
                 {r.saveLabel}
               </button>
             </div>
           </section>
-          {r.reportNote ? (
+          {savedNote || r.reportNote ? (
             <p className="note" role="status" style={{ margin: 0 }}>
-              {r.reportNote}
+              {savedNote || r.reportNote}
             </p>
           ) : null}
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>

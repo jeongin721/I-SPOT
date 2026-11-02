@@ -71,6 +71,31 @@ export function formsCardValues(forms: CaseFormsState, caseId: string | null) {
   return { chip, href: caseFormHref(caseId, "B") };
 }
 
+/**
+ * 종결보고서 '가족관계척도' 줄(11/03): 가족관계 척도 가장 최근 기록(임시 저장 포함)의 평균 · 응답일 · 응답자,
+ * 2차 이상이면 1차(초기) 평균도. 평균은 작성 화면과 같은 계산(응답 합 / 15).
+ */
+export function familyScaleLine(forms: CaseFormsState): { avg: string; sub: string } {
+  if (forms.loadError) return { avg: "", sub: `${NOT_PROVIDED} · 가족관계 척도 기록을 불러오지 못함` };
+  if (!forms.loaded) return { avg: "", sub: NOT_PROVIDED };
+  const rows = forms.items.filter((item) => item.form_type === FORM_TYPES.D).sort((a, b) => b.round - a.round);
+  const latest = currentForm(forms.items, FORM_TYPES.D);
+  const avgOf = (row: CaseForm) => {
+    const answered = normalize("FAMILY_SCALE", row.values as Record<string, unknown>).answers.filter((x): x is number => x !== null);
+    return answered.length ? (answered.reduce((a, b) => a + b, 0) / 15).toFixed(2) : "";
+  };
+  const day = (row: CaseForm) => {
+    const d = toDateOnly(row.confirmed_at ?? row.updated_at);
+    return d ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : NOT_PROVIDED;
+  };
+  if (!latest || !avgOf(latest)) return { avg: "", sub: `${NOT_PROVIDED} · 가족관계 척도 응답 기록 없음` };
+  const who = RESPONDENTS.find(([, code]) => code === normalize("FAMILY_SCALE", latest.values as Record<string, unknown>).respondent)?.[0];
+  const first = rows.find((row) => row.round === 1);
+  const initial = first && first.id !== latest.id && avgOf(first) ? ` · 초기 ${day(first)} 응답 ${avgOf(first)}점` : "";
+  const draft = latest.status === "DRAFT" ? " · 임시 저장" : "";
+  return { avg: avgOf(latest), sub: `${day(latest)} 응답${who ? ` (${who})` : ""}${draft}${initial}` };
+}
+
 // ---------------------------------------------------------
 // 서식 문항(디자인 · 매뉴얼 서식 그대로)
 // ---------------------------------------------------------

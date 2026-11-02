@@ -36,22 +36,56 @@ class ClosureSummary(BaseModel):
     report: Dict[str, Optional[ClosureDraft]]
 
 
+# 종결보고서(서식 29) 상담원 판단 칸(2026-11-03): 종결사유 5개 · 안전평가 11문항 · Key Person · 안전점수 3줄.
+CLOSURE_REASON_COUNT = 5
+CLOSURE_SAFETY_ITEM_COUNT = 11
+CLOSURE_SAFETY_SCORE_COUNT = 3
+CLOSURE_SHORT_TEXT_MAX_LENGTH = 300
+
+SafetyLevel = Literal["HIGH", "MEDIUM", "LOW"]
+
+
+class ClosureSafetyScore(BaseModel):
+    score: Optional[int] = None
+    reason: str = ""
+
+
 class ClosureReport(BaseModel):
     initial_situation: Optional[str] = None
     closing_situation: Optional[str] = None
     opinion: Optional[str] = None
     review_date: Optional[date] = None
     closing_date: Optional[date] = None
+    reasons: Optional[List[bool]] = None
+    safety: Optional[List[Optional[SafetyLevel]]] = None
+    key_person: Optional[str] = None
+    safety_scores: Optional[List[ClosureSafetyScore]] = None
+
+
+class ClosureSafetyScoreIn(RequestModel):
+    score: Optional[int] = Field(default=None, ge=1, le=10)
+    reason: str = Field(default="", max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
 
 
 class ClosureReportIn(RequestModel):
-    """저장 요청의 보고서 칸(요청 본문은 RequestModel — 저장할 수 없는 글자 등을 거른다). 보낸 칸만 바뀐다."""
+    """저장 요청의 보고서 칸(요청 본문은 RequestModel — 저장할 수 없는 글자 등을 거른다). 보낸 칸만 바뀐다.
+
+    종결사유 · 안전평가 · 안전점수는 상담원이 고른 값만 담는다(AI 가 채우지 않는다). 목록은 문항 수 그대로 보낸다.
+    """
 
     initial_situation: Optional[str] = None
     closing_situation: Optional[str] = None
     opinion: Optional[str] = None
     review_date: Optional[IsoDate] = None
     closing_date: Optional[IsoDate] = None
+    reasons: Optional[List[bool]] = Field(default=None, min_length=CLOSURE_REASON_COUNT, max_length=CLOSURE_REASON_COUNT)
+    safety: Optional[List[Optional[SafetyLevel]]] = Field(
+        default=None, min_length=CLOSURE_SAFETY_ITEM_COUNT, max_length=CLOSURE_SAFETY_ITEM_COUNT
+    )
+    key_person: Optional[str] = Field(default=None, max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
+    safety_scores: Optional[List[ClosureSafetyScoreIn]] = Field(
+        default=None, min_length=CLOSURE_SAFETY_SCORE_COUNT, max_length=CLOSURE_SAFETY_SCORE_COUNT
+    )
 
 
 class ClosureSummaryResponse(BaseModel):

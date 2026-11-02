@@ -1249,6 +1249,13 @@ export interface ClosureReportFields {
   opinion?: string | null;
   review_date?: string | null;
   closing_date?: string | null;
+  /** 종결사유 5개(2026-11-03). 저장 전 null. */
+  reasons?: boolean[] | null;
+  /** 안전평가 11문항(서식 6 안전영역 순서). */
+  safety?: ("HIGH" | "MEDIUM" | "LOW" | null)[] | null;
+  key_person?: string | null;
+  /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
+  safety_scores?: { score: number | null; reason: string }[] | null;
 }
 
 export interface ClosureSummaryRecord {
