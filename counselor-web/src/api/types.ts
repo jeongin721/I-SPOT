@@ -291,6 +291,45 @@ export interface PasswordChangeRequest {
   new_password: string;
 }
 
+// =========================================================
+// 회원가입 — 이메일 인증번호 → 대기 신청 → 관리자 승인(API_CONTRACT 3절 '회원가입', 2026-11-02)
+// =========================================================
+
+/** GET /auth/signup-requests/settings. enabled 가 false 면 회원가입 단추를 숨긴다. 빈 도메인 목록은 모두 받는다. */
+export interface SignupSettings {
+  enabled: boolean;
+  allowed_email_domains: string[];
+}
+
+/** 인증번호 보내기(202). 이미 가입했거나 승인을 기다리는 이메일에도 같은 응답이다(메일만 안 간다). */
+export interface SignupCodeSent {
+  resend_after_seconds: number;
+  expires_in_seconds: number;
+}
+
+/** 인증번호 확인(200). 토큰은 30분 동안 신청에 한 번만 쓴다 — 저장하지 않고 메모리에만 둔다. */
+export interface SignupVerified {
+  verification_token: string;
+  expires_in_seconds: number;
+}
+
+export type SignupStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+/** 관리자 가입 신청 목록의 한 줄. expires_at 은 대기 신청이 지워지는 시각(처리한 신청은 null). */
+export interface SignupRequestItem {
+  id: string;
+  email: string;
+  name: string;
+  status: SignupStatus;
+  created_at: string;
+  expires_at: string | null;
+  decided_at: string | null;
+  decided_by_id: string | null;
+  decided_by_name: string | null;
+  role: UserRole | null;
+  user_id: string | null;
+}
+
 /**
  * 비밀번호 규칙 안내 문구. Backend `API_CONTRACT.md` 3절과 같은 내용이다.
  * 화면에서 따로 규칙을 적지 말고 이 값을 쓴다 — 두 곳에 적으면 어긋난다.

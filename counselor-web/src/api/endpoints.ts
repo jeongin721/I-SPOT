@@ -43,6 +43,12 @@ import type {
   RiskAssessment,
   RiskAssessmentSaveRequest,
   TemporaryPassword,
+  SignupCodeSent,
+  SignupRequestItem,
+  SignupSettings,
+  SignupStatus,
+  SignupVerified,
+  UserRole,
   UserCreateRequest,
   UserUpdateRequest,
   AuditLog,
@@ -178,6 +184,66 @@ export const auth = {
     },
   ): Promise<Paged<AuditLog>> {
     return api.get<Paged<AuditLog>>("/auth/audit-logs", params);
+  },
+};
+
+// =========================================================
+// 회원가입 — API_CONTRACT 3절 '회원가입'. 0~3 은 로그인 없이, 목록 · 승인 · 거절은 관리자.
+// =========================================================
+
+export const signup = {
+  /** 켜짐 여부 · 받는 이메일 도메인. 꺼져 있어도 200 이다(공개 창구 셋만 503 SIGNUP_DISABLED). */
+  settings(): Promise<SignupSettings> {
+    return api.get<SignupSettings>("/auth/signup-requests/settings");
+  },
+
+  /**
+   * 1단계 인증번호 보내기(202). 숫자 6자리 · 5분. 새로 보내면 앞 번호는 더 맞지 않는다.
+   *
+   * 오류: 429 RATE_LIMITED(`details.retry_after_seconds`), 422 SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED,
+   * 422 VALIDATION_ERROR(이메일 형식), 503 SIGNUP_DISABLED.
+   */
+  sendCode(email: string): Promise<SignupCodeSent> {
+    return api.post<SignupCodeSent>("/auth/signup-requests/send-code", { email });
+  },
+
+  /**
+   * 2단계 인증번호 확인(200).
+   *
+   * 오류: 422 VERIFICATION_CODE_MISMATCH(`details.remaining_attempts` 4 → 0),
+   * 422 VERIFICATION_CODE_EXPIRED(1단계부터 다시), 429 RATE_LIMITED, 503 SIGNUP_DISABLED.
+   */
+  verifyCode(email: string, code: string): Promise<SignupVerified> {
+    return api.post<SignupVerified>("/auth/signup-requests/verify-code", { email, code });
+  },
+
+  /**
+   * 3단계 대기 신청(201 PENDING). 역할은 보내지 않는다(승인하는 관리자가 정한다).
+   *
+   * 오류: 422 SIGNUP_TOKEN_INVALID(30분 지남 · 이미 씀 — 1단계부터 다시), 422 WEAK_PASSWORD(`details.reasons`,
+   * 같은 토큰으로 다시 낼 수 있다), 409 DUPLICATE_RESOURCE, 503 SIGNUP_DISABLED.
+   */
+  submit(payload: { verification_token: string; name: string; password: string }): Promise<{ status: SignupStatus }> {
+    return api.post<{ status: SignupStatus }>("/auth/signup-requests", payload);
+  },
+
+  /** 관리자 전용. 오래된 신청부터. status 기본 PENDING. */
+  list(params?: PageQuery & { status?: SignupStatus }): Promise<Paged<SignupRequestItem>> {
+    return api.get<Paged<SignupRequestItem>>("/auth/signup-requests", params);
+  },
+
+  /**
+   * 관리자 전용. 역할은 필수다. 신청 때 비밀번호 그대로 계정이 생긴다.
+   *
+   * 오류: 404 NOT_FOUND, 409 SIGNUP_ALREADY_DECIDED, 409 DUPLICATE_RESOURCE(그사이 같은 이메일 계정이 생김 — 거절하면 된다).
+   */
+  approve(requestId: string, role: UserRole): Promise<SignupRequestItem> {
+    return api.post<SignupRequestItem>(`/auth/signup-requests/${requestId}/approve`, { role });
+  },
+
+  /** 관리자 전용. 신청자에게 메일로 알리지 않는다. 오류: 404 NOT_FOUND, 409 SIGNUP_ALREADY_DECIDED. */
+  reject(requestId: string): Promise<SignupRequestItem> {
+    return api.post<SignupRequestItem>(`/auth/signup-requests/${requestId}/reject`, {});
   },
 };
 
