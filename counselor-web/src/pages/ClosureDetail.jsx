@@ -168,7 +168,7 @@ export default function ClosureDetail(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -453,7 +453,8 @@ export default function ClosureDetail(props) {
                   }}
                 />
               ) : null}
-              <A className="btn btn-s" to="/Schedule">
+              {/* 일정 달력이 '사례회의 · 종결평가 회의' 추가 창을 연 채로 열린다 — 날을 고르고 저장하면 일정이 잡힌다(11/02). */}
+              <A className="btn btn-s" to={r.meetingHref}>
                 종결평가 회의 일정 잡기
               </A>
               <button type="button" className="btn btn-p" onClick={r.save} disabled={!r.canSave}>
