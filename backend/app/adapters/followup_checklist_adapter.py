@@ -120,6 +120,16 @@ def _judgment_check() -> Callable[[str], Optional[str]]:
     return judgment_reason
 
 
+def _foreign_script_check() -> Callable[[str], bool]:
+    """다른 나라 문자가 섞인 문장 검사(ai/modeling/abuse/text_script — 확인 메모 · 추가 질문과 같은 기준, #128)."""
+
+    ensure_repo_root_on_path()
+
+    from ai.modeling.abuse.text_script import has_foreign_script
+
+    return has_foreign_script
+
+
 def _bump(dropped: Dict[str, int], key: str, count: int = 1) -> None:
     dropped[key] = dropped.get(key, 0) + count
 
@@ -143,7 +153,7 @@ def _clean_basis(raw: Any) -> List[ChecklistBasis]:
     return basis
 
 
-def _clean_check_items(raw_items: List[Any], judgment, dropped: Dict[str, int]) -> List[ChecklistItem]:
+def _clean_check_items(raw_items: List[Any], judgment, foreign, dropped: Dict[str, int]) -> List[ChecklistItem]:
     items: List[ChecklistItem] = []
 
     for raw in raw_items:
@@ -178,6 +188,11 @@ def _clean_check_items(raw_items: List[Any], judgment, dropped: Dict[str, int]) 
             _bump(dropped, "judgment")
             continue
 
+        # 같은 목록의 확인 메모처럼 다른 나라 문자가 섞인 문장("재발 방지 ব্যবস্থা")은 뺀다(#128 text_script).
+        if foreign(item.text) or foreign(item.reason):
+            _bump(dropped, "foreign_script")
+            continue
+
         items.append(item)
 
     return items
@@ -187,6 +202,7 @@ def _clean_question_evidence(
     raw_list: List[Any],
     drafts: List[Dict[str, Any]],
     judgment,
+    foreign,
     dropped: Dict[str, int],
 ) -> List[QuestionEvidence]:
     """초안에 붙인 공식 근거. 공식 근거(type ≠ case)이고 이유(why)가 있는 것만, 넘긴 초안 번호에만 붙인다.
@@ -208,7 +224,11 @@ def _clean_question_evidence(
         basis = [
             entry
             for entry in _clean_basis(raw.get("basis"))
-            if not entry.is_case and entry.why and entry.why.strip() and not judgment(entry.why)
+            if not entry.is_case
+            and entry.why
+            and entry.why.strip()
+            and not judgment(entry.why)
+            and not foreign(entry.why)
         ]
 
         if not basis:
@@ -235,11 +255,12 @@ def normalize_result(
         raise FollowupChecklistError(ErrorCode.AI_INVALID_OUTPUT, "NotAList")
 
     judgment = _judgment_check()
+    foreign = _foreign_script_check()
     counts: Dict[str, int] = dict(dropped or {})
 
     result = ChecklistResult(
-        check_items=_clean_check_items(check_items, judgment, counts),
-        question_evidence=_clean_question_evidence(question_evidence, drafts, judgment, counts),
+        check_items=_clean_check_items(check_items, judgment, foreign, counts),
+        question_evidence=_clean_question_evidence(question_evidence, drafts, judgment, foreign, counts),
         notice=" ".join(dict.fromkeys(notice for notice in notices if notice)) or None,
         dropped=counts,
     ).model_dump(mode="json")

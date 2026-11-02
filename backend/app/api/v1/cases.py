@@ -18,7 +18,8 @@ from app.schemas.auth import UserResponse
 from app.schemas.common import StorableQueryText
 from app.schemas.session import SessionCreateRequest, SessionResponse
 from app.schemas.signal_history import SignalHistoryResponse
-from app.services import case_service, session_service, signal_history_service
+from app.schemas.closure_review import ClosureSummaryResponse, ClosureSummarySaveRequest
+from app.services import case_service, closure_review_service, session_service, signal_history_service
 from app.services.access import get_case_or_404
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -153,6 +154,62 @@ def update_case(
     updated = case_service.update_case(db, case, current_user, payload)
 
     return DataResponse(data=_case_response(updated))
+
+
+@router.post("/{case_id}/closure-review", response_model=DataResponse[CaseResponse])
+def register_closure_review(
+    case_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[CaseResponse]:
+    """종결 검토에 등록한다(4절, 2026-10-30). 진행 중 사례만, 이미 등록됐으면 그대로."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    updated = case_service.set_closure_review(db, case, current_user, register=True)
+
+    return DataResponse(data=_case_response(updated))
+
+
+@router.delete("/{case_id}/closure-review", response_model=DataResponse[CaseResponse])
+def cancel_closure_review(
+    case_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[CaseResponse]:
+    """종결 검토 등록을 취소한다. 등록 전이면 그대로."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    updated = case_service.set_closure_review(db, case, current_user, register=False)
+
+    return DataResponse(data=_case_response(updated))
+
+
+@router.get("/{case_id}/closure-summary", response_model=DataResponse[ClosureSummaryResponse])
+def get_closure_summary(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[ClosureSummaryResponse]:
+    """종결 검토 요약 · 보고서(4절, 2026-10-30). 만들기 전이면 summary null."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    return DataResponse(data=closure_review_service.to_response(case, closure_review_service.get_row(db, case.id)))
+
+
+@router.post("/{case_id}/closure-summary", response_model=DataResponse[ClosureSummaryResponse])
+def generate_closure_summary(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[ClosureSummaryResponse]:
+    """승인 완료 회차 요약으로 종결 요약을 (다시) 만든다. 동기 응답, 넘으면 504."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    row = closure_review_service.generate(db, case, current_user)
+    return DataResponse(data=closure_review_service.to_response(case, row))
+
+
+@router.put("/{case_id}/closure-summary", response_model=DataResponse[ClosureSummaryResponse])
+def save_closure_summary(
+    case_id: uuid.UUID, payload: ClosureSummarySaveRequest, db: DbSession, current_user: CurrentUser
+) -> DataResponse[ClosureSummaryResponse]:
+    """확인 체크 · 고친 문장 · 종결보고서 칸을 저장한다(보낸 칸만)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    row = closure_review_service.save(db, case, current_user, payload)
+    return DataResponse(data=closure_review_service.to_response(case, row))
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)

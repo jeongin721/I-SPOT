@@ -32,10 +32,11 @@ export interface ApprovedSummariesState {
 
 export function useApprovedSummaries(
   sessions: SignalHistorySession[],
-  { enabled = true }: { enabled?: boolean } = {},
+  { enabled = true, max = MAX_APPROVED }: { enabled?: boolean; max?: number } = {},
 ): ApprovedSummariesState {
   const approved = useMemo(() => sessions.filter((row) => row.status === "APPROVED"), [sessions]);
-  const picked = useMemo(() => approved.slice(-MAX_APPROVED), [approved]);
+  // 종결 검토 회차별 흐름은 모든 승인 회차가 필요해 max 를 크게 준다(2026-10-30).
+  const picked = useMemo(() => approved.slice(-max), [approved, max]);
   const key = enabled ? picked.map((row) => row.session_id).join(",") : "";
   const [state, setState] = useState<{ key: string; items: ApprovedSummary[]; error: string | null }>({
     key: "",

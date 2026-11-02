@@ -10,18 +10,29 @@
 //    다음 상담 체크리스트(GET/POST …/followup-checklist, 19절)가 켜져 있으면 rag 확인 사항을 메모와 한 목록으로 합친다
 //    (mergeCheckItems — 메모 먼저, 같은 문장은 한 번, 공식 근거는 검토를 통과한 것만 '공식 근거 N' 칩과 펼침으로).
 //    꺼져 있으면(enabled=false) 지금처럼 메모만이다.
-//  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가: 저장할 API 가 없어 보이지 않고 준비 중이라고만 쓴다(가짜 저장 없음).
+//  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가(2026-10-30): GET/PUT …/followup-checks(18.1절)에 저장(followupChecks.ts).
+//    저장 전 초안은 AI 확인 메모 + rag 확인 사항을 합친 목록이고(rag 항목도 source AI 로 저장), 저장한 뒤에는 저장 목록이 기준이다.
+//    rag 에서 온 줄은 문장을 고치지 않았고 같은 분석일 때만 '공식 근거' 칩 · 펼침을 붙인다(ragCheckAnnotations). 저장 뒤 rag 를
+//    다시 만들어 목록에 없는 rag 항목이 생기면 [목록에 더하기] 로 넣는다(2026-11-02, #128 위에 맞춤).
 //  - 추가 질문: AI 초안(분석 결과 followup_questions) · 승인 목록(GET/PUT …/followup-questions, 18절)을 디자인의 카드 ·
 //    [승인] · [수정] · [+ 질문 직접 추가] 로 보인다(followupQuestions.ts). '아이 앱으로 먼저' 탭은 준비 중이다.
 //  - 아래 'n회차 처리 완료 · 브리핑 보기': 회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면이라
 //    회차 상세로 가는 단추로 둔다.
 
-import type { ChecklistItem, ChecklistKind, FollowupCheckPoint, QuestionEvidence, SessionStatus } from "../../api/types";
+import type {
+  ChecklistItem,
+  ChecklistKind,
+  FollowupCheck,
+  FollowupCheckPoint,
+  QuestionEvidence,
+  SessionStatus,
+} from "../../api/types";
 import type { FollowupChecklistState } from "../useFollowupChecklist";
+import type { FollowupChecksState } from "../useFollowupChecks";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
-import { NOT_READY } from "./common";
+import { checkValues, type CheckAnnotation, type CheckUiState } from "./followupChecks";
 import { caseWhy, officialSources, type SourceView } from "./followupEvidence";
 import { questionValues, type QuestionUiState } from "./followupQuestions";
 import { briefingHref } from "./caseDetail";
@@ -36,8 +47,13 @@ export interface FollowupScreenInput extends SessionScreenInput {
   questions: FollowupQuestionsState;
   /** 다음 상담 체크리스트(19절). 없으면(이전 호출부) 메모만 보인다. */
   checklist?: FollowupChecklistState;
-  state: QuestionUiState;
-  setState: (patch: Partial<QuestionUiState> | ((current: QuestionUiState) => Partial<QuestionUiState>)) => void;
+  checks: FollowupChecksState;
+  state: QuestionUiState & CheckUiState;
+  setState: (
+    patch:
+      | Partial<QuestionUiState & CheckUiState>
+      | ((current: QuestionUiState & CheckUiState) => Partial<QuestionUiState & CheckUiState>),
+  ) => void;
 }
 
 /** 승인한 추가 질문을 저장할 수 있는 회차 상태(API_CONTRACT 18절). */
@@ -73,6 +89,10 @@ export interface FollowupItem {
   reason: string;
   /** 검토를 통과한 공식 근거(rag). 같은 문장의 메모와 합쳐지면 메모 쪽으로 옮겨 붙는다. */
   sources: SourceView[];
+  /** 저장(18.1)할 때 넣을 이번 회차 발화 번호. 메모는 segment_ids, rag 는 이번 회차 사례 근거의 segment_id. */
+  segmentIds: string[];
+  /** 근거가 지난 회차 확정 요약뿐인 메모의 회차 이름('7회차'). rag 는 null. */
+  previousLabel: string | null;
 }
 
 /** rag 확인 사항 종류 → 칩 글자(19절 kind). */
@@ -123,6 +143,8 @@ export function toFollowupItems(
       chips: [],
       reason: "",
       sources: [],
+      segmentIds: Array.isArray(point.segment_ids) ? point.segment_ids.filter((id) => typeof id === "string") : [],
+      previousLabel: previous || null,
     });
   });
 
@@ -162,6 +184,16 @@ export function ragCheckItems(
       chips,
       reason: typeof item.reason === "string" ? item.reason.trim() : "",
       sources,
+      // 저장은 그 회차 최신 전사본의 번호만 받는다(18.1). 이번 회차 사례 근거의 발화 번호만 넣는다.
+      segmentIds: Array.from(
+        new Set(
+          item.basis
+            .filter((basis) => basis && basis.type === "case" && basis.session_id === ids.sessionId)
+            .map((basis) => (typeof basis.segment_id === "string" ? basis.segment_id : ""))
+            .filter(Boolean),
+        ),
+      ),
+      previousLabel: null,
     });
   });
 
@@ -217,6 +249,53 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
   });
 
   return all;
+}
+
+/** 합친 목록(mergeCheckItems) → 18.1 저장 꼴 초안. 모두 source AI 이고 아직 고르지 않음(in_briefing false). */
+export function checksFromItems(items: FollowupItem[]): FollowupCheck[] {
+  return items.map((item) => ({
+    text: item.text,
+    source: "AI" as const,
+    segment_ids: item.segmentIds,
+    edited: false,
+    in_briefing: false,
+    previous_session_label:
+      item.previousLabel && /^[0-9]{1,4}회차$/.test(item.previousLabel) ? item.previousLabel : null,
+  }));
+}
+
+/**
+ * 확인 사항 줄(18.1 초안 · 저장 목록)에 rag 표시를 붙인다. 문장(공백 · 문장부호를 뺀 것)이 합친 목록과 같고 상담사가 고치지 않은
+ * AI 줄에만 칩(메모 줄은 rag 와 함께일 때 'AI 확인 메모') · 이유 · 공식 근거를 붙인다(고친 문장은 검토를 거치지 않았다). rag 에서 온 줄은 근거 위치도 rag 의 사례 근거로 보인다
+ * (앞 회차 근거는 그 회차로 간다). merged 는 지금 분석으로 만든 체크리스트만 담으므로 분석이 바뀌면 표시도 없다.
+ * pending: 저장 목록에 없는 rag 항목(저장 뒤 다시 만들어 새로 나온 것) — [목록에 더하기] 로 넣는다.
+ */
+export function ragCheckAnnotations(merged: FollowupItem[]) {
+  const byText = new Map(merged.map((item) => [normalizeCheckText(item.text), item]));
+
+  const annotate = (check: FollowupCheck): CheckAnnotation | null => {
+    if (check.source !== "AI" || check.edited) return null;
+
+    const item = byText.get(normalizeCheckText(check.text));
+
+    // 메모 줄도 rag 항목과 함께 보일 때는 'AI 확인 메모' 칩이 붙어 있다(mergeCheckItems) — 둘을 구분하려고 그대로 쓴다.
+    if (!item || (item.chips.length === 0 && item.sources.length === 0)) return null;
+
+    return {
+      chips: item.chips,
+      reason: item.reason,
+      sources: item.sources,
+      ...(item.origin === "rag" ? { why: item.why, href: item.href } : {}),
+    };
+  };
+
+  const pending = (saved: FollowupCheck[]): FollowupCheck[] => {
+    const have = new Set(saved.map((check) => normalizeCheckText(check.text)));
+
+    return checksFromItems(merged.filter((item) => item.origin === "rag" && !have.has(normalizeCheckText(item.text))));
+  };
+
+  return { annotate, pending };
 }
 
 /** 다음 상담 체크리스트 상태 줄 · 단추(19절). 꺼져 있으면 모두 비어 있다(화면은 AI 확인 메모만). */
@@ -298,16 +377,31 @@ export function followupQValues(input: FollowupScreenInput) {
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
   const completed = analyzed && view !== null && view.status === "COMPLETED";
   const rag = checklistValues(input.checklist, view, analyzed, ids);
-  const checks = completed
+  // 저장 전 초안 · 줄 표시에 쓰는 합친 목록(AI 확인 메모 + rag 확인 사항, 메모 먼저 · 같은 문장 한 번).
+  const merged = completed
     ? mergeCheckItems(toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids), rag.items)
     : [];
-  const withRag = checks.some((item) => item.origin === "rag" || item.sources.length > 0);
+  const withRag = rag.items.length > 0;
+  const annotations = ragCheckAnnotations(merged);
+  const checkCard = checkValues({
+    state: input.state,
+    setState: input.setState,
+    checks: input.checks,
+    points: completed ? view?.followupCheckPoints ?? [] : [],
+    drafts: completed ? checksFromItems(merged) : [],
+    annotate: annotations.annotate,
+    pending: input.checks.saved ? annotations.pending(input.checks.items) : [],
+    locate: signals.locate,
+    ids,
+    status,
+  });
 
   let empty = "";
 
-  if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
+  if (checkCard.checks.length > 0 || input.checks.saved) empty = input.checks.saved && checkCard.checks.length === 0 ? "저장한 확인 사항이 없습니다." : "";
+  else if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
   else if (!completed) empty = "AI 분석이 끝나면 확인 메모가 보입니다.";
-  else if (checks.length === 0) empty = "AI 가 남긴 확인 메모가 없습니다.";
+  else empty = "AI 가 남긴 확인 메모가 없습니다. '+ 확인 사항 직접 추가' 로 쓸 수 있습니다.";
 
   const sessionLabel = input.detail.session?.numberLabel ?? "";
 
@@ -317,9 +411,8 @@ export function followupQValues(input: FollowupScreenInput) {
     checkNote: withRag
       ? "AI 확인 메모와, 공식 근거(매뉴얼 · 체크리스트 · 법령 · 판례)를 함께 본 AI 초안입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다."
       : "AI 가 다음 상담에서 확인해 두면 좋겠다고 남긴 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.",
-    checks,
+    ...checkCard,
     checksEmpty: empty,
-    checkEditNote: `브리핑에 넣기 · 수정 · 확인 사항 직접 추가는 ${NOT_READY}입니다(저장할 서버 기능이 없음).`,
     ragStatus: rag.status,
     ragNotice: rag.notice,
     ragError: rag.error,

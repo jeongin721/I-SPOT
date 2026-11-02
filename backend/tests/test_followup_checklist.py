@@ -636,6 +636,25 @@ def test_module_cleans_items_and_keeps_only_official_question_evidence(monkeypat
     assert [(basis["ref"], basis.get("why")) for basis in officials] == [("checklist:1", None), ("manual:1", "면담 지침")]
 
 
+def test_module_drops_foreign_script_sentences_like_the_memo(monkeypatch) -> None:
+    # #128 이 확인 메모 · 추가 질문에 넣은 다른 나라 문자 거르기(text_script)를 같은 목록의 rag 확인 사항 · 연결 이유에도 쓴다.
+    fake = _FakeRag(
+        _rag_output(
+            check_items=[_check_item(), _check_item("재발 방지 ব্যবস্থা 진행 여부")],
+            question_evidence=[
+                {"draft_index": 0, "basis": [_official_basis(why="면담 지침 ব্যবস্থা")]},
+                {"draft_index": 1, "basis": [_official_basis(why="면담 지침")]},
+            ],
+        )
+    )
+
+    result = _module(monkeypatch, fake).build(_payload(drafts=[DRAFT_0, DRAFT_1]))
+
+    assert [item["text"] for item in result["check_items"]] == ["치료를 받았는지"]
+    assert [entry["draft_index"] for entry in result["question_evidence"]] == [1]
+    assert result["dropped"] == {"foreign_script": 1, "no_basis": 1}
+
+
 @pytest.mark.parametrize(
     ("validation", "expected"),
     [

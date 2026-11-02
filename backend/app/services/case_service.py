@@ -94,6 +94,9 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             intake_child_traits=payload.intake_child_traits,
             intake_family_situations=payload.intake_family_situations,
             notes=payload.notes,
+            report_date=payload.report_date,
+            linked_date=payload.linked_date,
+            first_interview_date=payload.first_interview_date,
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
             created_by_id=current_user.id,
@@ -294,6 +297,9 @@ def update_case(
         "intake_child_traits",
         "intake_family_situations",
         "notes",
+        "report_date",
+        "linked_date",
+        "first_interview_date",
         "status",
     ):
         if field in data:
@@ -349,3 +355,31 @@ def delete_case(db: Session, case: Case, current_user: User) -> None:
 
     for path in audio_paths:
         storage.delete_stored_audio(path)
+
+
+def set_closure_review(db: Session, case: Case, current_user: User, register: bool) -> Case:
+    """
+    종결 검토 등록 · 취소(API_CONTRACT 4절 closure-review, 2026-10-30). 진행 중(ACTIVE) 사례만 등록한다(종결 사례는 409).
+    이미 등록 · 이미 취소한 상태로 다시 보내면 그대로 둔다(멱등). 등록 시각은 서버가 찍는다. 감사 기록에는 사례 번호만.
+    """
+
+    if register and case.status != CaseStatus.ACTIVE:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "진행 중인 사례만 종결 검토에 등록할 수 있습니다.")
+
+    if register == (case.closure_review_at is not None):
+        return case
+
+    case.closure_review_at = datetime.now(timezone.utc) if register else None
+    audit_service.record(
+        db,
+        action=AuditAction.CLOSURE_REVIEW_REGISTERED if register else AuditAction.CLOSURE_REVIEW_CANCELED,
+        entity_type="Case",
+        entity_id=case.id,
+        actor_id=current_user.id,
+        case_id=case.id,
+        detail={"case_number": case.case_number},
+    )
+    db.commit()
+    db.refresh(case)
+
+    return case

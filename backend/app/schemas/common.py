@@ -1,9 +1,10 @@
 # 공통 요청/응답 Schema.
 
 import re
-from typing import Any, ClassVar, Dict, FrozenSet, Optional
+from datetime import date
+from typing import Annotated, Any, ClassVar, Dict, FrozenSet, Optional
 
-from pydantic import AfterValidator, BaseModel, ValidationInfo, field_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ValidationInfo, field_validator
 
 # 사유 문구에는 받은 값을 넣지 않는다. 오류 응답 · 로그에 원문이 나가지 않게 한다.
 UNSTORABLE_TEXT_MESSAGE = "저장할 수 없는 문자(NUL · 짝 없는 서로게이트)가 있습니다."
@@ -110,3 +111,21 @@ class HealthStatus(BaseModel):
     stt_provider: str
     ai_provider: str
     detail: Optional[Dict[str, Any]] = None
+
+
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def _iso_date_string(value: Any) -> Any:
+    """날짜 칸은 'YYYY-MM-DD' 글자 10자만 받는다. pydantic 기본은 숫자 0(→1970-01-01) · 자정 시각이 붙은 글자도 날짜로 바꾸므로
+    여기서 먼저 막는다(민규 #128 교차검증). date 객체(서버 안에서 만든 값)와 None 은 그대로 둔다."""
+
+    if value is None or isinstance(value, date):
+        return value
+    if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
+        raise ValueError("날짜는 'YYYY-MM-DD' 형식 글자로만 보낼 수 있습니다.")
+    return value
+
+
+#: 요청 본문의 날짜 칸(YYYY-MM-DD 글자만).
+IsoDate = Annotated[date, BeforeValidator(_iso_date_string)]

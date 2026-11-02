@@ -40,6 +40,10 @@ export interface CaseRegisterInput {
   guardianType: GuardianType | "";
   guardianNote: string;
   notes: string;
+  /** 신고접수일 · 사례연계일 · 최초면접일(날짜 입력칸 값 YYYY-MM-DD, 비우면 ""). */
+  reportDate: string;
+  linkedDate: string;
+  firstInterviewDate: string;
   /** 초기면접에서 고른 아동 특성 · 가정상황(서식 4 항목, 고른 순서). */
   childTraits: string[];
   familySituations: string[];
@@ -56,10 +60,34 @@ export const EMPTY_CASE_INPUT: CaseRegisterInput = {
   guardianType: "",
   guardianNote: "",
   notes: "",
+  reportDate: "",
+  linkedDate: "",
+  firstInterviewDate: "",
   childTraits: [],
   familySituations: [],
   counselorId: "",
 };
+
+/** 날짜 셋 이름(입력 키 · 서버 키 · 화면 이름). */
+export const CASE_DATE_FIELDS = [
+  { key: "reportDate", api: "report_date", label: "신고접수일" },
+  { key: "linkedDate", api: "linked_date", label: "사례연계일" },
+  { key: "firstInterviewDate", api: "first_interview_date", label: "최초면접일" },
+] as const;
+
+/** 날짜 입력값 확인. 비었으면 null, 틀리면 문제 문장. 서버와 같이 1900~2100 날짜만. */
+export function checkCaseDate(value: string, label: string): { value: string | null; problem: string | null } {
+  const text = value.trim();
+  if (!text) return { value: null, problem: null };
+  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const parsed = matched ? new Date(`${text}T00:00:00Z`) : null;
+  if (!matched || !parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    return { value: null, problem: `${label}을 연도-월-일로 입력해 주세요.` };
+  }
+  const year = Number(matched[1]);
+  if (year < 1900 || year > 2100) return { value: null, problem: `${label}은 1900년부터 2100년까지 입력할 수 있습니다.` };
+  return { value: text, problem: null };
+}
 
 /**
  * 보낼 값으로 바꾼다. 문제가 있으면 { problem } 에 화면에 보일 문장. 서버가 최종으로 거절한다(422).
@@ -102,6 +130,11 @@ export function toCaseCreateRequest(
   if (notes.length > CASE_NOTES_MAX) return fail(`사례 메모는 ${CASE_NOTES_MAX.toLocaleString()}자까지 쓸 수 있습니다.`);
 
   const payload: CaseCreateRequest = { title, child_alias: alias };
+  for (const field of CASE_DATE_FIELDS) {
+    const checked = checkCaseDate(input[field.key], field.label);
+    if (checked.problem) return fail(checked.problem);
+    if (checked.value) payload[field.api] = checked.value;
+  }
   if (caseNumber) payload.case_number = caseNumber;
   if (gender) payload.child_gender = gender;
   if (birthYear !== null) payload.child_birth_year = birthYear;

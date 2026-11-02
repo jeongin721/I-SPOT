@@ -1,7 +1,7 @@
 """add session_followup_checklists table
 
 Revision ID: 0c84a88b5c06
-Revises: 1a685a4ac64a
+Revises: c9d0e1f2a3b4
 Create Date: 2026-10-30 11:10:54.801254
 
 다음 상담 체크리스트(19절, specs followup-rag-checklist). 회차마다 한 행(session_id 유니크)에 rag 로 만든
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = '0c84a88b5c06'
-down_revision: Union[str, None] = '1a685a4ac64a'
+down_revision: Union[str, None] = 'c9d0e1f2a3b4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

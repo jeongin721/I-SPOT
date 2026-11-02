@@ -8,6 +8,8 @@ from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.case import Case
 from app.models.document import Document
+from app.models.closure_review import CaseClosureReview
+from app.models.followup_check import SessionFollowupChecks
 from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
@@ -27,6 +29,8 @@ __all__ = [
     "ConsultationSession",
     "ConsultationSummary",
     "Document",
+    "CaseClosureReview",
+    "SessionFollowupChecks",
     "SessionFollowupChecklist",
     "SessionFollowupQuestions",
     "SessionOverallRiskAssessment",
