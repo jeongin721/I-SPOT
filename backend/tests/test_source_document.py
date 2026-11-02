@@ -306,6 +306,20 @@ def test_keep_copied_drops_sentences_with_flipped_meaning() -> None:
     assert cleaned["note"]["attitude"] == "" and cleaned["note"]["statement"] == "아동은 집에서 밥을 먹지 못함"
 
 
+def test_keep_copied_needs_a_whole_source_sentence() -> None:
+    """원문 문장 앞부분만 자르거나 숫자 사이 기호를 바꾼 것은 버리고, 칸 이름 · 글머리표만 뗀 것은 남긴다(민규 #137 보완)."""
+
+    source = "[아동 진술]\n아동은 맞았다고 말하지 않았다.\n- 보호자가 방문하지 않음.\n출결: 주 3~4회 결석함."
+
+    assert dn.keep_copied("아동은 맞았다.", source) == ""
+    assert dn.keep_copied("보호자가 방문.", source) == ""
+    assert dn.keep_copied("주 34회 결석함.", source) == ""
+    assert dn.keep_copied("주 3~4회 결석함.", source) == "주 3~4회 결석함."
+    assert dn.keep_copied("출결: 주 3~4회 결석함", source) == "출결: 주 3~4회 결석함"
+    assert dn.keep_copied("보호자가 방문하지 않음", source) == "보호자가 방문하지 않음"
+    assert dn.keep_copied("아동은  맞았다고 말하지 않았다.", source) == "아동은  맞았다고 말하지 않았다."
+
+
 def test_clean_note_keeps_only_copied_fields() -> None:
     source = "보호자는 협조적이었음. 다음 회차에 치료 여부 확인 필요."
     raw = {

@@ -12,7 +12,7 @@
   "overview": "...",
 }
 코드 검사(clean_note): 칸 이름은 위 키만, 글 길이 상한, 다른 나라 문자 섞이면 버림,
-**원문에 그대로 없는 문장은 버림**(keep_copied — 문장마다 공백 · 문장 부호를 뺀 글이 원문에 이어진 구간으로 있어야 한다).
+**원문 문장과 통째로 같지 않은 문장은 버림**(keep_copied — 공백 · 문장 부호만 빼고 원문 문장 하나와 같아야 한다. 앞부분만 자른 것도 버린다).
 LLM 이 지어내거나 뜻을 바꾼 문장('방문하지 않음' → '방문함')이 상담 일지에 들어가지 않게 하는 장치다(민규 #137 R1 — 전에는
 글자 두 개 조각 60% 겹침이라 부정어가 빠진 문장도 통과했다). 문서에 없는 칸은 빈 칸으로 둔다.
 
@@ -91,31 +91,51 @@ def _squash(value: Any, limit: int) -> str:
     return text
 
 
-#: 옮겨 적은 문장을 원문과 맞출 때 빼는 것 — 공백 · 문장 부호 · 글머리표(줄 바꿈 · 글머리 정리는 바꿔 쓰기가 아니다).
-_IGNORED = re.compile(r"[\s.,!?;:·•‧∙\-–—*~'\"“”‘’()\[\]{}<>「」『』…]+")
+#: 옮겨 적은 문장을 원문과 맞출 때 빼는 것 — 공백 · 문장 부호(줄 바꿈 · 띄어쓰기 · 마침표 정리는 바꿔 쓰기가 아니다).
+#: '~' · '-' 는 빼지 않는다 — '주 3~4회' 가 '주 34회' 와 같아지면 안 된다(민규 #137 보완). 줄 앞 글머리표만 따로 뗀다.
+_IGNORED = re.compile(r"[\s.,!?;:·•‧∙*'\"“”‘’()\[\]{}<>「」『』…]+")
+_BULLET = re.compile(r"^[\s\-–—•·*]+")
+#: 원문 줄 머리의 칸 이름('[위험요인]' · '위험요인:') — 그 뒤 글만 옮긴 것도 그 문장으로 본다.
+_HEADING = re.compile(r"^\s*(?:\[[^\]\n]{1,30}\]|[^:：\n\[\]]{1,20}[:：])\s*")
 #: 문장 경계(마침표 · 물음표 · 느낌표 뒤 공백, 줄 바꿈).
 _SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|\n+")
 
 
-def _bare(text: str) -> str:
-    return _IGNORED.sub("", text)
+def _key(piece: str) -> str:
+    return _IGNORED.sub("", _BULLET.sub("", piece))
+
+
+def _source_sentences(source: str) -> set:
+    """원문 문장(과 칸 이름을 뗀 문장)의 비교 열쇠."""
+
+    keys = set()
+    for sentence in _SENTENCE_END.split(source):
+        for variant in (sentence, _HEADING.sub("", sentence, count=1)):
+            key = _key(variant)
+            if key:
+                keys.add(key)
+    return keys
 
 
 def keep_copied(text: str, source: str) -> str:
-    """text 에서 원문(source)에 그대로 있는 문장만 남긴다(공백 · 문장 부호는 보지 않는다). 낱말 하나라도 다르면 그 문장은 버린다."""
+    """text 에서 원문(source)의 **문장 하나와 통째로 같은** 문장만 남긴다(공백 · 문장 부호만 보지 않는다).
 
-    compact = _bare(source)
-    pieces = [piece.strip() for piece in _SENTENCE_END.split(text) if _bare(piece)]
-    kept = [piece for piece in pieces if _bare(piece) in compact]
+    낱말 하나라도 다르거나, 원문 문장의 앞부분만 잘라 옮긴 것('맞았다고 말하지 않았다' → '맞았다')도 버린다 — 한국어는
+    부정이 문장 끝에 와서 자르기만 해도 뜻이 뒤집힌다(민규 #137 R1 · 보완)."""
+
+    keys = _source_sentences(source)
+    pieces = [piece.strip() for piece in _SENTENCE_END.split(text) if _key(piece)]
+    kept = [piece for piece in pieces if _key(piece) in keys]
     # 다 맞으면 줄 바꿈까지 그대로 둔다.
     return text if kept and len(kept) == len(pieces) else " ".join(kept)
 
 
 def copied_from_source(text: str, source: str) -> bool:
-    """text 의 모든 문장이 원문에 그대로 있는가."""
+    """text 의 모든 문장이 원문 문장과 통째로 같은가."""
 
-    pieces = [piece for piece in _SENTENCE_END.split(text) if _bare(piece)]
-    return bool(pieces) and all(_bare(piece) in _bare(source) for piece in pieces)
+    keys = _source_sentences(source)
+    pieces = [piece for piece in _SENTENCE_END.split(text) if _key(piece)]
+    return bool(pieces) and all(_key(piece) in keys for piece in pieces)
 
 
 def clean_note(raw: Any, source: str) -> Dict[str, Any]:
