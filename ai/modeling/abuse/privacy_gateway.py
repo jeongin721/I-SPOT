@@ -19,7 +19,11 @@ summary/risk_factors/evidence/need_confirmation 같은 JSON 전체다. 문자열
      KLUE-NER 5,000문장 기준 NER의 사람이름 미탐률이 36.8%(2026-09-30
      측정)라 이 단계가 실질적인 안전망 역할을 한다. 값은
      case_store.get_known_identifiers(case_id)로 가져와 넘기면 된다
-     (case_store.set_known_identifiers로 등록/갱신).
+     (case_store.set_known_identifiers로 등록/갱신). 서버 경로는 Backend가
+     암호화 저장한 실명을 풀어 넘긴다(2026-11-02). NER이 등록 이름의
+     일부만 먼저 가린 자리도 등록 이름 하나로 묶고, 이미 가린 토큰 ·
+     줄 머리 표식 안의 같은 글자는 건드리지 않는다(_mask_known_names ·
+     _known_name_spans).
   3) 마스킹 후 텍스트를 같은 정규식/NER로 다시 검사한다. 걸리면
      막는 대신, 걸린 자리를 한 번 더 가리고 다시 검사한다(최대
      _MAX_RESIDUAL_MASK_ROUNDS번 — 2026-10-21 Mingyu 요청). NER이
@@ -194,7 +198,16 @@ def _globalize_tokens(
     이 함수는 필드별 로컬 토큰을 "같은 원문 값은 항상 같은 전역
     토큰, 다른 원문 값은 절대 같은 토큰을 안 씀" 규칙으로 payload
     전체에서 통일한다.
+
+    바꾸기는 한 번에 한다(2026-11-02, PR #138 Codex H3). 예전처럼
+    토큰마다 차례로 .replace()하면 앞에서 바꿔 넣은 전역 토큰이 뒤의
+    로컬 토큰과 같은 글자일 때 다시 바뀌어 두 사람이 한 토큰으로
+    합쳐졌다(로컬 [KNOWN_01]→[KNOWN_02], 로컬 [KNOWN_02]→[KNOWN_01]
+    이면 둘 다 [KNOWN_01]). 복원하면 근거 문장이 "김바다은 김바다와"
+    처럼 틀린다.
     """
+
+    renames: Dict[str, str] = {}
 
     for local_token, original in local_entity_map.items():
         global_token = global_original_to_token.get(original)
@@ -207,9 +220,110 @@ def _globalize_tokens(
             global_original_to_token[original] = global_token
 
         if local_token != global_token:
-            masked_text = masked_text.replace(local_token, global_token)
+            renames[local_token] = global_token
 
-    return masked_text
+    if not renames:
+        return masked_text
+
+    pattern = re.compile(
+        "|".join(re.escape(token) for token in sorted(renames, key=len, reverse=True))
+    )
+
+    return pattern.sub(lambda match: renames[match.group()], masked_text)
+
+
+def _known_name_spans(
+    text: str,
+    name: str,
+    allow_tokens: bool = False,
+) -> List[Tuple[int, int]]:
+    """
+    text 안에서 등록 이름 name이 겹치지 않게 나오는 자리. 줄 머리
+    구조 표식(화자 표시 · [seg_숫자]) 안에 든 자리와, allow_tokens가
+    아니면 이미 가린 토큰과 조금이라도 겹치는 자리는 뺀다
+    (2026-11-02, PR #138 Codex M2 — 등록 이름이 "CH" · "ON" · "KN"처럼
+    표식 · 토큰 글자와 겹치면 "[KNOWN_01]ILD:" · "[PERS[KNOWN_01]_01]"
+    처럼 깨지거나, 우리가 만든 토큰 자체가 '등록된 실명 잔존'으로
+    걸려 전송이 막혔다). allow_tokens는 이름 안에 토큰이 들어간
+    조각("김[PERSON_01]")을 찾을 때만 쓴다.
+    """
+
+    structural_zones = _structural_prefix_zones(text)
+    token_zones = (
+        []
+        if allow_tokens
+        else [match.span() for match in _MASK_TOKEN_PATTERN.finditer(text)]
+    )
+
+    spans: List[Tuple[int, int]] = []
+    start = text.find(name)
+
+    while start != -1:
+        span = (start, start + len(name))
+
+        if _is_within_structural_prefix(
+            span, structural_zones
+        ) or _overlaps_any(span, token_zones):
+            start = text.find(name, start + 1)
+            continue
+
+        spans.append(span)
+        start = text.find(name, span[1])
+
+    return spans
+
+
+def _replace_spans(
+    text: str,
+    spans: List[Tuple[int, int]],
+    token: str,
+) -> str:
+    for start, end in sorted(spans, reverse=True):
+        text = text[:start] + token + text[end:]
+
+    return text
+
+
+def _mask_known_names(
+    masked: str,
+    known_identifiers: List[str],
+    local_entity_map: Dict[str, str],
+) -> str:
+    """
+    mask_pii가 가린 필드에서 등록 이름을 정확 매칭으로 한 번 더 가린다.
+    로컬 토큰([KNOWN_01]…)을 local_entity_map에 더한다.
+
+    NER이 등록 이름의 일부만 먼저 가렸으면("김민수" → "김[PERSON_01]")
+    그 자리도 등록 이름 하나로 묶어 가린다 — 안 그러면 성이나 끝
+    글자가 그대로 나간다(2026-11-02, PR #138 Codex M1). 등록 이름이
+    앞서 가린 다른 등록 이름을 품고 있어도("민수"를 먼저 가린 뒤의
+    "김민수") 같은 방식으로 묶이므로 목록 순서에 기대지 않는다.
+    """
+
+    count = 0
+
+    for name in known_identifiers:
+        pieces = [(name, False)] + [
+            (name.replace(original, token), True)
+            for token, original in list(local_entity_map.items())
+            if original and original != name and original in name
+        ]
+        name_token = None
+
+        for piece, has_token in pieces:
+            spans = _known_name_spans(masked, piece, allow_tokens=has_token)
+
+            if not spans:
+                continue
+
+            if name_token is None:
+                count += 1
+                name_token = f"[KNOWN_{count:02d}]"
+                local_entity_map[name_token] = name
+
+            masked = _replace_spans(masked, spans, name_token)
+
+    return masked
 
 
 # 잔존 검사에 걸린 뒤, 바로 막지 않고 몇 번 더 가려보고 그래도 남으면
@@ -433,8 +547,9 @@ def _residual_reasons(text: str, known_identifiers: List[str]) -> List[str]:
         tags = sorted({tag for _, _, tag in ner_spans})
         reasons.append(f"NER 개체 잔존({','.join(tags)})")
 
+    # 이미 가린 토큰 · 줄 머리 표식 안의 같은 글자는 잔존이 아니다(_known_name_spans, PR #138 Codex M2).
     for name in known_identifiers:
-        if name in text:
+        if _known_name_spans(text, name):
             reasons.append("등록된 실명 잔존")
             break
 
@@ -479,7 +594,12 @@ def review(
             replacements[path] = text
             continue
 
-        if text.strip() in _NON_PII_LABELS:
+        # 학대 유형 이름과 같은 글은 그대로 둔다. 다만 등록 이름이 들어 있으면
+        # 넘기지 않고 가린다(2026-11-02, PR #138 Codex H2 — 이름이 "김방임"이고
+        # 아동 발화 한 줄이 "방임"이면 등록 이름 검사 없이 그대로 나갔다).
+        if text.strip() in _NON_PII_LABELS and not any(
+            name in text for name in known_identifiers
+        ):
             replacements[path] = text
             continue
 
@@ -490,15 +610,9 @@ def review(
             continue
 
         # 사례에 등록된 실명은 mask_pii가 못 잡았을 수 있으니 정확
-        # 매칭으로 보강한다. 로컬 토큰 형식을 mask_pii 출력과 맞춰
-        # 두면 바로 아래 _globalize_tokens에서 같이 처리된다.
-        for index, name in enumerate(
-            (n for n in known_identifiers if n in masked),
-            start=1,
-        ):
-            local_token = f"[KNOWN_{index:02d}]"
-            masked = masked.replace(name, local_token)
-            local_entity_map[local_token] = name
+        # 매칭으로 보강한다(_mask_known_names). 로컬 토큰 형식을 mask_pii
+        # 출력과 맞춰 두면 바로 아래 _globalize_tokens에서 같이 처리된다.
+        masked = _mask_known_names(masked, known_identifiers, local_entity_map)
 
         masked = _globalize_tokens(
             masked,
