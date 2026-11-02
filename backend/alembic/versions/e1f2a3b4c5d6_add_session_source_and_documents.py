@@ -4,7 +4,7 @@ Revision ID: e1f2a3b4c5d6
 Revises: d0e1f2a3b4c5
 Create Date: 2026-11-02 15:00:00.000000
 
-회차 자료(녹음 · 상담 기록 문서)와 문서 회차의 문서 글 · 상담 일지 초안 · 4단계 초안. API_CONTRACT 20절.
+회차 자료(녹음 · 상담 기록 문서)와 문서 회차의 문서 글 · 상담 일지 초안 · 4단계 초안. API_CONTRACT 21절.
 """
 from typing import Sequence, Union
 

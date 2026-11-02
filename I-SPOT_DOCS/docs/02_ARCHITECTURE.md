@@ -72,7 +72,7 @@ CREATED
 
 실패 시 재시도 가능한 상태/오류 정보를 유지한다.
 
-**상담 기록 문서 회차**(2026-11-02, `backend/docs/API_CONTRACT.md` 20절): 상담사가 이미 쓴 상담 기록 문서를 새 회차에 올리면
+**상담 기록 문서 회차**(2026-11-02, `backend/docs/API_CONTRACT.md` 21절): 상담사가 이미 쓴 상담 기록 문서를 새 회차에 올리면
 회차 자료가 `source = DOCUMENT` 가 되고 음성 · STT · AI 분석 단계를 건너뛴다.
 
 ```text

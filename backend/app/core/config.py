@@ -180,7 +180,7 @@ class Settings(BaseSettings):
     KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     # 종결 검토 요약(POST /cases/{id}/closure-summary) 제한 시간(2026-10-30). 동기 응답이라 넘으면 504.
     CLOSURE_SUMMARY_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
-    #: 상담 기록 문서 → 상담 일지 칸 채우기 · 4단계 초안 AI 제한 시간(동기 요청, API_CONTRACT 20절).
+    #: 상담 기록 문서 → 상담 일지 칸 채우기 · 4단계 초안 AI 제한 시간(동기 요청, API_CONTRACT 21절).
     DOCUMENT_NOTE_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
     #: 문서 글자 뽑기(PDF · docx · hwpx)만의 제한 시간. LLM 시간과 따로 둔다(깨진 PDF 가 오래 붙잡지 않게).
     DOCUMENT_TEXT_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0)

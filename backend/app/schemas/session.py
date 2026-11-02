@@ -78,7 +78,7 @@ class SessionResponse(BaseModel):
     location: Optional[str]
     memo: Optional[str]
     consultation_type: Optional[ConsultationType] = None
-    #: AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 20절).
+    #: AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 21절).
     source: SessionSource = SessionSource.AUDIO
     created_at: datetime
     updated_at: datetime

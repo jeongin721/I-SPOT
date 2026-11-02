@@ -1,4 +1,4 @@
-// 상담 기록 문서 회차 훅(GET /sessions/{id}/source-document, POST …/followups, API_CONTRACT 20절, 2026-11-02).
+// 상담 기록 문서 회차 훅(GET /sessions/{id}/source-document, POST …/followups, API_CONTRACT 21절, 2026-11-02).
 //
 // 3단계(상담일지 작성)는 note_draft 를 상담 일지 초안으로, 4단계(다음 상담 준비)는 followup_draft 를 확인 사항 · 추가 질문
 // 초안으로 쓴다. 4단계 초안은 3단계에 저장한 칸으로 만든다(draftFollowups — 동기, 1~2분). 문서 회차가 아니면 부르지 않는다.

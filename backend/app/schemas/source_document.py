@@ -1,4 +1,4 @@
-# 상담 기록 문서 Schema(API_CONTRACT 20절, 2026-11-02).
+# 상담 기록 문서 Schema(API_CONTRACT 21절, 2026-11-02).
 
 import uuid
 from datetime import datetime

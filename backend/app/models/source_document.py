@@ -1,4 +1,4 @@
-# 상담 기록 문서(2026-11-02, API_CONTRACT 20절). 문서 회차(SessionSource.DOCUMENT)마다 한 행.
+# 상담 기록 문서(2026-11-02, API_CONTRACT 21절). 문서 회차(SessionSource.DOCUMENT)마다 한 행.
 #
 # 상담사가 쓴 문서에서 뽑은 글(text)만 저장한다(원본 파일은 저장하지 않는다). 올릴 때 AI(또는 머리줄 나누기)가 채운
 # 상담 일지 칸 초안(note_draft — 상담 요약 4칸은 ConsultationSummary 에 바로 들어간다)과, 4단계 확인 사항 · 추가 질문 초안

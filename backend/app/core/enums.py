@@ -39,7 +39,7 @@ class GuardianType(str, Enum):
 
 class SessionSource(str, Enum):
     """회차 자료(2026-11-02). AUDIO: 녹음 → 원문 검수 → AI 분석(1~4단계). DOCUMENT: 상담사가 쓴 상담 기록 문서를 올려
-    3(상담 요약 · 상담 일지) · 4(다음 상담 준비)단계만 쓴다 — 음성 · 전사본 · AI 분석이 없다(API_CONTRACT 20절)."""
+    3(상담 요약 · 상담 일지) · 4(다음 상담 준비)단계만 쓴다 — 음성 · 전사본 · AI 분석이 없다(API_CONTRACT 21절)."""
 
     AUDIO = "AUDIO"
     DOCUMENT = "DOCUMENT"

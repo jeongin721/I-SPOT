@@ -1,4 +1,4 @@
-# 상담 기록 문서 회차(POST/GET /sessions/{id}/source-document, …/followups, API_CONTRACT 20절, 2026-11-02). 데이터는 모두 가상이다.
+# 상담 기록 문서 회차(POST/GET /sessions/{id}/source-document, …/followups, API_CONTRACT 21절, 2026-11-02). 데이터는 모두 가상이다.
 # CI 의 AI_PROVIDER 는 mock 이라 머리줄 나누기(HEADINGS) 경로를 본다. modeling 경로는 가짜 모듈로.
 
 import io

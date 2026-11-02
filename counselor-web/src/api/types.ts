@@ -331,7 +331,7 @@ export interface Session {
   memo: string | null;
   /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
   consultation_type?: ConsultationType | null;
-  /** AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 20절). 옛 서버면 키가 없다(AUDIO). */
+  /** AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 21절). 옛 서버면 키가 없다(AUDIO). */
   source?: SessionSource;
   created_at: string;
   updated_at: string;
@@ -1377,7 +1377,7 @@ export interface ScheduleEventCreate {
 export type ScheduleEventUpdate = Partial<ScheduleEventCreate> & { deadline_done?: Record<string, boolean> };
 
 // =========================================================
-// 상담 기록 문서 회차 — backend/app/schemas/source_document.py (API_CONTRACT 20절, 2026-11-02)
+// 상담 기록 문서 회차 — backend/app/schemas/source_document.py (API_CONTRACT 21절, 2026-11-02)
 // =========================================================
 
 export type SessionSource = "AUDIO" | "DOCUMENT";

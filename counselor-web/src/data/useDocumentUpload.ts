@@ -1,4 +1,4 @@
-// 상담 기록 문서 올리기 훅(녹취 · 자료 올리기 '문서 파일', API_CONTRACT 20절, 2026-11-02).
+// 상담 기록 문서 올리기 훅(녹취 · 자료 올리기 '문서 파일', API_CONTRACT 21절, 2026-11-02).
 //
 //   (새 회차면) POST /cases/{id}/sessions → POST /sessions/{id}/source-document(동기 — 서버가 글자를 뽑고 AI 가 3단계 칸을 채운다)
 //

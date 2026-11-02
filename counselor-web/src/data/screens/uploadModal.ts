@@ -6,7 +6,7 @@
 // 화면 주소 ?case=…(&session=…) 로 열면 그 사례(회차)를 미리 고른 채 회차 단계부터 시작한다.
 // ?back=… 이 있으면 닫기 · 취소 · 나중에가 그 화면으로 돌아간다(10/21 디자인, links.ts 의 readBackHref).
 // 문서 파일(2026-11-02): 상담사가 쓴 상담 기록 문서(.txt · .docx · .hwpx · .pdf)를 새 회차(녹취 없는 회차)에 올리면 서버가 글자를
-// 뽑아 3단계(상담 요약 4칸 · 상담 일지 초안)를 채우고, 그 회차는 1 · 2단계 없이 3단계부터 한다(useDocumentUpload, API_CONTRACT 20절).
+// 뽑아 3단계(상담 요약 4칸 · 상담 일지 초안)를 채우고, 그 회차는 1 · 2단계 없이 3단계부터 한다(useDocumentUpload, API_CONTRACT 21절).
 // 고른 파일의 확장자로 음성 · 문서를 가른다. 진행률(%)은 Backend 가 주지 않아 단계 이름으로 보인다.
 
 import { NOT_PROVIDED } from "../caseRows";
