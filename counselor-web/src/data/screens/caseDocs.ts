@@ -8,10 +8,14 @@
 // 그 줄만은 사례 값으로 상태를 보인다(2026-10-27): 서식 4 는 새 사례 등록 때 쓰므로 '최근 작성' 은 사례 등록일,
 // 상태는 ② 초기면접 내용(아동 특성 · 가정상황)을 고른 적이 있으면 '작성', 없으면 '기본 정보만'. 따로 저장된 작성 기록은 아니다.
 // 11/02: 사정기록지 · 점검표 · 위험수준 척도 · 가족관계 척도는 서식 기록(useCaseForms, API_CONTRACT 22절)으로 '최근 작성' · 상태를
-// 보이고, '작성' 은 기관 서식 작성 화면(CaseForm ?form=A~D)으로 간다. 종결보고서는 종결 검토 화면 몫이라 그대로 둔다.
+// 보이고, '작성' 은 기관 서식 작성 화면(CaseForm ?form=A~D)으로 간다.
+// 사례관리 종결보고서(서식 29)는 종결 검토 기록(GET /cases/{id}/closure-summary, useClosureSummary — 읽기만)으로 보인다:
+// 종결 검토 등록 전이면 '등록 전'(링크 없음), 등록했는데 보고서 칸이 다 비었으면 '작성 전', 하나라도 있으면 '작성'.
+// '작성' · '열기' 는 종결보고서 화면(ClosureDetail)으로 간다. 기록을 못 불러오면 그 줄만 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { CaseDocumentsState, SessionDocs } from "../useCaseDocuments";
+import type { ClosureSummaryState } from "../useClosureSummary";
 import { currentForm, type CaseFormsState } from "../useCaseForms";
 import { toDateOnly } from "../time";
 import type { CaseDetailState } from "../useCaseDetail";
@@ -56,6 +60,27 @@ export function caseFormRow(forms: CaseFormsState | undefined, tab: FormTab) {
     return { date: `${toDateOnly(row.updated_at)} (${row.round}차)`, st: `${row.round}차 임시 저장`, stCls: "chip c-check" };
   }
   return { date: `${toDateOnly(row.confirmed_at)} (${row.round}차)`, st: `${row.round}차 확정`, stCls: "chip c-ok" };
+}
+
+/** 종결 검토 기록으로 상태를 보이는 서식(사례관리 종결보고서). */
+const CLOSURE_FORM_NO = "서식 29";
+
+/** 종결보고서 줄. 등록 여부는 사례의 종결 검토 등록일(closureReviewDate), 작성 여부는 보고서 칸. */
+export function closureFormRow(
+  closure: ClosureSummaryState | undefined,
+  registered: boolean | null,
+  caseId: string | null,
+) {
+  const unknown = { date: NOT_PROVIDED, st: NOT_PROVIDED, stCls: "chip c-normal", href: null as string | null, go: "" };
+  if (registered === null) return unknown;
+  if (!registered) return { ...unknown, st: "등록 전" };
+  const href = caseId ? screenHref("/ClosureDetail", { caseId }) : null;
+  if (!closure || !closure.loaded || closure.loadError) return { ...unknown, href, go: href ? "열기" : "" };
+  const report = closure.record?.report ?? {};
+  const written = Object.values(report).some((value) => typeof value === "string" && value.trim() !== "");
+  return written
+    ? { date: toDateOnly(closure.record?.updated_at) || NOT_PROVIDED, st: "작성", stCls: "chip c-ok", href, go: href ? "열기" : "" }
+    : { date: NOT_PROVIDED, st: "작성 전", stCls: "chip c-normal", href, go: href ? "작성" : "" };
 }
 
 /** 사례 값으로 상태를 보이는 서식(초기면접지). */
@@ -173,6 +198,8 @@ interface CaseDocsInput {
   docs: CaseDocumentsState;
   /** 기관 서식 작성 기록(useCaseForms). */
   forms?: CaseFormsState;
+  /** 종결 검토 기록(useClosureSummary). 종결보고서 줄에만 쓴다. */
+  closure?: ClosureSummaryState;
   caseId: string | null;
   filter: DocsFilter;
   setFilter: (filter: DocsFilter) => void;
@@ -210,6 +237,10 @@ export function caseDocsValues(input: CaseDocsInput) {
         const href = input.caseId ? caseFormHref(input.caseId, tab) : null;
         return { name, no, when, ...caseFormRow(input.forms, tab), href, go: href ? "작성" : "" };
       }
+      if (no === CLOSURE_FORM_NO) {
+        const registered = detail.caseInfo ? Boolean(detail.caseInfo.closureReviewDate) : null;
+        return { name, no, when, ...closureFormRow(input.closure, registered, input.caseId) };
+      }
       const page = FORM_PAGES[name];
       const href: string | null = page && input.caseId ? screenHref(page, { caseId: input.caseId }) : null;
       const info = detail.caseInfo;
@@ -229,7 +260,7 @@ export function caseDocsValues(input: CaseDocsInput) {
     }),
     formsNote:
       "초기면접지는 사례 등록 때 쓴 칸으로 상태를 보이고, 열어 고칠 수 있습니다. " +
-      `사정기록지 · 점검표 · 척도는 차수마다 임시 저장 · 확정한 기록을 보입니다. 종결보고서는 ${NOT_READY}입니다.`,
+      "사정기록지 · 점검표 · 척도는 차수마다 임시 저장 · 확정한 기록을 보입니다.",
     uploadNote: `지금은 녹음만 올릴 수 있습니다. 외부 문서 올리기는 ${NOT_READY}.`,
   };
 }
