@@ -7,6 +7,8 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  CaseForm,
+  CaseFormType,
   ScheduleEvent,
   ScheduleEventCreate,
   ScheduleEventUpdate,
@@ -596,5 +598,31 @@ export const schedule = {
 
   remove(eventId: string): Promise<void> {
     return api.delete<void>(`/schedule/events/${eventId}`);
+  },
+};
+
+// =========================================================
+// 기관 서식 (22절, 2026-11-02)
+// =========================================================
+
+export const caseForms = {
+  /** 그 사례의 서식 기록 전부(종류 → 차수가 큰 것부터). */
+  list(caseId: string): Promise<{ items: CaseForm[] }> {
+    return api.get<{ items: CaseForm[] }>(`/cases/${caseId}/forms`);
+  },
+
+  /** 다음 차수를 임시 저장으로 만든다. 그 서식의 임시 저장 차수가 이미 있으면 409. */
+  create(caseId: string, formType: CaseFormType, values: object): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms`, { form_type: formType, values });
+  },
+
+  /** 임시 저장 차수의 칸 전체를 바꾼다. 확정한 차수는 409. */
+  update(caseId: string, formId: string, values: object): Promise<CaseForm> {
+    return api.patch<CaseForm>(`/cases/${caseId}/forms/${formId}`, { values });
+  },
+
+  /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
+  confirm(caseId: string, formId: string): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`);
   },
 };

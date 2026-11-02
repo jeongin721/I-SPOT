@@ -7,6 +7,7 @@ from app.models.audio_feature import AudioFeature
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.case import Case
+from app.models.case_form import CaseForm
 from app.models.case_personal_info import CasePersonalInfo
 from app.models.document import Document
 from app.models.closure_review import CaseClosureReview
@@ -28,6 +29,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "Case",
+    "CaseForm",
     "CasePersonalInfo",
     "ConsultationSession",
     "ConsultationSummary",

@@ -2393,3 +2393,64 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 최초접수는 공유하지 않고(저장 때 `shared=false`), 다른 상담사의 목록 · 조회에서도 공유 조건에서 뺀다.
 - `deadline_done: null` · `kind: null` · `date: null` 은 `422`. 목록 `from` · `to` 도 1900-01-01 ~ 2100-12-31(그 밖 `422`).
 - 사례를 떼면(`case_id: null`) 응답의 별칭도 `null`.
+
+## 22. Case Forms (기관 서식 작성, 2026-11-02)
+
+'탭 5 › 기관 서식 작성' 디자인(사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)이 쓰고, 문서함 '기관 서식' 표 ·
+내담자 정보 '기관 서식' 카드가 작성 기록을 보인다.
+
+- **사례 단위**다(회차와 묶지 않는다). 점검표는 3개월마다 1차 · 2차 …, 사정기록지 · 척도는 초기 사정 · 재사정 때 쓰므로 서식마다
+  **차수(`round`)** 로 센다(사례 · 서식 종류마다 1부터).
+- 사례 · 서식 종류마다 **임시 저장(`DRAFT`) 차수는 하나**. **확정(`APPROVED`)한 차수는 고칠 수 없고**, 다시 쓰려면 다음 차수를 만든다.
+- **칸은 상담사가 고르고 쓴다** — 서버는 칸 값을 지어내거나 AI 로 채우지 않는다. 점수 합계 · 응답 수(`totals`)만 계산해 돌려준다
+  (군 판정 · 사정결과는 계산하지 않는다 — 상담원이 고른다).
+- 권한은 사례와 같다(담당 상담사 · 관리자, 남의 사례 `403`, 없는 사례 `404 CASE_NOT_FOUND`).
+
+### GET /api/v1/cases/{case_id}/forms[?form_type=RISK_SCALE]
+
+- `{ items: [CaseForm] }`, 서식 종류 → 차수가 큰 것(최근)부터.
+
+`CaseForm`:
+
+```json
+{
+  "id": "uuid", "case_id": "uuid", "form_type": "MANAGEMENT_CHECKLIST", "round": 3, "status": "DRAFT",
+  "values": { "place": "기관 면담실 B", "checks": ["NO", "YES", null, null, null, null, null, null, null],
+              "opinion": "…", "plan": "…" },
+  "totals": { "answered": 2 },
+  "created_by_id": "uuid", "updated_by_id": "uuid", "confirmed_by_id": null, "confirmed_at": null,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+`form_type` 과 `values` 꼴(목록은 문항 수 그대로, 모르는 칸은 `422`, 빈 칸은 `null` · `""`):
+
+| `form_type` | 서식 | `values` | `totals` |
+|---|---|---|---|
+| `SAFETY_ASSESSMENT` | 사정기록지 안전영역(서식 6) | `items`: 11개 `HIGH`·`MEDIUM`·`LOW`·`null`(피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 디자인 순서) · `key_person`: `YES`·`NO`·`null` · `scores`: 3개 `{score: 1~10·null, reason: ≤300자}`(피해아동 · 가족구성원 · 사례관리대상자 응답) · `opinion`: ≤5000자 · `result`: `INTENSIVE`(집중관리)·`GENERAL`(일반관리)·`MONITORING`(모니터링관리)·`null` | `{answered}` |
+| `MANAGEMENT_CHECKLIST` | 사례관리 점검표(서식 27) | `place`: ≤100자 · `checks`: 9개 `YES`·`NO`·`null` · `opinion` · `plan`: ≤5000자 | `{answered}` |
+| `RISK_SCALE` | 위험수준별 개입 사정 척도(참고자료 3) | `scores`: 43개 0~3·`null`(1~21 위험요인, 22~43 보호요인) | `{risk_sum, protect_sum, filled}` |
+| `FAMILY_SCALE` | 축약형 가족관계 척도(참고자료 1) | `respondent`: `FATHER`·`MOTHER`·`CHILD`·`null` · `answers`: 15개 1~5·`null` | `{sum, answered}` |
+
+### POST /api/v1/cases/{case_id}/forms → 201
+
+```json
+{ "form_type": "RISK_SCALE", "values": { "scores": [0, null, 2, …] } }
+```
+
+- 다음 차수를 임시 저장으로 만든다. `values` 는 빼거나 일부만 보내도 된다(나머지는 빈 칸).
+- 그 서식의 임시 저장 차수가 이미 있으면 `409 DUPLICATE_RESOURCE`(그 차수를 PATCH 로 이어 고친다). 같은 순간 두 창이 만들어도 하나만 생긴다.
+- `values` 가 꼴에 맞지 않으면 `422 VALIDATION_ERROR`(`details.fields` 에 칸 위치만, 받은 글은 싣지 않는다).
+
+### GET /api/v1/cases/{case_id}/forms/{form_id} → 200
+
+### PATCH /api/v1/cases/{case_id}/forms/{form_id} → 200
+
+- `{ "values": {…} }` — **서식 칸 전체를 바꾼다**(보내지 않은 칸은 빈 칸). 확정한 차수는 `409 ALREADY_APPROVED`.
+- 다른 사례 주소로 부르면 `404 NOT_FOUND`.
+
+### POST /api/v1/cases/{case_id}/forms/{form_id}/confirm → 200
+
+- 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
+- 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
+- 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).

@@ -1,290 +1,56 @@
-// 탭 4 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)
-// 원본: 다솔 님 디자인 counselor-web-design/CaseForm.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 탭 5 › 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)
+// 원본: 다솔 님 디자인 CaseForm.dc.html (11/02 판 — 서식 고르는 탭 줄 대신 문서함 · 내담자 정보에서 서식을 골라 연다,
+// 척도 선택지 '매우 아니다 ~ 매우 그렇다' · 상단 고정 합계, '확정').
+//
+// 서버 연결: 화면 주소 ?case=<사례 ID>&form=A|B|C|D. 사례 정보는 useCaseDetail, 서식 기록은 useCaseForms
+// (GET · POST · PATCH /cases/{id}/forms, API_CONTRACT 22절)가 부르고, 화면에 쓸 값은 src/data/screens/caseForm.ts 가 만든다.
+// 서식은 사례 단위로 차수마다 남는다. '임시 저장' 은 그 차수를 저장하고, '확정' 은 저장 뒤 확정한다(확정 차수는 고칠 수 없고,
+// 고쳐 저장하면 다음 차수). 디자인의 AI 제안 · AI 초안은 서버에 없고 상담사 판단 칸이라 보이지 않는다(점수 합계만 계산).
+// 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard).
 import { Fragment } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import CopyButton from '../components/CopyButton';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
-import { useCarryHref } from '../data/useCarryHref';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseForms } from '../data/useCaseForms';
+import { useCaseSignals } from '../data/useCaseSignals';
+import { usePersonalInfo } from '../data/usePersonalInfo';
+import { FORM_PARAM, INITIAL_CASE_FORM_STATE, caseFormValues } from '../data/screens/caseForm';
+import { needsLogin, signedIn } from '../data/screens/common';
+import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useTheme } from '../theme';
 import './CaseForm.css';
 
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { tab: 'A', sa: {}, key: '있음', res: '', ck: {}, sc: {}, who: '부', fam: {} };
+    this.state = INITIAL_CASE_FORM_STATE;
   }
   renderVals() {
-    const s = this.state;
-    const sel = (on) => ({
-      bg: on ? '#F1EADA' : 'transparent',
-      fg: on ? '#2B2A26' : '#66625A',
-      fw: on ? 700 : 400,
-      bd: on ? 'inset 0 0 0 1px #2B2A26' : 'none',
-    });
-    const tabs = [
-      ['A', '사정기록지 · 안전영역'],
-      ['B', '사례관리 점검표'],
-      ['C', '위험수준별 개입 사정 척도'],
-      ['D', '가족관계 척도'],
-    ].map(([k, label]) => ({
-      label,
-      cls: s.tab === k ? 'on' : '',
-      on: s.tab === k ? 'true' : 'false',
-      pick: () => this.setState({ tab: k }),
-    }));
-    // 안전영역 (서식 6 · 서식 29 공통 문항)
-    const SA = [
-      [
-        '피해아동',
-        [
-          ['아동의 위험상황 인지 및 대처능력', '보통', '7회차(9/18) 안전 계획을 자기 말로 설명함'],
-          ['아동의 연령, 장애 등 집중적 보호가 요구되는 특성 보유', '낮음', '초기면접지 · 만 13세, 장애 기록 없음'],
-          ['피해아동과 가족과의 관계 친밀성', '보통', '6회차 "아빠가 소리 지르는 게 제일 싫어요" · 조모와 관계 긍정'],
-        ],
-      ],
-      [
-        '가족구성원',
-        [
-          ['가족구성원의 아동 안전 보호 및 양육 의지', '보통', '부모교육 3/8회 출석 · 2회 연속 결석'],
-          ['가정 내 가정폭력 문제', '', ''],
-          ['아동보호전문기관의 개입에 대한 태도', '낮음', '보호자 상담 일정 2회 연기 (9/18, 10/2)'],
-          ['가족기능과 가정환경에 대한 평가', '', ''],
-          ['주양육자의 양육역량', '보통', '부모교육 출석 기록 · 7회차 상담일지'],
-        ],
-      ],
-      [
-        '사례관리대상자',
-        [
-          ['학대행위에 대한 잘못 인지 및 개선 의지', '낮음', '7회차 05:10 "아빠가 그 얘기 하지 말랬어요" (함구 요구)'],
-          ['스스로 자신을 통제하기 어려운 특성 (중독, 성격장애 등)', '', ''],
-          ['가정 내 위기상황(실직, 가정폭력 등)으로 인한 만성적 스트레스', '', ''],
-        ],
-      ],
-    ];
-    let idx = 0;
-    const safety = SA.map(([name, items]) => ({
-      name,
-      items: items.map(([q, ai, ev]) => {
-        const k = idx++;
-        const cur = s.sa[k] !== undefined ? s.sa[k] : ai;
-        return {
-          q,
-          ai,
-          ev,
-          hasEv: !!ai,
-          opts: ['높음', '보통', '낮음'].map((o) => ({
-            label: o,
-            ...sel(cur === o),
-            pick: () => this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } }),
-          })),
-        };
-      }),
-    }));
-    const keyOpts = ['있음', '없음'].map((o) => ({
-      label: o,
-      ...sel(s.key === o),
-      pick: () => this.setState({ key: o }),
-    }));
-    const scoreRows = ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'].map((who) => ({ who }));
-    const resultOpts = ['집중관리 사례', '일반관리 사례', '모니터링관리 사례'].map((o) => ({
-      label: o,
-      ...sel(s.res === o),
-      pick: () => this.setState({ res: s.res === o ? '' : o }),
-    }));
-    // 서식 27 점검표
-    const CK = [
-      ['사례관리 계획에 따라 서비스가 적절하게 제공되고 있는가?', '아니오', '부모교육 2회 연속 결석 (9/18, 10/2)'],
-      [
-        '학대피해아동과 비공식적인 지지망 그리고 전문적 보호체계의 노력이 적절한가?',
-        '예',
-        '조모 연락 체계 · 아동 심리치료 6/12회',
-      ],
-      [
-        '학대피해아동 가정이 안전하며 학대 위험이 감소하고 있는가? (소견에 구체적 근거 작성)',
-        '아니오',
-        '8회차(10/2) 신체 학대 진술 · 체크인 QB-E-05 "없어 → 1번"',
-      ],
-      ['제공되는 서비스에 대해 학대피해아동과 가족이 만족하고 있는가?', '', ''],
-      ['다른 서비스 욕구가 발생하였는가?', '예', '등 · 팔 통증 치료 여부 미확인 (8회차 01:08) → 의료 지원 검토'],
-      ['사례관리 지속이 필요한가?', '예', '위 3번 근거'],
-      ['재사정이 필요한가?', '예', '새 진술로 위험요인 변화'],
-      ['사례관리 계획은 수정되어야 하는가?', '예', '부모교육 일정 · 의료 연계 반영 필요'],
-      ['사례는 종결되어야 하는가?', '아니오', '위 3번 근거'],
-    ];
-    const checks = CK.map(([q, ai, ev], i) => {
-      const cur = s.ck[i] !== undefined ? s.ck[i] : ai;
-      return {
-        q: `${i + 1}. ${q}`,
-        ai,
-        ev,
-        hasEv: !!ai,
-        opts: ['예', '아니오'].map((o) => ({
-          label: o,
-          ...sel(cur === o),
-          pick: () => this.setState({ ck: { ...s.ck, [i]: cur === o ? '' : o } }),
-        })),
-      };
-    });
-    // 참고자료 3 · 43문항
-    const Q = [
-      '아동은 질환을 가지고 있다.',
-      '아동은 인터넷(핸드폰) 과의존 상태이다.',
-      '아동은 신체 및 정신장애를 가지고 있다.',
-      '아동이 신체적 상흔이나 손상을 가지고 있다.',
-      '아동은 또래에 비해 발달상태가 느리다.',
-      '아동은 자해행위 또는 자살을 시도한 적이 있다.',
-      '아동은 심리적인 어려움을 가지고 있다.',
-      '아동은 다른 사람과의 관계에 어려움이 있다.',
-      '아동은 의사소통이 어렵다.',
-      '아동이 비행행동을 하였다.',
-      '아동이 성과 관련된 문제행동을 보인다.',
-      '아동이 청결하지 못한 상태이다.',
-      '아동이 아동보호전문기관 등의 개입에 거부적이다.',
-      '아동이 사회로부터 고립되어 있다.',
-      '주거환경이 열악하거나 불안정하다.',
-      '지역사회 내에 모니터링 체계가 없다.',
-      '동거가족 중 112 등에 신고된 사람이 있다.',
-      '가족이 스트레스 상황에 노출되어 있다.',
-      '주양육자는 사례관리대상자의 치료나 변화에 개입할 의지가 없다.',
-      '주양육자가 사례관리대상자를 옹호하려고 한다.',
-      '주양육자는 사례관리대상자에 대한 의존도가 높다.',
-      '주양육자는 아동 양육을 위한 적절한 지식을 가지고 있다.',
-      '주양육자는 보호자로서 자신의 역할을 이해하고 있다.',
-      '주양육자는 학대에 대해 민감하다.',
-      '주양육자는 자신의 욕구보다 아동의 욕구를 우선한다.',
-      '주양육자는 아동의 기본적인 욕구를 충족시킨다.',
-      '주양육자는 상황에 맞게 감정을 조절할 수 있다.',
-      '주양육자는 장애가 없다.',
-      '주양육자는 질환이 없다.',
-      '주양육자는 양육에 있어서 적극적이다.',
-      '주양육자는 아이의 정서에 따라 반응할 수 있다.',
-      '주양육자는 아동에게 너그럽다.',
-      '주양육자와 아동은 정서적 유대를 가지고 상호 간에 애착을 형성하고 있다.',
-      '주양육자는 아동에 대해 현실적인 기대를 가지고 있다.',
-      '주양육자는 긍정적인 생각과 태도를 가지고 있다.',
-      '주양육자를 지지해주는 가족이 있다.',
-      '가족에게 비공식적인 사회적 지지체계가 있다.',
-      '가족에게 공식적인 사회적 지지체계가 있다.',
-      '주양육자는 주변에 도움을 적극적으로 요청한다.',
-      '주양육자는 아동보호전문기관 등의 개입에 수용적이다.',
-      '주양육자는 사례관리대상자로부터 아동을 보호할 수 있다.',
-      '아동은 자기보호능력이 있어서 학대로부터 스스로를 보호할 수 있다.',
-      '주양육자 외 가족 내 양육을 도와주는 사람이 있다.',
-    ];
-    const AIV = {
-      4: [2, '8회차 01:08 "등이랑 팔이요" (상흔 확인은 상담원 관찰)'],
-      7: [2, '체크인 기분 "조금 걱정돼" 2주 · 심리치료 중'],
-      13: [0, '상담 출석 8/8회'],
-      18: [2, '8회차 상담일지 · 가정 내 긴장'],
-      20: [2, '7회차 "아빠가 그 얘기 하지 말랬어요"'],
-      26: [1, '8회차 02:15 식사 관련 발화 (화자 확인 중)'],
-      36: [2, '조모 지지 (7회차 안전 계획)'],
-      37: [2, '조모 · 학교 담임 연락 체계'],
-      38: [2, '심리치료 연계 (○○센터)'],
-      40: [1, '보호자 상담 일정 2회 연기'],
-      42: [1, '7회차 안전 계획을 스스로 설명함'],
-      43: [2, '조모가 주 2회 돌봄'],
-    };
-    let rs = 0,
-      ps = 0,
-      filled = 0;
-    const scale = Q.map((q, i) => {
-      const n = i + 1;
-      const ai = AIV[n];
-      const v = s.sc[n] !== undefined ? s.sc[n] : ai ? ai[0] : null;
-      if (v !== null && v !== '') {
-        filled++;
-        if (n <= 21) rs += v;
-        else ps += v;
-      }
-      return {
-        n,
-        q,
-        head: n === 1 || n === 22,
-        headLabel: n === 1 ? '위험요인 (1~21)' : '보호요인 (22~43)',
-        ev: ai ? `AI 제안 ${ai[0]}점 · ${ai[1]}` : '',
-        opts: [0, 1, 2, 3].map((o) => ({
-          label: o + '점',
-          ...sel(v === o),
-          pick: () => this.setState({ sc: { ...s.sc, [n]: v === o ? '' : o } }),
-        })),
-      };
-    });
-    // 참고자료 1 · 15문항
-    const F = [
-      '우리 가족은 가족끼리 대화가 잘 된다',
-      '우리 가족은 문제를 함께 잘 해결하려고 노력한다',
-      '우리 가족은 서로에 대해 잘 알고 있다',
-      '우리 가족은 각자의 장점에 대해 가족들에게 마음을 열고 허심탄회하게 이야기한다',
-      '우리 가족은 도움이 필요할 때 언제든지 서로 도움을 청할 수 있다',
-      '우리 가족은 여가시간을 함께 보내기를 좋아한다',
-      '우리 가족은 서로 친밀하게 느낀다',
-      '우리 가족은 솔직하고 정직하다',
-      '우리 가족은 서로 지지해주고 격려해준다',
-      '우리 가족은 서로에게 생각과 느낌을 표현할 수 있다',
-      '가족의 일을 계획할 때 우리 가족 모두에게 발언권이 있다',
-      '우리 가족은 서로를 있는 그대로 인정한다',
-      '우리 가족은 각각 자신의 행동에 책임을 진다',
-      '우리 가족은 가족들 간의 서로 다른 의견을 존중한다',
-      '우리 가족은 서로의 강점을 존중한다',
-    ];
-    let fs = 0,
-      fn = 0;
-    const fam = F.map((q, i) => {
-      const v = s.fam[i];
-      if (v) {
-        fs += v;
-        fn++;
-      }
-      return {
-        n: i + 1,
-        q,
-        opts: [1, 2, 3, 4, 5].map((o) => ({
-          label: String(o),
-          ...sel(v === o),
-          pick: () => this.setState({ fam: { ...s.fam, [i]: v === o ? 0 : o } }),
-        })),
-      };
-    });
-    const resp = ['부', '모', '아동'].map((o) => ({
-      label: o,
-      ...sel(s.who === o),
-      pick: () => this.setState({ who: o }),
-    }));
-    return {
-      tabs,
-      tA: s.tab === 'A',
-      tB: s.tab === 'B',
-      tC: s.tab === 'C',
-      tD: s.tab === 'D',
-      goC: () => this.setState({ tab: 'C' }),
-      safety,
-      keyOpts,
-      scoreRows,
-      resultOpts,
-      checks,
-      scale,
-      riskSum: rs,
-      protSum: ps,
-      filled,
-      fam,
-      resp,
-      famAvg: fn ? (fs / 15).toFixed(2) : '—',
-      famN: fn,
-    };
+    return caseFormValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
 }
 
 export default function CaseForm(props) {
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
-  const carry = useCarryHref();
+  const [params] = useSearchParams();
+  const { caseId } = readScreenIds(params);
+  const enabled = signedIn(session);
+  const detail = useCaseDetail(caseId, { enabled });
+  const signals = useCaseSignals(detail, { enabled });
+  const personal = usePersonalInfo(caseId, { enabled });
+  const forms = useCaseForms(caseId, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const v = useDC(Logic, { ...props, session, detail, signals, personal, forms, caseId, formParam: params.get(FORM_PARAM) });
+  useLeaveGuard(v.unsaved);
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseForm">
       <div
@@ -316,44 +82,41 @@ export default function CaseForm(props) {
             <NotiBell session={session} />
             <ThemeToggle />
           </div>
-          <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › 이서윤 C-2026-0351
-          </nav>
-          <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+          <div>
             <A className="btn btn-sm btn-s" to="/CaseList">
               ← 목록
             </A>
+          </div>
+          <nav aria-label="위치" className="note">
+            <A to="/CaseList">사례 관리</A> › {v.crumb}
+          </nav>
+          <Notice value={v.notice} />
+          <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A className="btn btn-sm btn-s" to={v.backHref} aria-label="문서함으로 돌아가기" title="문서함으로 돌아가기">
+              ←
+            </A>
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>이서윤</h1>
-                <span className="sub">13세 · 중1</span>
-                <span className="chip c-hi">위험도 상</span>
+                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
+                <span className="sub">{v.sub}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
               </div>
-              <div className="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
+              <div className="note">{v.meta}</div>
             </div>
-            <A className="btn btn-s" to={carry('/UploadModal')}>
+            <A className="btn btn-s" to={v.uploadHref}>
               ↑ 녹취 올리기
             </A>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
-            <A to={carry('/CaseDetail')}>내담자 정보</A>
-            <A to={carry('/CaseHistory')}>상담 이력</A>
-            <A className="on" aria-current="page" to={carry('/CaseDocs')}>
+            <A to={v.tabs.detail}>내담자 정보</A>
+            <A to={v.tabs.history}>상담 이력</A>
+            <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
           </nav>
           <nav aria-label="위치" className="note" style={{ marginTop: '-8px' }}>
-            <A to={carry('/CaseDocs')}>문서함</A> › 기관 서식 작성
+            <A to={v.backHref}>문서함</A> › 기관 서식 작성
           </nav>
-          <div role="tablist" aria-label="서식" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(v.tabs || []).map((t, tIndex) => (
-              <Fragment key={tIndex}>
-                <button type="button" role="tab" className={`ftab ${t.cls}`} aria-selected={t.on} onClick={t.pick}>
-                  {t.label}
-                </button>
-              </Fragment>
-            ))}
-          </div>
 
           {v.tA ? (
             <>
@@ -417,12 +180,13 @@ export default function CaseForm(props) {
                       </Fragment>
                     ))}
                   </span>
-                  <span className="ev">
-                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                      AI 제안 · 있음 (조모)
+                  {v.keyEv ? (
+                    <span className="ev">
+                      <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                        AI 제안 · {v.keyEv}
+                      </span>
                     </span>
-                    7회차(9/18) 녹취 02:40 "무서우면 할머니한테 전화할 거예요"
-                  </span>
+                  ) : null}
                 </div>
                 <div className="grp">
                   안전점수{' '}
@@ -442,6 +206,8 @@ export default function CaseForm(props) {
                         placeholder="( )점"
                         aria-label={`${r.who} 안전점수`}
                         style={{ width: '100px' }}
+                        value={r.score}
+                        onChange={(e) => r.setScore(e.target.value)}
                       />
                       <input
                         className="inp"
@@ -449,6 +215,9 @@ export default function CaseForm(props) {
                         placeholder="이유"
                         aria-label={`${r.who} 이유`}
                         style={{ width: '100%' }}
+                        maxLength={300}
+                        value={r.reason}
+                        onChange={(e) => r.setReason(e.target.value)}
                       />
                     </div>
                   </Fragment>
@@ -465,8 +234,14 @@ export default function CaseForm(props) {
                 </div>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <b style={{ fontSize: '14px' }}>담당자 소견</b>
-                  <textarea className="ta2" placeholder="직접 작성"></textarea>
-                  <CopyButton name="이서윤" />
+                  <textarea
+                    className="ta2"
+                    placeholder="직접 작성"
+                    maxLength={5000}
+                    value={v.opinionA}
+                    onChange={(e) => v.setOpinionA(e.target.value)}
+                  ></textarea>
+                  <CopyButton names={v.maskNames} />
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                   <b style={{ fontSize: '14px' }}>사정결과</b>
@@ -503,19 +278,19 @@ export default function CaseForm(props) {
                 <div className="fhead">
                   <div>
                     <span className="k">성명</span>
-                    <span className="v">이서윤</span>
+                    <span className="v">{v.fhead.name}</span>
                   </div>
                   <div>
                     <span className="k">담당 상담원</span>
-                    <span className="v">이서연</span>
+                    <span className="v">{v.fhead.counselor}</span>
                   </div>
                   <div>
                     <span className="k">생년월일</span>
-                    <span className="v">2013-03-14 (만 13세)</span>
+                    <span className="v">{v.fhead.birth}</span>
                   </div>
                   <div>
                     <span className="k">점검일/회차</span>
-                    <span className="v">2026-10-12 / 3차</span>
+                    <span className="v">{v.fhead.round}</span>
                   </div>
                   <div>
                     <span className="k">점검장소</span>
@@ -523,7 +298,9 @@ export default function CaseForm(props) {
                       <input
                         className="inp"
                         type="text"
-                        defaultValue="기관 면담실 B"
+                        maxLength={100}
+                        value={v.place}
+                        onChange={(e) => v.setPlace(e.target.value)}
                         aria-label="점검장소"
                         style={{ height: '34px', width: '100%' }}
                       />
@@ -531,12 +308,8 @@ export default function CaseForm(props) {
                   </div>
                   <div>
                     <span className="k">이전 점검일</span>
-                    <span className="v">2026-09-14</span>
+                    <span className="v">{v.fhead.prev}</span>
                   </div>
-                </div>
-                <div className="item note" style={{ padding: '6px 4px' }}>
-                  <span>점검의 내용</span>
-                  <span>예 / 아니오</span>
                 </div>
                 {(v.checks || []).map((c, cIndex) => (
                   <Fragment key={cIndex}>
@@ -555,46 +328,42 @@ export default function CaseForm(props) {
                           </Fragment>
                         ))}
                       </span>
-                      {c.hasEv ? (
-                        <>
-                          <span className="ev">
-                            <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                              AI 제안 · {c.ai}
-                            </span>
-                            {c.ev}
-                          </span>
-                        </>
-                      ) : null}
                     </div>
                   </Fragment>
                 ))}
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <b style={{ fontSize: '14px' }}>담당 상담원 소견</b>
-                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                      AI 초안
-                    </span>
+                    {v.aiDraft ? (
+                      <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                        AI 초안
+                      </span>
+                    ) : null}
                   </span>
                   <textarea
                     className="ta2"
-                    defaultValue={
-                      '8회차(10/2)에 신체 학대 진술이 새로 나왔고, 체크인 QB-E-05 응답이 "없어"에서 "1번"으로 바뀌어 학대 위험이 감소했다고 보기 어려움. 보호자 부모교육은 2회 연속 결석함.'
-                    }
+                    maxLength={5000}
+                    value={v.opinionB}
+                    onChange={(e) => v.setOpinionB(e.target.value)}
                   ></textarea>
-                  <CopyButton name="이서윤" />
+                  <CopyButton names={v.maskNames} />
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <b style={{ fontSize: '14px' }}>추후 계획</b>
-                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                      AI 초안
-                    </span>
+                    {v.aiDraft ? (
+                      <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                        AI 초안
+                      </span>
+                    ) : null}
                   </span>
                   <textarea
                     className="ta2"
-                    defaultValue={'재사정 실시 · 부모교육 일정 재조율(가정방문 시) · 등 · 팔 통증 의료 연계 여부 확인.'}
+                    maxLength={5000}
+                    value={v.planB}
+                    onChange={(e) => v.setPlanB(e.target.value)}
                   ></textarea>
-                  <CopyButton name="이서윤" />
+                  <CopyButton names={v.maskNames} />
                 </label>
               </section>
             </>
@@ -611,32 +380,49 @@ export default function CaseForm(props) {
                   <h2 className="h2">아동학대 위험수준별 개입 사정 척도</h2>
                   <span className="note">참고자료 3 · 43문항 · 0~3점</span>
                 </div>
-                <div className="sum">
-                  <div>
-                    <div className="note">위험요인 (1~21)</div>
-                    <b className="brn" style={{ fontSize: '24px' }}>
-                      {v.riskSum}점
-                    </b>
-                    <span className="note"> / 63</span>
+                <div className="sumbar">
+                  <div style={{ display: 'flex', alignItems: 'stretch', gap: '12px' }}>
+                    <div className="sum" style={{ flex: '1', minWidth: '0' }}>
+                      <div>
+                        <div className="note">위험요인 (1~21)</div>
+                        <b className="brn" style={{ fontSize: '24px' }}>
+                          {v.riskSum}점
+                        </b>
+                        <span className="note"> / 63</span>
+                      </div>
+                      <div>
+                        <div className="note">보호요인 (22~43)</div>
+                        <b className="brn" style={{ fontSize: '24px' }}>
+                          {v.protSum}점
+                        </b>
+                        <span className="note"> / 66</span>
+                      </div>
+                      <div>
+                        <div className="note">입력</div>
+                        <b style={{ fontSize: '24px' }}>{v.filled}</b>
+                        <span className="note"> / 43 · 군 판정: 상담원</span>
+                      </div>
+                    </div>
+                    <a className="btn btn-s" href="#scale-risk" onClick={v.scrollRisk} style={{ alignSelf: 'center' }}>
+                      수정
+                    </a>
                   </div>
-                  <div>
-                    <div className="note">보호요인 (22~43)</div>
-                    <b className="brn" style={{ fontSize: '24px' }}>
-                      {v.protSum}점
-                    </b>
-                    <span className="note"> / 66</span>
-                  </div>
-                  <div>
-                    <div className="note">입력</div>
-                    <b style={{ fontSize: '24px' }}>{v.filled}</b>
-                    <span className="note"> / 43 · 군 판정: 상담원</span>
+                  <div className="sc sc-head" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span className="opt3 opt3-head">
+                      <span>0점</span>
+                      <span>1점</span>
+                      <span>2점</span>
+                      <span>3점</span>
+                    </span>
                   </div>
                 </div>
                 {(v.scale || []).map((s, sIndex) => (
                   <Fragment key={sIndex}>
                     {s.head ? (
                       <>
-                        <div className="grp" style={{ marginTop: '6px' }}>
+                        <div className="grp" id={s.hid} style={{ marginTop: '6px' }}>
                           {s.headLabel}
                         </div>
                       </>
@@ -660,7 +446,8 @@ export default function CaseForm(props) {
                                 color: o.fg,
                                 fontWeight: o.fw,
                                 boxShadow: o.bd,
-                                minWidth: '36px',
+                                width: '84px',
+                                padding: '0 6px',
                               }}
                             >
                               {o.label}
@@ -757,14 +544,22 @@ export default function CaseForm(props) {
           ) : null}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-            <A className="btn btn-s" to={carry('/CaseDocs')}>
-              ← 문서함
-            </A>
-            <button type="button" className="btn btn-s" style={{ marginLeft: 'auto' }}>
+            {v.statusNote ? (
+              <span className="note" role={v.statusAlert ? 'alert' : 'status'}>
+                {v.statusNote}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-s"
+              style={{ marginLeft: 'auto' }}
+              onClick={v.saveDraft}
+              disabled={!v.canSave}
+            >
               임시 저장
             </button>
-            <button type="button" className="btn btn-p">
-              상담원 확정
+            <button type="button" className="btn btn-p" onClick={v.confirm} disabled={!v.canSave}>
+              확정
             </button>
           </div>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>

@@ -164,3 +164,39 @@
 .pg-CaseForm .thm-root.dark .src {
   color: #a8a296 !important;
 }
+/* 11/02 디자인: 위험수준 척도 · 상단 고정 목록 */
+.pg-CaseForm .sumbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #ffffff;
+  padding: 10px 4px 0;
+  margin: 0 -4px;
+  box-shadow: 0 8px 12px -10px rgba(43, 42, 38, 0.25);
+}
+.pg-CaseForm .sc-head {
+  border-bottom: 0 !important;
+  padding-top: 10px;
+  padding-bottom: 6px;
+}
+.pg-CaseForm .opt3-head {
+  background: transparent !important;
+}
+.pg-CaseForm .opt3-head span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #66625a;
+}
+.pg-CaseForm .grp[id] {
+  scroll-margin-top: 190px;
+}
+.pg-CaseForm .thm-root.dark .sumbar {
+  background: #2c2b27 !important;
+}
+.pg-CaseForm .thm-root.dark .opt3-head span {
+  color: #bdb7aa !important;
+}

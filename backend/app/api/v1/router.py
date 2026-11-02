@@ -6,6 +6,7 @@ from app.api.v1 import (
     analysis,
     audio,
     auth,
+    case_forms,
     cases,
     documents,
     followup_checklist,
@@ -46,3 +47,5 @@ api_router.include_router(voice_marks.router)
 api_router.include_router(law_guide.router)
 # /schedule/events — 일정(20절, 2026-11-02).
 api_router.include_router(schedule.router)
+# /cases/{case_id}/forms — 기관 서식 작성 기록(22절, 2026-11-02).
+api_router.include_router(case_forms.router)
