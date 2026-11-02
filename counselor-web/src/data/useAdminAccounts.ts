@@ -46,14 +46,19 @@ const CASE_PAGE_SIZE = 100;
 /**
  * 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다.
  * withNames 면 줄마다 실명을 싣는다(쪽마다 서버에 목록 열람 기록) — 이름을 보이는 화면만. 상담원별 사례 수는 부르지 않는다.
+ * live 를 주면(useRemote 의 load 둘째 인자) 다음 쪽 직전에 그 조회가 아직 지금 것인지도 본다 — 떠난 화면이 다음 쪽(실명)을
+ * 읽지 않게(Codex #130 재검수 N2).
  */
-export async function loadAllCases({ withNames = false }: { withNames?: boolean } = {}): Promise<CaseListItem[]> {
+export async function loadAllCases({
+  withNames = false,
+  live,
+}: { withNames?: boolean; live?: () => boolean } = {}): Promise<CaseListItem[]> {
   const all: CaseListItem[] = [];
   // 첫 쪽을 보낼 때의 로그인. 다음 쪽을 보내기 전에 바뀌었으면 멈춘다(결과는 useRemote 가 어차피 버린다).
   const token = getToken();
 
   for (let page = 1; ; page += 1) {
-    if (page > 1 && getToken() !== token) throw new SessionChangedError();
+    if (page > 1 && (getToken() !== token || (live && !live()))) throw new SessionChangedError();
 
     const result = await cases.list({ page, page_size: CASE_PAGE_SIZE, ...(withNames ? { with_child_name: true } : {}) });
 

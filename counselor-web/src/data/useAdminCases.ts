@@ -29,7 +29,7 @@ export function useAdminCases(access: AdminAccess, { enabled = true }: AdminHook
   // 이름 칸에 실명을 보이려고 실명과 함께 부른다(쪽마다 서버에 목록 열람 기록).
   const cases = useRemote<CaseListItem[]>(
     adminKey(access, enabled, "cases:all"),
-    () => loadAllCases({ withNames: true }),
+    (_key, live) => loadAllCases({ withNames: true, live }),
     "사례 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     () => false,
   );
