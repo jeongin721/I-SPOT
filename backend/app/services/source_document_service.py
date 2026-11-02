@@ -56,6 +56,54 @@ _ERRORS = {
 _running: set = set()
 _running_lock = threading.Lock()
 
+BUSY_TEXT_MESSAGE = "다른 문서를 읽는 중입니다. 잠시 후 다시 시도해 주세요."
+#: 글자 뽑기 서버 전체 동시 실행 자리. 제한 시간이 지나도 thread 는 돌므로 자리는 실제로 끝날 때 돌려준다 — 깨진 PDF 를
+#: 연달아 올려도 멈추지 않는 thread 가 상한보다 많이 쌓이지 않는다(민규 #137 낮음 3). 시험에서 설정을 바꾸면 reset_text_slots.
+_text_slots = threading.BoundedSemaphore(settings.DOCUMENT_TEXT_MAX_CONCURRENCY)
+
+
+def reset_text_slots() -> None:
+    global _text_slots
+    _text_slots = threading.BoundedSemaphore(settings.DOCUMENT_TEXT_MAX_CONCURRENCY)
+
+
+def _extract(filename: str, data: bytes) -> str:
+    """글자 뽑기(자리가 없으면 429, 제한 시간 DOCUMENT_TEXT_TIMEOUT_SECONDS 를 넘으면 OperationTimeout)."""
+
+    slots = _text_slots
+    if not slots.acquire(blocking=False):
+        raise APIError(ErrorCode.RATE_LIMITED, BUSY_TEXT_MESSAGE, status_code=429)
+
+    lock = threading.Lock()
+    released = []
+
+    def release() -> None:
+        with lock:
+            if released:
+                return
+            released.append(True)
+        slots.release()
+
+    started = threading.Event()
+
+    def work() -> str:
+        with lock:
+            if released:  # 시작 전에 취소 · 반환됐다
+                return ""
+            started.set()
+        try:
+            return extract_text(filename, data)
+        finally:
+            release()
+
+    try:
+        return run_with_timeout(work, settings.DOCUMENT_TEXT_TIMEOUT_SECONDS)
+    finally:
+        with lock:
+            not_started = not started.is_set()
+        if not_started:  # 시작도 못 하고 끝났으면 여기서 돌려준다
+            release()
+
 
 def _ai_error(code: ErrorCode) -> APIError:
     status, message = _ERRORS[code]
@@ -171,7 +219,7 @@ def upload(db: Session, session: ConsultationSession, current_user: User, *, fil
     # 글자 뽑기만 따로 제한 시간을 둔다. 넘으면 422(파일 문제로 본다). thread 는 강제로 멈추지 못하지만 쪽 수 ·
     # 글자 수 상한(document_text)으로 오래 도는 일을 줄인다.
     try:
-        text = run_with_timeout(lambda: extract_text(filename, data), settings.DOCUMENT_TEXT_TIMEOUT_SECONDS)
+        text = _extract(filename, data)
     except (OperationTimeout, TimeoutError) as error:
         logger.warning("문서 글자 뽑기 제한 시간 초과 session_id=%s", session.id)
         raise APIError(

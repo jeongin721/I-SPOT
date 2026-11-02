@@ -8,6 +8,7 @@
 import io
 import re
 import zipfile
+import zlib
 from typing import List
 from xml.etree import ElementTree
 
@@ -60,7 +61,11 @@ def _zip_xml(data: bytes, names: List[str]) -> List[bytes]:
             total += info.file_size
             if total > MAX_XML_BYTES:
                 raise _invalid("문서가 너무 큽니다.")
-            out.append(archive.read(name))
+            # 압축 본문이 깨졌거나(zlib · CRC) 지원하지 않는 압축 · 암호가 걸린 파일도 422 다(500 이 아니다, 민규 #137 낮음 1).
+            try:
+                out.append(archive.read(name))
+            except (zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError, EOFError) as error:
+                raise _invalid("문서 파일이 손상됐거나 형식이 맞지 않습니다.") from error
     return out
 
 

@@ -60,6 +60,20 @@ DOCX = _zip(
         )
     }
 )
+def _corrupt(data: bytes) -> bytes:
+    """압축 본문 바이트를 뒤집은 zip(여는 것은 되고 읽을 때 zlib · CRC 오류 — 민규 #137 낮음 1)."""
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as source, zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for info in source.infolist():
+            archive.writestr(info.filename, source.read(info.filename))
+    raw = bytearray(buffer.getvalue())
+    start = 30 + len(zipfile.ZipFile(io.BytesIO(raw)).infolist()[0].filename.encode())
+    for index in range(start + 2, start + 12):
+        raw[index] ^= 0xFF
+    return bytes(raw)
+
+
 HWPX = _zip(
     {
         "Contents/section0.xml": (
@@ -110,10 +124,13 @@ def test_docx_and_hwpx_are_read(client: TestClient, counselor_headers, session: 
         ("a.txt", b"\x00", "글자를 찾지"),
         ("a.txt", ("가" * 30001).encode(), "30,000"),
         ("a.docx", b"not a zip", "손상"),
+        ("a.docx", "CORRUPT_DOCX", "손상"),
+        ("a.hwpx", "CORRUPT_HWPX", "손상"),
         ("a.pdf", b"%PDF-1.4 broken", "PDF"),
     ],
 )
 def test_bad_files_are_rejected(client: TestClient, counselor_headers, session: dict, name, data, needle) -> None:
+    data = {"CORRUPT_DOCX": _corrupt(DOCX), "CORRUPT_HWPX": _corrupt(HWPX)}.get(data, data)
     response = _upload(client, counselor_headers, session["id"], name, data)
 
     assert response.status_code == 422, response.text
@@ -351,6 +368,85 @@ def test_text_extraction_has_its_own_time_limit(client: TestClient, counselor_he
     assert response.status_code == 422 and "오래 걸립니다" in response.json()["error"]["message"]
     detail = client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).json()["data"]
     assert detail["status"] == "CREATED"
+
+
+@pytest.fixture
+def one_text_slot():
+    original = settings.DOCUMENT_TEXT_MAX_CONCURRENCY
+    settings.DOCUMENT_TEXT_MAX_CONCURRENCY = 1
+    source_document_service.reset_text_slots()
+    yield
+    settings.DOCUMENT_TEXT_MAX_CONCURRENCY = original
+    source_document_service.reset_text_slots()
+
+
+def test_text_extraction_has_a_server_wide_limit(client: TestClient, counselor_headers, case: dict, one_text_slot, monkeypatch) -> None:
+    """제한 시간을 넘긴 글자 뽑기도 끝날 때까지 자리를 쓰고, 자리가 없으면 429(민규 #137 낮음 3)."""
+
+    import threading as _threading
+    import time as _time
+
+    gate = _threading.Event()
+    real = source_document_service.extract_text
+    monkeypatch.setattr(settings, "DOCUMENT_TEXT_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(source_document_service, "extract_text", lambda *args: gate.wait(5) and real(*args))
+    first = create_session(client, counselor_headers, case["id"])
+    second = create_session(client, counselor_headers, case["id"])
+
+    assert _upload(client, counselor_headers, first["id"]).status_code == 422  # 제한 시간 — thread 는 아직 돈다
+    busy = _upload(client, counselor_headers, second["id"])
+    assert busy.status_code == 429 and "다른 문서" in busy.json()["error"]["message"]
+    detail = client.get(f"/api/v1/sessions/{second['id']}", headers=counselor_headers).json()["data"]
+    assert detail["status"] == "CREATED" and detail["source"] == "AUDIO"
+
+    gate.set()
+    for _ in range(100):  # 뒤에서 돌던 글자 뽑기가 끝나면 자리가 돌아온다
+        if source_document_service._text_slots.acquire(blocking=False):
+            source_document_service._text_slots.release()
+            break
+        _time.sleep(0.02)
+    monkeypatch.setattr(settings, "DOCUMENT_TEXT_TIMEOUT_SECONDS", 5.0)
+    assert _upload(client, counselor_headers, second["id"]).status_code == 201
+
+
+def test_audio_upload_does_not_overwrite_a_document_that_landed_first(
+    client: TestClient, counselor_headers, session: dict, db, monkeypatch
+) -> None:
+    """음성을 저장하는 사이 문서가 먼저 커밋되면 음성은 409 이고 파일도 남기지 않는다(민규 #137 낮음 2)."""
+
+    import uuid as _uuid
+
+    from sqlalchemy import update as _update
+
+    from app.core import storage
+    from app.core.enums import SessionSource, SessionStatus
+    from app.models.audio import AudioFile
+    from app.models.session import ConsultationSession
+    from app.services import audio_service
+
+    saved = []
+    real_save = storage.save_audio_chunks
+
+    def save_then_document_lands(**kwargs):
+        stored = real_save(**kwargs)
+        saved.append(stored.relative_path)
+        db.execute(
+            _update(ConsultationSession)
+            .where(ConsultationSession.id == _uuid.UUID(session["id"]))
+            .values(status=SessionStatus.AI_REVIEW_REQUIRED, source=SessionSource.DOCUMENT)
+        )
+        db.commit()
+        return stored
+
+    monkeypatch.setattr(audio_service.storage, "save_audio_chunks", save_then_document_lands)
+    status, body = upload_audio(client, counselor_headers, session["id"])
+
+    assert status == 409, body
+    detail = client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).json()["data"]
+    assert detail["status"] == "AI_REVIEW_REQUIRED" and detail["source"] == "DOCUMENT"
+    db.expire_all()
+    assert db.scalar(select(AudioFile.id).where(AudioFile.session_id == _uuid.UUID(session["id"]))) is None
+    assert saved and not storage.resolve_stored_path(saved[0]).exists()
 
 
 LEVEL = __import__("app.core.enums", fromlist=["RiskLevel"]).RiskLevel.HIGH.value
