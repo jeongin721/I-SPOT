@@ -2116,3 +2116,62 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
 - 저장은 회차 상태를 바꾸지 않는다.
 
 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
+
+---
+
+## 19. Schedule (일정, 2026-11-02)
+
+11/02 일정 디자인(월간 달력 + 일정 추가)과 홈 '오늘 일정 · 다음 상담까지', 알림 종(법정 기한), 종결보고서의 '종결평가 회의 일정 잡기' 가 쓴다.
+
+### GET /api/v1/schedule/events?from=YYYY-MM-DD&to=YYYY-MM-DD
+
+- `{ items: [ScheduleEvent] }`, 날짜 → 종일(`time: null`) → 시각 순. 기간은 400일까지(`to < from` · 넘으면 `422`).
+- **기간 앞 30일 안의 최초접수(`category: INTAKE`)도 함께 온다** — 법정 기한(접수 + 3 · 7 · 30일)이 기간 안에 올 수 있어서.
+- 보이는 일정: 상담사는 자기 일정 + 다른 상담사가 팀 공유(`shared`)한 개인 · 기관 일정, 관리자는 전체.
+
+`ScheduleEvent`:
+
+```json
+{
+  "id": "uuid", "kind": "CONSULT", "consult_type": "REGULAR", "category": null,
+  "case_id": "uuid", "child_alias": "서윤", "title": null,
+  "date": "2026-11-05", "time": "15:00", "place": "면담실 A",
+  "important": false, "shared": false, "deadline_done": {},
+  "owner_id": "uuid", "owner_name": "이서연", "editable": true,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+- `kind`: `CONSULT`(상담 일정) · `OTHER`(개인 · 기관 일정).
+- `consult_type`(상담 일정만): `REGULAR` 정기상담 · `INITIAL` 초기면담 · `VISIT` 방문상담 · `PHONE` 전화상담 · `CLOSING` 종결 상담.
+  회차의 `consultation_type` 과 따로 둔다('종결 상담' 이 있어서).
+- `category`(개인 · 기관 일정만): `AGENCY_MEETING` 기관 회의 · `CASE_MEETING` 사례회의(종결평가 회의 포함) · `INTAKE` 최초접수 ·
+  `SUPERVISION` 슈퍼비전 · `TRAINING` 교육 · `FIELD_WORK` 외근 · `LEAVE` 휴가 · `ETC` 기타.
+- `case_id` · `child_alias`: 볼 수 있는 사례일 때만. 팀 공유 일정에 남의 사례가 붙어 있으면 둘 다 `null`.
+- `time`: `HH:MM`(사용자 시간대 그대로), 종일이면 `null`.
+- `deadline_done`: 최초접수만 `{"3": bool, "7": bool, "30": bool}`(법정 기한 완료 표시), 그 밖 `{}`.
+  **기한 일정은 행이 아니다** — 화면이 접수일로 계산한다(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출).
+- `editable`: 지금 사용자가 고치고 지울 수 있는가(만든 사람 · 관리자). 공유받은 일정은 `false`.
+
+### POST /api/v1/schedule/events → 201
+
+```json
+{ "kind": "OTHER", "category": "CASE_MEETING", "case_id": "uuid", "title": "종결평가 회의",
+  "date": "2026-11-12", "time": "14:00", "place": "회의실 2", "important": false, "shared": false }
+```
+
+- 필수: `kind` · `date`(`YYYY-MM-DD` 글자만, 1900-01-01 ~ 2100-12-31). 상담 일정은 `case_id` · `consult_type`, 개인 · 기관 일정은
+  `category`(최초접수면 `case_id` 도). 없으면 `422`.
+- 상담 일정에는 `category` · `title` · `shared` 를, 개인 · 기관 일정에는 `consult_type` 을 두지 않는다(보내도 비운다).
+- `case_id` 는 볼 수 있는 사례만(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `title` · `place` 는 100자, 빈 글은 `null`.
+
+### PATCH /api/v1/schedule/events/{event_id} → 200
+
+- 보낸 칸만 바뀐다. `kind` 를 바꾸면 위 필수 칸을 합친 값으로 다시 보고, 맞지 않는 칸은 비운다.
+- `deadline_done: {"7": true}` — 최초접수만(그 밖 `422`), 보낸 기한만 바뀐다. 키는 `"3"` · `"7"` · `"30"` 만.
+- 만든 사람 · 관리자만(공유받은 일정은 `403`, 볼 수 없는 일정은 `404 NOT_FOUND`).
+
+### DELETE /api/v1/schedule/events/{event_id} → 204
+
+- 만든 사람 · 관리자만. 최초접수를 지우면 법정 기한(계산 값)도 같이 사라진다. 사례를 지우면 그 사례 일정도 지워진다.
+- 감사 기록 `SCHEDULE_CREATED` · `SCHEDULE_UPDATED` · `SCHEDULE_DELETED` — 종류 · 분류 · 바뀐 칸 이름만(제목 · 장소 글은 남기지 않는다).

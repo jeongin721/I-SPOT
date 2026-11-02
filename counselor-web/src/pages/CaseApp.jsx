@@ -197,7 +197,7 @@ export default function CaseApp(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">

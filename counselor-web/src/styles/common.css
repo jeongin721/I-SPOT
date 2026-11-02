@@ -483,14 +483,15 @@ h1 {
   position: relative;
 }
 .side .logo b {
-  font-family: 'Noto Serif KR', serif;
+  /* 11/02 홈 디자인: 로고 글꼴을 IBM Plex Sans KR 로(전에는 Noto Serif KR). */
+  font-family: 'IBM Plex Sans KR', sans-serif;
   font-weight: 600;
 }
 .mk {
   background: #2b2a26 !important;
   color: #d9c08a !important;
   border-radius: 50% !important;
-  font-family: 'Noto Serif KR', serif;
+  font-family: 'IBM Plex Sans KR', sans-serif;
   box-shadow:
     3px 3px 8px var(--sd),
     -3px -3px 8px var(--sl);
