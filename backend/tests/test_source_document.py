@@ -345,6 +345,8 @@ def test_rule_based_note_reads_headings_and_colons() -> None:
 
     assert note["assessment"]["safety_risks"] == "부의 음주" and note["assessment"]["strengths_resources"] == "조모 연락"
     assert note["note"]["opinion"] == "첫 줄\n둘째 줄"
+    # 칸 이름 그대로('위험 신호 검토 결과')인 머리줄도 그 칸이다.
+    assert dn.rule_based_note("[위험 신호 검토 결과]\n상처 없음")["note"]["signals"] == "상처 없음"
     plain = dn.rule_based_note("머리줄 없는 글")
     assert plain["overview"] == "머리줄 없는 글" and not any(plain["note"].values())
 
