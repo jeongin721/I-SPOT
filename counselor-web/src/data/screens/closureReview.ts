@@ -19,6 +19,7 @@ import type { SignalHistoryState } from "../useSignalHistory";
 import { detectedTypeLabels } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
 import { screenHref } from "./links";
+import { CLOSURE_MEETING_PRESET, PRESET_PARAM } from "./schedule";
 
 const SUMMARY_ORDER = [
   ["safety_risks", "위험요인"],
@@ -255,6 +256,8 @@ export function closureReportValues(
   else if (!record?.summary) note = "① 전체 상담 내역 검토에서 '요약 만들기' 를 하면 초기상황 · 종결상황 초안이 채워집니다.";
 
   return {
+    // 종결평가 회의 일정 잡기(11/02): 일정 달력이 '사례회의 · 종결평가 회의' 추가 창을 연 채로 열린다(이 사례를 붙인다).
+    meetingHref: `${screenHref("/Schedule", { caseId })}${caseId ? "&" : "?"}${PRESET_PARAM}=${CLOSURE_MEETING_PRESET}`,
     connected: Boolean(caseId && info),
     crumb: info ? info.alias : "",
     alias: info?.alias ?? "",

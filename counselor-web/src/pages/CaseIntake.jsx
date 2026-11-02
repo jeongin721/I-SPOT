@@ -94,7 +94,7 @@ export default function CaseIntake(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <div>
