@@ -3,7 +3,7 @@
 //
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보 · 회차 목록은 useCaseDetail, 회차마다 녹음 · 원문 · 상담일지는
 // useCaseDocuments 가 부르고, 화면에 쓸 값은 src/data/screens/caseDocs.ts(caseDocsValues)가 만든다.
-// 기관 서식(사정기록지 · 점검표 · 척도) 작성 기록은 useCaseForms 가 부른다. 브리핑 · 외부 문서 올리기는 서버에 없어 준비 중.
+// 기관 서식(사정기록지 · 점검표 · 척도) 작성 기록은 useCaseForms, 종결보고서 줄은 useClosureSummary(읽기만)가 부른다. 브리핑 · 외부 문서 올리기는 서버에 없어 준비 중.
 // 10/29 디자인: 머리에 '녹음하기'(components/RecordDialog, useRecordFlow)가 더해졌다.
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -20,6 +20,7 @@ import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useCaseDocuments } from '../data/useCaseDocuments';
 import { useCaseForms } from '../data/useCaseForms';
+import { useClosureSummary } from '../data/useClosureSummary';
 import { caseDocsValues } from '../data/screens/caseDocs';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -45,9 +46,11 @@ export default function CaseDocs(props) {
   const signals = useCaseSignals(detail, { enabled });
   const docs = useCaseDocuments(caseId, detail.caseInfo ? detail.sessions : null, { enabled });
   const forms = useCaseForms(caseId, { enabled });
+  // 종결보고서 줄: 종결 검토에 등록한 사례만 부른다(등록 전은 '등록 전'으로 끝난다).
+  const closure = useClosureSummary(caseId, { enabled: enabled && Boolean(detail.caseInfo?.closureReviewDate) });
   const theme = useTheme();
   const personal = usePersonalInfo(caseId, { enabled });
-  const v = useDC(Logic, { ...props, session, detail, signals, docs, forms, personal, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, docs, forms, closure, personal, caseId });
   const rec = useRecordFlow(session, caseId, v.canRecord);
   useLeaveGuard(rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
