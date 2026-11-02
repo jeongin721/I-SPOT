@@ -56,7 +56,8 @@ export interface ScheduleUiState {
   form: ScheduleForm;
   view: ScheduleViewKey | null;
   /** 고치는 일정 id(없으면 새 일정). */
-  edit: { id: string; allDay: boolean; caseHidden?: boolean } | null;
+  /** original — 수정 창을 연 때의 일정. 바뀐 칸은 이것과 비교한다(민규 #131 N1). */
+  edit: { id: string; allDay: boolean; caseHidden?: boolean; original: ScheduleEvent } | null;
   delAsk: boolean;
 }
 
@@ -126,12 +127,18 @@ export const INTAKE_TASKS: [number, string][] = [
   [30, "계획서 제출"],
 ];
 
-/** 보이는 달을 덮는 조회 기간(앞뒤 7일 — 달력 첫 주 · 마지막 주). */
+/** 서버가 받는 조회 기간(backend list_events 의 1900~2100 과 같다). */
+const RANGE_MIN = "1900-01-01";
+const RANGE_MAX = "2100-12-31";
+
+/** 보이는 달을 덮는 조회 기간(앞뒤 7일 — 달력 첫 주 · 마지막 주). 1900년 1월 · 2100년 12월은 그 범위로 자른다(N3). */
 export function scheduleRange(y: number, m: number): { from: string; to: string } {
   const start = new Date(y, m, 1 - 7);
   const end = new Date(y, m + 1, 7);
-  const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  return { from: ymd(start), to: ymd(end) };
+  const ymd = (d: Date) => `${String(d.getFullYear()).padStart(4, "0")}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const from = ymd(start);
+  const to = ymd(end);
+  return { from: from < RANGE_MIN ? RANGE_MIN : from, to: to > RANGE_MAX ? RANGE_MAX : to };
 }
 
 /** 달력에 놓는 일정 하나(서버 일정 또는 처리 기한). y · m(0~11) · d 는 사용자 달력 날짜. */
@@ -435,12 +442,17 @@ export function scheduleValues(input: ScheduleInput) {
             shared: ev.shared,
             link: ev.kind === "OTHER" && ev.category !== "INTAKE" ? ev.case_id ?? "" : "",
           },
-          edit: { id: ev.id, allDay: ev.time === null, caseHidden: Boolean(ev.case_hidden) },
+          edit: { id: ev.id, allDay: ev.time === null, caseHidden: Boolean(ev.case_hidden), original: ev },
           delAsk: false,
         });
       },
     };
   }
+
+  // 고치는 중에 종류 · 분류를 바꾸면 고른 사례를 다른 쪽 칸에도 채운다 — 상담 · 최초접수는 child, 개인 · 기관 일정은 link 를
+  // 쓰므로 그대로 두면 사례가 빈칸으로 나가 떨어진다(민규 #131 N2).
+  const carryCase = (form: ScheduleForm): ScheduleForm =>
+    s.edit ? { ...form, child: form.child || form.link, link: form.link || form.child } : form;
 
   const selDate = new Date(s.y, s.m, s.sel);
   const isIntake = !isC && s.form.pcat === "INTAKE";
@@ -473,14 +485,14 @@ export function scheduleValues(input: ScheduleInput) {
         };
     let saved;
     if (s.edit) {
-      // 고칠 때는 바뀐 칸만 보낸다(R2). 가려진 사례는 사례 칸을 보내지 않는다.
-      const original = data?.events.find((event) => event.id === s.edit!.id);
+      // 고칠 때는 바뀐 칸만 보낸다(R2). 비교는 수정 창을 연 때의 값과 한다 — 저장 순간의 목록과 비교하면 그 사이 남이 바꾼
+      // 칸을 내가 바꾼 것처럼 되돌린다(민규 #131 N1). 가려진 사례는 사례 칸을 보내지 않는다.
+      const original = s.edit.original as unknown as Record<string, unknown>;
       const changes: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(body)) {
         if (key === "case_id" && caseLocked) continue;
-        const before = original ? (original as unknown as Record<string, unknown>)[key] : undefined;
         const norm = (x: unknown) => (x === "" || x === undefined ? null : x);
-        if (!original || norm(before) !== norm(value)) changes[key] = value;
+        if (norm(original[key]) !== norm(value)) changes[key] = value;
       }
       saved = await schedule.update(s.edit.id, changes);
     } else {
@@ -561,8 +573,8 @@ export function scheduleValues(input: ScheduleInput) {
       const dd = new Date(base.y, base.m, base.d + n);
       return { n: `${n}일 이내`, task, due: `${dd.getMonth() + 1}/${dd.getDate()}(${DAYS[dd.getDay()]})` };
     }),
-    kindC: () => setUi({ kind: "c" }),
-    kindP: () => setUi({ kind: "p" }),
+    kindC: () => setUi({ kind: "c", form: carryCase(s.form) }),
+    kindP: () => setUi({ kind: "p", form: carryCase(s.form) }),
     kcBorder: isC ? "#2B2A26" : "#DAD5C9",
     kcBg: isC ? "#F1EADA" : "#FFFFFF",
     kpBorder: !isC ? "#2B2A26" : "#DAD5C9",
@@ -581,7 +593,7 @@ export function scheduleValues(input: ScheduleInput) {
     sharedOn: !isIntake && s.form.shared,
     setChild: setF("child"),
     setCtype: setF("ctype"),
-    setPcat: setF("pcat"),
+    setPcat: (ev: { target: { value: string } }) => setForm(carryCase({ ...s.form, pcat: ev.target.value as ScheduleCategory })),
     setTitle: setF("title"),
     setTime: setF("time"),
     setPlace: setF("place"),
