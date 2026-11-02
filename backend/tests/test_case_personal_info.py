@@ -8,8 +8,10 @@ import logging
 import re
 import shutil
 import subprocess
+import threading
 import uuid
 from pathlib import Path
+from typing import List, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
@@ -554,45 +556,84 @@ def _two_sessions(counselor_id, case_id: str):
     return (first, second), users, cases
 
 
-def test_overlapping_puts_keep_the_last_body_whole(
-    client: TestClient, counselor_headers, counselor_id, case: dict
-) -> None:
-    """R2: 두 저장이 같은 옛 값을 읽고 겹쳐도 나중 커밋의 본문이 통째로 남는다(칸별로 섞이지 않음)."""
+def _overlap(counselor_id, case_id: str, first_body: dict, last_body: dict) -> Tuple[List[str], List[str]]:
+    """두 저장이 겹쳐 first_body 가 먼저, last_body 가 나중에 커밋한다. 각 저장이 감사에 남긴 바뀐 칸을 돌려준다.
 
-    _put(client, counselor_headers, case["id"], {"child_name": CHILD, "interviewee": {"name": GUARDIAN}})
-    (first, second), (user1, user2), (case1, case2) = _two_sessions(counselor_id, case["id"])
-
-    try:
-        personal_info_service.apply_personal_info(
-            first, case1, user1, PersonalInfoRequest(child_name="한가온", interviewee={"name": GUARDIAN})
-        )
-        personal_info_service.apply_personal_info(
-            second, case2, user2, PersonalInfoRequest(child_name=CHILD, interviewee={"name": SIBLING})
-        )
-        first.commit()
-        second.commit()
-    finally:
-        first.close()
-        second.close()
-
-    data = _get(client, counselor_headers, case["id"]).json()["data"]
-
-    assert (data["child_name"], data["interviewee"]["name"]) == (CHILD, SIBLING)
-
-
-def _overlap(counselor_id, case_id: str, first_body: dict, last_body: dict) -> None:
-    """두 요청이 같은 값을 읽은 뒤 first_body 가 먼저, last_body 가 나중에 커밋한다."""
+    SQLite 는 행 잠금이 없어 두 저장이 같은 옛 값을 읽는다(한 스레드에서 차례로).
+    PostgreSQL 은 저장이 읽는 행을 잠가(FOR UPDATE) 나중 저장이 앞 저장의 커밋을 기다린다. 한 스레드에서 차례로 부르면
+    앞 저장을 커밋할 차례가 오지 않아 영원히 기다리므로(#127 CI 6시간 멈춤) 나중 저장은 다른 스레드에서 돌린다.
+    """
 
     (first, second), (user1, user2), (case1, case2) = _two_sessions(counselor_id, case_id)
 
     try:
-        personal_info_service.apply_personal_info(first, case1, user1, PersonalInfoRequest(**first_body))
-        personal_info_service.apply_personal_info(second, case2, user2, PersonalInfoRequest(**last_body))
+        first_changed = personal_info_service.apply_personal_info(first, case1, user1, PersonalInfoRequest(**first_body))
+
+        if engine.dialect.name != "postgresql":
+            last_changed = personal_info_service.apply_personal_info(
+                second, case2, user2, PersonalInfoRequest(**last_body)
+            )
+            first.commit()
+            second.commit()
+            return first_changed, last_changed
+
+        result: dict = {}
+
+        def save_last() -> None:
+            try:
+                # 잠금이 풀리지 않아도 시험이 멈추지 않게 기다리는 시간에 상한을 둔다.
+                second.execute(text("SET LOCAL lock_timeout = '10s'"))
+                result["changed"] = personal_info_service.apply_personal_info(
+                    second, case2, user2, PersonalInfoRequest(**last_body)
+                )
+                second.commit()
+            except BaseException as error:  # 주 스레드에서 다시 올린다.
+                result["error"] = error
+
+        thread = threading.Thread(target=save_last)
+        thread.start()
+        thread.join(0.5)
+
+        # 나중 저장은 앞 저장이 잠근 행을 기다리는 중이다(끝났으면 잠금이 없거나 오류).
+        if not thread.is_alive():
+            raise result.get("error") or AssertionError("나중 저장이 앞 저장의 행 잠금을 기다리지 않았다")
+
         first.commit()
-        second.commit()
+        thread.join(30)
+
+        assert not thread.is_alive()
+        if "error" in result:
+            raise result["error"]
+
+        return first_changed, result["changed"]
     finally:
         first.close()
         second.close()
+
+
+def test_overlapping_puts_keep_the_last_body_whole(
+    client: TestClient, counselor_headers, counselor_id, case: dict
+) -> None:
+    """R2: 두 저장이 겹쳐도 나중 커밋의 본문이 통째로 남는다(칸별로 섞이지 않음)."""
+
+    _put(client, counselor_headers, case["id"], {"child_name": CHILD, "interviewee": {"name": GUARDIAN}})
+
+    first_changed, last_changed = _overlap(
+        counselor_id,
+        case["id"],
+        {"child_name": "한가온", "interviewee": {"name": GUARDIAN}},
+        {"child_name": CHILD, "interviewee": {"name": SIBLING}},
+    )
+
+    data = _get(client, counselor_headers, case["id"]).json()["data"]
+
+    assert (data["child_name"], data["interviewee"]["name"]) == (CHILD, SIBLING)
+    assert first_changed == ["child_name"]
+
+    # 재검증 N1: PostgreSQL 은 나중 저장이 앞 저장이 커밋한 값을 읽어, 감사의 바뀐 칸이 실제 바뀜(이름 · 면담자)과 맞는다.
+    # SQLite 는 행 잠금이 없어 이름 칸이 빠질 수 있다(personal_info_service.apply_personal_info 설명).
+    if engine.dialect.name == "postgresql":
+        assert last_changed == ["child_name", "interviewee"]
 
 
 @pytest.mark.parametrize("field", ENCRYPTED_FIELDS)
