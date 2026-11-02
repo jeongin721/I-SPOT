@@ -8,7 +8,8 @@
 //  - '+ 확인 사항 직접 추가' 는 수정 모드에서 새 줄을 더한다(상담사가 쓴 줄, source COUNSELOR).
 // 저장할 수 없는 상태(원문 확정 전 · AI 분석 중)면 단추를 멈추고 이유를 보인다(추가 질문과 같은 규칙).
 // 다음 상담 체크리스트(19절)가 켜져 있으면 호출부(followupQ.ts)가 저장 전 초안(drafts — 메모 + rag 확인 사항)과
-// 줄 표시(annotate — rag 칩 · 이유 · 공식 근거 · 근거 위치), 저장 뒤 새로 나온 rag 항목(pending)을 넘긴다(2026-11-02).
+// 줄 표시(annotate — rag 칩 · 이유 · 공식 근거 · 근거 위치), 목록을 저장한 뒤 만든 체크리스트의 새 항목(pending)을 넘긴다(2026-11-02).
+// pending 안내는 목록을 다시 저장하면(더하기 · 체크 · 수정) 사라진다 — 저장 시각이 체크리스트보다 나중이 되기 때문이다.
 
 import type { FollowupCheck, FollowupCheckPoint, SessionStatus } from "../../api/types";
 import type { FollowupChecksState } from "../useFollowupChecks";
@@ -73,7 +74,7 @@ export interface CheckInput {
   drafts?: FollowupCheck[];
   /** 줄 표시(rag 칩 · 이유 · 공식 근거). null 이면 붙이지 않는다. */
   annotate?: (item: FollowupCheck) => CheckAnnotation | null;
-  /** 저장 목록에 없는 새 rag 항목. [목록에 더하기] 로 넣는다. */
+  /** 목록을 저장한 뒤 만든 체크리스트의 항목 중 저장 목록에 없는 것. [목록에 더하기] 로 넣는다. */
   pending?: FollowupCheck[];
   locate: RiskSignalsState["locate"];
   ids: { caseId?: string | null; sessionId?: string | null };
@@ -148,7 +149,9 @@ export function checkValues(input: CheckInput) {
     checks: rows,
     newRows,
     ckPendingNote:
-      pending.length > 0 ? `공식 근거를 본 확인 사항 ${pending.length}개가 아직 이 목록에 없습니다(저장한 뒤 새로 만듦).` : "",
+      pending.length > 0
+        ? `목록을 저장한 뒤 만든 공식 근거 확인 사항 ${pending.length}개가 이 목록에 없습니다. 더하지 않고 목록을 저장하면 이 안내는 사라집니다.`
+        : "",
     ckAddPending: () => {
       if (!canSave || state.ckEditing || pending.length === 0) return;
       void save([...base, ...pending]);

@@ -26,7 +26,7 @@ import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
-import { followupQValues } from '../data/screens/followupQ';
+import { checklistNeedsEvidence, followupQValues } from '../data/screens/followupQ';
 import { initialCheckState } from '../data/screens/followupChecks';
 import { initialQuestionState, questionsNeedEvidence } from '../data/screens/followupQuestions';
 import { readScreenIds } from '../data/screens/links';
@@ -87,8 +87,10 @@ function FollowupQScreen(props) {
   const questions = useFollowupQuestions(ids.sessionId, { enabled });
   const checklist = useFollowupChecklist(ids.sessionId, { enabled, watch: analysis.processing });
   const checks = useFollowupChecks(ids.sessionId, { enabled });
-  // 추가 질문(초안 · 승인 목록)에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
-  const needEvidence = questionsNeedEvidence(analysis.analysis, questions.questions);
+  // 추가 질문(초안 · 승인 목록)이나 체크리스트 확인 사항에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
+  // 체크리스트 쪽은 저장 초안에서 원문에 없는 발화 번호를 거르는 데도 쓴다(#125 재검증 L2).
+  const needEvidence =
+    questionsNeedEvidence(analysis.analysis, questions.questions) || checklistNeedsEvidence(checklist.checklist, ids.sessionId);
   const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled, needEvidence });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checklist, checks, go });

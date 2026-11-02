@@ -9,7 +9,8 @@
 //    signalHistoryRows.newTopicsIn) — 주제 · 그 첫 아동 발화 · 회차와 시각. AI 제안이다.
 //  - 확인할 사항: 그 회차 확인 사항을 저장했으면(18.1절, 2026-10-30) '브리핑에 넣기' 로 체크한 것만, 저장 전이면
 //    AI 확인 메모 초안에 다음 상담 체크리스트(19절)의 확인 사항을 합친 목록(4 · 다음 상담 준비 화면과 같은 mergeCheckItems)을
-//    읽기 전용으로. 저장한 줄 중 rag 에서 온 것(고치지 않음)은 근거 위치를 rag 의 사례 근거로 보인다.
+//    읽기 전용으로. 저장한 줄 중 rag 에서 온 것(고치지 않음)은 목록을 지금 체크리스트가 끝난 뒤에 저장했을 때만 근거 위치를
+//    rag 의 사례 근거로 보인다(아니면 저장한 발화 번호로 — ragCheckAnnotations).
 //    근거는 '그 회차 · 몇 분 · 누구' 이고 누르면 STT 검수의 그 발화로 간다. 디자인의 체크(브리핑에 넣기)는 저장할 API 가
 //    없어 두지 않는다(가짜 체크 없음).
 //  - 추가 질문: 그 회차에서 상담사가 승인한 질문 목록(GET …/followup-questions, 18절)을 디자인의 줄(.rq)로 보인다.
@@ -28,7 +29,7 @@ import { formatClock } from "../time";
 import { NOT_PROVIDED } from "../caseRows";
 import { caseHeaderValues } from "./caseDetail";
 import { NOT_READY } from "./common";
-import { checklistValues, mergeCheckItems, ragCheckAnnotations, toFollowupItems } from "./followupQ";
+import { checklistValues, mergeCheckItems, ragCheckAnnotations, savedVsMade, toFollowupItems } from "./followupQ";
 import { questionChip } from "./followupQuestions";
 import { screenHref } from "./links";
 
@@ -100,7 +101,11 @@ export function preBriefingValues(input: BriefingScreenInput) {
   const merged = completed
     ? mergeCheckItems(toFollowupItems(view.followupCheckPoints ?? [], signals.signals.locate, ids), rag.items)
     : [];
-  const { annotate } = ragCheckAnnotations(merged);
+  // 저장한 줄의 rag 표시는 목록을 지금 체크리스트가 끝난 뒤에 저장했을 때만(다음 상담 준비 화면과 같은 규칙, #125 재검증 M1).
+  const { annotate } = ragCheckAnnotations(merged, {
+    saved: Boolean(input.checks?.saved),
+    order: savedVsMade(input.checks?.updatedAt, rag.completedAt),
+  });
   const prefixed = (why: string) => `${source?.numberLabel ?? ""} ${why}`.trim();
   // 확인 사항을 저장했으면(18.1절) 그중 '브리핑에 넣기' 로 체크한 것만, 저장 전이면 AI 확인 메모 + rag 확인 사항 초안(2026-10-30).
   const savedChecks = source && input.checks?.saved ? input.checks.items.filter((item) => item.in_briefing) : null;

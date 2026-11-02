@@ -12,8 +12,9 @@
 //    꺼져 있으면(enabled=false) 지금처럼 메모만이다.
 //  - 브리핑에 넣기 체크 · 수정 · 확인 사항 직접 추가(2026-10-30): GET/PUT …/followup-checks(18.1절)에 저장(followupChecks.ts).
 //    저장 전 초안은 AI 확인 메모 + rag 확인 사항을 합친 목록이고(rag 항목도 source AI 로 저장), 저장한 뒤에는 저장 목록이 기준이다.
-//    rag 에서 온 줄은 문장을 고치지 않았고 같은 분석일 때만 '공식 근거' 칩 · 펼침을 붙인다(ragCheckAnnotations). 저장 뒤 rag 를
-//    다시 만들어 목록에 없는 rag 항목이 생기면 [목록에 더하기] 로 넣는다(2026-11-02, #128 위에 맞춤).
+//    저장한 줄의 rag 표시(칩 · 이유 · 공식 근거 · 근거 위치)는 문장 · 근거 발화 번호가 같고 목록을 지금 체크리스트가 끝난 뒤에
+//    저장했을 때만 붙인다(ragCheckAnnotations). 목록을 저장한 뒤 체크리스트를 만들면(다시 만들기 · 재분석) 저장한 줄은 저장한 값으로만
+//    보이고, 목록에 없는 rag 항목은 [목록에 더하기] 로 넣는다(2026-11-02, #128 위에 맞춤 · #125 재검증 M1 · M2 · L1).
 //  - 추가 질문: AI 초안(분석 결과 followup_questions) · 승인 목록(GET/PUT …/followup-questions, 18절)을 디자인의 카드 ·
 //    [승인] · [수정] · [+ 질문 직접 추가] 로 보인다(followupQuestions.ts). '아이 앱으로 먼저' 탭은 준비 중이다.
 //  - 아래 'n회차 처리 완료 · 브리핑 보기': 회차 상태에 '질문 처리 완료' 가 없고 상담 전 브리핑은 아직 예시 화면이라
@@ -40,6 +41,7 @@ import { screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
 import { segmentHref } from "./sttReview";
+import { parseBackendTime } from "../time";
 
 export interface FollowupScreenInput extends SessionScreenInput {
   analysis: SessionAnalysisState;
@@ -83,6 +85,8 @@ export interface FollowupItem {
   fromPrevious: boolean;
   /** memo: AI 확인 메모(분석 followup_check_points), rag: 다음 상담 체크리스트(19절). */
   origin: "memo" | "rag";
+  /** rag 확인 사항이거나 같은 문장의 rag 항목과 합쳐진 메모인가(저장 뒤 새 항목 안내에 쓴다). */
+  withRag: boolean;
   /** 항목 머리 칩. 공식 근거 칩은 실제로 붙은 공식 근거가 있을 때만(개수로 센다). */
   chips: string[];
   /** 확인이 필요한 이유(rag). 메모는 빈 문자열. */
@@ -140,6 +144,7 @@ export function toFollowupItems(
       href: first ? segmentHref(ids, first) : null,
       fromPrevious: Boolean(previous),
       origin: "memo",
+      withRag: false,
       chips: [],
       reason: "",
       sources: [],
@@ -181,6 +186,7 @@ export function ragCheckItems(
       href: where.href,
       fromPrevious: false,
       origin: "rag",
+      withRag: true,
       chips,
       reason: typeof item.reason === "string" ? item.reason.trim() : "",
       sources,
@@ -223,6 +229,7 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
     const same = byText.get(normalizeCheckText(item.text));
 
     if (same) {
+      same.withRag = true;
       const seen = new Set(same.sources.map((source) => `${source.label}|${source.excerpt}`));
       item.sources.forEach((source) => {
         if (!seen.has(`${source.label}|${source.excerpt}`)) same.sources.push(source);
@@ -265,21 +272,55 @@ export function checksFromItems(items: FollowupItem[]): FollowupCheck[] {
 }
 
 /**
- * 확인 사항 줄(18.1 초안 · 저장 목록)에 rag 표시를 붙인다. 문장(공백 · 문장부호를 뺀 것)이 합친 목록과 같고 상담사가 고치지 않은
- * AI 줄에만 칩(메모 줄은 rag 와 함께일 때 'AI 확인 메모') · 이유 · 공식 근거를 붙인다(고친 문장은 검토를 거치지 않았다). rag 에서 온 줄은 근거 위치도 rag 의 사례 근거로 보인다
- * (앞 회차 근거는 그 회차로 간다). merged 는 지금 분석으로 만든 체크리스트만 담으므로 분석이 바뀌면 표시도 없다.
- * pending: 저장 목록에 없는 rag 항목(저장 뒤 다시 만들어 새로 나온 것) — [목록에 더하기] 로 넣는다.
+ * 저장한 확인 사항(18.1 updated_at)과 지금 체크리스트(19절 completed_at) 중 무엇이 나중인가. 둘 중 하나라도 시각을 모르면 null.
+ * 같은 서버 시계라 비교할 수 있다(시간대 표시가 없으면 UTC — parseBackendTime).
  */
-export function ragCheckAnnotations(merged: FollowupItem[]) {
+export function savedVsMade(
+  savedAt: string | null | undefined,
+  madeAt: string | null | undefined,
+): "saved-later" | "made-later" | null {
+  const saved = savedAt ? parseBackendTime(savedAt) : null;
+  const made = madeAt ? parseBackendTime(madeAt) : null;
+
+  if (!saved || !made) return null;
+
+  return saved.getTime() >= made.getTime() ? "saved-later" : "made-later";
+}
+
+const sameIds = (a: string[], b: string[]): boolean => {
+  const left = new Set(a);
+  const right = new Set(b);
+
+  return left.size === right.size && Array.from(left).every((id) => right.has(id));
+};
+
+/**
+ * 확인 사항 줄(18.1 초안 · 저장 목록)에 rag 표시를 붙인다. 상담사가 고치지 않은 AI 줄 중 문장(공백 · 문장부호를 뺀 것)과
+ * 근거 발화 번호가 합친 목록의 항목과 같은 줄에만 칩(메모 줄은 rag 와 함께일 때 'AI 확인 메모') · 이유 · 공식 근거를 붙이고,
+ * rag 에서 온 줄은 근거 위치도 rag 의 사례 근거로 보인다(앞 회차 근거는 그 회차로 간다). 고친 문장은 검토를 거치지 않았다.
+ * merged 는 지금 분석으로 만든 체크리스트만 담는다.
+ *
+ * 저장한 목록(saved)은 그 줄이 어느 체크리스트에서 왔는지 남기지 않으므로, 목록을 지금 체크리스트가 끝난 뒤에 저장했을 때(order
+ * 'saved-later')만 붙인다. 목록을 저장한 뒤 체크리스트를 만들었으면(다시 만들기 · 재분석, 'made-later') 저장한 줄은 저장한 값으로만
+ * 보이고 — 같은 문장의 새 결과가 근거를 바꿔 보이지 않게(#125 재검증 M1) — pending 이 목록에 없는 rag 항목(같은 문장으로 메모와
+ * 합쳐진 것 포함, M2)을 [목록에 더하기] 로 내놓는다. 저장 뒤 새로 만들지 않았으면 pending 은 없다(고친 rag 원문을 다시 권하지 않는다, L1).
+ */
+export function ragCheckAnnotations(
+  merged: FollowupItem[],
+  { saved = false, order = null }: { saved?: boolean; order?: "saved-later" | "made-later" | null } = {},
+) {
   const byText = new Map(merged.map((item) => [normalizeCheckText(item.text), item]));
 
   const annotate = (check: FollowupCheck): CheckAnnotation | null => {
     if (check.source !== "AI" || check.edited) return null;
+    if (saved && order !== "saved-later") return null;
 
     const item = byText.get(normalizeCheckText(check.text));
 
     // 메모 줄도 rag 항목과 함께 보일 때는 'AI 확인 메모' 칩이 붙어 있다(mergeCheckItems) — 둘을 구분하려고 그대로 쓴다.
     if (!item || (item.chips.length === 0 && item.sources.length === 0)) return null;
+    // 문장만 같고 근거 발화가 다른 항목에는 붙이지 않는다.
+    if (!sameIds(Array.isArray(check.segment_ids) ? check.segment_ids : [], item.segmentIds)) return null;
 
     return {
       chips: item.chips,
@@ -289,13 +330,31 @@ export function ragCheckAnnotations(merged: FollowupItem[]) {
     };
   };
 
-  const pending = (saved: FollowupCheck[]): FollowupCheck[] => {
-    const have = new Set(saved.map((check) => normalizeCheckText(check.text)));
+  const pending = (items: FollowupCheck[]): FollowupCheck[] => {
+    if (!saved || order !== "made-later") return [];
 
-    return checksFromItems(merged.filter((item) => item.origin === "rag" && !have.has(normalizeCheckText(item.text))));
+    const have = new Set(items.map((check) => normalizeCheckText(check.text)));
+
+    return checksFromItems(merged.filter((item) => item.withRag && !have.has(normalizeCheckText(item.text))));
   };
 
   return { annotate, pending };
+}
+
+/** 체크리스트 확인 사항에 이번 회차 발화 근거가 있는가 — 있으면 원문을 받아 근거 위치를 찾고 없는 번호를 거른다. */
+export function checklistNeedsEvidence(
+  checklist: FollowupChecklistState["checklist"] | undefined,
+  sessionId: string | null | undefined,
+): boolean {
+  if (!checklist || checklist.status !== "COMPLETED" || !sessionId) return false;
+
+  const items = Array.isArray(checklist.result?.check_items) ? checklist.result.check_items : [];
+
+  return items.some(
+    (item) =>
+      Array.isArray(item?.basis) &&
+      item.basis.some((basis) => basis?.type === "case" && basis.session_id === sessionId && Boolean(basis.segment_id)),
+  );
 }
 
 /** 다음 상담 체크리스트 상태 줄 · 단추(19절). 꺼져 있으면 모두 비어 있다(화면은 AI 확인 메모만). */
@@ -304,6 +363,8 @@ export interface ChecklistView {
   items: FollowupItem[];
   /** 지금 분석으로 만든 결과의 질문 공식 근거. 아니면 []. */
   questionEvidence: QuestionEvidence[];
+  /** 지금 분석으로 만든 결과가 끝난 시각(서버 completed_at). 아니면 null. */
+  completedAt: string | null;
   /** 상태 한 줄('만드는 중' · 실패 문구 · '아직 없음' · '분석이 바뀌었습니다'). 없으면 빈 문자열. */
   status: string;
   /** 서버 안내(고정 문구). */
@@ -324,6 +385,7 @@ export function checklistValues(
   const none: ChecklistView = {
     items: [],
     questionEvidence: [],
+    completedAt: null,
     status: "",
     notice: "",
     error: null,
@@ -363,6 +425,7 @@ export function checklistValues(
     ...base,
     items: ragCheckItems(result?.check_items, ids),
     questionEvidence: Array.isArray(result?.question_evidence) ? result.question_evidence : [],
+    completedAt: row.completed_at ?? null,
     notice: result?.notice ?? "",
     runLabel: "다시 만들기",
   };
@@ -378,11 +441,21 @@ export function followupQValues(input: FollowupScreenInput) {
   const completed = analyzed && view !== null && view.status === "COMPLETED";
   const rag = checklistValues(input.checklist, view, analyzed, ids);
   // 저장 전 초안 · 줄 표시에 쓰는 합친 목록(AI 확인 메모 + rag 확인 사항, 메모 먼저 · 같은 문장 한 번).
+  // 18.1 은 그 회차 최신 전사본에 있는 번호만 받으므로, 원문을 받았으면 원문에 없는 번호는 뺀다(하나 때문에 목록 전체 저장이
+  // 422 로 막히지 않게 — #125 재검증 L2). 원문을 못 받았으면 그대로 두고 서버가 거른다.
+  const present = (segmentIds: string[]) =>
+    signals.sourceReady ? signals.locate(segmentIds).evidence.filter((entry) => entry.found).map((entry) => entry.segmentId) : segmentIds;
   const merged = completed
-    ? mergeCheckItems(toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids), rag.items)
+    ? mergeCheckItems(toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids), rag.items).map((item) => ({
+        ...item,
+        segmentIds: present(item.segmentIds),
+      }))
     : [];
   const withRag = rag.items.length > 0;
-  const annotations = ragCheckAnnotations(merged);
+  const annotations = ragCheckAnnotations(merged, {
+    saved: input.checks.saved,
+    order: savedVsMade(input.checks.updatedAt, rag.completedAt),
+  });
   const checkCard = checkValues({
     state: input.state,
     setState: input.setState,
@@ -390,7 +463,7 @@ export function followupQValues(input: FollowupScreenInput) {
     points: completed ? view?.followupCheckPoints ?? [] : [],
     drafts: completed ? checksFromItems(merged) : [],
     annotate: annotations.annotate,
-    pending: input.checks.saved ? annotations.pending(input.checks.items) : [],
+    pending: annotations.pending(input.checks.items),
     locate: signals.locate,
     ids,
     status,
