@@ -28,7 +28,9 @@ export default function CaseList(props) {
   const session = useAuthSession();
   // 검색어는 계정에 묶는다 — 다른 계정으로 바뀌면 앞 계정이 친 이름이 남지 않는다(Codex #130 H1).
   const [search, setSearch] = useAccountSearch(session);
-  const list = useCaseList({ search, enabled: session.status === 'signedIn', withNames: true });
+  // 사용자 정보까지 확인된 뒤에만 부른다 — 다른 탭의 다시 로그인으로 사용자 정보가 먼저 비는 사이에 새 토큰으로 한 번 더
+  // 부르지 않게(Codex #130 재검수 N4).
+  const list = useCaseList({ search, enabled: session.status === 'signedIn' && session.me !== null, withNames: true });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, list, search, setSearch });
   // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다.

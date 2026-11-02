@@ -109,8 +109,8 @@ export interface UploadScreenInput {
   /** 고른 사례 ID. */
   caseId: string | null;
   setCaseId: (caseId: string) => void;
-  /** 사례 고르기(1단계) 목록을 부르기 시작한다. 사례를 정해 연 화면은 '이전' 으로 1단계에 갈 때 부른다. */
-  openPick: () => void;
+  /** 사례 고르기(1단계) 목록을 켜고 끈다. 1단계에 있는 동안만 켠다. */
+  setPickOpen: (open: boolean) => void;
   caseDetail: CaseDetailState;
   upload: AudioUploadState;
   state: UploadUiState;
@@ -120,7 +120,7 @@ export interface UploadScreenInput {
 }
 
 export function uploadModalValues(input: UploadScreenInput) {
-  const { session, ids, back, list, search, setSearch, caseId, setCaseId, openPick, caseDetail, upload, state, setState, go } = input;
+  const { session, ids, back, list, search, setSearch, caseId, setCaseId, setPickOpen, caseDetail, upload, state, setState, go } = input;
 
   const labels = ["사례 선택", "상담 회차", "파일 선택"];
   const steps = labels.map((label, i) => {
@@ -260,11 +260,14 @@ export function uploadModalValues(input: UploadScreenInput) {
     closeHref,
     registerHref: "/CaseRegister",
     next: () => {
-      if (canNext) setState({ step: Math.min(3, state.step + 1) as UploadUiState["step"] });
+      if (!canNext) return;
+      const step = Math.min(3, state.step + 1) as UploadUiState["step"];
+      setPickOpen(step === 1);
+      setState({ step });
     },
     prev: () => {
       const step = Math.max(1, state.step - 1) as UploadUiState["step"];
-      if (step === 1) openPick();
+      setPickOpen(step === 1);
       setState({ step });
     },
     // 길이를 읽는 중에는 막는다(WAV 가 아니면 서버가 길이를 재지 않아 그대로 올리면 길이가 빠진다).

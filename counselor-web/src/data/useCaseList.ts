@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { ApiError, getToken } from "../api/client";
 import { cases } from "../api/endpoints";
 import type { CaseStatus } from "../api/types";
 import { toCaseRow, type CaseRow } from "./caseRows";
@@ -65,6 +65,9 @@ export function useCaseList({
 
     // 조건이 바뀌었거나 화면을 떠났으면 늦게 온 응답은 버린다.
     let cancelled = false;
+    // 예약할 때의 로그인. 기다리는 사이 다른 탭에서 다른 계정으로 로그인했으면 앞 계정의 검색어(실명)를
+    // 새 계정 토큰으로 보내지 않는다 — 응답만 버리면 이미 요청 주소에 실린다(Codex #130 재검수 N1).
+    const token = getToken();
 
     setLoading(true);
     setError(null);
@@ -72,6 +75,8 @@ export function useCaseList({
     // 검색어를 칠 때마다 부르지 않도록 잠깐 기다린다. 검색어가 없으면 바로 부른다.
     const timer = window.setTimeout(
       () => {
+        if (getToken() !== token) return;
+
         cases
           .list({
             page,
