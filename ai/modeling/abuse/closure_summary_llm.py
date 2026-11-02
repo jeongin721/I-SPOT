@@ -23,6 +23,7 @@ AI_PROVIDER 가 modeling 이 아니면(시험 · 데모 mock) LLM 을 부르지 
 openai · privacy_gateway(NER 모델)는 CI 에 없다. 검사 함수를 backend/tests 에서 시험할 수 있게 그 import 는 함수 안에 둔다.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from ai.modeling.abuse.text_script import has_foreign_script
@@ -80,13 +81,24 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 사례를 종결
 """
 
 
+def _cut_at_word(text: str, limit: int) -> str:
+    """limit 자를 넘으면 낱말 중간에서 끊지 않고 그 앞 낱말까지 + "…". 이 글은 자른 뒤에 등록 이름을 가리므로, 이름 한가운데서
+    끊으면 앞 글자("김바")가 가려지지 않고 나간다(2026-11-02, PR #138 Codex M3). 빈칸 없이 limit 자를 넘으면 "…" 만 남긴다."""
+
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    if not text[limit].isspace():
+        last_space = re.search(r"\s(?=\S*$)", head)
+        head = head[: last_space.start()] if last_space else ""
+    return head.rstrip() + "…"
+
+
 def _session_block(session: Dict[str, Any]) -> str:
     lines = [f"## {session['number']}회차" + (f" ({session['date']})" if session.get("date") else "")]
     assessment = session.get("assessment") or {}
     for key, label in ASSESSMENT_FIELDS:
-        text = " ".join(str(assessment.get(key) or "").split())
-        if len(text) > MAX_FIELD_CHARS:
-            text = text[:MAX_FIELD_CHARS] + "…"
+        text = _cut_at_word(" ".join(str(assessment.get(key) or "").split()), MAX_FIELD_CHARS)
         if text:
             lines.append(f"- {label}: {text}")
     signals = [str(label) for label in session.get("signals") or [] if str(label).strip()]

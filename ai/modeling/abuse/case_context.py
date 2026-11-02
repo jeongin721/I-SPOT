@@ -27,6 +27,7 @@ PROPOSAL_ai_suggestions_case_context.md §1. Backend(analysis_service)가 받는
 - 모양이 틀린 값은 조용히 버린다(분석을 멈추지 않는다). 아무것도 없으면 "없음".
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 #: 프롬프트에 쓰는 성별 · 보호자 유형 이름. 모르는 값은 쓰지 않는다.
@@ -63,7 +64,26 @@ EMPTY = "없음"
 
 
 def _text(value: Any, limit: int = MAX_TEXT_CHARS) -> str:
-    return value.strip()[:limit] if isinstance(value, str) else ""
+    """limit 자를 넘으면 낱말 중간에서 끊지 않고 그 앞 낱말까지만 남긴다. 이 글은 부르는 쪽이 자른 뒤에 등록 이름을
+    가리므로, 이름 한가운데서 끊으면 앞 글자("김바")가 가려지지 않고 나간다(2026-11-02, PR #138 Codex M3)."""
+
+    if not isinstance(value, str):
+        return ""
+
+    text = value.strip()
+
+    if len(text) <= limit:
+        return text
+
+    head = text[:limit]
+
+    if text[limit].isspace():
+        return head.rstrip()
+
+    # 잘린 마지막 낱말을 뺀다. 빈칸이 하나도 없으면(한 낱말이 limit 자를 넘음) 아무것도 남기지 않는다.
+    last_space = re.search(r"\s(?=\S*$)", head)
+
+    return head[: last_space.start()].rstrip() if last_space else ""
 
 
 def _label(value: Any, labels: Dict[str, str]) -> str:

@@ -46,8 +46,15 @@ def _session_label(session_no: int | None, current: bool) -> str:
 
 
 def _shorten(text: str, limit: int = MAX_RECORD_CHARS) -> str:
+    """limit 자를 넘으면 낱말 중간에서 끊지 않고 그 앞 낱말까지 + "…". 사례 기록은 자른 뒤에 가리므로(pipeline._mask_case), 등록
+    이름 한가운데서 끊으면 앞 글자("김바")가 가려지지 않고 나간다(2026-11-02, backend PR #138 Codex M3). 빈칸 없이 넘으면 "…" 만."""
     normalized = " ".join((text or "").split())
-    return normalized if len(normalized) <= limit else normalized[: limit - 1].rstrip() + "…"
+    if len(normalized) <= limit:
+        return normalized
+    head = normalized[: limit - 1]
+    if normalized[limit - 1] != " ":
+        head = head.rsplit(" ", 1)[0] if " " in head else ""
+    return head.rstrip() + "…"
 
 
 def _date_label(value: Any) -> str:
