@@ -2,6 +2,12 @@
 #
 # docs/02_ARCHITECTURE.md §4 의 공통 상태 흐름을 Backend 에서 강제한다.
 # Frontend 가 순서를 건너뛰어 호출해도 DB 가 잘못된 상태로 남지 않게 한다.
+#
+# 회차 자료가 두 가지다(SessionSource, 2026-11-02).
+#   AUDIO(녹음): CREATED → AUDIO_UPLOADED → STT … → AI_REVIEW_REQUIRED → APPROVED (아래 표).
+#   DOCUMENT(상담 기록 문서): CREATED → AI_REVIEW_REQUIRED → APPROVED. 첫 이동은 문서 업로드 창구만 하고(표 밖,
+#     source_document_service), 그 뒤(승인 · 승인 풀기)는 이 표를 그대로 쓴다. 문서 회차는 음성 · 전사 · AI 분석 · 위험도
+#     판단 창구에서 409 다(analysis_service · risk_assessment_service 가 먼저 막는다).
 
 from typing import Dict, Set
 
@@ -12,8 +18,9 @@ from app.core.errors import invalid_session_state
 _ALLOWED_TRANSITIONS: Dict[SessionStatus, Set[SessionStatus]] = {
     SessionStatus.CREATED: {
         SessionStatus.AUDIO_UPLOADED,
-        # 상담 기록 문서를 올리면 1 · 2단계 없이 바로 3단계(요약 검수)로 간다(source_document_service, 2026-11-02).
-        SessionStatus.AI_REVIEW_REQUIRED,
+        # CREATED → AI_REVIEW_REQUIRED(상담 기록 문서 회차, 2026-11-02)는 이 표에 넣지 않는다. 표에 있으면 음성 회차의
+        # 어느 창구에서도 열리기 때문이다. 문서 업로드 창구(source_document_service.claim_document_session)만
+        # source=DOCUMENT 와 함께 조건부 UPDATE 로 옮긴다(민규 의견).
     },
     SessionStatus.AUDIO_UPLOADED: {
         SessionStatus.AUDIO_UPLOADED,  # 재업로드

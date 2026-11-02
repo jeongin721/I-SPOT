@@ -19,6 +19,9 @@ MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENT_CHARS = 30000
 #: docx · hwpx 안에서 읽는 XML 전체 크기 상한(압축을 푼 크기).
 MAX_XML_BYTES = 40 * 1024 * 1024
+#: PDF 쪽 수 상한. 남이 만든 PDF 를 서버에서 여는 것이라(깨진 파일의 무한 반복 · 메모리 폭주 보안 공지가 여러 번 나온 영역)
+#: 쪽 수와 뽑은 글자 수를 먼저 막고, 글자 뽑기 전체에는 따로 제한 시간을 둔다(source_document_service, 민규 의견).
+MAX_PDF_PAGES = 50
 
 ALLOWED_EXTENSIONS = (".txt", ".docx", ".hwpx", ".pdf")
 
@@ -116,8 +119,20 @@ def _pdf(data: bytes) -> str:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
             raise _invalid("암호가 걸린 PDF 는 읽지 못합니다. 암호를 풀어 다시 올려 주세요.")
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except PdfReadError as error:
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise _invalid(f"PDF 가 {MAX_PDF_PAGES}쪽을 넘습니다. 이 회차 상담 기록만 올려 주세요.")
+        parts: List[str] = []
+        total = 0
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            parts.append(text)
+            total += len(text)
+            # 글자 상한을 넘으면 더 읽지 않는다(어차피 422 — extract_text 가 길이로 막는다).
+            if total > MAX_DOCUMENT_CHARS:
+                break
+        return "\n".join(parts)
+    except (PdfReadError, ValueError, KeyError, TypeError, RecursionError) as error:
+        # 깨진 PDF 는 pypdf 안에서 여러 종류 예외로 끝난다. 문구는 고정(원인 문구에 파일 내용이 섞일 수 있다).
         raise _invalid("PDF 파일이 손상됐거나 형식이 맞지 않습니다.") from error
 
 

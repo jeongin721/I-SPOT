@@ -19,8 +19,8 @@ from app.adapters.ai_adapter import AI_TIMEOUT_MESSAGE, AIError, accepts_keyword
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionStatus
-from app.core.errors import ErrorCode, not_found
+from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionSource, SessionStatus
+from app.core.errors import ErrorCode, conflict, not_found
 from app.core.logging import get_logger
 from app.models.analysis import AIAnalysis
 from app.models.session import ConsultationSession
@@ -115,6 +115,14 @@ def request_analysis(
     """
     AI 분석을 예약한다. 확정된 Transcript 가 없으면 시작하지 않는다.
     """
+
+    # 상담 기록 문서 회차(2026-11-02)는 전사본이 없어 분석할 것이 없다. 4단계 초안은 '3단계 내용으로 초안 다시 만들기'
+    # (POST …/source-document/followups)로 만든다(민규 의견 — 재분석 전이로 들어가지 않게 먼저 막는다).
+    if session.source == SessionSource.DOCUMENT:
+        raise conflict(
+            ErrorCode.INVALID_SESSION_STATE,
+            "상담 기록 문서로 만든 회차는 AI 분석을 하지 않습니다. 다음 상담 준비에서 '3단계 내용으로 초안 다시 만들기' 를 써 주세요.",
+        )
 
     # 작업이 사라져 멈춘 처리 중 상태면 먼저 실패로 마감해 재시도를 허용한다.
     session_service.expire_stale_processing(db, session)

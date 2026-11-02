@@ -72,6 +72,18 @@ CREATED
 
 실패 시 재시도 가능한 상태/오류 정보를 유지한다.
 
+**상담 기록 문서 회차**(2026-11-02, `backend/docs/API_CONTRACT.md` 20절): 상담사가 이미 쓴 상담 기록 문서를 새 회차에 올리면
+회차 자료가 `source = DOCUMENT` 가 되고 음성 · STT · AI 분석 단계를 건너뛴다.
+
+```text
+CREATED
+→ AI_REVIEW_REQUIRED   (문서 업로드 창구만 — 문서 문장을 상담 요약 · 상담 일지 칸에 옮긴 초안을 상담사가 확인)
+→ APPROVED
+```
+
+이 첫 이동은 상태 전이 표(`backend/app/core/state_machine.py`)에 넣지 않고 문서 업로드 창구만 한다(음성 회차에서 열리지 않게).
+사람 검토를 건너뛰는 것이 아니다 — 3단계에서 상담사가 확인 · 수정 · 승인한다. 문서 회차는 음성 · 전사 · AI 분석 · 위험도 판단 창구에서 409 다.
+
 승인 뒤 고칠 일이 생기면 상담사가 요약 승인을 풀어 `APPROVED → AI_REVIEW_REQUIRED` 로 돌아가고,
 쓴 내용을 그대로 고친 뒤 다시 승인한다(`backend/docs/API_CONTRACT.md` 9절 `summary/reopen`).
 
@@ -94,6 +106,7 @@ Base:
 /sessions/{session_id}/summary
 /sessions/{session_id}/documents
 /sessions/{session_id}/voice-marks
+/sessions/{session_id}/source-document
 ```
 
 성공:

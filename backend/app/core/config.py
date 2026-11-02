@@ -182,6 +182,8 @@ class Settings(BaseSettings):
     CLOSURE_SUMMARY_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
     #: 상담 기록 문서 → 상담 일지 칸 채우기 · 4단계 초안 AI 제한 시간(동기 요청, API_CONTRACT 20절).
     DOCUMENT_NOTE_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
+    #: 문서 글자 뽑기(PDF · docx · hwpx)만의 제한 시간. LLM 시간과 따로 둔다(깨진 PDF 가 오래 붙잡지 않게).
+    DOCUMENT_TEXT_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0)
     #: 종결 요약 AI 서버 전체 동시 실행 수(사례마다는 1건).
     CLOSURE_SUMMARY_MAX_CONCURRENCY: int = Field(default=2, ge=1)
     # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 작업 시작이 늦었거나 모델 준비가 길었으면

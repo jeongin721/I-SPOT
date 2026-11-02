@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -37,7 +37,7 @@ from app.models.source_document import SessionSourceDocument
 from app.models.summary import ConsultationSummary
 from app.models.user import User
 from app.schemas.source_document import SourceDocumentResponse
-from app.services import audit_service, session_service
+from app.services import audit_service
 from app.services.document_text import extract_text
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,33 @@ def to_response(row: SessionSourceDocument) -> SourceDocumentResponse:
     )
 
 
+def claim_document_session(db: Session, session: ConsultationSession) -> None:
+    """CREATED · AUDIO 회차를 문서 회차(AI_REVIEW_REQUIRED · DOCUMENT)로 옮긴다. 상태 전이 표 밖의 이동이라 여기서만 한다.
+
+    조건부 UPDATE(status=CREATED · source=AUDIO 일 때만)라 두 문서가 겹치거나 그사이 음성이 올라오면 늦은 쪽은 409.
+    ai_completed_at 을 올린 시각으로 채운다 — 홈 처리 대기 업무가 검수 대기 시간을 이 값으로 센다(task_service).
+    """
+
+    now = datetime.now(timezone.utc)
+    claimed = db.execute(
+        update(ConsultationSession)
+        .where(
+            ConsultationSession.id == session.id,
+            ConsultationSession.status == SessionStatus.CREATED,
+            ConsultationSession.source == SessionSource.AUDIO,
+        )
+        .values(status=SessionStatus.AI_REVIEW_REQUIRED, source=SessionSource.DOCUMENT, ai_completed_at=now)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if claimed != 1:
+        db.rollback()
+        raise conflict(ErrorCode.INVALID_SESSION_STATE, "다른 요청이 먼저 이 회차에 자료를 올렸습니다. 새로고침해 주세요.")
+    session.status = SessionStatus.AI_REVIEW_REQUIRED
+    session.source = SessionSource.DOCUMENT
+    session.ai_completed_at = now
+    session.clear_error()
+
+
 def upload(db: Session, session: ConsultationSession, current_user: User, *, filename: str, data: bytes) -> SessionSourceDocument:
     # 새 회차(음성 · 문서 없음)에만 올린다. 녹음 회차를 문서 회차로 바꾸지 않는다.
     assert_status_in(session.status, {SessionStatus.CREATED})
@@ -141,7 +168,17 @@ def upload(db: Session, session: ConsultationSession, current_user: User, *, fil
     if has_audio or get_row(db, session.id) is not None:
         raise conflict(ErrorCode.INVALID_SESSION_STATE, "이미 자료를 올린 회차입니다. 새 회차에 올려 주세요.")
 
-    text = extract_text(filename, data)
+    # 글자 뽑기만 따로 제한 시간을 둔다. 넘으면 422(파일 문제로 본다). thread 는 강제로 멈추지 못하지만 쪽 수 ·
+    # 글자 수 상한(document_text)으로 오래 도는 일을 줄인다.
+    try:
+        text = run_with_timeout(lambda: extract_text(filename, data), settings.DOCUMENT_TEXT_TIMEOUT_SECONDS)
+    except (OperationTimeout, TimeoutError) as error:
+        logger.warning("문서 글자 뽑기 제한 시간 초과 session_id=%s", session.id)
+        raise APIError(
+            ErrorCode.VALIDATION_ERROR,
+            "문서를 읽는 데 너무 오래 걸립니다. 파일이 손상됐을 수 있습니다. 다른 형식(.docx · .hwpx · .txt)으로 저장해 올려 주세요.",
+            status_code=422,
+        ) from error
     file_format = filename.rsplit(".", 1)[-1].lower()
 
     if settings.AI_PROVIDER == "modeling":
@@ -158,12 +195,7 @@ def upload(db: Session, session: ConsultationSession, current_user: User, *, fil
     assessment_in = result.get("assessment") or {}
     note_in = result.get("note") or {}
 
-    # 상태를 먼저 잡는다(같은 회차에 두 문서가 겹쳐 들어오면 한쪽은 409).
-    session_service.claim_status(db, session, SessionStatus.AI_REVIEW_REQUIRED)
-    session.source = SessionSource.DOCUMENT
-    now = datetime.now(timezone.utc)
-    session.ai_completed_at = now
-    session.clear_error()
+    claim_document_session(db, session)
 
     row = SessionSourceDocument(
         session_id=session.id,

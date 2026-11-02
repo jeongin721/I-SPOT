@@ -307,3 +307,88 @@ def test_rule_based_note_reads_headings_and_colons() -> None:
     assert note["note"]["opinion"] == "첫 줄\n둘째 줄"
     plain = dn.rule_based_note("머리줄 없는 글")
     assert plain["overview"] == "머리줄 없는 글" and not any(plain["note"].values())
+
+
+def _pdf(pages: int) -> bytes:
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=200, height=200)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("data", "needle"),
+    [
+        (_pdf(51), "50쪽"),  # 쪽이 아주 많은 PDF
+        (_pdf(1), "글자를 찾지"),  # 글자 없는(스캔) PDF
+        (b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF", "PDF"),  # 깨진 구조
+        (b"%PDF-1.4\n" + b"\x00" * 2048, "PDF"),
+    ],
+)
+def test_pdf_limits_and_broken_files(client: TestClient, counselor_headers, session: dict, data, needle) -> None:
+    response = _upload(client, counselor_headers, session["id"], "a.pdf", data)
+
+    assert response.status_code == 422, response.text
+    assert needle in response.json()["error"]["message"]
+
+
+def test_text_extraction_has_its_own_time_limit(client: TestClient, counselor_headers, session: dict, monkeypatch) -> None:
+    """글자 뽑기가 오래 걸리면 LLM 까지 기다리지 않고 422(DOCUMENT_TEXT_TIMEOUT_SECONDS)."""
+
+    import threading as _threading
+
+    gate = _threading.Event()
+    monkeypatch.setattr(settings, "DOCUMENT_TEXT_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(source_document_service, "extract_text", lambda *_: gate.wait(2) or "")
+
+    response = _upload(client, counselor_headers, session["id"])
+    gate.set()
+
+    assert response.status_code == 422 and "오래 걸립니다" in response.json()["error"]["message"]
+    detail = client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).json()["data"]
+    assert detail["status"] == "CREATED"
+
+
+LEVEL = __import__("app.core.enums", fromlist=["RiskLevel"]).RiskLevel.HIGH.value
+
+
+def test_document_sessions_refuse_audio_paths(client: TestClient, counselor_headers, session: dict) -> None:
+    """문서 회차는 음성 · 전사 · 분석 · 위험도 판단 창구에서 500 이 아니라 404 · 409(민규 의견)."""
+
+    _upload(client, counselor_headers, session["id"])
+    base = f"/api/v1/sessions/{session['id']}"
+
+    analysis = client.post(f"{base}/analysis", headers=counselor_headers)
+    overall = client.put(f"{base}/risk-assessment", json={"counselor_level": LEVEL, "reason": "가상"}, headers=counselor_headers)
+    typed = client.put(f"{base}/risk-assessments/PHYSICAL", json={"counselor_level": LEVEL, "reason": "가상"}, headers=counselor_headers)
+
+    assert analysis.status_code == 409 and "초안 다시 만들기" in analysis.json()["error"]["message"]
+    assert overall.status_code == 409 and typed.status_code == 409, (overall.text, typed.text)
+    for method, path in [("post", "/transcript"), ("post", "/transcript/confirm"), ("get", "/audio"), ("get", "/audio/file")]:
+        assert getattr(client, method)(base + path, headers=counselor_headers).status_code in (404, 409)
+    for path in ("/transcript", "/analysis", "/voice-marks", "/risk-assessment", "/risk-assessments"):
+        assert client.get(base + path, headers=counselor_headers).status_code == 200
+
+
+def test_upload_fills_ai_completed_at_for_task_waiting_time(client: TestClient, counselor_headers, session: dict, db) -> None:
+    from app.models.session import ConsultationSession
+
+    _upload(client, counselor_headers, session["id"])
+    row = db.get(ConsultationSession, __import__("uuid").UUID(session["id"]))
+    item = client.get("/api/v1/tasks", headers=counselor_headers).json()["data"]["items"][0]
+
+    assert row.ai_completed_at is not None
+    assert item["waiting_since"].startswith(row.ai_completed_at.strftime("%Y-%m-%dT%H:%M"))
+
+
+def test_created_to_review_is_not_open_to_audio_paths() -> None:
+    """CREATED → AI_REVIEW_REQUIRED 는 전이 표에 없다(문서 업로드 창구만 옮긴다)."""
+
+    from app.core.enums import SessionStatus
+    from app.core.state_machine import can_transition
+
+    assert not can_transition(SessionStatus.CREATED, SessionStatus.AI_REVIEW_REQUIRED)
