@@ -93,10 +93,17 @@ export interface FollowupItem {
   reason: string;
   /** 검토를 통과한 공식 근거(rag). 같은 문장의 메모와 합쳐지면 메모 쪽으로 옮겨 붙는다. */
   sources: SourceView[];
-  /** 저장(18.1)할 때 넣을 이번 회차 발화 번호. 메모는 segment_ids, rag 는 이번 회차 사례 근거의 segment_id. */
+  /** 저장(18.1)할 때 넣을 이번 회차 발화 번호. 메모는 segment_ids, rag 는 이번 회차 사례 근거의 segment_id(합치면 합집합). */
   segmentIds: string[];
   /** 근거가 지난 회차 확정 요약뿐인 메모의 회차 이름('7회차'). rag 는 null. */
   previousLabel: string | null;
+  /**
+   * 사례 근거가 모두 18.1 저장 값(segmentIds · previousLabel)에 남는가. 메모는 늘 true, rag 는 사례 근거가 모두 이번 회차
+   * 발화일 때만 true(앞 회차 · 아이 앱 근거는 18.1 에 남길 칸이 없다). 합친 줄은 모두 true 일 때만 true.
+   */
+  exact: boolean;
+  /** rag 근거 위치(why · href)가 가리키는 이번 회차 발화 번호. 그 발화가 원문에 없으면 위치를 다시 잡는다. 아니면 null. */
+  whereSegment: string | null;
 }
 
 /** rag 확인 사항 종류 → 칩 글자(19절 kind). */
@@ -150,6 +157,8 @@ export function toFollowupItems(
       sources: [],
       segmentIds: Array.isArray(point.segment_ids) ? point.segment_ids.filter((id) => typeof id === "string") : [],
       previousLabel: previous || null,
+      exact: true,
+      whereSegment: null,
     });
   });
 
@@ -175,6 +184,10 @@ export function ragCheckItems(
 
     const where = caseWhy(item.basis, ids);
     const sources = officialSources(item.basis, `r${index}`);
+    const cases = item.basis.filter((basis) => basis && basis.type === "case");
+    const current = (basis: (typeof cases)[number]) =>
+      basis.session_id === ids.sessionId && typeof basis.segment_id === "string" && basis.segment_id !== "";
+    const firstCase = cases[0];
     const chips = ["AI 초안", CHECK_KIND_LABELS[item.kind] ?? "확인"];
 
     if (item.priority === "high") chips.push("우선");
@@ -191,15 +204,10 @@ export function ragCheckItems(
       reason: typeof item.reason === "string" ? item.reason.trim() : "",
       sources,
       // 저장은 그 회차 최신 전사본의 번호만 받는다(18.1). 이번 회차 사례 근거의 발화 번호만 넣는다.
-      segmentIds: Array.from(
-        new Set(
-          item.basis
-            .filter((basis) => basis && basis.type === "case" && basis.session_id === ids.sessionId)
-            .map((basis) => (typeof basis.segment_id === "string" ? basis.segment_id : ""))
-            .filter(Boolean),
-        ),
-      ),
+      segmentIds: Array.from(new Set(cases.filter(current).map((basis) => basis.segment_id as string))),
       previousLabel: null,
+      exact: cases.every(current),
+      whereSegment: firstCase && current(firstCase) ? (firstCase.segment_id as string) : null,
     });
   });
 
@@ -217,11 +225,17 @@ export function normalizeCheckText(text: string): string {
 
 /**
  * AI 확인 메모와 rag 확인 사항을 한 목록으로(팀장님 10/29 결정 ③ — 메모를 없애지 않고 합치고 중복을 없앤다).
- * 순서는 메모 먼저(받은 순서), 그 뒤 rag. 같은 문장(공백 · 문장부호를 빼고 같음)이면 메모를 남기고 rag 쪽 공식 근거를 메모에 붙인다.
- * rag 항목이 하나라도 있으면 메모에 'AI 확인 메모' 칩을 달아 둘을 구분한다. 공식 근거 칩은 여기서 마지막에 센다.
+ * 순서는 메모 먼저(받은 순서), 그 뒤 rag. 같은 문장(공백 · 문장부호를 빼고 같음)이면 메모를 남기고 rag 쪽 공식 근거를 메모에 붙인다
+ * (저장할 발화 번호는 합집합). rag 항목이 하나라도 있으면 메모에 'AI 확인 메모' 칩을 달아 둘을 구분한다. 공식 근거 칩은 여기서 마지막에 센다.
+ * 근거 위치(why · href)는 settleCheckItems 가 마지막 번호로 다시 잡는다.
  */
 export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): FollowupItem[] {
-  const merged = memo.map((item) => ({ ...item, chips: [...item.chips], sources: [...item.sources] }));
+  const merged = memo.map((item) => ({
+    ...item,
+    chips: [...item.chips],
+    sources: [...item.sources],
+    segmentIds: [...item.segmentIds],
+  }));
   const byText = new Map(merged.map((item) => [normalizeCheckText(item.text), item]));
   const extra: FollowupItem[] = [];
 
@@ -230,6 +244,9 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
 
     if (same) {
       same.withRag = true;
+      // 저장할 번호는 둘의 합집합(메모에 번호가 없어도 rag 의 이번 회차 근거가 남게), 앞 회차 근거가 섞이면 exact 가 아니다.
+      same.segmentIds = Array.from(new Set([...same.segmentIds, ...item.segmentIds]));
+      same.exact = same.exact && item.exact;
       const seen = new Set(same.sources.map((source) => `${source.label}|${source.excerpt}`));
       item.sources.forEach((source) => {
         if (!seen.has(`${source.label}|${source.excerpt}`)) same.sources.push(source);
@@ -238,7 +255,7 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
     }
 
     // 더한 rag 항목도 색인에 넣어 뒤에 오는 같은 문장(rag 끼리)이 한 번만 보이게 한다(#125 교차검증 R2).
-    const added = { ...item, chips: [...item.chips], sources: [...item.sources] };
+    const added = { ...item, chips: [...item.chips], sources: [...item.sources], segmentIds: [...item.segmentIds] };
     extra.push(added);
     byText.set(normalizeCheckText(item.text), added);
   });
@@ -258,6 +275,43 @@ export function mergeCheckItems(memo: FollowupItem[], rag: FollowupItem[]): Foll
   return all;
 }
 
+/**
+ * 합친 목록의 발화 번호를 원문(최신 전사본)에 있는 것만 남기고 근거 위치를 남은 번호로 다시 잡는다.
+ * 18.1 은 그 회차 최신 전사본의 번호만 받으므로 하나 때문에 목록 전체 저장이 422 로 막히지 않게 하고(#125 재검증 L2),
+ * 저장에서 뺀 발화로 가는 링크가 남지 않게 한다(L4). 원문을 못 받았으면(sourceReady false) 번호를 지우지 않는다(서버가 거른다).
+ *  - 메모(와 합쳐진 rag): 원문 위치 → 지난 회차 확정 요약 → '근거 위치 없음'(toFollowupItems 와 같은 규칙).
+ *  - rag 줄: rag 사례 근거의 위치를 쓰되, 그 위치가 이번 회차 발화인데 원문에 없으면 남은 번호(없으면 '근거 위치 없음')로 바꾼다.
+ */
+export function settleCheckItems(
+  items: FollowupItem[],
+  locate: RiskSignalsState["locate"],
+  sourceReady: boolean,
+  ids: { caseId?: string | null; sessionId?: string | null },
+): FollowupItem[] {
+  return items.map((item) => {
+    const segmentIds = sourceReady
+      ? locate(item.segmentIds).evidence.filter((entry) => entry.found).map((entry) => entry.segmentId)
+      : item.segmentIds;
+
+    if (item.origin === "rag" && !(sourceReady && item.whereSegment && !segmentIds.includes(item.whereSegment))) {
+      return { ...item, segmentIds };
+    }
+
+    const located = locate(segmentIds);
+    const first = located.evidence[0]?.segmentId ?? null;
+    const previous = !first && item.previousLabel ? item.previousLabel : "";
+
+    return {
+      ...item,
+      segmentIds,
+      why: located.label || (previous ? `${previous} 확정 요약` : "근거 위치 없음"),
+      href: first ? segmentHref(ids, first) : null,
+      fromPrevious: Boolean(previous),
+      whereSegment: item.origin === "rag" ? first : null,
+    };
+  });
+}
+
 /** 합친 목록(mergeCheckItems) → 18.1 저장 꼴 초안. 모두 source AI 이고 아직 고르지 않음(in_briefing false). */
 export function checksFromItems(items: FollowupItem[]): FollowupCheck[] {
   return items.map((item) => ({
@@ -266,25 +320,38 @@ export function checksFromItems(items: FollowupItem[]): FollowupCheck[] {
     segment_ids: item.segmentIds,
     edited: false,
     in_briefing: false,
+    // 18.1 의 지난 회차 이름은 근거가 지난 회차 확정 요약'뿐'인 메모에만(발화 번호가 있으면 넣지 않는다).
     previous_session_label:
-      item.previousLabel && /^[0-9]{1,4}회차$/.test(item.previousLabel) ? item.previousLabel : null,
+      item.segmentIds.length === 0 && item.previousLabel && /^[0-9]{1,4}회차$/.test(item.previousLabel)
+        ? item.previousLabel
+        : null,
   }));
+}
+
+/** 서버 시각 → 마이크로초(서버는 소수 6자리까지 준다. Date 는 밀리초까지라 나머지를 따로 더한다 — #125 재검증 L3). */
+function backendMicros(iso: string): number | null {
+  const fraction = /\.(\d+)/.exec(iso)?.[1] ?? "";
+  const at = parseBackendTime(iso.replace(/\.\d+/, ""));
+
+  if (!at) return null;
+
+  return at.getTime() * 1000 + Number(`${fraction}000000`.slice(0, 6));
 }
 
 /**
  * 저장한 확인 사항(18.1 updated_at)과 지금 체크리스트(19절 completed_at) 중 무엇이 나중인가. 둘 중 하나라도 시각을 모르면 null.
- * 같은 서버 시계라 비교할 수 있다(시간대 표시가 없으면 UTC — parseBackendTime).
+ * 같은 서버 시계라 비교할 수 있다(시간대 표시가 없으면 UTC — parseBackendTime). 같은 시각이면 저장이 나중으로 본다.
  */
 export function savedVsMade(
   savedAt: string | null | undefined,
   madeAt: string | null | undefined,
 ): "saved-later" | "made-later" | null {
-  const saved = savedAt ? parseBackendTime(savedAt) : null;
-  const made = madeAt ? parseBackendTime(madeAt) : null;
+  const saved = savedAt ? backendMicros(savedAt) : null;
+  const made = madeAt ? backendMicros(madeAt) : null;
 
-  if (!saved || !made) return null;
+  if (saved === null || made === null) return null;
 
-  return saved.getTime() >= made.getTime() ? "saved-later" : "made-later";
+  return saved >= made ? "saved-later" : "made-later";
 }
 
 const sameIds = (a: string[], b: string[]): boolean => {
@@ -304,6 +371,8 @@ const sameIds = (a: string[], b: string[]): boolean => {
  * 'saved-later')만 붙인다. 목록을 저장한 뒤 체크리스트를 만들었으면(다시 만들기 · 재분석, 'made-later') 저장한 줄은 저장한 값으로만
  * 보이고 — 같은 문장의 새 결과가 근거를 바꿔 보이지 않게(#125 재검증 M1) — pending 이 목록에 없는 rag 항목(같은 문장으로 메모와
  * 합쳐진 것 포함, M2)을 [목록에 더하기] 로 내놓는다. 저장 뒤 새로 만들지 않았으면 pending 은 없다(고친 rag 원문을 다시 권하지 않는다, L1).
+ * 또 저장한 줄은 그 항목의 사례 근거가 모두 18.1 값에 남을 때(exact — 이번 회차 발화뿐)만 붙인다. 앞 회차 · 아이 앱 근거는 18.1 에
+ * 남지 않아, 같은 문장 · 같은 번호라도 근거가 바뀌었는지 알 수 없다(메모와 합쳐진 rag 포함 — #125 재검증 4 M1).
  */
 export function ragCheckAnnotations(
   merged: FollowupItem[],
@@ -321,6 +390,8 @@ export function ragCheckAnnotations(
     if (!item || (item.chips.length === 0 && item.sources.length === 0)) return null;
     // 문장만 같고 근거 발화가 다른 항목에는 붙이지 않는다.
     if (!sameIds(Array.isArray(check.segment_ids) ? check.segment_ids : [], item.segmentIds)) return null;
+    // 저장한 줄은 사례 근거가 모두 저장 값에 남는 항목만(앞 회차 · 아이 앱 근거가 섞이면 같은 항목인지 알 수 없다).
+    if (saved && !item.exact) return null;
 
     return {
       chips: item.chips,
@@ -441,15 +512,14 @@ export function followupQValues(input: FollowupScreenInput) {
   const completed = analyzed && view !== null && view.status === "COMPLETED";
   const rag = checklistValues(input.checklist, view, analyzed, ids);
   // 저장 전 초안 · 줄 표시에 쓰는 합친 목록(AI 확인 메모 + rag 확인 사항, 메모 먼저 · 같은 문장 한 번).
-  // 18.1 은 그 회차 최신 전사본에 있는 번호만 받으므로, 원문을 받았으면 원문에 없는 번호는 뺀다(하나 때문에 목록 전체 저장이
-  // 422 로 막히지 않게 — #125 재검증 L2). 원문을 못 받았으면 그대로 두고 서버가 거른다.
-  const present = (segmentIds: string[]) =>
-    signals.sourceReady ? signals.locate(segmentIds).evidence.filter((entry) => entry.found).map((entry) => entry.segmentId) : segmentIds;
+  // 발화 번호는 원문에 있는 것만 남기고 근거 위치를 다시 잡는다(settleCheckItems — 상담 전 브리핑과 같은 목록).
   const merged = completed
-    ? mergeCheckItems(toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids), rag.items).map((item) => ({
-        ...item,
-        segmentIds: present(item.segmentIds),
-      }))
+    ? settleCheckItems(
+        mergeCheckItems(toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids), rag.items),
+        signals.locate,
+        signals.sourceReady,
+        ids,
+      )
     : [];
   const withRag = rag.items.length > 0;
   const annotations = ragCheckAnnotations(merged, {

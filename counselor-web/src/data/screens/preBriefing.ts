@@ -29,7 +29,14 @@ import { formatClock } from "../time";
 import { NOT_PROVIDED } from "../caseRows";
 import { caseHeaderValues } from "./caseDetail";
 import { NOT_READY } from "./common";
-import { checklistValues, mergeCheckItems, ragCheckAnnotations, savedVsMade, toFollowupItems } from "./followupQ";
+import {
+  checklistValues,
+  mergeCheckItems,
+  ragCheckAnnotations,
+  savedVsMade,
+  settleCheckItems,
+  toFollowupItems,
+} from "./followupQ";
 import { questionChip } from "./followupQuestions";
 import { screenHref } from "./links";
 
@@ -98,8 +105,14 @@ export function preBriefingValues(input: BriefingScreenInput) {
   const ids = source ? { caseId: source.caseId, sessionId: source.id } : { caseId: input.caseId };
 
   const rag = checklistValues(input.checklist, view, completed, ids);
+  // 다음 상담 준비 화면과 같은 목록 · 같은 발화 번호(원문에 없는 번호를 빼고 위치를 다시 잡음 — settleCheckItems).
   const merged = completed
-    ? mergeCheckItems(toFollowupItems(view.followupCheckPoints ?? [], signals.signals.locate, ids), rag.items)
+    ? settleCheckItems(
+        mergeCheckItems(toFollowupItems(view.followupCheckPoints ?? [], signals.signals.locate, ids), rag.items),
+        signals.signals.locate,
+        signals.signals.sourceReady,
+        ids,
+      )
     : [];
   // 저장한 줄의 rag 표시는 목록을 지금 체크리스트가 끝난 뒤에 저장했을 때만(다음 상담 준비 화면과 같은 규칙, #125 재검증 M1).
   const { annotate } = ragCheckAnnotations(merged, {
