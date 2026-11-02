@@ -462,7 +462,7 @@ export interface TranscriptSegment {
   end_ms: number;
   text: string;
   /**
-   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 모두 0.0).
+   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 단어 logprob 이 없을 때만 0.0).
    * 저신뢰 표시는 0 < confidence < 0.7 로 한다(API_CONTRACT.md 7절).
    */
   confidence: number;
