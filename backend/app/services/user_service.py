@@ -1,7 +1,7 @@
 # 계정 관리 및 로그인.
 #
-# 자유 회원가입은 제공하지 않는다.(03_BACKEND_PROMPT.md §10)
-# 계정은 관리자 API 또는 seed script 로만 생성된다.
+# 계정은 관리자 API · seed script 로 만들거나, 회원가입 신청을 관리자가 승인할 때 생긴다(2026-11-02, signup_service).
+# 신청만으로는 계정이 생기지 않는다(03_BACKEND_PROMPT.md §10 의 '자유 회원가입 없음' 을 승인제로 바꿈).
 
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -414,26 +414,32 @@ def authenticate(
 # 계정 생성 / 조회
 # =========================================================
 
-def create_user(
+def add_user(
     db: Session,
-    payload: UserCreateRequest,
-    actor: Optional[User] = None,
+    *,
+    email: str,
+    hashed_password: str,
+    name: str,
+    role: UserRole,
+    actor: Optional[User],
+    password_changed_at: datetime,
+    via: Optional[str] = None,
 ) -> User:
     """
-    계정 생성. 누가 만들었는지 감사 로그(USER_CREATED)에 남긴다.
+    계정 행을 넣고 감사 로그(USER_CREATED)를 남긴다. 커밋은 호출 측이 한다.
 
-    actor 는 만든 관리자다. 서버에서 직접 만드는 경로는 actor 없이 남는다.
+    관리자 계정 생성(create_user)과 회원가입 승인(signup_service.approve)이 같이 쓴다. 비밀번호 규칙은
+    호출 측이 이미 봤다(승인은 신청 때 본 해시를 그대로 옮긴다). 이메일이 이미 있으면 그때까지의 변경을
+    모두 되돌리고 409 다.
     """
 
-    validate_password(payload.password, email=payload.email, name=payload.name)
-
     user = User(
-        email=payload.email.lower(),
-        hashed_password=hash_password(payload.password),
-        name=payload.name,
-        role=payload.role,
+        email=email.lower(),
+        hashed_password=hashed_password,
+        name=name,
+        role=role,
         is_active=True,
-        password_changed_at=datetime.now(timezone.utc),
+        password_changed_at=password_changed_at,
     )
 
     db.add(user)
@@ -450,13 +456,44 @@ def create_user(
         ) from error
 
     # 이메일 · 이름은 남기지 않는다. 계정 id 와 역할만 남긴다.
+    detail = {"role": user.role.value}
+
+    if via:
+        detail["via"] = via
+
     audit_service.record(
         db,
         action=AuditAction.USER_CREATED,
         entity_type="User",
         entity_id=user.id,
         actor_id=actor.id if actor else None,
-        detail={"role": user.role.value},
+        detail=detail,
+    )
+
+    return user
+
+
+def create_user(
+    db: Session,
+    payload: UserCreateRequest,
+    actor: Optional[User] = None,
+) -> User:
+    """
+    계정 생성. 누가 만들었는지 감사 로그(USER_CREATED)에 남긴다.
+
+    actor 는 만든 관리자다. 서버에서 직접 만드는 경로는 actor 없이 남는다.
+    """
+
+    validate_password(payload.password, email=payload.email, name=payload.name)
+
+    user = add_user(
+        db,
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        name=payload.name,
+        role=payload.role,
+        actor=actor,
+        password_changed_at=datetime.now(timezone.utc),
     )
 
     db.commit()

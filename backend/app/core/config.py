@@ -107,6 +107,23 @@ class Settings(BaseSettings):
     PASSWORD_HISTORY_COUNT: int = Field(default=3, ge=0, le=20)
 
     # ---------------------------------------------------------
+    # 회원가입 (이메일 인증번호 → 대기 신청 → 관리자 승인, 2026-11-02, API_CONTRACT 3절 '회원가입')
+    # ---------------------------------------------------------
+    # 끄면(기본) 인증번호 보내기 · 확인 · 신청이 503 SIGNUP_DISABLED 다. 설정 조회와 관리자 승인 창구는 그대로 쓴다.
+    # 인증번호 횟수 · 시간 같은 숫자는 팀과 정한 값이라 설정이 아니라 signup_service 상수다.
+    SIGNUP_ENABLED: bool = False
+    # 받을 이메일 도메인(콤마 구분, 정확히 일치 — 하위 도메인은 따로 적는다). 비면 전부 받는다.
+    SIGNUP_ALLOWED_EMAIL_DOMAINS: Annotated[List[str], NoDecode] = Field(default_factory=list)
+
+    # 메일 발송기(app/adapters/mail_adapter.py).
+    #   fake    — 보내지 않고 프로세스 메모리에 담는다(시험 · 기본).
+    #   console — 본문(인증번호 포함)을 표준 출력에 찍는다. 로컬에서 화면을 붙여 볼 때만, ENV=production 이면 서버가 뜨지 않는다.
+    #   ses     — AWS SES(boto3). 자격은 EC2 역할에서 받는다(접근 키를 .env 에 두지 않는다). 보내는 주소는 SES 에서 인증한 것.
+    MAIL_PROVIDER: Literal["fake", "console", "ses"] = "fake"
+    SES_FROM_ADDRESS: str = ""
+    SES_REGION: str = "ap-northeast-2"
+
+    # ---------------------------------------------------------
     # CORS
     # ---------------------------------------------------------
     # NoDecode: pydantic-settings 가 env 값을 JSON 으로 먼저 decode 하지 않게 해서
@@ -265,7 +282,7 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------
     LOG_LEVEL: str = "INFO"
 
-    @field_validator("CORS_ORIGINS", "AUDIO_ALLOWED_EXTENSIONS", mode="before")
+    @field_validator("CORS_ORIGINS", "AUDIO_ALLOWED_EXTENSIONS", "SIGNUP_ALLOWED_EMAIL_DOMAINS", mode="before")
     @classmethod
     def _split_comma_separated(cls, value: object) -> object:
         """.env 에서 콤마 구분 문자열로도 설정할 수 있게 한다."""
@@ -274,6 +291,13 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
 
         return value
+
+    @field_validator("SIGNUP_ALLOWED_EMAIL_DOMAINS")
+    @classmethod
+    def _normalize_email_domains(cls, value: List[str]) -> List[str]:
+        """소문자로 맞추고 앞의 '@' 는 뗀다(`@example.org` 로 적어도 같게)."""
+
+        return [domain.strip().lower().lstrip("@") for domain in value if domain.strip().lstrip("@")]
 
     @field_validator("PASSWORD_PASSPHRASE_LENGTH")
     @classmethod
@@ -466,6 +490,44 @@ class Settings(BaseSettings):
             "같거나 크면 법령 질의에 넘기는 마감 시각이 시작과 같거나 앞서 모든 질문이 바로 AI_TIMEOUT 으로 끝납니다. "
             f"지금 값: AI_DEADLINE_MARGIN_SECONDS={self.AI_DEADLINE_MARGIN_SECONDS}, "
             f"LAW_QA_TIMEOUT_SECONDS={self.LAW_QA_TIMEOUT_SECONDS}"
+        )
+
+    @model_validator(mode="after")
+    def _block_console_mail_in_production(self) -> "Settings":
+        """운영에서 console 발송기로 서버가 뜨지 않게 한다. console 은 인증번호가 든 메일 본문을 서버 출력에 찍는다."""
+
+        if self.ENV != "production" or self.MAIL_PROVIDER != "console":
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 MAIL_PROVIDER=console 로 서버를 시작하지 않습니다. "
+            "console 은 인증번호가 든 메일 본문을 서버 출력(로그)에 찍습니다. 운영은 MAIL_PROVIDER=ses 를 쓰세요."
+        )
+
+    @model_validator(mode="after")
+    def _require_ses_for_signup_in_production(self) -> "Settings":
+        """운영에서 가입을 켰는데 메일이 실제로 나가지 않는 발송기면 서버가 뜨지 않게 한다.
+
+        fake 로 켜면 인증번호가 아무에게도 가지 않는 공개 가입 창구가 열린다(누구도 가입할 수 없고, 문제도 바로 보이지 않는다).
+        """
+
+        if self.ENV != "production" or not self.SIGNUP_ENABLED or self.MAIL_PROVIDER == "ses":
+            return self
+
+        raise ValueError(
+            "ENV=production 에서 SIGNUP_ENABLED=true 이면 MAIL_PROVIDER=ses 여야 합니다. "
+            f"지금 값: MAIL_PROVIDER={self.MAIL_PROVIDER} — 인증번호 메일이 실제로 나가지 않습니다."
+        )
+
+    @model_validator(mode="after")
+    def _ses_needs_from_address(self) -> "Settings":
+        """ses 발송기는 보내는 주소가 있어야 한다(모든 환경). 비어 있으면 첫 발송에서야 실패한다."""
+
+        if self.MAIL_PROVIDER != "ses" or self.SES_FROM_ADDRESS.strip():
+            return self
+
+        raise ValueError(
+            "MAIL_PROVIDER=ses 이면 SES_FROM_ADDRESS(SES 에서 인증한 보내는 주소)를 설정해야 합니다."
         )
 
     @property
