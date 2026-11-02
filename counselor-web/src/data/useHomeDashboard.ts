@@ -1,4 +1,5 @@
-// 홈(대시보드) 훅. GET /cases(진행 중 건수만) + GET /tasks/summary + GET /tasks(오래 기다린 것부터 HOME_TASK_COUNT 건 — 디자인의 세 줄).
+// 홈(대시보드) 훅. GET /cases(진행 중 건수만) + GET /tasks/summary + 업무 종류마다 GET /tasks?task_type=(가장 오래 기다린 1건과 건수).
+// 10/30 디자인 '미처리 업무' 는 종류별 한 줄(칩 = 업무 이름 · '별칭 n회차 외' · 오른쪽 건수)이다. 오래 기다린 종류부터 HOME_TASK_COUNT 줄.
 //
 // 상담사는 담당 사례 · 업무만, 관리자는 전체 사례 · 모든 상담사의 업무가 온다(Backend 가 거른다).
 // 관리자도 업무를 자기 것으로 좁히지 않는다(counselor_id) — 사례 목록에는 담당자로 거르는 조건이 없어,
@@ -13,18 +14,21 @@
 // signal-history 는 분석 결과 · 전사본 화자까지 읽어 홈에 쓰기엔 무겁다(민규 #122 리뷰). 한 사례가 실패해도 그 줄만 값 없이 둔다.
 
 import { cases, riskAssessments, tasks } from "../api/endpoints";
-import type { RiskLevel, SessionStatus, TaskSummary } from "../api/types";
+import { TASK_LABELS, type RiskLevel, type SessionStatus, type TaskSummary, type TaskType } from "../api/types";
 import type { AuthSession } from "./useAuthSession";
 import { toTaskRow, type TaskRow } from "./adminRows";
 import { sessionStep, type SessionStep } from "./sessionRows";
 import { useRemote } from "./useRemote";
 
-/** 홈에 줄로 보이는 업무 수. 나머지는 건수만 보인다. */
+/** 홈에 줄로 보이는 업무 종류 수. 나머지 종류는 건수만 보인다. */
 export const HOME_TASK_COUNT = 3;
 
+/** 업무 종류 한 줄. 행 값은 그 종류에서 가장 오래 기다린 회차다. */
 export interface HomeTask extends TaskRow {
   /** 회차 처리 단계. 이어서 할 화면을 고르는 데 쓴다. */
   step: SessionStep;
+  /** 이 종류의 업무 수. */
+  count: number;
 }
 
 /** 홈 '진행 중 내담자' 카드에 줄로 보이는 사례 수. */
@@ -45,7 +49,7 @@ export interface HomeDashboardData {
   /** 최근 등록한 진행 중 사례 HOME_CASE_COUNT 건. */
   cases: HomeCase[];
   summary: TaskSummary;
-  /** 오래 기다린 것부터 HOME_TASK_COUNT 건까지. */
+  /** 업무가 있는 종류 전부(가장 오래 기다린 회차가 앞선 종류부터). 화면은 앞 HOME_TASK_COUNT 줄만 그린다. */
   tasks: HomeTask[];
 }
 
@@ -59,10 +63,11 @@ export interface HomeDashboardState {
 }
 
 async function loadHomeDashboard(): Promise<HomeDashboardData> {
-  const [casePage, summary, taskPage] = await Promise.all([
+  const taskTypes = Object.keys(TASK_LABELS) as TaskType[];
+  const [casePage, summary, typePages] = await Promise.all([
     cases.list({ status: "ACTIVE", page: 1, page_size: HOME_CASE_COUNT }),
     tasks.summary(),
-    tasks.list({ page: 1, page_size: HOME_TASK_COUNT }),
+    Promise.all(taskTypes.map((task_type) => tasks.list({ task_type, page: 1, page_size: 1 }))),
   ]);
   const now = Date.now();
   const homeCases = await Promise.all(
@@ -88,7 +93,13 @@ async function loadHomeDashboard(): Promise<HomeDashboardData> {
     activeCases: casePage.meta.total,
     cases: homeCases,
     summary,
-    tasks: taskPage.items.map((item) => ({ ...toTaskRow(item, now), step: sessionStep(item.session_status).step })),
+    tasks: typePages
+      .flatMap((page) =>
+        page.items[0]
+          ? [{ ...toTaskRow(page.items[0], now), step: sessionStep(page.items[0].session_status).step, count: page.meta.total }]
+          : [],
+      )
+      .sort((a, b) => a.waitingSinceAt - b.waitingSinceAt),
   };
 }
 

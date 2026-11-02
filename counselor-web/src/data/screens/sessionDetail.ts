@@ -3,7 +3,7 @@
 // 회차 정보는 useSessionDetail, 사례 별칭 · 다른 회차 목록은 useCaseDetail(회차의 사례)로 그린다.
 // 화면 주소에 session 만 있어도 된다. 사례는 회차 정보의 case_id 를 믿는다(주소의 case 와 다르면 회차 쪽을 쓴다).
 //
-// Backend 에 없는 값: 상담 유형(정기 · 방문) · 위험 신호 채택/보류 → '—' · 준비 중.
+// Backend 에 없는 값: 위험 신호 채택/보류 → '—' · 준비 중.
 // '추가 확인 · 질문' 칸은 승인한 추가 질문 수(useFollowupQuestions, 18절)를 보인다.
 
 import type { CaseDetailState } from "../useCaseDetail";
@@ -66,7 +66,7 @@ export function sessionHeaderValues({ session, ids, detail, caseDetail }: Sessio
     sessionHref: screenHref("/SessionDetail", sessionIds),
     sessionLabel: sv ? sv.numberLabel : "",
     alias: info ? info.alias : "",
-    /** 상담일 · 장소. 넣지 않았으면 '—'. 상담 유형은 Backend 에 없다. */
+    /** 상담일 · 장소. 넣지 않았으면 '—'. */
     sub: sv ? `상담일 ${sv.consultedDate} · 장소 ${sv.location}` : "",
     ids: sessionIds,
   };
@@ -129,7 +129,8 @@ export function sessionPickValues(input: SessionScreenInput, page: string) {
 
       return {
         no: row.numberLabel,
-        meta: dateOf(row),
+        // 디자인 '8/7(금) 정기상담' — 상담일(없으면 등록일) 뒤에 상담 유형.
+        meta: row.consultationType ? `${dateOf(row)} ${row.kindLabel}` : dateOf(row),
         st: row.statusLabel,
         stCls: TONE_CHIP[row.tone],
         on: on ? "true" : "false",
@@ -214,7 +215,7 @@ export function sessionDetailValues(input: SessionScreenInput) {
     cur: sv
       ? {
           no: sv.numberLabel,
-          meta: `${header.sub} · 상담 유형 ${NOT_PROVIDED} · 녹음 ${sv.audio ? sv.audio.durationLabel : NOT_PROVIDED} · 담당 ${counselor}`,
+          meta: `${header.sub} · 상담 유형 ${sv.kindLabel} · 녹음 ${sv.audio ? sv.audio.durationLabel : NOT_PROVIDED} · 담당 ${counselor}`,
           status: sv.statusLabel,
           st: TONE_CHIP[sv.tone],
         }

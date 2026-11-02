@@ -1,6 +1,6 @@
 // 새 사례 등록(CaseRegister · 서식 4 초기면접지 팝업) 화면 값. useCaseRegister 로 서버가 받는 칸만 저장한다.
 //
-// 저장하는 칸: 사례 제목 · 아동 별칭(필수), 개별사건번호(비우면 자동) · 성별 · 출생연도 · 보호자 유형(기타면 보호자 메모) · 사례 메모,
+// 저장하는 칸: 사례 제목 · 아동 별칭(필수), 신고접수일 · 사례연계일 · 최초면접일(2026-10-30), 개별사건번호(비우면 자동) · 성별 · 출생연도 · 보호자 유형(기타면 보호자 메모) · 사례 메모,
 // ② 초기면접 내용의 아동 특성 · 가정상황(서식 4 항목 고르기), 담당 상담원(관리자만 고름, 상담원은 본인).
 // 실명 · 가족 칸(2026-10-30 팀 결정 — 서버가 암호화해 저장): 대상아동 이름 · 생년월일 · 사례관리대상자(이름 · 관계 · 생년월일) ·
 // 면접대상자 / 관계, ② 가족관계 표 · 건강정도. 칸 값 · 확인은 personalFields.ts · personalInfo.ts, 사례와 한 요청(personal_info)으로 보낸다.
@@ -8,7 +8,7 @@
 // 등록되면 새 사례의 상세(?case=새 ID)로 간다. 초기면접 아동 특성 · 가정상황은 사례 상세(caseDetail.ts, 등록 뒤 고치기도 여기서)와
 // 상담 일지(noteWrite.ts)에 단어로 보인다.
 // 나머지 서식 4 칸은 서버에 칸이 없어(specs 대응표 CaseRegister 줄) 입력을 막고 '준비 중' 으로 둔다:
-//  - 신고접수일 · 사례연계일 · 최초면접일 · 조치결과 · 위험도 · 사례연계 경위
+//  - 조치결과 · 위험도 · 사례연계 경위
 //  - ② 초기면접 내용 탭의 보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견
 // 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다. 막은 칸의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않는다.
 
@@ -156,7 +156,7 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     notice: screenNotice({ session }),
     formError: register.error ? notice(register.error, { alert: true }) : null,
     savedNote:
-      "서버에 저장하는 칸: 사례 제목 · 아동 별칭 · 개별사건번호 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원, " +
+      "서버에 저장하는 칸: 사례 제목 · 신고접수일 · 사례연계일 · 최초면접일 · 아동 별칭 · 개별사건번호 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원, " +
       "② 초기면접 내용의 가정상황 · 아동 특성. 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 " +
       "암호화해 저장하고 담당 상담원 · 관리자만 봅니다. " +
       `'${NOT_READY}' 칸은 서버에 칸이 없어 입력할 수 없습니다.`,
@@ -197,6 +197,10 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     showGuardianNote: form.guardianType === "OTHER",
     guardianNote: { ...field("guardianNote"), max: GUARDIAN_NOTE_MAX },
     notes: { ...field("notes"), max: CASE_NOTES_MAX },
+    // 서식 4 ① 날짜 셋(2026-10-30 저장 연결).
+    reportDate: field("reportDate"),
+    linkedDate: field("linkedDate"),
+    firstInterviewDate: field("firstInterviewDate"),
     isAdmin,
     counselor: field("counselorId"),
     counselorOptions: register.counselors,

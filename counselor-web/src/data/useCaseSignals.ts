@@ -42,12 +42,16 @@ export interface CaseSignalsState {
   shownCount: number;
 }
 
-export function useCaseSignals(detail: CaseDetailState, { enabled = true }: { enabled?: boolean } = {}): CaseSignalsState {
+export function useCaseSignals(
+  detail: CaseDetailState,
+  { enabled = true, needEvidence = false }: { enabled?: boolean; needEvidence?: boolean } = {},
+): CaseSignalsState {
   const session = latestAnalyzedSession(detail.sessions);
   const sessionId = session?.id ?? null;
   const analysis = useSessionAnalysis(sessionId, { enabled });
   const risk = useOverallRiskAssessment(sessionId, { enabled });
-  const signals = useRiskSignals(sessionId, analysis.analysis, { enabled });
+  // needEvidence: 분석 결과 밖(저장한 확인 사항 · 체크리스트)에만 발화 근거가 있어도 원문을 받는다(브리핑, #125 재검증).
+  const signals = useRiskSignals(sessionId, analysis.analysis, { enabled, needEvidence });
 
   return {
     session,

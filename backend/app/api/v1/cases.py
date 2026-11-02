@@ -11,14 +11,23 @@ from app.core.responses import DataResponse, PagedItems, paged
 from app.schemas.case import (
     CaseCreateRequest,
     CaseDetailResponse,
+    CaseListItemResponse,
     CaseResponse,
     CaseUpdateRequest,
 )
 from app.schemas.auth import UserResponse
+from app.schemas.case_personal_info import PersonalInfoRequest, PersonalInfoResponse
 from app.schemas.common import StorableQueryText
 from app.schemas.session import SessionCreateRequest, SessionResponse
 from app.schemas.signal_history import SignalHistoryResponse
-from app.services import case_service, session_service, signal_history_service
+from app.schemas.closure_review import ClosureSummaryResponse, ClosureSummarySaveRequest
+from app.services import (
+    case_service,
+    closure_review_service,
+    personal_info_service,
+    session_service,
+    signal_history_service,
+)
 from app.services.access import get_case_or_404
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -55,7 +64,7 @@ def _case_response(case) -> CaseResponse:
     return item
 
 
-@router.get("", response_model=DataResponse[PagedItems[CaseResponse]])
+@router.get("", response_model=DataResponse[PagedItems[CaseListItemResponse]])
 def list_cases(
     db: DbSession,
     current_user: CurrentUser,
@@ -65,7 +74,9 @@ def list_cases(
     # NUL 이 든 검색어는 422 다(SQL 파라미터로 쓰이므로 PostgreSQL 이 거절해 500 이 된다).
     # StorableQueryText 는 Query(...) 뒤에 둔다(common.py).
     search: Annotated[Optional[str], Query(max_length=100), StorableQueryText] = None,
-) -> DataResponse[PagedItems[CaseResponse]]:
+    # 아동 실명을 실을지(API_CONTRACT 4절 '개인 식별 정보'). 실명을 보여 주는 화면만 true 로 부른다 — 그때만 복호화하고 열람 기록 1줄을 남긴다.
+    with_child_name: bool = False,
+) -> DataResponse[PagedItems[CaseListItemResponse]]:
     cases, total = case_service.list_cases(
         db,
         current_user,
@@ -75,12 +86,19 @@ def list_cases(
         search=search,
     )
 
+    names = (
+        personal_info_service.child_names(db, current_user, [case.id for case, _, _ in cases])
+        if with_child_name
+        else {}
+    )
+
     items = []
 
     for case, last_session_at, counselor_name in cases:
-        item = CaseResponse.model_validate(case)
+        item = CaseListItemResponse.model_validate(case)
         item.last_session_at = last_session_at
         item.counselor_name = counselor_name
+        item.child_name = names.get(case.id)
         items.append(item)
 
     return DataResponse(data=paged(items, total, page, page_size))
@@ -142,6 +160,42 @@ def get_signal_history(
     return DataResponse(data=signal_history_service.build_signal_history(db, case))
 
 
+@router.get("/{case_id}/personal-info", response_model=DataResponse[PersonalInfoResponse])
+def get_personal_info(
+    case_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[PersonalInfoResponse]:
+    """
+    사례의 개인 식별 정보(아동 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도). API_CONTRACT 4절 '개인 식별 정보'.
+
+    서버는 암호화해 저장하고, 권한(GET /cases/{case_id} 와 같음)을 통과하면 풀어서 준다.
+    부를 때마다 열람 기록(CASE_PERSONAL_INFO_VIEWED)을 남긴다. 저장 전이면 registered=false 와 빈 값이다.
+    """
+
+    case = get_case_or_404(db, case_id, current_user)
+
+    return DataResponse(data=personal_info_service.get_personal_info(db, case, current_user))
+
+
+@router.put("/{case_id}/personal-info", response_model=DataResponse[PersonalInfoResponse])
+def put_personal_info(
+    case_id: uuid.UUID,
+    payload: PersonalInfoRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[PersonalInfoResponse]:
+    """
+    개인 식별 정보를 보낸 값으로 통째로 바꾼다(빠진 칸 · null 은 지움). API_CONTRACT 4절 '개인 식별 정보'.
+
+    바뀐 칸이 있으면 수정 기록(CASE_PERSONAL_INFO_UPDATED, 칸 이름만)을 남긴다. 생년월일을 넣으면 사례의 출생연도도 그 해로 맞춘다.
+    """
+
+    case = get_case_or_404(db, case_id, current_user)
+
+    return DataResponse(data=personal_info_service.put_personal_info(db, case, current_user, payload))
+
+
 @router.patch("/{case_id}", response_model=DataResponse[CaseResponse])
 def update_case(
     case_id: uuid.UUID,
@@ -153,6 +207,62 @@ def update_case(
     updated = case_service.update_case(db, case, current_user, payload)
 
     return DataResponse(data=_case_response(updated))
+
+
+@router.post("/{case_id}/closure-review", response_model=DataResponse[CaseResponse])
+def register_closure_review(
+    case_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[CaseResponse]:
+    """종결 검토에 등록한다(4절, 2026-10-30). 진행 중 사례만, 이미 등록됐으면 그대로."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    updated = case_service.set_closure_review(db, case, current_user, register=True)
+
+    return DataResponse(data=_case_response(updated))
+
+
+@router.delete("/{case_id}/closure-review", response_model=DataResponse[CaseResponse])
+def cancel_closure_review(
+    case_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[CaseResponse]:
+    """종결 검토 등록을 취소한다. 등록 전이면 그대로."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    updated = case_service.set_closure_review(db, case, current_user, register=False)
+
+    return DataResponse(data=_case_response(updated))
+
+
+@router.get("/{case_id}/closure-summary", response_model=DataResponse[ClosureSummaryResponse])
+def get_closure_summary(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[ClosureSummaryResponse]:
+    """종결 검토 요약 · 보고서(4절, 2026-10-30). 만들기 전이면 summary null."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    return DataResponse(data=closure_review_service.to_response(case, closure_review_service.get_row(db, case.id)))
+
+
+@router.post("/{case_id}/closure-summary", response_model=DataResponse[ClosureSummaryResponse])
+def generate_closure_summary(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[ClosureSummaryResponse]:
+    """승인 완료 회차 요약으로 종결 요약을 (다시) 만든다. 동기 응답, 넘으면 504."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    row = closure_review_service.generate(db, case, current_user)
+    return DataResponse(data=closure_review_service.to_response(case, row))
+
+
+@router.put("/{case_id}/closure-summary", response_model=DataResponse[ClosureSummaryResponse])
+def save_closure_summary(
+    case_id: uuid.UUID, payload: ClosureSummarySaveRequest, db: DbSession, current_user: CurrentUser
+) -> DataResponse[ClosureSummaryResponse]:
+    """확인 체크 · 고친 문장 · 종결보고서 칸을 저장한다(보낸 칸만)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    row = closure_review_service.save(db, case, current_user, payload)
+    return DataResponse(data=closure_review_service.to_response(case, row))
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)

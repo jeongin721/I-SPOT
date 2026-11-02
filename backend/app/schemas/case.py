@@ -1,8 +1,10 @@
 # Case Schema.
-# 개인정보 최소 저장 원칙에 따라 아동 실명 필드를 두지 않는다.
+# 개인정보 최소 저장 원칙에 따라 일반 사례 응답에는 아동 실명 필드를 두지 않는다.
+# 실명 · 생년월일 · 가족 정보는 암호화해 따로 두고(case_personal_info.py) 전용 창구로만 오간다.
+# 예외: 새 사례 등록의 personal_info(요청), 목록 with_child_name=true 의 child_name(CaseListItemResponse).
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, List, Optional
 
 from pydantic import (
@@ -21,7 +23,8 @@ from app.core.intake import (
     normalize_intake,
 )
 from app.schemas.auth import UserResponse
-from app.schemas.common import RequestModel
+from app.schemas.case_personal_info import PersonalInfoRequest
+from app.schemas.common import IsoDate, RequestModel
 
 # 초기면접 고르기 항목 한 개 · 한 칸에 보낼 수 있는 개수. 서식 항목보다 넉넉하게 두고 실제 값은 normalize_intake 가 거른다.
 IntakeItem = Annotated[str, StringConstraints(max_length=50)]
@@ -61,12 +64,32 @@ class GuardianFields(RequestModel):
         return self
 
 
+# 서식 4 ① 날짜 셋(2026-10-30). 'YYYY-MM-DD' 날짜만, 1900-01-01 ~ 2100-12-31.
+CASE_DATE_FIELDS = ("report_date", "linked_date", "first_interview_date")
+_CASE_DATE_MIN = date(1900, 1, 1)
+_CASE_DATE_MAX = date(2100, 12, 31)
+
+
+def _case_date(value: Optional[date]) -> Optional[date]:
+    if value is not None and not (_CASE_DATE_MIN <= value <= _CASE_DATE_MAX):
+        raise ValueError("날짜는 1900-01-01 부터 2100-12-31 까지만 쓸 수 있습니다.")
+    return value
+
+
 class CaseCreateRequest(GuardianFields):
+    # personal_info(실명 · 가족)를 실을 수 있어 검증 오류 문구에 입력값을 넣지 않는다 — 하위 모델만 가리면 부모 오류에 값이
+    # 남는다(Codex #127 재검증 R4). 422 응답은 원래 값을 빼고 보낸다(main.py).
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     title: str = Field(..., min_length=1, max_length=200)
     child_alias: str = Field(..., min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     child_gender: Optional[str] = Field(default=None, max_length=10)
     notes: Optional[str] = Field(default=None, max_length=4000)
+    # 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①). 비우면 null.
+    report_date: Optional[IsoDate] = None
+    linked_date: Optional[IsoDate] = None
+    first_interview_date: Optional[IsoDate] = None
 
     # 초기면접(서식 4 ②)에서 고른 아동 특성 · 가정상황. 서식 항목만 받고(그 밖은 422) 겹친 항목은 하나로 합친다.
     intake_child_traits: List[IntakeItem] = Field(
@@ -82,10 +105,18 @@ class CaseCreateRequest(GuardianFields):
     # 미지정 시 Backend 가 C-YYYY-NNNN 형식으로 생성한다.
     case_number: Optional[str] = Field(default=None, min_length=1, max_length=50)
 
+    # 새 사례 등록 화면의 실명 · 생년월일 · 가족 정보(API_CONTRACT 4절 '개인 식별 정보'). 사례와 한 거래로 암호화해 저장한다. 응답에는 싣지 않는다.
+    personal_info: Optional[PersonalInfoRequest] = None
+
     @field_validator("intake_child_traits", "intake_family_situations")
     @classmethod
     def _check_intake(cls, values: List[str], info) -> List[str]:
         return _intake(values, info.field_name)
+
+    @field_validator(*CASE_DATE_FIELDS)
+    @classmethod
+    def _check_date(cls, value: Optional[date]) -> Optional[date]:
+        return _case_date(value)
 
 
 # 초기면접 칸은 비울 때 빈 목록을 보낸다(null 은 거부).
@@ -107,6 +138,10 @@ class CaseUpdateRequest(GuardianFields):
     notes: Optional[str] = Field(default=None, max_length=4000)
     status: Optional[CaseStatus] = None
     counselor_id: Optional[uuid.UUID] = None
+    # 날짜 셋(서식 4 ①). null 을 보내면 비운다.
+    report_date: Optional[IsoDate] = None
+    linked_date: Optional[IsoDate] = None
+    first_interview_date: Optional[IsoDate] = None
     # 보내면 저장된 목록을 통째로 바꾼다(빈 목록 = 모두 지움).
     intake_child_traits: Optional[List[IntakeItem]] = Field(
         default=None, max_length=_INTAKE_MAX_ITEMS
@@ -119,6 +154,11 @@ class CaseUpdateRequest(GuardianFields):
     @classmethod
     def _check_intake(cls, values: Optional[List[str]], info) -> Optional[List[str]]:
         return _intake(values, info.field_name)
+
+    @field_validator(*CASE_DATE_FIELDS)
+    @classmethod
+    def _check_date(cls, value: Optional[date]) -> Optional[date]:
+        return _case_date(value)
 
     @model_validator(mode="after")
     def _check_note_usage(self) -> "CaseUpdateRequest":
@@ -162,6 +202,12 @@ class CaseResponse(BaseModel):
     # 초기면접에서 고른 항목(서식 4 의 이름 그대로). 고르지 않았거나 칸이 생기기 전 사례면 빈 목록.
     intake_child_traits: List[str] = Field(default_factory=list)
     intake_family_situations: List[str] = Field(default_factory=list)
+    # 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①, 2026-10-30). 넣지 않았으면 null.
+    report_date: Optional[date] = None
+    linked_date: Optional[date] = None
+    first_interview_date: Optional[date] = None
+    # 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null.
+    closure_review_at: Optional[datetime] = None
     status: CaseStatus
     notes: Optional[str]
     counselor_id: uuid.UUID
@@ -179,6 +225,12 @@ class CaseResponse(BaseModel):
     @classmethod
     def _null_as_empty(cls, value):
         return [] if value is None else value
+
+
+class CaseListItemResponse(CaseResponse):
+    # 아동 실명(API_CONTRACT 4절 '개인 식별 정보'). GET /cases?with_child_name=true 일 때만 채운다(그때 열람 기록 1줄). 없거나 안 물으면 null.
+    # repr · str 에는 넣지 않는다(디버그 로그에 객체를 찍어도 실명이 새지 않게, Codex #127 R4).
+    child_name: Optional[str] = Field(default=None, repr=False)
 
 
 class CaseDetailResponse(CaseResponse):

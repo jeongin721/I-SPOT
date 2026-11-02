@@ -37,6 +37,9 @@ services:
       AUDIO_STORAGE_ROOT: /app/storage/audio
       # 운영에서는 반드시 .env 로 교체한다.
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-only-change-me-0123456789abcdef}
+      # 개인 식별 정보 키. 기본값은 공개된 개발용 키(ENV=production 이면 서버가 뜨지 않음). backend/README.md 7절.
+      PII_ENCRYPTION_KEYS: ${PII_ENCRYPTION_KEYS:-dev1:aXNwb3QtbG9jYWwtZGV2LW9ubHktcGlpLWtleS0wMDE=}
+      PII_INDEX_KEY: ${PII_INDEX_KEY:-aXNwb3QtbG9jYWwtZGV2LW9ubHktaW5kZXgta2V5LTE=}
       CORS_ORIGINS: http://localhost:3000
       STT_PROVIDER: ${STT_PROVIDER:-mock}
       AI_PROVIDER: ${AI_PROVIDER:-mock}

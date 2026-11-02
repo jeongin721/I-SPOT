@@ -2,7 +2,7 @@
 //
 // 10/22 디자인(counselor-design/screens/CaseIntake.dc.html): 문서함의 '초기면접지 (아동용)' 를 열면 팝업 대신 사례 상세 안에서
 // 새 사례 등록과 같은 서식이 사례 값으로 채워져 열린다.
-// 고칠 수 있는 칸은 사례에 저장된 칸뿐이다(사례 제목 · 아동 별칭 · 성별 · 출생연도 · 보호자 유형(기타면 관계 메모) · 사례 메모,
+// 고칠 수 있는 칸은 사례에 저장된 칸뿐이다(사례 제목 · 날짜 셋(신고접수일 · 사례연계일 · 최초면접일, 2026-10-30) · 아동 별칭 · 성별 · 출생연도 · 보호자 유형(기타면 관계 메모) · 사례 메모,
 // ② 가정상황 · 아동 특성, 담당 상담원은 관리자만). 바꾼 칸만 보낸다(useCaseIntake 의 toCaseUpdateRequest).
 // 개별사건번호는 수정 요청이 받지 않아 읽기만 한다.
 // 실명 · 가족 칸(대상아동 이름 · 생년월일 · 사례관리대상자 · 면접대상자 · ② 가족관계 · 건강정도)은 usePersonalInfo 로 불러와
@@ -12,7 +12,7 @@
 // PUT 이 실패하면 출생연도와 생년월일이 어긋나기 때문이다(Codex #129 R2). PUT 이 되면 사례 값을 조용히 다시 받는다.
 // PATCH 는 됐는데 PUT 이 실패하면 '사례 칸은 저장했고 실명 · 가족 칸은 못 했다' 고 나눠 알린다.
 // 나머지 서식 4 칸은 서버에 칸이 없어 입력을 막고 '준비 중' 으로 둔다:
-//  - 신고접수일 · 사례연계일 · 최초면접일 · 조치결과 · 위험도 · 사례연계 경위
+//  - 조치결과 · 위험도 · 사례연계 경위
 //  - ② 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견)
 // 이 칸들의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않고, AI 가 미리 고르거나 채우지 않는다.
 // 디자인의 '임시 저장' · '확정' 은 서식의 작성 기록 · 확정 상태가 서버에 없어(문서함 기관 서식 줄과 같은 까닭) '저장' 하나로 둔다.
@@ -357,6 +357,10 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     showGuardianNote: form !== null && form.guardianType === "OTHER",
     guardianNote: { ...field("guardianNote"), max: GUARDIAN_NOTE_MAX },
     notes: { ...field("notes"), max: CASE_NOTES_MAX },
+    // 서식 4 ① 날짜 셋(2026-10-30 저장 연결).
+    reportDate: field("reportDate"),
+    linkedDate: field("linkedDate"),
+    firstInterviewDate: field("firstInterviewDate"),
     isAdmin,
     counselor: field("counselorId"),
     counselorOptions,
