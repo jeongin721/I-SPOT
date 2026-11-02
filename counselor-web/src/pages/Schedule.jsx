@@ -436,7 +436,7 @@ function ScheduleScreen(props) {
                     <>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <span className="lb">아이 (사례)</span>
-                        <select className="in" value={f.child} onChange={v.setChild}>
+                        <select className="in" value={f.child} onChange={v.setChild} disabled={v.caseLocked}>
                           {(v.caseOptions || []).map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.label}
@@ -472,7 +472,7 @@ function ScheduleScreen(props) {
                         <>
                           <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <span className="lb">아이 (사례)</span>
-                            <select className="in" value={f.child} onChange={v.setChild}>
+                            <select className="in" value={f.child} onChange={v.setChild} disabled={v.caseLocked}>
                               {(v.caseOptions || []).map((o) => (
                                 <option key={o.value} value={o.value}>
                                   {o.label}

@@ -1264,6 +1264,8 @@ export interface ScheduleEvent {
   /** 볼 수 있는 사례일 때만(팀 공유 일정의 남의 사례는 null). */
   case_id: string | null;
   child_alias: string | null;
+  /** 사례가 붙어 있지만 지금 볼 수 없어 가렸는가(담당이 바뀐 사례 등). 고칠 때 사례 칸을 보내지 않는다. 옛 서버면 키가 없다. */
+  case_hidden?: boolean;
   title: string | null;
   /** YYYY-MM-DD. */
   date: string;

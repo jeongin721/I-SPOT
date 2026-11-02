@@ -30,11 +30,14 @@ function writeIds(ids) {
 
 const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
-/** 기한 알림을 찾는 기간: 오늘 앞뒤 30일 접수(기한이 30일까지라서). */
+/**
+ * 기한 알림을 찾는 기간: 오늘 365일 전 ~ 30일 뒤 접수(기한이 30일까지라서). 완료하지 않은 기한은 지나도 이 기간 안에서는
+ * '기한 지남' 으로 계속 보인다(민규 #131 교차검증 R5 — 전에는 접수 뒤 61일이 지나면 빠졌다). 서버 한 번 조회 상한은 400일.
+ */
 function bellRange() {
   const now = new Date();
   return {
-    from: ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30)),
+    from: ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 365)),
     to: ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30)),
   };
 }

@@ -56,7 +56,7 @@ export interface ScheduleUiState {
   form: ScheduleForm;
   view: ScheduleViewKey | null;
   /** 고치는 일정 id(없으면 새 일정). */
-  edit: { id: string; allDay: boolean } | null;
+  edit: { id: string; allDay: boolean; caseHidden?: boolean } | null;
   delAsk: boolean;
 }
 
@@ -435,7 +435,7 @@ export function scheduleValues(input: ScheduleInput) {
             shared: ev.shared,
             link: ev.kind === "OTHER" && ev.category !== "INTAKE" ? ev.case_id ?? "" : "",
           },
-          edit: { id: ev.id, allDay: ev.time === null },
+          edit: { id: ev.id, allDay: ev.time === null, caseHidden: Boolean(ev.case_hidden) },
           delAsk: false,
         });
       },
@@ -445,15 +445,19 @@ export function scheduleValues(input: ScheduleInput) {
   const selDate = new Date(s.y, s.m, s.sel);
   const isIntake = !isC && s.form.pcat === "INTAKE";
   const needsCase = isC || isIntake;
-  const chosenCase = s.form.child || caseOptions[0]?.id || "";
+  // 담당이 바뀌어 사례가 가려진 일정을 고칠 때는 사례 칸을 잠그고 보내지 않는다(민규 #131 교차검증 R2 — 가려진 칸을 첫 사례로
+  // 채워 보내 기한이 다른 사례로 옮겨 갔다).
+  const caseLocked = Boolean(s.edit?.caseHidden);
+  const chosenCase = caseLocked ? "" : s.form.child || caseOptions[0]?.id || "";
 
   const save = async () => {
     if (busy) return;
     const f = s.form;
     const caseId = needsCase ? chosenCase : f.link || null;
-    if (needsCase && !caseId) return;
+    if (needsCase && !caseId && !caseLocked) return;
     const date = s.edit ? f.date || `${s.y}-${pad2(s.m + 1)}-${pad2(s.sel)}` : `${s.y}-${pad2(s.m + 1)}-${pad2(s.sel)}`;
-    const time = f.time || (s.edit?.allDay ? null : "10:00");
+    // 시각을 비우면 종일(null)이다(R7 — 전에는 '10:00' 으로 저장됐다). 새 일정 창은 처음부터 10:00 이 들어 있다.
+    const time = f.time || null;
     const body: ScheduleEventCreate = isC
       ? { kind: "CONSULT", date, time, place: f.place, important: f.imp, case_id: caseId, consult_type: f.ctype }
       : {
@@ -467,7 +471,21 @@ export function scheduleValues(input: ScheduleInput) {
           title: isIntake ? null : f.title,
           shared: !isIntake && f.shared,
         };
-    const saved = s.edit ? await schedule.update(s.edit.id, body) : await schedule.create(body);
+    let saved;
+    if (s.edit) {
+      // 고칠 때는 바뀐 칸만 보낸다(R2). 가려진 사례는 사례 칸을 보내지 않는다.
+      const original = data?.events.find((event) => event.id === s.edit!.id);
+      const changes: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(body)) {
+        if (key === "case_id" && caseLocked) continue;
+        const before = original ? (original as unknown as Record<string, unknown>)[key] : undefined;
+        const norm = (x: unknown) => (x === "" || x === undefined ? null : x);
+        if (!original || norm(before) !== norm(value)) changes[key] = value;
+      }
+      saved = await schedule.update(s.edit.id, changes);
+    } else {
+      saved = await schedule.create(body);
+    }
     if (!saved) return;
     const at = parseYmd(saved.date);
     setUi({
@@ -531,11 +549,16 @@ export function scheduleValues(input: ScheduleInput) {
     isP: !isC,
     isIntake,
     notIntake: !isIntake,
-    caseOptions: caseOptions.map((c) => ({ value: c.id, label: c.alias })),
+    caseOptions: caseLocked
+      ? [{ value: "", label: "담당이 바뀐 사례 — 바꿀 수 없음" }]
+      : caseOptions.map((c) => ({ value: c.id, label: c.alias })),
+    caseLocked,
     consultOptions: (Object.keys(SCHEDULE_CONSULT_LABELS) as ScheduleConsultType[]).map((k) => ({ value: k, label: SCHEDULE_CONSULT_LABELS[k] })),
     categoryOptions: (Object.keys(SCHEDULE_CATEGORY_LABELS) as ScheduleCategory[]).map((k) => ({ value: k, label: SCHEDULE_CATEGORY_LABELS[k] })),
+    // 고치는 중이면 입력한 날짜로 미리 본다(R6 — 전에는 달력에서 고른 날을 읽어 옛 날짜가 보였다).
     dlPreview: INTAKE_TASKS.map(([n, task]) => {
-      const dd = new Date(s.y, s.m, s.sel + n);
+      const base = s.edit && s.form.date ? parseYmd(s.form.date) : { y: s.y, m: s.m, d: s.sel };
+      const dd = new Date(base.y, base.m, base.d + n);
       return { n: `${n}일 이내`, task, due: `${dd.getMonth() + 1}/${dd.getDate()}(${DAYS[dd.getDay()]})` };
     }),
     kindC: () => setUi({ kind: "c" }),
@@ -564,7 +587,7 @@ export function scheduleValues(input: ScheduleInput) {
     setPlace: setF("place"),
     briefNote: `상담 전날 브리핑 자동 준비는 ${NOT_READY}입니다.`,
     saveNote,
-    canSave: !busy && !(needsCase && !chosenCase),
+    canSave: !busy && !(needsCase && !chosenCase && !caseLocked),
     saveLabel: busy ? "저장 중…" : "저장",
     save,
   };

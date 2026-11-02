@@ -16,7 +16,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.enums import AuditAction, ScheduleCategory, ScheduleKind
-from app.core.errors import APIError, ErrorCode, forbidden, not_found
+from app.core.errors import APIError, ErrorCode, conflict, forbidden, not_found
 from app.models.case import Case
 from app.models.schedule import INTAKE_DEADLINE_DAYS, ScheduleEvent
 from app.models.user import User
@@ -54,6 +54,7 @@ def to_response(row: ScheduleEvent, user: User) -> ScheduleEventResponse:
         consult_type=row.consult_type,
         category=row.category,
         case_id=row.case_id if show_case else None,
+        case_hidden=row.case_id is not None and not show_case,
         child_alias=row.case.child_alias if show_case and row.case else None,
         title=row.title,
         date=row.event_date,
@@ -73,6 +74,9 @@ def to_response(row: ScheduleEvent, user: User) -> ScheduleEventResponse:
 
 
 def list_events(db: Session, user: User, start: date, end: date) -> List[ScheduleEvent]:
+    # 날짜 범위는 저장과 같게 1900 ~ 2100(민규 #131 교차검증 R9 — 0001-01-01 에서 30일을 빼다 500 이었다).
+    if not (date(1900, 1, 1) <= start <= date(2100, 12, 31)) or not (date(1900, 1, 1) <= end <= date(2100, 12, 31)):
+        raise _invalid("날짜는 1900-01-01 부터 2100-12-31 까지만 볼 수 있습니다.")
     if end < start:
         raise _invalid("끝 날짜가 시작 날짜보다 앞입니다.")
     if (end - start).days > MAX_RANGE_DAYS:
@@ -93,7 +97,12 @@ def list_events(db: Session, user: User, start: date, end: date) -> List[Schedul
         query = query.where(
             or_(
                 ScheduleEvent.owner_id == user.id,
-                and_(ScheduleEvent.shared.is_(True), ScheduleEvent.kind == ScheduleKind.OTHER),
+                # 최초접수는 공유하지 않는다 — 저장 때 막고(_check), 목록에서도 한 번 더 뺀다(민규 #131 교차검증 R1).
+                and_(
+                    ScheduleEvent.shared.is_(True),
+                    ScheduleEvent.kind == ScheduleKind.OTHER,
+                    ScheduleEvent.category != ScheduleCategory.INTAKE,
+                ),
             )
         )
     rows = list(db.scalars(query))
@@ -103,13 +112,20 @@ def list_events(db: Session, user: User, start: date, end: date) -> List[Schedul
 
 
 def get_event_or_404(db: Session, event_id: uuid.UUID, user: User, *, edit: bool = False) -> ScheduleEvent:
-    row = db.scalar(
+    """edit=True 면 행을 잠그고 읽는다(SELECT … FOR UPDATE). 고치기 · 지우기가 겹쳐도 앞 요청이 끝난 값 위에서 합친다
+    — 공유 · 분류를 함께 바꾸거나 다른 기한 완료가 겹칠 때 한쪽 값이 사라지지 않게(민규 #131 교차검증 R1 · R3).
+    SQLite 시험에서는 잠금이 무시된다."""
+
+    query = (
         select(ScheduleEvent)
         .options(selectinload(ScheduleEvent.case), selectinload(ScheduleEvent.owner))
         .where(ScheduleEvent.id == event_id)
     )
+    row = db.scalar(query.with_for_update(of=ScheduleEvent) if edit else query)
     visible = row is not None and (
-        user.is_admin or row.owner_id == user.id or (row.shared and row.kind == ScheduleKind.OTHER)
+        user.is_admin
+        or row.owner_id == user.id
+        or (row.shared and row.kind == ScheduleKind.OTHER and row.category != ScheduleCategory.INTAKE)
     )
     if not visible:
         raise not_found(ErrorCode.NOT_FOUND, "일정을 찾을 수 없습니다.")
@@ -181,6 +197,14 @@ def update_event(db: Session, user: User, row: ScheduleEvent, payload: ScheduleU
     columns = {"date": "event_date", "time": "event_time"}
     old_case = row.case_id
 
+    # 지금 볼 수 없는 사례(담당이 바뀐 사례)가 붙은 일정은 사례를 바꾸거나 떼지 못한다 — 화면이 가려진 사례 칸을 다른 사례로
+    # 채워 보내 기한이 다른 사례로 옮겨 가지 않게(민규 #131 교차검증 R2). 사례 칸을 빼면 장소 등은 고칠 수 있다.
+    if "case_id" in sent and sent["case_id"] != old_case and old_case is not None and not _can_see_case(user, row.case):
+        raise conflict(
+            ErrorCode.INVALID_CASE_STATE,
+            "담당이 바뀐 사례의 일정이라 사례를 바꿀 수 없습니다. 사례 칸을 빼고 저장해 주세요.",
+        )
+
     for field, value in sent.items():
         if field == "deadline_done":
             continue
@@ -194,6 +218,9 @@ def update_event(db: Session, user: User, row: ScheduleEvent, payload: ScheduleU
         merged: Dict[str, bool] = {**(row.deadline_done or {}), **{k: bool(v) for k, v in sent["deadline_done"].items()}}
         row.deadline_done = merged
 
+    if row.case_id is None:
+        # 사례를 뗐으면 응답에 옛 별칭이 남지 않게 관계도 비운다(R10).
+        row.case = None
     _check(db, user, row, case_changed=row.case_id != old_case)
     audit_service.record(
         db,

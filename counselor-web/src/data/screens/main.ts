@@ -110,7 +110,8 @@ export function mainValues({ session, home, schedule, state, setState }: MainScr
         .filter((e) => hourOf(e) === h)
         .map((e) => ({
           time: e.time,
-          title: e.title,
+          // 중요 일정은 색만이 아니라 글자로도 알린다(달력의 '! 중요' 와 같게, 민규 #131 교차검증 R11).
+          title: e.imp && !e.dl ? `! 중요 · ${e.title}` : e.title,
           sub: e.sub,
           href: itemHref(e),
           dot: e.imp ? "#A33B2E" : e.t === "c" ? "#7A776F" : "#DAD5C9",

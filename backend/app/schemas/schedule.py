@@ -75,12 +75,13 @@ class ScheduleUpdateRequest(_ScheduleFields):
     def _date_range(cls, value: Optional[date]) -> Optional[date]:
         return _check_date(value)
 
-    @field_validator("kind", "date", mode="before")
+    @field_validator("kind", "date", "deadline_done", mode="before")
     @classmethod
     def _not_null(cls, value):
-        # 빼면 그대로 두지만 null 은 받지 않는다(둘 다 DB 에서 비울 수 없는 칸 — 민규 #131 리뷰: null 이면 500 이었다).
+        # 빼면 그대로 두지만 null 은 받지 않는다(DB 에서 비울 수 없는 칸 — 민규 #131 리뷰: null 이면 500 이었다.
+        # deadline_done 도 같다 — 교차검증 R8).
         if value is None:
-            raise ValueError("kind · date 는 null 로 보낼 수 없습니다(바꾸지 않으려면 빼고 보냅니다).")
+            raise ValueError("kind · date · deadline_done 은 null 로 보낼 수 없습니다(바꾸지 않으려면 빼고 보냅니다).")
         return value
 
     @field_validator("deadline_done")
@@ -96,8 +97,10 @@ class ScheduleEventResponse(BaseModel):
     kind: ScheduleKind
     consult_type: Optional[ScheduleConsultType]
     category: Optional[ScheduleCategory]
-    #: 볼 수 있는 사례일 때만(팀 공유 일정의 남의 사례는 null).
+    #: 볼 수 있는 사례일 때만(팀 공유 일정의 남의 사례 · 담당이 바뀐 사례는 null).
     case_id: Optional[uuid.UUID]
+    #: 사례가 붙어 있지만 지금 사용자가 볼 수 없어 가렸는가(이때 case_id · child_alias 는 null — 고칠 때 사례 칸을 보내지 않는다).
+    case_hidden: bool = False
     child_alias: Optional[str]
     title: Optional[str]
     date: date

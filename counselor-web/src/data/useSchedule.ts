@@ -4,13 +4,19 @@
 // 쓰기(만들기 · 고치기 · 지우기)는 끝나면 조용히 다시 부른다(처리 기한 · 공유 일정까지 서버 값으로 맞춘다).
 // 대상(로그인 · 기간)이 바뀌면 앞 대상의 오류 · 진행 표시를 푼다(useClosureSummary 와 같은 꼴).
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { cases, schedule } from "../api/endpoints";
 import type { ScheduleEvent, ScheduleEventCreate, ScheduleEventUpdate } from "../api/types";
 import type { AuthSession } from "./useAuthSession";
 import { errorMessage, useRemote } from "./useRemote";
+
+/**
+ * 같은 탭의 다른 일정 훅(달력 · 알림 종 · 홈)에 '일정이 바뀌었다' 고 알리는 이벤트(민규 #131 교차검증 R4 — 달력에서 최초접수를
+ * 만들거나 기한을 완료해도 열린 알림 종은 새로고침 전까지 그대로였다). 받은 훅은 조용히 다시 부른다.
+ */
+const SCHEDULE_CHANGED_EVENT = "ispot-schedule-changed";
 
 /** 일정에 붙일 수 있는 사례 수(진행 중, 최근 등록순). Backend page_size 상한과 같다. */
 export const SCHEDULE_CASE_LIMIT = 100;
@@ -68,6 +74,14 @@ export function useSchedule(
   const [actionError, setActionError] = useState<string | null>(null);
   const [seenGeneration, setSeenGeneration] = useState(remote.generation);
 
+  const refresh = remote.refresh;
+  useEffect(() => {
+    if (!key) return undefined;
+    const onChanged = () => refresh();
+    window.addEventListener(SCHEDULE_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChanged);
+  }, [key, refresh]);
+
   if (seenGeneration !== remote.generation) {
     setSeenGeneration(remote.generation);
     setActionError(null);
@@ -88,6 +102,7 @@ export function useSchedule(
       try {
         const result = await call();
         remote.resync(ticket);
+        window.dispatchEvent(new Event(SCHEDULE_CHANGED_EVENT));
         return result;
       } catch (caught) {
         if (remote.isCurrent(ticket) && !(caught instanceof ApiError && caught.isUnauthorized)) {

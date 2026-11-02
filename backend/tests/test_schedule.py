@@ -164,3 +164,94 @@ def test_patch_null_kind_or_date_is_422(client: TestClient, counselor_headers, b
 
     assert response.status_code == 422
     assert client.get(URL, params={"from": "2026-11-01", "to": "2026-11-30"}, headers=counselor_headers).json()["data"]["items"][0]["date"] == "2026-11-05"
+
+
+# ---------------- 민규 #131 교차검증(2026-11-02) ----------------
+
+
+def test_shared_intake_is_hidden_even_if_stored(
+    client: TestClient, counselor_headers, other_counselor_headers, case: dict, db
+) -> None:
+    """R1: 겹친 요청으로 INTAKE · shared=true 가 저장돼도 다른 상담사 목록 · 조회에는 나오지 않는다(목록 조건으로 한 번 더 막음)."""
+
+    import uuid as _uuid
+
+    from app.models.schedule import ScheduleEvent
+
+    event = client.post(URL, json=_other(category="INTAKE", case_id=case["id"]), headers=counselor_headers).json()["data"]
+    row = db.get(ScheduleEvent, _uuid.UUID(event["id"]))
+    row.shared = True  # 겹친 PATCH 가 남긴 값을 흉내 낸다
+    db.commit()
+
+    assert _list(client, other_counselor_headers) == []
+    assert client.patch(f"{URL}/{event['id']}", json={"title": "x"}, headers=other_counselor_headers).status_code == 404
+
+
+def test_edit_reads_the_row_with_lock(case: dict) -> None:
+    """R1 · R3: 고치기 · 지우기는 행을 FOR UPDATE 로 읽는다(겹친 요청이 서로의 칸을 덮어쓰지 않게). 쿼리 모양만 본다."""
+
+    import uuid as _uuid
+
+    from app.core.errors import APIError
+    from app.services import schedule_service
+
+    seen = []
+
+    class FakeDb:
+        def scalar(self, query):
+            seen.append(query)
+            return None
+
+    for edit in (True, False):
+        with pytest.raises(APIError):
+            schedule_service.get_event_or_404(FakeDb(), _uuid.uuid4(), object(), edit=edit)
+
+    assert seen[0]._for_update_arg is not None and seen[1]._for_update_arg is None
+
+
+def test_reassigned_case_cannot_be_swapped_but_place_can_change(
+    client: TestClient, counselor_headers, admin_headers, other_counselor_id, case: dict
+) -> None:
+    """R2: 담당이 바뀌어 볼 수 없게 된 사례의 일정은 사례를 바꾸면 409, 사례 칸 없이 장소만 고치면 200 이고 사례는 그대로."""
+
+    other_case = create_case(client, counselor_headers)
+    consult = client.post(URL, json=_consult(case["id"]), headers=counselor_headers).json()["data"]
+    meeting = client.post(URL, json=_other(category="CASE_MEETING", case_id=case["id"]), headers=counselor_headers).json()["data"]
+    moved = client.patch(f"/api/v1/cases/{case['id']}", json={"counselor_id": str(other_counselor_id)}, headers=admin_headers)
+    assert moved.status_code == 200, moved.text
+
+    hidden = {item["id"]: item for item in _list(client, counselor_headers)}
+    swap = client.patch(f"{URL}/{consult['id']}", json={"case_id": other_case["id"], "place": "면담실 C"}, headers=counselor_headers)
+    unlink = client.patch(f"{URL}/{meeting['id']}", json={"case_id": None}, headers=counselor_headers)
+    place = client.patch(f"{URL}/{consult['id']}", json={"place": "면담실 C"}, headers=counselor_headers)
+
+    assert hidden[consult["id"]]["case_hidden"] is True and hidden[consult["id"]]["case_id"] is None
+    assert swap.status_code == 409 and unlink.status_code == 409
+    assert place.status_code == 200 and place.json()["data"]["case_hidden"] is True
+    admin_view = {item["id"]: item for item in _list(client, admin_headers)}
+    assert admin_view[consult["id"]]["case_id"] == case["id"] and admin_view[meeting["id"]]["case_id"] == case["id"]
+
+
+def test_null_deadline_done_is_422(client: TestClient, counselor_headers, case: dict) -> None:
+    """R8."""
+
+    intake = client.post(URL, json=_other(category="INTAKE", case_id=case["id"]), headers=counselor_headers).json()["data"]
+
+    assert client.patch(f"{URL}/{intake['id']}", json={"deadline_done": None}, headers=counselor_headers).status_code == 422
+
+
+@pytest.mark.parametrize(("start", "end"), [("0001-01-01", "0001-01-01"), ("1899-12-31", "1900-01-05"), ("2100-12-30", "2101-01-01")])
+def test_list_dates_stay_in_range(client: TestClient, counselor_headers, start: str, end: str) -> None:
+    """R9."""
+
+    assert client.get(URL, params={"from": start, "to": end}, headers=counselor_headers).status_code == 422
+
+
+def test_unlinking_case_clears_alias_in_response(client: TestClient, counselor_headers, case: dict) -> None:
+    """R10."""
+
+    meeting = client.post(URL, json=_other(category="CASE_MEETING", case_id=case["id"]), headers=counselor_headers).json()["data"]
+
+    data = client.patch(f"{URL}/{meeting['id']}", json={"case_id": None}, headers=counselor_headers).json()["data"]
+
+    assert data["case_id"] is None and data["child_alias"] is None and data["case_hidden"] is False
