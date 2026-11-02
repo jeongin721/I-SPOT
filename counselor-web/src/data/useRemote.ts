@@ -70,6 +70,28 @@ export interface RemoteState<T> {
   sameGeneration: (ticket: RemoteTicket) => boolean;
 }
 
+/**
+ * 여러 요청을 차례로 보내는 조회(쪽마다 부르기 등)가 다음 요청 직전에 로그인이 바뀌었거나(loginGuard) 그 조회가 더는
+ * 지금 것이 아님(load 의 live() — 화면을 떠남 · 대상이 바뀜 · 다시 부름)을 알았을 때 던진다. 떠난 화면이나 앞 계정의 조회가
+ * 다음 쪽(실명)을 읽어 열람 기록을 남기지 않게 하려고서다(Codex #130 M1 · 재검수 N2).
+ * useRemote 는 이 오류를 화면에 보이지 않는다(그 조회의 결과는 어차피 버리고, 로그인이 바뀌었으면 곧 key 가 바뀐다).
+ */
+export class SessionChangedError extends Error {
+  constructor() {
+    super("로그인이 바뀌어 요청을 멈췄습니다.");
+    this.name = "SessionChangedError";
+  }
+}
+
+/** 지금 로그인 토큰을 잡아 두고, 돌려준 함수를 부르면 그대로인지 본다. 바뀌었으면 SessionChangedError. */
+export function loginGuard(): () => void {
+  const token = getToken();
+
+  return () => {
+    if (getToken() !== token) throw new SessionChangedError();
+  };
+}
+
 /** 오류를 화면에 보여 줄 문장으로. Backend 문구가 있으면 그대로, 없으면 fallback. */
 export function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback;
@@ -77,14 +99,15 @@ export function errorMessage(caught: unknown, fallback: string): string {
 
 /**
  * @param key   무엇을 부르는지(예: 회차 ID). null 이면 부르지 않는다(로그인 확인 전 등).
- * @param load  key 로 값을 불러오는 함수.
+ * @param load  key 로 값을 불러오는 함수. 둘째 인자 live() 는 이 조회가 아직 지금 것인가(화면에 붙어 있고 대상 · 조회가 그대로).
+ *              여러 요청을 차례로 보내는 조회는 다음 요청 직전에 보고, false 면 SessionChangedError 로 멈춘다.
  * @param fallback 서버 문구가 없을 때 보여 줄 오류 문장.
  * @param affects 회차 변경 알림(sessionEvents)이 이 값과 관계있는지. 있으면 조용히 다시 부른다.
  *                기본은 '알림의 회차 ID 가 key 와 같음' 이다(key 가 회차 ID 인 훅).
  */
 export function useRemote<T>(
   key: string | null,
-  load: (key: string) => Promise<T>,
+  load: (key: string, live: () => boolean) => Promise<T>,
   fallback: string,
   affects: (change: SessionChange, key: string, data: T | null) => boolean = (change, current) =>
     change.sessionId === current,
@@ -173,7 +196,7 @@ export function useRemote<T>(
     }
 
     loadRef
-      .current(key)
+      .current(key, () => requestId === latest.current)
       .then((value) => {
         if (requestId !== latest.current) return;
 
@@ -183,7 +206,7 @@ export function useRemote<T>(
         setSettled((count) => count + 1);
       })
       .catch((caught) => {
-        if (requestId !== latest.current) return;
+        if (requestId !== latest.current || caught instanceof SessionChangedError) return;
 
         // 조용한 refresh 가 실패하면 들고 있던 값은 두고 오류만 알린다.
         if (!quiet) setEntry({ key, generation: gen, data: null });
