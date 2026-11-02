@@ -43,6 +43,10 @@ load_dotenv()
 #    → 상담사/아동/보호자처럼 표현이 달라도 최종에는 이 값만 남는다.
 SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".flac"}
 SPEAKER_ENUM = {"COUNSELOR", "CHILD", "GUARDIAN", "OTHER", "UNKNOWN"}
+# 3) LOW_CONFIDENCE_THRESHOLD: ElevenLabs 구간 confidence 가 이보다 작으면 저신뢰로 본다.
+#    → backend/app/adapters/ai_adapter.py:180 의 `0.0 < confidence < 0.7`,
+#      backend/docs/API_CONTRACT.md:877 의 `0 < confidence < 0.7` 과 같은 값이다.
+LOW_CONFIDENCE_THRESHOLD = 0.7
 logger = logging.getLogger(__name__)
 SINGLE_SPEAKER_FALLBACK_ENV = "I_SPOT_SINGLE_SPEAKER_FALLBACK"
 
@@ -332,6 +336,29 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
             return ElevenLabsScribeV2Provider._to_dict(value.dict())
         return value
 
+    # Scribe 단어마다 오는 logprob 을 exp 해서 0~1 확률로 쓴다. 모델이 내는 확률이며
+    # 실제 오인식과의 관계는 검증하지 않았다. 0.0 은 Contract 에서 "값 없음" 이므로
+    # 값이 있는 단어는 0.01 아래로 내려가지 않게 한다.
+    MIN_WORD_CONFIDENCE = 0.01
+
+    @classmethod
+    def _word_confidence(cls, logprob: Any) -> Optional[float]:
+        """exp(logprob) in [0.01, 1.0]; None when logprob is missing or not a finite number."""
+        if isinstance(logprob, bool) or not isinstance(logprob, (int, float)):
+            return None
+        if not math.isfinite(logprob):
+            return None
+        return min(1.0, max(cls.MIN_WORD_CONFIDENCE, math.exp(logprob)))
+
+    @staticmethod
+    def _segment_confidence(word_confidences: List[Optional[float]]) -> tuple:
+        """(confidence, is_low_confidence): 값 있는 단어 중 최솟값. 없으면 (0.0, False)."""
+        known = [value for value in word_confidences if value is not None]
+        if not known:
+            return 0.0, False
+        confidence = min(known)
+        return confidence, confidence < LOW_CONFIDENCE_THRESHOLD
+
     @classmethod
     def _coerce_to_contract(cls, response: Any) -> List[Dict[str, Any]]:
         """Convert valid ElevenLabs word output without positional role mapping."""
@@ -363,13 +390,14 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
                 raise ValueError(f"ElevenLabs word {index} has an invalid time range.")
 
             raw_speaker_id = str(speaker_id).strip()
+            word_confidence = cls._word_confidence(item.get("logprob"))
             word = {
                 "word": text.strip(),
                 "speaker": raw_speaker_id,
                 "start_ms": start_ms,
                 "end_ms": end_ms,
-                # Scribe output used here has no word confidence.  Do not invent one.
-                "confidence": 0.0,
+                # exp(logprob). logprob 이 없거나 유한한 숫자가 아니면 0.0("값 없음")으로 둔다.
+                "confidence": 0.0 if word_confidence is None else word_confidence,
             }
             if current is None or current["provider_speaker_id"] != raw_speaker_id:
                 if current is not None:
@@ -379,10 +407,12 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
                     "start_ms": start_ms,
                     "end_ms": end_ms,
                     "words": [word],
+                    "word_confidences": [word_confidence],
                 }
             else:
                 current["end_ms"] = max(current["end_ms"], end_ms)
                 current["words"].append(word)
+                current["word_confidences"].append(word_confidence)
 
         if current is not None:
             provider_segments.append(current)
@@ -408,6 +438,9 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
             role = role_mapping.get(provider_speaker_id, {}).get("role", "UNKNOWN")
             if role not in SPEAKER_ENUM:
                 role = "UNKNOWN"
+            segment_confidence, is_low_confidence = cls._segment_confidence(
+                segment["word_confidences"]
+            )
             contract_segments.append(
                 {
                     "segment_id": f"seg_{segment_index:03d}",
@@ -416,11 +449,11 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
                     "start_ms": segment["start_ms"],
                     "end_ms": segment["end_ms"],
                     "text": " ".join(word["word"] for word in segment["words"]),
-                    # ElevenLabs does not provide a compatible confidence value.
-                    "confidence": 0.0,
-                    # A compatible confidence score is unavailable, which is
-                    # different from an explicitly low-confidence result.
-                    "is_low_confidence": False,
+                    # 구간 안 값 있는 단어 confidence(exp(logprob))의 최솟값. 모델이 내는 확률이며
+                    # 실제 오인식과의 관계는 검증하지 않았다. 값 있는 단어가 없으면 0.0("값 없음").
+                    "confidence": segment_confidence,
+                    # 0.0("값 없음")은 저신뢰가 아니다. 값이 있으면 LOW_CONFIDENCE_THRESHOLD 미만일 때만 True.
+                    "is_low_confidence": is_low_confidence,
                     "words": segment["words"],
                 }
             )
