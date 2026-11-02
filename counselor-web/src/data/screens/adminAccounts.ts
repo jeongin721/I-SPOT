@@ -7,9 +7,13 @@
 //  - 목록은 디자인대로 이름(→ 상담사 상세) · 상태 필터 · 검색. 검색은 이미 받은 목록 안에서 이름 · 이메일로 거른다(서버 검색 없음).
 //    디자인의 '기관 ID' 열은 이메일, '접속 IP' 열은 10/6 결정(계정 목록에 IP 열을 두지 않음)대로 뺐고, 앱에 있던 역할 열을 둔다.
 //  - 비밀번호 초기화 · 잠금 해제 · 휴면 해제 · 비활성화 · 강제 로그아웃은 상담사 상세(AdminStaffDetail)에서 한다(디자인의 '상세').
+//  - 가입 신청(로그인 화면 회원가입, useSignupRequests): 디자인에 없는 칸이라 계정 목록과 같은 표 모양으로 대기 신청이 있을 때만 보인다.
+//    역할을 골라 승인하면 신청 때 비밀번호 그대로 계정이 생긴다. 거절은 신청자에게 알리지 않는다.
 
 import type { UserRole } from "../../api/types";
+import { toDateOnly, toDateTime } from "../time";
 import type { AdminAccountsState } from "../useAdminAccounts";
+import type { SignupRequestsState } from "../useSignupRequests";
 import type { AuthSession } from "../useAuthSession";
 import {
   accountChips,
@@ -35,6 +39,8 @@ export interface AdminAccountsUiState {
   /** 마지막 요청이 성공했다는 안내. */
   done: { text: string; forAdmin: string } | null;
   copied: boolean;
+  /** 가입 신청마다 고른 역할(기본 상담원). */
+  signupRoles: Record<string, UserRole>;
 }
 
 export const INITIAL_ACCOUNTS_UI: AdminAccountsUiState = {
@@ -45,6 +51,7 @@ export const INITIAL_ACCOUNTS_UI: AdminAccountsUiState = {
   issued: null,
   done: null,
   copied: false,
+  signupRoles: {},
 };
 
 type Change = { target: { value: string } };
@@ -52,12 +59,13 @@ type Change = { target: { value: string } };
 export function adminAccountsValues(input: {
   session: AuthSession;
   accounts: AdminAccountsState;
+  signups: SignupRequestsState;
   state: AdminAccountsUiState;
   setState: (
     patch: Partial<AdminAccountsUiState> | ((current: AdminAccountsUiState) => Partial<AdminAccountsUiState>),
   ) => void;
 }) {
-  const { session, accounts, state, setState } = input;
+  const { session, accounts, signups, state, setState } = input;
   const adminId = session.me?.id ?? "";
   const busy = accounts.submitting;
   const search = state.search.forAdmin === adminId ? state.search.text : "";
@@ -128,7 +136,53 @@ export function adminAccountsValues(input: {
     }
   };
 
+  // ---------------- 가입 신청 ----------------
+  const roleOf = (id: string): UserRole => state.signupRoles[id] ?? "COUNSELOR";
+  const signupRows = signups.items.map((item) => {
+    const role = roleOf(item.id);
+    const rowBusy = signups.busyId === item.id;
+
+    return {
+      key: item.id,
+      name: item.name,
+      email: item.email,
+      requestedAt: toDateTime(item.created_at),
+      expiresAt: item.expires_at ? `${toDateOnly(item.expires_at)}까지` : "",
+      role: {
+        value: role,
+        onChange: (e: Change) =>
+          setState((current) => ({ signupRoles: { ...current.signupRoles, [item.id]: e.target.value as UserRole } })),
+      },
+      busy: signups.busyId !== null,
+      approveLabel: rowBusy ? "처리 중…" : "승인",
+      approve: async () => {
+        setState({ done: null });
+        if (!(await signups.approve(item.id, role))) return;
+        accounts.reload();
+        setState({
+          done: {
+            text: `${item.name} 님 가입을 승인했습니다(${role === "ADMIN" ? "관리자" : "상담원"}). 신청 때 정한 비밀번호로 로그인합니다.`,
+            forAdmin: adminId,
+          },
+        });
+      },
+      reject: async () => {
+        if (!window.confirm(`${item.name} 님의 가입 신청을 거절할까요? 신청자에게 따로 알리지 않습니다.`)) return;
+        setState({ done: null });
+        if (!(await signups.reject(item.id))) return;
+        setState({ done: { text: `${item.name} 님 가입 신청을 거절했습니다.`, forAdmin: adminId } });
+      },
+    };
+  });
+
   return {
+    signupShown: signups.total > 0 || signups.error !== null,
+    signupTitle: `가입 신청 ${signups.total}건`,
+    signupRows,
+    signupMore:
+      signups.total > signupRows.length ? `오래된 신청 ${signupRows.length}건만 보입니다. 처리하면 다음 신청이 보입니다.` : "",
+    signupError: signups.actionError ?? (signups.items.length === 0 ? signups.error : null),
+    signupRetry: signups.reload,
     formOpen: state.showForm,
     formBtnLabel: state.showForm ? "닫기" : "+ 계정 생성",
     formBtnCls: state.showForm ? "btn btn-s" : "btn btn-p",
