@@ -21,6 +21,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { useApprovedSummaries } from '../data/useApprovedSummaries';
@@ -51,7 +52,8 @@ export default function CaseHistory(props) {
   const theme = useTheme();
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
-  const v = useDC(Logic, { ...props, session, detail, signals, history, approved, caseId, historyOpen, setHistoryOpen });
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, history, approved, personal, caseId, historyOpen, setHistoryOpen });
   const rec = useRecordFlow(session, caseId, v.canRecord);
   const [nsOpen, setNsOpen] = useState(false);
   useLeaveGuard(rec.unsaved);

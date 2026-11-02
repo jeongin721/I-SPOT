@@ -11,7 +11,7 @@
 // components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
 // 10/29 디자인: 상담 전 브리핑이 탭에서 빠지고 이 화면 '현재 진행 상황' 아래(#brief)로 들어왔다. 값은 예전 브리핑 화면과
 // 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
-// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 사례 별칭만 — 서버에 실명이 없다).
+// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 등록된 이름 전부와 별칭 — maskNames).
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
 // '종결 검토 등록'(10/30): 등록 · 취소를 서버에 저장하고 등록됨 · 등록일 · '종결 검토 보기' 를 보인다(디자인의 '초안 생성 중' 은
 // 종결 요약 AI 가 아직 없어 쓰지 않는다).
@@ -29,6 +29,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { latestAnalyzedSession, useCaseSignals } from '../data/useCaseSignals';
 import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupChecks } from '../data/useFollowupChecks';
@@ -71,7 +72,8 @@ export default function CaseDetail(props) {
   const signals = useCaseSignals(detail, { enabled: signedIn(session), needEvidence });
   const theme = useTheme();
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId });
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
@@ -147,6 +149,7 @@ export default function CaseDetail(props) {
             <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
           <Notice value={v.notice} />
+          <Notice value={v.personalNote} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
             <A className="btn btn-sm btn-s" to="/CaseList">
               ← 목록
@@ -410,10 +413,11 @@ export default function CaseDetail(props) {
                   title="인쇄 · PDF"
                   goLabel="인쇄"
                   name={v.title}
+                  maskReady={v.namesReady}
                   onClose={() => setOutOpen(false)}
                   onRun={(mask) => {
                     setOutOpen(false);
-                    printMasked({ root: briefRef.current, name: v.title, mask, bodyClass: 'print-brief' });
+                    printMasked({ root: briefRef.current, names: v.maskNames, mask, bodyClass: 'print-brief' });
                   }}
                 />
               ) : null}

@@ -12,6 +12,7 @@ import AdminSidebar, { AdminBlocked } from '../components/AdminSidebar';
 import Notice from '../components/Notice';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { useAccountSearch } from '../data/useAccountSearch';
 import { useAuthSession } from '../data/useAuthSession';
 import { useAdminCases } from '../data/useAdminCases';
 import { needsLogin } from '../data/screens/common';
@@ -54,8 +55,10 @@ export default function AdminCases(props) {
   const session = useAuthSession();
   // 관리자 훅은 관리자일 때만 서버를 부른다(session.isAdmin).
   const list = useAdminCases(session);
+  // 검색어는 계정에 묶는다 — 다른 관리자 계정으로 바뀌면 앞 계정이 친 이름이 남지 않는다(Codex #130 H1).
+  const [search, setSearch] = useAccountSearch(session);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, list });
+  const v = useDC(Logic, { ...props, session, list, search, setSearch });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   if (!session.isAdmin) return <AdminBlocked session={session} />;
   return (

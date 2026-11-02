@@ -132,3 +132,38 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* 가족관계 표(.ftg) · 건강정도 표(.hs-*) — 초기면접지(CaseIntake.css)와 같은 10/29 디자인 값 */
+.pg-CaseRegister .ftg{border:1px solid #DAD5C9;border-radius:0;table-layout:fixed;min-width:640px}
+.pg-CaseRegister .ftg th{border:1px solid #DAD5C9;text-align:center !important;padding:8px 6px !important}
+.pg-CaseRegister .ftg td{border:1px solid #DAD5C9 !important;padding:0 !important}
+.pg-CaseRegister .ftg input{border:0 !important;border-radius:0 !important;height:38px !important;background:transparent;color:inherit;padding:0 10px !important}
+.pg-CaseRegister .ftg input:focus{outline:2px solid #C2A36B;outline-offset:-2px}
+.pg-CaseRegister .thm-root.dark .ftg,.pg-CaseRegister .thm-root.dark .ftg th,.pg-CaseRegister .thm-root.dark .ftg td{border-color:#45423B !important}
+.pg-CaseRegister .hs-sec{display:flex;align-items:center;gap:6px}
+.pg-CaseRegister .hs-name{width:120px;height:30px;border:1px solid #DAD5C9;border-radius:8px;padding:0 10px;font:inherit;font-size:13px;font-weight:500;background:#FFFFFF;color:#2B2A26}
+.pg-CaseRegister .hs-tbl{display:flex;flex-direction:column;border:1px solid #DAD5C9}
+.pg-CaseRegister .hs-row{display:grid;grid-template-columns:110px minmax(0,1fr);border-top:1px solid #DAD5C9}
+.pg-CaseRegister .hs-row:first-child{border-top:0}
+.pg-CaseRegister .hs-k{display:flex;align-items:center;justify-content:center;padding:10px 8px;background:#F7F6F2;font-size:13px;font-weight:700;text-align:center;border-right:1px solid #DAD5C9}
+.pg-CaseRegister .hs-v{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:10px 12px;min-width:0}
+.pg-CaseRegister .hs-pk{min-height:32px !important;padding:0 12px !important}
+.pg-CaseRegister .hs-t{font-size:13px;color:#66625A;white-space:nowrap}
+.pg-CaseRegister .hs-in{height:32px;border:1px solid #DAD5C9;border-radius:8px;padding:0 10px;font:inherit;font-size:13px;background:#FFFFFF;color:#2B2A26;min-width:0}
+.pg-CaseRegister .hs-in:disabled{background:#F2F2F0;color:#A8A296;cursor:not-allowed}
+.pg-CaseRegister .hs-w{flex:1 1 140px;max-width:240px}
+.pg-CaseRegister .hs-g{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.pg-CaseRegister .hs-n{width:56px;text-align:center;padding:0 6px}
+@media (max-width:600px){.pg-CaseRegister .hs-row{grid-template-columns:minmax(0,1fr)}.pg-CaseRegister .hs-k{justify-content:flex-start;border-right:0;border-bottom:1px solid #DAD5C9}}
+.pg-CaseRegister .thm-root.dark .hs-name,.pg-CaseRegister .thm-root.dark .hs-in{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.pg-CaseRegister .thm-root.dark .hs-in:disabled{background:#33312C;color:#7A776F}
+.pg-CaseRegister .thm-root.dark .hs-tbl,.pg-CaseRegister .thm-root.dark .hs-row,.pg-CaseRegister .thm-root.dark .hs-k{border-color:#45423B}
+.pg-CaseRegister .thm-root.dark .hs-k{background:#33312C}
+.pg-CaseRegister .thm-root.dark .hs-t{color:#A8A296}
+/* 가족관계 표의 동거여부 고르기 · 줄 빼기, 건강정도 세부 글 한 칸(서버가 세부 글 하나만 받음 — components/PersonalTables.jsx) */
+.pg-CaseRegister .ftg select.ft-sel{width:100%;height:38px;border:0;background:transparent;color:inherit;font:inherit;font-size:13px;padding:0 6px}
+.pg-CaseRegister .ftg select.ft-sel:focus{outline:2px solid #C2A36B;outline-offset:-2px}
+.pg-CaseRegister .ft-del{width:30px;height:30px;border:1px solid #DAD5C9;border-radius:50%;background:#FFFFFF;color:#66625A;font-size:16px;line-height:1;cursor:pointer}
+.pg-CaseRegister .ft-del:disabled{opacity:.5;cursor:not-allowed}
+.pg-CaseRegister .hs-wide{max-width:none}
+.pg-CaseRegister .thm-root.dark .ft-del{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.pg-CaseRegister .thm-root.dark .ftg select.ft-sel option{background:#2C2B27}
