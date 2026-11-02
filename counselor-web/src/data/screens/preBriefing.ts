@@ -7,7 +7,8 @@
 //  - 먼저 볼 것: '아이가 보낸 말' · '체크인 응답 변화' 는 아이 앱이 서버에 없어 준비 중이다(예시 문장을 보이지 않는다).
 //    '처음 나온 이야기'(2026-10-29)는 분석이 끝난 가장 최근 회차의 대화 주제 중 앞 회차들에 없던 것(signal-history topics,
 //    signalHistoryRows.newTopicsIn) — 주제 · 그 첫 아동 발화 · 회차와 시각. AI 제안이다.
-//  - 확인할 사항(AI 초안): 그 회차의 followup_check_points(AI 확인 메모, 4 · 추가 확인 화면과 같은 값)를 읽기 전용으로.
+//  - 확인할 사항: 그 회차 확인 사항을 저장했으면(18.1절, 2026-10-30) '브리핑에 넣기' 로 체크한 것만, 저장 전이면
+//    followup_check_points(AI 확인 메모 초안)를 읽기 전용으로.
 //    근거는 '그 회차 · 몇 분 · 누구' 이고 누르면 STT 검수의 그 발화로 간다. 디자인의 체크(브리핑에 넣기)는 저장할 API 가
 //    없어 두지 않는다(가짜 체크 없음).
 //  - 추가 질문: 그 회차에서 상담사가 승인한 질문 목록(GET …/followup-questions, 18절)을 디자인의 줄(.rq)로 보인다.
@@ -17,6 +18,7 @@
 import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseSignalsState } from "../useCaseSignals";
+import type { FollowupChecksState } from "../useFollowupChecks";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { newTopicsIn } from "../signalHistoryRows";
@@ -37,6 +39,8 @@ export interface BriefingScreenInput {
   questions: FollowupQuestionsState;
   /** 사례 신호 이력(대화 주제). 없으면 '처음 나온 이야기' 는 준비 중으로 둔다. */
   history?: SignalHistoryState;
+  /** 그 회차(signals.session)의 저장한 확인 사항(18.1절). 저장했으면 '브리핑에 넣기' 로 체크한 것만 보인다. */
+  checks?: FollowupChecksState;
 }
 
 export interface FirstCard {
@@ -88,7 +92,15 @@ export function preBriefingValues(input: BriefingScreenInput) {
   const completed = view !== null && view.status === "COMPLETED";
   const ids = source ? { caseId: source.caseId, sessionId: source.id } : { caseId: input.caseId };
 
-  const checks = completed
+  // 확인 사항을 저장했으면(18.1절) 그중 '브리핑에 넣기' 로 체크한 것만, 저장 전이면 AI 확인 메모 초안(2026-10-30).
+  const savedChecks = source && input.checks?.saved ? input.checks.items.filter((item) => item.in_briefing) : null;
+  const checks = savedChecks
+    ? toFollowupItems(
+        savedChecks.map((item) => ({ text: item.text, segment_ids: item.segment_ids })),
+        signals.signals.locate,
+        ids,
+      ).map((item) => ({ key: item.key, text: item.text, why: `${source?.numberLabel ?? ""} ${item.why}`.trim(), href: item.href }))
+    : completed
     ? toFollowupItems(view.followupCheckPoints ?? [], signals.signals.locate, ids).map((item) => ({
         key: item.key,
         text: item.text,
@@ -102,8 +114,12 @@ export function preBriefingValues(input: BriefingScreenInput) {
   else if (!source) checksNote = info ? "AI 분석이 끝난 회차가 없습니다. 회차를 분석하면 확인할 사항이 생깁니다." : "";
   else if (signals.analysis.error) checksNote = signals.analysis.error;
   else if (!completed) checksNote = "확인할 사항을 불러오는 중…";
+  else if (savedChecks && checks.length === 0)
+    checksNote = `${source.numberLabel}에서 브리핑에 넣기로 체크한 확인 사항이 없습니다. '다음 상담 준비' 에서 체크해 주세요.`;
+  else if (savedChecks) checksNote = `${source.numberLabel} '다음 상담 준비' 에서 브리핑에 넣기로 체크한 확인 사항입니다.`;
   else if (checks.length === 0) checksNote = `${source.numberLabel} AI 분석에 확인 메모가 없습니다.`;
-  else checksNote = `${source.numberLabel} AI 분석의 확인 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.`;
+  else
+    checksNote = `${source.numberLabel} AI 분석의 확인 메모입니다(아직 고르지 않음). '다음 상담 준비' 에서 체크한 것만 브리핑에 남길 수 있습니다.`;
 
   const questions = source
     ? input.questions.questions.map((question, index) => ({

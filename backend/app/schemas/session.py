@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.enums import SessionStatus
+from app.core.enums import ConsultationType, SessionStatus
 from app.models.base import to_utc
 from app.schemas.common import RequestModel, SessionErrorInfo
 
@@ -48,6 +48,8 @@ class SessionCreateRequest(RequestModel):
     consulted_at: Optional[datetime] = None
     location: Optional[str] = Field(default=None, max_length=200)
     memo: Optional[str] = Field(default=None, max_length=4000)
+    # 상담 유형(2026-10-30). 빼면 null.
+    consultation_type: Optional[ConsultationType] = None
 
     _normalize_consulted_at = field_validator("consulted_at")(_consulted_at_as_utc)
 
@@ -57,6 +59,8 @@ class SessionUpdateRequest(RequestModel):
     consulted_at: Optional[datetime] = None
     location: Optional[str] = Field(default=None, max_length=200)
     memo: Optional[str] = Field(default=None, max_length=4000)
+    # 상담 유형. null 을 보내면 비운다.
+    consultation_type: Optional[ConsultationType] = None
 
     _normalize_consulted_at = field_validator("consulted_at")(_consulted_at_as_utc)
 
@@ -73,6 +77,7 @@ class SessionResponse(BaseModel):
     consulted_at: Optional[datetime]
     location: Optional[str]
     memo: Optional[str]
+    consultation_type: Optional[ConsultationType] = None
     created_at: datetime
     updated_at: datetime
 

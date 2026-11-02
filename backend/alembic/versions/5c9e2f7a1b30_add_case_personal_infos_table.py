@@ -1,7 +1,7 @@
 """add case_personal_infos table
 
 Revision ID: 5c9e2f7a1b30
-Revises: 1a685a4ac64a
+Revises: c9d0e1f2a3b4
 Create Date: 2026-10-30 12:00:00.000000
 
 사례의 개인 식별 정보(서식 4 의 아동 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도)를
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 
 
 revision: str = '5c9e2f7a1b30'
-down_revision: Union[str, None] = '1a685a4ac64a'
+down_revision: Union[str, None] = 'c9d0e1f2a3b4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

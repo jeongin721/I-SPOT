@@ -97,7 +97,7 @@ class Logic extends DCLogic {
           ['공통 3', '오늘 기분은?', '보통', '조금 슬퍼'],
         ],
         quote: '선생님이랑 얘기하고 싶어요',
-        ai: '아이가 직접 연락을 요청했어요. 오늘 안에 통화 일정을 잡는 것을 권해요. 6회차 STT 검수가 아직 남아 있어요.',
+        ai: '아이가 직접 연락을 요청했어요. 오늘 안에 통화 일정을 잡는 것을 권해요. 6회차 기록 확인이 아직 남아 있어요.',
         state: '확인 중',
         stCls: 'chip c-ing',
         src: '어제 19:40 연락 요청 버튼 · 공통 3',
@@ -282,10 +282,10 @@ class Logic extends DCLogic {
       const k = KIDS[key];
       const ds = (k.days || '').split('');
       return {
-        name: s.real ? k.name : '○' + k.short,
+        name: k.name,
         age: k.age,
         id: k.id,
-        ini: s.real ? k.name.slice(0, 1) : k.short.slice(0, 1),
+        ini: k.name.slice(0, 1),
         last: k.last,
         reason: k.reason,
         rCls: k.reason === '긴급' ? 'chip c-urgent' : 'chip c-normal',
@@ -299,11 +299,7 @@ class Logic extends DCLogic {
     return {
       rows,
       filters,
-      alertName: s.real ? KIDS.minjun.name : '○' + KIDS.minjun.short,
-      real: !!s.real,
-      tgBg: s.real ? '#2B2A26' : '#DAD5C9',
-      tgX: s.real ? '16px' : '2px',
-      toggleReal: () => this.setState({ real: !s.real }),
+      alertName: KIDS.minjun.name,
     };
   }
 }
@@ -386,40 +382,7 @@ export default function ChildLink(props) {
                 </Fragment>
               ))}
             </div>
-            <button type="button" className="tg" aria-pressed={v.real} onClick={v.toggleReal}>
-              <span
-                style={{
-                  width: '34px',
-                  height: '20px',
-                  borderRadius: '10px',
-                  background: v.tgBg,
-                  position: 'relative',
-                  display: 'inline-block',
-                }}
-              >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: v.tgX,
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: '#FFFFFF',
-                    boxShadow: '0 1px 2px rgba(0,0,0,.2)',
-                  }}
-                ></span>
-              </span>
-              실명 보기
-            </button>
           </section>
-          {v.real ? (
-            <>
-              <p className="note" style={{ margin: '-8px 0 0' }}>
-                실명 표시 중 · 열람 기록 남음
-              </p>
-            </>
-          ) : null}
 
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>

@@ -188,6 +188,15 @@
   padding: 12px 24px;
   border-bottom: 1px solid #eae7df;
 }
+/* 10/30 디자인 위쪽 탭(AI에게 묻기 · 참고사항 · 주요 조문) */
+.pg-LawGuide .lg-tabs {
+  align-self: flex-start;
+}
+.pg-LawGuide .lg-tabs button {
+  min-height: 40px;
+  padding: 0 18px;
+  font-size: 14px;
+}
 .pg-LawGuide .lg-item {
   border-bottom: 1px solid #eae7df;
   scroll-margin-top: 16px;

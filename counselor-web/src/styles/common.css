@@ -208,10 +208,23 @@ a:hover {
   background: #f2efe8;
   color: #66625a;
 }
+/* 'AI 초안 · AI 분석 · AI 제안' 칩: 연한 금색 바탕 + ✦ (10/30 오후 디자인 — 전에는 흰 바탕 · 회색 점선) */
 .c-ai {
-  background: #ffffff;
-  color: #7a776f;
-  border: 1px dashed #cfc9bb;
+  --ai-star: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>");
+  gap: 4px;
+  background: #f3ead3;
+  color: #7a5f28;
+  border: 0;
+  font-weight: 700;
+}
+.c-ai::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  flex: none;
+  background: currentColor;
+  -webkit-mask: var(--ai-star) center/contain no-repeat;
+  mask: var(--ai-star) center/contain no-repeat;
 }
 .btn {
   display: inline-flex;
@@ -896,9 +909,9 @@ h1 {
   color: #bdb7aa !important;
 }
 .thm-root.dark .c-ai {
-  background: #2c2b27 !important;
-  color: #a8a296 !important;
-  border: 1px dashed #5a564e !important;
+  background: #3f3729 !important;
+  color: #eadbb5 !important;
+  border: 0 !important;
 }
 .thm-root.dark .btn-p {
   background: #eadbb5 !important;

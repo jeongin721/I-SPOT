@@ -95,42 +95,9 @@ export default function CaseList(props) {
                 </Fragment>
               ))}
             </div>
-            <button
-              type="button"
-              className="tg"
-              aria-pressed={v.real}
-              disabled
-              title={v.notReady}
-              style={{ opacity: 0.5, cursor: 'not-allowed' }}
-            >
-              <span
-                style={{
-                  width: '34px',
-                  height: '20px',
-                  borderRadius: '10px',
-                  background: v.tgBg,
-                  position: 'relative',
-                  display: 'inline-block',
-                }}
-              >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: v.tgX,
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: '#FFFFFF',
-                    boxShadow: '0 1px 2px rgba(0,0,0,.2)',
-                  }}
-                ></span>
-              </span>
-              실명 보기
-            </button>
           </section>
           <p className="note" style={{ margin: '-8px 0 0' }}>
-            위험도 · 실명 보기 · 신고접수일은 {v.notReady}입니다(서버에 아직 없는 값).
+            위험도 · 신고접수일은 {v.notReady}입니다(서버에 아직 없는 값).
           </p>
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>

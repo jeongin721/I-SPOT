@@ -51,7 +51,8 @@ class SessionChangedError extends Error {
   }
 }
 
-async function loadAllCases(): Promise<Case[]> {
+/** 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다. */
+export async function loadAllCases(): Promise<Case[]> {
   const all: Case[] = [];
   // 첫 쪽을 보낼 때의 로그인. 다음 쪽을 보내기 전에 바뀌었으면 멈춘다(결과는 useRemote 가 어차피 버린다).
   const token = getToken();

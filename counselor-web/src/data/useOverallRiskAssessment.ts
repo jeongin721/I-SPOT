@@ -6,7 +6,8 @@
 //    AI 단계와 상 · 중 · 하를 대응시키는 규칙, 사례 단위 위험도는 팀 결정 전이라 여기서 계산하지 않는다.
 //  - 서버는 판단이 없으면 data 를 null 로 준다. useRemote 는 data 가 null 이면 '아직 못 받음' 으로 보므로 { assessment } 로 감싸 든다.
 //  - 원문 확정 뒤(STT_CONFIRMED · AI_REVIEW_REQUIRED · AI_FAILED · APPROVED)에만 저장된다. 그 밖에는 409 문구를 보여 준다.
-//  - 저장해도 회차 상태는 바뀌지 않는다(sessionEvents 를 보내지 않는다).
+//  - 저장해도 회차 상태는 바뀌지 않지만, 저장에 성공하면 sessionEvents 로 알린다 — 같은 화면의 회차별 추이(signal-history)가
+//    새 판단을 다시 불러 가게(#122 교차검증 R5. 전에는 새로고침해야 추이 칸이 바뀌었다). 받는 훅은 값을 둔 채 조용히 다시 부른다.
 //  - 분석이 끝나 검수 중인 회차에 판단이 없으면 요약 · 일지 작성으로 넘어가지 못한다(needsJudgment). 유형별 위험도 화면은
 //    다음 단추 · 단계 표시를 팝업으로 막고, 요약 · 일지 작성 화면은 유형별 위험도로 돌려보낸다(?ask=1, signalReview.ts).
 
@@ -15,6 +16,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import { riskAssessments as riskApi } from "../api/endpoints";
 import { RISK_LEVEL_LABELS, type OverallRiskAssessment, type RiskLevel, type SessionStatus } from "../api/types";
+import { notifySessionChanged } from "./sessionEvents";
 import { toDateTime } from "./time";
 import { errorMessage, useRemote } from "./useRemote";
 
@@ -204,8 +206,12 @@ export function useOverallRiskAssessment(
 
       try {
         const result = await riskApi.saveOverall(ticket.key, { counselor_level: input.level, reason });
+        const applied = remote.setData(ticket, { assessment: result });
+        // 같은 화면의 회차별 추이(signal-history) · 회차 상세가 새 판단을 받아 가게 알린다. 그사이 대상이 바뀌었어도
+        // 판단은 그 회차에 저장됐으니 알린다(요약 승인 approve 와 같음).
+        notifySessionChanged({ sessionId: ticket.key });
 
-        if (!remote.setData(ticket, { assessment: result })) return null;
+        if (!applied) return null;
 
         return toOverallRiskAssessmentRow(result);
       } catch (caught) {
