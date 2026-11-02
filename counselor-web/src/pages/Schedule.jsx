@@ -554,7 +554,8 @@ function ScheduleScreen(props) {
                       <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <input
                           type="checkbox"
-                          checked={Boolean(f.shared)}
+                          checked={Boolean(v.sharedOn)}
+                          disabled={v.sharedDisabled}
                           onChange={v.toggleShared}
                           style={{ width: '16px', height: '16px', accentColor: '#2B2A26' }}
                         />

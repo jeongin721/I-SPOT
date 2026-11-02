@@ -75,6 +75,14 @@ class ScheduleUpdateRequest(_ScheduleFields):
     def _date_range(cls, value: Optional[date]) -> Optional[date]:
         return _check_date(value)
 
+    @field_validator("kind", "date", mode="before")
+    @classmethod
+    def _not_null(cls, value):
+        # 빼면 그대로 두지만 null 은 받지 않는다(둘 다 DB 에서 비울 수 없는 칸 — 민규 #131 리뷰: null 이면 500 이었다).
+        if value is None:
+            raise ValueError("kind · date 는 null 로 보낼 수 없습니다(바꾸지 않으려면 빼고 보냅니다).")
+        return value
+
     @field_validator("deadline_done")
     @classmethod
     def _deadline_keys(cls, value: Optional[Dict[str, bool]]) -> Optional[Dict[str, bool]]:

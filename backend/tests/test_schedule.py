@@ -140,3 +140,27 @@ def test_deleting_case_deletes_its_events(client: TestClient, counselor_headers,
 
     assert client.delete(f"/api/v1/cases/{doomed['id']}", headers=admin_headers).status_code == 204
     assert _list(client, counselor_headers) == []
+
+
+def test_intake_is_never_shared(client: TestClient, counselor_headers, other_counselor_headers, case: dict) -> None:
+    """최초접수는 팀 공유하지 않는다 — 다른 상담사 알림 종 · 달력에 남의 법정 기한이 뜨지 않게(민규 #131 리뷰)."""
+
+    intake = client.post(URL, json=_other(category="INTAKE", case_id=case["id"], shared=True), headers=counselor_headers).json()["data"]
+    meeting = client.post(URL, json=_other(shared=True), headers=counselor_headers).json()["data"]
+    changed = client.patch(f"{URL}/{meeting['id']}", json={"category": "INTAKE", "case_id": case["id"]}, headers=counselor_headers)
+
+    assert intake["shared"] is False
+    assert changed.status_code == 200 and changed.json()["data"]["shared"] is False
+    assert _list(client, other_counselor_headers) == []
+
+
+@pytest.mark.parametrize("body", [{"date": None}, {"kind": None}])
+def test_patch_null_kind_or_date_is_422(client: TestClient, counselor_headers, body) -> None:
+    """kind · date 는 비울 수 없는 칸이라 null 은 422(전에는 커밋 때 NOT NULL 위반으로 500, 민규 #131 리뷰)."""
+
+    event = client.post(URL, json=_other(), headers=counselor_headers).json()["data"]
+
+    response = client.patch(f"{URL}/{event['id']}", json=body, headers=counselor_headers)
+
+    assert response.status_code == 422
+    assert client.get(URL, params={"from": "2026-11-01", "to": "2026-11-30"}, headers=counselor_headers).json()["data"]["items"][0]["date"] == "2026-11-05"

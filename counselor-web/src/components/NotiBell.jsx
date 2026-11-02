@@ -1,5 +1,5 @@
 // 위쪽 바 알림 종(10/29 디자인 nt-*). 알림은 최초접수 일정의 학대 판정 뒤 법정 기한(3일 유선 상담 · 7일 주변 인물 ·
-// 30일 계획서, 11/02 일정 연결)이다. 완료 표시하지 않은 기한만, 마감이 가까운 것부터 보인다.
+// 30일 계획서, 11/02 일정 연결)이다. 내가 접수한 최초접수의 기한 중 완료 표시하지 않은 것만, 마감이 가까운 것부터 보인다.
 // 읽음은 이 브라우저에만 남긴다(ispot-noti-read — 기기마다 따로, 서버에 남기지 않는다). 누르면 그 날 달력으로 간다.
 // session 은 화면의 useAuthSession() 결과(종이 /auth/me 를 따로 부르지 않게). 바깥을 누르거나 Esc 를 누르면 닫힌다.
 import { useEffect, useRef, useState } from 'react';
@@ -46,6 +46,7 @@ export default function NotiBell({ session }) {
   const wrap = useRef(null);
   const fallback = { status: 'signedOut', me: null };
   const schedule = useSchedule(session ?? fallback, range, { withCases: false });
+  const myId = session?.status === 'signedIn' ? session.me?.id : null;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -64,7 +65,8 @@ export default function NotiBell({ session }) {
   t0.setHours(0, 0, 0, 0);
   const items = [];
   for (const event of schedule.data?.events ?? []) {
-    if (event.category !== 'INTAKE') continue;
+    // 내가 접수한 최초접수의 기한만(관리자 · 공유받은 일정의 기한은 띄우지 않는다 — 민규 #131 리뷰).
+    if (event.category !== 'INTAKE' || !myId || event.owner_id !== myId) continue;
     const [y, m, d] = event.date.split('-').map((part) => parseInt(part, 10));
     for (const [n, task] of INTAKE_TASKS) {
       if (event.deadline_done[String(n)]) continue;

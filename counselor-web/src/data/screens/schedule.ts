@@ -3,6 +3,7 @@
 //  - 상담 일정(● 둥근 표시)은 사례 · 상담 유형, 개인 · 기관 일정(■ 네모 표시)은 분류 · 제목. 중요 일정은 빨간색.
 //  - 최초접수의 법정 기한(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출)은 행이 아니라 접수일로 계산하고,
 //    기한마다 '완료 표시' 만 서버(deadline_done)에 남긴다. 기한은 접수 일정을 고치거나 지우면 같이 바뀐다.
+//    기한은 접수한 상담사(만든 사람) 달력 · 알림 종에만 놓는다. 최초접수는 팀 공유하지 않는다(서버도 막는다).
 //  - 팀 공유한 남의 일정은 보기만 한다(editable=false — 수정 · 삭제 · 중요 표시를 막는다).
 //  - 종결평가 회의 일정 잡기(종결보고서 화면)에서 오면 '사례회의 · 종결평가 회의' 추가 창이 열린 채로 시작하고, 달력에서 날을
 //    고르면 그 날로 잡힌다(?case= 사례를 붙인다).
@@ -189,6 +190,8 @@ export function calendarItems(events: ScheduleEvent[], myId: string | null): Cal
         tag: "최초접수",
         imp: event.important,
       });
+      // 법정 기한은 접수한 상담사(만든 사람)의 할 일 — 관리자 · 다른 상담사 달력에는 접수 일정만 놓는다(민규 #131 리뷰).
+      if (!myId || event.owner_id !== myId) continue;
       for (const [days, task] of INTAKE_TASKS) {
         const due = new Date(y, m, d + days);
         const done = Boolean(event.deadline_done[String(days)]);
@@ -461,7 +464,7 @@ export function scheduleValues(input: ScheduleInput) {
           case_id: caseId,
           category: f.pcat,
           title: isIntake ? null : f.title,
-          shared: f.shared,
+          shared: !isIntake && f.shared,
         };
     const saved = s.edit ? await schedule.update(s.edit.id, body) : await schedule.create(body);
     if (!saved) return;
@@ -548,7 +551,10 @@ export function scheduleValues(input: ScheduleInput) {
     formImpBox: s.form.imp ? "#A33B2E" : "#FFFFFF",
     formImpMark: s.form.imp ? "✓" : "",
     toggleFormImp: () => setForm({ imp: !s.form.imp }),
-    toggleShared: () => setForm({ shared: !s.form.shared }),
+    toggleShared: () => !isIntake && setForm({ shared: !s.form.shared }),
+    // 최초접수는 팀 공유하지 않는다(법정 기한은 접수한 상담사 것 — 서버도 shared=false 로 저장).
+    sharedDisabled: isIntake,
+    sharedOn: !isIntake && s.form.shared,
     setChild: setF("child"),
     setCtype: setF("ctype"),
     setPcat: setF("pcat"),
