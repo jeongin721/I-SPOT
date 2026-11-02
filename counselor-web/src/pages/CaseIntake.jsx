@@ -94,7 +94,7 @@ export default function CaseIntake(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <div>
@@ -269,7 +269,7 @@ export default function CaseIntake(props) {
                         />
                       </label>
                       <label className="fl">
-                        <span className="lb">출생연도{v.birthYear.readOnly ? ' (생년월일의 해)' : ''}</span>
+                        <span className="lb">출생연도{v.birthYear.hint}</span>
                         <input
                           className="inp"
                           type="number"

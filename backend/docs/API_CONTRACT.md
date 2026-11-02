@@ -2319,3 +2319,77 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 `FOLLOWUP_PROVIDER`(`off` · `mock` · `module`, **기본 off**) · `FOLLOWUP_TIMEOUT_SECONDS` · `FOLLOWUP_MAX_CONCURRENCY` ·
 `FOLLOWUP_ALLOW_IN_PRODUCTION`(운영 잠금 — `ENV=production` 에서 module 은 이 값이 true 일 때만 뜬다) · `RAG_VECTOR_DB_DIR` · `RAG_ANALYZER_MODEL`(비우면 rag 기본값).
 `module` 은 requirements-rag.txt 패키지와 rag 색인이 있어야 한다. 배포 이미지에 넣는 일은 서버 디스크 · 메모리를 잰 뒤 따로 한다.
+
+## 20. Schedule (일정, 2026-11-02)
+
+11/02 일정 디자인(월간 달력 + 일정 추가)과 홈 '오늘 일정 · 다음 상담까지', 알림 종(처리 기한), 종결보고서의 '종결평가 회의 일정 잡기' 가 쓴다.
+
+> 3 · 7 · 30일 기한은 디자인에 있는 값이고, 매뉴얼 19장 · 법령에서 근거를 아직 확인하지 못했다. 근거가 확인될 때까지 화면 · 문서는
+> '법정 기한' 이 아니라 **'처리 기한'** 이라고 쓴다(상담사가 법적 의무로 받아들이지 않게, 2026-11-02 민규 #131 의견).
+
+### GET /api/v1/schedule/events?from=YYYY-MM-DD&to=YYYY-MM-DD
+
+- `{ items: [ScheduleEvent] }`, 날짜 → 종일(`time: null`) → 시각 순. 기간은 400일까지(`to < from` · 넘으면 `422`).
+- **기간 앞 30일 안의 최초접수(`category: INTAKE`)도 함께 온다** — 처리 기한(접수 + 3 · 7 · 30일)이 기간 안에 올 수 있어서.
+- 보이는 일정: 상담사는 자기 일정 + 다른 상담사가 팀 공유(`shared`)한 개인 · 기관 일정, 관리자는 전체.
+
+`ScheduleEvent`:
+
+```json
+{
+  "id": "uuid", "kind": "CONSULT", "consult_type": "REGULAR", "category": null,
+  "case_id": "uuid", "child_alias": "서윤", "title": null,
+  "date": "2026-11-05", "time": "15:00", "place": "면담실 A",
+  "important": false, "shared": false, "deadline_done": {},
+  "owner_id": "uuid", "owner_name": "이서연", "editable": true,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+- `kind`: `CONSULT`(상담 일정) · `OTHER`(개인 · 기관 일정).
+- `consult_type`(상담 일정만): `REGULAR` 정기상담 · `INITIAL` 초기면담 · `VISIT` 방문상담 · `PHONE` 전화상담 · `CLOSING` 종결 상담.
+  회차의 `consultation_type` 과 따로 둔다('종결 상담' 이 있어서).
+- `category`(개인 · 기관 일정만): `AGENCY_MEETING` 기관 회의 · `CASE_MEETING` 사례회의(종결평가 회의 포함) · `INTAKE` 최초접수 ·
+  `SUPERVISION` 슈퍼비전 · `TRAINING` 교육 · `FIELD_WORK` 외근 · `LEAVE` 휴가 · `ETC` 기타.
+- `case_id` · `child_alias`: 볼 수 있는 사례일 때만. 팀 공유 일정에 남의 사례가 붙어 있으면 둘 다 `null`.
+- `time`: `HH:MM`(사용자 시간대 그대로), 종일이면 `null`.
+- `deadline_done`: 최초접수만 `{"3": bool, "7": bool, "30": bool}`(처리 기한 완료 표시), 그 밖 `{}`.
+  **기한 일정은 행이 아니다** — 화면이 접수일로 계산한다(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출).
+- `editable`: 지금 사용자가 고치고 지울 수 있는가(만든 사람 · 관리자). 공유받은 일정은 `false`.
+- **최초접수는 팀 공유하지 않는다** — `shared: true` 로 보내도 `false` 로 저장한다(처리 기한은 접수한 상담사의 할 일). 화면은
+  처리 기한을 만든 사람의 달력 · 알림 종에만 놓는다(관리자가 남의 최초접수를 봐도 기한은 띄우지 않는다).
+- **일정은 만든 사람 것이다.** 사례 담당자를 바꿔도 일정 · 처리 기한은 새 담당자에게 옮겨 가지 않는다(새 담당자 달력에는 없고,
+  옛 담당자 달력에는 사례가 가려진 채 남는다). 옮겨야 하면 새 담당자가 다시 만든다.
+
+### POST /api/v1/schedule/events → 201
+
+```json
+{ "kind": "OTHER", "category": "CASE_MEETING", "case_id": "uuid", "title": "종결평가 회의",
+  "date": "2026-11-12", "time": "14:00", "place": "회의실 2", "important": false, "shared": false }
+```
+
+- 필수: `kind` · `date`(`YYYY-MM-DD` 글자만, 1900-01-01 ~ 2100-12-31). 상담 일정은 `case_id` · `consult_type`, 개인 · 기관 일정은
+  `category`(최초접수면 `case_id` 도). 없으면 `422`.
+- 상담 일정에는 `category` · `title` · `shared` 를, 개인 · 기관 일정에는 `consult_type` 을 두지 않는다(보내도 비운다).
+- `case_id` 는 볼 수 있는 사례만(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `title` · `place` 는 100자, 빈 글은 `null`.
+
+### PATCH /api/v1/schedule/events/{event_id} → 200
+
+- 보낸 칸만 바뀐다. `kind` 를 바꾸면 위 필수 칸을 합친 값으로 다시 보고, 맞지 않는 칸은 비운다. `kind` · `date` 를 `null` 로 보내면 `422`
+  (바꾸지 않으려면 뺀다).
+- `deadline_done: {"7": true}` — 최초접수만(그 밖 `422`), 보낸 기한만 바뀐다. 키는 `"3"` · `"7"` · `"30"` 만.
+- 만든 사람 · 관리자만(공유받은 일정은 `403`, 볼 수 없는 일정은 `404 NOT_FOUND`).
+
+### DELETE /api/v1/schedule/events/{event_id} → 204
+
+- 만든 사람 · 관리자만. 최초접수를 지우면 처리 기한(계산 값)도 같이 사라진다. 사례를 지우면 그 사례 일정도 지워진다.
+- 감사 기록 `SCHEDULE_CREATED` · `SCHEDULE_UPDATED` · `SCHEDULE_DELETED` — 종류 · 분류 · 바뀐 칸 이름만(제목 · 장소 글은 남기지 않는다).
+
+### 교차검증 반영(2026-11-02, 민규 #131)
+
+- 응답에 `case_hidden: bool` — 사례가 붙어 있지만 지금 볼 수 없어(담당이 바뀐 사례 · 남의 공유 일정) `case_id` · `child_alias` 를 가렸다.
+  이런 일정은 `case_id` 를 바꾸거나 떼면 `409 INVALID_CASE_STATE`(사례 칸을 빼고 보내면 다른 칸은 고칠 수 있다). 화면은 고칠 때 바뀐 칸만 보낸다 — 수정 창을 연 때의 값과 비교하므로 그 사이 다른 사람이 바꾼 칸은 되돌리지 않고, 종류(상담 ↔ 개인 · 기관)를 바꿔도 붙어 있던 사례는 그대로 둔다. 달력 조회 기간은 1900-01-01 ~ 2100-12-31 로 자른다.
+- 고치기 · 지우기는 행을 잠그고(`FOR UPDATE`) 읽는다 — 공유 · 분류 · 기한 완료가 겹쳐도 한쪽 값이 사라지지 않는다.
+- 최초접수는 공유하지 않고(저장 때 `shared=false`), 다른 상담사의 목록 · 조회에서도 공유 조건에서 뺀다.
+- `deadline_done: null` · `kind: null` · `date: null` 은 `422`. 목록 `from` · `to` 도 1900-01-01 ~ 2100-12-31(그 밖 `422`).
+- 사례를 떼면(`case_id: null`) 응답의 별칭도 `null`.

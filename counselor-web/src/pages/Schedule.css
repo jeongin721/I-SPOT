@@ -157,3 +157,26 @@
 .pg-Schedule .thm-root.dark .impb {
   border: 1px solid #4e4b44 !important;
 }
+
+/* 11/02 디자인: 일정 자세히 보기 · 삭제 확인 · 처리 기한 · 누를 수 있는 일정 줄 */
+.pg-Schedule .vd-box { display: flex; flex-direction: column; border: 1px solid #eae7df; border-radius: 12px; overflow: hidden; }
+.pg-Schedule .vd-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; padding: 10px 14px; border-top: 1px solid #eae7df; font-size: 14px; }
+.pg-Schedule .vd-row:first-child { border-top: 0; }
+.pg-Schedule .vd-k { color: #7a776f; font-size: 13px; }
+.pg-Schedule .vd-v { overflow-wrap: anywhere; }
+.pg-Schedule .vd-ask { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px; background: #f7e4df; }
+.pg-Schedule .vd-del { color: #a33b2e !important; }
+.pg-Schedule .vd-del-go { background: #a33b2e !important; color: #ffffff !important; border-color: #a33b2e !important; }
+.pg-Schedule .dl-box { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #f7f6f2; border: 1px solid #eae7df; }
+.pg-Schedule .dl-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.pg-Schedule .dl-n { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 22px; padding: 0 8px; border-radius: 6px; background: #f7e4df; color: #a33b2e; font-size: 12px; font-weight: 700; }
+.pg-Schedule .ev-clk { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; }
+.pg-Schedule .ev-clk:hover { background: #f7f6f2; }
+.pg-Schedule .ev-clk:focus-visible { outline: 2px solid #c2a36b; outline-offset: 1px; }
+.thm-root.dark .pg-Schedule .vd-box, .thm-root.dark .pg-Schedule .vd-row, .pg-Schedule .thm-root.dark .vd-box, .pg-Schedule .thm-root.dark .vd-row { border-color: #45423b; }
+.pg-Schedule .thm-root.dark .vd-k { color: #a8a296; }
+.pg-Schedule .thm-root.dark .vd-ask { background: #4a2b26; }
+.pg-Schedule .thm-root.dark .vd-del { color: #f2b8ac !important; }
+.pg-Schedule .thm-root.dark .dl-box { background: #2c2b27; border-color: #45423b; }
+.pg-Schedule .thm-root.dark .dl-n { background: #4a2b26; color: #f2b8ac; }
+.pg-Schedule .thm-root.dark .ev-clk:hover { background: #33312c; }

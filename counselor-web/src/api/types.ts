@@ -1365,3 +1365,82 @@ export interface FollowupChecklistEnvelope {
   /** 만든 적이 없으면 null. */
   checklist: FollowupChecklist | null;
 }
+
+// =========================================================
+// 일정 — backend/app/schemas/schedule.py (API_CONTRACT 20절, 2026-11-02)
+// =========================================================
+
+/** 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시). */
+export type ScheduleKind = "CONSULT" | "OTHER";
+export type ScheduleConsultType = "REGULAR" | "INITIAL" | "VISIT" | "PHONE" | "CLOSING";
+export type ScheduleCategory =
+  | "AGENCY_MEETING"
+  | "CASE_MEETING"
+  | "INTAKE"
+  | "SUPERVISION"
+  | "TRAINING"
+  | "FIELD_WORK"
+  | "LEAVE"
+  | "ETC";
+
+/** 디자인 일정 추가 창의 이름 그대로(순서도 같다). */
+export const SCHEDULE_CONSULT_LABELS: Record<ScheduleConsultType, string> = {
+  REGULAR: "정기상담",
+  INITIAL: "초기면담",
+  VISIT: "방문상담",
+  PHONE: "전화상담",
+  CLOSING: "종결 상담",
+};
+export const SCHEDULE_CATEGORY_LABELS: Record<ScheduleCategory, string> = {
+  AGENCY_MEETING: "기관 회의",
+  CASE_MEETING: "사례회의",
+  INTAKE: "최초접수",
+  SUPERVISION: "슈퍼비전",
+  TRAINING: "교육",
+  FIELD_WORK: "외근",
+  LEAVE: "휴가",
+  ETC: "기타",
+};
+
+export interface ScheduleEvent {
+  id: string;
+  kind: ScheduleKind;
+  consult_type: ScheduleConsultType | null;
+  category: ScheduleCategory | null;
+  /** 볼 수 있는 사례일 때만(팀 공유 일정의 남의 사례는 null). */
+  case_id: string | null;
+  child_alias: string | null;
+  /** 사례가 붙어 있지만 지금 볼 수 없어 가렸는가(담당이 바뀐 사례 등). 고칠 때 사례 칸을 보내지 않는다. 옛 서버면 키가 없다. */
+  case_hidden?: boolean;
+  title: string | null;
+  /** YYYY-MM-DD. */
+  date: string;
+  /** HH:MM, 종일이면 null. */
+  time: string | null;
+  place: string | null;
+  important: boolean;
+  shared: boolean;
+  /** 최초접수만 {"3","7","30": 완료?}, 그 밖 {}. */
+  deadline_done: Record<string, boolean>;
+  owner_id: string;
+  owner_name: string | null;
+  /** 지금 사용자가 고치고 지울 수 있는가. */
+  editable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleEventCreate {
+  kind: ScheduleKind;
+  date: string;
+  consult_type?: ScheduleConsultType | null;
+  category?: ScheduleCategory | null;
+  case_id?: string | null;
+  title?: string | null;
+  time?: string | null;
+  place?: string | null;
+  important?: boolean;
+  shared?: boolean;
+}
+
+export type ScheduleEventUpdate = Partial<ScheduleEventCreate> & { deadline_done?: Record<string, boolean> };

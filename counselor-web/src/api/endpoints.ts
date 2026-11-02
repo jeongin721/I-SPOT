@@ -7,6 +7,9 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  ScheduleEvent,
+  ScheduleEventCreate,
+  ScheduleEventUpdate,
   AbuseType,
   AnalysisEnvelope,
   AnalysisRequestResponse,
@@ -569,5 +572,29 @@ export const lawGuide = {
    */
   ask(question: string): Promise<LawGuideAnswer> {
     return api.post<LawGuideAnswer>("/law-guide/questions", { question });
+  },
+};
+
+// =========================================================
+// 일정 (API_CONTRACT 20절, 2026-11-02)
+// =========================================================
+
+export const schedule = {
+  /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(처리 기한 계산용). */
+  list(range: { from: string; to: string }): Promise<{ items: ScheduleEvent[] }> {
+    return api.get<{ items: ScheduleEvent[] }>("/schedule/events", range);
+  },
+
+  create(payload: ScheduleEventCreate): Promise<ScheduleEvent> {
+    return api.post<ScheduleEvent>("/schedule/events", payload);
+  },
+
+  /** 보낸 칸만 바뀐다. 만든 사람 · 관리자만(공유 일정은 403). */
+  update(eventId: string, payload: ScheduleEventUpdate): Promise<ScheduleEvent> {
+    return api.patch<ScheduleEvent>(`/schedule/events/${eventId}`, payload);
+  },
+
+  remove(eventId: string): Promise<void> {
+    return api.delete<void>(`/schedule/events/${eventId}`);
   },
 };

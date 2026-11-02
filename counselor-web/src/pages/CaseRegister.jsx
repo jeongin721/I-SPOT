@@ -9,7 +9,7 @@
 // (2026-10-30 팀 결정, 표는 components/PersonalTables.jsx). 조치결과 · 위험도 · 사례연계 경위, ② 탭의 나머지 칸(관계 · 가족유형 · 문제력 · 태도 · 소견)은
 // 서버에 칸이 없어 준비 중(입력 막음).
 // 10/21 디자인(counselor-design/screens/CaseRegister.dc.html): 학대유형 칸 삭제, 필수 칸을 채워야 ② 탭으로 넘어감(빈 칸 표시 ·
-// 남은 항목 안내), 닫기 · 취소는 이 팝업을 연 화면(?back=)으로. 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이라 옮기지 않았다.
+// 남은 항목 안내), 닫기 · 취소는 이 팝업을 연 화면(?back=)으로. 디자인의 달력 창 · '기타' 직접 입력은 옮기지 않았다(날짜 셋은 브라우저 날짜 입력칸).
 // 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';

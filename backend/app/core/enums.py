@@ -214,6 +214,36 @@ class FollowupQuestionSource(str, Enum):
     COUNSELOR = "COUNSELOR"
 
 
+class ScheduleKind(str, Enum):
+    """일정 종류(2026-11-02, 일정 디자인). 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시)."""
+
+    CONSULT = "CONSULT"
+    OTHER = "OTHER"
+
+
+class ScheduleConsultType(str, Enum):
+    """상담 일정의 상담 유형(디자인 일정 추가 창 그대로). 회차의 ConsultationType 과 따로 둔다('종결 상담' 이 있어서)."""
+
+    REGULAR = "REGULAR"  # 정기상담
+    INITIAL = "INITIAL"  # 초기면담
+    VISIT = "VISIT"  # 방문상담
+    PHONE = "PHONE"  # 전화상담
+    CLOSING = "CLOSING"  # 종결 상담
+
+
+class ScheduleCategory(str, Enum):
+    """개인 · 기관 일정의 분류(디자인 그대로). INTAKE(최초접수)는 사례가 필수이고 처리 기한(3 · 7 · 30일)이 따라붙는다."""
+
+    AGENCY_MEETING = "AGENCY_MEETING"  # 기관 회의
+    CASE_MEETING = "CASE_MEETING"  # 사례회의(종결평가 회의 포함)
+    INTAKE = "INTAKE"  # 최초접수
+    SUPERVISION = "SUPERVISION"  # 슈퍼비전
+    TRAINING = "TRAINING"  # 교육
+    FIELD_WORK = "FIELD_WORK"  # 외근
+    LEAVE = "LEAVE"  # 휴가
+    ETC = "ETC"  # 기타
+
+
 class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
@@ -260,6 +290,10 @@ class AuditAction(str, Enum):
     FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
     # 다음 상담 체크리스트 만들기 · 다시 만들기 요청(19절, 2026-10-30). detail 에는 provider · 시도 번호만 남긴다(문장은 넣지 않는다).
     FOLLOWUP_CHECKLIST_REQUESTED = "FOLLOWUP_CHECKLIST_REQUESTED"
+    # 일정(2026-11-02). detail 에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 넣지 않는다).
+    SCHEDULE_CREATED = "SCHEDULE_CREATED"
+    SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
+    SCHEDULE_DELETED = "SCHEDULE_DELETED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.
