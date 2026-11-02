@@ -5,35 +5,14 @@
 // 이름은 아동 실명(등록된 사례), 없으면 별칭(useCaseOverview withNames), 나이 대신 출생연도, 학대 유형은 사례에 없어 보이지 않는다.
 // '실명 보기' 토글은 10/30 디자인에서 빠졌다(CaseList 와 같음).
 // 누르면 그 사례의 ① 전체 상담 내역 검토(?case=)로 간다.
-// 검색어는 입력한 계정에 묶는다(useAccountSearch) — 앞 계정이 친 이름 · 사례 ID 가 다음 계정에 보이지 않게.
+// 검색어는 입력한 계정에 묶는다(data/useAccountSearch) — 앞 계정이 친 이름 · 사례 ID 가 다음 계정에 보이지 않게.
 // 검색은 받은 목록 안에서 이름 · 별칭 · 사례 ID 의 일부로 찾는다(화면에 이미 보이는 값).
-
-import { useCallback, useEffect, useState } from "react";
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseOverviewState } from "../useCaseOverview";
 import { NOT_READY, screenNotice, sidebarValues } from "./common";
 import { screenHref } from "./links";
-
-/**
- * 계정에 묶인 검색어. 로그인 확인 중이거나 다른 계정으로 바뀌면 바뀐 첫 그리기부터 빈 검색어로 보이고
- * 들고 있던 검색어도 버린다(같은 계정으로 다시 확인돼도 비운다). 로그인이 확인되기 전에 친 글자는 받지 않는다.
- */
-export function useAccountSearch(session: AuthSession): [string, (value: string) => void] {
-  const owner = session.status === "signedIn" && session.me ? session.me.id : null;
-  const [held, setHeld] = useState<{ owner: string | null; value: string }>({ owner: null, value: "" });
-
-  useEffect(() => {
-    setHeld((current) => (current.owner === owner ? current : { owner, value: "" }));
-  }, [owner]);
-
-  const setSearch = useCallback((value: string) => {
-    if (owner !== null) setHeld({ owner, value });
-  }, [owner]);
-
-  return [owner !== null && held.owner === owner ? held.value : "", setSearch];
-}
 
 interface ClosureInput {
   session: AuthSession;
@@ -91,7 +70,7 @@ export function closureValues(input: ClosureInput) {
     search: {
       value: search,
       onChange: (e: { target: { value: string } }) => input.setSearch(e.target.value),
-      // 로그인이 확인된 계정이 있을 때만 입력을 받는다(useAccountSearch).
+      // 로그인이 확인된 계정이 있을 때만 입력을 받는다(data/useAccountSearch).
       disabled: session.status !== "signedIn",
     },
     rows,

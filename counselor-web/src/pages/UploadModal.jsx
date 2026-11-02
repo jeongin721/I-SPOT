@@ -12,6 +12,7 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { useAccountSearch } from '../data/useAccountSearch';
 import { useAuthSession } from '../data/useAuthSession';
 import { useAudioUpload } from '../data/useAudioUpload';
 import { useCaseDetail } from '../data/useCaseDetail';
@@ -45,9 +46,12 @@ function UploadModalScreen(props) {
   const session = useAuthSession();
   const go = useNavigate();
   const enabled = signedIn(session);
-  const [search, setSearch] = useState('');
+  // 검색어는 계정에 묶는다(Codex #130 H1).
+  const [search, setSearch] = useAccountSearch(session);
   const [caseId, setCaseId] = useState(ids.caseId);
-  const list = useCaseList({ search, enabled, withNames: true });
+  // 사례를 정해 열면(?case=) 2단계부터라 사례 고르기 목록(실명 · 열람 기록)을 부르지 않는다. '이전' 으로 1단계를 열 때 부른다(Codex #130 M2).
+  const [pickOpen, setPickOpen] = useState(!ids.caseId);
+  const list = useCaseList({ search, enabled: enabled && pickOpen, withNames: true });
   const caseDetail = useCaseDetail(caseId, { enabled });
   const upload = useAudioUpload();
   const theme = useTheme();
@@ -60,6 +64,7 @@ function UploadModalScreen(props) {
     setSearch,
     caseId,
     setCaseId,
+    openPick: () => setPickOpen(true),
     caseDetail,
     upload,
     go,

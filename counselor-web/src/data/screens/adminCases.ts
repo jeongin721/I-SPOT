@@ -23,11 +23,10 @@ export const ALL_STAFF = "all";
 
 export interface AdminCasesUiState {
   who: string;
-  q: string;
 }
 
 export function initialAdminCasesState(): AdminCasesUiState {
-  return { who: ALL_STAFF, q: "" };
+  return { who: ALL_STAFF };
 }
 
 interface AdminCasesInput {
@@ -35,6 +34,9 @@ interface AdminCasesInput {
   list: AdminCasesState;
   state: AdminCasesUiState;
   setState: (patch: Partial<AdminCasesUiState>) => void;
+  /** 계정에 묶인 검색어(data/useAccountSearch). */
+  search: string;
+  setSearch: (value: string) => void;
 }
 
 interface Staff {
@@ -81,7 +83,7 @@ export function adminCasesValues(input: AdminCasesInput) {
   // 고른 상담원이 목록에서 사라졌으면(다른 관리자 계정으로 바뀜 등) 전체로 본다.
   const who = staff.some((s) => s.id === state.who) ? state.who : ALL_STAFF;
 
-  const q = state.q.trim().toLowerCase();
+  const q = input.search.trim().toLowerCase();
   const rows = all
     .filter(({ source }) => who === ALL_STAFF || source.counselor_id === who)
     .filter(
@@ -154,8 +156,8 @@ export function adminCasesValues(input: AdminCasesInput) {
         note: list.users ? "담당 상담원 비활성 · 계정 없음" : "상담원 목록을 받지 못해 지워진 계정만 셈",
       },
     ],
-    q: state.q,
-    setQ: (e: { target: { value: string } }) => setState({ q: e.target.value }),
+    q: input.search,
+    setQ: (e: { target: { value: string } }) => input.setSearch(e.target.value),
     riskF,
     sortF,
     staffF,
