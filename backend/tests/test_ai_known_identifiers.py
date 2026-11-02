@@ -15,6 +15,7 @@ import json
 import logging
 import sys
 import types
+import unicodedata
 import uuid
 from typing import Any, Dict, List
 
@@ -29,6 +30,7 @@ from app.core.config import settings
 from app.core.enums import AuditAction
 from app.models.analysis import AIAnalysis
 from app.models.audit_log import AuditLog
+from app.models.case_personal_info import CasePersonalInfo
 from app.models.followup_checklist import SessionFollowupChecklist
 from app.services import closure_review_service, personal_info_service
 from tests.conftest import create_session
@@ -42,17 +44,32 @@ from tests.test_modeling_ai_adapter import (  # noqa: F401 — modeling 은 고�
     _capture_pipeline_kwargs,
     modeling,
 )
-from tests.test_modeling_gateway_residual import gateway  # noqa: F401 — 고정 장치
+from tests.test_modeling_gateway_residual import MASKED, VALID_TOKEN, _tags, gateway  # noqa: F401 — gateway 는 고정 장치
 
 GIVEN = ["가람", "누리", "바다"]
-# FULL(아동 한가람 · 사례관리대상자 · 면접대상자 · 가족 한누리 · 가족 · 건강정도 한바다)에서 만들어지는 목록. 긴 것부터.
-EXPECTED = [CHILD, GUARDIAN, SIBLING, *GIVEN]
+# FULL(아동 한가람 · 사례관리대상자 · 면접대상자 · 가족 한누리 · 가족 · 건강정도 한바다)에서 만들어지는 이름(전체 · 성 뺀 이름).
 NAMES = [CHILD, GUARDIAN, SIBLING, *GIVEN]
 ALIAS = "아동_001"  # tests.conftest.create_case 의 별칭
 
 
+def _nfd(text: str) -> str:
+    return unicodedata.normalize("NFD", text)
+
+
+# 목록에는 한글을 자모로 풀어 쓴 표기(NFD)도 들어간다(Codex #138 H1).
+EXPECTED = {*NAMES, *map(_nfd, NAMES)}
+
+
+def _assert_names(names: List[str], expected=EXPECTED) -> None:
+    """같은 이름 집합이고, 한 번씩만, 긴 것부터다(짧은 이름을 먼저 바꾸면 성이 남는다)."""
+
+    assert set(names) == set(expected)
+    assert len(names) == len(set(names))
+    assert [len(name) for name in names] == sorted((len(name) for name in names), reverse=True)
+
+
 def _assert_no_names(blob: str) -> None:
-    for secret in [*SECRETS, *GIVEN]:
+    for secret in [*SECRETS, *GIVEN, *map(_nfd, NAMES)]:
         assert secret not in blob, secret
 
 
@@ -86,7 +103,7 @@ def test_names_are_full_and_given_names_longest_first(client: TestClient, counse
     names = personal_info_service.known_identifiers(db, uuid.UUID(case["id"]))
 
     # 같은 이름이 여러 칸에 있어도 한 번만. 생년월일 · 관계 · 건강 세부는 넣지 않는다.
-    assert names == EXPECTED
+    _assert_names(names)
     assert not {"2015-04-12", "1983-09-02", "부", "형제", "가상 진단명"} & set(names)
 
 
@@ -100,10 +117,10 @@ def test_unregistered_case_gives_only_extra(case: dict, db) -> None:
 def test_extra_joins_the_longest_first_order(client: TestClient, counselor_headers, case: dict, db) -> None:
     _put(client, counselor_headers, case["id"], FULL)
 
-    # 별칭이 이름 조각이어도(가람) 긴 이름(한가람)이 앞에 와야 '한' 이 남지 않는다. 같은 길이는 넣은 순서대로.
+    # 별칭이 이름 조각이어도(가람) 한 번만, 긴 이름(한가람)이 앞에 와야 '한' 이 남지 않는다.
     names = personal_info_service.known_identifiers(db, uuid.UUID(case["id"]), extra=["가람", "아동A"])
 
-    assert names == [CHILD, GUARDIAN, SIBLING, "아동A", "가람", "누리", "바다"]
+    _assert_names(names, EXPECTED | {"아동A"})
 
 
 @pytest.mark.parametrize(
@@ -118,10 +135,16 @@ def test_extra_joins_the_longest_first_order(client: TestClient, counselor_heade
         ("엄마", []),  # 이름 칸에 적은 관계말은 원문의 같은 낱말을 다 가리므로 뺀다
         ("어머니", []),
         ("Kim Ara", ["Kim Ara"]),
+        ("Kim  Ara", ["Kim  Ara", "Kim Ara"]),  # 적은 그대로(두 칸 공백)도 넣는다(Codex #138 H1)
+        (_nfd("김민수"), ["김민수", "민수"]),  # 자모로 풀어 적은 이름도 정리한 표기로 넣는다
     ],
 )
 def test_name_variants(name: str, expected: List[str]) -> None:
-    assert personal_info_service._variants(name) == expected
+    variants = personal_info_service._variants(name)
+
+    # NFC 표기는 기대한 그대로, 그 NFD 표기도 모두 들어 있다.
+    assert [variant for variant in variants if unicodedata.is_normalized("NFC", variant)] == expected
+    assert set(variants) == set(expected) | {_nfd(variant) for variant in expected}
 
 
 def test_unreadable_field_is_skipped_with_warning_without_values(
@@ -133,8 +156,25 @@ def test_unreadable_field_is_skipped_with_warning_without_values(
     with caplog.at_level(logging.WARNING):
         names = personal_info_service.known_identifiers(db, uuid.UUID(case["id"]))
 
-    assert names == [GUARDIAN, SIBLING, "누리", "바다"]
+    _assert_names(names, {name for name in EXPECTED if unicodedata.normalize("NFC", name) not in (CHILD, "가람")})
     assert f"case_id={case['id']}" in caplog.text and "field=child_name" in caplog.text
+    _assert_no_names(caplog.text)
+
+
+def test_tampered_key_name_is_not_logged(client: TestClient, counselor_headers, case: dict, db, caplog) -> None:
+    """저장 값의 키 이름 자리를 고쳐 넣어도 그 글자를 로그에 옮기지 않는다(Codex #138 L2) — 이름 목록 · 실명 조회 둘 다."""
+
+    _put(client, counselor_headers, case["id"], FULL)
+    row = db.get(CasePersonalInfo, uuid.UUID(case["id"]))
+    _, _, nonce, sealed = row.child_name_enc.split(".")
+    row.child_name_enc = ".".join(("v1", CHILD, nonce, sealed))
+    db.commit()
+
+    with caplog.at_level(logging.WARNING):
+        personal_info_service.known_identifiers(db, uuid.UUID(case["id"]))
+        assert client.get(f"/api/v1/cases/{case['id']}/personal-info", headers=counselor_headers).status_code == 500
+
+    assert caplog.text.count("key_id=?") == 2
     _assert_no_names(caplog.text)
 
 
@@ -192,7 +232,7 @@ def test_analysis_passes_registered_names_to_the_module(
     envelope = _get_analysis(client, counselor_headers, session["id"]).json()["data"]
 
     assert envelope["analysis"]["status"] == "COMPLETED"
-    assert seen[-1]["known_identifiers"] == EXPECTED
+    _assert_names(seen[-1]["known_identifiers"])
     assert seen[-1]["case_id"] is None  # case_store 를 쓰지 않는다
     assert _views(db) == views
     _assert_no_names(caplog.text)
@@ -230,8 +270,8 @@ def test_contract_adapter_passes_names_only_when_given(monkeypatch) -> None:
     seen = _capture_pipeline_kwargs(monkeypatch)
     contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
 
-    contract_adapter.analyze_audio_session_as_contract(stt_result=TRANSCRIPT, known_identifiers=EXPECTED)
-    assert seen[-1]["known_identifiers"] == EXPECTED
+    contract_adapter.analyze_audio_session_as_contract(stt_result=TRANSCRIPT, known_identifiers=NAMES)
+    assert seen[-1]["known_identifiers"] == NAMES
 
     # 주지 않으면 키 자체를 넘기지 않는다(예전과 같다).
     contract_adapter.analyze_audio_session_as_contract(stt_result=TRANSCRIPT)
@@ -250,7 +290,7 @@ def test_older_module_without_the_parameter_still_runs_and_warns(monkeypatch, ca
     monkeypatch.setattr(adapter, "_load_pipeline", lambda: (transcript_model, older))
 
     with caplog.at_level(logging.WARNING):
-        bundle = adapter.analyze(TRANSCRIPT, known_identifiers=EXPECTED)
+        bundle = adapter.analyze(TRANSCRIPT, known_identifiers=NAMES)
 
     assert bundle.provider == "modeling"
     assert "known_identifiers" not in seen[-1]
@@ -297,7 +337,9 @@ def _step_result(name: str, text: str) -> Any:
     """가짜 단계의 반환값. 기록 초안 · 보호요인은 받은 글을 그대로 돌려줘, 이름을 되돌린 뒤 다시 가리는 단계까지 이름이 가게 한다."""
 
     if name == "analyze_subtypes":
-        return {"results": []}
+        # 근거가 있어야 심각도 단계가 돈다(이름을 되돌린 근거를 다시 가려 보낸다 — Codex #138 이 시험 사각지대로 짚음).
+        evidence = {"evidence": text, "action": "때림", "instrument": None, "target_body_part": None}
+        return {"results": [{"major_type": "신체학대", "subtypes": [{"type": "직접 신체 가해", "evidences": [evidence]}]}]}
     if name == "generate_counseling_records":
         return {"counseling_summary": {}, "counseling_note": {}}
     if name == "generate_record_draft":
@@ -379,8 +421,8 @@ def test_every_outbound_text_of_the_analysis_hides_registered_names(
 
     infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), case_id="c1", known_identifiers=names)
 
-    # 처음 가리는 단계 · 이름을 되돌린 뒤 다시 가리는 단계(서사 요약 · 다음 상담 확인 사항) · 아동 발화만 가리는 단계 모두.
-    assert set(sent) == set(OUTBOUND_STEPS) - {"rate_severity_from_text"}
+    # 처음 가리는 단계 · 이름을 되돌린 뒤 다시 가리는 단계(서사 요약 · 심각도 · 다음 상담 확인 사항) · 아동 발화만 가리는 단계 모두.
+    assert set(sent) == set(OUTBOUND_STEPS)
     texts = [text for values in sent.values() for text in values]
 
     assert all(isinstance(text, str) and text for text in texts)
@@ -389,6 +431,7 @@ def test_every_outbound_text_of_the_analysis_hides_registered_names(
             assert name not in text, (name, text)
     assert "[KNOWN_" in sent["generate_counseling_records"][0]
     assert "[KNOWN_" in sent["generate_narrative_summary_from_masked_text"][0]
+    assert "[KNOWN_" in sent["rate_severity_from_text"][0]
     assert "[KNOWN_" in sent["generate_followup_check_points_from_masked_text"][0]
     # 넘긴 목록을 쓰면 case_store(평문 SQLite)는 읽지 않는다.
     assert store_reads == []
@@ -434,7 +477,7 @@ def test_checklist_passes_registered_names_to_rag(
     checklist = client.get(_url(session["id"]), headers=counselor_headers).json()["data"]["checklist"]
 
     assert checklist["status"] == "COMPLETED"
-    assert fake.calls[0]["known_identifiers"] == EXPECTED
+    _assert_names(fake.calls[0]["known_identifiers"])
     assert _views(db) == views
     _assert_no_names(caplog.text)
     _assert_no_names(_stored(db, SessionFollowupChecklist))
@@ -442,7 +485,7 @@ def test_checklist_passes_registered_names_to_rag(
 
 def test_checklist_input_repr_hides_names() -> None:
     payload = FollowupChecklistInput(
-        transcript={"segments": []}, abuse_type="physical", session_no=1, session_id="s", known_identifiers=EXPECTED
+        transcript={"segments": []}, abuse_type="physical", session_no=1, session_id="s", known_identifiers=NAMES
     )
 
     _assert_no_names(repr(payload))
@@ -519,10 +562,184 @@ def test_closure_summary_masks_registered_names_before_the_llm(
     assert response.status_code == 200, response.text
     assert response.json()["data"]["summary"]["source"] == "AI"
     # 별칭은 예전처럼 넘기고, 등록 실명을 더한다(긴 것부터).
-    assert closure_llm["known"] == [ALIAS, *EXPECTED]
+    _assert_names(closure_llm["known"], EXPECTED | {ALIAS})
     [prompt] = closure_llm["prompts"]
     for name in NAMES:
         assert name not in prompt, name
     assert "[KNOWN_" in prompt
     assert _views(db) == views
     _assert_no_names(caplog.text)
+
+
+def test_checklist_does_not_decrypt_names_when_nothing_goes_out(
+    client: TestClient, counselor_headers, case: dict, session: dict, monkeypatch, db
+) -> None:
+    """mock 이거나 학대 유형이 없어 rag 를 부르지 않으면 이름을 풀지 않는다(Codex #138 L1)."""
+
+    _put(client, counselor_headers, case["id"], FULL)
+    analyzed_session(client, counselor_headers, session["id"])
+    calls = []
+    monkeypatch.setattr(personal_info_service, "known_identifiers", lambda *args, **kwargs: calls.append(args) or [])
+
+    # mock(외부로 보내지 않음)
+    _set_analysis_result(db, session["id"])
+    monkeypatch.setattr(settings, "FOLLOWUP_PROVIDER", "mock")
+    assert client.post(_url(session["id"]), headers=counselor_headers).status_code == 202
+    assert client.get(_url(session["id"]), headers=counselor_headers).json()["data"]["checklist"]["status"] == "COMPLETED"
+
+    # module 이지만 학대 유형이 없어 rag 를 부르지 않음
+    _set_analysis_result(db, session["id"], abuse=False)
+    fake = _FakeRag()
+    set_followup_checklist_adapter_override(_module(monkeypatch, fake))
+    assert client.post(_url(session["id"]), headers=counselor_headers).status_code == 202
+
+    assert fake.calls == []
+    assert calls == []
+
+
+# =========================================================
+# 가리기 관문(ai/ privacy_gateway) — Codex #138 H1 · H2 · H3 · M1 · M2
+# =========================================================
+
+
+def test_name_written_as_registered_is_masked(gateway) -> None:  # noqa: F811
+    gw, _pii, _state = gateway
+
+    # 두 칸 공백으로 등록하고 원문도 같은 표기(H1)
+    masked, _ = gw.mask_for_outbound("Kim  Ara 가 왔다", known_identifiers=personal_info_service._variants("Kim  Ara"))
+    assert "Ara" not in masked
+
+    # 원문만 자모로 풀어 쓴 표기(NFD)
+    text = _nfd("김민수가 왔다")
+    masked, _ = gw.mask_for_outbound(text, known_identifiers=personal_info_service._variants("김민수"))
+    assert _nfd("민수") not in masked and "[KNOWN_" in masked
+
+
+def test_label_field_with_a_registered_name_is_masked(gateway) -> None:  # noqa: F811
+    gw, _pii, _state = gateway
+
+    # 이름이 '김방임' 이고 발화 한 줄이 '방임' 이면 유형 이름이라고 그냥 넘기지 않는다(H2).
+    assert gw.review({"text": "방임"}, known_identifiers=["김방임", "방임"]).payload["text"] == "[KNOWN_01]"
+    # 등록 이름이 없으면 유형 이름은 그대로다(예전과 같음).
+    assert gw.review({"text": "방임"}, known_identifiers=["한가람"]).payload["text"] == "방임"
+
+
+def _restored(pii, result, *path) -> str:
+    value = result.payload
+    for key in path:
+        value = value[key]
+    return pii.restore_pii(value, result.entity_map)
+
+
+def test_two_people_stay_two_people_across_fields(gateway) -> None:  # noqa: F811
+    gw, pii, state = gateway
+
+    # 등록 이름(H3 재현 그대로): 필드마다 매긴 토큰을 전체 토큰으로 바꿀 때 두 사람이 한 토큰이 되지 않는다.
+    payload = {"text": "김바다의 이야기", "case": {"past": "이가람은 김바다와 있다"}}
+    result = gw.review(payload, known_identifiers=["이가람", "김바다", "가람", "바다"])
+    assert _restored(pii, result, "case", "past") == "이가람은 김바다와 있다"
+    assert len(set(VALID_TOKEN.findall(result.payload["case"]["past"]))) == 2
+
+    # 이름 인식만으로도 같다(main 에도 있던 결함).
+    state.rule = lambda text: {} if MASKED in text else {**_tags(text, "김민수", "PS"), **_tags(text, "이영희", "PS")}
+    payload = {"first": "김민수가 왔다", "second": "이영희와 김민수"}
+    result = gw.review(payload)
+    assert _restored(pii, result, "second") == "이영희와 김민수"
+    assert len(set(VALID_TOKEN.findall(result.payload["second"]))) == 2
+
+
+@pytest.mark.parametrize(
+    ("text", "known", "ner_finds"),
+    [
+        ("김민수 이민수 왔다", ["김민수", "이민수", "민수"], "민수"),  # 이름 인식이 성 뺀 이름만 잡음
+        ("김민수가 왔다", ["김민수", "민수"], "김민"),  # 이름 인식이 끝 글자를 빼고 잡음
+    ],
+)
+def test_name_partly_caught_by_ner_leaves_no_piece(gateway, text: str, known: List[str], ner_finds: str) -> None:  # noqa: F811
+    gw, pii, state = gateway
+    state.rule = lambda value: {} if MASKED in value else _tags(value, ner_finds, "PS")
+
+    masked, entity_map = gw.mask_for_outbound(text, known_identifiers=known)
+
+    # 성 · 끝 글자가 남지 않는다(M1).
+    assert not any(char in masked for char in "김이수민"), masked
+    assert pii.restore_pii(masked, entity_map) == text
+
+
+def test_short_ascii_names_do_not_break_tokens_or_speaker_labels(gateway) -> None:  # noqa: F811
+    gw, pii, state = gateway
+
+    # 토큰 글자와 겹치는 등록 이름("KN")이 있어도 막히지 않는다(M2).
+    masked, _ = gw.mask_for_outbound("김민수가 왔다", known_identifiers=["김민수", "KN"])
+    assert masked == "[KNOWN_01]가 왔다"
+
+    # 화자 표시("CHILD:")는 그대로 두고 본문의 같은 글자만 가린다.
+    text = "[seg_001] CHILD: 김민수가 CH 라고 불렀어요"
+    masked, entity_map = gw.mask_for_outbound(text, known_identifiers=["김민수", "CH"])
+    assert masked == "[seg_001] CHILD: [KNOWN_01]가 [KNOWN_02] 라고 불렀어요"
+    assert pii.restore_pii(masked, entity_map) == text
+
+    # 이름 인식이 만든 토큰([PERSON_01]) 안의 글자("ON")를 가리지 않는다.
+    state.rule = lambda value: {} if MASKED in value else _tags(value, "박영희", "PS")
+    text = "박영희가 김민수를 만났다"
+    masked, entity_map = gw.mask_for_outbound(text, known_identifiers=["김민수", "ON"])
+    assert masked == "[PERSON_01]가 [KNOWN_01]를 만났다"
+    assert pii.restore_pii(masked, entity_map) == text
+
+
+# =========================================================
+# 자른 뒤 가리는 글 — Codex #138 M3
+# =========================================================
+
+
+def _filler(length: int) -> str:
+    """'가나 ' 를 되풀이한 length 자(이름 글자 없음)."""
+
+    return ("가나 " * length)[:length]
+
+
+def test_long_texts_are_cut_between_words_before_masking() -> None:
+    from ai.modeling.abuse import case_context as ai_case_context
+    from ai.modeling.abuse import closure_summary_llm
+    from rag import case_context as rag_case_context
+
+    # 이름이 자르는 자리에 걸치게 둔다. 예전에는 '김바' 가 남아 가리기 목록(김바다 · 바다)에 걸리지 않았다.
+    analysis_text = ai_case_context._text(_filler(598) + "김바다와 만났다")
+    closure_text = closure_summary_llm._session_block(
+        {"number": 1, "date": "", "assessment": {"safety_risks": _filler(2998) + "김바다와 만났다"}, "signals": []}
+    )
+    rag_text = rag_case_context._shorten(_filler(597) + "김바다와 만났다")
+
+    for cut in (analysis_text, closure_text, rag_text):
+        assert "김" not in cut and "가나" in cut
+
+    # Codex 재현 그대로(앞이 빈칸 없는 한 낱말): 잘린 낱말을 통째로 뺀다.
+    assert "김" not in ai_case_context._text("가" * 598 + "김바다와 만났다")
+    assert "김" not in closure_summary_llm._session_block(
+        {"number": 1, "date": "", "assessment": {"safety_risks": "가" * 2998 + "김바다와 만났다"}, "signals": []}
+    )
+    assert rag_case_context._shorten("가" * 597 + "김바다와 만났다") == "…"
+
+    # 이름이 자르는 자리 앞에서 끝나면 그대로 남는다(가리기 목록이 통째로 가린다).
+    assert ai_case_context._text(_filler(590) + "김바다와 만났다 " + _filler(20)).count("김바다와") == 1
+
+
+def test_rag_case_records_hide_names_and_keep_people_apart(gateway) -> None:  # noqa: F811
+    """rag 가 실제로 만드는 사례 기록(build_case_records)을 rag 의 가리기(mask_payload)로 가린다 — pipeline._mask_case 와 같은 모양."""
+
+    from rag.case_context import build_case_records
+    from rag.privacy import mask_payload, restore
+
+    _gw, _pii, _state = gateway
+    transcript = {"segments": [{"segment_id": "seg_001", "speaker": "CHILD", "start_ms": 0, "text": "김바다의 이야기"}]}
+    previous = [{"session_no": 1, "session_id": "s1", "summary": "이가람은 김바다와 있다", "check_items": [],
+                 "transcript": None, "safety_plan": _filler(597) + "김바다와 만났다"}]
+    records = build_case_records(transcript, session_no=2, session_id="s2", previous_sessions=previous)
+    payload = {"text": "김바다의 이야기", "case": {record["ref"]: record["text"] for record in records}}
+
+    masked, entity_map = mask_payload(payload, ["이가람", "김바다", "가람", "바다"])
+    sent = json.dumps(masked, ensure_ascii=False)
+
+    assert not any(piece in sent for piece in ("이가람", "김바다", "가람", "바다", "김바"))
+    summary_ref = next(record["ref"] for record in records if record["source"] == "summary")
+    assert restore(masked["case"][summary_ref], entity_map) == "이가람은 김바다와 있다"
