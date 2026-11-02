@@ -36,6 +36,8 @@ export const ANALYSIS_STATUS_LABELS: Record<AnalysisStatus, string> = {
 };
 
 export interface AnalysisView {
+  /** 분석 ID. 다음 상담 체크리스트(19절)가 이 분석으로 만든 것인지 대조한다. */
+  id: string;
   status: AnalysisStatus;
   statusLabel: string;
   /** AI 원본 요약. 결과가 없으면(분석 중 · 실패) 빈 문자열. */
@@ -172,6 +174,7 @@ export function useSessionAnalysis(
     sessionStatus,
     analysis: source
       ? {
+          id: source.id,
           status: source.status,
           statusLabel: ANALYSIS_STATUS_LABELS[source.status],
           overview: source.result?.summary.overview ?? "",

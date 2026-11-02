@@ -1,5 +1,6 @@
 """Offline regression tests for the ElevenLabs Scribe v2 production adapter."""
 
+import math
 from pathlib import Path
 import sys
 
@@ -160,3 +161,95 @@ def test_existing_backend_contract_accepts_the_provider_payload_without_changes(
 
     assert result.schema_version == "1.0"
     assert [segment.speaker.value for segment in result.segments] == ["COUNSELOR", "CHILD"]
+
+
+# ---------------------------------------------------------------------------
+# 단어 · 구간 confidence (exp(logprob)). 가짜 토큰만 쓴다.
+# ---------------------------------------------------------------------------
+def _word(text, start, logprob=None, speaker="spk_a", kind="word"):
+    item = {"type": kind, "text": text, "start": start, "end": start + 0.1, "speaker_id": speaker}
+    if logprob is not None:
+        item["logprob"] = logprob
+    return item
+
+
+def _one_segment(words):
+    segments = ElevenLabsScribeV2Provider._coerce_to_contract({"words": words})
+    assert len(segments) == 1
+    return segments[0]
+
+
+def test_segment_confidence_is_min_of_word_exp_logprob():  # (가)
+    segment = _one_segment([_word("tok_a", 0.0, -0.1), _word("tok_b", 0.1, -0.5), _word("tok_c", 0.2, -0.2)])
+
+    assert [w["confidence"] for w in segment["words"]] == pytest.approx(
+        [math.exp(-0.1), math.exp(-0.5), math.exp(-0.2)]
+    )
+    assert segment["confidence"] == pytest.approx(math.exp(-0.5))
+    assert segment["is_low_confidence"] is True  # exp(-0.5) = 0.607 < 0.7
+
+
+def test_word_confidence_floor_is_0_01_and_cap_is_1():  # (나)
+    segment = _one_segment([_word("tok_a", 0.0, -20.0), _word("tok_b", 0.1, 0.5)])
+
+    assert segment["words"][0]["confidence"] == 0.01
+    assert segment["words"][1]["confidence"] == 1.0
+    assert segment["confidence"] == 0.01
+    assert segment["is_low_confidence"] is True
+
+
+@pytest.mark.parametrize("missing", [None, "abc", float("nan"), float("inf"), float("-inf"), True])
+def test_words_without_usable_logprob_are_left_out(missing):  # (다)
+    words = [_word("tok_a", 0.0, -0.05), _word("tok_b", 0.1), _word("tok_c", 0.2, -0.1)]
+    if missing is not None:
+        words[1]["logprob"] = missing
+    segment = _one_segment(words)
+
+    assert segment["words"][1]["confidence"] == 0.0
+    assert segment["confidence"] == pytest.approx(math.exp(-0.1))
+    assert segment["is_low_confidence"] is False
+
+
+def test_no_usable_logprob_keeps_0_0_and_not_low():  # (라)
+    segment = _one_segment([_word("tok_a", 0.0), _word("tok_b", 0.1, float("nan"))])
+
+    assert segment["confidence"] == 0.0
+    assert segment["is_low_confidence"] is False
+    assert [w["confidence"] for w in segment["words"]] == [0.0, 0.0]
+
+
+def test_low_confidence_boundary_is_strict_0_7():  # (마)
+    assert ispot_stt.LOW_CONFIDENCE_THRESHOLD == 0.7
+    at = _one_segment([_word("tok_a", 0.0, math.log(0.7))])
+    below = _one_segment([_word("tok_a", 0.0, math.log(0.69))])
+
+    assert at["confidence"] == 0.7
+    assert at["is_low_confidence"] is False
+    assert below["confidence"] == pytest.approx(0.69)
+    assert below["is_low_confidence"] is True
+
+
+def test_spacing_items_are_ignored_for_confidence():  # (바)
+    segment = _one_segment([
+        _word("tok_a", 0.0, -0.1),
+        _word(" ", 0.1, -30.0, kind="spacing"),
+        _word("tok_b", 0.2, -0.2),
+    ])
+
+    assert len(segment["words"]) == 2
+    assert segment["confidence"] == pytest.approx(math.exp(-0.2))
+
+
+def test_return_structure_is_unchanged():  # (사)
+    for words in (WORDS, [_word("tok_a", 0.0, -0.3), _word("tok_b", 0.1)]):
+        for segment in ElevenLabsScribeV2Provider._coerce_to_contract({"words": words}):
+            assert set(segment) == {
+                "segment_id", "speaker", "provider_speaker_id", "start_ms", "end_ms",
+                "text", "confidence", "is_low_confidence", "words",
+            }
+            assert isinstance(segment["confidence"], float)
+            assert isinstance(segment["is_low_confidence"], bool)
+            assert isinstance(segment["start_ms"], int) and isinstance(segment["end_ms"], int)
+            for word in segment["words"]:
+                assert set(word) == {"word", "speaker", "start_ms", "end_ms", "confidence"}
+                assert isinstance(word["confidence"], float)

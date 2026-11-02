@@ -11,6 +11,7 @@ from app.models.case_personal_info import CasePersonalInfo
 from app.models.document import Document
 from app.models.closure_review import CaseClosureReview
 from app.models.followup_check import SessionFollowupChecks
+from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
@@ -32,6 +33,7 @@ __all__ = [
     "Document",
     "CaseClosureReview",
     "SessionFollowupChecks",
+    "SessionFollowupChecklist",
     "SessionFollowupQuestions",
     "SessionOverallRiskAssessment",
     "SessionRiskAssessment",
