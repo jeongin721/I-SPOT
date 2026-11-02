@@ -1,5 +1,6 @@
 # 인증 / 계정 관리 테스트.
-# 자유 회원가입이 없고, 계정 생성이 관리자 전용임을 확인한다.
+# 바로 계정이 생기는 가입 경로가 없고, 계정 생성이 관리자 전용임을 확인한다.
+# 회원가입 신청(승인제)은 tests/test_signup.py 에 있다.
 
 import uuid
 
@@ -86,15 +87,24 @@ def test_me_returns_current_user(client: TestClient, counselor_headers) -> None:
     assert response.json()["data"]["email"] == "counselor.a@ispot.example.com"
 
 
-def test_no_public_signup_endpoint(client: TestClient) -> None:
-    """자유 회원가입 경로가 존재하지 않아야 한다."""
+def test_no_instant_signup_endpoint(client: TestClient) -> None:
+    """
+    바로 계정이 생기는 가입 경로는 없다. 회원가입은 대기 신청(승인제)이고 기본은 꺼져 있다.
 
-    response = client.post(
-        "/api/v1/auth/register",
-        json={"email": "new@ispot.example.com", "password": "Willow-Creek-31", "name": "신규"},
+    신청 창구(POST /auth/signup-requests)는 SIGNUP_ENABLED 가 꺼져 있으면 503 이다(tests/test_signup.py).
+    """
+
+    body = {"email": "new@ispot.example.com", "password": "Willow-Creek-31", "name": "신규"}
+
+    assert client.post("/api/v1/auth/register", json=body).status_code == 404
+
+    pending = client.post(
+        "/api/v1/auth/signup-requests",
+        json={"verification_token": "x" * 20, "name": "신규", "password": "Willow-Creek-31"},
     )
 
-    assert response.status_code == 404
+    assert pending.status_code == 503
+    assert pending.json()["error"]["code"] == "SIGNUP_DISABLED"
 
 
 def test_counselor_cannot_create_user(client: TestClient, counselor_headers) -> None:
