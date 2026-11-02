@@ -497,6 +497,7 @@ def analyze_audio_session(
     case_id: str = None,
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
+    known_identifiers: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
@@ -522,6 +523,10 @@ def analyze_audio_session(
 
     case_context: 사례 정보(2026-10-28, case_context.py). 지금은 '다음 상담 전 확인할
     사항'(followup_check_llm)의 배경 입력으로만 쓴다 — 마스킹을 거쳐 보낸다. None 이면 예전과 같다.
+
+    known_identifiers: 사례에 등록된 실명 목록(2026-11-02, Backend 가 암호화 저장한 실명을
+    복호화해 메모리에서만 만든다). 주면 case_store 대신 이 값을 이 함수의 모든
+    mask_for_outbound · mask_child_lines 에 쓴다. None 이면 예전처럼 case_id 로 case_store 에서 읽는다.
     """
 
     subtype_model = "gpt-5.6-luna"
@@ -615,9 +620,13 @@ def analyze_audio_session(
     # 2차: 세션 전체 transcript로 한 번에 (LLM은 512 토큰 제한 없음)
     # --------------------------------------------------------
 
-    known_identifiers = (
-        case_store.get_known_identifiers(case_id) if case_id else []
-    )
+    # Backend 가 넘긴 등록 실명이 있으면 그것을 쓴다(case_store 는 평문 SQLite 라 서버 경로에서 쓰지 않는다).
+    if known_identifiers is None:
+        known_identifiers = (
+            case_store.get_known_identifiers(case_id) if case_id else []
+        )
+    else:
+        known_identifiers = list(known_identifiers)
 
     if detected_major_types:
         # 2차는 항상 외부 OpenAI로 나가므로(infer_abuse_pipeline.analyze_abuse와
