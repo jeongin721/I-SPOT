@@ -95,7 +95,7 @@ export function mainValues({ session, home, schedule, state, setState }: MainScr
   const dateLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${WEEKDAYS[now.getDay()]}요일`;
   const clock = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 
-  // 오늘 일정(11/02 연결): 9~18시 칸에 오늘 일정을 시각대로 놓는다. 종일 · 법정 기한 · 9시 전은 9시 칸, 18시 뒤는 18시 칸.
+  // 오늘 일정(11/02 연결): 9~18시 칸에 오늘 일정을 시각대로 놓는다. 종일 · 처리 기한 · 9시 전은 9시 칸, 18시 뒤는 18시 칸.
   const nowH = now.getHours();
   const items = calendarItems(schedule.data?.events ?? [], me?.id ?? null);
   const isToday = (e: CalendarItem) => e.y === now.getFullYear() && e.m === now.getMonth() && e.d === now.getDate();

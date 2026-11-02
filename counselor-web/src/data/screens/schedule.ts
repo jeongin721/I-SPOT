@@ -1,7 +1,8 @@
-// 일정(Schedule) 화면 값. 11/02 디자인 '일정 · 월간 달력 + 일정 추가' 의 동작을 서버 일정(useSchedule, API_CONTRACT 19절)으로 그린다.
+// 일정(Schedule) 화면 값. ('처리 기한': 3 · 7 · 30일의 법 근거를 매뉴얼 · 법령에서 아직 확인하지 못해 '법정 기한' 이라 쓰지 않는다 —
+// 근거가 확인되면 이름을 바꾼다, 2026-11-02 민규 #131 의견.) 11/02 디자인 '일정 · 월간 달력 + 일정 추가' 의 동작을 서버 일정(useSchedule, API_CONTRACT 19절)으로 그린다.
 //
 //  - 상담 일정(● 둥근 표시)은 사례 · 상담 유형, 개인 · 기관 일정(■ 네모 표시)은 분류 · 제목. 중요 일정은 빨간색.
-//  - 최초접수의 법정 기한(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출)은 행이 아니라 접수일로 계산하고,
+//  - 최초접수의 처리 기한(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출)은 행이 아니라 접수일로 계산하고,
 //    기한마다 '완료 표시' 만 서버(deadline_done)에 남긴다. 기한은 접수 일정을 고치거나 지우면 같이 바뀐다.
 //    기한은 접수한 상담사(만든 사람) 달력 · 알림 종에만 놓는다. 최초접수는 팀 공유하지 않는다(서버도 막는다).
 //  - 팀 공유한 남의 일정은 보기만 한다(editable=false — 수정 · 삭제 · 중요 표시를 막는다).
@@ -24,7 +25,7 @@ import { NOT_READY, screenNotice, sidebarValues } from "./common";
 
 export type ScheduleFilter = "all" | "c" | "p" | "i";
 
-/** 화면에 놓는 일정 하나를 가리킨다. 법정 기한은 접수 일정 id + 기한 일 수. */
+/** 화면에 놓는 일정 하나를 가리킨다. 처리 기한은 접수 일정 id + 기한 일 수. */
 export interface ScheduleViewKey {
   id: string;
   dl?: number;
@@ -76,7 +77,7 @@ const EMPTY_FORM: ScheduleForm = {
 export const CLOSURE_MEETING_PRESET = "closure-meeting";
 export const PRESET_PARAM = "preset";
 export const CLOSURE_MEETING_TITLE = "종결평가 회의";
-/** 그 날 달력으로 바로 가기(알림 종의 법정 기한 알림): ?date=YYYY-MM-DD. */
+/** 그 날 달력으로 바로 가기(알림 종의 처리 기한 알림): ?date=YYYY-MM-DD. */
 export const DATE_PARAM = "date";
 
 /** ?date= 값을 사용자 달력 날짜로. 형식이 틀리면 null. */
@@ -118,7 +119,7 @@ export function initialScheduleState(
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const HOLIDAYS: Record<string, string> = { "2026-9-3": "개천절", "2026-9-9": "한글날" };
 
-/** 최초접수 뒤 법정 기한(일 · 할 일). backend INTAKE_DEADLINE_DAYS 와 같다. */
+/** 최초접수 뒤 처리 기한(일 · 할 일). backend INTAKE_DEADLINE_DAYS 와 같다. */
 export const INTAKE_TASKS: [number, string][] = [
   [3, "아동과 유선(전화) 상담"],
   [7, "아동 주변 인물 만남"],
@@ -133,7 +134,7 @@ export function scheduleRange(y: number, m: number): { from: string; to: string 
   return { from: ymd(start), to: ymd(end) };
 }
 
-/** 달력에 놓는 일정 하나(서버 일정 또는 법정 기한). y · m(0~11) · d 는 사용자 달력 날짜. */
+/** 달력에 놓는 일정 하나(서버 일정 또는 처리 기한). y · m(0~11) · d 는 사용자 달력 날짜. */
 export interface CalendarItem {
   key: ScheduleViewKey;
   y: number;
@@ -157,7 +158,7 @@ function parseYmd(value: string): { y: number; m: number; d: number } {
   return { y, m: m - 1, d };
 }
 
-/** 서버 일정 → 달력 일정(최초접수는 법정 기한 3건이 따라붙는다). 남의 공유 일정은 만든 사람을 붙인다. */
+/** 서버 일정 → 달력 일정(최초접수는 처리 기한 3건이 따라붙는다). 남의 공유 일정은 만든 사람을 붙인다. */
 export function calendarItems(events: ScheduleEvent[], myId: string | null): CalendarItem[] {
   const items: CalendarItem[] = [];
 
@@ -190,7 +191,7 @@ export function calendarItems(events: ScheduleEvent[], myId: string | null): Cal
         tag: "최초접수",
         imp: event.important,
       });
-      // 법정 기한은 접수한 상담사(만든 사람)의 할 일 — 관리자 · 다른 상담사 달력에는 접수 일정만 놓는다(민규 #131 리뷰).
+      // 처리 기한은 접수한 상담사(만든 사람)의 할 일 — 관리자 · 다른 상담사 달력에는 접수 일정만 놓는다(민규 #131 리뷰).
       if (!myId || event.owner_id !== myId) continue;
       for (const [days, task] of INTAKE_TASKS) {
         const due = new Date(y, m, d + days);
@@ -201,7 +202,7 @@ export function calendarItems(events: ScheduleEvent[], myId: string | null): Cal
           time: "기한", t: "p", event, place: "",
           title: `${done ? "✓ " : ""}${alias || "—"} · ${task}`,
           sub: `판정 후 ${days}일 이내 · ${m + 1}/${d} 접수`,
-          tag: "법정 기한",
+          tag: "처리 기한",
           imp: !done,
           dl: days,
           done,
@@ -393,7 +394,7 @@ export function scheduleValues(input: ScheduleInput) {
     const ask = s.delAsk;
     const canEdit = !isDl && e.event.editable;
     v = {
-      kind: isDl ? "법정 기한" : e.t === "c" ? "상담 일정" : "개인 · 기관 일정",
+      kind: isDl ? "처리 기한" : e.t === "c" ? "상담 일정" : "개인 · 기관 일정",
       title: e.title,
       dot: st.dot,
       radius: st.radius,
@@ -403,7 +404,7 @@ export function scheduleValues(input: ScheduleInput) {
       canEdit,
       ask,
       noAsk: !ask,
-      askNote: intake && !isDl ? "최초접수와 함께 만들어진 법정 기한 일정 3건도 같이 삭제되고, 알림에서도 빠져요." : "삭제하면 되돌릴 수 없어요.",
+      askNote: intake && !isDl ? "최초접수와 함께 만들어진 처리 기한 일정 3건도 같이 삭제되고, 알림에서도 빠져요." : "삭제하면 되돌릴 수 없어요.",
       doneLabel: e.done ? "✓ 완료 취소" : "완료 표시",
       doneCls: e.done ? "btn-s" : "btn-p",
       toggleDone: () => patch(e, { deadline_done: { [String(e.dl)]: !e.done } }),
@@ -552,7 +553,7 @@ export function scheduleValues(input: ScheduleInput) {
     formImpMark: s.form.imp ? "✓" : "",
     toggleFormImp: () => setForm({ imp: !s.form.imp }),
     toggleShared: () => !isIntake && setForm({ shared: !s.form.shared }),
-    // 최초접수는 팀 공유하지 않는다(법정 기한은 접수한 상담사 것 — 서버도 shared=false 로 저장).
+    // 최초접수는 팀 공유하지 않는다(처리 기한은 접수한 상담사 것 — 서버도 shared=false 로 저장).
     sharedDisabled: isIntake,
     sharedOn: !isIntake && s.form.shared,
     setChild: setF("child"),

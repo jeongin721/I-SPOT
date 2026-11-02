@@ -4,7 +4,7 @@
 # 고치기 · 지우기는 만든 사람 · 관리자만(공유 일정은 보기만). 사례를 붙이려면 그 사례를 볼 수 있어야 한다.
 # 종류별 필수 칸: 상담 일정 = 사례 · 상담 유형, 개인 · 기관 일정 = 분류(최초접수면 사례도). 상담 일정에는 분류 · 제목 · 공유를,
 # 개인 · 기관 일정에는 상담 유형을 두지 않는다(종류를 바꾸면 맞지 않는 칸은 비운다).
-# 최초접수의 법정 기한(3 · 7 · 30일)은 화면이 접수일로 계산한다. 최초접수는 팀 공유하지 않는다(기한은 접수한 상담사 것).
+# 최초접수의 처리 기한(3 · 7 · 30일)은 화면이 접수일로 계산한다. 최초접수는 팀 공유하지 않는다(기한은 접수한 상담사 것).
 # 일정은 만든 사람 것이라 사례 담당자를 바꿔도 옮겨 가지 않는다(API_CONTRACT 19절). 목록은 기간 앞 30일 안의 최초접수도 함께 준다(기한이 기간 안에 올 수 있어서).
 # 감사 기록에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 남기지 않는다).
 
@@ -133,7 +133,7 @@ def _check(db: Session, user: User, row: ScheduleEvent, case_changed: bool) -> N
         if row.category == ScheduleCategory.INTAKE:
             if row.case_id is None:
                 raise _invalid("최초접수 일정에는 사례가 필요합니다.")
-            # 법정 기한은 접수한 상담사의 할 일이라 팀 공유하지 않는다(민규 #131 리뷰 — 팀원 모두의 알림 종에 기한이 떴다).
+            # 처리 기한은 접수한 상담사의 할 일이라 팀 공유하지 않는다(민규 #131 리뷰 — 팀원 모두의 알림 종에 기한이 떴다).
             row.shared = False
         row.consult_type = None
 
@@ -190,7 +190,7 @@ def update_event(db: Session, user: User, row: ScheduleEvent, payload: ScheduleU
 
     if "deadline_done" in sent:
         if row.category != ScheduleCategory.INTAKE:
-            raise _invalid("법정 기한 완료 표시는 최초접수 일정에만 있습니다.")
+            raise _invalid("처리 기한 완료 표시는 최초접수 일정에만 있습니다.")
         merged: Dict[str, bool] = {**(row.deadline_done or {}), **{k: bool(v) for k, v in sent["deadline_done"].items()}}
         row.deadline_done = merged
 

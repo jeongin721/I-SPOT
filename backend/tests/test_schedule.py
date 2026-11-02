@@ -86,7 +86,7 @@ def test_kind_change_clears_fields_that_do_not_fit(client: TestClient, counselor
 
 
 def test_intake_deadlines_done_and_lookback(client: TestClient, counselor_headers, case: dict) -> None:
-    """최초접수는 법정 기한 완료 표시를 갖고, 기간 앞 30일 안의 접수도 목록에 온다(기한이 기간 안에 올 수 있어서)."""
+    """최초접수는 처리 기한 완료 표시를 갖고, 기간 앞 30일 안의 접수도 목록에 온다(기한이 기간 안에 올 수 있어서)."""
 
     intake = client.post(URL, json=_other(category="INTAKE", case_id=case["id"], date="2026-10-20"), headers=counselor_headers).json()["data"]
     assert intake["deadline_done"] == {"3": False, "7": False, "30": False}
@@ -143,7 +143,7 @@ def test_deleting_case_deletes_its_events(client: TestClient, counselor_headers,
 
 
 def test_intake_is_never_shared(client: TestClient, counselor_headers, other_counselor_headers, case: dict) -> None:
-    """최초접수는 팀 공유하지 않는다 — 다른 상담사 알림 종 · 달력에 남의 법정 기한이 뜨지 않게(민규 #131 리뷰)."""
+    """최초접수는 팀 공유하지 않는다 — 다른 상담사 알림 종 · 달력에 남의 처리 기한이 뜨지 않게(민규 #131 리뷰)."""
 
     intake = client.post(URL, json=_other(category="INTAKE", case_id=case["id"], shared=True), headers=counselor_headers).json()["data"]
     meeting = client.post(URL, json=_other(shared=True), headers=counselor_headers).json()["data"]

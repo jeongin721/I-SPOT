@@ -87,7 +87,7 @@ class ScheduleUpdateRequest(_ScheduleFields):
     @classmethod
     def _deadline_keys(cls, value: Optional[Dict[str, bool]]) -> Optional[Dict[str, bool]]:
         if value is not None and not set(value) <= set(DEADLINE_KEYS):
-            raise ValueError(f"법정 기한은 {' · '.join(DEADLINE_KEYS)}일만 있습니다.")
+            raise ValueError(f"처리 기한은 {' · '.join(DEADLINE_KEYS)}일만 있습니다.")
         return value
 
 

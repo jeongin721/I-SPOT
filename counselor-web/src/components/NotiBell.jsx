@@ -1,4 +1,4 @@
-// 위쪽 바 알림 종(10/29 디자인 nt-*). 알림은 최초접수 일정의 학대 판정 뒤 법정 기한(3일 유선 상담 · 7일 주변 인물 ·
+// 위쪽 바 알림 종(10/29 디자인 nt-*). 알림은 최초접수 일정의 학대 판정 뒤 처리 기한(3일 유선 상담 · 7일 주변 인물 ·
 // 30일 계획서, 11/02 일정 연결)이다. 내가 접수한 최초접수의 기한 중 완료 표시하지 않은 것만, 마감이 가까운 것부터 보인다.
 // 읽음은 이 브라우저에만 남긴다(ispot-noti-read — 기기마다 따로, 서버에 남기지 않는다). 누르면 그 날 달력으로 간다.
 // session 은 화면의 useAuthSession() 결과(종이 /auth/me 를 따로 부르지 않게). 바깥을 누르거나 Esc 를 누르면 닫힌다.
@@ -122,7 +122,7 @@ export default function NotiBell({ session }) {
         <div className="nt-pop" role="region" aria-label="알림 목록">
           <div className="nt-hd">
             <b style={{ fontSize: '15px' }}>알림</b>
-            <span className="nt-sub">{items.length ? `법정 기한 ${items.length}건` : ''}</span>
+            <span className="nt-sub">{items.length ? `처리 기한 ${items.length}건` : ''}</span>
             <button type="button" className="nt-all" onClick={() => markRead(items.map((x) => x.id))}>
               모두 읽음
             </button>

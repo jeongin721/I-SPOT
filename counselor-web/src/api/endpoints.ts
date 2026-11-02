@@ -541,7 +541,7 @@ export const lawGuide = {
 // =========================================================
 
 export const schedule = {
-  /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(법정 기한 계산용). */
+  /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(처리 기한 계산용). */
   list(range: { from: string; to: string }): Promise<{ items: ScheduleEvent[] }> {
     return api.get<{ items: ScheduleEvent[] }>("/schedule/events", range);
   },

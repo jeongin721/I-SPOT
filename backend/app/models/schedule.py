@@ -1,7 +1,7 @@
 # 일정(2026-11-02, 일정 디자인 · API_CONTRACT 19절). 한 행이 일정 하나.
 #
 # 상담 일정(CONSULT)은 사례 · 상담 유형이 있고, 개인 · 기관 일정(OTHER)은 분류 · 제목이 있다(사례는 골라서).
-# 최초접수(OTHER · INTAKE)는 사례가 필수이고, 학대 판정 뒤 법정 기한 3 · 7 · 30일 일정은 행으로 만들지 않고 화면이
+# 최초접수(OTHER · INTAKE)는 사례가 필수이고, 학대 판정 뒤 처리 기한 3 · 7 · 30일 일정은 행으로 만들지 않고 화면이
 # 접수일에서 계산한다. 기한마다 '완료' 표시만 deadline_done 에 남긴다.
 # 일정은 만든 사람(owner) 것이다. 팀 공유(shared)한 개인 · 기관 일정은 다른 상담사도 본다(고치기 · 지우기는 만든 사람 · 관리자만).
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 SCHEDULE_TITLE_MAX_LENGTH = 100
 SCHEDULE_PLACE_MAX_LENGTH = 100
-#: 최초접수 뒤 법정 기한(일). 학대 판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출.
+#: 최초접수 뒤 처리 기한(일). 학대 판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출.
 INTAKE_DEADLINE_DAYS = (3, 7, 30)
 
 
@@ -48,7 +48,7 @@ class ScheduleEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     place: Mapped[Optional[str]] = mapped_column(String(SCHEDULE_PLACE_MAX_LENGTH), nullable=True)
     important: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     shared: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # 최초접수 법정 기한 완료 표시 {"3": true, "7": false, "30": true}. 그 밖 일정은 {}.
+    # 최초접수 처리 기한 완료 표시 {"3": true, "7": false, "30": true}. 그 밖 일정은 {}.
     deadline_done: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
 
     owner: Mapped["User"] = relationship(foreign_keys=[owner_id])

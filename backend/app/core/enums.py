@@ -232,7 +232,7 @@ class ScheduleConsultType(str, Enum):
 
 
 class ScheduleCategory(str, Enum):
-    """개인 · 기관 일정의 분류(디자인 그대로). INTAKE(최초접수)는 사례가 필수이고 법정 기한(3 · 7 · 30일)이 따라붙는다."""
+    """개인 · 기관 일정의 분류(디자인 그대로). INTAKE(최초접수)는 사례가 필수이고 처리 기한(3 · 7 · 30일)이 따라붙는다."""
 
     AGENCY_MEETING = "AGENCY_MEETING"  # 기관 회의
     CASE_MEETING = "CASE_MEETING"  # 사례회의(종결평가 회의 포함)
