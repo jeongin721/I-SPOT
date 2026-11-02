@@ -8,7 +8,7 @@
 //  - 상담 유형(정기 · 방문 등): 회차에 없다. 제목(title)이나 장소(location)로 짐작하지 않는다.
 //  - 신호 채택 · 보류 수, '질문 처리' 단계: Backend 에 없다(팀 결정 전).
 
-import { CONSULTATION_TYPE_LABELS, type ConsultationType, type Session, type SessionStatus } from "../api/types";
+import { CONSULTATION_TYPE_LABELS, type ConsultationType, type Session, type SessionSource, type SessionStatus } from "../api/types";
 import { NOT_PROVIDED } from "./caseRows";
 import { toDateOnly, toDateTime } from "./time";
 
@@ -136,10 +136,16 @@ export interface SessionRow {
   createdDate: string;
   /** 승인한 일시. 승인 전이면 NOT_PROVIDED. */
   approvedAt: string;
+  /** AUDIO(녹음) · DOCUMENT(상담 기록 문서 — 1 · 2단계 없이 3단계부터, 2026-11-02). */
+  source: SessionSource;
 }
+
+/** 문서 회차의 검수 상태 이름(AI 결과가 아니라 문서에서 옮긴 상담일지를 확인한다). */
+export const DOCUMENT_REVIEW_LABEL = "상담일지 확인 필요";
 
 export function toSessionRow(source: Session): SessionRow {
   const { step, phase } = sessionStep(source.status);
+  const fromDocument = source.source === "DOCUMENT";
 
   return {
     id: source.id,
@@ -148,7 +154,8 @@ export function toSessionRow(source: Session): SessionRow {
     numberLabel: `${source.session_number}회차`,
     title: source.title?.trim() || NOT_PROVIDED,
     status: source.status,
-    statusLabel: SESSION_STATUS_LABELS[source.status],
+    statusLabel:
+      fromDocument && source.status === "AI_REVIEW_REQUIRED" ? DOCUMENT_REVIEW_LABEL : SESSION_STATUS_LABELS[source.status],
     step,
     stepLabel: SESSION_STEP_LABELS[step],
     phase,
@@ -161,5 +168,6 @@ export function toSessionRow(source: Session): SessionRow {
     kindLabel: source.consultation_type ? CONSULTATION_TYPE_LABELS[source.consultation_type] : NOT_PROVIDED,
     createdDate: toDateOnly(source.created_at),
     approvedAt: toDateTime(source.approved_at) || NOT_PROVIDED,
+    source: fromDocument ? "DOCUMENT" : "AUDIO",
   };
 }

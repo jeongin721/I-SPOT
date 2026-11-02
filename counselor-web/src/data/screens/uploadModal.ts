@@ -5,17 +5,21 @@
 //
 // 화면 주소 ?case=…(&session=…) 로 열면 그 사례(회차)를 미리 고른 채 회차 단계부터 시작한다.
 // ?back=… 이 있으면 닫기 · 취소 · 나중에가 그 화면으로 돌아간다(10/21 디자인, links.ts 의 readBackHref).
-// 문서 파일(PDF · HWPX 등) 첨부는 Backend 에 없어 준비 중이다. 진행률(%)은 Backend 가 주지 않아 단계 이름으로 보인다.
+// 문서 파일(2026-11-02): 상담사가 쓴 상담 기록 문서(.txt · .docx · .hwpx · .pdf)를 새 회차(녹취 없는 회차)에 올리면 서버가 글자를
+// 뽑아 3단계(상담 요약 4칸 · 상담 일지 초안)를 채우고, 그 회차는 1 · 2단계 없이 3단계부터 한다(useDocumentUpload, API_CONTRACT 20절).
+// 고른 파일의 확장자로 음성 · 문서를 가른다. 진행률(%)은 Backend 가 주지 않아 단계 이름으로 보인다.
 
 import { NOT_PROVIDED } from "../caseRows";
 import { AUDIO_ACCEPT, AUDIO_RULE_TEXT, checkAudioFile, readAudioDuration } from "../audioFile";
+import { DOCUMENT_ACCEPT, DOCUMENT_RULE_TEXT, checkDocumentFile, isDocumentFile } from "../documentFile";
+import type { DocumentUploadState } from "../useDocumentUpload";
 import type { AuthSession } from "../useAuthSession";
 import type { AudioUploadState } from "../useAudioUpload";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { CaseListState } from "../useCaseList";
 import { type SessionRow, canUploadAudio } from "../sessionRows";
 import { formatBytes, formatDuration } from "../time";
-import { NOT_READY, sidebarValues } from "./common";
+import { sidebarValues } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 새 회차를 고른 값. */
@@ -28,7 +32,12 @@ export interface UploadTarget {
   meta: string;
   /** 이 회차에 음성을 올릴 수 있는가(새 회차 · 음성을 처음 올리거나 다시 올릴 수 있는 회차). */
   uploadable: boolean;
+  /** 이 회차에 상담 기록 문서를 올릴 수 있는가(새 회차 · 아직 아무 자료도 없는 회차). */
+  documentable: boolean;
 }
+
+/** 문서를 올릴 수 없는 회차를 골랐을 때. */
+export const DOC_NEEDS_NEW_SESSION = "문서는 새 회차(녹취 · 자료가 없는 회차)에만 올릴 수 있습니다.";
 
 /** 녹취가 이미 있는 회차를 골랐을 때 보이는 말(문서 첨부는 Backend 에 없다). */
 export const HAS_AUDIO_NOTE = "녹취가 이미 있는 회차입니다. 추가 자료(문서) 올리기는 준비 중입니다.";
@@ -43,7 +52,7 @@ export function uploadTargets(rows: SessionRow[]): UploadTarget[] {
   const nextNumber = (sorted[0]?.sessionNumber ?? 0) + 1;
 
   return [
-    { value: NEW_SESSION, label: `새 회차 · ${nextNumber}회차`, short: `${nextNumber}회차 (새 회차)`, meta: "새로 등록", uploadable: true },
+    { value: NEW_SESSION, label: `새 회차 · ${nextNumber}회차`, short: `${nextNumber}회차 (새 회차)`, meta: "새로 등록", uploadable: true, documentable: true },
     ...sorted.map((row) => {
       const uploadable = canUploadAudio(row.status) && row.status !== "STT_REVIEW_REQUIRED";
 
@@ -54,8 +63,16 @@ export function uploadTargets(rows: SessionRow[]): UploadTarget[] {
           row.consultationType ? ` ${row.kindLabel}` : ""
         }`,
         short: row.numberLabel,
-        meta: row.status === "CREATED" ? "녹취 아직 없음" : uploadable ? row.statusLabel : "녹취 있음 · 추가 자료",
+        meta:
+          row.source === "DOCUMENT"
+            ? "문서로 기록"
+            : row.status === "CREATED"
+              ? "녹취 아직 없음"
+              : uploadable
+                ? row.statusLabel
+                : "녹취 있음 · 추가 자료",
         uploadable,
+        documentable: row.status === "CREATED",
       };
     }),
   ];
@@ -111,6 +128,8 @@ export interface UploadScreenInput {
   setCaseId: (caseId: string) => void;
   caseDetail: CaseDetailState;
   upload: AudioUploadState;
+  /** 상담 기록 문서 올리기(2026-11-02). */
+  docUpload: DocumentUploadState;
   state: UploadUiState;
   /** Logic.setState. 함수를 넘기면 그때 상태로 바꿀 값을 만든다. */
   setState: (patch: Partial<UploadUiState> | ((current: UploadUiState) => Partial<UploadUiState>)) => void;
@@ -118,7 +137,7 @@ export interface UploadScreenInput {
 }
 
 export function uploadModalValues(input: UploadScreenInput) {
-  const { session, ids, back, list, search, setSearch, caseId, setCaseId, caseDetail, upload, state, setState, go } = input;
+  const { session, ids, back, list, search, setSearch, caseId, setCaseId, caseDetail, upload, docUpload, state, setState, go } = input;
 
   const labels = ["사례 선택", "상담 회차", "파일 선택"];
   const steps = labels.map((label, i) => {
@@ -177,6 +196,17 @@ export function uploadModalValues(input: UploadScreenInput) {
       return;
     }
 
+    if (isDocumentFile(file)) {
+      // 문서는 길이를 재지 않는다. 문서를 올릴 수 없는 회차면 여기서 알린다.
+      setState({
+        file,
+        fileError: checkDocumentFile(file) ?? (chosen.documentable ? null : DOC_NEEDS_NEW_SESSION),
+        durationMs: undefined,
+        measuring: false,
+      });
+      return;
+    }
+
     setState({ file, fileError: checkAudioFile(file), durationMs: undefined, measuring: true });
     readAudioDuration(file).then((durationMs) => {
       // 그사이 다른 파일을 골랐으면 버린다.
@@ -184,18 +214,22 @@ export function uploadModalValues(input: UploadScreenInput) {
     });
   };
   const file = state.file;
+  const isDoc = file !== null && isDocumentFile(file);
   const fileMeta = file
-    ? `${state.measuring ? "길이 확인 중" : formatDuration(state.durationMs) || "길이 모름"} · ${formatBytes(file.size)}`
+    ? isDoc
+      ? formatBytes(file.size)
+      : `${state.measuring ? "길이 확인 중" : formatDuration(state.durationMs) || "길이 모름"} · ${formatBytes(file.size)}`
     : "";
 
-  // 확인창
-  const sessionIds = { caseId, sessionId: upload.sessionId };
+  // 확인창(문서를 골랐으면 문서 올리기 진행을 보인다)
+  const workSessionId = isDoc ? docUpload.sessionId : upload.sessionId;
+  const sessionIds = { caseId, sessionId: workSessionId };
   const laterHref =
-    back ?? (upload.sessionId ? screenHref("/SessionDetail", sessionIds) : screenHref("/CaseDetail", { caseId }));
+    back ?? (workSessionId ? screenHref("/SessionDetail", sessionIds) : screenHref("/CaseDetail", { caseId }));
   const closeHref = back ?? (ids.caseId || caseId ? screenHref("/CaseDetail", { caseId: caseId ?? ids.caseId }) : "/Main");
   const fileName = file ? file.name : "";
   // 새 회차를 만든 뒤에는 서버가 매긴 회차 번호로 보인다.
-  const target = caseDetail.sessions.find((row) => row.id === upload.sessionId);
+  const target = caseDetail.sessions.find((row) => row.id === workSessionId);
   let dialogMark = "…";
   let dialogTitle = "올리는 중";
   let dialogText = `${caseName} · ${target ? target.numberLabel : chosen.short} · ${fileName}`;
@@ -205,7 +239,26 @@ export function uploadModalValues(input: UploadScreenInput) {
     { label: "이동", primary: true, disabled: true },
   ];
 
-  if (upload.phase === "done") {
+  if (isDoc) {
+    dialogAsk = `${docUpload.phaseLabel}…`;
+    if (docUpload.phase === "done") {
+      dialogMark = "✓";
+      dialogTitle = "문서를 올렸어요";
+      dialogAsk = "상담 요약 · 상담 일지를 채웠습니다. 3단계(상담일지 작성)에서 확인 · 수정할까요?";
+      dialogActions = [
+        { label: "나중에", href: laterHref },
+        { label: "이동", href: screenHref("/NoteWrite", sessionIds), primary: true },
+      ];
+    } else if (docUpload.phase === "failed") {
+      dialogMark = "!";
+      dialogTitle = "올리지 못했어요";
+      dialogAsk = docUpload.error ?? "처리하지 못했습니다.";
+      dialogActions = [
+        { label: "닫기", onClick: () => setState({ dialog: false }) },
+        ...(docUpload.canRetry ? [{ label: "다시 시도", onClick: () => void docUpload.retry(), primary: true }] : []),
+      ];
+    }
+  } else if (upload.phase === "done") {
     dialogMark = "✓";
     dialogTitle = "업로드했어요";
     dialogAsk = "원문 변환 완료 · 검수 화면으로 이동할까요?";
@@ -238,17 +291,19 @@ export function uploadModalValues(input: UploadScreenInput) {
     sessionsNote,
     caseName,
     sesLabel: chosen.short,
-    accept: AUDIO_ACCEPT,
+    accept: `${AUDIO_ACCEPT},${DOCUMENT_ACCEPT},.hwp`,
     pickFile,
     fileKey: state.fileKey,
     clearFile: () =>
       setState({ file: null, fileError: null, durationMs: undefined, measuring: false, fileKey: state.fileKey + 1 }),
     hasFile: file !== null,
+    fileKind: isDoc ? "문서" : "음성",
+    fileKindCls: isDoc ? "chip c-sand" : "chip c-sky",
     fileName,
     fileMeta,
     fileError: state.fileError,
     audioRule: AUDIO_RULE_TEXT,
-    docRule: NOT_READY,
+    docRule: DOCUMENT_RULE_TEXT,
     s1: state.step === 1,
     s2: state.step === 2,
     s3: state.step === 3,
@@ -262,8 +317,16 @@ export function uploadModalValues(input: UploadScreenInput) {
     },
     prev: () => setState({ step: Math.max(1, state.step - 1) as UploadUiState["step"] }),
     // 길이를 읽는 중에는 막는다(WAV 가 아니면 서버가 길이를 재지 않아 그대로 올리면 길이가 빠진다).
-    canUpload: Boolean(caseId && file && chosen.uploadable && !state.fileError && !state.measuring && !upload.busy),
+    canUpload: isDoc
+      ? Boolean(caseId && file && chosen.documentable && !state.fileError && !docUpload.busy)
+      : Boolean(caseId && file && chosen.uploadable && !state.fileError && !state.measuring && !upload.busy),
     upload: () => {
+      if (isDoc) {
+        if (!caseId || !file || !chosen.documentable || state.fileError || docUpload.busy) return;
+        setState({ dialog: true });
+        void docUpload.start({ caseId, sessionId: choice === NEW_SESSION ? null : choice, file });
+        return;
+      }
       if (!caseId || !file || !chosen.uploadable || state.fileError || state.measuring || upload.busy) return;
       setState({ dialog: true });
       void upload.start({

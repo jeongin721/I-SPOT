@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.enums import ConsultationType, SessionStatus
+from app.core.enums import ConsultationType, SessionSource, SessionStatus
 from app.models.base import to_utc
 from app.schemas.common import RequestModel, SessionErrorInfo
 
@@ -78,6 +78,8 @@ class SessionResponse(BaseModel):
     location: Optional[str]
     memo: Optional[str]
     consultation_type: Optional[ConsultationType] = None
+    #: AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 20절).
+    source: SessionSource = SessionSource.AUDIO
     created_at: datetime
     updated_at: datetime
 

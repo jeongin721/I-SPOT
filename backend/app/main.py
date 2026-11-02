@@ -29,6 +29,7 @@ from app.core.errors import APIError, ErrorCode
 from app.core.logging import configure_logging, get_logger
 from app.core.responses import DataResponse
 from app.schemas.common import HealthStatus
+from app.services.document_text import MAX_DOCUMENT_BYTES
 from app.services.voice_marks_service import start_voice_marks_warmup
 
 logger = get_logger(__name__)
@@ -210,6 +211,8 @@ _MB = 1024 * 1024
 
 # 음성 업로드(POST /sessions/{session_id}/audio 에 multipart 본문)만 큰 본문을 받는다.
 _AUDIO_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/sessions/[^/]+/audio/?$")
+# 상담 기록 문서(POST /sessions/{session_id}/source-document, 2026-11-02)는 문서 상한(10MB)까지 받는다.
+_DOCUMENT_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/sessions/[^/]+/source-document/?$")
 
 
 def _media_type(scope: Scope) -> str:
@@ -237,6 +240,16 @@ def _is_audio_upload(scope: Scope) -> bool:
     )
 
 
+def _is_document_upload(scope: Scope) -> bool:
+    """상담 기록 문서 업로드인가(음성과 같은 조건 — multipart 본문만)."""
+
+    return (
+        scope.get("method") == "POST"
+        and _DOCUMENT_UPLOAD_PATH.match(scope.get("path", "")) is not None
+        and _media_type(scope) == "multipart/form-data"
+    )
+
+
 async def _token_error(scope: Scope) -> Optional[APIError]:
     """
     Authorization 의 Bearer 토큰이 서명 · 만료 검사를 통과하지 못하면 그 401 오류를 돌려준다.
@@ -253,8 +266,16 @@ async def _token_error(scope: Scope) -> Optional[APIError]:
     return None
 
 
-def _body_limit(audio_upload: bool) -> Tuple[int, ErrorCode, str]:
+def _body_limit(audio_upload: bool, document_upload: bool = False) -> Tuple[int, ErrorCode, str]:
     """이 요청이 받을 수 있는 본문 크기(바이트)와, 넘었을 때의 오류 코드 · 문구."""
+
+    if document_upload:
+        # 문서 크기는 서비스(document_text)가 다시 잰다. multipart 머리글 몫으로 1MB 를 더 준다.
+        return (
+            MAX_DOCUMENT_BYTES + _MB,
+            ErrorCode.VALIDATION_ERROR,
+            "문서는 10 MB 까지 올릴 수 있습니다.",
+        )
 
     if audio_upload:
         # 파일 크기는 저장할 때 정확히 다시 잰다(core/storage.py). 여기서는 multipart 머리글 등
@@ -333,8 +354,9 @@ class _BodySizeLimitMiddleware:
             return
 
         audio_upload = _is_audio_upload(scope)
+        document_upload = _is_document_upload(scope)
 
-        if audio_upload:
+        if audio_upload or document_upload:
             error = await _token_error(scope)
 
             if error is not None:
@@ -346,7 +368,7 @@ class _BodySizeLimitMiddleware:
                 await response(scope, receive, send)
                 return
 
-        limit, code, message = _body_limit(audio_upload)
+        limit, code, message = _body_limit(audio_upload, document_upload)
         declared = _declared_length(scope)
         received = 0
 

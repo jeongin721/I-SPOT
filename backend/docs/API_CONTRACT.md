@@ -2393,3 +2393,54 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 최초접수는 공유하지 않고(저장 때 `shared=false`), 다른 상담사의 목록 · 조회에서도 공유 조건에서 뺀다.
 - `deadline_done: null` · `kind: null` · `date: null` 은 `422`. 목록 `from` · `to` 도 1900-01-01 ~ 2100-12-31(그 밖 `422`).
 - 사례를 떼면(`case_id: null`) 응답의 별칭도 `null`.
+
+---
+
+## 21. Source Document (상담 기록 문서 회차, 2026-11-02)
+
+녹취 · 자료 올리기의 **문서 파일**. 상담사가 이미 쓴 상담 기록 문서를 새 회차에 올리면, 그 회차는 1(기록 확인) · 2(학대 신호 확인) 없이
+**3단계(상담 요약 · 상담 일지)** 부터 한다. 4단계(확인 사항 · 추가 질문) 초안은 3단계에 저장한 칸으로 만든다.
+
+- 회차 응답(`Session`)에 `source: "AUDIO" | "DOCUMENT"` 가 붙는다(옛 회차는 `AUDIO`). 업무 목록(`TaskItem`)에도 `session_source`.
+- 문서 회차의 상태 흐름: `CREATED` → (문서 올림) `AI_REVIEW_REQUIRED` → (요약 승인) `APPROVED`. 음성 · 전사본 · AI 분석은 없다
+  (음성 업로드 · 원문 변환 · 분석 요청은 상태 때문에 `409`).
+
+### POST /api/v1/sessions/{session_id}/source-document → 201 (multipart `file`)
+
+- **새 회차만**: 상태 `CREATED` 이고 음성 · 문서가 없는 회차(그 밖 `409 INVALID_SESSION_STATE`).
+- 형식: `.txt`(UTF-8 · CP949) · `.docx` · `.hwpx` · `.pdf`(글자가 든 PDF). 10 MB 까지, 뽑은 글 30,000자까지.
+  `.hwp` · 다른 확장자 · 빈 파일 · 글자 없는 PDF(스캔) · 손상 파일 · 암호 PDF 는 `422`(문구에 안내). 원본 파일은 저장하지 않는다.
+- **동기 요청**(종결 요약과 같다). `AI_PROVIDER=modeling` 이면 `ai/modeling/abuse/document_note_llm.fill_note` 가
+  마스킹(사례 별칭을 가릴 이름으로) → LLM → 검사로 문서 문장을 칸에 **그대로 옮긴다**(요약 · 창작 없음).
+  검사: 칸 이름 고정 · 길이 · 다른 나라 문자 · **원문 복사 검사**(문장의 글자 두 개 조각 60% 이상이 원문에 있어야 남긴다).
+  그 밖(mock 등)은 `[칸 이름]` · `칸 이름:` 머리줄로 나눈 글만 옮긴다(`fill_source: "HEADINGS"`, AI 아님).
+  제한 시간 `DOCUMENT_NOTE_TIMEOUT_SECONDS`(기본 150초) — 넘으면 `504 AI_TIMEOUT`, 옮길 칸이 없으면 `502 AI_INVALID_OUTPUT`,
+  그 밖 `502 AI_FAILED`(문구에 원문 · 예외 문구 없음). 실패하면 회차는 `CREATED` 그대로(다시 올릴 수 있다). 회차마다 한 번에 하나(`429`).
+- 성공하면: 상담 요약(`GET /summary`)이 4칸(`safety_changes` · `strengths_resources` · `safety_risks` · `desired_changes`,
+  `segment_ids` 는 빈 배열) · `overview` 로 만들어지고(DRAFT), 상담 일지 칸 초안은 `note_draft` 에 둔다(저장해야 일지가 된다).
+- 응답 `SourceDocument`:
+
+```json
+{
+  "session_id": "uuid", "filename": "8회차 기록.docx", "file_format": "docx", "char_count": 1830,
+  "text": "문서에서 뽑은 글",
+  "fill_source": "AI", "fill_model": "gpt-…",
+  "note_draft": { "statement": "", "attitude": "", "environment": "", "signals": "", "opinion": "" },
+  "followup_draft": null,
+  "created_at": "…"
+}
+```
+
+### GET /api/v1/sessions/{session_id}/source-document → 200
+
+올린 문서가 없으면 `404 NOT_FOUND`. 권한은 회차 조회와 같다.
+
+### POST /api/v1/sessions/{session_id}/source-document/followups → 200
+
+- 문서 회차만(그 밖 `409`), 상태 `AI_REVIEW_REQUIRED` · `APPROVED`. 동기 요청, 오류 코드는 위와 같다.
+- 입력은 **3단계에서 상담사가 저장한 칸**: 상담 요약 4칸 + 저장한 상담 일지(없으면 `note_draft`). 모두 비면 `409`.
+- `followup_draft = { checks: [{text}], questions: [{text, reason}], source: "AI" | "NONE", model, generated_at }`.
+  추가 질문은 `followup_question_llm` 의 유도 질문 검사(열린 질문 · 입력에 없는 인물 · 행위 낱말 금지)를 거친다. 근거 위치(segment_ids)는 없다.
+  LLM 을 쓰지 않는 서버는 `source: "NONE"` · 빈 목록(상담사가 직접 쓴다). 다시 부르면 초안을 새로 만든다(저장한 확인 사항 · 승인한 질문은 그대로).
+- 초안은 화면에서 확인 사항(18.1절) · 추가 질문(18절) 저장으로 들어간다. 감사 기록 `SOURCE_DOCUMENT_UPLOADED` · `DOCUMENT_FOLLOWUPS_DRAFTED`
+  에는 형식 · 글자 수 · 채운 칸 이름 · 초안 수만 남긴다(문서 글은 남기지 않는다).

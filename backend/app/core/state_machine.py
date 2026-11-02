@@ -12,6 +12,8 @@ from app.core.errors import invalid_session_state
 _ALLOWED_TRANSITIONS: Dict[SessionStatus, Set[SessionStatus]] = {
     SessionStatus.CREATED: {
         SessionStatus.AUDIO_UPLOADED,
+        # 상담 기록 문서를 올리면 1 · 2단계 없이 바로 3단계(요약 검수)로 간다(source_document_service, 2026-11-02).
+        SessionStatus.AI_REVIEW_REQUIRED,
     },
     SessionStatus.AUDIO_UPLOADED: {
         SessionStatus.AUDIO_UPLOADED,  # 재업로드
