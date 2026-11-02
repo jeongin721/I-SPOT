@@ -219,7 +219,31 @@ export function closureSummaryValues(
 // ② 종결보고서(2026-10-30 연결) — closure-summary.report(상담원이 쓴 칸) · summary.report(AI 초안)
 // ------------------------------------------------------------
 
-export type ReportDraft = Partial<Record<"initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date", string>>;
+type ReportTextKey = "initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date";
+type SafetyLevel = "HIGH" | "MEDIUM" | "LOW";
+type SafetyScore = { score: number | null; reason: string };
+
+/**
+ * 고치는 중인(저장 전) 보고서 칸. 글 칸 다섯과 상담원 판단 칸(2026-11-03 — 종결사유 · 안전평가 · Key Person · 안전점수).
+ * 판단 칸은 상담원이 고른 값만 저장한다(AI 가 채우지 않는다).
+ */
+export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
+  reasons?: boolean[];
+  safety?: (SafetyLevel | null)[];
+  key_person?: string;
+  safety_scores?: SafetyScore[];
+};
+
+const REASON_COUNT = 5;
+const SAFETY_COUNT = 11;
+const SCORE_COUNT = 3;
+const LEVELS: [string, SafetyLevel][] = [
+  ["높음", "HIGH"],
+  ["보통", "MEDIUM"],
+  ["낮음", "LOW"],
+];
+const fixedList = <T>(source: unknown, count: number, pick: (item: unknown) => T): T[] =>
+  Array.from({ length: count }, (_, i) => pick(Array.isArray(source) ? source[i] : undefined));
 
 export function closureReportValues(
   caseId: string | null,
@@ -236,14 +260,29 @@ export function closureReportValues(
   const aiSource = record?.summary?.source;
 
   /** 고치는 중인 값 → 저장된 값 → (글 칸은) AI 초안 순. */
-  const value = (key: keyof ReportDraft, aiText?: string) => draft[key] ?? (saved[key] ?? aiText ?? "");
+  const value = (key: ReportTextKey, aiText?: string) => draft[key] ?? (saved[key] ?? aiText ?? "");
+  // 상담원 판단 칸: 고치는 중인 값 → 저장된 값 → 빈 칸.
+  const reasons = draft.reasons ?? fixedList(saved.reasons, REASON_COUNT, (item) => item === true);
+  const safety =
+    draft.safety ??
+    fixedList(saved.safety, SAFETY_COUNT, (item) => LEVELS.find(([, code]) => code === item)?.[1] ?? null);
+  const keyPerson = draft.key_person ?? saved.key_person ?? "";
+  const scores =
+    draft.safety_scores ??
+    fixedList(saved.safety_scores, SCORE_COUNT, (item) => {
+      const row = (item ?? {}) as { score?: unknown; reason?: unknown };
+      return {
+        score: typeof row.score === "number" ? row.score : null,
+        reason: typeof row.reason === "string" ? row.reason : "",
+      };
+    });
   const aiChip = (key: "initial_situation" | "closing_situation") => {
     const item = ai[key];
     if (saved[key] || draft[key] !== undefined || !item) return "";
     const where = item.sessions.map((number) => `${number}회차`).join(" · ");
     return `${aiSource === "AI" ? "AI 초안" : "승인 요약"} · ${where}`;
   };
-  const field = (key: keyof ReportDraft, aiText?: string) => ({
+  const field = (key: ReportTextKey, aiText?: string) => ({
     value: value(key, aiText),
     onChange: (event: { target: { value: string } }) => setDraft({ [key]: event.target.value }),
   });
@@ -280,6 +319,30 @@ export function closureReportValues(
     closingDate: field("closing_date"),
     initialChip: aiChip("initial_situation"),
     closingChip: aiChip("closing_situation"),
+    // 상담원 판단 칸(ClosureDetail 의 종결사유 · 안전평가 · Key Person · 안전점수)
+    reasons,
+    toggleReason: (i: number) => setDraft({ reasons: reasons.map((on, j) => (j === i ? !on : on)) }),
+    safety: safety.map((level) => LEVELS.find(([, code]) => code === level)?.[0] ?? ""),
+    pickSafety: (i: number, label: string) => {
+      const code = LEVELS.find(([name]) => name === label)?.[1] ?? null;
+      setDraft({ safety: safety.map((level, j) => (j === i ? (level === code ? null : code) : level)) });
+    },
+    keyPerson: {
+      value: keyPerson,
+      onChange: (event: { target: { value: string } }) => setDraft({ key_person: event.target.value }),
+    },
+    scores: scores.map((row, i) => ({
+      score: row.score === null ? "" : String(row.score),
+      reason: row.reason,
+      setScore: (raw: string) => {
+        const n = Number.parseInt(raw, 10);
+        const score = Number.isNaN(n) ? null : Math.min(10, Math.max(1, n));
+        setDraft({ safety_scores: scores.map((x, j) => (j === i ? { ...x, score } : x)) });
+      },
+      setReason: (reason: string) => setDraft({ safety_scores: scores.map((x, j) => (j === i ? { ...x, reason } : x)) }),
+    })),
+    /** 저장하지 않은 수정이 있는가(useLeaveGuard). */
+    unsaved: Object.keys(draft).length > 0,
     reportNote: note,
     canSave: Boolean(caseId && summary.loaded && !summary.busy),
     saveLabel: summary.busy === "save" ? "저장 중…" : "보고서 저장",
@@ -290,8 +353,14 @@ export function closureReportValues(
         opinion: value("opinion") || null,
         review_date: value("review_date") || null,
         closing_date: value("closing_date") || null,
+        reasons,
+        safety,
+        key_person: keyPerson.trim() || null,
+        safety_scores: scores,
       };
-      if (await summary.save({ report })) resetDraft();
+      const ok = await summary.save({ report });
+      if (ok) resetDraft();
+      return ok;
     },
   };
 }

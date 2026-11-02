@@ -44,7 +44,10 @@ def test_get_before_generate_is_empty(client: TestClient, counselor_headers, rea
     data = client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]
 
     assert data["summary"] is None and data["checks"] == {} and data["edits"] == {}
-    assert data["report"] == {"initial_situation": None, "closing_situation": None, "opinion": None, "review_date": None, "closing_date": None}
+    assert data["report"] == {
+        "initial_situation": None, "closing_situation": None, "opinion": None, "review_date": None, "closing_date": None,
+        "reasons": None, "safety": None, "key_person": None, "safety_scores": None,
+    }
 
 
 def test_generate_without_llm_groups_approved_summaries(client: TestClient, counselor_headers, ready_case: dict, db) -> None:
@@ -263,3 +266,40 @@ def test_save_locks_the_row(ready_case: dict, monkeypatch) -> None:
     closure_review_service.get_row(FakeDb(), uuid.UUID(ready_case["id"]))
 
     assert seen[0]._for_update_arg is not None and seen[1]._for_update_arg is None
+
+
+def test_report_keeps_counselor_judgement_fields(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """종결사유 · 안전평가 · Key Person · 안전점수도 보고서에 남는다(2026-11-03 — 다시 열면 비어 있던 문제)."""
+
+    judgement = {
+        "reasons": [True, False, False, False, False],
+        "safety": ["HIGH"] + [None] * 9 + ["LOW"],
+        "key_person": "외조모",
+        "safety_scores": [{"score": 7, "reason": "안전 계획 설명"}, {"score": None, "reason": ""}, {"score": 3, "reason": ""}],
+    }
+    saved = client.put(_url(ready_case["id"]), json={"report": judgement}, headers=counselor_headers)
+    assert saved.status_code == 200, saved.text
+
+    # 글 칸만 따로 저장해도 앞서 저장한 판단 칸은 그대로다(보낸 칸만 바뀐다).
+    client.put(_url(ready_case["id"]), json={"report": {"opinion": "종합의견"}}, headers=counselor_headers)
+    report = client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]
+
+    assert {key: report[key] for key in judgement} == judgement
+    assert report["opinion"] == "종합의견"
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"reasons": [True] * 4},
+        {"safety": ["매우 높음"] + [None] * 10},
+        {"safety": [None] * 10},
+        {"safety_scores": [{"score": 11, "reason": ""}, {}, {}]},
+        {"safety_scores": [{}, {}]},
+        {"key_person": "가" * 301},
+    ],
+)
+def test_report_judgement_fields_are_checked(client: TestClient, counselor_headers, ready_case: dict, report) -> None:
+    response = client.put(_url(ready_case["id"]), json={"report": report}, headers=counselor_headers)
+
+    assert response.status_code == 422
