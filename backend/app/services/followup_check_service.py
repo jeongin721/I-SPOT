@@ -56,6 +56,8 @@ def save_checks(
             # 상담사가 직접 쓴 것은 '고침' 이 아니다.
             "edited": bool(item.edited) and item.source == FollowupQuestionSource.AI,
             "in_briefing": bool(item.in_briefing),
+            # 지난 회차 확정 요약 근거는 AI 메모에만(상담사가 직접 쓴 것에는 두지 않는다).
+            "previous_session_label": item.previous_session_label if item.source == FollowupQuestionSource.AI else None,
         }
         for item in payload.items
     ]

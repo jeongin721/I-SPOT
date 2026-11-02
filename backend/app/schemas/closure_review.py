@@ -7,7 +7,7 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.closure_review import CLOSURE_TEXT_MAX_LENGTH
-from app.schemas.common import RequestModel
+from app.schemas.common import IsoDate, RequestModel
 
 
 class ClosureItem(BaseModel):
@@ -50,8 +50,8 @@ class ClosureReportIn(RequestModel):
     initial_situation: Optional[str] = None
     closing_situation: Optional[str] = None
     opinion: Optional[str] = None
-    review_date: Optional[date] = None
-    closing_date: Optional[date] = None
+    review_date: Optional[IsoDate] = None
+    closing_date: Optional[IsoDate] = None
 
 
 class ClosureSummaryResponse(BaseModel):

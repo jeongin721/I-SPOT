@@ -202,7 +202,8 @@ export function closureSummaryValues(
     canGenerate: registered && summary.loaded && !summary.busy,
     generate: () => {
       if (body && !window.confirm("다시 만들면 확인 체크와 고친 문장이 지워집니다. 다시 만들까요?")) return;
-      void summary.generate();
+      // 다시 만들면 key 가 모두 바뀐다 — 열려 있던 수정창 · 고치던 글을 비운다(민규 #128 교차검증).
+      void summary.generate().then((ok) => ok && ui.setEdit(null));
     },
     doneTitle: !body ? "종결보고서 작성" : allOk ? "전체 내역 확인 완료" : `확인 ${okCount} / ${allKeys.length}`,
     doneSub: !body

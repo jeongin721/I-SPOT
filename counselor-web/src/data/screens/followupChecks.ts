@@ -43,6 +43,11 @@ export function draftChecks(points: FollowupCheckPoint[]): FollowupCheck[] {
       segment_ids: Array.isArray(point.segment_ids) ? point.segment_ids.filter((id) => typeof id === "string") : [],
       edited: false,
       in_briefing: false,
+      // 지난 회차 확정 요약 근거(민규 #128 교차검증 — 버리면 '근거 위치 없음' 으로 보였다).
+      previous_session_label:
+        typeof point.previous_session_label === "string" && /^[0-9]{1,4}회차$/.test(point.previous_session_label)
+          ? point.previous_session_label
+          : null,
     }));
 }
 
@@ -72,7 +77,7 @@ export function checkValues(input: CheckInput) {
     return {
       key: `c${index}`,
       text: item.text,
-      why: located.label || "근거 위치 없음",
+      why: located.label || (item.previous_session_label ? `${item.previous_session_label} 확정 요약` : "근거 위치 없음"),
       href: first ? segmentHref(ids, first) : null,
       on: item.in_briefing,
       edited: item.edited,

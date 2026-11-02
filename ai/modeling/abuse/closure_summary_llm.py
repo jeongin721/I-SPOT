@@ -36,6 +36,9 @@ MAX_ITEM_CHARS = 200
 MAX_REPORT_CHARS = 500
 #: 입력 글 상한(승인 회차가 아주 많을 때 앞 회차를 줄인다).
 MAX_INPUT_CHARS = 16000
+#: 사정 칸 하나의 상한. 넘으면 잘라 '…' 를 붙인다 — 4칸을 다 채워도 한 회차가 MAX_INPUT_CHARS 를 넘지 않게(민규 #128 교차검증:
+#: 마지막 회차 하나가 넘으면 줄이지 않고 그대로 갔다).
+MAX_FIELD_CHARS = 3000
 
 ASSESSMENT_FIELDS = (
     ("safety_risks", "위험요인"),
@@ -82,6 +85,8 @@ def _session_block(session: Dict[str, Any]) -> str:
     assessment = session.get("assessment") or {}
     for key, label in ASSESSMENT_FIELDS:
         text = " ".join(str(assessment.get(key) or "").split())
+        if len(text) > MAX_FIELD_CHARS:
+            text = text[:MAX_FIELD_CHARS] + "…"
         if text:
             lines.append(f"- {label}: {text}")
     signals = [str(label) for label in session.get("signals") or [] if str(label).strip()]

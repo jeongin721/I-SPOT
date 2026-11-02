@@ -22,7 +22,7 @@ DEMO_TEXT = "성적·신체적 가해 이후 보호조치와 재발 방지 ব�
 
 @pytest.mark.parametrize(
     "text",
-    [DEMO_TEXT, "аня 진술 확인", "아버지 नमस्ते 확인", "보호자 ありがとう", "قال 아동"],
+    [DEMO_TEXT, "аня 진술 확인", "아버지 नमस्ते 확인", "보호자 ありがとう", "قال 아동", "반각 ｱｲｳ 가나"],
 )
 def test_foreign_letters_are_flagged(text):
     assert has_foreign_script(text)

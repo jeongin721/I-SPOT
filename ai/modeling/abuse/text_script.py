@@ -20,6 +20,7 @@ def has_foreign_script(text: str) -> bool:
         if not unicodedata.category(char).startswith("L"):
             continue
         name = unicodedata.name(char, "")
-        if not name.startswith(_ALLOWED_PREFIXES):
+        # 반각 가타카나('HALFWIDTH KATAKANA …')는 접두어가 허용 목록에 걸려도 막는다(전각 가나와 같게, 민규 #128 교차검증).
+        if not name.startswith(_ALLOWED_PREFIXES) or "KATAKANA" in name or "HIRAGANA" in name:
             return True
     return False

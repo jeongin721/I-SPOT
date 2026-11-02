@@ -1199,6 +1199,8 @@ export interface FollowupCheck {
   edited: boolean;
   /** 상담 전 브리핑에 넣기. */
   in_briefing: boolean;
+  /** 근거가 지난 회차 확정 요약뿐인 AI 메모의 회차 이름('7회차'). 없으면 null · 빠짐. */
+  previous_session_label?: string | null;
 }
 
 export interface FollowupCheckList {

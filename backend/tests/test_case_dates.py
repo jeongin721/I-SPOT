@@ -40,8 +40,12 @@ def test_patch_changes_and_clears_only_sent_dates(client: TestClient, counselor_
     assert data["first_interview_date"] is None
 
 
-@pytest.mark.parametrize("value", ["1899-12-31", "2101-01-01", "2026-13-01", "어제", "2026-07-28T10:00:00"])
-def test_bad_dates_are_rejected(client: TestClient, counselor_headers, value: str) -> None:
+@pytest.mark.parametrize(
+    "value",
+    # 자정 시각 · Z · 숫자도 막는다(pydantic 기본은 날짜로 바꿨다 — 0 → 1970-01-01, 민규 #128 교차검증).
+    ["1899-12-31", "2101-01-01", "2026-13-01", "어제", "2026-07-28T10:00:00", "2026-07-28T00:00:00", "2026-07-28T00:00:00Z", 0, 20260728],
+)
+def test_bad_dates_are_rejected(client: TestClient, counselor_headers, value) -> None:
     response = client.post(
         "/api/v1/cases",
         json={"title": "t", "child_alias": "a", "report_date": value},

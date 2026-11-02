@@ -533,7 +533,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `guardian_type` 선택. 값 목록과 `guardian_note` 규칙은 위 참조
 - `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `report_date` · `linked_date` · `first_interview_date`(2026-10-30, 서식 4 ① 신고접수일 · 사례연계일 · 최초면접일) 선택. `"YYYY-MM-DD"` 날짜만,
-  1900-01-01 ~ 2100-12-31(그 밖 · 시각이 붙은 값은 `422`). 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다
+  1900-01-01 ~ 2100-12-31(그 밖 · 시각이 붙은 값(자정 · `Z` 포함) · 숫자는 `422` — 글자 10자만 받는다). 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
   - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
     "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
@@ -647,7 +647,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `summary`: `{ source, model, generated_at, sessions: [회차 번호], groups: [{title, items: [{key, text, sessions}]}],
   report: {initial_situation, closing_situation} }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
 - `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
-  `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD`).
+  `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD` 글자만 — 시각 · 숫자 `422`).
+  행을 잠그고(`FOR UPDATE`) 합쳐 쓰므로 겹친 저장이 서로의 칸을 지우지 않는다. 처음 저장 두 건이 겹치면 늦은 쪽은 `409 DUPLICATE_RESOURCE`.
 - 감사 기록 `CLOSURE_SUMMARY_GENERATED`(출처 · 회차 수 · 문장 수 · 걸린 초) · `CLOSURE_SUMMARY_UPDATED`(수 · 바뀐 보고서 칸 이름) — 문장은 남기지 않는다.
 
 ### DELETE /api/v1/cases/{case_id} → 204
@@ -2104,7 +2105,9 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
 }
 ```
 
-- 응답: `{ session_id, saved, items: [{text, source, segment_ids, edited, in_briefing}], updated_at, updated_by_id }`.
+- 응답: `{ session_id, saved, items: [{text, source, segment_ids, edited, in_briefing, previous_session_label}], updated_at, updated_by_id }`.
+- `previous_session_label`(선택, 2026-11-02): 근거가 지난 회차 확정 요약뿐인 AI 메모의 회차 이름(`"7회차"`, 형식 `n회차` 만 — 그 밖 `422`).
+  AI 항목에만 저장하고(COUNSELOR 는 `null`), 없으면 `null`. 화면은 저장 전 · 뒤 모두 "근거 · 7회차 확정 요약".
 - `source` 는 `AI`(AI 확인 메모에서 옴 — 고쳐도 AI) · `COUNSELOR`(직접 추가). `edited` 는 AI 메모를 상담사가 고쳤는가(COUNSELOR 는 늘 `false` 로 저장).
   `in_briefing` 은 상담 전 브리핑에 넣기 — 브리핑 '확인할 사항' 은 저장한 회차면 이것이 `true` 인 것만 보인다.
 - 0~20개, `text` 는 앞뒤 공백을 뺀 뒤 1~300자, `segment_ids` 는 겹침 · 빈 번호를 뺀 뒤 20개까지이고 그 회차 최신 전사본에 있는 번호만(`422`).

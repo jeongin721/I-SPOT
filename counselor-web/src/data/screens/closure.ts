@@ -82,7 +82,7 @@ export function closureValues(input: ClosureInput) {
   return {
     ...sidebarValues(session),
     notice: screenNotice({ session, loading: overview.loading, error: overview.error, retry: overview.reload }),
-    listNote: `내역 검토 진행률은 ${NOT_READY}입니다(종결 요약 AI 가 아직 없음).`,
+    listNote: `내역 검토 진행률은 목록에서 ${NOT_READY}입니다(사례마다 ① 전체 상담 내역 검토 화면에서 확인 수를 봅니다).`,
     countLabel,
     search: {
       value: search,

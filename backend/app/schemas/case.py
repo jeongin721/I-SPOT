@@ -21,7 +21,7 @@ from app.core.intake import (
     normalize_intake,
 )
 from app.schemas.auth import UserResponse
-from app.schemas.common import RequestModel
+from app.schemas.common import IsoDate, RequestModel
 
 # 초기면접 고르기 항목 한 개 · 한 칸에 보낼 수 있는 개수. 서식 항목보다 넉넉하게 두고 실제 값은 normalize_intake 가 거른다.
 IntakeItem = Annotated[str, StringConstraints(max_length=50)]
@@ -80,9 +80,9 @@ class CaseCreateRequest(GuardianFields):
     child_gender: Optional[str] = Field(default=None, max_length=10)
     notes: Optional[str] = Field(default=None, max_length=4000)
     # 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①). 비우면 null.
-    report_date: Optional[date] = None
-    linked_date: Optional[date] = None
-    first_interview_date: Optional[date] = None
+    report_date: Optional[IsoDate] = None
+    linked_date: Optional[IsoDate] = None
+    first_interview_date: Optional[IsoDate] = None
 
     # 초기면접(서식 4 ②)에서 고른 아동 특성 · 가정상황. 서식 항목만 받고(그 밖은 422) 겹친 항목은 하나로 합친다.
     intake_child_traits: List[IntakeItem] = Field(
@@ -129,9 +129,9 @@ class CaseUpdateRequest(GuardianFields):
     status: Optional[CaseStatus] = None
     counselor_id: Optional[uuid.UUID] = None
     # 날짜 셋(서식 4 ①). null 을 보내면 비운다.
-    report_date: Optional[date] = None
-    linked_date: Optional[date] = None
-    first_interview_date: Optional[date] = None
+    report_date: Optional[IsoDate] = None
+    linked_date: Optional[IsoDate] = None
+    first_interview_date: Optional[IsoDate] = None
     # 보내면 저장된 목록을 통째로 바꾼다(빈 목록 = 모두 지움).
     intake_child_traits: Optional[List[IntakeItem]] = Field(
         default=None, max_length=_INTAKE_MAX_ITEMS

@@ -331,7 +331,9 @@ export default function ClosureDetail(props) {
             <b style={{ fontSize: '13px', color: '#66625A', padding: '4px 4px 0' }}>환경</b>
             <div className="item" style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)' }}>
               <span>조부모, 친구, 이웃 등 신뢰할만한 주위 사람 (Key Person)</span>
+              {/* 연결 상태가 바뀌면 다시 그려 처음(연결 전)에 들어간 예시 글이 실제 사례에 남지 않게(민규 #128 교차검증). */}
               <input
+                key={r.connected ? 'live' : 'sample'}
                 className="inp"
                 type="text"
                 defaultValue={r.connected ? '' : '있음 · 외조모 (주 2회 돌봄)'}

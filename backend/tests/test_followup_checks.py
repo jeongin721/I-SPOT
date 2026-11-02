@@ -72,10 +72,10 @@ def test_save_then_get(client: TestClient, counselor_headers, counselor_id, read
     assert data["saved"] is True
     assert data["updated_by_id"] == str(counselor_id)
     assert data["items"] == [
-        {"text": AI_CHECK, "source": "AI", "segment_ids": ["seg_001"], "edited": True, "in_briefing": True},
+        {"text": AI_CHECK, "source": "AI", "segment_ids": ["seg_001"], "edited": True, "in_briefing": True, "previous_session_label": None},
         # 상담사가 직접 쓴 것은 '고침' 이 아니다.
-        {"text": OWN_CHECK, "source": "COUNSELOR", "segment_ids": [], "edited": False, "in_briefing": True},
-        {"text": "앞뒤 공백", "source": "AI", "segment_ids": ["seg_001"], "edited": False, "in_briefing": False},
+        {"text": OWN_CHECK, "source": "COUNSELOR", "segment_ids": [], "edited": False, "in_briefing": True, "previous_session_label": None},
+        {"text": "앞뒤 공백", "source": "AI", "segment_ids": ["seg_001"], "edited": False, "in_briefing": False, "previous_session_label": None},
     ]
 
 
@@ -175,3 +175,22 @@ def test_save_is_audited_with_counts_only(
         assert log.actor_id == counselor_id
         assert log.entity_type == "SessionFollowupChecks"
         assert AI_CHECK not in str(log.detail) and OWN_CHECK not in str(log.detail)
+
+
+def test_previous_session_label_is_kept_for_ai_checks_only(client: TestClient, counselor_headers, ready_session: dict) -> None:
+    """지난 회차 확정 요약이 근거인 AI 메모는 '7회차' 를 저장해 두고 돌려준다(민규 #128 교차검증). 직접 쓴 것에는 두지 않는다."""
+
+    saved = _put(
+        client,
+        counselor_headers,
+        ready_session["id"],
+        [
+            _c(segment_ids=[], previous_session_label="7회차"),
+            _c(OWN_CHECK, source="COUNSELOR", segment_ids=[], previous_session_label="7회차"),
+        ],
+    )
+
+    assert saved.status_code == 200, saved.text
+    labels = [item["previous_session_label"] for item in saved.json()["data"]["items"]]
+    assert labels == ["7회차", None]
+    assert _put(client, counselor_headers, ready_session["id"], [_c(previous_session_label="7회차<script>")]).status_code == 422

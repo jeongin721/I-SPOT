@@ -115,8 +115,12 @@ def _ai_error(code: ErrorCode) -> APIError:
     return APIError(code, message, status_code=status)
 
 
-def get_row(db: Session, case_id) -> Optional[CaseClosureReview]:
-    return db.scalar(select(CaseClosureReview).where(CaseClosureReview.case_id == case_id))
+def get_row(db: Session, case_id, *, lock: bool = False) -> Optional[CaseClosureReview]:
+    """lock=True 면 행을 잠근다(SELECT … FOR UPDATE). 저장 · 다시 만들기가 JSON 칸을 읽고 합쳐 쓰므로, 겹친 요청이 서로의 칸을
+    덮어쓰지 않게 한다(민규 #128 교차검증 — PostgreSQL 에서 report 한 칸이 사라짐). SQLite 시험에서는 무시된다."""
+
+    query = select(CaseClosureReview).where(CaseClosureReview.case_id == case_id)
+    return db.scalar(query.with_for_update() if lock else query)
 
 
 def to_response(case: Case, row: Optional[CaseClosureReview]) -> ClosureSummaryResponse:
@@ -226,7 +230,7 @@ def generate(db: Session, case: Case, current_user: User) -> CaseClosureReview:
         "groups": _with_keys(result.get("groups") or []),
         "report": result.get("report") or {},
     }
-    row = get_row(db, case.id)
+    row = get_row(db, case.id, lock=True)
     if row is None:
         row = CaseClosureReview(case_id=case.id, summary=summary, checks={}, edits={}, report={}, updated_by_id=current_user.id)
         db.add(row)
@@ -265,7 +269,7 @@ def save(db: Session, case: Case, current_user: User, payload: ClosureSummarySav
     if case.closure_review_at is None:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "종결 검토에 등록한 사례만 저장할 수 있습니다.")
 
-    row = get_row(db, case.id)
+    row = get_row(db, case.id, lock=True)
     keys = {item["key"] for group in ((row.summary or {}).get("groups") or []) for item in group["items"]} if row else set()
 
     for field in (payload.checks, payload.edits):
@@ -275,6 +279,12 @@ def save(db: Session, case: Case, current_user: User, payload: ClosureSummarySav
     if row is None:
         row = CaseClosureReview(case_id=case.id, summary=None, checks={}, edits={}, report={}, updated_by_id=current_user.id)
         db.add(row)
+        try:
+            db.flush()
+        except IntegrityError as error:
+            # 같은 사례를 동시에 처음 저장한 다른 요청이 먼저 만들었다(case_id 유니크). 만들기(POST)와 같게 409.
+            db.rollback()
+            raise conflict(ErrorCode.DUPLICATE_RESOURCE, "다른 요청이 먼저 저장했습니다. 새로고침 후 다시 저장해 주세요.") from error
 
     if payload.checks is not None:
         row.checks = {**(row.checks or {}), **payload.checks}

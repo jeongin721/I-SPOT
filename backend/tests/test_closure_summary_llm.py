@@ -87,3 +87,13 @@ def test_fit_sessions_drops_front_sessions_like_input(monkeypatch):
 
     assert [session["number"] for session in kept] == [3]
     assert "## 1회차" not in cs.format_case_input(SESSIONS)
+
+
+def test_one_long_field_is_cut_so_a_session_fits(monkeypatch):
+    """마지막 회차 하나가 넘쳐도 그대로 보내지 않게 사정 칸을 MAX_FIELD_CHARS 로 자른다(민규 #128 교차검증)."""
+
+    long = [{"number": 9, "date": "", "assessment": {key: "가" * 20000 for key, _ in cs.ASSESSMENT_FIELDS}, "signals": []}]
+
+    text = cs.format_case_input(long)
+
+    assert len(text) <= cs.MAX_INPUT_CHARS and text.count("…") == 4

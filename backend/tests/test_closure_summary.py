@@ -228,3 +228,38 @@ def test_modeling_server_slots_are_returned_after_timeout(
     assert timed_out.status_code == 504
     assert while_running.status_code == 429
     assert after.status_code == 200, after.text
+
+
+@pytest.mark.parametrize("value", ["2026-10-30T00:00:00", "2026-10-30T00:00:00Z", 0])
+def test_report_dates_accept_only_iso_text(client: TestClient, counselor_headers, ready_case: dict, value) -> None:
+    response = client.put(_url(ready_case["id"]), json={"report": {"review_date": value}}, headers=counselor_headers)
+
+    assert response.status_code == 422
+
+
+def test_concurrent_first_save_is_409_not_500(client: TestClient, counselor_headers, ready_case: dict, monkeypatch) -> None:
+    """처음 저장 두 건이 겹쳐 둘 다 INSERT 하면 case_id 유니크 위반 — 늦은 쪽은 500 이 아니라 409(민규 #128 교차검증).
+    먼저 저장해 행을 만든 뒤, 늦은 요청이 행을 못 본 것처럼(get_row → None) 만들어 재현한다."""
+
+    assert client.put(_url(ready_case["id"]), json={"report": {"opinion": "먼저"}}, headers=counselor_headers).status_code == 200
+    monkeypatch.setattr(closure_review_service, "get_row", lambda db, case_id, lock=False: None)
+
+    late = client.put(_url(ready_case["id"]), json={"report": {"closing_situation": "늦게"}}, headers=counselor_headers)
+
+    assert late.status_code == 409 and late.json()["error"]["code"] == "DUPLICATE_RESOURCE"
+
+
+def test_save_locks_the_row(ready_case: dict, monkeypatch) -> None:
+    """저장 · 다시 만들기는 행을 FOR UPDATE 로 읽는다(겹친 저장이 report 칸을 서로 덮어쓰지 않게). 쿼리 모양만 본다."""
+
+    seen = []
+
+    class FakeDb:
+        def scalar(self, query):
+            seen.append(query)
+            return None
+
+    closure_review_service.get_row(FakeDb(), uuid.UUID(ready_case["id"]), lock=True)
+    closure_review_service.get_row(FakeDb(), uuid.UUID(ready_case["id"]))
+
+    assert seen[0]._for_update_arg is not None and seen[1]._for_update_arg is None

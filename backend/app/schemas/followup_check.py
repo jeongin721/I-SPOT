@@ -29,6 +29,8 @@ class FollowupCheckIn(RequestModel):
     segment_ids: List[str] = Field(default_factory=list, max_length=SEGMENT_IDS_RAW_MAX)
     edited: bool = False
     in_briefing: bool = False
+    #: 근거가 지난 회차 확정 요약뿐인 AI 메모의 회차 이름('7회차'). AI 메모에만 두고, 화면은 '7회차 확정 요약' 으로 보인다.
+    previous_session_label: Optional[str] = Field(default=None, pattern=r"^[0-9]{1,4}회차$")
 
     @field_validator("text")
     @classmethod
@@ -76,6 +78,7 @@ class FollowupCheckOut(BaseModel):
     segment_ids: List[str]
     edited: bool
     in_briefing: bool
+    previous_session_label: Optional[str] = None
 
 
 class FollowupChecksResponse(BaseModel):
