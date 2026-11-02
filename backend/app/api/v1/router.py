@@ -13,6 +13,7 @@ from app.api.v1 import (
     followup_questions,
     law_guide,
     risk_assessments,
+    schedule,
     sessions,
     summary,
     tasks,
@@ -43,3 +44,5 @@ api_router.include_router(tasks.router)
 api_router.include_router(voice_marks.router)
 # /law-guide/questions — 회차 · 사례와 묶이지 않는 법령 · 매뉴얼 AI 질문(17절).
 api_router.include_router(law_guide.router)
+# /schedule/events — 일정(20절, 2026-11-02).
+api_router.include_router(schedule.router)
