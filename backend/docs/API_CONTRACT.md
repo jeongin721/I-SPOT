@@ -872,9 +872,11 @@ STT 가 발화를 하나도 찾지 못하면(무음 · 잡음만 있는 음성) 
 `source`: `STT | COUNSELOR_EDIT`
 
 `confidence` 가 `0.0` 이면 **STT 공급자가 신뢰도를 주지 않았다는 뜻**이다(0% 가 아니다).
-`STT_PROVIDER=module` 일 때 STT 모듈(`stt/`)의 기본 공급자인 ElevenLabs 결과는 모든 발화가 `0.0` 이며,
-이 값은 저신뢰로 표시하지 않는다.
-저신뢰 구간은 `0 < confidence < 0.7` 로 판단한다(Mock AI 의 저신뢰 경고와 같은 기준).
+`STT_PROVIDER=module` 일 때 STT 모듈(`stt/`)의 기본 공급자인 ElevenLabs 결과는 단어 `logprob` 이 있으면
+구간 `confidence` 가 그 구간 단어 확률(`exp(logprob)`, 0.01~1.0)의 최솟값이고, `logprob` 이 없으면 `0.0` 이다(#133).
+이 값은 모델이 내는 확률이며 실제 오인식과의 관계는 검증하지 않았다. 개발용 응답 기준으로 구간의 약 1.5% 가 저신뢰로 나오고,
+구간이 길수록(화자 구분이 실패해 한 구간으로 합쳐진 녹음 등) 최솟값이 낮아져 저신뢰가 되기 쉽다.
+저신뢰 구간은 `0 < confidence < 0.7` 로 판단한다(Mock AI 의 저신뢰 경고 · 상담사 화면 · AI 체크리스트 입력이 같은 기준).
 `edited_segment_ids` 에 포함된 segment 는 상담사가 확인했으므로 경고를 해제해도 된다.
 
 #### child_handoff (아동 발화 인계 보기)
