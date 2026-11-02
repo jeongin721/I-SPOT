@@ -7,7 +7,8 @@
 #  - module: rag 를 with_questions=False · with_manual_references=False 로 부른다. 추가 질문은 #118 초안 하나에서만
 #            만들므로(팀장님 10/29 결정 ②) rag 는 질문을 만들지 않고, 확인할 사항과 넘겨준 초안에 검토를 통과한
 #            공식 근거만 붙인다(rag/official_evidence.py). 아동 발화 · 이전 회차 기록 · 초안은 rag 가 가린 뒤 OpenAI 로
-#            보낸다. 가린 뒤 재검사를 통과하지 못하면 보내지 않고 AI_PRIVACY_BLOCKED 로 끝난다.
+#            보낸다. 가릴 때 그 사례의 등록 이름(known_identifiers, 2026-11-02)도 대조한다. 가린 뒤 재검사를 통과하지
+#            못하면 보내지 않고 AI_PRIVACY_BLOCKED 로 끝난다.
 #
 # 결과는 normalize_result 로 schemas.followup_checklist.ChecklistResult 모양으로 정리한다. 모양이 틀린 항목 · 근거가 없는 항목 ·
 # 판정 · 단정 표현이 있는 항목은 빼고 dropped 에 센다. 실패는 예외 **종류**로 코드를 정하고 문구는 버린다 — 예외 문구에
@@ -97,6 +98,9 @@ class FollowupChecklistInput:
     previous_sessions: List[Dict[str, Any]] = field(default_factory=list)
     # 추가 질문 AI 초안 [{draft_index, text, reason}] — 분석 result.followup_questions 순서 그대로(draft_index = 그 위치).
     drafts: List[Dict[str, Any]] = field(default_factory=list)
+    # 그 사례의 등록 이름(personal_info_service.known_identifiers, 2026-11-02). rag 가 가릴 때 이름 대조에 쓴다.
+    # 메모리에서만 쓰고 repr 에도 넣지 않는다(이 값을 로그에 찍는 곳이 생겨도 실명이 새지 않게).
+    known_identifiers: List[str] = field(default_factory=list, repr=False)
 
 
 class FollowupChecklistAdapter(Protocol):
@@ -444,7 +448,7 @@ class ModuleFollowupChecklistAdapter:
             output = analyze(
                 payload.transcript,
                 payload.abuse_type,
-                known_identifiers=[],
+                known_identifiers=list(payload.known_identifiers),
                 session_no=payload.session_no,
                 session_id=payload.session_id,
                 previous_sessions=payload.previous_sessions,

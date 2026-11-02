@@ -382,12 +382,16 @@ class ModelingAIAdapter:
         *,
         time_limit_seconds: Optional[float] = None,
         case_context: Optional[Dict[str, Any]] = None,
+        known_identifiers: Optional[List[str]] = None,
     ) -> AIAnalysisBundle:
         """time_limit_seconds: 이 분석의 제한 시간. analysis_service 가 작업 전체 마감에 맞춰 줄인 값을
         넘긴다(run_with_timeout 에 준 값과 같다). 직접 부르면 AI_TIMEOUT_SECONDS 다.
 
         case_context: 사례 정보(case_context_service, 2026-10-28). 모듈이 받는 판(case_context 키워드)에만
         넘긴다 — 받지 않는 예전 판에 넘기면 TypeError 로 분석이 실패한다(deadline 과 같은 방식).
+
+        known_identifiers: 그 사례의 등록 이름(personal_info_service.known_identifiers, 2026-11-02). 모듈이 외부 LLM 으로
+        보내기 전 가리기(Privacy Gateway 등록 이름 대조)에 쓴다. 받는 판에만 넘기고, 받지 않는 예전 판이면 경고만 남긴다(값 없이).
         """
 
         # analysis_service 의 run_with_timeout 이 시간을 재기 시작한 직후다. 마감 시각은 이때부터 잰다.
@@ -416,6 +420,12 @@ class ModelingAIAdapter:
 
         if case_context is not None and accepts_keyword(analyze_audio_session_as_contract, "case_context"):
             options["case_context"] = case_context
+
+        if known_identifiers is not None:
+            if accepts_keyword(analyze_audio_session_as_contract, "known_identifiers"):
+                options["known_identifiers"] = list(known_identifiers)
+            elif known_identifiers:
+                logger.warning("분석 모듈이 등록 이름을 받지 않는 판이라 등록 이름 없이 가립니다. provider=%s", self.name)
 
         try:
             (

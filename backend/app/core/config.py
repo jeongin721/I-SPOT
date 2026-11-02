@@ -202,7 +202,8 @@ class Settings(BaseSettings):
     # local/test 에서는 보지 않는다.
     AI_PIPELINE_ALLOW_UNMASKED: bool = False
     # modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않다(이름 인식이 놓친 이름을 잡아 줄
-    # 등록 실명 대조가 서버 경로에서는 돌지 않는다. 긴 상담 뒷부분을 못 가리던 문제는 10/20 겹치는 창으로 고쳤다).
+    # 등록 실명 대조는 11/02 부터 서버 경로에서도 돌지만 실명을 등록한 사례의 등록한 이름에만 돈다. 긴 상담 뒷부분을
+    # 못 가리던 문제는 10/20 겹치는 창으로 고쳤다). 이 잠금을 풀지는 따로 검증한 뒤 정한다(specs case-personal-info-encryption).
     # ENV=production 에서는 이 값이 true 일 때만 modeling 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_MODELING_ALLOW_IN_PRODUCTION: bool = False
@@ -240,8 +241,8 @@ class Settings(BaseSettings):
     FOLLOWUP_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
     # 서버 전체 동시 실행 건수. 시간을 넘긴 작업도 실제로 끝날 때까지 자리를 쥔다(법령 질문 #109 R2 와 같은 방식).
     FOLLOWUP_MAX_CONCURRENCY: int = Field(default=1, ge=1)
-    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true. rag 에 등록 실명을 넘기지 않아(known_identifiers=[])
-    # 이름 대조(Tier 2)가 돌지 않으므로 분석 modeling 과 같은 잠금을 둔다(아래 _block_followup_module_in_production).
+    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true. rag 에 등록 실명을 넘기지만(11/02) 등록하지 않은
+    # 이름은 이름 인식에만 기대므로 분석 modeling 과 같은 잠금을 둔다(아래 _block_followup_module_in_production).
     FOLLOWUP_ALLOW_IN_PRODUCTION: bool = False
     # rag/config.py 가 os.getenv 로 읽는 값. 여기 적으면 followup_checklist_adapter 가 process 환경으로 넘긴다
     # (비어 있으면 넘기지 않아 rag 기본값을 쓴다 — 빈 값이 기본값을 덮지 않게, #117 교차검증 R6).
@@ -376,10 +377,11 @@ class Settings(BaseSettings):
     def _block_modeling_in_production(self) -> "Settings":
         """운영에서 비식별이 아직 불완전한 modeling 으로 서버가 뜨지 않게 한다.
 
-        modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조(Privacy Gateway
-        Tier 2)가 돌지 않는다. 그래서 이름 인식(NER)이 놓친 이름 · 기관 · 지역은 그대로 나간다(ai/modeling/abuse/contract_adapter.py
-        '아직 못 채운 것' · privacy_gateway.py. 실명은 암호화해 저장하지만 분석에 등록 이름을 넘기는 연결은 후속 PR). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
-        못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
+        modeling 은 외부(OpenAI)로 보내기 전에 가린다. 2026-11-02 부터 서버가 사례에 암호화 저장한 실명을 넘겨 등록 실명 대조
+        (Privacy Gateway Tier 2)가 돌지만, 실명을 등록한 사례의 등록한 이름에만 돈다. 등록하지 않은 이름(친구 · 교사 · 학교 등)과
+        실명을 등록하지 않은 사례는 이름 인식(NER)에만 기대므로, NER 이 놓친 이름 · 기관 · 지역은 그대로 나간다
+        (ai/modeling/abuse/contract_adapter.py '아직 못 채운 것' · privacy_gateway.py). 이 잠금을 풀지는 따로 검증한 뒤 정한다.
+        이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을 못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
         이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
         함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).
         """
@@ -390,8 +392,9 @@ class Settings(BaseSettings):
         raise ValueError(
             "ENV=production 에서는 AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
             "modeling 은 상담 내용을 외부(OpenAI)로 보내는데, 그 전에 하는 비식별(이름 · 학교 · 주소 가리기)이 "
-            "아직 완전하지 않습니다 — 이름 인식이 놓친 이름을 등록 실명으로 한 번 더 잡는 대조가 서버에서는 돌지 않아, "
-            "놓친 이름이 그대로 나갈 수 있습니다. "
+            "아직 완전하지 않습니다 — 이름 인식이 놓친 이름을 등록 실명으로 한 번 더 잡는 대조는 실명을 등록한 사례의 "
+            "등록한 이름에만 돌아, 등록하지 않은 이름(친구 · 교사 등)이나 실명을 등록하지 않은 사례에서 놓친 이름은 "
+            "그대로 나갈 수 있습니다. "
             "이 개인정보 문제가 해결되기 전에는 실제 상담 데이터에 AI_PROVIDER=mock 을 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 AI_MODELING_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
@@ -439,8 +442,9 @@ class Settings(BaseSettings):
     def _block_followup_module_in_production(self) -> "Settings":
         """운영에서 다음 상담 체크리스트 module 로 서버가 뜨지 않게 한다(분석 modeling · 법령 질의와 같은 방식).
 
-        rag 는 아동 발화 · 이전 회차 기록 · 추가 질문 초안을 이름 인식으로 가린 뒤 OpenAI 로 보내는데, Backend 가 등록 실명을
-        넘기지 않아(known_identifiers=[]) 놓친 이름은 그대로 나간다. .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
+        rag 는 아동 발화 · 이전 회차 기록 · 추가 질문 초안을 이름 인식으로 가린 뒤 OpenAI 로 보낸다. Backend 가 그 사례의 등록 실명을
+        넘겨(2026-11-02) 등록한 이름은 대조로 한 번 더 가리지만, 등록하지 않은 이름을 이름 인식이 놓치면 그대로 나간다.
+        .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
         FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어야만 뜬다. local/test 는 그대로 둔다.
         """
 
@@ -449,7 +453,8 @@ class Settings(BaseSettings):
 
         raise ValueError(
             "ENV=production 에서는 FOLLOWUP_PROVIDER=module 로 서버를 시작하지 않습니다. "
-            "다음 상담 체크리스트는 아동 발화 · 이전 회차 기록을 외부(OpenAI)로 보내는데, 등록 실명 대조가 돌지 않습니다. "
+            "다음 상담 체크리스트는 아동 발화 · 이전 회차 기록을 외부(OpenAI)로 보내는데, 등록 실명 대조는 등록한 이름에만 돌아 "
+            "등록하지 않은 이름을 이름 인식이 놓치면 그대로 나갑니다. "
             "실제 상담 데이터가 있는 서버에서는 FOLLOWUP_PROVIDER=off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )

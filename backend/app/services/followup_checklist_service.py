@@ -17,6 +17,7 @@
 #   - 학대 유형: 그 분석의 abuse_signals(detected) · severity_ratings(level 있음). 둘 이상이면 multiple, 없으면 None
 #   - 같은 사례의 이전 회차(최근 3개): 승인된 요약 · 그 회차의 확인 사항 · 확정 전사본
 #   - 그 분석의 추가 질문 AI 초안(followup_questions) — 공식 근거를 붙일 대상
+#   - 그 사례의 등록 이름(known_identifiers, 2026-11-02) — rag 가 가릴 때 이름 대조에 쓴다. 메모리에서만 쓰고 저장하지 않는다
 #
 # 여기서 하는 일이 실패해도 회차 · 분석 상태에는 영향을 주지 않는다. 로그에는 식별자와 예외 종류만 남긴다.
 
@@ -50,7 +51,7 @@ from app.models.transcript import Transcript
 from app.models.user import User
 from app.schemas.common import SessionErrorInfo
 from app.schemas.followup_checklist import FollowupChecklistEnvelope, FollowupChecklistOut
-from app.services import audit_service, transcript_service
+from app.services import audit_service, personal_info_service, transcript_service
 
 logger = get_logger(__name__)
 
@@ -345,6 +346,8 @@ def build_input(
         session_id=str(session.id),
         previous_sessions=previous_sessions_input(db, session),
         drafts=drafts_of(analysis.result),
+        # 읽기만 한 뒤라 등록 이름을 못 읽어 거래를 되돌려도 잃는 변경이 없다(personal_info_service.known_identifiers).
+        known_identifiers=personal_info_service.known_identifiers(db, session.case_id),
     )
 
 

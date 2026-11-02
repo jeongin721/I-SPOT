@@ -6,11 +6,14 @@
 # - 권한은 호출부가 먼저 본다(get_case_or_404 — 상담사는 담당 사례만, 관리자는 전체).
 # - 복호화해서 내준 때마다 열람 기록을 남긴다: 한 사례 CASE_PERSONAL_INFO_VIEWED, 목록 CASE_LIST_PERSONAL_INFO_VIEWED 1줄.
 # - 값은 로그 · 감사 detail · 오류 문구에 넣지 않는다. 칸 이름 · 사례 ID · 키 이름만 남긴다.
+# - 외부 AI 로 보내기 전 이름 가리기(known_identifiers)에 넘길 등록 이름도 여기서 만든다(known_identifiers, specs 7절).
+#   메모리에서만 쓰고 저장하지 않는다. 사람에게 내주는 값이 아니라(가린 토큰만 밖으로 나간다) 열람 기록은 남기지 않는다.
 
 import json
 import logging
+import unicodedata
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
@@ -307,3 +310,120 @@ def name_search_condition(term: str) -> Optional[ColumnElement[bool]]:
     return Case.id.in_(
         select(CasePersonalInfo.case_id).where(CasePersonalInfo.child_name_index == index)
     )
+
+
+# =========================================================
+# 외부 AI 가리기에 넘길 등록 이름(known_identifiers)
+# =========================================================
+
+# 이름이 적히는 칸. 생년월일은 이름이 아니라 넘기지 않는다.
+_NAME_FIELDS = ("child_name", "target_person", "interviewee", "family_members", "health")
+
+# 흔한 두 글자 성. '선우진' 처럼 성이 한 글자인지 두 글자인지 모르면 두 경우의 이름을 모두 가린다.
+_COMPOUND_SURNAMES = ("남궁", "황보", "제갈", "사공", "선우", "서문", "독고", "동방")
+
+# 이름 칸에 사람 이름 대신 적기 쉬운 낱말. 가리기 목록에 넣으면 상담 원문의 같은 낱말(엄마 · 아빠 …)이 모두 가려져
+# 외부 AI 가 내용을 알 수 없게 된다. privacy_gateway 의 _SWEEP_TARGET_BLOCKLIST(아동 · 상담사 · 보호자)를 포함한다.
+_NOT_NAMES = frozenset(
+    {"아동", "상담사", "보호자", "엄마", "아빠", "어머니", "아버지", "할머니", "할아버지", "누나", "언니", "오빠", "동생", "미상", "모름", "없음"}
+)
+
+
+def _names_in(field: str, text: str) -> List[Any]:
+    """칸 평문(아동 이름은 글자, 나머지는 JSON) → 그 칸에 적힌 이름. 모양이 틀린 JSON 은 ValueError."""
+
+    if field == "child_name":
+        return [text]
+
+    value = json.loads(text)
+
+    if field in ("target_person", "interviewee"):
+        return [value.get("name")] if isinstance(value, dict) else []
+
+    if field == "health":
+        return [value.get("subject_name")] if isinstance(value, dict) else []
+
+    return [item.get("name") for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _is_hangul(text: str) -> bool:
+    return all("가" <= char <= "힣" for char in text)
+
+
+def _variants(name: str) -> List[str]:
+    """이름 하나 → 가릴 글자: 전체 이름 + 성 뺀 이름(남는 이름이 두 글자 이상일 때만, specs 7절).
+
+    한 글자는 뺀다 — 다른 낱말 속 같은 글자까지 가린다(privacy_gateway 의 정확 매칭도 두 글자부터 본다).
+    이름 칸에 적은 관계말(_NOT_NAMES)도 뺀다. 한글 이름을 '한 가람' 처럼 띄어 적었으면 붙여 쓴 '한가람' 도 가린다.
+    """
+
+    name = " ".join(unicodedata.normalize("NFC", name).split())
+
+    if len(name) < 2 or name in _NOT_NAMES:
+        return []
+
+    variants = [name]
+    compact = name.replace(" ", "")
+
+    if _is_hangul(compact):
+        if compact != name:
+            variants.append(compact)
+
+        if len(compact) >= 3:
+            given = [compact[1:]] + ([compact[2:]] if compact[:2] in _COMPOUND_SURNAMES else [])
+            variants += [part for part in given if len(part) >= 2 and part not in _NOT_NAMES]
+
+    return variants
+
+
+def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Optional[str]] = ()) -> List[str]:
+    """외부 AI 로 보내기 전 가리기(privacy_gateway 의 known_identifiers)에 넘길 그 사례의 등록 이름.
+
+    아동 · 사례관리대상자 · 면접대상자 · 가족관계 표 · 건강정도 대상자 이름과 그 성 뺀 이름이다. extra(예: 사례 별칭)는 앞뒤 공백만
+    떼고 더한다. 긴 것부터 늘어놓는다 — 가리기가 목록 순서대로 바꾸므로 '서윤' 을 '김서윤' 보다 먼저 바꾸면 '김' 이 남는다.
+
+    메모리에서만 쓴다: 돌려준 값을 로그 · 감사 detail · DB · 오류 문구에 넣지 않는다. 열람 기록도 남기지 않는다(모듈 머리 주석).
+    어떤 실패도 올리지 않는다. 풀지 못한 칸 · 모양이 틀린 칸은 빼고 경고만(칸 이름 · 키 이름 · 예외 종류, 값 없이) 남기고,
+    DB 오류 같은 나머지 실패는 등록 이름 없이(extra 만) 돌려준다 — 실명 없이 지금처럼 가린다. DB 오류 뒤에는 거래를 되돌리므로
+    (PostgreSQL 은 SQL 오류 뒤 거래가 깨진다) 부르기 전에 쓴 변경이 없어야 한다. 지금 부르는 곳(분석 · 다음 상담 체크리스트 ·
+    종결 요약)은 모두 읽기만 한 뒤 부른다.
+    """
+
+    names: List[str] = []
+
+    try:
+        row = db.get(CasePersonalInfo, case_id)
+
+        for field in _NAME_FIELDS if row is not None else ():
+            try:
+                text = _decrypt(row, field)
+                found = _names_in(field, text) if text is not None else []
+            except (PersonalInfoCryptoError, ValueError) as error:
+                logger.warning(
+                    "가리기에 넘길 등록 이름을 풀지 못해 그 칸은 빼고 보냅니다. case_id=%s field=%s key_id=%s reason=%s",
+                    case_id,
+                    field,
+                    pii_crypto.key_id_of(getattr(row, f"{field}_enc") or ""),
+                    type(error).__name__,
+                )
+                continue
+
+            for name in found:
+                if isinstance(name, str):
+                    names += _variants(name)
+    except Exception as error:  # noqa: BLE001 — 등록 이름은 가리기를 돕는 보조 입력이라 AI 작업을 멈추지 않는다
+        logger.warning(
+            "가리기에 넘길 등록 이름을 읽지 못해 등록 이름 없이 보냅니다. case_id=%s reason=%s",
+            case_id,
+            type(error).__name__,
+        )
+        names = []
+
+        try:
+            db.rollback()
+        except Exception as rollback_error:  # noqa: BLE001
+            logger.warning("등록 이름을 읽다 깨진 거래를 되돌리지 못했습니다. reason=%s", type(rollback_error).__name__)
+
+    names += [value.strip() for value in extra if isinstance(value, str) and value.strip()]
+
+    return sorted(dict.fromkeys(names), key=len, reverse=True)
