@@ -10,13 +10,16 @@
 //    계정 목록을 받지 못하면 비활성은 알 수 없어 지워진 계정만 센다.
 // 이름은 아동 실명(등록된 사례), 없으면 별칭이다(실명과 함께 부름). 검색은 받은 목록 안에서 이름 · 별칭 · 사례 ID 의 일부로 찾는다.
 // 디자인처럼 이름은 링크가 아니고, 담당 상담원은 상담사 상세로 간다.
+// 줄 끝 '관리' 칸(2026-11-03, 디자인에 없음): '상담 이력'(회차를 보고 지우는 곳) 링크와 사례 '삭제'(확인 창 — data/useAdminDelete).
 
 import type { User } from "../../api/types";
 import { NOT_PROVIDED, toCaseRow, type CaseRow } from "../caseRows";
 import type { AdminCasesState } from "../useAdminCases";
+import { caseDeleteTarget, type DeleteTarget } from "../useAdminDelete";
 import type { AuthSession } from "../useAuthSession";
 import { staffDetailHref } from "./admin";
 import { NOT_READY, screenNotice, sidebarValues } from "./common";
+import { screenHref } from "./links";
 
 /** 상담원 거르기. ALL_STAFF 이면 전체, 아니면 담당 계정 ID. */
 export const ALL_STAFF = "all";
@@ -37,6 +40,8 @@ interface AdminCasesInput {
   /** 계정에 묶인 검색어(data/useAccountSearch). */
   search: string;
   setSearch: (value: string) => void;
+  /** 사례 삭제 확인 창을 연다(useAdminDelete.ask). */
+  askDelete?: (target: DeleteTarget) => void;
 }
 
 interface Staff {
@@ -110,6 +115,8 @@ export function adminCasesValues(input: AdminCasesInput) {
         last: NOT_PROVIDED,
         stage: reassign ? "재배정 필요" : `사례 ${row.statusLabel}`,
         stCls: reassign ? "chip c-urgent" : row.status === "CLOSED" ? "chip c-check" : "chip c-normal",
+        historyHref: screenHref("/CaseHistory", { caseId: row.id }),
+        del: () => input.askDelete?.(caseDeleteTarget({ id: row.id, caseNumber: row.caseNumber, name: row.name })),
       };
     });
 

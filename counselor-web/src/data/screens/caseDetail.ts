@@ -50,6 +50,7 @@ import {
 } from "../signalHistoryRows";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { AuthSession } from "../useAuthSession";
+import { sessionDeleteTarget, type DeleteTarget } from "../useAdminDelete";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
 import { COLUMN_OF, PROCESS_COLUMNS, continueLink } from "./flow";
@@ -412,6 +413,7 @@ const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
  *  - 주제 비중 · 덜 다룬 부분(2026-10-29): 회차 분석의 대화 주제(topic_tags → signal-history topics)를 더한 비율(AI 제안).
  * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
  * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
+ * 관리자면(화면이 askDelete 를 줌, 2026-11-03) '전 회차 보기' 창의 회차마다 '삭제'(del)가 있다 — 'N회차' 를 입력하는 확인 창을 연다.
  */
 export function caseHistoryValues(
   input: CaseScreenInput & {
@@ -419,6 +421,8 @@ export function caseHistoryValues(
     setHistoryOpen?: (open: boolean) => void;
     history?: SignalHistoryState;
     approved?: ApprovedSummariesState;
+    /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자에게만 준다. */
+    askDelete?: ((target: DeleteTarget) => void) | null;
   },
 ) {
   const { detail, history } = input;
@@ -437,18 +441,36 @@ export function caseHistoryValues(
     return top ? `${ai} / 판단 ${RISK_LEVEL_LABELS[top]}` : ai;
   };
   const open = Boolean(input.historyOpen);
+  const askDelete = input.askDelete;
+  const caseNumber = detail.caseInfo?.caseNumber ?? "";
 
-  const sessions = detail.sessions.map((row) => ({
-    no: row.numberLabel,
+  const sessions = detail.sessions.map((row) => {
     // 상담 일시를 넣지 않은 회차는 등록일을 '등록' 이라고 밝혀 보여 준다(상담일로 대신하지 않는다).
-    date: row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`,
-    kind: `상담 유형 ${row.kindLabel}`,
-    kindShort: row.kindLabel,
-    status: row.statusLabel,
-    st: TONE_CHIP[row.tone],
-    sig: sigOf(row.id),
-    href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
-  }));
+    const date = row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`;
+    return {
+      no: row.numberLabel,
+      date,
+      kind: `상담 유형 ${row.kindLabel}`,
+      kindShort: row.kindLabel,
+      status: row.statusLabel,
+      st: TONE_CHIP[row.tone],
+      sig: sigOf(row.id),
+      href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
+      del: askDelete
+        ? () =>
+            askDelete(
+              sessionDeleteTarget({
+                id: row.id,
+                caseId: row.caseId,
+                caseNumber,
+                numberLabel: row.numberLabel,
+                date,
+                processing: row.phase === "processing",
+              }),
+            )
+        : null,
+    };
+  });
 
   // 세부 신호 행렬: 열은 회차(오래된 회차부터, 신호 이력을 받았으면 그 회차 전부), 줄은 네 학대 유형.
   const historyRows = history?.loaded ? history.sessions : [];
