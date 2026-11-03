@@ -5,12 +5,39 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from email_validator import EmailNotValidError, validate_email
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
 from app.core.enums import SignupRequestStatus, UserRole
 from app.schemas.common import RequestModel
+
+EMAIL_INVALID_MESSAGE = "이메일 형식이 올바르지 않습니다. 영문 주소만 받습니다."
+
+
+def _signup_email(value: Any) -> str:
+    """
+    회원가입 이메일. SES 가 받는 꼴(아이디는 ASCII, 도메인은 IDNA ASCII — punycode)로 바꾸고 소문자로 맞춘다(Codex #139 M4).
+
+    EmailStr 을 쓰지 않는다. 그 오류 문구는 입력 일부(대괄호 안 주소 · 잘못된 글자)를 그대로 담아 422 응답에 되돌아간다
+    (Codex #139 L1). 여기서는 어떤 형식 오류든 위 고정 문구 하나다. 아이디에 한글 등 ASCII 가 아닌 글자가 있는 주소,
+    표시 이름(`이름 <주소>`) · 대괄호 IP 주소도 같은 오류다. 가입 여부와 상관없이 같은 입력은 같은 답을 받는다.
+    """
+
+    if not isinstance(value, str):
+        raise ValueError(EMAIL_INVALID_MESSAGE)
+
+    try:
+        checked = validate_email(value.strip(), check_deliverability=False, allow_smtputf8=False)
+    except EmailNotValidError:
+        raise ValueError(EMAIL_INVALID_MESSAGE) from None
+
+    return checked.ascii_email.lower()
+
+
+# OpenAPI 에는 지금처럼 이메일 칸으로 보이게 format 을 적는다.
+SignupEmail = Annotated[str, BeforeValidator(_signup_email), Field(json_schema_extra={"format": "email"})]
 
 
 class SignupSettingsResponse(BaseModel):
@@ -22,7 +49,7 @@ class SignupSettingsResponse(BaseModel):
 
 
 class SignupCodeSendRequest(RequestModel):
-    email: EmailStr
+    email: SignupEmail
 
 
 class SignupCodeSendResponse(BaseModel):
@@ -33,7 +60,7 @@ class SignupCodeSendResponse(BaseModel):
 
 
 class SignupCodeVerifyRequest(RequestModel):
-    email: EmailStr
+    email: SignupEmail
     # ASCII 숫자 6자리만 받는다. 전각 숫자 · 5자리 · 7자리는 형식 오류(422 VALIDATION_ERROR)다.
     code: str = Field(..., pattern=r"^[0-9]{6}$")
 

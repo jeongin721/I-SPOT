@@ -414,6 +414,44 @@ def authenticate(
 # 계정 생성 / 조회
 # =========================================================
 
+DUPLICATE_EMAIL_MESSAGE = "이미 등록된 이메일입니다."
+
+
+def email_key(email: str) -> str:
+    """
+    같은 메일함인지 비교하는 키. 파이썬 lower() 와, 도메인은 IDNA ASCII(punycode)로 맞춘다.
+
+    DB 의 lower() 는 쓰지 않는다. SQLite 와 PostgreSQL(C collation)의 lower() 는 ASCII 만 바꿔, 옛 계정이
+    `Écho@…` · `…@BÜCHER.de` 처럼 비ASCII 대문자나 유니코드 도메인으로 남아 있으면 `écho@…` · `…@xn--bcher-kva.de` 와
+    다르게 보고 계정이 하나 더 생긴다(Codex #139 M2). 도메인을 바꿀 수 없으면 lower() 만 한 값을 쓴다.
+    """
+
+    local, at, domain = email.strip().lower().rpartition("@")
+
+    if not at:
+        return domain
+
+    try:
+        domain = domain.encode("idna").decode("ascii")
+    except UnicodeError:
+        pass
+
+    return f"{local}@{domain}"
+
+
+def email_is_registered(db: Session, email: str) -> bool:
+    """
+    그 이메일(email_key 기준)의 계정이 이미 있는가.
+
+    계정은 기관 하나의 상담사 · 관리자라 수십 개라서 전부 읽어 파이썬에서 비교한다. 어떤 이메일을 물어도 같은 조회 하나다
+    (회원가입 보내기가 계정 존재를 응답 시간으로 드러내지 않게).
+    """
+
+    key = email_key(email)
+
+    return any(email_key(existing) == key for existing in db.scalars(select(User.email)))
+
+
 def add_user(
     db: Session,
     *,
@@ -429,9 +467,14 @@ def add_user(
     계정 행을 넣고 감사 로그(USER_CREATED)를 남긴다. 커밋은 호출 측이 한다.
 
     관리자 계정 생성(create_user)과 회원가입 승인(signup_service.approve)이 같이 쓴다. 비밀번호 규칙은
-    호출 측이 이미 봤다(승인은 신청 때 본 해시를 그대로 옮긴다). 이메일이 이미 있으면 그때까지의 변경을
-    모두 되돌리고 409 다.
+    호출 측이 이미 봤다(승인은 신청 때 본 해시를 그대로 옮긴다). 이메일이 이미 있으면(email_key 기준 — 대소문자 ·
+    유니코드 도메인만 다른 옛 계정 포함) 그때까지의 변경을 모두 되돌리고 409 다.
     """
+
+    if email_is_registered(db, email):
+        db.rollback()
+
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_EMAIL_MESSAGE)
 
     user = User(
         email=email.lower(),
@@ -450,10 +493,7 @@ def add_user(
     except IntegrityError as error:
         db.rollback()
 
-        raise conflict(
-            ErrorCode.DUPLICATE_RESOURCE,
-            "이미 등록된 이메일입니다.",
-        ) from error
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_EMAIL_MESSAGE) from error
 
     # 이메일 · 이름은 남기지 않는다. 계정 id 와 역할만 남긴다.
     detail = {"role": user.role.value}

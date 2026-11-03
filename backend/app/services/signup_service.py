@@ -254,16 +254,27 @@ def purge_expired(db: Session, now: Optional[datetime] = None) -> None:
 
 @dataclass(frozen=True)
 class CodeSendResult:
-    """보내기 결과. mail 이 None 이면 보내지 않는다(계정이나 대기 신청이 이미 있는 이메일). 응답에는 쓰지 않는다."""
+    """
+    보내기 결과. 응답에는 쓰지 않는다.
+
+    mail 이 None 이면 보내지 않는다(계정이나 대기 신청이 이미 있는 이메일). 그래도 메일 일은 똑같이 하나 넣는다(queue_code_mail).
+    code_hash 는 이 번호의 해시다. 대기열에서 차례가 왔을 때 아직 쓸 수 있는 번호인지 본다(Codex #139 L2).
+    """
 
     code_id: uuid.UUID
+    code_hash: str
     mail: Optional[MailMessage]
 
 
 def _email_is_taken(db: Session, email: str) -> bool:
-    """계정이 있거나 대기 신청이 있는 이메일인가. 새 이메일이든 아니든 같은 조회 둘을 한다."""
+    """
+    계정이 있거나 대기 신청이 있는 이메일인가. 새 이메일이든 아니든 같은 조회 둘을 한다.
 
-    has_user = db.scalar(select(func.count()).select_from(User).where(func.lower(User.email) == email)) or 0
+    계정은 user_service.email_is_registered 로 본다(대소문자 · 유니코드 도메인만 다른 옛 계정도 같게, Codex #139 M2).
+    대기 신청은 회원가입 창구가 늘 같은 꼴(ASCII 소문자, schemas/signup.py)로 넣어 그대로 비교한다.
+    """
+
+    has_user = user_service.email_is_registered(db, email)
     has_pending = db.scalar(
         select(func.count())
         .select_from(SignupRequest)
@@ -321,8 +332,20 @@ def send_code(
     purge_expired(db, now)
 
     taken = _email_is_taken(db, email)
+    live_hash = db.scalar(
+        select(SignupEmailCode.code_hash).where(
+            SignupEmailCode.email == email,
+            SignupEmailCode.code_expires_at > now,
+        )
+    )
     code = _new_code()
     code_hash = _code_hash(email, code)
+
+    # 지금 살아 있는 번호를 또 뽑으면 앞 메일의 번호가 그대로 맞아 '새로 보내면 앞 번호 무효' 가 깨진다(Codex #139 L4).
+    while code_hash == live_hash:
+        code = _new_code()
+        code_hash = _code_hash(email, code)
+
     window_over = SignupEmailCode.window_started_at <= now - SEND_WINDOW
 
     # 60초가 지났고 · 하루 횟수가 남았거나 하루가 지났을 때만 새 번호를 쓴다. SET 의 오른쪽은 고치기 전 값을 본다
@@ -393,7 +416,7 @@ def send_code(
 
     mail = None if taken else MailMessage(to=email, subject=MAIL_SUBJECT, body=_mail_body(code))
 
-    return CodeSendResult(code_id=code_id, mail=mail)
+    return CodeSendResult(code_id=code_id, code_hash=code_hash, mail=mail)
 
 
 # ---------------------------------------------------------
@@ -404,9 +427,16 @@ def send_code(
 # (starlette/responses.py), 메일을 다 보낼 때까지 그 연결이 붙잡힌다. 그러면 같은 연결로 보낸 다음 요청이 SES 호출 시간만큼 늦어져
 # '메일을 보냈는지'(= 새 이메일인지)가 드러나고, 느린 SES 호출이 요청 처리와 같은 스레드 풀을 차지한다(스펙 보완 사항 R1).
 # 그래서 전용 스레드에 넣고 바로 돌아온다. 대기가 MAIL_QUEUE_LIMIT 를 넘으면 넣지 않는다(쏟아부어도 메모리가 늘지 않게).
+#
+# 보낼 메일이 없는 이메일(계정 · 대기 신청이 있음)도 **같은 일 하나**를 넣고, 일 하나는 보내든 안 보내든 MAIL_JOB_SECONDS 동안
+# 일꾼을 붙잡는다. 새 이메일만 대기 칸을 쓰거나 일꾼을 오래 붙잡으면, 자기 주소로 보낸 메일이 늦게 오거나(일꾼이 바쁨)
+# 안 오는(대기가 참) 것으로 그 사이에 보낸 다른 주소의 가입 여부가 드러난다(Codex #139 M1). SES 호출이 MAIL_JOB_SECONDS 보다
+# 오래 걸리면(제한 시간 · 재시도) 그만큼은 차이가 남는다 — 알려진 한계.
 
 MAIL_WORKERS = 2
 MAIL_QUEUE_LIMIT = 100
+# SES 샌드박스는 초당 1통이라 일꾼 2개 × 2초면 그 한도와 같다. 시험은 0 으로 바꾼다.
+MAIL_JOB_SECONDS = 2.0
 
 _mail_pool = ThreadPoolExecutor(max_workers=MAIL_WORKERS, thread_name_prefix="signup-mail")
 _mail_idle = threading.Condition()
@@ -446,6 +476,44 @@ def _record_mail_failure(
         db.close()
 
 
+def _code_still_usable(result: CodeSendResult) -> bool:
+    """
+    차례가 왔을 때 이 번호를 아직 쓸 수 있는가 — 5분 안이고, 새 번호로 바뀌지 않았고, 맞히거나 기준만큼 틀리지 않았다.
+
+    대기열에서 기다리는 사이 쓸 수 없게 된 번호를 보내면 받은 사람은 맞는 번호를 넣고도 '만료' 를 받는다(Codex #139 L2).
+    이미 SES 로 넘긴 메일이 늦게 도착하는 것은 여기서 막을 수 없다. 조회가 실패하면 보내지 않는다.
+    """
+
+    db = SessionLocal()
+
+    try:
+        row = db.execute(
+            select(
+                SignupEmailCode.code_hash,
+                SignupEmailCode.code_expires_at,
+                SignupEmailCode.failed_attempts,
+            ).where(SignupEmailCode.id == result.code_id)
+        ).one_or_none()
+    except Exception as error:  # noqa: BLE001
+        logger.warning("회원가입 인증번호 상태를 읽지 못해 메일을 보내지 않습니다. type=%s", type(error).__name__)
+
+        return False
+    finally:
+        db.close()
+
+    if row is None:
+        return False
+
+    code_hash, expires, attempts = row
+
+    return (
+        code_hash == result.code_hash
+        and expires is not None
+        and as_utc(expires) > _now()
+        and attempts < MAX_CODE_ATTEMPTS
+    )
+
+
 def deliver_code_mail(
     result: CodeSendResult,
     *,
@@ -453,13 +521,20 @@ def deliver_code_mail(
     user_agent: Optional[str] = None,
 ) -> None:
     """
-    인증번호 메일을 보낸다(메일 전용 스레드에서).
+    인증번호 메일을 보낸다(메일 전용 스레드에서). 보낼 메일이 없어도 같은 조회를 한다(일 하나의 일을 같게).
 
     실패해도 다시 올리지 않는다 — 응답은 이미 나갔고, 올리면 예외 문구(받는 주소가 들 수 있다)가 찍힌다.
     감사 기록(FAILURE · MAIL_SEND_FAILED)과 경고 로그에는 실패 이유 코드만 남긴다.
     """
 
+    usable = _code_still_usable(result)
+
     if result.mail is None:
+        return
+
+    if not usable:
+        logger.info("회원가입 인증번호가 보내기 전에 쓸 수 없게 되어 보내지 않았습니다.")
+
         return
 
     sender = get_mail_sender()
@@ -479,15 +554,13 @@ def queue_code_mail(
     user_agent: Optional[str] = None,
 ) -> None:
     """
-    메일을 전용 스레드에 넣고 바로 돌아온다. 보낼 메일이 없으면(계정이 이미 있는 이메일) 아무것도 하지 않는다.
+    메일 일을 전용 스레드에 넣고 바로 돌아온다. 보낼 메일이 없는 이메일(계정 · 대기 신청이 있음)도 같은 일 하나를 넣는다.
 
-    대기가 MAIL_QUEUE_LIMIT 에 닿았으면 넣지 않고 실패로 남긴다(응답은 그대로 202 — 60초 뒤 다시 보내면 된다).
+    대기가 MAIL_QUEUE_LIMIT 에 닿았으면 넣지 않는다(응답은 그대로 202 — 60초 뒤 다시 보내면 된다). 그때는 감사 기록 없이
+    서버 로그 경고만 남긴다. 새 이메일만 감사 기록을 쓰면 요청 처리 시간이 갈린다.
     """
 
     global _mail_pending
-
-    if result.mail is None:
-        return
 
     with _mail_idle:
         full = _mail_pending >= MAIL_QUEUE_LIMIT
@@ -496,16 +569,25 @@ def queue_code_mail(
             _mail_pending += 1
 
     if full:
-        _record_mail_failure(result, "queue", "MailQueueFull", ip_address=ip_address, user_agent=user_agent)
+        logger.warning("회원가입 메일 대기가 가득 차 넣지 못했습니다. limit=%s", MAIL_QUEUE_LIMIT)
 
         return
 
     def run() -> None:
         global _mail_pending
 
+        started = time.monotonic()
+
         try:
             deliver_code_mail(result, ip_address=ip_address, user_agent=user_agent)
+        except Exception as error:  # noqa: BLE001 — 일꾼 스레드의 예외는 아무 데도 찍히지 않는다
+            logger.warning("회원가입 메일 일에서 예상하지 못한 오류. type=%s", type(error).__name__)
         finally:
+            rest = MAIL_JOB_SECONDS - (time.monotonic() - started)
+
+            if rest > 0:
+                time.sleep(rest)
+
             with _mail_idle:
                 _mail_pending -= 1
                 _mail_idle.notify_all()
@@ -629,6 +711,23 @@ def verify_code(
     return VerifyResult(token=token, expires_in_seconds=_seconds(TOKEN_TTL))
 
 
+def _spend_token(db: Session, code_id: uuid.UUID, token_hash: str, now: datetime) -> bool:
+    """토큰이 그대로이고 만료 전일 때만 지운다(한 번만 쓰게). 지웠으면 True. 커밋은 호출 측이 한다."""
+
+    return bool(
+        db.execute(
+            update(SignupEmailCode)
+            .where(
+                SignupEmailCode.id == code_id,
+                SignupEmailCode.token_hash == token_hash,
+                SignupEmailCode.token_expires_at > now,
+            )
+            .values(token_hash=None, token_expires_at=None, updated_at=now)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+    )
+
+
 def submit_request(
     db: Session,
     token: str,
@@ -642,8 +741,13 @@ def submit_request(
     """
     확인 토큰 · 이름 · 비밀번호로 대기 신청(PENDING)을 만든다. 계정(users)은 만들지 않는다.
 
-    순서: 토큰이 살아 있는지 → 비밀번호 규칙 → bcrypt → 토큰을 쓰고 신청 저장. 엉터리 토큰은 bcrypt 전에 거절하고,
-    약한 비밀번호로 거절돼도 토큰은 남아 같은 토큰으로 다시 낼 수 있다.
+    순서(Codex #139 M3):
+      ① 토큰이 살아 있는지 — 아니면 422(bcrypt 없이).
+      ② 이미 계정이나 대기 신청이 있는 이메일인지 — 그러면 토큰을 쓰고(다시 못 씀) 409(bcrypt 없이). 이 사람은 번호를 받아
+         메일함 주인임을 증명했으므로 '이미 있음' 을 알려도 된다.
+      ③ 비밀번호 규칙 — 약하면 422 이고 토큰은 남는다(같은 토큰으로 다시 낸다).
+      ④ 토큰을 먼저 쓰고 커밋 — 동시에 같은 토큰으로 들어온 요청은 여기서 하나만 남아 bcrypt 는 토큰당 한 번이다.
+      ⑤ bcrypt → 신청 저장. 그사이 같은 이메일 신청이 먼저 들어왔으면 부분 유일 색인에 걸려 409(토큰은 이미 썼다).
     """
 
     _ensure_enabled()
@@ -664,31 +768,23 @@ def submit_request(
     email = row.email
     code_id = row.id
 
+    if _email_is_taken(db, email):
+        _spend_token(db, code_id, token_hash, now)
+        db.commit()
+
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_MESSAGE)
+
     validate_password(password, email=email, name=name)
-    hashed = hash_password(password)
 
-    # bcrypt(약 0.3초)를 하는 사이 다른 요청이 같은 토큰을 썼을 수 있다. 토큰이 그대로일 때만 쓴다.
-    consumed = db.execute(
-        update(SignupEmailCode)
-        .where(
-            SignupEmailCode.id == code_id,
-            SignupEmailCode.token_hash == token_hash,
-            SignupEmailCode.token_expires_at > now,
-        )
-        .values(token_hash=None, token_expires_at=None, updated_at=now)
-        .execution_options(synchronize_session=False)
-    ).rowcount
-
-    if not consumed:
+    if not _spend_token(db, code_id, token_hash, now):
         db.rollback()
 
         raise APIError(ErrorCode.SIGNUP_TOKEN_INVALID, TOKEN_INVALID_MESSAGE, status_code=422)
 
-    # 이 사람은 번호를 받아 메일함 주인임을 증명했으므로 '이미 있음' 을 알려도 된다. 확인한 뒤 그사이 계정이 생긴 경우다.
-    if db.scalar(select(func.count()).select_from(User).where(func.lower(User.email) == email)):
-        db.rollback()
+    # 다른 요청이 바로 보도록 bcrypt(약 0.3초) 전에 커밋한다.
+    db.commit()
 
-        raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_MESSAGE)
+    hashed = hash_password(password)
 
     request = SignupRequest(
         email=email,
@@ -819,11 +915,11 @@ def approve(
 
         raise _already_decided()
 
-    # 대소문자만 다른 옛 계정(seed script 로 만든 것 등)은 유일 제약에 걸리지 않아 먼저 본다.
-    if db.scalar(select(func.count()).select_from(User).where(func.lower(User.email) == email)):
+    # 대소문자 · 유니코드 도메인만 다른 옛 계정(seed script · 예전 데이터)은 유일 제약에 걸리지 않아 먼저 본다(Codex #139 M2).
+    if user_service.email_is_registered(db, email):
         db.rollback()
 
-        raise conflict(ErrorCode.DUPLICATE_RESOURCE, "이미 등록된 이메일입니다.")
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, user_service.DUPLICATE_EMAIL_MESSAGE)
 
     # 그사이 같은 이메일이 들어오면 add_user 가 위 UPDATE 까지 되돌리고 409 를 올린다.
     user = user_service.add_user(
