@@ -8,7 +8,8 @@
 //  - '1차 임시 핵심 발화'(2026-10-28, API_CONTRACT 7절 key_scan): STT 작업 끝에 1차 모델(로컬)이 고른 아동 발화가 있고
 //    원문 확정 전이면 이 보기로 먼저 연다(디자인 view 'key' — 제목 '1차 임시 핵심 발화' · 칩 '임시 · 검수 전'). 이 보기의 줄은
 //    디자인처럼 고치지 않고 읽기만 한다. '전체 STT 보기' · '저신뢰 구간 보기' 를 다시 누르면 이 보기로 돌아온다(디자인 토글).
-//    스캔이 없거나(null · FAILED · SKIPPED · 빈 목록) 확정 뒤 · 주소에 seg 가 있으면 전체 STT 로 연다. 유형 이름은 보이지 않는다.
+//    스캔이 없거나(null · FAILED · SKIPPED · 빈 목록) 확정 뒤 · 주소에 seg 가 있으면 전체 STT 로 연다. 유형 칩은 보이지 않고,
+//    11/03 부터 원문 확정 전에는 그 유형의 '임시' 관련 조문을 발화 아래 보인다(keyScanLaws).
 //  - 화자는 Backend 5종(아동 · 상담원 · 보호자 · 기타 · 화자 미확인)만 쓴다. '사례관리대상자' 는 Backend 에 없다.
 //
 // 10/21 디자인(counselor-design/screens/SttReview.dc.html) 반영:
@@ -52,6 +53,7 @@ import type { AudioPlayerState } from "../useAudioPlayer";
 import type { VoiceMarksState } from "../useVoiceMarks";
 import { marksBySegment, reasonLabel, type SegmentMarks, type VoiceCue, voiceMarksSummary } from "../voiceMarkRows";
 import { isLowConfidence, type SegmentRow, SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
+import { LAW_SOURCES } from "./lawGuideRefs";
 import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
 import { type SessionScreenInput, sessionPickValues } from "./sessionDetail";
@@ -72,6 +74,48 @@ export interface LawLine {
   sum: string;
   /** '원문보기' 주소. 없으면 null(단추를 숨긴다). */
   url: string | null;
+  /** 임시 조문이면 덧말(원문 확정 전 1차 모델 유형으로 고른 것). AI 분석 결과의 조문은 없음. */
+  tmp?: string;
+}
+
+/**
+ * 1차 임시 핵심 발화 유형 → 아동복지법 제17조 해당 호(2026-11-03). 문구는 법령 · 매뉴얼 화면(lawGuideRefs.ts 의 cw17)과 같고,
+ * AI 분석의 조문 연결(ai/modeling/abuse/legal_reference_adapter.py)도 유형마다 이 호(신체 3 · 정서 5 · 성 2 · 방임 6)를 고른다.
+ */
+const KEY_SCAN_ARTICLES: Record<string, { art: string; sum: string }> = {
+  PHYSICAL: { art: "제17조 제3호", sum: "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위" },
+  EMOTIONAL: { art: "제17조 제5호", sum: "아동의 정신건강 및 발달에 해를 끼치는 정서적 학대행위" },
+  SEXUAL: {
+    art: "제17조 제2호",
+    sum: "아동에게 음란한 행위를 시키거나 이를 매개하는 행위 또는 아동을 대상으로 하는 성희롱 등의 성적 학대행위",
+  },
+  NEGLECT: {
+    art: "제17조 제6호",
+    sum: "자신의 보호 · 감독을 받는 아동을 유기하거나 의식주를 포함한 기본적 보호 · 양육 · 치료 및 교육을 소홀히 하는 방임행위",
+  },
+};
+
+/** 1차 임시 핵심 발화(key_scan)의 발화별 유형 → 발화 ID 별 임시 관련 조문. 모르는 유형은 건너뛴다. */
+export function keyScanLaws(keyTypes: Record<string, string[]>): Map<string, LawLine[]> {
+  const bySegment = new Map<string, LawLine[]>();
+  for (const [segmentId, types] of Object.entries(keyTypes)) {
+    const lines: LawLine[] = [];
+    for (const type of types) {
+      const article = KEY_SCAN_ARTICLES[type];
+      if (!article || lines.some((line) => line.key === `tmp|${type}`)) continue;
+      lines.push({
+        key: `tmp|${type}`,
+        sig: LAW_TYPE_LABELS[type] ?? "관련",
+        law: LAW_SOURCES.cw[0],
+        art: article.art,
+        sum: article.sum,
+        url: LAW_SOURCES.cw[1],
+        tmp: "임시 · 1차 모델",
+      });
+    }
+    if (lines.length > 0) bySegment.set(segmentId, lines);
+  }
+  return bySegment;
 }
 
 function isLegalReference(value: unknown): value is LegalReference {
@@ -293,7 +337,13 @@ export function sttReviewValues(input: SttScreenInput) {
   const unchecked = review.rows.filter((row) => !row.removed && needsCheck(row) && !state.ok[okKey(row.segmentId)]);
   const left = unchecked.length;
 
-  const laws = lawsBySegment(analysis.analysis?.riskUtterances ?? []);
+  // 관련 조문: AI 분석 결과가 있으면 그 조문. 원문 확정 전(1단계)이라 분석이 없으면 1차 임시 핵심 발화 모델이 표시한 유형의
+  // 조문을 '임시' 로 보인다(2026-11-03, 사용자 요청 — PROPOSAL_stt_key_scan §8 답 3 '유형은 화면에 안 보임' 을 바꿈).
+  // 판정이 아니라 다시 들어 볼 곳의 참고이며, 원문을 확정하고 분석이 끝나면 분석 결과의 조문으로 바뀐다.
+  const tmpLaws = !analysis.analysis && review.info && !review.info.confirmed;
+  const laws = tmpLaws
+    ? keyScanLaws(review.info?.keyTypes ?? {})
+    : lawsBySegment(analysis.analysis?.riskUtterances ?? []);
   const markMap = marksBySegment(voice.marks);
   const markSummary = voiceMarksSummary(voice.marks, review.info?.version ?? null, voice.waiting);
   const hasAudio = input.detail.session?.hasAudio ?? false;
@@ -635,9 +685,11 @@ export function sttReviewValues(input: SttScreenInput) {
         "아래 재생 바로 재생 · 정지 · 5초 이동 · 위치 이동을 합니다."
       : "녹음 파일이 없어 다시 듣기를 할 수 없습니다.",
     cueNote: [voice.error ?? markSummary.text, markSummary.versionNote, CUE_LIMITS].filter(Boolean).join(" "),
-    lawNote:
-      "학대 유형이 감지된 발화에 관련 조문을 표시합니다(AI 분석이 끝난 뒤). 원문보기를 누르면 국가법령정보센터에서 " +
-      "조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
+    lawNote: tmpLaws
+      ? "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화에 '임시' 관련 조문을 표시합니다. 원문을 확정하고 AI 분석이 끝나면 " +
+        "분석 결과의 조문으로 바뀝니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다."
+      : "학대 유형이 감지된 발화에 관련 조문을 표시합니다(AI 분석이 끝난 뒤). 원문보기를 누르면 국가법령정보센터에서 " +
+        "조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
     error: review.error,
     canSave: review.canEdit && review.counts.pending > 0 && !review.submitting,
     // 저장 · 확정을 누르면 연 화자 목록을 닫는다(저장이 끝나 다시 고칠 수 있게 되어도 저절로 다시 열리지 않게).
