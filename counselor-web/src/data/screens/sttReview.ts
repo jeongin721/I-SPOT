@@ -352,7 +352,9 @@ export function sttReviewValues(input: SttScreenInput) {
     return {
       /** React 줄 키. 보기를 바꿔도 줄(입력칸 · 연 목록)이 다른 발화로 옮겨 가지 않게 발화 ID 로 둔다. */
       key: row.segmentId,
-      t: row.startLabel,
+      // 줄도 문단처럼 시작–끝 범위로(2026-11-03, 사용자 요청 — 따로 보이는 아동 줄만 시작 시간 하나라 끝을 알 수 없었다).
+      // 시작 · 끝이 같은 초면('00:10–00:10') 시작만.
+      t: row.startLabel === row.endLabel ? row.startLabel : `${row.startLabel}–${row.endLabel}`,
       // 시간을 누르면 그 발화부터 녹음을 다시 듣는다(파일을 아직 못 받았으면 받고 나서).
       play: canPlay ? () => void player.playFrom(row.startMs) : null,
       playAria: canPlay ? `${row.startLabel}부터 듣기` : `${row.startLabel}부터 듣기 · 녹음 파일 없음`,
