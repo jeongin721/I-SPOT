@@ -309,6 +309,9 @@ export function sttReviewValues(input: SttScreenInput) {
       nowId = row.segmentId;
     }
   }
+  // 화자를 고칠 수 없는 화면(원문을 잠근 뒤 · 핵심 발화 보기)에서는 화자를 고르기 단추가 아니라 글자로 보인다(눌러도 아무것도
+  // 안 열리는 단추로 보이지 않게). 저장 중에 잠깐 못 고치는 동안은 단추 모양 그대로 꺼 둔다.
+  const spStatic = !review.canEdit || view === "key";
 
   const lines = visible.map((row) => {
     const rowLaws = laws.get(row.segmentId) ?? [];
@@ -341,6 +344,7 @@ export function sttReviewValues(input: SttScreenInput) {
       aria: `${row.startLabel} 발화 고치기`,
       spFw: row.speaker === "CHILD" ? 700 : 500,
       spFix: row.edited || row.dirty,
+      spStatic,
       canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),
@@ -413,6 +417,7 @@ export function sttReviewValues(input: SttScreenInput) {
       sp: first.speakerLabel,
       spFw: first.speaker === "CHILD" ? 700 : 500,
       spFix: rows.some((row) => row.edited || row.dirty),
+      spStatic,
       canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),

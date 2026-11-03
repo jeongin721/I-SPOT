@@ -97,6 +97,19 @@ function SpeakerPicker({ l }) {
     };
   }, [open]);
 
+  // 화자를 고칠 수 없는 화면(원문을 잠근 뒤 · 핵심 발화 보기)에서는 글자로만 보인다(11/03 — 눌러도 아무것도 안 열리는 단추였다).
+  if (l.spStatic) {
+    return (
+      <span
+        className="chip"
+        style={{ fontSize: '12px', background: '#F2EFE8', color: '#66625A', fontWeight: l.spFw }}
+        title="원문을 잠근 뒤에는 화자를 바꿀 수 없습니다"
+      >
+        {l.sp}
+      </span>
+    );
+  }
+
   return (
     <span className="spw" onKeyDown={l.spKey}>
       <button
