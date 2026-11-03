@@ -6,7 +6,7 @@
 // (GET · POST · PATCH /cases/{id}/forms, API_CONTRACT 22절)가 부르고, 화면에 쓸 값은 src/data/screens/caseForm.ts 가 만든다.
 // 서식은 사례 단위로 차수마다 남는다. '임시 저장' 은 그 차수를 저장하고, '확정' 은 저장 뒤 확정한다(확정 차수는 고칠 수 없고,
 // 고쳐 저장하면 다음 차수). 디자인의 AI 제안 · AI 초안은 서버에 없고 상담사 판단 칸이라 보이지 않는다(점수 합계만 계산).
-// 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard).
+// 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard, 브라우저 뒤로 가기 포함).
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -49,7 +49,7 @@ export default function CaseForm(props) {
   const forms = useCaseForms(caseId, { enabled });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, detail, signals, personal, forms, caseId, formParam: params.get(FORM_PARAM) });
-  useLeaveGuard(v.unsaved);
+  useLeaveGuard(v.unsaved, { guardBack: true });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseForm">

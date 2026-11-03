@@ -129,7 +129,14 @@ class Logic extends DCLogic {
   }
 }
 
+// 사례가 바뀌면(같은 화면에서 다른 사례 주소로 · 뒤로 가기) 화면을 새로 만든다. 고친 칸(draft)이 사례 구분 없이 남아 있으면
+// 앞 사례에서 저장하지 않은 입력이 다음 사례 보고서에 저장된다(Codex #140 H1, 11/03).
 export default function ClosureDetail(props) {
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  return <ClosureDetailScreen key={caseId ?? ''} {...props} />;
+}
+
+function ClosureDetailScreen(props) {
   const [outOpen, setOutOpen] = useState(false);
   const session = useAuthSession();
   const theme = useTheme();
@@ -150,7 +157,7 @@ export default function ClosureDetail(props) {
   const forms = useCaseForms(caseId, { enabled: enabled && r.connected });
   const family = familyScaleLine(forms);
   const [savedNote, setSavedNote] = useState('');
-  useLeaveGuard(r.unsaved);
+  useLeaveGuard(r.unsaved, { guardBack: true });
   const save = async () => {
     setSavedNote('');
     if (await r.save()) {

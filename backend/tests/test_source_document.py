@@ -428,6 +428,49 @@ def test_pdf_counts_cleaned_characters_and_never_drops_pages(monkeypatch) -> Non
     assert caught.value.status_code == 422 and "30,000" in caught.value.message
 
 
+def test_pdf_joins_wrapped_lines_so_copy_check_sees_whole_sentences(monkeypatch) -> None:
+    """PDF 는 보이는 줄마다 줄을 바꾼다. 꺾인 줄을 이어, 두 줄에 걸친 문장은 남고 꺾인 줄 앞부분만 옮긴 조각은 버린다(민규 #137 보완)."""
+
+    from app.services import document_text
+
+    page = (
+        "[아동 진술]\n"
+        "아동은 아버지에게 맞았다고 말하지 않았으며 보호자는 가정 방문을\n"
+        "거부하였다. 다음 회차에 학교 출결을 다시 확인하기로 하였다. 아동은 맞았다\n"
+        "고 말하지 않았다.\n"
+        "- 보호자 연락 안 됨\n"
+        "출결: 주 3~4회 결석함."
+    )
+    _fake_pdf(monkeypatch, [page])
+    source = document_text.extract_text("a.pdf", b"%PDF-1.4")
+
+    assert source.split("\n") == [
+        "[아동 진술]",
+        "아동은 아버지에게 맞았다고 말하지 않았으며 보호자는 가정 방문을 거부하였다. 다음 회차에 학교 출결을 다시 확인하기로"
+        " 하였다. 아동은 맞았다 고 말하지 않았다.",
+        "- 보호자 연락 안 됨",
+        "출결: 주 3~4회 결석함.",
+    ]
+    whole = "아동은 아버지에게 맞았다고 말하지 않았으며 보호자는 가정 방문을 거부하였다."
+    assert dn.keep_copied(whole, source) == whole
+    assert dn.keep_copied("아동은 맞았다고 말하지 않았다.", source) == "아동은 맞았다고 말하지 않았다."
+    assert dn.keep_copied("아동은 맞았다.", source) == ""
+    assert dn.keep_copied("아동은 아버지에게 맞았다고 말하지 않았으며 보호자는 가정 방문을", source) == ""
+    assert dn.keep_copied("보호자 연락 안 됨", source) == "보호자 연락 안 됨"
+    assert dn.keep_copied("주 3~4회 결석함.", source) == "주 3~4회 결석함."
+
+    # 짧은 줄(문단 끝) · 문장이 끝난 줄 · '칸 이름:' 줄은 잇지 않는다.
+    joined = document_text._join_wrapped(
+        "보호자는 가정 방문을 거부하였고 학교 출결은 다음 회차에 확인\n아동 진술: 맞은 적 없다고 함\n짧은 줄\n다음 문단"
+    )
+    assert joined.split("\n") == [
+        "보호자는 가정 방문을 거부하였고 학교 출결은 다음 회차에 확인",
+        "아동 진술: 맞은 적 없다고 함",
+        "짧은 줄",
+        "다음 문단",
+    ]
+
+
 def test_pdf_reading_leaves_no_file_text_in_logs(client: TestClient, counselor_headers, session: dict, caplog) -> None:
     """pypdf 로그 · 경고에 파일에서 나온 글자(앞 바이트 등)가 서버 로그로 나가지 않는다 — 실패 · 성공 모두(민규 #137 R4)."""
 
