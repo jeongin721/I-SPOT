@@ -46,7 +46,12 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 .dow{padding:10px 8px;font-size:12px;font-weight:500;color:#6E6A62;text-align:left}
 .cell{display:flex;flex-direction:column;align-items:stretch;gap:3px;min-height:112px;padding:8px;border:0;border-top:1px solid #EAE7DF;border-left:1px solid #EAE7DF;background:#FFFFFF;font:inherit;text-align:left;cursor:pointer}
 .cell:hover{background:#F7F6F2}
-.pill{display:flex;align-items:center;gap:5px;height:22px;padding:0 6px;border-radius:6px;font-size:11px;white-space:nowrap;overflow:hidden}
+.pill{display:flex;align-items:flex-start;gap:4px;min-height:22px;padding:3px 5px;border-radius:6px;font-size:11.5px;line-height:1.35;overflow:hidden}
+.pl-tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.pl-ttl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:anywhere}
+.pl-head{display:flex;align-items:baseline;gap:4px;white-space:nowrap;overflow:hidden}
+.pl-head b{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.pl-time{font-size:10.5px;font-weight:600;opacity:.7;font-variant-numeric:tabular-nums}
 .ev{display:grid;grid-template-columns:48px 12px minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px 0;border-bottom:1px solid #EAE7DF}
 .lb{font-size:13px;font-weight:500;color:#2B2A26}
 .in{height:42px;border:1px solid #DAD5C9;border-radius:10px;padding:0 12px;font:inherit;font-size:14px;background:#FFFFFF;color:#2B2A26;width:100%}
@@ -60,8 +65,8 @@ h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;fo
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
-.side .logo b{font-family:'Noto Serif KR',serif;font-weight:600}
-.mk{background:#2B2A26 !important;color:#D9C08A !important;border-radius:50% !important;font-family:'Noto Serif KR',serif;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.side .logo b{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mk{background:#2B2A26 !important;color:#D9C08A !important;border-radius:50% !important;font-family:'IBM Plex Sans KR',sans-serif;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
 .cta{border-radius:999px !important;border:1px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s,transform .15s}
 .cta:active{transform:translateY(1px)}
 .cta2{border-radius:999px !important;background:#FFFFFF;border:1.5px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s}
@@ -476,7 +481,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <button type="button" class="cell" onClick="{{ c.pick }}" aria-label="{{ c.aria }}" style="background: {{ c.bg }}; box-shadow: {{ c.ring }};">
 <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: {{ c.fw }}; background: {{ c.numBg }}; color: {{ c.numFg }};">{{ c.num }}</span><span style="font-size: 10px; color: #7A776F;">{{ c.holiday }}</span></span>
 <sc-for list="{{ c.pills }}" as="p" hint-placeholder-count="2">
-<span class="pill" onClick="{{ p.open }}" title="{{ p.tip }}" style="background: {{ p.bg }}; color: {{ p.fg }}; font-weight: {{ p.fw }};"><span style="width: 7px; height: 7px; flex: none; border-radius: {{ p.radius }}; background: {{ p.dot }};"></span>{{ p.label }}</span>
+<span class="pill" onClick="{{ p.open }}" title="{{ p.tip }}" style="background: {{ p.bg }}; color: {{ p.fg }}; font-weight: {{ p.fw }};"><span style="width: 7px; height: 7px; flex: none; margin-top: 4px; border-radius: {{ p.radius }}; background: {{ p.dot }};"></span><span class="pl-tx"><sc-if value="{{ p.hasHead }}" hint-placeholder-val="{{ true }}"><span class="pl-head"><span class="pl-time">{{ p.time }}</span><b>{{ p.who }}</b></span></sc-if><span class="pl-ttl">{{ p.body }}</span></span></span>
 </sc-for>
 <span style="font-size: 11px; color: #6E6A62; padding-left: 4px;">{{ c.more }}</span>
 </button>
@@ -733,7 +738,7 @@ renderVals() {
         numBg: isToday ? '#2B2A26' : 'transparent',
         numFg: isToday ? '#FFFFFF' : (hol || dow === 0 ? '#7A776F' : '#2B2A26'),
         fw: isToday || isSel ? 700 : 400,
-        pills: evs.slice(0, 3).map((e) => { const st = style(e); return { label: `${e.time === '종일' ? '' : e.time + ' '}${e.title}`, bg: st.bg, fg: st.fg, fw: st.fw, dot: st.dot, radius: st.radius, tip: e.title + ' · 자세히 보기', open: (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); this.setState({ sel: d, view: keyOf(e), adding: false, edit: null, delAsk: false }); } }; }),
+        pills: evs.slice(0, 3).map((e) => { const st = style(e); return { label: `${e.time === '종일' ? '' : e.time + ' '}${e.title}`, time: e.time === '종일' ? '' : e.time, who: (e.title.split(' · ').length > 1 ? e.title.split(' · ')[0] : ''), hasHead: e.time !== '종일' || e.title.split(' · ').length > 1, body: (e.title.split(' · ').length > 1 ? e.title.split(' · ').slice(1).join(' · ') : e.title), title: e.title, bg: st.bg, fg: st.fg, fw: st.fw, dot: st.dot, radius: st.radius, tip: e.title + ' · 자세히 보기', open: (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); this.setState({ sel: d, view: keyOf(e), adding: false, edit: null, delAsk: false }); } }; }),
         more: evs.length > 3 ? `+${evs.length - 3}건 더` : '',
         pick: () => { if (valid) this.setState({ sel: d, view: null, delAsk: false }); }
       });

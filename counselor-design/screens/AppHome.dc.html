@@ -9,7 +9,7 @@
 <x-dc>
 <helmet>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
 <style>
 body{margin:0;background:#F2F2F0;overflow-x:hidden}
 body:has(.app.dark){background:#22211E}
@@ -50,6 +50,11 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .fail{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--redsoft);color:var(--red);font-size:14px;font-weight:700}
 .fail span{flex:1}
 .ibtn.on{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.tabs{position:sticky;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--card);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 14px rgba(43,42,38,.05)}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;border-radius:12px;font-size:12.5px;font-weight:500;color:var(--mut)}
+.tab svg{width:22px;height:22px}
+.tab.on{background:var(--sand);color:var(--fg);font-weight:700}
+.tab.on svg{color:var(--fg)}
 .ahd .tl{flex:1;min-width:0}
 .ahd .tl h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .amain{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
@@ -72,10 +77,6 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .hello span{font-size:clamp(13.5px,4vw,15px);color:var(--mut)}
 .hello b{font-size:clamp(21px,6.4vw,25px);font-weight:700;letter-spacing:-.01em;line-height:1.3}
 .hello small{font-size:13px;color:var(--mut)}
-.qa{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:4px 0}
-.qa a{display:flex;flex-direction:column;align-items:center;gap:6px;padding:2px 0;background:transparent;border:0;font-size:13px;font-weight:700}
-.qa .qi{width:clamp(50px,15vw,58px);height:clamp(50px,15vw,58px);border-radius:16px;background:var(--card);border:1px solid var(--line);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(43,42,38,.06)}
-.qa a:active .qi{background:var(--soft)}
 .crow{display:flex;align-items:center;gap:12px;padding:11px 14px}
 .crow .ci{width:36px;height:36px;border-radius:12px;background:var(--soft);display:inline-flex;align-items:center;justify-content:center;flex:none}
 .crow b{font-size:15px}
@@ -93,21 +94,77 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .ndot{width:8px;height:8px;border-radius:50%;background:var(--gold);flex:none}
 .ndot.red{background:var(--red)}
 .body{margin:0;font-size:14.5px;white-space:pre-wrap}
+
+/* ===== 모던 정리 (2026-11-02) ===== */
+.app{--bgA:rgba(242,242,240,.86);--cardA:rgba(255,255,255,.9);--track:rgba(43,42,38,.06);--goldT:#8C7340;--sh:0 1px 2px rgba(43,42,38,.04),0 6px 16px rgba(43,42,38,.04);letter-spacing:-.005em;-webkit-font-smoothing:antialiased}
+.app.dark{--bgA:rgba(34,33,30,.86);--cardA:rgba(44,43,39,.92);--track:rgba(255,255,255,.07);--goldT:#D9C08A;--sh:none}
+.ahd{background:var(--bgA);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);gap:2px;padding:8px 10px 8px 8px;padding-top:max(8px,env(safe-area-inset-top,0px))}
+.ahd .tl{padding:0 6px}
+.ahd h1{font-size:clamp(18px,5.4vw,20px);letter-spacing:-.025em;line-height:1.3}
+.ahd .sub{font-size:12px;font-weight:500}
+.ibtn{width:42px;height:42px;border:0;border-radius:12px;background:transparent;transition:background .15s}
+.ibtn:hover{background:var(--track)}
+.ibtn.on{background:var(--sand);color:var(--fg)}
+.badge{top:4px;right:4px;min-width:16px;height:16px;padding:0 4px;font-size:10px;line-height:16px;box-shadow:0 0 0 2px var(--bg)}
+.amain{gap:14px;padding:6px 16px 28px}
+.card{border-radius:16px;box-shadow:var(--sh)}
+.sec-t{margin:8px 2px -4px;font-size:12.5px;font-weight:600;letter-spacing:.01em}
+.btn{min-height:46px;border-radius:12px;font-weight:600;letter-spacing:-.01em;transition:background .15s,transform .1s}
+.btn:active{transform:scale(.98)}
+.btn-p{box-shadow:0 2px 8px rgba(43,42,38,.16)}
+.app.dark .btn-p{box-shadow:none}
+.btn-sm{min-height:36px;border-radius:10px;font-size:13px}
+.chip{height:22px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+.inp{min-height:46px;border-radius:12px;transition:border-color .15s,box-shadow .15s}
+.inp:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(194,163,107,.22)}
+.lb{font-size:12.5px;font-weight:600;color:var(--mut)}
+.seg{border:0;padding:3px;background:var(--track)}
+.seg button{min-height:36px;border-radius:10px;font-weight:500}
+.seg button.on{font-weight:600;box-shadow:0 1px 2px rgba(43,42,38,.08),0 2px 8px rgba(43,42,38,.06)}
+.fail{border-radius:14px;font-weight:600;border:1px solid rgba(163,59,46,.2)}
+.tabs{background:var(--cardA);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);box-shadow:none;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+.tab{min-height:54px;gap:3px;border-radius:0;font-size:11.5px;font-weight:500}
+.tab .ti{display:inline-flex;align-items:center;justify-content:center;width:54px;height:30px;border-radius:999px;transition:background .15s}
+.tab.on{background:transparent;color:var(--fg);font-weight:700}
+.tab.on .ti{background:var(--sand)}
+.ov{background:rgba(43,42,38,.38)}
+.sheet{border-radius:22px 22px 0 0;padding:8px 18px calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(43,42,38,.12)}
+.sh-hd b{letter-spacing:-.02em}
+.nt{border-radius:14px;background:var(--soft);border-color:transparent}
+.nt.red{background:var(--redsoft);border-color:transparent}
+.nt.red b{color:var(--red)}
+.row-k{padding:12px 0}
+
+.brand{gap:8px;font-size:15px;letter-spacing:.02em}
+.mk{width:26px;height:26px;border-radius:8px;font-size:10.5px;letter-spacing:.02em}
+.hello{padding:8px 4px 2px;gap:2px}
+.hello small{order:-1;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--goldT);letter-spacing:.01em}
+.hello span{font-size:15px}
+.hello b{font-size:clamp(23px,7vw,27px);letter-spacing:-.035em;line-height:1.25}
+.app a.hero{display:flex;flex-direction:column;gap:16px;padding:18px 18px 16px;border-radius:18px;background:#2B2A26;color:#EADBB5;box-shadow:0 10px 26px rgba(43,42,38,.22)}
+.app.dark a.hero{background:#34322D;border:1px solid var(--line);box-shadow:none}
+.hero-top{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600}
+.hero-go{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;opacity:.85}
+.stats{display:grid;grid-template-columns:repeat(3,1fr)}
+.stat{display:flex;flex-direction:column;gap:2px;padding-left:14px;border-left:1px solid rgba(234,219,181,.18)}
+.stat:first-child{padding-left:0;border-left:0}
+.stat b{font-size:26px;font-weight:700;line-height:1.1;color:#FFFFFF;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat span{font-size:12px;opacity:.72}
+.sec-h{margin-top:8px;margin-bottom:-6px;padding:0 2px}
+.sec-h h2{font-size:15.5px;letter-spacing:-.02em}
+.li{padding:14px 16px;gap:12px}
+.li .lt b{font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.li .lt .note{font-size:12px}
 </style>
 </helmet>
 <div class="{{ rootCls }}">
 <header class="ahd"><a class="{{ homeCls }}" href="AppHome.dc.html" aria-label="홈으로" aria-current="{{ homeCur }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11L12 4l8.5 7"></path><path d="M6 9.5V20h4.5v-5.5h3V20H18V9.5"></path></svg></a><div class="tl"><span class="brand"><span class="mk">IS</span>I-SPOT</span></div><button type="button" class="ibtn" aria-label="알림 {{ ntCount }}건" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHas }}" hint-placeholder-val="{{ true }}"><span class="badge">{{ ntCount }}</span></sc-if></button><a class="{{ setCls }}" href="AppSettings.dc.html" aria-label="설정" aria-current="{{ setCur }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></a></header>
 <main class="amain">
 <section class="hello" aria-label="인사"><span>안녕하세요,</span><b>이서연 상담원님</b><small>{{ today }}</small></section>
-<nav class="qa" aria-label="주요 기능"><a href="AppRecord.dc.html"><span class="qi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>녹음</a><a href="AppUpload.dc.html"><span class="qi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg></span>업로드</a><a href="AppSchedule.dc.html"><span class="qi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></span>일정</a><a href="AppMemo.dc.html"><span class="qi"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"></path><path d="M9 11h6M9 15h6"></path></svg></span>메모</a></nav>
-<a class="card crow" href="AppCases.dc.html"><span class="ci"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"></path><path d="M15.5 4.8a3.2 3.2 0 0 1 0 6.4M17.5 14.6c2.1.6 3.5 2.6 3.5 5.4"></path></svg></span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column;"><b>사례 목록</b><span class="note" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">담당 10명 · 이번 주 상담 5건</span></span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></a>
+<a class="hero" href="AppCases.dc.html" aria-label="사례 목록 보기"><span class="hero-top"><span>내 사례 현황</span><span class="hero-go">사례 목록<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></span></span><span class="stats"><span class="stat"><b>10</b><span>담당 사례</span></span><span class="stat"><b>5</b><span>이번 주 상담</span></span><span class="stat"><b>3</b><span>오늘 상담</span></span></span></a>
 <div class="sec-h"><h2>사내 공지사항</h2><span class="note">{{ unreadN }}</span></div>
 <section class="card list" aria-label="사내 공지사항"><sc-for list="{{ notices }}" as="n" hint-placeholder-count="3"><button type="button" class="{{ n.cls }}" onClick="{{ n.open }}"><span class="lt"><b>{{ n.title }}</b><span class="note">{{ n.meta }}</span></span><sc-if value="{{ n.imp }}" hint-placeholder-val="{{ false }}"><span class="chip red">중요</span></sc-if></button></sc-for></section>
-<div class="sec-h"><h2>알림</h2><span class="note">{{ ntCount }}건</span></div>
-<section class="card list" aria-label="알림"><sc-for list="{{ hnotes }}" as="n" hint-placeholder-count="3"><div class="{{ n.cls }}" style="cursor: default;"><span class="{{ n.dot }}"></span><span class="lt"><b>{{ n.title }}</b><span class="note">{{ n.sub }}</span></span>
-<sc-if value="{{ n.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-p" onClick="{{ n.go }}">{{ n.act }}</button></sc-if>
-<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" href="{{ n.href }}">{{ n.linkLabel }}</a></sc-if></div></sc-for></section>
-</main>
+</main><nav class="tabs" aria-label="앱 메뉴"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a class="{{ t.cls }}" href="{{ t.href }}" aria-current="{{ t.cur }}"><span class="ti"><sc-if value="{{ t.isRec }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></sc-if><sc-if value="{{ t.isUp }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg></sc-if><sc-if value="{{ t.isCal }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></sc-if><sc-if value="{{ t.isMemo }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"></path><path d="M9 11h6M9 15h6"></path></svg></sc-if></span><span>{{ t.label }}</span></a></sc-for></nav>
 <sc-if value="{{ shOpen }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ shClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="공지사항" onClick="{{ stop }}">
 <span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>{{ v.title }}</b></div><span class="note">{{ v.meta }}</span>
 <p class="body">{{ v.body }}</p>
@@ -149,6 +206,7 @@ commonVals(cur) {
       { red: '', title: '오늘 남은 상담 2건', sub: '14:00 박지호 · 16:00 이서윤', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppSchedule.dc.html', linkLabel: '일정 보기' }]);
   return {
     rootCls: this.themeRead() ? 'app dark' : 'app',
+    tabs: [['rec', '녹음', 'AppRecord.dc.html'], ['up', '업로드', 'AppUpload.dc.html'], ['cal', '일정', 'AppSchedule.dc.html'], ['memo', '메모', 'AppMemo.dc.html']].map(([k, label, href]) => ({ label, href, cls: k === cur ? 'tab on' : 'tab', cur: k === cur ? 'page' : 'false', isRec: k === 'rec', isUp: k === 'up', isCal: k === 'cal', isMemo: k === 'memo' })),
     homeCls: cur === 'home' ? 'ibtn on' : 'ibtn', setCls: cur === 'set' ? 'ibtn on' : 'ibtn', homeCur: cur === 'home' ? 'page' : 'false', setCur: cur === 'set' ? 'page' : 'false',
     ntCount: String(notes.length), ntHas: notes.length > 0, ntOpen: !!st.__nt, ntToggle: () => this.setState({ __nt: !st.__nt }), ntClose: () => this.setState({ __nt: false }), notes,
     failN: fails.length, hasFail: fails.length > 0, failText: '업로드 실패 ' + fails.length + '건 · 다시 올려 주세요'
@@ -170,7 +228,6 @@ renderVals() {
     today: (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + W[d.getDay()] + '요일 · 오늘 상담 3건',
     unreadN: unread ? '읽지 않음 ' + unread + '건' : '모두 읽음',
     notices: N.map((n) => ({ title: n.title, meta: n.meta, imp: n.imp, cls: 'li' + (read[n.id] ? '' : ' unread'), open: () => { const r = { ...read, [n.id]: 1 }; this.stSet('ispot-app-notice', JSON.stringify(r)); this.setState({ open: n.id }); } })),
-    hnotes: c.notes.map((n) => ({ ...n, cls: 'li' + (n.red ? ' nfail' : ''), dot: n.red ? 'ndot red' : 'ndot' })),
     shOpen: !!cur, shClose: () => this.setState({ open: null }), v: cur || {} });
 }
 

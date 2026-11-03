@@ -88,8 +88,8 @@ h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;fo
 /* 좌측 레일 + 연결형 패널 */
 .side{background:var(--rail) !important;border-right:0 !important;padding:26px 16px 22px !important}
 .side+main,.side+div{background:var(--base);border-radius:36px 0 0 36px;position:relative}
-.side .logo b{font-family:'Noto Serif KR',serif;font-weight:600}
-.mk{background:#2B2A26 !important;color:#D9C08A !important;border-radius:50% !important;font-family:'Noto Serif KR',serif;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
+.side .logo b{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mk{background:#2B2A26 !important;color:#D9C08A !important;border-radius:50% !important;font-family:'IBM Plex Sans KR',sans-serif;box-shadow:3px 3px 8px var(--sd),-3px -3px 8px var(--sl)}
 .cta{border-radius:999px !important;border:1px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s,transform .15s}
 .cta:active{transform:translateY(1px)}
 .cta2{border-radius:999px !important;background:#FFFFFF;border:1.5px solid #2B2A26;box-shadow:4px 4px 10px var(--sd),-4px -4px 10px var(--sl);transition:box-shadow .2s}
@@ -500,6 +500,10 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-if value="{{ mailEdit }}" hint-placeholder-val="{{ false }}"><input class="edit-in" type="email" aria-label="이메일" value="{{ draft }}" onChange="{{ setDraft }}"><button type="button" class="btn btn-sm btn-p" onClick="{{ saveMail }}">인증 메일 보내기</button><button type="button" class="btn btn-sm btn-s" onClick="{{ cancel }}">취소</button></sc-if>
 </div>
 <div class="row"><span class="lab">비밀번호</span><span style="flex: 1;" class="sub">{{ pwText }}</span><button type="button" class="btn btn-sm {{ pwCls }}" onClick="{{ resetPw }}">{{ pwLabel }}</button></div>
+<div class="row"><span class="lab">휴대폰 번호</span>
+<sc-if value="{{ phoneView }}" hint-placeholder-val="{{ true }}"><b style="flex: 1; font-weight: 500;">{{ phone }}</b><button type="button" class="btn btn-sm btn-s" onClick="{{ editPhone }}">수정</button></sc-if>
+<sc-if value="{{ phoneEdit }}" hint-placeholder-val="{{ false }}"><span style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;"><input class="edit-in" type="tel" inputmode="numeric" placeholder="010-0000-0000" aria-label="휴대폰 번호" value="{{ draft }}" onChange="{{ setPhoneDraft }}"><sc-if value="{{ phoneErr }}" hint-placeholder-val="{{ false }}"><span style="color: #A33B2E; font-size: 13px;">올바른 휴대폰 번호가 아닙니다.</span></sc-if></span><button type="button" class="btn btn-sm btn-p" onClick="{{ savePhone }}">저장</button><button type="button" class="btn btn-sm btn-s" onClick="{{ cancel }}">취소</button></sc-if>
+</div>
 <div class="row" style="border-bottom: 0;"><span class="lab">소속 기관</span><b style="flex: 1; font-weight: 500;">○○아동보호전문기관</b></div>
 </section>
 <sc-if value="{{ mailSent }}" hint-placeholder-val="{{ false }}"><p class="note" style="margin: 0;">인증 메일 발송됨</p></sc-if>
@@ -593,7 +597,7 @@ renderVals() {
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-constructor(props) { super(props); this.state = { view: 'home', name: '이서연', mail: 'lee.seoyeon@ispot-center.kr', edit: null, draft: '', mailSent: false, pw: false, t: { urgent: true, brief: true, done: false }, batch: '09:00' }; }
+constructor(props) { super(props); this.state = { view: 'home', name: '이서연', mail: 'lee.seoyeon@ispot-center.kr', phone: '010-1234-5678', phoneErr: false, edit: null, draft: '', mailSent: false, pw: false, t: { urgent: true, brief: true, done: false }, batch: '09:00' }; }
 renderValsBase() {
   const s = this.state;
   const sw = (on) => ({ bg: on ? '#2B2A26' : '#DAD5C9', x: on ? '23px' : '3px', on: on ? 'true' : 'false' });
@@ -603,6 +607,10 @@ renderValsBase() {
   return { title: titles[s.view], subTitle: titles[s.view], atHome: s.view === 'home', inSub: s.view !== 'home', isAccount: s.view === 'account', isNotify: s.view === 'notify',
     goHome: () => this.setState({ view: 'home', edit: null }), goAccount: () => this.setState({ pwOpen: true, pwIn: '' }), pwOpen: !!s.pwOpen, pwIn: s.pwIn || '', setPwIn: (e) => this.setState({ pwIn: e.target.value }), pwOk: !!(s.pwIn || '').length, pwWait: !(s.pwIn || '').length, closePw: () => this.setState({ pwOpen: false, pwIn: '' }), submitPw: () => { if ((this.state.pwIn || '').length) this.setState({ pwOpen: false, pwIn: '', view: 'account' }); }, goNotify: () => this.setState({ view: 'notify' }),
     name: s.name, mail: s.mail, draft: s.draft, mailSent: s.mailSent,
+    phone: s.phone, phoneView: s.edit !== 'phone', phoneEdit: s.edit === 'phone', phoneErr: !!s.phoneErr,
+    editPhone: () => this.setState({ edit: 'phone', draft: s.phone, phoneErr: false }),
+    setPhoneDraft: (e) => { const d = String(e.target.value || '').replace(/\D/g, '').slice(0, 11); const v = d.length < 4 ? d : d.length < 8 ? d.slice(0, 3) + '-' + d.slice(3) : d.slice(0, 3) + '-' + d.slice(3, d.length - 4) + '-' + d.slice(-4); this.setState({ draft: v, phoneErr: false }); },
+    savePhone: () => { const d = String(this.state.draft || '').replace(/\D/g, ''); if (!/^01[016789]\d{7,8}$/.test(d)) { this.setState({ phoneErr: true }); return; } this.setState({ edit: null, phone: this.state.draft, phoneErr: false }); },
     nameView: s.edit !== 'name', nameEdit: s.edit === 'name', mailView: s.edit !== 'mail', mailEdit: s.edit === 'mail',
     editName: () => this.setState({ edit: 'name', draft: s.name }), editMail: () => this.setState({ edit: 'mail', draft: s.mail, mailSent: false }),
     setDraft: (e) => this.setState({ draft: e.target.value }), cancel: () => this.setState({ edit: null }),
