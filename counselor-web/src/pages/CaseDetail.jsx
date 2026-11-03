@@ -7,8 +7,10 @@
 // 위험도 · 학대 유형 · 주요 키워드는 분석이 끝난 가장 최근 회차(useCaseSignals)의 상담원 판단 · AI 결과로 채운다(caseDetail.ts 머리 주석).
 // '초기면접 내용' 카드는 디자인에 없어 더한 칸이다: 사례 등록 ② 탭의 가정상황 · 아동 특성을 단어로 보이고 '수정' 으로 고친다
 // (고르기 단추는 CaseRegister 와 같은 모양).
+// '기본 정보' 카드의 '수정'(2026-11-03): 서버에 칸이 있는 줄만 그 자리에서 입력칸으로 바꾸고 저장한다(caseDetail.ts 머리 주석).
+// 그 자리에 있던 '아이 연계 →' 단추는 탭 줄의 문서함 옆으로 옮겼다(다른 사례 상세 탭도 같은 탭 줄).
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
-// components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
+// components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐 — 11/03 다시 탭 줄로), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
 // 10/29 디자인: 상담 전 브리핑이 탭에서 빠지고 이 화면 '현재 진행 상황' 아래(#brief)로 들어왔다. 값은 예전 브리핑 화면과
 // 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
 // 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 등록된 이름 전부와 별칭 — maskNames).
@@ -188,23 +190,110 @@ export default function CaseDetail(props) {
             </A>
             <A to={v.tabs.history}>상담 이력</A>
             <A to={v.tabs.docs}>문서함</A>
+            <A to={v.tabs.app}>아이 연계</A>
           </nav>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
-            <section className="card" aria-label="기본 정보" style={{ padding: '22px 24px' }}>
+            <section className="card basics" aria-label="기본 정보" style={{ padding: '22px 24px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h2 className="h2">기본 정보</h2>
-                <A className="btn btn-sm btn-s" to={v.tabs.app} style={{ marginLeft: 'auto' }}>
-                  아이 연계 →
-                </A>
+                {v.basicsEdit.canEdit ? (
+                  <button
+                    type="button"
+                    className="btn btn-s btn-sm"
+                    onClick={v.basicsEdit.startEdit}
+                    style={{ marginLeft: 'auto' }}
+                  >
+                    수정
+                  </button>
+                ) : null}
               </div>
-              <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
-                {(v.basics || []).map((b, bIndex) => (
-                  <Fragment key={bIndex}>
-                    <dt>{b.label}</dt>
-                    <dd style={b.strong ? { fontWeight: '700' } : undefined}>{b.value}</dd>
-                  </Fragment>
-                ))}
-              </dl>
+              {v.basicsEdit.editing ? (
+                <>
+                  <Notice value={v.basicsEdit.personalNote} style={{ marginTop: '10px' }} />
+                  <dl className="kv" style={{ gridTemplateColumns: '120px minmax(0, 1fr)', alignItems: 'center' }}>
+                    {v.basicsEdit.rows.map((r) => (
+                      <Fragment key={r.label}>
+                        <dt>{r.label}</dt>
+                        <dd>
+                          {r.kind === 'static' ? (
+                            <>
+                              {r.value}{' '}
+                              <span className="note">({r.hint})</span>
+                            </>
+                          ) : r.kind === 'select' ? (
+                            <select className="inp" aria-label={r.label} value={r.value} onChange={r.onChange} disabled={r.disabled}>
+                              <option value="">선택</option>
+                              {r.options.map((o) => (
+                                <option key={o} value={o}>
+                                  {o}
+                                </option>
+                              ))}
+                            </select>
+                          ) : r.kind === 'target' ? (
+                            <div className="pair">
+                              <input
+                                className="inp"
+                                type="text"
+                                aria-label="사례관리대상자 이름"
+                                placeholder="이름"
+                                value={r.name.value}
+                                onChange={r.name.onChange}
+                                disabled={r.disabled}
+                              />
+                              <select
+                                className="inp"
+                                aria-label="사례관리대상자 관계"
+                                value={r.relation.value}
+                                onChange={r.relation.onChange}
+                                disabled={r.disabled}
+                              >
+                                <option value="">관계</option>
+                                {r.options.map((o) => (
+                                  <option key={o} value={o}>
+                                    {o}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <input
+                              className="inp"
+                              type={r.kind}
+                              aria-label={r.label}
+                              min={r.min}
+                              max={r.max}
+                              value={r.value}
+                              onChange={r.onChange}
+                              disabled={r.disabled}
+                            />
+                          )}
+                        </dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                  <p className="note" style={{ margin: '12px 0 0' }}>
+                    {v.basicsEdit.editNote}
+                  </p>
+                  <Notice value={v.basicsEdit.error} style={{ marginTop: '8px', color: '#A33B2E' }} />
+                  <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button type="button" className="btn btn-s btn-sm" onClick={v.basicsEdit.cancel} disabled={v.basicsEdit.saving}>
+                      취소
+                    </button>
+                    <button type="button" className="btn btn-p btn-sm" onClick={v.basicsEdit.save} disabled={v.basicsEdit.saving}>
+                      {v.basicsEdit.saveLabel}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
+                  {(v.basics || []).map((b, bIndex) => (
+                    <Fragment key={bIndex}>
+                      <dt>{b.label}</dt>
+                      <dd style={b.strong ? { fontWeight: '700' } : undefined}>{b.value}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              )}
             </section>
             <section className="card" aria-label="주요 위험 요인" style={{ padding: '22px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

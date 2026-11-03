@@ -33,6 +33,9 @@ import {
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./screens/intakeItems";
 import { useRemote } from "./useRemote";
 
+/** 성별 고르기(초기면접지 · 사례 상세 기본 정보). 서버에 다른 글자가 적혀 있으면 화면이 그 값도 붙여 보인다(지어내지 않는다). */
+export const GENDER_OPTIONS = ["여", "남"];
+
 /**
  * 초기면접지 입력칸(화면 입력 그대로, 문자열). 새 사례 등록 입력과 같은 모양에서 개별사건번호만 뺐다(고칠 수 없음).
  * counselorId 는 지금 담당 상담원 ID 다(새 사례 등록의 '"" 면 본인' 과 다르다).
