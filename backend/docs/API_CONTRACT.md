@@ -643,7 +643,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `GET`: `{ case_id, summary, checks, edits, report, updated_at }`. 만들기 전이면 `summary: null`, `checks` · `edits` `{}`.
 - `POST`(만들기 · 다시 만들기, **동기 200**): 종결 검토에 등록한 사례(`closure_review_at`)의 **승인 완료 회차 요약**(상담원 확정 4칸)과
   회차별 AI 관련 신호를 모은다. 등록 전 · 승인 요약이 없으면 `409 INVALID_CASE_STATE`.
-  - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(별칭을 가릴 이름으로) → LLM → 검사(근거 회차가 실제
+  - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(사례 별칭과 등록 실명을 가릴 이름으로 — 아래
+    '개인 식별 정보' 의 'AI 가리기') → LLM → 검사(근거 회차가 실제
     승인 회차 중 LLM 에 실제로 넣은 회차인 문장만 — 입력이 넘쳐 뺀 앞 회차는 제외, 묶음 이름 고정, 다른 나라 문자가 섞인 문장은 버림)로
     AI 초안. `summary.source = "AI"`. 사례마다 한 번에 하나, 서버 전체 `CLOSURE_SUMMARY_MAX_CONCURRENCY`(기본 2)건 — 넘으면
     `429 RATE_LIMITED`(제한 시간이 지나도 실제 호출이 끝날 때까지 자리를 잡는다). 제한 시간 `CLOSURE_SUMMARY_TIMEOUT_SECONDS`(기본 150초) — 넘으면
@@ -704,6 +705,27 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - 권한: `GET /api/v1/cases/{case_id}` 와 같다 — 상담사는 담당 사례만(`403 FORBIDDEN`), 관리자는 전체. 없는 사례 `404 CASE_NOT_FOUND`
 - 저장된 값을 풀 수 없으면(키가 설정에 없음 · 값이 바뀜) `500 PERSONAL_INFO_UNAVAILABLE`. 목록 `with_child_name` 은 그 줄만 `null` 로 둔다
 - 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name` 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
+- **AI 가리기(2026-11-02, 응답 모양은 바뀌지 않음)**: 외부 AI(OpenAI)로 상담 글을 보내는 세 곳 — 분석(8절, `AI_PROVIDER=modeling`) ·
+  다음 상담 체크리스트(19절, `FOLLOWUP_PROVIDER=module`) · 종결 요약(위 closure-summary, 별칭과 함께) — 은 보내기 전에 그 사례의
+  등록 이름을 가릴 이름 목록(`known_identifiers`)으로 넘긴다. 서버가 메모리에서만 풀어 만들고 DB · 로그 · 감사 기록에 남기지 않는다.
+  사람에게 내주는 값이 아니라 열람 기록(`CASE_PERSONAL_INFO_VIEWED`)도 남기지 않는다
+  - 목록: 아동 · 사례관리대상자 · 면접대상자 · 가족관계 표 · 건강정도 대상자 이름과 성 뺀 이름(한글 세 글자 이상 이름에서, 남는 이름이
+    두 글자 이상일 때. 두 글자 성 `남궁` · `선우` 등은 두 경우 모두). 한 글자와 이름 칸에 적은 관계말(`엄마` · `아버지` · `모름` 등)은 뺀다.
+    생년월일 · 관계 · 건강 세부는 넣지 않는다. 긴 것부터 넘긴다(짧은 이름을 먼저 바꾸면 성이 남는다)
+  - 가리기는 글자를 그대로 견주므로 적은 그대로의 표기(두 칸 공백 등)와 한글을 자모로 풀어 쓴 표기(NFD)도 넣는다. 띄어 쓴 한글 이름은
+    붙여 쓴 꼴도 넣는다. 그 밖의 띄어쓰기 차이(`한 가 람`)는 성 뺀 이름으로만 가려진다
+  - 다음 상담 체크리스트는 module 이 rag 를 실제로 부를 때(학대 유형 신호가 있을 때)만 푼다. mock 은 풀지 않는다
+  - 칸을 풀지 못하면 그 칸만 빼고, DB 오류면 등록 이름 없이 지금처럼 가린다. 경고 로그에는 사례 ID · 칸 이름 · 키 이름(설정에 있는
+    이름일 때만, 아니면 `?`) · 예외 종류만 남긴다
+  - 가리기 관문(`ai/modeling/abuse/privacy_gateway.py`)도 함께 고쳤다: 필드마다 매긴 토큰을 전체 토큰으로 바꿀 때 두 사람이 한
+    토큰으로 합쳐지던 결함, 이름 인식이 등록 이름 일부만 먼저 가렸을 때 성 · 끝 글자가 남던 결함, 등록 이름이 토큰 · 화자 표시 글자와
+    겹치면 깨지거나 막히던 결함(그 호출이 실제로 만든 토큰만 건너뛴다 — 원문에 적힌 `[ALICE_01]` 같은 글 안의 등록 이름은 가린다),
+    학대 유형 이름과 같은 글은 등록 이름 검사를 건너뛰던 결함. 가리기 전에 글을 자르는 곳(분석의 지난 회차 사정 600자, 종결 요약 칸
+    3000자, rag 사례 기록 600자)은 낱말 중간과 등록 이름 중간(`Kim Ara` 의 빈칸 포함)에서 끊지 않는다. rag 는 잘라서 남은 글이 없는
+    기록을 근거 후보에서 뺀다
+  - 실명을 등록하지 않은 사례 · 등록하지 않은 이름(친구 · 교사 등)은 지금처럼 이름 인식(NER)으로만 가린다. 그래서 운영 잠금
+    (`AI_MODELING_ALLOW_IN_PRODUCTION` · `FOLLOWUP_ALLOW_IN_PRODUCTION`)은 그대로 둔다 — 풀지는 따로 검증한 뒤 정한다
+  - 법령 질의(17절)는 사례와 묶이지 않아 넘길 이름이 없다
 
 ---
 
@@ -1068,6 +1090,15 @@ API 모양은 바뀌지 않는다. 분석 작업이 회차의 사례에서 아�
 - **넘기지 않는 값**: 아동 가명 · 사건번호 · 제목 · 메모 · 보호자 메모 · 상담원 정보.
 - 지난 회차 문장은 상담원 글이라 AI 쪽이 원문과 같은 마스킹을 거쳐 보낸다.
 - 사례 정보를 만들다 실패해도 분석은 사례 정보 없이 계속한다(서버 로그에만 남김). mock · pipeline · langgraph 어댑터에는 넘기지 않는다.
+
+#### 외부 AI 가리기에 넘기는 등록 이름 (`known_identifiers`, 2026-11-02)
+
+API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 사례의 등록 실명(4절 '개인 식별 정보' 의 'AI 가리기')을 메모리에서 풀어
+`known_identifiers` 로 넘긴다 → `ai/modeling/abuse/contract_adapter.analyze_audio_session_as_contract(known_identifiers=)` →
+`analyze_audio_session` 이 외부 LLM 으로 보내는 모든 글(2차 세부유형 · 요약 · 체크리스트 · 기록 초안 · 보호요인 · 원하는 변화 · 서사 요약 ·
+심각도 · 대화 주제 · 확인 메모 · 추가 질문 초안)의 가리기(Privacy Gateway 등록 이름 대조)에 쓴다. `ai/` 의 `case_store`(평문 SQLite)는 쓰지 않는다.
+- 실명을 등록하지 않은 사례는 빈 목록 — 지금처럼 이름 인식만으로 가린다.
+- 모듈이 이 인자를 받지 않는 예전 판이면 넘기지 않고 경고 로그만 남긴다(값 없이). mock · pipeline · langgraph 어댑터에는 넘기지 않고 풀지도 않는다.
 
 #### 재분석 (`AI_REVIEW_REQUIRED` 에서 다시 요청)
 
@@ -2299,7 +2330,8 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
 - **학대 유형 신호가 없으면 rag 를 부르지 않는다**(외부 전송 0) — `COMPLETED` · 빈 목록 · 안내 문구.
 - 아동 발화 · 앞 회차 기록 · 초안 문장은 rag 가 한 묶음으로 가린 뒤(같은 사람 = 같은 토큰) OpenAI 로 보낸다. 이번 회차 발화가 비식별 검증을 통과하지 못하면
   보내지 않고 `FAILED` · `AI_PRIVACY_BLOCKED` 다. 앞 회차 기록이나 초안 문장만 막히면 그것을 빼고 만들고 `notice` 로 알린다.
-- 등록 실명은 넘기지 않는다(`known_identifiers=[]`). 그래서 운영 잠금이 있다(아래).
+- 그 사례의 등록 실명을 가릴 이름 목록(`known_identifiers`)으로 넘긴다(2026-11-02, 4절 '개인 식별 정보' 의 'AI 가리기'). 등록하지 않은 이름은
+  이름 인식으로만 가려지므로 운영 잠금은 그대로다(아래).
 - 로그에는 회차 ID · 오류 코드 · 예외 종류만 남긴다.
 
 ### 오류 (행의 `error.code`)
