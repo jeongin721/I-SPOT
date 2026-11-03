@@ -97,4 +97,6 @@
 | 3 | 유형 이름 표시 | **화면에 안 보임**(판정처럼 읽힘, 05_RULES §1 · 10/24 인터뷰). 단 Contract 의 `abuse_types` 는 저장 |
 | 4 | Backend PR 담당 | **민규 님.** 경계: AI 함수 `key_scan_as_contract(stt_result) -> {model, segments[{segment_id, abuse_types}]}`, `status` 는 Backend 가 붙임. 감사 기록 없음, 실패는 서버 로그만 |
 
+> **2026-11-03 바뀜(민규 님)**: 답 3 의 '유형 이름 표시'는 지금도 칩으로는 보이지 않지만, 원문 확정 전 STT 검수 화면이 1차 유형으로 고른 **'임시' 관련 조문**(아동복지법 제17조 해당 호 — 신체 3 · 정서 5 · 성 2 · 방임 6)을 그 발화 아래 보인다(점선 테두리 · '임시 · 1차 모델' 표, 범례 안내). 원문을 확정하고 AI 분석이 끝나면 분석 결과의 조문만 보인다. 화면만 바뀜 — Backend · Contract 변경 없음.
+
 순서(민규 님): signal-history API → key_scan Backend → case_context PR 1 → law-guide API. AI PR 1 이 늦으면 Backend 는 가짜 모듈 시험으로 먼저 올리고 머지는 PR 1 뒤.
