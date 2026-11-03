@@ -51,7 +51,7 @@ import type { TranscriptReviewState } from "../useTranscriptReview";
 import type { AudioPlayerState } from "../useAudioPlayer";
 import type { VoiceMarksState } from "../useVoiceMarks";
 import { marksBySegment, reasonLabel, type SegmentMarks, type VoiceCue, voiceMarksSummary } from "../voiceMarkRows";
-import { type SegmentRow, SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
+import { isLowConfidence, type SegmentRow, SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
 import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
 import { type SessionScreenInput, sessionPickValues } from "./sessionDetail";
@@ -135,8 +135,10 @@ export interface SttUiState {
   view: "auto" | "key" | "all" | "check";
   /** 줄별 '확인' 표시(화면 상태). '회차 ID:발화 ID' → true(발화 ID 는 회차마다 seg_001 부터라 회차 ID 를 붙인다). */
   ok: Record<string, boolean>;
-  /** 화자 목록을 연 줄('회차 ID:발화 ID'). 닫혀 있으면 null. */
+  /** 화자 목록을 연 줄('회차 ID:발화 ID', 문단 단추는 'para:회차 ID:발화 ID'). 닫혀 있으면 null. */
   spOpen: string | null;
+  /** 전체 STT 문단에서 눌러 고치는 중인 문장('회차 ID:발화 ID'). 없으면 null. */
+  editSeg: string | null;
   /** 재생 바 표시를 눌러 옮겨 간 줄. 없으면 null(주소의 seg 를 따른다). */
   jump: SttJump | null;
 }
@@ -151,7 +153,7 @@ export interface SttJump {
   n: number;
 }
 
-export const INITIAL_STT_STATE: SttUiState = { view: "auto", ok: {}, spOpen: null, jump: null };
+export const INITIAL_STT_STATE: SttUiState = { view: "auto", ok: {}, spOpen: null, editSeg: null, jump: null };
 
 /** 가리킬 발화 ID 를 담는 주소 쿼리 이름(#/SttReview?case=…&session=…&seg=<발화 ID>). */
 export const SEGMENT_PARAM = "seg";
@@ -297,6 +299,26 @@ export function sttReviewValues(input: SttScreenInput) {
   const hasAudio = input.detail.session?.hasAudio ?? false;
   // 녹음이 있고 파일을 못 받은 것이 아니면 재생할 수 있다(파일은 처음 누를 때 또는 미리 받는다).
   const canPlay = hasAudio && player.error === null;
+  // 지금 듣는 발화(2026-11-03): 시간을 누르거나 재생 바로 들으면 그 위치의 발화를 본문에서 칠해 어디를 듣는지 보인다.
+  // 멈춘 채 처음 위치면(아직 안 들음 · 정지) 칠하지 않는다. 발화 사이 빈 구간이면 바로 앞 발화를 칠한다.
+  // 듣는 발화는 전체 원문에서 정하고, 지금 보기에 있을 때만 칠한다 — 걸러 본 보기(확인할 곳 · 핵심 발화)에서 숨은 발화를 들을 때
+  // 앞에 보이는 다른 발화를 칠하지 않게(Codex #141 L2).
+  const nowMs = player.playing || player.currentMs > 0 ? player.currentMs : null;
+  let nowId: string | null = null;
+  if (nowMs !== null) {
+    for (const row of review.rows) {
+      if (row.removed) continue;
+      if (row.startMs > nowMs) break;
+      nowId = row.segmentId;
+    }
+  }
+  // 화자를 고칠 수 없는 화면(원문을 잠근 뒤 · 핵심 발화 보기)에서는 화자를 고르기 단추가 아니라 글자로 보인다(눌러도 아무것도
+  // 안 열리는 단추로 보이지 않게). 저장 중에 잠깐 못 고치는 동안은 단추 모양 그대로 꺼 둔다.
+  const spStatic = !review.canEdit || view === "key";
+  // 글자 화자의 안내. 핵심 발화 보기는 원문을 잠근 것이 아니라 그 보기만 읽기 전용이다(Codex #141 L3).
+  const spStaticNote = review.canEdit
+    ? "전체 STT 보기에서 화자를 바꿀 수 있습니다"
+    : "원문을 잠근 뒤에는 화자를 바꿀 수 없습니다";
 
   const lines = visible.map((row) => {
     const rowLaws = laws.get(row.segmentId) ?? [];
@@ -307,6 +329,7 @@ export function sttReviewValues(input: SttScreenInput) {
     // 고칠 수 없을 때(확정 뒤 다음 단계 · 저장 중)는 목록을 닫는다.
     const open = lineEditable && state.spOpen === key;
     const focus = row.segmentId === focusId;
+    const now = row.segmentId === nowId;
     let hint = "";
 
     if (done) hint = "확인했어요";
@@ -322,11 +345,14 @@ export function sttReviewValues(input: SttScreenInput) {
       play: canPlay ? () => void player.playFrom(row.startMs) : null,
       playAria: canPlay ? `${row.startLabel}부터 듣기` : `${row.startLabel}부터 듣기 · 녹음 파일 없음`,
       focus,
-      ring: focus ? "inset 0 0 0 2px #C2A36B" : "none",
+      now,
+      ring: focus ? "inset 0 0 0 2px #C2A36B" : now ? "inset 4px 0 0 #C2A36B" : "none",
       sp: row.speakerLabel,
       aria: `${row.startLabel} 발화 고치기`,
       spFw: row.speaker === "CHILD" ? 700 : 500,
       spFix: row.edited || row.dirty,
+      spStatic,
+      spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),
@@ -363,6 +389,105 @@ export function sttReviewValues(input: SttScreenInput) {
       hold: !child && rowLaws.length > 0 ? "화자를 아동으로 확인하면 관련 조문이 표시됩니다." : "",
     };
   });
+
+  // 전체 STT 보기(2026-11-03, 사용자 요청): 같은 화자가 이어 말한 발화를 한 문단으로 합치고 시간은 범위로 보인다(줄마다 시간 ·
+  // 화자가 되풀이돼 어수선했다). 다시 들어 확인할 발화는 문단에 넣지 않고 지금처럼 줄로 따로 보인다 — 저신뢰 · 화자 미확인 ·
+  // 가리키는 줄 · 아동 발화의 목소리 신호 · 관련 조문이 있는 줄. 저신뢰는 고치기 전 신뢰도로 본다(고치는 중에 문단으로 들어가
+  // 입력칸이 사라지지 않게. 고친 것을 저장하면 서버가 확인한 발화로 보아 문단에 들어간다).
+  // 문단 안 문장은 그대로 발화 하나씩이다: 고칠 수 있으면 누른 문장의 입력칸 · 화자 고르기가 그 문장 바로 아래 열리고, 읽기만 하면
+  // 누른 문장부터 다시 듣는다. 문단의 화자 단추는 그 문단 발화 모두의 화자를 바꾼다.
+  // 확인할 곳 · 핵심 발화 보기는 떨어진 줄을 모아 보이므로 합치지 않는다.
+  type Row = (typeof visible)[number];
+  type Line = (typeof lines)[number];
+  const apart = (row: Row, line: Line) =>
+    (!row.edited && isLowConfidence(row.confidence)) ||
+    row.speakerUnknown ||
+    line.focus ||
+    line.cues.length > 0 ||
+    line.laws.length > 0 ||
+    line.hold !== "";
+  const paragraph = (rows: Row[], group: Line[]) => {
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    const key = `para:${okKey(first.segmentId)}`;
+    const open = lineEditable && state.spOpen === key;
+    const editing = lineEditable ? rows.findIndex((row) => okKey(row.segmentId) === state.editSeg) : -1;
+    const dirty = rows.filter((row) => row.dirty).length;
+
+    return {
+      kind: "para" as const,
+      key,
+      // 시작 · 끝이 같은 초면('00:10–00:10') 시작만.
+      t: first.startLabel === last.endLabel ? first.startLabel : `${first.startLabel}–${last.endLabel}`,
+      play: canPlay ? () => void player.playFrom(first.startMs) : null,
+      playAria: canPlay ? `${first.startLabel}부터 듣기` : `${first.startLabel}부터 듣기 · 녹음 파일 없음`,
+      now: rows.some((row) => row.segmentId === nowId),
+      sp: first.speakerLabel,
+      spFw: first.speaker === "CHILD" ? 700 : 500,
+      spFix: rows.some((row) => row.edited || row.dirty),
+      spStatic,
+      spStaticNote,
+      canEdit: lineEditable,
+      spMenu: open,
+      toggleSp: () => setState({ spOpen: open ? null : key }),
+      spKey: (event: { key: string }) => {
+        if (open && event.key === "Escape") setState({ spOpen: null });
+      },
+      spOpts: SPEAKER_OPTIONS.map((speaker) => ({
+        value: speaker,
+        label: SPEAKER_LABELS[speaker],
+        sel: speaker === first.speaker,
+        cls: speaker === first.speaker ? "spopt on" : "spopt",
+        pick: () => {
+          for (const row of rows) review.editSpeaker(row.segmentId, speaker);
+          setState({ spOpen: null });
+        },
+      })),
+      hint: dirty ? `저장 전 ${dirty}` : "",
+      sentences: rows.map((row, index) => {
+        const sentenceKey = okKey(row.segmentId);
+        const on = index === editing;
+        const pick = lineEditable
+          ? () => setState({ editSeg: on ? null : sentenceKey, spOpen: null })
+          : group[index].play;
+        return {
+          key: row.segmentId,
+          text: row.text || "(빈 문장)",
+          on,
+          now: row.segmentId === nowId,
+          cls: ["snt", pick ? "act" : "", on ? "on" : "", row.dirty ? "dirty" : "", row.segmentId === nowId ? "now" : ""]
+            .filter(Boolean)
+            .join(" "),
+          title: `${row.startLabel} · 신뢰도 ${row.confidenceLabel}${row.edited || row.dirty ? " · 상담원 수정" : ""}`,
+          aria: lineEditable ? `${row.startLabel} 문장 고치기` : `${row.startLabel}부터 듣기`,
+          pick,
+        };
+      }),
+      /** 고치는 중인 문장의 줄 값(입력칸 · 화자 고르기 · 다시 듣기). 없으면 null. */
+      editor: editing >= 0 ? group[editing] : null,
+      closeEditor: () => setState({ editSeg: null, spOpen: null }),
+    };
+  };
+  const blocks: Array<{ kind: "line"; key: string; line: Line } | ReturnType<typeof paragraph>> = [];
+  let run: number[] = [];
+  const flush = () => {
+    if (run.length > 0) blocks.push(paragraph(run.map((i) => visible[i]), run.map((i) => lines[i])));
+    run = [];
+  };
+  visible.forEach((row, index) => {
+    const line = lines[index];
+    if (view !== "all" || apart(row, line)) {
+      flush();
+      blocks.push({ kind: "line", key: line.key, line });
+      return;
+    }
+    // 저장된 화자도 같아야 합친다 — 문단 화자를 바꿔 저장 전에 이웃 문단과 합쳐지면, 되돌릴 때 원래 이웃 발화까지
+    // 바뀌었다(Codex #141 M1). 저장하면(저장된 화자가 같아지면) 한 문단이 된다.
+    const prev = run.length > 0 ? visible[run[run.length - 1]] : null;
+    if (prev && (prev.speaker !== row.speaker || prev.savedSpeaker !== row.savedSpeaker)) flush();
+    run.push(index);
+  });
+  flush();
 
   // 재생 바 위 표시(10/22 디자인): 확인 안 한 저신뢰 · 화자 미확인 발화의 시작 위치. 녹음 길이는 useSessionDetail 이
   // 이미 받은 음성 정보(GET /sessions/{id}/audio 의 duration_ms)다. 모르면 마지막 발화가 끝나는 시각으로 나누고,
@@ -420,7 +545,11 @@ export function sttReviewValues(input: SttScreenInput) {
     stageLabel: progress?.stage ?? "",
     progressActionLabel: progress?.actionLabel ?? "",
     progressAction: progress?.action ?? null,
-    lines,
+    /** 그릴 칸: 줄(kind 'line') 또는 같은 화자 문단(kind 'para', 전체 STT 보기만). */
+    blocks,
+    /** 지금 듣는 발화 ID. 재생 중이면(nowFollow) 화면이 그 발화가 보이게 전체 STT 상자를 스크롤한다. */
+    nowId,
+    nowFollow: player.playing,
     /** '전체 STT' 보기면 일정 높이 상자 안에서 스크롤한다. */
     boxCls: view === "all" ? "ln-box scroll" : "ln-box",
     /** 표시할 줄의 발화 ID 와 누른 횟수. 화면 파일이 useSttFocus 에 넘겨 그 줄로 스크롤한다. */

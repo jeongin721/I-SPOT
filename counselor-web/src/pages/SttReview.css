@@ -6,11 +6,79 @@
    components/SttPlayer.jsx 이고, 디자인의 분석 알림(.job-toast)은 앱 전체 작업이라 여기 두지 않는다. */
 .pg-SttReview .ln {
   display: grid;
-  grid-template-columns: 52px 124px minmax(0, 1fr) auto;
+  /* 첫 칸은 문단의 시간 범위('00:00–00:06')가 들어가게 넓혔다(2026-11-03, 전에는 52px). */
+  grid-template-columns: 92px 124px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
   padding: 12px 18px;
   border-bottom: 1px solid #eae7df;
+}
+/* 같은 화자 문단(2026-11-03, sttReview.ts 의 para 칸 · SttReview.jsx 의 ParaRow). 문장(.snt)마다 발화 하나 — 누를 수 있으면(.act)
+   마우스를 올릴 때 옅게 칠하고, 고치는 중인 문장(.on)은 칠해 두고 그 입력칸(.snt-edit)을 문단 아래 연다. 저장 전 문장은 점선 밑줄. */
+.pg-SttReview .para-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.75;
+  /* 한국어는 낱말 중간에서 줄을 바꾸지 않는다('막\n아?' 처럼 끊기지 않게). */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+/* 지금 듣는 문장(재생 위치). 문단 · 줄 왼쪽의 금색 막대는 sttReview.ts 의 ring · ParaRow 의 boxShadow. */
+.pg-SttReview .snt.now {
+  background: #eadbb5;
+}
+.pg-SttReview .snt {
+  border-radius: 4px;
+}
+.pg-SttReview .snt.act {
+  cursor: pointer;
+}
+.pg-SttReview .snt.act:hover {
+  background: #f2efe8;
+}
+.pg-SttReview .snt.act:focus-visible {
+  outline: 2px solid #a33b2e;
+  outline-offset: 1px;
+}
+.pg-SttReview .snt.on {
+  background: #f1e3bf;
+}
+.pg-SttReview .snt.dirty {
+  text-decoration: underline dotted #a0742e;
+  text-underline-offset: 3px;
+}
+.pg-SttReview .snt-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  /* 문단 글 사이(고르는 문장 바로 아래)에 열린다(Codex #141 M2). */
+  margin: 6px 0 8px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  border: 1px solid #dad5c9;
+  border-radius: 10px;
+  background: #faf8f3;
+}
+.pg-SttReview .snt-edit .tbtn {
+  margin: 0;
+}
+.pg-SttReview .snt-edit .in {
+  flex: 1 1 240px;
+  width: auto;
+}
+.pg-SttReview .thm-root.dark .snt.act:hover {
+  background: #393731 !important;
+}
+.pg-SttReview .thm-root.dark .snt.on {
+  background: #54452a !important;
+}
+.pg-SttReview .thm-root.dark .snt.now {
+  background: #6a5630 !important;
+}
+.pg-SttReview .thm-root.dark .snt-edit {
+  border-color: #4e4b44 !important;
+  background: #2c2b27 !important;
 }
 .pg-SttReview .in {
   width: 100%;

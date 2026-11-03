@@ -12,6 +12,7 @@
 // 하단 고정 재생 바(SttPlayer — 10/28 부터 실제 재생, 확인 안 한 저신뢰 표시를 누르면 그 줄로 이동)를 붙였다.
 // 10/28: 녹음 재생(useSessionAudio → Blob URL, useAudioPlayer)과 아동 발화 줄의 음성 참고 표시(useVoiceMarks, 칩 .cues).
 // 저장 · 확정 단추는 디자인의 다음 단추 자리(STT 카드 아래)에 있다. 디자인의 분석 알림(job-toast)은 앱 전체 작업이라 여기 없다.
+// 11/03: 전체 STT 보기는 같은 화자가 이어 말한 발화를 한 문단(ParaRow, 시간은 범위)으로 합치고, 다시 들어 확인할 발화는 줄(LineRow)로 따로 보인다.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -96,6 +97,19 @@ function SpeakerPicker({ l }) {
     };
   }, [open]);
 
+  // 화자를 고칠 수 없는 화면(원문을 잠근 뒤 · 핵심 발화 보기)에서는 글자로만 보인다(11/03 — 눌러도 아무것도 안 열리는 단추였다).
+  if (l.spStatic) {
+    return (
+      <span
+        className="chip"
+        style={{ fontSize: '12px', background: '#F2EFE8', color: '#66625A', fontWeight: l.spFw }}
+        title={l.spStaticNote}
+      >
+        {l.sp}
+      </span>
+    );
+  }
+
   return (
     <span className="spw" onKeyDown={l.spKey}>
       <button
@@ -143,6 +157,191 @@ function SpeakerPicker({ l }) {
   );
 }
 
+/** 발화 한 줄(확인할 곳 · 핵심 발화 보기의 모든 줄, 전체 STT 보기에서 따로 보이는 줄). */
+function LineRow({ l, focusRef, nowRef }) {
+  return (
+    <div className="ln" ref={l.focus ? focusRef : undefined} style={{ background: l.bg, boxShadow: l.ring }}>
+      <span>
+        <button type="button" className="tbtn" aria-label={l.playAria} onClick={l.play ?? undefined} disabled={!l.play}>
+          {l.t}
+        </button>
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+        <SpeakerPicker l={l} />
+        {l.spFix ? (
+          <span className="note" style={{ fontSize: '11px' }}>
+            상담원 수정
+          </span>
+        ) : null}
+      </span>
+      <span ref={l.now ? nowRef : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {l.edit ? (
+          <input
+            className="in"
+            type="text"
+            value={l.text}
+            onChange={l.onText}
+            readOnly={!l.canEdit}
+            aria-label={l.aria}
+          />
+        ) : null}
+        {l.read ? <span style={{ fontSize: '15px' }}>{l.text}</span> : null}
+        <span className="note" style={{ color: l.hintFg }}>
+          {l.hint}
+        </span>
+        {l.laws.length > 0 ? (
+          <span className="laws">
+            {l.laws.map((w) => (
+              <span key={w.key} className="law">
+                <span className="sig">{w.sig}</span>
+                <span className="ref">
+                  {w.law} <span className="art">{w.art}</span>
+                </span>
+                <span className="sum">{w.sum}</span>
+                {w.url ? (
+                  <a className="orig" href={w.url} target="_blank" rel="noopener noreferrer">
+                    원문보기 ↗
+                  </a>
+                ) : null}
+              </span>
+            ))}
+          </span>
+        ) : null}
+        {l.cues.length > 0 ? (
+          <span className="cues" aria-label="음성 참고 표시">
+            {l.cues.map((c) => (
+              <span key={c.key} className={c.cls} title={c.title || undefined}>
+                <b>{c.name}</b>
+                {c.num ? <span className="num">{c.num}</span> : null}
+                {c.cmp ? <span className="cmp">{c.cmp}</span> : null}
+              </span>
+            ))}
+          </span>
+        ) : null}
+        {l.hold ? <span className="hold">{l.hold}</span> : null}
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span className="note">{l.conf}</span>
+        {l.check ? (
+          <button type="button" className="btn btn-sm btn-s" onClick={l.ok}>
+            {l.okLabel}
+          </button>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 문단 속 고치는 문장의 입력 막대(고르는 문장 바로 아래에 열린다). 열리거나 고치는 문장이 바뀌면 입력칸으로 초점을 옮기고,
+ * 막대가 전체 STT 상자 · 하단 재생 바에 가리지 않게 상자를(그래도 가리면 페이지를) 스크롤한다 — 문단 끝에 열려 긴 문단에서
+ * 재생 바 뒤로 가려지고, 둘째 문장부터는 초점이 안 옮겨 갔다(Codex #141 M2 · L1). 글자를 칠 때는 다시 옮기지 않는다.
+ */
+function SentenceEditor({ e, close }) {
+  const inputRef = useRef(null);
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const bar = input.closest('.snt-edit');
+    const box = input.closest('.ln-box');
+    if (!bar || !box) return;
+    const player = document.querySelector('.pg-SttReview .player');
+    const view = () => {
+      const b = box.getBoundingClientRect();
+      const playerTop = player ? player.getBoundingClientRect().top : window.innerHeight;
+      return { top: Math.max(b.top, 0) + 8, bottom: Math.min(b.bottom, playerTop, window.innerHeight) - 8 };
+    };
+    let r = bar.getBoundingClientRect();
+    let v = view();
+    if (r.bottom > v.bottom) box.scrollTop += r.bottom - v.bottom;
+    else if (r.top < v.top) box.scrollTop -= v.top - r.top;
+    r = bar.getBoundingClientRect();
+    v = view();
+    if (r.bottom > v.bottom) window.scrollBy(0, r.bottom - v.bottom);
+  }, [e.key]);
+  return (
+    <span className="snt-edit">
+      <button type="button" className="tbtn" aria-label={e.playAria} onClick={e.play ?? undefined} disabled={!e.play}>
+        {e.t}
+      </button>
+      <SpeakerPicker l={e} />
+      <input
+        ref={inputRef}
+        className="in"
+        type="text"
+        value={e.text}
+        onChange={e.onText}
+        readOnly={!e.canEdit}
+        aria-label={e.aria}
+      />
+      <button type="button" className="btn btn-sm btn-s" onClick={close}>
+        닫기
+      </button>
+    </span>
+  );
+}
+
+/**
+ * 같은 화자 문단(전체 STT 보기, 2026-11-03). 문장마다 발화 하나라 누르면 그 문장을 고치거나(입력 막대가 그 문장 바로 아래 열린다)
+ * 읽기 화면에서는 그 문장부터 다시 듣는다. 줄 칸 순서(시간 · 화자 · 글 · 오른쪽)는 LineRow 와 같다.
+ */
+function ParaRow({ b, nowRef }) {
+  const press = (s) => (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      s.pick();
+    }
+  };
+  return (
+    <div className="ln para" style={{ background: '#FFFFFF', boxShadow: b.now ? 'inset 4px 0 0 #C2A36B' : 'none' }}>
+      <span>
+        <button type="button" className="tbtn" aria-label={b.playAria} onClick={b.play ?? undefined} disabled={!b.play}>
+          {b.t}
+        </button>
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+        <SpeakerPicker l={b} />
+        {b.spFix ? (
+          <span className="note" style={{ fontSize: '11px' }}>
+            상담원 수정
+          </span>
+        ) : null}
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <p className="para-text">
+          {b.sentences.map((s) => (
+            <Fragment key={s.key}>
+              {s.pick ? (
+                <span
+                  ref={s.now ? nowRef : undefined}
+                  className={s.cls}
+                  role="button"
+                  tabIndex={0}
+                  title={s.title}
+                  aria-label={s.aria}
+                  aria-pressed={s.on}
+                  onClick={s.pick}
+                  onKeyDown={press(s)}
+                >
+                  {s.text}
+                </span>
+              ) : (
+                <span ref={s.now ? nowRef : undefined} className={s.cls} title={s.title}>
+                  {s.text}
+                </span>
+              )}{' '}
+              {s.on && b.editor ? <SentenceEditor e={b.editor} close={b.closeEditor} /> : null}
+            </Fragment>
+          ))}
+        </p>
+        {b.hint ? <span className="note">{b.hint}</span> : null}
+      </span>
+      <span></span>
+    </div>
+  );
+}
+
 export default function SttReview(props) {
   const session = useAuthSession();
   const [search] = useSearchParams();
@@ -184,6 +383,17 @@ export default function SttReview(props) {
   useEffect(() => {
     clearJump();
   }, [focusSegment, ids.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 재생 중이면 지금 듣는 발화(v.nowId)가 전체 STT 상자 안에 보이게 상자만 스크롤한다(11/03 — 페이지는 움직이지 않는다).
+  const nowRef = useRef(null);
+  useEffect(() => {
+    const el = nowRef.current;
+    if (!v.nowFollow || !el) return;
+    const box = el.closest('.ln-box.scroll');
+    if (!box) return;
+    const b = box.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (r.top < b.top || r.bottom > b.bottom) box.scrollTop += r.top - b.top - 24;
+  }, [v.nowId, v.nowFollow]);
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -286,99 +496,13 @@ export default function SttReview(props) {
                   </div>
                 </div>
                 <div className={v.boxCls}>
-                  {(v.lines || []).map((l) => (
-                    <Fragment key={l.key}>
-                      <div
-                        className="ln"
-                        ref={l.focus ? focusRef : undefined}
-                        style={{ background: l.bg, boxShadow: l.ring }}
-                      >
-                        <span>
-                          <button
-                            type="button"
-                            className="tbtn"
-                            aria-label={l.playAria}
-                            onClick={l.play ?? undefined}
-                            disabled={!l.play}
-                          >
-                            {l.t}
-                          </button>
-                        </span>
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-                          <SpeakerPicker l={l} />
-                          {l.spFix ? (
-                            <>
-                              <span className="note" style={{ fontSize: '11px' }}>
-                                상담원 수정
-                              </span>
-                            </>
-                          ) : null}
-                        </span>
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {l.edit ? (
-                            <>
-                              <input
-                                className="in"
-                                type="text"
-                                value={l.text}
-                                onChange={l.onText}
-                                readOnly={!l.canEdit}
-                                aria-label={l.aria}
-                              />
-                            </>
-                          ) : null}
-                          {l.read ? (
-                            <>
-                              <span style={{ fontSize: '15px' }}>{l.text}</span>
-                            </>
-                          ) : null}
-                          <span className="note" style={{ color: l.hintFg }}>
-                            {l.hint}
-                          </span>
-                          {l.laws.length > 0 ? (
-                            <span className="laws">
-                              {l.laws.map((w) => (
-                                <span key={w.key} className="law">
-                                  <span className="sig">{w.sig}</span>
-                                  <span className="ref">
-                                    {w.law} <span className="art">{w.art}</span>
-                                  </span>
-                                  <span className="sum">{w.sum}</span>
-                                  {w.url ? (
-                                    <a className="orig" href={w.url} target="_blank" rel="noopener noreferrer">
-                                      원문보기 ↗
-                                    </a>
-                                  ) : null}
-                                </span>
-                              ))}
-                            </span>
-                          ) : null}
-                          {l.cues.length > 0 ? (
-                            <span className="cues" aria-label="음성 참고 표시">
-                              {l.cues.map((c) => (
-                                <span key={c.key} className={c.cls} title={c.title || undefined}>
-                                  <b>{c.name}</b>
-                                  {c.num ? <span className="num">{c.num}</span> : null}
-                                  {c.cmp ? <span className="cmp">{c.cmp}</span> : null}
-                                </span>
-                              ))}
-                            </span>
-                          ) : null}
-                          {l.hold ? <span className="hold">{l.hold}</span> : null}
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span className="note">{l.conf}</span>
-                          {l.check ? (
-                            <>
-                              <button type="button" className="btn btn-sm btn-s" onClick={l.ok}>
-                                {l.okLabel}
-                              </button>
-                            </>
-                          ) : null}
-                        </span>
-                      </div>
-                    </Fragment>
-                  ))}
+                  {(v.blocks || []).map((b) =>
+                    b.kind === 'para' ? (
+                      <ParaRow key={b.key} b={b} nowRef={nowRef} />
+                    ) : (
+                      <LineRow key={b.key} l={b.line} focusRef={focusRef} nowRef={nowRef} />
+                    ),
+                  )}
                 </div>
                 <div className="legend">
                   <span>{v.playNote}</span>
