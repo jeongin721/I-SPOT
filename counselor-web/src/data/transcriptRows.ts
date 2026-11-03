@@ -36,6 +36,8 @@ export function confidenceLabel(confidence: number): string {
 export interface SegmentRow {
   segmentId: string;
   speaker: Speaker;
+  /** 서버에 저장된 화자(저장 전 화자 고치기를 반영하기 전). STT 검수 문단은 이것도 같아야 합친다(Codex #141 M1). */
+  savedSpeaker: Speaker;
   speakerLabel: string;
   text: string;
   startMs: number;
@@ -61,6 +63,7 @@ export function toSegmentRow(source: TranscriptSegment, edited: boolean): Segmen
   return {
     segmentId: source.segment_id,
     speaker: source.speaker,
+    savedSpeaker: source.speaker,
     speakerLabel: SPEAKER_LABELS[source.speaker] ?? source.speaker,
     text: source.text,
     startMs: source.start_ms,

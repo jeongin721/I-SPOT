@@ -103,7 +103,7 @@ function SpeakerPicker({ l }) {
       <span
         className="chip"
         style={{ fontSize: '12px', background: '#F2EFE8', color: '#66625A', fontWeight: l.spFw }}
-        title="원문을 잠근 뒤에는 화자를 바꿀 수 없습니다"
+        title={l.spStaticNote}
       >
         {l.sp}
       </span>
@@ -233,7 +233,57 @@ function LineRow({ l, focusRef, nowRef }) {
 }
 
 /**
- * 같은 화자 문단(전체 STT 보기, 2026-11-03). 문장마다 발화 하나라 누르면 그 문장을 고치거나(입력칸이 문단 아래 열린다)
+ * 문단 속 고치는 문장의 입력 막대(고르는 문장 바로 아래에 열린다). 열리거나 고치는 문장이 바뀌면 입력칸으로 초점을 옮기고,
+ * 막대가 전체 STT 상자 · 하단 재생 바에 가리지 않게 상자를(그래도 가리면 페이지를) 스크롤한다 — 문단 끝에 열려 긴 문단에서
+ * 재생 바 뒤로 가려지고, 둘째 문장부터는 초점이 안 옮겨 갔다(Codex #141 M2 · L1). 글자를 칠 때는 다시 옮기지 않는다.
+ */
+function SentenceEditor({ e, close }) {
+  const inputRef = useRef(null);
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const bar = input.closest('.snt-edit');
+    const box = input.closest('.ln-box');
+    if (!bar || !box) return;
+    const player = document.querySelector('.pg-SttReview .player');
+    const view = () => {
+      const b = box.getBoundingClientRect();
+      const playerTop = player ? player.getBoundingClientRect().top : window.innerHeight;
+      return { top: Math.max(b.top, 0) + 8, bottom: Math.min(b.bottom, playerTop, window.innerHeight) - 8 };
+    };
+    let r = bar.getBoundingClientRect();
+    let v = view();
+    if (r.bottom > v.bottom) box.scrollTop += r.bottom - v.bottom;
+    else if (r.top < v.top) box.scrollTop -= v.top - r.top;
+    r = bar.getBoundingClientRect();
+    v = view();
+    if (r.bottom > v.bottom) window.scrollBy(0, r.bottom - v.bottom);
+  }, [e.key]);
+  return (
+    <span className="snt-edit">
+      <button type="button" className="tbtn" aria-label={e.playAria} onClick={e.play ?? undefined} disabled={!e.play}>
+        {e.t}
+      </button>
+      <SpeakerPicker l={e} />
+      <input
+        ref={inputRef}
+        className="in"
+        type="text"
+        value={e.text}
+        onChange={e.onText}
+        readOnly={!e.canEdit}
+        aria-label={e.aria}
+      />
+      <button type="button" className="btn btn-sm btn-s" onClick={close}>
+        닫기
+      </button>
+    </span>
+  );
+}
+
+/**
+ * 같은 화자 문단(전체 STT 보기, 2026-11-03). 문장마다 발화 하나라 누르면 그 문장을 고치거나(입력 막대가 그 문장 바로 아래 열린다)
  * 읽기 화면에서는 그 문장부터 다시 듣는다. 줄 칸 순서(시간 · 화자 · 글 · 오른쪽)는 LineRow 와 같다.
  */
 function ParaRow({ b, nowRef }) {
@@ -281,36 +331,11 @@ function ParaRow({ b, nowRef }) {
                   {s.text}
                 </span>
               )}{' '}
+              {s.on && b.editor ? <SentenceEditor e={b.editor} close={b.closeEditor} /> : null}
             </Fragment>
           ))}
         </p>
         {b.hint ? <span className="note">{b.hint}</span> : null}
-        {b.editor ? (
-          <span className="snt-edit">
-            <button
-              type="button"
-              className="tbtn"
-              aria-label={b.editor.playAria}
-              onClick={b.editor.play ?? undefined}
-              disabled={!b.editor.play}
-            >
-              {b.editor.t}
-            </button>
-            <SpeakerPicker l={b.editor} />
-            <input
-              className="in"
-              type="text"
-              value={b.editor.text}
-              onChange={b.editor.onText}
-              readOnly={!b.editor.canEdit}
-              aria-label={b.editor.aria}
-              autoFocus
-            />
-            <button type="button" className="btn btn-sm btn-s" onClick={b.closeEditor}>
-              닫기
-            </button>
-          </span>
-        ) : null}
       </span>
       <span></span>
     </div>
