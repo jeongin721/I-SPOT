@@ -23,7 +23,7 @@ summary/risk_factors/evidence/need_confirmation 같은 JSON 전체다. 문자열
      암호화 저장한 실명을 풀어 넘긴다(2026-11-02). NER이 등록 이름의
      일부만 먼저 가린 자리도 등록 이름 하나로 묶고, 이미 가린 토큰 ·
      줄 머리 표식 안의 같은 글자는 건드리지 않는다(_mask_known_names ·
-     _known_name_spans).
+     _SkipZones).
   3) 마스킹 후 텍스트를 같은 정규식/NER로 다시 검사한다. 걸리면
      막는 대신, 걸린 자리를 한 번 더 가리고 다시 검사한다(최대
      _MAX_RESIDUAL_MASK_ROUNDS번 — 2026-10-21 Mingyu 요청). NER이
@@ -41,6 +41,7 @@ summary/risk_factors/evidence/need_confirmation 같은 JSON 전체다. 문자열
 
 import logging
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -232,56 +233,100 @@ def _globalize_tokens(
     return pattern.sub(lambda match: renames[match.group()], masked_text)
 
 
-def _known_name_spans(
+def _merged_zones(
+    zones: List[Tuple[int, int]],
+) -> List[Tuple[int, int]]:
+    merged: List[Tuple[int, int]] = []
+
+    for start, end in sorted(zones):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    return merged
+
+
+class _SkipZones:
+    """
+    한 글에서 등록 이름을 찾을 때 건너뛸 자리: 줄 머리 구조 표식(화자
+    표시 · [seg_숫자])과 **이번 호출이 만든** 가림 토큰.
+
+    2026-11-02(PR #138 Codex M2): 등록 이름이 "CH" · "ON" · "KN"처럼
+    표식 · 토큰 글자와 겹치면 "[KNOWN_01]ILD:" · "[PERS[KNOWN_01]_01]"
+    처럼 깨지거나 토큰 자체가 '등록된 실명 잔존'으로 걸려 막혔다.
+    2026-11-03(재검증 N1): 토큰처럼 생긴 글자를 모두 건너뛰면 사용자가
+    쓴 "[ALICE_01]" 안의 등록 이름 "ALICE"까지 가리지 않고 나갔다 —
+    그래서 _MASK_TOKEN_PATTERN 모양이 아니라 우리가 실제로 만든 토큰
+    글자만 본다.
+    재검증 N4: 위치 목록을 정렬해 두고 이분 탐색한다(줄 · 이름이 많은
+    긴 글에서 일치마다 목록 전체를 훑어 수십 배 느려졌다).
+    """
+
+    def __init__(self, text: str, generated_tokens: Any) -> None:
+        self.structural = _merged_zones(_structural_prefix_zones(text))
+        self.structural_starts = [start for start, _ in self.structural]
+
+        tokens = sorted(
+            {token for token in generated_tokens if token and token in text},
+            key=len,
+            reverse=True,
+        )
+        self.tokens = (
+            [
+                match.span()
+                for match in re.finditer(
+                    "|".join(re.escape(token) for token in tokens), text
+                )
+            ]
+            if tokens
+            else []
+        )
+        self.token_starts = [start for start, _ in self.tokens]
+
+    def in_structural(self, start: int, end: int) -> bool:
+        index = bisect_right(self.structural_starts, start) - 1
+        return index >= 0 and end <= self.structural[index][1]
+
+    def touches_token(self, start: int, end: int) -> bool:
+        index = bisect_right(self.token_starts, start) - 1
+
+        if index >= 0 and self.tokens[index][1] > start:
+            return True
+
+        index += 1
+        return index < len(self.tokens) and self.tokens[index][0] < end
+
+
+def _name_spans(
     text: str,
-    name: str,
+    piece: str,
+    zones: _SkipZones,
     allow_tokens: bool = False,
 ) -> List[Tuple[int, int]]:
     """
-    text 안에서 등록 이름 name이 겹치지 않게 나오는 자리. 줄 머리
-    구조 표식(화자 표시 · [seg_숫자]) 안에 든 자리와, allow_tokens가
-    아니면 이미 가린 토큰과 조금이라도 겹치는 자리는 뺀다
-    (2026-11-02, PR #138 Codex M2 — 등록 이름이 "CH" · "ON" · "KN"처럼
-    표식 · 토큰 글자와 겹치면 "[KNOWN_01]ILD:" · "[PERS[KNOWN_01]_01]"
-    처럼 깨지거나, 우리가 만든 토큰 자체가 '등록된 실명 잔존'으로
-    걸려 전송이 막혔다). allow_tokens는 이름 안에 토큰이 들어간
-    조각("김[PERSON_01]")을 찾을 때만 쓴다.
+    text 안에서 piece가 겹치지 않게 나오는 자리. 줄 머리 표식 안의
+    자리와, allow_tokens가 아니면 이번 호출이 만든 토큰과 겹치는 자리는
+    뺀다(_SkipZones). allow_tokens는 이름 안에 토큰이 든 조각
+    ("김[PERSON_01]")을 찾을 때만 쓴다.
     """
 
-    structural_zones = _structural_prefix_zones(text)
-    token_zones = (
-        []
-        if allow_tokens
-        else [match.span() for match in _MASK_TOKEN_PATTERN.finditer(text)]
-    )
-
     spans: List[Tuple[int, int]] = []
-    start = text.find(name)
+    start = text.find(piece)
 
     while start != -1:
-        span = (start, start + len(name))
+        end = start + len(piece)
 
-        if _is_within_structural_prefix(
-            span, structural_zones
-        ) or _overlaps_any(span, token_zones):
-            start = text.find(name, start + 1)
+        if zones.in_structural(start, end) or (
+            not allow_tokens and zones.touches_token(start, end)
+        ):
+            start = text.find(piece, start + 1)
             continue
 
-        spans.append(span)
-        start = text.find(name, span[1])
+        spans.append((start, end))
+        start = text.find(piece, end)
 
     return spans
-
-
-def _replace_spans(
-    text: str,
-    spans: List[Tuple[int, int]],
-    token: str,
-) -> str:
-    for start, end in sorted(spans, reverse=True):
-        text = text[:start] + token + text[end:]
-
-    return text
 
 
 def _mask_known_names(
@@ -295,35 +340,51 @@ def _mask_known_names(
 
     NER이 등록 이름의 일부만 먼저 가렸으면("김민수" → "김[PERSON_01]")
     그 자리도 등록 이름 하나로 묶어 가린다 — 안 그러면 성이나 끝
-    글자가 그대로 나간다(2026-11-02, PR #138 Codex M1). 등록 이름이
-    앞서 가린 다른 등록 이름을 품고 있어도("민수"를 먼저 가린 뒤의
-    "김민수") 같은 방식으로 묶이므로 목록 순서에 기대지 않는다.
+    글자가 그대로 나간다(2026-11-02, PR #138 Codex M1).
+    긴 이름부터 자리를 잡고(목록 순서에 기대지 않는다 — "민수"가 먼저
+    오면 "김민수"의 "김"이 남는다) 겹치지 않는 자리만 모아 한 번에
+    바꾼다(2026-11-03 재검증 N4 — 자리마다 글 전체를 다시 만들어
+    느렸다).
     """
 
-    count = 0
+    zones = _SkipZones(masked, local_entity_map)
+    taken = bytearray(len(masked))
+    claims: List[Tuple[int, int, str]] = []
 
-    for name in known_identifiers:
+    for name in sorted(known_identifiers, key=len, reverse=True):
         pieces = [(name, False)] + [
             (name.replace(original, token), True)
-            for token, original in list(local_entity_map.items())
+            for token, original in local_entity_map.items()
             if original and original != name and original in name
         ]
-        name_token = None
 
         for piece, has_token in pieces:
-            spans = _known_name_spans(masked, piece, allow_tokens=has_token)
+            for start, end in _name_spans(masked, piece, zones, allow_tokens=has_token):
+                if taken.find(1, start, end) == -1:
+                    taken[start:end] = b"\x01" * (end - start)
+                    claims.append((start, end, name))
 
-            if not spans:
-                continue
+    if not claims:
+        return masked
 
-            if name_token is None:
-                count += 1
-                name_token = f"[KNOWN_{count:02d}]"
-                local_entity_map[name_token] = name
+    name_tokens: Dict[str, str] = {}
 
-            masked = _replace_spans(masked, spans, name_token)
+    for _, _, name in claims:
+        if name not in name_tokens:
+            name_tokens[name] = f"[KNOWN_{len(name_tokens) + 1:02d}]"
+            local_entity_map[name_tokens[name]] = name
 
-    return masked
+    parts: List[str] = []
+    cursor = 0
+
+    for start, end, name in sorted(claims):
+        parts.append(masked[cursor:start])
+        parts.append(name_tokens[name])
+        cursor = end
+
+    parts.append(masked[cursor:])
+
+    return "".join(parts)
 
 
 # 잔존 검사에 걸린 뒤, 바로 막지 않고 몇 번 더 가려보고 그래도 남으면
@@ -528,7 +589,11 @@ def _mask_residual_once(
     return masked_text, changed
 
 
-def _residual_reasons(text: str, known_identifiers: List[str]) -> List[str]:
+def _residual_reasons(
+    text: str,
+    known_identifiers: List[str],
+    generated_tokens: Any = (),
+) -> List[str]:
     reasons = []
     scan_text = _blank_out_mask_tokens(text)
 
@@ -547,9 +612,11 @@ def _residual_reasons(text: str, known_identifiers: List[str]) -> List[str]:
         tags = sorted({tag for _, _, tag in ner_spans})
         reasons.append(f"NER 개체 잔존({','.join(tags)})")
 
-    # 이미 가린 토큰 · 줄 머리 표식 안의 같은 글자는 잔존이 아니다(_known_name_spans, PR #138 Codex M2).
+    # 이번 호출이 만든 토큰 · 줄 머리 표식 안의 같은 글자는 잔존이 아니다(_SkipZones, PR #138 Codex M2 · 재검증 N1).
+    zones = _SkipZones(text, generated_tokens)
+
     for name in known_identifiers:
-        if _known_name_spans(text, name):
+        if _name_spans(text, name, zones):
             reasons.append("등록된 실명 잔존")
             break
 
@@ -621,7 +688,9 @@ def review(
             global_counters,
         )
 
-        reasons = _residual_reasons(masked, known_identifiers)
+        reasons = _residual_reasons(
+            masked, known_identifiers, global_original_to_token.values()
+        )
 
         # 잔존이 잡히면 바로 막지 않고, 잡힌 자리를 한 번 더 가리고
         # 다시 검사한다(_MAX_RESIDUAL_MASK_ROUNDS번까지 — 모듈 docstring
@@ -641,7 +710,9 @@ def review(
                 # 예: NER 재검사 자체가 실패) 반복해도 소용없으니 멈춘다.
                 break
 
-            reasons = _residual_reasons(masked, known_identifiers)
+            reasons = _residual_reasons(
+                masked, known_identifiers, global_original_to_token.values()
+            )
 
         if reasons:
             blocked.append(f"{path}: {', '.join(reasons)}")
