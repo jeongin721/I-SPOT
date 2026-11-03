@@ -412,3 +412,109 @@ def test_resend_never_reuses_the_live_code(client: TestClient, monkeypatch: pyte
     stale = client.post(VERIFY, json={"email": email, "code": first})
     assert stale.status_code == 422
     assert stale.json()["error"]["code"] == "VERIFICATION_CODE_MISMATCH"
+
+
+# =========================================================
+# Codex 마지막 재검증(0c15a64) N1 · N2 — 이메일 정규형 하나
+# =========================================================
+# 가입 · 관리자 계정 생성 · 로그인 · 중복 비교가 같은 꼴(아이디 소문자 + email-validator 의 IDNA 2008 punycode 도메인)을 쓴다.
+# 처음 고침은 가입만 punycode 로 저장하고 로그인은 EmailStr(유니코드 도메인)로 찾아 국제화 도메인 계정이 로그인하지 못했고(N1),
+# 비교 키는 파이썬 내장 IDNA 2003 이라 straße → strasse 로 바꿔 email-validator(xn--strae-oqa)와 어긋났다(N2).
+
+LOGIN = "/api/v1/auth/login"
+
+
+def _approve_new_signup(client: TestClient, email: str, db) -> None:
+    # 메일은 정규형(punycode) 주소로 간다. 확인도 입력 표기 그대로 한다(서버가 같은 꼴로 맞춘다).
+    assert _send(client, email).status_code == 202
+    assert signup_service.wait_for_mail()
+    code = re.search(r"인증번호: (\d{6})", mail_adapter.fake_outbox()[-1].body).group(1)
+    verified = client.post(VERIFY, json={"email": email, "code": code})
+    assert verified.status_code == 200, verified.text
+    token = verified.json()["data"]["verification_token"]
+    assert client.post(BASE, json={"verification_token": token, "name": "국제도메인", "password": PASSWORD}).status_code == 201
+
+    db.expire_all()
+    request_id = db.scalars(select(SignupRequest)).one().id
+    approved = client.post(f"{BASE}/{request_id}/approve", json={"role": "COUNSELOR"}, headers=_admin_headers(client))
+    assert approved.status_code == 200, approved.text
+
+
+@pytest.mark.parametrize("signup_as", ["idn@bücher.de", "idn@xn--bcher-kva.de"])
+@pytest.mark.parametrize("login_as", ["idn@bücher.de", "IDN@XN--BCHER-KVA.DE"])
+def test_international_domain_account_can_log_in_after_approval(
+    client: TestClient, admin_id, db, signup_as: str, login_as: str
+) -> None:
+    _approve_new_signup(client, signup_as, db)
+
+    response = client.post(LOGIN, json={"email": login_as, "password": PASSWORD})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["user"]["email"] == "idn@xn--bcher-kva.de"
+
+
+def test_admin_created_international_domain_account_can_log_in(client: TestClient, admin_headers) -> None:
+    made = client.post(
+        "/api/v1/auth/users",
+        json={"email": "kim@Bücher.de", "password": PASSWORD, "name": "김관리생성", "role": "COUNSELOR"},
+        headers=admin_headers,
+    )
+    assert made.status_code == 201
+    assert made.json()["data"]["email"] == "kim@xn--bcher-kva.de"
+
+    for login_as in ("kim@bücher.de", "kim@xn--bcher-kva.de"):
+        assert client.post(LOGIN, json={"email": login_as, "password": PASSWORD}).status_code == 200
+
+
+@pytest.mark.parametrize("login_as", ["old@bücher.de", "old@xn--bcher-kva.de"])
+def test_legacy_unicode_stored_account_still_logs_in(client: TestClient, db, login_as: str) -> None:
+    """예전 판(EmailStr 그대로 소문자)이 유니코드 도메인으로 저장한 계정도 두 표기로 로그인된다."""
+
+    from app.core.security import hash_password
+
+    db.add(User(email="old@bücher.de", hashed_password=hash_password(PASSWORD), name="옛표기", role=UserRole.COUNSELOR))
+    db.commit()
+
+    assert client.post(LOGIN, json={"email": login_as, "password": PASSWORD}).status_code == 200
+
+
+def test_eszett_legacy_account_is_the_same_mailbox(client: TestClient, admin_id, db) -> None:
+    """옛 `IDN@straße.de` 와 가입 `idn@xn--strae-oqa.de` 는 같은 메일함이다(IDNA 2008)."""
+
+    token = _token(client, "idn@xn--strae-oqa.de")
+    assert client.post(BASE, json={"verification_token": token, "name": "에스체트", "password": PASSWORD}).status_code == 201
+
+    db.add(User(email="IDN@straße.de", hashed_password="x", name="옛계정", role=UserRole.COUNSELOR))
+    db.commit()
+
+    request_id = db.scalars(select(SignupRequest)).one().id
+    approved = client.post(f"{BASE}/{request_id}/approve", json={"role": "COUNSELOR"}, headers=_admin_headers(client))
+
+    assert approved.status_code == 409
+    db.expire_all()
+    assert db.get(SignupRequest, request_id).status == SignupRequestStatus.PENDING
+
+
+def test_eszett_legacy_account_gets_no_signup_mail(client: TestClient, db) -> None:
+    db.add(User(email="IDN@straße.de", hashed_password="x", name="옛계정", role=UserRole.COUNSELOR))
+    db.commit()
+
+    assert _send(client, "idn@xn--strae-oqa.de").status_code == 202
+    assert signup_service.wait_for_mail()
+    assert mail_adapter.fake_outbox() == []
+
+
+def test_strasse_and_eszett_are_different_mailboxes(client: TestClient, admin_headers, db) -> None:
+    """`strasse.de` 와 `straße.de` 는 다른 도메인이다(IDNA 2003 은 둘을 같게 본다)."""
+
+    db.add(User(email="IDN@strasse.de", hashed_password="x", name="다른도메인", role=UserRole.COUNSELOR))
+    db.commit()
+
+    made = client.post(
+        "/api/v1/auth/users",
+        json={"email": "idn@straße.de", "password": PASSWORD, "name": "에스체트", "role": "COUNSELOR"},
+        headers=admin_headers,
+    )
+
+    assert made.status_code == 201, made.text
+    assert made.json()["data"]["email"] == "idn@xn--strae-oqa.de"
