@@ -985,6 +985,7 @@ def analyze_audio_session(
             record_draft.get("child_statement_points", []),
             record_draft.get("risk_signal_points", []),
             case_context=case_context,
+            known_identifiers=known_identifiers,
         ),
         known_identifiers=known_identifiers,
     )

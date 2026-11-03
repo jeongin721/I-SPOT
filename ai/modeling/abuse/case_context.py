@@ -27,8 +27,9 @@ PROPOSAL_ai_suggestions_case_context.md §1. Backend(analysis_service)가 받는
 - 모양이 틀린 값은 조용히 버린다(분석을 멈추지 않는다). 아무것도 없으면 "없음".
 """
 
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
+
+from ai.modeling.abuse.text_script import cut_text
 
 #: 프롬프트에 쓰는 성별 · 보호자 유형 이름. 모르는 값은 쓰지 않는다.
 GENDER_LABELS = {"F": "여", "M": "남", "여": "여", "남": "남"}
@@ -63,27 +64,12 @@ MAX_ITEMS = 40
 EMPTY = "없음"
 
 
-def _text(value: Any, limit: int = MAX_TEXT_CHARS) -> str:
-    """limit 자를 넘으면 낱말 중간에서 끊지 않고 그 앞 낱말까지만 남긴다. 이 글은 부르는 쪽이 자른 뒤에 등록 이름을
-    가리므로, 이름 한가운데서 끊으면 앞 글자("김바")가 가려지지 않고 나간다(2026-11-02, PR #138 Codex M3)."""
+def _text(value: Any, limit: int = MAX_TEXT_CHARS, names: Iterable[str] = ()) -> str:
+    """limit 자를 넘으면 낱말 · 등록 이름(names) 중간에서 끊지 않고 자른다(text_script.cut_text). 이 글은 부르는 쪽이 자른 뒤에
+    등록 이름을 가리므로, 이름 한가운데서 끊으면 앞 조각("김바" · "Kim")이 가려지지 않고 나간다(2026-11-02 · 03, PR #138 Codex
+    M3 · 재검증 N2). 빈칸 없이 limit 자를 넘으면 빈 글."""
 
-    if not isinstance(value, str):
-        return ""
-
-    text = value.strip()
-
-    if len(text) <= limit:
-        return text
-
-    head = text[:limit]
-
-    if text[limit].isspace():
-        return head.rstrip()
-
-    # 잘린 마지막 낱말을 뺀다. 빈칸이 하나도 없으면(한 낱말이 limit 자를 넘음) 아무것도 남기지 않는다.
-    last_space = re.search(r"\s(?=\S*$)", head)
-
-    return head[: last_space.start()].rstrip() if last_space else ""
+    return cut_text(value.strip(), limit, names) if isinstance(value, str) else ""
 
 
 def _label(value: Any, labels: Dict[str, str]) -> str:
@@ -106,19 +92,26 @@ def _words(value: Any) -> List[str]:
     return words
 
 
-def normalize_case_context(case_context: Any) -> Optional[Dict[str, Any]]:
-    """알려진 키만 남긴 dict. 쓸 값이 하나도 없으면 None."""
+def normalize_case_context(
+    case_context: Any,
+    known_identifiers: Iterable[str] = (),
+) -> Optional[Dict[str, Any]]:
+    """알려진 키만 남긴 dict. 쓸 값이 하나도 없으면 None.
+
+    known_identifiers: 등록 이름. 지난 회차 사정 글을 자를 때 이름 중간에서 끊지 않는 데만 쓴다(_text).
+    """
 
     if not isinstance(case_context, dict):
         return None
 
+    names = list(known_identifiers or ())
     previous = case_context.get("previous_session")
     previous_view: Optional[Dict[str, Any]] = None
 
     if isinstance(previous, dict):
         assessment = previous.get("assessment")
         texts = {
-            key: _text(assessment.get(key)) for key in ASSESSMENT_LABELS
+            key: _text(assessment.get(key), names=names) for key in ASSESSMENT_LABELS
         } if isinstance(assessment, dict) else {}
         texts = {key: text for key, text in texts.items() if text}
         label = _text(previous.get("session_label"), 20)
@@ -161,13 +154,13 @@ def previous_session_label(case_context: Any) -> Optional[str]:
     return previous["session_label"] or None
 
 
-def format_case_context(case_context: Any) -> str:
+def format_case_context(case_context: Any, known_identifiers: Iterable[str] = ()) -> str:
     """
     프롬프트에 넣을 사례 정보 글. 마스킹 전 글이다 — 부르는 쪽이 mask_for_outbound 를 거쳐 보낸다.
     값이 없으면 "없음".
     """
 
-    view = normalize_case_context(case_context)
+    view = normalize_case_context(case_context, known_identifiers)
 
     if view is None:
         return EMPTY
