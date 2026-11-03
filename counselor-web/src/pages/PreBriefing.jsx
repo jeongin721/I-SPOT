@@ -97,6 +97,7 @@ export default function PreBriefing(props) {
               상담 전 브리핑
             </A>
             <A to={v.tabs.docs}>문서함</A>
+            <A to={v.tabs.app}>아이 연계</A>
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 20px' }}>
             <div style={{ flex: '1 1 380px' }}>

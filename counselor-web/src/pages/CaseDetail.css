@@ -1,6 +1,34 @@
 /* CaseDetail 화면에만 있는 규칙(디자인 CaseDetail.dc.html). 공통 규칙은 src/styles/common.css.
    진행 단계 칸 링크(.stl)와 녹음하기 창(.rec-*)은 10/21 디자인(counselor-design/screens/CaseDetail.dc.html)에서 옮겼다.
-   맨 아래 '초기면접 내용' 카드(.intake)는 디자인에 없는 칸이라 CaseRegister.css 의 고르기 단추 · 칸 제목을 옮겨 쓴다. */
+   맨 아래 '초기면접 내용' 카드(.intake)는 디자인에 없는 칸이라 CaseRegister.css 의 고르기 단추 · 칸 제목을 옮겨 쓴다.
+   '기본 정보' 카드(.basics)의 수정 입력칸(2026-11-03)은 공통 .inp 를 카드 너비에 맞게 줄여 쓴다. */
+.pg-CaseDetail .basics dd {
+  min-width: 0;
+}
+.pg-CaseDetail .basics .inp {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  box-sizing: border-box;
+}
+/* 사례관리대상자 이름 · 관계. 카드가 좁으면 두 줄로 내린다. */
+.pg-CaseDetail .basics .pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pg-CaseDetail .basics .pair .inp {
+  flex: 2 1 110px;
+  width: auto;
+}
+.pg-CaseDetail .basics .pair .inp:last-child {
+  flex: 1 1 90px;
+}
+.pg-CaseDetail .basics .inp:disabled,
+.pg-CaseDetail .basics .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .pg-CaseDetail .kv {
   display: grid;
   grid-template-columns: 96px 1fr;
