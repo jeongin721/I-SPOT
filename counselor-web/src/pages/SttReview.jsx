@@ -233,10 +233,11 @@ function LineRow({ l, focusRef, nowRef }) {
         {l.laws.length > 0 ? (
           <span className="laws">
             {l.laws.map((w) => (
-              <span key={w.key} className="law">
+              <span key={w.key} className={w.tmp ? 'law tmp' : 'law'}>
                 <span className="sig">{w.sig}</span>
                 <span className="ref">
                   {w.law} <span className="art">{w.art}</span>
+                  {w.tmp ? <span className="tmptag">{w.tmp}</span> : null}
                 </span>
                 <span className="sum">{w.sum}</span>
                 {w.url ? (
