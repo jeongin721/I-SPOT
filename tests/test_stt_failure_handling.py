@@ -11,6 +11,7 @@ import logging
 import socket
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -185,7 +186,9 @@ def test_fallback_logs_one_warning_with_class_names_only(caplog):
     record = records[0]
     message = record.getMessage()
     assert record.levelno == logging.WARNING
-    assert message == "stt_provider_fallback from=elevenlabs to=deepgram error=AudioProviderError cause=RuntimeError"
+    assert message == (
+        "stt_provider_fallback from=elevenlabs to=deepgram error=AudioProviderError cause=RuntimeError status=none"
+    )
     assert record.exc_info is None  # 스택(예외 본문 포함)을 붙이지 않는다
     for text in (message, *map(str, record.args or ())):
         assert "tok_secret_body" not in text and "tok_key_123" not in text and "https://" not in text
@@ -200,7 +203,7 @@ def test_fallback_warning_without_cause_uses_dash(caplog):
     ProviderFailureFallbackSTTProvider(primary, fallback).transcribe("unused.wav")
 
     messages = [record.getMessage() for record in _fallback_records(caplog)]
-    assert messages == ["stt_provider_fallback from=elevenlabs to=deepgram error=AudioProviderError cause=-"]
+    assert messages == ["stt_provider_fallback from=elevenlabs to=deepgram error=AudioProviderError cause=- status=none"]
 
 
 # ---------------------------------------------------------------------------
@@ -291,3 +294,149 @@ def test_real_elevenlabs_adapter_success_does_not_call_fallback(tmp_path):
 
     assert fallback.calls == 0
     assert [segment["text"] for segment in result["segments"]] == ["tok_a", "tok_b"]
+
+
+# ---------------------------------------------------------------------------
+# 7) 대체 경고 로그의 상태 코드 (정수 100~599 만, 메시지 본문은 쓰지 않음)
+# ---------------------------------------------------------------------------
+STATUS_SECRET = "SECRET_BODY_xyz"
+
+
+class _FakeApiError(Exception):
+    """SDK 의 API 오류를 흉내 낸다. 메시지에는 일부러 가짜 비밀 문자열을 넣는다."""
+
+    def __init__(self, status_code=None, status=None):
+        super().__init__(f"{STATUS_SECRET} https://api.example.invalid/v1?key=tok_key_456")
+        if status_code is not None:
+            self.status_code = status_code
+        if status is not None:
+            self.status = status
+
+
+def _fallback_message_for(primary_error, caplog):
+    caplog.set_level(logging.WARNING, logger=LOGGER_NAME)
+    primary = _Provider("elevenlabs", error=primary_error)
+    fallback = _Provider("deepgram", result=_result())
+
+    ProviderFailureFallbackSTTProvider(primary, fallback).transcribe("unused.wav")
+
+    records = _fallback_records(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert STATUS_SECRET not in message and "tok_key_456" not in message and "https://" not in message
+    for arg in records[0].args or ():
+        assert STATUS_SECRET not in str(arg)
+    return message
+
+
+def _wrapped(cause):
+    """실제 어댑터처럼 SDK 오류를 AudioProviderError 로 감싼다(문구에 본문 포함)."""
+    try:
+        raise cause
+    except Exception as exc:
+        try:
+            raise AudioProviderError(f"provider failed: {exc}") from exc
+        except AudioProviderError as error:
+            return error
+
+
+def test_fallback_log_reports_status_code_on_the_error_itself(caplog):
+    error = AudioProviderError(f"provider failed: {STATUS_SECRET}")
+    error.status_code = 401
+
+    message = _fallback_message_for(error, caplog)
+
+    assert message.endswith(" status=401")
+    assert message.count("status=401") == 1
+
+
+def test_fallback_log_reports_status_code_from_cause(caplog):
+    message = _fallback_message_for(_wrapped(_FakeApiError(status_code=429)), caplog)
+
+    assert message == (
+        "stt_provider_fallback from=elevenlabs to=deepgram error=AudioProviderError cause=_FakeApiError status=429"
+    )
+
+
+def test_fallback_log_reads_status_attribute_too(caplog):
+    message = _fallback_message_for(_wrapped(_FakeApiError(status=503)), caplog)
+
+    assert message.endswith(" status=503")
+
+
+def test_fallback_log_without_status_code_is_none(caplog):
+    message = _fallback_message_for(_wrapped(_FakeApiError()), caplog)
+
+    assert message.endswith(" status=none")
+
+
+@pytest.mark.parametrize("value", ["401", 0, 99, 600, 999, -401, True, 401.0, None])
+def test_fallback_log_rejects_non_integer_or_out_of_range_status(caplog, value):
+    cause = _FakeApiError()
+    cause.status_code = value
+
+    message = _fallback_message_for(_wrapped(cause), caplog)
+
+    assert message.endswith(" status=none")
+
+
+def test_failing_status_property_does_not_block_fallback(caplog):
+    class _BrokenStatusError(Exception):
+        @property
+        def status_code(self):
+            raise RuntimeError(STATUS_SECRET)
+
+    message = _fallback_message_for(_wrapped(_BrokenStatusError("tok_broken")), caplog)
+
+    assert message.endswith(" status=none")  # 대체 공급자는 그대로 불렸다(_fallback_message_for 안에서 확인)
+
+
+@pytest.mark.parametrize("depth, expected", [(5, "status=418"), (6, "status=none")])
+def test_status_code_is_read_at_most_five_causes_deep(caplog, depth, expected):
+    error = _FakeApiError(status_code=418)
+    for _ in range(depth):  # depth 번 감싸면 상태 코드는 depth 번째 원인에 있다
+        error = _wrapped(error)
+
+    message = _fallback_message_for(error, caplog)
+
+    assert message.endswith(" " + expected)
+
+
+# ---------------------------------------------------------------------------
+# 8) 1354.mp3 디버그 기록이 없어졌다
+# ---------------------------------------------------------------------------
+def test_deepgram_does_not_dump_raw_response_for_1354_mp3(monkeypatch, tmp_path):
+    """옛 코드는 파일 이름이 1354.mp3 로 끝나면 test_sample/1354_deepgram_sdk_raw.json 에 원본 응답을 썼다."""
+
+    work = tmp_path / "work"
+    (work / "test_sample").mkdir(parents=True)  # 옛 코드라면 여기에 써졌을 자리
+    audio = work / "tok_1354.mp3"
+    audio.write_bytes(b"tok_audio")
+    monkeypatch.chdir(work)  # 시험이 끝나면 monkeypatch 가 원래 작업 디렉터리로 돌려놓는다
+
+    response = SimpleNamespace(
+        results=SimpleNamespace(
+            utterances=[
+                SimpleNamespace(start=0.0, end=0.5, confidence=0.9, speaker=0, transcript="tok_dg", words=[]),
+            ]
+        )
+    )
+    calls = []
+
+    def transcribe_file(**kwargs):
+        calls.append(sorted(kwargs))
+        return response
+
+    provider = DeepgramSTTProvider.__new__(DeepgramSTTProvider)  # 실제 SDK 클라이언트를 만들지 않는다
+    BaseSTTProvider.__init__(provider)
+    provider.client = SimpleNamespace(
+        listen=SimpleNamespace(v1=SimpleNamespace(media=SimpleNamespace(transcribe_file=transcribe_file)))
+    )
+
+    result = provider.transcribe(str(audio))
+
+    assert len(calls) == 1
+    assert [segment["text"] for segment in result["segments"]] == ["tok_dg"]
+    assert sorted(path.name for path in work.iterdir()) == ["test_sample", "tok_1354.mp3"]
+    assert list((work / "test_sample").iterdir()) == []
+    assert "1354" not in inspect.getsource(DeepgramSTTProvider)

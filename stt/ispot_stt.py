@@ -517,6 +517,27 @@ def _error_label(error: BaseException) -> str:
     return f"{type(error).__name__}<-{type(cause).__name__ if cause is not None else '-'}"
 
 
+def _status_code(error: BaseException, max_causes: int = 5) -> Optional[int]:
+    """예외와 그 __cause__ 사슬(원인 최대 5단계)에서 HTTP 상태 코드만 꺼낸다.
+
+    ``status_code`` 또는 ``status`` 속성이 100~599 정수일 때만 쓰고, 그 밖(문자열 · bool · 범위 밖)은 None.
+    예외 메시지 · 응답 본문 · 헤더 · URL 은 읽지 않는다.
+    """
+    current: Optional[BaseException] = error
+    for _ in range(max_causes + 1):
+        if current is None:
+            return None
+        for attribute in ("status_code", "status"):
+            try:
+                value = getattr(current, attribute, None)
+            except Exception:  # 계산형 속성이 실패해도 대체는 계속한다
+                value = None
+            if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
+                return value
+        current = current.__cause__
+    return None
+
+
 class ProviderFailureFallbackSTTProvider(BaseSTTProvider):
     """Use a secondary provider only when the primary provider itself fails."""
 
@@ -529,13 +550,15 @@ class ProviderFailureFallbackSTTProvider(BaseSTTProvider):
         try:
             return self.primary.transcribe(audio_path)
         except AudioProviderError as primary_error:
-            # 대체 사실만 남긴다. 예외 메시지 본문 · 경로 · 요청 내용은 쓰지 않는다.
+            # 대체 사실만 남긴다. 예외 메시지 본문 · 경로 · 요청 내용은 쓰지 않는다(상태 코드는 정수만).
+            status = _status_code(primary_error)
             logger.warning(
-                "stt_provider_fallback from=%s to=%s error=%s cause=%s",
+                "stt_provider_fallback from=%s to=%s error=%s cause=%s status=%s",
                 _provider_label(self.primary),
                 _provider_label(self.fallback),
                 type(primary_error).__name__,
                 type(primary_error.__cause__).__name__ if primary_error.__cause__ is not None else "-",
+                status if status is not None else "none",
             )
             try:
                 result = self.fallback.transcribe(audio_path)
@@ -756,31 +779,6 @@ class DeepgramSTTProvider(BaseSTTProvider):
                     "max_retries": 2,
                 },
             )
-
-            # DEBUG: Deepgram SDK 원본 응답 저장
-            if str(audio_path).endswith("1354.mp3"):
-                import json
-
-                with open(
-                    "test_sample/1354_deepgram_sdk_raw.json",
-                    "w",
-                    encoding="utf-8",
-                ) as f:
-                    json.dump(
-                        response,
-                        f,
-                        ensure_ascii=False,
-                        indent=2,
-                        default=lambda obj: (
-                            obj.to_dict()
-                            if hasattr(obj, "to_dict")
-                            else obj.model_dump()
-                            if hasattr(obj, "model_dump")
-                            else obj.__dict__
-                            if hasattr(obj, "__dict__")
-                            else str(obj)
-                        ),
-                    )
 
             segments = self._coerce_to_contract(response)
             raw_speaker_ids = sorted(
