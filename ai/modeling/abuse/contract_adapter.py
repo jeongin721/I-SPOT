@@ -84,10 +84,12 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
 [아직 못 채운 것]
 
 - 백엔드 adapter의 analyze(transcript_payload)는 case_id를 안 받는다
-  (analysis_service가 session.id만 넘긴다). 그래서 Privacy Gateway
-  Tier 2(case_store에 등록된 실명 정확매칭)는 이 경로에서는 못 쓴다
-  — NER(Tier 1)만 적용된다. 실명 저장 여부가 팀 결정 대기 중이라
-  (10/16 Mingyu 답변) 지금은 이 상태로 둔다.
+  (analysis_service가 session.id만 넘긴다). 그래서 case_store에 등록된
+  실명은 이 경로에서 쓰지 않는다. 2026-11-02부터는 Backend가 사례에
+  암호화해 저장한 실명(#127)을 복호화해 known_identifiers로 넘기므로
+  Privacy Gateway Tier 2(등록 실명 정확매칭)가 이 경로에서도 돈다
+  (analyze_audio_session_as_contract 의 known_identifiers 인자). 실명을
+  등록하지 않은 사례는 지금처럼 NER(Tier 1)만 적용된다.
 
 [2026-10-22: PROPOSAL_risk_fields.md §7 확정안 반영]
 
@@ -490,6 +492,7 @@ def analyze_audio_session_as_contract(
     case_id: Optional[str] = None,
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
+    known_identifiers: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
@@ -506,12 +509,19 @@ def analyze_audio_session_as_contract(
     case_context: 사례 정보(2026-10-28, case_context.py · PROPOSAL_case_context_analysis.md §3).
     Backend 가 받는 어댑터에만 키워드로 넘긴다. 없으면(None) 넘기지 않아 예전 판 모듈과도 맞는다.
     '다음 상담 전 확인할 사항'(followup_check_llm)이 쓰고, '추가 질문' 초안(followup_question_llm)은 나이대만 쓴다.
+
+    known_identifiers: 사례에 등록된 실명 목록(2026-11-02, Backend 가 암호화 저장한 실명을 복호화해 메모리에서만 만든다 —
+    specs case-personal-info-encryption 7절). analyze_audio_session 으로 그대로 넘겨, 외부 LLM 으로 나가는 모든 글의
+    Privacy Gateway 등록 이름 대조(Tier 2)에 case_store 대신 쓴다. 없으면(None) 넘기지 않아 예전과 같다.
     """
 
     options: Dict[str, Any] = {}
 
     if case_context is not None:
         options["case_context"] = case_context
+
+    if known_identifiers is not None:
+        options["known_identifiers"] = known_identifiers
 
     result = analyze_audio_session(
         stt_result=stt_result,

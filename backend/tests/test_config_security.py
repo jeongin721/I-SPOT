@@ -147,7 +147,7 @@ def test_production_rejects_modeling_until_privacy_issues_are_fixed() -> None:
     assert "비식별" in message
     assert "개인정보 문제가 해결되기 전" in message
     assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
-    # 남은 이유는 등록 실명 대조다. 고친 '긴 상담 뒷부분' 은 더 이상 이유로 적지 않는다.
+    # 남은 이유는 등록 실명 대조가 등록한 이름에만 돈다는 것이다. 고친 '긴 상담 뒷부분' 은 더 이상 이유로 적지 않는다.
     assert "등록 실명" in message
     assert "뒷부분" not in message
 

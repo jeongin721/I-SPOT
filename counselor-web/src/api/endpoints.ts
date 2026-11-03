@@ -18,6 +18,7 @@ import type {
   Case,
   CaseCreateRequest,
   CaseDetail,
+  CaseListItem,
   CaseStatus,
   CaseUpdateRequest,
   Document,
@@ -36,6 +37,8 @@ import type {
   LoginResponse,
   OverallRiskAssessment,
   PasswordChangeRequest,
+  PersonalInfo,
+  PersonalInfoRequest,
   RiskAssessment,
   RiskAssessmentSaveRequest,
   TemporaryPassword,
@@ -182,9 +185,14 @@ export const auth = {
 // =========================================================
 
 export const cases = {
-  /** search 는 제목·사례번호·아동 별칭에서 찾는다. */
-  list(params?: PageQuery & { status?: CaseStatus; search?: string }): Promise<Paged<Case>> {
-    return api.get<Paged<Case>>("/cases", params);
+  /**
+   * search 는 제목·사례번호·아동 별칭(부분)과 아동 실명(공백 무시 정확히 같을 때)에서 찾는다.
+   * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
+   */
+  list(
+    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean },
+  ): Promise<Paged<CaseListItem>> {
+    return api.get<Paged<CaseListItem>>("/cases", params);
   },
 
   get(caseId: string): Promise<CaseDetail> {
@@ -193,6 +201,16 @@ export const cases = {
 
   create(payload: CaseCreateRequest): Promise<Case> {
     return api.post<Case>("/cases", payload);
+  },
+
+  /** 실명 · 생년월일 · 가족 정보(복호화한 값). 부를 때마다 서버에 열람 기록이 남는다. 권한은 사례 조회와 같다. */
+  getPersonalInfo(caseId: string): Promise<PersonalInfo> {
+    return api.get<PersonalInfo>(`/cases/${caseId}/personal-info`);
+  },
+
+  /** 보낸 값으로 통째로 바꾼다(빠진 칸은 지운다). 응답은 getPersonalInfo 와 같다. */
+  putPersonalInfo(caseId: string, payload: PersonalInfoRequest): Promise<PersonalInfo> {
+    return api.put<PersonalInfo>(`/cases/${caseId}/personal-info`, payload);
   },
 
   /** 바꿀 필드만 보낸다. status 로 종결, counselor_id 로 담당자 변경(관리자만). */

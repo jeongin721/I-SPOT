@@ -112,6 +112,7 @@ def analyze_reviewed_transcript(
                     session_id=session_id,
                     previous_sessions=previous_sessions,
                     child_app_responses=child_app_responses,
+                    known_identifiers=known_identifiers,
                 ),
                 with_questions=with_questions,
                 link_questions=link_questions,

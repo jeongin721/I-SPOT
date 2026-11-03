@@ -1,7 +1,8 @@
 # 종결 검토 요약 · 보고서(API_CONTRACT 4절 closure-summary, 2026-10-30).
 #
 # 만들기(POST): 종결 검토에 등록한 사례의 승인 완료 회차 요약(상담원 확정 4칸)과 회차별 AI 관련 신호를 모아
-#  - AI_PROVIDER=modeling 이면 ai/modeling/abuse/closure_summary_llm.generate_closure_summary(마스킹 → LLM → 검사)로 AI 초안,
+#  - AI_PROVIDER=modeling 이면 ai/modeling/abuse/closure_summary_llm.generate_closure_summary(마스킹 → LLM → 검사)로 AI 초안
+#    (가릴 이름으로 사례 별칭과 등록 실명 — personal_info_service.known_identifiers, 메모리에서만 — 을 넘긴다),
 #  - 아니면 rule_based_summary(LLM 없이 4칸 묶음, AI 생성 아님)로 만든다.
 # 동기 응답이고 CLOSURE_SUMMARY_TIMEOUT_SECONDS 를 넘으면 504. 실패 문구에는 원문 · 예외 문구를 넣지 않는다(종류로 코드만).
 # 다시 만들면 요약 문장 key 가 바뀌므로(만들 때마다 새 무작위 앞머리) 확인 체크 · 고친 문장은 비운다. 예전 요약을 띄운
@@ -32,7 +33,7 @@ from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.models.user import User
 from app.schemas.closure_review import ClosureReport, ClosureSummaryResponse, ClosureSummarySaveRequest
-from app.services import audit_service
+from app.services import audit_service, personal_info_service
 from app.services.signal_history_service import build_signal_history
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ def reset_limits() -> None:
     _limits = _Limits()
 
 
-def _run_ai(case: Case, sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _run_ai(case: Case, sessions: List[Dict[str, Any]], known_identifiers: List[str]) -> Dict[str, Any]:
     limits = _limits
     with limits.lock:
         if case.id in limits.running:
@@ -99,7 +100,7 @@ def _run_ai(case: Case, sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
     def work() -> Dict[str, Any]:
         started.set()
         try:
-            return run(sessions, known_identifiers=[case.child_alias], deadline=deadline)
+            return run(sessions, known_identifiers=known_identifiers, deadline=deadline)
         finally:
             release()
 
@@ -207,7 +208,9 @@ def generate(db: Session, case: Case, current_user: User) -> CaseClosureReview:
     started = time.monotonic()
     try:
         if use_ai:
-            result = _run_ai(case, sessions)
+            # 가릴 이름 = 사례 별칭 + 등록 실명(메모리에서만). 앞은 읽기만 해서 등록 이름을 못 읽어 거래를 되돌려도 잃는 변경이 없다.
+            names = personal_info_service.known_identifiers(db, case.id, extra=[case.child_alias])
+            result = _run_ai(case, sessions, names)
         else:
             result = load_callable(MODULE, "rule_based_summary")(sessions)
     except APIError:

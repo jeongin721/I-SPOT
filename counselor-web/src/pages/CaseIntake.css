@@ -176,3 +176,11 @@
 .pg-CaseIntake .thm-root.dark .hs-tbl,.pg-CaseIntake .thm-root.dark .hs-row,.pg-CaseIntake .thm-root.dark .hs-k{border-color:#45423B}
 .pg-CaseIntake .thm-root.dark .hs-k{background:#33312C}
 .pg-CaseIntake .thm-root.dark .hs-t{color:#A8A296}
+/* 가족관계 표의 동거여부 고르기 · 줄 빼기, 건강정도 세부 글 한 칸(서버가 세부 글 하나만 받음 — components/PersonalTables.jsx) */
+.pg-CaseIntake .ftg select.ft-sel{width:100%;height:38px;border:0;background:transparent;color:inherit;font:inherit;font-size:13px;padding:0 6px}
+.pg-CaseIntake .ftg select.ft-sel:focus{outline:2px solid #C2A36B;outline-offset:-2px}
+.pg-CaseIntake .ft-del{width:30px;height:30px;border:1px solid #DAD5C9;border-radius:50%;background:#FFFFFF;color:#66625A;font-size:16px;line-height:1;cursor:pointer}
+.pg-CaseIntake .ft-del:disabled{opacity:.5;cursor:not-allowed}
+.pg-CaseIntake .hs-wide{max-width:none}
+.pg-CaseIntake .thm-root.dark .ft-del{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
+.pg-CaseIntake .thm-root.dark .ftg select.ft-sel option{background:#2C2B27}

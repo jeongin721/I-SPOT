@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date, datetime
 from typing import Any
+
+from ai.modeling.abuse.text_script import cut_text
 
 # RAG 입력으로 쓰는 화자. 보호자(GUARDIAN) 진술은 아이에게 할 질문의 근거로 쓰지 않는다(화면 원칙 6).
 # 상담원 · 기타 · 미확정(UNKNOWN) 발화도 넣지 않는다. 화자 확인은 STT 검수에서 끝난 상태여야 한다.
@@ -45,9 +48,11 @@ def _session_label(session_no: int | None, current: bool) -> str:
     return "이번 회차" if current else "이전 회차"
 
 
-def _shorten(text: str, limit: int = MAX_RECORD_CHARS) -> str:
-    normalized = " ".join((text or "").split())
-    return normalized if len(normalized) <= limit else normalized[: limit - 1].rstrip() + "…"
+def _shorten(text: str, limit: int = MAX_RECORD_CHARS, names: Iterable[str] = ()) -> str:
+    """limit 자를 넘으면 낱말 · 등록 이름(names) 중간에서 끊지 않고 "…" 를 붙여 자른다(ai text_script.cut_text). 사례 기록은 자른
+    뒤에 가리므로(pipeline._mask_case), 이름 한가운데서 끊으면 앞 조각("김바" · "Kim")이 가려지지 않고 나간다
+    (2026-11-02 · 03, backend PR #138 Codex M3 · 재검증 N2). 남는 글이 없으면 빈 글 — build_case_records 가 그 기록을 뺀다."""
+    return cut_text(" ".join((text or "").split()), limit, names, "…")
 
 
 def _date_label(value: Any) -> str:
@@ -84,7 +89,7 @@ def _segment_records(
                 "segment_id": str(segment.get("segment_id", "")),
                 "start_ms": int(segment.get("start_ms") or 0),
                 "label": f"{_session_label(session_no, current)} {format_time(segment.get('start_ms'))}",
-                "text": _shorten(text),
+                "text": text,
             }
         )
     # 이전 회차 발화가 너무 많으면 뒤쪽(최근)만 남긴다.
@@ -98,10 +103,10 @@ def _previous_session_records(session: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
 
     if str(session.get("summary") or "").strip():
-        records.append({**base, "source": "summary", "label": f"{prefix} 상담 요약", "text": _shorten(session["summary"])})
+        records.append({**base, "source": "summary", "label": f"{prefix} 상담 요약", "text": str(session["summary"])})
 
     if str(session.get("safety_plan") or "").strip():
-        records.append({**base, "source": "safety_plan", "label": f"{prefix} 안전 계획", "text": _shorten(session["safety_plan"])})
+        records.append({**base, "source": "safety_plan", "label": f"{prefix} 안전 계획", "text": str(session["safety_plan"])})
 
     for item in session.get("check_items") or []:
         if not isinstance(item, dict) or not str(item.get("item") or "").strip():
@@ -115,7 +120,7 @@ def _previous_session_records(session: dict[str, Any]) -> list[dict[str, Any]]:
                 "source": "check_item",
                 "status": "confirmed" if item.get("status") == "confirmed" else "open",
                 "label": f"{prefix} 확인 사항",
-                "text": _shorten(text),
+                "text": text,
             }
         )
 
@@ -150,7 +155,7 @@ def _app_response_records(responses: list[dict[str, Any]]) -> list[dict[str, Any
                 "current": False,
                 "response_id": str(response.get("response_id") or ""),
                 "label": f"{day} 아이 앱 응답" if day else "아이 앱 응답",
-                "text": _shorten(f"질문: {question} / 답: {answer}" if question else answer),
+                "text": f"질문: {question} / 답: {answer}" if question else answer,
             }
         )
     return records
@@ -163,6 +168,7 @@ def build_case_records(
     session_id: str | None = None,
     previous_sessions: list[dict[str, Any]] | None = None,
     child_app_responses: list[dict[str, Any]] | None = None,
+    known_identifiers: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     """다음 상담 질문의 근거가 되는 사례 기록을 case:N 으로 번호 매겨 모은다.
 
@@ -171,6 +177,8 @@ def build_case_records(
     - 아이 앱 응답: 최근 MAX_APP_RESPONSES 개.
     session_id(Backend 회차 ID)는 LLM 에 보내지 않고 근거 링크(STT 검수 · 회차 상세)를 만들 때만 쓴다.
     text 는 아직 원문이다. 외부로 보내기 전에 pipeline 이 비식별한다.
+    기록마다 MAX_RECORD_CHARS 로 자른다 — 등록 이름(known_identifiers) 중간에서 끊지 않고, 잘라서 남은 글이 없는 기록은
+    근거 후보에서 뺀다("…" 만 남은 기록이 근거가 되던 일, backend PR #138 재검증 N3).
     """
     records = _segment_records(transcript, session_no, current=True, session_id=session_id)
 
@@ -180,6 +188,11 @@ def build_case_records(
         records.extend(_previous_session_records(session))
 
     records.extend(_app_response_records(child_app_responses or []))
+
+    names = list(known_identifiers or ())
+    for record in records:
+        record["text"] = _shorten(record["text"], names=names)
+    records = [record for record in records if record["text"]]
 
     for index, record in enumerate(records, start=1):
         record["ref"] = f"case:{index}"
