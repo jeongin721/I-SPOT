@@ -313,6 +313,23 @@
   font-size: 12px;
   color: #8a867d;
 }
+/* 임시 관련 조문(2026-11-03, 원문 확정 전 1차 모델 유형으로 고른 것) — 점선 테두리 · '임시 · 1차 모델' 표로 분석 결과와 나눈다. */
+.pg-SttReview .law.tmp {
+  border-style: dashed;
+}
+.pg-SttReview .ref .tmptag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f2efe8;
+  color: #7a776f;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pg-SttReview .thm-root.dark .ref .tmptag {
+  background: #393731 !important;
+  color: #c9c4b8 !important;
+}
 @media (max-width: 720px) {
   .pg-SttReview .law {
     grid-template-columns: auto minmax(0, 1fr) auto;
