@@ -1,4 +1,5 @@
-// 내담자 정보 › 아이 연계 (아이 상세와 같은 화면). 10/21 디자인에서 탭에서 빠지고 '아이 연계 →' 단추로 들어온다
+// 내담자 정보 › 아이 연계 (아이 상세와 같은 화면). 10/21 디자인에서 탭에서 빠지고 '아이 연계 →' 단추로 들어왔다가
+// 11/03 다시 탭 줄의 문서함 옆으로 옮겼다(기본 정보 카드의 그 자리는 '수정')
 // 원본: 다솔 님 디자인 counselor-web-design/CaseApp.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
@@ -223,6 +224,9 @@ export default function CaseApp(props) {
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
             <A to={carry('/CaseDocs')}>문서함</A>
+            <A className="on" aria-current="page" to={carry('/CaseApp')}>
+              아이 연계
+            </A>
           </nav>
           {v.k.hasQuote ? (
             <>
