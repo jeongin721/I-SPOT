@@ -718,7 +718,12 @@ def test_long_texts_are_cut_between_words_before_masking() -> None:
     assert "김" not in closure_summary_llm._session_block(
         {"number": 1, "date": "", "assessment": {"safety_risks": "가" * 2998 + "김바다와 만났다"}, "signals": []}
     )
-    assert rag_case_context._shorten("가" * 597 + "김바다와 만났다") == "…"
+    # rag 는 남는 글이 없으면 빈 글 — build_case_records 가 그 기록을 근거 후보에서 뺀다(재검증 N3).
+    assert rag_case_context._shorten("가" * 597 + "김바다와 만났다") == ""
+    # 말줄임표까지 넣어 상한을 넘지 않는다(재검증 낮음 — 3,001자).
+    assert len(closure_summary_llm._session_block(
+        {"number": 1, "date": "", "assessment": {"safety_risks": _filler(3100)}, "signals": []}
+    ).split("- 위험요인: ")[1].split("\n")[0]) <= closure_summary_llm.MAX_FIELD_CHARS
 
     # 이름이 자르는 자리 앞에서 끝나면 그대로 남는다(가리기 목록이 통째로 가린다).
     assert ai_case_context._text(_filler(590) + "김바다와 만났다 " + _filler(20)).count("김바다와") == 1
@@ -743,3 +748,172 @@ def test_rag_case_records_hide_names_and_keep_people_apart(gateway) -> None:  # 
     assert not any(piece in sent for piece in ("이가람", "김바다", "가람", "바다", "김바"))
     summary_ref = next(record["ref"] for record in records if record["source"] == "summary")
     assert restore(masked["case"][summary_ref], entity_map) == "이가람은 김바다와 있다"
+
+
+# =========================================================
+# Codex #138 재검증(a4886f1) — N1 · N2 · N3 · N4, rag pipeline 경로
+# =========================================================
+
+
+def test_registered_name_inside_token_like_user_text_is_masked(gateway) -> None:  # noqa: F811
+    """사용자 원문이 토큰처럼 생겨도("[ALICE_01]") 이번 호출이 만든 토큰이 아니면 그 안의 등록 이름을 가린다(N1)."""
+
+    gw, pii, _state = gateway
+
+    text = "메모 [ALICE_01]에게 전달"
+    masked, entity_map = gw.mask_for_outbound(text, known_identifiers=["ALICE"])
+    assert "ALICE" not in masked
+    assert pii.restore_pii(masked, entity_map) == text
+
+    # 다른 꼴 줄 머리 ID 안의 이름도 가린다(화자 코드는 그대로).
+    text = "[김민수] CHILD: 안녕하세요"
+    masked, entity_map = gw.mask_for_outbound(text, known_identifiers=["김민수"])
+    assert "김민수" not in masked and masked.endswith("CHILD: 안녕하세요")
+    assert pii.restore_pii(masked, entity_map) == text
+
+
+def _no_piece(out: str, full_forms, piece: str) -> bool:
+    """이름 조각(piece)이 남았으면 이름 전체도 함께 있어야 한다(전체는 뒤에서 목록이 가린다)."""
+
+    return piece not in out or any(form in out for form in full_forms)
+
+
+def test_names_with_spaces_are_not_cut_in_the_middle() -> None:
+    """이름 안 빈칸에서 끊어 성("Kim")만 남지 않는다 — 분석 확인 메모 · 종결 요약 · rag 기록 경계 모두(N2)."""
+
+    from ai.modeling.abuse import case_context as ai_case_context
+    from ai.modeling.abuse import closure_summary_llm
+    from rag.case_context import build_case_records
+
+    names = personal_info_service._variants("Kim  Ara")
+    forms = [name for name in names if " " in name]
+
+    for limit in (600, 3000, 599):
+        for shift in range(-8, 3):
+            text = ("자료 " * limit)[: limit + shift] + " Kim  Ara와 만났다"
+
+            if limit == 600:
+                out = ai_case_context.format_case_context(
+                    {"previous_session": {"session_label": "1회차", "assessment": {"safety_risks": text}}},
+                    known_identifiers=names,
+                )
+            elif limit == 3000:
+                out = closure_summary_llm.format_case_input(
+                    [{"number": 1, "date": "", "assessment": {"safety_risks": text}, "signals": []}],
+                    known_identifiers=names,
+                )
+            else:
+                records = build_case_records(
+                    None,
+                    previous_sessions=[{"session_no": 1, "session_id": "s1", "summary": text}],
+                    known_identifiers=names,
+                )
+                out = " ".join(record["text"] for record in records)
+
+            assert _no_piece(out, forms, "Kim"), (limit, shift)
+
+
+def test_records_left_empty_after_cutting_are_not_evidence() -> None:
+    """잘라서 남은 글이 없는 기록은 근거 후보(case:N)에서 빠지고 번호는 이어진다(N3)."""
+
+    from rag.case_context import build_case_records
+
+    transcript = {"segments": [{"segment_id": "seg_001", "speaker": "CHILD", "start_ms": 0, "text": "오늘 이야기"}]}
+    previous = [{"session_no": 1, "session_id": "s1", "summary": "가" * 700 + " 끝", "safety_plan": "안전 계획 확인"}]
+
+    records = build_case_records(transcript, session_no=2, session_id="s2", previous_sessions=previous)
+
+    assert all(record["text"] and record["text"] != "…" for record in records)
+    assert [record["source"] for record in records] == ["transcript", "safety_plan"]
+    assert [record["ref"] for record in records] == ["case:1", "case:2"]
+
+
+def test_masking_many_lines_stays_fast(gateway, monkeypatch) -> None:  # noqa: F811
+    """이름 · 줄 머리 표식이 되풀이되는 긴 글도 빨리 가린다(N4 — 1,600줄에서 1.2초 걸렸다. 고친 뒤 이 PC 에서 0.03초).
+
+    NER 은 아무것도 찾지 않게 해 등록 이름 가리기 시간만 잰다(가짜 NER 이 쓰는 시간이 CI 마다 달라 흔들리지 않게)."""
+
+    import time
+
+    gw, pii, _state = gateway
+    monkeypatch.setattr(pii, "_decode_ner_spans", lambda text: [])
+    monkeypatch.setattr(gw, "_decode_ner_spans", lambda text: [])
+    names = ["김민수", "이민수", "민수", "한가람", "가람", "박영희"]
+    text = "".join(f"[seg_{index:04d}] CHILD: 김민수 상담 관찰.\n" for index in range(1600))
+
+    started = time.perf_counter()
+    masked, _ = gw.mask_for_outbound(text, known_identifiers=names)
+    elapsed = time.perf_counter() - started
+
+    assert "김민수" not in masked and masked.count("[seg_") == 1600
+    assert elapsed < 0.3, elapsed
+
+
+@pytest.fixture
+def real_rag(gateway, monkeypatch):  # noqa: F811 — gateway 는 고정 장치
+    """진짜 rag.session → rag.pipeline(_mask_case → mask_payload)을 탄다. 벡터 검색 · LLM 을 쓰는 모듈만 가짜로 두고,
+    가린 뒤 분석 단계(_analyze_masked)가 받은 글을 모은다. 시험 뒤에는 새로 불러온 rag · law 모듈을 지운다."""
+
+    fakes = {
+        "rag.checklist_builder": {"build_next_session_checklist": lambda *args, **kwargs: {}},
+        "rag.evidence_analyzer": {"analyze_checklist_candidates": lambda *args, **kwargs: []},
+        "rag.precedents": {"find_similar_precedents": lambda *args, **kwargs: []},
+        "rag.retriever": {"search_evidence": lambda *args, **kwargs: []},
+        "rag.screen_manual": {"build_screen_references": lambda *args, **kwargs: {}},
+        "rag.resource_ranker": {
+            "build_reference_materials": lambda *args, **kwargs: [],
+            "format_document_reference": lambda *args, **kwargs: "",
+        },
+    }
+    for name, attrs in fakes.items():
+        module = types.ModuleType(name)
+        for attr, value in attrs.items():
+            setattr(module, attr, value)
+        monkeypatch.setitem(sys.modules, name, module)
+
+    before = {key for key in sys.modules if key.startswith(("rag.", "law"))}
+    session = importlib.import_module("rag.session")
+    pipeline = importlib.import_module("rag.pipeline")
+
+    sent = {}
+
+    def analyze_masked(masked_text, abuse_type, **kwargs):
+        sent["text"] = masked_text
+        sent["records"] = [record["text"] for record in kwargs.get("case_records") or []]
+        sent["questions"] = [(item.get("text"), item.get("reason")) for item in kwargs.get("link_questions") or []]
+        return {}
+
+    monkeypatch.setattr(pipeline, "_analyze_masked", analyze_masked)
+
+    yield session, sent
+
+    for key in [key for key in sys.modules if key.startswith(("rag.", "law")) and key not in before]:
+        sys.modules.pop(key, None)
+
+
+def test_rag_pipeline_masks_everything_it_sends(real_rag) -> None:
+    """rag.session.analyze_reviewed_transcript 에서 가린 뒤 분석 단계로 가는 글 — 이번 회차 발화 · 앞 회차 기록 · 추가 질문
+    초안 — 에 등록 이름이 없다(Codex 재검증: rag.pipeline 을 거치지 않아 _mask_case · mask_payload 에 [] 를 줘도 시험이 통과했다)."""
+
+    session, sent = real_rag
+    names = personal_info_service._variants("한가람") + personal_info_service._variants("한누리")
+    transcript = {"segments": [{"segment_id": "seg_001", "speaker": "CHILD", "start_ms": 0, "text": "한누리 아빠가 가람이를 때렸어요"}]}
+    previous = [{"session_no": 1, "session_id": "s1", "summary": "한가람은 한누리와 산다", "check_items": [], "transcript": None}]
+
+    session.analyze_reviewed_transcript(
+        transcript,
+        "physical",
+        known_identifiers=names,
+        session_no=2,
+        session_id="s2",
+        previous_sessions=previous,
+        with_questions=False,
+        with_manual_references=False,
+        link_questions=[{"draft_index": 0, "text": "누리 아빠가 무서웠어?", "reason": "가람이 진술"}],
+    )
+
+    outgoing = json.dumps(sent, ensure_ascii=False)
+    assert sent["records"] and sent["questions"]
+    for name in ("한가람", "한누리", "가람", "누리"):
+        assert name not in outgoing, name
+    assert "[KNOWN_" in outgoing
