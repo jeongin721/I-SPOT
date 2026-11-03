@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.adapters.mail_adapter import MailMessage, failure_cause, get_mail_sender
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.email_address import canonical_email
 from app.core.enums import AuditAction, SignupRequestStatus, UserRole
 from app.core.errors import APIError, ErrorCode, conflict, not_found
 from app.core.password_policy import validate_password
@@ -104,7 +105,9 @@ def _seconds(delta: timedelta) -> int:
 
 
 def normalize_email(email: str) -> str:
-    return email.strip().lower()
+    """요청 모델이 이미 정규형으로 맞춰 온다(schemas/signup.py). 서비스를 직접 부를 때도 같은 꼴이 되게 한 번 더 맞춘다."""
+
+    return canonical_email(email)
 
 
 def _code_hash(email: str, code: str) -> str:

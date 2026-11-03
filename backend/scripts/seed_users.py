@@ -16,15 +16,15 @@ import os
 import sys
 from typing import Iterable, List, Optional, Tuple
 
-from sqlalchemy import select
 
 from app.core.database import SessionLocal
+from app.core.email_address import canonical_email
 from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError
 from app.core.password_policy import generate_password, validate_password
 from app.core.security import hash_password
 from app.models.user import User
-from app.services import audit_service
+from app.services import audit_service, user_service
 
 DEMO_ACCOUNTS: List[Tuple[str, str, UserRole]] = [
     ("admin@ispot.example.com", "데모 관리자", UserRole.ADMIN),
@@ -50,13 +50,13 @@ def upsert_user(email: str, name: str, role: UserRole, password: str) -> Tuple[s
     session = SessionLocal()
 
     try:
-        existing = session.scalar(select(User).where(User.email == email.lower()))
+        existing = user_service.find_user_by_email(session, email)
 
         if existing is not None:
             return f"이미 존재하는 계정입니다: {email} (role={existing.role.value})", False
 
         user = User(
-            email=email.lower(),
+            email=canonical_email(email),
             name=name,
             role=role,
             hashed_password=hash_password(password),

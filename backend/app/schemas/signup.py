@@ -10,6 +10,7 @@ from typing import Annotated, Any, List, Optional
 from email_validator import EmailNotValidError, validate_email
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
+from app.core.email_address import canonical_email
 from app.core.enums import SignupRequestStatus, UserRole
 from app.schemas.common import RequestModel
 
@@ -33,7 +34,8 @@ def _signup_email(value: Any) -> str:
     except EmailNotValidError:
         raise ValueError(EMAIL_INVALID_MESSAGE) from None
 
-    return checked.ascii_email.lower()
+    # 저장 · 비교하는 꼴(아이디 소문자 + IDNA 2008 punycode 도메인)과 똑같이 맞춘다 — 로그인 · 관리자 생성도 이 꼴을 쓴다.
+    return canonical_email(checked.ascii_email)
 
 
 # OpenAPI 에는 지금처럼 이메일 칸으로 보이게 format 을 적는다.

@@ -3,6 +3,7 @@
 # 계정은 관리자 API · seed script 로 만들거나, 회원가입 신청을 관리자가 승인할 때 생긴다(2026-11-02, signup_service).
 # 신청만으로는 계정이 생기지 않는다(03_BACKEND_PROMPT.md §10 의 '자유 회원가입 없음' 을 승인제로 바꿈).
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from secrets import compare_digest, token_urlsafe
@@ -13,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.email_address import canonical_email
 from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError, ErrorCode, conflict, unauthorized
 from app.core.password_policy import validate_password
@@ -296,7 +298,7 @@ def authenticate(
     """
 
     now = datetime.now(timezone.utc)
-    user = db.scalar(select(User).where(User.email == email.lower()))
+    user = find_user_by_email(db, email)
 
     def invalid_credentials() -> APIError:
         return APIError(
@@ -419,37 +421,52 @@ DUPLICATE_EMAIL_MESSAGE = "이미 등록된 이메일입니다."
 
 def email_key(email: str) -> str:
     """
-    같은 메일함인지 비교하는 키. 파이썬 lower() 와, 도메인은 IDNA ASCII(punycode)로 맞춘다.
+    같은 메일함인지 비교하는 키 = 저장하는 꼴(app/core/email_address.canonical_email — 아이디 소문자 + IDNA 2008 punycode 도메인).
 
     DB 의 lower() 는 쓰지 않는다. SQLite 와 PostgreSQL(C collation)의 lower() 는 ASCII 만 바꿔, 옛 계정이
-    `Écho@…` · `…@BÜCHER.de` 처럼 비ASCII 대문자나 유니코드 도메인으로 남아 있으면 `écho@…` · `…@xn--bcher-kva.de` 와
-    다르게 보고 계정이 하나 더 생긴다(Codex #139 M2). 도메인을 바꿀 수 없으면 lower() 만 한 값을 쓴다.
+    `Écho@…` · `…@BÜCHER.de` 처럼 비ASCII 대문자나 유니코드 도메인으로 남아 있으면 다르게 본다(Codex #139 M2).
+    파이썬 내장 IDNA 도 쓰지 않는다. IDNA 2003 이라 `straße` 를 `strasse` 로 바꿔 회원가입 칸(email-validator, 2008)과 어긋났다(재검증 N2).
     """
 
-    local, at, domain = email.strip().lower().rpartition("@")
-
-    if not at:
-        return domain
-
-    try:
-        domain = domain.encode("idna").decode("ascii")
-    except UnicodeError:
-        pass
-
-    return f"{local}@{domain}"
+    return canonical_email(email)
 
 
-def email_is_registered(db: Session, email: str) -> bool:
+def _accounts_by_key(db: Session, email: str) -> List[uuid.UUID]:
     """
-    그 이메일(email_key 기준)의 계정이 이미 있는가.
+    그 이메일(email_key 기준)의 계정 id. 정규형으로 저장한 계정과 예전 판이 다른 표기로 저장한 계정을 같게 찾는다.
 
-    계정은 기관 하나의 상담사 · 관리자라 수십 개라서 전부 읽어 파이썬에서 비교한다. 어떤 이메일을 물어도 같은 조회 하나다
-    (회원가입 보내기가 계정 존재를 응답 시간으로 드러내지 않게).
+    계정은 기관 하나의 상담사 · 관리자라 수십 개라서 id · 이메일을 전부 읽어 파이썬에서 비교한다. 어떤 이메일을 물어도 같은
+    조회 하나다(로그인 · 회원가입 보내기가 계정 존재를 응답 시간으로 드러내지 않게).
     """
 
     key = email_key(email)
 
-    return any(email_key(existing) == key for existing in db.scalars(select(User.email)))
+    return [user_id for user_id, existing in db.execute(select(User.id, User.email)) if email_key(existing) == key]
+
+
+def email_is_registered(db: Session, email: str) -> bool:
+    """그 이메일(email_key 기준)의 계정이 이미 있는가."""
+
+    return bool(_accounts_by_key(db, email))
+
+
+def find_user_by_email(db: Session, email: str) -> Optional[User]:
+    """
+    로그인 · 서버 복구 script 가 계정을 찾는 곳. email_key 가 같은 계정이다.
+
+    같은 키의 계정이 둘 이상이면(이 판 전에 비ASCII 대문자 · 다른 도메인 표기로 따로 만든 옛 데이터) 정규형 그대로 저장한 계정을,
+    없으면 먼저 만든 계정을 고른다. 이 판부터는 add_user 가 같은 키를 막아 새로 생기지 않는다.
+    """
+
+    ids = _accounts_by_key(db, email)
+
+    if not ids:
+        return None
+
+    users = list(db.scalars(select(User).where(User.id.in_(ids)).order_by(User.created_at.asc())))
+    key = email_key(email)
+
+    return next((user for user in users if user.email == key), users[0])
 
 
 def add_user(
@@ -477,7 +494,7 @@ def add_user(
         raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_EMAIL_MESSAGE)
 
     user = User(
-        email=email.lower(),
+        email=canonical_email(email),
         hashed_password=hashed_password,
         name=name,
         role=role,
