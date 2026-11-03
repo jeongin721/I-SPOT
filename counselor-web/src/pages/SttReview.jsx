@@ -157,7 +157,42 @@ function SpeakerPicker({ l }) {
   );
 }
 
-/** 발화 한 줄(확인할 곳 · 핵심 발화 보기의 모든 줄, 전체 STT 보기에서 따로 보이는 줄). */
+/** 문단 · 줄의 문장 하나. 누를 수 있으면(s.pick) 단추 역할(Enter · Space 로도 누름), 아니면 글자만. */
+function Sentence({ s, nowRef }) {
+  if (!s.pick) {
+    return (
+      <span ref={s.now ? nowRef : undefined} className={s.cls} title={s.title}>
+        {s.text}
+      </span>
+    );
+  }
+  const press = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      s.pick();
+    }
+  };
+  return (
+    <span
+      ref={s.now ? nowRef : undefined}
+      className={s.cls}
+      role="button"
+      tabIndex={0}
+      title={s.title}
+      aria-label={s.aria}
+      aria-pressed={s.on}
+      onClick={s.pick}
+      onKeyDown={press}
+    >
+      {s.text}
+    </span>
+  );
+}
+
+/**
+ * 발화 한 줄(확인할 곳 · 핵심 발화 보기의 모든 줄, 전체 STT 보기에서 따로 보이는 줄). 전체 STT 보기에서는 글을 눌러 고친다(l.tap —
+ * 11/03, 입력칸을 처음부터 띄우지 않는다). 줄에 이미 시간 · 화자 단추가 있어 입력 막대는 입력칸 · 닫기만(compact).
+ */
 function LineRow({ l, focusRef, nowRef }) {
   return (
     <div className="ln" ref={l.focus ? focusRef : undefined} style={{ background: l.bg, boxShadow: l.ring }}>
@@ -186,6 +221,12 @@ function LineRow({ l, focusRef, nowRef }) {
           />
         ) : null}
         {l.read ? <span style={{ fontSize: '15px' }}>{l.text}</span> : null}
+        {l.tap ? (
+          <p className="para-text">
+            <Sentence s={l.snt} />
+          </p>
+        ) : null}
+        {l.tap && l.snt.on ? <SentenceEditor e={l} close={l.closeEditor} compact /> : null}
         <span className="note" style={{ color: l.hintFg }}>
           {l.hint}
         </span>
@@ -237,7 +278,7 @@ function LineRow({ l, focusRef, nowRef }) {
  * 막대가 전체 STT 상자 · 하단 재생 바에 가리지 않게 상자를(그래도 가리면 페이지를) 스크롤한다 — 문단 끝에 열려 긴 문단에서
  * 재생 바 뒤로 가려지고, 둘째 문장부터는 초점이 안 옮겨 갔다(Codex #141 M2 · L1). 글자를 칠 때는 다시 옮기지 않는다.
  */
-function SentenceEditor({ e, close }) {
+function SentenceEditor({ e, close, compact = false }) {
   const inputRef = useRef(null);
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -262,10 +303,14 @@ function SentenceEditor({ e, close }) {
   }, [e.key]);
   return (
     <span className="snt-edit">
-      <button type="button" className="tbtn" aria-label={e.playAria} onClick={e.play ?? undefined} disabled={!e.play}>
-        {e.t}
-      </button>
-      <SpeakerPicker l={e} />
+      {compact ? null : (
+        <>
+          <button type="button" className="tbtn" aria-label={e.playAria} onClick={e.play ?? undefined} disabled={!e.play}>
+            {e.t}
+          </button>
+          <SpeakerPicker l={e} />
+        </>
+      )}
       <input
         ref={inputRef}
         className="in"
@@ -287,12 +332,6 @@ function SentenceEditor({ e, close }) {
  * 읽기 화면에서는 그 문장부터 다시 듣는다. 줄 칸 순서(시간 · 화자 · 글 · 오른쪽)는 LineRow 와 같다.
  */
 function ParaRow({ b, nowRef }) {
-  const press = (s) => (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      s.pick();
-    }
-  };
   return (
     <div className="ln para" style={{ background: '#FFFFFF', boxShadow: b.now ? 'inset 4px 0 0 #C2A36B' : 'none' }}>
       <span>
@@ -312,25 +351,7 @@ function ParaRow({ b, nowRef }) {
         <p className="para-text">
           {b.sentences.map((s) => (
             <Fragment key={s.key}>
-              {s.pick ? (
-                <span
-                  ref={s.now ? nowRef : undefined}
-                  className={s.cls}
-                  role="button"
-                  tabIndex={0}
-                  title={s.title}
-                  aria-label={s.aria}
-                  aria-pressed={s.on}
-                  onClick={s.pick}
-                  onKeyDown={press(s)}
-                >
-                  {s.text}
-                </span>
-              ) : (
-                <span ref={s.now ? nowRef : undefined} className={s.cls} title={s.title}>
-                  {s.text}
-                </span>
-              )}{' '}
+              <Sentence s={s} nowRef={nowRef} />{' '}
               {s.on && b.editor ? <SentenceEditor e={b.editor} close={b.closeEditor} /> : null}
             </Fragment>
           ))}

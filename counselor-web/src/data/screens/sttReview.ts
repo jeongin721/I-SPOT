@@ -330,6 +330,18 @@ export function sttReviewValues(input: SttScreenInput) {
     const open = lineEditable && state.spOpen === key;
     const focus = row.segmentId === focusId;
     const now = row.segmentId === nowId;
+    // 전체 STT 보기에서는 따로 보이는 줄도 문단 문장처럼 글로 보이고, 누르면 그 줄 아래 입력칸이 열리거나(고칠 수 있을 때)
+    // 그 발화부터 다시 듣는다(2026-11-03, 사용자 요청 — 목소리 칩 · 저신뢰 줄만 입력칸이 처음부터 떠 있어 문단과 달라 보였다).
+    // 확인할 곳 보기는 고치려고 모아 보는 목록이라 입력칸을 그대로 둔다.
+    const tap = view === "all";
+    const editing = tap && lineEditable && state.editSeg === key;
+    const tapPick = !tap
+      ? null
+      : lineEditable
+        ? () => setState({ editSeg: editing ? null : key, spOpen: null })
+        : canPlay
+          ? () => void player.playFrom(row.startMs)
+          : null;
     let hint = "";
 
     if (done) hint = "확인했어요";
@@ -373,9 +385,23 @@ export function sttReviewValues(input: SttScreenInput) {
       })),
       onText: (event: { target: { value: string } }) => review.editText(row.segmentId, event.target.value),
       conf: row.confidenceLabel,
-      // 핵심 발화 보기의 줄은 디자인처럼 읽기만 한다(고치려면 전체 · 저신뢰 보기로).
-      edit: review.canEdit && view !== "key",
-      read: !review.canEdit || view === "key",
+      // 핵심 발화 보기의 줄은 디자인처럼 읽기만 한다(고치려면 전체 · 저신뢰 보기로). 전체 STT 보기는 글을 눌러 고친다(tap).
+      tap,
+      snt: {
+        key: row.segmentId,
+        text: row.text || "(빈 문장)",
+        on: editing,
+        now,
+        cls: ["snt", tapPick ? "act" : "", editing ? "on" : "", row.dirty ? "dirty" : "", now ? "now" : ""]
+          .filter(Boolean)
+          .join(" "),
+        title: `${row.startLabel} · 신뢰도 ${row.confidenceLabel}`,
+        aria: lineEditable ? `${row.startLabel} 문장 고치기` : `${row.startLabel}부터 듣기`,
+        pick: tapPick,
+      },
+      closeEditor: () => setState({ editSeg: null, spOpen: null }),
+      edit: !tap && review.canEdit && view !== "key",
+      read: !tap && (!review.canEdit || view === "key"),
       text: row.text,
       check,
       hint,
