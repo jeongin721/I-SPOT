@@ -55,6 +55,8 @@ def _signup_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
     codes = (f"{100000 + index:06d}" for index in itertools.count(1))
     monkeypatch.setattr(signup_service, "_new_code", lambda: next(codes))
+    # 메일 일 하나가 일꾼을 붙잡는 시간(운영 2초)을 시험에서는 없앤다. 그 시간은 test_signup_hardening.py 가 본다.
+    monkeypatch.setattr(signup_service, "MAIL_JOB_SECONDS", 0.0)
 
     yield
 
@@ -777,15 +779,23 @@ def test_send_does_not_wait_for_mail(client: TestClient, enabled) -> None:
     assert [mail.to for mail in sender.sent] == [EMAIL]
 
 
-def test_full_mail_queue_is_recorded_not_queued(client: TestClient, enabled, db, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_full_mail_queue_drops_with_log_only(
+    client: TestClient, enabled, db, counselor_id, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """
+    대기가 차면 메일 일을 넣지 않고 서버 로그 경고만 남긴다. 새 이메일 · 있는 계정이 요청 처리에서 같은 일만 하게
+    감사 기록은 쓰지 않는다(Codex #139 M1 — 처음엔 새 이메일만 MailQueueFull 감사 기록을 썼다).
+    """
+
+    caplog.set_level(logging.WARNING)
     monkeypatch.setattr(signup_service, "MAIL_QUEUE_LIMIT", 0)
 
     assert _send(client).status_code == 202
+    assert _send(client, "counselor.a@ispot.example.com").status_code == 202
     assert _mails() == []
 
-    failure = _audits(db, AuditAction.SIGNUP_CODE_SENT)[-1]
-    assert (failure.status, failure.error_code) == ("FAILURE", "MAIL_SEND_FAILED")
-    assert failure.detail == {"provider": "queue", "cause": "MailQueueFull"}
+    assert [log.status for log in _audits(db, AuditAction.SIGNUP_CODE_SENT)] == ["SUCCESS", "SUCCESS"]
+    assert caplog.text.count("회원가입 메일 대기가 가득 차") == 2
 
 
 def test_secrets_never_reach_logs_audit_or_errors(

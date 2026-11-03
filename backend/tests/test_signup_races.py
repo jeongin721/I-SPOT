@@ -26,12 +26,12 @@ VERIFY = f"{BASE}/verify-code"
 
 EMAIL = "racer@ispot.example.org"
 PASSWORD = "Maple-River-58"
-WRONG_CODE = "999999"
 
 
 @pytest.fixture(autouse=True)
 def _signup_on(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "SIGNUP_ENABLED", True)
+    monkeypatch.setattr(signup_service, "MAIL_JOB_SECONDS", 0.0)
     signup_service.reset_limits()
     mail_adapter.clear_fake_outbox()
     mail_adapter.set_mail_sender_override(None)
@@ -75,6 +75,12 @@ def _code(client: TestClient, email: str = EMAIL) -> str:
     mails = [mail for mail in mail_adapter.fake_outbox() if mail.to == email]
 
     return re.search(r"인증번호: (\d{6})", mails[-1].body).group(1)
+
+
+def _wrong(code: str) -> str:
+    """받은 번호와 반드시 다른 번호. 고정값(999999)은 실제로 나올 수 있어 시험이 가끔 틀린다(Codex #139 L5)."""
+
+    return f"{(int(code) + 1) % 1_000_000:06d}"
 
 
 def _token(client: TestClient, email: str = EMAIL) -> str:
@@ -123,8 +129,9 @@ def test_resend_burst_after_interval_makes_one_code(client: TestClient, db, monk
 
 def test_wrong_code_burst_compares_only_five_times(client: TestClient) -> None:
     code = _code(client)
+    wrong = _wrong(code)
 
-    statuses = _burst(12, lambda c, _: c.post(VERIFY, json={"email": EMAIL, "code": WRONG_CODE}).status_code)
+    statuses = _burst(12, lambda c, _: c.post(VERIFY, json={"email": EMAIL, "code": wrong}).status_code)
 
     # 422 는 MISMATCH(5개) · EXPIRED(7개) 둘 다라 본문으로 나눈다.
     assert statuses == [422] * 12
@@ -135,11 +142,11 @@ def test_wrong_code_burst_compares_only_five_times(client: TestClient) -> None:
 
 
 def test_wrong_code_burst_reports_exactly_five_mismatches(client: TestClient) -> None:
-    _code(client)
+    wrong = _wrong(_code(client))
     codes: List[Optional[str]] = [None] * 12
 
     def send(c: TestClient, index: int) -> int:
-        response = c.post(VERIFY, json={"email": EMAIL, "code": WRONG_CODE})
+        response = c.post(VERIFY, json={"email": EMAIL, "code": wrong})
         codes[index] = response.json()["error"]["code"]
 
         return response.status_code
@@ -168,6 +175,29 @@ def test_same_token_submit_burst_makes_one_request(client: TestClient, db) -> No
 
     db.expire_all()
     assert db.scalar(select(func.count()).select_from(SignupRequest)) == 1
+
+
+def test_same_token_submit_burst_hashes_once(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """같은 토큰으로 몰려 와도 bcrypt 는 한 번이다 — 토큰을 bcrypt 전에 쓰고 커밋한다(Codex #139 M3)."""
+
+    token = _token(client)
+    calls: List[int] = []
+    lock = threading.Lock()
+    real = signup_service.hash_password
+
+    def counting(password: str) -> str:
+        with lock:
+            calls.append(1)
+
+        return real(password)
+
+    monkeypatch.setattr(signup_service, "hash_password", counting)
+    body = {"verification_token": token, "name": "동시해시", "password": PASSWORD}
+
+    statuses = _burst(8, lambda c, _: c.post(BASE, json=body).status_code)
+
+    assert sorted(statuses) == [201] + [422] * 7
+    assert len(calls) == 1
 
 
 def test_approve_burst_makes_one_account(client: TestClient, admin_id, db) -> None:
