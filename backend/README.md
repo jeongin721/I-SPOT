@@ -425,8 +425,9 @@ backend/
   - 인증번호는 서버 비밀키(`JWT_SECRET_KEY`)를 섞은 HMAC, 확인 토큰은 SHA-256 으로만 저장한다. 원문 · 비밀번호는 로그 · 감사 로그 · 오류에 남기지 않는다.
   - 계정이나 대기 신청이 이미 있는 이메일도 같은 응답 · 같은 횟수 제한이다(메일만 안 보냄). 메일은 요청과 떨어진 전용 스레드로 보내고,
     보내지 않는 이메일도 같은 메일 일 하나(대기 한 칸 · 2초)를 써서 응답 · 다음 요청 · 자기 메일 도착 시간으로도 갈리지 않게 한다.
-  - 이메일 비교는 파이썬 lower() + IDNA 도메인으로 한다(`user_service.email_key`). DB lower() 는 ASCII 만 바꿔 비ASCII 대문자 옛 계정을 놓친다.
-    회원가입 이메일은 아이디가 ASCII 인 것만 받고 도메인은 punycode 로 맞춘다(SES 가 보낼 수 있는 꼴).
+  - 계정 이메일은 한 가지 꼴로 저장 · 조회 · 비교한다(`app/core/email_address.canonical_email` — 아이디 소문자 + email-validator 의 IDNA 2008
+    punycode 도메인). 로그인 · 관리자 생성 · 회원가입 · 복구 script 가 모두 쓴다. DB lower() 는 ASCII 만 바꾸고 파이썬 내장 IDNA 는 2003 이라 쓰지 않는다.
+    회원가입 이메일은 아이디가 ASCII 인 것만 받는다(SES 가 보낼 수 있는 꼴).
   - 메일 발송기 `MAIL_PROVIDER`: `fake`(기본 — 보내지 않음, 시험) · `console`(로컬 전용 — 본문을 표준 출력에 찍음, `ENV=production` 이면 안 뜸) ·
     `ses`(AWS SES, EC2 역할 권한 — 접근 키를 `.env` 에 두지 않는다, `SES_FROM_ADDRESS` 필수). `ENV=production` 에서 가입을 켜면 `ses` 여야 뜬다.
     켜는 법은 `deploy/README.md` '회원가입 켜기'.
