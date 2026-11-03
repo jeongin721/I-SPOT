@@ -52,6 +52,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  /* 문단 글 사이(고르는 문장 바로 아래)에 열린다(Codex #141 M2). */
+  margin: 6px 0 8px;
+  line-height: 1.6;
   padding: 8px 10px;
   border: 1px solid #dad5c9;
   border-radius: 10px;

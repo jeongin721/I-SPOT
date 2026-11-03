@@ -301,10 +301,13 @@ export function sttReviewValues(input: SttScreenInput) {
   const canPlay = hasAudio && player.error === null;
   // 지금 듣는 발화(2026-11-03): 시간을 누르거나 재생 바로 들으면 그 위치의 발화를 본문에서 칠해 어디를 듣는지 보인다.
   // 멈춘 채 처음 위치면(아직 안 들음 · 정지) 칠하지 않는다. 발화 사이 빈 구간이면 바로 앞 발화를 칠한다.
+  // 듣는 발화는 전체 원문에서 정하고, 지금 보기에 있을 때만 칠한다 — 걸러 본 보기(확인할 곳 · 핵심 발화)에서 숨은 발화를 들을 때
+  // 앞에 보이는 다른 발화를 칠하지 않게(Codex #141 L2).
   const nowMs = player.playing || player.currentMs > 0 ? player.currentMs : null;
   let nowId: string | null = null;
   if (nowMs !== null) {
-    for (const row of visible) {
+    for (const row of review.rows) {
+      if (row.removed) continue;
       if (row.startMs > nowMs) break;
       nowId = row.segmentId;
     }
@@ -312,6 +315,10 @@ export function sttReviewValues(input: SttScreenInput) {
   // 화자를 고칠 수 없는 화면(원문을 잠근 뒤 · 핵심 발화 보기)에서는 화자를 고르기 단추가 아니라 글자로 보인다(눌러도 아무것도
   // 안 열리는 단추로 보이지 않게). 저장 중에 잠깐 못 고치는 동안은 단추 모양 그대로 꺼 둔다.
   const spStatic = !review.canEdit || view === "key";
+  // 글자 화자의 안내. 핵심 발화 보기는 원문을 잠근 것이 아니라 그 보기만 읽기 전용이다(Codex #141 L3).
+  const spStaticNote = review.canEdit
+    ? "전체 STT 보기에서 화자를 바꿀 수 있습니다"
+    : "원문을 잠근 뒤에는 화자를 바꿀 수 없습니다";
 
   const lines = visible.map((row) => {
     const rowLaws = laws.get(row.segmentId) ?? [];
@@ -345,6 +352,7 @@ export function sttReviewValues(input: SttScreenInput) {
       spFw: row.speaker === "CHILD" ? 700 : 500,
       spFix: row.edited || row.dirty,
       spStatic,
+      spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),
@@ -386,7 +394,7 @@ export function sttReviewValues(input: SttScreenInput) {
   // 화자가 되풀이돼 어수선했다). 다시 들어 확인할 발화는 문단에 넣지 않고 지금처럼 줄로 따로 보인다 — 저신뢰 · 화자 미확인 ·
   // 가리키는 줄 · 아동 발화의 목소리 신호 · 관련 조문이 있는 줄. 저신뢰는 고치기 전 신뢰도로 본다(고치는 중에 문단으로 들어가
   // 입력칸이 사라지지 않게. 고친 것을 저장하면 서버가 확인한 발화로 보아 문단에 들어간다).
-  // 문단 안 문장은 그대로 발화 하나씩이다: 고칠 수 있으면 누른 문장의 입력칸 · 화자 고르기가 문단 아래 열리고, 읽기만 하면
+  // 문단 안 문장은 그대로 발화 하나씩이다: 고칠 수 있으면 누른 문장의 입력칸 · 화자 고르기가 그 문장 바로 아래 열리고, 읽기만 하면
   // 누른 문장부터 다시 듣는다. 문단의 화자 단추는 그 문단 발화 모두의 화자를 바꾼다.
   // 확인할 곳 · 핵심 발화 보기는 떨어진 줄을 모아 보이므로 합치지 않는다.
   type Row = (typeof visible)[number];
@@ -418,6 +426,7 @@ export function sttReviewValues(input: SttScreenInput) {
       spFw: first.speaker === "CHILD" ? 700 : 500,
       spFix: rows.some((row) => row.edited || row.dirty),
       spStatic,
+      spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
       toggleSp: () => setState({ spOpen: open ? null : key }),
@@ -472,7 +481,10 @@ export function sttReviewValues(input: SttScreenInput) {
       blocks.push({ kind: "line", key: line.key, line });
       return;
     }
-    if (run.length > 0 && visible[run[run.length - 1]].speaker !== row.speaker) flush();
+    // 저장된 화자도 같아야 합친다 — 문단 화자를 바꿔 저장 전에 이웃 문단과 합쳐지면, 되돌릴 때 원래 이웃 발화까지
+    // 바뀌었다(Codex #141 M1). 저장하면(저장된 화자가 같아지면) 한 문단이 된다.
+    const prev = run.length > 0 ? visible[run[run.length - 1]] : null;
+    if (prev && (prev.speaker !== row.speaker || prev.savedSpeaker !== row.savedSpeaker)) flush();
     run.push(index);
   });
   flush();
