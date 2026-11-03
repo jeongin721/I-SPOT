@@ -917,3 +917,39 @@ def test_rag_pipeline_masks_everything_it_sends(real_rag) -> None:
     for name in ("한가람", "한누리", "가람", "누리"):
         assert name not in outgoing, name
     assert "[KNOWN_" in outgoing
+
+
+def test_rag_does_not_bring_back_records_that_were_cut_away(real_rag) -> None:
+    """build_case_records 가 잘라서 모두 뺀 기록([])을 pipeline 이 '기록을 안 줌'(None)으로 보고 원문 전체를 위치 없이
+    case:1 로 다시 넣지 않는다(Codex #138 마지막 재검증 R2 — 600자 상한을 넘은 원문이 회차 · 구간 · 시각 없이 근거가 됐다)."""
+
+    session, sent = real_rag
+    transcript = {
+        "segments": [{"segment_id": "seg_001", "speaker": "CHILD", "start_ms": 1200, "text": "가" * 700}]
+    }
+
+    session.analyze_reviewed_transcript(
+        transcript,
+        "physical",
+        known_identifiers=[],
+        session_no=2,
+        session_id="session-two",
+        with_questions=False,
+        with_manual_references=False,
+    )
+
+    # 이번 회차 발화는 근거자료 분석 입력으로는 그대로 간다(가린 뒤). 사례 기록(근거 후보)으로는 다시 들어가지 않는다.
+    assert sent["text"]
+    assert sent["records"] == []
+
+
+def test_rag_without_records_still_uses_the_consultation_as_case_one(real_rag) -> None:
+    """기록을 아예 안 주면(None) 예전처럼 상담 문장 하나를 사례 기록으로 쓴다(rag 를 따로 부르는 길 — main.py 등)."""
+
+    from rag import pipeline
+
+    _session, sent = real_rag
+
+    pipeline.analyze_consultation_evidence("아이가 학교에서 맞았다고 했다", "physical", known_identifiers=[], use_law=False)
+
+    assert sent["records"] == ["아이가 학교에서 맞았다고 했다"]
