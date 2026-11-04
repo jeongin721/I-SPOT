@@ -382,12 +382,17 @@ class ModelingAIAdapter:
         *,
         time_limit_seconds: Optional[float] = None,
         case_context: Optional[Dict[str, Any]] = None,
+        on_signals_ready: Optional[Callable[[AIAnalysisBundle], None]] = None,
     ) -> AIAnalysisBundle:
         """time_limit_seconds: 이 분석의 제한 시간. analysis_service 가 작업 전체 마감에 맞춰 줄인 값을
         넘긴다(run_with_timeout 에 준 값과 같다). 직접 부르면 AI_TIMEOUT_SECONDS 다.
 
         case_context: 사례 정보(case_context_service, 2026-10-28). 모듈이 받는 판(case_context 키워드)에만
         넘긴다 — 받지 않는 예전 판에 넘기면 TypeError 로 분석이 실패한다(deadline 과 같은 방식).
+
+        on_signals_ready: 학대 신호 확인(2단계) 값이 모이면 먼저 받을 함수(2026-11-04, PROPOSAL_analysis_signals_first.md).
+        마지막 결과와 같은 검사(계약 검증 · 근거 없는 위험 항목 빼기)를 거친 AIAnalysisBundle 을 넘긴다(_signals_callback).
+        모듈이 받는 판에만 넘긴다. 받지 않는 예전 판이면 넘기지 않고, 마지막 결과만 돌려준다(지금과 같음).
         """
 
         # analysis_service 의 run_with_timeout 이 시간을 재기 시작한 직후다. 마감 시각은 이때부터 잰다.
@@ -417,6 +422,9 @@ class ModelingAIAdapter:
         if case_context is not None and accepts_keyword(analyze_audio_session_as_contract, "case_context"):
             options["case_context"] = case_context
 
+        if on_signals_ready is not None and accepts_keyword(analyze_audio_session_as_contract, "on_signals_ready"):
+            options["on_signals_ready"] = self._signals_callback(on_signals_ready, transcript_payload)
+
         try:
             (
                 contract_payload,
@@ -428,6 +436,17 @@ class ModelingAIAdapter:
             )
         except Exception as error:
             raise map_ai_error(error) from error
+
+        return self._to_bundle(contract_payload, summary_evidence_raw, model_name, transcript_payload)
+
+    def _to_bundle(
+        self,
+        contract_payload: Any,
+        summary_evidence_raw: Any,
+        model_name: Optional[str],
+        transcript_payload: Dict[str, Any],
+    ) -> AIAnalysisBundle:
+        """모듈이 준 (contract_dict, summary_evidence, model_name) 을 계약으로 검증하고 근거 없는 위험 항목을 뺀다."""
 
         try:
             result = AIAnalysisResult.model_validate(contract_payload)
@@ -452,6 +471,31 @@ class ModelingAIAdapter:
             provider=self.name,
             model=model_name,
         )
+
+    def _signals_callback(
+        self,
+        on_signals_ready: Callable[[AIAnalysisBundle], None],
+        transcript_payload: Dict[str, Any],
+    ) -> Callable[..., None]:
+        """모듈에 넘길 콜백. 모듈은 on_signals_ready(contract_dict, summary_evidence, model_name) 로 부른다(#151).
+
+        받은 값을 마지막 결과와 같은 검사(_to_bundle)를 거쳐 AIAnalysisBundle 로 넘긴다. 모듈은 콜백 예외를 잡지 않아
+        여기서 새면 분석 전체가 실패하므로 어떤 예외도 내보내지 않는다. 예외 종류만 남기고(문구에 발화가 섞일 수 있다)
+        넘기지 않는다 — 그러면 analysis_service 가 끝에서 한 번에 저장한다(지금과 같음).
+        """
+
+        def callback(contract_payload: Any, summary_evidence_raw: Any, model_name: Optional[str]) -> None:
+            try:
+                bundle = self._to_bundle(contract_payload, summary_evidence_raw, model_name, transcript_payload)
+                on_signals_ready(bundle)
+            except Exception as error:  # noqa: BLE001 — 콜백 예외로 분석을 멈추지 않는다
+                logger.warning(
+                    "학대 신호 확인 값을 먼저 넘기지 못했습니다. 끝에서 한 번에 저장합니다. provider=%s type=%s",
+                    self.name,
+                    type(error).__name__,
+                )
+
+        return callback
 
 
 # =========================================================

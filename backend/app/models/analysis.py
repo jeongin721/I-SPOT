@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import AnalysisStatus
+from app.core.enums import AnalysisStatus, DraftsStatus
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -55,6 +55,16 @@ class AIAnalysis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # 3 · 4단계 AI 초안 상태(2026-11-04, PROPOSAL_analysis_signals_first.md). 2단계를 먼저 저장하면 PENDING 이다.
+    # 오류는 코드만 두고 문구는 코드로 고정 문구를 고른다(analysis_service.DRAFTS_ERROR_MESSAGES).
+    drafts_status: Mapped[DraftsStatus] = mapped_column(
+        SAEnum(DraftsStatus, name="drafts_status", native_enum=False, length=20),
+        default=DraftsStatus.DONE,
+        server_default=DraftsStatus.DONE.value,
+        nullable=False,
+    )
+    drafts_error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

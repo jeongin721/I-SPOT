@@ -17,7 +17,7 @@ from app.models.followup_check import SessionFollowupChecks
 from app.models.session import ConsultationSession
 from app.models.user import User
 from app.schemas.followup_check import FollowupChecksResponse, FollowupChecksSaveRequest
-from app.services import audit_service
+from app.services import audit_service, session_service
 from app.services.followup_question_service import EDITABLE_STATUSES, _check_segment_ids
 
 
@@ -44,8 +44,9 @@ def save_checks(
     current_user: User,
     payload: FollowupChecksSaveRequest,
 ) -> SessionFollowupChecks:
-    # 받는 회차 상태 · 근거 번호 확인은 추가 질문과 같다(원문 확정 뒤, AI 분석 중 제외, 승인 뒤에도 받음).
+    # 받는 회차 상태 · 근거 번호 확인은 추가 질문과 같다(원문 확정 뒤, AI 분석 중 · AI 초안 만드는 중 제외, 승인 뒤에도 받음).
     assert_status_in(session.status, EDITABLE_STATUSES)
+    session_service.assert_drafts_not_pending(db, session)
     _check_segment_ids(db, session.id, payload.items)
 
     items: List[Dict[str, Any]] = [

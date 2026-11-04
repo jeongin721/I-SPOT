@@ -74,6 +74,9 @@ def update_summary(
     current_user: User,
     payload: SummaryUpdateRequest,
 ) -> ConsultationSummary:
+    # AI 초안을 만드는 중이면 막는다(409). 지금 요약은 이전 분석 것이거나 없고, 고치면(is_edited) 새 AI 초안이 들어가지 못한다.
+    session_service.assert_drafts_not_pending(db, session)
+
     summary = require_summary(db, session.id)
 
     if summary.status == ReviewStatus.APPROVED:
@@ -141,6 +144,9 @@ def approve_summary(
     session: ConsultationSession,
     current_user: User,
 ) -> ConsultationSummary:
+    # AI 초안을 만드는 중이면 막는다(409). 승인하면 새 AI 초안 없이 이전 요약으로 회차가 끝난다.
+    session_service.assert_drafts_not_pending(db, session)
+
     summary = require_summary(db, session.id)
 
     if summary.status == ReviewStatus.APPROVED:

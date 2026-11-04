@@ -52,6 +52,8 @@ class ErrorCode(str, Enum):
     ALREADY_APPROVED = "ALREADY_APPROVED"
     # 승인 풀기(reopen)를 승인되지 않은 요약 · 문서에 요청함
     NOT_APPROVED = "NOT_APPROVED"
+    # 3 · 4단계 AI 초안을 만드는 중이라 받지 않음(2026-11-04, 재분석 · 요약 수정 · 승인 · 추가 질문 · 확인 사항 저장).
+    ANALYSIS_DRAFTS_PENDING = "ANALYSIS_DRAFTS_PENDING"
 
     # Audio
     AUDIO_EMPTY_FILE = "AUDIO_EMPTY_FILE"
