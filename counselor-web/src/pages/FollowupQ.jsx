@@ -94,7 +94,7 @@ function FollowupQScreen(props) {
   const sourceDoc = useSourceDocument(ids.sessionId, { enabled: enabled && fromDocument });
   const questions = useFollowupQuestions(ids.sessionId, { enabled });
   // 문서 회차는 분석이 없어 rag 체크리스트를 부르지 않는다.
-  const checklist = useFollowupChecklist(ids.sessionId, { enabled: enabled && known && !fromDocument, watch: analysis.processing });
+  const checklist = useFollowupChecklist(ids.sessionId, { enabled: enabled && known && !fromDocument, watch: analysis.processing || analysis.draftsPending });
   const checks = useFollowupChecks(ids.sessionId, { enabled });
   // 추가 질문(초안 · 승인 목록)이나 체크리스트 확인 사항에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
   // 체크리스트 쪽은 저장 초안에서 원문에 없는 발화 번호를 거르는 데도 쓴다(#125 재검증 L2).

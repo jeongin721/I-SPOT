@@ -827,6 +827,13 @@ export interface SummaryEvidenceItem {
   score: number;
 }
 
+/**
+ * 3 · 4단계 AI 초안(상담 요약 · 일지 · 확인 메모 · 추가 질문 등) 상태(2026-11-04 제안 PROPOSAL_analysis_signals_first).
+ * 서버는 학대 신호 확인(2단계) 값을 먼저 저장하고 회차를 AI_REVIEW_REQUIRED 로 넘긴 뒤 나머지를 채운다.
+ * PENDING 만드는 중 · DONE 끝남 · FAILED 못 만듦. 이 칸이 생기기 전 서버 · 분석에는 없다(= DONE 으로 본다).
+ */
+export type DraftsStatus = "PENDING" | "DONE" | "FAILED";
+
 export interface AIAnalysis {
   id: string;
   session_id: string;
@@ -841,6 +848,10 @@ export interface AIAnalysis {
   result: AnalysisResult | null;
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
+  /** 3 · 4단계 AI 초안 상태(DraftsStatus). 없으면 DONE. */
+  drafts_status?: DraftsStatus;
+  /** drafts_status 가 FAILED 일 때만. 고정 문구. */
+  drafts_error?: SessionErrorInfo | null;
 }
 
 /** AI 분석 실행 요청 결과. 202 로 돌아오며 처리는 아직 진행 중이다. */

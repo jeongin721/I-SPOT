@@ -12,7 +12,7 @@
 //  - 근거는 요약 문장과 글자로 맞추지 않는다. 근거의 keyPoint 는 AI 원본 문장이고, 발화는 segment_id 로 찾는다.
 //  - AI 분석 중이면 POLL_INTERVAL_MS 마다 조용히 다시 조회한다.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { summary as summaryApi, transcript as transcriptApi } from "../api/endpoints";
@@ -81,6 +81,11 @@ export interface SummaryFields {
 export interface SummaryReviewOptions {
   /** false 면 부르지 않는다(로그인 확인 전 등). 기본 true. */
   enabled?: boolean;
+  /**
+   * true 인 동안 되풀이 조회한다 — 학대 신호(2단계)는 저장됐고 3 · 4단계 AI 초안을 만드는 중일 때(drafts_status PENDING,
+   * useSessionAnalysis.draftsPending). 요약 초안은 그 초안과 함께 생긴다. false 로 바뀌면 한 번 더 받는다.
+   */
+  watch?: boolean;
 }
 
 export interface SummaryReviewState {
@@ -158,7 +163,7 @@ function sameList(a: string[], b: string[]): boolean {
 
 export function useSummaryReview(
   sessionId: string | null | undefined,
-  { enabled = true }: SummaryReviewOptions = {},
+  { enabled = true, watch = false }: SummaryReviewOptions = {},
 ): SummaryReviewState {
   const key = enabled && sessionId ? sessionId : null;
   const remote = useRemote<SummaryEnvelope>(key, summaryApi.get, "요약을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -192,7 +197,14 @@ export function useSummaryReview(
   const sessionStatus = envelope?.session_status ?? null;
   const processing = sessionStatus !== null && isProcessing(sessionStatus);
 
-  usePolling(processing, remote.refresh, remote.settled);
+  usePolling(processing || watch, remote.refresh, remote.settled);
+
+  // 초안을 만드는 중이 끝나면(watch true → false) 마지막 되풀이 조회 뒤에 생긴 요약 초안을 한 번 더 받는다.
+  const watchedBefore = useRef(watch);
+  useEffect(() => {
+    if (watchedBefore.current && !watch) remote.refresh();
+    watchedBefore.current = watch;
+  }, [watch, remote.refresh]);
 
   const savedFields: SummaryFields = useMemo(
     () =>
