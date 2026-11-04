@@ -6,10 +6,26 @@ from typing import Optional
 
 
 class UserRole(str, Enum):
-    """사용자 권한. 자유 회원가입은 없으며 관리자가 계정을 생성한다."""
+    """
+    사용자 권한. 계정은 관리자가 만들거나, 회원가입 신청을 관리자가 승인할 때 생긴다(2026-11-02).
+
+    신청하는 사람은 역할을 고르지 않는다. 승인하는 관리자가 정한다.
+    """
 
     COUNSELOR = "COUNSELOR"
     ADMIN = "ADMIN"
+
+
+class SignupRequestStatus(str, Enum):
+    """
+    회원가입 대기 신청 상태(2026-11-02, API_CONTRACT 3절 '회원가입').
+
+    PENDING 동안은 계정(users 행)이 없어 로그인할 수 없다. 관리자가 승인할 때만 계정이 생긴다.
+    """
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class CaseStatus(str, Enum):
@@ -324,3 +340,10 @@ class AuditAction(str, Enum):
     ACCOUNT_REACTIVATED = "ACCOUNT_REACTIVATED"
     USER_CREATED = "USER_CREATED"
     USER_UPDATED = "USER_UPDATED"
+    # 회원가입(2026-11-02, API_CONTRACT 3절 '회원가입'). detail 에 이메일 · 이름 · 인증번호 · 토큰은 넣지 않는다.
+    # 인증번호를 만듦(메일 실패는 status=FAILURE · MAIL_SEND_FAILED) · 맞힘(살아 있는 번호를 틀리면 FAILURE).
+    SIGNUP_CODE_SENT = "SIGNUP_CODE_SENT"
+    SIGNUP_CODE_VERIFIED = "SIGNUP_CODE_VERIFIED"
+    SIGNUP_REQUESTED = "SIGNUP_REQUESTED"
+    SIGNUP_APPROVED = "SIGNUP_APPROVED"
+    SIGNUP_REJECTED = "SIGNUP_REJECTED"

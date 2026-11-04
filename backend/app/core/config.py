@@ -1,5 +1,6 @@
 # 환경설정. Secret/API Key 는 코드에 하드코딩하지 않고 .env 로만 주입한다.
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, List, Literal
@@ -32,6 +33,9 @@ _PUBLIC_PII_KEYS = (
     "aXNwb3QtbG9jYWwtZGV2LW9ubHktcGlpLWtleS0wMDE=",  # b"ispot-local-dev-only-pii-key-001"
     "aXNwb3QtbG9jYWwtZGV2LW9ubHktaW5kZXgta2V5LTE=",  # b"ispot-local-dev-only-index-key-1"
 )
+
+# 회원가입 허용 도메인 한 칸의 모양(소문자 ASCII 낱말을 점으로 이음, 점 하나 이상). 국제화 도메인은 punycode 로 적는다.
+_EMAIL_DOMAIN = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 # 긴 비밀번호의 문자 종류 면제 길이로 받을 수 있는 범위. 0 은 면제 없음이다.
 # 12자보다 짧으면 사실상 종류 규칙을 끄는 셈이고, 72 는 bcrypt 가 받는 최대 byte 다.
@@ -105,6 +109,23 @@ class Settings(BaseSettings):
     TEMP_PASSWORD_VALID_HOURS: int = Field(default=72, ge=1)
     # 이전 비밀번호 재사용 금지에 쓸 보관 개수. 0 이면 검사하지 않는다.
     PASSWORD_HISTORY_COUNT: int = Field(default=3, ge=0, le=20)
+
+    # ---------------------------------------------------------
+    # 회원가입 (이메일 인증번호 → 대기 신청 → 관리자 승인, 2026-11-02, API_CONTRACT 3절 '회원가입')
+    # ---------------------------------------------------------
+    # 끄면(기본) 인증번호 보내기 · 확인 · 신청이 503 SIGNUP_DISABLED 다. 설정 조회와 관리자 승인 창구는 그대로 쓴다.
+    # 인증번호 횟수 · 시간 같은 숫자는 팀과 정한 값이라 설정이 아니라 signup_service 상수다.
+    SIGNUP_ENABLED: bool = False
+    # 받을 이메일 도메인(콤마 구분, 정확히 일치 — 하위 도메인은 따로 적는다). 비면 전부 받는다.
+    SIGNUP_ALLOWED_EMAIL_DOMAINS: Annotated[List[str], NoDecode] = Field(default_factory=list)
+
+    # 메일 발송기(app/adapters/mail_adapter.py).
+    #   fake    — 보내지 않고 프로세스 메모리에 담는다(시험 · 기본).
+    #   console — 본문(인증번호 포함)을 표준 출력에 찍는다. 로컬에서 화면을 붙여 볼 때만, ENV=production 이면 서버가 뜨지 않는다.
+    #   ses     — AWS SES(boto3). 자격은 EC2 역할에서 받는다(접근 키를 .env 에 두지 않는다). 보내는 주소는 SES 에서 인증한 것.
+    MAIL_PROVIDER: Literal["fake", "console", "ses"] = "fake"
+    SES_FROM_ADDRESS: str = ""
+    SES_REGION: str = "ap-northeast-2"
 
     # ---------------------------------------------------------
     # CORS
@@ -202,7 +223,8 @@ class Settings(BaseSettings):
     # local/test 에서는 보지 않는다.
     AI_PIPELINE_ALLOW_UNMASKED: bool = False
     # modeling 은 가린 글을 OpenAI 로 보내지만 가리기가 아직 완전하지 않다(이름 인식이 놓친 이름을 잡아 줄
-    # 등록 실명 대조가 서버 경로에서는 돌지 않는다. 긴 상담 뒷부분을 못 가리던 문제는 10/20 겹치는 창으로 고쳤다).
+    # 등록 실명 대조는 11/02 부터 서버 경로에서도 돌지만 실명을 등록한 사례의 등록한 이름에만 돈다. 긴 상담 뒷부분을
+    # 못 가리던 문제는 10/20 겹치는 창으로 고쳤다). 이 잠금을 풀지는 따로 검증한 뒤 정한다(specs case-personal-info-encryption).
     # ENV=production 에서는 이 값이 true 일 때만 modeling 으로 뜬다 — 가상 데이터로 일부러 시험할 때만 켠다.
     # local/test 에서는 보지 않는다.
     AI_MODELING_ALLOW_IN_PRODUCTION: bool = False
@@ -240,8 +262,8 @@ class Settings(BaseSettings):
     FOLLOWUP_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
     # 서버 전체 동시 실행 건수. 시간을 넘긴 작업도 실제로 끝날 때까지 자리를 쥔다(법령 질문 #109 R2 와 같은 방식).
     FOLLOWUP_MAX_CONCURRENCY: int = Field(default=1, ge=1)
-    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true. rag 에 등록 실명을 넘기지 않아(known_identifiers=[])
-    # 이름 대조(Tier 2)가 돌지 않으므로 분석 modeling 과 같은 잠금을 둔다(아래 _block_followup_module_in_production).
+    # ENV=production 에서 FOLLOWUP_PROVIDER=module 을 일부러 쓸 때만 true. rag 에 등록 실명을 넘기지만(11/02) 등록하지 않은
+    # 이름은 이름 인식에만 기대므로 분석 modeling 과 같은 잠금을 둔다(아래 _block_followup_module_in_production).
     FOLLOWUP_ALLOW_IN_PRODUCTION: bool = False
     # rag/config.py 가 os.getenv 로 읽는 값. 여기 적으면 followup_checklist_adapter 가 process 환경으로 넘긴다
     # (비어 있으면 넘기지 않아 rag 기본값을 쓴다 — 빈 값이 기본값을 덮지 않게, #117 교차검증 R6).
@@ -274,6 +296,53 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
 
         return value
+
+    @field_validator("SIGNUP_ALLOWED_EMAIL_DOMAINS", mode="before")
+    @classmethod
+    def _parse_email_domains(cls, value: object) -> object:
+        """
+        콤마 구분 도메인. 소문자로 맞추고 앞의 '@' 는 뗀다(`@example.org` 로 적어도 같게).
+
+        비워 두면(빈 값) 모든 도메인을 받는다. 그런데 무언가 적었는데 도메인이 하나도 안 나오거나(`@@` · `,`) 도메인이 아닌 값이
+        섞이면 서버가 뜨지 않는다 — 제한을 켜려다 오타가 나면 조용히 '전부 허용' 이 되기 때문이다(Codex #139 L3).
+        국제화 도메인은 punycode(`xn--…`)로 적는다. 가입 이메일도 그 꼴로 맞춰 비교한다(schemas/signup.py).
+        """
+
+        # 기본값(빈 목록)도 여기를 지난다(pydantic-settings 는 기본값도 검사한다).
+        if isinstance(value, str):
+            items = value.split(",")
+            wrote_something = bool(value.strip())
+        elif isinstance(value, (list, tuple)):
+            items = list(value)
+            wrote_something = any(str(item).strip() for item in items)
+        else:
+            return value
+
+        if not wrote_something:
+            return []
+
+        domains = []
+
+        for item in items:
+            domain = str(item).strip().lower().lstrip("@")
+
+            if not str(item).strip():
+                continue
+
+            if not _EMAIL_DOMAIN.match(domain):
+                raise ValueError(
+                    "SIGNUP_ALLOWED_EMAIL_DOMAINS 에 도메인이 아닌 값이 있습니다. "
+                    "콤마로 나눈 도메인(예: agency.example.kr, 국제화 도메인은 xn-- 꼴)만 적거나, 제한하지 않으려면 비워 두세요."
+                )
+
+            domains.append(domain)
+
+        if not domains:
+            raise ValueError(
+                "SIGNUP_ALLOWED_EMAIL_DOMAINS 에 값을 적었는데 도메인이 하나도 없습니다. 제한하지 않으려면 비워 두세요."
+            )
+
+        return domains
 
     @field_validator("PASSWORD_PASSPHRASE_LENGTH")
     @classmethod
@@ -376,10 +445,11 @@ class Settings(BaseSettings):
     def _block_modeling_in_production(self) -> "Settings":
         """운영에서 비식별이 아직 불완전한 modeling 으로 서버가 뜨지 않게 한다.
 
-        modeling 은 외부(OpenAI)로 보내기 전에 가리지만, 서버 경로는 case_id 를 넘기지 않아 등록 실명 대조(Privacy Gateway
-        Tier 2)가 돌지 않는다. 그래서 이름 인식(NER)이 놓친 이름 · 기관 · 지역은 그대로 나간다(ai/modeling/abuse/contract_adapter.py
-        '아직 못 채운 것' · privacy_gateway.py. 실명은 암호화해 저장하지만 분석에 등록 이름을 넘기는 연결은 후속 PR). 이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을
-        못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
+        modeling 은 외부(OpenAI)로 보내기 전에 가린다. 2026-11-02 부터 서버가 사례에 암호화 저장한 실명을 넘겨 등록 실명 대조
+        (Privacy Gateway Tier 2)가 돌지만, 실명을 등록한 사례의 등록한 이름에만 돈다. 등록하지 않은 이름(친구 · 교사 · 학교 등)과
+        실명을 등록하지 않은 사례는 이름 인식(NER)에만 기대므로, NER 이 놓친 이름 · 기관 · 지역은 그대로 나간다
+        (ai/modeling/abuse/contract_adapter.py '아직 못 채운 것' · privacy_gateway.py). 이 잠금을 풀지는 따로 검증한 뒤 정한다.
+        이름 인식이 글 앞 512토큰만 봐서 긴 상담 뒷부분을 못 가리던 문제는 2026-10-20 겹치는 창으로 고쳤다(pii_masking._decode_ner_spans).
         이 문제가 해결되기 전에 .env 의 AI_PROVIDER 만 바꿔 실수로 켜지 않도록, AI_MODELING_ALLOW_IN_PRODUCTION=true 를
         함께 적어야만 뜬다. local/test 는 그대로 둔다(가상 데이터 전용).
         """
@@ -390,8 +460,9 @@ class Settings(BaseSettings):
         raise ValueError(
             "ENV=production 에서는 AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
             "modeling 은 상담 내용을 외부(OpenAI)로 보내는데, 그 전에 하는 비식별(이름 · 학교 · 주소 가리기)이 "
-            "아직 완전하지 않습니다 — 이름 인식이 놓친 이름을 등록 실명으로 한 번 더 잡는 대조가 서버에서는 돌지 않아, "
-            "놓친 이름이 그대로 나갈 수 있습니다. "
+            "아직 완전하지 않습니다 — 이름 인식이 놓친 이름을 등록 실명으로 한 번 더 잡는 대조는 실명을 등록한 사례의 "
+            "등록한 이름에만 돌아, 등록하지 않은 이름(친구 · 교사 등)이나 실명을 등록하지 않은 사례에서 놓친 이름은 "
+            "그대로 나갈 수 있습니다. "
             "이 개인정보 문제가 해결되기 전에는 실제 상담 데이터에 AI_PROVIDER=mock 을 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 AI_MODELING_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
@@ -439,8 +510,9 @@ class Settings(BaseSettings):
     def _block_followup_module_in_production(self) -> "Settings":
         """운영에서 다음 상담 체크리스트 module 로 서버가 뜨지 않게 한다(분석 modeling · 법령 질의와 같은 방식).
 
-        rag 는 아동 발화 · 이전 회차 기록 · 추가 질문 초안을 이름 인식으로 가린 뒤 OpenAI 로 보내는데, Backend 가 등록 실명을
-        넘기지 않아(known_identifiers=[]) 놓친 이름은 그대로 나간다. .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
+        rag 는 아동 발화 · 이전 회차 기록 · 추가 질문 초안을 이름 인식으로 가린 뒤 OpenAI 로 보낸다. Backend 가 그 사례의 등록 실명을
+        넘겨(2026-11-02) 등록한 이름은 대조로 한 번 더 가리지만, 등록하지 않은 이름을 이름 인식이 놓치면 그대로 나간다.
+        .env 의 FOLLOWUP_PROVIDER 만 바꿔 실수로 켜지 않도록
         FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어야만 뜬다. local/test 는 그대로 둔다.
         """
 
@@ -449,7 +521,8 @@ class Settings(BaseSettings):
 
         raise ValueError(
             "ENV=production 에서는 FOLLOWUP_PROVIDER=module 로 서버를 시작하지 않습니다. "
-            "다음 상담 체크리스트는 아동 발화 · 이전 회차 기록을 외부(OpenAI)로 보내는데, 등록 실명 대조가 돌지 않습니다. "
+            "다음 상담 체크리스트는 아동 발화 · 이전 회차 기록을 외부(OpenAI)로 보내는데, 등록 실명 대조는 등록한 이름에만 돌아 "
+            "등록하지 않은 이름을 이름 인식이 놓치면 그대로 나갑니다. "
             "실제 상담 데이터가 있는 서버에서는 FOLLOWUP_PROVIDER=off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 FOLLOWUP_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
@@ -466,6 +539,44 @@ class Settings(BaseSettings):
             "같거나 크면 법령 질의에 넘기는 마감 시각이 시작과 같거나 앞서 모든 질문이 바로 AI_TIMEOUT 으로 끝납니다. "
             f"지금 값: AI_DEADLINE_MARGIN_SECONDS={self.AI_DEADLINE_MARGIN_SECONDS}, "
             f"LAW_QA_TIMEOUT_SECONDS={self.LAW_QA_TIMEOUT_SECONDS}"
+        )
+
+    @model_validator(mode="after")
+    def _block_console_mail_in_production(self) -> "Settings":
+        """운영에서 console 발송기로 서버가 뜨지 않게 한다. console 은 인증번호가 든 메일 본문을 서버 출력에 찍는다."""
+
+        if self.ENV != "production" or self.MAIL_PROVIDER != "console":
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 MAIL_PROVIDER=console 로 서버를 시작하지 않습니다. "
+            "console 은 인증번호가 든 메일 본문을 서버 출력(로그)에 찍습니다. 운영은 MAIL_PROVIDER=ses 를 쓰세요."
+        )
+
+    @model_validator(mode="after")
+    def _require_ses_for_signup_in_production(self) -> "Settings":
+        """운영에서 가입을 켰는데 메일이 실제로 나가지 않는 발송기면 서버가 뜨지 않게 한다.
+
+        fake 로 켜면 인증번호가 아무에게도 가지 않는 공개 가입 창구가 열린다(누구도 가입할 수 없고, 문제도 바로 보이지 않는다).
+        """
+
+        if self.ENV != "production" or not self.SIGNUP_ENABLED or self.MAIL_PROVIDER == "ses":
+            return self
+
+        raise ValueError(
+            "ENV=production 에서 SIGNUP_ENABLED=true 이면 MAIL_PROVIDER=ses 여야 합니다. "
+            f"지금 값: MAIL_PROVIDER={self.MAIL_PROVIDER} — 인증번호 메일이 실제로 나가지 않습니다."
+        )
+
+    @model_validator(mode="after")
+    def _ses_needs_from_address(self) -> "Settings":
+        """ses 발송기는 보내는 주소가 있어야 한다(모든 환경). 비어 있으면 첫 발송에서야 실패한다."""
+
+        if self.MAIL_PROVIDER != "ses" or self.SES_FROM_ADDRESS.strip():
+            return self
+
+        raise ValueError(
+            "MAIL_PROVIDER=ses 이면 SES_FROM_ADDRESS(SES 에서 인증한 보내는 주소)를 설정해야 합니다."
         )
 
     @property

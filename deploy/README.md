@@ -181,3 +181,49 @@ LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고�
 5. 비용 · 한도: 호출마다 법령 전문(약 9.8만 자)이 OpenAI 로 나갑니다. 사용자당 분당 6회(`LAW_QA_RATE_LIMIT_PER_MINUTE`) · 서버 동시 2건(`LAW_QA_MAX_CONCURRENCY`)이 기본이고, 데모 서버의 키가 개인 키면 비용이 그 키로 나갑니다.
 
 확인: `curl -s -X POST http://localhost:8000/api/v1/law-guide/questions -H "Authorization: Bearer <토큰>" -H "Content-Type: application/json" -d '{"question":"응급조치 기간은 얼마나 돼요?"}'` 가 200 과 `sources.laws` 를 돌려주면 됩니다.
+
+## 회원가입 켜기 (`SIGNUP_ENABLED` · `MAIL_PROVIDER=ses`)
+
+회원가입(이메일 인증번호 → 대기 신청 → 관리자 승인, `backend/docs/API_CONTRACT.md` 3절 '회원가입')은 기본으로 꺼져 있습니다.
+인증번호 메일은 AWS SES 로 보냅니다. 자격은 EC2 역할에서 받으므로 접근 키 · 비밀번호를 `backend.env` 에 넣지 않습니다.
+**처음 한 번만** 아래를 합니다.
+
+1. **보내는 주소 인증** — SES 콘솔(서울 `ap-northeast-2`) → Identities → Create identity. 받은 메일의 링크를 24시간 안에 누릅니다.
+   - 가진 도메인이 있으면 도메인 identity(Easy DKIM)를 권합니다. Gmail 같은 남의 도메인 주소를 보내는 주소로 쓰면 SES 가 그 도메인으로
+     서명할 수 없어 DMARC 정렬이 맞지 않고, 받는 쪽이 그 도메인의 DMARC 정책에 따라 스팸함으로 보내거나 거부할 수 있습니다.
+   - 이메일 주소 identity 는 대소문자를 구분합니다. `SES_FROM_ADDRESS` 를 인증한 그대로 적습니다.
+2. **받는 주소 등록(샌드박스)** — 샌드박스에서는 인증한 주소로만 보낼 수 있고, 24시간에 200통 · 초당 1통까지입니다(AWS 문서).
+   시험할 팀원 주소를 같은 방법으로 identity 로 만들고 각자 링크를 누릅니다. 등록 안 한 주소로 가입하면 응답은 `202` 지만 메일이 가지 않고
+   감사 로그에 `SIGNUP_CODE_SENT` · `FAILURE` · `MAIL_SEND_FAILED`(`detail.cause` 예: `MessageRejected`)가 남습니다.
+3. **EC2 역할 권한** — `ispot-backend` 인스턴스의 IAM 역할에 아래 정책을 붙입니다(역할이 없으면 만들어 인스턴스에 연결).
+   Resource 는 그 계정 · 지역의 identity 로 좁힙니다. 보내는 주소 하나로만 좁히면 샌드박스에서 받는 주소 identity 권한 오류가 난다는
+   사례가 있어(확인하지 않음) `identity/*` 로 둡니다 — 이렇게 해도 SES 에서 인증한 identity 로만 보낼 수 있습니다.
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": "ses:SendEmail",
+       "Resource": "arn:aws:ses:ap-northeast-2:<계정 ID>:identity/*"
+     }]
+   }
+   ```
+
+4. **`backend.env`** 에 넣고 다시 배포합니다.
+
+   ```
+   SIGNUP_ENABLED=true
+   MAIL_PROVIDER=ses
+   SES_FROM_ADDRESS=<1에서 인증한 주소>
+   SES_REGION=ap-northeast-2
+   ```
+
+   `ENV=production` 에서 `SIGNUP_ENABLED=true` 인데 `MAIL_PROVIDER` 가 `ses` 가 아니거나, `ses` 인데 `SES_FROM_ADDRESS` 가 비어 있으면
+   Backend 가 뜨지 않아 3/5 에서 멈춥니다. `MAIL_PROVIDER=console`(인증번호를 출력에 찍음)도 운영에서는 막힙니다.
+5. 확인: 등록한 주소로 가입 → 메일 받기 → 관리자 화면(또는 `/docs`)에서 `GET /api/v1/auth/signup-requests` → 승인 → 그 계정으로 로그인.
+   메일이 안 오면 `sudo docker logs --tail 50 ispot-backend` 의 `cause=` 와 감사 로그를 봅니다(받는 주소는 로그에 남지 않습니다).
+
+- 백엔드 컨테이너는 `--network host` 라 인스턴스 메타데이터(역할 자격)에 바로 닿습니다.
+- IP 당 요청 수(보내기 시간당 20번 · 확인 30번)는 서버 메모리로 셉니다. 다시 배포하면 비워집니다.
+- 끌 때는 `SIGNUP_ENABLED=false` 로 바꾸고 다시 배포합니다. 남은 대기 신청은 관리자 창구에서 계속 처리할 수 있습니다.

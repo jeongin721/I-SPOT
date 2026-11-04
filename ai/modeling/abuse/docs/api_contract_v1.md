@@ -217,6 +217,13 @@ case_store.get_known_identifiers(case_id: str) -> List[str]
 등록 안 해도 analyze_session 자체는 정상 동작한다(NER/정규식만 적용) —
 다만 그만큼 실명이 가려지지 않고 외부로 나갈 위험이 올라간다.
 
+**서버(Backend) 경로(2026-11-02)**: Backend 는 `case_store` 를 쓰지 않는다(평문
+SQLite 라 실명을 넣지 않는다). 사례에 암호화해 저장한 실명을 메모리에서만 풀어
+`analyze_audio_session_as_contract(known_identifiers=[...])` 로 넘기고,
+`analyze_audio_session` 은 주면 `case_store` 대신 그 값을 쓴다(안 주면 위처럼
+`case_id` 로 조회). 종결 요약(`closure_summary_llm.generate_closure_summary`)도
+같은 목록에 사례 별칭을 더해 `known_identifiers` 로 받는다.
+
 ---
 
 ## 4. 사례 비교/종결 검토 — `case_comparison`

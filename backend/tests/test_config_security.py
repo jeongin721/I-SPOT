@@ -147,7 +147,7 @@ def test_production_rejects_modeling_until_privacy_issues_are_fixed() -> None:
     assert "비식별" in message
     assert "개인정보 문제가 해결되기 전" in message
     assert "AI_MODELING_ALLOW_IN_PRODUCTION=true" in message
-    # 남은 이유는 등록 실명 대조다. 고친 '긴 상담 뒷부분' 은 더 이상 이유로 적지 않는다.
+    # 남은 이유는 등록 실명 대조가 등록한 이름에만 돈다는 것이다. 고친 '긴 상담 뒷부분' 은 더 이상 이유로 적지 않는다.
     assert "등록 실명" in message
     assert "뒷부분" not in message
 
@@ -270,3 +270,61 @@ def test_other_providers_do_not_check_deadline_margin(provider: str) -> None:
     settings = _settings(AI_PROVIDER=provider, AI_TIMEOUT_SECONDS=5.0, AI_DEADLINE_MARGIN_SECONDS=10.0)
 
     assert settings.AI_PROVIDER == provider
+
+
+# =========================================================
+# 회원가입 메일 발송기 (2026-11-02, API_CONTRACT 3절 '회원가입')
+# =========================================================
+
+def test_signup_and_mail_defaults() -> None:
+    settings = _settings()
+
+    assert settings.SIGNUP_ENABLED is False
+    assert settings.SIGNUP_ALLOWED_EMAIL_DOMAINS == []
+    assert settings.MAIL_PROVIDER == "fake"
+    assert settings.SES_REGION == "ap-northeast-2"
+
+
+def test_production_rejects_console_mail() -> None:
+    """console 은 인증번호가 든 본문을 서버 출력에 찍는다."""
+
+    with pytest.raises(ValidationError, match="MAIL_PROVIDER=console"):
+        _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, MAIL_PROVIDER="console")
+
+
+@pytest.mark.parametrize("env", ["local", "test"])
+def test_non_production_allows_console_mail(env: str) -> None:
+    assert _settings(ENV=env, MAIL_PROVIDER="console").MAIL_PROVIDER == "console"
+
+
+def test_production_signup_needs_ses() -> None:
+    """가입을 켰는데 메일이 실제로 나가지 않으면 아무도 가입할 수 없는 창구가 열린다."""
+
+    with pytest.raises(ValidationError, match="SIGNUP_ENABLED=true"):
+        _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET, SIGNUP_ENABLED=True)
+
+    settings = _settings(
+        ENV="production",
+        JWT_SECRET_KEY=STRONG_SECRET,
+        SIGNUP_ENABLED=True,
+        MAIL_PROVIDER="ses",
+        SES_FROM_ADDRESS="noreply@ispot.example.org",
+    )
+
+    assert settings.MAIL_PROVIDER == "ses"
+
+
+def test_production_with_signup_off_keeps_fake_mail() -> None:
+    assert _settings(ENV="production", JWT_SECRET_KEY=STRONG_SECRET).MAIL_PROVIDER == "fake"
+
+
+@pytest.mark.parametrize("env", ["local", "test", "production"])
+def test_ses_needs_from_address(env: str) -> None:
+    with pytest.raises(ValidationError, match="SES_FROM_ADDRESS"):
+        _settings(ENV=env, JWT_SECRET_KEY=STRONG_SECRET, MAIL_PROVIDER="ses", SES_FROM_ADDRESS="  ")
+
+
+def test_allowed_domains_read_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SIGNUP_ALLOWED_EMAIL_DOMAINS", " ISPOT.example.org, @Agency.example.kr ,, ")
+
+    assert _settings().SIGNUP_ALLOWED_EMAIL_DOMAINS == ["ispot.example.org", "agency.example.kr"]

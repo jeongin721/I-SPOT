@@ -219,6 +219,10 @@ APPROVED → AI_REVIEW_REQUIRED   요약을 다시 고친 뒤 다시 승인한�
 
 오류: `401 INVALID_CREDENTIALS`, `403 INACTIVE_USER`, `403 ACCOUNT_DORMANT`, `403 TEMP_PASSWORD_EXPIRED`
 
+**이메일은 한 가지 꼴로 찾는다**(2026-11-03). 아이디는 소문자, 도메인은 IDNA 2008 punycode 로 맞춘 값이 같으면 같은 계정이다 —
+`Kim@Bücher.DE` · `kim@xn--bcher-kva.de` 는 같고, `straße.de`(`xn--strae-oqa.de`)와 `strasse.de` 는 다르다. 계정을 만들 때(관리자 생성 ·
+회원가입 승인)도 이 꼴로 저장해서 계정 응답의 `email` 은 국제화 도메인이면 `xn--…` 로 온다. 예전에 다른 표기로 저장된 계정도 같은 꼴로 바꿔 찾는다.
+
 **계정 상태는 비밀번호가 맞은 뒤에만 알려준다.** 먼저 알려주면 비밀번호를 모르는 사람이
 "이 이메일은 등록돼 있다" 를 알아내는 계정 열거가 된다. 틀린 비밀번호는 언제나 `INVALID_CREDENTIALS` 다.
 
@@ -313,8 +317,9 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 오류: `403 FORBIDDEN`, `409 DUPLICATE_RESOURCE`, `422 WEAK_PASSWORD`
 
 만든 관리자와 함께 감사 로그 `USER_CREATED` 로 남는다(아래 감사 로그 절).
+이메일은 위 로그인 절의 한 가지 꼴로 저장하고, 그 꼴이 같은 계정이 있으면 `409 DUPLICATE_RESOURCE` 다(대소문자 · 국제화 도메인 표기만 다른 옛 계정 포함).
 
-> 자유 회원가입 endpoint 는 존재하지 않는다.
+> 바로 계정이 생기는 가입 창구는 없다. 회원가입은 대기 신청 → 관리자 승인이다(아래 '회원가입').
 
 ### 계정 관리 (관리자 전용)
 
@@ -350,6 +355,157 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 - **잠김 여부는 `is_locked` 로 본다.** 기본 설정(`LOGIN_LOCK_MINUTES`=0)에서는 시간이 지나도 풀리지 않아
   `locked_until` 이 비어 있다. `locked_until` 은 시간 잠금일 때 풀리는 시각이고, 그 시각이 지나면 `is_locked` 는 `false` 다.
 - 로그인은 잠김을 알려주지 않으므로(위 로그인 절) 관리자 화면이 잠긴 계정을 알 수 있는 곳은 이 값과 감사 로그뿐이다.
+
+### 회원가입 — 이메일 인증번호 → 대기 신청 → 관리자 승인 (2026-11-02)
+
+새 로그인 화면의 회원가입 팝업이 쓴다. **신청만으로는 계정이 생기지 않는다.** 신청은 대기(`PENDING`)로 저장되고,
+관리자가 승인할 때 역할을 정해 계정을 만든다. 승인 전에는 로그인할 수 없다(없는 계정과 같은 `401 INVALID_CREDENTIALS`).
+받는 칸은 이름 · 이메일 · 비밀번호뿐이다(생년월일 · 성별 · 휴대폰은 받지 않는다 — 개인정보 최소 저장).
+
+서버 설정 `SIGNUP_ENABLED` 가 꺼져 있으면(기본) 공개 창구 셋(보내기 · 확인 · 신청)은 `503 SIGNUP_DISABLED` 다.
+설정 조회와 관리자 창구는 늘 동작한다(끈 뒤에도 남은 신청을 처리할 수 있게).
+
+| 순서 | 창구 | 로그인 | 응답 |
+| --- | --- | --- | --- |
+| 0 | `GET /api/v1/auth/signup-requests/settings` | 없음 | `200` 켜짐 여부 · 받는 도메인 |
+| 1 | `POST /api/v1/auth/signup-requests/send-code` | 없음 | `202` |
+| 2 | `POST /api/v1/auth/signup-requests/verify-code` | 없음 | `200` 확인 토큰 |
+| 3 | `POST /api/v1/auth/signup-requests` | 없음 | `201` `PENDING` |
+| 관리 | `GET /api/v1/auth/signup-requests` | 관리자 | `200` 목록 |
+| 관리 | `POST /api/v1/auth/signup-requests/{id}/approve` | 관리자 | `200` |
+| 관리 | `POST /api/v1/auth/signup-requests/{id}/reject` | 관리자 | `200` |
+
+#### 0. 설정 조회
+
+```json
+{ "data": { "enabled": true, "allowed_email_domains": [] } }
+```
+
+`enabled` 가 `false` 면 화면은 회원가입 단추를 숨기거나 막는다. `allowed_email_domains` 가 비면 모든 도메인을 받는다
+(소문자 ASCII, 정확히 일치 — 하위 도메인은 따로 적혀 있어야 받는다. 국제화 도메인은 punycode `xn--…` 꼴이고, 가입 이메일도 그 꼴로 바꿔 비교한다).
+
+#### 1. 인증번호 보내기 → 202
+
+```json
+{ "email": "new@example.com" }
+```
+
+```json
+{ "data": { "resend_after_seconds": 60, "expires_in_seconds": 300 } }
+```
+
+- 인증번호는 숫자 6자리이고 5분 동안 쓸 수 있다. 서버에는 해시만 남는다.
+- **받아들인 요청은 늘 이 응답이다.** 이미 계정이 있거나 승인을 기다리는 이메일이어도 같은 응답 · 같은 횟수 제한이고,
+  그때는 메일만 보내지 않는다(가입 여부가 드러나지 않게). 화면 안내 예: "메일이 오지 않으면 스팸함을 확인하고,
+  이미 가입했거나 승인을 기다리는 중이면 관리자에게 문의하세요."
+- 메일은 응답을 보낸 뒤 보낸다. 발송이 실패해도 응답은 이미 `202` 다 — 60초 뒤 다시 보내면 된다.
+  기다리는 사이 쓸 수 없게 된 번호(5분 지남 · 새 번호로 바뀜)는 보내지 않는다.
+- 새로 보내면 앞 번호는 더 맞지 않고(틀린 번호로 센다 — 새 번호는 늘 앞 번호와 다르다) 틀린 횟수도 처음부터 센다.
+- 이메일은 메일을 보낼 수 있는 꼴로 맞춘다(1 · 2단계 같음): 앞뒤 공백을 떼고 소문자로, 국제화 도메인은 punycode(`bücher.de` →
+  `xn--bcher-kva.de`)로 바꾼다. **아이디(@ 앞)는 영문 · 숫자 등 ASCII 만 받는다** — 한글 등이 든 주소, 표시 이름(`이름 <주소>`),
+  대괄호 IP 주소는 `422 VALIDATION_ERROR` 다(SES 가 보낼 수 없는 꼴). 가입 여부와 상관없이 같은 입력은 같은 답이다.
+- 오류
+  - `429 RATE_LIMITED` — 같은 이메일을 60초 안에 다시 보냄 · 같은 이메일로 24시간(첫 보내기부터) 안에 5번 넘게 보냄 ·
+    같은 IP 에서 1시간에 20번 넘게 보냄. `details.retry_after_seconds` 는 다시 될 때까지 남은 초(1 이상). 세 경우 문구가 같다.
+  - `422 SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED` — 받는 도메인 목록이 있는데 그 밖의 이메일.
+  - `422 VALIDATION_ERROR`(이메일 형식 — `details.fields[].reason` 은 고정 문구 "이메일 형식이 올바르지 않습니다. 영문 주소만 받습니다."
+    가 앞에 붙은 값이고, 보낸 값을 담지 않는다), `503 SIGNUP_DISABLED`.
+
+```json
+{ "error": { "code": "RATE_LIMITED", "message": "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.", "details": { "retry_after_seconds": 42 } } }
+```
+
+#### 2. 인증번호 확인 → 200
+
+```json
+{ "email": "new@example.com", "code": "123456" }
+```
+
+```json
+{ "data": { "verification_token": "…", "expires_in_seconds": 1800 } }
+```
+
+- 맞으면 그 번호는 더 쓸 수 없고 확인 토큰을 준다. 토큰은 30분 동안 3단계에 한 번만 쓴다. 화면은 저장하지 말고 메모리에만 둔다.
+- 확인한 뒤 새 번호를 받아도 이미 받은 토큰은 그대로 쓸 수 있다.
+- 오류
+  - `422 VERIFICATION_CODE_MISMATCH` — 틀림. `details.remaining_attempts`(4 → 0). 번호마다 5번까지 틀릴 수 있고,
+    0 이면 문구가 "인증번호를 여러 번 틀렸습니다. 새 인증번호를 받아 주세요." 다.
+  - `422 VERIFICATION_CODE_EXPIRED` — 쓸 수 있는 번호가 없음(5분 지남 · 이미 맞힘 · 5번 틀림 · 요청한 적 없음 모두 같다). 1단계부터 다시.
+  - `429 RATE_LIMITED` — 같은 IP 에서 1시간에 30번 넘게 확인. `422 VALIDATION_ERROR` — `code` 가 ASCII 숫자 6자리가 아님.
+    `503 SIGNUP_DISABLED`.
+
+```json
+{ "error": { "code": "VERIFICATION_CODE_MISMATCH", "message": "인증번호가 맞지 않습니다.", "details": { "remaining_attempts": 3 } } }
+```
+
+#### 3. 대기 신청 → 201
+
+```json
+{ "verification_token": "…", "name": "홍길동", "password": "아래 비밀번호 규칙" }
+```
+
+```json
+{ "data": { "status": "PENDING" } }
+```
+
+- 이름은 앞뒤 공백을 떼고 1~100자. 비밀번호는 아래 '비밀번호 규칙' 그대로다(이메일 아이디 · 이름이 든 것도 막는다).
+- 역할은 보내지 않는다(보내도 무시한다). 승인하는 관리자가 정한다.
+- 약한 비밀번호로 거절돼도(`422 WEAK_PASSWORD`) 토큰은 그대로라 같은 토큰으로 다시 내면 된다.
+- 오류: `422 SIGNUP_TOKEN_INVALID`(토큰 없음 · 30분 지남 · 이미 씀 — 1단계부터 다시), `422 WEAK_PASSWORD`, `422 VALIDATION_ERROR`,
+  `409 DUPLICATE_RESOURCE`(이미 계정이나 대기 신청이 있는 이메일 — 이때 토큰은 쓰여 다시 낼 수 없다. 비밀번호 규칙보다 먼저 본다),
+  `503 SIGNUP_DISABLED`.
+- 같은 토큰으로 동시에 여러 번 내도 하나만 `201` 이고 나머지는 `422 SIGNUP_TOKEN_INVALID` 다(토큰을 먼저 쓰고 비밀번호를 해시한다).
+
+#### 관리자 — 목록 · 승인 · 거절
+
+`GET /api/v1/auth/signup-requests` — Query: `status`(`PENDING`(기본) | `APPROVED` | `REJECTED`), `page`, `page_size`(≤100). 오래된 신청부터.
+
+```json
+{
+  "data": {
+    "items": [{
+      "id": "uuid", "email": "new@example.com", "name": "홍길동", "status": "PENDING",
+      "created_at": "...", "expires_at": "...",
+      "decided_at": null, "decided_by_id": null, "decided_by_name": null,
+      "role": null, "user_id": null
+    }],
+    "meta": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+  }
+}
+```
+
+`expires_at` 은 대기 신청이 지워지는 시각(신청 + 14일)이다. 처리한 신청은 `null`.
+
+`POST /api/v1/auth/signup-requests/{id}/approve` — 본문 `{ "role": "COUNSELOR" }`(`COUNSELOR | ADMIN`, **필수** — 기본값 없음).
+응답은 목록의 항목 하나 모양(`status` `APPROVED`, `role`, `user_id`, `decided_*` 채워짐).
+
+- 신청 때 비밀번호 그대로 계정이 생긴다(`must_change_password` `false`). 신청자는 그 비밀번호로 바로 로그인한다.
+- 오류: `404 NOT_FOUND`(없음 · 보관 기한으로 지워짐), `409 SIGNUP_ALREADY_DECIDED`(이미 승인 · 거절 — 두 관리자가 동시에 눌러도 하나만 된다),
+  `409 DUPLICATE_RESOURCE`(그사이 같은 이메일 계정이 생김 — 신청은 `PENDING` 그대로이니 거절하면 된다), `422 VALIDATION_ERROR`(`role` 빠짐),
+  `403 FORBIDDEN`.
+
+`POST /api/v1/auth/signup-requests/{id}/reject` — 본문 없음. 응답은 같은 모양(`status` `REJECTED`). 오류는 승인과 같다(`DUPLICATE_RESOURCE` 빼고).
+신청자에게 메일로 알리지 않는다. 거절된 사람은 처음부터 다시 신청할 수 있다.
+
+**보관 기한** — 대기 신청은 14일, 승인 · 거절한 신청은 처리 30일 뒤 지운다(비밀번호 해시는 승인 · 거절할 때 바로 지운다).
+인증번호 기록은 마지막 보내기에서 24시간 뒤 지운다. 감사 로그는 지우지 않는다(이메일 · 이름이 없다).
+
+**감사 로그**(아래 절) — 공개 창구 기록은 `actor_id` 가 비어 있다. **이메일 · 이름 · 인증번호 · 토큰은 담기지 않는다.**
+
+| action | 언제 | `status` · `error_code` · `detail` |
+| --- | --- | --- |
+| `SIGNUP_CODE_SENT` | 인증번호를 만듦 | `SUCCESS`, `detail.mail` = `QUEUED`(보냄) · `SKIPPED`(계정이나 대기 신청이 있어 안 보냄) |
+| `SIGNUP_CODE_SENT` | 메일 발송 실패 | `FAILURE` · `MAIL_SEND_FAILED`, `detail.provider` · `detail.cause`(SES 오류 코드나 예외 종류) |
+| `SIGNUP_CODE_VERIFIED` | 맞힘 · 살아 있는 번호를 틀림 | `SUCCESS` / `FAILURE` · `VERIFICATION_CODE_MISMATCH`, `detail.failed_attempts` |
+| `SIGNUP_REQUESTED` | 대기 신청 | `SUCCESS` |
+| `SIGNUP_APPROVED` | 승인 | `actor_id` 관리자, `detail.role` · `detail.user_id`. `USER_CREATED`(`detail.via` = `signup_request`)도 함께 남는다 |
+| `SIGNUP_REJECTED` | 거절 | `actor_id` 관리자 |
+
+요청 수 제한으로 막힌 요청과 쓸 수 있는 번호가 없는 확인은 감사 로그를 남기지 않는다(마구 보내는 요청이 하나하나 DB 쓰기가 되지 않게).
+메일 대기가 가득 차 메일 일을 넣지 못한 보내기는 번호를 만든 `SIGNUP_CODE_SENT` · `SUCCESS` 기록(`mail` 은 넣으려던 뜻 — `QUEUED` · `SKIPPED`)만 남고,
+넣지 못했다는 실패 기록은 따로 남기지 않는다(새 이메일 · 있는 계정이 요청 처리에서 같은 일만 하게). 대기 넘침은 서버 로그 경고로 본다.
+
+**인증번호 · 토큰 · 비밀번호는 응답(토큰은 2단계 응답 한 번만) · 오류 · 로그 어디에도 담기지 않는다.**
 
 ### GET /api/v1/auth/audit-logs (관리자 전용)
 
@@ -643,7 +799,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `GET`: `{ case_id, summary, checks, edits, report, updated_at }`. 만들기 전이면 `summary: null`, `checks` · `edits` `{}`.
 - `POST`(만들기 · 다시 만들기, **동기 200**): 종결 검토에 등록한 사례(`closure_review_at`)의 **승인 완료 회차 요약**(상담원 확정 4칸)과
   회차별 AI 관련 신호를 모은다. 등록 전 · 승인 요약이 없으면 `409 INVALID_CASE_STATE`.
-  - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(별칭을 가릴 이름으로) → LLM → 검사(근거 회차가 실제
+  - `AI_PROVIDER=modeling`: `ai/modeling/abuse/closure_summary_llm.py` 가 마스킹(사례 별칭과 등록 실명을 가릴 이름으로 — 아래
+    '개인 식별 정보' 의 'AI 가리기') → LLM → 검사(근거 회차가 실제
     승인 회차 중 LLM 에 실제로 넣은 회차인 문장만 — 입력이 넘쳐 뺀 앞 회차는 제외, 묶음 이름 고정, 다른 나라 문자가 섞인 문장은 버림)로
     AI 초안. `summary.source = "AI"`. 사례마다 한 번에 하나, 서버 전체 `CLOSURE_SUMMARY_MAX_CONCURRENCY`(기본 2)건 — 넘으면
     `429 RATE_LIMITED`(제한 시간이 지나도 실제 호출이 끝날 때까지 자리를 잡는다). 제한 시간 `CLOSURE_SUMMARY_TIMEOUT_SECONDS`(기본 150초) — 넘으면
@@ -707,6 +864,27 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - 권한: `GET /api/v1/cases/{case_id}` 와 같다 — 상담사는 담당 사례만(`403 FORBIDDEN`), 관리자는 전체. 없는 사례 `404 CASE_NOT_FOUND`
 - 저장된 값을 풀 수 없으면(키가 설정에 없음 · 값이 바뀜) `500 PERSONAL_INFO_UNAVAILABLE`. 목록 `with_child_name` 은 그 줄만 `null` 로 둔다
 - 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name` 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
+- **AI 가리기(2026-11-02, 응답 모양은 바뀌지 않음)**: 외부 AI(OpenAI)로 상담 글을 보내는 세 곳 — 분석(8절, `AI_PROVIDER=modeling`) ·
+  다음 상담 체크리스트(19절, `FOLLOWUP_PROVIDER=module`) · 종결 요약(위 closure-summary, 별칭과 함께) — 은 보내기 전에 그 사례의
+  등록 이름을 가릴 이름 목록(`known_identifiers`)으로 넘긴다. 서버가 메모리에서만 풀어 만들고 DB · 로그 · 감사 기록에 남기지 않는다.
+  사람에게 내주는 값이 아니라 열람 기록(`CASE_PERSONAL_INFO_VIEWED`)도 남기지 않는다
+  - 목록: 아동 · 사례관리대상자 · 면접대상자 · 가족관계 표 · 건강정도 대상자 이름과 성 뺀 이름(한글 세 글자 이상 이름에서, 남는 이름이
+    두 글자 이상일 때. 두 글자 성 `남궁` · `선우` 등은 두 경우 모두). 한 글자와 이름 칸에 적은 관계말(`엄마` · `아버지` · `모름` 등)은 뺀다.
+    생년월일 · 관계 · 건강 세부는 넣지 않는다. 긴 것부터 넘긴다(짧은 이름을 먼저 바꾸면 성이 남는다)
+  - 가리기는 글자를 그대로 견주므로 적은 그대로의 표기(두 칸 공백 등)와 한글을 자모로 풀어 쓴 표기(NFD)도 넣는다. 띄어 쓴 한글 이름은
+    붙여 쓴 꼴도 넣는다. 그 밖의 띄어쓰기 차이(`한 가 람`)는 성 뺀 이름으로만 가려진다
+  - 다음 상담 체크리스트는 module 이 rag 를 실제로 부를 때(학대 유형 신호가 있을 때)만 푼다. mock 은 풀지 않는다
+  - 칸을 풀지 못하면 그 칸만 빼고, DB 오류면 등록 이름 없이 지금처럼 가린다. 경고 로그에는 사례 ID · 칸 이름 · 키 이름(설정에 있는
+    이름일 때만, 아니면 `?`) · 예외 종류만 남긴다
+  - 가리기 관문(`ai/modeling/abuse/privacy_gateway.py`)도 함께 고쳤다: 필드마다 매긴 토큰을 전체 토큰으로 바꿀 때 두 사람이 한
+    토큰으로 합쳐지던 결함, 이름 인식이 등록 이름 일부만 먼저 가렸을 때 성 · 끝 글자가 남던 결함, 등록 이름이 토큰 · 화자 표시 글자와
+    겹치면 깨지거나 막히던 결함(그 호출이 실제로 만든 토큰만 건너뛴다 — 원문에 적힌 `[ALICE_01]` 같은 글 안의 등록 이름은 가린다),
+    학대 유형 이름과 같은 글은 등록 이름 검사를 건너뛰던 결함. 가리기 전에 글을 자르는 곳(분석의 지난 회차 사정 600자, 종결 요약 칸
+    3000자, rag 사례 기록 600자)은 낱말 중간과 등록 이름 중간(`Kim Ara` 의 빈칸 포함)에서 끊지 않는다. rag 는 잘라서 남은 글이 없는
+    기록을 근거 후보에서 뺀다
+  - 실명을 등록하지 않은 사례 · 등록하지 않은 이름(친구 · 교사 등)은 지금처럼 이름 인식(NER)으로만 가린다. 그래서 운영 잠금
+    (`AI_MODELING_ALLOW_IN_PRODUCTION` · `FOLLOWUP_ALLOW_IN_PRODUCTION`)은 그대로 둔다 — 풀지는 따로 검증한 뒤 정한다
+  - 법령 질의(17절)는 사례와 묶이지 않아 넘길 이름이 없다
 
 ---
 
@@ -1071,6 +1249,15 @@ API 모양은 바뀌지 않는다. 분석 작업이 회차의 사례에서 아�
 - **넘기지 않는 값**: 아동 가명 · 사건번호 · 제목 · 메모 · 보호자 메모 · 상담원 정보.
 - 지난 회차 문장은 상담원 글이라 AI 쪽이 원문과 같은 마스킹을 거쳐 보낸다.
 - 사례 정보를 만들다 실패해도 분석은 사례 정보 없이 계속한다(서버 로그에만 남김). mock · pipeline · langgraph 어댑터에는 넘기지 않는다.
+
+#### 외부 AI 가리기에 넘기는 등록 이름 (`known_identifiers`, 2026-11-02)
+
+API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 사례의 등록 실명(4절 '개인 식별 정보' 의 'AI 가리기')을 메모리에서 풀어
+`known_identifiers` 로 넘긴다 → `ai/modeling/abuse/contract_adapter.analyze_audio_session_as_contract(known_identifiers=)` →
+`analyze_audio_session` 이 외부 LLM 으로 보내는 모든 글(2차 세부유형 · 요약 · 체크리스트 · 기록 초안 · 보호요인 · 원하는 변화 · 서사 요약 ·
+심각도 · 대화 주제 · 확인 메모 · 추가 질문 초안)의 가리기(Privacy Gateway 등록 이름 대조)에 쓴다. `ai/` 의 `case_store`(평문 SQLite)는 쓰지 않는다.
+- 실명을 등록하지 않은 사례는 빈 목록 — 지금처럼 이름 인식만으로 가린다.
+- 모듈이 이 인자를 받지 않는 예전 판이면 넘기지 않고 경고 로그만 남긴다(값 없이). mock · pipeline · langgraph 어댑터에는 넘기지 않고 풀지도 않는다.
 
 #### 재분석 (`AI_REVIEW_REQUIRED` 에서 다시 요청)
 
@@ -1820,7 +2007,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TEMP_PASSWORD_EXPIRED` | 403 | 임시 비밀번호 사용 기간 경과 (비밀번호가 맞았을 때만) |
 | `PASSWORD_CHANGE_REQUIRED` | 403 | 임시 비밀번호 상태에서 비밀번호 변경 외의 요청 |
 | `FORBIDDEN` | 403 | 권한 없음 (담당 아닌 Case 포함) |
-| `NOT_FOUND` | 404 | 존재하지 않는 경로 |
+| `NOT_FOUND` | 404 | 존재하지 않는 경로 · 가입 신청 없음(3절 '회원가입') |
 | `CASE_NOT_FOUND` | 404 | 사례 없음 |
 | `SESSION_NOT_FOUND` | 404 | Session 없음 |
 | `AUDIO_NOT_FOUND` | 404 | 음성 없음 |
@@ -1835,7 +2022,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `WEAK_PASSWORD` | 422 | 비밀번호 규칙 위반 (`details.reasons`) |
 | `SAME_PASSWORD` | 422 | 새 비밀번호가 현재 비밀번호와 같음 |
 | `PASSWORD_REUSED` | 422 | 최근에 쓰던 비밀번호 (`PASSWORD_HISTORY_COUNT` 개) |
-| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 / 사례번호 / 동시에 수정된 Transcript version / 동시에 처음 저장한 위험도 판단 — 같은 회차(11.1) · 같은 유형(11.2)) |
+| `DUPLICATE_RESOURCE` | 409 | 중복 (이메일 — 계정 생성 · 회원가입 신청 · 승인 / 사례번호 / 동시에 수정된 Transcript version / 동시에 처음 저장한 위험도 판단 — 같은 회차(11.1) · 같은 유형(11.2)) |
 | `INVALID_SESSION_STATE` | 409 | 지금 회기 상태에서 할 수 없는 요청 (`details.current_status`, `details.expected_status` — 표 아래 참고) |
 | `TRANSCRIPT_NOT_CONFIRMED` | 409 | 확정 전 AI 분석 요청 |
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
@@ -1847,7 +2034,14 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_FAILED` | 504 / 502 / 502 | 법령 · 매뉴얼 AI 질문(17절)에서만 HTTP 상태로 온다(동기 응답) |
 | `LAW_QA_DISABLED` | 503 | 법령 · 매뉴얼 AI 질문이 꺼져 있음(`LAW_QA_PROVIDER=off`, 17절) |
 | `LAW_SOURCE_UNAVAILABLE` | 503 | 법령 캐시가 없고 국가법령정보센터 조회도 실패(17절) |
-| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`) |
+| `RATE_LIMITED` | 429 | 사용자당 분당 호출 한도 초과(17절, `LAW_QA_RATE_LIMIT_PER_MINUTE`). 회원가입 인증번호 보내기 · 확인 횟수 초과(3절 '회원가입', `details.retry_after_seconds`) |
+| `SIGNUP_DISABLED` | 503 | 회원가입이 꺼져 있음(`SIGNUP_ENABLED=false`, 3절 '회원가입') |
+| `SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED` | 422 | 받는 도메인 목록 밖의 이메일(`SIGNUP_ALLOWED_EMAIL_DOMAINS`) |
+| `VERIFICATION_CODE_MISMATCH` | 422 | 인증번호 틀림(`details.remaining_attempts`) |
+| `VERIFICATION_CODE_EXPIRED` | 422 | 쓸 수 있는 인증번호 없음(5분 지남 · 이미 맞힘 · 5번 틀림 · 요청한 적 없음) |
+| `SIGNUP_TOKEN_INVALID` | 422 | 회원가입 확인 토큰 없음 · 30분 지남 · 이미 씀 |
+| `SIGNUP_ALREADY_DECIDED` | 409 | 이미 승인 · 거절한 가입 신청 |
+| `MAIL_SEND_FAILED` | — | **감사 로그 전용.** 인증번호 메일 발송 실패(`SIGNUP_CODE_SENT` 의 `error_code`). 메일은 응답 뒤에 보내 응답에는 쓰지 않는다 |
 | `FOLLOWUP_DISABLED` | 503 | 다음 상담 체크리스트가 꺼져 있음(`FOLLOWUP_PROVIDER=off`, 19절) |
 | `AI_PRIVACY_BLOCKED` | — | 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않음. 19절 체크리스트 행의 `error` 로 전달 |
 | `METHOD_NOT_ALLOWED` | 405 | 잘못된 method (`message` 는 "허용되지 않는 요청 방식입니다.") |
@@ -2302,7 +2496,8 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
 - **학대 유형 신호가 없으면 rag 를 부르지 않는다**(외부 전송 0) — `COMPLETED` · 빈 목록 · 안내 문구.
 - 아동 발화 · 앞 회차 기록 · 초안 문장은 rag 가 한 묶음으로 가린 뒤(같은 사람 = 같은 토큰) OpenAI 로 보낸다. 이번 회차 발화가 비식별 검증을 통과하지 못하면
   보내지 않고 `FAILED` · `AI_PRIVACY_BLOCKED` 다. 앞 회차 기록이나 초안 문장만 막히면 그것을 빼고 만들고 `notice` 로 알린다.
-- 등록 실명은 넘기지 않는다(`known_identifiers=[]`). 그래서 운영 잠금이 있다(아래).
+- 그 사례의 등록 실명을 가릴 이름 목록(`known_identifiers`)으로 넘긴다(2026-11-02, 4절 '개인 식별 정보' 의 'AI 가리기'). 등록하지 않은 이름은
+  이름 인식으로만 가려지므로 운영 잠금은 그대로다(아래).
 - 로그에는 회차 ID · 오류 코드 · 예외 종류만 남긴다.
 
 ### 오류 (행의 `error.code`)
