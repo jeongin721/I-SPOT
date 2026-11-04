@@ -509,7 +509,8 @@ export function followupQValues(input: FollowupScreenInput) {
   const { analysis, signals } = input;
   const header = processHeaderValues(input, 3);
   const ids = header.ids;
-  const status = analysis.sessionStatus;
+  // 3 · 4단계 AI 초안을 만드는 중이면 '분석 중' 으로 본다(stepStatus — 저장 · 승인을 막고 안내를 보인다).
+  const status = analysis.stepStatus;
   const view = analysis.analysis;
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
   const completed = analyzed && view !== null && view.status === "COMPLETED";
@@ -545,7 +546,11 @@ export function followupQValues(input: FollowupScreenInput) {
   let empty = "";
 
   if (checkCard.checks.length > 0 || input.checks.saved) empty = input.checks.saved && checkCard.checks.length === 0 ? "저장한 확인 사항이 없습니다." : "";
+  else if (analysis.draftsPending) empty = "AI 초안을 만드는 중입니다. 잠시 뒤 저절로 보입니다.";
   else if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
+  else if (analysis.draftsFailed) {
+    empty = "AI 초안을 만들지 못했습니다. 학대 신호 확인에서 다시 분석하면 만들어집니다(학대 신호 결과도 다시 만들어집니다). '+ 확인 사항 직접 추가' 로 쓸 수도 있습니다.";
+  }
   else if (!completed) empty = "AI 분석이 끝나면 확인 메모가 보입니다.";
   else empty = "AI 가 남긴 확인 메모가 없습니다. '+ 확인 사항 직접 추가' 로 쓸 수 있습니다.";
 
