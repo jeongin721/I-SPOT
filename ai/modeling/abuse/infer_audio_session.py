@@ -15,8 +15,9 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 
 import threading
 import time
-from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
-from typing import Any, Dict, List, Optional, Tuple
+import copy
+from concurrent.futures import FIRST_COMPLETED, FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai.adapters.stt_analysis_adapter import validate_stt_result
 
@@ -489,6 +490,21 @@ def _check_deadline(
         )
 
 
+def _wait_signals_or_failure(required: List[Any], watched: List[Any]) -> None:
+    """required 가 모두 끝나거나, required · watched 중 하나라도 예외로 끝날 때까지 기다린다(on_signals_ready 용)."""
+
+    pending = set(required) | set(watched)
+
+    while pending:
+        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+
+        if any(future.exception() is not None for future in done):
+            return
+
+        if all(future.done() for future in required):
+            return
+
+
 def analyze_audio_session(
     stt_result: Dict[str, Any],
     client: Any = None,
@@ -522,6 +538,13 @@ def analyze_audio_session(
 
     case_context: 사례 정보(2026-10-28, case_context.py). 지금은 '다음 상담 전 확인할
     사항'(followup_check_llm)의 배경 입력으로만 쓴다 — 마스킹을 거쳐 보낸다. None 이면 예전과 같다.
+
+    on_signals_ready: 2단계(학대 신호 확인) 값이 모이면 한 번 부르는 콜백(2026-11-04, 민규 합의 — 2단계 먼저 저장).
+    2차 세부유형 · 유형별 심각도 · 기록 초안(위험 신호 발화 · 관련 조문 · 아동 진술) · 보호요인이 끝난 때에
+    이 함수와 같은 모양의 결과(dict)를 넘긴다. 3 · 4단계 칸(상담 요약 · 일지 · 체크리스트 · 원하는 변화 ·
+    서사 요약 · 회차 간 변화 · 확인 메모 · 추가 질문 · 주제)은 빈 값이다. 남은 호출은 콜백이 돌아온 뒤 그대로
+    이어 가고, 마지막 반환값의 2단계 칸은 넘긴 값과 같다. 콜백은 이 함수를 부른 스레드에서 한 번만 부르고,
+    그 전에 실패하면 부르지 않는다. 콜백에서 난 예외는 잡지 않는다(부르는 쪽이 감싼다). None 이면 예전과 같다.
     """
 
     subtype_model = "gpt-5.6-luna"
@@ -821,12 +844,79 @@ def analyze_audio_session(
         # 다섯 중 하나라도 실패하면(record_draft/protective_factors/desired_changes는 내부에서
         # 이미 실패를 삼키므로 사실상 counseling_records/checklist_draft만
         # 해당) 나머지가 아직 안 끝났어도 기다리지 않고 바로 실패 처리한다
-        # (2026-10-19 Mingyu 리뷰) — wait(..)가 반환하자마자 shutdown을
+        # (2026-10-19 Mingyu 리뷰) — 실패를 보자마자 stop_event 를 켜고 shutdown을
         # wait=False로 불러 이미 끝난 것 말고는 안 기다린다. 이미 시작된
         # 스레드 자체를 강제로 멈추지는 못하지만(파이썬 한계), 이 함수는
         # 더 기다리지 않고 바로 돌아간다 — 그 스레드들도 각자 deadline으로
         # 묶여 있어 결국 끝난다.
-        done, _not_done = wait(all_futures, return_when=FIRST_EXCEPTION)
+        #
+        # 2026-11-04(2단계 먼저 저장, on_signals_ready): 기다림을 두 번에 나눈다. 먼저 2단계 값(기록 초안 ·
+        # 보호요인 · 심각도)만 기다려 콜백으로 넘기고, 그다음 남은 셋(상담 요약 · 일지, 체크리스트, 원하는 변화)을
+        # 기다린다. 어느 쪽에서든 실패를 보면 예전처럼 바로 실패한다.
+        signal_futures = [record_draft_future, protective_factors_future] + (
+            [severity_future] if severity_future is not None else []
+        )
+        _wait_signals_or_failure(signal_futures, all_futures)
+
+        if any(future.done() and future.exception() is not None for future in all_futures + signal_futures):
+            stop_event.set()
+            for future in all_futures + signal_futures:
+                if future.done():
+                    future.result()
+
+        record_draft = restore_pii(
+            record_draft_future.result(),
+            citation_entity_map,
+        )
+        # 관련 조문은 실명 복원 뒤에 붙인다(조문 본문이 마스킹 표지와 섞이지 않게).
+        (
+            record_draft["risk_signal_points"],
+            legal_references_unavailable,
+        ) = _attach_legal_references(
+            record_draft.get("risk_signal_points", [])
+        )
+        protective_factors = restore_pii(
+            protective_factors_future.result(),
+            citation_entity_map,
+        )
+        # 유형별 심각도 — 2차 세부유형 분석 바로 뒤에 띄워 둔 호출의 결과(아래 '심각도 먼저 띄우기').
+        severity_ratings = []
+
+        if severity_future is not None:
+            severity_ratings = restore_pii(
+                severity_future.result(), severity_entity_map
+            )
+
+        if on_signals_ready is not None:
+            on_signals_ready(
+                copy.deepcopy(
+                    {
+                        "full_text": full_text,
+                        "segments": segments,
+                        "major_types": major_types,
+                        "detected_major_types": detected_major_types,
+                        "subtype_analysis": subtype_result,
+                        "counseling_summary": None,
+                        "counseling_note": {},
+                        "counseling_record_model": note_model,
+                        "checklist_draft": {},
+                        "record_draft": record_draft,
+                        "protective_factors": protective_factors,
+                        "desired_changes": None,
+                        "severity_ratings": severity_ratings,
+                        "session_change_notes": [],
+                        "current_round_label": "",
+                        "followup_check_points": [],
+                        "followup_questions": [],
+                        "topic_tags": None,
+                        "legal_references_unavailable": legal_references_unavailable,
+                        "chunk_results": chunk_results,
+                    }
+                )
+            )
+
+        rest_futures = [counseling_future, checklist_future, desired_changes_future]
+        done, _not_done = wait(rest_futures, return_when=FIRST_EXCEPTION)
 
         # wait()가 돌아온 시점(전부 끝났거나 하나가 실패했거나)에 바로
         # 켠다 — 전부 성공했으면 아무도 이 신호를 다시 보지 않으니
@@ -839,8 +929,6 @@ def analyze_audio_session(
 
         counseling_records = counseling_future.result()
         checklist_draft = checklist_future.result()
-        record_draft = record_draft_future.result()
-        protective_factors = protective_factors_future.result()
         desired_change_points = desired_changes_future.result()
     finally:
         # cancel_futures는 Python 3.9+에서만 있다(이 저장소는 환경마다
@@ -857,21 +945,6 @@ def analyze_audio_session(
     checklist_draft = restore_pii(
         checklist_draft,
         entity_map,
-    )
-    record_draft = restore_pii(
-        record_draft,
-        citation_entity_map,
-    )
-    # 관련 조문은 실명 복원 뒤에 붙인다(조문 본문이 마스킹 표지와 섞이지 않게).
-    (
-        record_draft["risk_signal_points"],
-        legal_references_unavailable,
-    ) = _attach_legal_references(
-        record_draft.get("risk_signal_points", [])
-    )
-    protective_factors = restore_pii(
-        protective_factors,
-        citation_entity_map,
     )
     desired_change_points = restore_pii(
         desired_change_points,
@@ -929,17 +1002,6 @@ def analyze_audio_session(
     )
 
     record_draft["narrative_summary"] = narrative_summary
-
-    # --------------------------------------------------------
-    # 유형별 심각도 — 2차 세부유형 분석 바로 뒤에 띄워 둔 호출의 결과를 받는다(아래 '심각도 먼저 띄우기').
-    # 호출이 실패했으면 예전처럼 여기서 예외가 그대로 올라간다. 마감은 호출 안의 timeout 이 지킨다.
-    # --------------------------------------------------------
-    severity_ratings = []
-
-    if severity_future is not None:
-        severity_ratings = restore_pii(
-            severity_future.result(), severity_entity_map
-        )
 
     # --------------------------------------------------------
     # 회차 간 진술 변화("상담 요약" 화면의 "(안전관련) 조사 후 변화된
