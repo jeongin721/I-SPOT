@@ -23,7 +23,7 @@ from app.schemas.followup_question import (
     FollowupQuestionsResponse,
     FollowupQuestionsSaveRequest,
 )
-from app.services import audit_service, transcript_service
+from app.services import audit_service, session_service, transcript_service
 
 # 저장을 받는 회차 상태. 위험도 판단(11절)과 같다 — 원문을 확정한 뒤부터, AI 분석 중에는 받지 않는다.
 # AI 실패에도 받는다(AI 초안 없이 상담사가 직접 쓸 수 있다). 승인 뒤에도 받는다(다음 상담 전 브리핑에서 고친다).
@@ -96,6 +96,8 @@ def save_questions(
     payload: FollowupQuestionsSaveRequest,
 ) -> SessionFollowupQuestions:
     assert_status_in(session.status, EDITABLE_STATUSES)
+    # 2단계를 먼저 저장해 회차는 AI_REVIEW_REQUIRED 지만 AI 질문 초안을 만드는 중이면 받지 않는다(409, AI 분석 중과 같은 까닭).
+    session_service.assert_drafts_not_pending(db, session)
     _check_segment_ids(db, session.id, payload.questions)
 
     now = datetime.now(timezone.utc).isoformat()
