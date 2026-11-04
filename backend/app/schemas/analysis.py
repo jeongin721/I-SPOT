@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.enums import AnalysisStatus, SessionStatus
+from app.core.enums import AnalysisStatus, DraftsStatus, SessionStatus
 from app.schemas.common import SessionErrorInfo
 from app.schemas.contracts import AIAnalysisResult, SummaryEvidenceItem
 
@@ -31,6 +31,10 @@ class AnalysisResponse(BaseModel):
     result: Optional[AIAnalysisResult] = None
     summary_evidence: List[SummaryEvidenceItem] = Field(default_factory=list)
     error: Optional[SessionErrorInfo] = None
+
+    # 3 · 4단계 AI 초안 상태(2026-11-04). drafts_error 는 FAILED 일 때만, 고정 문구.
+    drafts_status: DraftsStatus = DraftsStatus.DONE
+    drafts_error: Optional[SessionErrorInfo] = None
 
 
 class AnalysisEnvelope(BaseModel):

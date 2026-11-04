@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core.config import settings
-from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionStatus
+from app.core.enums import AnalysisStatus, AuditAction, DraftsStatus, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, conflict
 from app.core.logging import get_logger
 from app.core.state_machine import assert_transition
@@ -317,6 +317,10 @@ def claim_status(
 # 제한 시간이 끝난 뒤 실패·결과를 기록하는 데 걸리는 시간을 감안한 여유.
 STALE_GRACE_SECONDS = 60
 
+# AI 분석 준비 단계(모듈 import · 모델 로드) 제한. analysis_service.PREPARE_TIMEOUT_SECONDS 가 이 값이다(까닭은 그 머리말).
+# 3 · 4단계 초안 멈춤 판정(_expire_stale_drafts)도 같은 값을 쓴다 — 이 모듈은 analysis_service 를 import 하지 못한다.
+AI_PREPARE_TIMEOUT_SECONDS = STALE_GRACE_SECONDS - 15
+
 
 @dataclass(frozen=True)
 class _ProcessingRule:
@@ -372,12 +376,17 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
     읽어 둔 시작 시각이 DB 에서도 그대로일 때만 마감한다. 읽은 뒤 다른 요청이 같은 작업을 먼저
     마감하고 다시 요청했으면, 상태는 같은 처리 중이어도 시작 시각이 새 요청의 것이다. 상태만 보고
     마감하면 옛 판단으로 막 시작한 새 작업까지 실패로 만든다.
+
+    처리 중이 아닌 회차는 2단계를 먼저 저장하고 3 · 4단계 초안을 기다리는(drafts PENDING) 분석이 멈췄는지 본다
+    (_expire_stale_drafts, 2026-11-04). 회차 상태는 바꾸지 않고 초안만 FAILED 로 마감한다.
     """
 
     rule = _PROCESSING_RULES.get(session.status)
 
     if rule is None:
-        return False
+        pending = _pending_drafts_analysis_id(db, session.id)
+
+        return pending is not None and _expire_stale_drafts(db, session, pending)
 
     now = datetime.now(timezone.utc)
     limit_seconds = getattr(settings, rule.timeout_setting) + STALE_GRACE_SECONDS
@@ -462,3 +471,129 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
     )
 
     return True
+
+
+# =========================================================
+# 3 · 4단계 AI 초안(drafts_status, 2026-11-04 PROPOSAL_analysis_signals_first.md)
+# =========================================================
+
+DRAFTS_PENDING_MESSAGE = (
+    "AI 초안(상담 요약 · 확인 메모 · 추가 질문 등)을 만드는 중입니다. 잠시 뒤 다시 시도해 주세요."
+)
+
+
+def _pending_drafts_analysis_id(db: Session, session_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """이 회차에서 3 · 4단계 초안을 기다리는 분석 id. 없으면 None.
+
+    PENDING 동안은 재분석을 받지 않아(assert_drafts_not_pending) 보통 가장 최근 분석 하나뿐이다.
+    """
+
+    return db.scalar(
+        select(AIAnalysis.id)
+        .where(
+            AIAnalysis.session_id == session_id,
+            AIAnalysis.drafts_status == DraftsStatus.PENDING,
+        )
+        .limit(1)
+    )
+
+
+def fail_pending_drafts(
+    db: Session,
+    session: ConsultationSession,
+    analysis_id: uuid.UUID,
+    error_code: ErrorCode,
+    detail: Optional[dict] = None,
+) -> bool:
+    """그 분석의 3 · 4단계 초안이 아직 PENDING 일 때만 FAILED 로 마감한다. 마감했으면 commit 하고 True, 아니면 되돌리고 False.
+
+    회차 상태와 먼저 저장한 2단계 결과(analysis.status · result)는 그대로 둔다. 분석 작업의 실패 · 시간 초과
+    (analysis_service._fail_analysis)와 멈춤 판정(_expire_stale_drafts)이 쓴다. 둘째 저장 · 다른 마감과 겹쳐도 조건부
+    UPDATE(그 분석 id · PENDING)의 행 수로 한 쪽만 통과한다.
+
+    오류 코드는 AI_TIMEOUT · AI_FAILED 둘로 줄여 저장한다(응답 문구는 코드로 고르는 고정 문구, 원인 예외 문구는 싣지 않는다).
+    """
+
+    code = ErrorCode.AI_TIMEOUT if error_code == ErrorCode.AI_TIMEOUT else ErrorCode.AI_FAILED
+
+    failed = db.execute(
+        update(AIAnalysis)
+        .where(
+            AIAnalysis.id == analysis_id,
+            AIAnalysis.drafts_status == DraftsStatus.PENDING,
+        )
+        .values(drafts_status=DraftsStatus.FAILED, drafts_error_code=code.value)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    if failed != 1:
+        db.rollback()
+        return False
+
+    audit_service.record(
+        db,
+        action=AuditAction.ANALYSIS_DRAFTS_FAILED,
+        entity_type="AIAnalysis",
+        entity_id=analysis_id,
+        case_id=session.case_id,
+        session_id=session.id,
+        detail={"error_code": code.value, **(detail or {})},
+    )
+
+    db.commit()
+
+    logger.warning(
+        "AI 초안을 만들지 못했습니다. session_id=%s analysis_id=%s code=%s",
+        session.id,
+        analysis_id,
+        code.value,
+    )
+
+    return True
+
+
+def _expire_stale_drafts(db: Session, session: ConsultationSession, analysis_id: uuid.UUID) -> bool:
+    """PENDING 초안이 요청 시각 + 준비 제한 + AI_TIMEOUT_SECONDS + 여유를 넘겼으면 FAILED(AI_FAILED)로 마감한다.
+
+    살아 있는 작업은 요청 시각 + 준비 제한 + AI_TIMEOUT_SECONDS 안에 둘째 저장 · 초안 실패를 남긴다
+    (analysis_service._job_deadline). 그 뒤 여유까지 지나도 PENDING 이면 작업이 사라진 것(배포 · 재시작)으로 본다.
+    PENDING 동안은 새 분석 요청이 없어 요청 시각(ai_started_at)이 그 분석의 것이다.
+    """
+
+    limit_seconds = settings.AI_TIMEOUT_SECONDS + AI_PREPARE_TIMEOUT_SECONDS + STALE_GRACE_SECONDS
+    started_at = session.ai_started_at
+
+    if started_at is not None:
+        if started_at.tzinfo is None:
+            # SQLite 는 시간대 정보 없이 돌려준다. 저장 값은 UTC 다.
+            started_at = started_at.replace(tzinfo=timezone.utc)
+
+        if (datetime.now(timezone.utc) - started_at).total_seconds() <= limit_seconds:
+            return False
+
+    return fail_pending_drafts(
+        db,
+        session,
+        analysis_id,
+        ErrorCode.AI_FAILED,
+        {"reason": "stale_processing", "limit_seconds": limit_seconds},
+    )
+
+
+def assert_drafts_not_pending(db: Session, session: ConsultationSession) -> None:
+    """3 · 4단계 AI 초안을 만드는 중이면 409 ANALYSIS_DRAFTS_PENDING.
+
+    재분석 · 요약 수정 · 승인 · 추가 질문 · 확인 사항 저장이 쓴다(위험도 판단 저장은 받는다). 바꾸기 전에 부른다
+    (초안 마감이 되돌리기를 할 수 있다). 초안이 멈췄으면(작업이 사라짐) 먼저 FAILED 로 마감하고 받는다 — 화면이
+    분석을 다시 조회하지 않아도 계속 막히지 않게. 마감하다 둘째 저장과 겹쳤으면 다시 읽어 지금 상태로 판단한다.
+    PENDING 은 DONE · FAILED 로만 바뀌고 회차가 처리 중이 아니면 다시 PENDING 이 되지 않아, 확인한 뒤 요청을 처리하는
+    사이에 막아야 할 상태로 돌아가지 않는다.
+    """
+
+    pending = _pending_drafts_analysis_id(db, session.id)
+
+    if pending is not None and not _expire_stale_drafts(db, session, pending):
+        pending = _pending_drafts_analysis_id(db, session.id)
+
+        if pending is not None:
+            raise conflict(ErrorCode.ANALYSIS_DRAFTS_PENDING, DRAFTS_PENDING_MESSAGE)
