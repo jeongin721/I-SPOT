@@ -15,6 +15,7 @@ import json
 import logging
 import sys
 import threading
+import time
 import types
 import unicodedata
 import uuid
@@ -999,3 +1000,101 @@ def test_severity_failure_still_fails_the_analysis(real_analysis, monkeypatch) -
 
     with pytest.raises(RuntimeError, match="severity down"):
         infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), case_id="c1", known_identifiers=[])
+
+
+# =========================================================
+# 2단계 먼저 넘기기 — on_signals_ready(2026-11-04, 민규 합의)
+# =========================================================
+
+STEP2_KEYS = ("risk_utterances", "abuse_signals", "risk_factors", "severity_ratings", "protective_factors")
+
+
+def test_signals_are_handed_over_before_the_step3_drafts_finish(real_analysis, monkeypatch) -> None:
+    """2단계 값(기록 초안 · 보호요인 · 심각도)이 모이면 상담 요약 · 일지 호출이 끝나기 전에 콜백이 불린다.
+    넘긴 결과는 계약(AIAnalysisResult)으로 검증되고, 3 · 4단계 칸은 비어 있으며, 마지막 결과의 2단계 칸과 같다."""
+
+    infer, _, _ = real_analysis
+    contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
+    from app.schemas.contracts import AIAnalysisResult
+
+    handed: List[Any] = []
+    called_before_records: List[bool] = []
+
+    def records(*args, **kwargs):
+        called_before_records.append(_wait_until(lambda: bool(handed), 5))
+        return {"counseling_summary": "상담 요약 문단", "counseling_note": {}}
+
+    def severity(*args, **kwargs):
+        return [{"major_type": "신체학대", "level": 3, "reason": "근거", "matched_evidence": "때려요"}]
+
+    monkeypatch.setattr(infer, "generate_counseling_records", records)
+    monkeypatch.setattr(infer, "rate_severity_from_text", severity)
+    monkeypatch.setattr(contract_adapter, "analyze_audio_session", infer.analyze_audio_session)
+
+    final, _, _ = contract_adapter.analyze_audio_session_as_contract(
+        stt_result=NAMED_TRANSCRIPT,
+        client=object(),
+        known_identifiers=[],
+        on_signals_ready=lambda contract, evidence, model: handed.append(contract),
+    )
+
+    assert called_before_records == [True] and len(handed) == 1
+    partial = AIAnalysisResult.model_validate(handed[0]).model_dump()
+    assert partial["severity_ratings"][0]["level"] == 3 and partial["risk_utterances"]
+    assert partial["summary"]["overview"] == "" and partial["followup_check_points"] == [] and partial["topic_tags"] is None
+    assert final["summary"]["overview"] == "상담 요약 문단"
+    for key in STEP2_KEYS:
+        assert handed[0][key] == final[key], key
+
+
+def test_no_callback_when_the_analysis_fails_first(real_analysis, monkeypatch) -> None:
+    """2단계 값이 모이기 전에 실패하면 콜백을 부르지 않고 예전처럼 실패한다."""
+
+    infer, _, _ = real_analysis
+    handed: List[Any] = []
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("records down")
+
+    def slow_draft(*args, **kwargs):
+        _wait_until(lambda: False, 0.3)
+        return _step_result("generate_record_draft", kwargs.get("masked_transcript_text"))
+
+    monkeypatch.setattr(infer, "generate_counseling_records", broken)
+    monkeypatch.setattr(infer, "generate_record_draft", slow_draft)
+
+    with pytest.raises(RuntimeError, match="records down"):
+        infer.analyze_audio_session(
+            stt_result=NAMED_TRANSCRIPT, client=object(), known_identifiers=[], on_signals_ready=handed.append
+        )
+
+    assert handed == []
+
+
+def test_failure_after_the_callback_still_fails_the_analysis(real_analysis, monkeypatch) -> None:
+    """콜백 뒤 3 · 4단계 호출이 실패하면 분석은 실패로 끝난다(Backend 가 drafts FAILED 로 마감한다)."""
+
+    infer, _, _ = real_analysis
+    handed: List[Any] = []
+
+    def broken_checklist(*args, **kwargs):
+        _wait_until(lambda: bool(handed), 5)
+        raise RuntimeError("checklist down")
+
+    monkeypatch.setattr(infer, "generate_checklist_draft", broken_checklist)
+
+    with pytest.raises(RuntimeError, match="checklist down"):
+        infer.analyze_audio_session(
+            stt_result=NAMED_TRANSCRIPT, client=object(), known_identifiers=[], on_signals_ready=handed.append
+        )
+
+    assert len(handed) == 1
+
+
+def _wait_until(condition, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return condition()

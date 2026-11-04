@@ -126,7 +126,7 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
   (한글)을 그대로 둔다.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from agent.summary_converter import convert_summary
 
@@ -493,6 +493,9 @@ def analyze_audio_session_as_contract(
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
     known_identifiers: Optional[List[str]] = None,
+    on_signals_ready: Optional[
+        Callable[[Dict[str, Any], List[Dict[str, Any]], Optional[str]], None]
+    ] = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
@@ -513,6 +516,15 @@ def analyze_audio_session_as_contract(
     known_identifiers: 사례에 등록된 실명 목록(2026-11-02, Backend 가 암호화 저장한 실명을 복호화해 메모리에서만 만든다 —
     specs case-personal-info-encryption 7절). analyze_audio_session 으로 그대로 넘겨, 외부 LLM 으로 나가는 모든 글의
     Privacy Gateway 등록 이름 대조(Tier 2)에 case_store 대신 쓴다. 없으면(None) 넘기지 않아 예전과 같다.
+
+    on_signals_ready(contract_dict, summary_evidence, model_name): 2단계(학대 신호 확인) 값이 모이면 한 번 부른다
+    (2026-11-04, 민규 합의 — 2단계 먼저 저장). 인자는 이 함수 반환값과 같은 모양이고 contract_dict 는
+    AIAnalysisResult 로 그대로 검증된다. 채워지는 칸: risk_utterances · abuse_signals · risk_factors ·
+    severity_ratings · protective_factors · warnings(그때까지) · summary.key_points(아동 진술). 빈 칸:
+    summary.overview · summary.assessment · session_change_notes · followup_check_points ·
+    followup_questions(빈 목록) · topic_tags(None). 분석을 돌리는 스레드에서 한 번만 부르고, 그 전에 실패하면
+    부르지 않는다. 콜백 예외는 잡지 않는다(Backend 가 감싼다). 마지막 반환값의 2단계 칸은 넘긴 값과 같다.
+    없으면(None) 넘기지 않아 예전과 같다.
     """
 
     options: Dict[str, Any] = {}
@@ -522,6 +534,11 @@ def analyze_audio_session_as_contract(
 
     if known_identifiers is not None:
         options["known_identifiers"] = known_identifiers
+
+    if on_signals_ready is not None:
+        options["on_signals_ready"] = lambda partial: on_signals_ready(
+            *to_ai_output_contract(partial, transcript=stt_result)
+        )
 
     result = analyze_audio_session(
         stt_result=stt_result,
