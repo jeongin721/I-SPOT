@@ -156,6 +156,11 @@ AI_FAILED     ← AI_PROCESSING 실패
 APPROVED → AI_REVIEW_REQUIRED   요약을 다시 고친 뒤 다시 승인한다
 ```
 
+`AI_PROCESSING → AI_REVIEW_REQUIRED` 로 넘어가는 시점(2026-11-04, `PROPOSAL_analysis_signals_first.md`): AI 모듈이 학대 신호 확인(2단계)
+값을 먼저 넘기면 **그 값을 저장했을 때** 넘어가고, 3 · 4단계 AI 초안(상담 요약 · 확인 메모 · 추가 질문 등)은 그 뒤에 채운다.
+초안 진행은 회차 상태가 아니라 분석의 `drafts_status` 로 본다(8절 "두 번 저장"). 먼저 넘기지 않는 모듈 · 어댑터는 지금처럼 전부 끝난 뒤 넘어간다.
+상태 종류와 전이 표는 그대로다.
+
 실패 시 `error` 필드가 함께 내려온다.
 
 ```json
@@ -180,7 +185,7 @@ APPROVED → AI_REVIEW_REQUIRED   요약을 다시 고친 뒤 다시 승인한�
 | `STT_REVIEW_REQUIRED` | Transcript 검수 화면 |
 | `STT_CONFIRMED` | AI 분석 실행 가능 |
 | `AI_PROCESSING` | Processing (Polling) |
-| `AI_REVIEW_REQUIRED` | AI Review / Summary Editor |
+| `AI_REVIEW_REQUIRED` | AI Review / Summary Editor. 분석의 `drafts_status` 가 `PENDING` 이면 3 · 4단계는 'AI 초안 만드는 중'(Polling) |
 | `APPROVED` | 읽기 전용 (완료). 요약 수정 버튼으로 승인을 풀 수 있다 |
 | `STT_FAILED` / `AI_FAILED` | Error + 재시도 버튼 |
 
@@ -1229,6 +1234,7 @@ Transcript 확정 → `STT_CONFIRMED`. AI 분석의 전제 조건이다.
 오류
 - `404 TRANSCRIPT_NOT_FOUND` — Transcript 없음
 - `409 TRANSCRIPT_NOT_CONFIRMED` — 확정 전. Transcript 검사는 상태 검사보다 먼저 한다
+- `409 ANALYSIS_DRAFTS_PENDING` — 가장 최근 분석이 3 · 4단계 AI 초안을 만드는 중(`drafts_status: "PENDING"`, 아래 "두 번 저장"). Transcript 검사 뒤 · 상태 검사 전에 본다. 초안이 `FAILED` 면 막지 않는다
 - `409 INVALID_SESSION_STATE` — 처리 중(`AI_PROCESSING`), 승인된 회기(`APPROVED`), 또는 동시에 들어온 같은 요청이 먼저 처리됨
 
 #### 분석에 넘기는 사례 정보 (`case_context`, 2026-10-28)
@@ -1264,6 +1270,9 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
   새 결과로 바뀐다(`DRAFT`). 상담사가 고친 요약(`is_edited: true`)은 내용을 그대로 둔다(9절).
 - 실패하면 Session 이 `AI_FAILED` 가 된다. 이때(재분석이 도는 동안도 같다)는 요약 수정 · 승인이
   `409 INVALID_SESSION_STATE` 로 막히고, 다시 요청(재시도)해 성공해야 풀린다.
+- 학대 신호 확인(2단계)을 먼저 저장하고 3 · 4단계 초안을 기다리는 동안(`drafts_status: "PENDING"`)은 재분석을
+  `409 ANALYSIS_DRAFTS_PENDING` 으로 받지 않는다. 초안을 만들지 못했으면(`FAILED`) 재분석으로 2단계부터 전부 다시 만든다
+  (3 · 4단계만 다시 만드는 요청은 없다).
 
 ### GET /api/v1/sessions/{session_id}/analysis
 
@@ -1307,7 +1316,9 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
       "summary_evidence": [
         { "key_point": "...", "segment_ids": ["seg_004"], "score": 0.75 }
       ],
-      "error": null
+      "error": null,
+      "drafts_status": "DONE",
+      "drafts_error": null
     },
     "error": null
   }
@@ -1332,6 +1343,36 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
   "선택 필드" 를 본다.
 - `summary_evidence` 는 요약 문장 ↔ 근거 발화(`segment_id`) 연결 정보다. 근거 발화 하이라이트에 사용한다.
 - `analysis.status`: `PROCESSING | COMPLETED | FAILED`
+- `analysis.drafts_status`: `PENDING | DONE | FAILED` — 3 · 4단계 AI 초안 상태(아래 "두 번 저장", 2026-11-04). 이 칸이 생기기 전 분석,
+  한 번에 저장한 분석, 처리 중 · 실패한 분석(`status` 가 `PROCESSING` · `FAILED`)은 `DONE` 이다.
+- `analysis.drafts_error`: `drafts_status` 가 `FAILED` 일 때만 `{ "code": "AI_TIMEOUT" | "AI_FAILED", "message": "<고정 문구>" }`, 아니면 `null`.
+  원인 예외 문구는 싣지 않는다. `analysis.status` · `analysis.error` 는 지금 뜻 그대로(2단계까지의 성공 · 실패)다.
+
+#### 두 번 저장 — 학대 신호 확인(2단계)을 먼저 (2026-11-04)
+
+설계 `I-SPOT_DOCS/docs/PROPOSAL_analysis_signals_first.md`. AI 모듈(`ModelingAIAdapter`)이 2단계 값(위험 3필드 · `severity_ratings` ·
+`protective_factors` · `summary.key_points` · `summary_evidence`)을 먼저 넘기면 두 번에 나눠 저장한다. 모듈이 먼저 넘기지 않으면
+(예전 판 모듈 · `mock` · `pipeline` · `langgraph`, 2단계 전 실패) 지금처럼 끝에서 한 번에 저장한다(`drafts_status: "DONE"`).
+
+| 때 | Session | `analysis.status` | `drafts_status` | `result` |
+| --- | --- | --- | --- | --- |
+| 2단계 값 저장(첫 저장) | `AI_REVIEW_REQUIRED` | `COMPLETED` | `PENDING` | 2단계 칸만 찼고 `summary.overview` 는 `""`, 3 · 4단계 칸은 빈 값 |
+| 나머지 저장(둘째 저장) | 그대로 | 그대로 | `DONE` | `summary.overview` · `summary.assessment` · `session_change_notes` · `followup_check_points` · `followup_questions` · `topic_tags` · `warnings` 만 마지막 값으로 바뀐다 |
+| 첫 저장 뒤 실패 · 시간 초과 | 그대로 | 그대로 | `FAILED` | 첫 저장 값 그대로 |
+
+- 둘째 저장은 2단계 칸 · `summary.key_points` · `summary_evidence` 를 **바꾸지 않는다**(상담사가 2단계를 보고 판단을 적기 시작했을 수 있어서).
+  `warnings` 는 마지막 값으로 바꾼다(첫 저장 때는 상담 요약이 아직 없어 붙는 경고가 있다).
+- Summary(9절) 초안은 둘째 저장에서 만든다. 첫 저장 뒤에는 Summary 가 없거나(첫 분석) 이전 분석 것 그대로다.
+- `PENDING` 동안 막는 것(`409 ANALYSIS_DRAFTS_PENDING`): 재분석(이 절 POST), 요약 수정 · 승인(9절), 추가 질문 저장(18절),
+  확인 사항 저장(18.1절). 위험도 판단 저장(11절)과 모든 조회는 받는다.
+  이 다섯 요청은 회차를 읽은 뒤 다른 요청이 그 회차의 상태를 바꿨거나 새 분석을 요청했으면(그 분석이 2단계를 저장해 다시
+  `AI_REVIEW_REQUIRED` 여도) `409 INVALID_SESSION_STATE`(`details` 없음, "다른 요청이 먼저 …")로 끝난다. 새로고침 후 다시 시도한다.
+- 화면은 `drafts_status` 가 `PENDING` 이면 이 GET 을 되풀이 조회한다(1.4절, 회차가 `AI_PROCESSING` 일 때와 같은 간격).
+- 멈춤: `PENDING` 이 요청 시각 + 모델 불러오기 제한(45초) + `AI_TIMEOUT_SECONDS` + 60초(기본 285초)를 넘기면 작업이 사라진 것(배포 · 재시작)으로 보고
+  `FAILED`(`AI_FAILED`)로 마감한다. 이 GET · 재분석 요청 · 위 409 요청 때 판단한다. 그 뒤 늦게 끝난 작업의 둘째 저장은 버린다.
+- 감사 기록: 첫 저장은 지금과 같은 `ANALYSIS_COMPLETED`, 둘째 저장은 `ANALYSIS_DRAFTS_COMPLETED`(detail 은 수만),
+  초안 실패는 `ANALYSIS_DRAFTS_FAILED`(detail 은 오류 코드, 멈춤이면 `reason: "stale_processing"` · `limit_seconds` 도).
+- 다음 상담 체크리스트(19절)는 둘째 저장 뒤에 만든다(3 · 4단계 칸이 다 찬 결과로). 초안이 `FAILED` 면 만들지 않는다.
 
 #### 위험 3필드 항목 구조 (2026-10-22 확정)
 
@@ -1597,6 +1638,8 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 - 수정하면 `is_edited: true`
 - 상태는 `AI_REVIEW_REQUIRED` 에서만 수정 가능
 - 승인 후 수정 시 `409 ALREADY_APPROVED`. 고치려면 먼저 승인을 푼다(`POST .../summary/reopen`)
+- AI 초안을 만드는 중(분석 `drafts_status: "PENDING"`, 8절 "두 번 저장")이면 `409 ANALYSIS_DRAFTS_PENDING`(2026-11-04). 다른 검사보다 먼저 본다 —
+  요약이 아직 없거나 이전 분석 것이고, 지금 고치면(`is_edited`) 새 AI 초안이 들어가지 못한다
 
 > 수정한 Summary 는 AI 재분석으로 덮어써지지 않는다. 다만 `analysis_id` 와 `summary_evidence` 는
 > 새 분석 것으로 바뀐다. 새 AI 결과는 `GET .../analysis` 로 확인한다(8절 "재분석").
@@ -1605,7 +1648,8 @@ AI 원본(`analysis.result`)은 보존되고, 상담사가 수정하는 사본�
 
 승인 → Summary `APPROVED`, Session `APPROVED`.
 
-오류: `404 SUMMARY_NOT_FOUND`, `409 ALREADY_APPROVED`, `409 INVALID_SESSION_STATE`
+오류: `404 SUMMARY_NOT_FOUND`, `409 ALREADY_APPROVED`, `409 INVALID_SESSION_STATE`,
+`409 ANALYSIS_DRAFTS_PENDING`(AI 초안을 만드는 중 — PATCH 와 같이 다른 검사보다 먼저 본다)
 
 ### POST /api/v1/sessions/{session_id}/summary/reopen
 
@@ -2025,6 +2069,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
 | `NOT_APPROVED` | 409 | 승인되지 않은 요약 · 문서의 승인 풀기(`reopen`) |
+| `ANALYSIS_DRAFTS_PENDING` | 409 | 3 · 4단계 AI 초안을 만드는 중(`drafts_status: "PENDING"`, 8절 "두 번 저장") — 재분석, 요약 수정 · 승인(9절), 추가 질문 · 확인 사항 저장(18 · 18.1절). 잠시 뒤 다시 시도한다 |
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
@@ -2321,6 +2366,8 @@ AI 초안(8절 `followup_questions`)은 분석 결과에 그대로 남고 여기
 - 저장은 회차가 **`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`** 일 때만 된다(11절 위험도 판단과 같다).
   원문 확정 전 · AI 분석 중(`AI_PROCESSING`)은 `409 INVALID_SESSION_STATE` 다.
   - AI 실패에도 받는다(AI 초안 없이 직접 쓸 수 있다). 승인 뒤에도 받는다(다음 상담 전에 고친다). 저장해도 회기 상태는 바뀌지 않는다.
+- 회차가 `AI_REVIEW_REQUIRED` 여도 가장 최근 분석이 AI 질문 초안을 만드는 중(`drafts_status: "PENDING"`, 8절 "두 번 저장")이면
+  `409 ANALYSIS_DRAFTS_PENDING` 이다(2026-11-04, AI 분석 중에 받지 않는 것과 같은 까닭). 회차 상태 검사 뒤에 본다.
 - 조회는 상태와 관계없이 된다.
 - 종결 사례는 따로 막지 않는다(다른 쓰기 API — 회차 만들기 · 위험도 판단 · 요약 수정 — 와 같다. 막으려면 쓰기 API 전부를 함께 바꿔야 해 팀 결정으로 남김).
 - 같은 회차를 두 요청이 동시에 처음 저장하면 늦은 쪽은 `409 DUPLICATE_RESOURCE` 다. 다시 받아 확인한다.
@@ -2364,10 +2411,11 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
   `in_briefing` 은 상담 전 브리핑에 넣기 — 브리핑 '확인할 사항' 은 저장한 회차면 이것이 `true` 인 것만 보인다.
 - 0~20개, `text` 는 앞뒤 공백을 뺀 뒤 1~300자, `segment_ids` 는 겹침 · 빈 번호를 뺀 뒤 20개까지이고 그 회차 최신 전사본에 있는 번호만(`422`).
 - 받는 회차 상태는 18절과 같다(`STT_CONFIRMED` · `AI_REVIEW_REQUIRED` · `AI_FAILED` · `APPROVED`, 그 밖에는 `409 INVALID_SESSION_STATE`). 조회는 상태와 관계없다.
+- AI 초안을 만드는 중(`drafts_status: "PENDING"`)이면 `409 ANALYSIS_DRAFTS_PENDING` 이다(18절과 같다).
 - 감사 기록(`FOLLOWUP_CHECKS_UPDATED`)에는 수(전체 · AI · 상담사 · 고친 수 · 브리핑 수 · 이전 수)만 남기고 문장은 남기지 않는다.
 - 저장은 회차 상태를 바꾸지 않는다.
 
-오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
+오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STATE`, `409 ANALYSIS_DRAFTS_PENDING`, `409 DUPLICATE_RESOURCE`, `422 VALIDATION_ERROR`
 
 ---
 
@@ -2390,6 +2438,7 @@ AI 확인 메모 초안(8절 `followup_check_points`)은 분석 결과에 그대
 ### 언제 만드나
 
 - **분석이 저장되면** 같은 백그라운드 작업에서 바로 만든다(늦게 와서 버린 분석 결과면 만들지 않는다). 분석 · 회차 상태는 체크리스트와 관계없이 먼저 끝난다.
+  두 번에 나눠 저장한 분석(8절 "두 번 저장")은 둘째 저장 뒤에 만들고, 초안이 `FAILED` 면 만들지 않는다(상담사가 POST 로 만들 수 있다).
   체크리스트가 실패해도 분석 · 회차 상태는 바뀌지 않는다.
 - 상담사가 POST 로 만들기 · 다시 만들기를 할 수 있다(최신 분석이 `COMPLETED` 일 때). 승인(`APPROVED`) 회차도 된다(참고 정보이고 승인 내용에 들어가지 않는다).
 - 회차마다 한 행이다. 다시 만들면 같은 행을 고쳐 쓰고 `attempt` 가 1 오른다. 재분석이 저장되면 처리 중인 앞 작업이 있어도 새로 시작하고, 앞 작업의 늦은 결과는 버린다.
