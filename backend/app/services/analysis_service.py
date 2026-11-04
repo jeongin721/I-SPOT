@@ -327,6 +327,9 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             )
             return
 
+        # 이 작업의 요청 시각. 둘째 저장 · 초안 실패는 회차의 요청 시각이 그대로일 때만 한다(그 사이 새 분석 요청이면 버림).
+        requested_at = session.ai_started_at
+
         try:
             job_deadline = _job_deadline(session)
             transcript = transcript_service.get_latest_transcript(db, session.id)
@@ -349,12 +352,20 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
 
             # 첫 저장을 했으면 둘째 저장, 아니면(콜백이 안 불림 · 첫 저장 실패 · 버림) 지금처럼 한 번에 저장한다.
             if signals.saved:
-                saved = _save_drafts(db, session_id=session_id, analysis_id=analysis_id, bundle=bundle)
+                saved = _save_drafts(
+                    db,
+                    session_id=session_id,
+                    analysis_id=analysis_id,
+                    requested_at=requested_at,
+                    bundle=bundle,
+                )
             else:
                 saved = _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
 
         except OperationTimeout as error:
-            _fail_analysis(db, session, analysis, ErrorCode.AI_TIMEOUT, str(error), error)
+            _fail_analysis(
+                db, session, analysis, ErrorCode.AI_TIMEOUT, str(error), error, requested_at=requested_at
+            )
         except AIError as error:
             # 어댑터가 알 수 없는 예외를 AI_FAILED 로 감쌀 때는 문구를 버리고
             # 예외 종류 이름만 싣는다(ai_adapter.map_ai_error). 원인은 여기서
@@ -363,7 +374,9 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             # 코드는 문구에 원인이 드러나 있어 trace 를 남기지 않는다.
             if error.error_code == ErrorCode.AI_FAILED and error.__cause__ is not None:
                 logger.exception("AI 분석 중 어댑터 오류. session_id=%s", session_id)
-            _fail_analysis(db, session, analysis, error.error_code, str(error), error)
+            _fail_analysis(
+                db, session, analysis, error.error_code, str(error), error, requested_at=requested_at
+            )
         except Exception as error:
             logger.exception("AI 분석 중 예상하지 못한 오류. session_id=%s", session_id)
             _fail_analysis(
@@ -373,6 +386,7 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
                 ErrorCode.AI_FAILED,
                 f"AI 분석 중 오류가 발생했습니다: {type(error).__name__}",
                 error,
+                requested_at=requested_at,
             )
     finally:
         db.close()
@@ -696,12 +710,16 @@ def _save_drafts(
     *,
     session_id: uuid.UUID,
     analysis_id: uuid.UUID,
+    requested_at: Optional[datetime],
     bundle,
 ) -> bool:
     """2단계를 먼저 저장한 분석에 3 · 4단계 초안을 채운다(둘째 저장). 채웠으면 True, 버렸으면 되돌리고 False.
 
-    조건은 그 분석 id · drafts PENDING 이다(조건부 UPDATE 의 행 수). 그 사이 멈춤 판정이 초안을 마감했거나 회차가
-    지워졌으면 버린다(재분석은 PENDING 동안 받지 않고, 마감된 뒤의 새 분석은 id 가 달라 건드리지 않는다).
+    1. 회차 행을 먼저 잠근다 — 회차가 AI_REVIEW_REQUIRED 이고 요청 시각이 이 작업의 것(requested_at) 그대로일 때만
+       (session_service.lock_same_ai_request). 그 사이 새 분석 요청 · 승인 · 회차 삭제가 있었으면 버린다(Codex #154 M1).
+       잠금 순서를 다른 경로(첫 저장 · 회차 삭제)와 같은 회차 → 분석으로 맞춘다. 분석을 먼저 잡으면 Summary INSERT 의
+       회차 외래 키 확인이 회차 행을 기다려, 회차를 먼저 잡고 분석을 지우려는 회차 삭제와 PostgreSQL 에서 교착한다(M3).
+    2. 조건부 UPDATE(그 분석 id · drafts PENDING)의 행 수로 멈춤 판정 · 초안 실패와 한 쪽만 통과한다.
 
     첫 저장은 작업 스레드의 다른 DB 세션이 커밋했으므로 먼저 되돌려(이 세션은 읽기만 했다) 회차 · 분석을 다시 읽는다.
     되돌리면 읽어 둔 객체가 만료돼 지워진 행이면 읽다가 오류가 나므로, id 로 조건을 먼저 확인하고 맞을 때만 읽는다.
@@ -710,6 +728,16 @@ def _save_drafts(
     """
 
     db.rollback()
+
+    if not session_service.lock_same_ai_request(
+        db, session_id, requested_at, SessionStatus.AI_REVIEW_REQUIRED
+    ):
+        db.rollback()
+        logger.warning(
+            "AI 초안을 채울 회차가 이 작업을 기다리지 않아 둘째 저장을 하지 않습니다. analysis_id=%s",
+            analysis_id,
+        )
+        return False
 
     claimed = db.execute(
         update(AIAnalysis)
@@ -816,22 +844,25 @@ def _fail_analysis(
     code: ErrorCode,
     message: str,
     error: BaseException,
+    *,
+    requested_at: Optional[datetime],
 ) -> None:
     """분석 실패 마감. 회차가 이 작업을 기다리면 AI_FAILED, 2단계를 먼저 저장했으면(초안 PENDING) 초안만 FAILED.
 
     첫 저장 뒤의 실패 · 시간 초과는 회차가 이미 AI_REVIEW_REQUIRED 라 _claim_finish 가 맞지 않는다. 그때 회차와
     2단계 결과는 그대로 두고 초안만 마감한다(session_service.fail_pending_drafts — 오류 코드만 저장, 원인 문구는 버림).
-    시간 초과가 작업 스레드의 첫 저장과 겹쳐도 조건부 UPDATE 로 한 쪽만 통과한다 — 이쪽이 먼저면 AI_FAILED 로 끝나고 첫
-    저장은 버려지며, 첫 저장이 먼저면 초안 FAILED 다.
+    회차의 요청 시각이 이 작업의 것(requested_at) 그대로일 때만이다. 시간 초과가 작업 스레드의 첫 저장과 겹쳐도
+    조건부 UPDATE 로 한 쪽만 통과한다 — 이쪽이 먼저면 AI_FAILED 로 끝나고 첫 저장은 버려지며, 첫 저장이 먼저면 초안 FAILED 다.
     """
 
     # rollback 하면 ORM 객체가 만료되므로 로그에 쓸 id 는 미리 읽어 둔다.
     analysis_id = analysis.id
+    session_id = session.id
 
     db.rollback()
 
     if not _claim_finish(db, session, analysis, SessionStatus.AI_FAILED, AnalysisStatus.FAILED):
-        if session_service.fail_pending_drafts(db, session, analysis_id, code):
+        if session_service.fail_pending_drafts(db, session_id, analysis_id, requested_at, code):
             return
 
         # 실패 문구는 남기지 않는다(원인 예외의 문구가 섞일 수 있다). 예외 종류 이름만 남긴다.
