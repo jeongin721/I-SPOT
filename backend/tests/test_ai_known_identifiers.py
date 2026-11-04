@@ -1042,6 +1042,8 @@ def test_signals_are_handed_over_before_the_step3_drafts_finish(real_analysis, m
     partial = AIAnalysisResult.model_validate(handed[0]).model_dump()
     assert partial["severity_ratings"][0]["level"] == 3 and partial["risk_utterances"]
     assert partial["summary"]["overview"] == "" and partial["followup_check_points"] == [] and partial["topic_tags"] is None
+    # 요약은 아직 안 만들었을 뿐이라 '만들지 못했습니다' 경고를 넘기지 않는다(민규 #151 리뷰). 마지막 결과는 그대로.
+    assert all("상담 요약을 만들지 못했습니다" not in warning for warning in partial["warnings"])
     assert final["summary"]["overview"] == "상담 요약 문단"
     for key in STEP2_KEYS:
         assert handed[0][key] == final[key], key
@@ -1098,3 +1100,21 @@ def _wait_until(condition, seconds: float) -> bool:
             return True
         time.sleep(0.01)
     return condition()
+
+
+def test_signals_contract_keeps_other_warnings(real_analysis) -> None:
+    """콜백 결과에서 빼는 건 '상담 요약을 만들지 못했습니다' 한 줄뿐이다 — 법령 데이터 경고 같은 2단계 경고는 남는다."""
+
+    contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
+    partial = {
+        "record_draft": {"risk_signal_points": [], "child_statement_points": []},
+        "legal_references_unavailable": True,
+        "counseling_summary": None,
+    }
+
+    contract, _, _ = contract_adapter._signals_contract(partial, transcript=NAMED_TRANSCRIPT)
+    full, _, _ = contract_adapter.to_ai_output_contract(partial, transcript=NAMED_TRANSCRIPT)
+
+    assert any("상담 요약을 만들지 못했습니다" in warning for warning in full["warnings"])
+    assert contract["warnings"] == [w for w in full["warnings"] if "상담 요약을 만들지 못했습니다" not in w]
+    assert contract["warnings"]

@@ -128,7 +128,7 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from agent.summary_converter import convert_summary
+from agent.summary_converter import OVERVIEW_EMPTY_WARNING, convert_summary
 
 from ai.modeling.abuse.infer_audio_session import analyze_audio_session
 
@@ -486,6 +486,24 @@ def to_ai_output_contract(
     return contract, summary_evidence, _model_name(result)
 
 
+def _signals_contract(
+    partial: Dict[str, Any],
+    transcript: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
+    """on_signals_ready 로 넘길 계약 모양(2단계 칸만 찬 결과).
+
+    상담 요약은 아직 만들기 전이라(counseling_summary 가 None) convert_summary 가 '상담 요약을 만들지 못했습니다'
+    경고를 붙이는데, 2단계 화면이 warnings 를 그대로 보여 '못 만들었다' 로 읽힌다(민규 #151 리뷰). 그 한 줄만
+    뺀다 — 법령 데이터처럼 2단계에서 생긴 경고는 남긴다. 마지막 반환값(to_ai_output_contract)은 그대로다.
+    """
+
+    contract, summary_evidence, model_name = to_ai_output_contract(partial, transcript=transcript)
+    contract["warnings"] = [
+        warning for warning in contract.get("warnings") or [] if warning != OVERVIEW_EMPTY_WARNING
+    ]
+    return contract, summary_evidence, model_name
+
+
 def analyze_audio_session_as_contract(
     stt_result: Dict[str, Any],
     client: Any = None,
@@ -520,7 +538,8 @@ def analyze_audio_session_as_contract(
     on_signals_ready(contract_dict, summary_evidence, model_name): 2단계(학대 신호 확인) 값이 모이면 한 번 부른다
     (2026-11-04, 민규 합의 — 2단계 먼저 저장). 인자는 이 함수 반환값과 같은 모양이고 contract_dict 는
     AIAnalysisResult 로 그대로 검증된다. 채워지는 칸: risk_utterances · abuse_signals · risk_factors ·
-    severity_ratings · protective_factors · warnings(그때까지) · summary.key_points(아동 진술). 빈 칸:
+    severity_ratings · protective_factors · warnings(그때까지, '상담 요약을 만들지 못했습니다' 는 뺌) ·
+    summary.key_points(아동 진술). 빈 칸:
     summary.overview · summary.assessment · session_change_notes · followup_check_points ·
     followup_questions(빈 목록) · topic_tags(None). 분석을 돌리는 스레드에서 한 번만 부르고, 그 전에 실패하면
     부르지 않는다. 콜백 예외는 잡지 않는다(Backend 가 감싼다). 마지막 반환값의 2단계 칸은 넘긴 값과 같다.
@@ -537,7 +556,7 @@ def analyze_audio_session_as_contract(
 
     if on_signals_ready is not None:
         options["on_signals_ready"] = lambda partial: on_signals_ready(
-            *to_ai_output_contract(partial, transcript=stt_result)
+            *_signals_contract(partial, transcript=stt_result)
         )
 
     result = analyze_audio_session(
