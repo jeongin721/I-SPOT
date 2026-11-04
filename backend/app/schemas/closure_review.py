@@ -26,6 +26,20 @@ class ClosureDraft(BaseModel):
     sessions: List[int]
 
 
+class ClosureSafetySuggestion(BaseModel):
+    index: int
+    level: Literal["HIGH", "MEDIUM", "LOW"]
+    basis: str
+    sessions: List[int]
+
+
+class ClosureSuggestions(BaseModel):
+    """종결보고서 안전평가 11문항 · Key Person 의 AI 제안(2026-11-04). 화면은 칩 · 근거로만 보이고 칸은 상담원이 고른다."""
+
+    safety: List[ClosureSafetySuggestion] = []
+    key_person: Optional[ClosureDraft] = None
+
+
 class ClosureSummary(BaseModel):
     # AI: 종결 요약 AI 초안 · APPROVED_SUMMARIES: LLM 없이 승인 요약 4칸을 묶은 것(AI 생성 아님).
     source: Literal["AI", "APPROVED_SUMMARIES"]
@@ -34,6 +48,7 @@ class ClosureSummary(BaseModel):
     sessions: List[int]
     groups: List[ClosureGroup]
     report: Dict[str, Optional[ClosureDraft]]
+    suggestions: Optional[ClosureSuggestions] = None
 
 
 # 종결보고서(서식 29) 상담원 판단 칸(2026-11-03): 종결사유 5개 · 안전평가 11문항 · Key Person · 안전점수 3줄.
@@ -60,6 +75,8 @@ class ClosureReport(BaseModel):
     safety: Optional[List[Optional[SafetyLevel]]] = None
     key_person: Optional[str] = None
     safety_scores: Optional[List[ClosureSafetyScore]] = None
+    # 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(11/04). 화면이 회차 기록(상담 유형별 수)으로 먼저 채우고 상담원이 고친다.
+    services: Optional[str] = None
 
 
 class ClosureSafetyScoreIn(RequestModel):
@@ -83,6 +100,7 @@ class ClosureReportIn(RequestModel):
         default=None, min_length=CLOSURE_SAFETY_ITEM_COUNT, max_length=CLOSURE_SAFETY_ITEM_COUNT
     )
     key_person: Optional[str] = Field(default=None, max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
+    services: Optional[str] = Field(default=None, max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
     safety_scores: Optional[List[ClosureSafetyScoreIn]] = Field(
         default=None, min_length=CLOSURE_SAFETY_SCORE_COUNT, max_length=CLOSURE_SAFETY_SCORE_COUNT
     )

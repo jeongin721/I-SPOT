@@ -9,7 +9,9 @@
 {
   "groups": [{"title": 묶음 이름(GROUP_TITLES), "items": [{"text", "sessions": [회차 번호]}]}],
   "report": {"initial_situation": {"text", "sessions"}, "closing_situation": {"text", "sessions"}},
+  "suggestions": {"safety": [{"index", "level", "basis", "sessions"}], "key_person": {"text", "sessions"} | None},  # 11/04
 }
+suggestions 는 종결보고서 안전평가 11문항 · Key Person 의 AI 제안이다. 화면은 칩 · 근거로만 보이고 칸은 상담원이 고른다.
 
 [코드 검사(clean_output)]
 - 묶음 이름은 GROUP_TITLES 만, 문장 1~MAX_ITEM_CHARS 자, 묶음마다 MAX_ITEMS_PER_GROUP 개. 다른 나라 문자가 섞인 문장은 버림.
@@ -48,6 +50,25 @@ ASSESSMENT_FIELDS = (
 )
 
 
+#: 종결보고서(서식 29) 안전평가 11문항(화면 순서 그대로, 11/04 디자인). AI 는 근거가 있는 문항만 높음 · 보통 · 낮음을 '제안' 한다 —
+#: 화면은 칩 · 근거로만 보이고 칸을 고르지 않는다(상담원이 고른다).
+SAFETY_ITEMS = (
+    "피해아동 · 아동의 위험상황 인지 및 대처능력",
+    "피해아동 · 아동의 연령, 장애 등 집중적 보호가 요구되는 특성 보유",
+    "피해아동 · 피해아동과 가족과의 관계 친밀성",
+    "가족구성원 · 가족구성원의 아동 안전 보호 및 양육 의지",
+    "가족구성원 · 가정 내 가정폭력 문제",
+    "가족구성원 · 아동보호전문기관의 개입에 대한 태도",
+    "가족구성원 · 가족기능과 가정환경에 대한 평가",
+    "가족구성원 · 주양육자의 양육역량",
+    "사례관리대상자 · 학대행위에 대한 잘못 인지 및 개선 의지",
+    "사례관리대상자 · 스스로 자신을 통제하기 어려운 특성 (중독, 성격장애 등)",
+    "사례관리대상자 · 가정 내 위기상황(실직, 가정폭력 등)으로 인한 만성적 스트레스",
+)
+SAFETY_LEVELS = {"높음": "HIGH", "보통": "MEDIUM", "낮음": "LOW"}
+MAX_BASIS_CHARS = 80
+
+
 class ClosureSummaryOutputError(Exception):
     """LLM 응답에 쓸 문장이 하나도 남지 않음."""
 
@@ -64,6 +85,13 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 사례를 종결
 5. 종결보고서 초안 두 칸: initial_situation(처음 개입할 때 상황 — 앞 회차 근거), closing_situation(지금 종결 시점 상황 —
    뒤 회차 근거). 각 {max_report}자 이내.
 6. 상담원 문장에 있는 표지([이름1] 같은 것)는 그대로 둔다.
+7. 안전평가 제안(suggestions.safety): 아래 문항 중 입력에 분명한 근거가 있는 문항만, 그 문항의 수준을 높음 · 보통 · 낮음 중
+   하나로 제안한다. 수준은 위험도가 아니라 문항에 적힌 그 특성의 정도다 — 예: 대처능력이 잘 갖춰졌으면 '높음',
+   가정폭력 문제가 없으면 '낮음', 개입에 협조적이면 '높음'. item 은 문항 번호, basis 는 근거 한 줄({max_basis}자 이내),
+   sessions 는 근거 회차. 근거가 없으면 그 문항은 뺀다.
+{safety_items}
+8. Key Person 제안(suggestions.key_person): 조부모 · 친구 · 이웃 등 아동이 믿고 기댈 만한 주위 사람이 입력에 있으면 한 줄로
+   ({max_basis}자 이내, 예: "있음 · 외조모 (주 2회 돌봄)"), 없으면 null.
 
 [입력]
 {case_input}
@@ -75,6 +103,10 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 사례를 종결
   "report": {{
     "initial_situation": {{"text": "...", "sessions": [1]}},
     "closing_situation": {{"text": "...", "sessions": [5]}}
+  }},
+  "suggestions": {{
+    "safety": [{{"item": 1, "level": "높음", "basis": "...", "sessions": [5]}}],
+    "key_person": {{"text": "...", "sessions": [3]}}
   }}
 }}
 """
@@ -180,7 +212,37 @@ def clean_output(raw: Any, session_numbers: List[int]) -> Dict[str, Any]:
     if not any(group["items"] for group in groups) and not any(report.values()):
         raise ClosureSummaryOutputError("남는 문장이 없습니다.")
 
-    return {"groups": groups, "report": report}
+    return {"groups": groups, "report": report, "suggestions": clean_suggestions(raw.get("suggestions"), allowed)}
+
+
+def clean_suggestions(raw: Any, allowed: set) -> Dict[str, Any]:
+    """안전평가 · Key Person 제안을 거른다. 문항 번호 · 수준 · 근거 회차가 맞지 않는 것은 버린다(제안이 없어도 요약은 실패가 아님).
+    → {"safety": [{"index": 0~10, "level": "HIGH|MEDIUM|LOW", "basis", "sessions"}], "key_person": {"text", "sessions"} | None}"""
+
+    raw = raw if isinstance(raw, dict) else {}
+    safety: List[Dict[str, Any]] = []
+    seen = set()
+    for row in raw.get("safety") or []:
+        if not isinstance(row, dict):
+            continue
+        item = row.get("item")
+        if isinstance(item, bool) or not isinstance(item, int) or not 1 <= item <= len(SAFETY_ITEMS) or item in seen:
+            continue
+        level = SAFETY_LEVELS.get(str(row.get("level") or "").strip())
+        basis = _clean_text(row.get("basis"), MAX_BASIS_CHARS)
+        sessions = _clean_sessions(row.get("sessions"), allowed)
+        if level and basis and sessions:
+            seen.add(item)
+            safety.append({"index": item - 1, "level": level, "basis": basis, "sessions": sessions})
+
+    key_raw = raw.get("key_person") if isinstance(raw.get("key_person"), dict) else {}
+    key_text = _clean_text(key_raw.get("text"), MAX_BASIS_CHARS)
+    key_sessions = _clean_sessions(key_raw.get("sessions"), allowed)
+
+    return {
+        "safety": sorted(safety, key=lambda row: row["index"]),
+        "key_person": {"text": key_text, "sessions": key_sessions} if key_text and key_sessions else None,
+    }
 
 
 def rule_based_summary(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -232,6 +294,8 @@ def generate_closure_summary(
         max_chars=MAX_ITEM_CHARS,
         max_report=MAX_REPORT_CHARS,
         group_titles="\n".join(f"   - {title}" for title in GROUP_TITLES),
+        max_basis=MAX_BASIS_CHARS,
+        safety_items="\n".join(f"   {number}. {title}" for number, title in enumerate(SAFETY_ITEMS, start=1)),
         case_input=masked,
     )
     parsed = _call_llm_with_retry(

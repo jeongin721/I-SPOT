@@ -120,3 +120,35 @@ def test_mask_case_input_checks_each_session_on_its_own(monkeypatch):
     assert seen["names"] == ["소희"]
     assert masked == cs.format_case_input(SESSIONS).replace("보호자", "[KNOWN_01]")
     assert entity_map == {"[KNOWN_01]": "보호자"}
+
+
+def test_clean_suggestions_keeps_only_grounded_items():
+    raw = {
+        "groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [3]}]}],
+        "suggestions": {
+            "safety": [
+                {"item": 9, "level": "높음", "basis": "보호자가 잘못을 인정함", "sessions": [3]},
+                {"item": 1, "level": "보통", "basis": "안전 계획을 일부 설명", "sessions": [1, 99]},
+                {"item": 1, "level": "낮음", "basis": "같은 문항 두 번째", "sessions": [1]},
+                {"item": 12, "level": "높음", "basis": "없는 문항", "sessions": [1]},
+                {"item": 2, "level": "매우 높음", "basis": "없는 수준", "sessions": [1]},
+                {"item": 3, "level": "높음", "basis": "", "sessions": [1]},
+                {"item": 4, "level": "높음", "basis": "근거 회차 없음", "sessions": [99]},
+            ],
+            "key_person": {"text": "있음 · 외조모 (주 2회 돌봄)", "sessions": [3]},
+        },
+    }
+
+    suggestions = cs.clean_output(raw, [1, 3])["suggestions"]
+
+    assert suggestions["safety"] == [
+        {"index": 0, "level": "MEDIUM", "basis": "안전 계획을 일부 설명", "sessions": [1]},
+        {"index": 8, "level": "HIGH", "basis": "보호자가 잘못을 인정함", "sessions": [3]},
+    ]
+    assert suggestions["key_person"] == {"text": "있음 · 외조모 (주 2회 돌봄)", "sessions": [3]}
+
+
+def test_clean_suggestions_missing_is_empty_not_error():
+    raw = {"groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}]}
+
+    assert cs.clean_output(raw, [1])["suggestions"] == {"safety": [], "key_person": None}

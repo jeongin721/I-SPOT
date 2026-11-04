@@ -229,6 +229,8 @@ def generate(db: Session, case: Case, current_user: User) -> CaseClosureReview:
         "sessions": [session["number"] for session in sessions],
         "groups": _with_keys(result.get("groups") or []),
         "report": result.get("report") or {},
+        # 종결보고서 안전평가 · Key Person AI 제안(11/04). LLM 없이 묶을 때는 없다.
+        "suggestions": result.get("suggestions") if use_ai else None,
     }
     row = get_row(db, case.id, lock=True)
     if row is None:

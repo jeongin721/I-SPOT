@@ -232,6 +232,7 @@ export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
   safety?: (SafetyLevel | null)[];
   key_person?: string;
   safety_scores?: SafetyScore[];
+  services?: string;
 };
 
 const REASON_COUNT = 5;
@@ -252,6 +253,8 @@ export function closureReportValues(
   draft: ReportDraft,
   setDraft: (patch: ReportDraft) => void,
   resetDraft: () => void,
+  /** 사례관리 제공 요약 칸이 비어 있을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). */
+  servicesFromRecords = "",
 ) {
   const info = detail.caseInfo;
   const record = summary.record;
@@ -267,6 +270,7 @@ export function closureReportValues(
     draft.safety ??
     fixedList(saved.safety, SAFETY_COUNT, (item) => LEVELS.find(([, code]) => code === item)?.[1] ?? null);
   const keyPerson = draft.key_person ?? saved.key_person ?? "";
+  const services = draft.services ?? saved.services ?? servicesFromRecords;
   const scores =
     draft.safety_scores ??
     fixedList(saved.safety_scores, SCORE_COUNT, (item) => {
@@ -327,6 +331,10 @@ export function closureReportValues(
       const code = LEVELS.find(([name]) => name === label)?.[1] ?? null;
       setDraft({ safety: safety.map((level, j) => (j === i ? (level === code ? null : code) : level)) });
     },
+    services: {
+      value: services,
+      onChange: (event: { target: { value: string } }) => setDraft({ services: event.target.value }),
+    },
     keyPerson: {
       value: keyPerson,
       onChange: (event: { target: { value: string } }) => setDraft({ key_person: event.target.value }),
@@ -356,6 +364,7 @@ export function closureReportValues(
         reasons,
         safety,
         key_person: keyPerson.trim() || null,
+        services: services.trim() || null,
         safety_scores: scores,
       };
       const ok = await summary.save({ report });
