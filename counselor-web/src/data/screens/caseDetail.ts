@@ -249,8 +249,12 @@ interface BasicsDraft {
   personalFor: RemoteTicket | null;
   /** '저장' 때 입력 확인에 걸린 문구. 다시 고치면 지운다. */
   problem: string | null;
-  /** 저장하지 못했다(문구는 훅의 caseError · saveError). partial 이면 사례 칸은 저장했고 실명 칸만 못 했다. */
-  failed: boolean;
+  /**
+   * 이번 '저장' 에서 실패한 창구. case 면 사례 칸(PATCH, 문구는 훅의 caseError), personal 이면 실명 칸(PUT, saveError).
+   * 실패한 창구의 문구만 보인다 — 앞 시도에서 실패한 다른 창구의 문구는 훅에 남아 있어도 보이지 않게(Codex #148 L1).
+   * partial 이면 사례 칸은 저장했고 실명 칸만 못 했다.
+   */
+  failed: "case" | "personal" | null;
   partial: boolean;
 }
 
@@ -389,7 +393,7 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
     setState((current) => {
       if (saving || !current.basics || !detail.isCurrent(current.basics.ticket)) return {};
       const patch = next(current.basics);
-      return patch ? { basics: { ...current.basics, ...patch, problem: null, failed: false, partial: false } } : {};
+      return patch ? { basics: { ...current.basics, ...patch, problem: null, failed: null, partial: false } } : {};
     });
   const editCase = (name: BasicsCaseField) => (event: ChangeEvent) => {
     const value = event.target.value;
@@ -455,7 +459,8 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
   if (draft?.problem) error = draft.problem;
   else if (draft?.partial) {
     error = `별칭 · 성별 · 날짜는 저장했습니다. ${personal?.saveError ?? "이름 · 생년월일 · 사례관리대상자는 저장하지 못했습니다."}`;
-  } else if (draft?.failed) error = detail.caseError ?? personal?.saveError ?? null;
+  } else if (draft?.failed === "case") error = detail.caseError;
+  else if (draft?.failed === "personal") error = personal?.saveError ?? null;
 
   /** 그 수정이 아직 열려 있으면 닫는다(그사이 다시 '수정' 을 눌렀으면 그대로 둔다). */
   const closeIf = (ticket: RemoteTicket) =>
@@ -472,7 +477,7 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
 
       if (!ticket || !info) return;
       setState({
-        basics: { ticket, edits: {}, personal: null, personalFor: null, problem: null, failed: false, partial: false },
+        basics: { ticket, edits: {}, personal: null, personalFor: null, problem: null, failed: null, partial: false },
       });
     },
     personalNote,
@@ -500,7 +505,7 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
       let caseSaved = false;
       if (checked.payload !== null) {
         if (!(await detail.saveCase(checked.payload))) {
-          markIf(draft.ticket, { failed: true });
+          markIf(draft.ticket, { failed: "case" });
           return;
         }
         caseSaved = true;
@@ -510,7 +515,7 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
 
       if (personalDirty && personalChecked?.payload && personal) {
         if (!(await personal.save(personalChecked.payload))) {
-          markIf(draft.ticket, { failed: true, partial: caseSaved });
+          markIf(draft.ticket, { failed: "personal", partial: caseSaved });
           return;
         }
         // 생년월일이 있으면 서버가 사례의 출생연도를 맞췄다 — 사례 값을 조용히 다시 받는다(초기면접지와 같음).
