@@ -220,7 +220,8 @@ def analyze_consultation_evidence(
     비식별 검증을 통과하지 못하면 아무것도 보내지 않고 RagPrivacyBlocked 를 던진다.
     known_identifiers: 사례에 등록된 아동 · 보호자 실명 등(정확 매칭으로 한 번 더 가린다).
     case_records: 다음 상담 질문의 근거가 될 사례 기록(case_context.build_case_records).
-        없으면 상담 문장 하나를 사례 기록으로 쓴다. 상담 문장과 함께 한 번에 비식별한다.
+        주지 않으면(None) 상담 문장 하나를 사례 기록으로 쓴다. 빈 목록([] — 잘라서 모두 빠짐)이면 사례 기록 없이 간다
+        (확인할 사항 · 질문도 만들지 않는다 — checklist_builder). 상담 문장과 함께 한 번에 비식별한다.
     with_questions · link_questions: checklist_builder.build_next_session_checklist 로 넘긴다(Backend 연동 경로).
         link_questions(#118 추가 질문 초안)의 text · reason 도 같은 묶음으로 비식별한다(같은 사람 = 같은 토큰).
         질문 쪽만 비식별 검증에 막히면 질문 없이 다시 해 보고 question_link_warning 을 단다.
@@ -229,7 +230,9 @@ def analyze_consultation_evidence(
     if not consultation_text:
         raise ValueError("상담 문장이 비어 있습니다.")
 
-    records = case_records or [
+    # 사례 기록을 아예 주지 않았을 때만(None) 상담 문장 하나를 사례 기록으로 쓴다. build_case_records 가 잘라서 모두 뺀
+    # 빈 목록([])은 그대로 둔다 — 원문 전체를 회차 · 구간 · 시각 없이 근거 후보로 다시 넣지 않게(backend PR #138 Codex R2).
+    records = case_records if case_records is not None else [
         {"ref": "case:1", "source": "consultation", "current": True, "label": "이번 상담", "text": consultation_text}
     ]
     questions = link_questions or []

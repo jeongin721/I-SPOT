@@ -26,11 +26,25 @@
 // 탭 1 의 '초기면접 내용' 카드는 디자인에 없는 칸이다(2026-10-20 추가). 사례 등록 ② 탭에서 고른 가정상황 · 아동 특성
 // (서식 4 항목 이름)을 단어로 보이고, '수정' 을 누르면 사례 등록과 같은 고르기 단추로 고쳐 저장한다(PATCH /cases/{id}).
 // 고친 항목은 상담 일지(noteWrite.ts)의 초기면접 항목에 그대로 보인다. ② 탭의 나머지 칸은 여전히 준비 중이라 여기에도 없다.
+//
+// '기본 정보' 카드의 '수정'(2026-11-03, 아이 연계 단추는 탭 줄로 옮김): 서버에 칸이 있는 것만 그 자리에서 입력칸으로 바꾼다.
+// 저장은 초기면접지(caseIntake.ts)와 같은 두 창구다 — 별칭 · 성별 · 날짜 셋은 바꾼 칸만 PATCH /cases/{id}(toCaseUpdateRequest),
+// 이름 · 생년월일 · 사례관리대상자는 실명 정보를 받은 뒤에만 PUT …/personal-info 로 통째로(나머지 실명 · 가족 칸은 받은 값 그대로).
+// PATCH 를 먼저 보내고, PUT 만 실패하면 나눠 알린다. 출생연도는 고치지 않는다(생년월일을 저장하면 서버가 맞춘다 — Codex #129 R2).
+// 개별사건번호 · 담당 상담원(관리자, 초기면접지) · 상담 회차 · 최근 상담은 여기서 바꾸지 않고, 가족유형 · 조치결과 · 아이 앱은
+// 서버에 칸이 없어 준비 중으로 둔다.
 
 import { NOT_PROVIDED } from "../caseRows";
 import { ABUSE_TYPES, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
 import type { CaseDetailState } from "../useCaseDetail";
-import { personalNames } from "../personalInfo";
+import {
+  personalInputOf,
+  personalNames,
+  requestOf,
+  samePersonalRequest,
+  toPersonalInfoRequest,
+  type PersonalInput,
+} from "../personalInfo";
 import type { PersonalInfoState } from "../usePersonalInfo";
 import type { CaseSignalsState } from "../useCaseSignals";
 import type { SignalHistoryState } from "../useSignalHistory";
@@ -49,13 +63,17 @@ import {
   untaggedAnalyzed,
 } from "../signalHistoryRows";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
+import { GENDER_OPTIONS, intakeFormOf, toCaseUpdateRequest, type IntakeForm } from "../useCaseIntake";
+import { CASE_DATE_FIELDS } from "../useCaseRegister";
 import type { AuthSession } from "../useAuthSession";
+import { sessionDeleteTarget, type DeleteTarget } from "../useAdminDelete";
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
 import { COLUMN_OF, PROCESS_COLUMNS, continueLink } from "./flow";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
 import { intakeChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
+import { personalFieldValues } from "./personalFields";
 import { segmentHref } from "./sttReview";
 import { uploadTargets } from "./uploadModal";
 
@@ -218,6 +236,28 @@ interface IntakeDraft {
   childTraits: string[];
 }
 
+/** '기본 정보' 카드에서 고치는 사례 칸(PATCH). */
+type BasicsCaseField = "alias" | "gender" | "reportDate" | "linkedDate" | "firstInterviewDate";
+
+/** '기본 정보' 카드를 고치는 중인 값. ticket 은 '수정' 을 누를 때의 사례 표, personalFor 는 실명 칸을 처음 고칠 때의 실명 정보 표. */
+interface BasicsDraft {
+  ticket: RemoteTicket;
+  /** 고친 사례 칸만 든다. 고치지 않은 칸은 서버 값을 그대로 보인다. */
+  edits: Partial<Pick<IntakeForm, BasicsCaseField>>;
+  /** 고친 실명 입력(이름 · 생년월일 · 사례관리대상자). 고치지 않았으면 null. */
+  personal: PersonalInput | null;
+  personalFor: RemoteTicket | null;
+  /** '저장' 때 입력 확인에 걸린 문구. 다시 고치면 지운다. */
+  problem: string | null;
+  /**
+   * 이번 '저장' 에서 실패한 창구. case 면 사례 칸(PATCH, 문구는 훅의 caseError), personal 이면 실명 칸(PUT, saveError).
+   * 실패한 창구의 문구만 보인다 — 앞 시도에서 실패한 다른 창구의 문구는 훅에 남아 있어도 보이지 않게(Codex #148 L1).
+   * partial 이면 사례 칸은 저장했고 실명 칸만 못 했다.
+   */
+  failed: "case" | "personal" | null;
+  partial: boolean;
+}
+
 /**
  * 탭 1 화면 상태(Logic.state). 고치는 초기면접 항목은 '수정' 을 누를 때의 대상 표(detail.capture())와 함께 두고,
  * 표가 지금 대상일 때만 쓴다(다른 사례로 옮기거나 다시 로그인하면 고치던 것을 버린다 — 일지 화면의 고친 일지와 같은 기준).
@@ -226,9 +266,11 @@ export interface CaseDetailUiState {
   /** 고치는 중인 초기면접 항목. null 이면 보기만 한다. */
   intakeDraft: IntakeDraft | null;
   intakeFor: RemoteTicket | null;
+  /** 고치는 중인 기본 정보. null 이면 보기만 한다. */
+  basics: BasicsDraft | null;
 }
 
-export const INITIAL_CASE_DETAIL_STATE: CaseDetailUiState = { intakeDraft: null, intakeFor: null };
+export const INITIAL_CASE_DETAIL_STATE: CaseDetailUiState = { intakeDraft: null, intakeFor: null, basics: null };
 
 interface CaseDetailInput extends CaseScreenInput {
   state: CaseDetailUiState;
@@ -309,6 +351,184 @@ function intakeValues({ detail, state, setState }: CaseDetailInput) {
   };
 }
 
+/** 기본 정보 수정 칸 한 줄. static 은 여기서 바꿀 수 없는 칸(hint 에 까닭). */
+type ChangeEvent = { target: { value: string } };
+type BasicsEditRow =
+  | { label: string; kind: "static"; value: string; hint: string }
+  | { label: string; kind: "text" | "date"; value: string; onChange: (event: ChangeEvent) => void; disabled: boolean; min?: string; max?: string }
+  | { label: string; kind: "select"; value: string; onChange: (event: ChangeEvent) => void; disabled: boolean; options: string[] }
+  | {
+      label: string;
+      kind: "target";
+      name: { value: string; onChange: (event: ChangeEvent) => void };
+      relation: { value: string; onChange: (event: ChangeEvent) => void };
+      options: string[];
+      disabled: boolean;
+    };
+
+/** '기본 정보' 카드의 수정. 보기 · 고치기(입력칸) · 저장 · 취소(머리 주석). */
+function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
+  const { detail, personal, session, state, setState } = input;
+  const info = detail.caseInfo;
+  const draft = state.basics && detail.isCurrent(state.basics.ticket) ? state.basics : null;
+  const saving = detail.savingCase || Boolean(personal?.saving);
+
+  const saved = info ? intakeFormOf(info) : null;
+  const form = saved ? { ...saved, ...(draft?.edits ?? {}) } : null;
+  const checked =
+    draft && saved ? toCaseUpdateRequest(draft.edits, saved, { isAdmin: session.isAdmin }) : { payload: null, problem: null };
+
+  // 실명 칸: 고친 값(지금 대상의 것만), 없으면 받은 값. 받기 전 · 못 받았으면 null(칸을 막는다 — 모르는 값을 빈 칸으로 덮지 않게).
+  const personalEdits = draft && personal && personal.isCurrent(draft.personalFor) ? draft.personal : null;
+  const personalForm = personal?.info ? (personalEdits ?? personalInputOf(personal.info)) : null;
+  const personalChecked = personalEdits ? toPersonalInfoRequest(personalEdits) : null;
+  const personalSaved = requestOf(personal?.info ?? null);
+  const personalDirty =
+    personalChecked !== null &&
+    (personalChecked.problem !== null || personalSaved === null || !samePersonalRequest(personalChecked.payload, personalSaved));
+  const dirty = draft !== null && (checked.payload !== null || checked.problem !== null || personalDirty);
+
+  /** 고치는 값을 바꾼다. 저장 중이거나 대상이 바뀐 뒤의 입력은 버린다. 다시 고치면 앞 문구를 지운다. */
+  const change = (next: (current: BasicsDraft) => Partial<BasicsDraft> | null) =>
+    setState((current) => {
+      if (saving || !current.basics || !detail.isCurrent(current.basics.ticket)) return {};
+      const patch = next(current.basics);
+      return patch ? { basics: { ...current.basics, ...patch, problem: null, failed: null, partial: false } } : {};
+    });
+  const editCase = (name: BasicsCaseField) => (event: ChangeEvent) => {
+    const value = event.target.value;
+    change((current) => ({ edits: { ...current.edits, [name]: value } }));
+  };
+  const changePersonal = (next: (current: PersonalInput) => PersonalInput) =>
+    change((current) => {
+      if (!personal?.info) return null;
+      const keep = current.personal !== null && personal.isCurrent(current.personalFor);
+      const ticket = keep ? current.personalFor : personal.capture();
+      if (!ticket) return null;
+      return { personal: next(keep && current.personal ? current.personal : personalInputOf(personal.info)), personalFor: ticket };
+    });
+  const fields = personalFieldValues(personalForm, changePersonal, saving || draft === null);
+
+  const genderOptions = [...GENDER_OPTIONS];
+  for (const value of [saved?.gender ?? "", form?.gender ?? ""]) {
+    if (value && !genderOptions.includes(value)) genderOptions.push(value);
+  }
+
+  const rows: BasicsEditRow[] =
+    info && form
+      ? [
+          { label: "개별사건번호", kind: "static", value: info.caseNumber, hint: "바꿀 수 없음" },
+          { label: "이름", kind: "text", ...fields.childName, disabled: fields.personalLocked },
+          { label: "별칭", kind: "text", value: form.alias, onChange: editCase("alias"), disabled: saving },
+          { label: "성별", kind: "select", value: form.gender, onChange: editCase("gender"), disabled: saving, options: genderOptions },
+          { label: "생년월일", kind: "date", ...fields.childBirthDate, disabled: fields.personalLocked },
+          {
+            label: "사례관리대상자",
+            kind: "target",
+            name: fields.targetName,
+            relation: fields.targetRelation,
+            options: fields.targetRelationOptions,
+            disabled: fields.personalLocked,
+          },
+          { label: "가족유형", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
+          { label: "조치결과", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
+          { label: "담당 상담원", kind: "static", value: info.counselorName, hint: "관리자가 초기면접지에서 바꿈" },
+          ...CASE_DATE_FIELDS.map(
+            (field): BasicsEditRow => ({
+              label: field.label,
+              kind: "date",
+              value: form[field.key],
+              onChange: editCase(field.key),
+              disabled: saving,
+              min: "1900-01-01",
+              max: "2100-12-31",
+            }),
+          ),
+          { label: "상담 회차", kind: "static", value: `${info.sessionCount}회`, hint: "자동" },
+          { label: "최근 상담", kind: "static", value: lastConsulted, hint: "자동" },
+          { label: "아이 앱", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
+        ]
+      : [];
+
+  const locked = "그동안 이름 · 생년월일 · 사례관리대상자는 고칠 수 없습니다.";
+  let personalNote = null;
+  if (draft && personal?.error) personalNote = notice(`${personal.error} ${locked}`, { alert: true, retry: personal.reload });
+  else if (draft && !personal?.info) personalNote = notice(`실명 정보를 불러오는 중… ${locked}`);
+
+  let error: string | null = null;
+  if (draft?.problem) error = draft.problem;
+  else if (draft?.partial) {
+    error = `별칭 · 성별 · 날짜는 저장했습니다. ${personal?.saveError ?? "이름 · 생년월일 · 사례관리대상자는 저장하지 못했습니다."}`;
+  } else if (draft?.failed === "case") error = detail.caseError;
+  else if (draft?.failed === "personal") error = personal?.saveError ?? null;
+
+  /** 그 수정이 아직 열려 있으면 닫는다(그사이 다시 '수정' 을 눌렀으면 그대로 둔다). */
+  const closeIf = (ticket: RemoteTicket) =>
+    setState((current) => (current.basics?.ticket === ticket ? { basics: null } : {}));
+  const markIf = (ticket: RemoteTicket, patch: Partial<BasicsDraft>) =>
+    setState((current) => (current.basics?.ticket === ticket ? { basics: { ...current.basics, ...patch } } : {}));
+
+  return {
+    rows,
+    editing: draft !== null,
+    canEdit: info !== null && draft === null,
+    startEdit: () => {
+      const ticket = detail.capture();
+
+      if (!ticket || !info) return;
+      setState({
+        basics: { ticket, edits: {}, personal: null, personalFor: null, problem: null, failed: null, partial: false },
+      });
+    },
+    personalNote,
+    editNote:
+      "이름 · 생년월일 · 사례관리대상자는 암호화해 저장하고(열 때마다 열람 기록이 남습니다), 별칭 · 성별 · 날짜는 사례에 저장합니다.",
+    error: error ? notice(error, { alert: true }) : null,
+    saving,
+    saveLabel: saving ? "저장 중…" : "저장",
+    cancel: () => {
+      if (!saving) setState({ basics: null });
+    },
+    // 사례 칸(PATCH)을 먼저, 그다음 실명 칸(PUT, 통째로). 바꾼 것이 없으면 보내지 않고 닫는다.
+    save: async () => {
+      if (!draft || !info || saving) return;
+      const problem = checked.problem ?? personalChecked?.problem ?? null;
+      if (problem !== null) {
+        markIf(draft.ticket, { problem });
+        return;
+      }
+      if (checked.payload === null && !personalDirty) {
+        closeIf(draft.ticket);
+        return;
+      }
+
+      let caseSaved = false;
+      if (checked.payload !== null) {
+        if (!(await detail.saveCase(checked.payload))) {
+          markIf(draft.ticket, { failed: "case" });
+          return;
+        }
+        caseSaved = true;
+        // 서버 값이 고친 값이 됐다. 아래 PUT 이 실패해도 다시 보내지 않게 비운다.
+        markIf(draft.ticket, { edits: {} });
+      }
+
+      if (personalDirty && personalChecked?.payload && personal) {
+        if (!(await personal.save(personalChecked.payload))) {
+          markIf(draft.ticket, { failed: "personal", partial: caseSaved });
+          return;
+        }
+        // 생년월일이 있으면 서버가 사례의 출생연도를 맞췄다 — 사례 값을 조용히 다시 받는다(초기면접지와 같음).
+        if (personalChecked.payload.child_birth_date) detail.refresh();
+      }
+
+      closeIf(draft.ticket);
+    },
+    /** 저장하지 않은 수정이 있는가(useLeaveGuard 에 넘긴다). */
+    unsaved: dirty,
+  };
+}
+
 /** 탭 1 · 내담자 정보. */
 export function caseDetailValues(input: CaseDetailInput) {
   const { detail } = input;
@@ -375,12 +595,14 @@ export function caseDetailValues(input: CaseDetailInput) {
   const next = latest ? continueLink(latest) : null;
 
   const intake = intakeValues(input);
+  const basicsEdit = basicsEditValues(input, lastConsulted);
 
   return {
     ...caseHeaderValues(input),
     basics,
+    basicsEdit,
     intake,
-    unsaved: intake.unsaved,
+    unsaved: intake.unsaved || basicsEdit.unsaved,
     ...riskCardValues(input.signals),
     latestLabel: latest ? `${latest.numberLabel} · ${latest.statusLabel}` : info ? "회차 없음" : "",
     continueHref: next ? next.href : screenHref("/UploadModal", { caseId: input.caseId }),
@@ -412,6 +634,7 @@ const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
  *  - 주제 비중 · 덜 다룬 부분(2026-10-29): 회차 분석의 대화 주제(topic_tags → signal-history topics)를 더한 비율(AI 제안).
  * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
  * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
+ * 관리자면(화면이 askDelete 를 줌, 2026-11-03) '전 회차 보기' 창의 회차마다 '삭제'(del)가 있다 — 'N회차' 를 입력하는 확인 창을 연다.
  */
 export function caseHistoryValues(
   input: CaseScreenInput & {
@@ -419,6 +642,8 @@ export function caseHistoryValues(
     setHistoryOpen?: (open: boolean) => void;
     history?: SignalHistoryState;
     approved?: ApprovedSummariesState;
+    /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자에게만 준다. */
+    askDelete?: ((target: DeleteTarget) => void) | null;
   },
 ) {
   const { detail, history } = input;
@@ -437,18 +662,36 @@ export function caseHistoryValues(
     return top ? `${ai} / 판단 ${RISK_LEVEL_LABELS[top]}` : ai;
   };
   const open = Boolean(input.historyOpen);
+  const askDelete = input.askDelete;
+  const caseNumber = detail.caseInfo?.caseNumber ?? "";
 
-  const sessions = detail.sessions.map((row) => ({
-    no: row.numberLabel,
+  const sessions = detail.sessions.map((row) => {
     // 상담 일시를 넣지 않은 회차는 등록일을 '등록' 이라고 밝혀 보여 준다(상담일로 대신하지 않는다).
-    date: row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`,
-    kind: `상담 유형 ${row.kindLabel}`,
-    kindShort: row.kindLabel,
-    status: row.statusLabel,
-    st: TONE_CHIP[row.tone],
-    sig: sigOf(row.id),
-    href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
-  }));
+    const date = row.consultedDate !== NOT_PROVIDED ? row.consultedDate : `${row.createdDate} 등록`;
+    return {
+      no: row.numberLabel,
+      date,
+      kind: `상담 유형 ${row.kindLabel}`,
+      kindShort: row.kindLabel,
+      status: row.statusLabel,
+      st: TONE_CHIP[row.tone],
+      sig: sigOf(row.id),
+      href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
+      del: askDelete
+        ? () =>
+            askDelete(
+              sessionDeleteTarget({
+                id: row.id,
+                caseId: row.caseId,
+                caseNumber,
+                numberLabel: row.numberLabel,
+                date,
+                processing: row.phase === "processing",
+              }),
+            )
+        : null,
+    };
+  });
 
   // 세부 신호 행렬: 열은 회차(오래된 회차부터, 신호 이력을 받았으면 그 회차 전부), 줄은 네 학대 유형.
   const historyRows = history?.loaded ? history.sessions : [];

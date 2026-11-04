@@ -29,7 +29,14 @@ from app.models.user import User
 from app.schemas.analysis import AnalysisEnvelope, AnalysisResponse
 from app.schemas.common import SessionErrorInfo
 from app.schemas.contracts import SummaryEvidenceItem
-from app.services import audit_service, case_context_service, followup_checklist_service, session_service, transcript_service
+from app.services import (
+    audit_service,
+    case_context_service,
+    followup_checklist_service,
+    personal_info_service,
+    session_service,
+    transcript_service,
+)
 
 logger = get_logger(__name__)
 
@@ -290,12 +297,13 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             payload = transcript_service.transcript_to_contract(transcript)
             case_context = _build_case_context(db, session)
             adapter = get_ai_adapter()
+            known_identifiers = _known_identifiers(db, session, adapter)
 
             _prepare_adapter(adapter, job_deadline)
 
             time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
             bundle = run_with_timeout(
-                lambda: _analyze(adapter, payload, time_limit, case_context),
+                lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers),
                 time_limit,
             )
 
@@ -381,8 +389,26 @@ def _build_case_context(db: Session, session: ConsultationSession) -> Optional[d
         return None
 
 
-def _analyze(adapter, payload, time_limit: float, case_context: Optional[dict] = None):
-    """받는 어댑터(ModelingAIAdapter)에만 줄어든 제한 시간 · 사례 정보를 키워드로 넘긴다. 다른 어댑터는 그대로 부른다."""
+def _known_identifiers(db: Session, session: ConsultationSession, adapter) -> Optional[List[str]]:
+    """외부 AI 로 보내기 전 가리기에 넘길 그 사례의 등록 이름(personal_info_service.known_identifiers, 메모리에서만).
+
+    받는 어댑터(ModelingAIAdapter)일 때만 복호화한다 — 다른 어댑터에는 넘기지 않는다. 못 읽으면 빈 목록(실명 없이 지금처럼 가림).
+    """
+
+    if not accepts_keyword(adapter.analyze, "known_identifiers"):
+        return None
+
+    return personal_info_service.known_identifiers(db, session.case_id)
+
+
+def _analyze(
+    adapter,
+    payload,
+    time_limit: float,
+    case_context: Optional[dict] = None,
+    known_identifiers: Optional[List[str]] = None,
+):
+    """받는 어댑터(ModelingAIAdapter)에만 줄어든 제한 시간 · 사례 정보 · 등록 이름을 키워드로 넘긴다. 다른 어댑터는 그대로 부른다."""
 
     options = {}
 
@@ -391,6 +417,9 @@ def _analyze(adapter, payload, time_limit: float, case_context: Optional[dict] =
 
     if case_context is not None and accepts_keyword(adapter.analyze, "case_context"):
         options["case_context"] = case_context
+
+    if known_identifiers is not None and accepts_keyword(adapter.analyze, "known_identifiers"):
+        options["known_identifiers"] = known_identifiers
 
     return adapter.analyze(payload, **options)
 

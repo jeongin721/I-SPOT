@@ -14,6 +14,7 @@ from app.models.followup_check import SessionFollowupChecks
 from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.schedule import ScheduleEvent
+from app.models.signup import SignupEmailCode, SignupRequest
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.source_document import SessionSourceDocument
@@ -41,6 +42,8 @@ __all__ = [
     "SessionRiskAssessment",
     "SessionSourceDocument",
     "ScheduleEvent",
+    "SignupEmailCode",
+    "SignupRequest",
     "Transcript",
     "TranscriptSegment",
     "User",

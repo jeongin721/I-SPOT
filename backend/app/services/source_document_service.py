@@ -19,7 +19,7 @@ import re
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -38,7 +38,7 @@ from app.models.source_document import SessionSourceDocument
 from app.models.summary import ConsultationSummary
 from app.models.user import User
 from app.schemas.source_document import SourceDocumentResponse
-from app.services import audit_service
+from app.services import audit_service, personal_info_service
 from app.services.document_text import extract_text
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,13 @@ def _extract(filename: str, data: bytes) -> str:
 def _ai_error(code: ErrorCode) -> APIError:
     status, message = _ERRORS[code]
     return APIError(code, message, status_code=status)
+
+
+def _known_identifiers(db: Session, session: ConsultationSession) -> List[str]:
+    """외부 AI 가리기에 넘길 그 사례의 등록 이름 전부 + 별칭(personal_info_service.known_identifiers)."""
+
+    alias = session.case.child_alias if session.case else None
+    return personal_info_service.known_identifiers(db, session.case_id, extra=[alias])
 
 
 def _run_ai(session: ConsultationSession, name: str, call: Callable[[Callable], Dict[str, Any]]) -> Dict[str, Any]:
@@ -233,7 +240,9 @@ def upload(db: Session, session: ConsultationSession, current_user: User, *, fil
     file_format = filename.rsplit(".", 1)[-1].lower()
 
     if settings.AI_PROVIDER == "modeling":
-        known = [session.case.child_alias] if session.case and session.case.child_alias else []
+        # 올린 문서에는 실명이 들어 있기 쉽다 — 별칭만이 아니라 사례에 등록한 이름 전부를 가린다(민규 #137, #138 과 같게).
+        # known_identifiers 는 DB 오류 때 거래를 되돌리므로 그 전에 쓴 변경이 없어야 한다 — 여기까지는 읽기만 했다.
+        known = _known_identifiers(db, session)
         result = _run_ai(session, "fill_note", lambda run: run(text, known_identifiers=known))
         fill_source, fill_model = "AI", result.get("model")
     else:
@@ -337,7 +346,8 @@ def draft_followups(db: Session, session: ConsultationSession, current_user: Use
         raise conflict(ErrorCode.INVALID_SESSION_STATE, "3단계 상담 요약 · 상담 일지에 쓴 내용이 없습니다. 먼저 채워 주세요.")
 
     if settings.AI_PROVIDER == "modeling":
-        known = [session.case.child_alias] if session.case and session.case.child_alias else []
+        # 위 3단계 채우기와 같게 등록 이름 전부를 가린다(여기까지 읽기만 했다).
+        known = _known_identifiers(db, session)
         result = _run_ai(session, "draft_followups", lambda run: run(text, known_identifiers=known))
         draft = {"checks": result.get("checks") or [], "questions": result.get("questions") or [], "source": "AI", "model": result.get("model")}
     else:

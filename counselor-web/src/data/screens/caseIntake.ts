@@ -35,6 +35,7 @@ import {
 } from "../personalInfo";
 import type { PersonalInfoState } from "../usePersonalInfo";
 import {
+  GENDER_OPTIONS,
   intakeFormOf,
   toCaseUpdateRequest,
   type IntakeCounselors,
@@ -74,9 +75,6 @@ const FAM = [
   "시설보호",
   "기타",
 ];
-
-/** 성별 고르기. 서버에 다른 글자가 적혀 있으면 그 값도 고를 수 있게 붙인다(지어내지 않고 그대로 보인다). */
-const GENDERS = ["여", "남"];
 
 /** 빈 필수 칸 테두리(디자인 값). */
 const INVALID_BORDER = "#A33B2E";
@@ -238,7 +236,7 @@ export function caseIntakeValues(input: CaseIntakeInput) {
   }));
 
   const genderValue = form ? form.gender : "";
-  const genderOptions = [...GENDERS];
+  const genderOptions = [...GENDER_OPTIONS];
   if (saved && saved.gender && !genderOptions.includes(saved.gender)) genderOptions.push(saved.gender);
   if (genderValue && !genderOptions.includes(genderValue)) genderOptions.push(genderValue);
 

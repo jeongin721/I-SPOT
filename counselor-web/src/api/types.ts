@@ -595,7 +595,8 @@ export interface Transcript {
 /**
  * 원문 확정 전 1차 모델 스캔으로 고른 '먼저 들어볼 곳'(API_CONTRACT 7절 key_scan). 판정이 아니다.
  * DONE 성공(segments 가 비어도) · FAILED 실패(STT 는 성공) · SKIPPED modeling 이 아님.
- * abuse_types 는 화면에 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3).
+ * abuse_types 는 유형 칩으로 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3). 2026-11-03 부터 원문 확정 전 STT 검수 화면이
+ * 그 유형의 '임시' 관련 조문(아동복지법 제17조 해당 호)을 보이는 데만 쓴다(사용자 요청).
  */
 export interface KeyScan {
   status: "DONE" | "FAILED" | "SKIPPED";

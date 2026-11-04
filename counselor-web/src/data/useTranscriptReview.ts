@@ -56,6 +56,8 @@ export interface TranscriptInfo {
   sttProvider: string | null;
   /** '1차 임시 핵심 발화' 로 고른 발화 ID(원문 순서). 스캔 성공(DONE)일 때만 차고, 그 밖에는 빈 배열. */
   keySegmentIds: string[];
+  /** 그 발화의 1차 유형(PHYSICAL 등). 원문 확정 전 STT 검수 화면의 '임시 관련 조문' 에만 쓴다(2026-11-03). 스캔 성공일 때만. */
+  keyTypes: Record<string, string[]>;
 }
 
 export interface TranscriptReviewOptions {
@@ -433,6 +435,15 @@ export function useTranscriptReview(
             saved.key_scan?.status === "DONE" && Array.isArray(saved.key_scan.segments)
               ? saved.key_scan.segments.map((item) => item.segment_id)
               : [],
+          keyTypes:
+            saved.key_scan?.status === "DONE" && Array.isArray(saved.key_scan.segments)
+              ? Object.fromEntries(
+                  saved.key_scan.segments.map((item) => [
+                    item.segment_id,
+                    Array.isArray(item.abuse_types) ? item.abuse_types.filter((type) => typeof type === "string") : [],
+                  ]),
+                )
+              : {},
         }
       : null,
     rows,

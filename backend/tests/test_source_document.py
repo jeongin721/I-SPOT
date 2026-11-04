@@ -266,6 +266,27 @@ def test_modeling_path_uses_ai_module(client: TestClient, counselor_headers, cas
     assert "위험요인: 부의 음주 뒤 체벌이 반복됨." in modeling["draft"] and "상담 개요" not in modeling["draft"]
 
 
+def test_modeling_masks_registered_names_too(client: TestClient, counselor_headers, case: dict, session: dict, modeling) -> None:
+    """올린 문서에는 실명이 들어 있기 쉽다 — 3단계 채우기 · 4단계 초안 모두 등록 실명까지 가린다(민규 #137, #138 과 같게)."""
+
+    body = {"child_name": "한가람", "target_person": {"name": "한누리", "relation": "부"}}
+    assert client.put(f"/api/v1/cases/{case['id']}/personal-info", json=body, headers=counselor_headers).status_code == 200
+    seen = {}
+    real_draft = sys.modules["ai.modeling.abuse.document_note_llm"].draft_followups
+
+    def draft_followups(text, known_identifiers=None, deadline=None):
+        seen["draft"] = known_identifiers
+        return real_draft(text, known_identifiers=known_identifiers, deadline=deadline)
+
+    sys.modules["ai.modeling.abuse.document_note_llm"].draft_followups = draft_followups
+
+    _upload(client, counselor_headers, session["id"])
+    client.post(_url(session["id"], "/followups"), headers=counselor_headers)
+
+    for known in (modeling["fill"][1], seen["draft"]):
+        assert {"한가람", "가람", "한누리", "누리", case["child_alias"]} <= set(known)
+
+
 @pytest.mark.parametrize(
     ("error", "status", "code"),
     [(TimeoutError(), 504, "AI_TIMEOUT"), (type("DocumentNoteOutputError", (Exception,), {})("원문"), 502, "AI_INVALID_OUTPUT"), (RuntimeError("원문"), 502, "AI_FAILED")],

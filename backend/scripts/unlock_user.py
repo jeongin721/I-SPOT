@@ -20,14 +20,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.enums import AuditAction
-from app.models.user import User
-from app.services import account_service, audit_service
+from app.services import account_service, audit_service, user_service
 
 VIA = "unlock_user script"
 
@@ -57,7 +55,7 @@ def recover_user(
     퇴사 처리(비식별)된 계정은 되살리지 않는다.
     """
 
-    user = db.scalar(select(User).where(User.email == email.lower()))
+    user = user_service.find_user_by_email(db, email)
 
     if user is None:
         raise RecoveryError(f"계정을 찾을 수 없습니다: {email}")
