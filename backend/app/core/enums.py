@@ -128,6 +128,18 @@ class AnalysisStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class DraftsStatus(str, Enum):
+    """3 · 4단계 AI 초안(상담 요약 · 확인 메모 · 추가 질문 등) 상태(2026-11-04, PROPOSAL_analysis_signals_first.md).
+
+    학대 신호 확인(2단계) 값을 먼저 저장하면(analysis COMPLETED) PENDING 이 되고, 나머지를 채우면 DONE,
+    못 채우면 FAILED 다. 한 번에 저장한 분석(콜백 없음 · 이 칸이 생기기 전 분석)과 처리 중 · 실패한 분석은 DONE 이다.
+    """
+
+    PENDING = "PENDING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
 class ReviewStatus(str, Enum):
     """
     상담사 검수 대상(Summary/Document) 상태.
@@ -300,6 +312,9 @@ class AuditAction(str, Enum):
     ANALYSIS_REQUESTED = "ANALYSIS_REQUESTED"
     ANALYSIS_COMPLETED = "ANALYSIS_COMPLETED"
     ANALYSIS_FAILED = "ANALYSIS_FAILED"
+    # 3 · 4단계 AI 초안을 채움 · 못 채움(2026-11-04, 2단계를 먼저 저장한 분석만). detail 에는 수 · 오류 코드만 남긴다.
+    ANALYSIS_DRAFTS_COMPLETED = "ANALYSIS_DRAFTS_COMPLETED"
+    ANALYSIS_DRAFTS_FAILED = "ANALYSIS_DRAFTS_FAILED"
     SUMMARY_UPDATED = "SUMMARY_UPDATED"
     SUMMARY_APPROVED = "SUMMARY_APPROVED"
     DOCUMENT_CREATED = "DOCUMENT_CREATED"

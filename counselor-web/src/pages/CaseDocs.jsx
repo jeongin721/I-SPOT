@@ -116,7 +116,6 @@ export default function CaseDocs(props) {
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
-            <A to={v.tabs.app}>아이 연계</A>
           </nav>
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
             <div role="group" aria-label="문서 종류" className="seg">

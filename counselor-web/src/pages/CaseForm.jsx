@@ -113,7 +113,6 @@ export default function CaseForm(props) {
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
-            <A to={v.tabs.app}>아이 연계</A>
           </nav>
           <nav aria-label="위치" className="note" style={{ marginTop: '-8px' }}>
             <A to={v.backHref}>문서함</A> › 기관 서식 작성
