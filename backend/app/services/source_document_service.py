@@ -18,6 +18,7 @@ import logging
 import re
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -28,15 +29,18 @@ from sqlalchemy.orm import Session
 from app.adapters.module_loader import ModuleLoadError, load_callable
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
-from app.core.enums import AuditAction, ReviewStatus, SessionSource, SessionStatus
+from app.core.database import SessionLocal
+from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionSource, SessionStatus
 from app.core.errors import APIError, ErrorCode, conflict, not_found
 from app.core.state_machine import assert_status_in
+from app.models.analysis import AIAnalysis
 from app.models.audio import AudioFile
 from app.models.document import Document
 from app.models.session import ConsultationSession
 from app.models.source_document import SessionSourceDocument
 from app.models.summary import ConsultationSummary
 from app.models.user import User
+from app.schemas.contracts import AIAnalysisResult
 from app.schemas.source_document import SourceDocumentResponse
 from app.services import audit_service, personal_info_service
 from app.services.document_text import extract_text
@@ -44,6 +48,9 @@ from app.services.document_text import extract_text
 logger = logging.getLogger(__name__)
 
 MODULE = "ai.modeling.abuse.document_note_llm"
+SIGNALS_MODULE = "ai.modeling.abuse.document_signals"
+#: 문서 신호 분석 행의 provider(녹음 분석 행과 구분한다).
+SIGNALS_PROVIDER = "document"
 CONSULTATION_RECORD = "CONSULTATION_RECORD"
 ASSESSMENT_KEYS = ("safety_changes", "strengths_resources", "safety_risks", "desired_changes")
 NOTE_KEYS = ("statement", "attitude", "environment", "signals", "opinion")
@@ -301,9 +308,72 @@ def upload(db: Session, session: ConsultationSession, current_user: User, *, fil
             "filled": sorted([k for k in ASSESSMENT_KEYS if assessment_in.get(k)] + [k for k in NOTE_KEYS if note_in.get(k)]),
         },
     )
+    # 학대 신호 · 대화 주제는 업로드 응답을 늦추지 않게 뒤에서 만든다(start_document_signals → process_document_signals).
+    # 녹음 분석과 같은 AIAnalysis 행이라 상담 이력 주제 비중 · 회차별 세부 신호 · 처음 나온 이야기가 그대로 읽는다(2026-11-04).
     db.commit()
     db.refresh(row)
     return row
+
+
+def start_document_signals(db: Session, session: ConsultationSession) -> Optional[uuid.UUID]:
+    """문서 회차 신호 분석 행(PROCESSING)을 만든다. modeling 이 아닌 서버는 만들지 않는다(None). 회차 상태는 바꾸지 않는다."""
+
+    if settings.AI_PROVIDER != "modeling" or session.source != SessionSource.DOCUMENT:
+        return None
+    analysis = AIAnalysis(
+        session_id=session.id,
+        transcript_id=None,
+        transcript_version=None,
+        status=AnalysisStatus.PROCESSING,
+        provider=SIGNALS_PROVIDER,
+    )
+    db.add(analysis)
+    db.commit()
+    return analysis.id
+
+
+def process_document_signals(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
+    """백그라운드: 문서 원문 → document_signals.analyze_document_signals → 분석 행 COMPLETED/FAILED. 실패해도 회차는 그대로다."""
+
+    db = SessionLocal()
+    try:
+        analysis = db.get(AIAnalysis, analysis_id)
+        session = db.get(ConsultationSession, session_id)
+        row = get_row(db, session_id)
+        if analysis is None or session is None or row is None or analysis.status != AnalysisStatus.PROCESSING:
+            return
+        text = row.text
+        try:
+            known = _known_identifiers(db, session)
+            run = load_callable(SIGNALS_MODULE, "analyze_document_signals")
+            deadline = time.monotonic() + settings.DOCUMENT_SIGNALS_TIMEOUT_SECONDS
+            result = run_with_timeout(
+                lambda: run(text, known_identifiers=known, deadline=deadline),
+                settings.DOCUMENT_SIGNALS_TIMEOUT_SECONDS,
+            )
+            if not isinstance(result, dict):
+                raise ValueError("결과 모양이 맞지 않습니다.")
+            model_name = result.get("model")
+            # 녹음 분석과 같은 계약 모양으로 맞춰 둔다(빈 칸은 기본값) — GET …/analysis · 신호 이력이 그대로 읽는다.
+            validated = AIAnalysisResult.model_validate({k: v for k, v in result.items() if k != "model"}).model_dump(mode="json")
+        except Exception as error:  # noqa: BLE001 — 어떤 실패든 행만 실패로 닫는다(원문 · 예외 문구는 남기지 않는다)
+            db.rollback()
+            analysis = db.get(AIAnalysis, analysis_id)
+            code = ErrorCode.AI_TIMEOUT if isinstance(error, (OperationTimeout, TimeoutError)) else ErrorCode.AI_FAILED
+            logger.warning("문서 신호 분석 실패 session_id=%s type=%s", session_id, type(error).__name__)
+            analysis.status = AnalysisStatus.FAILED
+            analysis.error_code = code.value
+            analysis.error_message = "문서에서 학대 신호 · 대화 주제를 찾지 못했습니다."
+            analysis.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            return
+        analysis.model = model_name if isinstance(model_name, str) else None
+        analysis.result = validated
+        analysis.status = AnalysisStatus.COMPLETED
+        analysis.completed_at = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
 
 
 def _followup_input(db: Session, session: ConsultationSession, row: SessionSourceDocument) -> Dict[str, Any]:
