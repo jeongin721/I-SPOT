@@ -224,9 +224,6 @@ export default function CaseApp(props) {
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
             <A to={carry('/CaseDocs')}>문서함</A>
-            <A className="on" aria-current="page" to={carry('/CaseApp')}>
-              아이 연계
-            </A>
           </nav>
           {v.k.hasQuote ? (
             <>
