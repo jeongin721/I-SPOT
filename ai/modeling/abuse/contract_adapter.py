@@ -508,6 +508,9 @@ def analyze_audio_session_as_contract(
     case_id: Optional[str] = None,
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
+    on_signals_ready: Optional[
+        Callable[[Dict[str, Any], List[Dict[str, Any]], Optional[str]], None]
+    ] = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.

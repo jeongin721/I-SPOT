@@ -513,6 +513,7 @@ def analyze_audio_session(
     case_id: str = None,
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
+    on_signals_ready: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
