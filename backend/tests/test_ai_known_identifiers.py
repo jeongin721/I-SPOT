@@ -14,6 +14,8 @@ import importlib
 import json
 import logging
 import sys
+import threading
+import time
 import types
 import unicodedata
 import uuid
@@ -953,3 +955,166 @@ def test_rag_without_records_still_uses_the_consultation_as_case_one(real_rag) -
     pipeline.analyze_consultation_evidence("아이가 학교에서 맞았다고 했다", "physical", known_identifiers=[], use_law=False)
 
     assert sent["records"] == ["아이가 학교에서 맞았다고 했다"]
+
+
+# =========================================================
+# 유형별 심각도는 2차 세부유형 분석 바로 뒤에 띄운다(2026-11-04, 데모 '학대 신호 확인이 늦다')
+# =========================================================
+
+
+def test_severity_runs_alongside_the_five_drafts(real_analysis, monkeypatch) -> None:
+    """심각도는 2차 결과만 쓰므로 기록 초안 등 다섯 호출과 겹쳐 돈다. 예전처럼 서사 요약 뒤에 부르면
+    기록 초안이 기다리는 동안 심각도가 시작되지 않아 started 가 False 로 남는다."""
+
+    infer, sent, _ = real_analysis
+    severity_started = threading.Event()
+    seen_while_drafting: List[bool] = []
+
+    def severity(*args, **kwargs):
+        severity_started.set()
+        sent.setdefault("rate_severity_from_text", []).append(kwargs.get("masked_evidence_text"))
+        return [{"major_type": "신체학대", "level": 3}]
+
+    def record_draft(*args, **kwargs):
+        seen_while_drafting.append(severity_started.wait(5))
+        return _step_result("generate_record_draft", kwargs.get("masked_transcript_text"))
+
+    monkeypatch.setattr(infer, "rate_severity_from_text", severity)
+    monkeypatch.setattr(infer, "generate_record_draft", record_draft)
+
+    result = infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), case_id="c1", known_identifiers=[])
+
+    assert seen_while_drafting == [True]
+    assert result["severity_ratings"] == [{"major_type": "신체학대", "level": 3}]
+
+
+def test_severity_failure_still_fails_the_analysis(real_analysis, monkeypatch) -> None:
+    """먼저 띄워도 실패는 예전처럼 분석 실패로 올라간다(조용히 빈 심각도로 바뀌지 않는다)."""
+
+    infer, _, _ = real_analysis
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("severity down")
+
+    monkeypatch.setattr(infer, "rate_severity_from_text", broken)
+
+    with pytest.raises(RuntimeError, match="severity down"):
+        infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), case_id="c1", known_identifiers=[])
+
+
+# =========================================================
+# 2단계 먼저 넘기기 — on_signals_ready(2026-11-04, 민규 합의)
+# =========================================================
+
+STEP2_KEYS = ("risk_utterances", "abuse_signals", "risk_factors", "severity_ratings", "protective_factors")
+
+
+def test_signals_are_handed_over_before_the_step3_drafts_finish(real_analysis, monkeypatch) -> None:
+    """2단계 값(기록 초안 · 보호요인 · 심각도)이 모이면 상담 요약 · 일지 호출이 끝나기 전에 콜백이 불린다.
+    넘긴 결과는 계약(AIAnalysisResult)으로 검증되고, 3 · 4단계 칸은 비어 있으며, 마지막 결과의 2단계 칸과 같다."""
+
+    infer, _, _ = real_analysis
+    contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
+    from app.schemas.contracts import AIAnalysisResult
+
+    handed: List[Any] = []
+    called_before_records: List[bool] = []
+
+    def records(*args, **kwargs):
+        called_before_records.append(_wait_until(lambda: bool(handed), 5))
+        return {"counseling_summary": "상담 요약 문단", "counseling_note": {}}
+
+    def severity(*args, **kwargs):
+        return [{"major_type": "신체학대", "level": 3, "reason": "근거", "matched_evidence": "때려요"}]
+
+    monkeypatch.setattr(infer, "generate_counseling_records", records)
+    monkeypatch.setattr(infer, "rate_severity_from_text", severity)
+    monkeypatch.setattr(contract_adapter, "analyze_audio_session", infer.analyze_audio_session)
+
+    final, _, _ = contract_adapter.analyze_audio_session_as_contract(
+        stt_result=NAMED_TRANSCRIPT,
+        client=object(),
+        known_identifiers=[],
+        on_signals_ready=lambda contract, evidence, model: handed.append(contract),
+    )
+
+    assert called_before_records == [True] and len(handed) == 1
+    partial = AIAnalysisResult.model_validate(handed[0]).model_dump()
+    assert partial["severity_ratings"][0]["level"] == 3 and partial["risk_utterances"]
+    assert partial["summary"]["overview"] == "" and partial["followup_check_points"] == [] and partial["topic_tags"] is None
+    # 요약은 아직 안 만들었을 뿐이라 '만들지 못했습니다' 경고를 넘기지 않는다(민규 #151 리뷰). 마지막 결과는 그대로.
+    assert all("상담 요약을 만들지 못했습니다" not in warning for warning in partial["warnings"])
+    assert final["summary"]["overview"] == "상담 요약 문단"
+    for key in STEP2_KEYS:
+        assert handed[0][key] == final[key], key
+
+
+def test_no_callback_when_the_analysis_fails_first(real_analysis, monkeypatch) -> None:
+    """2단계 값이 모이기 전에 실패하면 콜백을 부르지 않고 예전처럼 실패한다."""
+
+    infer, _, _ = real_analysis
+    handed: List[Any] = []
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("records down")
+
+    def slow_draft(*args, **kwargs):
+        _wait_until(lambda: False, 0.3)
+        return _step_result("generate_record_draft", kwargs.get("masked_transcript_text"))
+
+    monkeypatch.setattr(infer, "generate_counseling_records", broken)
+    monkeypatch.setattr(infer, "generate_record_draft", slow_draft)
+
+    with pytest.raises(RuntimeError, match="records down"):
+        infer.analyze_audio_session(
+            stt_result=NAMED_TRANSCRIPT, client=object(), known_identifiers=[], on_signals_ready=handed.append
+        )
+
+    assert handed == []
+
+
+def test_failure_after_the_callback_still_fails_the_analysis(real_analysis, monkeypatch) -> None:
+    """콜백 뒤 3 · 4단계 호출이 실패하면 분석은 실패로 끝난다(Backend 가 drafts FAILED 로 마감한다)."""
+
+    infer, _, _ = real_analysis
+    handed: List[Any] = []
+
+    def broken_checklist(*args, **kwargs):
+        _wait_until(lambda: bool(handed), 5)
+        raise RuntimeError("checklist down")
+
+    monkeypatch.setattr(infer, "generate_checklist_draft", broken_checklist)
+
+    with pytest.raises(RuntimeError, match="checklist down"):
+        infer.analyze_audio_session(
+            stt_result=NAMED_TRANSCRIPT, client=object(), known_identifiers=[], on_signals_ready=handed.append
+        )
+
+    assert len(handed) == 1
+
+
+def _wait_until(condition, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return condition()
+
+
+def test_signals_contract_keeps_other_warnings(real_analysis) -> None:
+    """콜백 결과에서 빼는 건 '상담 요약을 만들지 못했습니다' 한 줄뿐이다 — 법령 데이터 경고 같은 2단계 경고는 남는다."""
+
+    contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
+    partial = {
+        "record_draft": {"risk_signal_points": [], "child_statement_points": []},
+        "legal_references_unavailable": True,
+        "counseling_summary": None,
+    }
+
+    contract, _, _ = contract_adapter._signals_contract(partial, transcript=NAMED_TRANSCRIPT)
+    full, _, _ = contract_adapter.to_ai_output_contract(partial, transcript=NAMED_TRANSCRIPT)
+
+    assert any("상담 요약을 만들지 못했습니다" in warning for warning in full["warnings"])
+    assert contract["warnings"] == [w for w in full["warnings"] if "상담 요약을 만들지 못했습니다" not in w]
+    assert contract["warnings"]

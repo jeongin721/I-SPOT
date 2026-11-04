@@ -514,7 +514,8 @@ export function followupQValues(input: FollowupScreenInput) {
   const header = processHeaderValues(input, 3);
   const ids = header.ids;
   const fromDocument = input.detail.session?.source === "DOCUMENT";
-  const status = fromDocument ? input.detail.session?.status ?? null : analysis.sessionStatus;
+  // 3 · 4단계 AI 초안을 만드는 중이면 '분석 중' 으로 본다(stepStatus — 저장 · 승인을 막고 안내를 보인다).
+  const status = fromDocument ? input.detail.session?.status ?? null : analysis.stepStatus;
   const view = analysis.analysis;
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
   // 문서 회차: AI 분석이 없고, 3단계에 저장한 칸으로 만든 초안(followup_draft)을 쓴다. 근거 위치 · rag 체크리스트는 없다.
@@ -563,7 +564,11 @@ export function followupQValues(input: FollowupScreenInput) {
   else if (fromDocument && input.sourceDoc?.draftError) empty = input.sourceDoc.draftError;
   else if (fromDocument && docDraft?.source === "NONE") empty = "AI 초안을 만들지 않는 서버입니다. '+ 확인 사항 직접 추가' 로 쓸 수 있습니다.";
   else if (fromDocument && !completed) empty = "3단계 상담 요약 · 일지를 저장하면 확인 사항 · 질문 초안을 만듭니다.";
+  else if (analysis.draftsPending) empty = "AI 초안을 만드는 중입니다. 잠시 뒤 저절로 보입니다.";
   else if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
+  else if (analysis.draftsFailed) {
+    empty = "AI 초안을 만들지 못했습니다. 학대 신호 확인에서 다시 분석하면 만들어집니다(학대 신호 결과도 다시 만들어집니다). '+ 확인 사항 직접 추가' 로 쓸 수도 있습니다.";
+  }
   else if (!completed) empty = "AI 분석이 끝나면 확인 메모가 보입니다.";
   else empty = "AI 가 남긴 확인 메모가 없습니다. '+ 확인 사항 직접 추가' 로 쓸 수 있습니다.";
 

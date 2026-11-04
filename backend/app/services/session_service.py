@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core.config import settings
-from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionStatus
+from app.core.enums import AnalysisStatus, AuditAction, DraftsStatus, ReviewStatus, SessionStatus
 from app.core.errors import ErrorCode, conflict
 from app.core.logging import get_logger
 from app.core.state_machine import assert_transition
@@ -317,6 +317,10 @@ def claim_status(
 # 제한 시간이 끝난 뒤 실패·결과를 기록하는 데 걸리는 시간을 감안한 여유.
 STALE_GRACE_SECONDS = 60
 
+# AI 분석 준비 단계(모듈 import · 모델 로드) 제한. analysis_service.PREPARE_TIMEOUT_SECONDS 가 이 값이다(까닭은 그 머리말).
+# 3 · 4단계 초안 멈춤 판정(_expire_stale_drafts)도 같은 값을 쓴다 — 이 모듈은 analysis_service 를 import 하지 못한다.
+AI_PREPARE_TIMEOUT_SECONDS = STALE_GRACE_SECONDS - 15
+
 
 @dataclass(frozen=True)
 class _ProcessingRule:
@@ -372,12 +376,17 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
     읽어 둔 시작 시각이 DB 에서도 그대로일 때만 마감한다. 읽은 뒤 다른 요청이 같은 작업을 먼저
     마감하고 다시 요청했으면, 상태는 같은 처리 중이어도 시작 시각이 새 요청의 것이다. 상태만 보고
     마감하면 옛 판단으로 막 시작한 새 작업까지 실패로 만든다.
+
+    처리 중이 아닌 회차는 2단계를 먼저 저장하고 3 · 4단계 초안을 기다리는(drafts PENDING) 분석이 멈췄는지 본다
+    (_expire_stale_drafts, 2026-11-04). 회차 상태는 바꾸지 않고 초안만 FAILED 로 마감한다.
     """
 
     rule = _PROCESSING_RULES.get(session.status)
 
     if rule is None:
-        return False
+        pending = _pending_drafts_analysis_id(db, session.id)
+
+        return pending is not None and _expire_stale_drafts(db, session, pending)
 
     now = datetime.now(timezone.utc)
     limit_seconds = getattr(settings, rule.timeout_setting) + STALE_GRACE_SECONDS
@@ -462,3 +471,196 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
     )
 
     return True
+
+
+# =========================================================
+# 3 · 4단계 AI 초안(drafts_status, 2026-11-04 PROPOSAL_analysis_signals_first.md)
+# =========================================================
+
+DRAFTS_PENDING_MESSAGE = (
+    "AI 초안(상담 요약 · 확인 메모 · 추가 질문 등)을 만드는 중입니다. 잠시 뒤 다시 시도해 주세요."
+)
+
+
+def _pending_drafts_analysis_id(db: Session, session_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """이 회차에서 3 · 4단계 초안을 기다리는 분석 id. 없으면 None.
+
+    PENDING 동안은 재분석을 받지 않아(assert_drafts_not_pending) 보통 가장 최근 분석 하나뿐이다.
+    """
+
+    return db.scalar(
+        select(AIAnalysis.id)
+        .where(
+            AIAnalysis.session_id == session_id,
+            AIAnalysis.drafts_status == DraftsStatus.PENDING,
+        )
+        .limit(1)
+    )
+
+
+def lock_same_ai_request(
+    db: Session,
+    session_id: uuid.UUID,
+    requested_at: Optional[datetime],
+    status: Optional[SessionStatus] = None,
+) -> bool:
+    """회차 행을 잠근다. 분석 요청 시각(ai_started_at)이 requested_at 그대로일 때만(status 를 주면 그 상태일 때도). 잠갔으면 True.
+
+    값을 바꾸지 않는 조건부 UPDATE 라 commit · rollback 할 때까지 PostgreSQL 은 그 행을, SQLite 는 쓰기를 잡는다.
+    같은 회차의 첫 저장(_claim_finish) · 새 분석 요청(claim_status) · 회차 삭제도 이 행을 먼저 잡으므로 서로 순서대로 돈다
+    (Codex #154 M1 · M3). 요청 시각을 함께 보는 까닭: 회차 상태만 보면 다른 요청이 AI_REVIEW_REQUIRED → AI_PROCESSING →
+    AI_REVIEW_REQUIRED 로 돌려놓은 것을 놓친다(새 요청은 요청 시각을 새로 적는다). updated_at 도 그대로 둔다.
+    """
+
+    conditions = [
+        ConsultationSession.id == session_id,
+        # None 이면 IS NULL 로 바뀐다(옛 자료 · 분석을 요청한 적 없는 회차).
+        ConsultationSession.ai_started_at == requested_at,
+    ]
+
+    if status is not None:
+        conditions.append(ConsultationSession.status == status)
+
+    locked = db.execute(
+        update(ConsultationSession)
+        .where(*conditions)
+        .values(status=ConsultationSession.status, updated_at=ConsultationSession.updated_at)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    return locked == 1
+
+
+def fail_pending_drafts(
+    db: Session,
+    session_id: uuid.UUID,
+    analysis_id: uuid.UUID,
+    requested_at: Optional[datetime],
+    error_code: ErrorCode,
+    detail: Optional[dict] = None,
+) -> bool:
+    """그 분석의 3 · 4단계 초안이 아직 PENDING 일 때만 FAILED 로 마감한다. 마감했으면 commit 하고 True, 아니면 되돌리고 False.
+
+    회차 상태와 먼저 저장한 2단계 결과(analysis.status · result)는 그대로 둔다. 분석 작업의 실패 · 시간 초과
+    (analysis_service._fail_analysis)와 멈춤 판정(_expire_stale_drafts)이 쓴다.
+
+    먼저 회차 행을 잠그되 requested_at(판단에 쓴 요청 시각)이 그대로일 때만이다 — 오래전에 읽은 회차로 판단했는데 그 사이
+    새 분석이 시작됐으면 새 작업의 초안을 마감하지 않는다(Codex #154 M2). 그다음 조건부 UPDATE(그 분석 id · PENDING)의
+    행 수로 둘째 저장 · 다른 마감과 한 쪽만 통과한다. 잠금 순서는 다른 경로와 같이 회차 → 분석이다(M3).
+
+    오류 코드는 AI_TIMEOUT · AI_FAILED 둘로 줄여 저장한다(응답 문구는 코드로 고르는 고정 문구, 원인 예외 문구는 싣지 않는다).
+    회차 객체 대신 id 를 받는다 — 되돌린 뒤 만료된 객체를 읽으면 지워진 회차에서 오류가 난다.
+    """
+
+    code = ErrorCode.AI_TIMEOUT if error_code == ErrorCode.AI_TIMEOUT else ErrorCode.AI_FAILED
+
+    if not lock_same_ai_request(db, session_id, requested_at):
+        db.rollback()
+        return False
+
+    failed = db.execute(
+        update(AIAnalysis)
+        .where(
+            AIAnalysis.id == analysis_id,
+            AIAnalysis.drafts_status == DraftsStatus.PENDING,
+        )
+        .values(drafts_status=DraftsStatus.FAILED, drafts_error_code=code.value)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    if failed != 1:
+        db.rollback()
+        return False
+
+    case_id = db.scalar(select(ConsultationSession.case_id).where(ConsultationSession.id == session_id))
+
+    audit_service.record(
+        db,
+        action=AuditAction.ANALYSIS_DRAFTS_FAILED,
+        entity_type="AIAnalysis",
+        entity_id=analysis_id,
+        case_id=case_id,
+        session_id=session_id,
+        detail={"error_code": code.value, **(detail or {})},
+    )
+
+    db.commit()
+
+    logger.warning(
+        "AI 초안을 만들지 못했습니다. session_id=%s analysis_id=%s code=%s",
+        session_id,
+        analysis_id,
+        code.value,
+    )
+
+    return True
+
+
+def _expire_stale_drafts(db: Session, session: ConsultationSession, analysis_id: uuid.UUID) -> bool:
+    """PENDING 초안이 요청 시각 + 준비 제한 + AI_TIMEOUT_SECONDS + 여유를 넘겼으면 FAILED(AI_FAILED)로 마감한다.
+
+    살아 있는 작업은 요청 시각 + 준비 제한 + AI_TIMEOUT_SECONDS 안에 둘째 저장 · 초안 실패를 남긴다
+    (analysis_service._job_deadline). 그 뒤 여유까지 지나도 PENDING 이면 작업이 사라진 것(배포 · 재시작)으로 본다.
+
+    판단에 쓴 요청 시각(읽어 둔 ai_started_at)이 DB 에서도 그대로일 때만 마감한다(fail_pending_drafts). 읽은 뒤 새 분석이
+    시작돼 그 초안이 PENDING 이면, 옛 시각으로 잰 경과 시간으로 새 작업을 마감하지 않는다(Codex #154 M2,
+    expire_stale_processing 의 같은 작업 확인과 같은 방식).
+    """
+
+    limit_seconds = settings.AI_TIMEOUT_SECONDS + AI_PREPARE_TIMEOUT_SECONDS + STALE_GRACE_SECONDS
+    session_id = session.id
+    read_started_at = session.ai_started_at
+    started_at = read_started_at
+
+    if started_at is not None:
+        if started_at.tzinfo is None:
+            # SQLite 는 시간대 정보 없이 돌려준다. 저장 값은 UTC 다.
+            started_at = started_at.replace(tzinfo=timezone.utc)
+
+        if (datetime.now(timezone.utc) - started_at).total_seconds() <= limit_seconds:
+            return False
+
+    return fail_pending_drafts(
+        db,
+        session_id,
+        analysis_id,
+        read_started_at,
+        ErrorCode.AI_FAILED,
+        {"reason": "stale_processing", "limit_seconds": limit_seconds},
+    )
+
+
+def assert_drafts_not_pending(db: Session, session: ConsultationSession) -> None:
+    """3 · 4단계 AI 초안을 만드는 중이면 409 ANALYSIS_DRAFTS_PENDING. 통과하면 회차 행을 잡은 채 돌아간다.
+
+    재분석 · 요약 수정 · 승인 · 추가 질문 · 확인 사항 저장이 쓴다(위험도 판단 저장은 받는다). 바꾸기 전에 부르고, 부른
+    쪽은 같은 트랜잭션에서 바꾸고 commit 한다.
+
+    1. 초안이 멈췄으면(작업이 사라짐) 먼저 FAILED 로 마감한다 — 화면이 분석을 다시 조회하지 않아도 계속 막히지 않게.
+    2. 회차 행을 잠근다(lock_same_ai_request). 이 요청이 읽은 상태 · 요청 시각이 DB 에서도 그대로일 때만이다. 읽은 뒤
+       다른 요청이 재분석을 시작했거나(→ 첫 저장으로 다시 AI_REVIEW_REQUIRED 여도) 상태를 바꿨으면 409 INVALID_SESSION_STATE.
+    3. 잠근 뒤 PENDING 을 다시 본다. 첫 저장 · 새 분석 요청도 이 행을 먼저 잡으므로, 잠근 동안에는 새 PENDING 이 생기지
+       않고 확인과 쓰기 사이에 끼어들지 못한다(Codex #154 M1 — 확인만 하고 잠그지 않으면 재분석이 겹쳐 PENDING 이 둘이
+       되거나 PENDING 인 채 승인됐다).
+    """
+
+    # 되돌리면 객체가 만료되므로 이 요청이 판단에 쓴 값을 먼저 읽어 둔다.
+    session_id = session.id
+    read_status = session.status
+    read_started_at = session.ai_started_at
+
+    pending = _pending_drafts_analysis_id(db, session_id)
+
+    if pending is not None:
+        _expire_stale_drafts(db, session, pending)
+
+    if not lock_same_ai_request(db, session_id, read_started_at, read_status):
+        db.rollback()
+        raise conflict(
+            ErrorCode.INVALID_SESSION_STATE,
+            "다른 요청이 먼저 이 Session 의 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요.",
+        )
+
+    if _pending_drafts_analysis_id(db, session_id) is not None:
+        db.rollback()
+        raise conflict(ErrorCode.ANALYSIS_DRAFTS_PENDING, DRAFTS_PENDING_MESSAGE)

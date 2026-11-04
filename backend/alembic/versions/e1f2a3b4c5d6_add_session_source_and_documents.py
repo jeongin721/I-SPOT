@@ -1,7 +1,7 @@
 """add session source and session_source_documents table
 
 Revision ID: e1f2a3b4c5d6
-Revises: 7a1c5e9b3d20
+Revises: e9a4c1d7b2f6
 Create Date: 2026-11-02 15:00:00.000000
 
 회차 자료(녹음 · 상담 기록 문서)와 문서 회차의 문서 글 · 상담 일지 초안 · 4단계 초안. API_CONTRACT 21절.
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = 'e1f2a3b4c5d6'
-down_revision: Union[str, None] = '7a1c5e9b3d20'
+down_revision: Union[str, None] = 'e9a4c1d7b2f6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

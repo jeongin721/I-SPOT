@@ -9,12 +9,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 # 계정 상태 칸을 추가하기 바로 전 revision
 BEFORE_ACCOUNT_STATE = "a4d05486e8c9"
+
+# ai_analyses 에 drafts_status 를 더한 revision(2026-11-04). 부모는 머지 때 main head 로 바뀔 수 있어 파일에서 읽는다.
+DRAFTS_STATUS = "e9a4c1d7b2f6"
 
 
 def _alembic(database_url: str, *args: str) -> None:
@@ -60,6 +65,57 @@ def test_existing_users_get_last_login_at_so_they_do_not_go_dormant(tmp_path) ->
 
         # 되돌렸다가 다시 올려도 된다.
         _alembic(database_url, "downgrade", "-1")
+        _alembic(database_url, "upgrade", "head")
+    finally:
+        engine.dispose()
+
+
+def _parent_of(revision: str) -> str:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+
+    return ScriptDirectory.from_config(config).get_revision(revision).down_revision
+
+
+def test_existing_analyses_get_drafts_done_and_downgrade_drops_columns(tmp_path) -> None:
+    """
+    drafts_status 전에 만든 분석은 한 번에 저장한 것이라 DONE 이 된다(PROPOSAL_analysis_signals_first.md §7-2).
+    내리면 두 칸이 없어지고, 다시 올려도 된다.
+    """
+
+    database_url = f"sqlite+pysqlite:///{(tmp_path / 'migration.db').as_posix()}"
+    before = _parent_of(DRAFTS_STATUS)
+
+    _alembic(database_url, "upgrade", before)
+
+    engine = create_engine(database_url)
+
+    try:
+        with engine.begin() as connection:
+            # 외래 키는 이 연결에서 강제하지 않는다(SQLite 기본). 분석 행만 있으면 된다.
+            connection.execute(
+                text(
+                    "INSERT INTO ai_analyses (id, session_id, status, schema_version, created_at, updated_at) "
+                    "VALUES ('0123456789abcdef0123456789abcdef', 'fedcba9876543210fedcba9876543210', "
+                    "'COMPLETED', '1.0', '2026-11-01 00:00:00', '2026-11-01 00:00:00')"
+                )
+            )
+
+        _alembic(database_url, "upgrade", "head")
+
+        with engine.connect() as connection:
+            row = connection.execute(text("SELECT drafts_status, drafts_error_code FROM ai_analyses")).one()
+
+        assert tuple(row) == ("DONE", None)
+
+        _alembic(database_url, "downgrade", before)
+
+        with engine.connect() as connection:
+            columns = {item[1] for item in connection.execute(text("PRAGMA table_info(ai_analyses)"))}
+
+        assert "drafts_status" not in columns
+        assert "drafts_error_code" not in columns
+
         _alembic(database_url, "upgrade", "head")
     finally:
         engine.dispose()

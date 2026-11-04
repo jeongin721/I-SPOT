@@ -5,21 +5,32 @@
 #
 # AI 담당의 Structured JSON Contract 를 변형하지 않고 그대로 저장한다.
 # Backend 는 학대 여부/위험도를 판단하지 않는다.
+#
+# 두 번 저장(2026-11-04, I-SPOT_DOCS/docs/PROPOSAL_analysis_signals_first.md §3):
+#   모듈이 학대 신호 확인(2단계) 값을 먼저 넘기면(on_signals_ready) 그때 회차를 AI_REVIEW_REQUIRED 로 넘기고
+#   drafts_status = PENDING 으로 저장한다(_SignalsSave). 모듈이 돌아오면 3 · 4단계 칸만 채워 DONE 으로 바꾼다(_save_drafts).
+#   콜백이 불리지 않으면(예전 판 모듈 · mock · 콜백 전 실패 · 첫 저장 실패) 지금처럼 끝에서 한 번에 저장한다.
 
 import math
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.adapters.ai_adapter import AI_TIMEOUT_MESSAGE, AIError, accepts_keyword, get_ai_adapter
+from app.adapters.ai_adapter import (
+    AI_TIMEOUT_MESSAGE,
+    AIAnalysisBundle,
+    AIError,
+    accepts_keyword,
+    get_ai_adapter,
+)
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AnalysisStatus, AuditAction, ReviewStatus, SessionSource, SessionStatus
+from app.core.enums import AnalysisStatus, AuditAction, DraftsStatus, ReviewStatus, SessionSource, SessionStatus
 from app.core.errors import ErrorCode, conflict, not_found
 from app.core.logging import get_logger
 from app.models.analysis import AIAnalysis
@@ -28,7 +39,7 @@ from app.models.summary import ConsultationSummary
 from app.models.user import User
 from app.schemas.analysis import AnalysisEnvelope, AnalysisResponse
 from app.schemas.common import SessionErrorInfo
-from app.schemas.contracts import SummaryEvidenceItem
+from app.schemas.contracts import AIAnalysisResult, SummaryEvidenceItem
 from app.services import (
     audit_service,
     case_context_service,
@@ -48,13 +59,30 @@ logger = get_logger(__name__)
 # 줄인다. 작업 시작이 늦었거나(대기) 준비가 길었으면 그만큼 분석 제한이 짧아진다. 그래서 준비 제한을 여유
 # 시간보다 짧게 두면 살아 있는 작업은 멈춤 판정보다 (여유 - 준비 제한) = 15초 먼저 끝난다.
 # 그래도 늦게 끝난 결과(서버 시계 차이 등)는 저장하지 않는다(_claim_finish).
-PREPARE_TIMEOUT_SECONDS = session_service.STALE_GRACE_SECONDS - 15
+# 값은 session_service 에 둔다 — 3 · 4단계 초안 멈춤 판정도 같은 값을 쓰는데 그쪽은 이 모듈을 import 하지 못한다.
+PREPARE_TIMEOUT_SECONDS = session_service.AI_PREPARE_TIMEOUT_SECONDS
 
 PREPARE_TIMEOUT_MESSAGE = "AI 모델을 아직 불러오는 중입니다. 잠시 뒤 다시 시도해 주세요."
 
 # 새 분석 요청이 같은 회차에 PROCESSING 으로 남은 옛 분석을 마감할 때 적는 문구(_close_leftover_analyses).
 # 고정 문구다. 발화 · 결과 · 원인 예외 문구는 넣지 않는다.
 SUPERSEDED_MESSAGE = "같은 회기에 새 AI 분석을 요청해 이 분석은 중단된 것으로 처리했습니다."
+
+# 3 · 4단계 초안 실패 문구(drafts_error.message). 저장은 코드만 하고(session_service.fail_pending_drafts) 문구는 여기서 고른다.
+DRAFTS_ERROR_MESSAGES = {
+    ErrorCode.AI_TIMEOUT.value: (
+        "AI 초안(상담 요약 · 확인 메모 · 추가 질문 등)을 제한 시간 안에 만들지 못했습니다. "
+        "다시 분석하면 학대 신호 확인부터 다시 만듭니다."
+    ),
+    ErrorCode.AI_FAILED.value: (
+        "AI 초안(상담 요약 · 확인 메모 · 추가 질문 등)을 만들지 못했습니다. "
+        "다시 분석하면 학대 신호 확인부터 다시 만듭니다."
+    ),
+}
+
+# 둘째 저장이 마지막 값으로 바꾸는 칸(제안서 §3-3). 나머지(2단계 칸 · summary.key_points · summary_evidence)는 첫 저장 값 그대로다.
+# summary.overview · summary.assessment 도 바꾼다(_merge_drafts).
+_DRAFT_FIELDS = ("session_change_notes", "followup_check_points", "followup_questions", "topic_tags", "warnings")
 
 
 # =========================================================
@@ -79,6 +107,15 @@ def to_analysis_response(analysis: AIAnalysis) -> AnalysisResponse:
             message=analysis.error_message or "AI 분석에 실패했습니다.",
         )
 
+    drafts_error = None
+
+    if analysis.drafts_status == DraftsStatus.FAILED:
+        code = analysis.drafts_error_code or ErrorCode.AI_FAILED.value
+        drafts_error = SessionErrorInfo(
+            code=code,
+            message=DRAFTS_ERROR_MESSAGES.get(code, DRAFTS_ERROR_MESSAGES[ErrorCode.AI_FAILED.value]),
+        )
+
     return AnalysisResponse(
         id=analysis.id,
         session_id=analysis.session_id,
@@ -93,6 +130,8 @@ def to_analysis_response(analysis: AIAnalysis) -> AnalysisResponse:
         result=analysis.result,
         summary_evidence=analysis.summary_evidence or [],
         error=error,
+        drafts_status=analysis.drafts_status,
+        drafts_error=drafts_error,
     )
 
 
@@ -135,6 +174,10 @@ def request_analysis(
     session_service.expire_stale_processing(db, session)
 
     transcript = transcript_service.require_confirmed_transcript(db, session.id)
+
+    # 2단계를 먼저 저장하고 3 · 4단계 초안을 기다리는 동안은 받지 않는다(409 ANALYSIS_DRAFTS_PENDING).
+    # 받으면 새 작업이 회차를 처리 중으로 되돌려 2단계를 보던 상담사 화면이 사라지고, 옛 작업의 둘째 저장이 버려진다.
+    session_service.assert_drafts_not_pending(db, session)
 
     # 동시에 들어온 중복 요청은 여기서 한 건만 통과한다.
     session_service.claim_status(db, session, SessionStatus.AI_PROCESSING)
@@ -250,9 +293,14 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
 
     결과를 저장했으면 끝에서(DB 세션을 닫은 뒤) 같은 작업 안에서 다음 상담 체크리스트를 만든다(19절,
     followup_checklist_service.generate_after_analysis — 꺼져 있으면 아무것도 하지 않고, 예외를 내지 않는다).
+
+    모듈이 2단계 값을 먼저 넘기면(on_signals_ready) 그때 첫 저장을 하고(_SignalsSave), 모듈이 돌아오면 둘째 저장을
+    한다(_save_drafts). 첫 저장 뒤의 예외 · 시간 초과는 회차를 그대로 두고 초안만 FAILED 로 마감한다(_fail_analysis).
+    다음 상담 체크리스트는 둘째 저장 뒤에 만든다(3 · 4단계 칸이 다 찬 결과로).
     """
 
     saved = False
+    signals = _SignalsSave(session_id, analysis_id)
     db = SessionLocal()
 
     try:
@@ -287,6 +335,9 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             )
             return
 
+        # 이 작업의 요청 시각. 둘째 저장 · 초안 실패는 회차의 요청 시각이 그대로일 때만 한다(그 사이 새 분석 요청이면 버림).
+        requested_at = session.ai_started_at
+
         try:
             job_deadline = _job_deadline(session)
             transcript = transcript_service.get_latest_transcript(db, session.id)
@@ -303,14 +354,26 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
 
             time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
             bundle = run_with_timeout(
-                lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers),
+                lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers, signals),
                 time_limit,
             )
 
-            saved = _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
+            # 첫 저장을 했으면 둘째 저장, 아니면(콜백이 안 불림 · 첫 저장 실패 · 버림) 지금처럼 한 번에 저장한다.
+            if signals.saved:
+                saved = _save_drafts(
+                    db,
+                    session_id=session_id,
+                    analysis_id=analysis_id,
+                    requested_at=requested_at,
+                    bundle=bundle,
+                )
+            else:
+                saved = _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle)
 
         except OperationTimeout as error:
-            _fail_analysis(db, session, analysis, ErrorCode.AI_TIMEOUT, str(error), error)
+            _fail_analysis(
+                db, session, analysis, ErrorCode.AI_TIMEOUT, str(error), error, requested_at=requested_at
+            )
         except AIError as error:
             # 어댑터가 알 수 없는 예외를 AI_FAILED 로 감쌀 때는 문구를 버리고
             # 예외 종류 이름만 싣는다(ai_adapter.map_ai_error). 원인은 여기서
@@ -319,7 +382,9 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             # 코드는 문구에 원인이 드러나 있어 trace 를 남기지 않는다.
             if error.error_code == ErrorCode.AI_FAILED and error.__cause__ is not None:
                 logger.exception("AI 분석 중 어댑터 오류. session_id=%s", session_id)
-            _fail_analysis(db, session, analysis, error.error_code, str(error), error)
+            _fail_analysis(
+                db, session, analysis, error.error_code, str(error), error, requested_at=requested_at
+            )
         except Exception as error:
             logger.exception("AI 분석 중 예상하지 못한 오류. session_id=%s", session_id)
             _fail_analysis(
@@ -329,6 +394,7 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
                 ErrorCode.AI_FAILED,
                 f"AI 분석 중 오류가 발생했습니다: {type(error).__name__}",
                 error,
+                requested_at=requested_at,
             )
     finally:
         db.close()
@@ -407,8 +473,10 @@ def _analyze(
     time_limit: float,
     case_context: Optional[dict] = None,
     known_identifiers: Optional[List[str]] = None,
+    on_signals_ready: Optional[Callable[[AIAnalysisBundle], None]] = None,
 ):
-    """받는 어댑터(ModelingAIAdapter)에만 줄어든 제한 시간 · 사례 정보 · 등록 이름을 키워드로 넘긴다. 다른 어댑터는 그대로 부른다."""
+    """받는 어댑터(ModelingAIAdapter)에만 줄어든 제한 시간 · 사례 정보 · 등록 이름 · 2단계 먼저 받기 콜백을 키워드로 넘긴다.
+    다른 어댑터는 그대로 부른다."""
 
     options = {}
 
@@ -420,6 +488,9 @@ def _analyze(
 
     if known_identifiers is not None and accepts_keyword(adapter.analyze, "known_identifiers"):
         options["known_identifiers"] = known_identifiers
+
+    if on_signals_ready is not None and accepts_keyword(adapter.analyze, "on_signals_ready"):
+        options["on_signals_ready"] = on_signals_ready
 
     return adapter.analyze(payload, **options)
 
@@ -504,14 +575,65 @@ def _claim_finish(
     return True
 
 
+class _SignalsSave:
+    """모듈에 넘기는 on_signals_ready(어댑터가 검증한 AIAnalysisBundle 을 받는다). 2단계 값으로 첫 저장을 한다.
+
+    run_with_timeout 이 띄운 작업 스레드에서 불리므로 바깥 process_analysis 의 DB 세션을 쓰지 않고 SessionLocal 을 따로 연다.
+    어떤 예외도 내보내지 않는다 — 모듈은 콜백 예외를 잡지 않아 새면 분석 전체가 실패한다. 첫 저장이 실패하면 예외 종류만
+    남기고, 바깥 스레드가 끝에서 지금처럼 한 번에 저장한다.
+
+    saved 는 첫 저장을 커밋했는지다. 콜백은 모듈이 돌아오기 전에 같은 작업 스레드에서 끝나므로 바깥 스레드가 결과를
+    받은 뒤 읽으면 맞는 값이다(시간 초과로 결과를 받지 못한 경로는 saved 를 보지 않고 DB 조건으로 마감한다).
+    두 번 불리면 두 번째는 회차가 처리 중이 아니라 버려지고 saved 는 그대로다.
+    """
+
+    def __init__(self, session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
+        self.session_id = session_id
+        self.analysis_id = analysis_id
+        self.saved = False
+
+    def __call__(self, bundle: AIAnalysisBundle) -> None:
+        try:
+            db = SessionLocal()
+
+            try:
+                session = db.get(ConsultationSession, self.session_id)
+                analysis = db.get(AIAnalysis, self.analysis_id)
+
+                if session is None or analysis is None:
+                    logger.warning(
+                        "2단계 먼저 저장할 AI 분석을 찾을 수 없습니다. session_id=%s analysis_id=%s",
+                        self.session_id,
+                        self.analysis_id,
+                    )
+                    return
+
+                if _save_analysis_result(db, session=session, analysis=analysis, bundle=bundle, drafts_pending=True):
+                    self.saved = True
+            finally:
+                db.close()
+        except Exception as error:  # noqa: BLE001 — 첫 저장이 실패해도 분석은 계속한다(끝에서 한 번에 저장)
+            logger.warning(
+                "학대 신호 확인 값을 먼저 저장하지 못했습니다. 끝에서 한 번에 저장합니다. analysis_id=%s type=%s",
+                self.analysis_id,
+                type(error).__name__,
+            )
+
+
 def _save_analysis_result(
     db: Session,
     *,
     session: ConsultationSession,
     analysis: AIAnalysis,
     bundle,
+    drafts_pending: bool = False,
 ) -> bool:
-    """결과를 저장했으면 True, 늦은 결과라 버렸으면 False(다음 상담 체크리스트를 만들지 않는다)."""
+    """결과를 저장했으면 True, 늦은 결과라 버렸으면 False(다음 상담 체크리스트를 만들지 않는다).
+
+    drafts_pending: 2단계를 먼저 저장하는 첫 저장(_SignalsSave). 조건(_claim_finish) · 회차 상태 · 감사 기록은 한 번에 저장할
+    때와 같고, 초안을 PENDING 으로 두며 Summary 초안은 만들지 않는다 — 빈 Summary 를 상담사가 먼저 고치면(is_edited) 둘째
+    저장이 AI 초안을 넣지 못한다(_sync_summary_draft).
+    """
 
     # 버린 경우 rollback 으로 ORM 객체가 만료되므로 id 는 미리 읽어 둔다.
     analysis_id = analysis.id
@@ -537,8 +659,11 @@ def _save_analysis_result(
     analysis.error_code = None
     analysis.error_message = None
     analysis.completed_at = datetime.now(timezone.utc)
+    analysis.drafts_status = DraftsStatus.PENDING if drafts_pending else DraftsStatus.DONE
+    analysis.drafts_error_code = None
 
-    _sync_summary_draft(db, session=session, analysis=analysis, bundle=bundle)
+    if not drafts_pending:
+        _sync_summary_draft(db, session=session, analysis=analysis, result=bundle.result)
 
     session.status = SessionStatus.AI_REVIEW_REQUIRED
     session.ai_completed_at = datetime.now(timezone.utc)
@@ -562,11 +687,110 @@ def _save_analysis_result(
     db.commit()
 
     logger.info(
-        "AI 분석 완료 session_id=%s provider=%s key_points=%s",
+        "AI 분석 완료 session_id=%s provider=%s key_points=%s drafts_pending=%s",
         session.id,
         bundle.provider,
         len(bundle.result.summary.key_points),
+        drafts_pending,
     )
+
+    return True
+
+
+def _merge_drafts(first: AIAnalysisResult, last: AIAnalysisResult) -> AIAnalysisResult:
+    """첫 저장 결과에 3 · 4단계 칸 · summary.overview · summary.assessment · warnings 만 마지막 값으로 바꾼다(제안서 §3-3).
+
+    2단계 칸(위험 3필드 · 심각도 · 보호요인)과 summary.key_points 는 첫 저장 값 그대로다. 상담사가 첫 저장 뒤 2단계를 보고
+    판단을 적기 시작했을 수 있어, 모듈이 다른 값을 돌려줘도 바꾸지 않는다. warnings 는 콜백 때 붙은 경고를 지우려고 마지막 값으로 바꾼다.
+    """
+
+    summary = first.summary.model_copy(
+        update={"overview": last.summary.overview, "assessment": last.summary.assessment}
+    )
+
+    return first.model_copy(
+        update={"summary": summary, **{name: getattr(last, name) for name in _DRAFT_FIELDS}}
+    )
+
+
+def _save_drafts(
+    db: Session,
+    *,
+    session_id: uuid.UUID,
+    analysis_id: uuid.UUID,
+    requested_at: Optional[datetime],
+    bundle,
+) -> bool:
+    """2단계를 먼저 저장한 분석에 3 · 4단계 초안을 채운다(둘째 저장). 채웠으면 True, 버렸으면 되돌리고 False.
+
+    1. 회차 행을 먼저 잠근다 — 회차가 AI_REVIEW_REQUIRED 이고 요청 시각이 이 작업의 것(requested_at) 그대로일 때만
+       (session_service.lock_same_ai_request). 그 사이 새 분석 요청 · 승인 · 회차 삭제가 있었으면 버린다(Codex #154 M1).
+       잠금 순서를 다른 경로(첫 저장 · 회차 삭제)와 같은 회차 → 분석으로 맞춘다. 분석을 먼저 잡으면 Summary INSERT 의
+       회차 외래 키 확인이 회차 행을 기다려, 회차를 먼저 잡고 분석을 지우려는 회차 삭제와 PostgreSQL 에서 교착한다(M3).
+    2. 조건부 UPDATE(그 분석 id · drafts PENDING)의 행 수로 멈춤 판정 · 초안 실패와 한 쪽만 통과한다.
+
+    첫 저장은 작업 스레드의 다른 DB 세션이 커밋했으므로 먼저 되돌려(이 세션은 읽기만 했다) 회차 · 분석을 다시 읽는다.
+    되돌리면 읽어 둔 객체가 만료돼 지워진 행이면 읽다가 오류가 나므로, id 로 조건을 먼저 확인하고 맞을 때만 읽는다.
+    result 는 PENDING 동안 이 작업만 바꾸므로 UPDATE 뒤 읽은 값이 첫 저장 값이다. summary_evidence · provider · model ·
+    completed_at · 회차의 ai_completed_at 은 첫 저장 값 그대로 둔다.
+    """
+
+    db.rollback()
+
+    if not session_service.lock_same_ai_request(
+        db, session_id, requested_at, SessionStatus.AI_REVIEW_REQUIRED
+    ):
+        db.rollback()
+        logger.warning(
+            "AI 초안을 채울 회차가 이 작업을 기다리지 않아 둘째 저장을 하지 않습니다. analysis_id=%s",
+            analysis_id,
+        )
+        return False
+
+    claimed = db.execute(
+        update(AIAnalysis)
+        .where(
+            AIAnalysis.id == analysis_id,
+            AIAnalysis.drafts_status == DraftsStatus.PENDING,
+        )
+        .values(drafts_status=DraftsStatus.DONE)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+    if claimed != 1:
+        db.rollback()
+        logger.warning(
+            "AI 초안을 채울 분석이 PENDING 이 아니라 둘째 저장을 하지 않습니다. analysis_id=%s",
+            analysis_id,
+        )
+        return False
+
+    analysis = db.get(AIAnalysis, analysis_id, populate_existing=True)
+    session = db.get(ConsultationSession, session_id, populate_existing=True)
+
+    merged = _merge_drafts(AIAnalysisResult.model_validate(analysis.result or {}), bundle.result)
+
+    analysis.result = merged.model_dump()
+
+    _sync_summary_draft(db, session=session, analysis=analysis, result=merged)
+
+    audit_service.record(
+        db,
+        action=AuditAction.ANALYSIS_DRAFTS_COMPLETED,
+        entity_type="AIAnalysis",
+        entity_id=analysis_id,
+        case_id=session.case_id,
+        session_id=session.id,
+        detail={
+            "warning_count": len(merged.warnings),
+            "followup_question_count": len(merged.followup_questions),
+            "followup_check_point_count": len(merged.followup_check_points),
+        },
+    )
+
+    db.commit()
+
+    logger.info("AI 초안 채움 session_id=%s analysis_id=%s", session.id, analysis_id)
 
     return True
 
@@ -576,7 +800,7 @@ def _sync_summary_draft(
     *,
     session: ConsultationSession,
     analysis: AIAnalysis,
-    bundle,
+    result: AIAnalysisResult,
 ) -> None:
     """
     상담사 검수용 Summary 초안을 준비한다.
@@ -594,9 +818,9 @@ def _sync_summary_draft(
             ConsultationSummary(
                 session_id=session.id,
                 analysis_id=analysis.id,
-                overview=bundle.result.summary.overview,
-                key_points=list(bundle.result.summary.key_points),
-                assessment=bundle.result.summary.assessment.model_dump(),
+                overview=result.summary.overview,
+                key_points=list(result.summary.key_points),
+                assessment=result.summary.assessment.model_dump(),
                 status=ReviewStatus.DRAFT,
                 is_edited=False,
             )
@@ -615,9 +839,9 @@ def _sync_summary_draft(
 
         return
 
-    summary.overview = bundle.result.summary.overview
-    summary.key_points = list(bundle.result.summary.key_points)
-    summary.assessment = bundle.result.summary.assessment.model_dump()
+    summary.overview = result.summary.overview
+    summary.key_points = list(result.summary.key_points)
+    summary.assessment = result.summary.assessment.model_dump()
     summary.status = ReviewStatus.DRAFT
 
 
@@ -628,13 +852,27 @@ def _fail_analysis(
     code: ErrorCode,
     message: str,
     error: BaseException,
+    *,
+    requested_at: Optional[datetime],
 ) -> None:
+    """분석 실패 마감. 회차가 이 작업을 기다리면 AI_FAILED, 2단계를 먼저 저장했으면(초안 PENDING) 초안만 FAILED.
+
+    첫 저장 뒤의 실패 · 시간 초과는 회차가 이미 AI_REVIEW_REQUIRED 라 _claim_finish 가 맞지 않는다. 그때 회차와
+    2단계 결과는 그대로 두고 초안만 마감한다(session_service.fail_pending_drafts — 오류 코드만 저장, 원인 문구는 버림).
+    회차의 요청 시각이 이 작업의 것(requested_at) 그대로일 때만이다. 시간 초과가 작업 스레드의 첫 저장과 겹쳐도
+    조건부 UPDATE 로 한 쪽만 통과한다 — 이쪽이 먼저면 AI_FAILED 로 끝나고 첫 저장은 버려지며, 첫 저장이 먼저면 초안 FAILED 다.
+    """
+
     # rollback 하면 ORM 객체가 만료되므로 로그에 쓸 id 는 미리 읽어 둔다.
     analysis_id = analysis.id
+    session_id = session.id
 
     db.rollback()
 
     if not _claim_finish(db, session, analysis, SessionStatus.AI_FAILED, AnalysisStatus.FAILED):
+        if session_service.fail_pending_drafts(db, session_id, analysis_id, requested_at, code):
+            return
+
         # 실패 문구는 남기지 않는다(원인 예외의 문구가 섞일 수 있다). 예외 종류 이름만 남긴다.
         logger.warning(
             "이미 마감된 AI 분석의 늦은 실패를 버렸습니다. analysis_id=%s type=%s",
