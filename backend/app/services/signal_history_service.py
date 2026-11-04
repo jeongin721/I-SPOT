@@ -130,14 +130,19 @@ def _session_row(
         types=types,
         topics=_topic_rows(result.get("topic_tags")) if completed else None,
         subtypes=(
-            _subtype_rows(result.get("risk_utterances"), speakers.get(analysis.transcript_id, {}))
+            _subtype_rows(
+                result.get("risk_utterances"),
+                speakers.get(analysis.transcript_id, {}),
+                # 문서 회차 분석(전사본 없음)은 근거가 기록 문장이라 화자 확인을 기다리지 않는다(2026-11-04).
+                speaker_check=analysis.transcript_id is not None,
+            )
             if completed and analysis is not None
             else None
         ),
     )
 
 
-def _subtype_rows(utterances: Any, speakers: Dict[str, Speaker]) -> List[SignalHistorySubtype]:
+def _subtype_rows(utterances: Any, speakers: Dict[str, Speaker], speaker_check: bool = True) -> List[SignalHistorySubtype]:
     """risk_utterances → (유형, 세부 유형)마다 근거 발화 수. 유형 · 세부 유형 · 근거 발화가 없는 항목은 뺀다. 처음 나온 순서."""
 
     grouped: Dict[tuple, List[str]] = {}
@@ -162,7 +167,7 @@ def _subtype_rows(utterances: Any, speakers: Dict[str, Speaker]) -> List[SignalH
             subtype=subtype,
             count=len(ids),
             segment_ids=ids,
-            pending=all(speakers.get(sid, Speaker.UNKNOWN) == Speaker.UNKNOWN for sid in ids),
+            pending=speaker_check and all(speakers.get(sid, Speaker.UNKNOWN) == Speaker.UNKNOWN for sid in ids),
         )
         for (abuse_type, subtype), ids in grouped.items()
     ]

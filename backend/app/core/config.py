@@ -184,6 +184,8 @@ class Settings(BaseSettings):
     DOCUMENT_NOTE_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
     #: 문서 글자 뽑기(PDF · docx · hwpx)만의 제한 시간. LLM 시간과 따로 둔다(깨진 PDF 가 오래 붙잡지 않게).
     DOCUMENT_TEXT_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0)
+    #: 문서 회차 학대 신호 · 대화 주제 분석(업로드 뒤 백그라운드, ai/modeling/abuse/document_signals) 제한 시간.
+    DOCUMENT_SIGNALS_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
     #: 문서 글자 뽑기 서버 전체 동시 실행 수. 넘으면 429(제한 시간을 넘긴 thread 도 끝날 때까지 자리를 쓴다).
     DOCUMENT_TEXT_MAX_CONCURRENCY: int = Field(default=2, ge=1)
     #: 종결 요약 AI 서버 전체 동시 실행 수(사례마다는 1건).
