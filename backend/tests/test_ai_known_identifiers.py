@@ -14,6 +14,7 @@ import importlib
 import json
 import logging
 import sys
+import threading
 import types
 import unicodedata
 import uuid
@@ -953,3 +954,48 @@ def test_rag_without_records_still_uses_the_consultation_as_case_one(real_rag) -
     pipeline.analyze_consultation_evidence("아이가 학교에서 맞았다고 했다", "physical", known_identifiers=[], use_law=False)
 
     assert sent["records"] == ["아이가 학교에서 맞았다고 했다"]
+
+
+# =========================================================
+# 유형별 심각도는 2차 세부유형 분석 바로 뒤에 띄운다(2026-11-04, 데모 '학대 신호 확인이 늦다')
+# =========================================================
+
+
+def test_severity_runs_alongside_the_five_drafts(real_analysis, monkeypatch) -> None:
+    """심각도는 2차 결과만 쓰므로 기록 초안 등 다섯 호출과 겹쳐 돈다. 예전처럼 서사 요약 뒤에 부르면
+    기록 초안이 기다리는 동안 심각도가 시작되지 않아 started 가 False 로 남는다."""
+
+    infer, sent, _ = real_analysis
+    severity_started = threading.Event()
+    seen_while_drafting: List[bool] = []
+
+    def severity(*args, **kwargs):
+        severity_started.set()
+        sent.setdefault("rate_severity_from_text", []).append(kwargs.get("masked_evidence_text"))
+        return [{"major_type": "신체학대", "level": 3}]
+
+    def record_draft(*args, **kwargs):
+        seen_while_drafting.append(severity_started.wait(5))
+        return _step_result("generate_record_draft", kwargs.get("masked_transcript_text"))
+
+    monkeypatch.setattr(infer, "rate_severity_from_text", severity)
+    monkeypatch.setattr(infer, "generate_record_draft", record_draft)
+
+    result = infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), case_id="c1", known_identifiers=[])
+
+    assert seen_while_drafting == [True]
+    assert result["severity_ratings"] == [{"major_type": "신체학대", "level": 3}]
+
+
+def test_severity_failure_still_fails_the_analysis(real_analysis, monkeypatch) -> None:
+    """먼저 띄워도 실패는 예전처럼 분석 실패로 올라간다(조용히 빈 심각도로 바뀌지 않는다)."""
+
+    infer, _, _ = real_analysis
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("severity down")
+
+    monkeypatch.setattr(infer, "rate_severity_from_text", broken)
+
+    with pytest.raises(RuntimeError, match="severity down"):
+        infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), case_id="c1", known_identifiers=[])

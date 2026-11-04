@@ -674,6 +674,47 @@ def analyze_audio_session(
         }
 
     # --------------------------------------------------------
+    # 유형별 심각도 먼저 띄우기("유형별 위험도" 화면, 2026-10-13 추가, 검수 전 초안)
+    # --------------------------------------------------------
+    # severity_llm.py 모듈 docstring 참고. 입력은 2차 세부유형 분석(subtype_result)뿐이라 아래 상담 요약 · 기록 초안
+    # 다섯 호출 · 서사 요약을 기다릴 필요가 없다. 2026-11-04(데모에서 '학대 신호 확인이 늦다'): 예전에는 그 뒤에
+    # 차례로 불러 분석 시간에 호출 한 번 몫이 더해졌다 — 지금은 여기서 띄워 다섯 호출과 겹쳐 돌리고, 결과는 원래
+    # 자리(서사 요약 뒤)에서 받는다. subtype_result 는 이미 restore_pii 로 실명이 복원된 상태라(link_evidence_
+    # timestamps 때문) 외부 LLM 에 보내기 전에 다시 마스킹한다. 실행기는 바로 닫는다(wait=False) — 앞 단계가 실패해도
+    # 이 호출은 마감(timeout) 안에서 끝나고, 결과는 future 로 그대로 받을 수 있다.
+    severity_evidence_blocks = build_evidence_block_text(
+        subtype_result
+    )
+
+    severity_future = None
+    severity_entity_map: Dict[str, Any] = {}
+
+    if severity_evidence_blocks:
+        severity_major_types = list(severity_evidence_blocks.keys())
+
+        severity_text = "\n\n".join(
+            f"[{major_type}]\n{block}"
+            for major_type, block in severity_evidence_blocks.items()
+        )
+
+        masked_severity_text, severity_entity_map = mask_for_outbound(
+            severity_text, known_identifiers=known_identifiers
+        )
+
+        _check_deadline(deadline, "심각도 평가")
+
+        severity_executor = ThreadPoolExecutor(max_workers=1)
+        severity_future = severity_executor.submit(
+            rate_severity_from_text,
+            client=client,
+            model=note_model,
+            major_types=severity_major_types,
+            masked_evidence_text=masked_severity_text,
+            deadline=deadline,
+        )
+        severity_executor.shutdown(wait=False)
+
+    # --------------------------------------------------------
     # 상담 요약/일지 + 체크리스트 초안 + 기록 초안 + 보호 요인
     # --------------------------------------------------------
     # 2026-10-16(Mingyu 제안, 처리시간 측정 뒤): 이 네 호출은 서로의
@@ -899,43 +940,14 @@ def analyze_audio_session(
     record_draft["narrative_summary"] = narrative_summary
 
     # --------------------------------------------------------
-    # 유형별 심각도("유형별 위험도" 화면, 2026-10-13 추가, 검수 전 초안)
+    # 유형별 심각도 — 2차 세부유형 분석 바로 뒤에 띄워 둔 호출의 결과를 받는다(아래 '심각도 먼저 띄우기').
+    # 호출이 실패했으면 예전처럼 여기서 예외가 그대로 올라간다. 마감은 호출 안의 timeout 이 지킨다.
     # --------------------------------------------------------
-    # severity_llm.py 모듈 docstring 참고 — subtype_result는 이 시점에
-    # 이미 restore_pii로 실명이 복원된 상태라(515행 근처 link_evidence_
-    # timestamps 때문에 복원이 먼저 필요했음), 외부 LLM에 보내기 전에
-    # 여기서 다시 마스킹한다.
-
-    severity_evidence_blocks = build_evidence_block_text(
-        subtype_result
-    )
-
     severity_ratings = []
 
-    if severity_evidence_blocks:
-        severity_major_types = list(severity_evidence_blocks.keys())
-
-        severity_text = "\n\n".join(
-            f"[{major_type}]\n{block}"
-            for major_type, block in severity_evidence_blocks.items()
-        )
-
-        masked_severity_text, severity_entity_map = mask_for_outbound(
-            severity_text, known_identifiers=known_identifiers
-        )
-
-        _check_deadline(deadline, "심각도 평가")
-
-        severity_ratings = rate_severity_from_text(
-            client=client,
-            model=note_model,
-            major_types=severity_major_types,
-            masked_evidence_text=masked_severity_text,
-            deadline=deadline,
-        )
-
+    if severity_future is not None:
         severity_ratings = restore_pii(
-            severity_ratings, severity_entity_map
+            severity_future.result(), severity_entity_map
         )
 
     # --------------------------------------------------------
