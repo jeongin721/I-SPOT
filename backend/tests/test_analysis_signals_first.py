@@ -17,20 +17,20 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
 
 from app.adapters.ai_adapter import AIAnalysisBundle, AIError, set_ai_adapter_override
 from app.core.config import settings
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app.core.enums import AuditAction, DraftsStatus, SessionStatus
-from app.core.errors import ErrorCode
+from app.core.errors import APIError, ErrorCode
 from app.models.analysis import AIAnalysis
 from app.models.audit_log import AuditLog
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.schemas.contracts import AIAnalysisResult, SummaryEvidenceItem
-from app.services import analysis_service, followup_checklist_service, session_service
+from app.services import analysis_service, followup_checklist_service, session_service, summary_service
 from tests.test_analysis import _get_analysis, confirmed_session
 
 WAIT_SECONDS = 10
@@ -927,3 +927,257 @@ def test_modeling_adapter_never_leaks_callback_errors_to_module(
     assert received == []
     assert ("AIError" if failure == "invalid_contract" else "RuntimeError") in caplog.text
     assert FAILURE_TEXT not in caplog.text
+
+
+# =========================================================
+# 경합 — 확인과 쓰기 사이 · 오래된 조회 · 잠금 순서(Codex #154 M1 · M2 · M3)
+# =========================================================
+
+def _one_shot_analysis(session_id: str, counselor_id: uuid.UUID) -> uuid.UUID:
+    """한 번에 저장한 분석 하나(초안 DONE)와 Summary 초안을 만든다."""
+
+    set_ai_adapter_override(_OldAdapter())
+    analysis_id = _reserve(session_id, counselor_id)
+    analysis_service.process_analysis(uuid.UUID(session_id), analysis_id)
+
+    return analysis_id
+
+
+def _pause_after_guard(monkeypatch: pytest.MonkeyPatch, thread_name: str):
+    """assert_drafts_not_pending 를 통과한 바로 뒤(쓰기 전)에 thread_name 스레드만 멈춘다."""
+
+    passed, release = threading.Event(), threading.Event()
+    original = session_service.assert_drafts_not_pending
+
+    def guard(db, session) -> None:
+        original(db, session)
+
+        if threading.current_thread().name == thread_name:
+            passed.set()
+            release.wait(timeout=WAIT_SECONDS)
+
+    monkeypatch.setattr(session_service, "assert_drafts_not_pending", guard)
+
+    return passed, release
+
+
+def _run(name: str, target: Callable[[], Any], outcome: Dict[str, Any]) -> threading.Thread:
+    def body() -> None:
+        try:
+            outcome[name] = target()
+        except APIError as error:
+            outcome[name] = (error.status_code, error.code.value)
+
+    thread = threading.Thread(target=body, name=name, daemon=True)
+    thread.start()
+
+    return thread
+
+
+def _reanalyse_and_save_signals(session_id: str, counselor_id: uuid.UUID) -> uuid.UUID:
+    """다른 요청 B: 재분석을 요청하고 그 작업이 2단계를 먼저 저장한다."""
+
+    analysis_id = _reserve(session_id, counselor_id)
+    analysis_service._SignalsSave(uuid.UUID(session_id), analysis_id)(_signals_bundle())
+
+    return analysis_id
+
+
+def _drafts_by_status(session_id: str) -> Dict[str, int]:
+    with SessionLocal() as db:
+        rows = db.scalars(select(AIAnalysis).where(AIAnalysis.session_id == uuid.UUID(session_id))).all()
+
+    counts: Dict[str, int] = {}
+
+    for row in rows:
+        counts[row.drafts_status.value] = counts.get(row.drafts_status.value, 0) + 1
+
+    return counts
+
+
+def test_approve_holds_the_session_so_reanalysis_cannot_slip_in(
+    client: TestClient, counselor_headers, counselor_id, ready: dict, checklist_calls, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """승인 A 가 PENDING 확인을 통과한 뒤 쓰기 전에 다른 요청 B 가 재분석을 시작해 2단계를 저장하면, PENDING 인 채 승인됐다
+    (M1 재현 B). 이제 확인이 회차 행을 잡아 B 는 A 가 끝날 때까지 기다렸다가 409 로 끝난다."""
+
+    _one_shot_analysis(ready["id"], counselor_id)
+    passed, release = _pause_after_guard(monkeypatch, "approve")
+    outcome: Dict[str, Any] = {}
+
+    def approve() -> str:
+        with SessionLocal() as db:
+            item = db.get(ConsultationSession, uuid.UUID(ready["id"]))
+            return summary_service.approve_summary(db, item, types.SimpleNamespace(id=counselor_id)).status.value
+
+    first = _run("approve", approve, outcome)
+
+    try:
+        assert passed.wait(timeout=WAIT_SECONDS)
+
+        second = _run("reanalysis", lambda: _reanalyse_and_save_signals(ready["id"], counselor_id), outcome)
+        time.sleep(0.5)
+
+        # B 는 A 가 잡은 회차 행을 기다린다.
+        assert second.is_alive()
+    finally:
+        release.set()
+        first.join(timeout=WAIT_SECONDS)
+
+    second.join(timeout=WAIT_SECONDS)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert outcome["approve"] == "APPROVED"
+    assert outcome["reanalysis"] == (409, "INVALID_SESSION_STATE")
+
+    with SessionLocal() as db:
+        assert db.get(ConsultationSession, uuid.UUID(ready["id"])).status == SessionStatus.APPROVED
+
+    assert _drafts_by_status(ready["id"]) == {"DONE": 1}
+
+
+def test_reanalysis_holds_the_session_so_a_second_one_cannot_make_two_pending(
+    client: TestClient, counselor_headers, counselor_id, ready: dict, checklist_calls, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """재분석 A 가 확인을 통과한 뒤 B 가 재분석 · 첫 저장을 마치면 A 도 통과해 PENDING 이 둘이 됐다(M1 재현 A).
+    이제 B 는 A 의 요청이 끝날 때까지 기다렸다가 409 로 끝나고, 처리 중인 분석은 A 의 것 하나다."""
+
+    _one_shot_analysis(ready["id"], counselor_id)
+    passed, release = _pause_after_guard(monkeypatch, "first")
+    outcome: Dict[str, Any] = {}
+
+    first = _run("first", lambda: _reserve(ready["id"], counselor_id), outcome)
+
+    try:
+        assert passed.wait(timeout=WAIT_SECONDS)
+
+        second = _run("second", lambda: _reanalyse_and_save_signals(ready["id"], counselor_id), outcome)
+        time.sleep(0.5)
+
+        assert second.is_alive()
+    finally:
+        release.set()
+        first.join(timeout=WAIT_SECONDS)
+
+    second.join(timeout=WAIT_SECONDS)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert isinstance(outcome["first"], uuid.UUID)
+    assert outcome["second"] == (409, "INVALID_SESSION_STATE")
+
+    with SessionLocal() as db:
+        assert db.get(AIAnalysis, outcome["first"]).status.value == "PROCESSING"
+        assert db.get(ConsultationSession, uuid.UUID(ready["id"])).status == SessionStatus.AI_PROCESSING
+
+    assert _drafts_by_status(ready["id"]) == {"DONE": 2}
+
+
+def test_stale_check_with_an_old_read_does_not_fail_new_drafts(
+    client: TestClient, counselor_headers, counselor_id, ready: dict, checklist_calls
+) -> None:
+    """하루 전 요청 시각으로 읽어 둔 회차로 멈춤 판정을 하는 사이 새 재분석이 2단계를 저장했으면, 옛 시각으로 잰 경과 시간으로
+    새 초안을 마감하지 않는다(M2 — Codex 재현 시험을 옮김)."""
+
+    sid = uuid.UUID(ready["id"])
+    _one_shot_analysis(ready["id"], counselor_id)
+    _shift_requested_at(ready["id"], 24 * 60 * 60)
+
+    with SessionLocal() as polling_db:
+        stale_row = polling_db.get(ConsultationSession, sid)
+        old_started = stale_row.ai_started_at
+
+        new_id = _reanalyse_and_save_signals(ready["id"], counselor_id)
+
+        with SessionLocal() as fresh:
+            assert fresh.get(ConsultationSession, sid).ai_started_at > old_started
+
+        expired = session_service.expire_stale_processing(polling_db, stale_row)
+
+    assert expired is False
+    assert _state(ready["id"], new_id)["drafts_status"] == DraftsStatus.PENDING
+
+
+def test_second_save_locks_the_session_first_so_delete_waits(
+    client: TestClient, counselor_headers, counselor_id, ready: dict, checklist_calls, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """둘째 저장이 분석 행을 먼저 잡으면 Summary INSERT 의 회차 외래 키 확인이 회차 삭제와 PostgreSQL 에서 교착했다(M3 —
+    Codex 재현 시험을 옮김). 이제 둘째 저장이 회차 행을 먼저 잡아 삭제는 기다렸다가 지운다."""
+
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL 행 잠금 · 외래 키 잠금 순서 확인")
+
+    sid = uuid.UUID(ready["id"])
+    analysis_id = _reserve(ready["id"], counselor_id)
+    analysis_service._SignalsSave(sid, analysis_id)(_signals_bundle())
+
+    with SessionLocal() as db:
+        requested_at = db.get(ConsultationSession, sid).ai_started_at
+
+    paused, release = threading.Event(), threading.Event()
+    errors: List[str] = []
+    outcomes: Dict[str, Any] = {}
+    pids: Dict[str, int] = {}
+    real_sync = analysis_service._sync_summary_draft
+
+    def sync(db, **kwargs):
+        pids["draft"] = db.scalar(text("select pg_backend_pid()"))
+        paused.set()
+        release.wait(timeout=WAIT_SECONDS)
+        return real_sync(db, **kwargs)
+
+    monkeypatch.setattr(analysis_service, "_sync_summary_draft", sync)
+
+    def draft() -> None:
+        with SessionLocal() as db:
+            outcomes["draft"] = analysis_service._save_drafts(
+                db, session_id=sid, analysis_id=analysis_id, requested_at=requested_at, bundle=_final_bundle()
+            )
+
+    def delete() -> None:
+        with SessionLocal() as db:
+            pids["delete"] = db.scalar(text("select pg_backend_pid()"))
+            session_service.delete_session(db, db.get(ConsultationSession, sid), types.SimpleNamespace(id=counselor_id))
+            outcomes["delete"] = True
+
+    def guarded(target: Callable[[], None]) -> Callable[[], None]:
+        def body() -> None:
+            try:
+                target()
+            except Exception as error:  # noqa: BLE001 — 교착이면 여기로 온다
+                errors.append(type(error).__name__)
+
+        return body
+
+    first = threading.Thread(target=guarded(draft), daemon=True)
+    first.start()
+    assert paused.wait(timeout=WAIT_SECONDS)
+
+    second = threading.Thread(target=guarded(delete), daemon=True)
+    second.start()
+
+    blocked = False
+    deadline = time.monotonic() + 8
+
+    try:
+        while time.monotonic() < deadline:
+            if "delete" in pids:
+                with engine.connect() as connection:
+                    blockers = connection.scalar(text("select pg_blocking_pids(:pid)"), {"pid": pids["delete"]})
+
+                if pids["draft"] in blockers:
+                    blocked = True
+                    break
+
+            time.sleep(0.05)
+    finally:
+        release.set()
+        first.join(timeout=WAIT_SECONDS)
+        second.join(timeout=WAIT_SECONDS)
+
+    assert blocked
+    assert errors == []
+    assert outcomes == {"draft": True, "delete": True}
+
+    with SessionLocal() as db:
+        assert db.get(ConsultationSession, sid) is None
+        assert db.get(AIAnalysis, analysis_id) is None
