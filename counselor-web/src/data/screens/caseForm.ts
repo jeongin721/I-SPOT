@@ -492,6 +492,8 @@ export function caseFormValues(input: CaseFormInput) {
     if (confirm && !window.confirm(`${FORM_NAMES[tab]} ${nextRound}차를 확정할까요? 확정하면 이 차수는 고칠 수 없습니다.`)) {
       return;
     }
+    // 앞 저장 안내가 남아 있으면 이번 저장 실패 문구(다른 창에서 바뀜 등)를 가린다.
+    setState({ note: "" });
     const ok = await forms.save(FORM_TYPES[tab], change ?? saved(tab), confirm);
     if (ok) {
       const rest = { ...edits };

@@ -6,6 +6,7 @@
 //  - 확정: 먼저 임시 저장한 뒤 그 차수를 확정한다. 확정을 푸는 API 는 없다 — 다시 쓰면 다음 차수가 된다.
 //  - 칸 값은 상담사가 고른 · 쓴 것만 보낸다. AI 가 칸을 채우지 않는다. 합계는 서버 totals · 화면 계산.
 //  - 서버 목록을 받기 전에는 저장하지 않는다(임시 저장 차수가 있는지 몰라 차수를 하나 더 열지 않게).
+//  - 저장 직전에 서버 최신 기록을 다시 보고, 다른 창에서 바뀌었으면 저장하지 않는다(오래된 창이 최신 값을 덮어 확정하지 않게).
 
 import { useCallback, useRef, useState } from "react";
 
@@ -93,7 +94,19 @@ export function useCaseForms(
       setActionError(null);
 
       try {
-        const draft = formRounds(remote.data.items, formType).find((item) => item.status === "DRAFT");
+        // 다른 창에서 이 서식을 먼저 저장 · 확정했으면 덮어쓰지 않는다(Codex #140 H2, 11/03) — 이 창이 본 가장 최근 차수와 서버의
+        // 최신 차수를 맞춰 보고, 다르면 최신 기록을 보여 주고 멈춘다. 서버가 버전을 대조하지 않아 아주 짧은 순간의 겹침까지는 못 막는다.
+        const seen = formRounds(remote.data.items, formType)[0];
+        const latest = await formsApi.list(ticket.key);
+        if (!remote.isCurrent(ticket)) return false;
+        const fresh = formRounds(latest.items, formType)[0];
+        if (seen?.id !== fresh?.id || seen?.status !== fresh?.status || seen?.updated_at !== fresh?.updated_at) {
+          remote.setData(ticket, latest);
+          setActionError("다른 창에서 이 서식이 바뀌었습니다. 최신 내용을 불러왔으니 확인한 뒤 다시 저장해 주세요.");
+          return false;
+        }
+
+        const draft = formRounds(latest.items, formType).find((item) => item.status === "DRAFT");
         let row = draft
           ? await formsApi.update(ticket.key, draft.id, values)
           : await formsApi.create(ticket.key, formType, values);
