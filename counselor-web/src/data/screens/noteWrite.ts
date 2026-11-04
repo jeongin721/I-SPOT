@@ -185,6 +185,8 @@ export interface NoteScreenInput extends SessionScreenInput {
   docs: SessionDocumentsState;
   /** 아직 저장한 일지가 없을 때 채워 둘 AI 초안(noteAiDraft). 없으면 빈 칸. */
   aiDraft?: NoteAiDraft | null;
+  /** 3 · 4단계 AI 초안 상태(useSessionAnalysis.draftsPending · draftsFailed, 2026-11-04 제안). 없으면 끝난 것으로 본다. */
+  drafts?: { pending: boolean; failed: boolean };
   state: NoteUiState;
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
@@ -302,12 +304,19 @@ export function noteWriteValues(input: NoteScreenInput) {
   if (summary.status === "APPROVED") summaryChip = `승인 · ${summary.approvedAt}`;
   else if (summary.hasSummary) summaryChip = summary.edited ? "AI 초안 · 상담사 수정" : "AI 초안";
 
-  const status = summary.sessionStatus;
+  // 학대 신호(2단계)는 저장됐고 요약 · 일지 초안을 아직 만드는 중이면 '분석 중' 으로 본다(요약 초안이 그때 생긴다).
+  const draftsPending = Boolean(input.drafts?.pending);
+  const status = draftsPending && summary.sessionStatus === "AI_REVIEW_REQUIRED" ? "AI_PROCESSING" : summary.sessionStatus;
   let summaryNote = "";
   let summaryLink: { href: string; label: string } | null = null;
 
   if (!summary.hasSummary && status !== null) {
-    if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
+    if (draftsPending) summaryNote = "AI 초안을 만드는 중입니다. 잠시 뒤 저절로 보입니다.";
+    else if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
+    else if (input.drafts?.failed) {
+      summaryNote = "AI 초안을 만들지 못했습니다. 학대 신호 확인에서 다시 분석하면 만들어집니다(학대 신호 결과도 다시 만들어집니다).";
+      summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
+    }
     else if (status === "AI_FAILED") {
       summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 학대 신호 확인에서 다시 분석해 주세요.`;
       summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
