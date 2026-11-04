@@ -232,6 +232,7 @@ export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
   safety?: (SafetyLevel | null)[];
   key_person?: string;
   safety_scores?: SafetyScore[];
+  services?: string;
 };
 
 const REASON_COUNT = 5;
@@ -253,6 +254,8 @@ export function closureReportValues(
   setDraft: (patch: ReportDraft) => void,
   /** 저장이 끝나면 보낸 칸만 비운다(보내는 동안 더 고친 칸은 남김, 민규 #140 M3). */
   resetDraft: (sent: ReportDraft) => void,
+  /** 사례관리 제공 요약 칸이 비어 있을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). */
+  servicesFromRecords = "",
 ) {
   const info = detail.caseInfo;
   const record = summary.record;
@@ -272,6 +275,7 @@ export function closureReportValues(
     draft.safety ??
     fixedList(saved.safety, SAFETY_COUNT, (item) => LEVELS.find(([, code]) => code === item)?.[1] ?? null);
   const keyPerson = draft.key_person ?? saved.key_person ?? "";
+  const services = draft.services ?? saved.services ?? servicesFromRecords;
   const scores =
     draft.safety_scores ??
     fixedList(saved.safety_scores, SCORE_COUNT, (item) => {
@@ -333,6 +337,10 @@ export function closureReportValues(
       const code = LEVELS.find(([name]) => name === label)?.[1] ?? null;
       edit({ safety: safety.map((level, j) => (j === i ? (level === code ? null : code) : level)) });
     },
+    services: {
+      value: services,
+      onChange: (event: { target: { value: string } }) => edit({ services: event.target.value }),
+    },
     keyPerson: {
       value: keyPerson,
       onChange: (event: { target: { value: string } }) => edit({ key_person: event.target.value }),
@@ -367,6 +375,8 @@ export function closureReportValues(
       if (sent.safety) report.safety = safety;
       if (sent.key_person !== undefined) report.key_person = keyPerson.trim() || null;
       if (sent.safety_scores) report.safety_scores = scores;
+      // 사례관리 제공 요약은 저장한 글이 없고 회차 기록 글이 보이고 있으면 그 글도 보낸다(보이는 대로 저장, 11/04).
+      if (sent.services !== undefined || (!saved.services && servicesFromRecords)) report.services = services.trim() || null;
       const ok = await summary.save({ report });
       if (ok) resetDraft(sent);
       return ok;

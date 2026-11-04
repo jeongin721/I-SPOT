@@ -1249,6 +1249,14 @@ export interface ClosureSummaryBody {
   sessions: number[];
   groups: { title: string; items: ClosureItem[] }[];
   report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+  /** 종결보고서 안전평가 11문항 · Key Person 의 AI 제안(2026-11-04). AI 로 만든 요약만, 옛 요약 · LLM 없이 묶은 요약은 null/없음. */
+  suggestions?: ClosureSuggestions | null;
+}
+
+export interface ClosureSuggestions {
+  /** index 0~10 = 안전평가 문항 순서. 근거가 있는 문항만. */
+  safety: { index: number; level: "HIGH" | "MEDIUM" | "LOW"; basis: string; sessions: number[] }[];
+  key_person: ClosureDraft | null;
 }
 
 export interface ClosureReportFields {
@@ -1264,6 +1272,8 @@ export interface ClosureReportFields {
   key_person?: string | null;
   /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
   safety_scores?: { score: number | null; reason: string }[] | null;
+  /** 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(2026-11-04, 300자). 화면이 회차 기록으로 먼저 채운다. */
+  services?: string | null;
 }
 
 export interface ClosureSummaryRecord {

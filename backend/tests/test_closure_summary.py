@@ -46,7 +46,7 @@ def test_get_before_generate_is_empty(client: TestClient, counselor_headers, rea
     assert data["summary"] is None and data["checks"] == {} and data["edits"] == {}
     assert data["report"] == {
         "initial_situation": None, "closing_situation": None, "opinion": None, "review_date": None, "closing_date": None,
-        "reasons": None, "safety": None, "key_person": None, "safety_scores": None,
+        "reasons": None, "safety": None, "key_person": None, "safety_scores": None, "services": None,
     }
 
 
@@ -146,7 +146,12 @@ def modeling(monkeypatch):
         behaviour = calls.get("raise")
         if behaviour:
             raise behaviour
-        return {"groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}], "report": {}, "model": "m"}
+        return {
+            "groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}],
+            "report": {},
+            "suggestions": calls.get("suggestions"),
+            "model": "m",
+        }
 
     module.generate_closure_summary = generate_closure_summary
     monkeypatch.setitem(sys.modules, "ai.modeling.abuse.closure_summary_llm", module)
@@ -164,6 +169,26 @@ def test_modeling_provider_uses_ai_module(client: TestClient, counselor_headers,
     # 별칭은 가려 달라고 넘기고, 회차 입력에는 승인 요약 4칸 · 신호만 간다.
     assert modeling["known"] == [ready_case["child_alias"]]
     assert set(modeling["sessions"][0]) == {"number", "date", "assessment", "signals"}
+
+
+def test_modeling_keeps_safety_suggestions(client: TestClient, counselor_headers, ready_case: dict, modeling) -> None:
+    """안전평가 · Key Person AI 제안은 요약에 그대로 실린다(11/04). 상담원 보고서 칸(report.safety)은 채우지 않는다."""
+
+    modeling["suggestions"] = {
+        "safety": [{"index": 0, "level": "HIGH", "basis": "안전 계획을 스스로 설명", "sessions": [1]}],
+        "key_person": {"text": "있음 · 외조모", "sessions": [1]},
+    }
+
+    data = client.post(_url(ready_case["id"]), headers=counselor_headers).json()["data"]
+
+    assert data["summary"]["suggestions"] == modeling["suggestions"]
+    assert data["report"]["safety"] is None and data["report"]["key_person"] is None
+
+
+def test_generate_without_llm_has_no_suggestions(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    summary = client.post(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["summary"]
+
+    assert summary["suggestions"] is None
 
 
 @pytest.mark.parametrize(
@@ -275,6 +300,7 @@ def test_report_keeps_counselor_judgement_fields(client: TestClient, counselor_h
         "reasons": [True, False, False, False, False],
         "safety": ["HIGH"] + [None] * 9 + ["LOW"],
         "key_person": "외조모",
+        "services": "정기상담 4회 · 방문상담 1회",
         "safety_scores": [{"score": 7, "reason": "안전 계획 설명"}, {"score": None, "reason": ""}, {"score": 3, "reason": ""}],
     }
     saved = client.put(_url(ready_case["id"]), json={"report": judgement}, headers=counselor_headers)
@@ -297,6 +323,7 @@ def test_report_keeps_counselor_judgement_fields(client: TestClient, counselor_h
         {"safety_scores": [{"score": 11, "reason": ""}, {}, {}]},
         {"safety_scores": [{}, {}]},
         {"key_person": "가" * 301},
+        {"services": "가" * 301},
     ],
 )
 def test_report_judgement_fields_are_checked(client: TestClient, counselor_headers, ready_case: dict, report) -> None:
