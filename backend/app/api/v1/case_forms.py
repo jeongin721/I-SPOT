@@ -9,6 +9,7 @@ from app.core.deps import CurrentUser, DbSession
 from app.core.enums import CaseFormType
 from app.core.responses import DataResponse
 from app.schemas.case_form import (
+    CaseFormConfirmRequest,
     CaseFormCreateRequest,
     CaseFormListResponse,
     CaseFormResponse,
@@ -72,8 +73,8 @@ def update_case_form(
     current_user: CurrentUser,
 ) -> DataResponse[CaseFormResponse]:
     case = get_case_or_404(db, case_id, current_user)
-    row = case_form_service.get_form_or_404(db, case, form_id, edit=True)
-    row = case_form_service.update_form(db, current_user, row, payload.values)
+    row = case_form_service.get_form_or_404(db, case, form_id)
+    row = case_form_service.update_form(db, current_user, row, payload.values, payload.version)
 
     return DataResponse(data=case_form_service.to_response(row))
 
@@ -82,11 +83,12 @@ def update_case_form(
 def confirm_case_form(
     case_id: uuid.UUID,
     form_id: uuid.UUID,
+    payload: CaseFormConfirmRequest,
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[CaseFormResponse]:
     case = get_case_or_404(db, case_id, current_user)
-    row = case_form_service.get_form_or_404(db, case, form_id, edit=True)
-    row = case_form_service.confirm_form(db, current_user, row)
+    row = case_form_service.get_form_or_404(db, case, form_id)
+    row = case_form_service.confirm_form(db, current_user, row, payload.version)
 
     return DataResponse(data=case_form_service.to_response(row))

@@ -73,7 +73,8 @@ export function formsCardValues(forms: CaseFormsState, caseId: string | null) {
 
 /**
  * 종결보고서 '가족관계척도' 줄(11/03): 가족관계 척도 가장 최근 기록(임시 저장 포함)의 평균 · 응답일 · 응답자,
- * 2차 이상이면 1차(초기) 평균도. 평균은 작성 화면과 같은 계산(응답 합 / 15).
+ * 2차 이상이면 1차(초기) 평균도. 평균은 작성 화면과 같은 계산(응답한 문항의 평균 — 답하지 않은 문항을 0점으로 넣지 않는다,
+ * 민규 #140 M7). 15문항을 다 답하지 않았으면 응답 수를 함께 보인다.
  */
 export function familyScaleLine(forms: CaseFormsState): { avg: string; sub: string } {
   if (forms.loadError) return { avg: "", sub: `${NOT_PROVIDED} · 가족관계 척도 기록을 불러오지 못함` };
@@ -82,8 +83,10 @@ export function familyScaleLine(forms: CaseFormsState): { avg: string; sub: stri
   const latest = currentForm(forms.items, FORM_TYPES.D);
   const avgOf = (row: CaseForm) => {
     const answered = normalize("FAMILY_SCALE", row.values as Record<string, unknown>).answers.filter((x): x is number => x !== null);
-    return answered.length ? (answered.reduce((a, b) => a + b, 0) / 15).toFixed(2) : "";
+    return answered.length ? (answered.reduce((a, b) => a + b, 0) / answered.length).toFixed(2) : "";
   };
+  const answeredOf = (row: CaseForm) =>
+    normalize("FAMILY_SCALE", row.values as Record<string, unknown>).answers.filter((x) => x !== null).length;
   const day = (row: CaseForm) => {
     const d = toDateOnly(row.confirmed_at ?? row.updated_at);
     return d ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : NOT_PROVIDED;
@@ -93,7 +96,8 @@ export function familyScaleLine(forms: CaseFormsState): { avg: string; sub: stri
   const first = rows.find((row) => row.round === 1);
   const initial = first && first.id !== latest.id && avgOf(first) ? ` · 초기 ${day(first)} 응답 ${avgOf(first)}점` : "";
   const draft = latest.status === "DRAFT" ? " · 임시 저장" : "";
-  return { avg: avgOf(latest), sub: `${day(latest)} 응답${who ? ` (${who})` : ""}${draft}${initial}` };
+  const partial = answeredOf(latest) < 15 ? ` · ${answeredOf(latest)}/15 응답` : "";
+  return { avg: avgOf(latest), sub: `${day(latest)} 응답${who ? ` (${who})` : ""}${partial}${draft}${initial}` };
 }
 
 // ---------------------------------------------------------
@@ -312,7 +316,7 @@ interface CaseFormInput extends CaseScreenInput {
   forms: CaseFormsState;
   formParam: string | null;
   state: CaseFormUiState;
-  setState: (patch: Partial<CaseFormUiState>) => void;
+  setState: (patch: Partial<CaseFormUiState> | ((current: CaseFormUiState) => Partial<CaseFormUiState>)) => void;
 }
 
 const SEL = (on: boolean) => ({
@@ -337,8 +341,11 @@ export function caseFormValues(input: CaseFormInput) {
   const B = valuesOf("B") as ManagementChecklistValues;
   const C = valuesOf("C") as RiskScaleValues;
   const D = valuesOf("D") as FamilyScaleValues;
-  const edit = <K extends FormTab>(k: K, next: AnyValues) =>
+  // 서식 기록을 받기 전에는 고치지 않는다 — 빈 서식 위에 고친 값이 저장돼 있던 다른 칸을 지우지 않게(민규 #140 M2).
+  const edit = <K extends FormTab>(k: K, next: AnyValues) => {
+    if (!forms.loaded) return;
     setState({ edits: { ...edits, [k]: next }, editsFor: caseId, note: "" });
+  };
 
   // 디자인: 선택 단추를 다시 누르면 고른 것을 푼다(안전영역 · 점검표 · 척도 · 사정결과).
   const toggle = <T>(cur: T | null, value: T) => (cur === value ? null : value);
@@ -496,9 +503,15 @@ export function caseFormValues(input: CaseFormInput) {
     setState({ note: "" });
     const ok = await forms.save(FORM_TYPES[tab], change ?? saved(tab), confirm);
     if (ok) {
-      const rest = { ...edits };
-      delete rest[tab];
-      setState({ edits: rest, editsFor: caseId, note: confirm ? `${nextRound}차를 확정했습니다.` : `${nextRound}차를 임시 저장했습니다.` });
+      const note = confirm ? `${nextRound}차를 확정했습니다.` : `${nextRound}차를 임시 저장했습니다.`;
+      // 저장하는 동안 더 고친 칸이 있으면(보낸 값과 지금 값이 다름) 지우지 않고 남긴다(민규 #140 M3).
+      setState((current) => {
+        const now = current.editsFor === caseId ? current.edits : {};
+        if (now[tab] !== change) return { note };
+        const rest = { ...now };
+        delete rest[tab];
+        return { edits: rest, editsFor: caseId, note };
+      });
     }
   };
 
@@ -549,7 +562,8 @@ export function caseFormValues(input: CaseFormInput) {
     },
     fam,
     resp,
-    famAvg: fn ? (fs / 15).toFixed(2) : "—",
+    // 응답한 문항의 평균(답하지 않은 문항을 0점으로 넣지 않는다, 민규 #140 M7). 응답 수는 famN 으로 따로 보인다.
+    famAvg: fn ? (fs / fn).toFixed(2) : "—",
     famN: fn,
     statusNote: s.note || forms.error || status,
     statusAlert: Boolean(forms.error && !s.note),

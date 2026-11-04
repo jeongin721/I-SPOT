@@ -2,13 +2,16 @@
 #
 # 사례 · 서식 종류마다 임시 저장 차수는 하나뿐이다. 만들기(POST)는 다음 차수를 새로 열고, 임시 저장 차수가 이미 있으면 409.
 # 확정한 차수는 고칠 수 없다(409) — 다시 쓰려면 다음 차수를 만든다. 사례 권한은 access.get_case_or_404 로 본다.
+# 고치기 · 확정은 화면이 본 판(version)을 보내고, 'DRAFT 이고 그 판인 행' 에만 거는 조건부 UPDATE 로 바꾼다
+# (민규 #140 H2 · H3 — 오래된 창의 확정이 최신 값을 덮거나, 확정 뒤 겹친 저장이 값을 바꾸거나, 확정 둘이 겹쳐 둘 다 성공하던 것).
+# 바뀐 행이 없으면 다시 읽어 확정이면 409 ALREADY_APPROVED, 판이 다르면 409 STALE_VERSION. SQLite · PostgreSQL 모두 같다.
 
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -42,6 +45,7 @@ def to_response(row: CaseForm) -> CaseFormResponse:
         form_type=row.form_type,
         round=row.round,
         status=row.status,
+        version=row.version,
         values=row.values or {},
         totals=form_totals(row.form_type, row.values or {}),
         created_by_id=row.created_by_id,
@@ -64,11 +68,10 @@ def list_forms(db: Session, case: Case, form_type: Optional[CaseFormType] = None
     return rows
 
 
-def get_form_or_404(db: Session, case: Case, form_id: uuid.UUID, *, edit: bool = False) -> CaseForm:
-    """edit=True 면 행을 잠그고 읽는다(임시 저장 · 확정이 겹쳐도 확정 뒤 값이 바뀌지 않게). SQLite 시험에서는 잠금이 무시된다."""
+def get_form_or_404(db: Session, case: Case, form_id: uuid.UUID) -> CaseForm:
+    """고치기 · 확정의 겹침은 잠금이 아니라 _apply 의 조건부 UPDATE(상태 · 판)로 막는다(SQLite 에도 같게)."""
 
-    query = select(CaseForm).where(CaseForm.id == form_id, CaseForm.case_id == case.id)
-    row = db.scalar(query.with_for_update() if edit else query)
+    row = db.scalar(select(CaseForm).where(CaseForm.id == form_id, CaseForm.case_id == case.id))
     if row is None:
         raise not_found(ErrorCode.NOT_FOUND, "서식 기록을 찾을 수 없습니다.")
     return row
@@ -109,6 +112,7 @@ def create_form(db: Session, user: User, case: Case, payload: CaseFormCreateRequ
         form_type=payload.form_type,
         round=(last or 0) + 1,
         status=ReviewStatus.DRAFT,
+        version=1,
         values=values,
         created_by_id=user.id,
         updated_by_id=user.id,
@@ -117,7 +121,7 @@ def create_form(db: Session, user: User, case: Case, payload: CaseFormCreateRequ
     try:
         db.flush()
     except IntegrityError:
-        # 같은 순간 다른 창에서 같은 차수를 먼저 만들었다(사례 · 종류 · 차수 unique).
+        # 같은 순간 다른 창에서 같은 차수 · 임시 저장 차수를 먼저 만들었다(차수 unique · 임시 저장 하나 unique, M1).
         db.rollback()
         raise conflict(
             ErrorCode.DUPLICATE_RESOURCE,
@@ -129,29 +133,48 @@ def create_form(db: Session, user: User, case: Case, payload: CaseFormCreateRequ
     return row
 
 
-def _ensure_draft(row: CaseForm) -> None:
-    if row.status == ReviewStatus.APPROVED:
+def _apply(db: Session, user: User, row: CaseForm, version: int, changes: Dict[str, Any]) -> CaseForm:
+    """'DRAFT 이고 version 판인 행' 일 때만 바꾼다. 못 바꿨으면 이유에 맞는 409."""
+
+    result = db.execute(
+        update(CaseForm)
+        .where(CaseForm.id == row.id, CaseForm.status == ReviewStatus.DRAFT, CaseForm.version == version)
+        .values(version=CaseForm.version + 1, updated_by_id=user.id, updated_at=datetime.now(timezone.utc), **changes)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        current = db.get(CaseForm, row.id, populate_existing=True)
+        if current is not None and current.status == ReviewStatus.APPROVED:
+            raise conflict(
+                ErrorCode.ALREADY_APPROVED,
+                "확정한 서식은 고칠 수 없습니다. 다음 차수로 새로 작성해 주세요.",
+            )
         raise conflict(
-            ErrorCode.ALREADY_APPROVED,
-            "확정한 서식은 고칠 수 없습니다. 다음 차수로 새로 작성해 주세요.",
+            ErrorCode.STALE_VERSION,
+            "다른 창에서 이 서식을 먼저 저장했습니다. 최신 내용을 불러온 뒤 다시 저장해 주세요.",
         )
+    db.refresh(row)
+    return row
 
 
-def update_form(db: Session, user: User, row: CaseForm, raw: Dict[str, Any]) -> CaseForm:
-    _ensure_draft(row)
-    row.values = _values(row.form_type, raw)
-    row.updated_by_id = user.id
+def update_form(db: Session, user: User, row: CaseForm, raw: Dict[str, Any], version: int) -> CaseForm:
+    values = _values(row.form_type, raw)
+    row = _apply(db, user, row, version, {"values": values})
     _audit(db, AuditAction.CASE_FORM_UPDATED, user, row)
     db.commit()
     db.refresh(row)
     return row
 
 
-def confirm_form(db: Session, user: User, row: CaseForm) -> CaseForm:
-    _ensure_draft(row)
-    row.status = ReviewStatus.APPROVED
-    row.confirmed_by_id = user.id
-    row.confirmed_at = datetime.now(timezone.utc)
+def confirm_form(db: Session, user: User, row: CaseForm, version: int) -> CaseForm:
+    row = _apply(
+        db,
+        user,
+        row,
+        version,
+        {"status": ReviewStatus.APPROVED, "confirmed_by_id": user.id, "confirmed_at": datetime.now(timezone.utc)},
+    )
     _audit(db, AuditAction.CASE_FORM_CONFIRMED, user, row)
     db.commit()
     db.refresh(row)

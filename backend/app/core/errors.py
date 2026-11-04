@@ -52,6 +52,8 @@ class ErrorCode(str, Enum):
     ALREADY_APPROVED = "ALREADY_APPROVED"
     # 승인 풀기(reopen)를 승인되지 않은 요약 · 문서에 요청함
     NOT_APPROVED = "NOT_APPROVED"
+    # 화면이 본 판(version)이 서버의 지금 판과 다름 — 다른 창에서 먼저 저장 · 확정함(2026-11-04, 기관 서식).
+    STALE_VERSION = "STALE_VERSION"
 
     # Audio
     AUDIO_EMPTY_FILE = "AUDIO_EMPTY_FILE"

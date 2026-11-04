@@ -132,6 +132,12 @@ class CaseFormCreateRequest(RequestModel):
 
 class CaseFormUpdateRequest(RequestModel):
     values: Dict[str, Any]
+    # 화면이 본 판(응답의 version). 서버의 지금 판과 다르면 409 STALE_VERSION.
+    version: int = Field(..., ge=1)
+
+
+class CaseFormConfirmRequest(RequestModel):
+    version: int = Field(..., ge=1)
 
 
 class CaseFormResponse(BaseModel):
@@ -140,6 +146,7 @@ class CaseFormResponse(BaseModel):
     form_type: CaseFormType
     round: int
     status: ReviewStatus
+    version: int
     values: Dict[str, Any]
     totals: Dict[str, Any]
     created_by_id: Optional[uuid.UUID]

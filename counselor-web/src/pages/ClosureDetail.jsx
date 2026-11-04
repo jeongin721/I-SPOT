@@ -151,7 +151,10 @@ function ClosureDetailScreen(props) {
     summary,
     draft,
     (patch) => setDraftState((current) => ({ ...current, ...patch })),
-    () => setDraftState({}),
+    (sent) =>
+      setDraftState((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key, value]) => sent[key] !== value)),
+      ),
   );
   const v = useDC(Logic, { ...props, connected: r.connected, report: r });
   const forms = useCaseForms(caseId, { enabled: enabled && r.connected });

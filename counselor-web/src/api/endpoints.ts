@@ -616,13 +616,13 @@ export const caseForms = {
     return api.post<CaseForm>(`/cases/${caseId}/forms`, { form_type: formType, values });
   },
 
-  /** 임시 저장 차수의 칸 전체를 바꾼다. 확정한 차수는 409. */
-  update(caseId: string, formId: string, values: object): Promise<CaseForm> {
-    return api.patch<CaseForm>(`/cases/${caseId}/forms/${formId}`, { values });
+  /** 임시 저장 차수의 칸 전체를 바꾼다. 확정한 차수는 409 ALREADY_APPROVED, 본 판(version)이 지금 판과 다르면 409 STALE_VERSION. */
+  update(caseId: string, formId: string, values: object, version: number): Promise<CaseForm> {
+    return api.patch<CaseForm>(`/cases/${caseId}/forms/${formId}`, { values, version });
   },
 
   /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
-  confirm(caseId: string, formId: string): Promise<CaseForm> {
-    return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`);
+  confirm(caseId: string, formId: string, version: number): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`, { version });
   },
 };

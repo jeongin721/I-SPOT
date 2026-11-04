@@ -2028,6 +2028,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `TRANSCRIPT_ALREADY_CONFIRMED` | 409 | 이미 확정됨 |
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
 | `NOT_APPROVED` | 409 | 승인되지 않은 요약 · 문서의 승인 풀기(`reopen`) |
+| `STALE_VERSION` | 409 | 화면이 본 판(`version`)이 서버의 지금 판과 다름 — 다른 창에서 먼저 저장 · 확정함(22절 기관 서식) |
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
@@ -2612,7 +2613,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 ```json
 {
-  "id": "uuid", "case_id": "uuid", "form_type": "MANAGEMENT_CHECKLIST", "round": 3, "status": "DRAFT",
+  "id": "uuid", "case_id": "uuid", "form_type": "MANAGEMENT_CHECKLIST", "round": 3, "status": "DRAFT", "version": 4,
   "values": { "place": "기관 면담실 B", "checks": ["NO", "YES", null, null, null, null, null, null, null],
               "opinion": "…", "plan": "…" },
   "totals": { "answered": 2 },
@@ -2637,17 +2638,23 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ```
 
 - 다음 차수를 임시 저장으로 만든다. `values` 는 빼거나 일부만 보내도 된다(나머지는 빈 칸).
-- 그 서식의 임시 저장 차수가 이미 있으면 `409 DUPLICATE_RESOURCE`(그 차수를 PATCH 로 이어 고친다). 같은 순간 두 창이 만들어도 하나만 생긴다.
+- 그 서식의 임시 저장 차수가 이미 있으면 `409 DUPLICATE_RESOURCE`(그 차수를 PATCH 로 이어 고친다). 같은 순간 두 창이 만들어도 하나만 생긴다
+  (DRAFT 행에만 거는 유일 인덱스 `uq_case_forms_one_draft`, 민규 #140 M1).
 - `values` 가 꼴에 맞지 않으면 `422 VALIDATION_ERROR`(`details.fields` 에 칸 위치만, 받은 글은 싣지 않는다).
 
 ### GET /api/v1/cases/{case_id}/forms/{form_id} → 200
 
 ### PATCH /api/v1/cases/{case_id}/forms/{form_id} → 200
 
-- `{ "values": {…} }` — **서식 칸 전체를 바꾼다**(보내지 않은 칸은 빈 칸). 확정한 차수는 `409 ALREADY_APPROVED`.
+- `{ "values": {…}, "version": 4 }` — **서식 칸 전체를 바꾼다**(보내지 않은 칸은 빈 칸). 확정한 차수는 `409 ALREADY_APPROVED`.
+- **`version`** 은 화면이 본 판(응답의 `version`, 만들 때 1, 저장 · 확정마다 1 씩 증가). 서버의 지금 판과 다르면(다른 창에서 먼저 저장)
+  `409 STALE_VERSION` — 화면은 최신 기록을 다시 받아 보이고 덮어쓰지 않는다. 'DRAFT 이고 그 판인 행' 에만 거는 조건부 UPDATE 라
+  확정 뒤 겹친 저장 · 겹친 확정 둘도 하나만 성공한다(2026-11-04, 민규 #140 H2 · H3).
 - 다른 사례 주소로 부르면 `404 NOT_FOUND`.
 
 ### POST /api/v1/cases/{case_id}/forms/{form_id}/confirm → 200
+
+- 본문 `{ "version": 4 }` — 고치기와 같은 판 대조(다르면 `409 STALE_VERSION`).
 
 - 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
 - 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).

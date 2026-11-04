@@ -94,28 +94,19 @@ export function useCaseForms(
       setActionError(null);
 
       try {
-        // 다른 창에서 이 서식을 먼저 저장 · 확정했으면 덮어쓰지 않는다(Codex #140 H2, 11/03) — 이 창이 본 가장 최근 차수와 서버의
-        // 최신 차수를 맞춰 보고, 다르면 최신 기록을 보여 주고 멈춘다. 서버가 버전을 대조하지 않아 아주 짧은 순간의 겹침까지는 못 막는다.
-        const seen = formRounds(remote.data.items, formType)[0];
-        const latest = await formsApi.list(ticket.key);
-        if (!remote.isCurrent(ticket)) return false;
-        const fresh = formRounds(latest.items, formType)[0];
-        if (seen?.id !== fresh?.id || seen?.status !== fresh?.status || seen?.updated_at !== fresh?.updated_at) {
-          remote.setData(ticket, latest);
-          setActionError("다른 창에서 이 서식이 바뀌었습니다. 최신 내용을 불러왔으니 확인한 뒤 다시 저장해 주세요.");
-          return false;
-        }
-
-        const draft = formRounds(latest.items, formType).find((item) => item.status === "DRAFT");
+        // 다른 창에서 이 서식을 먼저 저장 · 확정했으면 덮어쓰지 않는다(Codex #140 H2 · H3) — 이 창이 본 임시 저장 차수의 판(version)을
+        // 보내고, 서버가 그 판일 때만 바꾼다(아니면 409 STALE_VERSION · ALREADY_APPROVED → 아래에서 최신 기록을 다시 받는다).
+        // 본 임시 저장 차수가 없으면 새 차수를 만든다(다른 창이 먼저 만들었으면 409 DUPLICATE_RESOURCE).
+        const draft = formRounds(remote.data.items, formType).find((item) => item.status === "DRAFT");
         let row = draft
-          ? await formsApi.update(ticket.key, draft.id, values)
+          ? await formsApi.update(ticket.key, draft.id, values, draft.version)
           : await formsApi.create(ticket.key, formType, values);
 
         if (!remote.isCurrent(ticket)) return false;
         remote.setData(ticket, (current) => ({ items: merge(current?.items ?? [], row) }));
 
         if (confirm) {
-          row = await formsApi.confirm(ticket.key, row.id);
+          row = await formsApi.confirm(ticket.key, row.id, row.version);
           if (!remote.isCurrent(ticket)) return false;
           remote.setData(ticket, (current) => ({ items: merge(current?.items ?? [], row) }));
         }
@@ -124,6 +115,7 @@ export function useCaseForms(
       } catch (caught) {
         if (!remote.isCurrent(ticket)) return false;
 
+        // 409(다른 창이 먼저 저장 · 확정 · 만듦)는 서버 문구가 '최신 내용을 불러와 다시' 를 안내하고, 아래에서 최신 기록을 다시 받는다.
         if (!(caught instanceof ApiError && caught.isUnauthorized)) {
           setActionError(errorMessage(caught, "서식을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         }

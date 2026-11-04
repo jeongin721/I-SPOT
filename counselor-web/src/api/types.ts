@@ -1507,6 +1507,8 @@ export interface CaseForm {
   round: number;
   /** DRAFT 임시 저장 · APPROVED 상담원 확정(고칠 수 없음). */
   status: ReviewStatus;
+  /** 판 번호(저장 · 확정마다 1 씩). 고치기 · 확정에 그대로 돌려보낸다. */
+  version: number;
   values: Record<string, unknown>;
   /** 서버가 계산한 합계 · 응답 수. 판정은 들지 않는다. */
   totals: Record<string, number>;
