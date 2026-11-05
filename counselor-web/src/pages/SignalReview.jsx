@@ -7,7 +7,8 @@
 // 상담원 판단(회차 전체 상 · 중 · 하 하나, 2026-10-29)은 useOverallRiskAssessment, 머리는 useSessionDetail · useCaseDetail 이 부르고,
 // 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
 // 이 파일은 훅을 부르고 배치만 한다. 판단 없이 다음 단계로 가려 하면(nextBlocked) 옮기지 않고 팝업 "위험도를 선택해주세요." 를 띄운다.
-// 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 위험요인 · 심각도 상담사 수정)은 준비 중이다.
+// 위쪽 AI 초안 상 · 중 · 하는 유형별 심각도 최고값으로 계산한다(4~5 상 · 3 중 · 1~2 하, 2026-11-05). 서버에 없는 것(안전 플래그 ·
+// 재학대 요인 · 위험요인 · 심각도 상담사 수정)은 준비 중이다.
 // 회차별 추이는 사례 단위 신호 이력(useSignalHistory)으로 채운다.
 import { Fragment, useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -241,7 +242,14 @@ export default function SignalReview(props) {
                   </button>
                 ) : null}
               </div>
-              <div style={{ fontSize: '14px' }} aria-live="polite">
+              {v.aiLevel ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '10px', marginTop: '4px' }}>
+                  <b style={{ fontSize: '30px', color: v.aiLevelColor }}>{v.aiLevel}</b>
+                  <span style={{ fontSize: '14px' }}>{v.aiLevelText}</span>
+                  {v.aiTrend ? <span className="note">{v.aiTrend}</span> : null}
+                </div>
+              ) : null}
+              <div style={{ fontSize: v.aiLevel ? '12px' : '14px' }} className={v.aiLevel ? 'note' : undefined} aria-live="polite">
                 {v.aiText}
               </div>
               <span className="sub2">{v.aiOverallNote}</span>
