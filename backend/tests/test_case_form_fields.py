@@ -142,6 +142,35 @@ def test_other_counselor_cannot_read_or_change(client: TestClient, counselor_hea
 
     assert client.get(f"/api/v1/cases/{case['id']}", headers=other_counselor_headers).status_code == 403
     assert _patch(client, other_counselor_headers, case["id"], {"intake_opinion": "남의 사례"}).status_code == 403
+    # 거부된 수정은 아무 칸도 바꾸지 않는다.
+    after = client.get(f"/api/v1/cases/{case['id']}", headers=counselor_headers).json()["data"]
+    assert after["intake_opinion"] == FILLED["intake_opinion"]
+
+
+def test_admin_can_change_fields_of_any_case(client: TestClient, counselor_headers, admin_headers) -> None:
+    case = create_case(client, counselor_headers, **FILLED)
+
+    response = _patch(client, admin_headers, case["id"], {"counselor_risk_level": "LOW", "intake_family_type": None})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["counselor_risk_level"] == "LOW"
+    assert response.json()["data"]["intake_family_type"] is None
+
+
+def test_validation_error_does_not_echo_text(client: TestClient, counselor_headers) -> None:
+    # 글 칸에는 개인정보가 섞일 수 있다 — 422 응답이 보낸 글을 되돌려 주지 않는다(main.py 는 칸 이름 · 사유만 보낸다).
+    marker = "가상표지글"
+    too_long = marker + "가" * CASE_FORM_TEXT_MAX
+    case = create_case(client, counselor_headers)
+
+    created = client.post(
+        "/api/v1/cases", json={"title": "t", "child_alias": "a", "linked_background": too_long}, headers=counselor_headers
+    )
+    patched = _patch(client, counselor_headers, case["id"], {"intake_opinion": too_long, "child_action_result": marker})
+
+    assert created.status_code == 422 and patched.status_code == 422
+    assert marker not in created.text
+    assert marker not in patched.text
 
 
 def test_fields_are_not_passed_to_ai_case_context(client: TestClient, counselor_headers, db) -> None:
