@@ -355,3 +355,46 @@ def test_topic_tags_are_kept_and_bad_items_dropped():
 
 def test_empty_topic_tags_stay_empty():
     assert _validate(topic_tags=[]).model_dump()["topic_tags"] == []
+
+
+# ------------------------------------------------------------
+# safety_flags · reabuse_factors(2026-11-05) — 없으면 null(만들지 못함), 빈 목록과 구분
+# ------------------------------------------------------------
+
+
+def test_missing_safety_fields_stay_null():
+    dumped = AIAnalysisResult.model_validate(OLD_RESULT).model_dump()
+
+    assert dumped["safety_flags"] is None
+    assert dumped["reabuse_factors"] is None
+
+
+def test_empty_safety_fields_stay_empty():
+    dumped = _validate(safety_flags=[], reabuse_factors=[]).model_dump()
+
+    assert dumped["safety_flags"] == []
+    assert dumped["reabuse_factors"] == []
+
+
+def test_safety_flags_drop_bad_items_and_default_certainty():
+    result = _validate(
+        safety_flags=[
+            {"code": "S2", "text": "말하면 더 혼난다고 함", "certainty": "CLEAR", "segment_ids": ["seg_001"]},
+            {"code": "S7", "text": "집에 가기 싫다고 함", "certainty": "SURE", "segment_ids": ["seg_002"]},
+            {"code": "S11", "text": "모르는 코드", "segment_ids": ["seg_001"]},
+            {"code": "S1", "text": "", "segment_ids": ["seg_001"]},
+            {"code": "S3", "text": "근거 없음", "segment_ids": []},
+            "bad",
+        ],
+        reabuse_factors=[
+            {"code": "R2", "text": "술 마시면 때린다고 함", "segment_ids": ["seg_001"]},
+            {"code": "P1", "text": "보호요인 코드", "segment_ids": ["seg_001"]},
+        ],
+    ).model_dump()
+
+    assert result["safety_flags"] == [
+        {"code": "S2", "text": "말하면 더 혼난다고 함", "certainty": "CLEAR", "segment_ids": ["seg_001"]},
+        # 모르는 certainty 는 확인 필요로 낮춘다.
+        {"code": "S7", "text": "집에 가기 싫다고 함", "certainty": "CHECK", "segment_ids": ["seg_002"]},
+    ]
+    assert result["reabuse_factors"] == [{"code": "R2", "text": "술 마시면 때린다고 함", "segment_ids": ["seg_001"]}]
