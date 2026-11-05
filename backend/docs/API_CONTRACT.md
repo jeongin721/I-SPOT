@@ -548,6 +548,23 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `report_date` · `linked_date` · `first_interview_date`(2026-10-30, 서식 4 ① 신고접수일 · 사례연계일 · 최초면접일) 선택. `"YYYY-MM-DD"` 날짜만,
   1900-01-01 ~ 2100-12-31(그 밖 · 시각이 붙은 값(자정 · `Z` 포함) · 숫자는 `422` — 글자 10자만 받는다). 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다
+- 서식 4 의 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기) 선택. 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다.
+  **모두 상담원이 고르거나 적는 값**이다 — AI 가 미리 고르거나 채우지 않고, AI 분석 입력(사례 정보)에도 넘기지 않는다.
+  - `child_action_result`(조치결과 · 피해아동): `HOME`(원가정보호) · `RELATIVE`(친인척보호) · `ACQUAINTANCE`(연고자에 의한 보호) ·
+    `FOSTER`(가정위탁) · `FACILITY`(시설입소) · `HOSPITAL`(병원입원) · `OTHER`(기타)
+  - `target_action_result`(조치결과 · 사례관리대상자): `OBSERVATION`(지속관찰) · `SEPARATION`(아동과의 분리) · `COMPLAINT`(고소 · 고발) · `OTHER`(기타)
+  - `counselor_risk_level`(위험도(우선)): `HIGH`(상) · `MEDIUM`(중) · `LOW`(하). 상담원이 고른 **사례** 위험도다 — 회차 AI 심각도(1~5) ·
+    회차 위험도 판단(11절)과 서로 바꾸거나 맞추지 않는다
+  - `intake_family_type`(② 가족유형, 하나 — 11/03 디자인의 21개): `GENERAL`(일반가정) ·
+    `FATHER_BEREAVED` · `FATHER_DIVORCED` · `FATHER_LEFT` · `FATHER_SEPARATED`(부자가정 — 사별 · 이혼 · 가출 · 별거) ·
+    `MOTHER_BEREAVED` · `MOTHER_DIVORCED` · `MOTHER_LEFT` · `MOTHER_SEPARATED`(모자가정 — 사별 · 이혼 · 가출 · 별거) ·
+    `UNMARRIED_FATHER`(미혼부가정) · `UNMARRIED_MOTHER`(미혼모가정) · `UNMARRIED_PARENTS`(미혼부모가정) · `FATHER_STEPMOTHER`(친부+계모) · `MOTHER_STEPFATHER`(친모+계부) · `RELATIVE_CARE`(친인척보호) ·
+    `FATHER_PARTNER`(친부+동거녀) · `MOTHER_PARTNER`(친모+동거남) · `FOSTER`(가정위탁) · `ADOPTIVE`(입양가정) · `FACILITY`(시설보호) · `OTHER`(기타)
+  - 글 칸(각 2000자): `linked_background`(① 사례연계 경위), ② `intake_guardian_relation`(보호자와 아동과의 관계) ·
+    `intake_problem`(문제력 — 현 상황 · 그 이유, 한 칸) · `intake_attitude`(대상자 태도) ·
+    `intake_environment`(물리적 환경) · `intake_opinion`(상담원 소견 및 향후 계획). 앞뒤 빈칸을 지우고 빈 글은 `null` 로 저장한다.
+    평문 저장이다(사례 메모와 같음) — 화면은 '실명 · 연락처 · 주소 등 개인정보는 적지 마세요' 를 보인다
+  - 목록에 없는 값 · 2000자를 넘는 글은 `422`
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
   - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
     "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
@@ -632,6 +649,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
 - `intake_child_traits` · `intake_family_situations` 는 보내면 목록을 통째로 바꾼다. 비우려면 `[]` 를 보낸다(`null` 은 `422`)
 - 날짜 셋(`report_date` · `linked_date` · `first_interview_date`)은 보낸 것만 바뀌고 `null` 을 보내면 비운다
+- 서식 4 고르기 · 글 칸(2026-11-05, 위 `POST` 참조)도 보낸 것만 바뀌고 `null`(글 칸은 빈 글도)을 보내면 비운다. 감사 기록에는 바뀐 칸 이름만 남는다
 
 ### POST · DELETE /api/v1/cases/{case_id}/closure-review (2026-10-30)
 
