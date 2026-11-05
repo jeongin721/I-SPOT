@@ -19,6 +19,7 @@ import type { SignalHistoryState } from "../useSignalHistory";
 import { detectedTypeLabels } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
 import { screenHref } from "./links";
+import type { ReportFirstPass } from "./closureSuggest";
 import { CLOSURE_MEETING_PRESET, PRESET_PARAM } from "./schedule";
 
 const SUMMARY_ORDER = [
@@ -253,23 +254,31 @@ export function closureReportValues(
   draft: ReportDraft,
   setDraft: (patch: ReportDraft) => void,
   resetDraft: () => void,
-  /** 사례관리 제공 요약을 저장한 적 없을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). 비워 저장하면("") 다시 채우지 않는다. */
-  servicesFromRecords = "",
+  /**
+   * 저장한 적 없는 칸(null)의 1차 값 — AI 제안 · 기록 제안 · 일정 · 회차 기록(closureSuggest first, 11/05 경진님 'AI 가 1차 판단, 상담원이 수정').
+   * 상담원이 '보고서 저장' 을 눌러야 저장된다. 보고서를 한 번 저장한 뒤에는 쓰지 않는다(비운 칸 · 해제한 체크를 다시 채우지 않게).
+   */
+  first: ReportFirstPass = {},
 ) {
+  const servicesFromRecords = first.services ?? "";
   const info = detail.caseInfo;
   const record = summary.record;
   const saved = record?.report ?? {};
+  // 1차 값은 보고서를 처음 저장하기 전까지만 쓴다(한 번 저장하면 상담원이 비운 칸 · 날짜를 다시 채우지 않는다).
+  const before = !Object.values(saved).some((item) => item !== null && item !== undefined);
+  const pass: ReportFirstPass = before ? first : {};
   const ai = record?.summary?.report ?? {};
   const aiSource = record?.summary?.source;
 
   /** 고치는 중인 값 → 저장된 값 → (글 칸은) AI 초안 순. */
   const value = (key: ReportTextKey, aiText?: string) => draft[key] ?? (saved[key] ?? aiText ?? "");
-  // 상담원 판단 칸: 고치는 중인 값 → 저장된 값 → 빈 칸.
-  const reasons = draft.reasons ?? fixedList(saved.reasons, REASON_COUNT, (item) => item === true);
+  // 상담원 판단 칸: 고치는 중인 값 → 저장된 값 → (저장한 적 없으면) 1차 값 → 빈 칸.
+  const reasons =
+    draft.reasons ?? fixedList(saved.reasons ?? pass.reasons, REASON_COUNT, (item) => item === true);
   const safety =
     draft.safety ??
-    fixedList(saved.safety, SAFETY_COUNT, (item) => LEVELS.find(([, code]) => code === item)?.[1] ?? null);
-  const keyPerson = draft.key_person ?? saved.key_person ?? "";
+    fixedList(saved.safety ?? pass.safety, SAFETY_COUNT, (item) => LEVELS.find(([, code]) => code === item)?.[1] ?? null);
+  const keyPerson = draft.key_person ?? saved.key_person ?? pass.keyPerson ?? "";
   const services = draft.services ?? saved.services ?? servicesFromRecords;
   const scores =
     draft.safety_scores ??
@@ -291,6 +300,14 @@ export function closureReportValues(
     onChange: (event: { target: { value: string } }) => setDraft({ [key]: event.target.value }),
   });
 
+  // 저장한 적 없는 칸이 1차 값으로 보이고 있는가(화면 위 안내).
+  const firstShown =
+    before &&
+    ((pass.reasons ?? []).some(Boolean) ||
+      (pass.safety ?? []).some((level) => level !== null) ||
+      Boolean(pass.keyPerson) ||
+      Boolean(pass.closingDate));
+
   let note = "";
   if (!caseId) note = "종결 검토 목록에서 사례를 골라 주세요.";
   else if (summary.loadError) note = summary.loadError;
@@ -302,6 +319,9 @@ export function closureReportValues(
     // 종결평가 회의 일정 잡기(11/02): 일정 달력이 '사례회의 · 종결평가 회의' 추가 창을 연 채로 열린다(이 사례를 붙인다).
     meetingHref: `${screenHref("/Schedule", { caseId })}${caseId ? "&" : "?"}${PRESET_PARAM}=${CLOSURE_MEETING_PRESET}`,
     connected: Boolean(caseId && info),
+    firstNote: firstShown
+      ? "AI · 기록이 1차로 판단해 채운 칸이 있습니다(칩이 붙은 칸). 확인하고 고친 뒤 '보고서 저장' 을 눌러야 저장됩니다."
+      : "",
     crumb: info ? info.alias : "",
     alias: info?.alias ?? "",
     head: info
@@ -320,7 +340,7 @@ export function closureReportValues(
     closing: field("closing_situation", ai.closing_situation?.text),
     opinion: field("opinion"),
     reviewDate: field("review_date"),
-    closingDate: field("closing_date"),
+    closingDate: field("closing_date", pass.closingDate || undefined),
     initialChip: aiChip("initial_situation"),
     closingChip: aiChip("closing_situation"),
     // 상담원 판단 칸(ClosureDetail 의 종결사유 · 안전평가 · Key Person · 안전점수)
@@ -360,7 +380,7 @@ export function closureReportValues(
         closing_situation: value("closing_situation", ai.closing_situation?.text) || null,
         opinion: value("opinion") || null,
         review_date: value("review_date") || null,
-        closing_date: value("closing_date") || null,
+        closing_date: value("closing_date", pass.closingDate || undefined) || null,
         reasons,
         safety,
         key_person: keyPerson.trim() || null,

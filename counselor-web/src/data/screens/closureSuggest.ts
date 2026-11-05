@@ -1,4 +1,6 @@
-// 종결 검토 › ② 종결보고서(서식 29)의 제안 칩 · 근거(11/04 디자인 'AI 제안' 자리) — 칸은 채우지 않는다(상담원이 고른다).
+// 종결 검토 › ② 종결보고서(서식 29)의 제안 칩 · 근거(11/04 디자인 'AI 제안' 자리).
+// 11/05 경진님: AI · 기록이 1차로 판단해 칸을 먼저 채우고 상담원이 고친다 — first(아래)가 저장한 적 없는 칸의 처음 값이다.
+// 저장은 상담원이 '보고서 저장' 을 눌러야 되고(서버는 채우지 않음), 칩 · 근거는 그대로 보여 무엇이 AI · 기록 판단인지 알린다.
 //
 //  - 안전평가 11문항 · Key Person: closure-summary 의 AI 제안(summary.suggestions, 요약을 AI 로 만들 때 같이 나옴). 'AI 제안'.
 //  - 종결사유: 기록으로 계산한 제안(AI 아님, '기록 제안').
@@ -32,6 +34,14 @@ export interface ClosureSuggestInput {
   summary: ClosureSummaryBody | null;
   /** 오늘(YYYY-MM-DD). 시험에서 고정한다. */
   today: string;
+}
+
+export interface ReportFirstPass {
+  reasons?: boolean[];
+  safety?: ("HIGH" | "MEDIUM" | "LOW" | null)[];
+  keyPerson?: string;
+  closingDate?: string;
+  services?: string;
 }
 
 export interface Suggestion {
@@ -112,5 +122,13 @@ export function closureSuggestions(input: ClosureSuggestInput) {
     ? `상담 ${sessions.length}회 (${md(dateOf(sessions[0]))} ~ ${md(dateOf(sessions[sessions.length - 1]))}) · ${kinds.join(" · ")}`
     : "";
 
-  return { reasons, safety, keyPerson, closingDate, abuseSignal, services, servicesChip: sessions.length ? `회차 기록 · ${sessions.length}회차` : "" };
+  /** 저장한 적 없는 판단 칸의 1차 값(closureReportValues). 안전점수는 근거가 없어 채우지 않는다. */
+  const firstPass: ReportFirstPass = {
+    reasons: reasons.map(Boolean),
+    safety: safety.map((_, index) => ai?.safety.find((row) => row.index === index)?.level ?? null),
+    keyPerson: ai?.key_person?.text ?? "",
+    closingDate: pick?.date ?? "",
+  };
+
+  return { first: firstPass, reasons, safety, keyPerson, closingDate, abuseSignal, services, servicesChip: sessions.length ? `회차 기록 · ${sessions.length}회차` : "" };
 }

@@ -7,8 +7,8 @@
 // '저장했습니다' 를 보이고, 저장하지 않은 수정이 있으면 떠날 때 묻는다(useLeaveGuard). 사례관리 제공 요약은 서버 칸이 없어 준비 중.
 // 가족관계척도 줄은 기관 서식(가족관계 척도, useCaseForms) 가장 최근 기록의 평균을 보인다.
 // 11/04 디자인: 'AI 제안' 자리를 실제 사례 값으로 — 안전평가 · Key Person 은 요약 AI 제안(summary.suggestions), 종결사유는 기록 제안,
-// 종결 상담일은 일정, 학대유형은 AI 관련 신호, 사례관리 제공 요약은 회차 기록(report.services 로 저장). 칩 · 근거만 보이고
-// 상담원 판단 칸은 채우지 않는다(closureSuggest.ts).
+// 종결 상담일은 일정, 학대유형은 AI 관련 신호, 사례관리 제공 요약은 회차 기록(report.services 로 저장). 칩 · 근거로 무엇이 제안인지 보인다.
+// 11/05 경진님: 저장한 적 없는 판단 칸은 이 제안으로 먼저 채우고(AI · 기록 1차 판단) 상담원이 고쳐 '보고서 저장' 한다(closureSuggest first).
 // 11/05: 보고서 저장 아래에 '사례 종결 확정'(디자인에 없던 단추, 경진님 요청) — 저장과 따로, 저장한 보고서가 있고 고친 칸이 없을 때만
 // 확인을 받고 사례 상태를 종결로 바꾼다(useCaseClosing).
 import { Fragment, useState } from 'react';
@@ -69,7 +69,7 @@ class Logic extends DCLogic {
       const ai = real ? false : aiRaw;
       const ev = real ? '' : evRaw;
       // 실제 사례는 서버에 저장한 값(r.reasons)을 쓴다.
-      // 제안(기록 제안)은 칩 · 근거로만 보이고 체크하지 않는다.
+      // 저장한 적 없으면 기록 제안이 1차로 체크돼 있다(closureReportValues first) — 상담원이 풀거나 더 체크한다.
       if (real) {
         const sg = this.props.suggest.reasons[i];
         return { t, on: Boolean(this.props.report.reasons[i]), hasEv: Boolean(sg), chip: sg?.chip ?? '', ev: sg?.ev ?? '', toggle: () => this.props.report.toggleReason(i) };
@@ -179,7 +179,7 @@ function ClosureDetailScreen(props) {
     draft,
     (patch) => setDraftState((current) => ({ ...current, ...patch })),
     () => setDraftState({}),
-    suggest.services,
+    { ...suggest.first, services: suggest.services },
   );
   const v = useDC(Logic, { ...props, connected: r.connected, report: r, suggest });
   const family = familyScaleLine(forms);
@@ -296,6 +296,11 @@ function ClosureDetailScreen(props) {
               </div>
             </div>
 
+            {r.firstNote ? (
+              <p className="note" style={{ margin: 0 }}>
+                {r.firstNote}
+              </p>
+            ) : null}
             <div className="grp">종결사유</div>
             {(v.reasons || []).map((r, rIndex) => (
               <Fragment key={rIndex}>
