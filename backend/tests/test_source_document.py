@@ -335,7 +335,8 @@ def test_keep_copied_needs_a_whole_source_sentence() -> None:
     assert dn.keep_copied("아동은 맞았다.", source) == ""
     assert dn.keep_copied("보호자가 방문.", source) == ""
     assert dn.keep_copied("주 34회 결석함.", source) == ""
-    assert dn.keep_copied("주 3~4회 결석함.", source) == "주 3~4회 결석함."
+    # '출결' 은 칸 이름 · 별칭이 아니라 떼지 않는다 — 통째로 옮겨야 한다(민규 #137 교차검증 11/05).
+    assert dn.keep_copied("주 3~4회 결석함.", source) == ""
     assert dn.keep_copied("출결: 주 3~4회 결석함", source) == "출결: 주 3~4회 결석함"
     assert dn.keep_copied("보호자가 방문하지 않음", source) == "보호자가 방문하지 않음"
     assert dn.keep_copied("아동은  맞았다고 말하지 않았다.", source) == "아동은  맞았다고 말하지 않았다."
@@ -478,7 +479,7 @@ def test_pdf_joins_wrapped_lines_so_copy_check_sees_whole_sentences(monkeypatch)
     assert dn.keep_copied("아동은 맞았다.", source) == ""
     assert dn.keep_copied("아동은 아버지에게 맞았다고 말하지 않았으며 보호자는 가정 방문을", source) == ""
     assert dn.keep_copied("보호자 연락 안 됨", source) == "보호자 연락 안 됨"
-    assert dn.keep_copied("주 3~4회 결석함.", source) == "주 3~4회 결석함."
+    assert dn.keep_copied("출결: 주 3~4회 결석함.", source) == "출결: 주 3~4회 결석함."
 
     # 짧은 줄(문단 끝) · 문장이 끝난 줄 · '칸 이름:' 줄은 잇지 않는다.
     joined = document_text._join_wrapped(
@@ -679,3 +680,38 @@ def test_created_to_review_is_not_open_to_audio_paths() -> None:
     from app.core.state_machine import can_transition
 
     assert not can_transition(SessionStatus.CREATED, SessionStatus.AI_REVIEW_REQUIRED)
+
+
+def test_copy_check_keeps_sentences_across_lines_and_pages_but_not_front_pieces(monkeypatch) -> None:
+    """같은 쪽에 더 긴 줄이 있어 잇지 못한 줄 · 쪽을 넘는 문장도 통째로 옮기면 남고, 앞 조각만은 버린다(민규 #137 교차검증 11/05)."""
+
+    from app.services import document_text
+
+    pages = [
+        "보호자 상담에서 가정 내 양육 환경과 학교 생활에 대한 이야기를 길게 나누었고 다음 회차에 다시 확인하기로 하였다.\n"
+        "아동은 맞았다\n"
+        "고 말하지 않았다.\n"
+        "아동은 아버지에게 맞았다고",
+        "말하지 않았다.\n- 보호자 연락 안 됨\n학교는 다님",
+    ]
+    _fake_pdf(monkeypatch, pages)
+    source = document_text.extract_text("a.pdf", b"%PDF-1.4")
+
+    assert dn.keep_copied("아동은 맞았다.", source) == ""
+    assert dn.keep_copied("아동은 맞았다고 말하지 않았다.", source) == "아동은 맞았다고 말하지 않았다."
+    # 쪽을 넘는 문장
+    assert dn.keep_copied("아동은 아버지에게 맞았다고 말하지 않았다.", source) == "아동은 아버지에게 맞았다고 말하지 않았다."
+    assert dn.keep_copied("아동은 아버지에게 맞았다고.", source) == ""
+    # 마침표 없는 목록 — 함께 옮기면 남는다(줄로 나눠도). 한 줄만 옮긴 것은 꺾인 줄 앞 조각과 구분할 수 없어 버린다.
+    assert dn.keep_copied("보호자 연락 안 됨\n학교는 다님", source) == "보호자 연락 안 됨\n학교는 다님"
+    assert not dn.copied_from_source("보호자 연락 안 됨", source)
+
+
+def test_copy_check_strips_only_real_field_names() -> None:
+    """콜론 앞 아무 말이나 칸 이름으로 떼지 않는다 — 실제 칸 이름 · 별칭만(민규 #137 교차검증 11/05)."""
+
+    source = "다음 문장은 사실이 아님: 보호자가 방문함.\n위험요인: 부의 음주 뒤 체벌.\n[강점] 조모가 돌봄."
+
+    assert dn.keep_copied("보호자가 방문함.", source) == ""
+    assert dn.keep_copied("부의 음주 뒤 체벌.", source) == "부의 음주 뒤 체벌."
+    assert dn.keep_copied("조모가 돌봄.", source) == "조모가 돌봄."
