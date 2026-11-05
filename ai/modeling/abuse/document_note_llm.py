@@ -103,8 +103,8 @@ _HEADING = re.compile(r"^\s*(?:\[([^\]\n]{1,30})\]|([^:：\n\[\]]{1,20})[:：])\
 _SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|\n+")
 #: 문장이 끝난 조각(끝 따옴표 · 괄호는 넘어서 본다).
 _CLOSED = re.compile(r"[.!?。][\"'”’)\]」』]*$")
-#: 다음 줄이 새 항목으로 시작하는가(글머리표 · 번호 · '[칸]' · '이름:') — 그러면 앞 줄은 거기서 끝난 것으로 본다.
-_ITEM_START = re.compile(r"\s*(?:[-–—•·∙*▪◦○●■□◆◇▶►※→]|\(?\d{1,3}[.)]|\[|[^\s:：\[\]][^:：\[\]]{0,19}[:：])")
+#: 줄 머리의 글머리표 · 번호('1.' · '2)' — '2.5회' 같은 소수는 아님).
+_ITEM_MARK = re.compile(r"\s*(?:[-–—•·∙*▪◦○●■□◆◇▶►※→]|\(?\d{1,3}[.)](?!\d))")
 #: 옮긴 글 조각을 이어 원문 덩어리 하나와 맞춰 보는 최대 조각 수(마침표 없는 목록 · 여러 줄 문장).
 _MAX_JOIN = 12
 
@@ -127,10 +127,19 @@ def _strip_heading(text: str) -> str:
     return text
 
 
+def _starts_item(line: str) -> bool:
+    """다음 줄이 새 항목인가(글머리표 · 번호 · 실제 칸 이름 · 별칭 머리) — 그러면 앞 줄은 거기서 끝난 것으로 본다.
+    '이름:' 은 실제 칸 이름 · 별칭일 때만 — 이어지는 줄 앞 20자 안의 아무 콜론('…않음. 비고:' · '(확인 일시:')을 새 항목으로 보면
+    부정이 빠진 앞 조각('보호자는 체벌한 적이 있다.')이 통과했다(민규 #137 교차검증 11/05)."""
+
+    stripped = line.strip()
+    return bool(_ITEM_MARK.match(line)) or _strip_heading(stripped) != stripped
+
+
 def _source_runs(source: str) -> set:
     """원문을 '확실한 경계' 사이 덩어리로 나눈 비교 열쇠(와 실제 칸 이름을 뗀 열쇠).
 
-    확실한 경계: 마침표 · 물음표 · 느낌표, 빈 줄, 글 끝, 다음 줄이 새 항목(글머리표 · 번호 · 칸 이름), 칸 이름만 있는 줄.
+    확실한 경계: 마침표 · 물음표 · 느낌표, 빈 줄, 글 끝, 다음 줄이 새 항목(글머리표 · 번호 · 실제 칸 이름), 실제 칸 이름만 있는 줄.
     마침표 없이 바뀐 줄(PDF 줄 · 쪽 꺾임 '아동은 맞았다⏎고 말하지 않았다.', 마침표 없는 목록)은 경계로 보지 않고 다음 줄과
     한 덩어리로 묶는다 — 덩어리 앞부분만 옮긴 조각('아동은 맞았다.')은 통과하지 않고, 덩어리를 통째로 옮기면(여러 줄로
     나눠 옮겨도) 통과한다(민규 #137 교차검증 11/05 — 전에는 줄 바꿈을 문장 경계로 믿어 조각이 201, 온 문장이 502).
@@ -145,11 +154,11 @@ def _source_runs(source: str) -> set:
                 segments[-1] = (*segments[-1][:1], True, *segments[-1][2:])
             continue
         following = next((later for later in lines[index + 1:] if later.strip()), None)
-        heading_only = bool(re.fullmatch(r"\[[^\]\n]{1,30}\]|[^\n]{1,20}[:：]", stripped))
+        heading_only = _strip_heading(stripped) == ""
         line_closed = (
             following is None
             or heading_only
-            or bool(_ITEM_START.match(following))
+            or _starts_item(following)
             or not lines[index + 1].strip()
         )
         pieces = [piece for piece in re.split(r"(?<=[.!?。])\s+", stripped) if _key(piece)]

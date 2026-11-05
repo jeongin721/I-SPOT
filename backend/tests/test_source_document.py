@@ -478,8 +478,9 @@ def test_pdf_joins_wrapped_lines_so_copy_check_sees_whole_sentences(monkeypatch)
     assert dn.keep_copied("아동은 맞았다고 말하지 않았다.", source) == "아동은 맞았다고 말하지 않았다."
     assert dn.keep_copied("아동은 맞았다.", source) == ""
     assert dn.keep_copied("아동은 아버지에게 맞았다고 말하지 않았으며 보호자는 가정 방문을", source) == ""
-    assert dn.keep_copied("보호자 연락 안 됨", source) == "보호자 연락 안 됨"
-    assert dn.keep_copied("출결: 주 3~4회 결석함.", source) == "출결: 주 3~4회 결석함."
+    # '출결' 은 칸 이름이 아니라 새 항목이 아니다 — 마침표 없는 앞 줄과 한 덩어리(혼자 옮기면 꺾인 줄 앞 조각과 구분할 수 없어 버림).
+    assert dn.keep_copied("보호자 연락 안 됨", source) == ""
+    assert dn.keep_copied("보호자 연락 안 됨\n출결: 주 3~4회 결석함.", source) == "보호자 연락 안 됨\n출결: 주 3~4회 결석함."
 
     # 짧은 줄(문단 끝) · 문장이 끝난 줄 · '칸 이름:' 줄은 잇지 않는다.
     joined = document_text._join_wrapped(
@@ -715,3 +716,20 @@ def test_copy_check_strips_only_real_field_names() -> None:
     assert dn.keep_copied("보호자가 방문함.", source) == ""
     assert dn.keep_copied("부의 음주 뒤 체벌.", source) == "부의 음주 뒤 체벌."
     assert dn.keep_copied("조모가 돌봄.", source) == "조모가 돌봄."
+
+
+@pytest.mark.parametrize(
+    ("source", "piece", "whole"),
+    [
+        ("보호자는 체벌한 적이 있다\n고 인정하지 않음. 비고: 추후 확인.", "보호자는 체벌한 적이 있다.", "보호자는 체벌한 적이 있다고 인정하지 않음."),
+        ("아동은 맞았다\n고 말하지 않았음(확인 일시: 11/3).", "아동은 맞았다.", "아동은 맞았다고 말하지 않았음(확인 일시: 11/3)."),
+        ("아동은 주\n2.5회 정도 결석했다고 함.", "아동은 주.", "아동은 주 2.5회 정도 결석했다고 함."),
+    ],
+)
+def test_colon_or_decimal_in_continuation_is_not_a_new_item(source: str, piece: str, whole: str) -> None:
+    """이어지는 줄 앞 20자 안의 아무 콜론 · 소수는 새 항목이 아니다 — 앞 조각은 버리고 온 문장은 남긴다(민규 #137 교차검증 11/05).
+    실제 칸 이름 머리('위험요인:')로 시작하는 줄은 새 항목이다."""
+
+    assert dn.keep_copied(piece, source) == ""
+    assert dn.keep_copied(whole, source) == whole
+    assert dn.copied_from_source("부의 음주", "부의 음주\n위험요인: 체벌.")
