@@ -15,6 +15,7 @@ from app.models.followup_check import SessionFollowupChecks
 from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.schedule import ScheduleEvent
+from app.models.docbox import DocboxFile, DocboxFolder
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.source_document import SessionSourceDocument
@@ -24,6 +25,8 @@ from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
 
 __all__ = [
+    "DocboxFile",
+    "DocboxFolder",
     "AIAnalysis",
     "AudioFeature",
     "AudioFile",

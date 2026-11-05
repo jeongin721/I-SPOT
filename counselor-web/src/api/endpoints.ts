@@ -7,6 +7,9 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  DocboxFile,
+  DocboxFolder,
+  DocboxList,
   SourceDocument,
   CaseForm,
   CaseFormType,
@@ -647,5 +650,36 @@ export const caseForms = {
   /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
   confirm(caseId: string, formId: string): Promise<CaseForm> {
     return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`);
+  },
+};
+
+// =========================================================
+// 문서함 (API_CONTRACT 23절, 2026-11-05) — 기관 서식 · 참고 문서 공용 보관
+// =========================================================
+
+export const docbox = {
+  list(): Promise<DocboxList> {
+    return api.get<DocboxList>("/docbox");
+  },
+
+  createFolder(name: string): Promise<DocboxFolder> {
+    return api.post<DocboxFolder>("/docbox/folders", { name });
+  },
+
+  /** 한 번에 10개 · 파일마다 10MB. folderId 가 null 이면 '폴더 없음'. 하나라도 어긋나면 아무것도 올리지 않는다(422). */
+  upload(files: File[], folderId: string | null): Promise<{ files: DocboxFile[] }> {
+    const form = new FormData();
+    files.forEach((file) => form.append("files", file, file.name));
+    if (folderId) form.append("folder_id", folderId);
+    return api.upload<{ files: DocboxFile[] }>("/docbox/files", form);
+  },
+
+  move(fileId: string, folderId: string | null): Promise<DocboxFile> {
+    return api.patch<DocboxFile>(`/docbox/files/${fileId}`, { folder_id: folderId });
+  },
+
+  /** 파일 본체(내려받기 · 그림 미리보기). */
+  file(fileId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/download`, signal);
   },
 };
