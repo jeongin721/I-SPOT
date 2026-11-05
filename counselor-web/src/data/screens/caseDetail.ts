@@ -581,6 +581,10 @@ export function caseDetailValues(input: CaseDetailInput) {
   // 현재 진행 상황: 가장 최근 회차가 어느 칸에 있는가. 칸을 누르면 그 회차의 그 단계 화면으로 간다(10/21 디자인).
   const column = latest ? COLUMN_OF[latest.step] : -1;
   const latestIds = latest ? { caseId: latest.caseId, sessionId: latest.id } : null;
+  const shortDate = (date: string) => {
+    const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(date || "");
+    return m ? `${Number(m[1])}/${Number(m[2])}` : "";
+  };
   const progress = PROCESS_COLUMNS.map((label, index) => {
     const done = latest !== null && index < column;
     const current = latest !== null && index === column && index < PROCESS_COLUMNS.length - 1;
@@ -598,6 +602,8 @@ export function caseDetailValues(input: CaseDetailInput) {
       current,
       pending: !done && !current,
       chip: current && latest ? latest.statusLabel : approved > 0 ? `질문 ${approved}개 승인` : "",
+      // 11/04 탭1 디자인: 지난 '상담 녹음' 칸 아래 날짜(M/D) — 가장 최근 회차의 상담일, 없으면 올린 날.
+      note: done && index === 0 && latest ? shortDate(latest.consultedDate) || shortDate(latest.createdDate) : "",
       // 녹취 올림 칸은 새로 올리기(사례만), 나머지는 가장 최근 회차의 단계 화면.
       href: latestIds
         ? index === 0
