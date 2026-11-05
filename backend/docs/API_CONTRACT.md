@@ -817,7 +817,8 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   report: {initial_situation, closing_situation}, suggestions }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
   (2026-11-04) `suggestions`: 종결보고서 안전평가 · Key Person 의 **AI 제안** `{safety: [{index: 0~10, level: HIGH·MEDIUM·LOW, basis: ≤80자,
   sessions}], key_person: {text: ≤80자, sessions} | null}` — 근거가 있는 문항만, 근거 회차 검사는 문장과 같다. `source = "AI"` 일 때만 오고
-  그 밖 · 이 필드 전에 만든 요약은 `null`. 화면은 칩 · 근거로만 보이고 `report.safety` · `report.key_person` 을 채우지 않는다.
+  그 밖 · 이 필드 전에 만든 요약은 `null`. 서버는 `report` 를 채우지 않는다 — 화면이 보고서를 처음 저장하기 전까지 이 제안(과 기록 제안 · 일정)을
+  1차 값으로 보이고(11/05), 상담원이 고쳐 `PUT` 해야 저장된다.
 - `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
   `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD` 글자만 — 시각 · 숫자 `422`).
   (2026-11-03) 상담원 판단 칸도 `report` 에 둔다 — `reasons`: 종결사유 5개 `bool` · `safety`: 안전평가 11문항 `HIGH`·`MEDIUM`·`LOW`·`null`
