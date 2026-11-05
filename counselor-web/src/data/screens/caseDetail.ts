@@ -1,7 +1,8 @@
 // 사례 상세 탭 1(CaseDetail · 내담자 정보)과 탭 2(CaseHistory · 상담 이력) 화면 값. 둘 다 useCaseDetail 하나로 그린다.
 //
 // Backend 에 없는 값은 지어내지 않고 '—' 또는 준비 중으로 둔다(specs 대응표 '팀 결정 — 사례 · 개인정보 / AI 신호 · 검수').
-//  - 가족유형 · 아이 앱 · 다음 상담 일정
+//  - 아이 앱 · 다음 상담 일정
+// 가족유형 · 조치결과는 서식 4 칸(2026-11-05, caseFormFields.ts — 상담원이 사례 등록 · 초기면접지에서 고른 값)을 보인다.
 // 실명 · 생년월일 · 사례관리대상자는 등록돼 있으면 usePersonalInfo(암호화 저장, 2026-10-30)의 값을 보이고, 없거나 아직 못 받았으면
 // 별칭 · 출생연도 · '—'. 실명을 받은 탭(내담자 정보 · 상담 이력 · 문서함 · 초기면접지)만 머리에 실명을 보인다.
 //  - 기관 서식 진행, 종결 검토 등록
@@ -25,18 +26,19 @@
 //
 // 탭 1 의 '초기면접 내용' 카드는 디자인에 없는 칸이다(2026-10-20 추가). 사례 등록 ② 탭에서 고른 가정상황 · 아동 특성
 // (서식 4 항목 이름)을 단어로 보이고, '수정' 을 누르면 사례 등록과 같은 고르기 단추로 고쳐 저장한다(PATCH /cases/{id}).
-// 고친 항목은 상담 일지(noteWrite.ts)의 초기면접 항목에 그대로 보인다. ② 탭의 나머지 칸은 여전히 준비 중이라 여기에도 없다.
+// 고친 항목은 상담 일지(noteWrite.ts)의 초기면접 항목에 그대로 보인다. ② 탭의 글 칸 · 가족유형(2026-11-05)은 초기면접지에서 고친다.
 //
 // '기본 정보' 카드의 '수정'(2026-11-03, 아이 연계 단추는 탭 줄로 옮김): 서버에 칸이 있는 것만 그 자리에서 입력칸으로 바꾼다.
 // 저장은 초기면접지(caseIntake.ts)와 같은 두 창구다 — 별칭 · 성별 · 날짜 셋은 바꾼 칸만 PATCH /cases/{id}(toCaseUpdateRequest),
 // 이름 · 생년월일 · 사례관리대상자는 실명 정보를 받은 뒤에만 PUT …/personal-info 로 통째로(나머지 실명 · 가족 칸은 받은 값 그대로).
 // PATCH 를 먼저 보내고, PUT 만 실패하면 나눠 알린다. 출생연도는 고치지 않는다(생년월일을 저장하면 서버가 맞춘다 — Codex #129 R2).
-// 개별사건번호 · 담당 상담원(관리자, 초기면접지) · 상담 회차 · 최근 상담은 여기서 바꾸지 않고, 가족유형 · 조치결과 · 아이 앱은
-// 서버에 칸이 없어 준비 중으로 둔다.
+// 개별사건번호 · 담당 상담원(관리자, 초기면접지) · 상담 회차 · 최근 상담 · 가족유형 · 조치결과(초기면접지)는 여기서 바꾸지 않고,
+// 아이 앱은 서버에 칸이 없어 준비 중으로 둔다.
 
 import { NOT_PROVIDED } from "../caseRows";
 import { ABUSE_TYPES, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
-import type { CaseDetailState } from "../useCaseDetail";
+import type { CaseDetailState, CaseDetailView } from "../useCaseDetail";
+import { caseChoiceLabel } from "../caseFormFields";
 import {
   personalInputOf,
   personalNames,
@@ -87,6 +89,19 @@ interface CaseScreenInput {
   questions?: FollowupQuestionsState;
   /** 실명 · 생년월일 · 가족 정보(usePersonalInfo). 없거나 못 받았으면 별칭 · 출생연도를 보인다. */
   personal?: PersonalInfoState;
+}
+
+/** 가족유형(서식 4 ②, 상담원이 고른 값). 없으면 '—'. */
+function familyTypeText(info: CaseDetailView): string {
+  return caseChoiceLabel("familyType", info.caseForm.familyType) || NOT_PROVIDED;
+}
+
+/** 조치결과(서식 4 ①, 상담원이 고른 값) — '피해아동 원가정보호 · 사례관리대상자 지속관찰'. 둘 다 없으면 '—'. */
+function actionResultText(info: CaseDetailView): string {
+  const child = caseChoiceLabel("childAction", info.caseForm.childAction);
+  const target = caseChoiceLabel("targetAction", info.caseForm.targetAction);
+  const parts = [child ? `피해아동 ${child}` : "", target ? `사례관리대상자 ${target}` : ""].filter(Boolean);
+  return parts.length ? parts.join(" · ") : NOT_PROVIDED;
 }
 
 /** 위험도 칩 색(10/27 디자인: 상 c-hi · 중 c-mid · 하 c-lo). 판단 전은 c-normal. */
@@ -430,8 +445,8 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
             options: fields.targetRelationOptions,
             disabled: fields.personalLocked,
           },
-          { label: "가족유형", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
-          { label: "조치결과", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
+          { label: "가족유형", kind: "static", value: familyTypeText(info), hint: "초기면접지에서 고침" },
+          { label: "조치결과", kind: "static", value: actionResultText(info), hint: "초기면접지에서 고침" },
           { label: "담당 상담원", kind: "static", value: info.counselorName, hint: "관리자가 초기면접지에서 바꿈" },
           ...CASE_DATE_FIELDS.map(
             (field): BasicsEditRow => ({
@@ -551,8 +566,8 @@ export function caseDetailValues(input: CaseDetailInput) {
         ...(real?.child_name ? [{ label: "별칭", value: info.alias }] : []),
         { label: "생년월일", value: real?.child_birth_date ?? info.birthYearLabel },
         { label: "사례관리대상자", value: targetText },
-        { label: "가족유형", value: dash },
-        { label: "조치결과", value: dash },
+        { label: "가족유형", value: familyTypeText(info) },
+        { label: "조치결과", value: actionResultText(info) },
         { label: "담당 상담원", value: info.counselorName },
         { label: "신고접수일", value: info.reportDate },
         { label: "사례연계일", value: info.linkedDate },

@@ -53,6 +53,65 @@ class GuardianType(str, Enum):
     OTHER = "OTHER"                # 기타(guardian_note 에 직접 입력)
 
 
+class ChildActionResult(str, Enum):
+    """
+    조치결과 · 피해아동(서식 4 ①, 2026-11-05).
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    HOME = "HOME"                  # 원가정보호
+    RELATIVE = "RELATIVE"          # 친인척보호
+    ACQUAINTANCE = "ACQUAINTANCE"  # 연고자에 의한 보호
+    FOSTER = "FOSTER"              # 가정위탁
+    FACILITY = "FACILITY"          # 시설입소
+    HOSPITAL = "HOSPITAL"          # 병원입원
+    OTHER = "OTHER"                # 기타
+
+
+class TargetActionResult(str, Enum):
+    """
+    조치결과 · 사례관리대상자(서식 4 ①, 2026-11-05).
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    OBSERVATION = "OBSERVATION"  # 지속관찰
+    SEPARATION = "SEPARATION"    # 아동과의 분리
+    COMPLAINT = "COMPLAINT"      # 고소 · 고발
+    OTHER = "OTHER"              # 기타
+
+
+class FamilyType(str, Enum):
+    """
+    가족유형(서식 4 ② 초기면접 내용, 2026-11-05). 하나만 고른다. 11/03 디자인의 서식 항목 21개.
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    GENERAL = "GENERAL"                      # 일반가정
+    FATHER_BEREAVED = "FATHER_BEREAVED"      # 부자가정(사별)
+    FATHER_DIVORCED = "FATHER_DIVORCED"      # 부자가정(이혼)
+    FATHER_LEFT = "FATHER_LEFT"              # 부자가정(가출)
+    FATHER_SEPARATED = "FATHER_SEPARATED"    # 부자가정(별거)
+    MOTHER_BEREAVED = "MOTHER_BEREAVED"      # 모자가정(사별)
+    MOTHER_DIVORCED = "MOTHER_DIVORCED"      # 모자가정(이혼)
+    MOTHER_LEFT = "MOTHER_LEFT"              # 모자가정(가출)
+    MOTHER_SEPARATED = "MOTHER_SEPARATED"    # 모자가정(별거)
+    UNMARRIED_FATHER = "UNMARRIED_FATHER"    # 미혼부가정
+    UNMARRIED_MOTHER = "UNMARRIED_MOTHER"    # 미혼모가정
+    UNMARRIED_PARENTS = "UNMARRIED_PARENTS"  # 미혼부모가정
+    FATHER_STEPMOTHER = "FATHER_STEPMOTHER"  # 친부+계모
+    MOTHER_STEPFATHER = "MOTHER_STEPFATHER"  # 친모+계부
+    RELATIVE_CARE = "RELATIVE_CARE"          # 친인척보호
+    FATHER_PARTNER = "FATHER_PARTNER"        # 친부+동거녀
+    MOTHER_PARTNER = "MOTHER_PARTNER"        # 친모+동거남
+    FOSTER = "FOSTER"                        # 가정위탁
+    ADOPTIVE = "ADOPTIVE"                    # 입양가정
+    FACILITY = "FACILITY"                    # 시설보호
+    OTHER = "OTHER"                          # 기타
+
+
 class SessionStatus(str, Enum):
     """
     상담 Session 상태.
