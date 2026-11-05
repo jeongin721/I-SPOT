@@ -9,6 +9,8 @@
 // 11/04 디자인: 'AI 제안' 자리를 실제 사례 값으로 — 안전평가 · Key Person 은 요약 AI 제안(summary.suggestions), 종결사유는 기록 제안,
 // 종결 상담일은 일정, 학대유형은 AI 관련 신호, 사례관리 제공 요약은 회차 기록(report.services 로 저장). 칩 · 근거만 보이고
 // 상담원 판단 칸은 채우지 않는다(closureSuggest.ts).
+// 11/05: 보고서 저장 아래에 '사례 종결 확정'(디자인에 없던 단추, 경진님 요청) — 저장과 따로, 저장한 보고서가 있고 고친 칸이 없을 때만
+// 확인을 받고 사례 상태를 종결로 바꾼다(useCaseClosing).
 import { Fragment, useState } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -20,6 +22,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseClosing } from '../data/useCaseClosing';
 import { useCaseForms } from '../data/useCaseForms';
 import { useCaseSchedule } from '../data/useCaseSchedule';
 import { useSignalHistory } from '../data/useSignalHistory';
@@ -182,6 +185,7 @@ function ClosureDetailScreen(props) {
   const family = familyScaleLine(forms);
   const [savedNote, setSavedNote] = useState('');
   useLeaveGuard(r.unsaved, { guardBack: true });
+  const closing = useCaseClosing(caseId, detail, summary.record?.report, r.unsaved);
   const save = async () => {
     setSavedNote('');
     if (await r.save()) {
@@ -567,6 +571,23 @@ function ClosureDetailScreen(props) {
             <p className="note" role="status" style={{ margin: 0 }}>
               {savedNote || r.reportNote}
             </p>
+          ) : null}
+          {r.connected ? (
+            <section
+              className="card"
+              aria-label="사례 종결"
+              style={{ padding: '18px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px' }}
+            >
+              <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <b style={{ fontSize: '15px' }}>사례 종결</b>
+                <span className="note" role="status">
+                  {closing.hint || '보고서 저장과 따로, 상담원이 확인한 뒤 사례 상태를 종결로 바꿉니다.'}
+                </span>
+              </div>
+              <button type="button" className="btn btn-s" onClick={closing.close} disabled={!closing.canClose}>
+                {closing.label}
+              </button>
+            </section>
           ) : null}
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>
