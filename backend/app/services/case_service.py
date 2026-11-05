@@ -16,7 +16,7 @@ from app.models.case import Case
 from app.models.risk_assessment import SessionOverallRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.user import User
-from app.schemas.case import CaseCreateRequest, CaseUpdateRequest
+from app.schemas.case import CASE_FORM_FIELDS, CaseCreateRequest, CaseUpdateRequest
 from app.services import audit_service, personal_info_service
 from app.services.access import ensure_case_access
 
@@ -98,6 +98,8 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             report_date=payload.report_date,
             linked_date=payload.linked_date,
             first_interview_date=payload.first_interview_date,
+            # 서식 4 의 조치결과 · 위험도(우선) · 사례연계 경위 · ② 가족유형 · 초기면접 글 칸(2026-11-05).
+            **{field: getattr(payload, field) for field in CASE_FORM_FIELDS},
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
             created_by_id=current_user.id,
@@ -366,6 +368,7 @@ def update_case(
         "report_date",
         "linked_date",
         "first_interview_date",
+        *CASE_FORM_FIELDS,
         "status",
     ):
         if field in data:
