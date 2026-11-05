@@ -16,7 +16,14 @@ from pydantic import (
     model_validator,
 )
 
-from app.core.enums import CaseStatus, GuardianType
+from app.core.enums import (
+    CaseStatus,
+    ChildActionResult,
+    FamilyType,
+    GuardianType,
+    RiskLevel,
+    TargetActionResult,
+)
 from app.core.intake import (
     INTAKE_CHILD_TRAITS,
     INTAKE_FAMILY_SITUATIONS,
@@ -76,7 +83,54 @@ def _case_date(value: Optional[date]) -> Optional[date]:
     return value
 
 
-class CaseCreateRequest(GuardianFields):
+# 서식 4 의 '준비 중' 칸(2026-11-05). 고르기 칸은 목록 값만, 글 칸은 2000자까지. 모두 비울 수 있다.
+CASE_FORM_CHOICE_FIELDS = (
+    "child_action_result",
+    "target_action_result",
+    "counselor_risk_level",
+    "intake_family_type",
+)
+CASE_FORM_TEXT_FIELDS = (
+    "linked_background",
+    "intake_guardian_relation",
+    "intake_problem",
+    "intake_attitude",
+    "intake_environment",
+    "intake_opinion",
+)
+CASE_FORM_FIELDS = CASE_FORM_CHOICE_FIELDS + CASE_FORM_TEXT_FIELDS
+CASE_FORM_TEXT_MAX = 2000
+
+
+class CaseFormFields(RequestModel):
+    """
+    서식 4 ① 조치결과 · 위험도(우선) · 사례연계 경위, ② 가족유형 · 초기면접 글 칸(2026-11-05).
+
+    모두 상담원이 고르거나 적는 값이다. AI 가 미리 고르거나 채우지 않고 AI 입력(case_context_service)에도 넘기지 않는다.
+    위험도(우선)는 상담원이 고른 사례 위험도(상 · 중 · 하)로, 회차 AI 신호 · 회차 위험도 판단과 맞추지 않는다.
+    글 칸은 앞뒤 빈칸을 지우고, 빈 글은 null 로 저장한다. 수정 요청의 null 은 그 칸을 비운다.
+    """
+
+    child_action_result: Optional[ChildActionResult] = None
+    target_action_result: Optional[TargetActionResult] = None
+    counselor_risk_level: Optional[RiskLevel] = None
+    intake_family_type: Optional[FamilyType] = None
+    linked_background: Optional[str] = Field(default=None, max_length=CASE_FORM_TEXT_MAX)
+    intake_guardian_relation: Optional[str] = Field(default=None, max_length=CASE_FORM_TEXT_MAX)
+    intake_problem: Optional[str] = Field(default=None, max_length=CASE_FORM_TEXT_MAX)
+    intake_attitude: Optional[str] = Field(default=None, max_length=CASE_FORM_TEXT_MAX)
+    intake_environment: Optional[str] = Field(default=None, max_length=CASE_FORM_TEXT_MAX)
+    intake_opinion: Optional[str] = Field(default=None, max_length=CASE_FORM_TEXT_MAX)
+
+    @field_validator(*CASE_FORM_TEXT_FIELDS)
+    @classmethod
+    def _blank_as_none(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class CaseCreateRequest(GuardianFields, CaseFormFields):
     # personal_info(실명 · 가족)를 실을 수 있어 검증 오류 문구에 입력값을 넣지 않는다 — 하위 모델만 가리면 부모 오류에 값이
     # 남는다(Codex #127 재검증 R4). 422 응답은 원래 값을 빼고 보낸다(main.py).
     model_config = ConfigDict(hide_input_in_errors=True)
@@ -130,7 +184,7 @@ _CASE_NOT_NULLABLE_FIELDS = (
 )
 
 
-class CaseUpdateRequest(GuardianFields):
+class CaseUpdateRequest(GuardianFields, CaseFormFields):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     child_alias: Optional[str] = Field(default=None, min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
@@ -206,6 +260,17 @@ class CaseResponse(BaseModel):
     report_date: Optional[date] = None
     linked_date: Optional[date] = None
     first_interview_date: Optional[date] = None
+    # 서식 4 ① 조치결과 · 위험도(우선) · 사례연계 경위, ② 가족유형 · 초기면접 글 칸(2026-11-05). 넣지 않았으면 null.
+    child_action_result: Optional[ChildActionResult] = None
+    target_action_result: Optional[TargetActionResult] = None
+    counselor_risk_level: Optional[RiskLevel] = None
+    linked_background: Optional[str] = None
+    intake_family_type: Optional[FamilyType] = None
+    intake_guardian_relation: Optional[str] = None
+    intake_problem: Optional[str] = None
+    intake_attitude: Optional[str] = None
+    intake_environment: Optional[str] = None
+    intake_opinion: Optional[str] = None
     # 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null.
     closure_review_at: Optional[datetime] = None
     status: CaseStatus

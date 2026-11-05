@@ -176,7 +176,11 @@ export default function AdminCases(props) {
                       </span>
                     </td>
                     <td>{r.whoHref ? <A to={r.whoHref}>{r.who}</A> : r.who}</td>
-                    <td className="note">{r.risk}</td>
+                    <td>
+                      <span className={r.riskCls} style={{ minWidth: '44px', justifyContent: 'center' }}>
+                        {r.risk}
+                      </span>
+                    </td>
                     <td className="note">{r.date}</td>
                     <td className="note">{r.period}</td>
                     <td className="note">{r.last}</td>
