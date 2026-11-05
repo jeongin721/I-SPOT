@@ -21,7 +21,12 @@
 //  - 회차별 추이(2026-10-28, 사례 단위 signal-history API #99): 이 회차까지 최근 3회차 × 유형(신체 · 정서 · 방임 · 성).
 //    칸은 AI 심각도 숫자 · '확인 필요'(관련 신호만) · '–' · '분석 전'(signalHistoryRows), 맨 아래 '위험도 (상담원)' 줄은
 //    회차마다 상담원 판단 중 가장 높은 것. 이 회차 열은 굵게(디자인).
-//  - 안전 플래그 · 재학대 요인 · 위험요인: 서버에 없어 준비 중(예시 값을 보이지 않는다).
+//  - 안전 플래그 · 재학대 요인(2026-11-05, 분석 결과 safety_flags · reabuse_factors — 팀 확인 기준안 S1~S10 · R1~R10):
+//    AI 확인 후보다. 안전 플래그는 certainty CLEAR 면 빨간 칩 'S2', CHECK 면 회색 칩 'S7 확인 후보'(디자인 'S6 확인 후보')에
+//    문장 · 근거 위치. 재학대 요인은 아래 줄 칩(디자인 'R1 중복 유형')이고 문장 · 근거는 칩의 title. R1(중복학대)은 AI 가 아니라
+//    이 화면이 관련 신호가 잡힌 유형 수(2 이상)로 센다. null(만들지 못함 · 이 기능 전 분석)은 '없음' 과 다르게 안내한다 —
+//    언급 없음 ≠ 안전함. 플래그가 있고 사례 출생연도로 5세 이하면 '더 취약함' 을 함께 적는다(기준안 — 출생연도뿐이라 1세 미만은
+//    가리지 못한다). 사례관리 중 재신고 표시는 아직 없다.
 //  - 보호요인: protective_factors 를 읽기 전용으로 보인다(근거 위치는 원문에서).
 //  - 다음 상담에서 확인할 것(followup_check_points)은 4 · 추가 확인 · 질문 화면으로 옮겼다(followupQ.ts).
 //  - 아래 '확정 · 요약 · 일지 작성 →' 의 '확정' 은 서버에 위험 신호 확정 기록이 없어 빼고 '요약 · 일지 작성 →' 으로만 간다.
@@ -29,7 +34,7 @@
 
 import type { AbuseType, RiskLevel, SeverityRating, SignalHistorySession } from "../../api/types";
 import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVELS, RISK_LEVEL_LABELS } from "../../api/types";
-import type { SignalCard, TypeSignal } from "../riskRows";
+import { abuseTypeLabel, type SignalCard, type TypeSignal } from "../riskRows";
 import {
   ASSESSABLE_STATUSES,
   canAssessNow,
@@ -40,7 +45,6 @@ import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { DASH, TREND_TYPES, TYPE_SHORT, counselorTopLabel, historyCell } from "../signalHistoryRows";
-import { NOT_READY } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -330,6 +334,20 @@ export function aiTrendText(
   return `· ${previous.session_number}회차 ${RISK_LEVEL_LABELS[before]} → ${change}`;
 }
 
+/** 재학대 요인 칩 이름(팀 확인 기준안 2026-11-05, ai/modeling/abuse/safety_flag_llm.REABUSE_FACTOR_DEFINITIONS 를 줄인 것). */
+const REABUSE_LABELS: Record<string, string> = {
+  R1: "중복 유형",
+  R2: "알코올 남용",
+  R3: "부부 폭력",
+  R4: "친부모가 행위자",
+  R5: "경제적 어려움",
+  R6: "양육 기술 부족",
+  R7: "행위자 정신건강",
+  R8: "아동에게 책임 전가",
+  R9: "개입 거부",
+  R10: "새 동거인 · 여러 행위자",
+};
+
 /** 상 · 중 · 하 단추 색(디자인). */
 const LEVEL_TONES: Record<RiskLevel, { tone: string; bg: string }> = {
   HIGH: { tone: "#A33B2E", bg: "#F7E4DF" },
@@ -499,6 +517,56 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
         .filter((factor) => factor.text !== "")
     : [];
 
+  const flagsRaw = completed ? (view?.safetyFlags ?? null) : null;
+  const safetyFlags = (flagsRaw ?? [])
+    .map((flag, index) => {
+      const code = readText(flag?.code);
+      const clear = flag?.certainty === "CLEAR";
+      const where = signals.locate(flag?.segment_ids).label;
+
+      return {
+        key: `s${index}`,
+        chip: clear ? code : `${code} 확인 후보`,
+        tone: clear ? "c-hi" : "c-normal",
+        text: readText(flag?.text),
+        where: where || "근거 위치 없음",
+      };
+    })
+    .filter((flag) => flag.text !== "");
+
+  let flagEmpty = "";
+  if (!completed) flagEmpty = "AI 분석이 끝나면 안전 플래그 후보가 보입니다.";
+  else if (flagsRaw === null) flagEmpty = "안전 플래그 · 재학대 요인을 만들지 못했습니다. 다시 분석하면 만들어집니다.";
+  else if (safetyFlags.length === 0) flagEmpty = "AI 가 찾은 안전 플래그 후보가 없습니다. 언급 없음 ≠ 안전함(묻지 않았을 수 있음).";
+
+  // 더 취약함(기준안): 플래그가 있고 출생연도로 5세 이하. 상담일 연도가 없으면 올해로 센다.
+  const birthYear = input.caseDetail.caseInfo?.childBirthYear ?? null;
+  const consultedYear = Number((input.detail.session?.consultedAt ?? "").slice(0, 4)) || new Date().getFullYear();
+  const youngChild = birthYear !== null && consultedYear - birthYear <= 5;
+  const vulnerableNote =
+    safetyFlags.length > 0 && youngChild ? "더 취약함 · 출생연도로 5세 이하(어린 아동은 같은 위협에도 더 위험합니다)" : "";
+
+  // 재학대 요인: R1 은 관련 신호가 잡힌 유형이 둘 이상일 때 화면이 센다. 나머지는 AI 후보.
+  const signalTypes = completed ? signals.types.filter((row) => row.state === "signal").map((row) => abuseTypeLabel(row.abuseType)) : [];
+  const reabuseRaw = completed ? (view?.reabuseFactors ?? null) : null;
+  const reabuse = [
+    ...(signalTypes.length >= 2
+      ? [{ key: "r1", chip: `R1 ${REABUSE_LABELS.R1}`, title: `관련 신호가 잡힌 유형: ${signalTypes.join(" · ")}` }]
+      : []),
+    ...(reabuseRaw ?? [])
+      .map((factor, index) => {
+        const code = readText(factor?.code);
+        const where = signals.locate(factor?.segment_ids).label;
+
+        return {
+          key: `r${index + 2}`,
+          chip: REABUSE_LABELS[code] ? `${code} ${REABUSE_LABELS[code]}` : code,
+          title: `${readText(factor?.text)}${where ? ` · ${where}` : ""}`,
+        };
+      })
+      .filter((factor) => factor.chip !== ""),
+  ];
+
   return {
     ...header,
     aiText,
@@ -521,8 +589,17 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     types,
     rubricNote: "단계 설명은 디자인 초안의 참고 기준이며 팀이 확정한 기준이 아닙니다.",
     ...trendValues(input.history, ids.sessionId),
-    flagNote: `안전 플래그 · 재학대 요인은 ${NOT_READY}입니다(서버에 값이 없음).`,
-    factorTitle: completed ? `위험요인 ${NOT_READY} · 보호요인 ${protective.length}` : "위험요인 · 보호요인",
+    /** 안전 플래그 후보 줄(칩 · 문장 · 근거 위치), 비었을 때 안내, 더 취약함 안내. */
+    safetyFlags,
+    flagEmpty,
+    vulnerableNote,
+    /** 재학대 요인 칩(R1 은 화면 계산). 문장 · 근거는 title. */
+    reabuse,
+    reabuseNote: completed && reabuse.length > 0 ? "R1~R6 은 통계 연구, R7~R10 은 사례 연구(14건) 근거입니다. 칩을 가리키면 근거가 보입니다." : "",
+    factorTitle: completed
+      ? // AI 후보를 만들지 못했으면(null) 개수를 세지 않는다 — R1 하나만 보고 '위험요인 1' 이라 하면 '하나뿐' 으로 읽힌다.
+        `위험요인 ${reabuseRaw === null ? "확인 못 함" : reabuse.length} · 보호요인 ${protective.length}`
+      : "위험요인 · 보호요인",
     protective,
     protectiveEmpty: !completed ? "AI 분석이 끝나면 보호요인이 보입니다." : protective.length === 0 ? "AI 가 찾은 보호요인이 없습니다." : "",
     error: overall.error ?? analysis.error,
