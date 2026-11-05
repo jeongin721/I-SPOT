@@ -11,10 +11,9 @@
 // 생년월일이 있으면 출생연도 칸은 그 해를 읽기 전용으로 보인다. 출생연도는 PATCH 에 싣지 않고 PUT 이 맞추게 둔다 — PATCH 만 되고
 // PUT 이 실패하면 출생연도와 생년월일이 어긋나기 때문이다(Codex #129 R2). PUT 이 되면 사례 값을 조용히 다시 받는다.
 // PATCH 는 됐는데 PUT 이 실패하면 '사례 칸은 저장했고 실명 · 가족 칸은 못 했다' 고 나눠 알린다.
-// 나머지 서식 4 칸은 서버에 칸이 없어 입력을 막고 '준비 중' 으로 둔다:
-//  - 조치결과 · 위험도 · 사례연계 경위
-//  - ② 탭의 나머지(보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견)
-// 이 칸들의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않고, AI 가 미리 고르거나 채우지 않는다.
+// 서식 4 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기 — caseFormFields.ts): ① 조치결과 2 · 위험도(우선) · 사례연계 경위,
+// ② 가족유형(하나, 21개) · 보호자와 아동과의 관계 · 문제력 · 대상자 태도 · 물리적 환경 · 상담원 소견도 사례 칸(PATCH)으로 고친다.
+// 한 칸의 내용을 다른 칸에 옮겨 담지 않고, AI 가 미리 고르거나 채우지 않는다. 글 칸은 평문 저장이라 개인정보를 적지 말라고 안내한다.
 // 디자인의 '임시 저장' · '확정' 은 서식의 작성 기록 · 확정 상태가 서버에 없어(문서함 기관 서식 줄과 같은 까닭) '저장' 하나로 둔다.
 // 디자인의 달력 창 · '기타' 직접 입력은 옮기지 않았다 — 날짜 셋은 브라우저 날짜 입력칸이고, '기타' 는 서버가 자유 글을 받지 않는다
 // (새 사례 등록과 같음).
@@ -47,34 +46,10 @@ import type { RemoteTicket } from "../useRemote";
 import { caseHeaderValues } from "./caseDetail";
 import { NOT_READY, notice } from "./common";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
-import { intakeChoices, toggleItem } from "./intakePick";
+import { intakeChoices, singleChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 import { personalFieldValues } from "./personalFields";
-
-/** 가족유형 단추(준비 중이라 고를 수 없다). 10/29 디자인의 서식 항목(21개). */
-const FAM = [
-  "일반가정",
-  "부자가정(사별)",
-  "부자가정(이혼)",
-  "부자가정(가출)",
-  "부자가정(별거)",
-  "모자가정(사별)",
-  "모자가정(이혼)",
-  "모자가정(가출)",
-  "모자가정(별거)",
-  "미혼부가정",
-  "미혼모가정",
-  "미혼부모가정",
-  "친부+계모",
-  "친모+계부",
-  "친인척보호",
-  "친부+동거녀",
-  "친모+동거남",
-  "가정위탁",
-  "입양가정",
-  "시설보호",
-  "기타",
-];
+import { caseChoiceOptions, caseTextValues } from "../caseFormFields";
 
 /** 빈 필수 칸 테두리(디자인 값). */
 const INVALID_BORDER = "#A33B2E";
@@ -82,14 +57,11 @@ const INVALID_BORDER = "#A33B2E";
 type ListField = "childTraits" | "familySituations";
 type TextField = Exclude<IntakeField, ListField>;
 
-/** ① 기본 정보의 필수 칸. 서버가 비울 수 없게 하는 칸만 센다(준비 중 칸은 입력할 수 없어 뺀다). */
+/** ① 기본 정보의 필수 칸. 서버가 비울 수 없게 하는 칸만 센다(디자인이 필수로 둔 조치결과 · 사례연계 경위는 서버 선택 칸이라 뺀다). */
 const REQUIRED: [TextField, string][] = [
   ["title", "사례 제목"],
   ["alias", "아동 별칭"],
 ];
-
-/** 고를 수 없는(준비 중) 선택 단추. 모양은 고르지 않은 단추다. */
-const picker = (label: string) => ({ label, bg: "#FFFFFF", bd: "#DAD5C9", fg: "#2B2A26", fw: 400, mark: "+" });
 
 /** 화면 상태(Logic.state). */
 export interface CaseIntakeUiState {
@@ -314,18 +286,17 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     ready: info !== null,
     headNote: info ? `서식 4 · 사례 등록 ${info.createdDate}` : "서식 4",
     savedNote:
-      "사례에 저장하는 칸: 사례 제목 · 신고접수일 · 사례연계일 · 최초면접일 · 아동 별칭 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원(관리자), " +
-      "② 초기면접 내용의 가정상황 · 아동 특성. 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 " +
-      "암호화해 저장하고 담당 상담원 · 관리자만 봅니다(열 때마다 열람 기록이 남습니다). 개별사건번호는 바꿀 수 없습니다. " +
-      `'${NOT_READY}' 칸은 서버에 칸이 없어 입력할 수 없습니다.`,
+      "실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 암호화해 저장하고 담당 상담원 · 관리자만 봅니다" +
+      "(열 때마다 열람 기록이 남습니다). 사례연계 경위 · 사례 메모 등 글 칸은 암호화하지 않으니 실명 · 연락처 · 주소를 적지 마세요. " +
+      "조치결과 · 위험도는 상담원이 고르는 칸입니다(AI 가 고르지 않습니다). 개별사건번호는 바꿀 수 없습니다.",
     personalNote: personal.loading
       ? notice("실명 · 가족 정보를 불러오는 중…")
       : personal.error
         ? notice(`${personal.error} 그동안 실명 · 가족 칸은 고칠 수 없습니다.`, { alert: true, retry: personal.reload })
         : null,
     tabNote:
-      "가정상황 · 아동 특성은 사례에 저장되고 상담 일지에서 초기면접 항목으로 보입니다. 가족관계 · 건강정도는 암호화해 저장합니다. " +
-      `나머지 칸(관계 · 가족유형 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
+      "가정상황 · 아동 특성은 상담 일지에서 초기면접 항목으로 보입니다. 가족관계 · 건강정도는 암호화해 저장합니다. " +
+      "보호자와 아동과의 관계 · 문제력 · 태도 · 환경 · 소견 글은 암호화하지 않으니 실명 · 연락처 · 주소를 적지 마세요.",
     notReady: NOT_READY,
     formTabs: tabs,
     isA: state.tab === "A",
@@ -373,6 +344,11 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     reportDate: field("reportDate"),
     linkedDate: field("linkedDate"),
     firstInterviewDate: field("firstInterviewDate"),
+    // 서식 4 고르기 · 글 칸(2026-11-05). 고르기는 '선택'(빈 값)이면 비운다.
+    childAction: { ...field("childAction"), options: caseChoiceOptions("childAction") },
+    targetAction: { ...field("targetAction"), options: caseChoiceOptions("targetAction") },
+    riskLevel: { ...field("riskLevel"), options: caseChoiceOptions("riskLevel") },
+    ...caseTextValues(field),
     isAdmin,
     counselor: field("counselorId"),
     counselorOptions,
@@ -381,7 +357,10 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     counselorRetry: isAdmin && counselors.error ? counselors.reload : null,
     homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
     traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
-    fams: FAM.map(picker),
+    // ② 가족유형(하나만, 2026-11-05). 같은 단추를 다시 누르면 뺀다. 저장 중 · 사례 정보를 받기 전에는 잠근다.
+    fams: singleChoices(caseChoiceOptions("familyType"), form ? form.familyType : "", saving || info === null, (value) =>
+      edit("familyType", () => value),
+    ),
     formError: problem
       ? notice(problem, { alert: true })
       : detail.caseError

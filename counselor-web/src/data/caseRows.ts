@@ -4,11 +4,12 @@
 //
 // Backend 에 없는 값은 다른 값으로 대신 채우지 않는다(specs 대응표 "없는 값을 다른 값으로 대체하지 않기").
 //  - 아동 실명: 목록을 with_child_name=true 로 부른 줄에만 있다(암호화 저장, 미등록이면 null). 이름 칸은 실명, 없으면 별칭.
-//  - 신고접수일: 없다. 사례 생성일(created_at)은 신고접수일이 아니다.
-//  - 위험도(상 · 중 · 하): 사례 단위 값이 없다. AI 참고 신호로 채우면 안 된다.
+//  - 신고접수일: 서식 4 ① 칸(report_date, 2026-10-30). 없으면 비운다 — 사례 생성일(created_at)은 신고접수일이 아니다.
+//  - 위험도(상 · 중 · 하): 상담원이 서식 4 에서 고른 '위험도(우선)'(counselor_risk_level, 2026-11-05)만 보인다. 없으면 비운다 —
+//    AI 참고 신호 · 회차 판단으로 채우면 안 된다.
 //  - 정확한 나이: 출생연도만 있다.
 
-import type { CaseListItem, CaseStatus } from "../api/types";
+import { RISK_LEVEL_LABELS, type CaseListItem, type CaseStatus } from "../api/types";
 import { toDateOnly } from "./time";
 
 /** Backend 가 값을 주지 않아 비워 둔 칸에 쓰는 표시. */
@@ -49,8 +50,13 @@ export interface CaseRow {
   firstInterviewDate: string;
   /** 종결 검토 등록일(YYYY-MM-DD). 등록 전이면 ""(2026-10-30). */
   closureReviewDate: string;
-  /** Backend 에 없는 값. 팀 결정 전까지 항상 NOT_PROVIDED. */
+  /** 상담원이 서식 4 에서 고른 위험도(우선) — '상' · '중' · '하'(2026-11-05). 고르지 않았으면 NOT_PROVIDED. AI 값이 아니다. */
   riskLabel: string;
+}
+
+/** 위험도 칩 모양(디자인 CaseList: 상 c-hi · 중 c-mid · 하 c-lo). 색만이 아니라 글자로도 구분한다. 없으면 회색 글자. */
+export function riskChipClass(label: string): string {
+  return label === "상" ? "chip c-hi" : label === "중" ? "chip c-mid" : label === "하" ? "chip c-lo" : "note";
 }
 
 export function toCaseRow(source: CaseListItem): CaseRow {
@@ -74,6 +80,6 @@ export function toCaseRow(source: CaseListItem): CaseRow {
     linkedDate: source.linked_date || NOT_PROVIDED,
     firstInterviewDate: source.first_interview_date || NOT_PROVIDED,
     closureReviewDate: toDateOnly(source.closure_review_at ?? null),
-    riskLabel: NOT_PROVIDED,
+    riskLabel: source.counselor_risk_level ? RISK_LEVEL_LABELS[source.counselor_risk_level] : NOT_PROVIDED,
   };
 }

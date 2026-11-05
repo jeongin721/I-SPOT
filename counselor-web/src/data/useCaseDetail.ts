@@ -18,6 +18,7 @@ import { useCallback, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import { cases } from "../api/endpoints";
 import { GUARDIAN_LABELS, type CaseDetail, type CaseUpdateRequest, type GuardianType } from "../api/types";
+import { caseFormInputOf, type CaseFormInput } from "./caseFormFields";
 import { NOT_PROVIDED, toCaseRow, type CaseRow } from "./caseRows";
 import { isProcessing, toSessionRow, type SessionRow } from "./sessionRows";
 import { toDateOnly } from "./time";
@@ -57,6 +58,8 @@ export interface CaseDetailView extends CaseRow {
   reportDateValue: string;
   linkedDateValue: string;
   firstInterviewDateValue: string;
+  /** 서식 4 고르기 · 글 칸 원래 값(2026-11-05, caseFormFields.ts — 고르기는 서버 코드, 없으면 ""). */
+  caseForm: CaseFormInput;
 }
 
 export function toCaseDetailView(source: CaseDetail): CaseDetailView {
@@ -82,6 +85,7 @@ export function toCaseDetailView(source: CaseDetail): CaseDetailView {
     reportDateValue: source.report_date ?? "",
     linkedDateValue: source.linked_date ?? "",
     firstInterviewDateValue: source.first_interview_date ?? "",
+    caseForm: caseFormInputOf(source),
   };
 }
 
@@ -306,6 +310,9 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
               reportDateValue: view.reportDateValue,
               linkedDateValue: view.linkedDateValue,
               firstInterviewDateValue: view.firstInterviewDateValue,
+              // 서식 4 고르기 · 글 칸(2026-11-05)과 그 위험도(우선)로 만든 목록 표시 글자.
+              caseForm: view.caseForm,
+              riskLabel: view.riskLabel,
             },
           };
         });
