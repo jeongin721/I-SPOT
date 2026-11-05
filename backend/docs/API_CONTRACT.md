@@ -2793,3 +2793,44 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
 - 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
 - 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).
+
+---
+
+## 23. Docbox (문서함 — 기관 서식 · 참고 문서 공용 보관, 2026-11-05)
+
+11/05 디자인 '문서함(폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' 이 쓴다. 사례 · 회차와 상관없는 팀 공용 보관함이라
+로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 폴더 · 문서 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
+
+### GET /api/v1/docbox → 200
+
+```json
+{ "folders": [{ "id": "uuid", "name": "기관 서식", "count": 3 }],
+  "files": [{ "id": "uuid", "folder_id": "uuid|null", "name": "점검표 안내.txt", "content_type": "application/octet-stream",
+              "size_bytes": 1180, "preview_kind": "text", "preview_text": "점검표 안내\n…", "uploaded_by_name": "이서연",
+              "created_at": "…" }] }
+```
+
+- `folders` 는 만든 순서, `files` 는 최신순. `folder_id: null` 은 '폴더 없음'.
+- `preview_kind`: `image`(png · jpg · gif · webp — 화면이 파일을 받아 그대로 보인다) · `text`(첫 페이지 글 앞 1,500자 —
+  txt · md · csv 는 글 그대로, docx · hwpx · pdf 는 21절과 같은 글자 뽑기) · `other`(hwp · doc · xlsx · xls · pptx · ppt, 또는 뽑지 못함).
+
+### POST /api/v1/docbox/folders → 201
+
+- `{ "name": "참고 자료" }`(40자, 공백 정리). 같은 이름이 있으면 `409 DUPLICATE_RESOURCE`.
+
+### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
+
+- 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
+- 응답 `{ "files": [DocboxFile] }`.
+
+### PATCH /api/v1/docbox/files/{file_id} → 200
+
+- `{ "folder_id": "uuid" | null }` — 폴더 옮기기(null 이면 폴더 없음). 없는 문서 · 폴더는 `404`.
+
+### GET /api/v1/docbox/files/{file_id}/download → 200 (파일 본체)
+
+- 늘 첨부(`Content-Disposition: attachment`) · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`.
+  그림만 그 형식, 나머지는 `application/octet-stream`.
+- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` —
+  파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.

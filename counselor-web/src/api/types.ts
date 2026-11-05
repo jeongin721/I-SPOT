@@ -1723,3 +1723,32 @@ export interface CaseForm {
   created_at: string;
   updated_at: string;
 }
+
+// =========================================================
+// 문서함 — backend/app/schemas/docbox.py (API_CONTRACT 23절, 2026-11-05)
+// =========================================================
+
+export interface DocboxFolder {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface DocboxFile {
+  id: string;
+  /** null 이면 '폴더 없음'. */
+  folder_id: string | null;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  /** text(첫 페이지 글) · image(그림) · other(미리보기 없음). */
+  preview_kind: "text" | "image" | "other";
+  preview_text: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export interface DocboxList {
+  folders: DocboxFolder[];
+  files: DocboxFile[];
+}
