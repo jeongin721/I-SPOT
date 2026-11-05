@@ -101,7 +101,7 @@ export default function CaseList(props) {
             </div>
           </section>
           <p className="note" style={{ margin: '-8px 0 0' }}>
-            위험도 · 신고접수일은 {v.notReady}입니다(서버에 아직 없는 값).
+            위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)입니다. 신고접수일 · 위험도 정렬은 {v.notReady}입니다.
           </p>
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>

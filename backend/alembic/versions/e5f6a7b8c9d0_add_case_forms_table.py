@@ -1,7 +1,7 @@
 """add case_forms table
 
 Revision ID: e5f6a7b8c9d0
-Revises: e9a4c1d7b2f6
+Revises: c6e2a9f4b7d1
 Create Date: 2026-11-02 18:00:00.000000
 
 기관 서식 작성 기록(사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도). API_CONTRACT 22절.
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = 'e5f6a7b8c9d0'
-down_revision: Union[str, None] = 'e9a4c1d7b2f6'
+down_revision: Union[str, None] = 'c6e2a9f4b7d1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

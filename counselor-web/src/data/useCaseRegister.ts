@@ -5,7 +5,8 @@
 // 초기면접(서식 4 ②)의 아동 특성 · 가정상황(서식 항목만), 담당 상담사(관리자만, 빼면 요청자 본인).
 // 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 personal_info 로 사례와 한 거래로 보낸다
 // (서버가 암호화해 저장, API_CONTRACT 4절 '개인 식별 정보'). 모두 비었으면 보내지 않는다. 생년월일이 있으면 출생연도는 그 해다.
-// 서식 4 의 나머지 칸(조치결과 · 위험도 · 사례연계 경위 · 문제력 · 태도 · 소견 등)은 서버에 칸이 없어 보내지 않는다. 다른 칸에 옮겨 담지도 않는다.
+// 서식 4 의 고르기 · 글 칸(2026-11-05 — ① 조치결과 2 · 위험도(우선) · 사례연계 경위, ② 가족유형 · 보호자와 아동과의 관계 · 문제력 ·
+// 태도 · 환경 · 소견)은 caseFormFields.ts 로 확인해 채운 칸만 보낸다. 다른 칸에 옮겨 담지 않는다.
 //
 // 한 번에 한 요청만 보낸다. 성공하면 만든 사례를 돌려주고, 그 뒤에는 다시 보내지 않는다(같은 사례를 두 번 만들지 않게).
 // 입력 · 요청 상태는 로그인한 계정 하나의 것이다. 화면은 계정이 확인된 동안에만 이 훅을 쓰고, 계정이 바뀌면 새로 만든다
@@ -18,6 +19,7 @@ import { auth, cases } from "../api/endpoints";
 import { GUARDIAN_LABELS, type Case, type CaseCreateRequest, type GuardianType, type User } from "../api/types";
 import type { AuthSession } from "./useAuthSession";
 import { adminKey } from "./adminAccess";
+import { CASE_FORM_FIELDS, EMPTY_CASE_FORM, checkCaseFormField, putCaseFormValue, type CaseFormInput } from "./caseFormFields";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./screens/intakeItems";
 import { isBlankPersonalRequest, toPersonalInfoRequest, todayKst, type PersonalInput } from "./personalInfo";
 import { errorMessage, useRemote } from "./useRemote";
@@ -31,8 +33,8 @@ export const GUARDIAN_NOTE_MAX = 100;
 export const CASE_NOTES_MAX = 4000;
 export const BIRTH_YEAR_MIN = 1900;
 
-/** 화면 입력 그대로(문자열). 보내기 전에 toCaseCreateRequest 로 바꾼다. */
-export interface CaseRegisterInput {
+/** 화면 입력 그대로(문자열). 보내기 전에 toCaseCreateRequest 로 바꾼다. 서식 4 고르기 · 글 칸은 CaseFormInput(2026-11-05). */
+export interface CaseRegisterInput extends CaseFormInput {
   title: string;
   alias: string;
   caseNumber: string;
@@ -54,6 +56,7 @@ export interface CaseRegisterInput {
 }
 
 export const EMPTY_CASE_INPUT: CaseRegisterInput = {
+  ...EMPTY_CASE_FORM,
   title: "",
   alias: "",
   caseNumber: "",
@@ -158,6 +161,12 @@ export function toCaseCreateRequest(
   // 보호자 메모는 보호자 유형이 기타일 때만 보낼 수 있다(그 밖에는 422).
   if (guardianType === "OTHER" && note) payload.guardian_note = note;
   if (notes) payload.notes = notes;
+  // 서식 4 고르기 · 글 칸(2026-11-05): 채운 칸만 보낸다.
+  for (const field of CASE_FORM_FIELDS) {
+    const checked = checkCaseFormField(field, input[field.key]);
+    if (checked.problem) return fail(checked.problem);
+    if (checked.value) putCaseFormValue(payload, field.api, checked.value);
+  }
   // 초기면접 항목은 서식 순서로 보낸다(서식에 없는 값은 빠진다).
   const childTraits = INTAKE_CHILD_ITEMS.filter((item) => input.childTraits.includes(item));
   const familySituations = INTAKE_HOME_ITEMS.filter((item) => input.familySituations.includes(item));

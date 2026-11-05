@@ -7,8 +7,8 @@
 //  - ② 가정상황 · 아동 특성: 보내면 목록을 통째로 바꾼다(모두 빼면 []). 서식 순서로 보낸다(새 사례 등록과 같음).
 //  - 담당 상담원: 관리자만 바꾼다(상담원이 보내면 403). 담당자를 비우는 기능은 없다.
 // 개별사건번호는 수정 요청이 받지 않아(backend CaseUpdateRequest 에 칸이 없음) 읽기만 한다.
-// 실명 · 가족 칸은 이 요청이 아니라 usePersonalInfo(PUT …/personal-info)로 보낸다(screens/caseIntake.ts). 서식 4 의 나머지 칸은
-// 서버에 칸이 없어 보내지 않는다(useCaseRegister.ts 머리말).
+//  - 서식 4 고르기 · 글 칸(2026-11-05, caseFormFields.ts — 조치결과 · 위험도(우선) · 사례연계 경위 · ② 가족유형 · 글 칸): 비우면 null.
+// 실명 · 가족 칸은 이 요청이 아니라 usePersonalInfo(PUT …/personal-info)로 보낸다(screens/caseIntake.ts).
 // 입력 확인 문구 · 길이 제한은 새 사례 등록(toCaseCreateRequest)과 같다.
 
 import { useMemo } from "react";
@@ -16,6 +16,7 @@ import { useMemo } from "react";
 import { auth } from "../api/endpoints";
 import { GUARDIAN_LABELS, type CaseUpdateRequest, type User } from "../api/types";
 import { adminKey } from "./adminAccess";
+import { CASE_FORM_FIELDS, checkCaseFormField, putCaseFormValue } from "./caseFormFields";
 import type { AuthSession } from "./useAuthSession";
 import type { CaseDetailView } from "./useCaseDetail";
 import {
@@ -46,6 +47,7 @@ export type IntakeField = keyof IntakeForm;
 /** 사례의 서버 값으로 입력칸을 채운다. */
 export function intakeFormOf(info: CaseDetailView): IntakeForm {
   return {
+    ...info.caseForm,
     title: info.title,
     alias: info.alias,
     gender: info.childGender,
@@ -143,6 +145,15 @@ export function toCaseUpdateRequest(
 
     if (notes.length > CASE_NOTES_MAX) return fail(`사례 메모는 ${CASE_NOTES_MAX.toLocaleString()}자까지 쓸 수 있습니다.`);
     if (notes !== saved.notes.trim()) payload.notes = notes || null;
+  }
+
+  // 서식 4 고르기 · 글 칸(2026-11-05): 고친 칸만, 비우면 null.
+  for (const field of CASE_FORM_FIELDS) {
+    const edited = edits[field.key];
+    if (edited === undefined) continue;
+    const checked = checkCaseFormField(field, edited);
+    if (checked.problem) return fail(checked.problem);
+    if ((checked.value ?? "") !== saved[field.key].trim()) putCaseFormValue(payload, field.api, checked.value);
   }
 
   // 초기면접 항목은 서식 순서로 보낸다(서식에 없는 값은 빠진다).
