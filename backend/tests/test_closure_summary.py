@@ -341,3 +341,49 @@ def test_report_services_blank_is_kept_apart_from_never_saved(client: TestClient
 
     assert saved.status_code == 200, saved.text
     assert client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]["services"] == ""
+
+
+def test_report_defaults_fill_only_empty_fields(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """화면이 고치지 않고 보인 처음 값(report_defaults)은 저장된 값이 없는 칸에만 들어간다 — 다른 창이 먼저 저장한 칸을 되돌리지
+    않는다(민규 #140 교차검증 11/05). report 에도 있는 칸은 report 가 이긴다."""
+
+    url = _url(ready_case["id"])
+    # 첫 창이 초기상황 · services 를 고쳐 저장
+    client.put(url, json={"report": {"initial_situation": "상담원이 고친 초기상황", "services": "상담 4회"}}, headers=counselor_headers)
+
+    # 둘째 창은 종합의견만 고쳤고, 초기상황 · services · 안전평가는 처음 값(AI 초안 · 회차 기록 · 1차 판단)으로 보고 있었다
+    second = {
+        "report": {"opinion": "종합의견"},
+        "report_defaults": {
+            "initial_situation": "AI 초기상황",
+            "services": "회차 기록",
+            "safety": ["HIGH"] + [None] * 10,
+            "opinion": "처음 값은 report 에 진다",
+        },
+    }
+    assert client.put(url, json=second, headers=counselor_headers).status_code == 200
+
+    report = client.get(url, headers=counselor_headers).json()["data"]["report"]
+    assert report["initial_situation"] == "상담원이 고친 초기상황" and report["services"] == "상담 4회"
+    assert report["safety"] == ["HIGH"] + [None] * 10  # 비어 있던 칸은 처음 값으로
+    assert report["opinion"] == "종합의견"
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"reasons": [1, 0, 0, 0, 0]},
+        {"safety_scores": [{"score": "3", "reason": ""}, {}, {}]},
+        {"safety_scores": [{"score": True}, {}, {}]},
+        {"safety_scores": [{"score": 3, "reson": "오타"}, {}, {}]},
+        {"unknown_field": "x"},
+    ],
+)
+def test_report_types_are_strict_and_unknown_keys_rejected(
+    client: TestClient, counselor_headers, ready_case: dict, report: dict
+) -> None:
+    """true → 1 · "3" → 3 처럼 바꿔 받지 않고, 모르는 칸('reson' 오타)은 422(민규 #140 교차검증 L2 · L4)."""
+
+    response = client.put(_url(ready_case["id"]), json={"report": report}, headers=counselor_headers)
+
+    assert response.status_code == 422, response.text

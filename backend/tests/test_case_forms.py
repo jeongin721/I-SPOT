@@ -94,6 +94,9 @@ def test_totals_are_calculated_not_judged(client: TestClient, counselor_headers,
         ("SAFETY_ASSESSMENT", {"ai_suggestion": "HIGH"}),
         ("MANAGEMENT_CHECKLIST", {"opinion": "가" * 5001}),
         ("MANAGEMENT_CHECKLIST", {"checks": ["MAYBE"] + [None] * 8}),
+        # 타입을 바꿔 받지 않는다(민규 #140 교차검증 L2): true → 1 · "3" → 3
+        ("RISK_SCALE", {"scores": [True] + [None] * 42}),
+        ("FAMILY_SCALE", {"answers": ["3"] + [None] * 14}),
     ],
 )
 def test_bad_values_are_rejected(client: TestClient, counselor_headers, case: dict, form_type: str, values) -> None:
@@ -190,3 +193,17 @@ def test_only_one_draft_even_if_app_check_is_skipped(client: TestClient, counsel
 
     assert second.status_code == 409 and second.json()["error"]["code"] == "DUPLICATE_RESOURCE"
     assert "다른 창에서" in second.json()["error"]["message"]  # 앞 확인이 아니라 DB 인덱스에서 막힘
+
+
+def test_deeply_nested_value_is_422_not_500(client: TestClient, counselor_headers, case: dict) -> None:
+    """480단으로 겹친 값도 422(민규 #140 교차검증 L5 — 글자 검사 재귀가 한도를 넘어 500 이었다)."""
+
+    deep: object = "x"
+    for _ in range(480):
+        deep = {"a": deep}
+
+    response = client.post(
+        _url(case["id"]), json={"form_type": "MANAGEMENT_CHECKLIST", "values": {"place": deep}}, headers=counselor_headers
+    )
+
+    assert response.status_code == 422, response.text

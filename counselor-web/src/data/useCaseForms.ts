@@ -20,6 +20,8 @@ export interface CaseFormsOptions {
   enabled?: boolean;
 }
 
+export type SaveResult = "saved" | "conflict" | "failed";
+
 export interface CaseFormsState {
   /** 서식 기록 전부(종류 → 차수가 큰 것부터). 받기 전이면 []. */
   items: CaseForm[];
@@ -29,8 +31,11 @@ export interface CaseFormsState {
   /** 저장 · 확정 실패 문구가 먼저, 없으면 조회 실패 문구. */
   error: string | null;
   loadError: string | null;
-  /** 임시 저장(confirm=false) 또는 임시 저장 뒤 확정(confirm=true). 성공하면 true. */
-  save: (formType: CaseFormType, values: object, confirm: boolean) => Promise<boolean>;
+  /**
+   * 임시 저장(confirm=false) 또는 임시 저장 뒤 확정(confirm=true). "saved" 성공, "conflict" 다른 창이 먼저 바꿈(409 — 최신 기록을
+   * 다시 받는다), "failed" 그 밖 실패 · 보내지 않음.
+   */
+  save: (formType: CaseFormType, values: object, confirm: boolean) => Promise<SaveResult>;
   reload: () => void;
 }
 
@@ -84,10 +89,10 @@ export function useCaseForms(
   }
 
   const save = useCallback(
-    async (formType: CaseFormType, values: object, confirm: boolean): Promise<boolean> => {
+    async (formType: CaseFormType, values: object, confirm: boolean): Promise<SaveResult> => {
       const ticket = remote.capture();
 
-      if (!ticket || ticket.key !== key || inFlight.current || remote.data === null) return false;
+      if (!ticket || ticket.key !== key || inFlight.current || remote.data === null) return "failed";
 
       inFlight.current = true;
       setSubmitting(true);
@@ -102,28 +107,29 @@ export function useCaseForms(
           ? await formsApi.update(ticket.key, draft.id, values, draft.version)
           : await formsApi.create(ticket.key, formType, values);
 
-        if (!remote.isCurrent(ticket)) return false;
+        if (!remote.isCurrent(ticket)) return "failed";
         remote.setData(ticket, (current) => ({ items: merge(current?.items ?? [], row) }));
 
         if (confirm) {
           row = await formsApi.confirm(ticket.key, row.id, row.version);
-          if (!remote.isCurrent(ticket)) return false;
+          if (!remote.isCurrent(ticket)) return "failed";
           remote.setData(ticket, (current) => ({ items: merge(current?.items ?? [], row) }));
         }
 
-        return true;
+        return "saved";
       } catch (caught) {
-        if (!remote.isCurrent(ticket)) return false;
+        if (!remote.isCurrent(ticket)) return "failed";
 
-        // 409(다른 창이 먼저 저장 · 확정 · 만듦)는 서버 문구가 '최신 내용을 불러와 다시' 를 안내하고, 아래에서 최신 기록을 다시 받는다.
-        if (!(caught instanceof ApiError && caught.isUnauthorized)) {
+        // 409(다른 창이 먼저 저장 · 확정 · 만듦)는 "conflict" 로 돌려주고 화면이 고친 칸을 버린 뒤 안내한다. 아래에서 최신 기록을 다시 받는다.
+        const conflict = caught instanceof ApiError && caught.status === 409;
+        if (!conflict && !(caught instanceof ApiError && caught.isUnauthorized)) {
           setActionError(errorMessage(caught, "서식을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         }
 
         // 다른 창에서 먼저 저장 · 확정했을 수 있다. 최신 기록을 다시 받는다.
         remote.refresh();
 
-        return false;
+        return conflict ? "conflict" : "failed";
       } finally {
         if (remote.sameGeneration(ticket)) {
           inFlight.current = false;

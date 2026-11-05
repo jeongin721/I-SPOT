@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
 from app.models.closure_review import CLOSURE_TEXT_MAX_LENGTH
 from app.schemas.common import IsoDate, RequestModel
@@ -80,14 +80,17 @@ class ClosureReport(BaseModel):
 
 
 class ClosureSafetyScoreIn(RequestModel):
-    score: Optional[int] = Field(default=None, ge=1, le=10)
+    # 모르는 칸('reson' 오타 등)은 422, 점수는 숫자만(true · "3" 을 바꿔 받지 않음, 민규 #140 교차검증 L2 · L4).
+    model_config = ConfigDict(extra="forbid")
+
+    score: Optional[StrictInt] = Field(default=None, ge=1, le=10)
     reason: str = Field(default="", max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
 
 
 class ClosureReportIn(RequestModel):
     """저장 요청의 보고서 칸(요청 본문은 RequestModel — 저장할 수 없는 글자 등을 거른다). 보낸 칸만 바뀐다.
 
-    종결사유 · 안전평가 · 안전점수는 상담원이 고른 값만 담는다(AI 가 채우지 않는다). 목록은 문항 수 그대로 보낸다.
+    목록은 문항 수 그대로 보낸다. 서버는 칸을 채우지 않는다 — 화면이 보인 처음 값은 report_defaults(빈 칸에만)로 온다.
     """
 
     initial_situation: Optional[str] = None
@@ -95,7 +98,11 @@ class ClosureReportIn(RequestModel):
     opinion: Optional[str] = None
     review_date: Optional[IsoDate] = None
     closing_date: Optional[IsoDate] = None
-    reasons: Optional[List[bool]] = Field(default=None, min_length=CLOSURE_REASON_COUNT, max_length=CLOSURE_REASON_COUNT)
+    model_config = ConfigDict(extra="forbid")
+
+    reasons: Optional[List[StrictBool]] = Field(
+        default=None, min_length=CLOSURE_REASON_COUNT, max_length=CLOSURE_REASON_COUNT
+    )
     safety: Optional[List[Optional[SafetyLevel]]] = Field(
         default=None, min_length=CLOSURE_SAFETY_ITEM_COUNT, max_length=CLOSURE_SAFETY_ITEM_COUNT
     )
@@ -123,6 +130,9 @@ class ClosureSummarySaveRequest(RequestModel):
     checks: Optional[Dict[str, bool]] = Field(default=None, max_length=100)
     edits: Optional[Dict[str, str]] = Field(default=None, max_length=100)
     report: Optional[ClosureReportIn] = None
+    # 화면이 고치지 않고 보여 주기만 한 처음 값(AI 초안 · 회차 기록 · 1차 판단, 2026-11-05). 저장된 값이 아직 없는(null) 칸에만 쓴다 —
+    # 다른 창이 먼저 저장한 칸을 이 창의 처음 값으로 되돌리지 않게(민규 #140 교차검증). report 에도 있는 칸은 report 가 이긴다.
+    report_defaults: Optional[ClosureReportIn] = None
 
     @field_validator("edits")
     @classmethod
@@ -131,7 +141,7 @@ class ClosureSummarySaveRequest(RequestModel):
             raise ValueError(f"문장은 {CLOSURE_TEXT_MAX_LENGTH}자까지 쓸 수 있습니다.")
         return value
 
-    @field_validator("report")
+    @field_validator("report", "report_defaults")
     @classmethod
     def _limit_report(cls, value: Optional[ClosureReportIn]) -> Optional[ClosureReportIn]:
         if value is not None:

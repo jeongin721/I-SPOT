@@ -501,8 +501,18 @@ export function caseFormValues(input: CaseFormInput) {
     }
     // 앞 저장 안내가 남아 있으면 이번 저장 실패 문구(다른 창에서 바뀜 등)를 가린다.
     setState({ note: "" });
-    const ok = await forms.save(FORM_TYPES[tab], change ?? saved(tab), confirm);
-    if (ok) {
+    const result = await forms.save(FORM_TYPES[tab], change ?? saved(tab), confirm);
+    if (result === "conflict") {
+      // 다른 창이 먼저 저장 · 확정했다. 이 창의 고친 서식(옛 판 위의 서식 전체)을 버리고 다시 받은 최신 기록으로 새로 시작한다 —
+      // 남겨 두면 다시 누를 때 옛 칸까지 새 판으로 저장 · 확정된다(민규 #140 교차검증 11/05 높음).
+      setState((current) => {
+        const now = current.editsFor === caseId ? { ...current.edits } : {};
+        delete now[tab];
+        return { edits: now, editsFor: caseId, note: "다른 창에서 먼저 바뀌어 최신 내용을 불러왔습니다. 고친 칸을 다시 넣어 주세요." };
+      });
+      return;
+    }
+    if (result === "saved") {
       const note = confirm ? `${nextRound}차를 확정했습니다.` : `${nextRound}차를 임시 저장했습니다.`;
       // 저장하는 동안 더 고친 칸이 있으면(보낸 값과 지금 값이 다름) 지우지 않고 남긴다(민규 #140 M3).
       setState((current) => {

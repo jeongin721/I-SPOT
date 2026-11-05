@@ -36,7 +36,8 @@ def _fixed(count: int, default: Any = None):
 
 
 class _Values(RequestModel):
-    model_config = ConfigDict(extra="forbid")
+    # strict: true → 1 · "3" → 3 처럼 타입을 바꿔 받지 않는다(민규 #140 교차검증 L2).
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 class SafetyScore(_Values):

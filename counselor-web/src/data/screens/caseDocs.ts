@@ -77,7 +77,18 @@ export function closureFormRow(
   const href = caseId ? screenHref("/ClosureDetail", { caseId }) : null;
   if (!closure || !closure.loaded || closure.loadError) return { ...unknown, href, go: href ? "열기" : "" };
   const report = closure.record?.report ?? {};
-  const written = Object.values(report).some((value) => typeof value === "string" && value.trim() !== "");
+  // 글 칸뿐 아니라 판단 칸(종결사유 체크 · 안전평가 · 안전점수)만 저장한 보고서도 '작성'(민규 #140 교차검증 L1).
+  const filled = (value: unknown): boolean =>
+    typeof value === "string"
+      ? value.trim() !== ""
+      : typeof value === "number" || value === true
+        ? true
+        : Array.isArray(value)
+          ? value.some(filled)
+          : value !== null && typeof value === "object"
+            ? Object.values(value).some(filled)
+            : false;
+  const written = Object.values(report).some(filled);
   return written
     ? { date: toDateOnly(closure.record?.updated_at) || NOT_PROVIDED, st: "작성", stCls: "chip c-ok", href, go: href ? "열기" : "" }
     : { date: NOT_PROVIDED, st: "작성 전", stCls: "chip c-normal", href, go: href ? "작성" : "" };

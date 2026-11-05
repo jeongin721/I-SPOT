@@ -1289,6 +1289,8 @@ export interface ClosureSummarySave {
   checks?: Record<string, boolean>;
   edits?: Record<string, string>;
   report?: ClosureReportFields;
+  /** 저장된 값이 없는(null) 칸에만 쓰는 처음 값(AI 초안 · 회차 기록 · 1차 판단, 2026-11-05). */
+  report_defaults?: ClosureReportFields;
 }
 
 /** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */

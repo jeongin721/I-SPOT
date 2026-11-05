@@ -214,7 +214,9 @@ def clean_suggestions(raw: Any, allowed: set) -> Dict[str, Any]:
     raw = raw if isinstance(raw, dict) else {}
     safety: List[Dict[str, Any]] = []
     seen = set()
-    for row in raw.get("safety") or []:
+    rows = raw.get("safety")
+    # 목록이 아니면(true · 1 · 2.5 등) 빈 제안 — 요약 전체를 실패시키지 않는다(민규 #140 교차검증 11/05).
+    for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
         item = row.get("item")

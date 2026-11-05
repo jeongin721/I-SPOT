@@ -129,3 +129,12 @@ def test_clean_suggestions_missing_is_empty_not_error():
     raw = {"groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}]}
 
     assert cs.clean_output(raw, [1])["suggestions"] == {"safety": [], "key_person": None}
+
+
+@pytest.mark.parametrize("bad", [True, 1, 2.5, "높음", {"item": 1}])
+def test_clean_suggestions_wrong_shape_is_empty_not_error(bad):
+    """suggestions.safety 가 목록이 아니어도 요약은 실패하지 않는다(민규 #140 교차검증 11/05)."""
+
+    raw = {"groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}], "suggestions": {"safety": bad}}
+
+    assert cs.clean_output(raw, [1])["suggestions"]["safety"] == []

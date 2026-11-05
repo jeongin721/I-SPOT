@@ -381,28 +381,31 @@ export function closureReportValues(
     canSave: Boolean(caseId && summary.loaded && !summary.busy),
     saveLabel: summary.busy === "save" ? "저장 중…" : "보고서 저장",
     save: async () => {
-      // 고친 칸만 보낸다 — 다른 창에서 고친 칸을 이 창의 옛 값으로 되돌리지 않게(민규 #140 M4). 초기상황 · 종결상황은 저장한 글이
-      // 없고 AI 초안이 보이고 있으면 그 초안도 보낸다(보이는 대로 저장).
+      // 고친 칸만 report 로 보낸다 — 다른 창에서 고친 칸을 이 창의 옛 값으로 되돌리지 않게(민규 #140 M4).
+      // 고치지 않고 처음 값(AI 초안 · 회차 기록 · 1차 판단)으로 보이던 칸은 report_defaults 로 보내, 서버가 저장된 값이 없는 칸에만
+      // 쓴다(보이는 대로 저장하되 다른 창이 먼저 저장한 칸은 그대로 — 민규 #140 교차검증 11/05).
       const sent = draft;
       const report: ClosureReportFields = {};
-      for (const key of ["initial_situation", "closing_situation"] as const) {
-        if (sent[key] !== undefined || (!saved[key] && ai[key]?.text)) report[key] = value(key, ai[key]?.text) || null;
-      }
-      for (const key of ["opinion", "review_date"] as const) {
+      const defaults: ClosureReportFields = {};
+      for (const key of ["initial_situation", "closing_situation", "opinion", "review_date"] as const) {
         if (sent[key] !== undefined) report[key] = sent[key] || null;
       }
-      // 처음 저장이면 1차 값(AI · 기록 판단)으로 보이던 칸도 보낸다(보이는 대로 저장, 11/05 경진님).
-      if (sent.closing_date !== undefined || (before && pass.closingDate)) {
-        report.closing_date = value("closing_date", pass.closingDate || undefined) || null;
+      for (const key of ["initial_situation", "closing_situation"] as const) {
+        if (sent[key] === undefined && saved[key] == null && ai[key]?.text) defaults[key] = ai[key]!.text;
       }
-      if (sent.reasons || (before && (pass.reasons ?? []).some(Boolean))) report.reasons = reasons;
-      if (sent.safety || (before && (pass.safety ?? []).some((level) => level !== null))) report.safety = safety;
-      if (sent.key_person !== undefined || (before && pass.keyPerson)) report.key_person = keyPerson.trim() || null;
+      if (sent.closing_date !== undefined) report.closing_date = sent.closing_date || null;
+      else if (before && pass.closingDate) defaults.closing_date = pass.closingDate;
+      if (sent.reasons) report.reasons = reasons;
+      else if (before && (pass.reasons ?? []).some(Boolean)) defaults.reasons = reasons;
+      if (sent.safety) report.safety = safety;
+      else if (before && (pass.safety ?? []).some((level) => level !== null)) defaults.safety = safety;
+      if (sent.key_person !== undefined) report.key_person = keyPerson.trim() || null;
+      else if (before && pass.keyPerson) defaults.key_person = pass.keyPerson;
       if (sent.safety_scores) report.safety_scores = scores;
-      // 사례관리 제공 요약은 저장한 글이 없고 회차 기록 글이 보이고 있으면 그 글도 보낸다(보이는 대로 저장, 11/04).
       // 비워 저장하면 "" 로 남겨(저장 전 null 과 구분) 다시 열어도 회차 기록 글로 채우지 않는다(민규 #140 교차검증 11/05).
-      if (sent.services !== undefined || (saved.services == null && servicesFromRecords)) report.services = services.trim();
-      const ok = await summary.save({ report });
+      if (sent.services !== undefined) report.services = services.trim();
+      else if (saved.services == null && servicesFromRecords) defaults.services = servicesFromRecords;
+      const ok = await summary.save(Object.keys(defaults).length ? { report, report_defaults: defaults } : { report });
       if (ok) resetDraft(sent);
       return ok;
     },
