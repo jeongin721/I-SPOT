@@ -264,7 +264,18 @@ function ClosureDetailScreen(props) {
               </div>
               <div>
                 <span className="k">학대유형</span>
-                <span className="v">{r.connected ? suggest.abuseTypes : '—'}</span>
+                <span className="v">
+                  {r.connected && suggest.abuseSignal ? (
+                    <>
+                      <span className="chip c-ai no-print" style={{ height: '20px', fontSize: '11px' }}>
+                        {suggest.abuseSignal}
+                      </span>
+                      <span className="print-only">—</span>
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </span>
               </div>
               <div>
                 <span className="k">담당 상담원</span>

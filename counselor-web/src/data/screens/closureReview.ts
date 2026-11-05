@@ -254,7 +254,7 @@ export function closureReportValues(
   setDraft: (patch: ReportDraft) => void,
   /** 저장이 끝나면 보낸 칸만 비운다(보내는 동안 더 고친 칸은 남김, 민규 #140 M3). */
   resetDraft: (sent: ReportDraft) => void,
-  /** 사례관리 제공 요약 칸이 비어 있을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). */
+  /** 사례관리 제공 요약을 저장한 적 없을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). 비워 저장하면("") 다시 채우지 않는다. */
   servicesFromRecords = "",
 ) {
   const info = detail.caseInfo;
@@ -376,7 +376,8 @@ export function closureReportValues(
       if (sent.key_person !== undefined) report.key_person = keyPerson.trim() || null;
       if (sent.safety_scores) report.safety_scores = scores;
       // 사례관리 제공 요약은 저장한 글이 없고 회차 기록 글이 보이고 있으면 그 글도 보낸다(보이는 대로 저장, 11/04).
-      if (sent.services !== undefined || (!saved.services && servicesFromRecords)) report.services = services.trim() || null;
+      // 비워 저장하면 "" 로 남겨(저장 전 null 과 구분) 다시 열어도 회차 기록 글로 채우지 않는다(민규 #140 교차검증 11/05).
+      if (sent.services !== undefined || (saved.services == null && servicesFromRecords)) report.services = services.trim();
       const ok = await summary.save({ report });
       if (ok) resetDraft(sent);
       return ok;

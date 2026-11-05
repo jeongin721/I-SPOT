@@ -6,7 +6,8 @@
 //      2) 위험수준 척도 확정 기록이 둘 이상이고 위험요인 합계가 첫 기록보다 줄었으면 — 근거는 '14점 → 6점 (4월 → 10월)'.
 //      3) 출생연도로 만 18세를 넘었으면.
 //  - 종결 상담일: 일정에 잡힌 이 사례의 '종결 상담'(가장 가까운 것). '일정' 칩.
-//  - 학대유형: 회차 AI 관련 신호에 나온 유형(AI 제안).
+//  - 학대유형: 회차 AI 관련 신호에 나온 유형 — 칸 값이 아니라 'AI 신호' 칩으로만 보이고 내보내기(인쇄)에는 나가지 않는다
+//    (기관 문서에서 사례의 학대유형으로 읽히지 않게, 민규 #140 교차검증 11/05).
 //  - 사례관리 제공 요약: 회차 기록의 상담 유형별 횟수 · 기간(계산, 상담원이 고쳐 저장한다).
 
 import { CONSULTATION_TYPE_LABELS, type CaseForm, type ClosureSummaryBody, type ConsultationType, type ScheduleEvent } from "../../api/types";
@@ -99,7 +100,7 @@ export function closureSuggestions(input: ClosureSuggestInput) {
   // --- 학대유형(AI 관련 신호) ---
   const types = new Set<string>();
   history.forEach((row) => detectedTypeLabels(row).forEach((label) => types.add(label)));
-  const abuseTypes = types.size ? `${[...types].join(" · ")} (AI 신호)` : NOT_PROVIDED;
+  const abuseSignal = types.size ? `AI 신호 · ${[...types].join(" · ")}` : "";
 
   // --- 사례관리 제공 요약(회차 기록) ---
   const counts = new Map<ConsultationType, number>();
@@ -111,5 +112,5 @@ export function closureSuggestions(input: ClosureSuggestInput) {
     ? `상담 ${sessions.length}회 (${md(dateOf(sessions[0]))} ~ ${md(dateOf(sessions[sessions.length - 1]))}) · ${kinds.join(" · ")}`
     : "";
 
-  return { reasons, safety, keyPerson, closingDate, abuseTypes, services, servicesChip: sessions.length ? `회차 기록 · ${sessions.length}회차` : "" };
+  return { reasons, safety, keyPerson, closingDate, abuseSignal, services, servicesChip: sessions.length ? `회차 기록 · ${sessions.length}회차` : "" };
 }
