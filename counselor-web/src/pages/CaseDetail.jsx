@@ -5,9 +5,9 @@
 // src/data/screens/caseDetail.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다(디자인이 바뀌면 JSX 만 바꾼다).
 // 서버에 없는 값(사례관리대상자 · 신고접수일 · 서비스 · 일정 등)은 '—', 종결 검토 등록은 준비 중.
 // 위험도 · 학대 유형 · 주요 키워드는 분석이 끝난 가장 최근 회차(useCaseSignals)의 상담원 판단 · AI 결과로 채운다(caseDetail.ts 머리 주석).
-// '초기면접 내용' 카드는 디자인에 없어 더한 칸이다: 사례 등록 ② 탭의 가정상황 · 아동 특성을 단어로 보이고 '수정' 으로 고친다
-// (고르기 단추는 CaseRegister 와 같은 모양).
-// '기본 정보' 카드의 '수정'(2026-11-03): 서버에 칸이 있는 줄만 그 자리에서 입력칸으로 바꾸고 저장한다(caseDetail.ts 머리 주석).
+// 11/05 탭1 디자인(2)에 맞춰 디자인에 없던 '초기면접 내용' 카드와 '기본 정보' 의 '수정' 단추를 뺐다 — 같은 칸은
+// 문서함 › 초기면접지(CaseIntake)에서 고친다. '확인할 사항' 은 줄마다 체크(이 브라우저에 회차별로 기억),
+// 진행 단계의 지난 '상담 녹음' 칸 아래 날짜를 보인다.
 // 11/04 탭1 디자인: 사례 상세 탭은 내담자 정보 · 상담 이력 · 문서함 셋이고, 아이 연계는 기본 정보 머리의 '아이 연계 →' 단추로 들어간다.
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
 // components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐 — 11/03 다시 탭 줄로), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
@@ -94,6 +94,31 @@ export default function CaseDetail(props) {
     checklist: briefChecklist,
   });
   const briefRef = useRef(null);
+  // 11/04 탭1 디자인: '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시). 서버 칸이 없어 이 브라우저에만 회차별로 기억한다.
+  const tickKey = signals.session?.id ? `ispot-brief-ticks:${signals.session.id}` : null;
+  const [ticks, setTicks] = useState(() => new Set());
+  useEffect(() => {
+    let saved = [];
+    try {
+      saved = tickKey ? JSON.parse(window.localStorage.getItem(tickKey) || '[]') : [];
+    } catch {
+      saved = [];
+    }
+    setTicks(new Set(Array.isArray(saved) ? saved : []));
+  }, [tickKey]);
+  const toggleTick = (text) => {
+    setTicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(text)) next.delete(text);
+      else next.add(text);
+      try {
+        if (tickKey) window.localStorage.setItem(tickKey, JSON.stringify([...next]));
+      } catch {
+        /* 저장 못 해도 화면 표시는 그대로 */
+      }
+      return next;
+    });
+  };
   const [outOpen, setOutOpen] = useState(false);
   const wantBrief = params.get('view') === 'brief';
   const briefReady = Boolean(detail.caseInfo);
@@ -199,103 +224,15 @@ export default function CaseDetail(props) {
                 <A className="btn btn-sm btn-s" to={v.tabs.app} style={{ marginLeft: 'auto' }}>
                   아이 연계 →
                 </A>
-                {v.basicsEdit.canEdit ? (
-                  <button
-                    type="button"
-                    className="btn btn-s btn-sm"
-                    onClick={v.basicsEdit.startEdit}
-                  >
-                    수정
-                  </button>
-                ) : null}
               </div>
-              {v.basicsEdit.editing ? (
-                <>
-                  <Notice value={v.basicsEdit.personalNote} style={{ marginTop: '10px' }} />
-                  <dl className="kv" style={{ gridTemplateColumns: '120px minmax(0, 1fr)', alignItems: 'center' }}>
-                    {v.basicsEdit.rows.map((r) => (
-                      <Fragment key={r.label}>
-                        <dt>{r.label}</dt>
-                        <dd>
-                          {r.kind === 'static' ? (
-                            <>
-                              {r.value}{' '}
-                              <span className="note">({r.hint})</span>
-                            </>
-                          ) : r.kind === 'select' ? (
-                            <select className="inp" aria-label={r.label} value={r.value} onChange={r.onChange} disabled={r.disabled}>
-                              <option value="">선택</option>
-                              {r.options.map((o) => (
-                                <option key={o} value={o}>
-                                  {o}
-                                </option>
-                              ))}
-                            </select>
-                          ) : r.kind === 'target' ? (
-                            <div className="pair">
-                              <input
-                                className="inp"
-                                type="text"
-                                aria-label="사례관리대상자 이름"
-                                placeholder="이름"
-                                value={r.name.value}
-                                onChange={r.name.onChange}
-                                disabled={r.disabled}
-                              />
-                              <select
-                                className="inp"
-                                aria-label="사례관리대상자 관계"
-                                value={r.relation.value}
-                                onChange={r.relation.onChange}
-                                disabled={r.disabled}
-                              >
-                                <option value="">관계</option>
-                                {r.options.map((o) => (
-                                  <option key={o} value={o}>
-                                    {o}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (
-                            <input
-                              className="inp"
-                              type={r.kind}
-                              aria-label={r.label}
-                              min={r.min}
-                              max={r.max}
-                              value={r.value}
-                              onChange={r.onChange}
-                              disabled={r.disabled}
-                            />
-                          )}
-                        </dd>
-                      </Fragment>
-                    ))}
-                  </dl>
-                  <p className="note" style={{ margin: '12px 0 0' }}>
-                    {v.basicsEdit.editNote}
-                  </p>
-                  <Notice value={v.basicsEdit.error} style={{ marginTop: '8px', color: '#A33B2E' }} />
-                  <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
-                    <button type="button" className="btn btn-s btn-sm" onClick={v.basicsEdit.cancel} disabled={v.basicsEdit.saving}>
-                      취소
-                    </button>
-                    <button type="button" className="btn btn-p btn-sm" onClick={v.basicsEdit.save} disabled={v.basicsEdit.saving}>
-                      {v.basicsEdit.saveLabel}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
-                  {(v.basics || []).map((b, bIndex) => (
-                    <Fragment key={bIndex}>
-                      <dt>{b.label}</dt>
-                      <dd style={b.strong ? { fontWeight: '700' } : undefined}>{b.value}</dd>
-                    </Fragment>
-                  ))}
-                </dl>
-              )}
+              <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
+                {(v.basics || []).map((b, bIndex) => (
+                  <Fragment key={bIndex}>
+                    <dt>{b.label}</dt>
+                    <dd style={b.strong ? { fontWeight: '700' } : undefined}>{b.value}</dd>
+                  </Fragment>
+                ))}
+              </dl>
             </section>
             <section className="card" aria-label="주요 위험 요인" style={{ padding: '22px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -357,90 +294,6 @@ export default function CaseDetail(props) {
             </section>
           </div>
 
-          <section className="card intake" aria-label="초기면접 내용" style={{ padding: '22px 24px' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-              <h2 className="h2">초기면접 내용</h2>
-              <span className="note">서식 4 ②</span>
-              {v.intake.canEdit ? (
-                <button
-                  type="button"
-                  className="btn btn-s btn-sm"
-                  onClick={v.intake.startEdit}
-                  style={{ marginLeft: 'auto' }}
-                >
-                  수정
-                </button>
-              ) : null}
-            </div>
-            {v.intake.editing ? (
-              <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <p className="note" style={{ margin: 0 }}>
-                  {v.intake.editNote}
-                </p>
-                <div className="sec">
-                  가정상황{' '}
-                  <span className="note" style={{ fontWeight: '400' }}>
-                    (복수응답 가능)
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {v.intake.homes.map((o) => (
-                    <button
-                      key={o.label}
-                      type="button"
-                      className={o.on ? 'pk on' : 'pk'}
-                      aria-pressed={o.on}
-                      onClick={o.toggle}
-                      disabled={o.disabled}
-                      style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
-                    >
-                      {o.mark} {o.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="sec">
-                  아동 특성{' '}
-                  <span className="note" style={{ fontWeight: '400' }}>
-                    (복수응답 가능)
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {v.intake.traits.map((o) => (
-                    <button
-                      key={o.label}
-                      type="button"
-                      className={o.on ? 'pk on' : 'pk'}
-                      aria-pressed={o.on}
-                      onClick={o.toggle}
-                      disabled={o.disabled}
-                      style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
-                    >
-                      {o.mark} {o.label}
-                    </button>
-                  ))}
-                </div>
-                <Notice value={v.intake.error} />
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
-                  <button type="button" className="btn btn-s btn-sm" onClick={v.intake.cancel} disabled={v.intake.saving}>
-                    취소
-                  </button>
-                  <button type="button" className="btn btn-p btn-sm" onClick={v.intake.save} disabled={v.intake.saving}>
-                    {v.intake.saveLabel}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
-                {v.intake.rows.map((r) => (
-                  <Fragment key={r.label}>
-                    <dt>{r.label}</dt>
-                    <dd className={r.empty ? 'note' : undefined}>{r.text}</dd>
-                  </Fragment>
-                ))}
-              </dl>
-            )}
-          </section>
-
           <section className="card" aria-label="현재 진행 상황" style={{ padding: '22px 24px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <h2 className="h2">현재 진행 상황</h2>
@@ -475,6 +328,7 @@ export default function CaseDetail(props) {
                         {p.mark}
                       </span>
                       {p.done ? <span>{p.label}</span> : null}
+                      {p.note ? <span className="note">{p.note}</span> : null}
                       {p.current ? <b style={{ fontWeight: '700', color: '#2B2A26' }}>{p.label}</b> : null}
                       {p.pending ? <span style={{ color: '#7A776F' }}>{p.label}</span> : null}
                       {p.chip ? <span className="chip c-check">{p.chip}</span> : null}
@@ -540,7 +394,8 @@ export default function CaseDetail(props) {
                 </div>
                 {brief.checksNote ? <span className="note">{brief.checksNote}</span> : null}
                 {(brief.checks || []).map((c) => (
-                  <div key={c.key} className="rq">
+                  <label key={c.key} className="rq">
+                    <input type="checkbox" checked={ticks.has(c.text)} onChange={() => toggleTick(c.text)} />
                     <span>
                       {c.text}
                       {c.href ? (
@@ -551,7 +406,7 @@ export default function CaseDetail(props) {
                         <span className="src">근거 · {c.why}</span>
                       )}
                     </span>
-                  </div>
+                  </label>
                 ))}
                 {brief.checksError ? (
                   <span className="note" role="alert" style={{ color: '#A33B2E' }}>
