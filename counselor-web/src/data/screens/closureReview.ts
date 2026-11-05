@@ -253,7 +253,7 @@ export function closureReportValues(
   draft: ReportDraft,
   setDraft: (patch: ReportDraft) => void,
   resetDraft: () => void,
-  /** 사례관리 제공 요약 칸이 비어 있을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). */
+  /** 사례관리 제공 요약을 저장한 적 없을 때 먼저 보일 회차 기록 글(closureSuggest services, 11/04). 비워 저장하면("") 다시 채우지 않는다. */
   servicesFromRecords = "",
 ) {
   const info = detail.caseInfo;
@@ -364,7 +364,7 @@ export function closureReportValues(
         reasons,
         safety,
         key_person: keyPerson.trim() || null,
-        services: services.trim() || null,
+        services: services.trim(),
         safety_scores: scores,
       };
       const ok = await summary.save({ report });

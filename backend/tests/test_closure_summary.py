@@ -330,3 +330,14 @@ def test_report_judgement_fields_are_checked(client: TestClient, counselor_heade
     response = client.put(_url(ready_case["id"]), json={"report": report}, headers=counselor_headers)
 
     assert response.status_code == 422
+
+
+def test_report_services_blank_is_kept_apart_from_never_saved(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """사례관리 제공 요약을 비워 저장하면 "" 로 남는다(저장 전 null 과 구분 — 화면이 회차 기록 글로 다시 채우지 않게, 민규 #140 11/05)."""
+
+    assert client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]["services"] is None
+
+    saved = client.put(_url(ready_case["id"]), json={"report": {"services": ""}}, headers=counselor_headers)
+
+    assert saved.status_code == 200, saved.text
+    assert client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]["services"] == ""
