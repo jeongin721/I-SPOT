@@ -86,6 +86,105 @@ export const GUARDIAN_LABELS: Record<GuardianType, string> = {
   OTHER: "기타",
 };
 
+/** 조치결과 · 피해아동(서식 4 ①, 2026-11-05). 상담원이 고른다 — AI 가 미리 고르거나 채우지 않는다. */
+export type ChildActionResult = "HOME" | "RELATIVE" | "ACQUAINTANCE" | "FOSTER" | "FACILITY" | "HOSPITAL" | "OTHER";
+
+/** 화면에 표시할 한글 이름(서식 4 순서). backend tests/test_case_form_fields.py 가 서버 목록과 같은지 본다. */
+export const CHILD_ACTION_LABELS: Record<ChildActionResult, string> = {
+  HOME: "원가정보호",
+  RELATIVE: "친인척보호",
+  ACQUAINTANCE: "연고자에 의한 보호",
+  FOSTER: "가정위탁",
+  FACILITY: "시설입소",
+  HOSPITAL: "병원입원",
+  OTHER: "기타",
+};
+
+/** 조치결과 · 사례관리대상자(서식 4 ①, 2026-11-05). 상담원이 고른다. */
+export type TargetActionResult = "OBSERVATION" | "SEPARATION" | "COMPLAINT" | "OTHER";
+
+export const TARGET_ACTION_LABELS: Record<TargetActionResult, string> = {
+  OBSERVATION: "지속관찰",
+  SEPARATION: "아동과의 분리",
+  COMPLAINT: "고소 · 고발",
+  OTHER: "기타",
+};
+
+/** 가족유형(서식 4 ② 초기면접 내용, 하나만 고른다, 2026-11-05 — 11/03 디자인의 21개). 상담원이 고른다. */
+export type FamilyType =
+  | "GENERAL"
+  | "FATHER_BEREAVED"
+  | "FATHER_DIVORCED"
+  | "FATHER_LEFT"
+  | "FATHER_SEPARATED"
+  | "MOTHER_BEREAVED"
+  | "MOTHER_DIVORCED"
+  | "MOTHER_LEFT"
+  | "MOTHER_SEPARATED"
+  | "UNMARRIED_FATHER"
+  | "UNMARRIED_MOTHER"
+  | "UNMARRIED_PARENTS"
+  | "FATHER_STEPMOTHER"
+  | "MOTHER_STEPFATHER"
+  | "RELATIVE_CARE"
+  | "FATHER_PARTNER"
+  | "MOTHER_PARTNER"
+  | "FOSTER"
+  | "ADOPTIVE"
+  | "FACILITY"
+  | "OTHER";
+
+export const FAMILY_TYPE_LABELS: Record<FamilyType, string> = {
+  GENERAL: "일반가정",
+  FATHER_BEREAVED: "부자가정(사별)",
+  FATHER_DIVORCED: "부자가정(이혼)",
+  FATHER_LEFT: "부자가정(가출)",
+  FATHER_SEPARATED: "부자가정(별거)",
+  MOTHER_BEREAVED: "모자가정(사별)",
+  MOTHER_DIVORCED: "모자가정(이혼)",
+  MOTHER_LEFT: "모자가정(가출)",
+  MOTHER_SEPARATED: "모자가정(별거)",
+  UNMARRIED_FATHER: "미혼부가정",
+  UNMARRIED_MOTHER: "미혼모가정",
+  UNMARRIED_PARENTS: "미혼부모가정",
+  FATHER_STEPMOTHER: "친부+계모",
+  MOTHER_STEPFATHER: "친모+계부",
+  RELATIVE_CARE: "친인척보호",
+  FATHER_PARTNER: "친부+동거녀",
+  MOTHER_PARTNER: "친모+동거남",
+  FOSTER: "가정위탁",
+  ADOPTIVE: "입양가정",
+  FACILITY: "시설보호",
+  OTHER: "기타",
+};
+
+/**
+ * 서식 4 의 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기). 사례 응답 · 등록 · 수정에 같은 이름으로 오간다. 모두 비울 수 있다(null).
+ * 모두 상담원이 고르거나 적는 값이다 — AI 가 미리 고르거나 채우지 않는다.
+ * counselor_risk_level(위험도(우선))은 상담원이 고른 사례 위험도로, 회차 AI 심각도(1~5) · 회차 위험도 판단과 맞추지 않는다.
+ * 글 칸은 각 2000자, 평문 저장이라 화면이 '개인정보는 적지 마세요' 를 보인다. 서버가 앞뒤 빈칸을 지우고 빈 글은 null 로 둔다.
+ * 응답에서는 이 칸이 생기기 전 서버면 키가 없다.
+ */
+export interface CaseFormFields {
+  child_action_result?: ChildActionResult | null;
+  target_action_result?: TargetActionResult | null;
+  counselor_risk_level?: RiskLevel | null;
+  /** 사례연계 경위(서식 4 ①). */
+  linked_background?: string | null;
+  /** ② 가족유형. */
+  intake_family_type?: FamilyType | null;
+  /** ② 보호자와 아동과의 관계. */
+  intake_guardian_relation?: string | null;
+  /** ② 문제력(현 상황 · 그 이유, 한 칸). */
+  intake_problem?: string | null;
+  /** ② 대상자 태도. */
+  intake_attitude?: string | null;
+  /** ② 물리적 환경. */
+  intake_environment?: string | null;
+  /** ② 상담원 소견 및 향후 계획. */
+  intake_opinion?: string | null;
+}
+
 /** 회차 상태. Backend 가 전이 규칙을 강제하므로 임의로 바꾸지 않는다. */
 export type SessionStatus =
   | "CREATED"
@@ -211,7 +310,7 @@ export const PASSWORD_RULE_TEXT =
 // 사례
 // =========================================================
 
-export interface Case {
+export interface Case extends CaseFormFields {
   id: string;
   case_number: string;
   title: string;
@@ -249,7 +348,7 @@ export interface CaseDetail extends Case {
   session_count: number;
 }
 
-export interface CaseCreateRequest {
+export interface CaseCreateRequest extends CaseFormFields {
   title: string;
   child_alias: string;
   child_birth_year?: number | null;
@@ -356,7 +455,7 @@ export interface PersonalInfo extends PersonalInfoRequest {
  * 사례 수정 요청(PATCH /cases/{id}). 바꿀 필드만 보낸다.
  * title · child_alias · status 는 null 로 보낼 수 없다(422). 바꾸지 않으려면 빼고 보낸다.
  */
-export interface CaseUpdateRequest {
+export interface CaseUpdateRequest extends CaseFormFields {
   title?: string;
   child_alias?: string;
   child_birth_year?: number | null;

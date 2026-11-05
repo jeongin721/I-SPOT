@@ -3,7 +3,8 @@
 // 서버 연결: useAdminCases(GET /cases 전체 쪽 + GET /auth/users). 검색 · 상담원 거르기는 받은 목록에서 한다.
 //
 // Backend 에 없는 값은 다른 값으로 대신 채우지 않는다(caseRows.ts 와 같은 규칙).
-//  - 위험도 · 신고접수일은 사례 목록과 같은 값(없으면 '—'). 관리 기간은 '—', 위험도 거르기 · 정렬 단추는 준비 중.
+//  - 위험도 · 신고접수일은 사례 목록과 같은 값(없으면 '—'). '위험도 상' 칸은 받은 목록에서 '상' 인 사례를 센다.
+//  - 관리 기간은 '—', 위험도 거르기 · 정렬 단추는 준비 중.
 //  - 최근 상담: 사례의 last_session_at 은 상담 일시를 넣지 않은 회차를 등록일로 채워 셈하므로 최근 상담일로 보이지 않는다.
 //  - 진행 단계(초기 조사 · 종결 검토): 없다. 사례 상태(진행 · 종결)만 보인다.
 //  - 재배정 필요(디자인: 담당 상담원 비활성): 진행 중 사례의 담당 계정이 비활성이거나 지워졌으면 그렇게 보인다.
@@ -13,7 +14,7 @@
 // 줄 끝 '관리' 칸(2026-11-03, 디자인에 없음): '상담 이력'(회차를 보고 지우는 곳) 링크와 사례 '삭제'(확인 창 — data/useAdminDelete).
 
 import type { User } from "../../api/types";
-import { NOT_PROVIDED, toCaseRow, type CaseRow } from "../caseRows";
+import { NOT_PROVIDED, riskChipClass, toCaseRow, type CaseRow } from "../caseRows";
 import type { AdminCasesState } from "../useAdminCases";
 import { caseDeleteTarget, type DeleteTarget } from "../useAdminDelete";
 import type { AuthSession } from "../useAuthSession";
@@ -110,6 +111,7 @@ export function adminCasesValues(input: AdminCasesInput) {
         // 지워진 계정은 상세가 없다.
         whoHref: row.counselorName === NOT_PROVIDED ? null : staffDetailHref(source.counselor_id),
         risk: row.riskLabel,
+        riskCls: riskChipClass(row.riskLabel),
         date: row.reportDate,
         period: NOT_PROVIDED,
         last: NOT_PROVIDED,
@@ -155,7 +157,11 @@ export function adminCasesValues(input: AdminCasesInput) {
         v: casesLoaded ? `${all.length}건` : NOT_PROVIDED,
         note: casesLoaded ? `상담원 ${activeStaff}명 담당` : "",
       },
-      { label: "위험도 상", v: NOT_PROVIDED, note: NOT_READY },
+      {
+        label: "위험도 상",
+        v: casesLoaded ? `${all.filter(({ row }) => row.riskLabel === "상").length}건` : NOT_PROVIDED,
+        note: casesLoaded ? "상담원이 고른 위험도(우선)" : "",
+      },
       { label: "종결 검토", v: NOT_PROVIDED, note: NOT_READY },
       {
         label: "재배정 필요",
@@ -173,8 +179,8 @@ export function adminCasesValues(input: AdminCasesInput) {
     empty: casesLoaded && rows.length === 0,
     countLabel: casesLoaded ? `사례 ${rows.length}건 표시 · 사례 등록 최신순` : "",
     dataNote:
-      `위험도 · 신고접수일 · 관리 기간 · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)는 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
-      "진행 단계 칸에는 사례 상태(진행 · 종결)를 보입니다.",
+      `관리 기간 · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)와 위험도 거르기 · 정렬은 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
+      "위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)이고, 진행 단계 칸에는 사례 상태(진행 · 종결)를 보입니다.",
     usersError: list.usersError,
   };
 }

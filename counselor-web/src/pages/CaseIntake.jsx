@@ -7,7 +7,8 @@
 // (담당 상담원은 관리자만), 개별사건번호는 읽기만 한다.
 // 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · ② 가족관계 · 건강정도는 usePersonalInfo(GET · PUT …/personal-info, 암호화 저장)로
 // 불러와 고친다. 값을 받기 전 · 못 받았으면 그 칸들은 막는다(통째로 바꾸는 PUT 이라 모르는 값을 지우지 않게).
-// 나머지 칸은 서버에 칸이 없어 준비 중(입력 막음).
+// ① 조치결과 · 위험도(우선) · 사례연계 경위, ② 가족유형(하나) · 보호자와 아동과의 관계 · 문제력 · 태도 · 환경 · 소견(2026-11-05)은
+// 사례 칸이라 같은 PATCH 로 저장한다(caseFormFields.ts).
 // 디자인의 '임시 저장' · '확정' 은 서식 작성 기록 · 확정 상태가 서버에 없어 '저장' 하나로 두었다.
 // 10/29 디자인: ① 칸 묶음(rg-*) · 사례관리대상자 생년월일, ② 가족유형 21개 · 문제력 한 칸 · 건강정도 표(hs-*) · 칸 복사 단추.
 // 복사 단추의 '이름 가려서' 는 이 사례에 등록된 이름 전부(실명 · 가족 · 별칭)를 가린다.
@@ -355,28 +356,25 @@ export default function CaseIntake(props) {
                     <div className="rg-grp">
                       <div className="rg2">
                       <label className="fl">
-                        <span className="lb">
-                          조치결과 · 피해아동 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <select className="inp" disabled>
-                          <option>원가정보호</option>
-                          <option>친인척보호</option>
-                          <option>연고자에 의한 보호</option>
-                          <option>가정위탁</option>
-                          <option>시설입소</option>
-                          <option>병원입원</option>
-                          <option>기타</option>
+                        <span className="lb">조치결과 · 피해아동</span>
+                        <select className="inp" value={v.childAction.value} onChange={v.childAction.onChange}>
+                          <option value="">선택</option>
+                          {v.childAction.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
                       <label className="fl">
-                        <span className="lb">
-                          조치결과 · 사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <select className="inp" disabled>
-                          <option>지속관찰</option>
-                          <option>아동과의 분리</option>
-                          <option>고소 · 고발</option>
-                          <option>기타</option>
+                        <span className="lb">조치결과 · 사례관리대상자</span>
+                        <select className="inp" value={v.targetAction.value} onChange={v.targetAction.onChange}>
+                          <option value="">선택</option>
+                          {v.targetAction.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
                       </div>
@@ -434,23 +432,29 @@ export default function CaseIntake(props) {
                         ) : null}
                       </label>
                       <label className="fl">
-                        <span className="lb">
-                          위험도 (우선) {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <select className="inp" disabled>
-                          <option>선택</option>
-                          <option>상</option>
-                          <option>중</option>
-                          <option>하</option>
+                        <span className="lb">위험도 (우선)</span>
+                        <select className="inp" value={v.riskLevel.value} onChange={v.riskLevel.onChange}>
+                          <option value="">선택</option>
+                          {v.riskLevel.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
                       </div>
                     </div>
                     <label className="fl">
-                      <span className="lb">
-                        사례연계 경위 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                      </span>
-                      <textarea className="ta2" rows="7" disabled style={{ minHeight: '180px' }}></textarea>
+                      <span className="lb">사례연계 경위</span>
+                      <textarea
+                        className="ta2"
+                        rows="7"
+                        style={{ minHeight: '180px' }}
+                        maxLength={v.linkedBackground.max}
+                        placeholder={v.linkedBackground.placeholder}
+                        value={v.linkedBackground.value}
+                        onChange={v.linkedBackground.onChange}
+                      ></textarea>
                     </label>
                     <label className="fl">
                       <span className="lb">사례 메모</span>
@@ -492,29 +496,42 @@ export default function CaseIntake(props) {
                         </Fragment>
                       ))}
                     </div>
-                    <fieldset disabled style={LOCKED_GROUP}>
-                      <label className="fl">
-                        <span className="lb">보호자와 아동과의 관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></span>
-                        <textarea className="ta2 ta1" rows="1" aria-label="보호자와 아동과의 관계"></textarea>
-                        <CopyButton names={v.maskNames} />
-                      </label>
+                    <label className="fl">
+                      <span className="lb">보호자와 아동과의 관계</span>
+                      <textarea
+                        className="ta2 ta1"
+                        rows="1"
+                        maxLength={v.guardianRelation.max}
+                        placeholder={v.guardianRelation.placeholder}
+                        value={v.guardianRelation.value}
+                        onChange={v.guardianRelation.onChange}
+                        aria-label="보호자와 아동과의 관계"
+                      ></textarea>
+                      <CopyButton names={v.maskNames} />
+                    </label>
 
-                      <div className="sec">가족유형{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {(v.fams || []).map((o, oIndex) => (
-                          <Fragment key={oIndex}>
-                            <button
-                              type="button"
-                              className="pk"
-                              style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
-                            >
-                              {o.label}
-                            </button>
-                          </Fragment>
-                        ))}
-                      </div>
-
-                    </fieldset>
+                    <div className="sec">
+                      가족유형{' '}
+                      <span className="note" style={{ fontWeight: '400' }}>
+                        (하나만)
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(v.fams || []).map((o, oIndex) => (
+                        <Fragment key={oIndex}>
+                          <button
+                            type="button"
+                            className={o.on ? 'pk on' : 'pk'}
+                            aria-pressed={o.on}
+                            onClick={o.toggle}
+                            disabled={o.disabled}
+                            style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
+                          >
+                            {o.mark} {o.label}
+                          </button>
+                        </Fragment>
+                      ))}
+                    </div>
 
                     <div className="sec">가족관계</div>
                     <FamilyTable family={v.family} />
@@ -542,41 +559,58 @@ export default function CaseIntake(props) {
                       ))}
                     </div>
 
-                    <fieldset disabled style={LOCKED_GROUP}>
-                      <div className="sec">문제력{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <label className="fl cp-in">
-                        <textarea
-                          className="ta2"
-                          placeholder="피해아동/사례관리대상자/비가해보호자/가족구성원 등이 생각하는 현 상황, 현 상황이 초래된 이유 등에 대한 기재"
-                          aria-label="문제력"
-                        ></textarea>
-                        <CopyButton names={v.maskNames} />
-                      </label>
-                    </fieldset>
+                    <div className="sec">문제력</div>
+                    <label className="fl cp-in">
+                      <textarea
+                        className="ta2"
+                        maxLength={v.problem.max}
+                        placeholder={v.problem.placeholder}
+                        value={v.problem.value}
+                        onChange={v.problem.onChange}
+                        aria-label="문제력"
+                      ></textarea>
+                      <CopyButton names={v.maskNames} />
+                    </label>
 
                     <HealthTable health={v.health} />
 
-                    <fieldset disabled style={LOCKED_GROUP}>
-
-                      <div className="sec">대상자 태도 및 관찰내용{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div className="g3">
-                        <label className="fl">
-                          <span className="lb">대상자 태도</span>
-                          <textarea className="ta2"></textarea>
-                          <CopyButton names={v.maskNames} />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">물리적 환경</span>
-                          <textarea className="ta2"></textarea>
-                          <CopyButton names={v.maskNames} />
-                        </label>
-                      </div>
+                    <div className="sec">대상자 태도 및 관찰내용</div>
+                    <div className="g3">
                       <label className="fl">
-                        <span className="lb">상담원 소견 및 향후 계획</span>
-                        <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
+                        <span className="lb">대상자 태도</span>
+                        <textarea
+                          className="ta2"
+                          maxLength={v.attitude.max}
+                          placeholder={v.attitude.placeholder}
+                          value={v.attitude.value}
+                          onChange={v.attitude.onChange}
+                        ></textarea>
                         <CopyButton names={v.maskNames} />
                       </label>
-                    </fieldset>
+                      <label className="fl">
+                        <span className="lb">물리적 환경</span>
+                        <textarea
+                          className="ta2"
+                          maxLength={v.environment.max}
+                          placeholder={v.environment.placeholder}
+                          value={v.environment.value}
+                          onChange={v.environment.onChange}
+                        ></textarea>
+                        <CopyButton names={v.maskNames} />
+                      </label>
+                    </div>
+                    <label className="fl">
+                      <span className="lb">상담원 소견 및 향후 계획</span>
+                      <textarea
+                        className="ta2"
+                      style={{ minHeight: '96px' }}
+                        maxLength={v.opinion.max}
+                        placeholder={v.opinion.placeholder}
+                        value={v.opinion.value}
+                        onChange={v.opinion.onChange}
+                      ></textarea>
+                      <CopyButton names={v.maskNames} />
+                    </label>
                   </fieldset>
                 ) : null}
 
