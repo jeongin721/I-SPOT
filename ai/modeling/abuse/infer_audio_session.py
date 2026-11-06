@@ -13,6 +13,7 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 토큰 제한이 훨씬 커서 세션 전체 transcript를 한 번에 사용한다.
 """
 
+import logging
 import threading
 import time
 import copy
@@ -23,6 +24,8 @@ from ai.adapters.stt_analysis_adapter import validate_stt_result
 
 from ai.modeling.abuse.infer_abuse_v3_adapter import (
     predict_major_types,
+    predict_major_types_detail,
+    predict_major_types_detail_batch,
 )
 from ai.modeling.abuse.second_stage_llm import (
     analyze_subtypes,
@@ -62,7 +65,15 @@ from ai.modeling.abuse.followup_check_llm import (
     format_inputs_for_masking as format_followup_inputs_for_masking,
     generate_followup_check_points_from_masked_text,
 )
-from ai.modeling.abuse.key_scan_refine import MAX_LINE_PREDICTIONS, child_line_inputs, pick_segments
+from ai.modeling.abuse.key_scan_refine import (
+    ScanConfig,
+    chunk_wide_pick,
+    detected_labels,
+    merge_picks,
+    pick_segments,
+    plan_line_scoring,
+    scan_config,
+)
 from ai.modeling.abuse.topic_tag_llm import (
     generate_topic_tags_from_masked_text,
     mask_child_lines,
@@ -88,6 +99,8 @@ from ai.modeling.abuse import case_store
 # ============================================================
 # 1. 기본 설정
 # ============================================================
+
+logger = logging.getLogger(__name__)
 
 ABUSE_LABELS = [
     "신체학대",
@@ -232,11 +245,18 @@ def _chunk_to_text(
 
 def quick_risk_scan(
     stt_result: Dict[str, Any],
+    config: Optional[ScanConfig] = None,
+    collect: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, List[str]]:
     """
     STT 결과에 1차 분류기만 빠르게 돌려서, segment_id별로 탐지된
     학대유형 목록을 반환한다. 실제 "분석하기"가 쓰는 것과 동일한
     chunk 분할(build_qa_chunks)을 재사용해 일관성을 유지한다.
+
+    고르는 규칙 · 설정(줄 확률 · 되돌림 · 줄 판정 상한)은 key_scan_refine 에
+    있다(2026-11-06 정밀도 개선). config 를 주지 않으면 환경 변수에서 읽는다.
+    collect 는 측정용(experiments/key_scan_eval.py) — 덩어리 · 줄 판정과 걸린
+    시간을 dict 로 받는다. 서버 경로에서는 쓰지 않는다.
     """
 
     try:
@@ -250,46 +270,98 @@ def quick_risk_scan(
         return {}
 
     chunks = build_qa_chunks(lines)
+    config = config or scan_config()
 
-    risk_by_segment: Dict[str, List[str]] = {}
-    # 줄마다 다시 판정한 횟수(key_scan_refine.MAX_LINE_PREDICTIONS 까지).
-    line_calls = 0
-
-    for chunk in chunks:
-        chunk_prediction = predict_major_types(
+    # 1) 덩어리 판정 — 정식 분석과 같은 입력 · checkpoint 임계값(확률도 받는다).
+    started = time.monotonic()
+    chunk_predictions = [
+        predict_major_types_detail(
             text=_chunk_to_text(chunk),
             input_mode="qa",
         )
+        for chunk in chunks
+    ]
+    chunk_seconds = time.monotonic() - started
 
-        detected_labels = [
-            label
-            for label in ABUSE_LABELS
-            if chunk_prediction.get(label, {}).get("detected", False)
-        ]
+    # 2) 줄 판정 — 걸린 덩어리부터 상한 안에서, 여러 줄을 한 번에(동적 패딩).
+    #    덩어리 판정이 놓친 유형도 줄에서 걸리면 살린다.
+    inputs_by_chunk, skipped = plan_line_scoring(
+        chunks,
+        chunk_predictions,
+        config.max_line_predictions,
+    )
+    flat = [
+        (index, segment_id, text)
+        for index, inputs in inputs_by_chunk.items()
+        for segment_id, text in inputs
+    ]
 
-        # 덩어리 안의 아동 발화를 줄마다 다시 판정해 걸린 줄만 고른다(key_scan_refine, 2026-10-30). 덩어리 판정이 놓친 유형도
-        # 줄에서 걸리면 살린다. 상한을 넘으면 걸린 덩어리는 예전처럼 발화를 모두 표시하고, 안 걸린 덩어리는 건너뛴다.
-        inputs = child_line_inputs(chunk)
+    started = time.monotonic()
+    details = (
+        predict_major_types_detail_batch([text for _, _, text in flat])
+        if flat
+        else []
+    )
+    line_seconds = time.monotonic() - started
 
-        if inputs and line_calls + len(inputs) <= MAX_LINE_PREDICTIONS:
-            line_calls += len(inputs)
+    line_predictions: Dict[int, List[Tuple[str, Dict[str, Any]]]] = {}
+    for (index, segment_id, _), detail in zip(flat, details, strict=True):
+        line_predictions.setdefault(index, []).append((segment_id, detail))
+
+    # 3) 고르기(key_scan_refine.pick_segments). 상한에 못 든 덩어리는 줄 확률이
+    #    없으므로 되돌림이 all 일 때만 예전 방식(걸린 덩어리의 아동 발화 전체).
+    risk_by_segment: Dict[str, List[str]] = {}
+
+    for index, chunk in enumerate(chunks):
+        if index in line_predictions:
             picked = pick_segments(
-                detected_labels,
-                [(segment_id, predict_major_types(text=text, input_mode="qa")) for segment_id, text in inputs],
+                chunk_predictions[index],
+                line_predictions[index],
+                config,
             )
-        elif detected_labels:
-            picked = {
-                str(segment.get("segment_id", "")): list(detected_labels)
-                for _, _, segment in chunk
-            }
+        elif index in skipped and config.chunk_fallback == "all":
+            picked = chunk_wide_pick(
+                chunk,
+                detected_labels(chunk_predictions[index]),
+            )
         else:
             continue
 
-        for segment_id, labels in picked.items():
-            risk_by_segment.setdefault(segment_id, [])
-            for label in labels:
-                if label not in risk_by_segment[segment_id]:
-                    risk_by_segment[segment_id].append(label)
+        merge_picks(risk_by_segment, picked)
+
+    if skipped:
+        logger.warning(
+            "1차 핵심 발화 스캔 줄 판정 상한(%s줄)을 넘어 덩어리 %s개는 줄 판정 없이 처리했습니다"
+            "(KEY_SCAN_MAX_LINE_PREDICTIONS, 되돌림=%s).",
+            config.max_line_predictions,
+            len(skipped),
+            config.chunk_fallback,
+        )
+
+    if collect is not None:
+        collect(
+            {
+                "config": dict(vars(config)),
+                "seconds": {
+                    "chunk": round(chunk_seconds, 3),
+                    "line": round(line_seconds, 3),
+                },
+                "chunks": [
+                    {
+                        "chunk_index": index + 1,
+                        "segment_ids": [
+                            str(segment.get("segment_id", ""))
+                            for _, _, segment in chunk
+                        ],
+                        "prediction": chunk_predictions[index],
+                        "inputs": inputs_by_chunk.get(index, []),
+                        "line_predictions": line_predictions.get(index),
+                        "budget_skipped": index in skipped,
+                    }
+                    for index, chunk in enumerate(chunks)
+                ],
+            }
+        )
 
     return risk_by_segment
 

@@ -347,6 +347,69 @@ def predict_abuse(
 
 
 # ============================================================
+# 5-1. 여러 텍스트 한 번에 — 확률만 (STT 검수 1차 스캔의 줄 단위 점수용)
+# ============================================================
+
+@torch.no_grad()
+def predict_probabilities_batch(
+    engine,
+    texts,
+    batch_size=16,
+):
+    """
+    여러 입력을 batch_size 씩 묶어 넣고 입력마다 {label: probability(반올림 전)} 를 돌려준다.
+
+    predict_abuse 와 같은 모델 · 토크나이저이고 attention mask 가 패딩을 가리므로 확률은 같다
+    (RoBERTa 의 위치 번호도 패딩을 빼고 세므로 오른쪽에 얼마나 채우든 같다). 다만 512 로 채우지 않고
+    묶음 안에서 가장 긴 입력까지만 채운다(동적 패딩) — quick_risk_scan 의 줄 단위 점수처럼 짧은 입력이
+    많을 때 호출 수와 계산량을 줄인다. detected 판정은 부르는 쪽이 threshold_for 로 한다.
+    """
+
+    texts = list(texts)
+
+    for text in texts:
+        if not text.strip():
+            raise ValueError(
+                "입력 텍스트가 비어 있습니다."
+            )
+
+    results = []
+
+    for start in range(0, len(texts), max(1, batch_size)):
+        batch = texts[start:start + max(1, batch_size)]
+
+        encoded = engine.tokenizer(
+            batch,
+            max_length=engine.max_length,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )
+
+        outputs = engine.model(
+            input_ids=encoded["input_ids"].to(engine.device),
+            attention_mask=encoded["attention_mask"].to(engine.device),
+        )
+
+        probabilities = (
+            torch.sigmoid(outputs.logits)
+            .detach()
+            .cpu()
+            .numpy()
+        )
+
+        for row in probabilities:
+            results.append(
+                {
+                    label_name: float(probability)
+                    for label_name, probability in zip(engine.label_names, row, strict=True)
+                }
+            )
+
+    return results
+
+
+# ============================================================
 # 6. Q+A 추론
 # ============================================================
 
