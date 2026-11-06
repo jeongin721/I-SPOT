@@ -11,6 +11,6 @@ export function processHeaderValues(input: SessionScreenInput, here: number) {
   return {
     ...header,
     title: sv ? `${sv.numberLabel} 처리 · ${header.alias}` : "",
-    steps: processNav(sv?.step ?? null, here, header.ids),
+    steps: processNav(sv?.step ?? null, here, header.ids, sv?.source ?? "AUDIO"),
   };
 }

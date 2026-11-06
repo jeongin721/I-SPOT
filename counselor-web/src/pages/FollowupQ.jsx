@@ -8,6 +8,9 @@
 // 다음 상담 체크리스트(useFollowupChecklist, 19절)가 켜져 있으면 rag 확인 사항을 메모와 한 목록(저장 전 초안)으로 합치고
 // (followupQ.ts mergeCheckItems · checksFromItems), 추가 질문 초안에 검토를 통과한 공식 근거를 붙인다. 공식 근거는 <Sources> 로 펼쳐 본다.
 // 추가 질문은 승인 목록(useFollowupQuestions, 18절)에 저장한다 — 카드 · 승인 · 수정 · 직접 추가는 디자인 마크업 그대로.
+// 문서 회차(2026-11-02): 초안은 3단계에 저장한 상담 요약 · 일지로 만든다(useSourceDocument, 들어올 때 없으면 한 번 만든다).
+// '3단계 내용으로 초안 다시 만들기' 단추만 덧붙였다(문서 회차에서만 보인다).
+import { useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -25,6 +28,7 @@ import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
+import { useSourceDocument } from '../data/useSourceDocument';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence, followupQValues } from '../data/screens/followupQ';
 import { initialCheckState } from '../data/screens/followupChecks';
@@ -83,17 +87,32 @@ function FollowupQScreen(props) {
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
-  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  // 문서 회차(2026-11-02): AI 분석 · 원문이 없고, 3단계에 저장한 칸으로 만든 초안(useSourceDocument)을 쓴다.
+  const known = detail.session !== null;
+  const fromDocument = detail.session?.source === 'DOCUMENT';
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled: enabled && known && !fromDocument });
+  const sourceDoc = useSourceDocument(ids.sessionId, { enabled: enabled && fromDocument });
   const questions = useFollowupQuestions(ids.sessionId, { enabled });
-  const checklist = useFollowupChecklist(ids.sessionId, { enabled, watch: analysis.processing || analysis.draftsPending });
+  // 문서 회차는 분석이 없어 rag 체크리스트를 부르지 않는다.
+  const checklist = useFollowupChecklist(ids.sessionId, { enabled: enabled && known && !fromDocument, watch: analysis.processing || analysis.draftsPending });
   const checks = useFollowupChecks(ids.sessionId, { enabled });
   // 추가 질문(초안 · 승인 목록)이나 체크리스트 확인 사항에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
   // 체크리스트 쪽은 저장 초안에서 원문에 없는 발화 번호를 거르는 데도 쓴다(#125 재검증 L2).
   const needEvidence =
     questionsNeedEvidence(analysis.analysis, questions.questions) || checklistNeedsEvidence(checklist.checklist, ids.sessionId);
-  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled, needEvidence });
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: enabled && known && !fromDocument, needEvidence });
+  // 문서 회차에 들어왔는데 4단계 초안이 아직 없으면 한 번 만든다(실패하면 안내만 하고 되풀이하지 않는다).
+  const asked = useRef(false);
+  const doc = sourceDoc.document;
+  useEffect(() => {
+    if (!fromDocument || asked.current || !doc || doc.followup_draft || sourceDoc.drafting) return;
+    const status = detail.session?.status;
+    if (status !== 'AI_REVIEW_REQUIRED' && status !== 'APPROVED') return;
+    asked.current = true;
+    void sourceDoc.draftFollowups();
+  }, [fromDocument, doc, sourceDoc, detail.session?.status]);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checklist, checks, go });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checklist, checks, sourceDoc, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-FollowupQ">
@@ -159,6 +178,17 @@ function FollowupQScreen(props) {
               <span className="chip c-ai">{v.chip}</span>
             </div>
             <span className="note">{v.checkNote}</span>
+            {v.redraft ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-s"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={v.redraft.run}
+                disabled={v.redraft.disabled}
+              >
+                {v.redraft.label}
+              </button>
+            ) : null}
             {v.checksEmpty ? <span className="note">{v.checksEmpty}</span> : null}
             {(v.checks || []).map((c) => (
               <div key={c.key} className="qcard" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: '12px' }}>

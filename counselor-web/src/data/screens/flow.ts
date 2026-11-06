@@ -71,6 +71,8 @@ const PROCESS_SCREENS = [
 
 /** 잠긴 단계 칸에 마우스를 올리면 보이는 안내. */
 export const LOCKED_HINT = "앞 단계를 끝내면 열립니다.";
+/** 문서 회차(상담 기록 문서를 올린 회차)의 1 · 2단계 칸 안내(2026-11-02). */
+export const DOCUMENT_SKIP_HINT = "상담 기록 문서로 만든 회차라 기록 확인 · 학대 신호 확인 단계가 없습니다.";
 
 /**
  * 회차 처리 화면 위의 단계 표시(.steps). here 는 지금 화면의 칸(0~3).
@@ -79,13 +81,30 @@ export const LOCKED_HINT = "앞 단계를 끝내면 열립니다.";
  * 단추('원문 확정 · 유형별 위험도 →' 같은)뿐이다(10/27 사용자 요청: 단계 칸 클릭은 끝난 단계만, 넘어가기는 아래 단추로).
  * 회차를 아직 못 읽었으면(step null) 지금 화면만 'on' 이고 나머지는 잠긴다. 링크는 같은 사례 · 회차 주소다.
  */
-export function processNav(step: SessionStep | null, here: number, ids: Partial<ScreenIds>) {
+export function processNav(
+  step: SessionStep | null,
+  here: number,
+  ids: Partial<ScreenIds>,
+  source: "AUDIO" | "DOCUMENT" = "AUDIO",
+) {
   const at = step === null ? 0 : CARD_OF[step];
   const lastDone = step === null ? -1 : at === -1 ? 2 : at - 1;
   // 누를 수 있는 마지막 칸: 끝난 칸 다음(지금 할 단계). 회차가 없으면 없음.
   const reach = step === null ? -1 : lastDone + 1;
 
   return PROCESS_SCREENS.map((screen, index) => {
+    // 문서 회차는 1 · 2단계가 없다 — 링크 없이 '—' 로 둔다.
+    if (source === "DOCUMENT" && index < 2) {
+      return {
+        href: null,
+        label: screen.label,
+        cls: "stp lock",
+        mark: "—",
+        weight: "500",
+        current: undefined,
+        title: DOCUMENT_SKIP_HINT,
+      };
+    }
     const on = index === here;
     const done = index <= lastDone;
     const locked = !on && !done && index > reach;

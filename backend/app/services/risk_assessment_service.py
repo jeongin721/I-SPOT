@@ -19,6 +19,7 @@ from app.core.enums import (
     AbuseType,
     AnalysisStatus,
     AuditAction,
+    SessionSource,
     SessionStatus,
     abuse_type_from_label,
 )
@@ -113,6 +114,16 @@ def ai_level_for(db: Session, session_id: uuid.UUID, abuse_type: AbuseType) -> O
     return ai_levels_by_type(_completed_severity_ratings(db, session_id)).get(abuse_type)
 
 
+def _reject_document_session(session: ConsultationSession) -> None:
+    """상담 기록 문서 회차(2026-11-02)에는 2단계(학대 신호 확인)가 없다 — AI 근거 없이 위험도 판단을 남기지 않는다."""
+
+    if session.source == SessionSource.DOCUMENT:
+        raise conflict(
+            ErrorCode.INVALID_SESSION_STATE,
+            "상담 기록 문서로 만든 회차에는 학대 신호 확인 단계가 없습니다.",
+        )
+
+
 def save_assessment(
     db: Session,
     session: ConsultationSession,
@@ -123,6 +134,7 @@ def save_assessment(
     """판단이 없으면 만들고 있으면 고친다. 고칠 때도 ai_level 은 지금 AI 제안으로 다시 읽는다."""
 
     assert_status_in(session.status, ASSESSABLE_STATUSES)
+    _reject_document_session(session)
 
     now = datetime.now(timezone.utc)
     ai_level = ai_level_for(db, session.id, abuse_type)
@@ -233,6 +245,7 @@ def save_overall_assessment(
     """회차 전체 판단이 없으면 만들고 있으면 고친다. 고칠 때도 ai_level 은 지금 AI 제안으로 다시 읽는다."""
 
     assert_status_in(session.status, ASSESSABLE_STATUSES)
+    _reject_document_session(session)
 
     now = datetime.now(timezone.utc)
     # rollback 뒤에는 session 객체가 만료되어 다시 읽어야 하므로 ID 를 미리 둔다.

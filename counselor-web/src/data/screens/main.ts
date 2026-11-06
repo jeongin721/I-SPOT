@@ -151,7 +151,9 @@ export function mainValues({ session, home, schedule, state, setState }: MainScr
   // 10/30 디자인: 업무 종류별 한 줄 — 칩(업무 이름) · 가장 오래 기다린 회차('외' 는 더 있을 때) · 오른쪽 건수.
   const groups = data?.tasks ?? [];
   // 홈에서는 원문 검수를 단계 이름 '기록 확인' 으로 쓴다(관리자 화면은 디자인이 안 바뀌어 그대로).
-  const homeLabel = (task: HomeTask) => (task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.stageLabel);
+  // 문서 회차의 검수 업무는 AI 결과가 아니라 문서에서 옮긴 상담일지 확인이다(2026-11-02).
+  const homeLabel = (task: HomeTask) =>
+    task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.fromDocument ? "상담일지 확인" : task.stageLabel;
   const todos = groups.slice(0, HOME_TASK_COUNT).map((task) => {
     const label = homeLabel(task);
     return {

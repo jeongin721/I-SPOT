@@ -25,10 +25,12 @@ import type {
   ChecklistKind,
   FollowupCheck,
   FollowupCheckPoint,
+  FollowupQuestionDraft,
   QuestionEvidence,
   SessionStatus,
 } from "../../api/types";
 import type { FollowupChecklistState } from "../useFollowupChecklist";
+import type { SourceDocumentState } from "../useSourceDocument";
 import type { FollowupChecksState } from "../useFollowupChecks";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
@@ -45,6 +47,8 @@ import { parseBackendTime } from "../time";
 
 export interface FollowupScreenInput extends SessionScreenInput {
   analysis: SessionAnalysisState;
+  /** 문서 회차(2026-11-02)의 상담 기록 문서 — 4단계 초안(followup_draft). 녹음 회차면 null. */
+  sourceDoc?: SourceDocumentState | null;
   signals: RiskSignalsState;
   questions: FollowupQuestionsState;
   /** 다음 상담 체크리스트(19절). 없으면(이전 호출부) 메모만 보인다. */
@@ -509,22 +513,31 @@ export function followupQValues(input: FollowupScreenInput) {
   const { analysis, signals } = input;
   const header = processHeaderValues(input, 3);
   const ids = header.ids;
+  const fromDocument = input.detail.session?.source === "DOCUMENT";
   // 3 · 4단계 AI 초안을 만드는 중이면 '분석 중' 으로 본다(stepStatus — 저장 · 승인을 막고 안내를 보인다).
-  const status = analysis.stepStatus;
+  const status = fromDocument ? input.detail.session?.status ?? null : analysis.stepStatus;
   const view = analysis.analysis;
   const analyzed = status === "AI_REVIEW_REQUIRED" || status === "APPROVED";
-  const completed = analyzed && view !== null && view.status === "COMPLETED";
-  const rag = checklistValues(input.checklist, view, analyzed, ids);
+  // 문서 회차: AI 분석이 없고, 3단계에 저장한 칸으로 만든 초안(followup_draft)을 쓴다. 근거 위치 · rag 체크리스트는 없다.
+  const docDraft = fromDocument ? input.sourceDoc?.document?.followup_draft ?? null : null;
+  const completed = fromDocument ? docDraft !== null : analyzed && view !== null && view.status === "COMPLETED";
+  const rag = checklistValues(input.checklist, fromDocument ? null : view, analyzed && !fromDocument, ids);
+  const points: FollowupCheckPoint[] = fromDocument
+    ? (docDraft?.checks ?? []).map((item) => ({ text: item.text, segment_ids: [] }))
+    : completed
+      ? view?.followupCheckPoints ?? []
+      : [];
+  const questionDrafts: FollowupQuestionDraft[] = fromDocument
+    ? (docDraft?.questions ?? []).map((item) => ({ text: item.text, kind: "OPEN", segment_ids: [], reason: item.reason, bank_code: null }))
+    : completed
+      ? view?.followupQuestions ?? []
+      : [];
   // 저장 전 초안 · 줄 표시에 쓰는 합친 목록(AI 확인 메모 + rag 확인 사항, 메모 먼저 · 같은 문장 한 번).
   // 발화 번호는 원문에 있는 것만 남기고 근거 위치를 다시 잡는다(settleCheckItems — 상담 전 브리핑과 같은 목록).
-  const merged = completed
-    ? settleCheckItems(
-        mergeCheckItems(toFollowupItems(view?.followupCheckPoints ?? [], signals.locate, ids), rag.items),
-        signals.locate,
-        signals.sourceReady,
-        ids,
-      )
-    : [];
+  const merged =
+    completed && !fromDocument
+      ? settleCheckItems(mergeCheckItems(toFollowupItems(points, signals.locate, ids), rag.items), signals.locate, signals.sourceReady, ids)
+      : [];
   const withRag = rag.items.length > 0;
   const annotations = ragCheckAnnotations(merged, {
     saved: input.checks.saved,
@@ -534,8 +547,9 @@ export function followupQValues(input: FollowupScreenInput) {
     state: input.state,
     setState: input.setState,
     checks: input.checks,
-    points: completed ? view?.followupCheckPoints ?? [] : [],
-    drafts: completed ? checksFromItems(merged) : [],
+    points,
+    // 문서 회차는 rag 가 없어 메모 초안(points)을 그대로 쓴다.
+    drafts: completed && !fromDocument ? checksFromItems(merged) : undefined,
     annotate: annotations.annotate,
     pending: annotations.pending(input.checks.items),
     locate: signals.locate,
@@ -546,6 +560,10 @@ export function followupQValues(input: FollowupScreenInput) {
   let empty = "";
 
   if (checkCard.checks.length > 0 || input.checks.saved) empty = input.checks.saved && checkCard.checks.length === 0 ? "저장한 확인 사항이 없습니다." : "";
+  else if (fromDocument && input.sourceDoc?.drafting) empty = "3단계 상담 요약 · 일지로 확인 사항 · 질문 초안을 만드는 중입니다(1~2분).";
+  else if (fromDocument && input.sourceDoc?.draftError) empty = input.sourceDoc.draftError;
+  else if (fromDocument && docDraft?.source === "NONE") empty = "AI 초안을 만들지 않는 서버입니다. '+ 확인 사항 직접 추가' 로 쓸 수 있습니다.";
+  else if (fromDocument && !completed) empty = "3단계 상담 요약 · 일지를 저장하면 확인 사항 · 질문 초안을 만듭니다.";
   else if (analysis.draftsPending) empty = "AI 초안을 만드는 중입니다. 잠시 뒤 저절로 보입니다.";
   else if (status === "AI_PROCESSING") empty = "AI 분석 중입니다. 끝나면 확인 메모가 보입니다.";
   else if (analysis.draftsFailed) {
@@ -559,9 +577,21 @@ export function followupQValues(input: FollowupScreenInput) {
   return {
     ...header,
     chip: withRag ? FOLLOWUP_RAG_CHIP : FOLLOWUP_CHIP,
-    checkNote: withRag
-      ? "AI 확인 메모와, 공식 근거(매뉴얼 · 체크리스트 · 법령 · 판례)를 함께 본 AI 초안입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다."
-      : "AI 가 다음 상담에서 확인해 두면 좋겠다고 남긴 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.",
+    checkNote: fromDocument
+      ? "3단계에 저장한 상담 요약 · 일지로 AI 가 남긴 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다."
+      : withRag
+        ? "AI 확인 메모와, 공식 근거(매뉴얼 · 체크리스트 · 법령 · 판례)를 함께 본 AI 초안입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다."
+        : "AI 가 다음 상담에서 확인해 두면 좋겠다고 남긴 메모입니다. 아이에게 할 질문이 아니고, 확인할지는 상담원이 정합니다.",
+    // 문서 회차: 3단계를 고친 뒤 초안을 다시 만든다(저장한 확인 사항 · 승인한 질문은 그대로). 첫 초안이 실패했을 때도 보인다 —
+    // 자동 만들기는 한 번만 하므로 이 단추가 없으면 새로고침해야 했다(민규 #137 R10).
+    redraft:
+      fromDocument && input.sourceDoc && (docDraft || input.sourceDoc.draftError)
+        ? {
+            label: input.sourceDoc.drafting ? "만드는 중…" : docDraft ? "3단계 내용으로 초안 다시 만들기" : "초안 다시 만들기",
+            disabled: input.sourceDoc.drafting,
+            run: () => void input.sourceDoc!.draftFollowups(),
+          }
+        : null,
     ...checkCard,
     checksEmpty: empty,
     ragStatus: rag.status,
@@ -573,7 +603,7 @@ export function followupQValues(input: FollowupScreenInput) {
     ...questionValues({
       state: input.state,
       setState: input.setState,
-      drafts: completed ? view?.followupQuestions ?? [] : [],
+      drafts: questionDrafts,
       saved: input.questions,
       locate: signals.locate,
       ids,
@@ -582,7 +612,7 @@ export function followupQValues(input: FollowupScreenInput) {
       questionEvidence: rag.questionEvidence,
     }),
     error: analysis.error,
-    signalError: completed ? signals.evidenceError : null,
+    signalError: completed && !fromDocument ? signals.evidenceError : null,
     backHref: screenHref("/NoteWrite", ids),
     // 10/29 디자인: 마지막 단추는 상담 전 브리핑(내담자 정보 탭 안)으로 간다.
     doneHref: briefingHref(ids.caseId ?? null),
