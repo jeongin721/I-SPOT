@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 
 from ai.modeling.abuse.question_rules import (
     JUDGMENT_TERMS,
+    QUESTION_TONE_EXAMPLES,  # noqa: F401 — 말투 예시(시험 · 비교 스크립트가 이 이름으로 본다)
     judgment_reason,
     leading_reason,
+    tone_examples_text,
 )
 
 from .config import ANALYZER_MODEL
@@ -21,7 +23,9 @@ from .retriever import search_evidence
 #   1) 확인할 사항 추출: 사례 기록(이번 회차 아동 발화 · 이전 회차 · 아이 앱 응답)에서 정보 공백 · 미이행 계획 ·
 #      변화 · 불일치를 뽑는다.
 #   2) 질문 생성: 확인할 사항마다 공식 근거(매뉴얼 면담 지침 · 체크리스트 · 법령 · 판례)를 보고 LLM 이 질문을 쓴다.
-#   3) 검증: 규칙(사례 근거 + 공식 근거 ID · 유도 표현 · 판단 용어 · 아동이 말하지 않은 행위자/행위) → LLM 검토.
+#      확인할 사항(상담사용 메모)을 그대로 묻지 않고, 아이가 편하게 답할 수 있는 말투로 돌려 쓴다(QUESTION_TONE_EXAMPLES).
+#   3) 검증: 규칙(사례 근거 + 공식 근거 ID · 유도 표현 · 판단 용어 · 아동이 말하지 않은 행위자/행위) → LLM 검토
+#      (유도 · 전제 · 연령 부적합 · 판단 표현 · 너무 직접적으로 캐묻는 말투).
 #      상담사용 질문이 모자라면 탈락 사유를 알려 주고 한 번 더 만든다.
 #      화면에 보이는 칸(확인할 사항 item · reason, 질문 rationale)도 판정 · 단정 표현을 거른다(judgment_reason).
 #   공식 근거가 하나도 없으면(검색 0건) 질문을 만들지 않는다. 질문 생성이 실패해도 근거 없는 대체 질문을 쓰지 않는다.
@@ -67,7 +71,7 @@ class CheckItemDrafts(BaseModel):
 
 class QuestionDraft(BaseModel):
     check_item_id: str | None = Field(default=None, description="이 질문이 다루는 확인할 사항 ID(check:N)")
-    question: str = Field(description="아동에게 할 질문")
+    question: str = Field(description="아동에게 할 질문. 확인할 사항을 그대로 묻지 않고 아이가 편하게 답할 수 있는 말투로")
     audience: Audience
     question_type: QuestionType
     priority: Priority
@@ -89,11 +93,28 @@ class QuestionReview(BaseModel):
     presupposes: bool = Field(description="아동 기록에서 확인되지 않은 사실을 전제함")
     age_inappropriate: bool = Field(description="어려운 말, 긴 문장, 한 번에 여러 가지를 물음")
     judgmental: bool = Field(description="학대·처벌·범죄 같은 판단·법률 표현, 누군가를 탓함")
+    too_direct: bool = Field(
+        default=False,
+        description="맥락 없이 사실(시기·횟수·병원·연락 여부 등)을 바로 캐묻거나 '왜'로 따져 물어 아이가 추궁받는 느낌을 줌",
+    )
     reason: str = Field(default="", description="문제가 있으면 짧은 사유")
 
 
 class QuestionReviews(BaseModel):
     reviews: list[QuestionReview] = Field(default_factory=list)
+
+
+# 검토에서 걸린 기준 → 검토자가 사유를 비워 둘 때 쓰는 탈락 사유. 다시 만들 때 LLM 에 그대로 알려 준다.
+REVIEW_FLAG_REASONS = {
+    "leading": "답을 암시하는 질문입니다",
+    "presupposes": "확인되지 않은 사실을 전제합니다",
+    "age_inappropriate": "아이에게 어렵거나 깁니다",
+    "judgmental": "판단 · 법률 표현이 있습니다",
+    "too_direct": "아이에게 너무 직접적으로 캐묻습니다",
+}
+
+# 질문 말투 예시는 #118 추가 질문 프롬프트와 같이 쓴다(ai/modeling/abuse/question_rules.QUESTION_TONE_EXAMPLES).
+_TONE_EXAMPLE_TEXT = tone_examples_text()
 
 
 CHECK_ITEM_SYSTEM_PROMPT = """당신은 아동 상담사가 다음 상담 전에 챙길 '확인할 사항'을 정리하는 보조 분석기입니다.
@@ -118,9 +139,10 @@ CHECK_ITEM_SYSTEM_PROMPT = """당신은 아동 상담사가 다음 상담 전에
 - 확인할 사항이 없으면 빈 배열을 돌려줍니다.
 """
 
-QUESTION_SYSTEM_PROMPT = """당신은 아동 상담사가 다음 상담에서 쓸 질문 초안을 만드는 보조 도구입니다. 상담사가 승인해야 쓰입니다.
+QUESTION_SYSTEM_PROMPT = f"""당신은 아동 상담사가 다음 상담에서 쓸 질문 초안을 만드는 보조 도구입니다. 상담사가 승인해야 쓰입니다.
 
 [확인할 사항]마다 [사례 기록]과 [공식 근거](업무 매뉴얼 · 체크리스트 · 법령 · 판례)를 근거로 질문을 만드세요.
+[확인할 사항]은 상담사가 알아야 할 내용을 적은 메모입니다. 메모를 그대로 의문문으로 옮기지 말고 아래 '말투'대로 돌려서 묻습니다.
 
 대상(audience):
 - counselor: 상담사가 다음 상담에서 아동에게 직접 묻는 질문. 3~5개.
@@ -137,6 +159,21 @@ QUESTION_SYSTEM_PROMPT = """당신은 아동 상담사가 다음 상담에서 �
 - 학대 · 처벌 · 신고 · 범죄 · 가해 같은 판단 · 법률 용어를 질문에 쓰지 않습니다.
 - 확인되지 않은 사실을 전제하지 않습니다. 한 질문에는 한 가지만 묻습니다.
 
+말투(아이에게 다가가는 방식):
+- 시기 · 횟수 · 병원 · 연락 여부 같은 사실을 첫마디부터 캐묻지 않습니다. 아이가 전에 한 말을 먼저 짚거나
+  기분 · 몸 상태 · 요즘 지낸 이야기로 열어서, 아이가 자기 말로 이어 가게 합니다.
+- 예/아니오로 사실을 확인받는 질문(예: "병원에 갔어?")보다 아이가 자기 말로 답할 수 있는 질문을 씁니다.
+- "괜찮으면", "생각나는 만큼만"처럼 부담을 덜어 주는 말을 한 마디쯤 넣을 수 있습니다. 문장을 길게 늘이지 않습니다.
+- "왜 ~했어?"는 아이가 탓을 듣는 것처럼 느낄 수 있습니다.
+  "어떻게 하다가 ~하게 됐어?", "~했던 마음을 조금 더 이야기해 줄래?"처럼 바꿉니다.
+- 문장 끝은 "~해 줄래?", "~어때?", "~궁금해."처럼 맺습니다. "~지?", "~괜찮지?", "~인지?"로 끝내지 않습니다.
+- 부드럽게 만드는 것은 말투 · 순서 · 부담 덜기에서만 합니다. 아이가 말하지 않은 감정("많이 무서웠겠다")이나
+  짐작("혹시 ~해서 그런 거야?")을 보태지 않습니다.
+- 아이 앱 질문도 같은 말투로 쓰되 40자를 넘기지 않습니다.
+
+말투 예시(말투만 참고합니다. 내용은 [사례 기록]에서 가져오고 예시 문장을 그대로 쓰지 않습니다):
+{_TONE_EXAMPLE_TEXT}
+
 근거 쓰는 법:
 - case_refs 에 질문의 근거가 된 사례 기록 ID(case:N)를 하나 이상 넣습니다.
 - knowledge_refs 에 공식 근거 ID(manual:N · checklist:N · law:N · precedent:N)를 하나 이상 넣습니다.
@@ -151,6 +188,9 @@ REVIEW_SYSTEM_PROMPT = """당신은 아동 면담 질문을 검토하는 검토�
 - presupposes: 아동 기록에서 확인되지 않은 사실을 사실처럼 전제한다.
 - age_inappropriate: 아동이 이해하기 어려운 말, 긴 문장, 한 번에 여러 가지를 묻는다.
 - judgmental: 학대 · 처벌 · 범죄 같은 판단 · 법률 표현이 있거나 누군가를 탓한다.
+- too_direct: 앞뒤 맥락 없이 사실(시기 · 횟수 · 병원 · 연락 여부 등)을 바로 캐묻거나, 예/아니오로 사실을 확인받거나,
+  "왜"로 따지듯 물어 아이가 추궁받는 느낌을 받을 수 있다. 아이가 전에 한 말을 먼저 짚거나 기분 · 근황으로
+  열어 주는 질문, 일상 · 기분을 가볍게 묻는 질문은 해당하지 않는다.
 
 문제가 없으면 모두 false 로 둡니다. 모든 질문을 question_id 로 한 번씩 판정합니다. reason 은 짧게 씁니다.
 """
@@ -438,7 +478,10 @@ def _generate_questions(
 ) -> list[QuestionDraft]:
     parts = []
     if check_items:
-        parts.append(f"[확인할 사항]\n{_check_item_text(check_items)}")
+        parts.append(
+            "[확인할 사항] (상담사용 메모입니다. 그대로 묻지 말고 '말투' 원칙대로 돌려서 묻습니다)\n"
+            + _check_item_text(check_items)
+        )
     parts.append(f"[사례 기록]\n{_case_text(case_records)}")
     parts.append(f"[공식 근거]\n{_knowledge_text(knowledge)}")
     if rejected:
@@ -470,8 +513,8 @@ def _review_questions(
     for review in raw.reviews:
         if not 1 <= review.question_id <= len(questions) or review.question_id in verdicts:
             continue
-        failed = review.leading or review.presupposes or review.age_inappropriate or review.judgmental
-        verdicts[review.question_id] = (review.reason.strip() or "검토 기준 미충족") if failed else None
+        failed = [reason for flag, reason in REVIEW_FLAG_REASONS.items() if getattr(review, flag)]
+        verdicts[review.question_id] = (review.reason.strip() or failed[0]) if failed else None
     # 검토에서 빠진 질문은 통과시키지 않는다.
     for index in range(1, len(questions) + 1):
         verdicts.setdefault(index, "검토 결과 없음")
