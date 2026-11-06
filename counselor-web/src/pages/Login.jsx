@@ -324,56 +324,6 @@ export default function Login(props) {
                     </label>
                   </div>
                 ) : null}
-                {v.suShowBirth ? (
-                  <div className="sf-row sf-slide">
-                    <label className={`sf-f ${v.suBirthCls}`}>
-                      <span className="sf-lb">생년월일</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={8}
-                        placeholder="예: 19990919"
-                        value={v.suBirth}
-                        onChange={v.suSetBirth}
-                        onKeyDown={v.suKey}
-                        aria-label="생년월일 8자리"
-                      />
-                    </label>
-                    {v.suBirthBad ? <p className="sf-err">올바른 날짜가 아닙니다.</p> : null}
-                  </div>
-                ) : null}
-                {v.suShowSex ? (
-                  <div className="sf-row sf-slide">
-                    <div className={`sf-f ${v.suSexCls}`}>
-                      <span className="sf-lb">성별</span>
-                      <div className="sf-sex" role="radiogroup" aria-label="성별">
-                        {v.suSexOpts.map((o) => (
-                          <button key={o.label} type="button" role="radio" aria-checked={o.on} className={o.cls} onClick={o.pick}>
-                            {o.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {v.suShowPhone ? (
-                  <div className="sf-row sf-slide">
-                    <label className={`sf-f ${v.suPhoneCls}`}>
-                      <span className="sf-lb">휴대폰 번호</span>
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        maxLength={13}
-                        placeholder="예: 010-1234-5678"
-                        value={v.suPhone}
-                        onChange={v.suSetPhone}
-                        onKeyDown={v.suKey}
-                        aria-label="휴대폰 번호"
-                      />
-                    </label>
-                    {v.suPhoneBad ? <p className="sf-err">올바른 휴대폰 번호가 아닙니다.</p> : null}
-                  </div>
-                ) : null}
                 {v.suShowEmail ? (
                   <div className="sf-row sf-slide">
                     <div className={`sf-f ${v.suEmailCls}`}>

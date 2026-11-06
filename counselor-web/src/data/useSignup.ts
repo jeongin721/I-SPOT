@@ -3,6 +3,7 @@
 //
 // - 신청만으로는 계정이 생기지 않는다. 관리자가 승인해야 로그인할 수 있다.
 // - 확인 토큰은 저장하지 않고 이 훅의 ref(메모리)에만 둔다. 팝업을 닫거나 처음부터 다시 하면 버린다.
+// - 팝업을 열고 닫을 때마다(reset) 번호를 올린다. 앞 팝업에서 보낸 요청의 응답은 버리고, 그 응답의 토큰도 담지 않는다.
 // - 오류 문구는 Backend 문구를 그대로 쓴다. 횟수 제한(429)은 남은 초, 틀린 번호(422)는 남은 횟수를 함께 넘긴다.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -46,6 +47,9 @@ const RESTART_CODES = new Set(["VERIFICATION_CODE_EXPIRED", "SIGNUP_TOKEN_INVALI
 /** 422 VALIDATION_ERROR 의 이메일 사유는 이 고정 문구로 시작한다(한글 아이디 등). 공통 문구 대신 이것을 보여 준다. */
 const EMAIL_FORMAT_MESSAGE = "이메일 형식이 올바르지 않습니다. 영문 주소만 받습니다.";
 
+/** 문구가 없는 실패는 화면이 아무것도 하지 않는다(겹친 요청 · 앞 팝업의 응답). */
+const IGNORED: SignupFailure = { ok: false, message: "" };
+
 function toFailure(caught: unknown): SignupFailure {
   if (!(caught instanceof ApiError)) return { ok: false, message: FALLBACK };
 
@@ -73,8 +77,10 @@ export function useSignup(): SignupState {
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const token = useRef<string | null>(null);
-  // 두 번 눌러도 요청은 하나만 보낸다.
-  const inFlight = useRef(false);
+  // 지금 팝업의 번호. 응답이 올 때 번호가 다르면 앞 팝업의 응답이다.
+  const popup = useRef(0);
+  // 두 번 눌러도 요청은 하나만 보낸다(같은 팝업 안에서).
+  const inFlight = useRef<number | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -97,18 +103,24 @@ export function useSignup(): SignupState {
   }, []);
 
   const run = useCallback(async <T,>(call: () => Promise<T>): Promise<SignupResult<T>> => {
-    if (inFlight.current) return { ok: false, message: "" };
+    const ticket = popup.current;
 
-    inFlight.current = true;
+    if (inFlight.current === ticket) return IGNORED;
+
+    inFlight.current = ticket;
     setBusy(true);
 
     try {
-      return { ok: true, ...(await call()) };
+      const value = await call();
+
+      return ticket === popup.current ? { ok: true, ...value } : IGNORED;
     } catch (caught) {
-      return toFailure(caught);
+      return ticket === popup.current ? toFailure(caught) : IGNORED;
     } finally {
-      inFlight.current = false;
-      if (mounted.current) setBusy(false);
+      if (inFlight.current === ticket) {
+        inFlight.current = null;
+        if (mounted.current) setBusy(false);
+      }
     }
   }, []);
 
@@ -123,14 +135,17 @@ export function useSignup(): SignupState {
   );
 
   const verify = useCallback(
-    (email: string, code: string) =>
-      run(async () => {
+    (email: string, code: string) => {
+      const ticket = popup.current;
+
+      return run(async () => {
         const verified = await signup.verifyCode(email.trim(), code);
 
-        token.current = verified.verification_token;
+        if (ticket === popup.current) token.current = verified.verification_token;
 
         return {};
-      }),
+      });
+    },
     [run],
   );
 
@@ -157,7 +172,10 @@ export function useSignup(): SignupState {
   );
 
   const reset = useCallback(() => {
+    popup.current += 1;
     token.current = null;
+    inFlight.current = null;
+    setBusy(false);
   }, []);
 
   return { enabled, allowedDomains, busy, sendCode, verify, submit, reset };

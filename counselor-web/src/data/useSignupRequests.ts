@@ -3,7 +3,7 @@
 //
 // - 오래된 신청부터 한 쪽(100건)만 받는다. 대기 신청은 14일 뒤 서버가 지운다.
 // - 요청은 한 번에 하나다. 끝나면 목록을 다시 받고 다른 관리자 훅(대시보드 · 접속 기록)에 알린다(adminEvents).
-// - 두 관리자가 같은 신청을 동시에 누르면 하나만 된다(409 SIGNUP_ALREADY_DECIDED). 그때도 목록을 다시 받는다.
+// - 두 관리자가 같은 신청을 동시에 누르면 하나만 된다(409 SIGNUP_ALREADY_DECIDED). 그때도 두 목록을 다시 받고, 오류 문구는 카드에 남긴다.
 
 import { useCallback, useRef, useState } from "react";
 
@@ -68,7 +68,11 @@ export function useSignupRequests(access: AdminAccess, { enabled = true }: Admin
 
         return list.isCurrent(ticket);
       } catch (caught) {
-        if (list.isCurrent(ticket)) setActionError({ key, message: errorMessage(caught, fallback) });
+        if (list.isCurrent(ticket)) {
+          setActionError({ key, message: errorMessage(caught, fallback) });
+          // 다른 관리자가 먼저 승인했으면 계정이 새로 생겼다.
+          notifyAccountsChanged();
+        }
 
         return false;
       } finally {
@@ -93,6 +97,12 @@ export function useSignupRequests(access: AdminAccess, { enabled = true }: Admin
     [perform],
   );
 
+  const { reload: reloadList } = list;
+  const reload = useCallback(() => {
+    setActionError(null);
+    reloadList();
+  }, [reloadList]);
+
   return {
     items: list.data?.items ?? [],
     total: list.data?.meta.total ?? 0,
@@ -102,6 +112,6 @@ export function useSignupRequests(access: AdminAccess, { enabled = true }: Admin
     actionError: actionError && actionError.key === key ? actionError.message : null,
     approve,
     reject,
-    reload: list.reload,
+    reload,
   };
 }
