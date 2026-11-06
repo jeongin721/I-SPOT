@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Literal, Optional, Tuple
 
-from sqlalchemy import case as sql_case, func, select
+from sqlalchemy import and_, case as sql_case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -220,12 +220,11 @@ def _case_order(sort: Optional[CaseSort], risk_level) -> list:
         return [Case.report_date.desc().nulls_last(), *latest_first]
 
     if sort == "risk":
-        rank = sql_case(
-            (risk_level == RiskLevel.HIGH, 3),
-            (risk_level == RiskLevel.MEDIUM, 2),
-            (risk_level == RiskLevel.LOW, 1),
-            else_=0,
-        )
+        # 목록에 보이는 값과 같은 순서: 회차 상담원 판단, 판단 전이면 서식 4 위험도(우선).
+        def _is(level: RiskLevel):
+            return or_(risk_level == level, and_(risk_level.is_(None), Case.counselor_risk_level == level))
+
+        rank = sql_case((_is(RiskLevel.HIGH), 3), (_is(RiskLevel.MEDIUM), 2), (_is(RiskLevel.LOW), 1), else_=0)
         return [rank.desc(), *latest_first]
 
     return [Case.created_at.desc()]
