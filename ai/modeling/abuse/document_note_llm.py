@@ -139,7 +139,7 @@ def _starts_item(line: str) -> bool:
 def _source_runs(source: str) -> set:
     """원문을 '확실한 경계' 사이 덩어리로 나눈 비교 열쇠(와 실제 칸 이름을 뗀 열쇠).
 
-    확실한 경계: 마침표 · 물음표 · 느낌표, 빈 줄, 글 끝, 다음 줄이 새 항목(글머리표 · 번호 · 실제 칸 이름), 실제 칸 이름만 있는 줄.
+    확실한 경계: 마침표 · 물음표 · 느낌표, 빈 줄, 글 끝, 다음 줄이 새 항목(글머리표 · 번호 · 실제 칸 이름), 제목만 있는 줄('이름:' · '[이름]').
     마침표 없이 바뀐 줄(PDF 줄 · 쪽 꺾임 '아동은 맞았다⏎고 말하지 않았다.', 마침표 없는 목록)은 경계로 보지 않고 다음 줄과
     한 덩어리로 묶는다 — 덩어리 앞부분만 옮긴 조각('아동은 맞았다.')은 통과하지 않고, 덩어리를 통째로 옮기면(여러 줄로
     나눠 옮겨도) 통과한다(민규 #137 교차검증 11/05 — 전에는 줄 바꿈을 문장 경계로 믿어 조각이 201, 온 문장이 502).
@@ -154,7 +154,9 @@ def _source_runs(source: str) -> set:
                 segments[-1] = (*segments[-1][:1], True, *segments[-1][2:])
             continue
         following = next((later for later in lines[index + 1:] if later.strip()), None)
-        heading_only = _strip_heading(stripped) == ""
+        # 제목만 있는 줄은 칸 이름이 아니어도('주호소:' · '[상담 내용]') 끝난 줄이다 — 아래 본문과 한 덩어리로 묶으면 본문 문장을 옮긴
+        # 답이 다 버려져 문서가 502 가 된다(민규 #137 교차검증 11/06). 다음 줄 판정(_starts_item)은 실제 칸 이름만 본다.
+        heading_only = bool(re.fullmatch(r"\[[^\]\n]{1,30}\]|[^\n]{1,20}[:：]", stripped))
         line_closed = (
             following is None
             or heading_only

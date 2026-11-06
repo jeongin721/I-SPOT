@@ -733,3 +733,19 @@ def test_colon_or_decimal_in_continuation_is_not_a_new_item(source: str, piece: 
     assert dn.keep_copied(piece, source) == ""
     assert dn.keep_copied(whole, source) == whole
     assert dn.copied_from_source("부의 음주", "부의 음주\n위험요인: 체벌.")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "주호소:\n아동은 학교에 가기 싫다고 함.\n향후계획:\n다음 주 재상담 예정.",
+        "[상담 내용]\n아동은 학교에 가기 싫다고 함.\n[향후 계획]\n다음 주 재상담 예정.",
+    ],
+)
+def test_heading_only_line_is_not_glued_to_body(source: str) -> None:
+    """칸 이름이 아닌 제목 줄('주호소:' · '[상담 내용]') 아래 본문만 옮겨도 남는다 — 문서 전체가 이 모양이어도 502 가 아니다(민규 #137 교차검증 11/06)."""
+
+    assert dn.keep_copied("아동은 학교에 가기 싫다고 함.", source) == "아동은 학교에 가기 싫다고 함."
+    assert dn.keep_copied("다음 주 재상담 예정.", source) == "다음 주 재상담 예정."
+    cleaned = dn.clean_note({"note": {"statement": "아동은 학교에 가기 싫다고 함.", "opinion": "다음 주 재상담 예정."}}, source)
+    assert cleaned["note"]["statement"] and cleaned["note"]["opinion"]
