@@ -324,6 +324,56 @@ export default function Login(props) {
                     </label>
                   </div>
                 ) : null}
+                {v.suShowBirth ? (
+                  <div className="sf-row sf-slide">
+                    <label className={`sf-f ${v.suBirthCls}`}>
+                      <span className="sf-lb">생년월일</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={8}
+                        placeholder="예: 19990919"
+                        value={v.suBirth}
+                        onChange={v.suSetBirth}
+                        onKeyDown={v.suKey}
+                        aria-label="생년월일 8자리"
+                      />
+                    </label>
+                    {v.suBirthBad ? <p className="sf-err">올바른 날짜가 아닙니다.</p> : null}
+                  </div>
+                ) : null}
+                {v.suShowSex ? (
+                  <div className="sf-row sf-slide">
+                    <div className={`sf-f ${v.suSexCls}`}>
+                      <span className="sf-lb">성별</span>
+                      <div className="sf-sex" role="radiogroup" aria-label="성별">
+                        {v.suSexOpts.map((o) => (
+                          <button key={o.label} type="button" role="radio" aria-checked={o.on} className={o.cls} onClick={o.pick}>
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {v.suShowPhone ? (
+                  <div className="sf-row sf-slide">
+                    <label className={`sf-f ${v.suPhoneCls}`}>
+                      <span className="sf-lb">휴대폰 번호</span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={13}
+                        placeholder="예: 010-1234-5678"
+                        value={v.suPhone}
+                        onChange={v.suSetPhone}
+                        onKeyDown={v.suKey}
+                        aria-label="휴대폰 번호"
+                      />
+                    </label>
+                    {v.suPhoneBad ? <p className="sf-err">올바른 휴대폰 번호가 아닙니다.</p> : null}
+                  </div>
+                ) : null}
                 {v.suShowEmail ? (
                   <div className="sf-row sf-slide">
                     <div className={`sf-f ${v.suEmailCls}`}>
@@ -372,13 +422,10 @@ export default function Login(props) {
                     <div className="sf-sub">
                       <span className={v.suTimerCls}>{v.suTimer}</span>
                       <span style={{ flex: '1' }}>{v.suSentNote}</span>
-                      <button type="button" className="sf-mini" onClick={v.suResend} disabled={!v.suResendOn}>
-                        {v.suResendLabel}
+                      <button type="button" className="sf-mini" onClick={v.suResend}>
+                        다시 보내기
                       </button>
                     </div>
-                    <p className="sf-rule" style={{ display: 'block', margin: '8px 0 0' }}>
-                      {v.suSpamNote}
-                    </p>
                   </div>
                 ) : null}
                 {v.suError ? (
@@ -389,11 +436,11 @@ export default function Login(props) {
               </div>
               {v.suNextOn ? (
                 <button type="button" className="sf-next on" onClick={v.suNext}>
-                  {v.suNextLabel}
+                  다음
                 </button>
               ) : (
                 <button type="button" className="sf-next" disabled>
-                  {v.suNextLabel}
+                  다음
                 </button>
               )}
             </section>
@@ -410,11 +457,8 @@ export default function Login(props) {
                     !
                   </span>
                   <h2 id="su-wrong" className="sf-title" style={{ textAlign: 'center' }}>
-                    {v.suWrong.title}
+                    인증번호가 틀렸습니다.
                   </h2>
-                  <p className="sf-lb" style={{ margin: '0', textAlign: 'center' }}>
-                    {v.suWrong.note}
-                  </p>
                   <button type="button" className="sf-next on" onClick={v.suWrongOk}>
                     확인
                   </button>
@@ -457,7 +501,7 @@ export default function Login(props) {
                 <div>
                   <div className="sf-f">
                     <label className="sf-lb" htmlFor="su-pw">
-                      비밀번호 <span className="sf-rule">{v.ruleText}</span>
+                      비밀번호 <span className="sf-rule">8~16자의 영문 대소문자, 숫자, 특수문자 포함</span>
                     </label>
                     <div className="sf-pw">
                       <input
@@ -471,6 +515,11 @@ export default function Login(props) {
                       <PwEye eye={v.suPwEye} />
                     </div>
                   </div>
+                  {v.suPwRuleBad ? (
+                    <p className="sf-err" role="alert">
+                      8~16자의 영문 대소문자, 숫자, 특수문자 포함
+                    </p>
+                  ) : null}
                   {v.suErrors.map((message) => (
                     <p key={message} className="sf-err" role="alert">
                       {message}
@@ -507,11 +556,11 @@ export default function Login(props) {
                 </button>
                 {v.suDoneOn ? (
                   <button type="button" className="sf-next on" onClick={v.suDone}>
-                    {v.suDoneLabel}
+                    완료
                   </button>
                 ) : (
                   <button type="button" className="sf-next" disabled>
-                    {v.suDoneLabel}
+                    완료
                   </button>
                 )}
               </div>
