@@ -6,17 +6,19 @@
 //  - 로그인은 이메일(Backend 계약). 10/21 디자인(counselor-design/screens/Login.dc.html)대로 OTP 칸은 뺐다.
 //  - 임시 비밀번호로 들어오면 같은 카드가 비밀번호 변경 단계로 바뀐다. 바꾸면 다시 로그인한다.
 //  - 로그인 유형(상담사 · 관리자)은 들어갈 화면만 고른다. 관리자 화면은 서버 역할이 관리자일 때만 가고, 아니면 /Main.
-//  - 회원가입(인증번호 메일)은 Backend 에 없어 준비 중이다(가입 방식 팀 결정 대기). 10/27 디자인의 3단계 팝업(본인 인증 →
-//    계정 정보 → 완료)도 같은 이유로 옮기지 않았다.
+//  - 회원가입은 디자인의 3단계 팝업(본인 인증 → 계정 정보 → 완료)이다. 생년월일 · 성별 · 휴대폰 칸은 받지 않기로 해서 뺐고,
+//    마지막은 대기 신청이다(관리자 승인 뒤 로그인). 값은 src/data/screens/signup.ts, 요청은 useSignup.
+//    서버 설정(SIGNUP_ENABLED)이 꺼져 있으면 회원가입 단추를 숨긴다.
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
-import { NOT_READY } from '../data/screens/common';
+import { INITIAL_SIGNUP_UI, signupValues } from '../data/screens/signup';
 import { useAuthSession } from '../data/useAuthSession';
 import { useLogin } from '../data/useLogin';
 import { useLogoutNotice } from '../data/useLogoutNotice';
+import { useSignup } from '../data/useSignup';
 import { PASSWORD_RULE_TEXT, usePasswordChange } from '../data/usePasswordChange';
 import './Login.css';
 
@@ -24,7 +26,27 @@ class Logic extends DCLogic {
   constructor(props) {
     super(props);
     // pwFor: 변경 단계 칸(current · next · confirm)이 어느 계정 것인가(설정 화면의 pwFor 와 같은 방식).
-    this.state = { email: '', password: '', current: '', next: '', confirm: '', pwFor: null, role: 'staff' };
+    this.state = {
+      email: '',
+      password: '',
+      current: '',
+      next: '',
+      confirm: '',
+      pwFor: null,
+      role: 'staff',
+      ...INITIAL_SIGNUP_UI,
+    };
+  }
+
+  // 회원가입 팝업이 열려 있는 동안 1초마다 다시 그린다(인증 남은 시간 · 다시 보내기 대기 초).
+  componentDidMount() {
+    this._tick = setInterval(() => {
+      if (this.state.su === 1) this.setState({});
+    }, 1000);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this._tick);
   }
 
   async signIn() {
@@ -68,6 +90,12 @@ class Logic extends DCLogic {
     const field = (key) => ({ value: s[key], onChange: (e) => this.setState({ [key]: e.target.value }) });
     const busy = changing ? pwChange.submitting : login.submitting;
     return {
+      ...signupValues({
+        getState: () => this.state,
+        setState: (patch) => this.setState(patch),
+        signup: this.props.signup,
+        now: Date.now(),
+      }),
       changing,
       email: field('email'),
       password: field('password'),
@@ -105,14 +133,42 @@ class Logic extends DCLogic {
   }
 }
 
+// 비밀번호 보기 · 숨기기(디자인 Login.dc.html 의 눈 단추).
+function PwEye({ eye }) {
+  return (
+    <button
+      type="button"
+      className="sf-eye"
+      aria-label={eye.label}
+      title={eye.label}
+      aria-pressed={eye.pressed}
+      onClick={eye.toggle}
+    >
+      {eye.show ? (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 3l18 18"></path>
+          <path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.1 6.1C3.5 7.8 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.3-1"></path>
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function Login(props) {
   const navigate = useNavigate();
   const session = useAuthSession();
   const login = useLogin();
   const pwChange = usePasswordChange();
+  const signup = useSignup();
   const { notice, dismiss: dismissNotice } = useLogoutNotice();
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, navigate, session, login, pwChange, notice, dismissNotice });
+  const v = useDC(Logic, { ...props, navigate, session, login, pwChange, signup, notice, dismissNotice });
   return (
     <div className="pg-Login">
       <div
@@ -210,15 +266,16 @@ export default function Login(props) {
           </button>
           {v.changing ? null : (
             <>
-              <button
-                type="button"
-                className="btn btn-s"
-                disabled
-                title={NOT_READY}
-                style={{ width: '100%', opacity: 0.6, cursor: 'not-allowed' }}
-              >
-                회원가입 ({NOT_READY})
-              </button>
+              {v.signupOn ? (
+                <button type="button" className="btn btn-s" onClick={v.openSignup} style={{ width: '100%' }}>
+                  회원가입
+                </button>
+              ) : null}
+              {v.joined ? (
+                <p className="lb" role="status" style={{ margin: '-6px 0 0', fontWeight: '400', textAlign: 'center' }}>
+                  가입 신청이 접수됐어요. 관리자가 승인하면 로그인할 수 있어요.
+                </p>
+              ) : null}
               <div role="group" aria-label="로그인 유형" className="lseg">
                 {v.roles.map((r) => (
                   <button key={r.label} type="button" className={r.cls} aria-pressed={r.pressed} onClick={r.pick}>
@@ -239,6 +296,252 @@ export default function Login(props) {
             </button>
           ) : null}
         </form>
+        {v.suStep1 ? (
+          <div className="sf-ov">
+            <section role="dialog" aria-modal="true" aria-labelledby="su-title" className="sf-dlg" style={{ background: '#FFFFFF' }}>
+              <div className="sf-top">
+                <h2 id="su-title" className="sf-title" aria-live="polite">
+                  {v.suTitle}
+                </h2>
+                <button type="button" className="sf-x" aria-label="닫기" onClick={v.suClose}>
+                  ×
+                </button>
+              </div>
+              <div className="sf-body">
+                {v.suShowName ? (
+                  <div className="sf-row sf-slide">
+                    <label className={`sf-f ${v.suNameCls}`}>
+                      <span className="sf-lb">이름</span>
+                      <input
+                        type="text"
+                        placeholder="이름"
+                        autoComplete="name"
+                        value={v.suName}
+                        onChange={v.suSetName}
+                        onKeyDown={v.suKey}
+                        aria-label="이름"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+                {v.suShowEmail ? (
+                  <div className="sf-row sf-slide">
+                    <div className={`sf-f ${v.suEmailCls}`}>
+                      <span className="sf-lb">이메일</span>
+                      <div className="sf-mail">
+                        <input
+                          type="email"
+                          placeholder="name@기관.kr"
+                          autoComplete="email"
+                          value={v.suEmail}
+                          onChange={v.suSetEmail}
+                          onKeyDown={v.suKey}
+                          readOnly={v.suEmailLock}
+                          aria-label="이메일"
+                        />
+                        {v.suSendOn ? (
+                          <button type="button" className="sf-get on" onClick={v.suResend}>
+                            인증번호 받기
+                          </button>
+                        ) : (
+                          <button type="button" className="sf-get" disabled>
+                            {v.suSendLabel}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {v.suShowCode ? (
+                  <div className="sf-row sf-code">
+                    <label className="sf-f on">
+                      <span className="sf-lb">인증번호</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="6자리 숫자"
+                        autoComplete="one-time-code"
+                        value={v.suCode}
+                        onChange={v.suSetCode}
+                        onKeyDown={v.suKey}
+                        aria-label="인증번호"
+                        style={{ letterSpacing: '.2em' }}
+                      />
+                    </label>
+                    <div className="sf-sub">
+                      <span className={v.suTimerCls}>{v.suTimer}</span>
+                      <span style={{ flex: '1' }}>{v.suSentNote}</span>
+                      <button type="button" className="sf-mini" onClick={v.suResend}>
+                        다시 보내기
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {v.suError ? (
+                  <p className="sf-err" role="alert">
+                    {v.suError}
+                  </p>
+                ) : null}
+              </div>
+              {v.suNextOn ? (
+                <button type="button" className="sf-next on" onClick={v.suNext}>
+                  다음
+                </button>
+              ) : (
+                <button type="button" className="sf-next" disabled>
+                  다음
+                </button>
+              )}
+            </section>
+            {v.suWrong ? (
+              <div className="sf-ov sf-ov2">
+                <section
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="su-wrong"
+                  className="sf-dlg sf-small"
+                  style={{ background: '#FFFFFF' }}
+                >
+                  <span className="sf-check sf-warn" aria-hidden="true">
+                    !
+                  </span>
+                  <h2 id="su-wrong" className="sf-title" style={{ textAlign: 'center' }}>
+                    인증번호가 틀렸습니다.
+                  </h2>
+                  <button type="button" className="sf-next on" onClick={v.suWrongOk}>
+                    확인
+                  </button>
+                </section>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {v.suStep2 ? (
+          <div className="sf-ov">
+            <section role="dialog" aria-modal="true" aria-labelledby="su2-title" className="sf-dlg" style={{ background: '#FFFFFF' }}>
+              <div className="sf-top">
+                <h2 id="su2-title" className="sf-title">
+                  계정 정보를 입력하세요.
+                </h2>
+                <button type="button" className="sf-x" aria-label="닫기" onClick={v.suClose}>
+                  ×
+                </button>
+              </div>
+              <div className="sf-body sf-down">
+                <label className="sf-f">
+                  <span className="sf-lb">이름</span>
+                  <input
+                    type="text"
+                    placeholder="이름"
+                    autoComplete="name"
+                    value={v.suName2}
+                    onChange={v.suSetName2}
+                    onKeyDown={v.suKey}
+                    aria-label="이름"
+                  />
+                </label>
+                <label className="sf-f lock">
+                  <span className="sf-lb">
+                    아이디 <span className="sf-note">인증한 이메일 · 변경 불가</span>
+                  </span>
+                  <input type="text" value={v.suEmail} readOnly aria-readonly="true" aria-label="아이디" />
+                </label>
+                <div>
+                  <div className="sf-f">
+                    <label className="sf-lb" htmlFor="su-pw">
+                      비밀번호 <span className="sf-rule">8~16자의 영문 대소문자, 숫자, 특수문자 포함</span>
+                    </label>
+                    <div className="sf-pw">
+                      <input
+                        id="su-pw"
+                        type={v.suPwEye.type}
+                        autoComplete="new-password"
+                        value={v.suPw}
+                        onChange={v.suSetPw}
+                        onKeyDown={v.suKey}
+                      />
+                      <PwEye eye={v.suPwEye} />
+                    </div>
+                  </div>
+                  {v.suPwRuleBad ? (
+                    <p className="sf-err" role="alert">
+                      8~16자의 영문 대소문자, 숫자, 특수문자 포함
+                    </p>
+                  ) : null}
+                  {v.suErrors.map((message) => (
+                    <p key={message} className="sf-err" role="alert">
+                      {message}
+                    </p>
+                  ))}
+                </div>
+                <div>
+                  <div className="sf-f">
+                    <label className="sf-lb" htmlFor="su-pw2">
+                      비밀번호 재입력
+                    </label>
+                    <div className="sf-pw">
+                      <input
+                        id="su-pw2"
+                        type={v.suPw2Eye.type}
+                        autoComplete="new-password"
+                        value={v.suPw2}
+                        onChange={v.suSetPw2}
+                        onKeyDown={v.suKey}
+                      />
+                      <PwEye eye={v.suPw2Eye} />
+                    </div>
+                  </div>
+                  {v.suPwBad ? (
+                    <p className="sf-err" role="alert">
+                      동일한 비밀번호가 아닙니다.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="sf-btns">
+                <button type="button" className="sf-cancel" onClick={v.suClose}>
+                  취소
+                </button>
+                {v.suDoneOn ? (
+                  <button type="button" className="sf-next on" onClick={v.suDone}>
+                    완료
+                  </button>
+                ) : (
+                  <button type="button" className="sf-next" disabled>
+                    완료
+                  </button>
+                )}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {v.suStep3 ? (
+          <div className="sf-ov">
+            <section
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="su3-title"
+              className="sf-dlg sf-small"
+              style={{ background: '#FFFFFF' }}
+            >
+              <span className="sf-check" aria-hidden="true">
+                ✓
+              </span>
+              <h2 id="su3-title" className="sf-title" style={{ textAlign: 'center' }}>
+                가입 신청이 접수되었습니다.
+              </h2>
+              <p className="sf-lb" style={{ margin: '0', textAlign: 'center' }}>
+                관리자 승인 뒤 로그인할 수 있습니다.
+              </p>
+              <button type="button" className="sf-next on" onClick={v.suFinish}>
+                확인
+              </button>
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );
