@@ -7,6 +7,8 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  CaseForm,
+  CaseFormType,
   SourceDocument,
   ScheduleEvent,
   ScheduleEventCreate,
@@ -685,5 +687,31 @@ export const sourceDocuments = {
   /** 3단계에 저장한 칸으로 4단계 초안(확인 사항 · 추가 질문)을 만든다(동기, 1~2분). */
   draftFollowups(sessionId: string): Promise<SourceDocument> {
     return api.post<SourceDocument>(`/sessions/${sessionId}/source-document/followups`, {});
+  },
+};
+
+// =========================================================
+// 기관 서식 (22절, 2026-11-02)
+// =========================================================
+
+export const caseForms = {
+  /** 그 사례의 서식 기록 전부(종류 → 차수가 큰 것부터). */
+  list(caseId: string): Promise<{ items: CaseForm[] }> {
+    return api.get<{ items: CaseForm[] }>(`/cases/${caseId}/forms`);
+  },
+
+  /** 다음 차수를 임시 저장으로 만든다. 그 서식의 임시 저장 차수가 이미 있으면 409. */
+  create(caseId: string, formType: CaseFormType, values: object): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms`, { form_type: formType, values });
+  },
+
+  /** 임시 저장 차수의 칸 전체를 바꾼다. 확정한 차수는 409 ALREADY_APPROVED, 본 판(version)이 지금 판과 다르면 409 STALE_VERSION. */
+  update(caseId: string, formId: string, values: object, version: number): Promise<CaseForm> {
+    return api.patch<CaseForm>(`/cases/${caseId}/forms/${formId}`, { values, version });
+  },
+
+  /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
+  confirm(caseId: string, formId: string, version: number): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`, { version });
   },
 };

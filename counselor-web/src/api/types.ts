@@ -1391,6 +1391,14 @@ export interface ClosureSummaryBody {
   sessions: number[];
   groups: { title: string; items: ClosureItem[] }[];
   report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+  /** 종결보고서 안전평가 11문항 · Key Person 의 AI 제안(2026-11-04). AI 로 만든 요약만, 옛 요약 · LLM 없이 묶은 요약은 null/없음. */
+  suggestions?: ClosureSuggestions | null;
+}
+
+export interface ClosureSuggestions {
+  /** index 0~10 = 안전평가 문항 순서. 근거가 있는 문항만. */
+  safety: { index: number; level: "HIGH" | "MEDIUM" | "LOW"; basis: string; sessions: number[] }[];
+  key_person: ClosureDraft | null;
 }
 
 export interface ClosureReportFields {
@@ -1399,6 +1407,15 @@ export interface ClosureReportFields {
   opinion?: string | null;
   review_date?: string | null;
   closing_date?: string | null;
+  /** 종결사유 5개(2026-11-03). 저장 전 null. */
+  reasons?: boolean[] | null;
+  /** 안전평가 11문항(서식 6 안전영역 순서). */
+  safety?: ("HIGH" | "MEDIUM" | "LOW" | null)[] | null;
+  key_person?: string | null;
+  /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
+  safety_scores?: { score: number | null; reason: string }[] | null;
+  /** 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(2026-11-04, 300자). 화면이 회차 기록으로 먼저 채운다. */
+  services?: string | null;
 }
 
 export interface ClosureSummaryRecord {
@@ -1414,6 +1431,8 @@ export interface ClosureSummarySave {
   checks?: Record<string, boolean>;
   edits?: Record<string, string>;
   report?: ClosureReportFields;
+  /** 저장된 값이 없는(null) 칸에만 쓰는 처음 값(AI 초안 · 회차 기록 · 1차 판단, 2026-11-05). */
+  report_defaults?: ClosureReportFields;
 }
 
 /** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
@@ -1636,4 +1655,71 @@ export interface SourceDocument {
   note_draft: SourceNoteDraft;
   followup_draft: SourceFollowupDraft | null;
   created_at: string;
+}
+
+// =========================================================
+// 기관 서식 (22절, 2026-11-02)
+// =========================================================
+
+/** 사정기록지 안전영역(서식 6) · 사례관리 점검표(서식 27) · 위험수준 척도(참고자료 3) · 가족관계 척도(참고자료 1). */
+export type CaseFormType = "SAFETY_ASSESSMENT" | "MANAGEMENT_CHECKLIST" | "RISK_SCALE" | "FAMILY_SCALE";
+
+export type FormLevel = "HIGH" | "MEDIUM" | "LOW";
+export type FormYesNo = "YES" | "NO";
+
+export interface SafetyAssessmentValues {
+  /** 11개(피해아동 3 · 가족구성원 5 · 사례관리대상자 3). */
+  items: (FormLevel | null)[];
+  key_person: FormYesNo | null;
+  /** 3개(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
+  scores: { score: number | null; reason: string }[];
+  opinion: string;
+  result: "INTENSIVE" | "GENERAL" | "MONITORING" | null;
+}
+
+export interface ManagementChecklistValues {
+  place: string;
+  /** 9개. */
+  checks: (FormYesNo | null)[];
+  opinion: string;
+  plan: string;
+}
+
+export interface RiskScaleValues {
+  /** 43개 0~3(1~21 위험요인, 22~43 보호요인). */
+  scores: (number | null)[];
+}
+
+export interface FamilyScaleValues {
+  respondent: "FATHER" | "MOTHER" | "CHILD" | null;
+  /** 15개 1~5. */
+  answers: (number | null)[];
+}
+
+export interface CaseFormValuesMap {
+  SAFETY_ASSESSMENT: SafetyAssessmentValues;
+  MANAGEMENT_CHECKLIST: ManagementChecklistValues;
+  RISK_SCALE: RiskScaleValues;
+  FAMILY_SCALE: FamilyScaleValues;
+}
+
+export interface CaseForm {
+  id: string;
+  case_id: string;
+  form_type: CaseFormType;
+  /** 차수(사례 · 서식 종류마다 1부터). */
+  round: number;
+  /** DRAFT 임시 저장 · APPROVED 상담원 확정(고칠 수 없음). */
+  status: ReviewStatus;
+  /** 판 번호(저장 · 확정마다 1 씩). 고치기 · 확정에 그대로 돌려보낸다. */
+  version: number;
+  values: Record<string, unknown>;
+  /** 서버가 계산한 합계 · 응답 수. 판정은 들지 않는다. */
+  totals: Record<string, number>;
+  created_by_id: string | null;
+  updated_by_id: string | null;
+  confirmed_by_id: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }

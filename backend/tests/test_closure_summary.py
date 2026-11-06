@@ -44,7 +44,10 @@ def test_get_before_generate_is_empty(client: TestClient, counselor_headers, rea
     data = client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]
 
     assert data["summary"] is None and data["checks"] == {} and data["edits"] == {}
-    assert data["report"] == {"initial_situation": None, "closing_situation": None, "opinion": None, "review_date": None, "closing_date": None}
+    assert data["report"] == {
+        "initial_situation": None, "closing_situation": None, "opinion": None, "review_date": None, "closing_date": None,
+        "reasons": None, "safety": None, "key_person": None, "safety_scores": None, "services": None,
+    }
 
 
 def test_generate_without_llm_groups_approved_summaries(client: TestClient, counselor_headers, ready_case: dict, db) -> None:
@@ -143,7 +146,12 @@ def modeling(monkeypatch):
         behaviour = calls.get("raise")
         if behaviour:
             raise behaviour
-        return {"groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}], "report": {}, "model": "m"}
+        return {
+            "groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}],
+            "report": {},
+            "suggestions": calls.get("suggestions"),
+            "model": "m",
+        }
 
     module.generate_closure_summary = generate_closure_summary
     monkeypatch.setitem(sys.modules, "ai.modeling.abuse.closure_summary_llm", module)
@@ -161,6 +169,26 @@ def test_modeling_provider_uses_ai_module(client: TestClient, counselor_headers,
     # 별칭은 가려 달라고 넘기고, 회차 입력에는 승인 요약 4칸 · 신호만 간다.
     assert modeling["known"] == [ready_case["child_alias"]]
     assert set(modeling["sessions"][0]) == {"number", "date", "assessment", "signals"}
+
+
+def test_modeling_keeps_safety_suggestions(client: TestClient, counselor_headers, ready_case: dict, modeling) -> None:
+    """안전평가 · Key Person AI 제안은 요약에 그대로 실린다(11/04). 상담원 보고서 칸(report.safety)은 채우지 않는다."""
+
+    modeling["suggestions"] = {
+        "safety": [{"index": 0, "level": "HIGH", "basis": "안전 계획을 스스로 설명", "sessions": [1]}],
+        "key_person": {"text": "있음 · 외조모", "sessions": [1]},
+    }
+
+    data = client.post(_url(ready_case["id"]), headers=counselor_headers).json()["data"]
+
+    assert data["summary"]["suggestions"] == modeling["suggestions"]
+    assert data["report"]["safety"] is None and data["report"]["key_person"] is None
+
+
+def test_generate_without_llm_has_no_suggestions(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    summary = client.post(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["summary"]
+
+    assert summary["suggestions"] is None
 
 
 @pytest.mark.parametrize(
@@ -263,3 +291,99 @@ def test_save_locks_the_row(ready_case: dict, monkeypatch) -> None:
     closure_review_service.get_row(FakeDb(), uuid.UUID(ready_case["id"]))
 
     assert seen[0]._for_update_arg is not None and seen[1]._for_update_arg is None
+
+
+def test_report_keeps_counselor_judgement_fields(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """종결사유 · 안전평가 · Key Person · 안전점수도 보고서에 남는다(2026-11-03 — 다시 열면 비어 있던 문제)."""
+
+    judgement = {
+        "reasons": [True, False, False, False, False],
+        "safety": ["HIGH"] + [None] * 9 + ["LOW"],
+        "key_person": "외조모",
+        "services": "정기상담 4회 · 방문상담 1회",
+        "safety_scores": [{"score": 7, "reason": "안전 계획 설명"}, {"score": None, "reason": ""}, {"score": 3, "reason": ""}],
+    }
+    saved = client.put(_url(ready_case["id"]), json={"report": judgement}, headers=counselor_headers)
+    assert saved.status_code == 200, saved.text
+
+    # 글 칸만 따로 저장해도 앞서 저장한 판단 칸은 그대로다(보낸 칸만 바뀐다).
+    client.put(_url(ready_case["id"]), json={"report": {"opinion": "종합의견"}}, headers=counselor_headers)
+    report = client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]
+
+    assert {key: report[key] for key in judgement} == judgement
+    assert report["opinion"] == "종합의견"
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"reasons": [True] * 4},
+        {"safety": ["매우 높음"] + [None] * 10},
+        {"safety": [None] * 10},
+        {"safety_scores": [{"score": 11, "reason": ""}, {}, {}]},
+        {"safety_scores": [{}, {}]},
+        {"key_person": "가" * 301},
+        {"services": "가" * 301},
+    ],
+)
+def test_report_judgement_fields_are_checked(client: TestClient, counselor_headers, ready_case: dict, report) -> None:
+    response = client.put(_url(ready_case["id"]), json={"report": report}, headers=counselor_headers)
+
+    assert response.status_code == 422
+
+
+def test_report_services_blank_is_kept_apart_from_never_saved(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """사례관리 제공 요약을 비워 저장하면 "" 로 남는다(저장 전 null 과 구분 — 화면이 회차 기록 글로 다시 채우지 않게, 민규 #140 11/05)."""
+
+    assert client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]["services"] is None
+
+    saved = client.put(_url(ready_case["id"]), json={"report": {"services": ""}}, headers=counselor_headers)
+
+    assert saved.status_code == 200, saved.text
+    assert client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]["services"] == ""
+
+
+def test_report_defaults_fill_only_empty_fields(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """화면이 고치지 않고 보인 처음 값(report_defaults)은 저장된 값이 없는 칸에만 들어간다 — 다른 창이 먼저 저장한 칸을 되돌리지
+    않는다(민규 #140 교차검증 11/05). report 에도 있는 칸은 report 가 이긴다."""
+
+    url = _url(ready_case["id"])
+    # 첫 창이 초기상황 · services 를 고쳐 저장
+    client.put(url, json={"report": {"initial_situation": "상담원이 고친 초기상황", "services": "상담 4회"}}, headers=counselor_headers)
+
+    # 둘째 창은 종합의견만 고쳤고, 초기상황 · services · 안전평가는 처음 값(AI 초안 · 회차 기록 · 1차 판단)으로 보고 있었다
+    second = {
+        "report": {"opinion": "종합의견"},
+        "report_defaults": {
+            "initial_situation": "AI 초기상황",
+            "services": "회차 기록",
+            "safety": ["HIGH"] + [None] * 10,
+            "opinion": "처음 값은 report 에 진다",
+        },
+    }
+    assert client.put(url, json=second, headers=counselor_headers).status_code == 200
+
+    report = client.get(url, headers=counselor_headers).json()["data"]["report"]
+    assert report["initial_situation"] == "상담원이 고친 초기상황" and report["services"] == "상담 4회"
+    assert report["safety"] == ["HIGH"] + [None] * 10  # 비어 있던 칸은 처음 값으로
+    assert report["opinion"] == "종합의견"
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"reasons": [1, 0, 0, 0, 0]},
+        {"safety_scores": [{"score": "3", "reason": ""}, {}, {}]},
+        {"safety_scores": [{"score": True}, {}, {}]},
+        {"safety_scores": [{"score": 3, "reson": "오타"}, {}, {}]},
+        {"unknown_field": "x"},
+    ],
+)
+def test_report_types_are_strict_and_unknown_keys_rejected(
+    client: TestClient, counselor_headers, ready_case: dict, report: dict
+) -> None:
+    """true → 1 · "3" → 3 처럼 바꿔 받지 않고, 모르는 칸('reson' 오타)은 422(민규 #140 교차검증 L2 · L4)."""
+
+    response = client.put(_url(ready_case["id"]), json={"report": report}, headers=counselor_headers)
+
+    assert response.status_code == 422, response.text

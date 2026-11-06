@@ -54,6 +54,8 @@ class ErrorCode(str, Enum):
     NOT_APPROVED = "NOT_APPROVED"
     # 3 · 4단계 AI 초안을 만드는 중이라 받지 않음(2026-11-04, 재분석 · 요약 수정 · 승인 · 추가 질문 · 확인 사항 저장).
     ANALYSIS_DRAFTS_PENDING = "ANALYSIS_DRAFTS_PENDING"
+    # 화면이 본 판(version)이 서버의 지금 판과 다름 — 다른 창에서 먼저 저장 · 확정함(2026-11-04, 기관 서식).
+    STALE_VERSION = "STALE_VERSION"
 
     # Audio
     AUDIO_EMPTY_FILE = "AUDIO_EMPTY_FILE"
