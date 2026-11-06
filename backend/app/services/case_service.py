@@ -2,17 +2,18 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import case as sql_case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import storage
-from app.core.enums import AuditAction, CaseStatus, GuardianType, UserRole
+from app.core.enums import AuditAction, CaseStatus, GuardianType, RiskLevel, SessionStatus, UserRole
 from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found
 from app.models.audio import AudioFile
 from app.models.case import Case
+from app.models.risk_assessment import SessionOverallRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.user import User
 from app.schemas.case import CASE_FORM_FIELDS, CaseCreateRequest, CaseUpdateRequest
@@ -142,6 +143,10 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
     raise conflict(ErrorCode.DUPLICATE_RESOURCE, "사례 번호 생성에 실패했습니다.")
 
 
+# 목록 정렬(API_CONTRACT 4절). 없으면 등록 최신순.
+CaseSort = Literal["report_date", "risk"]
+
+
 def list_cases(
     db: Session,
     current_user: User,
@@ -150,7 +155,8 @@ def list_cases(
     limit: int,
     status: Optional[CaseStatus] = None,
     search: Optional[str] = None,
-) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str]]], int]:
+    sort: Optional[CaseSort] = None,
+) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str], Optional[RiskLevel]]], int]:
     conditions = []
 
     # counselor 는 담당 Case 만 조회한다.
@@ -190,18 +196,69 @@ def list_cases(
     #
     # 담당자는 outerjoin 으로 붙인다. 상담사 계정이 삭제되면 counselor_id 가
     # 남아도 User row 는 없을 수 있고, 그때도 사례는 조회되어야 한다.
+    risk_level = _risk_level_subquery()
     rows = db.execute(
-        select(Case, _last_session_at_subquery(), User.name)
+        select(Case, _last_session_at_subquery(), User.name, risk_level)
         .outerjoin(User, User.id == Case.counselor_id)
         .where(*conditions)
-        .order_by(Case.created_at.desc())
+        .order_by(*_case_order(sort, risk_level))
         .offset(offset)
         .limit(limit)
     ).all()
 
-    cases = [(row[0], row[1], row[2]) for row in rows]
+    cases = [(row[0], row[1], row[2], row[3]) for row in rows]
 
     return cases, total
+
+
+def _case_order(sort: Optional[CaseSort], risk_level) -> list:
+    """목록 순서. 값이 없는 사례는 맨 뒤고, 같은 값끼리는 등록 최신순이다(id 는 쪽을 넘겨도 순서가 흔들리지 않게)."""
+
+    latest_first = [Case.created_at.desc(), Case.id.desc()]
+
+    if sort == "report_date":
+        return [Case.report_date.desc().nulls_last(), *latest_first]
+
+    if sort == "risk":
+        rank = sql_case(
+            (risk_level == RiskLevel.HIGH, 3),
+            (risk_level == RiskLevel.MEDIUM, 2),
+            (risk_level == RiskLevel.LOW, 1),
+            else_=0,
+        )
+        return [rank.desc(), *latest_first]
+
+    return [Case.created_at.desc()]
+
+
+def _risk_level_subquery():
+    """
+    사례 목록의 위험도: AI 분석이 끝난 가장 최근 회차의 상담원 판단(회차 전체 상 · 중 · 하).
+
+    사례 상세의 위험도 칩과 같은 값이다(counselor-web latestAnalyzedSession). 그 회차를 아직 판단하지 않았으면
+    앞 회차 판단으로 대신하지 않고 null 이다. AI 심각도로도 채우지 않는다.
+    """
+
+    latest_analyzed = (
+        select(ConsultationSession.id)
+        .where(
+            ConsultationSession.case_id == Case.id,
+            ConsultationSession.status.in_(
+                [SessionStatus.AI_REVIEW_REQUIRED, SessionStatus.APPROVED]
+            ),
+        )
+        .order_by(ConsultationSession.session_number.desc())
+        .limit(1)
+        .correlate(Case)
+        .scalar_subquery()
+    )
+
+    return (
+        select(SessionOverallRiskAssessment.counselor_level)
+        .where(SessionOverallRiskAssessment.session_id == latest_analyzed)
+        .correlate(Case)
+        .scalar_subquery()
+    )
 
 
 def _last_session_at_subquery():

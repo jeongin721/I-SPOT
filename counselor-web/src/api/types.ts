@@ -475,8 +475,13 @@ export interface PersonalInfoRequest {
 }
 
 /** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
+/** GET /cases 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순. */
+export type CaseListSort = "report_date" | "risk";
+
 export interface CaseListItem extends Case {
   child_name?: string | null;
+  /** 분석이 끝난 가장 최근 회차의 상담원 판단. 판단 전이면 null. */
+  risk_level?: RiskLevel | null;
 }
 
 /** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */

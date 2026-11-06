@@ -604,10 +604,12 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
   - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- 각 줄의 `risk_level`(`HIGH|MEDIUM|LOW|null`)은 AI 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED`·`APPROVED`)의 상담원 판단(회차 전체)이다. 그 회차를 판단하기 전이면 `null` 이고, 앞 회차 판단이나 AI 심각도로 채우지 않는다
+- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다. 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
 - `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
   열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
   빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
