@@ -1,7 +1,7 @@
 """add intake form fields to cases
 
 Revision ID: c6e2a9f4b7d1
-Revises: e9a4c1d7b2f6
+Revises: f7b8c9d0e1a2
 Create Date: 2026-11-05 16:00:00.000000
 
 서식 4 의 '준비 중' 칸 열기(2026-11-05).
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'c6e2a9f4b7d1'
-down_revision: Union[str, None] = 'e9a4c1d7b2f6'
+down_revision: Union[str, None] = 'f7b8c9d0e1a2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

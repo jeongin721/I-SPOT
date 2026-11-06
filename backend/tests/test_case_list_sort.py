@@ -94,3 +94,17 @@ def test_unknown_sort_is_rejected(client: TestClient, counselor_headers) -> None
     response = client.get("/api/v1/cases", params={"sort": "name"}, headers=counselor_headers)
 
     assert response.status_code == 422
+
+
+def test_sort_by_risk_falls_back_to_intake_level(client: TestClient, counselor_headers, db) -> None:
+    """회차 판단이 없으면 서식 4 위험도(우선) 순서로, 회차 판단이 있으면 그 값이 이긴다 — 목록에 보이는 값과 같은 순서."""
+
+    picked_high = create_case(client, counselor_headers, counselor_risk_level="HIGH")
+    judged_low = create_case(client, counselor_headers, counselor_risk_level="HIGH")
+    _session(client, counselor_headers, db, judged_low["id"], SessionStatus.APPROVED, RiskLevel.LOW)
+    empty = create_case(client, counselor_headers)
+    picked_medium = create_case(client, counselor_headers, counselor_risk_level="MEDIUM")
+
+    order = [item["id"] for item in _list(client, counselor_headers, sort="risk")]
+
+    assert order == [picked_high["id"], picked_medium["id"], judged_low["id"], empty["id"]]
