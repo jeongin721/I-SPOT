@@ -2,18 +2,20 @@
 // 원본: 다솔 님 디자인 counselor-web-design/Closure.dc.html (front_new 브랜치)
 //
 // 서버 연결: 사례 기본정보 · 회차 수는 useCaseOverview(mode 'counts'), 화면에 쓸 값은 src/data/screens/closure.ts(closureValues).
-// 종결 검토 등록 · 진행 단계 · 내역 검토 진행률은 서버에 없어 준비 중. 이 목록은 종결 검토 대상 목록이 아니다
-// (종결 사례를 '검토 대기' 로 쓰지 않는다). 이름을 누르면 사례 상세로 간다. 검색어는 계정에 묶는다(useAccountSearch).
+// 10/30: 종결 검토 등록(closure_review_at)한 사례만 보이고 등록일 · '① 내역 검토' 를 보인다. 내역 검토 진행률은 준비 중.
+// 10/30 디자인대로 '실명 보기' 토글을 뺐다. 이름을 누르면 그 사례의 ① 전체 상담 내역 검토로 간다. 검색어는 계정에 묶는다(useAccountSearch).
 import { Fragment } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseOverview } from '../data/useCaseOverview';
-import { closureValues, useAccountSearch } from '../data/screens/closure';
+import { closureValues } from '../data/screens/closure';
+import { useAccountSearch } from '../data/useAccountSearch';
 import { needsLogin } from '../data/screens/common';
 import { useTheme } from '../theme';
 import './Closure.css';
@@ -26,7 +28,7 @@ class Logic extends DCLogic {
 
 export default function Closure(props) {
   const session = useAuthSession();
-  const overview = useCaseOverview(session, 'counts');
+  const overview = useCaseOverview(session, 'counts', { withNames: true });
   const [search, setSearch] = useAccountSearch(session);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, overview, search, setSearch });
@@ -59,6 +61,7 @@ export default function Closure(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>종결 검토</h1>
@@ -67,58 +70,25 @@ export default function Closure(props) {
             <input
               className="inp"
               type="search"
-              aria-label="별칭 또는 사례 ID 검색"
-              placeholder="별칭 · 사례 ID 검색"
+              aria-label="이름 · 별칭 · 사례 ID 검색"
+              placeholder="이름 · 별칭 · 사례 ID 검색"
               style={{ flex: '1 1 240px' }}
               value={v.search.value}
               onChange={v.search.onChange}
               disabled={v.search.disabled}
             />
-            <button
-              type="button"
-              className="tg"
-              aria-pressed={v.real}
-              disabled
-              title={v.notReady}
-              style={{ opacity: 0.5, cursor: 'not-allowed' }}
-            >
-              <span
-                style={{
-                  width: '34px',
-                  height: '20px',
-                  borderRadius: '10px',
-                  background: v.tgBg,
-                  position: 'relative',
-                  display: 'inline-block',
-                }}
-              >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: v.tgX,
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: '#FFFFFF',
-                    boxShadow: '0 1px 2px rgba(0,0,0,.2)',
-                  }}
-                ></span>
-              </span>
-              실명 보기
-            </button>
           </section>
           <p className="note" style={{ margin: '-8px 0 0' }}>
-            {v.listNote} 실명 보기도 {v.notReady}입니다.
+            {v.listNote}
             {v.countLabel ? <> · {v.countLabel}</> : null}
           </p>
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '600px' }}>
               <thead>
                 <tr>
-                  <th scope="col">아동 별칭</th>
+                  <th scope="col">아동 이름</th>
                   <th scope="col">상담 회차</th>
-                  <th scope="col">사례 등록일</th>
+                  <th scope="col">등록일</th>
                   <th scope="col">진행 단계</th>
                   <th scope="col">내역 검토</th>
                 </tr>

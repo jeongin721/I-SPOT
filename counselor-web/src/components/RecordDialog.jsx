@@ -3,13 +3,16 @@
 // 마이크로 녹음(useAudioRecorder)한 뒤 '저장' 하면 녹취 올리기 창과 같은 흐름(useAudioUpload: 회차 · 업로드 · 원문 변환)으로
 // 서버에 올린다. 두 훅은 사례 상세 화면이 부르고 넘긴다(화면을 떠날 때 묻기 — useLeaveGuard — 에 녹음 상태를 쓰려고).
 //  - 회차는 녹취 올리기 창과 같은 목록(uploadTargets)에서 고른다. 녹음을 시작하면 바꿀 수 없다.
-//  - 상담 유형 · 녹음 동의는 Backend 에 칸이 없어 저장하지 않는다. 동의 확인은 녹음 시작 전 확인용이다.
+//  - 상담 유형은 회차에 저장한다(consultation_type, 2026-10-30). 녹음 동의는 Backend 에 칸이 없어 저장하지 않는다(녹음 시작 전 확인용).
 //  - 올리는 중(회차 만들기 · 업로드 · 변환 요청)에는 창을 닫지 않는다. 원문 변환을 기다리는 동안에는 닫아도 서버가 계속한다.
 import { useEffect, useState } from 'react';
 import A from './A';
-import { NOT_READY } from '../data/screens/common';
 import { screenHref } from '../data/screens/links';
 import { NEW_SESSION } from '../data/screens/uploadModal';
+import { sessions } from '../api/endpoints';
+import { errorMessage } from '../data/useRemote';
+import { recordingUnsaved } from '../data/useRecordFlow';
+import './RecordDialog.css';
 
 const STATUS = {
   idle: '녹음 대기',
@@ -20,24 +23,21 @@ const STATUS = {
   done: '녹음 완료',
 };
 
-const KINDS = ['정기상담', '방문상담', '기관 면담', '전화상담'];
+/** 디자인의 상담 유형 고르기(10/29). 서버 코드(API_CONTRACT 5절 consultation_type)와 짝. */
+const KINDS = [
+  ['REGULAR', '정기상담'],
+  ['VISIT', '방문상담'],
+  ['OFFICE', '기관 면담'],
+  ['PHONE', '전화상담'],
+];
 
-/** 실패해도 음성은 이미 서버에 있는 단계(원문 변환 요청 · 변환). 그 앞(회차 만들기 · 업로드)에서 실패하면 음성이 없다. */
-const AUDIO_SAVED_STEPS = new Set(['requestStt', 'transcribing']);
-
-/**
- * 녹음해 둔 것이 있어 닫거나 떠나면 사라지는가. 올리기 전, 그리고 음성을 서버에 올리기 전에 실패했으면 사라진다.
- * 올리는 중(회차 만들기 · 업로드 · 변환 요청)은 창 닫기를 막고 화면 이탈은 사례 상세가 따로 묻는다.
- */
-export function recordingUnsaved(recorder, upload) {
-  if (recorder.status === 'idle') return false;
-  if (upload.phase === 'idle') return true;
-  if (upload.phase === 'failed') return !AUDIO_SAVED_STEPS.has(upload.failedStep);
-  return false;
-}
+/** 녹음해 둔 것이 있어 닫거나 떠나면 사라지는가(data/useRecordFlow.ts). */
+export { recordingUnsaved };
 
 export default function RecordDialog({ caseId, caseName, caseSub, targets, recorder, upload, onClose }) {
   const [choice, setChoice] = useState(NEW_SESSION);
+  const [kind, setKind] = useState('REGULAR');
+  const [kindError, setKindError] = useState(null);
   const [consent, setConsent] = useState(false);
   const [consentError, setConsentError] = useState(false);
 
@@ -72,11 +72,22 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
     recorder.start();
   };
 
-  const save = () => {
+  // 상담 유형(2026-10-30 저장 연결): 새 회차면 회차를 만들 때 함께 보내고, 있는 회차면 올리기 전에 그 회차 유형만 고친다.
+  const save = async () => {
     if (!recorder.file || upload.busy) return;
+    setKindError(null);
+    if (choice !== NEW_SESSION) {
+      try {
+        await sessions.update(choice, { consultation_type: kind });
+      } catch (caught) {
+        setKindError(errorMessage(caught, '상담 유형을 저장하지 못했습니다. 다시 시도해 주세요.'));
+        return;
+      }
+    }
     void upload.start({
       caseId,
       sessionId: choice === NEW_SESSION ? null : choice,
+      newSession: { consultation_type: kind },
       file: recorder.file,
       durationMs: recorder.seconds * 1000,
     });
@@ -125,12 +136,12 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <span className="lb2">
-                상담 유형 <span className="note" style={{ fontWeight: '400' }}>{NOT_READY}</span>
-              </span>
-              <select className="inp" disabled title={NOT_READY}>
-                {KINDS.map((k) => (
-                  <option key={k}>{k}</option>
+              <span className="lb2">상담 유형</span>
+              <select className="inp" value={kind} onChange={(e) => setKind(e.target.value)} disabled={recorder.status !== 'idle'}>
+                {KINDS.map(([code, label]) => (
+                  <option key={code} value={code}>
+                    {label}
+                  </option>
                 ))}
               </select>
             </label>
@@ -174,7 +185,7 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
                 >
                   <span className="rec-dot" aria-hidden="true"></span> 녹음 시작
                 </button>
-                <span className="note">동의 여부 · 상담 유형은 서버에 기록되지 않습니다.</span>
+                <span className="note">동의 여부는 서버에 기록되지 않습니다.</span>
               </>
             ) : null}
             {recorder.status === 'recording' || recorder.status === 'paused' ? (
@@ -205,6 +216,11 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
                 {upload.phaseLabel}… {sending ? '끝날 때까지 창을 닫지 마세요.' : '창을 닫아도 서버의 변환은 계속됩니다.'}
               </p>
             ) : null}
+            {kindError ? (
+              <span className="acc" role="alert" style={{ fontSize: '13px' }}>
+                {kindError}
+              </span>
+            ) : null}
             {upload.phase === 'failed' ? (
               <>
                 <span className="acc" role="alert" style={{ fontSize: '13px' }}>
@@ -227,14 +243,14 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
                 <p style={{ margin: '0', textAlign: 'center' }}>
                   녹음을 저장했어요 · {summary}
                   <br />
-                  <b>원문 변환이 끝났어요. STT 검수로 이동할까요?</b>
+                  <b>원문 변환이 끝났어요. 기록 확인으로 이동할까요?</b>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px' }}>
                   <button type="button" className="btn btn-s" onClick={close}>
                     나중에
                   </button>
                   <A className="btn btn-p" to={screenHref('/SttReview', { caseId, sessionId: upload.sessionId })}>
-                    STT 검수로 →
+                    기록 확인으로 →
                   </A>
                 </div>
               </>

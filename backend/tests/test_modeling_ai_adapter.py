@@ -714,6 +714,7 @@ def test_module_only_fields_do_not_leak(modeling) -> None:
         "session_change_notes",
         "followup_check_points",
         "followup_questions",
+        "topic_tags",  # 2026-10-29 아동 발화 대화 주제(없으면 null)
     }
 
     dumped = json.dumps(stored, ensure_ascii=False)

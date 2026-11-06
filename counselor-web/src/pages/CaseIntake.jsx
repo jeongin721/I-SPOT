@@ -4,8 +4,14 @@
 // 서버 연결: 화면 주소 ?case=<사례 ID>. 사례 정보는 useCaseDetail 이 부르고, 화면에 쓸 값은
 // src/data/screens/caseIntake.ts(caseIntakeValues)가 만든다. '저장' 은 바꾼 칸만 PATCH /cases/{id} 로 보낸다(useCaseDetail.saveCase).
 // 새 사례 등록(CaseRegister)과 같은 서식을 사례 값으로 채워 사례 상세 안에서 연다. 고칠 수 있는 칸은 사례에 저장된 칸뿐이고
-// (담당 상담원은 관리자만), 개별사건번호는 읽기만 한다. 나머지 칸은 새 사례 등록처럼 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// (담당 상담원은 관리자만), 개별사건번호는 읽기만 한다.
+// 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · ② 가족관계 · 건강정도는 usePersonalInfo(GET · PUT …/personal-info, 암호화 저장)로
+// 불러와 고친다. 값을 받기 전 · 못 받았으면 그 칸들은 막는다(통째로 바꾸는 PUT 이라 모르는 값을 지우지 않게).
+// ① 조치결과 · 위험도(우선) · 사례연계 경위, ② 가족유형(하나) · 보호자와 아동과의 관계 · 문제력 · 태도 · 환경 · 소견(2026-11-05)은
+// 사례 칸이라 같은 PATCH 로 저장한다(caseFormFields.ts).
 // 디자인의 '임시 저장' · '확정' 은 서식 작성 기록 · 확정 상태가 서버에 없어 '저장' 하나로 두었다.
+// 10/29 디자인: ① 칸 묶음(rg-*) · 사례관리대상자 생년월일, ② 가족유형 21개 · 문제력 한 칸 · 건강정도 표(hs-*) · 칸 복사 단추.
+// 복사 단추의 '이름 가려서' 는 이 사례에 등록된 이름 전부(실명 · 가족 · 별칭)를 가린다.
 // 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard). 다른 사례로 옮기거나 다시 로그인하면 고치던 것을 버린다.
 import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -13,11 +19,15 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
+import CopyButton from '../components/CopyButton';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
+import { FamilyTable, HealthTable } from '../components/PersonalTables';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useIntakeCounselors } from '../data/useCaseIntake';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { INITIAL_CASE_INTAKE_STATE, caseIntakeValues } from '../data/screens/caseIntake';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -52,8 +62,9 @@ export default function CaseIntake(props) {
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
   const signals = useCaseSignals(detail, { enabled: signedIn(session) });
   const counselors = useIntakeCounselors(session);
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, signals, counselors, caseId });
+  const v = useDC(Logic, { ...props, session, detail, signals, counselors, personal, caseId });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -84,6 +95,7 @@ export default function CaseIntake(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <div>
@@ -119,7 +131,6 @@ export default function CaseIntake(props) {
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={v.tabs.detail}>내담자 정보</A>
             <A to={v.tabs.history}>상담 이력</A>
-            <A to={v.tabs.briefing}>상담 전 브리핑</A>
             <A className="on" aria-current="page" to={v.tabs.docs}>
               문서함
             </A>
@@ -158,6 +169,7 @@ export default function CaseIntake(props) {
                 <p className="note" style={{ margin: 0 }}>
                   {v.savedNote}
                 </p>
+                <Notice value={v.personalNote} />
                 {v.isA ? (
                   <fieldset disabled={v.locked} style={LOCKED_GROUP}>
                     <label className="fl">
@@ -176,30 +188,47 @@ export default function CaseIntake(props) {
                         style={{ borderColor: v.caseTitle.border }}
                       />
                     </label>
-                    <div className="g3">
+                    <div className="rg-grp">
+                      <div className="rg4">
                       <label className="fl">
                         <span className="lb">
-                          신고접수일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                          신고접수일
                         </span>
-                        <input className="inp" type="date" disabled />
+                        <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.reportDate.value} onChange={v.reportDate.onChange} />
                       </label>
                       <label className="fl">
                         <span className="lb">
-                          사례연계일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                          사례연계일
                         </span>
-                        <input className="inp" type="date" disabled />
+                        <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.linkedDate.value} onChange={v.linkedDate.onChange} />
                       </label>
                       <label className="fl">
                         <span className="lb">
-                          최초면접일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                          최초면접일
                         </span>
-                        <input className="inp" type="date" disabled />
+                        <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.firstInterviewDate.value} onChange={v.firstInterviewDate.onChange} />
                       </label>
                       <label className="fl">
                         <span className="lb">
                           개별사건번호 {' '}<span className="note" style={{ fontWeight: '400' }}>(바꿀 수 없음)</span>
                         </span>
                         <input className="inp" type="text" readOnly value={v.caseNumber} />
+                      </label>
+                      </div>
+                    </div>
+                    <div className="rg-grp">
+                      <div className="rg3">
+                      <label className="fl">
+                        <span className="lb">대상아동 이름</span>
+                        <input
+                          className="inp"
+                          type="text"
+                          autoComplete="off"
+                          placeholder="이름"
+                          value={v.childName.value}
+                          onChange={v.childName.onChange}
+                          disabled={v.personalLocked}
+                        />
                       </label>
                       <label className="fl">
                         <span className="lb">
@@ -229,7 +258,19 @@ export default function CaseIntake(props) {
                         </select>
                       </label>
                       <label className="fl">
-                        <span className="lb">출생연도 (생일은 저장하지 않음)</span>
+                        <span className="lb">생년월일</span>
+                        <input
+                          className="inp"
+                          type="date"
+                          min={v.childBirthDate.min}
+                          max={v.childBirthDate.max}
+                          value={v.childBirthDate.value}
+                          onChange={v.childBirthDate.onChange}
+                          disabled={v.personalLocked}
+                        />
+                      </label>
+                      <label className="fl">
+                        <span className="lb">출생연도{v.birthYear.hint}</span>
                         <input
                           className="inp"
                           type="number"
@@ -239,13 +280,40 @@ export default function CaseIntake(props) {
                           placeholder="예: 2015"
                           value={v.birthYear.value}
                           onChange={v.birthYear.onChange}
+                          readOnly={v.birthYear.readOnly}
+                        />
+                      </label>
+                      </div>
+                    </div>
+                    <div className="rg-grp">
+                      <div className="rg3">
+                      <label className="fl">
+                        <span className="lb">사례관리대상자</span>
+                        <input
+                          className="inp"
+                          type="text"
+                          autoComplete="off"
+                          placeholder="이름"
+                          value={v.targetName.value}
+                          onChange={v.targetName.onChange}
+                          disabled={v.personalLocked}
                         />
                       </label>
                       <label className="fl">
-                        <span className="lb">
-                          사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <input className="inp" type="text" disabled />
+                        <span className="lb">사례관리대상자 관계</span>
+                        <select
+                          className="inp"
+                          value={v.targetRelation.value}
+                          onChange={v.targetRelation.onChange}
+                          disabled={v.personalLocked}
+                        >
+                          <option value="">선택</option>
+                          {v.targetRelationOptions.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <label className="fl">
                         <span className="lb">보호자 유형</span>
@@ -271,39 +339,70 @@ export default function CaseIntake(props) {
                           />
                         </label>
                       ) : null}
+                      <label className="fl">
+                        <span className="lb">사례관리대상자 생년월일</span>
+                        <input
+                          className="inp"
+                          type="date"
+                          min={v.targetBirthDate.min}
+                          max={v.targetBirthDate.max}
+                          value={v.targetBirthDate.value}
+                          onChange={v.targetBirthDate.onChange}
+                          disabled={v.personalLocked}
+                        />
+                      </label>
+                      </div>
                     </div>
-
-                    <div className="g3">
+                    <div className="rg-grp">
+                      <div className="rg2">
                       <label className="fl">
-                        <span className="lb">
-                          조치결과 · 피해아동 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <select className="inp" disabled>
-                          <option>원가정보호</option>
-                          <option>친인척보호</option>
-                          <option>연고자에 의한 보호</option>
-                          <option>가정위탁</option>
-                          <option>시설입소</option>
-                          <option>병원입원</option>
-                          <option>기타</option>
+                        <span className="lb">조치결과 · 피해아동</span>
+                        <select className="inp" value={v.childAction.value} onChange={v.childAction.onChange}>
+                          <option value="">선택</option>
+                          {v.childAction.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
                       <label className="fl">
-                        <span className="lb">
-                          조치결과 · 사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <select className="inp" disabled>
-                          <option>지속관찰</option>
-                          <option>아동과의 분리</option>
-                          <option>고소 · 고발</option>
-                          <option>기타</option>
+                        <span className="lb">조치결과 · 사례관리대상자</span>
+                        <select className="inp" value={v.targetAction.value} onChange={v.targetAction.onChange}>
+                          <option value="">선택</option>
+                          {v.targetAction.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
+                      </div>
+                    </div>
+                    <div className="rg-grp">
+                      <div className="rg3">
                       <label className="fl">
-                        <span className="lb">
-                          면접대상자 / 관계 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <input className="inp" type="text" disabled />
+                        <span className="lb">면접대상자</span>
+                        <input
+                          className="inp"
+                          type="text"
+                          autoComplete="off"
+                          placeholder="이름"
+                          value={v.intervieweeName.value}
+                          onChange={v.intervieweeName.onChange}
+                          disabled={v.personalLocked}
+                        />
+                      </label>
+                      <label className="fl">
+                        <span className="lb">면접대상자 관계</span>
+                        <input
+                          className="inp"
+                          type="text"
+                          placeholder="예: 피해아동"
+                          value={v.intervieweeRelation.value}
+                          onChange={v.intervieweeRelation.onChange}
+                          disabled={v.personalLocked}
+                        />
                       </label>
                       <label className="fl">
                         <span className="lb">담당 상담원</span>
@@ -333,22 +432,29 @@ export default function CaseIntake(props) {
                         ) : null}
                       </label>
                       <label className="fl">
-                        <span className="lb">
-                          위험도 (우선) {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                        </span>
-                        <select className="inp" disabled>
-                          <option>선택</option>
-                          <option>상</option>
-                          <option>중</option>
-                          <option>하</option>
+                        <span className="lb">위험도 (우선)</span>
+                        <select className="inp" value={v.riskLevel.value} onChange={v.riskLevel.onChange}>
+                          <option value="">선택</option>
+                          {v.riskLevel.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
+                      </div>
                     </div>
                     <label className="fl">
-                      <span className="lb">
-                        사례연계 경위 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                      </span>
-                      <textarea className="ta2" disabled></textarea>
+                      <span className="lb">사례연계 경위</span>
+                      <textarea
+                        className="ta2"
+                        rows="7"
+                        style={{ minHeight: '180px' }}
+                        maxLength={v.linkedBackground.max}
+                        placeholder={v.linkedBackground.placeholder}
+                        value={v.linkedBackground.value}
+                        onChange={v.linkedBackground.onChange}
+                      ></textarea>
                     </label>
                     <label className="fl">
                       <span className="lb">사례 메모</span>
@@ -390,76 +496,45 @@ export default function CaseIntake(props) {
                         </Fragment>
                       ))}
                     </div>
-                    <fieldset disabled style={LOCKED_GROUP}>
-                      <label className="fl">
-                        <span className="lb">보호자와 아동과의 관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></span>
-                        <textarea className="ta2"></textarea>
-                      </label>
+                    <label className="fl">
+                      <span className="lb">보호자와 아동과의 관계</span>
+                      <textarea
+                        className="ta2 ta1"
+                        rows="1"
+                        maxLength={v.guardianRelation.max}
+                        placeholder={v.guardianRelation.placeholder}
+                        value={v.guardianRelation.value}
+                        onChange={v.guardianRelation.onChange}
+                        aria-label="보호자와 아동과의 관계"
+                      ></textarea>
+                      <CopyButton names={v.maskNames} />
+                    </label>
 
-                      <div className="sec">가족유형{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {(v.fams || []).map((o, oIndex) => (
-                          <Fragment key={oIndex}>
-                            <button
-                              type="button"
-                              className="pk"
-                              style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
-                            >
-                              {o.label}
-                            </button>
-                          </Fragment>
-                        ))}
-                      </div>
+                    <div className="sec">
+                      가족유형{' '}
+                      <span className="note" style={{ fontWeight: '400' }}>
+                        (하나만)
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(v.fams || []).map((o, oIndex) => (
+                        <Fragment key={oIndex}>
+                          <button
+                            type="button"
+                            className={o.on ? 'pk on' : 'pk'}
+                            aria-pressed={o.on}
+                            onClick={o.toggle}
+                            disabled={o.disabled}
+                            style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
+                          >
+                            {o.mark} {o.label}
+                          </button>
+                        </Fragment>
+                      ))}
+                    </div>
 
-                      <div className="sec">가족관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table className="ft">
-                          <thead>
-                            <tr>
-                              <th>성명</th>
-                              <th>관계</th>
-                              <th>나이</th>
-                              <th>종교</th>
-                              <th>학력</th>
-                              <th>직업</th>
-                              <th>동거여부</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(v.famRows || []).map((r, rIndex) => (
-                              <Fragment key={rIndex}>
-                                <tr>
-                                  <td>
-                                    <input aria-label="성명" />
-                                  </td>
-                                  <td>
-                                    <input aria-label="관계" />
-                                  </td>
-                                  <td>
-                                    <input aria-label="나이" />
-                                  </td>
-                                  <td>
-                                    <input aria-label="종교" />
-                                  </td>
-                                  <td>
-                                    <input aria-label="학력" />
-                                  </td>
-                                  <td>
-                                    <input aria-label="직업" />
-                                  </td>
-                                  <td>
-                                    <input aria-label="동거여부" />
-                                  </td>
-                                </tr>
-                              </Fragment>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <button type="button" className="btn btn-sm btn-s" style={{ alignSelf: 'flex-start' }}>
-                        + 가족 추가
-                      </button>
-                    </fieldset>
+                    <div className="sec">가족관계</div>
+                    <FamilyTable family={v.family} />
 
                     <div className="sec">
                       아동 특성{' '}
@@ -484,57 +559,58 @@ export default function CaseIntake(props) {
                       ))}
                     </div>
 
-                    <fieldset disabled style={LOCKED_GROUP}>
-                      <div className="sec">문제력 · 건강정도{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div className="g3">
-                        <label className="fl">
-                          <span className="lb">현 상황</span>
-                          <textarea className="ta2"></textarea>
-                        </label>
-                        <label className="fl">
-                          <span className="lb">이유 인식</span>
-                          <textarea className="ta2"></textarea>
-                        </label>
-                      </div>
-                      <div className="g3">
-                        <label className="fl">
-                          <span className="lb">질병</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">장애</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">병원치료</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">정신과 진단</span>
-                          <input className="inp" type="text" />
-                        </label>
-                        <label className="fl">
-                          <span className="lb">타기관 상담</span>
-                          <input className="inp" type="text" />
-                        </label>
-                      </div>
+                    <div className="sec">문제력</div>
+                    <label className="fl cp-in">
+                      <textarea
+                        className="ta2"
+                        maxLength={v.problem.max}
+                        placeholder={v.problem.placeholder}
+                        value={v.problem.value}
+                        onChange={v.problem.onChange}
+                        aria-label="문제력"
+                      ></textarea>
+                      <CopyButton names={v.maskNames} />
+                    </label>
 
-                      <div className="sec">대상자 태도 및 관찰내용{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                      <div className="g3">
-                        <label className="fl">
-                          <span className="lb">대상자 태도</span>
-                          <textarea className="ta2"></textarea>
-                        </label>
-                        <label className="fl">
-                          <span className="lb">물리적 환경</span>
-                          <textarea className="ta2"></textarea>
-                        </label>
-                      </div>
+                    <HealthTable health={v.health} />
+
+                    <div className="sec">대상자 태도 및 관찰내용</div>
+                    <div className="g3">
                       <label className="fl">
-                        <span className="lb">상담원 소견 및 향후 계획</span>
-                        <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
+                        <span className="lb">대상자 태도</span>
+                        <textarea
+                          className="ta2"
+                          maxLength={v.attitude.max}
+                          placeholder={v.attitude.placeholder}
+                          value={v.attitude.value}
+                          onChange={v.attitude.onChange}
+                        ></textarea>
+                        <CopyButton names={v.maskNames} />
                       </label>
-                    </fieldset>
+                      <label className="fl">
+                        <span className="lb">물리적 환경</span>
+                        <textarea
+                          className="ta2"
+                          maxLength={v.environment.max}
+                          placeholder={v.environment.placeholder}
+                          value={v.environment.value}
+                          onChange={v.environment.onChange}
+                        ></textarea>
+                        <CopyButton names={v.maskNames} />
+                      </label>
+                    </div>
+                    <label className="fl">
+                      <span className="lb">상담원 소견 및 향후 계획</span>
+                      <textarea
+                        className="ta2"
+                      style={{ minHeight: '96px' }}
+                        maxLength={v.opinion.max}
+                        placeholder={v.opinion.placeholder}
+                        value={v.opinion.value}
+                        onChange={v.opinion.onChange}
+                      ></textarea>
+                      <CopyButton names={v.maskNames} />
+                    </label>
                   </fieldset>
                 ) : null}
 

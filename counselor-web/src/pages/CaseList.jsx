@@ -4,13 +4,14 @@
 // 서버 연결: 로그인 상태(useAuthSession)와 사례 목록(useCaseList)은 src/data 의 훅이 하고,
 // 화면에 쓸 값은 src/data/screens/caseList.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 디자인을 바꿀 때는 아래 CaseList 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
-import { Fragment, useState } from 'react';
+import { Fragment } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { useAccountSearch } from '../data/useAccountSearch';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseList } from '../data/useCaseList';
 import { caseListValues } from '../data/screens/caseList';
@@ -25,8 +26,11 @@ class Logic extends DCLogic {
 
 export default function CaseList(props) {
   const session = useAuthSession();
-  const [search, setSearch] = useState('');
-  const list = useCaseList({ search, enabled: session.status === 'signedIn' });
+  // 검색어는 계정에 묶는다 — 다른 계정으로 바뀌면 앞 계정이 친 이름이 남지 않는다(Codex #130 H1).
+  const [search, setSearch] = useAccountSearch(session);
+  // 사용자 정보까지 확인된 뒤에만 부른다 — 다른 탭의 다시 로그인으로 사용자 정보가 먼저 비는 사이에 새 토큰으로 한 번 더
+  // 부르지 않게(Codex #130 재검수 N4).
+  const list = useCaseList({ search, enabled: session.status === 'signedIn' && session.me !== null, withNames: true });
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, list, search, setSearch });
   // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다.
@@ -95,42 +99,9 @@ export default function CaseList(props) {
                 </Fragment>
               ))}
             </div>
-            <button
-              type="button"
-              className="tg"
-              aria-pressed={v.real}
-              disabled
-              title={v.notReady}
-              style={{ opacity: 0.5, cursor: 'not-allowed' }}
-            >
-              <span
-                style={{
-                  width: '34px',
-                  height: '20px',
-                  borderRadius: '10px',
-                  background: v.tgBg,
-                  position: 'relative',
-                  display: 'inline-block',
-                }}
-              >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: v.tgX,
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: '#FFFFFF',
-                    boxShadow: '0 1px 2px rgba(0,0,0,.2)',
-                  }}
-                ></span>
-              </span>
-              실명 보기
-            </button>
           </section>
           <p className="note" style={{ margin: '-8px 0 0' }}>
-            위험도 · 실명 보기 · 신고접수일은 {v.notReady}입니다(서버에 아직 없는 값).
+            위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)입니다. 신고접수일 · 위험도 정렬은 {v.notReady}입니다.
           </p>
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>

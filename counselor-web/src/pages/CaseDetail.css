@@ -1,6 +1,34 @@
 /* CaseDetail 화면에만 있는 규칙(디자인 CaseDetail.dc.html). 공통 규칙은 src/styles/common.css.
    진행 단계 칸 링크(.stl)와 녹음하기 창(.rec-*)은 10/21 디자인(counselor-design/screens/CaseDetail.dc.html)에서 옮겼다.
-   맨 아래 '초기면접 내용' 카드(.intake)는 디자인에 없는 칸이라 CaseRegister.css 의 고르기 단추 · 칸 제목을 옮겨 쓴다. */
+   맨 아래 '초기면접 내용' 카드(.intake)는 디자인에 없는 칸이라 CaseRegister.css 의 고르기 단추 · 칸 제목을 옮겨 쓴다.
+   '기본 정보' 카드(.basics)의 수정 입력칸(2026-11-03)은 공통 .inp 를 카드 너비에 맞게 줄여 쓴다. */
+.pg-CaseDetail .basics dd {
+  min-width: 0;
+}
+.pg-CaseDetail .basics .inp {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  box-sizing: border-box;
+}
+/* 사례관리대상자 이름 · 관계. 카드가 좁으면 두 줄로 내린다. */
+.pg-CaseDetail .basics .pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pg-CaseDetail .basics .pair .inp {
+  flex: 2 1 110px;
+  width: auto;
+}
+.pg-CaseDetail .basics .pair .inp:last-child {
+  flex: 1 1 90px;
+}
+.pg-CaseDetail .basics .inp:disabled,
+.pg-CaseDetail .basics .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .pg-CaseDetail .kv {
   display: grid;
   grid-template-columns: 96px 1fr;
@@ -141,126 +169,23 @@
 .pg-CaseDetail .thm-root.dark .stl:hover > span:not(.sd):not(.chip) {
   color: #ece8df !important;
 }
-/* 녹음하기 창 — 10/21 디자인 */
-.pg-CaseDetail .rec-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #a33b2e;
-  vertical-align: 0;
-}
-.pg-CaseDetail .rec-dot.live {
-  animation: rec-pulse 1s infinite;
-}
-.pg-CaseDetail .rec-dot.off {
-  background: #a8a296;
-}
-@keyframes rec-pulse {
-  50% {
-    opacity: 0.2;
-  }
-}
-.pg-CaseDetail .rec-ov {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  background: rgba(47, 58, 68, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px 16px;
-  overflow-y: auto;
-}
-.pg-CaseDetail .rec-dlg {
-  width: 100%;
-  max-width: 560px;
-  background: #ffffff;
-  border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(43, 42, 38, 0.22);
-  overflow: hidden;
-  color: #2b2a26;
-}
-.pg-CaseDetail .rec-x {
-  margin-left: auto;
-  width: 40px;
-  height: 40px;
-  border: 0;
-  border-radius: 10px;
-  background: #f7f6f2;
-  font: inherit;
-  font-size: 18px;
-  color: #2b2a26;
-  cursor: pointer;
-}
-.pg-CaseDetail .rec-case {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: #f7f6f2;
-}
-.pg-CaseDetail .lb2 {
-  font-size: 13px;
-  font-weight: 700;
-}
-.pg-CaseDetail .rec-box {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  padding: 22px 20px;
-  border: 1px solid #e7e4dc;
-  border-radius: 12px;
-  text-align: center;
-}
-.pg-CaseDetail .rec-status {
-  font-size: 14px;
-  font-weight: 700;
-}
-.pg-CaseDetail .rec-time {
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
-.pg-CaseDetail .rec-consent {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.pg-CaseDetail .rec-consent input {
-  width: 18px;
-  height: 18px;
-  accent-color: #2b2a26;
-}
-.pg-CaseDetail .rec-main {
-  align-self: center;
-  min-width: 180px;
-}
-.pg-CaseDetail .thm-root.dark .rec-dlg {
-  background: #2c2b27 !important;
-  color: #ece8df;
-}
-.pg-CaseDetail .thm-root.dark .rec-hd {
-  border-bottom: 1px solid #45423b !important;
-}
-.pg-CaseDetail .thm-root.dark .rec-x {
-  background: #33312c;
-  color: #ece8df;
-}
-.pg-CaseDetail .thm-root.dark .rec-case {
-  background: #33312c;
-}
-.pg-CaseDetail .thm-root.dark .rec-box {
-  border-color: #45423b;
-}
-.pg-CaseDetail .thm-root.dark .rec-consent input {
-  accent-color: #d6d0c4;
-}
+/* 10/29 디자인: 내담자 정보 탭 안의 상담 전 브리핑(.brief-wrap) · 인쇄 창(.out-*) */
+.pg-CaseDetail .rq{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:14px;border:1px solid #E7E4DC;background:#FFFFFF}
+.pg-CaseDetail .rq input{width:18px;height:18px;margin-top:3px;accent-color:#2B2A26;flex:none}
+.pg-CaseDetail .src{display:block;font-size:12px;color:#7A776F}
+.pg-CaseDetail .thm-root.dark .rq{border:1px solid #45423B !important;background:#2C2B27 !important}
+.pg-CaseDetail .thm-root.dark .rq input{accent-color:#D6D0C4 !important}
+.pg-CaseDetail .thm-root.dark .src{color:#A8A296 !important}
+.pg-CaseDetail .card.lead{padding:26px 28px;display:flex;flex-direction:column;gap:10px;min-height:190px}
+.pg-CaseDetail .lead-tag{align-self:flex-start;display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;background:#2B2A26;color:#EADBB5;font-size:13px;font-weight:700}
+.pg-CaseDetail .lead-q{font-size:14px;color:#66625A;margin-top:4px}
+.pg-CaseDetail .lead-main{font-size:22px;font-weight:700;line-height:1.45;color:#2B2A26;flex:1}
+.pg-CaseDetail .lead-arrow{color:#A33B2E;margin:0 4px}
+.pg-CaseDetail .lead .src{font-size:12.5px}
+.pg-CaseDetail .rq{padding:14px 18px;font-size:15px}
+.pg-CaseDetail .thm-root.dark .lead-tag{background:#EADBB5 !important;color:#2B2A26 !important}
+.pg-CaseDetail .thm-root.dark .lead-q{color:#B5AFA3 !important}
+.pg-CaseDetail .thm-root.dark .lead-main{color:#ECE8DF !important}
+.pg-CaseDetail .thm-root.dark .lead-arrow{color:#F0907F !important}
+.pg-CaseDetail .brief-wrap{display:flex;flex-direction:column;gap:18px}
+@media print{body.print-brief *{visibility:hidden !important}body.print-brief .brief-wrap,body.print-brief .brief-wrap *{visibility:visible !important}body.print-brief .brief-wrap{position:absolute;left:0;top:0;width:100%}body.print-brief .brief-wrap button{display:none !important}}

@@ -2,6 +2,7 @@
 // 값은 src/data/screens/flow.ts 의 processNav 가 만든다(processHeaderValues 의 steps).
 // 끝난 단계(✓)와 지금 할 단계만 링크로 그린다. 지금 화면(현재 단계)과 아직 열리지 않은 뒤 단계는 링크가 아니라 눌러도
 // 옮기지 않는다 — 다음 단계로는 화면 아래 단추('원문 확정 · 유형별 위험도 →' 같은)로만 간다(10/27).
+// 칸에 block 이 있으면(유형별 위험도에서 상담원 판단 없이 다음 단계로 가려 할 때) 옮기지 않고 그 함수를 부른다(팝업).
 import { Fragment } from 'react';
 import A from './A';
 
@@ -15,6 +16,24 @@ export default function StepNav({ steps }) {
             <b style={{ fontWeight: t.weight }}>{t.label}</b>
           </Fragment>
         );
+
+        if (t.href && t.block) {
+          const block = t.block;
+          return (
+            <A
+              key={i}
+              className={t.cls}
+              to={t.href}
+              aria-haspopup="dialog"
+              onClick={(event) => {
+                event.preventDefault();
+                block();
+              }}
+            >
+              {body}
+            </A>
+          );
+        }
 
         if (t.href) {
           return (

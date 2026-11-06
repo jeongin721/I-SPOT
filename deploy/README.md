@@ -35,6 +35,17 @@ sudo bash deploy/web-deploy.sh
   새 주소도 이 서버를 가리켜야 HTTPS 인증서가 발급됩니다. `backend.env` 의 `CORS_ORIGINS` 는 스크립트가 `https://<주소>` 로 고칩니다.
 - 이전 버전으로 되돌리는 기능은 없습니다. 되돌리려면 main 에서 되돌리는 커밋을 머지한 뒤 다시 배포합니다.
 
+### 머지 전 브랜치를 데모로 확인하기 (`DEPLOY_BRANCH`)
+
+스크립트는 1/5 단계에서 기본으로 `main` 으로 바꿔 빌드합니다. PR 브랜치를 머지 전에 데모로 보려면 그 브랜치로 바꾼 뒤(옵션이 든 스크립트를 쓰려고) `DEPLOY_BRANCH` 를 넘깁니다. 저장소(GitHub)에는 아무것도 올리지 않습니다.
+
+```bash
+cd /opt/ispot/I-SPOT && sudo git fetch origin && sudo git checkout feature/infra-integration
+sudo env DEPLOY_BRANCH=feature/infra-integration WITH_MODELING=1 WITH_STT=1 WITH_GPU=1 bash deploy/web-deploy.sh
+```
+
+머지된 뒤 `DEPLOY_BRANCH` 없이 실행하면 다시 `main` 으로 바꿔 배포합니다. DB 구조가 다른 브랜치면 migration 이 그 브랜치 기준으로 돌기 때문에, main 으로 돌아오기 전에 확인합니다.
+
 ## 모델까지 띄우기 (`AI_PROVIDER=modeling`)
 
 기본 이미지는 mock · pipeline 만 돌립니다. modeling(`ai/modeling/abuse`, 학대 유형 분류 모델 + 이름 가리기 + OpenAI)은 이미지에 torch · transformers · openai 와 모델 파일이 더 있어야 해서 따로 켭니다.
@@ -93,6 +104,19 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
    - 구간별 음성 참고 표시(정담원 님 `stt/voice_marks`)까지 켜려면 `backend.env` 에 `VOICE_MARKS_PROVIDER=module` 을 더합니다. 같은 `WITH_STT=1` 이미지에 librosa · numba · soundfile 이 들어 있고, numba 캐시 자리(`NUMBA_CACHE_DIR=/tmp/numba-cache`)는 이미지가 정합니다. 기본(`off`)이면 아무것도 하지 않습니다. 참고 표시일 뿐 판정이 아닙니다(`backend/docs/API_CONTRACT.md` 16절).
    - `openai-whisper`(`I_SPOT_STT_PROVIDER=whisper` 일 때만) · `pyannote`(별도 화자 분리 때만) · `ffmpeg`(기본 꺼진 `I_SPOT_SINGLE_SPEAKER_FALLBACK` 때만)는 넣지 않았습니다. 그 설정을 켜려면 이미지에 더해야 합니다.
    - 전사 한 번에 최대 `STT_TIMEOUT_SECONDS`(기본 600초)까지 기다립니다. 음성 파일은 `/opt/ispot/storage`(컨테이너 `/app/storage`)에 있어 그대로 읽습니다.
+
+## 개인 식별 정보 키 (`PII_ENCRYPTION_KEYS` · `PII_INDEX_KEY`)
+
+아동 실명 · 생년월일 · 가족 정보는 이 두 키로 암호화해 저장합니다(2026-10-30, `backend/README.md` 7절). `backend.env` 가
+`ENV=production` 인데 두 키가 없으면 스크립트가 1/5 전에 멈춥니다(키 없이 Backend 가 뜨지 않으므로). **처음 한 번만** 아래를 합니다.
+
+1. 키 두 개를 만듭니다(각각 따로, 서로 다른 값): `python3 -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
+2. AWS SSM Parameter Store 에 **SecureString** 으로 둡니다(예: `/ispot/backend/PII_ENCRYPTION_KEYS` 값 `k1:<첫 키>`, `/ispot/backend/PII_INDEX_KEY` 값 `<둘째 키>`).
+3. **사본 1부를 AWS 밖 비밀번호 관리자**에 둡니다. 키를 잃으면 저장한 실명을 되살릴 수 없습니다. 키 값은 메신저 · 메일 · 저장소로 주고받지 않습니다.
+4. 서버의 `/opt/ispot/backend.env` 에 두 줄(`PII_ENCRYPTION_KEYS=k1:…`, `PII_INDEX_KEY=…`)을 넣고 스크립트를 다시 돌립니다. 터미널 기록에 남지 않게 편집기로 넣습니다.
+
+- 한 번 저장을 시작한 뒤 키를 바꾸면 옛 값을 풀 수 없습니다. 바꿀 때는 `backend/README.md` 7절의 '키 바꾸기' 순서(새 키를 맨 앞에 넣고 `scripts.reencrypt_personal_info`)를 따릅니다.
+- 개발용 키(`backend/.env.example` 의 값)는 `ENV=production` 에서 거절됩니다.
 
 ## 디스크 · 빌더
 
@@ -158,21 +182,48 @@ LawGuide 화면의 'AI 에게 묻기'(API_CONTRACT 17절)는 기본 `mock`(고�
 
 확인: `curl -s -X POST http://localhost:8000/api/v1/law-guide/questions -H "Authorization: Bearer <토큰>" -H "Content-Type: application/json" -d '{"question":"응급조치 기간은 얼마나 돼요?"}'` 가 200 과 `sources.laws` 를 돌려주면 됩니다.
 
-## 다음 상담 체크리스트 켜기 (`FOLLOWUP_PROVIDER=module`)
+## 회원가입 켜기 (`SIGNUP_ENABLED` · `MAIL_PROVIDER=ses`)
 
-추가 확인 · 질문 화면의 '다음 상담 전 확인할 사항' · '추가 질문'(API_CONTRACT 19절)은 기본 `mock`(고정 문구)으로 뜹니다. 실제로 켜려면:
+회원가입(이메일 인증번호 → 대기 신청 → 관리자 승인, `backend/docs/API_CONTRACT.md` 3절 '회원가입')은 기본으로 꺼져 있습니다.
+인증번호 메일은 AWS SES 로 보냅니다. 자격은 EC2 역할에서 받으므로 접근 키 · 비밀번호를 `backend.env` 에 넣지 않습니다.
+**처음 한 번만** 아래를 합니다.
 
-1. **색인을 서버에 만듭니다.** 원문 PDF(업무 매뉴얼 · 가이드북 · 체크리스트 — `I-SPOT_DOCS/rag_sources.csv`)를 `/opt/ispot/I-SPOT/rag_data/` 아래 폴더(`manuals/` · `checklists/` 등, `rag/README.md` 2절)에 두고 `python -m rag.indexer` 로 `/opt/ispot/I-SPOT/rag_storage/chroma` 를 만듭니다(임베딩에 `OPENAI_API_KEY` 필요). 판례까지 쓰려면 먼저 `python -m rag.precedent_harvest`(판례 API 사용 신청 필요). 원문 · 색인은 저장소에 넣지 않습니다.
-2. **`backend.env` 를 고칩니다.** `FOLLOWUP_PROVIDER=module`, `OPENAI_API_KEY=<키>`. 법령 조문까지 쓰려면 `LAW_API_OC=<OC>` 또는 법령 캐시(`/law_cache`). `ENV=production` 이면 `FOLLOWUP_ALLOW_IN_PRODUCTION=true` 도 있어야 뜹니다 — **가상 데이터만 있는 서버에서만**(아동 발화 · 이전 회차 요약이 가려진 채 OpenAI 로 나가지만 등록 실명 대조는 돌지 않음).
-3. **`WITH_MODELING=1 WITH_RAG=1` 로 배포합니다.**
+1. **보내는 주소 인증** — SES 콘솔(서울 `ap-northeast-2`) → Identities → Create identity. 받은 메일의 링크를 24시간 안에 누릅니다.
+   - 가진 도메인이 있으면 도메인 identity(Easy DKIM)를 권합니다. Gmail 같은 남의 도메인 주소를 보내는 주소로 쓰면 SES 가 그 도메인으로
+     서명할 수 없어 DMARC 정렬이 맞지 않고, 받는 쪽이 그 도메인의 DMARC 정책에 따라 스팸함으로 보내거나 거부할 수 있습니다.
+   - 이메일 주소 identity 는 대소문자를 구분합니다. `SES_FROM_ADDRESS` 를 인증한 그대로 적습니다.
+2. **받는 주소 등록(샌드박스)** — 샌드박스에서는 인증한 주소로만 보낼 수 있고, 24시간에 200통 · 초당 1통까지입니다(AWS 문서).
+   시험할 팀원 주소를 같은 방법으로 identity 로 만들고 각자 링크를 누릅니다. 등록 안 한 주소로 가입하면 응답은 `202` 지만 메일이 가지 않고
+   감사 로그에 `SIGNUP_CODE_SENT` · `FAILURE` · `MAIL_SEND_FAILED`(`detail.cause` 예: `MessageRejected`)가 남습니다.
+3. **EC2 역할 권한** — `ispot-backend` 인스턴스의 IAM 역할에 아래 정책을 붙입니다(역할이 없으면 만들어 인스턴스에 연결).
+   Resource 는 그 계정 · 지역의 identity 로 좁힙니다. 보내는 주소 하나로만 좁히면 샌드박스에서 받는 주소 identity 권한 오류가 난다는
+   사례가 있어(확인하지 않음) `identity/*` 로 둡니다 — 이렇게 해도 SES 에서 인증한 identity 로만 보낼 수 있습니다.
 
-   ```bash
-   sudo env WITH_MODELING=1 WITH_RAG=1 bash deploy/web-deploy.sh
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": "ses:SendEmail",
+       "Resource": "arn:aws:ses:ap-northeast-2:<계정 ID>:identity/*"
+     }]
+   }
    ```
 
-   - 이미지에 `requirements-rag.txt`(langchain · chromadb · pypdf)를 더 깔고, 색인 폴더(`RAG_STORAGE_HOST_DIR`, 기본 `/opt/ispot/I-SPOT/rag_storage`)를 컨테이너 `/rag_storage` 에 붙입니다. 색인이 없으면 멈춥니다. 비식별(이름 인식)이 torch 를 써서 `WITH_MODELING=1` 이 필요합니다.
-   - `backend.env` 가 `FOLLOWUP_PROVIDER=module` 인데 `WITH_RAG=1` 없이 돌리면 멈춥니다.
-4. 비용 · 시간: AI 분석이 끝날 때마다 LLM 을 3~5번(질문) + 3번(화면별 매뉴얼 근거) 부릅니다. 한 번에 최대 `FOLLOWUP_TIMEOUT_SECONDS`(기본 240초). 실패해도 회차 상태에는 영향이 없고 화면에서 다시 만들 수 있습니다.
+4. **`backend.env`** 에 넣고 다시 배포합니다.
 
-확인: 분석이 끝난 회차에서 `curl -s http://localhost:8000/api/v1/sessions/<회차 ID>/followup-suggestions -H "Authorization: Bearer <토큰>"` 가 `"provider": "module"` · `"status": "COMPLETED"` 를 돌려주면 됩니다.
+   ```
+   SIGNUP_ENABLED=true
+   MAIL_PROVIDER=ses
+   SES_FROM_ADDRESS=<1에서 인증한 주소>
+   SES_REGION=ap-northeast-2
+   ```
 
+   `ENV=production` 에서 `SIGNUP_ENABLED=true` 인데 `MAIL_PROVIDER` 가 `ses` 가 아니거나, `ses` 인데 `SES_FROM_ADDRESS` 가 비어 있으면
+   Backend 가 뜨지 않아 3/5 에서 멈춥니다. `MAIL_PROVIDER=console`(인증번호를 출력에 찍음)도 운영에서는 막힙니다.
+5. 확인: 등록한 주소로 가입 → 메일 받기 → 관리자 화면(또는 `/docs`)에서 `GET /api/v1/auth/signup-requests` → 승인 → 그 계정으로 로그인.
+   메일이 안 오면 `sudo docker logs --tail 50 ispot-backend` 의 `cause=` 와 감사 로그를 봅니다(받는 주소는 로그에 남지 않습니다).
+
+- 백엔드 컨테이너는 `--network host` 라 인스턴스 메타데이터(역할 자격)에 바로 닿습니다.
+- IP 당 요청 수(보내기 시간당 20번 · 확인 30번)는 서버 메모리로 셉니다. 다시 배포하면 비워집니다.
+- 끌 때는 `SIGNUP_ENABLED=false` 로 바꾸고 다시 배포합니다. 남은 대기 신청은 관리자 창구에서 계속 처리할 수 있습니다.

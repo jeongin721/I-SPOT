@@ -6,10 +6,26 @@ from typing import Optional
 
 
 class UserRole(str, Enum):
-    """사용자 권한. 자유 회원가입은 없으며 관리자가 계정을 생성한다."""
+    """
+    사용자 권한. 계정은 관리자가 만들거나, 회원가입 신청을 관리자가 승인할 때 생긴다(2026-11-02).
+
+    신청하는 사람은 역할을 고르지 않는다. 승인하는 관리자가 정한다.
+    """
 
     COUNSELOR = "COUNSELOR"
     ADMIN = "ADMIN"
+
+
+class SignupRequestStatus(str, Enum):
+    """
+    회원가입 대기 신청 상태(2026-11-02, API_CONTRACT 3절 '회원가입').
+
+    PENDING 동안은 계정(users 행)이 없어 로그인할 수 없다. 관리자가 승인할 때만 계정이 생긴다.
+    """
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class CaseStatus(str, Enum):
@@ -35,6 +51,65 @@ class GuardianType(str, Enum):
     FOSTER = "FOSTER"              # 위탁
     FACILITY = "FACILITY"          # 시설
     OTHER = "OTHER"                # 기타(guardian_note 에 직접 입력)
+
+
+class ChildActionResult(str, Enum):
+    """
+    조치결과 · 피해아동(서식 4 ①, 2026-11-05).
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    HOME = "HOME"                  # 원가정보호
+    RELATIVE = "RELATIVE"          # 친인척보호
+    ACQUAINTANCE = "ACQUAINTANCE"  # 연고자에 의한 보호
+    FOSTER = "FOSTER"              # 가정위탁
+    FACILITY = "FACILITY"          # 시설입소
+    HOSPITAL = "HOSPITAL"          # 병원입원
+    OTHER = "OTHER"                # 기타
+
+
+class TargetActionResult(str, Enum):
+    """
+    조치결과 · 사례관리대상자(서식 4 ①, 2026-11-05).
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    OBSERVATION = "OBSERVATION"  # 지속관찰
+    SEPARATION = "SEPARATION"    # 아동과의 분리
+    COMPLAINT = "COMPLAINT"      # 고소 · 고발
+    OTHER = "OTHER"              # 기타
+
+
+class FamilyType(str, Enum):
+    """
+    가족유형(서식 4 ② 초기면접 내용, 2026-11-05). 하나만 고른다. 11/03 디자인의 서식 항목 21개.
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    GENERAL = "GENERAL"                      # 일반가정
+    FATHER_BEREAVED = "FATHER_BEREAVED"      # 부자가정(사별)
+    FATHER_DIVORCED = "FATHER_DIVORCED"      # 부자가정(이혼)
+    FATHER_LEFT = "FATHER_LEFT"              # 부자가정(가출)
+    FATHER_SEPARATED = "FATHER_SEPARATED"    # 부자가정(별거)
+    MOTHER_BEREAVED = "MOTHER_BEREAVED"      # 모자가정(사별)
+    MOTHER_DIVORCED = "MOTHER_DIVORCED"      # 모자가정(이혼)
+    MOTHER_LEFT = "MOTHER_LEFT"              # 모자가정(가출)
+    MOTHER_SEPARATED = "MOTHER_SEPARATED"    # 모자가정(별거)
+    UNMARRIED_FATHER = "UNMARRIED_FATHER"    # 미혼부가정
+    UNMARRIED_MOTHER = "UNMARRIED_MOTHER"    # 미혼모가정
+    UNMARRIED_PARENTS = "UNMARRIED_PARENTS"  # 미혼부모가정
+    FATHER_STEPMOTHER = "FATHER_STEPMOTHER"  # 친부+계모
+    MOTHER_STEPFATHER = "MOTHER_STEPFATHER"  # 친모+계부
+    RELATIVE_CARE = "RELATIVE_CARE"          # 친인척보호
+    FATHER_PARTNER = "FATHER_PARTNER"        # 친부+동거녀
+    MOTHER_PARTNER = "MOTHER_PARTNER"        # 친모+동거남
+    FOSTER = "FOSTER"                        # 가정위탁
+    ADOPTIVE = "ADOPTIVE"                    # 입양가정
+    FACILITY = "FACILITY"                    # 시설보호
+    OTHER = "OTHER"                          # 기타
 
 
 class SessionStatus(str, Enum):
@@ -112,6 +187,18 @@ class AnalysisStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class DraftsStatus(str, Enum):
+    """3 · 4단계 AI 초안(상담 요약 · 확인 메모 · 추가 질문 등) 상태(2026-11-04, PROPOSAL_analysis_signals_first.md).
+
+    학대 신호 확인(2단계) 값을 먼저 저장하면(analysis COMPLETED) PENDING 이 되고, 나머지를 채우면 DONE,
+    못 채우면 FAILED 다. 한 번에 저장한 분석(콜백 없음 · 이 칸이 생기기 전 분석)과 처리 중 · 실패한 분석은 DONE 이다.
+    """
+
+    PENDING = "PENDING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
 class ReviewStatus(str, Enum):
     """
     상담사 검수 대상(Summary/Document) 상태.
@@ -174,7 +261,7 @@ def abuse_type_from_label(label: object) -> Optional[AbuseType]:
 
 class RiskLevel(str, Enum):
     """
-    상담원이 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
+    상담원이 회차 전체 또는 학대 유형마다 내리는 위험도 판단(상 · 중 · 하).
 
     AI 가 제안하는 심각도(1~5)와 척도가 다르다. 둘을 대응시키는 규칙은 팀 결정 전이라
     따로 저장만 하고 서로 바꾸지 않는다.
@@ -197,6 +284,16 @@ class FollowupQuestionKind(str, Enum):
     BANK = "BANK"
 
 
+class ConsultationType(str, Enum):
+    """상담 유형(2026-10-30, 10/29 디자인 녹음하기 창 · 상담 이력). 회차마다 하나, 비울 수 있다."""
+
+    INITIAL = "INITIAL"  # 초기면담
+    REGULAR = "REGULAR"  # 정기상담
+    VISIT = "VISIT"  # 방문상담
+    OFFICE = "OFFICE"  # 기관 면담
+    PHONE = "PHONE"  # 전화상담
+
+
 class FollowupQuestionSource(str, Enum):
     """승인한 추가 질문이 어디서 왔는가. AI 초안을 고쳐 승인해도 AI 다."""
 
@@ -204,12 +301,51 @@ class FollowupQuestionSource(str, Enum):
     COUNSELOR = "COUNSELOR"
 
 
+class ScheduleKind(str, Enum):
+    """일정 종류(2026-11-02, 일정 디자인). 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시)."""
+
+    CONSULT = "CONSULT"
+    OTHER = "OTHER"
+
+
+class ScheduleConsultType(str, Enum):
+    """상담 일정의 상담 유형(디자인 일정 추가 창 그대로). 회차의 ConsultationType 과 따로 둔다('종결 상담' 이 있어서)."""
+
+    REGULAR = "REGULAR"  # 정기상담
+    INITIAL = "INITIAL"  # 초기면담
+    VISIT = "VISIT"  # 방문상담
+    PHONE = "PHONE"  # 전화상담
+    CLOSING = "CLOSING"  # 종결 상담
+
+
+class ScheduleCategory(str, Enum):
+    """개인 · 기관 일정의 분류(디자인 그대로). INTAKE(최초접수)는 사례가 필수이고 처리 기한(3 · 7 · 30일)이 따라붙는다."""
+
+    AGENCY_MEETING = "AGENCY_MEETING"  # 기관 회의
+    CASE_MEETING = "CASE_MEETING"  # 사례회의(종결평가 회의 포함)
+    INTAKE = "INTAKE"  # 최초접수
+    SUPERVISION = "SUPERVISION"  # 슈퍼비전
+    TRAINING = "TRAINING"  # 교육
+    FIELD_WORK = "FIELD_WORK"  # 외근
+    LEAVE = "LEAVE"  # 휴가
+    ETC = "ETC"  # 기타
+
+
 class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
     CASE_CREATED = "CASE_CREATED"
     CASE_UPDATED = "CASE_UPDATED"
+    CLOSURE_REVIEW_REGISTERED = "CLOSURE_REVIEW_REGISTERED"
+    CLOSURE_REVIEW_CANCELED = "CLOSURE_REVIEW_CANCELED"
+    CLOSURE_SUMMARY_GENERATED = "CLOSURE_SUMMARY_GENERATED"
+    CLOSURE_SUMMARY_UPDATED = "CLOSURE_SUMMARY_UPDATED"
     CASE_DELETED = "CASE_DELETED"
+    # 개인 식별 정보(암호화한 실명 등, API_CONTRACT 4절 '개인 식별 정보'). 복호화해서 내준 열람도 남긴다.
+    # detail 에는 칸 이름 · 사례 ID 만 넣고 값은 넣지 않는다. 목록은 조회 1번에 1줄(case_ids · count).
+    CASE_PERSONAL_INFO_VIEWED = "CASE_PERSONAL_INFO_VIEWED"
+    CASE_PERSONAL_INFO_UPDATED = "CASE_PERSONAL_INFO_UPDATED"
+    CASE_LIST_PERSONAL_INFO_VIEWED = "CASE_LIST_PERSONAL_INFO_VIEWED"
     SESSION_CREATED = "SESSION_CREATED"
     SESSION_UPDATED = "SESSION_UPDATED"
     SESSION_DELETED = "SESSION_DELETED"
@@ -222,19 +358,32 @@ class AuditAction(str, Enum):
     ANALYSIS_REQUESTED = "ANALYSIS_REQUESTED"
     ANALYSIS_COMPLETED = "ANALYSIS_COMPLETED"
     ANALYSIS_FAILED = "ANALYSIS_FAILED"
+    # 3 · 4단계 AI 초안을 채움 · 못 채움(2026-11-04, 2단계를 먼저 저장한 분석만). detail 에는 수 · 오류 코드만 남긴다.
+    ANALYSIS_DRAFTS_COMPLETED = "ANALYSIS_DRAFTS_COMPLETED"
+    ANALYSIS_DRAFTS_FAILED = "ANALYSIS_DRAFTS_FAILED"
     SUMMARY_UPDATED = "SUMMARY_UPDATED"
     SUMMARY_APPROVED = "SUMMARY_APPROVED"
     DOCUMENT_CREATED = "DOCUMENT_CREATED"
     DOCUMENT_UPDATED = "DOCUMENT_UPDATED"
     DOCUMENT_APPROVED = "DOCUMENT_APPROVED"
-    # 상담원 위험도 판단. detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
+    # 상담원 위험도 판단(유형별). detail 에는 유형과 단계 값만 남긴다(판단 이유 원문은 넣지 않는다).
     RISK_ASSESSMENT_CREATED = "RISK_ASSESSMENT_CREATED"
     RISK_ASSESSMENT_UPDATED = "RISK_ASSESSMENT_UPDATED"
+    # 상담원 위험도 판단(회차 전체, 2026-10-29). detail 에는 단계 값과 ai_level 만 남긴다(판단 이유 원문은 넣지 않는다).
+    OVERALL_RISK_ASSESSMENT_CREATED = "OVERALL_RISK_ASSESSMENT_CREATED"
+    OVERALL_RISK_ASSESSMENT_UPDATED = "OVERALL_RISK_ASSESSMENT_UPDATED"
     # 법령 · 매뉴얼 AI 질문(17절, 2026-10-28). detail 에는 걸린 시간 · provider · 모델 · 근거 수만 남긴다(질문 원문은 넣지 않는다).
     # 실패는 status=FAILED + error_code 다.
     LAW_QA_ASKED = "LAW_QA_ASKED"
     # 승인한 추가 질문 목록 저장(18절, 2026-10-28). detail 에는 질문 수 · 출처별 수만 남긴다(질문 원문은 넣지 않는다).
     FOLLOWUP_QUESTIONS_UPDATED = "FOLLOWUP_QUESTIONS_UPDATED"
+    FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
+    # 다음 상담 체크리스트 만들기 · 다시 만들기 요청(19절, 2026-10-30). detail 에는 provider · 시도 번호만 남긴다(문장은 넣지 않는다).
+    FOLLOWUP_CHECKLIST_REQUESTED = "FOLLOWUP_CHECKLIST_REQUESTED"
+    # 일정(2026-11-02). detail 에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 넣지 않는다).
+    SCHEDULE_CREATED = "SCHEDULE_CREATED"
+    SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
+    SCHEDULE_DELETED = "SCHEDULE_DELETED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.
@@ -248,3 +397,10 @@ class AuditAction(str, Enum):
     ACCOUNT_REACTIVATED = "ACCOUNT_REACTIVATED"
     USER_CREATED = "USER_CREATED"
     USER_UPDATED = "USER_UPDATED"
+    # 회원가입(2026-11-02, API_CONTRACT 3절 '회원가입'). detail 에 이메일 · 이름 · 인증번호 · 토큰은 넣지 않는다.
+    # 인증번호를 만듦(메일 실패는 status=FAILURE · MAIL_SEND_FAILED) · 맞힘(살아 있는 번호를 틀리면 FAILURE).
+    SIGNUP_CODE_SENT = "SIGNUP_CODE_SENT"
+    SIGNUP_CODE_VERIFIED = "SIGNUP_CODE_VERIFIED"
+    SIGNUP_REQUESTED = "SIGNUP_REQUESTED"
+    SIGNUP_APPROVED = "SIGNUP_APPROVED"
+    SIGNUP_REJECTED = "SIGNUP_REJECTED"

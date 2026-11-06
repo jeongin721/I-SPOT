@@ -70,7 +70,7 @@ export function useFollowupQuestions(
   const [actionError, setActionError] = useState<string | null>(null);
   const [seenGeneration, setSeenGeneration] = useState(remote.generation);
 
-  // 대상이 바뀌면 앞 대상의 오류 · 보내는 중 표시를 지운다(useRiskAssessments 와 같다).
+  // 대상이 바뀌면 앞 대상의 오류 · 보내는 중 표시를 지운다(useOverallRiskAssessment 와 같다).
   if (seenGeneration !== remote.generation) {
     setSeenGeneration(remote.generation);
     setActionError(null);

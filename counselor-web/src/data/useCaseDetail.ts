@@ -18,6 +18,7 @@ import { useCallback, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import { cases } from "../api/endpoints";
 import { GUARDIAN_LABELS, type CaseDetail, type CaseUpdateRequest, type GuardianType } from "../api/types";
+import { caseFormInputOf, type CaseFormInput } from "./caseFormFields";
 import { NOT_PROVIDED, toCaseRow, type CaseRow } from "./caseRows";
 import { isProcessing, toSessionRow, type SessionRow } from "./sessionRows";
 import { toDateOnly } from "./time";
@@ -53,6 +54,12 @@ export interface CaseDetailView extends CaseRow {
   guardianType: GuardianType | null;
   guardianNote: string;
   counselorId: string;
+  /** 날짜 셋 원래 값(YYYY-MM-DD, 없으면 ""). */
+  reportDateValue: string;
+  linkedDateValue: string;
+  firstInterviewDateValue: string;
+  /** 서식 4 고르기 · 글 칸 원래 값(2026-11-05, caseFormFields.ts — 고르기는 서버 코드, 없으면 ""). */
+  caseForm: CaseFormInput;
 }
 
 export function toCaseDetailView(source: CaseDetail): CaseDetailView {
@@ -75,6 +82,10 @@ export function toCaseDetailView(source: CaseDetail): CaseDetailView {
     guardianType: source.guardian_type ?? null,
     guardianNote: source.guardian_note ?? "",
     counselorId: source.counselor_id,
+    reportDateValue: source.report_date ?? "",
+    linkedDateValue: source.linked_date ?? "",
+    firstInterviewDateValue: source.first_interview_date ?? "",
+    caseForm: caseFormInputOf(source),
   };
 }
 
@@ -94,6 +105,8 @@ export interface CaseDetailState {
   loading: boolean;
   error: string | null;
   reload: () => void;
+  /** 값을 그대로 둔 채 조용히 다시 받는다(다른 창구의 저장이 사례 값을 바꿨을 때 — 실명 PUT 의 출생연도 등). */
+  refresh: () => void;
   /** 초기면접 항목을 저장하는 중. */
   savingIntake: boolean;
   /** 초기면접 항목을 저장하지 못한 까닭. 다른 사례로 옮기거나 다시 로그인하면 지운다. */
@@ -261,7 +274,7 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
         }
 
         // 수정 응답(Case)에는 담당자 이메일 · 회차 수가 없고 최근 상담일도 계산하지 않아(backend cases._case_response),
-        // 이 요청으로 바뀔 수 있는 칸만 바꿔 넣는다.
+        // 이 요청으로 바뀔 수 있는 칸만 바꿔 넣는다. 초기면접 두 목록은 saveIntake 도 쓰는 칸이라 실은 요청만 반영한다(아래).
         const applied = remote.setData(ticket, (current) => {
           const base = current ?? held;
           const view = toCaseDetailView({ ...saved, counselor: null, session_count: base.caseInfo.sessionCount });
@@ -278,13 +291,28 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
               guardianLabel: view.guardianLabel,
               notes: view.notes,
               counselorName: view.counselorName,
-              intakeChildTraits: view.intakeChildTraits,
-              intakeFamilySituations: view.intakeFamilySituations,
+              // 초기면접 두 목록은 이 요청에 실었을 때만 바꾼다. 다른 칸만 고친 저장(사례 상세 기본 정보)의 응답이 늦게 오면,
+              // 그사이 초기면접 카드(saveIntake — 잠금이 따로다)가 저장한 목록을 옛 값으로 되돌리고, 다음 저장이 그 옛 값을 실제로
+              // 보내 항목을 잃는다(Codex #148 M1).
+              intakeChildTraits:
+                payload.intake_child_traits !== undefined ? view.intakeChildTraits : base.caseInfo.intakeChildTraits,
+              intakeFamilySituations:
+                payload.intake_family_situations !== undefined ? view.intakeFamilySituations : base.caseInfo.intakeFamilySituations,
               childGender: view.childGender,
               childBirthYear: view.childBirthYear,
               guardianType: view.guardianType,
               guardianNote: view.guardianNote,
               counselorId: view.counselorId,
+              // 날짜 셋(초기면접지에서 고침). 빠뜨리면 저장한 뒤에도 앞 날짜가 보인다(Codex #129 재검증 D1).
+              reportDate: view.reportDate,
+              linkedDate: view.linkedDate,
+              firstInterviewDate: view.firstInterviewDate,
+              reportDateValue: view.reportDateValue,
+              linkedDateValue: view.linkedDateValue,
+              firstInterviewDateValue: view.firstInterviewDateValue,
+              // 서식 4 고르기 · 글 칸(2026-11-05)과 그 위험도(우선)로 만든 목록 표시 글자.
+              caseForm: view.caseForm,
+              riskLabel: view.riskLabel,
             },
           };
         });
@@ -321,6 +349,7 @@ export function useCaseDetail(caseId: string | null | undefined, { enabled = tru
     loading: remote.loading,
     error: remote.error,
     reload: remote.reload,
+    refresh: remote.refresh,
     savingIntake,
     intakeError,
     saveIntake,

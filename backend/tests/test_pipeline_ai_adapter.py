@@ -33,6 +33,7 @@ BACKEND_ONLY_OPTIONAL_FIELDS = {
     "session_change_notes",
     "followup_check_points",
     "followup_questions",
+    "topic_tags",  # 2026-10-29 아동 발화 대화 주제(없으면 null)
 }
 
 TRANSCRIPT = {
@@ -166,8 +167,10 @@ def test_ai_output_without_backend_only_fields_passes_contract() -> None:
 
     result = AIAnalysisResult.model_validate(AIAnalysisOutput().model_dump())
 
-    for name in BACKEND_ONLY_OPTIONAL_FIELDS:
+    for name in BACKEND_ONLY_OPTIONAL_FIELDS - {"topic_tags"}:
         assert getattr(result, name) == []
+    # topic_tags 만 없으면 null(분류 없음)이다 — 빈 목록(분류했지만 없음)과 구분한다.
+    assert result.topic_tags is None
 
 
 # =========================================================

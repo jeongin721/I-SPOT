@@ -124,7 +124,7 @@ alembic upgrade head
 
 ### 2.5 초기 계정 생성
 
-자유 회원가입이 없으므로 첫 계정은 script 로 만든다.
+회원가입은 관리자 승인이 있어야 계정이 생기므로(7절) 첫 관리자 계정은 script 로 만든다.
 
 ```bash
 # 개발용 데모 계정(관리자 + 상담사) 일괄 생성
@@ -316,8 +316,9 @@ OPENAI_MODEL=...
 > `ENV=local` · `test` 는 이 검사를 하지 않는다(지금처럼 쓸 수 있다).
 
 > **주의: `modeling`(이경진 님 파이프라인, `ai/modeling/abuse/contract_adapter`)은 외부로 보내기 전에 가리지만 가리기가 아직
-> 완전하지 않다.** 이름 인식이 놓친 이름 · 기관 · 지역을 잡아 줄 등록 실명 대조가 서버 경로에서는 돌지 않는다(서버가 `case_id` 를
-> 넘기지 않음, 실명 저장 여부는 팀 결정 대기). 긴 상담 뒷부분을 이름 인식이 보지 않던 문제는 10/20 겹치는 창으로 고쳤다.
+> 완전하지 않다.** 2026-11-02 부터 서버가 사례에 암호화 저장한 실명(7절)을 메모리에서 풀어 가릴 이름 목록(`known_identifiers`)으로
+> 넘기므로 등록한 이름은 대조로 한 번 더 가린다(API_CONTRACT 4절 '개인 식별 정보' 의 'AI 가리기'). 하지만 실명을 등록하지 않은 사례와
+> 등록하지 않은 이름(친구 · 교사 · 학교 등)은 이름 인식에만 기대므로 놓친 이름 · 기관 · 지역은 그대로 나간다. 긴 상담 뒷부분을 이름 인식이 보지 않던 문제는 10/20 겹치는 창으로 고쳤다.
 > 이 개인정보 문제가 해결되기 전에는 가상 데이터로만 쓰고, `ENV=production` 에서는
 > `AI_MODELING_ALLOW_IN_PRODUCTION=true` 를 함께 적어야만 시작한다. torch · transformers · openai 와 가중치 파일은
 > backend 의존성에 없으므로 따로 깐다(없으면 서버는 뜨고 분석만 `AI_FAILED` 로 끝난다).
@@ -420,9 +421,41 @@ backend/
 
 ## 7. 보안 / 개인정보 처리
 
-- 자유 회원가입 없음. 계정은 관리자 또는 seed script 로만 생성한다.
+- 회원가입은 승인제다(2026-11-02, API_CONTRACT 3절 '회원가입'). 이메일 인증번호 → 대기 신청(`signup_requests`) → 관리자가 승인할 때만
+  `users` 행이 생긴다. 신청 창구는 `SIGNUP_ENABLED=true` 일 때만 열린다(기본 꺼짐). 계정은 관리자 · seed script 로도 만든다.
+  - 인증번호는 서버 비밀키(`JWT_SECRET_KEY`)를 섞은 HMAC, 확인 토큰은 SHA-256 으로만 저장한다. 원문 · 비밀번호는 로그 · 감사 로그 · 오류에 남기지 않는다.
+  - 계정이나 대기 신청이 이미 있는 이메일도 같은 응답 · 같은 횟수 제한이다(메일만 안 보냄). 메일은 요청과 떨어진 전용 스레드로 보내고,
+    보내지 않는 이메일도 같은 메일 일 하나(대기 한 칸 · 2초)를 써서 응답 · 다음 요청 · 자기 메일 도착 시간으로도 갈리지 않게 한다.
+  - 계정 이메일은 한 가지 꼴로 저장 · 조회 · 비교한다(`app/core/email_address.canonical_email` — 아이디 소문자 + email-validator 의 IDNA 2008
+    punycode 도메인). 로그인 · 관리자 생성 · 회원가입 · 복구 script 가 모두 쓴다. DB lower() 는 ASCII 만 바꾸고 파이썬 내장 IDNA 는 2003 이라 쓰지 않는다.
+    회원가입 이메일은 아이디가 ASCII 인 것만 받는다(SES 가 보낼 수 있는 꼴).
+  - 메일 발송기 `MAIL_PROVIDER`: `fake`(기본 — 보내지 않음, 시험) · `console`(로컬 전용 — 본문을 표준 출력에 찍음, `ENV=production` 이면 안 뜸) ·
+    `ses`(AWS SES, EC2 역할 권한 — 접근 키를 `.env` 에 두지 않는다, `SES_FROM_ADDRESS` 필수). `ENV=production` 에서 가입을 켜면 `ses` 여야 뜬다.
+    켜는 법은 `deploy/README.md` '회원가입 켜기'.
+  - IP 당 요청 수는 서버 메모리로 센다(프로세스 하나 기준, 다시 켜면 비워짐). 이메일 쪽 제한은 DB 다.
 - 권한 검사는 Backend 에서 수행한다. 상담사는 담당 Case 만 조회·수정할 수 있다.
-- 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 저장한다.
+- `cases` 표에는 아동 실명 컬럼을 두지 않는다. `child_alias` 와 출생연도만 평문으로 저장한다.
+  실명 · 생년월일 · 보호자 · 가족 이름 · 건강정도(서식 4)는 2026-10-30 팀 결정으로 **암호화해** `case_personal_infos` 에 따로 둔다
+  (아래 '개인 식별 정보 키', API_CONTRACT 4절 '개인 식별 정보').
+- **개인 식별 정보 키**
+  - AES-256-GCM(`cryptography`), 값마다 새 nonce, 묶음 값(AAD)에 사례 ID · 칸 이름을 넣어 다른 사례 · 칸으로 옮긴 암호문은 풀리지 않는다(`app/core/pii_crypto.py`).
+  - 키는 설정 `PII_ENCRYPTION_KEYS`(`키이름:base64 32바이트`, 쉼표로 여러 개 — 첫 키로 암호화) · `PII_INDEX_KEY`(이름 정확 검색 색인 HMAC 키,
+    암호화 키와 다른 값)에만 있다. DB · 저장소 · 이미지에 두지 않는다. 운영(ENV=production)에서 키가 없거나 저장소의 개발용 값이면 서버가 뜨지 않는다.
+  - 운영 키는 AWS SSM Parameter Store(SecureString)에 두고 서버 시작 때 환경 변수로 넣는다. **키를 잃으면 저장한 실명을 되살릴 수 없다** —
+    사본 1부를 AWS 밖 비밀번호 관리자에 둔다. 키 값은 메신저 · 메일 · 저장소로 주고받지 않는다.
+  - 만들기: `python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
+  - 키 바꾸기: 새 키를 맨 앞에 넣고(`new:…,old:…`) 서버를 다시 띄운 뒤 `python -m scripts.reencrypt_personal_info`(먼저 `--dry-run`).
+    색인 키를 바꿨으면 `--reindex` 도 준다. 값은 출력하지 않는다.
+    서비스 중에 돌려도 된다 — 사례마다 읽은 값이 그대로일 때만 바꾸고, 그사이 저장이 끼면 다시 읽는다(저장을 덮지 않음).
+    세 번 다시 읽어도 저장이 끼면 그 사례는 '겹쳐 못 바꿈(busy)' 으로 남기고 종료 코드 1 이다.
+    **옛 키는 모든 서버가 새 키로 다시 뜬 뒤 스크립트를 다시 돌려 종료 코드 0(풀지 못한 사례 · 겹쳐 못 바꾼 사례 모두 0)이 나왔을 때만 뺀다.**
+    그 전에 빼면 아직 옛 키로 된 값이 `PERSONAL_INFO_UNAVAILABLE` 이 된다.
+  - 실명을 풀어서 내줄 때마다 감사 로그(`CASE_PERSONAL_INFO_VIEWED` · 목록은 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄)를 남기고, 값은 넣지 않는다.
+  - migration `5c9e2f7a1b30` 을 되돌리면(downgrade) 표를 지워 **저장한 실명이 모두 사라진다.**
+  - 녹취 원문 · 요약 · 상담일지 같은 자유 글 속 이름은 이 암호화 대상이 아니다(DB 저장 암호화 · 접근 권한으로 지킨다).
+  - 알고 둘 한계: ① 이름 검색은 `GET /cases?search=` 쿼리로 오가므로 앞단 프록시(Caddy 등)에 접속 기록을 켤 때는 쿼리 값을 빼야 한다
+    (지금 `deploy/web-deploy.sh` 의 Caddy 는 접속 기록을 켜지 않는다). ② 색인은 같은 이름이면 같은 값이라, DB 만 본 사람도 '같은 이름의 사례' 는 알 수 있다.
+    ③ 색인 키와 DB 가 함께 새면 이름 목록으로 대입해 맞혀 볼 수 있다 — 그래서 색인 키를 암호화 키와 따로 둔다.
 - 상담 원문을 일반 로그에 출력하지 않는다. 로그에는 식별자·개수만 남긴다.
 - 서버 접속 기록(uvicorn)은 경로 · 상태만 남기고 쿼리 값(`?search=` 등)은 남기지 않는다(`app/core/logging.py`, `tests/test_access_log_query.py`).
 - 로그의 오류 trace 는 예외 종류와 호출 위치(파일 · 줄 · 함수 · 그 줄의 코드)만 남기고 예외 문구는 `<문구 생략>` 으로 뺀다. 원인 예외도 같고, 앱 · uvicorn · 라이브러리 로거의 `logging` 기록이 모두 해당한다(`app/core/logging.py` `install_safe_exception_text`, `tests/test_log_exception_text.py`). 예외 문구에는 SQL 매개변수 · 입력 검증 값 · AI 쪽 원인 문구처럼 상담 발화가 섞일 수 있다. 문구가 필요하면 가상 데이터로 로컬에서 재현한다. `logging` 을 거치지 않는 출력(`print` · `warnings` · thread 의 처리되지 않은 예외)과 로그 메시지 인자에 예외를 직접 넣은 기록은 막지 못하므로, 앱 코드는 로그 인자에 예외 종류 이름만 넣는다.

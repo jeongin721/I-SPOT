@@ -7,17 +7,14 @@
 //  - 이 화면에서 쓰거나 고친 뒤 아직 승인하지 않은 질문: 화면 상태에만 있다(서버는 승인한 질문만 받는다).
 // 디자인처럼 [승인] 을 누르면 승인 목록에 더해 저장하고, 다시 누르면 빼서 저장한다. [수정] → [확인] 에서 문장이 바뀐 승인 질문은
 // 승인을 풀고(디자인 qOk), 새로 쓴 질문은 승인 전 카드로 더한다. 승인 목록이 바뀌었을 때만 PUT 한다.
-// '아이 앱으로 먼저' 탭은 아이 앱 발송이 서버에 없어 준비 중이다. 다음 상담 체크리스트(19절)의 아이 앱 질문 초안만 읽기 전용으로 보인다.
-//
-// 다음 상담 체크리스트(19절, rag)의 상담 질문 초안은 분석 결과 초안 뒤에 붙어 같은 AI 초안 카드가 된다(followupQ.ts 가 넘긴다).
-// 그 카드에만 붙는 정보(공식 근거 칩 · 이유 · 이전 회차 근거)는 extras 로 같은 자리에 받는다. 승인하면 18절 승인 목록에 source AI 로 저장된다.
+// '아이 앱으로 먼저' 탭은 아이 앱 발송이 서버에 없어 준비 중이다(예시 질문을 보이지 않는다).
 
-import type { FollowupQuestion, FollowupQuestionDraft, FollowupQuestionInput } from "../../api/types";
+import type { FollowupQuestion, FollowupQuestionDraft, FollowupQuestionInput, QuestionEvidence } from "../../api/types";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import type { RiskSignalsState } from "../useRiskSignals";
 import { NOT_READY } from "./common";
+import { officialSources, type SourceView } from "./followupEvidence";
 import { positionLabel } from "../riskRows";
-import type { FollowupEvidence } from "./followupEvidence";
 import { segmentHref } from "./sttReview";
 
 export type QuestionTab = "meet" | "app";
@@ -50,26 +47,6 @@ export function initialQuestionState(): QuestionUiState {
 
 type Patch = Partial<QuestionUiState> | ((current: QuestionUiState) => Partial<QuestionUiState>);
 
-/** 다음 상담 체크리스트 초안 카드에만 붙는 정보(19절). drafts 와 같은 자리(index)에 둔다. */
-export interface DraftExtra {
-  /** 카드 머리 칩(예: "공식 근거"). */
-  originLabel: string;
-  rationale: string;
-  /** 이 회차 발화 밖의 사례 근거(이전 회차 요약 · 아이 앱 응답 등). 이 회차 발화는 카드의 '근거 ·' 가 이미 보인다. */
-  evidence: FollowupEvidence[];
-  /** 공식 근거(매뉴얼 · 체크리스트 · 법령 · 판례). */
-  sources: FollowupEvidence[];
-}
-
-/** '아이 앱으로 먼저' 탭에 읽기 전용으로 보이는 초안(19절). */
-export interface AppDraft {
-  key: string;
-  text: string;
-  rationale: string;
-  evidence: FollowupEvidence[];
-  sources: FollowupEvidence[];
-}
-
 export interface QuestionInput {
   state: QuestionUiState;
   setState: (patch: Patch) => void;
@@ -81,9 +58,11 @@ export interface QuestionInput {
   sessionLabel: string;
   /** 회차 상태가 저장을 받는가(원문 확정 뒤 · AI 분석 중 아님). 아니면 그 이유. */
   blockedReason: string | null;
-  /** drafts 와 같은 자리의 추가 정보. 분석 결과 초안 자리는 비워 둔다. */
-  extras?: (DraftExtra | undefined)[];
-  appDrafts?: AppDraft[];
+  /**
+   * 다음 상담 체크리스트(19절)가 초안에 붙인 공식 근거. 지금 분석으로 만든 것만 넘긴다(checklistValues).
+   * 카드에는 초안 문장이 이것과 똑같고 상담사가 고치지 않았을 때만 보인다(questionSources).
+   */
+  questionEvidence?: QuestionEvidence[];
 }
 
 /** 카드 하나(내부 모양). */
@@ -96,8 +75,10 @@ export interface QuestionCard {
   /** origin=saved 면 승인 목록에서의 자리. */
   savedIndex: number | null;
   localId: number | null;
-  /** origin=draft 면 drafts 에서의 자리(extras 를 찾는다). */
+  /** origin=draft 면 분석 followup_questions 안의 자리(19절 question_evidence.draft_index). */
   draftIndex: number | null;
+  /** origin=draft 면 그 초안의 원래 문장(공백을 뺀 것). 공식 근거를 붙일지 대조한다. */
+  draftText: string | null;
 }
 
 const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, index) => id === b[index]);
@@ -152,18 +133,10 @@ export function buildQuestionCards(
 
   valid.forEach(({ key, index, input }) => {
     const hit = matched.get(key);
+    const draft = { draftIndex: index, draftText: input.text };
 
     if (hit) {
-      cards.push({
-        key,
-        origin: "draft",
-        input: savedInput(saved[hit.at]),
-        approved: true,
-        edited: hit.edited,
-        savedIndex: hit.at,
-        localId: null,
-        draftIndex: index,
-      });
+      cards.push({ key, origin: "draft", input: savedInput(saved[hit.at]), approved: true, edited: hit.edited, savedIndex: hit.at, localId: null, ...draft });
       return;
     }
 
@@ -176,36 +149,18 @@ export function buildQuestionCards(
       edited: local !== undefined,
       savedIndex: null,
       localId: null,
-      draftIndex: index,
+      ...draft,
     });
   });
 
   saved.forEach((item, at) => {
     if (used.has(at)) return;
 
-    cards.push({
-      key: `s-${at}-${item.approved_at}`,
-      origin: "saved",
-      input: savedInput(item),
-      approved: true,
-      edited: false,
-      savedIndex: at,
-      localId: null,
-      draftIndex: null,
-    });
+    cards.push({ key: `s-${at}-${item.approved_at}`, origin: "saved", input: savedInput(item), approved: true, edited: false, savedIndex: at, localId: null, draftIndex: null, draftText: null });
   });
 
   state.localExtras.forEach((local) => {
-    cards.push({
-      key: `x-${local.id}`,
-      origin: "local",
-      input: local.input,
-      approved: false,
-      edited: local.edited,
-      savedIndex: null,
-      localId: local.id,
-      draftIndex: null,
-    });
+    cards.push({ key: `x-${local.id}`, origin: "local", input: local.input, approved: false, edited: local.edited, savedIndex: null, localId: local.id, draftIndex: null, draftText: null });
   });
 
   return cards;
@@ -229,8 +184,35 @@ export function questionChip(input: FollowupQuestionInput): string {
   return "열린 질문";
 }
 
+/** 카드에 보일 공식 근거. sources 가 비어 있고 hidden 이 true 면 '문장을 고쳐 숨겼다' 고 알린다. */
+export interface CardSources {
+  sources: SourceView[];
+  hidden: boolean;
+}
+
+/**
+ * 초안 카드의 공식 근거(19절 question_evidence). 세 조건이 모두 맞을 때만 붙인다:
+ *  ① 지금 분석으로 만든 것(호출부가 거른 evidence 만 받는다) ② 근거를 붙일 때의 초안 문장이 지금 초안 문장과 똑같다
+ *  ③ 카드 문장이 초안 그대로다(상담사가 고쳤거나 고쳐서 승인한 질문이면 숨긴다 — 고친 문장은 검토를 거치지 않았다).
+ * 직접 쓴 질문 · 짝 없는 승인 질문에는 공식 근거가 없다.
+ */
+export function questionSources(card: QuestionCard, evidence: QuestionEvidence[] | undefined): CardSources {
+  if (card.origin !== "draft" || card.draftIndex === null || !Array.isArray(evidence)) return { sources: [], hidden: false };
+
+  const found = evidence.find((entry) => entry && entry.draft_index === card.draftIndex);
+
+  if (!found || typeof found.text !== "string" || found.text.trim() !== card.draftText) return { sources: [], hidden: false };
+
+  const sources = officialSources(found.basis, `${card.key}-src`);
+
+  if (sources.length === 0) return { sources: [], hidden: false };
+  if (card.edited || card.input.text !== card.draftText) return { sources: [], hidden: true };
+
+  return { sources, hidden: false };
+}
+
 export function questionValues(input: QuestionInput) {
-  const { state, setState, drafts, saved, locate, ids, sessionLabel, blockedReason } = input;
+  const { state, setState, drafts, saved, locate, ids, sessionLabel, blockedReason, questionEvidence } = input;
   const cards = buildQuestionCards(drafts, saved.questions, state);
   const savedInputs = saved.questions.map(savedInput);
   const canSave = saved.loaded && !saved.loadError && !saved.submitting && !blockedReason;
@@ -291,7 +273,7 @@ export function questionValues(input: QuestionInput) {
 
   const meetCards = cards.map((card) => {
     const where = why(card);
-    const extra = card.draftIndex !== null ? input.extras?.[card.draftIndex] : undefined;
+    const official = questionSources(card, questionEvidence);
     return {
       key: card.key,
       id: questionChip(card.input),
@@ -303,14 +285,13 @@ export function questionValues(input: QuestionInput) {
       // 승인 전 AI 초안은 'AI 초안' 칩을 단다(18절 표현 주의 · 05_RULES — AI 결과는 AI 표시).
       aiDraft: card.origin === "draft" && !card.approved,
       edited: card.edited,
+      // 검토를 통과한 공식 근거(19절). 칩 글자는 실제 개수다.
+      sources: official.sources,
+      sourceChip: official.sources.length > 0 ? `공식 근거 ${official.sources.length}` : "",
+      sourcesHidden: official.hidden,
       okCls: card.approved ? "btn-p" : "btn-s",
       okLabel: card.approved ? "승인됨 ✓" : "승인",
       draftText: state.qDraft[card.key] ?? "",
-      // 다음 상담 체크리스트 초안만(19절). 다른 카드는 빈 값이다.
-      originLabel: extra?.originLabel ?? "",
-      rationale: extra?.rationale ?? "",
-      moreEvidence: extra?.evidence ?? [],
-      sources: extra?.sources ?? [],
       approve: () => approve(card),
       setText: (value: string) => setState((current) => ({ qDraft: { ...current.qDraft, [card.key]: value } })),
     };
@@ -387,19 +368,14 @@ export function questionValues(input: QuestionInput) {
 
   const isMeet = state.qTab === "meet";
 
-  const appDrafts = input.appDrafts ?? [];
-
   let qNote = "";
-  if (!isMeet && appDrafts.length > 0)
-    qNote = `아이 앱으로 먼저 보내기는 ${NOT_READY}입니다(아이 앱 발송이 서버에 없음). 다음 상담 체크리스트의 아이 앱 질문 초안만 보입니다.`;
-  else if (!isMeet) qNote = `아이 앱으로 먼저 보내기는 ${NOT_READY}입니다(아이 앱 발송이 서버에 없음).`;
+  if (!isMeet) qNote = `아이 앱으로 먼저 보내기는 ${NOT_READY}입니다(아이 앱 발송이 서버에 없음).`;
   else if (saved.loading && !saved.loaded) qNote = "추가 질문을 불러오는 중…";
   else if (blockedReason) qNote = blockedReason;
   else if (cards.length === 0) qNote = "AI 추가 질문 초안이 없습니다. '+ 질문 직접 추가' 로 질문을 쓰고 승인해 주세요.";
 
   return {
     qs: isMeet ? meetCards : [],
-    appQs: isMeet ? [] : appDrafts,
     qNewRows: isMeet
       ? state.qNew.map((text, index) => ({
           key: `n-${index}`,

@@ -1,6 +1,8 @@
 // 서버 값 하나를 불러와 들고 있는 공용 훅. 회차 · 전사 · 분석 · 요약 · 문서 훅이 이 위에 얹힌다.
 //
 //  - key 가 바뀌면(다른 회차) 바뀐 첫 그리기부터 앞 값을 보이지 않고 새로 부른다. 늦게 온 앞 회차 응답은 버린다.
+//    같은 key 로 돌아와도(A → B → A) 앞에 받아 둔 A 값 · 오류는 보이지 않고 새로 받는다(값 · 오류에 대상 세대를 붙임).
+//    그사이 다른 요청이 바꾼 값(별칭 등)을 옛 값으로 보이지 않게 하려고서다(Codex #129 재검증 D2).
 //  - key 가 null 이 되면(로그아웃 · 로그인 확인 중 · 다른 계정으로 바뀌는 중) 들고 있던 값 · 오류를 버린다.
 //    다른 계정으로 같은 key(같은 사례 ID)에 돌아왔을 때 앞 계정이 불러온 값을 다시 보이지 않게 하려고서다.
 //  - reload()  는 '불러오는 중' 을 보이며 다시 부른다(사용자가 누른 새로고침).
@@ -68,6 +70,28 @@ export interface RemoteState<T> {
   sameGeneration: (ticket: RemoteTicket) => boolean;
 }
 
+/**
+ * 여러 요청을 차례로 보내는 조회(쪽마다 부르기 등)가 다음 요청 직전에 로그인이 바뀌었거나(loginGuard) 그 조회가 더는
+ * 지금 것이 아님(load 의 live() — 화면을 떠남 · 대상이 바뀜 · 다시 부름)을 알았을 때 던진다. 떠난 화면이나 앞 계정의 조회가
+ * 다음 쪽(실명)을 읽어 열람 기록을 남기지 않게 하려고서다(Codex #130 M1 · 재검수 N2).
+ * useRemote 는 이 오류를 화면에 보이지 않는다(그 조회의 결과는 어차피 버리고, 로그인이 바뀌었으면 곧 key 가 바뀐다).
+ */
+export class SessionChangedError extends Error {
+  constructor() {
+    super("로그인이 바뀌어 요청을 멈췄습니다.");
+    this.name = "SessionChangedError";
+  }
+}
+
+/** 지금 로그인 토큰을 잡아 두고, 돌려준 함수를 부르면 그대로인지 본다. 바뀌었으면 SessionChangedError. */
+export function loginGuard(): () => void {
+  const token = getToken();
+
+  return () => {
+    if (getToken() !== token) throw new SessionChangedError();
+  };
+}
+
 /** 오류를 화면에 보여 줄 문장으로. Backend 문구가 있으면 그대로, 없으면 fallback. */
 export function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback;
@@ -75,22 +99,31 @@ export function errorMessage(caught: unknown, fallback: string): string {
 
 /**
  * @param key   무엇을 부르는지(예: 회차 ID). null 이면 부르지 않는다(로그인 확인 전 등).
- * @param load  key 로 값을 불러오는 함수.
+ * @param load  key 로 값을 불러오는 함수. 둘째 인자 live() 는 이 조회가 아직 지금 것인가(화면에 붙어 있고 대상 · 조회가 그대로).
+ *              여러 요청을 차례로 보내는 조회는 다음 요청 직전에 보고, false 면 SessionChangedError 로 멈춘다.
  * @param fallback 서버 문구가 없을 때 보여 줄 오류 문장.
  * @param affects 회차 변경 알림(sessionEvents)이 이 값과 관계있는지. 있으면 조용히 다시 부른다.
  *                기본은 '알림의 회차 ID 가 key 와 같음' 이다(key 가 회차 ID 인 훅).
  */
 export function useRemote<T>(
   key: string | null,
-  load: (key: string) => Promise<T>,
+  load: (key: string, live: () => boolean) => Promise<T>,
   fallback: string,
   affects: (change: SessionChange, key: string, data: T | null) => boolean = (change, current) =>
     change.sessionId === current,
 ): RemoteState<T> {
   // 값 · 오류는 어느 key 의 것인지와 함께 든다. key 가 바뀐 첫 그리기부터 앞 대상의 값 · 오류를 보이지 않게 하려고서다
   // (비우는 일을 effect 에서 하면 바뀐 key 로 한 번은 앞 대상의 값이 그려진다).
-  const [entry, setEntry] = useState<{ key: string | null; data: T | null }>({ key, data: null });
-  const [failure, setFailure] = useState<{ key: string | null; message: string | null }>({ key, message: null });
+  const [entry, setEntry] = useState<{ key: string | null; generation: number; data: T | null }>({
+    key,
+    generation: 0,
+    data: null,
+  });
+  const [failure, setFailure] = useState<{ key: string | null; generation: number; message: string | null }>({
+    key,
+    generation: 0,
+    message: null,
+  });
   const [loading, setLoading] = useState(key !== null);
   const [tick, setTick] = useState(0);
   const [settled, setSettled] = useState(0);
@@ -121,8 +154,8 @@ export function useRemote<T>(
   // 화면에 붙어 있는가. 떠난 뒤에는 isCurrent 가 false 다(떠난 화면의 요청 결과를 돌려주지 않게).
   const mounted = useRef(false);
 
-  const data = entry.key === key ? entry.data : null;
-  const error = failure.key === key ? failure.message : null;
+  const data = entry.key === key && entry.generation === generation.current ? entry.data : null;
+  const error = failure.key === key && failure.generation === generation.current ? failure.message : null;
 
   const reload = useCallback(() => {
     queued.current = true;
@@ -144,11 +177,13 @@ export function useRemote<T>(
 
     silent.current = false;
     queued.current = false;
+    // 이 조회의 대상 세대. 그리기에서 이미 올렸다(위 generation).
+    const gen = generation.current;
 
     if (key === null) {
       latest.current += 1;
-      setEntry({ key: null, data: null });
-      setFailure({ key: null, message: null });
+      setEntry({ key: null, generation: gen, data: null });
+      setFailure({ key: null, generation: gen, message: null });
       setLoading(false);
       return;
     }
@@ -157,25 +192,25 @@ export function useRemote<T>(
 
     if (!quiet) {
       setLoading(true);
-      setFailure({ key, message: null });
+      setFailure({ key, generation: gen, message: null });
     }
 
     loadRef
-      .current(key)
+      .current(key, () => requestId === latest.current)
       .then((value) => {
         if (requestId !== latest.current) return;
 
-        setEntry({ key, data: value });
-        setFailure({ key, message: null });
+        setEntry({ key, generation: gen, data: value });
+        setFailure({ key, generation: gen, message: null });
         setLoading(false);
         setSettled((count) => count + 1);
       })
       .catch((caught) => {
-        if (requestId !== latest.current) return;
+        if (requestId !== latest.current || caught instanceof SessionChangedError) return;
 
         // 조용한 refresh 가 실패하면 들고 있던 값은 두고 오류만 알린다.
-        if (!quiet) setEntry({ key, data: null });
-        setFailure({ key, message: errorMessage(caught, fallback) });
+        if (!quiet) setEntry({ key, generation: gen, data: null });
+        setFailure({ key, generation: gen, message: errorMessage(caught, fallback) });
         setLoading(false);
         setSettled((count) => count + 1);
       });
@@ -244,15 +279,20 @@ export function useRemote<T>(
       }
 
       const forKey = ticket.key;
+      const forGeneration = ticket.generation;
 
       // 진행 중인 조회가 있으면 그 응답이 방금 반영한 값을 덮지 않게 버린다.
       latest.current += 1;
       setEntry((current) => {
-        const held = current.key === forKey ? current.data : null;
+        const held = current.key === forKey && current.generation === forGeneration ? current.data : null;
 
-        return { key: forKey, data: typeof value === "function" ? (value as (current: T | null) => T)(held) : value };
+        return {
+          key: forKey,
+          generation: forGeneration,
+          data: typeof value === "function" ? (value as (current: T | null) => T)(held) : value,
+        };
       });
-      setFailure({ key: forKey, message: null });
+      setFailure({ key: forKey, generation: forGeneration, message: null });
       setLoading(false);
       setSettled((count) => count + 1);
 

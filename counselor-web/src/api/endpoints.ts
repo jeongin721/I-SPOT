@@ -7,6 +7,9 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  ScheduleEvent,
+  ScheduleEventCreate,
+  ScheduleEventUpdate,
   AbuseType,
   AnalysisEnvelope,
   AnalysisRequestResponse,
@@ -15,18 +18,27 @@ import type {
   Case,
   CaseCreateRequest,
   CaseDetail,
+  CaseListItem,
   CaseStatus,
   CaseUpdateRequest,
   Document,
   DocumentCreateRequest,
   DocumentUpdateRequest,
-  FollowupSuggestion,
+  FollowupChecklist,
+  FollowupChecklistEnvelope,
   FollowupQuestionInput,
+  ClosureSummaryRecord,
+  ClosureSummarySave,
+  FollowupCheck,
+  FollowupCheckList,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
   LoginResponse,
+  OverallRiskAssessment,
   PasswordChangeRequest,
+  PersonalInfo,
+  PersonalInfoRequest,
   RiskAssessment,
   RiskAssessmentSaveRequest,
   TemporaryPassword,
@@ -173,9 +185,14 @@ export const auth = {
 // =========================================================
 
 export const cases = {
-  /** search 는 제목·사례번호·아동 별칭에서 찾는다. */
-  list(params?: PageQuery & { status?: CaseStatus; search?: string }): Promise<Paged<Case>> {
-    return api.get<Paged<Case>>("/cases", params);
+  /**
+   * search 는 제목·사례번호·아동 별칭(부분)과 아동 실명(공백 무시 정확히 같을 때)에서 찾는다.
+   * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
+   */
+  list(
+    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean },
+  ): Promise<Paged<CaseListItem>> {
+    return api.get<Paged<CaseListItem>>("/cases", params);
   },
 
   get(caseId: string): Promise<CaseDetail> {
@@ -184,6 +201,16 @@ export const cases = {
 
   create(payload: CaseCreateRequest): Promise<Case> {
     return api.post<Case>("/cases", payload);
+  },
+
+  /** 실명 · 생년월일 · 가족 정보(복호화한 값). 부를 때마다 서버에 열람 기록이 남는다. 권한은 사례 조회와 같다. */
+  getPersonalInfo(caseId: string): Promise<PersonalInfo> {
+    return api.get<PersonalInfo>(`/cases/${caseId}/personal-info`);
+  },
+
+  /** 보낸 값으로 통째로 바꾼다(빠진 칸은 지운다). 응답은 getPersonalInfo 와 같다. */
+  putPersonalInfo(caseId: string, payload: PersonalInfoRequest): Promise<PersonalInfo> {
+    return api.put<PersonalInfo>(`/cases/${caseId}/personal-info`, payload);
   },
 
   /** 바꿀 필드만 보낸다. status 로 종결, counselor_id 로 담당자 변경(관리자만). */
@@ -202,11 +229,39 @@ export const cases = {
     return api.get<Paged<Session>>(`/cases/${caseId}/sessions`, params);
   },
 
+  /** 종결 검토 등록(2026-10-30). 진행 중 사례만(409 INVALID_CASE_STATE), 이미 등록이면 그대로. */
+  registerClosureReview(caseId: string): Promise<Case> {
+    return api.post<Case>(`/cases/${caseId}/closure-review`);
+  },
+
+  /** 종결 검토 등록 취소. 등록 전이면 그대로. */
+  cancelClosureReview(caseId: string): Promise<Case> {
+    return api.delete<Case>(`/cases/${caseId}/closure-review`);
+  },
+
+  /** 종결 검토 요약 · 보고서. 만들기 전이면 summary null. */
+  getClosureSummary(caseId: string): Promise<ClosureSummaryRecord> {
+    return api.get<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`);
+  },
+
+  /** 종결 요약 (다시) 만들기. 동기 — AI 면 오래 걸릴 수 있다(504 AI_TIMEOUT). 등록 전 · 승인 요약 없음은 409. */
+  generateClosureSummary(caseId: string): Promise<ClosureSummaryRecord> {
+    return api.post<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`);
+  },
+
+  /** 확인 체크 · 고친 문장 · 보고서 칸 저장(보낸 칸만). */
+  saveClosureSummary(caseId: string, payload: ClosureSummarySave): Promise<ClosureSummaryRecord> {
+    return api.put<ClosureSummaryRecord>(`/cases/${caseId}/closure-summary`, payload);
+  },
+
   createSession(caseId: string, payload: SessionCreateRequest): Promise<Session> {
     return api.post<Session>(`/cases/${caseId}/sessions`, payload);
   },
 
-  /** 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessments 를 부르지 않아도 된다. */
+  /**
+   * 회차별 AI 신호 · 심각도 제안 · 상담원 판단 이력을 한 번에(API_CONTRACT 4절). 회차마다 analysis · risk-assessment(회차 전체 판단) ·
+   * risk-assessments(유형별 판단)를 부르지 않아도 된다. 회차 줄의 counselor_level · assessed_at 이 회차 전체 판단이다(2026-10-29).
+   */
   signalHistory(caseId: string): Promise<SignalHistory> {
     return api.get<SignalHistory>(`/cases/${caseId}/signal-history`);
   },
@@ -326,22 +381,6 @@ export const analysis = {
 };
 
 // =========================================================
-// 다음 상담 체크리스트 (API_CONTRACT 19절)
-// =========================================================
-
-export const followupSuggestions = {
-  /** 가장 최근 행. 아직 만들기 전이면 null. 만드는 중이면 status 가 PROCESSING 이라 polling 한다. */
-  get(sessionId: string): Promise<FollowupSuggestion | null> {
-    return api.get<FollowupSuggestion | null>(`/sessions/${sessionId}/followup-suggestions`);
-  },
-
-  /** 다시 만들기(202). AI 분석이 끝난 회차에서만 받는다. 이미 만드는 중이면 그 행이 온다. */
-  run(sessionId: string): Promise<FollowupSuggestion> {
-    return api.post<FollowupSuggestion>(`/sessions/${sessionId}/followup-suggestions`);
-  },
-};
-
-// =========================================================
 // 요약 (검수 대상)
 // =========================================================
 
@@ -452,6 +491,22 @@ export const riskAssessments = {
   save(sessionId: string, abuseType: AbuseType, payload: RiskAssessmentSaveRequest): Promise<RiskAssessment> {
     return api.put<RiskAssessment>(`/sessions/${sessionId}/risk-assessments/${abuseType}`, payload);
   },
+
+  /**
+   * 회차 전체 판단 하나(API_CONTRACT 11.1절, 2026-10-29). 아직 판단하지 않았으면 null(404 가 아니다).
+   * 회차 상태와 상관없이 조회할 수 있다. 화면(유형별 위험도 · 사례 상세 위험도 · 요약 · 일지 작성)은 이것만 쓴다.
+   */
+  getOverall(sessionId: string): Promise<OverallRiskAssessment | null> {
+    return api.get<OverallRiskAssessment | null>(`/sessions/${sessionId}/risk-assessment`);
+  },
+
+  /**
+   * 회차 전체 판단을 저장한다. 없으면 만들고 있으면 고친다(둘 다 200). 상태 규칙 · 동시 저장 409 는 유형별 save 와 같다.
+   * ai_level 은 서버가 그때 유형별 AI 심각도 중 가장 높은 값으로 채운다.
+   */
+  saveOverall(sessionId: string, payload: RiskAssessmentSaveRequest): Promise<OverallRiskAssessment> {
+    return api.put<OverallRiskAssessment>(`/sessions/${sessionId}/risk-assessment`, payload);
+  },
 };
 
 // =========================================================
@@ -473,6 +528,38 @@ export const followupQuestions = {
   },
 };
 
+/** 다음 상담 전 확인할 사항(API_CONTRACT 18.1절, 2026-10-30). 추가 질문과 같은 규칙. */
+export const followupChecks = {
+  /** 저장한 적이 없으면 saved false · items []. 회차 상태와 상관없이 조회한다. */
+  get(sessionId: string): Promise<FollowupCheckList> {
+    return api.get<FollowupCheckList>(`/sessions/${sessionId}/followup-checks`);
+  },
+
+  /** 목록을 통째로 바꾼다. 0~20개, 문장 1~300자, segment_ids 는 그 회차 전사본 번호만(422). 상태는 추가 질문과 같다(409). */
+  save(sessionId: string, items: FollowupCheck[]): Promise<FollowupCheckList> {
+    return api.put<FollowupCheckList>(`/sessions/${sessionId}/followup-checks`, { items });
+  },
+};
+
+// =========================================================
+// 다음 상담 체크리스트 (추가 확인 · 질문 · 상담 전 브리핑, 19절)
+// =========================================================
+
+export const followupChecklist = {
+  /** 켜져 있는지 + 체크리스트(만든 적이 없으면 null). 처리 중이 너무 오래됐으면 이 조회 때 FAILED · AI_TIMEOUT 으로 바뀐다. */
+  get(sessionId: string): Promise<FollowupChecklistEnvelope> {
+    return api.get<FollowupChecklistEnvelope>(`/sessions/${sessionId}/followup-checklist`);
+  },
+
+  /**
+   * 만들기 · 다시 만들기(202). 이미 만드는 중이면 새 작업 없이 그 행을 돌려준다.
+   * 최신 분석이 COMPLETED 가 아니면 409 INVALID_SESSION_STATE, 꺼져 있으면 503 FOLLOWUP_DISABLED.
+   */
+  create(sessionId: string): Promise<FollowupChecklist> {
+    return api.post<FollowupChecklist>(`/sessions/${sessionId}/followup-checklist`);
+  },
+};
+
 // =========================================================
 // 법령 · 매뉴얼 AI 질문 (LawGuide 화면)
 // =========================================================
@@ -485,5 +572,29 @@ export const lawGuide = {
    */
   ask(question: string): Promise<LawGuideAnswer> {
     return api.post<LawGuideAnswer>("/law-guide/questions", { question });
+  },
+};
+
+// =========================================================
+// 일정 (API_CONTRACT 20절, 2026-11-02)
+// =========================================================
+
+export const schedule = {
+  /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(처리 기한 계산용). */
+  list(range: { from: string; to: string }): Promise<{ items: ScheduleEvent[] }> {
+    return api.get<{ items: ScheduleEvent[] }>("/schedule/events", range);
+  },
+
+  create(payload: ScheduleEventCreate): Promise<ScheduleEvent> {
+    return api.post<ScheduleEvent>("/schedule/events", payload);
+  },
+
+  /** 보낸 칸만 바뀐다. 만든 사람 · 관리자만(공유 일정은 403). */
+  update(eventId: string, payload: ScheduleEventUpdate): Promise<ScheduleEvent> {
+    return api.patch<ScheduleEvent>(`/schedule/events/${eventId}`, payload);
+  },
+
+  remove(eventId: string): Promise<void> {
+    return api.delete<void>(`/schedule/events/${eventId}`);
   },
 };

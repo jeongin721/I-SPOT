@@ -10,18 +10,20 @@
 // 아동 특성 · 가정상황의 '수정 → 확인'(펼치면 고르기 단추, 접으면 고른 항목만 ✓ — 값은 noteWrite.ts 의 pickSection).
 // 디자인에 없는 '요약 승인' · '일지 승인' · '요약 수정' · '일지 수정' 단추와 AI 초안 · AI 근거 표시는 그대로 둔다(AI 생성 → 상담사
 // 확인 → 승인 흐름). 단계 이름은 10/27 디자인대로 '유형별 위험도' 다(칸 이름 '위험 신호 검토 결과' 는 디자인 그대로).
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import CopyButton from '../components/CopyButton';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { useRiskAssessments } from '../data/useRiskAssessments';
+import { useJudgmentGate, useOverallRiskAssessment } from '../data/useOverallRiskAssessment';
 import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
@@ -31,6 +33,7 @@ import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { INITIAL_NOTE_STATE, noteAiDraft, noteWriteValues } from '../data/screens/noteWrite';
 import { sessionCaseId } from '../data/screens/sessionDetail';
+import { askLevelHref } from '../data/screens/signalReview';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import './NoteWrite.css';
@@ -134,22 +137,36 @@ export default function NoteWrite(props) {
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
-  const summary = useSummaryReview(ids.sessionId, { enabled });
   const docs = useSessionDocuments(ids.sessionId, { enabled });
   // 일지 '아동 진술' · '위험 신호 검토 결과' AI 초안 재료(noteWrite.ts 머리 주석). 초안은 저장한 일지가 없을 때만 쓰므로
   // 일지 목록을 받았고 저장한 일지가 없을 때만 부른다(요청 수 — 민규 #95 리뷰).
   const draftNeeded = enabled && !docs.loading && !docs.error && docs.consultationRecord === null;
-  const analysis = useSessionAnalysis(ids.sessionId, { enabled: draftNeeded });
+  // 요약이 아직 없을 때도 부른다 — 학대 신호(2단계)만 저장되고 요약 · 일지 AI 초안을 만드는 중인지(drafts_status) 알아야
+  // 안내와 되풀이 조회를 할 수 있다(2026-11-04 제안).
+  const [summaryMissing, setSummaryMissing] = useState(false);
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled: draftNeeded || (enabled && summaryMissing) });
+  const summary = useSummaryReview(ids.sessionId, { enabled, watch: analysis.draftsPending });
+  const missingNow = !summary.loading && summary.sessionStatus !== null && !summary.hasSummary;
+  if (missingNow !== summaryMissing) setSummaryMissing(missingNow);
   const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: draftNeeded });
-  const risk = useRiskAssessments(ids.sessionId, { enabled: draftNeeded });
+  // 회차 전체 상담원 판단. 일지 초안 재료이면서, 판단 없는 회차를 유형별 위험도로 돌려보내는 근거라 늘 부른다.
+  const overall = useOverallRiskAssessment(ids.sessionId, { enabled });
+  // 들어올 때 한 번만 판정한다 — 화면 안에서 '요약 수정' 으로 승인을 풀어 상태가 바뀌어도 돌려보내지 않는다(useJudgmentGate).
+  const sendBack = useJudgmentGate(ids.sessionId, detail.session?.status ?? null, overall);
+  const judgmentLoaded = overall.loaded && !overall.loadError;
+  const judgmentLabel = overall.assessment?.levelLabel ?? '';
   const aiDraft = useMemo(
-    () => noteAiDraft(summary.evidence, signals.cards, risk.loaded && !risk.loadError ? risk.rows : null),
-    [summary.evidence, signals.cards, risk.loaded, risk.loadError, risk.rows],
+    () => noteAiDraft(summary.evidence, signals.cards, { loaded: judgmentLoaded, label: judgmentLabel }),
+    [summary.evidence, signals.cards, judgmentLoaded, judgmentLabel],
   );
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, aiDraft, go });
+  const drafts = { pending: analysis.draftsPending, failed: analysis.draftsFailed };
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, summary, docs, aiDraft, drafts, go });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  // 분석이 끝나 검수 중인데 회차 전체 판단이 없으면 이 화면에 머물지 않는다(2026-10-29). 유형별 위험도로 돌려보내며
+  // '위험도를 선택해주세요.' 팝업을 연다(?ask=1). 승인 완료 회차 · 값을 못 받은 동안은 막지 않는다(needsJudgment).
+  if (sendBack) return <Navigate to={askLevelHref(ids)} replace />;
   return (
     <div className="pg-NoteWrite">
       <div
@@ -178,6 +195,7 @@ export default function NoteWrite(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -234,6 +252,7 @@ export default function NoteWrite(props) {
                     ) : null}
                   </span>
                   <textarea className="ta2" aria-label={r.k} value={r.v} onChange={r.onChange} readOnly={r.readOnly} />
+                  <CopyButton name={v.alias} />
                 </label>
               </Fragment>
             ))}
@@ -282,6 +301,7 @@ export default function NoteWrite(props) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>아동 진술</b>
               <textarea className="ta2" style={{ minHeight: '104px' }} {...v.statement} />
+              <CopyButton name={v.alias} />
             </label>
 
             <div className="grp">대상자 태도 및 관찰내용</div>
@@ -295,10 +315,12 @@ export default function NoteWrite(props) {
                 ) : null}
               </span>
               <textarea className="ta2" {...v.attitude} />
+              <CopyButton name={v.alias} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>물리적 환경</b>
               <textarea className="ta2" placeholder="상담원 작성" {...v.environment} />
+              <CopyButton name={v.alias} />
               <span className="note acc">신변안전 · 기관 복귀 후 기록 (현장 기록 금지)</span>
             </label>
 
@@ -309,6 +331,7 @@ export default function NoteWrite(props) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <b style={{ fontSize: '14px' }}>위험 신호 검토 결과</b>
               <textarea className="ta2" {...v.signals} />
+              <CopyButton name={v.alias} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -320,6 +343,7 @@ export default function NoteWrite(props) {
                 ) : null}
               </span>
               <textarea className="ta2" style={{ minHeight: '96px' }} {...v.opinion} />
+              <CopyButton name={v.alias} />
             </label>
             {v.docError ? (
               <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>
@@ -345,7 +369,7 @@ export default function NoteWrite(props) {
           </section>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
             <A className="btn btn-s" to={v.backHref}>
-              ← 유형별 위험도
+              ← 학대 신호 확인
             </A>
             <button
               type="button"

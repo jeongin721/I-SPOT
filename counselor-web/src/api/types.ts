@@ -62,7 +62,7 @@ export type CaseStatus = "ACTIVE" | "CLOSED";
 /**
  * 보호자 유형.
  * 목록에 없는 관계는 OTHER 로 두고 guardian_note 에 적는다.
- * Backend 는 보호자 실명을 저장하지 않는다(아동 실명과 같은 원칙).
+ * 보호자 실명은 이 칸에 넣지 않는다. 실명은 개인 식별 정보 창구(PersonalInfo, 암호화 저장)로만 오간다.
  */
 export type GuardianType =
   | "PARENTS"
@@ -85,6 +85,105 @@ export const GUARDIAN_LABELS: Record<GuardianType, string> = {
   FACILITY: "시설",
   OTHER: "기타",
 };
+
+/** 조치결과 · 피해아동(서식 4 ①, 2026-11-05). 상담원이 고른다 — AI 가 미리 고르거나 채우지 않는다. */
+export type ChildActionResult = "HOME" | "RELATIVE" | "ACQUAINTANCE" | "FOSTER" | "FACILITY" | "HOSPITAL" | "OTHER";
+
+/** 화면에 표시할 한글 이름(서식 4 순서). backend tests/test_case_form_fields.py 가 서버 목록과 같은지 본다. */
+export const CHILD_ACTION_LABELS: Record<ChildActionResult, string> = {
+  HOME: "원가정보호",
+  RELATIVE: "친인척보호",
+  ACQUAINTANCE: "연고자에 의한 보호",
+  FOSTER: "가정위탁",
+  FACILITY: "시설입소",
+  HOSPITAL: "병원입원",
+  OTHER: "기타",
+};
+
+/** 조치결과 · 사례관리대상자(서식 4 ①, 2026-11-05). 상담원이 고른다. */
+export type TargetActionResult = "OBSERVATION" | "SEPARATION" | "COMPLAINT" | "OTHER";
+
+export const TARGET_ACTION_LABELS: Record<TargetActionResult, string> = {
+  OBSERVATION: "지속관찰",
+  SEPARATION: "아동과의 분리",
+  COMPLAINT: "고소 · 고발",
+  OTHER: "기타",
+};
+
+/** 가족유형(서식 4 ② 초기면접 내용, 하나만 고른다, 2026-11-05 — 11/03 디자인의 21개). 상담원이 고른다. */
+export type FamilyType =
+  | "GENERAL"
+  | "FATHER_BEREAVED"
+  | "FATHER_DIVORCED"
+  | "FATHER_LEFT"
+  | "FATHER_SEPARATED"
+  | "MOTHER_BEREAVED"
+  | "MOTHER_DIVORCED"
+  | "MOTHER_LEFT"
+  | "MOTHER_SEPARATED"
+  | "UNMARRIED_FATHER"
+  | "UNMARRIED_MOTHER"
+  | "UNMARRIED_PARENTS"
+  | "FATHER_STEPMOTHER"
+  | "MOTHER_STEPFATHER"
+  | "RELATIVE_CARE"
+  | "FATHER_PARTNER"
+  | "MOTHER_PARTNER"
+  | "FOSTER"
+  | "ADOPTIVE"
+  | "FACILITY"
+  | "OTHER";
+
+export const FAMILY_TYPE_LABELS: Record<FamilyType, string> = {
+  GENERAL: "일반가정",
+  FATHER_BEREAVED: "부자가정(사별)",
+  FATHER_DIVORCED: "부자가정(이혼)",
+  FATHER_LEFT: "부자가정(가출)",
+  FATHER_SEPARATED: "부자가정(별거)",
+  MOTHER_BEREAVED: "모자가정(사별)",
+  MOTHER_DIVORCED: "모자가정(이혼)",
+  MOTHER_LEFT: "모자가정(가출)",
+  MOTHER_SEPARATED: "모자가정(별거)",
+  UNMARRIED_FATHER: "미혼부가정",
+  UNMARRIED_MOTHER: "미혼모가정",
+  UNMARRIED_PARENTS: "미혼부모가정",
+  FATHER_STEPMOTHER: "친부+계모",
+  MOTHER_STEPFATHER: "친모+계부",
+  RELATIVE_CARE: "친인척보호",
+  FATHER_PARTNER: "친부+동거녀",
+  MOTHER_PARTNER: "친모+동거남",
+  FOSTER: "가정위탁",
+  ADOPTIVE: "입양가정",
+  FACILITY: "시설보호",
+  OTHER: "기타",
+};
+
+/**
+ * 서식 4 의 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기). 사례 응답 · 등록 · 수정에 같은 이름으로 오간다. 모두 비울 수 있다(null).
+ * 모두 상담원이 고르거나 적는 값이다 — AI 가 미리 고르거나 채우지 않는다.
+ * counselor_risk_level(위험도(우선))은 상담원이 고른 사례 위험도로, 회차 AI 심각도(1~5) · 회차 위험도 판단과 맞추지 않는다.
+ * 글 칸은 각 2000자, 평문 저장이라 화면이 '개인정보는 적지 마세요' 를 보인다. 서버가 앞뒤 빈칸을 지우고 빈 글은 null 로 둔다.
+ * 응답에서는 이 칸이 생기기 전 서버면 키가 없다.
+ */
+export interface CaseFormFields {
+  child_action_result?: ChildActionResult | null;
+  target_action_result?: TargetActionResult | null;
+  counselor_risk_level?: RiskLevel | null;
+  /** 사례연계 경위(서식 4 ①). */
+  linked_background?: string | null;
+  /** ② 가족유형. */
+  intake_family_type?: FamilyType | null;
+  /** ② 보호자와 아동과의 관계. */
+  intake_guardian_relation?: string | null;
+  /** ② 문제력(현 상황 · 그 이유, 한 칸). */
+  intake_problem?: string | null;
+  /** ② 대상자 태도. */
+  intake_attitude?: string | null;
+  /** ② 물리적 환경. */
+  intake_environment?: string | null;
+  /** ② 상담원 소견 및 향후 계획. */
+  intake_opinion?: string | null;
+}
 
 /** 회차 상태. Backend 가 전이 규칙을 강제하므로 임의로 바꾸지 않는다. */
 export type SessionStatus =
@@ -211,11 +310,11 @@ export const PASSWORD_RULE_TEXT =
 // 사례
 // =========================================================
 
-export interface Case {
+export interface Case extends CaseFormFields {
   id: string;
   case_number: string;
   title: string;
-  /** 실명이 아닌 별칭. Backend 는 아동 실명을 저장하지 않는다. */
+  /** 실명이 아닌 별칭. 실명은 사례 응답에 없고 개인 식별 정보 창구(PersonalInfo)로만 오간다. */
   child_alias: string;
   child_birth_year: number | null;
   child_gender: string | null;
@@ -226,6 +325,12 @@ export interface Case {
   intake_child_traits: string[];
   /** 초기면접(서식 4 ②)에서 고른 가정상황(서식 항목 이름). 없으면 빈 목록. */
   intake_family_situations: string[];
+  /** 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①, YYYY-MM-DD, 2026-10-30). 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
+  /** 종결 검토에 등록한 시각(2026-10-30). 등록 전 · 취소하면 null. */
+  closure_review_at?: string | null;
   status: CaseStatus;
   notes: string | null;
   counselor_id: string;
@@ -243,7 +348,7 @@ export interface CaseDetail extends Case {
   session_count: number;
 }
 
-export interface CaseCreateRequest {
+export interface CaseCreateRequest extends CaseFormFields {
   title: string;
   child_alias: string;
   child_birth_year?: number | null;
@@ -255,6 +360,10 @@ export interface CaseCreateRequest {
   intake_child_traits?: string[];
   intake_family_situations?: string[];
   notes?: string | null;
+  /** 날짜 셋(YYYY-MM-DD, 1900~2100). 빼면 null. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
   /**
    * 담당 상담사. 보내지 않으면 요청자 본인. 다른 사람 지정은 관리자만 할 수 있다(403).
    * 없는 계정은 404 USER_NOT_FOUND, 정지된 계정은 400 VALIDATION_ERROR(details 없이 message 만, API_CONTRACT 4절).
@@ -262,13 +371,86 @@ export interface CaseCreateRequest {
   counselor_id?: string;
   /** 개별사건번호. 빼면 Backend 가 C-YYYY-NNNN 으로 만든다. 1~50자, 이미 있는 번호면 409 DUPLICATE_RESOURCE. */
   case_number?: string;
+  /** 서식 4 의 실명 · 생년월일 · 가족 정보. 사례와 한 거래로 암호화해 저장한다(검증 실패면 사례도 만들지 않는다). 응답에는 없다. */
+  personal_info?: PersonalInfoRequest | null;
+}
+
+// ---------------------------------------------------------
+// 사례 개인 식별 정보(GET · PUT /cases/{id}/personal-info, API_CONTRACT 4절 '개인 식별 정보')
+// 서버는 칸마다 암호화해 저장하고, 권한을 통과한 요청에만 풀어서 준다. 부를 때마다 열람 기록이 남는다.
+// 화면은 이 값을 상태에만 두고 브라우저 저장소에 넣지 않는다.
+// ---------------------------------------------------------
+
+/** 건강정도 항목(서식 4 이름 그대로). 같은 항목은 한 번만 보낸다. */
+export const PERSONAL_HEALTH_KINDS = ["질병", "장애", "병원치료", "정신과 진단", "타기관 상담"] as const;
+export type PersonalHealthKind = (typeof PERSONAL_HEALTH_KINDS)[number];
+
+/** 사례관리대상자(대개 보호자). */
+export interface PersonalTargetPerson {
+  name: string | null;
+  relation: string | null;
+  /** YYYY-MM-DD */
+  birth_date: string | null;
+}
+
+/** 면접대상자 / 관계. */
+export interface PersonalInterviewee {
+  name: string | null;
+  relation: string | null;
+}
+
+/** 가족관계 표 한 줄. 이름은 필수다. */
+export interface PersonalFamilyMember {
+  name: string;
+  relation: string | null;
+  age: number | null;
+  religion: string | null;
+  education: string | null;
+  job: string | null;
+  living_together: boolean | null;
+}
+
+/** 건강정도 한 칸 — 있음(present) · 세부(200자). */
+export interface PersonalHealthItem {
+  kind: PersonalHealthKind;
+  present: boolean | null;
+  detail: string | null;
+}
+
+export interface PersonalHealth {
+  subject_name: string | null;
+  items: PersonalHealthItem[];
+}
+
+/**
+ * PUT 본문 · POST /cases 의 personal_info. 보낸 값으로 통째로 바꾼다(빠진 칸 · null 은 지운다).
+ * 이름 1~50자(빈 이름은 null), 생년월일 1900-01-01 ~ 오늘, relation · religion · education 30자, job 50자, age 0~150, 가족 30줄.
+ */
+export interface PersonalInfoRequest {
+  child_name: string | null;
+  child_birth_date: string | null;
+  target_person: PersonalTargetPerson | null;
+  interviewee: PersonalInterviewee | null;
+  family_members: PersonalFamilyMember[];
+  health: PersonalHealth | null;
+}
+
+/** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
+export interface CaseListItem extends Case {
+  child_name?: string | null;
+}
+
+/** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */
+export interface PersonalInfo extends PersonalInfoRequest {
+  registered: boolean;
+  updated_at: string | null;
 }
 
 /**
  * 사례 수정 요청(PATCH /cases/{id}). 바꿀 필드만 보낸다.
  * title · child_alias · status 는 null 로 보낼 수 없다(422). 바꾸지 않으려면 빼고 보낸다.
  */
-export interface CaseUpdateRequest {
+export interface CaseUpdateRequest extends CaseFormFields {
   title?: string;
   child_alias?: string;
   child_birth_year?: number | null;
@@ -281,6 +463,10 @@ export interface CaseUpdateRequest {
   intake_child_traits?: string[];
   intake_family_situations?: string[];
   notes?: string | null;
+  /** 날짜 셋. 보낸 것만 바뀌고 null 이면 비운다. */
+  report_date?: string | null;
+  linked_date?: string | null;
+  first_interview_date?: string | null;
   /** CLOSED 로 바꾸면 사례 종결. */
   status?: CaseStatus;
   /**
@@ -294,6 +480,17 @@ export interface CaseUpdateRequest {
 // 회차
 // =========================================================
 
+/** 상담 유형(API_CONTRACT 5절, 2026-10-30). */
+export type ConsultationType = "INITIAL" | "REGULAR" | "VISIT" | "OFFICE" | "PHONE";
+
+export const CONSULTATION_TYPE_LABELS: Record<ConsultationType, string> = {
+  INITIAL: "초기면담",
+  REGULAR: "정기상담",
+  VISIT: "방문상담",
+  OFFICE: "기관 면담",
+  PHONE: "전화상담",
+};
+
 export interface Session {
   id: string;
   case_id: string;
@@ -304,6 +501,8 @@ export interface Session {
   consulted_at: string | null;
   location: string | null;
   memo: string | null;
+  /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
+  consultation_type?: ConsultationType | null;
   created_at: string;
   updated_at: string;
   stt_started_at: string | null;
@@ -319,6 +518,7 @@ export interface SessionCreateRequest {
   consulted_at?: string | null;
   location?: string | null;
   memo?: string | null;
+  consultation_type?: ConsultationType | null;
 }
 
 /**
@@ -434,7 +634,7 @@ export interface TranscriptSegment {
   end_ms: number;
   text: string;
   /**
-   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 모두 0.0).
+   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 단어 logprob 이 없을 때만 0.0).
    * 저신뢰 표시는 0 < confidence < 0.7 로 한다(API_CONTRACT.md 7절).
    */
   confidence: number;
@@ -492,7 +692,8 @@ export interface Transcript {
 /**
  * 원문 확정 전 1차 모델 스캔으로 고른 '먼저 들어볼 곳'(API_CONTRACT 7절 key_scan). 판정이 아니다.
  * DONE 성공(segments 가 비어도) · FAILED 실패(STT 는 성공) · SKIPPED modeling 이 아님.
- * abuse_types 는 화면에 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3).
+ * abuse_types 는 유형 칩으로 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3). 2026-11-03 부터 원문 확정 전 STT 검수 화면이
+ * 그 유형의 '임시' 관련 조문(아동복지법 제17조 해당 호)을 보이는 데만 쓴다(사용자 요청).
  */
 export interface KeyScan {
   status: "DONE" | "FAILED" | "SKIPPED";
@@ -723,6 +924,13 @@ export interface SummaryEvidenceItem {
   score: number;
 }
 
+/**
+ * 3 · 4단계 AI 초안(상담 요약 · 일지 · 확인 메모 · 추가 질문 등) 상태(2026-11-04 제안 PROPOSAL_analysis_signals_first).
+ * 서버는 학대 신호 확인(2단계) 값을 먼저 저장하고 회차를 AI_REVIEW_REQUIRED 로 넘긴 뒤 나머지를 채운다.
+ * PENDING 만드는 중 · DONE 끝남 · FAILED 못 만듦. 이 칸이 생기기 전 서버 · 분석에는 없다(= DONE 으로 본다).
+ */
+export type DraftsStatus = "PENDING" | "DONE" | "FAILED";
+
 export interface AIAnalysis {
   id: string;
   session_id: string;
@@ -737,6 +945,10 @@ export interface AIAnalysis {
   result: AnalysisResult | null;
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
+  /** 3 · 4단계 AI 초안 상태(DraftsStatus). 없으면 DONE. */
+  drafts_status?: DraftsStatus;
+  /** drafts_status 가 FAILED 일 때만. 고정 문구. */
+  drafts_error?: SessionErrorInfo | null;
 }
 
 /** AI 분석 실행 요청 결과. 202 로 돌아오며 처리는 아직 진행 중이다. */
@@ -751,83 +963,6 @@ export interface AnalysisEnvelope {
   session_id: string;
   session_status: SessionStatus;
   analysis: AIAnalysis | null;
-  error: SessionErrorInfo | null;
-}
-
-// =========================================================
-// 다음 상담 체크리스트 (API_CONTRACT 19절, rag/README.md 8-3)
-// =========================================================
-
-/**
- * 근거 하나(화면의 '근거 · …' 칩). type 이 case 면 사례 기록(회차 발화 · 이전 회차 요약 · 아이 앱 응답),
- * 그 밖(manual · checklist · law · precedent · guideline · form)은 공식 근거다.
- * 회차 발화는 session_id + segment_id 로 STT 검수의 그 발화로, 이전 회차 기록은 session_id 로 회차 상세로 간다.
- * 법령 · 판례는 url(국가법령정보센터), 매뉴얼 · 체크리스트는 원본을 올리지 않아 excerpt 를 그 자리에서 보인다.
- */
-export interface FollowupBasis {
-  ref?: string;
-  type: string;
-  /** case 일 때: transcript · summary · safety_plan · check_item · app_response */
-  source?: string;
-  label: string;
-  session_no?: number | null;
-  session_id?: string | null;
-  segment_id?: string | null;
-  start_ms?: number | null;
-  response_id?: string | null;
-  page?: number | null;
-  url?: string;
-  /** 근거 원문 발췌. 화자 미확정 발화는 내용을 싣지 않아 null 이다. */
-  excerpt?: string | null;
-}
-
-/** 다음 상담 전 확인할 사항. kind 는 info_gap · plan_followup · change · inconsistency · checklist_gap · uncertain_speaker. */
-export interface FollowupCheckItem {
-  id: string;
-  item: string;
-  kind: string;
-  priority: "high" | "medium";
-  reason?: string;
-  basis: FollowupBasis[];
-}
-
-/**
- * 다음 상담 체크리스트의 추가 질문 초안. AI 가 공식 근거를 보고 쓰고 규칙 · LLM 검토를 통과한 것이다.
- * 화면은 상담 질문(counselor)을 18절 AI 초안 카드에 더해 상담사가 [승인] 하게 한다(승인한 질문 FollowupQuestion 과 다른 모양).
- */
-export interface FollowupSuggestionQuestion {
-  question: string;
-  audience: "counselor" | "child_app";
-  question_type: "open" | "clarify";
-  priority: "high" | "medium";
-  rationale: string;
-  check_item_id: string | null;
-  basis: FollowupBasis[];
-  /** passed(LLM 검토 통과) · not_reviewed(검토 호출 실패, 규칙만 통과) */
-  review_status: string;
-}
-
-export interface FollowupSuggestionResult {
-  abuse_type?: string | null;
-  /** mock 결과 · 학대 유형 없음 · 이전 기록 제외 같은 안내 */
-  notice?: string | null;
-  check_items: FollowupCheckItem[];
-  items: FollowupSuggestionQuestion[];
-  validation?: Record<string, unknown>;
-  speaker_check_items: FollowupCheckItem[];
-}
-
-export interface FollowupSuggestion {
-  id: string;
-  session_id: string;
-  analysis_id: string | null;
-  transcript_version: number | null;
-  status: AnalysisStatus;
-  schema_version: string;
-  provider: string | null;
-  created_at: string;
-  completed_at: string | null;
-  result: FollowupSuggestionResult | null;
   error: SessionErrorInfo | null;
 }
 
@@ -1020,7 +1155,8 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
 /**
  * 사례 단위 신호 이력(GET /cases/{id}/signal-history, API_CONTRACT 4절, 2026-10-28) — 한 회차 · 한 유형.
  * detected · ai_level 은 AI 제안이지 판정이 아니고, 위험도 표시는 counselor_level 만 쓴다(05_RULES §1).
- * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11절 ai_level 규칙), 판단은 risk-assessments.
+ * 값 규칙은 회차 창구와 같다: detected 는 abuse_signals, ai_level 은 severity_ratings(11.2절 ai_level 규칙), 판단은 유형별
+ * …/risk-assessments(11.2절). 회차 전체 판단은 회차 줄(SignalHistorySession)의 counselor_level · assessed_at(11.1절)이다.
  */
 export interface SignalHistoryType {
   abuse_type: AbuseType;
@@ -1030,7 +1166,29 @@ export interface SignalHistoryType {
   assessed_at: string | null;
 }
 
-/** 회차 한 줄. 분석이 끝나지 않았고 판단도 없으면 types 는 빈 배열(분석 전). */
+/** 회차 한 줄. 분석이 끝나지 않았고 유형별 판단도 없으면 types 는 빈 배열(분석 전 — 회차 전체 판단과는 무관). */
+/** 한 회차의 아동 발화 대화 주제(분석 결과 topic_tags, 4절 2026-10-29). AI 제안이다. */
+export interface SignalHistoryTopic {
+  topic: string;
+  /** 그 주제로 나눈 아동 발화 수. */
+  count: number;
+  segment_ids: string[];
+  /** 첫 근거 발화 앞부분 · 시작 시각(ms). */
+  quote: string;
+  start_ms: number | null;
+}
+
+/** 한 회차의 세부 신호(risk_utterances 를 세부 유형으로 묶음, 4절 2026-10-30). AI 제안이다. */
+export interface SignalHistorySubtype {
+  abuse_type: AbuseType;
+  subtype: string;
+  /** 근거 발화 수. */
+  count: number;
+  segment_ids: string[];
+  /** 근거 발화가 모두 화자 미확인 — '보류 (화자 확인 중)'. */
+  pending: boolean;
+}
+
 export interface SignalHistorySession {
   session_id: string;
   session_number: number;
@@ -1038,7 +1196,14 @@ export interface SignalHistorySession {
   status: SessionStatus;
   /** 가장 최근 분석 상태. 요청한 적 없으면 null. */
   analysis_status: AnalysisStatus | null;
+  /** 회차 전체 상담원 판단(11.1절, 2026-10-29). 판단 전이면 둘 다 null. 유형별 판단은 types[].counselor_level. */
+  counselor_level: RiskLevel | null;
+  assessed_at: string | null;
   types: SignalHistoryType[];
+  /** 대화 주제. 분석 전 · 주제 분류가 없는 분석(이 필드 전 · 실패)이면 null, 분류했지만 없으면 []. 옛 서버면 키가 없다. */
+  topics?: SignalHistoryTopic[] | null;
+  /** 세부 신호. 분석 전이면 null, 없으면 []. 옛 서버면 키가 없다. */
+  subtypes?: SignalHistorySubtype[] | null;
 }
 
 /** session_number 오름차순, 분석 전 회차 포함 전부. */
@@ -1047,7 +1212,10 @@ export interface SignalHistory {
   sessions: SignalHistorySession[];
 }
 
-/** 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse). */
+/**
+ * 한 회차 · 한 유형의 상담원 판단(RiskAssessmentResponse, API_CONTRACT 11.2절).
+ * 화면은 2026-10-29 부터 회차 전체 판단(OverallRiskAssessment)만 저장하고 유형별 판단은 쓰지 않는다. 창구는 기록 · signal-history 용으로 남아 있다.
+ */
 export interface RiskAssessment {
   id: string;
   session_id: string;
@@ -1069,13 +1237,37 @@ export interface RiskAssessment {
 }
 
 /**
- * 판단 저장 · 수정 요청(PUT /sessions/{id}/risk-assessments/{abuse_type}). 판단 전체를 바꾼다.
- * reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
+ * 판단 저장 · 수정 요청(회차 전체 PUT /sessions/{id}/risk-assessment, 유형별 PUT /sessions/{id}/risk-assessments/{abuse_type}).
+ * 판단 전체를 바꾼다. reason 을 빼면 전에 적은 이유도 지워진다. ai_level 은 보내지 않는다(서버가 채운다).
  */
 export interface RiskAssessmentSaveRequest {
   counselor_level: RiskLevel;
   /** 1000자 이하. 빼거나 null · 공백만이면 null 로 저장. */
   reason?: string | null;
+}
+
+/**
+ * 회차 전체 상담원 판단(GET/PUT /sessions/{id}/risk-assessment, API_CONTRACT 11.1절, 2026-10-29) — 회차마다 하나.
+ * 상담사가 유형별 심각도(AI 제안)를 보고 이 회차 전체를 상 · 중 · 하로 판단한 것. 유형별 판단(11.2절)과 따로 저장된다.
+ * 판단이 없으면 GET 은 data 가 null 이다.
+ */
+export interface OverallRiskAssessment {
+  id: string;
+  session_id: string;
+  counselor_level: RiskLevel;
+  /** 판단 이유. 적지 않았으면 null. */
+  reason: string | null;
+  /**
+   * 판단을 저장할 때 그 회차 AI 분석 결과의 유형별 심각도(1~5) 중 가장 높은 값. 서버가 채운다.
+   * 분석이 없거나 · 실패했거나 · 유효한 단계가 하나도 없으면 null. 저장한 뒤 재분석해도 바뀌지 않는다(판단 당시 기록).
+   * 'AI 판정' 이 아니라 'AI 제안' 이다.
+   */
+  ai_level: number | null;
+  /** 마지막으로 저장한 사람. 계정이 삭제되었으면 null. */
+  assessed_by_id: string | null;
+  assessed_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
@@ -1136,6 +1328,74 @@ export interface FollowupQuestion extends FollowupQuestionInput {
   approved_at: string;
 }
 
+/** 종결 검토 요약 · 보고서(API_CONTRACT 4절 closure-summary, 2026-10-30). */
+export interface ClosureItem {
+  key: string;
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureDraft {
+  text: string;
+  sessions: number[];
+}
+
+export interface ClosureSummaryBody {
+  /** AI: 종결 요약 AI 초안 · APPROVED_SUMMARIES: LLM 없이 승인 요약 4칸 묶음(AI 생성 아님). */
+  source: "AI" | "APPROVED_SUMMARIES";
+  model: string | null;
+  generated_at: string;
+  sessions: number[];
+  groups: { title: string; items: ClosureItem[] }[];
+  report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+}
+
+export interface ClosureReportFields {
+  initial_situation?: string | null;
+  closing_situation?: string | null;
+  opinion?: string | null;
+  review_date?: string | null;
+  closing_date?: string | null;
+}
+
+export interface ClosureSummaryRecord {
+  case_id: string;
+  summary: ClosureSummaryBody | null;
+  checks: Record<string, boolean>;
+  edits: Record<string, string>;
+  report: ClosureReportFields;
+  updated_at: string | null;
+}
+
+export interface ClosureSummarySave {
+  checks?: Record<string, boolean>;
+  edits?: Record<string, string>;
+  report?: ClosureReportFields;
+}
+
+/** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
+export interface FollowupCheck {
+  text: string;
+  /** AI(AI 확인 메모에서 옴 — 고쳐도 AI) · COUNSELOR(직접 추가). */
+  source: FollowupQuestionSource;
+  segment_ids: string[];
+  /** AI 메모를 상담사가 고쳤는가. */
+  edited: boolean;
+  /** 상담 전 브리핑에 넣기. */
+  in_briefing: boolean;
+  /** 근거가 지난 회차 확정 요약뿐인 AI 메모의 회차 이름('7회차'). 없으면 null · 빠짐. */
+  previous_session_label?: string | null;
+}
+
+export interface FollowupCheckList {
+  session_id: string;
+  /** 한 번이라도 저장했는가. false 면 화면은 AI 확인 메모 초안을 보인다. */
+  saved: boolean;
+  items: FollowupCheck[];
+  updated_at: string | null;
+  updated_by_id: string | null;
+}
+
 export interface FollowupQuestionList {
   session_id: string;
   questions: FollowupQuestion[];
@@ -1143,3 +1403,155 @@ export interface FollowupQuestionList {
   updated_at: string | null;
   updated_by_id: string | null;
 }
+
+// =========================================================
+// 다음 상담 체크리스트 (API_CONTRACT 19절, 2026-10-30)
+// =========================================================
+
+export type ChecklistKind = "info_gap" | "plan_followup" | "change" | "inconsistency" | "checklist_gap";
+
+/**
+ * 근거 하나. type="case" 는 사례 기록(segment_id 가 있으면 그 발화, session_id 만 있으면 그 회차).
+ * 그 밖(manual · guideline · form · checklist · law · precedent)은 공식 근거 — 서버가 검토를 통과한 것만 보낸다.
+ * url 이 있으면(법령 · 판례) 새 창으로, 없으면 excerpt 를 펼쳐 보인다. why 는 질문에 붙인 공식 근거의 연결 이유.
+ */
+export interface ChecklistBasis {
+  type: string;
+  ref?: string | null;
+  label?: string | null;
+  session_no?: number | null;
+  session_id?: string | null;
+  segment_id?: string | null;
+  start_ms?: number | null;
+  source?: string | null;
+  page?: number | string | null;
+  url?: string | null;
+  excerpt?: string | null;
+  why?: string | null;
+}
+
+/** 다음 상담 전 확인할 사항 하나(rag). 화면에서 AI 확인 메모와 한 목록으로 합쳐 보인다. basis 는 1개 이상. */
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  kind: ChecklistKind;
+  priority: "high" | "medium";
+  reason: string;
+  basis: ChecklistBasis[];
+}
+
+/** 추가 질문 AI 초안(분석 followup_questions[draft_index])에 붙인 공식 근거. text 는 만들 때의 초안 문장 그대로. */
+export interface QuestionEvidence {
+  draft_index: number;
+  text: string;
+  basis: ChecklistBasis[];
+}
+
+export interface ChecklistResult {
+  schema_version: string;
+  check_items: ChecklistItem[];
+  question_evidence: QuestionEvidence[];
+  notice: string | null;
+  dropped: Record<string, number>;
+}
+
+export interface FollowupChecklist {
+  status: AnalysisStatus;
+  attempt: number;
+  /** 만들 때 쓴 분석. 지금 분석과 다르면 화면은 결과를 숨기고 다시 만들기를 보인다. */
+  analysis_id: string | null;
+  transcript_version: number | null;
+  provider: string | null;
+  /** COMPLETED 일 때만. */
+  result: ChecklistResult | null;
+  /** FAILED 일 때만. message 는 고정 문구. */
+  error: SessionErrorInfo | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface FollowupChecklistEnvelope {
+  /** false 면 서버에서 꺼져 있다(FOLLOWUP_PROVIDER=off). 만들기 단추를 보이지 않는다. */
+  enabled: boolean;
+  /** 만든 적이 없으면 null. */
+  checklist: FollowupChecklist | null;
+}
+
+// =========================================================
+// 일정 — backend/app/schemas/schedule.py (API_CONTRACT 20절, 2026-11-02)
+// =========================================================
+
+/** 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시). */
+export type ScheduleKind = "CONSULT" | "OTHER";
+export type ScheduleConsultType = "REGULAR" | "INITIAL" | "VISIT" | "PHONE" | "CLOSING";
+export type ScheduleCategory =
+  | "AGENCY_MEETING"
+  | "CASE_MEETING"
+  | "INTAKE"
+  | "SUPERVISION"
+  | "TRAINING"
+  | "FIELD_WORK"
+  | "LEAVE"
+  | "ETC";
+
+/** 디자인 일정 추가 창의 이름 그대로(순서도 같다). */
+export const SCHEDULE_CONSULT_LABELS: Record<ScheduleConsultType, string> = {
+  REGULAR: "정기상담",
+  INITIAL: "초기면담",
+  VISIT: "방문상담",
+  PHONE: "전화상담",
+  CLOSING: "종결 상담",
+};
+export const SCHEDULE_CATEGORY_LABELS: Record<ScheduleCategory, string> = {
+  AGENCY_MEETING: "기관 회의",
+  CASE_MEETING: "사례회의",
+  INTAKE: "최초접수",
+  SUPERVISION: "슈퍼비전",
+  TRAINING: "교육",
+  FIELD_WORK: "외근",
+  LEAVE: "휴가",
+  ETC: "기타",
+};
+
+export interface ScheduleEvent {
+  id: string;
+  kind: ScheduleKind;
+  consult_type: ScheduleConsultType | null;
+  category: ScheduleCategory | null;
+  /** 볼 수 있는 사례일 때만(팀 공유 일정의 남의 사례는 null). */
+  case_id: string | null;
+  child_alias: string | null;
+  /** 사례가 붙어 있지만 지금 볼 수 없어 가렸는가(담당이 바뀐 사례 등). 고칠 때 사례 칸을 보내지 않는다. 옛 서버면 키가 없다. */
+  case_hidden?: boolean;
+  title: string | null;
+  /** YYYY-MM-DD. */
+  date: string;
+  /** HH:MM, 종일이면 null. */
+  time: string | null;
+  place: string | null;
+  important: boolean;
+  shared: boolean;
+  /** 최초접수만 {"3","7","30": 완료?}, 그 밖 {}. */
+  deadline_done: Record<string, boolean>;
+  owner_id: string;
+  owner_name: string | null;
+  /** 지금 사용자가 고치고 지울 수 있는가. */
+  editable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleEventCreate {
+  kind: ScheduleKind;
+  date: string;
+  consult_type?: ScheduleConsultType | null;
+  category?: ScheduleCategory | null;
+  case_id?: string | null;
+  title?: string | null;
+  time?: string | null;
+  place?: string | null;
+  important?: boolean;
+  shared?: boolean;
+}
+
+export type ScheduleEventUpdate = Partial<ScheduleEventCreate> & { deadline_done?: Record<string, boolean> };

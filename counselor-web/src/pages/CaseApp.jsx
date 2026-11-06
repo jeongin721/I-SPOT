@@ -1,9 +1,11 @@
-// 내담자 정보 › 아이 연계 (아이 상세와 같은 화면). 10/21 디자인에서 탭에서 빠지고 '아이 연계 →' 단추로 들어온다
+// 내담자 정보 › 아이 연계 (아이 상세와 같은 화면). 10/21 디자인에서 탭에서 빠지고 '아이 연계 →' 단추로 들어왔다가
+// 11/03 다시 탭 줄의 문서함 옆으로 옮겼다(기본 정보 카드의 그 자리는 '수정')
 // 원본: 다솔 님 디자인 counselor-web-design/CaseApp.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Sidebar from '../components/Sidebar';
+import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCarryHref } from '../data/useCarryHref';
@@ -196,6 +198,7 @@ export default function CaseApp(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -220,7 +223,6 @@ export default function CaseApp(props) {
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
-            <A to={carry('/PreBriefing')}>상담 전 브리핑</A>
             <A to={carry('/CaseDocs')}>문서함</A>
           </nav>
           {v.k.hasQuote ? (

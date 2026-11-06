@@ -7,7 +7,8 @@
 //  - ② 가정상황 · 아동 특성: 보내면 목록을 통째로 바꾼다(모두 빼면 []). 서식 순서로 보낸다(새 사례 등록과 같음).
 //  - 담당 상담원: 관리자만 바꾼다(상담원이 보내면 403). 담당자를 비우는 기능은 없다.
 // 개별사건번호는 수정 요청이 받지 않아(backend CaseUpdateRequest 에 칸이 없음) 읽기만 한다.
-// 서식 4 의 나머지 칸은 새 사례 등록처럼 개인정보 저장 범위가 팀 결정 전이라 보내지 않는다(useCaseRegister.ts 머리말).
+//  - 서식 4 고르기 · 글 칸(2026-11-05, caseFormFields.ts — 조치결과 · 위험도(우선) · 사례연계 경위 · ② 가족유형 · 글 칸): 비우면 null.
+// 실명 · 가족 칸은 이 요청이 아니라 usePersonalInfo(PUT …/personal-info)로 보낸다(screens/caseIntake.ts).
 // 입력 확인 문구 · 길이 제한은 새 사례 등록(toCaseCreateRequest)과 같다.
 
 import { useMemo } from "react";
@@ -15,20 +16,26 @@ import { useMemo } from "react";
 import { auth } from "../api/endpoints";
 import { GUARDIAN_LABELS, type CaseUpdateRequest, type User } from "../api/types";
 import { adminKey } from "./adminAccess";
+import { CASE_FORM_FIELDS, checkCaseFormField, putCaseFormValue } from "./caseFormFields";
 import type { AuthSession } from "./useAuthSession";
 import type { CaseDetailView } from "./useCaseDetail";
 import {
   BIRTH_YEAR_MIN,
+  CASE_DATE_FIELDS,
   CASE_ALIAS_MAX,
   CASE_GENDER_MAX,
   CASE_NOTES_MAX,
   CASE_TITLE_MAX,
   GUARDIAN_NOTE_MAX,
+  checkCaseDate,
   type CaseRegisterInput,
   type CounselorOption,
 } from "./useCaseRegister";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./screens/intakeItems";
 import { useRemote } from "./useRemote";
+
+/** 성별 고르기(초기면접지 · 사례 상세 기본 정보). 서버에 다른 글자가 적혀 있으면 화면이 그 값도 붙여 보인다(지어내지 않는다). */
+export const GENDER_OPTIONS = ["여", "남"];
 
 /**
  * 초기면접지 입력칸(화면 입력 그대로, 문자열). 새 사례 등록 입력과 같은 모양에서 개별사건번호만 뺐다(고칠 수 없음).
@@ -40,6 +47,7 @@ export type IntakeField = keyof IntakeForm;
 /** 사례의 서버 값으로 입력칸을 채운다. */
 export function intakeFormOf(info: CaseDetailView): IntakeForm {
   return {
+    ...info.caseForm,
     title: info.title,
     alias: info.alias,
     gender: info.childGender,
@@ -50,6 +58,9 @@ export function intakeFormOf(info: CaseDetailView): IntakeForm {
     childTraits: info.intakeChildTraits,
     familySituations: info.intakeFamilySituations,
     counselorId: info.counselorId,
+    reportDate: info.reportDateValue,
+    linkedDate: info.linkedDateValue,
+    firstInterviewDate: info.firstInterviewDateValue,
   };
 }
 
@@ -81,7 +92,7 @@ export function toCaseUpdateRequest(
   if (edits.alias !== undefined) {
     const alias = edits.alias.trim();
 
-    if (!alias) return fail("아동 별칭을 입력해 주세요(실명은 저장하지 않습니다).");
+    if (!alias) return fail("아동 별칭을 입력해 주세요(실명은 '대상아동 이름' 칸에 적습니다).");
     if (alias.length > CASE_ALIAS_MAX) return fail(`아동 별칭은 ${CASE_ALIAS_MAX}자까지 쓸 수 있습니다.`);
     if (alias !== saved.alias.trim()) payload.child_alias = alias;
   }
@@ -121,11 +132,28 @@ export function toCaseUpdateRequest(
     if (note !== savedNote) payload.guardian_note = note || null;
   }
 
+  for (const field of CASE_DATE_FIELDS) {
+    const edited = edits[field.key];
+    if (edited === undefined) continue;
+    const checked = checkCaseDate(edited, field.label);
+    if (checked.problem) return fail(checked.problem);
+    if ((checked.value ?? "") !== saved[field.key].trim()) payload[field.api] = checked.value;
+  }
+
   if (edits.notes !== undefined) {
     const notes = edits.notes.trim();
 
     if (notes.length > CASE_NOTES_MAX) return fail(`사례 메모는 ${CASE_NOTES_MAX.toLocaleString()}자까지 쓸 수 있습니다.`);
     if (notes !== saved.notes.trim()) payload.notes = notes || null;
+  }
+
+  // 서식 4 고르기 · 글 칸(2026-11-05): 고친 칸만, 비우면 null.
+  for (const field of CASE_FORM_FIELDS) {
+    const edited = edits[field.key];
+    if (edited === undefined) continue;
+    const checked = checkCaseFormField(field, edited);
+    if (checked.problem) return fail(checked.problem);
+    if ((checked.value ?? "") !== saved[field.key].trim()) putCaseFormValue(payload, field.api, checked.value);
   }
 
   // 초기면접 항목은 서식 순서로 보낸다(서식에 없는 값은 빠진다).

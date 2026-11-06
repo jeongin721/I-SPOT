@@ -2,6 +2,7 @@
   "pages": [
     "Admin",
     "AdminAccounts",
+    "AdminCases",
     "AdminHome",
     "AdminSecurity",
     "AdminStaffDetail",
@@ -44,6 +45,15 @@
       "title": "관리자 · 홈 (기관 현황 · 업무 처리 현황 · 최근 접속 · 상담원별 업무량) — 옛 주소 #/Admin 도 여기로",
       "w": 1440,
       "x": 7600,
+      "y": 10100
+    },
+    "AdminCases.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 사례 목록 (상담원별 담당 사례 전체 · 상담원 필터 · 재배정 필요) — 10/30 디자인",
+      "w": 1440,
+      "x": 8360,
       "y": 10100
     },
     "AdminAccounts.dc.html": {
@@ -406,6 +416,7 @@
     "Settings.dc.html",
     "LawGuide.dc.html",
     "AdminHome.dc.html",
+    "AdminCases.dc.html",
     "AdminAccounts.dc.html",
     "AdminStaffDetail.dc.html",
     "AdminSecurity.dc.html",

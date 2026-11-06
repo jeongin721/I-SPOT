@@ -6,6 +6,9 @@
 # 서버에서: cd /opt/ispot/I-SPOT && sudo git pull --ff-only && sudo bash deploy/web-deploy.sh
 # 주소를 바꾸려면 SITE 를 넘긴다(sudo 는 설정에 따라 환경변수를 넘기지 않을 수 있어 sudo 뒤에 env 로 쓴다):
 #   sudo env SITE=<새 주소> bash deploy/web-deploy.sh
+# 머지 전 브랜치를 데모로 확인하려면 DEPLOY_BRANCH 를 넘긴다(기본 main). 먼저 그 브랜치로 바꿔 이 옵션이 든 스크립트를 쓴다:
+#   sudo git fetch origin && sudo git checkout <브랜치> && sudo env DEPLOY_BRANCH=<브랜치> WITH_MODELING=1 ... bash deploy/web-deploy.sh
+# 다시 main 으로 돌아갈 때는 DEPLOY_BRANCH 없이 실행하면 main 으로 바꿔 배포한다.
 # backend.env 가 AI_PROVIDER=modeling 이면 WITH_MODELING=1 을 넘긴다(torch · transformers 를 더 깔고 모델 파일을 붙인다,
 # deploy/README.md '모델까지 띄우기'):
 #   sudo env WITH_MODELING=1 bash deploy/web-deploy.sh
@@ -14,9 +17,6 @@
 # GPU 인스턴스(g4dn 등, deploy/gpu-setup.sh 로 드라이버 · nvidia-container-toolkit 을 깐 뒤)에서는 WITH_GPU=1 을 더한다
 # (CUDA 판 torch 이미지 + 컨테이너에 GPU 를 넘김, deploy/README.md 'GPU 로 띄우기'). WITH_MODELING=1 과 같이 쓴다:
 #   sudo env WITH_MODELING=1 WITH_GPU=1 bash deploy/web-deploy.sh
-# backend.env 가 FOLLOWUP_PROVIDER=module(다음 상담 체크리스트)이면 WITH_RAG=1 을 더한다(rag 의존성 + 색인을 붙임,
-# deploy/README.md '다음 상담 체크리스트 켜기'). WITH_MODELING=1 과 같이 쓴다:
-#   sudo env WITH_MODELING=1 WITH_RAG=1 bash deploy/web-deploy.sh
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
@@ -32,8 +32,6 @@ WITH_STT="${WITH_STT:-0}"
 [[ "$WITH_STT" =~ ^[01]$ ]] || { echo "WITH_STT 은 0 또는 1 입니다: $WITH_STT"; exit 1; }
 WITH_GPU="${WITH_GPU:-0}"
 [[ "$WITH_GPU" =~ ^[01]$ ]] || { echo "WITH_GPU 은 0 또는 1 입니다: $WITH_GPU"; exit 1; }
-WITH_RAG="${WITH_RAG:-0}"
-[[ "$WITH_RAG" =~ ^[01]$ ]] || { echo "WITH_RAG 은 0 또는 1 입니다: $WITH_RAG"; exit 1; }
 # GPU 는 modeling 만 쓴다(STT 는 클라우드 API). 드라이버 · nvidia-container-toolkit 이 없으면 docker run --gpus 가 실패하므로
 # 미리 확인한다(둘 다 deploy/gpu-setup.sh 가 깐다).
 GPU_FLAGS=()
@@ -68,20 +66,6 @@ elif grep -qE '^AI_PROVIDER=modeling[[:space:]]*$' "$ENV_FILE"; then
   echo "  sudo env WITH_MODELING=1 bash deploy/web-deploy.sh"
   exit 1
 fi
-# 다음 상담 체크리스트(FOLLOWUP_PROVIDER=module)는 rag/ 색인(rag_storage/, .gitignore)을 읽는다. 서버에서 python -m rag.indexer 로
-# 만든 폴더를 컨테이너의 /rag_storage 에 붙인다(Chroma 가 잠금 파일을 써서 읽기 전용으로 붙이지 않는다).
-# 비식별(이름 인식)이 torch · transformers 를 써서 WITH_MODELING=1 과 같이 쓴다(법령 캐시 · Hugging Face 캐시도 그쪽이 붙인다).
-if [ "$WITH_RAG" = 1 ]; then
-  [ "$WITH_MODELING" = 1 ] || { echo "WITH_RAG=1 은 WITH_MODELING=1 과 같이 써야 합니다(비식별 이름 인식이 torch 를 씁니다)"; exit 1; }
-  RAG_STORAGE_HOST="${RAG_STORAGE_HOST_DIR:-$REPO/rag_storage}"
-  [ -d "$RAG_STORAGE_HOST/chroma" ] || { echo "rag 색인이 없습니다: $RAG_STORAGE_HOST/chroma (서버에서 python -m rag.indexer, 또는 RAG_STORAGE_HOST_DIR 로 다른 폴더)"; exit 1; }
-  MODELING_MOUNTS+=(-v "$RAG_STORAGE_HOST:/rag_storage")
-  grep -qE '^OPENAI_API_KEY=.+' "$ENV_FILE" || echo "주의: backend.env 에 OPENAI_API_KEY 가 없습니다. 다음 상담 체크리스트가 실패합니다."
-elif grep -qE '^FOLLOWUP_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
-  echo "backend.env 가 FOLLOWUP_PROVIDER=module 입니다. rag 의존성이 든 이미지가 필요해 WITH_RAG=1 로 실행해 주세요:"
-  echo "  sudo env WITH_MODELING=1 WITH_RAG=1 bash deploy/web-deploy.sh"
-  exit 1
-fi
 # STT 모듈은 키를 backend.env 에서 읽는다(기본 ElevenLabs, 실패하면 Deepgram). 키가 없으면 전사 요청마다 실패하므로 미리 알린다.
 if [ "$WITH_STT" = 1 ]; then
   if ! grep -qE '^(ELEVENLABS_API_KEY|DEEPGRAM_API_KEY|I_SPOT_STT_API_KEY)=.+' "$ENV_FILE"; then
@@ -92,18 +76,30 @@ elif grep -qE '^STT_PROVIDER=module[[:space:]]*$' "$ENV_FILE"; then
   echo "  sudo env WITH_STT=1 bash deploy/web-deploy.sh"
   exit 1
 fi
+# 개인 식별 정보 키(2026-10-30). ENV=production 이면 키가 없을 때 Backend 설정 검사가 시작을 막아 3/5 에서 멈춘다.
+# 화면을 바꾸기 전에 미리 멈춘다. 키 값은 출력하지 않는다(backend/README.md 7절 '개인 식별 정보 키').
+# 공백뿐인 값도 없는 것으로 본다(Codex #127 R5).
+if grep -qE '^ENV=production[[:space:]]*$' "$ENV_FILE" \
+  && ! { grep -qE '^PII_ENCRYPTION_KEYS=[[:space:]]*[^[:space:]]' "$ENV_FILE" \
+         && grep -qE '^PII_INDEX_KEY=[[:space:]]*[^[:space:]]' "$ENV_FILE"; }; then
+  echo "backend.env 가 ENV=production 인데 PII_ENCRYPTION_KEYS · PII_INDEX_KEY 가 없습니다. Backend 가 뜨지 않습니다."
+  echo "AWS SSM Parameter Store 의 키를 backend.env 에 넣은 뒤 다시 실행해 주세요(deploy/README.md '개인 식별 정보 키')."
+  exit 1
+fi
 
-echo "== 1/5 최신 main 받기"
+echo "== 1/5 최신 ${DEPLOY_BRANCH:-main} 받기"
 cd "$REPO"
 # main 을 받아 이 파일이 바뀌었으면 새 판으로 처음부터 다시 시작한다. 옛 판이 끝까지 돌면 새 main 의 Dockerfile 을
 # 옛 빌드 명령으로 만들다 멈춘다(2026-10-22 데모 서버: git pull 없이 돌려 3/5 의 COPY backend/requirements.txt 에서 멈춤).
 # { } 묶음은 bash 가 다 읽은 뒤 실행하므로, 그 안에서 이 파일이 바뀌어도 묶음은 읽은 그대로 끝까지 돈다.
 {
+  # 배포할 브랜치(기본 main). 이 묶음만 떼어 시험하므로(test_deploy_self_restart) 기본값도 묶음 안에서 정한다.
+  DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
   OLD=$(git rev-parse --short HEAD)
   OLD_SCRIPT=$(git hash-object deploy/web-deploy.sh)
-  git fetch -q origin main
-  git checkout -q main
-  git merge -q --ff-only origin/main
+  git fetch -q origin "$DEPLOY_BRANCH"
+  git checkout -q "$DEPLOY_BRANCH"
+  git merge -q --ff-only "origin/$DEPLOY_BRANCH"
   echo "code $OLD -> $(git rev-parse --short HEAD)"
   if [ "$(git hash-object deploy/web-deploy.sh)" != "$OLD_SCRIPT" ]; then
     # 다시 시작한 판이 또 바뀌었으면(그사이 main 에 새 배포 스크립트가 들어옴) 되풀이하지 않고 멈춘다.
@@ -130,7 +126,7 @@ else
 fi
 echo "== 3/5 백엔드 이미지 다시 만들기 + DB 마이그레이션"
 # 저장소 루트가 빌드 컨텍스트다(ai/ · agent/ 도 담음). 넣는 것은 루트 .dockerignore 가 고른다.
-docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" --build-arg WITH_GPU="$WITH_GPU" --build-arg WITH_RAG="$WITH_RAG" -f "$REPO/backend/Dockerfile" "$REPO"
+docker build -q -t ispot-backend --build-arg WITH_MODELING="$WITH_MODELING" --build-arg WITH_STT="$WITH_STT" --build-arg WITH_GPU="$WITH_GPU" -f "$REPO/backend/Dockerfile" "$REPO"
 sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=https://$SITE|" "$ENV_FILE"
 docker run --rm --env-file "$ENV_FILE" ispot-backend alembic upgrade head
 

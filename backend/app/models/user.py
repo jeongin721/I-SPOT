@@ -1,5 +1,6 @@
 # 상담사/관리자 계정.
-# 자유 회원가입은 없으며 관리자 또는 seed script 로만 생성한다.
+# 관리자 · seed script 가 만들거나, 회원가입 신청(models/signup.py)을 관리자가 승인할 때 생긴다.
+# 신청만으로는 행이 생기지 않는다 — 승인 전에는 로그인할 수 없다.
 
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING

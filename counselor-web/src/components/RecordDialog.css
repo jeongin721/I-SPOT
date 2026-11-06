@@ -1,0 +1,124 @@
+/* 녹음하기 창(.rec-*) — 10/21 디자인. 사례 상세 · 상담 이력 · 문서함이 같이 쓴다(10/29 디자인). */
+/* 녹음하기 창 — 10/21 디자인 */
+.rec-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #a33b2e;
+  vertical-align: 0;
+}
+.rec-dot.live {
+  animation: rec-pulse 1s infinite;
+}
+.rec-dot.off {
+  background: #a8a296;
+}
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.2;
+  }
+}
+.rec-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(47, 58, 68, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+.rec-dlg {
+  width: 100%;
+  max-width: 560px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(43, 42, 38, 0.22);
+  overflow: hidden;
+  color: #2b2a26;
+}
+.rec-x {
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: #f7f6f2;
+  font: inherit;
+  font-size: 18px;
+  color: #2b2a26;
+  cursor: pointer;
+}
+.rec-case {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #f7f6f2;
+}
+.lb2 {
+  font-size: 13px;
+  font-weight: 700;
+}
+.rec-box {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 22px 20px;
+  border: 1px solid #e7e4dc;
+  border-radius: 12px;
+  text-align: center;
+}
+.rec-status {
+  font-size: 14px;
+  font-weight: 700;
+}
+.rec-time {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.rec-consent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rec-consent input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2b2a26;
+}
+.rec-main {
+  align-self: center;
+  min-width: 180px;
+}
+.thm-root.dark .rec-dlg {
+  background: #2c2b27 !important;
+  color: #ece8df;
+}
+.thm-root.dark .rec-hd {
+  border-bottom: 1px solid #45423b !important;
+}
+.thm-root.dark .rec-x {
+  background: #33312c;
+  color: #ece8df;
+}
+.thm-root.dark .rec-case {
+  background: #33312c;
+}
+.thm-root.dark .rec-box {
+  border-color: #45423b;
+}
+.thm-root.dark .rec-consent input {
+  accent-color: #d6d0c4;
+}

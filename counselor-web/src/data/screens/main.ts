@@ -1,17 +1,22 @@
 // 홈(Main) 화면 값. useHomeDashboard 하나로 진행 중 사례 수 · 미처리 업무를 그린다.
 //
 // Backend 에 없는 값은 지어내지 않는다(specs 대응표 Main 줄 — 팀 결정: 일정 · 아이 앱 긴급 상태 · 일지 대기 기준).
-//  - 오늘 일정 · 다음 상담까지 남은 시간: 일정 기능이 없다. 시간 칸과 '지금' 줄만 두고 일정은 준비 중.
-//  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'.
+//  - 오늘 일정 · 다음 상담까지 남은 시간(11/02 연결): 일정(API_CONTRACT 20절)에서 오늘 일정 · 지금 뒤 첫 상담 일정을 찾는다.
+//  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'(10/30 디자인의 머리 링크 '아이 연계 ›' 만 둔다).
+//  - 진행 중 내담자 카드 아래 줄(10/30): 최근 등록 사례 3건의 마지막 회차 판단('n회차 판단 · 상') · 그 회차 상태. 디자인의
+//    '오늘 16:00 상담' 같은 일정 문구는 쓰지 않는다(카드 줄은 회차 판단이 기준).
 //  - 미처리 업무는 회차 처리 대기(/tasks)만 센다. 디자인의 '상담 일지 작성' · '앱 확인' 은 업무 종류에 없다.
 //    오래 기다린 업무는 '지연' 이라고 쓴다(위험 신호와 헷갈리지 않게 '긴급' 이라고 쓰지 않는다 — API types TaskItem).
 // 시계 · 빠른 실행은 서버와 상관없는 화면 상태다(빠른 실행 편집은 저장하지 않는다).
 
-import { TASK_LABELS, type TaskType } from "../../api/types";
+import { RISK_LEVEL_LABELS, type RiskLevel, type TaskType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
-import type { HomeDashboardState, HomeTask } from "../useHomeDashboard";
+import { HOME_TASK_COUNT, type HomeDashboardState, type HomeTask } from "../useHomeDashboard";
+import type { ScheduleState } from "../useSchedule";
+import { byTime, calendarItems, type CalendarItem } from "./schedule";
 import type { AuthSession } from "../useAuthSession";
 import { pad2 } from "../time";
+import { SESSION_STATUS_LABELS } from "../sessionRows";
 import { NOT_READY, screenNotice } from "./common";
 import { STEP_SCREEN } from "./flow";
 import { screenHref } from "./links";
@@ -26,6 +31,8 @@ const QUICK_POOL = {
 } as const;
 
 type QuickKey = keyof typeof QUICK_POOL;
+
+const HOME_RISK_CHIP: Record<RiskLevel, string> = { HIGH: "c-hi", MEDIUM: "c-mid", LOW: "c-lo" };
 
 export interface MainUiState {
   now: Date;
@@ -58,11 +65,28 @@ export function homeTaskHref(task: Pick<HomeTask, "step" | "caseId" | "sessionId
 interface MainScreenInput {
   session: AuthSession;
   home: HomeDashboardState;
+  /** 오늘 ~ HOME_SCHEDULE_DAYS 일 뒤 일정(useSchedule, 사례 목록 없이). */
+  schedule: ScheduleState;
   state: MainUiState;
   setState: (patch: Partial<MainUiState>) => void;
 }
 
-export function mainValues({ session, home, state, setState }: MainScreenInput) {
+/** 홈이 부르는 일정 기간(오늘부터). '다음 상담까지' 를 이 안에서 찾는다. */
+export const HOME_SCHEDULE_DAYS = 14;
+
+/** 홈 일정 기간(YYYY-MM-DD). */
+export function homeScheduleRange(now: Date): { from: string; to: string } {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + HOME_SCHEDULE_DAYS);
+  const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  return { from: ymd(now), to: ymd(end) };
+}
+
+/** 일정 한 줄 → 누르면 갈 곳. 사례가 있는 상담 일정은 그 사례의 상담 전 브리핑, 그 밖은 일정 달력. */
+function itemHref(e: CalendarItem): string {
+  return e.t === "c" && e.event.case_id ? screenHref("/PreBriefing", { caseId: e.event.case_id }) : "/Schedule";
+}
+
+export function mainValues({ session, home, schedule, state, setState }: MainScreenInput) {
   const now = state.now;
   const me = session.me;
   const data = home.data;
@@ -71,14 +95,29 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
   const dateLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${WEEKDAYS[now.getDay()]}요일`;
   const clock = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 
-  // 오늘 일정: 시간 칸과 '지금' 줄만. 일정은 서버에 없어 비워 둔다.
+  // 오늘 일정(11/02 연결): 9~18시 칸에 오늘 일정을 시각대로 놓는다. 종일 · 처리 기한 · 9시 전은 9시 칸, 18시 뒤는 18시 칸.
   const nowH = now.getHours();
+  const items = calendarItems(schedule.data?.events ?? [], me?.id ?? null);
+  const isToday = (e: CalendarItem) => e.y === now.getFullYear() && e.m === now.getMonth() && e.d === now.getDate();
+  const today = items.filter(isToday).sort(byTime);
+  const hourOf = (e: CalendarItem) => (/^\d\d:\d\d$/.test(e.time) ? Math.min(18, Math.max(9, parseInt(e.time, 10))) : 9);
   const hours = [];
   for (let h = 9; h <= 18; h++) {
     const isNowHour = h === nowH;
     hours.push({
       label: `${pad2(h)}:00`,
-      events: [] as { time: string; title: string; sub: string; href: string; dot: string; radius: string; bg: string }[],
+      events: today
+        .filter((e) => hourOf(e) === h)
+        .map((e) => ({
+          time: e.time,
+          // 중요 일정은 색만이 아니라 글자로도 알린다(달력의 '! 중요' 와 같게, 민규 #131 교차검증 R11).
+          title: e.imp && !e.dl ? `! 중요 · ${e.title}` : e.title,
+          sub: e.sub,
+          href: itemHref(e),
+          dot: e.imp ? "#A33B2E" : e.t === "c" ? "#7A776F" : "#DAD5C9",
+          radius: e.t === "c" ? "50%" : "2px",
+          bg: "#F7F6F2",
+        })),
       isNowHour,
       bg: isNowHour ? "#F7F6F2" : "#FFFFFF",
       op: h < nowH ? 0.5 : 1,
@@ -87,28 +126,52 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
     });
   }
 
-  const todos = (data?.tasks ?? []).map((task) => ({
-    label: task.stageLabel,
-    chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
-    text: [`${task.childAlias} ${task.sessionNumber}회차`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
-      .filter(Boolean)
-      .join(" · "),
-    waited: task.waitingFor,
-    waitedTitle: `${task.waitingSinceFull}부터 기다림`,
-    href: homeTaskHref(task),
-  }));
+  // 다음 상담까지: 지금 뒤의 첫 상담 일정(오늘 ~ HOME_SCHEDULE_DAYS 일). 종일 상담은 시각이 없어 그날 0시로 센다.
+  const startOf = (e: CalendarItem) => {
+    const [hh, mm] = /^\d\d:\d\d$/.test(e.time) ? e.time.split(":").map(Number) : [0, 0];
+    return new Date(e.y, e.m, e.d, hh, mm).getTime();
+  };
+  const next = items
+    .filter((e) => e.t === "c" && startOf(e) > now.getTime())
+    .sort((a, b) => startOf(a) - startOf(b))[0];
+  let remain = schedule.data ? "남은 상담 없음" : NOT_PROVIDED;
+  let nextTitle = schedule.data ? `앞으로 ${HOME_SCHEDULE_DAYS}일 안에 잡힌 상담 일정이 없습니다` : "";
+  let briefHref = "/PreBriefing";
+  if (next) {
+    const diff = Math.floor((startOf(next) - now.getTime()) / 60000);
+    const days = Math.floor(diff / 1440);
+    const hh = Math.floor((diff % 1440) / 60);
+    const mm = diff % 60;
+    remain = days > 0 ? `${days}일 ${hh}시간 남음` : hh > 0 ? `${hh}시간 ${mm}분 남음` : `${mm}분 남음`;
+    const when = isToday(next) ? "" : `${next.m + 1}/${next.d}(${WEEKDAYS[new Date(next.y, next.m, next.d).getDay()]}) `;
+    nextTitle = `${when}${next.time === "종일" ? "" : `${next.time} `}${next.title}`;
+    briefHref = itemHref(next);
+  }
+
+  // 10/30 디자인: 업무 종류별 한 줄 — 칩(업무 이름) · 가장 오래 기다린 회차('외' 는 더 있을 때) · 오른쪽 건수.
+  const groups = data?.tasks ?? [];
+  // 홈에서는 원문 검수를 단계 이름 '기록 확인' 으로 쓴다(관리자 화면은 디자인이 안 바뀌어 그대로).
+  const homeLabel = (task: HomeTask) => (task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.stageLabel);
+  const todos = groups.slice(0, HOME_TASK_COUNT).map((task) => {
+    const label = homeLabel(task);
+    return {
+      label,
+      chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
+      text: [`${task.childAlias} ${task.sessionNumber}회차${task.count > 1 ? " 외" : ""}`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
+        .filter(Boolean)
+        .join(" · "),
+      waited: String(task.count),
+      waitedTitle: `${label} ${task.count}건 — 가장 오래 기다린 회차는 ${task.waitingSinceFull}부터`,
+      href: homeTaskHref(task),
+    };
+  });
 
   let todoNote = "";
   if (data) {
-    const total = data.summary.total;
-    const byType = (Object.keys(TASK_LABELS) as TaskType[])
-      .filter((type) => (data.summary.by_type[type] ?? 0) > 0)
-      .map((type) => `${TASK_LABELS[type]} ${data.summary.by_type[type]}`);
-
-    if (total === 0) todoNote = "처리할 업무가 없습니다.";
+    if (data.summary.total === 0) todoNote = "처리할 업무가 없습니다.";
     else {
-      // 줄로 다 보이면 종류별 수는 줄과 같아 적지 않는다.
-      const parts = total > todos.length ? [`오래 기다린 ${todos.length}건만 보입니다`, byType.join(" · ")] : [];
+      const rest = groups.slice(HOME_TASK_COUNT).map((task) => `${homeLabel(task)} ${task.count}`);
+      const parts = rest.length ? [`그 밖 ${rest.join(" · ")}`] : [];
       if (data.summary.overdue > 0) parts.push(`지연 ${data.summary.overdue}건`);
       todoNote = parts.join(" — ");
     }
@@ -132,17 +195,30 @@ export function mainValues({ session, home, state, setState }: MainScreenInput) 
     dateLabel,
     clock,
     hours,
-    scheduleNote: `오늘 일정은 ${NOT_READY}입니다(서버에 아직 없는 기능).`,
+    scheduleNote: schedule.error ?? (schedule.data && today.length === 0 ? "오늘 일정이 없습니다." : ""),
     casesLabel: wholeOrg ? "진행 중 사례 (전체)" : "진행 중 내담자",
     casesCount: data ? String(data.activeCases) : NOT_PROVIDED,
     tasksLabel: wholeOrg ? "미처리 업무 (전체 상담사)" : "미처리 업무",
     tasksCount: data ? String(data.summary.total) : NOT_PROVIDED,
     todos,
     todoNote,
+    // '진행 중 내담자' 카드 아래 줄(10/30 디자인): 마지막 회차의 상담원 판단 · 별칭 · 그 회차 상태.
+    // 사례 단위 위험도로 읽히지 않게 칩에 'n회차 판단' 을 밝힌다(민규 #122 리뷰 — 사례 위험도는 팀 결정 전).
+    caseTodos: (data?.cases ?? []).map((item) => ({
+      href: screenHref("/CaseDetail", { caseId: item.id }),
+      chip: `chip ${item.level ? HOME_RISK_CHIP[item.level] : "c-normal"}`,
+      label: item.latest
+        ? item.level
+          ? `${item.latest.number}회차 판단 · ${RISK_LEVEL_LABELS[item.level]}`
+          : `${item.latest.number}회차 판단 전`
+        : "회차 없음",
+      text: `${item.name} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
+    })),
     urgentCount: NOT_PROVIDED,
     urgentText: `아이 앱 연계 ${NOT_READY}`,
-    remain: NOT_PROVIDED,
-    nextTitle: `다음 상담 일정은 ${NOT_READY}입니다`,
+    remain,
+    nextTitle,
+    briefHref,
     quick,
     addable,
     editing: state.editing,

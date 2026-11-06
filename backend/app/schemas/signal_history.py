@@ -18,15 +18,40 @@ class SignalHistoryType(BaseModel):
     abuse_type: AbuseType
     # abuse_signals[].detected. 같은 유형 첫 항목. 참/거짓이 아니거나 항목이 없으면 null(근거 없어 서버가 뺀 유형 포함).
     detected: Optional[bool]
-    # severity_ratings[].level 1~5. 11절 ai_level 과 같은 규칙(risk_assessment_service.ai_level_for). 정보 부족 · 없음 → null.
+    # severity_ratings[].level 1~5. 11.2절 ai_level 과 같은 규칙(risk_assessment_service.ai_levels_by_type). 정보 부족 · 없음 → null.
     ai_level: Optional[int]
-    # 상담원 판단(11절). 판단 전이면 둘 다 null.
+    # 유형별 상담원 판단(11.2절). 판단 전이면 둘 다 null. 회차 전체 판단(11.1절)은 회차 줄의 같은 이름 칸에 있다.
     counselor_level: Optional[RiskLevel]
     assessed_at: Optional[datetime]
 
 
+class SignalHistoryTopic(BaseModel):
+    """한 회차의 아동 발화 대화 주제 하나(분석 결과 topic_tags, 2026-10-29). 'AI 제안' 이다."""
+
+    topic: str
+    # 그 주제로 나눈 아동 발화 수(= segment_ids 길이). 주제 비중은 화면이 회차들을 더해 계산한다.
+    count: int
+    segment_ids: List[str]
+    # 첫 근거 발화 앞부분 · 시작 시각(ms). '처음 나온 이야기' · '첫 언급' 에 쓴다.
+    quote: str
+    start_ms: Optional[int]
+
+
+class SignalHistorySubtype(BaseModel):
+    """한 회차의 세부 신호 하나(분석 결과 risk_utterances 의 세부 유형, 2026-10-30). 'AI 제안' 이다."""
+
+    abuse_type: AbuseType
+    # 2차 모델의 세부 유형 이름(고정 14종, second_stage_llm.SUBTYPE_DEFINITIONS).
+    subtype: str
+    # 그 세부 유형 근거 발화 수(segment_ids 를 겹치지 않게 센 수).
+    count: int
+    segment_ids: List[str]
+    # 근거 발화가 모두 화자 미확인(UNKNOWN)이면 true — 화면 '보류 (화자 확인 중)'. 화자를 찾지 못한 발화도 미확인으로 본다.
+    pending: bool
+
+
 class SignalHistorySession(BaseModel):
-    """회차 한 줄. 분석이 끝나지 않았고 상담원 판단도 없으면 types 는 빈 목록이다."""
+    """회차 한 줄. 분석이 끝나지 않았고 유형별 상담원 판단도 없으면 types 는 빈 목록이다."""
 
     session_id: uuid.UUID
     session_number: int
@@ -34,7 +59,15 @@ class SignalHistorySession(BaseModel):
     status: SessionStatus
     # 그 회차의 가장 최근 분석 상태. 분석을 요청한 적이 없으면 null.
     analysis_status: Optional[AnalysisStatus]
+    # 회차 전체 상담원 판단(11.1절, 2026-10-29). 판단 전이면 둘 다 null. types 를 비우는 규칙과는 무관하다.
+    counselor_level: Optional[RiskLevel]
+    assessed_at: Optional[datetime]
     types: List[SignalHistoryType]
+    # 아동 발화 대화 주제(분석 결과 topic_tags). 분석이 끝나지 않았거나 그 분석에 주제 분류가 없으면(이 필드 전 분석 ·
+    # 분류 실패) null, 분류했지만 해당 주제가 없으면 [].
+    topics: Optional[List[SignalHistoryTopic]] = None
+    # 세부 신호(상담 이력 '회차별 세부 신호' 행렬, 2026-10-30). 분석이 끝나지 않았으면 null, 세부 신호가 없으면 [].
+    subtypes: Optional[List[SignalHistorySubtype]] = None
 
 
 class SignalHistoryResponse(BaseModel):

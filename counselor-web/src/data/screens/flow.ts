@@ -10,7 +10,7 @@ import type { SessionRow, SessionStep } from "../sessionRows";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 화면의 회차 처리 단계. index 는 사례 상세 '현재 진행 상황' 의 칸 순서다. */
-export const PROCESS_COLUMNS = ["녹취 올림", "STT 검수", "유형별 위험도", "요약 · 일지 작성", "추가 확인 · 질문"] as const;
+export const PROCESS_COLUMNS = ["상담 녹음", "기록 확인", "학대 신호 확인", "상담일지 작성", "다음 상담 준비"] as const;
 
 /** 회차 단계가 화면의 몇 번째 칸인가. 승인 완료(done)는 앞 네 칸을 모두 지난 것으로 본다. */
 export const COLUMN_OF: Record<SessionStep, number> = {
@@ -34,10 +34,10 @@ export const STEP_SCREEN: Record<SessionStep, string> = {
 
 const CONTINUE_LABEL: Record<SessionStep, string> = {
   upload: "녹취 올리기",
-  stt: "STT 검수",
-  sttReview: "STT 검수",
-  analysis: "유형별 위험도 · AI 분석",
-  summaryReview: "요약 · 일지 작성",
+  stt: "기록 확인",
+  sttReview: "기록 확인",
+  analysis: "학대 신호 확인 · AI 분석",
+  summaryReview: "상담일지 작성",
   done: "회차 보기",
 };
 
@@ -63,10 +63,10 @@ export const CARD_OF: Record<SessionStep, number> = {
 };
 
 const PROCESS_SCREENS = [
-  { page: "/SttReview", label: "STT 검수" },
-  { page: "/SignalReview", label: "유형별 위험도" },
-  { page: "/NoteWrite", label: "요약 · 일지 작성" },
-  { page: "/FollowupQ", label: "추가 확인 · 질문" },
+  { page: "/SttReview", label: "기록 확인" },
+  { page: "/SignalReview", label: "학대 신호 확인" },
+  { page: "/NoteWrite", label: "상담일지 작성" },
+  { page: "/FollowupQ", label: "다음 상담 준비" },
 ] as const;
 
 /** 잠긴 단계 칸에 마우스를 올리면 보이는 안내. */

@@ -3,11 +3,13 @@
 //
 // 서버 연결: '등록' 은 useCaseRegister(POST /cases)로 서버가 받는 칸만 저장하고 새 사례 상세(?case=새 ID)로 간다.
 // 화면에 쓸 값은 src/data/screens/caseRegister.ts(caseRegisterValues)가 만든다. 담당 상담원은 관리자만 고른다.
-// ② 초기면접 내용의 가정상황 · 아동 특성은 저장한다(상담 일지에 초기면접 항목으로 보인다).
-// 실명 · 생년월일 · 신고 · 연계일 · 조치 · 가족, ② 탭의 나머지 칸(관계 · 문제력 · 태도 · 소견)은
-// 개인정보 범위가 팀 결정 전이라 준비 중(입력 막음).
+// 신고접수일 · 사례연계일 · 최초면접일과 ② 초기면접 내용의 가정상황 · 아동 특성은 저장한다(가정상황 · 아동 특성은 상담 일지에
+// 초기면접 항목으로 보인다).
+// 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · ② 가족관계 · 건강정도는 같은 요청(personal_info)으로 암호화해 저장한다
+// (2026-10-30 팀 결정, 표는 components/PersonalTables.jsx). 조치결과 · 위험도(우선) · 사례연계 경위, ② 가족유형(하나) · 보호자와 아동과의
+// 관계 · 문제력 · 태도 · 환경 · 소견(2026-11-05)은 사례 칸으로 저장한다(caseFormFields.ts, 글 칸은 components/FormTextArea.jsx).
 // 10/21 디자인(counselor-design/screens/CaseRegister.dc.html): 학대유형 칸 삭제, 필수 칸을 채워야 ② 탭으로 넘어감(빈 칸 표시 ·
-// 남은 항목 안내), 닫기 · 취소는 이 팝업을 연 화면(?back=)으로. 날짜 달력 · '기타' 직접 입력은 그 칸이 준비 중이라 옮기지 않았다.
+// 남은 항목 안내), 닫기 · 취소는 이 팝업을 연 화면(?back=)으로. 디자인의 달력 창 · '기타' 직접 입력은 옮기지 않았다(날짜 셋은 브라우저 날짜 입력칸).
 // 입력칸은 계정이 확인된 동안에만 보이고, 계정이 바뀌면 입력 · 요청 상태를 처음부터 만든다(아래 key).
 import { Fragment } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -15,6 +17,8 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import ThemeToggle from '../components/ThemeToggle';
+import { FamilyTable, HealthTable } from '../components/PersonalTables';
+import FormTextArea from '../components/FormTextArea';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseRegister } from '../data/useCaseRegister';
 import { caseRegisterValues, initialRegisterState } from '../data/screens/caseRegister';
@@ -192,21 +196,21 @@ function CaseRegisterForm(props) {
                 <div className="g3">
                   <label className="fl">
                     <span className="lb">
-                      신고접수일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                      신고접수일
                     </span>
-                    <input className="inp" type="date" disabled />
+                    <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.reportDate.value} onChange={v.reportDate.onChange} />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      사례연계일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                      사례연계일
                     </span>
-                    <input className="inp" type="date" disabled />
+                    <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.linkedDate.value} onChange={v.linkedDate.onChange} />
                   </label>
                   <label className="fl">
                     <span className="lb">
-                      최초면접일 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
+                      최초면접일
                     </span>
-                    <input className="inp" type="date" disabled />
+                    <input className="inp" type="date" min="1900-01-01" max="2100-12-31" value={v.firstInterviewDate.value} onChange={v.firstInterviewDate.onChange} />
                   </label>
                   <label className="fl">
                     <span className="lb">개별사건번호</span>
@@ -217,6 +221,17 @@ function CaseRegisterForm(props) {
                       placeholder="비우면 자동 (C-2026-0001 형식)"
                       value={v.caseNumber.value}
                       onChange={v.caseNumber.onChange}
+                    />
+                  </label>
+                  <label className="fl">
+                    <span className="lb">대상아동 이름</span>
+                    <input
+                      className="inp"
+                      type="text"
+                      autoComplete="off"
+                      placeholder="이름"
+                      value={v.childName.value}
+                      onChange={v.childName.onChange}
                     />
                   </label>
                   <label className="fl">
@@ -244,7 +259,18 @@ function CaseRegisterForm(props) {
                     </select>
                   </label>
                   <label className="fl">
-                    <span className="lb">출생연도 (생일은 저장하지 않음)</span>
+                    <span className="lb">생년월일</span>
+                    <input
+                      className="inp"
+                      type="date"
+                      min={v.childBirthDate.min}
+                      max={v.childBirthDate.max}
+                      value={v.childBirthDate.value}
+                      onChange={v.childBirthDate.onChange}
+                    />
+                  </label>
+                  <label className="fl">
+                    <span className="lb">출생연도{v.birthYear.readOnly ? ' (생년월일의 해)' : ''}</span>
                     <input
                       className="inp"
                       type="number"
@@ -254,13 +280,41 @@ function CaseRegisterForm(props) {
                       placeholder="예: 2015"
                       value={v.birthYear.value}
                       onChange={v.birthYear.onChange}
+                      readOnly={v.birthYear.readOnly}
                     />
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                    </span>
-                    <input className="inp" type="text" disabled />
+                    <span className="lb">사례관리대상자</span>
+                    <input
+                      className="inp"
+                      type="text"
+                      autoComplete="off"
+                      placeholder="이름"
+                      value={v.targetName.value}
+                      onChange={v.targetName.onChange}
+                    />
+                  </label>
+                  <label className="fl">
+                    <span className="lb">사례관리대상자 관계</span>
+                    <select className="inp" value={v.targetRelation.value} onChange={v.targetRelation.onChange}>
+                      <option value="">선택</option>
+                      {v.targetRelationOptions.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="fl">
+                    <span className="lb">사례관리대상자 생년월일</span>
+                    <input
+                      className="inp"
+                      type="date"
+                      min={v.targetBirthDate.min}
+                      max={v.targetBirthDate.max}
+                      value={v.targetBirthDate.value}
+                      onChange={v.targetBirthDate.onChange}
+                    />
                   </label>
                   <label className="fl">
                     <span className="lb">보호자 유형</span>
@@ -290,35 +344,47 @@ function CaseRegisterForm(props) {
 
                 <div className="g3">
                   <label className="fl">
-                    <span className="lb">
-                      조치결과 · 피해아동 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                    </span>
-                    <select className="inp" disabled>
-                      <option>원가정보호</option>
-                      <option>친인척보호</option>
-                      <option>연고자에 의한 보호</option>
-                      <option>가정위탁</option>
-                      <option>시설입소</option>
-                      <option>병원입원</option>
-                      <option>기타</option>
+                    <span className="lb">조치결과 · 피해아동</span>
+                    <select className="inp" value={v.childAction.value} onChange={v.childAction.onChange}>
+                      <option value="">선택</option>
+                      {v.childAction.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      조치결과 · 사례관리대상자 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                    </span>
-                    <select className="inp" disabled>
-                      <option>지속관찰</option>
-                      <option>아동과의 분리</option>
-                      <option>고소 · 고발</option>
-                      <option>기타</option>
+                    <span className="lb">조치결과 · 사례관리대상자</span>
+                    <select className="inp" value={v.targetAction.value} onChange={v.targetAction.onChange}>
+                      <option value="">선택</option>
+                      {v.targetAction.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      면접대상자 / 관계 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                    </span>
-                    <input className="inp" type="text" disabled />
+                    <span className="lb">면접대상자</span>
+                    <input
+                      className="inp"
+                      type="text"
+                      autoComplete="off"
+                      placeholder="이름"
+                      value={v.intervieweeName.value}
+                      onChange={v.intervieweeName.onChange}
+                    />
+                  </label>
+                  <label className="fl">
+                    <span className="lb">면접대상자 관계</span>
+                    <input
+                      className="inp"
+                      type="text"
+                      placeholder="예: 피해아동"
+                      value={v.intervieweeRelation.value}
+                      onChange={v.intervieweeRelation.onChange}
+                    />
                   </label>
                   <label className="fl">
                     <span className="lb">담당 상담원</span>
@@ -349,22 +415,26 @@ function CaseRegisterForm(props) {
                     ) : null}
                   </label>
                   <label className="fl">
-                    <span className="lb">
-                      위험도 (우선) {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                    </span>
-                    <select className="inp" disabled>
-                      <option>선택</option>
-                      <option>상</option>
-                      <option>중</option>
-                      <option>하</option>
+                    <span className="lb">위험도 (우선)</span>
+                    <select className="inp" value={v.riskLevel.value} onChange={v.riskLevel.onChange}>
+                      <option value="">선택</option>
+                      {v.riskLevel.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
                 <label className="fl">
-                  <span className="lb">
-                    사례연계 경위 {' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span>
-                  </span>
-                  <textarea className="ta2" disabled></textarea>
+                  <span className="lb">사례연계 경위</span>
+                  <textarea
+                    className="ta2"
+                    maxLength={v.linkedBackground.max}
+                    placeholder={v.linkedBackground.placeholder}
+                    value={v.linkedBackground.value}
+                    onChange={v.linkedBackground.onChange}
+                  ></textarea>
                 </label>
                 <label className="fl">
                   <span className="lb">사례 메모</span>
@@ -406,91 +476,33 @@ function CaseRegisterForm(props) {
                     </Fragment>
                   ))}
                 </div>
-                <fieldset
-                  disabled
-                  style={{
-                    border: '0',
-                    margin: '0',
-                    padding: '0',
-                    minWidth: '0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '18px',
-                  }}
-                >
-                <label className="fl">
-                  <span className="lb">보호자와 아동과의 관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></span>
-                  <textarea className="ta2"></textarea>
-                </label>
+                <FormTextArea label="보호자와 아동과의 관계" f={v.guardianRelation} />
 
-                <div className="sec">가족유형{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
+                <div className="sec">
+                  가족유형{' '}
+                  <span className="note" style={{ fontWeight: '400' }}>
+                    (하나만)
+                  </span>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {(v.fams || []).map((o, oIndex) => (
                     <Fragment key={oIndex}>
                       <button
                         type="button"
-                        className="pk"
+                        className={o.on ? 'pk on' : 'pk'}
+                        aria-pressed={o.on}
+                        onClick={o.toggle}
+                        disabled={o.disabled}
                         style={{ background: o.bg, borderColor: o.bd, color: o.fg, fontWeight: o.fw }}
                       >
-                        {o.label}
+                        {o.mark} {o.label}
                       </button>
                     </Fragment>
                   ))}
                 </div>
 
-                <div className="sec">가족관계{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="ft">
-                    <thead>
-                      <tr>
-                        <th>성명</th>
-                        <th>관계</th>
-                        <th>나이</th>
-                        <th>종교</th>
-                        <th>학력</th>
-                        <th>직업</th>
-                        <th>동거여부</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(v.famRows || []).map((r, rIndex) => (
-                        <Fragment key={rIndex}>
-                          <tr>
-                            <td>
-                              <input aria-label="성명" />
-                            </td>
-                            <td>
-                              <input aria-label="관계" />
-                            </td>
-                            <td>
-                              <input aria-label="나이" />
-                            </td>
-                            <td>
-                              <input aria-label="종교" />
-                            </td>
-                            <td>
-                              <input aria-label="학력" />
-                            </td>
-                            <td>
-                              <input aria-label="직업" />
-                            </td>
-                            <td>
-                              <input aria-label="동거여부" />
-                            </td>
-                          </tr>
-                        </Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-s"
-                  style={{ alignSelf: 'flex-start' }}
-                >
-                  + 가족 추가
-                </button>
-                </fieldset>
+                <div className="sec">가족관계</div>
+                <FamilyTable family={v.family} />
 
                 <div className="sec">
                   아동 특성{' '}
@@ -515,68 +527,16 @@ function CaseRegisterForm(props) {
                   ))}
                 </div>
 
-                <fieldset
-                  disabled
-                  style={{
-                    border: '0',
-                    margin: '0',
-                    padding: '0',
-                    minWidth: '0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '18px',
-                  }}
-                >
-                <div className="sec">문제력 · 건강정도{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
-                <div className="g3">
-                  <label className="fl">
-                    <span className="lb">현 상황</span>
-                    <textarea className="ta2"></textarea>
-                  </label>
-                  <label className="fl">
-                    <span className="lb">이유 인식</span>
-                    <textarea className="ta2"></textarea>
-                  </label>
-                </div>
-                <div className="g3">
-                  <label className="fl">
-                    <span className="lb">질병</span>
-                    <input className="inp" type="text" />
-                  </label>
-                  <label className="fl">
-                    <span className="lb">장애</span>
-                    <input className="inp" type="text" />
-                  </label>
-                  <label className="fl">
-                    <span className="lb">병원치료</span>
-                    <input className="inp" type="text" />
-                  </label>
-                  <label className="fl">
-                    <span className="lb">정신과 진단</span>
-                    <input className="inp" type="text" />
-                  </label>
-                  <label className="fl">
-                    <span className="lb">타기관 상담</span>
-                    <input className="inp" type="text" />
-                  </label>
-                </div>
+                <FormTextArea label="문제력" f={v.problem} />
 
-                <div className="sec">대상자 태도 및 관찰내용{' '}<span className="note" style={{ fontWeight: '400' }}>{v.notReady}</span></div>
+                <HealthTable health={v.health} />
+
+                <div className="sec">대상자 태도 및 관찰내용</div>
                 <div className="g3">
-                  <label className="fl">
-                    <span className="lb">대상자 태도</span>
-                    <textarea className="ta2"></textarea>
-                  </label>
-                  <label className="fl">
-                    <span className="lb">물리적 환경</span>
-                    <textarea className="ta2"></textarea>
-                  </label>
+                  <FormTextArea label="대상자 태도" f={v.attitude} />
+                  <FormTextArea label="물리적 환경" f={v.environment} />
                 </div>
-                <label className="fl">
-                  <span className="lb">상담원 소견 및 향후 계획</span>
-                  <textarea className="ta2" style={{ minHeight: '96px' }}></textarea>
-                </label>
-                </fieldset>
+                <FormTextArea label="상담원 소견 및 향후 계획" f={v.opinion} style={{ minHeight: '96px' }} />
               </div>
             ) : null}
 

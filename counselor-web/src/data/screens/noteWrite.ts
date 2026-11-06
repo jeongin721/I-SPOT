@@ -17,7 +17,10 @@
 // 기관 양식별 구조는 팀 결정 전이라 이 형식은 임시다. 문서 승인은 회차 상태를 바꾸지 않는다(요약 승인과 따로).
 //  - AI 초안(2026-10-28, 10/27 디자인의 일지 카드 'AI 초안'): 아직 저장한 일지가 없을 때만 두 칸을 이 회차 분석 값으로 채워 둔다.
 //    '아동 진술' ← 요약 근거 발화(아동 발화, '· 00:41 "원문"'), '위험 신호 검토 결과' ← 위험 관련 발화의 유형 · 세부 유형 · 위치와
-//    그 유형의 상담원 판단(상 · 중 · 하). 디자인의 '채택 · 보류' 는 서버에 채택 기록이 없어 상담원 판단으로 대신한다.
+//    이 회차의 상담원 판단(회차 전체 상 · 중 · 하 하나, 2026-10-29 — useOverallRiskAssessment). 디자인의 '채택 · 보류' 는 서버에
+//    채택 기록이 없어 상담원 판단으로 대신한다.
+//  - 판단 없이는 이 화면에 머물지 않는다(2026-10-29): 분석이 끝나 검수 중인데 회차 전체 판단이 없으면(needsJudgment) 화면이
+//    유형별 위험도로 돌려보내며 '위험도를 선택해주세요.' 팝업을 연다(askLevelHref, NoteWrite.jsx). 승인 완료 회차는 막지 않는다.
 //    상담원이 고치거나 그대로 '일지 저장' 해야 저장된다(저장 전에는 서버에 없다). 저장한 일지가 있으면 덮어쓰지 않는다.
 //    대상자 태도 · 물리적 환경 · 소견은 채우지 않는다(목소리 값 · 현장 정보가 없고, 소견은 상담원 몫).
 //  - 아동 특성 · 가정상황 AI 제안은 하지 않는다(상담원이 직접 고른다, 2026-10-27 결정).
@@ -31,14 +34,13 @@
 //    ✓ 로 보인다. '확인' 은 화면 상태라 서버에 보내지 않는다 — 고른 항목은 누를 때 바로 일지 초안(draft)에 들어가고(떠날 때 확인 ·
 //    저장 대상), 저장 · 승인은 지금처럼 '일지 저장' · '일지 승인' · 아래 '저장 · …' 이 한다. 승인된 일지는 '일지 수정' 으로
 //    승인을 풀기 전에는 펼치지 않고, '일지 승인' 을 누르면 펼친 칸을 접는다.
-//  - 면접대상자/관계 · 상담 유형은 Backend 에 없어 '—'.
+//  - 면접대상자/관계는 Backend 에 없어 '—'. 상담 유형은 회차 consultation_type(2026-10-30).
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
 import type { DocumentRow, SessionDocumentsState } from "../useSessionDocuments";
 import type { SummaryAssessmentKey } from "../../api/types";
 import { positionLabel, type SignalCard } from "../riskRows";
-import type { RiskAssessmentRow } from "../useRiskAssessments";
 import type { EvidenceItem } from "../useSummaryReview";
 import { ASSESSMENT_KEYS, type SummaryReviewState } from "../useSummaryReview";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
@@ -183,6 +185,8 @@ export interface NoteScreenInput extends SessionScreenInput {
   docs: SessionDocumentsState;
   /** 아직 저장한 일지가 없을 때 채워 둘 AI 초안(noteAiDraft). 없으면 빈 칸. */
   aiDraft?: NoteAiDraft | null;
+  /** 3 · 4단계 AI 초안 상태(useSessionAnalysis.draftsPending · draftsFailed, 2026-11-04 제안). 없으면 끝난 것으로 본다. */
+  drafts?: { pending: boolean; failed: boolean };
   state: NoteUiState;
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
@@ -201,14 +205,15 @@ const MAX_DRAFT_QUOTES = 8;
  *  - statement: 요약 근거(summary_evidence)의 원문을 위치 순으로 '· 00:41 "원문"'. 정상 생성 경로는 아동 발화만 남기지만
  *    저장된 결과에 다른 화자가 섞여 있을 수 있어 **아동(CHILD) 발화만** 쓴다 — 상담원 질문 · 화자 미확인 발화가 아동 말처럼
  *    일지에 들어가지 않게(2026-10-28 민규 #95 교차검증).
- *  - signals: 위험 관련 발화 카드를 유형별로 묶어 '· 신체학대 — 직접 신체 가해(00:41 아동) · 상담원 판단 중'.
+ *  - signals: 위험 관련 발화 카드를 유형별로 묶어 '· 신체학대 — 직접 신체 가해(00:41 아동)' 로 적고, 맨 아래에 이 회차의
+ *    상담원 판단(회차 전체 하나) '· 상담원 판단(회차 전체) — 상' 을 붙인다. 판단 전이면 '아직 판단하지 않음'.
  * 원문을 못 찾은 근거 · 유형을 모르는 카드는 뺀다(번호만 있는 줄을 일지에 넣지 않는다).
- * riskRows 가 null 이면(상담원 판단을 아직 못 받음) signals 는 비운다 — '판단 전' 으로 잘못 적지 않게.
+ * judgment.loaded 가 false 면(상담원 판단을 아직 못 받음) signals 는 비운다 — '판단 전' 으로 잘못 적지 않게.
  */
 export function noteAiDraft(
   evidence: EvidenceItem[],
   cards: SignalCard[],
-  riskRows: RiskAssessmentRow[] | null,
+  judgment: { loaded: boolean; label: string },
 ): NoteAiDraft {
   const quotes = new Map<string, { at: number; line: string }>();
 
@@ -237,17 +242,14 @@ export function noteAiDraft(
     byType.set(card.abuseType, entry);
   }
 
-  if (riskRows === null) return { statement, signals: "" };
+  if (!judgment.loaded) return { statement, signals: "" };
 
-  const signals = [...byType.entries()]
-    .map(([type, entry]) => {
-      const row = riskRows.find((r) => r.abuseType === type);
-      const judged = row && row.levelLabel ? `상담원 판단 ${row.levelLabel}` : "상담원 판단 전";
-      return `· ${entry.label} — ${entry.parts.join(", ")} · ${judged}`;
-    })
-    .join("\n");
+  const lines = [...byType.values()].map((entry) => `· ${entry.label} — ${entry.parts.join(", ")}`);
 
-  return { statement, signals };
+  // 위험 관련 발화가 하나도 없으면 판단 줄도 적지 않는다(빈 칸으로 두어 상담원이 쓴다).
+  if (lines.length > 0) lines.push(`· 상담원 판단(회차 전체) — ${judgment.label || "아직 판단하지 않음"}`);
+
+  return { statement, signals: lines.join("\n") };
 }
 
 /**
@@ -302,18 +304,25 @@ export function noteWriteValues(input: NoteScreenInput) {
   if (summary.status === "APPROVED") summaryChip = `승인 · ${summary.approvedAt}`;
   else if (summary.hasSummary) summaryChip = summary.edited ? "AI 초안 · 상담사 수정" : "AI 초안";
 
-  const status = summary.sessionStatus;
+  // 학대 신호(2단계)는 저장됐고 요약 · 일지 초안을 아직 만드는 중이면 '분석 중' 으로 본다(요약 초안이 그때 생긴다).
+  const draftsPending = Boolean(input.drafts?.pending);
+  const status = draftsPending && summary.sessionStatus === "AI_REVIEW_REQUIRED" ? "AI_PROCESSING" : summary.sessionStatus;
   let summaryNote = "";
   let summaryLink: { href: string; label: string } | null = null;
 
   if (!summary.hasSummary && status !== null) {
-    if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
+    if (draftsPending) summaryNote = "AI 초안을 만드는 중입니다. 잠시 뒤 저절로 보입니다.";
+    else if (status === "AI_PROCESSING") summaryNote = "AI 분석 중입니다. 끝나면 요약 초안이 생깁니다.";
+    else if (input.drafts?.failed) {
+      summaryNote = "AI 초안을 만들지 못했습니다. 학대 신호 확인에서 다시 분석하면 만들어집니다(학대 신호 결과도 다시 만들어집니다).";
+      summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
+    }
     else if (status === "AI_FAILED") {
-      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 유형별 위험도에서 다시 분석해 주세요.`;
-      summaryLink = { href: signalHref, label: "유형별 위험도로" };
+      summaryNote = `AI 분석에 실패했습니다${summary.sessionError ? `(${summary.sessionError})` : ""}. 학대 신호 확인에서 다시 분석해 주세요.`;
+      summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
     } else {
-      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 유형별 위험도에서 AI 분석을 요청해 주세요.";
-      summaryLink = { href: signalHref, label: "유형별 위험도로" };
+      summaryNote = "AI 분석이 끝나면 요약 초안이 생깁니다. 학대 신호 확인에서 AI 분석을 요청해 주세요.";
+      summaryLink = { href: signalHref, label: "학대 신호 확인으로" };
     }
   } else if (summary.hasSummary && status === "AI_PROCESSING") {
     summaryNote = "AI 가 다시 분석하는 중입니다. 끝날 때까지 요약을 고칠 수 없습니다.";
@@ -459,7 +468,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     { k: "사건번호", v: info ? info.caseNumber : NOT_PROVIDED },
     { k: "대상아동", v: info ? `${info.alias} (${info.genderLabel}, ${info.birthYearLabel})` : NOT_PROVIDED },
     { k: "상담일시", v: sv ? sv.consultedAt : NOT_PROVIDED },
-    { k: "장소 · 유형", v: sv ? `${sv.location} · 상담 유형 ${NOT_PROVIDED} · ${sv.numberLabel}` : NOT_PROVIDED },
+    { k: "장소 · 유형", v: sv ? `${sv.location} · 상담 유형 ${sv.kindLabel} · ${sv.numberLabel}` : NOT_PROVIDED },
     { k: "면접대상자/관계", v: NOT_PROVIDED },
     { k: "담당 상담원", v: info ? info.counselorName : NOT_PROVIDED },
   ];
@@ -519,7 +528,7 @@ export function noteWriteValues(input: NoteScreenInput) {
     },
     // 아래 단추
     backHref: signalHref,
-    nextLabel: busy ? "저장 중…" : "저장 · 추가 확인 · 질문 →",
+    nextLabel: busy ? "저장 중…" : "저장 · 다음 상담 준비 →",
     canNext: !busy,
     next: async () => {
       // 누를 때의 대상(표). 저장을 기다리는 사이 대상이 바뀌었으면(다른 회차 · 화면, 갔다 돌아옴, 다시 로그인)

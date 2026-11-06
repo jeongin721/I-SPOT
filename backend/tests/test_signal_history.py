@@ -24,6 +24,16 @@ def _put_assessment(client: TestClient, headers, session_id: str, abuse_type: st
     )
 
 
+def _put_overall_assessment(client: TestClient, headers, session_id: str, level: str):
+    """회차 전체 판단(11.1절). 회차 줄의 counselor_level · assessed_at 이 된다."""
+
+    return client.put(
+        f"/api/v1/sessions/{session_id}/risk-assessment",
+        json={"counselor_level": level},
+        headers=headers,
+    )
+
+
 def _set_result(db, session_id: str, **fields: Any) -> None:
     """최신 분석 결과에 선택 필드를 넣는다. mock AI 는 abuse_signals · severity_ratings 를 이렇게 만들지 않으므로 직접 고친다."""
 
@@ -63,7 +73,71 @@ def test_session_before_analysis_has_no_types(
     assert row["session_number"] == session["session_number"]
     assert row["status"] == session["status"]
     assert row["analysis_status"] is None
+    # 회차 전체 판단(11.1절)도 아직 없다.
+    assert row["counselor_level"] is None
+    assert row["assessed_at"] is None
     assert row["types"] == []
+
+
+def test_session_row_carries_overall_assessment_apart_from_types(
+    client: TestClient, counselor_headers, case: dict, session: dict
+) -> None:
+    """회차 줄의 counselor_level · assessed_at 은 회차 전체 판단(11.1절)이다. types[] 의 유형별 판단과는 따로다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    # 분석은 끝났지만 아직 어떤 판단도 없다.
+    assert row["analysis_status"] == "COMPLETED"
+    assert row["counselor_level"] is None and row["assessed_at"] is None
+    assert [item["abuse_type"] for item in row["types"]] == TYPE_ORDER
+
+    assert _put_overall_assessment(client, counselor_headers, session["id"], "HIGH").status_code == 200
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["counselor_level"] == "HIGH"
+    assert row["assessed_at"] is not None
+    # 회차 전체 판단은 types[] 에 들어가지 않는다 — 유형별 counselor_level · assessed_at 은 그대로 null 이다.
+    assert [item["abuse_type"] for item in row["types"]] == TYPE_ORDER
+    assert all(item["counselor_level"] is None and item["assessed_at"] is None for item in row["types"])
+
+    # 유형별 판단을 하나 저장하면 그 유형에만 들어가고, 회차 줄의 회차 전체 판단은 그대로다.
+    assert _put_assessment(client, counselor_headers, session["id"], "PHYSICAL", "LOW").status_code == 200
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["counselor_level"] == "HIGH"
+    types = _by_type(row["types"])
+    assert types["PHYSICAL"]["counselor_level"] == "LOW"
+    assert all(types[name]["counselor_level"] is None for name in ("EMOTIONAL", "SEXUAL", "NEGLECT"))
+    assert all(types[name]["assessed_at"] is None for name in ("EMOTIONAL", "SEXUAL", "NEGLECT"))
+
+
+def test_overall_assessment_is_read_per_session_row(
+    client: TestClient, counselor_headers, case: dict
+) -> None:
+    """
+    회차가 여럿이면 각 줄에 그 회차의 회차 전체 판단만 실린다. 판단 전 회차는 null 이다.
+    회차 전체 판단은 types 를 채우는 규칙에 들어가지 않는다 — 분석 전이고 유형별 판단도 없으면 그대로 [] 다.
+    """
+
+    first = create_session(client, counselor_headers, case["id"])
+    second = create_session(client, counselor_headers, case["id"])
+    third = create_session(client, counselor_headers, case["id"])
+    confirmed_session(client, counselor_headers, first["id"])
+    confirmed_session(client, counselor_headers, third["id"])
+    assert _put_overall_assessment(client, counselor_headers, first["id"], "MEDIUM").status_code == 200
+    assert _put_overall_assessment(client, counselor_headers, third["id"], "LOW").status_code == 200
+
+    rows = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"]
+
+    assert [row["session_id"] for row in rows] == [first["id"], second["id"], third["id"]]
+    assert [row["counselor_level"] for row in rows] == ["MEDIUM", None, "LOW"]
+    assert rows[0]["assessed_at"] is not None and rows[2]["assessed_at"] is not None
+    assert rows[1]["assessed_at"] is None
+    assert all(row["types"] == [] for row in rows)
 
 
 def test_analyzed_session_rows_follow_contract_rules(
@@ -95,6 +169,8 @@ def test_analyzed_session_rows_follow_contract_rules(
     assert len(rows) == 1
     row = rows[0]
     assert row["analysis_status"] == "COMPLETED"
+    # 유형별 판단만 저장했으니 회차 전체 판단은 없다.
+    assert row["counselor_level"] is None and row["assessed_at"] is None
     assert [item["abuse_type"] for item in row["types"]] == TYPE_ORDER
 
     types = _by_type(row["types"])
@@ -190,3 +266,141 @@ def test_unknown_case_is_404(client: TestClient, counselor_headers) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "CASE_NOT_FOUND"
+
+
+# ------------------------------------------------------------
+# 대화 주제(topics, 2026-10-29) — 분석 결과 topic_tags
+# ------------------------------------------------------------
+
+
+def test_session_before_analysis_has_no_topics(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] is None
+
+
+def test_analysis_without_topic_tags_has_null_topics(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    """이 필드 전 분석 · 분류 실패(null)는 '분류 없음' — 빈 목록과 구분한다."""
+
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], topic_tags=None)
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] is None
+
+
+def test_topic_tags_become_topic_rows(client: TestClient, counselor_headers, db, case: dict, session: dict) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(
+        db,
+        session["id"],
+        topic_tags=[
+            {"topic": "신체 체벌 경험", "segment_ids": ["seg_001", "seg_003"], "quote": "때렸어요", "start_ms": 41000},
+            {"topic": "식사 · 돌봄", "segment_ids": ["seg_004", 7], "quote": "밥도 안 줘요", "start_ms": True},
+            {"topic": "  ", "segment_ids": ["seg_005"]},  # 이름 없음 → 뺌
+            {"topic": "학교생활", "segment_ids": []},  # 근거 없음 → 뺌
+            "bad",
+        ],
+    )
+
+    topics = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["topics"]
+
+    assert topics == [
+        {"topic": "신체 체벌 경험", "count": 2, "segment_ids": ["seg_001", "seg_003"], "quote": "때렸어요", "start_ms": 41000},
+        {"topic": "식사 · 돌봄", "count": 1, "segment_ids": ["seg_004"], "quote": "밥도 안 줘요", "start_ms": None},
+    ]
+
+
+def test_empty_topic_tags_mean_no_topics_found(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], topic_tags=[])
+
+    row = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]
+
+    assert row["topics"] == []
+
+
+# ------------------------------------------------------------
+# 세부 신호(subtypes, 2026-10-30) — risk_utterances 를 세부 유형으로 묶은 근거 발화 수 · 보류(화자 미확인)
+# ------------------------------------------------------------
+
+
+def _analysis_segments(db, session_id: str) -> List[Any]:
+    from app.models.transcript import TranscriptSegment
+
+    analysis = db.scalar(
+        select(AIAnalysis).where(AIAnalysis.session_id == uuid.UUID(session_id)).order_by(AIAnalysis.created_at.desc()).limit(1)
+    )
+    return list(
+        db.scalars(
+            select(TranscriptSegment)
+            .where(TranscriptSegment.transcript_id == analysis.transcript_id)
+            .order_by(TranscriptSegment.order_index)
+        )
+    )
+
+
+def test_session_before_analysis_has_no_subtypes(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"] is None
+
+
+def test_subtypes_count_evidence_and_mark_unknown_speaker_as_pending(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    from app.core.enums import Speaker
+
+    analyzed_session(client, counselor_headers, session["id"])
+    segments = _analysis_segments(db, session["id"])
+    assert len(segments) >= 2
+    known, unknown = segments[0], segments[1]
+    known.speaker = Speaker.CHILD
+    unknown.speaker = Speaker.UNKNOWN
+    db.commit()
+    _set_result(
+        db,
+        session["id"],
+        risk_utterances=[
+            {"abuse_type": "신체학대", "subtype": "직접 신체 가해", "segment_ids": [known.segment_id], "text": "a"},
+            {"abuse_type": "PHYSICAL", "subtype": "직접 신체 가해", "segment_ids": [known.segment_id, unknown.segment_id]},
+            {"abuse_type": "방임", "subtype": "기본적 보호·양육 방임", "segment_ids": [unknown.segment_id]},
+            {"abuse_type": "정서학대", "subtype": "위협·공포 유발", "segment_ids": ["seg_없는번호"]},  # 전사본에 없음 → 미확인
+            {"abuse_type": "정서학대", "subtype": "", "segment_ids": [known.segment_id]},  # 세부 유형 없음 → 뺌
+            {"abuse_type": "모름", "subtype": "x", "segment_ids": [known.segment_id]},  # 유형 모름 → 뺌
+            {"abuse_type": "신체학대", "subtype": "도구·위험수단 사용", "segment_ids": []},  # 근거 없음 → 뺌
+            "bad",
+        ],
+    )
+
+    subtypes = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"]
+
+    assert subtypes == [
+        {
+            "abuse_type": "PHYSICAL",
+            "subtype": "직접 신체 가해",
+            "count": 2,
+            "segment_ids": [known.segment_id, unknown.segment_id],
+            "pending": False,
+        },
+        {
+            "abuse_type": "NEGLECT",
+            "subtype": "기본적 보호·양육 방임",
+            "count": 1,
+            "segment_ids": [unknown.segment_id],
+            "pending": True,
+        },
+        {"abuse_type": "EMOTIONAL", "subtype": "위협·공포 유발", "count": 1, "segment_ids": ["seg_없는번호"], "pending": True},
+    ]
+
+
+def test_analysis_without_risk_utterances_has_empty_subtypes(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    analyzed_session(client, counselor_headers, session["id"])
+    _set_result(db, session["id"], risk_utterances=[])
+
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"] == []

@@ -13,7 +13,8 @@ from app.schemas.common import RequestModel
 
 class RiskAssessmentSaveRequest(RequestModel):
     """
-    한 유형의 상담원 판단. 유형은 주소에서 받는다.
+    상담원 판단 하나. 회차 전체 판단(PUT …/risk-assessment)과 유형별 판단(PUT …/risk-assessments/{abuse_type},
+    유형은 주소에서 받는다)이 같은 본문을 쓴다.
 
     ai_level 은 서버가 그 회차 AI 분석 결과에서 읽어 채우므로 받지 않는다(보내도 무시).
     이유의 저장할 수 없는 문자(NUL · 짝 없는 서로게이트)는 RequestModel 이 422 로 거절한다.
@@ -33,11 +34,29 @@ class RiskAssessmentSaveRequest(RequestModel):
 
 
 class RiskAssessmentResponse(BaseModel):
+    """유형별 판단 하나(11.2절)."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     session_id: uuid.UUID
     abuse_type: AbuseType
+    counselor_level: RiskLevel
+    reason: Optional[str]
+    ai_level: Optional[int]
+    assessed_by_id: Optional[uuid.UUID]
+    assessed_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class OverallRiskAssessmentResponse(BaseModel):
+    """회차 전체 판단 하나(11.1절). abuse_type 이 없고, ai_level 은 유형별 AI 제안 중 가장 높은 값이다."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
     counselor_level: RiskLevel
     reason: Optional[str]
     ai_level: Optional[int]

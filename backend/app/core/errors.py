@@ -45,11 +45,15 @@ class ErrorCode(str, Enum):
 
     # 상태 전이
     INVALID_SESSION_STATE = "INVALID_SESSION_STATE"
+    # 사례 상태 때문에 할 수 없는 요청(2026-10-30, 종결 사례의 종결 검토 등록).
+    INVALID_CASE_STATE = "INVALID_CASE_STATE"
     TRANSCRIPT_NOT_CONFIRMED = "TRANSCRIPT_NOT_CONFIRMED"
     TRANSCRIPT_ALREADY_CONFIRMED = "TRANSCRIPT_ALREADY_CONFIRMED"
     ALREADY_APPROVED = "ALREADY_APPROVED"
     # 승인 풀기(reopen)를 승인되지 않은 요약 · 문서에 요청함
     NOT_APPROVED = "NOT_APPROVED"
+    # 3 · 4단계 AI 초안을 만드는 중이라 받지 않음(2026-11-04, 재분석 · 요약 수정 · 승인 · 추가 질문 · 확인 사항 저장).
+    ANALYSIS_DRAFTS_PENDING = "ANALYSIS_DRAFTS_PENDING"
 
     # Audio
     AUDIO_EMPTY_FILE = "AUDIO_EMPTY_FILE"
@@ -76,10 +80,23 @@ class ErrorCode(str, Enum):
     LAW_SOURCE_UNAVAILABLE = "LAW_SOURCE_UNAVAILABLE"
     RATE_LIMITED = "RATE_LIMITED"
 
-    # 다음 상담 체크리스트 (19절, 2026-10-29). 만들기 실패는 행의 error 로 남고, HTTP 로는 꺼져 있을 때만 쓴다.
+    # 개인 식별 정보 (API_CONTRACT 4절 '개인 식별 정보', 2026-10-30). 저장한 암호문을 풀 수 없음(키가 설정에 없음 · 값이 바뀜). 500.
+    PERSONAL_INFO_UNAVAILABLE = "PERSONAL_INFO_UNAVAILABLE"
+    # 다음 상담 체크리스트 (19절, 2026-10-30). 만들기 실패는 행의 error 로 남고, HTTP 로는 꺼져 있을 때만 쓴다.
     FOLLOWUP_DISABLED = "FOLLOWUP_DISABLED"
-    # 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않았다.
+    # 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않았다(19절 행의 error.code).
     AI_PRIVACY_BLOCKED = "AI_PRIVACY_BLOCKED"
+
+    # 회원가입 (API_CONTRACT 3절 '회원가입', 2026-11-02).
+    SIGNUP_DISABLED = "SIGNUP_DISABLED"
+    SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED = "SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED"
+    SIGNUP_TOKEN_INVALID = "SIGNUP_TOKEN_INVALID"
+    SIGNUP_ALREADY_DECIDED = "SIGNUP_ALREADY_DECIDED"
+    # 이메일 인증번호. 비밀번호 찾기(이메일 코드, 9/18 회의)도 같이 쓰게 이름에 SIGNUP 을 넣지 않는다.
+    VERIFICATION_CODE_MISMATCH = "VERIFICATION_CODE_MISMATCH"
+    VERIFICATION_CODE_EXPIRED = "VERIFICATION_CODE_EXPIRED"
+    # 감사 로그 전용(인증번호 메일 발송 실패). 응답에는 쓰지 않는다 — 메일은 응답을 보낸 뒤에 보낸다.
+    MAIL_SEND_FAILED = "MAIL_SEND_FAILED"
 
     # 기타
     INTERNAL_ERROR = "INTERNAL_ERROR"
