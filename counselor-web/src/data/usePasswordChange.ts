@@ -32,7 +32,7 @@ export interface PasswordChangeState {
 }
 
 /** WEAK_PASSWORD 는 details.reasons 에 사유 문장 배열이 온다. */
-function passwordReasons(caught: ApiError): string[] {
+export function passwordReasons(caught: ApiError): string[] {
   const details = caught.details as { reasons?: unknown } | undefined;
 
   return Array.isArray(details?.reasons)

@@ -200,6 +200,9 @@ const LOGIN_FAILURE_REASONS: Record<string, string> = {
   INACTIVE_USER: "비활성 계정",
   ACCOUNT_DORMANT: "휴면 계정",
   TEMP_PASSWORD_EXPIRED: "임시 비밀번호 만료",
+  // 회원가입 기록의 실패 사유.
+  MAIL_SEND_FAILED: "메일 발송 실패",
+  VERIFICATION_CODE_MISMATCH: "인증번호 틀림",
 };
 
 export function toFailureReason(code: string | null | undefined): string {
@@ -220,6 +223,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ACCOUNT_REACTIVATED: "휴면 해제",
   USER_CREATED: "계정 생성",
   USER_UPDATED: "계정 수정",
+  // 회원가입(2026-11-02). 공개 창구 기록은 행동한 사람이 비어 있다(이메일 · 이름은 담지 않는다).
+  SIGNUP_CODE_SENT: "가입 인증번호 발송",
+  SIGNUP_CODE_VERIFIED: "가입 인증번호 확인",
+  SIGNUP_REQUESTED: "가입 신청",
+  SIGNUP_APPROVED: "가입 승인",
+  SIGNUP_REJECTED: "가입 거절",
 };
 
 /** 업무 감사 동작의 한글 이름(같은 AuditAction). 접속 기록에서 '모든 동작' 을 고르면 함께 보인다. */
