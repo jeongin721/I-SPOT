@@ -3,7 +3,7 @@
 
 [입력 — 새로 분석하지 않는다]
 사례의 **승인 완료 회차 요약**(상담원이 확정한 사정 4칸 문장)과 회차별 AI 관련 신호(유형 이름)만 쓴다. 원문 · 메모 ·
-사례 실명은 넣지 않는다. 글은 privacy_gateway.mask_for_outbound 로 가린 뒤 보내고, 답은 restore_pii 로 되돌린다.
+사례 실명은 넣지 않는다. 글은 회차마다 privacy_gateway 로 가린 뒤(mask_case_input) 보내고, 답은 restore_pii 로 되돌린다.
 
 [출력]
 {
@@ -25,7 +25,7 @@ AI_PROVIDER 가 modeling 이 아니면(시험 · 데모 mock) LLM 을 부르지 
 openai · privacy_gateway(NER 모델)는 CI 에 없다. 검사 함수를 backend/tests 에서 시험할 수 있게 그 import 는 함수 안에 둔다.
 """
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ai.modeling.abuse.text_script import cut_text, has_foreign_script
 
@@ -140,6 +140,21 @@ def fit_sessions(sessions: List[Dict[str, Any]], known_identifiers: Iterable[str
         blocks.pop(0)
         kept.pop(0)
     return kept
+
+
+def mask_case_input(sessions: List[Dict[str, Any]], known_identifiers: Iterable[str] = ()) -> Tuple[str, Dict[str, str]]:
+    """회차 글을 회차마다 따로 가려 이어 붙인다 → (가린 글, 토큰 → 원문). sessions 는 fit_sessions 를 거친 목록.
+
+    여러 회차를 한 덩어리로 검사하면 회차 하나씩은 다 통과하는데도 긴 글의 NER 재검사가 기관명(OG)을 남았다고 보고
+    전체를 막는 일이 있었다(2026-11-04 데모, 6회차 사례 PrivacyGatewayBlocked). 회차마다 한 칸으로 넘기면 칸마다 같은
+    마스킹 · 재검사를 하고, 같은 이름은 칸이 달라도 같은 토큰이 된다(review 의 전역 토큰). 한 칸이라도 남으면 그대로 막는다.
+    """
+
+    from ai.modeling.abuse.privacy_gateway import review
+
+    names = list(known_identifiers or ())
+    result = review({"sessions": [_session_block(session, names) for session in sessions]}, known_identifiers=names)
+    return "\n\n".join(result.payload["sessions"]), result.entity_map
 
 
 def format_case_input(sessions: List[Dict[str, Any]], known_identifiers: Iterable[str] = ()) -> str:
@@ -277,13 +292,12 @@ def generate_closure_summary(
 
     from ai.modeling.abuse.llm_backend import build_openai_client_and_model
     from ai.modeling.abuse.pii_masking import restore_pii
-    from ai.modeling.abuse.privacy_gateway import mask_for_outbound
     from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 
     # 근거 회차는 LLM 이 실제로 받은 회차만 허용한다(넘쳐서 뺀 앞 회차 번호를 단 문장은 버림, 민규 #128 리뷰).
     names = list(known_identifiers or [])
     sessions = fit_sessions(sessions, names)
-    masked, entity_map = mask_for_outbound(format_case_input(sessions, names), known_identifiers=names)
+    masked, entity_map = mask_case_input(sessions, names)
     client, model_name = build_openai_client_and_model(model or DEFAULT_MODEL)
     prompt = SYSTEM_PROMPT.format(
         max_items=MAX_ITEMS_PER_GROUP,

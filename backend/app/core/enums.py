@@ -53,6 +53,14 @@ class GuardianType(str, Enum):
     OTHER = "OTHER"                # 기타(guardian_note 에 직접 입력)
 
 
+class SessionSource(str, Enum):
+    """회차 자료(2026-11-02). AUDIO: 녹음 → 원문 검수 → AI 분석(1~4단계). DOCUMENT: 상담사가 쓴 상담 기록 문서를 올려
+    3(상담 요약 · 상담 일지) · 4(다음 상담 준비)단계만 쓴다 — 음성 · 전사본 · AI 분석이 없다(API_CONTRACT 21절)."""
+
+    AUDIO = "AUDIO"
+    DOCUMENT = "DOCUMENT"
+
+
 class ChildActionResult(str, Enum):
     """
     조치결과 · 피해아동(서식 4 ①, 2026-11-05).
@@ -393,6 +401,9 @@ class AuditAction(str, Enum):
     FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
     # 다음 상담 체크리스트 만들기 · 다시 만들기 요청(19절, 2026-10-30). detail 에는 provider · 시도 번호만 남긴다(문장은 넣지 않는다).
     FOLLOWUP_CHECKLIST_REQUESTED = "FOLLOWUP_CHECKLIST_REQUESTED"
+    # 상담 기록 문서(2026-11-02). detail 에는 형식 · 글자 수 · 채운 칸 이름만 남긴다(문서 글은 넣지 않는다).
+    SOURCE_DOCUMENT_UPLOADED = "SOURCE_DOCUMENT_UPLOADED"
+    DOCUMENT_FOLLOWUPS_DRAFTED = "DOCUMENT_FOLLOWUPS_DRAFTED"
     # 일정(2026-11-02). detail 에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 넣지 않는다).
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"

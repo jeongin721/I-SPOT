@@ -18,6 +18,7 @@ from app.models.schedule import ScheduleEvent
 from app.models.signup import SignupEmailCode, SignupRequest
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
+from app.models.source_document import SessionSourceDocument
 from app.models.summary import ConsultationSummary
 from app.models.transcript import Transcript, TranscriptSegment
 from app.models.user import User
@@ -41,6 +42,7 @@ __all__ = [
     "SessionFollowupQuestions",
     "SessionOverallRiskAssessment",
     "SessionRiskAssessment",
+    "SessionSourceDocument",
     "ScheduleEvent",
     "SignupEmailCode",
     "SignupRequest",

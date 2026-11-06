@@ -503,6 +503,8 @@ export interface Session {
   memo: string | null;
   /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
   consultation_type?: ConsultationType | null;
+  /** AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 21절). 옛 서버면 키가 없다(AUDIO). */
+  source?: SessionSource;
   created_at: string;
   updated_at: string;
   stt_started_at: string | null;
@@ -1035,6 +1037,8 @@ export const TASK_LABELS: Record<TaskType, string> = {
 
 /** 처리 대기 업무 하나. 오래 기다린 것부터 온다. */
 export interface TaskItem {
+  /** AUDIO · DOCUMENT(문서 회차 — 검수 업무는 3단계다). 옛 서버면 키가 없다. */
+  session_source?: SessionSource;
   session_id: string;
   case_id: string;
   case_number: string;
@@ -1574,6 +1578,45 @@ export interface ScheduleEventCreate {
 }
 
 export type ScheduleEventUpdate = Partial<ScheduleEventCreate> & { deadline_done?: Record<string, boolean> };
+
+// =========================================================
+// 상담 기록 문서 회차 — backend/app/schemas/source_document.py (API_CONTRACT 21절, 2026-11-02)
+// =========================================================
+
+export type SessionSource = "AUDIO" | "DOCUMENT";
+
+/** 상담 일지 칸 초안(문서에서 옮긴 글). 없는 칸은 빈 글. */
+export interface SourceNoteDraft {
+  statement: string;
+  attitude: string;
+  environment: string;
+  signals: string;
+  opinion: string;
+}
+
+export interface SourceFollowupDraft {
+  checks: { text: string }[];
+  questions: { text: string; reason: string }[];
+  /** AI · NONE(LLM 을 쓰지 않는 서버 — 초안 없음). */
+  source: "AI" | "NONE";
+  model: string | null;
+  generated_at: string;
+}
+
+export interface SourceDocument {
+  session_id: string;
+  filename: string;
+  file_format: "txt" | "docx" | "hwpx" | "pdf";
+  char_count: number;
+  /** 문서에서 뽑은 글(상담사가 쓴 원문). */
+  text: string;
+  /** AI · HEADINGS(머리줄로 나눔, AI 아님). */
+  fill_source: "AI" | "HEADINGS";
+  fill_model: string | null;
+  note_draft: SourceNoteDraft;
+  followup_draft: SourceFollowupDraft | null;
+  created_at: string;
+}
 
 // =========================================================
 // 기관 서식 (22절, 2026-11-02)

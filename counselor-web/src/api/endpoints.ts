@@ -9,6 +9,7 @@ import { api, clearToken, setToken } from "./client";
 import type {
   CaseForm,
   CaseFormType,
+  SourceDocument,
   ScheduleEvent,
   ScheduleEventCreate,
   ScheduleEventUpdate,
@@ -598,6 +599,28 @@ export const schedule = {
 
   remove(eventId: string): Promise<void> {
     return api.delete<void>(`/schedule/events/${eventId}`);
+  },
+};
+
+// =========================================================
+// 상담 기록 문서 회차 (API_CONTRACT 21절, 2026-11-02)
+// =========================================================
+
+export const sourceDocuments = {
+  /** 새 회차(CREATED, 음성 없음)에 문서를 올린다. AI 가 3단계 칸을 채우는 동안(1~2분) 기다리는 동기 요청이다. */
+  upload(sessionId: string, file: File): Promise<SourceDocument> {
+    const form = new FormData();
+    form.append("file", file);
+    return api.upload<SourceDocument>(`/sessions/${sessionId}/source-document`, form);
+  },
+
+  get(sessionId: string): Promise<SourceDocument> {
+    return api.get<SourceDocument>(`/sessions/${sessionId}/source-document`);
+  },
+
+  /** 3단계에 저장한 칸으로 4단계 초안(확인 사항 · 추가 질문)을 만든다(동기, 1~2분). */
+  draftFollowups(sessionId: string): Promise<SourceDocument> {
+    return api.post<SourceDocument>(`/sessions/${sessionId}/source-document/followups`, {});
   },
 };
 

@@ -1,5 +1,8 @@
 # ai/modeling/abuse/closure_summary_llm.py — 종결 검토 요약(2026-10-30). 입력 글 · 코드 검사 · LLM 없는 묶기만 본다.
 
+import sys
+import types
+
 import pytest
 
 from app.adapters.module_loader import ensure_repo_root_on_path
@@ -138,3 +141,23 @@ def test_clean_suggestions_wrong_shape_is_empty_not_error(bad):
     raw = {"groups": [{"title": "학대 관련 진술", "items": [{"text": "새 진술 없음", "sessions": [1]}]}], "suggestions": {"safety": bad}}
 
     assert cs.clean_output(raw, [1])["suggestions"]["safety"] == []
+
+
+def test_mask_case_input_checks_each_session_on_its_own(monkeypatch):
+    """회차마다 한 칸으로 privacy_gateway.review 에 넘기고, 가린 칸을 입력 글과 같은 모양으로 잇는다(11/04 데모 OG 차단)."""
+
+    seen = {}
+
+    def review(payload, known_identifiers=None):
+        seen["payload"], seen["names"] = payload, known_identifiers
+        masked = {"sessions": [block.replace("보호자", "[KNOWN_01]") for block in payload["sessions"]]}
+        return types.SimpleNamespace(payload=masked, entity_map={"[KNOWN_01]": "보호자"})
+
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.privacy_gateway", types.SimpleNamespace(review=review))
+
+    masked, entity_map = cs.mask_case_input(SESSIONS, ["소희"])
+
+    assert seen["payload"]["sessions"] == [cs._session_block(session, ["소희"]) for session in SESSIONS]
+    assert seen["names"] == ["소희"]
+    assert masked == cs.format_case_input(SESSIONS, ["소희"]).replace("보호자", "[KNOWN_01]")
+    assert entity_map == {"[KNOWN_01]": "보호자"}

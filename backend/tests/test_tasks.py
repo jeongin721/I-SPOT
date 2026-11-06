@@ -175,7 +175,7 @@ def test_task_item_carries_only_what_the_screen_needs(
 
     assert set(item) == {
         "session_id", "case_id", "case_number", "child_alias", "session_number",
-        "session_title", "session_status", "task_type", "waiting_since", "is_overdue",
+        "session_title", "session_status", "session_source", "task_type", "waiting_since", "is_overdue",
         "counselor_id", "counselor_name", "last_error_code",
     }
     assert item["case_id"] == case["id"]
