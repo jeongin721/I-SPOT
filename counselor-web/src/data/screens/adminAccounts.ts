@@ -157,8 +157,10 @@ export function adminAccountsValues(input: {
       approveLabel: rowBusy ? "처리 중…" : "승인",
       approve: async () => {
         setState({ done: null });
-        if (!(await signups.approve(item.id, role))) return;
+        const approved = await signups.approve(item.id, role);
+        // 실패해도 다시 받는다. 다른 관리자가 먼저 승인했으면 계정이 생겼다.
         accounts.reload();
+        if (!approved) return;
         setState({
           done: {
             text: `${item.name} 님 가입을 승인했습니다(${role === "ADMIN" ? "관리자" : "상담원"}). 신청 때 정한 비밀번호로 로그인합니다.`,
@@ -169,14 +171,16 @@ export function adminAccountsValues(input: {
       reject: async () => {
         if (!window.confirm(`${item.name} 님의 가입 신청을 거절할까요? 신청자에게 따로 알리지 않습니다.`)) return;
         setState({ done: null });
-        if (!(await signups.reject(item.id))) return;
+        const rejected = await signups.reject(item.id);
+        accounts.reload();
+        if (!rejected) return;
         setState({ done: { text: `${item.name} 님 가입 신청을 거절했습니다.`, forAdmin: adminId } });
       },
     };
   });
 
   return {
-    signupShown: signups.total > 0 || signups.error !== null,
+    signupShown: signups.total > 0 || signups.error !== null || signups.actionError !== null,
     signupTitle: `가입 신청 ${signups.total}건`,
     signupRows,
     signupMore:

@@ -1,26 +1,22 @@
 // 로그인 화면의 회원가입 팝업 값(디자인 Login.dc.html 의 su* 값). 서버 요청은 useSignup, 이 파일은 단계 · 칸 · 문구만.
 //
-// 단계는 디자인 그대로 이름 → 생년월일 → 성별 → 휴대폰 → 이메일 → 인증번호 → 계정 정보 → 완료다.
-// 생년월일 · 성별 · 휴대폰은 화면 칸만 있다. Backend 는 받지 않으므로(API_CONTRACT 3절 '회원가입') 서버로 보내지 않고 팝업을 닫으면 지운다.
+// 디자인은 이름 → 생년월일 → 성별 → 휴대폰 → 이메일 → 인증번호 → 계정 정보 → 완료다.
+// 생년월일 · 성별 · 휴대폰은 받지 않아서(개인정보 최소 저장, API_CONTRACT 3절 '회원가입') 이름 → 이메일 → 인증번호만 남겼다.
 // 마지막 단계는 계정이 생기는 것이 아니라 대기 신청이다 — 관리자가 승인해야 로그인할 수 있다.
 
 import type { SignupFailure, SignupState } from "../useSignup";
 
-/** 이름 → 생년월일 → 성별 → 휴대폰 → 이메일 → 인증번호. */
-type Stage = 0 | 1 | 2 | 3 | 4 | 5;
+/** 이름 → 이메일 → 인증번호. */
+type Stage = 0 | 1 | 2;
 
-const STAGE_EMAIL: Stage = 4;
-const STAGE_CODE: Stage = 5;
+const STAGE_EMAIL: Stage = 1;
+const STAGE_CODE: Stage = 2;
 
 export interface SignupUi {
   /** 0 닫힘 · 1 본인 인증 · 2 계정 정보 · 3 신청 접수. */
   su: 0 | 1 | 2 | 3;
   stage: Stage;
   suName: string;
-  /** 생년월일 · 성별 · 휴대폰은 화면에서만 쓴다(서버로 보내지 않는다). */
-  suBirth: string;
-  suSex: "" | "m" | "f";
-  suPhone: string;
   suEmail: string;
   suCode: string;
   /** 보낸 횟수(문구만 바꾼다). */
@@ -48,9 +44,6 @@ export const INITIAL_SIGNUP_UI: SignupUi = {
   su: 0,
   stage: 0,
   suName: "",
-  suBirth: "",
-  suSex: "",
-  suPhone: "",
   suEmail: "",
   suCode: "",
   suSent: 0,
@@ -81,29 +74,6 @@ interface SignupValuesInput {
   now: number;
 }
 
-function birthOk(birth: string, now: number): boolean {
-  if (!/^\d{8}$/.test(birth)) return false;
-  const y = +birth.slice(0, 4);
-  const m = +birth.slice(4, 6);
-  const d = +birth.slice(6, 8);
-  const date = new Date(y, m - 1, d);
-
-  return y >= 1900 && y <= new Date(now).getFullYear() && date.getMonth() === m - 1 && date.getDate() === d;
-}
-
-function phoneOk(phone: string): boolean {
-  return /^01[016789]\d{7,8}$/.test(phone.replace(/[^0-9]/g, ""));
-}
-
-function formatPhone(value: string): string {
-  const digits = String(value || "").replace(/[^0-9]/g, "").slice(0, 11);
-  if (digits.length < 4) return digits;
-  if (digits.length < 8) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
-  if (digits.length < 11) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-
-  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
-}
-
 function secondsLeft(at: number, now: number): number {
   return Math.max(0, Math.ceil((at - now) / 1000));
 }
@@ -127,13 +97,11 @@ function domainError(email: string, allowed: string[]): string {
 
 export function signupValues({ getState, setState, signup, now }: SignupValuesInput) {
   const st = getState();
-  const { su, stage, suName: name, suBirth: birth, suSex: sex, suPhone: phone, suEmail: email, suCode: code } = st;
+  const { su, stage, suName: name, suEmail: email, suCode: code } = st;
   const eOk = EMAIL_RE.test(email.trim());
   const left = st.suSentAt ? Math.max(0, st.suExpiresIn - Math.floor((now - st.suSentAt) / 1000)) : st.suExpiresIn;
   const busy = signup.busy;
-  const bOk = birthOk(birth, now);
-  const pOk = phoneOk(phone);
-  const can = [name.trim().length > 0, bOk, !!sex, pOk, false, code.length === 6 && left > 0][stage] && !busy;
+  const can = [name.trim().length > 0, false, code.length === 6 && left > 0][stage] && !busy;
 
   const send = async () => {
     const cur = getState();
@@ -214,11 +182,7 @@ export function signupValues({ getState, setState, signup, now }: SignupValuesIn
     }
     if (cur.su !== 1 || signup.busy) return;
     if (cur.stage === 0) {
-      if (cur.suName.trim()) setState({ stage: 1 });
-    } else if (cur.stage === 1) {
-      if (birthOk(cur.suBirth, Date.now())) setState({ stage: 2 });
-    } else if (cur.stage === 3) {
-      if (phoneOk(cur.suPhone)) setState({ stage: STAGE_EMAIL });
+      if (cur.suName.trim()) setState({ stage: STAGE_EMAIL });
     } else if (cur.stage === STAGE_EMAIL) send();
     else if (cur.stage === STAGE_CODE && cur.suCode.length === 6) check();
   };
@@ -239,7 +203,6 @@ export function signupValues({ getState, setState, signup, now }: SignupValuesIn
   const pw = st.suPw;
   const pw2 = st.suPw2;
   const pwBad = pw2.length > 0 && pw !== pw2;
-  const onStage = (k: Stage) => (stage === k ? "on" : "");
   const doneReady = doneOk(st) && !busy;
   const mmss = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
   const eye = (shown: boolean) => ({
@@ -259,40 +222,14 @@ export function signupValues({ getState, setState, signup, now }: SignupValuesIn
     suStep1: su === 1,
     suStep2: su === 2,
     suStep3: su === 3,
-    suTitle: [
-      "이름을 입력하세요.",
-      "생년월일 8자리를 입력하세요.",
-      "성별을 선택하세요.",
-      "휴대폰 번호를 입력하세요.",
-      "이메일을 입력하세요.",
-      "이메일로 받은 인증번호 6자리를 입력하세요.",
-    ][stage],
+    suTitle: ["이름을 입력하세요.", "이메일을 입력하세요.", "이메일로 받은 인증번호 6자리를 입력하세요."][stage],
     suShowName: stage === 0,
-    suShowBirth: stage === 1,
-    suShowSex: stage === 2,
-    suShowPhone: stage === 3,
     suShowEmail: stage >= STAGE_EMAIL,
     suShowCode: stage >= STAGE_CODE,
-    suNameCls: onStage(0),
-    suBirthCls: onStage(1),
-    suSexCls: onStage(2),
-    suPhoneCls: onStage(3),
+    suNameCls: stage === 0 ? "on" : "",
     suEmailCls: stage === STAGE_EMAIL ? "on" : stage === STAGE_CODE ? "lock" : "",
     suEmailLock: stage === STAGE_CODE,
     suName: name,
-    suBirth: birth,
-    suBirthBad: birth.length === 8 && !bOk,
-    suSetBirth: (e: { target: { value: string } }) =>
-      setState({ suBirth: String(e.target.value).replace(/[^0-9]/g, "").slice(0, 8) }),
-    suSexOpts: ([["m", "남성"], ["f", "여성"]] as const).map(([value, label]) => ({
-      label,
-      on: sex === value ? "true" : "false",
-      cls: sex === value ? "on" : "",
-      pick: () => setState({ suSex: value, stage: Math.max(getState().stage, 3) as Stage }),
-    })),
-    suPhone: phone,
-    suPhoneBad: phone.length > 0 && !pOk && phone.replace(/[^0-9]/g, "").length >= 10,
-    suSetPhone: (e: { target: { value: string } }) => setState({ suPhone: formatPhone(e.target.value) }),
     suEmail: email,
     suCode: code,
     suSetName: (e: { target: { value: string } }) => setState({ suName: e.target.value }),
