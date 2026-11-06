@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel
 
-from app.core.enums import SessionStatus, TaskType
+from app.core.enums import SessionSource, SessionStatus, TaskType
 
 
 class TaskItem(BaseModel):
@@ -23,6 +23,8 @@ class TaskItem(BaseModel):
     session_number: int
     session_title: Optional[str]
     session_status: SessionStatus
+    #: AUDIO · DOCUMENT(상담 기록 문서 회차 — 검수 업무는 3단계 상담 요약 · 일지다, 2026-11-02).
+    session_source: SessionSource = SessionSource.AUDIO
     task_type: TaskType
 
     # 이 상태로 기다리기 시작한 시각(UTC). 오래된 것부터 정렬한다.

@@ -387,6 +387,8 @@ export function toPendingTasks(summary: TaskSummary, uploadAudioOverdue: number)
 }
 
 export interface TaskRow {
+  /** 상담 기록 문서 회차인가(검수 업무가 3단계 상담일지 확인이다, 2026-11-02). */
+  fromDocument: boolean;
   sessionId: string;
   caseId: string;
   /** 화면에 보이는 사례 ID(예: C-2026-0001). */
@@ -434,5 +436,6 @@ export function toTaskRow(item: TaskItem, now: number = Date.now()): TaskRow {
     overdue: item.is_overdue,
     failed: item.task_type === "RETRY_STT" || item.task_type === "RETRY_ANALYSIS",
     lastErrorCode: item.last_error_code ?? "",
+    fromDocument: item.session_source === "DOCUMENT",
   };
 }

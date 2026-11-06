@@ -520,13 +520,14 @@ def closure_llm(gateway, monkeypatch):  # noqa: F811 — gateway 는 고정 장�
 
     monkeypatch.setattr(sys.modules[f"{PACKAGE}.second_stage_llm"], "_call_llm_with_retry", call_llm)
 
-    original = gw.mask_for_outbound
+    # 종결 요약은 회차마다 따로 가린다(closure_summary_llm.mask_case_input → privacy_gateway.review, 2026-11-04).
+    original = gw.review
 
-    def mask_for_outbound(text, known_identifiers=None):
+    def review(payload, known_identifiers=None):
         sent["known"] = list(known_identifiers or [])
-        return original(text, known_identifiers=known_identifiers)
+        return original(payload, known_identifiers=known_identifiers)
 
-    monkeypatch.setattr(gw, "mask_for_outbound", mask_for_outbound)
+    monkeypatch.setattr(gw, "review", review)
     closure_review_service.reset_limits()
     yield sent
     closure_review_service.reset_limits()

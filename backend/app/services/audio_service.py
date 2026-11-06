@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core.config import settings
-from app.core.enums import AuditAction, SessionStatus
-from app.core.errors import ErrorCode, bad_request, not_found
+from app.core.enums import AuditAction, SessionSource, SessionStatus
+from app.core.errors import ErrorCode, bad_request, conflict, not_found
 from app.core.state_machine import assert_transition
 from app.models.audio import AudioFile
 from app.models.session import ConsultationSession
@@ -243,6 +243,18 @@ def upload_audio(
     )
 
     resolved_duration = _wav_duration_ms(header) or duration_ms
+
+    # 저장하는 사이 같은 회차에 문서가 올라갔을 수 있다 — 행을 잠그고 다시 읽어 확인한 뒤 상태를 바꾼다. 문서 쪽은
+    # 조건부 UPDATE(status=CREATED · source=AUDIO)라, 잠근 채 AUDIO_UPLOADED 로 바꾸면 늦은 문서는 409 다(민규 #137 낮음 2).
+    try:
+        db.refresh(session, with_for_update=True)
+        if session.source == SessionSource.DOCUMENT:
+            raise conflict(ErrorCode.INVALID_SESSION_STATE, "문서를 올린 회차입니다. 녹음은 새 회차에 올려 주세요.")
+        assert_transition(session.status, SessionStatus.AUDIO_UPLOADED)
+    except BaseException:
+        db.rollback()
+        storage.delete_stored_audio(stored.relative_path)
+        raise
 
     audio = AudioFile(
         session_id=session.id,

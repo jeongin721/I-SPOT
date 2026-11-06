@@ -15,6 +15,7 @@ from app.api.v1 import (
     risk_assessments,
     schedule,
     sessions,
+    source_documents,
     summary,
     tasks,
     transcript,
@@ -46,3 +47,5 @@ api_router.include_router(voice_marks.router)
 api_router.include_router(law_guide.router)
 # /schedule/events — 일정(20절, 2026-11-02).
 api_router.include_router(schedule.router)
+# /sessions/{session_id}/source-document — 상담 기록 문서 회차(21절, 2026-11-02).
+api_router.include_router(source_documents.router)

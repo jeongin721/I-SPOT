@@ -13,7 +13,7 @@ import type { FollowupQuestionsState } from "../useFollowupQuestions";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ScreenGo } from "./useScreenGo";
 import { TONE_CHIP, notice, screenNotice, sidebarValues, type ScreenNotice } from "./common";
-import { CARD_OF, LOCKED_HINT } from "./flow";
+import { CARD_OF, DOCUMENT_SKIP_HINT, LOCKED_HINT } from "./flow";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 회차 화면이 쓸 사례 ID. 회차 정보를 받았으면 그 사례, 아직이면 주소의 사례. */
@@ -103,7 +103,9 @@ function analysisCard(sv: SessionDetailView): { st: string; preview: string } {
 function noteCard(sv: SessionDetailView): { st: string; preview: string } {
   let preview = "AI 분석이 끝나면 요약 초안이 생깁니다.";
 
+  // 문서 회차의 요약은 AI 가 새로 쓴 것이 아니라 문서에서 옮긴 것이다 — 'AI 요약 초안' 으로 보이지 않게 한다(민규 #137 R9).
   if (sv.summaryApproved) preview = `요약 승인 · ${sv.approvedAt}`;
+  else if (sv.source === "DOCUMENT") preview = "올린 상담 기록 문서로 상담 요약 · 일지 초안을 채웠습니다. 확인하고 승인해 주세요.";
   else if (sv.hasSummary) preview = "AI 요약 초안이 있습니다. 검수하고 승인해 주세요.";
 
   if (sv.step === "summaryReview") return { st: "요약 검수 필요", preview };
@@ -186,6 +188,23 @@ export function sessionDetailValues(input: SessionScreenInput) {
     const reach = lastDone + 1;
 
     steps = defs.map((d, i) => {
+      // 문서 회차(2026-11-02): 1 · 2단계 칸은 '해당 없음'(링크 없음).
+      if (sv.source === "DOCUMENT" && i < 2) {
+        return {
+          ...d,
+          st: "해당 없음",
+          preview: "상담 기록 문서로 만든 회차 — 3단계(상담일지 작성)부터 합니다.",
+          href: null,
+          locked: true,
+          title: DOCUMENT_SKIP_HINT,
+          stCls: "chip c-normal",
+          mark: "—",
+          nBg: "#EAE7DF",
+          nFg: "#7A776F",
+          ring: "none",
+          bg: "#FFFFFF",
+        };
+      }
       const done = i <= lastDone;
       const cur = i === current;
       const locked = !done && i > reach;
