@@ -4,7 +4,7 @@
 // 서버 연결: 로그인 상태(useAuthSession)와 사례 목록(useCaseList)은 src/data 의 훅이 하고,
 // 화면에 쓸 값은 src/data/screens/caseList.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 디자인을 바꿀 때는 아래 CaseList 함수의 훅과 Logic 을 그대로 두고 JSX 만 갈아 끼우면 된다.
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -30,9 +30,15 @@ export default function CaseList(props) {
   const [search, setSearch] = useAccountSearch(session);
   // 사용자 정보까지 확인된 뒤에만 부른다 — 다른 탭의 다시 로그인으로 사용자 정보가 먼저 비는 사이에 새 토큰으로 한 번 더
   // 부르지 않게(Codex #130 재검수 N4).
-  const list = useCaseList({ search, enabled: session.status === 'signedIn' && session.me !== null, withNames: true });
+  const [sort, setSort] = useState(null);
+  const list = useCaseList({
+    search,
+    enabled: session.status === 'signedIn' && session.me !== null,
+    withNames: true,
+    sort: sort ?? undefined,
+  });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, list, search, setSearch });
+  const v = useDC(Logic, { ...props, session, list, search, setSearch, sort, setSort });
   // 로그인하지 않았거나 임시 비밀번호 상태면 로그인 화면(비밀번호 변경 단계)으로 보낸다.
   if (session.status === 'signedOut' || session.status === 'mustChangePassword') {
     return <Navigate to="/Login" replace />;
@@ -90,9 +96,7 @@ export default function CaseList(props) {
                     type="button"
                     className={f.cls}
                     aria-pressed={f.cls === 'on'}
-                    disabled={f.disabled}
-                    title={f.disabled ? v.notReady : undefined}
-                    style={f.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                    onClick={f.pick}
                   >
                     {f.label}
                   </button>
@@ -100,9 +104,6 @@ export default function CaseList(props) {
               ))}
             </div>
           </section>
-          <p className="note" style={{ margin: '-8px 0 0' }}>
-            위험도 · 신고접수일은 {v.notReady}입니다(서버에 아직 없는 값).
-          </p>
           <section className="card" style={{ overflowX: 'auto' }}>
             <table className="tbl" style={{ minWidth: '640px' }}>
               <thead>
