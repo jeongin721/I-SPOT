@@ -1,4 +1,4 @@
-# 문서함(GET /docbox · POST /docbox/folders · POST /docbox/files · PATCH /docbox/files/{id} · GET …/download, API_CONTRACT 23절).
+# 문서함(GET /docbox · POST /docbox/folders · POST /docbox/files · PATCH /docbox/files/{id} · GET …/download · GET …/preview · DELETE, API_CONTRACT 23절).
 # 데이터는 모두 가상이다.
 import io
 import zipfile
@@ -101,6 +101,76 @@ def test_unknown_folder_and_file_are_404(client: TestClient, counselor_headers) 
     assert _upload(client, counselor_headers, [("a.txt", b"x", "text/plain")], missing).status_code == 404
     assert client.patch(f"{URL}/files/{missing}", json={"folder_id": None}, headers=counselor_headers).status_code == 404
     assert client.get(f"{URL}/files/{missing}/download", headers=counselor_headers).status_code == 404
+    assert client.get(f"{URL}/files/{missing}/preview", headers=counselor_headers).status_code == 404
+
+
+def _audit_count(db, action: AuditAction) -> int:
+    return len(list(db.scalars(select(AuditLog).where(AuditLog.action == action))))
+
+
+def test_image_preview_serves_images_only_and_leaves_no_download_record(client: TestClient, counselor_headers, db) -> None:
+    uploaded = _upload(
+        client, counselor_headers, [("사진.png", PNG, "image/png"), ("안내.txt", "안내".encode(), "text/plain")]
+    ).json()["data"]["files"]
+    ids = {f["name"]: f["id"] for f in uploaded}
+
+    image = client.get(f"{URL}/files/{ids['사진.png']}/preview", headers=counselor_headers)
+    assert image.status_code == 200 and image.content == PNG
+    assert image.headers["content-type"] == "image/png"
+    assert image.headers["x-content-type-options"] == "nosniff" and image.headers["cache-control"] == "no-store"
+    assert client.get(f"{URL}/files/{ids['안내.txt']}/preview", headers=counselor_headers).status_code == 404
+    assert client.get(f"{URL}/files/{ids['사진.png']}/preview").status_code == 401
+    assert _audit_count(db, AuditAction.DOCBOX_FILE_DOWNLOADED) == 0
+
+    assert client.get(f"{URL}/files/{ids['사진.png']}/download", headers=counselor_headers).status_code == 200
+    assert _audit_count(db, AuditAction.DOCBOX_FILE_DOWNLOADED) == 1
+
+
+def test_only_admin_deletes_file_row_and_body_with_audit(client: TestClient, counselor_headers, admin_headers, db) -> None:
+    from app.core import storage
+    from app.models.docbox import DocboxFile
+
+    folder_id = client.post(f"{URL}/folders", json={"name": "지울 폴더"}, headers=counselor_headers).json()["data"]["id"]
+    file_id = _upload(client, counselor_headers, [("잘못 올린 문서.txt", "내용".encode(), "text/plain")], folder_id).json()["data"]["files"][0]["id"]
+    body = storage.storage_root() / db.scalars(select(DocboxFile.path)).one()
+    assert body.is_file()
+
+    assert client.delete(f"{URL}/files/{file_id}").status_code == 401
+    assert client.delete(f"{URL}/files/{file_id}", headers=counselor_headers).status_code == 403
+    assert body.is_file() and _audit_count(db, AuditAction.DOCBOX_FILE_DELETED) == 0
+
+    assert client.delete(f"{URL}/files/{file_id}", headers=admin_headers).status_code == 204
+    assert not body.exists()
+    listed = client.get(URL, headers=counselor_headers).json()["data"]
+    assert listed["files"] == [] and listed["folders"][0]["count"] == 0
+    assert client.get(f"{URL}/files/{file_id}/download", headers=counselor_headers).status_code == 404
+    assert client.delete(f"{URL}/files/{file_id}", headers=admin_headers).status_code == 404
+
+    db.expire_all()
+    log = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.DOCBOX_FILE_DELETED)).one()
+    assert str(log.entity_id) == file_id
+    assert log.detail == {"format": "txt", "bytes": len("내용".encode()), "folder_id": folder_id}
+    assert "잘못 올린" not in str(log.detail)
+
+
+def test_delete_keeps_row_when_body_cannot_be_removed(client: TestClient, counselor_headers, admin_headers, db, monkeypatch) -> None:
+    from pathlib import Path
+
+    from app.models.docbox import DocboxFile
+
+    file_id = _upload(client, counselor_headers, [("a.txt", b"x", "text/plain")]).json()["data"]["files"][0]["id"]
+
+    def refuse(self, missing_ok=False):
+        raise PermissionError("no")
+
+    monkeypatch.setattr(Path, "unlink", refuse)
+    no_raise = TestClient(client.app, raise_server_exceptions=False)
+    assert no_raise.delete(f"{URL}/files/{file_id}", headers=admin_headers).status_code == 500
+    monkeypatch.undo()
+
+    db.expire_all()
+    assert len(list(db.scalars(select(DocboxFile)))) == 1
+    assert _audit_count(db, AuditAction.DOCBOX_FILE_DELETED) == 0
 
 
 def test_login_is_required(client: TestClient) -> None:

@@ -4,7 +4,8 @@
 #  - 폴더: 이름만(겹치면 409). 지우기 · 이름 바꾸기는 디자인에 없어 만들지 않는다.
 #  - 파일: 한 번에 MAX_FILES 개, 파일마다 MAX_FILE_BYTES 까지. 정해 둔 확장자만 받는다(실행 파일 · 스크립트를 막는다).
 #    본체는 저장소 storage/docbox/<uuid> 에 두고, 내려받기는 늘 첨부(attachment)로 · nosniff 로 준다.
-#  - 첫 페이지 미리보기: 그림은 그대로, txt · md · csv 는 앞부분 글, docx · hwpx · pdf 는 document_text 로 뽑은 앞부분 글.
+#    잘못 올린 문서는 관리자만 지운다(표 행 · 파일 본체를 함께 지운다).
+#  - 첫 페이지 미리보기: 그림은 그대로(별도 창구 /preview — 그림만 주고 내려받기 기록을 남기지 않는다), txt · md · csv 는 앞부분 글, docx · hwpx · pdf 는 document_text 로 뽑은 앞부분 글.
 #    뽑지 못하면(손상 · 너무 김 · 시간 초과) 미리보기 없음(other)으로 둔다 — 올리기는 막지 않는다.
 # 감사 기록에는 파일 수 · 형식 · 크기 · 폴더 id 만 남긴다(파일 이름 · 내용은 넣지 않는다).
 import logging
@@ -260,6 +261,40 @@ def record_download(db: Session, user: User, row: DocboxFile) -> None:
         db, action=AuditAction.DOCBOX_FILE_DOWNLOADED, entity_type="DocboxFile", entity_id=row.id, actor_id=user.id
     )
     db.commit()
+
+
+def get_image_or_404(db: Session, file_id: uuid.UUID) -> DocboxFile:
+    """그림 미리보기용. 그림이 아닌 문서는 이 창구로 주지 않는다."""
+
+    row = get_file_or_404(db, file_id)
+    if row.preview_kind != "image":
+        raise not_found(ErrorCode.NOT_FOUND, "그림 미리보기가 없는 문서입니다.")
+    return row
+
+
+def delete(db: Session, admin: User, row: DocboxFile) -> None:
+    """행을 지운 뒤 커밋 전에 파일을 지운다 — 파일을 못 지우면 500 으로 되돌려, '지웠다'고 답하고 본체가 남는 일이 없게 한다."""
+
+    root = storage.storage_root()
+    target = (root / row.path).resolve()
+    detail = {
+        "format": _extension(row.name),
+        "bytes": row.size_bytes,
+        "folder_id": str(row.folder_id) if row.folder_id else None,
+    }
+    file_id = row.id
+    try:
+        db.delete(row)
+        db.flush()
+        audit_service.record(
+            db, action=AuditAction.DOCBOX_FILE_DELETED, entity_type="DocboxFile", entity_id=file_id, actor_id=admin.id, detail=detail
+        )
+        if target.is_relative_to(root):
+            target.unlink(missing_ok=True)
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
 
 
 def names_for(db: Session, rows: List[DocboxFile]) -> Dict[uuid.UUID, str]:
