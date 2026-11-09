@@ -4,6 +4,7 @@
 //   '관리자 메뉴' 링크(관리자 계정일 때만)에 쓴다.
 // 디자인의 메뉴 옆 숫자(아이 연계 4 · 종결 검토 2)는 서버에 없는 예시 값이라 넣지 않는다.
 // 900px 이하의 '메뉴' 단추(#mnav 체크박스)는 CSS 만으로 펼친다(common.css 반응형 블록). 화면 상태가 없어서 화면을 옮기면 저절로 닫힌다.
+import ChildAlertBanner from './ChildAlertBanner';
 import A from './A';
 import { sidebarValues } from '../data/screens/common';
 
@@ -31,6 +32,7 @@ export default function Sidebar({ active, session }) {
   );
   return (
     <aside className="side" aria-label="주 메뉴">
+      <ChildAlertBanner session={session} />
       <A className="logo" to="/Main">
         <span className="mk">IS</span>
         <b style={{ fontSize: '17px' }}>I-SPOT</b>

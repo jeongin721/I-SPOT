@@ -7,6 +7,10 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  ChildAiDraft,
+  ChildAppCase,
+  ChildAppInvite,
+  ChildOpenAlert,
   DocboxFile,
   DocboxFolder,
   DocboxList,
@@ -749,5 +753,44 @@ export const docbox = {
   /** 파일 본체(내려받기 · 그림 미리보기). */
   file(fileId: string, signal?: AbortSignal): Promise<Blob> {
     return api.blob(`/docbox/files/${fileId}/download`, signal);
+  },
+};
+
+// 아이 앱 콩콩 (API_CONTRACT 24절)
+export const childApp = {
+  get(caseId: string): Promise<ChildAppCase> {
+    return api.get<ChildAppCase>(`/cases/${caseId}/child-app`);
+  },
+
+  invite(caseId: string): Promise<ChildAppInvite> {
+    return api.post<ChildAppInvite>(`/cases/${caseId}/child-app/invite`);
+  },
+
+  sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  },
+
+  createAiDraft(caseId: string): Promise<ChildAiDraft> {
+    return api.post<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft`);
+  },
+
+  updateAiNote(caseId: string, draftId: string, questionId: string, text: string): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/notes/${questionId}`, { text });
+  },
+
+  updateAiQuestion(caseId: string, draftId: string, id: string, text: string, options: string[]): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}`, { text, options });
+  },
+
+  setAiApproval(caseId: string, draftId: string, id: string, approved: boolean): Promise<ChildAiDraft> {
+    return api.put<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}/approval`, { approved });
+  },
+
+  openAlerts(): Promise<ChildOpenAlert[]> {
+    return api.get<ChildOpenAlert[]>("/child-app-alerts/open");
+  },
+
+  acknowledgeAlert(caseId: string, alertId: string): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/alerts/${alertId}/ack`);
   },
 };

@@ -8,6 +8,10 @@ from typing import Any, Dict, Optional
 
 
 class ErrorCode(str, Enum):
+    # 아이 앱 연결 코드가 틀렸거나 만료 · 사용됨. 어느 쪽인지 알려주지 않는다.
+    INVALID_CHILD_CODE = "INVALID_CHILD_CODE"
+    CHILD_APP_DISABLED = "CHILD_APP_DISABLED"
+    CHILD_APP_AI_DISABLED = "CHILD_APP_AI_DISABLED"
     """Frontend 와 공유하는 오류 코드. 임의로 값을 변경하지 않는다."""
 
     # 인증 / 권한
