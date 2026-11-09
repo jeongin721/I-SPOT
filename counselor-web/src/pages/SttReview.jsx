@@ -245,6 +245,7 @@ function LineRow({ l, focusRef, nowRef }) {
                     원문보기 ↗
                   </a>
                 ) : null}
+                {w.why ? <span className="why">{w.why}</span> : null}
               </span>
             ))}
           </span>

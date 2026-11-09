@@ -54,10 +54,54 @@ export interface TranscriptInfo {
   /** "STT" 면 변환 결과 그대로, "COUNSELOR_EDIT" 면 상담사가 고친 버전. */
   source: Transcript["source"];
   sttProvider: string | null;
-  /** '1차 임시 핵심 발화' 로 고른 발화 ID(원문 순서). 스캔 성공(DONE)일 때만 차고, 그 밖에는 빈 배열. */
+  /**
+   * '1차 임시 핵심 발화' 로 고른 발화 ID(원문 순서). 스캔 성공(DONE)과 저장한 원문으로 다시 고르는 중(REFRESHING),
+   * 다시 고르지 못해 저장 전 결과가 남은 FAILED 일 때 차고(2026-11-09), 그 밖에는 빈 배열.
+   */
   keySegmentIds: string[];
-  /** 그 발화의 1차 유형(PHYSICAL 등). 원문 확정 전 STT 검수 화면의 '임시 관련 조문' 에만 쓴다(2026-11-03). 스캔 성공일 때만. */
+  /** 그 발화의 1차 유형(PHYSICAL 등). 원문 확정 전 STT 검수 화면의 '임시 관련 조문' 에만 쓴다(2026-11-03). */
   keyTypes: Record<string, string[]>;
+  /**
+   * 발화별 임시 조문(API_CONTRACT 7절 legal_references, 2026-11-09). 배열이면 그것만 보인다(비어 있으면 조문 없음 —
+   * 발화 글이 유형의 행위 예시와 닮지 않음). 칸이 없는 예전 결과는 undefined 라 화면이 유형 → 호 고정 표를 쓴다.
+   */
+  keyLaws: Record<string, KeyScanReference[] | undefined>;
+  /** key_scan.status — 핵심 발화를 보일 때만(DONE · REFRESHING · FAILED). 아니면 null. */
+  keyScanStatus: KeyScanValue["status"] | null;
+  /** 지금 보이는 핵심 발화를 만든 원문 version. 모르면 null. version 보다 작으면 저장 전 원문 기준이다. */
+  keyScannedVersion: number | null;
+}
+
+type KeyScanValue = NonNullable<Transcript["key_scan"]>;
+export type KeyScanReference = NonNullable<KeyScanValue["segments"][number]["legal_references"]>[number];
+
+/**
+ * key_scan(API_CONTRACT 7절) → 화면이 쓰는 값. 스캔 성공(DONE)뿐 아니라 저장한 원문으로 다시 고르는 중(REFRESHING)과
+ * 다시 고르지 못해 저장 전 결과가 남은 FAILED 도 그 발화들을 보인다(2026-11-09). 그 밖에는 비어 있다.
+ */
+function keyScanView(scan: KeyScanValue | null | undefined): Pick<
+  TranscriptInfo,
+  "keySegmentIds" | "keyTypes" | "keyLaws" | "keyScanStatus" | "keyScannedVersion"
+> {
+  const segments = scan && Array.isArray(scan.segments) ? scan.segments : [];
+  const active =
+    scan?.status === "DONE" || scan?.status === "REFRESHING" || (scan?.status === "FAILED" && segments.length > 0);
+  const rows = active ? segments.filter((item) => typeof item.segment_id === "string" && item.segment_id) : [];
+
+  return {
+    keySegmentIds: rows.map((item) => item.segment_id),
+    keyTypes: Object.fromEntries(
+      rows.map((item) => [
+        item.segment_id,
+        Array.isArray(item.abuse_types) ? item.abuse_types.filter((type) => typeof type === "string") : [],
+      ]),
+    ),
+    keyLaws: Object.fromEntries(
+      rows.map((item) => [item.segment_id, Array.isArray(item.legal_references) ? item.legal_references : undefined]),
+    ),
+    keyScanStatus: active && scan ? scan.status : null,
+    keyScannedVersion: typeof scan?.scanned_version === "number" ? scan.scanned_version : null,
+  };
 }
 
 export interface TranscriptReviewOptions {
@@ -142,7 +186,13 @@ export function useTranscriptReview(
   const saved = envelope?.transcript ?? null;
   const sessionStatus = envelope?.session_status ?? null;
 
-  usePolling(sessionStatus !== null && isProcessing(sessionStatus), remote.refresh, remote.settled);
+  // 원문 수정 뒤 서버가 저장한 원문으로 '1차 임시 핵심 발화' 를 다시 고르는 동안(key_scan REFRESHING, API_CONTRACT 7절)도
+  // 다시 조회한다 — 끝나면 DONE · FAILED 로 바뀐다.
+  usePolling(
+    (sessionStatus !== null && isProcessing(sessionStatus)) || saved?.key_scan?.status === "REFRESHING",
+    remote.refresh,
+    remote.settled,
+  );
 
   const savedById = useMemo(() => {
     const map = new Map<string, Transcript["segments"][number]>();
@@ -431,19 +481,7 @@ export function useTranscriptReview(
           confirmedAt: toDateTime(saved.confirmed_at),
           source: saved.source,
           sttProvider: saved.stt_provider,
-          keySegmentIds:
-            saved.key_scan?.status === "DONE" && Array.isArray(saved.key_scan.segments)
-              ? saved.key_scan.segments.map((item) => item.segment_id)
-              : [],
-          keyTypes:
-            saved.key_scan?.status === "DONE" && Array.isArray(saved.key_scan.segments)
-              ? Object.fromEntries(
-                  saved.key_scan.segments.map((item) => [
-                    item.segment_id,
-                    Array.isArray(item.abuse_types) ? item.abuse_types.filter((type) => typeof type === "string") : [],
-                  ]),
-                )
-              : {},
+          ...keyScanView(saved.key_scan),
         }
       : null,
     rows,

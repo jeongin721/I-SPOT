@@ -737,9 +737,35 @@ export interface Transcript {
  * 그 유형의 '임시' 관련 조문(아동복지법 제17조 해당 호)을 보이는 데만 쓴다(사용자 요청).
  */
 export interface KeyScan {
-  status: "DONE" | "FAILED" | "SKIPPED";
+  /**
+   * DONE 성공 · FAILED 실패(STT 때면 segments 없음, 다시 스캔 실패면 저장 전 결과가 남음) · SKIPPED modeling 아님 ·
+   * REFRESHING 원문 수정 뒤 저장한 원문으로 다시 고르는 중(2026-11-09 — 끝나면 DONE · FAILED, 화면은 다시 조회).
+   */
+  status: "DONE" | "FAILED" | "SKIPPED" | "REFRESHING";
   model: string | null;
-  segments: { segment_id: string; abuse_types: string[] }[];
+  segments: {
+    segment_id: string;
+    abuse_types: string[];
+    /**
+     * 발화 글이 그 유형의 행위 예시와 닮을 때만 들어 있는 임시 참고 조문(2026-11-09). 빈 배열이면 조문 없이 '먼저 들어볼 곳'만.
+     * 이 칸이 없는 예전 결과는 화면이 유형 → 제17조 호 고정 표를 쓴다.
+     */
+    legal_references?: KeyScanLegalReference[];
+  }[];
+  /** segments 를 만든 원문 version. 모르면 null. version 보다 작으면 저장 전 원문 기준. */
+  scanned_version?: number | null;
+  /** REFRESHING 시작 시각(ISO). 아니면 null. */
+  started_at?: string | null;
+}
+
+/** key_scan 의 임시 참고 조문 — AI 분석 결과의 LegalReference 에 닮은 예시(excerpt) · 유사도(score) · 유형이 더 붙는다. */
+export interface KeyScanLegalReference extends LegalReference {
+  /** PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT. 없으면 null. */
+  abuse_type: string | null;
+  /** 왜 이 조문인지 — 발화와 닮은 행위 예시. 매칭 모델이 없으면 "". */
+  excerpt: string;
+  /** 유사도 0~1. 매칭 모델이 없으면 null. */
+  score: number | null;
 }
 
 /**

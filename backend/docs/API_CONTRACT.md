@@ -1174,9 +1174,9 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 - `child_handoff` 는 `null` 일 수 있다. Backend 가 STT 모듈(`stt/`)을 불러오지 못하는 배포(예: backend 폴더만 담은 이미지)에서는 비워서 준다.
 - 분류 모델의 판단이 아니라 `speaker` 값을 옮겨 담은 참고용 보기다. 화자 확인은 상담사가 한다.
 
-#### key_scan (1차 임시 핵심 발화, 2026-10-28)
+#### key_scan (1차 임시 핵심 발화, 2026-10-28 · 임시 조문 · 다시 스캔 2026-11-09)
 
-STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SPOT_DOCS/docs/PROPOSAL_stt_key_scan.md). STT 작업이 전사를 마친 뒤
+STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SPOT_DOCS/docs/PROPOSAL_stt_key_scan.md · PROPOSAL_stt_law_match.md). STT 작업이 전사를 마친 뒤
 **같은 작업 안에서** 1차 분류기(서버 안 로컬 모델, LLM 없음 — 원문이 밖으로 나가지 않음)를 돌려 고르고, 끝나면 `STT_REVIEW_REQUIRED` 로 넘긴다.
 응답마다 계산하지 않고 **저장한 값**이다.
 
@@ -1184,15 +1184,34 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
 "key_scan": {
   "status": "DONE",
   "model": "roberta_abuse_qa_child_v3",
-  "segments": [ { "segment_id": "seg_014", "abuse_types": ["PHYSICAL"] } ]
+  "scanned_version": 2,
+  "started_at": null,
+  "segments": [
+    {
+      "segment_id": "seg_014",
+      "abuse_types": ["PHYSICAL"],
+      "legal_references": [
+        { "abuse_type": "PHYSICAL", "law_name": "아동복지법", "article": "제17조", "item_label": "제3호",
+          "text": "아동의 신체에 손상을 주거나 …", "portal_url": "https://www.law.go.kr/…",
+          "excerpt": "허리띠로 맞았어요", "score": 0.61 }
+      ]
+    }
+  ]
 }
 ```
 
 | `status` | 뜻 |
 |---|---|
 | `DONE` | 스캔 성공. `segments` 가 비어 있을 수 있다(고른 발화 없음) |
-| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만) |
+| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만). 원문 수정 뒤 다시 스캔하다 실패했으면 **저장 전 결과(`segments` · `scanned_version`)는 그대로 둔다** |
 | `SKIPPED` | `AI_PROVIDER` 가 `modeling` 이 아니라 부르지 않음 |
+| `REFRESHING` | 원문 수정(PATCH)으로 새 version 이 생겨 **저장한 원문으로 다시 스캔하는 중**(백그라운드, 2026-11-09). 그동안 `segments` 는 직전 version 의 것(지운 발화만 뺌)이고 `scanned_version` 이 그 version, `started_at` 이 시작 시각이다. 끝나면 `DONE` · `FAILED` 로 바뀌므로 화면은 GET 을 다시 조회한다(STT 처리 중 폴링과 같은 방식). 제한 시간 + 여유 60초를 넘긴 REFRESHING 은 조회 때 `FAILED` 로 마감한다(작업이 사라진 경우 — 저장 전 결과는 둠) |
+
+- `scanned_version`: `segments` 를 만든 원문 version. 없으면(이 칸이 생기기 전 결과 · STT 때 FAILED) `null`. `version` 보다 작으면 저장 전 원문 기준의 결과다.
+- `legal_references`(2026-11-09): 그 발화 글이 유형의 행위 예시와 닮을 때만 붙는 **임시 참고 조문**(아동복지법 제17조 해당 호). `excerpt` 는 닮은 예시(왜 붙었는지),
+  `score` 는 유사도(0~1). AI 쪽 로컬 임베딩(`ai/modeling/abuse/law_match.py` — 외부 전송 없음, 팀장 결정 11/09 '검수 전은 로컬')이 고르고 Backend 는 모양만
+  다듬는다(모르는 유형 · 법령 이름 없는 항목은 뺌, 발화당 8개 · 글자 수 상한). 매칭 모델이 없으면 유형 조문을 근거 없이(`excerpt` 빈 값 · `score` null) 준다.
+  **비어 있으면 화면은 조문 없이 '먼저 들어볼 곳'만** 보인다. 법 위반을 확정하지 않는다.
 
 - 고르는 방식(2026-10-30, 정밀도 개선 2026-11-06 — `ai/modeling/abuse/key_scan_refine.py`, 제안서 §9): 1차 분류기는 여러 문답 덩어리 단위로
   판정하므로, 덩어리 안 아동 발화를 줄마다(바로 앞 상담사 질문과 묶어) 다시 판정해 **확률이 줄 임계값 이상인 줄에만** 그 유형을 붙인다
@@ -1204,8 +1223,10 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
 - `segments` 는 원문 순서이고, 아동 · 화자 미확인(`CHILD` · `UNKNOWN`) 발화만 온다(AI 함수가 거름). 서버는 원문에 없는 번호 · 모르는 유형을 버린다.
   같은 발화가 두 번 오면 **유형이 남는 첫 것**만 둔다(첫 것의 유형이 모두 걸러지면 다음 것).
 - `abuse_types` 는 `PHYSICAL` · `EMOTIONAL` · `SEXUAL` · `NEGLECT`. **판정이 아니고 화면에 그리지 않는다**(판정처럼 읽힘 — 제안서 §8 답 3). 화면 문구는 "먼저 들어볼 곳" · "임시 · 검수 전".
-- 이 기능 전 전사본은 `null` 이다. 화면은 `null` · `FAILED` · `SKIPPED` · 빈 `segments` 면 전체 STT 로 연다.
-- 원문 수정(PATCH)으로 새 version 을 만들면 **직전 값에서 `removed_segment_ids` 만 빼고 복사**한다(문장이 바뀐 발화를 다시 스캔하지 않음 — 임시 표시라서). 확정은 값을 바꾸지 않는다.
+- 이 기능 전 전사본은 `null` 이다. 화면은 `null` · `SKIPPED` · 빈 `segments` 면 전체 STT 로 연다(`FAILED` 라도 다시 스캔 실패로 `segments` 가 남아 있으면 저장 전 결과를 보인다).
+- 원문 수정(PATCH): `AI_PROVIDER=modeling` 이면 **직전 값(지운 발화만 뺌)을 복사해 `REFRESHING` 으로 두고 응답한 뒤, 백그라운드에서 저장한 원문(고친 문장 · 바뀐 화자 반영)을
+  다시 스캔**한다(2026-11-09 — 팀장 결정 '재스캔은 비동기'). 제한 시간은 `KEY_SCAN_TIMEOUT_SECONDS`, 동시 실행은 `KEY_SCAN_MAX_CONCURRENCY`(기본 1) — 자리를 기다리는 사이
+  또 저장되면 앞 version 은 돌리지 않는다(그 version 은 더는 최신이 아니다). modeling 이 아니면 예전처럼 지운 발화만 빼고 복사한다. 확정은 값을 바꾸지 않는다.
 - 감사 기록은 두지 않는다(STT 작업의 일부).
 - 멈춘 STT 작업 마감 기준(`STT_TIMEOUT_SECONDS` + 여유 60초)에 `modeling` 이면 `KEY_SCAN_TIMEOUT_SECONDS` 를 더한다.
 

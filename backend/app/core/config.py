@@ -199,6 +199,9 @@ class Settings(BaseSettings):
     # 1차 분류기(로컬)를 돌린다. 한 번의 제한 시간 — 넘기면 key_scan.status=FAILED 이고 STT 는 그대로 성공이다.
     # 멈춘 STT 작업 마감 기준(STT_TIMEOUT_SECONDS + 여유)에 이 값을 더한다(session_service).
     KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
+    #: 원문 수정 뒤 다시 스캔(key_scan REFRESHING, 2026-11-09) 서버 전체 동시 실행 수. 로컬 모델이 GPU 하나라 기본 1 —
+    #: 자리를 기다리는 사이 또 저장되면 앞 version 은 돌리지 않는다.
+    KEY_SCAN_MAX_CONCURRENCY: int = Field(default=1, ge=1)
     # 종결 검토 요약(POST /cases/{id}/closure-summary) 제한 시간(2026-10-30). 동기 응답이라 넘으면 504.
     CLOSURE_SUMMARY_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
     #: 상담 기록 문서 → 상담 일지 칸 채우기 · 4단계 초안 AI 제한 시간(동기 요청, API_CONTRACT 21절).

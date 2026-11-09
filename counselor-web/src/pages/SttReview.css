@@ -330,6 +330,15 @@
   background: #393731 !important;
   color: #c9c4b8 !important;
 }
+/* 왜 이 조문인지(2026-11-09) — 발화와 닮은 행위 예시. 조문 칸 아래 한 줄. */
+.pg-SttReview .law .why {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: #8a867d;
+}
+.pg-SttReview .thm-root.dark .law .why {
+  color: #a39d90 !important;
+}
 @media (max-width: 720px) {
   .pg-SttReview .law {
     grid-template-columns: auto minmax(0, 1fr) auto;

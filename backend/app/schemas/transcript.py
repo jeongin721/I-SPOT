@@ -37,18 +37,38 @@ class TranscriptResponse(BaseModel):
     key_scan: Optional["KeyScanResponse"] = None
 
 
+class KeyScanLegalReference(BaseModel):
+    """발화 글이 그 유형의 행위 예시와 닮을 때만 붙는 '임시' 관련 조문(2026-11-09, PROPOSAL_stt_law_match.md).
+    excerpt 는 닮은 예시(왜 붙었는지), score 는 유사도. 매칭 모델이 없을 때는 유형 조문만 근거 없이(excerpt 빈 값 · score null)."""
+
+    abuse_type: Optional[str] = None
+    law_name: str
+    article: str
+    item_label: str = ""
+    text: str = ""
+    portal_url: str = ""
+    excerpt: str = ""
+    score: Optional[float] = None
+
+
 class KeyScanSegment(BaseModel):
     segment_id: str
-    # PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT. 화면에는 그리지 않는다(판정처럼 읽힘, 제안서 §8 답 3).
+    # PHYSICAL · EMOTIONAL · SEXUAL · NEGLECT. 유형 이름 자체는 화면에 그리지 않는다(판정처럼 읽힘, 제안서 §8 답 3).
     abuse_types: List[str] = Field(default_factory=list)
+    # 비어 있으면 화면은 조문 없이 '먼저 들어볼 곳'만 보인다.
+    legal_references: List[KeyScanLegalReference] = Field(default_factory=list)
 
 
 class KeyScanResponse(BaseModel):
-    """1차 모델 스캔으로 고른 '먼저 들어볼 곳'. 판정이 아니다. status 는 DONE · FAILED · SKIPPED."""
+    """1차 모델 스캔으로 고른 '먼저 들어볼 곳'. 판정이 아니다.
+    status: DONE · FAILED · SKIPPED, 그리고 원문 수정 뒤 저장한 원문으로 다시 스캔하는 중인 REFRESHING(끝나면 DONE · FAILED).
+    scanned_version 은 segments 를 만든 원문 version(REFRESHING · 다시 스캔 실패면 직전 version), started_at 은 REFRESHING 시작 시각."""
 
-    status: Literal["DONE", "FAILED", "SKIPPED"]
+    status: Literal["DONE", "FAILED", "SKIPPED", "REFRESHING"]
     model: Optional[str] = None
     segments: List[KeyScanSegment] = Field(default_factory=list)
+    scanned_version: Optional[int] = None
+    started_at: Optional[datetime] = None
 
 
 class ChildHandoffSegment(BaseModel):

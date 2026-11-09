@@ -175,6 +175,32 @@ def test_report_compares_the_rules_on_the_same_scores(tmp_path):
     assert out.read_text(encoding="utf-8") == report
 
 
+def test_law_gate_keeps_only_pairs_over_the_similarity():
+    picks = {"seg_002": ["신체학대"], "seg_003": ["신체학대", "방임"], "seg_004": ["정서학대"]}
+    similarity = {
+        "seg_002": {"신체학대": {"score": 0.2, "excerpt": "x"}},
+        "seg_003": {"신체학대": {"score": 0.7, "excerpt": "허리띠로 맞았어요"}, "방임": {"score": 0.4, "excerpt": "y"}},
+    }
+
+    assert ev.apply_law_gate(picks, similarity, 0.45) == {"seg_003": ["신체학대"]}
+    assert ev.apply_law_gate(picks, similarity, 0.0) == {"seg_002": ["신체학대"], "seg_003": ["신체학대", "방임"]}  # 유사도 없는 발화(seg_004)는 뺀다
+    assert ev.apply_law_gate(picks, {}, 0.45) == {}
+
+
+def test_report_adds_law_gate_rows_when_similarity_was_recorded():
+    # 지금 설정(top1)은 seg_003 에 신체를 붙인다. 유사도가 0.3 이면 게이트 0.45 에서 조문이 빠져 TP 0 · FN 2 가 된다.
+    record = {**RECORD, "law_similarity": {"seg_003": {"신체학대": {"score": 0.3, "excerpt": "x"}}}}
+
+    report = ev.evaluate([record], LABELS, thresholds=(0.4,), production=kr.ScanConfig(), law_thresholds=(0.25, 0.45))
+
+    assert "| 지금 설정 + 조문 게이트 0.25 | 1 | 1 | 0 | 1 |" in report
+    assert "| 지금 설정 + 조문 게이트 0.45 | 0 | 0 | 0 | 2 |" in report
+    assert "유사도가 있는 전사본 1/1개" in report
+
+    # 유사도를 적지 않은 점수면 게이트 행이 없다.
+    assert "조문 게이트" not in ev.evaluate([RECORD], LABELS, thresholds=(0.4,), production=kr.ScanConfig())
+
+
 def test_score_record_drops_the_utterance_text():
     collected = {
         "seconds": {"chunk": 1.0, "line": 0.2},

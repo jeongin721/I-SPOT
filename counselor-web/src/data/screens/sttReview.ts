@@ -48,7 +48,7 @@ import type { LegalReference, RiskUtterance } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import { formatClock } from "../time";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
-import type { TranscriptReviewState } from "../useTranscriptReview";
+import type { KeyScanReference, TranscriptReviewState } from "../useTranscriptReview";
 import type { AudioPlayerState } from "../useAudioPlayer";
 import type { VoiceMarksState } from "../useVoiceMarks";
 import { marksBySegment, reasonLabel, type SegmentMarks, type VoiceCue, voiceMarksSummary } from "../voiceMarkRows";
@@ -76,11 +76,14 @@ export interface LawLine {
   url: string | null;
   /** 임시 조문이면 덧말(원문 확정 전 1차 모델 유형으로 고른 것). AI 분석 결과의 조문은 없음. */
   tmp?: string;
+  /** 왜 이 조문인지 — 발화와 닮은 행위 예시(2026-11-09, key_scan legal_references.excerpt). 없으면 빈 값. */
+  why?: string;
 }
 
 /**
  * 1차 임시 핵심 발화 유형 → 아동복지법 제17조 해당 호(2026-11-03). 문구는 법령 · 매뉴얼 화면(lawGuideRefs.ts 의 cw17)과 같고,
  * AI 분석의 조문 연결(ai/modeling/abuse/legal_reference_adapter.py)도 유형마다 이 호(신체 3 · 정서 5 · 성 2 · 방임 6)를 고른다.
+ * 2026-11-09 부터 서버가 발화마다 legal_references 를 주므로, 이 표는 그 칸이 없는 예전 결과에만 쓴다.
  */
 const KEY_SCAN_ARTICLES: Record<string, { art: string; sum: string }> = {
   PHYSICAL: { art: "제17조 제3호", sum: "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위" },
@@ -95,23 +98,58 @@ const KEY_SCAN_ARTICLES: Record<string, { art: string; sum: string }> = {
   },
 };
 
-/** 1차 임시 핵심 발화(key_scan)의 발화별 유형 → 발화 ID 별 임시 관련 조문. 모르는 유형은 건너뛴다. */
-export function keyScanLaws(keyTypes: Record<string, string[]>): Map<string, LawLine[]> {
+/** 서버가 준 임시 조문 하나 → 줄. 법령 이름 · 조문이 없으면 null. 국가법령정보센터 주소만 링크로 쓴다. */
+function keyScanLineFromReference(reference: KeyScanReference): LawLine | null {
+  if (!isLegalReference(reference)) return null;
+  const type = typeof reference.abuse_type === "string" ? reference.abuse_type : "";
+  const itemLabel = typeof reference.item_label === "string" ? reference.item_label : "";
+  const art = [reference.article, itemLabel].filter(Boolean).join(" ");
+  const url = typeof reference.portal_url === "string" ? reference.portal_url : "";
+  const excerpt = typeof reference.excerpt === "string" ? reference.excerpt.trim() : "";
+  return {
+    key: `tmp|${type || "관련"}|${reference.law_name}|${art}`,
+    sig: LAW_TYPE_LABELS[type] ?? "관련",
+    law: reference.law_name,
+    art,
+    sum: typeof reference.text === "string" ? reference.text : "",
+    url: url.startsWith("https://www.law.go.kr/") ? url : null,
+    tmp: "임시 · 1차 모델",
+    why: excerpt ? `닮은 예시 "${excerpt}"` : "",
+  };
+}
+
+/**
+ * 1차 임시 핵심 발화(key_scan)의 발화별 유형 · 조문 → 발화 ID 별 임시 관련 조문.
+ * 서버가 발화마다 legal_references 를 줬으면(2026-11-09) 그것만 — 발화 글이 그 유형의 행위 예시와 닮을 때만 들어 있고,
+ * 비어 있으면 조문 없이 '먼저 들어볼 곳'으로만 남는다. 그 칸이 없는 예전 결과는 유형 → 제17조 호 고정 표. 모르는 유형은 건너뛴다.
+ */
+export function keyScanLaws(
+  keyTypes: Record<string, string[]>,
+  keyLaws: Record<string, KeyScanReference[] | undefined> = {},
+): Map<string, LawLine[]> {
   const bySegment = new Map<string, LawLine[]>();
   for (const [segmentId, types] of Object.entries(keyTypes)) {
+    const references = keyLaws[segmentId];
     const lines: LawLine[] = [];
-    for (const type of types) {
-      const article = KEY_SCAN_ARTICLES[type];
-      if (!article || lines.some((line) => line.key === `tmp|${type}`)) continue;
-      lines.push({
-        key: `tmp|${type}`,
-        sig: LAW_TYPE_LABELS[type] ?? "관련",
-        law: LAW_SOURCES.cw[0],
-        art: article.art,
-        sum: article.sum,
-        url: LAW_SOURCES.cw[1],
-        tmp: "임시 · 1차 모델",
-      });
+    if (Array.isArray(references)) {
+      for (const reference of references) {
+        const line = keyScanLineFromReference(reference);
+        if (line && !lines.some((item) => item.key === line.key)) lines.push(line);
+      }
+    } else {
+      for (const type of types) {
+        const article = KEY_SCAN_ARTICLES[type];
+        if (!article || lines.some((line) => line.key === `tmp|${type}`)) continue;
+        lines.push({
+          key: `tmp|${type}`,
+          sig: LAW_TYPE_LABELS[type] ?? "관련",
+          law: LAW_SOURCES.cw[0],
+          art: article.art,
+          sum: article.sum,
+          url: LAW_SOURCES.cw[1],
+          tmp: "임시 · 1차 모델",
+        });
+      }
     }
     if (lines.length > 0) bySegment.set(segmentId, lines);
   }
@@ -342,7 +380,7 @@ export function sttReviewValues(input: SttScreenInput) {
   // 판정이 아니라 다시 들어 볼 곳의 참고이며, 원문을 확정하고 분석이 끝나면 분석 결과의 조문으로 바뀐다.
   const tmpLaws = !analysis.analysis && review.info && !review.info.confirmed;
   const laws = tmpLaws
-    ? keyScanLaws(review.info?.keyTypes ?? {})
+    ? keyScanLaws(review.info?.keyTypes ?? {}, review.info?.keyLaws ?? {})
     : lawsBySegment(analysis.analysis?.riskUtterances ?? []);
   const markMap = marksBySegment(voice.marks);
   const markSummary = voiceMarksSummary(voice.marks, review.info?.version ?? null, voice.waiting);
@@ -686,8 +724,18 @@ export function sttReviewValues(input: SttScreenInput) {
       : "녹음 파일이 없어 다시 듣기를 할 수 없습니다.",
     cueNote: [voice.error ?? markSummary.text, markSummary.versionNote, CUE_LIMITS].filter(Boolean).join(" "),
     lawNote: tmpLaws
-      ? "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화에 '임시' 관련 조문을 표시합니다. 원문을 확정하고 AI 분석이 끝나면 " +
-        "분석 결과의 조문으로 바뀝니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다."
+      ? [
+          review.info?.keyScanStatus === "REFRESHING"
+            ? "저장한 원문으로 임시 조문을 다시 고르는 중입니다(지금 보이는 것은 저장 전 결과)."
+            : review.info?.keyScanStatus === "FAILED"
+              ? "저장한 원문으로 다시 고르지 못해 저장 전 결과를 보입니다."
+              : "",
+          "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화 가운데 그 유형의 행위 예시와 닮은 발화에만 '임시' 관련 조문을 " +
+            "표시하고, 닮은 예시를 함께 보입니다. 원문을 저장하면 저장한 원문으로 다시 고릅니다. 원문을 확정하고 AI 분석이 끝나면 " +
+            "분석 결과의 조문으로 바뀝니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
+        ]
+          .filter(Boolean)
+          .join(" ")
       : "학대 유형이 감지된 발화에 관련 조문을 표시합니다(AI 분석이 끝난 뒤). 원문보기를 누르면 국가법령정보센터에서 " +
         "조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
     error: review.error,

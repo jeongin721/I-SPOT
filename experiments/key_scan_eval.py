@@ -10,7 +10,9 @@
                비우면 '조문 붙일 것 없음', ? 는 모름(측정에서 뺌).
   2) score     전사본 → 점수(JSONL). 1차 모델을 한 번만 돌려 덩어리 · 줄 확률을 모두 적는다(줄 판정 상한 없이).
                --self-check N 은 처음 N 줄을 한 줄씩 다시 판정해 묶음 판정과 확률이 같은지 확인한다.
+               임시 조문 매칭 모델(law_match)이 있으면 아동 줄마다 유형별 유사도(닮은 예시)도 적는다.
   3) evaluate  점수 + 라벨 → 규칙 · 임계값 조합별 정밀도 · 재현율(마크다운 표). 모델 없이 어디서나 돈다.
+               유사도가 있으면 '조문 게이트 τ'(--law-thresholds) 행 — 유형은 남기고 유사도 τ 미만인 조문만 뺀 셈이다.
 
 실행:
   python experiments/key_scan_eval.py sheet    --transcripts results/key_scan/transcripts/ --out results/key_scan/labels.csv
@@ -62,6 +64,8 @@ UNSURE = "?"
 #: 점수 단계는 줄 판정 상한 없이 모든 아동 줄을 적는다(evaluate 가 상한을 흉내 낼 수 있게).
 UNLIMITED = 10**9
 DEFAULT_THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
+#: 임시 조문 매칭(law_match) 유사도 게이트 후보(KEY_SCAN_LAW_MIN_SIMILARITY).
+DEFAULT_LAW_THRESHOLDS = (0.35, 0.45, 0.55)
 
 
 # ---------------------------------------------------------------------------
@@ -185,14 +189,22 @@ def write_sheet(transcripts: Iterable[tuple[str, dict]], out: Path) -> int:
 # ---------------------------------------------------------------------------
 
 
-def score_record(transcript_id: str, contract: dict, collected: dict, scan_seconds: float) -> dict:
-    """quick_risk_scan 의 collect 결과 → 저장할 기록(원문 글은 뺀다 — 시트와 발화 번호로 잇는다)."""
+def score_record(
+    transcript_id: str,
+    contract: dict,
+    collected: dict,
+    scan_seconds: float,
+    law_similarity: dict[str, dict[str, dict[str, Any]]] | None = None,
+) -> dict:
+    """quick_risk_scan 의 collect 결과 → 저장할 기록(원문 글은 뺀다 — 시트와 발화 번호로 잇는다).
+    law_similarity: {발화 번호: {유형: {"score", "excerpt"}}} — excerpt 는 앵커 문장이지 원문이 아니다."""
 
     return {
         "transcript_id": transcript_id,
         "scan_seconds": round(scan_seconds, 3),
         "seconds": collected.get("seconds", {}),
         "scored_lines": sum(len(chunk.get("inputs") or []) for chunk in collected.get("chunks", [])),
+        "law_similarity": law_similarity or {},
         "chunks": [
             {
                 "chunk_index": chunk["chunk_index"],
@@ -205,6 +217,37 @@ def score_record(transcript_id: str, contract: dict, collected: dict, scan_secon
     }
 
 
+def _law_matcher():
+    """임시 조문 매칭(law_match) — 모델을 올릴 수 있으면 매처, 아니면 None(유사도 없이 진행)."""
+
+    from ai.modeling.abuse import law_match
+
+    matcher = law_match.get_matcher()
+    if not matcher.enabled:
+        print("임시 조문 매칭이 꺼져 있어(KEY_SCAN_LAW_MATCH=off) 유사도는 적지 않습니다.")
+        return None
+    if not matcher.ready():
+        print("임시 조문 매칭 모델을 올리지 못해 유사도는 적지 않습니다(KEY_SCAN_LAW_EMBED_MODEL · HF 캐시 확인).")
+        return None
+    return matcher
+
+
+def law_similarity_for(contract: dict, matcher) -> dict[str, dict[str, dict[str, Any]]]:
+    """아동 발화마다 유형별 최고 유사도 · 닮은 예시(앵커 문장). 매처가 없으면 빈 dict."""
+
+    if matcher is None:
+        return {}
+    result: dict[str, dict[str, dict[str, Any]]] = {}
+    for segment in contract.get("segments") or []:
+        if not isinstance(segment, dict) or segment.get("speaker") not in SHEET_SPEAKERS:
+            continue
+        text = str(segment.get("text") or "").strip()
+        similarity = matcher.similarities(text) if text else None
+        if similarity:
+            result[str(segment.get("segment_id") or "")] = similarity
+    return result
+
+
 def score_transcripts(transcripts: list[tuple[str, dict]], out: Path, self_check: int) -> None:
     # 모델(torch)은 여기서만 부른다 — sheet · evaluate 는 모델 없이 돈다.
     from ai.modeling.abuse.infer_abuse_v3_adapter import predict_major_types_detail
@@ -214,6 +257,7 @@ def score_transcripts(transcripts: list[tuple[str, dict]], out: Path, self_check
     out.parent.mkdir(parents=True, exist_ok=True)
     worst_gap = 0.0
     checked = 0
+    matcher = _law_matcher()
 
     with out.open("w", encoding="utf-8") as handle:
         for transcript_id, contract in transcripts:
@@ -222,7 +266,7 @@ def score_transcripts(transcripts: list[tuple[str, dict]], out: Path, self_check
             quick_risk_scan(contract, config=config, collect=collected.update)
             elapsed = time.monotonic() - started
 
-            record = score_record(transcript_id, contract, collected, elapsed)
+            record = score_record(transcript_id, contract, collected, elapsed, law_similarity_for(contract, matcher))
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             print(
                 f"{transcript_id}: 덩어리 {len(record['chunks'])}개 · 줄 {record['scored_lines']}개 · "
@@ -270,6 +314,22 @@ def replay(record: dict, config: kr.ScanConfig) -> dict[str, list[str]]:
             continue
         kr.merge_picks(picks, picked)
     return picks
+
+
+def apply_law_gate(
+    picks: dict[str, list[str]],
+    law_similarity: dict[str, dict[str, dict[str, Any]]],
+    threshold: float,
+) -> dict[str, list[str]]:
+    """조문 게이트 — 유형은 남지만 화면 조문은 유사도 ≥ τ 인 (발화, 유형)에만 붙는다. 그 조문만 '붙인 것'으로 센다."""
+
+    gated: dict[str, list[str]] = {}
+    for segment_id, types in picks.items():
+        scores = law_similarity.get(segment_id) or {}
+        kept = [label for label in types if float((scores.get(label) or {}).get("score", -1.0)) >= threshold]
+        if kept:
+            gated[segment_id] = kept
+    return gated
 
 
 def _rates(counts: Counter) -> dict[str, float]:
@@ -351,6 +411,7 @@ def evaluate(
     labels: dict[tuple[str, str], set[str] | None],
     thresholds: Iterable[float] = DEFAULT_THRESHOLDS,
     production: kr.ScanConfig | None = None,
+    law_thresholds: Iterable[float] = DEFAULT_LAW_THRESHOLDS,
 ) -> str:
     production = production or kr.scan_config()
     unsure = sum(1 for gold in labels.values() if gold is None)
@@ -384,6 +445,30 @@ def evaluate(
             f"| {name} | {metrics['chips']} | {micro['tp']} | {micro['fp']} | {micro['fn']} | {_pct(micro['precision'])} | "
             f"{_pct(micro['recall'])} | {_pct(micro['f1'])} | {_pct(any_level['precision'])} | {_pct(any_level['recall'])} | "
             f"{metrics['unlabeled_chips']} |"
+        )
+
+    # 조문 게이트(law_match 유사도) — 점수에 유사도가 있는 전사본이 하나라도 있을 때. 유사도가 없는 전사본은 게이트 없이 그대로.
+    with_similarity = [record for record in records if record.get("law_similarity")]
+    if with_similarity:
+        base = {record["transcript_id"]: replay(record, production) for record in records}
+        for threshold in law_thresholds:
+            picks = {
+                transcript_id: apply_law_gate(base[transcript_id], record.get("law_similarity") or {}, threshold)
+                if record.get("law_similarity")
+                else base[transcript_id]
+                for transcript_id, record in ((record["transcript_id"], record) for record in records)
+            }
+            metrics = compute_metrics(picks, labels)
+            micro, any_level = metrics["micro"], metrics["any"]
+            out.append(
+                f"| 지금 설정 + 조문 게이트 {threshold} | {metrics['chips']} | {micro['tp']} | {micro['fp']} | {micro['fn']} | "
+                f"{_pct(micro['precision'])} | {_pct(micro['recall'])} | {_pct(micro['f1'])} | {_pct(any_level['precision'])} | "
+                f"{_pct(any_level['recall'])} | {metrics['unlabeled_chips']} |"
+            )
+        out.append("")
+        out.append(
+            f"- 조문 게이트: 유형(먼저 들어볼 곳)은 그대로 두고 유사도(law_match)가 τ 미만인 조문만 뺀 것으로 셈 — "
+            f"KEY_SCAN_LAW_MIN_SIMILARITY 후보. 유사도가 있는 전사본 {len(with_similarity)}/{len(records)}개."
         )
 
     name, _, metrics = results[0]
@@ -446,6 +531,9 @@ def main(argv: list[str] | None = None) -> int:
     evaluate_cmd.add_argument("--scores", required=True, type=Path)
     evaluate_cmd.add_argument("--labels", required=True, type=Path)
     evaluate_cmd.add_argument("--thresholds", type=_thresholds, default=DEFAULT_THRESHOLDS, help="쉼표로 나눈 줄 임계값들")
+    evaluate_cmd.add_argument(
+        "--law-thresholds", type=_thresholds, default=DEFAULT_LAW_THRESHOLDS, help="쉼표로 나눈 조문 게이트 유사도 후보"
+    )
     evaluate_cmd.add_argument("--out", type=Path, default=None, help="보고서 파일(없으면 화면에만)")
 
     args = parser.parse_args(argv)
@@ -459,7 +547,7 @@ def main(argv: list[str] | None = None) -> int:
         score_transcripts(load_transcripts(args.transcripts), args.out, args.self_check)
         return 0
 
-    report = evaluate(load_records(args.scores), load_labels(args.labels), args.thresholds)
+    report = evaluate(load_records(args.scores), load_labels(args.labels), args.thresholds, law_thresholds=args.law_thresholds)
     print(report)
     if args.out is not None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
