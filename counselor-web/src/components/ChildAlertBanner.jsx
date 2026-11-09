@@ -9,15 +9,16 @@ import { CHILD_ALERTS_CHANGED, CHILD_ALERT_TEXT } from '../data/useCaseChildApp'
 import { useRemote } from '../data/useRemote';
 
 const REFRESH_MS = 30_000;
-// 서버 스위치가 꺼져 있으면(503) 새로고침 전까지 다시 묻지 않는다.
-let switchedOff = false;
+// 서버 스위치가 꺼져 있으면 잠시 묻지 않는다. 켠 뒤 열려 있던 탭도 알림을 받도록 5분 뒤 다시 묻는다.
+const OFF_RETRY_MS = 5 * 60_000;
+let offUntil = 0;
 
 const loadAlerts = () =>
-  switchedOff
+  Date.now() < offUntil
     ? Promise.resolve([])
     : childApp.openAlerts().catch((caught) => {
-        if (caught?.status !== 503) throw caught;
-        switchedOff = true;
+        if (caught?.code !== 'CHILD_APP_DISABLED') throw caught;
+        offUntil = Date.now() + OFF_RETRY_MS;
         return [];
       });
 
@@ -29,7 +30,7 @@ export default function ChildAlertBanner({ session }) {
   useEffect(() => {
     if (!userId) return undefined;
     const timer = window.setInterval(() => {
-      if (!switchedOff) refresh();
+      if (Date.now() >= offUntil) refresh();
     }, REFRESH_MS);
     window.addEventListener(CHILD_ALERTS_CHANGED, refresh);
     return () => {

@@ -490,3 +490,20 @@ def test_text_is_kept_when_chip_also_selected(client: TestClient, counselor_head
     assert _open(client, counselor_headers)[0]["reason"] == "CONTACT_REQUEST"
     item = _view(client, counselor_headers, case["id"])["feed"][0]["payload"]["items"][0]
     assert item["answer"] == "할 말 있어요 · 전화로 연락받고 싶어요"
+
+
+def test_hard_to_answer_chip_keeps_written_text(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["free", "home", "meal"],
+            [{"question_id": "free", "text": "말하기 무서워요", "chip": "답하기 어려워요"}, *_skips("home", "meal")])
+    assert [item["reason"] for item in _open(client, counselor_headers)] == ["TEXT_ANSWER"]
+    item = _view(client, counselor_headers, case["id"])["feed"][0]["payload"]["items"][0]
+    assert item["answer"] == "말하기 무서워요 · 답하기 어려워요"
+
+
+def test_hard_to_answer_chip_alone_is_skip(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["free", "home", "meal"],
+            [{"question_id": "free", "chip": "답하기 어려워요"}, *_skips("home", "meal")])
+    assert _open(client, counselor_headers) == []
+    assert _view(client, counselor_headers, case["id"])["feed"][0]["payload"]["items"][0]["level"] == "SKIP"

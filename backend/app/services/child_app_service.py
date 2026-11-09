@@ -498,10 +498,11 @@ def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]
         if answer.chip is not None and answer.chip not in question["chips"]:
             raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 답이 들어 있습니다.")
 
-        if answer.skipped or answer.chip == SKIP_TEXT:
-            return skip
-
         text = (answer.text or "").strip()
+
+        # 글을 함께 썼으면 '답하기 어려워요' 칩이어도 글을 남긴다.
+        if answer.skipped or (answer.chip == SKIP_TEXT and not text):
+            return skip
 
         shown = " · ".join(part for part in (text, answer.chip) if part) or "(비워 둠)"
 
