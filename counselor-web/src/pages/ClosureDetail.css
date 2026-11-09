@@ -173,3 +173,7 @@
   background: #2c2b27 !important;
   color: #ece8df !important;
 }
+
+/* 학대유형 'AI 신호' 칩은 화면에만, 내보내기(인쇄)에는 '—'(민규 #140 교차검증 11/05) */
+.pg-ClosureDetail .print-only{display:none}
+@media print{.pg-ClosureDetail .no-print{display:none !important}.pg-ClosureDetail .print-only{display:inline !important}}

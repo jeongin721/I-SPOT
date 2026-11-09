@@ -53,6 +53,14 @@ class GuardianType(str, Enum):
     OTHER = "OTHER"                # 기타(guardian_note 에 직접 입력)
 
 
+class SessionSource(str, Enum):
+    """회차 자료(2026-11-02). AUDIO: 녹음 → 원문 검수 → AI 분석(1~4단계). DOCUMENT: 상담사가 쓴 상담 기록 문서를 올려
+    3(상담 요약 · 상담 일지) · 4(다음 상담 준비)단계만 쓴다 — 음성 · 전사본 · AI 분석이 없다(API_CONTRACT 21절)."""
+
+    AUDIO = "AUDIO"
+    DOCUMENT = "DOCUMENT"
+
+
 class ChildActionResult(str, Enum):
     """
     조치결과 · 피해아동(서식 4 ①, 2026-11-05).
@@ -301,6 +309,19 @@ class FollowupQuestionSource(str, Enum):
     COUNSELOR = "COUNSELOR"
 
 
+class CaseFormType(str, Enum):
+    """기관 서식 종류(2026-11-02, 탭 5 › 기관 서식 작성 디자인). 사례 단위로 차수마다 한 행을 쓴다."""
+
+    # 사정기록지 안전영역(서식 6)
+    SAFETY_ASSESSMENT = "SAFETY_ASSESSMENT"
+    # 사례관리 점검표(서식 27)
+    MANAGEMENT_CHECKLIST = "MANAGEMENT_CHECKLIST"
+    # 아동학대 위험수준별 개입 사정 척도(참고자료 3 · 43문항)
+    RISK_SCALE = "RISK_SCALE"
+    # 축약형 가족관계 척도(참고자료 1 · 15문항)
+    FAMILY_SCALE = "FAMILY_SCALE"
+
+
 class ScheduleKind(str, Enum):
     """일정 종류(2026-11-02, 일정 디자인). 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시)."""
 
@@ -380,10 +401,17 @@ class AuditAction(str, Enum):
     FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
     # 다음 상담 체크리스트 만들기 · 다시 만들기 요청(19절, 2026-10-30). detail 에는 provider · 시도 번호만 남긴다(문장은 넣지 않는다).
     FOLLOWUP_CHECKLIST_REQUESTED = "FOLLOWUP_CHECKLIST_REQUESTED"
+    # 상담 기록 문서(2026-11-02). detail 에는 형식 · 글자 수 · 채운 칸 이름만 남긴다(문서 글은 넣지 않는다).
+    SOURCE_DOCUMENT_UPLOADED = "SOURCE_DOCUMENT_UPLOADED"
+    DOCUMENT_FOLLOWUPS_DRAFTED = "DOCUMENT_FOLLOWUPS_DRAFTED"
     # 일정(2026-11-02). detail 에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 넣지 않는다).
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
     SCHEDULE_DELETED = "SCHEDULE_DELETED"
+    # 기관 서식(2026-11-02). detail 에는 서식 종류 · 차수만 남긴다(칸 값 · 소견 글은 넣지 않는다).
+    CASE_FORM_CREATED = "CASE_FORM_CREATED"
+    CASE_FORM_UPDATED = "CASE_FORM_UPDATED"
+    CASE_FORM_CONFIRMED = "CASE_FORM_CONFIRMED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

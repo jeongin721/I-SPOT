@@ -18,6 +18,7 @@
 // '종결 검토 등록'(10/30): 등록 · 취소를 서버에 저장하고 등록됨 · 등록일 · '종결 검토 보기' 를 보인다(디자인의 '초안 생성 중' 은
 // 종결 요약 AI 가 아직 없어 쓰지 않는다).
 // 녹음하기 창의 주인 · 버리기 규칙은 data/useRecordFlow.ts(상담 이력 · 문서함과 같이 쓴다).
+// '기관 서식' 카드(11/02): 칩은 사례관리 점검표 작성 기록(useCaseForms), '기관 서식 작성' 은 점검표(CaseForm ?form=B)로 간다.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -31,6 +32,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseForms } from '../data/useCaseForms';
 import { usePersonalInfo } from '../data/usePersonalInfo';
 import { latestAnalyzedSession, useCaseSignals } from '../data/useCaseSignals';
 import { useFollowupChecklist } from '../data/useFollowupChecklist';
@@ -38,6 +40,7 @@ import { useFollowupChecks } from '../data/useFollowupChecks';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
+import { formsCardValues } from '../data/screens/caseForm';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { readScreenIds } from '../data/screens/links';
@@ -76,6 +79,7 @@ export default function CaseDetail(props) {
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
   const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
   const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId });
+  const formsCard = formsCardValues(useCaseForms(caseId, { enabled: signedIn(session) }), caseId);
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
@@ -585,8 +589,8 @@ export default function CaseDetail(props) {
             style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <b style={{ flex: '1 1 200px' }}>기관 서식</b>
-            <span className="chip c-check">{v.formsChip}</span>
-            <A className="btn btn-p" to={v.formsHref}>
+            <span className="chip c-check">{formsCard.chip}</span>
+            <A className="btn btn-p" to={formsCard.href}>
               기관 서식 작성
             </A>
           </section>
