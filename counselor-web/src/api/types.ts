@@ -1757,6 +1757,7 @@ export interface ChildAppEvent {
   level: "NONE" | "SKIP" | "AMBER" | "RED";
   payload: Record<string, any>;
   created_at: string;
+  needs_ack: boolean;
   acknowledged_at: string | null;
 }
 
@@ -1765,6 +1766,7 @@ export interface ChildOpenAlert {
   case_id: string;
   child_alias: string;
   case_number: string;
+  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "NEEDS_CHECK";
   created_at: string;
 }
 

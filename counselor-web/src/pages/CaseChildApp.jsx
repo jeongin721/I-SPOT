@@ -7,7 +7,7 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCarryHref } from '../data/useCarryHref';
-import { useCaseChildApp } from '../data/useCaseChildApp';
+import { CHILD_ALERT_TEXT, useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useTheme } from '../theme';
 import './CaseApp.css';
@@ -34,6 +34,7 @@ function FeedItem({ event }) {
         <b>급하다고 알림</b>
         <span className="note">
           {dateTime(event.created_at)}
+          {event.payload.repeat_count ? ` · ${event.payload.repeat_count}번 더 누름` : ''}
           {event.acknowledged_at ? ` · 확인 ${dateTime(event.acknowledged_at)}` : ' · 확인 전'}
         </span>
       </div>
@@ -52,7 +53,10 @@ function FeedItem({ event }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
         <LevelChip level={event.level} />
         <b>질문 답변</b>
-        <span className="note">{dateTime(event.created_at)}</span>
+        <span className="note">
+          {dateTime(event.created_at)}
+          {event.needs_ack ? (event.acknowledged_at ? ` · 확인 ${dateTime(event.acknowledged_at)}` : ' · 확인 전') : ''}
+        </span>
       </div>
       {event.payload.items.map((item) => (
         <div key={item.question_id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '4px 16px' }}>
@@ -133,7 +137,7 @@ export default function CaseChildApp({ caseId }) {
                   <div style={{ flex: '1 1 320px' }}>
                     <b style={{ color: '#B0452C' }}>긴급 · {dateTime(alert.created_at)}</b>
                     <br />
-                    아이가 "급하다고 알리기"를 보냈어요. 아이의 안전을 고려해 연락 방법을 판단해 주세요.
+                    {CHILD_ALERT_TEXT[alert.reason]} 아이의 안전을 고려해 연락 방법을 판단해 주세요.
                   </div>
                   <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
                     확인했어요
@@ -145,7 +149,11 @@ export default function CaseChildApp({ caseId }) {
                 {data.status === 'LINKED' ? (
                   <div className="sub">
                     연결 {dateTime(data.linked_at)} · 마지막 응답 {dateTime(data.last_response_at)}
+                    <br />
+                    아이 앱에 다음 상담 날짜 · 시간이 보여요. 장소는 정기 · 초기 · 종결 상담만 보여요.
                   </div>
+                ) : !data.can_read_feed ? (
+                  <div className="sub">코드는 담당 상담사가 만들어요.</div>
                 ) : (
                   <>
                     <div className="sub">코드를 만들어 아이에게 직접 알려 주세요. 코드는 72시간 동안, 한 번만 쓸 수 있어요.</div>
@@ -174,7 +182,7 @@ export default function CaseChildApp({ caseId }) {
                 <p className="note">아이가 보낸 내용은 담당 상담사만 볼 수 있어요.</p>
               )}
 
-              {data.status === 'LINKED' ? (
+              {data.status === 'LINKED' && data.can_read_feed ? (
                 <section className="card" aria-label="질문 보내기" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <h2 className="h2">질문 보내기 · {picked.length}개 선택 (3~4개)</h2>
                   {data.bank.map((item) => (

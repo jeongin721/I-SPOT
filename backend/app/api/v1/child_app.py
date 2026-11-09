@@ -27,9 +27,10 @@ from app.schemas.child_app import (
 from app.services import child_app_service
 from app.services.access import get_case_or_404
 
-device_router = APIRouter(prefix="/child-app", tags=["child-app"])
-case_router = APIRouter(prefix="/cases", tags=["child-app"])
-staff_router = APIRouter(prefix="/child-app-alerts", tags=["child-app"])
+_enabled = [Depends(child_app_service.ensure_enabled)]
+device_router = APIRouter(prefix="/child-app", tags=["child-app"], dependencies=_enabled)
+case_router = APIRouter(prefix="/cases", tags=["child-app"], dependencies=_enabled)
+staff_router = APIRouter(prefix="/child-app-alerts", tags=["child-app"], dependencies=_enabled)
 
 
 def _current_link(

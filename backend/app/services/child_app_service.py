@@ -20,9 +20,11 @@ from app.core.enums import (
     ChildAppEventKind,
     ChildAppLinkStatus,
     ChildQuestionSetStatus,
+    ScheduleConsultType,
     ScheduleKind,
 )
-from app.core.errors import APIError, ErrorCode, bad_request, conflict, not_found, unauthorized
+from app.core.config import settings
+from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found, unauthorized
 from app.models.case import Case
 from app.models.child_app import ChildAppEvent, ChildAppLink, ChildQuestionSet
 from app.models.schedule import ScheduleEvent
@@ -36,8 +38,7 @@ CODE_TTL = timedelta(hours=72)
 LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
 OPEN_ALERT_LIMIT = 50
-# 네트워크 재시도 · 연달아 누름이 알림을 여러 건 만들지 않게 묶는 시간.
-ALERT_DEDUPE = timedelta(seconds=60)
+CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
 SKIP_TEXT = "답하기 어려워요"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
 
@@ -61,7 +62,7 @@ QUESTION_BANK: List[Dict[str, Any]] = [
     {"id": "week", "category": "마음", "type": "scale", "text": "이번 주 기분은 전반적으로 어땠나요?", "short": "이번 주 기분",
      "options": ["좋았어요", "괜찮았어요", "보통이었어요", "힘들었어요", "많이 힘들었어요"], "faces": _SCALE_FACES, "flag": 3},
     {"id": "free", "category": "마음", "type": "text", "text": "상담 선생님께 더 전하고 싶은 말이 있나요?", "short": "전하고 싶은 말",
-     "chips": ["없어요", "만나서 이야기할게요", "전화로 연락받고 싶어요", SKIP_TEXT]},
+     "chips": ["없어요", "만나서 이야기할게요", CONTACT_REQUEST_CHIP, SKIP_TEXT]},
 ]
 _BANK_BY_ID = {item["id"]: item for item in QUESTION_BANK}
 
@@ -93,8 +94,20 @@ def _add_event(
     kind: ChildAppEventKind,
     payload: Dict[str, Any],
     level: ChildAnswerLevel = ChildAnswerLevel.NONE,
+    needs_ack: bool = False,
 ) -> None:
-    db.add(ChildAppEvent(case_id=case_id, kind=kind, level=level, payload=payload))
+    db.add(ChildAppEvent(case_id=case_id, kind=kind, level=level, payload=payload, needs_ack=needs_ack))
+
+
+def ensure_enabled() -> None:
+    if not settings.CHILD_APP_ENABLED:
+        raise APIError(ErrorCode.CHILD_APP_DISABLED, "아이 앱 기능이 꺼져 있습니다.", status_code=503)
+
+
+def _ensure_assigned(case: Case, user: User) -> None:
+    # 코드 발급 · 질문은 담당 상담사의 일이다. 관리자가 코드를 다시 만들면 상담사가 준 코드가 무효가 된다.
+    if case.counselor_id != user.id:
+        raise forbidden("담당 상담사만 할 수 있습니다.")
 
 
 def _ensure_active(case: Case) -> None:
@@ -113,6 +126,7 @@ def _link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optiona
 # =========================================================
 
 def create_invite(db: Session, case: Case, user: User, ip_address: Optional[str]) -> Dict[str, Any]:
+    _ensure_assigned(case, user)
     _ensure_active(case)
     link = _link_row(db, case.id, lock=True)
 
@@ -149,6 +163,7 @@ def send_questions(
     question_ids: List[str],
     ip_address: Optional[str],
 ) -> None:
+    _ensure_assigned(case, user)
     _ensure_active(case)
 
     if len(set(question_ids)) != len(question_ids) or any(item not in _BANK_BY_ID for item in question_ids):
@@ -213,7 +228,7 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         last_response_at=link.last_response_at if link else None,
         has_pending_questions=pending is not None,
         can_read_feed=can_read_feed,
-        open_alerts=_open_alerts(db, case_id=case.id),
+        open_alerts=_open_alerts(db, user, case_id=case.id),
         bank=[
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK
@@ -225,6 +240,7 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
                 "level": row.level.value,
                 "payload": row.payload,
                 "created_at": row.created_at,
+                "needs_ack": row.needs_ack,
                 "acknowledged_at": row.acknowledged_at,
             }
             for row in rows
@@ -232,8 +248,20 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
     )
 
 
+def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
+    if event.kind == ChildAppEventKind.ALERT:
+        return "ALERT"
+
+    # 담당이 아닌 관리자에게는 답의 성격을 알리지 않고 확인이 필요하다는 사실만 보인다.
+    if case.counselor_id != viewer.id:
+        return "NEEDS_CHECK"
+
+    return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else "CONTACT_REQUEST"
+
+
 def _open_alerts(
     db: Session,
+    viewer: User,
     *,
     case_id: Optional[uuid.UUID] = None,
     counselor_id: Optional[uuid.UUID] = None,
@@ -242,11 +270,12 @@ def _open_alerts(
         select(ChildAppEvent, Case)
         .join(Case, Case.id == ChildAppEvent.case_id)
         .where(
-            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.needs_ack.is_(True),
             ChildAppEvent.acknowledged_at.is_(None),
             Case.status == CaseStatus.ACTIVE,
         )
-        .order_by(ChildAppEvent.created_at)
+        # 최신부터. 상한을 넘어도 새 알림이 빠지지 않게 한다.
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
         .limit(OPEN_ALERT_LIMIT)
     )
 
@@ -262,6 +291,7 @@ def _open_alerts(
             "case_id": case.id,
             "child_alias": case.child_alias,
             "case_number": case.case_number,
+            "reason": _alert_reason(event, case, viewer),
             "created_at": event.created_at,
         }
         for event, case in db.execute(statement).all()
@@ -271,7 +301,7 @@ def _open_alerts(
 def list_open_alerts(db: Session, user: User) -> List[Dict[str, Any]]:
     """담당 상담사는 자기 사례, 관리자는 전체. 담당자가 자리에 없을 때 놓치지 않게 관리자에게도 보인다."""
 
-    return _open_alerts(db, counselor_id=None if user.is_admin else user.id)
+    return _open_alerts(db, user, counselor_id=None if user.is_admin else user.id)
 
 
 def acknowledge_alert(
@@ -286,7 +316,7 @@ def acknowledge_alert(
         .where(
             ChildAppEvent.id == alert_id,
             ChildAppEvent.case_id == case.id,
-            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.needs_ack.is_(True),
         )
         .with_for_update()
     )
@@ -325,16 +355,28 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
         .execution_options(populate_existing=True)
     )
     now = _utcnow()
-    latest = db.scalar(
+    # 확인 전 알림이 있으면 새 줄을 만들지 않고 횟수만 올린다. 한 기기가 목록을 채우지 못한다.
+    # 확인한 뒤에 보낸 알림은 시간과 상관없이 새 알림이다.
+    current = db.scalar(
         select(ChildAppEvent)
-        .where(ChildAppEvent.case_id == locked.case_id, ChildAppEvent.kind == ChildAppEventKind.ALERT)
+        .where(
+            ChildAppEvent.case_id == locked.case_id,
+            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.acknowledged_at.is_(None),
+        )
         .order_by(ChildAppEvent.created_at.desc())
         .limit(1)
     )
     locked.last_response_at = now
 
-    if latest is None or now - _aware(latest.created_at) >= ALERT_DEDUPE:
-        _add_event(db, locked.case_id, ChildAppEventKind.ALERT, {}, level=ChildAnswerLevel.RED)
+    if current is None:
+        _add_event(db, locked.case_id, ChildAppEventKind.ALERT, {}, level=ChildAnswerLevel.RED, needs_ack=True)
+    else:
+        current.payload = {
+            **current.payload,
+            "repeat_count": int(current.payload.get("repeat_count", 0)) + 1,
+            "last_at": now.isoformat(),
+        }
 
     db.commit()
 
@@ -405,7 +447,14 @@ def _next_consult(db: Session, case_id: uuid.UUID, today: date) -> Optional[Dict
     if event is None:
         return None
 
-    return {"date": event.event_date.isoformat(), "time": event.event_time, "place": event.place}
+    # 방문 · 전화 상담의 장소 칸은 집 주소나 메모일 수 있어 아이 기기로 보내지 않는다.
+    institutional = event.consult_type in (
+        ScheduleConsultType.REGULAR,
+        ScheduleConsultType.INITIAL,
+        ScheduleConsultType.CLOSING,
+    )
+
+    return {"date": event.event_date.isoformat(), "time": event.event_time, "place": event.place if institutional else None}
 
 
 def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
@@ -504,5 +553,13 @@ def submit_answers(
     row.status = ChildQuestionSetStatus.ANSWERED
     row.answered_at = now
     link.last_response_at = now
-    _add_event(db, link.case_id, ChildAppEventKind.ANSWERS, {"items": items}, level=worst)
+    wants_contact = any(item["answer"] == CONTACT_REQUEST_CHIP for item in items)
+    _add_event(
+        db,
+        link.case_id,
+        ChildAppEventKind.ANSWERS,
+        {"items": items},
+        level=worst,
+        needs_ack=worst == ChildAnswerLevel.RED or wants_contact,
+    )
     db.commit()

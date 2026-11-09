@@ -64,6 +64,7 @@ def upgrade() -> None:
     sa.Column('kind', sa.Enum('LINKED', 'QUESTIONS_SENT', 'ANSWERS', 'ALERT', name='child_app_event_kind', native_enum=False, length=20), nullable=False),
     sa.Column('level', sa.Enum('NONE', 'SKIP', 'AMBER', 'RED', name='child_answer_level', native_enum=False, length=10), nullable=False),
     sa.Column('payload', _json, nullable=False),
+    sa.Column('needs_ack', sa.Boolean(), server_default=sa.false(), nullable=False),
     sa.Column('acknowledged_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('acknowledged_by_id', sa.Uuid(), nullable=True),
     sa.ForeignKeyConstraint(['case_id'], ['cases.id'], ondelete='CASCADE'),

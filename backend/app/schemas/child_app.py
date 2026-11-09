@@ -85,6 +85,7 @@ class ChildAppEventResponse(BaseModel):
     level: str
     payload: Dict[str, Any]
     created_at: datetime
+    needs_ack: bool = False
     acknowledged_at: Optional[datetime] = None
 
 
@@ -97,6 +98,7 @@ class ChildOpenAlert(BaseModel):
     case_id: uuid.UUID
     child_alias: str
     case_number: str
+    reason: str
     created_at: datetime
 
 

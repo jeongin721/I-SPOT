@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models.child_app import ChildAppLink
 from app.services import signup_service
 from tests.conftest import create_case
@@ -17,7 +18,8 @@ Headers = Dict[str, str]
 
 
 @pytest.fixture(autouse=True)
-def _limits() -> Iterator[None]:
+def _limits(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setattr(settings, "CHILD_APP_ENABLED", True)
     signup_service.reset_limits()
     yield
     signup_service.reset_limits()
@@ -226,14 +228,14 @@ def test_closed_case_stops_device(client: TestClient, counselor_headers: Headers
 
 
 def test_next_consult_exposes_only_date_time_place(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
-    from app.core.enums import ScheduleKind
+    from app.core.enums import ScheduleConsultType, ScheduleKind
     from app.models.schedule import ScheduleEvent
     from app.models.user import User
 
     device = _linked(client, counselor_headers, case["id"])
     owner = db.scalar(select(User))
     today = datetime.now(timezone.utc).date() + timedelta(days=2)
-    db.add(ScheduleEvent(owner_id=owner.id, kind=ScheduleKind.CONSULT, case_id=uuid.UUID(case["id"]), title="비공개제목",
+    db.add(ScheduleEvent(owner_id=owner.id, kind=ScheduleKind.CONSULT, consult_type=ScheduleConsultType.REGULAR, case_id=uuid.UUID(case["id"]), title="비공개제목",
                          event_date=today, event_time="16:00", place="기관 상담실"))
     db.commit()
     response = client.get("/api/v1/child-app/home", headers=device)
@@ -302,23 +304,11 @@ def test_alert_reaches_counselor_and_admin_until_acknowledged(
     assert _open(client, counselor_headers) == [] and _open(client, admin_headers) == []
 
 
-def test_alert_retry_within_window_makes_one_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+def test_repeated_alert_while_open_makes_one_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
     device = _linked(client, counselor_headers, case["id"])
     _alert(client, device)
     _alert(client, device)
     assert len(_open(client, counselor_headers)) == 1
-
-
-def test_alert_after_window_makes_new_alert(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
-    from app.models.child_app import ChildAppEvent
-
-    device = _linked(client, counselor_headers, case["id"])
-    _alert(client, device)
-    row = db.scalar(select(ChildAppEvent).where(ChildAppEvent.kind == "ALERT"))
-    row.created_at = datetime.now(timezone.utc) - timedelta(seconds=61)
-    db.commit()
-    _alert(client, device)
-    assert len(_open(client, counselor_headers)) == 2
 
 
 def test_alert_scope_and_auth(
@@ -342,3 +332,106 @@ def test_ack_rejects_alert_of_other_case(client: TestClient, counselor_headers: 
     alert_id = _open(client, counselor_headers)[0]["id"]
     url = f"/api/v1/cases/{other['id']}/child-app/alerts/{alert_id}/ack"
     assert client.post(url, headers=counselor_headers).status_code == 404
+
+
+def _answer(client: TestClient, headers: Headers, device: Headers, case_id: str, ids, answers) -> None:
+    _send(client, headers, case_id, ids)
+    set_id = _home(client, device)["pending"]["id"]
+    response = client.post(f"/api/v1/child-app/question-sets/{set_id}/answers", json={"answers": answers}, headers=device)
+    assert response.status_code == 200, response.text
+
+
+def _skips(*ids) -> list:
+    return [{"question_id": q, "skipped": True} for q in ids]
+
+
+def test_red_answer_opens_alert_and_can_be_acknowledged(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
+            [{"question_id": "safe", "choice_index": 2}, *_skips("home", "meal")])
+    mine = _open(client, counselor_headers)
+    assert [item["reason"] for item in mine] == ["RED_ANSWER"]
+    assert [item["reason"] for item in _open(client, admin_headers)] == ["NEEDS_CHECK"]
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{mine[0]['id']}/ack"
+    assert client.post(url, headers=counselor_headers).status_code == 204
+    assert _open(client, counselor_headers) == []
+
+
+def test_contact_request_opens_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["free", "home", "meal"],
+            [{"question_id": "free", "chip": "전화로 연락받고 싶어요"}, *_skips("home", "meal")])
+    assert [item["reason"] for item in _open(client, counselor_headers)] == ["CONTACT_REQUEST"]
+
+
+def test_amber_answer_does_not_open_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
+            [{"question_id": "safe", "choice_index": 1}, *_skips("home", "meal")])
+    assert _open(client, counselor_headers) == []
+
+
+def test_alert_right_after_ack_is_new_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    first = _open(client, counselor_headers)[0]["id"]
+    client.post(f"/api/v1/cases/{case['id']}/child-app/alerts/{first}/ack", headers=counselor_headers)
+    _alert(client, device)
+    opened = _open(client, counselor_headers)
+    assert len(opened) == 1 and opened[0]["id"] != first
+
+
+def test_new_alert_visible_past_list_limit(client: TestClient, counselor_headers: Headers, monkeypatch) -> None:
+    from app.services import child_app_service
+
+    monkeypatch.setattr(child_app_service, "OPEN_ALERT_LIMIT", 2)
+    cases = [create_case(client, counselor_headers) for _ in range(3)]
+    for item in cases:
+        _alert(client, _linked(client, counselor_headers, item["id"]))
+    opened = _open(client, counselor_headers)
+    assert len(opened) == 2 and cases[2]["id"] in [row["case_id"] for row in opened]
+
+
+def test_unassigned_admin_cannot_invite_or_send(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    assert client.post(f"/api/v1/cases/{case['id']}/child-app/invite", headers=admin_headers).status_code == 403
+    _linked(client, counselor_headers, case["id"])
+    response = client.post(
+        f"/api/v1/cases/{case['id']}/child-app/question-sets",
+        json={"question_ids": ["sleep", "home", "safe"]},
+        headers=admin_headers,
+    )
+    assert response.status_code == 403
+
+
+def test_visit_consult_place_not_sent(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    from app.core.enums import ScheduleConsultType, ScheduleKind
+    from app.models.schedule import ScheduleEvent
+    from app.models.user import User
+
+    device = _linked(client, counselor_headers, case["id"])
+    owner = db.scalar(select(User))
+    db.add(ScheduleEvent(owner_id=owner.id, kind=ScheduleKind.CONSULT, consult_type=ScheduleConsultType.VISIT,
+                         case_id=uuid.UUID(case["id"]), event_date=datetime.now(timezone.utc).date() + timedelta(days=2),
+                         event_time="16:00", place="아이 집 주소"))
+    db.commit()
+    assert _home(client, device)["next_consult"]["place"] is None
+
+
+def test_switch_off_returns_503(client: TestClient, counselor_headers: Headers, case: dict, monkeypatch) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    monkeypatch.setattr(settings, "CHILD_APP_ENABLED", False)
+    for method, url, headers in [
+        ("post", "/api/v1/child-app/link", {}),
+        ("get", "/api/v1/child-app/home", device),
+        ("post", "/api/v1/child-app/alerts", device),
+        ("get", "/api/v1/child-app-alerts/open", counselor_headers),
+        ("get", f"/api/v1/cases/{case['id']}/child-app", counselor_headers),
+        ("post", f"/api/v1/cases/{case['id']}/child-app/invite", counselor_headers),
+    ]:
+        response = getattr(client, method)(url, headers=headers)
+        assert response.status_code == 503, url
+        assert response.json()["error"]["code"] == "CHILD_APP_DISABLED"

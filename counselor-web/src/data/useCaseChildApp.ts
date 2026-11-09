@@ -8,6 +8,13 @@ import { errorMessage, useRemote } from "./useRemote";
 
 const REFRESH_MS = 30_000;
 /** 확인 처리 뒤 위쪽 긴급 배너를 바로 다시 받게 알린다. */
+export const CHILD_ALERT_TEXT = {
+  ALERT: "아이가 급하다고 알렸어요.",
+  RED_ANSWER: "아이 답변에 바로 확인할 내용이 있어요.",
+  CONTACT_REQUEST: "아이가 연락을 요청했어요.",
+  NEEDS_CHECK: "아이 앱에서 확인이 필요한 알림이 왔어요.",
+} as const;
+
 export const CHILD_ALERTS_CHANGED = "ispot:child-alerts-changed";
 
 export function useCaseChildApp(caseId: string | null, enabled: boolean) {

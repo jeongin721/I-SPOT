@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import A from './A';
 import { childApp } from '../api/endpoints';
 import { screenHref } from '../data/screens/links';
-import { CHILD_ALERTS_CHANGED } from '../data/useCaseChildApp';
+import { CHILD_ALERTS_CHANGED, CHILD_ALERT_TEXT } from '../data/useCaseChildApp';
 import { useRemote } from '../data/useRemote';
 
 const REFRESH_MS = 30_000;
@@ -55,7 +55,7 @@ export default function ChildAlertBanner({ session }) {
       }}
     >
       <span style={{ flex: '1 1 300px' }}>
-        <b style={{ color: '#B0452C' }}>긴급 · {time}</b> {first.child_alias} ({first.case_number}) 아이가 급하다고 알렸어요.
+        <b style={{ color: '#B0452C' }}>긴급 · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}
         {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
       </span>
       <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: first.case_id })}>

@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, String, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enums import (
@@ -76,7 +76,8 @@ class ChildAppEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
-    # 긴급 알림을 누가 언제 확인했는가. 다른 종류는 비어 있다.
+    # 상담사 확인이 필요한 줄(긴급 알림 · 바로 확인 답 · 연락 요청). 확인하면 누가 언제 했는지 남는다.
+    needs_ack: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     acknowledged_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
