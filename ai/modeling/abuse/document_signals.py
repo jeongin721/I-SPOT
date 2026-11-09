@@ -176,6 +176,14 @@ def drop_ungrounded_signals(signals: List[Dict[str, Any]]) -> Tuple[List[Dict[st
     return kept, ([f"segment 근거가 없는 신호 {dropped}건을 제외했습니다."] if dropped else [])
 
 
+def grounded_severity_ratings(ratings: List[Dict[str, Any]], signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """근거가 남은 탐지 유형의 심각도만 둔다 — 뺀 유형의 단계가 신호 이력 ai_level 로 읽히지 않게(민규 #164)."""
+
+    kept = {signal["abuse_type"] for signal in signals if signal["detected"]}
+
+    return [rating for rating in ratings if _ENGLISH.get(rating.get("major_type")) in kept]
+
+
 def analyze_document_signals(
     text: str,
     known_identifiers: Optional[List[str]] = None,
@@ -269,7 +277,7 @@ def analyze_document_signals(
         "schema_version": "1.0",
         "abuse_signals": abuse_signals,
         "risk_utterances": risk_utterances,
-        "severity_ratings": severity_ratings,
+        "severity_ratings": grounded_severity_ratings(severity_ratings, abuse_signals),
         # 근거가 문장이라 음성 시각은 없다.
         "topic_tags": (
             [{**tag, "start_ms": None} for tag in topic_tags if isinstance(tag, dict)] if isinstance(topic_tags, list) else None

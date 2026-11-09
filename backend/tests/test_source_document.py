@@ -827,3 +827,12 @@ def test_detected_signal_without_evidence_is_dropped_with_warning() -> None:
     assert kept == [grounded, undetected]
     assert warnings == ["segment 근거가 없는 신호 1건을 제외했습니다."]
     assert ds.drop_ungrounded_signals([grounded, undetected]) == ([grounded, undetected], [])
+
+
+def test_severity_of_dropped_type_is_not_kept() -> None:
+    """근거가 없어 뺀 유형의 심각도는 저장하지 않는다(민규 #164 — 신호 이력 ai_level 로 읽힘)."""
+
+    signals = [{"abuse_type": "PHYSICAL", "detected": True, "segment_ids": ["doc_001"]}, {"abuse_type": "NEGLECT", "detected": False, "segment_ids": []}]
+    physical = {"major_type": "신체학대", "level": 3}
+
+    assert ds.grounded_severity_ratings([physical, {"major_type": "성학대", "level": 3}, {"major_type": "방임", "level": 1}], signals) == [physical]
