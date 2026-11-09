@@ -106,3 +106,11 @@ def test_unknown_folder_and_file_are_404(client: TestClient, counselor_headers) 
 def test_login_is_required(client: TestClient) -> None:
     assert client.get(URL).status_code == 401
     assert client.post(f"{URL}/files", files=[("files", ("a.txt", b"x", "text/plain"))]).status_code == 401
+
+
+def test_text_preview_survives_cut_in_middle_of_character() -> None:
+    from app.services import docbox_service
+
+    kind, text = docbox_service._preview("memo.txt", ("a" + "가" * 8000).encode("utf-8"))
+    assert kind == "text"
+    assert text.startswith("a가")

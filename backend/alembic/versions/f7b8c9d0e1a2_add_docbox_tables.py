@@ -1,7 +1,7 @@
 """add docbox tables
 
 Revision ID: f7b8c9d0e1a2
-Revises: e9a4c1d7b2f6
+Revises: e5f6a7b8c9d0
 Create Date: 2026-11-05 12:00:00.000000
 
 문서함(기관 서식 · 참고 문서 공용 보관, API_CONTRACT 23절).

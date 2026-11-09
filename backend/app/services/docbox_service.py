@@ -62,12 +62,15 @@ def _clean_name(filename: Optional[str]) -> str:
     return name
 
 
-def _decode(data: bytes) -> Optional[str]:
+def _decode(data: bytes, *, truncated: bool = False) -> Optional[str]:
+    # 앞부분만 자른 바이트는 끝이 글자 중간일 수 있다. 끝의 조각(UTF-8 은 최대 3바이트)을 떼고 다시 본다.
+    cuts = range(4) if truncated else range(1)
     for encoding in ("utf-8-sig", "cp949"):
-        try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
+        for cut in cuts:
+            try:
+                return data[: len(data) - cut].decode(encoding)
+            except UnicodeDecodeError:
+                continue
     return None
 
 
@@ -77,7 +80,8 @@ def _preview(name: str, data: bytes) -> Tuple[str, Optional[str]]:
         return "image", None
     text: Optional[str] = None
     if ext in PLAIN_TEXT:
-        text = _decode(data[: PREVIEW_CHARS * 4])
+        limit = PREVIEW_CHARS * 4
+        text = _decode(data[:limit], truncated=len(data) > limit)
     elif ext in EXTRACTABLE:
         try:
             text = run_with_timeout(lambda: extract_text(name, data), PREVIEW_TIMEOUT_SECONDS)

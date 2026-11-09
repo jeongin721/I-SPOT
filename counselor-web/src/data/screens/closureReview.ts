@@ -373,8 +373,8 @@ export function closureReportValues(
     goals: goals.map((row, i) => ({
       goal: row.goal,
       service: row.service,
-      setGoal: (goal: string) => setDraft({ goals: goals.map((x, j) => (j === i ? { ...x, goal } : x)) }),
-      setService: (service: string) => setDraft({ goals: goals.map((x, j) => (j === i ? { ...x, service } : x)) }),
+      setGoal: (goal: string) => edit({ goals: goals.map((x, j) => (j === i ? { ...x, goal } : x)) }),
+      setService: (service: string) => edit({ goals: goals.map((x, j) => (j === i ? { ...x, service } : x)) }),
     })),
     keyPerson: {
       value: keyPerson,
