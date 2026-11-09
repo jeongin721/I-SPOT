@@ -2741,7 +2741,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - `AI_PROVIDER=modeling` 서버는 업로드 응답 뒤(백그라운드) 문서 원문으로 신호 분석 행을 하나 만든다 —
   `ai_analyses` 행(`provider: "document"`, `transcript_id: null`), 끝나면 `COMPLETED` · 실패 · 제한 시간(`DOCUMENT_SIGNALS_TIMEOUT_SECONDS`, 기본 240초)이면 `FAILED`.
   회차 상태는 바꾸지 않는다(3단계 그대로). 다른 서버는 만들지 않는다.
-- 흐름(`ai/modeling/abuse/document_signals.py`): 문장 나누기(`doc_001`…) → 1차 상담일지 전용 모델 → 2차 세부 유형 · 근거 문장 → 유형별 심각도 · 대화 주제.
+- 흐름(`ai/modeling/abuse/document_signals.py`): 문장 나누기(`doc_001`…) → 1차 상담일지 전용 모델(글 전체 + 문장 2개씩 겹친 창을 판정해 유형별로 합침) → 2차 세부 유형 · 근거 문장 → 유형별 심각도 · 대화 주제. 1차가 탐지했어도 근거 문장이 없는 유형은 빼고 `warnings` 에 "segment 근거가 없는 신호 n건을 제외했습니다." 를 남긴다.
   결과는 4절 계약의 신호 칸(`abuse_signals` · `risk_utterances` · `severity_ratings` · `topic_tags`)만 채우고 나머지는 빈 값이다.
 - 그래서 사례 신호 이력(`GET /cases/{id}/signal-history`)의 주제 비중 · 회차별 세부 신호 · 처음 나온 이야기가 녹음 회차처럼 읽는다.
   근거가 기록 문장이라 `subtypes[].pending` 은 늘 `false`, `topics[].start_ms` 는 `null`. 주제 비중은 문장 수 기준이다. AI 제안이며 학대 여부를 확정하지 않는다.
