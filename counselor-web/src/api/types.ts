@@ -1814,6 +1814,7 @@ export interface ChildAppCase {
   code_expires_at: string | null;
   linked_at: string | null;
   last_response_at: string | null;
+  next_consult: { date: string; time: string | null; place: string | null } | null;
   has_pending_questions: boolean;
   can_read_feed: boolean;
   open_alerts: ChildOpenAlert[];

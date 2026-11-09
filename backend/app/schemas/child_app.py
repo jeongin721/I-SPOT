@@ -110,6 +110,7 @@ class ChildAppCaseResponse(BaseModel):
     code_expires_at: Optional[datetime] = None
     linked_at: Optional[datetime] = None
     last_response_at: Optional[datetime] = None
+    next_consult: Optional[ChildNextConsult] = None
     has_pending_questions: bool
     can_read_feed: bool
     open_alerts: List[ChildOpenAlert]

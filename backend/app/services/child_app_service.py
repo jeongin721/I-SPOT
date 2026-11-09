@@ -226,6 +226,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         code_expires_at=link.code_expires_at if link and link.status == ChildAppLinkStatus.INVITED else None,
         linked_at=link.linked_at if link else None,
         last_response_at=link.last_response_at if link else None,
+        # 담당 상담사의 아이 상세 머리글에 보인다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
+        next_consult=_next_consult(db, case.id, datetime.now(LOCAL_TZ).date()) if can_read_feed else None,
         has_pending_questions=pending is not None,
         can_read_feed=can_read_feed,
         open_alerts=_open_alerts(db, user, case_id=case.id),
@@ -506,7 +508,14 @@ def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]
 
         shown = " · ".join(part for part in (text, answer.chip) if part) or "(비워 둠)"
 
-        return {**item, "answer": shown, "wrote_text": bool(text), "level": ChildAnswerLevel.NONE.value}
+        return {
+            **item,
+            "answer": shown,
+            "wrote_text": bool(text),
+            # 상담사 화면의 '아이가 쓴 글'에는 고른 칩을 빼고 아이가 쓴 글만 보인다.
+            "written": text or None,
+            "level": ChildAnswerLevel.NONE.value,
+        }
 
     if answer.skipped:
         return skip

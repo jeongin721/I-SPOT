@@ -243,6 +243,36 @@ def test_next_consult_exposes_only_date_time_place(client: TestClient, counselor
     assert response.json()["data"]["next_consult"] == {"date": today.isoformat(), "time": "16:00", "place": "기관 상담실"}
 
 
+def test_case_view_gives_written_text_and_next_consult(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    from app.core.enums import ScheduleConsultType, ScheduleKind
+    from app.models.schedule import ScheduleEvent
+    from app.models.user import User
+
+    device = _linked(client, counselor_headers, case["id"])
+    assert _view(client, counselor_headers, case["id"])["next_consult"] is None
+
+    day = datetime.now(timezone.utc).date() + timedelta(days=3)
+    db.add(ScheduleEvent(owner_id=db.scalar(select(User)).id, kind=ScheduleKind.CONSULT, consult_type=ScheduleConsultType.REGULAR,
+                         case_id=uuid.UUID(case["id"]), title="정기", event_date=day, event_time="15:30", place="상담실"))
+    db.commit()
+    _send(client, counselor_headers, case["id"], ["sleep", "safe", "free"])
+    pending = _home(client, device)["pending"]
+    answers = [
+        {"question_id": "sleep", "choice_index": 0},
+        {"question_id": "safe", "choice_index": 0},
+        {"question_id": "free", "text": "가상의 글", "chip": "만나서 이야기할게요"},
+    ]
+    response = client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json={"answers": answers}, headers=device)
+    assert response.status_code == 200, response.text
+
+    view = _view(client, counselor_headers, case["id"])
+    assert view["next_consult"] == {"date": day.isoformat(), "time": "15:30", "place": "상담실"}
+    items = {item["question_id"]: item for item in view["feed"][0]["payload"]["items"]}
+    assert items["free"]["written"] == "가상의 글"
+    assert items["free"]["answer"] == "가상의 글 · 만나서 이야기할게요"
+    assert "written" not in items["sleep"]
+
+
 def test_admin_sees_status_but_not_child_content(
     client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
 ) -> None:
