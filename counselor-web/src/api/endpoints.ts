@@ -26,6 +26,7 @@ import type {
   CaseDetail,
   CaseListItem,
   CaseListSort,
+  CaseListOrder,
   CaseStatus,
   CaseUpdateRequest,
   Document,
@@ -266,7 +267,7 @@ export const cases = {
    * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
    */
   list(
-    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean; sort?: CaseListSort },
+    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean; sort?: CaseListSort; order?: CaseListOrder },
   ): Promise<Paged<CaseListItem>> {
     return api.get<Paged<CaseListItem>>("/cases", params);
   },
