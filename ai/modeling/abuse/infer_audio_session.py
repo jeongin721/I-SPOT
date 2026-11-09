@@ -24,8 +24,6 @@ from ai.adapters.stt_analysis_adapter import validate_stt_result
 
 from ai.modeling.abuse.infer_abuse_v3_adapter import (
     predict_major_types,
-    predict_major_types_detail,
-    predict_major_types_detail_batch,
 )
 from ai.modeling.abuse.second_stage_llm import (
     analyze_subtypes,
@@ -258,6 +256,13 @@ def quick_risk_scan(
     collect 는 측정용(experiments/key_scan_eval.py) — 덩어리 · 줄 판정과 걸린
     시간을 dict 로 받는다. 서버 경로에서는 쓰지 않는다.
     """
+
+    # 지연 import: 확률까지 주는 판정은 이 스캔만 쓴다. 시험이 infer_abuse_v3_adapter 를 predict_major_types 만 있는
+    # 가짜 모듈로 바꿔 이 모듈을 불러오는 경우(backend/tests/test_ai_known_identifiers.py)에도 import 가 깨지지 않게 한다.
+    from ai.modeling.abuse.infer_abuse_v3_adapter import (
+        predict_major_types_detail,
+        predict_major_types_detail_batch,
+    )
 
     try:
         segments = validate_stt_result(stt_result)
