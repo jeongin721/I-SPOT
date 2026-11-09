@@ -130,7 +130,7 @@
     },
     "CaseList.dc.html": {
       "expand": "fill",
-      "h": 960,
+      "h": 1020,
       "is_interactive": true,
       "title": "통합 사례 관리 (사례 ID · 이름 · 신고접수일 · 위험도)",
       "w": 1440,
@@ -202,7 +202,7 @@
     },
     "DocBox.dc.html": {
       "expand": "fill",
-      "h": 1000,
+      "h": 1840,
       "is_interactive": true,
       "title": "문서함 (폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)",
       "w": 1440,

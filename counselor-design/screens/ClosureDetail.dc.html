@@ -82,6 +82,10 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 .item{display:grid;grid-template-columns:minmax(0,1.6fr) auto;gap:8px 14px;align-items:center;padding:12px 4px;border-bottom:1px solid #EAE7DF}
 .opt3{display:inline-flex;gap:4px;padding:3px;border-radius:10px;background:#EAE7DF}
 .opt3 button{border:0;border-radius:8px;min-width:44px;min-height:32px;padding:0 10px;font:inherit;font-size:13px;background:transparent;color:#66625A;cursor:pointer}
+.opt3 button.aip{position:relative;box-shadow:0 0 0 1.5px #C2A36B,0 0 10px 1px rgba(194,163,107,.55) !important}
+.opt3 button .aim{position:absolute;top:-8px;right:-8px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:999px;background:#C2A36B;color:#FFFFFF;font-size:9.5px;font-weight:700;letter-spacing:.02em;line-height:1;box-shadow:0 1px 3px rgba(43,42,38,.25);pointer-events:none}
+.opt3 button .aim::before{content:"";width:11px;height:11px;background:currentColor;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat}
+.thm-root.dark .opt3 button.aip{box-shadow:0 0 0 1.5px #D9C08A,0 0 10px 1px rgba(217,192,138,.45) !important}
 .ev{grid-column:1 / -1;font-size:12px;color:#7A776F;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ta2{width:100%;min-height:76px;border:1px solid #DAD5C9;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;background:#FFFFFF;color:#2B2A26;resize:vertical}
 .ck{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid #EAE7DF;font-size:14px;cursor:pointer}
@@ -577,7 +581,7 @@ label.cp-open > .cp-menu{display:flex}
 <b style="font-size: 13px; color: #66625A; padding: 4px 4px 0;">{{ g.name }}</b>
 <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
 <div class="item"><span>{{ it.q }}</span>
-<span class="opt3" role="group" aria-label="{{ it.q }}"><sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{ o.pick }}" style="background: {{ o.bg }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}</button></sc-for></span>
+<span class="opt3" role="group" aria-label="{{ it.q }}"><sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="3"><button type="button" class="{{ o.cls }}" onClick="{{ o.pick }}" aria-label="{{ o.aria }}" style="background: {{ o.bg }}; color: {{ o.fg }}; font-weight: {{ o.fw }};">{{ o.label }}<sc-if value="{{ o.isAi }}" hint-placeholder-val="{{ false }}"><span class="aim" aria-hidden="true"></span></sc-if></button></sc-for></span>
 <sc-if value="{{ it.hasEv }}" hint-placeholder-val="{{ true }}"><span class="ev"><span class="chip c-ai" style="height: 20px; font-size: 11px;">AI 제안 · {{ it.ai }}</span>{{ it.ev }}</span></sc-if>
 </div>
 </sc-for>
@@ -587,7 +591,7 @@ label.cp-open > .cp-menu{display:flex}
 
 <div class="grp">안전점수 <span class="note" style="font-weight: 400;">(최소안전 1점 – 가장안전 10점)</span></div>
 <sc-for list="{{ scoreRows }}" as="r" hint-placeholder-count="3">
-<div class="item" style="grid-template-columns: 160px 110px minmax(0, 1fr);"><span>{{ r }}</span><input class="inp" type="number" min="1" max="10" placeholder="( )점" aria-label="안전점수" style="width: 100px;"><input class="inp" type="text" placeholder="이유" aria-label="이유" style="width: 100%;"></div>
+<div class="item" style="grid-template-columns: 160px 110px minmax(0, 1fr);"><span>{{ r.label }}</span><input class="inp" type="number" inputmode="numeric" min="1" max="10" step="1" placeholder="( )점" aria-label="{{ r.aria }}" value="{{ r.v }}" onChange="{{ r.set }}" style="width: 100px;"><input class="inp" type="text" placeholder="이유" aria-label="이유" style="width: 100%;"></div>
 </sc-for>
 <div class="item" style="grid-template-columns: 160px minmax(0, 1fr);"><span>가족관계척도</span><span>평균 <b class="brn">3.60</b>점 <span class="note">· 10/1 응답 (모) · 초기 4/12 응답 2.40점</span></span></div>
 
@@ -714,9 +718,9 @@ renderValsBase() {
     ['사례관리대상자', [['학대행위에 대한 잘못 인지 및 개선 의지', '높음', '보호자 상담 6회차 "소리 지른 게 아이한테 상처였다는 걸 알았어요"'], ['스스로 자신을 통제하기 어려운 특성 (중독, 성격장애 등)', '', ''], ['가정 내 위기상황(실직, 가정폭력 등)으로 인한 만성적 스트레스', '보통', '보호자 상담 · 이직 준비 중']]]
   ];
   let idx = 0;
-  const safety = SA.map(([name, items]) => ({ name, items: items.map(([q, ai, ev]) => { const k = idx++; const cur = s.sa[k] !== undefined ? s.sa[k] : ai;
-    return { q, ai, ev, hasEv: !!ai, opts: ['높음', '보통', '낮음'].map((o) => ({ label: o, ...sel(cur === o), pick: () => this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } }) })) }; }) }));
-  return { reasons, goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
+  const safety = SA.map(([name, items]) => ({ name, items: items.map(([q, ai, ev]) => { const k = idx++; const cur = s.sa[k] !== undefined ? s.sa[k] : '';
+    return { q, ai, ev, hasEv: !!ai, opts: ['높음', '보통', '낮음'].map((o) => ({ label: o, ...sel(cur === o), isAi: !!ai && o === ai, cls: !!ai && o === ai ? 'aip' : '', aria: o + (!!ai && o === ai ? ' (AI 제안)' : ''), pick: () => this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } }) })) }; }) }));
+  return { reasons, goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'].map((label, k) => ({ label, aria: label + ' 안전점수 (1~10점)', v: (s.sc || {})[k] !== undefined ? s.sc[k] : '', set: (ev) => { const d = String(ev.target.value || '').replace(/[^0-9]/g, ''); const v = d === '' ? '' : String(Math.min(10, Math.max(1, parseInt(d, 10)))); try { ev.target.value = v; } catch (e) {} this.setState({ sc: { ...(this.state.sc || {}), [k]: v } }); } })) };
 }
 }
 </script>

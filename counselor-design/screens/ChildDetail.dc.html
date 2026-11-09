@@ -665,7 +665,7 @@ renderValsBase() {
       save: () => this.setState({ nEdit: null, ne: { ...s.ne, [i]: s.nText } }), cancel: () => this.setState({ nEdit: null }) };
   });
 
-  const answers = K.answers.map((a) => { const prev = a[4] || []; const changed = prev.length > 0 && prev[prev.length - 1] !== a[2]; return { id: a[0], q: a[1], ans: a[2], prev, changed, fw: a[3] || changed ? 700 : 500, bg: a[3] ? '#F7F6F2' : 'transparent', flagText: a[3] ? '확인 필요' : '' }; });
+  const answers = K.answers.filter((a) => !/^공통/.test(a[0])).map((a) => { const prev = a[4] || []; const changed = prev.length > 0 && prev[prev.length - 1] !== a[2]; return { id: a[0], q: a[1], ans: a[2], prev, changed, fw: a[3] || changed ? 700 : 500, bg: a[3] ? '#F7F6F2' : 'transparent', flagText: a[3] ? '확인 필요' : '' }; });
   const notes = mkNotes(K.notes);
   const allQs = mkQs(K.qs);
   const flags = K.flags.map((f, i) => ({ goSrc: () => goStt(f.stt), q: f.q, src: f.src, n: notes.at(i), qs: (f.qi || []).map((j) => allQs.at(j)), flow: f.flow.map((t, j) => ({ t, cls: j === f.flow.length - 1 ? 'v now' : 'v' })) }));
