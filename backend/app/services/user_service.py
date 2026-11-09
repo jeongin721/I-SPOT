@@ -1,8 +1,9 @@
 # 계정 관리 및 로그인.
 #
-# 자유 회원가입은 제공하지 않는다.(03_BACKEND_PROMPT.md §10)
-# 계정은 관리자 API 또는 seed script 로만 생성된다.
+# 계정은 관리자 API · seed script 로 만들거나, 회원가입 신청을 관리자가 승인할 때 생긴다(2026-11-02, signup_service).
+# 신청만으로는 계정이 생기지 않는다(03_BACKEND_PROMPT.md §10 의 '자유 회원가입 없음' 을 승인제로 바꿈).
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from secrets import compare_digest, token_urlsafe
@@ -13,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.email_address import canonical_email
 from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError, ErrorCode, conflict, unauthorized
 from app.core.password_policy import validate_password
@@ -296,7 +298,7 @@ def authenticate(
     """
 
     now = datetime.now(timezone.utc)
-    user = db.scalar(select(User).where(User.email == email.lower()))
+    user = find_user_by_email(db, email)
 
     def invalid_credentials() -> APIError:
         return APIError(
@@ -414,6 +416,120 @@ def authenticate(
 # 계정 생성 / 조회
 # =========================================================
 
+DUPLICATE_EMAIL_MESSAGE = "이미 등록된 이메일입니다."
+
+
+def email_key(email: str) -> str:
+    """
+    같은 메일함인지 비교하는 키 = 저장하는 꼴(app/core/email_address.canonical_email — 아이디 소문자 + IDNA 2008 punycode 도메인).
+
+    DB 의 lower() 는 쓰지 않는다. SQLite 와 PostgreSQL(C collation)의 lower() 는 ASCII 만 바꿔, 옛 계정이
+    `Écho@…` · `…@BÜCHER.de` 처럼 비ASCII 대문자나 유니코드 도메인으로 남아 있으면 다르게 본다(Codex #139 M2).
+    파이썬 내장 IDNA 도 쓰지 않는다. IDNA 2003 이라 `straße` 를 `strasse` 로 바꿔 회원가입 칸(email-validator, 2008)과 어긋났다(재검증 N2).
+    """
+
+    return canonical_email(email)
+
+
+def _accounts_by_key(db: Session, email: str) -> List[uuid.UUID]:
+    """
+    그 이메일(email_key 기준)의 계정 id. 정규형으로 저장한 계정과 예전 판이 다른 표기로 저장한 계정을 같게 찾는다.
+
+    계정은 기관 하나의 상담사 · 관리자라 수십 개라서 id · 이메일을 전부 읽어 파이썬에서 비교한다. 어떤 이메일을 물어도 같은
+    조회 하나다(로그인 · 회원가입 보내기가 계정 존재를 응답 시간으로 드러내지 않게).
+    """
+
+    key = email_key(email)
+
+    return [user_id for user_id, existing in db.execute(select(User.id, User.email)) if email_key(existing) == key]
+
+
+def email_is_registered(db: Session, email: str) -> bool:
+    """그 이메일(email_key 기준)의 계정이 이미 있는가."""
+
+    return bool(_accounts_by_key(db, email))
+
+
+def find_user_by_email(db: Session, email: str) -> Optional[User]:
+    """
+    로그인 · 서버 복구 script 가 계정을 찾는 곳. email_key 가 같은 계정이다.
+
+    같은 키의 계정이 둘 이상이면(이 판 전에 비ASCII 대문자 · 다른 도메인 표기로 따로 만든 옛 데이터) 정규형 그대로 저장한 계정을,
+    없으면 먼저 만든 계정을 고른다. 이 판부터는 add_user 가 같은 키를 막아 새로 생기지 않는다.
+    """
+
+    ids = _accounts_by_key(db, email)
+
+    if not ids:
+        return None
+
+    users = list(db.scalars(select(User).where(User.id.in_(ids)).order_by(User.created_at.asc())))
+    key = email_key(email)
+
+    return next((user for user in users if user.email == key), users[0])
+
+
+def add_user(
+    db: Session,
+    *,
+    email: str,
+    hashed_password: str,
+    name: str,
+    role: UserRole,
+    actor: Optional[User],
+    password_changed_at: datetime,
+    via: Optional[str] = None,
+) -> User:
+    """
+    계정 행을 넣고 감사 로그(USER_CREATED)를 남긴다. 커밋은 호출 측이 한다.
+
+    관리자 계정 생성(create_user)과 회원가입 승인(signup_service.approve)이 같이 쓴다. 비밀번호 규칙은
+    호출 측이 이미 봤다(승인은 신청 때 본 해시를 그대로 옮긴다). 이메일이 이미 있으면(email_key 기준 — 대소문자 ·
+    유니코드 도메인만 다른 옛 계정 포함) 그때까지의 변경을 모두 되돌리고 409 다.
+    """
+
+    if email_is_registered(db, email):
+        db.rollback()
+
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_EMAIL_MESSAGE)
+
+    user = User(
+        email=canonical_email(email),
+        hashed_password=hashed_password,
+        name=name,
+        role=role,
+        is_active=True,
+        password_changed_at=password_changed_at,
+    )
+
+    db.add(user)
+
+    # 감사 로그에 계정 id 가 필요해 먼저 보낸다. 이메일 중복도 여기서 걸린다.
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, DUPLICATE_EMAIL_MESSAGE) from error
+
+    # 이메일 · 이름은 남기지 않는다. 계정 id 와 역할만 남긴다.
+    detail = {"role": user.role.value}
+
+    if via:
+        detail["via"] = via
+
+    audit_service.record(
+        db,
+        action=AuditAction.USER_CREATED,
+        entity_type="User",
+        entity_id=user.id,
+        actor_id=actor.id if actor else None,
+        detail=detail,
+    )
+
+    return user
+
+
 def create_user(
     db: Session,
     payload: UserCreateRequest,
@@ -427,36 +543,14 @@ def create_user(
 
     validate_password(payload.password, email=payload.email, name=payload.name)
 
-    user = User(
-        email=payload.email.lower(),
+    user = add_user(
+        db,
+        email=payload.email,
         hashed_password=hash_password(payload.password),
         name=payload.name,
         role=payload.role,
-        is_active=True,
+        actor=actor,
         password_changed_at=datetime.now(timezone.utc),
-    )
-
-    db.add(user)
-
-    # 감사 로그에 계정 id 가 필요해 먼저 보낸다. 이메일 중복도 여기서 걸린다.
-    try:
-        db.flush()
-    except IntegrityError as error:
-        db.rollback()
-
-        raise conflict(
-            ErrorCode.DUPLICATE_RESOURCE,
-            "이미 등록된 이메일입니다.",
-        ) from error
-
-    # 이메일 · 이름은 남기지 않는다. 계정 id 와 역할만 남긴다.
-    audit_service.record(
-        db,
-        action=AuditAction.USER_CREATED,
-        entity_type="User",
-        entity_id=user.id,
-        actor_id=actor.id if actor else None,
-        detail={"role": user.role.value},
     )
 
     db.commit()

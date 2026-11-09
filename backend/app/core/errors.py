@@ -87,6 +87,17 @@ class ErrorCode(str, Enum):
     # 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않았다(19절 행의 error.code).
     AI_PRIVACY_BLOCKED = "AI_PRIVACY_BLOCKED"
 
+    # 회원가입 (API_CONTRACT 3절 '회원가입', 2026-11-02).
+    SIGNUP_DISABLED = "SIGNUP_DISABLED"
+    SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED = "SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED"
+    SIGNUP_TOKEN_INVALID = "SIGNUP_TOKEN_INVALID"
+    SIGNUP_ALREADY_DECIDED = "SIGNUP_ALREADY_DECIDED"
+    # 이메일 인증번호. 비밀번호 찾기(이메일 코드, 9/18 회의)도 같이 쓰게 이름에 SIGNUP 을 넣지 않는다.
+    VERIFICATION_CODE_MISMATCH = "VERIFICATION_CODE_MISMATCH"
+    VERIFICATION_CODE_EXPIRED = "VERIFICATION_CODE_EXPIRED"
+    # 감사 로그 전용(인증번호 메일 발송 실패). 응답에는 쓰지 않는다 — 메일은 응답을 보낸 뒤에 보낸다.
+    MAIL_SEND_FAILED = "MAIL_SEND_FAILED"
+
     # 기타
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
