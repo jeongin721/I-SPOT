@@ -42,6 +42,7 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.safety_flag_llm import generate_safety_flags
 from ai.modeling.abuse.desired_change_llm import (
     generate_desired_changes,
     join_points as join_desired_change_points,
@@ -788,8 +789,10 @@ def analyze_audio_session(
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
     # desired_changes(상담 요약 '앞으로 원하는 변화', 2026-10-27)는 보호요인과
     # 같은 마스킹된 축어록을 받으므로 같이 띄운다 — 분석 시간이 늘지 않게.
-    executor = ThreadPoolExecutor(max_workers=5)
-    # 다섯 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
+    # 안전 플래그 · 재학대 요인(safety_flag_llm.py, 2026-11-05)도 같은 마스킹된 축어록을 받아 같이 띄운다 — 2단계 값이라
+    # 아래 콜백 전에 기다린다. 보호요인과 비슷한 크기의 호출이라 2단계가 뜨는 시점은 거의 그대로다.
+    executor = ThreadPoolExecutor(max_workers=6)
+    # 여섯 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
     # 계속 보내던 문제(2026-10-20 Mingyu 리뷰) — 실패가 확정되면 이
     # 신호를 켜서, 아직 재시도 전인 호출들이 다음 시도를 시작하기 전에
     # 바로 포기하게 한다(second_stage_llm._call_llm_with_retry 참고).
@@ -833,6 +836,15 @@ def analyze_audio_session(
             deadline=deadline,
             stop_event=stop_event,
         )
+        safety_flags_future = executor.submit(
+            generate_safety_flags,
+            client=client,
+            model=note_model,
+            masked_transcript_text=masked_citation_text,
+            segments=segments,
+            deadline=deadline,
+            stop_event=stop_event,
+        )
         desired_changes_future = executor.submit(
             generate_desired_changes,
             client=client,
@@ -848,10 +860,11 @@ def analyze_audio_session(
             checklist_future,
             record_draft_future,
             protective_factors_future,
+            safety_flags_future,
             desired_changes_future,
         ]
 
-        # 다섯 중 하나라도 실패하면(record_draft/protective_factors/desired_changes는 내부에서
+        # 여섯 중 하나라도 실패하면(record_draft/protective_factors/safety_flags/desired_changes는 내부에서
         # 이미 실패를 삼키므로 사실상 counseling_records/checklist_draft만
         # 해당) 나머지가 아직 안 끝났어도 기다리지 않고 바로 실패 처리한다
         # (2026-10-19 Mingyu 리뷰) — 실패를 보자마자 stop_event 를 켜고 shutdown을
@@ -863,7 +876,7 @@ def analyze_audio_session(
         # 2026-11-04(2단계 먼저 저장, on_signals_ready): 기다림을 두 번에 나눈다. 먼저 2단계 값(기록 초안 ·
         # 보호요인 · 심각도)만 기다려 콜백으로 넘기고, 그다음 남은 셋(상담 요약 · 일지, 체크리스트, 원하는 변화)을
         # 기다린다. 어느 쪽에서든 실패를 보면 예전처럼 바로 실패한다.
-        signal_futures = [record_draft_future, protective_factors_future] + (
+        signal_futures = [record_draft_future, protective_factors_future, safety_flags_future] + (
             [severity_future] if severity_future is not None else []
         )
         _wait_signals_or_failure(signal_futures, all_futures)
@@ -889,6 +902,16 @@ def analyze_audio_session(
             protective_factors_future.result(),
             citation_entity_map,
         )
+        # 안전 플래그 · 재학대 요인. 모듈이 실패하면 None — 두 칸 모두 null(만들지 못함)로 넘긴다.
+        safety_result = safety_flags_future.result()
+        safety_flags = None
+        reabuse_factors = None
+
+        if safety_result is not None:
+            safety_result = restore_pii(safety_result, citation_entity_map)
+            safety_flags = safety_result.get("safety_flags", [])
+            reabuse_factors = safety_result.get("reabuse_factors", [])
+
         # 유형별 심각도 — 2차 세부유형 분석 바로 뒤에 띄워 둔 호출의 결과(아래 '심각도 먼저 띄우기').
         severity_ratings = []
 
@@ -912,6 +935,8 @@ def analyze_audio_session(
                         "checklist_draft": {},
                         "record_draft": record_draft,
                         "protective_factors": protective_factors,
+                        "safety_flags": safety_flags,
+                        "reabuse_factors": reabuse_factors,
                         "desired_changes": None,
                         "severity_ratings": severity_ratings,
                         "session_change_notes": [],
@@ -1138,6 +1163,9 @@ def analyze_audio_session(
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
         "protective_factors": protective_factors,
+        # 안전 플래그 · 재학대 요인(safety_flag_llm.py, 2026-11-05). 모듈 실패면 둘 다 None.
+        "safety_flags": safety_flags,
+        "reabuse_factors": reabuse_factors,
         # 상담 요약 '앞으로 원하는 변화 · 원하는 서비스/지원' 칸
         # (desired_change_llm.py, 2026-10-27). {text, segment_ids} 하나.
         "desired_changes": join_desired_change_points(

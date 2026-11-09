@@ -910,6 +910,24 @@ export interface ProtectiveFactor {
   segment_ids: string[];
 }
 
+/**
+ * 안전 플래그 후보(8절 safety_flags, 2026-11-05). '지금 이 아이가 안전한가'. code 는 S1~S10, certainty 는 CLEAR(분명함) ·
+ * CHECK(상담원 확인 필요). AI 확인 후보이고 판정이 아니다.
+ */
+export interface SafetyFlag {
+  code: string;
+  text: string;
+  certainty: "CLEAR" | "CHECK";
+  segment_ids: string[];
+}
+
+/** 재학대 요인 후보(8절 reabuse_factors, 2026-11-05). code 는 R2~R10 — R1(중복학대)은 화면이 유형 수로 센다. */
+export interface ReabuseFactor {
+  code: string;
+  text: string;
+  segment_ids: string[];
+}
+
 /** 이전 회기와 달라진 점 메모. */
 export interface SessionChangeNote {
   text: string;
@@ -953,6 +971,9 @@ export interface AnalysisResult {
   warnings: string[];
   severity_ratings: SeverityRating[];
   protective_factors: ProtectiveFactor[];
+  /** null · 없음 = 만들지 못함(옛 결과 · 모듈 실패 · Mock). [] = 찾았지만 해당 없음. */
+  safety_flags?: SafetyFlag[] | null;
+  reabuse_factors?: ReabuseFactor[] | null;
   session_change_notes: SessionChangeNote[];
   followup_check_points: FollowupCheckPoint[];
   /** 옛 결과 · 이전 서버에는 없다. */

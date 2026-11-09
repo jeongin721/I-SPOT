@@ -7,7 +7,8 @@
 // 상담원 판단(회차 전체 상 · 중 · 하 하나, 2026-10-29)은 useOverallRiskAssessment, 머리는 useSessionDetail · useCaseDetail 이 부르고,
 // 화면에 쓸 값은 src/data/screens/signalReview.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
 // 이 파일은 훅을 부르고 배치만 한다. 판단 없이 다음 단계로 가려 하면(nextBlocked) 옮기지 않고 팝업 "위험도를 선택해주세요." 를 띄운다.
-// 서버에 없는 것(회차 전체 AI 위험도 · 안전 플래그 · 재학대 요인 · 위험요인 · 심각도 상담사 수정)은 준비 중이다.
+// 안전 플래그 · 재학대 요인은 분석 결과 safety_flags · reabuse_factors(2026-11-05). 서버에 없는 것(회차 전체 AI 위험도 ·
+// 심각도 상담사 수정)은 준비 중이다.
 // 회차별 추이는 사례 단위 신호 이력(useSignalHistory)으로 채운다.
 import { Fragment, useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -429,7 +430,18 @@ export default function SignalReview(props) {
               style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '12px' }}
             >
               <h2 className="h2">안전 플래그 · 재학대 요인</h2>
-              <span className="note">{v.flagNote}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {(v.safetyFlags || []).map((f) => (
+                  <div key={f.key}>
+                    <span className={`chip ${f.tone}`}>{f.chip}</span> {f.text}
+                    <span className="sub2" style={{ display: 'block' }}>
+                      {f.where}
+                    </span>
+                  </div>
+                ))}
+                {v.flagEmpty ? <span className="sub2">{v.flagEmpty}</span> : null}
+                {v.vulnerableNote ? <span className="sub2">{v.vulnerableNote}</span> : null}
+              </div>
               <div
                 style={{
                   display: 'flex',
@@ -442,6 +454,16 @@ export default function SignalReview(props) {
                 <span className="note" style={{ width: '100%' }}>
                   {v.factorTitle}
                 </span>
+                {(v.reabuse || []).map((r) => (
+                  <span key={r.key} className="chip c-normal" title={r.title}>
+                    {r.chip}
+                  </span>
+                ))}
+                {v.reabuseNote ? (
+                  <span className="sub2" style={{ width: '100%' }}>
+                    {v.reabuseNote}
+                  </span>
+                ) : null}
                 {v.protectiveEmpty ? <span className="sub2">{v.protectiveEmpty}</span> : null}
                 {(v.protective || []).map((p) => (
                   <div key={p.key} style={{ width: '100%' }}>
