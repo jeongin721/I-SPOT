@@ -2793,3 +2793,19 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
 - 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
 - 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).
+
+## 23. Child App (아이 앱 콩콩, 2026-11-09)
+
+`/child-app/*` 은 아이 기기용이다. 상담사 Access Token 이 아니라 연결할 때 받은 `device_token` 을 Bearer 로 보낸다.
+앱 응답에는 이름 · 사례번호 · 위험 판정 기준을 넣지 않는다. 판정은 서버가 계산한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}` |
+| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
+| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건). 담당 상담사 · 관리자 |
+| POST | `/cases/{case_id}/child-app/invite` | `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | `{question_ids}` 3~4개 → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `QUESTIONS_SENT` · `ANSWERS`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).

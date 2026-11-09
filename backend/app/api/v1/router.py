@@ -6,6 +6,7 @@ from app.api.v1 import (
     analysis,
     audio,
     auth,
+    child_app,
     case_forms,
     cases,
     documents,
@@ -52,3 +53,6 @@ api_router.include_router(schedule.router)
 api_router.include_router(source_documents.router)
 # /cases/{case_id}/forms — 기관 서식 작성 기록(22절, 2026-11-02).
 api_router.include_router(case_forms.router)
+# /child-app/* · /cases/{case_id}/child-app — 아이 앱(22절, 2026-11-09).
+api_router.include_router(child_app.device_router)
+api_router.include_router(child_app.case_router)

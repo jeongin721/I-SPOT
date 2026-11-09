@@ -356,6 +356,8 @@ class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
     CASE_CREATED = "CASE_CREATED"
+    CHILD_APP_INVITED = "CHILD_APP_INVITED"
+    CHILD_APP_QUESTIONS_SENT = "CHILD_APP_QUESTIONS_SENT"
     CASE_UPDATED = "CASE_UPDATED"
     CLOSURE_REVIEW_REGISTERED = "CLOSURE_REVIEW_REGISTERED"
     CLOSURE_REVIEW_CANCELED = "CLOSURE_REVIEW_CANCELED"
@@ -432,3 +434,29 @@ class AuditAction(str, Enum):
     SIGNUP_REQUESTED = "SIGNUP_REQUESTED"
     SIGNUP_APPROVED = "SIGNUP_APPROVED"
     SIGNUP_REJECTED = "SIGNUP_REJECTED"
+
+
+class ChildAppLinkStatus(str, Enum):
+    """아이 앱 연결 상태. 행이 없으면 미연결이다."""
+
+    INVITED = "INVITED"
+    LINKED = "LINKED"
+
+
+class ChildQuestionSetStatus(str, Enum):
+    PENDING = "PENDING"
+    ANSWERED = "ANSWERED"
+    REPLACED = "REPLACED"
+
+
+class ChildAppEventKind(str, Enum):
+    LINKED = "LINKED"
+    QUESTIONS_SENT = "QUESTIONS_SENT"
+    ANSWERS = "ANSWERS"
+
+
+class ChildAnswerLevel(str, Enum):
+    NONE = "NONE"
+    SKIP = "SKIP"
+    AMBER = "AMBER"
+    RED = "RED"
