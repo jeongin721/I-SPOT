@@ -57,6 +57,45 @@
   color: #66625a;
   cursor: pointer;
 }
+.pg-ClosureDetail .opt3 button.aip {
+  position: relative;
+  box-shadow: 0 0 0 1.5px #c2a36b, 0 0 10px 1px rgba(194, 163, 107, 0.55) !important;
+}
+.pg-ClosureDetail .opt3 button .aim {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 999px;
+  background: #c2a36b;
+  color: #ffffff;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(43, 42, 38, 0.25);
+  pointer-events: none;
+}
+.pg-ClosureDetail .opt3 button .aim::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  background: currentColor;
+  -webkit-mask: var(--aim-star) center/contain no-repeat;
+  mask: var(--aim-star) center/contain no-repeat;
+}
+.pg-ClosureDetail {
+  --aim-star: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>");
+}
+.pg-ClosureDetail .thm-root.dark .opt3 button.aip {
+  box-shadow: 0 0 0 1.5px #d9c08a, 0 0 10px 1px rgba(217, 192, 138, 0.45) !important;
+}
+@media print {
+  .pg-ClosureDetail .opt3 button.aip { box-shadow: none !important; }
+  .pg-ClosureDetail .opt3 button .aim { display: none !important; }
+}
 .pg-ClosureDetail .ev {
   grid-column: 1 / -1;
   font-size: 12px;

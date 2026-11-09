@@ -123,7 +123,7 @@ class Logic extends DCLogic {
       items: items.map(([q, aiRaw, evRaw]) => {
         const k = idx++;
         const sg = real ? this.props.suggest.safety[k] : null;
-        const ai = real ? '' : aiRaw;
+        const ai = real ? sg?.level ?? '' : aiRaw;
         const ev = real ? sg?.ev ?? '' : evRaw;
         const cur = real ? this.props.report.safety[k] : s.sa[k] !== undefined ? s.sa[k] : ai;
         return {
@@ -135,12 +135,25 @@ class Logic extends DCLogic {
           opts: ['높음', '보통', '낮음'].map((o) => ({
             label: o,
             ...sel(cur === o),
+            // 11/09 디자인: AI 가 고른 단추는 상담원이 다른 값을 골라도 표시가 남는다(무엇이 AI 판단인지 알게).
+            isAi: !!ai && o === ai,
+            cls: !!ai && o === ai ? 'aip' : '',
+            aria: o + (!!ai && o === ai ? ' (AI 제안)' : ''),
             pick: () => (real ? this.props.report.pickSafety(k, o) : this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } })),
           })),
         };
       }),
     }));
-    return { reasons, goals: real ? [] : goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
+    // 실제 사례: 개입목표 6줄(11/09 디자인 자리). 목표 · 서비스 모두 상담원이 쓴다(가상 사례 문장을 넣지 않는다).
+    const liveGoals = real
+      ? ['장기 개입목표 1', '단기 개입목표 1', '단기 개입목표 2', '장기 개입목표 2', '단기 개입목표 1', '단기 개입목표 2'].map((k, i) => ({
+          k,
+          fw: k[0] === '장' ? 700 : 400,
+          pad: k[0] === '장' ? '12px' : '28px',
+          row: this.props.report.goals[i],
+        }))
+      : [];
+    return { reasons, goals: real ? [] : goals, liveGoals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
   }
 }
 
@@ -342,7 +355,7 @@ function ClosureDetailScreen(props) {
               {r.connected ? (
                 <div className="goal">
                   <span className="k" style={{ fontWeight: 700, paddingLeft: '12px' }}>
-                    상담 · 서비스 제공 <span className="note" style={{ fontWeight: 400 }}>(개입목표 준비 중)</span>
+                    상담 · 서비스 제공
                   </span>
                   <input
                     className="inp"
@@ -355,6 +368,32 @@ function ClosureDetailScreen(props) {
                   />
                 </div>
               ) : null}
+              {(v.liveGoals || []).map((g, gIndex) => (
+                <div className="goal" key={gIndex}>
+                  <span className="k" style={{ fontWeight: g.fw, paddingLeft: g.pad, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {g.k}
+                    <input
+                      className="inp"
+                      type="text"
+                      value={g.row.goal}
+                      onChange={(e) => g.row.setGoal(e.target.value)}
+                      maxLength={200}
+                      placeholder="목표 내용"
+                      aria-label={`${g.k} 내용 (${gIndex < 3 ? '장기 1' : '장기 2'})`}
+                      style={{ width: '100%', height: '36px', fontWeight: 400 }}
+                    />
+                  </span>
+                  <input
+                    className="inp"
+                    type="text"
+                    value={g.row.service}
+                    onChange={(e) => g.row.setService(e.target.value)}
+                    maxLength={300}
+                    aria-label={`${g.k} 제공된 서비스 (${gIndex < 3 ? '장기 1' : '장기 2'})`}
+                    style={{ width: '100%', height: '36px' }}
+                  />
+                </div>
+              ))}
               {(v.goals || []).map((g, gIndex) => (
                 <Fragment key={gIndex}>
                   <div className="goal">
@@ -386,10 +425,13 @@ function ClosureDetailScreen(props) {
                           <Fragment key={oIndex}>
                             <button
                               type="button"
+                              className={o.cls}
                               onClick={o.pick}
+                              aria-label={o.aria}
                               style={{ background: o.bg, color: o.fg, fontWeight: o.fw }}
                             >
                               {o.label}
+                              {o.isAi ? <span className="aim" aria-hidden="true"></span> : null}
                             </button>
                           </Fragment>
                         ))}
@@ -446,10 +488,12 @@ function ClosureDetailScreen(props) {
                   <input
                     className="inp"
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     max="10"
+                    step="1"
                     placeholder="( )점"
-                    aria-label="안전점수"
+                    aria-label={`${row} 안전점수 (1~10점)`}
                     style={{ width: '100px' }}
                     {...(r.connected
                       ? { value: r.scores[rIndex].score, onChange: (e) => r.scores[rIndex].setScore(e.target.value) }

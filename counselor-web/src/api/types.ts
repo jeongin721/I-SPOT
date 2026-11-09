@@ -475,8 +475,13 @@ export interface PersonalInfoRequest {
 }
 
 /** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
+/** GET /cases 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순. */
+export type CaseListSort = "report_date" | "risk";
+
 export interface CaseListItem extends Case {
   child_name?: string | null;
+  /** 분석이 끝난 가장 최근 회차의 상담원 판단. 판단 전이면 null. */
+  risk_level?: RiskLevel | null;
 }
 
 /** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */
@@ -1435,6 +1440,8 @@ export interface ClosureReportFields {
   key_person?: string | null;
   /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
   safety_scores?: { score: number | null; reason: string }[] | null;
+  /** 개입목표 6줄(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2). 상담원이 쓴다(2026-11-09). */
+  goals?: { goal: string; service: string }[] | null;
   /** 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(2026-11-04, 300자). 화면이 회차 기록으로 먼저 채운다. */
   services?: string | null;
 }
@@ -1745,7 +1752,36 @@ export interface CaseForm {
   updated_at: string;
 }
 
-// 아이 앱 콩콩 (API_CONTRACT 23절)
+// =========================================================
+// 문서함 — backend/app/schemas/docbox.py (API_CONTRACT 24절, 2026-11-05)
+// =========================================================
+
+export interface DocboxFolder {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface DocboxFile {
+  id: string;
+  /** null 이면 '폴더 없음'. */
+  folder_id: string | null;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  /** text(첫 페이지 글) · image(그림) · other(미리보기 없음). */
+  preview_kind: "text" | "image" | "other";
+  preview_text: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export interface DocboxList {
+  folders: DocboxFolder[];
+  files: DocboxFile[];
+}
+
+// 아이 앱 콩콩 (API_CONTRACT 24절)
 export interface ChildAppInvite {
   code: string;
   expires_at: string;
