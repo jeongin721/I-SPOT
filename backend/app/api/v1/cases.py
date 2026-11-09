@@ -78,6 +78,7 @@ def list_cases(
     with_child_name: bool = False,
     # 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순.
     sort: Optional[case_service.CaseSort] = None,
+    order: case_service.CaseSortOrder = "desc",
 ) -> DataResponse[PagedItems[CaseListItemResponse]]:
     cases, total = case_service.list_cases(
         db,
@@ -87,6 +88,7 @@ def list_cases(
         status=status_filter,
         search=search,
         sort=sort,
+        order=order,
     )
 
     names = (
