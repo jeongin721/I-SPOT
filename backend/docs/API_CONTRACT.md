@@ -2824,7 +2824,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ## 23. Docbox (문서함 — 기관 서식 · 참고 문서 공용 보관, 2026-11-05)
 
 11/05 디자인 '문서함(폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' 이 쓴다. 사례 · 회차와 상관없는 팀 공용 보관함이라
-로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 폴더 · 문서 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
+로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 문서 지우기는 관리자만 할 수 있고, 폴더 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
 
 ### GET /api/v1/docbox → 200
 
@@ -2857,7 +2857,17 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 - 늘 첨부(`Content-Disposition: attachment`) · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`.
   그림만 그 형식, 나머지는 `application/octet-stream`.
-- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` —
+### GET /api/v1/docbox/files/{file_id}/preview → 200 (그림 본체)
+
+- 문서함 화면의 그림 미리보기용. `preview_kind` 가 `image` 인 문서만 응답하고, 그 밖은 404.
+- 그림 형식 · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`. 내려받기 감사 기록을 남기지 않는다.
+
+### DELETE /api/v1/docbox/files/{file_id} → 204 (관리자만)
+
+- 잘못 올린 문서를 지운다. 표의 행과 저장소의 파일 본체를 함께 지운다. 상담원은 403, 없는 문서는 404.
+- 파일 본체를 지우지 못하면 500 이고 행은 그대로 남는다(다시 시도할 수 있다).
+
+- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` · `DOCBOX_FILE_DELETED` —
   파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.
 
 ## 24. Child App (아이 앱 콩콩, 2026-11-09)

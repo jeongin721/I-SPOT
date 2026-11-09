@@ -6,7 +6,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, UploadFile, status
 from fastapi.responses import FileResponse
 
-from app.core.deps import CurrentUser, DbSession
+from app.core.deps import AdminUser, CurrentUser, DbSession
 from app.core.responses import DataResponse
 from app.schemas.docbox import (
     DocboxFileMoveRequest,
@@ -74,3 +74,20 @@ def download_docbox_file(file_id: uuid.UUID, db: DbSession, current_user: Curren
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/files/{file_id}/preview", summary="그림 문서 미리보기(그림만 · 내려받기 기록을 남기지 않음)")
+def preview_docbox_image(file_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> FileResponse:
+    row = docbox_service.get_image_or_404(db, file_id)
+    path = docbox_service.file_path(row)
+
+    return FileResponse(
+        path,
+        media_type=row.content_type,
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"},
+    )
+
+
+@router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT, summary="문서 지우기(관리자만)")
+def delete_docbox_file(file_id: uuid.UUID, db: DbSession, admin: AdminUser) -> None:
+    docbox_service.delete(db, admin, docbox_service.get_file_or_404(db, file_id))
