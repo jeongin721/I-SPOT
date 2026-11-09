@@ -7,7 +7,8 @@
 
 [흐름] 문서 원문(업로드 때 뽑은 글) →
   1) 문장 나누기(document_segments) — 한 문장이 한 '발화'(segment_id doc_001…). 칸 이름 줄('[아동 진술]')은 뺀다.
-  2) 1차: 상담일지 전용 RoBERTa(predict_major_types input_mode="note") — 4대 유형 탐지.
+  2) 1차: 상담일지 전용 RoBERTa(predict_major_types input_mode="note") — 4대 유형 탐지. 글 전체와 문장 2개씩 겹친 창을 모두
+     판정해 유형별로 합친다(major_types_over_windows).
   3) 2차: 탐지된 유형만 세부 유형 · 근거 문장(second_stage_llm.analyze_subtypes) — 가린 글로 보내고 되돌린 뒤 문장에 잇는다.
   4) 유형별 심각도(severity_llm) · 대화 주제(topic_tag_llm)를 함께 띄운다.
   결과는 AI Output Contract 의 신호 칸(abuse_signals · risk_utterances · severity_ratings · topic_tags)만 채운다.
@@ -18,13 +19,22 @@
 - 주제 분류 · 2차는 '아동 발화' 대신 '기록 문장' 을 본다. 주제 비중은 문장 수 기준이다.
 - AI 제안일 뿐이다 — 학대 여부를 확정하지 않는다(녹음 분석과 같다).
 
+[왜 창으로 나누나 — 2026-11-09 민규 발표 서버 확인] 글 전체를 한 번에 넣으면 위험 문장이 일상 문장에 묻혀 네 유형 모두 놓쳤다
+(가상 글 실측: '머리채를 잡혔다고 진술함' 단독 0.926 → 일상 문장과 함께 0.010). 가상 평가 글(위험 문장 포함 48건 · 정상 60건, 표본이
+작은 참고값)에서 전체 글만 19/48 · 오탐 0, 1문장 창 42/48 · 오탐 13(부인 진술에 정서학대), 2문장 창 38/48 · 오탐 3, 3문장 창 34/48 ·
+오탐 5 — 2문장을 쓴다.
+
+[근거 없는 신호] 1차가 탐지했어도 2차에서 근거 문장을 못 찾은 유형은 저장하지 않고 경고를 남긴다(drop_ungrounded_signals — 녹음
+경로 ai_adapter.drop_ungrounded_risk_items 와 같은 규칙 · 문구, 05_RULES §1).
+
 개인정보: 밖으로 나가는 글은 privacy_gateway.mask_for_outbound 로 가리고 답은 restore_pii 로 되돌린다.
 무거운 모듈(RoBERTa · NER · openai)은 CI 에 없어 함수 안에서 import 한다(document_segments · risk_utterances_from 은 시험한다).
 """
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 DEFAULT_MODEL = "gpt-5.6-luna"
 SEGMENT_PREFIX = "doc_"
@@ -32,6 +42,8 @@ SEGMENT_PREFIX = "doc_"
 RECORD_LABEL = "기록"
 #: 문장 수 상한(30,000자 문서도 이 안에 든다 — 넘는 뒤 문장은 보지 않는다).
 MAX_SEGMENTS = 400
+#: 1차 판정 창의 문장 수(한 문장씩 옮긴다). 고른 이유는 모듈 머리 '왜 창으로 나누나'.
+WINDOW_SENTENCES = 2
 
 _SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|\n+")
 _HEADING_ONLY = re.compile(r"^\s*\[[^\]\n]{1,30}\]\s*$")
@@ -124,6 +136,46 @@ def abuse_signals_from(major_types: Dict[str, Any], risk_utterances: List[Dict[s
     return signals
 
 
+def document_windows(segments: List[Dict[str, Any]], size: int = WINDOW_SENTENCES) -> List[str]:
+    """문장 목록 → size 문장씩 한 문장씩 옮긴 글. 문장이 size 보다 적으면 전체 하나."""
+
+    sentences = [segment["text"] for segment in segments]
+    return ["\n".join(sentences[start : start + size]) for start in range(max(1, len(sentences) - size + 1))] if sentences else []
+
+
+def major_types_over_windows(
+    segments: List[Dict[str, Any]],
+    predict: Callable[[str], Dict[str, Any]],
+    deadline: Optional[float] = None,
+) -> Dict[str, Any]:
+    """글 전체와 창마다 1차 판정 → 유형별로 합친다. 어느 하나라도 탐지면 탐지, 아니면 처음 나온 filtered_reason 을 남긴다."""
+
+    texts = ["\n".join(segment["text"] for segment in segments), *document_windows(segments)]
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    for text in dict.fromkeys(texts):
+        if deadline is not None and time.monotonic() > deadline:
+            raise TimeoutError("문서 1차 판정이 제한 시간을 넘겼습니다.")
+        for label, info in predict(text).items():
+            current = merged.setdefault(label, {"detected": False})
+            if info.get("detected"):
+                current["detected"] = True
+                current.pop("filtered_reason", None)
+            elif not current["detected"] and info.get("filtered_reason") and "filtered_reason" not in current:
+                current["filtered_reason"] = info["filtered_reason"]
+
+    return merged
+
+
+def drop_ungrounded_signals(signals: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """탐지됐는데 근거 문장이 없는 유형을 뺀다 → (남은 신호, 경고). 탐지 안 된 유형은 근거가 필요 없어 그대로 둔다."""
+
+    kept = [signal for signal in signals if signal["detected"] is False or signal["segment_ids"]]
+    dropped = len(signals) - len(kept)
+
+    return kept, ([f"segment 근거가 없는 신호 {dropped}건을 제외했습니다."] if dropped else [])
+
+
 def analyze_document_signals(
     text: str,
     known_identifiers: Optional[List[str]] = None,
@@ -167,8 +219,10 @@ def analyze_document_signals(
             else None
         )
 
-        # 1차: 상담일지(3인칭 서술) 전용 모델.
-        major_types = predict_major_types(text="\n".join(segment["text"] for segment in segments), input_mode="note")
+        # 1차: 상담일지(3인칭 서술) 전용 모델. 글 전체 + 2문장 창.
+        major_types = major_types_over_windows(
+            segments, lambda chunk: predict_major_types(text=chunk, input_mode="note"), deadline=deadline
+        )
         detected = [label for label in ABUSE_LABELS if (major_types.get(label) or {}).get("detected")]
 
         if detected:
@@ -210,15 +264,16 @@ def analyze_document_signals(
         executor.shutdown(wait=False)
 
     risk_utterances = risk_utterances_from(subtype_result)
+    abuse_signals, warnings = drop_ungrounded_signals(abuse_signals_from(major_types, risk_utterances, list(ABUSE_LABELS)))
     return {
         "schema_version": "1.0",
-        "abuse_signals": abuse_signals_from(major_types, risk_utterances, list(ABUSE_LABELS)),
+        "abuse_signals": abuse_signals,
         "risk_utterances": risk_utterances,
         "severity_ratings": severity_ratings,
         # 근거가 문장이라 음성 시각은 없다.
         "topic_tags": (
             [{**tag, "start_ms": None} for tag in topic_tags if isinstance(tag, dict)] if isinstance(topic_tags, list) else None
         ),
-        "warnings": [],
+        "warnings": warnings,
         "model": model_name,
     }
