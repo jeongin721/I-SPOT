@@ -56,6 +56,9 @@ CLOSURE_REASON_COUNT = 5
 CLOSURE_SAFETY_ITEM_COUNT = 11
 CLOSURE_SAFETY_SCORE_COUNT = 3
 CLOSURE_SHORT_TEXT_MAX_LENGTH = 300
+# 개입목표 6줄(2026-11-09 디자인): 장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2 순서.
+CLOSURE_GOAL_COUNT = 6
+CLOSURE_GOAL_TEXT_MAX_LENGTH = 200
 
 SafetyLevel = Literal["HIGH", "MEDIUM", "LOW"]
 
@@ -63,6 +66,11 @@ SafetyLevel = Literal["HIGH", "MEDIUM", "LOW"]
 class ClosureSafetyScore(BaseModel):
     score: Optional[int] = None
     reason: str = ""
+
+
+class ClosureGoal(BaseModel):
+    goal: str = ""
+    service: str = ""
 
 
 class ClosureReport(BaseModel):
@@ -77,6 +85,8 @@ class ClosureReport(BaseModel):
     safety_scores: Optional[List[ClosureSafetyScore]] = None
     # 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(11/04). 화면이 회차 기록(상담 유형별 수)으로 먼저 채우고 상담원이 고친다.
     services: Optional[str] = None
+    # 개입목표 6줄(2026-11-09). 상담원이 쓴다 — AI · 기록으로 채우지 않는다.
+    goals: Optional[List[ClosureGoal]] = None
 
 
 class ClosureSafetyScoreIn(RequestModel):
@@ -85,6 +95,11 @@ class ClosureSafetyScoreIn(RequestModel):
 
     score: Optional[StrictInt] = Field(default=None, ge=1, le=10)
     reason: str = Field(default="", max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
+
+
+class ClosureGoalIn(RequestModel):
+    goal: str = Field(default="", max_length=CLOSURE_GOAL_TEXT_MAX_LENGTH)
+    service: str = Field(default="", max_length=CLOSURE_SHORT_TEXT_MAX_LENGTH)
 
 
 class ClosureReportIn(RequestModel):
@@ -111,6 +126,7 @@ class ClosureReportIn(RequestModel):
     safety_scores: Optional[List[ClosureSafetyScoreIn]] = Field(
         default=None, min_length=CLOSURE_SAFETY_SCORE_COUNT, max_length=CLOSURE_SAFETY_SCORE_COUNT
     )
+    goals: Optional[List[ClosureGoalIn]] = Field(default=None, min_length=CLOSURE_GOAL_COUNT, max_length=CLOSURE_GOAL_COUNT)
 
 
 class ClosureSummaryResponse(BaseModel):

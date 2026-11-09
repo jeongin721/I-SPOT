@@ -604,10 +604,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
   - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- 각 줄의 `risk_level`(`HIGH|MEDIUM|LOW|null`)은 AI 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED`·`APPROVED`)의 상담원 판단(회차 전체)이다. 그 회차를 판단하기 전이면 `null` 이고, 앞 회차 판단이나 AI 심각도로 채우지 않는다
+  - 화면은 이 값을 먼저 쓰고, `null` 이면 `counselor_risk_level`(위험도(우선))을 보인다. 둘 다 상담원이 고른 값이다(2026-11-06)
+- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다(화면에 보이는 값과 같은 기준 — 회차 판단, 없으면 위험도(우선)). 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
 - `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
   열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
   빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
@@ -840,7 +843,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
   `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD` 글자만 — 시각 · 숫자 `422`).
   (2026-11-03) 상담원 판단 칸도 `report` 에 둔다 — `reasons`: 종결사유 5개 `bool` · `safety`: 안전평가 11문항 `HIGH`·`MEDIUM`·`LOW`·`null`
-  (피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 서식 6 안전영역과 같은 순서) · `key_person`: 300자 · `safety_scores`: 3줄 `{score: 1~10·null, reason: 300자}`
+  (피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 서식 6 안전영역과 같은 순서) · `key_person`: 300자 · `safety_scores`: 3줄 `{score: 1~10·null, reason: 300자}` · `goals`: 6줄 `{goal: 200자, service: 300자}`(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2, 상담원이 씀, 2026-11-09)
   · (2026-11-04) `services`: 사례관리 제공 요약 · 제공된 서비스 내용 및 총량 300자(화면이 회차 기록의 상담 유형별 횟수로 먼저 채운다).
   목록은 문항 수 그대로(아니면 `422`). 타입은 바꿔 받지 않고(`true` → 1 · `"3"` → 3 은 `422`), 모르는 칸(`reson` 오타 등)도 `422`(11/05).
   GET 의 `report` 에도 같은 키가 온다(저장 전 `null`).
@@ -2815,3 +2818,44 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
 - 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
 - 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).
+
+---
+
+## 23. Docbox (문서함 — 기관 서식 · 참고 문서 공용 보관, 2026-11-05)
+
+11/05 디자인 '문서함(폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' 이 쓴다. 사례 · 회차와 상관없는 팀 공용 보관함이라
+로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 폴더 · 문서 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
+
+### GET /api/v1/docbox → 200
+
+```json
+{ "folders": [{ "id": "uuid", "name": "기관 서식", "count": 3 }],
+  "files": [{ "id": "uuid", "folder_id": "uuid|null", "name": "점검표 안내.txt", "content_type": "application/octet-stream",
+              "size_bytes": 1180, "preview_kind": "text", "preview_text": "점검표 안내\n…", "uploaded_by_name": "이서연",
+              "created_at": "…" }] }
+```
+
+- `folders` 는 만든 순서, `files` 는 최신순. `folder_id: null` 은 '폴더 없음'.
+- `preview_kind`: `image`(png · jpg · gif · webp — 화면이 파일을 받아 그대로 보인다) · `text`(첫 페이지 글 앞 1,500자 —
+  txt · md · csv 는 글 그대로, docx · hwpx · pdf 는 21절과 같은 글자 뽑기) · `other`(hwp · doc · xlsx · xls · pptx · ppt, 또는 뽑지 못함).
+
+### POST /api/v1/docbox/folders → 201
+
+- `{ "name": "참고 자료" }`(40자, 공백 정리). 같은 이름이 있으면 `409 DUPLICATE_RESOURCE`.
+
+### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
+
+- 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
+- 응답 `{ "files": [DocboxFile] }`.
+
+### PATCH /api/v1/docbox/files/{file_id} → 200
+
+- `{ "folder_id": "uuid" | null }` — 폴더 옮기기(null 이면 폴더 없음). 없는 문서 · 폴더는 `404`.
+
+### GET /api/v1/docbox/files/{file_id}/download → 200 (파일 본체)
+
+- 늘 첨부(`Content-Disposition: attachment`) · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`.
+  그림만 그 형식, 나머지는 `application/octet-stream`.
+- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` —
+  파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.
