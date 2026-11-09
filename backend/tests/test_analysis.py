@@ -37,6 +37,8 @@ AI_CONTRACT_KEYS = {
     "followup_questions",
     # 2026-10-29 아동 발화 대화 주제(8절). 없으면 null.
     "topic_tags",
+    "safety_flags",
+    "reabuse_factors",
 }
 
 

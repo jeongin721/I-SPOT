@@ -1553,6 +1553,28 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
   - LLM 실패 · 마감까지 못 끝냄
   - LLM 이 주제를 냈는데 검사에서 하나도 남지 않음(목록 밖 이름뿐 등 — 분류 실패로 본다)
 
+**안전 플래그 `safety_flags` · 재학대 요인 `reabuse_factors`(선택, 2026-11-05)** — 학대 신호 확인(2단계) '안전 플래그 · 재학대 요인' 카드의 재료다.
+모두 **AI 확인 후보**이고 판정이 아니다. 점수 · 등급으로 바꾸지 않는다.
+
+```json
+"safety_flags": [
+  { "code": "S2", "text": "말하면 더 혼난다는 말을 들었다고 함", "certainty": "CLEAR", "segment_ids": ["seg_012"] }
+],
+"reabuse_factors": [
+  { "code": "R2", "text": "아빠가 술을 마시면 때린다고 함", "segment_ids": ["seg_004"] }
+]
+```
+
+- 기준은 팀이 확인한 기준안(2026-11-05)이다. 정의는 `ai/modeling/abuse/safety_flag_llm.py` 의 `SAFETY_FLAG_DEFINITIONS`(S1~S10, '지금 이 아이가
+  안전한가') · `REABUSE_FACTOR_DEFINITIONS`(R2~R10, '앞으로 다시 일어날 가능성'). R1(중복학대)은 AI 가 내지 않고 화면이 관련 신호가 잡힌 유형 수로 센다.
+- `certainty`: `CLEAR`(진술이 분명히 해당) · `CHECK`(상담원 확인 필요). 모르는 값이면 `CHECK` 로 본다.
+- **없으면 `null`**(이 필드 전 결과 · 모듈 실패 · Mock AI · LangGraph) — `topic_tags` 처럼 `[]`(찾았지만 해당 없음)과 구분한다.
+  화면은 `null` 을 '없음' 으로 보이지 않는다(언급 없음 ≠ 안전함). 모듈이 실패했으면 `warnings` 에
+  `"안전 플래그 · 재학대 요인을 만들지 못했습니다."` 가 붙고 분석은 그대로 끝난다.
+- 모르는 코드 · 문장이 비었거나 `segment_ids` 가 빈 항목은 그 항목만 버린다.
+- 2단계 칸이라 두 번 저장(위 "두 번 저장")에서 **첫 저장에 실리고 둘째 저장에서 바뀌지 않는다**. 보호요인과 같은 마스킹된 인용 축어록으로
+  기록 초안 · 보호요인과 병렬로 부른다.
+
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
 `AI_TIMEOUT` 은 아래 넷 가운데 하나다. 모두 재시도할 수 있다.

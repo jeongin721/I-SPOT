@@ -175,6 +175,10 @@ LEGAL_REFERENCES_UNAVAILABLE_WARNING = (
     "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다."
 )
 
+# 안전 플래그 · 재학대 요인 모듈(safety_flag_llm.py)이 실패해 두 칸이 null 일 때(2026-11-05). 키가 아예 없는 결과
+# (이 필드 전 결과 · 가짜 모듈)에는 붙이지 않는다.
+SAFETY_FLAGS_UNAVAILABLE_WARNING = "안전 플래그 · 재학대 요인을 만들지 못했습니다."
+
 _LEGAL_REFERENCE_KEYS = ("law_name", "article", "item_label", "text", "portal_url")
 
 
@@ -307,6 +311,9 @@ def to_ai_output_contract(
     if result.get("legal_references_unavailable"):
         warnings.append(LEGAL_REFERENCES_UNAVAILABLE_WARNING)
 
+    if "safety_flags" in result and result.get("safety_flags") is None:
+        warnings.append(SAFETY_FLAGS_UNAVAILABLE_WARNING)
+
     # major_type(한글)별 근거 segment_id — 같은 유형 risk_signal_points
     # 에서 모은다. abuse_signals 는 major_types 의 한글 키로 찾으므로
     # 변환 전 라벨로 묶는다.
@@ -412,6 +419,38 @@ def to_ai_output_contract(
         for factor in result.get("protective_factors") or []
     ]
 
+    # 안전 플래그 · 재학대 요인(safety_flag_llm.py, 2026-11-05). None(모듈 실패 · 이 필드 전 결과)은 그대로 null —
+    # 빈 목록(찾았지만 해당 없음)과 구분한다(topic_tags 와 같은 규칙). 모듈이 이미 검사한 값이라 모양만 옮긴다.
+    raw_safety_flags = result.get("safety_flags")
+    safety_flags = (
+        [
+            {
+                "code": flag.get("code", ""),
+                "text": flag.get("text", ""),
+                "certainty": flag.get("certainty", "CHECK"),
+                "segment_ids": flag.get("segment_ids", []),
+            }
+            for flag in raw_safety_flags
+            if isinstance(flag, dict)
+        ]
+        if isinstance(raw_safety_flags, list)
+        else None
+    )
+    raw_reabuse_factors = result.get("reabuse_factors")
+    reabuse_factors = (
+        [
+            {
+                "code": factor.get("code", ""),
+                "text": factor.get("text", ""),
+                "segment_ids": factor.get("segment_ids", []),
+            }
+            for factor in raw_reabuse_factors
+            if isinstance(factor, dict)
+        ]
+        if isinstance(raw_reabuse_factors, list)
+        else None
+    )
+
     session_change_notes = [
         {"text": note, "segment_ids": []}
         for note in result.get("session_change_notes") or []
@@ -477,6 +516,8 @@ def to_ai_output_contract(
         "warnings": warnings,
         "severity_ratings": severity_ratings,
         "protective_factors": protective_factors,
+        "safety_flags": safety_flags,
+        "reabuse_factors": reabuse_factors,
         "session_change_notes": session_change_notes,
         "followup_check_points": followup_check_points,
         "followup_questions": followup_questions,
