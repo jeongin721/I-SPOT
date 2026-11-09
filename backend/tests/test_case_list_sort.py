@@ -108,3 +108,31 @@ def test_sort_by_risk_falls_back_to_intake_level(client: TestClient, counselor_h
     order = [item["id"] for item in _list(client, counselor_headers, sort="risk")]
 
     assert order == [picked_high["id"], picked_medium["id"], judged_low["id"], empty["id"]]
+
+
+def test_order_asc_reverses_date_and_keeps_empty_last(client: TestClient, counselor_headers) -> None:
+    """↓(order=asc): 신고접수일 오래된순, 값 없는 사례는 그래도 맨 뒤."""
+
+    old = create_case(client, counselor_headers, report_date="2026-01-01")["id"]
+    new = create_case(client, counselor_headers, report_date="2026-06-01")["id"]
+    empty = create_case(client, counselor_headers)["id"]
+
+    order = [item["id"] for item in _list(client, counselor_headers, sort="report_date", order="asc")]
+
+    assert order == [old, new, empty]
+
+
+def test_order_asc_puts_low_risk_first_and_empty_last(client: TestClient, counselor_headers) -> None:
+    high = create_case(client, counselor_headers, counselor_risk_level="HIGH")["id"]
+    low = create_case(client, counselor_headers, counselor_risk_level="LOW")["id"]
+    empty = create_case(client, counselor_headers)["id"]
+
+    order = [item["id"] for item in _list(client, counselor_headers, sort="risk", order="asc")]
+
+    assert order == [low, high, empty]
+
+
+def test_unknown_order_is_rejected(client: TestClient, counselor_headers) -> None:
+    response = client.get("/api/v1/cases", params={"sort": "risk", "order": "up"}, headers=counselor_headers)
+
+    assert response.status_code == 422
