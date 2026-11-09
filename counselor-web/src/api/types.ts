@@ -1724,7 +1724,7 @@ export interface CaseForm {
   updated_at: string;
 }
 
-// 아이 앱 콩콩 (API_CONTRACT 22절)
+// 아이 앱 콩콩 (API_CONTRACT 23절)
 export interface ChildAppInvite {
   code: string;
   expires_at: string;

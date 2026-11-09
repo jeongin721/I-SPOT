@@ -1,5 +1,5 @@
 // 아이가 콩콩 앱에서 '급하다고 알리기' 를 보내면 어느 화면에서든 보이는 위쪽 배너. 상담사 · 관리자 사이드바가 띄운다.
-// 담당 상담사는 자기 사례, 관리자는 전체(API_CONTRACT 22절). 확인 처리는 사례의 아이 연계 탭에서 한다.
+// 담당 상담사는 자기 사례, 관리자는 전체(API_CONTRACT 23절). 확인 처리는 사례의 아이 연계 탭에서 한다.
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import A from './A';

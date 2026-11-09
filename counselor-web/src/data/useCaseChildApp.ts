@@ -1,4 +1,4 @@
-// 사례의 아이 앱(콩콩) 연결 · 받은 내용(API_CONTRACT 22절). 아이 답변을 보려고 30초마다 조용히 다시 받는다.
+// 사례의 아이 앱(콩콩) 연결 · 받은 내용(API_CONTRACT 23절). 아이 답변을 보려고 30초마다 조용히 다시 받는다.
 
 import { useCallback, useEffect, useState } from "react";
 

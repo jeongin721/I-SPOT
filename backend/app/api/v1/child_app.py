@@ -1,4 +1,4 @@
-# 아이 앱(콩콩) API(API_CONTRACT 22절).
+# 아이 앱(콩콩) API(API_CONTRACT 23절).
 #   /child-app/*          아이 기기. 상담사 로그인이 아니라 기기 토큰으로 인증한다.
 #   /cases/{id}/child-app 상담사 웹. 담당 상담사 · 관리자만.
 

@@ -1,10 +1,10 @@
 """add child app tables
 
 Revision ID: f3a4b5c6d7e8
-Revises: e1f2a3b4c5d6
+Revises: e5f6a7b8c9d0
 Create Date: 2026-11-09 12:00:00.000000
 
-아이 앱(콩콩) 연결 · 보낸 질문 · 상담사 피드(API_CONTRACT 22절).
+아이 앱(콩콩) 연결 · 보낸 질문 · 상담사 피드(API_CONTRACT 23절).
 """
 from typing import Sequence, Union
 
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = 'f3a4b5c6d7e8'
-down_revision: Union[str, None] = 'e1f2a3b4c5d6'
+down_revision: Union[str, None] = 'e5f6a7b8c9d0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
