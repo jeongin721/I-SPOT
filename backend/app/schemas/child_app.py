@@ -140,6 +140,20 @@ class ChildAiApprovalRequest(RequestModel):
     approved: bool
 
 
+class ChildAppCaseRow(BaseModel):
+    case_id: uuid.UUID
+    case_number: str
+    child_alias: str
+    child_birth_year: Optional[int] = None
+    status: str
+    # 최근 21일 답 묶음 수 · 가장 최근 답의 수준. 담당 상담사만(그 외 null).
+    recent_answers: Optional[int] = None
+    level: Optional[str] = None
+    last_response_at: Optional[datetime] = None
+    open_alert_at: Optional[datetime] = None
+    open_alert_reason: Optional[str] = None
+
+
 class ChildAppCaseResponse(BaseModel):
     status: str
     code_expires_at: Optional[datetime] = None

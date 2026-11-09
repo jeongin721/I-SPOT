@@ -711,3 +711,24 @@ def test_llm_output_is_filtered() -> None:
     assert result[0]["questions"][0]["options"] == ["아침", "저녁", HARD_TO_SAY]
     assert result[1]["questions"] == [] and result[2]["questions"] == []
     assert clean_output("이상한 값", items) == []
+
+
+def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    url = "/api/v1/child-app-cases"
+    assert client.get(url).status_code == 401
+
+    rows = client.get(url, headers=counselor_headers).json()["data"]
+    assert [row["case_id"] for row in rows] == [case["id"]] and rows[0]["status"] == "NOT_LINKED"
+    assert client.get(url, headers=other_counselor_headers).json()["data"] == []
+
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"], safe=2)
+
+    row = client.get(url, headers=counselor_headers).json()["data"][0]
+    assert row["status"] == "LINKED" and row["recent_answers"] == 1 and row["level"] == "RED"
+    assert row["open_alert_reason"] == "RED_ANSWER" and row["last_response_at"]
+
+    admin = client.get(url, headers=admin_headers).json()["data"][0]
+    assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None

@@ -9,6 +9,7 @@ import { api, clearToken, setToken } from "./client";
 import type {
   ChildAiDraft,
   ChildAppCase,
+  ChildAppCaseRow,
   ChildAppInvite,
   ChildOpenAlert,
   DocboxFile,
@@ -768,6 +769,10 @@ export const childApp = {
 
   sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
     return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  },
+
+  listCases(): Promise<ChildAppCaseRow[]> {
+    return api.get<ChildAppCaseRow[]>("/child-app-cases");
   },
 
   createAiDraft(caseId: string): Promise<ChildAiDraft> {

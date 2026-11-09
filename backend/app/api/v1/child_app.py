@@ -21,6 +21,7 @@ from app.schemas.child_app import (
     ChildAlertReceived,
     ChildAnswersResponse,
     ChildAppCaseResponse,
+    ChildAppCaseRow,
     ChildAppInviteResponse,
     ChildHomeResponse,
     ChildLinkRequest,
@@ -35,6 +36,7 @@ _enabled = [Depends(child_app_service.ensure_enabled)]
 device_router = APIRouter(prefix="/child-app", tags=["child-app"], dependencies=_enabled)
 case_router = APIRouter(prefix="/cases", tags=["child-app"], dependencies=_enabled)
 staff_router = APIRouter(prefix="/child-app-alerts", tags=["child-app"], dependencies=_enabled)
+list_router = APIRouter(prefix="/child-app-cases", tags=["child-app"], dependencies=_enabled)
 
 
 def _current_link(
@@ -82,6 +84,11 @@ def send_alert(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildAlert
     child_app_service.send_alert(db, link)
 
     return DataResponse(data=ChildAlertReceived())
+
+
+@list_router.get("", response_model=DataResponse[List[ChildAppCaseRow]], summary="아이 연계 목록")
+def list_child_app_cases(db: DbSession, current_user: CurrentUser) -> DataResponse[List[ChildAppCaseRow]]:
+    return DataResponse(data=child_app_service.list_cases(db, current_user))
 
 
 @staff_router.get("/open", response_model=DataResponse[List[ChildOpenAlert]])
