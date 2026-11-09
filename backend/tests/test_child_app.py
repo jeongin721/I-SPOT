@@ -253,3 +253,16 @@ def test_admin_sees_status_but_not_child_content(
     assert view["status"] == "LINKED"
     assert view["last_response_at"] is not None
     assert view["feed"] == []
+
+
+def test_unstorable_child_text_rejected(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "free"])
+    set_id = _home(client, device)["pending"]["id"]
+    answers = [
+        {"question_id": "sleep", "skipped": True},
+        {"question_id": "home", "skipped": True},
+        {"question_id": "free", "text": "a\u0000b"},
+    ]
+    response = client.post(f"/api/v1/child-app/question-sets/{set_id}/answers", json={"answers": answers}, headers=device)
+    assert response.status_code == 422

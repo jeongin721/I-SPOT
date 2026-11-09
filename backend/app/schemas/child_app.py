@@ -8,8 +8,10 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import RequestModel
 
-class ChildLinkRequest(BaseModel):
+
+class ChildLinkRequest(RequestModel):
     code: str = Field(min_length=1, max_length=40)
 
 
@@ -43,7 +45,7 @@ class ChildHomeResponse(BaseModel):
     next_consult: Optional[ChildNextConsult] = None
 
 
-class ChildAnswerInput(BaseModel):
+class ChildAnswerInput(RequestModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: str = Field(max_length=40)
@@ -53,7 +55,7 @@ class ChildAnswerInput(BaseModel):
     chip: Optional[str] = Field(default=None, max_length=40)
 
 
-class ChildAnswersRequest(BaseModel):
+class ChildAnswersRequest(RequestModel):
     answers: List[ChildAnswerInput] = Field(max_length=10)
 
 
@@ -66,7 +68,7 @@ class ChildAppInviteResponse(BaseModel):
     expires_at: datetime
 
 
-class ChildQuestionSendRequest(BaseModel):
+class ChildQuestionSendRequest(RequestModel):
     question_ids: List[str] = Field(min_length=3, max_length=4)
 
 
