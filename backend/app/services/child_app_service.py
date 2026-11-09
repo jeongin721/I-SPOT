@@ -182,20 +182,26 @@ def send_questions(
     db.commit()
 
 
-def get_case_view(db: Session, case: Case) -> ChildAppCaseResponse:
+def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
     link = _link_row(db, case.id)
+    # 아이에게 "담당 선생님만 본다" 고 안내한다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
+    can_read_feed = case.counselor_id == user.id
     pending = db.scalar(
         select(ChildQuestionSet.id).where(
             ChildQuestionSet.case_id == case.id,
             ChildQuestionSet.status == ChildQuestionSetStatus.PENDING,
         ).limit(1)
     )
-    rows = db.scalars(
-        select(ChildAppEvent)
-        .where(ChildAppEvent.case_id == case.id)
-        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
-        .limit(FEED_LIMIT)
-    ).all()
+    rows = []
+
+    if can_read_feed:
+        rows = db.scalars(
+            select(ChildAppEvent)
+            .where(ChildAppEvent.case_id == case.id)
+            .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+            .limit(FEED_LIMIT)
+        ).all()
+
 
     return ChildAppCaseResponse(
         status=link.status.value if link else "NOT_LINKED",
@@ -203,6 +209,7 @@ def get_case_view(db: Session, case: Case) -> ChildAppCaseResponse:
         linked_at=link.linked_at if link else None,
         last_response_at=link.last_response_at if link else None,
         has_pending_questions=pending is not None,
+        can_read_feed=can_read_feed,
         bank=[
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK

@@ -239,3 +239,17 @@ def test_next_consult_exposes_only_date_time_place(client: TestClient, counselor
     response = client.get("/api/v1/child-app/home", headers=device)
     assert "비공개제목" not in response.text
     assert response.json()["data"]["next_consult"] == {"date": today.isoformat(), "time": "16:00", "place": "기관 상담실"}
+
+
+def test_admin_sees_status_but_not_child_content(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["safe", "home", "meal"])
+    pending = _home(client, device)["pending"]
+    answers = [{"question_id": q["id"], "skipped": True} for q in pending["questions"]]
+    client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json={"answers": answers}, headers=device)
+    view = _view(client, admin_headers, case["id"])
+    assert view["status"] == "LINKED"
+    assert view["last_response_at"] is not None
+    assert view["feed"] == []

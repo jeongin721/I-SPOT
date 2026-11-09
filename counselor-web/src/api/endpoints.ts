@@ -34,6 +34,8 @@ import type {
   ClosureSummarySave,
   FollowupCheck,
   FollowupCheckList,
+  ChildAppCase,
+  ChildAppInvite,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -713,5 +715,23 @@ export const caseForms = {
   /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
   confirm(caseId: string, formId: string, version: number): Promise<CaseForm> {
     return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`, { version });
+  },
+};
+
+// =========================================================
+// 아이 앱 콩콩 (API_CONTRACT 22절)
+// =========================================================
+
+export const childApp = {
+  get(caseId: string): Promise<ChildAppCase> {
+    return api.get<ChildAppCase>(`/cases/${caseId}/child-app`);
+  },
+
+  invite(caseId: string): Promise<ChildAppInvite> {
+    return api.post<ChildAppInvite>(`/cases/${caseId}/child-app/invite`);
+  },
+
+  sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
   },
 };

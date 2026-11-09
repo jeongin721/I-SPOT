@@ -1723,3 +1723,28 @@ export interface CaseForm {
   created_at: string;
   updated_at: string;
 }
+
+// 아이 앱 콩콩 (API_CONTRACT 22절)
+export interface ChildAppInvite {
+  code: string;
+  expires_at: string;
+}
+
+export interface ChildAppEvent {
+  id: string;
+  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS";
+  level: "NONE" | "SKIP" | "AMBER" | "RED";
+  payload: Record<string, any>;
+  created_at: string;
+}
+
+export interface ChildAppCase {
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  code_expires_at: string | null;
+  linked_at: string | null;
+  last_response_at: string | null;
+  has_pending_questions: boolean;
+  can_read_feed: boolean;
+  bank: { id: string; category: string; type: string; text: string }[];
+  feed: ChildAppEvent[];
+}

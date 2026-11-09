@@ -91,5 +91,6 @@ class ChildAppCaseResponse(BaseModel):
     linked_at: Optional[datetime] = None
     last_response_at: Optional[datetime] = None
     has_pending_questions: bool
+    can_read_feed: bool
     bank: List[ChildAppBankItem]
     feed: List[ChildAppEventResponse]

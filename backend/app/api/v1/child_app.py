@@ -77,7 +77,7 @@ def get_case_child_app(
 ) -> DataResponse[ChildAppCaseResponse]:
     case = get_case_or_404(db, case_id, current_user)
 
-    return DataResponse(data=child_app_service.get_case_view(db, case))
+    return DataResponse(data=child_app_service.get_case_view(db, case, current_user))
 
 
 @case_router.post(
