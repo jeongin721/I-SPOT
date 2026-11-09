@@ -123,7 +123,7 @@ class Logic extends DCLogic {
       items: items.map(([q, aiRaw, evRaw]) => {
         const k = idx++;
         const sg = real ? this.props.suggest.safety[k] : null;
-        const ai = real ? '' : aiRaw;
+        const ai = real ? sg?.level ?? '' : aiRaw;
         const ev = real ? sg?.ev ?? '' : evRaw;
         const cur = real ? this.props.report.safety[k] : s.sa[k] !== undefined ? s.sa[k] : ai;
         return {
@@ -135,6 +135,10 @@ class Logic extends DCLogic {
           opts: ['높음', '보통', '낮음'].map((o) => ({
             label: o,
             ...sel(cur === o),
+            // 11/09 디자인: AI 가 고른 단추는 상담원이 다른 값을 골라도 표시가 남는다(무엇이 AI 판단인지 알게).
+            isAi: !!ai && o === ai,
+            cls: !!ai && o === ai ? 'aip' : '',
+            aria: o + (!!ai && o === ai ? ' (AI 제안)' : ''),
             pick: () => (real ? this.props.report.pickSafety(k, o) : this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } })),
           })),
         };
@@ -383,10 +387,13 @@ function ClosureDetailScreen(props) {
                           <Fragment key={oIndex}>
                             <button
                               type="button"
+                              className={o.cls}
                               onClick={o.pick}
+                              aria-label={o.aria}
                               style={{ background: o.bg, color: o.fg, fontWeight: o.fw }}
                             >
                               {o.label}
+                              {o.isAi ? <span className="aim" aria-hidden="true"></span> : null}
                             </button>
                           </Fragment>
                         ))}
@@ -443,10 +450,12 @@ function ClosureDetailScreen(props) {
                   <input
                     className="inp"
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     max="10"
+                    step="1"
                     placeholder="( )점"
-                    aria-label="안전점수"
+                    aria-label={`${row} 안전점수 (1~10점)`}
                     style={{ width: '100px' }}
                     {...(r.connected
                       ? { value: r.scores[rIndex].score, onChange: (e) => r.scores[rIndex].setScore(e.target.value) }
