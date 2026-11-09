@@ -99,6 +99,9 @@ class ChildOpenAlert(BaseModel):
     child_alias: str
     case_number: str
     reason: str
+    can_ack: bool
+    repeat_count: int = 0
+    last_at: Optional[datetime] = None
     created_at: datetime
 
 

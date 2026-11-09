@@ -256,7 +256,7 @@ def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
     if case.counselor_id != viewer.id:
         return "NEEDS_CHECK"
 
-    return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else "CONTACT_REQUEST"
+    return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else event.payload.get("alert_reason", "CONTACT_REQUEST")
 
 
 def _open_alerts(
@@ -292,6 +292,10 @@ def _open_alerts(
             "child_alias": case.child_alias,
             "case_number": case.case_number,
             "reason": _alert_reason(event, case, viewer),
+            # 답 기반 알림은 내용을 볼 수 있는 담당 상담사만 닫는다.
+            "can_ack": event.kind == ChildAppEventKind.ALERT or case.counselor_id == viewer.id,
+            "repeat_count": int(event.payload.get("repeat_count", 0)),
+            "last_at": event.payload.get("last_at"),
             "created_at": event.created_at,
         }
         for event, case in db.execute(statement).all()
@@ -323,6 +327,9 @@ def acknowledge_alert(
 
     if event is None:
         raise not_found(ErrorCode.NOT_FOUND, "긴급 알림을 찾을 수 없습니다.")
+
+    if event.kind != ChildAppEventKind.ALERT:
+        _ensure_assigned(case, user)
 
     # 두 사람이 함께 눌러도 먼저 확인한 사람의 기록을 남긴다.
     if event.acknowledged_at is not None:
@@ -496,7 +503,9 @@ def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]
 
         text = (answer.text or "").strip()
 
-        return {**item, "answer": answer.chip or text or "(비워 둠)", "level": ChildAnswerLevel.NONE.value}
+        shown = " · ".join(part for part in (text, answer.chip) if part) or "(비워 둠)"
+
+        return {**item, "answer": shown, "wrote_text": bool(text), "level": ChildAnswerLevel.NONE.value}
 
     if answer.skipped:
         return skip
@@ -553,13 +562,23 @@ def submit_answers(
     row.status = ChildQuestionSetStatus.ANSWERED
     row.answered_at = now
     link.last_response_at = now
-    wants_contact = any(item["answer"] == CONTACT_REQUEST_CHIP for item in items)
+    # 글은 판정하지 않는다. 글이 있으면 상담사가 읽도록 확인 필요로만 올린다.
+    wants_contact = any(
+        item["level"] != ChildAnswerLevel.SKIP.value and by_id[item["question_id"]].chip == CONTACT_REQUEST_CHIP
+        for item in items
+    )
+    wrote_text = any(item.get("wrote_text") for item in items)
+    payload: Dict[str, Any] = {"items": items}
+
+    if wants_contact or wrote_text:
+        payload["alert_reason"] = "CONTACT_REQUEST" if wants_contact else "TEXT_ANSWER"
+
     _add_event(
         db,
         link.case_id,
         ChildAppEventKind.ANSWERS,
-        {"items": items},
+        payload,
         level=worst,
-        needs_ack=worst == ChildAnswerLevel.RED or wants_contact,
+        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text,
     )
     db.commit()

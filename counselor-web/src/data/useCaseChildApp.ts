@@ -12,6 +12,7 @@ export const CHILD_ALERT_TEXT = {
   ALERT: "아이가 급하다고 알렸어요.",
   RED_ANSWER: "아이 답변에 바로 확인할 내용이 있어요.",
   CONTACT_REQUEST: "아이가 연락을 요청했어요.",
+  TEXT_ANSWER: "아이가 글을 남겼어요.",
   NEEDS_CHECK: "아이 앱에서 확인이 필요한 알림이 왔어요.",
 } as const;
 

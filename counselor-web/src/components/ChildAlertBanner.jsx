@@ -9,15 +9,28 @@ import { CHILD_ALERTS_CHANGED, CHILD_ALERT_TEXT } from '../data/useCaseChildApp'
 import { useRemote } from '../data/useRemote';
 
 const REFRESH_MS = 30_000;
+// 서버 스위치가 꺼져 있으면(503) 새로고침 전까지 다시 묻지 않는다.
+let switchedOff = false;
+
+const loadAlerts = () =>
+  switchedOff
+    ? Promise.resolve([])
+    : childApp.openAlerts().catch((caught) => {
+        if (caught?.status !== 503) throw caught;
+        switchedOff = true;
+        return [];
+      });
 
 export default function ChildAlertBanner({ session }) {
   const userId = session?.status === 'signedIn' ? session.me?.id ?? null : null;
-  const remote = useRemote(userId, () => childApp.openAlerts(), '긴급 알림을 불러오지 못했습니다.', () => false);
+  const remote = useRemote(userId, loadAlerts, '긴급 알림을 불러오지 못했습니다.', () => false);
   const { refresh } = remote;
 
   useEffect(() => {
     if (!userId) return undefined;
-    const timer = window.setInterval(refresh, REFRESH_MS);
+    const timer = window.setInterval(() => {
+      if (!switchedOff) refresh();
+    }, REFRESH_MS);
     window.addEventListener(CHILD_ALERTS_CHANGED, refresh);
     return () => {
       window.clearInterval(timer);
@@ -28,7 +41,7 @@ export default function ChildAlertBanner({ session }) {
   const alerts = remote.data ?? [];
   if (!alerts.length) return null;
   const first = alerts[0];
-  const time = new Date(first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(first.last_at ?? first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
   // 사이드바의 쌓임 맥락에 갇히면 위쪽 도구 막대에 가려 단추가 눌리지 않는다.
   return createPortal(
@@ -56,6 +69,7 @@ export default function ChildAlertBanner({ session }) {
     >
       <span style={{ flex: '1 1 300px' }}>
         <b style={{ color: '#B0452C' }}>긴급 · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}
+        {first.repeat_count ? ` ${first.repeat_count}번 더 눌렀어요.` : ''}
         {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
       </span>
       <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: first.case_id })}>

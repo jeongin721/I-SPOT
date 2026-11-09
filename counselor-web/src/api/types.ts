@@ -1766,7 +1766,10 @@ export interface ChildOpenAlert {
   case_id: string;
   child_alias: string;
   case_number: string;
-  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "NEEDS_CHECK";
+  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "TEXT_ANSWER" | "NEEDS_CHECK";
+  can_ack: boolean;
+  repeat_count: number;
+  last_at: string | null;
   created_at: string;
 }
 

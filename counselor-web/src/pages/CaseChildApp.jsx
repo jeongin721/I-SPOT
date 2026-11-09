@@ -34,7 +34,7 @@ function FeedItem({ event }) {
         <b>급하다고 알림</b>
         <span className="note">
           {dateTime(event.created_at)}
-          {event.payload.repeat_count ? ` · ${event.payload.repeat_count}번 더 누름` : ''}
+          {event.payload.repeat_count ? ` · ${event.payload.repeat_count}번 더 누름(마지막 ${dateTime(event.payload.last_at)})` : ''}
           {event.acknowledged_at ? ` · 확인 ${dateTime(event.acknowledged_at)}` : ' · 확인 전'}
         </span>
       </div>
@@ -135,13 +135,17 @@ export default function CaseChildApp({ caseId }) {
                   style={{ background: '#F8E6DF', border: '1.5px solid #B0452C', borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
                 >
                   <div style={{ flex: '1 1 320px' }}>
-                    <b style={{ color: '#B0452C' }}>긴급 · {dateTime(alert.created_at)}</b>
+                    <b style={{ color: '#B0452C' }}>긴급 · {dateTime(alert.last_at ?? alert.created_at)}</b>
                     <br />
-                    {CHILD_ALERT_TEXT[alert.reason]} 아이의 안전을 고려해 연락 방법을 판단해 주세요.
+                    {CHILD_ALERT_TEXT[alert.reason]}
+                    {alert.repeat_count ? ` ${alert.repeat_count}번 더 눌렀어요.` : ''}
+                    {data.can_read_feed ? ' 아이의 안전을 고려해 연락 방법을 판단해 주세요.' : ' 담당 상담사에게 전달해 주세요.'}
                   </div>
-                  <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
-                    확인했어요
-                  </button>
+                  {alert.can_ack ? (
+                    <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
+                      확인했어요
+                    </button>
+                  ) : null}
                 </section>
               ))}
               <section className="card" aria-label="앱 연결" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>

@@ -435,3 +435,58 @@ def test_switch_off_returns_503(client: TestClient, counselor_headers: Headers, 
         response = getattr(client, method)(url, headers=headers)
         assert response.status_code == 503, url
         assert response.json()["error"]["code"] == "CHILD_APP_DISABLED"
+
+
+def test_unassigned_admin_cannot_close_answer_alert_but_can_close_urgent(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
+            [{"question_id": "safe", "choice_index": 2}, *_skips("home", "meal")])
+    seen = _open(client, admin_headers)[0]
+    assert seen["can_ack"] is False
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{seen['id']}/ack"
+    assert client.post(url, headers=admin_headers).status_code == 403
+    assert len(_open(client, counselor_headers)) == 1
+
+    _alert(client, device)
+    urgent = next(item for item in _open(client, admin_headers) if item["reason"] == "ALERT")
+    assert urgent["can_ack"] is True
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{urgent['id']}/ack"
+    assert client.post(url, headers=admin_headers).status_code == 204
+
+
+def test_open_alert_reports_repeats(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    assert _open(client, counselor_headers)[0]["repeat_count"] == 0
+    _alert(client, device)
+    item = _open(client, counselor_headers)[0]
+    assert item["repeat_count"] == 1 and item["last_at"] is not None
+
+
+def test_written_answer_needs_check_without_grading(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["free", "home", "meal"],
+            [{"question_id": "free", "text": "오늘 집에 가기 무서워요"}, *_skips("home", "meal")])
+    assert [item["reason"] for item in _open(client, counselor_headers)] == ["TEXT_ANSWER"]
+    assert [item["reason"] for item in _open(client, admin_headers)] == ["NEEDS_CHECK"]
+    assert _view(client, counselor_headers, case["id"])["feed"][0]["level"] == "NONE"
+
+
+def test_plain_chip_answer_opens_no_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["free", "home", "meal"],
+            [{"question_id": "free", "chip": "없어요"}, *_skips("home", "meal")])
+    assert _open(client, counselor_headers) == []
+
+
+def test_text_is_kept_when_chip_also_selected(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["free", "home", "meal"],
+            [{"question_id": "free", "text": "할 말 있어요", "chip": "전화로 연락받고 싶어요"}, *_skips("home", "meal")])
+    assert _open(client, counselor_headers)[0]["reason"] == "CONTACT_REQUEST"
+    item = _view(client, counselor_headers, case["id"])["feed"][0]["payload"]["items"][0]
+    assert item["answer"] == "할 말 있어요 · 전화로 연락받고 싶어요"
