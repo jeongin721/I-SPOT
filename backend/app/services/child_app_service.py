@@ -39,6 +39,8 @@ LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
 OPEN_ALERT_LIMIT = 50
 AI_QUESTION_PREFIX = "ai_"
+LIST_LIMIT = 200
+RECENT_DAYS = 21
 CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
 SKIP_TEXT = "답하기 어려워요"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
@@ -199,6 +201,63 @@ def send_questions(
         ip_address=ip_address,
     )
     db.commit()
+
+
+def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
+    """아이 연계 목록. 상담사는 담당 사례, 관리자는 전체. 종결 사례는 뺀다. 답 내용은 담당 상담사에게만 준다."""
+
+    query = select(Case).where(Case.status == CaseStatus.ACTIVE)
+
+    if not user.is_admin:
+        query = query.where(Case.counselor_id == user.id)
+
+    cases = list(db.scalars(query.order_by(Case.created_at.desc()).limit(LIST_LIMIT)))
+    ids = [case.id for case in cases]
+    links = {row.case_id: row for row in db.scalars(select(ChildAppLink).where(ChildAppLink.case_id.in_(ids)))} if ids else {}
+    since = _utcnow() - timedelta(days=RECENT_DAYS)
+    latest_level: Dict[uuid.UUID, str] = {}
+    recent: Dict[uuid.UUID, int] = {}
+
+    if ids:
+        answered = db.execute(
+            select(ChildAppEvent.case_id, ChildAppEvent.level, ChildAppEvent.created_at)
+            .where(ChildAppEvent.case_id.in_(ids), ChildAppEvent.kind == ChildAppEventKind.ANSWERS)
+            .order_by(ChildAppEvent.created_at.desc())
+        ).all()
+
+        for case_id, level, created_at in answered:
+            latest_level.setdefault(case_id, level.value)
+
+            if _aware(created_at) >= since:
+                recent[case_id] = recent.get(case_id, 0) + 1
+
+    alerts: Dict[uuid.UUID, Dict[str, Any]] = {}
+
+    for alert in list_open_alerts(db, user):
+        alerts.setdefault(alert["case_id"], alert)
+
+    rows = []
+
+    for case in cases:
+        link = links.get(case.id)
+        assigned = case.counselor_id == user.id
+        alert = alerts.get(case.id)
+        rows.append(
+            {
+                "case_id": case.id,
+                "case_number": case.case_number,
+                "child_alias": case.child_alias,
+                "child_birth_year": case.child_birth_year,
+                "status": link.status.value if link else "NOT_LINKED",
+                "recent_answers": recent.get(case.id, 0) if assigned else None,
+                "level": latest_level.get(case.id) if assigned else None,
+                "last_response_at": link.last_response_at if link else None,
+                "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
+                "open_alert_reason": alert["reason"] if alert else None,
+            }
+        )
+
+    return rows
 
 
 def question_text(item: Dict[str, Any]) -> str:

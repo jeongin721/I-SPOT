@@ -1834,6 +1834,19 @@ export interface ChildAppCase {
   ai_draft: ChildAiDraft | null;
 }
 
+export interface ChildAppCaseRow {
+  case_id: string;
+  case_number: string;
+  child_alias: string;
+  child_birth_year: number | null;
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  recent_answers: number | null;
+  level: "NONE" | "SKIP" | "AMBER" | "RED" | null;
+  last_response_at: string | null;
+  open_alert_at: string | null;
+  open_alert_reason: string | null;
+}
+
 export interface ChildAiQuestion {
   id: string;
   text: string;
