@@ -585,19 +585,35 @@ KEY_SCAN_MODEL = "roberta_abuse_qa_child_v3"
 KEY_SCAN_SPEAKERS = {"CHILD", "UNKNOWN"}
 
 
+def preload_key_scan() -> None:
+    """서버 시작 때(Backend ai_adapter.prepare) 임시 조문 매칭 모델 · 앵커 임베딩을 백그라운드로 미리 올린다.
+    실패해도 예외를 내지 않는다(없으면 유형 조문을 근거 없이 붙인다 — law_match)."""
+
+    try:
+        from ai.modeling.abuse import law_match
+
+        law_match.start_preload()
+    except Exception:  # noqa: BLE001 — 미리 올리기는 선택이다
+        pass
+
+
 def key_scan_as_contract(stt_result: Dict[str, Any]) -> Dict[str, Any]:
     """
     원문 확정 전 1차 스캔. infer_audio_session.quick_risk_scan(1차 RoBERTa 만, LLM 없음, 로컬 —
     정식 분석과 같은 chunk 분할)의 {segment_id: [한글 대분류]} 를 Contract 모양으로 바꾼다.
 
     stt_result: 분석에 넘기는 것과 같은 STT Contract({"segments": [...]}).
-    반환: {"model": KEY_SCAN_MODEL, "segments": [{"segment_id", "abuse_types": [영문 4종]}]} —
+    반환: {"model": KEY_SCAN_MODEL, "segments": [{"segment_id", "abuse_types": [영문 4종], "legal_references": [...]}]} —
     원문 순서, 아동 · 화자 미확인 발화만, 없으면 빈 배열. 영문 4종 밖의 유형은 버린다.
+    legal_references(2026-11-09, PROPOSAL_stt_law_match.md)는 그 발화 글이 유형의 행위 예시와 닮을 때만 붙는 아동복지법
+    제17조 호(law_match — 서버 로컬 임베딩, 외부 전송 없음). 닮은 예시(excerpt)와 점수를 같이 준다. 매칭 모델이 없으면
+    유형의 조문을 근거 없이(excerpt 빈 값 · score null) 붙인다. 비어 있으면 화면은 조문 없이 '먼저 들어볼 곳'만 보인다.
     status 는 붙이지 않는다(Backend 가 정함). 모델 실패는 예외를 그대로 올린다.
     """
 
     # 지연 import: backend 시험은 infer_audio_session 을 가짜 모듈로 바꾸는데, 모듈 맨 위에서
     # 가져오면 그 가짜에 이 함수가 없을 때 contract_adapter import 자체가 깨진다.
+    from ai.modeling.abuse import law_match
     from ai.modeling.abuse.infer_audio_session import quick_risk_scan
 
     flagged = quick_risk_scan(stt_result) or {}
@@ -616,13 +632,21 @@ def key_scan_as_contract(stt_result: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         abuse_types: List[str] = []
+        labels: List[str] = []
 
         for label in flagged.get(segment_id) or []:
             english = MAJOR_TYPE_TO_ENGLISH.get(label)
             if english in known and english not in abuse_types:
                 abuse_types.append(english)
+                labels.append(label)
 
         if abuse_types:
-            picked.append({"segment_id": segment_id, "abuse_types": abuse_types})
+            picked.append(
+                {
+                    "segment_id": segment_id,
+                    "abuse_types": abuse_types,
+                    "legal_references": law_match.references_for(str(segment.get("text") or ""), labels),
+                }
+            )
 
     return {"model": KEY_SCAN_MODEL, "segments": picked}

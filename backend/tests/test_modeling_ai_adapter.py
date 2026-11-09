@@ -585,7 +585,10 @@ KEY_SCAN_STT = {
 
 
 def _key_scan(monkeypatch: pytest.MonkeyPatch, flagged: Any) -> tuple:
-    """가짜 1차 모듈에 quick_risk_scan 을 붙이고 key_scan_as_contract 와 받은 인자 목록을 준다."""
+    """가짜 1차 모듈에 quick_risk_scan 을 붙이고 key_scan_as_contract 와 받은 인자 목록을 준다.
+
+    임시 조문 매칭(law_match)은 끈다 — 시험에는 임베딩 모델이 없다. 꺼지면 유형의 조문을 근거 없이 붙인다.
+    """
 
     calls: List[Any] = []
 
@@ -596,12 +599,21 @@ def _key_scan(monkeypatch: pytest.MonkeyPatch, flagged: Any) -> tuple:
         return flagged
 
     monkeypatch.setattr(sys.modules[HEAVY_MODULE], "quick_risk_scan", quick_risk_scan, raising=False)
+    monkeypatch.setenv("KEY_SCAN_LAW_MATCH", "off")
+    law_match = importlib.import_module("ai.modeling.abuse.law_match")
+    law_match.reset_matcher()
+    monkeypatch.setattr(law_match, "_statute_from_cache", dict)
 
     return importlib.import_module(CONTRACT_ADAPTER).key_scan_as_contract, calls
 
 
+def _default_reference(korean_type: str) -> Dict[str, Any]:
+    return importlib.import_module("ai.modeling.abuse.law_match").default_reference(korean_type)
+
+
 def test_key_scan_keeps_child_and_unknown_speakers_in_order(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
-    """검출 chunk 의 상담원 · 보호자 줄은 빼고 아동 · 화자 미확인 줄만, 원문 순서 · 영문 유형으로 준다."""
+    """검출 chunk 의 상담원 · 보호자 줄은 빼고 아동 · 화자 미확인 줄만, 원문 순서 · 영문 유형으로 준다.
+    매칭이 꺼져 있으면 유형마다 제17조 호를 근거 없이(excerpt 빈 값 · score null) 붙인다."""
 
     scan, calls = _key_scan(
         monkeypatch,
@@ -616,11 +628,44 @@ def test_key_scan_keeps_child_and_unknown_speakers_in_order(modeling, monkeypatc
     assert scan(KEY_SCAN_STT) == {
         "model": "roberta_abuse_qa_child_v3",
         "segments": [
-            {"segment_id": "seg_002", "abuse_types": ["PHYSICAL", "EMOTIONAL"]},
-            {"segment_id": "seg_004", "abuse_types": ["NEGLECT"]},
+            {
+                "segment_id": "seg_002",
+                "abuse_types": ["PHYSICAL", "EMOTIONAL"],
+                "legal_references": [_default_reference("신체학대"), _default_reference("정서학대")],
+            },
+            {"segment_id": "seg_004", "abuse_types": ["NEGLECT"], "legal_references": [_default_reference("방임")]},
         ],
     }
     assert calls == [KEY_SCAN_STT]
+    reference = _default_reference("신체학대")
+    assert reference["item_label"] == "제3호" and reference["excerpt"] == "" and reference["score"] is None
+
+
+def test_key_scan_attaches_a_reference_only_when_the_text_resembles_the_type(
+    modeling, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """매칭이 켜져 있으면(가짜 임베딩) 발화 글이 그 유형의 예시와 닮은 유형에만 조문이 붙고, 닮은 예시 · 점수가 같이 온다."""
+
+    scan, _ = _key_scan(monkeypatch, {"seg_002": ["신체학대", "방임"], "seg_005": ["신체학대"]})
+    law_match = importlib.import_module("ai.modeling.abuse.law_match")
+
+    class FakeMatcher:
+        def references_for(self, text: str, types: List[str]) -> List[Dict[str, Any]]:
+            # "네 많이요." 는 신체 예시와 닮았다고 치고, "학교 갔어요." 는 어느 예시와도 안 닮았다.
+            if "많이" in text:
+                return [{**law_match.statute_reference("신체학대"), "excerpt": "엄마한테 많이 맞았어요", "score": 0.71}]
+            return []
+
+    monkeypatch.setattr(law_match, "get_matcher", lambda: FakeMatcher())
+
+    result = scan(KEY_SCAN_STT)
+
+    assert [item["segment_id"] for item in result["segments"]] == ["seg_002", "seg_005"]
+    assert result["segments"][0]["abuse_types"] == ["PHYSICAL", "NEGLECT"]
+    assert [ref["item_label"] for ref in result["segments"][0]["legal_references"]] == ["제3호"]
+    assert result["segments"][0]["legal_references"][0]["excerpt"] == "엄마한테 많이 맞았어요"
+    # 유형은 남고(먼저 들어볼 곳) 조문만 비어 있다.
+    assert result["segments"][1] == {"segment_id": "seg_005", "abuse_types": ["PHYSICAL"], "legal_references": []}
 
 
 def test_key_scan_drops_unknown_types_and_empty_results(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
