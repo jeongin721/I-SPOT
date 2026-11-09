@@ -38,6 +38,7 @@ import type {
   ClosureSummarySave,
   FollowupCheck,
   FollowupCheckList,
+  ChildAiDraft,
   ChildAppCase,
   ChildAppInvite,
   ChildOpenAlert,
@@ -779,6 +780,22 @@ export const childApp = {
 
   sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
     return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  },
+
+  createAiDraft(caseId: string): Promise<ChildAiDraft> {
+    return api.post<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft`);
+  },
+
+  updateAiNote(caseId: string, draftId: string, questionId: string, text: string): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/notes/${questionId}`, { text });
+  },
+
+  updateAiQuestion(caseId: string, draftId: string, id: string, text: string, options: string[]): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}`, { text, options });
+  },
+
+  setAiApproval(caseId: string, draftId: string, id: string, approved: boolean): Promise<ChildAiDraft> {
+    return api.put<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}/approval`, { approved });
   },
 
   openAlerts(): Promise<ChildOpenAlert[]> {

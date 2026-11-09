@@ -104,18 +104,18 @@ def ensure_enabled() -> None:
         raise APIError(ErrorCode.CHILD_APP_DISABLED, "아이 앱 기능이 꺼져 있습니다.", status_code=503)
 
 
-def _ensure_assigned(case: Case, user: User) -> None:
+def ensure_assigned(case: Case, user: User) -> None:
     # 코드 발급 · 질문은 담당 상담사의 일이다. 관리자가 코드를 다시 만들면 상담사가 준 코드가 무효가 된다.
     if case.counselor_id != user.id:
         raise forbidden("담당 상담사만 할 수 있습니다.")
 
 
-def _ensure_active(case: Case) -> None:
+def ensure_active(case: Case) -> None:
     if case.status != CaseStatus.ACTIVE:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "종결된 사례에는 아이 앱을 사용할 수 없습니다.")
 
 
-def _link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optional[ChildAppLink]:
+def link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optional[ChildAppLink]:
     statement = select(ChildAppLink).where(ChildAppLink.case_id == case_id)
 
     return db.scalar(statement.with_for_update() if lock else statement)
@@ -126,9 +126,9 @@ def _link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optiona
 # =========================================================
 
 def create_invite(db: Session, case: Case, user: User, ip_address: Optional[str]) -> Dict[str, Any]:
-    _ensure_assigned(case, user)
-    _ensure_active(case)
-    link = _link_row(db, case.id, lock=True)
+    ensure_assigned(case, user)
+    ensure_active(case)
+    link = link_row(db, case.id, lock=True)
 
     if link is not None and link.status == ChildAppLinkStatus.LINKED:
         raise conflict(ErrorCode.DUPLICATE_RESOURCE, "이미 앱이 연결된 사례입니다.")
@@ -163,13 +163,13 @@ def send_questions(
     question_ids: List[str],
     ip_address: Optional[str],
 ) -> None:
-    _ensure_assigned(case, user)
-    _ensure_active(case)
+    ensure_assigned(case, user)
+    ensure_active(case)
 
     if len(set(question_ids)) != len(question_ids) or any(item not in _BANK_BY_ID for item in question_ids):
         raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 질문이 들어 있습니다.")
 
-    link = _link_row(db, case.id, lock=True)
+    link = link_row(db, case.id, lock=True)
 
     if link is None or link.status != ChildAppLinkStatus.LINKED:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "앱이 연결된 뒤에 질문을 보낼 수 있습니다.")
@@ -200,8 +200,14 @@ def send_questions(
     db.commit()
 
 
+def question_text(item: Dict[str, Any]) -> str:
+    """답 한 줄의 질문 문장. 문항 목록에 없으면(AI 추가 질문) 답에 복사해 둔 글을 쓴다."""
+
+    return _BANK_BY_ID.get(item["question_id"], {}).get("text") or item["question"]
+
+
 def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
-    link = _link_row(db, case.id)
+    link = link_row(db, case.id)
     # 아이에게 "담당 선생님만 본다" 고 안내한다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
     can_read_feed = case.counselor_id == user.id
     pending = db.scalar(
@@ -235,6 +241,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK
         ],
+        ai_enabled=child_app_ai_service.is_enabled() and can_read_feed,
+        ai_draft=child_app_ai_service.latest_draft(db, case.id) if can_read_feed else None,
         feed=[
             {
                 "id": row.id,
@@ -331,7 +339,7 @@ def acknowledge_alert(
         raise not_found(ErrorCode.NOT_FOUND, "긴급 알림을 찾을 수 없습니다.")
 
     if event.kind != ChildAppEventKind.ALERT:
-        _ensure_assigned(case, user)
+        ensure_assigned(case, user)
 
     # 두 사람이 함께 눌러도 먼저 확인한 사람의 기록을 남긴다.
     if event.acknowledged_at is not None:
@@ -592,3 +600,6 @@ def submit_answers(
         needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text,
     )
     db.commit()
+
+
+from app.services import child_app_ai_service  # noqa: E402 — 서로 부르므로 맨 끝에서 불러온다.

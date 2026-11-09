@@ -2,8 +2,8 @@
 // 원본: 11/09 디자인 '아이 연계 › 아이 상세' ChildDetail.dc.html.
 //
 // 사례 ID 가 있으면 콩콩 앱 서버 값을 보인다(screens/childDetail.ts). 사례 ID 가 없으면 디자인 예시를 그대로 보인다.
-//  - AI 초안 '확인해 볼 점' · 추가 질문은 서버에 값이 없어 실제 사례에서는 그리지 않는다.
-import { Fragment } from 'react';
+//  - AI 초안 '확인해 볼 점' · 추가 질문은 서버가 만든 것만 보인다. 추가 질문은 상담사가 승인해야 아이 앱으로 간다.
+import { Fragment, useEffect, useRef } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -14,7 +14,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { childDetailValues } from '../data/screens/childDetail';
+import { aiDraftNeeded, childDetailValues } from '../data/screens/childDetail';
 import { readScreenIds, screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
 import { useTheme } from '../theme';
@@ -97,7 +97,7 @@ class Logic extends DCLogic {
         const cur = s.qe[i] || {};
         const text = cur.text || q0.text;
         const opts = cur.opts || q0.opts || [];
-        const ok = !!s.qok[i],
+        const ok = q0.setApproved ? q0.approved : !!s.qok[i],
           editing = s.qEdit === i;
         return {
           id: q0.id,
@@ -105,7 +105,7 @@ class Logic extends DCLogic {
           text,
           opts,
           hasOpts: opts.length > 0,
-          edited: !!cur.text || !!cur.opts,
+          edited: q0.setApproved ? q0.edited : !!cur.text || !!cur.opts,
           st: ok ? (q0.sendNote ? '승인됨 · ' + q0.sendNote : '승인됨') : 'AI 초안',
           stCls: ok ? 'chip c-sel' : 'chip c-ai',
           ring: editing ? 'inset 0 0 0 2px #2B2A26' : 'none',
@@ -115,11 +115,22 @@ class Logic extends DCLogic {
           notEdit: !editing,
           draftText: s.dText,
           draftOpts: s.dOpts,
-          approve: () => this.setState({ qok: { ...s.qok, [i]: !ok } }),
+          approve: () => (q0.setApproved ? q0.setApproved(!ok) : this.setState({ qok: { ...s.qok, [i]: !ok } })),
           startEdit: () => this.setState({ qEdit: i, dText: text, dOpts: opts.join(', ') }),
           setText: (e) => this.setState({ dText: e.target.value }),
           setOpts: (e) => this.setState({ dOpts: e.target.value }),
-          save: () =>
+          save: () => {
+            if (q0.save) {
+              this.setState({ qEdit: null });
+              q0.save(
+                s.dText.trim(),
+                s.dOpts
+                  .split(',')
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+              );
+              return;
+            }
             this.setState({
               qEdit: null,
               qok: { ...s.qok, [i]: false },
@@ -135,23 +146,33 @@ class Logic extends DCLogic {
                     : null,
                 },
               },
-            }),
+            });
+          },
           cancel: () => this.setState({ qEdit: null }),
         };
       });
     const mkNotes = (list) =>
       list.map((n0, i) => {
-        const text = s.ne[i] || n0;
+        if (!n0) return null;
+        const server = typeof n0 === 'object';
+        const text = server ? n0.text : s.ne[i] || n0;
         const editing = s.nEdit === i;
         return {
           text,
-          edited: s.ne[i] !== undefined,
+          edited: server ? n0.edited : s.ne[i] !== undefined,
           isEdit: editing,
           notEdit: !editing,
           draft: s.nText,
           startEdit: () => this.setState({ nEdit: i, nText: text }),
           setDraft: (e) => this.setState({ nText: e.target.value }),
-          save: () => this.setState({ nEdit: null, ne: { ...s.ne, [i]: s.nText } }),
+          save: () => {
+            if (server) {
+              this.setState({ nEdit: null });
+              n0.save(s.nText.trim());
+            } else {
+              this.setState({ nEdit: null, ne: { ...s.ne, [i]: s.nText } });
+            }
+          },
           cancel: () => this.setState({ nEdit: null }),
         };
       });
@@ -187,6 +208,7 @@ class Logic extends DCLogic {
       answers,
       flags,
       flagCount: flags.length,
+      isLive: !!live,
       prevLabel: K.prevLabel || '지난 답변 (3주 전 → 지난주)',
       flowLabel: K.flowLabel || '3주 전 → 이번',
     };
@@ -201,7 +223,24 @@ export default function ChildDetail(props) {
   const detail = useCaseDetail(caseId, { enabled });
   const app = useCaseChildApp(caseId, enabled);
   const info = detail.caseInfo;
-  const live = caseId && app.data && info ? childDetailValues(app.data, info) : null;
+  const live =
+    caseId && app.data && info
+      ? childDetailValues(app.data, info, {
+          saveNote: app.saveAiNote,
+          saveQuestion: app.saveAiQuestion,
+          setApproval: app.setAiApproval,
+        })
+      : null;
+  // 화면을 열면 최근 답의 초안을 한 번 만든다. 실패하면 '다시 시도' 로만 다시 부른다(요청이 되풀이되지 않게).
+  const needed = app.data ? aiDraftNeeded(app.data) : null;
+  const tried = useRef(null);
+  const { createAiDraft } = app;
+  useEffect(() => {
+    if (needed && tried.current !== needed) {
+      tried.current = needed;
+      createAiDraft();
+    }
+  }, [needed, createAiDraft]);
   const v = useDC(Logic, { ...props, live });
   if (caseId && needsLogin(session)) return <Navigate to="/Login" replace />;
   const notice = caseId
@@ -337,6 +376,16 @@ export default function ChildDetail(props) {
               <h2 className="h2">확인해 봐야 할 답변 · 추가 질문</h2>
               <span className="chip c-check">{v.flagCount}개</span>
             </div>
+            {app.aiCreating ? <p className="note" role="status">AI 초안을 만드는 중이에요…</p> : null}
+            {app.aiError ? (
+              <p className="note" role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '0' }}>
+                {app.aiError}
+                <button type="button" className="btn btn-sm btn-s" onClick={createAiDraft}>
+                  다시 시도
+                </button>
+              </p>
+            ) : null}
+            {app.actionError ? <p className="note acc" role="alert" style={{ margin: '0' }}>{app.actionError}</p> : null}
             {(v.flags || []).map((f, fIndex) => (
               <Fragment key={fIndex}>
                 <div className="flag">
@@ -399,9 +448,13 @@ export default function ChildDetail(props) {
                         </div>
                       </>
                     ) : null}
-                    <A className="note srcl" to="/SttReview" title="STT 원문 위치로 이동">
-                      근거 · {f.src} ↗
-                    </A>
+                    {v.isLive ? (
+                      <span className="note">근거 · {f.src}</span>
+                    ) : (
+                      <A className="note srcl" to="/SttReview" title="STT 원문 위치로 이동">
+                        근거 · {f.src} ↗
+                      </A>
+                    )}
                   </div>
                   <div
                     style={{
@@ -412,7 +465,7 @@ export default function ChildDetail(props) {
                       borderLeft: '3px solid #E7E4DC',
                     }}
                   >
-                    <b style={{ fontSize: '13px' }}>추가 질문</b>
+                    {(f.qs || []).length ? <b style={{ fontSize: '13px' }}>추가 질문</b> : null}
                     {(f.qs || []).map((q, qIndex) => (
                       <Fragment key={qIndex}>
                         <div className="qcard" style={{ boxShadow: q.ring }}>
@@ -424,9 +477,15 @@ export default function ChildDetail(props) {
                                 <span className="chip c-sand">상담사 수정</span>
                               </>
                             ) : null}
-                            <A className="note srcl" to="/SttReview" style={{ marginLeft: 'auto' }} title="STT 원문 위치로 이동">
-                              근거 · {q.why} ↗
-                            </A>
+                            {v.isLive ? (
+                              <span className="note" style={{ marginLeft: 'auto' }}>
+                                근거 · {q.why}
+                              </span>
+                            ) : (
+                              <A className="note srcl" to="/SttReview" style={{ marginLeft: 'auto' }} title="STT 원문 위치로 이동">
+                                근거 · {q.why} ↗
+                              </A>
+                            )}
                           </div>
                           {q.notEdit ? (
                             <>

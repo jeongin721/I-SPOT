@@ -1820,4 +1820,21 @@ export interface ChildAppCase {
   open_alerts: ChildOpenAlert[];
   bank: { id: string; category: string; type: string; text: string }[];
   feed: ChildAppEvent[];
+  ai_enabled: boolean;
+  ai_draft: ChildAiDraft | null;
+}
+
+export interface ChildAiQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  edited: boolean;
+  approved: boolean;
+  answered: boolean;
+}
+
+export interface ChildAiDraft {
+  id: string;
+  event_id: string;
+  items: { question_id: string; note: string; note_edited: boolean; questions: ChildAiQuestion[] }[];
 }

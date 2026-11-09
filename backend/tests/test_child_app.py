@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.enums import AuditAction
+from app.models.audit_log import AuditLog
 from app.models.child_app import ChildAppLink
 from app.services import signup_service
 from tests.conftest import create_case
@@ -537,3 +539,175 @@ def test_hard_to_answer_chip_alone_is_skip(client: TestClient, counselor_headers
             [{"question_id": "free", "chip": "답하기 어려워요"}, *_skips("home", "meal")])
     assert _open(client, counselor_headers) == []
     assert _view(client, counselor_headers, case["id"])["feed"][0]["payload"]["items"][0]["level"] == "SKIP"
+
+
+# =========================================================
+# AI 초안(확인해 볼 점 · 추가 질문)
+# =========================================================
+AI_URL = "/api/v1/cases/{}/child-app/ai-draft"
+
+
+def _fake_drafts(items, written=None, known_identifiers=(), deadline=None):
+    return [
+        {"question_id": item["question_id"], "note": f"가상 메모 {item['answer']}", "questions": [{"text": "언제 그랬나요?", "options": ["오늘", "어제", "말하기 어려워요"]}]}
+        for item in items
+    ]
+
+
+@pytest.fixture
+def ai_generator():
+    from app.services import child_app_ai_service
+
+    child_app_ai_service.set_generator_override(_fake_drafts)
+    child_app_ai_service.reset_limits()
+    yield child_app_ai_service
+    child_app_ai_service.set_generator_override(None)
+
+
+def _ai_answer(client: TestClient, headers: Headers, device: Headers, case_id: str, safe: int = 2) -> None:
+    _send(client, headers, case_id, ["sleep", "home", "safe"])
+    pending = _home(client, device)["pending"]
+    answers = [{"question_id": "sleep", "choice_index": 0}, {"question_id": "home", "choice_index": 0}, {"question_id": "safe", "choice_index": safe}]
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json={"answers": answers}, headers=device).status_code == 200
+
+
+def _draft(client: TestClient, headers: Headers, case_id: str) -> dict:
+    response = client.post(AI_URL.format(case_id), headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_ai_draft_off_by_default(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    assert _view(client, counselor_headers, case["id"])["ai_enabled"] is False
+    response = client.post(AI_URL.format(case["id"]), headers=counselor_headers)
+    assert response.status_code == 503 and response.json()["error"]["code"] == "CHILD_APP_AI_DISABLED"
+
+
+def test_ai_draft_covers_flagged_only_and_is_reused(
+    client: TestClient, counselor_headers: Headers, case: dict, db, ai_generator, monkeypatch
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    assert client.post(AI_URL.format(case["id"]), headers=counselor_headers).status_code == 409
+
+    _ai_answer(client, counselor_headers, device, case["id"], safe=0)
+    assert client.post(AI_URL.format(case["id"]), headers=counselor_headers).status_code == 409
+
+    seen = {}
+    def recording(items, written=None, known_identifiers=(), deadline=None):
+        seen.update(items=items, names=list(known_identifiers))
+        return _fake_drafts(items)
+    ai_generator.set_generator_override(recording)
+    _ai_answer(client, counselor_headers, device, case["id"], safe=2)
+    draft = _draft(client, counselor_headers, case["id"])
+
+    assert [item["question_id"] for item in seen["items"]] == ["safe"]
+    assert seen["items"][0]["previous"] == ["안전해요"] and case["child_alias"] in seen["names"]
+    assert _draft(client, counselor_headers, case["id"])["id"] == draft["id"]
+    assert _view(client, counselor_headers, case["id"])["ai_draft"]["id"] == draft["id"]
+
+    log = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_AI_DRAFT_CREATED)).one()
+    assert "가상 메모" not in str(log.detail)
+
+
+def test_ai_failure_saves_nothing_and_hides_reason(client: TestClient, counselor_headers: Headers, case: dict, ai_generator) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+
+    def broken(items, **_):
+        raise RuntimeError("비공개 사유")
+
+    ai_generator.set_generator_override(broken)
+    response = client.post(AI_URL.format(case["id"]), headers=counselor_headers)
+    assert response.status_code == 502 and "비공개" not in response.text
+    assert _view(client, counselor_headers, case["id"])["ai_draft"] is None
+
+
+def test_only_assigned_counselor_uses_ai_draft(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict, ai_generator
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+
+    assert client.post(AI_URL.format(case["id"]), headers=other_counselor_headers).status_code in (403, 404)
+    assert client.post(AI_URL.format(case["id"]), headers=admin_headers).status_code == 403
+    assert _view(client, admin_headers, case["id"])["ai_draft"] is None
+    question = draft["items"][0]["questions"][0]["id"]
+    url = f"{AI_URL.format(case['id'])}/{draft['id']}/questions/{question}/approval"
+    assert client.put(url, json={"approved": True}, headers=admin_headers).status_code == 403
+
+
+def test_approved_question_reaches_app_and_can_be_withdrawn(client: TestClient, counselor_headers: Headers, case: dict, ai_generator) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+    question = draft["items"][0]["questions"][0]
+    base = f"{AI_URL.format(case['id'])}/{draft['id']}/questions/{question['id']}"
+
+    assert _home(client, device)["pending"] is None
+
+    approved = client.put(f"{base}/approval", json={"approved": True}, headers=counselor_headers)
+    assert approved.status_code == 200 and approved.json()["data"]["items"][0]["questions"][0]["approved"] is True
+    assert [q["id"] for q in _home(client, device)["pending"]["questions"]] == [question["id"]]
+    # 두 번 눌러도 한 번만 간다.
+    client.put(f"{base}/approval", json={"approved": True}, headers=counselor_headers)
+    assert len(_home(client, device)["pending"]["questions"]) == 1
+
+    withdrawn = client.put(f"{base}/approval", json={"approved": False}, headers=counselor_headers)
+    assert withdrawn.json()["data"]["items"][0]["questions"][0]["approved"] is False
+    assert _home(client, device)["pending"] is None
+
+
+def test_editing_returns_to_unapproved_and_answered_cannot_withdraw(client: TestClient, counselor_headers: Headers, case: dict, ai_generator) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+    question = draft["items"][0]["questions"][0]
+    base = f"{AI_URL.format(case['id'])}/{draft['id']}"
+
+    note = client.patch(f"{base}/notes/safe", json={"text": "상담사가 고친 메모"}, headers=counselor_headers)
+    assert note.status_code == 200 and note.json()["data"]["items"][0]["note_edited"] is True
+    assert client.patch(f"{base}/notes/없는칸", json={"text": "x"}, headers=counselor_headers).status_code == 404
+
+    url = f"{base}/questions/{question['id']}"
+    client.put(f"{url}/approval", json={"approved": True}, headers=counselor_headers)
+    edited = client.patch(url, json={"text": "고친 질문", "options": ["네", "아니요"]}, headers=counselor_headers)
+    item = edited.json()["data"]["items"][0]["questions"][0]
+    assert item["edited"] is True and item["approved"] is False and item["text"] == "고친 질문"
+    assert _home(client, device)["pending"] is None
+
+    client.put(f"{url}/approval", json={"approved": True}, headers=counselor_headers)
+    pending = _home(client, device)["pending"]
+    assert pending["questions"][0]["text"] == "고친 질문"
+    answer = {"answers": [{"question_id": question["id"], "choice_index": 0}]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=answer, headers=device).status_code == 200
+
+    assert client.put(f"{url}/approval", json={"approved": False}, headers=counselor_headers).status_code == 409
+    assert client.patch(url, json={"text": "또 고침", "options": ["네", "아니요"]}, headers=counselor_headers).status_code == 409
+    # 다음 답의 묶음에서도 질문 문장이 남는다.
+    feed = _view(client, counselor_headers, case["id"])["feed"]
+    assert feed[0]["payload"]["items"][0]["question"] == "고친 질문"
+
+
+def test_llm_output_is_filtered() -> None:
+    from app.adapters.module_loader import load_callable
+
+    HARD_TO_SAY = "말하기 어려워요"
+    clean_output = load_callable("ai.modeling.abuse.child_answer_llm", "clean_output")
+
+    items = [{"question_id": "a"}, {"question_id": "b"}, {"question_id": "c"}, {"question_id": "d"}]
+    raw = {"items": [
+        {"no": 1, "note": "다음 상담에서 살펴봐 주세요.", "question": "요즘 언제 힘들었나요?", "options": ["아침", "저녁"]},
+        {"no": 2, "note": "학대로 확정됩니다.", "question": "언제였나요?", "options": ["오늘", "어제"]},
+        {"no": 3, "note": "살펴봐 주세요.", "question": "엄마가 때렸지?", "options": ["네", "아니요"]},
+        {"no": 4, "note": "살펴봐 주세요.", "question": "[PERSON_01]님이 언제 왔나요?", "options": ["오늘", "어제"]},
+        {"no": 9, "note": "없는 번호"},
+        "모양이 틀림",
+    ]}
+
+    result = clean_output(raw, items)
+
+    assert [entry["question_id"] for entry in result] == ["a", "c", "d"]
+    assert result[0]["questions"][0]["options"] == ["아침", "저녁", HARD_TO_SAY]
+    assert result[1]["questions"] == [] and result[2]["questions"] == []
+    assert clean_output("이상한 값", items) == []

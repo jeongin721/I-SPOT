@@ -4,7 +4,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -105,6 +105,41 @@ class ChildOpenAlert(BaseModel):
     created_at: datetime
 
 
+class ChildAiQuestion(BaseModel):
+    id: str
+    text: str
+    options: List[str]
+    edited: bool = False
+    approved: bool = False
+    answered: bool = False
+
+
+class ChildAiDraftItem(BaseModel):
+    question_id: str
+    note: str
+    note_edited: bool = False
+    questions: List[ChildAiQuestion]
+
+
+class ChildAiDraftResponse(BaseModel):
+    id: uuid.UUID
+    event_id: uuid.UUID
+    items: List[ChildAiDraftItem]
+
+
+class ChildAiNoteUpdateRequest(RequestModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class ChildAiQuestionUpdateRequest(RequestModel):
+    text: str = Field(min_length=1, max_length=200)
+    options: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(min_length=2, max_length=6)
+
+
+class ChildAiApprovalRequest(RequestModel):
+    approved: bool
+
+
 class ChildAppCaseResponse(BaseModel):
     status: str
     code_expires_at: Optional[datetime] = None
@@ -116,3 +151,5 @@ class ChildAppCaseResponse(BaseModel):
     open_alerts: List[ChildOpenAlert]
     bank: List[ChildAppBankItem]
     feed: List[ChildAppEventResponse]
+    ai_enabled: bool = False
+    ai_draft: Optional[ChildAiDraftResponse] = None

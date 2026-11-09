@@ -80,6 +80,51 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  const [aiCreating, setAiCreating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAiError(null);
+  }, [caseId]);
+
+  const createAiDraft = useCallback(async () => {
+    if (!caseId) return;
+    setAiCreating(true);
+    setAiError(null);
+    try {
+      await childAppApi.createAiDraft(caseId);
+      refresh();
+    } catch (caught) {
+      setAiError(errorMessage(caught, "AI 초안을 만들지 못했습니다."));
+    } finally {
+      setAiCreating(false);
+    }
+  }, [caseId, refresh]);
+
+  const saveAiNote = useCallback(
+    (draftId: string, questionId: string, text: string) =>
+      run(async () => {
+        if (caseId) await childAppApi.updateAiNote(caseId, draftId, questionId, text);
+      }, "확인해 볼 점을 저장하지 못했습니다."),
+    [caseId, run],
+  );
+
+  const saveAiQuestion = useCallback(
+    (draftId: string, id: string, text: string, options: string[]) =>
+      run(async () => {
+        if (caseId) await childAppApi.updateAiQuestion(caseId, draftId, id, text, options);
+      }, "추가 질문을 저장하지 못했습니다."),
+    [caseId, run],
+  );
+
+  const setAiApproval = useCallback(
+    (draftId: string, id: string, approved: boolean) =>
+      run(async () => {
+        if (caseId) await childAppApi.setAiApproval(caseId, draftId, id, approved);
+      }, "승인을 바꾸지 못했습니다."),
+    [caseId, run],
+  );
+
   const acknowledge = useCallback(
     (alertId: string) =>
       run(async () => {
@@ -90,5 +135,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, createInvite, sendQuestions, acknowledge };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, acknowledge };
 }

@@ -13,6 +13,10 @@ from app.core.errors import unauthorized
 from app.core.responses import DataResponse
 from app.models.child_app import ChildAppLink
 from app.schemas.child_app import (
+    ChildAiApprovalRequest,
+    ChildAiDraftResponse,
+    ChildAiNoteUpdateRequest,
+    ChildAiQuestionUpdateRequest,
     ChildAnswersRequest,
     ChildAlertReceived,
     ChildAnswersResponse,
@@ -24,7 +28,7 @@ from app.schemas.child_app import (
     ChildOpenAlert,
     ChildQuestionSendRequest,
 )
-from app.services import child_app_service
+from app.services import child_app_ai_service, child_app_service
 from app.services.access import get_case_or_404
 
 _enabled = [Depends(child_app_service.ensure_enabled)]
@@ -135,3 +139,68 @@ def send_questions(
 ) -> None:
     case = get_case_or_404(db, case_id, current_user)
     child_app_service.send_questions(db, case, current_user, payload.question_ids, client_ip(request))
+
+
+@case_router.post("/{case_id}/child-app/ai-draft", response_model=DataResponse[ChildAiDraftResponse])
+def create_ai_draft(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[ChildAiDraftResponse]:
+    case = get_case_or_404(db, case_id, current_user)
+    row = child_app_ai_service.create_draft(db, case, current_user)
+
+    return DataResponse(data=child_app_ai_service.to_response(db, row))
+
+
+@case_router.patch(
+    "/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}",
+    response_model=DataResponse[ChildAiDraftResponse],
+)
+def update_ai_note(
+    case_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    question_id: str,
+    payload: ChildAiNoteUpdateRequest,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[ChildAiDraftResponse]:
+    case = get_case_or_404(db, case_id, current_user)
+    row = child_app_ai_service.update_note(db, case, current_user, draft_id, question_id, payload.text, client_ip(request))
+
+    return DataResponse(data=child_app_ai_service.to_response(db, row))
+
+
+@case_router.patch(
+    "/{case_id}/child-app/ai-draft/{draft_id}/questions/{question_id}",
+    response_model=DataResponse[ChildAiDraftResponse],
+)
+def update_ai_question(
+    case_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    question_id: str,
+    payload: ChildAiQuestionUpdateRequest,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[ChildAiDraftResponse]:
+    case = get_case_or_404(db, case_id, current_user)
+    row = child_app_ai_service.update_question(db, case, current_user, draft_id, question_id, payload, client_ip(request))
+
+    return DataResponse(data=child_app_ai_service.to_response(db, row))
+
+
+@case_router.put(
+    "/{case_id}/child-app/ai-draft/{draft_id}/questions/{question_id}/approval",
+    response_model=DataResponse[ChildAiDraftResponse],
+)
+def set_ai_question_approval(
+    case_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    question_id: str,
+    payload: ChildAiApprovalRequest,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[ChildAiDraftResponse]:
+    case = get_case_or_404(db, case_id, current_user)
+    row = child_app_ai_service.set_approval(db, case, current_user, draft_id, question_id, payload.approved, client_ip(request))
+
+    return DataResponse(data=child_app_ai_service.to_response(db, row))

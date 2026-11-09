@@ -82,3 +82,20 @@ class ChildAppEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     acknowledged_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class ChildAppAiDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """답 묶음 하나의 AI 초안. items: [{question_id, note, note_edited, questions: [{id, text, options, edited, question_set_id}]}]."""
+
+    __tablename__ = "child_app_ai_drafts"
+
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("child_app_events.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    items: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
