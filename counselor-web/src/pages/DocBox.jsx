@@ -222,7 +222,7 @@ export default function DocBox(props) {
                       </div>
                       <div className="dname">{d.name}</div>
                       <div className="dmeta">{d.meta}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <button type="button" className="btn btn-sm btn-s" onClick={d.download}>
                           ↓ 내려받기
                         </button>
