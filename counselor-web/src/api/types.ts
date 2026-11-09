@@ -1780,3 +1780,43 @@ export interface DocboxList {
   folders: DocboxFolder[];
   files: DocboxFile[];
 }
+
+// 아이 앱 콩콩 (API_CONTRACT 24절)
+export interface ChildAppInvite {
+  code: string;
+  expires_at: string;
+}
+
+export interface ChildAppEvent {
+  id: string;
+  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
+  level: "NONE" | "SKIP" | "AMBER" | "RED";
+  payload: Record<string, any>;
+  created_at: string;
+  needs_ack: boolean;
+  acknowledged_at: string | null;
+}
+
+export interface ChildOpenAlert {
+  id: string;
+  case_id: string;
+  child_alias: string;
+  case_number: string;
+  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "TEXT_ANSWER" | "NEEDS_CHECK";
+  can_ack: boolean;
+  repeat_count: number;
+  last_at: string | null;
+  created_at: string;
+}
+
+export interface ChildAppCase {
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  code_expires_at: string | null;
+  linked_at: string | null;
+  last_response_at: string | null;
+  has_pending_questions: boolean;
+  can_read_feed: boolean;
+  open_alerts: ChildOpenAlert[];
+  bank: { id: string; category: string; type: string; text: string }[];
+  feed: ChildAppEvent[];
+}

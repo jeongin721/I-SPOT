@@ -2859,3 +2859,22 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
   그림만 그 형식, 나머지는 `application/octet-stream`.
 - 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` —
   파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.
+
+## 24. Child App (아이 앱 콩콩, 2026-11-09)
+
+`CHILD_APP_ENABLED=false`(기본)이면 이 절의 API 는 모두 503 `CHILD_APP_DISABLED` 다. `/child-app/*` 은 아이 기기용이다. 상담사 Access Token 이 아니라 연결할 때 받은 `device_token` 을 Bearer 로 보낸다.
+앱 응답에는 이름 · 사례번호 · 위험 판정 기준을 넣지 않는다. 판정은 서버가 계산한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
+| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
+| POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
+| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`, `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
+| POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
+| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건). 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
+| POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids}` 3~4개 → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).

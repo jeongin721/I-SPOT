@@ -6,6 +6,7 @@ from app.api.v1 import (
     analysis,
     audio,
     auth,
+    child_app,
     case_forms,
     cases,
     docbox,
@@ -55,3 +56,7 @@ api_router.include_router(source_documents.router)
 api_router.include_router(case_forms.router)
 # /docbox — 문서함(23절, 2026-11-05).
 api_router.include_router(docbox.router)
+# /child-app/* · /cases/{case_id}/child-app — 아이 앱(24절, 2026-11-09).
+api_router.include_router(child_app.device_router)
+api_router.include_router(child_app.case_router)
+api_router.include_router(child_app.staff_router)

@@ -9,6 +9,7 @@ from app.models.base import Base
 from app.models.case import Case
 from app.models.case_form import CaseForm
 from app.models.case_personal_info import CasePersonalInfo
+from app.models.child_app import ChildAppEvent, ChildAppLink, ChildQuestionSet
 from app.models.document import Document
 from app.models.closure_review import CaseClosureReview
 from app.models.followup_check import SessionFollowupChecks
@@ -36,6 +37,9 @@ __all__ = [
     "Case",
     "CaseForm",
     "CasePersonalInfo",
+    "ChildAppEvent",
+    "ChildAppLink",
+    "ChildQuestionSet",
     "ConsultationSession",
     "ConsultationSummary",
     "Document",
