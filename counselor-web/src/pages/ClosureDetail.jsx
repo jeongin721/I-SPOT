@@ -144,7 +144,16 @@ class Logic extends DCLogic {
         };
       }),
     }));
-    return { reasons, goals: real ? [] : goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
+    // 실제 사례: 개입목표 6줄(11/09 디자인 자리). 목표 · 서비스 모두 상담원이 쓴다(가상 사례 문장을 넣지 않는다).
+    const liveGoals = real
+      ? ['장기 개입목표 1', '단기 개입목표 1', '단기 개입목표 2', '장기 개입목표 2', '단기 개입목표 1', '단기 개입목표 2'].map((k, i) => ({
+          k,
+          fw: k[0] === '장' ? 700 : 400,
+          pad: k[0] === '장' ? '12px' : '28px',
+          row: this.props.report.goals[i],
+        }))
+      : [];
+    return { reasons, goals: real ? [] : goals, liveGoals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
   }
 }
 
@@ -343,7 +352,7 @@ function ClosureDetailScreen(props) {
               {r.connected ? (
                 <div className="goal">
                   <span className="k" style={{ fontWeight: 700, paddingLeft: '12px' }}>
-                    상담 · 서비스 제공 <span className="note" style={{ fontWeight: 400 }}>(개입목표 준비 중)</span>
+                    상담 · 서비스 제공
                   </span>
                   <input
                     className="inp"
@@ -356,6 +365,32 @@ function ClosureDetailScreen(props) {
                   />
                 </div>
               ) : null}
+              {(v.liveGoals || []).map((g, gIndex) => (
+                <div className="goal" key={gIndex}>
+                  <span className="k" style={{ fontWeight: g.fw, paddingLeft: g.pad, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {g.k}
+                    <input
+                      className="inp"
+                      type="text"
+                      value={g.row.goal}
+                      onChange={(e) => g.row.setGoal(e.target.value)}
+                      maxLength={200}
+                      placeholder="목표 내용"
+                      aria-label={`${g.k} 내용 (${gIndex < 3 ? '장기 1' : '장기 2'})`}
+                      style={{ width: '100%', height: '36px', fontWeight: 400 }}
+                    />
+                  </span>
+                  <input
+                    className="inp"
+                    type="text"
+                    value={g.row.service}
+                    onChange={(e) => g.row.setService(e.target.value)}
+                    maxLength={300}
+                    aria-label={`${g.k} 제공된 서비스 (${gIndex < 3 ? '장기 1' : '장기 2'})`}
+                    style={{ width: '100%', height: '36px' }}
+                  />
+                </div>
+              ))}
               {(v.goals || []).map((g, gIndex) => (
                 <Fragment key={gIndex}>
                   <div className="goal">

@@ -223,6 +223,7 @@ export function closureSummaryValues(
 type ReportTextKey = "initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date";
 type SafetyLevel = "HIGH" | "MEDIUM" | "LOW";
 type SafetyScore = { score: number | null; reason: string };
+type GoalRow = { goal: string; service: string };
 
 /**
  * 고치는 중인(저장 전) 보고서 칸. 글 칸 다섯과 상담원 판단 칸(2026-11-03 — 종결사유 · 안전평가 · Key Person · 안전점수).
@@ -234,11 +235,13 @@ export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
   key_person?: string;
   safety_scores?: SafetyScore[];
   services?: string;
+  goals?: GoalRow[];
 };
 
 const REASON_COUNT = 5;
 const SAFETY_COUNT = 11;
 const SCORE_COUNT = 3;
+const GOAL_COUNT = 6;
 const LEVELS: [string, SafetyLevel][] = [
   ["높음", "HIGH"],
   ["보통", "MEDIUM"],
@@ -288,6 +291,12 @@ export function closureReportValues(
         score: typeof row.score === "number" ? row.score : null,
         reason: typeof row.reason === "string" ? row.reason : "",
       };
+    });
+  const goals =
+    draft.goals ??
+    fixedList(saved.goals, GOAL_COUNT, (item) => {
+      const row = (item ?? {}) as { goal?: unknown; service?: unknown };
+      return { goal: typeof row.goal === "string" ? row.goal : "", service: typeof row.service === "string" ? row.service : "" };
     });
   const aiChip = (key: "initial_situation" | "closing_situation") => {
     const item = ai[key];
@@ -355,6 +364,12 @@ export function closureReportValues(
       value: services,
       onChange: (event: { target: { value: string } }) => setDraft({ services: event.target.value }),
     },
+    goals: goals.map((row, i) => ({
+      goal: row.goal,
+      service: row.service,
+      setGoal: (goal: string) => setDraft({ goals: goals.map((x, j) => (j === i ? { ...x, goal } : x)) }),
+      setService: (service: string) => setDraft({ goals: goals.map((x, j) => (j === i ? { ...x, service } : x)) }),
+    })),
     keyPerson: {
       value: keyPerson,
       onChange: (event: { target: { value: string } }) => setDraft({ key_person: event.target.value }),
@@ -385,6 +400,7 @@ export function closureReportValues(
         safety,
         key_person: keyPerson.trim() || null,
         services: services.trim(),
+        goals: goals.map((row) => ({ goal: row.goal.trim(), service: row.service.trim() })),
         safety_scores: scores,
       };
       const ok = await summary.save({ report });

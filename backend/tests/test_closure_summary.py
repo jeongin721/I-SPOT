@@ -46,7 +46,7 @@ def test_get_before_generate_is_empty(client: TestClient, counselor_headers, rea
     assert data["summary"] is None and data["checks"] == {} and data["edits"] == {}
     assert data["report"] == {
         "initial_situation": None, "closing_situation": None, "opinion": None, "review_date": None, "closing_date": None,
-        "reasons": None, "safety": None, "key_person": None, "safety_scores": None, "services": None,
+        "reasons": None, "safety": None, "key_person": None, "safety_scores": None, "services": None, "goals": None,
     }
 
 
@@ -322,6 +322,8 @@ def test_report_keeps_counselor_judgement_fields(client: TestClient, counselor_h
         {"safety": [None] * 10},
         {"safety_scores": [{"score": 11, "reason": ""}, {}, {}]},
         {"safety_scores": [{}, {}]},
+        {"goals": [{}, {}]},
+        {"goals": [{"goal": "가" * 201}, {}, {}, {}, {}, {}]},
         {"key_person": "가" * 301},
         {"services": "가" * 301},
     ],
@@ -341,3 +343,16 @@ def test_report_services_blank_is_kept_apart_from_never_saved(client: TestClient
 
     assert saved.status_code == 200, saved.text
     assert client.get(_url(ready_case["id"]), headers=counselor_headers).json()["data"]["report"]["services"] == ""
+
+
+def test_report_goals_saved_as_six_rows(client: TestClient, counselor_headers, ready_case: dict) -> None:
+    """개입목표 6줄(2026-11-09) — 보낸 그대로 저장하고, 다른 칸만 보내도 지워지지 않는다."""
+
+    goals = [{"goal": "아동의 정서 안정", "service": "심리치료 12회"}] + [{"goal": "", "service": ""}] * 5
+
+    saved = client.put(_url(ready_case["id"]), headers=counselor_headers, json={"report": {"goals": goals}})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["data"]["report"]["goals"] == goals
+
+    again = client.put(_url(ready_case["id"]), headers=counselor_headers, json={"report": {"opinion": "의견"}})
+    assert again.json()["data"]["report"]["goals"] == goals
