@@ -8,7 +8,8 @@
 #   child_age_band   출생연도로 센 나이를 나이대로만(정확한 나이 · 출생연도는 넘기지 않음)
 #   child_gender · guardian_type · intake_child_traits · intake_family_situations(서식 4 단어)
 #   previous_session 같은 사례에서 이 회차보다 앞선 '승인 완료' 회차 중 가장 최근 것의 요약 4칸 문장(상담원 확정본)
-# 넘기지 않는 것: 아동 가명(child_alias) · 사건번호 · 제목 · 메모 · 보호자 메모(guardian_note) · 상담원 정보.
+# 넘기지 않는 것: 아동 가명(child_alias) · 사건번호 · 제목 · 메모 · 보호자 메모(guardian_note) · 상담원 정보,
+#   서식 4 조치결과 · 위험도(우선) · 사례연계 경위 · ② 가족유형 · 초기면접 글 칸(2026-11-05, 상담원 판단 · 자유 글).
 # 지난 회차 문장은 상담원이 쓴 글이라 이름이 섞일 수 있다 — AI 쪽이 원문과 같은 마스킹을 거쳐 보낸다(case_context.py).
 
 from datetime import datetime, timedelta, timezone

@@ -116,6 +116,8 @@ class Settings(BaseSettings):
     # 끄면(기본) 인증번호 보내기 · 확인 · 신청이 503 SIGNUP_DISABLED 다. 설정 조회와 관리자 승인 창구는 그대로 쓴다.
     # 인증번호 횟수 · 시간 같은 숫자는 팀과 정한 값이라 설정이 아니라 signup_service 상수다.
     SIGNUP_ENABLED: bool = False
+    # 아이 앱(콩콩). 끄면(기본) 앱용 · 상담사용 API 가 모두 503 CHILD_APP_DISABLED 다. 실제 아동 데이터 전 조건이 끝난 뒤에 켠다.
+    CHILD_APP_ENABLED: bool = False
     # 받을 이메일 도메인(콤마 구분, 정확히 일치 — 하위 도메인은 따로 적는다). 비면 전부 받는다.
     SIGNUP_ALLOWED_EMAIL_DOMAINS: Annotated[List[str], NoDecode] = Field(default_factory=list)
 

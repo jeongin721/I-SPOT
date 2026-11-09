@@ -61,6 +61,65 @@ class SessionSource(str, Enum):
     DOCUMENT = "DOCUMENT"
 
 
+class ChildActionResult(str, Enum):
+    """
+    조치결과 · 피해아동(서식 4 ①, 2026-11-05).
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    HOME = "HOME"                  # 원가정보호
+    RELATIVE = "RELATIVE"          # 친인척보호
+    ACQUAINTANCE = "ACQUAINTANCE"  # 연고자에 의한 보호
+    FOSTER = "FOSTER"              # 가정위탁
+    FACILITY = "FACILITY"          # 시설입소
+    HOSPITAL = "HOSPITAL"          # 병원입원
+    OTHER = "OTHER"                # 기타
+
+
+class TargetActionResult(str, Enum):
+    """
+    조치결과 · 사례관리대상자(서식 4 ①, 2026-11-05).
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    OBSERVATION = "OBSERVATION"  # 지속관찰
+    SEPARATION = "SEPARATION"    # 아동과의 분리
+    COMPLAINT = "COMPLAINT"      # 고소 · 고발
+    OTHER = "OTHER"              # 기타
+
+
+class FamilyType(str, Enum):
+    """
+    가족유형(서식 4 ② 초기면접 내용, 2026-11-05). 하나만 고른다. 11/03 디자인의 서식 항목 21개.
+
+    상담원이 고르는 값이다. AI 가 미리 고르거나 채우지 않는다.
+    """
+
+    GENERAL = "GENERAL"                      # 일반가정
+    FATHER_BEREAVED = "FATHER_BEREAVED"      # 부자가정(사별)
+    FATHER_DIVORCED = "FATHER_DIVORCED"      # 부자가정(이혼)
+    FATHER_LEFT = "FATHER_LEFT"              # 부자가정(가출)
+    FATHER_SEPARATED = "FATHER_SEPARATED"    # 부자가정(별거)
+    MOTHER_BEREAVED = "MOTHER_BEREAVED"      # 모자가정(사별)
+    MOTHER_DIVORCED = "MOTHER_DIVORCED"      # 모자가정(이혼)
+    MOTHER_LEFT = "MOTHER_LEFT"              # 모자가정(가출)
+    MOTHER_SEPARATED = "MOTHER_SEPARATED"    # 모자가정(별거)
+    UNMARRIED_FATHER = "UNMARRIED_FATHER"    # 미혼부가정
+    UNMARRIED_MOTHER = "UNMARRIED_MOTHER"    # 미혼모가정
+    UNMARRIED_PARENTS = "UNMARRIED_PARENTS"  # 미혼부모가정
+    FATHER_STEPMOTHER = "FATHER_STEPMOTHER"  # 친부+계모
+    MOTHER_STEPFATHER = "MOTHER_STEPFATHER"  # 친모+계부
+    RELATIVE_CARE = "RELATIVE_CARE"          # 친인척보호
+    FATHER_PARTNER = "FATHER_PARTNER"        # 친부+동거녀
+    MOTHER_PARTNER = "MOTHER_PARTNER"        # 친모+동거남
+    FOSTER = "FOSTER"                        # 가정위탁
+    ADOPTIVE = "ADOPTIVE"                    # 입양가정
+    FACILITY = "FACILITY"                    # 시설보호
+    OTHER = "OTHER"                          # 기타
+
+
 class SessionStatus(str, Enum):
     """
     상담 Session 상태.
@@ -250,6 +309,19 @@ class FollowupQuestionSource(str, Enum):
     COUNSELOR = "COUNSELOR"
 
 
+class CaseFormType(str, Enum):
+    """기관 서식 종류(2026-11-02, 탭 5 › 기관 서식 작성 디자인). 사례 단위로 차수마다 한 행을 쓴다."""
+
+    # 사정기록지 안전영역(서식 6)
+    SAFETY_ASSESSMENT = "SAFETY_ASSESSMENT"
+    # 사례관리 점검표(서식 27)
+    MANAGEMENT_CHECKLIST = "MANAGEMENT_CHECKLIST"
+    # 아동학대 위험수준별 개입 사정 척도(참고자료 3 · 43문항)
+    RISK_SCALE = "RISK_SCALE"
+    # 축약형 가족관계 척도(참고자료 1 · 15문항)
+    FAMILY_SCALE = "FAMILY_SCALE"
+
+
 class ScheduleKind(str, Enum):
     """일정 종류(2026-11-02, 일정 디자인). 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시)."""
 
@@ -284,6 +356,9 @@ class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
     CASE_CREATED = "CASE_CREATED"
+    CHILD_APP_INVITED = "CHILD_APP_INVITED"
+    CHILD_APP_ALERT_ACKED = "CHILD_APP_ALERT_ACKED"
+    CHILD_APP_QUESTIONS_SENT = "CHILD_APP_QUESTIONS_SENT"
     CASE_UPDATED = "CASE_UPDATED"
     CLOSURE_REVIEW_REGISTERED = "CLOSURE_REVIEW_REGISTERED"
     CLOSURE_REVIEW_CANCELED = "CLOSURE_REVIEW_CANCELED"
@@ -336,6 +411,16 @@ class AuditAction(str, Enum):
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
     SCHEDULE_DELETED = "SCHEDULE_DELETED"
+    # 문서함(2026-11-05). detail 에는 파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 넣지 않는다).
+    DOCBOX_FOLDER_CREATED = "DOCBOX_FOLDER_CREATED"
+    DOCBOX_FILE_UPLOADED = "DOCBOX_FILE_UPLOADED"
+    DOCBOX_FILE_MOVED = "DOCBOX_FILE_MOVED"
+    DOCBOX_FILE_DOWNLOADED = "DOCBOX_FILE_DOWNLOADED"
+    DOCBOX_FILE_DELETED = "DOCBOX_FILE_DELETED"
+    # 기관 서식(2026-11-02). detail 에는 서식 종류 · 차수만 남긴다(칸 값 · 소견 글은 넣지 않는다).
+    CASE_FORM_CREATED = "CASE_FORM_CREATED"
+    CASE_FORM_UPDATED = "CASE_FORM_UPDATED"
+    CASE_FORM_CONFIRMED = "CASE_FORM_CONFIRMED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.
@@ -356,3 +441,30 @@ class AuditAction(str, Enum):
     SIGNUP_REQUESTED = "SIGNUP_REQUESTED"
     SIGNUP_APPROVED = "SIGNUP_APPROVED"
     SIGNUP_REJECTED = "SIGNUP_REJECTED"
+
+
+class ChildAppLinkStatus(str, Enum):
+    """아이 앱 연결 상태. 행이 없으면 미연결이다."""
+
+    INVITED = "INVITED"
+    LINKED = "LINKED"
+
+
+class ChildQuestionSetStatus(str, Enum):
+    PENDING = "PENDING"
+    ANSWERED = "ANSWERED"
+    REPLACED = "REPLACED"
+
+
+class ChildAppEventKind(str, Enum):
+    LINKED = "LINKED"
+    QUESTIONS_SENT = "QUESTIONS_SENT"
+    ANSWERS = "ANSWERS"
+    ALERT = "ALERT"
+
+
+class ChildAnswerLevel(str, Enum):
+    NONE = "NONE"
+    SKIP = "SKIP"
+    AMBER = "AMBER"
+    RED = "RED"

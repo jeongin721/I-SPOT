@@ -10,7 +10,7 @@
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
 //  - 서로 다른 진술 · 아이 연계는 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
 
-import { CONSULTATION_TYPE_LABELS, type ConsultationType } from "../../api/types";
+import { CONSULTATION_TYPE_LABELS, type ClosureReportFields, type ConsultationType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ApprovedSummariesState } from "../useApprovedSummaries";
 import type { ClosureSummaryState } from "../useClosureSummary";
@@ -19,6 +19,7 @@ import type { SignalHistoryState } from "../useSignalHistory";
 import { detectedTypeLabels } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
 import { screenHref } from "./links";
+import type { ReportFirstPass } from "./closureSuggest";
 import { CLOSURE_MEETING_PRESET, PRESET_PARAM } from "./schedule";
 
 const SUMMARY_ORDER = [
@@ -219,7 +220,35 @@ export function closureSummaryValues(
 // ② 종결보고서(2026-10-30 연결) — closure-summary.report(상담원이 쓴 칸) · summary.report(AI 초안)
 // ------------------------------------------------------------
 
-export type ReportDraft = Partial<Record<"initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date", string>>;
+type ReportTextKey = "initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date";
+type SafetyLevel = "HIGH" | "MEDIUM" | "LOW";
+type SafetyScore = { score: number | null; reason: string };
+type GoalRow = { goal: string; service: string };
+
+/**
+ * 고치는 중인(저장 전) 보고서 칸. 글 칸 다섯과 상담원 판단 칸(2026-11-03 — 종결사유 · 안전평가 · Key Person · 안전점수).
+ * 판단 칸은 상담원이 고른 값만 저장한다(AI 가 채우지 않는다).
+ */
+export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
+  reasons?: boolean[];
+  safety?: (SafetyLevel | null)[];
+  key_person?: string;
+  safety_scores?: SafetyScore[];
+  services?: string;
+  goals?: GoalRow[];
+};
+
+const REASON_COUNT = 5;
+const SAFETY_COUNT = 11;
+const SCORE_COUNT = 3;
+const GOAL_COUNT = 6;
+const LEVELS: [string, SafetyLevel][] = [
+  ["높음", "HIGH"],
+  ["보통", "MEDIUM"],
+  ["낮음", "LOW"],
+];
+const fixedList = <T>(source: unknown, count: number, pick: (item: unknown) => T): T[] =>
+  Array.from({ length: count }, (_, i) => pick(Array.isArray(source) ? source[i] : undefined));
 
 export function closureReportValues(
   caseId: string | null,
@@ -227,26 +256,71 @@ export function closureReportValues(
   summary: ClosureSummaryState,
   draft: ReportDraft,
   setDraft: (patch: ReportDraft) => void,
-  resetDraft: () => void,
+  /** 저장이 끝나면 보낸 칸만 비운다(보내는 동안 더 고친 칸은 남김, 민규 #140 M3). */
+  resetDraft: (sent: ReportDraft) => void,
+  /**
+   * 저장한 적 없는 칸(null)의 1차 값 — AI 제안 · 기록 제안 · 일정 · 회차 기록(closureSuggest first, 11/05 경진님 'AI 가 1차 판단, 상담원이 수정').
+   * 상담원이 '보고서 저장' 을 눌러야 저장된다. 보고서를 한 번 저장한 뒤에는 쓰지 않는다(비운 칸 · 해제한 체크를 다시 채우지 않게).
+   */
+  first: ReportFirstPass = {},
 ) {
+  const servicesFromRecords = first.services ?? "";
   const info = detail.caseInfo;
   const record = summary.record;
+  // 저장된 기록을 받기 전에는 고치지 않는다 — 빈 칸 위에 고친 값이 저장돼 있던 칸을 지우지 않게(민규 #140 M2).
+  const edit = (patch: ReportDraft) => {
+    if (summary.loaded) setDraft(patch);
+  };
   const saved = record?.report ?? {};
+  // 1차 값은 보고서를 처음 저장하기 전까지만 쓴다(한 번 저장하면 상담원이 비운 칸 · 날짜를 다시 채우지 않는다).
+  const before = !Object.values(saved).some((item) => item !== null && item !== undefined);
+  const pass: ReportFirstPass = before ? first : {};
   const ai = record?.summary?.report ?? {};
   const aiSource = record?.summary?.source;
 
   /** 고치는 중인 값 → 저장된 값 → (글 칸은) AI 초안 순. */
-  const value = (key: keyof ReportDraft, aiText?: string) => draft[key] ?? (saved[key] ?? aiText ?? "");
+  const value = (key: ReportTextKey, aiText?: string) => draft[key] ?? (saved[key] ?? aiText ?? "");
+  // 상담원 판단 칸: 고치는 중인 값 → 저장된 값 → (저장한 적 없으면) 1차 값 → 빈 칸.
+  const reasons =
+    draft.reasons ?? fixedList(saved.reasons ?? pass.reasons, REASON_COUNT, (item) => item === true);
+  const safety =
+    draft.safety ??
+    fixedList(saved.safety ?? pass.safety, SAFETY_COUNT, (item) => LEVELS.find(([, code]) => code === item)?.[1] ?? null);
+  const keyPerson = draft.key_person ?? saved.key_person ?? pass.keyPerson ?? "";
+  const services = draft.services ?? saved.services ?? servicesFromRecords;
+  const scores =
+    draft.safety_scores ??
+    fixedList(saved.safety_scores, SCORE_COUNT, (item) => {
+      const row = (item ?? {}) as { score?: unknown; reason?: unknown };
+      return {
+        score: typeof row.score === "number" ? row.score : null,
+        reason: typeof row.reason === "string" ? row.reason : "",
+      };
+    });
+  const goals =
+    draft.goals ??
+    fixedList(saved.goals, GOAL_COUNT, (item) => {
+      const row = (item ?? {}) as { goal?: unknown; service?: unknown };
+      return { goal: typeof row.goal === "string" ? row.goal : "", service: typeof row.service === "string" ? row.service : "" };
+    });
   const aiChip = (key: "initial_situation" | "closing_situation") => {
     const item = ai[key];
     if (saved[key] || draft[key] !== undefined || !item) return "";
     const where = item.sessions.map((number) => `${number}회차`).join(" · ");
     return `${aiSource === "AI" ? "AI 초안" : "승인 요약"} · ${where}`;
   };
-  const field = (key: keyof ReportDraft, aiText?: string) => ({
+  const field = (key: ReportTextKey, aiText?: string) => ({
     value: value(key, aiText),
-    onChange: (event: { target: { value: string } }) => setDraft({ [key]: event.target.value }),
+    onChange: (event: { target: { value: string } }) => edit({ [key]: event.target.value }),
   });
+
+  // 저장한 적 없는 칸이 1차 값으로 보이고 있는가(화면 위 안내).
+  const firstShown =
+    before &&
+    ((pass.reasons ?? []).some(Boolean) ||
+      (pass.safety ?? []).some((level) => level !== null) ||
+      Boolean(pass.keyPerson) ||
+      Boolean(pass.closingDate));
 
   let note = "";
   if (!caseId) note = "종결 검토 목록에서 사례를 골라 주세요.";
@@ -258,7 +332,11 @@ export function closureReportValues(
   return {
     // 종결평가 회의 일정 잡기(11/02): 일정 달력이 '사례회의 · 종결평가 회의' 추가 창을 연 채로 열린다(이 사례를 붙인다).
     meetingHref: `${screenHref("/Schedule", { caseId })}${caseId ? "&" : "?"}${PRESET_PARAM}=${CLOSURE_MEETING_PRESET}`,
-    connected: Boolean(caseId && info),
+    // 주소에 사례가 있으면 실제 사례다 — 불러오는 동안에도 예시 판단 · AI 제안을 보이지 않는다(민규 #140 M6).
+    connected: Boolean(caseId),
+    firstNote: firstShown
+      ? "AI · 기록이 1차로 판단해 채운 칸이 있습니다(칩이 붙은 칸). 확인하고 고친 뒤 '보고서 저장' 을 눌러야 저장됩니다."
+      : "",
     crumb: info ? info.alias : "",
     alias: info?.alias ?? "",
     head: info
@@ -277,21 +355,75 @@ export function closureReportValues(
     closing: field("closing_situation", ai.closing_situation?.text),
     opinion: field("opinion"),
     reviewDate: field("review_date"),
-    closingDate: field("closing_date"),
+    closingDate: field("closing_date", pass.closingDate || undefined),
     initialChip: aiChip("initial_situation"),
     closingChip: aiChip("closing_situation"),
+    // 상담원 판단 칸(ClosureDetail 의 종결사유 · 안전평가 · Key Person · 안전점수)
+    reasons,
+    toggleReason: (i: number) => edit({ reasons: reasons.map((on, j) => (j === i ? !on : on)) }),
+    safety: safety.map((level) => LEVELS.find(([, code]) => code === level)?.[0] ?? ""),
+    pickSafety: (i: number, label: string) => {
+      const code = LEVELS.find(([name]) => name === label)?.[1] ?? null;
+      edit({ safety: safety.map((level, j) => (j === i ? (level === code ? null : code) : level)) });
+    },
+    services: {
+      value: services,
+      onChange: (event: { target: { value: string } }) => edit({ services: event.target.value }),
+    },
+    goals: goals.map((row, i) => ({
+      goal: row.goal,
+      service: row.service,
+      setGoal: (goal: string) => edit({ goals: goals.map((x, j) => (j === i ? { ...x, goal } : x)) }),
+      setService: (service: string) => edit({ goals: goals.map((x, j) => (j === i ? { ...x, service } : x)) }),
+    })),
+    keyPerson: {
+      value: keyPerson,
+      onChange: (event: { target: { value: string } }) => edit({ key_person: event.target.value }),
+    },
+    scores: scores.map((row, i) => ({
+      score: row.score === null ? "" : String(row.score),
+      reason: row.reason,
+      setScore: (raw: string) => {
+        const n = Number.parseInt(raw, 10);
+        const score = Number.isNaN(n) ? null : Math.min(10, Math.max(1, n));
+        edit({ safety_scores: scores.map((x, j) => (j === i ? { ...x, score } : x)) });
+      },
+      setReason: (reason: string) => edit({ safety_scores: scores.map((x, j) => (j === i ? { ...x, reason } : x)) }),
+    })),
+    /** 저장하지 않은 수정이 있는가(useLeaveGuard). */
+    unsaved: Object.keys(draft).length > 0,
     reportNote: note,
     canSave: Boolean(caseId && summary.loaded && !summary.busy),
     saveLabel: summary.busy === "save" ? "저장 중…" : "보고서 저장",
     save: async () => {
-      const report = {
-        initial_situation: value("initial_situation", ai.initial_situation?.text) || null,
-        closing_situation: value("closing_situation", ai.closing_situation?.text) || null,
-        opinion: value("opinion") || null,
-        review_date: value("review_date") || null,
-        closing_date: value("closing_date") || null,
-      };
-      if (await summary.save({ report })) resetDraft();
+      // 고친 칸만 report 로 보낸다 — 다른 창에서 고친 칸을 이 창의 옛 값으로 되돌리지 않게(민규 #140 M4).
+      // 고치지 않고 처음 값(AI 초안 · 회차 기록 · 1차 판단)으로 보이던 칸은 report_defaults 로 보내, 서버가 저장된 값이 없는 칸에만
+      // 쓴다(보이는 대로 저장하되 다른 창이 먼저 저장한 칸은 그대로 — 민규 #140 교차검증 11/05).
+      const sent = draft;
+      const report: ClosureReportFields = {};
+      const defaults: ClosureReportFields = {};
+      for (const key of ["initial_situation", "closing_situation", "opinion", "review_date"] as const) {
+        if (sent[key] !== undefined) report[key] = sent[key] || null;
+      }
+      for (const key of ["initial_situation", "closing_situation"] as const) {
+        if (sent[key] === undefined && saved[key] == null && ai[key]?.text) defaults[key] = ai[key]!.text;
+      }
+      if (sent.closing_date !== undefined) report.closing_date = sent.closing_date || null;
+      else if (before && pass.closingDate) defaults.closing_date = pass.closingDate;
+      if (sent.reasons) report.reasons = reasons;
+      else if (before && (pass.reasons ?? []).some(Boolean)) defaults.reasons = reasons;
+      if (sent.safety) report.safety = safety;
+      else if (before && (pass.safety ?? []).some((level) => level !== null)) defaults.safety = safety;
+      if (sent.key_person !== undefined) report.key_person = keyPerson.trim() || null;
+      else if (before && pass.keyPerson) defaults.key_person = pass.keyPerson;
+      if (sent.safety_scores) report.safety_scores = scores;
+      if (sent.goals) report.goals = goals.map((row) => ({ goal: row.goal.trim(), service: row.service.trim() }));
+      // 비워 저장하면 "" 로 남겨(저장 전 null 과 구분) 다시 열어도 회차 기록 글로 채우지 않는다(민규 #140 교차검증 11/05).
+      if (sent.services !== undefined) report.services = services.trim();
+      else if (saved.services == null && servicesFromRecords) defaults.services = servicesFromRecords;
+      const ok = await summary.save(Object.keys(defaults).length ? { report, report_defaults: defaults } : { report });
+      if (ok) resetDraft(sent);
+      return ok;
     },
   };
 }

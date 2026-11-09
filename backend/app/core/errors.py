@@ -54,6 +54,8 @@ class ErrorCode(str, Enum):
     NOT_APPROVED = "NOT_APPROVED"
     # 3 · 4단계 AI 초안을 만드는 중이라 받지 않음(2026-11-04, 재분석 · 요약 수정 · 승인 · 추가 질문 · 확인 사항 저장).
     ANALYSIS_DRAFTS_PENDING = "ANALYSIS_DRAFTS_PENDING"
+    # 화면이 본 판(version)이 서버의 지금 판과 다름 — 다른 창에서 먼저 저장 · 확정함(2026-11-04, 기관 서식).
+    STALE_VERSION = "STALE_VERSION"
 
     # Audio
     AUDIO_EMPTY_FILE = "AUDIO_EMPTY_FILE"
@@ -79,6 +81,9 @@ class ErrorCode(str, Enum):
     LAW_QA_DISABLED = "LAW_QA_DISABLED"
     LAW_SOURCE_UNAVAILABLE = "LAW_SOURCE_UNAVAILABLE"
     RATE_LIMITED = "RATE_LIMITED"
+    # 아이 앱 연결 코드가 틀렸거나 만료 · 사용됨. 어느 쪽인지 알려주지 않는다.
+    INVALID_CHILD_CODE = "INVALID_CHILD_CODE"
+    CHILD_APP_DISABLED = "CHILD_APP_DISABLED"
 
     # 개인 식별 정보 (API_CONTRACT 4절 '개인 식별 정보', 2026-10-30). 저장한 암호문을 풀 수 없음(키가 설정에 없음 · 값이 바뀜). 500.
     PERSONAL_INFO_UNAVAILABLE = "PERSONAL_INFO_UNAVAILABLE"

@@ -7,10 +7,11 @@
 // 생년월일을 넣으면 출생연도 칸은 그 해를 읽기 전용으로 보인다(서버도 생년월일의 해로 맞춘다).
 // 등록되면 새 사례의 상세(?case=새 ID)로 간다. 초기면접 아동 특성 · 가정상황은 사례 상세(caseDetail.ts, 등록 뒤 고치기도 여기서)와
 // 상담 일지(noteWrite.ts)에 단어로 보인다.
-// 나머지 서식 4 칸은 서버에 칸이 없어(specs 대응표 CaseRegister 줄) 입력을 막고 '준비 중' 으로 둔다:
-//  - 조치결과 · 위험도 · 사례연계 경위
-//  - ② 초기면접 내용 탭의 보호자와 아동과의 관계 · 가족유형 · 문제력 · 태도 · 소견
-// 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다. 막은 칸의 내용을 사례 메모 등 다른 칸에 옮겨 담지 않는다.
+// 서식 4 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기 — caseFormFields.ts): ① 조치결과 · 피해아동 / 사례관리대상자 · 위험도(우선) ·
+// 사례연계 경위, ② 가족유형(하나) · 보호자와 아동과의 관계 · 문제력(현 상황 · 이유 인식) · 대상자 태도 · 물리적 환경 · 상담원 소견.
+// 모두 비워도 등록된다(서버 선택 칸). 상담원이 고르고 적는 칸이라 미리 골라 두지 않는다(디자인의 기본값 '원가정보호' · '지속관찰' 은
+// 옮기지 않았다 — 고르지 않은 칸이 고른 것처럼 저장되지 않게). 글 칸은 평문 저장이라 개인정보를 적지 말라고 안내한다.
+// 사례관리대상자는 보호자와 같은 뜻이 아니어서 보호자 유형으로 채우지 않는다. 한 칸의 내용을 다른 칸에 옮겨 담지 않는다.
 
 import { GUARDIAN_LABELS, type GuardianType } from "../../api/types";
 import type { AuthSession } from "../useAuthSession";
@@ -27,25 +28,10 @@ import {
 import { emptyPersonalInput, type PersonalInput } from "../personalInfo";
 import { NOT_READY, notice, screenNotice } from "./common";
 import { INTAKE_CHILD_ITEMS, INTAKE_HOME_ITEMS } from "./intakeItems";
-import { intakeChoices, toggleItem } from "./intakePick";
+import { intakeChoices, singleChoices, toggleItem } from "./intakePick";
 import { screenHref } from "./links";
 import { personalFieldValues } from "./personalFields";
-
-const FAM = [
-  "일반가정",
-  "부자가정",
-  "모자가정",
-  "미혼부 · 모 가정",
-  "친부+계모",
-  "친모+계부",
-  "친인척보호",
-  "친부+동거녀",
-  "친모+동거남",
-  "가정위탁",
-  "입양가정",
-  "시설보호",
-  "기타",
-];
+import { caseChoiceOptions, caseTextValues } from "../caseFormFields";
 
 export interface RegisterUiState {
   tab: "A" | "B";
@@ -60,7 +46,7 @@ export function initialRegisterState(): RegisterUiState {
   return { tab: "A", form: { ...EMPTY_CASE_INPUT }, personal: emptyPersonalInput(), tried: false };
 }
 
-/** ① 기본 정보의 필수 칸. 서버가 받는 칸 중 비울 수 없는 것만 센다(준비 중 칸은 입력할 수 없어 뺀다). */
+/** ① 기본 정보의 필수 칸. 서버가 비울 수 없게 하는 칸만 센다(디자인이 필수로 둔 조치결과 · 사례연계 경위는 서버 선택 칸이라 뺀다). */
 const REQUIRED: [TextKey, string][] = [
   ["title", "사례 제목"],
   ["alias", "아동 별칭"],
@@ -68,9 +54,6 @@ const REQUIRED: [TextKey, string][] = [
 
 /** 빈 필수 칸 테두리(디자인 값). */
 const INVALID_BORDER = "#A33B2E";
-
-/** 고를 수 없는(준비 중) 선택 단추. 모양은 고르지 않은 단추다. */
-const picker = (label: string) => ({ label, bg: "#FFFFFF", bd: "#DAD5C9", fg: "#2B2A26", fw: 400, mark: "+" });
 
 type IntakeKey = "childTraits" | "familySituations";
 type TextKey = Exclude<keyof CaseRegisterInput, IntakeKey>;
@@ -156,13 +139,12 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     notice: screenNotice({ session }),
     formError: register.error ? notice(register.error, { alert: true }) : null,
     savedNote:
-      "서버에 저장하는 칸: 사례 제목 · 신고접수일 · 사례연계일 · 최초면접일 · 아동 별칭 · 개별사건번호 · 성별 · 출생연도 · 보호자 유형 · 사례 메모 · 담당 상담원, " +
-      "② 초기면접 내용의 가정상황 · 아동 특성. 실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 " +
-      "암호화해 저장하고 담당 상담원 · 관리자만 봅니다. " +
-      `'${NOT_READY}' 칸은 서버에 칸이 없어 입력할 수 없습니다.`,
+      "실명 · 생년월일 · 사례관리대상자 · 면접대상자 · 가족관계 · 건강정도는 암호화해 저장하고 담당 상담원 · 관리자만 봅니다. " +
+      "사례연계 경위 · 사례 메모 등 글 칸은 암호화하지 않으니 실명 · 연락처 · 주소를 적지 마세요. " +
+      "조치결과 · 위험도는 상담원이 고르는 칸입니다(AI 가 고르지 않습니다).",
     tabNote:
-      "가정상황 · 아동 특성은 서버에 저장하고 상담 일지에서 초기면접 항목으로 보입니다. 가족관계 · 건강정도는 암호화해 저장합니다. " +
-      `나머지 칸(관계 · 가족유형 · 문제력 · 태도 · 소견)은 ${NOT_READY}이라 입력할 수 없습니다.`,
+      "가정상황 · 아동 특성은 상담 일지에서 초기면접 항목으로 보입니다. 가족관계 · 건강정도는 암호화해 저장합니다. " +
+      "보호자와 아동과의 관계 · 문제력 · 태도 · 환경 · 소견 글은 암호화하지 않으니 실명 · 연락처 · 주소를 적지 마세요.",
     notReady: NOT_READY,
     tabs,
     isA: state.tab === "A",
@@ -176,7 +158,10 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     closeHref: back ?? "/CaseList",
     homes: intakePickers("familySituations", INTAKE_HOME_ITEMS),
     traits: intakePickers("childTraits", INTAKE_CHILD_ITEMS),
-    fams: FAM.map(picker),
+    // ② 가족유형(하나만, 2026-11-05). 같은 단추를 다시 누르면 뺀다.
+    fams: singleChoices(caseChoiceOptions("familyType"), form.familyType, submitting, (value) =>
+      setState((current) => ({ form: { ...current.form, familyType: value } })),
+    ),
     midLabel: state.tab === "A" ? "초기면접 내용 →" : "← 기본 정보",
     goB: () => goTab(state.tab === "A" ? "B" : "A"),
     title: { ...field("title"), max: CASE_TITLE_MAX },
@@ -201,6 +186,11 @@ export function caseRegisterValues({ session, register, back, state, setState, g
     reportDate: field("reportDate"),
     linkedDate: field("linkedDate"),
     firstInterviewDate: field("firstInterviewDate"),
+    // 서식 4 고르기 · 글 칸(2026-11-05). 고르기는 '선택'(빈 값)이 처음 값이다.
+    childAction: { ...field("childAction"), options: caseChoiceOptions("childAction") },
+    targetAction: { ...field("targetAction"), options: caseChoiceOptions("targetAction") },
+    riskLevel: { ...field("riskLevel"), options: caseChoiceOptions("riskLevel") },
+    ...caseTextValues(field),
     isAdmin,
     counselor: field("counselorId"),
     counselorOptions: register.counselors,

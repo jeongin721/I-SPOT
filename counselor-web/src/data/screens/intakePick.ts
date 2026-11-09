@@ -7,6 +7,29 @@ export function toggleItem(list: string[], label: string): string[] {
 }
 
 /**
+ * 하나만 고르는 단추(서식 4 ② 가족유형, 2026-11-05). 모양은 아래 고르기 단추와 같고, 같은 것을 다시 누르면 뺀다.
+ * options 는 서버 코드 · 화면 글자, picked 는 지금 코드("" = 고르지 않음). onPick 은 새 코드("" = 뺌)를 받는다.
+ */
+export function singleChoices(
+  options: { value: string; label: string }[],
+  picked: string,
+  disabled: boolean,
+  onPick: (value: string) => void,
+) {
+  const pickedLabel = options.find((option) => option.value === picked)?.label;
+
+  return intakeChoices(
+    options.map((option) => option.label),
+    pickedLabel ? [pickedLabel] : [],
+    disabled,
+    (label) => {
+      const option = options.find((item) => item.label === label);
+      if (option) onPick(option.value === picked ? "" : option.value);
+    },
+  );
+}
+
+/**
  * 서식 항목마다 고르기 단추 값(눌러서 고르고 다시 눌러 뺀다). disabled 면 눌러도 바뀌지 않는다(저장 · 등록 중).
  * onToggle 은 누른 항목 이름을 받는다. 목록은 부르는 쪽이 지금 상태로 바꾼다(toggleItem).
  */

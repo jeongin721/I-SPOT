@@ -76,6 +76,8 @@ def list_cases(
     search: Annotated[Optional[str], Query(max_length=100), StorableQueryText] = None,
     # 아동 실명을 실을지(API_CONTRACT 4절 '개인 식별 정보'). 실명을 보여 주는 화면만 true 로 부른다 — 그때만 복호화하고 열람 기록 1줄을 남긴다.
     with_child_name: bool = False,
+    # 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순.
+    sort: Optional[case_service.CaseSort] = None,
 ) -> DataResponse[PagedItems[CaseListItemResponse]]:
     cases, total = case_service.list_cases(
         db,
@@ -84,21 +86,23 @@ def list_cases(
         limit=page_size,
         status=status_filter,
         search=search,
+        sort=sort,
     )
 
     names = (
-        personal_info_service.child_names(db, current_user, [case.id for case, _, _ in cases])
+        personal_info_service.child_names(db, current_user, [case.id for case, *_ in cases])
         if with_child_name
         else {}
     )
 
     items = []
 
-    for case, last_session_at, counselor_name in cases:
+    for case, last_session_at, counselor_name, risk_level in cases:
         item = CaseListItemResponse.model_validate(case)
         item.last_session_at = last_session_at
         item.counselor_name = counselor_name
         item.child_name = names.get(case.id)
+        item.risk_level = risk_level
         items.append(item)
 
     return DataResponse(data=paged(items, total, page, page_size))

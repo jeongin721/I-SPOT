@@ -232,6 +232,8 @@ def generate(db: Session, case: Case, current_user: User) -> CaseClosureReview:
         "sessions": [session["number"] for session in sessions],
         "groups": _with_keys(result.get("groups") or []),
         "report": result.get("report") or {},
+        # 종결보고서 안전평가 · Key Person AI 제안(11/04). LLM 없이 묶을 때는 없다.
+        "suggestions": result.get("suggestions") if use_ai else None,
     }
     row = get_row(db, case.id, lock=True)
     if row is None:
@@ -300,9 +302,14 @@ def save(db: Session, case: Case, current_user: User, payload: ClosureSummarySav
             else:
                 merged.pop(key, None)
         row.edits = merged
-    if payload.report is not None:
-        sent = payload.report.model_dump(mode="json", exclude_unset=True)
-        row.report = {**(row.report or {}), **sent}
+    sent = payload.report.model_dump(mode="json", exclude_unset=True) if payload.report is not None else {}
+    defaults = payload.report_defaults.model_dump(mode="json", exclude_unset=True) if payload.report_defaults is not None else {}
+    filled: Dict[str, Any] = {}
+    if sent or defaults:
+        current = dict(row.report or {})
+        # 처음 값은 저장된 값이 없는 칸에만(행을 잠근 뒤 본 값 기준 — 겹친 저장이 먼저 쓴 칸을 되돌리지 않는다).
+        filled = {key: value for key, value in defaults.items() if key not in sent and current.get(key) is None}
+        row.report = {**current, **filled, **sent}
     row.updated_by_id = current_user.id
 
     audit_service.record(
@@ -315,7 +322,8 @@ def save(db: Session, case: Case, current_user: User, payload: ClosureSummarySav
         detail={
             "checks": len(payload.checks or {}),
             "edits": len(payload.edits or {}),
-            "report_fields": sorted((payload.report.model_dump(exclude_unset=True) if payload.report else {}).keys()),
+            "report_fields": sorted(sent.keys()),
+            "default_fields": sorted(filled.keys()),
         },
     )
     db.commit()

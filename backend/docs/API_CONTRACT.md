@@ -604,10 +604,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
   - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- 각 줄의 `risk_level`(`HIGH|MEDIUM|LOW|null`)은 AI 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED`·`APPROVED`)의 상담원 판단(회차 전체)이다. 그 회차를 판단하기 전이면 `null` 이고, 앞 회차 판단이나 AI 심각도로 채우지 않는다
+  - 화면은 이 값을 먼저 쓰고, `null` 이면 `counselor_risk_level`(위험도(우선))을 보인다. 둘 다 상담원이 고른 값이다(2026-11-06)
+- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다(화면에 보이는 값과 같은 기준 — 회차 판단, 없으면 위험도(우선)). 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
 - `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
   열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
   빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
@@ -702,6 +705,23 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `intake_child_traits` · `intake_family_situations` 선택(빼면 `[]`). 규칙은 위 '초기면접 항목' 참조
 - `report_date` · `linked_date` · `first_interview_date`(2026-10-30, 서식 4 ① 신고접수일 · 사례연계일 · 최초면접일) 선택. `"YYYY-MM-DD"` 날짜만,
   1900-01-01 ~ 2100-12-31(그 밖 · 시각이 붙은 값(자정 · `Z` 포함) · 숫자는 `422` — 글자 10자만 받는다). 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다
+- 서식 4 의 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기) 선택. 빼면 `null`. 사례 응답(목록 · 상세)에 같은 이름으로 온다.
+  **모두 상담원이 고르거나 적는 값**이다 — AI 가 미리 고르거나 채우지 않고, AI 분석 입력(사례 정보)에도 넘기지 않는다.
+  - `child_action_result`(조치결과 · 피해아동): `HOME`(원가정보호) · `RELATIVE`(친인척보호) · `ACQUAINTANCE`(연고자에 의한 보호) ·
+    `FOSTER`(가정위탁) · `FACILITY`(시설입소) · `HOSPITAL`(병원입원) · `OTHER`(기타)
+  - `target_action_result`(조치결과 · 사례관리대상자): `OBSERVATION`(지속관찰) · `SEPARATION`(아동과의 분리) · `COMPLAINT`(고소 · 고발) · `OTHER`(기타)
+  - `counselor_risk_level`(위험도(우선)): `HIGH`(상) · `MEDIUM`(중) · `LOW`(하). 상담원이 고른 **사례** 위험도다 — 회차 AI 심각도(1~5) ·
+    회차 위험도 판단(11절)과 서로 바꾸거나 맞추지 않는다
+  - `intake_family_type`(② 가족유형, 하나 — 11/03 디자인의 21개): `GENERAL`(일반가정) ·
+    `FATHER_BEREAVED` · `FATHER_DIVORCED` · `FATHER_LEFT` · `FATHER_SEPARATED`(부자가정 — 사별 · 이혼 · 가출 · 별거) ·
+    `MOTHER_BEREAVED` · `MOTHER_DIVORCED` · `MOTHER_LEFT` · `MOTHER_SEPARATED`(모자가정 — 사별 · 이혼 · 가출 · 별거) ·
+    `UNMARRIED_FATHER`(미혼부가정) · `UNMARRIED_MOTHER`(미혼모가정) · `UNMARRIED_PARENTS`(미혼부모가정) · `FATHER_STEPMOTHER`(친부+계모) · `MOTHER_STEPFATHER`(친모+계부) · `RELATIVE_CARE`(친인척보호) ·
+    `FATHER_PARTNER`(친부+동거녀) · `MOTHER_PARTNER`(친모+동거남) · `FOSTER`(가정위탁) · `ADOPTIVE`(입양가정) · `FACILITY`(시설보호) · `OTHER`(기타)
+  - 글 칸(각 2000자): `linked_background`(① 사례연계 경위), ② `intake_guardian_relation`(보호자와 아동과의 관계) ·
+    `intake_problem`(문제력 — 현 상황 · 그 이유, 한 칸) · `intake_attitude`(대상자 태도) ·
+    `intake_environment`(물리적 환경) · `intake_opinion`(상담원 소견 및 향후 계획). 앞뒤 빈칸을 지우고 빈 글은 `null` 로 저장한다.
+    평문 저장이다(사례 메모와 같음) — 화면은 '실명 · 연락처 · 주소 등 개인정보는 적지 마세요' 를 보인다
+  - 목록에 없는 값 · 2000자를 넘는 글은 `422`
 - `counselor_id` 미지정 → 요청자 본인. 타인 지정은 **관리자만** 가능(`403 FORBIDDEN`)
   - 없는 계정 → `404 USER_NOT_FOUND`, 정지된 계정(`is_active=false`) → `400 VALIDATION_ERROR`(`details` 없이 `message` 만 온다.
     "비활성화된 사용자를 담당 상담사로 지정할 수 없습니다.")
@@ -786,6 +806,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `guardian_type` 을 `OTHER` 가 아닌 값(또는 `null`)으로 바꾸면 기존 `guardian_note` 는 지워진다
 - `intake_child_traits` · `intake_family_situations` 는 보내면 목록을 통째로 바꾼다. 비우려면 `[]` 를 보낸다(`null` 은 `422`)
 - 날짜 셋(`report_date` · `linked_date` · `first_interview_date`)은 보낸 것만 바뀌고 `null` 을 보내면 비운다
+- 서식 4 고르기 · 글 칸(2026-11-05, 위 `POST` 참조)도 보낸 것만 바뀌고 `null`(글 칸은 빈 글도)을 보내면 비운다. 감사 기록에는 바뀐 칸 이름만 남는다
 
 ### POST · DELETE /api/v1/cases/{case_id}/closure-review (2026-10-30)
 
@@ -814,9 +835,20 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - 문장 `key` 는 만들 때마다 새 무작위 앞머리 + 자리 번호(예: `3f9a1c-0-0`)다. 다시 만들면 `key` 가 모두 바뀌므로 `checks` · `edits` 를
     비우고, 예전 요약을 띄운 화면이 옛 `key` 로 `PUT` 하면 `422`(새 문장에 붙지 않는다). `report`(상담원이 쓴 보고서 칸)는 남긴다.
 - `summary`: `{ source, model, generated_at, sessions: [회차 번호], groups: [{title, items: [{key, text, sessions}]}],
-  report: {initial_situation, closing_situation} }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
+  report: {initial_situation, closing_situation}, suggestions }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
+  (2026-11-04) `suggestions`: 종결보고서 안전평가 · Key Person 의 **AI 제안** `{safety: [{index: 0~10, level: HIGH·MEDIUM·LOW, basis,
+  sessions}], key_person: {text, sessions} | null}`(basis · text 는 **가린 글 기준** 80자 — 이름을 되돌린 뒤 조금 길 수 있다) — 근거가 있는 문항만, 근거 회차 검사는 문장과 같다. `source = "AI"` 일 때만 오고
+  그 밖 · 이 필드 전에 만든 요약은 `null`. 서버는 `report` 를 채우지 않는다 — 화면이 보고서를 처음 저장하기 전까지 이 제안(과 기록 제안 · 일정)을
+  1차 값으로 보이고(11/05), 상담원이 `PUT` 해야 저장된다(고치지 않은 1차 값은 아래 `report_defaults`).
 - `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
   `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD` 글자만 — 시각 · 숫자 `422`).
+  (2026-11-03) 상담원 판단 칸도 `report` 에 둔다 — `reasons`: 종결사유 5개 `bool` · `safety`: 안전평가 11문항 `HIGH`·`MEDIUM`·`LOW`·`null`
+  (피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 서식 6 안전영역과 같은 순서) · `key_person`: 300자 · `safety_scores`: 3줄 `{score: 1~10·null, reason: 300자}` · `goals`: 6줄 `{goal: 200자, service: 300자}`(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2, 상담원이 씀, 2026-11-09)
+  · (2026-11-04) `services`: 사례관리 제공 요약 · 제공된 서비스 내용 및 총량 300자(화면이 회차 기록의 상담 유형별 횟수로 먼저 채운다).
+  목록은 문항 수 그대로(아니면 `422`). 타입은 바꿔 받지 않고(`true` → 1 · `"3"` → 3 은 `422`), 모르는 칸(`reson` 오타 등)도 `422`(11/05).
+  GET 의 `report` 에도 같은 키가 온다(저장 전 `null`).
+  (2026-11-05) `report_defaults`: `report` 와 같은 모양. 화면이 고치지 않고 처음 값(AI 초안 · 회차 기록 · 1차 판단)으로 보여 준 칸 —
+  서버는 **저장된 값이 `null` 인 칸에만** 쓴다(잠근 행 기준). 다른 창이 먼저 저장한 칸을 되돌리지 않는다. `report` 에도 있는 칸은 `report` 가 이긴다.
   행을 잠그고(`FOR UPDATE`) 합쳐 쓰므로 겹친 저장이 서로의 칸을 지우지 않는다. 처음 저장 두 건이 겹치면 늦은 쪽은 `409 DUPLICATE_RESOURCE`.
 - 감사 기록 `CLOSURE_SUMMARY_GENERATED`(출처 · 회차 수 · 문장 수 · 걸린 초) · `CLOSURE_SUMMARY_UPDATED`(수 · 바뀐 보고서 칸 이름) — 문장은 남기지 않는다.
 
@@ -1524,6 +1556,28 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
   - LLM 실패 · 마감까지 못 끝냄
   - LLM 이 주제를 냈는데 검사에서 하나도 남지 않음(목록 밖 이름뿐 등 — 분류 실패로 본다)
 
+**안전 플래그 `safety_flags` · 재학대 요인 `reabuse_factors`(선택, 2026-11-05)** — 학대 신호 확인(2단계) '안전 플래그 · 재학대 요인' 카드의 재료다.
+모두 **AI 확인 후보**이고 판정이 아니다. 점수 · 등급으로 바꾸지 않는다.
+
+```json
+"safety_flags": [
+  { "code": "S2", "text": "말하면 더 혼난다는 말을 들었다고 함", "certainty": "CLEAR", "segment_ids": ["seg_012"] }
+],
+"reabuse_factors": [
+  { "code": "R2", "text": "아빠가 술을 마시면 때린다고 함", "segment_ids": ["seg_004"] }
+]
+```
+
+- 기준은 팀이 확인한 기준안(2026-11-05)이다. 정의는 `ai/modeling/abuse/safety_flag_llm.py` 의 `SAFETY_FLAG_DEFINITIONS`(S1~S10, '지금 이 아이가
+  안전한가') · `REABUSE_FACTOR_DEFINITIONS`(R2~R10, '앞으로 다시 일어날 가능성'). R1(중복학대)은 AI 가 내지 않고 화면이 관련 신호가 잡힌 유형 수로 센다.
+- `certainty`: `CLEAR`(진술이 분명히 해당) · `CHECK`(상담원 확인 필요). 모르는 값이면 `CHECK` 로 본다.
+- **없으면 `null`**(이 필드 전 결과 · 모듈 실패 · Mock AI · LangGraph) — `topic_tags` 처럼 `[]`(찾았지만 해당 없음)과 구분한다.
+  화면은 `null` 을 '없음' 으로 보이지 않는다(언급 없음 ≠ 안전함). 모듈이 실패했으면 `warnings` 에
+  `"안전 플래그 · 재학대 요인을 만들지 못했습니다."` 가 붙고 분석은 그대로 끝난다.
+- 모르는 코드 · 문장이 비었거나 `segment_ids` 가 빈 항목은 그 항목만 버린다.
+- 2단계 칸이라 두 번 저장(위 "두 번 저장")에서 **첫 저장에 실리고 둘째 저장에서 바뀌지 않는다**. 보호요인과 같은 마스킹된 인용 축어록으로
+  기록 초안 · 보호요인과 병렬로 부른다.
+
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
 `AI_TIMEOUT` 은 아래 넷 가운데 하나다. 모두 재시도할 수 있다.
@@ -2070,6 +2124,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
 | `NOT_APPROVED` | 409 | 승인되지 않은 요약 · 문서의 승인 풀기(`reopen`) |
 | `ANALYSIS_DRAFTS_PENDING` | 409 | 3 · 4단계 AI 초안을 만드는 중(`drafts_status: "PENDING"`, 8절 "두 번 저장") — 재분석, 요약 수정 · 승인(9절), 추가 질문 · 확인 사항 저장(18 · 18.1절). 잠시 뒤 다시 시도한다 |
+| `STALE_VERSION` | 409 | 화면이 본 판(`version`)이 서버의 지금 판과 다름 — 다른 창에서 먼저 저장 · 확정함(22절 기관 서식) |
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
@@ -2705,3 +2760,142 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
   LLM 을 쓰지 않는 서버는 `source: "NONE"` · 빈 목록(상담사가 직접 쓴다). 다시 부르면 초안을 새로 만든다(저장한 확인 사항 · 승인한 질문은 그대로).
 - 초안은 화면에서 확인 사항(18.1절) · 추가 질문(18절) 저장으로 들어간다. 감사 기록 `SOURCE_DOCUMENT_UPLOADED` · `DOCUMENT_FOLLOWUPS_DRAFTED`
   에는 형식 · 글자 수 · 채운 칸 이름 · 초안 수만 남긴다(문서 글은 남기지 않는다).
+
+---
+
+## 22. Case Forms (기관 서식 작성, 2026-11-02)
+
+'탭 5 › 기관 서식 작성' 디자인(사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)이 쓰고, 문서함 '기관 서식' 표 ·
+내담자 정보 '기관 서식' 카드가 작성 기록을 보인다.
+
+- **사례 단위**다(회차와 묶지 않는다). 점검표는 3개월마다 1차 · 2차 …, 사정기록지 · 척도는 초기 사정 · 재사정 때 쓰므로 서식마다
+  **차수(`round`)** 로 센다(사례 · 서식 종류마다 1부터).
+- 사례 · 서식 종류마다 **임시 저장(`DRAFT`) 차수는 하나**. **확정(`APPROVED`)한 차수는 고칠 수 없고**, 다시 쓰려면 다음 차수를 만든다.
+- **칸은 상담사가 고르고 쓴다** — 서버는 칸 값을 지어내거나 AI 로 채우지 않는다. 점수 합계 · 응답 수(`totals`)만 계산해 돌려준다
+  (군 판정 · 사정결과는 계산하지 않는다 — 상담원이 고른다).
+- 권한은 사례와 같다(담당 상담사 · 관리자, 남의 사례 `403`, 없는 사례 `404 CASE_NOT_FOUND`).
+
+### GET /api/v1/cases/{case_id}/forms[?form_type=RISK_SCALE]
+
+- `{ items: [CaseForm] }`, 서식 종류 → 차수가 큰 것(최근)부터.
+
+`CaseForm`:
+
+```json
+{
+  "id": "uuid", "case_id": "uuid", "form_type": "MANAGEMENT_CHECKLIST", "round": 3, "status": "DRAFT", "version": 4,
+  "values": { "place": "기관 면담실 B", "checks": ["NO", "YES", null, null, null, null, null, null, null],
+              "opinion": "…", "plan": "…" },
+  "totals": { "answered": 2 },
+  "created_by_id": "uuid", "updated_by_id": "uuid", "confirmed_by_id": null, "confirmed_at": null,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+`form_type` 과 `values` 꼴(목록은 문항 수 그대로, 모르는 칸은 `422`, 빈 칸은 `null` · `""`):
+
+| `form_type` | 서식 | `values` | `totals` |
+|---|---|---|---|
+| `SAFETY_ASSESSMENT` | 사정기록지 안전영역(서식 6) | `items`: 11개 `HIGH`·`MEDIUM`·`LOW`·`null`(피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 디자인 순서) · `key_person`: `YES`·`NO`·`null` · `scores`: 3개 `{score: 1~10·null, reason: ≤300자}`(피해아동 · 가족구성원 · 사례관리대상자 응답) · `opinion`: ≤5000자 · `result`: `INTENSIVE`(집중관리)·`GENERAL`(일반관리)·`MONITORING`(모니터링관리)·`null` | `{answered}` |
+| `MANAGEMENT_CHECKLIST` | 사례관리 점검표(서식 27) | `place`: ≤100자 · `checks`: 9개 `YES`·`NO`·`null` · `opinion` · `plan`: ≤5000자 | `{answered}` |
+| `RISK_SCALE` | 위험수준별 개입 사정 척도(참고자료 3) | `scores`: 43개 0~3·`null`(1~21 위험요인, 22~43 보호요인) | `{risk_sum, protect_sum, filled}` |
+| `FAMILY_SCALE` | 축약형 가족관계 척도(참고자료 1) | `respondent`: `FATHER`·`MOTHER`·`CHILD`·`null` · `answers`: 15개 1~5·`null` | `{sum, answered}` |
+
+### POST /api/v1/cases/{case_id}/forms → 201
+
+```json
+{ "form_type": "RISK_SCALE", "values": { "scores": [0, null, 2, …] } }
+```
+
+- 다음 차수를 임시 저장으로 만든다. `values` 는 빼거나 일부만 보내도 된다(나머지는 빈 칸).
+- 그 서식의 임시 저장 차수가 이미 있으면 `409 DUPLICATE_RESOURCE`(그 차수를 PATCH 로 이어 고친다). 같은 순간 두 창이 만들어도 하나만 생긴다
+  (DRAFT 행에만 거는 유일 인덱스 `uq_case_forms_one_draft`, 민규 #140 M1).
+- `values` 가 꼴에 맞지 않으면 `422 VALIDATION_ERROR`(`details.fields` 에 칸 위치만, 받은 글은 싣지 않는다).
+
+### GET /api/v1/cases/{case_id}/forms/{form_id} → 200
+
+### PATCH /api/v1/cases/{case_id}/forms/{form_id} → 200
+
+- `{ "values": {…}, "version": 4 }` — **서식 칸 전체를 바꾼다**(보내지 않은 칸은 빈 칸). 확정한 차수는 `409 ALREADY_APPROVED`.
+- **`version`** 은 화면이 본 판(응답의 `version`, 만들 때 1, 저장 · 확정마다 1 씩 증가). 서버의 지금 판과 다르면(다른 창에서 먼저 저장)
+  `409 STALE_VERSION` — 화면은 최신 기록을 다시 받아 보이고 덮어쓰지 않는다. 'DRAFT 이고 그 판인 행' 에만 거는 조건부 UPDATE 라
+  확정 뒤 겹친 저장 · 겹친 확정 둘도 하나만 성공한다(2026-11-04, 민규 #140 H2 · H3).
+- 다른 사례 주소로 부르면 `404 NOT_FOUND`.
+
+### POST /api/v1/cases/{case_id}/forms/{form_id}/confirm → 200
+
+- 본문 `{ "version": 4 }` — 고치기와 같은 판 대조(다르면 `409 STALE_VERSION`).
+
+- 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
+- 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
+- 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).
+
+---
+
+## 23. Docbox (문서함 — 기관 서식 · 참고 문서 공용 보관, 2026-11-05)
+
+11/05 디자인 '문서함(폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' 이 쓴다. 사례 · 회차와 상관없는 팀 공용 보관함이라
+로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 문서 지우기는 관리자만 할 수 있고, 폴더 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
+
+### GET /api/v1/docbox → 200
+
+```json
+{ "folders": [{ "id": "uuid", "name": "기관 서식", "count": 3 }],
+  "files": [{ "id": "uuid", "folder_id": "uuid|null", "name": "점검표 안내.txt", "content_type": "application/octet-stream",
+              "size_bytes": 1180, "preview_kind": "text", "preview_text": "점검표 안내\n…", "uploaded_by_name": "이서연",
+              "created_at": "…" }] }
+```
+
+- `folders` 는 만든 순서, `files` 는 최신순. `folder_id: null` 은 '폴더 없음'.
+- `preview_kind`: `image`(png · jpg · gif · webp — 화면이 파일을 받아 그대로 보인다) · `text`(첫 페이지 글 앞 1,500자 —
+  txt · md · csv 는 글 그대로, docx · hwpx · pdf 는 21절과 같은 글자 뽑기) · `other`(hwp · doc · xlsx · xls · pptx · ppt, 또는 뽑지 못함).
+
+### POST /api/v1/docbox/folders → 201
+
+- `{ "name": "참고 자료" }`(40자, 공백 정리). 같은 이름이 있으면 `409 DUPLICATE_RESOURCE`.
+
+### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
+
+- 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
+- 응답 `{ "files": [DocboxFile] }`.
+
+### PATCH /api/v1/docbox/files/{file_id} → 200
+
+- `{ "folder_id": "uuid" | null }` — 폴더 옮기기(null 이면 폴더 없음). 없는 문서 · 폴더는 `404`.
+
+### GET /api/v1/docbox/files/{file_id}/download → 200 (파일 본체)
+
+- 늘 첨부(`Content-Disposition: attachment`) · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`.
+  그림만 그 형식, 나머지는 `application/octet-stream`.
+### GET /api/v1/docbox/files/{file_id}/preview → 200 (그림 본체)
+
+- 문서함 화면의 그림 미리보기용. `preview_kind` 가 `image` 인 문서만 응답하고, 그 밖은 404.
+- 그림 형식 · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`. 내려받기 감사 기록을 남기지 않는다.
+
+### DELETE /api/v1/docbox/files/{file_id} → 204 (관리자만)
+
+- 잘못 올린 문서를 지운다. 표의 행과 저장소의 파일 본체를 함께 지운다. 상담원은 403, 없는 문서는 404.
+- 파일 본체를 지우지 못하면 500 이고 행은 그대로 남는다(다시 시도할 수 있다).
+
+- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` · `DOCBOX_FILE_DELETED` —
+  파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.
+
+## 24. Child App (아이 앱 콩콩, 2026-11-09)
+
+`CHILD_APP_ENABLED=false`(기본)이면 이 절의 API 는 모두 503 `CHILD_APP_DISABLED` 다. `/child-app/*` 은 아이 기기용이다. 상담사 Access Token 이 아니라 연결할 때 받은 `device_token` 을 Bearer 로 보낸다.
+앱 응답에는 이름 · 사례번호 · 위험 판정 기준을 넣지 않는다. 판정은 서버가 계산한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
+| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
+| POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
+| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`, `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
+| POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
+| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건). 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
+| POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids}` 3~4개 → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).

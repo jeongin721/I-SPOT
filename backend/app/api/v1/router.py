@@ -6,7 +6,10 @@ from app.api.v1 import (
     analysis,
     audio,
     auth,
+    child_app,
+    case_forms,
     cases,
+    docbox,
     documents,
     followup_checklist,
     followup_checks,
@@ -49,3 +52,11 @@ api_router.include_router(law_guide.router)
 api_router.include_router(schedule.router)
 # /sessions/{session_id}/source-document — 상담 기록 문서 회차(21절, 2026-11-02).
 api_router.include_router(source_documents.router)
+# /cases/{case_id}/forms — 기관 서식 작성 기록(22절, 2026-11-02).
+api_router.include_router(case_forms.router)
+# /docbox — 문서함(23절, 2026-11-05).
+api_router.include_router(docbox.router)
+# /child-app/* · /cases/{case_id}/child-app — 아이 앱(24절, 2026-11-09).
+api_router.include_router(child_app.device_router)
+api_router.include_router(child_app.case_router)
+api_router.include_router(child_app.staff_router)

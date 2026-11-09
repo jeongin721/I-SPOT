@@ -34,6 +34,8 @@ BACKEND_ONLY_OPTIONAL_FIELDS = {
     "followup_check_points",
     "followup_questions",
     "topic_tags",  # 2026-10-29 아동 발화 대화 주제(없으면 null)
+    "safety_flags",  # 2026-11-05 안전 플래그 후보(없으면 null)
+    "reabuse_factors",  # 2026-11-05 재학대 요인 후보(없으면 null)
 }
 
 TRANSCRIPT = {
@@ -167,10 +169,13 @@ def test_ai_output_without_backend_only_fields_passes_contract() -> None:
 
     result = AIAnalysisResult.model_validate(AIAnalysisOutput().model_dump())
 
-    for name in BACKEND_ONLY_OPTIONAL_FIELDS - {"topic_tags"}:
+    nullable = {"topic_tags", "safety_flags", "reabuse_factors"}
+
+    for name in BACKEND_ONLY_OPTIONAL_FIELDS - nullable:
         assert getattr(result, name) == []
-    # topic_tags 만 없으면 null(분류 없음)이다 — 빈 목록(분류했지만 없음)과 구분한다.
-    assert result.topic_tags is None
+    # topic_tags · safety_flags · reabuse_factors 는 없으면 null(만들지 않음)이다 — 빈 목록(찾았지만 없음)과 구분한다.
+    for name in nullable:
+        assert getattr(result, name) is None
 
 
 # =========================================================
