@@ -5,9 +5,11 @@
 //  - 디자인 예시 문서 대신 서버 목록을 보인다. 마크업 · 클래스 · 문구는 디자인 그대로다.
 //  - 디자인에 더한 것: 머리글 아래 아동 정보 업로드 금지 안내 한 줄, 관리자에게만 보이는 삭제 단추와 확인 창.
 //  - 올리기 · 폴더 만들기 · 옮기기는 서버에 저장하고, 내려받기는 서버 파일을 받는다. 그림 미리보기는 받은 파일로 보인다.
+//  - 빈 양식(11/09 디자인): 작성 양식 6종을 보여 주고 빈칸에 입력해 볼 수 있다. 저장은 없다(components/BlankForm.jsx).
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
+import { BlankFormCard, BlankFormDialog } from '../components/BlankForm';
 import Notice from '../components/Notice';
 import NotiBell from '../components/NotiBell';
 import Sidebar from '../components/Sidebar';
@@ -195,52 +197,56 @@ export default function DocBox(props) {
               </div>
               {v.hasDocs ? (
                 <div className="dgrid">
-                  {(v.docs || []).map((d) => (
-                    <article key={d.key} className="doc">
-                      <div className="pv" role="img" aria-label={d.pvLabel}>
-                        {d.isImg ? <img src={d.url} alt="" /> : null}
-                        {d.isText ? (
-                          <div className="pv-page">
-                            <b>{d.pvTitle}</b>
-                            {d.pvBody}
-                          </div>
-                        ) : null}
-                        {d.isOther ? (
-                          <div className="pv-other">
-                            <span className="pv-ext">{d.ext}</span>
-                            <span className="pv-lines">
-                              <i></i>
-                              <i style={{ width: '80%' }}></i>
-                              <i></i>
-                              <i style={{ width: '60%' }}></i>
-                            </span>
-                            <span className="note" style={{ fontSize: '11px' }}>
-                              첫 페이지 미리보기를 만들 수 없는 형식
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="dname">{d.name}</div>
-                      <div className="dmeta">{d.meta}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <button type="button" className="btn btn-sm btn-s" onClick={d.download}>
-                          ↓ 내려받기
-                        </button>
-                        <select className="mv" aria-label={d.mvLabel} value={d.folder} onChange={d.move}>
-                          {(d.opts || []).map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        {d.canDelete ? (
-                          <button type="button" className="btn btn-sm btn-s rm-del" aria-label={d.delLabel} onClick={d.askDelete}>
-                            삭제
+                  {(v.docs || []).map((d) =>
+                    d.isForm ? (
+                      <BlankFormCard key={d.key} doc={d} />
+                    ) : (
+                      <article key={d.key} className="doc">
+                        <div className="pv" role="img" aria-label={d.pvLabel}>
+                          {d.isImg ? <img src={d.url} alt="" /> : null}
+                          {d.isText ? (
+                            <div className="pv-page">
+                              <b>{d.pvTitle}</b>
+                              {d.pvBody}
+                            </div>
+                          ) : null}
+                          {d.isOther ? (
+                            <div className="pv-other">
+                              <span className="pv-ext">{d.ext}</span>
+                              <span className="pv-lines">
+                                <i></i>
+                                <i style={{ width: '80%' }}></i>
+                                <i></i>
+                                <i style={{ width: '60%' }}></i>
+                              </span>
+                              <span className="note" style={{ fontSize: '11px' }}>
+                                첫 페이지 미리보기를 만들 수 없는 형식
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="dname">{d.name}</div>
+                        <div className="dmeta">{d.meta}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <button type="button" className="btn btn-sm btn-s" onClick={d.download}>
+                            ↓ 내려받기
                           </button>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
+                          <select className="mv" aria-label={d.mvLabel} value={d.folder} onChange={d.move}>
+                            {(d.opts || []).map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                          {d.canDelete ? (
+                            <button type="button" className="btn btn-sm btn-s rm-del" aria-label={d.delLabel} onClick={d.askDelete}>
+                              삭제
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    ),
+                  )}
                 </div>
               ) : null}
               {v.noDocs ? (
@@ -252,6 +258,17 @@ export default function DocBox(props) {
           </div>
           {v.deleting ? (
             <DocDeleteDialog name={v.deleting.name} busy={v.delBusy} onClose={v.closeDelete} onConfirm={v.confirmDelete} />
+          ) : null}
+          {v.openForm ? (
+            <BlankFormDialog
+              key={v.openForm.id}
+              formId={v.openForm.id}
+              name={v.openForm.name}
+              editing={v.openForm.editing}
+              onEdit={v.editForm}
+              onClose={v.closeForm}
+              onDownload={v.downloadForm}
+            />
           ) : null}
         </main>
       </div>
