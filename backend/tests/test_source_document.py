@@ -775,3 +775,55 @@ def test_risk_utterances_keep_only_linked_evidence() -> None:
     ]
     assert signals[0] == {"abuse_type": "EMOTIONAL", "detected": True, "segment_ids": ["doc_004"], "detection_source": "MODEL", "filtered_reason": None}
     assert signals[1]["detected"] is False and signals[1]["detection_source"] is None
+
+
+def _segments(*sentences):
+    return [{"text": sentence} for sentence in sentences]
+
+
+def test_document_windows_overlap_two_sentences() -> None:
+    assert ds.document_windows(_segments("가.", "나.", "다.")) == ["가.\n나.", "나.\n다."]
+    assert ds.document_windows(_segments("가.")) == ["가."]
+    assert ds.document_windows([]) == []
+
+
+def test_one_window_detection_is_enough_even_if_the_whole_text_misses() -> None:
+    """글 전체에서는 묻혀도 창 하나에서 잡히면 탐지다(민규 11/09 — 머리채 · 밀침 누락)."""
+
+    def predict(text):
+        return {"신체학대": {"detected": text == "나.\n다."}, "방임": {"detected": False}}
+
+    merged = ds.major_types_over_windows(_segments("가.", "나.", "다."), predict)
+
+    assert merged == {"신체학대": {"detected": True}, "방임": {"detected": False}}
+
+
+def test_filtered_reason_is_kept_only_when_nothing_detected() -> None:
+    answers = {
+        "가.\n나.\n다.": {"성학대": {"detected": False, "filtered_reason": "부정 응답"}, "방임": {"detected": False, "filtered_reason": "부정 응답"}},
+        "가.\n나.": {"성학대": {"detected": True}, "방임": {"detected": False}},
+        "나.\n다.": {"성학대": {"detected": False}, "방임": {"detected": False}},
+    }
+
+    merged = ds.major_types_over_windows(_segments("가.", "나.", "다."), answers.__getitem__)
+
+    assert merged == {"성학대": {"detected": True}, "방임": {"detected": False, "filtered_reason": "부정 응답"}}
+
+
+def test_windows_stop_at_the_deadline() -> None:
+    with pytest.raises(TimeoutError):
+        ds.major_types_over_windows(_segments("가.", "나."), lambda text: {}, deadline=0.0)
+
+
+def test_detected_signal_without_evidence_is_dropped_with_warning() -> None:
+    """1차만 탐지하고 2차 근거 문장이 없는 유형은 저장하지 않는다(민규 11/09 — 근거 없는 '성 (확인 중)')."""
+
+    grounded = {"abuse_type": "PHYSICAL", "detected": True, "segment_ids": ["doc_001"]}
+    ungrounded = {"abuse_type": "SEXUAL", "detected": True, "segment_ids": []}
+    undetected = {"abuse_type": "NEGLECT", "detected": False, "segment_ids": []}
+
+    kept, warnings = ds.drop_ungrounded_signals([grounded, ungrounded, undetected])
+
+    assert kept == [grounded, undetected]
+    assert warnings == ["segment 근거가 없는 신호 1건을 제외했습니다."]
+    assert ds.drop_ungrounded_signals([grounded, undetected]) == ([grounded, undetected], [])
