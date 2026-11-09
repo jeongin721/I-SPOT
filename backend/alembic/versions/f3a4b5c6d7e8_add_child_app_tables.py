@@ -61,10 +61,13 @@ def upgrade() -> None:
 
     op.create_table('child_app_events',
     sa.Column('case_id', sa.Uuid(), nullable=False),
-    sa.Column('kind', sa.Enum('LINKED', 'QUESTIONS_SENT', 'ANSWERS', name='child_app_event_kind', native_enum=False, length=20), nullable=False),
+    sa.Column('kind', sa.Enum('LINKED', 'QUESTIONS_SENT', 'ANSWERS', 'ALERT', name='child_app_event_kind', native_enum=False, length=20), nullable=False),
     sa.Column('level', sa.Enum('NONE', 'SKIP', 'AMBER', 'RED', name='child_answer_level', native_enum=False, length=10), nullable=False),
     sa.Column('payload', _json, nullable=False),
+    sa.Column('acknowledged_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('acknowledged_by_id', sa.Uuid(), nullable=True),
     sa.ForeignKeyConstraint(['case_id'], ['cases.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['acknowledged_by_id'], ['users.id'], ondelete='SET NULL'),
     *_common(),
     )
     op.create_index(op.f('ix_child_app_events_case_id'), 'child_app_events', ['case_id'], unique=False)

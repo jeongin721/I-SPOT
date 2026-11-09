@@ -7,6 +7,8 @@ import type { ChildAppCase, ChildAppInvite } from "../api/types";
 import { errorMessage, useRemote } from "./useRemote";
 
 const REFRESH_MS = 30_000;
+/** 확인 처리 뒤 위쪽 긴급 배너를 바로 다시 받게 알린다. */
+export const CHILD_ALERTS_CHANGED = "ispot:child-alerts-changed";
 
 export function useCaseChildApp(caseId: string | null, enabled: boolean) {
   const remote = useRemote<ChildAppCase>(
@@ -70,5 +72,15 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, createInvite, sendQuestions };
+  const acknowledge = useCallback(
+    (alertId: string) =>
+      run(async () => {
+        if (!caseId) return;
+        await childAppApi.acknowledgeAlert(caseId, alertId);
+        window.dispatchEvent(new Event(CHILD_ALERTS_CHANGED));
+      }, "확인 처리를 하지 못했습니다."),
+    [caseId, run],
+  );
+
+  return { ...remote, invite, busy, actionError, createInvite, sendQuestions, acknowledge };
 }

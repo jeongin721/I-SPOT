@@ -609,6 +609,7 @@ function scrHelp(){
     <div class="sub" style="margin-top:-6px">위험하다고 느끼면 바로 연락하세요.</div>
     <button class="helpbtn red" data-act="call" data-n="112">${ICON.phone}<span><b>112 · 경찰</b><small>지금 위험할 때 · 말하기 어려우면 112로 문자</small></span></button>
     <button class="helpbtn" data-act="call" data-n="1388">${ICON.chat}<span><b>1388 · 청소년상담</b><small>24시간 · 전화, 문자, 카카오톡 '청소년상담1388'</small></span></button>
+    <button class="helpbtn" data-act="alertStart">${ICON.bell}<span><b>상담 선생님께 급하다고 알리기</b><small>누르고 5초 안에 취소할 수 있어요</small></span></button>
     <b style="margin-top:6px">위급할 때 안내</b>
     <div class="guide">
       <details open><summary>위험할 때 이렇게 하세요</summary><div class="dbody"><ol>
@@ -622,12 +623,15 @@ function scrHelp(){
         <div><b>112</b><span>폭력이나 학대가 일어나고 있을 때, 집이 안전하지 않을 때. 문자 신고도 가능해요.</span></div>
         <div><b>119</b><span>다쳤거나 몸이 많이 아플 때</span></div>
         <div><b>1388</b><span>고민을 바로 이야기하고 싶을 때. 24시간 전화·문자, 카카오톡 '청소년상담1388'</span></div>
-        <div><b>117</b><span>학교폭력을 당하거나 봤을 때</span></div></div></div></details>
+        <div><b>117</b><span>학교폭력을 당하거나 봤을 때</span></div>
+        <div><b>상담 선생님</b><span>위 '급하다고 알리기' 버튼. 평일 낮에 확인하고, 급한 일은 112가 더 빨라요.</span></div></div></div></details>
       <details><summary>실수로 눌렀다면</summary><div class="dbody"><ul>
+        <li>'급하다고 알리기'는 5초 동안 기다려요. 그 안에 취소하면 아무에게도 가지 않아요.</li>
         <li>112에 잘못 걸었다면 끊지 말고 "잘못 걸었어요"라고 말하세요. 그냥 끊으면 확인 전화가 올 수 있어요.</li>
         <li>실수해도 혼나지 않아요.</li></ul></div></details>
       <details><summary>내가 보낸 내용은 누가 보나요?</summary><div class="dbody"><ul>
         <li>답변은 <b>담당 상담 선생님만</b> 봐요. 보호자, 학교, 친구에게는 보이지 않아요.</li>
+        <li>'급하다고 알리기'를 보내면 놓치지 않도록 기관 관리자에게도 <b>알림이 왔다는 사실</b>이 보여요.</li>
         <li>키링 모으기와 게임 화면은 선생님도 보지 않아요.</li>
         <li>내가 위험해 보이면, 나를 지키기 위해 다른 기관에 알릴 수 있어요. 이럴 때는 되도록 먼저 이야기해 줄 거예요.</li></ul></div></details>
     </div>
@@ -808,6 +812,7 @@ function sheetBody(){
   if (s.kind === 'urgent') return `<h3>어떤 도움이 필요한가요?</h3>
     <button class="helpbtn red" data-act="call" data-n="112">${ICON.phone}<span><b>112 · 경찰</b><small>지금 위험할 때</small></span></button>
     <button class="helpbtn" data-act="call" data-n="1388">${ICON.chat}<span><b>1388 · 청소년상담</b><small>바로 이야기하고 싶을 때</small></span></button>
+    <button class="helpbtn" data-act="alertStart">${ICON.bell}<span><b>상담 선생님께 알리기</b><small>5초 안에 취소할 수 있어요</small></span></button>
     <button class="textbtn" data-act="sheetClose">닫기</button>`;
   if (s.kind === 'call') return `<h3>${s.n === '112' ? '112에 전화할까요?' : '1388에 전화할까요?'}</h3>
     <div class="bignum">${s.n}</div>
@@ -818,6 +823,12 @@ function sheetBody(){
     <div class="count" aria-live="polite">${S.count}</div>
     <p class="muted" style="margin:0;text-align:center">${S.count}초 후에 보내져요. 실수로 눌렀다면 취소하세요.</p>
     <button class="outline" data-act="alertCancel">취소</button>`;
+  if (s.kind === 'alertSending') return `<div class="center"><h3>보내는 중이에요</h3><p class="muted" style="margin:0">지금 많이 위험하면 112에 전화하세요.</p></div>
+    <button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>`;
+  if (s.kind === 'alertFailed') return `<div class="center"><h3>보내지 못했어요</h3><p class="sub" style="margin:0">선생님께 아직 전달되지 않았어요.<br>지금 많이 위험하면 112에 전화하세요.</p></div>
+    <button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>
+    <button class="primary" data-act="alertRetry">다시 보내기</button>
+    <button class="textbtn" data-act="sheetClose">닫기</button>`;
   if (s.kind === 'alerted') return `<div class="center">${img('okay', 90)}<h3>선생님께 알렸어요</h3>
     <p class="sub" style="margin:0">선생님이 확인하는 대로 연락할 거예요.<br>지금 많이 위험하면 112에 전화하세요.</p></div>
     <button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>
@@ -961,7 +972,8 @@ document.addEventListener('click', e => {
     case 'call': S.sheet = {kind:'call', n:el.dataset.n}; renderLayer(); break;
     case 'callGo': { const n = S.sheet.n; S.sheet = null; renderLayer(); location.href = 'tel:' + n; break; }
     case 'alertStart': startAlert(); break;
-    case 'alertCancel': clearInterval(S._iv); S.sheet = null; renderLayer(); push({kind:'alertCancel'}); toast('취소했어요. 보내지 않았어요'); break;
+    case 'alertRetry': sendAlert(); break;
+    case 'alertCancel': clearInterval(S._iv); S.sheet = null; renderLayer(); toast('취소했어요. 보내지 않았어요'); break;
     case 'sheetClose': S.sheet = null; renderScreen(); break;
     case 'sheetBg': S.sheet = null; renderLayer(); break;
     case 'font': S.large = el.dataset.v === '1'; renderScreen(); break;
@@ -980,12 +992,23 @@ document.addEventListener('input', e => {
   if (t.id === 'calEtc' && S.sheet) S.sheet.etc = t.value;
 });
 
+async function sendAlert(){
+  S.sheet = {kind:'alertSending'}; renderLayer();
+  try {
+    await api('/alerts', {method:'POST', body:'{}'});
+    S.sheet = {kind:'alerted'};
+  } catch (e) {
+    if (e.message === 'unlinked') return;
+    S.sheet = {kind:'alertFailed'};
+  }
+  renderLayer();
+}
 function startAlert(){
   S.count = 5; S.sheet = {kind:'counting'}; renderLayer();
   clearInterval(S._iv);
   S._iv = setInterval(() => {
     S.count -= 1;
-    if (S.count <= 0) { clearInterval(S._iv); S.alert = now(); push({kind:'alert'}); S.sheet = {kind:'alerted'}; render(); }
+    if (S.count <= 0) { clearInterval(S._iv); sendAlert(); }
     else renderLayer();
   }, 1000);
 }

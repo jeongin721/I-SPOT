@@ -27,6 +27,18 @@ function LevelChip({ level }) {
 }
 
 function FeedItem({ event }) {
+  if (event.kind === 'ALERT') {
+    return (
+      <div style={{ padding: '12px 0', borderTop: '1px solid #E8E5DD', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+        <span className="chip c-urgent">긴급</span>
+        <b>급하다고 알림</b>
+        <span className="note">
+          {dateTime(event.created_at)}
+          {event.acknowledged_at ? ` · 확인 ${dateTime(event.acknowledged_at)}` : ' · 확인 전'}
+        </span>
+      </div>
+    );
+  }
   if (event.kind !== 'ANSWERS') {
     const label = event.kind === 'LINKED' ? '아이가 앱을 연결했어요' : `질문 ${event.payload.count}개를 보냈어요`;
     return (
@@ -111,6 +123,23 @@ export default function CaseChildApp({ caseId }) {
 
           {data ? (
             <>
+              {data.open_alerts.map((alert) => (
+                <section
+                  key={alert.id}
+                  role="alert"
+                  aria-label="긴급 알림"
+                  style={{ background: '#F8E6DF', border: '1.5px solid #B0452C', borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
+                >
+                  <div style={{ flex: '1 1 320px' }}>
+                    <b style={{ color: '#B0452C' }}>긴급 · {dateTime(alert.created_at)}</b>
+                    <br />
+                    아이가 "급하다고 알리기"를 보냈어요. 아이의 안전을 고려해 연락 방법을 판단해 주세요.
+                  </div>
+                  <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
+                    확인했어요
+                  </button>
+                </section>
+              ))}
               <section className="card" aria-label="앱 연결" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <h2 className="h2">콩콩 앱 연결</h2>
                 {data.status === 'LINKED' ? (

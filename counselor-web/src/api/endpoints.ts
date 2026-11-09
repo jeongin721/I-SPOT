@@ -36,6 +36,7 @@ import type {
   FollowupCheckList,
   ChildAppCase,
   ChildAppInvite,
+  ChildOpenAlert,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -733,5 +734,13 @@ export const childApp = {
 
   sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
     return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  },
+
+  openAlerts(): Promise<ChildOpenAlert[]> {
+    return api.get<ChildOpenAlert[]>("/child-app-alerts/open");
+  },
+
+  acknowledgeAlert(caseId: string, alertId: string): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/alerts/${alertId}/ack`);
   },
 };

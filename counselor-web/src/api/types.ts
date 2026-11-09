@@ -1732,9 +1732,18 @@ export interface ChildAppInvite {
 
 export interface ChildAppEvent {
   id: string;
-  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS";
+  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
   level: "NONE" | "SKIP" | "AMBER" | "RED";
   payload: Record<string, any>;
+  created_at: string;
+  acknowledged_at: string | null;
+}
+
+export interface ChildOpenAlert {
+  id: string;
+  case_id: string;
+  child_alias: string;
+  case_number: string;
   created_at: string;
 }
 
@@ -1745,6 +1754,7 @@ export interface ChildAppCase {
   last_response_at: string | null;
   has_pending_questions: boolean;
   can_read_feed: boolean;
+  open_alerts: ChildOpenAlert[];
   bank: { id: string; category: string; type: string; text: string }[];
   feed: ChildAppEvent[];
 }

@@ -35,6 +35,9 @@ CODE_LENGTH = 6
 CODE_TTL = timedelta(hours=72)
 LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
+OPEN_ALERT_LIMIT = 50
+# 네트워크 재시도 · 연달아 누름이 알림을 여러 건 만들지 않게 묶는 시간.
+ALERT_DEDUPE = timedelta(seconds=60)
 SKIP_TEXT = "답하기 어려워요"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
 
@@ -210,6 +213,7 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         last_response_at=link.last_response_at if link else None,
         has_pending_questions=pending is not None,
         can_read_feed=can_read_feed,
+        open_alerts=_open_alerts(db, case_id=case.id),
         bank=[
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK
@@ -221,15 +225,119 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
                 "level": row.level.value,
                 "payload": row.payload,
                 "created_at": row.created_at,
+                "acknowledged_at": row.acknowledged_at,
             }
             for row in rows
         ],
     )
 
 
+def _open_alerts(
+    db: Session,
+    *,
+    case_id: Optional[uuid.UUID] = None,
+    counselor_id: Optional[uuid.UUID] = None,
+) -> List[Dict[str, Any]]:
+    statement = (
+        select(ChildAppEvent, Case)
+        .join(Case, Case.id == ChildAppEvent.case_id)
+        .where(
+            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.acknowledged_at.is_(None),
+            Case.status == CaseStatus.ACTIVE,
+        )
+        .order_by(ChildAppEvent.created_at)
+        .limit(OPEN_ALERT_LIMIT)
+    )
+
+    if case_id is not None:
+        statement = statement.where(ChildAppEvent.case_id == case_id)
+
+    if counselor_id is not None:
+        statement = statement.where(Case.counselor_id == counselor_id)
+
+    return [
+        {
+            "id": event.id,
+            "case_id": case.id,
+            "child_alias": case.child_alias,
+            "case_number": case.case_number,
+            "created_at": event.created_at,
+        }
+        for event, case in db.execute(statement).all()
+    ]
+
+
+def list_open_alerts(db: Session, user: User) -> List[Dict[str, Any]]:
+    """담당 상담사는 자기 사례, 관리자는 전체. 담당자가 자리에 없을 때 놓치지 않게 관리자에게도 보인다."""
+
+    return _open_alerts(db, counselor_id=None if user.is_admin else user.id)
+
+
+def acknowledge_alert(
+    db: Session,
+    case: Case,
+    user: User,
+    alert_id: uuid.UUID,
+    ip_address: Optional[str],
+) -> None:
+    event = db.scalar(
+        select(ChildAppEvent)
+        .where(
+            ChildAppEvent.id == alert_id,
+            ChildAppEvent.case_id == case.id,
+            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+        )
+        .with_for_update()
+    )
+
+    if event is None:
+        raise not_found(ErrorCode.NOT_FOUND, "긴급 알림을 찾을 수 없습니다.")
+
+    # 두 사람이 함께 눌러도 먼저 확인한 사람의 기록을 남긴다.
+    if event.acknowledged_at is not None:
+        return
+
+    event.acknowledged_at = _utcnow()
+    event.acknowledged_by_id = user.id
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_ALERT_ACKED,
+        entity_type="child_app_event",
+        entity_id=event.id,
+        actor_id=user.id,
+        case_id=case.id,
+        ip_address=ip_address,
+    )
+    db.commit()
+
+
 # =========================================================
 # 아이 앱
 # =========================================================
+
+def send_alert(db: Session, link: ChildAppLink) -> None:
+    # 같은 기기의 동시 요청을 줄 세워 알림이 두 건 생기지 않게 한다.
+    locked = db.scalar(
+        select(ChildAppLink)
+        .where(ChildAppLink.id == link.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    now = _utcnow()
+    latest = db.scalar(
+        select(ChildAppEvent)
+        .where(ChildAppEvent.case_id == locked.case_id, ChildAppEvent.kind == ChildAppEventKind.ALERT)
+        .order_by(ChildAppEvent.created_at.desc())
+        .limit(1)
+    )
+    locked.last_response_at = now
+
+    if latest is None or now - _aware(latest.created_at) >= ALERT_DEDUPE:
+        _add_event(db, locked.case_id, ChildAppEventKind.ALERT, {}, level=ChildAnswerLevel.RED)
+
+    db.commit()
+
 
 def link_device(db: Session, code: str, ip_address: Optional[str]) -> str:
     signup_service._check_ip("child_app_link", ip_address, LINK_IP_LIMIT)

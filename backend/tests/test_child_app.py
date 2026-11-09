@@ -266,3 +266,79 @@ def test_unstorable_child_text_rejected(client: TestClient, counselor_headers: H
     ]
     response = client.post(f"/api/v1/child-app/question-sets/{set_id}/answers", json={"answers": answers}, headers=device)
     assert response.status_code == 422
+
+
+def _alert(client: TestClient, device: Headers) -> None:
+    response = client.post("/api/v1/child-app/alerts", headers=device)
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == {"received": True}
+
+
+def _open(client: TestClient, headers: Headers) -> list:
+    response = client.get("/api/v1/child-app-alerts/open", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_alert_reaches_counselor_and_admin_until_acknowledged(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    mine = _open(client, counselor_headers)
+    assert [item["case_id"] for item in mine] == [case["id"]]
+    assert [item["id"] for item in _open(client, admin_headers)] == [mine[0]["id"]]
+    view = _view(client, counselor_headers, case["id"])
+    assert view["feed"][0]["kind"] == "ALERT" and view["feed"][0]["level"] == "RED"
+    assert view["last_response_at"] is not None
+    assert _view(client, admin_headers, case["id"])["open_alerts"][0]["id"] == mine[0]["id"]
+
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{mine[0]['id']}/ack"
+    assert client.post(url, headers=counselor_headers).status_code == 204
+    first = _view(client, counselor_headers, case["id"])["feed"][0]["acknowledged_at"]
+    assert first is not None
+    assert client.post(url, headers=admin_headers).status_code == 204
+    assert _view(client, counselor_headers, case["id"])["feed"][0]["acknowledged_at"] == first
+    assert _open(client, counselor_headers) == [] and _open(client, admin_headers) == []
+
+
+def test_alert_retry_within_window_makes_one_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    _alert(client, device)
+    assert len(_open(client, counselor_headers)) == 1
+
+
+def test_alert_after_window_makes_new_alert(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    from app.models.child_app import ChildAppEvent
+
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    row = db.scalar(select(ChildAppEvent).where(ChildAppEvent.kind == "ALERT"))
+    row.created_at = datetime.now(timezone.utc) - timedelta(seconds=61)
+    db.commit()
+    _alert(client, device)
+    assert len(_open(client, counselor_headers)) == 2
+
+
+def test_alert_scope_and_auth(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, case: dict
+) -> None:
+    assert client.post("/api/v1/child-app/alerts").status_code == 401
+    assert client.post("/api/v1/child-app/alerts", headers=counselor_headers).status_code == 401
+    assert client.get("/api/v1/child-app-alerts/open").status_code == 401
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    assert _open(client, other_counselor_headers) == []
+    alert_id = _open(client, counselor_headers)[0]["id"]
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{alert_id}/ack"
+    assert client.post(url, headers=other_counselor_headers).status_code == 403
+
+
+def test_ack_rejects_alert_of_other_case(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    other = create_case(client, counselor_headers)
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    alert_id = _open(client, counselor_headers)[0]["id"]
+    url = f"/api/v1/cases/{other['id']}/child-app/alerts/{alert_id}/ack"
+    assert client.post(url, headers=counselor_headers).status_code == 404

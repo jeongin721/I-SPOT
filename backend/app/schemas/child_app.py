@@ -85,6 +85,19 @@ class ChildAppEventResponse(BaseModel):
     level: str
     payload: Dict[str, Any]
     created_at: datetime
+    acknowledged_at: Optional[datetime] = None
+
+
+class ChildAlertReceived(BaseModel):
+    received: bool = True
+
+
+class ChildOpenAlert(BaseModel):
+    id: uuid.UUID
+    case_id: uuid.UUID
+    child_alias: str
+    case_number: str
+    created_at: datetime
 
 
 class ChildAppCaseResponse(BaseModel):
@@ -94,5 +107,6 @@ class ChildAppCaseResponse(BaseModel):
     last_response_at: Optional[datetime] = None
     has_pending_questions: bool
     can_read_feed: bool
+    open_alerts: List[ChildOpenAlert]
     bank: List[ChildAppBankItem]
     feed: List[ChildAppEventResponse]

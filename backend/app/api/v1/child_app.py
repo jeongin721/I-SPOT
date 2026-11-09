@@ -3,7 +3,7 @@
 #   /cases/{id}/child-app 상담사 웹. 담당 상담사 · 관리자만.
 
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -14,12 +14,14 @@ from app.core.responses import DataResponse
 from app.models.child_app import ChildAppLink
 from app.schemas.child_app import (
     ChildAnswersRequest,
+    ChildAlertReceived,
     ChildAnswersResponse,
     ChildAppCaseResponse,
     ChildAppInviteResponse,
     ChildHomeResponse,
     ChildLinkRequest,
     ChildLinkResponse,
+    ChildOpenAlert,
     ChildQuestionSendRequest,
 )
 from app.services import child_app_service
@@ -27,6 +29,7 @@ from app.services.access import get_case_or_404
 
 device_router = APIRouter(prefix="/child-app", tags=["child-app"])
 case_router = APIRouter(prefix="/cases", tags=["child-app"])
+staff_router = APIRouter(prefix="/child-app-alerts", tags=["child-app"])
 
 
 def _current_link(
@@ -67,6 +70,30 @@ def submit_answers(
     child_app_service.submit_answers(db, link, question_set_id, payload.answers)
 
     return DataResponse(data=ChildAnswersResponse(ticket_awarded=1))
+
+
+@device_router.post("/alerts", response_model=DataResponse[ChildAlertReceived])
+def send_alert(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildAlertReceived]:
+    child_app_service.send_alert(db, link)
+
+    return DataResponse(data=ChildAlertReceived())
+
+
+@staff_router.get("/open", response_model=DataResponse[List[ChildOpenAlert]])
+def list_open_alerts(db: DbSession, current_user: CurrentUser) -> DataResponse[List[ChildOpenAlert]]:
+    return DataResponse(data=child_app_service.list_open_alerts(db, current_user))
+
+
+@case_router.post("/{case_id}/child-app/alerts/{alert_id}/ack", status_code=status.HTTP_204_NO_CONTENT)
+def acknowledge_alert(
+    case_id: uuid.UUID,
+    alert_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.acknowledge_alert(db, case, current_user, alert_id, client_ip(request))
 
 
 @case_router.get("/{case_id}/child-app", response_model=DataResponse[ChildAppCaseResponse])

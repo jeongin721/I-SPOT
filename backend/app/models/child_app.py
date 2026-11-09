@@ -76,3 +76,8 @@ class ChildAppEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    # 긴급 알림을 누가 언제 확인했는가. 다른 종류는 비어 있다.
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
