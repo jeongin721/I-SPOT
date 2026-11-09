@@ -1753,7 +1753,7 @@ export interface CaseForm {
 }
 
 // =========================================================
-// 문서함 — backend/app/schemas/docbox.py (API_CONTRACT 24절, 2026-11-05)
+// 문서함 — backend/app/schemas/docbox.py (API_CONTRACT 23절, 2026-11-05)
 // =========================================================
 
 export interface DocboxFolder {
