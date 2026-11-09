@@ -3,7 +3,9 @@
 //
 // 서버 연결(2026-11-05): 기관 서식 · 참고 문서 공용 보관함(useDocBox, API_CONTRACT 23절). 화면 값은 src/data/screens/docBox.ts.
 //  - 디자인 예시 문서 대신 서버 목록을 보인다. 마크업 · 클래스 · 문구는 디자인 그대로다.
+//  - 디자인에 더한 것: 머리글 아래 아동 정보 업로드 금지 안내 한 줄, 관리자에게만 보이는 삭제 단추와 확인 창.
 //  - 올리기 · 폴더 만들기 · 옮기기는 서버에 저장하고, 내려받기는 서버 파일을 받는다. 그림 미리보기는 받은 파일로 보인다.
+import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import Notice from '../components/Notice';
@@ -15,6 +17,7 @@ import { useDocBox } from '../data/useDocBox';
 import { docBoxValues, initialDocBoxState } from '../data/screens/docBox';
 import { needsLogin } from '../data/screens/common';
 import { useTheme } from '../theme';
+import '../components/DeleteConfirmDialog.css';
 import './DocBox.css';
 
 class Logic extends DCLogic {
@@ -25,6 +28,40 @@ class Logic extends DCLogic {
   renderVals() {
     return docBoxValues({ ...this.props, state: this.state, setState: (patch) => this.setState(patch) });
   }
+}
+
+function DocDeleteDialog({ name, busy, onClose, onConfirm }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="rm-ov">
+      <div className="rm-dlg" role="alertdialog" aria-modal="true" aria-labelledby="doc-del-t" aria-describedby="doc-del-d">
+        <b id="doc-del-t" style={{ fontSize: '18px' }}>
+          문서 삭제
+        </b>
+        <div className="rm-ask" id="doc-del-d">
+          <b>{name}</b>
+          <span>지우면 되돌릴 수 없습니다.</span>
+        </div>
+        <span className="note" style={{ marginTop: '-4px' }}>
+          누가 언제 지웠는지는 감사 기록에 남습니다.
+        </span>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button type="button" className="btn btn-s" onClick={onClose} disabled={busy} autoFocus>
+            취소
+          </button>
+          <button type="button" className="btn rm-go" onClick={onConfirm} disabled={busy}>
+            {busy ? '지우는 중…' : '영구 삭제'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function DocBox(props) {
@@ -81,6 +118,9 @@ export default function DocBox(props) {
               aria-label="문서 올리기"
             />
           </header>
+          <p className="note" style={{ margin: '-8px 0 0' }}>
+            문서함은 모든 상담원에게 보여요 · 아동 정보가 든 문서는 올리지 마세요
+          </p>
           <Notice value={v.notice} />
           {v.hasMsg ? (
             <p className="note" role="status" style={{ margin: '-8px 0 0', color: '#2B2A26' }}>
@@ -193,6 +233,11 @@ export default function DocBox(props) {
                             </option>
                           ))}
                         </select>
+                        {d.canDelete ? (
+                          <button type="button" className="btn btn-sm btn-s rm-del" aria-label={d.delLabel} onClick={d.askDelete}>
+                            삭제
+                          </button>
+                        ) : null}
                       </div>
                     </article>
                   ))}
@@ -205,6 +250,9 @@ export default function DocBox(props) {
               ) : null}
             </section>
           </div>
+          {v.deleting ? (
+            <DocDeleteDialog name={v.deleting.name} busy={v.delBusy} onClose={v.closeDelete} onConfirm={v.confirmDelete} />
+          ) : null}
         </main>
       </div>
     </div>

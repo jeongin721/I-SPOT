@@ -1,7 +1,7 @@
-// 문서함 훅(GET /docbox · POST /docbox/folders · POST /docbox/files · PATCH /docbox/files/{id} · 내려받기, API_CONTRACT 23절, 2026-11-05).
+// 문서함 훅(GET /docbox · POST /docbox/folders · POST /docbox/files · PATCH /docbox/files/{id} · 내려받기 · 그림 미리보기 · 관리자 삭제, API_CONTRACT 23절, 2026-11-05).
 //
 // 목록(폴더 · 문서)을 한 번에 부르고, 쓰기(폴더 만들기 · 올리기 · 옮기기)는 끝나면 조용히 다시 부른다.
-// 그림 미리보기는 파일 본체를 받아 blob 주소로 보인다(로그인 토큰이 필요해 <img src> 에 API 주소를 바로 쓰지 못한다).
+// 그림 미리보기는 전용 창구(/preview — 내려받기 기록이 남지 않는다)로 파일을 받아 blob 주소로 보인다(로그인 토큰이 필요해 <img src> 에 API 주소를 바로 쓰지 못한다).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -24,6 +24,8 @@ export interface DocBoxState {
   upload: (files: File[], folderId: string | null) => Promise<number>;
   move: (fileId: string, folderId: string | null) => Promise<boolean>;
   download: (fileId: string, name: string) => Promise<boolean>;
+  /** 문서 지우기(관리자만 — 서버가 권한을 검사한다). */
+  remove: (fileId: string) => Promise<boolean>;
 }
 
 export function useDocBox(session: AuthSession): DocBoxState {
@@ -69,7 +71,7 @@ export function useDocBox(session: AuthSession): DocBoxState {
     wanted.forEach((id) => {
       if (urls.current[id]) return;
       docbox
-        .file(id, controller.signal)
+        .preview(id, controller.signal)
         .then((blob) => {
           if (controller.signal.aborted) return;
           urls.current[id] = URL.createObjectURL(blob);
@@ -100,6 +102,10 @@ export function useDocBox(session: AuthSession): DocBoxState {
   const move = useCallback(
     async (fileId: string, folderId: string | null) =>
       (await run(() => docbox.move(fileId, folderId), "문서를 옮기지 못했습니다.")) !== null,
+    [run],
+  );
+  const remove = useCallback(
+    async (fileId: string) => (await run(() => docbox.remove(fileId), "문서를 지우지 못했습니다.")) !== null,
     [run],
   );
   const download = useCallback(async (fileId: string, name: string) => {
@@ -133,5 +139,6 @@ export function useDocBox(session: AuthSession): DocBoxState {
     upload,
     move,
     download,
+    remove,
   };
 }

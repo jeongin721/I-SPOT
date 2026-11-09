@@ -748,9 +748,19 @@ export const docbox = {
     return api.patch<DocboxFile>(`/docbox/files/${fileId}`, { folder_id: folderId });
   },
 
-  /** 파일 본체(내려받기 · 그림 미리보기). */
-  file(fileId: string, signal?: AbortSignal): Promise<Blob> {
-    return api.blob(`/docbox/files/${fileId}/download`, signal);
+  /** 파일 본체(내려받기 — 감사 기록이 남는다). */
+  file(fileId: string): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/download`);
+  },
+
+  /** 그림 문서 미리보기(그림만 · 내려받기 기록을 남기지 않는다). */
+  preview(fileId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/preview`, signal);
+  },
+
+  /** 문서 지우기(관리자만). */
+  remove(fileId: string): Promise<void> {
+    return api.delete<void>(`/docbox/files/${fileId}`);
   },
 };
 
