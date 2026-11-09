@@ -1419,6 +1419,8 @@ export interface ClosureReportFields {
   key_person?: string | null;
   /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
   safety_scores?: { score: number | null; reason: string }[] | null;
+  /** 개입목표 6줄(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2). 상담원이 쓴다(2026-11-09). */
+  goals?: { goal: string; service: string }[] | null;
   /** 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(2026-11-04, 300자). 화면이 회차 기록으로 먼저 채운다. */
   services?: string | null;
 }

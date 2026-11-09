@@ -223,6 +223,7 @@ export function closureSummaryValues(
 type ReportTextKey = "initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date";
 type SafetyLevel = "HIGH" | "MEDIUM" | "LOW";
 type SafetyScore = { score: number | null; reason: string };
+type GoalRow = { goal: string; service: string };
 
 /**
  * 고치는 중인(저장 전) 보고서 칸. 글 칸 다섯과 상담원 판단 칸(2026-11-03 — 종결사유 · 안전평가 · Key Person · 안전점수).
@@ -234,11 +235,13 @@ export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
   key_person?: string;
   safety_scores?: SafetyScore[];
   services?: string;
+  goals?: GoalRow[];
 };
 
 const REASON_COUNT = 5;
 const SAFETY_COUNT = 11;
 const SCORE_COUNT = 3;
+const GOAL_COUNT = 6;
 const LEVELS: [string, SafetyLevel][] = [
   ["높음", "HIGH"],
   ["보통", "MEDIUM"],
@@ -293,6 +296,12 @@ export function closureReportValues(
         score: typeof row.score === "number" ? row.score : null,
         reason: typeof row.reason === "string" ? row.reason : "",
       };
+    });
+  const goals =
+    draft.goals ??
+    fixedList(saved.goals, GOAL_COUNT, (item) => {
+      const row = (item ?? {}) as { goal?: unknown; service?: unknown };
+      return { goal: typeof row.goal === "string" ? row.goal : "", service: typeof row.service === "string" ? row.service : "" };
     });
   const aiChip = (key: "initial_situation" | "closing_situation") => {
     const item = ai[key];
@@ -361,6 +370,12 @@ export function closureReportValues(
       value: services,
       onChange: (event: { target: { value: string } }) => edit({ services: event.target.value }),
     },
+    goals: goals.map((row, i) => ({
+      goal: row.goal,
+      service: row.service,
+      setGoal: (goal: string) => setDraft({ goals: goals.map((x, j) => (j === i ? { ...x, goal } : x)) }),
+      setService: (service: string) => setDraft({ goals: goals.map((x, j) => (j === i ? { ...x, service } : x)) }),
+    })),
     keyPerson: {
       value: keyPerson,
       onChange: (event: { target: { value: string } }) => edit({ key_person: event.target.value }),
@@ -402,6 +417,7 @@ export function closureReportValues(
       if (sent.key_person !== undefined) report.key_person = keyPerson.trim() || null;
       else if (before && pass.keyPerson) defaults.key_person = pass.keyPerson;
       if (sent.safety_scores) report.safety_scores = scores;
+      if (sent.goals) report.goals = goals.map((row) => ({ goal: row.goal.trim(), service: row.service.trim() }));
       // 비워 저장하면 "" 로 남겨(저장 전 null 과 구분) 다시 열어도 회차 기록 글로 채우지 않는다(민규 #140 교차검증 11/05).
       if (sent.services !== undefined) report.services = services.trim();
       else if (saved.services == null && servicesFromRecords) defaults.services = servicesFromRecords;
