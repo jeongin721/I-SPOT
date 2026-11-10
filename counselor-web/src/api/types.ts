@@ -1787,7 +1787,7 @@ export interface ChildAppInvite {
 
 export interface ChildAppEvent {
   id: string;
-  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
+  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
   level: "NONE" | "SKIP" | "AMBER" | "RED";
   payload: Record<string, any>;
   created_at: string;

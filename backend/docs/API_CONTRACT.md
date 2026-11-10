@@ -2833,6 +2833,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
 | GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
 | POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
 | POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
@@ -2849,4 +2850,4 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
-`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
