@@ -13,6 +13,8 @@ export const CHILD_ALERT_TEXT = {
   RED_ANSWER: "아이 답변에 바로 확인할 내용이 있어요.",
   CONTACT_REQUEST: "아이가 연락을 요청했어요.",
   TEXT_ANSWER: "아이가 글을 남겼어요.",
+  FOLLOWUP_ANSWER: "아이가 추가 질문에 답했어요.",
+  FOLLOWUP_SKIPPED: "아이가 추가 질문에 답하기 어렵다고 했어요.",
   NEEDS_CHECK: "아이 앱에서 확인이 필요한 알림이 왔어요.",
 } as const;
 
@@ -80,6 +82,51 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  const [aiCreating, setAiCreating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAiError(null);
+  }, [caseId]);
+
+  const createAiDraft = useCallback(async () => {
+    if (!caseId) return;
+    setAiCreating(true);
+    setAiError(null);
+    try {
+      await childAppApi.createAiDraft(caseId);
+      refresh();
+    } catch (caught) {
+      setAiError(errorMessage(caught, "AI 초안을 만들지 못했습니다."));
+    } finally {
+      setAiCreating(false);
+    }
+  }, [caseId, refresh]);
+
+  const saveAiNote = useCallback(
+    (draftId: string, questionId: string, text: string) =>
+      run(async () => {
+        if (caseId) await childAppApi.updateAiNote(caseId, draftId, questionId, text);
+      }, "확인해 볼 점을 저장하지 못했습니다."),
+    [caseId, run],
+  );
+
+  const saveAiQuestion = useCallback(
+    (draftId: string, id: string, text: string, options: string[]) =>
+      run(async () => {
+        if (caseId) await childAppApi.updateAiQuestion(caseId, draftId, id, text, options);
+      }, "추가 질문을 저장하지 못했습니다."),
+    [caseId, run],
+  );
+
+  const setAiApproval = useCallback(
+    (draftId: string, id: string, approved: boolean) =>
+      run(async () => {
+        if (caseId) await childAppApi.setAiApproval(caseId, draftId, id, approved);
+      }, "승인을 바꾸지 못했습니다."),
+    [caseId, run],
+  );
+
   const acknowledge = useCallback(
     (alertId: string) =>
       run(async () => {
@@ -90,5 +137,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, createInvite, sendQuestions, acknowledge };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, acknowledge };
 }

@@ -1,11 +1,22 @@
 // 아이 연계 › 아이 상세 (아이가 쓴 글 · 질문과 답 · 확인할 답변 · 추가 질문)
-// 원본: 다솔 님 디자인 counselor-web-design/ChildDetail.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
+// 원본: 11/09 디자인 '아이 연계 › 아이 상세' ChildDetail.dc.html.
+//
+// 사례 ID 가 있으면 콩콩 앱 서버 값을 보인다(screens/childDetail.ts). 사례 ID 가 없으면 디자인 예시를 그대로 보인다.
+//  - AI 초안 '확인해 볼 점' · 추가 질문은 서버가 만든 것만 보인다. 추가 질문은 상담사가 승인해야 아이 앱으로 간다.
 import { Fragment } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import NotiBell from '../components/NotiBell';
+import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCaseChildApp } from '../data/useCaseChildApp';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { aiDraftNeeded, childDetailValues } from '../data/screens/childDetail';
+import { readScreenIds, screenHref } from '../data/screens/links';
+import { needsLogin, screenNotice } from '../data/screens/common';
 import { useTheme } from '../theme';
 import './ChildDetail.css';
 
@@ -15,7 +26,8 @@ class Logic extends DCLogic {
     this.state = { qok: {}, qe: {}, qEdit: null, dText: '', dOpts: '', ne: {}, nEdit: null, nText: '' };
   }
   renderVals() {
-    const K = {
+    const live = this.props.live;
+    const K = live || {
       ...{
         name: '박지호',
         short: '지호',
@@ -32,13 +44,13 @@ class Logic extends DCLogic {
         quote: '엄마가 요즘 밤에 집에 안 들어와',
         quoteAt: '어제 21:06',
         answers: [
-          ['공통 1', '어젯밤 잘 잤어?', '조금 못 잤어', false],
-          ['공통 2', '어제 누가 아프게 한 적 있어?', '없어', false],
-          ['공통 3', '오늘 기분은?', '조금 슬퍼', false],
-          ['QB-N-12', '이번 주 저녁을 혼자 먹은 날은?', '5일 이상', true],
-          ['유형 N-5', '어젯밤 집에 어른이 있었어?', '혼자 잤어', true],
-          ['유형 N-3', '오늘 학교는 갔어?', '갔어', false],
-          ['유형 N-1', '오늘 밥은 몇 번 먹었어?', '2번', false],
+          ['공통 1', '어젯밤 잘 잤어?', '조금 못 잤어', false, ['잘 잤어', '잘 잤어', '조금 못 잤어']],
+          ['공통 2', '어제 누가 아프게 한 적 있어?', '없어', false, ['없어', '없어', '없어']],
+          ['공통 3', '오늘 기분은?', '조금 슬퍼', false, ['좋아', '보통', '보통']],
+          ['QB-N-12', '이번 주 저녁을 혼자 먹은 날은?', '5일 이상', true, ['0일', '1~2일', '1~2일']],
+          ['유형 N-5', '어젯밤 집에 어른이 있었어?', '혼자 잤어', true, ['있었어', '있었어', '늦게 왔어']],
+          ['유형 N-3', '오늘 학교는 갔어?', '갔어', false, ['갔어', '갔어', '갔어']],
+          ['유형 N-1', '오늘 밥은 몇 번 먹었어?', '2번', false, ['3번', '3번', '2번']],
         ],
         flags: [
           {
@@ -85,7 +97,7 @@ class Logic extends DCLogic {
         const cur = s.qe[i] || {};
         const text = cur.text || q0.text;
         const opts = cur.opts || q0.opts || [];
-        const ok = !!s.qok[i],
+        const ok = q0.setApproved ? q0.approved : !!s.qok[i],
           editing = s.qEdit === i;
         return {
           id: q0.id,
@@ -93,7 +105,7 @@ class Logic extends DCLogic {
           text,
           opts,
           hasOpts: opts.length > 0,
-          edited: !!cur.text || !!cur.opts,
+          edited: q0.setApproved ? q0.edited : !!cur.text || !!cur.opts,
           st: ok ? (q0.sendNote ? '승인됨 · ' + q0.sendNote : '승인됨') : 'AI 초안',
           stCls: ok ? 'chip c-sel' : 'chip c-ai',
           ring: editing ? 'inset 0 0 0 2px #2B2A26' : 'none',
@@ -103,11 +115,22 @@ class Logic extends DCLogic {
           notEdit: !editing,
           draftText: s.dText,
           draftOpts: s.dOpts,
-          approve: () => this.setState({ qok: { ...s.qok, [i]: !ok } }),
+          approve: () => (q0.setApproved ? q0.setApproved(!ok) : this.setState({ qok: { ...s.qok, [i]: !ok } })),
           startEdit: () => this.setState({ qEdit: i, dText: text, dOpts: opts.join(', ') }),
           setText: (e) => this.setState({ dText: e.target.value }),
           setOpts: (e) => this.setState({ dOpts: e.target.value }),
-          save: () =>
+          save: () => {
+            if (q0.save) {
+              this.setState({ qEdit: null });
+              q0.save(
+                s.dText.trim(),
+                s.dOpts
+                  .split(',')
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+              );
+              return;
+            }
             this.setState({
               qEdit: null,
               qok: { ...s.qok, [i]: false },
@@ -123,35 +146,53 @@ class Logic extends DCLogic {
                     : null,
                 },
               },
-            }),
+            });
+          },
           cancel: () => this.setState({ qEdit: null }),
         };
       });
     const mkNotes = (list) =>
       list.map((n0, i) => {
-        const text = s.ne[i] || n0;
+        if (!n0) return null;
+        const server = typeof n0 === 'object';
+        const text = server ? n0.text : s.ne[i] || n0;
         const editing = s.nEdit === i;
         return {
           text,
-          edited: s.ne[i] !== undefined,
+          edited: server ? n0.edited : s.ne[i] !== undefined,
           isEdit: editing,
           notEdit: !editing,
           draft: s.nText,
           startEdit: () => this.setState({ nEdit: i, nText: text }),
           setDraft: (e) => this.setState({ nText: e.target.value }),
-          save: () => this.setState({ nEdit: null, ne: { ...s.ne, [i]: s.nText } }),
+          save: () => {
+            if (server) {
+              this.setState({ nEdit: null });
+              n0.save(s.nText.trim());
+            } else {
+              this.setState({ nEdit: null, ne: { ...s.ne, [i]: s.nText } });
+            }
+          },
           cancel: () => this.setState({ nEdit: null }),
         };
       });
 
-    const answers = K.answers.map((a) => ({
-      id: a[0],
-      q: a[1],
-      ans: a[2],
-      fw: a[3] ? 700 : 500,
-      bg: a[3] ? '#F7F6F2' : 'transparent',
-      flagText: a[3] ? '확인 필요' : '',
-    }));
+    const answers = K.answers
+      .filter((a) => !/^공통/.test(a[0]))
+      .map((a) => {
+        const prev = a[4] || [];
+        const changed = prev.length > 0 && prev[prev.length - 1] !== a[2];
+        return {
+          id: a[0],
+          q: a[1],
+          ans: a[2],
+          prev,
+          changed,
+          fw: a[3] || changed ? 700 : 500,
+          bg: a[3] ? '#F7F6F2' : 'transparent',
+          flagText: a[3] ? a[5] || '확인 필요' : '',
+        };
+      });
     const notes = mkNotes(K.notes);
     const allQs = mkQs(K.qs);
     const flags = K.flags.map((f, i) => ({
@@ -159,17 +200,54 @@ class Logic extends DCLogic {
       src: f.src,
       n: notes.at(i),
       qs: (f.qi || []).map((j) => allQs.at(j)),
+      hasAi: !!notes.at(i),
       flow: f.flow.map((t, j) => ({ t, cls: j === f.flow.length - 1 ? 'v now' : 'v' })),
     }));
-    return { k: { ...K, hasQuote: !!K.quote }, answers, flags, flagCount: flags.length };
+    return {
+      k: { ...K, hasQuote: !!K.quote },
+      answers,
+      flags,
+      flagCount: flags.length,
+      isLive: !!live,
+      prevLabel: K.prevLabel || '지난 답변 (3주 전 → 지난주)',
+      flowLabel: K.flowLabel || '3주 전 → 이번',
+    };
   }
 }
 
 export default function ChildDetail(props) {
-  // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
   const theme = useTheme();
-  const v = useDC(Logic, props);
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  const enabled = session.status === 'signedIn' && !!caseId;
+  const detail = useCaseDetail(caseId, { enabled });
+  const app = useCaseChildApp(caseId, enabled);
+  const info = detail.caseInfo;
+  const live =
+    caseId && app.data && info
+      ? childDetailValues(app.data, info, {
+          saveNote: app.saveAiNote,
+          saveQuestion: app.saveAiQuestion,
+          setApproval: app.setAiApproval,
+        })
+      : null;
+  // 아이 글이 외부 AI 로 나가므로 상담사가 단추를 누를 때만 만든다(민규 #165 리뷰 4).
+  const needed = app.data ? aiDraftNeeded(app.data) : null;
+  const { createAiDraft } = app;
+  const v = useDC(Logic, { ...props, live });
+  if (caseId && needsLogin(session)) return <Navigate to="/Login" replace />;
+  const notice = caseId
+    ? screenNotice({
+        session,
+        loading: (app.loading && !app.data) || (detail.loading && !info),
+        error: app.error || detail.error,
+        retry: app.reload,
+      })
+    : null;
+  const caseHref = caseId ? screenHref('/CaseDetail', { caseId }) : '/CaseDetail';
+  const historyHref = caseId ? screenHref('/CaseApp', { caseId }) : '/CaseApp';
+  const adminOnly = caseId && app.data && !app.data.can_read_feed;
+  const noAnswers = caseId && app.data && app.data.can_read_feed && v.answers.length === 0;
   return (
     <div className="pg-ChildDetail">
       <div
@@ -198,6 +276,7 @@ export default function ChildDetail(props) {
           }}
         >
           <div className="thm-bar">
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -214,7 +293,8 @@ export default function ChildDetail(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.k.name}</h1>
                 <span className="sub">
-                  {v.k.age} · {v.k.types}
+                  {v.k.age}
+                  {v.k.types ? ` · ${v.k.types}` : ''}
                 </span>
                 <span className={v.k.rCls}>{v.k.reason}</span>
               </div>
@@ -222,10 +302,13 @@ export default function ChildDetail(props) {
                 {v.k.id} · 마지막 응답 {v.k.last} · 최근 3주 {v.k.count} · 다음 상담 {v.k.next}
               </div>
             </div>
-            <A className="btn btn-s" to="/CaseDetail">
+            <A className="btn btn-s" to={caseHref}>
               사례 상세 보기
             </A>
           </header>
+          {notice ? <Notice value={notice} /> : null}
+          {adminOnly ? <p className="note">아이가 보낸 내용은 담당 상담사만 볼 수 있어요.</p> : null}
+          {noAnswers ? <p className="note">아직 아이가 보낸 답이 없어요.</p> : null}
           {v.k.hasQuote ? (
             <>
               <section aria-label="아이가 쓴 글" className="quote">
@@ -238,17 +321,21 @@ export default function ChildDetail(props) {
             </>
           ) : null}
 
-          <section className="card" aria-label="질문과 아이의 답" style={{ padding: '20px 22px' }}>
+          <section className="card" aria-label="질문 및 답변" style={{ padding: '20px 22px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-              <h2 className="h2">질문과 아이의 답</h2>
+              <h2 className="h2">질문 및 답변</h2>
               <span className="note" style={{ marginLeft: 'auto' }}>
                 {v.k.last} 체크인
               </span>
+              <A className="btn btn-sm btn-s" to={historyHref}>
+                과거 답변 기록 →
+              </A>
             </div>
             <div className="qa-row note" style={{ padding: '8px 0' }}>
               <span>문항</span>
               <span>질문</span>
-              <span>아이의 답</span>
+              <span>{v.prevLabel}</span>
+              <span>이번 답변</span>
               <span></span>
             </div>
             {(v.answers || []).map((a, aIndex) => (
@@ -256,7 +343,17 @@ export default function ChildDetail(props) {
                 <div className="qa-row" style={{ background: a.bg }}>
                   <span className="note">{a.id}</span>
                   <span>{a.q}</span>
-                  <b style={{ fontWeight: a.fw }}>{a.ans}</b>
+                  <span className="prev">
+                    {(a.prev || []).map((p, pIndex) => (
+                      <span key={pIndex} className="pv">
+                        {p}
+                      </span>
+                    ))}
+                  </span>
+                  <b style={{ fontWeight: a.fw }}>
+                    {a.ans}
+                    {a.changed ? <span className="chg">바뀜</span> : null}
+                  </b>
                   <span className="note">{a.flagText}</span>
                 </div>
               </Fragment>
@@ -272,20 +369,40 @@ export default function ChildDetail(props) {
               <h2 className="h2">확인해 봐야 할 답변 · 추가 질문</h2>
               <span className="chip c-check">{v.flagCount}개</span>
             </div>
+            {needed && !app.aiCreating && !app.aiError ? (
+              <p className="note" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '0' }}>
+                <button type="button" className="btn btn-sm btn-s" onClick={createAiDraft}>
+                  AI 초안 만들기
+                </button>
+                이름을 가린 뒤 외부 AI 로 보내 확인해 볼 점 · 추가 질문 초안을 만들어요.
+              </p>
+            ) : null}
+            {app.aiCreating ? <p className="note" role="status">AI 초안을 만드는 중이에요…</p> : null}
+            {app.aiError ? (
+              <p className="note" role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '0' }}>
+                {app.aiError}
+                <button type="button" className="btn btn-sm btn-s" onClick={createAiDraft}>
+                  다시 시도
+                </button>
+              </p>
+            ) : null}
+            {app.actionError ? <p className="note acc" role="alert" style={{ margin: '0' }}>{app.actionError}</p> : null}
             {(v.flags || []).map((f, fIndex) => (
               <Fragment key={fIndex}>
                 <div className="flag">
                   <b style={{ fontSize: '15px' }}>{f.q}</b>
                   <div className="flow">
                     <span className="note" style={{ marginRight: '4px' }}>
-                      3주 전 → 이번
+                      {v.flowLabel}
                     </span>
-                    {(f.flow || []).map((v, vIndex) => (
-                      <Fragment key={vIndex}>
-                        <span className={v.cls}>{v.t}</span>
+                    {(f.flow || []).map((t, tIndex) => (
+                      <Fragment key={tIndex}>
+                        <span className={t.cls}>{t.t}</span>
                       </Fragment>
                     ))}
                   </div>
+                  {f.hasAi ? (
+                  <>
                   <div className="aibox">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span className="chip c-ai">AI 초안</span>
@@ -322,7 +439,7 @@ export default function ChildDetail(props) {
                           value={f.n.draft}
                           onChange={f.n.setDraft}
                         ></textarea>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                           <button type="button" className="btn btn-sm btn-p" onClick={f.n.save}>
                             저장
                           </button>
@@ -332,7 +449,13 @@ export default function ChildDetail(props) {
                         </div>
                       </>
                     ) : null}
-                    <span className="note">근거 · {f.src}</span>
+                    {v.isLive ? (
+                      <span className="note">근거 · {f.src}</span>
+                    ) : (
+                      <A className="note srcl" to="/SttReview" title="STT 원문 위치로 이동">
+                        근거 · {f.src} ↗
+                      </A>
+                    )}
                   </div>
                   <div
                     style={{
@@ -343,7 +466,7 @@ export default function ChildDetail(props) {
                       borderLeft: '3px solid #E7E4DC',
                     }}
                   >
-                    <b style={{ fontSize: '13px' }}>추가 질문</b>
+                    {(f.qs || []).length ? <b style={{ fontSize: '13px' }}>추가 질문</b> : null}
                     {(f.qs || []).map((q, qIndex) => (
                       <Fragment key={qIndex}>
                         <div className="qcard" style={{ boxShadow: q.ring }}>
@@ -355,16 +478,25 @@ export default function ChildDetail(props) {
                                 <span className="chip c-sand">상담사 수정</span>
                               </>
                             ) : null}
-                            <span className="note" style={{ marginLeft: 'auto' }}>
-                              근거 · {q.why}
-                            </span>
+                            {v.isLive ? (
+                              <span className="note" style={{ marginLeft: 'auto' }}>
+                                근거 · {q.why}
+                              </span>
+                            ) : (
+                              <A className="note srcl" to="/SttReview" style={{ marginLeft: 'auto' }} title="STT 원문 위치로 이동">
+                                근거 · {q.why} ↗
+                              </A>
+                            )}
                           </div>
                           {q.notEdit ? (
                             <>
                               <div style={{ fontSize: '16px', fontWeight: '500' }}>"{q.text}"</div>
                               {q.hasOpts ? (
                                 <>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+                                    <span className="note" style={{ fontWeight: '700' }}>
+                                      답변:
+                                    </span>
                                     {(q.opts || []).map((o, oIndex) => (
                                       <Fragment key={oIndex}>
                                         <span className="opt">{o}</span>
@@ -373,7 +505,7 @@ export default function ChildDetail(props) {
                                   </div>
                                 </>
                               ) : null}
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
                                 <button type="button" className={`btn btn-sm ${q.okCls}`} onClick={q.approve}>
                                   {q.okLabel}
                                 </button>
@@ -409,7 +541,7 @@ export default function ChildDetail(props) {
                                   </label>
                                 </>
                               ) : null}
-                              <div style={{ display: 'flex', gap: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                                 <button type="button" className="btn btn-sm btn-p" onClick={q.save}>
                                   저장
                                 </button>
@@ -423,6 +555,8 @@ export default function ChildDetail(props) {
                       </Fragment>
                     ))}
                   </div>
+                  </>
+                  ) : null}
                 </div>
               </Fragment>
             ))}

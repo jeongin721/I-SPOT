@@ -41,7 +41,12 @@ function FeedItem({ event }) {
     );
   }
   if (event.kind !== 'ANSWERS') {
-    const label = event.kind === 'LINKED' ? '아이가 앱을 연결했어요' : `질문 ${event.payload.count}개를 보냈어요`;
+    const label =
+      event.kind === 'LINKED'
+        ? '아이가 앱을 연결했어요'
+        : event.payload.withdrawn
+          ? `보낸 질문 ${event.payload.count}개를 취소했어요`
+          : `질문 ${event.payload.count}개를 보냈어요`;
     return (
       <div className="note" style={{ padding: '10px 0', borderTop: '1px solid #E8E5DD' }}>
         {dateTime(event.created_at)} · {label}
@@ -115,6 +120,9 @@ export default function CaseChildApp({ caseId }) {
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{info?.name ?? '…'}</h1>
             <span className={status[1]}>{status[0]}</span>
+            <A className="btn btn-sm btn-s" to={carry('/ChildDetail')} style={{ marginLeft: 'auto' }}>
+              아이 상세 보기 →
+            </A>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={carry('/CaseDetail')}>내담자 정보</A>
