@@ -469,6 +469,10 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+    # 인증을 통과한 뒤 그사이 해지가 끝났으면 연결 행이 없다. 500 대신 다시 연결하라고 돌려준다(민규 #167).
+    if locked is None:
+        db.rollback()
+        raise unauthorized("앱을 다시 연결해 주세요.")
     now = _utcnow()
     # 확인 전 알림이 있으면 새 줄을 만들지 않고 횟수만 올린다. 한 기기가 목록을 채우지 못한다.
     # 확인한 뒤에 보낸 알림은 시간과 상관없이 새 알림이다.
