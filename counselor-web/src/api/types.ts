@@ -1800,7 +1800,16 @@ export interface ChildOpenAlert {
   case_id: string;
   child_alias: string;
   case_number: string;
-  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "TEXT_ANSWER" | "NEEDS_CHECK";
+  reason:
+    | "ALERT"
+    | "RED_ANSWER"
+    | "CONTACT_REQUEST"
+    | "TEXT_ANSWER"
+    | "FOLLOWUP_ANSWER"
+    | "FOLLOWUP_SKIPPED"
+    | "NEEDS_CHECK";
+  /** 긴급 알림 · 바로 확인 답 · 연락 요청. 나머지는 '확인 필요'. */
+  urgent: boolean;
   can_ack: boolean;
   repeat_count: number;
   last_at: string | null;
@@ -1833,6 +1842,7 @@ export interface ChildAppCaseRow {
   last_response_at: string | null;
   open_alert_at: string | null;
   open_alert_reason: string | null;
+  open_alert_urgent: boolean;
 }
 
 export interface ChildAiQuestion {

@@ -99,6 +99,7 @@ class ChildOpenAlert(BaseModel):
     child_alias: str
     case_number: str
     reason: str
+    urgent: bool = False
     can_ack: bool
     repeat_count: int = 0
     last_at: Optional[datetime] = None
@@ -152,6 +153,7 @@ class ChildAppCaseRow(BaseModel):
     last_response_at: Optional[datetime] = None
     open_alert_at: Optional[datetime] = None
     open_alert_reason: Optional[str] = None
+    open_alert_urgent: bool = False
 
 
 class ChildAppCaseResponse(BaseModel):

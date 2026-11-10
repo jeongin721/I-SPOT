@@ -314,6 +314,8 @@ def create_draft(db: Session, case: Case, user: User) -> ChildAppAiDraft:
 
 def _locked_draft(db: Session, case: Case, user: User, draft_id: uuid.UUID) -> ChildAppAiDraft:
     child_app_service.ensure_assigned(case, user)
+    # 답 제출과 같은 순서로 잠근다: 연결 행 → (묶음) → 초안.
+    child_app_service.link_row(db, case.id, lock=True)
     row = db.scalar(
         select(ChildAppAiDraft)
         .where(ChildAppAiDraft.id == draft_id, ChildAppAiDraft.case_id == case.id)

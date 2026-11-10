@@ -4,7 +4,6 @@
 // 같은 질문의 이전 답(최대 3번)을 지난 답변으로 보인다. AI 초안은 서버가 만든 것만 보이고, 추가 질문은 상담사가 승인해야 앱으로 간다.
 
 import type { ChildAppCase, ChildAppEvent } from "../../api/types";
-import { URGENT_ALERT_REASONS } from "../useCaseChildApp";
 
 interface AnswerItem {
   question_id: string;
@@ -37,7 +36,7 @@ function nextLabel(next: ChildAppCase["next_consult"]): string {
 }
 
 function statusChip(data: ChildAppCase, latest: ChildAppEvent | undefined): { reason: string; rCls: string } {
-  if (data.open_alerts.some((alert) => URGENT_ALERT_REASONS.has(alert.reason)) || latest?.level === "RED") {
+  if (data.open_alerts.some((alert) => alert.urgent) || latest?.level === "RED") {
     return { reason: "긴급", rCls: "chip c-urgent" };
   }
   if (data.open_alerts.length > 0 || latest?.level === "AMBER") return { reason: "확인 필요", rCls: "chip c-check" };

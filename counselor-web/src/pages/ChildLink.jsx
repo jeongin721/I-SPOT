@@ -10,7 +10,7 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useTheme } from '../theme';
 import { childApp } from '../api/endpoints';
 import Notice from '../components/Notice';
-import { CHILD_ALERT_TEXT, URGENT_ALERT_REASONS } from '../data/useCaseChildApp';
+import { CHILD_ALERT_TEXT } from '../data/useCaseChildApp';
 import { screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
 import { useRemote } from '../data/useRemote';
@@ -21,7 +21,7 @@ const childDateTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { mo
 
 function rowState(row) {
   // 긴급 알림 · 바로 확인 답만 '긴급', 글 · 연락 요청 · 추가 질문 답은 '확인 필요'(민규 #165 리뷰 6).
-  if (row.open_alert_reason && URGENT_ALERT_REASONS.has(row.open_alert_reason)) return { reason: '긴급', rCls: 'chip c-urgent', need: true };
+  if (row.open_alert_urgent) return { reason: '긴급', rCls: 'chip c-urgent', need: true };
   if (row.open_alert_reason) return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   if (row.status === 'NOT_LINKED') return { reason: '앱 미연결 · 초대 전', rCls: 'chip c-normal', need: false };
   if (row.status === 'INVITED') return { reason: '초대 대기', rCls: 'chip c-normal', need: false };
@@ -50,7 +50,7 @@ class Logic extends DCLogic {
         count: linked ? (row.recent_answers === null ? '—' : `응답 ${row.recent_answers}번`) : '미연결',
         // 연결 전에는 콩콩 탭(연결 코드 만들기)으로, 연결 뒤에는 아이 상세로 간다.
         to: screenHref(linked ? '/ChildDetail' : '/CaseApp', { caseId: row.case_id }),
-        alert: row.open_alert_reason && URGENT_ALERT_REASONS.has(row.open_alert_reason)
+        alert: row.open_alert_urgent
           ? { at: childDateTime(row.open_alert_at), text: CHILD_ALERT_TEXT[row.open_alert_reason] || CHILD_ALERT_TEXT.NEEDS_CHECK }
           : null,
       };
