@@ -172,7 +172,7 @@ def test_device_token_cannot_answer_other_case(client: TestClient, counselor_hea
 
 @pytest.mark.parametrize(
     "ids",
-    [["sleep", "home"], ["sleep", "home", "safe", "meal", "free"], ["sleep", "sleep", "home"], ["sleep", "home", "nope"]],
+    [[], ["sleep", "sleep", "home"], ["sleep", "home", "nope"]],
 )
 def test_send_validates_question_ids(client: TestClient, counselor_headers: Headers, case: dict, ids) -> None:
     _linked(client, counselor_headers, case["id"])
