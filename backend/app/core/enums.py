@@ -415,6 +415,10 @@ class AuditAction(str, Enum):
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
     SCHEDULE_DELETED = "SCHEDULE_DELETED"
+    # 상담사 메모(25절). 본문은 남기지 않는다(case_id · 메모 ID 만).
+    MEMO_CREATED = "MEMO_CREATED"
+    MEMO_UPDATED = "MEMO_UPDATED"
+    MEMO_DELETED = "MEMO_DELETED"
     # 문서함(2026-11-05). detail 에는 파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 넣지 않는다).
     DOCBOX_FOLDER_CREATED = "DOCBOX_FOLDER_CREATED"
     DOCBOX_FILE_UPLOADED = "DOCBOX_FILE_UPLOADED"

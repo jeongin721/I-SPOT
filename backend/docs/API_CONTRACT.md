@@ -2852,3 +2852,32 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
 `status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+
+---
+
+## 25. Memos (상담사 메모, 2026-11-10)
+
+앱 · 메모(현장에서 바로 적어 두기) 화면이 쓴다. 메모는 **쓴 상담사만** 읽고 고치고 지운다 — 관리자도 남의 메모는 보지 못한다(남의 메모 id 는 `404`).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/memos?page=&page_size=&case_id=` | 내 메모 목록(최신순, `PagedItems`). `page_size` 1~100(기본 20). `case_id` 로 한 사례만 |
+| POST | `/memos` | `{text, case_id?}` → `201` Memo |
+| GET | `/memos/{id}` | Memo |
+| PATCH | `/memos/{id}` | 보낸 칸만 바뀐다. `case_id: null` 이면 사례를 뗀다. `text: null` 은 `422` |
+| DELETE | `/memos/{id}` | `204` |
+
+`Memo`:
+
+```json
+{ "id": "uuid", "case_id": "uuid", "child_alias": "서윤", "text": "현관 앞에서 만남…", "created_at": "…", "updated_at": "…" }
+```
+
+- `text`: 앞뒤 공백을 지운 1~4000자. 비었거나 NUL 이 들면 `422`.
+- `case_id`: 볼 수 있는 사례만 붙인다(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `child_alias` 는 그 사례의 별칭(실명은 싣지 않는다).
+- **담당이 바뀌어 지금 볼 수 없는 사례의 메모는 목록에서 빠지고**, 한 건 읽기 · 고치기 · 지우기도 `404` 다(사례가 없는 메모는 늘 보인다).
+- 본문은 내담자 정보와 같은 키(`PII_ENCRYPTION_KEYS`)로 **암호화해 저장**한다(묶음 값 = 메모 id). 풀지 못하면 `500 MEMO_UNAVAILABLE`
+  (로그에는 메모 id · 키 이름만). 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 는 아직 메모를 다시 암호화하지 않는다(후속).
+- 본문은 일반 로그 · 감사 기록에 넣지 않는다. 감사 기록은 `MEMO_CREATED` · `MEMO_UPDATED`(`detail.fields`: 바뀐 칸 이름) · `MEMO_DELETED` 만,
+  메모 id · 사례 id 와 함께 남는다. 읽기는 감사 기록을 남기지 않는다(쓴 사람만 읽으므로).
+- 사례를 지우면 그 사례에 붙은 메모도 지워진다(사례 영구 삭제, 4절).

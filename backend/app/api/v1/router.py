@@ -15,6 +15,7 @@ from app.api.v1 import (
     followup_checks,
     followup_questions,
     law_guide,
+    memos,
     risk_assessments,
     schedule,
     sessions,
@@ -50,6 +51,8 @@ api_router.include_router(voice_marks.router)
 api_router.include_router(law_guide.router)
 # /schedule/events — 일정(20절, 2026-11-02).
 api_router.include_router(schedule.router)
+# /memos — 상담사 메모(25절, 2026-11-10). 쓴 사람만.
+api_router.include_router(memos.router)
 # /docbox — 문서함(23절, 2026-11-05).
 api_router.include_router(docbox.router)
 # /child-app/* · /cases/{case_id}/child-app — 아이 앱(24절, 2026-11-09).

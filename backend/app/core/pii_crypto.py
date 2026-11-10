@@ -66,12 +66,28 @@ def aad_for(case_id: uuid.UUID, field: str) -> bytes:
     return f"ispot:case_personal_info:{case_id}:{field}:{FORMAT_VERSION}".encode("utf-8")
 
 
-def encrypt_text(plaintext: str, *, case_id: uuid.UUID, field: str) -> str:
+def memo_aad_for(memo_id: uuid.UUID) -> bytes:
+    """상담사 메모 본문에 묶는 값(2026-11-10, API_CONTRACT 25절). 다른 메모로 옮겨 붙인 암호문은 풀리지 않는다. 형식을 고정한다."""
+
+    return f"ispot:counselor_memo:{memo_id}:text:{FORMAT_VERSION}".encode("utf-8")
+
+
+def _seal(plaintext: str, aad: bytes) -> str:
     key_id, ring = _ring(settings.PII_ENCRYPTION_KEYS)
     nonce = os.urandom(NONCE_BYTES)
-    sealed = AESGCM(ring[key_id]).encrypt(nonce, plaintext.encode("utf-8"), aad_for(case_id, field))
+    sealed = AESGCM(ring[key_id]).encrypt(nonce, plaintext.encode("utf-8"), aad)
 
     return ".".join((FORMAT_VERSION, key_id, _b64(nonce), _b64(sealed)))
+
+
+def encrypt_text(plaintext: str, *, case_id: uuid.UUID, field: str) -> str:
+    return _seal(plaintext, aad_for(case_id, field))
+
+
+def encrypt_memo(plaintext: str, *, memo_id: uuid.UUID) -> str:
+    """상담사 메모 본문 암호화(내담자 정보와 같은 키 · 같은 저장 모양, 묶음 값만 메모 ID)."""
+
+    return _seal(plaintext, memo_aad_for(memo_id))
 
 
 def key_id_of(token: str) -> Optional[str]:
@@ -83,6 +99,14 @@ def key_id_of(token: str) -> Optional[str]:
 
 
 def decrypt_text(token: str, *, case_id: uuid.UUID, field: str) -> str:
+    return _open(token, aad_for(case_id, field))
+
+
+def decrypt_memo(token: str, *, memo_id: uuid.UUID) -> str:
+    return _open(token, memo_aad_for(memo_id))
+
+
+def _open(token: str, aad: bytes) -> str:
     parts = token.split(".")
 
     if len(parts) != 4 or parts[0] != FORMAT_VERSION:
@@ -105,7 +129,7 @@ def decrypt_text(token: str, *, case_id: uuid.UUID, field: str) -> str:
         raise PersonalInfoCryptoError("저장 모양이 틀립니다.")
 
     try:
-        plain = AESGCM(key).decrypt(nonce, sealed, aad_for(case_id, field))
+        plain = AESGCM(key).decrypt(nonce, sealed, aad)
     except InvalidTag as error:
         raise PersonalInfoCryptoError("암호문이 이 사례 · 칸의 것이 아니거나 바뀌었습니다.") from error
 
