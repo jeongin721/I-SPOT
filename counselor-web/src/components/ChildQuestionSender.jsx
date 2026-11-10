@@ -1,4 +1,4 @@
-// 콩콩 '질문 보내기'(3~4개 골라 아이 앱으로). 사례 아이 연계 · 아이 상세 · 다음 상담 준비 '아이 앱으로 먼저' 탭이 같이 쓴다.
+// 콩콩 '질문 보내기'(1개 이상 골라 아이 앱으로). 사례 아이 연계 · 아이 상세 · 다음 상담 준비 '아이 앱으로 먼저' 탭이 같이 쓴다.
 // app 은 useCaseChildApp 의 값. bare 면 바깥 카드 없이 안쪽만 그린다(다른 카드 안에 넣을 때).
 // 연결 전이면 아이 연계(아이 상세)에서 연결하라고 안내한다.
 import { useState } from 'react';
@@ -17,13 +17,13 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
     setHint('');
     setPicked((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
   };
-  const countOk = picked.length >= 3 && picked.length <= 4;
-  // 꺼진 단추 모양이 따로 없어 눌러도 아무 일 없는 것처럼 보였다(11/10). 단추는 두고, 개수가 맞지 않으면 이유를 알린다.
+  const countOk = picked.length >= 1;
+  // 꺼진 단추 모양이 따로 없어 눌러도 아무 일 없는 것처럼 보였다(11/10). 단추는 두고, 하나도 안 골랐으면 이유를 알린다.
   const send = async () => {
     if (app.busy) return;
     const count = picked.length;
     if (!countOk) {
-      setHint(`질문을 3~4개 골라 주세요. 지금 ${count}개를 골랐어요.`);
+      setHint('보낼 질문을 하나 이상 골라 주세요.');
       return;
     }
     if (await app.sendQuestions(picked)) {
@@ -75,7 +75,7 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
     );
   }
 
-  const title = data.status === 'LINKED' && data.can_read_feed ? `질문 보내기 · ${picked.length}개 선택 (3~4개)` : '질문 보내기';
+  const title = data.status === 'LINKED' && data.can_read_feed ? `질문 보내기 · ${picked.length}개 선택` : '질문 보내기';
   if (bare) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

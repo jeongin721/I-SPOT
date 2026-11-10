@@ -69,7 +69,8 @@ class ChildAppInviteResponse(BaseModel):
 
 
 class ChildQuestionSendRequest(RequestModel):
-    question_ids: List[str] = Field(min_length=3, max_length=4)
+    # 1개부터 문항 전체(8개)까지 고를 수 있다(11/10 경진님 — 처음엔 3~4개).
+    question_ids: List[str] = Field(min_length=1, max_length=8)
 
 
 class ChildAppBankItem(BaseModel):

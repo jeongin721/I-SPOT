@@ -7,7 +7,7 @@
 //  - 이 화면에서 쓰거나 고친 뒤 아직 승인하지 않은 질문: 화면 상태에만 있다(서버는 승인한 질문만 받는다).
 // 디자인처럼 [승인] 을 누르면 승인 목록에 더해 저장하고, 다시 누르면 빼서 저장한다. [수정] → [확인] 에서 문장이 바뀐 승인 질문은
 // 승인을 풀고(디자인 qOk), 새로 쓴 질문은 승인 전 카드로 더한다. 승인 목록이 바뀌었을 때만 PUT 한다.
-// '아이 앱으로 먼저' 탭은 콩콩 질문 보내기다(11/10 연결 — 문항 목록에서 3~4개를 골라 아이 앱으로 보낸다).
+// '아이 앱으로 먼저' 탭은 콩콩 질문 보내기다(11/10 연결 — 문항 목록에서 1개 이상 골라 아이 앱으로 보낸다).
 
 import type { FollowupQuestion, FollowupQuestionDraft, FollowupQuestionInput, QuestionEvidence } from "../../api/types";
 import type { FollowupQuestionsState } from "../useFollowupQuestions";
