@@ -48,9 +48,14 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
         ) : null}
         <div>
           <button type="button" className="btn btn-p" disabled={!canSend} onClick={send}>
-            아이에게 보내기
+            {app.busy ? '보내는 중…' : '아이에게 보내기'}
           </button>
         </div>
+        {app.actionError ? (
+          <p className="note acc" role="alert" style={{ margin: '0' }}>
+            {app.actionError}
+          </p>
+        ) : null}
       </>
     );
   }
