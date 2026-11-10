@@ -11,7 +11,6 @@
 //    서버 설정(SIGNUP_ENABLED)이 꺼져 있으면 회원가입 단추를 숨긴다.
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { takeAppReturn } from '../data/appReturn';
 import { DCLogic, useDC } from '../dc';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
@@ -62,9 +61,7 @@ class Logic extends DCLogic {
       this.setState({ current: s.password, password: '', next: '', confirm: '', pwFor: user.id });
       this.props.session.recheck();
     } else {
-      // 상담사 앱(폰) 화면에서 왔으면 그 화면으로 돌아간다(appReturn.ts). 아니면 원래대로.
-      const back = takeAppReturn();
-      this.props.navigate(back ?? (s.role === 'admin' && user.role === 'ADMIN' ? '/AdminHome' : '/Main'));
+      this.props.navigate(s.role === 'admin' && user.role === 'ADMIN' ? '/AdminHome' : '/Main');
     }
   }
 
