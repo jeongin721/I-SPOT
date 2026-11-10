@@ -246,7 +246,8 @@ export default function ChildDetail(props) {
       })
     : null;
   const caseHref = caseId ? screenHref('/CaseDetail', { caseId }) : '/CaseDetail';
-  const historyHref = caseId ? screenHref('/CaseApp', { caseId }) : '/CaseApp';
+  // 과거 답변 기록은 콩콩 기록 화면을 아이 연계 메뉴 안에서 연다(from=child).
+  const historyHref = caseId ? `${screenHref('/CaseApp', { caseId })}&from=child` : '/CaseApp';
   const adminOnly = caseId && app.data && !app.data.can_read_feed;
   // 미연결 · 초대 대기면 이 화면(아이 연계)에서 바로 연결 코드를 만든다. 질문 · 답 칸은 연결 뒤에 보인다(11/10 경진님).
   const notLinked = !!(caseId && app.data && app.data.status !== 'LINKED');
