@@ -12,7 +12,7 @@ import { useAuthSession } from '../data/useAuthSession';
 import { needsLogin } from '../data/screens/common';
 import { rememberAppReturn } from '../data/appReturn';
 import { cachedAppUserId, rememberAppUser } from '../data/appOffline';
-import { retryRecording } from '../data/appRecordings';
+import { retryRecording, uploadAsNewSession } from '../data/appRecordings';
 import { useAppRecordings } from '../data/useAppRecordings';
 import { useTheme } from '../theme';
 import '../styles/mobile-app.css';
@@ -117,7 +117,8 @@ export default function MobileAppShell({ cur, sub, title, children }) {
     title: '업로드 실패 · 녹음',
     sub: x.fileName + ' · ' + whenText(x.updatedAt),
     desc: x.error || '',
-    go: () => void retryRecording(x.id),
+    act: x.needNewSession ? '새 회차로 올리기' : '다시 올리기',
+    go: () => void (x.needNewSession ? uploadAsNewSession(x.id) : retryRecording(x.id)),
   }));
   const stop = (ev) => ev.stopPropagation();
 
@@ -177,7 +178,7 @@ export default function MobileAppShell({ cur, sub, title, children }) {
                 <span className="ma-note">{n.sub}</span>
                 {n.desc && <span style={{ fontSize: '13.5px' }}>{n.desc}</span>}
                 <button type="button" className="ma-btn ma-btn-sm ma-btn-p" style={{ alignSelf: 'flex-start' }} onClick={n.go}>
-                  다시 올리기
+                  {n.act}
                 </button>
               </div>
             ))}

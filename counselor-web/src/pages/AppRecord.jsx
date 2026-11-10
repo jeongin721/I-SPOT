@@ -114,6 +114,8 @@ function RecordBody({ userId, items, loaded }) {
       return;
     }
     if (!child || !userId) return;
+    // 녹음이 있는 회차를 고르면 바꿀지 한 번 묻는다(폰에서는 잘못 고르기 쉬워서, 민규 #168).
+    if (session && session.status !== 'CREATED' && !window.confirm('이 회차에는 이미 녹음이 있어요. 바꿀까요?')) return;
     setSavedId(null);
     await startRecording({
       userId,
@@ -121,6 +123,7 @@ function RecordBody({ userId, items, loaded }) {
       childLabel,
       sessionId: ses === 'new' ? null : ses,
       sessionNumber: session ? session.session_number : null,
+      expectStatus: session ? session.status : 'CREATED',
       consultationType: kind,
       consultedAt: new Date().toISOString(),
     });
@@ -265,7 +268,9 @@ function RecordBody({ userId, items, loaded }) {
               </>
             )}
             {qs === 'done' && <span style={{ fontWeight: 700 }}>✓ 업로드 완료</span>}
-            {qs === 'fail' && <span className="ma-err">업로드 실패 · 연결이 돌아오면 다시 올려 주세요</span>}
+            {qs === 'fail' && (
+              <span className="ma-err">{savedItem?.needNewSession ? savedItem.error : '업로드 실패 · 연결이 돌아오면 다시 올려 주세요'}</span>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <Link className="ma-btn" to="/AppUpload">
                 업로드 목록
