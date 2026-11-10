@@ -47,8 +47,8 @@ import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
-import { cases } from '../api/endpoints';
-import { errorMessage } from '../data/useRemote';
+import { cases, childApp } from '../api/endpoints';
+import { errorMessage, useRemote } from '../data/useRemote';
 import './CaseDetail.css';
 
 class Logic extends DCLogic {
@@ -78,7 +78,10 @@ export default function CaseDetail(props) {
   const theme = useTheme();
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
   const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId });
+  // 기본 정보 '아이 앱' 칸(11/10): 콩콩 연결 상태. 아이 앱이 꺼져 있으면 오류라 '—' 로 둔다.
+  const appKey = signedIn(session) && caseId ? `case-child-app:${caseId}` : null;
+  const childAppInfo = useRemote(appKey, () => childApp.get(caseId), '아이 앱 정보를 불러오지 못했습니다.', () => false);
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId, childApp: childAppInfo.data });
   const formsCard = formsCardValues(useCaseForms(caseId, { enabled: signedIn(session) }), caseId);
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
