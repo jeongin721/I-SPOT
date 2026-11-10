@@ -33,10 +33,10 @@
 // 이름 · 생년월일 · 사례관리대상자는 실명 정보를 받은 뒤에만 PUT …/personal-info 로 통째로(나머지 실명 · 가족 칸은 받은 값 그대로).
 // PATCH 를 먼저 보내고, PUT 만 실패하면 나눠 알린다. 출생연도는 고치지 않는다(생년월일을 저장하면 서버가 맞춘다 — Codex #129 R2).
 // 개별사건번호 · 담당 상담원(관리자, 초기면접지) · 상담 회차 · 최근 상담 · 가족유형 · 조치결과(초기면접지)는 여기서 바꾸지 않고,
-// 아이 앱은 서버에 칸이 없어 준비 중으로 둔다.
+// 아이 앱(11/10 연결): 콩콩 연결 상태 · 마지막 응답(GET /cases/{id}/child-app). 꺼져 있거나 못 받으면 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
-import { ABUSE_TYPES, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
+import { ABUSE_TYPES, RISK_LEVEL_LABELS, type ChildAppCase, type RiskLevel } from "../../api/types";
 import type { CaseDetailState, CaseDetailView } from "../useCaseDetail";
 import { caseChoiceLabel } from "../caseFormFields";
 import {
@@ -89,6 +89,20 @@ export interface CaseScreenInput {
   questions?: FollowupQuestionsState;
   /** 실명 · 생년월일 · 가족 정보(usePersonalInfo). 없거나 못 받았으면 별칭 · 출생연도를 보인다. */
   personal?: PersonalInfoState;
+  /** 콩콩 연결 상태. 꺼져 있거나 못 받았으면 null. */
+  childApp?: ChildAppCase | null;
+}
+
+/** '아이 앱' 칸: 미연결 · 초대 대기 · 연결됨(마지막 응답). */
+export function childAppText(app: ChildAppCase | null | undefined): string {
+  if (!app) return NOT_PROVIDED;
+  const day = (iso: string | null) => {
+    const d = iso ? new Date(iso) : null;
+    return d && !Number.isNaN(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()}` : "";
+  };
+  if (app.status === "NOT_LINKED") return "미연결";
+  if (app.status === "INVITED") return app.code_expires_at ? `초대 대기 · 코드 ${day(app.code_expires_at)}까지` : "초대 대기";
+  return app.last_response_at ? `연결됨 · 마지막 응답 ${day(app.last_response_at)}` : "연결됨 · 응답 없음";
 }
 
 /** 가족유형(서식 4 ②, 상담원이 고른 값). 없으면 '—'. */
@@ -461,7 +475,7 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
           ),
           { label: "상담 회차", kind: "static", value: `${info.sessionCount}회`, hint: "자동" },
           { label: "최근 상담", kind: "static", value: lastConsulted, hint: "자동" },
-          { label: "아이 앱", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
+          { label: "아이 앱", kind: "static", value: childAppText(input.childApp), hint: input.childApp ? "자동" : NOT_READY },
         ]
       : [];
 
@@ -574,7 +588,7 @@ export function caseDetailValues(input: CaseDetailInput) {
         { label: "최초면접일", value: info.firstInterviewDate },
         { label: "상담 회차", value: `${info.sessionCount}회`, strong: true },
         { label: "최근 상담", value: lastConsulted },
-        { label: "아이 앱", value: dash },
+        { label: "아이 앱", value: childAppText(input.childApp) },
       ]
     : [];
 

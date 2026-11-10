@@ -2,14 +2,15 @@
 //
 // Backend 에 없는 값은 지어내지 않는다(specs 대응표 Main 줄 — 팀 결정: 일정 · 아이 앱 긴급 상태 · 일지 대기 기준).
 //  - 오늘 일정 · 다음 상담까지 남은 시간(11/02 연결): 일정(API_CONTRACT 20절)에서 오늘 일정 · 지금 뒤 첫 상담 일정을 찾는다.
-//  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'(10/30 디자인의 머리 링크 '아이 연계 ›' 만 둔다).
+//  - 긴급 업무(11/10 연결): 확인 안 한 콩콩 알림(GET /child-app-alerts/open). 긴급(긴급 알림 · 바로 확인 답 · 연락 요청) 수를 크게,
+//    확인 필요(글 · 추가 질문 답)는 아래 줄에. 아이 앱이 꺼져 있거나 못 받으면 '—'.
 //  - 진행 중 내담자 카드 아래 줄(10/30): 최근 등록 사례 3건의 마지막 회차 판단('n회차 판단 · 상') · 그 회차 상태. 디자인의
 //    '오늘 16:00 상담' 같은 일정 문구는 쓰지 않는다(카드 줄은 회차 판단이 기준).
 //  - 미처리 업무는 회차 처리 대기(/tasks)만 센다. 디자인의 '상담 일지 작성' · '앱 확인' 은 업무 종류에 없다.
 //    오래 기다린 업무는 '지연' 이라고 쓴다(위험 신호와 헷갈리지 않게 '긴급' 이라고 쓰지 않는다 — API types TaskItem).
 // 시계 · 빠른 실행은 서버와 상관없는 화면 상태다(빠른 실행 편집은 저장하지 않는다).
 
-import { RISK_LEVEL_LABELS, type RiskLevel, type TaskType } from "../../api/types";
+import { RISK_LEVEL_LABELS, type ChildOpenAlert, type RiskLevel, type TaskType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import { HOME_TASK_COUNT, type HomeDashboardState, type HomeTask } from "../useHomeDashboard";
 import type { ScheduleState } from "../useSchedule";
@@ -67,6 +68,8 @@ interface MainScreenInput {
   home: HomeDashboardState;
   /** 오늘 ~ HOME_SCHEDULE_DAYS 일 뒤 일정(useSchedule, 사례 목록 없이). */
   schedule: ScheduleState;
+  /** 확인 안 한 콩콩 알림. 꺼져 있거나 못 받았으면 null. */
+  childAlerts?: ChildOpenAlert[] | null;
   state: MainUiState;
   setState: (patch: Partial<MainUiState>) => void;
 }
@@ -86,7 +89,18 @@ function itemHref(e: CalendarItem): string {
   return e.t === "c" && e.event.case_id ? screenHref("/PreBriefing", { caseId: e.event.case_id }) : "/Schedule";
 }
 
-export function mainValues({ session, home, schedule, state, setState }: MainScreenInput) {
+/** 홈 '긴급 업무' 카드. 알림을 못 받았으면 '—' 와 준비 중. */
+function urgentValues(alerts: ChildOpenAlert[] | null): { urgentCount: string; urgentText: string } {
+  if (!alerts) return { urgentCount: NOT_PROVIDED, urgentText: `아이 앱 연계 ${NOT_READY}` };
+  const urgent = alerts.filter((alert) => alert.urgent).length;
+  const check = alerts.length - urgent;
+  return {
+    urgentCount: String(urgent),
+    urgentText: alerts.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : `아이 앱 긴급 알림${check ? ` · 확인 필요 ${check}건` : ""}`,
+  };
+}
+
+export function mainValues({ session, home, schedule, childAlerts, state, setState }: MainScreenInput) {
   const now = state.now;
   const me = session.me;
   const data = home.data;
@@ -216,8 +230,7 @@ export function mainValues({ session, home, schedule, state, setState }: MainScr
         : "회차 없음",
       text: `${item.name} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
     })),
-    urgentCount: NOT_PROVIDED,
-    urgentText: `아이 앱 연계 ${NOT_READY}`,
+    ...urgentValues(childAlerts ?? null),
     remain,
     nextTitle,
     briefHref,
