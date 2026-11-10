@@ -878,6 +878,24 @@ def test_device_unlink_lets_counselor_link_again(client: TestClient, counselor_h
     assert _home(client, again)["pending"] is None
 
 
+def test_alert_after_unlink_in_between_is_401_not_500(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    # 인증을 통과한 뒤 그사이 해지가 끝난 경우(민규 #167): 연결 행이 사라져도 500 이 아니라 다시 연결하라는 401.
+    from sqlalchemy import delete
+
+    from app.core.errors import APIError
+    from app.services import child_app_service
+
+    device = _linked(client, counselor_headers, case["id"])
+    link = child_app_service.get_link_by_token(db, device["Authorization"].removeprefix("Bearer "))
+    db.execute(delete(ChildAppLink).where(ChildAppLink.id == link.id))
+    db.commit()
+
+    with pytest.raises(APIError) as caught:
+        child_app_service.send_alert(db, link)
+    assert caught.value.status_code == 401
+    assert _view(client, counselor_headers, case["id"])["open_alerts"] == []
+
+
 def test_child_app_stats_counts_sent_and_answered_for_admin_only(
     client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
 ) -> None:
