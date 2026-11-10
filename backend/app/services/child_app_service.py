@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -258,6 +258,28 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
         )
 
     return rows
+
+
+def stats(db: Session, date_from: date, date_to: date) -> Dict[str, int]:
+    """관리자 통계 '아이 앱 응답률'. 기간(한국 날짜, 끝 날 포함) 안에 보낸 질문 묶음과 그중 아이가 답한 묶음, 지금 연결된 사례 수.
+    대체된 묶음(답하기 전 새 질문으로 바뀜)도 보낸 것으로 센다. 답 내용은 세지 않는다."""
+
+    start = datetime.combine(date_from, datetime.min.time(), tzinfo=LOCAL_TZ)
+    end = datetime.combine(date_to + timedelta(days=1), datetime.min.time(), tzinfo=LOCAL_TZ)
+    rows = db.execute(
+        select(ChildQuestionSet.status, func.count())
+        .join(Case, Case.id == ChildQuestionSet.case_id)
+        .where(ChildQuestionSet.created_at >= start, ChildQuestionSet.created_at < end)
+        .group_by(ChildQuestionSet.status)
+    ).all()
+    counts = {status.value: int(count) for status, count in rows}
+    linked = db.scalar(select(func.count()).select_from(ChildAppLink).where(ChildAppLink.status == ChildAppLinkStatus.LINKED))
+
+    return {
+        "sent": sum(counts.values()),
+        "answered": counts.get(ChildQuestionSetStatus.ANSWERED.value, 0),
+        "linked_cases": int(linked or 0),
+    }
 
 
 def question_text(item: Dict[str, Any]) -> str:

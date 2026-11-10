@@ -42,6 +42,7 @@ import type {
   ChildAiDraft,
   ChildAppCase,
   ChildAppCaseRow,
+  ChildAppStats,
   ChildAppInvite,
   ChildOpenAlert,
   FollowupQuestionList,
@@ -782,6 +783,11 @@ export const childApp = {
 
   sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
     return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  },
+
+  /** 관리자 통계 '아이 앱 응답률'. 날짜는 YYYY-MM-DD(끝 날 포함). */
+  stats(dateFrom: string, dateTo: string): Promise<ChildAppStats> {
+    return api.get<ChildAppStats>(`/child-app-stats?date_from=${dateFrom}&date_to=${dateTo}`);
   },
 
   listCases(): Promise<ChildAppCaseRow[]> {

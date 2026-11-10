@@ -7,6 +7,7 @@ import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import ChildQuestionSender from '../components/ChildQuestionSender';
 import NotiBell from '../components/NotiBell';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
@@ -592,6 +593,8 @@ export default function ChildDetail(props) {
             ))}
           </section>
 
+              {/* 디자인에 없는 칸: 질문 보내기(11/10 경진님 — 아이 연계 안에서 연결 · 질문 · 답 확인을 끝내게). */}
+              <ChildQuestionSender app={app} caseId={caseId} />
             </>
           )}
 

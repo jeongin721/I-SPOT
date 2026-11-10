@@ -3,13 +3,14 @@
 #   /cases/{id}/child-app 상담사 웹. 담당 상담사 · 관리자만.
 
 import uuid
+from datetime import date
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.core.deps import CurrentUser, DbSession, bearer_scheme, client_ip
-from app.core.errors import unauthorized
+from app.core.deps import AdminUser, CurrentUser, DbSession, bearer_scheme, client_ip
+from app.core.errors import ErrorCode, bad_request, unauthorized
 from app.core.responses import DataResponse
 from app.models.child_app import ChildAppLink
 from app.schemas.child_app import (
@@ -22,6 +23,7 @@ from app.schemas.child_app import (
     ChildAnswersResponse,
     ChildAppCaseResponse,
     ChildAppCaseRow,
+    ChildAppStats,
     ChildAppInviteResponse,
     ChildHomeResponse,
     ChildLinkRequest,
@@ -37,6 +39,7 @@ device_router = APIRouter(prefix="/child-app", tags=["child-app"], dependencies=
 case_router = APIRouter(prefix="/cases", tags=["child-app"], dependencies=_enabled)
 staff_router = APIRouter(prefix="/child-app-alerts", tags=["child-app"], dependencies=_enabled)
 list_router = APIRouter(prefix="/child-app-cases", tags=["child-app"], dependencies=_enabled)
+stats_router = APIRouter(prefix="/child-app-stats", tags=["child-app"], dependencies=_enabled)
 
 
 def _current_link(
@@ -89,6 +92,14 @@ def send_alert(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildAlert
     child_app_service.send_alert(db, link)
 
     return DataResponse(data=ChildAlertReceived())
+
+
+@stats_router.get("", response_model=DataResponse[ChildAppStats], summary="아이 앱 응답률(관리자)")
+def child_app_stats(date_from: date, date_to: date, db: DbSession, _: AdminUser) -> DataResponse[ChildAppStats]:
+    if date_to < date_from:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "기간의 끝이 시작보다 앞입니다.")
+
+    return DataResponse(data=child_app_service.stats(db, date_from, date_to))
 
 
 @list_router.get("", response_model=DataResponse[List[ChildAppCaseRow]], summary="아이 연계 목록")

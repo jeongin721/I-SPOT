@@ -876,3 +876,22 @@ def test_device_unlink_lets_counselor_link_again(client: TestClient, counselor_h
 
     again = _linked(client, counselor_headers, case["id"])
     assert _home(client, again)["pending"] is None
+
+
+def test_child_app_stats_counts_sent_and_answered_for_admin_only(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])  # 앞 묶음은 대체된다
+    pending = _home(client, device)["pending"]
+    answers = {"answers": [{"question_id": q, "choice_index": 0} for q in ("sleep", "home", "safe")]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=answers, headers=device).status_code == 200
+
+    today = datetime.now(timezone.utc).date()
+    url = f"/api/v1/child-app-stats?date_from={today - timedelta(days=1)}&date_to={today + timedelta(days=1)}"
+    assert client.get(url, headers=counselor_headers).status_code == 403
+    data = client.get(url, headers=admin_headers).json()["data"]
+    assert data == {"sent": 2, "answered": 1, "linked_cases": 1}
+    bad = f"/api/v1/child-app-stats?date_from={today}&date_to={today - timedelta(days=1)}"
+    assert client.get(bad, headers=admin_headers).status_code == 400

@@ -141,6 +141,12 @@ class ChildAiApprovalRequest(RequestModel):
     approved: bool
 
 
+class ChildAppStats(BaseModel):
+    sent: int
+    answered: int
+    linked_cases: int
+
+
 class ChildAppCaseRow(BaseModel):
     case_id: uuid.UUID
     case_number: str

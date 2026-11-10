@@ -15,12 +15,14 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
+import ChildQuestionSender from '../components/ChildQuestionSender';
 import Sidebar from '../components/Sidebar';
 import StepNav from '../components/StepNav';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
+import { useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupChecks } from '../data/useFollowupChecks';
@@ -113,6 +115,9 @@ function FollowupQScreen(props) {
   }, [fromDocument, doc, sourceDoc, detail.session?.status]);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checklist, checks, sourceDoc, go });
+  // '아이 앱으로 먼저' 탭(11/10): 콩콩 질문 보내기. 그 탭을 열었을 때만 부른다.
+  const childCaseId = sessionCaseId(ids, detail);
+  const childApp = useCaseChildApp(childCaseId, enabled && v.appCls === 'on');
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-FollowupQ">
@@ -335,6 +340,7 @@ function FollowupQScreen(props) {
               </div>
             </div>
             {v.qNote ? <span className="note">{v.qNote}</span> : null}
+            {v.appCls === 'on' ? <ChildQuestionSender app={childApp} caseId={childCaseId} bare /> : null}
             {v.qs.map((q) => (
               <div key={q.key} className="qcard">
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>

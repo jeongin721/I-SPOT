@@ -4,7 +4,8 @@
 // 디자인 칸 → 서버 값:
 //  - 제목 위 줄('오늘 16:00 · 9회차 정기상담 · 면담실 B'): 다음 회차 번호(지금 회차 수 + 1)만 안다. 상담 일시 · 유형 · 장소는
 //    일정 기능이 서버에 없어 '—'.
-//  - 먼저 볼 것: '아이가 보낸 말' · '체크인 응답 변화' 는 아이 앱이 서버에 없어 준비 중이다(예시 문장을 보이지 않는다).
+//  - 먼저 볼 것: '아이가 보낸 말'(가장 최근 아이가 쓴 글) · '체크인 응답 변화'(가장 최근 답에서 지난번과 달라진 답)는
+//    콩콩 아이 앱 값이다(11/10 연결, childAppHighlights). 담당 상담사만 보인다.
 //    '처음 나온 이야기'(2026-10-29)는 분석이 끝난 가장 최근 회차의 대화 주제 중 앞 회차들에 없던 것(signal-history topics,
 //    signalHistoryRows.newTopicsIn) — 주제 · 그 첫 아동 발화 · 회차와 시각. AI 제안이다.
 //  - 확인할 사항: 그 회차 확인 사항을 저장했으면(18.1절, 2026-10-30) '브리핑에 넣기' 로 체크한 것만, 저장 전이면
@@ -17,6 +18,8 @@
 //    승인 전 AI 초안은 보이지 않는다. '질문 수정' 은 그 회차의 4 · 추가 확인 화면으로 간다.
 //  - 인쇄 · PDF: 브라우저 인쇄(window.print)로 지금 화면을 그대로 인쇄한다.
 
+import type { ChildAppCase } from "../../api/types";
+import { childAppHighlights } from "./childDetail";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseSignalsState } from "../useCaseSignals";
@@ -53,6 +56,8 @@ export interface BriefingScreenInput {
   history?: SignalHistoryState;
   /** 그 회차(signals.session)의 저장한 확인 사항(18.1절). 저장했으면 '브리핑에 넣기' 로 체크한 것만 보인다. */
   checks?: FollowupChecksState;
+  /** 콩콩 아이 앱(GET /cases/{id}/child-app). 꺼져 있거나 못 받았으면 null. */
+  childApp?: ChildAppCase | null;
 }
 
 export interface FirstCard {
@@ -64,6 +69,33 @@ export interface FirstCard {
   q?: string;
   main?: string;
   src?: string;
+}
+
+/** '아이가 보낸 말' · '체크인 응답 변화' 카드(콩콩). */
+function childAppCards(app: ChildAppCase | null | undefined): FirstCard[] {
+  const child = { key: "child", title: "아이가 보낸 말" };
+  const checkin = { key: "checkin", title: "체크인 응답 변화" };
+  if (app === undefined || app === null) return [{ ...child, note: `${NOT_READY} · 아이 앱이 꺼져 있음` }, { ...checkin, note: `${NOT_READY} · 아이 앱이 꺼져 있음` }];
+  const found = childAppHighlights(app);
+  if (!found) return [{ ...child, note: "담당 상담사만 볼 수 있어요." }, { ...checkin, note: "담당 상담사만 볼 수 있어요." }];
+  if (!found.linked && found.answeredCount === 0) {
+    return [{ ...child, note: "아이 앱이 연결되지 않았어요." }, { ...checkin, note: "아이 앱이 연결되지 않았어요." }];
+  }
+  const first = found.changes[0];
+  return [
+    found.written
+      ? { ...child, note: "", main: `"${found.written.text}"`, src: `${found.written.at} · 아이 앱` }
+      : { ...child, note: "아이가 쓴 글이 아직 없어요." },
+    first
+      ? {
+          ...checkin,
+          note: "",
+          q: `${first.question}${found.changes.length > 1 ? ` 외 ${found.changes.length - 1}개` : ""}`,
+          main: `${first.from} → ${first.to}`,
+          src: `${found.changedAt} 응답 · 아이 앱`,
+        }
+      : { ...checkin, note: found.answeredCount ? "지난번과 달라진 답이 없어요." : "아직 받은 답이 없어요." },
+  ];
 }
 
 /** '처음 나온 이야기' 카드. */
@@ -185,8 +217,7 @@ export function preBriefingValues(input: BriefingScreenInput) {
     ...header,
     lead: info ? `다음 상담 ${nextNumber} · 상담 일시 ${NOT_PROVIDED}` : "",
     firstCards: [
-      { key: "child", title: "아이가 보낸 말", note: `${NOT_READY} · 아이 앱이 서버에 없음` },
-      { key: "checkin", title: "체크인 응답 변화", note: `${NOT_READY} · 아이 앱 체크인이 서버에 없음` },
+      ...childAppCards(input.childApp),
       firstStoryCard(source, input.history),
     ] as FirstCard[],
     checks,
