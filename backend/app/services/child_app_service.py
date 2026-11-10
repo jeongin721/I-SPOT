@@ -38,6 +38,7 @@ CODE_TTL = timedelta(hours=72)
 LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
 OPEN_ALERT_LIMIT = 50
+AI_QUESTION_PREFIX = "ai_"
 CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
 SKIP_TEXT = "답하기 어려워요"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
@@ -104,18 +105,18 @@ def ensure_enabled() -> None:
         raise APIError(ErrorCode.CHILD_APP_DISABLED, "아이 앱 기능이 꺼져 있습니다.", status_code=503)
 
 
-def _ensure_assigned(case: Case, user: User) -> None:
+def ensure_assigned(case: Case, user: User) -> None:
     # 코드 발급 · 질문은 담당 상담사의 일이다. 관리자가 코드를 다시 만들면 상담사가 준 코드가 무효가 된다.
     if case.counselor_id != user.id:
         raise forbidden("담당 상담사만 할 수 있습니다.")
 
 
-def _ensure_active(case: Case) -> None:
+def ensure_active(case: Case) -> None:
     if case.status != CaseStatus.ACTIVE:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "종결된 사례에는 아이 앱을 사용할 수 없습니다.")
 
 
-def _link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optional[ChildAppLink]:
+def link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optional[ChildAppLink]:
     statement = select(ChildAppLink).where(ChildAppLink.case_id == case_id)
 
     return db.scalar(statement.with_for_update() if lock else statement)
@@ -126,9 +127,9 @@ def _link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optiona
 # =========================================================
 
 def create_invite(db: Session, case: Case, user: User, ip_address: Optional[str]) -> Dict[str, Any]:
-    _ensure_assigned(case, user)
-    _ensure_active(case)
-    link = _link_row(db, case.id, lock=True)
+    ensure_assigned(case, user)
+    ensure_active(case)
+    link = link_row(db, case.id, lock=True)
 
     if link is not None and link.status == ChildAppLinkStatus.LINKED:
         raise conflict(ErrorCode.DUPLICATE_RESOURCE, "이미 앱이 연결된 사례입니다.")
@@ -163,13 +164,13 @@ def send_questions(
     question_ids: List[str],
     ip_address: Optional[str],
 ) -> None:
-    _ensure_assigned(case, user)
-    _ensure_active(case)
+    ensure_assigned(case, user)
+    ensure_active(case)
 
     if len(set(question_ids)) != len(question_ids) or any(item not in _BANK_BY_ID for item in question_ids):
         raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 질문이 들어 있습니다.")
 
-    link = _link_row(db, case.id, lock=True)
+    link = link_row(db, case.id, lock=True)
 
     if link is None or link.status != ChildAppLinkStatus.LINKED:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "앱이 연결된 뒤에 질문을 보낼 수 있습니다.")
@@ -200,8 +201,14 @@ def send_questions(
     db.commit()
 
 
+def question_text(item: Dict[str, Any]) -> str:
+    """답 한 줄의 질문 문장. 문항 목록에 없으면(AI 추가 질문) 답에 복사해 둔 글을 쓴다."""
+
+    return _BANK_BY_ID.get(item["question_id"], {}).get("text") or item["question"]
+
+
 def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
-    link = _link_row(db, case.id)
+    link = link_row(db, case.id)
     # 아이에게 "담당 선생님만 본다" 고 안내한다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
     can_read_feed = case.counselor_id == user.id
     pending = db.scalar(
@@ -226,6 +233,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         code_expires_at=link.code_expires_at if link and link.status == ChildAppLinkStatus.INVITED else None,
         linked_at=link.linked_at if link else None,
         last_response_at=link.last_response_at if link else None,
+        # 담당 상담사의 아이 상세 머리글에 보인다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
+        next_consult=_next_consult(db, case.id, datetime.now(LOCAL_TZ).date()) if can_read_feed else None,
         has_pending_questions=pending is not None,
         can_read_feed=can_read_feed,
         open_alerts=_open_alerts(db, user, case_id=case.id),
@@ -233,6 +242,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK
         ],
+        ai_enabled=child_app_ai_service.is_enabled() and can_read_feed,
+        ai_draft=child_app_ai_service.latest_draft(db, case.id) if can_read_feed else None,
         feed=[
             {
                 "id": row.id,
@@ -257,6 +268,16 @@ def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
         return "NEEDS_CHECK"
 
     return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else event.payload.get("alert_reason", "CONTACT_REQUEST")
+
+
+def _is_urgent(event: ChildAppEvent) -> bool:
+    """긴급 알림 · 바로 확인 답 · 아이의 연락 요청. 글 · 추가 질문 답은 확인 필요다."""
+
+    return (
+        event.kind == ChildAppEventKind.ALERT
+        or event.level == ChildAnswerLevel.RED
+        or event.payload.get("alert_reason") == "CONTACT_REQUEST"
+    )
 
 
 def _open_alerts(
@@ -292,6 +313,8 @@ def _open_alerts(
             "child_alias": case.child_alias,
             "case_number": case.case_number,
             "reason": _alert_reason(event, case, viewer),
+            # 바로 연락을 판단해야 하는 알림. 담당이 아닌 관리자도 이유(NEEDS_CHECK)와 따로 이 값으로 긴급을 안다(민규 #165 재리뷰).
+            "urgent": _is_urgent(event),
             # 답 기반 알림은 내용을 볼 수 있는 담당 상담사만 닫는다.
             "can_ack": event.kind == ChildAppEventKind.ALERT or case.counselor_id == viewer.id,
             "repeat_count": int(event.payload.get("repeat_count", 0)),
@@ -329,7 +352,7 @@ def acknowledge_alert(
         raise not_found(ErrorCode.NOT_FOUND, "긴급 알림을 찾을 수 없습니다.")
 
     if event.kind != ChildAppEventKind.ALERT:
-        _ensure_assigned(case, user)
+        ensure_assigned(case, user)
 
     # 두 사람이 함께 눌러도 먼저 확인한 사람의 기록을 남긴다.
     if event.acknowledged_at is not None:
@@ -506,7 +529,14 @@ def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]
 
         shown = " · ".join(part for part in (text, answer.chip) if part) or "(비워 둠)"
 
-        return {**item, "answer": shown, "wrote_text": bool(text), "level": ChildAnswerLevel.NONE.value}
+        return {
+            **item,
+            "answer": shown,
+            "wrote_text": bool(text),
+            # 상담사 화면의 '아이가 쓴 글'에는 고른 칩을 빼고 아이가 쓴 글만 보인다.
+            "written": text or None,
+            "level": ChildAnswerLevel.NONE.value,
+        }
 
     if answer.skipped:
         return skip
@@ -532,6 +562,8 @@ def submit_answers(
     question_set_id: uuid.UUID,
     answers: List[ChildAnswerInput],
 ) -> None:
+    # 잠금 순서: 연결 행 → 질문 묶음 → AI 초안. 승인 · 고치기도 연결 행을 먼저 잠가 서로 기다리게 한다(교착 방지, 민규 #165 재리뷰).
+    db.scalar(select(ChildAppLink).where(ChildAppLink.id == link.id).with_for_update())
     row = db.scalar(
         select(ChildQuestionSet)
         .where(ChildQuestionSet.id == question_set_id, ChildQuestionSet.case_id == link.case_id)
@@ -545,12 +577,29 @@ def submit_answers(
         raise conflict(ErrorCode.DUPLICATE_RESOURCE, "이미 끝난 질문입니다.")
 
     by_id = {answer.question_id: answer for answer in answers}
-    expected = [question["id"] for question in row.questions]
+    expected = {question["id"] for question in row.questions}
+    # 아이가 답하는 사이 상담사가 AI 추가 질문을 승인 · 취소하면 묶음이 바뀐다(민규 #165 리뷰 1).
+    # 그때도 아이가 고른 답은 받는다: 취소된 AI 질문의 답은 버리고, 새로 더해진 AI 질문은 다음 묶음으로 넘긴다.
+    extra = set(by_id) - expected
+    missing = [question for question in row.questions if question["id"] not in by_id]
+    answered_questions = [question for question in row.questions if question["id"] in by_id]
 
-    if len(answers) != len(expected) or set(by_id) != set(expected):
+    if (
+        len(by_id) != len(answers)
+        or any(not question_id.startswith(AI_QUESTION_PREFIX) for question_id in extra)
+        or any(not question["id"].startswith(AI_QUESTION_PREFIX) for question in missing)
+        or not answered_questions
+    ):
         raise bad_request(ErrorCode.VALIDATION_ERROR, "모든 질문의 답을 보내 주세요.")
 
-    items = [_grade(question, by_id[question["id"]]) for question in row.questions]
+    if missing:
+        carried = ChildQuestionSet(case_id=row.case_id, sent_by_id=row.sent_by_id, questions=missing)
+        db.add(carried)
+        db.flush()
+        row.questions = answered_questions
+        child_app_ai_service.move_questions(db, row.case_id, {question["id"] for question in missing}, carried.id)
+
+    items = [_grade(question, by_id[question["id"]]) for question in answered_questions]
     levels = {item["level"] for item in items}
     worst = ChildAnswerLevel.NONE
 
@@ -569,10 +618,20 @@ def submit_answers(
         for item in items
     )
     wrote_text = any(item.get("wrote_text") for item in items)
+    # AI 추가 질문은 위험 답의 후속이라 답을 판정하지 않고 확인 필요로만 올린다(민규 #165 리뷰 5).
+    followups = [item for item in items if item["question_id"].startswith(AI_QUESTION_PREFIX)]
+    followup = bool(followups)
     payload: Dict[str, Any] = {"items": items}
 
-    if wants_contact or wrote_text:
-        payload["alert_reason"] = "CONTACT_REQUEST" if wants_contact else "TEXT_ANSWER"
+    if wants_contact or wrote_text or followup:
+        # 추가 질문을 모두 '답하기 어려워요' 로 넘겼으면 답했다고 하지 않는다.
+        skipped = all(item["level"] == ChildAnswerLevel.SKIP.value for item in followups)
+        payload["alert_reason"] = (
+            "CONTACT_REQUEST" if wants_contact
+            else "TEXT_ANSWER" if wrote_text
+            else "FOLLOWUP_SKIPPED" if skipped
+            else "FOLLOWUP_ANSWER"
+        )
 
     _add_event(
         db,
@@ -580,6 +639,9 @@ def submit_answers(
         ChildAppEventKind.ANSWERS,
         payload,
         level=worst,
-        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text,
+        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text or followup,
     )
     db.commit()
+
+
+from app.services import child_app_ai_service  # noqa: E402 — 서로 부르므로 맨 끝에서 불러온다.

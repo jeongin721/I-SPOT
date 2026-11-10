@@ -1803,7 +1803,16 @@ export interface ChildOpenAlert {
   case_id: string;
   child_alias: string;
   case_number: string;
-  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "TEXT_ANSWER" | "NEEDS_CHECK";
+  reason:
+    | "ALERT"
+    | "RED_ANSWER"
+    | "CONTACT_REQUEST"
+    | "TEXT_ANSWER"
+    | "FOLLOWUP_ANSWER"
+    | "FOLLOWUP_SKIPPED"
+    | "NEEDS_CHECK";
+  /** 긴급 알림 · 바로 확인 답 · 연락 요청. 나머지는 '확인 필요'. */
+  urgent: boolean;
   can_ack: boolean;
   repeat_count: number;
   last_at: string | null;
@@ -1815,9 +1824,27 @@ export interface ChildAppCase {
   code_expires_at: string | null;
   linked_at: string | null;
   last_response_at: string | null;
+  next_consult: { date: string; time: string | null; place: string | null } | null;
   has_pending_questions: boolean;
   can_read_feed: boolean;
   open_alerts: ChildOpenAlert[];
   bank: { id: string; category: string; type: string; text: string }[];
   feed: ChildAppEvent[];
+  ai_enabled: boolean;
+  ai_draft: ChildAiDraft | null;
+}
+
+export interface ChildAiQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  edited: boolean;
+  approved: boolean;
+  answered: boolean;
+}
+
+export interface ChildAiDraft {
+  id: string;
+  event_id: string;
+  items: { question_id: string; note: string; note_edited: boolean; questions: ChildAiQuestion[] }[];
 }

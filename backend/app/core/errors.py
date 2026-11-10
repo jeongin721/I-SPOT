@@ -84,6 +84,7 @@ class ErrorCode(str, Enum):
     # 아이 앱 연결 코드가 틀렸거나 만료 · 사용됨. 어느 쪽인지 알려주지 않는다.
     INVALID_CHILD_CODE = "INVALID_CHILD_CODE"
     CHILD_APP_DISABLED = "CHILD_APP_DISABLED"
+    CHILD_APP_AI_DISABLED = "CHILD_APP_AI_DISABLED"
 
     # 개인 식별 정보 (API_CONTRACT 4절 '개인 식별 정보', 2026-10-30). 저장한 암호문을 풀 수 없음(키가 설정에 없음 · 값이 바뀜). 500.
     PERSONAL_INFO_UNAVAILABLE = "PERSONAL_INFO_UNAVAILABLE"

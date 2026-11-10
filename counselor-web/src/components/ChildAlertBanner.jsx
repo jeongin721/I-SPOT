@@ -41,7 +41,8 @@ export default function ChildAlertBanner({ session }) {
 
   const alerts = remote.data ?? [];
   if (!alerts.length) return null;
-  const first = alerts[0];
+  // 긴급 알림이 하나라도 있으면 그것을 앞에 보인다(최신 알림이 '확인 필요' 여도 긴급이 가려지지 않게).
+  const first = alerts.find((alert) => alert.urgent) ?? alerts[0];
   const time = new Date(first.last_at ?? first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
   // 사이드바의 쌓임 맥락에 갇히면 위쪽 도구 막대에 가려 단추가 눌리지 않는다.
@@ -69,7 +70,7 @@ export default function ChildAlertBanner({ session }) {
       }}
     >
       <span style={{ flex: '1 1 300px' }}>
-        <b style={{ color: '#B0452C' }}>긴급 · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}
+        <b style={{ color: '#B0452C' }}>{first.urgent ? '긴급' : '확인 필요'} · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}
         {first.repeat_count ? ` ${first.repeat_count}번 더 눌렀어요.` : ''}
         {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
       </span>

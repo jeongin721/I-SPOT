@@ -118,6 +118,13 @@ class Settings(BaseSettings):
     SIGNUP_ENABLED: bool = False
     # 아이 앱(콩콩). 끄면(기본) 앱용 · 상담사용 API 가 모두 503 CHILD_APP_DISABLED 다. 실제 아동 데이터 전 조건이 끝난 뒤에 켠다.
     CHILD_APP_ENABLED: bool = False
+    # 아이 답을 보고 확인해 볼 점 · 추가 질문 초안을 만든다(API_CONTRACT 24절). off(기본) · mock(OpenAI 없이 '(예시)') ·
+    # modeling(ai/modeling/abuse/child_answer_llm — 이름을 가린 뒤 OpenAI 로 보낸다).
+    CHILD_APP_AI_PROVIDER: Literal["off", "mock", "modeling"] = "off"
+    CHILD_APP_AI_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0)
+    CHILD_APP_AI_MAX_CONCURRENCY: int = Field(default=2, ge=1)
+    # ENV=production 에서 modeling 을 일부러 쓸 때만 true. 아이가 쓴 글이 이름 인식에 기대 가려진 뒤 나가므로 가상 데이터로만 켠다.
+    CHILD_APP_AI_ALLOW_IN_PRODUCTION: bool = False
     # 받을 이메일 도메인(콤마 구분, 정확히 일치 — 하위 도메인은 따로 적는다). 비면 전부 받는다.
     SIGNUP_ALLOWED_EMAIL_DOMAINS: Annotated[List[str], NoDecode] = Field(default_factory=list)
 
@@ -514,6 +521,18 @@ class Settings(BaseSettings):
             "법령 질문은 상담사가 쓴 글을 외부(OpenAI)로 보내는데, 사례와 묶이지 않아 등록 실명 대조가 돌지 않습니다. "
             "실제 상담 데이터가 있는 서버에서는 LAW_QA_PROVIDER=mock 또는 off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_child_app_ai_in_production(self) -> "Settings":
+        """운영에서 아이 앱 AI 초안 modeling 으로 서버가 뜨지 않게 한다(분석 modeling 과 같은 방식)."""
+
+        if self.ENV != "production" or self.CHILD_APP_AI_PROVIDER != "modeling" or self.CHILD_APP_AI_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 CHILD_APP_AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
+            "가상 데이터로 일부러 시험할 때만 CHILD_APP_AI_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @model_validator(mode="after")
