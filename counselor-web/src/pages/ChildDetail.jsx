@@ -247,7 +247,10 @@ export default function ChildDetail(props) {
   const caseHref = caseId ? screenHref('/CaseDetail', { caseId }) : '/CaseDetail';
   const historyHref = caseId ? screenHref('/CaseApp', { caseId }) : '/CaseApp';
   const adminOnly = caseId && app.data && !app.data.can_read_feed;
-  const noAnswers = caseId && app.data && app.data.can_read_feed && v.answers.length === 0;
+  // 미연결 · 초대 대기면 이 화면(아이 연계)에서 바로 연결 코드를 만든다. 질문 · 답 칸은 연결 뒤에 보인다(11/10 경진님).
+  const notLinked = !!(caseId && app.data && app.data.status !== 'LINKED');
+  const noAnswers = caseId && app.data && app.data.can_read_feed && !notLinked && v.answers.length === 0;
+  const expires = app.data?.code_expires_at ? new Date(app.data.code_expires_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   return (
     <div className="pg-ChildDetail">
       <div
@@ -309,6 +312,31 @@ export default function ChildDetail(props) {
           {notice ? <Notice value={notice} /> : null}
           {adminOnly ? <p className="note">아이가 보낸 내용은 담당 상담사만 볼 수 있어요.</p> : null}
           {noAnswers ? <p className="note">아직 아이가 보낸 답이 없어요.</p> : null}
+          {notLinked ? (
+            <section className="card" aria-label="앱 연결" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h2 className="h2">콩콩 앱 연결</h2>
+              {!app.data.can_read_feed ? (
+                <div className="sub">코드는 담당 상담사가 만들어요.</div>
+              ) : (
+                <>
+                  <div className="sub">
+                    {app.data.status === 'INVITED' && !app.invite
+                      ? `연결 코드를 보냈고 아이가 아직 연결하지 않았어요${expires ? ` (코드는 ${expires}까지)` : ''}. 코드를 잊었으면 새로 만들어 주세요.`
+                      : '코드를 만들어 아이에게 직접 알려 주세요. 코드는 72시간 동안, 한 번만 쓸 수 있어요.'}
+                  </div>
+                  {app.invite ? (
+                    <div style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '1px' }}>{app.invite.code}</div>
+                  ) : null}
+                  <div>
+                    <button type="button" className="btn btn-s" disabled={app.busy} onClick={app.createInvite}>
+                      {app.data.status === 'INVITED' ? '코드 다시 만들기' : '연결 코드 만들기'}
+                    </button>
+                  </div>
+                  {app.actionError ? <p className="note acc" role="alert" style={{ margin: '0' }}>{app.actionError}</p> : null}
+                </>
+              )}
+            </section>
+          ) : null}
           {v.k.hasQuote ? (
             <>
               <section aria-label="아이가 쓴 글" className="quote">
@@ -321,6 +349,8 @@ export default function ChildDetail(props) {
             </>
           ) : null}
 
+          {notLinked ? null : (
+            <>
           <section className="card" aria-label="질문 및 답변" style={{ padding: '20px 22px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
               <h2 className="h2">질문 및 답변</h2>
@@ -561,6 +591,9 @@ export default function ChildDetail(props) {
               </Fragment>
             ))}
           </section>
+
+            </>
+          )}
 
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>

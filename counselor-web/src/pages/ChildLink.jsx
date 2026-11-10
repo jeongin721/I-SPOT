@@ -1,6 +1,6 @@
 // 아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태)
 // 원본: 다솔 님 디자인 counselor-web-design/ChildLink.dc.html. 담당 사례의 콩콩 연결 상태를 서버 값으로 보인다(API_CONTRACT 24절).
-// 연결 전 사례는 콩콩 탭으로 가서 연결 코드를 만들고, 연결된 사례는 아이 상세로 간다.
+// 사례를 누르면 아이 상세로 간다. 연결 전이면 아이 상세에서 연결 코드를 만든다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -46,9 +46,9 @@ class Logic extends DCLogic {
         ini: row.child_alias.slice(0, 1),
         last: childDateTime(row.last_response_at),
         count: linked ? (row.recent_answers === null ? '—' : `응답 ${row.recent_answers}번`) : '미연결',
-        // 연결 전에는 콩콩 탭(연결 코드 만들기)으로, 연결 뒤에는 아이 상세로 간다.
-        to: screenHref(linked ? '/ChildDetail' : '/CaseApp', { caseId: row.case_id }),
-        alert: row.open_alert_reason
+        // 늘 아이 상세(아이 연계 메뉴 안)로 간다. 연결 전이면 그 화면에서 연결 코드를 만든다(11/10 경진님).
+        to: screenHref('/ChildDetail', { caseId: row.case_id }),
+        alert: row.open_alert_urgent
           ? { at: childDateTime(row.open_alert_at), text: CHILD_ALERT_TEXT[row.open_alert_reason] || CHILD_ALERT_TEXT.NEEDS_CHECK }
           : null,
       };
