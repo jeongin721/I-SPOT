@@ -35,3 +35,16 @@
   background: #2c2b27 !important;
   color: #ece8df !important;
 }
+/* 쪽 번호(사례 관리 목록과 같은 모양, 11/10) */
+.pg-ChildLink .pager { display: flex; justify-content: center; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pg-ChildLink .pg-n { min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: #4a4740; cursor: pointer; font-variant-numeric: tabular-nums; }
+.pg-ChildLink .pg-n:hover:not(:disabled) { background: #f1efea; }
+.pg-ChildLink .pg-n.on { background: #2b2a26; color: #eadbb5; font-weight: 700; }
+.pg-ChildLink .pg-n.pg-gap { color: #8a867d; letter-spacing: 0.1em; }
+.pg-ChildLink .pg-n:disabled { color: #c9c4b8; cursor: default; }
+.pg-ChildLink .pg-n.pg-ar { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; height: 40px; color: #2b2a26; }
+.pg-ChildLink .pg-n.pg-ar:disabled { color: #c9c4b8; }
+.pg-ChildLink .thm-root.dark .pg-n { color: #d5d0c5 !important; }
+.pg-ChildLink .thm-root.dark .pg-n:hover:not(:disabled) { background: #33312c !important; }
+.pg-ChildLink .thm-root.dark .pg-n.on { background: #eadbb5 !important; color: #2b2a26 !important; }
+.pg-ChildLink .thm-root.dark .pg-n:disabled { color: #5a564e !important; }
