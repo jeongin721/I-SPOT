@@ -270,6 +270,16 @@ def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
     return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else event.payload.get("alert_reason", "CONTACT_REQUEST")
 
 
+def _is_urgent(event: ChildAppEvent) -> bool:
+    """긴급 알림 · 바로 확인 답 · 아이의 연락 요청. 글 · 추가 질문 답은 확인 필요다."""
+
+    return (
+        event.kind == ChildAppEventKind.ALERT
+        or event.level == ChildAnswerLevel.RED
+        or event.payload.get("alert_reason") == "CONTACT_REQUEST"
+    )
+
+
 def _open_alerts(
     db: Session,
     viewer: User,
@@ -303,6 +313,8 @@ def _open_alerts(
             "child_alias": case.child_alias,
             "case_number": case.case_number,
             "reason": _alert_reason(event, case, viewer),
+            # 바로 연락을 판단해야 하는 알림. 담당이 아닌 관리자도 이유(NEEDS_CHECK)와 따로 이 값으로 긴급을 안다(민규 #165 재리뷰).
+            "urgent": _is_urgent(event),
             # 답 기반 알림은 내용을 볼 수 있는 담당 상담사만 닫는다.
             "can_ack": event.kind == ChildAppEventKind.ALERT or case.counselor_id == viewer.id,
             "repeat_count": int(event.payload.get("repeat_count", 0)),
@@ -550,6 +562,8 @@ def submit_answers(
     question_set_id: uuid.UUID,
     answers: List[ChildAnswerInput],
 ) -> None:
+    # 잠금 순서: 연결 행 → 질문 묶음 → AI 초안. 승인 · 고치기도 연결 행을 먼저 잠가 서로 기다리게 한다(교착 방지, 민규 #165 재리뷰).
+    db.scalar(select(ChildAppLink).where(ChildAppLink.id == link.id).with_for_update())
     row = db.scalar(
         select(ChildQuestionSet)
         .where(ChildQuestionSet.id == question_set_id, ChildQuestionSet.case_id == link.case_id)
@@ -605,11 +619,19 @@ def submit_answers(
     )
     wrote_text = any(item.get("wrote_text") for item in items)
     # AI 추가 질문은 위험 답의 후속이라 답을 판정하지 않고 확인 필요로만 올린다(민규 #165 리뷰 5).
-    followup = any(item["question_id"].startswith(AI_QUESTION_PREFIX) for item in items)
+    followups = [item for item in items if item["question_id"].startswith(AI_QUESTION_PREFIX)]
+    followup = bool(followups)
     payload: Dict[str, Any] = {"items": items}
 
     if wants_contact or wrote_text or followup:
-        payload["alert_reason"] = "CONTACT_REQUEST" if wants_contact else "TEXT_ANSWER" if wrote_text else "FOLLOWUP_ANSWER"
+        # 추가 질문을 모두 '답하기 어려워요' 로 넘겼으면 답했다고 하지 않는다.
+        skipped = all(item["level"] == ChildAnswerLevel.SKIP.value for item in followups)
+        payload["alert_reason"] = (
+            "CONTACT_REQUEST" if wants_contact
+            else "TEXT_ANSWER" if wrote_text
+            else "FOLLOWUP_SKIPPED" if skipped
+            else "FOLLOWUP_ANSWER"
+        )
 
     _add_event(
         db,

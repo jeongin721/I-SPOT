@@ -803,3 +803,38 @@ def test_followup_answer_needs_check_and_closed_case_gets_no_draft(
     db.get(Case, uuid.UUID(case["id"])).status = CaseStatus.CLOSED
     db.commit()
     assert client.post(AI_URL.format(case["id"]), headers=counselor_headers).status_code == 409
+
+
+def test_urgent_flag_and_skipped_followup(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict, ai_generator
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+
+    # 담당이 아닌 관리자는 이유를 모르지만 긴급인 것은 안다.
+    admin_alert = client.get("/api/v1/child-app-alerts/open", headers=admin_headers).json()["data"][0]
+    assert admin_alert["reason"] == "NEEDS_CHECK" and admin_alert["urgent"] is True
+
+    _approve(client, counselor_headers, case["id"], draft)
+    pending = _home(client, device)["pending"]
+    skipped = {"answers": [{"question_id": pending["questions"][0]["id"], "skipped": True}]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=skipped, headers=device).status_code == 200
+
+    alerts = _view(client, counselor_headers, case["id"])["open_alerts"]
+    # 최신(추가 질문)이 앞이어도 위험 답은 긴급으로 남는다.
+    assert [(alert["reason"], alert["urgent"]) for alert in alerts] == [("FOLLOWUP_SKIPPED", False), ("RED_ANSWER", True)]
+
+
+def test_contact_request_stays_urgent(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "free"])
+    pending = _home(client, device)["pending"]
+    answers = {"answers": [
+        {"question_id": "sleep", "choice_index": 0},
+        {"question_id": "home", "choice_index": 0},
+        {"question_id": "free", "chip": "전화로 연락받고 싶어요"},
+    ]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=answers, headers=device).status_code == 200
+    alert = _view(client, counselor_headers, case["id"])["open_alerts"][0]
+    assert alert["reason"] == "CONTACT_REQUEST" and alert["urgent"] is True
