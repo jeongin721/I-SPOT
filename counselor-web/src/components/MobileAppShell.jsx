@@ -3,9 +3,9 @@
 //  - 로그인하지 않았으면 로그인 화면으로 보내고, 로그인한 뒤 이 화면으로 돌아온다(appReturn.ts).
 //  - 연결이 없어 로그인 확인이 안 되면(확인 중 · 오류) 이 폰에 기억한 같은 토큰의 계정으로 이어서 쓴다(appOffline.ts).
 //    그래서 연결 없이 앱을 열어도 녹음 · 대기열이 보인다. 401(로그인 만료)은 로그인 화면으로 간다.
-//  - 알림: 업로드 실패 줄만 서버 · 폰 값으로 보인다. 디자인의 '상담 전 브리핑' · '오늘 남은 상담' 알림은 그 화면(앱 · 브리핑 · 일정)을
-//    아직 만들지 않아 넣지 않았다.
-//  - 홈 · 일정 · 메모 탭과 설정 단추는 아직 만들지 않은 화면이라 누르면 '준비 중' 안내만 잠깐 보인다.
+//  - 알림: 업로드 실패 줄(폰 대기열) + '오늘 남은 상담 N건'(오늘 일정 중 지금 뒤의 상담, 서버 일정). 디자인의
+//    '상담 전 브리핑이 준비됐어요' 는 브리핑이 '준비됐는지' 정할 서버 값이 없어 넣지 않았다.
+//  - 홈 · 일정 · 메모 탭과 설정 단추는 각 앱 화면으로 간다(11/10). 홈은 머리에 제목 대신 I-SPOT 표시(디자인).
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
@@ -14,15 +14,16 @@ import { rememberAppReturn } from '../data/appReturn';
 import { cachedAppUserId, rememberAppUser } from '../data/appOffline';
 import { retryRecording, uploadAsNewSession } from '../data/appRecordings';
 import { useAppRecordings } from '../data/useAppRecordings';
+import { useAppSchedule, ymd } from '../data/useAppSchedule';
 import { useTheme } from '../theme';
 import '../styles/mobile-app.css';
 
 const TABS = [
-  ['home', '홈', null],
+  ['home', '홈', '/AppHome'],
   ['up', '업로드', '/AppUpload'],
   ['rec', '', '/AppRecord'],
-  ['cal', '일정', null],
-  ['memo', '메모', null],
+  ['cal', '일정', '/AppSchedule'],
+  ['memo', '메모', '/AppMemo'],
 ];
 
 export function whenText(ms) {
@@ -79,12 +80,14 @@ function TabIcon({ k }) {
 }
 
 /**
- * @param cur       지금 탭('rec' · 'up')
- * @param sub       제목 위 작은 글
- * @param title     제목
- * @param children  (ctx) => 본문. ctx = { userId, items, fails, loaded, storageError, notReady }
+ * @param cur       지금 탭('home' · 'up' · 'rec' · 'cal' · 'memo' · 'set'(설정 단추))
+ * @param screen    화면 이름(맨 바깥 .ma-s-<screen>, 화면별 규칙용)
+ * @param sub       제목 위 작은 글(글 · 요소, 또는 ({ userId }) => 요소 — 훅을 쓰는 작은 컴포넌트를 넣을 때)
+ * @param title     제목. brand 면 제목 대신 I-SPOT 표시(홈)
+ * @param head      ({ userId }) => 작은 제목 + 제목 요소(둘이 같은 서버 값을 쓸 때, 브리핑)
+ * @param children  (ctx) => 본문. ctx = { userId, me, logout, items, fails, loaded, storageError, notReady }
  */
-export default function MobileAppShell({ cur, sub, title, children }) {
+export default function MobileAppShell({ cur, screen, sub, title, titleStyle, brand, head, children }) {
   const session = useAuthSession();
   const { pathname } = useLocation();
   const theme = useTheme();
@@ -93,6 +96,8 @@ export default function MobileAppShell({ cur, sub, title, children }) {
   const { items, loaded, storageError } = useAppRecordings(userId);
   const [ntOpen, setNtOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const today = ymd(new Date());
+  const todaySchedule = useAppSchedule(!!signedId, today, today);
   const toastTimer = useRef(null);
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
@@ -120,24 +125,48 @@ export default function MobileAppShell({ cur, sub, title, children }) {
     act: x.needNewSession ? '새 회차로 올리기' : '다시 올리기',
     go: () => void (x.needNewSession ? uploadAsNewSession(x.id) : retryRecording(x.id)),
   }));
+  const nowHm = new Date().toTimeString().slice(0, 5);
+  const leftToday = todaySchedule.items.filter((e) => e.kind === 'CONSULT' && (!e.time || e.time >= nowHm));
+  if (leftToday.length > 0) {
+    notes.push({
+      id: 'today',
+      plain: true,
+      title: `오늘 남은 상담 ${leftToday.length}건`,
+      sub: leftToday.map((e) => [e.time, e.child_alias].filter(Boolean).join(' ')).join(' · '),
+      desc: '',
+      href: '/AppSchedule',
+      linkLabel: '일정 보기',
+    });
+  }
   const stop = (ev) => ev.stopPropagation();
+  const rootCls = 'ma-app' + (screen ? ' ma-s-' + screen : '') + (theme.dark ? ' ma-dark' : '');
 
   return (
-    <div className={theme.dark ? 'ma-app ma-dark' : 'ma-app'}>
+    <div className={rootCls}>
       <header className="ma-ahd">
         <div className="ma-tl">
-          <div className="ma-sub">{sub}</div>
-          <h1>{title}</h1>
+          {head ? (
+            head({ userId })
+          ) : brand ? (
+            <span className="ma-brand">
+              <span className="ma-mk">IS</span>I-SPOT
+            </span>
+          ) : (
+            <>
+              <div className="ma-sub">{typeof sub === 'function' ? sub({ userId }) : sub}</div>
+              <h1 style={titleStyle}>{title}</h1>
+            </>
+          )}
         </div>
         <button type="button" className="ma-ibtn" aria-label={`알림 ${notes.length}건`} onClick={() => setNtOpen(!ntOpen)}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg>
           {notes.length > 0 && <span className="ma-badge">{notes.length}</span>}
         </button>
-        <a className="ma-ibtn" href="#" aria-label="설정" aria-current="false" onClick={(ev) => { ev.preventDefault(); notReady('설정'); }}>
+        <Link className={cur === 'set' ? 'ma-ibtn ma-on' : 'ma-ibtn'} to="/AppSettings" aria-label="설정" aria-current={cur === 'set' ? 'page' : 'false'}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        </a>
+        </Link>
       </header>
-      <main className="ma-amain">{children({ userId, items, fails, loaded: loaded && !!userId, storageError, notReady })}</main>
+      <main className="ma-amain">{children({ userId, me: session.me, logout: session.logout, items, fails, loaded: loaded && !!userId, storageError, notReady })}</main>
       <nav className="ma-tabs" aria-label="앱 메뉴">
         {TABS.map(([k, label, to]) => {
           const cls = 'ma-tab' + (k === 'rec' ? ' ma-tab-rec' : '') + (k === cur ? ' ma-on' : '');
@@ -173,13 +202,20 @@ export default function MobileAppShell({ cur, sub, title, children }) {
             </div>
             {notes.length === 0 && <span className="ma-note">새 알림이 없어요</span>}
             {notes.map((n) => (
-              <div key={n.id} className="ma-nt ma-red">
+              <div key={n.id} className={n.plain ? 'ma-nt' : 'ma-nt ma-red'}>
                 <b>{n.title}</b>
                 <span className="ma-note">{n.sub}</span>
                 {n.desc && <span style={{ fontSize: '13.5px' }}>{n.desc}</span>}
-                <button type="button" className="ma-btn ma-btn-sm ma-btn-p" style={{ alignSelf: 'flex-start' }} onClick={n.go}>
-                  {n.act}
-                </button>
+                {n.go && (
+                  <button type="button" className="ma-btn ma-btn-sm ma-btn-p" style={{ alignSelf: 'flex-start' }} onClick={n.go}>
+                    {n.act}
+                  </button>
+                )}
+                {n.href && (
+                  <Link className="ma-btn ma-btn-sm" style={{ alignSelf: 'flex-start' }} to={n.href} onClick={() => setNtOpen(false)}>
+                    {n.linkLabel}
+                  </Link>
+                )}
               </div>
             ))}
           </section>

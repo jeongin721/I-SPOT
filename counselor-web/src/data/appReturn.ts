@@ -2,7 +2,7 @@
 // 로그인 화면은 웹과 같이 쓴다. 이 표시가 없으면 로그인 화면은 원래대로 웹 홈(/Main)으로 간다.
 
 const KEY = "ispot-app-return";
-const ALLOWED = new Set(["/AppRecord", "/AppUpload"]);
+const ALLOWED = new Set(["/AppHome", "/AppCases", "/AppBrief", "/AppRecord", "/AppUpload", "/AppSchedule", "/AppMemo", "/AppSettings"]);
 
 export function rememberAppReturn(path: string): void {
   try {
