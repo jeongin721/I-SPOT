@@ -14,9 +14,12 @@
 
 import { useSyncExternalStore } from "react";
 
-import { RECORDING_LOCK_PREFIX, discardDraft, saveChunk, startDraft, touchDraft, type RecordingDraft } from "./appRecordings";
+import { DbBlockedError, RECORDING_LOCK_PREFIX, discardDraft, saveChunk, startDraft, touchDraft, type RecordingDraft } from "./appRecordings";
 
 export type RecorderPhase = "idle" | "rec" | "paused" | "done";
+
+/** 녹음 비트레이트(말소리 · 원문 변환용). */
+export const AUDIO_BPS = 32_000;
 
 const CANDIDATES: { mime: string; ext: string }[] = [
   { mime: "audio/mp4", ext: ".m4a" },
@@ -168,18 +171,25 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
 
   try {
     await startDraft(draft);
-  } catch {
+  } catch (caught) {
     releaseMic();
-    set({ error: "폰에 녹음을 저장할 수 없어요. 사생활 보호(시크릿) 창이면 일반 창으로 열어 주세요." });
+    set({
+      error:
+        caught instanceof DbBlockedError
+          ? caught.message
+          : "폰에 녹음을 저장할 수 없어요. 사생활 보호(시크릿) 창이면 일반 창으로 열어 주세요.",
+    });
     return false;
   }
 
   let media: MediaRecorder;
 
+  // 말소리라 낮게 잡는다(1시간 ≈ 14MB). 지정이 없으면 브라우저마다 128kbps 안팎이라 1시간이면 50MB 를 넘는다(민규 #169).
+  // 원문 변환 품질은 실제 폰 녹음으로 확인할 것.
   try {
-    media = new MediaRecorder(stream, { mimeType: format.mime });
+    media = new MediaRecorder(stream, { mimeType: format.mime, audioBitsPerSecond: AUDIO_BPS });
   } catch {
-    media = new MediaRecorder(stream);
+    media = new MediaRecorder(stream, { audioBitsPerSecond: AUDIO_BPS });
   }
 
   seq = 0;

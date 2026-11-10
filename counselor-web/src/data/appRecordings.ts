@@ -6,9 +6,11 @@
 //
 //  - 녹음은 1초마다 조각(chunk)으로 저장한다. 앱이 꺼지거나 화면이 닫혀도 녹음된 데까지는 남고, 다음에 열면
 //    업로드 목록에 '실패' 로 올라와 다시 올릴 수 있다(recoverDrafts).
-//  - 조각 · 파일 본문은 Blob 이 아니라 바이트(ArrayBuffer)로 저장한다. iPhone Safari 는 IndexedDB 에서 꺼낸 Blob 을 합친 뒤
+//  - 조각은 Blob 이 아니라 바이트(ArrayBuffer)로 저장한다. iPhone Safari 는 IndexedDB 에서 꺼낸 Blob 을 합친 뒤
 //    원래 조각을 지우면 합친 Blob 을 읽지 못해 올리기가 멈출 수 있어서다(11/10 실제 폰에서 45초 녹음이 끝없이 '올리는 중').
-//    본문은 목록 줄과 다른 저장소(bodies)에 둔다. 줄 상태를 바꿀 때마다 수십 MB 를 다시 읽고 쓰지 않게.
+//  - 녹음을 마쳐도 조각을 하나로 합쳐 다시 저장하지 않는다. 조각은 그대로 두고(chunked) 올릴 때만 몇 MB 씩 이어 붙인 Blob 을 만든다
+//    (민규 #169 — 조각 전부 + 합친 Blob + 본문이 한꺼번에 메모리에 올라가 1시간 녹음이면 탭이 죽을 수 있었다). 끊긴 녹음 되살리기도
+//    조각을 읽지 않고 줄만 만든다. 폰의 음성 파일도 1MB 씩 잘라 조각으로 넣는다. 옛 줄(blob · bodies)도 읽는다.
 //  - 단계마다 시간 제한을 둔다(연결이 걸려 응답이 오지 않으면 '실패' 로 두고 자동으로 다시 올린다). 전에는 제한이 없어
 //    요청 하나가 멈추면 그 줄이 계속 '올리는 중' 이고 대기열 전체가 멈췄다.
 //  - 올리기가 실패하면(연결 끊김 등) 그 단계를 기억한다. 연결이 돌아오면(online 이벤트) · 앱을 다시 열면 · 1분마다 실패한 단계부터
@@ -45,7 +47,9 @@ export interface RecordingItem {
   mime: string;
   size: number;
   durationMs: number;
-  /** 본문이 bodies 저장소에 있는가. 다 올리면 지운다. */
+  /** 본문이 조각(chunks, 녹음 ID 로 묶임)으로 있는가. 다 올리면 지운다. */
+  chunked?: boolean;
+  /** (11/10 판) 본문이 bodies 저장소에 한 덩이로 있는가. */
   hasBody?: boolean;
   /** (옛 줄) 본문 Blob. 새 줄은 bodies 에 둔다. */
   blob?: Blob | null;
@@ -79,6 +83,8 @@ export interface RecordingDraft {
   mime: string;
   ext: string;
   durationMs: number;
+  /** 지금까지 저장한 조각 크기 합(바이트). 옛 판은 키가 없다. */
+  bytes?: number;
   /** 마지막으로 조각을 저장(또는 일시정지 중 살아 있음을 표시)한 시각. 오래되었으면(녹음기가 멈춤) 되살린다. */
   heartbeat: number;
 }
@@ -101,6 +107,13 @@ const UPLOADABLE: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_FAILED"];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/** 다른 탭이 옛 판 저장소를 열고 있어 열 수 없다. */
+export class DbBlockedError extends Error {
+  constructor() {
+    super("앱이 다른 탭에도 열려 있어요. 다른 탭을 모두 닫고 다시 해 주세요.");
+  }
+}
+
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
@@ -122,7 +135,18 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(DRAFTS)) db.createObjectStore(DRAFTS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(CHUNKS)) db.createObjectStore(CHUNKS, { keyPath: ["draftId", "seq"] });
     };
-    open.onsuccess = () => resolve(open.result);
+    // 옛 판을 연 탭이 남아 있으면 판 올리기가 멈춘다(민규 #169). 기다리지 않고 알려 그 탭을 닫게 한다.
+    open.onblocked = () => reject(new DbBlockedError());
+    open.onsuccess = () => {
+      const db = open.result;
+
+      // 다음 판이 열리려 하면 이 연결을 닫아 막지 않는다.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
     open.onerror = () => reject(open.error);
   });
   dbPromise.catch(() => {
@@ -186,15 +210,6 @@ async function putItem(item: RecordingItem): Promise<void> {
   changed();
 }
 
-/** 줄과 본문을 한 거래로 넣는다(본문만 남거나 줄만 남지 않게). */
-async function putItemWithBody(item: RecordingItem, body: ArrayBuffer): Promise<void> {
-  await tx([ITEMS, BODIES], "readwrite", (t) => {
-    t.objectStore(BODIES).put(body, item.id);
-    t.objectStore(ITEMS).put({ ...item, hasBody: true });
-  });
-  changed();
-}
-
 async function patchItem(id: string, patch: Partial<RecordingItem>): Promise<RecordingItem | null> {
   const item = await getItem(id);
 
@@ -207,41 +222,112 @@ async function patchItem(id: string, patch: Partial<RecordingItem>): Promise<Rec
   return next;
 }
 
-/** 본문이 남아 있는가(옛 줄은 blob, 새 줄은 hasBody). */
+/** 본문이 남아 있는가(조각 · 옛 판 blob · bodies). */
 function hasPayload(item: RecordingItem): boolean {
-  return !!item.hasBody || !!item.blob;
+  return !!item.chunked || !!item.hasBody || !!item.blob;
 }
 
-async function readBody(item: RecordingItem): Promise<BlobPart | null> {
+const chunkRange = (id: string) => IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]);
+
+/** 이어 붙일 때 한 번에 모으는 크기. 모은 만큼 Blob 으로 합치고 바이트는 놓는다(메모리는 대략 파일 크기 + 이만큼). */
+const ASSEMBLE_BATCH = 4 * 1024 * 1024;
+
+/** 조각을 차례로 읽어 하나의 Blob 으로 잇는다. 조각을 한꺼번에 들지 않는다. */
+function assembleChunks(id: string, mime: string): Promise<Blob | null> {
+  return openDb().then(
+    (db) =>
+      new Promise<Blob | null>((resolve, reject) => {
+        const t = db.transaction([CHUNKS], "readonly");
+        const cursorReq = t.objectStore(CHUNKS).openCursor(chunkRange(id));
+        let blob: Blob | null = null;
+        let parts: BlobPart[] = [];
+        let pending = 0;
+        let count = 0;
+        const flush = () => {
+          if (parts.length === 0) return;
+          blob = new Blob(blob ? [blob, ...parts] : parts, { type: mime });
+          parts = [];
+          pending = 0;
+        };
+
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+
+          if (!cursor) return;
+
+          const row = cursor.value as { buf?: ArrayBuffer; blob?: Blob };
+          const part = (row.buf ?? row.blob) as BlobPart;
+
+          parts.push(part);
+          pending += row.buf ? row.buf.byteLength : row.blob?.size ?? 0;
+          count += 1;
+          if (pending >= ASSEMBLE_BATCH) flush();
+          cursor.continue();
+        };
+        t.oncomplete = () => {
+          flush();
+          resolve(count > 0 ? blob : null);
+        };
+        t.onerror = () => reject(t.error);
+      }),
+  );
+}
+
+/** 조각 크기 합(줄을 만들 때 크기를 모르면). 조각을 하나씩만 읽는다. */
+function chunkBytes(id: string): Promise<number> {
+  return openDb().then(
+    (db) =>
+      new Promise<number>((resolve, reject) => {
+        const t = db.transaction([CHUNKS], "readonly");
+        const cursorReq = t.objectStore(CHUNKS).openCursor(chunkRange(id));
+        let total = 0;
+
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+
+          if (!cursor) return;
+
+          const row = cursor.value as { buf?: ArrayBuffer; blob?: Blob };
+
+          total += row.buf ? row.buf.byteLength : row.blob?.size ?? 0;
+          cursor.continue();
+        };
+        t.oncomplete = () => resolve(total);
+        t.onerror = () => reject(t.error);
+      }),
+  );
+}
+
+async function readBody(item: RecordingItem): Promise<Blob | null> {
   if (item.blob) return item.blob;
+  if (item.chunked) return assembleChunks(item.id, item.mime);
   if (!item.hasBody) return null;
 
   const body = await tx<ArrayBuffer>([BODIES], "readonly", (t) => t.objectStore(BODIES).get(item.id));
 
-  return body ?? null;
+  return body ? new Blob([body], { type: item.mime }) : null;
 }
 
-async function dropBody(id: string, patch: Partial<RecordingItem>): Promise<void> {
+/** 줄의 본문(조각 · bodies)을 지운다. 줄은 patch 를 넣어 남기거나(keep) 함께 지운다. */
+async function dropPayload(id: string, keep: Partial<RecordingItem> | null): Promise<void> {
   const item = await getItem(id);
 
-  if (!item) return;
-
-  await tx([ITEMS, BODIES], "readwrite", (t) => {
+  await tx([ITEMS, BODIES, CHUNKS], "readwrite", (t) => {
     t.objectStore(BODIES).delete(id);
-    t.objectStore(ITEMS).put({ ...item, ...patch, hasBody: false, blob: null, updatedAt: Date.now() });
+    t.objectStore(CHUNKS).delete(chunkRange(id));
+    if (keep && item) t.objectStore(ITEMS).put({ ...item, ...keep, chunked: false, hasBody: false, blob: null, updatedAt: Date.now() });
+    else t.objectStore(ITEMS).delete(id);
   });
   changed();
 }
+
+const dropBody = (id: string, patch: Partial<RecordingItem>) => dropPayload(id, patch);
 
 /** 목록에서 지운다(파일 본문도). 올리는 중이면 지우지 않는다. */
 export async function removeRecording(id: string): Promise<void> {
   if (activeId === id) return;
 
-  await tx([ITEMS, BODIES], "readwrite", (t) => {
-    t.objectStore(ITEMS).delete(id);
-    t.objectStore(BODIES).delete(id);
-  });
-  changed();
+  await dropPayload(id, null);
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +348,7 @@ export async function saveChunk(draftId: string, seq: number, blob: Blob, durati
     const read = drafts.get(draftId);
 
     read.onsuccess = () => {
-      if (read.result) drafts.put({ ...read.result, durationMs, heartbeat: Date.now() });
+      if (read.result) drafts.put({ ...read.result, durationMs, bytes: (read.result.bytes ?? 0) + buf.byteLength, heartbeat: Date.now() });
     };
   });
 }
@@ -279,17 +365,16 @@ export async function touchDraft(draftId: string, durationMs: number): Promise<v
   });
 }
 
-async function draftBytes(draftId: string, mime: string): Promise<ArrayBuffer | null> {
-  const range = IDBKeyRange.bound([draftId, 0], [draftId, Number.MAX_SAFE_INTEGER]);
-  const rows = ((await tx<{ seq: number; buf?: ArrayBuffer; blob?: Blob }[]>([CHUNKS], "readonly", (t) =>
-    t.objectStore(CHUNKS).getAll(range),
-  )) ?? []) as { seq: number; buf?: ArrayBuffer; blob?: Blob }[];
-
-  if (rows.length === 0) return null;
-
-  const parts = rows.sort((a, b) => a.seq - b.seq).map((row) => (row.buf ?? row.blob) as BlobPart);
-
-  return new Blob(parts, { type: mime }).arrayBuffer();
+/**
+ * 녹음 머리 줄을 지우고 같은 거래에서 대기열 줄을 넣는다. 조각은 그대로 둔다(그 녹음 ID 로 묶여 대기열 줄의 본문이 된다).
+ * 한 거래라 앱이 그 사이에 꺼져도 머리 줄만 남거나 둘 다 남지 않는다.
+ */
+async function promoteDraft(draftId: string, item: RecordingItem): Promise<void> {
+  await tx([DRAFTS, ITEMS], "readwrite", (t) => {
+    t.objectStore(DRAFTS).delete(draftId);
+    t.objectStore(ITEMS).put({ ...item, chunked: true });
+  });
+  changed();
 }
 
 async function dropDraft(draftId: string): Promise<void> {
@@ -341,10 +426,9 @@ function itemFromDraft(draft: RecordingDraft, fileName: string, size: number, du
 
 /** 녹음을 마쳤다. 조각을 하나의 파일로 묶어 대기열에 넣고 바로 올리기 시작한다. */
 export async function finishDraft(draft: RecordingDraft, fileName: string, durationMs: number): Promise<string> {
-  const bytes = (await draftBytes(draft.id, draft.mime)) ?? new ArrayBuffer(0);
+  const size = await chunkBytes(draft.id);
 
-  await putItemWithBody(itemFromDraft(draft, fileName, bytes.byteLength, durationMs), bytes);
-  await dropDraft(draft.id);
+  await promoteDraft(draft.id, itemFromDraft(draft, fileName, size, durationMs));
   void processQueue();
 
   return draft.id;
@@ -357,9 +441,18 @@ export async function finishDraft(draft: RecordingDraft, fileName: string, durat
 export async function enqueueAudioFile(input: { userId: string; caseId: string; childLabel: string; file: File; durationMs?: number }): Promise<string> {
   const now = Date.now();
   const id = `f${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const bytes = await input.file.arrayBuffer();
+  // 파일을 1MB 씩 잘라 조각으로 넣는다(한꺼번에 메모리에 올리지 않게).
+  const PIECE = 1024 * 1024;
 
-  await putItemWithBody(
+  for (let seq = 0, at = 0; at < input.file.size; seq += 1, at += PIECE) {
+    const buf = await input.file.slice(at, at + PIECE).arrayBuffer();
+
+    await tx([CHUNKS], "readwrite", (t) => {
+      t.objectStore(CHUNKS).put({ draftId: id, seq, buf });
+    });
+  }
+
+  await putItem(
     {
       id,
       userId: input.userId,
@@ -372,8 +465,9 @@ export async function enqueueAudioFile(input: { userId: string; caseId: string; 
       consultedAt: new Date(input.file.lastModified || now).toISOString(),
       fileName: input.file.name,
       mime: input.file.type || "application/octet-stream",
-      size: bytes.byteLength,
+      size: input.file.size,
       durationMs: input.durationMs ?? 0,
+      chunked: true,
       status: "wait",
       step: "createSession",
       error: null,
@@ -381,7 +475,6 @@ export async function enqueueAudioFile(input: { userId: string; caseId: string; 
       createdAt: now,
       updatedAt: now,
     },
-    bytes,
   );
   void processQueue();
 
@@ -415,20 +508,17 @@ export async function recoverDrafts(userId: string, activeDraftId: string | null
     if (held.has(RECORDING_LOCK_PREFIX + draft.id)) continue;
     if (Date.now() - draft.heartbeat < DRAFT_STALE_MS) continue;
 
-    const bytes = await draftBytes(draft.id, draft.mime);
+    // 조각을 읽지 않고 크기만 센다(되살릴 때 녹음 전체를 메모리에 올리지 않게).
+    const size = draft.bytes ?? (await chunkBytes(draft.id));
 
-    if (!bytes || bytes.byteLength === 0) {
+    if (size === 0) {
       await dropDraft(draft.id);
       continue;
     }
 
-    const item = itemFromDraft(draft, fileNameFor(draft, kindLabel(draft.consultationType)), bytes.byteLength, draft.durationMs);
+    const item = itemFromDraft(draft, fileNameFor(draft, kindLabel(draft.consultationType)), size, draft.durationMs);
 
-    await putItemWithBody(
-      { ...item, status: "fail", error: "녹음이 중간에 끊겼어요. 녹음된 데까지 저장해 두었어요.", autoRetry: false },
-      bytes,
-    );
-    await dropDraft(draft.id);
+    await promoteDraft(draft.id, { ...item, status: "fail", error: "녹음이 중간에 끊겼어요. 녹음된 데까지 저장해 두었어요.", autoRetry: false });
   }
 }
 
@@ -618,6 +708,7 @@ async function uploadOne(id: string, kindTitle: (type: ConsultationType) => stri
         const form = new FormData();
 
         form.append("file", new File([body], item.fileName, { type: item.mime }));
+        // 본문 Blob 은 조각을 이은 것이라 여기서 바이트를 새로 복사하지 않는다.
         if (item.durationMs > 0) form.append("duration_ms", String(Math.round(item.durationMs)));
 
         item = (await patchItem(id, { uploadSent: true })) ?? item;
@@ -694,10 +785,7 @@ async function drain(userId: string, includeFailed: boolean): Promise<void> {
     // 오래된 완료 줄 정리.
     for (const item of items) {
       if (item.status === "done" && Date.now() - item.updatedAt > DONE_KEEP_MS) {
-        await tx([ITEMS, BODIES], "readwrite", (t) => {
-          t.objectStore(ITEMS).delete(item.id);
-          t.objectStore(BODIES).delete(item.id);
-        });
+        await dropPayload(item.id, null);
       }
     }
 
