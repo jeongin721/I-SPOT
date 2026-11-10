@@ -501,6 +501,19 @@ def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) ->
     받은 답 · 알림 기록(피드)은 그대로 둔다."""
 
     case_id = link.case_id
+    # 다른 요청과 같은 순서(연결 행 → 질문 묶음)로 잠근다. 질문 묶음을 먼저 바꾸면 PostgreSQL 에서 질문 보내기 ·
+    # 추가 질문 승인과 서로 기다리다 교착(500)이 나고, 그사이 보낸 질문이 연결 없이 남았다(11/10 동시 요청 시험).
+    # 이미 해지됐으면 할 일이 없다.
+    locked = db.scalar(
+        select(ChildAppLink)
+        .where(ChildAppLink.id == link.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None:
+        db.rollback()
+        return
+    link = locked
     db.execute(
         update(ChildQuestionSet)
         .where(ChildQuestionSet.case_id == case_id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING)
