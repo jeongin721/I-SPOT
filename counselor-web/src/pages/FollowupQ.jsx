@@ -5,7 +5,12 @@
 // useSessionAnalysis)이고, 근거 위치는 useRiskSignals 가 원문에서 찾는다. 머리는 useSessionDetail · useCaseDetail 이 부르고,
 // 화면에 쓸 값은 src/data/screens/followupQ.ts 가 만든다(디자인 칸 → 서버 값 대응도 그 파일 머리에 있다).
 // 이 파일은 훅을 부르고 배치만 한다. 확인 사항 브리핑에 넣기 · 수정 · 직접 추가는 useFollowupChecks(18.1절)에 저장한다(10/30).
+// 다음 상담 체크리스트(useFollowupChecklist, 19절)가 켜져 있으면 rag 확인 사항을 메모와 한 목록(저장 전 초안)으로 합치고
+// (followupQ.ts mergeCheckItems · checksFromItems), 추가 질문 초안에 검토를 통과한 공식 근거를 붙인다. 공식 근거는 <Sources> 로 펼쳐 본다.
 // 추가 질문은 승인 목록(useFollowupQuestions, 18절)에 저장한다 — 카드 · 승인 · 수정 · 직접 추가는 디자인 마크업 그대로.
+// 문서 회차(2026-11-02): 초안은 3단계에 저장한 상담 요약 · 일지로 만든다(useSourceDocument, 들어올 때 없으면 한 번 만든다).
+// '3단계 내용으로 초안 다시 만들기' 단추만 덧붙였다(문서 회차에서만 보인다).
+import { useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -17,19 +22,46 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupChecks } from '../data/useFollowupChecks';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
+import { useSourceDocument } from '../data/useSourceDocument';
 import { needsLogin, signedIn } from '../data/screens/common';
-import { followupQValues } from '../data/screens/followupQ';
+import { checklistNeedsEvidence, followupQValues } from '../data/screens/followupQ';
 import { initialCheckState } from '../data/screens/followupChecks';
 import { initialQuestionState, questionsNeedEvidence } from '../data/screens/followupQuestions';
 import { readScreenIds } from '../data/screens/links';
 import { useScreenGo } from '../data/screens/useScreenGo';
 import { sessionCaseId } from '../data/screens/sessionDetail';
 import './FollowupQ.css';
+
+/** 공식 근거 펼침. url(법령 · 판례)은 새 창으로, 나머지는 발췌를 그 자리에서 보인다. */
+function Sources({ items }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <details className="src">
+      <summary className="note">공식 근거 보기</summary>
+      <ul>
+        {items.map((s) => (
+          <li key={s.key}>
+            {s.url ? (
+              <a href={s.url} target="_blank" rel="noopener noreferrer">
+                {s.label}
+              </a>
+            ) : (
+              <span className="src-label">{s.label}</span>
+            )}
+            {s.excerpt ? <div className="src-excerpt">{s.excerpt}</div> : null}
+            {s.why ? <div className="note">연결 이유 · {s.why}</div> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 class Logic extends DCLogic {
   constructor(props) {
@@ -55,14 +87,32 @@ function FollowupQScreen(props) {
   const enabled = signedIn(session);
   const detail = useSessionDetail(ids.sessionId, { enabled });
   const caseDetail = useCaseDetail(sessionCaseId(ids, detail), { enabled });
-  const analysis = useSessionAnalysis(ids.sessionId, { enabled });
+  // 문서 회차(2026-11-02): AI 분석 · 원문이 없고, 3단계에 저장한 칸으로 만든 초안(useSourceDocument)을 쓴다.
+  const known = detail.session !== null;
+  const fromDocument = detail.session?.source === 'DOCUMENT';
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled: enabled && known && !fromDocument });
+  const sourceDoc = useSourceDocument(ids.sessionId, { enabled: enabled && fromDocument });
   const questions = useFollowupQuestions(ids.sessionId, { enabled });
+  // 문서 회차는 분석이 없어 rag 체크리스트를 부르지 않는다.
+  const checklist = useFollowupChecklist(ids.sessionId, { enabled: enabled && known && !fromDocument, watch: analysis.processing || analysis.draftsPending });
   const checks = useFollowupChecks(ids.sessionId, { enabled });
-  // 추가 질문(초안 · 승인 목록)에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
-  const needEvidence = questionsNeedEvidence(analysis.analysis, questions.questions);
-  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled, needEvidence });
+  // 추가 질문(초안 · 승인 목록)이나 체크리스트 확인 사항에만 근거가 있어도 원문을 받아 근거 위치를 찾는다(민규 #113 R4).
+  // 체크리스트 쪽은 저장 초안에서 원문에 없는 발화 번호를 거르는 데도 쓴다(#125 재검증 L2).
+  const needEvidence =
+    questionsNeedEvidence(analysis.analysis, questions.questions) || checklistNeedsEvidence(checklist.checklist, ids.sessionId);
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: enabled && known && !fromDocument, needEvidence });
+  // 문서 회차에 들어왔는데 4단계 초안이 아직 없으면 한 번 만든다(실패하면 안내만 하고 되풀이하지 않는다).
+  const asked = useRef(false);
+  const doc = sourceDoc.document;
+  useEffect(() => {
+    if (!fromDocument || asked.current || !doc || doc.followup_draft || sourceDoc.drafting) return;
+    const status = detail.session?.status;
+    if (status !== 'AI_REVIEW_REQUIRED' && status !== 'APPROVED') return;
+    asked.current = true;
+    void sourceDoc.draftFollowups();
+  }, [fromDocument, doc, sourceDoc, detail.session?.status]);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checks, go });
+  const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checklist, checks, sourceDoc, go });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-FollowupQ">
@@ -92,7 +142,7 @@ function FollowupQScreen(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -128,6 +178,17 @@ function FollowupQScreen(props) {
               <span className="chip c-ai">{v.chip}</span>
             </div>
             <span className="note">{v.checkNote}</span>
+            {v.redraft ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-s"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={v.redraft.run}
+                disabled={v.redraft.disabled}
+              >
+                {v.redraft.label}
+              </button>
+            ) : null}
             {v.checksEmpty ? <span className="note">{v.checksEmpty}</span> : null}
             {(v.checks || []).map((c) => (
               <div key={c.key} className="qcard" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: '12px' }}>
@@ -140,10 +201,20 @@ function FollowupQScreen(props) {
                   style={{ width: '18px', height: '18px', marginTop: '4px', accentColor: '#C2A36B' }}
                 />
                 <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {c.chips.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {c.chips.map((chip) => (
+                        <span key={chip} className="chip c-ai">
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {v.ckNotEdit ? <span style={{ fontSize: '15px' }}>{c.text}</span> : null}
                   {v.ckIsEdit ? (
                     <textarea className="edit-in" rows="2" aria-label="확인 사항 수정" value={c.draft} onChange={c.setDraft}></textarea>
                   ) : null}
+                  {c.reason ? <span className="note">{c.reason}</span> : null}
                   {c.href ? (
                     <A className="note" to={c.href}>
                       근거 · {c.why}
@@ -151,6 +222,7 @@ function FollowupQScreen(props) {
                   ) : (
                     <span className="note">근거 · {c.mine ? '상담사 직접 추가' : c.why}</span>
                   )}
+                  <Sources items={c.sources} />
                 </div>
                 {c.edited ? <span className="chip c-sand">상담사 수정</span> : null}
               </div>
@@ -173,6 +245,42 @@ function FollowupQScreen(props) {
                 </div>
               </div>
             ))}
+            {v.ragStatus || v.ragNotice || v.ragRunLabel ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                {v.ragStatus ? <span className="note">{v.ragStatus}</span> : null}
+                {v.ragNotice ? <span className="note">{v.ragNotice}</span> : null}
+                {v.ragRunLabel ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-s"
+                    style={{ marginLeft: 'auto' }}
+                    disabled={v.ragRunDisabled}
+                    onClick={v.ragRun}
+                  >
+                    {v.ragRunLabel}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {v.ragError ? (
+              <div className="note" role="alert" style={{ color: '#A33B2E' }}>
+                {v.ragError}
+              </div>
+            ) : null}
+            {v.ckPendingNote ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                <span className="note">{v.ckPendingNote}</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-s"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={v.ckAddPending}
+                  disabled={!v.ckCanEdit || v.ckIsEdit}
+                >
+                  목록에 더하기
+                </button>
+              </div>
+            ) : null}
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
               <button type="button" className="btn btn-sm btn-s" onClick={v.ckAdd} disabled={!v.ckCanEdit}>
                 + 확인 사항 직접 추가
@@ -234,6 +342,8 @@ function FollowupQScreen(props) {
                   {q.aiDraft ? <span className="chip c-ai">AI 초안</span> : null}
                   {q.ok ? <span className="chip c-sel">{q.st}</span> : null}
                   {q.edited ? <span className="chip c-sand">상담사 수정</span> : null}
+                  {/* 고치는 중에는 숨긴다 — 고친 문장은 검토를 거치지 않았다(#125 교차검증 R4). */}
+                  {q.sourceChip && v.qNotEdit ? <span className="chip c-ai">{q.sourceChip}</span> : null}
                   {q.whyHref ? (
                     <A className="note" to={q.whyHref} style={{ marginLeft: 'auto' }}>
                       근거 · {q.why}
@@ -247,6 +357,8 @@ function FollowupQScreen(props) {
                 {v.qNotEdit ? (
                   <>
                     <div style={{ fontSize: '16px', fontWeight: '500' }}>"{q.text}"</div>
+                    <Sources items={q.sources} />
+                    {q.sourcesHidden ? <span className="note">문장을 고쳐 공식 근거를 숨겼습니다.</span> : null}
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
                       <button type="button" className={`btn btn-sm ${q.okCls}`} onClick={q.approve}>
                         {q.okLabel}

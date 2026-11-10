@@ -3,30 +3,34 @@
 // 서버 연결: useAdminCases(GET /cases 전체 쪽 + GET /auth/users). 검색 · 상담원 거르기는 받은 목록에서 한다.
 //
 // Backend 에 없는 값은 다른 값으로 대신 채우지 않는다(caseRows.ts 와 같은 규칙).
-//  - 위험도 · 신고접수일 · 관리 기간(신고접수일부터 셈): 사례 단위 값이 없어 '—'. 위험도 거르기 · 정렬 단추는 준비 중.
+//  - 위험도 · 신고접수일은 사례 목록과 같은 값(없으면 '—'). '위험도 상' 칸은 받은 목록에서 '상' 인 사례를 센다.
+//  - 관리 기간은 '—', 위험도 거르기 · 정렬 단추는 준비 중.
 //  - 최근 상담: 사례의 last_session_at 은 상담 일시를 넣지 않은 회차를 등록일로 채워 셈하므로 최근 상담일로 보이지 않는다.
 //  - 진행 단계(초기 조사 · 종결 검토): 없다. 사례 상태(진행 · 종결)만 보인다.
 //  - 재배정 필요(디자인: 담당 상담원 비활성): 진행 중 사례의 담당 계정이 비활성이거나 지워졌으면 그렇게 보인다.
 //    계정 목록을 받지 못하면 비활성은 알 수 없어 지워진 계정만 센다.
-// 이름은 아동 별칭이다(Backend 는 실명을 저장하지 않는다). 디자인처럼 이름은 링크가 아니고, 담당 상담원은 상담사 상세로 간다.
+// 이름은 아동 실명(등록된 사례), 없으면 별칭이다(실명과 함께 부름). 검색은 받은 목록 안에서 이름 · 별칭 · 사례 ID 의 일부로 찾는다.
+// 디자인처럼 이름은 링크가 아니고, 담당 상담원은 상담사 상세로 간다.
+// 줄 끝 '관리' 칸(2026-11-03, 디자인에 없음): '상담 이력'(회차를 보고 지우는 곳) 링크와 사례 '삭제'(확인 창 — data/useAdminDelete).
 
 import type { User } from "../../api/types";
-import { NOT_PROVIDED, toCaseRow, type CaseRow } from "../caseRows";
+import { NOT_PROVIDED, riskChipClass, toCaseRow, type CaseRow } from "../caseRows";
 import type { AdminCasesState } from "../useAdminCases";
+import { caseDeleteTarget, type DeleteTarget } from "../useAdminDelete";
 import type { AuthSession } from "../useAuthSession";
 import { staffDetailHref } from "./admin";
 import { NOT_READY, screenNotice, sidebarValues } from "./common";
+import { screenHref } from "./links";
 
 /** 상담원 거르기. ALL_STAFF 이면 전체, 아니면 담당 계정 ID. */
 export const ALL_STAFF = "all";
 
 export interface AdminCasesUiState {
   who: string;
-  q: string;
 }
 
 export function initialAdminCasesState(): AdminCasesUiState {
-  return { who: ALL_STAFF, q: "" };
+  return { who: ALL_STAFF };
 }
 
 interface AdminCasesInput {
@@ -34,6 +38,11 @@ interface AdminCasesInput {
   list: AdminCasesState;
   state: AdminCasesUiState;
   setState: (patch: Partial<AdminCasesUiState>) => void;
+  /** 계정에 묶인 검색어(data/useAccountSearch). */
+  search: string;
+  setSearch: (value: string) => void;
+  /** 사례 삭제 확인 창을 연다(useAdminDelete.ask). */
+  askDelete?: (target: DeleteTarget) => void;
 }
 
 interface Staff {
@@ -80,27 +89,36 @@ export function adminCasesValues(input: AdminCasesInput) {
   // 고른 상담원이 목록에서 사라졌으면(다른 관리자 계정으로 바뀜 등) 전체로 본다.
   const who = staff.some((s) => s.id === state.who) ? state.who : ALL_STAFF;
 
-  const q = state.q.trim().toLowerCase();
+  const q = input.search.trim().toLowerCase();
   const rows = all
     .filter(({ source }) => who === ALL_STAFF || source.counselor_id === who)
-    .filter(({ row }) => !q || row.alias.toLowerCase().includes(q) || row.caseNumber.toLowerCase().includes(q))
+    .filter(
+      ({ row }) =>
+        !q ||
+        row.name.toLowerCase().includes(q) ||
+        row.alias.toLowerCase().includes(q) ||
+        row.caseNumber.toLowerCase().includes(q),
+    )
     .map(({ source, row }) => {
       const reassign = needsReassign(row, source.counselor_id, users);
       return {
         key: row.id,
         id: row.caseNumber,
-        name: row.alias,
+        name: row.name,
         ini: row.initial,
         age: row.birthYearLabel,
         who: row.counselorName,
         // 지워진 계정은 상세가 없다.
         whoHref: row.counselorName === NOT_PROVIDED ? null : staffDetailHref(source.counselor_id),
         risk: row.riskLabel,
+        riskCls: riskChipClass(row.riskLabel),
         date: row.reportDate,
         period: NOT_PROVIDED,
         last: NOT_PROVIDED,
         stage: reassign ? "재배정 필요" : `사례 ${row.statusLabel}`,
         stCls: reassign ? "chip c-urgent" : row.status === "CLOSED" ? "chip c-check" : "chip c-normal",
+        historyHref: screenHref("/CaseHistory", { caseId: row.id }),
+        del: () => input.askDelete?.(caseDeleteTarget({ id: row.id, caseNumber: row.caseNumber, name: row.name })),
       };
     });
 
@@ -139,7 +157,11 @@ export function adminCasesValues(input: AdminCasesInput) {
         v: casesLoaded ? `${all.length}건` : NOT_PROVIDED,
         note: casesLoaded ? `상담원 ${activeStaff}명 담당` : "",
       },
-      { label: "위험도 상", v: NOT_PROVIDED, note: NOT_READY },
+      {
+        label: "위험도 상",
+        v: casesLoaded ? `${all.filter(({ row }) => row.riskLabel === "상").length}건` : NOT_PROVIDED,
+        note: casesLoaded ? "상담원이 고른 위험도(우선)" : "",
+      },
       { label: "종결 검토", v: NOT_PROVIDED, note: NOT_READY },
       {
         label: "재배정 필요",
@@ -147,8 +169,8 @@ export function adminCasesValues(input: AdminCasesInput) {
         note: list.users ? "담당 상담원 비활성 · 계정 없음" : "상담원 목록을 받지 못해 지워진 계정만 셈",
       },
     ],
-    q: state.q,
-    setQ: (e: { target: { value: string } }) => setState({ q: e.target.value }),
+    q: input.search,
+    setQ: (e: { target: { value: string } }) => input.setSearch(e.target.value),
     riskF,
     sortF,
     staffF,
@@ -157,8 +179,8 @@ export function adminCasesValues(input: AdminCasesInput) {
     empty: casesLoaded && rows.length === 0,
     countLabel: casesLoaded ? `사례 ${rows.length}건 표시 · 사례 등록 최신순` : "",
     dataNote:
-      `위험도 · 신고접수일 · 관리 기간 · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)는 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
-      "진행 단계 칸에는 사례 상태(진행 · 종결)를 보입니다.",
+      `관리 기간 · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)와 위험도 거르기 · 정렬은 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
+      "위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)이고, 진행 단계 칸에는 사례 상태(진행 · 종결)를 보입니다.",
     usersError: list.usersError,
   };
 }

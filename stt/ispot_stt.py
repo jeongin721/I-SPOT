@@ -306,6 +306,7 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
     represented as COUNSELOR/CHILD; otherwise it remains UNKNOWN.
     """
 
+    name = "elevenlabs"
     MODEL_ID = "scribe_v2"
     LANGUAGE_CODE = "kor"
 
@@ -505,6 +506,38 @@ class ElevenLabsScribeV2Provider(BaseSTTProvider):
             raise AudioProviderError(f"ElevenLabs Scribe v2 STT failed: {exc}") from exc
 
 
+def _provider_label(provider: Any) -> str:
+    """로그 · 예외 문구에 쓰는 공급자 이름. ``name`` 속성이 없으면 클래스 이름."""
+    return str(getattr(provider, "name", None) or type(provider).__name__)
+
+
+def _error_label(error: BaseException) -> str:
+    """예외 클래스 이름과 원인(__cause__) 클래스 이름만. 메시지 본문은 넣지 않는다(키 · URL · 응답 본문이 섞일 수 있음)."""
+    cause = error.__cause__
+    return f"{type(error).__name__}<-{type(cause).__name__ if cause is not None else '-'}"
+
+
+def _status_code(error: BaseException, max_causes: int = 5) -> Optional[int]:
+    """예외와 그 __cause__ 사슬(원인 최대 5단계)에서 HTTP 상태 코드만 꺼낸다.
+
+    ``status_code`` 또는 ``status`` 속성이 100~599 정수일 때만 쓰고, 그 밖(문자열 · bool · 범위 밖)은 None.
+    예외 메시지 · 응답 본문 · 헤더 · URL 은 읽지 않는다.
+    """
+    current: Optional[BaseException] = error
+    for _ in range(max_causes + 1):
+        if current is None:
+            return None
+        for attribute in ("status_code", "status"):
+            try:
+                value = getattr(current, attribute, None)
+            except Exception:  # 계산형 속성이 실패해도 대체는 계속한다
+                value = None
+            if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
+                return value
+        current = current.__cause__
+    return None
+
+
 class ProviderFailureFallbackSTTProvider(BaseSTTProvider):
     """Use a secondary provider only when the primary provider itself fails."""
 
@@ -517,11 +550,22 @@ class ProviderFailureFallbackSTTProvider(BaseSTTProvider):
         try:
             return self.primary.transcribe(audio_path)
         except AudioProviderError as primary_error:
+            # 대체 사실만 남긴다. 예외 메시지 본문 · 경로 · 요청 내용은 쓰지 않는다(상태 코드는 정수만).
+            status = _status_code(primary_error)
+            logger.warning(
+                "stt_provider_fallback from=%s to=%s error=%s cause=%s status=%s",
+                _provider_label(self.primary),
+                _provider_label(self.fallback),
+                type(primary_error).__name__,
+                type(primary_error.__cause__).__name__ if primary_error.__cause__ is not None else "-",
+                status if status is not None else "none",
+            )
             try:
                 result = self.fallback.transcribe(audio_path)
             except Exception as fallback_error:
                 raise AudioProviderError(
-                    f"Primary provider failed ({primary_error}); fallback also failed ({fallback_error})."
+                    f"All STT providers failed: {_provider_label(self.primary)}={_error_label(primary_error)}, "
+                    f"{_provider_label(self.fallback)}={_error_label(fallback_error)}."
                 ) from fallback_error
             # This is provenance only; it does not change the Backend Contract.
             result["provider_fallback_used"] = True
@@ -691,6 +735,8 @@ class SelectiveSingleSpeakerFallbackSTTProvider(BaseSTTProvider):
 # 여기서 중요한 건, 외부 API 응답 구조와 내부 데이터 구조가 다르다는 점이다.
 # 그래서 _coerce_to_contract()가 필요한 것이다.
 class DeepgramSTTProvider(BaseSTTProvider):
+    name = "deepgram"
+
     def __init__(self, api_key: Optional[str] = None, api_url: Optional[str] = None):
         super().__init__(api_key=api_key, api_url=api_url)
         if DeepgramClient is None:
@@ -733,31 +779,6 @@ class DeepgramSTTProvider(BaseSTTProvider):
                     "max_retries": 2,
                 },
             )
-
-            # DEBUG: Deepgram SDK 원본 응답 저장
-            if str(audio_path).endswith("1354.mp3"):
-                import json
-
-                with open(
-                    "test_sample/1354_deepgram_sdk_raw.json",
-                    "w",
-                    encoding="utf-8",
-                ) as f:
-                    json.dump(
-                        response,
-                        f,
-                        ensure_ascii=False,
-                        indent=2,
-                        default=lambda obj: (
-                            obj.to_dict()
-                            if hasattr(obj, "to_dict")
-                            else obj.model_dump()
-                            if hasattr(obj, "model_dump")
-                            else obj.__dict__
-                            if hasattr(obj, "__dict__")
-                            else str(obj)
-                        ),
-                    )
 
             segments = self._coerce_to_contract(response)
             raw_speaker_ids = sorted(
@@ -2049,30 +2070,6 @@ class Transcriber:
         provider_cls = provider_map.get(self.provider_name, MockSTTProvider)
         return provider_cls(api_key=self.api_key, api_url=self.api_url)
 
-    def _fallback_response(self, audio_path: Path) -> Dict[str, Any]:
-        # 공부용 설명:
-        # STT 엔진이 실패하면 전체 시스템이 멈추면 안 된다.
-        # 그래서 최소한의 JSON 구조를 만들어서 다시 반환하는 안전장치가 필요하다.
-        #
-        # 이 응답은 실제 transcript를 못 받아도,
-        # backend가 항상 기대하는 형태를 유지할 수 있게 해 준다.
-        duration_ms = _estimate_duration_ms(audio_path)
-        confidence = 0.82
-        return {
-            "schema_version": "1.0",
-            "segments": [
-                {
-                    "segment_id": "seg_001",
-                    "speaker": "UNKNOWN",
-                    "start_ms": 0,
-                    "end_ms": max(duration_ms, 1000),
-                    "text": "모델이 음성을 인식하지 못했지만 JSON Contract 형식은 유지합니다.",
-                    "confidence": confidence,
-                    "is_low_confidence": confidence < 0.6,
-                }
-            ],
-        }
-
     def transcribe(self, audio_path: str | os.PathLike[str]) -> Dict[str, Any]:
         # 공부용 설명:
         # 이 함수는 전체 STT 과정의 '최종 관리자' 역할을 한다.
@@ -2089,7 +2086,9 @@ class Transcriber:
         try:
             result = self._provider.transcribe(str(path))
         except AudioProviderError:
-            result = self._fallback_response(path)
+            # 공급자가 모두 실패하면 가짜 구간을 만들지 않고 그대로 올린다(원인 예외 연결 유지).
+            # Backend 는 이 예외를 STT_FAILED 로 마감하고 재시도를 받는다.
+            raise
         except Exception as exc:
             raise InvalidAudioError(f"Unexpected STT failure for {path}: {exc}") from exc
 
@@ -2123,8 +2122,9 @@ class Transcriber:
             )
 
         if not normalized_segments:
-            fallback = self._fallback_response(path)
-            return fallback
+            # 정상 응답이지만 발화가 없으면 빈 목록을 Contract 형식 그대로 돌려준다.
+            # Backend 는 이를 "음성에서 발화를 찾지 못했습니다" 로 실패 마감한다.
+            return {"schema_version": "1.0", "segments": []}
 
         if self.speaker_diarizer is not None:
             normalized_segments = self.speaker_diarizer.apply_to_segments(normalized_segments, str(path))

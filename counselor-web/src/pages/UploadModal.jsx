@@ -5,6 +5,7 @@
 // 고른 사례의 회차는 useCaseDetail, 올리기 · 원문 변환은 useAudioUpload 가 하고, 화면에 쓸 값은
 // src/data/screens/uploadModal.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 끝나면 확인창에서 그 회차의 STT 검수(이동) 또는 회차 상세(나중에)로 간다. ?back= 으로 열었으면 닫기 · 취소 · 나중에는 그 화면으로.
+// 문서 파일(2026-11-02): 상담 기록 문서는 useDocumentUpload 가 올리고, 끝나면 3단계(상담일지 작성)로 간다.
 // 10/21 디자인(counselor-design/screens/UploadModal.dc.html): 회차 목록 스크롤 · 새 회차 맨 위 · 고른 파일 '빼기' · 돌아갈 곳.
 import { Fragment, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,8 +13,10 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
+import { useAccountSearch } from '../data/useAccountSearch';
 import { useAuthSession } from '../data/useAuthSession';
 import { useAudioUpload } from '../data/useAudioUpload';
+import { useDocumentUpload } from '../data/useDocumentUpload';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseList } from '../data/useCaseList';
 import { needsLogin, signedIn } from '../data/screens/common';
@@ -45,11 +48,17 @@ function UploadModalScreen(props) {
   const session = useAuthSession();
   const go = useNavigate();
   const enabled = signedIn(session);
-  const [search, setSearch] = useState('');
+  // 검색어는 계정에 묶는다(Codex #130 H1).
+  const [search, setSearch] = useAccountSearch(session);
   const [caseId, setCaseId] = useState(ids.caseId);
-  const list = useCaseList({ search, enabled });
+  // 사례 고르기 목록(실명 · 열람 기록)은 1단계에 있는 동안만 부른다. 사례를 정해 열면(?case=) 2단계부터라 부르지 않고,
+  // 1단계를 떠나면 끈다(숨은 목록이 계정이 바뀐 뒤 새 계정의 실명을 받지 않게 — Codex #130 M2 · 재검수 N3).
+  // 사용자 정보까지 확인된 뒤에만 부른다(재검수 N4).
+  const [pickOpen, setPickOpen] = useState(!ids.caseId);
+  const list = useCaseList({ search, enabled: enabled && pickOpen && session.me !== null, withNames: true });
   const caseDetail = useCaseDetail(caseId, { enabled });
   const upload = useAudioUpload();
+  const docUpload = useDocumentUpload();
   const theme = useTheme();
   const v = useDC(Logic, {
     ...props,
@@ -60,8 +69,10 @@ function UploadModalScreen(props) {
     setSearch,
     caseId,
     setCaseId,
+    setPickOpen,
     caseDetail,
     upload,
+    docUpload,
     go,
   });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
@@ -363,7 +374,7 @@ function UploadModalScreen(props) {
                       border: '1px solid #E7E4DC',
                     }}
                   >
-                    <span className="chip c-sky">음성</span>
+                    <span className={v.fileKindCls}>{v.fileKind}</span>
                     <span style={{ flex: '1', minWidth: '0', overflowWrap: 'anywhere' }}>{v.fileName}</span>
                     <span className="note">{v.fileMeta}</span>
                     <button

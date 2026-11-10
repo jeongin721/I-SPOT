@@ -225,3 +225,15 @@ def test_intake_only_without_session_content_skips_llm(monkeypatch):
     assert followup_module.generate_followup_check_points_from_masked_text(
         client=None, model="test", masked_combined_text=combined, segments=segments, previous_session_label=None
     ) == []
+
+
+def test_clean_points_drops_definitive_judgment_text():
+    # 2026-10-30 연동: rag 확인 사항과 한 목록으로 보이므로 같은 기준(question_rules.judgment_reason)으로 거른다.
+    raw = [
+        {"text": "학대 확정 사례로 보여 보호 조치 확인 필요", "segment_ids": ["seg_001"]},
+        {"text": "등 통증 이후 치료 여부 확인 필요", "segment_ids": ["seg_001"]},
+    ]
+
+    assert _clean_points(raw, {"seg_001"}) == [
+        {"text": "등 통증 이후 치료 여부 확인 필요", "segment_ids": ["seg_001"]}
+    ]

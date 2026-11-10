@@ -1,6 +1,7 @@
 # /auth
 #
-# 자유 회원가입 endpoint 는 제공하지 않는다. 계정 생성은 관리자 전용이다.
+# 계정은 관리자가 만들거나(POST /auth/users), 회원가입 신청을 관리자가 승인할 때 생긴다(/auth/signup-requests, 2026-11-02).
+# 신청만으로는 계정이 생기지 않는다 — 승인 전에는 로그인할 수 없다(API_CONTRACT 3절 '회원가입').
 
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Query, Request, status
 from app.api.v1.cases import PageQuery, PageSizeQuery
 from app.core.config import settings
 from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip, user_agent
-from app.core.enums import AuditAction
+from app.core.enums import AuditAction, SignupRequestStatus
 from app.core.responses import DataResponse, PagedItems, paged
 from app.core.security import create_access_token, token_expires_in_seconds
 from app.schemas.auth import (
@@ -25,7 +26,18 @@ from app.schemas.auth import (
     UserUpdateRequest,
 )
 from app.schemas.common import StorableQueryText
-from app.services import account_service, user_service
+from app.schemas.signup import (
+    SignupApproveRequest,
+    SignupCodeSendRequest,
+    SignupCodeSendResponse,
+    SignupCodeVerifyRequest,
+    SignupCodeVerifyResponse,
+    SignupRequestCreate,
+    SignupRequestCreated,
+    SignupRequestResponse,
+    SignupSettingsResponse,
+)
+from app.services import account_service, signup_service, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -236,3 +248,179 @@ def list_audit_logs(
         items.append(item)
 
     return DataResponse(data=paged(items, total, page, page_size))
+
+
+# =========================================================
+# 회원가입 (이메일 인증번호 → 대기 신청 → 관리자 승인, 2026-11-02, API_CONTRACT 3절 '회원가입')
+# =========================================================
+# 공개 창구 셋(보내기 · 확인 · 신청)은 SIGNUP_ENABLED 가 꺼져 있으면 503 이다. 설정 조회와 관리자 창구는 늘 동작한다.
+
+def _signup_request_response(
+    request, decided_by_name: Optional[str] = None
+) -> SignupRequestResponse:
+    item = SignupRequestResponse.model_validate(request)
+    item.expires_at = signup_service.expires_at(request)
+    item.decided_by_name = decided_by_name
+
+    return item
+
+
+@router.get(
+    "/signup-requests/settings",
+    response_model=DataResponse[SignupSettingsResponse],
+    summary="회원가입 설정 — 켜짐 여부 · 받는 이메일 도메인(로그인 없이)",
+)
+def get_signup_settings() -> DataResponse[SignupSettingsResponse]:
+    return DataResponse(
+        data=SignupSettingsResponse(
+            enabled=settings.SIGNUP_ENABLED,
+            allowed_email_domains=list(settings.SIGNUP_ALLOWED_EMAIL_DOMAINS),
+        )
+    )
+
+
+@router.post(
+    "/signup-requests/send-code",
+    response_model=DataResponse[SignupCodeSendResponse],
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="회원가입 인증번호 보내기(로그인 없이)",
+)
+def send_signup_code(
+    payload: SignupCodeSendRequest,
+    request: Request,
+    db: DbSession,
+) -> DataResponse[SignupCodeSendResponse]:
+    ip_address, agent = client_ip(request), user_agent(request)
+    result = signup_service.send_code(db, payload.email, ip_address=ip_address, user_agent=agent)
+
+    # 메일은 전용 스레드에 넣고 바로 답한다. 계정이 이미 있는 이메일은 보내지 않는데(result.mail 이 None), 그 차이가 이 요청과
+    # 같은 연결의 다음 요청 시간에 섞이지 않게 BackgroundTasks 를 쓰지 않는다(signup_service 의 '메일 보내기' 머리말).
+    signup_service.queue_code_mail(result, ip_address=ip_address, user_agent=agent)
+
+    return DataResponse(
+        data=SignupCodeSendResponse(
+            resend_after_seconds=int(signup_service.RESEND_INTERVAL.total_seconds()),
+            expires_in_seconds=int(signup_service.CODE_TTL.total_seconds()),
+        )
+    )
+
+
+@router.post(
+    "/signup-requests/verify-code",
+    response_model=DataResponse[SignupCodeVerifyResponse],
+    summary="회원가입 인증번호 확인 — 맞으면 확인 토큰(로그인 없이)",
+)
+def verify_signup_code(
+    payload: SignupCodeVerifyRequest,
+    request: Request,
+    db: DbSession,
+) -> DataResponse[SignupCodeVerifyResponse]:
+    result = signup_service.verify_code(
+        db,
+        payload.email,
+        payload.code,
+        ip_address=client_ip(request),
+        user_agent=user_agent(request),
+    )
+
+    return DataResponse(
+        data=SignupCodeVerifyResponse(
+            verification_token=result.token,
+            expires_in_seconds=result.expires_in_seconds,
+        )
+    )
+
+
+@router.post(
+    "/signup-requests",
+    response_model=DataResponse[SignupRequestCreated],
+    status_code=status.HTTP_201_CREATED,
+    summary="회원가입 대기 신청 — 관리자 승인 뒤 로그인(로그인 없이)",
+)
+def create_signup_request(
+    payload: SignupRequestCreate,
+    request: Request,
+    db: DbSession,
+) -> DataResponse[SignupRequestCreated]:
+    created = signup_service.submit_request(
+        db,
+        payload.verification_token,
+        payload.name,
+        payload.password,
+        ip_address=client_ip(request),
+        user_agent=user_agent(request),
+    )
+
+    return DataResponse(data=SignupRequestCreated(status=created.status))
+
+
+@router.get(
+    "/signup-requests",
+    response_model=DataResponse[PagedItems[SignupRequestResponse]],
+    summary="회원가입 신청 목록 (관리자 전용)",
+)
+def list_signup_requests(
+    db: DbSession,
+    _: AdminUser,
+    page: PageQuery = 1,
+    page_size: PageSizeQuery = 20,
+    status_filter: Annotated[
+        SignupRequestStatus, Query(alias="status", description="기본 PENDING")
+    ] = SignupRequestStatus.PENDING,
+) -> DataResponse[PagedItems[SignupRequestResponse]]:
+    rows, total = signup_service.list_requests(
+        db,
+        status=status_filter,
+        offset=(page - 1) * page_size,
+        limit=page_size,
+    )
+
+    items = [_signup_request_response(row, decided_by_name) for row, decided_by_name in rows]
+
+    return DataResponse(data=paged(items, total, page, page_size))
+
+
+@router.post(
+    "/signup-requests/{request_id}/approve",
+    response_model=DataResponse[SignupRequestResponse],
+    summary="회원가입 승인 — 역할을 정해 계정 생성 (관리자 전용)",
+)
+def approve_signup_request(
+    request_id: uuid.UUID,
+    payload: SignupApproveRequest,
+    request: Request,
+    db: DbSession,
+    admin: AdminUser,
+) -> DataResponse[SignupRequestResponse]:
+    approved = signup_service.approve(
+        db,
+        admin,
+        request_id,
+        payload.role,
+        ip_address=client_ip(request),
+        user_agent=user_agent(request),
+    )
+
+    return DataResponse(data=_signup_request_response(approved, admin.name))
+
+
+@router.post(
+    "/signup-requests/{request_id}/reject",
+    response_model=DataResponse[SignupRequestResponse],
+    summary="회원가입 거절 (관리자 전용)",
+)
+def reject_signup_request(
+    request_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    admin: AdminUser,
+) -> DataResponse[SignupRequestResponse]:
+    rejected = signup_service.reject(
+        db,
+        admin,
+        request_id,
+        ip_address=client_ip(request),
+        user_agent=user_agent(request),
+    )
+
+    return DataResponse(data=_signup_request_response(rejected, admin.name))

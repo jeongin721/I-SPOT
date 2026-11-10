@@ -62,7 +62,7 @@ export type CaseStatus = "ACTIVE" | "CLOSED";
 /**
  * 보호자 유형.
  * 목록에 없는 관계는 OTHER 로 두고 guardian_note 에 적는다.
- * Backend 는 보호자 실명을 저장하지 않는다(아동 실명과 같은 원칙).
+ * 보호자 실명은 이 칸에 넣지 않는다. 실명은 개인 식별 정보 창구(PersonalInfo, 암호화 저장)로만 오간다.
  */
 export type GuardianType =
   | "PARENTS"
@@ -85,6 +85,105 @@ export const GUARDIAN_LABELS: Record<GuardianType, string> = {
   FACILITY: "시설",
   OTHER: "기타",
 };
+
+/** 조치결과 · 피해아동(서식 4 ①, 2026-11-05). 상담원이 고른다 — AI 가 미리 고르거나 채우지 않는다. */
+export type ChildActionResult = "HOME" | "RELATIVE" | "ACQUAINTANCE" | "FOSTER" | "FACILITY" | "HOSPITAL" | "OTHER";
+
+/** 화면에 표시할 한글 이름(서식 4 순서). backend tests/test_case_form_fields.py 가 서버 목록과 같은지 본다. */
+export const CHILD_ACTION_LABELS: Record<ChildActionResult, string> = {
+  HOME: "원가정보호",
+  RELATIVE: "친인척보호",
+  ACQUAINTANCE: "연고자에 의한 보호",
+  FOSTER: "가정위탁",
+  FACILITY: "시설입소",
+  HOSPITAL: "병원입원",
+  OTHER: "기타",
+};
+
+/** 조치결과 · 사례관리대상자(서식 4 ①, 2026-11-05). 상담원이 고른다. */
+export type TargetActionResult = "OBSERVATION" | "SEPARATION" | "COMPLAINT" | "OTHER";
+
+export const TARGET_ACTION_LABELS: Record<TargetActionResult, string> = {
+  OBSERVATION: "지속관찰",
+  SEPARATION: "아동과의 분리",
+  COMPLAINT: "고소 · 고발",
+  OTHER: "기타",
+};
+
+/** 가족유형(서식 4 ② 초기면접 내용, 하나만 고른다, 2026-11-05 — 11/03 디자인의 21개). 상담원이 고른다. */
+export type FamilyType =
+  | "GENERAL"
+  | "FATHER_BEREAVED"
+  | "FATHER_DIVORCED"
+  | "FATHER_LEFT"
+  | "FATHER_SEPARATED"
+  | "MOTHER_BEREAVED"
+  | "MOTHER_DIVORCED"
+  | "MOTHER_LEFT"
+  | "MOTHER_SEPARATED"
+  | "UNMARRIED_FATHER"
+  | "UNMARRIED_MOTHER"
+  | "UNMARRIED_PARENTS"
+  | "FATHER_STEPMOTHER"
+  | "MOTHER_STEPFATHER"
+  | "RELATIVE_CARE"
+  | "FATHER_PARTNER"
+  | "MOTHER_PARTNER"
+  | "FOSTER"
+  | "ADOPTIVE"
+  | "FACILITY"
+  | "OTHER";
+
+export const FAMILY_TYPE_LABELS: Record<FamilyType, string> = {
+  GENERAL: "일반가정",
+  FATHER_BEREAVED: "부자가정(사별)",
+  FATHER_DIVORCED: "부자가정(이혼)",
+  FATHER_LEFT: "부자가정(가출)",
+  FATHER_SEPARATED: "부자가정(별거)",
+  MOTHER_BEREAVED: "모자가정(사별)",
+  MOTHER_DIVORCED: "모자가정(이혼)",
+  MOTHER_LEFT: "모자가정(가출)",
+  MOTHER_SEPARATED: "모자가정(별거)",
+  UNMARRIED_FATHER: "미혼부가정",
+  UNMARRIED_MOTHER: "미혼모가정",
+  UNMARRIED_PARENTS: "미혼부모가정",
+  FATHER_STEPMOTHER: "친부+계모",
+  MOTHER_STEPFATHER: "친모+계부",
+  RELATIVE_CARE: "친인척보호",
+  FATHER_PARTNER: "친부+동거녀",
+  MOTHER_PARTNER: "친모+동거남",
+  FOSTER: "가정위탁",
+  ADOPTIVE: "입양가정",
+  FACILITY: "시설보호",
+  OTHER: "기타",
+};
+
+/**
+ * 서식 4 의 고르기 · 글 칸(2026-11-05, '준비 중' 칸 열기). 사례 응답 · 등록 · 수정에 같은 이름으로 오간다. 모두 비울 수 있다(null).
+ * 모두 상담원이 고르거나 적는 값이다 — AI 가 미리 고르거나 채우지 않는다.
+ * counselor_risk_level(위험도(우선))은 상담원이 고른 사례 위험도로, 회차 AI 심각도(1~5) · 회차 위험도 판단과 맞추지 않는다.
+ * 글 칸은 각 2000자, 평문 저장이라 화면이 '개인정보는 적지 마세요' 를 보인다. 서버가 앞뒤 빈칸을 지우고 빈 글은 null 로 둔다.
+ * 응답에서는 이 칸이 생기기 전 서버면 키가 없다.
+ */
+export interface CaseFormFields {
+  child_action_result?: ChildActionResult | null;
+  target_action_result?: TargetActionResult | null;
+  counselor_risk_level?: RiskLevel | null;
+  /** 사례연계 경위(서식 4 ①). */
+  linked_background?: string | null;
+  /** ② 가족유형. */
+  intake_family_type?: FamilyType | null;
+  /** ② 보호자와 아동과의 관계. */
+  intake_guardian_relation?: string | null;
+  /** ② 문제력(현 상황 · 그 이유, 한 칸). */
+  intake_problem?: string | null;
+  /** ② 대상자 태도. */
+  intake_attitude?: string | null;
+  /** ② 물리적 환경. */
+  intake_environment?: string | null;
+  /** ② 상담원 소견 및 향후 계획. */
+  intake_opinion?: string | null;
+}
 
 /** 회차 상태. Backend 가 전이 규칙을 강제하므로 임의로 바꾸지 않는다. */
 export type SessionStatus =
@@ -192,6 +291,45 @@ export interface PasswordChangeRequest {
   new_password: string;
 }
 
+// =========================================================
+// 회원가입 — 이메일 인증번호 → 대기 신청 → 관리자 승인(API_CONTRACT 3절 '회원가입', 2026-11-02)
+// =========================================================
+
+/** GET /auth/signup-requests/settings. enabled 가 false 면 회원가입 단추를 숨긴다. 빈 도메인 목록은 모두 받는다. */
+export interface SignupSettings {
+  enabled: boolean;
+  allowed_email_domains: string[];
+}
+
+/** 인증번호 보내기(202). 이미 가입했거나 승인을 기다리는 이메일에도 같은 응답이다(메일만 안 간다). */
+export interface SignupCodeSent {
+  resend_after_seconds: number;
+  expires_in_seconds: number;
+}
+
+/** 인증번호 확인(200). 토큰은 30분 동안 신청에 한 번만 쓴다 — 저장하지 않고 메모리에만 둔다. */
+export interface SignupVerified {
+  verification_token: string;
+  expires_in_seconds: number;
+}
+
+export type SignupStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+/** 관리자 가입 신청 목록의 한 줄. expires_at 은 대기 신청이 지워지는 시각(처리한 신청은 null). */
+export interface SignupRequestItem {
+  id: string;
+  email: string;
+  name: string;
+  status: SignupStatus;
+  created_at: string;
+  expires_at: string | null;
+  decided_at: string | null;
+  decided_by_id: string | null;
+  decided_by_name: string | null;
+  role: UserRole | null;
+  user_id: string | null;
+}
+
 /**
  * 비밀번호 규칙 안내 문구. Backend `API_CONTRACT.md` 3절과 같은 내용이다.
  * 화면에서 따로 규칙을 적지 말고 이 값을 쓴다 — 두 곳에 적으면 어긋난다.
@@ -211,11 +349,11 @@ export const PASSWORD_RULE_TEXT =
 // 사례
 // =========================================================
 
-export interface Case {
+export interface Case extends CaseFormFields {
   id: string;
   case_number: string;
   title: string;
-  /** 실명이 아닌 별칭. Backend 는 아동 실명을 저장하지 않는다. */
+  /** 실명이 아닌 별칭. 실명은 사례 응답에 없고 개인 식별 정보 창구(PersonalInfo)로만 오간다. */
   child_alias: string;
   child_birth_year: number | null;
   child_gender: string | null;
@@ -249,7 +387,7 @@ export interface CaseDetail extends Case {
   session_count: number;
 }
 
-export interface CaseCreateRequest {
+export interface CaseCreateRequest extends CaseFormFields {
   title: string;
   child_alias: string;
   child_birth_year?: number | null;
@@ -272,13 +410,92 @@ export interface CaseCreateRequest {
   counselor_id?: string;
   /** 개별사건번호. 빼면 Backend 가 C-YYYY-NNNN 으로 만든다. 1~50자, 이미 있는 번호면 409 DUPLICATE_RESOURCE. */
   case_number?: string;
+  /** 서식 4 의 실명 · 생년월일 · 가족 정보. 사례와 한 거래로 암호화해 저장한다(검증 실패면 사례도 만들지 않는다). 응답에는 없다. */
+  personal_info?: PersonalInfoRequest | null;
+}
+
+// ---------------------------------------------------------
+// 사례 개인 식별 정보(GET · PUT /cases/{id}/personal-info, API_CONTRACT 4절 '개인 식별 정보')
+// 서버는 칸마다 암호화해 저장하고, 권한을 통과한 요청에만 풀어서 준다. 부를 때마다 열람 기록이 남는다.
+// 화면은 이 값을 상태에만 두고 브라우저 저장소에 넣지 않는다.
+// ---------------------------------------------------------
+
+/** 건강정도 항목(서식 4 이름 그대로). 같은 항목은 한 번만 보낸다. */
+export const PERSONAL_HEALTH_KINDS = ["질병", "장애", "병원치료", "정신과 진단", "타기관 상담"] as const;
+export type PersonalHealthKind = (typeof PERSONAL_HEALTH_KINDS)[number];
+
+/** 사례관리대상자(대개 보호자). */
+export interface PersonalTargetPerson {
+  name: string | null;
+  relation: string | null;
+  /** YYYY-MM-DD */
+  birth_date: string | null;
+}
+
+/** 면접대상자 / 관계. */
+export interface PersonalInterviewee {
+  name: string | null;
+  relation: string | null;
+}
+
+/** 가족관계 표 한 줄. 이름은 필수다. */
+export interface PersonalFamilyMember {
+  name: string;
+  relation: string | null;
+  age: number | null;
+  religion: string | null;
+  education: string | null;
+  job: string | null;
+  living_together: boolean | null;
+}
+
+/** 건강정도 한 칸 — 있음(present) · 세부(200자). */
+export interface PersonalHealthItem {
+  kind: PersonalHealthKind;
+  present: boolean | null;
+  detail: string | null;
+}
+
+export interface PersonalHealth {
+  subject_name: string | null;
+  items: PersonalHealthItem[];
+}
+
+/**
+ * PUT 본문 · POST /cases 의 personal_info. 보낸 값으로 통째로 바꾼다(빠진 칸 · null 은 지운다).
+ * 이름 1~50자(빈 이름은 null), 생년월일 1900-01-01 ~ 오늘, relation · religion · education 30자, job 50자, age 0~150, 가족 30줄.
+ */
+export interface PersonalInfoRequest {
+  child_name: string | null;
+  child_birth_date: string | null;
+  target_person: PersonalTargetPerson | null;
+  interviewee: PersonalInterviewee | null;
+  family_members: PersonalFamilyMember[];
+  health: PersonalHealth | null;
+}
+
+/** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
+/** GET /cases 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순. */
+export type CaseListSort = "report_date" | "risk";
+export type CaseListOrder = "desc" | "asc";
+
+export interface CaseListItem extends Case {
+  child_name?: string | null;
+  /** 분석이 끝난 가장 최근 회차의 상담원 판단. 판단 전이면 null. */
+  risk_level?: RiskLevel | null;
+}
+
+/** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */
+export interface PersonalInfo extends PersonalInfoRequest {
+  registered: boolean;
+  updated_at: string | null;
 }
 
 /**
  * 사례 수정 요청(PATCH /cases/{id}). 바꿀 필드만 보낸다.
  * title · child_alias · status 는 null 로 보낼 수 없다(422). 바꾸지 않으려면 빼고 보낸다.
  */
-export interface CaseUpdateRequest {
+export interface CaseUpdateRequest extends CaseFormFields {
   title?: string;
   child_alias?: string;
   child_birth_year?: number | null;
@@ -331,6 +548,8 @@ export interface Session {
   memo: string | null;
   /** 상담 유형. 넣지 않았으면 null. 옛 서버면 키가 없다. */
   consultation_type?: ConsultationType | null;
+  /** AUDIO(녹음, 1~4단계) · DOCUMENT(상담 기록 문서, 3 · 4단계만 — API_CONTRACT 21절). 옛 서버면 키가 없다(AUDIO). */
+  source?: SessionSource;
   created_at: string;
   updated_at: string;
   stt_started_at: string | null;
@@ -462,7 +681,7 @@ export interface TranscriptSegment {
   end_ms: number;
   text: string;
   /**
-   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 모두 0.0).
+   * STT 신뢰도(0~1). 0.0 은 공급자가 값을 주지 않았다는 뜻이다(ElevenLabs 는 단어 logprob 이 없을 때만 0.0).
    * 저신뢰 표시는 0 < confidence < 0.7 로 한다(API_CONTRACT.md 7절).
    */
   confidence: number;
@@ -520,7 +739,8 @@ export interface Transcript {
 /**
  * 원문 확정 전 1차 모델 스캔으로 고른 '먼저 들어볼 곳'(API_CONTRACT 7절 key_scan). 판정이 아니다.
  * DONE 성공(segments 가 비어도) · FAILED 실패(STT 는 성공) · SKIPPED modeling 이 아님.
- * abuse_types 는 화면에 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3).
+ * abuse_types 는 유형 칩으로 그리지 않는다(판정처럼 읽힘 — 제안서 §8 답 3). 2026-11-03 부터 원문 확정 전 STT 검수 화면이
+ * 그 유형의 '임시' 관련 조문(아동복지법 제17조 해당 호)을 보이는 데만 쓴다(사용자 요청).
  */
 export interface KeyScan {
   status: "DONE" | "FAILED" | "SKIPPED";
@@ -691,6 +911,24 @@ export interface ProtectiveFactor {
   segment_ids: string[];
 }
 
+/**
+ * 안전 플래그 후보(8절 safety_flags, 2026-11-05). '지금 이 아이가 안전한가'. code 는 S1~S10, certainty 는 CLEAR(분명함) ·
+ * CHECK(상담원 확인 필요). AI 확인 후보이고 판정이 아니다.
+ */
+export interface SafetyFlag {
+  code: string;
+  text: string;
+  certainty: "CLEAR" | "CHECK";
+  segment_ids: string[];
+}
+
+/** 재학대 요인 후보(8절 reabuse_factors, 2026-11-05). code 는 R2~R10 — R1(중복학대)은 화면이 유형 수로 센다. */
+export interface ReabuseFactor {
+  code: string;
+  text: string;
+  segment_ids: string[];
+}
+
 /** 이전 회기와 달라진 점 메모. */
 export interface SessionChangeNote {
   text: string;
@@ -734,6 +972,9 @@ export interface AnalysisResult {
   warnings: string[];
   severity_ratings: SeverityRating[];
   protective_factors: ProtectiveFactor[];
+  /** null · 없음 = 만들지 못함(옛 결과 · 모듈 실패 · Mock). [] = 찾았지만 해당 없음. */
+  safety_flags?: SafetyFlag[] | null;
+  reabuse_factors?: ReabuseFactor[] | null;
   session_change_notes: SessionChangeNote[];
   followup_check_points: FollowupCheckPoint[];
   /** 옛 결과 · 이전 서버에는 없다. */
@@ -751,6 +992,13 @@ export interface SummaryEvidenceItem {
   score: number;
 }
 
+/**
+ * 3 · 4단계 AI 초안(상담 요약 · 일지 · 확인 메모 · 추가 질문 등) 상태(2026-11-04 제안 PROPOSAL_analysis_signals_first).
+ * 서버는 학대 신호 확인(2단계) 값을 먼저 저장하고 회차를 AI_REVIEW_REQUIRED 로 넘긴 뒤 나머지를 채운다.
+ * PENDING 만드는 중 · DONE 끝남 · FAILED 못 만듦. 이 칸이 생기기 전 서버 · 분석에는 없다(= DONE 으로 본다).
+ */
+export type DraftsStatus = "PENDING" | "DONE" | "FAILED";
+
 export interface AIAnalysis {
   id: string;
   session_id: string;
@@ -765,6 +1013,10 @@ export interface AIAnalysis {
   result: AnalysisResult | null;
   summary_evidence: SummaryEvidenceItem[];
   error: SessionErrorInfo | null;
+  /** 3 · 4단계 AI 초안 상태(DraftsStatus). 없으면 DONE. */
+  drafts_status?: DraftsStatus;
+  /** drafts_status 가 FAILED 일 때만. 고정 문구. */
+  drafts_error?: SessionErrorInfo | null;
 }
 
 /** AI 분석 실행 요청 결과. 202 로 돌아오며 처리는 아직 진행 중이다. */
@@ -851,6 +1103,8 @@ export const TASK_LABELS: Record<TaskType, string> = {
 
 /** 처리 대기 업무 하나. 오래 기다린 것부터 온다. */
 export interface TaskItem {
+  /** AUDIO · DOCUMENT(문서 회차 — 검수 업무는 3단계다). 옛 서버면 키가 없다. */
+  session_source?: SessionSource;
   session_id: string;
   case_id: string;
   case_number: string;
@@ -1164,6 +1418,14 @@ export interface ClosureSummaryBody {
   sessions: number[];
   groups: { title: string; items: ClosureItem[] }[];
   report: { initial_situation?: ClosureDraft | null; closing_situation?: ClosureDraft | null };
+  /** 종결보고서 안전평가 11문항 · Key Person 의 AI 제안(2026-11-04). AI 로 만든 요약만, 옛 요약 · LLM 없이 묶은 요약은 null/없음. */
+  suggestions?: ClosureSuggestions | null;
+}
+
+export interface ClosureSuggestions {
+  /** index 0~10 = 안전평가 문항 순서. 근거가 있는 문항만. */
+  safety: { index: number; level: "HIGH" | "MEDIUM" | "LOW"; basis: string; sessions: number[] }[];
+  key_person: ClosureDraft | null;
 }
 
 export interface ClosureReportFields {
@@ -1172,6 +1434,17 @@ export interface ClosureReportFields {
   opinion?: string | null;
   review_date?: string | null;
   closing_date?: string | null;
+  /** 종결사유 5개(2026-11-03). 저장 전 null. */
+  reasons?: boolean[] | null;
+  /** 안전평가 11문항(서식 6 안전영역 순서). */
+  safety?: ("HIGH" | "MEDIUM" | "LOW" | null)[] | null;
+  key_person?: string | null;
+  /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
+  safety_scores?: { score: number | null; reason: string }[] | null;
+  /** 개입목표 6줄(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2). 상담원이 쓴다(2026-11-09). */
+  goals?: { goal: string; service: string }[] | null;
+  /** 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(2026-11-04, 300자). 화면이 회차 기록으로 먼저 채운다. */
+  services?: string | null;
 }
 
 export interface ClosureSummaryRecord {
@@ -1187,6 +1460,8 @@ export interface ClosureSummarySave {
   checks?: Record<string, boolean>;
   edits?: Record<string, string>;
   report?: ClosureReportFields;
+  /** 저장된 값이 없는(null) 칸에만 쓰는 처음 값(AI 초안 · 회차 기록 · 1차 판단, 2026-11-05). */
+  report_defaults?: ClosureReportFields;
 }
 
 /** 다음 상담 전 확인할 사항 하나(API_CONTRACT 18.1절, 2026-10-30). */
@@ -1218,4 +1493,331 @@ export interface FollowupQuestionList {
   /** 저장한 적이 없으면 null. */
   updated_at: string | null;
   updated_by_id: string | null;
+}
+
+// =========================================================
+// 다음 상담 체크리스트 (API_CONTRACT 19절, 2026-10-30)
+// =========================================================
+
+export type ChecklistKind = "info_gap" | "plan_followup" | "change" | "inconsistency" | "checklist_gap";
+
+/**
+ * 근거 하나. type="case" 는 사례 기록(segment_id 가 있으면 그 발화, session_id 만 있으면 그 회차).
+ * 그 밖(manual · guideline · form · checklist · law · precedent)은 공식 근거 — 서버가 검토를 통과한 것만 보낸다.
+ * url 이 있으면(법령 · 판례) 새 창으로, 없으면 excerpt 를 펼쳐 보인다. why 는 질문에 붙인 공식 근거의 연결 이유.
+ */
+export interface ChecklistBasis {
+  type: string;
+  ref?: string | null;
+  label?: string | null;
+  session_no?: number | null;
+  session_id?: string | null;
+  segment_id?: string | null;
+  start_ms?: number | null;
+  source?: string | null;
+  page?: number | string | null;
+  url?: string | null;
+  excerpt?: string | null;
+  why?: string | null;
+}
+
+/** 다음 상담 전 확인할 사항 하나(rag). 화면에서 AI 확인 메모와 한 목록으로 합쳐 보인다. basis 는 1개 이상. */
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  kind: ChecklistKind;
+  priority: "high" | "medium";
+  reason: string;
+  basis: ChecklistBasis[];
+}
+
+/** 추가 질문 AI 초안(분석 followup_questions[draft_index])에 붙인 공식 근거. text 는 만들 때의 초안 문장 그대로. */
+export interface QuestionEvidence {
+  draft_index: number;
+  text: string;
+  basis: ChecklistBasis[];
+}
+
+export interface ChecklistResult {
+  schema_version: string;
+  check_items: ChecklistItem[];
+  question_evidence: QuestionEvidence[];
+  notice: string | null;
+  dropped: Record<string, number>;
+}
+
+export interface FollowupChecklist {
+  status: AnalysisStatus;
+  attempt: number;
+  /** 만들 때 쓴 분석. 지금 분석과 다르면 화면은 결과를 숨기고 다시 만들기를 보인다. */
+  analysis_id: string | null;
+  transcript_version: number | null;
+  provider: string | null;
+  /** COMPLETED 일 때만. */
+  result: ChecklistResult | null;
+  /** FAILED 일 때만. message 는 고정 문구. */
+  error: SessionErrorInfo | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface FollowupChecklistEnvelope {
+  /** false 면 서버에서 꺼져 있다(FOLLOWUP_PROVIDER=off). 만들기 단추를 보이지 않는다. */
+  enabled: boolean;
+  /** 만든 적이 없으면 null. */
+  checklist: FollowupChecklist | null;
+}
+
+// =========================================================
+// 일정 — backend/app/schemas/schedule.py (API_CONTRACT 20절, 2026-11-02)
+// =========================================================
+
+/** 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시). */
+export type ScheduleKind = "CONSULT" | "OTHER";
+export type ScheduleConsultType = "REGULAR" | "INITIAL" | "VISIT" | "PHONE" | "CLOSING";
+export type ScheduleCategory =
+  | "AGENCY_MEETING"
+  | "CASE_MEETING"
+  | "INTAKE"
+  | "SUPERVISION"
+  | "TRAINING"
+  | "FIELD_WORK"
+  | "LEAVE"
+  | "ETC";
+
+/** 디자인 일정 추가 창의 이름 그대로(순서도 같다). */
+export const SCHEDULE_CONSULT_LABELS: Record<ScheduleConsultType, string> = {
+  REGULAR: "정기상담",
+  INITIAL: "초기면담",
+  VISIT: "방문상담",
+  PHONE: "전화상담",
+  CLOSING: "종결 상담",
+};
+export const SCHEDULE_CATEGORY_LABELS: Record<ScheduleCategory, string> = {
+  AGENCY_MEETING: "기관 회의",
+  CASE_MEETING: "사례회의",
+  INTAKE: "최초접수",
+  SUPERVISION: "슈퍼비전",
+  TRAINING: "교육",
+  FIELD_WORK: "외근",
+  LEAVE: "휴가",
+  ETC: "기타",
+};
+
+export interface ScheduleEvent {
+  id: string;
+  kind: ScheduleKind;
+  consult_type: ScheduleConsultType | null;
+  category: ScheduleCategory | null;
+  /** 볼 수 있는 사례일 때만(팀 공유 일정의 남의 사례는 null). */
+  case_id: string | null;
+  child_alias: string | null;
+  /** 사례가 붙어 있지만 지금 볼 수 없어 가렸는가(담당이 바뀐 사례 등). 고칠 때 사례 칸을 보내지 않는다. 옛 서버면 키가 없다. */
+  case_hidden?: boolean;
+  title: string | null;
+  /** YYYY-MM-DD. */
+  date: string;
+  /** HH:MM, 종일이면 null. */
+  time: string | null;
+  place: string | null;
+  important: boolean;
+  shared: boolean;
+  /** 최초접수만 {"3","7","30": 완료?}, 그 밖 {}. */
+  deadline_done: Record<string, boolean>;
+  owner_id: string;
+  owner_name: string | null;
+  /** 지금 사용자가 고치고 지울 수 있는가. */
+  editable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleEventCreate {
+  kind: ScheduleKind;
+  date: string;
+  consult_type?: ScheduleConsultType | null;
+  category?: ScheduleCategory | null;
+  case_id?: string | null;
+  title?: string | null;
+  time?: string | null;
+  place?: string | null;
+  important?: boolean;
+  shared?: boolean;
+}
+
+export type ScheduleEventUpdate = Partial<ScheduleEventCreate> & { deadline_done?: Record<string, boolean> };
+
+// =========================================================
+// 상담 기록 문서 회차 — backend/app/schemas/source_document.py (API_CONTRACT 21절, 2026-11-02)
+// =========================================================
+
+export type SessionSource = "AUDIO" | "DOCUMENT";
+
+/** 상담 일지 칸 초안(문서에서 옮긴 글). 없는 칸은 빈 글. */
+export interface SourceNoteDraft {
+  statement: string;
+  attitude: string;
+  environment: string;
+  signals: string;
+  opinion: string;
+}
+
+export interface SourceFollowupDraft {
+  checks: { text: string }[];
+  questions: { text: string; reason: string }[];
+  /** AI · NONE(LLM 을 쓰지 않는 서버 — 초안 없음). */
+  source: "AI" | "NONE";
+  model: string | null;
+  generated_at: string;
+}
+
+export interface SourceDocument {
+  session_id: string;
+  filename: string;
+  file_format: "txt" | "docx" | "hwpx" | "pdf";
+  char_count: number;
+  /** 문서에서 뽑은 글(상담사가 쓴 원문). */
+  text: string;
+  /** AI · HEADINGS(머리줄로 나눔, AI 아님). */
+  fill_source: "AI" | "HEADINGS";
+  fill_model: string | null;
+  note_draft: SourceNoteDraft;
+  followup_draft: SourceFollowupDraft | null;
+  created_at: string;
+}
+
+// =========================================================
+// 기관 서식 (22절, 2026-11-02)
+// =========================================================
+
+/** 사정기록지 안전영역(서식 6) · 사례관리 점검표(서식 27) · 위험수준 척도(참고자료 3) · 가족관계 척도(참고자료 1). */
+export type CaseFormType = "SAFETY_ASSESSMENT" | "MANAGEMENT_CHECKLIST" | "RISK_SCALE" | "FAMILY_SCALE";
+
+export type FormLevel = "HIGH" | "MEDIUM" | "LOW";
+export type FormYesNo = "YES" | "NO";
+
+export interface SafetyAssessmentValues {
+  /** 11개(피해아동 3 · 가족구성원 5 · 사례관리대상자 3). */
+  items: (FormLevel | null)[];
+  key_person: FormYesNo | null;
+  /** 3개(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
+  scores: { score: number | null; reason: string }[];
+  opinion: string;
+  result: "INTENSIVE" | "GENERAL" | "MONITORING" | null;
+}
+
+export interface ManagementChecklistValues {
+  place: string;
+  /** 9개. */
+  checks: (FormYesNo | null)[];
+  opinion: string;
+  plan: string;
+}
+
+export interface RiskScaleValues {
+  /** 43개 0~3(1~21 위험요인, 22~43 보호요인). */
+  scores: (number | null)[];
+}
+
+export interface FamilyScaleValues {
+  respondent: "FATHER" | "MOTHER" | "CHILD" | null;
+  /** 15개 1~5. */
+  answers: (number | null)[];
+}
+
+export interface CaseFormValuesMap {
+  SAFETY_ASSESSMENT: SafetyAssessmentValues;
+  MANAGEMENT_CHECKLIST: ManagementChecklistValues;
+  RISK_SCALE: RiskScaleValues;
+  FAMILY_SCALE: FamilyScaleValues;
+}
+
+export interface CaseForm {
+  id: string;
+  case_id: string;
+  form_type: CaseFormType;
+  /** 차수(사례 · 서식 종류마다 1부터). */
+  round: number;
+  /** DRAFT 임시 저장 · APPROVED 상담원 확정(고칠 수 없음). */
+  status: ReviewStatus;
+  /** 판 번호(저장 · 확정마다 1 씩). 고치기 · 확정에 그대로 돌려보낸다. */
+  version: number;
+  values: Record<string, unknown>;
+  /** 서버가 계산한 합계 · 응답 수. 판정은 들지 않는다. */
+  totals: Record<string, number>;
+  created_by_id: string | null;
+  updated_by_id: string | null;
+  confirmed_by_id: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// =========================================================
+// 문서함 — backend/app/schemas/docbox.py (API_CONTRACT 23절, 2026-11-05)
+// =========================================================
+
+export interface DocboxFolder {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface DocboxFile {
+  id: string;
+  /** null 이면 '폴더 없음'. */
+  folder_id: string | null;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  /** text(첫 페이지 글) · image(그림) · other(미리보기 없음). */
+  preview_kind: "text" | "image" | "other";
+  preview_text: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export interface DocboxList {
+  folders: DocboxFolder[];
+  files: DocboxFile[];
+}
+
+// 아이 앱 콩콩 (API_CONTRACT 24절)
+export interface ChildAppInvite {
+  code: string;
+  expires_at: string;
+}
+
+export interface ChildAppEvent {
+  id: string;
+  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
+  level: "NONE" | "SKIP" | "AMBER" | "RED";
+  payload: Record<string, any>;
+  created_at: string;
+  needs_ack: boolean;
+  acknowledged_at: string | null;
+}
+
+export interface ChildOpenAlert {
+  id: string;
+  case_id: string;
+  child_alias: string;
+  case_number: string;
+  reason: "ALERT" | "RED_ANSWER" | "CONTACT_REQUEST" | "TEXT_ANSWER" | "NEEDS_CHECK";
+  can_ack: boolean;
+  repeat_count: number;
+  last_at: string | null;
+  created_at: string;
+}
+
+export interface ChildAppCase {
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  code_expires_at: string | null;
+  linked_at: string | null;
+  last_response_at: string | null;
+  has_pending_questions: boolean;
+  can_read_feed: boolean;
+  open_alerts: ChildOpenAlert[];
+  bank: { id: string; category: string; type: string; text: string }[];
+  feed: ChildAppEvent[];
 }

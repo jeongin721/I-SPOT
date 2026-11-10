@@ -7,10 +7,15 @@
 //  - '수정' 은 모든 줄을 한 번에 고치는 모드(디자인), '확인' 을 누르면 저장한다. 비운 줄은 빠진다. AI 메모를 고치면 '상담사 수정'.
 //  - '+ 확인 사항 직접 추가' 는 수정 모드에서 새 줄을 더한다(상담사가 쓴 줄, source COUNSELOR).
 // 저장할 수 없는 상태(원문 확정 전 · AI 분석 중)면 단추를 멈추고 이유를 보인다(추가 질문과 같은 규칙).
+// 다음 상담 체크리스트(19절)가 켜져 있으면 호출부(followupQ.ts)가 저장 전 초안(drafts — 메모 + rag 확인 사항)과
+// 줄 표시(annotate — rag 칩 · 이유 · 공식 근거 · 근거 위치), 목록을 저장한 뒤 만든 체크리스트의 새 항목(pending)을 넘긴다(2026-11-02).
+// pending 안내는 목록을 바꿔 저장하면(더하기 · 체크 · 수정) 사라진다 — 저장 시각이 체크리스트보다 나중이 되기 때문이다.
+// 내용이 같은 저장은 서버가 행을 고치지 않아 시각이 그대로라 안내도 남는다(#125 재검증 4 L5).
 
 import type { FollowupCheck, FollowupCheckPoint, SessionStatus } from "../../api/types";
 import type { FollowupChecksState } from "../useFollowupChecks";
 import type { RiskSignalsState } from "../useRiskSignals";
+import type { SourceView } from "./followupEvidence";
 import { segmentHref } from "./sttReview";
 
 export interface CheckUiState {
@@ -51,12 +56,27 @@ export function draftChecks(points: FollowupCheckPoint[]): FollowupCheck[] {
     }));
 }
 
+/** 줄에 더 붙일 표시(다음 상담 체크리스트에서 온 줄). why · href 를 주면 근거 위치를 그것으로 바꾼다. */
+export interface CheckAnnotation {
+  chips: string[];
+  reason: string;
+  sources: SourceView[];
+  why?: string;
+  href?: string | null;
+}
+
 export interface CheckInput {
   state: CheckUiState;
   setState: (patch: Partial<CheckUiState>) => void;
   checks: FollowupChecksState;
   /** 분석이 끝났을 때의 AI 확인 메모(아니면 []). */
   points: FollowupCheckPoint[];
+  /** 저장 전 초안. 주면 points 대신 쓴다(메모 + rag 확인 사항을 합친 목록). */
+  drafts?: FollowupCheck[];
+  /** 줄 표시(rag 칩 · 이유 · 공식 근거). null 이면 붙이지 않는다. */
+  annotate?: (item: FollowupCheck) => CheckAnnotation | null;
+  /** 목록을 저장한 뒤 만든 체크리스트의 항목 중 저장 목록에 없는 것. [목록에 더하기] 로 넣는다. */
+  pending?: FollowupCheck[];
   locate: RiskSignalsState["locate"];
   ids: { caseId?: string | null; sessionId?: string | null };
   status: SessionStatus | null | undefined;
@@ -64,7 +84,8 @@ export interface CheckInput {
 
 export function checkValues(input: CheckInput) {
   const { state, setState, checks, locate, ids } = input;
-  const base: FollowupCheck[] = checks.saved ? checks.items : draftChecks(input.points);
+  const base: FollowupCheck[] = checks.saved ? checks.items : input.drafts ?? draftChecks(input.points);
+  const pending = checks.saved ? input.pending ?? [] : [];
   const blocked = blockedReason(input.status);
   const canSave = checks.loaded && !checks.loadError && !checks.submitting && !blocked;
 
@@ -73,12 +94,19 @@ export function checkValues(input: CheckInput) {
   const rows = base.map((item, index) => {
     const located = locate(item.segment_ids);
     const first = located.evidence[0]?.segmentId ?? null;
+    const extra = input.annotate?.(item) ?? null;
 
     return {
       key: `c${index}`,
       text: item.text,
-      why: located.label || (item.previous_session_label ? `${item.previous_session_label} 확정 요약` : "근거 위치 없음"),
-      href: first ? segmentHref(ids, first) : null,
+      why:
+        extra?.why ??
+        (located.label || (item.previous_session_label ? `${item.previous_session_label} 확정 요약` : "근거 위치 없음")),
+      href: extra && extra.why !== undefined ? extra.href ?? null : first ? segmentHref(ids, first) : null,
+      // 고치는 중에는 칩 · 공식 근거를 숨긴다(고친 문장은 검토를 거치지 않았다 — 추가 질문과 같은 규칙).
+      chips: extra && !state.ckEditing ? extra.chips : [],
+      reason: extra && !state.ckEditing ? extra.reason : "",
+      sources: extra && !state.ckEditing ? extra.sources : [],
       on: item.in_briefing,
       edited: item.edited,
       mine: item.source === "COUNSELOR",
@@ -121,6 +149,14 @@ export function checkValues(input: CheckInput) {
   return {
     checks: rows,
     newRows,
+    ckPendingNote:
+      pending.length > 0
+        ? `목록을 저장한 뒤 만든 공식 근거 확인 사항 ${pending.length}개가 이 목록에 없습니다. 더하지 않고 목록을 바꿔 저장하면(체크 · 수정) 이 안내는 사라집니다.`
+        : "",
+    ckAddPending: () => {
+      if (!canSave || state.ckEditing || pending.length === 0) return;
+      void save([...base, ...pending]);
+    },
     ckIsEdit: state.ckEditing,
     ckNotEdit: !state.ckEditing,
     ckCanEdit: canSave,

@@ -3,8 +3,9 @@
 //
 // 서버 연결: 진행 중 사례 수 · 미처리 업무(목록 · 종류별 수)는 useHomeDashboard 가 부르고, 화면에 쓸 값은
 // src/data/screens/main.ts(mainValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 오늘 일정 · 다음 상담까지 남은 시간 · 아이 앱 긴급 응답은 서버에 없어 준비 중 · '—'. 시계 · 빠른 실행은 화면 상태다.
-import { Fragment } from 'react';
+// 오늘 일정 · 다음 상담까지 남은 시간은 일정(useSchedule, 11/02 연결)에서 온다. 아이 앱 긴급 응답은 서버에 없어 '—'.
+// 시계 · 빠른 실행은 화면 상태다.
+import { Fragment, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -14,8 +15,9 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useHomeDashboard } from '../data/useHomeDashboard';
+import { useSchedule } from '../data/useSchedule';
 import { needsLogin } from '../data/screens/common';
-import { initialMainState, mainValues } from '../data/screens/main';
+import { homeScheduleRange, initialMainState, mainValues } from '../data/screens/main';
 import { useTheme } from '../theme';
 import './Main.css';
 
@@ -38,8 +40,10 @@ class Logic extends DCLogic {
 export default function Main(props) {
   const session = useAuthSession();
   const home = useHomeDashboard(session);
+  const [scheduleRange] = useState(() => homeScheduleRange(new Date()));
+  const schedule = useSchedule(session, scheduleRange, { withCases: false });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, home });
+  const v = useDC(Logic, { ...props, session, home, schedule });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-Main">
@@ -69,7 +73,7 @@ export default function Main(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 14px' }}>
@@ -147,9 +151,11 @@ export default function Main(props) {
                   달력 보기
                 </A>
               </div>
-              <p className="note" style={{ margin: '0 24px 10px' }}>
-                {v.scheduleNote}
-              </p>
+              {v.scheduleNote ? (
+                <p className="note" style={{ margin: '0 24px 10px' }}>
+                  {v.scheduleNote}
+                </p>
+              ) : null}
               {(v.hours || []).map((h, hIndex) => (
                 <Fragment key={hIndex}>
                   <div className="hr" style={{ background: h.bg, opacity: h.op }}>
@@ -230,7 +236,7 @@ export default function Main(props) {
                   <div className="note">다음 상담까지</div>
                   <b style={{ fontSize: '24px', color: '#A33B2E' }}>{v.remain}</b>
                   <div style={{ marginTop: '2px', fontSize: '14px' }}>{v.nextTitle}</div>
-                  <A className="btn btn-p" to="/PreBriefing" style={{ width: '100%', marginTop: '12px' }}>
+                  <A className="btn btn-p" to={v.briefHref} style={{ width: '100%', marginTop: '12px' }}>
                     상담 전 브리핑 보기
                   </A>
                 </div>

@@ -14,7 +14,8 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseOverview } from '../data/useCaseOverview';
-import { closureValues, useAccountSearch } from '../data/screens/closure';
+import { closureValues } from '../data/screens/closure';
+import { useAccountSearch } from '../data/useAccountSearch';
 import { needsLogin } from '../data/screens/common';
 import { useTheme } from '../theme';
 import './Closure.css';
@@ -27,7 +28,7 @@ class Logic extends DCLogic {
 
 export default function Closure(props) {
   const session = useAuthSession();
-  const overview = useCaseOverview(session, 'counts');
+  const overview = useCaseOverview(session, 'counts', { withNames: true });
   const [search, setSearch] = useAccountSearch(session);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, overview, search, setSearch });
@@ -60,7 +61,7 @@ export default function Closure(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>종결 검토</h1>
@@ -69,8 +70,8 @@ export default function Closure(props) {
             <input
               className="inp"
               type="search"
-              aria-label="별칭 또는 사례 ID 검색"
-              placeholder="별칭 · 사례 ID 검색"
+              aria-label="이름 · 별칭 · 사례 ID 검색"
+              placeholder="이름 · 별칭 · 사례 ID 검색"
               style={{ flex: '1 1 240px' }}
               value={v.search.value}
               onChange={v.search.onChange}
@@ -85,7 +86,7 @@ export default function Closure(props) {
             <table className="tbl" style={{ minWidth: '600px' }}>
               <thead>
                 <tr>
-                  <th scope="col">아동 별칭</th>
+                  <th scope="col">아동 이름</th>
                   <th scope="col">상담 회차</th>
                   <th scope="col">등록일</th>
                   <th scope="col">진행 단계</th>

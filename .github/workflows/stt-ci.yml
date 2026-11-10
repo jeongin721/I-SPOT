@@ -1,19 +1,26 @@
 name: STT module
 
-# stt/ 와 루트 tests/ 는 Backend CI 범위 밖이라(backend-ci.yml), 구간별 음성 참고 표시 모듈(stt/voice_marks.py)의
-# 시험만 따로 돈다. 바뀔 때만 돌고, 의존성은 Backend 이미지와 같은 backend/requirements-stt.txt 를 쓴다
-# (librosa · numba · soundfile 과 STT SDK). 첫 실행은 numba 컴파일 때문에 몇 초 더 걸린다.
+# stt/ 와 루트 tests/ 는 Backend CI 범위 밖이라(backend-ci.yml), 구간별 음성 참고 표시 모듈(stt/voice_marks.py)과
+# STT 공급자 변환(stt/ispot_stt.py 의 ElevenLabs 신뢰도 · Deepgram 대체)의 시험만 따로 돈다. 공급자 시험은 응답을
+# 흉내 내므로 API 키 · 네트워크가 필요 없다. 바뀔 때만 돌고, 의존성은 Backend 이미지와 같은
+# backend/requirements-stt.txt 를 쓴다(librosa · numba · soundfile 과 STT SDK). 첫 실행은 numba 컴파일 때문에 몇 초 더 걸린다.
 on:
   push:
     paths:
       - "stt/**"
       - "tests/test_voice_marks.py"
+      - "tests/test_elevenlabs_stt_provider.py"
+      - "tests/test_selective_deepgram_single_speaker_fallback.py"
+      - "tests/test_stt_failure_handling.py"
       - "backend/requirements-stt.txt"
       - ".github/workflows/stt-ci.yml"
   pull_request:
     paths:
       - "stt/**"
       - "tests/test_voice_marks.py"
+      - "tests/test_elevenlabs_stt_provider.py"
+      - "tests/test_selective_deepgram_single_speaker_fallback.py"
+      - "tests/test_stt_failure_handling.py"
       - "backend/requirements-stt.txt"
       - ".github/workflows/stt-ci.yml"
 
@@ -37,3 +44,10 @@ jobs:
       - name: Run voice_marks tests
         # 루트에서 돌려야 `from stt import voice_marks` 가 된다. 캐시 파일을 저장소에 남기지 않는다.
         run: python -B -m pytest tests/test_voice_marks.py -q -p no:cacheprovider
+
+      - name: Run STT provider tests
+        # ElevenLabs 단어 logprob → 단어 · 구간 신뢰도(#133), 한 화자로 나온 결과의 Deepgram 대체.
+        run: >-
+          python -B -m pytest tests/test_elevenlabs_stt_provider.py
+          tests/test_stt_failure_handling.py
+          tests/test_selective_deepgram_single_speaker_fallback.py -q -p no:cacheprovider

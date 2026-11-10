@@ -18,16 +18,18 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import ConsultationType, SessionStatus
+from app.core.enums import ConsultationType, SessionSource, SessionStatus
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.source_document import SessionSourceDocument
     from app.models.analysis import AIAnalysis
     from app.models.audio import AudioFile
     from app.models.audio_feature import AudioFeature
     from app.models.case import Case
     from app.models.document import Document
     from app.models.followup_check import SessionFollowupChecks
+    from app.models.followup_checklist import SessionFollowupChecklist
     from app.models.followup_question import SessionFollowupQuestions
     from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
     from app.models.summary import ConsultationSummary
@@ -72,6 +74,13 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     memo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 회차 자료(2026-11-02). DOCUMENT 면 상담 기록 문서로 3 · 4단계만 쓴다(SessionSourceDocument).
+    source: Mapped[SessionSource] = mapped_column(
+        SAEnum(SessionSource, name="session_source", native_enum=False, length=20),
+        default=SessionSource.AUDIO,
+        server_default=SessionSource.AUDIO.value,
+        nullable=False,
+    )
 
     # 재시도 가능한 오류 정보
     last_error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -151,6 +160,12 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         passive_deletes=True,
         uselist=False,
     )
+    source_document: Mapped[Optional["SessionSourceDocument"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
     followup_checks: Mapped[Optional["SessionFollowupChecks"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
@@ -159,6 +174,13 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # 회차 전체 상담원 판단 하나(11.1절). 유형별 판단(risk_assessments)과 따로 둔다.
     overall_risk_assessment: Mapped[Optional["SessionOverallRiskAssessment"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    # 다음 상담 체크리스트 하나(19절). rag 확인 사항 · 추가 질문 공식 근거.
+    followup_checklist: Mapped[Optional["SessionFollowupChecklist"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,

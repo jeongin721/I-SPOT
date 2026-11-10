@@ -2,21 +2,22 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case as sql_case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import storage
-from app.core.enums import AuditAction, CaseStatus, GuardianType, UserRole
+from app.core.enums import AuditAction, CaseStatus, GuardianType, RiskLevel, SessionStatus, UserRole
 from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found
 from app.models.audio import AudioFile
 from app.models.case import Case
+from app.models.risk_assessment import SessionOverallRiskAssessment
 from app.models.session import ConsultationSession
 from app.models.user import User
-from app.schemas.case import CaseCreateRequest, CaseUpdateRequest
-from app.services import audit_service
+from app.schemas.case import CASE_FORM_FIELDS, CaseCreateRequest, CaseUpdateRequest
+from app.services import audit_service, personal_info_service
 from app.services.access import ensure_case_access
 
 _CASE_NUMBER_MAX_RETRY = 5
@@ -97,6 +98,8 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             report_date=payload.report_date,
             linked_date=payload.linked_date,
             first_interview_date=payload.first_interview_date,
+            # 서식 4 의 조치결과 · 위험도(우선) · 사례연계 경위 · ② 가족유형 · 초기면접 글 칸(2026-11-05).
+            **{field: getattr(payload, field) for field in CASE_FORM_FIELDS},
             status=CaseStatus.ACTIVE,
             counselor_id=counselor_id,
             created_by_id=current_user.id,
@@ -128,12 +131,21 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             detail={"case_number": case.case_number},
         )
 
+        # 실명 · 생년월일 · 가족 정보는 암호화해 따로 둔다(API_CONTRACT 4절 '개인 식별 정보'). 사례와 같은 거래라 하나가 실패하면 둘 다 남지 않는다.
+        if payload.personal_info is not None:
+            personal_info_service.apply_personal_info(db, case, current_user, payload.personal_info)
+
         db.commit()
         db.refresh(case)
 
         return case
 
     raise conflict(ErrorCode.DUPLICATE_RESOURCE, "사례 번호 생성에 실패했습니다.")
+
+
+# 목록 정렬(API_CONTRACT 4절). 없으면 등록 최신순.
+CaseSort = Literal["report_date", "risk"]
+CaseSortOrder = Literal["desc", "asc"]
 
 
 def list_cases(
@@ -144,7 +156,9 @@ def list_cases(
     limit: int,
     status: Optional[CaseStatus] = None,
     search: Optional[str] = None,
-) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str]]], int]:
+    sort: Optional[CaseSort] = None,
+    order: CaseSortOrder = "desc",
+) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str], Optional[RiskLevel]]], int]:
     conditions = []
 
     # counselor 는 담당 Case 만 조회한다.
@@ -163,11 +177,16 @@ def list_cases(
         # 해석이 달라 SQLite 와 PostgreSQL 에서 결과가 갈릴 수 있다.
         escaped = term.replace("/", "//").replace("%", "/%").replace("_", "/_")
         pattern = f"%{escaped}%"
-        conditions.append(
+        matches = (
             Case.title.ilike(pattern, escape="/")
             | Case.case_number.ilike(pattern, escape="/")
             | Case.child_alias.ilike(pattern, escape="/")
         )
+
+        # 아동 실명은 암호화돼 있어 부분 검색을 할 수 없다. 이름과 정확히 같은(공백 무시) 검색어만 찾는다(API_CONTRACT 4절 '개인 식별 정보').
+        by_name = personal_info_service.name_search_condition(term)
+
+        conditions.append(matches if by_name is None else matches | by_name)
 
     total = db.scalar(
         select(func.count()).select_from(Case).where(*conditions)
@@ -179,18 +198,70 @@ def list_cases(
     #
     # 담당자는 outerjoin 으로 붙인다. 상담사 계정이 삭제되면 counselor_id 가
     # 남아도 User row 는 없을 수 있고, 그때도 사례는 조회되어야 한다.
+    risk_level = _risk_level_subquery()
     rows = db.execute(
-        select(Case, _last_session_at_subquery(), User.name)
+        select(Case, _last_session_at_subquery(), User.name, risk_level)
         .outerjoin(User, User.id == Case.counselor_id)
         .where(*conditions)
-        .order_by(Case.created_at.desc())
+        .order_by(*_case_order(sort, risk_level, order))
         .offset(offset)
         .limit(limit)
     ).all()
 
-    cases = [(row[0], row[1], row[2]) for row in rows]
+    cases = [(row[0], row[1], row[2], row[3]) for row in rows]
 
     return cases, total
+
+
+def _case_order(sort: Optional[CaseSort], risk_level, order: CaseSortOrder = "desc") -> list:
+    """목록 순서. desc 는 신고접수일 최신 · 위험도 상부터, asc 는 그 반대다(11/09 디자인 ↑ · ↓). 어느 쪽이든 값이 없는 사례는 맨 뒤고, 같은 값끼리는 등록 최신순이다(id 는 쪽을 넘겨도 순서가 흔들리지 않게)."""
+
+    latest_first = [Case.created_at.desc(), Case.id.desc()]
+
+    if sort == "report_date":
+        column = Case.report_date.asc() if order == "asc" else Case.report_date.desc()
+        return [column.nulls_last(), *latest_first]
+
+    if sort == "risk":
+        # 목록에 보이는 값과 같은 순서: 회차 상담원 판단, 판단 전이면 서식 4 위험도(우선).
+        def _is(level: RiskLevel):
+            return or_(risk_level == level, and_(risk_level.is_(None), Case.counselor_risk_level == level))
+
+        high, low = (1, 3) if order == "asc" else (3, 1)
+        rank = sql_case((_is(RiskLevel.HIGH), high), (_is(RiskLevel.MEDIUM), 2), (_is(RiskLevel.LOW), low), else_=0)
+        return [rank.desc(), *latest_first]
+
+    return latest_first
+
+
+def _risk_level_subquery():
+    """
+    사례 목록의 위험도: AI 분석이 끝난 가장 최근 회차의 상담원 판단(회차 전체 상 · 중 · 하).
+
+    사례 상세의 위험도 칩과 같은 값이다(counselor-web latestAnalyzedSession). 그 회차를 아직 판단하지 않았으면
+    앞 회차 판단으로 대신하지 않고 null 이다. AI 심각도로도 채우지 않는다.
+    """
+
+    latest_analyzed = (
+        select(ConsultationSession.id)
+        .where(
+            ConsultationSession.case_id == Case.id,
+            ConsultationSession.status.in_(
+                [SessionStatus.AI_REVIEW_REQUIRED, SessionStatus.APPROVED]
+            ),
+        )
+        .order_by(ConsultationSession.session_number.desc())
+        .limit(1)
+        .correlate(Case)
+        .scalar_subquery()
+    )
+
+    return (
+        select(SessionOverallRiskAssessment.counselor_level)
+        .where(SessionOverallRiskAssessment.session_id == latest_analyzed)
+        .correlate(Case)
+        .scalar_subquery()
+    )
 
 
 def _last_session_at_subquery():
@@ -300,6 +371,7 @@ def update_case(
         "report_date",
         "linked_date",
         "first_interview_date",
+        *CASE_FORM_FIELDS,
         "status",
     ):
         if field in data:

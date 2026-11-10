@@ -59,6 +59,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 
 from ai.modeling.abuse.case_context import format_case_context
+from ai.modeling.abuse.question_rules import judgment_reason
 from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 from ai.modeling.abuse.text_script import has_foreign_script
 
@@ -225,9 +226,11 @@ def format_inputs_for_masking(
     child_statement_points: List[Dict[str, Any]],
     risk_signal_points: List[Dict[str, Any]],
     case_context: Any = None,
+    known_identifiers: Any = (),
 ) -> str:
     """case_context(2026-10-28, case_context.py): 사례 정보. 없으면 세 번째 칸은 "없음".
-    지난 회차 요약은 상담원 글이라 이름이 섞일 수 있어, 이 글 전체를 부르는 쪽이 한 번에 마스킹한다."""
+    지난 회차 요약은 상담원 글이라 이름이 섞일 수 있어, 이 글 전체를 부르는 쪽이 한 번에 마스킹한다.
+    known_identifiers: 등록 이름. 지난 회차 요약을 자를 때 이름 중간에서 끊지 않게만 쓴다(2026-11-03, backend PR #138 재검증 N2)."""
 
     return (
         _format_session_content(
@@ -236,7 +239,7 @@ def format_inputs_for_masking(
         + SPLIT_MARKER
         + _format_low_confidence(segments)
         + SPLIT_MARKER
-        + format_case_context(case_context)
+        + format_case_context(case_context, known_identifiers)
     )
 
 
@@ -277,6 +280,11 @@ def _clean_points(
 
         # 2026-10-30 데모: LLM 이 다른 나라 문자를 섞어 쓴 메모("재발 방지 ব্যবস্থা")는 버린다(text_script).
         if has_foreign_script(text):
+            continue
+
+        # 2026-10-30 연동(specs followup-rag-checklist 5번): 화면 '다음 상담 전 확인할 사항' 에 rag 확인 사항과
+        # 한 목록으로 보이므로 같은 기준으로 판정 · 단정 표현("학대 확정" 등)이 있는 메모는 뺀다(question_rules).
+        if judgment_reason(text):
             continue
 
         raw_segment_ids = item.get("segment_ids")

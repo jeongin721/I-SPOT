@@ -2,7 +2,15 @@
 // 원본: 10/30 디자인 ClosureDetail.dc.html(프론트팀 zip). 화면 주소 ?case=<사례 ID>.
 // 서버 연결(2026-10-30): 머리(사건번호 · 담당 · 아동 별칭 · 작성일 · 초기면접일), 초기상황 · 종결상황(저장한 글이 없으면 closure-summary
 // AI 초안) · 종결 심의일 · 종결 상담일 · 종합의견 · '보고서 저장'(PUT closure-summary report). closureReview.ts closureReportValues.
-// 종결사유 · 서비스 요약 · 안전평가 · 안전점수는 저장할 서버 칸이 아직 없다 — 실제 사례로 열면 예시 AI 제안 · 근거 · 기본값을 지운다.
+// 실제 사례로 열면 예시 AI 제안 · 근거 · 기본값을 지운다.
+// 11/03: 종결사유 · 안전평가 · Key Person · 안전점수도 report 에 저장한다(상담원이 고른 값만, AI 가 채우지 않음). 저장하면 카드 아래에
+// '저장했습니다' 를 보이고, 저장하지 않은 수정이 있으면 떠날 때 묻는다(useLeaveGuard). 사례관리 제공 요약은 서버 칸이 없어 준비 중.
+// 가족관계척도 줄은 기관 서식(가족관계 척도, useCaseForms) 가장 최근 기록의 평균을 보인다.
+// 11/04 디자인: 'AI 제안' 자리를 실제 사례 값으로 — 안전평가 · Key Person 은 요약 AI 제안(summary.suggestions), 종결사유는 기록 제안,
+// 종결 상담일은 일정, 학대유형은 AI 관련 신호, 사례관리 제공 요약은 회차 기록(report.services 로 저장). 칩 · 근거로 무엇이 제안인지 보인다.
+// 11/05 경진님: 저장한 적 없는 판단 칸은 이 제안으로 먼저 채우고(AI · 기록 1차 판단) 상담원이 고쳐 '보고서 저장' 한다(closureSuggest first).
+// 11/05: 보고서 저장 아래에 '사례 종결 확정'(디자인에 없던 단추, 경진님 요청) — 저장과 따로, 저장한 보고서가 있고 고친 칸이 없을 때만
+// 확인을 받고 사례 상태를 종결로 바꾼다(useCaseClosing).
 import { Fragment, useState } from 'react';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -14,10 +22,17 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { useCaseClosing } from '../data/useCaseClosing';
+import { useCaseForms } from '../data/useCaseForms';
+import { useCaseSchedule } from '../data/useCaseSchedule';
+import { useSignalHistory } from '../data/useSignalHistory';
+import { closureSuggestions } from '../data/screens/closureSuggest';
 import { useClosureSummary } from '../data/useClosureSummary';
 import { closureReportValues } from '../data/screens/closureReview';
+import { familyScaleLine } from '../data/screens/caseForm';
 import { signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
+import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useTheme } from '../theme';
 import './ClosureDetail.css';
 
@@ -53,8 +68,14 @@ class Logic extends DCLogic {
     const reasons = R.map(([t, aiRaw, evRaw], i) => {
       const ai = real ? false : aiRaw;
       const ev = real ? '' : evRaw;
+      // 실제 사례는 서버에 저장한 값(r.reasons)을 쓴다.
+      // 저장한 적 없으면 기록 제안이 1차로 체크돼 있다(closureReportValues first) — 상담원이 풀거나 더 체크한다.
+      if (real) {
+        const sg = this.props.suggest.reasons[i];
+        return { t, on: Boolean(this.props.report.reasons[i]), hasEv: Boolean(sg), chip: sg?.chip ?? '', ev: sg?.ev ?? '', toggle: () => this.props.report.toggleReason(i) };
+      }
       const on = s.rs[i] !== undefined ? s.rs[i] : ai;
-      return { t, on, hasEv: !!ev, ev, toggle: () => this.setState({ rs: { ...s.rs, [i]: !on } }) };
+      return { t, on, hasEv: !!ev, chip: 'AI 제안', ev, toggle: () => this.setState({ rs: { ...s.rs, [i]: !on } }) };
     });
     const goals = [
       ['장기 개입목표 1: 아동의 정서 안정', '아동 심리치료 12회 (○○센터) · 정서 표현 활동', 700, '12px'],
@@ -100,28 +121,50 @@ class Logic extends DCLogic {
     const safety = SA.map(([name, items]) => ({
       name,
       items: items.map(([q, aiRaw, evRaw]) => {
-        const ai = real ? '' : aiRaw;
-        const ev = real ? '' : evRaw;
         const k = idx++;
-        const cur = s.sa[k] !== undefined ? s.sa[k] : ai;
+        const sg = real ? this.props.suggest.safety[k] : null;
+        const ai = real ? sg?.level ?? '' : aiRaw;
+        const ev = real ? sg?.ev ?? '' : evRaw;
+        const cur = real ? this.props.report.safety[k] : s.sa[k] !== undefined ? s.sa[k] : ai;
         return {
           q,
           ai,
           ev,
-          hasEv: !!ai,
+          chip: real ? sg?.chip ?? '' : `AI 제안 · ${ai}`,
+          hasEv: real ? Boolean(sg) : !!ai,
           opts: ['높음', '보통', '낮음'].map((o) => ({
             label: o,
             ...sel(cur === o),
-            pick: () => this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } }),
+            // 11/09 디자인: AI 가 고른 단추는 상담원이 다른 값을 골라도 표시가 남는다(무엇이 AI 판단인지 알게).
+            isAi: !!ai && o === ai,
+            cls: !!ai && o === ai ? 'aip' : '',
+            aria: o + (!!ai && o === ai ? ' (AI 제안)' : ''),
+            pick: () => (real ? this.props.report.pickSafety(k, o) : this.setState({ sa: { ...s.sa, [k]: cur === o ? '' : o } })),
           })),
         };
       }),
     }));
-    return { reasons, goals: real ? [] : goals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
+    // 실제 사례: 개입목표 6줄(11/09 디자인 자리). 목표 · 서비스 모두 상담원이 쓴다(가상 사례 문장을 넣지 않는다).
+    const liveGoals = real
+      ? ['장기 개입목표 1', '단기 개입목표 1', '단기 개입목표 2', '장기 개입목표 2', '단기 개입목표 1', '단기 개입목표 2'].map((k, i) => ({
+          k,
+          fw: k[0] === '장' ? 700 : 400,
+          pad: k[0] === '장' ? '12px' : '28px',
+          row: this.props.report.goals[i],
+        }))
+      : [];
+    return { reasons, goals: real ? [] : goals, liveGoals, safety, scoreRows: ['피해아동 응답', '가족구성원 응답', '사례관리대상자 응답'] };
   }
 }
 
+// 사례가 바뀌면(같은 화면에서 다른 사례 주소로 · 뒤로 가기) 화면을 새로 만든다. 고친 칸(draft)이 사례 구분 없이 남아 있으면
+// 앞 사례에서 저장하지 않은 입력이 다음 사례 보고서에 저장된다(Codex #140 H1, 11/03).
 export default function ClosureDetail(props) {
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  return <ClosureDetailScreen key={caseId ?? ''} {...props} />;
+}
+
+function ClosureDetailScreen(props) {
   const [outOpen, setOutOpen] = useState(false);
   const session = useAuthSession();
   const theme = useTheme();
@@ -130,15 +173,42 @@ export default function ClosureDetail(props) {
   const detail = useCaseDetail(caseId, { enabled });
   const summary = useClosureSummary(caseId, { enabled });
   const [draft, setDraftState] = useState({});
+  const live = enabled && Boolean(caseId && detail.caseInfo);
+  const forms = useCaseForms(caseId, { enabled: live });
+  const history = useSignalHistory(caseId, { enabled: live });
+  const plan = useCaseSchedule(caseId, { enabled: live });
+  const suggest = closureSuggestions({
+    detail,
+    history: history.sessions,
+    forms: forms.items,
+    events: plan.events,
+    summary: summary.record?.summary ?? null,
+    today: new Date().toISOString().slice(0, 10),
+  });
   const r = closureReportValues(
     caseId,
     detail,
     summary,
     draft,
     (patch) => setDraftState((current) => ({ ...current, ...patch })),
-    () => setDraftState({}),
+    (sent) =>
+      setDraftState((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key, value]) => sent[key] !== value)),
+      ),
+    { ...suggest.first, services: suggest.services },
   );
-  const v = useDC(Logic, { ...props, connected: r.connected });
+  const v = useDC(Logic, { ...props, connected: r.connected, report: r, suggest });
+  const family = familyScaleLine(forms);
+  const [savedNote, setSavedNote] = useState('');
+  useLeaveGuard(r.unsaved, { guardBack: true });
+  const closing = useCaseClosing(caseId, detail, summary.record?.report, r.unsaved);
+  const save = async () => {
+    setSavedNote('');
+    if (await r.save()) {
+      const now = new Date();
+      setSavedNote(`보고서를 저장했습니다 · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+    }
+  };
   const name = r.alias || '강시우';
   return (
     <div className="pg-ClosureDetail">
@@ -168,7 +238,7 @@ export default function ClosureDetail(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -181,6 +251,7 @@ export default function ClosureDetail(props) {
             <div style={{ flex: '1 1 320px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>사례관리 종결보고서</h1>
+                {!r.connected || summary.record?.summary?.source === 'AI' ? <span className="chip c-ai">AI 초안</span> : null}
               </div>
               <div className="note">서식 29</div>
             </div>
@@ -210,7 +281,18 @@ export default function ClosureDetail(props) {
               </div>
               <div>
                 <span className="k">학대유형</span>
-                <span className="v">—</span>
+                <span className="v">
+                  {r.connected && suggest.abuseSignal ? (
+                    <>
+                      <span className="chip c-ai no-print" style={{ height: '20px', fontSize: '11px' }}>
+                        {suggest.abuseSignal}
+                      </span>
+                      <span className="print-only">—</span>
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </span>
               </div>
               <div>
                 <span className="k">담당 상담원</span>
@@ -230,10 +312,9 @@ export default function ClosureDetail(props) {
               </div>
             </div>
 
-            {r.connected ? (
+            {r.firstNote ? (
               <p className="note" style={{ margin: 0 }}>
-                종결사유 · 사례관리 제공 요약 · 안전평가 · 안전점수는 아직 저장되지 않습니다(준비 중). 저장되는 칸은 대상자 변화상황 ·
-                날짜 · 종합의견입니다.
+                {r.firstNote}
               </p>
             ) : null}
             <div className="grp">종결사유</div>
@@ -247,7 +328,7 @@ export default function ClosureDetail(props) {
                       <>
                         <span className="ev" style={{ marginTop: '4px' }}>
                           <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                            AI 제안
+                            {r.chip}
                           </span>
                           {r.ev}
                         </span>
@@ -264,16 +345,55 @@ export default function ClosureDetail(props) {
                 <span>개입목표</span>
                 <span>
                   제공된 서비스 내용 및 총량{' '}
-                  <span className="chip c-ai" style={{ height: '20px', fontSize: '11px', marginLeft: '6px' }}>
-                    AI 초안 · 서비스 기록
-                  </span>
+                  {!r.connected || suggest.servicesChip ? (
+                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px', marginLeft: '6px' }}>
+                      {r.connected ? suggest.servicesChip : 'AI 초안 · 서비스 기록'}
+                    </span>
+                  ) : null}
                 </span>
               </div>
               {r.connected ? (
                 <div className="goal">
-                  <span className="note">개입목표 · 서비스 기록이 서버에 없어 준비 중입니다.</span>
+                  <span className="k" style={{ fontWeight: 700, paddingLeft: '12px' }}>
+                    상담 · 서비스 제공
+                  </span>
+                  <input
+                    className="inp"
+                    type="text"
+                    value={r.services.value}
+                    onChange={r.services.onChange}
+                    maxLength={300}
+                    aria-label="제공된 서비스 내용 및 총량"
+                    style={{ width: '100%', height: '36px' }}
+                  />
                 </div>
               ) : null}
+              {(v.liveGoals || []).map((g, gIndex) => (
+                <div className="goal" key={gIndex}>
+                  <span className="k" style={{ fontWeight: g.fw, paddingLeft: g.pad, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {g.k}
+                    <input
+                      className="inp"
+                      type="text"
+                      value={g.row.goal}
+                      onChange={(e) => g.row.setGoal(e.target.value)}
+                      maxLength={200}
+                      placeholder="목표 내용"
+                      aria-label={`${g.k} 내용 (${gIndex < 3 ? '장기 1' : '장기 2'})`}
+                      style={{ width: '100%', height: '36px', fontWeight: 400 }}
+                    />
+                  </span>
+                  <input
+                    className="inp"
+                    type="text"
+                    value={g.row.service}
+                    onChange={(e) => g.row.setService(e.target.value)}
+                    maxLength={300}
+                    aria-label={`${g.k} 제공된 서비스 (${gIndex < 3 ? '장기 1' : '장기 2'})`}
+                    style={{ width: '100%', height: '36px' }}
+                  />
+                </div>
+              ))}
               {(v.goals || []).map((g, gIndex) => (
                 <Fragment key={gIndex}>
                   <div className="goal">
@@ -305,10 +425,13 @@ export default function ClosureDetail(props) {
                           <Fragment key={oIndex}>
                             <button
                               type="button"
+                              className={o.cls}
                               onClick={o.pick}
+                              aria-label={o.aria}
                               style={{ background: o.bg, color: o.fg, fontWeight: o.fw }}
                             >
                               {o.label}
+                              {o.isAi ? <span className="aim" aria-hidden="true"></span> : null}
                             </button>
                           </Fragment>
                         ))}
@@ -317,7 +440,7 @@ export default function ClosureDetail(props) {
                         <>
                           <span className="ev">
                             <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
-                              AI 제안 · {it.ai}
+                              {it.chip}
                             </span>
                             {it.ev}
                           </span>
@@ -336,18 +459,20 @@ export default function ClosureDetail(props) {
                 key={r.connected ? 'live' : 'sample'}
                 className="inp"
                 type="text"
-                defaultValue={r.connected ? '' : '있음 · 외조모 (주 2회 돌봄)'}
+                {...(r.connected
+                  ? { value: r.keyPerson.value, onChange: r.keyPerson.onChange, maxLength: 300 }
+                  : { defaultValue: '있음 · 외조모 (주 2회 돌봄)' })}
                 aria-label="Key Person"
                 style={{ width: '100%' }}
               />
-              {r.connected ? null : (
+              {!r.connected || suggest.keyPerson ? (
                 <span className="ev">
                   <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
                     AI 제안
                   </span>
-                  보호자 상담 3회차 · 서비스 기록
+                  {r.connected ? suggest.keyPerson.ev : '보호자 상담 3회차 · 서비스 기록'}
                 </span>
-              )}
+              ) : null}
             </div>
 
             <div className="grp">
@@ -356,27 +481,51 @@ export default function ClosureDetail(props) {
                 (최소안전 1점 – 가장안전 10점)
               </span>
             </div>
-            {(v.scoreRows || []).map((r, rIndex) => (
+            {(v.scoreRows || []).map((row, rIndex) => (
               <Fragment key={rIndex}>
                 <div className="item" style={{ gridTemplateColumns: '160px 110px minmax(0, 1fr)' }}>
-                  <span>{r}</span>
+                  <span>{row}</span>
                   <input
                     className="inp"
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     max="10"
+                    step="1"
                     placeholder="( )점"
-                    aria-label="안전점수"
+                    aria-label={`${row} 안전점수 (1~10점)`}
                     style={{ width: '100px' }}
+                    {...(r.connected
+                      ? { value: r.scores[rIndex].score, onChange: (e) => r.scores[rIndex].setScore(e.target.value) }
+                      : {})}
                   />
-                  <input className="inp" type="text" placeholder="이유" aria-label="이유" style={{ width: '100%' }} />
+                  <input
+                    className="inp"
+                    type="text"
+                    placeholder="이유"
+                    aria-label="이유"
+                    style={{ width: '100%' }}
+                    {...(r.connected
+                      ? {
+                          value: r.scores[rIndex].reason,
+                          onChange: (e) => r.scores[rIndex].setReason(e.target.value),
+                          maxLength: 300,
+                        }
+                      : {})}
+                  />
                 </div>
               </Fragment>
             ))}
             <div className="item" style={{ gridTemplateColumns: '160px minmax(0, 1fr)' }}>
               <span>가족관계척도</span>
               {r.connected ? (
-                <span className="note">— · 기관 서식(가족관계척도) 기록이 서버에 없음</span>
+                family.avg ? (
+                  <span>
+                    평균 <b className="brn">{family.avg}</b>점 <span className="note">· {family.sub}</span>
+                  </span>
+                ) : (
+                  <span className="note">{family.sub}</span>
+                )
               ) : (
                 <span>
                   평균 <b className="brn">3.60</b>점{' '}
@@ -421,6 +570,14 @@ export default function ClosureDetail(props) {
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <b style={{ fontSize: '14px' }}>종결 상담일</b>
                 <input className="inp" type="date" aria-label="종결 상담일" value={r.closingDate.value} onChange={r.closingDate.onChange} />
+                {!r.connected || suggest.closingDate ? (
+                  <span className="ev">
+                    <span className="chip c-ai" style={{ height: '20px', fontSize: '11px' }}>
+                      {r.connected ? suggest.closingDate.chip : 'AI 제안'}
+                    </span>
+                    {r.connected ? suggest.closingDate.ev : '일정 · 10/14 종결 상담'}
+                  </span>
+                ) : null}
               </label>
             </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -453,18 +610,36 @@ export default function ClosureDetail(props) {
                   }}
                 />
               ) : null}
-              <A className="btn btn-s" to="/Schedule">
+              {/* 일정 달력이 '사례회의 · 종결평가 회의' 추가 창을 연 채로 열린다 — 날을 고르고 저장하면 일정이 잡힌다(11/02). */}
+              <A className="btn btn-s" to={r.meetingHref}>
                 종결평가 회의 일정 잡기
               </A>
-              <button type="button" className="btn btn-p" onClick={r.save} disabled={!r.canSave}>
+              <button type="button" className="btn btn-p" onClick={save} disabled={!r.canSave}>
                 {r.saveLabel}
               </button>
             </div>
           </section>
-          {r.reportNote ? (
+          {savedNote || r.reportNote ? (
             <p className="note" role="status" style={{ margin: 0 }}>
-              {r.reportNote}
+              {savedNote || r.reportNote}
             </p>
+          ) : null}
+          {r.connected ? (
+            <section
+              className="card"
+              aria-label="사례 종결"
+              style={{ padding: '18px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px' }}
+            >
+              <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <b style={{ fontSize: '15px' }}>사례 종결</b>
+                <span className="note" role="status">
+                  {closing.hint || '보고서 저장과 따로, 상담원이 확인한 뒤 사례 상태를 종결로 바꿉니다.'}
+                </span>
+              </div>
+              <button type="button" className="btn btn-s" onClick={closing.close} disabled={!closing.canClose}>
+                {closing.label}
+              </button>
+            </section>
           ) : null}
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>

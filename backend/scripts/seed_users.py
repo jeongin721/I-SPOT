@@ -1,6 +1,6 @@
 # 초기 계정 생성 script.
 #
-# 자유 회원가입이 없기 때문에 첫 관리자/상담사 계정은 이 script 로 만든다.
+# 회원가입은 관리자 승인이 있어야 계정이 생기므로(2026-11-02) 첫 관리자 계정은 이 script 로 만든다. 상담사 계정도 만들 수 있다.
 # 비밀번호는 인자 또는 환경변수로 받고, 코드에 하드코딩하지 않는다.
 # 직접 준 비밀번호도 API 와 같은 비밀번호 규칙(app/core/password_policy.py)을 거친다.
 # 맞지 않으면 계정을 만들지 않고 사유를 출력한 뒤 종료 코드 1 로 끝난다.
@@ -16,15 +16,15 @@ import os
 import sys
 from typing import Iterable, List, Optional, Tuple
 
-from sqlalchemy import select
 
 from app.core.database import SessionLocal
+from app.core.email_address import canonical_email
 from app.core.enums import AuditAction, UserRole
 from app.core.errors import APIError
 from app.core.password_policy import generate_password, validate_password
 from app.core.security import hash_password
 from app.models.user import User
-from app.services import audit_service
+from app.services import audit_service, user_service
 
 DEMO_ACCOUNTS: List[Tuple[str, str, UserRole]] = [
     ("admin@ispot.example.com", "데모 관리자", UserRole.ADMIN),
@@ -50,13 +50,13 @@ def upsert_user(email: str, name: str, role: UserRole, password: str) -> Tuple[s
     session = SessionLocal()
 
     try:
-        existing = session.scalar(select(User).where(User.email == email.lower()))
+        existing = user_service.find_user_by_email(session, email)
 
         if existing is not None:
             return f"이미 존재하는 계정입니다: {email} (role={existing.role.value})", False
 
         user = User(
-            email=email.lower(),
+            email=canonical_email(email),
             name=name,
             role=role,
             hashed_password=hash_password(password),

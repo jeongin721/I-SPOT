@@ -5,6 +5,9 @@
 //  - mode "sessions": 사례마다 GET /cases/{id}/sessions 를 쪽마다 불러 회차를 모두 모은다(통계의 상담일별 회차 수 · 일정 달력).
 //  - mode "counts":   사례마다 회차 수만(page_size=1 의 meta.total) 부른다(종결 검토 목록의 회차 수).
 // 요청이 사례 수만큼 늘어나서 한 번에 OVERVIEW_CONCURRENCY 사례씩 부르고, 사례 · 회차 수에 상한을 둔다(넘으면 truncated).
+// withNames: 이름을 보이는 화면(종결 검토)만 실명과 함께 부른다(쪽마다 서버에 목록 열람 기록). 통계는 부르지 않는다.
+// 다음 쪽 · 사례마다 회차를 부르기 직전에 로그인이 그대로이고(loginGuard) 이 조회가 아직 지금 것인지(useRemote 의 live) 본다 —
+// 앞 계정이나 떠난 화면의 조회가 다음 쪽(실명)을 읽어 열람 기록을 남기지 않게(Codex #130 M1 · 재검수 N2).
 //
 // 다른 계정으로 바뀌면 key 가 null 을 거쳐 바뀌므로 앞 계정의 값을 보이지 않는다(useRemote).
 // 같은 탭에서 회차 상태가 바뀌면(sessionEvents) 조용히 다시 부른다.
@@ -19,7 +22,7 @@ import { mapLimited } from "./mapLimited";
 import { toSessionRow, type SessionRow } from "./sessionRows";
 import { toDateOnly } from "./time";
 import type { AuthSession } from "./useAuthSession";
-import { useRemote } from "./useRemote";
+import { loginGuard, SessionChangedError, useRemote } from "./useRemote";
 
 /** 한 쪽에 받는 건수. Backend 상한(page_size ≤ 100)과 같다. */
 export const OVERVIEW_PAGE_SIZE = 100;
@@ -89,9 +92,18 @@ async function loadPages<T extends { id: string }>(
   return { items, total, truncated: needed > maxPages };
 }
 
-async function loadCaseOverview(mode: OverviewMode): Promise<CaseOverviewData> {
+async function loadCaseOverview(mode: OverviewMode, withNames: boolean, live: () => boolean): Promise<CaseOverviewData> {
+  const sameLogin = loginGuard();
+  // 요청마다 직전에 본다: 이 조회가 아직 지금 것이고 로그인도 그대로인가.
+  const stillCurrent = () => {
+    if (!live()) throw new SessionChangedError();
+    sameLogin();
+  };
   const caseList = await loadPages(
-    (page) => cases.list({ page, page_size: OVERVIEW_PAGE_SIZE }),
+    (page) => {
+      stillCurrent();
+      return cases.list({ page, page_size: OVERVIEW_PAGE_SIZE, ...(withNames ? { with_child_name: true } : {}) });
+    },
     MAX_CASE_PAGES,
     OVERVIEW_CONCURRENCY,
   );
@@ -100,6 +112,7 @@ async function loadCaseOverview(mode: OverviewMode): Promise<CaseOverviewData> {
   const items = await mapLimited(caseList.items, OVERVIEW_CONCURRENCY, async (source): Promise<CaseOverviewItem> => {
     const base = { caseRow: toCaseRow(source), createdDate: toDateOnly(source.created_at) };
 
+    stillCurrent();
     if (mode === "counts") {
       const page = await cases.listSessions(source.id, { page: 1, page_size: 1 });
 
@@ -108,7 +121,10 @@ async function loadCaseOverview(mode: OverviewMode): Promise<CaseOverviewData> {
 
     // 한 사례 안의 쪽은 차례로 부른다(사례끼리 이미 함께 부르고 있어서).
     const sessionList = await loadPages(
-      (page) => cases.listSessions(source.id, { page, page_size: OVERVIEW_PAGE_SIZE }),
+      (page) => {
+        stillCurrent();
+        return cases.listSessions(source.id, { page, page_size: OVERVIEW_PAGE_SIZE });
+      },
       MAX_SESSION_PAGES,
       1,
     );
@@ -121,11 +137,15 @@ async function loadCaseOverview(mode: OverviewMode): Promise<CaseOverviewData> {
 }
 
 /** session 은 useAuthSession() 결과. 로그인이 확인된 뒤에만 부르고, 다른 계정으로 바뀌면 앞 계정의 값을 보이지 않는다. */
-export function useCaseOverview(session: AuthSession, mode: OverviewMode): CaseOverviewState {
+export function useCaseOverview(
+  session: AuthSession,
+  mode: OverviewMode,
+  { withNames = false }: { withNames?: boolean } = {},
+): CaseOverviewState {
   const me = session.status === "signedIn" ? session.me : null;
   const remote = useRemote(
-    me ? `${me.id}:overview:${mode}` : null,
-    () => loadCaseOverview(mode),
+    me ? `${me.id}:overview:${mode}:${withNames ? "names" : "plain"}` : null,
+    (_key, live) => loadCaseOverview(mode, withNames, live),
     "사례 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     () => true,
   );

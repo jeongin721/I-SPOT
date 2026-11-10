@@ -1,7 +1,9 @@
 # 사례(Case).
 #
-# 개인정보 최소 저장 원칙(docs/05_RULES.md)에 따라
+# 개인정보 최소 저장 원칙(docs/05_RULES.md)에 따라 이 표에는
 # 아동 실명 대신 alias 를 사용하고, 생년월일 대신 출생연도만 보관한다.
+# 실명 · 생년월일 · 가족 정보는 2026-10-30 팀 결정으로 암호화해 case_personal_infos 에 따로 둔다
+# (app/models/case_personal_info.py). 이 표의 alias · 출생연도는 그대로 평문이다.
 
 import uuid
 from datetime import date, datetime
@@ -10,10 +12,18 @@ from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import CaseStatus, GuardianType
+from app.core.enums import (
+    CaseStatus,
+    ChildActionResult,
+    FamilyType,
+    GuardianType,
+    RiskLevel,
+    TargetActionResult,
+)
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.case_personal_info import CasePersonalInfo
     from app.models.closure_review import CaseClosureReview
     from app.models.session import ConsultationSession
     from app.models.user import User
@@ -52,6 +62,35 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     linked_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 사례연계일
     first_interview_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # 최초면접일
 
+    # 서식 4 ① 조치결과 · 위험도(우선) · 사례연계 경위(2026-11-05, '준비 중' 칸 열기). 모두 상담원이 고르거나 적고 비울 수 있다.
+    # AI 가 미리 고르거나 채우지 않고, AI 입력(case_context_service)에도 넘기지 않는다.
+    child_action_result: Mapped[Optional[ChildActionResult]] = mapped_column(
+        SAEnum(ChildActionResult, name="child_action_result", native_enum=False, length=20),
+        nullable=True,
+    )
+    target_action_result: Mapped[Optional[TargetActionResult]] = mapped_column(
+        SAEnum(TargetActionResult, name="target_action_result", native_enum=False, length=20),
+        nullable=True,
+    )
+    # 상담원이 고른 사례 위험도(상 · 중 · 하). 회차 AI 신호 · 회차 위험도 판단과 서로 바꾸거나 맞추지 않는다.
+    counselor_risk_level: Mapped[Optional[RiskLevel]] = mapped_column(
+        SAEnum(RiskLevel, name="counselor_risk_level", native_enum=False, length=10),
+        nullable=True,
+    )
+    # 자유 글이라 개인정보가 섞일 수 있다 — 화면이 '실명 · 연락처 · 주소 등 개인정보는 적지 마세요' 를 보인다(사례 메모와 같음).
+    linked_background: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 사례연계 경위
+
+    # 서식 4 ② 초기면접 내용의 가족유형 · 글 칸(2026-11-05). 사례연계 경위와 같은 규칙.
+    intake_family_type: Mapped[Optional[FamilyType]] = mapped_column(
+        SAEnum(FamilyType, name="intake_family_type", native_enum=False, length=20),
+        nullable=True,
+    )
+    intake_guardian_relation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 보호자와 아동과의 관계
+    intake_problem: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 문제력(현 상황 · 그 이유, 한 칸)
+    intake_attitude: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 대상자 태도
+    intake_environment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 물리적 환경
+    intake_opinion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 상담원 소견 및 향후 계획
+
     # 종결 검토에 등록한 시각(2026-10-30, 내담자 정보 '종결 검토 등록'). 등록 전 · 취소하면 null.
     closure_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -87,6 +126,13 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="case",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    # 암호화한 개인 식별 정보(없으면 None). 사례를 지우면 함께 지운다.
+    personal_info: Mapped[Optional["CasePersonalInfo"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
     )
 
     def __repr__(self) -> str:

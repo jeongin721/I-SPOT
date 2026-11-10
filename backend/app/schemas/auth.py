@@ -1,4 +1,4 @@
-# 인증 Schema. 자유 회원가입 endpoint 는 제공하지 않는다.
+# 인증 Schema. 회원가입 신청 · 승인은 schemas/signup.py 에 있다(신청만으로는 계정이 생기지 않는다).
 
 import uuid
 from datetime import datetime

@@ -84,10 +84,12 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
 [아직 못 채운 것]
 
 - 백엔드 adapter의 analyze(transcript_payload)는 case_id를 안 받는다
-  (analysis_service가 session.id만 넘긴다). 그래서 Privacy Gateway
-  Tier 2(case_store에 등록된 실명 정확매칭)는 이 경로에서는 못 쓴다
-  — NER(Tier 1)만 적용된다. 실명 저장 여부가 팀 결정 대기 중이라
-  (10/16 Mingyu 답변) 지금은 이 상태로 둔다.
+  (analysis_service가 session.id만 넘긴다). 그래서 case_store에 등록된
+  실명은 이 경로에서 쓰지 않는다. 2026-11-02부터는 Backend가 사례에
+  암호화해 저장한 실명(#127)을 복호화해 known_identifiers로 넘기므로
+  Privacy Gateway Tier 2(등록 실명 정확매칭)가 이 경로에서도 돈다
+  (analyze_audio_session_as_contract 의 known_identifiers 인자). 실명을
+  등록하지 않은 사례는 지금처럼 NER(Tier 1)만 적용된다.
 
 [2026-10-22: PROPOSAL_risk_fields.md §7 확정안 반영]
 
@@ -124,9 +126,9 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
   (한글)을 그대로 둔다.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from agent.summary_converter import convert_summary
+from agent.summary_converter import OVERVIEW_EMPTY_WARNING, convert_summary
 
 from ai.modeling.abuse.infer_audio_session import analyze_audio_session
 
@@ -172,6 +174,10 @@ def _evidence_strength(value: Any) -> str:
 LEGAL_REFERENCES_UNAVAILABLE_WARNING = (
     "법령 데이터를 불러오지 못해 관련 조문을 붙이지 못했습니다."
 )
+
+# 안전 플래그 · 재학대 요인 모듈(safety_flag_llm.py)이 실패해 두 칸이 null 일 때(2026-11-05). 키가 아예 없는 결과
+# (이 필드 전 결과 · 가짜 모듈)에는 붙이지 않는다.
+SAFETY_FLAGS_UNAVAILABLE_WARNING = "안전 플래그 · 재학대 요인을 만들지 못했습니다."
 
 _LEGAL_REFERENCE_KEYS = ("law_name", "article", "item_label", "text", "portal_url")
 
@@ -305,6 +311,9 @@ def to_ai_output_contract(
     if result.get("legal_references_unavailable"):
         warnings.append(LEGAL_REFERENCES_UNAVAILABLE_WARNING)
 
+    if "safety_flags" in result and result.get("safety_flags") is None:
+        warnings.append(SAFETY_FLAGS_UNAVAILABLE_WARNING)
+
     # major_type(한글)별 근거 segment_id — 같은 유형 risk_signal_points
     # 에서 모은다. abuse_signals 는 major_types 의 한글 키로 찾으므로
     # 변환 전 라벨로 묶는다.
@@ -410,6 +419,38 @@ def to_ai_output_contract(
         for factor in result.get("protective_factors") or []
     ]
 
+    # 안전 플래그 · 재학대 요인(safety_flag_llm.py, 2026-11-05). None(모듈 실패 · 이 필드 전 결과)은 그대로 null —
+    # 빈 목록(찾았지만 해당 없음)과 구분한다(topic_tags 와 같은 규칙). 모듈이 이미 검사한 값이라 모양만 옮긴다.
+    raw_safety_flags = result.get("safety_flags")
+    safety_flags = (
+        [
+            {
+                "code": flag.get("code", ""),
+                "text": flag.get("text", ""),
+                "certainty": flag.get("certainty", "CHECK"),
+                "segment_ids": flag.get("segment_ids", []),
+            }
+            for flag in raw_safety_flags
+            if isinstance(flag, dict)
+        ]
+        if isinstance(raw_safety_flags, list)
+        else None
+    )
+    raw_reabuse_factors = result.get("reabuse_factors")
+    reabuse_factors = (
+        [
+            {
+                "code": factor.get("code", ""),
+                "text": factor.get("text", ""),
+                "segment_ids": factor.get("segment_ids", []),
+            }
+            for factor in raw_reabuse_factors
+            if isinstance(factor, dict)
+        ]
+        if isinstance(raw_reabuse_factors, list)
+        else None
+    )
+
     session_change_notes = [
         {"text": note, "segment_ids": []}
         for note in result.get("session_change_notes") or []
@@ -475,6 +516,8 @@ def to_ai_output_contract(
         "warnings": warnings,
         "severity_ratings": severity_ratings,
         "protective_factors": protective_factors,
+        "safety_flags": safety_flags,
+        "reabuse_factors": reabuse_factors,
         "session_change_notes": session_change_notes,
         "followup_check_points": followup_check_points,
         "followup_questions": followup_questions,
@@ -484,12 +527,34 @@ def to_ai_output_contract(
     return contract, summary_evidence, _model_name(result)
 
 
+def _signals_contract(
+    partial: Dict[str, Any],
+    transcript: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
+    """on_signals_ready 로 넘길 계약 모양(2단계 칸만 찬 결과).
+
+    상담 요약은 아직 만들기 전이라(counseling_summary 가 None) convert_summary 가 '상담 요약을 만들지 못했습니다'
+    경고를 붙이는데, 2단계 화면이 warnings 를 그대로 보여 '못 만들었다' 로 읽힌다(민규 #151 리뷰). 그 한 줄만
+    뺀다 — 법령 데이터처럼 2단계에서 생긴 경고는 남긴다. 마지막 반환값(to_ai_output_contract)은 그대로다.
+    """
+
+    contract, summary_evidence, model_name = to_ai_output_contract(partial, transcript=transcript)
+    contract["warnings"] = [
+        warning for warning in contract.get("warnings") or [] if warning != OVERVIEW_EMPTY_WARNING
+    ]
+    return contract, summary_evidence, model_name
+
+
 def analyze_audio_session_as_contract(
     stt_result: Dict[str, Any],
     client: Any = None,
     case_id: Optional[str] = None,
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
+    known_identifiers: Optional[List[str]] = None,
+    on_signals_ready: Optional[
+        Callable[[Dict[str, Any], List[Dict[str, Any]], Optional[str]], None]
+    ] = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     """
     backend/app/adapters/ai_adapter.py가 부를 진입점.
@@ -506,12 +571,34 @@ def analyze_audio_session_as_contract(
     case_context: 사례 정보(2026-10-28, case_context.py · PROPOSAL_case_context_analysis.md §3).
     Backend 가 받는 어댑터에만 키워드로 넘긴다. 없으면(None) 넘기지 않아 예전 판 모듈과도 맞는다.
     '다음 상담 전 확인할 사항'(followup_check_llm)이 쓰고, '추가 질문' 초안(followup_question_llm)은 나이대만 쓴다.
+
+    known_identifiers: 사례에 등록된 실명 목록(2026-11-02, Backend 가 암호화 저장한 실명을 복호화해 메모리에서만 만든다 —
+    specs case-personal-info-encryption 7절). analyze_audio_session 으로 그대로 넘겨, 외부 LLM 으로 나가는 모든 글의
+    Privacy Gateway 등록 이름 대조(Tier 2)에 case_store 대신 쓴다. 없으면(None) 넘기지 않아 예전과 같다.
+
+    on_signals_ready(contract_dict, summary_evidence, model_name): 2단계(학대 신호 확인) 값이 모이면 한 번 부른다
+    (2026-11-04, 민규 합의 — 2단계 먼저 저장). 인자는 이 함수 반환값과 같은 모양이고 contract_dict 는
+    AIAnalysisResult 로 그대로 검증된다. 채워지는 칸: risk_utterances · abuse_signals · risk_factors ·
+    severity_ratings · protective_factors · warnings(그때까지, '상담 요약을 만들지 못했습니다' 는 뺌) ·
+    summary.key_points(아동 진술). 빈 칸:
+    summary.overview · summary.assessment · session_change_notes · followup_check_points ·
+    followup_questions(빈 목록) · topic_tags(None). 분석을 돌리는 스레드에서 한 번만 부르고, 그 전에 실패하면
+    부르지 않는다. 콜백 예외는 잡지 않는다(Backend 가 감싼다). 마지막 반환값의 2단계 칸은 넘긴 값과 같다.
+    없으면(None) 넘기지 않아 예전과 같다.
     """
 
     options: Dict[str, Any] = {}
 
     if case_context is not None:
         options["case_context"] = case_context
+
+    if known_identifiers is not None:
+        options["known_identifiers"] = known_identifiers
+
+    if on_signals_ready is not None:
+        options["on_signals_ready"] = lambda partial: on_signals_ready(
+            *_signals_contract(partial, transcript=stt_result)
+        )
 
     result = analyze_audio_session(
         stt_result=stt_result,

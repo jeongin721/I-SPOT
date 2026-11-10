@@ -10,3 +10,9 @@ email-validator==2.3.0
 python-multipart==0.0.32
 bcrypt==5.0.0
 PyJWT==2.13.0
+# 개인 식별 정보 칸 암호화(AES-256-GCM, app/core/pii_crypto.py). 2026-10-30 팀 결정.
+cryptography==50.0.2
+# 녹취 · 자료 올리기의 상담 기록 문서(PDF) 글자 뽑기(app/services/document_text.py, 2026-11-02).
+pypdf==6.20.1
+# 회원가입 인증번호 메일(AWS SES, app/adapters/mail_adapter.py). MAIL_PROVIDER=ses 일 때 처음 보낼 때 불러온다. 2026-11-02.
+boto3==1.43.123

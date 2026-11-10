@@ -8,10 +8,13 @@
 // 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
 // 10/29 디자인: 머리 단추가 '녹음하기'(components/RecordDialog, useRecordFlow) · '+ 새 상담 등록'(components/NewSessionDialog —
 // 녹음 없이 상담 내용 · 소견을 회차 메모에 저장)으로 바뀌었다.
+// 관리자 회차 삭제(2026-11-03, 디자인에 없어 더함): 관리자에게만 '전 회차 보기' 창의 회차 줄 옆에 '삭제' 가 보인다.
+// 'N회차' 를 입력하는 확인 창(components/DeleteConfirmDialog, data/useAdminDelete)을 거치고, 지우면 회차 · 신호 이력을 다시 부른다.
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import NewSessionDialog from '../components/NewSessionDialog';
 import Notice from '../components/Notice';
 import RecordDialog from '../components/RecordDialog';
@@ -21,9 +24,11 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { useApprovedSummaries } from '../data/useApprovedSummaries';
+import { useAdminDelete } from '../data/useAdminDelete';
 import { caseHistoryValues } from '../data/screens/caseDetail';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -51,7 +56,25 @@ export default function CaseHistory(props) {
   const theme = useTheme();
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
-  const v = useDC(Logic, { ...props, session, detail, signals, history, approved, caseId, historyOpen, setHistoryOpen });
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
+  const del = useAdminDelete(() => {
+    detail.reload();
+    history.reload();
+  });
+  const askDelete = session.isAdmin ? del.ask : null;
+  const v = useDC(Logic, {
+    ...props,
+    session,
+    detail,
+    signals,
+    history,
+    approved,
+    personal,
+    caseId,
+    historyOpen,
+    setHistoryOpen,
+    askDelete,
+  });
   const rec = useRecordFlow(session, caseId, v.canRecord);
   const [nsOpen, setNsOpen] = useState(false);
   useLeaveGuard(rec.unsaved);
@@ -84,7 +107,7 @@ export default function CaseHistory(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
@@ -206,6 +229,11 @@ export default function CaseHistory(props) {
                 {v.sessionsNote}
               </p>
             ) : null}
+            {del.done ? (
+              <p className="note" role="status" style={{ margin: '0 0 12px' }}>
+                {del.done}
+              </p>
+            ) : null}
             <div>
               {(v.recent || []).map((s, sIndex) => (
                 <Fragment key={sIndex}>
@@ -270,15 +298,25 @@ export default function CaseHistory(props) {
                   </div>
                   <div style={{ maxHeight: '360px', overflowY: 'auto', padding: '4px 8px 8px' }}>
                     {(v.all || []).map((s, sIndex) => (
-                      <Fragment key={sIndex}>
-                        <A className="prow" to={s.href}>
+                      <div key={sIndex} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <A className="prow" to={s.href} style={{ flex: '1 1 auto', minWidth: '0' }}>
                           <b>{s.no}</b>
                           <span>{s.date}</span>
                           <span className="note">{s.kindShort}</span>
                           <span className="note">{s.sig}</span>
                           <span className={s.st}>{s.status}</span>
                         </A>
-                      </Fragment>
+                        {s.del ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-s rm-del"
+                            aria-label={`${s.no} 삭제`}
+                            onClick={s.del}
+                          >
+                            삭제
+                          </button>
+                        ) : null}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -390,6 +428,7 @@ export default function CaseHistory(props) {
               }}
             />
           ) : null}
+          {del.target ? <DeleteConfirmDialog key={del.target.id} del={del} /> : null}
         </main>
       </div>
     </div>

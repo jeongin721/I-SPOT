@@ -21,7 +21,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ApiError, getToken } from "../api/client";
 import { auth, cases } from "../api/endpoints";
-import type { Case, User, UserRole, UserUpdateRequest } from "../api/types";
+import type { CaseListItem, User, UserRole, UserUpdateRequest } from "../api/types";
 import { adminKey, type AdminAccess, type AdminHookOptions } from "./adminAccess";
 import { notifyAccountsChanged } from "./adminEvents";
 import {
@@ -33,7 +33,7 @@ import {
   type TemporaryPasswordView,
 } from "./adminRows";
 import { generateInitialPassword } from "./initialPassword";
-import { errorMessage, useRemote } from "./useRemote";
+import { errorMessage, SessionChangedError, useRemote } from "./useRemote";
 
 /** Backend 제한(UserCreateRequest · UserUpdateRequest). */
 export const ACCOUNT_NAME_MAX = 100;
@@ -43,24 +43,24 @@ const CREATE_ATTEMPTS = 3;
 
 const CASE_PAGE_SIZE = 100;
 
-/** 요청을 보내기 직전에 로그인이 그대로인지 볼 때 던진다. 받은 쪽은 조용히 그만둔다. */
-class SessionChangedError extends Error {
-  constructor() {
-    super("로그인이 바뀌어 요청을 멈췄습니다.");
-    this.name = "SessionChangedError";
-  }
-}
-
-/** 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다. */
-export async function loadAllCases(): Promise<Case[]> {
-  const all: Case[] = [];
+/**
+ * 볼 수 있는 사례 전체(쪽을 모두 받음). 관리자 사례 목록(useAdminCases)도 쓴다.
+ * withNames 면 줄마다 실명을 싣는다(쪽마다 서버에 목록 열람 기록) — 이름을 보이는 화면만. 상담원별 사례 수는 부르지 않는다.
+ * live 를 주면(useRemote 의 load 둘째 인자) 다음 쪽 직전에 그 조회가 아직 지금 것인지도 본다 — 떠난 화면이 다음 쪽(실명)을
+ * 읽지 않게(Codex #130 재검수 N2).
+ */
+export async function loadAllCases({
+  withNames = false,
+  live,
+}: { withNames?: boolean; live?: () => boolean } = {}): Promise<CaseListItem[]> {
+  const all: CaseListItem[] = [];
   // 첫 쪽을 보낼 때의 로그인. 다음 쪽을 보내기 전에 바뀌었으면 멈춘다(결과는 useRemote 가 어차피 버린다).
   const token = getToken();
 
   for (let page = 1; ; page += 1) {
-    if (page > 1 && getToken() !== token) throw new SessionChangedError();
+    if (page > 1 && (getToken() !== token || (live && !live()))) throw new SessionChangedError();
 
-    const result = await cases.list({ page, page_size: CASE_PAGE_SIZE });
+    const result = await cases.list({ page, page_size: CASE_PAGE_SIZE, ...(withNames ? { with_child_name: true } : {}) });
 
     all.push(...result.items);
 

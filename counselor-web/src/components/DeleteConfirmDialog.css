@@ -1,0 +1,15 @@
+/* 사례 · 회차 영구 삭제 확인 창(.rm-*) — 틀은 이름 표시 방식 창(.out-*), 경고색은 일정 삭제(.vd-ask · .vd-del-go). */
+.rm-ov{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(43,42,38,.42)}
+.rm-dlg{width:min(460px,100%);max-height:calc(100vh - 32px);overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:22px 22px 18px;border-radius:14px;background:#FFFFFF;color:#2B2A26;box-shadow:0 18px 48px rgba(43,42,38,.25);text-align:left;font-size:14px;line-height:1.6}
+.rm-ask{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:12px;background:#F7E4DF;color:#5A2119}
+.rm-ask ul{margin:0;padding-left:18px}
+.rm-code{font-family:ui-monospace,Consolas,monospace;padding:1px 6px;border-radius:6px;background:#F1EADA}
+.rm-go{background:#A33B2E;color:#FFFFFF;border-color:#A33B2E;font-weight:700}
+.rm-go:hover{background:#8C3125;border-color:#8C3125}
+.rm-dlg .btn:disabled{opacity:.45;cursor:not-allowed}
+/* 목록 줄의 '삭제' 단추(관리자에게만 보인다). */
+.rm-del{color:#A33B2E !important}
+.thm-root.dark .rm-dlg{background:#2C2B27;color:#ECE8DF}
+.thm-root.dark .rm-ask{background:#4A2B26;color:#F6DDD7}
+.thm-root.dark .rm-code{background:#3F3729}
+.thm-root.dark .rm-del{color:#F2B8AC !important}

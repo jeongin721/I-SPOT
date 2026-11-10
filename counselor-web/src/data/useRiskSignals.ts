@@ -38,6 +38,8 @@ export interface RiskSignalsState {
   types: TypeSignal[];
   /** 보호요인 · 확인 메모 같은 다른 항목의 segment_ids 를 원문에서 찾는다. */
   locate: (ids: unknown) => LocatedEvidence;
+  /** 원문(최신 전사본)을 받았는가. false 면 locate 의 found 는 '없음' 이 아니라 '모름' 이다. */
+  sourceReady: boolean;
   /** 근거 위치를 찾을 원문을 받는 중인가. */
   evidenceLoading: boolean;
   /** 원문을 못 받았으면 그 문구. 이때 카드의 근거는 번호만 있다. */
@@ -62,7 +64,10 @@ export function useRiskSignals(
   const utterances = completed ? analysis.riskUtterances : [];
   const signals = completed ? analysis.abuseSignals : [];
   const needSource =
-    (completed && (utterances.length > 0 || hasIds(analysis.protectiveFactors) || hasIds(analysis.followupCheckPoints))) ||
+    (completed && (utterances.length > 0 || hasIds(analysis.protectiveFactors) ||
+        hasIds(analysis.safetyFlags ?? []) ||
+        hasIds(analysis.reabuseFactors ?? []) ||
+        hasIds(analysis.followupCheckPoints))) ||
     needEvidence;
   const key = enabled && sessionId && needSource ? sessionId : null;
   const source = useRemote<TranscriptEnvelope>(key, transcriptApi.get, "근거 발화를 불러오지 못했습니다.");
@@ -83,6 +88,7 @@ export function useRiskSignals(
     cards,
     types,
     locate,
+    sourceReady: segments !== null,
     evidenceLoading: key !== null && source.loading,
     evidenceError: key !== null ? source.error : null,
     reload: source.reload,

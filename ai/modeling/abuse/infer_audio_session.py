@@ -15,8 +15,9 @@ chunk 단위로 돌리고, 하나의 chunk에서라도 탐지되면 세션 전�
 
 import threading
 import time
-from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
-from typing import Any, Dict, List, Optional, Tuple
+import copy
+from concurrent.futures import FIRST_COMPLETED, FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai.adapters.stt_analysis_adapter import validate_stt_result
 
@@ -41,6 +42,7 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.safety_flag_llm import generate_safety_flags
 from ai.modeling.abuse.desired_change_llm import (
     generate_desired_changes,
     join_points as join_desired_change_points,
@@ -368,6 +370,21 @@ def _check_deadline(
         )
 
 
+def _wait_signals_or_failure(required: List[Any], watched: List[Any]) -> None:
+    """required 가 모두 끝나거나, required · watched 중 하나라도 예외로 끝날 때까지 기다린다(on_signals_ready 용)."""
+
+    pending = set(required) | set(watched)
+
+    while pending:
+        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+
+        if any(future.exception() is not None for future in done):
+            return
+
+        if all(future.done() for future in required):
+            return
+
+
 def analyze_audio_session(
     stt_result: Dict[str, Any],
     client: Any = None,
@@ -376,6 +393,8 @@ def analyze_audio_session(
     case_id: str = None,
     deadline: Optional[float] = None,
     case_context: Optional[Dict[str, Any]] = None,
+    known_identifiers: Optional[List[str]] = None,
+    on_signals_ready: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
     STT Contract v1.0 결과(한 세션)를 1차 → 2차 → 상담 요약·일지 →
@@ -401,6 +420,17 @@ def analyze_audio_session(
 
     case_context: 사례 정보(2026-10-28, case_context.py). 지금은 '다음 상담 전 확인할
     사항'(followup_check_llm)의 배경 입력으로만 쓴다 — 마스킹을 거쳐 보낸다. None 이면 예전과 같다.
+
+    known_identifiers: 사례에 등록된 실명 목록(2026-11-02, Backend 가 암호화 저장한 실명을
+    복호화해 메모리에서만 만든다). 주면 case_store 대신 이 값을 이 함수의 모든
+    mask_for_outbound · mask_child_lines 에 쓴다. None 이면 예전처럼 case_id 로 case_store 에서 읽는다.
+
+    on_signals_ready: 2단계(학대 신호 확인) 값이 모이면 한 번 부르는 콜백(2026-11-04, 민규 합의 — 2단계 먼저 저장).
+    2차 세부유형 · 유형별 심각도 · 기록 초안(위험 신호 발화 · 관련 조문 · 아동 진술) · 보호요인이 끝난 때에
+    이 함수와 같은 모양의 결과(dict)를 넘긴다. 3 · 4단계 칸(상담 요약 · 일지 · 체크리스트 · 원하는 변화 ·
+    서사 요약 · 회차 간 변화 · 확인 메모 · 추가 질문 · 주제)은 빈 값이다. 남은 호출은 콜백이 돌아온 뒤 그대로
+    이어 가고, 마지막 반환값의 2단계 칸은 넘긴 값과 같다. 콜백은 이 함수를 부른 스레드에서 한 번만 부르고,
+    그 전에 실패하면 부르지 않는다. 콜백에서 난 예외는 잡지 않는다(부르는 쪽이 감싼다). None 이면 예전과 같다.
     """
 
     subtype_model = "gpt-5.6-luna"
@@ -494,9 +524,13 @@ def analyze_audio_session(
     # 2차: 세션 전체 transcript로 한 번에 (LLM은 512 토큰 제한 없음)
     # --------------------------------------------------------
 
-    known_identifiers = (
-        case_store.get_known_identifiers(case_id) if case_id else []
-    )
+    # Backend 가 넘긴 등록 실명이 있으면 그것을 쓴다(case_store 는 평문 SQLite 라 서버 경로에서 쓰지 않는다).
+    if known_identifiers is None:
+        known_identifiers = (
+            case_store.get_known_identifiers(case_id) if case_id else []
+        )
+    else:
+        known_identifiers = list(known_identifiers)
 
     if detected_major_types:
         # 2차는 항상 외부 OpenAI로 나가므로(infer_abuse_pipeline.analyze_abuse와
@@ -544,6 +578,47 @@ def analyze_audio_session(
             "results": [],
             "note": "탐지된 대분류 없음",
         }
+
+    # --------------------------------------------------------
+    # 유형별 심각도 먼저 띄우기("유형별 위험도" 화면, 2026-10-13 추가, 검수 전 초안)
+    # --------------------------------------------------------
+    # severity_llm.py 모듈 docstring 참고. 입력은 2차 세부유형 분석(subtype_result)뿐이라 아래 상담 요약 · 기록 초안
+    # 다섯 호출 · 서사 요약을 기다릴 필요가 없다. 2026-11-04(데모에서 '학대 신호 확인이 늦다'): 예전에는 그 뒤에
+    # 차례로 불러 분석 시간에 호출 한 번 몫이 더해졌다 — 지금은 여기서 띄워 다섯 호출과 겹쳐 돌리고, 결과는 원래
+    # 자리(서사 요약 뒤)에서 받는다. subtype_result 는 이미 restore_pii 로 실명이 복원된 상태라(link_evidence_
+    # timestamps 때문) 외부 LLM 에 보내기 전에 다시 마스킹한다. 실행기는 바로 닫는다(wait=False) — 앞 단계가 실패해도
+    # 이 호출은 마감(timeout) 안에서 끝나고, 결과는 future 로 그대로 받을 수 있다.
+    severity_evidence_blocks = build_evidence_block_text(
+        subtype_result
+    )
+
+    severity_future = None
+    severity_entity_map: Dict[str, Any] = {}
+
+    if severity_evidence_blocks:
+        severity_major_types = list(severity_evidence_blocks.keys())
+
+        severity_text = "\n\n".join(
+            f"[{major_type}]\n{block}"
+            for major_type, block in severity_evidence_blocks.items()
+        )
+
+        masked_severity_text, severity_entity_map = mask_for_outbound(
+            severity_text, known_identifiers=known_identifiers
+        )
+
+        _check_deadline(deadline, "심각도 평가")
+
+        severity_executor = ThreadPoolExecutor(max_workers=1)
+        severity_future = severity_executor.submit(
+            rate_severity_from_text,
+            client=client,
+            model=note_model,
+            major_types=severity_major_types,
+            masked_evidence_text=masked_severity_text,
+            deadline=deadline,
+        )
+        severity_executor.shutdown(wait=False)
 
     # --------------------------------------------------------
     # 상담 요약/일지 + 체크리스트 초안 + 기록 초안 + 보호 요인
@@ -595,8 +670,10 @@ def analyze_audio_session(
     # LLM으로 나가는 이 경로에서는 끈다(2026-10-16 Mingyu 리뷰, 높음 4번).
     # desired_changes(상담 요약 '앞으로 원하는 변화', 2026-10-27)는 보호요인과
     # 같은 마스킹된 축어록을 받으므로 같이 띄운다 — 분석 시간이 늘지 않게.
-    executor = ThreadPoolExecutor(max_workers=5)
-    # 다섯 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
+    # 안전 플래그 · 재학대 요인(safety_flag_llm.py, 2026-11-05)도 같은 마스킹된 축어록을 받아 같이 띄운다 — 2단계 값이라
+    # 아래 콜백 전에 기다린다. 보호요인과 비슷한 크기의 호출이라 2단계가 뜨는 시점은 거의 그대로다.
+    executor = ThreadPoolExecutor(max_workers=6)
+    # 여섯 중 하나가 fail-fast로 먼저 실패해도, 아직 돌던 호출이 재시도를
     # 계속 보내던 문제(2026-10-20 Mingyu 리뷰) — 실패가 확정되면 이
     # 신호를 켜서, 아직 재시도 전인 호출들이 다음 시도를 시작하기 전에
     # 바로 포기하게 한다(second_stage_llm._call_llm_with_retry 참고).
@@ -640,6 +717,15 @@ def analyze_audio_session(
             deadline=deadline,
             stop_event=stop_event,
         )
+        safety_flags_future = executor.submit(
+            generate_safety_flags,
+            client=client,
+            model=note_model,
+            masked_transcript_text=masked_citation_text,
+            segments=segments,
+            deadline=deadline,
+            stop_event=stop_event,
+        )
         desired_changes_future = executor.submit(
             generate_desired_changes,
             client=client,
@@ -655,18 +741,98 @@ def analyze_audio_session(
             checklist_future,
             record_draft_future,
             protective_factors_future,
+            safety_flags_future,
             desired_changes_future,
         ]
 
-        # 다섯 중 하나라도 실패하면(record_draft/protective_factors/desired_changes는 내부에서
+        # 여섯 중 하나라도 실패하면(record_draft/protective_factors/safety_flags/desired_changes는 내부에서
         # 이미 실패를 삼키므로 사실상 counseling_records/checklist_draft만
         # 해당) 나머지가 아직 안 끝났어도 기다리지 않고 바로 실패 처리한다
-        # (2026-10-19 Mingyu 리뷰) — wait(..)가 반환하자마자 shutdown을
+        # (2026-10-19 Mingyu 리뷰) — 실패를 보자마자 stop_event 를 켜고 shutdown을
         # wait=False로 불러 이미 끝난 것 말고는 안 기다린다. 이미 시작된
         # 스레드 자체를 강제로 멈추지는 못하지만(파이썬 한계), 이 함수는
         # 더 기다리지 않고 바로 돌아간다 — 그 스레드들도 각자 deadline으로
         # 묶여 있어 결국 끝난다.
-        done, _not_done = wait(all_futures, return_when=FIRST_EXCEPTION)
+        #
+        # 2026-11-04(2단계 먼저 저장, on_signals_ready): 기다림을 두 번에 나눈다. 먼저 2단계 값(기록 초안 ·
+        # 보호요인 · 심각도)만 기다려 콜백으로 넘기고, 그다음 남은 셋(상담 요약 · 일지, 체크리스트, 원하는 변화)을
+        # 기다린다. 어느 쪽에서든 실패를 보면 예전처럼 바로 실패한다.
+        signal_futures = [record_draft_future, protective_factors_future, safety_flags_future] + (
+            [severity_future] if severity_future is not None else []
+        )
+        _wait_signals_or_failure(signal_futures, all_futures)
+
+        if any(future.done() and future.exception() is not None for future in all_futures + signal_futures):
+            stop_event.set()
+            for future in all_futures + signal_futures:
+                if future.done():
+                    future.result()
+
+        record_draft = restore_pii(
+            record_draft_future.result(),
+            citation_entity_map,
+        )
+        # 관련 조문은 실명 복원 뒤에 붙인다(조문 본문이 마스킹 표지와 섞이지 않게).
+        (
+            record_draft["risk_signal_points"],
+            legal_references_unavailable,
+        ) = _attach_legal_references(
+            record_draft.get("risk_signal_points", [])
+        )
+        protective_factors = restore_pii(
+            protective_factors_future.result(),
+            citation_entity_map,
+        )
+        # 안전 플래그 · 재학대 요인. 모듈이 실패하면 None — 두 칸 모두 null(만들지 못함)로 넘긴다.
+        safety_result = safety_flags_future.result()
+        safety_flags = None
+        reabuse_factors = None
+
+        if safety_result is not None:
+            safety_result = restore_pii(safety_result, citation_entity_map)
+            safety_flags = safety_result.get("safety_flags", [])
+            reabuse_factors = safety_result.get("reabuse_factors", [])
+
+        # 유형별 심각도 — 2차 세부유형 분석 바로 뒤에 띄워 둔 호출의 결과(아래 '심각도 먼저 띄우기').
+        severity_ratings = []
+
+        if severity_future is not None:
+            severity_ratings = restore_pii(
+                severity_future.result(), severity_entity_map
+            )
+
+        if on_signals_ready is not None:
+            on_signals_ready(
+                copy.deepcopy(
+                    {
+                        "full_text": full_text,
+                        "segments": segments,
+                        "major_types": major_types,
+                        "detected_major_types": detected_major_types,
+                        "subtype_analysis": subtype_result,
+                        "counseling_summary": None,
+                        "counseling_note": {},
+                        "counseling_record_model": note_model,
+                        "checklist_draft": {},
+                        "record_draft": record_draft,
+                        "protective_factors": protective_factors,
+                        "safety_flags": safety_flags,
+                        "reabuse_factors": reabuse_factors,
+                        "desired_changes": None,
+                        "severity_ratings": severity_ratings,
+                        "session_change_notes": [],
+                        "current_round_label": "",
+                        "followup_check_points": [],
+                        "followup_questions": [],
+                        "topic_tags": None,
+                        "legal_references_unavailable": legal_references_unavailable,
+                        "chunk_results": chunk_results,
+                    }
+                )
+            )
+
+        rest_futures = [counseling_future, checklist_future, desired_changes_future]
+        done, _not_done = wait(rest_futures, return_when=FIRST_EXCEPTION)
 
         # wait()가 돌아온 시점(전부 끝났거나 하나가 실패했거나)에 바로
         # 켠다 — 전부 성공했으면 아무도 이 신호를 다시 보지 않으니
@@ -679,8 +845,6 @@ def analyze_audio_session(
 
         counseling_records = counseling_future.result()
         checklist_draft = checklist_future.result()
-        record_draft = record_draft_future.result()
-        protective_factors = protective_factors_future.result()
         desired_change_points = desired_changes_future.result()
     finally:
         # cancel_futures는 Python 3.9+에서만 있다(이 저장소는 환경마다
@@ -697,21 +861,6 @@ def analyze_audio_session(
     checklist_draft = restore_pii(
         checklist_draft,
         entity_map,
-    )
-    record_draft = restore_pii(
-        record_draft,
-        citation_entity_map,
-    )
-    # 관련 조문은 실명 복원 뒤에 붙인다(조문 본문이 마스킹 표지와 섞이지 않게).
-    (
-        record_draft["risk_signal_points"],
-        legal_references_unavailable,
-    ) = _attach_legal_references(
-        record_draft.get("risk_signal_points", [])
-    )
-    protective_factors = restore_pii(
-        protective_factors,
-        citation_entity_map,
     )
     desired_change_points = restore_pii(
         desired_change_points,
@@ -771,46 +920,6 @@ def analyze_audio_session(
     record_draft["narrative_summary"] = narrative_summary
 
     # --------------------------------------------------------
-    # 유형별 심각도("유형별 위험도" 화면, 2026-10-13 추가, 검수 전 초안)
-    # --------------------------------------------------------
-    # severity_llm.py 모듈 docstring 참고 — subtype_result는 이 시점에
-    # 이미 restore_pii로 실명이 복원된 상태라(515행 근처 link_evidence_
-    # timestamps 때문에 복원이 먼저 필요했음), 외부 LLM에 보내기 전에
-    # 여기서 다시 마스킹한다.
-
-    severity_evidence_blocks = build_evidence_block_text(
-        subtype_result
-    )
-
-    severity_ratings = []
-
-    if severity_evidence_blocks:
-        severity_major_types = list(severity_evidence_blocks.keys())
-
-        severity_text = "\n\n".join(
-            f"[{major_type}]\n{block}"
-            for major_type, block in severity_evidence_blocks.items()
-        )
-
-        masked_severity_text, severity_entity_map = mask_for_outbound(
-            severity_text, known_identifiers=known_identifiers
-        )
-
-        _check_deadline(deadline, "심각도 평가")
-
-        severity_ratings = rate_severity_from_text(
-            client=client,
-            model=note_model,
-            major_types=severity_major_types,
-            masked_evidence_text=masked_severity_text,
-            deadline=deadline,
-        )
-
-        severity_ratings = restore_pii(
-            severity_ratings, severity_entity_map
-        )
-
-    # --------------------------------------------------------
     # 회차 간 진술 변화("상담 요약" 화면의 "(안전관련) 조사 후 변화된
     # 사항", 2026-10-14 추가) — session_change.py 모듈 docstring 참고,
     # LLM을 쓰지 않는 순수 텍스트 비교다. 이 세션이 case_store에 아직
@@ -857,6 +966,7 @@ def analyze_audio_session(
             record_draft.get("child_statement_points", []),
             record_draft.get("risk_signal_points", []),
             case_context=case_context,
+            known_identifiers=known_identifiers,
         ),
         known_identifiers=known_identifiers,
     )
@@ -934,6 +1044,9 @@ def analyze_audio_session(
         "checklist_draft": checklist_draft,
         "record_draft": record_draft,
         "protective_factors": protective_factors,
+        # 안전 플래그 · 재학대 요인(safety_flag_llm.py, 2026-11-05). 모듈 실패면 둘 다 None.
+        "safety_flags": safety_flags,
+        "reabuse_factors": reabuse_factors,
         # 상담 요약 '앞으로 원하는 변화 · 원하는 서비스/지원' 칸
         # (desired_change_llm.py, 2026-10-27). {text, segment_ids} 하나.
         "desired_changes": join_desired_change_points(

@@ -7,15 +7,18 @@
 // 위험도 · 학대 유형 · 주요 키워드는 분석이 끝난 가장 최근 회차(useCaseSignals)의 상담원 판단 · AI 결과로 채운다(caseDetail.ts 머리 주석).
 // '초기면접 내용' 카드는 디자인에 없어 더한 칸이다: 사례 등록 ② 탭의 가정상황 · 아동 특성을 단어로 보이고 '수정' 으로 고친다
 // (고르기 단추는 CaseRegister 와 같은 모양).
+// '기본 정보' 카드의 '수정'(2026-11-03): 서버에 칸이 있는 줄만 그 자리에서 입력칸으로 바꾸고 저장한다(caseDetail.ts 머리 주석).
+// 11/04 탭1 디자인: 사례 상세 탭은 내담자 정보 · 상담 이력 · 문서함 셋이고, 아이 연계는 기본 정보 머리의 '아이 연계 →' 단추로 들어간다.
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
-// components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
+// components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐 — 11/03 다시 탭 줄로), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
 // 10/29 디자인: 상담 전 브리핑이 탭에서 빠지고 이 화면 '현재 진행 상황' 아래(#brief)로 들어왔다. 값은 예전 브리핑 화면과
 // 같은 preBriefingValues(분석이 끝난 가장 최근 회차). 주소에 view=brief 가 있으면 그 자리로 스크롤한다. '인쇄 · PDF' 는
-// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 사례 별칭만 — 서버에 실명이 없다).
+// 이름 표시 방식(실명 그대로 / 이름 가리기)을 고르는 창을 띄우고 브리핑만 인쇄한다(가리기는 등록된 이름 전부와 별칭 — maskNames).
 // 녹음 중이거나 올리지 않은 녹음이 있으면 화면을 떠날 때 묻는다(초기면접 수정과 같은 useLeaveGuard).
 // '종결 검토 등록'(10/30): 등록 · 취소를 서버에 저장하고 등록됨 · 등록일 · '종결 검토 보기' 를 보인다(디자인의 '초안 생성 중' 은
 // 종결 요약 AI 가 아직 없어 쓰지 않는다).
 // 녹음하기 창의 주인 · 버리기 규칙은 data/useRecordFlow.ts(상담 이력 · 문서함과 같이 쓴다).
+// '기관 서식' 카드(11/02): 칩은 사례관리 점검표 작성 기록(useCaseForms), '기관 서식 작성' 은 점검표(CaseForm ?form=B)로 간다.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -29,12 +32,17 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { useCaseSignals } from '../data/useCaseSignals';
+import { useCaseForms } from '../data/useCaseForms';
+import { usePersonalInfo } from '../data/usePersonalInfo';
+import { latestAnalyzedSession, useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupChecks } from '../data/useFollowupChecks';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
+import { formsCardValues } from '../data/screens/caseForm';
 import { needsLogin, signedIn } from '../data/screens/common';
+import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { readScreenIds } from '../data/screens/links';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
@@ -57,15 +65,34 @@ export default function CaseDetail(props) {
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
-  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
+  // 브리핑 회차(분석이 끝난 가장 최근 회차)는 useCaseSignals 와 같은 함수로 먼저 정한다 — 저장한 확인 사항 · 체크리스트에만
+  // 발화 근거가 있어도 원문을 받아 '근거 · 00:02 아동' 으로 보이게(#125 재검증).
+  const briefSessionId = latestAnalyzedSession(detail.sessions)?.id ?? null;
+  const briefChecks = useFollowupChecks(briefSessionId, { enabled: signedIn(session) });
+  // 브리핑의 확인할 사항 초안은 4 · 다음 상담 준비 화면과 같은 목록(AI 확인 메모 + 다음 상담 체크리스트, 19절)이다.
+  const briefChecklist = useFollowupChecklist(briefSessionId, { enabled: signedIn(session) });
+  const needEvidence =
+    briefChecks.items.some((item) => item.in_briefing && Array.isArray(item.segment_ids) && item.segment_ids.length > 0) ||
+    checklistNeedsEvidence(briefChecklist.checklist, briefSessionId);
+  const signals = useCaseSignals(detail, { enabled: signedIn(session), needEvidence });
   const theme = useTheme();
   const questions = useFollowupQuestions(detail.sessions[0]?.id ?? null, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, caseId });
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId });
+  const formsCard = formsCardValues(useCaseForms(caseId, { enabled: signedIn(session) }), caseId);
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
-  const briefChecks = useFollowupChecks(signals.session?.id ?? null, { enabled: signedIn(session) });
-  const brief = preBriefingValues({ session, detail, signals, questions: briefQuestions, caseId, history, checks: briefChecks });
+  const brief = preBriefingValues({
+    session,
+    detail,
+    signals,
+    questions: briefQuestions,
+    caseId,
+    history,
+    checks: briefChecks,
+    checklist: briefChecklist,
+  });
   const briefRef = useRef(null);
   const [outOpen, setOutOpen] = useState(false);
   const wantBrief = params.get('view') === 'brief';
@@ -121,13 +148,14 @@ export default function CaseDetail(props) {
           }}
         >
           <div className="thm-bar">
-            <NotiBell />
+            <NotiBell session={session} />
             <ThemeToggle />
           </div>
           <nav aria-label="위치" className="note">
             <A to="/CaseList">사례 관리</A> › {v.crumb}
           </nav>
           <Notice value={v.notice} />
+          <Notice value={v.personalNote} />
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
             <A className="btn btn-sm btn-s" to="/CaseList">
               ← 목록
@@ -164,21 +192,110 @@ export default function CaseDetail(props) {
             <A to={v.tabs.docs}>문서함</A>
           </nav>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
-            <section className="card" aria-label="기본 정보" style={{ padding: '22px 24px' }}>
+            <section className="card basics" aria-label="기본 정보" style={{ padding: '22px 24px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h2 className="h2">기본 정보</h2>
+                {/* 11/04 탭1 디자인: 아이 연계는 탭이 아니라 기본 정보 머리의 '아이 연계 →' 단추로 들어간다. */}
                 <A className="btn btn-sm btn-s" to={v.tabs.app} style={{ marginLeft: 'auto' }}>
                   아이 연계 →
                 </A>
+                {v.basicsEdit.canEdit ? (
+                  <button
+                    type="button"
+                    className="btn btn-s btn-sm"
+                    onClick={v.basicsEdit.startEdit}
+                  >
+                    수정
+                  </button>
+                ) : null}
               </div>
-              <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
-                {(v.basics || []).map((b, bIndex) => (
-                  <Fragment key={bIndex}>
-                    <dt>{b.label}</dt>
-                    <dd style={b.strong ? { fontWeight: '700' } : undefined}>{b.value}</dd>
-                  </Fragment>
-                ))}
-              </dl>
+              {v.basicsEdit.editing ? (
+                <>
+                  <Notice value={v.basicsEdit.personalNote} style={{ marginTop: '10px' }} />
+                  <dl className="kv" style={{ gridTemplateColumns: '120px minmax(0, 1fr)', alignItems: 'center' }}>
+                    {v.basicsEdit.rows.map((r) => (
+                      <Fragment key={r.label}>
+                        <dt>{r.label}</dt>
+                        <dd>
+                          {r.kind === 'static' ? (
+                            <>
+                              {r.value}{' '}
+                              <span className="note">({r.hint})</span>
+                            </>
+                          ) : r.kind === 'select' ? (
+                            <select className="inp" aria-label={r.label} value={r.value} onChange={r.onChange} disabled={r.disabled}>
+                              <option value="">선택</option>
+                              {r.options.map((o) => (
+                                <option key={o} value={o}>
+                                  {o}
+                                </option>
+                              ))}
+                            </select>
+                          ) : r.kind === 'target' ? (
+                            <div className="pair">
+                              <input
+                                className="inp"
+                                type="text"
+                                aria-label="사례관리대상자 이름"
+                                placeholder="이름"
+                                value={r.name.value}
+                                onChange={r.name.onChange}
+                                disabled={r.disabled}
+                              />
+                              <select
+                                className="inp"
+                                aria-label="사례관리대상자 관계"
+                                value={r.relation.value}
+                                onChange={r.relation.onChange}
+                                disabled={r.disabled}
+                              >
+                                <option value="">관계</option>
+                                {r.options.map((o) => (
+                                  <option key={o} value={o}>
+                                    {o}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <input
+                              className="inp"
+                              type={r.kind}
+                              aria-label={r.label}
+                              min={r.min}
+                              max={r.max}
+                              value={r.value}
+                              onChange={r.onChange}
+                              disabled={r.disabled}
+                            />
+                          )}
+                        </dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                  <p className="note" style={{ margin: '12px 0 0' }}>
+                    {v.basicsEdit.editNote}
+                  </p>
+                  <Notice value={v.basicsEdit.error} style={{ marginTop: '8px', color: '#A33B2E' }} />
+                  <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button type="button" className="btn btn-s btn-sm" onClick={v.basicsEdit.cancel} disabled={v.basicsEdit.saving}>
+                      취소
+                    </button>
+                    <button type="button" className="btn btn-p btn-sm" onClick={v.basicsEdit.save} disabled={v.basicsEdit.saving}>
+                      {v.basicsEdit.saveLabel}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
+                  {(v.basics || []).map((b, bIndex) => (
+                    <Fragment key={bIndex}>
+                      <dt>{b.label}</dt>
+                      <dd style={b.strong ? { fontWeight: '700' } : undefined}>{b.value}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              )}
             </section>
             <section className="card" aria-label="주요 위험 요인" style={{ padding: '22px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -391,10 +508,11 @@ export default function CaseDetail(props) {
                   title="인쇄 · PDF"
                   goLabel="인쇄"
                   name={v.title}
+                  maskReady={v.namesReady}
                   onClose={() => setOutOpen(false)}
                   onRun={(mask) => {
                     setOutOpen(false);
-                    printMasked({ root: briefRef.current, name: v.title, mask, bodyClass: 'print-brief' });
+                    printMasked({ root: briefRef.current, names: v.maskNames, mask, bodyClass: 'print-brief' });
                   }}
                 />
               ) : null}
@@ -471,8 +589,8 @@ export default function CaseDetail(props) {
             style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
           >
             <b style={{ flex: '1 1 200px' }}>기관 서식</b>
-            <span className="chip c-check">{v.formsChip}</span>
-            <A className="btn btn-p" to={v.formsHref}>
+            <span className="chip c-check">{formsCard.chip}</span>
+            <A className="btn btn-p" to={formsCard.href}>
               기관 서식 작성
             </A>
           </section>

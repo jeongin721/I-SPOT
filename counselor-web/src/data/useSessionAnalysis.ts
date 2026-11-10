@@ -20,6 +20,8 @@ import type {
   FollowupCheckPoint,
   FollowupQuestionDraft,
   ProtectiveFactor,
+  ReabuseFactor,
+  SafetyFlag,
   RiskUtterance,
   SessionStatus,
   SeverityRating,
@@ -36,6 +38,8 @@ export const ANALYSIS_STATUS_LABELS: Record<AnalysisStatus, string> = {
 };
 
 export interface AnalysisView {
+  /** 분석 ID. 다음 상담 체크리스트(19절)가 이 분석으로 만든 것인지 대조한다. */
+  id: string;
   status: AnalysisStatus;
   statusLabel: string;
   /** AI 원본 요약. 결과가 없으면(분석 중 · 실패) 빈 문자열. */
@@ -52,6 +56,9 @@ export interface AnalysisView {
   severityRatings: SeverityRating[];
   /** 보호 요인(선택 필드). */
   protectiveFactors: ProtectiveFactor[];
+  /** 안전 플래그 · 재학대 요인 후보(선택 필드, 2026-11-05). null 이면 만들지 못함 — '없음' 과 다르다. */
+  safetyFlags: SafetyFlag[] | null;
+  reabuseFactors: ReabuseFactor[] | null;
   /** 다음 상담에서 확인할 점에 대한 AI 확인 메모(선택 필드). 질문이 아니다. 지금은 segment_ids 가 늘 빈 배열이다. */
   followupCheckPoints: FollowupCheckPoint[];
   /** AI 추가 질문 초안(선택 필드). 상담사가 승인해야 질문 목록에 들어간다. 생성 모듈 전에는 빈 배열이다. */
@@ -80,6 +87,18 @@ export interface SessionAnalysisState {
   canRequest: boolean;
   /** 분석 중이라 되풀이 조회하고 있는가. */
   processing: boolean;
+  /**
+   * 학대 신호 확인(2단계) 결과는 저장됐고 3 · 4단계 AI 초안을 아직 만드는 중인가(drafts_status PENDING, 2026-11-04 제안).
+   * 이때도 되풀이 조회한다. 회차 상태는 이미 AI_REVIEW_REQUIRED 다.
+   */
+  draftsPending: boolean;
+  /** 3 · 4단계 AI 초안을 만들지 못했는가(drafts_status FAILED). 2단계 결과는 그대로다. */
+  draftsFailed: boolean;
+  /**
+   * 3 · 4단계 화면이 쓸 회차 상태. 초안을 만드는 중이면 AI_PROCESSING 으로 본다(그 화면에는 아직 분석 중과 같아서 —
+   * 저장 · 승인을 막고 '분석 중' 안내를 보인다. 서버도 409 ANALYSIS_DRAFTS_PENDING 으로 막는다). 2단계 화면은 sessionStatus 를 쓴다.
+   */
+  stepStatus: SessionStatus | null;
   submitting: boolean;
   loading: boolean;
   error: string | null;
@@ -115,8 +134,10 @@ export function useSessionAnalysis(
   const envelope = remote.data;
   const sessionStatus = envelope?.session_status ?? null;
   const processing = sessionStatus !== null && isProcessing(sessionStatus);
+  const draftsStatus = envelope?.analysis?.drafts_status ?? "DONE";
+  const draftsPending = !processing && draftsStatus === "PENDING";
 
-  usePolling(processing, remote.refresh, remote.settled);
+  usePolling(processing || draftsPending, remote.refresh, remote.settled);
 
   const run = useCallback(async () => {
     const ticket = remote.capture();
@@ -172,6 +193,7 @@ export function useSessionAnalysis(
     sessionStatus,
     analysis: source
       ? {
+          id: source.id,
           status: source.status,
           statusLabel: ANALYSIS_STATUS_LABELS[source.status],
           overview: source.result?.summary.overview ?? "",
@@ -181,6 +203,8 @@ export function useSessionAnalysis(
           abuseSignals: source.result?.abuse_signals ?? [],
           severityRatings: source.result?.severity_ratings ?? [],
           protectiveFactors: source.result?.protective_factors ?? [],
+          safetyFlags: source.result?.safety_flags ?? null,
+          reabuseFactors: source.result?.reabuse_factors ?? null,
           followupCheckPoints: source.result?.followup_check_points ?? [],
           followupQuestions: source.result?.followup_questions ?? [],
           transcriptVersion: source.transcript_version,
@@ -191,8 +215,11 @@ export function useSessionAnalysis(
         }
       : null,
     sessionError: envelope?.error?.message ?? source?.error?.message ?? null,
-    canRequest: sessionStatus !== null && canRequestAnalysis(sessionStatus),
+    canRequest: sessionStatus !== null && canRequestAnalysis(sessionStatus) && !draftsPending,
     processing,
+    draftsPending,
+    draftsFailed: !processing && draftsStatus === "FAILED",
+    stepStatus: draftsPending ? "AI_PROCESSING" : sessionStatus,
     submitting,
     loading: remote.loading,
     error: actionError ?? remote.error,
