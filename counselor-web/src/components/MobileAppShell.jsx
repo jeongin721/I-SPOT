@@ -5,6 +5,7 @@
 //    그래서 연결 없이 앱을 열어도 녹음 · 대기열이 보인다. 401(로그인 만료)은 로그인 화면으로 간다.
 //  - 알림: 업로드 실패 줄(폰 대기열) + '오늘 남은 상담 N건'(오늘 일정 중 지금 뒤의 상담, 서버 일정). 디자인의
 //    '상담 전 브리핑이 준비됐어요' 는 브리핑이 '준비됐는지' 정할 서버 값이 없어 넣지 않았다.
+//  - 앱 화면에서만 '홈 화면에 추가' 정보(manifest · 아이콘)를 붙인다(useAppInstall). 짧은 주소 /app/ 은 앱 홈으로 보낸다.
 //  - 홈 · 일정 · 메모 탭과 설정 단추는 각 앱 화면으로 간다(11/10). 홈은 머리에 제목 대신 I-SPOT 표시(디자인).
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
@@ -14,6 +15,7 @@ import { rememberAppReturn } from '../data/appReturn';
 import { cachedAppUserId, rememberAppUser } from '../data/appOffline';
 import { retryRecording, uploadAsNewSession } from '../data/appRecordings';
 import { useAppRecordings } from '../data/useAppRecordings';
+import { useAppInstall } from '../data/useAppInstall';
 import { useAppSchedule, ymd } from '../data/useAppSchedule';
 import { useTheme } from '../theme';
 import '../styles/mobile-app.css';
@@ -94,6 +96,7 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
   const signedId = session.status === 'signedIn' ? session.me?.id ?? null : null;
   const userId = signedId ?? (session.status === 'checking' || session.status === 'error' ? cachedAppUserId() : null);
   const { items, loaded, storageError } = useAppRecordings(userId);
+  useAppInstall();
   const [ntOpen, setNtOpen] = useState(false);
   const [toast, setToast] = useState('');
   const today = ymd(new Date());
