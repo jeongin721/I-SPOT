@@ -4,18 +4,38 @@
 import { useEffect, useState } from "react";
 
 import { cases } from "../api/endpoints";
+import type { CaseListItem } from "../api/types";
 import { cachedCases, rememberCases, type CachedCase } from "./appOffline";
 
+/** 서버에서 받았으면 사례 목록 줄 전체, 연결이 없어 기억한 목록이면 ID · 이름 · 별칭만. */
+export type AppCaseRow = CachedCase & Partial<CaseListItem>;
+
 export interface AppCasesState {
-  rows: CachedCase[];
+  rows: AppCaseRow[];
   loading: boolean;
   /** 서버 대신 기억해 둔 목록을 보이는 중. */
   offline: boolean;
   error: string | null;
 }
 
-export function childLabelOf(row: CachedCase): string {
+export function childLabelOf(row: AppCaseRow): string {
   return row.child_name || row.child_alias;
+}
+
+// 같은 화면에서 여러 곳(머리의 '담당 N명' · 본문)이 함께 불러도 서버에는 한 번만 묻는다(실명 목록 열람 기록이 겹치지 않게).
+let inflight: { at: number; promise: ReturnType<typeof cases.list> } | null = null;
+
+function loadCases(): ReturnType<typeof cases.list> {
+  if (inflight && Date.now() - inflight.at < 5000) return inflight.promise;
+
+  const promise = cases.list({ status: "ACTIVE", with_child_name: true, page_size: 100 });
+
+  inflight = { at: Date.now(), promise };
+  promise.catch(() => {
+    inflight = null;
+  });
+
+  return promise;
 }
 
 export function useAppCases(userId: string | null): AppCasesState {
@@ -30,8 +50,7 @@ export function useAppCases(userId: string | null): AppCasesState {
     // 기억해 둔 목록을 먼저 보인다(연결이 느려도 바로 고를 수 있게). 서버 값이 오면 바꾼다.
     if (saved) setState({ rows: saved, loading: false, offline: false, error: null });
 
-    cases
-      .list({ status: "ACTIVE", with_child_name: true, page_size: 100 })
+    loadCases()
       .then((page) => {
         if (!live) return;
         rememberCases(userId, page.items);

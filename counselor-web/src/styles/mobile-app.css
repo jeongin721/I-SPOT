@@ -163,3 +163,149 @@ textarea.ma-inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .ma-toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);padding:10px 16px;border-radius:12px;background:var(--ink);color:var(--onink);font-size:13.5px;font-weight:600;box-shadow:0 6px 16px rgba(43,42,38,.2)}
 /* 웹 common.css 의 h1{font-size:… !important} 가 폰 머리 제목 크기를 덮지 않게 디자인 값을 다시 건다. */
 .ma-ahd h1{font-size:clamp(18px,5.4vw,20px) !important}
+
+/* ===== 앱 화면별 규칙(홈 · 사례 목록 · 브리핑 · 일정 · 메모 · 설정 zip, 2026-11-10). 맨 바깥에 .ma-s-<화면> 이 붙는다. ===== */
+/* ---- 앱 · 홈 (home) ---- */
+.ma-s-home .ma-amain{gap:10px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+.ma-s-home .ma-brand{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700}
+.ma-s-home .ma-mk{width:28px;height:28px;border-radius:8px;background:var(--ink);color:var(--onink);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.ma-s-home .ma-hello{padding:2px 2px 0;display:flex;flex-direction:column;gap:0}
+.ma-s-home .ma-hello span{font-size:clamp(13.5px,4vw,15px);color:var(--mut)}
+.ma-s-home .ma-hello b{font-size:clamp(21px,6.4vw,25px);font-weight:700;letter-spacing:-.01em;line-height:1.3}
+.ma-s-home .ma-hello small{font-size:13px;color:var(--mut)}
+.ma-s-home .ma-crow{display:flex;align-items:center;gap:12px;padding:11px 14px}
+.ma-s-home .ma-crow .ma-ci{width:36px;height:36px;border-radius:12px;background:var(--soft);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ma-s-home .ma-crow b{font-size:15px}
+.ma-s-home .ma-sec-h{display:flex;align-items:center;gap:8px;margin-top:4px;margin-bottom:-4px}
+.ma-s-home .ma-sec-h h2{margin:0;font-size:16px;font-weight:700;flex:1}
+.ma-s-home .ma-list{display:flex;flex-direction:column}
+.ma-s-home .ma-li{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--line);cursor:pointer;background:transparent;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;font:inherit;color:inherit}
+.ma-s-home .ma-li:first-child{border-top:0}
+.ma-s-home .ma-li .ma-lt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ma-s-home .ma-li .ma-lt b{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ma-s-home .ma-li .ma-lt .ma-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ma-s-home .ma-li .ma-btn-sm{min-height:32px;padding:0 10px;font-size:12.5px;flex:none}
+.ma-s-home .ma-li.ma-unread .ma-lt b::after{content:"";display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:var(--red);vertical-align:middle}
+.ma-s-home .ma-li.ma-nfail .ma-lt b{color:var(--red)}
+.ma-s-home .ma-ndot{width:8px;height:8px;border-radius:50%;background:var(--gold);flex:none}
+.ma-s-home .ma-ndot.ma-red{background:var(--red)}
+.ma-s-home .ma-body{margin:0;font-size:14.5px;white-space:pre-wrap}
+.ma-s-home .ma-brand{gap:8px;font-size:15px;letter-spacing:.02em}
+.ma-s-home .ma-mk{width:26px;height:26px;border-radius:8px;font-size:10.5px;letter-spacing:.02em}
+.ma-s-home .ma-hello{padding:8px 4px 2px;gap:2px}
+.ma-s-home .ma-hello small{order:-1;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--goldT);letter-spacing:.01em}
+.ma-s-home .ma-hello span{font-size:15px}
+.ma-s-home .ma-hello b{font-size:clamp(23px,7vw,27px);letter-spacing:-.035em;line-height:1.25}
+.ma-app.ma-s-home a.ma-hero{display:flex;flex-direction:column;gap:16px;padding:18px 18px 16px;border-radius:18px;background:#2B2A26;color:#EADBB5;box-shadow:0 10px 26px rgba(43,42,38,.22)}
+.ma-app.ma-s-home.ma-dark a.ma-hero{background:#34322D;border:1px solid var(--line);box-shadow:none}
+.ma-s-home .ma-hero-top{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600}
+.ma-s-home .ma-hero-go{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;opacity:.85}
+.ma-s-home .ma-stats{display:grid;grid-template-columns:repeat(3,1fr)}
+.ma-s-home .ma-stat{display:flex;flex-direction:column;gap:2px;padding-left:14px;border-left:1px solid rgba(234,219,181,.18)}
+.ma-s-home .ma-stat:first-child{padding-left:0;border-left:0}
+.ma-s-home .ma-stat b{font-size:26px;font-weight:700;line-height:1.1;color:#FFFFFF;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.ma-s-home .ma-stat span{font-size:12px;opacity:.72}
+.ma-s-home .ma-sec-h{margin-top:8px;margin-bottom:-6px;padding:0 2px}
+.ma-s-home .ma-sec-h h2{font-size:15.5px;letter-spacing:-.02em}
+.ma-s-home .ma-li{padding:14px 16px;gap:12px}
+.ma-s-home .ma-li .ma-lt b{font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.ma-s-home .ma-li .ma-lt .ma-note{font-size:12px}
+/* ---- 앱 · 사례목록 (cases) ---- */
+.ma-s-cases .ma-srch{position:relative}
+.ma-s-cases .ma-cs{display:flex;flex-direction:column;gap:8px;padding:14px;cursor:pointer}
+.ma-s-cases .ma-cs-top{display:flex;align-items:center;gap:8px}
+.ma-s-cases .ma-cs-top b{font-size:16px}
+.ma-s-cases .ma-cs-next{display:flex;align-items:center;gap:6px;font-size:13.5px}
+.ma-s-cases .ma-cs-next.ma-none{color:var(--mut)}
+.ma-s-cases .ma-empty{padding:28px 16px;text-align:center;color:var(--mut);font-size:14px}
+.ma-s-cases .ma-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ma-s-cases .ma-cs{padding:15px 16px;gap:5px}
+.ma-s-cases .ma-cs-top b{font-size:16px;letter-spacing:-.02em}
+.ma-s-cases .ma-cs-next{margin-top:6px;padding-top:9px;border-top:1px solid var(--line);font-size:13px;font-weight:500}
+/* ---- 앱 · 상담전브리핑 (brief) ---- */
+.ma-s-brief .ma-lead{padding:16px;display:flex;flex-direction:column;gap:6px}
+.ma-s-brief .ma-lead-tag{align-self:flex-start;display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:6px;background:var(--ink);color:var(--onink);font-size:12.5px;font-weight:700}
+.ma-s-brief .ma-lead-q{font-size:13.5px;color:var(--mut)}
+.ma-s-brief .ma-lead-main{font-size:18px;font-weight:700;line-height:1.45}
+.ma-s-brief .ma-arrow{color:var(--red);margin:0 4px}
+.ma-s-brief .ma-rq{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:14.5px;cursor:pointer}
+.ma-s-brief .ma-rq input{width:20px;height:20px;margin-top:1px;accent-color:#2B2A26;flex:none}
+.ma-s-brief .ma-src{display:block;font-size:12px;color:var(--mut)}
+.ma-s-brief .ma-cta{position:sticky;bottom:calc(82px + env(safe-area-inset-bottom,0px));z-index:15}
+.ma-s-brief .ma-lead{padding:16px 18px;gap:6px;border-left:3px solid var(--gold)}
+.ma-s-brief .ma-lead-tag{height:22px;padding:0 9px;border-radius:999px;background:var(--sand);color:var(--goldT);font-size:11.5px;font-weight:700}
+.ma-s-brief .ma-lead-main{font-size:17px;letter-spacing:-.02em}
+.ma-s-brief .ma-rq{border-radius:14px;padding:13px 15px;box-shadow:var(--sh)}
+.ma-s-brief .ma-cta{min-height:52px;border-radius:14px;box-shadow:0 10px 24px rgba(43,42,38,.28)}
+/* ---- 앱 · 일정 (cal) ---- */
+.ma-s-cal .ma-days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.ma-s-cal .ma-day{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:12px;border:1px solid transparent;background:transparent;font:inherit;color:var(--fg);cursor:pointer}
+.ma-s-cal .ma-day small{font-size:11.5px;color:var(--mut)}
+.ma-s-cal .ma-day b{font-size:16px}
+.ma-s-cal .ma-day.ma-on{background:var(--ink);color:var(--onink)}
+.ma-s-cal .ma-day.ma-on small{color:var(--onink)}
+.ma-s-cal .ma-day.ma-today b{text-decoration:underline;text-underline-offset:3px}
+.ma-s-cal .ma-dot{width:5px;height:5px;border-radius:50%;background:var(--gold)}
+.ma-s-cal .ma-dot.ma-no{background:transparent}
+.ma-s-cal .ma-ev{display:flex;flex-direction:column;gap:10px;padding:14px;cursor:pointer}
+.ma-s-cal .ma-ev-top{display:flex;align-items:flex-start;gap:12px}
+.ma-s-cal .ma-ev-time{min-width:48px;font-size:14px;font-weight:700}
+.ma-s-cal .ma-ev-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ma-s-cal .ma-ev-body b{font-size:15.5px}
+.ma-s-cal .ma-ev-act{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ma-s-cal .ma-empty{padding:28px 16px;text-align:center;color:var(--mut);font-size:14px}
+.ma-s-cal .ma-calbar{display:flex;align-items:center;gap:10px}
+.ma-s-cal .ma-calmon{flex:1;text-align:center;font-size:15px}
+.ma-s-cal .ma-mcal{padding:10px 8px}
+.ma-s-cal .ma-mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.ma-s-cal .ma-mdow{text-align:center;font-size:11.5px;color:var(--mut);padding:2px 0 6px}
+.ma-s-cal .ma-mc{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:44px;border:0;border-radius:10px;background:transparent;font:inherit;font-size:14.5px;color:var(--fg);cursor:pointer;padding:0}
+.ma-s-cal .ma-mc.ma-out{color:var(--mut);opacity:.55}
+.ma-s-cal .ma-mc.ma-today span:first-child{text-decoration:underline;text-underline-offset:3px;font-weight:700}
+.ma-s-cal .ma-mc.ma-on{background:var(--ink);color:var(--onink);opacity:1}
+.ma-s-cal .ma-mc.ma-on .ma-dot{background:var(--onink)}
+.ma-s-cal .ma-fab{position:sticky;bottom:calc(82px + env(safe-area-inset-bottom,0px));align-self:flex-end;margin-right:2px;z-index:15;box-shadow:0 8px 20px rgba(43,42,38,.25)}
+.ma-s-cal .ma-days{gap:2px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh)}
+.ma-s-cal .ma-day{padding:7px 0 6px;border-radius:12px}
+.ma-s-cal .ma-day small{font-size:11px;font-weight:500}
+.ma-s-cal .ma-day b{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.ma-s-cal .ma-calmon{font-size:14.5px;letter-spacing:-.01em}
+.ma-s-cal .ma-mcal{padding:12px 10px}
+.ma-s-cal .ma-mc{border-radius:12px;font-variant-numeric:tabular-nums}
+.ma-s-cal .ma-ev{padding:14px 16px;gap:12px}
+.ma-s-cal .ma-ev-top{gap:14px}
+.ma-s-cal .ma-ev-time{min-width:52px;padding-right:12px;border-right:2px solid var(--gold);font-size:13.5px;font-variant-numeric:tabular-nums}
+.ma-s-cal .ma-ev-body b{font-size:15px;font-weight:600;letter-spacing:-.015em}
+.ma-s-cal .ma-fab{border-radius:12px;min-height:50px;padding:0 22px;box-shadow:0 10px 24px rgba(43,42,38,.28)}
+/* ---- 앱 · 메모 (memo) ---- */
+.ma-s-memo .ma-mi{display:flex;flex-direction:column;gap:6px;padding:14px;cursor:pointer}
+.ma-s-memo .ma-mi-top{display:flex;align-items:center;gap:8px}
+.ma-s-memo .ma-mi p{margin:0;font-size:14.5px;white-space:pre-wrap}
+.ma-s-memo .ma-mi{padding:14px 16px}
+.ma-s-memo .ma-mi p{line-height:1.6}
+/* ---- 앱 · 설정 (set) ---- */
+.ma-s-set .ma-prof{display:flex;align-items:center;gap:14px;padding:16px}
+.ma-s-set .ma-av{width:52px;height:52px;border-radius:50%;background:var(--ink);color:var(--onink);display:inline-flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex:none}
+.ma-s-set .ma-grp{display:flex;flex-direction:column}
+.ma-s-set .ma-sr{display:flex;align-items:center;gap:12px;padding:14px;border-top:1px solid var(--line);font-size:15px}
+.ma-s-set .ma-sr:first-child{border-top:0}
+.ma-s-set .ma-sr .ma-st{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ma-s-set .ma-tg{position:relative;width:50px;height:30px;flex:none;border-radius:999px;border:0;background:var(--line);cursor:pointer;padding:0;transition:background .15s}
+.ma-s-set .ma-tg::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 3px rgba(43,42,38,.3);transition:transform .15s}
+.ma-s-set .ma-tg.ma-on{background:var(--gold)}
+.ma-s-set .ma-tg.ma-on::after{transform:translateX(20px)}
+@media (prefers-reduced-motion: reduce){.ma-s-set .ma-tg,.ma-s-set .ma-tg::after{transition:none}}
+.ma-s-set .ma-prof{padding:18px}
+.ma-s-set .ma-av{width:56px;height:56px;font-size:20px}
+.ma-s-set .ma-grp{overflow:hidden}
+.ma-s-set .ma-sr{min-height:56px;padding:12px 16px}
+.ma-s-set .ma-tg{width:46px;height:28px}
+.ma-s-set .ma-tg::after{width:22px;height:22px}
+.ma-s-set .ma-tg.ma-on::after{transform:translateX(18px)}
+/* 브리핑 '추가 질문' 의 AI 초안 칩(디자인 .chip.ai) */
+.ma-chip.ma-ai{gap:4px;background:#F3EAD3;color:#7A5F28}
+.ma-app.ma-dark .ma-chip.ma-ai{background:#3F3729;color:#EADBB5}
+.ma-chip.ma-ai::before{content:"";width:11px;height:11px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat}
+/* 디자인에 없는 것: 서버에 없어 아직 못 쓰는 스위치 */
+.ma-tg.ma-off{opacity:.45;cursor:not-allowed}
+.ma-s-brief .ma-ahd h1{font-size:19px !important}
