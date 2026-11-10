@@ -3,7 +3,7 @@
 //
 // 서버 연결: 진행 중 사례 수 · 미처리 업무(목록 · 종류별 수)는 useHomeDashboard 가 부르고, 화면에 쓸 값은
 // src/data/screens/main.ts(mainValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-// 오늘 일정 · 다음 상담까지 남은 시간은 일정(useSchedule, 11/02 연결)에서 온다. 아이 앱 긴급 응답은 서버에 없어 '—'.
+// 오늘 일정 · 다음 상담까지 남은 시간은 일정(useSchedule, 11/02 연결)에서 온다. 긴급 업무는 콩콩 알림(11/10 연결)이다.
 // 시계 · 빠른 실행은 화면 상태다.
 import { Fragment, useState } from 'react';
 import { Navigate } from 'react-router-dom';
@@ -15,6 +15,8 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useHomeDashboard } from '../data/useHomeDashboard';
+import { useRemote } from '../data/useRemote';
+import { childApp } from '../api/endpoints';
 import { useSchedule } from '../data/useSchedule';
 import { needsLogin } from '../data/screens/common';
 import { homeScheduleRange, initialMainState, mainValues } from '../data/screens/main';
@@ -43,7 +45,10 @@ export default function Main(props) {
   const [scheduleRange] = useState(() => homeScheduleRange(new Date()));
   const schedule = useSchedule(session, scheduleRange, { withCases: false });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, home, schedule });
+  // 긴급 업무 카드: 확인 안 한 콩콩 알림(알림 띠와 같은 목록). 아이 앱이 꺼져 있으면 오류라 '—' 로 둔다.
+  const alertsKey = session.status === 'signedIn' ? `home-child-alerts:${session.me.id}` : null;
+  const childAlerts = useRemote(alertsKey, () => childApp.openAlerts(), '아이 앱 알림을 불러오지 못했습니다.', () => false);
+  const v = useDC(Logic, { ...props, session, home, schedule, childAlerts: childAlerts.data });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-Main">

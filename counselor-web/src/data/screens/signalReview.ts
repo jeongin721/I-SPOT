@@ -2,9 +2,9 @@
 // 예전 '위험 신호 검토' 와 '유형별 위험도'(RiskProfile) 두 화면이 디자인에서 이 화면 하나가 됐다.
 //
 // 디자인 칸 → 서버 값:
-//  - 위쪽 카드 'AI 초안': 분석이 끝났으면 유형별 심각도 중 가장 높은 단계와 그 유형을 보인다(2026-10-28, severity_ratings —
-//    1~5 단계를 상 · 중 · 하로 바꾸는 규칙은 정하지 않아 단계 숫자 그대로). 안전 플래그 수 · 회차 비교는 서버에 없어
-//    준비 중이다(회차 비교는 사례 단위 signal-history API 뒤에). 그 자리에 AI 분석 상태
+//  - 위쪽 카드 'AI 초안': 분석이 끝났으면 유형별 심각도 중 가장 높은 단계를 상 · 중 · 하로 크게 보인다(2026-11-05 경진님 결정 —
+//    4~5 상 · 3 중 · 1~2 하, aiLevelFromSeverity). 옆에는 그 단계 · 유형, 지난 회차 AI 초안과 비교(↑ 증가 · → 같음 · ↓ 감소,
+//    사례 단위 signal-history)를 둔다. 디자인의 '안전 플래그 n개' 는 서버에 없어 보이지 않는다. 아래에 AI 분석 상태
 //    (분석 중 · 실패 · 요청 대기 · 완료)를 보인다 — 디자인에는 분석 요청 단계가 없고, STT 검수의 '유형별 위험도 →' 가
 //    원문 확정과 분석 요청을 같이 한다(sttReview.ts). 여기서는 실패 · 대기일 때 다시 요청할 수 있게만 둔다.
 //  - 위쪽 카드 '상담원 판단': 디자인대로 회차 전체 상 · 중 · 하 **하나**(2026-10-29, 서버 API_CONTRACT 11.1절 회차 전체 판단 —
@@ -45,7 +45,6 @@ import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { DASH, TREND_TYPES, TYPE_SHORT, counselorTopLabel, historyCell } from "../signalHistoryRows";
-import { NOT_READY } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -311,6 +310,44 @@ const REABUSE_LABELS: Record<string, string> = {
   R10: "새 동거인 · 여러 행위자",
 };
 
+/**
+ * AI 심각도(1~5)를 위쪽 카드 'AI 초안' 상 · 중 · 하로(2026-11-05 경진님 결정): 4~5 상 · 3 중 · 1~2 하. 없으면 null.
+ * AI 제안을 읽기 쉽게 바꾼 것일 뿐 판정이 아니다 — 회차 위험도는 옆의 상담원 판단이 정한다.
+ */
+export function aiLevelFromSeverity(severity: number | null | undefined): RiskLevel | null {
+  if (typeof severity !== "number" || severity < 1) return null;
+  if (severity >= 4) return "HIGH";
+  if (severity === 3) return "MEDIUM";
+  return "LOW";
+}
+
+const LEVEL_RANK: Record<RiskLevel, number> = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+
+/**
+ * 지난 회차와 비교(디자인 '· 7회차 중 → ↑ 증가'). 사례 신호 이력에서 이 회차 바로 앞 회차의 AI 최고 심각도를 같은 규칙으로 바꿔 견준다.
+ * 앞 회차가 없거나 · 분석 전이거나 · 심각도 제안이 없으면 ''.
+ */
+export function aiTrendText(
+  history: SignalHistoryState | undefined,
+  sessionId: string | null | undefined,
+  current: RiskLevel | null,
+): string {
+  if (!history?.loaded || !sessionId || current === null) return "";
+
+  const index = history.sessions.findIndex((row) => row.session_id === sessionId);
+  if (index <= 0) return "";
+
+  const previous = history.sessions[index - 1];
+  const levels = previous.types.map((row) => (typeof row.ai_level === "number" ? row.ai_level : 0));
+  const before = aiLevelFromSeverity(levels.length > 0 ? Math.max(...levels) : null);
+  if (before === null) return "";
+
+  const diff = LEVEL_RANK[current] - LEVEL_RANK[before];
+  const change = diff > 0 ? "↑ 증가" : diff < 0 ? "↓ 감소" : "같음";
+
+  return `· ${previous.session_number}회차 ${RISK_LEVEL_LABELS[before]} → ${change}`;
+}
+
 /** 상 · 중 · 하 단추 색(디자인). */
 const LEVEL_TONES: Record<RiskLevel, { tone: string; bg: string }> = {
   HIGH: { tone: "#A33B2E", bg: "#F7E4DF" },
@@ -345,6 +382,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
   let aiText: string;
   let aiActionLabel = "";
   let aiAction: (() => void) | null = null;
+  let top = 0;
+  const topTypes: string[] = [];
 
   if (status === null) {
     aiText = "";
@@ -360,8 +399,6 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiText = view?.completedAt ? `AI 분석 완료 · ${view.completedAt}` : "AI 분석이 끝났습니다.";
 
     // 유형별 심각도(AI 제안) 중 가장 높은 단계. 같은 단계면 유형 순서(신체 · 정서 · 성 · 방임)대로 함께 적는다.
-    let top = 0;
-    const topTypes: string[] = [];
     for (const type of ABUSE_TYPES) {
       const level = completed ? severity.get(type)?.level ?? null : null;
       if (level === null || level < top) continue;
@@ -369,7 +406,6 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
       top = level;
       topTypes.push(ABUSE_TYPE_LABELS[type]);
     }
-    if (top > 0) aiText = `회차 최고 심각도 ${top}단계 · ${topTypes.join(" · ")} — ${aiText}`;
   } else {
     aiText = "기록 확인에서 원문을 확정하면 AI 분석이 시작됩니다.";
     aiActionLabel = "기록 확인으로";
@@ -467,6 +503,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     assessNote = "원문을 확정하면 판단을 저장할 수 있습니다.";
   }
 
+  const aiLevel = aiLevelFromSeverity(top);
+
   const protective = completed
     ? (view?.protectiveFactors ?? [])
         .map((factor, index) => {
@@ -535,7 +573,12 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiActionLabel: analysis.submitting ? "요청 중…" : aiActionLabel,
     aiAction,
     aiWarnings: completed ? (view?.warnings ?? []) : [],
-    aiOverallNote: `심각도는 아래 유형별 AI 제안 중 가장 높은 값입니다. 지난 회차와 비교는 ${NOT_READY}입니다.`,
+    /** 위 카드 'AI 초안' 큰 글자(상 · 중 · 하) · 색 · 옆 설명 · 지난 회차 비교. 심각도 제안이 없으면 aiLevel 이 ''. */
+    aiLevel: aiLevel ? RISK_LEVEL_LABELS[aiLevel] : "",
+    aiLevelColor: aiLevel ? LEVEL_TONES[aiLevel].tone : "",
+    aiLevelText: aiLevel ? `최고 심각도 ${top}/5 · ${topTypes.join(" · ")}` : "",
+    aiTrend: aiTrendText(input.history, ids.sessionId, aiLevel),
+    aiOverallNote: "AI 초안은 아래 유형별 심각도 중 가장 높은 값입니다(4~5 상 · 3 중 · 1~2 하). 위험도는 상담원 판단으로 정합니다.",
     /** 위 카드 상담원 판단: 상 · 중 · 하 단추(회차 전체 하나), 상태 안내, 저장 중 표시. */
     levels,
     assessNote,
@@ -563,7 +606,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     signalError: completed ? signals.evidenceError : null,
     sttHref,
     nextHref: screenHref("/NoteWrite", ids),
-    nextLabel: "상담일지 작성 →",
+    // '확정' 은 디자인 문구(2026-11-05). 따로 저장하는 것은 없고, 상담원 판단이 있어야 넘어간다(nextBlocked).
+    nextLabel: "확정 · 상담일지 작성 →",
     canNext: analyzed,
     /** 분석은 끝났는데 판단이 없어 다음 단추 · 단계 표시 3단계를 팝업으로 막는가. */
     nextBlocked: needsJudgment(status, overall),

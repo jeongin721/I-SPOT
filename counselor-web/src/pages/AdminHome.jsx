@@ -21,6 +21,8 @@ import { useCaseList } from '../data/useCaseList';
 import { needsLogin } from '../data/screens/common';
 import { DASHBOARD_TASK_ROWS, TASK_GROUPS, taskGroupTypes } from '../data/screens/admin';
 import { adminHomeValues } from '../data/screens/adminHome';
+import { childApp } from '../api/endpoints';
+import { useRemote } from '../data/useRemote';
 import './Admin.css';
 
 class Logic extends DCLogic {
@@ -61,8 +63,11 @@ export default function AdminHome(props) {
   const groupB = useAdminTasks(session, { taskType: typeB, pageSize: DASHBOARD_TASK_ROWS });
   const accounts = useAdminAccounts(session);
   const theme = useTheme();
+  const alertsKey = session.status === 'signedIn' && session.isAdmin ? `admin-child-alerts:${session.me.id}` : null;
+  const childAlerts = useRemote(alertsKey, () => childApp.openAlerts(), '아이 앱 알림을 불러오지 못했습니다.', () => false);
   const v = useDC(Logic, {
     ...props,
+    childAlerts: childAlerts.data,
     session,
     dashboard,
     activeCases,

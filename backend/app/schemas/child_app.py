@@ -69,7 +69,8 @@ class ChildAppInviteResponse(BaseModel):
 
 
 class ChildQuestionSendRequest(RequestModel):
-    question_ids: List[str] = Field(min_length=3, max_length=4)
+    # 1개부터 문항 전체(8개)까지 고를 수 있다(11/10 경진님 — 처음엔 3~4개).
+    question_ids: List[str] = Field(min_length=1, max_length=8)
 
 
 class ChildAppBankItem(BaseModel):
@@ -139,6 +140,27 @@ class ChildAiQuestionUpdateRequest(RequestModel):
 
 class ChildAiApprovalRequest(RequestModel):
     approved: bool
+
+
+class ChildAppStats(BaseModel):
+    sent: int
+    answered: int
+    linked_cases: int
+
+
+class ChildAppCaseRow(BaseModel):
+    case_id: uuid.UUID
+    case_number: str
+    child_alias: str
+    child_birth_year: Optional[int] = None
+    status: str
+    # 최근 21일 답 묶음 수 · 가장 최근 답의 수준. 담당 상담사만(그 외 null).
+    recent_answers: Optional[int] = None
+    level: Optional[str] = None
+    last_response_at: Optional[datetime] = None
+    open_alert_at: Optional[datetime] = None
+    open_alert_reason: Optional[str] = None
+    open_alert_urgent: bool = False
 
 
 class ChildAppCaseResponse(BaseModel):

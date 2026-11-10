@@ -1790,7 +1790,7 @@ export interface ChildAppInvite {
 
 export interface ChildAppEvent {
   id: string;
-  kind: "LINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
+  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
   level: "NONE" | "SKIP" | "AMBER" | "RED";
   payload: Record<string, any>;
   created_at: string;
@@ -1832,6 +1832,26 @@ export interface ChildAppCase {
   feed: ChildAppEvent[];
   ai_enabled: boolean;
   ai_draft: ChildAiDraft | null;
+}
+
+export interface ChildAppStats {
+  sent: number;
+  answered: number;
+  linked_cases: number;
+}
+
+export interface ChildAppCaseRow {
+  case_id: string;
+  case_number: string;
+  child_alias: string;
+  child_birth_year: number | null;
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  recent_answers: number | null;
+  level: "NONE" | "SKIP" | "AMBER" | "RED" | null;
+  last_response_at: string | null;
+  open_alert_at: string | null;
+  open_alert_reason: string | null;
+  open_alert_urgent: boolean;
 }
 
 export interface ChildAiQuestion {

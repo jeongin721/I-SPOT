@@ -1,7 +1,7 @@
 // 실제 사례의 아이 연계 탭. 콩콩 앱과 같은 구조(연결 · 아이가 보낸 것 · 질문 보내기)로 서버 값을 보인다.
 // 사례 ID 가 없는 예시 화면은 CaseApp.jsx 의 디자인 목업을 그대로 쓴다.
-import { useState } from 'react';
 import A from '../components/A';
+import ChildQuestionSender from '../components/ChildQuestionSender';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
@@ -10,6 +10,7 @@ import { useCarryHref } from '../data/useCarryHref';
 import { CHILD_ALERT_TEXT, useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useTheme } from '../theme';
+import { screenHref } from '../data/screens/links';
 import './CaseApp.css';
 
 const STATUS = {
@@ -44,6 +45,8 @@ function FeedItem({ event }) {
     const label =
       event.kind === 'LINKED'
         ? '아이가 앱을 연결했어요'
+        : event.kind === 'UNLINKED'
+          ? '아이가 앱 연결을 해지했어요'
         : event.payload.withdrawn
           ? `보낸 질문 ${event.payload.count}개를 취소했어요`
           : `질문 ${event.payload.count}개를 보냈어요`;
@@ -75,21 +78,15 @@ function FeedItem({ event }) {
   );
 }
 
-export default function CaseChildApp({ caseId }) {
+export default function CaseChildApp({ caseId, fromChild = false }) {
   const session = useAuthSession();
   const carry = useCarryHref();
   const theme = useTheme();
   const enabled = session.status === 'signedIn';
   const detail = useCaseDetail(caseId, { enabled });
   const app = useCaseChildApp(caseId, enabled);
-  const [picked, setPicked] = useState([]);
   const data = app.data;
   const status = STATUS[data?.status] ?? STATUS.NOT_LINKED;
-  const canSend = picked.length >= 3 && picked.length <= 4 && !app.busy;
-  const toggle = (id) => setPicked((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
-  const send = async () => {
-    if (await app.sendQuestions(picked)) setPicked([]);
-  };
   const info = detail.caseInfo;
 
   return (
@@ -108,27 +105,36 @@ export default function CaseChildApp({ caseId }) {
           alignItems: 'stretch',
         }}
       >
-        <Sidebar active="CaseList" session={session} />
+        <Sidebar active={fromChild ? 'ChildLink' : 'CaseList'} session={session} />
         <main style={{ flex: '999 1 640px', minWidth: '0', padding: '30px 36px 56px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div className="thm-bar">
             <NotiBell session={session} />
             <ThemeToggle />
           </div>
-          <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › {info ? `${info.name} ${info.caseNumber}` : '…'}
-          </nav>
+          {fromChild ? (
+            <nav aria-label="위치" className="note">
+              <A to="/ChildLink">아이 연계</A> › <A to={screenHref('/ChildDetail', { caseId })}>{info?.name ?? '…'}</A> › 과거 답변 기록
+            </nav>
+          ) : (
+            <nav aria-label="위치" className="note">
+              <A to="/CaseList">사례 관리</A> › {info ? `${info.name} ${info.caseNumber}` : '…'}
+            </nav>
+          )}
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{info?.name ?? '…'}</h1>
             <span className={status[1]}>{status[0]}</span>
-            <A className="btn btn-sm btn-s" to={carry('/ChildDetail')} style={{ marginLeft: 'auto' }}>
-              아이 상세 보기 →
+            <A className="btn btn-sm btn-s" to={screenHref('/ChildDetail', { caseId })} style={{ marginLeft: 'auto' }}>
+              {fromChild ? '← 아이 상세' : '아이 상세 보기 →'}
             </A>
           </section>
+          {/* 아이 연계에서 왔으면 사례 상세 탭(사례 관리 메뉴로 가는 길)을 두지 않는다. */}
+          {fromChild ? null : (
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
             <A to={carry('/CaseDocs')}>문서함</A>
           </nav>
+          )}
 
           {app.error ? <p role="alert">{app.error}</p> : null}
           {app.actionError ? <p role="alert">{app.actionError}</p> : null}
@@ -194,27 +200,7 @@ export default function CaseChildApp({ caseId }) {
                 <p className="note">아이가 보낸 내용은 담당 상담사만 볼 수 있어요.</p>
               )}
 
-              {data.status === 'LINKED' && data.can_read_feed ? (
-                <section className="card" aria-label="질문 보내기" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h2 className="h2">질문 보내기 · {picked.length}개 선택 (3~4개)</h2>
-                  {data.bank.map((item) => (
-                    <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
-                      <span>
-                        <span className="chip c-sand">{item.category}</span> {item.text}
-                      </span>
-                    </label>
-                  ))}
-                  {data.has_pending_questions ? (
-                    <div className="note">아이가 아직 답하지 않은 질문이 있어요. 보내면 새 질문으로 바뀝니다.</div>
-                  ) : null}
-                  <div>
-                    <button type="button" className="btn btn-p" disabled={!canSend} onClick={send}>
-                      아이에게 보내기
-                    </button>
-                  </div>
-                </section>
-              ) : null}
+              <ChildQuestionSender app={app} caseId={caseId} />
             </>
           ) : null}
         </main>

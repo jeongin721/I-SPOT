@@ -2889,6 +2889,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
 | GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
 | POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
 | POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
@@ -2896,7 +2897,9 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
 | GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null). 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
 | POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
-| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids}` 3~4개 → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids}` 1~8개(문항 전체) → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+| GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
+| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent}`. `recent_answers` · `level` 은 담당 상담사만 |
 | POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}` | `{text}`(1~500자) 확인해 볼 점 고치기 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}` | `{text, options}`(보기 2~6개) 추가 질문 고치기. 승인 전으로 돌아가고 앱에서 빠진다. 아이가 이미 답했으면 409 |
@@ -2904,4 +2907,4 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
-`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).

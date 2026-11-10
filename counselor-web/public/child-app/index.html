@@ -638,6 +638,7 @@ function scrHelp(){
     <b style="margin-top:6px">설정</b>
     <div class="card" style="padding:0">
       <div class="setrow" style="flex-direction:column;align-items:stretch;gap:2px"><span>숨기기 화면</span><span class="muted">정원 게임 화면으로 바뀌어요. 왼쪽 위 '돌아가기'를 누르면 돌아와요.</span></div>
+      <div class="setrow"><span>연결 해지하기</span><button class="textbtn" data-act="unlinkAsk" style="width:auto;color:#B0452C">해지하기</button></div>
     </div>
   </div>`;
 }
@@ -814,6 +815,10 @@ function sheetBody(){
     <button class="helpbtn" data-act="call" data-n="1388">${ICON.chat}<span><b>1388 · 청소년상담</b><small>바로 이야기하고 싶을 때</small></span></button>
     <button class="helpbtn" data-act="alertStart">${ICON.bell}<span><b>상담 선생님께 알리기</b><small>5초 안에 취소할 수 있어요</small></span></button>
     <button class="textbtn" data-act="sheetClose">닫기</button>`;
+  if (s.kind === 'unlink') return `<h3>연결을 해지할까요?</h3>
+    <p class="muted" style="margin:0;text-align:center">해지하면 이 휴대폰의 콩콩이 처음 화면으로 돌아가요.<br>다시 쓰려면 상담 선생님께 새 연결 코드를 받아야 해요.</p>
+    <button class="danger-btn" data-act="unlinkGo" ${S.sending ? 'disabled' : ''}>${S.sending ? '해지하는 중…' : '해지하기'}</button>
+    <button class="textbtn" data-act="sheetClose">취소</button>`;
   if (s.kind === 'call') return `<h3>${s.n === '112' ? '112에 전화할까요?' : '1388에 전화할까요?'}</h3>
     <div class="bignum">${s.n}</div>
     <p class="muted" style="margin:0;text-align:center">${s.n === '112' ? '경찰 · 24시간' : '청소년상담 · 24시간'}</p>
@@ -869,6 +874,19 @@ async function api(path, options){
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) { const e = new Error('api'); e.status = res.status; e.message2 = body && body.error && body.error.message; throw e; }
   return body && body.data;
+}
+// 설정의 '연결 해지하기'. 서버에서 연결을 끊은 뒤 이 휴대폰에 남은 콩콩 기록을 모두 지우고 처음(코드 입력) 화면으로 간다.
+async function unlinkDevice(){
+  if (S.sending) return;
+  S.sending = true; renderLayer();
+  try {
+    await api('/unlink', {method:'POST'});
+  } catch (e) {
+    if (e.message !== 'unlinked') { S.sending = false; renderLayer(); toast('해지하지 못했어요. 인터넷을 확인하고 다시 눌러 주세요'); return; }
+  }
+  Object.values(STORE).forEach(forget);
+  clearTimers(); S = fresh(); render();
+  toast('연결을 해지했어요');
 }
 function applyHome(d){
   S.next = d.next_consult;
@@ -976,6 +994,8 @@ document.addEventListener('click', e => {
     case 'alertCancel': clearInterval(S._iv); S.sheet = null; renderLayer(); toast('취소했어요. 보내지 않았어요'); break;
     case 'sheetClose': S.sheet = null; renderScreen(); break;
     case 'sheetBg': S.sheet = null; renderLayer(); break;
+    case 'unlinkAsk': S.sheet = {kind:'unlink'}; renderLayer(); break;
+    case 'unlinkGo': unlinkDevice(); break;
     case 'font': S.large = el.dataset.v === '1'; renderScreen(); break;
     case 'noti': S.noti = +el.dataset.v; renderScreen(); break;
     case 'unhide': unhide(); break;

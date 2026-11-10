@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,8 @@ LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
 OPEN_ALERT_LIMIT = 50
 AI_QUESTION_PREFIX = "ai_"
+LIST_LIMIT = 200
+RECENT_DAYS = 21
 CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
 SKIP_TEXT = "답하기 어려워요"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
@@ -199,6 +201,89 @@ def send_questions(
         ip_address=ip_address,
     )
     db.commit()
+
+
+def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
+    """아이 연계 목록. 상담사는 담당 사례, 관리자는 전체. 종결 사례는 뺀다. 답 내용은 담당 상담사에게만 준다."""
+
+    query = select(Case).where(Case.status == CaseStatus.ACTIVE)
+
+    if not user.is_admin:
+        query = query.where(Case.counselor_id == user.id)
+
+    cases = list(db.scalars(query.order_by(Case.created_at.desc()).limit(LIST_LIMIT)))
+    ids = [case.id for case in cases]
+    links = {row.case_id: row for row in db.scalars(select(ChildAppLink).where(ChildAppLink.case_id.in_(ids)))} if ids else {}
+    since = _utcnow() - timedelta(days=RECENT_DAYS)
+    latest_level: Dict[uuid.UUID, str] = {}
+    recent: Dict[uuid.UUID, int] = {}
+
+    if ids:
+        answered = db.execute(
+            select(ChildAppEvent.case_id, ChildAppEvent.level, ChildAppEvent.created_at)
+            .where(ChildAppEvent.case_id.in_(ids), ChildAppEvent.kind == ChildAppEventKind.ANSWERS)
+            .order_by(ChildAppEvent.created_at.desc())
+        ).all()
+
+        for case_id, level, created_at in answered:
+            latest_level.setdefault(case_id, level.value)
+
+            if _aware(created_at) >= since:
+                recent[case_id] = recent.get(case_id, 0) + 1
+
+    alerts: Dict[uuid.UUID, Dict[str, Any]] = {}
+
+    for alert in list_open_alerts(db, user):
+        # 사례마다 긴급 알림을 먼저, 없으면 가장 최근 알림.
+        current = alerts.get(alert["case_id"])
+        if current is None or (alert["urgent"] and not current["urgent"]):
+            alerts[alert["case_id"]] = alert
+
+    rows = []
+
+    for case in cases:
+        link = links.get(case.id)
+        assigned = case.counselor_id == user.id
+        alert = alerts.get(case.id)
+        rows.append(
+            {
+                "case_id": case.id,
+                "case_number": case.case_number,
+                "child_alias": case.child_alias,
+                "child_birth_year": case.child_birth_year,
+                "status": link.status.value if link else "NOT_LINKED",
+                "recent_answers": recent.get(case.id, 0) if assigned else None,
+                "level": latest_level.get(case.id) if assigned else None,
+                "last_response_at": link.last_response_at if link else None,
+                "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
+                "open_alert_reason": alert["reason"] if alert else None,
+                "open_alert_urgent": bool(alert and alert["urgent"]),
+            }
+        )
+
+    return rows
+
+
+def stats(db: Session, date_from: date, date_to: date) -> Dict[str, int]:
+    """관리자 통계 '아이 앱 응답률'. 기간(한국 날짜, 끝 날 포함) 안에 보낸 질문 묶음과 그중 아이가 답한 묶음, 지금 연결된 사례 수.
+    대체된 묶음(답하기 전 새 질문으로 바뀜)도 보낸 것으로 센다. 답 내용은 세지 않는다."""
+
+    start = datetime.combine(date_from, datetime.min.time(), tzinfo=LOCAL_TZ)
+    end = datetime.combine(date_to + timedelta(days=1), datetime.min.time(), tzinfo=LOCAL_TZ)
+    rows = db.execute(
+        select(ChildQuestionSet.status, func.count())
+        .join(Case, Case.id == ChildQuestionSet.case_id)
+        .where(ChildQuestionSet.created_at >= start, ChildQuestionSet.created_at < end)
+        .group_by(ChildQuestionSet.status)
+    ).all()
+    counts = {status.value: int(count) for status, count in rows}
+    linked = db.scalar(select(func.count()).select_from(ChildAppLink).where(ChildAppLink.status == ChildAppLinkStatus.LINKED))
+
+    return {
+        "sent": sum(counts.values()),
+        "answered": counts.get(ChildQuestionSetStatus.ANSWERED.value, 0),
+        "linked_cases": int(linked or 0),
+    }
 
 
 def question_text(item: Dict[str, Any]) -> str:
@@ -384,6 +469,10 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+    # 인증을 통과한 뒤 그사이 해지가 끝났으면 연결 행이 없다. 500 대신 다시 연결하라고 돌려준다(민규 #167).
+    if locked is None:
+        db.rollback()
+        raise unauthorized("앱을 다시 연결해 주세요.")
     now = _utcnow()
     # 확인 전 알림이 있으면 새 줄을 만들지 않고 횟수만 올린다. 한 기기가 목록을 채우지 못한다.
     # 확인한 뒤에 보낸 알림은 시간과 상관없이 새 알림이다.
@@ -408,6 +497,43 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
             "last_at": now.isoformat(),
         }
 
+    db.commit()
+
+
+def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) -> None:
+    """아이가 앱 설정에서 해지한다. 연결 행을 지워 상담사가 새 코드를 만들 수 있게 하고, 답하지 않은 질문은 거둔다.
+    받은 답 · 알림 기록(피드)은 그대로 둔다."""
+
+    case_id = link.case_id
+    # 다른 요청과 같은 순서(연결 행 → 질문 묶음)로 잠근다. 질문 묶음을 먼저 바꾸면 PostgreSQL 에서 질문 보내기 ·
+    # 추가 질문 승인과 서로 기다리다 교착(500)이 나고, 그사이 보낸 질문이 연결 없이 남았다(11/10 동시 요청 시험).
+    # 이미 해지됐으면 할 일이 없다.
+    locked = db.scalar(
+        select(ChildAppLink)
+        .where(ChildAppLink.id == link.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None:
+        db.rollback()
+        return
+    link = locked
+    db.execute(
+        update(ChildQuestionSet)
+        .where(ChildQuestionSet.case_id == case_id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING)
+        .values(status=ChildQuestionSetStatus.REPLACED)
+    )
+    _add_event(db, case_id, ChildAppEventKind.UNLINKED, {})
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_UNLINKED,
+        entity_type="child_app_link",
+        entity_id=link.id,
+        case_id=case_id,
+        detail={"by": "device"},
+        ip_address=ip_address,
+    )
+    db.delete(link)
     db.commit()
 
 

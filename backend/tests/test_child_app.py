@@ -172,7 +172,7 @@ def test_device_token_cannot_answer_other_case(client: TestClient, counselor_hea
 
 @pytest.mark.parametrize(
     "ids",
-    [["sleep", "home"], ["sleep", "home", "safe", "meal", "free"], ["sleep", "sleep", "home"], ["sleep", "home", "nope"]],
+    [[], ["sleep", "sleep", "home"], ["sleep", "home", "nope"]],
 )
 def test_send_validates_question_ids(client: TestClient, counselor_headers: Headers, case: dict, ids) -> None:
     _linked(client, counselor_headers, case["id"])
@@ -838,3 +838,78 @@ def test_contact_request_stays_urgent(client: TestClient, counselor_headers: Hea
     assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=answers, headers=device).status_code == 200
     alert = _view(client, counselor_headers, case["id"])["open_alerts"][0]
     assert alert["reason"] == "CONTACT_REQUEST" and alert["urgent"] is True
+
+
+def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    url = "/api/v1/child-app-cases"
+    assert client.get(url).status_code == 401
+
+    rows = client.get(url, headers=counselor_headers).json()["data"]
+    assert [row["case_id"] for row in rows] == [case["id"]] and rows[0]["status"] == "NOT_LINKED"
+    assert client.get(url, headers=other_counselor_headers).json()["data"] == []
+
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"], safe=2)
+
+    row = client.get(url, headers=counselor_headers).json()["data"][0]
+    assert row["status"] == "LINKED" and row["recent_answers"] == 1 and row["level"] == "RED"
+    assert row["open_alert_reason"] == "RED_ANSWER" and row["open_alert_urgent"] is True and row["last_response_at"]
+
+    admin = client.get(url, headers=admin_headers).json()["data"][0]
+    assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None
+
+
+def test_device_unlink_lets_counselor_link_again(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+
+    assert client.post("/api/v1/child-app/unlink").status_code == 401
+    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    assert client.get("/api/v1/child-app/home", headers=device).status_code == 401
+
+    view = _view(client, counselor_headers, case["id"])
+    assert view["status"] == "NOT_LINKED" and view["has_pending_questions"] is False
+    assert view["feed"][0]["kind"] == "UNLINKED"
+    assert db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_UNLINKED)).one()
+
+    again = _linked(client, counselor_headers, case["id"])
+    assert _home(client, again)["pending"] is None
+
+
+def test_alert_after_unlink_in_between_is_401_not_500(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    # 인증을 통과한 뒤 그사이 해지가 끝난 경우(민규 #167): 연결 행이 사라져도 500 이 아니라 다시 연결하라는 401.
+    from sqlalchemy import delete
+
+    from app.core.errors import APIError
+    from app.services import child_app_service
+
+    device = _linked(client, counselor_headers, case["id"])
+    link = child_app_service.get_link_by_token(db, device["Authorization"].removeprefix("Bearer "))
+    db.execute(delete(ChildAppLink).where(ChildAppLink.id == link.id))
+    db.commit()
+
+    with pytest.raises(APIError) as caught:
+        child_app_service.send_alert(db, link)
+    assert caught.value.status_code == 401
+    assert _view(client, counselor_headers, case["id"])["open_alerts"] == []
+
+
+def test_child_app_stats_counts_sent_and_answered_for_admin_only(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])  # 앞 묶음은 대체된다
+    pending = _home(client, device)["pending"]
+    answers = {"answers": [{"question_id": q, "choice_index": 0} for q in ("sleep", "home", "safe")]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=answers, headers=device).status_code == 200
+
+    today = datetime.now(timezone.utc).date()
+    url = f"/api/v1/child-app-stats?date_from={today - timedelta(days=1)}&date_to={today + timedelta(days=1)}"
+    assert client.get(url, headers=counselor_headers).status_code == 403
+    data = client.get(url, headers=admin_headers).json()["data"]
+    assert data == {"sent": 2, "answered": 1, "linked_cases": 1}
+    bad = f"/api/v1/child-app-stats?date_from={today}&date_to={today - timedelta(days=1)}"
+    assert client.get(bad, headers=admin_headers).status_code == 400
