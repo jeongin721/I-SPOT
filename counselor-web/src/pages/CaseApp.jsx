@@ -168,9 +168,12 @@ class Logic extends DCLogic {
 }
 
 export default function CaseApp(props) {
-  const { caseId } = readScreenIds(useSearchParams()[0]);
+  const [params] = useSearchParams();
+  const { caseId } = readScreenIds(params);
+  // 아이 연계 › 아이 상세의 '과거 답변 기록' 에서 오면 아이 연계 메뉴 안에서 보인다(11/10 경진님).
+  const fromChild = params.get('from') === 'child';
 
-  return caseId ? <CaseChildApp caseId={caseId} /> : <CaseAppMock {...props} />;
+  return caseId ? <CaseChildApp caseId={caseId} fromChild={fromChild} /> : <CaseAppMock {...props} />;
 }
 
 function CaseAppMock(props) {

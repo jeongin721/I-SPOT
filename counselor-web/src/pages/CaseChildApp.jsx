@@ -10,6 +10,7 @@ import { useCarryHref } from '../data/useCarryHref';
 import { CHILD_ALERT_TEXT, useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useTheme } from '../theme';
+import { screenHref } from '../data/screens/links';
 import './CaseApp.css';
 
 const STATUS = {
@@ -77,7 +78,7 @@ function FeedItem({ event }) {
   );
 }
 
-export default function CaseChildApp({ caseId }) {
+export default function CaseChildApp({ caseId, fromChild = false }) {
   const session = useAuthSession();
   const carry = useCarryHref();
   const theme = useTheme();
@@ -104,27 +105,36 @@ export default function CaseChildApp({ caseId }) {
           alignItems: 'stretch',
         }}
       >
-        <Sidebar active="CaseList" session={session} />
+        <Sidebar active={fromChild ? 'ChildLink' : 'CaseList'} session={session} />
         <main style={{ flex: '999 1 640px', minWidth: '0', padding: '30px 36px 56px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div className="thm-bar">
             <NotiBell session={session} />
             <ThemeToggle />
           </div>
-          <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › {info ? `${info.name} ${info.caseNumber}` : '…'}
-          </nav>
+          {fromChild ? (
+            <nav aria-label="위치" className="note">
+              <A to="/ChildLink">아이 연계</A> › <A to={screenHref('/ChildDetail', { caseId })}>{info?.name ?? '…'}</A> › 과거 답변 기록
+            </nav>
+          ) : (
+            <nav aria-label="위치" className="note">
+              <A to="/CaseList">사례 관리</A> › {info ? `${info.name} ${info.caseNumber}` : '…'}
+            </nav>
+          )}
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{info?.name ?? '…'}</h1>
             <span className={status[1]}>{status[0]}</span>
-            <A className="btn btn-sm btn-s" to={carry('/ChildDetail')} style={{ marginLeft: 'auto' }}>
-              아이 상세 보기 →
+            <A className="btn btn-sm btn-s" to={screenHref('/ChildDetail', { caseId })} style={{ marginLeft: 'auto' }}>
+              {fromChild ? '← 아이 상세' : '아이 상세 보기 →'}
             </A>
           </section>
+          {/* 아이 연계에서 왔으면 사례 상세 탭(사례 관리 메뉴로 가는 길)을 두지 않는다. */}
+          {fromChild ? null : (
           <nav className="tabs" aria-label="사례 상세 메뉴">
             <A to={carry('/CaseDetail')}>내담자 정보</A>
             <A to={carry('/CaseHistory')}>상담 이력</A>
             <A to={carry('/CaseDocs')}>문서함</A>
           </nav>
+          )}
 
           {app.error ? <p role="alert">{app.error}</p> : null}
           {app.actionError ? <p role="alert">{app.actionError}</p> : null}
