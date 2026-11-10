@@ -27,11 +27,14 @@ function rowState(row) {
   return { reason: '정상', rCls: 'chip c-normal', need: false };
 }
 
+const PER_PAGE = 10;
+const PAGE_BLOCK = 4;
+
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
     // null 이면 확인할 아이가 있을 때 그쪽을, 없으면 전체를 보인다(연결을 시작할 사례가 가려지지 않게).
-    this.state = { f: null, q: '' };
+    this.state = { f: null, q: '', page: 1 };
   }
   renderVals() {
     const s = this.state;
@@ -56,17 +59,41 @@ class Logic extends DCLogic {
     const need = all.filter((row) => row.need);
     const filter = s.f || (need.length ? 'need' : 'all');
     const term = s.q.trim();
-    const rows = (filter === 'need' ? need : all).filter((row) => !term || row.name.includes(term) || row.id.includes(term));
+    const matched = (filter === 'need' ? need : all).filter((row) => !term || row.name.includes(term) || row.id.includes(term));
+    // 쪽 번호(사례 관리 목록과 같게 10줄씩, 번호는 4개씩 묶음).
+    const totalPages = Math.max(1, Math.ceil(matched.length / PER_PAGE));
+    const current = Math.min(Math.max(1, s.page), totalPages);
+    const rows = matched.slice((current - 1) * PER_PAGE, current * PER_PAGE);
+    const go = (n) => () => this.setState({ page: Math.min(Math.max(1, n), totalPages) });
+    const blockStart = Math.floor((current - 1) / PAGE_BLOCK) * PAGE_BLOCK + 1;
+    const blockEnd = Math.min(blockStart + PAGE_BLOCK - 1, totalPages);
+    const pages = [];
+    if (blockStart > 1) pages.push({ label: '…', cls: 'pg-n pg-gap', go: go(blockStart - 1), aria: `${blockStart - 1}쪽` });
+    for (let n = blockStart; n <= blockEnd; n++) {
+      pages.push({ label: String(n), cls: n === current ? 'pg-n on' : 'pg-n', go: go(n), aria: `${n}쪽`, cur: n === current ? 'page' : undefined });
+    }
+    if (blockEnd < totalPages) pages.push({ label: '…', cls: 'pg-n pg-gap', go: go(blockEnd + 1), aria: `${blockEnd + 1}쪽` });
+    const pager = {
+      show: matched.length > PER_PAGE,
+      pages,
+      first: go(1),
+      prev: go(current - 1),
+      next: go(current + 1),
+      last: go(totalPages),
+      atStart: current === 1,
+      atEnd: current === totalPages,
+    };
     const filters = [
       ['need', `확인할 아이 ${need.length}`],
       ['all', `전체 ${all.length}`],
-    ].map(([value, label]) => ({ label, cls: filter === value ? 'on' : '', pick: () => this.setState({ f: value }) }));
+    ].map(([value, label]) => ({ label, cls: filter === value ? 'on' : '', pick: () => this.setState({ f: value, page: 1 }) }));
     return {
       rows,
       filters,
       alert: all.find((row) => row.alert) || null,
       search: s.q,
-      setSearch: (e) => this.setState({ q: e.target.value }),
+      setSearch: (e) => this.setState({ q: e.target.value, page: 1 }),
+      pager,
       empty: rows.length === 0,
     };
   }
@@ -207,6 +234,35 @@ export default function ChildLink(props) {
               </tbody>
             </table>
           </section>
+          {v.pager.show ? (
+            <nav className="pager" aria-label="아이 목록 페이지">
+              <button type="button" className="pg-n pg-ar" aria-label="첫 페이지" disabled={v.pager.atStart} onClick={v.pager.first}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 6l-6 6 6 6M19 6l-6 6 6 6"></path>
+                </svg>
+              </button>
+              <button type="button" className="pg-n pg-ar" aria-label="이전 페이지" disabled={v.pager.atStart} onClick={v.pager.prev}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M15 6l-6 6 6 6"></path>
+                </svg>
+              </button>
+              {v.pager.pages.map((p) => (
+                <button key={p.aria + p.label} type="button" className={p.cls} aria-label={p.aria} aria-current={p.cur} onClick={p.go}>
+                  {p.label}
+                </button>
+              ))}
+              <button type="button" className="pg-n pg-ar" aria-label="다음 페이지" disabled={v.pager.atEnd} onClick={v.pager.next}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6"></path>
+                </svg>
+              </button>
+              <button type="button" className="pg-n pg-ar" aria-label="마지막 페이지" disabled={v.pager.atEnd} onClick={v.pager.last}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 6l6 6-6 6M12 6l6 6-6 6"></path>
+                </svg>
+              </button>
+            </nav>
+          ) : null}
         </main>
       </div>
     </div>
