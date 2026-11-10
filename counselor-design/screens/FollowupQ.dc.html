@@ -216,6 +216,7 @@ h1{font-family:'IBM Plex Sans KR',sans-serif !important;letter-spacing:-.01em;fo
 .thm-root.dark .flow span.now{background:#393731 !important;color:#ECE8DF !important}
 .thm-root.dark .aibox{border:1px dashed #4E4B44 !important;background:#33312C !important}
 .thm-root.dark .qcard{border:1px solid #45423B !important;background:#2C2B27 !important}
+.fq-flash{box-shadow:0 0 0 3px rgba(194,163,107,.55) !important;transition:box-shadow .3s}
 .del-x{flex:none;width:28px;height:28px;margin-top:1px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:#7A776F;cursor:pointer;padding:0}
 .del-x:hover{background:#F2EFE8;color:#A33B2E}
 .thm-root.dark .del-x{color:#A8A296 !important}
@@ -509,7 +510,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <a class="stp done" href="NoteWrite.dc.html"><span class="sn">✓</span><b style="font-weight: 500;">상담일지 작성</b></a>
 <a class="stp on" href="FollowupQ.dc.html" aria-current="step"><span class="sn">4</span><b style="font-weight: 700;">다음 상담 준비</b></a>
 </nav>
-<section class="card" aria-label="다음 상담 전 확인할 사항" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 10px;">
+<section class="card" id="next-checks" aria-label="다음 상담 전 확인할 사항" style="scroll-margin-top: 16px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px;">
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">다음 상담 전 확인할 사항</h2></div>
 <sc-for list="{{ checks }}" as="c" hint-placeholder-count="3">
 <div class="qcard" style="flex-direction: row; align-items: flex-start; gap: 12px;">
@@ -589,13 +590,16 @@ themeWrite(dark) {
 jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-job'); } catch (e) {} } if (!v) { try { v = window.top.__ispotJob; } catch (e) {} } if (!v) v = window.__ispotJob; try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
+fqGo() { const v = this.ntGet('ispot-fq-go'); if (!v || v === this._fqTok) return; this._fqTok = v; const ts = parseInt(String(v).split('|')[1] || '0', 10); if (Date.now() - ts > 15000) return; this.ntSet('ispot-fq-go', ''); setTimeout(() => { try { const el = document.getElementById('next-checks'); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('fq-flash'); setTimeout(() => el.classList.remove('fq-flash'), 1600); } } catch (e) {} }, 80); }
 componentDidMount() {
+  this.fqGo(); this._fqT = setInterval(() => this.fqGo(), 400);
   this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
   this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
 }
 componentWillUnmount() {
+  clearInterval(this._fqT);
   clearInterval(this._ntT); try { document.removeEventListener('mousedown', this._ntDoc); } catch (e) {}
   clearInterval(this._thmT);
   if (this.componentWillUnmountBase) this.componentWillUnmountBase();
@@ -652,7 +656,7 @@ renderValsBase() {
   const allQs = ALL.map((q0, i) => {
     const c = qCur(i); const cur = s.qe[i] || {}; const ok = !!s.qok[i]; const d = s.qDraft[i] || {};
     return { g: q0.g, id: q0.id, why: q0.why, text: c.text, opts: c.opts, hasOpts: c.opts.length > 0, edited: !!cur.text || !!cur.opts,
-      ok, st: q0.sendNote ? '승인됨 · ' + q0.sendNote : '승인됨', okCls: ok ? 'btn-p' : 'btn-s', okLabel: ok ? '승인됨 ✓' : '승인',
+      ok, st: q0.sendNote ? '발송 예약 · ' + q0.sendNote : '발송 예약', okCls: ok ? 'btn-p' : 'btn-s', okLabel: ok ? '발송 예약 ✓' : '발송 예약',
       isEdit: s.qEditing, notEdit: !s.qEditing, draftText: d.text || '', draftOpts: d.opts || '',
       approve: () => this.setState({ qok: { ...this.state.qok, [i]: !this.state.qok[i] } }),
       setText: (e) => { const v = e.target.value; this.setState({ qDraft: { ...this.state.qDraft, [i]: { ...(this.state.qDraft[i] || {}), text: v } } }); },

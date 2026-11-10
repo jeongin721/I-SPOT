@@ -154,7 +154,7 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 <span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>알림</b><button type="button" class="btn btn-sm" onClick="{{ ntClose }}">닫기</button></div>
 <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2"><div class="nt {{ n.red }}"><b>{{ n.title }}</b><span class="note">{{ n.sub }}</span><sc-if value="{{ n.desc }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13.5px;">{{ n.desc }}</span></sc-if>
 <sc-if value="{{ n.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-p" style="align-self: flex-start;" onClick="{{ n.go }}">{{ n.act }}</button></sc-if>
-<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}">{{ n.linkLabel }}</a></sc-if></div></sc-for>
+<sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}" onClick="{{ n.nav }}">{{ n.linkLabel }}</a></sc-if></div></sc-for>
 </section></div></sc-if>
 </div>
 </x-dc>
@@ -181,9 +181,9 @@ componentDidMount() {
 componentWillUnmount() { clearInterval(this._t); clearInterval(this._recT); }
 commonVals(cur) {
   const q = this.qRead(); const fails = q.filter((x) => x.status === 'fail'); const st = this.state || {};
-  const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '', linkLabel: '' }))
-    .concat([{ red: '', title: '상담 전 브리핑이 준비됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html', linkLabel: '브리핑 보기' },
-      { red: '', title: '오늘 남은 상담 2건', sub: '14:00 박지호 · 16:00 이서윤', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppSchedule.dc.html', linkLabel: '일정 보기' }]);
+  const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '', linkLabel: '', nav: () => {} }))
+    .concat([{ red: '', title: '다음 상담 준비가 됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html', linkLabel: '다음 상담 준비 보기', nav: () => { const f = this._self || ({ home: 'AppHome.dc.html', cases: 'AppCases.dc.html', cal: 'AppSchedule.dc.html', memo: 'AppMemo.dc.html', up: 'AppUpload.dc.html', rec: 'AppRecord.dc.html', set: 'AppSettings.dc.html' })[cur]; if (f && f !== 'AppBrief.dc.html') this.stSet('ispot-app-from', f); } },
+      { red: '', title: '오늘 남은 상담 2건', sub: '14:00 박지호 · 16:00 이서윤', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppSchedule.dc.html', linkLabel: '일정 보기', nav: () => {} }]);
   return {
     rootCls: this.themeRead() ? 'app dark' : 'app',
     tabs: [['home', '홈', 'AppHome.dc.html'], ['up', '업로드', 'AppUpload.dc.html'], ['rec', '', 'AppRecord.dc.html'], ['cal', '일정', 'AppSchedule.dc.html'], ['memo', '메모', 'AppMemo.dc.html']].map(([k, label, href]) => ({ label, href, aria: k === 'rec' ? '녹음' : label, cls: 'tab' + (k === 'rec' ? ' tab-rec' : '') + (k === cur ? ' on' : ''), cur: k === cur ? 'page' : 'false', isHome: k === 'home', isRec: k === 'rec', isUp: k === 'up', isCal: k === 'cal', isMemo: k === 'memo', hasLabel: !!label })),

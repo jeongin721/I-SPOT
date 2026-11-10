@@ -11,6 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&amp;family=Noto+Serif+KR:wght@500;600;700&amp;family=Gowun+Batang:wght@400;700&amp;display=swap" rel="stylesheet">
 <style>
+.dot-go{cursor:pointer;text-decoration:none;font-weight:700}
+.dot-go:hover{box-shadow:inset 0 0 0 2px #C2A36B !important;color:#2B2A26 !important}
 body{margin:0;background:#F2F2F0}
 *{box-sizing:border-box}
 a{color:#8C7340}a:hover{color:#2B2A26}
@@ -560,7 +562,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <a href="CaseDocs.dc.html">문서함</a>
 </nav>
 <section class="card" aria-label="지금까지 상담" style="padding: 24px 26px;">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;"><span class="secno">1</span><h2 class="h2">지금까지 상담</h2><span class="chip c-ai">AI 분석 · 1~8회차</span><span class="src" style="margin-left: auto;">근거 · 확정 일지 · 검수본 · 체크인</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;"><span class="secno">1</span><h2 class="h2">지금까지 상담</h2><span class="chip c-ai">AI 분석 · 1~8회차</span></div>
 <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
 <div class="box"><div class="note">1~3회차</div><b style="font-weight: 500;">관계 형성 · 학교생활</b></div>
 <div class="box"><div class="note">4~6회차</div><b style="font-weight: 500;">가정 내 체벌 경험</b><div class="note">때림 · 밀침 첫 진술</div></div>
@@ -613,7 +615,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-for list="{{ cols }}" as="c" hint-placeholder-count="8"><a href="SessionDetail.dc.html" onClick="{{ c.go }}" class="note" style="text-decoration: none; color: #6E6A62;">{{ c.label }}</a></sc-for>
 <sc-for list="{{ mrows }}" as="r" hint-placeholder-count="5">
 <span class="rl"><span class="chip c-normal" style="height: 20px; font-size: 11px; margin-right: 6px;">{{ r.type }}</span>{{ r.name }}</span>
-<sc-for list="{{ r.cells }}" as="x" hint-placeholder-count="8"><span><span class="dot" title="{{ x.tip }}" style="background: {{ x.bg }}; color: {{ x.fg }}; box-shadow: {{ x.ring }};">{{ x.v }}</span></span></sc-for>
+<sc-for list="{{ r.cells }}" as="x" hint-placeholder-count="8"><span><sc-if value="{{ x.pend }}" hint-placeholder-val="{{ false }}"><a class="dot dot-go" href="SttReview.dc.html" onClick="{{ x.go }}" title="{{ x.tip }} · 눌러서 해당 발화 확인" aria-label="{{ x.tip }} · 해당 발화로 이동" style="background: {{ x.bg }}; color: {{ x.fg }}; box-shadow: {{ x.ring }};">{{ x.v }}</a></sc-if><sc-if value="{{ x.notPend }}" hint-placeholder-val="{{ true }}"><span class="dot" title="{{ x.tip }}" style="background: {{ x.bg }}; color: {{ x.fg }}; box-shadow: {{ x.ring }};">{{ x.v }}</span></sc-if></span></sc-for>
 </sc-for>
 </div>
 </div>
@@ -854,10 +856,11 @@ renderValsBase() {
     { type: '신체', name: '상해 부위 진술', v: [0, 0, 0, 0, 1, 0, 0, 1] },
     { type: '정서', name: '위협 · 공포 유발', v: [0, 0, 0, 0, 0, 1, 1, 2] },
     { type: '정서', name: '진술 압박', v: [0, 0, 0, 0, 0, 0, 1, 0] },
-    { type: '방임', name: '기본 보호 · 양육', v: [0, 0, 0, 0, 0, 0, 0, -1] }
+    { type: '방임', name: '기본 보호 · 양육', v: [0, 0, 0, 0, 0, 0, 0, -1], at: { 8: '02:15' } }
   ];
+  const goPend = (n, t) => () => { const now = Date.now(); const sv = n + '|' + now; const tv = t + '|' + now + '|q'; try { window.localStorage.setItem('ispot-ses', sv); window.localStorage.setItem('ispot-stt', tv); } catch (e) {} try { window.sessionStorage.setItem('ispot-ses', sv); window.sessionStorage.setItem('ispot-stt', tv); } catch (e) {} try { window.top.__ispotSes = sv; window.top.__ispotStt = tv; } catch (e) {} window.__ispotSes = sv; window.__ispotStt = tv; };
   const mrows = sigs.map((g) => ({ type: g.type, name: g.name, 
-    cells: g.v.map((n, i) => ({ v: n > 0 ? String(n) : (n < 0 ? '?' : ''), tip: `${i + 1}회차 · ${g.name} · ${n > 0 ? n + '번' : n < 0 ? '보류' : '없음'}`,
+    cells: g.v.map((n, i) => ({ pend: n < 0, notPend: !(n < 0), go: goPend(i + 1, (g.at || {})[i + 1] || ''), v: n > 0 ? String(n) : (n < 0 ? '?' : ''), tip: `${i + 1}회차 · ${g.name} · ${n > 0 ? n + '번' : n < 0 ? '보류' : '없음'}`,
       bg: n >= 2 ? '#7A776F' : n === 1 ? '#EAE7DF' : 'transparent', fg: n >= 2 ? '#FFFFFF' : n < 0 ? '#7A776F' : '#2B2A26', ring: n < 0 ? 'inset 0 0 0 1.5px #7A776F' : 'none' })) }));
   const st = this.state;
   const sessions = [8, 7, 6, 5, 4, 3, 2, 1].map((n) => { const r = getS(n); return { go: () => { const v = n + '|' + Date.now(); try { window.localStorage.setItem('ispot-ses', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-ses', v); } catch (e) {} try { window.top.__ispotSes = v; } catch (e) {} window.__ispotSes = v; }, no: n + '회차', date: r.date, kind: r.kind, kindShort: r.kind.split(' · ')[0], status: r.status, st: r.st, sig: r.sig, hasSig: r.sig !== '신호 없음', proc: r.proc }; });

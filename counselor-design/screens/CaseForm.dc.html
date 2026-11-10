@@ -625,7 +625,7 @@ label.cp-open > .cp-menu{display:flex}
 </section>
 </sc-if>
 
-<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;"><button type="button" class="btn btn-s" style="margin-left: auto;">임시 저장</button><button type="button" class="btn btn-p">확정</button></div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;"><button type="button" class="btn btn-s" style="margin-left: auto;">임시 저장</button><button type="button" class="btn btn-p" onClick="{{ saveDone }}">확정</button></div>
 <p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
 </main>
 </div>
@@ -763,7 +763,8 @@ renderValsBase() {
   const fam = F.map((q, i) => { const v = s.fam[i]; if (v) { fs += v; fn++; }
     return { n: i + 1, q, opts: [1, 2, 3, 4, 5].map((o) => ({ label: String(o), ...sel(v === o), pick: () => this.setState({ fam: { ...s.fam, [i]: v === o ? 0 : o } }) })) }; });
   const resp = ['부', '모', '아동'].map((o) => ({ label: o, ...sel(s.who === o), pick: () => this.setState({ who: o }) }));
-  return { tabs, tA: s.tab === 'A', tB: s.tab === 'B', tC: s.tab === 'C', tD: s.tab === 'D', goC: () => this.setState({ tab: 'C' }),
+  const saveDone = () => { const v = JSON.stringify({ tab: s.tab, sa: s.sa, key: s.key, res: s.res, ck: s.ck, sc: s.sc, fam: s.fam, who: s.who, t: Date.now() }); try { window.localStorage.setItem('ispot-cf-save', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-cf-save', v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt['ispot-cf-save'] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt['ispot-cf-save'] = v; };
+  return { saveDone, tabs, tA: s.tab === 'A', tB: s.tab === 'B', tC: s.tab === 'C', tD: s.tab === 'D', goC: () => this.setState({ tab: 'C' }),
     safety, keyOpts, scoreRows, resultOpts, checks, scale, riskSum: rs, protSum: ps, filled, fam, resp,
     famAvg: fn ? (fs / 15).toFixed(2) : '—', famN: fn };
 }

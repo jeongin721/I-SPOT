@@ -737,7 +737,7 @@ label.cp-in > textarea{padding-right:42px}
 <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid #EAE7DF; padding-top: 18px;">
 <button type="button" class="btn btn-s" onClick="{{ goB }}">{{ midLabel }}</button>
 <button type="button" class="btn btn-s">임시 저장</button>
-<button type="button" class="btn btn-p">확정</button>
+<button type="button" class="btn btn-p" onClick="{{ saveDone }}">확정</button>
 </div>
 </form>
 </section>
@@ -863,7 +863,8 @@ renderValsBase() {
   const fd = {}; ['report', 'link', 'birth', 'first', 'tbirth'].forEach((k) => { fd[k] = s.f[k] ? '' : 'empty'; });
   const dp = {}; ['report', 'link', 'birth', 'first', 'tbirth'].forEach((k) => { dp[k] = this.dpBuild(k, s.f[k], (v) => this.setState({ f: { ...this.state.f, [k]: v } }), k === 'tbirth' ? '1930-01-01' : '2000-01-01', '2026-12-31', k === 'birth' ? 2013 : k === 'tbirth' ? 1985 : 2026); });
   const tabs = [['A', '① 기본 정보 (필수)'], ['B', '② 초기면접 내용']].map(([k, label]) => ({ label, sel: s.tab === k ? 'true' : 'false', bd: s.tab === k ? '#C2A36B' : 'transparent', fg: s.tab === k ? '#2B2A26' : '#66625A', fw: s.tab === k ? 700 : 400, go: () => go(k) }));
-  return { dp, tabs, fv, fs, fe, fi, fd, showMiss: s.tab === 'A' && s.tried && miss.length > 0, missText: miss.map((k) => NAMES[k]).join(', '), isA: s.tab === 'A', isB: s.tab === 'B', homes: multi(HM, 'hm').map((o) => o.label !== '기타' ? o : { ...o, label: !s.hmEdit && s.hm['기타'] && s.hmOther ? '기타: ' + s.hmOther : '기타', toggle: () => { if (this.state.hm['기타']) { this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }); } else { this.setState({ hm: { ...this.state.hm, '기타': true }, hmEdit: true, hmDraft: '' }); } } }),
+  const saveDone = () => { const v = JSON.stringify({ f: s.f, ty: s.ty, hm: s.hm, tr: s.tr, fam: s.fam, hs: s.hs, t: Date.now() }); try { window.localStorage.setItem('ispot-ci-save', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-ci-save', v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt['ispot-ci-save'] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt['ispot-ci-save'] = v; };
+  return { saveDone, dp, tabs, fv, fs, fe, fi, fd, showMiss: s.tab === 'A' && s.tried && miss.length > 0, missText: miss.map((k) => NAMES[k]).join(', '), isA: s.tab === 'A', isB: s.tab === 'B', homes: multi(HM, 'hm').map((o) => o.label !== '기타' ? o : { ...o, label: !s.hmEdit && s.hm['기타'] && s.hmOther ? '기타: ' + s.hmOther : '기타', toggle: () => { if (this.state.hm['기타']) { this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }); } else { this.setState({ hm: { ...this.state.hm, '기타': true }, hmEdit: true, hmDraft: '' }); } } }),
     hmEdit: s.hmEdit, hmDraft: s.hmDraft, hmDraftSet: (e) => this.setState({ hmDraft: e.target.value }),
     hmOk: () => { const t = String(this.state.hmDraft || '').trim(); if (!t) return; this.setState({ hmEdit: false, hmOther: t }); },
     hmCancel: () => this.setState({ hm: { ...this.state.hm, '기타': false }, hmEdit: false, hmDraft: '', hmOther: '' }),

@@ -487,6 +487,8 @@ section[aria-label="폴더"]{max-width:none !important}
 .thm-root.dark .nt-dd.urgent{background:#4A2B26;color:#F2B8AC}
 .rq{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:14px;border:1px solid #E7E4DC;background:#FFFFFF}
 .rq input{width:18px;height:18px;margin-top:3px;accent-color:#2B2A26;flex:none}
+.rq-list{display:flex;flex-direction:column;gap:12px;max-height:242px;overflow-y:auto;padding-right:6px;margin-right:-6px;overscroll-behavior:contain}
+.rq-list .rq{flex:none}
 .src{display:block;font-size:12px;color:#7A776F}
 .thm-root.dark .rq{border:1px solid #45423B !important;background:#2C2B27 !important}
 .thm-root.dark .rq input{accent-color:#D6D0C4 !important}
@@ -609,10 +611,15 @@ section[aria-label="폴더"]{max-width:none !important}
 
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px;">
 <section class="card" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 12px;">
-<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">확인할 사항</h2></div>
+<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">확인할 사항</h2><a href="FollowupQ.dc.html#next-checks" onClick="{{ goChecks }}" style="margin-left: auto; font-size: 13px;">전체 확인</a></div>
+<div class="rq-list" tabindex="0" aria-label="확인할 사항 목록">
 <label class="rq"><input type="checkbox" checked><span>등 · 팔 통증 치료 여부<span class="src">근거 · 8회차 01:08</span></span></label>
 <label class="rq"><input type="checkbox" checked><span>02:15 발화 화자 · 식사 상황<span class="src">근거 · 8회차 02:15</span></span></label>
 <label class="rq"><input type="checkbox"><span>아이가 꺼내고 싶은 이야기부터<span class="src">근거 · 10/7 아이 메시지</span></span></label>
+<label class="rq"><input type="checkbox"><span>조모 연락 체계가 실제로 쓰였는지<span class="src">근거 · 7회차 안전 계획 · 8회차 02:40</span></span></label>
+<label class="rq"><input type="checkbox"><span>체크인 '겁을 준 적' 응답이 바뀐 이유<span class="src">근거 · 10/6 QB-E-05</span></span></label>
+<label class="rq"><input type="checkbox"><span>학교 담임 상담 내용 공유 여부<span class="src">근거 · 10/27 메모</span></span></label>
+</div>
 </section>
 <section class="card" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 12px;">
 <div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">추가 질문</h2><span class="chip c-ai">AI 초안</span><a href="FollowupQ.dc.html" style="margin-left: auto; font-size: 13px;">질문 수정</a></div>
@@ -771,6 +778,7 @@ recVals() {
 }
 renderVals() {
   const v = this.renderValsBase() || {};
+  v.goChecks = () => { this.ntSet('ispot-fq-go', 'checks|' + Date.now()); };
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
   return Object.assign({}, v, (() => { const st = this.state || {}; const mk = st.__outMask !== false; return { outShow: !!st.__outOpen, outTitle: '인쇄 · PDF', outGo: '인쇄', outOpen: () => this.setState({ __outOpen: true }), outClose: () => this.setState({ __outOpen: false }), outOpts: [[false, '실명 그대로', '예) 이서윤'], [true, '이름 가리기', '예) 이○윤 · 서○']].map(([m, label, ex]) => ({ label, ex, on: mk === m ? 'true' : 'false', cls: mk === m ? 'on' : '', pick: () => this.setState({ __outMask: m }) })), outRun: () => { this.setState({ __outOpen: false }); setTimeout(() => this.outPrint(mk), 120); } }; })(), this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), goForm: () => { const v = 'B|' + Date.now(); try { window.localStorage.setItem('ispot-form', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-form', v); } catch (e) {} try { window.top.__ispotForm = v; } catch (e) {} window.__ispotForm = v; }, markBack: () => { const v = 'CaseDetail.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });

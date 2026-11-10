@@ -263,54 +263,6 @@
       "x": 6080,
       "y": 7400
     },
-    "PhoneAdminHome.dc.html": {
-      "h": 2400,
-      "is_interactive": true,
-      "title": "휴대폰 · 관리자 홈",
-      "w": 390,
-      "x": 2350,
-      "y": 16000
-    },
-    "PhoneCaseDetail.dc.html": {
-      "h": 3400,
-      "is_interactive": true,
-      "title": "휴대폰 · 사례 상세 · 내담자 정보 + 상담 전 브리핑",
-      "w": 390,
-      "x": 1410,
-      "y": 16000
-    },
-    "PhoneCaseList.dc.html": {
-      "h": 1140,
-      "is_interactive": true,
-      "title": "휴대폰 · 통합 사례 관리",
-      "w": 390,
-      "x": 940,
-      "y": 16000
-    },
-    "PhoneLogin.dc.html": {
-      "h": 720,
-      "is_interactive": true,
-      "title": "휴대폰 · 로그인",
-      "w": 390,
-      "x": 0,
-      "y": 16000
-    },
-    "PhoneMain.dc.html": {
-      "h": 2220,
-      "is_interactive": true,
-      "title": "휴대폰 · 홈",
-      "w": 390,
-      "x": 470,
-      "y": 16000
-    },
-    "PhoneSttReview.dc.html": {
-      "h": 3300,
-      "is_interactive": true,
-      "title": "휴대폰 · 기록 확인",
-      "w": 390,
-      "x": 1880,
-      "y": 16000
-    },
     "Schedule.dc.html": {
       "expand": "fill",
       "h": 1200,
@@ -425,7 +377,7 @@
     "AppSchedule.dc.html": {
       "h": 800,
       "is_interactive": true,
-      "title": "앱 · 일정 (펼치기 → 월간 달력 · 오늘 상담 → 브리핑 · 녹음 / 일정 추가 · 수정 · 삭제)",
+      "title": "앱 · 일정 (펼치기 → 월간 달력 · 오늘 상담 → 다음 상담 준비 · 녹음 / 일정 추가 · 수정 · 삭제)",
       "w": 360,
       "x": 880,
       "y": 22000
@@ -433,7 +385,7 @@
     "AppBrief.dc.html": {
       "h": 800,
       "is_interactive": true,
-      "title": "앱 · 상담 전 브리핑 (읽기 전용 · 확인할 사항 체크)",
+      "title": "앱 · 다음 상담 준비 (읽기 전용 · 확인할 사항 체크)",
       "w": 360,
       "x": 1320,
       "y": 22000
@@ -473,7 +425,7 @@
     "AppCases.dc.html": {
       "h": 800,
       "is_interactive": true,
-      "title": "앱 · 사례 목록 (찾기 · 이번 주 상담 → 사례 요약 · 브리핑 · 녹음)",
+      "title": "앱 · 사례 목록 (찾기 · 이번 주 상담 → 사례 요약 · 메모 · 다음 상담 준비 · 이전 상담 · 녹음)",
       "w": 360,
       "x": 440,
       "y": 22000
@@ -484,6 +436,14 @@
       "title": "앱 · 설정 (내 정보 · 어두운 화면 · 알림 · 업로드)",
       "w": 360,
       "x": 3080,
+      "y": 22000
+    },
+    "AppHistory.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "앱 · 이전 상담 (사례 목록 › 이전 상담 · 요약 → 회차별 내역 · 웹 상담 이력과 동기화)",
+      "w": 360,
+      "x": 3520,
       "y": 22000
     }
   },
@@ -544,14 +504,6 @@
       "x": 0,
       "y": 12700
     },
-    "rowG": {
-      "kind": "title1",
-      "maxW": 2740,
-      "text": "⑦ 휴대폰 (390px) · 대표 화면",
-      "w": 240,
-      "x": 0,
-      "y": 15700
-    },
     "rowH": {
       "kind": "title1",
       "maxW": 5320,
@@ -562,8 +514,8 @@
     },
     "rowI": {
       "kind": "title1",
-      "maxW": 3800,
-      "text": "⑨ 모바일 앱 (/app · 설치형 PWA) · 홈(시작) → 사례 목록 · 일정 · 상담 전 브리핑 · 녹음 · 업로드 · 메모 · 설정 (상단: 홈 · 알림 · 설정)",
+      "maxW": 4240,
+      "text": "⑨ 모바일 앱 (/app · 설치형 PWA) · 홈(시작) → 사례 목록 · 이전 상담 · 일정 · 다음 상담 준비 · 녹음 · 업로드 · 메모 · 설정 (상단: 홈 · 알림 · 설정)",
       "w": 240,
       "x": 0,
       "y": 21700
@@ -606,17 +558,11 @@
     "AdminSecurity.dc.html",
     "AdminStats.dc.html",
     "AdminStaffDetail.dc.html",
-    "PhoneLogin.dc.html",
     "TabletLogin.dc.html",
-    "PhoneMain.dc.html",
     "TabletMain.dc.html",
-    "PhoneCaseList.dc.html",
     "TabletCaseList.dc.html",
-    "PhoneCaseDetail.dc.html",
     "TabletCaseDetail.dc.html",
-    "PhoneSttReview.dc.html",
     "TabletSttReview.dc.html",
-    "PhoneAdminHome.dc.html",
     "TabletAdminHome.dc.html",
     "AppHome.dc.html",
     "AppCases.dc.html",
@@ -625,7 +571,8 @@
     "AppRecord.dc.html",
     "AppUpload.dc.html",
     "AppMemo.dc.html",
-    "AppSettings.dc.html"
+    "AppSettings.dc.html",
+    "AppHistory.dc.html"
   ],
   "pages": [],
   "title": "I-SPOT 상담사 웹 화면 설계 · 각진 UI"
