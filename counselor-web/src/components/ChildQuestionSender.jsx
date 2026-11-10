@@ -9,13 +9,23 @@ import { screenHref } from '../data/screens/links';
 export default function ChildQuestionSender({ app, caseId, bare = false }) {
   const [picked, setPicked] = useState([]);
   const [toast, showToast] = useSentToast();
+  const [hint, setHint] = useState('');
   const data = app.data;
   if (!data) return toast;
 
-  const toggle = (id) => setPicked((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
-  const canSend = picked.length >= 3 && picked.length <= 4 && !app.busy;
+  const toggle = (id) => {
+    setHint('');
+    setPicked((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
+  };
+  const countOk = picked.length >= 3 && picked.length <= 4;
+  // 꺼진 단추 모양이 따로 없어 눌러도 아무 일 없는 것처럼 보였다(11/10). 단추는 두고, 개수가 맞지 않으면 이유를 알린다.
   const send = async () => {
+    if (app.busy) return;
     const count = picked.length;
+    if (!countOk) {
+      setHint(`질문을 3~4개 골라 주세요. 지금 ${count}개를 골랐어요.`);
+      return;
+    }
     if (await app.sendQuestions(picked)) {
       setPicked([]);
       showToast(`아이에게 질문 ${count}개를 보냈어요`);
@@ -47,10 +57,15 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
           <div className="note">아이가 아직 답하지 않은 질문이 있어요. 보내면 새 질문으로 바뀝니다.</div>
         ) : null}
         <div>
-          <button type="button" className="btn btn-p" disabled={!canSend} onClick={send}>
+          <button type="button" className="btn btn-p" aria-disabled={!countOk || app.busy} style={countOk && !app.busy ? undefined : { opacity: 0.5 }} onClick={send}>
             {app.busy ? '보내는 중…' : '아이에게 보내기'}
           </button>
         </div>
+        {hint ? (
+          <p className="note acc" role="alert" style={{ margin: '0' }}>
+            {hint}
+          </p>
+        ) : null}
         {app.actionError ? (
           <p className="note acc" role="alert" style={{ margin: '0' }}>
             {app.actionError}
