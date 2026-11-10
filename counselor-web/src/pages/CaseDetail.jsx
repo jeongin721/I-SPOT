@@ -87,6 +87,7 @@ export default function CaseDetail(props) {
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
   const brief = preBriefingValues({
+    childApp: childAppInfo.data,
     session,
     detail,
     signals,

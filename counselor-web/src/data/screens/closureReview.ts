@@ -10,6 +10,9 @@
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
 //  - 서로 다른 진술 · 아이 연계는 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
 
+import type { ChildAppCase } from "../../api/types";
+import { childAppHighlights } from "./childDetail";
+import { toDateOnly } from "../time";
 import { CONSULTATION_TYPE_LABELS, type ConsultationType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ApprovedSummariesState } from "../useApprovedSummaries";
@@ -43,6 +46,36 @@ export interface ClosureReviewInput {
   approved: ApprovedSummariesState;
   /** 회차별 흐름을 모두 펼쳤는가. */
   all: boolean;
+  /** 콩콩 아이 앱(GET /cases/{id}/child-app). 꺼져 있거나 못 받았으면 null. */
+  childApp?: ChildAppCase | null;
+}
+
+/** '아이 연계 응답' 칸: 받은 답 묶음 수 · 확인이 필요했던 답 · 마지막 응답(콩콩, 11/10 연결). */
+function childKpi(app: ChildAppCase | null | undefined) {
+  const label = "아이 연계 응답";
+  if (!app) return { label, value: NOT_PROVIDED, src: `${NOT_READY} · 아이 앱이 꺼져 있음` };
+  const found = childAppHighlights(app);
+  if (!found) return { label, value: NOT_PROVIDED, src: "담당 상담사만 볼 수 있어요" };
+  if (found.answeredCount === 0) return { label, value: "0회", src: found.linked ? "받은 답이 없어요" : "아이 앱 미연결" };
+  const last = found.lastAt ? toDateOnly(found.lastAt) : "";
+  return {
+    label,
+    value: `${found.answeredCount}회`,
+    src: [found.flaggedCount ? `확인 필요 ${found.flaggedCount}회` : "", last ? `마지막 ${last}` : ""].filter(Boolean).join(" · ") || "아이 앱",
+  };
+}
+
+/** '아이 연계' 카드: 아이가 쓴 글 · 지난번과 달라진 답. */
+export function closureChildValues(app: ChildAppCase | null | undefined) {
+  if (!app) return { note: `아이가 쓴 글 · 체크인 응답은 ${NOT_READY}입니다(아이 앱이 꺼져 있음).`, written: null, changes: [] };
+  const found = childAppHighlights(app);
+  if (!found) return { note: "아이가 보낸 내용은 담당 상담사만 볼 수 있어요.", written: null, changes: [] };
+  if (found.answeredCount === 0) return { note: found.linked ? "아이가 보낸 답이 아직 없어요." : "아이 앱이 연결되지 않았어요.", written: null, changes: [] };
+  return {
+    note: found.written || found.changes.length ? "" : "아이가 쓴 글이나 지난번과 달라진 답이 없어요.",
+    written: found.written,
+    changes: found.changes.map((change) => ({ ...change, at: found.changedAt })),
+  };
 }
 
 export function closureReviewValues(input: ClosureReviewInput) {
@@ -114,7 +147,7 @@ export function closureReviewValues(input: ClosureReviewInput) {
     kpis: [
       { label: "상담", value: `${sessions.length}회`, src: kindText || "상담 유형 기록 없음" },
       { label: "새 학대 진술", value: signalValue, src: signalSrc },
-      { label: "아이 연계 응답", value: NOT_PROVIDED, src: `${NOT_READY} · 아이 앱이 서버에 없음` },
+      childKpi(input.childApp),
       { label: "위험수준 척도 (위험요인)", value: NOT_PROVIDED, src: `${NOT_READY} · 기관 서식 기록이 서버에 없음` },
     ],
     rows: input.all ? rowsAll : folded,

@@ -1831,6 +1831,12 @@ export interface ChildAppCase {
   ai_draft: ChildAiDraft | null;
 }
 
+export interface ChildAppStats {
+  sent: number;
+  answered: number;
+  linked_cases: number;
+}
+
 export interface ChildAppCaseRow {
   case_id: string;
   case_number: string;

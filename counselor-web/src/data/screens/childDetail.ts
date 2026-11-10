@@ -161,3 +161,32 @@ export function childDetailValues(
     qs: aiQuestions,
   };
 }
+
+/** 아이 앱이 보낸 것 중 브리핑 · 종결 검토가 먼저 볼 것: 가장 최근 아이가 쓴 글, 가장 최근 답에서 지난번과 달라진 답. */
+export function childAppHighlights(data: ChildAppCase | null | undefined) {
+  if (!data || !data.can_read_feed) return null;
+  const answered = data.feed.filter((event) => event.kind === "ANSWERS");
+  const bank = new Map(data.bank.map((item) => [item.id, item]));
+  const writtenEvent = answered.find((event) => itemsOf(event).some((item) => item.wrote_text));
+  const writtenItem = writtenEvent ? itemsOf(writtenEvent).find((item) => item.wrote_text) : undefined;
+  const latest = answered[0];
+  const changes = latest
+    ? itemsOf(latest).flatMap((item) => {
+        const before = answered
+          .slice(1)
+          .flatMap((event) => itemsOf(event).filter((prev) => prev.question_id === item.question_id))[0];
+        return before && before.answer !== item.answer
+          ? [{ question: bank.get(item.question_id)?.text ?? item.question, from: before.answer, to: item.answer, level: item.level }]
+          : [];
+      })
+    : [];
+  return {
+    linked: data.status === "LINKED",
+    answeredCount: answered.length,
+    flaggedCount: answered.filter((event) => event.level === "RED" || event.level === "AMBER").length,
+    lastAt: data.last_response_at,
+    written: writtenItem ? { text: writtenItem.written ?? writtenItem.answer, at: childDateTime(writtenEvent?.created_at) } : null,
+    changes,
+    changedAt: latest ? childDateTime(latest.created_at) : "",
+  };
+}

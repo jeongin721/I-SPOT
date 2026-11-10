@@ -1,7 +1,7 @@
 // 실제 사례의 아이 연계 탭. 콩콩 앱과 같은 구조(연결 · 아이가 보낸 것 · 질문 보내기)로 서버 값을 보인다.
 // 사례 ID 가 없는 예시 화면은 CaseApp.jsx 의 디자인 목업을 그대로 쓴다.
-import { useState } from 'react';
 import A from '../components/A';
+import ChildQuestionSender from '../components/ChildQuestionSender';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
@@ -84,14 +84,8 @@ export default function CaseChildApp({ caseId }) {
   const enabled = session.status === 'signedIn';
   const detail = useCaseDetail(caseId, { enabled });
   const app = useCaseChildApp(caseId, enabled);
-  const [picked, setPicked] = useState([]);
   const data = app.data;
   const status = STATUS[data?.status] ?? STATUS.NOT_LINKED;
-  const canSend = picked.length >= 3 && picked.length <= 4 && !app.busy;
-  const toggle = (id) => setPicked((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
-  const send = async () => {
-    if (await app.sendQuestions(picked)) setPicked([]);
-  };
   const info = detail.caseInfo;
 
   return (
@@ -196,27 +190,7 @@ export default function CaseChildApp({ caseId }) {
                 <p className="note">아이가 보낸 내용은 담당 상담사만 볼 수 있어요.</p>
               )}
 
-              {data.status === 'LINKED' && data.can_read_feed ? (
-                <section className="card" aria-label="질문 보내기" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h2 className="h2">질문 보내기 · {picked.length}개 선택 (3~4개)</h2>
-                  {data.bank.map((item) => (
-                    <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
-                      <span>
-                        <span className="chip c-sand">{item.category}</span> {item.text}
-                      </span>
-                    </label>
-                  ))}
-                  {data.has_pending_questions ? (
-                    <div className="note">아이가 아직 답하지 않은 질문이 있어요. 보내면 새 질문으로 바뀝니다.</div>
-                  ) : null}
-                  <div>
-                    <button type="button" className="btn btn-p" disabled={!canSend} onClick={send}>
-                      아이에게 보내기
-                    </button>
-                  </div>
-                </section>
-              ) : null}
+              <ChildQuestionSender app={app} caseId={caseId} />
             </>
           ) : null}
         </main>
