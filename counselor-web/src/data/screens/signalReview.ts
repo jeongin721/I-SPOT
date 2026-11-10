@@ -45,7 +45,6 @@ import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { DASH, TREND_TYPES, TYPE_SHORT, counselorTopLabel, historyCell } from "../signalHistoryRows";
-import { NOT_READY } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";

@@ -855,7 +855,7 @@ def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
 
     row = client.get(url, headers=counselor_headers).json()["data"][0]
     assert row["status"] == "LINKED" and row["recent_answers"] == 1 and row["level"] == "RED"
-    assert row["open_alert_reason"] == "RED_ANSWER" and row["last_response_at"]
+    assert row["open_alert_reason"] == "RED_ANSWER" and row["open_alert_urgent"] is True and row["last_response_at"]
 
     admin = client.get(url, headers=admin_headers).json()["data"][0]
     assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None

@@ -234,7 +234,10 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
     alerts: Dict[uuid.UUID, Dict[str, Any]] = {}
 
     for alert in list_open_alerts(db, user):
-        alerts.setdefault(alert["case_id"], alert)
+        # 사례마다 긴급 알림을 먼저, 없으면 가장 최근 알림.
+        current = alerts.get(alert["case_id"])
+        if current is None or (alert["urgent"] and not current["urgent"]):
+            alerts[alert["case_id"]] = alert
 
     rows = []
 
@@ -254,6 +257,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "last_response_at": link.last_response_at if link else None,
                 "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
                 "open_alert_reason": alert["reason"] if alert else None,
+                "open_alert_urgent": bool(alert and alert["urgent"]),
             }
         )
 

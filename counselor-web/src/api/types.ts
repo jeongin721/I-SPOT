@@ -1851,6 +1851,7 @@ export interface ChildAppCaseRow {
   last_response_at: string | null;
   open_alert_at: string | null;
   open_alert_reason: string | null;
+  open_alert_urgent: boolean;
 }
 
 export interface ChildAiQuestion {

@@ -20,7 +20,9 @@ import './ChildLink.css';
 const childDateTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 function rowState(row) {
-  if (row.open_alert_reason) return { reason: '긴급', rCls: 'chip c-urgent', need: true };
+  // 긴급 알림 · 바로 확인 답만 '긴급', 글 · 연락 요청 · 추가 질문 답은 '확인 필요'(민규 #165 리뷰 6).
+  if (row.open_alert_urgent) return { reason: '긴급', rCls: 'chip c-urgent', need: true };
+  if (row.open_alert_reason) return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   if (row.status === 'NOT_LINKED') return { reason: '앱 미연결 · 초대 전', rCls: 'chip c-normal', need: false };
   if (row.status === 'INVITED') return { reason: '초대 대기', rCls: 'chip c-normal', need: false };
   if (row.level === 'RED' || row.level === 'AMBER') return { reason: '확인 필요', rCls: 'chip c-check', need: true };
