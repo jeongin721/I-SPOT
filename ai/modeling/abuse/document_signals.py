@@ -136,6 +136,23 @@ def abuse_signals_from(major_types: Dict[str, Any], risk_utterances: List[Dict[s
     return signals
 
 
+def record_lines(segments: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, str, Dict[str, Any]]], str]:
+    """문장 목록 → (2차 · 근거 잇기에 쓰는 줄, 그 줄을 이은 원래 글). 2차에 보내는 글은 이 원래 글을 가린 것이다."""
+
+    lines = [(RECORD_LABEL, segment["text"], segment) for segment in segments]
+    return lines, "\n".join(f"{label}: {sentence}" for label, sentence, _ in lines)
+
+
+def link_to_sentences(subtype_result: Dict[str, Any], segments: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """2차 근거 인용을 문장에 잇는다. 인용 위치는 가린 글 기준이라 원래 글에서 다시 찾는다(source_text) — 등록 이름이
+    '[PERSON_01]' 처럼 길어지면 뒤 문장에 붙던 문제(민규 #134 리뷰, 녹음 경로와 같은 처리)."""
+
+    from ai.modeling.abuse.evidence_location import build_line_char_spans, link_evidence_timestamps
+
+    lines, full_text = record_lines(segments)
+    return link_evidence_timestamps(subtype_result, build_line_char_spans(lines), source_text=full_text)
+
+
 def document_windows(segments: List[Dict[str, Any]], size: int = WINDOW_SENTENCES) -> List[str]:
     """문장 목록 → size 문장씩 한 문장씩 옮긴 글. 문장이 size 보다 적으면 전체 하나."""
 
@@ -193,7 +210,7 @@ def analyze_document_signals(
     """문서 글 → 신호 칸만 채운 AI Output Contract 모양 dict(+ "model"). 문장이 없으면 ValueError."""
 
     from ai.modeling.abuse.infer_abuse_v3_adapter import predict_major_types
-    from ai.modeling.abuse.infer_audio_session import ABUSE_LABELS, build_line_char_spans, link_evidence_timestamps
+    from ai.modeling.abuse.infer_audio_session import ABUSE_LABELS
     from ai.modeling.abuse.llm_backend import build_openai_client_and_model
     from ai.modeling.abuse.pii_masking import restore_pii
     from ai.modeling.abuse.privacy_gateway import mask_for_outbound
@@ -205,8 +222,7 @@ def analyze_document_signals(
     if not segments:
         raise ValueError("분석할 문장이 없습니다.")
     known = list(known_identifiers or [])
-    lines = [(RECORD_LABEL, segment["text"], segment) for segment in segments]
-    full_text = "\n".join(f"{label}: {sentence}" for label, sentence, _ in lines)
+    _lines, full_text = record_lines(segments)
 
     client, model_name = build_openai_client_and_model(default_openai_model=model or DEFAULT_MODEL)
 
@@ -239,7 +255,7 @@ def analyze_document_signals(
                 text=masked_full, major_types=detected, client=client, model=model_name, deadline=deadline
             )
             subtype_result = restore_pii(subtype_result, entity_map)
-            subtype_result = link_evidence_timestamps(subtype_result, build_line_char_spans(lines))
+            subtype_result = link_to_sentences(subtype_result, segments)
         else:
             subtype_result = {"results": []}
 

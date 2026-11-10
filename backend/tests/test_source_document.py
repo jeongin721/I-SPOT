@@ -927,3 +927,28 @@ def test_severity_of_dropped_type_is_not_kept() -> None:
     physical = {"major_type": "신체학대", "level": 3}
 
     assert ds.grounded_severity_ratings([physical, {"major_type": "성학대", "level": 3}, {"major_type": "방임", "level": 1}], signals) == [physical]
+
+
+def test_evidence_after_masked_names_links_to_the_right_sentence() -> None:
+    """등록 이름이 '[PERSON_01]' 로 가려져 길어져도 근거가 그 문장에 붙는다(민규 #134 리뷰 — 두 문장 뒤에 붙던 문제). 가상 글."""
+
+    text = (
+        "지우는 학교에서 지우의 짝과 놀았다. 지우는 지우 동생을 챙긴다고 했다. 지우 어머니는 지우를 걱정한다.\n"
+        "아버지가 손바닥으로 머리를 때렸다고 말했다.\n"
+        "저녁은 라면을 먹었다고 했다.\n"
+        "숙제를 하고 잤다고 했다."
+    )
+    segments = ds.document_segments(text)
+    _, full_text = ds.record_lines(segments)
+    masked = full_text.replace("지우", "[PERSON_01]")
+    quote = "아버지가 손바닥으로 머리를 때렸다고 말했다."
+    start = masked.index(quote)  # 2차는 가린 글 기준 위치를 준다(원래 글보다 이름 5번 x 9자 뒤)
+    evidence = {"evidence": quote, "matched_evidence": quote, "evidence_verified": True,
+                "evidence_start": start, "evidence_end": start + len(quote)}
+    result = {"results": [{"major_type": "신체학대", "subtypes": [{"type": "직접 신체 가해", "evidences": [evidence]}]}]}
+
+    linked = ds.link_to_sentences(result, segments)
+
+    [segment_id] = linked["results"][0]["subtypes"][0]["evidences"][0]["timestamps"]["segment_ids"]
+    assert next(s["text"] for s in segments if s["segment_id"] == segment_id) == quote
+
