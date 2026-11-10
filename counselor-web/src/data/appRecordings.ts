@@ -6,14 +6,21 @@
 //
 //  - 녹음은 1초마다 조각(chunk)으로 저장한다. 앱이 꺼지거나 화면이 닫혀도 녹음된 데까지는 남고, 다음에 열면
 //    업로드 목록에 '실패' 로 올라와 다시 올릴 수 있다(recoverDrafts).
-//  - 올리기가 실패하면(연결 끊김 등) 그 단계를 기억한다. 연결이 돌아오면(online 이벤트) · 앱을 다시 열면 실패한 단계부터
+//  - 조각 · 파일 본문은 Blob 이 아니라 바이트(ArrayBuffer)로 저장한다. iPhone Safari 는 IndexedDB 에서 꺼낸 Blob 을 합친 뒤
+//    원래 조각을 지우면 합친 Blob 을 읽지 못해 올리기가 멈출 수 있어서다(11/10 실제 폰에서 45초 녹음이 끝없이 '올리는 중').
+//    본문은 목록 줄과 다른 저장소(bodies)에 둔다. 줄 상태를 바꿀 때마다 수십 MB 를 다시 읽고 쓰지 않게.
+//  - 단계마다 시간 제한을 둔다(연결이 걸려 응답이 오지 않으면 '실패' 로 두고 자동으로 다시 올린다). 전에는 제한이 없어
+//    요청 하나가 멈추면 그 줄이 계속 '올리는 중' 이고 대기열 전체가 멈췄다.
+//  - 올리기가 실패하면(연결 끊김 등) 그 단계를 기억한다. 연결이 돌아오면(online 이벤트) · 앱을 다시 열면 · 1분마다 실패한 단계부터
 //    자동으로 다시 올린다. 새 회차를 이미 만들었으면 다시 만들지 않는다(빈 회차가 쌓이지 않게, useAudioUpload 와 같은 규칙).
+//  - 고른 회차는 올리기 직전에 상태를 다시 본다(민규 #168). 그사이 웹에서 그 회차에 녹음을 올렸거나 검수 · 확정이 됐으면
+//    올리지 않고 '새 회차로 올리기' 를 고르게 한다(덮어쓰기 · 409 로 녹음을 잃는 것을 막는다).
+//  - 원문 변환 요청이 409 면 회차 상태를 읽어 이미 변환 중 · 그 뒤면 완료로 둔다(응답을 놓친 뒤 다시 요청한 경우, 민규 #168).
 //  - 대기열은 로그인한 계정별로 나눈다(userId). 같은 폰에서 다른 계정으로 로그인하면 앞 계정의 녹음은 보이지도 올라가지도 않는다.
-//  - 다 올린 녹음은 파일 본문(blob)을 지우고 목록 줄만 남긴다(폰 저장 공간). 7일 지난 완료 줄은 지운다.
+//  - 다 올린 녹음은 본문을 지우고 목록 줄만 남긴다(폰 저장 공간). 7일 지난 완료 줄은 지운다.
 
-import { ApiError, getToken } from "../api/client";
-import { cases, sessions, transcript } from "../api/endpoints";
-import type { ConsultationType } from "../api/types";
+import { ApiError, getToken, request } from "../api/client";
+import type { AudioFile, ConsultationType, Session, SessionDetail, SessionStatus } from "../api/types";
 import { parseBackendTime } from "./time";
 
 export type RecordingStatus = "wait" | "run" | "fail" | "done";
@@ -29,6 +36,8 @@ export interface RecordingItem {
   sessionId: string | null;
   /** 목록에 보일 회차 번호. 새 회차면 만든 뒤 채워진다. */
   sessionNumber: number | null;
+  /** 회차를 고를(만들) 때의 상태. 올리기 직전 상태가 이것과 맞지 않으면 올리지 않는다. 옛 줄은 키가 없다. */
+  expectStatus?: SessionStatus;
   consultationType: ConsultationType;
   /** 녹음 시작 시각(UTC ISO). 새 회차의 상담 일시로 쓴다. */
   consultedAt: string;
@@ -36,15 +45,21 @@ export interface RecordingItem {
   mime: string;
   size: number;
   durationMs: number;
-  /** 파일 본문. 다 올리면 지운다. */
-  blob: Blob | null;
+  /** 본문이 bodies 저장소에 있는가. 다 올리면 지운다. */
+  hasBody?: boolean;
+  /** (옛 줄) 본문 Blob. 새 줄은 bodies 에 둔다. */
+  blob?: Blob | null;
   status: RecordingStatus;
   /** 다음에 할(또는 실패한) 단계. */
   step: RecordingStep;
   error: string | null;
   /** 회차 만들기 응답을 놓쳤을 때(연결 끊김 · 5xx) 그 시각. 다시 할 때 그사이 생긴 빈 회차를 먼저 찾는다. */
   createUncertainSince: number | null;
-  /** 연결 끊김 · 서버 오류(5xx)로 실패했는가. 그런 줄만 자동으로 다시 올린다(형식 오류 등은 눌러야 다시 올린다). 옛 줄은 키가 없다. */
+  /** 음성 올리기를 한 번이라도 보냈는가. 응답을 놓쳤을 때 서버의 최신 음성이 이 녹음인지 크기로 확인한다. */
+  uploadSent?: boolean;
+  /** 고른 회차가 그사이 바뀌어 올릴 수 없다. '새 회차로 올리기' 를 보인다. */
+  needNewSession?: boolean;
+  /** 연결 끊김 · 서버 오류(5xx) · 시간 초과로 실패했는가. 그런 줄만 자동으로 다시 올린다. 옛 줄은 키가 없다. */
   autoRetry?: boolean;
   createdAt: number;
   updatedAt: number;
@@ -58,24 +73,31 @@ export interface RecordingDraft {
   childLabel: string;
   sessionId: string | null;
   sessionNumber: number | null;
+  expectStatus?: SessionStatus;
   consultationType: ConsultationType;
   consultedAt: string;
   mime: string;
   ext: string;
   durationMs: number;
-  /** 마지막으로 조각을 저장한 시각. 오래되었으면(녹음기가 멈춤) 되살린다. */
+  /** 마지막으로 조각을 저장(또는 일시정지 중 살아 있음을 표시)한 시각. 오래되었으면(녹음기가 멈춤) 되살린다. */
   heartbeat: number;
 }
 
 const DB_NAME = "ispot-counselor-app";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ITEMS = "recordings";
+const BODIES = "bodies";
 const DRAFTS = "drafts";
 const CHUNKS = "chunks";
 const DONE_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
-/** 이보다 오래 조각이 안 들어온 녹음은 끊긴 것으로 본다. */
+/** 이보다 오래 조각 · 살아 있음 표시가 안 들어온 녹음은 끊긴 것으로 본다. */
 const DRAFT_STALE_MS = 15_000;
 const CREATE_LOOKBACK_MS = 60_000;
+/** 녹음 중인 탭이 잡는 잠금 이름 앞부분. 다른 탭의 되살리기가 이 잠금이 잡힌 녹음은 건너뛴다. */
+export const RECORDING_LOCK_PREFIX = "ispot-app-rec-";
+
+/** 올릴 수 있는 회차 상태. */
+const UPLOADABLE: SessionStatus[] = ["CREATED", "AUDIO_UPLOADED", "STT_FAILED"];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -83,24 +105,25 @@ function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    let request: IDBOpenDBRequest;
+    let open: IDBOpenDBRequest;
 
     try {
-      request = indexedDB.open(DB_NAME, DB_VERSION);
+      open = indexedDB.open(DB_NAME, DB_VERSION);
     } catch (caught) {
       reject(caught);
       return;
     }
 
-    request.onupgradeneeded = () => {
-      const db = request.result;
+    open.onupgradeneeded = () => {
+      const db = open.result;
 
       if (!db.objectStoreNames.contains(ITEMS)) db.createObjectStore(ITEMS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(BODIES)) db.createObjectStore(BODIES);
       if (!db.objectStoreNames.contains(DRAFTS)) db.createObjectStore(DRAFTS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(CHUNKS)) db.createObjectStore(CHUNKS, { keyPath: ["draftId", "seq"] });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error);
   });
   dbPromise.catch(() => {
     dbPromise = null;
@@ -115,9 +138,9 @@ function tx<T>(stores: string[], mode: IDBTransactionMode, work: (t: IDBTransact
       new Promise<T | undefined>((resolve, reject) => {
         const t = db.transaction(stores, mode);
         let result: T | undefined;
-        const request = work(t);
+        const req = work(t);
 
-        if (request) request.onsuccess = () => (result = request.result);
+        if (req) req.onsuccess = () => (result = req.result);
         t.oncomplete = () => resolve(result);
         t.onerror = () => reject(t.error);
         t.onabort = () => reject(t.error ?? new Error("저장하지 못했어요"));
@@ -145,7 +168,7 @@ export function subscribeRecordings(fn: () => void): () => void {
 }
 
 // ---------------------------------------------------------------------------
-// 목록
+// 목록 · 본문
 // ---------------------------------------------------------------------------
 
 export async function listRecordings(userId: string): Promise<RecordingItem[]> {
@@ -163,6 +186,15 @@ async function putItem(item: RecordingItem): Promise<void> {
   changed();
 }
 
+/** 줄과 본문을 한 거래로 넣는다(본문만 남거나 줄만 남지 않게). */
+async function putItemWithBody(item: RecordingItem, body: ArrayBuffer): Promise<void> {
+  await tx([ITEMS, BODIES], "readwrite", (t) => {
+    t.objectStore(BODIES).put(body, item.id);
+    t.objectStore(ITEMS).put({ ...item, hasBody: true });
+  });
+  changed();
+}
+
 async function patchItem(id: string, patch: Partial<RecordingItem>): Promise<RecordingItem | null> {
   const item = await getItem(id);
 
@@ -175,11 +207,40 @@ async function patchItem(id: string, patch: Partial<RecordingItem>): Promise<Rec
   return next;
 }
 
+/** 본문이 남아 있는가(옛 줄은 blob, 새 줄은 hasBody). */
+function hasPayload(item: RecordingItem): boolean {
+  return !!item.hasBody || !!item.blob;
+}
+
+async function readBody(item: RecordingItem): Promise<BlobPart | null> {
+  if (item.blob) return item.blob;
+  if (!item.hasBody) return null;
+
+  const body = await tx<ArrayBuffer>([BODIES], "readonly", (t) => t.objectStore(BODIES).get(item.id));
+
+  return body ?? null;
+}
+
+async function dropBody(id: string, patch: Partial<RecordingItem>): Promise<void> {
+  const item = await getItem(id);
+
+  if (!item) return;
+
+  await tx([ITEMS, BODIES], "readwrite", (t) => {
+    t.objectStore(BODIES).delete(id);
+    t.objectStore(ITEMS).put({ ...item, ...patch, hasBody: false, blob: null, updatedAt: Date.now() });
+  });
+  changed();
+}
+
 /** 목록에서 지운다(파일 본문도). 올리는 중이면 지우지 않는다. */
 export async function removeRecording(id: string): Promise<void> {
   if (activeId === id) return;
 
-  await tx([ITEMS], "readwrite", (t) => t.objectStore(ITEMS).delete(id));
+  await tx([ITEMS, BODIES], "readwrite", (t) => {
+    t.objectStore(ITEMS).delete(id);
+    t.objectStore(BODIES).delete(id);
+  });
   changed();
 }
 
@@ -192,8 +253,11 @@ export async function startDraft(draft: RecordingDraft): Promise<void> {
 }
 
 export async function saveChunk(draftId: string, seq: number, blob: Blob, durationMs: number): Promise<void> {
+  // 거래 안에서는 기다릴 수 없어서 바이트로 먼저 바꾼다.
+  const buf = await blob.arrayBuffer();
+
   await tx([DRAFTS, CHUNKS], "readwrite", (t) => {
-    t.objectStore(CHUNKS).put({ draftId, seq, blob });
+    t.objectStore(CHUNKS).put({ draftId, seq, buf });
     const drafts = t.objectStore(DRAFTS);
     const read = drafts.get(draftId);
 
@@ -203,12 +267,29 @@ export async function saveChunk(draftId: string, seq: number, blob: Blob, durati
   });
 }
 
-async function draftChunks(draftId: string): Promise<Blob[]> {
-  const range = IDBKeyRange.bound([draftId, 0], [draftId, Number.MAX_SAFE_INTEGER]);
-  const rows = ((await tx<{ seq: number; blob: Blob }[]>([CHUNKS], "readonly", (t) => t.objectStore(CHUNKS).getAll(range))) ??
-    []) as { seq: number; blob: Blob }[];
+/** 일시정지 중에도 녹음이 살아 있음을 표시한다(다른 탭이 끊긴 녹음으로 가져가지 않게, 민규 #168). */
+export async function touchDraft(draftId: string, durationMs: number): Promise<void> {
+  await tx([DRAFTS], "readwrite", (t) => {
+    const drafts = t.objectStore(DRAFTS);
+    const read = drafts.get(draftId);
 
-  return rows.sort((a, b) => a.seq - b.seq).map((row) => row.blob);
+    read.onsuccess = () => {
+      if (read.result) drafts.put({ ...read.result, durationMs, heartbeat: Date.now() });
+    };
+  });
+}
+
+async function draftBytes(draftId: string, mime: string): Promise<ArrayBuffer | null> {
+  const range = IDBKeyRange.bound([draftId, 0], [draftId, Number.MAX_SAFE_INTEGER]);
+  const rows = ((await tx<{ seq: number; buf?: ArrayBuffer; blob?: Blob }[]>([CHUNKS], "readonly", (t) =>
+    t.objectStore(CHUNKS).getAll(range),
+  )) ?? []) as { seq: number; buf?: ArrayBuffer; blob?: Blob }[];
+
+  if (rows.length === 0) return null;
+
+  const parts = rows.sort((a, b) => a.seq - b.seq).map((row) => (row.buf ?? row.blob) as BlobPart);
+
+  return new Blob(parts, { type: mime }).arrayBuffer();
 }
 
 async function dropDraft(draftId: string): Promise<void> {
@@ -232,33 +313,37 @@ export function fileNameFor(draft: Pick<RecordingDraft, "childLabel" | "sessionN
   return `${safe(draft.childLabel)}_${session}_${safe(kindLabel)}${draft.ext}`;
 }
 
-/** 녹음을 마쳤다. 조각을 하나의 파일로 묶어 대기열에 넣고 바로 올리기 시작한다. */
-export async function finishDraft(draft: RecordingDraft, fileName: string, durationMs: number): Promise<string> {
-  const chunks = await draftChunks(draft.id);
-  const blob = new Blob(chunks, { type: draft.mime });
+function itemFromDraft(draft: RecordingDraft, fileName: string, size: number, durationMs: number): RecordingItem {
   const now = Date.now();
 
-  await putItem({
+  return {
     id: draft.id,
     userId: draft.userId,
     caseId: draft.caseId,
     childLabel: draft.childLabel,
     sessionId: draft.sessionId,
     sessionNumber: draft.sessionNumber,
+    expectStatus: draft.sessionId ? draft.expectStatus : "CREATED",
     consultationType: draft.consultationType,
     consultedAt: draft.consultedAt,
     fileName,
     mime: draft.mime,
-    size: blob.size,
+    size,
     durationMs,
-    blob,
     status: "wait",
     step: draft.sessionId ? "upload" : "createSession",
     error: null,
     createUncertainSince: null,
     createdAt: now,
     updatedAt: now,
-  });
+  };
+}
+
+/** 녹음을 마쳤다. 조각을 하나의 파일로 묶어 대기열에 넣고 바로 올리기 시작한다. */
+export async function finishDraft(draft: RecordingDraft, fileName: string, durationMs: number): Promise<string> {
+  const bytes = (await draftBytes(draft.id, draft.mime)) ?? new ArrayBuffer(0);
+
+  await putItemWithBody(itemFromDraft(draft, fileName, bytes.byteLength, durationMs), bytes);
   await dropDraft(draft.id);
   void processQueue();
 
@@ -272,76 +357,77 @@ export async function finishDraft(draft: RecordingDraft, fileName: string, durat
 export async function enqueueAudioFile(input: { userId: string; caseId: string; childLabel: string; file: File; durationMs?: number }): Promise<string> {
   const now = Date.now();
   const id = `f${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const bytes = await input.file.arrayBuffer();
 
-  await putItem({
-    id,
-    userId: input.userId,
-    caseId: input.caseId,
-    childLabel: input.childLabel,
-    sessionId: null,
-    sessionNumber: null,
-    consultationType: "REGULAR",
-    consultedAt: new Date(input.file.lastModified || now).toISOString(),
-    fileName: input.file.name,
-    mime: input.file.type || "application/octet-stream",
-    size: input.file.size,
-    durationMs: input.durationMs ?? 0,
-    blob: input.file,
-    status: "wait",
-    step: "createSession",
-    error: null,
-    createUncertainSince: null,
-    createdAt: now,
-    updatedAt: now,
-  });
+  await putItemWithBody(
+    {
+      id,
+      userId: input.userId,
+      caseId: input.caseId,
+      childLabel: input.childLabel,
+      sessionId: null,
+      sessionNumber: null,
+      expectStatus: "CREATED",
+      consultationType: "REGULAR",
+      consultedAt: new Date(input.file.lastModified || now).toISOString(),
+      fileName: input.file.name,
+      mime: input.file.type || "application/octet-stream",
+      size: bytes.byteLength,
+      durationMs: input.durationMs ?? 0,
+      status: "wait",
+      step: "createSession",
+      error: null,
+      createUncertainSince: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    bytes,
+  );
   void processQueue();
 
   return id;
 }
 
+async function heldRecordingLocks(): Promise<Set<string>> {
+  try {
+    const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+
+    if (!locks) return new Set();
+
+    const state = await locks.query();
+
+    return new Set((state.held ?? []).map((lock) => lock.name ?? "").filter((name) => name.startsWith(RECORDING_LOCK_PREFIX)));
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * 끊긴 녹음(앱이 꺼짐 · 화면이 닫힘)을 대기열의 '실패' 줄로 되살린다. 녹음된 데까지 올릴 수 있다.
- * activeDraftId 는 지금 이 화면에서 녹음 중인 것(건너뛴다).
+ * activeDraftId 는 지금 이 화면에서 녹음 중인 것(건너뛴다). 다른 탭이 녹음 중(잠금을 잡고 있음)인 것도 건너뛴다.
  */
 export async function recoverDrafts(userId: string, activeDraftId: string | null, kindLabel: (type: ConsultationType) => string): Promise<void> {
   const drafts = ((await tx<RecordingDraft[]>([DRAFTS], "readonly", (t) => t.objectStore(DRAFTS).getAll())) ?? []) as RecordingDraft[];
+  const held = await heldRecordingLocks();
 
   for (const draft of drafts) {
     if (draft.userId !== userId || draft.id === activeDraftId) continue;
+    if (held.has(RECORDING_LOCK_PREFIX + draft.id)) continue;
     if (Date.now() - draft.heartbeat < DRAFT_STALE_MS) continue;
 
-    const chunks = await draftChunks(draft.id);
+    const bytes = await draftBytes(draft.id, draft.mime);
 
-    if (chunks.length === 0) {
+    if (!bytes || bytes.byteLength === 0) {
       await dropDraft(draft.id);
       continue;
     }
 
-    const blob = new Blob(chunks, { type: draft.mime });
-    const now = Date.now();
+    const item = itemFromDraft(draft, fileNameFor(draft, kindLabel(draft.consultationType)), bytes.byteLength, draft.durationMs);
 
-    await putItem({
-      id: draft.id,
-      userId: draft.userId,
-      caseId: draft.caseId,
-      childLabel: draft.childLabel,
-      sessionId: draft.sessionId,
-      sessionNumber: draft.sessionNumber,
-      consultationType: draft.consultationType,
-      consultedAt: draft.consultedAt,
-      fileName: fileNameFor(draft, kindLabel(draft.consultationType)),
-      mime: draft.mime,
-      size: blob.size,
-      durationMs: draft.durationMs,
-      blob,
-      status: "fail",
-      step: draft.sessionId ? "upload" : "createSession",
-      error: "녹음이 중간에 끊겼어요. 녹음된 데까지 저장해 두었어요.",
-      autoRetry: false,
-      createUncertainSince: null,
-      createdAt: now,
-      updatedAt: now,
-    });
+    await putItemWithBody(
+      { ...item, status: "fail", error: "녹음이 중간에 끊겼어요. 녹음된 데까지 저장해 두었어요.", autoRetry: false },
+      bytes,
+    );
     await dropDraft(draft.id);
   }
 }
@@ -361,8 +447,12 @@ export function setQueueUser(userId: string | null): void {
   queueUser = userId;
 }
 
+/** 시간 초과(응답이 오지 않음). 연결 끊김처럼 자동으로 다시 올린다. */
+class UploadTimeout extends Error {}
+
 /** 이 단계에서 실패한 이유를 사람 말로. */
 function failText(caught: unknown): string {
+  if (caught instanceof UploadTimeout) return "연결이 느려 응답을 받지 못했어요. 자동으로 다시 올려요";
   if (caught instanceof ApiError) {
     if (caught.status === 0) return "네트워크 연결이 끊겨 올리지 못했어요";
     if (caught.isUnauthorized) return "로그인이 끝났어요. 다시 로그인한 뒤 다시 올려 주세요";
@@ -373,8 +463,38 @@ function failText(caught: unknown): string {
   return "올리지 못했어요. 잠시 후 다시 올려 주세요";
 }
 
+function isTransient(caught: unknown): boolean {
+  if (caught instanceof UploadTimeout) return true;
+  if (caught instanceof ApiError) return caught.status === 0 || caught.status >= 500;
+
+  return true;
+}
+
+/** 시간 제한을 둔 요청. 시간이 지나면 요청을 끊고 UploadTimeout 을 던진다. */
+async function call<T>(ms: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), ms);
+
+  try {
+    return await run(controller.signal);
+  } catch (caught) {
+    if (controller.signal.aborted) throw new UploadTimeout();
+    throw caught;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+const SHORT_MS = 30_000;
+/** 음성 올리기: 기본 90초 + 초당 20KB 로 잡은 시간(느린 모바일 연결 기준). */
+const uploadMs = (bytes: number) => 90_000 + Math.ceil(bytes / 20);
+
+const getSession = (id: string) => call(SHORT_MS, (signal) => request<SessionDetail>(`/sessions/${id}`, { signal }));
+
 async function findCreatedSession(caseId: string, since: number): Promise<{ id: string; number: number } | null> {
-  const page = await cases.listSessions(caseId, { page: 1, page_size: 100 });
+  const page = await call(SHORT_MS, (signal) =>
+    request<{ items: Session[] }>(`/cases/${caseId}/sessions`, { query: { page: 1, page_size: 100 }, signal }),
+  );
   const recent = page.items
     .filter((row) => row.status === "CREATED")
     .filter((row) => (parseBackendTime(row.created_at)?.getTime() ?? 0) >= since - CREATE_LOOKBACK_MS)
@@ -383,15 +503,53 @@ async function findCreatedSession(caseId: string, since: number): Promise<{ id: 
   return recent.length > 0 ? { id: recent[0].id, number: recent[0].session_number } : null;
 }
 
+/** 변환을 요청한 뒤(또는 이미 변환 중 · 그 뒤) 상태인가. */
+function pastUpload(status: SessionStatus): boolean {
+  return !UPLOADABLE.includes(status);
+}
+
+/**
+ * 올리기 직전 회차 확인. 'ok' 면 올린다, 'ours' 면 앞서 보낸 이 녹음이 이미 올라가 있다(변환 요청부터),
+ * 'changed' 면 그사이 다른 곳에서 바뀌어 올리지 않는다.
+ */
+async function checkTarget(item: RecordingItem): Promise<"ok" | "ours" | "changed"> {
+  let session: SessionDetail;
+
+  try {
+    session = await getSession(item.sessionId as string);
+  } catch (caught) {
+    if (caught instanceof ApiError && caught.status === 404) return "changed";
+    throw caught;
+  }
+
+  if (session.source === "DOCUMENT") return "changed";
+
+  // 앞서 보낸 음성의 응답을 놓쳤으면 서버의 최신 음성이 이 녹음인지 크기 · 이름으로 본다.
+  if (item.uploadSent && session.has_audio) {
+    try {
+      const audio = await call(SHORT_MS, (signal) => request<AudioFile>(`/sessions/${item.sessionId}/audio`, { signal }));
+
+      if (audio.size_bytes === item.size) return "ours";
+    } catch (caught) {
+      if (!(caught instanceof ApiError && caught.status === 404)) throw caught;
+    }
+  }
+
+  const expect = item.expectStatus ?? "CREATED";
+
+  if (expect === "CREATED") return session.status === "CREATED" ? "ok" : "changed";
+
+  // 녹음이 있는 회차를 바꾸기로 골랐다: 그때처럼 아직 변환 전(녹음만 있음 · 변환 실패)일 때만.
+  return session.status === "AUDIO_UPLOADED" || session.status === "STT_FAILED" ? "ok" : "changed";
+}
+
 async function uploadOne(id: string, kindTitle: (type: ConsultationType) => string): Promise<void> {
   let item = await getItem(id);
 
-  if (!item || !item.blob || item.status === "done") return;
+  if (!item || !hasPayload(item) || item.status === "done") return;
 
-  const token = getToken();
-
-  if (!token) {
-    await patchItem(id, { status: "fail", error: "로그인이 끝났어요. 다시 로그인한 뒤 다시 올려 주세요" });
+  if (!getToken()) {
+    await patchItem(id, { status: "fail", error: "로그인이 끝났어요. 다시 로그인한 뒤 다시 올려 주세요", autoRetry: false });
     return;
   }
 
@@ -416,43 +574,80 @@ async function uploadOne(id: string, kindTitle: (type: ConsultationType) => stri
         const since = Date.now();
 
         try {
-          const session = await cases.createSession(item.caseId, {
-            title: `${kindTitle(item.consultationType)} 녹음`,
-            consulted_at: item.consultedAt,
-            consultation_type: item.consultationType,
-          });
+          const session = await call(SHORT_MS, (signal) =>
+            request<Session>(`/cases/${item!.caseId}/sessions`, {
+              method: "POST",
+              json: { title: `${kindTitle(item!.consultationType)} 녹음`, consulted_at: item!.consultedAt, consultation_type: item!.consultationType },
+              signal,
+            }),
+          );
 
           sessionId = session.id;
           sessionNumber = session.session_number;
         } catch (caught) {
-          if (caught instanceof ApiError && (caught.status === 0 || caught.status >= 500)) {
-            await patchItem(id, { createUncertainSince: since });
-          }
+          if (isTransient(caught)) await patchItem(id, { createUncertainSince: since });
           throw caught;
         }
       }
 
       const fileName = item.fileName.replace("_새회차_", `_${sessionNumber}회차_`);
 
-      item = (await patchItem(id, { sessionId, sessionNumber, fileName, step: "upload", createUncertainSince: null })) ?? item;
+      item =
+        (await patchItem(id, { sessionId, sessionNumber, fileName, expectStatus: "CREATED", step: "upload", createUncertainSince: null, uploadSent: false })) ??
+        item;
     }
 
     if (item.step === "upload" && item.sessionId) {
-      const file = new File([item.blob as Blob], item.fileName, { type: item.mime });
+      const target = await checkTarget(item);
 
-      await sessions.uploadAudio(item.sessionId, file, item.durationMs > 0 ? Math.round(item.durationMs) : undefined);
+      if (target === "changed") {
+        await patchItem(id, {
+          status: "fail",
+          needNewSession: true,
+          autoRetry: false,
+          error: "그사이 이 회차에 다른 녹음이 올라갔거나 검수가 시작됐어요. 새 회차로 올려 주세요.",
+        });
+        return;
+      }
+
+      if (target === "ok") {
+        const body = await readBody(item);
+
+        if (!body) throw new Error("본문 없음");
+
+        const form = new FormData();
+
+        form.append("file", new File([body], item.fileName, { type: item.mime }));
+        if (item.durationMs > 0) form.append("duration_ms", String(Math.round(item.durationMs)));
+
+        item = (await patchItem(id, { uploadSent: true })) ?? item;
+        await call(uploadMs(item.size), (signal) => request(`/sessions/${item!.sessionId}/audio`, { method: "POST", body: form, signal }));
+      }
+
       item = (await patchItem(id, { step: "requestStt" })) ?? item;
     }
 
     if (item.step === "requestStt" && item.sessionId) {
-      await transcript.run(item.sessionId);
+      // 다시 할 때: 이미 변환 중 · 그 뒤면 다시 요청하지 않는다(변환이 두 번 돌지 않게).
+      const before = await getSession(item.sessionId);
+
+      if (!pastUpload(before.status)) {
+        try {
+          await call(SHORT_MS, (signal) => request(`/sessions/${item!.sessionId}/transcript`, { method: "POST", signal }));
+        } catch (caught) {
+          // 앞선 요청이 이미 닿았으면 409 다. 상태를 다시 보고 변환 중 · 그 뒤면 끝난 것으로 둔다.
+          if (!(caught instanceof ApiError && caught.status === 409)) throw caught;
+
+          const after = await getSession(item.sessionId);
+
+          if (!pastUpload(after.status)) throw caught;
+        }
+      }
     }
 
-    await patchItem(id, { status: "done", error: null, blob: null });
+    await dropBody(id, { status: "done", error: null, needNewSession: false });
   } catch (caught) {
-    const transient = caught instanceof ApiError ? caught.status === 0 || caught.status >= 500 : true;
-
-    await patchItem(id, { status: "fail", error: failText(caught), autoRetry: transient });
+    await patchItem(id, { status: "fail", error: failText(caught), autoRetry: isTransient(caught) });
   } finally {
     activeId = null;
   }
@@ -465,9 +660,8 @@ export function setKindTitle(fn: (type: ConsultationType) => string): void {
 }
 
 /**
- * 기다리는 줄(wait · 앱이 꺼져 멈춘 run)을 차례로 올린다. includeFailed 면 연결 끊김 · 서버 오류로 실패한 줄도 다시 올린다
- * (연결이 돌아왔을 때 · 앱을 열 때 · 앱을 켜 둔 동안 1분마다).
- * 이미 돌고 있으면 끝난 뒤 한 번 더 돈다.
+ * 기다리는 줄(wait · 앱이 꺼져 멈춘 run)을 차례로 올린다. includeFailed 면 연결 끊김 · 서버 오류 · 시간 초과로 실패한 줄도
+ * 다시 올린다(연결이 돌아왔을 때 · 앱을 열 때 · 앱을 켜 둔 동안 1분마다). 이미 돌고 있으면 끝난 뒤 한 번 더 돈다.
  */
 export async function processQueue(includeFailed = false): Promise<void> {
   if (running) {
@@ -493,40 +687,66 @@ export async function processQueue(includeFailed = false): Promise<void> {
 }
 
 async function drain(userId: string, includeFailed: boolean): Promise<void> {
-  {
-    do {
-      again = false;
-      const items = await listRecordings(userId);
+  do {
+    again = false;
+    const items = await listRecordings(userId);
 
-      // 오래된 완료 줄 정리.
-      for (const item of items) {
-        if (item.status === "done" && Date.now() - item.updatedAt > DONE_KEEP_MS) {
-          await tx([ITEMS], "readwrite", (t) => t.objectStore(ITEMS).delete(item.id));
-        }
+    // 오래된 완료 줄 정리.
+    for (const item of items) {
+      if (item.status === "done" && Date.now() - item.updatedAt > DONE_KEEP_MS) {
+        await tx([ITEMS, BODIES], "readwrite", (t) => {
+          t.objectStore(ITEMS).delete(item.id);
+          t.objectStore(BODIES).delete(item.id);
+        });
+      }
+    }
+
+    const todo = items
+      .filter(
+        (item) =>
+          hasPayload(item) &&
+          (item.status === "wait" || item.status === "run" || (includeFailed && item.status === "fail" && item.autoRetry === true)),
+      )
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    for (const item of todo) {
+      if (queueUser !== userId) break;
+      // 연결이 없으면 실패로 표시만 하고 기다린다(online 이벤트에서 다시 돈다).
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        await patchItem(item.id, { status: "fail", error: "네트워크 연결이 끊겨 올리지 못했어요", autoRetry: true });
+        continue;
       }
 
-      const todo = items
-        .filter((item) => item.blob && (item.status === "wait" || item.status === "run" || (includeFailed && item.status === "fail" && item.autoRetry === true)))
-        .sort((a, b) => a.createdAt - b.createdAt);
-
-      for (const item of todo) {
-        if (queueUser !== userId) break;
-        // 연결이 없으면 실패로 표시만 하고 기다린다(online 이벤트에서 다시 돈다).
-        if (typeof navigator !== "undefined" && navigator.onLine === false) {
-          await patchItem(item.id, { status: "fail", error: "네트워크 연결이 끊겨 올리지 못했어요", autoRetry: true });
-          continue;
-        }
-
-        await uploadOne(item.id, kindTitleFn);
-      }
-      includeFailed = false;
-    } while (again);
-  }
+      await uploadOne(item.id, kindTitleFn);
+    }
+    includeFailed = false;
+  } while (again);
 }
 
 /** 한 줄만 다시 올린다(다시 올리기 단추). */
 export async function retryRecording(id: string): Promise<void> {
   await patchItem(id, { status: "wait", error: null });
+  await processQueue();
+}
+
+/** 고른 회차가 바뀌어 못 올린 줄을 새 회차로 올린다('새 회차로 올리기' 단추). */
+export async function uploadAsNewSession(id: string): Promise<void> {
+  const item = await getItem(id);
+
+  if (!item) return;
+
+  await patchItem(id, {
+    sessionId: null,
+    sessionNumber: null,
+    expectStatus: "CREATED",
+    fileName: item.fileName.replace(/_\d+회차_/, "_새회차_"),
+    step: "createSession",
+    createUncertainSince: null,
+    uploadSent: false,
+    needNewSession: false,
+    status: "wait",
+    error: null,
+  });
   await processQueue();
 }
 

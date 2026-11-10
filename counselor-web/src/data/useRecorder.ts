@@ -6,11 +6,15 @@
 //  - 형식은 브라우저가 되는 것 중 서버가 받는 것: iPhone(Safari)은 audio/mp4(.m4a), 안드로이드 · PC Chrome 은 audio/webm(.webm).
 //  - 녹음하는 동안 화면이 꺼지지 않게 한다(Wake Lock, 되는 브라우저만). 화면이 꺼지면 폰이 녹음을 멈출 수 있어서다.
 //  - 녹음 시간은 일시정지를 뺀 시간이다. 올릴 때 duration_ms 로 함께 보낸다.
+//  - 녹음하는 동안 이 녹음의 잠금(Web Locks)을 잡고, 일시정지 중에도 5초마다 살아 있음을 표시한다. 다른 탭에서 앱을 열어도
+//    이 녹음을 '끊긴 녹음' 으로 가져가지 않는다(민규 #168).
+//  - 전화가 오는 등으로 마이크가 끊기면(트랙 ended · MediaRecorder error) 녹음을 멈추고 알린다. 녹음된 데까지는 저장할 수 있다.
+//    마이크가 잠깐 막히면(트랙 mute) 알림만 띄우고 풀리면 지운다(민규 #168).
 //  - 앱이 꺼지거나 탭을 닫으면 녹음은 멈춘다. 그때까지의 조각은 남아 다음에 열 때 업로드 목록에 되살아난다(recoverDrafts).
 
 import { useSyncExternalStore } from "react";
 
-import { discardDraft, saveChunk, startDraft, type RecordingDraft } from "./appRecordings";
+import { RECORDING_LOCK_PREFIX, discardDraft, saveChunk, startDraft, touchDraft, type RecordingDraft } from "./appRecordings";
 
 export type RecorderPhase = "idle" | "rec" | "paused" | "done";
 
@@ -62,6 +66,38 @@ let banked = 0;
 let segmentStart: number | null = null;
 let timer: number | null = null;
 let wakeLock: { release: () => Promise<void> } | null = null;
+let heartbeat: number | null = null;
+let releaseRecLock: (() => void) | null = null;
+
+const MUTED_TEXT = "마이크가 잠시 끊겼어요(전화 등). 그동안은 소리가 녹음되지 않아요.";
+const INTERRUPTED_TEXT = "마이크가 끊겨 녹음을 멈췄어요(전화 등). 녹음된 데까지 저장하고 올릴 수 있어요.";
+
+function holdRecLock(draftId: string) {
+  const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+
+  if (!locks) return;
+
+  locks
+    .request(RECORDING_LOCK_PREFIX + draftId, () => new Promise<void>((resolve) => (releaseRecLock = resolve)))
+    .catch(() => {});
+}
+
+function dropRecLock() {
+  releaseRecLock?.();
+  releaseRecLock = null;
+}
+
+function beat(on: boolean, draftId?: string) {
+  if (heartbeat !== null) window.clearInterval(heartbeat);
+  heartbeat = on && draftId ? window.setInterval(() => void touchDraft(draftId, now()).catch(() => {}), 5000) : null;
+}
+
+async function interrupted() {
+  if (snapshot.phase !== "rec" && snapshot.phase !== "paused") return;
+
+  await stopRecording();
+  set({ error: INTERRUPTED_TEXT });
+}
 
 const now = () => banked + (segmentStart !== null ? Date.now() - segmentStart : 0);
 
@@ -161,12 +197,23 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
       });
   };
 
+  media.onerror = () => void interrupted();
+  stream.getAudioTracks().forEach((track) => {
+    track.addEventListener("ended", () => void interrupted());
+    track.addEventListener("mute", () => set({ error: MUTED_TEXT }));
+    track.addEventListener("unmute", () => {
+      if (snapshot.error === MUTED_TEXT) set({ error: null });
+    });
+  });
+
   recorder = media;
   banked = 0;
   segmentStart = Date.now();
   media.start(1000);
   tick(true);
   void lockScreen();
+  holdRecLock(id);
+  beat(true, id);
   set({ phase: "rec", elapsedMs: 0, draft });
 
   return true;
@@ -208,12 +255,15 @@ export async function stopRecording(): Promise<void> {
   await saving;
   releaseMic();
   unlockScreen();
+  beat(false);
   recorder = null;
   set({ phase: "done", elapsedMs: banked, draft: snapshot.draft ? { ...snapshot.draft, durationMs: banked } : null });
 }
 
 /** 저장한 뒤 처음으로(조각은 대기열로 옮겨졌다). */
 export function clearRecording(): void {
+  dropRecLock();
+  beat(false);
   banked = 0;
   set({ phase: "idle", elapsedMs: 0, error: null, draft: null });
 }

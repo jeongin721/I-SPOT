@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
-import { enqueueAudioFile, removeRecording, retryRecording } from '../data/appRecordings';
+import { enqueueAudioFile, removeRecording, retryRecording, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
 
 function UploadBody({ userId, items, notReady }) {
@@ -113,8 +113,12 @@ function UploadBody({ userId, items, notReady }) {
                   >
                     지우기
                   </button>
-                  <button type="button" className="ma-btn ma-btn-sm ma-btn-p" onClick={() => void retryRecording(x.id)}>
-                    다시 올리기
+                  <button
+                    type="button"
+                    className="ma-btn ma-btn-sm ma-btn-p"
+                    onClick={() => void (x.needNewSession ? uploadAsNewSession(x.id) : retryRecording(x.id))}
+                  >
+                    {x.needNewSession ? '새 회차로 올리기' : '다시 올리기'}
                   </button>
                 </div>
               </>
