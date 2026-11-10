@@ -13,8 +13,12 @@ export const CHILD_ALERT_TEXT = {
   RED_ANSWER: "아이 답변에 바로 확인할 내용이 있어요.",
   CONTACT_REQUEST: "아이가 연락을 요청했어요.",
   TEXT_ANSWER: "아이가 글을 남겼어요.",
+  FOLLOWUP_ANSWER: "아이가 추가 질문에 답했어요.",
   NEEDS_CHECK: "아이 앱에서 확인이 필요한 알림이 왔어요.",
 } as const;
+
+/** 바로 연락을 판단해야 하는 알림. 나머지(글 · 연락 요청 · 추가 질문 답)는 '확인 필요' 로 보인다(민규 #165 리뷰 6). */
+export const URGENT_ALERT_REASONS = new Set(["ALERT", "RED_ANSWER"]);
 
 export const CHILD_ALERTS_CHANGED = "ispot:child-alerts-changed";
 

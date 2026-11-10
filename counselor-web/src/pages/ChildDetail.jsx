@@ -3,7 +3,7 @@
 //
 // 사례 ID 가 있으면 콩콩 앱 서버 값을 보인다(screens/childDetail.ts). 사례 ID 가 없으면 디자인 예시를 그대로 보인다.
 //  - AI 초안 '확인해 볼 점' · 추가 질문은 서버가 만든 것만 보인다. 추가 질문은 상담사가 승인해야 아이 앱으로 간다.
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -231,16 +231,9 @@ export default function ChildDetail(props) {
           setApproval: app.setAiApproval,
         })
       : null;
-  // 화면을 열면 최근 답의 초안을 한 번 만든다. 실패하면 '다시 시도' 로만 다시 부른다(요청이 되풀이되지 않게).
+  // 아이 글이 외부 AI 로 나가므로 상담사가 단추를 누를 때만 만든다(민규 #165 리뷰 4).
   const needed = app.data ? aiDraftNeeded(app.data) : null;
-  const tried = useRef(null);
   const { createAiDraft } = app;
-  useEffect(() => {
-    if (needed && tried.current !== needed) {
-      tried.current = needed;
-      createAiDraft();
-    }
-  }, [needed, createAiDraft]);
   const v = useDC(Logic, { ...props, live });
   if (caseId && needsLogin(session)) return <Navigate to="/Login" replace />;
   const notice = caseId
@@ -376,6 +369,14 @@ export default function ChildDetail(props) {
               <h2 className="h2">확인해 봐야 할 답변 · 추가 질문</h2>
               <span className="chip c-check">{v.flagCount}개</span>
             </div>
+            {needed && !app.aiCreating && !app.aiError ? (
+              <p className="note" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '0' }}>
+                <button type="button" className="btn btn-sm btn-s" onClick={createAiDraft}>
+                  AI 초안 만들기
+                </button>
+                이름을 가린 뒤 외부 AI 로 보내 확인해 볼 점 · 추가 질문 초안을 만들어요.
+              </p>
+            ) : null}
             {app.aiCreating ? <p className="note" role="status">AI 초안을 만드는 중이에요…</p> : null}
             {app.aiError ? (
               <p className="note" role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '0' }}>

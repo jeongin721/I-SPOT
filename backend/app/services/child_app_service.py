@@ -38,6 +38,7 @@ CODE_TTL = timedelta(hours=72)
 LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
 OPEN_ALERT_LIMIT = 50
+AI_QUESTION_PREFIX = "ai_"
 CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
 SKIP_TEXT = "답하기 어려워요"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
@@ -562,12 +563,29 @@ def submit_answers(
         raise conflict(ErrorCode.DUPLICATE_RESOURCE, "이미 끝난 질문입니다.")
 
     by_id = {answer.question_id: answer for answer in answers}
-    expected = [question["id"] for question in row.questions]
+    expected = {question["id"] for question in row.questions}
+    # 아이가 답하는 사이 상담사가 AI 추가 질문을 승인 · 취소하면 묶음이 바뀐다(민규 #165 리뷰 1).
+    # 그때도 아이가 고른 답은 받는다: 취소된 AI 질문의 답은 버리고, 새로 더해진 AI 질문은 다음 묶음으로 넘긴다.
+    extra = set(by_id) - expected
+    missing = [question for question in row.questions if question["id"] not in by_id]
+    answered_questions = [question for question in row.questions if question["id"] in by_id]
 
-    if len(answers) != len(expected) or set(by_id) != set(expected):
+    if (
+        len(by_id) != len(answers)
+        or any(not question_id.startswith(AI_QUESTION_PREFIX) for question_id in extra)
+        or any(not question["id"].startswith(AI_QUESTION_PREFIX) for question in missing)
+        or not answered_questions
+    ):
         raise bad_request(ErrorCode.VALIDATION_ERROR, "모든 질문의 답을 보내 주세요.")
 
-    items = [_grade(question, by_id[question["id"]]) for question in row.questions]
+    if missing:
+        carried = ChildQuestionSet(case_id=row.case_id, sent_by_id=row.sent_by_id, questions=missing)
+        db.add(carried)
+        db.flush()
+        row.questions = answered_questions
+        child_app_ai_service.move_questions(db, row.case_id, {question["id"] for question in missing}, carried.id)
+
+    items = [_grade(question, by_id[question["id"]]) for question in answered_questions]
     levels = {item["level"] for item in items}
     worst = ChildAnswerLevel.NONE
 
@@ -586,10 +604,12 @@ def submit_answers(
         for item in items
     )
     wrote_text = any(item.get("wrote_text") for item in items)
+    # AI 추가 질문은 위험 답의 후속이라 답을 판정하지 않고 확인 필요로만 올린다(민규 #165 리뷰 5).
+    followup = any(item["question_id"].startswith(AI_QUESTION_PREFIX) for item in items)
     payload: Dict[str, Any] = {"items": items}
 
-    if wants_contact or wrote_text:
-        payload["alert_reason"] = "CONTACT_REQUEST" if wants_contact else "TEXT_ANSWER"
+    if wants_contact or wrote_text or followup:
+        payload["alert_reason"] = "CONTACT_REQUEST" if wants_contact else "TEXT_ANSWER" if wrote_text else "FOLLOWUP_ANSWER"
 
     _add_event(
         db,
@@ -597,7 +617,7 @@ def submit_answers(
         ChildAppEventKind.ANSWERS,
         payload,
         level=worst,
-        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text,
+        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text or followup,
     )
     db.commit()
 

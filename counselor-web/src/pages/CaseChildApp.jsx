@@ -41,7 +41,12 @@ function FeedItem({ event }) {
     );
   }
   if (event.kind !== 'ANSWERS') {
-    const label = event.kind === 'LINKED' ? '아이가 앱을 연결했어요' : `질문 ${event.payload.count}개를 보냈어요`;
+    const label =
+      event.kind === 'LINKED'
+        ? '아이가 앱을 연결했어요'
+        : event.payload.withdrawn
+          ? `보낸 질문 ${event.payload.count}개를 취소했어요`
+          : `질문 ${event.payload.count}개를 보냈어요`;
     return (
       <div className="note" style={{ padding: '10px 0', borderTop: '1px solid #E8E5DD' }}>
         {dateTime(event.created_at)} · {label}
