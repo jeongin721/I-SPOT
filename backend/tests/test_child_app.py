@@ -732,3 +732,95 @@ def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
 
     admin = client.get(url, headers=admin_headers).json()["data"][0]
     assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None
+
+
+def _approve(client: TestClient, headers: Headers, case_id: str, draft: dict, approved: bool = True) -> dict:
+    question = draft["items"][0]["questions"][0]["id"]
+    url = f"{AI_URL.format(case_id)}/{draft['id']}/questions/{question}/approval"
+    response = client.put(url, json={"approved": approved}, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def _bank_answers() -> dict:
+    return {"answers": [{"question_id": "sleep", "choice_index": 0}, {"question_id": "home", "choice_index": 0}, {"question_id": "safe", "choice_index": 2}]}
+
+
+def test_approval_while_child_answers_keeps_answers_and_carries_question(
+    client: TestClient, counselor_headers: Headers, case: dict, ai_generator, db
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+    seen = _home(client, device)["pending"]
+
+    _approve(client, counselor_headers, case["id"], draft)
+    response = client.post(f"/api/v1/child-app/question-sets/{seen['id']}/answers", json=_bank_answers(), headers=device)
+    assert response.status_code == 200, response.text
+
+    carried = _home(client, device)["pending"]
+    assert carried["id"] != seen["id"] and [q["id"] for q in carried["questions"]] == [draft["items"][0]["questions"][0]["id"]]
+    view = _view(client, counselor_headers, case["id"])
+    assert view["feed"][0]["payload"]["items"][2]["answer"] == "안전하지 않아요"
+    # 화면은 새 답의 초안을 보이므로, 지난 초안의 질문이 넘긴 묶음을 가리키는지는 표에서 본다.
+    from app.models.child_app import ChildAppAiDraft
+
+    db.expire_all()
+    stored = db.scalars(select(ChildAppAiDraft)).one().items[0]["questions"][0]
+    assert stored["question_set_id"] == carried["id"]
+
+
+def test_withdrawal_while_child_answers_drops_only_that_answer(
+    client: TestClient, counselor_headers: Headers, case: dict, ai_generator, db
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+    _approve(client, counselor_headers, case["id"], draft)
+    seen = _home(client, device)["pending"]
+    ai_id = seen["questions"][-1]["id"]
+
+    _approve(client, counselor_headers, case["id"], draft, approved=False)
+    answers = _bank_answers()
+    answers["answers"].append({"question_id": ai_id, "choice_index": 0})
+    assert client.post(f"/api/v1/child-app/question-sets/{seen['id']}/answers", json=answers, headers=device).status_code == 200
+    assert _home(client, device)["pending"] is None
+
+    # 알 수 없는 문항 답이나 빠진 기본 문항은 여전히 거절한다.
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+    pending = _home(client, device)["pending"]
+    bad = {"answers": [{"question_id": "sleep", "choice_index": 0}, {"question_id": "home", "choice_index": 0}]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=bad, headers=device).status_code == 400
+
+    feed = _view(client, counselor_headers, case["id"])["feed"]
+    assert any(event["payload"].get("withdrawn") for event in feed)
+    assert db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_QUESTION_WITHDRAWN)).one()
+
+
+def test_followup_answer_needs_check_and_closed_case_gets_no_draft(
+    client: TestClient, counselor_headers: Headers, case: dict, ai_generator, db
+) -> None:
+    from app.core.enums import CaseStatus
+    from app.models.case import Case
+
+    device = _linked(client, counselor_headers, case["id"])
+    _ai_answer(client, counselor_headers, device, case["id"])
+    draft = _draft(client, counselor_headers, case["id"])
+    for alert in _view(client, counselor_headers, case["id"])["open_alerts"]:
+        client.post(f"/api/v1/cases/{case['id']}/child-app/alerts/{alert['id']}/ack", headers=counselor_headers)
+
+    _approve(client, counselor_headers, case["id"], draft)
+    pending = _home(client, device)["pending"]
+    answer = {"answers": [{"question_id": pending["questions"][0]["id"], "choice_index": 0}]}
+    assert client.post(f"/api/v1/child-app/question-sets/{pending['id']}/answers", json=answer, headers=device).status_code == 200
+
+    view = _view(client, counselor_headers, case["id"])
+    assert view["feed"][0]["level"] == "NONE"
+    assert [alert["reason"] for alert in view["open_alerts"]] == ["FOLLOWUP_ANSWER"]
+
+    _ai_answer(client, counselor_headers, device, case["id"])
+    db.get(Case, uuid.UUID(case["id"])).status = CaseStatus.CLOSED
+    db.commit()
+    assert client.post(AI_URL.format(case["id"]), headers=counselor_headers).status_code == 409

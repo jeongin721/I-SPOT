@@ -211,6 +211,8 @@ def create_draft(db: Session, case: Case, user: User) -> ChildAppAiDraft:
     """가장 최근 답의 초안을 만든다. 이미 있으면 그대로 돌려준다."""
 
     child_app_service.ensure_assigned(case, user)
+    # 종결 사례의 아이 답은 외부로 보내지 않는다(민규 #165 리뷰 2).
+    child_app_service.ensure_active(case)
 
     if not is_enabled():
         raise APIError(ErrorCode.CHILD_APP_AI_DISABLED, "AI 초안 기능이 꺼져 있습니다.", status_code=503)
@@ -366,7 +368,24 @@ def _find_question(items: List[Dict[str, Any]], question_id: str) -> Dict[str, A
     raise not_found(ErrorCode.NOT_FOUND, "추가 질문을 찾을 수 없습니다.")
 
 
-def _unsend(db: Session, question: Dict[str, Any]) -> None:
+def move_questions(db: Session, case_id: uuid.UUID, question_ids: set, set_id: uuid.UUID) -> None:
+    """아이가 답한 묶음에서 다음 묶음으로 넘긴 AI 질문이 초안에서도 새 묶음을 가리키게 한다."""
+
+    for row in db.scalars(select(ChildAppAiDraft).where(ChildAppAiDraft.case_id == case_id).with_for_update()):
+        items = copy.deepcopy(row.items)
+        changed = False
+
+        for item in items:
+            for question in item["questions"]:
+                if question["id"] in question_ids:
+                    question["question_set_id"] = str(set_id)
+                    changed = True
+
+        if changed:
+            row.items = items
+
+
+def _unsend(db: Session, case: Case, user: User, question: Dict[str, Any], ip_address: Optional[str]) -> None:
     set_id = question.get("question_set_id")
 
     if not set_id:
@@ -383,6 +402,19 @@ def _unsend(db: Session, question: Dict[str, Any]) -> None:
 
         if not remaining:
             target.status = ChildQuestionSetStatus.REPLACED
+
+        # 피드에는 '보냈어요' 가 남아 있으니 취소도 한 줄 남기고, 감사 기록에도 남긴다(민규 #165 리뷰 낮음).
+        db.add(ChildAppEvent(case_id=case.id, kind=ChildAppEventKind.QUESTIONS_SENT, payload={"count": 1, "withdrawn": True}))
+        audit_service.record(
+            db,
+            action=AuditAction.CHILD_APP_QUESTION_WITHDRAWN,
+            entity_type="child_question_set",
+            entity_id=target.id,
+            actor_id=user.id,
+            case_id=case.id,
+            detail={"count": 1},
+            ip_address=ip_address,
+        )
 
     question["question_set_id"] = None
 
@@ -451,7 +483,7 @@ def update_question(
     row = _locked_draft(db, case, user, draft_id)
     items = copy.deepcopy(row.items)
     question = _find_question(items, question_id)
-    _unsend(db, question)
+    _unsend(db, case, user, question, ip_address)
     question["text"] = payload.text
     question["options"] = payload.options
     question["edited"] = True
@@ -479,7 +511,7 @@ def set_approval(
         question["question_set_id"] = None
         _send(db, case, user, question, ip_address)
     else:
-        _unsend(db, question)
+        _unsend(db, case, user, question, ip_address)
 
     row.items = items
     db.commit()
