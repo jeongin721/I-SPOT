@@ -59,6 +59,11 @@ def link_device(payload: ChildLinkRequest, request: Request, db: DbSession) -> D
     return DataResponse(data=ChildLinkResponse(device_token=token))
 
 
+@device_router.post("/unlink", status_code=status.HTTP_204_NO_CONTENT, summary="아이 앱 연결 해지(기기에서)")
+def unlink_device(request: Request, db: DbSession, link: CurrentChildLink) -> None:
+    child_app_service.unlink_device(db, link, client_ip(request))
+
+
 @device_router.get("/home", response_model=DataResponse[ChildHomeResponse])
 def get_home(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildHomeResponse]:
     return DataResponse(data=child_app_service.get_home(db, link))

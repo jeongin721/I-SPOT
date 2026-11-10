@@ -470,6 +470,30 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
     db.commit()
 
 
+def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) -> None:
+    """아이가 앱 설정에서 해지한다. 연결 행을 지워 상담사가 새 코드를 만들 수 있게 하고, 답하지 않은 질문은 거둔다.
+    받은 답 · 알림 기록(피드)은 그대로 둔다."""
+
+    case_id = link.case_id
+    db.execute(
+        update(ChildQuestionSet)
+        .where(ChildQuestionSet.case_id == case_id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING)
+        .values(status=ChildQuestionSetStatus.REPLACED)
+    )
+    _add_event(db, case_id, ChildAppEventKind.UNLINKED, {})
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_UNLINKED,
+        entity_type="child_app_link",
+        entity_id=link.id,
+        case_id=case_id,
+        detail={"by": "device"},
+        ip_address=ip_address,
+    )
+    db.delete(link)
+    db.commit()
+
+
 def link_device(db: Session, code: str, ip_address: Optional[str]) -> str:
     signup_service._check_ip("child_app_link", ip_address, LINK_IP_LIMIT)
     invalid = APIError(ErrorCode.INVALID_CHILD_CODE, "연결 코드를 다시 확인해 주세요.", status_code=400)

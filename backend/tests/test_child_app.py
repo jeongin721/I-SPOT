@@ -859,3 +859,20 @@ def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
 
     admin = client.get(url, headers=admin_headers).json()["data"][0]
     assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None
+
+
+def test_device_unlink_lets_counselor_link_again(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+
+    assert client.post("/api/v1/child-app/unlink").status_code == 401
+    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    assert client.get("/api/v1/child-app/home", headers=device).status_code == 401
+
+    view = _view(client, counselor_headers, case["id"])
+    assert view["status"] == "NOT_LINKED" and view["has_pending_questions"] is False
+    assert view["feed"][0]["kind"] == "UNLINKED"
+    assert db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_UNLINKED)).one()
+
+    again = _linked(client, counselor_headers, case["id"])
+    assert _home(client, again)["pending"] is None
