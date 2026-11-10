@@ -3,17 +3,23 @@
 // 연결 전이면 아이 연계(아이 상세)에서 연결하라고 안내한다.
 import { useState } from 'react';
 import A from './A';
+import { useSentToast } from './SentToast';
 import { screenHref } from '../data/screens/links';
 
 export default function ChildQuestionSender({ app, caseId, bare = false }) {
   const [picked, setPicked] = useState([]);
+  const [toast, showToast] = useSentToast();
   const data = app.data;
-  if (!data) return null;
+  if (!data) return toast;
 
   const toggle = (id) => setPicked((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
   const canSend = picked.length >= 3 && picked.length <= 4 && !app.busy;
   const send = async () => {
-    if (await app.sendQuestions(picked)) setPicked([]);
+    const count = picked.length;
+    if (await app.sendQuestions(picked)) {
+      setPicked([]);
+      showToast(`아이에게 질문 ${count}개를 보냈어요`);
+    }
   };
 
   let body;
@@ -53,6 +59,7 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
   if (bare) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {toast}
         <b>{title}</b>
         {body}
       </div>
@@ -60,6 +67,7 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
   }
   return (
     <section className="card" aria-label="질문 보내기" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {toast}
       <h2 className="h2">{title}</h2>
       {body}
     </section>

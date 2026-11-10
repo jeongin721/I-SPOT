@@ -8,6 +8,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import ChildQuestionSender from '../components/ChildQuestionSender';
+import { useSentToast } from '../components/SentToast';
 import NotiBell from '../components/NotiBell';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
@@ -223,13 +224,19 @@ export default function ChildDetail(props) {
   const enabled = session.status === 'signedIn' && !!caseId;
   const detail = useCaseDetail(caseId, { enabled });
   const app = useCaseChildApp(caseId, enabled);
+  const [toast, showToast] = useSentToast();
   const info = detail.caseInfo;
   const live =
     caseId && app.data && info
       ? childDetailValues(app.data, info, {
           saveNote: app.saveAiNote,
           saveQuestion: app.saveAiQuestion,
-          setApproval: app.setAiApproval,
+          // 승인하면 바로 아이 앱으로 가므로 보냈다는 알림을 띄운다(11/10).
+          setApproval: async (draftId, id, approved) => {
+            if (await app.setAiApproval(draftId, id, approved)) {
+              showToast(approved ? '추가 질문을 아이 앱으로 보냈어요' : '보낸 추가 질문을 취소했어요');
+            }
+          },
         })
       : null;
   // 아이 글이 외부 AI 로 나가므로 상담사가 단추를 누를 때만 만든다(민규 #165 리뷰 4).
@@ -280,6 +287,7 @@ export default function ChildDetail(props) {
             gap: '20px',
           }}
         >
+          {toast}
           <div className="thm-bar">
             <NotiBell session={session} />
             <ThemeToggle />
