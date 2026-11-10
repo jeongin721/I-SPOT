@@ -5,14 +5,18 @@
 //  - 첫 페이지 미리보기: 그림은 그대로, 글(서버가 뽑은 앞부분)은 첫 줄을 제목으로, 그 밖은 형식 표시.
 //  - 지우기는 관리자에게만 보이고, 확인 창을 거친다(디자인에 없어 사례 삭제 창의 틀을 쓴다).
 //  - 올리기는 지금 고른 폴더에(전체 문서면 '폴더 없음'). 정렬 기본은 날짜 최신순(디자인과 같다 — 누르면 방향이 바뀐다).
+//  - 빈 양식(11/09 디자인, src/data/blankForms.ts): 서버 문서가 아니라 화면에 들어 있는 6종이다. '빈 양식' 칸과 전체 문서에 함께 보이고
+//    같이 정렬된다. 옮기기 · 지우기가 없고, 입력한 내용은 저장하지 않는다.
 
 import type { DocboxFile } from "../../api/types";
+import { BLANK_FORM_DATE, BLANK_FORMS, blankFormById, downloadBlankForm } from "../blankForms";
+import type { BlankForm } from "../blankForms";
 import type { AuthSession } from "../useAuthSession";
 import type { DocBoxState } from "../useDocBox";
 import { screenNotice } from "./common";
 
 export interface DocBoxUiState {
-  /** 'all' · 'none'(폴더 없음) · 폴더 id. */
+  /** 'all' · 'none'(폴더 없음) · 'blank-forms'(빈 양식) · 폴더 id. */
   cur: string;
   /** 정렬. null 이면 날짜 최신순(디자인 기본). */
   pk: { k: "date" | "name"; first: boolean } | null;
@@ -21,10 +25,12 @@ export interface DocBoxUiState {
   msg: string;
   /** 지우기 확인 창의 대상. */
   deleting: { id: string; name: string } | null;
+  /** 열려 있는 빈 양식. 입력값은 창(BlankFormDialog)이 들고 있다. */
+  form: { id: string; editing: boolean } | null;
 }
 
 export function initialDocBoxState(): DocBoxUiState {
-  return { cur: "all", pk: null, adding: false, newName: "", msg: "", deleting: null };
+  return { cur: "all", pk: null, adding: false, newName: "", msg: "", deleting: null, form: null };
 }
 
 interface DocBoxInput {
@@ -35,6 +41,7 @@ interface DocBoxInput {
 }
 
 const NONE = "none";
+const FORMS = "blank-forms";
 
 function fmtSize(n: number): string {
   return n < 1024 ? `${n}B` : n < 1048576 ? `${Math.round(n / 102.4) / 10}KB` : `${Math.round(n / 104857.6) / 10}MB`;
@@ -61,7 +68,11 @@ export function docBoxValues(input: DocBoxInput) {
   const inFolder = (file: DocboxFile) =>
     s.cur === "all" || (s.cur === NONE ? file.folder_id === null : file.folder_id === s.cur);
 
-  const folders = [{ id: "all", name: "전체 문서", count: files.length }, ...folderList].map((f) => ({
+  const folders = [
+    { id: "all", name: "전체 문서", count: files.length + BLANK_FORMS.length },
+    { id: FORMS, name: "빈 양식", count: BLANK_FORMS.length },
+    ...folderList,
+  ].map((f) => ({
     name: f.name,
     count: f.count,
     cls: s.cur === f.id ? "fold on" : "fold",
@@ -72,15 +83,39 @@ export function docBoxValues(input: DocBoxInput) {
   const pk = s.pk;
   const sk = pk ? pk.k : "date";
   const first = pk ? pk.first : true;
-  let list = files.filter(inFolder);
-  list =
+  const shownForms = s.cur === "all" || s.cur === FORMS ? BLANK_FORMS : [];
+  const list: { name: string; date: string; file?: DocboxFile; form?: BlankForm }[] = [
+    ...shownForms.map((form) => ({ name: form.name, date: BLANK_FORM_DATE, form })),
+    ...files.filter(inFolder).map((file) => ({ name: file.name, date: file.created_at, file })),
+  ];
+  list.sort((a, b) =>
     sk === "date"
-      ? list.slice().sort((a, b) => (first ? b.created_at.localeCompare(a.created_at) : a.created_at.localeCompare(b.created_at)))
-      : list.slice().sort((a, b) => (first ? a.name.localeCompare(b.name, "ko") : b.name.localeCompare(a.name, "ko")));
+      ? first
+        ? b.date.localeCompare(a.date)
+        : a.date.localeCompare(b.date)
+      : first
+        ? a.name.localeCompare(b.name, "ko", { numeric: true })
+        : b.name.localeCompare(a.name, "ko", { numeric: true }),
+  );
 
   const opts = [{ id: NONE, name: "폴더 없음" }, ...folderList.map((f) => ({ id: f.id, name: f.name }))];
 
-  const docs = list.map((d) => {
+  const formDoc = (form: BlankForm) => ({
+    key: `form-${form.id}`,
+    isForm: true,
+    formId: form.id,
+    name: form.name,
+    meta: `${BLANK_FORM_DATE} · 빈 양식 · ${form.pages}쪽`,
+    viewLabel: `${form.name} 내용 보기`,
+    view: () => setState({ form: { id: form.id, editing: false } }),
+    open: () => setState({ form: { id: form.id, editing: true } }),
+    download: () =>
+      setState({
+        msg: downloadBlankForm(form) ? `‘${form.name}’ 내려받기를 시작했어요` : "이 환경에서는 내려받기를 할 수 없어요",
+      }),
+  });
+
+  const fileDoc = (d: DocboxFile) => {
     const lines = (d.preview_text ?? "").split("\n");
     const url = box.imageUrls[d.id] ?? "";
     const isImg = d.preview_kind === "image" && !!url;
@@ -114,7 +149,9 @@ export function docBoxValues(input: DocBoxInput) {
         if (await box.move(d.id, target)) setState({ msg: `‘${d.name}’을(를) ${fname(target)}(으)로 옮겼어요` });
       },
     };
-  });
+  };
+
+  const docs = list.map((entry) => (entry.form ? formDoc(entry.form) : fileDoc(entry.file as DocboxFile)));
 
   const onUpload = async (e: { target: { files?: FileList | null; value: string } }) => {
     const picked = Array.from(e?.target?.files ?? []);
@@ -124,9 +161,10 @@ export function docBoxValues(input: DocBoxInput) {
       /* 같은 파일을 다시 고를 수 있게 비운다 */
     }
     if (!picked.length || box.busy) return;
-    const folder = s.cur === "all" || s.cur === NONE ? null : s.cur;
+    const folder = s.cur === "all" || s.cur === NONE || s.cur === FORMS ? null : s.cur;
     const count = await box.upload(picked, folder);
-    if (count > 0) setState({ msg: `${count}개 문서를 ${fname(folder)}에 올렸어요` });
+    // 빈 양식 칸에서 올린 문서는 그 칸에 보이지 않으므로 전체 문서로 옮겨 보여 준다.
+    if (count > 0) setState({ msg: `${count}개 문서를 ${fname(folder)}에 올렸어요`, cur: s.cur === FORMS ? "all" : s.cur });
   };
 
   const sorts = (
@@ -162,10 +200,17 @@ export function docBoxValues(input: DocBoxInput) {
     setState(done ? { deleting: null, msg: `‘${target.name}’을(를) 지웠어요` } : { deleting: null });
   };
 
-  const curName = s.cur === "all" ? "전체 문서" : s.cur === NONE ? "폴더 없음" : fname(s.cur);
+  const curName = s.cur === "all" ? "전체 문서" : s.cur === FORMS ? "빈 양식" : s.cur === NONE ? "폴더 없음" : fname(s.cur);
   const msg = box.actionError ?? (box.busy ? "처리하는 중…" : s.msg);
+  const openForm = s.form ? blankFormById(s.form.id) : null;
 
   return {
+    openForm: openForm && s.form ? { id: openForm.id, name: openForm.name, editing: s.form.editing } : null,
+    editForm: () => setState({ form: s.form ? { ...s.form, editing: true } : null }),
+    closeForm: () => setState({ form: null }),
+    downloadForm: () => {
+      if (openForm) downloadBlankForm(openForm);
+    },
     notice: screenNotice({ session, loading: box.loading && !data, error: box.error, retry: box.reload }),
     folders,
     docs,

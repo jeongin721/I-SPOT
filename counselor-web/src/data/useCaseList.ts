@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getToken } from "../api/client";
 import { cases } from "../api/endpoints";
-import type { CaseListSort, CaseStatus } from "../api/types";
+import type { CaseListOrder, CaseListSort, CaseStatus } from "../api/types";
 import { toCaseRow, type CaseRow } from "./caseRows";
 
 /** 한 번에 받는 최대 건수. Backend 상한(page_size ≤ 100)과 같다. */
@@ -27,6 +27,10 @@ export interface CaseListOptions {
   withNames?: boolean;
   /** 서버 정렬(신고접수일 · 위험도). 없으면 등록 최신순. */
   sort?: CaseListSort;
+  /** desc(신고접수일 최신 · 위험도 상부터) · asc(반대). sort 가 있을 때만 쓴다. */
+  order?: CaseListOrder;
+  /** 한 쪽 건수. 기본 CASE_PAGE_SIZE. */
+  pageSize?: number;
 }
 
 export interface CaseListState {
@@ -46,6 +50,8 @@ export function useCaseList({
   enabled = true,
   withNames = false,
   sort,
+  order,
+  pageSize = CASE_PAGE_SIZE,
 }: CaseListOptions = {}): CaseListState {
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -83,10 +89,11 @@ export function useCaseList({
         cases
           .list({
             page,
-            page_size: CASE_PAGE_SIZE,
+            page_size: pageSize,
             status,
             search: query || undefined,
             sort,
+            ...(sort && order ? { order } : {}),
             ...(withNames ? { with_child_name: true } : {}),
           })
           .then((result) => {
@@ -115,7 +122,7 @@ export function useCaseList({
       window.clearTimeout(timer);
       cancelled = true;
     };
-  }, [enabled, query, status, page, withNames, sort, reloadKey]);
+  }, [enabled, query, status, page, pageSize, withNames, sort, order, reloadKey]);
 
   // 켜진 직후 첫 조회가 시작되기 전 한 번의 그리기에서도 '불러오는 중'으로 보이게 한다(빈 목록으로 깜빡이지 않게).
   const waitingFirst = enabled && total === null && error === null;

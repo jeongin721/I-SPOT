@@ -145,6 +145,7 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
 
 # 목록 정렬(API_CONTRACT 4절). 없으면 등록 최신순.
 CaseSort = Literal["report_date", "risk"]
+CaseSortOrder = Literal["desc", "asc"]
 
 
 def list_cases(
@@ -156,6 +157,7 @@ def list_cases(
     status: Optional[CaseStatus] = None,
     search: Optional[str] = None,
     sort: Optional[CaseSort] = None,
+    order: CaseSortOrder = "desc",
 ) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str], Optional[RiskLevel]]], int]:
     conditions = []
 
@@ -201,7 +203,7 @@ def list_cases(
         select(Case, _last_session_at_subquery(), User.name, risk_level)
         .outerjoin(User, User.id == Case.counselor_id)
         .where(*conditions)
-        .order_by(*_case_order(sort, risk_level))
+        .order_by(*_case_order(sort, risk_level, order))
         .offset(offset)
         .limit(limit)
     ).all()
@@ -211,23 +213,25 @@ def list_cases(
     return cases, total
 
 
-def _case_order(sort: Optional[CaseSort], risk_level) -> list:
-    """목록 순서. 값이 없는 사례는 맨 뒤고, 같은 값끼리는 등록 최신순이다(id 는 쪽을 넘겨도 순서가 흔들리지 않게)."""
+def _case_order(sort: Optional[CaseSort], risk_level, order: CaseSortOrder = "desc") -> list:
+    """목록 순서. desc 는 신고접수일 최신 · 위험도 상부터, asc 는 그 반대다(11/09 디자인 ↑ · ↓). 어느 쪽이든 값이 없는 사례는 맨 뒤고, 같은 값끼리는 등록 최신순이다(id 는 쪽을 넘겨도 순서가 흔들리지 않게)."""
 
     latest_first = [Case.created_at.desc(), Case.id.desc()]
 
     if sort == "report_date":
-        return [Case.report_date.desc().nulls_last(), *latest_first]
+        column = Case.report_date.asc() if order == "asc" else Case.report_date.desc()
+        return [column.nulls_last(), *latest_first]
 
     if sort == "risk":
         # 목록에 보이는 값과 같은 순서: 회차 상담원 판단, 판단 전이면 서식 4 위험도(우선).
         def _is(level: RiskLevel):
             return or_(risk_level == level, and_(risk_level.is_(None), Case.counselor_risk_level == level))
 
-        rank = sql_case((_is(RiskLevel.HIGH), 3), (_is(RiskLevel.MEDIUM), 2), (_is(RiskLevel.LOW), 1), else_=0)
+        high, low = (1, 3) if order == "asc" else (3, 1)
+        rank = sql_case((_is(RiskLevel.HIGH), high), (_is(RiskLevel.MEDIUM), 2), (_is(RiskLevel.LOW), low), else_=0)
         return [rank.desc(), *latest_first]
 
-    return [Case.created_at.desc()]
+    return latest_first
 
 
 def _risk_level_subquery():

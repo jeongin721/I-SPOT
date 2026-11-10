@@ -749,3 +749,181 @@ def test_heading_only_line_is_not_glued_to_body(source: str) -> None:
     assert dn.keep_copied("다음 주 재상담 예정.", source) == "다음 주 재상담 예정."
     cleaned = dn.clean_note({"note": {"statement": "아동은 학교에 가기 싫다고 함.", "opinion": "다음 주 재상담 예정."}}, source)
     assert cleaned["note"]["statement"] and cleaned["note"]["opinion"]
+
+
+# ---------------- 문서 회차 학대 신호 · 대화 주제(2026-11-04) ----------------
+
+from ai.modeling.abuse import document_signals as ds  # noqa: E402
+
+SIGNALS = {
+    "abuse_signals": [
+        {"abuse_type": "EMOTIONAL", "detected": True, "segment_ids": ["doc_002"], "detection_source": "MODEL", "filtered_reason": None},
+        {"abuse_type": "PHYSICAL", "detected": False, "segment_ids": [], "detection_source": None, "filtered_reason": None},
+    ],
+    "risk_utterances": [
+        {"text": "음주 후 고성이 있었음.", "segment_ids": ["doc_002"], "abuse_type": "EMOTIONAL", "subtype": "가정폭력·폭력상황 노출",
+         "evidence_strength": "MEDIUM", "reason": "", "evidence_verified": True, "legal_references": []},
+    ],
+    "severity_ratings": [{"major_type": "정서학대", "level": 2, "reason": "가상", "matched_evidence": "", "reviewed": False}],
+    "topic_tags": [{"topic": "보호자 관계", "segment_ids": ["doc_001", "doc_002"], "quote": "부의 음주가 계속됨.", "start_ms": None}],
+    "model": "m",
+}
+
+
+@pytest.fixture
+def signals_module(monkeypatch, modeling):
+    calls = {}
+    module = types.ModuleType("ai.modeling.abuse.document_signals")
+
+    def analyze_document_signals(text, known_identifiers=None, deadline=None):
+        calls["text"] = text
+        if calls.get("raise"):
+            raise calls["raise"]
+        return dict(SIGNALS)
+
+    module.analyze_document_signals = analyze_document_signals
+    monkeypatch.setitem(sys.modules, "ai.modeling.abuse.document_signals", module)
+    return calls
+
+
+def _history(client: TestClient, headers, case_id: str, session_id: str) -> dict:
+    rows = client.get(f"/api/v1/cases/{case_id}/signal-history", headers=headers).json()["data"]["sessions"]
+    return next(row for row in rows if row["session_id"] == session_id)
+
+
+def test_document_upload_fills_signal_history(client: TestClient, counselor_headers, case: dict, session: dict, signals_module) -> None:
+    """문서를 올리면 뒤에서 신호 · 주제를 만들어 상담 이력(주제 비중 · 세부 신호)이 녹음 회차처럼 읽는다."""
+
+    assert _upload(client, counselor_headers, session["id"]).status_code == 201
+
+    row = _history(client, counselor_headers, case["id"], session["id"])
+    assert row["analysis_status"] == "COMPLETED"
+    assert [t["topic"] for t in row["topics"]] == ["보호자 관계"] and row["topics"][0]["count"] == 2
+    # 근거가 기록 문장이라 '화자 확인 중' 보류가 아니다.
+    assert row["subtypes"] == [
+        {"abuse_type": "EMOTIONAL", "subtype": "가정폭력·폭력상황 노출", "count": 1, "segment_ids": ["doc_002"], "pending": False}
+    ]
+    emotional = next(t for t in row["types"] if t["abuse_type"] == "EMOTIONAL")
+    assert emotional["detected"] is True and emotional["ai_level"] == 2
+    analysis = client.get(f"/api/v1/sessions/{session['id']}/analysis", headers=counselor_headers).json()["data"]["analysis"]
+    assert analysis["provider"] == "document" and analysis["transcript_id"] is None
+    # 회차는 3단계 그대로다(분석이 회차 상태를 바꾸지 않는다).
+    detail = client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).json()["data"]
+    assert detail["status"] == "AI_REVIEW_REQUIRED" and detail["source"] == "DOCUMENT"
+    assert "부의 음주" in signals_module["text"]
+
+
+def test_document_signal_failure_keeps_the_session(client: TestClient, counselor_headers, case: dict, session: dict, signals_module) -> None:
+    signals_module["raise"] = RuntimeError("원문이 섞인 예외")
+
+    assert _upload(client, counselor_headers, session["id"]).status_code == 201
+
+    row = _history(client, counselor_headers, case["id"], session["id"])
+    assert row["analysis_status"] == "FAILED" and row["topics"] is None
+    analysis = client.get(f"/api/v1/sessions/{session['id']}/analysis", headers=counselor_headers).json()["data"]["analysis"]
+    assert "원문" not in (analysis["error"]["message"] or "")
+    detail = client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).json()["data"]
+    assert detail["status"] == "AI_REVIEW_REQUIRED"
+
+
+def test_no_document_signals_without_modeling(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    assert _upload(client, counselor_headers, session["id"]).status_code == 201
+
+    assert _history(client, counselor_headers, case["id"], session["id"])["analysis_status"] is None
+
+
+def test_document_segments_split_sentences_and_drop_headings() -> None:
+    segments = ds.document_segments("[아동 진술]\n아동은 무서웠다고 함. 방에 있었음.\n\n[소견]\n계속 확인 필요.")
+
+    assert [s["text"] for s in segments] == ["아동은 무서웠다고 함.", "방에 있었음.", "계속 확인 필요."]
+    assert [s["segment_id"] for s in segments] == ["doc_001", "doc_002", "doc_003"]
+
+
+def test_risk_utterances_keep_only_linked_evidence() -> None:
+    subtype_result = {
+        "results": [
+            {
+                "major_type": "정서학대",
+                "subtypes": [
+                    {
+                        "type": "가정폭력·폭력상황 노출",
+                        "evidences": [
+                            {"evidence": "고성", "matched_evidence": "음주 후 고성", "evidence_strength": "중간", "evidence_verified": True,
+                             "timestamps": {"segment_ids": ["doc_004"]}},
+                            {"evidence": "지어낸 근거", "evidence_verified": False, "timestamps": None},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    rows = ds.risk_utterances_from(subtype_result)
+    signals = ds.abuse_signals_from({"정서학대": {"detected": True}, "방임": {"detected": False}}, rows, ["정서학대", "방임"])
+
+    assert [(r["abuse_type"], r["subtype"], r["segment_ids"], r["evidence_strength"]) for r in rows] == [
+        ("EMOTIONAL", "가정폭력·폭력상황 노출", ["doc_004"], "MEDIUM")
+    ]
+    assert signals[0] == {"abuse_type": "EMOTIONAL", "detected": True, "segment_ids": ["doc_004"], "detection_source": "MODEL", "filtered_reason": None}
+    assert signals[1]["detected"] is False and signals[1]["detection_source"] is None
+
+
+def _segments(*sentences):
+    return [{"text": sentence} for sentence in sentences]
+
+
+def test_document_windows_overlap_two_sentences() -> None:
+    assert ds.document_windows(_segments("가.", "나.", "다.")) == ["가.\n나.", "나.\n다."]
+    assert ds.document_windows(_segments("가.")) == ["가."]
+    assert ds.document_windows([]) == []
+
+
+def test_one_window_detection_is_enough_even_if_the_whole_text_misses() -> None:
+    """글 전체에서는 묻혀도 창 하나에서 잡히면 탐지다(민규 11/09 — 머리채 · 밀침 누락)."""
+
+    def predict(text):
+        return {"신체학대": {"detected": text == "나.\n다."}, "방임": {"detected": False}}
+
+    merged = ds.major_types_over_windows(_segments("가.", "나.", "다."), predict)
+
+    assert merged == {"신체학대": {"detected": True}, "방임": {"detected": False}}
+
+
+def test_filtered_reason_is_kept_only_when_nothing_detected() -> None:
+    answers = {
+        "가.\n나.\n다.": {"성학대": {"detected": False, "filtered_reason": "부정 응답"}, "방임": {"detected": False, "filtered_reason": "부정 응답"}},
+        "가.\n나.": {"성학대": {"detected": True}, "방임": {"detected": False}},
+        "나.\n다.": {"성학대": {"detected": False}, "방임": {"detected": False}},
+    }
+
+    merged = ds.major_types_over_windows(_segments("가.", "나.", "다."), answers.__getitem__)
+
+    assert merged == {"성학대": {"detected": True}, "방임": {"detected": False, "filtered_reason": "부정 응답"}}
+
+
+def test_windows_stop_at_the_deadline() -> None:
+    with pytest.raises(TimeoutError):
+        ds.major_types_over_windows(_segments("가.", "나."), lambda text: {}, deadline=0.0)
+
+
+def test_detected_signal_without_evidence_is_dropped_with_warning() -> None:
+    """1차만 탐지하고 2차 근거 문장이 없는 유형은 저장하지 않는다(민규 11/09 — 근거 없는 '성 (확인 중)')."""
+
+    grounded = {"abuse_type": "PHYSICAL", "detected": True, "segment_ids": ["doc_001"]}
+    ungrounded = {"abuse_type": "SEXUAL", "detected": True, "segment_ids": []}
+    undetected = {"abuse_type": "NEGLECT", "detected": False, "segment_ids": []}
+
+    kept, warnings = ds.drop_ungrounded_signals([grounded, ungrounded, undetected])
+
+    assert kept == [grounded, undetected]
+    assert warnings == ["segment 근거가 없는 신호 1건을 제외했습니다."]
+    assert ds.drop_ungrounded_signals([grounded, undetected]) == ([grounded, undetected], [])
+
+
+def test_severity_of_dropped_type_is_not_kept() -> None:
+    """근거가 없어 뺀 유형의 심각도는 저장하지 않는다(민규 #164 — 신호 이력 ai_level 로 읽힘)."""
+
+    signals = [{"abuse_type": "PHYSICAL", "detected": True, "segment_ids": ["doc_001"]}, {"abuse_type": "NEGLECT", "detected": False, "segment_ids": []}]
+    physical = {"major_type": "신체학대", "level": 3}
+
+    assert ds.grounded_severity_ratings([physical, {"major_type": "성학대", "level": 3}, {"major_type": "방임", "level": 1}], signals) == [physical]

@@ -604,13 +604,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순)
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순), `order`(`desc|asc`, 기본 `desc`, `sort` 가 있을 때만 쓴다)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
   - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
 - 각 줄의 `risk_level`(`HIGH|MEDIUM|LOW|null`)은 AI 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED`·`APPROVED`)의 상담원 판단(회차 전체)이다. 그 회차를 판단하기 전이면 `null` 이고, 앞 회차 판단이나 AI 심각도로 채우지 않는다
   - 화면은 이 값을 먼저 쓰고, `null` 이면 `counselor_risk_level`(위험도(우선))을 보인다. 둘 다 상담원이 고른 값이다(2026-11-06)
-- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다(화면에 보이는 값과 같은 기준 — 회차 판단, 없으면 위험도(우선)). 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
+- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다(화면에 보이는 값과 같은 기준 — 회차 판단, 없으면 위험도(우선)). `order=asc` 는 그 반대(신고접수일 오래된순 · 하 → 중 → 상)다. 어느 쪽이든 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
 - `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
   열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
   빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
@@ -2735,6 +2735,17 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
   "created_at": "…"
 }
 ```
+
+### 문서 회차 학대 신호 · 대화 주제 (2026-11-04)
+
+- `AI_PROVIDER=modeling` 서버는 업로드 응답 뒤(백그라운드) 문서 원문으로 신호 분석 행을 하나 만든다 —
+  `ai_analyses` 행(`provider: "document"`, `transcript_id: null`), 끝나면 `COMPLETED` · 실패 · 제한 시간(`DOCUMENT_SIGNALS_TIMEOUT_SECONDS`, 기본 240초)이면 `FAILED`.
+  회차 상태는 바꾸지 않는다(3단계 그대로). 다른 서버는 만들지 않는다.
+- 흐름(`ai/modeling/abuse/document_signals.py`): 문장 나누기(`doc_001`…) → 1차 상담일지 전용 모델(글 전체 + 문장 2개씩 겹친 창을 판정해 유형별로 합침) → 2차 세부 유형 · 근거 문장 → 유형별 심각도 · 대화 주제. 1차가 탐지했어도 근거 문장이 없는 유형은 빼고 `warnings` 에 "segment 근거가 없는 신호 n건을 제외했습니다." 를 남긴다.
+  결과는 4절 계약의 신호 칸(`abuse_signals` · `risk_utterances` · `severity_ratings` · `topic_tags`)만 채우고 나머지는 빈 값이다.
+- 그래서 사례 신호 이력(`GET /cases/{id}/signal-history`)의 주제 비중 · 회차별 세부 신호 · 처음 나온 이야기가 녹음 회차처럼 읽는다.
+  근거가 기록 문장이라 `subtypes[].pending` 은 늘 `false`, `topics[].start_ms` 는 `null`. 주제 비중은 문장 수 기준이다. AI 제안이며 학대 여부를 확정하지 않는다.
+- `GET …/analysis` 도 이 행을 돌려준다(문서 회차의 재분석 `POST …/analysis` 는 그대로 `409`).
 
 ### GET /api/v1/sessions/{session_id}/source-document → 200
 
