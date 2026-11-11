@@ -2,6 +2,8 @@
 #
 #  - 회차마다 한 행(session_briefing_checks)에 확인함으로 표시한 문장 목록을 둔다. 확인 사항 목록이 저장 전(AI 초안)이어도 된다.
 #  - 한 번에 문장 하나를 켜고 끈다. 행을 잠그고(PostgreSQL FOR UPDATE) 바꿔서 웹 · 폰이 동시에 눌러도 다른 쪽 표시를 지우지 않는다.
+#  - 화면이 지금 보이는 문장 목록(visible)을 같이 보내면, 거기 없는 옛 문장(목록을 고쳐 사라진 줄)의 체크를 지운다. 그래도 상한(60)에
+#    닿으면 가장 오래 전에 켠 것을 밀어낸다 — 지금 보이는 줄을 켤 때 422 가 나지 않게(민규 #176 1).
 #  - 볼 수 있는 회차만(get_session_or_404 — 담당 상담사 · 관리자). 회차 상태는 따지지 않는다(브리핑은 승인 뒤에도 본다).
 #  - 감사 기록에는 켬 · 끔과 개수만 남기고 문장은 넣지 않는다(확인 사항은 아동 진술을 이어받을 수 있다).
 
@@ -13,7 +15,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.enums import AuditAction
-from app.core.errors import APIError, ErrorCode
 from app.models.briefing_check import BRIEFING_CHECKS_MAX, SessionBriefingChecks
 from app.models.session import ConsultationSession
 from app.models.user import User
@@ -42,23 +43,22 @@ def to_response(session_id: uuid.UUID, row: Optional[SessionBriefingChecks]) -> 
 def toggle(db: Session, session: ConsultationSession, user: User, payload: BriefingCheckToggleRequest) -> Optional[SessionBriefingChecks]:
     for attempt in range(2):
         row = get_row(db, session.id, lock=True)
-        current: List[str] = list(row.checked or []) if row else []
-        changed = False
+        before: List[str] = list(row.checked or []) if row else []
+        current = before
+
+        if payload.visible is not None:
+            shown = set(payload.visible) | {payload.text}
+            current = [text for text in current if text in shown]
 
         if payload.checked and payload.text not in current:
-            if len(current) >= BRIEFING_CHECKS_MAX:
-                raise APIError(
-                    ErrorCode.VALIDATION_ERROR,
-                    f"확인함은 한 회차에 {BRIEFING_CHECKS_MAX}개까지 표시할 수 있습니다.",
-                    status_code=422,
-                )
-            current.append(payload.text)
-            changed = True
+            # 상한에 닿으면 가장 오래 전에 켠 것을 밀어낸다.
+            while len(current) >= BRIEFING_CHECKS_MAX:
+                current = current[1:]
+            current = current + [payload.text]
         elif not payload.checked and payload.text in current:
             current = [text for text in current if text != payload.text]
-            changed = True
 
-        if not changed:
+        if current == before:
             db.rollback()
             return row
 

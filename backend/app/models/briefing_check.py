@@ -14,6 +14,8 @@ from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 #: 한 회차에 확인함으로 둘 수 있는 문장 수 · 문장 길이 상한(확인 사항 20개 + 체크리스트 여유).
 BRIEFING_CHECKS_MAX = 60
 BRIEFING_CHECK_TEXT_MAX_LENGTH = 300
+#: 화면이 함께 보내는 '지금 보이는 문장' 목록 상한.
+BRIEFING_VISIBLE_MAX = 200
 
 
 class SessionBriefingChecks(UUIDPrimaryKeyMixin, TimestampMixin, Base):

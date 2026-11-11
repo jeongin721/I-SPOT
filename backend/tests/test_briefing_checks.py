@@ -58,8 +58,26 @@ def test_validation_and_limit(client: TestClient, counselor_headers, session: di
 
     for n in range(BRIEFING_CHECKS_MAX):
         assert _toggle(client, counselor_headers, session["id"], f"확인 {n}", True).status_code == 200
+    # 상한에 닿아도 지금 켜는 줄은 켜진다 — 가장 오래 전에 켠 것을 밀어낸다(민규 #176 1).
     over = _toggle(client, counselor_headers, session["id"], "하나 더", True)
-    assert over.status_code == 422
+    checked = over.json()["data"]["checked"]
+    assert over.status_code == 200 and len(checked) == BRIEFING_CHECKS_MAX
+    assert checked[-1] == "하나 더" and "확인 0" not in checked and checked[0] == "확인 1"
+
+
+def test_visible_drops_stale_lines(client: TestClient, counselor_headers, session: dict) -> None:
+    # 목록을 고쳐 문장이 바뀌면 옛 문장 체크가 남는다 → 화면이 지금 보이는 문장을 같이 보내면 정리된다.
+    _toggle(client, counselor_headers, session["id"], TEXT_A, True)
+    _toggle(client, counselor_headers, session["id"], "고치기 전 문장", True)
+    res = client.patch(
+        _url(session["id"]),
+        json={"text": TEXT_B, "checked": True, "visible": [TEXT_A, TEXT_B, "  ", "가" * 400]},
+        headers=counselor_headers,
+    )
+    assert res.status_code == 200 and res.json()["data"]["checked"] == [TEXT_A, TEXT_B]
+    # 끌 때도 정리한다.
+    res = client.patch(_url(session["id"]), json={"text": TEXT_B, "checked": False, "visible": [TEXT_B]}, headers=counselor_headers)
+    assert res.json()["data"]["checked"] == []
 
 
 def test_audit_has_no_text(client: TestClient, counselor_headers, session: dict, db) -> None:
