@@ -101,6 +101,10 @@ let lastDataElapsed = 0;
  * 일시정지로 두며 길이는 여기까지다.
  */
 let hiddenAt: number | null = null;
+/** 마지막 조각을 받은 실제 시각(Date.now). 화면이 다시 켜졌을 때 그동안 녹음이 이어졌는지 보는 데 쓴다. */
+let lastChunkWall = 0;
+/** 화면이 다시 켜졌을 때, 마지막 조각이 이보다 오래전이면 그동안 녹음이 멈춘 것으로 본다(조각은 1초마다 온다). */
+const STALL_MS = 2500;
 
 const now = () => banked + (segmentStart !== null ? Date.now() - segmentStart : 0);
 const live = () => snapshot.phase === "rec" || snapshot.phase === "paused";
@@ -264,7 +268,11 @@ if (typeof document !== "undefined") {
   // 화면이 다시 보이면: 녹음기가 끝났으면 정리, 마이크만 끊겼으면 일시정지(이어서 할 수 있게). 살아 있으면 화면 꺼짐 막기를 다시 건다.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      if (snapshot.phase === "rec") hiddenAt = now();
+      if (snapshot.phase === "rec") {
+        hiddenAt = now();
+        // 화면 시계는 멈춘다 — 꺼진 동안 녹음이 됐는지는 돌아와서 안다(11/11 실제 폰: 돌아오면 1분대로 튀었다가 몇 초 뒤 일시정지).
+        tick(false);
+      }
       return;
     }
     if (!live()) {
@@ -276,12 +284,15 @@ if (typeof document !== "undefined") {
       void recorderEnded(ENDED_TEXT).finally(() => (hiddenAt = null));
       return;
     }
-    if (snapshot.phase === "rec" && !micLive()) {
+    // 마이크가 죽었거나, 꺼진 동안 조각이 오지 않았으면(아이폰은 돌아온 순간엔 마이크가 살아 있다고 하고 몇 초 뒤에야 끊김을
+    // 알린다) 바로 일시정지 — 시간은 실제 녹음된 데까지.
+    if (snapshot.phase === "rec" && (!micLive() || Date.now() - lastChunkWall > STALL_MS)) {
       void micLost().finally(() => (hiddenAt = null));
       return;
     }
-    // 마이크가 살아 있었다 — 가려진 동안도 녹음됐다(안드로이드 등). 길이를 다시 그대로 센다.
+    // 꺼진 동안도 조각이 왔다 — 그동안도 녹음됐다(안드로이드 등). 길이를 다시 그대로 세고 시계를 다시 돌린다.
     hiddenAt = null;
+    if (snapshot.phase === "rec") tick(true);
     wakeLock = null;
     void lockScreen();
   });
@@ -385,6 +396,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
     const duration = hiddenAt !== null ? Math.min(now(), hiddenAt + 1000) : now();
 
     lastDataElapsed = duration;
+    lastChunkWall = Date.now();
     saving = saving
       .then(() => saveChunk(id, index, event.data, duration))
       .catch(() => {
@@ -401,6 +413,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
   stopping = false;
   lastDataElapsed = 0;
   hiddenAt = null;
+  lastChunkWall = Date.now();
   banked = 0;
   segmentStart = Date.now();
   media.start(1000);
@@ -453,6 +466,7 @@ export async function resumeRecording(): Promise<void> {
     return;
   }
   segmentStart = Date.now();
+  lastChunkWall = Date.now();
   tick(true);
   wakeLock = null;
   void lockScreen();
