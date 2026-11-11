@@ -140,7 +140,18 @@ export default function Main(props) {
                 <span className="stat-more">아이 연계 ›</span>
               </A>
               <b className="n acc">{v.urgentCount}</b>
-              <span className="note">{v.urgentText}</span>
+              {(v.urgentRows || []).length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                  {v.urgentRows.map((t) => (
+                    <A key={t.key} className={t.urgent ? 'todo todo-urg' : 'todo'} to={t.href}>
+                      <span className={t.chip}>{t.label}</span>
+                      <span style={{ flex: '1' }}>{t.text}</span>
+                      <b className="acc">›</b>
+                    </A>
+                  ))}
+                </div>
+              ) : null}
+              {v.urgentText ? <span className="note">{v.urgentText}</span> : null}
             </div>
           </section>
 

@@ -288,8 +288,15 @@ export function scheduleValues(input: ScheduleInput) {
       fw: isToday || isSel ? 700 : 400,
       pills: evs.slice(0, 3).map((e) => {
         const st = itemStyle(e);
+        // 11/11 디자인: 윗줄 '시각 · 이름(굵게)', 아랫줄 내용(두 줄까지). 제목이 '이름 · 내용' 꼴일 때만 이름을 뗀다.
+        const parts = e.title.split(" · ");
+        const timed = e.time !== "종일";
         return {
-          label: `${e.time === "종일" ? "" : `${e.time} `}${e.title}`,
+          label: `${timed ? `${e.time} ` : ""}${e.title}`,
+          time: timed ? e.time : "",
+          who: parts.length > 1 ? parts[0] : "",
+          hasHead: timed || parts.length > 1,
+          body: parts.length > 1 ? parts.slice(1).join(" · ") : e.title,
           bg: st.bg,
           fg: st.fg,
           fw: st.fw,
