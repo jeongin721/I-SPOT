@@ -95,6 +95,12 @@ let releaseRecLock: (() => void) | null = null;
 let stopping = false;
 /** 마지막 조각을 받았을 때의 녹음 시간. 끊겼을 때 실제 녹음된 길이는 여기까지다. */
 let lastDataElapsed = 0;
+/**
+ * 녹음 중 화면이 가려진 때의 녹음 시간. 가려진 동안 · 돌아온 직후 밀려 들어오는 조각은 이 시간 + 1초를 넘겨 세지 않는다
+ * (꺼져 있던 시간이 녹음 길이에 더해지지 않게, 민규 #169 5). 돌아와서 마이크가 살아 있으면(그동안도 녹음됨) 풀고, 죽어 있으면
+ * 일시정지로 두며 길이는 여기까지다.
+ */
+let hiddenAt: number | null = null;
 
 const now = () => banked + (segmentStart !== null ? Date.now() - segmentStart : 0);
 const live = () => snapshot.phase === "rec" || snapshot.phase === "paused";
@@ -257,16 +263,25 @@ async function micLost(): Promise<void> {
 if (typeof document !== "undefined") {
   // 화면이 다시 보이면: 녹음기가 끝났으면 정리, 마이크만 끊겼으면 일시정지(이어서 할 수 있게). 살아 있으면 화면 꺼짐 막기를 다시 건다.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" || !live()) return;
+    if (document.visibilityState === "hidden") {
+      if (snapshot.phase === "rec") hiddenAt = now();
+      return;
+    }
+    if (!live()) {
+      hiddenAt = null;
+      return;
+    }
 
     if (!recorder || recorder.state === "inactive") {
-      void recorderEnded(ENDED_TEXT);
+      void recorderEnded(ENDED_TEXT).finally(() => (hiddenAt = null));
       return;
     }
     if (snapshot.phase === "rec" && !micLive()) {
-      void micLost();
+      void micLost().finally(() => (hiddenAt = null));
       return;
     }
+    // 마이크가 살아 있었다 — 가려진 동안도 녹음됐다(안드로이드 등). 길이를 다시 그대로 센다.
+    hiddenAt = null;
     wakeLock = null;
     void lockScreen();
   });
@@ -367,7 +382,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
     if (!event.data || event.data.size === 0) return;
 
     const index = seq++;
-    const duration = now();
+    const duration = hiddenAt !== null ? Math.min(now(), hiddenAt + 1000) : now();
 
     lastDataElapsed = duration;
     saving = saving
@@ -385,6 +400,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
   recorder = media;
   stopping = false;
   lastDataElapsed = 0;
+  hiddenAt = null;
   banked = 0;
   segmentStart = Date.now();
   media.start(1000);
