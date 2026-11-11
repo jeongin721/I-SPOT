@@ -48,9 +48,7 @@ def update_schedule_event(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ScheduleEventResponse]:
-    # 중요 표시만 보냈으면 볼 수 있는 일정은 누구나 고친다(get_event_or_404 mark_only).
-    mark_only = set(payload.model_dump(exclude_unset=True)) == {"important"}
-    row = schedule_service.get_event_or_404(db, event_id, current_user, edit=True, mark_only=mark_only)
+    row = schedule_service.get_event_or_404(db, event_id, current_user, edit=True)
     row = schedule_service.update_event(db, current_user, row, payload)
 
     return DataResponse(data=schedule_service.to_response(row, current_user))

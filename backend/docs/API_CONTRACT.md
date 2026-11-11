@@ -2640,7 +2640,6 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
   (바꾸지 않으려면 뺀다).
 - `deadline_done: {"7": true}` — 최초접수만(그 밖 `422`), 보낸 기한만 바뀐다. 키는 `"3"` · `"7"` · `"30"` 만.
 - 만든 사람 · 관리자만(공유받은 일정은 `403`, 볼 수 없는 일정은 `404 NOT_FOUND`).
-  단, 보낸 칸이 `important` 하나뿐이면 볼 수 있는 일정(공유받은 일정 포함)은 누구나 바꾼다(2026-11-11). 일정 하나의 값이라 보는 모두에게 바뀐다.
 
 ### DELETE /api/v1/schedule/events/{event_id} → 204
 
