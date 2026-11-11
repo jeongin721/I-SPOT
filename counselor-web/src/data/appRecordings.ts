@@ -330,6 +330,32 @@ export async function removeRecording(id: string): Promise<void> {
   await dropPayload(id, null);
 }
 
+/**
+ * 다 올린 줄을 서버와 맞춘다(업로드 목록을 열 때). 웹에서 그 회차를 지웠거나(404) 담당이 바뀌어 볼 수 없게 됐으면(403)
+ * 폰 목록에서 뺀다 — 전에는 폰에 남은 기록만 보여 지운 회차가 '완료' 로 남았다(11/11 시연 준비 요청 4번).
+ * 연결이 없거나 서버가 답하지 않으면 그대로 둔다. 회차 한 건씩 짧게 묻는다(완료 줄은 7일만 남으므로 많지 않다).
+ */
+export async function syncDoneWithServer(userId: string): Promise<number> {
+  const done = (await listRecordings(userId)).filter((item) => item.status === "done" && item.sessionId);
+  let removed = 0;
+
+  for (const item of done) {
+    try {
+      await getSession(item.sessionId as string);
+    } catch (caught) {
+      if (caught instanceof ApiError && (caught.status === 404 || caught.status === 403)) {
+        await dropPayload(item.id, null);
+        removed += 1;
+      } else if (caught instanceof ApiError && caught.isUnauthorized) {
+        break;
+      }
+      // 연결 끊김 · 시간 초과 · 5xx: 이번에는 그대로 둔다.
+    }
+  }
+
+  return removed;
+}
+
 // ---------------------------------------------------------------------------
 // 녹음 중 조각 저장 · 끊긴 녹음 되살리기
 // ---------------------------------------------------------------------------
