@@ -5,13 +5,14 @@
 //  - 올린 자료: 이 폰의 녹음 대기열(appRecordings.ts). 올리는 중 · 실패 · 완료를 보이고, 실패하면 '다시 올리기' 로 실패한 단계부터
 //    다시 올린다(새 회차를 이미 만들었으면 다시 만들지 않는다). '지우기' 는 폰에서만 지운다(서버에 올라간 것은 그대로).
 //  - 자료 올리기 › 파일: 음성 파일(.m4a · .mp3 · .wav 등)이면 고른 아이의 새 회차로 올리고 원문 변환까지 요청한다.
+//  - 목록을 열 때 다 올린 줄의 회차를 서버에 물어, 웹에서 지웠거나(404) 볼 수 없게 된(403) 회차는 목록에서 뺀다.
 //  - 주소에 ?case= 가 있으면 그 아이를 골라 둔다(앱 사례 목록의 '자료 올리기').
 //  - 사진 · 문서는 사례에 붙일 서버 자리(사례 파일함)가 아직 없어 '준비 중' 안내만 보인다.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
-import { enqueueAudioFile, removeRecording, retryRecording, uploadAsNewSession } from '../data/appRecordings';
+import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
 
 function UploadBody({ userId, items, notReady }) {
@@ -21,6 +22,11 @@ function UploadBody({ userId, items, notReady }) {
   const [picked, setCaseId] = useState(params.get('case') ?? '');
   const caseId = rows.some((row) => row.id === picked) ? picked : rows[0]?.id ?? '';
   const [pk, setPk] = useState(false);
+
+  // 목록을 열 때 다 올린 줄을 서버와 맞춘다(웹에서 지운 회차는 뺀다).
+  useEffect(() => {
+    if (userId) void syncDoneWithServer(userId).catch(() => {});
+  }, [userId]);
   const [pickErr, setPickErr] = useState('');
 
   const child = rows.find((row) => row.id === caseId);
