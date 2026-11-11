@@ -121,6 +121,47 @@ def test_existing_analyses_get_drafts_done_and_downgrade_drops_columns(tmp_path)
         engine.dispose()
 
 
+# 아이 앱 질문 발송 예약 칸(deliver_at)을 더하는 revision(2026-11-11).
+ADD_DELIVER_AT = "e4f5a6b7c8d9"
+
+
+def test_deliver_at_downgrade_retires_reservations(tmp_path) -> None:
+    """내리면 예약 시각 칸이 없어진다. 예약해 둔 묶음이 바로 보이지 않게, 옛 코드가 모르는 CANCELED 가 남지 않게 REPLACED 로 돌린다."""
+
+    database_url = f"sqlite+pysqlite:///{(tmp_path / 'deliver_at.db').as_posix()}"
+    _alembic(database_url, "upgrade", ADD_DELIVER_AT)
+    rows = {
+        "1": ("PENDING", "'2999-01-01 00:00:00'"),  # 예약해 둔 묶음
+        "2": ("PENDING", "'2000-01-01 00:00:00'"),  # 예약 시각이 지나 보이는 묶음
+        "3": ("PENDING", "NULL"),  # 바로 보낸 묶음
+        "4": ("CANCELED", "'2000-01-01 00:00:00'"),
+        "5": ("ANSWERED", "NULL"),
+    }
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            for key, (status, deliver_at) in rows.items():
+                connection.execute(
+                    text(
+                        "INSERT INTO child_question_sets (id, case_id, status, questions, deliver_at, created_at, updated_at) "
+                        f"VALUES ('{int(key):032x}', 'fedcba9876543210fedcba9876543210', '{status}', '[]', {deliver_at}, "
+                        "'2026-11-01 00:00:00', '2026-11-01 00:00:00')"
+                    )
+                )
+
+        _alembic(database_url, "downgrade", _parent_of(ADD_DELIVER_AT))
+
+        with engine.connect() as connection:
+            columns = {row[1] for row in connection.execute(text("PRAGMA table_info('child_question_sets')"))}
+            statuses = [row[0] for row in connection.execute(text("SELECT status FROM child_question_sets ORDER BY id"))]
+    finally:
+        engine.dispose()
+
+    assert "deliver_at" not in columns
+    assert statuses == ["REPLACED", "PENDING", "PENDING", "REPLACED", "ANSWERED"]
+
+
 # case_forms 판 번호 · 임시 저장 하나 인덱스를 없을 때만 채우는 revision(2026-11-10, 데모 서버 DB 를 main 으로 올리기).
 ENSURE_CASE_FORMS_VERSION = "c7d8e9f0a1b2"
 
