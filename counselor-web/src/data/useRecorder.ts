@@ -10,6 +10,9 @@
 //  - 형식: MP3 16kHz 모노 32kbps(말소리 · 원문 변환용, 1시간 ≈ 14MB). 인코더는 lamejs(public/app/lame.min.js, LGPL-3.0 — 녹음할 때만
 //    따로 불러 쓴다. 사용자가 깔 것은 없다). 서버는 .mp3 를 받는다.
 //  - 녹음 시간은 화면 시계가 아니라 실제로 받은 소리 길이(인코딩한 표본 수)다. 화면이 꺼진 시간이 더해지지 않는다.
+//  - 오디오는 16kHz 로 연다(브라우저가 걸러서 줄여 준다). 그게 안 되는 브라우저는 저역 통과 필터를 거쳐 16kHz 로 줄인다(pcmResample) —
+//    거르지 않으면 8kHz 위 치찰음이 말소리 대역으로 접혀 들어온다(민규 #169).
+//  - '계속' 을 눌러 마이크가 실제로 켜질 때까지는 '일시정지' 로 두고, 그사이 정지를 누르면 바로 멈춘다(민규 #169).
 //  - 끊김: 마이크 트랙 ended · 오디오 'interrupted' · 화면이 돌아왔는데 소리가 2.5초 넘게 안 왔음 · 녹음 중 소리가 3초 넘게 안 옴
 //    → 오디오를 닫고 '일시정지'. '계속' 을 누르면(사용자 손길이 있어야 아이폰이 오디오를 켜 준다) 새로 켜서 이어 간다.
 //    '계속' 뒤에도 소리가 안 오면 3초 안에 다시 일시정지하고 알린다(녹음이 안 되는데 '녹음 중' 으로 보이지 않게).
@@ -21,6 +24,7 @@
 import { useSyncExternalStore } from "react";
 
 import { DbBlockedError, RECORDING_LOCK_PREFIX, discardDraft, saveChunk, startDraft, touchDraft, type RecordingDraft } from "./appRecordings";
+import { makeResampler, type Resampler } from "./pcmResample";
 
 export type RecorderPhase = "idle" | "rec" | "paused" | "done";
 
@@ -131,13 +135,11 @@ interface Chain {
   ctx: AudioContext;
   mic: MediaStream;
   nodes: AudioNode[];
+  resampler: Resampler;
 }
 
 let chain: Chain | null = null;
 let encoder: Mp3Encoder | null = null;
-/** 다시 표본 뽑기(장치 표본율 → 16kHz): 다음 표본의 위치(이번 묶음 기준, 음수면 앞 묶음 끝)와 앞 묶음 마지막 값. */
-let rsPos = 0;
-let rsPrev = 0;
 /** 인코더에 아직 안 넣은 16kHz 표본. */
 let pcm = new Int16Array(FRAME * 4);
 let pcmLen = 0;
@@ -157,18 +159,32 @@ let wakeLock: { release: () => Promise<void> } | null = null;
 let heartbeat: number | null = null;
 let releaseRecLock: (() => void) | null = null;
 let busy = false;
+/** '계속' 이 마이크를 켜는 중인가. 그사이 정지를 누르면 cancelResume 을 세워 켜진 마이크를 바로 닫는다. */
+let resuming = false;
+let cancelResume = false;
 
 const durMs = () => Math.round(((encoded + pcmLen) * 1000) / SAMPLE_RATE);
 /** 마이크 트랙이 살아 있는가. 끊긴 트랙도 브라우저에 따라 '소리 없음' 표본은 계속 보내므로 표본이 온다고 마이크가 산 것은 아니다. */
 const micAlive = () => !!chain && chain.mic.getAudioTracks().some((track) => track.readyState === "live");
 const live = () => snapshot.phase === "rec" || snapshot.phase === "paused";
 
-function newContext(): AudioContext {
+function audioContextClass(): typeof AudioContext {
   const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
   if (!Ctx) throw new Error("no AudioContext");
 
-  return new Ctx();
+  return Ctx;
+}
+
+/** 오디오를 16kHz 로 연다(브라우저가 걸러서 줄인다). 안 되면 장치 표본율로 연다(그때는 pcmResample 이 거른다). */
+function newContext(): AudioContext {
+  const Ctx = audioContextClass();
+
+  try {
+    return new Ctx({ sampleRate: SAMPLE_RATE });
+  } catch {
+    return new Ctx();
+  }
 }
 
 async function openMic(): Promise<MediaStream> {
@@ -198,31 +214,19 @@ function flushChunk() {
 }
 
 /** 장치 표본을 16kHz 로 바꿔 인코더에 넣는다. */
-function onSamples(input: Float32Array, rate: number) {
+function onSamples(input: Float32Array, resampler: Resampler) {
   // 마이크가 끊겼으면 '소리 없음' 표본이 와도 세지 않는다(녹음 길이에 끊긴 시간이 들어가지 않게).
   if (snapshot.phase !== "rec" || !encoder || input.length === 0 || !micAlive()) return;
 
-  const step = rate / SAMPLE_RATE;
-  let pos = rsPos;
+  const out = resampler.push(input);
 
-  while (pos < input.length - 1) {
-    const i = Math.floor(pos);
-    const frac = pos - i;
-    const a = i < 0 ? rsPrev : input[i];
-    const b = input[i + 1];
-    const v = a + (b - a) * frac;
+  if (pcmLen + out.length > pcm.length) {
+    const grown = new Int16Array(Math.max(pcm.length * 2, pcmLen + out.length));
 
-    if (pcmLen === pcm.length) {
-      const grown = new Int16Array(pcm.length * 2);
-
-      grown.set(pcm);
-      pcm = grown;
-    }
-    pcm[pcmLen++] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
-    pos += step;
+    grown.set(pcm.subarray(0, pcmLen));
+    pcm = grown;
   }
-  rsPos = pos - input.length;
-  rsPrev = input[input.length - 1];
+  for (let i = 0; i < out.length; i += 1) pcm[pcmLen++] = Math.max(-32768, Math.min(32767, Math.round(out[i] * 32767)));
   lastSoundWall = Date.now();
 
   let used = 0;
@@ -246,14 +250,28 @@ function onSamples(input: Float32Array, rate: number) {
   }
 }
 
-/** 오디오 길을 만든다. ctx 는 단추를 누른 순간 만든 것(아이폰은 사용자 손길 안에서 만든 오디오만 켜 준다). */
-async function buildChain(ctx: AudioContext): Promise<void> {
+/** 오디오 길을 만든다. ctx 는 단추를 누른 순간 만든 것(아이폰은 사용자 손길 안에서 만든 오디오만 켜 준다). 쓴 ctx 를 돌려준다. */
+async function buildChain(first: AudioContext): Promise<AudioContext> {
+  let ctx = first;
+
   if (ctx.state !== "running") await ctx.resume().catch(() => {});
 
   const mic = await openMic();
-  const src = ctx.createMediaStreamSource(mic);
+  let src: MediaStreamAudioSourceNode;
+
+  try {
+    src = ctx.createMediaStreamSource(mic);
+  } catch (caught) {
+    // 16kHz 오디오에 마이크(장치 표본율)를 못 잇는 브라우저(Firefox 등) — 장치 표본율로 다시 열고 pcmResample 이 거른다.
+    if (ctx.sampleRate !== SAMPLE_RATE) throw caught;
+    ctx.close().catch(() => {});
+    ctx = new (audioContextClass())();
+    if (ctx.state !== "running") await ctx.resume().catch(() => {});
+    src = ctx.createMediaStreamSource(mic);
+  }
+
   const nodes: AudioNode[] = [src];
-  const rate = ctx.sampleRate;
+  const resampler = makeResampler(ctx.sampleRate, SAMPLE_RATE);
   let sink: AudioNode;
 
   if (ctx.audioWorklet && typeof AudioWorkletNode !== "undefined") {
@@ -267,14 +285,14 @@ async function buildChain(ctx: AudioContext): Promise<void> {
     const node = new AudioWorkletNode(ctx, "ispot-pcm", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
 
     node.port.onmessage = (event: MessageEvent<Float32Array>) => {
-      if (chain?.ctx === ctx) onSamples(event.data, rate);
+      if (chain?.ctx === ctx) onSamples(event.data, resampler);
     };
     sink = node;
   } else {
     const node = ctx.createScriptProcessor(4096, 1, 1);
 
     node.onaudioprocess = (event) => {
-      if (chain?.ctx === ctx) onSamples(new Float32Array(event.inputBuffer.getChannelData(0)), rate);
+      if (chain?.ctx === ctx) onSamples(new Float32Array(event.inputBuffer.getChannelData(0)), resampler);
     };
     sink = node;
   }
@@ -302,9 +320,9 @@ async function buildChain(ctx: AudioContext): Promise<void> {
     });
   });
 
-  rsPos = 0;
-  rsPrev = 0;
-  chain = { ctx, mic, nodes };
+  chain = { ctx, mic, nodes, resampler };
+
+  return ctx;
 }
 
 /** 오디오 길을 닫는다(마이크 끄기 · 오디오 닫기). 인코더 · 아직 안 넣은 표본은 그대로 두어 이어 붙인다. */
@@ -450,7 +468,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
   outParts = [];
   outBytes = 0;
   lastSoundWall = Date.now();
-  set({ phase: "rec", elapsedMs: 0, draft });
+  set({ elapsedMs: 0, draft });
 
   try {
     await buildChain(ctx);
@@ -474,7 +492,9 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
     return false;
   }
 
+  // 마이크가 실제로 켜진 뒤에야 '녹음 중'.
   lastSoundWall = Date.now();
+  set({ phase: "rec" });
   watch(true);
   void lockScreen();
   holdRecLock(id);
@@ -494,45 +514,55 @@ export function pauseRecording(): void {
   set({ phase: "paused", elapsedMs: durMs() });
 }
 
-/** '계속'. 오디오 · 마이크를 새로 켜서 같은 인코더 · 같은 파일에 이어 붙인다. */
+/**
+ * '계속'. 오디오 · 마이크를 새로 켜서 같은 인코더 · 같은 파일에 이어 붙인다. 마이크가 실제로 켜질 때까지는 '일시정지' 그대로이고,
+ * 그사이 정지를 누르면 켜진 마이크를 바로 닫는다(민규 #169 — 전에는 허용을 기다리는 동안 '녹음 중' 이고 정지가 안 먹었다).
+ */
 export async function resumeRecording(): Promise<void> {
-  if (snapshot.phase !== "paused" || busy || !encoder) return;
+  if (snapshot.phase !== "paused" || busy || resuming || !encoder) return;
 
-  busy = true;
+  resuming = true;
+  cancelResume = false;
 
   let ctx: AudioContext;
 
   try {
     ctx = newContext();
   } catch {
-    busy = false;
+    resuming = false;
     set({ error: MIC_TEXT });
     return;
   }
-
-  set({ phase: "rec", error: null });
-  lastSoundWall = Date.now();
 
   try {
     await buildChain(ctx);
   } catch {
     closeChain();
     ctx.close().catch(() => {});
-    busy = false;
-    set({ phase: "paused", elapsedMs: durMs(), error: MIC_TEXT });
+    resuming = false;
+    if (!cancelResume && snapshot.phase === "paused") set({ error: MIC_TEXT });
+    return;
+  }
+
+  if (cancelResume || snapshot.phase !== "paused") {
+    closeChain();
+    resuming = false;
     return;
   }
 
   lastSoundWall = Date.now();
+  set({ phase: "rec", error: null });
   watch(true);
   wakeLock = null;
   void lockScreen();
-  busy = false;
+  resuming = false;
 }
 
 export async function stopRecording(): Promise<void> {
   if (!live() || busy) return;
 
+  // '계속' 이 마이크를 켜는 중이면 그 마이크는 켜지는 대로 닫는다.
+  if (resuming) cancelResume = true;
   busy = true;
   closeChain();
   watch(false);
