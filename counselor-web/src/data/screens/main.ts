@@ -90,14 +90,64 @@ function itemHref(e: CalendarItem): string {
 }
 
 /** 홈 '긴급 업무' 카드. 알림을 못 받았으면 '—' 와 준비 중. */
-function urgentValues(alerts: ChildOpenAlert[] | null): { urgentCount: string; urgentText: string } {
-  if (!alerts) return { urgentCount: NOT_PROVIDED, urgentText: `아이 앱 연계 ${NOT_READY}` };
+/** 긴급 업무 줄 칩(11/11 디자인 '긴급 체크인' 줄). 긴급이 아닌 알림은 '확인 필요'. */
+const ALERT_CHIP: Partial<Record<ChildOpenAlert["reason"], string>> = {
+  ALERT: "긴급 알림",
+  RED_ANSWER: "바로 확인",
+  CONTACT_REQUEST: "연락 요청",
+};
+
+/** 긴급 업무 카드에 줄로 보이는 알림 수(긴급 먼저 · 최근 먼저). */
+const HOME_ALERT_COUNT = 3;
+
+function alertWhen(value: string, now: Date): string {
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "";
+  const time = `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+  const sameDay = at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth() && at.getDate() === now.getDate();
+  return sameDay ? `오늘 ${time}` : `${at.getMonth() + 1}/${at.getDate()} ${time}`;
+}
+
+function urgentValues(alerts: ChildOpenAlert[] | null, now: Date) {
+  if (!alerts) return { urgentCount: NOT_PROVIDED, urgentText: `아이 앱 연계 ${NOT_READY}`, urgentRows: [] };
   const urgent = alerts.filter((alert) => alert.urgent).length;
   const check = alerts.length - urgent;
+  const at = (alert: ChildOpenAlert) => alert.last_at ?? alert.created_at;
+  const urgentRows = [...alerts]
+    .sort((a, b) => Number(b.urgent) - Number(a.urgent) || at(b).localeCompare(at(a)))
+    .slice(0, HOME_ALERT_COUNT)
+    .map((alert) => ({
+      key: alert.id,
+      href: screenHref("/CaseApp", { caseId: alert.case_id }),
+      urgent: alert.urgent,
+      chip: alert.urgent ? "chip c-urgent" : "chip c-check",
+      label: alert.urgent ? ALERT_CHIP[alert.reason] ?? "긴급" : "확인 필요",
+      text: [alert.child_alias, alertWhen(at(alert), now)].filter(Boolean).join(" · "),
+    }));
   return {
     urgentCount: String(urgent),
-    urgentText: alerts.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : `아이 앱 긴급 알림${check ? ` · 확인 필요 ${check}건` : ""}`,
+    urgentText: alerts.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : check && !urgent ? `확인 필요 ${check}건` : "",
+    urgentRows,
   };
+}
+
+/** '진행 중 내담자' 줄의 오른쪽 글(11/11 디자인 '서윤 · 오늘 16:00 상담'): 다가오는 그 사례 상담 일정, 없으면 마지막 회차 상태. */
+function nextConsultText(items: CalendarItem[], caseId: string, now: Date): string | null {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const nowHm = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  const next = items
+    .filter((e) => e.t === "c" && e.event.case_id === caseId)
+    .filter((e) => {
+      const day = new Date(e.y, e.m, e.d).getTime();
+      return day > today || (day === today && (!/^\d\d:\d\d$/.test(e.time) || e.time >= nowHm));
+    })
+    .sort((a, b) => new Date(a.y, a.m, a.d).getTime() - new Date(b.y, b.m, b.d).getTime() || byTime(a, b))[0];
+  if (!next) return null;
+  const timed = /^\d\d:\d\d$/.test(next.time);
+  const isToday = new Date(next.y, next.m, next.d).getTime() === today;
+  if (isToday) return timed ? `오늘 ${next.time} 상담` : "오늘 상담";
+  const body = next.title.split(" · ").slice(1).join(" · ") || "상담";
+  return `${next.m + 1}/${next.d} ${body}`;
 }
 
 export function mainValues({ session, home, schedule, childAlerts, state, setState }: MainScreenInput) {
@@ -218,19 +268,18 @@ export function mainValues({ session, home, schedule, childAlerts, state, setSta
     tasksCount: data ? String(data.summary.total) : NOT_PROVIDED,
     todos,
     todoNote,
-    // '진행 중 내담자' 카드 아래 줄(10/30 디자인): 마지막 회차의 상담원 판단 · 별칭 · 그 회차 상태.
-    // 사례 단위 위험도로 읽히지 않게 칩에 'n회차 판단' 을 밝힌다(민규 #122 리뷰 — 사례 위험도는 팀 결정 전).
+    // '진행 중 내담자' 카드 아래 줄(11/11 디자인): '위험도 상 · 중 · 하' 칩(사례 목록과 같은 값, 없으면 '—') · 이름 ·
+    // 다가오는 상담 일정(없으면 마지막 회차 상태).
     caseTodos: (data?.cases ?? []).map((item) => ({
       href: screenHref("/CaseDetail", { caseId: item.id }),
       chip: `chip ${item.level ? HOME_RISK_CHIP[item.level] : "c-normal"}`,
-      label: item.latest
-        ? item.level
-          ? `${item.latest.number}회차 판단 · ${RISK_LEVEL_LABELS[item.level]}`
-          : `${item.latest.number}회차 판단 전`
-        : "회차 없음",
-      text: `${item.name} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
+      label: `위험도 ${item.level ? RISK_LEVEL_LABELS[item.level] : "—"}`,
+      text: `${item.name} · ${
+        nextConsultText(items, item.id, now) ??
+        (item.latest ? `${item.latest.number}회차 ${SESSION_STATUS_LABELS[item.latest.status]}` : "녹취를 올리면 회차가 생깁니다")
+      }`,
     })),
-    ...urgentValues(childAlerts ?? null),
+    ...urgentValues(childAlerts ?? null, now),
     remain,
     nextTitle,
     briefHref,

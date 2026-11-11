@@ -203,11 +203,20 @@ function ScheduleScreen(props) {
                                 width: '7px',
                                 height: '7px',
                                 flex: 'none',
+                                marginTop: '4px',
                                 borderRadius: p.radius,
                                 background: p.dot,
                               }}
                             ></span>
-                            {p.label}
+                            <span className="pl-tx">
+                              {p.hasHead ? (
+                                <span className="pl-head">
+                                  <span className="pl-time">{p.time}</span>
+                                  <b>{p.who}</b>
+                                </span>
+                              ) : null}
+                              <span className="pl-ttl">{p.body}</span>
+                            </span>
                           </span>
                         </Fragment>
                       ))}
