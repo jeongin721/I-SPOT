@@ -113,6 +113,12 @@ def test_shared_events_are_visible_read_only(
     # 남의 사례는 별칭 · id 를 보이지 않는다.
     assert seen[0]["case_id"] is None and seen[0]["child_alias"] is None and seen[0]["editable"] is False
     assert client.patch(f"{URL}/{shared['id']}", json={"title": "x"}, headers=other_counselor_headers).status_code == 403
+    # 중요 표시만은 볼 수 있는 공유 일정에 누구나 켜고 끈다(2026-11-11). 다른 칸을 같이 보내면 그대로 403.
+    marked = client.patch(f"{URL}/{shared['id']}", json={"important": True}, headers=other_counselor_headers)
+    assert marked.status_code == 200 and marked.json()["data"]["important"] is True
+    assert client.patch(f"{URL}/{shared['id']}", json={"important": False, "title": "x"}, headers=other_counselor_headers).status_code == 403
+    # 볼 수 없는 일정(남의 개인 일정)은 중요 표시도 404.
+    assert client.patch(f"{URL}/{private['id']}", json={"important": True}, headers=other_counselor_headers).status_code == 404
     assert client.delete(f"{URL}/{private['id']}", headers=other_counselor_headers).status_code == 404
     # 관리자는 모두 보고 고칠 수 있다.
     assert {item["title"] for item in _list(client, admin_headers)} == {"개인", "공유"}

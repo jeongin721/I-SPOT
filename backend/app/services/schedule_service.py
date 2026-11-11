@@ -111,10 +111,15 @@ def list_events(db: Session, user: User, start: date, end: date) -> List[Schedul
     return rows
 
 
-def get_event_or_404(db: Session, event_id: uuid.UUID, user: User, *, edit: bool = False) -> ScheduleEvent:
+def get_event_or_404(
+    db: Session, event_id: uuid.UUID, user: User, *, edit: bool = False, mark_only: bool = False
+) -> ScheduleEvent:
     """edit=True 면 행을 잠그고 읽는다(SELECT … FOR UPDATE). 고치기 · 지우기가 겹쳐도 앞 요청이 끝난 값 위에서 합친다
     — 공유 · 분류를 함께 바꾸거나 다른 기한 완료가 겹칠 때 한쪽 값이 사라지지 않게(민규 #131 교차검증 R1 · R3).
-    SQLite 시험에서는 잠금이 무시된다."""
+    SQLite 시험에서는 잠금이 무시된다.
+
+    mark_only=True(보낸 칸이 중요 표시뿐)면 볼 수 있는 일정은 만든 사람이 아니어도 고칠 수 있다(2026-11-11 경진님 —
+    상담사가 팀 공유 일정에도 '중요 표시' 를 누를 수 있게). 중요 표시는 일정 하나의 값이라 그 일정을 보는 모두에게 바뀐다."""
 
     query = (
         select(ScheduleEvent)
@@ -129,7 +134,7 @@ def get_event_or_404(db: Session, event_id: uuid.UUID, user: User, *, edit: bool
     )
     if not visible:
         raise not_found(ErrorCode.NOT_FOUND, "일정을 찾을 수 없습니다.")
-    if edit and not _can_edit(user, row):
+    if edit and not mark_only and not _can_edit(user, row):
         raise forbidden("일정을 만든 상담사만 고치거나 지울 수 있습니다.")
     return row
 

@@ -5,7 +5,7 @@
 //  - 최초접수의 처리 기한(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출)은 행이 아니라 접수일로 계산하고,
 //    기한마다 '완료 표시' 만 서버(deadline_done)에 남긴다. 기한은 접수 일정을 고치거나 지우면 같이 바뀐다.
 //    기한은 접수한 상담사(만든 사람) 달력 · 알림 종에만 놓는다. 최초접수는 팀 공유하지 않는다(서버도 막는다).
-//  - 팀 공유한 남의 일정은 보기만 한다(editable=false — 수정 · 삭제 · 중요 표시를 막는다).
+//  - 팀 공유한 남의 일정은 수정 · 삭제를 막는다(editable=false). 중요 표시만은 누구나 켜고 끈다(2026-11-11).
 //  - 종결평가 회의 일정 잡기(종결보고서 화면)에서 오면 '사례회의 · 종결평가 회의' 추가 창이 열린 채로 시작하고, 달력에서 날을
 //    고르면 그 날로 잡힌다(?case= 사례를 붙인다).
 // '상담 전날 브리핑 자동 준비' 는 서버에 없는 기능이라 준비 중이다(체크 상자를 막아 둔다).
@@ -317,8 +317,10 @@ export function scheduleValues(input: ScheduleInput) {
     });
   }
 
+  // 중요 표시만은 볼 수 있는 일정이면 만든 사람이 아니어도 바꾼다(2026-11-11 — 팀 공유 일정도). 다른 칸은 고칠 수 있는 일정만.
+  const markOnly = (body: Parameters<ScheduleState["update"]>[1]) => Object.keys(body).every((k) => k === "important");
   const patch = (e: CalendarItem, body: Parameters<ScheduleState["update"]>[1]) => {
-    if (!busy && e.event.editable) void schedule.update(e.event.id, body);
+    if (!busy && (e.event.editable || markOnly(body))) void schedule.update(e.event.id, body);
   };
 
   const dayEvents = onDay(s.sel).map((e) => {
@@ -345,7 +347,7 @@ export function scheduleValues(input: ScheduleInput) {
       impBg: on ? "#A33B2E" : "#FFFFFF",
       impFg: on ? "#FFFFFF" : "#7A776F",
       impBd: on ? "#A33B2E" : "#DAD5C9",
-      impDisabled: !e.event.editable || busy,
+      impDisabled: busy,
       toggleImp: stop(() => patch(e, { important: !e.event.important })),
       open: go,
       key: (ev: { key?: string; preventDefault?: () => void }) => {
