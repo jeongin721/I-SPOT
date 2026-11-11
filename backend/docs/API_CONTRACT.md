@@ -2851,6 +2851,8 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
+열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
+
 `status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
 
 ---

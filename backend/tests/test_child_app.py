@@ -913,3 +913,47 @@ def test_child_app_stats_counts_sent_and_answered_for_admin_only(
     assert data == {"sent": 2, "answered": 1, "linked_cases": 1}
     bad = f"/api/v1/child-app-stats?date_from={today}&date_to={today - timedelta(days=1)}"
     assert client.get(bad, headers=admin_headers).status_code == 400
+
+
+def _feed_views(db, case_id: str) -> list:
+    db.expire_all()
+    return db.scalars(
+        select(AuditLog)
+        .where(AuditLog.action == AuditAction.CHILD_APP_FEED_VIEWED, AuditLog.case_id == uuid.UUID(case_id))
+        .order_by(AuditLog.created_at)
+    ).all()
+
+
+def test_feed_view_leaves_one_log_per_window_and_on_new_content(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict, db
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["home"], _skips("home"))
+
+    _view(client, counselor_headers, case["id"])
+    _view(client, counselor_headers, case["id"])  # 30초마다 다시 받는 것
+    logs = _feed_views(db, case["id"])
+    assert len(logs) == 1
+    assert logs[0].detail["events"] >= 2  # 내용 없이 줄 수만
+    assert set(logs[0].detail) == {"events"}
+
+    # 담당이 아닌 관리자는 내용을 받지 않으니 기록도 없다.
+    _view(client, admin_headers, case["id"])
+    assert len(_feed_views(db, case["id"])) == 1
+
+    # 새 답이 오면 시간 안이어도 다시 남긴다.
+    _answer(client, counselor_headers, device, case["id"], ["meal"], _skips("meal"))
+    _view(client, counselor_headers, case["id"])
+    assert len(_feed_views(db, case["id"])) == 2
+
+    # 10분이 지나면 다시 남긴다.
+    for log in _feed_views(db, case["id"]):
+        log.created_at = datetime.now(timezone.utc) - timedelta(minutes=11)
+    db.commit()
+    _view(client, counselor_headers, case["id"])
+    assert len(_feed_views(db, case["id"])) == 3
+
+
+def test_empty_feed_leaves_no_view_log(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    _view(client, counselor_headers, case["id"])
+    assert _feed_views(db, case["id"]) == []

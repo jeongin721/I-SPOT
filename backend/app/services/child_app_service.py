@@ -25,6 +25,7 @@ from app.core.enums import (
 )
 from app.core.config import settings
 from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found, unauthorized
+from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.child_app import ChildAppEvent, ChildAppLink, ChildQuestionSet
 from app.models.schedule import ScheduleEvent
@@ -37,6 +38,9 @@ CODE_LENGTH = 6
 CODE_TTL = timedelta(hours=72)
 LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
+# 화면이 30초마다 다시 받으므로 열람 기록은 같은 사람 · 사례에 이 시간 안 1줄만 남긴다.
+# 그사이 새로 온 내용이 있으면(마지막 기록 뒤 생긴 피드 줄) 시간 안이어도 새로 남긴다.
+FEED_VIEW_LOG_WINDOW = timedelta(minutes=10)
 OPEN_ALERT_LIMIT = 50
 LIST_LIMIT = 200
 RECENT_DAYS = 21
@@ -312,6 +316,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             .limit(FEED_LIMIT)
         ).all()
 
+        if rows:
+            _record_feed_view(db, case, user, rows)
 
     return ChildAppCaseResponse(
         status=link.status.value if link else "NOT_LINKED",
@@ -342,6 +348,36 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             for row in rows
         ],
     )
+
+
+def _record_feed_view(db: Session, case: Case, user: User, rows: List[ChildAppEvent]) -> None:
+    """아이가 보낸 내용을 담당 상담사에게 내줄 때 열람 기록. 내용은 넣지 않고 줄 수 · 가장 최근 줄 ID 만."""
+
+    last = db.scalar(
+        select(AuditLog.created_at)
+        .where(
+            AuditLog.actor_id == user.id,
+            AuditLog.case_id == case.id,
+            AuditLog.action == AuditAction.CHILD_APP_FEED_VIEWED,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(1)
+    )
+    now = _utcnow()
+
+    if last is not None and now - _aware(last) < FEED_VIEW_LOG_WINDOW and _aware(rows[0].created_at) <= _aware(last):
+        return
+
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_FEED_VIEWED,
+        entity_type="ChildAppEvent",
+        entity_id=rows[0].id,
+        actor_id=user.id,
+        case_id=case.id,
+        detail={"events": len(rows)},
+    )
+    db.commit()
 
 
 def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
