@@ -44,6 +44,7 @@ import type {
   ChildAppCaseRow,
   ChildAppStats,
   ChildAppInvite,
+  ChildQuestionDeliver,
   ChildOpenAlert,
   FollowupQuestionList,
   LawGuideAnswer,
@@ -781,8 +782,17 @@ export const childApp = {
     return api.post<ChildAppInvite>(`/cases/${caseId}/child-app/invite`);
   },
 
-  sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
-    return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  /** deliver 를 빼면 바로 보낸다. "EVENING" 은 발송 예약(서버가 정한 그날 저녁 시각부터 아이 앱에 보인다. 지났으면 바로). */
+  sendQuestions(caseId: string, questionIds: string[], deliver?: ChildQuestionDeliver): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/question-sets`, {
+      question_ids: questionIds,
+      ...(deliver ? { deliver } : {}),
+    });
+  },
+
+  /** 발송 예약 취소(ChildAppCase.scheduled_questions.id). 예약 시각이 지났으면 409. */
+  cancelScheduledQuestions(caseId: string, questionSetId: string): Promise<void> {
+    return api.delete<void>(`/cases/${caseId}/child-app/question-sets/${questionSetId}`);
   },
 
   /** 관리자 통계 '아이 앱 응답률'. 날짜는 YYYY-MM-DD(끝 날 포함). */
