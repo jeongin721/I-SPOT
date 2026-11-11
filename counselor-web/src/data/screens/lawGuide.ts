@@ -198,6 +198,6 @@ export function lawGuideValues(input: LawGuideInput) {
     clearScroll: () => setState({ scrollTo: null }),
     footNote:
       "요약과 조문은 2026 아동학대 대응 업무 매뉴얼(보건복지부)과 매뉴얼에 인용된 법령을 바탕으로 정리했습니다. " +
-      "개정 여부는 국가법령정보센터 원문으로 확인하세요. 이 정리는 10/27 디자인의 초안 문구이며 팀이 확정한 기준이 아닙니다.",
+      "개정 여부는 국가법령정보센터 원문으로 확인하세요.",
   };
 }
