@@ -10,6 +10,8 @@
 //    이 녹음을 '끊긴 녹음' 으로 가져가지 않는다(민규 #168).
 //  - 전화가 오는 등으로 마이크가 끊기면(트랙 ended · MediaRecorder error) 녹음을 멈추고 알린다. 녹음된 데까지는 저장할 수 있다.
 //    마이크가 잠깐 막히면(트랙 mute) 알림만 띄우고 풀리면 지운다(민규 #168).
+//  - 폰이 녹음기 · 마이크를 먼저 멈추면(전화 · 화면 꺼짐 · 다른 앱) 바로 '녹음 완료' 로 정리하고 알린다. 시간은 마지막 조각까지.
+//    화면이 다시 켜졌을 때 녹음이 멈춰 있어도 정리한다. 웹 앱은 화면이 꺼진 동안 계속 녹음할 수 없다(브라우저가 마이크를 끊는다).
 //  - 앱이 꺼지거나 탭을 닫으면 녹음은 멈춘다. 그때까지의 조각은 남아 다음에 열 때 업로드 목록에 되살아난다(recoverDrafts).
 
 import { useSyncExternalStore } from "react";
@@ -74,6 +76,13 @@ let releaseRecLock: (() => void) | null = null;
 
 const MUTED_TEXT = "마이크가 잠시 끊겼어요(전화 등). 그동안은 소리가 녹음되지 않아요.";
 const INTERRUPTED_TEXT = "마이크가 끊겨 녹음을 멈췄어요(전화 등). 녹음된 데까지 저장하고 올릴 수 있어요.";
+const HIDDEN_TEXT =
+  "화면이 꺼지거나 다른 앱으로 나가서 녹음이 멈췄어요. 녹음된 데까지 저장하고 올릴 수 있어요. 녹음하는 동안에는 화면을 켜 두세요.";
+
+/** 우리가 정지를 부른 중인가. 아니면 녹음기가 스스로 멈춘 것(전화 · 화면 꺼짐)이다. */
+let stopping = false;
+/** 마지막 조각을 받았을 때의 녹음 시간. 녹음기가 스스로 멈췄으면 실제 녹음된 길이는 여기까지다. */
+let lastDataElapsed = 0;
 
 function holdRecLock(draftId: string) {
   const locks = (navigator as Navigator & { locks?: LockManager }).locks;
@@ -95,11 +104,58 @@ function beat(on: boolean, draftId?: string) {
   heartbeat = on && draftId ? window.setInterval(() => void touchDraft(draftId, now()).catch(() => {}), 5000) : null;
 }
 
-async function interrupted() {
-  if (snapshot.phase !== "rec" && snapshot.phase !== "paused") return;
+const live = () => snapshot.phase === "rec" || snapshot.phase === "paused";
 
-  await stopRecording();
-  set({ error: INTERRUPTED_TEXT });
+/** 녹음기가 멈출 때까지(마지막 조각까지) 기다린다. 이미 멈췄거나 3초 안에 답이 없으면 그냥 넘어간다. */
+function waitStop(media: MediaRecorder): Promise<void> {
+  if (media.state === "inactive") return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    const timer = window.setTimeout(resolve, 3000);
+
+    media.addEventListener(
+      "stop",
+      () => {
+        window.clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+    try {
+      media.stop();
+    } catch {
+      window.clearTimeout(timer);
+      resolve();
+    }
+  });
+}
+
+/** 녹음을 '녹음 완료' 로 정리한다(시간 · 화면 꺼짐 막기 · 마이크 · 잠금 표시). 녹음기 상태와 상관없이 늘 끝까지 한다. */
+async function finalize(durationMs: number, error: string | null): Promise<void> {
+  segmentStart = null;
+  banked = durationMs;
+  tick(false);
+  beat(false);
+  await saving;
+  releaseMic();
+  unlockScreen();
+  recorder = null;
+  stopping = false;
+  set({
+    phase: "done",
+    elapsedMs: durationMs,
+    draft: snapshot.draft ? { ...snapshot.draft, durationMs } : null,
+    ...(error ? { error } : {}),
+  });
+}
+
+/** 녹음기 · 마이크가 스스로 멈췄다(전화 · 화면 꺼짐 · 다른 앱). 녹음된 데까지로 정리하고 알린다. */
+async function interrupted(reason: string): Promise<void> {
+  if (!live() || stopping) return;
+
+  stopping = true;
+  if (recorder) await waitStop(recorder);
+  await finalize(lastDataElapsed, reason);
 }
 
 const now = () => banked + (segmentStart !== null ? Date.now() - segmentStart : 0);
@@ -130,12 +186,19 @@ function tick(on: boolean) {
 }
 
 if (typeof document !== "undefined") {
-  // 화면이 다시 보이면 화면 꺼짐 막기를 다시 건다(가려지면 브라우저가 풀어 버린다).
+  // 화면이 다시 보이면: 그사이 녹음이 멈췄으면(폰이 마이크를 끊음) 정리하고 알린다. 살아 있으면 화면 꺼짐 막기를 다시 건다
+  // (가려지면 브라우저가 풀어 버린다).
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && recorder?.state === "recording") {
-      wakeLock = null;
-      void lockScreen();
+    if (document.visibilityState !== "visible" || !live()) return;
+
+    const ended = !recorder || recorder.state === "inactive" || !stream || stream.getAudioTracks().every((t) => t.readyState === "ended");
+
+    if (ended) {
+      void interrupted(HIDDEN_TEXT);
+      return;
     }
+    wakeLock = null;
+    void lockScreen();
   });
 }
 
@@ -200,6 +263,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
     const index = seq++;
     const duration = now();
 
+    lastDataElapsed = duration;
     saving = saving
       .then(() => saveChunk(id, index, event.data, duration))
       .catch(() => {
@@ -207,9 +271,13 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
       });
   };
 
-  media.onerror = () => void interrupted();
+  media.onerror = () => void interrupted(INTERRUPTED_TEXT);
+  // 우리가 부르지 않았는데 멈췄으면(전화 등으로 폰이 녹음기를 먼저 멈춤) 정리한다. 전에는 화면이 '녹음 중' 에 남고 정지도 먹지 않았다.
+  media.onstop = () => {
+    if (!stopping) void interrupted(document.visibilityState === "visible" ? INTERRUPTED_TEXT : HIDDEN_TEXT);
+  };
   stream.getAudioTracks().forEach((track) => {
-    track.addEventListener("ended", () => void interrupted());
+    track.addEventListener("ended", () => void interrupted(document.visibilityState === "visible" ? INTERRUPTED_TEXT : HIDDEN_TEXT));
     track.addEventListener("mute", () => set({ error: MUTED_TEXT }));
     track.addEventListener("unmute", () => {
       if (snapshot.error === MUTED_TEXT) set({ error: null });
@@ -217,6 +285,8 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
   });
 
   recorder = media;
+  stopping = false;
+  lastDataElapsed = 0;
   banked = 0;
   segmentStart = Date.now();
   media.start(1000);
@@ -249,25 +319,17 @@ export function resumeRecording(): void {
 }
 
 export async function stopRecording(): Promise<void> {
+  if (!live() || stopping) return;
+
   const media = recorder;
+  // 녹음기가 살아 있으면 지금까지가 녹음 시간, 이미 스스로 멈췄으면 마지막 조각까지만 녹음된 것이다.
+  const alive = !!media && media.state !== "inactive" && !!stream && stream.getAudioTracks().some((t) => t.readyState === "live");
+  const elapsed = alive ? now() : lastDataElapsed;
 
-  if (!media || media.state === "inactive") return;
-
-  banked = now();
-  segmentStart = null;
-  tick(false);
-
+  stopping = true;
   // 마지막 조각(dataavailable)이 저장될 때까지 기다린다.
-  await new Promise<void>((resolve) => {
-    media.addEventListener("stop", () => resolve(), { once: true });
-    media.stop();
-  });
-  await saving;
-  releaseMic();
-  unlockScreen();
-  beat(false);
-  recorder = null;
-  set({ phase: "done", elapsedMs: banked, draft: snapshot.draft ? { ...snapshot.draft, durationMs: banked } : null });
+  if (media) await waitStop(media);
+  await finalize(elapsed, alive ? null : snapshot.error ?? INTERRUPTED_TEXT);
 }
 
 /** 저장한 뒤 처음으로(조각은 대기열로 옮겨졌다). */
