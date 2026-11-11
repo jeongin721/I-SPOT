@@ -47,7 +47,11 @@ function useBrief(caseId) {
 
 function BriefBody({ caseId }) {
   const { brief, signals } = useBrief(caseId);
-  const { ticks, toggle, error: tickError } = useBriefingChecks(signals.session?.id ?? null);
+  const { ticks, toggle, error: tickError, waiting } = useBriefingChecks(
+    signals.session?.id ?? null,
+    true,
+    (brief.checks || []).map((c) => c.text),
+  );
   const checks = brief.checks || [];
   const done = checks.filter((c) => ticks.has(c.text)).length;
 
@@ -76,6 +80,7 @@ function BriefBody({ caseId }) {
         </label>
       ))}
       {tickError ? <span className="ma-err">{tickError}</span> : null}
+      {waiting ? <span className="ma-note">연결이 돌아오면 확인 표시를 저장해요.</span> : null}
       {brief.checksError ? <span className="ma-err">{brief.checksError}</span> : null}
       <p className="ma-sec-t">
         추가 질문{' '}

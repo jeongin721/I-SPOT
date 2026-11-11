@@ -100,7 +100,11 @@ export default function CaseDetail(props) {
   });
   const briefRef = useRef(null);
   // 11/04 탭1 디자인: '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시). 서버에 회차별로 둔다(API_CONTRACT 26절, 11/11 — 폰 앱과 같은 값).
-  const briefTicks = useBriefingChecks(signals.session?.id ?? null, signedIn(session));
+  const briefTicks = useBriefingChecks(
+    signals.session?.id ?? null,
+    signedIn(session),
+    (brief.checks || []).map((c) => c.text),
+  );
   const ticks = briefTicks.ticks;
   const toggleTick = briefTicks.toggle;
   const [outOpen, setOutOpen] = useState(false);
@@ -397,6 +401,7 @@ export default function CaseDetail(props) {
                     {briefTicks.error}
                   </span>
                 ) : null}
+                {briefTicks.waiting ? <span className="note">연결이 돌아오면 확인 표시를 저장해요.</span> : null}
                 {brief.checksError ? (
                   <span className="note" role="alert" style={{ color: '#A33B2E' }}>
                     {brief.checksError}

@@ -676,9 +676,9 @@ export const briefingChecks = {
     return api.get<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`);
   },
 
-  /** 문장 하나를 켜거나 끈다. 바뀐 전체를 돌려준다. */
-  toggle(sessionId: string, text: string, checked: boolean): Promise<BriefingChecks> {
-    return api.patch<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`, { text, checked });
+  /** 문장 하나를 켜거나 끈다. visible(지금 보이는 문장들)을 주면 거기 없는 옛 체크를 서버가 지운다. 바뀐 전체를 돌려준다. */
+  toggle(sessionId: string, text: string, checked: boolean, visible?: string[]): Promise<BriefingChecks> {
+    return api.patch<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`, visible ? { text, checked, visible } : { text, checked });
   },
 };
 
