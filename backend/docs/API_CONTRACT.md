@@ -1443,9 +1443,10 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
 - `evidence_strength` 는 `HIGH | MEDIUM | LOW` 로 **확률이 아니라 근거의 직접성**이다. 모델 확률 · 임계값은 이번 판에서 싣지 않는다
   (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
 - `reason` 은 AI 가 그 강도로 본 이유 한 문장(문자열, 없으면 `""`), `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과(참/거짓)다.
-- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
+- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출, 또는 2차 동반 확인으로 올림 — 아래) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
   `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
   `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+  2차 동반 확인(2026-11-11, `ai/modeling/abuse/companion_types.py`): 1차가 신체학대를 잡았는데 2차가 신체학대 근거를 못 찾고 정서학대 근거를 원문 줄에서 찾으면 정서학대를 `detected=true` 로 올린다. 이 유형도 `MODEL` 이고 `filtered_reason` 은 `null` 이다(`LLM_SUPPLEMENTARY` 로 바꿀지는 팀 확인 뒤).
 - `legal_references`(2026-10-27 제안, STT 검수 "관련 조문")는 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호)
   **하나까지**다. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고, 법 위반을 확정하는 값이 아니라 참고 링크다.
   분석 도중에는 캐시만 읽고 국가법령정보센터를 부르지 않는다(분석 시간이 늘지 않게). 캐시 갱신은 분석 밖에서 `python -m law.refresh_cache`.
