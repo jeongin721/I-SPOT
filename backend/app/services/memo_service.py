@@ -3,7 +3,8 @@
 #  - 메모는 쓴 상담사만 읽고 고치고 지운다. 관리자도 남의 메모는 보지 못한다(목록 · 한 건 모두 owner_id 로 거른다 — 남의 것은 404).
 #  - 관련 사례는 지금 볼 수 있는 사례만 붙인다(get_case_or_404 — 없으면 404, 남의 사례면 403).
 #    담당이 바뀌어 지금 볼 수 없게 된 사례의 메모는 목록에서 빠지고 한 건 읽기 · 고치기 · 지우기도 404 다.
-#  - 본문은 pii_crypto.encrypt_memo 로 암호화해 저장한다(묶음 값 = 메모 ID). 풀지 못하면 500 MEMO_UNAVAILABLE(키 이름만 로그).
+#  - 본문은 pii_crypto.encrypt_memo 로 암호화해 저장한다(묶음 값 = 메모 ID). 풀지 못하면 그 메모만 text null · unreadable true 로
+#    내린다(키 이름만 로그). 한 건 때문에 목록 전체가 500 이 되지 않고, 상담사가 그 메모를 지우거나 새 본문으로 고칠 수 있다(민규 #170 2).
 #  - 본문은 로그 · 감사 기록에 넣지 않는다. 감사 기록은 만들기 · 고치기 · 지우기만, 메모 ID · 사례 ID · 바뀐 칸 이름만 남긴다.
 
 import logging
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core import pii_crypto
 from app.core.enums import AuditAction
-from app.core.errors import APIError, ErrorCode, not_found
+from app.core.errors import ErrorCode, not_found
 from app.models.case import Case
 from app.models.counselor_memo import CounselorMemo
 from app.models.user import User
@@ -24,8 +25,6 @@ from app.services import audit_service
 from app.services.access import get_case_or_404
 
 logger = logging.getLogger(__name__)
-
-UNAVAILABLE_MESSAGE = "메모를 읽을 수 없습니다. 관리자에게 알려 주세요."
 
 
 def _visible(user: User):
@@ -43,7 +42,9 @@ def _base_query():
     return select(CounselorMemo).outerjoin(Case, CounselorMemo.case_id == Case.id)
 
 
-def _decrypt(row: CounselorMemo) -> str:
+def _decrypt(row: CounselorMemo) -> Optional[str]:
+    """본문 평문. 풀지 못하면 None(로그에는 메모 ID · 키 이름 · 오류 종류만)."""
+
     try:
         return pii_crypto.decrypt_memo(row.text_enc, memo_id=row.id)
     except pii_crypto.PersonalInfoCryptoError as error:
@@ -53,15 +54,18 @@ def _decrypt(row: CounselorMemo) -> str:
             pii_crypto.key_id_for_log(row.text_enc),
             type(error).__name__,
         )
-        raise APIError(ErrorCode.MEMO_UNAVAILABLE, UNAVAILABLE_MESSAGE, status_code=500) from error
+        return None
 
 
 def to_response(row: CounselorMemo) -> MemoResponse:
+    text = _decrypt(row)
+
     return MemoResponse(
         id=row.id,
         case_id=row.case_id,
         child_alias=row.case.child_alias if row.case else None,
-        text=_decrypt(row),
+        text=text,
+        unreadable=text is None,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

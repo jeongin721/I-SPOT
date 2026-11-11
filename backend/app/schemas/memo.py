@@ -50,7 +50,9 @@ class MemoResponse(BaseModel):
     case_id: Optional[uuid.UUID]
     # 관련 사례의 별칭(목록 표시용). 사례가 없으면 null. 실명은 싣지 않는다.
     child_alias: Optional[str]
-    text: str
+    # 본문. 풀지 못하면(키가 없거나 암호문이 바뀜) null 이고 unreadable 이 true — 그 줄만 그렇고 목록은 그대로 온다(지울 수 있게).
+    text: Optional[str]
+    unreadable: bool = False
     created_at: datetime
     updated_at: datetime
 
