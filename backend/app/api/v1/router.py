@@ -7,6 +7,7 @@ from app.api.v1 import (
     analysis,
     audio,
     auth,
+    briefing_checks,
     case_forms,
     cases,
     docbox,
@@ -53,6 +54,8 @@ api_router.include_router(law_guide.router)
 api_router.include_router(schedule.router)
 # /memos — 상담사 메모(25절, 2026-11-10). 쓴 사람만.
 api_router.include_router(memos.router)
+# /sessions/{session_id}/briefing-checks — 브리핑 확인할 사항 체크(26절, 2026-11-11).
+api_router.include_router(briefing_checks.router)
 # /docbox — 문서함(23절, 2026-11-05).
 api_router.include_router(docbox.router)
 # /child-app/* · /cases/{case_id}/child-app — 아이 앱(24절, 2026-11-09).
