@@ -4,7 +4,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { CONSULTATION_TYPE_LABELS, type ConsultationType } from "../api/types";
+import { purgeLegacyMemos } from "./appOffline";
 import {
+  cleanOrphanChunks,
   listRecordings,
   processQueue,
   recoverDrafts,
@@ -56,7 +58,10 @@ export function useAppRecordings(userId: string | null): { items: RecordingItem[
 
     if (resumedFor !== userId) {
       resumedFor = userId;
+      purgeLegacyMemos();
       recoverDrafts(userId, activeDraftId(), kindLabel)
+        .catch(() => {})
+        .then(() => cleanOrphanChunks(activeDraftId()))
         .catch(() => {})
         .finally(() => void processQueue(true));
     }

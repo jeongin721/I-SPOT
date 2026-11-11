@@ -61,3 +61,22 @@ export function cachedCases(userId: string): CachedCase[] | null {
     return null;
   }
 }
+
+/**
+ * 예전 판(11/10 8bc057e — 메모를 폰에만 저장하던 판)이 남긴 메모를 지운다(민규 #170 3). 아이 이름과 메모 본문이 들어 있다.
+ * 메모는 이제 서버에 저장하므로 폰에 둘 까닭이 없다. 앱을 열 때 한 번 부른다.
+ */
+export function purgeLegacyMemos(): void {
+  try {
+    const keys: string[] = [];
+
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+
+      if (key && key.startsWith("ispot-app-memo:")) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // 저장소를 못 읽는 브라우저
+  }
+}
