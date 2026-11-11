@@ -8,10 +8,15 @@
 //  - 녹음 시간은 일시정지를 뺀 시간이다. 올릴 때 duration_ms 로 함께 보낸다.
 //  - 녹음하는 동안 이 녹음의 잠금(Web Locks)을 잡고, 일시정지 중에도 5초마다 살아 있음을 표시한다. 다른 탭에서 앱을 열어도
 //    이 녹음을 '끊긴 녹음' 으로 가져가지 않는다(민규 #168).
-//  - 전화가 오는 등으로 마이크가 끊기면(트랙 ended · MediaRecorder error) 녹음을 멈추고 알린다. 녹음된 데까지는 저장할 수 있다.
-//    마이크가 잠깐 막히면(트랙 mute) 알림만 띄우고 풀리면 지운다(민규 #168).
-//  - 폰이 녹음기 · 마이크를 먼저 멈추면(전화 · 화면 꺼짐 · 다른 앱) 바로 '녹음 완료' 로 정리하고 알린다. 시간은 마지막 조각까지.
-//    화면이 다시 켜졌을 때 녹음이 멈춰 있어도 정리한다. 웹 앱은 화면이 꺼진 동안 계속 녹음할 수 없다(브라우저가 마이크를 끊는다).
+//
+// 끊겼다가 이어서 녹음하기(11/11 경진님 — 전화 · 화면 꺼짐 뒤에도 같은 녹음을 이어서):
+//  - 녹음기는 마이크를 바로 녹음하지 않고, 오디오 믹서(WebAudio MediaStreamDestination)를 녹음한다. 마이크는 그 믹서에 꽂는다.
+//    전화 · 화면 꺼짐으로 폰이 마이크를 끊어도 녹음기는 살아 있으므로 '일시정지' 로 두고, '계속' 을 누르면 마이크를 다시 켜 믹서에
+//    꽂고 같은 녹음기를 이어 간다 — 파일 하나 · 회차 하나다(파일 두 개를 이어 붙이면 m4a · webm 이 깨진다).
+//  - 끊긴 동안의 소리는 녹음되지 않는다. 시간은 마지막 조각을 받은 때까지로 되돌린다(실제 녹음된 길이).
+//  - 폰이 녹음기까지 끝내 버렸으면(오래 꺼져 있음 등) 이어 갈 수 없어 녹음된 데까지 '녹음 완료' 로 정리하고 알린다.
+//  - 믹서를 못 쓰는 브라우저는 마이크를 바로 녹음한다(그때는 끊기면 '녹음 완료' 로 정리 — 11/11 오전 방식).
+//  - 웹 앱은 화면이 꺼진 동안 녹음을 이어 갈 수 없다(브라우저가 마이크를 끊는다). 그동안은 비고, 돌아와 '계속' 을 누르면 이어진다.
 //  - 앱이 꺼지거나 탭을 닫으면 녹음은 멈춘다. 그때까지의 조각은 남아 다음에 열 때 업로드 목록에 되살아난다(recoverDrafts).
 
 import { useSyncExternalStore } from "react";
@@ -63,8 +68,21 @@ function set(patch: Partial<RecorderSnapshot>) {
   listeners.forEach((fn) => fn());
 }
 
+const MUTED_TEXT = "마이크가 잠시 끊겼어요(전화 등). 그동안은 소리가 녹음되지 않아요.";
+const PAUSED_TEXT =
+  "마이크가 끊겨(전화 · 화면 꺼짐 · 다른 앱) 일시정지했어요. '계속' 을 누르면 같은 녹음에 이어서 녹음해요. 끊긴 동안은 녹음되지 않았어요.";
+const INTERRUPTED_TEXT = "마이크가 끊겨 녹음을 멈췄어요(전화 등). 녹음된 데까지 저장하고 올릴 수 있어요.";
+const ENDED_TEXT =
+  "화면이 오래 꺼져 있었거나 폰이 녹음을 끝내서 이어서 녹음할 수 없어요. 녹음된 데까지 저장하고 올릴 수 있어요. 녹음하는 동안에는 화면을 켜 두세요.";
+const MIC_TEXT = "마이크를 다시 켜지 못했어요. 통화가 끝났는지 확인하고 다시 '계속' 을 눌러 주세요.";
+
 let recorder: MediaRecorder | null = null;
-let stream: MediaStream | null = null;
+/** 지금 꽂혀 있는 마이크. 끊기면 null 이 되고 '계속' 에서 다시 연다. */
+let mic: MediaStream | null = null;
+/** 믹서(녹음기가 녹음하는 곳). 못 쓰는 브라우저면 null — 그때는 마이크를 바로 녹음한다. */
+let audioCtx: AudioContext | null = null;
+let mixer: MediaStreamAudioDestinationNode | null = null;
+let micNode: MediaStreamAudioSourceNode | null = null;
 let seq = 0;
 let saving: Promise<void> = Promise.resolve();
 let banked = 0;
@@ -73,16 +91,14 @@ let timer: number | null = null;
 let wakeLock: { release: () => Promise<void> } | null = null;
 let heartbeat: number | null = null;
 let releaseRecLock: (() => void) | null = null;
-
-const MUTED_TEXT = "마이크가 잠시 끊겼어요(전화 등). 그동안은 소리가 녹음되지 않아요.";
-const INTERRUPTED_TEXT = "마이크가 끊겨 녹음을 멈췄어요(전화 등). 녹음된 데까지 저장하고 올릴 수 있어요.";
-const HIDDEN_TEXT =
-  "화면이 꺼지거나 다른 앱으로 나가서 녹음이 멈췄어요. 녹음된 데까지 저장하고 올릴 수 있어요. 녹음하는 동안에는 화면을 켜 두세요.";
-
-/** 우리가 정지를 부른 중인가. 아니면 녹음기가 스스로 멈춘 것(전화 · 화면 꺼짐)이다. */
+/** 우리가 정지를 부른 중인가. 아니면 녹음기가 스스로 멈춘 것이다. */
 let stopping = false;
-/** 마지막 조각을 받았을 때의 녹음 시간. 녹음기가 스스로 멈췄으면 실제 녹음된 길이는 여기까지다. */
+/** 마지막 조각을 받았을 때의 녹음 시간. 끊겼을 때 실제 녹음된 길이는 여기까지다. */
 let lastDataElapsed = 0;
+
+const now = () => banked + (segmentStart !== null ? Date.now() - segmentStart : 0);
+const live = () => snapshot.phase === "rec" || snapshot.phase === "paused";
+const micLive = () => !!mic && mic.getAudioTracks().some((t) => t.readyState === "live");
 
 function holdRecLock(draftId: string) {
   const locks = (navigator as Navigator & { locks?: LockManager }).locks;
@@ -104,62 +120,6 @@ function beat(on: boolean, draftId?: string) {
   heartbeat = on && draftId ? window.setInterval(() => void touchDraft(draftId, now()).catch(() => {}), 5000) : null;
 }
 
-const live = () => snapshot.phase === "rec" || snapshot.phase === "paused";
-
-/** 녹음기가 멈출 때까지(마지막 조각까지) 기다린다. 이미 멈췄거나 3초 안에 답이 없으면 그냥 넘어간다. */
-function waitStop(media: MediaRecorder): Promise<void> {
-  if (media.state === "inactive") return Promise.resolve();
-
-  return new Promise<void>((resolve) => {
-    const timer = window.setTimeout(resolve, 3000);
-
-    media.addEventListener(
-      "stop",
-      () => {
-        window.clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
-    try {
-      media.stop();
-    } catch {
-      window.clearTimeout(timer);
-      resolve();
-    }
-  });
-}
-
-/** 녹음을 '녹음 완료' 로 정리한다(시간 · 화면 꺼짐 막기 · 마이크 · 잠금 표시). 녹음기 상태와 상관없이 늘 끝까지 한다. */
-async function finalize(durationMs: number, error: string | null): Promise<void> {
-  segmentStart = null;
-  banked = durationMs;
-  tick(false);
-  beat(false);
-  await saving;
-  releaseMic();
-  unlockScreen();
-  recorder = null;
-  stopping = false;
-  set({
-    phase: "done",
-    elapsedMs: durationMs,
-    draft: snapshot.draft ? { ...snapshot.draft, durationMs } : null,
-    ...(error ? { error } : {}),
-  });
-}
-
-/** 녹음기 · 마이크가 스스로 멈췄다(전화 · 화면 꺼짐 · 다른 앱). 녹음된 데까지로 정리하고 알린다. */
-async function interrupted(reason: string): Promise<void> {
-  if (!live() || stopping) return;
-
-  stopping = true;
-  if (recorder) await waitStop(recorder);
-  await finalize(lastDataElapsed, reason);
-}
-
-const now = () => banked + (segmentStart !== null ? Date.now() - segmentStart : 0);
-
 async function lockScreen() {
   try {
     const nav = navigator as Navigator & { wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> } };
@@ -175,26 +135,136 @@ function unlockScreen() {
   wakeLock = null;
 }
 
-function releaseMic() {
-  stream?.getTracks().forEach((track) => track.stop());
-  stream = null;
-}
-
 function tick(on: boolean) {
   if (timer !== null) window.clearInterval(timer);
   timer = on ? window.setInterval(() => set({ elapsedMs: now() }), 250) : null;
 }
 
+/** 마이크를 뺀다(믹서에서 떼고 끈다). 녹음기는 그대로다. */
+function unplugMic() {
+  try {
+    micNode?.disconnect();
+  } catch {
+    // 이미 떨어짐
+  }
+  micNode = null;
+  mic?.getTracks().forEach((track) => track.stop());
+  mic = null;
+}
+
+function closeMixer() {
+  unplugMic();
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+  mixer = null;
+}
+
+async function openMic(): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
+  });
+}
+
+/** 마이크를 믹서에 꽂고 끊김을 지켜본다. */
+function plugMic(stream: MediaStream) {
+  mic = stream;
+  if (audioCtx && mixer) {
+    micNode = audioCtx.createMediaStreamSource(stream);
+    micNode.connect(mixer);
+  }
+  stream.getAudioTracks().forEach((track) => {
+    track.addEventListener("ended", () => {
+      if (mic === stream) void micLost();
+    });
+    track.addEventListener("mute", () => {
+      if (mic === stream && snapshot.phase === "rec") set({ error: MUTED_TEXT });
+    });
+    track.addEventListener("unmute", () => {
+      if (snapshot.error === MUTED_TEXT) set({ error: null });
+    });
+  });
+}
+
+/** 녹음기가 멈출 때까지(마지막 조각까지) 기다린다. 이미 멈췄거나 3초 안에 답이 없으면 그냥 넘어간다. */
+function waitStop(media: MediaRecorder): Promise<void> {
+  if (media.state === "inactive") return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 3000);
+
+    media.addEventListener(
+      "stop",
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      { once: true },
+    );
+    try {
+      media.stop();
+    } catch {
+      window.clearTimeout(timeout);
+      resolve();
+    }
+  });
+}
+
+/** 녹음을 '녹음 완료' 로 정리한다. 녹음기 상태와 상관없이 늘 끝까지 한다. error 는 보일 안내(null 이면 지운다). */
+async function finalize(durationMs: number, error: string | null): Promise<void> {
+  segmentStart = null;
+  banked = durationMs;
+  tick(false);
+  beat(false);
+  await saving;
+  closeMixer();
+  unlockScreen();
+  recorder = null;
+  stopping = false;
+  set({ phase: "done", elapsedMs: durationMs, draft: snapshot.draft ? { ...snapshot.draft, durationMs } : null, error });
+}
+
+/** 녹음기가 스스로 끝났다(이어 갈 수 없음). 녹음된 데까지로 정리하고 알린다. */
+async function recorderEnded(reason: string): Promise<void> {
+  if (!live() || stopping) return;
+
+  stopping = true;
+  if (recorder) await waitStop(recorder);
+  await finalize(lastDataElapsed, reason);
+}
+
+/** 마이크가 끊겼다(전화 · 화면 꺼짐 · 다른 앱). 믹서가 있으면 일시정지로 두고 '계속' 을 기다린다. 없으면 녹음 완료로 정리. */
+async function micLost(): Promise<void> {
+  if (!live() || stopping) return;
+
+  if (!mixer || !recorder || recorder.state === "inactive") {
+    await recorderEnded(mixer ? ENDED_TEXT : INTERRUPTED_TEXT);
+    return;
+  }
+
+  unplugMic();
+  try {
+    if (recorder.state === "recording") recorder.pause();
+  } catch {
+    // 이미 멈춤
+  }
+  // 녹음 중에 끊겼으면 그 사이 흐른 시간은 녹음되지 않았다 — 마지막 조각까지로 되돌린다. 이미 일시정지였으면 그대로.
+  if (snapshot.phase === "rec") banked = lastDataElapsed;
+  segmentStart = null;
+  tick(false);
+  set({ phase: "paused", elapsedMs: banked, error: PAUSED_TEXT });
+}
+
 if (typeof document !== "undefined") {
-  // 화면이 다시 보이면: 그사이 녹음이 멈췄으면(폰이 마이크를 끊음) 정리하고 알린다. 살아 있으면 화면 꺼짐 막기를 다시 건다
-  // (가려지면 브라우저가 풀어 버린다).
+  // 화면이 다시 보이면: 녹음기가 끝났으면 정리, 마이크만 끊겼으면 일시정지(이어서 할 수 있게). 살아 있으면 화면 꺼짐 막기를 다시 건다.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible" || !live()) return;
 
-    const ended = !recorder || recorder.state === "inactive" || !stream || stream.getAudioTracks().every((t) => t.readyState === "ended");
-
-    if (ended) {
-      void interrupted(HIDDEN_TEXT);
+    if (!recorder || recorder.state === "inactive") {
+      void recorderEnded(ENDED_TEXT);
+      return;
+    }
+    if (snapshot.phase === "rec" && !micLive()) {
+      void micLost();
       return;
     }
     wakeLock = null;
@@ -213,10 +283,10 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
     return false;
   }
 
+  let stream: MediaStream;
+
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
-    });
+    stream = await openMic();
   } catch (caught) {
     const name = caught instanceof DOMException ? caught.name : "";
 
@@ -235,7 +305,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
   try {
     await startDraft(draft);
   } catch (caught) {
-    releaseMic();
+    stream.getTracks().forEach((track) => track.stop());
     set({
       error:
         caught instanceof DbBlockedError
@@ -245,14 +315,50 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
     return false;
   }
 
+  // 믹서를 만든다(녹음 시작 단추를 누른 때라 오디오를 켤 수 있다). 못 만들면 마이크를 바로 녹음한다.
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+    if (Ctx) {
+      audioCtx = new Ctx();
+      mixer = audioCtx.createMediaStreamDestination();
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+      // 전화 등으로 오디오가 막히면(iOS 'interrupted') 마이크가 끊긴 것과 같이 본다.
+      audioCtx.onstatechange = () => {
+        if (audioCtx && audioCtx.state !== "running" && snapshot.phase === "rec") void micLost();
+      };
+    }
+  } catch {
+    audioCtx = null;
+    mixer = null;
+  }
+
+  plugMic(stream);
+
   let media: MediaRecorder;
+  const source = mixer ? mixer.stream : stream;
 
   // 말소리라 낮게 잡는다(1시간 ≈ 14MB). 지정이 없으면 브라우저마다 128kbps 안팎이라 1시간이면 50MB 를 넘는다(민규 #169).
-  // 원문 변환 품질은 실제 폰 녹음으로 확인할 것.
   try {
-    media = new MediaRecorder(stream, { mimeType: format.mime, audioBitsPerSecond: AUDIO_BPS });
+    media = new MediaRecorder(source, { mimeType: format.mime, audioBitsPerSecond: AUDIO_BPS });
   } catch {
-    media = new MediaRecorder(stream, { audioBitsPerSecond: AUDIO_BPS });
+    try {
+      media = new MediaRecorder(source, { audioBitsPerSecond: AUDIO_BPS });
+    } catch {
+      // 믹서 녹음을 못 하는 브라우저: 마이크를 바로 녹음한다.
+      if (mixer) {
+        try {
+          micNode?.disconnect();
+        } catch {
+          // 무시
+        }
+        audioCtx?.close().catch(() => {});
+        audioCtx = null;
+        mixer = null;
+        micNode = null;
+      }
+      media = new MediaRecorder(stream, { mimeType: format.mime, audioBitsPerSecond: AUDIO_BPS });
+    }
   }
 
   seq = 0;
@@ -270,19 +376,11 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
         set({ error: "폰 저장 공간이 부족해 녹음을 저장하지 못하고 있어요. 녹음을 멈추고 공간을 확보해 주세요." });
       });
   };
-
-  media.onerror = () => void interrupted(INTERRUPTED_TEXT);
-  // 우리가 부르지 않았는데 멈췄으면(전화 등으로 폰이 녹음기를 먼저 멈춤) 정리한다. 전에는 화면이 '녹음 중' 에 남고 정지도 먹지 않았다.
+  media.onerror = () => void recorderEnded(INTERRUPTED_TEXT);
+  // 우리가 부르지 않았는데 녹음기가 끝났으면(폰이 끝냄) 이어 갈 수 없다 — 녹음된 데까지 정리한다.
   media.onstop = () => {
-    if (!stopping) void interrupted(document.visibilityState === "visible" ? INTERRUPTED_TEXT : HIDDEN_TEXT);
+    if (!stopping) void recorderEnded(mixer ? ENDED_TEXT : INTERRUPTED_TEXT);
   };
-  stream.getAudioTracks().forEach((track) => {
-    track.addEventListener("ended", () => void interrupted(document.visibilityState === "visible" ? INTERRUPTED_TEXT : HIDDEN_TEXT));
-    track.addEventListener("mute", () => set({ error: MUTED_TEXT }));
-    track.addEventListener("unmute", () => {
-      if (snapshot.error === MUTED_TEXT) set({ error: null });
-    });
-  });
 
   recorder = media;
   stopping = false;
@@ -300,7 +398,7 @@ export async function startRecording(info: DraftInfo): Promise<boolean> {
 }
 
 export function pauseRecording(): void {
-  if (recorder?.state !== "recording") return;
+  if (snapshot.phase !== "rec" || recorder?.state !== "recording") return;
 
   recorder.pause();
   banked = now();
@@ -309,27 +407,54 @@ export function pauseRecording(): void {
   set({ phase: "paused", elapsedMs: banked });
 }
 
-export function resumeRecording(): void {
-  if (recorder?.state !== "paused") return;
+/** '계속'. 마이크가 끊겨 있으면 다시 켜서 믹서에 꽂고 같은 녹음기를 이어 간다. */
+export async function resumeRecording(): Promise<void> {
+  if (snapshot.phase !== "paused" || stopping) return;
 
-  recorder.resume();
+  if (!recorder || recorder.state === "inactive") {
+    await recorderEnded(ENDED_TEXT);
+    return;
+  }
+
+  if (!micLive()) {
+    if (!mixer) {
+      await recorderEnded(INTERRUPTED_TEXT);
+      return;
+    }
+    try {
+      if (audioCtx && audioCtx.state !== "running") await audioCtx.resume();
+      plugMic(await openMic());
+    } catch {
+      set({ error: MIC_TEXT });
+      return;
+    }
+  }
+
+  try {
+    recorder.resume();
+  } catch {
+    await recorderEnded(ENDED_TEXT);
+    return;
+  }
   segmentStart = Date.now();
   tick(true);
-  set({ phase: "rec" });
+  wakeLock = null;
+  void lockScreen();
+  set({ phase: "rec", error: snapshot.error === PAUSED_TEXT || snapshot.error === MIC_TEXT ? null : snapshot.error });
 }
 
 export async function stopRecording(): Promise<void> {
   if (!live() || stopping) return;
 
   const media = recorder;
-  // 녹음기가 살아 있으면 지금까지가 녹음 시간, 이미 스스로 멈췄으면 마지막 조각까지만 녹음된 것이다.
-  const alive = !!media && media.state !== "inactive" && !!stream && stream.getAudioTracks().some((t) => t.readyState === "live");
-  const elapsed = alive ? now() : lastDataElapsed;
+  const alive = !!media && media.state !== "inactive";
+  // 녹음 중이면 지금까지, 일시정지면 쌓아 둔 시간, 녹음기가 이미 끝났으면 마지막 조각까지가 녹음된 길이다.
+  const elapsed = !alive ? lastDataElapsed : snapshot.phase === "rec" ? now() : banked;
 
   stopping = true;
-  // 마지막 조각(dataavailable)이 저장될 때까지 기다린다.
   if (media) await waitStop(media);
-  await finalize(elapsed, alive ? null : snapshot.error ?? INTERRUPTED_TEXT);
+  // 보통 정지면 일시정지 안내 등은 지운다. 녹음기가 이미 끝나 있었으면 그 사실을 알린다.
+  await finalize(elapsed, alive ? null : mixer ? ENDED_TEXT : INTERRUPTED_TEXT);
 }
 
 /** 저장한 뒤 처음으로(조각은 대기열로 옮겨졌다). */
