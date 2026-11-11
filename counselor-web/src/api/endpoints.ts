@@ -87,6 +87,7 @@ import type {
   Memo,
   MemoCreateRequest,
   MemoUpdateRequest,
+  BriefingChecks,
 } from "./types";
 
 /**
@@ -665,6 +666,21 @@ export const lawGuide = {
 // =========================================================
 // 상담사 메모(API_CONTRACT 25절) — 쓴 사람만 읽고 고치고 지운다
 // =========================================================
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절) — 웹 · 폰이 같은 값
+// =========================================================
+
+export const briefingChecks = {
+  get(sessionId: string): Promise<BriefingChecks> {
+    return api.get<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`);
+  },
+
+  /** 문장 하나를 켜거나 끈다. 바뀐 전체를 돌려준다. */
+  toggle(sessionId: string, text: string, checked: boolean): Promise<BriefingChecks> {
+    return api.patch<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`, { text, checked });
+  },
+};
 
 export const memos = {
   /** 내 메모(최신순). 담당이 바뀌어 볼 수 없게 된 사례의 메모는 빠진다. */

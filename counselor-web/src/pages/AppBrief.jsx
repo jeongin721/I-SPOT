@@ -3,12 +3,11 @@
 //
 // 서버 연결: 주소 ?case=<사례 ID>. 웹 사례 상세의 상담 전 브리핑과 **같은 값**(preBriefingValues)을 폰 모양으로 보인다.
 //  - 먼저 볼 것: 아이가 보낸 말 · 체크인 응답 변화(콩콩 아이 앱) · 처음 나온 이야기(분석이 끝난 최근 회차의 새 주제, AI 제안).
-//  - 확인할 사항: 웹과 같은 목록. 체크는 서버 칸이 없어 이 폰에만 회차별로 기억한다(웹과 같은 저장 이름, 기기마다 따로).
+//  - 확인할 사항: 웹과 같은 목록. 체크는 서버에 회차별로 둔다(API_CONTRACT 26절 — 웹 사례 상세 브리핑과 같은 값).
 //  - 추가 질문: 그 회차에서 상담사가 승인한 질문만(승인 전 AI 초안은 안 보임).
 //  - 머리 위 줄: 이 사례의 가장 가까운 상담 일정(오늘이면 '오늘 16:00') · 다음 회차 번호. 일정이 없으면 회차 번호만.
 //  - '이 상담 녹음 시작' 은 그 아이를 골라 둔 채 앱 · 녹음으로 간다.
 // 브리핑 내용 수정 · 질문 편집은 웹에서 한다(디자인 문구 그대로).
-import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import MobileAppShell from '../components/MobileAppShell';
 import { childApp } from '../api/endpoints';
@@ -23,6 +22,7 @@ import { signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useRemote } from '../data/useRemote';
+import { useBriefingChecks } from '../data/useBriefingChecks';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { addDays, parseYmd, useAppSchedule, ymd } from '../data/useAppSchedule';
 
@@ -45,36 +45,9 @@ function useBrief(caseId) {
   return { brief, detail, signals };
 }
 
-function useTicks(sessionId) {
-  const key = sessionId ? `ispot-brief-ticks:${sessionId}` : null;
-  const [ticks, setTicks] = useState(() => new Set());
-  useEffect(() => {
-    let saved = [];
-    try {
-      saved = key ? JSON.parse(window.localStorage.getItem(key) || '[]') : [];
-    } catch {
-      saved = [];
-    }
-    setTicks(new Set(Array.isArray(saved) ? saved : []));
-  }, [key]);
-  const toggle = (text) =>
-    setTicks((prev) => {
-      const next = new Set(prev);
-      if (next.has(text)) next.delete(text);
-      else next.add(text);
-      try {
-        if (key) window.localStorage.setItem(key, JSON.stringify([...next]));
-      } catch {
-        // 저장이 막힌 브라우저면 이 화면에서만
-      }
-      return next;
-    });
-  return { ticks, toggle };
-}
-
 function BriefBody({ caseId }) {
   const { brief, signals } = useBrief(caseId);
-  const { ticks, toggle } = useTicks(signals.session?.id ?? null);
+  const { ticks, toggle, error: tickError } = useBriefingChecks(signals.session?.id ?? null);
   const checks = brief.checks || [];
   const done = checks.filter((c) => ticks.has(c.text)).length;
 
@@ -102,6 +75,7 @@ function BriefBody({ caseId }) {
           </span>
         </label>
       ))}
+      {tickError ? <span className="ma-err">{tickError}</span> : null}
       {brief.checksError ? <span className="ma-err">{brief.checksError}</span> : null}
       <p className="ma-sec-t">
         추가 질문{' '}
