@@ -98,6 +98,18 @@ def key_id_of(token: str) -> Optional[str]:
     return parts[1] if len(parts) == 4 and parts[0] == FORMAT_VERSION else None
 
 
+def key_id_for_log(token: str) -> str:
+    """로그에 남길 키 이름. 지금 설정에 있는 키 이름일 때만 그대로, 아니면 "?".
+
+    저장 값은 DB 를 직접 고쳐 바꿀 수 있어, 키 이름 자리의 글자를 그대로 찍으면 그 글자(예: 실명)가 로그로 옮겨진다(Codex #138 L2,
+    main 에서 옮겨 옴 — 데모 메모 API 가 쓴다).
+    """
+
+    key_id = key_id_of(token)
+
+    return key_id if key_id is not None and key_id in _ring(settings.PII_ENCRYPTION_KEYS)[1] else "?"
+
+
 def decrypt_text(token: str, *, case_id: uuid.UUID, field: str) -> str:
     return _open(token, aad_for(case_id, field))
 

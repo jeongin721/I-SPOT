@@ -134,8 +134,11 @@ def _old_case_forms_db(tmp_path, name: str, drafts: int) -> str:
     engine = create_engine(database_url)
     try:
         with engine.begin() as connection:
-            connection.execute(text("DROP INDEX uq_case_forms_one_draft"))
-            connection.execute(text("ALTER TABLE case_forms DROP COLUMN version"))
+            # 데모 브랜치의 e5f6a7b8c9d0 은 처음부터 둘 다 만들지 않는다 — 있을 때만 지워 같은 모양을 만든다.
+            connection.execute(text("DROP INDEX IF EXISTS uq_case_forms_one_draft"))
+            columns = {row[1] for row in connection.execute(text("PRAGMA table_info('case_forms')"))}
+            if "version" in columns:
+                connection.execute(text("ALTER TABLE case_forms DROP COLUMN version"))
             for round_no in range(1, drafts + 1):
                 connection.execute(
                     text(
