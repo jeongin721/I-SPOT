@@ -470,15 +470,18 @@ export async function enqueueAudioFile(input: { userId: string; caseId: string; 
   // 파일을 1MB 씩 잘라 조각으로 넣는다(한꺼번에 메모리에 올리지 않게).
   const PIECE = 1024 * 1024;
 
-  for (let seq = 0, at = 0; at < input.file.size; seq += 1, at += PIECE) {
-    const buf = await input.file.slice(at, at + PIECE).arrayBuffer();
+  // 조각을 넣다가(또는 줄을 넣다가) 실패하면 넣은 조각을 지운다 — 줄 없는 조각이 폰에 남지 않게(민규 #169 4).
+  // 그 사이 앱이 꺼져 남은 조각은 앱을 열 때 cleanOrphanChunks 가 지운다.
+  try {
+    for (let seq = 0, at = 0; at < input.file.size; seq += 1, at += PIECE) {
+      const buf = await input.file.slice(at, at + PIECE).arrayBuffer();
 
-    await tx([CHUNKS], "readwrite", (t) => {
-      t.objectStore(CHUNKS).put({ draftId: id, seq, buf });
-    });
-  }
+      await tx([CHUNKS], "readwrite", (t) => {
+        t.objectStore(CHUNKS).put({ draftId: id, seq, buf });
+      });
+    }
 
-  await putItem(
+    await putItem(
     {
       id,
       userId: input.userId,
@@ -501,10 +504,61 @@ export async function enqueueAudioFile(input: { userId: string; caseId: string; 
       createdAt: now,
       updatedAt: now,
     },
-  );
+    );
+  } catch (caught) {
+    await tx([CHUNKS], "readwrite", (t) => {
+      t.objectStore(CHUNKS).delete(chunkRange(id));
+    }).catch(() => {});
+    throw caught;
+  }
   void processQueue();
 
   return id;
+}
+
+/**
+ * 대기열 줄도 녹음 머리 줄도 없는 조각을 지운다(앱을 열 때 한 번). 폰 음성 파일을 넣다가 앱이 꺼진 경우 등(민규 #169 4).
+ * keep 은 지금 이 탭에서 녹음 중인 것(머리 줄을 막 만드는 중일 수 있어 건너뛴다). 다른 탭이 녹음 중인 것도 건너뛴다.
+ */
+export async function cleanOrphanChunks(keep: string | null): Promise<number> {
+  const db = await openDb();
+  const owners = await new Promise<Set<string>>((resolve, reject) => {
+    const t = db.transaction([CHUNKS], "readonly");
+    const req = t.objectStore(CHUNKS).openKeyCursor();
+    const found = new Set<string>();
+
+    req.onsuccess = () => {
+      const cursor = req.result;
+
+      if (!cursor) return;
+      found.add((cursor.key as [string, number])[0]);
+      cursor.continue();
+    };
+    t.oncomplete = () => resolve(found);
+    t.onerror = () => reject(t.error);
+  });
+
+  if (owners.size === 0) return 0;
+
+  const itemIds = new Set(((await tx<IDBValidKey[]>([ITEMS], "readonly", (t) => t.objectStore(ITEMS).getAllKeys())) ?? []).map(String));
+  const draftIds = new Set(((await tx<IDBValidKey[]>([DRAFTS], "readonly", (t) => t.objectStore(DRAFTS).getAllKeys())) ?? []).map(String));
+  const held = await heldRecordingLocks();
+  let removed = 0;
+
+  for (const owner of owners) {
+    if (owner === keep || itemIds.has(owner) || draftIds.has(owner) || held.has(RECORDING_LOCK_PREFIX + owner)) continue;
+    // 다른 탭에서 지금 넣는 중일 수 있다 — ID 에 든 만든 시각(앞 글자 뒤 · 끝 4글자 앞, 36진수)이 10분 안이면 둔다.
+    const born = parseInt(owner.slice(1, -4), 36);
+
+    if (Number.isFinite(born) && Date.now() - born < 10 * 60 * 1000) continue;
+
+    await tx([CHUNKS], "readwrite", (t) => {
+      t.objectStore(CHUNKS).delete(chunkRange(owner));
+    });
+    removed += 1;
+  }
+
+  return removed;
 }
 
 async function heldRecordingLocks(): Promise<Set<string>> {
