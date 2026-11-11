@@ -57,6 +57,8 @@ analyze_session(
     "정서학대": {"detected": false},
     "성학대": {"detected": false},
     "방임": {"detected": false, "llm_supplementary": true}   // note 모드에서 LLM이 추가한 경우만 존재
+    // 1차가 신체학대를 잡아 2차에 함께 물은 정서학대가 근거로 확인되면 {"detected": true, "detected_by": "2차 동반 확인"}
+    // (2026-11-11, companion_types.py). 계약 abuse_signals 의 detection_source 는 MODEL 이다.
   },
   "detected_major_types": ["신체학대"],
   "subtype_analysis": {

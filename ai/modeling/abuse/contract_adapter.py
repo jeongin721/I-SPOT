@@ -381,6 +381,11 @@ def to_ai_output_contract(
         if detection_source is None and info.get("detected", False):
             detection_source = "MODEL"
 
+        # 세션에서 탐지면 출처는 늘 MODEL 이고 걸러진 사유는 싣지 않는다(API_CONTRACT 8절). 1차가 한 구간에서 '아동 부정'
+        # 으로 내렸어도 2차 동반 확인(companion_types.py, detected_by '2차 동반 확인')이 근거로 올렸으면 그렇다 — 민규 #171 리뷰.
+        if info.get("detected", False):
+            detection_source, filtered_reason = "MODEL", None
+
         abuse_signals.append(
             {
                 "abuse_type": _abuse_type(major_type),
