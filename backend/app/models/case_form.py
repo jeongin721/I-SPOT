@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import CaseFormType, ReviewStatus
@@ -20,7 +20,19 @@ if TYPE_CHECKING:
 
 class CaseForm(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "case_forms"
-    __table_args__ = (UniqueConstraint("case_id", "form_type", "round", name="uq_case_forms_case_type_round"),)
+    __table_args__ = (
+        UniqueConstraint("case_id", "form_type", "round", name="uq_case_forms_case_type_round"),
+        # 사례 · 서식 종류마다 임시 저장 차수는 하나(main #140 M1 과 같다). 데모 DB 에는 #168 c7d8e9f0a1b2 가 만들었다.
+        # 저장 코드(create_form)도 같은 규칙으로 409 를 돌려주고, 동시에 만들어 걸리면 IntegrityError → 409 다.
+        Index(
+            "uq_case_forms_one_draft",
+            "case_id",
+            "form_type",
+            unique=True,
+            sqlite_where=text("status = 'DRAFT'"),
+            postgresql_where=text("status = 'DRAFT'"),
+        ),
+    )
 
     case_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True
@@ -35,6 +47,8 @@ class CaseForm(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=ReviewStatus.DRAFT,
         nullable=False,
     )
+    # 판 번호(main #140 H2 · H3 의 칸, 데모 DB 에는 #168 c7d8e9f0a1b2 가 만들었다). 데모 저장 코드는 아직 판 대조를 하지 않아 1 로 남는다.
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # 서식 종류별 칸 값(schemas/case_form.py 의 *Values 꼴).
     values: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
 
