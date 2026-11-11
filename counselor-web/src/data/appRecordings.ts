@@ -333,15 +333,17 @@ export async function removeRecording(id: string): Promise<void> {
 /**
  * 다 올린 줄을 서버와 맞춘다(업로드 목록을 열 때). 웹에서 그 회차를 지웠거나(404) 담당이 바뀌어 볼 수 없게 됐으면(403)
  * 폰 목록에서 뺀다 — 전에는 폰에 남은 기록만 보여 지운 회차가 '완료' 로 남았다(11/11 시연 준비 요청 4번).
+ * 남은 줄은 그 회차의 지금 상태(원문 변환 중 · 원문 검수 필요 …)를 돌려준다 — 현장에서 웹을 안 켜도 처리됐는지 보이게(11/12).
  * 연결이 없거나 서버가 답하지 않으면 그대로 둔다. 회차 한 건씩 짧게 묻는다(완료 줄은 7일만 남으므로 많지 않다).
  */
-export async function syncDoneWithServer(userId: string): Promise<number> {
+export async function syncDoneWithServer(userId: string): Promise<{ removed: number; statuses: Record<string, SessionStatus> }> {
   const done = (await listRecordings(userId)).filter((item) => item.status === "done" && item.sessionId);
+  const statuses: Record<string, SessionStatus> = {};
   let removed = 0;
 
   for (const item of done) {
     try {
-      await getSession(item.sessionId as string);
+      statuses[item.id] = (await getSession(item.sessionId as string)).status;
     } catch (caught) {
       if (caught instanceof ApiError && (caught.status === 404 || caught.status === 403)) {
         await dropPayload(item.id, null);
@@ -353,7 +355,7 @@ export async function syncDoneWithServer(userId: string): Promise<number> {
     }
   }
 
-  return removed;
+  return { removed, statuses };
 }
 
 // ---------------------------------------------------------------------------
