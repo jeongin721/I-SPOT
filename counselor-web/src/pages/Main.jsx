@@ -5,7 +5,7 @@
 // src/data/screens/main.ts(mainValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 오늘 일정 · 다음 상담까지 남은 시간은 일정(useSchedule, 11/02 연결)에서 온다. 긴급 업무는 콩콩 알림(11/10 연결)이다.
 // 시계 · 빠른 실행은 화면 상태다.
-import { Fragment, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -13,6 +13,7 @@ import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
+import TaskPickPopover from '../components/TaskPickPopover';
 import { useAuthSession } from '../data/useAuthSession';
 import { useHomeDashboard } from '../data/useHomeDashboard';
 import { useRemote } from '../data/useRemote';
@@ -49,6 +50,9 @@ export default function Main(props) {
   const alertsKey = session.status === 'signedIn' ? `home-child-alerts:${session.me.id}` : null;
   const childAlerts = useRemote(alertsKey, () => childApp.openAlerts(), '아이 앱 알림을 불러오지 못했습니다.', () => false);
   const v = useDC(Logic, { ...props, session, home, schedule, childAlerts: childAlerts.data });
+  // 미처리 업무 줄을 누르면 그 업무 종류의 아동 고르기 창을 연다(2026-11-11). 같은 줄을 다시 누르면 닫는다.
+  const [pick, setPick] = useState(null);
+  const closePick = useCallback(() => setPick(null), []);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-Main">
@@ -120,14 +124,26 @@ export default function Main(props) {
               <span className="sub">{v.tasksLabel}</span>
               <b className="n brn">{v.tasksCount}</b>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                {(v.todos || []).map((t, tIndex) => (
-                  <A key={tIndex} className="todo" to={t.href}>
-                    <span className={t.chip}>{t.label}</span>
-                    <span style={{ flex: '1' }}>{t.text}</span>
-                    <b className="brn" title={t.waitedTitle}>
-                      {t.waited}
-                    </b>
-                  </A>
+                {(v.todos || []).map((t) => (
+                  <div key={t.taskType} className="tk-wrap">
+                    <button
+                      type="button"
+                      className={`todo${pick === t.taskType ? ' on' : ''}`}
+                      data-task-pick
+                      aria-haspopup="dialog"
+                      aria-expanded={pick === t.taskType}
+                      onClick={() => setPick(pick === t.taskType ? null : t.taskType)}
+                    >
+                      <span className={t.chip}>{t.label}</span>
+                      <span style={{ flex: '1', textAlign: 'left' }}>{t.text}</span>
+                      <b className="brn" title={t.waitedTitle}>
+                        {t.waited}
+                      </b>
+                    </button>
+                    {pick === t.taskType ? (
+                      <TaskPickPopover taskType={t.taskType} title={t.label} wholeOrg={home.wholeOrg} onClose={closePick} />
+                    ) : null}
+                  </div>
                 ))}
                 {v.todoNote ? <span className="note">{v.todoNote}</span> : null}
               </div>

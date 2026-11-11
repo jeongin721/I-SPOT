@@ -222,6 +222,8 @@ export function mainValues({ session, home, schedule, childAlerts, state, setSta
     const label = homeLabel(task);
     return {
       label,
+      // 누르면 옆 작은 창에서 이 업무에 걸린 아동을 고른다(2026-11-11, TaskPickPopover). href 는 가장 오래 기다린 회차.
+      taskType: task.taskType,
       chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
       text: [`${task.childAlias} ${task.sessionNumber}회차${task.count > 1 ? " 외" : ""}`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
         .filter(Boolean)

@@ -159,3 +159,30 @@
 .pg-Main .todo-urg{border-color:#E8C3BA !important}
 .pg-Main .thm-root.dark .stat-more{color:#A8A296}
 .pg-Main .thm-root.dark .stat-hd:hover .stat-more{color:#ECE8DF}
+
+/* 11/11 경진님: 미처리 업무 줄을 누르면 옆에 뜨는 아동 고르기 창(TaskPickPopover). 알림 창(.nt-pop)과 같은 모양.
+   넓은 화면은 카드 오른쪽 옆, 좁은 화면은 줄 아래에 뜬다. */
+.pg-Main .tk-wrap{position:relative}
+.pg-Main button.todo{width:100%;font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.pg-Main .todo.on{border-color:#2B2A26 !important;background:#F2EFE8}
+.pg-Main .tk-pop{position:absolute;top:-8px;left:calc(100% + 30px);z-index:60;width:320px;background:#FFFFFF;border:1px solid #DAD5C9;border-radius:14px;box-shadow:0 12px 32px rgba(43,42,38,.16);overflow:hidden;text-align:left}
+.pg-Main .tk-hd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #EAE7DF}
+.pg-Main .tk-sub{font-size:12px;color:#7A776F}
+.pg-Main .tk-x{margin-left:auto;width:28px;height:28px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:18px;line-height:1;color:#7A776F;cursor:pointer}
+.pg-Main .tk-x:hover{background:#F1EADA}
+.pg-Main .tk-list{max-height:380px;overflow-y:auto}
+.pg-Main .tk-item{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #F0EDE6;color:#2B2A26 !important;text-decoration:none}
+.pg-Main .tk-item:last-child{border-bottom:0}
+.pg-Main .tk-item:hover{background:#F7F6F2}
+.pg-Main .tk-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pg-Main .tk-t{font-weight:700;font-size:14px}
+.pg-Main .tk-s{font-size:12px;color:#7A776F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-Main .tk-late{flex:none;height:22px;font-size:11px}
+.pg-Main .tk-empty{margin:0;padding:14px 16px;font-size:13px;color:#7A776F}
+@media (max-width:1200px){.pg-Main .tk-pop{top:calc(100% + 6px);left:0;right:0;width:auto}}
+.pg-Main .thm-root.dark .tk-pop{background:#2C2B27;border-color:#45423B;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.pg-Main .thm-root.dark .tk-hd{border-color:#45423B}
+.pg-Main .thm-root.dark .tk-item{border-color:#3A3833;color:#ECE8DF !important}
+.pg-Main .thm-root.dark .tk-item:hover{background:#33312C}
+.pg-Main .thm-root.dark .tk-x:hover{background:#3A3833}
+.pg-Main .thm-root.dark .todo.on{border-color:#C2A36B !important;background:#3A3833 !important}
