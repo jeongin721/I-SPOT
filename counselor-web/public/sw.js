@@ -7,7 +7,7 @@
 //  - 글꼴(Google Fonts): 저장한 것을 먼저, 뒤에서 새로 받아 둔다.
 //  - API(/api/*) · 아동 앱(/child-app/*) · 그 밖의 요청은 손대지 않는다(상담 자료는 폰에 저장하지 않는다 — 녹음 대기열은 앱이 따로 둔다).
 
-const SHELL = "ispot-app-shell-v1";
+const SHELL = "ispot-app-shell-v2";
 // 저장한 것을 꺼낼 때 Vary 는 보지 않는다(서버가 Vary: Origin 을 붙이면 같은 파일인데 못 찾는다).
 const FONTS = "ispot-app-fonts-v1";
 
@@ -58,7 +58,7 @@ self.addEventListener("install", (event) => {
         const res = await fetch("/", { cache: "no-cache" });
         if (res.ok) await storeDoc(res);
         const cache = await caches.open(SHELL);
-        await cache.addAll(["/app/", "/app/manifest.webmanifest", "/app/icon-192.png", "/app/icon-512.png", "/app/apple-touch-icon.png"]);
+        await cache.addAll(["/app/", "/app/manifest.webmanifest", "/app/icon-192.png", "/app/icon-512.png", "/app/apple-touch-icon.png", "/app/lame.min.js"]);
       } catch {
         // 연결이 없으면 다음 방문 때 채운다
       }
