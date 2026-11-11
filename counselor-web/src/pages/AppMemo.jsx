@@ -6,6 +6,7 @@
 //  - 관련 아이: 내 진행 중 사례(useAppCases). 주소에 ?case= 가 있으면 그 아이를 골라 둔다(사례 목록의 '메모').
 //    담당이 바뀐 사례의 메모는 서버가 목록에서 뺀다.
 //  - 목록은 최신순 30개씩. 더 있으면 맨 아래 '더 보기'(디자인에 없어 더함).
+//  - 서버가 풀지 못한 메모(unreadable)는 '읽을 수 없는 메모' 로 보이고, 지우거나 새로 적을 수 있다.
 //  - 시각은 이 폰 시각('방금' · '오늘 15:20' · '어제 18:02' · '10/27 09:40').
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -141,7 +142,7 @@ function MemoBody({ userId }) {
           onClick={() => {
             setAsk(false);
             setErr('');
-            setEdit({ id: m.id, caseId: m.case_id ?? '', label: nameOf(m), text: m.text, t: whenText(at(m.created_at)) });
+            setEdit({ id: m.id, caseId: m.case_id ?? '', label: nameOf(m), text: m.text ?? '', t: whenText(at(m.created_at)) });
           }}
         >
           <div className="ma-mi-top">
@@ -150,7 +151,7 @@ function MemoBody({ userId }) {
               {whenText(at(m.created_at))}
             </span>
           </div>
-          <p>{m.text}</p>
+          {m.unreadable ? <p style={{ color: 'var(--mut)' }}>읽을 수 없는 메모예요. 지우거나 새로 적어 주세요.</p> : <p>{m.text}</p>}
         </div>
       ))}
       {rows.length < total && (

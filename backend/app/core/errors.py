@@ -86,8 +86,6 @@ class ErrorCode(str, Enum):
 
     # 개인 식별 정보 (API_CONTRACT 4절 '개인 식별 정보', 2026-10-30). 저장한 암호문을 풀 수 없음(키가 설정에 없음 · 값이 바뀜). 500.
     PERSONAL_INFO_UNAVAILABLE = "PERSONAL_INFO_UNAVAILABLE"
-    # 상담사 메모 본문을 풀지 못함(키가 없거나 암호문이 바뀜, 25절).
-    MEMO_UNAVAILABLE = "MEMO_UNAVAILABLE"
     # 다음 상담 체크리스트 (19절, 2026-10-30). 만들기 실패는 행의 error 로 남고, HTTP 로는 꺼져 있을 때만 쓴다.
     FOLLOWUP_DISABLED = "FOLLOWUP_DISABLED"
     # 외부(OpenAI)로 보내기 전 비식별 검증을 통과하지 못해 보내지 않았다(19절 행의 error.code).

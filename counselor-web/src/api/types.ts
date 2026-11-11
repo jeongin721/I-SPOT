@@ -1875,7 +1875,9 @@ export interface Memo {
   case_id: string | null;
   /** 관련 사례의 별칭(실명 아님). 사례가 없으면 null. */
   child_alias: string | null;
-  text: string;
+  /** 본문. 풀지 못하면 null 이고 unreadable 이 true(그 메모만 — 지우거나 새 본문으로 고칠 수 있다). */
+  text: string | null;
+  unreadable?: boolean;
   created_at: string;
   updated_at: string;
 }

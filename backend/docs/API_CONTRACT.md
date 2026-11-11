@@ -2870,14 +2870,17 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 `Memo`:
 
 ```json
-{ "id": "uuid", "case_id": "uuid", "child_alias": "서윤", "text": "현관 앞에서 만남…", "created_at": "…", "updated_at": "…" }
+{ "id": "uuid", "case_id": "uuid", "child_alias": "서윤", "text": "현관 앞에서 만남…", "unreadable": false, "created_at": "…", "updated_at": "…" }
 ```
 
 - `text`: 앞뒤 공백을 지운 1~4000자. 비었거나 NUL 이 들면 `422`.
 - `case_id`: 볼 수 있는 사례만 붙인다(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `child_alias` 는 그 사례의 별칭(실명은 싣지 않는다).
 - **담당이 바뀌어 지금 볼 수 없는 사례의 메모는 목록에서 빠지고**, 한 건 읽기 · 고치기 · 지우기도 `404` 다(사례가 없는 메모는 늘 보인다).
-- 본문은 내담자 정보와 같은 키(`PII_ENCRYPTION_KEYS`)로 **암호화해 저장**한다(묶음 값 = 메모 id). 풀지 못하면 `500 MEMO_UNAVAILABLE`
-  (로그에는 메모 id · 키 이름만). 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 는 아직 메모를 다시 암호화하지 않는다(후속).
+- 본문은 내담자 정보와 같은 키(`PII_ENCRYPTION_KEYS`)로 **암호화해 저장**한다(묶음 값 = 메모 id). 풀지 못하면(키가 없거나 암호문이 바뀜)
+  **그 메모만** `text: null` · `unreadable: true` 로 오고 목록 · 한 건은 `200` 이다(로그에는 메모 id · 키 이름만). 그 메모는 지우거나
+  새 `text` 로 고치면 된다. 다른 메모는 `unreadable: false`.
+- 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 메모도 맨 앞 키로 다시 암호화한다(감사 기록 `MEMO_UPDATED` ·
+  `detail.via` · 본문 없음). 풀지 못한 메모가 있으면 메모 id 만 출력하고 종료 코드 1 — 그때 옛 키를 빼면 안 된다.
 - 본문은 일반 로그 · 감사 기록에 넣지 않는다. 감사 기록은 `MEMO_CREATED` · `MEMO_UPDATED`(`detail.fields`: 바뀐 칸 이름) · `MEMO_DELETED` 만,
   메모 id · 사례 id 와 함께 남는다. 읽기는 감사 기록을 남기지 않는다(쓴 사람만 읽으므로).
 - 사례를 지우면 그 사례에 붙은 메모도 지워진다(사례 영구 삭제, 4절).
