@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.core.enums import (
     ChildAnswerLevel,
     ChildAppEventKind,
     ChildAppLinkStatus,
+    ChildQuestionDeliver,
     ChildQuestionSetStatus,
     ScheduleConsultType,
     ScheduleKind,
@@ -29,7 +30,7 @@ from app.models.case import Case
 from app.models.child_app import ChildAppEvent, ChildAppLink, ChildQuestionSet
 from app.models.schedule import ScheduleEvent
 from app.models.user import User
-from app.schemas.child_app import ChildAnswerInput, ChildAppCaseResponse, ChildHomeResponse
+from app.schemas.child_app import ChildAnswerInput, ChildAppCaseResponse, ChildHomeResponse, ChildScheduledQuestions
 from app.services import audit_service, signup_service
 
 CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
@@ -124,6 +125,70 @@ def link_row(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> Optional
     return db.scalar(statement.with_for_update() if lock else statement)
 
 
+# ---------------------------------------------------------
+# 발송 예약(2026-11-11). 예약 실행기는 없다 — 묶음에 '언제부터 보이는지'(deliver_at)를 적고 읽을 때 거른다.
+#   예약됨: PENDING 이고 deliver_at 이 아직 오지 않음. 아이 앱에는 없다.
+#   보임:   PENDING 이고 deliver_at 이 없거나 지남. 그중 가장 늦게 보이기 시작한 묶음 하나가 아이 앱에 간다.
+#           (예약 시각이 된 묶음이 앞 묶음을 대신한다. 밀린 앞 묶음은 다음 쓰기 요청에서 REPLACED 로 적는다.)
+# ---------------------------------------------------------
+
+def _evening(now: datetime) -> Optional[datetime]:
+    """발송 예약 시각: 누른 날(한국 날짜) CHILD_APP_DELIVER_HOUR 시. 이미 지났으면 None(바로 보낸다)."""
+
+    local = now.astimezone(LOCAL_TZ)
+    target = local.replace(hour=settings.CHILD_APP_DELIVER_HOUR, minute=0, second=0, microsecond=0)
+
+    return target.astimezone(timezone.utc) if target > local else None
+
+
+def _is_scheduled(row: ChildQuestionSet, now: datetime) -> bool:
+    return row.deliver_at is not None and _aware(row.deliver_at) > now
+
+
+def _pending_rows(db: Session, case_id: uuid.UUID, *, lock: bool = False) -> List[ChildQuestionSet]:
+    statement = select(ChildQuestionSet).where(
+        ChildQuestionSet.case_id == case_id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING
+    )
+
+    return list(db.scalars(statement.with_for_update() if lock else statement))
+
+
+def _shown(rows: List[ChildQuestionSet], now: datetime) -> Optional[ChildQuestionSet]:
+    shown = [row for row in rows if not _is_scheduled(row, now)]
+
+    return max(shown, key=lambda row: (_aware(row.deliver_at or row.created_at), _aware(row.created_at)), default=None)
+
+
+def current_set(db: Session, case_id: uuid.UUID, now: datetime) -> Optional[ChildQuestionSet]:
+    """지금 아이 앱에 보이는 답 전 묶음(없으면 None). 읽기만 한다."""
+
+    return _shown(_pending_rows(db, case_id), now)
+
+
+def settle(db: Session, case_id: uuid.UUID, now: datetime) -> Optional[ChildQuestionSet]:
+    """연결 행을 잠근 쓰기 요청에서 부른다. 예약 시각이 된 묶음에 밀린 답 전 묶음을 REPLACED 로 적고, 지금 보이는 묶음을 돌려준다."""
+
+    rows = _pending_rows(db, case_id, lock=True)
+    current = _shown(rows, now)
+    passed = [row for row in rows if row is not current and not _is_scheduled(row, now)]
+
+    for row in passed:
+        row.status = ChildQuestionSetStatus.REPLACED
+
+    if passed:
+        # 세션이 autoflush=False 라, 바로 뒤에 상태를 다시 읽는 쪽(AI 추가 질문 승인)이 옛 값을 보지 않게 적어 둔다.
+        db.flush()
+
+    return current
+
+
+def _retire(rows: List[ChildQuestionSet], now: datetime) -> None:
+    """답 전 묶음을 거둔다. 아직 아이에게 보이지 않은 예약은 CANCELED(보낸 것으로 세지 않는다), 이미 보인 것은 REPLACED."""
+
+    for row in rows:
+        row.status = ChildQuestionSetStatus.CANCELED if _is_scheduled(row, now) else ChildQuestionSetStatus.REPLACED
+
+
 # =========================================================
 # 상담사 웹
 # =========================================================
@@ -165,6 +230,7 @@ def send_questions(
     user: User,
     question_ids: List[str],
     ip_address: Optional[str],
+    deliver: ChildQuestionDeliver = ChildQuestionDeliver.NOW,
 ) -> None:
     ensure_assigned(case, user)
     ensure_active(case)
@@ -177,27 +243,85 @@ def send_questions(
     if link is None or link.status != ChildAppLinkStatus.LINKED:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "앱이 연결된 뒤에 질문을 보낼 수 있습니다.")
 
-    # 답하지 않은 질문은 새 질문으로 바뀐다(디자인 안내 문구).
-    db.execute(
-        update(ChildQuestionSet)
-        .where(ChildQuestionSet.case_id == case.id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING)
-        .values(status=ChildQuestionSetStatus.REPLACED)
-    )
+    now = _utcnow()
+    # 발송 예약 시각은 서버가 정한다. 그 시가 지났으면 바로 보낸다(deliver_at 없음).
+    deliver_at = _evening(now) if deliver == ChildQuestionDeliver.EVENING else None
+    rows = _pending_rows(db, case.id, lock=True)
+
+    if deliver_at is None:
+        # 답하지 않은 질문은 새 질문으로 바뀐다(디자인 안내 문구). 예약해 둔 것도 함께 거둔다.
+        _retire(rows, now)
+    else:
+        # 지금 보이는 질문은 예약 시각까지 그대로 두고, 앞서 예약해 둔 것만 새 예약으로 바꾼다.
+        settle(db, case.id, now)
+        _retire([row for row in rows if _is_scheduled(row, now)], now)
+
     db.add(
         ChildQuestionSet(
             case_id=case.id,
             sent_by_id=user.id,
             questions=[dict(_BANK_BY_ID[item]) for item in question_ids],
+            deliver_at=deliver_at,
         )
     )
-    _add_event(db, case.id, ChildAppEventKind.QUESTIONS_SENT, {"count": len(question_ids)})
+    scheduled = deliver_at is not None
+    _add_event(
+        db,
+        case.id,
+        ChildAppEventKind.QUESTIONS_SENT,
+        {"count": len(question_ids), **({"deliver_at": deliver_at.isoformat()} if scheduled else {})},
+    )
     audit_service.record(
         db,
         action=AuditAction.CHILD_APP_QUESTIONS_SENT,
         entity_type="child_question_set",
         actor_id=user.id,
         case_id=case.id,
-        detail={"count": len(question_ids)},
+        detail={"count": len(question_ids), **({"scheduled": True} if scheduled else {})},
+        ip_address=ip_address,
+    )
+    db.commit()
+
+
+def cancel_question_set(
+    db: Session,
+    case: Case,
+    user: User,
+    question_set_id: uuid.UUID,
+    ip_address: Optional[str],
+) -> None:
+    """발송 예약 취소. 아이에게 보이기 전(예약 시각 전)에만 된다. 이미 취소 · 대체된 묶음은 그대로 둔다(재시도 안전)."""
+
+    ensure_assigned(case, user)
+    # 잠금 순서: 연결 행 → 질문 묶음(질문 보내기 · 답 제출과 같다).
+    link_row(db, case.id, lock=True)
+    row = db.scalar(
+        select(ChildQuestionSet)
+        .where(ChildQuestionSet.id == question_set_id, ChildQuestionSet.case_id == case.id)
+        .with_for_update()
+    )
+
+    if row is None:
+        raise not_found(ErrorCode.NOT_FOUND, "질문을 찾을 수 없습니다.")
+
+    if row.status in (ChildQuestionSetStatus.CANCELED, ChildQuestionSetStatus.REPLACED):
+        db.rollback()
+        return
+
+    if row.status != ChildQuestionSetStatus.PENDING or not _is_scheduled(row, _utcnow()):
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "이미 아이에게 보낸 질문은 취소할 수 없습니다.")
+
+    row.status = ChildQuestionSetStatus.CANCELED
+    # 피드에는 '예약' 줄이 남아 있으니 취소도 한 줄 남긴다(AI 추가 질문 취소와 같은 모양).
+    _add_event(db, case.id, ChildAppEventKind.QUESTIONS_SENT, {"count": len(row.questions), "withdrawn": True})
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_QUESTION_WITHDRAWN,
+        entity_type="child_question_set",
+        entity_id=row.id,
+        actor_id=user.id,
+        case_id=case.id,
+        detail={"count": len(row.questions), "scheduled": True},
         ip_address=ip_address,
     )
     db.commit()
@@ -266,14 +390,21 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
 
 def stats(db: Session, date_from: date, date_to: date) -> Dict[str, int]:
     """관리자 통계 '아이 앱 응답률'. 기간(한국 날짜, 끝 날 포함) 안에 보낸 질문 묶음과 그중 아이가 답한 묶음, 지금 연결된 사례 수.
-    대체된 묶음(답하기 전 새 질문으로 바뀜)도 보낸 것으로 센다. 답 내용은 세지 않는다."""
+    대체된 묶음(답하기 전 새 질문으로 바뀜)도 보낸 것으로 센다. 답 내용은 세지 않는다.
+    발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 보이지 않은 예약과 보이기 전에 취소한 예약은 세지 않는다."""
 
     start = datetime.combine(date_from, datetime.min.time(), tzinfo=LOCAL_TZ)
     end = datetime.combine(date_to + timedelta(days=1), datetime.min.time(), tzinfo=LOCAL_TZ)
+    shown_at = func.coalesce(ChildQuestionSet.deliver_at, ChildQuestionSet.created_at)
     rows = db.execute(
         select(ChildQuestionSet.status, func.count())
         .join(Case, Case.id == ChildQuestionSet.case_id)
-        .where(ChildQuestionSet.created_at >= start, ChildQuestionSet.created_at < end)
+        .where(
+            shown_at >= start,
+            shown_at < end,
+            shown_at <= _utcnow(),
+            ChildQuestionSet.status != ChildQuestionSetStatus.CANCELED,
+        )
         .group_by(ChildQuestionSet.status)
     ).all()
     counts = {status.value: int(count) for status, count in rows}
@@ -296,12 +427,10 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
     link = link_row(db, case.id)
     # 아이에게 "담당 선생님만 본다" 고 안내한다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
     can_read_feed = case.counselor_id == user.id
-    pending = db.scalar(
-        select(ChildQuestionSet.id).where(
-            ChildQuestionSet.case_id == case.id,
-            ChildQuestionSet.status == ChildQuestionSetStatus.PENDING,
-        ).limit(1)
-    )
+    now = _utcnow()
+    pending = _pending_rows(db, case.id)
+    # 발송 예약해 둔 묶음(사례마다 하나까지). 담당 상담사만 보고 취소한다.
+    scheduled = next((row for row in pending if _is_scheduled(row, now)), None)
     rows = []
 
     if can_read_feed:
@@ -320,7 +449,15 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         last_response_at=link.last_response_at if link else None,
         # 담당 상담사의 아이 상세 머리글에 보인다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
         next_consult=_next_consult(db, case.id, datetime.now(LOCAL_TZ).date()) if can_read_feed else None,
-        has_pending_questions=pending is not None,
+        # 예약해 둔 질문도 답 전 질문이다(새로 보내면 바뀐다).
+        has_pending_questions=bool(pending),
+        scheduled_questions=(
+            ChildScheduledQuestions(
+                id=scheduled.id, count=len(scheduled.questions), deliver_at=_aware(scheduled.deliver_at)
+            )
+            if scheduled is not None and can_read_feed
+            else None
+        ),
         can_read_feed=can_read_feed,
         open_alerts=_open_alerts(db, user, case_id=case.id),
         bank=[
@@ -518,11 +655,7 @@ def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) ->
         db.rollback()
         return
     link = locked
-    db.execute(
-        update(ChildQuestionSet)
-        .where(ChildQuestionSet.case_id == case_id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING)
-        .values(status=ChildQuestionSetStatus.REPLACED)
-    )
+    _retire(_pending_rows(db, case_id, lock=True), _utcnow())
     _add_event(db, case_id, ChildAppEventKind.UNLINKED, {})
     audit_service.record(
         db,
@@ -614,15 +747,8 @@ def _next_consult(db: Session, case_id: uuid.UUID, today: date) -> Optional[Dict
 
 
 def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
-    row = db.scalar(
-        select(ChildQuestionSet)
-        .where(
-            ChildQuestionSet.case_id == link.case_id,
-            ChildQuestionSet.status == ChildQuestionSetStatus.PENDING,
-        )
-        .order_by(ChildQuestionSet.created_at.desc())
-        .limit(1)
-    )
+    # 발송 예약 시각이 아직 오지 않은 묶음은 주지 않는다.
+    row = current_set(db, link.case_id, _utcnow())
     pending = None
 
     if row is not None:
@@ -690,13 +816,17 @@ def submit_answers(
 ) -> None:
     # 잠금 순서: 연결 행 → 질문 묶음 → AI 초안. 승인 · 고치기도 연결 행을 먼저 잠가 서로 기다리게 한다(교착 방지, 민규 #165 재리뷰).
     db.scalar(select(ChildAppLink).where(ChildAppLink.id == link.id).with_for_update())
+    now = _utcnow()
+    # 예약 시각이 된 새 묶음에 밀린 묶음은 끝난 질문이다(아래 409).
+    settle(db, link.case_id, now)
     row = db.scalar(
         select(ChildQuestionSet)
         .where(ChildQuestionSet.id == question_set_id, ChildQuestionSet.case_id == link.case_id)
         .with_for_update()
     )
 
-    if row is None:
+    # 발송 예약 시각 전 묶음은 아이 앱에 없는 것이다.
+    if row is None or (row.status == ChildQuestionSetStatus.PENDING and _is_scheduled(row, now)):
         raise not_found(ErrorCode.NOT_FOUND, "질문을 찾을 수 없습니다.")
 
     if row.status != ChildQuestionSetStatus.PENDING:
@@ -734,7 +864,6 @@ def submit_answers(
     elif ChildAnswerLevel.AMBER.value in levels:
         worst = ChildAnswerLevel.AMBER
 
-    now = _utcnow()
     row.status = ChildQuestionSetStatus.ANSWERED
     row.answered_at = now
     link.last_response_at = now

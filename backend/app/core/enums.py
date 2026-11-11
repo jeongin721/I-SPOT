@@ -458,6 +458,15 @@ class ChildQuestionSetStatus(str, Enum):
     PENDING = "PENDING"
     ANSWERED = "ANSWERED"
     REPLACED = "REPLACED"
+    # 발송 예약한 묶음을 아이에게 보이기 전에 취소 · 새 질문으로 바꿨다(2026-11-11). 보낸 것으로 세지 않는다.
+    CANCELED = "CANCELED"
+
+
+class ChildQuestionDeliver(str, Enum):
+    """질문을 언제 아이 앱에 보일지(2026-11-11 발송 예약). EVENING 은 누른 날 CHILD_APP_DELIVER_HOUR 시(한국 시각)."""
+
+    NOW = "NOW"
+    EVENING = "EVENING"
 
 
 class ChildAppEventKind(str, Enum):

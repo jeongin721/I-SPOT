@@ -164,10 +164,17 @@ def to_response(db: Session, row: ChildAppAiDraft) -> ChildAiDraftResponse:
         else {}
     )
 
+    # 발송 예약 시각이 된 다른 묶음에 밀린 묶음은 (아직 REPLACED 로 적히기 전이라도) 앱에 없다.
+    current = child_app_service.current_set(db, row.case_id, child_app_service._utcnow()) if set_ids else None
+
     def state(question: Dict[str, Any]) -> Optional[ChildQuestionSetStatus]:
         set_id = question.get("question_set_id")
+        status = statuses.get(uuid.UUID(set_id)) if set_id else None
 
-        return statuses.get(uuid.UUID(set_id)) if set_id else None
+        if status == ChildQuestionSetStatus.PENDING and (current is None or str(current.id) != set_id):
+            return ChildQuestionSetStatus.REPLACED
+
+        return status
 
     return ChildAiDraftResponse(
         id=row.id,
@@ -316,6 +323,8 @@ def _locked_draft(db: Session, case: Case, user: User, draft_id: uuid.UUID) -> C
     child_app_service.ensure_assigned(case, user)
     # 답 제출과 같은 순서로 잠근다: 연결 행 → (묶음) → 초안.
     child_app_service.link_row(db, case.id, lock=True)
+    # 발송 예약 시각이 된 묶음에 밀린 묶음을 먼저 REPLACED 로 적는다(승인 상태를 그 뒤에 읽는다).
+    child_app_service.settle(db, case.id, child_app_service._utcnow())
     row = db.scalar(
         select(ChildAppAiDraft)
         .where(ChildAppAiDraft.id == draft_id, ChildAppAiDraft.case_id == case.id)
@@ -436,11 +445,8 @@ def _send(db: Session, case: Case, user: User, question: Dict[str, Any], ip_addr
         "text": question["text"],
         "options": list(question["options"]),
     }
-    target = db.scalar(
-        select(ChildQuestionSet)
-        .where(ChildQuestionSet.case_id == case.id, ChildQuestionSet.status == ChildQuestionSetStatus.PENDING)
-        .with_for_update()
-    )
+    # 지금 아이 앱에 보이는 묶음에만 붙인다. 발송 예약해 둔 묶음에는 붙이지 않는다 — 추가 질문은 바로 간다.
+    target = child_app_service.settle(db, case.id, child_app_service._utcnow())
 
     if target is None:
         target = ChildQuestionSet(case_id=case.id, sent_by_id=user.id, questions=[copied])

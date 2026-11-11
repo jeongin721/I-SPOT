@@ -56,6 +56,8 @@ class ChildQuestionSet(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 보낸 순서대로 문항 전체를 복사한 목록.
     questions: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
     answered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 발송 예약: 이 시각부터 아이 앱에 보인다. 비어 있으면 만든 즉시 보인다(2026-11-11).
+    deliver_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ChildAppEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
