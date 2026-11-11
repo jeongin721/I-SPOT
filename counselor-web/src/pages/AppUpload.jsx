@@ -7,13 +7,19 @@
 //  - 자료 올리기 › 파일: 음성 파일(.m4a · .mp3 · .wav 등)이면 고른 아이의 새 회차로 올리고 원문 변환까지 요청한다.
 //  - 목록을 열 때 다 올린 줄의 회차를 서버에 물어, 웹에서 지웠거나(404) 볼 수 없게 된(403) 회차는 목록에서 뺀다.
 //  - 주소에 ?case= 가 있으면 그 아이를 골라 둔다(앱 사례 목록의 '자료 올리기').
-//  - 사진 · 문서는 사례에 붙일 서버 자리(사례 파일함)가 아직 없어 '준비 중' 안내만 보인다.
+//  - 다 올린 줄 아래에 그 회차의 지금 상태('웹: 원문 검수 필요' 등)를 보인다. 처리 중이면 20초마다 다시 본다(11/12).
+//  - 사진 · 문서는 사례에 붙일 서버 자리(사례 파일함)가 아직 없어 '준비 중' 안내만 보인다. 고르기 전에도 '지금은 녹음만' 을 한 줄 보인다.
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
+import { SESSION_STATUS_LABELS } from '../data/sessionRows';
+
+// 서버가 아직 처리 중인 회차 상태(이 동안은 목록을 다시 본다).
+const WORKING = new Set(['AUDIO_UPLOADED', 'STT_PROCESSING', 'STT_CONFIRMED', 'AI_PROCESSING']);
+const FAILED = new Set(['STT_FAILED', 'AI_FAILED']);
 
 function UploadBody({ userId, items, notReady }) {
   const my = useAppCases(userId);
@@ -23,10 +29,30 @@ function UploadBody({ userId, items, notReady }) {
   const caseId = rows.some((row) => row.id === picked) ? picked : rows[0]?.id ?? '';
   const [pk, setPk] = useState(false);
 
-  // 목록을 열 때 다 올린 줄을 서버와 맞춘다(웹에서 지운 회차는 뺀다).
+  // 목록을 열 때 다 올린 줄을 서버와 맞춘다(웹에서 지운 회차는 빼고, 남은 줄은 지금 상태를 받는다).
+  // 원문 변환 · AI 분석이 도는 중인 줄이 있으면 20초마다 다시 본다(화면에 있는 동안만).
+  const [statuses, setStatuses] = useState({});
+  const doneIds = items.filter((x) => x.status === 'done').map((x) => x.id).join(',');
   useEffect(() => {
-    if (userId) void syncDoneWithServer(userId).catch(() => {});
-  }, [userId]);
+    if (!userId) return undefined;
+    let live = true;
+    let timer = null;
+    const tick = async () => {
+      try {
+        const res = await syncDoneWithServer(userId);
+        if (!live) return;
+        setStatuses(res.statuses);
+        if (Object.values(res.statuses).some((st) => WORKING.has(st))) timer = window.setTimeout(tick, 20_000);
+      } catch {
+        // 연결이 없으면 다음에 열 때
+      }
+    };
+    void tick();
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [userId, doneIds]);
   const [pickErr, setPickErr] = useState('');
 
   const child = rows.find((row) => row.id === caseId);
@@ -84,6 +110,7 @@ function UploadBody({ userId, items, notReady }) {
         </span>
         자료 올리기<span className="ma-note" style={{ fontWeight: 400 }}>파일 · 사진 보관함 · 사진 찍기</span>
       </button>
+      <span className="ma-note">지금은 녹음(음성 파일)만 올릴 수 있어요. 사진 · 문서는 준비 중이에요.</span>
       {(pickErr || my.error) && <span className="ma-err">{pickErr || my.error}</span>}
       <p className="ma-sec-t">
         올린 자료 <span className="ma-note">· 실패 {fails.length}건</span>
@@ -101,6 +128,11 @@ function UploadBody({ userId, items, notReady }) {
                 <span className="ma-note">
                   {whoText(x)} · {sizeText(x.size)} · {whenText(x.status === 'done' ? x.updatedAt : x.createdAt)}
                 </span>
+                {x.status === 'done' && statuses[x.id] && (
+                  <span className="ma-note" style={FAILED.has(statuses[x.id]) ? { color: 'var(--red)', fontWeight: 600 } : { fontWeight: 600 }}>
+                    웹: {SESSION_STATUS_LABELS[statuses[x.id]] ?? statuses[x.id]}
+                  </span>
+                )}
               </span>
               <span className={fail ? 'ma-chip ma-red' : run ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : run ? '올리는 중' : '완료'}</span>
             </div>
