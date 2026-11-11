@@ -22,6 +22,7 @@ import { fileNameFor, finishDraft } from '../data/appRecordings';
 import { kindLabel } from '../data/useAppRecordings';
 import {
   clearRecording,
+  preloadRecorder,
   pauseRecording,
   resetRecording,
   resumeRecording,
@@ -72,6 +73,8 @@ function useUploadableSessions(caseId) {
 
 function RecordBody({ userId, items, loaded }) {
   const rec = useRecorder();
+  // MP3 변환 도구를 미리 받아 둔다(녹음 시작을 누른 순간 기다리지 않게 · 연결 없을 때도 쓰게).
+  useEffect(() => preloadRecorder(), []);
   const [params] = useSearchParams();
   const my = useAppCases(userId);
   const [caseId, setCaseId] = useState(null);
