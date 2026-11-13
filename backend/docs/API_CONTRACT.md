@@ -2925,7 +2925,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 미확인 긴급 넘기기(멘토 피드백 11/12 B안): 아이가 직접 보낸 긴급 알림(`ALERT`)이 `CHILD_APP_ESCALATE_MINUTES`(기본 10분) 넘게 확인 전이면 `GET /child-app-alerts/open` 에서 담당이 아닌 상담사에게도 나온다. 이때 줄은 `handed_over: true` · `escalated: true` · `can_ack: false` · `child_alias: ""` 이고 사례 번호와 `counselor_name`(담당 상담사)만 준다 — 사례를 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 하는 것이다. 담당 상담사 · 관리자의 같은 알림에는 `escalated: true` 만 더해진다. 답 기반 알림(바로 확인 답 · 연락 요청 등)은 넘기지 않는다. 푸시는 아직 없다(푸시 연결 때 이어서).
 
-근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. 공휴일은 아직 빼지 않는다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026년 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
 
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 

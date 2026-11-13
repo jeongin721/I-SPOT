@@ -780,7 +780,7 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
 
 
 def staff_hours(now: Optional[datetime] = None) -> Dict[str, Any]:
-    """상담사가 바로 볼 수 있는 시간인지(한국 시간, CHILD_APP_STAFF_HOURS · CHILD_APP_STAFF_DAYS)."""
+    """상담사가 바로 볼 수 있는 시간인지(한국 시간, CHILD_APP_STAFF_HOURS · CHILD_APP_STAFF_DAYS · CHILD_APP_STAFF_HOLIDAYS)."""
 
     local = (now or _utcnow()).astimezone(LOCAL_TZ)
     start, end = settings.CHILD_APP_STAFF_HOURS.split("-")
@@ -791,10 +791,12 @@ def staff_hours(now: Optional[datetime] = None) -> Dict[str, Any]:
         hour, mins = text.split(":")
         return int(hour) * 60 + int(mins)
 
-    on_duty = local.weekday() in days and _minutes(start) <= minute < _minutes(end)
+    holidays = {item for item in settings.CHILD_APP_STAFF_HOLIDAYS.split(",") if item}
+    holiday = local.date().isoformat() in holidays
+    on_duty = not holiday and local.weekday() in days and _minutes(start) <= minute < _minutes(end)
     weekdays = "평일" if days == {0, 1, 2, 3, 4} else "".join("월화수목금토일"[day] for day in sorted(days))
 
-    return {"on_duty": on_duty, "label": f"{weekdays} {start}~{end}"}
+    return {"on_duty": on_duty, "label": "오늘은 쉬는 날" if holiday else f"{weekdays} {start}~{end}"}
 
 
 def _alert_pressed_at(event: ChildAppEvent) -> datetime:
