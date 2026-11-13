@@ -5,7 +5,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Query, status
 
-from app.core.enums import CaseStatus, SessionStatus
+from app.core.enums import CaseStatus, SessionStatus, SubjectType
 from app.core.deps import CurrentUser, DbSession
 from app.core.responses import DataResponse, PagedItems, paged
 from app.schemas.case import (
@@ -79,6 +79,8 @@ def list_cases(
     # 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순.
     sort: Optional[case_service.CaseSort] = None,
     order: case_service.CaseSortOrder = "desc",
+    # 대상 종류(아동 · 고령자, 2026-11-13). 없으면 둘 다.
+    subject_type: Optional[SubjectType] = None,
 ) -> DataResponse[PagedItems[CaseListItemResponse]]:
     cases, total = case_service.list_cases(
         db,
@@ -89,6 +91,7 @@ def list_cases(
         search=search,
         sort=sort,
         order=order,
+        subject_type=subject_type,
     )
 
     names = (

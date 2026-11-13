@@ -23,6 +23,7 @@ from app.core.enums import (
     GuardianType,
     RiskLevel,
     TargetActionResult,
+    SubjectType,
 )
 from app.core.intake import (
     INTAKE_CHILD_TRAITS,
@@ -136,6 +137,8 @@ class CaseCreateRequest(GuardianFields, CaseFormFields):
     model_config = ConfigDict(hide_input_in_errors=True)
 
     title: str = Field(..., min_length=1, max_length=200)
+    # 대상 종류(2026-11-13). 보내지 않으면 아동. 만든 뒤에는 바꿀 수 없다(수정 요청에는 이 칸이 없다).
+    subject_type: SubjectType = SubjectType.CHILD
     child_alias: str = Field(..., min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     child_gender: Optional[str] = Field(default=None, max_length=10)
@@ -248,6 +251,7 @@ class CaseResponse(BaseModel):
     id: uuid.UUID
     case_number: str
     title: str
+    subject_type: SubjectType = SubjectType.CHILD
     child_alias: str
     child_birth_year: Optional[int]
     child_gender: Optional[str]

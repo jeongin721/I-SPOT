@@ -17,6 +17,7 @@ from app.api.v1 import (
     law_guide,
     risk_assessments,
     schedule,
+    senior,
     sessions,
     source_documents,
     summary,
@@ -62,3 +63,5 @@ api_router.include_router(child_app.case_router)
 api_router.include_router(child_app.staff_router)
 api_router.include_router(child_app.list_router)
 api_router.include_router(child_app.stats_router)
+# /cases/{case_id}/senior-profile · health-measurements · health-trend · senior-brief — 고령자 건강상담(27절, 2026-11-13).
+api_router.include_router(senior.router)

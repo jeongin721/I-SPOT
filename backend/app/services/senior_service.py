@@ -1,0 +1,560 @@
+# 고령자 건강상담(2026-11-13, API_CONTRACT 27절) — 기본정보 · 건강측정 · 추이 · 요약과 다음 상담 확인사항.
+#
+# 모두 대상 종류가 SENIOR 인 사례에서만 쓴다(아동 사례는 409 INVALID_CASE_STATE).
+# 서버는 값과 그 변화만 계산하고 '정상 · 위험' 기준을 붙이지 않는다. 확인사항은 저장하지 않고 부를 때마다 만든다.
+
+import logging
+import threading
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.adapters.module_loader import ModuleLoadError, load_callable
+from app.core.concurrency import OperationTimeout, run_with_timeout
+from app.core.config import settings
+from app.core.enums import AuditAction, GlucoseTiming, ReviewStatus, SessionStatus, SubjectType
+from app.core.errors import APIError, ErrorCode, bad_request, conflict, not_found
+from app.models.case import Case
+from app.models.senior import HealthMeasurement, SeniorProfile
+from app.models.session import ConsultationSession
+from app.models.summary import ConsultationSummary
+from app.models.user import User
+from app.schemas.senior import (
+    VALUE_FIELDS,
+    BriefBasis,
+    BriefCheckItem,
+    HealthMeasurementCreateRequest,
+    HealthMeasurementResponse,
+    HealthMeasurementUpdateRequest,
+    HealthTrendResponse,
+    MetricTrend,
+    SeniorBriefResponse,
+    SeniorProfileResponse,
+    SeniorProfileUpdateRequest,
+    TrendPoint,
+)
+from app.services import audit_service, personal_info_service
+
+logger = logging.getLogger(__name__)
+
+MODULE = "ai.modeling.senior.senior_brief_llm"
+
+#: 한 사례에서 한 번에 돌려주는 측정 수 상한(목록 · 추이). 오래된 것부터 잘린다.
+MAX_MEASUREMENTS = 500
+
+#: (이름, 화면 이름, 단위). 추이 · 확인사항이 이 순서를 쓴다.
+METRICS: Tuple[Tuple[str, str, str], ...] = (
+    ("systolic", "수축기 혈압", "mmHg"),
+    ("diastolic", "이완기 혈압", "mmHg"),
+    ("pulse", "맥박", "회/분"),
+    ("blood_glucose_fasting", "공복 혈당", "mg/dL"),
+    ("blood_glucose_post_meal", "식후 혈당", "mg/dL"),
+    ("blood_glucose_random", "혈당(그 밖)", "mg/dL"),
+    ("weight_kg", "체중", "kg"),
+    ("body_temp_c", "체온", "℃"),
+)
+_GLUCOSE_METRIC = {
+    GlucoseTiming.FASTING: "blood_glucose_fasting",
+    GlucoseTiming.POST_MEAL: "blood_glucose_post_meal",
+    GlucoseTiming.RANDOM: "blood_glucose_random",
+}
+
+NOT_SENIOR_MESSAGE = "고령자 사례에서만 쓸 수 있습니다."
+
+
+# ---------------------------------------------------------------- 공통
+
+
+def ensure_senior(case: Case) -> None:
+    if case.subject_type != SubjectType.SENIOR:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, NOT_SENIOR_MESSAGE)
+
+
+def _check_session(db: Session, case: Case, session_id: Optional[uuid.UUID]) -> None:
+    if session_id is None:
+        return
+    found = db.scalar(select(ConsultationSession.case_id).where(ConsultationSession.id == session_id))
+    if found != case.id:
+        # 다른 사례의 회차인지 알려 주지 않는다(없는 회차와 같은 답).
+        raise not_found(ErrorCode.SESSION_NOT_FOUND, "이 사례의 상담 회차를 찾을 수 없습니다.")
+
+
+# ---------------------------------------------------------------- 기본정보
+
+
+def get_profile(db: Session, case: Case) -> SeniorProfileResponse:
+    ensure_senior(case)
+    row = db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == case.id))
+    if row is None:
+        return SeniorProfileResponse(case_id=case.id)
+    return _profile_out(row)
+
+
+def _profile_out(row: SeniorProfile) -> SeniorProfileResponse:
+    return SeniorProfileResponse(
+        case_id=row.case_id,
+        living_arrangement=row.living_arrangement,
+        care_grade=row.care_grade,
+        health_notes=row.health_notes,
+        care_notes=row.care_notes,
+        updated_at=row.updated_at,
+    )
+
+
+def update_profile(
+    db: Session, case: Case, current_user: User, payload: SeniorProfileUpdateRequest
+) -> SeniorProfileResponse:
+    ensure_senior(case)
+    data = payload.model_dump(exclude_unset=True)
+
+    row = db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == case.id).with_for_update())
+    if row is None:
+        row = SeniorProfile(case_id=case.id)
+        db.add(row)
+
+    changed = []
+    for field, value in data.items():
+        if isinstance(value, str):
+            value = value.strip() or None
+        if getattr(row, field) != value:
+            setattr(row, field, value)
+            changed.append(field)
+    row.updated_by_id = current_user.id
+
+    try:
+        db.flush()
+    except IntegrityError as error:  # 처음 저장이 겹침(사례 하나에 한 줄)
+        db.rollback()
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, "다른 요청이 먼저 저장했습니다. 새로고침해 주세요.") from error
+
+    if changed:
+        audit_service.record(
+            db,
+            action=AuditAction.SENIOR_PROFILE_UPDATED,
+            entity_type="SeniorProfile",
+            entity_id=row.id,
+            actor_id=current_user.id,
+            case_id=case.id,
+            detail={"changed_fields": sorted(changed)},
+        )
+    db.commit()
+    db.refresh(row)
+    return _profile_out(row)
+
+
+# ---------------------------------------------------------------- 측정
+
+
+def _measurements(db: Session, case: Case) -> List[HealthMeasurement]:
+    """오래된 것부터, 최근 MAX_MEASUREMENTS 개."""
+
+    rows = list(
+        db.scalars(
+            select(HealthMeasurement)
+            .where(HealthMeasurement.case_id == case.id)
+            .order_by(HealthMeasurement.measured_at.desc(), HealthMeasurement.created_at.desc())
+            .limit(MAX_MEASUREMENTS)
+        )
+    )
+    rows.reverse()
+    return rows
+
+
+def list_measurements(db: Session, case: Case) -> List[HealthMeasurementResponse]:
+    """최근 것부터."""
+
+    ensure_senior(case)
+    return [HealthMeasurementResponse.model_validate(row) for row in reversed(_measurements(db, case))]
+
+
+def get_measurement_or_404(db: Session, case: Case, measurement_id: uuid.UUID) -> HealthMeasurement:
+    row = db.scalar(
+        select(HealthMeasurement).where(HealthMeasurement.id == measurement_id, HealthMeasurement.case_id == case.id)
+    )
+    if row is None:
+        raise not_found(ErrorCode.NOT_FOUND, "측정 기록을 찾을 수 없습니다.")
+    return row
+
+
+def _filled(row_or_payload: Any) -> List[str]:
+    return [name for name in VALUE_FIELDS if getattr(row_or_payload, name) is not None]
+
+
+def create_measurement(
+    db: Session, case: Case, current_user: User, payload: HealthMeasurementCreateRequest
+) -> HealthMeasurementResponse:
+    ensure_senior(case)
+    _check_session(db, case, payload.session_id)
+
+    data = payload.model_dump()
+    if isinstance(data.get("note"), str):
+        data["note"] = data["note"].strip() or None
+    row = HealthMeasurement(case_id=case.id, created_by_id=current_user.id, **data)
+    db.add(row)
+    db.flush()
+
+    audit_service.record(
+        db,
+        action=AuditAction.HEALTH_MEASUREMENT_CREATED,
+        entity_type="HealthMeasurement",
+        entity_id=row.id,
+        actor_id=current_user.id,
+        case_id=case.id,
+        session_id=row.session_id,
+        detail={"fields": _filled(row)},
+    )
+    db.commit()
+    db.refresh(row)
+    return HealthMeasurementResponse.model_validate(row)
+
+
+def update_measurement(
+    db: Session,
+    case: Case,
+    measurement_id: uuid.UUID,
+    current_user: User,
+    payload: HealthMeasurementUpdateRequest,
+) -> HealthMeasurementResponse:
+    ensure_senior(case)
+    row = get_measurement_or_404(db, case, measurement_id)
+    data = payload.model_dump(exclude_unset=True)
+
+    if "measured_at" in data and data["measured_at"] is None:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "측정 시각은 비울 수 없습니다.")
+    if "session_id" in data:
+        _check_session(db, case, data["session_id"])
+
+    merged = {name: getattr(row, name) for name in HealthMeasurementCreateRequest.model_fields}
+    merged["measured_at"] = _as_aware(row.measured_at)
+    merged.update(data)
+    try:
+        # 바꾼 뒤 값이 만들기 규칙(값 하나 이상 · 혈압 짝 · 혈당 잰 때 · 시간대)을 지키는지 본다.
+        checked = HealthMeasurementCreateRequest.model_validate(merged)
+    except ValidationError as error:
+        first = error.errors()[0].get("msg", "") if error.errors() else ""
+        message = first.removeprefix("Value error, ") or "측정값이 올바르지 않습니다."
+        raise bad_request(ErrorCode.VALIDATION_ERROR, message) from error
+
+    changed = []
+    for field in data:
+        value = getattr(checked, field)
+        if field == "note" and isinstance(value, str):
+            value = value.strip() or None
+        if getattr(row, field) != value:
+            setattr(row, field, value)
+            changed.append(field)
+
+    if changed:
+        audit_service.record(
+            db,
+            action=AuditAction.HEALTH_MEASUREMENT_UPDATED,
+            entity_type="HealthMeasurement",
+            entity_id=row.id,
+            actor_id=current_user.id,
+            case_id=case.id,
+            session_id=row.session_id,
+            detail={"changed_fields": sorted(changed)},
+        )
+    db.commit()
+    db.refresh(row)
+    return HealthMeasurementResponse.model_validate(row)
+
+
+def delete_measurement(db: Session, case: Case, measurement_id: uuid.UUID, current_user: User) -> None:
+    ensure_senior(case)
+    row = get_measurement_or_404(db, case, measurement_id)
+    audit_service.record(
+        db,
+        action=AuditAction.HEALTH_MEASUREMENT_DELETED,
+        entity_type="HealthMeasurement",
+        entity_id=row.id,
+        actor_id=current_user.id,
+        case_id=case.id,
+        session_id=row.session_id,
+        detail={"fields": _filled(row)},
+    )
+    db.delete(row)
+    db.commit()
+
+
+# ---------------------------------------------------------------- 추이
+
+
+def _metric_value(row: HealthMeasurement, metric: str) -> Optional[float]:
+    if metric.startswith("blood_glucose_"):
+        if row.blood_glucose is None or _GLUCOSE_METRIC.get(row.glucose_timing) != metric:
+            return None
+        return float(row.blood_glucose)
+    value = getattr(row, metric)
+    return None if value is None else float(value)
+
+
+def _as_aware(value: datetime) -> datetime:
+    # SQLite 시험 DB 는 시간대를 떼고 돌려준다. 저장은 늘 시간대를 붙여 하므로 UTC 로 본다.
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _trends(rows: List[HealthMeasurement]) -> List[MetricTrend]:
+    result = []
+    for metric, label, unit in METRICS:
+        points = [
+            TrendPoint(measurement_id=row.id, measured_at=_as_aware(row.measured_at), value=value)
+            for row in rows
+            if (value := _metric_value(row, metric)) is not None
+        ]
+        if not points:
+            continue
+        latest = points[-1]
+        previous = points[-2] if len(points) >= 2 else None
+        values = [point.value for point in points]
+        result.append(
+            MetricTrend(
+                metric=metric,
+                label=label,
+                unit=unit,
+                count=len(points),
+                latest=latest,
+                previous=previous,
+                change=round(latest.value - previous.value, 1) if previous else None,
+                min=min(values),
+                max=max(values),
+                points=points,
+            )
+        )
+    return result
+
+
+def get_trend(db: Session, case: Case) -> HealthTrendResponse:
+    ensure_senior(case)
+    rows = _measurements(db, case)
+    return HealthTrendResponse(
+        case_id=case.id,
+        measurement_count=len(rows),
+        first_measured_at=_as_aware(rows[0].measured_at) if rows else None,
+        last_measured_at=_as_aware(rows[-1].measured_at) if rows else None,
+        metrics=_trends(rows),
+    )
+
+
+# ---------------------------------------------------------------- 요약 · 다음 상담 확인사항
+
+
+class _Limits:
+    """만드는 중인 사례와 서버 전체 동시 실행 자리(종결 요약과 같은 방식)."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.running: set = set()
+        self.slots = threading.BoundedSemaphore(settings.SENIOR_BRIEF_MAX_CONCURRENCY)
+
+
+_limits = _Limits()
+
+
+def reset_limits() -> None:
+    global _limits
+    _limits = _Limits()
+
+
+def _local_date(value: datetime) -> str:
+    # 날짜는 한국 시간으로 끊는다(기관 업무 기준).
+    from zoneinfo import ZoneInfo
+
+    return _as_aware(value).astimezone(ZoneInfo("Asia/Seoul")).date().isoformat()
+
+
+def _approved_sessions(db: Session, case: Case) -> List[Dict[str, Any]]:
+    sessions = list(
+        db.scalars(
+            select(ConsultationSession)
+            .where(ConsultationSession.case_id == case.id, ConsultationSession.status == SessionStatus.APPROVED)
+            .order_by(ConsultationSession.session_number.asc())
+        )
+    )
+    if not sessions:
+        return []
+    summaries = {
+        row.session_id: row
+        for row in db.scalars(
+            select(ConsultationSummary).where(
+                ConsultationSummary.session_id.in_([session.id for session in sessions]),
+                ConsultationSummary.status == ReviewStatus.APPROVED,
+            )
+        )
+    }
+    result = []
+    for session in sessions:
+        summary = summaries.get(session.id)
+        if summary is None:
+            continue
+        result.append(
+            {
+                "number": session.session_number,
+                "date": _local_date(session.consulted_at) if session.consulted_at else "",
+                "overview": summary.overview or "",
+                "key_points": [point for point in (summary.key_points or []) if isinstance(point, str) and point.strip()],
+            }
+        )
+    return result
+
+
+def build_brief_input(db: Session, case: Case) -> Dict[str, Any]:
+    profile = db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == case.id))
+    rows = _measurements(db, case)
+    metrics = []
+    for trend in _trends(rows):
+        metrics.append(
+            {
+                "metric": trend.metric,
+                "label": trend.label,
+                "unit": trend.unit,
+                "points": [
+                    {"id": str(point.measurement_id), "date": _local_date(point.measured_at), "value": point.value}
+                    for point in trend.points
+                ],
+            }
+        )
+    return {
+        "today": _local_date(datetime.now(timezone.utc)),
+        "profile": {
+            "living_arrangement": profile.living_arrangement.value if profile and profile.living_arrangement else None,
+            "care_grade": profile.care_grade.value if profile and profile.care_grade else None,
+            "health_notes": profile.health_notes if profile else None,
+            "care_notes": profile.care_notes if profile else None,
+        },
+        "metrics": metrics,
+        "sessions": _approved_sessions(db, case),
+    }
+
+
+def _run_ai(case: Case, data: Dict[str, Any], names: List[str]) -> Dict[str, Any]:
+    limits = _limits
+    with limits.lock:
+        if case.id in limits.running:
+            raise APIError(ErrorCode.RATE_LIMITED, "이 사례의 확인사항을 이미 만들고 있습니다. 잠시 후 다시 시도해 주세요.", status_code=429)
+        if not limits.slots.acquire(blocking=False):
+            raise APIError(ErrorCode.RATE_LIMITED, "다른 확인사항을 만드는 중입니다. 잠시 후 다시 시도해 주세요.", status_code=429)
+        limits.running.add(case.id)
+
+    started = threading.Event()
+    released: List[bool] = []
+
+    def release() -> None:
+        with limits.lock:
+            if released:
+                return
+            released.append(True)
+            limits.running.discard(case.id)
+        limits.slots.release()
+
+    try:
+        deadline = time.monotonic() + settings.SENIOR_BRIEF_TIMEOUT_SECONDS
+        run = load_callable(MODULE, "generate_senior_brief")
+    except BaseException:
+        release()
+        raise
+
+    def work() -> Dict[str, Any]:
+        started.set()
+        try:
+            return run(data, known_identifiers=names, deadline=deadline)
+        finally:
+            release()
+
+    try:
+        return run_with_timeout(work, settings.SENIOR_BRIEF_TIMEOUT_SECONDS)
+    finally:
+        if not started.is_set():
+            release()
+
+
+_AI_ERRORS = {
+    ErrorCode.AI_TIMEOUT: (504, "확인사항이 제한 시간 안에 끝나지 않았습니다. 잠시 후 다시 시도해 주세요."),
+    ErrorCode.AI_INVALID_OUTPUT: (502, "AI 가 확인사항을 만들지 못했습니다. 다시 시도해 주세요."),
+    ErrorCode.AI_PRIVACY_BLOCKED: (422, "개인정보를 다 가리지 못해 AI 로 보내지 않았습니다. 메모에서 실명 · 연락처를 지운 뒤 다시 시도해 주세요."),
+    ErrorCode.AI_FAILED: (502, "확인사항을 만들지 못했습니다. 잠시 후 다시 시도해 주세요."),
+}
+
+
+def _ai_error(code: ErrorCode) -> APIError:
+    status, message = _AI_ERRORS[code]
+    return APIError(code, message, status_code=status)
+
+
+def _basis(raw: Dict[str, Any], allowed_ids: set) -> Optional[BriefBasis]:
+    kind = raw.get("kind")
+    if kind == "MEASUREMENT":
+        if raw.get("measurement_id") not in allowed_ids:
+            return None
+        return BriefBasis(kind="MEASUREMENT", metric=raw.get("metric"), measurement_id=uuid.UUID(raw["measurement_id"]))
+    if kind == "SESSION":
+        return BriefBasis(kind="SESSION", session_number=raw.get("session_number"))
+    if kind == "PROFILE":
+        return BriefBasis(kind="PROFILE")
+    return None
+
+
+def generate_brief(db: Session, case: Case, current_user: User) -> SeniorBriefResponse:
+    ensure_senior(case)
+    data = build_brief_input(db, case)
+    use_ai = settings.SENIOR_BRIEF_PROVIDER == "modeling"
+    started = time.monotonic()
+
+    try:
+        if use_ai:
+            names = personal_info_service.known_identifiers(db, case.id, extra=[case.child_alias])
+            result = _run_ai(case, data, names)
+        else:
+            result = load_callable(MODULE, "rule_based_brief")(data)
+    except APIError:
+        raise
+    except (OperationTimeout, TimeoutError) as error:
+        raise _ai_error(ErrorCode.AI_TIMEOUT) from error
+    except ModuleLoadError as error:
+        logger.warning("고령자 확인사항 모듈을 불러오지 못했습니다. case_id=%s", case.id)
+        raise _ai_error(ErrorCode.AI_FAILED) from error
+    except Exception as error:  # noqa: BLE001 — 문구에 원문이 섞일 수 있어 종류 이름만 남긴다
+        name = type(error).__name__
+        code = {
+            "SeniorBriefOutputError": ErrorCode.AI_INVALID_OUTPUT,
+            "PrivacyGatewayBlocked": ErrorCode.AI_PRIVACY_BLOCKED,
+        }.get(name, ErrorCode.AI_FAILED)
+        logger.warning("고령자 확인사항 실패 case_id=%s error=%s", case.id, name)
+        raise _ai_error(code) from error
+
+    allowed_ids = {point["id"] for metric in data["metrics"] for point in metric["points"]}
+    items = []
+    for item in result.get("check_items") or []:
+        basis = [b for raw in item.get("basis") or [] if (b := _basis(raw, allowed_ids)) is not None]
+        items.append(BriefCheckItem(text=item["text"], basis=basis))
+
+    audit_service.record(
+        db,
+        action=AuditAction.SENIOR_BRIEF_GENERATED,
+        entity_type="Case",
+        entity_id=case.id,
+        actor_id=current_user.id,
+        case_id=case.id,
+        detail={
+            "source": "AI" if use_ai else "RULE",
+            "model": result.get("model") if use_ai else None,
+            "item_count": len(items),
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        },
+    )
+    db.commit()
+
+    return SeniorBriefResponse(
+        case_id=case.id,
+        source="AI" if use_ai else "RULE",
+        model=result.get("model") if use_ai else None,
+        summary=result.get("summary") or "",
+        check_items=items,
+        generated_at=datetime.now(timezone.utc),
+    )

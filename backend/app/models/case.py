@@ -18,6 +18,7 @@ from app.core.enums import (
     FamilyType,
     GuardianType,
     RiskLevel,
+    SubjectType,
     TargetActionResult,
 )
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
@@ -36,6 +37,16 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(50), unique=True, index=True, nullable=False
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # 대상 종류(2026-11-13). 고령자(SENIOR) 사례는 child_alias · child_birth_year · child_gender 를 그 어르신의
+    # 별칭 · 출생연도 · 성별로 쓴다(칸 이름은 그대로 둔다). 만든 뒤에는 바꾸지 않는다.
+    subject_type: Mapped[SubjectType] = mapped_column(
+        SAEnum(SubjectType, name="subject_type", native_enum=False, length=10),
+        default=SubjectType.CHILD,
+        server_default=SubjectType.CHILD.value,
+        nullable=False,
+        index=True,
+    )
 
     # 개인정보 최소화: 실명 대신 식별용 alias 만 저장한다.
     child_alias: Mapped[str] = mapped_column(String(100), nullable=False)

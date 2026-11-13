@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import storage
-from app.core.enums import AuditAction, CaseStatus, GuardianType, RiskLevel, SessionStatus, UserRole
+from app.core.enums import AuditAction, CaseStatus, GuardianType, RiskLevel, SessionStatus, SubjectType, UserRole
 from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found
 from app.models.audio import AudioFile
 from app.models.case import Case
@@ -87,6 +87,7 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
         case = Case(
             case_number=case_number,
             title=payload.title,
+            subject_type=payload.subject_type,
             child_alias=payload.child_alias,
             child_birth_year=payload.child_birth_year,
             child_gender=payload.child_gender,
@@ -128,7 +129,7 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
             entity_id=case.id,
             actor_id=current_user.id,
             case_id=case.id,
-            detail={"case_number": case.case_number},
+            detail={"case_number": case.case_number, "subject_type": case.subject_type.value},
         )
 
         # 실명 · 생년월일 · 가족 정보는 암호화해 따로 둔다(API_CONTRACT 4절 '개인 식별 정보'). 사례와 같은 거래라 하나가 실패하면 둘 다 남지 않는다.
@@ -158,6 +159,7 @@ def list_cases(
     search: Optional[str] = None,
     sort: Optional[CaseSort] = None,
     order: CaseSortOrder = "desc",
+    subject_type: Optional[SubjectType] = None,
 ) -> Tuple[List[Tuple[Case, Optional[datetime], Optional[str], Optional[RiskLevel]]], int]:
     conditions = []
 
@@ -167,6 +169,9 @@ def list_cases(
 
     if status is not None:
         conditions.append(Case.status == status)
+
+    if subject_type is not None:
+        conditions.append(Case.subject_type == subject_type)
 
     term = search.strip() if search else ""
 

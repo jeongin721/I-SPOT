@@ -28,6 +28,44 @@ class SignupRequestStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class SubjectType(str, Enum):
+    """사례 대상 종류(2026-11-13, 고령자 건강상담 확장). 이 칸이 생기기 전 사례는 모두 CHILD 다."""
+
+    CHILD = "CHILD"
+    SENIOR = "SENIOR"
+
+
+class LivingArrangement(str, Enum):
+    """고령자 거주 형태(담당자가 고른다)."""
+
+    ALONE = "ALONE"  # 혼자 산다
+    COUPLE = "COUPLE"  # 배우자와 둘이
+    WITH_FAMILY = "WITH_FAMILY"  # 자녀 등 가족과
+    FACILITY = "FACILITY"  # 시설 · 공동생활
+    OTHER = "OTHER"
+
+
+class LongTermCareGrade(str, Enum):
+    """노인장기요양 등급(담당자가 고른다). 받지 않았으면 NONE, 모르면 UNKNOWN."""
+
+    GRADE_1 = "GRADE_1"
+    GRADE_2 = "GRADE_2"
+    GRADE_3 = "GRADE_3"
+    GRADE_4 = "GRADE_4"
+    GRADE_5 = "GRADE_5"
+    COGNITIVE_SUPPORT = "COGNITIVE_SUPPORT"  # 인지지원등급
+    NONE = "NONE"
+    UNKNOWN = "UNKNOWN"
+
+
+class GlucoseTiming(str, Enum):
+    """혈당을 잰 때. 공복 · 식후 값은 서로 비교하지 않는다(추이도 따로 낸다)."""
+
+    FASTING = "FASTING"
+    POST_MEAL = "POST_MEAL"
+    RANDOM = "RANDOM"
+
+
 class CaseStatus(str, Enum):
     """사례 상태. 종결은 상담사/관리자의 명시적 행위로만 발생한다."""
 
@@ -425,6 +463,12 @@ class AuditAction(str, Enum):
     CASE_FORM_CREATED = "CASE_FORM_CREATED"
     CASE_FORM_UPDATED = "CASE_FORM_UPDATED"
     CASE_FORM_CONFIRMED = "CASE_FORM_CONFIRMED"
+    # 고령자 건강상담(2026-11-13, API_CONTRACT 27절). detail 에는 칸 이름 · 측정 항목 이름만(값 · 메모 글은 넣지 않는다).
+    SENIOR_PROFILE_UPDATED = "SENIOR_PROFILE_UPDATED"
+    HEALTH_MEASUREMENT_CREATED = "HEALTH_MEASUREMENT_CREATED"
+    HEALTH_MEASUREMENT_UPDATED = "HEALTH_MEASUREMENT_UPDATED"
+    HEALTH_MEASUREMENT_DELETED = "HEALTH_MEASUREMENT_DELETED"
+    SENIOR_BRIEF_GENERATED = "SENIOR_BRIEF_GENERATED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

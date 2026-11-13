@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     CHILD_APP_AI_MAX_CONCURRENCY: int = Field(default=2, ge=1)
     # ENV=production 에서 modeling 을 일부러 쓸 때만 true. 아이가 쓴 글이 이름 인식에 기대 가려진 뒤 나가므로 가상 데이터로만 켠다.
     CHILD_APP_AI_ALLOW_IN_PRODUCTION: bool = False
+    # 고령자 건강상담 '요약 · 다음 상담 확인사항'(API_CONTRACT 27절, 2026-11-13). rule(기본, LLM 없이 규칙으로 묶음) ·
+    # modeling(ai/modeling/senior/senior_brief_llm — 이름을 가린 뒤 OpenAI 로 보내고 진단 · 판정 · 치료 권고 문장은 버린다).
+    SENIOR_BRIEF_PROVIDER: Literal["rule", "modeling"] = "rule"
+    SENIOR_BRIEF_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0)
+    SENIOR_BRIEF_MAX_CONCURRENCY: int = Field(default=2, ge=1)
+    # ENV=production 에서 modeling 을 일부러 쓸 때만 true(가상 데이터 시험용). 메모 글이 이름 인식에 기대 가려진 뒤 나간다.
+    SENIOR_BRIEF_ALLOW_IN_PRODUCTION: bool = False
     # 받을 이메일 도메인(콤마 구분, 정확히 일치 — 하위 도메인은 따로 적는다). 비면 전부 받는다.
     SIGNUP_ALLOWED_EMAIL_DOMAINS: Annotated[List[str], NoDecode] = Field(default_factory=list)
 
@@ -533,6 +540,18 @@ class Settings(BaseSettings):
         raise ValueError(
             "ENV=production 에서는 CHILD_APP_AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
             "가상 데이터로 일부러 시험할 때만 CHILD_APP_AI_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_senior_brief_ai_in_production(self) -> "Settings":
+        """운영에서 고령자 확인사항 modeling 으로 서버가 뜨지 않게 한다(아이 앱 AI 초안과 같은 방식)."""
+
+        if self.ENV != "production" or self.SENIOR_BRIEF_PROVIDER != "modeling" or self.SENIOR_BRIEF_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 SENIOR_BRIEF_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
+            "가상 데이터로 일부러 시험할 때만 SENIOR_BRIEF_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @model_validator(mode="after")

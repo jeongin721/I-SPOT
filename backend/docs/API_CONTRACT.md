@@ -625,6 +625,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
         "id": "uuid",
         "case_number": "C-2026-0001",
         "title": "사례 제목",
+        "subject_type": "CHILD",
         "child_alias": "아동_001",
         "child_birth_year": 2015,
         "child_gender": null,
@@ -646,6 +647,8 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
   }
 }
 ```
+
+> 대상 종류 `subject_type`(`CHILD` · `SENIOR`, 2026-11-13)은 만들 때만 정하고 목록은 `?subject_type=` 으로 거른다. 고령자 사례는 27절.
 
 > 개인정보 최소화 원칙에 따라 **사례 응답에는 아동 실명 필드가 없다.** `child_alias` 를 사용한다(예외: 목록 `with_child_name=true` 의 `child_name`).
 > 실명 · 생년월일 · 보호자 · 가족 이름은 2026-10-30 팀 결정으로 **암호화해 따로 저장**하고 아래 '개인 식별 정보' 창구로만 주고받는다.
@@ -2909,3 +2912,54 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
 `status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+
+---
+
+## 27. Senior Care (고령자 건강상담, 2026-11-13)
+
+고령자 건강상담 · 상담 기록 업무를 하는 현장 담당자용이다(어르신 본인용 앱이 아니다). 사례를 만들 때 `subject_type: "SENIOR"` 로 만든 사례에서만 쓰고, 아동 사례(`CHILD`)는 이 절의 API 가 모두 409 `INVALID_CASE_STATE` 다. 접근은 다른 사례 API 와 같다(담당 상담사 · 관리자, 그 밖 403).
+
+**하지 않는 것:** 질병 진단 · 정신질환 판정 · 치료 권고(약 조절 · 진료 권유). 서버는 측정값과 그 변화만 내고 '정상 · 위험' 기준을 붙이지 않는다.
+
+### 사례 대상 종류
+
+- `POST /cases` 본문에 `subject_type`(`CHILD` 기본 · `SENIOR`). 만든 뒤에는 바꿀 수 없다(수정 요청에 없는 칸).
+- 사례 응답에 `subject_type`. `GET /cases?subject_type=SENIOR` 로 거를 수 있다(없으면 둘 다).
+- 고령자 사례도 `child_alias` · `child_birth_year` · `child_gender` 칸에 어르신 별칭 · 출생연도 · 성별을 넣는다(칸 이름은 그대로).
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/cases/{case_id}/senior-profile` | 기본정보. 저장 전이면 값이 모두 null, `updated_at` null |
+| PATCH | `/cases/{case_id}/senior-profile` | 보낸 칸만 바꾼다(null 이면 비움). `living_arrangement`: `ALONE` · `COUPLE` · `WITH_FAMILY` · `FACILITY` · `OTHER`, `care_grade`: `GRADE_1`~`GRADE_5` · `COGNITIVE_SUPPORT`(인지지원) · `NONE` · `UNKNOWN`, `health_notes`(담당자가 아는 질환 · 복용약, 2000자) · `care_notes`(생활 · 돌봄 메모, 2000자). 글은 앞뒤 빈칸을 떼고 비면 null |
+| GET | `/cases/{case_id}/health-measurements` | 측정 목록(최근 것부터, 최대 500건) |
+| POST | `/cases/{case_id}/health-measurements` | 201. 아래 '측정' 참고 |
+| PATCH | `/cases/{case_id}/health-measurements/{id}` | 보낸 칸만. 바꾼 뒤 값이 만들기 규칙을 어기면 400 `VALIDATION_ERROR`(예: 혈압 한쪽만 지움). `measured_at` 을 null 로 보내면 400. 다른 사례의 측정은 404 |
+| DELETE | `/cases/{case_id}/health-measurements/{id}` | 204 |
+| GET | `/cases/{case_id}/health-trend` | 항목별 추이(아래) |
+| POST | `/cases/{case_id}/senior-brief` | 요약 · 다음 상담 확인사항을 만들어 돌려준다. **저장하지 않는다**(부를 때마다 새로) |
+
+### 측정
+
+`{measured_at, session_id?, systolic?, diastolic?, pulse?, blood_glucose?, glucose_timing?, weight_kg?, body_temp_c?, note?}`
+
+- `measured_at` 은 시간대를 붙여야 한다(`2026-11-13T09:00:00+09:00`). 없으면 422.
+- 값은 하나 이상. 혈압은 수축기 · 이완기를 함께, 이완기 < 수축기. 혈당은 `glucose_timing`(`FASTING` · `POST_MEAL` · `RANDOM`) 필수.
+- 범위(잴 수 없는 값 · 단위 실수만 거름, 의학 기준 아님): 수축기 50~300, 이완기 20~200, 맥박 20~250, 혈당 10~1000, 체중 15~300kg, 체온 30~45℃. 어기면 422.
+- `session_id` 는 이 사례의 회차만(아니면 404 `SESSION_NOT_FOUND`). 회차를 지워도 측정은 남는다(null).
+
+### 추이
+
+`{case_id, measurement_count, first_measured_at, last_measured_at, metrics: [{metric, label, unit, count, latest, previous, change, min, max, points: [{measurement_id, measured_at, value}]}]}`
+
+`metric` 순서: `systolic` · `diastolic` · `pulse` · `blood_glucose_fasting` · `blood_glucose_post_meal` · `blood_glucose_random` · `weight_kg` · `body_temp_c`. 값이 있는 항목만. 혈당은 잰 때마다 따로 낸다(공복과 식후를 비교하지 않는다). `change` = latest − previous, 점은 오래된 것부터.
+
+### 요약 · 다음 상담 확인사항
+
+`{case_id, source, model, summary, check_items: [{text, basis: [{kind, metric?, measurement_id?, session_number?}]}], generated_at}`
+
+- 입력: 기본정보 · 측정 추이 · **승인한** 회차 요약(`overview` · `key_points`, 최근 3회차).
+- `SENIOR_BRIEF_PROVIDER=rule`(기본): `source: "RULE"`, LLM 없이 규칙으로 묶는다 — 지난 측정과 눈에 띄게 다름(수축기 15 · 이완기 10 · 맥박 15 · 공복 혈당 30 · 식후 · 그 밖 혈당 40 · 체중 2kg · 체온 1℃ 이상), 3번 이어서 오르거나 내림, 마지막 측정 30일 지남 · 측정 없음, 최근 승인 회차의 핵심 내용 2개. 폭은 '지난번과 다름' 표시일 뿐 의학 기준이 아니다.
+- `SENIOR_BRIEF_PROVIDER=modeling`: `source: "AI"`. 이름을 가린 뒤 외부 AI 로 보낸다. 진단 · 의심 · 판정 · 처방 · 약 조절 · 진료 권유 · 정상/위험 말이 든 문장과 근거(ref)가 없는 문장은 버리고, 요약이 그러면 규칙 요약으로 바꾼다. 입력에 없는 측정 id 근거는 서버가 뺀다. 시간 초과 504 `AI_TIMEOUT`, 쓸 문장이 없음 502 `AI_INVALID_OUTPUT`, 이름을 다 가리지 못함 422 `AI_PRIVACY_BLOCKED`, 그 밖 502 `AI_FAILED`, 같은 사례 · 서버 동시 실행이 차면 429 `RATE_LIMITED`. ENV=production 에서는 `SENIOR_BRIEF_ALLOW_IN_PRODUCTION=true` 없이 서버가 뜨지 않는다.
+- `basis.kind`: `MEASUREMENT` · `SESSION` · `PROFILE`. 근거가 없는 확인사항(예: 측정 없음)은 빈 목록.
+
+감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간). 값 · 메모 글 · 확인사항 문장은 넣지 않는다.
