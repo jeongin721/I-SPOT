@@ -41,9 +41,11 @@ export default function ChildAlertBanner({ session }) {
 
   const alerts = remote.data ?? [];
   if (!alerts.length) return null;
-  // 긴급 알림이 하나라도 있으면 그것을 앞에 보인다(최신 알림이 '확인 필요' 여도 긴급이 가려지지 않게).
-  const first = alerts.find((alert) => alert.urgent) ?? alerts[0];
+  // 내 사례의 긴급 알림을 먼저, 그다음 다른 상담사에게서 넘어온 긴급(B안), 그다음 확인 필요.
+  const first =
+    alerts.find((alert) => alert.urgent && !alert.handed_over) ?? alerts.find((alert) => alert.handed_over) ?? alerts[0];
   const time = new Date(first.last_at ?? first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  const since = new Date(first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
   // 사이드바의 쌓임 맥락에 갇히면 위쪽 도구 막대에 가려 단추가 눌리지 않는다.
   return createPortal(
@@ -69,14 +71,26 @@ export default function ChildAlertBanner({ session }) {
         boxShadow: '0 8px 24px rgba(46,43,40,.22)',
       }}
     >
-      <span style={{ flex: '1 1 300px' }}>
-        <b style={{ color: '#B0452C' }}>{first.urgent ? '긴급' : '확인 필요'} · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}
-        {first.repeat_count ? ` ${first.repeat_count}번 더 눌렀어요.` : ''}
-        {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
-      </span>
-      <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: first.case_id })}>
-        확인하러 가기 →
-      </A>
+      {first.handed_over ? (
+        // 다른 상담사 사례 — 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 한다(멘토 피드백 11/12 B안).
+        <span style={{ flex: '1 1 300px' }}>
+          <b style={{ color: '#B0452C' }}>긴급 · {since}부터 확인 전</b> {first.counselor_name ?? '담당'} 상담사 사례({first.case_number})에서 아이가 급하다고 알렸는데 아직 아무도 확인하지 않았어요.
+          담당 상담사나 관리자에게 바로 알려 주세요.
+          {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
+        </span>
+      ) : (
+        <>
+          <span style={{ flex: '1 1 300px' }}>
+            <b style={{ color: '#B0452C' }}>{first.urgent ? '긴급' : '확인 필요'} · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}
+            {first.repeat_count ? ` ${first.repeat_count}번 더 눌렀어요.` : ''}
+            {first.escalated ? ` ${since}부터 확인 전이라 다른 상담사에게도 보이고 있어요.` : ''}
+            {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
+          </span>
+          <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: first.case_id })}>
+            확인하러 가기 →
+          </A>
+        </>
+      )}
     </div>,
     document.body,
   );

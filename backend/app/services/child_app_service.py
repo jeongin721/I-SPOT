@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -445,6 +445,7 @@ def _open_alerts(
     case_id: Optional[uuid.UUID] = None,
     counselor_id: Optional[uuid.UUID] = None,
 ) -> List[Dict[str, Any]]:
+    now = _utcnow()
     statement = (
         select(ChildAppEvent, Case)
         .join(Case, Case.id == ChildAppEvent.case_id)
@@ -478,15 +479,79 @@ def _open_alerts(
             "repeat_count": int(event.payload.get("repeat_count", 0)),
             "last_at": event.payload.get("last_at"),
             "created_at": event.created_at,
+            "escalated": _is_escalated(event, now),
+            "handed_over": False,
+            "counselor_name": None,
         }
         for event, case in db.execute(statement).all()
     ]
 
 
-def list_open_alerts(db: Session, user: User) -> List[Dict[str, Any]]:
-    """담당 상담사는 자기 사례, 관리자는 전체. 담당자가 자리에 없을 때 놓치지 않게 관리자에게도 보인다."""
+def _escalate_after() -> timedelta:
+    return timedelta(minutes=settings.CHILD_APP_ESCALATE_MINUTES)
 
-    return _open_alerts(db, user, counselor_id=None if user.is_admin else user.id)
+
+def _is_escalated(event: ChildAppEvent, now: datetime) -> bool:
+    """아이가 직접 '급하다고 알리기' 를 보냈는데 정한 시간 넘게 아무도 확인하지 않았다."""
+
+    return (
+        event.kind == ChildAppEventKind.ALERT
+        and event.acknowledged_at is None
+        and now - _aware(event.created_at) >= _escalate_after()
+    )
+
+
+def _handed_over_alerts(db: Session, viewer: User) -> List[Dict[str, Any]]:
+    """다른 상담사 사례의 긴급 알림 중 정한 시간 넘게 확인 전인 것(멘토 피드백 11/12 B안).
+
+    사례를 열 권한이 없으니 아이 이름 · 내용은 주지 않고 사례 번호와 담당 상담사만 준다. 확인 처리도 못 한다.
+    담당 상담사나 관리자에게 바로 알리게 하는 것이 목적이다."""
+
+    now = _utcnow()
+    rows = db.execute(
+        select(ChildAppEvent, Case, User.name)
+        .join(Case, Case.id == ChildAppEvent.case_id)
+        .outerjoin(User, User.id == Case.counselor_id)
+        .where(
+            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.needs_ack.is_(True),
+            ChildAppEvent.acknowledged_at.is_(None),
+            ChildAppEvent.created_at <= now - _escalate_after(),
+            Case.status == CaseStatus.ACTIVE,
+            or_(Case.counselor_id.is_(None), Case.counselor_id != viewer.id),
+        )
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+        .limit(OPEN_ALERT_LIMIT)
+    ).all()
+
+    return [
+        {
+            "id": event.id,
+            "case_id": case.id,
+            "child_alias": "",
+            "case_number": case.case_number,
+            "reason": "ALERT",
+            "urgent": True,
+            "can_ack": False,
+            "repeat_count": int(event.payload.get("repeat_count", 0)),
+            "last_at": event.payload.get("last_at"),
+            "created_at": event.created_at,
+            "escalated": True,
+            "handed_over": True,
+            "counselor_name": counselor_name,
+        }
+        for event, case, counselor_name in rows
+    ]
+
+
+def list_open_alerts(db: Session, user: User) -> List[Dict[str, Any]]:
+    """담당 상담사는 자기 사례, 관리자는 전체. 담당자가 자리에 없을 때 놓치지 않게 관리자에게도 보인다.
+    상담사에게는 다른 상담사 사례의 긴급 알림도 정한 시간 넘게 확인 전이면 보인다(넘기기, B안)."""
+
+    if user.is_admin:
+        return _open_alerts(db, user)
+
+    return _open_alerts(db, user, counselor_id=user.id) + _handed_over_alerts(db, user)
 
 
 def acknowledge_alert(
@@ -710,7 +775,26 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
         pending=pending,
         next_consult=_next_consult(db, link.case_id, datetime.now(LOCAL_TZ).date()),
         alert=_child_alert_status(db, link),
+        staff_hours=staff_hours(),
     )
+
+
+def staff_hours(now: Optional[datetime] = None) -> Dict[str, Any]:
+    """상담사가 바로 볼 수 있는 시간인지(한국 시간, CHILD_APP_STAFF_HOURS · CHILD_APP_STAFF_DAYS)."""
+
+    local = (now or _utcnow()).astimezone(LOCAL_TZ)
+    start, end = settings.CHILD_APP_STAFF_HOURS.split("-")
+    days = {int(day) for day in settings.CHILD_APP_STAFF_DAYS.split(",")}
+    minute = local.hour * 60 + local.minute
+
+    def _minutes(text: str) -> int:
+        hour, mins = text.split(":")
+        return int(hour) * 60 + int(mins)
+
+    on_duty = local.weekday() in days and _minutes(start) <= minute < _minutes(end)
+    weekdays = "평일" if days == {0, 1, 2, 3, 4} else "".join("월화수목금토일"[day] for day in sorted(days))
+
+    return {"on_duty": on_duty, "label": f"{weekdays} {start}~{end}"}
 
 
 def _alert_pressed_at(event: ChildAppEvent) -> datetime:

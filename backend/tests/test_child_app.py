@@ -1086,3 +1086,80 @@ def test_child_home_alert_shows_on_new_device_that_presses_again(
     status = _home(client, new_device)["alert"]
     assert status is not None and status["acknowledged"] is False and status["overdue"] is True
     assert _alert_row(db, case["id"]).payload["repeat_count"] == 1
+
+
+def test_unacked_alert_is_handed_over_to_other_counselors(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict, db
+) -> None:
+    """멘토 피드백 11/12 B안 — 담당 상담사가 정한 시간(기본 10분) 넘게 확인하지 않은 긴급 알림은 다른 상담사에게도 보인다."""
+
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    # 바로는 다른 상담사에게 보이지 않는다. 관리자는 처음부터 본다.
+    assert _open(client, other_counselor_headers) == []
+    assert _open(client, admin_headers)[0]["escalated"] is False
+
+    row = _alert_row(db, case["id"])
+    row.created_at = datetime.now(timezone.utc) - timedelta(minutes=11)
+    db.commit()
+
+    handed = _open(client, other_counselor_headers)
+    assert len(handed) == 1
+    item = handed[0]
+    # 사례를 열 수 없는 상담사에게는 아이 이름을 주지 않고 사례 번호 · 담당 상담사만, 확인 처리도 못 한다.
+    assert item["handed_over"] is True and item["escalated"] is True and item["urgent"] is True
+    assert item["child_alias"] == "" and item["case_number"] == case["case_number"]
+    assert item["counselor_name"] and item["can_ack"] is False
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{item['id']}/ack"
+    assert client.post(url, headers=other_counselor_headers).status_code in (403, 404)
+
+    # 담당 상담사 · 관리자에게는 넘어간 표시만 더해진다.
+    mine = _open(client, counselor_headers)
+    assert len(mine) == 1 and mine[0]["escalated"] is True and mine[0]["handed_over"] is False
+    assert _open(client, admin_headers)[0]["escalated"] is True
+    # 다른 상담사의 아이 연계 목록에는 그 사례가 들어가지 않는다.
+    assert all(r["case_id"] != case["id"] for r in client.get("/api/v1/child-app-cases", headers=other_counselor_headers).json()["data"])
+
+    # 누가 확인하면 내려간다.
+    assert client.post(url, headers=counselor_headers).status_code == 204
+    assert _open(client, other_counselor_headers) == []
+
+
+def test_answers_needing_check_are_not_handed_over(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, case: dict, db
+) -> None:
+    """답 기반 알림(바로 확인 답 등)은 내용을 볼 수 있는 담당 · 관리자에게만 — 넘기는 것은 아이가 직접 보낸 긴급 알림만."""
+
+    from app.models.child_app import ChildAppEvent
+
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
+            [{"question_id": "safe", "choice_index": 2}, *_skips("home", "meal")])
+    rows = db.scalars(select(ChildAppEvent).where(ChildAppEvent.case_id == uuid.UUID(case["id"]))).all()
+    assert any(r.needs_ack for r in rows)
+    for r in rows:
+        r.created_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    db.commit()
+    assert _open(client, other_counselor_headers) == []
+
+
+def test_child_home_tells_staff_hours(client: TestClient, counselor_headers: Headers, case: dict, monkeypatch) -> None:
+    from app.services import child_app_service
+
+    monkeypatch.setattr(settings, "CHILD_APP_STAFF_HOURS", "09:00-18:00")
+    monkeypatch.setattr(settings, "CHILD_APP_STAFF_DAYS", "0,1,2,3,4")
+    kst = timezone(timedelta(hours=9))
+    # 2026-11-13 은 금요일.
+    assert child_app_service.staff_hours(datetime(2026, 11, 13, 9, 0, tzinfo=kst)) == {"on_duty": True, "label": "평일 09:00~18:00"}
+    assert child_app_service.staff_hours(datetime(2026, 11, 13, 17, 59, tzinfo=kst))["on_duty"] is True
+    assert child_app_service.staff_hours(datetime(2026, 11, 13, 18, 0, tzinfo=kst))["on_duty"] is False
+    assert child_app_service.staff_hours(datetime(2026, 11, 13, 8, 59, tzinfo=kst))["on_duty"] is False
+    assert child_app_service.staff_hours(datetime(2026, 11, 14, 12, 0, tzinfo=kst))["on_duty"] is False  # 토요일
+    # UTC 로 들어와도 한국 시간으로 본다(금 00:30 UTC = 금 09:30 KST).
+    assert child_app_service.staff_hours(datetime(2026, 11, 13, 0, 30, tzinfo=timezone.utc))["on_duty"] is True
+
+    monkeypatch.setattr(settings, "CHILD_APP_STAFF_DAYS", "5,6")
+    assert child_app_service.staff_hours(datetime(2026, 11, 14, 12, 0, tzinfo=kst)) == {"on_duty": True, "label": "토일 09:00~18:00"}
+
+    device = _linked(client, counselor_headers, case["id"])
+    assert set(_home(client, device)["staff_hours"]) == {"on_duty", "label"}

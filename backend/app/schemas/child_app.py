@@ -47,10 +47,18 @@ class ChildAlertStatus(BaseModel):
     overdue: bool
 
 
+class ChildStaffHours(BaseModel):
+    """상담사가 바로 볼 수 있는 시간인지. 밖이면 앱이 112 · 1388 을 먼저 안내한다."""
+
+    on_duty: bool
+    label: str
+
+
 class ChildHomeResponse(BaseModel):
     pending: Optional[ChildPendingQuestions] = None
     next_consult: Optional[ChildNextConsult] = None
     alert: Optional[ChildAlertStatus] = None
+    staff_hours: Optional[ChildStaffHours] = None
 
 
 class ChildAnswerInput(RequestModel):
@@ -113,6 +121,12 @@ class ChildOpenAlert(BaseModel):
     repeat_count: int = 0
     last_at: Optional[datetime] = None
     created_at: datetime
+    # 담당 상담사가 CHILD_APP_ESCALATE_MINUTES 넘게 확인하지 않은 긴급 알림(B안). 다른 상담사에게도 보인다.
+    escalated: bool = False
+    # 담당이 아닌 상담사에게 넘어간 알림이면 true. 사례를 열 수 없으니 담당 상담사 · 관리자에게 알리게 한다.
+    handed_over: bool = False
+    # 넘어간 알림에서만 — 누구에게 연락할지.
+    counselor_name: Optional[str] = None
 
 
 class ChildAiQuestion(BaseModel):
