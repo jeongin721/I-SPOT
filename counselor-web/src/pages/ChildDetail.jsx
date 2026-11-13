@@ -14,9 +14,9 @@ import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
-import { useCaseChildApp } from '../data/useCaseChildApp';
+import { CHILD_ALERT_TEXT, useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { aiDraftNeeded, childDetailValues } from '../data/screens/childDetail';
+import { aiDraftNeeded, childDateTime, childDetailValues } from '../data/screens/childDetail';
 import { readScreenIds, screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
 import { useTheme } from '../theme';
@@ -259,6 +259,22 @@ export default function ChildDetail(props) {
   // 미연결 · 초대 대기면 이 화면(아이 연계)에서 바로 연결 코드를 만든다. 질문 · 답 칸은 연결 뒤에 보인다(11/10 경진님).
   const notLinked = !!(caseId && app.data && app.data.status !== 'LINKED');
   const noAnswers = caseId && app.data && app.data.can_read_feed && !notLinked && v.answers.length === 0;
+  // 상담사가 알림 · 답을 확인했는지(멘토 피드백 11/12). 열린 알림이 있으면 확인 전, 없고 가장 최근 것을 확인했으면 그 시각.
+  const openAlerts = (caseId && app.data?.open_alerts) || [];
+  const ack = !caseId || !app.data
+    ? null
+    : openAlerts.length
+      ? { text: '확인 전', cls: 'chip c-sand' }
+      : app.data.last_acked_at
+        ? { text: `확인 완료 ${childDateTime(app.data.last_acked_at)}`, cls: 'chip c-ok' }
+        : null;
+  // 이번 답(가장 최근 답 묶음)이 확인이 필요한 답이면 그 상태.
+  const latestAnswers = (app.data?.feed || []).find((event) => event.kind === 'ANSWERS');
+  const answerAck = latestAnswers?.needs_ack
+    ? latestAnswers.acknowledged_at
+      ? { text: `확인 완료 ${childDateTime(latestAnswers.acknowledged_at)}`, cls: 'chip c-ok' }
+      : { text: '확인 전', cls: 'chip c-sand' }
+    : null;
   const expires = app.data?.code_expires_at ? new Date(app.data.code_expires_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   return (
     <div className="pg-ChildDetail">
@@ -310,6 +326,7 @@ export default function ChildDetail(props) {
                   {v.k.types ? ` · ${v.k.types}` : ''}
                 </span>
                 <span className={v.k.rCls}>{v.k.reason}</span>
+                {ack && !String(v.k.reason).startsWith('확인 완료') ? <span className={ack.cls}>{ack.text}</span> : null}
               </div>
               <div className="note">
                 {v.k.id} · 마지막 응답 {v.k.last} · 최근 3주 {v.k.count} · 다음 상담 {v.k.next}
@@ -320,6 +337,30 @@ export default function ChildDetail(props) {
             </A>
           </header>
           {notice ? <Notice value={notice} /> : null}
+          {/* 확인 전 알림 · 답. 과거 답변 기록에 가지 않아도 여기서 확인 처리한다(멘토 피드백 11/12). */}
+          {openAlerts.map((alert) => (
+            <section
+              key={alert.id}
+              role="alert"
+              aria-label={alert.urgent ? '긴급 알림' : '확인할 알림'}
+              style={{ background: alert.urgent ? '#F8E6DF' : '#F7EDD6', border: `1.5px solid ${alert.urgent ? '#B0452C' : '#7A5A10'}`, borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
+            >
+              <div style={{ flex: '1 1 320px' }}>
+                <b style={{ color: alert.urgent ? '#B0452C' : '#7A5A10' }}>
+                  {alert.urgent ? '긴급' : '확인 필요'} · 확인 전 · {childDateTime(alert.last_at ?? alert.created_at)}
+                </b>
+                <br />
+                {CHILD_ALERT_TEXT[alert.reason] || CHILD_ALERT_TEXT.NEEDS_CHECK}
+                {alert.repeat_count ? ` ${alert.repeat_count}번 더 눌렀어요.` : ''}
+                {app.data.can_read_feed ? '' : ' 담당 상담사에게 전달해 주세요.'}
+              </div>
+              {alert.can_ack ? (
+                <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
+                  확인했어요
+                </button>
+              ) : null}
+            </section>
+          ))}
           {adminOnly ? <p className="note">아이가 보낸 내용은 담당 상담사만 볼 수 있어요.</p> : null}
           {noAnswers ? <p className="note">아직 아이가 보낸 답이 없어요.</p> : null}
           {notLinked ? (
@@ -364,6 +405,7 @@ export default function ChildDetail(props) {
           <section className="card" aria-label="질문 및 답변" style={{ padding: '20px 22px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
               <h2 className="h2">질문 및 답변</h2>
+              {answerAck ? <span className={answerAck.cls}>{answerAck.text}</span> : null}
               <span className="note" style={{ marginLeft: 'auto' }}>
                 {v.k.last} 체크인
               </span>

@@ -25,7 +25,11 @@ function rowState(row) {
   if (row.open_alert_reason) return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   if (row.status === 'NOT_LINKED') return { reason: '앱 미연결 · 초대 전', rCls: 'chip c-normal', need: false };
   if (row.status === 'INVITED') return { reason: '초대 대기', rCls: 'chip c-normal', need: false };
-  if (row.level === 'RED' || row.level === 'AMBER') return { reason: '확인 필요', rCls: 'chip c-check', need: true };
+  // 바로 확인할 답(RED)은 늘 확인 처리를 거치므로, 열린 알림이 없으면 확인을 마친 것(멘토 피드백 11/12).
+  if (row.level === 'RED') {
+    return { reason: `확인 완료${row.last_acked_at ? ` ${childDateTime(row.last_acked_at)}` : ''}`, rCls: 'chip c-ok', need: false, acked: true };
+  }
+  if (row.level === 'AMBER') return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   return { reason: '정상', rCls: 'chip c-normal', need: false };
 }
 
@@ -53,6 +57,14 @@ class Logic extends DCLogic {
         count: linked ? (row.recent_answers === null ? '—' : `응답 ${row.recent_answers}번`) : '미연결',
         // 늘 아이 상세(아이 연계 메뉴 안)로 간다. 연결 전이면 그 화면에서 연결 코드를 만든다(11/10 경진님).
         to: screenHref('/ChildDetail', { caseId: row.case_id }),
+        // 상담사가 알림 · 답을 확인했는지(멘토 피드백 11/12). 열린 알림이 있으면 확인 전, 없고 가장 최근 것을 확인했으면 그 시각.
+        ack: state.acked
+          ? null
+          : row.open_alert_reason
+          ? { text: '확인 전', cls: 'chip c-sand' }
+          : row.last_acked_at
+            ? { text: `확인 완료 ${childDateTime(row.last_acked_at)}`, cls: 'chip c-ok' }
+            : null,
         alert: row.open_alert_urgent
           ? { at: childDateTime(row.open_alert_at), text: CHILD_ALERT_TEXT[row.open_alert_reason] || CHILD_ALERT_TEXT.NEEDS_CHECK }
           : null,
@@ -222,6 +234,12 @@ export default function ChildLink(props) {
                       <td>{r.last}</td>
                       <td>
                         <span className={r.rCls}>{r.reason}</span>
+                        {r.ack ? (
+                          <>
+                            {' '}
+                            <span className={r.ack.cls}>{r.ack.text}</span>
+                          </>
+                        ) : null}
                       </td>
                     </tr>
                   </Fragment>

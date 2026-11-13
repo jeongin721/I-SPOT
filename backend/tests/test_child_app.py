@@ -957,3 +957,74 @@ def test_feed_view_leaves_one_log_per_window_and_on_new_content(
 def test_empty_feed_leaves_no_view_log(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
     _view(client, counselor_headers, case["id"])
     assert _feed_views(db, case["id"]) == []
+
+
+def _list_row(client: TestClient, headers: Headers, case_id: str) -> dict:
+    response = client.get("/api/v1/child-app-cases", headers=headers)
+    assert response.status_code == 200, response.text
+    return next(row for row in response.json()["data"] if row["case_id"] == case_id)
+
+
+def test_child_home_shows_alert_ack_status_and_overdue(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict, db
+) -> None:
+    from app.models.child_app import ChildAppEvent
+
+    device = _linked(client, counselor_headers, case["id"])
+    assert _home(client, device)["alert"] is None
+
+    _alert(client, device)
+    status = _home(client, device)["alert"]
+    assert status["acknowledged"] is False and status["overdue"] is False
+    # 아이 기기에는 확인한 사람 · 시각을 보내지 않는다.
+    assert set(status) == {"sent_at", "acknowledged", "overdue"}
+    assert _list_row(client, counselor_headers, case["id"])["last_acked_at"] is None
+
+    # 확인 전으로 5분이 지나면 overdue.
+    event = db.scalars(select(ChildAppEvent).where(ChildAppEvent.case_id == uuid.UUID(case["id"]))).all()
+    alert_row = next(row for row in event if row.kind.value == "ALERT")
+    alert_row.created_at = datetime.now(timezone.utc) - timedelta(minutes=6)
+    db.scalar(select(ChildAppLink).where(ChildAppLink.case_id == uuid.UUID(case["id"]))).linked_at = datetime.now(
+        timezone.utc
+    ) - timedelta(hours=1)
+    db.commit()
+    assert _home(client, device)["alert"]["overdue"] is True
+
+    alert_id = _open(client, counselor_headers)[0]["id"]
+    assert client.post(f"/api/v1/cases/{case['id']}/child-app/alerts/{alert_id}/ack", headers=counselor_headers).status_code == 204
+    status = _home(client, device)["alert"]
+    assert status["acknowledged"] is True and status["overdue"] is False
+
+    # 웹 목록 · 사례 화면에 확인 시각(담당이 아닌 관리자에게도).
+    acked = _list_row(client, counselor_headers, case["id"])["last_acked_at"]
+    assert acked is not None
+    assert _list_row(client, admin_headers, case["id"])["last_acked_at"] == acked
+    assert _view(client, admin_headers, case["id"])["last_acked_at"] == acked
+
+    # 확인한 뒤 다시 누르면 새 알림 — 다시 확인 전.
+    _alert(client, device)
+    assert _home(client, device)["alert"]["acknowledged"] is False
+    assert _list_row(client, counselor_headers, case["id"])["last_acked_at"] is None
+
+
+def test_child_home_alert_hidden_after_a_day_and_for_new_device(
+    client: TestClient, counselor_headers: Headers, case: dict, db
+) -> None:
+    from app.models.child_app import ChildAppEvent
+
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    for row in db.scalars(select(ChildAppEvent).where(ChildAppEvent.case_id == uuid.UUID(case["id"]))).all():
+        row.created_at = datetime.now(timezone.utc) - timedelta(hours=25)
+    # 연결은 그보다 앞(연결 뒤 것만 보이는 규칙과 따로 24시간 규칙만 본다).
+    db.scalar(select(ChildAppLink).where(ChildAppLink.case_id == uuid.UUID(case["id"]))).linked_at = datetime.now(
+        timezone.utc
+    ) - timedelta(days=2)
+    db.commit()
+    assert _home(client, device)["alert"] is None
+
+    # 해지하고 새로 연결한 기기에는 예전 알림이 보이지 않는다.
+    _alert(client, device)
+    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    new_device = _linked(client, counselor_headers, case["id"])
+    assert _home(client, new_device)["alert"] is None

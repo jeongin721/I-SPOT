@@ -41,6 +41,9 @@ FEED_LIMIT = 100
 # 화면이 30초마다 다시 받으므로 열람 기록은 같은 사람 · 사례에 이 시간 안 1줄만 남긴다.
 # 그사이 새로 온 내용이 있으면(마지막 기록 뒤 생긴 피드 줄) 시간 안이어도 새로 남긴다.
 FEED_VIEW_LOG_WINDOW = timedelta(minutes=10)
+# 아이가 급하다고 알린 뒤 앱 홈에 확인 여부를 보이는 시간, 확인 전이면 112 안내를 다시 띄우는 시간(멘토 피드백 11/12, 경진 11/13 "10분은 길다" → 5분).
+ALERT_STATUS_SHOWN = timedelta(hours=24)
+ALERT_OVERDUE_AFTER = timedelta(minutes=5)
 OPEN_ALERT_LIMIT = 50
 AI_QUESTION_PREFIX = "ai_"
 LIST_LIMIT = 200
@@ -243,6 +246,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
         if current is None or (alert["urgent"] and not current["urgent"]):
             alerts[alert["case_id"]] = alert
 
+    acked = _last_acked(db, ids)
     rows = []
 
     for case in cases:
@@ -262,6 +266,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
                 "open_alert_reason": alert["reason"] if alert else None,
                 "open_alert_urgent": bool(alert and alert["urgent"]),
+                "last_acked_at": acked.get(case.id),
             }
         )
 
@@ -329,6 +334,7 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         has_pending_questions=pending is not None,
         can_read_feed=can_read_feed,
         open_alerts=_open_alerts(db, user, case_id=case.id),
+        last_acked_at=_last_acked(db, [case.id]).get(case.id),
         bank=[
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK
@@ -348,6 +354,25 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             for row in rows
         ],
     )
+
+
+def _last_acked(db: Session, case_ids: List[uuid.UUID]) -> Dict[uuid.UUID, datetime]:
+    """사례마다 가장 최근 '확인이 필요한 알림 · 답'이 확인됐으면 그 시각. 확인 전이거나 없으면 빠진다."""
+
+    if not case_ids:
+        return {}
+
+    latest: Dict[uuid.UUID, Optional[datetime]] = {}
+    rows = db.execute(
+        select(ChildAppEvent.case_id, ChildAppEvent.acknowledged_at)
+        .where(ChildAppEvent.case_id.in_(case_ids), ChildAppEvent.needs_ack.is_(True))
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+    ).all()
+
+    for case_id, acknowledged_at in rows:
+        latest.setdefault(case_id, acknowledged_at)
+
+    return {case_id: _aware(at) for case_id, at in latest.items() if at is not None}
 
 
 def _record_feed_view(db: Session, case: Case, user: User, rows: List[ChildAppEvent]) -> None:
@@ -672,7 +697,40 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
     return ChildHomeResponse(
         pending=pending,
         next_consult=_next_consult(db, link.case_id, datetime.now(LOCAL_TZ).date()),
+        alert=_child_alert_status(db, link),
     )
+
+
+def _child_alert_status(db: Session, link: ChildAppLink) -> Optional[Dict[str, Any]]:
+    """이 기기가 마지막으로 급하다고 알린 것을 선생님이 확인했는지. 누가 · 언제 확인했는지는 보내지 않는다."""
+
+    now = _utcnow()
+    since = now - ALERT_STATUS_SHOWN
+    # 다시 연결한 기기에 예전 기기의 알림이 보이지 않게 연결 뒤 것만.
+    if link.linked_at is not None and _aware(link.linked_at) > since:
+        since = _aware(link.linked_at)
+    event = db.scalar(
+        select(ChildAppEvent)
+        .where(
+            ChildAppEvent.case_id == link.case_id,
+            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.created_at >= since,
+        )
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+        .limit(1)
+    )
+
+    if event is None:
+        return None
+
+    acknowledged = event.acknowledged_at is not None
+
+    return {
+        "sent_at": _aware(event.created_at),
+        "acknowledged": acknowledged,
+        # 서버 시계로 판단해 폰 시계가 틀려도 같게 보인다.
+        "overdue": not acknowledged and now - _aware(event.created_at) >= ALERT_OVERDUE_AFTER,
+    }
 
 
 def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]:
