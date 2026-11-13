@@ -283,7 +283,7 @@ function fresh(){
     screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, qPending:false, qi:0, ans:{},
     tickets:load(STORE.tickets, 0), keys:load(STORE.keys, []), newKey:null, large:false, noti:0,
     hidden:false, garden:freshGarden(), gSheet:null, gToast:'',
-    sheet:null, count:0, banner:null, toast:null, spin:false, sending:false
+    sheet:null, count:0, banner:null, toast:null, spin:false, sending:false, alert:null
   };
 }
 let S = fresh();
@@ -366,9 +366,23 @@ function scrHome(){
     ${S.next ? (d => `<button class="mini-card" data-act="tab" data-to="cal">
       <span class="datebox"><small>${d.m}월</small><b>${d.d}</b></span>
       <span class="grow"><span class="muted" style="display:block">다음 상담 · ${d.dday}</span><b>${esc(d.label)}</b></span>${ICON.chev}</button>`)(nextInfo()) : ''}
+    ${alertCard()}
     ${lockLine()}
     <div style="flex:1 1 auto"></div>
     <button class="danger-btn" data-act="urgent">${ICON.warn}지금 위험해요</button>
+  </div>`;
+}
+// 급하다고 알린 뒤 선생님이 확인했는지(서버 /home 의 alert, 24시간). 확인 전으로 5분이 지나면 기다리지 말고 112 · 1388 을 다시 안내한다(멘토 피드백 11/12).
+function alertCard(){
+  const a = S.alert;
+  if (!a) return '';
+  const at = (d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'))(new Date(a.sent_at));
+  if (a.acknowledged) return `<div class="card row">${img('good', 48)}<div class="grow"><b>선생님이 확인했어요</b><div class="muted">${at}에 급하다고 알린 것을 선생님이 봤어요.</div></div></div>`;
+  if (!a.overdue) return `<div class="card row">${img('okay', 48)}<div class="grow"><b>선생님께 알렸어요 · 아직 확인 전이에요</b><div class="muted">${at}에 보냈어요. 선생님이 확인하면 여기에 보여요. 지금 많이 위험하면 112에 전화하세요.</div></div></div>`;
+  return `<div class="card" role="alert" style="background:var(--danger-bg);border-color:var(--danger);display:flex;flex-direction:column;gap:10px">
+    <div><b>선생님이 아직 확인하지 못했어요</b><div class="muted" style="color:inherit">${at}에 보냈어요. 지금 위험하면 기다리지 말고 112에 전화하세요. 이야기하고 싶으면 1388도 24시간 받아요.</div></div>
+    <button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>
+    <button class="outline" data-act="call" data-n="1388" style="display:flex;align-items:center;justify-content:center;gap:8px">${ICON.chat}1388에 전화하기</button>
   </div>`;
 }
 function scrQ(){
@@ -890,6 +904,7 @@ async function unlinkDevice(){
 }
 function applyHome(d){
   S.next = d.next_consult;
+  S.alert = d.alert || null;
   const p = d.pending, wasId = S.setId;
   if (p) { p.questions.forEach(q => { BK[q.id] = {...q, opts:q.options, short:q.text}; }); S.qset = p.questions.map(q => q.id); S.setId = p.id; S.qPending = true; }
   else { S.qset = []; S.setId = null; S.qPending = false; }
@@ -1016,6 +1031,8 @@ async function sendAlert(){
   S.sheet = {kind:'alertSending'}; renderLayer();
   try {
     await api('/alerts', {method:'POST', body:'{}'});
+    // 다음 /home 전까지도 홈에 '확인 전'이 보이게. 이미 확인 전 알림이 있으면 처음 보낸 시각을 그대로 둔다.
+    if (!S.alert || S.alert.acknowledged) S.alert = {sent_at:new Date().toISOString(), acknowledged:false, overdue:false};
     S.sheet = {kind:'alerted'};
   } catch (e) {
     if (e.message === 'unlinked') return;

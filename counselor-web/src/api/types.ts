@@ -1825,6 +1825,8 @@ export interface ChildAppCase {
   has_pending_questions: boolean;
   can_read_feed: boolean;
   open_alerts: ChildOpenAlert[];
+  /** 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null. */
+  last_acked_at: string | null;
   bank: { id: string; category: string; type: string; text: string }[];
   feed: ChildAppEvent[];
   ai_enabled: boolean;
@@ -1849,6 +1851,7 @@ export interface ChildAppCaseRow {
   open_alert_at: string | null;
   open_alert_reason: string | null;
   open_alert_urgent: boolean;
+  last_acked_at: string | null;
 }
 
 export interface ChildAiQuestion {
