@@ -25,9 +25,12 @@ function rowState(row) {
   if (row.open_alert_reason) return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   if (row.status === 'NOT_LINKED') return { reason: '앱 미연결 · 초대 전', rCls: 'chip c-normal', need: false };
   if (row.status === 'INVITED') return { reason: '초대 대기', rCls: 'chip c-normal', need: false };
-  // 바로 확인할 답(RED)은 늘 확인 처리를 거치므로, 열린 알림이 없으면 확인을 마친 것(멘토 피드백 11/12).
+  // 바로 확인할 답(RED)은 서버가 확인 시각을 줄 때만 '확인 완료'(멘토 피드백 11/12). 열린 알림은 최신 50건만 오므로
+  // 열린 알림이 없다고 확인을 마쳤다고 보지 않는다(민규 #175 리뷰 2).
   if (row.level === 'RED') {
-    return { reason: `확인 완료${row.last_acked_at ? ` ${childDateTime(row.last_acked_at)}` : ''}`, rCls: 'chip c-ok', need: false, acked: true };
+    return row.last_acked_at
+      ? { reason: `확인 완료 ${childDateTime(row.last_acked_at)}`, rCls: 'chip c-ok', need: false, acked: true }
+      : { reason: '긴급', rCls: 'chip c-urgent', need: true };
   }
   if (row.level === 'AMBER') return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   return { reason: '정상', rCls: 'chip c-normal', need: false };
