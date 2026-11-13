@@ -23,6 +23,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import CaseOverviewCard from '../components/CaseOverviewCard';
 import Notice from '../components/Notice';
 import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import RecordDialog from '../components/RecordDialog';
@@ -44,6 +45,7 @@ import { formsCardValues } from '../data/screens/caseForm';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { readScreenIds } from '../data/screens/links';
+import { caseOverviewValues } from '../data/screens/caseOverview';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
@@ -96,6 +98,15 @@ export default function CaseDetail(props) {
     history,
     checks: briefChecks,
     checklist: briefChecklist,
+  });
+  // 사례 한눈에 보기(2026-11-13, 담당자가 바뀌어도 사례를 한 번에 — 저장된 값만 모음, components/CaseOverviewCard).
+  const overview = caseOverviewValues({
+    detail,
+    history,
+    signals,
+    childApp: childAppInfo.data,
+    checksCount: (brief.checks || []).length,
+    caseId,
   });
   const briefRef = useRef(null);
   // 11/04 탭1 디자인: '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시). 서버 칸이 없어 이 브라우저에만 회차별로 기억한다.
@@ -351,6 +362,8 @@ export default function CaseDetail(props) {
               </div>
             </div>
           </section>
+
+          <CaseOverviewCard value={overview} />
 
           <div className="brief-wrap" id="brief" ref={briefRef} aria-label="상담 전 브리핑" role="region">
             <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 20px' }}>
