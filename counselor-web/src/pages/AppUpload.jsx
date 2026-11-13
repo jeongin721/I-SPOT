@@ -20,8 +20,9 @@ import { SESSION_STATUS_LABELS } from '../data/sessionRows';
 import { transcript } from '../api/endpoints';
 import { errorMessage } from '../data/useRemote';
 
-// 서버가 아직 처리 중인 회차 상태(이 동안은 목록을 다시 본다).
-const WORKING = new Set(['AUDIO_UPLOADED', 'STT_PROCESSING', 'STT_CONFIRMED', 'AI_PROCESSING']);
+// 서버가 저절로 처리하는 중인 회차 상태(이 동안만 목록을 다시 본다). AUDIO_UPLOADED · STT_CONFIRMED 는 사람이 다음 단계를
+// 눌러야 넘어가므로 넣지 않는다 — 넣으면 화면이 열려 있는 동안 끝없이 다시 본다(민규 #169).
+const WORKING = new Set(['STT_PROCESSING', 'AI_PROCESSING']);
 const FAILED = new Set(['STT_FAILED', 'AI_FAILED']);
 
 function UploadBody({ userId, items, notReady }) {
