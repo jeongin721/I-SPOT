@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -362,15 +362,27 @@ def _last_acked(db: Session, case_ids: List[uuid.UUID]) -> Dict[uuid.UUID, datet
     if not case_ids:
         return {}
 
-    latest: Dict[uuid.UUID, Optional[datetime]] = {}
+    # 사례마다 확인이 필요한 줄 중 가장 최근 시각만 골라 그 줄만 읽는다(줄이 쌓여도 사례 수만큼만, 민규 #175 리뷰 4).
+    newest = (
+        select(ChildAppEvent.case_id, func.max(ChildAppEvent.created_at).label("at"))
+        .where(ChildAppEvent.case_id.in_(case_ids), ChildAppEvent.needs_ack.is_(True))
+        .group_by(ChildAppEvent.case_id)
+        .subquery()
+    )
     rows = db.execute(
         select(ChildAppEvent.case_id, ChildAppEvent.acknowledged_at)
-        .where(ChildAppEvent.case_id.in_(case_ids), ChildAppEvent.needs_ack.is_(True))
-        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+        .join(newest, and_(ChildAppEvent.case_id == newest.c.case_id, ChildAppEvent.created_at == newest.c.at))
+        .where(ChildAppEvent.needs_ack.is_(True))
+        .order_by(ChildAppEvent.id.desc())
     ).all()
 
+    latest: Dict[uuid.UUID, Optional[datetime]] = {}
     for case_id, acknowledged_at in rows:
-        latest.setdefault(case_id, acknowledged_at)
+        # 같은 시각 줄이 둘이면 하나라도 확인 전이면 확인 전으로 본다.
+        if case_id in latest and (latest[case_id] is None or acknowledged_at is None):
+            latest[case_id] = None
+        else:
+            latest.setdefault(case_id, acknowledged_at)
 
     return {case_id: _aware(at) for case_id, at in latest.items() if at is not None}
 
@@ -701,21 +713,31 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
     )
 
 
+def _alert_pressed_at(event: ChildAppEvent) -> datetime:
+    """아이가 마지막으로 누른 시각. 확인 전에 다시 누르면 새 줄 없이 payload.last_at 만 오른다(send_alert)."""
+
+    last_at = (event.payload or {}).get("last_at")
+    if last_at:
+        try:
+            return _aware(datetime.fromisoformat(last_at))
+        except (TypeError, ValueError):
+            pass
+    return _aware(event.created_at)
+
+
 def _child_alert_status(db: Session, link: ChildAppLink) -> Optional[Dict[str, Any]]:
-    """이 기기가 마지막으로 급하다고 알린 것을 선생님이 확인했는지. 누가 · 언제 확인했는지는 보내지 않는다."""
+    """이 기기가 마지막으로 급하다고 알린 것을 선생님이 확인했는지. 누가 · 언제 확인했는지는 보내지 않는다.
+
+    확인 전 알림은 사례에 하나뿐이고 늘 가장 최근 알림 줄이다(send_alert). 그래서 가장 최근 줄 하나만 본다.
+    - 이 기기가 연결된 뒤에 누른 적이 있어야 보인다(마지막으로 누른 시각 기준). 예전 기기의 알림은 숨기되,
+      새 기기에서 다시 누르면 같은 줄이라도 보인다(민규 #175 리뷰 1).
+    - 확인한 알림은 마지막으로 누른 뒤 24시간만 보인다. 확인 전이면 시간이 지나도 남아 112 · 1388 안내를 이어 간다.
+    """
 
     now = _utcnow()
-    since = now - ALERT_STATUS_SHOWN
-    # 다시 연결한 기기에 예전 기기의 알림이 보이지 않게 연결 뒤 것만.
-    if link.linked_at is not None and _aware(link.linked_at) > since:
-        since = _aware(link.linked_at)
     event = db.scalar(
         select(ChildAppEvent)
-        .where(
-            ChildAppEvent.case_id == link.case_id,
-            ChildAppEvent.kind == ChildAppEventKind.ALERT,
-            ChildAppEvent.created_at >= since,
-        )
+        .where(ChildAppEvent.case_id == link.case_id, ChildAppEvent.kind == ChildAppEventKind.ALERT)
         .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
         .limit(1)
     )
@@ -723,12 +745,18 @@ def _child_alert_status(db: Session, link: ChildAppLink) -> Optional[Dict[str, A
     if event is None:
         return None
 
+    pressed_at = _alert_pressed_at(event)
+    if link.linked_at is not None and pressed_at < _aware(link.linked_at):
+        return None
+
     acknowledged = event.acknowledged_at is not None
+    if acknowledged and now - pressed_at > ALERT_STATUS_SHOWN:
+        return None
 
     return {
-        "sent_at": _aware(event.created_at),
+        "sent_at": pressed_at,
         "acknowledged": acknowledged,
-        # 서버 시계로 판단해 폰 시계가 틀려도 같게 보인다.
+        # 처음 알린 뒤로 확인 전인 시간으로 잰다(다시 눌러도 줄지 않는다). 서버 시계라 폰 시계가 틀려도 같다.
         "overdue": not acknowledged and now - _aware(event.created_at) >= ALERT_OVERDUE_AFTER,
     }
 

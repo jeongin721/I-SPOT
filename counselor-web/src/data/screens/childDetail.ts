@@ -39,8 +39,8 @@ function statusChip(data: ChildAppCase, latest: ChildAppEvent | undefined): { re
   if (data.open_alerts.some((alert) => alert.urgent) || (latest?.level === "RED" && !latest.acknowledged_at)) {
     return { reason: "긴급", rCls: "chip c-urgent" };
   }
-  // 바로 확인할 답(RED)은 늘 확인 처리를 거친다. 확인했으면 '긴급' 대신 확인 완료(멘토 피드백 11/12).
-  if (data.open_alerts.length === 0 && latest?.level === "RED") {
+  // 바로 확인할 답(RED)을 확인했으면 '긴급' 대신 확인 완료(멘토 피드백 11/12). 확인 시각이 있을 때만(민규 #175 리뷰 2).
+  if (data.open_alerts.length === 0 && latest?.level === "RED" && latest.acknowledged_at) {
     return { reason: `확인 완료 ${childDateTime(latest.acknowledged_at)}`, rCls: "chip c-ok" };
   }
   if (data.open_alerts.length > 0 || latest?.level === "AMBER") return { reason: "확인 필요", rCls: "chip c-check" };
