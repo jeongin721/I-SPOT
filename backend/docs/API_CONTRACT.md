@@ -987,7 +987,20 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 
 ### DELETE /api/v1/sessions/{session_id} → 204
 
-음성 파일도 함께 삭제된다.
+음성 파일도 함께 삭제된다. 전사본 · AI 분석 · 요약 · 문서까지 함께 지워지고 되돌릴 수 없다(감사 기록 `SESSION_DELETED` 만 남는다).
+
+누가 지울 수 있나(2026-11-11):
+
+| 회차 상태 | 담당 상담사 | 관리자 |
+|---|---|---|
+| `CREATED` · `AUDIO_UPLOADED` · `STT_FAILED` · `STT_REVIEW_REQUIRED` (원문 확정 전) | `204` | `204` |
+| `STT_PROCESSING` (원문 변환 중) | `409 INVALID_SESSION_STATE` — 변환이 끝난 뒤 다시 | `204` |
+| `STT_CONFIRMED` · `AI_PROCESSING` · `AI_FAILED` · `AI_REVIEW_REQUIRED` · `APPROVED` (원문 확정 뒤) | `403 FORBIDDEN` | `204` |
+
+- 잘못 올린 녹음은 담당 상담사가 직접 치울 수 있게 하고, 원문을 확정한 뒤의 회차(검수본 · AI 분석 · 승인된 기록)는 실수로 지워지지 않게 관리자만 지운다.
+  전에는 담당 상담사면 상태와 상관없이 받았다.
+- 문서 회차(21절)는 문서를 올리면 바로 `AI_REVIEW_REQUIRED` 가 되므로, 문서를 올린 뒤에는 관리자만 지운다.
+- 담당이 아닌 상담사는 상태와 상관없이 `403` 이다.
 
 ---
 
