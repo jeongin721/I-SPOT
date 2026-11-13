@@ -69,6 +69,9 @@ import { GENDER_OPTIONS, intakeFormOf, toCaseUpdateRequest, type IntakeForm } fr
 import { CASE_DATE_FIELDS } from "../useCaseRegister";
 import type { AuthSession } from "../useAuthSession";
 import { sessionDeleteTarget, type DeleteTarget } from "../useAdminDelete";
+
+// 담당 상담사가 지울 수 있는 회차 상태 — 원문 확정 전(API_CONTRACT 5절, #177). STT_PROCESSING 은 서버가 409 라 단추를 두지 않는다.
+const OWNER_DELETABLE = new Set<string>(["CREATED", "AUDIO_UPLOADED", "STT_FAILED", "STT_REVIEW_REQUIRED"]);
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
 import { COLUMN_OF, PROCESS_COLUMNS, continueLink } from "./flow";
@@ -668,6 +671,8 @@ const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
  * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
  * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
  * 관리자면(화면이 askDelete 를 줌, 2026-11-03) '전 회차 보기' 창의 회차마다 '삭제'(del)가 있다 — 'N회차' 를 입력하는 확인 창을 연다.
+ * 담당 상담사(2026-11-13, #177 서버 규칙 — API_CONTRACT 5절)는 원문 확정 전 회차(OWNER_DELETABLE)에만 '삭제' 가 있다.
+ * 서버가 거절하면(403 · 409) 확인 창에 서버 문구를 그대로 보인다(useAdminDelete).
  */
 export function caseHistoryValues(
   input: CaseScreenInput & {
@@ -675,8 +680,10 @@ export function caseHistoryValues(
     setHistoryOpen?: (open: boolean) => void;
     history?: SignalHistoryState;
     approved?: ApprovedSummariesState;
-    /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자에게만 준다. */
+    /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자 · 그 사례 담당 상담사에게만 준다. */
     askDelete?: ((target: DeleteTarget) => void) | null;
+    /** 관리자인가(모든 상태의 회차를 지울 수 있음). 아니면 원문 확정 전 회차만. */
+    deleteAny?: boolean;
   },
 ) {
   const { detail, history } = input;
@@ -710,7 +717,8 @@ export function caseHistoryValues(
       st: TONE_CHIP[row.tone],
       sig: sigOf(row.id),
       href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
-      del: askDelete
+      del:
+        askDelete && (input.deleteAny || OWNER_DELETABLE.has(row.status))
         ? () =>
             askDelete(
               sessionDeleteTarget({
