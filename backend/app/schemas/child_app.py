@@ -41,9 +41,17 @@ class ChildNextConsult(BaseModel):
     place: Optional[str] = None
 
 
+class ChildAlertStatus(BaseModel):
+    # 아이가 급하다고 알린 시각, 선생님이 확인했는지, 확인 전으로 5분이 지났는지. 확인한 사람 · 시각은 넣지 않는다.
+    sent_at: datetime
+    acknowledged: bool
+    overdue: bool
+
+
 class ChildHomeResponse(BaseModel):
     pending: Optional[ChildPendingQuestions] = None
     next_consult: Optional[ChildNextConsult] = None
+    alert: Optional[ChildAlertStatus] = None
 
 
 class ChildAnswerInput(RequestModel):
@@ -164,6 +172,8 @@ class ChildAppCaseRow(BaseModel):
     open_alert_at: Optional[datetime] = None
     open_alert_reason: Optional[str] = None
     open_alert_urgent: bool = False
+    # 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null.
+    last_acked_at: Optional[datetime] = None
 
 
 class ChildScheduledQuestions(BaseModel):
@@ -185,6 +195,7 @@ class ChildAppCaseResponse(BaseModel):
     scheduled_questions: Optional[ChildScheduledQuestions] = None
     can_read_feed: bool
     open_alerts: List[ChildOpenAlert]
+    last_acked_at: Optional[datetime] = None
     bank: List[ChildAppBankItem]
     feed: List[ChildAppEventResponse]
     ai_enabled: bool = False

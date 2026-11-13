@@ -2922,6 +2922,12 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
+아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 사례의 마지막 긴급 알림 `{sent_at, acknowledged, overdue}`(없으면 null). `sent_at` 은 마지막으로 누른 시각(확인 전에 다시 누르면 오른다)이고, 이 기기가 연결된 뒤에 누른 것만 보인다. 확인한 알림은 마지막으로 누른 뒤 24시간만 보이고, 확인 전 알림은 시간이 지나도 남는다. `overdue` 는 처음 알린 뒤 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.
+
+확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
+
+열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
+
 `status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
 
 **발송 예약(2026-11-11).** `deliver: "EVENING"` 으로 보낸 질문은 누른 날 `CHILD_APP_DELIVER_HOUR` 시(기본 18, 한국 시각)부터 아이 앱에 보인다. 시각은 서버가 정하고, 그 시가 지난 뒤에 누르면 바로 보낸다(`scheduled_questions` 는 null). 아이 기기로 가는 알림은 없다 — 아이가 앱을 열 때 받는다.
