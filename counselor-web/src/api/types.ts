@@ -1868,3 +1868,31 @@ export interface ChildAiDraft {
   event_id: string;
   items: { question_id: string; note: string; note_edited: boolean; questions: ChildAiQuestion[] }[];
 }
+
+// =========================================================
+// 상담사 메모(API_CONTRACT 25절, 2026-11-10) — 쓴 사람만 본다
+// =========================================================
+
+export interface Memo {
+  id: string;
+  case_id: string | null;
+  /** 관련 사례의 별칭(실명 아님). 사례가 없으면 null. */
+  child_alias: string | null;
+  /** 본문. 풀지 못하면 null 이고 unreadable 이 true(그 메모만 — 지우거나 새 본문으로 고칠 수 있다). */
+  text: string | null;
+  unreadable?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoCreateRequest {
+  /** 앞뒤 공백을 지운 1~4000자. */
+  text: string;
+  case_id?: string | null;
+}
+
+/** 보낸 칸만 바뀐다. case_id: null 이면 사례를 뗀다. text 는 null 로 보낼 수 없다. */
+export interface MemoUpdateRequest {
+  text?: string;
+  case_id?: string | null;
+}
