@@ -2834,7 +2834,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 |---|---|---|
 | POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
 | POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
-| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}, alert}`(장소는 정기 · 초기 · 종결 상담만). `alert` 는 이 기기가 연결 뒤 24시간 안에 마지막으로 급하다고 알린 것 `{sent_at, acknowledged, overdue}`(없으면 null). `overdue` 는 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
 | POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
 | POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
 | GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER` · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
@@ -2850,6 +2850,8 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | PUT | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}/approval` | `{approved}`. 승인하면 답하지 않은 질문에 더해 바로 앱으로 간다(묶음당 최대 8개). 풀면 뺀다. 이미 답했으면 409, 미연결이면 409 |
 
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
+
+아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 이 기기가 연결 뒤 24시간 안에 마지막으로 급하다고 알린 것 `{sent_at, acknowledged, overdue}`(없으면 null). `overdue` 는 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.
 
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 
