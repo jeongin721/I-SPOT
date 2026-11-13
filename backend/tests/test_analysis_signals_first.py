@@ -1137,7 +1137,10 @@ def test_second_save_locks_the_session_first_so_delete_waits(
     def delete() -> None:
         with SessionLocal() as db:
             pids["delete"] = db.scalar(text("select pg_backend_pid()"))
-            session_service.delete_session(db, db.get(ConsultationSession, sid), types.SimpleNamespace(id=counselor_id))
+            # 원문을 확정한 뒤의 회차는 관리자만 지운다(2026-11-11) — 잠금 순서를 보는 시험이라 관리자로 부른다.
+            session_service.delete_session(
+                db, db.get(ConsultationSession, sid), types.SimpleNamespace(id=counselor_id, is_admin=True)
+            )
             outcomes["delete"] = True
 
     def guarded(target: Callable[[], None]) -> Callable[[], None]:
