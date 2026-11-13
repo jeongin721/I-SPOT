@@ -2915,11 +2915,13 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 ---
 
-## 27. Senior Care (고령자 건강상담, 2026-11-13)
+## 27. Senior Care (고령자 건강상담, 2026-11-13, `feature/senior`)
 
-고령자 건강상담 · 상담 기록 업무를 하는 현장 담당자용이다(어르신 본인용 앱이 아니다). 사례를 만들 때 `subject_type: "SENIOR"` 로 만든 사례에서만 쓰고, 아동 사례(`CHILD`)는 이 절의 API 가 모두 409 `INVALID_CASE_STATE` 다. 접근은 다른 사례 API 와 같다(담당 상담사 · 관리자, 그 밖 403).
+이동식 건강검진(카라반) 현장에서 건강측정과 상담을 하는 **현장 담당자용 기록 도구**다(어르신이 직접 쓰는 화면은 없다). 흐름: 기본정보 → 건강측정 입력 → 상담 · 녹음 → STT → **회차 통합 요약(측정 + 상담)** → 담당자 승인 → **다음 상담 확인사항 저장** → 상담 이력 조회. 이 기능은 main 에 합치지 않고 `feature/senior` 브랜치에만 둔다.
 
-**하지 않는 것:** 질병 진단 · 정신질환 판정 · 치료 권고(약 조절 · 진료 권유). 서버는 측정값과 그 변화만 내고 '정상 · 위험' 기준을 붙이지 않는다.
+사례를 만들 때 `subject_type: "SENIOR"` 로 만든 사례에서만 쓰고, 아동 사례(`CHILD`)는 이 절의 API 가 모두 409 `INVALID_CASE_STATE` 다. 접근은 다른 사례 API 와 같다(담당 상담사 · 관리자, 그 밖 403).
+
+**하지 않는 것:** 질병 진단 · 정신질환 판정 · 치매 판정 · 치료 권고(약 조절 · 진료 권유). 서버는 측정값과 그 변화만 내고 '정상 · 위험' 기준을 붙이지 않는다. AI 문장에서 이런 말이 든 것은 버린다.
 
 ### 사례 대상 종류
 
@@ -2930,36 +2932,68 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/cases/{case_id}/senior-profile` | 기본정보. 저장 전이면 값이 모두 null, `updated_at` null |
-| PATCH | `/cases/{case_id}/senior-profile` | 보낸 칸만 바꾼다(null 이면 비움). `living_arrangement`: `ALONE` · `COUPLE` · `WITH_FAMILY` · `FACILITY` · `OTHER`, `care_grade`: `GRADE_1`~`GRADE_5` · `COGNITIVE_SUPPORT`(인지지원) · `NONE` · `UNKNOWN`, `health_notes`(담당자가 아는 질환 · 복용약, 2000자) · `care_notes`(생활 · 돌봄 메모, 2000자). 글은 앞뒤 빈칸을 떼고 비면 null |
+| PATCH | `/cases/{case_id}/senior-profile` | 보낸 칸만 바꾼다(null 이면 비움). `living_arrangement`: `ALONE` · `COUPLE` · `WITH_FAMILY` · `FACILITY` · `OTHER`, `care_grade`: `GRADE_1`~`GRADE_5` · `COGNITIVE_SUPPORT`(인지지원) · `NONE` · `UNKNOWN`, `health_notes`(담당자가 아는 질환 · 복용약, 2000자) · `care_notes`(생활 · 돌봄 메모, 2000자). 글은 앞뒤 빈칸을 떼고 비면 null. 방문지 · 보호자 연락 · 동의 칸은 1주차 현장 서식을 보고 더한다 |
 | GET | `/cases/{case_id}/health-measurements` | 측정 목록(최근 것부터, 최대 500건) |
 | POST | `/cases/{case_id}/health-measurements` | 201. 아래 '측정' 참고 |
 | PATCH | `/cases/{case_id}/health-measurements/{id}` | 보낸 칸만. 바꾼 뒤 값이 만들기 규칙을 어기면 400 `VALIDATION_ERROR`(예: 혈압 한쪽만 지움). `measured_at` 을 null 로 보내면 400. 다른 사례의 측정은 404 |
 | DELETE | `/cases/{case_id}/health-measurements/{id}` | 204 |
 | GET | `/cases/{case_id}/health-trend` | 항목별 추이(아래) |
-| POST | `/cases/{case_id}/senior-brief` | 요약 · 다음 상담 확인사항을 만들어 돌려준다. **저장하지 않는다**(부를 때마다 새로) |
+| POST | `/cases/{case_id}/senior-brief` | 방문 전 브리핑: 요약 · 다음 상담 확인사항 초안을 만들어 돌려준다. **저장하지 않는다** |
+| GET | `/cases/{case_id}/next-checks?status=OPEN` | 저장한 확인사항(만든 순). `status` 없으면 전부 |
+| POST | `/cases/{case_id}/next-checks` | 201. 확인사항 저장(아래) |
+| PATCH | `/cases/{case_id}/next-checks/{id}` | 글 고치기 · 다음 방문 때 확인 표시(아래) |
+| DELETE | `/cases/{case_id}/next-checks/{id}` | 204 |
+| GET | `/cases/{case_id}/senior-history` | 상담 이력 조회(아래) |
+
+회차(방문) 자체는 아동과 같은 `/cases/{case_id}/sessions` · 녹음 · STT · 분석 · 요약 승인 API 를 쓴다. 다른 점은 '회차 통합 요약' 참고.
 
 ### 측정
 
-`{measured_at, session_id?, systolic?, diastolic?, pulse?, blood_glucose?, glucose_timing?, weight_kg?, body_temp_c?, note?}`
+`{measured_at, session_id?, systolic?, diastolic?, pulse?, blood_glucose?, glucose_timing?, weight_kg?, body_temp_c?, extra_results?, note?}`
 
 - `measured_at` 은 시간대를 붙여야 한다(`2026-11-13T09:00:00+09:00`). 없으면 422.
-- 값은 하나 이상. 혈압은 수축기 · 이완기를 함께, 이완기 < 수축기. 혈당은 `glucose_timing`(`FASTING` · `POST_MEAL` · `RANDOM`) 필수.
+- 값은 하나 이상(고정 항목이나 `extra_results`). 혈압은 수축기 · 이완기를 함께, 이완기 < 수축기. 혈당은 `glucose_timing`(`FASTING` · `POST_MEAL` · `RANDOM`) 필수.
 - 범위(잴 수 없는 값 · 단위 실수만 거름, 의학 기준 아님): 수축기 50~300, 이완기 20~200, 맥박 20~250, 혈당 10~1000, 체중 15~300kg, 체온 30~45℃. 어기면 422.
-- `session_id` 는 이 사례의 회차만(아니면 404 `SESSION_NOT_FOUND`). 회차를 지워도 측정은 남는다(null).
+- `extra_results`: 그 밖의 결과(치매 조기검사 점수 등) 최대 10개 `[{kind, name, value, max_value?, unit?}]`. `kind`: `COGNITIVE_SCREENING`(치매 조기검사) · `OTHER`. `name` 1~40자(`:` 금지, 예: `CIST`), `value` 숫자, `max_value` 만점(값보다 작으면 422). 같은 `kind` · `name` 두 번이면 422. 어떤 검사를 넣을지는 현장 서식을 보고 정한다(칸이 아니라 목록이라 서버를 고치지 않아도 된다).
+- `session_id` 는 이 사례의 회차만(아니면 404 `SESSION_NOT_FOUND`). 회차에 단 측정이 그 방문의 '이번 측정' 이다. 회차를 지워도 측정은 남는다(null).
 
 ### 추이
 
-`{case_id, measurement_count, first_measured_at, last_measured_at, metrics: [{metric, label, unit, count, latest, previous, change, min, max, points: [{measurement_id, measured_at, value}]}]}`
+`{case_id, measurement_count, first_measured_at, last_measured_at, metrics: [{metric, label, unit, kind, max_value, count, latest, previous, change, min, max, points: [{measurement_id, measured_at, value}]}]}`
 
-`metric` 순서: `systolic` · `diastolic` · `pulse` · `blood_glucose_fasting` · `blood_glucose_post_meal` · `blood_glucose_random` · `weight_kg` · `body_temp_c`. 값이 있는 항목만. 혈당은 잰 때마다 따로 낸다(공복과 식후를 비교하지 않는다). `change` = latest − previous, 점은 오래된 것부터.
+고정 항목 `metric` 순서: `systolic` · `diastolic` · `pulse` · `blood_glucose_fasting` · `blood_glucose_post_meal` · `blood_glucose_random` · `weight_kg` · `body_temp_c`. 그 뒤에 그 밖 결과가 `"{kind}:{name}"`(예: `COGNITIVE_SCREENING:CIST`, `kind` · `max_value` 채움, `unit` 이 없으면 `"/만점"`)로 처음 나온 순. 값이 있는 항목만. 혈당은 잰 때마다 따로 낸다. `change` = latest − previous, 점은 오래된 것부터.
 
-### 요약 · 다음 상담 확인사항
+### 회차 통합 요약(분석)
 
-`{case_id, source, model, summary, check_items: [{text, basis: [{kind, metric?, measurement_id?, session_number?}]}], generated_at}`
+고령자 사례의 회차는 `POST /sessions/{id}/analysis` 가 학대 분석 대신 **통합 요약**을 만든다. 입력은 이번 녹취 + 이 회차에 단 측정 + 이전 방문 이력(측정 추이 · 이 회차보다 앞선 승인 요약 3회차 · 기본정보).
 
-- 입력: 기본정보 · 측정 추이 · **승인한** 회차 요약(`overview` · `key_points`, 최근 3회차).
-- `SENIOR_BRIEF_PROVIDER=rule`(기본): `source: "RULE"`, LLM 없이 규칙으로 묶는다 — 지난 측정과 눈에 띄게 다름(수축기 15 · 이완기 10 · 맥박 15 · 공복 혈당 30 · 식후 · 그 밖 혈당 40 · 체중 2kg · 체온 1℃ 이상), 3번 이어서 오르거나 내림, 마지막 측정 30일 지남 · 측정 없음, 최근 승인 회차의 핵심 내용 2개. 폭은 '지난번과 다름' 표시일 뿐 의학 기준이 아니다.
-- `SENIOR_BRIEF_PROVIDER=modeling`: `source: "AI"`. 이름을 가린 뒤 외부 AI 로 보낸다. 진단 · 의심 · 판정 · 처방 · 약 조절 · 진료 권유 · 정상/위험 말이 든 문장과 근거(ref)가 없는 문장은 버리고, 요약이 그러면 규칙 요약으로 바꾼다. 입력에 없는 측정 id 근거는 서버가 뺀다. 시간 초과 504 `AI_TIMEOUT`, 쓸 문장이 없음 502 `AI_INVALID_OUTPUT`, 이름을 다 가리지 못함 422 `AI_PRIVACY_BLOCKED`, 그 밖 502 `AI_FAILED`, 같은 사례 · 서버 동시 실행이 차면 429 `RATE_LIMITED`. ENV=production 에서는 `SENIOR_BRIEF_ALLOW_IN_PRODUCTION=true` 없이 서버가 뜨지 않는다.
-- `basis.kind`: `MEASUREMENT` · `SESSION` · `PROFILE`. 근거가 없는 확인사항(예: 측정 없음)은 빈 목록.
+- `analysis.provider`: `senior-rule` · `senior-modeling`. 결과(8절 Contract)는 `summary.overview` · `summary.key_points` 에 통합 요약, `summary_evidence` 에 발화 근거를 담고, 학대 칸(`risk_utterances` · `abuse_signals` · `severity_ratings` …)은 빈 배열, `topic_tags` · `safety_flags` 는 null.
+- 덧붙임 `result.senior`(아동 회차는 null): `{source: "RULE"|"AI", visit_measurement_ids, key_point_basis: [[근거]], next_check_drafts: [{text, basis}], safety_mentions: [{kind, text, segment_ids}]}`. `key_point_basis[i]` 는 `key_points[i]` 의 근거.
+- 근거 모양: `{kind: "SEGMENT", segment_ids}` · `{kind: "MEASUREMENT", metric, measurement_id}` · `{kind: "SESSION", session_number}` · `{kind: "PROFILE"}`.
+- `safety_mentions`: 어르신 쪽 발화에서 자해 · 자살(`SELF_HARM`) · 급한 건강 문제(`URGENT_HEALTH`)와 관련된 말. 낱말 찾기는 늘 하고, AI 가 켜져 있으면 AI 가 찾은 것과 합친다. 있으면 `warnings` 에 '바로 확인해 주세요(AI 표시, 판정 아님)' 문구가 붙는다. 긴급 여부는 담당자가 정한다.
+- `SENIOR_AI_PROVIDER=rule`(기본): 이번 측정 한 줄 + 어르신 발화 앞 3개를 핵심 내용으로 옮기고(AI 요약 아님 — `warnings` 에 표시), 확인사항 초안은 아래 브리핑 규칙. `modeling`: 이름을 가린 뒤 외부 AI. 실패는 회차 `AI_FAILED` 와 오류 코드(`AI_INVALID_OUTPUT` · `AI_PRIVACY_BLOCKED` · `AI_TIMEOUT` · `AI_FAILED`).
+- 요약 고치기 · 승인은 아동과 같은 `/sessions/{id}/summary` API. 확인사항 초안은 담당자가 두기 · 고치기 · 지우기 한 뒤 `POST /cases/{case_id}/next-checks` 로 저장한다.
+- 고령자 회차는 STT 뒤 1차 핵심 발화 스캔(`key_scan.status: "SKIPPED"`)과 아동용 다음 상담 체크리스트(19절, POST 는 409)를 하지 않는다.
 
-감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간). 값 · 메모 글 · 확인사항 문장은 넣지 않는다.
+### 방문 전 브리핑(`senior-brief`)
+
+`{case_id, source, model, summary, check_items: [{text, basis}], generated_at}` — 저장하지 않는다.
+
+- `rule`(기본): 지난 측정과 눈에 띄게 다름(수축기 15 · 이완기 10 · 맥박 15 · 공복 혈당 30 · 식후 · 그 밖 혈당 40 · 체중 2kg · 체온 1℃ 이상), 3번 이어서 오르거나 내림, 치매 조기검사 점수가 지난 검사와 다름(1점이라도), 마지막 측정 30일 지남 · 측정 없음, 최근 승인 회차의 핵심 내용 2개. 폭은 '지난번과 다름' 표시일 뿐 의학 기준이 아니다.
+- `modeling`: 이름을 가린 뒤 외부 AI. 금지 말 · 근거 없는 문장은 버리고, 요약이 그러면 규칙 요약으로 바꾼다. 시간 초과 504 `AI_TIMEOUT`, 쓸 문장이 없음 502 `AI_INVALID_OUTPUT`, 이름을 다 가리지 못함 422 `AI_PRIVACY_BLOCKED`, 그 밖 502 `AI_FAILED`, 동시 실행이 차면 429 `RATE_LIMITED`.
+- ENV=production 에서는 `SENIOR_AI_ALLOW_IN_PRODUCTION=true` 없이 `SENIOR_AI_PROVIDER=modeling` 으로 서버가 뜨지 않는다(회차 요약도 같은 설정).
+
+### 다음 상담 확인사항(`next-checks`)
+
+- 저장 `POST`: `{source_session_id?, items: [{text(1~300자), origin?, edited?, basis?}]}`(1~20개). `origin`: `AI` · `RULE`(초안을 두거나 고쳐서 저장) · `COUNSELOR`(기본, 담당자가 새로 씀). `edited` 는 초안을 고쳐서 저장했는지(`COUNSELOR` 면 늘 false). `basis` 의 측정 id 가 이 사례에 없으면 400. 응답은 저장한 목록.
+- 고치기 `PATCH`: `{text?, status?, checked_session_id?, result_note?}`. 초안 출처 글을 고치면 `edited: true`. `status`: `OPEN` → `DONE`(확인함) · `DROPPED`(확인하지 않기로 함)이면 `checked_at` 이 찍히고, `OPEN` 으로 되돌리면 `checked_at` · `checked_session_id` 가 비워진다. `checked_session_id` 는 `OPEN` 이 아닐 때만(아니면 400).
+- 응답 `{id, case_id, source_session_id, text, basis, origin, edited, status, checked_session_id, checked_at, result_note, created_at, updated_at}`.
+
+### 상담 이력 조회(`senior-history`)
+
+`{case_id, entries: [...], open_checks: [확인사항]}` — `entries` 는 최근 것부터:
+
+- `kind: "VISIT"`(회차): `at`(상담일, 없으면 만든 때) · `session_id` · `session_number` · `session_title` · `session_status` · `summary`(`{overview, key_points, status}`, 없으면 null) · `measurements`(그 회차에 단 측정) · `checks_created`(그 방문에서 만든 확인사항) · `checks_resolved`(그 방문에서 확인한 확인사항).
+- `kind: "MEASUREMENT"`(회차 없이 적은 측정): `at`(잰 때) · `measurements`(1개).
+
+감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간) · `NEXT_CHECKS_SAVED`(개수 · 출처별 수 · 고친 수) · `NEXT_CHECK_UPDATED`(바뀐 칸 이름 · 상태) · `NEXT_CHECK_DELETED`(출처 · 상태). 값 · 메모 글 · 확인사항 문장은 넣지 않는다.

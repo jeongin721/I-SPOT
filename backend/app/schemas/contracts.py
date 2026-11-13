@@ -208,6 +208,35 @@ class TopicTag(BaseModel):
     start_ms: Optional[int] = None
 
 
+class SeniorSafetyMention(BaseModel):
+    """고령자 회차에서 담당자에게 바로 보일 안전 관련 발화(자해 · 자살, 급한 건강 문제). 표시일 뿐 긴급 판정이 아니다."""
+
+    kind: Literal["SELF_HARM", "URGENT_HEALTH"]
+    text: str
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+class SeniorDraftItem(BaseModel):
+    """다음 상담 확인사항 초안 하나. basis 는 API_CONTRACT 27절 근거 모양(SEGMENT · MEASUREMENT · SESSION · PROFILE)."""
+
+    text: str
+    basis: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class SeniorAnalysis(BaseModel):
+    """고령자 회차 통합 요약의 덧붙임(2026-11-13, feature/senior). 아동 회차는 null 이다.
+
+    key_point_basis[i] 는 summary.key_points[i] 의 근거(발화 · 측정). 확인사항 초안은 담당자가 두기 · 고치기 · 지우기 한 뒤
+    POST /cases/{case_id}/next-checks 로 저장한다.
+    """
+
+    source: Literal["RULE", "AI"] = "RULE"
+    visit_measurement_ids: List[str] = Field(default_factory=list)
+    key_point_basis: List[List[Dict[str, Any]]] = Field(default_factory=list)
+    next_check_drafts: List[SeniorDraftItem] = Field(default_factory=list)
+    safety_mentions: List[SeniorSafetyMention] = Field(default_factory=list)
+
+
 class AIAnalysisResult(BaseModel):
     """
     AI 담당의 Structured JSON Contract.
@@ -235,6 +264,8 @@ class AIAnalysisResult(BaseModel):
     # [](찾았지만 해당 없음)을 구분한다. 2단계 칸이라 두 번 저장에서 첫 저장 값 그대로다(analysis_service._DRAFT_FIELDS 밖).
     safety_flags: Optional[List[SafetyFlag]] = None
     reabuse_factors: Optional[List[ReabuseFactor]] = None
+    # 고령자 회차 통합 요약(feature/senior). 아동 회차 · 이 필드 전 결과는 null.
+    senior: Optional[SeniorAnalysis] = None
 
     @field_validator("safety_flags", mode="before")
     @classmethod

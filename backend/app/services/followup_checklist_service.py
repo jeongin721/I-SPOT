@@ -42,8 +42,8 @@ from app.adapters.followup_checklist_adapter import (
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AbuseType, AnalysisStatus, AuditAction, ReviewStatus, abuse_type_from_label
-from app.core.errors import APIError, ErrorCode
+from app.core.enums import AbuseType, AnalysisStatus, AuditAction, ReviewStatus, SubjectType, abuse_type_from_label
+from app.core.errors import APIError, ErrorCode, conflict
 from app.core.logging import get_logger
 from app.models.analysis import AIAnalysis
 from app.models.followup_checklist import SessionFollowupChecklist
@@ -511,6 +511,9 @@ def request_generation(
     if not is_enabled():
         raise APIError(ErrorCode.FOLLOWUP_DISABLED, DISABLED_MESSAGE, status_code=503)
 
+    if session.case.subject_type == SubjectType.SENIOR:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "고령자 사례는 다음 상담 확인사항(27절 next-checks)을 씁니다.")
+
     adapter = get_followup_checklist_adapter()
     attempt: Optional[int] = None
     row: Optional[SessionFollowupChecklist] = None
@@ -570,6 +573,10 @@ def generate_after_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> No
             analysis = db.get(AIAnalysis, analysis_id)
 
             if session is None or analysis is None or analysis.status != AnalysisStatus.COMPLETED:
+                return
+
+            # 고령자 회차(feature/senior)는 아동용 체크리스트(rag)를 만들지 않는다 — 확인사항 초안은 통합 요약에 있다.
+            if session.case.subject_type == SubjectType.SENIOR:
                 return
 
             adapter = get_followup_checklist_adapter()

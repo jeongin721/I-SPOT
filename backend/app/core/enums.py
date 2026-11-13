@@ -66,6 +66,22 @@ class GlucoseTiming(str, Enum):
     RANDOM = "RANDOM"
 
 
+class NextCheckOrigin(str, Enum):
+    """다음 상담 확인사항을 처음 만든 곳."""
+
+    AI = "AI"
+    RULE = "RULE"
+    COUNSELOR = "COUNSELOR"
+
+
+class NextCheckStatus(str, Enum):
+    """OPEN = 다음 방문 때 확인할 것, DONE = 확인함, DROPPED = 확인하지 않기로 함."""
+
+    OPEN = "OPEN"
+    DONE = "DONE"
+    DROPPED = "DROPPED"
+
+
 class CaseStatus(str, Enum):
     """사례 상태. 종결은 상담사/관리자의 명시적 행위로만 발생한다."""
 
@@ -469,6 +485,9 @@ class AuditAction(str, Enum):
     HEALTH_MEASUREMENT_UPDATED = "HEALTH_MEASUREMENT_UPDATED"
     HEALTH_MEASUREMENT_DELETED = "HEALTH_MEASUREMENT_DELETED"
     SENIOR_BRIEF_GENERATED = "SENIOR_BRIEF_GENERATED"
+    NEXT_CHECKS_SAVED = "NEXT_CHECKS_SAVED"
+    NEXT_CHECK_UPDATED = "NEXT_CHECK_UPDATED"
+    NEXT_CHECK_DELETED = "NEXT_CHECK_DELETED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

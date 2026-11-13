@@ -30,7 +30,16 @@ from app.adapters.ai_adapter import (
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AnalysisStatus, AuditAction, DraftsStatus, ReviewStatus, SessionSource, SessionStatus
+from app.adapters.senior_ai_adapter import get_senior_ai_adapter
+from app.core.enums import (
+    AnalysisStatus,
+    AuditAction,
+    DraftsStatus,
+    ReviewStatus,
+    SessionSource,
+    SessionStatus,
+    SubjectType,
+)
 from app.core.errors import ErrorCode, conflict, not_found
 from app.core.logging import get_logger
 from app.models.analysis import AIAnalysis
@@ -45,6 +54,7 @@ from app.services import (
     case_context_service,
     followup_checklist_service,
     personal_info_service,
+    senior_service,
     session_service,
     transcript_service,
 )
@@ -346,17 +356,24 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
                 raise AIError("Transcript 가 없습니다.", ErrorCode.AI_FAILED)
 
             payload = transcript_service.transcript_to_contract(transcript)
-            case_context = _build_case_context(db, session)
-            adapter = get_ai_adapter()
-            known_identifiers = _known_identifiers(db, session, adapter)
-
-            _prepare_adapter(adapter, job_deadline)
-
             time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
-            bundle = run_with_timeout(
-                lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers, signals),
-                time_limit,
-            )
+
+            if session.case.subject_type == SubjectType.SENIOR:
+                # 고령자 회차(feature/senior): 학대 분석 대신 통합 요약(측정 + 녹취 + 이전 방문). 2단계 먼저 저장은 없다.
+                bundle = _analyze_senior(db, session, payload, time_limit)
+            else:
+                case_context = _build_case_context(db, session)
+                adapter = get_ai_adapter()
+                known_identifiers = _known_identifiers(db, session, adapter)
+
+                _prepare_adapter(adapter, job_deadline)
+
+                # 준비 단계가 시간을 썼을 수 있어 남은 시간으로 다시 잰다.
+                time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
+                bundle = run_with_timeout(
+                    lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers, signals),
+                    time_limit,
+                )
 
             # 첫 저장을 했으면 둘째 저장, 아니면(콜백이 안 불림 · 첫 저장 실패 · 버림) 지금처럼 한 번에 저장한다.
             if signals.saved:
@@ -493,6 +510,26 @@ def _analyze(
         options["on_signals_ready"] = on_signals_ready
 
     return adapter.analyze(payload, **options)
+
+
+def _analyze_senior(db: Session, session: ConsultationSession, payload, time_limit: float) -> AIAnalysisBundle:
+    """고령자 회차 통합 요약. 이력은 DB 를 읽는 이 스레드에서 미리 만들고, 어댑터만 제한 시간 안에서 돌린다."""
+
+    adapter = get_senior_ai_adapter()
+    senior_context = senior_service.build_session_input(db, session)
+    known_identifiers = None
+    if getattr(adapter, "provider", None) == "modeling":
+        known_identifiers = personal_info_service.known_identifiers(db, session.case_id, extra=[session.case.child_alias])
+
+    return run_with_timeout(
+        lambda: adapter.analyze(
+            payload,
+            time_limit_seconds=time_limit,
+            known_identifiers=known_identifiers,
+            senior_context=senior_context,
+        ),
+        time_limit,
+    )
 
 
 def _prepare_adapter(adapter, job_deadline: float) -> None:

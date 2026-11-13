@@ -22,7 +22,7 @@ from app.core import storage
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.enums import AuditAction, SessionStatus, TranscriptSource
+from app.core.enums import AuditAction, SessionStatus, SubjectType, TranscriptSource
 from app.core.errors import ErrorCode, conflict, not_found
 from app.core.logging import get_logger
 from app.core.state_machine import assert_status_in, assert_transition
@@ -281,7 +281,11 @@ def process_stt(session_id: uuid.UUID) -> None:
 
             # '1차 임시 핵심 발화' 스캔(디자인의 '핵심 발화 고르는 중' 단계). 검수 필요로 넘기기 전에 같은 작업에서 돌려
             # 화면이 한 번에 열리게 한다. 실패해도 예외를 올리지 않고 status=FAILED 로 STT 는 성공한다.
-            key_scan = key_scan_service.scan(result.model_dump(mode="json"))
+            # 고령자 회차(feature/senior)는 학대 신호용 스캔을 하지 않는다.
+            if session.case.subject_type == SubjectType.SENIOR:
+                key_scan = key_scan_service.skipped()
+            else:
+                key_scan = key_scan_service.scan(result.model_dump(mode="json"))
 
             transcript = _save_stt_result(
                 db,

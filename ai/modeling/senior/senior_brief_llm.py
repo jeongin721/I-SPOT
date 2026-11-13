@@ -18,7 +18,7 @@
 값과 변화만 말한다. LLM 답은 clean_output 이 이런 말이 든 문장을 버린다(FORBIDDEN). 판단은 담당자가 한다.
 
 [LLM 없이(rule_based_brief)]
-SENIOR_BRIEF_PROVIDER=rule(기본)이면 LLM 을 부르지 않고 값 변화 · 마지막 측정 날짜 · 지난 상담 핵심 내용을 규칙으로 묶는다
+SENIOR_AI_PROVIDER=rule(기본)이면 LLM 을 부르지 않고 값 변화 · 마지막 측정 날짜 · 지난 상담 핵심 내용을 규칙으로 묶는다
 (source "RULE", AI 생성 아님). '눈에 띄는 변화' 폭(NOTABLE_CHANGE)은 지난번과 다르다는 표시일 뿐 의학 기준이 아니다.
 
 openai · privacy_gateway(NER 모델)는 CI 에 없다. 규칙 · 검사 함수를 backend/tests 에서 시험할 수 있게 그 import 는 함수 안에 둔다.
@@ -126,6 +126,22 @@ def _metric_items(metric: Dict[str, Any]) -> List[Dict[str, Any]]:
     name, label, unit = metric["metric"], metric["label"], metric["unit"]
     prev, last = points[-2], points[-1]
     change = last["value"] - prev["value"]
+
+    if metric.get("kind") == "COGNITIVE_SCREENING":
+        # 치매 조기검사 점수는 한 번보다 변화가 중요하다(개선안). 점수가 달라지면 올린다 — 판정은 하지 않는다.
+        if change == 0:
+            return []
+        way = "높아졌어요" if change > 0 else "낮아졌어요"
+        return [
+            {
+                "text": f"{label} 결과가 지난 검사({prev['date']}, {_fmt(prev['value'])}{unit})보다 {_fmt(abs(change))}점 {way}"
+                f"({_fmt(last['value'])}{unit}). 검사 때 상황(컨디션 · 안경 · 보청기 등)이 같았는지 확인해 보세요.",
+                "basis": _measurement_basis(name, prev, last),
+            }
+        ]
+    if metric.get("kind"):  # 그 밖 결과는 규칙으로 올리지 않는다(무엇인지 서버가 모른다)
+        return []
+
     if abs(change) >= NOTABLE_CHANGE.get(name, float("inf")):
         way = "올랐어요" if change > 0 else "내려갔어요"
         return [

@@ -39,6 +39,8 @@ AI_CONTRACT_KEYS = {
     "topic_tags",
     "safety_flags",
     "reabuse_factors",
+    # 2026-11-13 고령자 회차 통합 요약(27절, feature/senior). 아동 회차는 null.
+    "senior",
 }
 
 

@@ -717,6 +717,7 @@ def test_module_only_fields_do_not_leak(modeling) -> None:
         "topic_tags",  # 2026-10-29 아동 발화 대화 주제(없으면 null)
         "safety_flags",  # 2026-11-05 안전 플래그 후보(없으면 null)
         "reabuse_factors",  # 2026-11-05 재학대 요인 후보(없으면 null)
+        "senior",  # 2026-11-13 고령자 회차 통합 요약(feature/senior, 아동은 null)
     }
 
     dumped = json.dumps(stored, ensure_ascii=False)

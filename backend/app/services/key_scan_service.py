@@ -84,6 +84,12 @@ def _clean(raw: Any, known_ids: Iterable[str]) -> Optional[Dict[str, Any]]:
     return _result(STATUS_DONE, model if isinstance(model, str) else None, segments)
 
 
+def skipped() -> Dict[str, Any]:
+    """스캔하지 않은 결과(고령자 회차 등)."""
+
+    return _result(STATUS_SKIPPED)
+
+
 def scan(stt_contract: Dict[str, Any]) -> Dict[str, Any]:
     """전사 결과(STT Contract dict)를 1차 스캔한다. 어떤 실패든 예외를 올리지 않고 FAILED 를 돌려준다."""
 
