@@ -114,7 +114,8 @@ export default function CaseDetail(props) {
   const briefTicks = useBriefingChecks(
     signals.session?.id ?? null,
     signedIn(session),
-    (brief.checks || []).map((c) => c.text),
+    // 목록이 다 오기 전에는 null — 서버가 늦게 붙을 줄의 체크를 지우지 않게 visible 을 보내지 않는다(민규 #176).
+    brief.checksReady ? (brief.checks || []).map((c) => c.text) : null,
   );
   const ticks = briefTicks.ticks;
   const toggleTick = briefTicks.toggle;
