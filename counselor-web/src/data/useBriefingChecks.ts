@@ -5,6 +5,9 @@
 //    지운다, 민규 #176 1). 서버가 돌려준 전체로 맞춘다(다른 기기에서 켠 것도 그때 보인다).
 //  - 연결이 없거나 서버가 잠시 답하지 않으면(0 · 5xx) 체크는 그대로 두고 이 기기에 맡겨 둔다('ispot-brief-pending:<회차 ID>').
 //    연결이 돌아오면(online) · 다시 열면 보낸다 — 방문 상담 중 연결이 약해도 쓸 수 있게(민규 #176 3). 4xx 면 되돌리고 알린다.
+//  - visible 이 null 이면(목록이 아직 다 오지 않음) 보내지 않는다 — 늦게 붙을 줄의 체크를 서버가 지우지 않게(민규 #176 재리뷰 1).
+//  - 맡겨 둔 바뀜은 누른 때의 visible 을 같이 적어 두고 그 값으로 보낸다(회차별 저장소라 회차도 묶임). 보내는 중에 다른 사례로
+//    넘어가도 옛 회차에 새 사례 목록을 보내지 않고, 보내는 중에 새로 누른 것도 이어서 보낸다(민규 #176 재리뷰 2).
 //  - 예전 판은 체크를 기기에만 기억했다('ispot-brief-ticks:<회차 ID>'). 처음 열 때 서버로 옮긴다 — 한 건씩, 실패한 건은 넘기고
 //    (300자 넘는 문장 등 4xx 는 버리고, 연결 문제면 다음에 다시), 서버 값은 늘 화면에 넣는다(민규 #176 2).
 
@@ -19,7 +22,12 @@ const TEXT_MAX = 300;
 const legacyKey = (sessionId: string) => `ispot-brief-ticks:${sessionId}`;
 const pendingKey = (sessionId: string) => `ispot-brief-pending:${sessionId}`;
 
-type Pending = Record<string, boolean>;
+/** 맡겨 둔 바뀜 한 줄 — 켤지 끌지와 누른 때 보이던 문장 목록(없으면 null). 옛 판은 boolean 만 적었다. */
+interface PendingEntry {
+  checked: boolean;
+  visible: string[] | null;
+}
+type Pending = Record<string, PendingEntry>;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -51,15 +59,33 @@ function readLegacy(sessionId: string): string[] {
 
 function readPending(sessionId: string): Pending {
   const saved = readJson<unknown>(pendingKey(sessionId), {});
+  const out: Pending = {};
 
-  return saved && typeof saved === "object" && !Array.isArray(saved) ? (saved as Pending) : {};
+  if (!saved || typeof saved !== "object" || Array.isArray(saved)) return out;
+  Object.entries(saved as Record<string, unknown>).forEach(([text, value]) => {
+    if (typeof value === "boolean") out[text] = { checked: value, visible: null };
+    else if (value && typeof value === "object" && typeof (value as PendingEntry).checked === "boolean") {
+      const visible = (value as PendingEntry).visible;
+
+      out[text] = {
+        checked: (value as PendingEntry).checked,
+        visible: Array.isArray(visible) ? visible.filter((v): v is string => typeof v === "string") : null,
+      };
+    }
+  });
+
+  return out;
+}
+
+function addPending(sessionId: string, text: string, entry: PendingEntry) {
+  writeJson(pendingKey(sessionId), { ...readPending(sessionId), [text]: entry });
 }
 
 /** 서버 값 위에 맡겨 둔 바뀜을 얹는다. */
 function overlay(server: string[], pending: Pending): Set<string> {
   const set = new Set(server);
 
-  Object.entries(pending).forEach(([text, checked]) => (checked ? set.add(text) : set.delete(text)));
+  Object.entries(pending).forEach(([text, entry]) => (entry.checked ? set.add(text) : set.delete(text)));
 
   return set;
 }
@@ -74,17 +100,18 @@ export interface BriefingChecksState {
 
 /**
  * sessionId: 브리핑이 값을 가져온 회차(분석이 끝난 최근 회차). 없으면 아무것도 하지 않는다.
- * visible: 지금 화면에 보이는 확인 사항 문장들(서버가 사라진 옛 문장의 체크를 지우는 데 쓴다).
+ * visible: 지금 화면에 보이는 확인 사항 문장들(서버가 사라진 옛 문장의 체크를 지우는 데 쓴다). 목록이 다 오기 전이면 null.
  */
-export function useBriefingChecks(sessionId: string | null, enabled = true, visible: string[] = []): BriefingChecksState {
+export function useBriefingChecks(sessionId: string | null, enabled = true, visible: string[] | null = null): BriefingChecksState {
   const [ticks, setTicksState] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
   // 지금 표시 — 누를 때 켤지 끌지를 바로 정하려고(상태 갱신 함수는 나중에 돌 수 있다).
   const ticksRef = useRef<Set<string>>(new Set());
   const current = useRef<string | null>(sessionId);
-  const visibleRef = useRef<string[]>(visible);
-  const flushing = useRef(false);
+  const visibleRef = useRef<string[] | null>(visible);
+  // 지금 보내는 중인 회차들(회차마다 하나씩만 돈다).
+  const flushing = useRef<Set<string>>(new Set());
 
   current.current = sessionId;
   visibleRef.current = visible;
@@ -107,38 +134,49 @@ export function useBriefingChecks(sessionId: string | null, enabled = true, visi
     [setTicks],
   );
 
+  /** 한 줄 보내기 — 누른 때의 visible 로(빈 목록 · null 이면 보내지 않음). */
   const send = useCallback(
-    (target: string, text: string, checked: boolean) =>
-      briefingChecks.toggle(target, text, checked, visibleRef.current.length > 0 ? visibleRef.current : undefined),
+    (target: string, text: string, entry: PendingEntry) =>
+      briefingChecks.toggle(target, text, entry.checked, entry.visible && entry.visible.length > 0 ? entry.visible : undefined),
     [],
   );
 
-  /** 맡겨 둔 바뀜을 차례로 보낸다. 연결 문제면 남은 것은 다음에. */
+  /** 맡겨 둔 바뀜을 차례로 보낸다. 보내는 중에 새로 맡긴 것도 이어서 보낸다. 연결 문제면 남은 것은 다음에. */
   const flush = useCallback(
     async (target: string) => {
-      if (flushing.current) return;
+      if (flushing.current.has(target)) return;
 
-      flushing.current = true;
+      flushing.current.add(target);
       try {
         let data: BriefingChecks | null = null;
 
-        for (const [text, checked] of Object.entries(readPending(target))) {
+        for (;;) {
+          const left = readPending(target);
+          const first = Object.entries(left)[0];
+
+          if (!first) break;
+          const [text, entry] = first;
+
           try {
-            data = await send(target, text, checked);
+            data = await send(target, text, entry);
           } catch (caught) {
-            if (transient(caught)) break;
+            if (transient(caught)) {
+              data = null;
+              break;
+            }
             // 받을 수 없는 값(4xx)은 버린다.
           }
-          const left = readPending(target);
+          // 보내는 사이 같은 줄을 다시 눌렀으면(값이 바뀜) 남겨 두고 다음 바퀴에 보낸다.
+          const now = readPending(target);
 
-          delete left[text];
-          writeJson(pendingKey(target), Object.keys(left).length > 0 ? left : null);
+          if (now[text] && now[text].checked === entry.checked) delete now[text];
+          writeJson(pendingKey(target), Object.keys(now).length > 0 ? now : null);
         }
         apply(target, data ?? (await briefingChecks.get(target)));
       } catch {
         // 아직 연결이 없다 — 그대로 둔다.
       } finally {
-        flushing.current = false;
+        flushing.current.delete(target);
       }
     },
     [apply, send],
@@ -209,6 +247,8 @@ export function useBriefingChecks(sessionId: string | null, enabled = true, visi
 
       const target = sessionId;
       const next = !ticksRef.current.has(text);
+      // 누른 때의 회차 · 목록을 묶어 둔다(보내는 사이 다른 사례로 넘어가도 이 값으로 보낸다).
+      const entry: PendingEntry = { checked: next, visible: visibleRef.current };
       const copy = new Set(ticksRef.current);
 
       if (next) copy.add(text);
@@ -217,20 +257,20 @@ export function useBriefingChecks(sessionId: string | null, enabled = true, visi
       setError(null);
 
       // 앞서 맡겨 둔 것이 있으면 순서를 지키려고 이것도 맡긴 뒤 한꺼번에 보낸다.
-      if (Object.keys(readPending(target)).length > 0) {
-        writeJson(pendingKey(target), { ...readPending(target), [text]: next });
+      if (Object.keys(readPending(target)).length > 0 || flushing.current.has(target)) {
+        addPending(target, text, entry);
         setWaiting(true);
         void flush(target);
         return;
       }
 
-      send(target, text, next)
+      send(target, text, entry)
         .then((data) => apply(target, data))
         .catch((caught) => {
           if (current.current !== target) return;
           if (transient(caught)) {
             // 연결이 없다 — 체크는 그대로 두고 맡겨 둔다.
-            writeJson(pendingKey(target), { ...readPending(target), [text]: next });
+            addPending(target, text, entry);
             setWaiting(true);
             return;
           }
