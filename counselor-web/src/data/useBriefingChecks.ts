@@ -148,31 +148,37 @@ export function useBriefingChecks(sessionId: string | null, enabled = true, visi
 
       flushing.current.add(target);
       try {
-        let data: BriefingChecks | null = null;
-
+        // 다 보내고 마지막 서버 값을 받는 사이에 새로 맡긴 것이 있으면 한 번 더 돈다(민규 #176 재리뷰 참고).
         for (;;) {
-          const left = readPending(target);
-          const first = Object.entries(left)[0];
+          let data: BriefingChecks | null = null;
+          let stalled = false;
 
-          if (!first) break;
-          const [text, entry] = first;
+          for (;;) {
+            const left = readPending(target);
+            const first = Object.entries(left)[0];
 
-          try {
-            data = await send(target, text, entry);
-          } catch (caught) {
-            if (transient(caught)) {
-              data = null;
-              break;
+            if (!first) break;
+            const [text, entry] = first;
+
+            try {
+              data = await send(target, text, entry);
+            } catch (caught) {
+              if (transient(caught)) {
+                data = null;
+                stalled = true;
+                break;
+              }
+              // 받을 수 없는 값(4xx)은 버린다.
             }
-            // 받을 수 없는 값(4xx)은 버린다.
-          }
-          // 보내는 사이 같은 줄을 다시 눌렀으면(값이 바뀜) 남겨 두고 다음 바퀴에 보낸다.
-          const now = readPending(target);
+            // 보내는 사이 같은 줄을 다시 눌렀으면(값이 바뀜) 남겨 두고 다음 바퀴에 보낸다.
+            const now = readPending(target);
 
-          if (now[text] && now[text].checked === entry.checked) delete now[text];
-          writeJson(pendingKey(target), Object.keys(now).length > 0 ? now : null);
+            if (now[text] && now[text].checked === entry.checked) delete now[text];
+            writeJson(pendingKey(target), Object.keys(now).length > 0 ? now : null);
+          }
+          apply(target, data ?? (await briefingChecks.get(target)));
+          if (stalled || Object.keys(readPending(target)).length === 0) break;
         }
-        apply(target, data ?? (await briefingChecks.get(target)));
       } catch {
         // 아직 연결이 없다 — 그대로 둔다.
       } finally {
