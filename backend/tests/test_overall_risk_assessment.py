@@ -527,11 +527,12 @@ def test_resave_refreshes_ai_level_but_reanalysis_does_not(
 # =========================================================
 
 def test_deleting_session_deletes_assessment(
-    client: TestClient, counselor_headers, ready_session: dict, db
+    client: TestClient, counselor_headers, admin_headers, ready_session: dict, db
 ) -> None:
     assert _put(client, counselor_headers, ready_session["id"]).status_code == 200
 
-    response = client.delete(f"/api/v1/sessions/{ready_session['id']}", headers=counselor_headers)
+    # 원문을 확정한 뒤의 회차는 관리자만 지운다(2026-11-11).
+    response = client.delete(f"/api/v1/sessions/{ready_session['id']}", headers=admin_headers)
 
     assert response.status_code == 204
     assert _rows(db, ready_session["id"]) == []

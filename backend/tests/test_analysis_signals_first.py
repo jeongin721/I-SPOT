@@ -663,7 +663,7 @@ def test_stale_pending_drafts_do_not_block_saves(
 
 
 def test_session_deleted_while_pending_discards_drafts(
-    client: TestClient, counselor_headers, counselor_id, ready: dict, checklist_calls, caplog
+    client: TestClient, admin_headers, counselor_id, ready: dict, checklist_calls, caplog
 ) -> None:
     adapter = _SignalsAdapter("success")
     set_ai_adapter_override(adapter)
@@ -675,7 +675,8 @@ def test_session_deleted_while_pending_discards_drafts(
         try:
             assert adapter.signalled.wait(timeout=WAIT_SECONDS)
 
-            response = client.delete(f"/api/v1/sessions/{ready['id']}", headers=counselor_headers)
+            # 원문을 확정한 뒤의 회차는 관리자만 지운다(2026-11-11).
+            response = client.delete(f"/api/v1/sessions/{ready['id']}", headers=admin_headers)
 
             assert response.status_code == 204, response.text
         finally:
@@ -1136,7 +1137,10 @@ def test_second_save_locks_the_session_first_so_delete_waits(
     def delete() -> None:
         with SessionLocal() as db:
             pids["delete"] = db.scalar(text("select pg_backend_pid()"))
-            session_service.delete_session(db, db.get(ConsultationSession, sid), types.SimpleNamespace(id=counselor_id))
+            # 원문을 확정한 뒤의 회차는 관리자만 지운다(2026-11-11) — 잠금 순서를 보는 시험이라 관리자로 부른다.
+            session_service.delete_session(
+                db, db.get(ConsultationSession, sid), types.SimpleNamespace(id=counselor_id, is_admin=True)
+            )
             outcomes["delete"] = True
 
     def guarded(target: Callable[[], None]) -> Callable[[], None]:
