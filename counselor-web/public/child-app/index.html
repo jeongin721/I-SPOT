@@ -272,7 +272,7 @@ const ML = Object.fromEntries(MOODS);
 
 const BK = {};
 const API = '/api/v1/child-app';
-const STORE = {token:'kk_device', tickets:'kk_tickets', keys:'kk_keys'};
+const STORE = {token:'kk_device', tickets:'kk_tickets', keys:'kk_keys', alertSeen:'kk_alert_seen'};
 function load(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
 function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 function forget(k){ try { localStorage.removeItem(k); } catch (e) {} }
@@ -386,6 +386,8 @@ function alertTime(a){ return (d => String(d.getHours()).padStart(2,'0') + ':' +
 function alertCard(){
   const a = S.alert;
   if (!a) return '';
+  // 확인된 알림은 아이가 한 번 열어 보면 내린다(폰에 남는 시간을 줄이려고, 민규 #178). 확인 전이면 열어 봐도 남는다.
+  if (a.acknowledged && load(STORE.alertSeen, null) === a.sent_at) return '';
   const hot = !a.acknowledged && a.overdue;
   return `<button class="mini-card news${hot ? ' hot' : ''}" data-act="alertNews" aria-label="새 소식 1개${hot ? ', 꼭 확인해 줘요' : ''}">
     <span class="news-ic">${ICON.bell}<i class="news-n">1</i></span>
@@ -905,7 +907,7 @@ async function api(path, options){
   const headers = {'Content-Type':'application/json'}, token = load(STORE.token, null);
   if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch(API + path, {...options, headers});
-  if (res.status === 401 && token) { forget(STORE.token); clearTimers(); S = fresh(); render(); throw new Error('unlinked'); }
+  if (res.status === 401 && token) { forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); render(); throw new Error('unlinked'); }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) { const e = new Error('api'); e.status = res.status; e.message2 = body && body.error && body.error.message; throw e; }
   return body && body.data;
@@ -1023,14 +1025,14 @@ document.addEventListener('click', e => {
       }, 1550);
       break; }
     case 'urgent': S.sheet = {kind:'urgent'}; renderLayer(); break;
-    case 'alertNews': S.sheet = {kind:'alertNews'}; renderLayer(); break;
+    case 'alertNews': if (S.alert && S.alert.acknowledged) save(STORE.alertSeen, S.alert.sent_at); S.sheet = {kind:'alertNews'}; renderLayer(); break;
     case 'call': S.sheet = {kind:'call', n:el.dataset.n}; renderLayer(); break;
     case 'callGo': { const n = S.sheet.n; S.sheet = null; renderLayer(); location.href = 'tel:' + n; break; }
     case 'alertStart': startAlert(); break;
     case 'alertRetry': sendAlert(); break;
     case 'alertCancel': clearInterval(S._iv); S.sheet = null; renderLayer(); toast('취소했어요. 보내지 않았어요'); break;
     case 'sheetClose': S.sheet = null; renderScreen(); break;
-    case 'sheetBg': S.sheet = null; renderLayer(); break;
+    case 'sheetBg': { const k = S.sheet && S.sheet.kind; S.sheet = null; k === 'alertNews' ? renderScreen() : renderLayer(); break; }
     case 'unlinkAsk': S.sheet = {kind:'unlink'}; renderLayer(); break;
     case 'unlinkGo': unlinkDevice(); break;
     case 'font': S.large = el.dataset.v === '1'; renderScreen(); break;
