@@ -1158,6 +1158,14 @@ def test_child_home_tells_staff_hours(client: TestClient, counselor_headers: Hea
     # UTC 로 들어와도 한국 시간으로 본다(금 00:30 UTC = 금 09:30 KST).
     assert child_app_service.staff_hours(datetime(2026, 11, 13, 0, 30, tzinfo=timezone.utc))["on_duty"] is True
 
+    # 공휴일은 평일 근무 시간이어도 밖(기본값에 2026 추석 9/25 금 · 대체공휴일 10/5 월).
+    assert child_app_service.staff_hours(datetime(2026, 9, 25, 10, 0, tzinfo=kst)) == {"on_duty": False, "label": "오늘은 쉬는 날"}
+    assert child_app_service.staff_hours(datetime(2026, 10, 5, 10, 0, tzinfo=kst))["on_duty"] is False
+    # 한국 날짜로 본다(10/4 일 15:30 UTC = 10/5 월 00:30 KST → 공휴일).
+    assert child_app_service.staff_hours(datetime(2026, 10, 4, 15, 30, tzinfo=timezone.utc))["label"] == "오늘은 쉬는 날"
+    monkeypatch.setattr(settings, "CHILD_APP_STAFF_HOLIDAYS", "")
+    assert child_app_service.staff_hours(datetime(2026, 9, 25, 10, 0, tzinfo=kst))["on_duty"] is True
+
     monkeypatch.setattr(settings, "CHILD_APP_STAFF_DAYS", "5,6")
     assert child_app_service.staff_hours(datetime(2026, 11, 14, 12, 0, tzinfo=kst)) == {"on_duty": True, "label": "토일 09:00~18:00"}
 
