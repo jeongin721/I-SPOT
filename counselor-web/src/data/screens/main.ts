@@ -110,6 +110,10 @@ function alertWhen(value: string, now: Date): string {
 
 function urgentValues(alerts: ChildOpenAlert[] | null, now: Date) {
   if (!alerts) return { urgentCount: NOT_PROVIDED, urgentText: `아이 앱 연계 ${NOT_READY}`, urgentRows: [] };
+  // 다른 상담사 사례에서 넘어온 알림(B안)은 열 수 없으니 내 숫자 · 줄에 넣지 않고 따로 적는다.
+  const handed = alerts.filter((alert) => alert.handed_over).length;
+  const all = alerts;
+  alerts = alerts.filter((alert) => !alert.handed_over);
   const urgent = alerts.filter((alert) => alert.urgent).length;
   const check = alerts.length - urgent;
   const at = (alert: ChildOpenAlert) => alert.last_at ?? alert.created_at;
@@ -126,7 +130,12 @@ function urgentValues(alerts: ChildOpenAlert[] | null, now: Date) {
     }));
   return {
     urgentCount: String(urgent),
-    urgentText: alerts.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : check && !urgent ? `확인 필요 ${check}건` : "",
+    urgentText: [
+      all.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : check && !urgent ? `확인 필요 ${check}건` : "",
+      handed ? `다른 상담사 미확인 긴급 ${handed}건` : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
     urgentRows,
   };
 }

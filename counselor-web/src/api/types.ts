@@ -1814,6 +1814,12 @@ export interface ChildOpenAlert {
   repeat_count: number;
   last_at: string | null;
   created_at: string;
+  /** 담당 상담사가 정한 시간(기본 10분) 넘게 확인하지 않은 긴급 알림. */
+  escalated: boolean;
+  /** 다른 상담사 사례에서 넘어온 알림. 사례를 열 수 없으니 담당 상담사 · 관리자에게 알린다. */
+  handed_over: boolean;
+  /** 넘어온 알림에서만 담당 상담사 이름. */
+  counselor_name: string | null;
 }
 
 export interface ChildAppCase {

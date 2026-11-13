@@ -120,6 +120,13 @@ class Settings(BaseSettings):
     CHILD_APP_ENABLED: bool = False
     # 아이 답을 보고 확인해 볼 점 · 추가 질문 초안을 만든다(API_CONTRACT 24절). off(기본) · mock(OpenAI 없이 '(예시)') ·
     # modeling(ai/modeling/abuse/child_answer_llm — 이름을 가린 뒤 OpenAI 로 보낸다).
+    # 아이가 '급하다고 알리기' 를 보낸 뒤 담당 상담사가 이만큼 확인하지 않으면 다른 상담사 화면에도 띄운다(멘토 피드백 11/12 B안).
+    # 관리자는 처음부터 전체를 본다. 기본 10분 — 아이 앱은 5분이 지나면 112 · 1388 을 다시 안내한다.
+    CHILD_APP_ESCALATE_MINUTES: int = Field(default=10, ge=1, le=24 * 60)
+    # 상담사가 바로 볼 수 있는 시간(한국 시간). 밖이면 아이 앱이 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+    # 요일은 0=월 … 6=일. 공휴일은 아직 따로 빼지 않는다.
+    CHILD_APP_STAFF_HOURS: str = Field(default="09:00-18:00", pattern=r"^\d{2}:\d{2}-\d{2}:\d{2}$")
+    CHILD_APP_STAFF_DAYS: str = Field(default="0,1,2,3,4", pattern=r"^[0-6](,[0-6])*$")
     CHILD_APP_AI_PROVIDER: Literal["off", "mock", "modeling"] = "off"
     CHILD_APP_AI_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0)
     CHILD_APP_AI_MAX_CONCURRENCY: int = Field(default=2, ge=1)
