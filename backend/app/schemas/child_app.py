@@ -8,6 +8,7 @@ from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.enums import ChildQuestionDeliver
 from app.schemas.common import RequestModel
 
 
@@ -79,6 +80,8 @@ class ChildAppInviteResponse(BaseModel):
 class ChildQuestionSendRequest(RequestModel):
     # 1개부터 문항 전체(8개)까지 고를 수 있다(11/10 경진님 — 처음엔 3~4개).
     question_ids: List[str] = Field(min_length=1, max_length=8)
+    # NOW(기본)는 바로, EVENING 은 발송 예약(그날 CHILD_APP_DELIVER_HOUR 시부터 아이 앱에 보인다. 그 시가 지났으면 바로).
+    deliver: ChildQuestionDeliver = ChildQuestionDeliver.NOW
 
 
 class ChildAppBankItem(BaseModel):
@@ -173,6 +176,14 @@ class ChildAppCaseRow(BaseModel):
     last_acked_at: Optional[datetime] = None
 
 
+class ChildScheduledQuestions(BaseModel):
+    """발송 예약해 둔(아직 아이에게 보이지 않은) 질문 묶음. id 로 예약을 취소한다."""
+
+    id: uuid.UUID
+    count: int
+    deliver_at: datetime
+
+
 class ChildAppCaseResponse(BaseModel):
     status: str
     code_expires_at: Optional[datetime] = None
@@ -180,6 +191,8 @@ class ChildAppCaseResponse(BaseModel):
     last_response_at: Optional[datetime] = None
     next_consult: Optional[ChildNextConsult] = None
     has_pending_questions: bool
+    # 담당 상담사만(그 외 null). 예약이 없으면 null.
+    scheduled_questions: Optional[ChildScheduledQuestions] = None
     can_read_feed: bool
     open_alerts: List[ChildOpenAlert]
     last_acked_at: Optional[datetime] = None

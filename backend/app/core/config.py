@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     SIGNUP_ENABLED: bool = False
     # 아이 앱(콩콩). 끄면(기본) 앱용 · 상담사용 API 가 모두 503 CHILD_APP_DISABLED 다. 실제 아동 데이터 전 조건이 끝난 뒤에 켠다.
     CHILD_APP_ENABLED: bool = False
+    # 질문 '발송 예약'(deliver=EVENING)이 아이 앱에 보이기 시작하는 시(한국 시각, 0~23). 그 시가 지난 뒤 예약하면 바로 보낸다.
+    CHILD_APP_DELIVER_HOUR: int = Field(default=18, ge=0, le=23)
     # 아이 답을 보고 확인해 볼 점 · 추가 질문 초안을 만든다(API_CONTRACT 24절). off(기본) · mock(OpenAI 없이 '(예시)') ·
     # modeling(ai/modeling/abuse/child_answer_llm — 이름을 가린 뒤 OpenAI 로 보낸다).
     CHILD_APP_AI_PROVIDER: Literal["off", "mock", "modeling"] = "off"

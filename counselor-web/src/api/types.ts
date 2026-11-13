@@ -1819,13 +1819,19 @@ export interface ChildOpenAlert {
   created_at: string;
 }
 
+/** 질문을 언제 아이 앱에 보일지. EVENING 은 발송 예약. */
+export type ChildQuestionDeliver = "NOW" | "EVENING";
+
 export interface ChildAppCase {
   status: "NOT_LINKED" | "INVITED" | "LINKED";
   code_expires_at: string | null;
   linked_at: string | null;
   last_response_at: string | null;
   next_consult: { date: string; time: string | null; place: string | null } | null;
+  /** 예약해 둔 질문이 있어도 true. */
   has_pending_questions: boolean;
+  /** 발송 예약해 둔(아직 아이에게 보이지 않은) 질문. 담당 상담사만, 없으면 null. id 로 예약을 취소한다. */
+  scheduled_questions: { id: string; count: number; deliver_at: string } | null;
   can_read_feed: boolean;
   open_alerts: ChildOpenAlert[];
   /** 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null. */

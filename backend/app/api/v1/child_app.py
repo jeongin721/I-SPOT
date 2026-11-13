@@ -161,7 +161,23 @@ def send_questions(
     current_user: CurrentUser,
 ) -> None:
     case = get_case_or_404(db, case_id, current_user)
-    child_app_service.send_questions(db, case, current_user, payload.question_ids, client_ip(request))
+    child_app_service.send_questions(
+        db, case, current_user, payload.question_ids, client_ip(request), deliver=payload.deliver
+    )
+
+
+@case_router.delete("/{case_id}/child-app/question-sets/{question_set_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_question_set(
+    case_id: uuid.UUID,
+    question_set_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """발송 예약 취소(예약 시각 전에만)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.cancel_question_set(db, case, current_user, question_set_id, client_ip(request))
 
 
 @case_router.post("/{case_id}/child-app/ai-draft", response_model=DataResponse[ChildAiDraftResponse])
