@@ -8,6 +8,7 @@
 //  - 목록을 열 때 다 올린 줄의 회차를 서버에 물어, 웹에서 지웠거나(404) 볼 수 없게 된(403) 회차는 목록에서 뺀다.
 //  - 주소에 ?case= 가 있으면 그 아이를 골라 둔다(앱 사례 목록의 '자료 올리기').
 //  - 다 올린 줄 아래에 그 회차의 지금 상태('웹: 원문 검수 필요' 등)를 보인다. 처리 중이면 20초마다 다시 본다(11/12).
+//  - 서버에서 원문 변환이 실패한 회차(STT_FAILED)는 폰에서 '원문 변환 다시 요청' 으로 다시 돌릴 수 있다(멘토 피드백 11/12).
 //  - 사진 · 문서는 사례에 붙일 서버 자리(사례 파일함)가 아직 없어 '준비 중' 안내만 보인다. 고르기 전에도 '지금은 녹음만' 을 한 줄 보인다.
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -16,6 +17,8 @@ import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
 import { SESSION_STATUS_LABELS } from '../data/sessionRows';
+import { transcript } from '../api/endpoints';
+import { errorMessage } from '../data/useRemote';
 
 // 서버가 아직 처리 중인 회차 상태(이 동안은 목록을 다시 본다).
 const WORKING = new Set(['AUDIO_UPLOADED', 'STT_PROCESSING', 'STT_CONFIRMED', 'AI_PROCESSING']);
@@ -32,6 +35,8 @@ function UploadBody({ userId, items, notReady }) {
   // 목록을 열 때 다 올린 줄을 서버와 맞춘다(웹에서 지운 회차는 빼고, 남은 줄은 지금 상태를 받는다).
   // 원문 변환 · AI 분석이 도는 중인 줄이 있으면 20초마다 다시 본다(화면에 있는 동안만).
   const [statuses, setStatuses] = useState({});
+  const [again, setAgain] = useState(0);
+  const [rerunning, setRerunning] = useState('');
   const doneIds = items.filter((x) => x.status === 'done').map((x) => x.id).join(',');
   useEffect(() => {
     if (!userId) return undefined;
@@ -52,8 +57,25 @@ function UploadBody({ userId, items, notReady }) {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [userId, doneIds]);
+  }, [userId, doneIds, again]);
   const [pickErr, setPickErr] = useState('');
+
+  // 서버에서 원문 변환이 실패한 회차 — 같은 녹음으로 변환을 다시 요청한다.
+  const rerunStt = async (x) => {
+    if (!x.sessionId || rerunning) return;
+    setRerunning(x.id);
+    setPickErr('');
+    try {
+      await transcript.run(x.sessionId);
+      setStatuses((prev) => ({ ...prev, [x.id]: 'STT_PROCESSING' }));
+      setAgain((n) => n + 1);
+    } catch (caught) {
+      setPickErr(errorMessage(caught, '원문 변환을 다시 요청하지 못했어요. 연결을 확인하고 다시 눌러 주세요.'));
+      setAgain((n) => n + 1);
+    } finally {
+      setRerunning('');
+    }
+  };
 
   const child = rows.find((row) => row.id === caseId);
   const fails = items.filter((x) => x.status === 'fail');
@@ -136,6 +158,11 @@ function UploadBody({ userId, items, notReady }) {
               </span>
               <span className={fail ? 'ma-chip ma-red' : run ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : run ? '올리는 중' : '완료'}</span>
             </div>
+            {x.status === 'done' && statuses[x.id] === 'STT_FAILED' && (
+              <button type="button" className="ma-btn ma-btn-sm ma-btn-p" disabled={rerunning === x.id} onClick={() => void rerunStt(x)}>
+                {rerunning === x.id ? '요청하는 중' : '원문 변환 다시 요청'}
+              </button>
+            )}
             {run && (
               <div className="ma-prog">
                 <span></span>
