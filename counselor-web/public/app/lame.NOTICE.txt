@@ -1,0 +1,5 @@
+lame.min.js — lamejs 1.2.1 (https://github.com/zhuker/lamejs), LAME MP3 인코더의 JavaScript 이식판.
+라이선스: GNU LGPL 3.0. 전문 사본: lame.COPYING.LGPL-3.0.txt (LGPL 3.0 이 보태는 GNU GPL 3.0 전문: lame.COPYING.GPL-3.0.txt).
+사본 출처: SPDX License List v3.25.0 (https://github.com/spdx/license-list-data).
+이 파일은 고치지 않은 원본이며(sha256 15d285e2587b3bdbfd18a68de6ce07cc074f7480a82c3815da2dc1c348ec6df4), 앱은 녹음할 때만 따로 불러 쓴다
+(앱 코드에 섞어 묶지 않음 — 이 파일만 다른 판으로 바꿔 끼울 수 있다). 원본 소스: https://github.com/zhuker/lamejs
