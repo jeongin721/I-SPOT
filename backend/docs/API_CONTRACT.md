@@ -2223,8 +2223,10 @@ Test 영향
 - 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
   안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
   그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
-- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
-  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- wav · flac · ogg · mp3 는 soundfile 로 읽는다. soundfile 이 열지 못하는 m4a · mp4 · webm(휴대폰 · 브라우저 녹음)은
+  `requirements-stt.txt` 의 PyAV(`av`, wheel 에 FFmpeg 라이브러리 포함 — apt 의 ffmpeg 는 필요 없다)로 처음부터 이어 읽는다.
+  PyAV 가 없거나 PyAV 도 열지 못하면 지금처럼 `DECODE_FAILED` 다. 응답 모양 · 이유 값은 그대로다. 압축 음성(mp3 포함)은
+  wav 와 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절 · 7절).
 - 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
   재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
 
