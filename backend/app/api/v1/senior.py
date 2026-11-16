@@ -11,6 +11,10 @@ from app.core.enums import NextCheckStatus
 from app.core.deps import CurrentUser, DbSession
 from app.core.responses import DataResponse
 from app.schemas.senior import (
+    CareStatusUpdateRequest,
+    FollowupVisitRequest,
+    FollowupVisitResponse,
+    SeniorOverviewResponse,
     HealthMeasurementCreateRequest,
     HealthMeasurementResponse,
     HealthMeasurementUpdateRequest,
@@ -44,6 +48,19 @@ def update_senior_profile(
 ) -> DataResponse[SeniorProfileResponse]:
     case = get_case_or_404(db, case_id, current_user)
     return DataResponse(data=senior_service.update_profile(db, case, current_user, payload))
+
+
+@router.put("/{case_id}/care-status", response_model=DataResponse[SeniorProfileResponse])
+def set_care_status(
+    case_id: uuid.UUID,
+    payload: CareStatusUpdateRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[SeniorProfileResponse]:
+    """돌봄 상태(상담 완료 · 재방문 필요 · 후속조치 진행 · 서비스 종료)를 바꾼다. 사례 상태는 그대로."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    return DataResponse(data=senior_service.set_care_status(db, case, current_user, payload))
 
 
 @router.get("/{case_id}/health-measurements", response_model=DataResponse[List[HealthMeasurementResponse]])
@@ -157,9 +174,36 @@ def delete_next_check(case_id: uuid.UUID, check_id: uuid.UUID, db: DbSession, cu
     senior_service.delete_next_check(db, case, check_id, current_user)
 
 
+@router.post(
+    "/{case_id}/followup-visits",
+    response_model=DataResponse[FollowupVisitResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+def schedule_followup_visit(
+    case_id: uuid.UUID,
+    payload: FollowupVisitRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[FollowupVisitResponse]:
+    """재방문 · 전화 · 재상담 일정을 만들고 고른 확인 · 조치사항을 거기에 이어 붙인다."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    return DataResponse(data=senior_service.schedule_followup_visit(db, case, current_user, payload))
+
+
 @router.get("/{case_id}/senior-history", response_model=DataResponse[SeniorHistoryResponse])
 def get_senior_history(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[SeniorHistoryResponse]:
     """상담 이력 조회 — 방문 · 측정 · 요약 · 확인사항을 시간순(최근 것부터)으로."""
 
     case = get_case_or_404(db, case_id, current_user)
     return DataResponse(data=senior_service.get_history(db, case))
+
+
+overview_router = APIRouter(prefix="/senior-overview", tags=["senior"])
+
+
+@overview_router.get("", response_model=DataResponse[SeniorOverviewResponse])
+def get_senior_overview(db: DbSession, current_user: CurrentUser) -> DataResponse[SeniorOverviewResponse]:
+    """고령자 사례 현황 — 관리자는 모든 사례, 상담사는 담당 사례."""
+
+    return DataResponse(data=senior_service.get_overview(db, current_user))

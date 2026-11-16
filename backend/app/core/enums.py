@@ -82,6 +82,35 @@ class NextCheckStatus(str, Enum):
     DROPPED = "DROPPED"
 
 
+class CareNeed(str, Enum):
+    """돌봄 필요사항(여럿 고름, 2026-11-16 멘토 정리 '기본정보에 돌봄 필요사항'). 현장 서식을 보면 바꿀 수 있다."""
+
+    MEAL = "MEAL"  # 식사
+    HOUSEWORK = "HOUSEWORK"  # 가사
+    MOBILITY = "MOBILITY"  # 이동 · 외출
+    MEDICATION = "MEDICATION"  # 복약 관리
+    HOSPITAL_ESCORT = "HOSPITAL_ESCORT"  # 병원 동행
+    EMOTIONAL = "EMOTIONAL"  # 말벗 · 정서 지원
+    SAFETY_CHECK = "SAFETY_CHECK"  # 안부 · 안전 확인
+    OTHER = "OTHER"
+
+
+class CareStatus(str, Enum):
+    """고령자 돌봄 상태(멘토 정리 '종결 대신'). 사례 상태(ACTIVE · CLOSED)와 따로 둔다 — SERVICE_ENDED 여도 사례를 닫지 않는다."""
+
+    CONSULT_DONE = "CONSULT_DONE"  # 상담 완료
+    REVISIT_NEEDED = "REVISIT_NEEDED"  # 재방문 필요
+    FOLLOWUP_IN_PROGRESS = "FOLLOWUP_IN_PROGRESS"  # 후속조치 진행
+    SERVICE_ENDED = "SERVICE_ENDED"  # 서비스 종료
+
+
+class NextCheckKind(str, Enum):
+    """CHECK = 다음 상담 때 확인할 것, ACTION = 담당자가 할 조치(예: 복지관 연계, 보호자 연락)."""
+
+    CHECK = "CHECK"
+    ACTION = "ACTION"
+
+
 class CareDomain(str, Enum):
     """고령자 생활 · 정서 영역(2026-11-16 멘토 정리: 회차마다 이전 대비 변화를 본다)."""
 
@@ -508,6 +537,8 @@ class AuditAction(str, Enum):
     NEXT_CHECK_UPDATED = "NEXT_CHECK_UPDATED"
     NEXT_CHECK_DELETED = "NEXT_CHECK_DELETED"
     CARE_DOMAINS_SAVED = "CARE_DOMAINS_SAVED"
+    CARE_STATUS_CHANGED = "CARE_STATUS_CHANGED"
+    FOLLOWUP_VISIT_SCHEDULED = "FOLLOWUP_VISIT_SCHEDULED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

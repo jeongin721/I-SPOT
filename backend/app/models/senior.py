@@ -9,15 +9,17 @@
 # 진단 · 판정 칸은 두지 않는다. 서버는 값과 그 변화만 내고 '정상 · 위험' 같은 기준을 붙이지 않는다.
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, Float, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Enum as SAEnum, Float, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enums import (
     CareDomain,
+    CareStatus,
     DomainChange,
+    NextCheckKind,
     GlucoseTiming,
     LivingArrangement,
     LongTermCareGrade,
@@ -43,6 +45,18 @@ class SeniorProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     health_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # 생활 · 돌봄 메모(자유 글). 화면이 '실명 · 연락처 · 주소 등 개인정보는 적지 마세요' 를 보인다.
     care_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 복약 여부(모르면 null) · 복용약 · 복약 관리 메모(담당자가 적음, AI 가 채우지 않음).
+    takes_medication: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    medication_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 돌봄 필요사항 [CareNeed 값] · 덧붙임 메모.
+    care_needs: Mapped[List[str]] = mapped_column(JSONType, default=list, nullable=False)
+    care_needs_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 돌봄 상태(아직 안 정했으면 null). 바꿀 때 시각 · 메모.
+    care_status: Mapped[Optional[CareStatus]] = mapped_column(
+        SAEnum(CareStatus, name="care_status", native_enum=False, length=25), nullable=True, index=True
+    )
+    care_status_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    care_status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -90,7 +104,19 @@ class NextCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     source_session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("consultation_sessions.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    kind: Mapped[NextCheckKind] = mapped_column(
+        SAEnum(NextCheckKind, name="next_check_kind", native_enum=False, length=10),
+        default=NextCheckKind.CHECK,
+        server_default=NextCheckKind.CHECK.value,
+        nullable=False,
+    )
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    # 언제까지(조치 기한, 또는 이어 붙인 재방문 일정 날짜). 지나도 OPEN 이면 '기한 지남'.
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    # 이어 붙인 재방문 · 전화 · 재상담 일정(일정을 지우면 null).
+    schedule_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("schedule_events.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # 근거 [{kind: MEASUREMENT|SESSION|SEGMENT|PROFILE, ...}] — 초안이 붙인 그대로. 담당자가 직접 쓴 것은 빈 목록.
     basis: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
     origin: Mapped[NextCheckOrigin] = mapped_column(

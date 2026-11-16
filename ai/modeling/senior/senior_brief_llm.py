@@ -75,6 +75,16 @@ FORBIDDEN = tuple(
     )
 )
 
+CARE_NEED_LABELS = {
+    "MEAL": "식사",
+    "HOUSEWORK": "가사",
+    "MOBILITY": "이동 · 외출",
+    "MEDICATION": "복약 관리",
+    "HOSPITAL_ESCORT": "병원 동행",
+    "EMOTIONAL": "말벗 · 정서 지원",
+    "SAFETY_CHECK": "안부 · 안전 확인",
+    "OTHER": "그 밖",
+}
 LIVING_LABELS = {
     "ALONE": "혼자 사심",
     "COUPLE": "배우자와 두 분",
@@ -244,6 +254,20 @@ def rule_based_brief(data: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
+    # 지난 회차에서 담당자가 '달라짐' 으로 확정한 생활 · 정서 영역 — 측정 · 지난 상담 이야기보다 앞에 둔다.
+    change_items = []
+    for change in data.get("recent_changes") or []:
+        note = _change_text(change)
+        if len(note) > 80:
+            note = note[:79] + "…"
+        change_items.append(
+            {
+                "text": f"지난 상담({change['session_number']}회차)에서 {_subject(change['label'])} 달라졌어요 — {note}. 이번에 어떻게 지내시는지 여쭤 보세요.",
+                "basis": [{"kind": "SESSION", "session_number": change["session_number"]}],
+            }
+        )
+    items = change_items + items
+
     return {"summary": rule_summary(data), "check_items": items[:MAX_ITEMS]}
 
 
@@ -283,6 +307,15 @@ def format_input(data: Dict[str, Any]) -> Tuple[str, Dict[str, Dict[str, Any]]]:
         lines.append(f"- 담당자가 적은 건강 메모: {profile['health_notes'].strip()}")
     if profile.get("care_notes"):
         lines.append(f"- 생활 · 돌봄 메모: {profile['care_notes'].strip()}")
+    if profile.get("takes_medication") is not None:
+        lines.append(f"- 복약: {'드시는 약 있음' if profile['takes_medication'] else '드시는 약 없음'}")
+    if profile.get("medication_notes"):
+        lines.append(f"- 복약 메모: {profile['medication_notes'].strip()}")
+    needs = [CARE_NEED_LABELS.get(need, need) for need in profile.get("care_needs") or []]
+    if needs:
+        lines.append(f"- 돌봄 필요사항: {', '.join(needs)}")
+    if profile.get("care_needs_note"):
+        lines.append(f"- 돌봄 필요 메모: {profile['care_needs_note'].strip()}")
 
     lines.append("[건강측정]")
     counter = 0
@@ -309,7 +342,27 @@ def format_input(data: Dict[str, Any]) -> Tuple[str, Dict[str, Dict[str, Any]]]:
     if not sessions:
         lines.append("- 없음")
 
+    changes = data.get("recent_changes") or []
+    if changes:
+        lines.append("[최근 생활 · 정서 변화 — 담당자가 확정한 것]")
+        for change in changes:
+            ref = f"S{change['session_number']}"
+            refs.setdefault(ref, {"kind": "SESSION", "session_number": change["session_number"]})
+            lines.append(f"{ref} {change['label']}: {_change_text(change)}")
+
     return "\n".join(lines), refs
+
+
+def _subject(word: str) -> str:
+    """받침 있으면 '이', 없으면 '가'(식사가 · 수면이)."""
+
+    last = word[-1] if word else ""
+    has_final = "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 != 0
+    return f"{word}{'이' if has_final else '가'}"
+
+
+def _change_text(change: Dict[str, Any]) -> str:
+    return ((change.get("change_note") or change.get("text") or "").strip()) or "달라짐"
 
 
 def clean_output(raw: Any, refs: Dict[str, Dict[str, Any]], fallback_summary: str) -> Dict[str, Any]:

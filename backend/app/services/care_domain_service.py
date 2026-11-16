@@ -28,6 +28,7 @@ from app.schemas.senior import (
     CareDomainTimelineEntry,
     CareDomainTimelineResponse,
     PreviousDomainNote,
+    RecentDomainChange,
     SessionCareDomainsResponse,
 )
 from app.services import analysis_service, audit_service, transcript_service
@@ -212,6 +213,36 @@ def notes_by_session(db: Session, case_id: uuid.UUID) -> Dict[uuid.UUID, List[Ca
         session_id: [CareDomainNoteResponse.model_validate(n) for n in sorted(notes, key=lambda n: order[n.domain])]
         for session_id, notes in grouped.items()
     }
+
+
+def recent_changes(db: Session, case_id: uuid.UUID) -> List[RecentDomainChange]:
+    """영역을 확정한 가장 최근 회차에서 '달라짐' 인 것(방문 전 브리핑)."""
+
+    rows = _notes_with_sessions(db, case_id)
+    if not rows:
+        return []
+    latest = max(session.session_number for _, session in rows)
+    order = {domain: index for index, domain in enumerate(DOMAINS)}
+    picked = sorted(
+        (
+            (note, session)
+            for note, session in rows
+            if session.session_number == latest and note.change == DomainChange.CHANGED
+        ),
+        key=lambda pair: order[pair[0].domain],
+    )
+    return [
+        RecentDomainChange(
+            domain=note.domain,
+            label=DOMAIN_LABELS[note.domain],
+            session_id=session.id,
+            session_number=session.session_number,
+            date=_date(session),
+            text=note.text,
+            change_note=note.change_note,
+        )
+        for note, session in picked
+    ]
 
 
 def get_timeline(db: Session, case: Case) -> CareDomainTimelineResponse:

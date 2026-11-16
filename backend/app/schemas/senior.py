@@ -3,14 +3,17 @@
 # 측정값 범위는 '사람이 잴 수 있는 값' 만 거른다(오타 · 단위 실수 막기). 정상 · 위험 기준이 아니다.
 
 import uuid
-from datetime import datetime
-from typing import List, Literal, Optional
+from datetime import date, datetime
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enums import (
     CareDomain,
+    CareNeed,
+    CareStatus,
     DomainChange,
+    NextCheckKind,
     GlucoseTiming,
     LivingArrangement,
     LongTermCareGrade,
@@ -41,6 +44,12 @@ class SeniorProfileUpdateRequest(RequestModel):
     care_grade: Optional[LongTermCareGrade] = None
     health_notes: Optional[str] = Field(default=None, max_length=NOTE_MAX)
     care_notes: Optional[str] = Field(default=None, max_length=NOTE_MAX)
+    #: 복약 여부(모르면 null).
+    takes_medication: Optional[bool] = None
+    medication_notes: Optional[str] = Field(default=None, max_length=NOTE_MAX)
+    #: 돌봄 필요사항(여럿, 겹치면 하나로). null 이나 [] 면 비운다.
+    care_needs: Optional[List[CareNeed]] = Field(default=None, max_length=len(CareNeed))
+    care_needs_note: Optional[str] = Field(default=None, max_length=NOTE_MAX)
 
 
 class SeniorProfileResponse(BaseModel):
@@ -49,7 +58,20 @@ class SeniorProfileResponse(BaseModel):
     care_grade: Optional[LongTermCareGrade] = None
     health_notes: Optional[str] = None
     care_notes: Optional[str] = None
+    takes_medication: Optional[bool] = None
+    medication_notes: Optional[str] = None
+    care_needs: List[CareNeed] = Field(default_factory=list)
+    care_needs_note: Optional[str] = None
+    #: 돌봄 상태(아직 안 정했으면 null). 바꾸기는 PUT /cases/{id}/care-status.
+    care_status: Optional[CareStatus] = None
+    care_status_note: Optional[str] = None
+    care_status_changed_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class CareStatusUpdateRequest(RequestModel):
+    status: CareStatus
+    note: Optional[str] = Field(default=None, max_length=1000)
 
 
 # ---------------------------------------------------------------- 측정
@@ -223,6 +245,14 @@ class SeniorBriefResponse(BaseModel):
     summary: str
     check_items: List[BriefCheckItem] = Field(default_factory=list)
     generated_at: datetime
+    # ---- 방문 전 한 화면(2026-11-16, 멘토 정리 '통합 브리핑'). AI 와 상관없이 DB 에서 그대로 모은다.
+    care_status: Optional[CareStatus] = None
+    #: 아직 확인 · 처리하지 않은 확인 · 조치사항(기한 이른 것부터, 기한 없는 것은 뒤).
+    open_checks: List["NextCheckResponse"] = Field(default_factory=list)
+    #: 생활 · 정서 영역을 확정한 가장 최근 회차에서 '달라짐' 인 것.
+    recent_changes: List["RecentDomainChange"] = Field(default_factory=list)
+    #: 오늘 이후 가장 가까운 상담 일정(없으면 null).
+    next_visit: Optional["UpcomingVisit"] = None
 
 
 # ---------------------------------------------------------------- 다음 상담 확인사항(저장)
@@ -231,7 +261,11 @@ NEXT_CHECK_TEXT_MAX = 300
 
 
 class NextCheckItemIn(RequestModel):
+    #: CHECK = 다음 상담 때 확인할 것(기본), ACTION = 담당자가 할 조치.
+    kind: NextCheckKind = NextCheckKind.CHECK
     text: str = Field(..., min_length=1, max_length=NEXT_CHECK_TEXT_MAX)
+    #: 언제까지(없어도 된다). 일정에 이어 붙이면 그 날짜로 채운다.
+    due_date: Optional[date] = None
     #: 초안(AI · RULE)을 그대로 두거나 고쳐서 저장하면 그 출처, 담당자가 새로 쓰면 COUNSELOR.
     origin: NextCheckOrigin = NextCheckOrigin.COUNSELOR
     #: 초안을 고쳐서 저장했는가. COUNSELOR 면 무시한다.
@@ -247,7 +281,12 @@ class NextChecksSaveRequest(RequestModel):
 
 
 class NextCheckUpdateRequest(RequestModel):
+    kind: Optional[NextCheckKind] = None
     text: Optional[str] = Field(default=None, min_length=1, max_length=NEXT_CHECK_TEXT_MAX)
+    #: null 이면 기한을 비운다.
+    due_date: Optional[date] = None
+    #: 이 사례의 상담 일정에 이어 붙인다(null 이면 뗀다). 붙이면 due_date 도 그 날짜로 바뀐다.
+    schedule_event_id: Optional[uuid.UUID] = None
     status: Optional[NextCheckStatus] = None
     #: DONE · DROPPED 로 바꿀 때 확인한 방문(회차). 없어도 된다.
     checked_session_id: Optional[uuid.UUID] = None
@@ -260,7 +299,10 @@ class NextCheckResponse(BaseModel):
     id: uuid.UUID
     case_id: uuid.UUID
     source_session_id: Optional[uuid.UUID] = None
+    kind: NextCheckKind
     text: str
+    due_date: Optional[date] = None
+    schedule_event_id: Optional[uuid.UUID] = None
     basis: List[BriefBasis] = Field(default_factory=list)
     origin: NextCheckOrigin
     edited: bool
@@ -270,6 +312,41 @@ class NextCheckResponse(BaseModel):
     result_note: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+FollowupConsultType = Literal["VISIT", "PHONE", "REGULAR"]
+
+
+class FollowupVisitRequest(RequestModel):
+    """재방문 · 전화 · 재상담 일정을 만들고 고른 확인 · 조치사항을 거기에 이어 붙인다(한 번에)."""
+
+    #: VISIT = 방문, PHONE = 전화, REGULAR = 재상담(정기상담).
+    consult_type: FollowupConsultType
+    date: date
+    time: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    place: Optional[str] = Field(default=None, max_length=100)
+    check_ids: List[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def _range(self) -> "FollowupVisitRequest":
+        if not (date(1900, 1, 1) <= self.date <= date(2100, 12, 31)):
+            raise ValueError("날짜는 1900-01-01 부터 2100-12-31 까지만 쓸 수 있습니다.")
+        self.place = (self.place or "").strip() or None
+        self.check_ids = list(dict.fromkeys(self.check_ids))
+        return self
+
+
+class UpcomingVisit(BaseModel):
+    schedule_event_id: uuid.UUID
+    date: date
+    time: Optional[str] = None
+    consult_type: Optional[str] = None
+    place: Optional[str] = None
+
+
+class FollowupVisitResponse(BaseModel):
+    visit: UpcomingVisit
+    checks: List[NextCheckResponse] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- 생활 · 정서 영역 변화(2026-11-16)
@@ -435,3 +512,55 @@ class SeniorHistoryResponse(BaseModel):
     entries: List[HistoryEntry] = Field(default_factory=list)
     #: 아직 확인하지 않은(OPEN) 확인사항 — 다음 방문 때 볼 것.
     open_checks: List[NextCheckResponse] = Field(default_factory=list)
+
+
+class RecentDomainChange(BaseModel):
+    domain: CareDomain
+    label: str
+    session_id: uuid.UUID
+    session_number: int
+    date: str = ""
+    text: Optional[str] = None
+    change_note: Optional[str] = None
+
+
+SeniorBriefResponse.model_rebuild()
+
+
+# ---------------------------------------------------------------- 현황(관리자 · 담당자, 2026-11-16)
+
+
+class SeniorOverviewRow(BaseModel):
+    case_id: uuid.UUID
+    alias: str
+    counselor_id: uuid.UUID
+    counselor_name: Optional[str] = None
+    case_status: str
+    care_status: Optional[CareStatus] = None
+    care_status_changed_at: Optional[datetime] = None
+    #: 마지막 상담일(회차 상담일 중 가장 늦은 것, 없으면 null).
+    last_visit_at: Optional[datetime] = None
+    last_measured_at: Optional[datetime] = None
+    #: 마지막 측정이 30일 넘었거나 측정이 없음.
+    measurement_stale: bool
+    open_checks: int
+    #: OPEN 인데 기한(due_date)이 오늘보다 앞섬.
+    overdue_checks: int
+    next_visit: Optional[UpcomingVisit] = None
+
+
+class SeniorOverviewCounts(BaseModel):
+    total: int
+    #: 돌봄 상태별 사례 수. 아직 안 정한 것은 "NONE".
+    by_care_status: Dict[str, int]
+    open_checks: int
+    overdue_checks: int
+    #: 오늘부터 7일 안에 상담 일정이 있는 사례 수.
+    visits_next_7_days: int
+    measurement_stale: int
+
+
+class SeniorOverviewResponse(BaseModel):
+    counts: SeniorOverviewCounts
+    #: 기한 지난 것 → 재방문 필요 → 그 밖, 같으면 다음 일정 이른 순.
+    rows: List[SeniorOverviewRow]

@@ -2932,7 +2932,8 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/cases/{case_id}/senior-profile` | 기본정보. 저장 전이면 값이 모두 null, `updated_at` null |
-| PATCH | `/cases/{case_id}/senior-profile` | 보낸 칸만 바꾼다(null 이면 비움). `living_arrangement`: `ALONE` · `COUPLE` · `WITH_FAMILY` · `FACILITY` · `OTHER`, `care_grade`: `GRADE_1`~`GRADE_5` · `COGNITIVE_SUPPORT`(인지지원) · `NONE` · `UNKNOWN`, `health_notes`(담당자가 아는 질환 · 복용약, 2000자) · `care_notes`(생활 · 돌봄 메모, 2000자). 글은 앞뒤 빈칸을 떼고 비면 null. 방문지 · 보호자 연락 · 동의 칸은 1주차 현장 서식을 보고 더한다 |
+| PATCH | `/cases/{case_id}/senior-profile` | 보낸 칸만 바꾼다(null 이면 비움). `living_arrangement`: `ALONE` · `COUPLE` · `WITH_FAMILY` · `FACILITY` · `OTHER`, `care_grade`: `GRADE_1`~`GRADE_5` · `COGNITIVE_SUPPORT`(인지지원) · `NONE` · `UNKNOWN`, `health_notes`(담당자가 아는 질환 · 복용약, 2000자) · `care_notes`(생활 · 돌봄 메모, 2000자), `takes_medication`(복약 여부, 모르면 null) · `medication_notes`(복약 메모, 2000자), `care_needs`(돌봄 필요사항 여럿: `MEAL` 식사 · `HOUSEWORK` 가사 · `MOBILITY` 이동 · 외출 · `MEDICATION` 복약 관리 · `HOSPITAL_ESCORT` 병원 동행 · `EMOTIONAL` 말벗 · 정서 지원 · `SAFETY_CHECK` 안부 · 안전 확인 · `OTHER`, 겹치면 하나로, null 이면 []) · `care_needs_note`(2000자). 응답에는 돌봄 상태 칸(`care_status` · `care_status_note` · `care_status_changed_at`)도 있다. 글은 앞뒤 빈칸을 떼고 비면 null. 방문지 · 보호자 연락 · 동의 칸은 1주차 현장 서식을 보고 더한다 |
+| PUT | `/cases/{case_id}/care-status` | 돌봄 상태 바꾸기(아래 '돌봄 상태'). 응답은 기본정보 |
 | GET | `/cases/{case_id}/health-measurements` | 측정 목록(최근 것부터, 최대 500건) |
 | POST | `/cases/{case_id}/health-measurements` | 201. 아래 '측정' 참고 |
 | PATCH | `/cases/{case_id}/health-measurements/{id}` | 보낸 칸만. 바꾼 뒤 값이 만들기 규칙을 어기면 400 `VALIDATION_ERROR`(예: 혈압 한쪽만 지움). `measured_at` 을 null 로 보내면 400. 다른 사례의 측정은 404 |
@@ -2943,7 +2944,9 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | POST | `/cases/{case_id}/next-checks` | 201. 확인사항 저장(아래) |
 | PATCH | `/cases/{case_id}/next-checks/{id}` | 글 고치기 · 다음 방문 때 확인 표시(아래) |
 | DELETE | `/cases/{case_id}/next-checks/{id}` | 204 |
+| POST | `/cases/{case_id}/followup-visits` | 201. 재방문 · 전화 · 재상담 일정을 만들고 확인 · 조치사항을 잇는다(아래) |
 | GET | `/cases/{case_id}/senior-history` | 상담 이력 조회(아래) |
+| GET | `/senior-overview` | 현황(아래). 관리자는 모든 고령자 사례, 상담사는 담당 사례 |
 
 회차(방문) 자체는 아동과 같은 `/cases/{case_id}/sessions` · 녹음 · STT · 분석 · 요약 승인 API 를 쓴다. 다른 점은 '회차 통합 요약' 참고.
 
@@ -2994,17 +2997,29 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 ### 방문 전 브리핑(`senior-brief`)
 
-`{case_id, source, model, summary, check_items: [{text, basis}], generated_at}` — 저장하지 않는다.
+`{case_id, source, model, summary, check_items: [{text, basis}], generated_at, care_status, open_checks, recent_changes, next_visit}` — 저장하지 않는다.
+
+- 방문 전 한 화면(2026-11-16, AI 와 상관없이 DB 에서 모음): `care_status`, `open_checks`(OPEN 확인 · 조치사항, 기한 이른 것부터 · 기한 없는 것은 뒤), `recent_changes`(생활 · 정서 영역을 확정한 가장 최근 회차의 `CHANGED`: `{domain, label, session_id, session_number, date, text, change_note}`), `next_visit`(오늘 이후 가장 가까운 이 사례 상담 일정, 없으면 null).
+- 규칙 · AI 입력에 복약 여부 · 복약 메모 · 돌봄 필요사항과 최근 영역 변화가 들어간다. 규칙은 최근 영역 변화를 확인사항 맨 앞에 '지난 상담(n회차)에서 외출이 달라졌어요 — …' 로 둔다(근거 SESSION).
 
 - `rule`(기본): 지난 측정과 눈에 띄게 다름(수축기 15 · 이완기 10 · 맥박 15 · 공복 혈당 30 · 식후 · 그 밖 혈당 40 · 체중 2kg · 체온 1℃ 이상), 3번 이어서 오르거나 내림, 치매 조기검사 점수가 지난 검사와 다름(1점이라도), 마지막 측정 30일 지남 · 측정 없음, 최근 승인 회차의 핵심 내용 2개. 폭은 '지난번과 다름' 표시일 뿐 의학 기준이 아니다.
 - `modeling`: 이름을 가린 뒤 외부 AI. 금지 말 · 근거 없는 문장은 버리고, 요약이 그러면 규칙 요약으로 바꾼다. 시간 초과 504 `AI_TIMEOUT`, 쓸 문장이 없음 502 `AI_INVALID_OUTPUT`, 이름을 다 가리지 못함 422 `AI_PRIVACY_BLOCKED`, 그 밖 502 `AI_FAILED`, 동시 실행이 차면 429 `RATE_LIMITED`.
 - ENV=production 에서는 `SENIOR_AI_ALLOW_IN_PRODUCTION=true` 없이 `SENIOR_AI_PROVIDER=modeling` 으로 서버가 뜨지 않는다(회차 요약도 같은 설정).
 
+### 돌봄 상태(`care-status`, 2026-11-16)
+
+`PUT {status, note?}` — `status`: `CONSULT_DONE`(상담 완료) · `REVISIT_NEEDED`(재방문 필요) · `FOLLOWUP_IN_PROGRESS`(후속조치 진행) · `SERVICE_ENDED`(서비스 종료). 아동의 '종결' 을 대신하지만 **사례 상태(ACTIVE · CLOSED)는 바꾸지 않는다**. 상태나 메모가 바뀔 때만 `care_status_changed_at` 이 찍히고 감사 기록이 남는다. 처음엔 null(아직 안 정함).
+
 ### 다음 상담 확인사항(`next-checks`)
 
-- 저장 `POST`: `{source_session_id?, items: [{text(1~300자), origin?, edited?, basis?}]}`(1~20개). `origin`: `AI` · `RULE`(초안을 두거나 고쳐서 저장) · `COUNSELOR`(기본, 담당자가 새로 씀). `edited` 는 초안을 고쳐서 저장했는지(`COUNSELOR` 면 늘 false). `basis` 의 측정 id 가 이 사례에 없으면 400. 응답은 저장한 목록.
-- 고치기 `PATCH`: `{text?, status?, checked_session_id?, result_note?}`. 초안 출처 글을 고치면 `edited: true`. `status`: `OPEN` → `DONE`(확인함) · `DROPPED`(확인하지 않기로 함)이면 `checked_at` 이 찍히고, `OPEN` 으로 되돌리면 `checked_at` · `checked_session_id` 가 비워진다. `checked_session_id` 는 `OPEN` 이 아닐 때만(아니면 400).
-- 응답 `{id, case_id, source_session_id, text, basis, origin, edited, status, checked_session_id, checked_at, result_note, created_at, updated_at}`.
+- 저장 `POST`: `{source_session_id?, items: [{kind?, text(1~300자), due_date?, origin?, edited?, basis?}]}`(1~20개). `origin`: `AI` · `RULE`(초안을 두거나 고쳐서 저장) · `COUNSELOR`(기본, 담당자가 새로 씀). `edited` 는 초안을 고쳐서 저장했는지(`COUNSELOR` 면 늘 false). `basis` 의 측정 id 가 이 사례에 없으면 400. 응답은 저장한 목록.
+- `kind`(2026-11-16): `CHECK`(다음 상담 때 확인할 것, 기본) · `ACTION`(담당자가 할 조치 — 예: 복지관 연계). `due_date`: 언제까지(YYYY-MM-DD, 없어도 됨). OPEN 인데 기한이 지나면 현황에서 '기한 지남' 으로 센다.
+- 고치기 `PATCH`: `{kind?, text?, due_date?, schedule_event_id?, status?, checked_session_id?, result_note?}`. `schedule_event_id` 는 **이 사례의 상담 일정**만(아니면 400), 붙이면 `due_date` 가 그 일정 날짜로 바뀐다(같이 보낸 `due_date` 가 있으면 그것). null 이면 뗀다. 일정을 지우면 연결만 풀린다. 초안 출처 글을 고치면 `edited: true`. `status`: `OPEN` → `DONE`(확인함) · `DROPPED`(확인하지 않기로 함)이면 `checked_at` 이 찍히고, `OPEN` 으로 되돌리면 `checked_at` · `checked_session_id` 가 비워진다. `checked_session_id` 는 `OPEN` 이 아닐 때만(아니면 400).
+- 응답 `{id, case_id, source_session_id, kind, text, due_date, schedule_event_id, basis, origin, edited, status, checked_session_id, checked_at, result_note, created_at, updated_at}`.
+
+### 재방문 일정(`followup-visits`, 2026-11-16)
+
+`POST {consult_type, date, time?, place?, check_ids?}` — `consult_type`: `VISIT`(방문) · `PHONE`(전화) · `REGULAR`(재상담). 일정 API(`/schedule/events`)와 같은 규칙으로 이 사례의 상담 일정(`kind: CONSULT`, 만든 사람 = 요청자)을 만들고, `check_ids` 의 확인 · 조치사항에 `schedule_event_id` · `due_date` 를 채운다. 이 사례에 없거나 OPEN 이 아닌 확인사항이 있으면 400(일정도 만들지 않음). 응답 `{visit: {schedule_event_id, date, time, consult_type, place}, checks: [확인사항]}`. 일정 고치기 · 지우기는 일정 API 로.
 
 ### 상담 이력 조회(`senior-history`)
 
@@ -3013,4 +3028,11 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - `kind: "VISIT"`(회차): `at`(상담일, 없으면 만든 때) · `session_id` · `session_number` · `session_title` · `session_status` · `summary`(`{overview, key_points, status}`, 없으면 null) · `measurements`(그 회차에 단 측정) · `checks_created`(그 방문에서 만든 확인사항) · `checks_resolved`(그 방문에서 확인한 확인사항) · `care_domains`(그 방문에서 확정한 생활 · 정서 영역, 영역 순서).
 - `kind: "MEASUREMENT"`(회차 없이 적은 측정): `at`(잰 때) · `measurements`(1개).
 
-감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간) · `NEXT_CHECKS_SAVED`(개수 · 출처별 수 · 고친 수) · `NEXT_CHECK_UPDATED`(바뀐 칸 이름 · 상태) · `NEXT_CHECK_DELETED`(출처 · 상태) · `CARE_DOMAINS_SAVED`(영역 이름 · 변화별 수 · 고친 수). 값 · 메모 글 · 확인사항 · 영역 문장은 넣지 않는다.
+### 현황(`senior-overview`, 2026-11-16)
+
+`{counts, rows}` — 수만 세고 판정하지 않는다.
+
+- `rows[]`: `{case_id, alias, counselor_id, counselor_name, case_status, care_status, care_status_changed_at, last_visit_at, last_measured_at, measurement_stale, open_checks, overdue_checks, next_visit}`. `measurement_stale` 은 마지막 측정이 30일 넘었거나 없음. 정렬: 기한 지난 확인사항 있는 것 → 재방문 필요 → 다음 일정 있는 것(이른 순) → 별칭.
+- `counts`: `{total, by_care_status: {CONSULT_DONE, REVISIT_NEEDED, FOLLOWUP_IN_PROGRESS, SERVICE_ENDED, NONE}, open_checks, overdue_checks, visits_next_7_days, measurement_stale}`.
+
+감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간) · `NEXT_CHECKS_SAVED`(개수 · 출처별 수 · 고친 수) · `NEXT_CHECK_UPDATED`(바뀐 칸 이름 · 상태) · `NEXT_CHECK_DELETED`(출처 · 상태) · `CARE_DOMAINS_SAVED`(영역 이름 · 변화별 수 · 고친 수) · `CARE_STATUS_CHANGED`(이전 · 바뀐 상태, 메모 있음 여부) · `FOLLOWUP_VISIT_SCHEDULED`(상담 유형 · 이은 확인사항 수, 일정 자체는 `SCHEDULE_CREATED` 도 남음). 값 · 메모 글 · 확인사항 · 영역 문장은 넣지 않는다.

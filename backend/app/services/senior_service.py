@@ -7,19 +7,23 @@ import logging
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.adapters.module_loader import ModuleLoadError, load_callable
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.enums import (
     AuditAction,
+    CareNeed,
+    CareStatus,
+    ScheduleConsultType,
+    ScheduleKind,
     GlucoseTiming,
     NextCheckOrigin,
     NextCheckStatus,
@@ -29,14 +33,23 @@ from app.core.enums import (
 )
 from app.core.errors import APIError, ErrorCode, bad_request, conflict, not_found
 from app.models.case import Case
+from app.models.schedule import ScheduleEvent
 from app.models.senior import HealthMeasurement, NextCheck, SeniorProfile
 from app.models.session import ConsultationSession
 from app.models.summary import ConsultationSummary
 from app.models.user import User
+from app.schemas.schedule import ScheduleCreateRequest
 from app.schemas.senior import (
     VALUE_FIELDS,
     BriefBasis,
     BriefCheckItem,
+    CareStatusUpdateRequest,
+    FollowupVisitRequest,
+    FollowupVisitResponse,
+    UpcomingVisit,
+    SeniorOverviewCounts,
+    SeniorOverviewResponse,
+    SeniorOverviewRow,
     HealthMeasurementCreateRequest,
     HealthMeasurementResponse,
     HealthMeasurementUpdateRequest,
@@ -117,6 +130,13 @@ def _profile_out(row: SeniorProfile) -> SeniorProfileResponse:
         care_grade=row.care_grade,
         health_notes=row.health_notes,
         care_notes=row.care_notes,
+        takes_medication=row.takes_medication,
+        medication_notes=row.medication_notes,
+        care_needs=[need for need in row.care_needs or [] if need in CareNeed.__members__],
+        care_needs_note=row.care_needs_note,
+        care_status=row.care_status,
+        care_status_note=row.care_status_note,
+        care_status_changed_at=row.care_status_changed_at,
         updated_at=row.updated_at,
     )
 
@@ -127,15 +147,19 @@ def update_profile(
     ensure_senior(case)
     data = payload.model_dump(exclude_unset=True)
 
-    row = db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == case.id).with_for_update())
-    if row is None:
-        row = SeniorProfile(case_id=case.id)
-        db.add(row)
+    row = _lock_profile(db, case)
 
     changed = []
     for field, value in data.items():
         if isinstance(value, str):
             value = value.strip() or None
+        if field == "care_needs":
+            value = list(dict.fromkeys(need.value for need in value or []))
+            if list(row.care_needs or []) == value:
+                continue
+            row.care_needs = value
+            changed.append(field)
+            continue
         if getattr(row, field) != value:
             setattr(row, field, value)
             changed.append(field)
@@ -156,6 +180,47 @@ def update_profile(
             actor_id=current_user.id,
             case_id=case.id,
             detail={"changed_fields": sorted(changed)},
+        )
+    db.commit()
+    db.refresh(row)
+    return _profile_out(row)
+
+
+def _lock_profile(db: Session, case: Case) -> SeniorProfile:
+    row = db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == case.id).with_for_update())
+    if row is None:
+        row = SeniorProfile(case_id=case.id)
+        db.add(row)
+    return row
+
+
+def set_care_status(
+    db: Session, case: Case, current_user: User, payload: CareStatusUpdateRequest
+) -> SeniorProfileResponse:
+    """돌봄 상태를 바꾼다(상담 완료 · 재방문 필요 · 후속조치 진행 · 서비스 종료). 사례 상태는 건드리지 않는다."""
+
+    ensure_senior(case)
+    row = _lock_profile(db, case)
+    note = (payload.note or "").strip() or None
+    before = row.care_status
+    if before != payload.status or row.care_status_note != note:
+        row.care_status = payload.status
+        row.care_status_note = note
+        row.care_status_changed_at = datetime.now(timezone.utc)
+        row.updated_by_id = current_user.id
+        try:
+            db.flush()
+        except IntegrityError as error:
+            db.rollback()
+            raise conflict(ErrorCode.DUPLICATE_RESOURCE, "다른 요청이 먼저 저장했습니다. 새로고침해 주세요.") from error
+        audit_service.record(
+            db,
+            action=AuditAction.CARE_STATUS_CHANGED,
+            entity_type="SeniorProfile",
+            entity_id=row.id,
+            actor_id=current_user.id,
+            case_id=case.id,
+            detail={"from": before.value if before else None, "to": payload.status.value, "has_note": note is not None},
         )
     db.commit()
     db.refresh(row)
@@ -473,10 +538,34 @@ def build_brief_input(db: Session, case: Case) -> Dict[str, Any]:
             "care_grade": profile.care_grade.value if profile and profile.care_grade else None,
             "health_notes": profile.health_notes if profile else None,
             "care_notes": profile.care_notes if profile else None,
+            "takes_medication": profile.takes_medication if profile else None,
+            "medication_notes": profile.medication_notes if profile else None,
+            "care_needs": list(profile.care_needs or []) if profile else [],
+            "care_needs_note": profile.care_needs_note if profile else None,
         },
         "metrics": metrics,
         "sessions": _approved_sessions(db, case),
     }
+
+
+def _with_recent_changes(db: Session, case: Case, data: Dict[str, Any]) -> Dict[str, Any]:
+    """브리핑 입력에 최근 영역 변화를 더한다(규칙 · AI 입력은 recent_changes, 응답용 모델은 recent_change_rows)."""
+
+    from app.services import care_domain_service
+
+    rows = care_domain_service.recent_changes(db, case.id)
+    data["recent_change_rows"] = rows
+    data["recent_changes"] = [
+        {
+            "domain": row.domain.value,
+            "label": row.label,
+            "session_number": row.session_number,
+            "text": row.text,
+            "change_note": row.change_note,
+        }
+        for row in rows
+    ]
+    return data
 
 
 def _visit_items(row: HealthMeasurement) -> List[Dict[str, Any]]:
@@ -591,7 +680,7 @@ def _basis(raw: Dict[str, Any], allowed_ids: set) -> Optional[BriefBasis]:
 
 def generate_brief(db: Session, case: Case, current_user: User) -> SeniorBriefResponse:
     ensure_senior(case)
-    data = build_brief_input(db, case)
+    data = _with_recent_changes(db, case, build_brief_input(db, case))
     use_ai = settings.SENIOR_AI_PROVIDER == "modeling"
     started = time.monotonic()
 
@@ -639,6 +728,7 @@ def generate_brief(db: Session, case: Case, current_user: User) -> SeniorBriefRe
     )
     db.commit()
 
+    profile = db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == case.id))
     return SeniorBriefResponse(
         case_id=case.id,
         source="AI" if use_ai else "RULE",
@@ -646,7 +736,37 @@ def generate_brief(db: Session, case: Case, current_user: User) -> SeniorBriefRe
         summary=result.get("summary") or "",
         check_items=items,
         generated_at=datetime.now(timezone.utc),
+        care_status=profile.care_status if profile else None,
+        open_checks=_open_checks(db, case),
+        recent_changes=data["recent_change_rows"],
+        next_visit=_next_visit(db, case),
     )
+
+
+def _open_checks(db: Session, case: Case) -> List[NextCheckResponse]:
+    rows = db.scalars(
+        select(NextCheck).where(NextCheck.case_id == case.id, NextCheck.status == NextCheckStatus.OPEN)
+    )
+    ordered = sorted(rows, key=lambda row: (row.due_date is None, row.due_date or date.max, _as_aware(row.created_at)))
+    return [NextCheckResponse.model_validate(row) for row in ordered]
+
+
+def _today() -> date:
+    return date.fromisoformat(_local_date(datetime.now(timezone.utc)))
+
+
+def _next_visit(db: Session, case: Case) -> Optional[UpcomingVisit]:
+    event = db.scalar(
+        select(ScheduleEvent)
+        .where(
+            ScheduleEvent.case_id == case.id,
+            ScheduleEvent.kind == ScheduleKind.CONSULT,
+            ScheduleEvent.event_date >= _today(),
+        )
+        .order_by(ScheduleEvent.event_date.asc(), ScheduleEvent.event_time.asc().nulls_first())
+        .limit(1)
+    )
+    return _visit_out(event) if event is not None else None
 
 
 # ---------------------------------------------------------------- 다음 상담 확인사항(저장 · 확인 표시)
@@ -689,7 +809,9 @@ def save_next_checks(
         row = NextCheck(
             case_id=case.id,
             source_session_id=payload.source_session_id,
+            kind=item.kind,
             text=text,
+            due_date=item.due_date,
             basis=[basis.model_dump(mode="json", exclude_none=True) for basis in item.basis],
             origin=item.origin,
             edited=item.edited and item.origin != NextCheckOrigin.COUNSELOR,
@@ -744,6 +866,28 @@ def update_next_check(
                 row.edited = True
             changed.append("text")
 
+    if "kind" in data:
+        if data["kind"] is None:
+            raise bad_request(ErrorCode.VALIDATION_ERROR, "종류는 비울 수 없습니다.")
+        if data["kind"] != row.kind:
+            row.kind = data["kind"]
+            changed.append("kind")
+
+    if "schedule_event_id" in data:
+        event_id = data["schedule_event_id"]
+        if event_id is not None:
+            event = _case_consult_event(db, case, event_id)
+            if row.due_date != event.event_date and "due_date" not in data:
+                row.due_date = event.event_date
+                changed.append("due_date")
+        if event_id != row.schedule_event_id:
+            row.schedule_event_id = event_id
+            changed.append("schedule_event_id")
+
+    if "due_date" in data and data["due_date"] != row.due_date:
+        row.due_date = data["due_date"]
+        changed.append("due_date")
+
     if "status" in data:
         if data["status"] is None:
             raise bad_request(ErrorCode.VALIDATION_ERROR, "상태는 비울 수 없습니다.")
@@ -783,6 +927,73 @@ def update_next_check(
     db.commit()
     db.refresh(row)
     return NextCheckResponse.model_validate(row)
+
+
+def _case_consult_event(db: Session, case: Case, event_id: uuid.UUID) -> ScheduleEvent:
+    event = db.get(ScheduleEvent, event_id)
+    if event is None or event.case_id != case.id or event.kind != ScheduleKind.CONSULT:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "이 사례의 상담 일정만 이어 붙일 수 있습니다.")
+    return event
+
+
+def schedule_followup_visit(
+    db: Session, case: Case, current_user: User, payload: FollowupVisitRequest
+) -> FollowupVisitResponse:
+    """재방문 · 전화 · 재상담 일정을 만들고(일정 API 와 같은 규칙) 고른 확인 · 조치사항을 거기에 이어 붙인다."""
+
+    from app.services import schedule_service  # schedule_service → access → … 순환을 피한다
+
+    ensure_senior(case)
+    checks = []
+    if payload.check_ids:
+        checks = list(
+            db.scalars(select(NextCheck).where(NextCheck.case_id == case.id, NextCheck.id.in_(payload.check_ids)))
+        )
+        if len(checks) != len(payload.check_ids):
+            raise bad_request(ErrorCode.VALIDATION_ERROR, "이 사례에 없는 확인사항이 있습니다.")
+        if any(check.status != NextCheckStatus.OPEN for check in checks):
+            raise bad_request(ErrorCode.VALIDATION_ERROR, "이미 확인했거나 확인하지 않기로 한 것은 일정에 이을 수 없습니다.")
+
+    event = schedule_service.create_event(
+        db,
+        current_user,
+        ScheduleCreateRequest(
+            kind=ScheduleKind.CONSULT,
+            consult_type=ScheduleConsultType(payload.consult_type),
+            case_id=case.id,
+            date=payload.date,
+            time=payload.time,
+            place=payload.place,
+        ),
+    )
+    for check in checks:
+        check.schedule_event_id = event.id
+        check.due_date = event.event_date
+    audit_service.record(
+        db,
+        action=AuditAction.FOLLOWUP_VISIT_SCHEDULED,
+        entity_type="ScheduleEvent",
+        entity_id=event.id,
+        actor_id=current_user.id,
+        case_id=case.id,
+        detail={"consult_type": payload.consult_type, "check_count": len(checks)},
+    )
+    db.commit()
+    for check in checks:
+        db.refresh(check)
+    return FollowupVisitResponse(
+        visit=_visit_out(event), checks=[NextCheckResponse.model_validate(check) for check in checks]
+    )
+
+
+def _visit_out(event: ScheduleEvent) -> UpcomingVisit:
+    return UpcomingVisit(
+        schedule_event_id=event.id,
+        date=event.event_date,
+        time=event.event_time,
+        consult_type=event.consult_type.value if event.consult_type else None,
+        place=event.place,
+    )
 
 
 def delete_next_check(db: Session, case: Case, check_id: uuid.UUID, current_user: User) -> None:
@@ -867,4 +1078,112 @@ def get_history(db: Session, case: Case) -> SeniorHistoryResponse:
         case_id=case.id,
         entries=entries,
         open_checks=[NextCheckResponse.model_validate(c) for c in checks if c.status == NextCheckStatus.OPEN],
+    )
+
+
+# ---------------------------------------------------------------- 현황(관리자 · 담당자)
+
+STALE_MEASUREMENT_DAYS = 30
+
+
+def _pairs(result: Any) -> Dict[Any, Any]:
+    return {key: value for key, value in result.all()}
+
+
+def get_overview(db: Session, current_user: User) -> SeniorOverviewResponse:
+    """고령자 사례 현황. 관리자는 모든 사례, 상담사는 담당 사례만. 수만 세고 판정하지 않는다."""
+
+    query = select(Case).where(Case.subject_type == SubjectType.SENIOR)
+    if not current_user.is_admin:
+        query = query.where(Case.counselor_id == current_user.id)
+    cases = list(db.scalars(query.options(selectinload(Case.counselor))))
+    ids = [case.id for case in cases]
+    today = _today()
+
+    profiles = {row.case_id: row for row in db.scalars(select(SeniorProfile).where(SeniorProfile.case_id.in_(ids)))} if ids else {}
+    last_visit = _pairs(
+        db.execute(
+            select(ConsultationSession.case_id, func.max(ConsultationSession.consulted_at))
+            .where(ConsultationSession.case_id.in_(ids))
+            .group_by(ConsultationSession.case_id)
+        )
+    ) if ids else {}
+    last_measured = _pairs(
+        db.execute(
+            select(HealthMeasurement.case_id, func.max(HealthMeasurement.measured_at))
+            .where(HealthMeasurement.case_id.in_(ids))
+            .group_by(HealthMeasurement.case_id)
+        )
+    ) if ids else {}
+    open_rows = list(
+        db.execute(
+            select(NextCheck.case_id, NextCheck.due_date).where(
+                NextCheck.case_id.in_(ids), NextCheck.status == NextCheckStatus.OPEN
+            )
+        ).tuples()
+    ) if ids else []
+    events: Dict[uuid.UUID, ScheduleEvent] = {}
+    if ids:
+        for event in db.scalars(
+            select(ScheduleEvent)
+            .where(
+                ScheduleEvent.case_id.in_(ids),
+                ScheduleEvent.kind == ScheduleKind.CONSULT,
+                ScheduleEvent.event_date >= today,
+            )
+            .order_by(ScheduleEvent.event_date.asc(), ScheduleEvent.event_time.asc().nulls_first())
+        ):
+            events.setdefault(event.case_id, event)
+
+    rows = []
+    for case in cases:
+        profile = profiles.get(case.id)
+        measured = last_measured.get(case.id)
+        stale = measured is None or (today - date.fromisoformat(_local_date(measured))).days >= STALE_MEASUREMENT_DAYS
+        dues = [due for case_id, due in open_rows if case_id == case.id]
+        event = events.get(case.id)
+        visit = last_visit.get(case.id)
+        rows.append(
+            SeniorOverviewRow(
+                case_id=case.id,
+                alias=case.child_alias,
+                counselor_id=case.counselor_id,
+                counselor_name=case.counselor.name if case.counselor else None,
+                case_status=case.status.value,
+                care_status=profile.care_status if profile else None,
+                care_status_changed_at=profile.care_status_changed_at if profile else None,
+                last_visit_at=_as_aware(visit) if visit else None,
+                last_measured_at=_as_aware(measured) if measured else None,
+                measurement_stale=stale,
+                open_checks=len(dues),
+                overdue_checks=sum(1 for due in dues if due is not None and due < today),
+                next_visit=_visit_out(event) if event else None,
+            )
+        )
+
+    def order(row: SeniorOverviewRow):
+        return (
+            row.overdue_checks == 0,
+            row.care_status != CareStatus.REVISIT_NEEDED,
+            row.next_visit is None,
+            row.next_visit.date if row.next_visit else date.max,
+            row.alias,
+        )
+
+    rows.sort(key=order)
+    by_status: Dict[str, int] = {status.value: 0 for status in CareStatus}
+    by_status["NONE"] = 0
+    for row in rows:
+        by_status[row.care_status.value if row.care_status else "NONE"] += 1
+    week_end = today + timedelta(days=7)
+    return SeniorOverviewResponse(
+        counts=SeniorOverviewCounts(
+            total=len(rows),
+            by_care_status=by_status,
+            open_checks=sum(row.open_checks for row in rows),
+            overdue_checks=sum(row.overdue_checks for row in rows),
+            visits_next_7_days=sum(1 for row in rows if row.next_visit and row.next_visit.date <= week_end),
+            measurement_stale=sum(1 for row in rows if row.measurement_stale),
+        ),
+        rows=rows,
     )
