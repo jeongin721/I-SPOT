@@ -182,35 +182,35 @@ export default function View({ v }) {
               사례 관리
             </a>
             {" › "}
-            <a href="#/CaseInfo">
-              김순자 C-2026-0351
+            <a href={v.caseHref}>
+              {v.caseCrumb}
             </a>
             {" › "}
-            <a href="#/CaseHistory">
+            <a href={v.historyHref}>
               상담 이력
             </a>
             {" › "}
-            <a href="#/SessionDetail">
-              8회차
+            <a href={v.detailHref}>
+              {v.sesNo}
             </a>
           </nav>
           <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 14px" }}>
             <div style={{ flex: "1 1 280px" }}>
               <div className="sub">
-                10/2(금) 방문상담
+                {v.sesSub}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
-                <a className="btn btn-sm btn-s" href="#/CaseInfo" aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
+                <a className="btn btn-sm btn-s" href={v.caseHref} aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
                   ←
                 </a>
                 <h1 style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>
-                  8회차 처리 · 김순자
+                  {v.title}
                 </h1>
               </div>
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <a className="stp done" href="#/Step1Record">
+            <a className="stp done" href={v.step1Href}>
               <span className="sn">
                 ✓
               </span>
@@ -218,7 +218,7 @@ export default function View({ v }) {
                 기록 확인
               </b>
             </a>
-            <a className="stp on" href="#/Step2Signals" aria-current="step">
+            <a className="stp on" href={v.step2Href} aria-current="step">
               <span className="sn">
                 2
               </span>
@@ -226,7 +226,7 @@ export default function View({ v }) {
                 정서·위기 신호 확인
               </b>
             </a>
-            <a className="stp" href="#/Step3Summary">
+            <a className="stp" href={v.step3Href}>
               <span className="sn">
                 3
               </span>
@@ -234,7 +234,7 @@ export default function View({ v }) {
                 상담일지 작성
               </b>
             </a>
-            <a className="stp" href="#/Step4Next">
+            <a className="stp" href={v.step4Href}>
               <span className="sn">
                 4
               </span>
@@ -243,6 +243,11 @@ export default function View({ v }) {
               </b>
             </a>
           </nav>
+          {v.hasStatus ? (
+            <p role="alert" className="note" style={{ margin: "0" }}>
+              {v.statusMsg}
+            </p>
+          ) : null}
           <section className="card" aria-label="위기도" style={{ padding: "22px 24px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "18px 28px" }}>
             <div style={{ flex: "1 1 280px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -255,13 +260,13 @@ export default function View({ v }) {
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginTop: "4px" }}>
                 <b style={{ fontSize: "30px", color: "#A33B2E" }}>
-                  집중
+                  {v.aiLevel}
                 </b>
                 <span style={{ fontSize: "14px" }}>
-                  위기 확인 플래그 2개
+                  {v.flagLine}
                 </span>
                 <span className="note">
-                  · 7회차 관심 → ↑ 상승
+                  {v.trendNote}
                 </span>
               </div>
             </div>
@@ -286,10 +291,10 @@ export default function View({ v }) {
           <section className="card" aria-label="신호별 우려 정도" style={{ overflow: "hidden" }}>
             <div className="hd">
               <h2 className="h2">
-                정서·위기 신호별 우려 정도
+                {v.typesTitle}
               </h2>
               <span className="note">
-                AI 제안 · 1~5 · 상담사가 조정
+                {v.typesNote}
               </span>
             </div>
             {(v.types || []).map((t, i_t) => (
@@ -314,7 +319,7 @@ export default function View({ v }) {
                   </div>
                   <div>
                     <span className="note">
-                      우려 정도
+                      {t.colHead}
                     </span>
                     <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
                       <b style={{ fontSize: "22px" }}>
@@ -343,7 +348,7 @@ export default function View({ v }) {
                   </div>
                   <div style={{ minWidth: "0" }}>
                     <span className="note">
-                      해당 기준
+                      {t.col3Head}
                     </span>
                     <div style={{ fontSize: "14px", marginTop: "2px" }}>
                       {t.matched}
@@ -360,7 +365,7 @@ export default function View({ v }) {
                         <div style={{ marginTop: "10px", padding: "8px", borderRadius: "10px", background: "#F8FBFD" }}>
                           {(t.anchors || []).map((a, i_a) => (
                             <Fragment key={i_a}>
-                              <div className="anchor" style={{ background: a.bg, color: a.fg, fontWeight: a.fw }}>
+                              <div className="anchor" onClick={a.pick} style={{ background: a.bg, color: a.fg, fontWeight: a.fw }}>
                                 <span>
                                   {a.n}
                                 </span>
@@ -395,89 +400,89 @@ export default function View({ v }) {
                       신호
                     </th>
                     <th>
-                      6회차
+                      {v.trH[0]}
                     </th>
                     <th>
-                      7회차
+                      {v.trH[1]}
                     </th>
                     <th>
-                      8회차
+                      {v.trH[2]}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td>
-                      우울감
+                      {v.trL[0]}
                     </td>
                     <td>
-                      2
+                      {v.trC[0][0]}
                     </td>
                     <td>
-                      2
+                      {v.trC[0][1]}
                     </td>
                     <td>
                       <b>
-                        3
+                        {v.trC[0][2]}
                       </b>
                     </td>
                   </tr>
                   <tr>
                     <td>
-                      자살 생각
+                      {v.trL[1]}
                     </td>
                     <td className="note">
-                      –
+                      {v.trC[1][0]}
                     </td>
                     <td className="note">
-                      –
+                      {v.trC[1][1]}
                     </td>
                     <td className="note">
-                      확인 필요
+                      {v.trC[1][2]}
                     </td>
                   </tr>
                   <tr>
                     <td>
-                      식사·수면 변화
+                      {v.trL[2]}
                     </td>
                     <td className="note">
-                      확인 필요
+                      {v.trC[2][0]}
                     </td>
                     <td>
-                      2
+                      {v.trC[2][1]}
                     </td>
                     <td>
                       <b>
-                        3
+                        {v.trC[2][2]}
                       </b>
                     </td>
                   </tr>
                   <tr>
                     <td>
-                      고립·외로움
+                      {v.trL[3]}
                     </td>
                     <td>
-                      2
+                      {v.trC[3][0]}
                     </td>
                     <td>
-                      2
+                      {v.trC[3][1]}
                     </td>
                     <td>
-                      2
+                      {v.trC[3][2]}
                     </td>
                   </tr>
                   <tr>
                     <td>
-                      인지 변화
+                      {v.trL[4]}
                     </td>
                     <td className="note">
-                      –
+                      {v.trC[4][0]}
                     </td>
                     <td className="note">
-                      –
+                      {v.trC[4][1]}
                     </td>
                     <td className="note">
-                      –
+                      {v.trC[4][2]}
                     </td>
                   </tr>
                   <tr>
@@ -485,10 +490,10 @@ export default function View({ v }) {
                       위기도 (상담사)
                     </td>
                     <td>
-                      관심
+                      {v.trLast[0]}
                     </td>
                     <td>
-                      관심
+                      {v.trLast[1]}
                     </td>
                     <td>
                       <b>
@@ -501,49 +506,49 @@ export default function View({ v }) {
             </section>
             <section className="card" aria-label="위기 확인 플래그와 위기 재발 요인" style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: "12px" }}>
               <h2 className="h2">
-                위기 확인 플래그 · 위기 재발 요인
+                {v.flTitle}
               </h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div>
                   <span className="chip c-hi">
-                    S1
+                    {v.fl[0].chip}
                   </span>
-                  {" 죽음 관련 언급 \"그만 가도 괜찮겠다\" — 화자 확인 후 S-04 자살위험 선별 우선"}
+                  {v.fl[0].text}
                   <span className="sub2" style={{ display: "block" }}>
-                    8회차 02:15
+                    {v.fl[0].at}
                   </span>
                 </div>
                 <div>
                   <span className="chip c-hi">
-                    S3
+                    {v.fl[1].chip}
                   </span>
-                  {" 사별 후 식사 거름 + 새벽에 깨는 일 지속"}
+                  {v.fl[1].text}
                   <span className="sub2" style={{ display: "block" }}>
-                    8회차 00:41 · 01:08
+                    {v.fl[1].at}
                   </span>
                 </div>
                 <div>
                   <span className="chip c-normal">
-                    S6 확인 후보
+                    {v.fl[2].chip}
                   </span>
-                  {" \"전화도 내가 먼저 해야 받아요\" — 아들과의 서운함 · 가족 지지 정도 확인"}
+                  {v.fl[2].text}
                   <span className="sub2" style={{ display: "block" }}>
-                    8회차 01:08
+                    {v.fl[2].at}
                   </span>
                 </div>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", paddingTop: "10px", borderTop: "1px solid #DDE6EC" }}>
                 <span className="note" style={{ width: "100%" }}>
-                  위험요인 2 · 보호요인 1
+                  {v.rfNote}
                 </span>
                 <span className="chip c-normal">
-                  R1 1년 내 배우자 사별
+                  {v.rf[0]}
                 </span>
                 <span className="chip c-normal">
-                  R4 독거 · 복지관 이용 중단
+                  {v.rf[1]}
                 </span>
                 <span className="chip c-sky" style={{ border: "1px solid #1F3A56", background: "#FFFFFF" }}>
-                  P1 Key Person (아들 · 주 1회 통화)
+                  {v.rf[2]}
                 </span>
               </div>
             </section>
@@ -578,11 +583,11 @@ export default function View({ v }) {
             </div>
           </section>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-            <a className="btn btn-s" href="#/Step1Record">
+            <a className="btn btn-s" href={v.step1Href}>
               ← 기록 확인 · 정서·위기 신호
             </a>
-            <a className="btn btn-p" href="#/Step3Summary" style={{ marginLeft: "auto" }}>
-              확정 · 상담일지 작성 →
+            <a className="btn btn-p" href={v.step3Href} onClick={v.save} style={{ marginLeft: "auto" }}>
+              {v.saveLabel}
             </a>
           </div>
           <p className="ainote">

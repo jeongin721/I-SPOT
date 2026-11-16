@@ -826,13 +826,13 @@ export default function View({ v }) {
                       <span className="lb">
                         의뢰인 / 관계
                       </span>
-                      <input className="inp" type="text" placeholder="예: 박○○ / 맞춤돌봄 생활지원사" />
+                      <input className="inp" type="text" placeholder="예: 박○○ / 맞춤돌봄 생활지원사" value={v.x.referrer} onChange={v.xs.referrer} />
                     </label>
                     <label className="fl">
                       <span className="lb">
                         담당 상담사
                       </span>
-                      <input className="inp" type="text" defaultValue="이서연" />
+                      <input className="inp" type="text" value={v.counselor} readOnly />
                     </label>
                     <label className="fl">
                       <span className="lb">
@@ -1094,7 +1094,7 @@ export default function View({ v }) {
                   <span className="lb">
                     주 돌봄자 · 가족과의 관계
                   </span>
-                  <textarea className="ta2 ta1" rows="1" aria-label="주 돌봄자 · 가족과의 관계" />
+                  <textarea className="ta2 ta1" rows="1" aria-label="주 돌봄자 · 가족과의 관계" value={v.x.guardRel} onChange={v.xs.guardRel} />
                   <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                     <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -1183,13 +1183,13 @@ export default function View({ v }) {
                         <Fragment key={i_r}>
                           <tr>
                             <td>
-                              <input aria-label="성명" />
+                              <input aria-label="성명" value={r.name} onChange={r.setName} />
                             </td>
                             <td>
-                              <input aria-label="관계" />
+                              <input aria-label="관계" value={r.rel} onChange={r.setRel} />
                             </td>
                             <td>
-                              <input aria-label="나이" />
+                              <input aria-label="나이" value={r.age} onChange={r.setAge} />
                             </td>
                             <td>
                               <input aria-label="연락처" />
@@ -1201,7 +1201,7 @@ export default function View({ v }) {
                               <input aria-label="연락 빈도" />
                             </td>
                             <td>
-                              <input aria-label="동거여부" />
+                              <input aria-label="동거여부" value={r.live} onChange={r.setLive} />
                             </td>
                           </tr>
                         </Fragment>
@@ -1244,7 +1244,7 @@ export default function View({ v }) {
                   주호소 상세 · 생활력
                 </div>
                 <label className="fl cp-in">
-                  <textarea className="ta2" placeholder="어르신이 말씀하신 현재 어려움, 그렇게 된 계기(사별 · 퇴원 · 이사 등), 가족 · 의뢰인이 보는 상황을 어르신의 말씀 중심으로 기재" aria-label="주호소 상세" />
+                  <textarea className="ta2" placeholder="어르신이 말씀하신 현재 어려움, 그렇게 된 계기(사별 · 퇴원 · 이사 등), 가족 · 의뢰인이 보는 상황을 어르신의 말씀 중심으로 기재" aria-label="주호소 상세" value={v.x.detail} onChange={v.xs.detail} />
                   <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                     <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -1270,7 +1270,7 @@ export default function View({ v }) {
                   <span aria-hidden="true">
                     (
                   </span>
-                  <input className="hs-name" type="text" placeholder="이름" aria-label="건강 상태 기재 대상 이름" />
+                  <input className="hs-name" type="text" placeholder="이름" aria-label="건강 상태 기재 대상 이름" value={v.x.hsName} onChange={v.xs.hsName} />
                   <span aria-hidden="true">
                     )
                   </span>
@@ -1295,7 +1295,7 @@ export default function View({ v }) {
                       <span className="hs-t">
                         질환명
                       </span>
-                      <input className="hs-in hs-w" type="text" aria-label="질환명" placeholder="질환명 입력" disabled={v.hs.off.dis} />
+                      <input className="hs-in hs-w" type="text" aria-label="질환명" placeholder="질환명 입력" disabled={v.hs.off.dis} value={v.x.disName} onChange={v.xs.disName} />
                     </div>
                   </div>
                   <div className="hs-row">
@@ -1313,7 +1313,7 @@ export default function View({ v }) {
                       <span className="hs-t">
                         장애명
                       </span>
-                      <input className="hs-in hs-w" type="text" aria-label="장애명" placeholder="장애명 입력" disabled={v.hs.off.dsb} />
+                      <input className="hs-in hs-w" type="text" aria-label="장애명" placeholder="장애명 입력" disabled={v.hs.off.dsb} value={v.x.dsbName} onChange={v.xs.dsbName} />
                       <span className="hs-t">
                         장애 [
                       </span>
@@ -1341,7 +1341,7 @@ export default function View({ v }) {
                           </button>
                         </Fragment>
                       ))}
-                      <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="입원 · 통원 횟수" disabled={v.hs.off.hosp} />
+                      <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="입원 · 통원 횟수" disabled={v.hs.off.hosp} value={v.x.hospN} onChange={v.xs.hospN} />
                       <span className="hs-t">
                         회 / 구분:
                       </span>
@@ -1356,11 +1356,11 @@ export default function View({ v }) {
                         <span className="hs-t">
                           / 총
                         </span>
-                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="입원 · 통원 기간 년" disabled={v.hs.off.hosp} />
+                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="입원 · 통원 기간 년" disabled={v.hs.off.hosp} value={v.x.hospY} onChange={v.xs.hospY} />
                         <span className="hs-t">
                           년
                         </span>
-                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="입원 · 통원 기간 개월" disabled={v.hs.off.hosp} />
+                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="입원 · 통원 기간 개월" disabled={v.hs.off.hosp} value={v.x.hospM} onChange={v.xs.hospM} />
                         <span className="hs-t">
                           개월
                         </span>
@@ -1382,7 +1382,7 @@ export default function View({ v }) {
                       <span className="hs-t">
                         진단명
                       </span>
-                      <input className="hs-in hs-w" type="text" aria-label="진단명" placeholder="진단명 입력" disabled={v.hs.off.psy} />
+                      <input className="hs-in hs-w" type="text" aria-label="진단명" placeholder="진단명 입력" disabled={v.hs.off.psy} value={v.x.psyName} onChange={v.xs.psyName} />
                       <span className="hs-t">
                         / 관련 약 복용:
                       </span>
@@ -1397,11 +1397,11 @@ export default function View({ v }) {
                         <span className="hs-t">
                           (총
                         </span>
-                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="약물복용 기간 년" disabled={v.hs.off.med} />
+                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="약물복용 기간 년" disabled={v.hs.off.med} value={v.x.medY} onChange={v.xs.medY} />
                         <span className="hs-t">
                           년
                         </span>
-                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="약물복용 기간 개월" disabled={v.hs.off.med} />
+                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="약물복용 기간 개월" disabled={v.hs.off.med} value={v.x.medM} onChange={v.xs.medM} />
                         <span className="hs-t">
                           개월)
                         </span>
@@ -1423,20 +1423,20 @@ export default function View({ v }) {
                       <span className="hs-t">
                         상담사유
                       </span>
-                      <input className="hs-in hs-w" type="text" aria-label="상담사유" placeholder="상담사유 입력" disabled={v.hs.off.cns} />
+                      <input className="hs-in hs-w" type="text" aria-label="상담사유" placeholder="상담사유 입력" disabled={v.hs.off.cns} value={v.x.cnsWhy} onChange={v.xs.cnsWhy} />
                       <span className="hs-t">
                         /
                       </span>
-                      <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 횟수" disabled={v.hs.off.cns} />
+                      <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 횟수" disabled={v.hs.off.cns} value={v.x.cnsN} onChange={v.xs.cnsN} />
                       <span className="hs-g">
                         <span className="hs-t">
                           회 / 기간 총
                         </span>
-                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 기간 년" disabled={v.hs.off.cns} />
+                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 기간 년" disabled={v.hs.off.cns} value={v.x.cnsY} onChange={v.xs.cnsY} />
                         <span className="hs-t">
                           년
                         </span>
-                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 기간 개월" disabled={v.hs.off.cns} />
+                        <input className="hs-in hs-n" type="text" inputMode="numeric" aria-label="타기관 상담 기간 개월" disabled={v.hs.off.cns} value={v.x.cnsM} onChange={v.xs.cnsM} />
                         <span className="hs-t">
                           개월
                         </span>
@@ -1448,7 +1448,7 @@ export default function View({ v }) {
                       복용 약
                     </span>
                     <div className="hs-v">
-                      <input className="hs-in hs-w" type="text" aria-label="복용 약" placeholder="예: 혈압약 · 당뇨약 · 수면제" />
+                      <input className="hs-in hs-w" type="text" aria-label="복용 약" placeholder="예: 혈압약 · 당뇨약 · 수면제" value={v.x.meds} onChange={v.xs.meds} />
                     </div>
                   </div>
                   <div className="hs-row">
@@ -1456,7 +1456,7 @@ export default function View({ v }) {
                       장기요양등급
                     </span>
                     <div className="hs-v">
-                      <input className="hs-in hs-w" type="text" aria-label="장기요양등급" placeholder="예: 없음 / 신청 중 / 4등급 / 인지지원등급" />
+                      <input className="hs-in hs-w" type="text" aria-label="장기요양등급" placeholder="예: 없음 / 신청 중 / 4등급 / 인지지원등급" value={v.x.grade} onChange={v.xs.grade} />
                     </div>
                   </div>
                   <div className="hs-row">
@@ -1464,7 +1464,7 @@ export default function View({ v }) {
                       최근 낙상
                     </span>
                     <div className="hs-v">
-                      <input className="hs-in hs-w" type="text" aria-label="최근 낙상" placeholder="예: 없음 / 2026-06 욕실에서 미끄러짐" />
+                      <input className="hs-in hs-w" type="text" aria-label="최근 낙상" placeholder="예: 없음 / 2026-06 욕실에서 미끄러짐" value={v.x.fall} onChange={v.xs.fall} />
                     </div>
                   </div>
                 </div>
@@ -1673,7 +1673,7 @@ export default function View({ v }) {
                     <span className="lb">
                       어르신 태도 · 정서 상태
                     </span>
-                    <textarea className="ta2" />
+                    <textarea className="ta2" value={v.x.attitude} onChange={v.xs.attitude} />
                     <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                       <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -1699,7 +1699,7 @@ export default function View({ v }) {
                     <span className="lb">
                       주거 환경 (안전 · 위생 · 난방)
                     </span>
-                    <textarea className="ta2" />
+                    <textarea className="ta2" value={v.x.env} onChange={v.xs.env} />
                     <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                       <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -1726,7 +1726,7 @@ export default function View({ v }) {
                   <span className="lb">
                     상담사 소견 및 향후 계획
                   </span>
-                  <textarea className="ta2" style={{ minHeight: "96px" }} />
+                  <textarea className="ta2" style={{ minHeight: "96px" }} value={v.x.opinion} onChange={v.xs.opinion} />
                   <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                     <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -1757,6 +1757,11 @@ export default function View({ v }) {
                 </p>
               </>
             ) : null}
+            {v.err ? (
+              <p className="req" role="alert" style={{ margin: "0", fontSize: "13px", fontWeight: "500" }}>
+                {v.err}
+              </p>
+            ) : null}
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #DDE6EC", paddingTop: "18px" }}>
               <a className="btn btn-s" href={v.backHref} onClick={v.syncBack}>
                 취소
@@ -1764,8 +1769,8 @@ export default function View({ v }) {
               <button type="button" className="btn btn-s" onClick={v.goB}>
                 {v.midLabel}
               </button>
-              <a className="btn btn-p" href="#/CaseInfo">
-                등록
+              <a className="btn btn-p" href="#/CaseInfo" onClick={v.submit}>
+                {v.submitLabel}
               </a>
             </div>
           </form>

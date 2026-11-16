@@ -51,7 +51,7 @@ export default function View({ v }) {
             <i aria-hidden="true" />
             메뉴
           </label>
-          <a className="cta" href="#/Upload" onClick={v.markBack}>
+          <a className="cta" href={v.uploadHref} onClick={v.markBack}>
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
@@ -181,8 +181,13 @@ export default function View({ v }) {
             <a href="#/CaseList">
               사례 관리
             </a>
-            {" › 김순자 C-2026-0351"}
+            {" › "}{v.crumb}
           </nav>
+          {v.loadErr ? (
+            <p role="alert" className="note" style={{ margin: "0", color: "#A33B2E" }}>
+              {v.loadErr}
+            </p>
+          ) : null}
           <section style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "14px 18px" }}>
             <a className="btn btn-sm btn-s" href="#/CaseList">
               ← 목록
@@ -190,17 +195,17 @@ export default function View({ v }) {
             <div style={{ flex: "1 1 320px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
                 <h1 className="h1-sans" style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>
-                  김순자
+                  {v.name}
                 </h1>
                 <span className="sub">
-                  만 82세 · 여 · 독거
+                  {v.sub}
                 </span>
-                <span className="chip c-hi">
-                  위기도 집중
+                <span className={v.riskCls}>
+                  {v.riskLabel}
                 </span>
               </div>
               <div className="note">
-                C-2026-0351 · 다음 상담 오늘 16:00
+                {v.headNote}
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -208,16 +213,16 @@ export default function View({ v }) {
                 <span className="rec-dot" aria-hidden="true" />
                 {" 녹음하기"}
               </button>
-              <a className="btn btn-s" href="#/Upload" onClick={v.markBack}>
+              <a className="btn btn-s" href={v.uploadHref} onClick={v.markBack}>
                 ↑ 녹취 올리기
               </a>
             </div>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
-            <a className="on" aria-current="page" href="#/CaseInfo">
+            <a className="on" aria-current="page" href={v.infoHref}>
               내담자 정보
             </a>
-            <a href="#/CaseHistory">
+            <a href={v.historyHref}>
               상담 이력
             </a>
             <a href="#/Soon?name=CaseDocs">
@@ -239,99 +244,91 @@ export default function View({ v }) {
                   사례 번호
                 </dt>
                 <dd>
-                  C-2026-0351
+                  {v.kvNo}
                 </dd>
                 <dt>
                   성함
                 </dt>
                 <dd>
-                  김순자 (여) · 호칭 "김순자 님"
+                  {v.kvName}
                 </dd>
                 <dt>
                   생년월일
                 </dt>
                 <dd>
-                  1944-03-14 (만 82세)
+                  {v.kvBirth}
                 </dd>
                 <dt>
                   가구형태
                 </dt>
                 <dd>
-                  독거 (배우자 2025년 사별)
+                  {v.kvLiving}
                 </dd>
                 <dt>
                   주 돌봄자
                 </dt>
                 <dd>
-                  이정훈 / 아들 · 만 54세 · 타 지역 거주 (주 1회 통화)
+                  {v.kvCarer}
                 </dd>
                 <dt>
                   비상연락
                 </dt>
                 <dd>
-                  이정훈(아들) 010-****-2741 · 생활지원사 주 1회 방문
+                  {v.kvEmergency}
                 </dd>
                 <dt>
                   동의 상태
                 </dt>
                 <dd style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                  <span className="chip c-ok">
-                    상담 본인 동의
-                  </span>
-                  <span className="chip c-ok">
-                    녹음 동의
-                  </span>
-                  <span className="chip c-check">
-                    가족 공유 일부 동의
-                  </span>
+                  {v.kvConsent}
                 </dd>
                 <dt>
                   의뢰 경로
                 </dt>
                 <dd>
-                  노인맞춤돌봄 생활지원사 의뢰
+                  {v.kvReferral}
                 </dd>
                 <dt>
                   담당 상담사
                 </dt>
                 <dd>
-                  이서연
+                  {v.kvCounselor}
                 </dd>
                 <dt>
                   접수일
                 </dt>
                 <dd>
-                  2026-07-28
+                  {v.kvReport}
                 </dd>
                 <dt>
                   배정일
                 </dt>
                 <dd>
-                  2026-07-29
+                  {v.kvAssigned}
                 </dd>
                 <dt>
                   초기상담일
                 </dt>
                 <dd>
-                  2026-07-31 (방문)
+                  {v.kvFirst}
                 </dd>
                 <dt>
                   상담 회차
                 </dt>
                 <dd style={{ fontWeight: "700" }}>
-                  8회
+                  {v.kvCount}
                 </dd>
                 <dt>
                   최근 상담
                 </dt>
                 <dd>
-                  2026-10-02 · 방문상담
+                  {v.kvLatest}
                 </dd>
                 <dt>
                   안부 앱
                 </dt>
                 <dd>
-                  연결됨 (9/18) · 2주 응답 12/14
+                  {v.kvApp}
                 </dd>
               </dl>
             </section>
@@ -340,94 +337,68 @@ export default function View({ v }) {
                 <h2 className="h2">
                   주호소 · 고려사항
                 </h2>
-                <span className="chip c-hi" style={{ marginLeft: "auto" }}>
-                  위기도 집중
+                <span className={v.careCls} style={{ marginLeft: "auto" }}>
+                  {v.careChip}
                 </span>
               </div>
               <div className="note" style={{ marginTop: "4px", textAlign: "right" }}>
-                상담사 지정 · 9/18
+                {v.careNote}
               </div>
               <div className="note" style={{ marginTop: "10px" }}>
                 주호소
               </div>
               <div style={{ margin: "6px 0 16px" }}>
-                배우자와 사별 후 식사를 거르고 외출이 줄었음 · 불면 · 기분 저하
+                {v.complaint}
               </div>
               <div className="note">
                 상담 영역
               </div>
               <div style={{ margin: "6px 0 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                <span className="chip c-normal">
-                  상실 · 애도
-                </span>
-                <span className="chip c-normal">
-                  정서 · 우울
-                </span>
-                <span className="chip c-normal">
-                  고립 · 외로움 (확인 중)
-                </span>
+                {(v.areaChips || []).map((t, i_t) => (
+                  <span key={i_t} className="chip c-normal">
+                    {t}
+                  </span>
+                ))}
               </div>
               <div className="note">
                 주요 키워드
               </div>
               <div style={{ margin: "6px 0 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                <span className="chip c-normal">
-                  #사별
-                </span>
-                <span className="chip c-normal">
-                  #외로움
-                </span>
-                <span className="chip c-normal">
-                  #식사 거름
-                </span>
-                <span className="chip c-normal">
-                  #불면
-                </span>
-                <span className="chip c-normal">
-                  #외출 감소
-                </span>
+                {(v.keywordChips || []).map((t, i_t) => (
+                  <span key={i_t} className="chip c-normal">
+                    {t}
+                  </span>
+                ))}
               </div>
               <div className="note">
                 의사소통 고려
               </div>
               <div style={{ margin: "6px 0 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                <span className="chip c-normal">
-                  보청기(왼쪽)
-                </span>
-                <span className="chip c-normal">
-                  큰 글씨 자료
-                </span>
-                <span className="chip c-normal">
-                  천천히 · 반복 확인
-                </span>
+                {(v.commChips || []).map((t, i_t) => (
+                  <span key={i_t} className="chip c-normal">
+                    {t}
+                  </span>
+                ))}
               </div>
               <div className="note">
                 건강
               </div>
               <div style={{ margin: "6px 0 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                <span className="chip c-normal">
-                  고혈압 · 무릎 관절염
-                </span>
-                <span className="chip c-normal">
-                  복약 2종(혈압약 · 진통제)
-                </span>
-                <span className="chip c-normal">
-                  장기요양등급 없음
-                </span>
+                {(v.healthChips || []).map((t, i_t) => (
+                  <span key={i_t} className="chip c-normal">
+                    {t}
+                  </span>
+                ))}
               </div>
               <div className="note">
                 이용 서비스
               </div>
               <div style={{ marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                <span className="chip c-normal">
-                  노인맞춤돌봄(주 1회)
-                </span>
-                <span className="chip c-normal">
-                  방문건강관리(보건소)
-                </span>
-                <span className="chip c-normal">
-                  경로당 (최근 이용 줄어듦)
-                </span>
+                {(v.serviceChips || []).map((t, i_t) => (
+                  <span key={i_t} className="chip c-normal">
+                    {t}
+                  </span>
+                ))}
               </div>
             </section>
           </div>
@@ -437,59 +408,39 @@ export default function View({ v }) {
                 현재 진행 상황
               </h2>
               <span className="note">
-                8회차 (10/2)
+                {v.progNote}
               </span>
-              <a className="btn btn-p btn-sm" href="#/Step1Record" style={{ marginLeft: "auto" }}>
-                이어서 하기 · 기록 확인
+              <a className="btn btn-p btn-sm" href={v.contHref} style={{ marginLeft: "auto" }}>
+                {v.contLabel}
               </a>
             </div>
             <div style={{ overflowX: "auto" }}>
               <div style={{ minWidth: "660px", display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", position: "relative" }}>
                 <div style={{ position: "absolute", left: "10%", right: "10%", top: "17px", height: "2px", background: "#D9E3EA" }} />
                 <div className="st">
-                  <span className="sd" style={{ background: "#ECF5FA", color: "#55687A" }}>
-                    ✓
+                  <span className="sd" style={v.recDot}>
+                    {v.recMark}
                   </span>
                   상담 녹음
                   <span className="note">
-                    10/7
+                    {v.recDate}
                   </span>
                 </div>
-                <a className="st stl" href="#/Step1Record">
-                  <span className="sd" style={{ background: "#FFFFFF", border: "2px solid #1F3A56", color: "#1F3A56" }}>
-                    1
-                  </span>
-                  <b style={{ fontWeight: "700", color: "#1F3A56" }}>
-                    기록 확인
-                  </b>
-                  <span className="chip c-check">
-                    저신뢰 3곳
-                  </span>
-                </a>
-                <a className="st stl" href="#/Step2Signals">
-                  <span className="sd" style={{ background: "#DDE6EC", color: "#66788A" }}>
-                    2
-                  </span>
-                  <span style={{ color: "#66788A" }}>
-                    정서·위기 신호 확인
-                  </span>
-                </a>
-                <a className="st stl" href="#/Step3Summary">
-                  <span className="sd" style={{ background: "#DDE6EC", color: "#66788A" }}>
-                    3
-                  </span>
-                  <span style={{ color: "#66788A" }}>
-                    상담일지 작성
-                  </span>
-                </a>
-                <a className="st stl" href="#/Step4Next">
-                  <span className="sd" style={{ background: "#DDE6EC", color: "#66788A" }}>
-                    4
-                  </span>
-                  <span style={{ color: "#66788A" }}>
-                    다음 상담 준비
-                  </span>
-                </a>
+                {(v.steps || []).map((t, i_t) => (
+                  <a key={i_t} className="st stl" href={t.href}>
+                    <span className="sd" style={t.dot}>
+                      {t.mark}
+                    </span>
+                    <span style={t.lab}>
+                      {t.label}
+                    </span>
+                    {i_t === 0 && v.st1Chip ? (
+                      <span className="chip c-check">
+                        {v.st1Chip}
+                      </span>
+                    ) : null}
+                  </a>
+                ))}
               </div>
             </div>
           </section>
@@ -497,7 +448,7 @@ export default function View({ v }) {
             <section style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 20px" }}>
               <div style={{ flex: "1 1 380px" }}>
                 <div className="sub">
-                  오늘 16:00 · 9회차 방문상담 · 자택 방문
+                  {v.briefSub}
                 </div>
                 <h2 style={{ margin: "2px 0 0", fontSize: "22px", fontWeight: "700" }}>
                   상담 전 브리핑
@@ -556,10 +507,10 @@ export default function View({ v }) {
                     어르신이 남긴 말씀
                   </span>
                   <b className="lead-main">
-                    "다음에 오시면 할 얘기가 있어요"
+                    {v.lead1}
                   </b>
                   <span className="src">
-                    10/7 22:10 · 안부 앱 (음성)
+                    {v.lead1Src}
                   </span>
                 </div>
                 <div className="card lead">
@@ -567,17 +518,21 @@ export default function View({ v }) {
                     안부 응답 변화
                   </span>
                   <span className="lead-q">
-                    오늘 기분은 어떠세요?
+                    {v.lead2Q}
                   </span>
                   <b className="lead-main">
-                    {"보통이에요 "}
-                    <span className="lead-arrow">
-                      →
-                    </span>
-                    {" 별로예요"}
+                    {v.lead2Has ? (
+                      <>
+                        {v.lead2From}{" "}
+                        <span className="lead-arrow">
+                          →
+                        </span>
+                        {" "}{v.lead2To}
+                      </>
+                    ) : v.lead2}
                   </b>
                   <span className="src">
-                    10/6 · QB-E-05
+                    {v.lead2Src}
                   </span>
                 </div>
                 <div className="card lead">
@@ -585,13 +540,13 @@ export default function View({ v }) {
                     처음 나온 이야기
                   </span>
                   <span className="lead-q">
-                    식사 · 건강
+                    {v.lead3Q}
                   </span>
                   <b className="lead-main">
-                    "끼니를 그냥 넘길 때가 많아요"
+                    {v.lead3}
                   </b>
                   <span className="src">
-                    8회차 02:15 · 화자 확인 중
+                    {v.lead3Src}
                   </span>
                 </div>
               </div>
@@ -602,65 +557,29 @@ export default function View({ v }) {
                   <h2 className="h2">
                     확인할 사항
                   </h2>
-                  <a href="#/Step4Next?sec=next-checks" onClick={v.goChecks} style={{ marginLeft: "auto", fontSize: "13px" }}>
+                  <a href={v.checksHref} onClick={v.goChecks} style={{ marginLeft: "auto", fontSize: "13px" }}>
                     전체 확인
                   </a>
                 </div>
                 <div className="rq-list" tabIndex="0" aria-label="확인할 사항 목록">
-                  <label className="rq">
-                    <input type="checkbox" defaultChecked="" />
-                    <span>
-                      "이렇게 살아서 뭐 하나" 말씀 이후 마음 변화 (S-04 재확인 · 109 안내)
-                      <span className="src">
-                        근거 · 7회차 05:10
+                  {(v.checkRows || []).map((x, i_x) => (
+                    <label key={i_x} className="rq">
+                      <input type="checkbox" />
+                      <span>
+                        {x.text}
+                        <span className="src">
+                          {x.src}
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                  <label className="rq">
-                    <input type="checkbox" defaultChecked="" />
-                    <span>
-                      02:15 발화 화자 · 식사 상황
-                      <span className="src">
-                        근거 · 8회차 02:15
+                    </label>
+                  ))}
+                  {v.checkEmpty ? (
+                    <div className="rq">
+                      <span>
+                        —
                       </span>
-                    </span>
-                  </label>
-                  <label className="rq">
-                    <input type="checkbox" />
-                    <span>
-                      어르신이 꺼내고 싶은 이야기부터
-                      <span className="src">
-                        근거 · 10/7 안부 앱 말씀
-                      </span>
-                    </span>
-                  </label>
-                  <label className="rq">
-                    <input type="checkbox" />
-                    <span>
-                      위기 시 연락 계획(생활지원사 · 상담사)이 실제로 쓰였는지
-                      <span className="src">
-                        근거 · 7회차 연락 계획 · 7회차 02:40
-                      </span>
-                    </span>
-                  </label>
-                  <label className="rq">
-                    <input type="checkbox" />
-                    <span>
-                      안부 앱 '오늘 기분' 응답이 바뀐 이유
-                      <span className="src">
-                        근거 · 10/6 QB-E-05
-                      </span>
-                    </span>
-                  </label>
-                  <label className="rq">
-                    <input type="checkbox" />
-                    <span>
-                      아들에게 상담 내용 공유 범위 (가족 공유 일부 동의)
-                      <span className="src">
-                        근거 · 10/27 메모
-                      </span>
-                    </span>
-                  </label>
+                    </div>
+                  ) : null}
                 </div>
               </section>
               <section className="card" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -669,36 +588,22 @@ export default function View({ v }) {
                     추가 질문
                   </h2>
                   <span className="chip c-ai">
-                    AI 초안
+                    {v.draftChip}
                   </span>
-                  <a href="#/Step4Next" style={{ marginLeft: "auto", fontSize: "13px" }}>
+                  <a href={v.nextHref} style={{ marginLeft: "auto", fontSize: "13px" }}>
                     질문 수정
                   </a>
                 </div>
-                <div className="rq">
-                  <span className="chip c-normal">
-                    열린 질문
-                  </span>
-                  <span>
-                    "요즘 하루는 주로 어떻게 보내세요? 이야기 나눌 분이 계세요?"
-                  </span>
-                </div>
-                <div className="rq">
-                  <span className="chip c-normal">
-                    열린 질문
-                  </span>
-                  <span>
-                    "지난번에 살아서 뭐 하나 싶다고 하셨던 마음은 요즘 어떠세요?"
-                  </span>
-                </div>
-                <div className="rq">
-                  <span className="chip c-normal">
-                    QB-N-01
-                  </span>
-                  <span>
-                    "요즘 식사는 주로 어떻게 하세요?"
-                  </span>
-                </div>
+                {(v.draftRows || []).map((q, i_q) => (
+                  <div key={i_q} className="rq">
+                    <span className="chip c-normal">
+                      {q.chip}
+                    </span>
+                    <span>
+                      {q.text}
+                    </span>
+                  </div>
+                ))}
               </section>
             </div>
           </div>
@@ -707,7 +612,7 @@ export default function View({ v }) {
               기관 서식
             </b>
             <span className="chip c-check">
-              점검표 3차 작성 전
+              {v.formChip}
             </span>
             <a className="btn btn-p" href="#/Soon?name=CaseForm" onClick={v.goForm}>
               기관 서식 작성
@@ -737,6 +642,11 @@ export default function View({ v }) {
                 </button>
               </>
             ) : null}
+            {v.closureErr ? (
+              <span role="alert" className="acc" style={{ fontSize: "13px", flexBasis: "100%" }}>
+                {v.closureErr}
+              </span>
+            ) : null}
           </section>
           <p className="ainote">
             AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.
@@ -760,10 +670,10 @@ export default function View({ v }) {
                       사례
                     </span>
                     <b>
-                      김순자 · C-2026-0351
+                      {v.caseLabel}
                     </b>
                     <span className="sub">
-                      만 82세 · 여 · 독거
+                      {v.sub}
                     </span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>

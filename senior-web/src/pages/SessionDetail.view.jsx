@@ -51,7 +51,7 @@ export default function View({ v }) {
             <i aria-hidden="true" />
             메뉴
           </label>
-          <a className="cta" href="#/Upload" onClick={v.markBack}>
+          <a className="cta" href={v.uploadHref} onClick={v.markBack}>
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
@@ -182,22 +182,27 @@ export default function View({ v }) {
               사례 관리
             </a>
             {" › "}
-            <a href="#/CaseInfo">
-              김순자 C-2026-0351
+            <a href={v.infoHref}>
+              {v.caseCrumb}
             </a>
             {" › "}
-            <a href="#/CaseHistory">
+            <a href={v.historyHref}>
               상담 이력
             </a>
             {" › "}{v.cur.no}
           </nav>
+          {v.loadErr ? (
+            <p role="alert" className="note" style={{ margin: "0", color: "#A33B2E" }}>
+              {v.loadErr}
+            </p>
+          ) : null}
           <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 14px" }}>
             <div style={{ flex: "1 1 300px" }}>
               <div className="sub">
                 {v.cur.meta}
               </div>
               <h1 style={{ margin: "2px 0 0", fontSize: "30px", fontWeight: "700" }}>
-                {v.cur.no}{" · 김순자"}
+                {v.cur.no}{" · "}{v.name}
               </h1>
             </div>
             <span className={v.cur.st} style={{ height: "28px" }}>
@@ -205,7 +210,7 @@ export default function View({ v }) {
             </span>
           </header>
           <section style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-            <a className="btn btn-sm btn-s" href="#/CaseHistory">
+            <a className="btn btn-sm btn-s" href={v.historyHref}>
               ← 상담 이력
             </a>
             <span className="note" style={{ marginLeft: "6px" }}>
@@ -224,7 +229,7 @@ export default function View({ v }) {
                     <div className="sl-hd">
                       {"회차 선택 "}
                       <span className="note">
-                        김순자 · 총 8회
+                        {v.slHead}
                       </span>
                     </div>
                     <div className="sl-list">

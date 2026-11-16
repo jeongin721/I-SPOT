@@ -79,7 +79,7 @@ export default function View({ v }) {
                 <p className="lb">
                   어느 어르신의 자료인가요?
                 </p>
-                <input className="inp" type="search" aria-label="이름 또는 사례 ID 검색" placeholder="이름 또는 사례 ID 검색" style={{ width: "100%" }} />
+                <input className="inp" type="search" aria-label="이름 또는 사례 ID 검색" placeholder="이름 또는 사례 ID 검색" value={v.search} onChange={v.setSearch} style={{ width: "100%" }} />
                 <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px", maxHeight: "320px", overflowY: "auto", paddingRight: "6px" }}>
                   {(v.cases || []).map((c, i_c) => (
                     <Fragment key={i_c}>
@@ -204,13 +204,18 @@ export default function View({ v }) {
                     어르신 본인(또는 대리 동의 시 사유 · 관계 기록)의 녹음 동의를 받은 상담만 올려 주세요. 동의 내용은 S-01 초기상담지에서 확인할 수 있어요. 가족 통화가 함께 녹음됐다면 가족에게도 녹음 사실을 알렸는지 확인해 주세요.
                   </span>
                   <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer" }}>
-                    <input type="checkbox" aria-label="녹음 동의를 확인했어요" />
+                    <input type="checkbox" aria-label="녹음 동의를 확인했어요" checked={v.consent} onChange={v.setConsent} />
                     녹음 동의를 확인했어요
                   </label>
                 </div>
               </>
             ) : null}
           </div>
+          {v.hasErr ? (
+            <p role="alert" style={{ margin: "0", padding: "0 30px 12px", color: "#A33B2E", fontSize: "13px" }}>
+              {v.err}
+            </p>
+          ) : null}
           <div style={{ padding: "18px 30px 24px", display: "flex", alignItems: "center", gap: "10px", borderTop: "1px solid #DDE6EC" }}>
             {v.s1 ? (
               <>
@@ -237,7 +242,7 @@ export default function View({ v }) {
             {v.s3 ? (
               <>
                 <button type="button" className="btn btn-p" onClick={v.upload}>
-                  업로드
+                  {v.uploadLabel}
                 </button>
               </>
             ) : null}
@@ -265,7 +270,7 @@ export default function View({ v }) {
                   <a className="btn btn-s" href={v.backHref} onClick={v.syncBack}>
                     나중에
                   </a>
-                  <a className="btn btn-p" href="#/Step1Record" onClick={v.resetFlow}>
+                  <a className="btn btn-p" href={v.step1Href} onClick={v.resetFlow}>
                     이동
                   </a>
                 </div>

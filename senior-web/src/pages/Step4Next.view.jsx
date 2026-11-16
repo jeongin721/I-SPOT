@@ -182,35 +182,35 @@ export default function View({ v }) {
               사례 관리
             </a>
             {" › "}
-            <a href="#/CaseInfo">
-              김순자 C-2026-0351
+            <a href={v.caseHref}>
+              {v.crumbCase}
             </a>
             {" › "}
-            <a href="#/CaseHistory">
+            <a href={v.historyHref}>
               상담 이력
             </a>
             {" › "}
-            <a href="#/SessionDetail">
-              8회차
+            <a href={v.sessionHref}>
+              {v.crumbSession}
             </a>
           </nav>
           <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 14px" }}>
             <div style={{ flex: "1 1 280px" }}>
               <div className="sub">
-                10/2(금) 방문상담
+                {v.sub}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
-                <a className="btn btn-sm btn-s" href="#/CaseInfo" aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
+                <a className="btn btn-sm btn-s" href={v.caseHref} aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
                   ←
                 </a>
                 <h1 style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>
-                  8회차 처리 · 김순자
+                  {v.title}
                 </h1>
               </div>
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <a className="stp done" href="#/Step1Record">
+            <a className="stp done" href={v.step1Href}>
               <span className="sn">
                 ✓
               </span>
@@ -218,7 +218,7 @@ export default function View({ v }) {
                 기록 확인
               </b>
             </a>
-            <a className="stp done" href="#/Step2Signals">
+            <a className="stp done" href={v.step2Href}>
               <span className="sn">
                 ✓
               </span>
@@ -226,7 +226,7 @@ export default function View({ v }) {
                 정서·위기 신호 확인
               </b>
             </a>
-            <a className="stp done" href="#/Step3Summary">
+            <a className="stp done" href={v.step3Href}>
               <span className="sn">
                 ✓
               </span>
@@ -234,7 +234,7 @@ export default function View({ v }) {
                 상담일지 작성
               </b>
             </a>
-            <a className="stp on" href="#/Step4Next" aria-current="step">
+            <a className="stp on" href={v.step4Href} aria-current="step">
               <span className="sn">
                 4
               </span>
@@ -264,6 +264,17 @@ export default function View({ v }) {
                     {c.isEdit ? (
                       <>
                         <textarea className="edit-in" rows="2" aria-label="확인 사항 수정" value={c.draft} onChange={c.setDraft} />
+                        {/* 디자인에 없던 줄: 종류(확인 · 조치) · 기한 — API_CONTRACT 27절 kind · due_date */}
+                        <span style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          <select className="edit-in" aria-label="종류" value={c.kind} onChange={c.setKind} style={{ width: "auto" }}>
+                            {(v.kindOpts || []).map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input className="edit-in" type="date" aria-label="기한" value={c.due} onChange={c.setDue} style={{ width: "auto" }} />
+                        </span>
                       </>
                     ) : null}
                     <span className="note">
@@ -290,6 +301,17 @@ export default function View({ v }) {
                 <div className="qcard" style={{ flexDirection: "row", alignItems: "flex-start", gap: "12px", boxShadow: "inset 0 0 0 2px #1F3A56" }}>
                   <div style={{ flex: "1", display: "flex", flexDirection: "column", gap: "6px" }}>
                     <textarea className="edit-in" rows="2" aria-label="새 확인 사항" placeholder="새 확인 사항을 적어 주세요" value={r.draft} onChange={r.setDraft} />
+                    {/* 디자인에 없던 줄: 종류(확인 · 조치) · 기한 — API_CONTRACT 27절 kind · due_date */}
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      <select className="edit-in" aria-label="종류" value={r.kind} onChange={r.setKind} style={{ width: "auto" }}>
+                        {(v.kindOpts || []).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input className="edit-in" type="date" aria-label="기한" value={r.due} onChange={r.setDue} style={{ width: "auto" }} />
+                    </span>
                   </div>
                 </div>
               </Fragment>
@@ -316,6 +338,46 @@ export default function View({ v }) {
                 </>
               ) : null}
             </div>
+          </section>
+          {/* 디자인에 없던 카드: 재방문 일정(POST followup-visits) · 돌봄 상태(PUT care-status). 기존 클래스만 썼다 — 디자인 확정 때 다시 본다. */}
+          <section className="card" aria-label="재방문 일정 · 돌봄 상태" style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <h2 className="h2">
+              재방문 일정 · 돌봄 상태
+            </h2>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+              <select className="edit-in" aria-label="상담 방식" value={v.fu.type} onChange={v.fu.setType} style={{ width: "auto" }}>
+                {(v.fu.types || []).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input className="edit-in" type="date" aria-label="재방문 날짜" min={v.fu.min} value={v.fu.date} onChange={v.fu.setDate} style={{ width: "auto" }} />
+              <input className="edit-in" type="time" aria-label="재방문 시각" value={v.fu.time} onChange={v.fu.setTime} style={{ width: "auto" }} />
+              <input className="edit-in" type="text" aria-label="장소" placeholder="장소" value={v.fu.place} onChange={v.fu.setPlace} style={{ flex: "1 1 160px", width: "auto" }} />
+              <button type="button" className="btn btn-sm btn-s" onClick={v.fu.submit}>
+                {v.fu.label}
+              </button>
+            </div>
+            <span className="note" role="status">
+              {v.fu.note}
+            </span>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+              <select className="edit-in" aria-label="돌봄 상태" value={v.cs.value} onChange={v.cs.set} style={{ width: "auto" }}>
+                {(v.cs.opts || []).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input className="edit-in" type="text" aria-label="돌봄 상태 메모" placeholder="메모" value={v.cs.note} onChange={v.cs.setNote} style={{ flex: "1 1 200px", width: "auto" }} />
+              <button type="button" className="btn btn-sm btn-s" onClick={v.cs.submit}>
+                {v.cs.label}
+              </button>
+            </div>
+            <span className="note" role="status">
+              {v.cs.status}
+            </span>
           </section>
           <section className="card" aria-label="추가 질문" style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 12px" }}>
@@ -455,13 +517,18 @@ export default function View({ v }) {
             </div>
           </section>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-            <a className="btn btn-s" href="#/Step3Summary">
+            <a className="btn btn-s" href={v.step3Href}>
               ← 상담일지 작성
             </a>
-            <a className="btn btn-p" href="#/CaseInfo?sec=brief" style={{ marginLeft: "auto" }}>
-              8회차 처리 완료 · 브리핑 보기
+            <a className="btn btn-p" href={v.doneHref} style={{ marginLeft: "auto" }} onClick={v.done}>
+              {v.doneLabel}
             </a>
           </div>
+          {v.msg ? (
+            <p className="note" role="alert" style={{ margin: "0" }}>
+              {v.msg}
+            </p>
+          ) : null}
           <p className="ainote">
             AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.
           </p>

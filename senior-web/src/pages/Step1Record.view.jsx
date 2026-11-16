@@ -182,15 +182,15 @@ export default function View({ v }) {
               사례 관리
             </a>
             {" › "}
-            <a href="#/CaseInfo">
-              김순자 C-2026-0351
+            <a href={v.caseHref}>
+              {v.caseCrumb}
             </a>
             {" › "}
-            <a href="#/CaseHistory">
+            <a href={v.historyHref}>
               상담 이력
             </a>
             {" › "}
-            <a href="#/SessionDetail">
+            <a href={v.detailHref}>
               {v.slNo}
             </a>
           </nav>
@@ -200,11 +200,11 @@ export default function View({ v }) {
                 {v.slSub}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginTop: "2px" }}>
-                <a className="btn btn-sm btn-s" href="#/CaseInfo" aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
+                <a className="btn btn-sm btn-s" href={v.caseHref} aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
                   ←
                 </a>
                 <h1 style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>
-                  {v.slNo}{" 처리 · 김순자"}
+                  {v.slNo}{" 처리 · "}{v.caseName}
                 </h1>
                 <div className="sl-wrap">
                   <button type="button" className="sl-btn" aria-haspopup="listbox" aria-expanded={v.slExp} onClick={v.slToggle}>
@@ -219,7 +219,7 @@ export default function View({ v }) {
                         <div className="sl-hd">
                           {"회차 선택 "}
                           <span className="note">
-                            김순자 · 총 8회
+                            {v.slHead}
                           </span>
                         </div>
                         <div className="sl-list">
@@ -247,7 +247,7 @@ export default function View({ v }) {
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <a className="stp on" href="#/Step1Record" aria-current="step">
+            <a className="stp on" href={v.step1Href} aria-current="step">
               <span className="sn">
                 1
               </span>
@@ -255,7 +255,7 @@ export default function View({ v }) {
                 기록 확인
               </b>
             </a>
-            <a className="stp" href="#/Step2Signals">
+            <a className="stp" href={v.step2Href}>
               <span className="sn">
                 2
               </span>
@@ -263,7 +263,7 @@ export default function View({ v }) {
                 정서·위기 신호 확인
               </b>
             </a>
-            <a className="stp" href="#/Step3Summary">
+            <a className="stp" href={v.step3Href}>
               <span className="sn">
                 3
               </span>
@@ -271,7 +271,7 @@ export default function View({ v }) {
                 상담일지 작성
               </b>
             </a>
-            <a className="stp" href="#/Step4Next">
+            <a className="stp" href={v.step4Href}>
               <span className="sn">
                 4
               </span>
@@ -280,6 +280,11 @@ export default function View({ v }) {
               </b>
             </a>
           </nav>
+          {v.hasStatus ? (
+            <p role="alert" className="note" style={{ margin: "0" }}>
+              {v.statusMsg}
+            </p>
+          ) : null}
           {v.done ? (
             <>
               <section className="card" aria-label="기록 확인" style={{ overflow: "hidden" }}>
@@ -365,7 +370,7 @@ export default function View({ v }) {
                         <span style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                           {l.edit ? (
                             <>
-                              <input className="in" type="text" defaultValue={l.text} aria-label={l.aria} />
+                              <input className="in" type="text" value={l.text} onChange={l.change} aria-label={l.aria} />
                             </>
                           ) : null}
                           {l.read ? (
@@ -488,8 +493,8 @@ export default function View({ v }) {
                 <div style={{ height: "16px" }} />
               </section>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                <a className="btn btn-p" href="#/Step2Signals" style={{ marginLeft: "auto" }}>
-                  정서·위기 신호 확인 →
+                <a className="btn btn-p" href={v.step2Href} onClick={v.goStep2} style={{ marginLeft: "auto" }}>
+                  {v.nextLabel}
                 </a>
               </div>
             </>

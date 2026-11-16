@@ -51,7 +51,7 @@ export default function View({ v }) {
             <i aria-hidden="true" />
             메뉴
           </label>
-          <a className="cta" href="#/Upload" onClick={v.markBack}>
+          <a className="cta" href={v.uploadHref} onClick={v.markBack}>
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
@@ -181,8 +181,13 @@ export default function View({ v }) {
             <a href="#/CaseList">
               사례 관리
             </a>
-            {" › 김순자 C-2026-0351"}
+            {" › "}{v.crumb}
           </nav>
+          {v.loadErr ? (
+            <p role="alert" className="note" style={{ margin: "0", color: "#A33B2E" }}>
+              {v.loadErr}
+            </p>
+          ) : null}
           <section style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "14px 18px" }}>
             <a className="btn btn-sm btn-s" href="#/CaseList">
               ← 목록
@@ -190,17 +195,17 @@ export default function View({ v }) {
             <div style={{ flex: "1 1 320px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
                 <h1 style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>
-                  김순자
+                  {v.name}
                 </h1>
                 <span className="sub">
-                  만 82세 · 여 · 독거
+                  {v.sub}
                 </span>
-                <span className="chip c-hi">
-                  위기도 집중
+                <span className={v.riskCls}>
+                  {v.riskLabel}
                 </span>
               </div>
               <div className="note">
-                C-2026-0351 · 다음 상담 오늘 16:00
+                {v.headNote}
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -214,10 +219,10 @@ export default function View({ v }) {
             </div>
           </section>
           <nav className="tabs" aria-label="사례 상세 메뉴">
-            <a href="#/CaseInfo">
+            <a href={v.infoHref}>
               내담자 정보
             </a>
-            <a className="on" aria-current="page" href="#/CaseHistory">
+            <a className="on" aria-current="page" href={v.historyHref}>
               상담 이력
             </a>
             <a href="#/Soon?name=CaseDocs">
@@ -233,101 +238,44 @@ export default function View({ v }) {
                 지금까지 상담
               </h2>
               <span className="chip c-ai">
-                AI 분석 · 1~8회차
+                {v.aiChip}
               </span>
             </div>
             <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
-              <div className="box">
-                <div className="note">
-                  1~3회차
+              {(v.phases || []).map((b, i_b) => (
+                <div key={i_b} className="box">
+                  <div className="note">
+                    {b.note}
+                  </div>
+                  <b style={{ fontWeight: "500" }}>
+                    {b.title}
+                  </b>
+                  {b.sub ? (
+                    <div className="note">
+                      {b.sub}
+                    </div>
+                  ) : null}
                 </div>
-                <b style={{ fontWeight: "500" }}>
-                  관계 형성 · 일상 파악
-                </b>
-              </div>
-              <div className="box">
-                <div className="note">
-                  4~6회차
-                </div>
-                <b style={{ fontWeight: "500" }}>
-                  배우자 사별 · 애도
-                </b>
-                <div className="note">
-                  입맛 저하 · 불면 첫 언급
-                </div>
-              </div>
-              <div className="box">
-                <div className="note">
-                  7~8회차 · 최근
-                </div>
-                <b style={{ fontWeight: "500" }}>
-                  외로움 · 아들과의 관계
-                </b>
-                <div className="note">
-                  "짐 되기 싫어요"
-                </div>
-              </div>
+              ))}
             </div>
             <div style={{ marginTop: "18px", display: "flex", flexWrap: "wrap", gap: "20px" }}>
               <div style={{ flex: "1 1 360px", display: "flex", flexDirection: "column", gap: "10px" }}>
                 <div className="note">
                   주제 비중
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: "10px", alignItems: "center" }}>
-                  <span>
-                    상실 · 애도
-                  </span>
-                  <span className="bar">
-                    <span style={{ width: "38%" }} />
-                  </span>
-                  <span className="note">
-                    38%
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: "10px", alignItems: "center" }}>
-                  <span>
-                    우울감 · 정서
-                  </span>
-                  <span className="bar">
-                    <span style={{ width: "27%" }} />
-                  </span>
-                  <span className="note">
-                    27%
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: "10px", alignItems: "center" }}>
-                  <span>
-                    가족관계(아들)
-                  </span>
-                  <span className="bar">
-                    <span style={{ width: "20%" }} />
-                  </span>
-                  <span className="note">
-                    20%
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: "10px", alignItems: "center" }}>
-                  <span>
-                    일상 · 외출
-                  </span>
-                  <span className="bar">
-                    <span style={{ width: "10%" }} />
-                  </span>
-                  <span className="note">
-                    10%
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: "10px", alignItems: "center" }}>
-                  <span>
-                    식사 · 건강
-                  </span>
-                  <span className="bar">
-                    <span style={{ width: "5%" }} />
-                  </span>
-                  <span className="note">
-                    5%
-                  </span>
-                </div>
+                {(v.topics || []).map((t, i_t) => (
+                  <div key={i_t} style={{ display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: "10px", alignItems: "center" }}>
+                    <span>
+                      {t.label}
+                    </span>
+                    <span className="bar">
+                      <span style={{ width: t.width }} />
+                    </span>
+                    <span className="note">
+                      {t.pct}
+                    </span>
+                  </div>
+                ))}
               </div>
               <div style={{ flex: "1 1 300px", display: "flex", flexDirection: "column", gap: "10px" }}>
                 <div className="box">
@@ -335,10 +283,10 @@ export default function View({ v }) {
                     덜 다룬 부분
                   </b>
                   <div>
-                    식사 · 건강
+                    {v.leastLabel}
                   </div>
                   <div className="src">
-                    8회차 02:15 첫 언급
+                    {v.leastSrc}
                   </div>
                 </div>
                 <div className="box">
@@ -346,7 +294,7 @@ export default function View({ v }) {
                     안부 앱 연계
                   </b>
                   <div>
-                    '외로움' ↔ 안부 앱 '기분이 별로예요' 3회 연속
+                    {v.appLink}
                   </div>
                 </div>
               </div>
@@ -370,7 +318,7 @@ export default function View({ v }) {
             <div>
               {(v.recent || []).map((s, i_s) => (
                 <Fragment key={i_s}>
-                  <a className="srow" href="#/SessionDetail" onClick={s.go}>
+                  <a className="srow" href={s.href}>
                     <b>
                       {s.no}
                     </b>
@@ -408,7 +356,7 @@ export default function View({ v }) {
                   <div style={{ maxHeight: "360px", overflowY: "auto", padding: "4px 8px 8px" }}>
                     {(v.all || []).map((s, i_s) => (
                       <Fragment key={i_s}>
-                        <a className="prow" href="#/SessionDetail" onClick={s.go}>
+                        <a className="prow" href={s.href}>
                           <b>
                             {s.no}
                           </b>
@@ -445,13 +393,13 @@ export default function View({ v }) {
               </span>
             </div>
             <div style={{ overflowX: "auto" }}>
-              <div className="mx" style={{ minWidth: "640px" }}>
+              <div className="mx" style={{ minWidth: "640px", gridTemplateColumns: v.mxCols }}>
                 <span className="rl note">
                   세부 신호
                 </span>
                 {(v.cols || []).map((c, i_c) => (
                   <Fragment key={i_c}>
-                    <a href="#/SessionDetail" onClick={c.go} className="note" style={{ textDecoration: "none", color: "#496887" }}>
+                    <a href={c.href} className="note" style={{ textDecoration: "none", color: "#496887" }}>
                       {c.label}
                     </a>
                   </Fragment>
@@ -524,10 +472,10 @@ export default function View({ v }) {
                         사례
                       </span>
                       <b>
-                        김순자 · C-2026-0351
+                        {v.caseLabel}
                       </b>
                       <span className="sub">
-                        만 82세 · 여 · 독거
+                        {v.sub}
                       </span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
@@ -709,10 +657,10 @@ export default function View({ v }) {
                         사례
                       </span>
                       <b>
-                        김순자 · C-2026-0351
+                        {v.caseLabel}
                       </b>
                       <span className="sub">
-                        만 82세 · 여 · 독거
+                        {v.sub}
                       </span>
                       {v.nsS2 ? (
                         <>
@@ -770,6 +718,11 @@ export default function View({ v }) {
                           </span>
                           <textarea className="ns-ta" rows="4" placeholder="어르신의 정서 · 생활 상태, 정서 · 위기 신호, 연계 · 향후 계획 등을 적어 주세요" value={v.nsNote} onChange={v.nsNoteSet} />
                         </label>
+                        {v.nsSaveErr ? (
+                          <span role="alert" className="acc" style={{ fontSize: "13px" }}>
+                            {v.nsSaveErr}
+                          </span>
+                        ) : null}
                       </>
                     ) : null}
                   </div>
@@ -815,7 +768,7 @@ export default function View({ v }) {
                             상담을 등록했어요
                           </h2>
                           <p style={{ margin: "0" }}>
-                            {"김순자 · "}{v.nsSesLabel}
+                            {v.name}{" · "}{v.nsSesLabel}
                             <br />
                             {"상담 내용 "}{v.nsBodyLen}{"자 · 상담사 소견 "}{v.nsNoteLen}자
                           </p>

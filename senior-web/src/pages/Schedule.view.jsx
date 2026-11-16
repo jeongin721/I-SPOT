@@ -296,6 +296,11 @@ export default function View({ v }) {
               </div>
             </section>
             <aside className="card" aria-label="선택한 날 일정" style={{ flex: "1 1 320px", minWidth: "0", padding: "20px 22px", display: "flex", flexDirection: "column", gap: "14px" }}>
+              {v.err ? (
+                <p className="note" role="alert" style={{ margin: "0", color: "#A33B2E" }}>
+                  {v.err}
+                </p>
+              ) : null}
               {v.notAdding ? (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -460,36 +465,11 @@ export default function View({ v }) {
                           어르신 (사례)
                         </span>
                         <select className="in" value={v.form.child} onChange={v.setChild}>
-                          <option>
-                            김순자 님
-                          </option>
-                          <option>
-                            서복례 님
-                          </option>
-                          <option>
-                            오금자 님
-                          </option>
-                          <option>
-                            이정희 님
-                          </option>
-                          <option>
-                            윤기철 님
-                          </option>
-                          <option>
-                            최만석 님
-                          </option>
-                          <option>
-                            강덕수 님
-                          </option>
-                          <option>
-                            한옥분 님
-                          </option>
-                          <option>
-                            정말순 님
-                          </option>
-                          <option>
-                            박영수 님
-                          </option>
+                          {(v.caseOptions || []).map((o, i_o) => (
+                            <option key={i_o} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
                       <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -565,36 +545,11 @@ export default function View({ v }) {
                               어르신 (사례)
                             </span>
                             <select className="in" value={v.form.child} onChange={v.setChild}>
-                              <option>
-                                김순자 님
-                              </option>
-                              <option>
-                                서복례 님
-                              </option>
-                              <option>
-                                오금자 님
-                              </option>
-                              <option>
-                                이정희 님
-                              </option>
-                              <option>
-                                윤기철 님
-                              </option>
-                              <option>
-                                최만석 님
-                              </option>
-                              <option>
-                                강덕수 님
-                              </option>
-                              <option>
-                                한옥분 님
-                              </option>
-                              <option>
-                                정말순 님
-                              </option>
-                              <option>
-                                박영수 님
-                              </option>
+                              {(v.caseOptions || []).map((o, i_o) => (
+                                <option key={i_o} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
                             </select>
                           </label>
                           <div className="dl-box">
@@ -664,7 +619,7 @@ export default function View({ v }) {
                         <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                           <input type="checkbox" defaultChecked="" style={{ width: "16px", height: "16px", accentColor: "#1F3A56" }} />
                           {"상담 전날 "}
-                          <a href="#/CaseInfo?sec=brief">
+                          <a href={v.formBriefHref}>
                             브리핑
                           </a>
                           {" 자동 준비"}
@@ -679,7 +634,7 @@ export default function View({ v }) {
                     <>
                       <div style={{ padding: "12px 14px", borderRadius: "12px", background: "#F8FBFD", fontSize: "13px" }}>
                         <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          <input type="checkbox" style={{ width: "16px", height: "16px", accentColor: "#1F3A56" }} />
+                          <input type="checkbox" checked={!!v.form.shared} onChange={v.toggleShared} style={{ width: "16px", height: "16px", accentColor: "#1F3A56" }} />
                           팀 일정으로 공유
                         </label>
                       </div>

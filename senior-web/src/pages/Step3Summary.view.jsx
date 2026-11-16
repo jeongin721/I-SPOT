@@ -182,35 +182,35 @@ export default function View({ v }) {
               사례 관리
             </a>
             {" › "}
-            <a href="#/CaseInfo">
-              김순자 C-2026-0351
+            <a href={v.caseHref}>
+              {v.crumbCase}
             </a>
             {" › "}
-            <a href="#/CaseHistory">
+            <a href={v.historyHref}>
               상담 이력
             </a>
             {" › "}
-            <a href="#/SessionDetail">
-              8회차
+            <a href={v.sessionHref}>
+              {v.crumbSession}
             </a>
           </nav>
           <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 14px" }}>
             <div style={{ flex: "1 1 280px" }}>
               <div className="sub">
-                10/2(금) 방문상담
+                {v.sub}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
-                <a className="btn btn-sm btn-s" href="#/CaseInfo" aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
+                <a className="btn btn-sm btn-s" href={v.caseHref} aria-label="내담자 정보로 돌아가기" title="내담자 정보로 돌아가기">
                   ←
                 </a>
                 <h1 style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>
-                  8회차 처리 · 김순자
+                  {v.title}
                 </h1>
               </div>
             </div>
           </header>
           <nav className="steps" aria-label="회차 처리 단계">
-            <a className="stp done" href="#/Step1Record">
+            <a className="stp done" href={v.step1Href}>
               <span className="sn">
                 ✓
               </span>
@@ -218,7 +218,7 @@ export default function View({ v }) {
                 기록 확인
               </b>
             </a>
-            <a className="stp done" href="#/Step2Signals">
+            <a className="stp done" href={v.step2Href}>
               <span className="sn">
                 ✓
               </span>
@@ -226,7 +226,7 @@ export default function View({ v }) {
                 정서·위기 신호 확인
               </b>
             </a>
-            <a className="stp on" href="#/Step3Summary" aria-current="step">
+            <a className="stp on" href={v.step3Href} aria-current="step">
               <span className="sn">
                 3
               </span>
@@ -234,7 +234,7 @@ export default function View({ v }) {
                 상담일지 작성
               </b>
             </a>
-            <a className="stp" href="#/Step4Next">
+            <a className="stp" href={v.step4Href}>
               <span className="sn">
                 4
               </span>
@@ -249,7 +249,7 @@ export default function View({ v }) {
                 상담 요약
               </h2>
               <span className="chip c-ai">
-                AI 초안
+                {v.sumChip}
               </span>
             </div>
             {(v.sums || []).map((r, i_r) => (
@@ -258,7 +258,7 @@ export default function View({ v }) {
                   <b style={{ fontSize: "14px" }}>
                     {r.k}
                   </b>
-                  <textarea className="ta2" aria-label={r.k} defaultValue={r.v} />
+                  <textarea className="ta2" aria-label={r.k} value={r.v} onChange={r.set} readOnly={!!r.ro} />
                   <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                     <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -298,7 +298,7 @@ export default function View({ v }) {
                   사례번호 · 회차
                 </span>
                 <span className="v">
-                  C-2026-0351 · 8회차
+                  {v.fNo}
                 </span>
               </div>
               <div>
@@ -306,7 +306,7 @@ export default function View({ v }) {
                   내담 어르신
                 </span>
                 <span className="v">
-                  김순자 (여, 만 82세 · 독거)
+                  {v.fWho}
                 </span>
               </div>
               <div>
@@ -314,7 +314,7 @@ export default function View({ v }) {
                   상담일시
                 </span>
                 <span className="v">
-                  2026-10-02(금) 15:00~15:24
+                  {v.fWhen}
                 </span>
               </div>
               <div>
@@ -322,7 +322,7 @@ export default function View({ v }) {
                   장소 · 방식
                 </span>
                 <span className="v">
-                  방문(자택) · 정기상담
+                  {v.fWhere}
                 </span>
               </div>
               <div>
@@ -330,7 +330,7 @@ export default function View({ v }) {
                   참석자
                 </span>
                 <span className="v">
-                  김순자 (본인) · 상담사
+                  {v.fAttend}
                 </span>
               </div>
               <div>
@@ -338,7 +338,7 @@ export default function View({ v }) {
                   담당 상담사
                 </span>
                 <span className="v">
-                  이서연
+                  {v.fCounselor}
                 </span>
               </div>
             </div>
@@ -346,7 +346,7 @@ export default function View({ v }) {
               <b style={{ fontSize: "14px" }}>
                 주요 내용 (어르신 말씀)
               </b>
-              <textarea className="ta2" style={{ minHeight: "104px" }} defaultValue={"· 00:41 \"그 양반 가고 나서는 밥을 혼자 먹으니 잘 넘어가질 않아요\"\n· 01:08 \"밤에 자꾸 깨요. 두세 시간 자면 많이 잔 거지요\"\n· 01:36 \"아들한테는 걱정할까 봐 말 안 했어요\""} />
+              <textarea className="ta2" style={{ minHeight: "104px" }} value={v.quotes} readOnly />
               <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                 <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -375,7 +375,7 @@ export default function View({ v }) {
               <b style={{ fontSize: "14px" }}>
                 정서 상태
               </b>
-              <textarea className="ta2" defaultValue="00:41 말씀 전 약 4초 침묵 후 작은 목소리로 답하심. 후반부(02:40) 복지관 노래교실 이야기에서 목소리가 밝아짐. 03:05 배우자 사진을 보며 눈물을 보이심. 청력 양호, 천천히 말씀드리면 이해 원활." />
+              <textarea className="ta2" value={v.mood} readOnly />
               <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                 <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -504,7 +504,7 @@ export default function View({ v }) {
               <b style={{ fontSize: "14px" }}>
                 개입 내용 · 정서·위기 신호 검토
               </b>
-              <textarea className="ta2" defaultValue={"개입: 사별 이야기 경청 · 정서 지지, 식사 · 수면 일상 점검, 안부 앱 음성 답변 사용법 안내\n채택: 식사 거름(00:41) · 수면 문제(01:08) · 정서 위축(01:36)\n보류: 죽음 관련 언급(02:15, 의미 확인 필요)"} />
+              <textarea className="ta2" value={v.note} onChange={v.setNote} readOnly={v.noteRo} />
               <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                 <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -535,7 +535,7 @@ export default function View({ v }) {
                   AI 초안
                 </span>
               </span>
-              <textarea className="ta2" style={{ minHeight: "96px" }} defaultValue="연계: 노인맞춤돌봄 생활지원사와 식사 상황 공유(본인 동의 범위), 보건소 방문건강관리 수면 상담 연계 검토. 다음 계획: 9회차에 02:15 말씀의 의미를 S-04 자살위험 선별 체크로 확인하고 SGDS-K 재측정 시점을 정함. 복지관 노래교실 재참여 의사 확인." />
+              <textarea className="ta2" style={{ minHeight: "96px" }} value={v.plan} readOnly />
               <button type="button" className="cp-btn" title="복사" aria-label="내용 복사" onClick={v.copyMenu} aria-haspopup="true">
                 <svg className="cp-i" viewBox={"0 0 24 24"} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M8.5 7.5V5.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
@@ -559,13 +559,18 @@ export default function View({ v }) {
             </label>
           </section>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-            <a className="btn btn-s" href="#/Step2Signals">
+            <a className="btn btn-s" href={v.step2Href}>
               ← 정서·위기 신호 확인
             </a>
-            <a className="btn btn-p" href="#/Step4Next" style={{ marginLeft: "auto" }}>
-              저장 · 다음 상담 준비 →
+            <a className="btn btn-p" href={v.step4Href} style={{ marginLeft: "auto" }} onClick={v.save}>
+              {v.saveLabel}
             </a>
           </div>
+          {v.msg ? (
+            <p className="note" role="alert" style={{ margin: "0" }}>
+              {v.msg}
+            </p>
+          ) : null}
           <p className="ainote">
             AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.
           </p>

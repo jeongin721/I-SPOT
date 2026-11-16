@@ -183,7 +183,7 @@ export default function View({ v }) {
                 {v.dateLabel}
               </div>
               <h1 style={{ margin: "2px 0 0", fontSize: "28px", fontWeight: "700" }}>
-                안녕하세요, 이서연 상담사님
+                안녕하세요, {v.meName} 상담사님
               </h1>
             </div>
           </header>
@@ -198,42 +198,24 @@ export default function View({ v }) {
                 </span>
               </a>
               <b className="n brn">
-                10
+                {v.clientCount}
               </b>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
-                <a className="todo" href="#/CaseInfo">
-                  <span className="chip c-hi">
-                    위기도 집중
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    김순자 님 · 오늘 16:00 상담
-                  </span>
-                  <b className="brn">
-                    ›
-                  </b>
-                </a>
-                <a className="todo" href="#/CaseInfo">
-                  <span className="chip c-hi">
-                    위기도 집중
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    오금자 님 · 상담일지 작성 전
-                  </span>
-                  <b className="brn">
-                    ›
-                  </b>
-                </a>
-                <a className="todo" href="#/CaseInfo">
-                  <span className="chip c-mid">
-                    위기도 관심
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    서복례 님 · 10/30 정기상담
-                  </span>
-                  <b className="brn">
-                    ›
-                  </b>
-                </a>
+                {(v.clients || []).map((r, i_r) => (
+                  <Fragment key={i_r}>
+                    <a className="todo" href={r.href}>
+                      <span className={r.cls}>
+                        {r.chip}
+                      </span>
+                      <span style={{ flex: "1" }}>
+                        {r.text}
+                      </span>
+                      <b className="brn">
+                        ›
+                      </b>
+                    </a>
+                  </Fragment>
+                ))}
               </div>
             </div>
             <div className="card stat">
@@ -241,42 +223,24 @@ export default function View({ v }) {
                 미처리 업무
               </span>
               <b className="n brn">
-                7
+                {v.todoCount}
               </b>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
-                <a className="todo" href="#/Step1Record">
-                  <span className="chip c-sand">
-                    기록 확인
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    김순자 님 8회차
-                  </span>
-                  <b className="brn">
-                    1
-                  </b>
-                </a>
-                <a className="todo" href="#/Step3Summary">
-                  <span className="chip c-sky">
-                    상담 일지 작성
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    김순자 님 8회차 외
-                  </span>
-                  <b className="brn">
-                    2
-                  </b>
-                </a>
-                <a className="todo" href="#/Soon?name=ChildLink">
-                  <span className="chip c-check">
-                    안부 답변 확인
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    오늘 09:00 안부 묶음
-                  </span>
-                  <b className="brn">
-                    4
-                  </b>
-                </a>
+                {(v.todos || []).map((r, i_r) => (
+                  <Fragment key={i_r}>
+                    <a className="todo" href={r.href}>
+                      <span className={r.cls}>
+                        {r.chip}
+                      </span>
+                      <span style={{ flex: "1" }}>
+                        {r.text}
+                      </span>
+                      <b className="brn">
+                        {r.n}
+                      </b>
+                    </a>
+                  </Fragment>
+                ))}
               </div>
             </div>
             <div className="card stat" style={{ boxShadow: "inset 0 4px 0 #A33B2E" }}>
@@ -289,31 +253,24 @@ export default function View({ v }) {
                 </span>
               </a>
               <b className="n acc">
-                2
+                {v.urgentCount}
               </b>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
-                <a className="todo todo-urg" href="#/Soon?name=ChildDetail">
-                  <span className="chip c-urgent">
-                    위기 신호
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    박영수 님 · 오늘 08:12 자살 생각 표현 감지
-                  </span>
-                  <b className="acc">
-                    ›
-                  </b>
-                </a>
-                <a className="todo todo-urg" href="#/Soon?name=ChildDetail">
-                  <span className="chip c-urgent">
-                    안부 무응답
-                  </span>
-                  <span style={{ flex: "1" }}>
-                    최만석 님 · 48시간 무응답 · 방문 확인 권고
-                  </span>
-                  <b className="acc">
-                    ›
-                  </b>
-                </a>
+                {(v.urgent || []).map((r, i_r) => (
+                  <Fragment key={i_r}>
+                    <a className="todo todo-urg" href={r.href}>
+                      <span className="chip c-urgent">
+                        {r.chip}
+                      </span>
+                      <span style={{ flex: "1" }}>
+                        {r.text}
+                      </span>
+                      <b className="acc">
+                        ›
+                      </b>
+                    </a>
+                  </Fragment>
+                ))}
               </div>
             </div>
           </section>
@@ -385,7 +342,7 @@ export default function View({ v }) {
                   <div style={{ marginTop: "2px", fontSize: "14px" }}>
                     {v.nextTitle}
                   </div>
-                  <a className="btn btn-p" href="#/CaseInfo?sec=brief" style={{ width: "100%", marginTop: "12px" }}>
+                  <a className="btn btn-p" href={v.briefHref} style={{ width: "100%", marginTop: "12px" }}>
                     상담 전 브리핑 보기
                   </a>
                 </div>
