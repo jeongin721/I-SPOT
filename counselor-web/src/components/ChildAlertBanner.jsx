@@ -45,6 +45,9 @@ export default function ChildAlertBanner({ session }) {
   const first =
     alerts.find((alert) => alert.urgent && !alert.handed_over) ?? alerts.find((alert) => alert.handed_over) ?? alerts[0];
   const time = new Date(first.last_at ?? first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  // 넘어온 알림을 앞에 보일 때도 내 알림이 있으면 그리로 가는 단추를 둔다. 넘어온 알림은 누가 확인할 때까지
+  // 남아 있어, 단추가 없으면 그동안 내 알림으로 갈 길이 '외 n건' 뿐이었다(민규 #179 리뷰).
+  const mine = first.handed_over ? alerts.find((alert) => !alert.handed_over) : null;
   const since = new Date(first.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
   // 사이드바의 쌓임 맥락에 갇히면 위쪽 도구 막대에 가려 단추가 눌리지 않는다.
@@ -78,7 +81,13 @@ export default function ChildAlertBanner({ session }) {
           담당 상담사나 관리자에게 바로 알려 주세요.
           {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
         </span>
-      ) : (
+      ) : null}
+      {mine ? (
+        <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: mine.case_id })}>
+          내 알림 확인하러 가기 →
+        </A>
+      ) : null}
+      {first.handed_over ? null : (
         <>
           <span style={{ flex: '1 1 300px' }}>
             <b style={{ color: '#B0452C' }}>{first.urgent ? '긴급' : '확인 필요'} · {time}</b> {first.child_alias} ({first.case_number}) {CHILD_ALERT_TEXT[first.reason]}

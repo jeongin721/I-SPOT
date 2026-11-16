@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     CHILD_APP_ESCALATE_MINUTES: int = Field(default=10, ge=1, le=24 * 60)
     # 상담사가 바로 볼 수 있는 시간(한국 시간). 밖이면 아이 앱이 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
     # 요일은 0=월 … 6=일. 공휴일은 CHILD_APP_STAFF_HOLIDAYS.
+    # 시간은 같은 날 안의 HH:MM-HH:MM(시작 < 끝)만 된다. 자정을 넘기면(22:00-06:00) 늘 밖으로 본다. 값 범위(25:99)는 검사하지 않는다.
     CHILD_APP_STAFF_HOURS: str = Field(default="09:00-18:00", pattern=r"^\d{2}:\d{2}-\d{2}:\d{2}$")
     CHILD_APP_STAFF_DAYS: str = Field(default="0,1,2,3,4", pattern=r"^[0-6](,[0-6])*$")
     # 근무하지 않는 날(YYYY-MM-DD, 콤마 구분). 이날은 요일과 상관없이 근무 시간 밖이다. 비우면 공휴일을 따로 빼지 않는다.
