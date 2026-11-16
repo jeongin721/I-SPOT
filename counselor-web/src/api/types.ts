@@ -1896,3 +1896,15 @@ export interface MemoUpdateRequest {
   text?: string;
   case_id?: string | null;
 }
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절, 2026-11-11)
+// =========================================================
+
+export interface BriefingChecks {
+  session_id: string;
+  /** 확인함으로 표시한 확인 사항 문장들. */
+  checked: string[];
+  updated_at: string | null;
+  updated_by_id: string | null;
+}
