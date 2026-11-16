@@ -109,6 +109,12 @@ label.lbl{font-size:.92em;font-weight:600}
 .ktile.t-s{border-color:#EBD39A;background:linear-gradient(#FFFBEE,#fff)}
 .ktile.lock .kr{filter:brightness(0) opacity(.1)}
 .ktile .qm{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);font-weight:700;font-size:18px;color:#B9AFA2}
+.news .news-ic{position:relative;display:inline-flex;width:40px;height:40px;border-radius:12px;align-items:center;justify-content:center;background:var(--lav);color:var(--lav-d)}
+.news .news-n{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:var(--lav-d);color:#fff;font-size:11px;font-style:normal;font-weight:700;display:flex;align-items:center;justify-content:center}
+.news.hot{border-color:var(--danger)}
+.news.hot .news-n{background:var(--danger);animation:newsp 1.2s ease-in-out infinite alternate}
+@keyframes newsp{from{transform:scale(.9)}to{transform:scale(1.18)}}
+@media (prefers-reduced-motion: reduce){.news.hot .news-n{animation:none}}
 .ktile .new{position:absolute;top:6px;right:6px;font-size:10px;font-weight:700;color:#fff;background:var(--danger);border-radius:6px;padding:0 5px}
 .ktile b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tierpill{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 8px}
@@ -266,7 +272,7 @@ const ML = Object.fromEntries(MOODS);
 
 const BK = {};
 const API = '/api/v1/child-app';
-const STORE = {token:'kk_device', tickets:'kk_tickets', keys:'kk_keys'};
+const STORE = {token:'kk_device', tickets:'kk_tickets', keys:'kk_keys', alertSeen:'kk_alert_seen'};
 function load(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
 function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 function forget(k){ try { localStorage.removeItem(k); } catch (e) {} }
@@ -283,7 +289,7 @@ function fresh(){
     screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, qPending:false, qi:0, ans:{},
     tickets:load(STORE.tickets, 0), keys:load(STORE.keys, []), newKey:null, large:false, noti:0,
     hidden:false, garden:freshGarden(), gSheet:null, gToast:'',
-    sheet:null, count:0, banner:null, toast:null, spin:false, sending:false, alert:null
+    sheet:null, count:0, banner:null, toast:null, spin:false, sending:false, alert:null, staff:null
   };
 }
 let S = fresh();
@@ -362,28 +368,49 @@ function scrHome(){
   return `${bar('', '<span class="brand">콩콩</span>')}
   <div class="pad">
     <div class="row">${img('hello', 72)}<div><div style="font-size:1.4em;font-weight:700">오늘 하루는 어땠나요?</div><div class="sub" style="font-size:.92em">원할 때 답하면 돼요.</div></div></div>
+    ${S.alert && !S.alert.acknowledged && S.alert.overdue ? alertCard() : ''}
     ${qCard}
     ${S.next ? (d => `<button class="mini-card" data-act="tab" data-to="cal">
       <span class="datebox"><small>${d.m}월</small><b>${d.d}</b></span>
       <span class="grow"><span class="muted" style="display:block">다음 상담 · ${d.dday}</span><b>${esc(d.label)}</b></span>${ICON.chev}</button>`)(nextInfo()) : ''}
-    ${alertCard()}
+    ${S.alert && !(!S.alert.acknowledged && S.alert.overdue) ? alertCard() : ''}
     ${lockLine()}
     <div style="flex:1 1 auto"></div>
     <button class="danger-btn" data-act="urgent">${ICON.warn}지금 위험해요</button>
   </div>`;
 }
-// 급하다고 알린 뒤 선생님이 확인했는지(서버 /home 의 alert, 24시간). 확인 전으로 5분이 지나면 기다리지 말고 112 · 1388 을 다시 안내한다(멘토 피드백 11/12).
+// 급하다고 알린 뒤 선생님이 확인했는지(서버 /home 의 alert). 홈에는 알린 사실이 드러나지 않게 '새 소식 1' 만 두고,
+// 눌렀을 때 확인 전 · 확인됨과 112 · 1388 을 보인다(팀장님 확인 · 민규 11/13 안 2). 보호자가 폰을 봐도 무슨 소식인지 모르게.
+// 확인 전으로 5분이 지나면 같은 문구로 카드만 맨 위로 올리고 숫자 표시를 깜빡여 누르게 한다(멘토 피드백 11/12).
+// 상담사가 바로 볼 수 없는 시간(서버 /home 의 staff_hours). 그때는 기다리지 말고 112 · 1388 을 먼저 안내한다.
+function offDuty(){ return !!(S.staff && !S.staff.on_duty); }
+function offDutyNote(){
+  return offDuty() ? `<div class="card" style="background:var(--warn-bg);border-color:var(--warn);font-size:.92em">지금은 선생님이 일하지 않는 시간이에요(${esc(S.staff.label)}). 선생님께 알려도 바로 못 볼 수 있어요. 위험하면 기다리지 말고 112에, 이야기하고 싶으면 1388에 전화하세요.</div>` : '';
+}
+function alertTime(a){ return (d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'))(new Date(a.sent_at)); }
 function alertCard(){
   const a = S.alert;
   if (!a) return '';
-  const at = (d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'))(new Date(a.sent_at));
-  if (a.acknowledged) return `<div class="card row">${img('good', 48)}<div class="grow"><b>선생님이 확인했어요</b><div class="muted">${at}에 급하다고 알린 것을 선생님이 봤어요.</div></div></div>`;
-  if (!a.overdue) return `<div class="card row">${img('okay', 48)}<div class="grow"><b>선생님께 알렸어요 · 아직 확인 전이에요</b><div class="muted">${at}에 보냈어요. 선생님이 확인하면 여기에 보여요. 지금 많이 위험하면 112에 전화하세요.</div></div></div>`;
-  return `<div class="card" role="alert" style="background:var(--danger-bg);border-color:var(--danger);display:flex;flex-direction:column;gap:10px">
-    <div><b>선생님이 아직 확인하지 못했어요</b><div class="muted" style="color:inherit">${at}에 보냈어요. 지금 위험하면 기다리지 말고 112에 전화하세요. 이야기하고 싶으면 1388도 24시간 받아요.</div></div>
-    <button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>
+  // 확인된 알림은 아이가 한 번 열어 보면 내린다(폰에 남는 시간을 줄이려고, 민규 #178). 확인 전이면 열어 봐도 남는다.
+  if (a.acknowledged && load(STORE.alertSeen, null) === a.sent_at) return '';
+  const hot = !a.acknowledged && a.overdue;
+  return `<button class="mini-card news${hot ? ' hot' : ''}" data-act="alertNews" aria-label="새 소식 1개${hot ? ', 꼭 확인해 줘요' : ''}">
+    <span class="news-ic">${ICON.bell}<i class="news-n">1</i></span>
+    <span class="grow"><b style="display:block">새 소식 1</b><span class="muted">${hot ? '꼭 눌러서 확인해 줘요' : '눌러서 볼 수 있어요'}</span></span>${ICON.chev}</button>`;
+}
+function alertNewsBody(){
+  const a = S.alert;
+  const calls = `<button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>
     <button class="outline" data-act="call" data-n="1388" style="display:flex;align-items:center;justify-content:center;gap:8px">${ICON.chat}1388에 전화하기</button>
-  </div>`;
+    <button class="textbtn" data-act="sheetClose">닫기</button>`;
+  if (!a) return `<h3>새 소식이 없어요</h3><button class="textbtn" data-act="sheetClose">닫기</button>`;
+  const at = alertTime(a);
+  if (a.acknowledged) return `<div class="center">${img('good', 80)}<h3>선생님이 확인했어요</h3>
+    <p class="sub" style="margin:0">${at}에 급하다고 알린 것을 선생님이 봤어요.<br>그래도 지금 위험하면 112에 전화하세요.</p></div>${calls}`;
+  if (!a.overdue) return `<div class="center">${img('okay', 80)}<h3>선생님께 알렸어요 · 아직 확인 전이에요</h3>
+    <p class="sub" style="margin:0">${at}에 보냈어요. 선생님이 확인하면 여기에 보여요.<br>지금 많이 위험하면 112에 전화하세요.</p></div>${offDutyNote()}${calls}`;
+  return `<div class="center" role="alert"><h3>선생님이 아직 확인하지 못했어요</h3>
+    <p class="sub" style="margin:0">${at}에 보냈어요. 지금 위험하면 기다리지 말고 112에 전화하세요.<br>이야기하고 싶으면 1388도 24시간 받아요.</p></div>${offDutyNote()}${calls}`;
 }
 function scrQ(){
   const id = S.qset[S.qi], q = BK[id], n = S.qset.length, a = S.ans[id];
@@ -824,7 +851,7 @@ function renderLayer(){
 }
 function sheetBody(){
   const s = S.sheet;
-  if (s.kind === 'urgent') return `<h3>어떤 도움이 필요한가요?</h3>
+  if (s.kind === 'urgent') return `<h3>어떤 도움이 필요한가요?</h3>${offDutyNote()}
     <button class="helpbtn red" data-act="call" data-n="112">${ICON.phone}<span><b>112 · 경찰</b><small>지금 위험할 때</small></span></button>
     <button class="helpbtn" data-act="call" data-n="1388">${ICON.chat}<span><b>1388 · 청소년상담</b><small>바로 이야기하고 싶을 때</small></span></button>
     <button class="helpbtn" data-act="alertStart">${ICON.bell}<span><b>상담 선생님께 알리기</b><small>5초 안에 취소할 수 있어요</small></span></button>
@@ -833,6 +860,7 @@ function sheetBody(){
     <p class="muted" style="margin:0;text-align:center">해지하면 이 휴대폰의 콩콩이 처음 화면으로 돌아가요.<br>다시 쓰려면 상담 선생님께 새 연결 코드를 받아야 해요.</p>
     <button class="danger-btn" data-act="unlinkGo" ${S.sending ? 'disabled' : ''}>${S.sending ? '해지하는 중…' : '해지하기'}</button>
     <button class="textbtn" data-act="sheetClose">취소</button>`;
+  if (s.kind === 'alertNews') return alertNewsBody();
   if (s.kind === 'call') return `<h3>${s.n === '112' ? '112에 전화할까요?' : '1388에 전화할까요?'}</h3>
     <div class="bignum">${s.n}</div>
     <p class="muted" style="margin:0;text-align:center">${s.n === '112' ? '경찰 · 24시간' : '청소년상담 · 24시간'}</p>
@@ -849,7 +877,7 @@ function sheetBody(){
     <button class="primary" data-act="alertRetry">다시 보내기</button>
     <button class="textbtn" data-act="sheetClose">닫기</button>`;
   if (s.kind === 'alerted') return `<div class="center">${img('okay', 90)}<h3>선생님께 알렸어요</h3>
-    <p class="sub" style="margin:0">선생님이 확인하는 대로 연락할 거예요.<br>지금 많이 위험하면 112에 전화하세요.</p></div>
+    <p class="sub" style="margin:0">${offDuty() ? '선생님이 일하는 시간이 되면 확인할 거예요.' : '선생님이 확인하는 대로 연락할 거예요.'}<br>지금 많이 위험하면 112에 전화하세요.</p></div>${offDutyNote()}
     <button class="danger-btn" data-act="call" data-n="112">${ICON.phone}112에 전화하기</button>
     <button class="textbtn" data-act="sheetClose">닫기</button>`;
   if (s.kind === 'calHard') { const rs = ['몸이 안 좋아요','학교·학원 일정이 있어요','가고 싶지 않아요','말하기 어려워요','기타'];
@@ -884,7 +912,7 @@ async function api(path, options){
   const headers = {'Content-Type':'application/json'}, token = load(STORE.token, null);
   if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch(API + path, {...options, headers});
-  if (res.status === 401 && token) { forget(STORE.token); clearTimers(); S = fresh(); render(); throw new Error('unlinked'); }
+  if (res.status === 401 && token) { forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); render(); throw new Error('unlinked'); }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) { const e = new Error('api'); e.status = res.status; e.message2 = body && body.error && body.error.message; throw e; }
   return body && body.data;
@@ -905,6 +933,7 @@ async function unlinkDevice(){
 function applyHome(d){
   S.next = d.next_consult;
   S.alert = d.alert || null;
+  S.staff = d.staff_hours || null;
   const p = d.pending, wasId = S.setId;
   if (p) { p.questions.forEach(q => { BK[q.id] = {...q, opts:q.options, short:q.text}; }); S.qset = p.questions.map(q => q.id); S.setId = p.id; S.qPending = true; }
   else { S.qset = []; S.setId = null; S.qPending = false; }
@@ -1002,13 +1031,14 @@ document.addEventListener('click', e => {
       }, 1550);
       break; }
     case 'urgent': S.sheet = {kind:'urgent'}; renderLayer(); break;
+    case 'alertNews': if (S.alert && S.alert.acknowledged) save(STORE.alertSeen, S.alert.sent_at); S.sheet = {kind:'alertNews'}; renderLayer(); break;
     case 'call': S.sheet = {kind:'call', n:el.dataset.n}; renderLayer(); break;
     case 'callGo': { const n = S.sheet.n; S.sheet = null; renderLayer(); location.href = 'tel:' + n; break; }
     case 'alertStart': startAlert(); break;
     case 'alertRetry': sendAlert(); break;
     case 'alertCancel': clearInterval(S._iv); S.sheet = null; renderLayer(); toast('취소했어요. 보내지 않았어요'); break;
     case 'sheetClose': S.sheet = null; renderScreen(); break;
-    case 'sheetBg': S.sheet = null; renderLayer(); break;
+    case 'sheetBg': { const k = S.sheet && S.sheet.kind; S.sheet = null; k === 'alertNews' ? renderScreen() : renderLayer(); break; }
     case 'unlinkAsk': S.sheet = {kind:'unlink'}; renderLayer(); break;
     case 'unlinkGo': unlinkDevice(); break;
     case 'font': S.large = el.dataset.v === '1'; renderScreen(); break;

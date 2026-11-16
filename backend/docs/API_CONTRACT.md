@@ -2237,8 +2237,10 @@ Test 영향
 - 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
   안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
   그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
-- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
-  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- wav · flac · ogg · mp3 는 soundfile 로 읽는다. soundfile 이 열지 못하는 m4a · mp4 · webm(휴대폰 · 브라우저 녹음)은
+  `requirements-stt.txt` 의 PyAV(`av`, wheel 에 FFmpeg 라이브러리 포함 — apt 의 ffmpeg 는 필요 없다)로 처음부터 이어 읽는다.
+  PyAV 가 없거나 PyAV 도 열지 못하면 지금처럼 `DECODE_FAILED` 다. 응답 모양 · 이유 값은 그대로다. 압축 음성(mp3 포함)은
+  wav 와 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절 · 7절).
 - 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
   재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
 
@@ -2923,6 +2925,10 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
 아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 사례의 마지막 긴급 알림 `{sent_at, acknowledged, overdue}`(없으면 null). `sent_at` 은 마지막으로 누른 시각(확인 전에 다시 누르면 오른다)이고, 이 기기가 연결된 뒤에 누른 것만 보인다. 확인한 알림은 마지막으로 누른 뒤 24시간만 보이고, 확인 전 알림은 시간이 지나도 남는다. `overdue` 는 처음 알린 뒤 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.
+
+미확인 긴급 넘기기(멘토 피드백 11/12 B안): 아이가 직접 보낸 긴급 알림(`ALERT`)이 `CHILD_APP_ESCALATE_MINUTES`(기본 5분) 넘게 확인 전이면 `GET /child-app-alerts/open` 에서 담당이 아닌 상담사에게도 나온다. 이때 줄은 `handed_over: true` · `escalated: true` · `can_ack: false` · `child_alias: ""` 이고 사례 번호와 `counselor_name`(담당 상담사)만 준다 — 사례를 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 하는 것이다. 담당 상담사 · 관리자의 같은 알림에는 `escalated: true` 만 더해진다. 답 기반 알림(바로 확인 답 · 연락 요청 등)은 넘기지 않는다. 푸시는 아직 없다(푸시 연결 때 이어서).
+
+근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026년 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
 
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 

@@ -39,9 +39,11 @@ load_dotenv()
 # 핵심 상수 정리:
 # 1) SUPPORTED_AUDIO_EXTENSIONS: 허용할 오디오 파일 확장자를 제한한다.
 #    → 잘못된 파일을 미리 막아서 이후 코드에서 예외가 터지는 일을 줄인다.
+#    .webm · .ogg · .mp4 는 Backend 업로드 허용 목록(AUDIO_ALLOWED_EXTENSIONS)에 맞춰 받는다(브라우저 녹음 창 형식).
+#    공급자에는 바이트만 넘기므로 형식은 공급자가 내용으로 판단한다.
 # 2) SPEAKER_ENUM: 화자 정보를 일관되게 관리하기 위한 표준 값 집합이다.
 #    → 상담사/아동/보호자처럼 표현이 달라도 최종에는 이 값만 남는다.
-SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".flac"}
+SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".flac", ".webm", ".ogg", ".mp4"}
 SPEAKER_ENUM = {"COUNSELOR", "CHILD", "GUARDIAN", "OTHER", "UNKNOWN"}
 # 3) LOW_CONFIDENCE_THRESHOLD: ElevenLabs 구간 confidence 가 이보다 작으면 저신뢰로 본다.
 #    → backend/app/adapters/ai_adapter.py:180 의 `0.0 < confidence < 0.7`,
