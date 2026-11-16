@@ -43,9 +43,13 @@ export function setToken(token: string): void {
   }
 }
 
+/** 상담사 앱(폰)이 연결 없이 쓰려고 기억한 계정 · 담당 사례 목록(아이 실명 포함, data/appOffline.ts). 로그인이 끝나면 지운다(민규 #168). */
+const APP_OFFLINE_KEYS = ["ispot-app-user", "ispot-app-cases"];
+
 export function clearToken(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
+    APP_OFFLINE_KEYS.forEach((key) => localStorage.removeItem(key));
   } catch {
     // 무시
   }
