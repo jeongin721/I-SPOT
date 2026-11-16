@@ -234,6 +234,21 @@ def test_setting_none_clears_both_columns(client: TestClient, counselor_headers,
     assert (row.memo, row.memo_enc, row.memo_plain) == (None, None, None)
 
 
+def test_same_value_does_not_rewrite_the_row(client: TestClient, counselor_headers, session: dict, db) -> None:
+    assert client.patch(f"/api/v1/sessions/{session['id']}", json={"memo": MEMO}, headers=counselor_headers).status_code == 200
+
+    row = db.get(ConsultationSession, uuid.UUID(session["id"]))
+    token = row.memo_enc
+    row.memo = MEMO
+
+    assert row.memo_enc == token
+    assert row not in db.dirty
+
+    row.memo = MEMO + "!"
+
+    assert row.memo_enc != token and row.memo == MEMO + "!"
+
+
 # =========================================================
 # 옮기기 script
 # =========================================================

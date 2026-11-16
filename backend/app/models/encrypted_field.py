@@ -93,6 +93,18 @@ class EncryptedColumn:
 
     def __set__(self, obj: Any, value: Any) -> None:
         state = obj.__dict__
+
+        # 이미 암호문이고 값이 같으면 그대로 둔다. 매번 새 nonce 로 다시 쓰면 값이 같아도 행이 바뀐 것으로 잡혀
+        # (예전 평문 칸과 달리) updated_at 이 움직인다.
+        if (
+            value is not None
+            and self._pending_key not in state
+            and obj.id is not None
+            and getattr(obj, self.enc_attr) is not None
+            and self._current_equals(obj, value)
+        ):
+            return
+
         state.pop(self._pending_key, None)
         state.pop(self._cache_key, None)
         setattr(obj, self.plain_attr, self.empty())
@@ -108,6 +120,13 @@ class EncryptedColumn:
             return
 
         self._store(obj, obj.id, value)
+
+    def _current_equals(self, obj: Any, value: Any) -> bool:
+        try:
+            return self.__get__(obj) == value
+        except (pii_crypto.PersonalInfoCryptoError, ValueError):
+            # 풀리지 않는 옛 값은 새 값으로 덮는다.
+            return False
 
     def _store(self, obj: Any, row_id: uuid.UUID, value: Any) -> None:
         text = self.dumps(value)
