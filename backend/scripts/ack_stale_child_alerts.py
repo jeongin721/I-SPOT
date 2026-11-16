@@ -8,9 +8,15 @@
 # 화면 '확인했어요' 와 같은 칸을 쓰므로, 이미 누가 확인한 알림은 건드리지 않는다.
 #
 # --before(필수, YYYY-MM-DD, 한국 날짜): 그날 0시 전에 생긴 알림만. 오늘 들어온 진짜 알림을 함께 치우지 않게.
+#   긴급 알림은 확인 전에 다시 누르면 새 줄 없이 payload.last_at 만 오른다(send_alert). 그래서 긴급 알림은
+#   마지막으로 누른 시각(last_at, 없으면 생긴 시각)이 기준 전일 때만 대상이다 — 열흘 전 처음 누르고 오늘 다시
+#   누른 알림은 건드리지 않는다(민규 #179 리뷰).
 # --case(여러 번 가능): 그 사례 번호의 알림만.
-# --expect N: --apply 때 대상 수가 N 이 아니면 아무것도 하지 않는다(목록을 본 뒤 그사이 바뀌었으면 멈추게).
-# 목록에는 사례 번호 · 종류 · 단계 · 생긴 시각만 나온다(아동 이름 · 아이가 쓴 글은 찍지 않는다).
+# --apply 는 --expect N 과 함께만 실행된다. 대상 수가 N 이 아니면 아무것도 하지 않는다(목록을 본 뒤 그사이 바뀌었으면 멈추게).
+# 종결 사례의 알림도 일부러 대상에 넣는다. 화면(진행 중 사례만)에는 안 보이지만 사례를 다시 열면 그대로 뜨기 때문이다.
+#   목록에 사례 상태를 함께 찍어 화면 수와 다른 까닭을 알 수 있게 한다.
+# 목록에는 사례 번호 · 사례 상태 · 종류 · 단계 · 생긴 시각 · 마지막 누른 시각 · 다시 누른 횟수만 나온다
+# (아동 이름 · 아이가 쓴 글은 찍지 않는다).
 #
 # 사용 예:
 #   python -m scripts.ack_stale_child_alerts --before 2026-11-17
@@ -31,6 +37,7 @@ from app.core.enums import AuditAction
 from app.models.case import Case
 from app.models.child_app import ChildAppEvent
 from app.services import audit_service
+from app.services.child_app_service import _alert_pressed_at
 
 VIA = "ack_stale_child_alerts script"
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
@@ -44,9 +51,12 @@ class CleanupError(Exception):
 class StaleAlert:
     id: str
     case_number: str
+    case_status: str
     kind: str
     level: str
     created_at: datetime
+    last_at: datetime
+    repeat_count: int
 
 
 def _cutoff(before: date) -> datetime:
@@ -57,7 +67,7 @@ def _cutoff(before: date) -> datetime:
 
 def _query(before: date, case_numbers: Sequence[str]):
     query = (
-        select(ChildAppEvent, Case.case_number)
+        select(ChildAppEvent, Case.case_number, Case.status)
         .join(Case, Case.id == ChildAppEvent.case_id)
         .where(
             ChildAppEvent.needs_ack.is_(True),
@@ -73,16 +83,26 @@ def _query(before: date, case_numbers: Sequence[str]):
     return query
 
 
+def _stale(event: ChildAppEvent, before: date) -> bool:
+    """마지막으로 누른 시각까지 기준 전인지. 긴급 알림이 아니면 last_at 이 없어 생긴 시각과 같다."""
+
+    return _alert_pressed_at(event) < _cutoff(before)
+
+
 def find_stale_alerts(db: Session, before: date, case_numbers: Sequence[str] = ()) -> List[StaleAlert]:
     return [
         StaleAlert(
             id=str(event.id),
             case_number=case_number,
+            case_status=case_status.value,
             kind=event.kind.value,
             level=event.level.value,
             created_at=event.created_at,
+            last_at=_alert_pressed_at(event),
+            repeat_count=int((event.payload or {}).get("repeat_count", 0)),
         )
-        for event, case_number in db.execute(_query(before, case_numbers)).all()
+        for event, case_number, case_status in db.execute(_query(before, case_numbers)).all()
+        if _stale(event, before)
     ]
 
 
@@ -95,7 +115,11 @@ def ack_stale_alerts(
 ) -> int:
     """대상 알림을 확인 처리하고 commit 한다. 처리한 수를 돌려준다."""
 
-    rows = db.execute(_query(before, case_numbers).with_for_update(of=ChildAppEvent)).all()
+    rows = [
+        row
+        for row in db.execute(_query(before, case_numbers).with_for_update(of=ChildAppEvent)).all()
+        if _stale(row[0], before)
+    ]
 
     if expect is not None and len(rows) != expect:
         db.rollback()
@@ -103,7 +127,7 @@ def ack_stale_alerts(
 
     now = datetime.now(timezone.utc)
 
-    for event, _ in rows:
+    for event, _, _ in rows:
         event.acknowledged_at = now
         event.acknowledged_by_id = None
         audit_service.record(
@@ -132,8 +156,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--before", required=True, help="이 한국 날짜 0시 전에 생긴 알림만 (YYYY-MM-DD)")
     parser.add_argument("--case", action="append", default=[], help="이 사례 번호만 (여러 번 가능)")
     parser.add_argument("--apply", action="store_true", help="목록만 보지 않고 확인 처리한다.")
-    parser.add_argument("--expect", type=int, default=None, help="--apply 때 대상 수가 이 값일 때만 처리한다.")
+    parser.add_argument("--expect", type=int, default=None, help="--apply 때 필수. 대상 수가 이 값일 때만 처리한다.")
     args = parser.parse_args(argv)
+
+    if args.apply and args.expect is None:
+        print("--apply 는 --expect N 과 함께 실행해 주세요(먼저 --apply 없이 목록을 보고 그 수를 적습니다).", file=sys.stderr)
+        return 2
 
     try:
         before = date.fromisoformat(args.before)
@@ -149,7 +177,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"확인 전 알림 {len(alerts)}건 ({before.isoformat()} 0시 전, 한국 시각)")
 
             for alert in alerts:
-                print(f"  {alert.case_number}  {alert.kind:<8} {alert.level:<5} {_local(alert.created_at)}  {alert.id[:8]}")
+                pressed = ""
+                if alert.repeat_count:
+                    pressed = f"  마지막 {_local(alert.last_at)} · 다시 {alert.repeat_count}번"
+                status = "" if alert.case_status == "ACTIVE" else f" ({alert.case_status})"
+                print(
+                    f"  {alert.case_number}{status}  {alert.kind:<8} {alert.level:<5} {_local(alert.created_at)}"
+                    f"{pressed}  {alert.id[:8]}"
+                )
 
             if alerts:
                 print(f"\n처리하려면 같은 명령 끝에 --apply --expect {len(alerts)} 를 붙여 다시 실행하세요.")

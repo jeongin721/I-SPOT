@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.core.enums import AuditAction
+from app.core.enums import AuditAction, CaseStatus
+from app.models.case import Case
 from app.models.audit_log import AuditLog
 from app.models.child_app import ChildAppEvent
 from scripts import ack_stale_child_alerts as script
@@ -91,3 +92,39 @@ def test_main_lists_without_changing(client: TestClient, counselor_headers, db, 
 
 def test_cutoff_is_korean_midnight() -> None:
     assert script._cutoff(date(2026, 11, 17)) == datetime(2026, 11, 16, 15, 0, tzinfo=timezone.utc)
+
+
+def test_repressed_alert_counts_from_last_press(client: TestClient, counselor_headers, db, capsys) -> None:
+    # 열흘 전 처음 누르고 오늘 다시 누른 긴급 알림은 대상이 아니다(민규 #179 리뷰).
+    case = create_case(client, counselor_headers)
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    alert_id = _open(client, counselor_headers)[0]["id"]
+    _age(db, alert_id, 10)
+    _alert(client, device)
+
+    assert script.find_stale_alerts(db, TODAY - timedelta(days=3)) == []
+    assert script.ack_stale_alerts(db, TODAY - timedelta(days=3), expect=0) == 0
+    assert len(_open(client, counselor_headers)) == 1
+
+    # 내일 기준이면 대상이고, 목록에 마지막 누른 시각 · 다시 누른 횟수가 나온다.
+    assert script.main(["--before", TOMORROW.isoformat()]) == 0
+    assert "다시 1번" in capsys.readouterr().out
+
+
+def test_closed_case_alert_is_listed_with_status(client: TestClient, counselor_headers, db, capsys) -> None:
+    old_case, _, _ = _two_alerts(client, counselor_headers, db)
+    db.get(Case, uuid.UUID(old_case["id"])).status = CaseStatus.CLOSED
+    db.commit()
+
+    assert script.main(["--before", (TODAY - timedelta(days=3)).isoformat()]) == 0
+    out = capsys.readouterr().out
+    assert "확인 전 알림 1건" in out and f"{old_case['case_number']} (CLOSED)" in out
+
+
+def test_main_apply_requires_expect(client: TestClient, counselor_headers, db, capsys) -> None:
+    _two_alerts(client, counselor_headers, db)
+
+    assert script.main(["--before", TOMORROW.isoformat(), "--apply"]) == 2
+    assert "--expect" in capsys.readouterr().err
+    assert len(_open(client, counselor_headers)) == 2
