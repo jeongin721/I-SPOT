@@ -15,3 +15,8 @@ scipy==1.18.1
 librosa==1.0.0
 numba==0.67.0
 soundfile==0.14.0
+
+# voice_marks 가 soundfile 로 열지 못하는 압축 음성(m4a · mp4 · webm, 휴대폰 · 브라우저 녹음)을 읽을 때만 쓴다.
+# PyAV wheel 이 FFmpeg 라이브러리를 품고 있어 apt(ffmpeg)는 필요 없다(작업 90, Windows wheel 확인).
+# 없으면 그런 파일은 지금처럼 DECODE_FAILED 이다.
+av==19.0.2
