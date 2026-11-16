@@ -1,4 +1,4 @@
-// Login 화면 마크업 — tools/dc2jsx.py 가 디자인(Login.dc.html)에서 만든 파일. 손으로 고치지 말고 디자인을 다시 풀어 만든다.
+// Login 화면 마크업 — tools/dc2jsx.py 가 디자인(Login.dc.html)에서 만든 파일. 그 뒤 서버 값 바인딩(v.*)만 손으로 더했다 — 다시 풀면 바인딩이 지워지니 diff 로 옮긴다.
 /* eslint-disable */
 import { Fragment } from 'react';
 import './Login.css';
@@ -20,7 +20,7 @@ export default function View({ v }) {
             </span>
           </button>
         </div>
-        <form style={{ width: "100%", maxWidth: "400px", background: "#FFFFFF", border: "1px solid #D0DCE5", borderRadius: "24px", boxShadow: "8px 8px 22px rgba(132,152,166,.30), -8px -8px 22px rgba(255,255,255,.95)", padding: "36px 34px", display: "flex", flexDirection: "column", gap: "18px" }} onSubmit={(e) => e.preventDefault()}>
+        <form onSubmitCapture={v.submit} style={{ width: "100%", maxWidth: "400px", background: "#FFFFFF", border: "1px solid #D0DCE5", borderRadius: "24px", boxShadow: "8px 8px 22px rgba(132,152,166,.30), -8px -8px 22px rgba(255,255,255,.95)", padding: "36px 34px", display: "flex", flexDirection: "column", gap: "18px" }} onSubmit={(e) => e.preventDefault()}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
             <span className="mk">
               온
@@ -39,14 +39,21 @@ export default function View({ v }) {
             <span className="lb">
               비밀번호
             </span>
-            <input className="inp" type="password" defaultValue="password" />
+            <input className="inp" type="password" value={v.password} onChange={v.setPassword} autoComplete="current-password" />
           </label>
-          <a className="btn btn-p" href={v.loginHref} style={{ width: "100%", marginTop: "4px" }}>
-            로그인
+          <a className="btn btn-p" href={v.loginHref} onClick={v.submit} aria-disabled={v.busy} style={{ width: "100%", marginTop: "4px" }}>
+            {v.submitLabel}
           </a>
           <button type="button" className="btn btn-s" onClick={v.openCode} style={{ width: "100%" }}>
             회원가입
           </button>
+          {v.message ? (
+            <>
+              <p className="lb" role="alert" style={{ margin: "-6px 0 0", fontWeight: "400", textAlign: "center" }}>
+                {v.message}
+              </p>
+            </>
+          ) : null}
           {v.joined ? (
             <>
               <p className="lb" role="status" style={{ margin: "-6px 0 0", fontWeight: "400", textAlign: "center" }}>

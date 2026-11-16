@@ -1,4 +1,4 @@
-// CaseList 화면 마크업 — tools/dc2jsx.py 가 디자인(CaseList.dc.html)에서 만든 파일. 손으로 고치지 말고 디자인을 다시 풀어 만든다.
+// CaseList 화면 마크업 — tools/dc2jsx.py 가 디자인(CaseList.dc.html)에서 만든 파일. 그 뒤 서버 값 바인딩(v.*)만 손으로 더했다 — 다시 풀면 바인딩이 지워지니 diff 로 옮긴다.
 /* eslint-disable */
 import { Fragment } from 'react';
 import './CaseList.css';
@@ -94,12 +94,12 @@ export default function View({ v }) {
           </nav>
           <div className="me">
             <span className="av">
-              이
+              {v.meInitial}
             </span>
             <b style={{ fontWeight: "500" }}>
-              이서연 상담사
+              {v.meName} {v.meRole}
             </b>
-            <a href="#/Login" className="note" style={{ marginLeft: "auto" }}>
+            <a href="#/Login" className="note" style={{ marginLeft: "auto" }} onClick={v.logout}>
               로그아웃
             </a>
           </div>
@@ -180,7 +180,7 @@ export default function View({ v }) {
           <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 14px" }}>
             <div style={{ flex: "1 1 260px" }}>
               <div className="sub">
-                담당 사례 10건
+                담당 사례 {v.totalCount}건
               </div>
               <h1 style={{ margin: "2px 0 0", fontSize: "28px", fontWeight: "700" }}>
                 통합 사례 관리
@@ -188,7 +188,7 @@ export default function View({ v }) {
             </div>
           </header>
           <section style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 12px" }}>
-            <input className="inp" type="search" aria-label="성함 또는 사례 ID 검색" placeholder="성함 · 사례 ID 검색" style={{ flex: "1 1 240px" }} />
+            <input className="inp" type="search" aria-label="성함 또는 사례 ID 검색" placeholder="성함 · 사례 ID 검색" value={v.search} onChange={v.setSearch} style={{ flex: "1 1 240px" }} />
             <div role="group" aria-label="정렬" className="seg">
               <span className="seg-lb">
                 정렬
@@ -233,7 +233,7 @@ export default function View({ v }) {
                         {r.id}
                       </td>
                       <td>
-                        <a className="nm" href="#/CaseInfo">
+                        <a className="nm" href={r.href}>
                           <span className="av" style={{ width: "34px", height: "34px", fontSize: "13px" }}>
                             {r.ini}
                           </span>
@@ -254,7 +254,7 @@ export default function View({ v }) {
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <a href="#/CaseInfo">
+                        <a href={r.href}>
                           상세
                         </a>
                       </td>

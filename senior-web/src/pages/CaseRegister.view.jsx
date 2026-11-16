@@ -1,4 +1,4 @@
-// CaseRegister 화면 마크업 — tools/dc2jsx.py 가 디자인(CaseRegister.dc.html)에서 만든 파일. 손으로 고치지 말고 디자인을 다시 풀어 만든다.
+// CaseRegister 화면 마크업 — tools/dc2jsx.py 가 디자인(CaseRegister.dc.html)에서 만든 파일. 그 뒤 서버 값 바인딩(v.*)만 손으로 더했다 — 다시 풀면 바인딩이 지워지니 diff 로 옮긴다.
 /* eslint-disable */
 import { Fragment } from 'react';
 import './CaseRegister.css';
