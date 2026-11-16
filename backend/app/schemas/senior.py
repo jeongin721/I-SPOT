@@ -9,6 +9,8 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enums import (
+    CareDomain,
+    DomainChange,
     GlucoseTiming,
     LivingArrangement,
     LongTermCareGrade,
@@ -270,6 +272,133 @@ class NextCheckResponse(BaseModel):
     updated_at: datetime
 
 
+# ---------------------------------------------------------------- 생활 · 정서 영역 변화(2026-11-16)
+
+DOMAIN_LABELS = {
+    CareDomain.MEAL: "식사",
+    CareDomain.SLEEP: "수면",
+    CareDomain.OUTING: "외출",
+    CareDomain.SOCIAL: "사회활동",
+    CareDomain.MOOD: "정서",
+}
+DOMAIN_TEXT_MAX = 500
+DOMAIN_NOTE_MAX = 300
+
+
+class CareDomainItemIn(RequestModel):
+    """담당자가 확정하는 영역 한 줄. NOT_MENTIONED 면 text · change_note · segment_ids 는 비운다(보내도 버린다)."""
+
+    domain: CareDomain
+    text: Optional[str] = Field(default=None, max_length=DOMAIN_TEXT_MAX)
+    change: DomainChange
+    change_note: Optional[str] = Field(default=None, max_length=DOMAIN_NOTE_MAX)
+    segment_ids: List[str] = Field(default_factory=list, max_length=20)
+    origin: NextCheckOrigin = NextCheckOrigin.COUNSELOR
+    #: AI · 규칙 초안을 담당자가 고쳤는가.
+    edited: bool = False
+
+    @model_validator(mode="after")
+    def _shape(self) -> "CareDomainItemIn":
+        if self.change == DomainChange.NOT_MENTIONED:
+            self.text, self.change_note, self.segment_ids = None, None, []
+            return self
+        self.text = (self.text or "").strip() or None
+        if self.text is None:
+            raise ValueError("이야기가 있던 영역은 이번 상태 글이 있어야 합니다.")
+        self.change_note = (self.change_note or "").strip() or None
+        self.segment_ids = list(dict.fromkeys(seg.strip() for seg in self.segment_ids if seg and seg.strip()))
+        return self
+
+
+class CareDomainsSaveRequest(RequestModel):
+    """보낸 영역만 바꾼다(같은 영역을 다시 보내면 덮어쓴다). 안 보낸 영역은 그대로 둔다."""
+
+    items: List[CareDomainItemIn] = Field(min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def _unique(self) -> "CareDomainsSaveRequest":
+        domains = [item.domain for item in self.items]
+        if len(set(domains)) != len(domains):
+            raise ValueError("같은 영역이 두 번 있습니다.")
+        return self
+
+
+class CareDomainNoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    case_id: uuid.UUID
+    session_id: uuid.UUID
+    domain: CareDomain
+    text: Optional[str] = None
+    change: DomainChange
+    change_note: Optional[str] = None
+    segment_ids: List[str] = Field(default_factory=list)
+    origin: NextCheckOrigin
+    edited: bool
+    compared_session_id: Optional[uuid.UUID] = None
+    confirmed_at: datetime
+
+
+class PreviousDomainNote(BaseModel):
+    """견줄 앞 기록 — 이 회차보다 앞선 회차에서 확정한, 이야기가 있던 가장 최근 기록."""
+
+    session_id: uuid.UUID
+    session_number: int
+    #: 상담일(한국 날짜, YYYY-MM-DD). 없으면 빈 글.
+    date: str = ""
+    text: str
+
+
+class CareDomainDraft(BaseModel):
+    text: Optional[str] = None
+    change: Optional[DomainChange] = None
+    change_note: Optional[str] = None
+    segment_ids: List[str] = Field(default_factory=list)
+    source: Literal["RULE", "AI"] = "RULE"
+
+
+class CareDomainRow(BaseModel):
+    domain: CareDomain
+    label: str
+    previous: Optional[PreviousDomainNote] = None
+    #: 마지막 분석의 초안(분석이 없거나 실패면 null).
+    draft: Optional[CareDomainDraft] = None
+    #: 담당자가 확정한 것(아직이면 null).
+    saved: Optional[CareDomainNoteResponse] = None
+
+
+class SessionCareDomainsResponse(BaseModel):
+    session_id: uuid.UUID
+    session_number: int
+    #: 다섯 영역(식사 · 수면 · 외출 · 사회활동 · 정서 순서).
+    domains: List[CareDomainRow]
+    #: 다섯 영역을 모두 확정했는가.
+    confirmed: bool
+
+
+class CareDomainTimelineEntry(BaseModel):
+    session_id: uuid.UUID
+    session_number: int
+    date: str = ""
+    text: Optional[str] = None
+    change: DomainChange
+    change_note: Optional[str] = None
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+class CareDomainTimeline(BaseModel):
+    domain: CareDomain
+    label: str
+    #: 회차 순(오래된 것부터). 확정한 것만.
+    entries: List[CareDomainTimelineEntry] = Field(default_factory=list)
+
+
+class CareDomainTimelineResponse(BaseModel):
+    case_id: uuid.UUID
+    domains: List[CareDomainTimeline]
+
+
 # ---------------------------------------------------------------- 상담 이력 조회
 
 
@@ -296,6 +425,8 @@ class HistoryEntry(BaseModel):
     checks_created: List[NextCheckResponse] = Field(default_factory=list)
     #: 이 방문에서 확인한(DONE · DROPPED) 확인사항.
     checks_resolved: List[NextCheckResponse] = Field(default_factory=list)
+    #: 이 방문에서 확정한 생활 · 정서 영역(식사 · 수면 · 외출 · 사회활동 · 정서 순서).
+    care_domains: List[CareDomainNoteResponse] = Field(default_factory=list)
 
 
 class SeniorHistoryResponse(BaseModel):

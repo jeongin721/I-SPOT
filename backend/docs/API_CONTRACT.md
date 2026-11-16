@@ -2917,7 +2917,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 ## 27. Senior Care (고령자 건강상담, 2026-11-13, `feature/senior`)
 
-이동식 건강검진(카라반) 현장에서 건강측정과 상담을 하는 **현장 담당자용 기록 도구**다(어르신이 직접 쓰는 화면은 없다). 흐름: 기본정보 → 건강측정 입력 → 상담 · 녹음 → STT → **회차 통합 요약(측정 + 상담)** → 담당자 승인 → **다음 상담 확인사항 저장** → 상담 이력 조회. 이 기능은 main 에 합치지 않고 `feature/senior` 브랜치에만 둔다.
+이동식 건강검진(카라반) 현장에서 건강측정과 상담을 하는 **현장 담당자용 기록 도구**다(어르신이 직접 쓰는 화면은 없다). 흐름: 기본정보 → 건강측정 입력 → 상담 · 녹음 → STT → **회차 통합 요약(측정 + 상담)** → 담당자 승인 → **생활 · 정서 영역 변화 확정** → **다음 상담 확인사항 저장** → 상담 이력 조회. 이 기능은 main 에 합치지 않고 `feature/senior` 브랜치에만 둔다.
 
 사례를 만들 때 `subject_type: "SENIOR"` 로 만든 사례에서만 쓰고, 아동 사례(`CHILD`)는 이 절의 API 가 모두 409 `INVALID_CASE_STATE` 다. 접근은 다른 사례 API 와 같다(담당 상담사 · 관리자, 그 밖 403).
 
@@ -2968,12 +2968,29 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 고령자 사례의 회차는 `POST /sessions/{id}/analysis` 가 학대 분석 대신 **통합 요약**을 만든다. 입력은 이번 녹취 + 이 회차에 단 측정 + 이전 방문 이력(측정 추이 · 이 회차보다 앞선 승인 요약 3회차 · 기본정보).
 
 - `analysis.provider`: `senior-rule` · `senior-modeling`. 결과(8절 Contract)는 `summary.overview` · `summary.key_points` 에 통합 요약, `summary_evidence` 에 발화 근거를 담고, 학대 칸(`risk_utterances` · `abuse_signals` · `severity_ratings` …)은 빈 배열, `topic_tags` · `safety_flags` 는 null.
-- 덧붙임 `result.senior`(아동 회차는 null): `{source: "RULE"|"AI", visit_measurement_ids, key_point_basis: [[근거]], next_check_drafts: [{text, basis}], safety_mentions: [{kind, text, segment_ids}]}`. `key_point_basis[i]` 는 `key_points[i]` 의 근거.
+- 덧붙임 `result.senior`(아동 회차는 null): `{source: "RULE"|"AI", visit_measurement_ids, key_point_basis: [[근거]], next_check_drafts: [{text, basis}], safety_mentions: [{kind, text, segment_ids}], domain_drafts: [영역 초안 5줄]}`(영역 초안은 아래 '생활 · 정서 영역 변화'). `key_point_basis[i]` 는 `key_points[i]` 의 근거.
 - 근거 모양: `{kind: "SEGMENT", segment_ids}` · `{kind: "MEASUREMENT", metric, measurement_id}` · `{kind: "SESSION", session_number}` · `{kind: "PROFILE"}`.
 - `safety_mentions`: 어르신 쪽 발화에서 자해 · 자살(`SELF_HARM`) · 급한 건강 문제(`URGENT_HEALTH`)와 관련된 말. 낱말 찾기는 늘 하고, AI 가 켜져 있으면 AI 가 찾은 것과 합친다. 있으면 `warnings` 에 '바로 확인해 주세요(AI 표시, 판정 아님)' 문구가 붙는다. 긴급 여부는 담당자가 정한다.
 - `SENIOR_AI_PROVIDER=rule`(기본): 이번 측정 한 줄 + 어르신 발화 앞 3개를 핵심 내용으로 옮기고(AI 요약 아님 — `warnings` 에 표시), 확인사항 초안은 아래 브리핑 규칙. `modeling`: 이름을 가린 뒤 외부 AI. 실패는 회차 `AI_FAILED` 와 오류 코드(`AI_INVALID_OUTPUT` · `AI_PRIVACY_BLOCKED` · `AI_TIMEOUT` · `AI_FAILED`).
 - 요약 고치기 · 승인은 아동과 같은 `/sessions/{id}/summary` API. 확인사항 초안은 담당자가 두기 · 고치기 · 지우기 한 뒤 `POST /cases/{case_id}/next-checks` 로 저장한다.
 - 고령자 회차는 STT 뒤 1차 핵심 발화 스캔(`key_scan.status: "SKIPPED"`)과 아동용 다음 상담 체크리스트(19절, POST 는 409)를 하지 않는다.
+
+### 생활 · 정서 영역 변화(`care-domains`, 2026-11-16)
+
+회차마다 **식사(`MEAL`) · 수면(`SLEEP`) · 외출(`OUTING`) · 사회활동(`SOCIAL`) · 정서(`MOOD`)** 의 이번 상태를 담당자가 확정하고, 앞 회차에서 확정한 기록과 견준다(학대 분석 자리를 대신함). 좋아짐 · 나빠짐 같은 평가 칸은 없다 — 무엇이 어떻게 달라졌는지만 글로 둔다.
+
+- `change`: `SIMILAR`(비슷함) · `CHANGED`(달라짐) · `NEW`(처음 기록, 견줄 앞 기록 없음) · `NOT_MENTIONED`(이번 상담에서 이야기 없음).
+- **견줄 앞 기록**: 이 회차보다 회차 번호가 작은 회차 가운데, 그 영역을 확정했고 `NOT_MENTIONED` 가 아닌 가장 최근 기록.
+- **초안**(`result.senior.domain_drafts`, 늘 5줄 · 영역 순서 고정): `{domain, text, change, change_note, segment_ids, source: "RULE"|"AI"}`.
+  - `rule`: 영역 낱말이 나온 어르신 발화(최대 3개)의 첫 발화를 그대로 옮긴다. 앞 기록이 없으면 `NEW`, 있으면 `change: null`(같은지는 담당자가 견줌). 낱말이 없으면 `NOT_MENTIONED`.
+  - `modeling`: 회차 통합 요약과 같은 AI 호출에서 앞 기록을 함께 주고 받는다. 근거 발화 없는 글 · 금지 말(판정 · 진단)은 버리고 그 영역은 규칙 초안으로 채운다. 앞 기록 유무와 안 맞는 `change` 는 고친다(없는데 SIMILAR · CHANGED → NEW, 있는데 NEW → null). `change_note` 는 `CHANGED` 일 때만.
+- `GET /sessions/{session_id}/care-domains` → `{session_id, session_number, confirmed, domains: [{domain, label, previous, draft, saved}]}`. `previous`: `{session_id, session_number, date, text}` 또는 null. `draft`: 마지막 분석(COMPLETED)의 초안 또는 null. `saved`: 확정한 기록 또는 null. `confirmed` 는 다섯 영역을 모두 확정했는가.
+- `PUT /sessions/{session_id}/care-domains` 본문 `{items: [{domain, change, text?, change_note?, segment_ids?, origin?, edited?}]}`(1~5개, 같은 영역 두 번 422). **보낸 영역만 덮어쓰고** 안 보낸 영역은 그대로. 응답은 GET 과 같다.
+  - `NOT_MENTIONED` 면 `text` · `change_note` · `segment_ids` 는 버린다. 그 밖은 `text`(1~500자) 필수(422). `change_note`(~300자)는 `CHANGED` 일 때만 남긴다.
+  - 앞 기록이 없는데 `SIMILAR` · `CHANGED`, 있는데 `NEW` 면 400. `segment_ids` 가 이 회차 마지막 녹취에 없으면 400.
+  - `origin` · `edited` 는 확인사항과 같다. 서버가 `compared_session_id`(견준 회차, `NEW` 면 null) · `confirmed_at` 을 채운다.
+- `GET /cases/{case_id}/care-domains` → 이력 비교 화면: `{case_id, domains: [{domain, label, entries: [{session_id, session_number, date, text, change, change_note, segment_ids}]}]}`, `entries` 는 회차 순(오래된 것부터), 확정한 것만.
+- 확정 기록 응답: `{id, case_id, session_id, domain, text, change, change_note, segment_ids, origin, edited, compared_session_id, confirmed_at}`.
 
 ### 방문 전 브리핑(`senior-brief`)
 
@@ -2993,7 +3010,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 `{case_id, entries: [...], open_checks: [확인사항]}` — `entries` 는 최근 것부터:
 
-- `kind: "VISIT"`(회차): `at`(상담일, 없으면 만든 때) · `session_id` · `session_number` · `session_title` · `session_status` · `summary`(`{overview, key_points, status}`, 없으면 null) · `measurements`(그 회차에 단 측정) · `checks_created`(그 방문에서 만든 확인사항) · `checks_resolved`(그 방문에서 확인한 확인사항).
+- `kind: "VISIT"`(회차): `at`(상담일, 없으면 만든 때) · `session_id` · `session_number` · `session_title` · `session_status` · `summary`(`{overview, key_points, status}`, 없으면 null) · `measurements`(그 회차에 단 측정) · `checks_created`(그 방문에서 만든 확인사항) · `checks_resolved`(그 방문에서 확인한 확인사항) · `care_domains`(그 방문에서 확정한 생활 · 정서 영역, 영역 순서).
 - `kind: "MEASUREMENT"`(회차 없이 적은 측정): `at`(잰 때) · `measurements`(1개).
 
-감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간) · `NEXT_CHECKS_SAVED`(개수 · 출처별 수 · 고친 수) · `NEXT_CHECK_UPDATED`(바뀐 칸 이름 · 상태) · `NEXT_CHECK_DELETED`(출처 · 상태). 값 · 메모 글 · 확인사항 문장은 넣지 않는다.
+감사 기록: `SENIOR_PROFILE_UPDATED`(바뀐 칸 이름) · `HEALTH_MEASUREMENT_CREATED` · `_UPDATED` · `_DELETED`(채운 · 바뀐 칸 이름) · `SENIOR_BRIEF_GENERATED`(source · model · 개수 · 걸린 시간) · `NEXT_CHECKS_SAVED`(개수 · 출처별 수 · 고친 수) · `NEXT_CHECK_UPDATED`(바뀐 칸 이름 · 상태) · `NEXT_CHECK_DELETED`(출처 · 상태) · `CARE_DOMAINS_SAVED`(영역 이름 · 변화별 수 · 고친 수). 값 · 메모 글 · 확인사항 · 영역 문장은 넣지 않는다.

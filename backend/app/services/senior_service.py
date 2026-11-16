@@ -515,6 +515,10 @@ def build_session_input(db: Session, session: ConsultationSession) -> Dict[str, 
         .order_by(HealthMeasurement.measured_at.asc())
     )
     data["visit_measurements"] = [item for row in rows for item in _visit_items(row)]
+
+    from app.services import care_domain_service  # care_domain_service 가 이 모듈을 불러서 안에서
+
+    data["previous_domains"] = care_domain_service.previous_domains_input(db, session)
     return data
 
 
@@ -813,6 +817,9 @@ def get_history(db: Session, case: Case) -> SeniorHistoryResponse:
     } if sessions else {}
     measurements = _measurements(db, case)
     checks = list(db.scalars(select(NextCheck).where(NextCheck.case_id == case.id).order_by(NextCheck.created_at.asc())))
+    from app.services import care_domain_service
+
+    domains = care_domain_service.notes_by_session(db, case.id)
 
     by_session: Dict[uuid.UUID, List[HealthMeasurement]] = {}
     loose: List[HealthMeasurement] = []
@@ -843,6 +850,7 @@ def get_history(db: Session, case: Case) -> SeniorHistoryResponse:
                 measurements=[HealthMeasurementResponse.model_validate(row) for row in by_session.get(item.id, [])],
                 checks_created=[NextCheckResponse.model_validate(c) for c in checks if c.source_session_id == item.id],
                 checks_resolved=[NextCheckResponse.model_validate(c) for c in checks if c.checked_session_id == item.id],
+                care_domains=domains.get(item.id, []),
             )
         )
     for row in loose:

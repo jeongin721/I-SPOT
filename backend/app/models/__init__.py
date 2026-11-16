@@ -16,7 +16,7 @@ from app.models.followup_check import SessionFollowupChecks
 from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.schedule import ScheduleEvent
-from app.models.senior import HealthMeasurement, NextCheck, SeniorProfile
+from app.models.senior import CareDomainNote, HealthMeasurement, NextCheck, SeniorProfile
 from app.models.child_app import ChildAppAiDraft  # noqa: F401
 from app.models.docbox import DocboxFile, DocboxFolder
 from app.models.signup import SignupEmailCode, SignupRequest
@@ -55,6 +55,7 @@ __all__ = [
     "ScheduleEvent",
     "HealthMeasurement",
     "NextCheck",
+    "CareDomainNote",
     "SeniorProfile",
     "SignupEmailCode",
     "SignupRequest",

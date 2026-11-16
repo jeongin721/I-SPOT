@@ -2,7 +2,8 @@
 #
 # 고령자 사례(subject_type=SENIOR)의 회차는 analysis_service 가 학대 분석 어댑터(get_ai_adapter) 대신 이것을 쓴다.
 # ai/modeling/senior/senior_session_llm 을 불러 결과를 아동 회차와 같은 AIAnalysisResult 에 담는다:
-#   summary.overview · key_points ← 통합 요약, summary_evidence ← 발화 근거, senior ← 측정 근거 · 확인사항 초안 · 안전 발화.
+#   summary.overview · key_points ← 통합 요약, summary_evidence ← 발화 근거,
+#   senior ← 측정 근거 · 확인사항 초안 · 안전 발화 · 생활 · 정서 영역 초안.
 # 학대 관련 칸(risk_utterances · abuse_signals · severity_ratings …)은 비우고, topic_tags · safety_flags 는 null 이다.
 
 import time
@@ -89,6 +90,7 @@ class SeniorAIAdapter:
                 "key_point_basis": [point.get("basis") or [] for point in key_points],
                 "next_check_drafts": raw.get("check_points") or [],
                 "safety_mentions": safety,
+                "domain_drafts": raw.get("domains") or [],
             },
         )
         return AIAnalysisBundle(

@@ -223,6 +223,17 @@ class SeniorDraftItem(BaseModel):
     basis: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+class SeniorDomainDraft(BaseModel):
+    """생활 · 정서 영역 하나의 초안(2026-11-16). change 가 null 이면 이전 기록과 같은지 담당자가 견준다(규칙 초안)."""
+
+    domain: Literal["MEAL", "SLEEP", "OUTING", "SOCIAL", "MOOD"]
+    text: Optional[str] = None
+    change: Optional[Literal["SIMILAR", "CHANGED", "NEW", "NOT_MENTIONED"]] = None
+    change_note: Optional[str] = None
+    segment_ids: List[str] = Field(default_factory=list)
+    source: Literal["RULE", "AI"] = "RULE"
+
+
 class SeniorAnalysis(BaseModel):
     """고령자 회차 통합 요약의 덧붙임(2026-11-13, feature/senior). 아동 회차는 null 이다.
 
@@ -235,6 +246,8 @@ class SeniorAnalysis(BaseModel):
     key_point_basis: List[List[Dict[str, Any]]] = Field(default_factory=list)
     next_check_drafts: List[SeniorDraftItem] = Field(default_factory=list)
     safety_mentions: List[SeniorSafetyMention] = Field(default_factory=list)
+    #: 식사 · 수면 · 외출 · 사회활동 · 정서 다섯 줄. 담당자가 검토해 PUT /sessions/{session_id}/care-domains 로 확정한다.
+    domain_drafts: List[SeniorDomainDraft] = Field(default_factory=list)
 
 
 class AIAnalysisResult(BaseModel):

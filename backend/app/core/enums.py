@@ -82,6 +82,25 @@ class NextCheckStatus(str, Enum):
     DROPPED = "DROPPED"
 
 
+class CareDomain(str, Enum):
+    """고령자 생활 · 정서 영역(2026-11-16 멘토 정리: 회차마다 이전 대비 변화를 본다)."""
+
+    MEAL = "MEAL"  # 식사
+    SLEEP = "SLEEP"  # 수면
+    OUTING = "OUTING"  # 외출
+    SOCIAL = "SOCIAL"  # 사회활동
+    MOOD = "MOOD"  # 정서
+
+
+class DomainChange(str, Enum):
+    """이전에 확정한 기록과 견줘 본 결과. 좋아짐 · 나빠짐 같은 평가는 두지 않는다(무엇이 달라졌는지는 글로)."""
+
+    SIMILAR = "SIMILAR"  # 비슷함
+    CHANGED = "CHANGED"  # 달라짐
+    NEW = "NEW"  # 처음 기록(견줄 이전 기록 없음)
+    NOT_MENTIONED = "NOT_MENTIONED"  # 이번 상담에서 이야기 없음
+
+
 class CaseStatus(str, Enum):
     """사례 상태. 종결은 상담사/관리자의 명시적 행위로만 발생한다."""
 
@@ -488,6 +507,7 @@ class AuditAction(str, Enum):
     NEXT_CHECKS_SAVED = "NEXT_CHECKS_SAVED"
     NEXT_CHECK_UPDATED = "NEXT_CHECK_UPDATED"
     NEXT_CHECK_DELETED = "NEXT_CHECK_DELETED"
+    CARE_DOMAINS_SAVED = "CARE_DOMAINS_SAVED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.

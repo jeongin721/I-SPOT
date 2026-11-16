@@ -19,7 +19,10 @@
   "key_points": [{"text", "basis": [{"kind": "SEGMENT", "segment_ids"} | {"kind": "MEASUREMENT", "metric", "measurement_id"}]}],
   "check_points": [{"text", "basis": [...]}],          # 다음 상담 확인사항 초안(senior_brief_llm 근거 모양 + SEGMENT)
   "safety_mentions": [{"kind": "SELF_HARM" | "URGENT_HEALTH", "text", "segment_ids"}],
+  "domains": [...],   # 생활 · 정서 영역 다섯 줄(care_domains 모듈 출력 모양, 2026-11-16)
 }
+
+data["previous_domains"] 는 영역마다 앞 회차에 담당자가 확정한 기록이다(care_domains 참고).
 
 [하지 않는 것] 진단 · 정신질환 · 치매 판정 · 치료 권고(senior_brief_llm.FORBIDDEN 에 걸리는 문장은 버림), 근거 없는 문장.
 안전 관련 발화는 '표시' 만 한다 — 긴급 여부는 담당자가 정한다. 낱말 찾기(SAFETY_PATTERNS)는 LLM 과 상관없이 늘 돌린다.
@@ -33,6 +36,7 @@ openai · privacy_gateway 는 CI 에 없어 import 는 함수 안에 둔다.
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ai.modeling.senior import care_domains
 from ai.modeling.senior.senior_brief_llm import (
     MAX_ITEMS as MAX_CHECK_POINTS,
     _fmt,
@@ -171,6 +175,7 @@ def rule_based_session_summary(data: Dict[str, Any]) -> Dict[str, Any]:
         "key_points": points,
         "check_points": checks[:MAX_CHECK_POINTS],
         "safety_mentions": find_safety_mentions(segments),
+        "domains": care_domains.rule_based_domains(data),
     }
 
 
@@ -193,8 +198,9 @@ SYSTEM_PROMPT = """너는 고령자 건강상담 담당자를 돕는 보조 도�
 {{"overview": "{max_overview}자 이내",
   "key_points": [{{"text": "{max_chars}자 이내", "refs": ["s3", "M1"]}}],          # 최대 {max_points}개
   "check_points": [{{"text": "...", "refs": ["M2", "s7"]}}],                     # 최대 {max_checks}개
-  "safety_mentions": [{{"kind": "SELF_HARM" 또는 "URGENT_HEALTH", "text": "...", "refs": ["s9"]}}]}}
-
+  "safety_mentions": [{{"kind": "SELF_HARM" 또는 "URGENT_HEALTH", "text": "...", "refs": ["s9"]}}],
+{domains_output}}}
+{domains_section}
 [이번 방문 측정]
 {visit}
 
@@ -318,7 +324,10 @@ def summarize_senior_session(
 
     history, refs = format_history(data)
     visit = format_visit(data.get("visit_measurements") or [], refs)
-    masked = review({"lines": lines, "history": [history]}, known_identifiers=list(known_identifiers or []))
+    masked = review(
+        {"lines": lines, "history": [history], "domains": [care_domains.prompt_section(data)]},
+        known_identifiers=list(known_identifiers or []),
+    )
     client, model_name = build_openai_client_and_model(model or DEFAULT_MODEL)
     prompt = SYSTEM_PROMPT.format(
         max_overview=MAX_OVERVIEW_CHARS,
@@ -328,17 +337,20 @@ def summarize_senior_session(
         visit=visit,
         history=masked.payload["history"][0],
         transcript="\n".join(masked.payload["lines"]),
+        domains_output=care_domains.PROMPT_OUTPUT,
+        domains_section=masked.payload["domains"][0],
     )
     parsed = _call_llm_with_retry(
         client=client,
         model=model_name,
         system_prompt=prompt,
-        user_prompt="위 입력으로 통합 요약과 다음 상담 확인사항 초안을 만들어.",
+        user_prompt="위 입력으로 통합 요약 · 다음 상담 확인사항 · 영역 변화 초안을 만들어.",
         max_retries=2,
         timeout_seconds=120.0,
         deadline=deadline,
     )
     cleaned = clean_output(parsed, refs, ids, rule_overview(data))
+    cleaned["domains"] = care_domains.clean_domains(parsed.get("domains"), data, set(ids))
     restored = restore_pii(cleaned, masked.entity_map)
     restored["safety_mentions"] = _merge_safety(find_safety_mentions(segments), restored["safety_mentions"])
 
