@@ -1091,7 +1091,7 @@ def test_child_home_alert_shows_on_new_device_that_presses_again(
 def test_unacked_alert_is_handed_over_to_other_counselors(
     client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict, db
 ) -> None:
-    """멘토 피드백 11/12 B안 — 담당 상담사가 정한 시간(기본 10분) 넘게 확인하지 않은 긴급 알림은 다른 상담사에게도 보인다."""
+    """멘토 피드백 11/12 B안 — 담당 상담사가 정한 시간(기본 5분) 넘게 확인하지 않은 긴급 알림은 다른 상담사에게도 보인다."""
 
     device = _linked(client, counselor_headers, case["id"])
     _alert(client, device)
@@ -1100,7 +1100,7 @@ def test_unacked_alert_is_handed_over_to_other_counselors(
     assert _open(client, admin_headers)[0]["escalated"] is False
 
     row = _alert_row(db, case["id"])
-    row.created_at = datetime.now(timezone.utc) - timedelta(minutes=11)
+    row.created_at = datetime.now(timezone.utc) - timedelta(minutes=6)
     db.commit()
 
     handed = _open(client, other_counselor_headers)

@@ -121,8 +121,8 @@ class Settings(BaseSettings):
     # 아이 답을 보고 확인해 볼 점 · 추가 질문 초안을 만든다(API_CONTRACT 24절). off(기본) · mock(OpenAI 없이 '(예시)') ·
     # modeling(ai/modeling/abuse/child_answer_llm — 이름을 가린 뒤 OpenAI 로 보낸다).
     # 아이가 '급하다고 알리기' 를 보낸 뒤 담당 상담사가 이만큼 확인하지 않으면 다른 상담사 화면에도 띄운다(멘토 피드백 11/12 B안).
-    # 관리자는 처음부터 전체를 본다. 기본 10분 — 아이 앱은 5분이 지나면 112 · 1388 을 다시 안내한다.
-    CHILD_APP_ESCALATE_MINUTES: int = Field(default=10, ge=1, le=24 * 60)
+    # 관리자는 처음부터 전체를 본다. 기본 5분(경진 11/16) — 아이 앱이 112 · 1388 을 다시 안내하는 시간과 같다.
+    CHILD_APP_ESCALATE_MINUTES: int = Field(default=5, ge=1, le=24 * 60)
     # 상담사가 바로 볼 수 있는 시간(한국 시간). 밖이면 아이 앱이 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
     # 요일은 0=월 … 6=일. 공휴일은 CHILD_APP_STAFF_HOLIDAYS.
     # 시간은 같은 날 안의 HH:MM-HH:MM(시작 < 끝)만 된다. 자정을 넘기면(22:00-06:00) 늘 밖으로 본다. 값 범위(25:99)는 검사하지 않는다.
