@@ -409,6 +409,7 @@ backend/
   scripts/
     seed_users.py        초기 계정 생성
     unlock_user.py       잠긴 · 휴면 계정 복구 (서버에서만, 관리자가 모두 잠겼을 때)
+    ack_stale_child_alerts.py  아이 앱 '확인 전' 알림 정리 (서버에서만, 기능 켜기 전 시험 알림 치우기, 기본은 목록만)
     seed_demo_data.py    상태별 데모 상담 데이터 생성 (Frontend/시연용)
     smoke_api.py         실행 중인 서버에 대한 전체 Flow 확인
     check.sh             push 전 로컬 검증 (Lint/Test/Migration)
