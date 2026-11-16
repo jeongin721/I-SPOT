@@ -1,11 +1,12 @@
 # 고령자 후속관리(API_CONTRACT 27절, 2026-11-16) — 기본정보 복약 · 돌봄 필요, 돌봄 상태, 확인 · 조치사항과 재방문 일정,
 # 방문 전 한 화면 브리핑, 현황. 데이터는 모두 가상이다.
 
+import uuid
 from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from app.adapters.module_loader import ensure_repo_root_on_path
 
@@ -63,7 +64,9 @@ def test_profile_medication_and_care_needs(client: TestClient, counselor_headers
     client.patch(url, json={"care_needs": ["MEAL", "MEDICATION"]}, headers=counselor_headers)
     data = client.patch(url, json={"care_needs": None, "takes_medication": None}, headers=counselor_headers).json()["data"]
     assert data["care_needs"] == [] and data["takes_medication"] is None
-    logs = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.SENIOR_PROFILE_UPDATED)).all()
+    logs = db.scalars(
+        select(AuditLog).where(AuditLog.action == AuditAction.SENIOR_PROFILE_UPDATED).order_by(AuditLog.created_at, AuditLog.id)
+    ).all()
     assert [sorted(log.detail["changed_fields"]) for log in logs] == [
         ["care_needs", "care_needs_note", "medication_notes", "takes_medication"],
         ["care_needs", "takes_medication"],
@@ -93,7 +96,9 @@ def test_care_status(client: TestClient, counselor_headers, other_counselor_head
     # 프로필 조회에도 보인다
     assert client.get(f"/api/v1/cases/{case['id']}/senior-profile", headers=counselor_headers).json()["data"]["care_status"] == "SERVICE_ENDED"
 
-    logs = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CARE_STATUS_CHANGED)).all()
+    logs = db.scalars(
+        select(AuditLog).where(AuditLog.action == AuditAction.CARE_STATUS_CHANGED).order_by(AuditLog.created_at, AuditLog.id)
+    ).all()
     assert [(log.detail["from"], log.detail["to"]) for log in logs] == [(None, "REVISIT_NEEDED"), ("REVISIT_NEEDED", "SERVICE_ENDED")]
     assert "다리" not in str([log.detail for log in logs])
 
@@ -280,3 +285,70 @@ def test_overview_counts_and_scope(client: TestClient, counselor_headers, other_
     assert {row["alias"] for row in admin["rows"]} == {"어르신_A", "어르신_B", "어르신_C"}
     assert admin["counts"]["by_care_status"]["NONE"] == 1
     assert theirs["id"] in {row["case_id"] for row in admin["rows"]}
+
+
+# ---------------------------------------------------------------- 건강 정보 암호화(민규 리뷰 11/16)
+
+
+def test_health_values_are_sealed_in_db(client: TestClient, counselor_headers, db) -> None:
+    from sqlalchemy import text
+
+    from app.core.pii_crypto import PersonalInfoCryptoError
+    from app.models.senior import HealthMeasurement, SeniorProfile
+
+    case = _senior(client, counselor_headers)
+    client.patch(
+        f"/api/v1/cases/{case['id']}/senior-profile",
+        json={"health_notes": "무릎 관절 수술", "medication_notes": "아침 혈압약", "takes_medication": True},
+        headers=counselor_headers,
+    )
+    first = client.post(
+        f"/api/v1/cases/{case['id']}/health-measurements",
+        json={"measured_at": "2026-11-01T09:00:00+09:00", "systolic": 143, "diastolic": 91, "note": "식전"},
+        headers=counselor_headers,
+    ).json()["data"]
+    second = client.post(
+        f"/api/v1/cases/{case['id']}/health-measurements",
+        json={"measured_at": "2026-11-02T09:00:00+09:00", "pulse": 77},
+        headers=counselor_headers,
+    ).json()["data"]
+
+    raw = " ".join(str(row) for row in db.execute(text("SELECT * FROM senior_profiles")).all())
+    raw += " ".join(str(row) for row in db.execute(text("SELECT * FROM health_measurements")).all())
+    for plain in ("무릎", "혈압약", "식전"):
+        assert plain not in raw
+    # 측정값 칸은 DB 에 없고 봉인 칸만 있다
+    columns = {c["name"] for c in inspect(db.bind).get_columns("health_measurements")}
+    assert "systolic" not in columns and "note" not in columns and "sealed_values" in columns
+    tokens = db.execute(text("SELECT sealed_values FROM health_measurements")).scalars().all()
+    assert len(tokens) == 2 and all(token.startswith("v1.") for token in tokens)
+
+    # API 로는 그대로 보인다
+    profile = client.get(f"/api/v1/cases/{case['id']}/senior-profile", headers=counselor_headers).json()["data"]
+    assert profile["health_notes"] == "무릎 관절 수술" and profile["takes_medication"] is True
+    rows = {m["id"]: m for m in client.get(f"/api/v1/cases/{case['id']}/health-measurements", headers=counselor_headers).json()["data"]}
+    assert rows[first["id"]]["systolic"] == 143 and rows[first["id"]]["note"] == "식전"
+
+    # 다른 줄의 암호문을 옮겨 붙이면 풀리지 않는다(묶음 값 = 사례 + 줄 ID)
+    a = db.get(HealthMeasurement, uuid.UUID(first["id"]))
+    b = db.get(HealthMeasurement, uuid.UUID(second["id"]))
+    b.__dict__.pop("_sealed_cache", None)
+    token = a.sealed_values
+    db.execute(text("UPDATE health_measurements SET sealed_values = :t WHERE id = :i"), {"t": token, "i": b.id.hex if db.bind.dialect.name == "sqlite" else b.id})
+    db.expire_all()
+    with pytest.raises(PersonalInfoCryptoError):
+        _ = db.get(HealthMeasurement, b.id).pulse
+    db.rollback()
+    assert db.scalar(select(SeniorProfile).where(SeniorProfile.case_id == uuid.UUID(case["id"]))).medication_notes == "아침 혈압약"
+
+
+def test_child_app_is_child_cases_only(client: TestClient, counselor_headers, monkeypatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHILD_APP_ENABLED", True)
+    case = _senior(client, counselor_headers)
+
+    response = client.get(f"/api/v1/cases/{case['id']}/child-app", headers=counselor_headers)
+
+    assert response.status_code == 409 and response.json()["error"]["code"] == "INVALID_CASE_STATE"
+    assert client.post(f"/api/v1/cases/{case['id']}/child-app/ai-draft", headers=counselor_headers).status_code == 409

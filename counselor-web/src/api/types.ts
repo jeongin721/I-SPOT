@@ -57,6 +57,9 @@ export interface SessionErrorInfo {
 
 export type UserRole = "COUNSELOR" | "ADMIN";
 
+/** 사례 대상 종류(API_CONTRACT 27절, feature/senior). */
+export type SubjectType = "CHILD" | "SENIOR";
+
 export type CaseStatus = "ACTIVE" | "CLOSED";
 
 /**

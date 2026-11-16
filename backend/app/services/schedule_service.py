@@ -161,7 +161,9 @@ def _check(db: Session, user: User, row: ScheduleEvent, case_changed: bool) -> N
         row.case = get_case_or_404(db, row.case_id, user)
 
 
-def create_event(db: Session, user: User, payload: ScheduleCreateRequest) -> ScheduleEvent:
+def create_event(db: Session, user: User, payload: ScheduleCreateRequest, *, commit: bool = True) -> ScheduleEvent:
+    """commit=False 면 flush 까지만 한다 — 부른 쪽이 같은 트랜잭션에서 더 바꾼 뒤 한 번에 commit 한다(고령자 재방문 일정)."""
+
     row = ScheduleEvent(
         owner_id=user.id,
         kind=payload.kind,
@@ -188,6 +190,8 @@ def create_event(db: Session, user: User, payload: ScheduleCreateRequest) -> Sch
         case_id=row.case_id,
         detail={"kind": row.kind.value, "category": row.category.value if row.category else None},
     )
+    if not commit:
+        return row
     db.commit()
     return get_event_or_404(db, row.id, user)
 

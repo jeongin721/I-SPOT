@@ -2921,6 +2921,10 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 사례를 만들 때 `subject_type: "SENIOR"` 로 만든 사례에서만 쓰고, 아동 사례(`CHILD`)는 이 절의 API 가 모두 409 `INVALID_CASE_STATE` 다. 접근은 다른 사례 API 와 같다(담당 상담사 · 관리자, 그 밖 403).
 
+**건강 정보 암호화(2026-11-16, 민규 리뷰):** 기본정보의 자유 글 · 복약 여부(`health_notes` · `care_notes` · `takes_medication` · `medication_notes` · `care_needs_note` · `care_status_note`)와 측정값 전부(혈압 · 맥박 · 혈당 · 혈당 시점 · 체중 · 체온 · 그 밖 결과 · 메모)는 DB 에 평문으로 두지 않는다. 내담자 실명과 같은 키(`PII_ENCRYPTION_KEYS`) · 같은 AES-256-GCM 저장 모양으로, 칸들을 묶어 한 칸(`sealed_values`)에 둔다. 묶음 값은 기본정보 = 사례 ID, 측정 = 사례 ID + 측정 줄 ID 라 다른 사례 · 다른 줄로 옮겨 붙이면 풀리지 않는다. 거주 형태 · 장기요양 등급 · 돌봄 필요사항 · 돌봄 상태(분류)와 잰 시각은 현황 · 정렬에 써서 평문이다. API 모양은 그대로다.
+
+고령자 사례에는 아이 앱(`/cases/{id}/child-app…`)을 쓸 수 없다(409 `INVALID_CASE_STATE`). 아동 화면(counselor-web)의 사례 목록은 `subject_type=CHILD` 를 보낸다.
+
 **하지 않는 것:** 질병 진단 · 정신질환 판정 · 치매 판정 · 치료 권고(약 조절 · 진료 권유). 서버는 측정값과 그 변화만 내고 '정상 · 위험' 기준을 붙이지 않는다. AI 문장에서 이런 말이 든 것은 버린다.
 
 ### 사례 대상 종류

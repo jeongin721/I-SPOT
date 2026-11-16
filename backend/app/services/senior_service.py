@@ -965,6 +965,7 @@ def schedule_followup_visit(
             time=payload.time,
             place=payload.place,
         ),
+        commit=False,  # 일정 · 확인사항 잇기 · 감사 기록을 한 번에 저장한다(민규 리뷰: 사이에 실패하면 이어지지 않은 일정이 남음)
     )
     for check in checks:
         check.schedule_event_id = event.id

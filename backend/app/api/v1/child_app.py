@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.deps import AdminUser, CurrentUser, DbSession, bearer_scheme, client_ip
-from app.core.errors import ErrorCode, bad_request, unauthorized
+from app.core.enums import SubjectType
+from app.core.errors import ErrorCode, bad_request, conflict, unauthorized
 from app.core.responses import DataResponse
+from app.models.case import Case
 from app.models.child_app import ChildAppLink
 from app.schemas.child_app import (
     ChildAiApprovalRequest,
@@ -40,6 +42,15 @@ case_router = APIRouter(prefix="/cases", tags=["child-app"], dependencies=_enabl
 staff_router = APIRouter(prefix="/child-app-alerts", tags=["child-app"], dependencies=_enabled)
 list_router = APIRouter(prefix="/child-app-cases", tags=["child-app"], dependencies=_enabled)
 stats_router = APIRouter(prefix="/child-app-stats", tags=["child-app"], dependencies=_enabled)
+
+
+def _child_case(db: DbSession, case_id: uuid.UUID, current_user: CurrentUser) -> Case:
+    """아이 앱은 아동 사례만(고령자 사례는 409, 민규 리뷰 11/16 — 고령자 사례에 기기를 잇지 않게)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    if case.subject_type != SubjectType.CHILD:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "아이 앱은 아동 사례에서만 쓸 수 있습니다.")
+    return case
 
 
 def _current_link(
@@ -120,7 +131,7 @@ def acknowledge_alert(
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     child_app_service.acknowledge_alert(db, case, current_user, alert_id, client_ip(request))
 
 
@@ -130,7 +141,7 @@ def get_case_child_app(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ChildAppCaseResponse]:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
 
     return DataResponse(data=child_app_service.get_case_view(db, case, current_user))
 
@@ -146,7 +157,7 @@ def create_invite(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ChildAppInviteResponse]:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     result = child_app_service.create_invite(db, case, current_user, client_ip(request))
 
     return DataResponse(data=ChildAppInviteResponse(**result))
@@ -160,13 +171,13 @@ def send_questions(
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     child_app_service.send_questions(db, case, current_user, payload.question_ids, client_ip(request))
 
 
 @case_router.post("/{case_id}/child-app/ai-draft", response_model=DataResponse[ChildAiDraftResponse])
 def create_ai_draft(case_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> DataResponse[ChildAiDraftResponse]:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     row = child_app_ai_service.create_draft(db, case, current_user)
 
     return DataResponse(data=child_app_ai_service.to_response(db, row))
@@ -185,7 +196,7 @@ def update_ai_note(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ChildAiDraftResponse]:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     row = child_app_ai_service.update_note(db, case, current_user, draft_id, question_id, payload.text, client_ip(request))
 
     return DataResponse(data=child_app_ai_service.to_response(db, row))
@@ -204,7 +215,7 @@ def update_ai_question(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ChildAiDraftResponse]:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     row = child_app_ai_service.update_question(db, case, current_user, draft_id, question_id, payload, client_ip(request))
 
     return DataResponse(data=child_app_ai_service.to_response(db, row))
@@ -223,7 +234,7 @@ def set_ai_question_approval(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ChildAiDraftResponse]:
-    case = get_case_or_404(db, case_id, current_user)
+    case = _child_case(db, case_id, current_user)
     row = child_app_ai_service.set_approval(db, case, current_user, draft_id, question_id, payload.approved, client_ip(request))
 
     return DataResponse(data=child_app_ai_service.to_response(db, row))

@@ -28,6 +28,7 @@ import type {
   CaseListSort,
   CaseListOrder,
   CaseStatus,
+  SubjectType,
   CaseUpdateRequest,
   Document,
   DocumentCreateRequest,
@@ -270,9 +271,17 @@ export const cases = {
    * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
    */
   list(
-    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean; sort?: CaseListSort; order?: CaseListOrder },
+    params?: PageQuery & {
+      status?: CaseStatus;
+      search?: string;
+      with_child_name?: boolean;
+      sort?: CaseListSort;
+      order?: CaseListOrder;
+      subject_type?: SubjectType;
+    },
   ): Promise<Paged<CaseListItem>> {
-    return api.get<Paged<CaseListItem>>("/cases", params);
+    // 같은 서버에 고령자 사례(feature/senior)가 있어도 아동 화면에는 아동 사례만(민규 리뷰 11/16). 고령자 화면은 SENIOR 를 보낸다.
+    return api.get<Paged<CaseListItem>>("/cases", { subject_type: "CHILD", ...params });
   },
 
   get(caseId: string): Promise<CaseDetail> {
