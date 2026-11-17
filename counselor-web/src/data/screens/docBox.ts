@@ -5,18 +5,21 @@
 //  - 첫 페이지 미리보기: 그림은 그대로, 글(서버가 뽑은 앞부분)은 첫 줄을 제목으로, 그 밖은 형식 표시.
 //  - 지우기는 관리자에게만 보이고, 확인 창을 거친다(디자인에 없어 사례 삭제 창의 틀을 쓴다).
 //  - 올리기는 지금 고른 폴더에(전체 문서면 '폴더 없음'). 정렬 기본은 날짜 최신순(디자인과 같다 — 누르면 방향이 바뀐다).
-//  - 빈 양식(11/09 디자인, src/data/blankForms.ts): 서버 문서가 아니라 화면에 들어 있는 6종이다. '빈 양식' 칸과 전체 문서에 함께 보이고
-//    같이 정렬된다. 옮기기 · 지우기가 없고, 입력한 내용은 저장하지 않는다.
+//  - 빈 양식(11/09 디자인, src/data/blankForms.ts): 서버 문서가 아니라 화면에 들어 있는 6종이다. 옮기기 · 지우기가 없고,
+//    입력한 내용은 저장하지 않는다. 11/17 디자인대로 서식 4종은 '기관 서식', 참고자료 2종은 '참고 자료' 폴더에 놓이고
+//    전체 문서에도 함께 보이며 같이 정렬된다. 서버에 같은 이름의 폴더가 있으면 따로 만들지 않고 그 폴더에 함께 보인다
+//    (그 폴더에서 올린 문서는 그 서버 폴더로 간다). 같은 이름의 서버 폴더가 없으면 화면에만 있는 폴더라, 거기서 올린 문서는
+//    '폴더 없음' 으로 가고 전체 문서로 넘어가 보인다.
 
 import type { DocboxFile } from "../../api/types";
-import { BLANK_FORM_DATE, BLANK_FORMS, blankFormById, downloadBlankForm } from "../blankForms";
+import { BLANK_FORM_DATE, BLANK_FORM_FOLDERS, BLANK_FORMS, blankFormById, downloadBlankForm } from "../blankForms";
 import type { BlankForm } from "../blankForms";
 import type { AuthSession } from "../useAuthSession";
 import type { DocBoxState } from "../useDocBox";
 import { screenNotice } from "./common";
 
 export interface DocBoxUiState {
-  /** 'all' · 'none'(폴더 없음) · 'blank-forms'(빈 양식) · 폴더 id. */
+  /** 'all' · 'none'(폴더 없음) · 'fixed:forms' · 'fixed:ref'(화면에만 있는 빈 양식 폴더) · 서버 폴더 id. */
   cur: string;
   /** 정렬. null 이면 날짜 최신순(디자인 기본). */
   pk: { k: "date" | "name"; first: boolean } | null;
@@ -41,7 +44,8 @@ interface DocBoxInput {
 }
 
 const NONE = "none";
-const FORMS = "blank-forms";
+/** 화면에만 있는 빈 양식 폴더 id 앞머리. 서버 폴더 id(UUID)와 겹치지 않는다. */
+const FIXED = "fixed:";
 
 function fmtSize(n: number): string {
   return n < 1024 ? `${n}B` : n < 1048576 ? `${Math.round(n / 102.4) / 10}KB` : `${Math.round(n / 104857.6) / 10}MB`;
@@ -63,15 +67,29 @@ export function docBoxValues(input: DocBoxInput) {
   const data = box.data;
   const folderList = data?.folders ?? [];
   const files = data?.files ?? [];
+  // 빈 양식 폴더(기관 서식 · 참고 자료). 서버에 같은 이름 폴더가 있으면 그 폴더 id 를 쓴다.
+  const formFolders = BLANK_FORM_FOLDERS.map((g) => {
+    const server = folderList.find((f) => f.name.trim() === g.name);
+    return {
+      id: server ? server.id : FIXED + g.id,
+      name: g.name,
+      forms: BLANK_FORMS.filter((f) => f.folder === g.id),
+      serverCount: server ? server.count : 0,
+    };
+  });
+  const formFolderOf = (id: string) => formFolders.find((g) => g.id === id) ?? null;
+  const isFixed = (id: string) => id.startsWith(FIXED);
   const fname = (id: string | null) =>
-    id === null ? "폴더 없음" : folderList.find((f) => f.id === id)?.name ?? "폴더 없음";
+    id === null
+      ? "폴더 없음"
+      : folderList.find((f) => f.id === id)?.name ?? formFolderOf(id)?.name ?? "폴더 없음";
   const inFolder = (file: DocboxFile) =>
     s.cur === "all" || (s.cur === NONE ? file.folder_id === null : file.folder_id === s.cur);
 
   const folders = [
     { id: "all", name: "전체 문서", count: files.length + BLANK_FORMS.length },
-    { id: FORMS, name: "빈 양식", count: BLANK_FORMS.length },
-    ...folderList,
+    ...formFolders.map((g) => ({ id: g.id, name: g.name, count: g.serverCount + g.forms.length })),
+    ...folderList.filter((f) => !formFolderOf(f.id)),
   ].map((f) => ({
     name: f.name,
     count: f.count,
@@ -83,7 +101,7 @@ export function docBoxValues(input: DocBoxInput) {
   const pk = s.pk;
   const sk = pk ? pk.k : "date";
   const first = pk ? pk.first : true;
-  const shownForms = s.cur === "all" || s.cur === FORMS ? BLANK_FORMS : [];
+  const shownForms = s.cur === "all" ? BLANK_FORMS : formFolderOf(s.cur)?.forms ?? [];
   const list: { name: string; date: string; file?: DocboxFile; form?: BlankForm }[] = [
     ...shownForms.map((form) => ({ name: form.name, date: BLANK_FORM_DATE, form })),
     ...files.filter(inFolder).map((file) => ({ name: file.name, date: file.created_at, file })),
@@ -105,7 +123,7 @@ export function docBoxValues(input: DocBoxInput) {
     isForm: true,
     formId: form.id,
     name: form.name,
-    meta: `${BLANK_FORM_DATE} · 빈 양식 · ${form.pages}쪽`,
+    meta: `${BLANK_FORM_DATE} · 작성 양식 · ${form.pages}쪽${s.cur === "all" ? " · " + (formFolders.find((g) => g.forms.includes(form))?.name ?? "") : ""}`,
     viewLabel: `${form.name} 내용 보기`,
     view: () => setState({ form: { id: form.id, editing: false } }),
     open: () => setState({ form: { id: form.id, editing: true } }),
@@ -161,10 +179,10 @@ export function docBoxValues(input: DocBoxInput) {
       /* 같은 파일을 다시 고를 수 있게 비운다 */
     }
     if (!picked.length || box.busy) return;
-    const folder = s.cur === "all" || s.cur === NONE || s.cur === FORMS ? null : s.cur;
+    const folder = s.cur === "all" || s.cur === NONE || isFixed(s.cur) ? null : s.cur;
     const count = await box.upload(picked, folder);
-    // 빈 양식 칸에서 올린 문서는 그 칸에 보이지 않으므로 전체 문서로 옮겨 보여 준다.
-    if (count > 0) setState({ msg: `${count}개 문서를 ${fname(folder)}에 올렸어요`, cur: s.cur === FORMS ? "all" : s.cur });
+    // 화면에만 있는 빈 양식 폴더에서 올린 문서는 그 칸에 보이지 않으므로 전체 문서로 옮겨 보여 준다.
+    if (count > 0) setState({ msg: `${count}개 문서를 ${fname(folder)}에 올렸어요`, cur: isFixed(s.cur) ? "all" : s.cur });
   };
 
   const sorts = (
@@ -200,7 +218,7 @@ export function docBoxValues(input: DocBoxInput) {
     setState(done ? { deleting: null, msg: `‘${target.name}’을(를) 지웠어요` } : { deleting: null });
   };
 
-  const curName = s.cur === "all" ? "전체 문서" : s.cur === FORMS ? "빈 양식" : s.cur === NONE ? "폴더 없음" : fname(s.cur);
+  const curName = s.cur === "all" ? "전체 문서" : s.cur === NONE ? "폴더 없음" : fname(s.cur);
   const msg = box.actionError ?? (box.busy ? "처리하는 중…" : s.msg);
   const openForm = s.form ? blankFormById(s.form.id) : null;
 

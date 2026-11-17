@@ -12,21 +12,31 @@ export interface BlankForm {
   id: string;
   name: string;
   pages: number;
+  /** 문서함에서 놓이는 폴더(11/17 디자인): 서식은 '기관 서식', 참고자료는 '참고 자료'. */
+  folder: BlankFormFolderId;
 }
+
+export type BlankFormFolderId = "forms" | "ref";
+
+/** 빈 양식이 놓이는 폴더 두 개(11/17 디자인 문서함). 화면에 들어 있는 폴더로, 서버 폴더가 아니다. */
+export const BLANK_FORM_FOLDERS: { id: BlankFormFolderId; name: string }[] = [
+  { id: "forms", name: "기관 서식" },
+  { id: "ref", name: "참고 자료" },
+];
 
 /** 디자인 양식의 판 날짜. 문서함 날짜 정렬에도 쓴다. */
 export const BLANK_FORM_DATE = "2026-11-09";
 
 export const BLANK_FORMS: BlankForm[] = (
   [
-    ["f4", "〈서식 4〉 초기면접지(아동용)"],
-    ["f6", "〈서식 6〉 사정기록지"],
-    ["f27", "〈서식 27〉 사례관리 점검표"],
-    ["f29", "〈서식 29〉 사례관리 종결보고서"],
-    ["r1", "〈참고자료 1〉 축약형 가족관계 척도"],
-    ["r3", "〈참고자료 3〉 아동학대 위험수준별 개입 사정 척도"],
+    ["f4", "〈서식 4〉 초기면접지(아동용)", "forms"],
+    ["f6", "〈서식 6〉 사정기록지", "forms"],
+    ["f27", "〈서식 27〉 사례관리 점검표", "forms"],
+    ["f29", "〈서식 29〉 사례관리 종결보고서", "forms"],
+    ["r1", "〈참고자료 1〉 축약형 가족관계 척도", "ref"],
+    ["r3", "〈참고자료 3〉 아동학대 위험수준별 개입 사정 척도", "ref"],
   ] as const
-).map(([id, name]) => ({ id, name, pages: BLANK_FORM_DEFS[id].pages }));
+).map(([id, name, folder]) => ({ id, name, pages: BLANK_FORM_DEFS[id].pages, folder }));
 
 export function blankFormById(id: string): BlankForm | null {
   return BLANK_FORMS.find((f) => f.id === id) ?? null;

@@ -6,6 +6,7 @@
 //  - 디자인에 더한 것: 머리글 아래 아동 정보 업로드 금지 안내 한 줄, 관리자에게만 보이는 삭제 단추와 확인 창.
 //  - 올리기 · 폴더 만들기 · 옮기기는 서버에 저장하고, 내려받기는 서버 파일을 받는다. 그림 미리보기는 받은 파일로 보인다.
 //  - 빈 양식(11/09 디자인): 작성 양식 6종을 보여 주고 빈칸에 입력해 볼 수 있다. 저장은 없다(components/BlankForm.jsx).
+//    11/17 디자인: 서식 4종은 기관 서식, 참고자료 2종은 참고 자료 폴더에 놓인다(src/data/screens/docBox.ts).
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
