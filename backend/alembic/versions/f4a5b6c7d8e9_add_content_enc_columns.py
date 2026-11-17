@@ -1,7 +1,7 @@
 """add *_enc columns for counseling content encryption (stage 1)
 
 Revision ID: f4a5b6c7d8e9
-Revises: c7d8e9f0a1b2
+Revises: e3f4a5b6c7d8
 Create Date: 2026-11-16 12:00:00.000000
 
 상담 본문 앱 암호화 1단계(2026-11-16, 민규님과 합의). 아래 칸마다 암호문 칸 `<칸>_enc`(Text, null 허용)를 더한다.
@@ -22,7 +22,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'f4a5b6c7d8e9'
-down_revision: Union[str, None] = 'c7d8e9f0a1b2'
+down_revision: Union[str, None] = 'e3f4a5b6c7d8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
