@@ -7,6 +7,10 @@
 #   3) 종료 코드가 0(풀지 못한 · 겹쳐 못 바꾼 사례 · 메모 모두 0)이면 옛 키를 설정에서 뺀다. 1 이면 다시 돌린다.
 # 검색 색인 키(PII_INDEX_KEY)를 바꿨으면 --reindex 로 색인도 다시 계산한다.
 #
+# 같은 키 링을 쓰는 상담 본문 칸(상담일지 · 원문 발화 · 요약 · 회차 메모 · 분석 결과, encrypted_field.ENCRYPTED_COLUMNS)도
+# 함께 다시 암호화한다. 원문 조각처럼 큰 표는 묶음(encrypt_content_columns.BATCH_SIZE)씩 읽고 묶음마다 commit 한다.
+# 본문 칸은 감사 로그를 남기지 않는다(행이 많다). 출력의 칸별 수로 확인한다.
+#
 # 값은 출력하지 않는다. 바꾼 행 · 칸 수와 풀지 못한(또는 저장이 겹쳐 손대지 못한) 사례 ID 만 출력한다.
 # 바꾼 사례마다 감사 로그에 행동한 사람(actor) 없이 detail.via 로 남는다.
 # 서비스 중에 돌려도 된다: 사례마다 읽은 값이 그대로일 때만 바꾸고, 그사이 저장된 값은 덮지 않는다.
@@ -20,7 +24,7 @@ import argparse
 import sys
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -33,6 +37,7 @@ from app.models.base import utcnow
 from app.models.case_personal_info import ENCRYPTED_FIELDS, CasePersonalInfo
 from app.models.counselor_memo import CounselorMemo
 from app.services import audit_service
+from scripts.encrypt_content_columns import iter_batches, targets
 
 VIA = "reencrypt_personal_info script"
 
@@ -246,6 +251,58 @@ def reencrypt_all(db: Session, *, reindex: bool = False, dry_run: bool = False) 
     return result
 
 
+@dataclass
+class ContentReencryptResult:
+    # 암호문이 있는 행(표 · 칸마다 한 번씩 센다)
+    rows: int = 0
+    changed_rows: int = 0
+    # 풀지 못한 (표.칸, 행 ID). 그 행은 바꾸지 않는다.
+    failed: List[Tuple[str, uuid.UUID]] = field(default_factory=list)
+
+
+def reencrypt_content(db: Session, *, dry_run: bool = False) -> ContentReencryptResult:
+    """상담 본문 칸에서 맨 앞 키가 아닌 키로 만든 값을 맨 앞 키로 다시 암호화한다. dry_run 이면 세기만 한다.
+
+    읽은 암호문이 그대로일 때만 바꾼다(조건부 UPDATE). 그사이 API 가 저장했으면 이미 맨 앞 키라 건너뛴다.
+    묶은 값(AAD)은 행 ID 그대로라 같은 행에 다시 넣는다.
+    """
+
+    active_key_id = pii_crypto.active_key_id()
+    result = ContentReencryptResult()
+
+    for table, column in targets():
+        enc = table.c[column.enc_attr]
+
+        for rows in iter_batches(db, table, (enc.name,), enc.is_not(None)):
+            for row_id, token in rows:
+                result.rows += 1
+
+                if pii_crypto.key_id_of(token) == active_key_id:
+                    continue
+
+                try:
+                    text = column.decrypt(token, row_id)
+                except PersonalInfoCryptoError:
+                    result.failed.append((f"{column.table}.{column.column}", row_id))
+                    continue
+
+                if dry_run:
+                    result.changed_rows += 1
+                    continue
+
+                result.changed_rows += db.execute(
+                    update(table)
+                    .where(table.c.id == row_id, enc == token)
+                    .values({enc.name: column.encrypt(text, row_id)})
+                    .execution_options(synchronize_session=False)
+                ).rowcount
+
+            if not dry_run:
+                db.commit()
+
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="개인 식별 정보를 맨 앞 키로 다시 암호화한다.")
     parser.add_argument("--reindex", action="store_true", help="이름 검색 색인도 지금 PII_INDEX_KEY 로 다시 계산한다.")
@@ -254,10 +311,19 @@ def main() -> int:
 
     with SessionLocal() as db:
         result = reencrypt_all(db, reindex=args.reindex, dry_run=args.dry_run)
+        content = reencrypt_content(db, dry_run=args.dry_run)
 
     verb = "바꿀" if args.dry_run else "바꾼"
     print(f"전체 {result.rows}행 · {verb} 행 {result.changed_rows} · 칸 {result.changed_fields} · 색인 {result.reindexed_rows}")
     print(f"메모 전체 {result.memo_rows}건 · {verb} 메모 {result.changed_memos}")
+
+    print(f"상담 본문 암호문 {content.rows}행 · {verb} 행 {content.changed_rows}")
+
+    if content.failed:
+        # 표.칸 과 행 ID 만 출력한다.
+        print(f"풀지 못한 상담 본문 {len(content.failed)}행(그대로 둠):", file=sys.stderr)
+        for name, row_id in content.failed:
+            print(f"  {name} {row_id}", file=sys.stderr)
 
     if result.failed_case_ids:
         # 사례 ID 만 출력한다. 옛 키를 이미 뺐거나 값이 바뀐 것 — 키 사본으로 되살린 뒤 다시 돌린다.
@@ -282,7 +348,7 @@ def main() -> int:
         for memo_id in result.busy_memo_ids:
             print(f"  {memo_id}", file=sys.stderr)
 
-    return 0 if result.clean else 1
+    return 0 if result.clean and not content.failed else 1
 
 
 if __name__ == "__main__":
