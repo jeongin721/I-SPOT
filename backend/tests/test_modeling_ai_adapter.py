@@ -1388,3 +1388,21 @@ def test_startup_preload_does_not_block_health() -> None:
 
     assert health.status_code == 200
     assert still_loading
+
+
+def test_companion_confirmed_type_is_model_even_if_a_chunk_filtered_it(modeling) -> None:
+    """2차 동반 확인이 올린 유형은 다른 구간에서 1차가 '아동 부정' 으로 내렸어도 MODEL · 사유 없음이다(민규 #171 리뷰)."""
+
+    modeling["result"]["major_types"]["정서학대"] = {"detected": True, "detected_by": "2차 동반 확인"}
+    modeling["result"]["chunk_results"] = [
+        _chunk({"신체학대": {"detected": True}, "정서학대": {"detected": False, "filtered_reason": FILTERED_REASON}}),
+    ]
+    modeling["result"]["record_draft"]["risk_signal_points"] = [
+        GROUNDED_POINT,
+        {**GROUNDED_POINT, "major_type": "정서학대", "subtype": "가정폭력·폭력상황 노출"},
+    ]
+
+    signals = {signal["abuse_type"]: signal for signal in ModelingAIAdapter().analyze(TRANSCRIPT).result.abuse_signals}
+
+    assert signals["EMOTIONAL"] == _signal("EMOTIONAL", True, ["seg_002"], "MODEL")
+

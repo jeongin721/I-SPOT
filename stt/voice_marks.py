@@ -11,6 +11,8 @@
   기준값은 합성 음성으로 정한 잠정값이며 실제 아동 음성으로 검증하지 않았다.
 - 서버 시작 때 warm_up() 을 한 번 부르면 첫 요청이 느려지는 것(numba 컴파일)을 피할 수 있다.
   numba 캐시를 쓰려면 서버 환경에 NUMBA_CACHE_DIR(쓰기 가능한 폴더)를 지정한다.
+- 음성은 먼저 soundfile(libsndfile)로 연다(wav, flac, ogg, mp3). soundfile 이 열지 못하는 파일(m4a, mp4, webm 등
+  압축 음성)만 PyAV(av)로 처음부터 이어 읽는다. PyAV 를 불러올 수 없거나 PyAV 도 열지 못하면 DECODE_FAILED 이다.
 """
 from __future__ import annotations
 
@@ -51,6 +53,11 @@ _BP_F0 = butter(2, [4, 8], btype="band", fs=200, output="sos")
 
 _LIBROSA = None
 _SOUNDFILE = None
+_AV = None
+
+# PyAV 경로: 프레임 시각(pts)이 이어 읽은 위치보다 이만큼 넘게 앞서 있으면 그 사이를 무음으로 채운다(샘플, 16 kHz).
+# 그보다 작은 차이는 시각 반올림으로 보고 이어 붙인다. 고정 시간 보정(인코더 지연 등)은 넣지 않는다.
+PYAV_GAP_TOLERANCE = int(0.010 * SR16)
 
 
 def _librosa():
@@ -69,6 +76,15 @@ def _soundfile():
 
         _SOUNDFILE = soundfile
     return _SOUNDFILE
+
+
+def _pyav():
+    global _AV
+    if _AV is None:
+        import av
+
+        _AV = av
+    return _AV
 
 
 # ---------------------------------------------------------------------------
@@ -239,11 +255,178 @@ def _measure(fh, sr: int, n_frames: int, duration_ms: float, s: dict) -> dict:
     return {"seg": s, "reason": None, "values": (trem, mumb, soft)}
 
 
+def _needs_audio(s: dict) -> bool:
+    """이 구간을 계산하려면 음성이 필요한가(_measure 에서 음성 길이와 상관없이 걸러지는 구간은 False)."""
+    a_ms, b_ms = s["start_ms"], s["end_ms"]
+    return (s["speaker"] == CHILD and a_ms is not None and b_ms is not None and a_ms >= 0 and b_ms > a_ms
+            and b_ms - a_ms >= MIN_SEGMENT_MS)
+
+
+def _header_duration_s(container, stream) -> float | None:
+    """헤더(스트림 · 컨테이너)에 적힌 음성 길이(초). 없거나 0 이하이면 None(조각 녹음 webm · mp4 등)."""
+    try:
+        if stream.duration is not None and stream.time_base is not None:
+            seconds = float(stream.duration * stream.time_base)
+            if seconds > 0:
+                return seconds
+        if container.duration is not None:
+            seconds = container.duration / 1_000_000  # AV_TIME_BASE
+            if seconds > 0:
+                return seconds
+    except Exception:
+        return None
+    return None
+
+
+class _WindowCollector:
+    """16 kHz 로 바꾼 조각을 차례로 받아 계산에 필요한 구간(창)의 샘플만 모은다. 파일 전체는 모으지 않는다."""
+
+    def __init__(self, segs: list[dict]):
+        # 길이 제한(MAX_AUDIO_MINUTES)을 넘는 부분은 어차피 계산하지 않으므로 창 끝을 거기서 자른다
+        # (끝 시각이 터무니없이 큰 구간이 와도 큰 버퍼를 잡지 않는다).
+        cap = int(MAX_AUDIO_MINUTES * 60 * SR16) + 1
+        wins = []
+        for i, s in enumerate(segs):
+            if _needs_audio(s):
+                a = int(s["start_ms"] * SR16 / 1000)
+                b = min(int(s["end_ms"] * SR16 / 1000), cap)
+                if b > a:
+                    wins.append((a, b, i))
+        wins.sort()
+        self._wins = wins
+        self._next = 0
+        self._active: list[tuple[int, int, int]] = []
+        self.buffers = {i: np.zeros(b - a, dtype=np.float32) for a, b, i in wins}
+        self.starts = {i: a for a, _b, i in wins}
+
+    def add(self, pos: int, x: np.ndarray) -> None:
+        """시각 pos(16 kHz 샘플, 음수 가능)에서 시작하는 조각 x 를 받는다."""
+        end = pos + x.size
+        while self._next < len(self._wins) and self._wins[self._next][0] < end:
+            self._active.append(self._wins[self._next])
+            self._next += 1
+        if not self._active:
+            return
+        keep = []
+        for a, b, i in self._active:
+            lo, hi = max(a, pos), min(b, end)
+            if lo < hi:
+                self.buffers[i][lo - a:hi - a] = x[lo - pos:hi - pos]
+            if b > end:
+                keep.append((a, b, i))
+        self._active = keep
+
+
+def _decode_pyav(path, segs: list[dict]):
+    """PyAV 로 처음부터 이어 읽어 16 kHz 로 바꾸며 필요한 구간만 모은다. seek 하지 않는다.
+
+    반환: ("ok", collector, 길이(16 kHz 샘플 수)) / ("too_long", None, None).
+    시각: 첫 프레임의 시각(pts * time_base)을 스트림 start_time 기준으로 놓고, 그 뒤로는 디코더가 내준 샘플을
+    이어 붙인다. 프레임 시각이 이어 붙인 위치보다 PYAV_GAP_TOLERANCE 넘게 앞서면 그 사이를 무음으로 둔다.
+    0 보다 앞선 시각(인코더 지연을 음수 시각으로 알린 파일)의 샘플은 버린다. 고정값 보정은 하지 않는다.
+    채널은 표본율만 바꾼 뒤 평균한다(soundfile 경로의 x.mean(axis=1) 과 같은 방식).
+    """
+    av = _pyav()
+    limit = MAX_AUDIO_MINUTES * 60 * SR16
+    collector = _WindowCollector(segs)
+    with av.open(os.fspath(path)) as container:
+        stream = container.streams.audio[0]
+        header = _header_duration_s(container, stream)
+        if header is not None and header / 60 > MAX_AUDIO_MINUTES:
+            return "too_long", None, None
+        origin = None
+        if stream.start_time is not None and stream.time_base is not None:
+            origin = float(stream.start_time * stream.time_base)
+        resampler = av.AudioResampler(format="fltp", layout=None, rate=SR16)
+        pos = None  # 다음 출력 샘플의 시각(16 kHz 샘플)
+        in_pos = None  # 지금까지 넣은 입력이 차지하는 시각(16 kHz 샘플, 실수)
+
+        def push(frames) -> bool:
+            nonlocal pos
+            for out in frames:
+                x = out.to_ndarray()
+                x = x[0] if x.shape[0] == 1 else x.mean(axis=0)
+                x = np.asarray(x, dtype=np.float32)
+                collector.add(pos, x)
+                pos += x.size
+                if pos > limit:
+                    return False
+            return True
+
+        for frame in container.decode(stream):
+            t = frame.time
+            if pos is None:
+                if origin is None:
+                    origin = t if t is not None else 0.0
+                start = int(round((t - origin) * SR16)) if t is not None else 0
+                pos, in_pos = start, float(start)
+            elif t is not None:
+                expected = (t - origin) * SR16
+                if expected - in_pos > PYAV_GAP_TOLERANCE:
+                    gap = int(round(expected - in_pos))
+                    pos += gap
+                    in_pos += gap
+            in_pos += frame.samples * SR16 / frame.sample_rate
+            if not push(resampler.resample(frame)):
+                return "too_long", None, None
+        if pos is None:
+            return "ok", collector, 0
+        if not push(resampler.resample(None)):
+            return "too_long", None, None
+    return "ok", collector, max(pos, 0)
+
+
+def _measure_window(collector: _WindowCollector, total: int, duration_ms: float, idx: int, s: dict) -> dict:
+    """PyAV 경로의 구간 계산. 거르는 순서와 이유 값은 _measure 와 같다."""
+    if s["speaker"] != CHILD:
+        return {"seg": s, "reason": "NOT_CHILD_SEGMENT"}
+    a_ms, b_ms = s["start_ms"], s["end_ms"]
+    if a_ms is None or b_ms is None or a_ms < 0 or b_ms <= a_ms or a_ms >= duration_ms:
+        return {"seg": s, "reason": "INVALID_TIME_RANGE"}
+    b_ms = min(b_ms, duration_ms)
+    if b_ms - a_ms < MIN_SEGMENT_MS:
+        return {"seg": s, "reason": "TOO_SHORT"}
+    try:
+        a = int(a_ms * SR16 / 1000)
+        b = min(int(b_ms * SR16 / 1000), total)
+        start = collector.starts[idx]
+        x16 = collector.buffers[idx][a - start:b - start]
+        trem, mumb, soft, _nv = _features(np.ascontiguousarray(x16, dtype=np.float64))
+    except Exception:
+        return {"seg": s, "reason": "ANALYSIS_ERROR"}
+    if not np.isfinite(mumb):
+        return {"seg": s, "reason": "NO_VOICED_FRAMES"}
+    if not np.isfinite(soft):
+        return {"seg": s, "reason": "ANALYSIS_ERROR"}
+    return {"seg": s, "reason": None, "values": (trem, mumb, soft)}
+
+
+def _analyze_pyav(audio_path, segs: list[dict]) -> dict:
+    """soundfile 이 열지 못한 음성(m4a, mp4, webm 등)을 PyAV 로 계산한다. 열지 못하면 DECODE_FAILED."""
+    try:
+        status, collector, total = _decode_pyav(audio_path, segs)
+    except Exception:
+        return _whole_undetermined(segs, "DECODE_FAILED")
+    if status == "too_long":
+        return _whole_undetermined(segs, "AUDIO_TOO_LONG")
+    if total <= 0:
+        return _whole_undetermined(segs, "DECODE_FAILED")
+    duration_ms = total * 1000 / SR16
+    if duration_ms / 60000 > MAX_AUDIO_MINUTES:
+        return _whole_undetermined(segs, "AUDIO_TOO_LONG")
+    measured = [_measure_window(collector, total, duration_ms, i, s) for i, s in enumerate(segs)]
+    return _summarize(segs, measured)
+
+
 def _analyze(audio_path, segs: list[dict]) -> dict:
     sf = _soundfile()
     try:
         path = os.fspath(audio_path)
         info = sf.info(path)
+    except Exception:
+        # soundfile(libsndfile)이 열지 못하는 형식(m4a, mp4, webm 등)만 PyAV 로 읽는다.
+        return _analyze_pyav(audio_path, segs)
+    try:
         sr, n_frames = int(info.samplerate), int(info.frames)
         if sr <= 0 or n_frames <= 0:
             raise ValueError("empty audio")
@@ -257,7 +440,11 @@ def _analyze(audio_path, segs: list[dict]) -> dict:
 
     with fh:
         measured = [_measure(fh, sr, n_frames, duration_ms, s) for s in segs]
+    return _summarize(segs, measured)
 
+
+def _summarize(segs: list[dict], measured: list[dict]) -> dict:
+    """구간별 계산 결과로 z · 표시 · 전체 상태를 만든다(soundfile · PyAV 경로 공통)."""
     child_total = sum(1 for s in segs if s["speaker"] == CHILD)
     ok = [m for m in measured if m["reason"] is None]
     if len(ok) < MIN_REFERENCE_SEGMENTS:
@@ -304,7 +491,8 @@ def _analyze(audio_path, segs: list[dict]) -> dict:
 def analyze_voice_marks(audio_path, segments) -> dict:
     """아동 발화 구간별 떨림 / 웅얼거림 / 작은 소리 참고 표시를 계산한다.
 
-    audio_path: 음성 파일 경로 (soundfile 로 읽히는 wav, flac, ogg, mp3).
+    audio_path: 음성 파일 경로. soundfile 로 읽히는 wav, flac, ogg, mp3 는 soundfile 로 읽고, 그 밖의 형식
+        (m4a, mp4, webm 등)은 PyAV(av)가 설치되어 있으면 PyAV 로 읽는다.
     segments: segment_id, speaker, start_ms, end_ms 를 가진 dict 목록 (정수 ms).
     반환값은 JSON 으로 저장할 수 있는 dict 이다 (NaN 없음). 예외를 던지지 않는다.
     """

@@ -1817,6 +1817,12 @@ export interface ChildOpenAlert {
   repeat_count: number;
   last_at: string | null;
   created_at: string;
+  /** 담당 상담사가 정한 시간(기본 5분) 넘게 확인하지 않은 긴급 알림. */
+  escalated: boolean;
+  /** 다른 상담사 사례에서 넘어온 알림. 사례를 열 수 없으니 담당 상담사 · 관리자에게 알린다. */
+  handed_over: boolean;
+  /** 넘어온 알림에서만 담당 상담사 이름. */
+  counselor_name: string | null;
 }
 
 export interface ChildAppCase {
@@ -1828,6 +1834,8 @@ export interface ChildAppCase {
   has_pending_questions: boolean;
   can_read_feed: boolean;
   open_alerts: ChildOpenAlert[];
+  /** 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null. */
+  last_acked_at: string | null;
   bank: { id: string; category: string; type: string; text: string }[];
   feed: ChildAppEvent[];
   ai_enabled: boolean;
@@ -1852,6 +1860,7 @@ export interface ChildAppCaseRow {
   open_alert_at: string | null;
   open_alert_reason: string | null;
   open_alert_urgent: boolean;
+  last_acked_at: string | null;
 }
 
 export interface ChildAiQuestion {

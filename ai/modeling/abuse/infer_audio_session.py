@@ -42,6 +42,7 @@ from ai.modeling.abuse.record_draft_llm import (
 from ai.modeling.abuse.protective_factor_llm import (
     generate_protective_factors,
 )
+from ai.modeling.abuse.companion_types import CONFIRMED_BY, confirm_companions, second_stage_types
 from ai.modeling.abuse.safety_flag_llm import generate_safety_flags
 from ai.modeling.abuse.desired_change_llm import (
     generate_desired_changes,
@@ -547,9 +548,12 @@ def analyze_audio_session(
 
         _check_deadline(deadline, "2차 세부유형 분석")
 
+        # 1차가 신체학대를 잡으면 정서학대도 함께 묻는다(companion_types.py — 김수아 5회차 정서학대 누락).
+        subtype_major_types = second_stage_types(detected_major_types, list(ABUSE_LABELS))
+
         subtype_result = analyze_subtypes(
             text=masked_full_text,
-            major_types=detected_major_types,
+            major_types=subtype_major_types,
             client=subtype_client,
             model=subtype_model,
             deadline=deadline,
@@ -573,6 +577,17 @@ def analyze_audio_session(
             line_spans,
             source_text=full_text,
         )
+
+        # 더해 물은 유형은 근거가 줄에 이어졌을 때만 탐지로 올리고, 아니면 그 결과를 버린다.
+        subtype_result, confirmed_types = confirm_companions(
+            subtype_result, detected_major_types, subtype_major_types
+        )
+
+        for label in confirmed_types:
+            session_detected[label] = True
+            major_types[label] = {"detected": True, "detected_by": CONFIRMED_BY}
+
+        detected_major_types = [label for label in ABUSE_LABELS if session_detected[label]]
     else:
         subtype_result = {
             "results": [],

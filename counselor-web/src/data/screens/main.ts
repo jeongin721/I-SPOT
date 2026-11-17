@@ -92,11 +92,17 @@ function itemHref(e: CalendarItem): string {
 /** 홈 '긴급 업무' 카드. 알림을 못 받았으면 '—' 와 준비 중. */
 function urgentValues(alerts: ChildOpenAlert[] | null): { urgentCount: string; urgentText: string } {
   if (!alerts) return { urgentCount: NOT_PROVIDED, urgentText: `아이 앱 연계 ${NOT_READY}` };
-  const urgent = alerts.filter((alert) => alert.urgent).length;
-  const check = alerts.length - urgent;
+  // 다른 상담사 사례에서 넘어온 알림(B안)은 내 숫자에 넣지 않고 따로 적는다.
+  const mine = alerts.filter((alert) => !alert.handed_over);
+  const handed = alerts.length - mine.length;
+  const urgent = mine.filter((alert) => alert.urgent).length;
+  const check = mine.length - urgent;
   return {
     urgentCount: String(urgent),
-    urgentText: alerts.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : `아이 앱 긴급 알림${check ? ` · 확인 필요 ${check}건` : ""}`,
+    urgentText:
+      alerts.length === 0
+        ? "확인 안 한 아이 앱 알림이 없어요"
+        : `아이 앱 긴급 알림${check ? ` · 확인 필요 ${check}건` : ""}${handed ? ` · 다른 상담사 미확인 긴급 ${handed}건` : ""}`,
   };
 }
 
