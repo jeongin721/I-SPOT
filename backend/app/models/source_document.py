@@ -11,6 +11,7 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -25,15 +26,21 @@ class SessionSourceDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     # 'txt' · 'docx' · 'hwpx' · 'pdf'
     file_format: Mapped[str] = mapped_column(String(10), nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    text_plain: Mapped[str] = mapped_column("text", Text, nullable=False)
+    text_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    text = EncryptedColumn("text", empty="")  # 상담 본문 암호화 2단계(encrypted_field)
     char_count: Mapped[int] = mapped_column(Integer, nullable=False)
     # 'AI'(document_note_llm) · 'HEADINGS'(머리줄 나누기, AI 아님)
     fill_source: Mapped[str] = mapped_column(String(20), nullable=False)
     fill_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # 상담 일지 칸 초안 {statement, attitude, environment, signals, opinion}
-    note_draft: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    note_draft_plain: Mapped[Dict[str, Any]] = mapped_column("note_draft", JSONType, default=dict, nullable=False)
+    note_draft_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    note_draft = EncryptedColumn("note_draft", empty={}, json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
     # 4단계 초안 {checks: [{text}], questions: [{text, reason}], source, model, generated_at}. 만들기 전이면 null.
-    followup_draft: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    followup_draft_plain: Mapped[Optional[Dict[str, Any]]] = mapped_column("followup_draft", JSONType, nullable=True)
+    followup_draft_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    followup_draft = EncryptedColumn("followup_draft", empty=None, json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
 
     uploaded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

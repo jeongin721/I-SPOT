@@ -6,10 +6,11 @@
 import uuid
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -32,7 +33,9 @@ class SessionFollowupQuestions(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     # [{text, kind, source, segment_ids, bank_code, approved_at}] — approved_at 은 서버가 찍은 ISO 8601 문자열.
-    questions: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    questions_plain: Mapped[List[Dict[str, Any]]] = mapped_column("questions", JSONType, default=list, nullable=False)
+    questions_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    questions = EncryptedColumn("questions", empty=[], json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
 
     updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
