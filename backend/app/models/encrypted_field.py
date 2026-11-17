@@ -49,7 +49,19 @@ class EncryptedColumn:
         ENCRYPTED_COLUMNS.setdefault(owner, []).append(self)
 
     def empty(self) -> Any:
-        return list(self._empty) if isinstance(self._empty, list) else self._empty
+        # 목록 · 사전은 행마다 새로 만든다(한 값을 여러 행이 나눠 쓰지 않게).
+        return type(self._empty)(self._empty) if isinstance(self._empty, (list, dict)) else self._empty
+
+    def db_values(self, row_id: uuid.UUID, value: Any) -> Dict[str, Any]:
+        """`update(Model).values(...)` 에 넣을 값(평문 칸은 빈 값, 암호문 칸은 이 행 ID 로 암호화한 값).
+
+        ORM 속성을 거치지 않고 조건부 UPDATE 로 저장하는 곳(기관 서식 판 번호 대조 등)이 쓴다.
+        키는 모델 속성 이름(`<칸>_plain` · `<칸>_enc`)이다 — `update(Model)` 은 키를 속성 이름으로 찾는다.
+        """
+
+        token = None if value is None else self.encrypt(self.dumps(value), row_id)
+
+        return {self.plain_attr: self.empty(), self.enc_attr: token}
 
     # --- 글자 ↔ 값 ---
 

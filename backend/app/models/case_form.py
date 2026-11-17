@@ -8,11 +8,12 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, UniqueConstraint, text
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import CaseFormType, ReviewStatus
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.case import Case
@@ -49,7 +50,9 @@ class CaseForm(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 판 번호. 저장 · 확정할 때마다 1 씩 는다. 화면은 본 판을 보내고, 서버는 그 판일 때만 바꾼다(민규 #140 H2 · H3).
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # 서식 종류별 칸 값(schemas/case_form.py 의 *Values 꼴).
-    values: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    values_plain: Mapped[Dict[str, Any]] = mapped_column("values", JSONType, default=dict, nullable=False)
+    values_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    values = EncryptedColumn("values", empty={}, json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
 
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
