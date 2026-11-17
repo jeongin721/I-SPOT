@@ -185,7 +185,7 @@ stGet(k) { let v = null; try { v = window.localStorage.getItem(k); } catch (e) {
 stSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} try { window.sessionStorage.setItem(k, v); } catch (e) {} try { window.top.__ispotSt = window.top.__ispotSt || {}; window.top.__ispotSt[k] = v; } catch (e) {} window.__ispotSt = window.__ispotSt || {}; window.__ispotSt[k] = v; }
 themeRead() { let v = null; try { v = window.localStorage.getItem('ispot-theme'); } catch (e) {} if (!v) { try { v = window.sessionStorage.getItem('ispot-theme'); } catch (e) {} } if (!v) { try { v = window.top.__ispotTheme; } catch (e) {} } if (!v) v = window.__ispotTheme; return v === 'dark'; }
 qRead() { let a = null; try { a = JSON.parse(this.stGet('ispot-app-q') || 'null'); } catch (e) {} if (!Array.isArray(a)) { a = [
-  { id: 'q1', name: '서윤_8회차_방문상담.m4a', kind: '녹음', who: '이서윤 · 8회차', size: '23.4MB', status: 'fail', err: '네트워크 연결이 끊겨 올리지 못했어요', t: '오늘 15:42' },
+  { id: 'q1', name: '서윤_8회차_방문상담.m4a', kind: '녹음', who: '이서윤 · 8회차', size: '23.4MB', status: 'fail', err: '네트워크 연결이 끊겨 올리지 못했습니다', t: '오늘 15:42' },
   { id: 'q2', name: '가정방문_사진_01.jpg', kind: '사진', who: '김도현', size: '2.1MB', status: 'done', t: '오늘 11:05' },
   { id: 'q3', name: '학교_상담확인서.pdf', kind: '문서', who: '박지호', size: '480KB', status: 'done', t: '어제 17:20' }]; this.stSet('ispot-app-q', JSON.stringify(a)); } return a; }
 qWrite(a) { this.stSet('ispot-app-q', JSON.stringify(a)); this.setState({ __q: Date.now() }); }
@@ -202,14 +202,14 @@ componentWillUnmount() { clearInterval(this._t); clearInterval(this._recT); }
 commonVals(cur) {
   const q = this.qRead(); const fails = q.filter((x) => x.status === 'fail'); const st = this.state || {};
   const notes = fails.map((x) => ({ red: 'red', title: '업로드 실패 · ' + x.kind, sub: x.name + ' · ' + x.t, desc: x.err || '', hasAct: true, act: '다시 올리기', go: () => this.qRetry(x.id), hasLink: false, href: '', linkLabel: '', nav: () => {} }))
-    .concat([{ red: '', title: '다음 상담 준비가 됐어요', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html', linkLabel: '다음 상담 준비 보기', nav: () => { const f = this._self || ({ home: 'AppHome.dc.html', cases: 'AppCases.dc.html', cal: 'AppSchedule.dc.html', memo: 'AppMemo.dc.html', up: 'AppUpload.dc.html', rec: 'AppRecord.dc.html', set: 'AppSettings.dc.html' })[cur]; if (f && f !== 'AppBrief.dc.html') this.stSet('ispot-app-from', f); } },
+    .concat([{ red: '', title: '다음 상담 준비가 완료되었습니다', sub: '오늘 16:00 · 이서윤 · 9회차 정기상담', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppBrief.dc.html', linkLabel: '다음 상담 준비 보기', nav: () => { const f = this._self || ({ home: 'AppHome.dc.html', cases: 'AppCases.dc.html', cal: 'AppSchedule.dc.html', memo: 'AppMemo.dc.html', up: 'AppUpload.dc.html', rec: 'AppRecord.dc.html', set: 'AppSettings.dc.html' })[cur]; if (f && f !== 'AppBrief.dc.html') this.stSet('ispot-app-from', f); } },
       { red: '', title: '오늘 남은 상담 2건', sub: '14:00 박지호 · 16:00 이서윤', desc: '', hasAct: false, act: '', go: () => {}, hasLink: true, href: 'AppSchedule.dc.html', linkLabel: '일정 보기', nav: () => {} }]);
   return {
     rootCls: this.themeRead() ? 'app dark' : 'app',
     tabs: [['home', '홈', 'AppHome.dc.html'], ['up', '업로드', 'AppUpload.dc.html'], ['rec', '', 'AppRecord.dc.html'], ['cal', '일정', 'AppSchedule.dc.html'], ['memo', '메모', 'AppMemo.dc.html']].map(([k, label, href]) => ({ label, href, aria: k === 'rec' ? '녹음' : label, cls: 'tab' + (k === 'rec' ? ' tab-rec' : '') + (k === cur ? ' on' : ''), cur: k === cur ? 'page' : 'false', isHome: k === 'home', isRec: k === 'rec', isUp: k === 'up', isCal: k === 'cal', isMemo: k === 'memo', hasLabel: !!label })),
     homeCls: cur === 'home' ? 'ibtn on' : 'ibtn', setCls: cur === 'set' ? 'ibtn on' : 'ibtn', homeCur: cur === 'home' ? 'page' : 'false', setCur: cur === 'set' ? 'page' : 'false',
     ntCount: String(notes.length), ntHas: notes.length > 0, ntOpen: !!st.__nt, ntToggle: () => this.setState({ __nt: !st.__nt }), ntClose: () => this.setState({ __nt: false }), notes,
-    failN: fails.length, hasFail: fails.length > 0, failText: '업로드 실패 ' + fails.length + '건 · 다시 올려 주세요'
+    failN: fails.length, hasFail: fails.length > 0, failText: '업로드 실패 ' + fails.length + '건 · 다시 올리십시오'
   };
 }
 
