@@ -3,14 +3,14 @@
 //
 // 서버 연결: 주소 ?case=<사례 ID>. 웹 사례 상세 '상담 이력' 탭(CaseHistory)과 **같은 값**(caseHistoryValues)을 폰 모양으로 보인다.
 //  - 위 카드: '총 N회 · 첫 상담일 ~ 최근 상담일'(상담 일시를 넣은 회차만).
-//    흐름 줄은 디자인에서 'AI 분석' 이지만, 우리 값은 승인한 최근 회차들의 상담 요약(상담원이 확정한 문장, useApprovedSummaries)이라
-//    칩을 'AI 분석' 대신 '승인 요약' 으로 쓴다(웹 '승인된 회차 요약 모음 · AI 생성 아님' 과 같은 뜻 — 민규 님 합의 10/28).
+//    흐름 줄 값은 승인한 최근 회차들의 상담 요약(useApprovedSummaries)이다. 칩은 디자인 그대로 'AI 분석 · N~M회차'
+//    (11/17 결정 '디자인 그대로' — 웹의 '승인된 회차 요약 모음 · AI 생성 아님' 칩과 다르다).
 //    주제 비중은 회차 분석의 대화 주제를 더한 것(AI 제안)이라 웹과 같은 안내(topicNote)를 붙인다.
 //  - 회차 선택: 회차 목록(useCaseDetail)에서 고르면 그 회차 카드가 보인다. 카드 내용은 고른 회차만 부른다.
 //      · 요약: GET /sessions/{id}/summary 의 overview. 승인했으면 '상담 요약', 아니면 'AI 요약 (웹에서 확정 전)'(디자인 문구).
 //      · 상담 일지: 그 회차 문서 중 마지막 상담일지(GET /sessions/{id}/documents). 승인 전이면 '(작성 중)'.
 //      · 주요 발화: 요약 근거 발화(summary_evidence) 중 앞의 3개를 원문에서 찾아 '시각 · 화자 "말"'(근거가 있을 때만 원문을 부른다).
-//      · 신호: 신호 이력의 세부 신호(AI 제안, 화자 확인 중이면 '보류'). 디자인에 없는 'AI 신호' 머리글을 붙였다(AI 는 보조).
+//      · 신호: 신호 이력의 세부 신호(AI 제안, 화자 확인 중이면 '보류'). 머리글 없이 칩만(디자인 그대로).
 // 고치기는 웹에서 한다. 이 화면은 폰에 아무것도 저장하지 않는다.
 import { useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -106,16 +106,13 @@ function SessionCard({ row, historyRow }) {
       ) : null}
       {tr.error ? <span className="ma-note">{tr.error}</span> : null}
       {sigs.length > 0 ? (
-        <>
-          <span className="ma-ss-lb">AI 신호</span>
-          <div className="ma-ss-sig">
-            {sigs.map((g) => (
-              <span key={g} className="ma-chip ma-gold">
-                {g}
-              </span>
-            ))}
-          </div>
-        </>
+        <div className="ma-ss-sig">
+          {sigs.map((g) => (
+            <span key={g} className="ma-chip ma-gold">
+              {g}
+            </span>
+          ))}
+        </div>
       ) : null}
     </article>
   );
@@ -156,7 +153,7 @@ function HistoryBody({ caseId }) {
       <section className="ma-card ma-hs-sum" aria-label="이전 상담 요약">
         <div className="ma-hs-top">
           <b>{detail.loading && !detail.caseInfo ? '불러오는 중' : range}</b>
-          {apRange ? <span className="ma-chip">승인 요약 · {apRange}</span> : null}
+          {apRange ? <span className="ma-chip ma-ai">AI 분석 · {apRange}</span> : null}
         </div>
         {flow.length > 0 ? (
           <div className="ma-hs-flow">
