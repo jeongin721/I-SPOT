@@ -198,6 +198,8 @@ class Logic extends DesignLogic {
       lead3: change && change.text ? `"${change.text}"` : DASH,
       lead3Src: change ? `${change.session_number}회차 · ${md(change.date)}` : DASH,
       checkRows: checks.map((x) => ({
+        done: !!(this.props.checkDone || {})[x.id],
+        toggle: (e) => this.props.toggleCheck(x.id, e.target.checked),
         text: `${x.kind === 'ACTION' ? '[할 일] ' : ''}${x.text}`,
         src: [
           x.source_session_id && sesNo[x.source_session_id] ? `근거 · ${sesNo[x.source_session_id]}회차` : '근거 · 상담사 입력',
@@ -216,6 +218,7 @@ class Logic extends DesignLogic {
       reg: () => closure('register'),
       unreg: () => closure('cancel'),
       closureErr: this.props.closureErr,
+      checkErr: this.props.checkErr,
       loadErr: this.props.loadErr,
     };
   }
@@ -235,6 +238,9 @@ export default function CaseInfo(props) {
   const shell = useShell();
   const { caseId } = useIds();
   const [closureErr, setClosureErr] = useState('');
+  // 확인할 사항 체크: 누르면 끝남(DONE), 다시 풀면 열림(OPEN). 목록은 열린 것만 오니, 이번에 체크한 줄은 다시 불러오기 전까지 체크된 채 남는다.
+  const [checkDone, setCheckDone] = useState({});
+  const [checkErr, setCheckErr] = useState('');
   const main = useAsync(async () => {
     if (!shell.ready || !caseId) return null;
     const [c, profile, trend, brief, sessionsPage, checks] = await Promise.all([
@@ -262,10 +268,18 @@ export default function CaseInfo(props) {
       (e) => setClosureErr((e && e.message) || '종결 검토 등록을 바꾸지 못했어요. 잠시 뒤 다시 해 주세요.'),
     );
   };
+  const toggleCheck = (id, on) => {
+    setCheckErr('');
+    setCheckDone((m) => ({ ...m, [id]: on }));
+    senior.updateNextCheck(caseId, id, { status: on ? 'DONE' : 'OPEN' }).catch((e) => {
+      setCheckDone((m) => ({ ...m, [id]: !on }));
+      setCheckErr((e && e.message) || '확인 표시를 저장하지 못했어요. 잠시 뒤 다시 해 주세요.');
+    });
+  };
   let loadErr = '';
   if (!caseId) loadErr = '사례를 고르지 않았어요. 사례 목록에서 다시 들어와 주세요.';
   else if (main.error) loadErr = main.error.message || '사례 정보를 불러오지 못했어요.';
 
-  const v = useDC(Logic, { ...props, shell, caseId, data: main.data, pi: personal.data, closure, closureErr, loadErr });
+  const v = useDC(Logic, { ...props, shell, caseId, data: main.data, pi: personal.data, closure, closureErr, loadErr, checkDone, checkErr, toggleCheck });
   return <View v={v} />;
 }

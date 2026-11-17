@@ -564,7 +564,7 @@ export default function View({ v }) {
                 <div className="rq-list" tabIndex="0" aria-label="확인할 사항 목록">
                   {(v.checkRows || []).map((x, i_x) => (
                     <label key={i_x} className="rq">
-                      <input type="checkbox" />
+                      <input type="checkbox" checked={x.done} onChange={x.toggle} />
                       <span>
                         {x.text}
                         <span className="src">
@@ -573,6 +573,11 @@ export default function View({ v }) {
                       </span>
                     </label>
                   ))}
+                  {v.checkErr ? (
+                    <p role="alert" className="note" style={{ margin: "0", color: "#A33B2E" }}>
+                      {v.checkErr}
+                    </p>
+                  ) : null}
                   {v.checkEmpty ? (
                     <div className="rq">
                       <span>
