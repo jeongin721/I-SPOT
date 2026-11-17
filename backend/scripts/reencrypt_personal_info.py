@@ -2,8 +2,9 @@
 #
 # 순서:
 #   1) 새 키를 PII_ENCRYPTION_KEYS 맨 앞에 넣고(옛 키는 뒤에 남김) 서버를 다시 띄운다 — 새로 저장하는 값은 새 키로 간다.
-#   2) 이 script 로 옛 키로 만든 값을 모두 새 키(맨 앞 키)로 다시 암호화한다.
-#   3) 종료 코드가 0(풀지 못한 사례 · 겹쳐 못 바꾼 사례 모두 0)이면 옛 키를 설정에서 뺀다. 1 이면 다시 돌린다.
+#   2) 이 script 로 옛 키로 만든 값을 모두 새 키(맨 앞 키)로 다시 암호화한다. 상담사 메모 본문(counselor_memos.text_enc,
+#      API_CONTRACT 25절)도 같은 키라 함께 한다(민규 #170 1 — 전에는 메모를 건너뛰고도 0 으로 끝나 옛 키를 빼면 메모가 500 이 됐다).
+#   3) 종료 코드가 0(풀지 못한 · 겹쳐 못 바꾼 사례 · 메모 모두 0)이면 옛 키를 설정에서 뺀다. 1 이면 다시 돌린다.
 # 검색 색인 키(PII_INDEX_KEY)를 바꿨으면 --reindex 로 색인도 다시 계산한다.
 #
 # 값은 출력하지 않는다. 바꾼 행 · 칸 수와 풀지 못한(또는 저장이 겹쳐 손대지 못한) 사례 ID 만 출력한다.
@@ -30,6 +31,7 @@ from app.core.enums import AuditAction
 from app.core.pii_crypto import PersonalInfoCryptoError
 from app.models.base import utcnow
 from app.models.case_personal_info import ENCRYPTED_FIELDS, CasePersonalInfo
+from app.models.counselor_memo import CounselorMemo
 from app.services import audit_service
 
 VIA = "reencrypt_personal_info script"
@@ -45,6 +47,17 @@ class ReencryptResult:
     failed_case_ids: List[uuid.UUID] = field(default_factory=list)
     # 다시 읽어도 그사이 계속 바뀌어 손대지 못한 사례 ID(서비스 중 저장이 몰림). 다시 돌리면 된다.
     busy_case_ids: List[uuid.UUID] = field(default_factory=list)
+    # 상담사 메모(본문 한 칸).
+    memo_rows: int = 0
+    changed_memos: int = 0
+    failed_memo_ids: List[uuid.UUID] = field(default_factory=list)
+    busy_memo_ids: List[uuid.UUID] = field(default_factory=list)
+
+    @property
+    def clean(self) -> bool:
+        """옛 키를 빼도 되는가(풀지 못한 · 겹쳐 못 바꾼 것이 하나도 없음)."""
+
+        return not (self.failed_case_ids or self.busy_case_ids or self.failed_memo_ids or self.busy_memo_ids)
 
 
 # 행을 읽은 뒤 바꾸기 전에 그사이 다른 저장(API PUT)이 끼면 다시 읽는 횟수.
@@ -153,6 +166,61 @@ def _reencrypt_one(
     result.busy_case_ids.append(case_id)
 
 
+def _reencrypt_memo(db: Session, memo_id: uuid.UUID, result: ReencryptResult, *, active_key_id: str, dry_run: bool) -> None:
+    """메모 하나를 다시 암호화하고 그 메모만 commit 한다. 읽은 값이 그대로일 때만 바꾼다(그사이 고친 본문을 덮지 않게)."""
+
+    for _ in range(_MAX_ATTEMPTS):
+        row = db.get(CounselorMemo, memo_id, populate_existing=True)
+
+        if row is None:
+            db.rollback()
+            return
+
+        token = row.text_enc
+
+        if pii_crypto.key_id_of(token) == active_key_id:
+            db.rollback()
+            return
+
+        try:
+            plain = pii_crypto.decrypt_memo(token, memo_id=memo_id)
+        except PersonalInfoCryptoError:
+            db.rollback()
+            result.failed_memo_ids.append(memo_id)
+            return
+
+        if dry_run:
+            db.rollback()
+            result.changed_memos += 1
+            return
+
+        updated = db.execute(
+            update(CounselorMemo)
+            .where(CounselorMemo.id == memo_id, CounselorMemo.text_enc == token)
+            .values(text_enc=pii_crypto.encrypt_memo(plain, memo_id=memo_id), updated_at=utcnow())
+            .execution_options(synchronize_session=False)
+        ).rowcount
+
+        if updated != 1:
+            db.rollback()
+            continue
+
+        # 본문은 남기지 않는다(감사 기록에는 메모 ID · 키 이름만).
+        audit_service.record(
+            db,
+            action=AuditAction.MEMO_UPDATED,
+            entity_type="CounselorMemo",
+            entity_id=memo_id,
+            case_id=row.case_id,
+            detail={"via": VIA, "fields": ["text"], "key_id": active_key_id},
+        )
+        db.commit()
+        result.changed_memos += 1
+        return
+
+    result.busy_memo_ids.append(memo_id)
+
+
 def reencrypt_all(db: Session, *, reindex: bool = False, dry_run: bool = False) -> ReencryptResult:
     """맨 앞 키가 아닌 키로 만든 값을 맨 앞 키로 다시 암호화한다. dry_run 이면 세기만 한다.
 
@@ -168,6 +236,13 @@ def reencrypt_all(db: Session, *, reindex: bool = False, dry_run: bool = False) 
         result.rows += 1
         _reencrypt_one(db, case_id, result, active_key_id=active_key_id, reindex=reindex, dry_run=dry_run)
 
+    memo_ids = list(db.scalars(select(CounselorMemo.id).order_by(CounselorMemo.id)))
+    db.rollback()
+
+    for memo_id in memo_ids:
+        result.memo_rows += 1
+        _reencrypt_memo(db, memo_id, result, active_key_id=active_key_id, dry_run=dry_run)
+
     return result
 
 
@@ -182,6 +257,7 @@ def main() -> int:
 
     verb = "바꿀" if args.dry_run else "바꾼"
     print(f"전체 {result.rows}행 · {verb} 행 {result.changed_rows} · 칸 {result.changed_fields} · 색인 {result.reindexed_rows}")
+    print(f"메모 전체 {result.memo_rows}건 · {verb} 메모 {result.changed_memos}")
 
     if result.failed_case_ids:
         # 사례 ID 만 출력한다. 옛 키를 이미 뺐거나 값이 바뀐 것 — 키 사본으로 되살린 뒤 다시 돌린다.
@@ -195,7 +271,18 @@ def main() -> int:
         for case_id in result.busy_case_ids:
             print(f"  {case_id}", file=sys.stderr)
 
-    return 1 if result.failed_case_ids or result.busy_case_ids else 0
+    if result.failed_memo_ids:
+        # 메모 ID 만 출력한다(본문 · 쓴 사람은 출력하지 않는다).
+        print(f"풀지 못한 메모 {len(result.failed_memo_ids)}건(그대로 둠):", file=sys.stderr)
+        for memo_id in result.failed_memo_ids:
+            print(f"  {memo_id}", file=sys.stderr)
+
+    if result.busy_memo_ids:
+        print(f"고치기가 겹쳐 손대지 못한 메모 {len(result.busy_memo_ids)}건(다시 돌려 주세요):", file=sys.stderr)
+        for memo_id in result.busy_memo_ids:
+            print(f"  {memo_id}", file=sys.stderr)
+
+    return 0 if result.clean else 1
 
 
 if __name__ == "__main__":

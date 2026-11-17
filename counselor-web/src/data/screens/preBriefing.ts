@@ -183,6 +183,21 @@ export function preBriefingValues(input: BriefingScreenInput) {
         rag: item.origin === "rag" || item.sources.length > 0,
       }));
 
+  // 확인할 사항 목록이 다 왔는가 — 체크를 보낼 때 이 목록을 visible 로 같이 보내도 되는가(서버가 목록에 없는 체크를 지운다).
+  // AI 확인 메모가 먼저 오고 다음 상담 체크리스트 줄이 늦게 붙으므로, 그 사이에 보내면 늦게 붙을 줄의 체크가 지워진다(민규 #176).
+  // 저장 전 초안은 체크리스트까지(만드는 중 · 기다리는 중이 아니어야), 저장 뒤는 저장한 목록만 받으면 된다.
+  const checklistSettled =
+    !input.checklist ||
+    (input.checklist.loaded &&
+      !input.checklist.error &&
+      (!input.checklist.enabled || (!input.checklist.waiting && input.checklist.checklist?.status !== "PROCESSING")));
+  const checksReady =
+    Boolean(source) &&
+    completed &&
+    !signals.analysis.error &&
+    (!input.checks || (input.checks.loaded && !input.checks.loadError)) &&
+    (savedChecks !== null || checklistSettled);
+
   let checksNote = "";
   if (!source && signals.truncated) checksNote = `최근 ${signals.shownCount}회차 안에 AI 분석이 끝난 회차가 없습니다.`;
   else if (!source) checksNote = info ? "AI 분석이 끝난 회차가 없습니다. 회차를 분석하면 확인할 사항이 생깁니다." : "";
@@ -221,6 +236,7 @@ export function preBriefingValues(input: BriefingScreenInput) {
       firstStoryCard(source, input.history),
     ] as FirstCard[],
     checks,
+    checksReady,
     checksNote,
     checksError: completed ? signals.signals.evidenceError : null,
     questions,

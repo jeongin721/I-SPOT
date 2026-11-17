@@ -1,7 +1,7 @@
 """add deliver_at to child_question_sets
 
 Revision ID: e4f5a6b7c8d9
-Revises: c7d8e9f0a1b2
+Revises: e3f4a5b6c7d8
 Create Date: 2026-11-11 15:00:00.000000
 
 아이 앱 질문 '발송 예약'(API_CONTRACT 24절). 이 시각부터 아이 앱에 보인다. 비어 있으면 만든 즉시 보인다 —
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'e4f5a6b7c8d9'
-down_revision: Union[str, None] = 'c7d8e9f0a1b2'
+down_revision: Union[str, None] = 'e3f4a5b6c7d8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
