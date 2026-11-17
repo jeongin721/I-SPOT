@@ -9,6 +9,7 @@
 // 10/29 디자인: 머리 단추가 '녹음하기'(components/RecordDialog, useRecordFlow) · '+ 새 상담 등록'(components/NewSessionDialog —
 // 녹음 없이 상담 내용 · 소견을 회차 메모에 저장)으로 바뀌었다.
 // 관리자 회차 삭제(2026-11-03, 디자인에 없어 더함): 관리자에게만 '전 회차 보기' 창의 회차 줄 옆에 '삭제' 가 보인다.
+// 담당 상담사(2026-11-13, #177): 원문 확정 전 회차(올리기 전 · 음성 올림 · 변환 실패 · 원문 검수 중)에만 같은 '삭제' 가 보인다.
 // 'N회차' 를 입력하는 확인 창(components/DeleteConfirmDialog, data/useAdminDelete)을 거치고, 지우면 회차 · 신호 이력을 다시 부른다.
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -61,7 +62,8 @@ export default function CaseHistory(props) {
     detail.reload();
     history.reload();
   });
-  const askDelete = session.isAdmin ? del.ask : null;
+  const owner = Boolean(session.me?.id) && detail.caseInfo?.counselorId === session.me?.id;
+  const askDelete = session.isAdmin || owner ? del.ask : null;
   const v = useDC(Logic, {
     ...props,
     session,
@@ -74,6 +76,7 @@ export default function CaseHistory(props) {
     historyOpen,
     setHistoryOpen,
     askDelete,
+    deleteAny: session.isAdmin,
   });
   const rec = useRecordFlow(session, caseId, v.canRecord);
   const [nsOpen, setNsOpen] = useState(false);

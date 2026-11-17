@@ -1,0 +1,15 @@
+{
+  "name": "I-SPOT 상담사",
+  "short_name": "I-SPOT",
+  "description": "현장 상담 녹음 · 일정 · 브리핑",
+  "start_url": "../#/AppHome",
+  "scope": "../",
+  "display": "standalone",
+  "background_color": "#F2F2F0",
+  "theme_color": "#F2F2F0",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

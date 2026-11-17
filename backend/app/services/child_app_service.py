@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ from app.core.enums import (
 )
 from app.core.config import settings
 from app.core.errors import APIError, ErrorCode, bad_request, conflict, forbidden, not_found, unauthorized
+from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.child_app import ChildAppEvent, ChildAppLink, ChildQuestionSet
 from app.models.schedule import ScheduleEvent
@@ -37,6 +38,12 @@ CODE_LENGTH = 6
 CODE_TTL = timedelta(hours=72)
 LINK_IP_LIMIT = 20
 FEED_LIMIT = 100
+# 화면이 30초마다 다시 받으므로 열람 기록은 같은 사람 · 사례에 이 시간 안 1줄만 남긴다.
+# 그사이 새로 온 내용이 있으면(마지막 기록 뒤 생긴 피드 줄) 시간 안이어도 새로 남긴다.
+FEED_VIEW_LOG_WINDOW = timedelta(minutes=10)
+# 아이가 급하다고 알린 뒤 앱 홈에 확인 여부를 보이는 시간, 확인 전이면 112 안내를 다시 띄우는 시간(멘토 피드백 11/12, 경진 11/13 "10분은 길다" → 5분).
+ALERT_STATUS_SHOWN = timedelta(hours=24)
+ALERT_OVERDUE_AFTER = timedelta(minutes=5)
 OPEN_ALERT_LIMIT = 50
 AI_QUESTION_PREFIX = "ai_"
 LIST_LIMIT = 200
@@ -239,6 +246,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
         if current is None or (alert["urgent"] and not current["urgent"]):
             alerts[alert["case_id"]] = alert
 
+    acked = _last_acked(db, ids)
     rows = []
 
     for case in cases:
@@ -258,6 +266,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
                 "open_alert_reason": alert["reason"] if alert else None,
                 "open_alert_urgent": bool(alert and alert["urgent"]),
+                "last_acked_at": acked.get(case.id),
             }
         )
 
@@ -312,6 +321,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             .limit(FEED_LIMIT)
         ).all()
 
+        if rows:
+            _record_feed_view(db, case, user, rows)
 
     return ChildAppCaseResponse(
         status=link.status.value if link else "NOT_LINKED",
@@ -323,6 +334,7 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         has_pending_questions=pending is not None,
         can_read_feed=can_read_feed,
         open_alerts=_open_alerts(db, user, case_id=case.id),
+        last_acked_at=_last_acked(db, [case.id]).get(case.id),
         bank=[
             {"id": item["id"], "category": item["category"], "type": item["type"], "text": item["text"]}
             for item in QUESTION_BANK
@@ -342,6 +354,67 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
             for row in rows
         ],
     )
+
+
+def _last_acked(db: Session, case_ids: List[uuid.UUID]) -> Dict[uuid.UUID, datetime]:
+    """사례마다 가장 최근 '확인이 필요한 알림 · 답'이 확인됐으면 그 시각. 확인 전이거나 없으면 빠진다."""
+
+    if not case_ids:
+        return {}
+
+    # 사례마다 확인이 필요한 줄 중 가장 최근 시각만 골라 그 줄만 읽는다(줄이 쌓여도 사례 수만큼만, 민규 #175 리뷰 4).
+    newest = (
+        select(ChildAppEvent.case_id, func.max(ChildAppEvent.created_at).label("at"))
+        .where(ChildAppEvent.case_id.in_(case_ids), ChildAppEvent.needs_ack.is_(True))
+        .group_by(ChildAppEvent.case_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(ChildAppEvent.case_id, ChildAppEvent.acknowledged_at)
+        .join(newest, and_(ChildAppEvent.case_id == newest.c.case_id, ChildAppEvent.created_at == newest.c.at))
+        .where(ChildAppEvent.needs_ack.is_(True))
+        .order_by(ChildAppEvent.id.desc())
+    ).all()
+
+    latest: Dict[uuid.UUID, Optional[datetime]] = {}
+    for case_id, acknowledged_at in rows:
+        # 같은 시각 줄이 둘이면 하나라도 확인 전이면 확인 전으로 본다.
+        if case_id in latest and (latest[case_id] is None or acknowledged_at is None):
+            latest[case_id] = None
+        else:
+            latest.setdefault(case_id, acknowledged_at)
+
+    return {case_id: _aware(at) for case_id, at in latest.items() if at is not None}
+
+
+def _record_feed_view(db: Session, case: Case, user: User, rows: List[ChildAppEvent]) -> None:
+    """아이가 보낸 내용을 담당 상담사에게 내줄 때 열람 기록. 내용은 넣지 않고 줄 수 · 가장 최근 줄 ID 만."""
+
+    last = db.scalar(
+        select(AuditLog.created_at)
+        .where(
+            AuditLog.actor_id == user.id,
+            AuditLog.case_id == case.id,
+            AuditLog.action == AuditAction.CHILD_APP_FEED_VIEWED,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(1)
+    )
+    now = _utcnow()
+
+    if last is not None and now - _aware(last) < FEED_VIEW_LOG_WINDOW and _aware(rows[0].created_at) <= _aware(last):
+        return
+
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_FEED_VIEWED,
+        entity_type="ChildAppEvent",
+        entity_id=rows[0].id,
+        actor_id=user.id,
+        case_id=case.id,
+        detail={"events": len(rows)},
+    )
+    db.commit()
 
 
 def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
@@ -372,6 +445,7 @@ def _open_alerts(
     case_id: Optional[uuid.UUID] = None,
     counselor_id: Optional[uuid.UUID] = None,
 ) -> List[Dict[str, Any]]:
+    now = _utcnow()
     statement = (
         select(ChildAppEvent, Case)
         .join(Case, Case.id == ChildAppEvent.case_id)
@@ -405,15 +479,79 @@ def _open_alerts(
             "repeat_count": int(event.payload.get("repeat_count", 0)),
             "last_at": event.payload.get("last_at"),
             "created_at": event.created_at,
+            "escalated": _is_escalated(event, now),
+            "handed_over": False,
+            "counselor_name": None,
         }
         for event, case in db.execute(statement).all()
     ]
 
 
-def list_open_alerts(db: Session, user: User) -> List[Dict[str, Any]]:
-    """담당 상담사는 자기 사례, 관리자는 전체. 담당자가 자리에 없을 때 놓치지 않게 관리자에게도 보인다."""
+def _escalate_after() -> timedelta:
+    return timedelta(minutes=settings.CHILD_APP_ESCALATE_MINUTES)
 
-    return _open_alerts(db, user, counselor_id=None if user.is_admin else user.id)
+
+def _is_escalated(event: ChildAppEvent, now: datetime) -> bool:
+    """아이가 직접 '급하다고 알리기' 를 보냈는데 정한 시간 넘게 아무도 확인하지 않았다."""
+
+    return (
+        event.kind == ChildAppEventKind.ALERT
+        and event.acknowledged_at is None
+        and now - _aware(event.created_at) >= _escalate_after()
+    )
+
+
+def _handed_over_alerts(db: Session, viewer: User) -> List[Dict[str, Any]]:
+    """다른 상담사 사례의 긴급 알림 중 정한 시간 넘게 확인 전인 것(멘토 피드백 11/12 B안).
+
+    사례를 열 권한이 없으니 아이 이름 · 내용은 주지 않고 사례 번호와 담당 상담사만 준다. 확인 처리도 못 한다.
+    담당 상담사나 관리자에게 바로 알리게 하는 것이 목적이다."""
+
+    now = _utcnow()
+    rows = db.execute(
+        select(ChildAppEvent, Case, User.name)
+        .join(Case, Case.id == ChildAppEvent.case_id)
+        .outerjoin(User, User.id == Case.counselor_id)
+        .where(
+            ChildAppEvent.kind == ChildAppEventKind.ALERT,
+            ChildAppEvent.needs_ack.is_(True),
+            ChildAppEvent.acknowledged_at.is_(None),
+            ChildAppEvent.created_at <= now - _escalate_after(),
+            Case.status == CaseStatus.ACTIVE,
+            or_(Case.counselor_id.is_(None), Case.counselor_id != viewer.id),
+        )
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+        .limit(OPEN_ALERT_LIMIT)
+    ).all()
+
+    return [
+        {
+            "id": event.id,
+            "case_id": case.id,
+            "child_alias": "",
+            "case_number": case.case_number,
+            "reason": "ALERT",
+            "urgent": True,
+            "can_ack": False,
+            "repeat_count": int(event.payload.get("repeat_count", 0)),
+            "last_at": event.payload.get("last_at"),
+            "created_at": event.created_at,
+            "escalated": True,
+            "handed_over": True,
+            "counselor_name": counselor_name,
+        }
+        for event, case, counselor_name in rows
+    ]
+
+
+def list_open_alerts(db: Session, user: User) -> List[Dict[str, Any]]:
+    """담당 상담사는 자기 사례, 관리자는 전체. 담당자가 자리에 없을 때 놓치지 않게 관리자에게도 보인다.
+    상담사에게는 다른 상담사 사례의 긴급 알림도 정한 시간 넘게 확인 전이면 보인다(넘기기, B안)."""
+
+    if user.is_admin:
+        return _open_alerts(db, user)
+
+    return _open_alerts(db, user, counselor_id=user.id) + _handed_over_alerts(db, user)
 
 
 def acknowledge_alert(
@@ -636,7 +774,77 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
     return ChildHomeResponse(
         pending=pending,
         next_consult=_next_consult(db, link.case_id, datetime.now(LOCAL_TZ).date()),
+        alert=_child_alert_status(db, link),
+        staff_hours=staff_hours(),
     )
+
+
+def staff_hours(now: Optional[datetime] = None) -> Dict[str, Any]:
+    """상담사가 바로 볼 수 있는 시간인지(한국 시간, CHILD_APP_STAFF_HOURS · CHILD_APP_STAFF_DAYS · CHILD_APP_STAFF_HOLIDAYS)."""
+
+    local = (now or _utcnow()).astimezone(LOCAL_TZ)
+    start, end = settings.CHILD_APP_STAFF_HOURS.split("-")
+    days = {int(day) for day in settings.CHILD_APP_STAFF_DAYS.split(",")}
+    minute = local.hour * 60 + local.minute
+
+    def _minutes(text: str) -> int:
+        hour, mins = text.split(":")
+        return int(hour) * 60 + int(mins)
+
+    holidays = {item for item in settings.CHILD_APP_STAFF_HOLIDAYS.split(",") if item}
+    holiday = local.date().isoformat() in holidays
+    on_duty = not holiday and local.weekday() in days and _minutes(start) <= minute < _minutes(end)
+    weekdays = "평일" if days == {0, 1, 2, 3, 4} else "".join("월화수목금토일"[day] for day in sorted(days))
+
+    return {"on_duty": on_duty, "label": "오늘은 쉬는 날" if holiday else f"{weekdays} {start}~{end}"}
+
+
+def _alert_pressed_at(event: ChildAppEvent) -> datetime:
+    """아이가 마지막으로 누른 시각. 확인 전에 다시 누르면 새 줄 없이 payload.last_at 만 오른다(send_alert)."""
+
+    last_at = (event.payload or {}).get("last_at")
+    if last_at:
+        try:
+            return _aware(datetime.fromisoformat(last_at))
+        except (TypeError, ValueError):
+            pass
+    return _aware(event.created_at)
+
+
+def _child_alert_status(db: Session, link: ChildAppLink) -> Optional[Dict[str, Any]]:
+    """이 기기가 마지막으로 급하다고 알린 것을 선생님이 확인했는지. 누가 · 언제 확인했는지는 보내지 않는다.
+
+    확인 전 알림은 사례에 하나뿐이고 늘 가장 최근 알림 줄이다(send_alert). 그래서 가장 최근 줄 하나만 본다.
+    - 이 기기가 연결된 뒤에 누른 적이 있어야 보인다(마지막으로 누른 시각 기준). 예전 기기의 알림은 숨기되,
+      새 기기에서 다시 누르면 같은 줄이라도 보인다(민규 #175 리뷰 1).
+    - 확인한 알림은 마지막으로 누른 뒤 24시간만 보인다. 확인 전이면 시간이 지나도 남아 112 · 1388 안내를 이어 간다.
+    """
+
+    now = _utcnow()
+    event = db.scalar(
+        select(ChildAppEvent)
+        .where(ChildAppEvent.case_id == link.case_id, ChildAppEvent.kind == ChildAppEventKind.ALERT)
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+        .limit(1)
+    )
+
+    if event is None:
+        return None
+
+    pressed_at = _alert_pressed_at(event)
+    if link.linked_at is not None and pressed_at < _aware(link.linked_at):
+        return None
+
+    acknowledged = event.acknowledged_at is not None
+    if acknowledged and now - pressed_at > ALERT_STATUS_SHOWN:
+        return None
+
+    return {
+        "sent_at": pressed_at,
+        "acknowledged": acknowledged,
+        # 처음 알린 뒤로 확인 전인 시간으로 잰다(다시 눌러도 줄지 않는다). 서버 시계라 폰 시계가 틀려도 같다.
+        "overdue": not acknowledged and now - _aware(event.created_at) >= ALERT_OVERDUE_AFTER,
+    }
 
 
 def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]:

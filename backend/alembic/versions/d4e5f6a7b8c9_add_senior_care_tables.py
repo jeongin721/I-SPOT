@@ -1,7 +1,7 @@
 """add senior care tables
 
 Revision ID: d4e5f6a7b8c9
-Revises: c7d8e9f0a1b2
+Revises: e3f4a5b6c7d8
 Create Date: 2026-11-13 11:00:00.000000
 
 고령자 건강상담(API_CONTRACT 27절, feature/senior). 사례 대상 종류(cases.subject_type, 있던 사례는 모두 CHILD),
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = 'd4e5f6a7b8c9'
-down_revision: Union[str, None] = 'c7d8e9f0a1b2'
+down_revision: Union[str, None] = 'e3f4a5b6c7d8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

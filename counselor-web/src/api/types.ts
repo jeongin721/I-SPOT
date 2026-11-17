@@ -1820,6 +1820,12 @@ export interface ChildOpenAlert {
   repeat_count: number;
   last_at: string | null;
   created_at: string;
+  /** 담당 상담사가 정한 시간(기본 5분) 넘게 확인하지 않은 긴급 알림. */
+  escalated: boolean;
+  /** 다른 상담사 사례에서 넘어온 알림. 사례를 열 수 없으니 담당 상담사 · 관리자에게 알린다. */
+  handed_over: boolean;
+  /** 넘어온 알림에서만 담당 상담사 이름. */
+  counselor_name: string | null;
 }
 
 export interface ChildAppCase {
@@ -1831,6 +1837,8 @@ export interface ChildAppCase {
   has_pending_questions: boolean;
   can_read_feed: boolean;
   open_alerts: ChildOpenAlert[];
+  /** 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null. */
+  last_acked_at: string | null;
   bank: { id: string; category: string; type: string; text: string }[];
   feed: ChildAppEvent[];
   ai_enabled: boolean;
@@ -1855,6 +1863,7 @@ export interface ChildAppCaseRow {
   open_alert_at: string | null;
   open_alert_reason: string | null;
   open_alert_urgent: boolean;
+  last_acked_at: string | null;
 }
 
 export interface ChildAiQuestion {
@@ -1870,4 +1879,44 @@ export interface ChildAiDraft {
   id: string;
   event_id: string;
   items: { question_id: string; note: string; note_edited: boolean; questions: ChildAiQuestion[] }[];
+}
+
+// =========================================================
+// 상담사 메모(API_CONTRACT 25절, 2026-11-10) — 쓴 사람만 본다
+// =========================================================
+
+export interface Memo {
+  id: string;
+  case_id: string | null;
+  /** 관련 사례의 별칭(실명 아님). 사례가 없으면 null. */
+  child_alias: string | null;
+  /** 본문. 풀지 못하면 null 이고 unreadable 이 true(그 메모만 — 지우거나 새 본문으로 고칠 수 있다). */
+  text: string | null;
+  unreadable?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoCreateRequest {
+  /** 앞뒤 공백을 지운 1~4000자. */
+  text: string;
+  case_id?: string | null;
+}
+
+/** 보낸 칸만 바뀐다. case_id: null 이면 사례를 뗀다. text 는 null 로 보낼 수 없다. */
+export interface MemoUpdateRequest {
+  text?: string;
+  case_id?: string | null;
+}
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절, 2026-11-11)
+// =========================================================
+
+export interface BriefingChecks {
+  session_id: string;
+  /** 확인함으로 표시한 확인 사항 문장들. */
+  checked: string[];
+  updated_at: string | null;
+  updated_by_id: string | null;
 }

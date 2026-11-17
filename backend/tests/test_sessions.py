@@ -5,8 +5,11 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.core.database import SessionLocal
+from app.core.enums import AuditAction, SessionStatus
+from app.models.audit_log import AuditLog
 from app.models.base import as_utc
 from app.models.session import ConsultationSession
 from tests.conftest import create_session
@@ -134,6 +137,112 @@ def test_delete_session_removes_it(
     )
 
     assert follow_up.status_code == 404
+
+
+# =========================================================
+# 회차 삭제 규칙(2026-11-11): 담당 상담사는 원문을 확정하기 전 회차만 지운다. 그 뒤 회차는 관리자만.
+# =========================================================
+
+def _set_status(session_id: str, status: SessionStatus) -> None:
+    with SessionLocal() as db:
+        row = db.get(ConsultationSession, uuid.UUID(session_id))
+        row.status = status
+        db.commit()
+
+
+def _deleted_audit_count(session_id: str) -> int:
+    with SessionLocal() as db:
+        return len(
+            db.scalars(
+                select(AuditLog).where(
+                    AuditLog.action == AuditAction.SESSION_DELETED,
+                    AuditLog.entity_id == uuid.UUID(session_id),
+                )
+            ).all()
+        )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        SessionStatus.CREATED,
+        SessionStatus.AUDIO_UPLOADED,
+        SessionStatus.STT_FAILED,
+        SessionStatus.STT_REVIEW_REQUIRED,
+    ],
+)
+def test_counselor_can_delete_before_transcript_is_confirmed(
+    client: TestClient, counselor_headers, session: dict, status: SessionStatus
+) -> None:
+    _set_status(session["id"], status)
+
+    response = client.delete(f"/api/v1/sessions/{session['id']}", headers=counselor_headers)
+
+    assert response.status_code == 204, response.text
+    assert _deleted_audit_count(session["id"]) == 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        SessionStatus.STT_CONFIRMED,
+        SessionStatus.AI_PROCESSING,
+        SessionStatus.AI_FAILED,
+        SessionStatus.AI_REVIEW_REQUIRED,
+        SessionStatus.APPROVED,
+    ],
+)
+def test_counselor_cannot_delete_after_transcript_is_confirmed(
+    client: TestClient, counselor_headers, session: dict, status: SessionStatus
+) -> None:
+    """원문을 확정한 뒤의 회차(승인된 기록 포함)는 담당 상담사가 지우지 못한다 — 403, 회차 · 감사 기록 그대로."""
+
+    _set_status(session["id"], status)
+
+    response = client.delete(f"/api/v1/sessions/{session['id']}", headers=counselor_headers)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert client.get(f"/api/v1/sessions/{session['id']}", headers=counselor_headers).status_code == 200
+    assert _deleted_audit_count(session["id"]) == 0
+
+
+def test_counselor_cannot_delete_while_transcribing(
+    client: TestClient, counselor_headers, session: dict
+) -> None:
+    """원문 변환 중에는 받지 않는다(409). 변환이 끝나면(검수 대기 · 실패) 지울 수 있다."""
+
+    _set_status(session["id"], SessionStatus.STT_PROCESSING)
+
+    response = client.delete(f"/api/v1/sessions/{session['id']}", headers=counselor_headers)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "INVALID_SESSION_STATE"
+    assert _deleted_audit_count(session["id"]) == 0
+
+
+@pytest.mark.parametrize(
+    "status",
+    [SessionStatus.STT_PROCESSING, SessionStatus.STT_CONFIRMED, SessionStatus.AI_REVIEW_REQUIRED, SessionStatus.APPROVED],
+)
+def test_admin_can_delete_any_status(
+    client: TestClient, admin_headers, session: dict, status: SessionStatus
+) -> None:
+    _set_status(session["id"], status)
+
+    response = client.delete(f"/api/v1/sessions/{session['id']}", headers=admin_headers)
+
+    assert response.status_code == 204, response.text
+    assert _deleted_audit_count(session["id"]) == 1
+
+
+def test_other_counselor_cannot_delete(
+    client: TestClient, other_counselor_headers, session: dict
+) -> None:
+    response = client.delete(f"/api/v1/sessions/{session['id']}", headers=other_counselor_headers)
+
+    assert response.status_code == 403
+    assert _deleted_audit_count(session["id"]) == 0
 
 
 def test_deleting_case_cascades_to_sessions(

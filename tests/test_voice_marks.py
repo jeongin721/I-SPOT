@@ -2,6 +2,7 @@
 
 실행(저장소 루트에서): python -B -m pytest tests/test_voice_marks.py -p no:cacheprovider -q
 librosa, soundfile, numba 가 없으면 건너뛴다. 첫 실행은 numba 컴파일 때문에 몇 초 더 걸린다.
+압축 음성(m4a · mp4 · webm) 시험은 PyAV(av)가 없으면 건너뛴다.
 """
 import atexit
 import json
@@ -289,3 +290,194 @@ def test_mp3_is_readable_if_supported(recording, tmp_path):
 
 def test_warm_up():
     assert vm.warm_up() is True
+
+
+# --- 압축 음성(m4a · mp4 · webm): soundfile 이 못 열면 PyAV 로 읽는다 --------------------------
+# 합성 신호로만 만든다. 기준값 근처 구간 때문에 흔들리지 않도록, 보통 구간은 떨림 · 음색 · 음량을 고르게 퍼뜨리고
+# 표시될 구간은 세 가지(떨림 · 웅얼거림 · 작은 소리) 각각 기준에서 멀리 떨어지게 만든다.
+MARGIN_OUTLIERS = {"k_04": "tremor", "k_08": "mumble", "k_11": "soft"}
+
+# wav 대비 허용 범위(합성 신호 기준). 웅얼거림(스펙트럴 중심)은 낮은 비트레이트 AAC 에서 고음이 깎여 크게 낮아진다.
+# 관측(작업 92, PyAV 19.0.2 · FFmpeg 9.0.2): 떨림 ≤ 0.83 cent, 작은 소리 ≤ 0.51 LUFS, 웅얼거림 ≤ 2.6 %(32 kbps 는 20.2 %).
+COMPRESSED_FORMATS = {
+    # 이름: (파일 이름, 컨테이너, 코덱, 표본율, 비트레이트, muxer 옵션, 웅얼거림 상대 허용)
+    "m4a_aac_128k": ("rec.m4a", "mp4", "aac", 44100, 128000, None, 0.05),
+    # MediaRecorder 처럼 조각(fragmented) mp4, 낮은 비트레이트
+    "m4a_aac_32k_fragmented": ("rec_frag.m4a", "mp4", "aac", 48000, 32000,
+                               {"movflags": "frag_keyframe+empty_moov+default_base_moof"}, 0.30),
+    "webm_opus": ("rec.webm", "webm", "libopus", 48000, 64000, None, 0.05),
+    "mp4_aac": ("rec.mp4", "mp4", "aac", 44100, 96000, None, 0.05),
+}
+
+
+def build_margin_recording(sr=44100):
+    """아동 구간 12개(떨림 · 웅얼거림 · 작은 소리가 뚜렷한 것 각 1개) + 상담사 구간 2개."""
+    parts, segs, pos = [], [], 0
+
+    def add(x, speaker, seg_id):
+        nonlocal pos
+        gap = np.zeros(int(0.4 * sr))
+        segs.append({"segment_id": seg_id, "speaker": speaker,
+                     "start_ms": int(pos * 1000 / sr), "end_ms": int((pos + x.size) * 1000 / sr)})
+        parts.extend([x, gap])
+        pos += x.size + gap.size
+
+    add(voiced(170, 2.0, sr, gain=0.1), "COUNSELOR", "c_01")
+    for i in range(12):
+        vib = (6.0, 9.0, 12.0, 15.0)[i % 4]
+        harmonics = (6, 7, 8)[i % 3]
+        gain = (0.06, 0.07, 0.08, 0.09, 0.10)[i % 5]
+        if i == 3:
+            vib = 60.0  # 떨림이 큰 구간
+        if i == 7:
+            harmonics = 1  # 배음이 없는(음색이 어두운) 구간 -> 웅얼거림
+        if i == 10:
+            gain = 0.008  # 소리가 작은 구간
+        add(voiced(220 + 10 * (i % 6), 2.0, sr, vib_cents=vib, gain=gain, harmonics=harmonics), "CHILD", f"k_{i + 1:02d}")
+    add(voiced(170, 2.0, sr, gain=0.1), "COUNSELOR", "c_02")
+    return np.concatenate(parts), segs
+
+
+def encode_with_pyav(av, path, audio, sr, fmt, codec, rate, bit_rate, options=None):
+    """합성 신호(모노)를 PyAV 로 압축 파일로 만든다."""
+    pcm = np.clip(np.round(audio * 32767), -32768, 32767).astype(np.int16)
+    with av.open(str(path), "w", format=fmt, options=options or {}) as out:
+        stream = out.add_stream(codec, rate=rate)
+        stream.layout = "mono"
+        stream.bit_rate = bit_rate
+        resampler = av.AudioResampler(format=stream.format.name, layout="mono", rate=rate)
+
+        def mux(frames):
+            for frame in frames:
+                for packet in stream.encode(frame):
+                    out.mux(packet)
+
+        for i in range(0, pcm.size, 4096):
+            frame = av.AudioFrame.from_ndarray(pcm[i:i + 4096].reshape(1, -1), format="s16", layout="mono")
+            frame.sample_rate = sr
+            mux(resampler.resample(frame))
+        mux(resampler.resample(None))
+        for packet in stream.encode(None):
+            out.mux(packet)
+
+
+@pytest.fixture(scope="module")
+def compressed(tmp_path_factory):
+    av = pytest.importorskip("av")
+    d = tmp_path_factory.mktemp("voice_marks_compressed")
+    audio, segs = build_margin_recording(44100)
+    wav = d / "rec.wav"
+    write_wav(wav, audio, 44100)
+    files = {}
+    for name, (fname, fmt, codec, rate, bit_rate, options, _tol) in COMPRESSED_FORMATS.items():
+        files[name] = d / fname
+        encode_with_pyav(av, files[name], audio, 44100, fmt, codec, rate, bit_rate, options)
+    return {"wav": wav, "segs": segs, "files": files, "dir": d, "ref": vm.analyze_voice_marks(wav, segs)}
+
+
+def test_margin_recording_reference(compressed):
+    ref = compressed["ref"]
+    assert ref["status"] == "ANALYZED" and ref["reference"]["child_segments_used"] == 12
+    by_id = {e["segment_id"]: e for e in ref["segments"]}
+    for seg_id, metric in MARGIN_OUTLIERS.items():
+        assert by_id[seg_id][metric]["flag"] is True and by_id[seg_id]["flag_any"] is True
+    flagged = {e["segment_id"] for e in ref["segments"] if e["flag_any"]}
+    assert flagged == set(MARGIN_OUTLIERS)
+
+
+@pytest.mark.parametrize("name", list(COMPRESSED_FORMATS))
+def test_compressed_audio_matches_wav(compressed, name):
+    path = compressed["files"][name]
+    with pytest.raises(Exception):
+        sf.info(str(path))  # soundfile 이 열지 못하는 파일이어야 PyAV 경로를 시험한다
+    ref, r = compressed["ref"], vm.analyze_voice_marks(path, compressed["segs"])
+    mumble_tol = COMPRESSED_FORMATS[name][-1]
+    assert r["status"] == "ANALYZED" and r["reason"] is None
+    assert r["reference"] == ref["reference"]
+    thresholds = {"tremor": vm.TREMOR_Z_ABOVE, "mumble": vm.MUMBLE_Z_BELOW, "soft": vm.SOFT_Z_BELOW}
+    for a, b in zip(ref["segments"], r["segments"]):
+        assert (a["segment_id"], a["status"], a["reason"]) == (b["segment_id"], b["status"], b["reason"])
+        if a["status"] != "ANALYZED":
+            continue
+        assert abs(a["tremor"]["value"] - b["tremor"]["value"]) <= 2.0  # cent
+        assert abs(a["soft"]["value"] - b["soft"]["value"]) <= 1.0  # LUFS
+        assert abs(a["mumble"]["value"] - b["mumble"]["value"]) <= mumble_tol * a["mumble"]["value"]
+        for metric, threshold in thresholds.items():
+            if abs(a[metric]["z"] - threshold) >= 1.0:  # 기준에서 z 1 이상 떨어진 표시는 바뀌면 안 된다
+                assert a[metric]["flag"] == b[metric]["flag"], (a["segment_id"], metric)
+    by_id = {e["segment_id"]: e for e in r["segments"]}
+    for seg_id, metric in MARGIN_OUTLIERS.items():
+        assert by_id[seg_id][metric]["flag"] is True
+    json.dumps(r, allow_nan=False)
+
+
+def test_soundfile_path_does_not_touch_pyav(compressed, monkeypatch):
+    def fail():
+        raise AssertionError("soundfile 로 열리는 파일에서 PyAV 를 부르면 안 된다")
+
+    monkeypatch.setattr(vm, "_pyav", fail)
+    assert vm.analyze_voice_marks(compressed["wav"], compressed["segs"]) == compressed["ref"]
+
+
+def test_pyav_missing_gives_decode_failed(compressed, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(vm, "_AV", None)
+    monkeypatch.setitem(sys.modules, "av", None)  # import av -> ImportError
+    r = vm.analyze_voice_marks(compressed["files"]["m4a_aac_128k"], compressed["segs"])
+    assert r["status"] == "UNDETERMINED" and r["reason"] == "DECODE_FAILED"
+    assert all(e["reason"] == "DECODE_FAILED" for e in r["segments"])
+    json.dumps(r, allow_nan=False)
+
+
+def test_broken_compressed_files_give_decode_failed(compressed):
+    d, segs = compressed["dir"], compressed["segs"]
+    head_only = d / "head_only.m4a"  # 앞부분만 남은 mp4 (moov 없음)
+    head_only.write_bytes(compressed["files"]["m4a_aac_128k"].read_bytes()[:2048])
+    junk = d / "junk.webm"
+    junk.write_bytes(bytes(range(256)) * 64)
+    no_audio = d / "empty.webm"
+    no_audio.write_bytes(b"")
+    for path in (head_only, junk, no_audio):
+        r = vm.analyze_voice_marks(path, segs)
+        assert r["status"] == "UNDETERMINED" and r["reason"] == "DECODE_FAILED", path.name
+        json.dumps(r, allow_nan=False)
+
+
+@pytest.mark.parametrize("name", ["m4a_aac_32k_fragmented", "webm_opus"])
+def test_too_long_without_header_duration(compressed, monkeypatch, name):
+    # 헤더에 길이가 없는 파일(조각 녹음)을 흉내 낸다: 풀면서 잰 시각으로 길이 제한을 판단해야 한다.
+    calls = []
+
+    def no_header(container, stream):
+        calls.append(1)
+        return None
+
+    monkeypatch.setattr(vm, "_header_duration_s", no_header)
+    monkeypatch.setattr(vm, "MAX_AUDIO_MINUTES", 0.1)  # 6초 (시험 음성은 약 33초)
+    r = vm.analyze_voice_marks(compressed["files"][name], compressed["segs"])
+    assert calls and r["status"] == "UNDETERMINED" and r["reason"] == "AUDIO_TOO_LONG"
+    assert all(e["reason"] == "AUDIO_TOO_LONG" for e in r["segments"])
+    # 제한이 넉넉하면 같은 파일이 계산된다(헤더 길이 없이도 끝까지 읽는다)
+    monkeypatch.setattr(vm, "MAX_AUDIO_MINUTES", 60)
+    assert vm.analyze_voice_marks(compressed["files"][name], compressed["segs"])["status"] == "ANALYZED"
+
+
+def test_compressed_end_clamped_like_wav(compressed):
+    # 끝 시각이 음성 길이를 크게 넘는 구간: wav 와 같이 길이에 맞춰 자르고, 큰 버퍼를 잡지 않는다.
+    segs = compressed["segs"]
+    last_child = [s for s in segs if s["speaker"] == "CHILD"][-1]
+    extra = [{"segment_id": "k_huge_end", "speaker": "CHILD", "start_ms": last_child["start_ms"], "end_ms": 10 ** 12},
+             {"segment_id": "k_after_end", "speaker": "CHILD", "start_ms": 10 ** 11, "end_ms": 10 ** 11 + 2000}]
+    ref = vm.analyze_voice_marks(compressed["wav"], segs + extra)
+    r = vm.analyze_voice_marks(compressed["files"]["webm_opus"], segs + extra)
+    got = {e["segment_id"]: (e["status"], e["reason"], e["end_ms"]) for e in r["segments"]}
+    want = {e["segment_id"]: (e["status"], e["reason"], e["end_ms"]) for e in ref["segments"]}
+    assert got["k_huge_end"] == want["k_huge_end"] == ("ANALYZED", None, 10 ** 12)
+    assert got["k_after_end"] == want["k_after_end"] == ("UNDETERMINED", "INVALID_TIME_RANGE", 10 ** 11 + 2000)
+
+
+def test_too_long_with_header_duration(compressed, monkeypatch):
+    monkeypatch.setattr(vm, "MAX_AUDIO_MINUTES", 0.1)
+    r = vm.analyze_voice_marks(compressed["files"]["m4a_aac_128k"], compressed["segs"])
+    assert r["status"] == "UNDETERMINED" and r["reason"] == "AUDIO_TOO_LONG"

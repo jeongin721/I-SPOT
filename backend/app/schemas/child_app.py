@@ -40,9 +40,25 @@ class ChildNextConsult(BaseModel):
     place: Optional[str] = None
 
 
+class ChildAlertStatus(BaseModel):
+    # 아이가 급하다고 알린 시각, 선생님이 확인했는지, 확인 전으로 5분이 지났는지. 확인한 사람 · 시각은 넣지 않는다.
+    sent_at: datetime
+    acknowledged: bool
+    overdue: bool
+
+
+class ChildStaffHours(BaseModel):
+    """상담사가 바로 볼 수 있는 시간인지. 밖이면 앱이 112 · 1388 을 먼저 안내한다."""
+
+    on_duty: bool
+    label: str
+
+
 class ChildHomeResponse(BaseModel):
     pending: Optional[ChildPendingQuestions] = None
     next_consult: Optional[ChildNextConsult] = None
+    alert: Optional[ChildAlertStatus] = None
+    staff_hours: Optional[ChildStaffHours] = None
 
 
 class ChildAnswerInput(RequestModel):
@@ -105,6 +121,12 @@ class ChildOpenAlert(BaseModel):
     repeat_count: int = 0
     last_at: Optional[datetime] = None
     created_at: datetime
+    # 담당 상담사가 CHILD_APP_ESCALATE_MINUTES 넘게 확인하지 않은 긴급 알림(B안). 다른 상담사에게도 보인다.
+    escalated: bool = False
+    # 담당이 아닌 상담사에게 넘어간 알림이면 true. 사례를 열 수 없으니 담당 상담사 · 관리자에게 알리게 한다.
+    handed_over: bool = False
+    # 넘어간 알림에서만 — 누구에게 연락할지.
+    counselor_name: Optional[str] = None
 
 
 class ChildAiQuestion(BaseModel):
@@ -161,6 +183,8 @@ class ChildAppCaseRow(BaseModel):
     open_alert_at: Optional[datetime] = None
     open_alert_reason: Optional[str] = None
     open_alert_urgent: bool = False
+    # 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null.
+    last_acked_at: Optional[datetime] = None
 
 
 class ChildAppCaseResponse(BaseModel):
@@ -172,6 +196,7 @@ class ChildAppCaseResponse(BaseModel):
     has_pending_questions: bool
     can_read_feed: bool
     open_alerts: List[ChildOpenAlert]
+    last_acked_at: Optional[datetime] = None
     bank: List[ChildAppBankItem]
     feed: List[ChildAppEventResponse]
     ai_enabled: bool = False

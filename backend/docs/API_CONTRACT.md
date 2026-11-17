@@ -990,7 +990,20 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 
 ### DELETE /api/v1/sessions/{session_id} → 204
 
-음성 파일도 함께 삭제된다.
+음성 파일도 함께 삭제된다. 전사본 · AI 분석 · 요약 · 문서까지 함께 지워지고 되돌릴 수 없다(감사 기록 `SESSION_DELETED` 만 남는다).
+
+누가 지울 수 있나(2026-11-11):
+
+| 회차 상태 | 담당 상담사 | 관리자 |
+|---|---|---|
+| `CREATED` · `AUDIO_UPLOADED` · `STT_FAILED` · `STT_REVIEW_REQUIRED` (원문 확정 전) | `204` | `204` |
+| `STT_PROCESSING` (원문 변환 중) | `409 INVALID_SESSION_STATE` — 변환이 끝난 뒤 다시 | `204` |
+| `STT_CONFIRMED` · `AI_PROCESSING` · `AI_FAILED` · `AI_REVIEW_REQUIRED` · `APPROVED` (원문 확정 뒤) | `403 FORBIDDEN` | `204` |
+
+- 잘못 올린 녹음은 담당 상담사가 직접 치울 수 있게 하고, 원문을 확정한 뒤의 회차(검수본 · AI 분석 · 승인된 기록)는 실수로 지워지지 않게 관리자만 지운다.
+  전에는 담당 상담사면 상태와 상관없이 받았다.
+- 문서 회차(21절)는 문서를 올리면 바로 `AI_REVIEW_REQUIRED` 가 되므로, 문서를 올린 뒤에는 관리자만 지운다.
+- 담당이 아닌 상담사는 상태와 상관없이 `403` 이다.
 
 ---
 
@@ -2227,8 +2240,10 @@ Test 영향
 - 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
   안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
   그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
-- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
-  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- wav · flac · ogg · mp3 는 soundfile 로 읽는다. soundfile 이 열지 못하는 m4a · mp4 · webm(휴대폰 · 브라우저 녹음)은
+  `requirements-stt.txt` 의 PyAV(`av`, wheel 에 FFmpeg 라이브러리 포함 — apt 의 ffmpeg 는 필요 없다)로 처음부터 이어 읽는다.
+  PyAV 가 없거나 PyAV 도 열지 못하면 지금처럼 `DECODE_FAILED` 다. 응답 모양 · 이유 값은 그대로다. 압축 음성(mp3 포함)은
+  wav 와 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절 · 7절).
 - 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
   재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
 
@@ -2911,7 +2926,74 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
+아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 사례의 마지막 긴급 알림 `{sent_at, acknowledged, overdue}`(없으면 null). `sent_at` 은 마지막으로 누른 시각(확인 전에 다시 누르면 오른다)이고, 이 기기가 연결된 뒤에 누른 것만 보인다. 확인한 알림은 마지막으로 누른 뒤 24시간만 보이고, 확인 전 알림은 시간이 지나도 남는다. `overdue` 는 처음 알린 뒤 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.
+
+미확인 긴급 넘기기(멘토 피드백 11/12 B안): 아이가 직접 보낸 긴급 알림(`ALERT`)이 `CHILD_APP_ESCALATE_MINUTES`(기본 5분) 넘게 확인 전이면 `GET /child-app-alerts/open` 에서 담당이 아닌 상담사에게도 나온다. 이때 줄은 `handed_over: true` · `escalated: true` · `can_ack: false` · `child_alias: ""` 이고 사례 번호와 `counselor_name`(담당 상담사)만 준다 — 사례를 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 하는 것이다. 담당 상담사 · 관리자의 같은 알림에는 `escalated: true` 만 더해진다. 답 기반 알림(바로 확인 답 · 연락 요청 등)은 넘기지 않는다. 푸시는 아직 없다(푸시 연결 때 이어서).
+
+근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026년 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+
+확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
+
+열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
+
 `status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+
+---
+
+## 25. Memos (상담사 메모, 2026-11-10)
+
+앱 · 메모(현장에서 바로 적어 두기) 화면이 쓴다. 메모는 **쓴 상담사만** 읽고 고치고 지운다 — 관리자도 남의 메모는 보지 못한다(남의 메모 id 는 `404`).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/memos?page=&page_size=&case_id=` | 내 메모 목록(최신순, `PagedItems`). `page_size` 1~100(기본 20). `case_id` 로 한 사례만 |
+| POST | `/memos` | `{text, case_id?}` → `201` Memo |
+| GET | `/memos/{id}` | Memo |
+| PATCH | `/memos/{id}` | 보낸 칸만 바뀐다. `case_id: null` 이면 사례를 뗀다. `text: null` 은 `422` |
+| DELETE | `/memos/{id}` | `204` |
+
+`Memo`:
+
+```json
+{ "id": "uuid", "case_id": "uuid", "child_alias": "서윤", "text": "현관 앞에서 만남…", "unreadable": false, "created_at": "…", "updated_at": "…" }
+```
+
+- `text`: 앞뒤 공백을 지운 1~4000자. 비었거나 NUL 이 들면 `422`.
+- `case_id`: 볼 수 있는 사례만 붙인다(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `child_alias` 는 그 사례의 별칭(실명은 싣지 않는다).
+- **담당이 바뀌어 지금 볼 수 없는 사례의 메모는 목록에서 빠지고**, 한 건 읽기 · 고치기 · 지우기도 `404` 다(사례가 없는 메모는 늘 보인다).
+- 본문은 내담자 정보와 같은 키(`PII_ENCRYPTION_KEYS`)로 **암호화해 저장**한다(묶음 값 = 메모 id). 풀지 못하면(키가 없거나 암호문이 바뀜)
+  **그 메모만** `text: null` · `unreadable: true` 로 오고 목록 · 한 건은 `200` 이다(로그에는 메모 id · 키 이름만). 그 메모는 지우거나
+  새 `text` 로 고치면 된다. 다른 메모는 `unreadable: false`.
+- 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 메모도 맨 앞 키로 다시 암호화한다(감사 기록 `MEMO_UPDATED` ·
+  `detail.via` · 본문 없음). 풀지 못한 메모가 있으면 메모 id 만 출력하고 종료 코드 1 — 그때 옛 키를 빼면 안 된다.
+- 본문은 일반 로그 · 감사 기록에 넣지 않는다. 감사 기록은 `MEMO_CREATED` · `MEMO_UPDATED`(`detail.fields`: 바뀐 칸 이름) · `MEMO_DELETED` 만,
+  메모 id · 사례 id 와 함께 남는다. 읽기는 감사 기록을 남기지 않는다(쓴 사람만 읽으므로).
+- 사례를 지우면 그 사례에 붙은 메모도 지워진다(사례 영구 삭제, 4절).
+
+---
+
+## 26. Briefing Checks (상담 전 브리핑 '확인할 사항' 체크, 2026-11-11)
+
+브리핑의 '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시)를 서버에 둔다. 웹 사례 상세 브리핑과 상담사 앱 · 브리핑이 같은 값을 본다
+(전에는 기기마다 브라우저에만 기억했다).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/sessions/{id}/briefing-checks` | `{ session_id, checked: [문장], updated_at, updated_by_id }`. 아직 없으면 `checked: []` · `updated_at: null` |
+| PATCH | `/sessions/{id}/briefing-checks` | `{ text, checked, visible? }` — 문장 하나를 켜거나 끈다. 바뀐 전체를 돌려준다 |
+
+- 확인 사항 목록은 저장한 목록(18.1절)일 때도, 저장 전(AI 초안 + 다음 상담 체크리스트, 19절)일 때도 있다. 그래서 목록 행에 칸을 붙이지
+  않고 **회차마다 확인함으로 표시한 문장(text) 목록**을 따로 둔다. 화면은 보이는 줄의 문장이 이 목록에 있으면 체크해 보인다.
+  목록을 고쳐 문장이 바뀌면 그 줄은 체크가 풀린 것으로 보인다(옛 문장은 목록에 남아도 화면에 줄이 없다).
+- 한 번에 하나씩 바꾼다(목록을 통째로 보내지 않는다) — 웹 · 폰이 동시에 눌러도 서로 지우지 않는다. 같은 문장을 또 켜거나 없는 문장을 꺼도 그대로.
+- `text`: 앞뒤 공백을 지운 1~300자.
+- `visible`(선택): 화면에 지금 보이는 확인 사항 문장 목록(최대 200개, 빈 문장 · 300자 넘는 문장은 빼고 본다). 보내면 이 목록과
+  `text` 에 없는 옛 문장(목록을 고쳐 사라진 줄)의 체크를 먼저 지운다. 화면은 **확인 사항 목록을 다 받은 뒤에만** 보낸다 — 줄이 늦게
+  붙는 동안 보내면 그 줄의 체크가 지워진다. 목록을 다 받기 전이거나 모르면 빼고 보낸다(그때는 아무것도 지우지 않는다).
+- 한 회차에 60개까지 둔다. 켤 때 60개가 차 있으면 `422` 대신 **가장 오래 전에 켠 것을 밀어내고** 켠다(지금 보이는 줄을 켤 때 막히지 않게).
+- 연결이 없을 때 누른 체크는 화면이 기기에 맡겨 두었다가(누른 때의 `visible` 과 함께) 연결되면 한 줄씩 보낸다.
+- 볼 수 있는 회차만(담당 상담사 · 관리자, 남의 회차는 `403` · `404`). 회차 상태는 따지지 않는다.
+- 감사 기록 `BRIEFING_CHECK_UPDATED`: `detail` 에 켬 · 끔과 개수만(문장은 넣지 않는다).
 
 ---
 

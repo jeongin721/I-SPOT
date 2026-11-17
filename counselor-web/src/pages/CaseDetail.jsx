@@ -23,6 +23,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
+import CaseOverviewCard from '../components/CaseOverviewCard';
 import Notice from '../components/Notice';
 import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import RecordDialog from '../components/RecordDialog';
@@ -39,11 +40,13 @@ import { useFollowupChecklist } from '../data/useFollowupChecklist';
 import { useFollowupChecks } from '../data/useFollowupChecks';
 import { useFollowupQuestions } from '../data/useFollowupQuestions';
 import { useSignalHistory } from '../data/useSignalHistory';
+import { useBriefingChecks } from '../data/useBriefingChecks';
 import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/caseDetail';
 import { formsCardValues } from '../data/screens/caseForm';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { readScreenIds } from '../data/screens/links';
+import { caseOverviewValues } from '../data/screens/caseOverview';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
@@ -97,32 +100,25 @@ export default function CaseDetail(props) {
     checks: briefChecks,
     checklist: briefChecklist,
   });
+  // 사례 한눈에 보기(2026-11-13, 담당자가 바뀌어도 사례를 한 번에 — 저장된 값만 모음, components/CaseOverviewCard).
+  const overview = caseOverviewValues({
+    detail,
+    history,
+    signals,
+    childApp: childAppInfo.data,
+    checksCount: (brief.checks || []).length,
+    caseId,
+  });
   const briefRef = useRef(null);
-  // 11/04 탭1 디자인: '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시). 서버 칸이 없어 이 브라우저에만 회차별로 기억한다.
-  const tickKey = signals.session?.id ? `ispot-brief-ticks:${signals.session.id}` : null;
-  const [ticks, setTicks] = useState(() => new Set());
-  useEffect(() => {
-    let saved = [];
-    try {
-      saved = tickKey ? JSON.parse(window.localStorage.getItem(tickKey) || '[]') : [];
-    } catch {
-      saved = [];
-    }
-    setTicks(new Set(Array.isArray(saved) ? saved : []));
-  }, [tickKey]);
-  const toggleTick = (text) => {
-    setTicks((prev) => {
-      const next = new Set(prev);
-      if (next.has(text)) next.delete(text);
-      else next.add(text);
-      try {
-        if (tickKey) window.localStorage.setItem(tickKey, JSON.stringify([...next]));
-      } catch {
-        /* 저장 못 해도 화면 표시는 그대로 */
-      }
-      return next;
-    });
-  };
+  // 11/04 탭1 디자인: '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시). 서버에 회차별로 둔다(API_CONTRACT 26절, 11/11 — 폰 앱과 같은 값).
+  const briefTicks = useBriefingChecks(
+    signals.session?.id ?? null,
+    signedIn(session),
+    // 목록이 다 오기 전에는 null — 서버가 늦게 붙을 줄의 체크를 지우지 않게 visible 을 보내지 않는다(민규 #176).
+    brief.checksReady ? (brief.checks || []).map((c) => c.text) : null,
+  );
+  const ticks = briefTicks.ticks;
+  const toggleTick = briefTicks.toggle;
   const [outOpen, setOutOpen] = useState(false);
   const wantBrief = params.get('view') === 'brief';
   const briefReady = Boolean(detail.caseInfo);
@@ -352,6 +348,8 @@ export default function CaseDetail(props) {
             </div>
           </section>
 
+          <CaseOverviewCard value={overview} />
+
           <div className="brief-wrap" id="brief" ref={briefRef} aria-label="상담 전 브리핑" role="region">
             <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '10px 20px' }}>
               <div style={{ flex: '1 1 380px' }}>
@@ -412,6 +410,12 @@ export default function CaseDetail(props) {
                     </span>
                   </label>
                 ))}
+                {briefTicks.error ? (
+                  <span className="note" role="alert" style={{ color: '#A33B2E' }}>
+                    {briefTicks.error}
+                  </span>
+                ) : null}
+                {briefTicks.waiting ? <span className="note">연결이 돌아오면 확인 표시를 저장해요.</span> : null}
                 {brief.checksError ? (
                   <span className="note" role="alert" style={{ color: '#A33B2E' }}>
                     {brief.checksError}
