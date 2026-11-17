@@ -4,7 +4,7 @@
 # 아동 데모(web-deploy.sh, /opt/ispot · ispot-backend · ispot-web)와 폴더 · 컨테이너 · DB 를 모두 따로 쓴다:
 #   폴더 /opt/onda(저장소 /opt/onda/I-SPOT, 설정 /opt/onda/backend.env, 녹음 /opt/onda/storage, 화면 /opt/onda/web)
 #   컨테이너 onda-backend(127.0.0.1:$BACKEND_PORT) · onda-web(Caddy, 80 · 443)
-#   DB 는 backend.env 의 DATABASE_URL — 같은 RDS 안의 고령자 전용 데이터베이스(예: onda_senior)를 쓴다. ispot 데이터베이스를 쓰면 안 된다
+#   DB 는 backend.env 의 DATABASE_URL — 같은 RDS 안의 고령자 전용 데이터베이스(ispot_senior)를 쓴다. ispot 데이터베이스를 쓰면 안 된다
 #   (고령자 마이그레이션이 올라가면 main · 아동 데모 배포가 alembic 에서 멈춘다).
 # Caddy 가 80 · 443 을 쓰므로 아동 데모와 같은 서버에는 올릴 수 없다(민규 11/16: 백엔드 서버를 따로).
 #

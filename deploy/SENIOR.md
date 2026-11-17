@@ -50,5 +50,11 @@ sudo docker exec -it onda-backend python -m scripts.seed_senior_demo --email <�
 
 ## 12/11 실증 뒤 정리 (민규님과 정하기)
 
-데이터베이스 `ispot_senior` 삭제(필요하면 먼저 정해진 사람만 볼 수 있는 곳에 내보내기) · RDS 스냅샷 중 이 DB 가 든 것 처리 ·
-`/opt/onda/storage` 녹음 삭제 · EC2 · EBS · 고정 IP 반납 · 외부 API(ElevenLabs · OpenAI) 쪽 보관 데이터 확인.
+1. 데이터베이스 `ispot_senior` 삭제(필요하면 먼저 정해진 사람만 볼 수 있는 곳에 내보내기).
+2. **백업에 남은 실증 데이터**: ispot-db 는 아동 데모와 같은 인스턴스라 자동 백업 · 스냅샷에 `ispot_senior` 가 함께 들어 있다.
+   - 자동 백업은 RDS 백업 보존 기간이 지나면 사라진다 — 삭제일 + 보존 기간이 실증 데이터가 완전히 없어지는 날이다.
+     11/17 조회: ispot-db 보존 기간 **1일**(백업 시간 UTC 19:04–19:34), 저장소 암호화 켜짐. 보존 기간을 늘리면 이 날짜도 늦어진다.
+   - 실증 기간에 손으로 만든 스냅샷은 목록을 남기고 지우거나, 남겨야 하면 보존 기한 · 볼 수 있는 사람을 정해 적는다.
+   - 실증 데이터를 지운 뒤 만든 스냅샷에는 들어가지 않는다.
+3. `/opt/onda/storage` 녹음 삭제, EC2 · EBS(스냅샷 포함) · 고정 IP 반납.
+4. 외부 API(ElevenLabs · OpenAI) 쪽 보관 데이터 · 보존 기간 확인.
