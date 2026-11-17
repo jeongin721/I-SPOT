@@ -1,0 +1,363 @@
+// HomeTablet 화면 마크업 — tools/dc2jsx.py 가 디자인(HomeTablet.dc.html)에서 만든 파일. 그 뒤 서버 값 바인딩(v.*)만 손으로 더했다 — 다시 풀면 바인딩이 지워지니 diff 로 옮긴다.
+/* eslint-disable */
+import { Fragment } from 'react';
+import './HomeTablet.css';
+
+export default function View({ v }) {
+  return (
+    <div className="pg-HomeTablet">
+      <div className={v.themeCls} style={{ minHeight: "1060px", background: "#DEE6EC", color: "#1F3A56", fontFamily: "'IBM Plex Sans KR', sans-serif", fontSize: "14px", lineHeight: "1.6", display: "flex", flexWrap: "wrap", alignItems: "stretch" }}>
+        {v.jobShow ? (
+          <>
+            <div className={`job-toast ${v.jobCls}`} role="status" aria-live="polite">
+              {v.jobRun ? (
+                <>
+                  <span className="job-spin" aria-hidden="true" />
+                  <span>
+                    분석 중입니다...
+                  </span>
+                  <span className="job-file">
+                    {v.jobName}
+                  </span>
+                </>
+              ) : null}
+              {v.jobDone ? (
+                <>
+                  <span className="job-ok" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    분석 완료
+                  </span>
+                  <a className="job-go" href="#/Step1Record" onClick={v.jobGo}>
+                    검수
+                  </a>
+                </>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+        <aside className="side" aria-label="주 메뉴">
+          <a className="logo" href="#/Home">
+            <span className="mk">
+              온
+            </span>
+            <b style={{ fontSize: "17px" }}>
+              온담
+            </b>
+          </a>
+          <input type="checkbox" id="mnav" className="mnav-tg" aria-label="메뉴 열기" />
+          <label htmlFor="mnav" className="mnav-btn">
+            <i aria-hidden="true" />
+            메뉴
+          </label>
+          <a className="cta" href="#/Upload" onClick={v.markBack}>
+            ↑ 녹취 · 자료 올리기
+          </a>
+          <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
+            + 새 대상자 등록
+          </a>
+          <nav className="nav" aria-label="메뉴">
+            <a className="on" href="#/Home">
+              홈
+            </a>
+            <a href="#/CaseList">
+              대상자 관리
+            </a>
+            <a href="#/Schedule">
+              일정
+            </a>
+            <a href="#/ChildLink">
+              안부 연계
+              <span className="cnt">
+                {v.navLinkCnt}
+              </span>
+            </a>
+            <a href="#/Followup">
+              후속관리
+              <span className="cnt">
+                {v.navFollowCnt}
+              </span>
+            </a>
+            <a href="#/DocBox">
+              문서함
+            </a>
+            <a href="#/LawGuide">
+              법령 · 매뉴얼
+            </a>
+            <a href="#/Stats">
+              통계
+            </a>
+            <a href="#/Settings">
+              설정
+            </a>
+          </nav>
+          <div className="me">
+            <span className="av">
+              {v.meInitial}
+            </span>
+            <b style={{ fontWeight: "500" }}>
+              {v.meName} {v.meRole}
+            </b>
+            <a href="#/Login" className="note" style={{ marginLeft: "auto" }} onClick={v.logout}>
+              로그아웃
+            </a>
+          </div>
+        </aside>
+        <main style={{ flex: "999 1 640px", minWidth: "0", padding: "30px 36px 56px", display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div className="thm-bar">
+            <div className="nt-wrap">
+              <button type="button" className="nt-btn" aria-label={v.ntLabel} aria-expanded={v.ntExp} aria-haspopup="true" onClick={v.ntToggle}>
+                <svg viewBox={"0 0 24 24"} width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z" />
+                  <path d="M10 20.2a2.2 2.2 0 0 0 4 0" />
+                </svg>
+                {v.ntHasBadge ? (
+                  <>
+                    <span className="nt-badge">
+                      {v.ntBadge}
+                    </span>
+                  </>
+                ) : null}
+              </button>
+              {v.ntOpen ? (
+                <>
+                  <div className="nt-pop" role="region" aria-label="알림 목록">
+                    <div className="nt-hd">
+                      <b style={{ fontSize: "15px" }}>
+                        알림
+                      </b>
+                      <span className="nt-sub">
+                        {v.ntSub}
+                      </span>
+                      <button type="button" className="nt-all" onClick={v.ntReadAll}>
+                        모두 읽음
+                      </button>
+                    </div>
+                    <div className="nt-list">
+                      {(v.ntItems || []).map((n, i_n) => (
+                        <Fragment key={i_n}>
+                          <a className={`nt-item ${n.cls}`} href="#/Schedule" onClick={n.go}>
+                            <span className="nt-dot" aria-hidden="true" />
+                            <span className="nt-main">
+                              <b className="nt-t">
+                                {n.title}
+                              </b>
+                              <span className="nt-s">
+                                {n.sub}
+                              </span>
+                            </span>
+                            <span className={`nt-dd ${n.ddCls}`}>
+                              {n.dd}
+                            </span>
+                          </a>
+                        </Fragment>
+                      ))}
+                      {v.ntEmpty ? (
+                        <>
+                          <p className="nt-empty">
+                            새 알림이 없습니다.
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <button type="button" className="thm-tg" aria-pressed={v.themePressed} aria-label={v.themeLabel} onClick={v.toggleTheme}>
+              <span className="thm-knob">
+                <svg className="i-sun" viewBox={"0 0 24 24"} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                </svg>
+                <svg className="i-moon" viewBox={"0 0 24 24"} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+                </svg>
+              </span>
+            </button>
+          </div>
+          <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px 14px" }}>
+            <div style={{ flex: "1 1 300px" }}>
+              <div className="sub brn" style={{ fontWeight: "500" }}>
+                {v.dateLabel}
+              </div>
+              <h1 style={{ margin: "2px 0 0", fontSize: "28px", fontWeight: "700" }}>
+                안녕하세요, {v.meName} 상담사님
+              </h1>
+            </div>
+          </header>
+          <section aria-label="오늘 요약" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", alignItems: "stretch" }}>
+            <a className="card stat" href="#/CaseList">
+              <span className="sub">
+                진행 중 내담자
+              </span>
+              <b className="n brn">
+                {v.clientCount}
+              </b>
+            </a>
+            <div className="card stat">
+              <span className="sub">
+                미처리 업무
+              </span>
+              <b className="n brn">
+                {v.todoCount}
+              </b>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
+                {(v.todos || []).map((r, i_r) => (
+                  <Fragment key={i_r}>
+                    <a className="todo" href={r.href}>
+                      <span className={r.cls}>
+                        {r.chip}
+                      </span>
+                      <span style={{ flex: "1" }}>
+                        {r.text}
+                      </span>
+                      <b className="brn">
+                        {r.n}
+                      </b>
+                    </a>
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+            <a className="card stat" href={v.urgentHref} style={{ boxShadow: "inset 0 4px 0 #A33B2E" }}>
+              <span className="sub acc" style={{ fontWeight: "700" }}>
+                긴급 업무
+              </span>
+              <b className="n acc">
+                {v.urgentCount}
+              </b>
+              {(v.urgent || []).map((r, i_r) => (
+                <span key={i_r} style={{ fontSize: "14px" }}>
+                  {r.line}
+                </span>
+              ))}
+            </a>
+          </section>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", alignItems: "flex-start" }}>
+            <section className="card" aria-label="오늘 일정" style={{ flex: "3 1 520px", minWidth: "0", overflow: "hidden" }}>
+              <div className="hd">
+                <h2 className="h2">
+                  오늘 일정
+                </h2>
+                <a href="#/Schedule" style={{ marginLeft: "auto", fontSize: "13px" }}>
+                  달력 보기
+                </a>
+              </div>
+              {(v.hours || []).map((h, i_h) => (
+                <Fragment key={i_h}>
+                  <div className="hr" style={{ background: h.bg, opacity: h.op }}>
+                    <span style={{ paddingTop: "8px", fontSize: "13px", color: h.labelFg, fontWeight: h.labelFw }}>
+                      {h.label}
+                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", justifyContent: "center" }}>
+                      {h.isNowHour ? (
+                        <>
+                          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <b style={{ fontSize: "12px", color: "#1F3A56" }}>
+                              {"지금 "}{v.clock}
+                            </b>
+                            <span style={{ flex: "1", height: "2px", background: "#1F3A56" }} />
+                          </span>
+                        </>
+                      ) : null}
+                      {(h.events || []).map((e, i_e) => (
+                        <Fragment key={i_e}>
+                          <a className="ev" href={e.href} style={{ background: e.bg }}>
+                            <span style={{ width: "10px", height: "10px", flex: "none", borderRadius: e.radius, background: e.dot }} />
+                            <b style={{ fontWeight: "500", fontSize: "13px", width: "44px", flex: "none" }}>
+                              {e.time}
+                            </b>
+                            <span style={{ flex: "1", minWidth: "0" }}>
+                              <b style={{ fontWeight: "500" }}>
+                                {e.title}
+                              </b>
+                              <span className="note" style={{ marginLeft: "8px" }}>
+                                {e.sub}
+                              </span>
+                            </span>
+                          </a>
+                        </Fragment>
+                      ))}
+                    </div>
+                  </div>
+                </Fragment>
+              ))}
+            </section>
+            <div style={{ flex: "2 1 320px", minWidth: "0", display: "flex", flexDirection: "column", gap: "20px" }}>
+              <section className="card" aria-label="현재 시간" style={{ padding: "22px 24px", background: "linear-gradient(135deg, #E8F4FC 0%, #F0F8FD 60%, #F5FAFE 100%)", borderColor: "#B9DDF4" }}>
+                <div className="note" style={{ color: "#1F3A56" }}>
+                  지금
+                </div>
+                <div style={{ color: "#235E8C", fontSize: "44px", fontWeight: "700", lineHeight: "1.1", letterSpacing: "1px" }}>
+                  {v.clock}
+                </div>
+                <div style={{ marginTop: "14px", padding: "14px 16px", borderRadius: "14px", background: "#FFFFFF", border: "1px solid #B9DDF4", borderLeft: "4px solid #5FA4D6" }}>
+                  <div className="note">
+                    다음 상담까지
+                  </div>
+                  <b style={{ fontSize: "24px", color: "#A33B2E" }}>
+                    {v.remain}
+                  </b>
+                  <div style={{ marginTop: "2px", fontSize: "14px" }}>
+                    {v.nextTitle}
+                  </div>
+                  <a className="btn btn-p" href={v.briefHref} style={{ width: "100%", marginTop: "12px" }}>
+                    상담 전 브리핑 보기
+                  </a>
+                </div>
+              </section>
+              <section className="card" aria-label="빠른 실행" style={{ padding: "20px 22px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                  <h2 className="h2">
+                    빠른 실행
+                  </h2>
+                  <button type="button" className="btn btn-sm btn-s" style={{ marginLeft: "auto" }} onClick={v.toggleEdit}>
+                    {v.editLabel}
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px" }}>
+                  {(v.quick || []).map((q, i_q) => (
+                    <Fragment key={i_q}>
+                      <a className="qa" href={q.href} onClick={v.markBack}>
+                        <span className="qi">
+                          {q.icon}
+                        </span>
+                        <b style={{ fontWeight: "500" }}>
+                          {q.label}
+                        </b>
+                        {v.editing ? (
+                          <>
+                            <button type="button" className="rm" aria-label={q.rmLabel} onClick={q.remove}>
+                              ×
+                            </button>
+                          </>
+                        ) : null}
+                      </a>
+                    </Fragment>
+                  ))}
+                </div>
+                {v.editing ? (
+                  <>
+                    <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #DDE6EC" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                        {(v.addable || []).map((o, i_o) => (
+                          <Fragment key={i_o}>
+                            <button type="button" className="addq" onClick={o.add}>
+                              {"+ "}{o.label}
+                            </button>
+                          </Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </section>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

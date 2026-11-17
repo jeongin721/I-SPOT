@@ -24,6 +24,18 @@ NAMES = [
     # 11/17 새 디자인(대상자 관리 · 후속관리)의 웹 화면. 관리자 · 앱 · 태블릿 화면은 아직 범위 밖.
     "Start", "CaseIntake", "CaseApp", "CaseForm", "CaseDocs", "ChildLink", "ChildLinkDetail", "ChildLinkHistory",
     "Followup", "FollowupDetail", "Overview", "LawGuide", "Stats", "Settings", "DocBox",
+    # 관리자 · 상담사 앱(폰) · 태블릿 화면(11/17 오후). 공통 규칙은 위 웹 화면에서만 센다(WEB_SHARED).
+    "AdminHome", "AdminHomeTablet", "AdminCases", "AdminCounselor", "AdminSecurity", "AdminApp", "AdminStats", "AdminAccess",
+    "AdminAccounts",
+    "AppHome", "AppCases", "AppNext", "AppUpload", "AppMemo", "AppSchedule", "AppRecord", "AppHistory", "AppSettings",
+    "LoginTablet", "HomeTablet", "CaseListTablet", "CaseInfoTablet", "Step1RecordTablet",
+]
+#: 공통 CSS(styles/design.css)를 세는 화면 — 사이드바가 있는 상담사 웹 화면. 나머지는 자기 규칙을 다 가진다.
+WEB_SHARED = [
+    "Login", "Home", "Schedule", "CaseList", "CaseRegister", "CaseInfo", "CaseHistory", "SessionDetail",
+    "Upload", "Step1Record", "Step2Signals", "Step3Summary", "Step4Next",
+    "CaseIntake", "CaseApp", "CaseForm", "CaseDocs", "ChildLink", "ChildLinkDetail", "ChildLinkHistory",
+    "Followup", "FollowupDetail", "Overview", "LawGuide", "Stats", "Settings", "DocBox",
 ]
 # 이 이름만 골라 풀 때(옛 디자인 폴더처럼 일부 화면만 있을 때): DC2JSX_NAMES=Login,Home,...
 if os.environ.get("DC2JSX_NAMES"):
@@ -37,6 +49,10 @@ PAGE_MAP = {
     "ChildDetail": "ChildLinkDetail", "ChildAnswers": "ChildLinkHistory", "CaseApp": "CaseApp", "CaseForm": "CaseForm",
     "CaseDocs": "CaseDocs", "CaseIntake": "CaseIntake", "LawGuide": "LawGuide", "Stats": "Stats", "Settings": "Settings",
     "DocBox": "DocBox", "Start": "Start",
+    "AdminHome": "AdminHome", "AdminCases": "AdminCases", "AdminStaffDetail": "AdminCounselor", "AdminSecurity": "AdminSecurity",
+    "AdminApp": "AdminApp", "AdminStats": "AdminStats", "AdminViewLog": "AdminAccess", "AdminAccounts": "AdminAccounts",
+    "AppHome": "AppHome", "AppCases": "AppCases", "AppBrief": "AppNext", "AppUpload": "AppUpload", "AppMemo": "AppMemo",
+    "AppSchedule": "AppSchedule", "AppRecord": "AppRecord", "AppHistory": "AppHistory", "AppSettings": "AppSettings",
 }
 
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
@@ -328,7 +344,7 @@ def main():
         )
 
     # 시작 화면(Start)은 사이드바 없는 표지라 공통 규칙을 거의 안 쓴다 — 공통은 나머지 화면에서 센다(Start 는 자기 규칙을 다 가진다).
-    shared = [n for n in NAMES if n != "Start"] or NAMES
+    shared = [n for n in NAMES if n in WEB_SHARED] or NAMES
     common = [r for r in per[shared[0]] if sum(r in per[n] for n in shared) == len(shared)]
     (dst / "src/styles/design.css").write_text(
         "/* 모든 화면 공통 규칙 — tools/dc2jsx.py 가 디자인에서 뽑음 */\n" + "\n".join(common) + "\n", encoding="utf-8"

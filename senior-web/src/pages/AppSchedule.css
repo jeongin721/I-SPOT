@@ -1,0 +1,150 @@
+/* AppSchedule 화면에만 있는 규칙(.pg-AppSchedule 아래) — tools/dc2jsx.py */
+body{margin:0;background:#F4F9FD;overflow-x:hidden}
+body:has(.app.dark){background:#16202A}
+.pg-AppSchedule *{box-sizing:border-box}
+.pg-AppSchedule .app{--bg:#F4F9FD;--card:#FFFFFF;--line:#D9E3EA;--fg:#1F3A56;--mut:#66788A;--soft:#F8FBFD;--sand:#E8F4FC;--gold:#5FA4D6;--ink:#1F3A56;--onink:#D6ECFA;--red:#A33B2E;--redsoft:#F7E4DF;
+  min-height:100vh;min-height:100dvh;width:100%;max-width:600px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans KR',sans-serif;font-size:clamp(14px,4.1vw,15px);line-height:1.55;position:relative}
+.pg-AppSchedule .app.dark{--bg:#16202A;--card:#203B57;--line:#34495E;--fg:#E0EEF7;--mut:#90A2AE;--soft:#212F3E;--sand:#243444;--ink:#D6ECFA;--onink:#1F3A56;--red:#F0907F;--redsoft:#4A2B26}
+.pg-AppSchedule .app a{color:inherit;text-decoration:none}
+.pg-AppSchedule .app a.btn-p{color:var(--onink)}
+.pg-AppSchedule .app a.fail{color:var(--red)}
+.pg-AppSchedule .ahd{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:12px 16px 10px;padding-top:max(12px,env(safe-area-inset-top,0px));background:var(--bg)}
+.pg-AppSchedule .ahd h1{margin:0;font-size:clamp(18px,5.6vw,21px);font-weight:700;letter-spacing:-.01em}
+.pg-AppSchedule .ahd .sub{font-size:12.5px;color:var(--mut)}
+.pg-AppSchedule .ibtn{position:relative;width:38px;height:38px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);cursor:pointer;padding:0}
+.pg-AppSchedule .badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#FFFFFF;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.pg-AppSchedule .amain{flex:1;padding:4px 16px 24px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.pg-AppSchedule .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.pg-AppSchedule .sec-t{margin:4px 0 0;font-size:14px;font-weight:700;color:var(--mut)}
+.pg-AppSchedule .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.pg-AppSchedule .btn-p{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.pg-AppSchedule .btn-sm{min-height:36px;padding:0 12px;font-size:13.5px;border-radius:8px}
+.pg-AppSchedule .btn-red{color:var(--red)}
+.pg-AppSchedule .btn-block{width:100%}
+.pg-AppSchedule .chip{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:700;background:var(--soft);color:var(--mut);white-space:nowrap}
+.pg-AppSchedule .chip.red{background:var(--redsoft);color:var(--red)}
+.pg-AppSchedule .chip.gold{background:var(--sand);color:var(--fg)}
+.pg-AppSchedule .chip.ai{gap:4px;background:#E6F3FC;color:#235E8C}
+.pg-AppSchedule .app.dark .chip.ai{background:#243444;color:#D6ECFA}
+.pg-AppSchedule .chip.ai::before{content:"";width:11px;height:11px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2l2.1 6.4L20.5 10.5l-6.4 2.1L12 19l-2.1-6.4L3.5 10.5l6.4-2.1z'/></svg>") center/contain no-repeat}
+.pg-AppSchedule .note{font-size:12.5px;color:var(--mut)}
+.pg-AppSchedule .inp{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:15px;background:var(--card);color:var(--fg)}
+.pg-AppSchedule textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
+.pg-AppSchedule .fl{display:flex;flex-direction:column;gap:6px}
+.pg-AppSchedule .lb{font-size:13px;font-weight:700}
+.pg-AppSchedule .seg{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}
+.pg-AppSchedule .seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;font:inherit;font-size:14px;color:var(--mut);cursor:pointer}
+.pg-AppSchedule .seg button.on{background:var(--card);color:var(--fg);font-weight:700;box-shadow:0 1px 3px rgba(31,58,86,.14)}
+.pg-AppSchedule .fail{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--redsoft);color:var(--red);font-size:14px;font-weight:700}
+.pg-AppSchedule .fail span{flex:1}
+.pg-AppSchedule .ibtn.on{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.pg-AppSchedule .tabs{position:sticky;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--card);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 14px rgba(31,58,86,.05)}
+.pg-AppSchedule .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;border-radius:12px;font-size:12.5px;font-weight:500;color:var(--mut)}
+.pg-AppSchedule .tab svg{width:22px;height:22px}
+.pg-AppSchedule .tab.on{background:var(--sand);color:var(--fg);font-weight:700}
+.pg-AppSchedule .tab.on svg{color:var(--fg)}
+.pg-AppSchedule .ahd .tl{flex:1;min-width:0}
+.pg-AppSchedule .ahd .tl h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-AppSchedule .amain{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.pg-AppSchedule .ov{position:fixed;inset:0;z-index:50;background:rgba(31,58,86,.42);display:flex;align-items:flex-end;justify-content:center}
+.pg-AppSchedule .sheet{width:100%;max-width:600px;max-height:86vh;max-height:86dvh;overflow-y:auto;background:var(--card);color:var(--fg);border-radius:16px 16px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.pg-AppSchedule .grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line)}
+.pg-AppSchedule .sh-hd{display:flex;align-items:center;gap:10px}
+.pg-AppSchedule .sh-hd b{flex:1;font-size:18px}
+.pg-AppSchedule .nt{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;border:1px solid var(--line)}
+.pg-AppSchedule .nt.red{border-color:var(--red)}
+.pg-AppSchedule .nt b{font-size:14.5px}
+.pg-AppSchedule .row-k{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14.5px}
+.pg-AppSchedule .row-k:first-child{border-top:0}
+.pg-AppSchedule .row-k span:first-child{color:var(--mut);font-size:13px}
+.pg-AppSchedule .days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.pg-AppSchedule .day{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:12px;border:1px solid transparent;background:transparent;font:inherit;color:var(--fg);cursor:pointer}
+.pg-AppSchedule .day small{font-size:11.5px;color:var(--mut)}
+.pg-AppSchedule .day b{font-size:16px}
+.pg-AppSchedule .day.on{background:var(--ink);color:var(--onink)}
+.pg-AppSchedule .day.on small{color:var(--onink)}
+.pg-AppSchedule .day.today b{text-decoration:underline;text-underline-offset:3px}
+.pg-AppSchedule .dot{width:5px;height:5px;border-radius:50%;background:var(--gold)}
+.pg-AppSchedule .dot.no{background:transparent}
+.pg-AppSchedule .ev{display:flex;flex-direction:column;gap:10px;padding:14px;cursor:pointer}
+.pg-AppSchedule .ev-top{display:flex;align-items:flex-start;gap:12px}
+.pg-AppSchedule .ev-time{min-width:48px;font-size:14px;font-weight:700}
+.pg-AppSchedule .ev-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pg-AppSchedule .ev-body b{font-size:15.5px}
+.pg-AppSchedule .ev-act{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pg-AppSchedule .empty{padding:28px 16px;text-align:center;color:var(--mut);font-size:14px}
+.pg-AppSchedule .calbar{display:flex;align-items:center;gap:10px}
+.pg-AppSchedule .calmon{flex:1;text-align:center;font-size:15px}
+.pg-AppSchedule .mcal{padding:10px 8px}
+.pg-AppSchedule .mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.pg-AppSchedule .mdow{text-align:center;font-size:11.5px;color:var(--mut);padding:2px 0 6px}
+.pg-AppSchedule .mc{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:44px;border:0;border-radius:10px;background:transparent;font:inherit;font-size:14.5px;color:var(--fg);cursor:pointer;padding:0}
+.pg-AppSchedule .mc.out{color:var(--mut);opacity:.55}
+.pg-AppSchedule .mc.today span:first-child{text-decoration:underline;text-underline-offset:3px;font-weight:700}
+.pg-AppSchedule .mc.on{background:var(--ink);color:var(--onink);opacity:1}
+.pg-AppSchedule .mc.on .dot{background:var(--onink)}
+.pg-AppSchedule .fab{position:sticky;bottom:calc(82px + env(safe-area-inset-bottom,0px));align-self:flex-end;margin-right:2px;z-index:15;box-shadow:0 8px 20px rgba(31,58,86,.25)}
+.pg-AppSchedule /* ===== 모던 정리 (2026-11-02) ===== */
+.app{--bgA:rgba(244,249,253,.86);--cardA:rgba(255,255,255,.9);--track:rgba(31,58,86,.06);--goldT:#2F74A8;--sh:0 1px 2px rgba(31,58,86,.04),0 6px 16px rgba(31,58,86,.04);letter-spacing:-.005em;-webkit-font-smoothing:antialiased}
+.pg-AppSchedule .app.dark{--bgA:rgba(22,32,42,.86);--cardA:rgba(32,59,87,.92);--track:rgba(255,255,255,.07);--goldT:#8CC4EA;--sh:none}
+.pg-AppSchedule .ahd{background:var(--bgA);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);gap:2px;padding:8px 10px 8px 8px;padding-top:max(8px,env(safe-area-inset-top,0px))}
+.pg-AppSchedule .ahd .tl{padding:0 6px}
+.pg-AppSchedule .ahd h1{font-size:clamp(18px,5.4vw,20px);letter-spacing:-.025em;line-height:1.3}
+.pg-AppSchedule .ahd .sub{font-size:12px;font-weight:500}
+.pg-AppSchedule .ibtn{width:42px;height:42px;border:0;border-radius:12px;background:transparent;transition:background .15s}
+.pg-AppSchedule .ibtn:hover{background:var(--track)}
+.pg-AppSchedule .ibtn.on{background:var(--sand);color:var(--fg)}
+.pg-AppSchedule .badge{top:4px;right:4px;min-width:16px;height:16px;padding:0 4px;font-size:10px;line-height:16px;box-shadow:0 0 0 2px var(--bg)}
+.pg-AppSchedule .amain{gap:14px;padding:6px 16px 28px}
+.pg-AppSchedule .card{border-radius:16px;box-shadow:var(--sh)}
+.pg-AppSchedule .sec-t{margin:8px 2px -4px;font-size:12.5px;font-weight:600;letter-spacing:.01em}
+.pg-AppSchedule .btn{min-height:46px;border-radius:12px;font-weight:600;letter-spacing:-.01em;transition:background .15s,transform .1s}
+.pg-AppSchedule .btn:active{transform:scale(.98)}
+.pg-AppSchedule .btn-p{box-shadow:0 2px 8px rgba(31,58,86,.16)}
+.pg-AppSchedule .app.dark .btn-p{box-shadow:none}
+.pg-AppSchedule .btn-sm{min-height:36px;border-radius:10px;font-size:13px}
+.pg-AppSchedule .chip{height:22px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+.pg-AppSchedule .inp{min-height:46px;border-radius:12px;transition:border-color .15s,box-shadow .15s}
+.pg-AppSchedule .inp:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(95,164,214,.22)}
+.pg-AppSchedule .lb{font-size:12.5px;font-weight:600;color:var(--mut)}
+.pg-AppSchedule .seg{border:0;padding:3px;background:var(--track)}
+.pg-AppSchedule .seg button{min-height:36px;border-radius:10px;font-weight:500}
+.pg-AppSchedule .seg button.on{font-weight:600;box-shadow:0 1px 2px rgba(31,58,86,.08),0 2px 8px rgba(31,58,86,.06)}
+.pg-AppSchedule .fail{border-radius:14px;font-weight:600;border:1px solid rgba(163,59,46,.2)}
+.pg-AppSchedule .tabs{background:var(--cardA);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);box-shadow:none;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+.pg-AppSchedule .tab{min-height:54px;gap:3px;border-radius:0;font-size:11.5px;font-weight:500}
+.pg-AppSchedule .tab .ti{display:inline-flex;align-items:center;justify-content:center;width:54px;height:30px;border-radius:999px;transition:background .15s}
+.pg-AppSchedule .tab.on{background:transparent;color:var(--fg);font-weight:700}
+.pg-AppSchedule .tab.on .ti{background:var(--sand)}
+.pg-AppSchedule .tab.on:not(.tab-rec) .ti{background:transparent}
+.pg-AppSchedule .tab .ti .fi1{display:none}
+.pg-AppSchedule .tab.on:not(.tab-rec) .ti svg{display:none}
+.pg-AppSchedule .tab.on:not(.tab-rec) .ti svg.fi1{display:block;color:var(--ink)}
+.pg-AppSchedule .tabs{grid-template-columns:repeat(5,1fr);align-items:end;background:var(--card);-webkit-backdrop-filter:none;backdrop-filter:none;isolation:isolate}
+.pg-AppSchedule .tabs::before{content:"";position:absolute;left:50%;top:-30px;width:92px;height:92px;transform:translateX(-50%);border-radius:50%;background:var(--card);border:1px solid var(--line);clip-path:inset(0 0 calc(100% - 31px) 0);z-index:-1}
+.pg-AppSchedule .tab-rec{justify-content:flex-start;padding-top:0}
+.pg-AppSchedule .tab-rec .ti{width:66px;height:66px;margin-top:-25px;border-radius:50%;background:var(--ink);color:var(--onink);border:0;box-shadow:0 6px 16px rgba(31,58,86,.28)}
+.pg-AppSchedule .tab-rec .ti svg{width:28px;height:28px}
+.pg-AppSchedule .tab-rec.on .ti{background:var(--onink);color:var(--ink);box-shadow:0 0 0 3px var(--card),0 0 0 5px var(--gold),0 6px 16px rgba(31,58,86,.28)}
+.pg-AppSchedule .tab-rec.on .ti svg{color:var(--ink)}
+.pg-AppSchedule .app.dark .tab-rec .ti{box-shadow:none}
+.pg-AppSchedule .app.dark .tab-rec.on .ti{box-shadow:0 0 0 3px var(--card),0 0 0 5px var(--gold)}
+.pg-AppSchedule .ov{background:rgba(31,58,86,.38)}
+.pg-AppSchedule .sheet{border-radius:22px 22px 0 0;padding:8px 18px calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(31,58,86,.12)}
+.pg-AppSchedule .sh-hd b{letter-spacing:-.02em}
+.pg-AppSchedule .nt{border-radius:14px;background:var(--soft);border-color:transparent}
+.pg-AppSchedule .nt.red{background:var(--redsoft);border-color:transparent}
+.pg-AppSchedule .nt.red b{color:var(--red)}
+.pg-AppSchedule .row-k{padding:12px 0}
+.pg-AppSchedule .days{gap:2px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh)}
+.pg-AppSchedule .day{padding:7px 0 6px;border-radius:12px}
+.pg-AppSchedule .day small{font-size:11px;font-weight:500}
+.pg-AppSchedule .day b{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.pg-AppSchedule .calmon{font-size:14.5px;letter-spacing:-.01em}
+.pg-AppSchedule .mcal{padding:12px 10px}
+.pg-AppSchedule .mc{border-radius:12px;font-variant-numeric:tabular-nums}
+.pg-AppSchedule .ev{padding:14px 16px;gap:12px}
+.pg-AppSchedule .ev-top{gap:14px}
+.pg-AppSchedule .ev-time{min-width:52px;padding-right:12px;border-right:2px solid var(--gold);font-size:13.5px;font-variant-numeric:tabular-nums}
+.pg-AppSchedule .ev-body b{font-size:15px;font-weight:600;letter-spacing:-.015em}
+.pg-AppSchedule .fab{border-radius:12px;min-height:50px;padding:0 22px;box-shadow:0 10px 24px rgba(31,58,86,.28)}
