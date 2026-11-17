@@ -84,6 +84,8 @@ class SeniorAIAdapter:
             schema_version="1.0",
             summary={"overview": raw.get("overview") or "", "key_points": [point["text"] for point in key_points]},
             warnings=warnings,
+            # 추가 질문 초안(followup_question_llm, 2026-11-17) — 아동 회차와 같은 칸이라 18절 저장 API 를 그대로 쓴다.
+            followup_questions=raw.get("followup_questions") or [],
             senior={
                 "source": source,
                 "visit_measurement_ids": [item["id"] for item in data.get("visit_measurements") or []],

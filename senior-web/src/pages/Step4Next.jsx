@@ -7,11 +7,14 @@
 //    이 회차에서 초안을 한 번 저장했으면(origin AI · RULE 이 하나라도 있으면) 초안은 다시 보이지 않는다.
 //  - kind(확인 CHECK · 조치 ACTION) · 기한(due_date)은 '수정' 중에 고른다(디자인에 칸이 없어 수정 칸 아래 한 줄을 더함).
 //  - 재방문 일정(POST followup-visits) · 돌봄 상태(PUT care-status)는 디자인에 자리가 없어 카드 하나를 더했다(기존 클래스만 씀).
-//  - '추가 질문' 카드(안부 앱 · 질문 은행)는 고령자 서버에 없어 '준비 중' 한 줄로 둔다.
+//  - '추가 질문' 카드(2026-11-17): '다음 상담에서 직접' 탭 = 이 회차 분석의 추가 질문 초안(result.followup_questions — 열린 질문 · 질문 은행)
+//    + 이미 승인해 둔 질문(GET /sessions/{id}/followup-questions) + 직접 쓴 질문. 단추(디자인 문구 '발송 예약')로 고르고 '수정' 으로 고친다.
+//    처리 완료 때 고른 질문 전체를 PUT(18절, 목록 통째로 바꿈) — 바뀐 게 없으면 부르지 않는다. 승인한 것만 저장된다(AI 는 초안).
+//    '안부 앱으로 먼저' 탭은 고령자 안부 앱이 없어 '준비 중' 한 줄로 둔다.
 import { useEffect, useState } from 'react';
 import { useDC } from '../dc';
 import DesignLogic from '../design/Step4Next.logic';
-import { cases, sessions, analysis as analysisApi, transcript as transcriptApi } from '@cw/api/endpoints';
+import { cases, sessions, analysis as analysisApi, transcript as transcriptApi, followupQuestions } from '@cw/api/endpoints';
 import { senior, CARE_STATUS_LABELS } from '../api/senior';
 import { useAsync } from '../data/useAsync';
 import { useShell } from '../data/useShell';
@@ -60,6 +63,40 @@ class Logic extends DesignLogic {
     return { saved, drafts, source: sen && sen.source === 'AI' ? 'AI' : 'RULE' };
   }
 
+  /** 추가 질문 줄(다음 상담에서 직접). key: 저장한 것 s0.., 초안 d0.., 직접 쓴 것 x0.. */
+  qRows() {
+    const { data } = this.props;
+    const d = data.data || {};
+    const saved = (d.fq && d.fq.questions) || [];
+    const result = d.ana && d.ana.analysis ? d.ana.analysis.result : null;
+    const savedTexts = new Set(saved.map((q) => q.text));
+    const rows = saved.map((q, i) => ({ key: 's' + i, text: q.text, kind: q.kind, source: q.source, segment_ids: q.segment_ids || [], bank_code: q.bank_code, reason: '', okDefault: true, origin: q.source === 'COUNSELOR' ? 'COUNSELOR' : 'AI' }));
+    ((result && result.followup_questions) || []).forEach((q, i) => {
+      if (!q || !q.text || savedTexts.has(q.text)) return;
+      rows.push({ key: 'd' + i, text: q.text, kind: q.kind || 'OPEN', source: 'AI', segment_ids: q.segment_ids || [], bank_code: q.bank_code || null, reason: q.reason || '', okDefault: false, origin: 'DRAFT' });
+    });
+    (this.state.extraQs || []).forEach((q, j) => {
+      if (q.g !== 'meet') return;
+      rows.push({ key: 'x' + j, text: q.text, kind: 'OPEN', source: 'COUNSELOR', segment_ids: [], bank_code: null, reason: '', okDefault: false, origin: 'NEW' });
+    });
+    return { saved, rows };
+  }
+
+  /** 처리 완료 때 PUT 할 질문 목록. 바뀐 게 없으면 null. */
+  questionsToSave() {
+    const st = this.state;
+    const { saved, rows } = this.qRows();
+    const picked = rows
+      .filter((r) => (st.qok[r.key] !== undefined ? st.qok[r.key] : r.okDefault))
+      .map((r) => ({
+        text: String((st.qe[r.key] && st.qe[r.key].text) || r.text).trim(),
+        kind: r.kind, source: r.source, segment_ids: r.segment_ids, bank_code: r.kind === 'BANK' ? r.bank_code : null,
+      }))
+      .filter((q) => q.text);
+    const same = picked.length === saved.length && picked.every((q, i) => q.text === saved[i].text);
+    return same ? null : picked;
+  }
+
   async saveAll() {
     const { caseId, sid, data, doneHref } = this.props;
     if (this.state.saving) return;
@@ -90,10 +127,12 @@ class Logic extends DesignLogic {
         if (Object.keys(body).length) await senior.updateNextCheck(caseId, x.id, body);
       }
       if (items.length) await senior.saveNextChecks(caseId, items, sid);
-      this.setState({ saving: false, dr: {}, sv: {}, adds: [], editing: false, eText: {} });
+      const questions = this.questionsToSave();
+      if (questions && sid) await followupQuestions.save(sid, questions);
+      this.setState({ saving: false, dr: {}, sv: {}, adds: [], editing: false, eText: {}, qok: {}, qe: {}, extraQs: [] });
       window.location.hash = doneHref.slice(1);
     } catch (e) {
-      this.setState({ saving: false, err: errText(e, '확인사항을 저장하지 못했어요. 잠시 뒤 다시 해 주세요.') });
+      this.setState({ saving: false, err: errText(e, '확인사항 · 추가 질문을 저장하지 못했어요. 잠시 뒤 다시 해 주세요.') });
       data.reload();
     }
   }
@@ -216,12 +255,58 @@ class Logic extends DesignLogic {
     };
     const nCancel = () => this.setState({ editing: false, eText: {}, adds: this.state.adds.filter((a) => String(a.text || '').trim()) });
 
-    // 추가 질문: 고령자 서버에 없음 — '준비 중'
-    const soon = {
-      id: '준비 중', why: DASH, text: '고령자 사례의 추가 질문은 준비 중입니다', opts: [], hasOpts: false, edited: false, ok: false,
+    // 추가 질문 — '다음 상담에서 직접' 탭(초안 · 승인한 것 · 직접 쓴 것). '안부 앱으로 먼저' 탭은 안부 앱이 없어 준비 중.
+    const { rows: qrows } = this.qRows();
+    const qText = (r) => (st.qe[r.key] && st.qe[r.key].text) || r.text;
+    const qWhy = (r) => {
+      if (r.origin === 'NEW' || r.source === 'COUNSELOR') return '상담사 직접 추가';
+      if (r.segment_ids.length) return `${nLabel} ${basisText([{ kind: 'SEGMENT', segment_ids: r.segment_ids }], ctx)}`;
+      return r.reason || (r.kind === 'BANK' ? '질문 은행' : DASH);
+    };
+    const meetQs = qrows.map((r) => {
+      const ok = st.qok[r.key] !== undefined ? st.qok[r.key] : r.okDefault;
+      const draft = st.qDraft[r.key] || {};
+      return {
+        id: r.origin === 'NEW' || r.source === 'COUNSELOR' ? '직접 작성' : r.kind === 'BANK' ? '질문 은행' : '열린 질문',
+        why: qWhy(r), text: qText(r), opts: [], hasOpts: false, edited: !!st.qe[r.key],
+        ok, st: r.origin === 'DRAFT' || r.origin === 'NEW' ? '발송 예약' : '발송 예약 · 저장됨',
+        okCls: ok ? 'btn-p' : 'btn-s', okLabel: ok ? '발송 예약 ✓' : '발송 예약',
+        isEdit: st.qEditing, notEdit: !st.qEditing, draftText: draft.text !== undefined ? draft.text : qText(r), draftOpts: '',
+        approve: () => this.setState({ qok: { ...this.state.qok, [r.key]: !ok }, err: '' }),
+        setText: (e) => { const t = e.target.value; this.setState({ qDraft: { ...this.state.qDraft, [r.key]: { text: t } } }); },
+        setOpts: () => {},
+      };
+    });
+    const appSoon = {
+      id: '준비 중', why: DASH, text: '어르신 안부 앱은 준비 중입니다', opts: [], hasOpts: false, edited: false, ok: false,
       st: '', okCls: 'btn-s', okLabel: '준비 중', isEdit: false, notEdit: true, draftText: '', draftOpts: '',
       approve: () => {}, setText: () => {}, setOpts: () => {},
     };
+    const tabMeet = st.tab !== 'app';
+    const qs = tabMeet ? (meetQs.length ? meetQs : [{ ...appSoon, id: DASH, text: '이번 회차의 추가 질문 초안이 없어요. 직접 추가할 수 있어요.', okLabel: DASH }]) : [appSoon];
+    const qNewRows = tabMeet ? st.qNew.map((r, j) => ({
+      ...r, withOpts: false,
+      setText: (e) => { const t = e.target.value; const n = this.state.qNew.slice(); n[j] = { ...n[j], text: t }; this.setState({ qNew: n }); },
+      setOpts: () => {},
+    })) : [];
+    const startQ = () => { if (tabMeet) this.setState({ qEditing: true, qDraft: {}, qNew: [] }); };
+    const addQ = () => { if (tabMeet) this.setState({ qEditing: true, qNew: (this.state.qEditing ? this.state.qNew : []).concat([{ g: 'meet', text: '', opts: '' }]) }); };
+    const qOk = () => {
+      const s2 = this.state;
+      const qe = { ...s2.qe };
+      const qok = { ...s2.qok };
+      Object.keys(s2.qDraft).forEach((key) => {
+        const t = String(s2.qDraft[key].text || '').trim();
+        const row = qrows.find((r) => r.key === key);
+        if (!t || !row || t === qText(row)) return;
+        qe[key] = { text: t };
+      });
+      const added = s2.qNew.filter((r) => String(r.text || '').trim()).map((r) => ({ g: 'meet', text: r.text.trim(), opts: [] }));
+      const start = (s2.extraQs || []).length;
+      added.forEach((_, k) => { qok['x' + (start + k)] = true; }); // 직접 쓴 질문은 고른 채로
+      this.setState({ qe, qok, extraQs: (s2.extraQs || []).concat(added), qEditing: false, qDraft: {}, qNew: [] });
+    };
+    const qCancel = () => this.setState({ qEditing: false, qDraft: {}, qNew: [] });
 
     const profile = d.profile;
     const current = profile ? profile.care_status : null;
@@ -236,7 +321,7 @@ class Logic extends DesignLogic {
     return {
       ...base, ...shell,
       checks, nNewRows, addN, startN, nOk, nCancel, nIsEdit: st.editing, nNotEdit: !st.editing,
-      qs: [soon], qNewRows: [], addQ: () => {}, startQ: () => {}, qOk: () => {}, qCancel: () => {}, qIsEdit: false, qNotEdit: true,
+      qs, qNewRows, addQ, startQ, qOk, qCancel, qIsEdit: st.qEditing, qNotEdit: !st.qEditing,
       kindOpts: Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label })),
       caseHref: href('CaseInfo', { caseId }), historyHref: href('CaseHistory', { caseId }), sessionHref: href('SessionDetail', ids),
       step1Href: carry('#/Step1Record', ids), step2Href: carry('#/Step2Signals', ids), step3Href: carry('#/Step3Summary', ids), step4Href: carry('#/Step4Next', ids),
@@ -282,7 +367,7 @@ export default function Step4Next(props) {
     if (!shell.ready || !caseId) return null;
     const resolved = await resolveSession(cases.listSessions, caseId, sessionId);
     setSid(resolved);
-    const [c, profile, meas, checks, session, ana, tr] = await Promise.all([
+    const [c, profile, meas, checks, session, ana, tr, fq] = await Promise.all([
       cases.get(caseId),
       senior.profile(caseId).catch(() => null),
       senior.measurements(caseId).catch(() => []),
@@ -290,8 +375,9 @@ export default function Step4Next(props) {
       resolved ? sessions.get(resolved) : null,
       resolved ? analysisApi.get(resolved).catch(() => null) : null,
       resolved ? transcriptApi.get(resolved).catch(() => null) : null,
+      resolved ? followupQuestions.get(resolved).catch(() => null) : null,
     ]);
-    return { c, profile, meas, checks, session, ana, tr };
+    return { c, profile, meas, checks, session, ana, tr, fq };
   }, [shell.ready, caseId, sessionId]);
   const doneHref = href('CaseInfo', { caseId, sec: 'brief' });
   const v = useDC(Logic, { ...props, shell, caseId, sid, data, doneHref });

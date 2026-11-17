@@ -20,6 +20,7 @@
   "check_points": [{"text", "basis": [...]}],          # 다음 상담 확인사항 초안(senior_brief_llm 근거 모양 + SEGMENT)
   "safety_mentions": [{"kind": "SELF_HARM" | "URGENT_HEALTH", "text", "segment_ids"}],
   "domains": [...],   # 생활 · 정서 영역 다섯 줄(care_domains 모듈 출력 모양, 2026-11-16)
+  "followup_questions": [{"text", "kind": "OPEN" | "BANK", "segment_ids", "reason", "bank_code"}],   # 추가 질문 초안(2026-11-17)
 }
 
 data["previous_domains"] 는 영역마다 앞 회차에 담당자가 확정한 기록이다(care_domains 참고).
@@ -34,9 +35,11 @@ openai · privacy_gateway 는 CI 에 없어 import 는 함수 안에 둔다.
 """
 
 import re
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from ai.modeling.senior import care_domains
+from ai.modeling.senior import care_domains, followup_question_llm
 from ai.modeling.senior.senior_brief_llm import (
     MAX_ITEMS as MAX_CHECK_POINTS,
     _fmt,
@@ -170,12 +173,14 @@ def rule_based_session_summary(data: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
     checks = [item for item in rule_based_brief(data)["check_items"] if item["basis"]]
+    domains = care_domains.rule_based_domains(data)
     return {
         "overview": rule_overview(data),
         "key_points": points,
         "check_points": checks[:MAX_CHECK_POINTS],
         "safety_mentions": find_safety_mentions(segments),
-        "domains": care_domains.rule_based_domains(data),
+        "domains": domains,
+        "followup_questions": followup_question_llm.bank_questions(domains),
     }
 
 
@@ -304,6 +309,20 @@ def clean_output(
     }
 
 
+#: 마감 직전 이만큼은 남겨 두고 질문을 포기한다(아동 followup_question_llm.DEADLINE_MARGIN_SECONDS 와 같다).
+QUESTION_DEADLINE_MARGIN_SECONDS = 1.0
+
+
+def _wait_questions(future: Future, deadline: Optional[float]) -> List[Dict[str, Any]]:
+    timeout = None if deadline is None else max(0.0, deadline - time.monotonic() - QUESTION_DEADLINE_MARGIN_SECONDS)
+    try:
+        result = future.result(timeout=timeout)
+    except Exception:
+        future.cancel()
+        return []
+    return result if isinstance(result, list) else []
+
+
 def summarize_senior_session(
     data: Dict[str, Any],
     known_identifiers: Optional[Iterable[str]] = None,
@@ -340,6 +359,14 @@ def summarize_senior_session(
         domains_output=care_domains.PROMPT_OUTPUT,
         domains_section=masked.payload["domains"][0],
     )
+    # 추가 질문 초안(followup_question_llm)은 같은 가린 녹취로 따로 불러 요약과 나란히 돌린다(아동 템플릿과 같은 방식).
+    # 선택 칸이라 늦거나 실패하면 [] — 요약 전체를 멈추지 않는다.
+    pool = ThreadPoolExecutor(max_workers=1)
+    questions_future = pool.submit(
+        followup_question_llm.generate_questions_from_masked_lines,
+        client, model_name, masked.payload["lines"], segments, deadline,
+    )
+    pool.shutdown(wait=False)
     parsed = _call_llm_with_retry(
         client=client,
         model=model_name,
@@ -351,6 +378,9 @@ def summarize_senior_session(
     )
     cleaned = clean_output(parsed, refs, ids, rule_overview(data))
     cleaned["domains"] = care_domains.clean_domains(parsed.get("domains"), data, set(ids))
+    cleaned["followup_questions"] = followup_question_llm.merge_questions(
+        _wait_questions(questions_future, deadline), cleaned["domains"]
+    )
     restored = restore_pii(cleaned, masked.entity_map)
     restored["safety_mentions"] = _merge_safety(find_safety_mentions(segments), restored["safety_mentions"])
 
