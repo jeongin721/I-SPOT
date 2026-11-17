@@ -1,5 +1,6 @@
-// 상담사 앱(폰) · 상담 전 브리핑(읽기 전용)
+// 상담사 앱(폰) · 다음 상담 준비(읽기 전용, 11/17 디자인에서 '상담 전 브리핑' 이름을 바꿈)
 // 원본: 앱 · 상담 전 브리핑 (읽기 전용 · 확인할 사항 체크) 2026-11-10 zip 의 AppBrief.dc.html
+//       → 11/17 'I-SPOT 상담사 웹 화면 설계 · 각진 UI' ⑨ 의 앱 · 다음 상담 준비(이름 · 문구 · 머리 왼쪽 '뒤로 가기')
 //
 // 서버 연결: 주소 ?case=<사례 ID>. 웹 사례 상세의 상담 전 브리핑과 **같은 값**(preBriefingValues)을 폰 모양으로 보인다.
 //  - 먼저 볼 것: 아이가 보낸 말 · 체크인 응답 변화(콩콩 아이 앱) · 처음 나온 이야기(분석이 끝난 최근 회차의 새 주제, AI 제안).
@@ -8,7 +9,8 @@
 //  - 머리 위 줄: 이 사례의 가장 가까운 상담 일정(오늘이면 '오늘 16:00') · 다음 회차 번호. 일정이 없으면 회차 번호만.
 //  - '이 상담 녹음 시작' 은 그 아이를 골라 둔 채 앱 · 녹음으로 간다.
 // 브리핑 내용 수정 · 질문 편집은 웹에서 한다(디자인 문구 그대로).
-import { Link, useSearchParams } from 'react-router-dom';
+// '뒤로 가기' 는 들어온 앱 화면(사례 목록 · 일정 등이 Link state.from 으로 넘김)으로, 모르면(새로 고침 · 바로 연 주소) 일정으로 간다.
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import MobileAppShell from '../components/MobileAppShell';
 import { childApp } from '../api/endpoints';
 import { useAuthSession } from '../data/useAuthSession';
@@ -23,6 +25,7 @@ import { checklistNeedsEvidence } from '../data/screens/followupQ';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useRemote } from '../data/useRemote';
 import { useBriefingChecks } from '../data/useBriefingChecks';
+import { appFrom } from '../data/appReturn';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { addDays, parseYmd, useAppSchedule, ymd } from '../data/useAppSchedule';
 
@@ -97,7 +100,7 @@ function BriefBody({ caseId }) {
       ))}
       {brief.questionNote ? <span className="ma-note">{brief.questionNote}</span> : null}
       <p className="ma-note" style={{ margin: 0 }}>
-        브리핑 내용 수정과 질문 편집은 웹에서 할 수 있어요. AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.
+        다음 상담 준비 내용 수정과 질문 편집은 웹에서 할 수 있습니다. AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.
       </p>
       <Link className="ma-btn ma-btn-p ma-btn-block ma-cta" to={`/AppRecord?case=${caseId}`}>
         이 상담 녹음 시작
@@ -110,7 +113,7 @@ function NoCase() {
   return (
     <>
       <div className="ma-card ma-empty" style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--mut)' }}>
-        브리핑을 볼 아이를 사례 목록에서 골라 주세요
+        다음 상담 준비를 볼 아이를 사례 목록에서 골라 주세요
       </div>
       <Link className="ma-btn ma-btn-p ma-btn-block" to="/AppCases">
         사례 목록
@@ -119,7 +122,7 @@ function NoCase() {
   );
 }
 
-/** 머리: '‹ 일정 · 오늘 16:00 · 9회차' 와 '이서윤 상담 전 브리핑'. */
+/** 머리: '‹ 일정 · 오늘 16:00 · 9회차' 와 '이서윤 다음 상담 준비'. */
 function useHead(caseId, userId) {
   const my = useAppCases(userId);
   const detail = useCaseDetail(caseId, { enabled: !!userId && !!caseId });
@@ -148,21 +151,23 @@ function Head({ userId, caseId }) {
         </Link>
         {head.line ? ' · ' + head.line : ''}
       </div>
-      <h1>{head.name ? `${head.name} 상담 전 브리핑` : '상담 전 브리핑'}</h1>
+      <h1>{head.name ? `${head.name} 다음 상담 준비` : '다음 상담 준비'}</h1>
     </>
   );
 }
 
 export default function AppBrief() {
   const [params] = useSearchParams();
+  const location = useLocation();
   const caseId = params.get('case');
   return (
     <MobileAppShell
       cur="cal"
       screen="brief"
+      back={appFrom(location.state, '/AppBrief') ?? '/AppSchedule'}
       head={caseId ? ({ userId }) => <Head userId={userId} caseId={caseId} /> : null}
       sub="상담 전 확인"
-      title="상담 전 브리핑"
+      title="다음 상담 준비"
     >
       {() => (caseId ? <BriefBody caseId={caseId} /> : <NoCase />)}
     </MobileAppShell>

@@ -7,6 +7,7 @@
 //    '상담 전 브리핑이 준비됐어요' 는 브리핑이 '준비됐는지' 정할 서버 값이 없어 넣지 않았다.
 //  - 앱 화면에서만 '홈 화면에 추가' 정보(manifest · 아이콘)를 붙인다(useAppInstall). 짧은 주소 /app/ 은 앱 홈으로 보낸다.
 //  - 홈 · 일정 · 메모 탭과 설정 단추는 각 앱 화면으로 간다(11/10). 홈은 머리에 제목 대신 I-SPOT 표시(디자인).
+//  - 11/17 디자인(I-SPOT 상담사 웹 화면 설계 · 각진 UI ⑨): 다음 상담 준비 · 이전 상담 머리 왼쪽에 '뒤로 가기'(back).
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
@@ -86,10 +87,11 @@ function TabIcon({ k }) {
  * @param screen    화면 이름(맨 바깥 .ma-s-<screen>, 화면별 규칙용)
  * @param sub       제목 위 작은 글(글 · 요소, 또는 ({ userId }) => 요소 — 훅을 쓰는 작은 컴포넌트를 넣을 때)
  * @param title     제목. brand 면 제목 대신 I-SPOT 표시(홈)
- * @param head      ({ userId }) => 작은 제목 + 제목 요소(둘이 같은 서버 값을 쓸 때, 브리핑)
+ * @param head      ({ userId }) => 작은 제목 + 제목 요소(둘이 같은 서버 값을 쓸 때, 다음 상담 준비 · 이전 상담)
+ * @param back      제목 왼쪽 '뒤로 가기' 단추가 갈 앱 화면 주소(11/17 디자인 — 다음 상담 준비 · 이전 상담). 없으면 단추 없음.
  * @param children  (ctx) => 본문. ctx = { userId, me, logout, items, fails, loaded, storageError, notReady }
  */
-export default function MobileAppShell({ cur, screen, sub, title, titleStyle, brand, head, children }) {
+export default function MobileAppShell({ cur, screen, sub, title, titleStyle, brand, head, back, children }) {
   const session = useAuthSession();
   const { pathname } = useLocation();
   const theme = useTheme();
@@ -147,6 +149,11 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
   return (
     <div className={rootCls}>
       <header className="ma-ahd">
+        {back ? (
+          <Link className="ma-ibtn" to={back} aria-label="뒤로 가기">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+          </Link>
+        ) : null}
         <div className="ma-tl">
           {head ? (
             head({ userId })
