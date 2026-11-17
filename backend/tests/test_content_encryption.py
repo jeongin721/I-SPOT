@@ -489,7 +489,7 @@ def test_case_text_and_form_values_are_ciphertext_and_round_trip(
     assert forms[0]["values"] == FORM_VALUES
 
     case_row = _raw_rows(db, Case)[0]
-    form_row = _raw_rows(db, CaseForm)[0]
+    (form_row,) = _raw_rows(db, CaseForm)
     dumped = json.dumps([dict(case_row), dict(form_row)], ensure_ascii=False, default=str)
 
     for key in INTAKE:
@@ -516,7 +516,9 @@ def test_case_text_and_form_values_are_ciphertext_and_round_trip(
 
     assert result.failed == []
     assert _raw_rows(db, Case)[0]["notes_enc"].startswith("v1.new2.")
-    assert _raw_rows(db, CaseForm)[0]["values_enc"].startswith("v1.new2.")
+    first_form = next(row for row in _raw_rows(db, CaseForm) if str(row["id"]) == form_id)
+
+    assert first_form["values_enc"].startswith("v1.new2.")
     monkeypatch.setattr(settings, "PII_ENCRYPTION_KEYS", NEW_KEY)
     db.expire_all()
     assert client.get(form_url, headers=counselor_headers).json()["data"]["items"][0]["values"] == FORM_VALUES
