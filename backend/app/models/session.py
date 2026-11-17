@@ -18,10 +18,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import ConsultationType, SessionStatus
+from app.core.enums import ConsultationType, SessionSource, SessionStatus
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.source_document import SessionSourceDocument
     from app.models.analysis import AIAnalysis
     from app.models.audio import AudioFile
     from app.models.audio_feature import AudioFeature
@@ -73,6 +74,13 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     memo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 회차 자료(2026-11-02). DOCUMENT 면 상담 기록 문서로 3 · 4단계만 쓴다(SessionSourceDocument).
+    source: Mapped[SessionSource] = mapped_column(
+        SAEnum(SessionSource, name="session_source", native_enum=False, length=20),
+        default=SessionSource.AUDIO,
+        server_default=SessionSource.AUDIO.value,
+        nullable=False,
+    )
 
     # 재시도 가능한 오류 정보
     last_error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -147,6 +155,12 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         passive_deletes=True,
     )
     followup_questions: Mapped[Optional["SessionFollowupQuestions"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    source_document: Mapped[Optional["SessionSourceDocument"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,

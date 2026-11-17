@@ -28,6 +28,7 @@ import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { useSessionDocuments } from '../data/useSessionDocuments';
+import { useSourceDocument } from '../data/useSourceDocument';
 import { useSummaryReview } from '../data/useSummaryReview';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -141,23 +142,34 @@ export default function NoteWrite(props) {
   // 일지 '아동 진술' · '위험 신호 검토 결과' AI 초안 재료(noteWrite.ts 머리 주석). 초안은 저장한 일지가 없을 때만 쓰므로
   // 일지 목록을 받았고 저장한 일지가 없을 때만 부른다(요청 수 — 민규 #95 리뷰).
   const draftNeeded = enabled && !docs.loading && !docs.error && docs.consultationRecord === null;
+  // 문서 회차(2026-11-02): 회차를 읽은 뒤에만 안다. 분석 · 위험 신호 · 상담원 판단이 없어 부르지 않는다.
+  const known = detail.session !== null;
+  const fromDocument = detail.session?.source === 'DOCUMENT';
+  const sourceDoc = useSourceDocument(ids.sessionId, { enabled: enabled && fromDocument && draftNeeded });
+  const audioDraft = draftNeeded && known && !fromDocument;
   // 요약이 아직 없을 때도 부른다 — 학대 신호(2단계)만 저장되고 요약 · 일지 AI 초안을 만드는 중인지(drafts_status) 알아야
-  // 안내와 되풀이 조회를 할 수 있다(2026-11-04 제안).
+  // 안내와 되풀이 조회를 할 수 있다(2026-11-04 제안). 문서 회차는 분석이 없어 빼고.
   const [summaryMissing, setSummaryMissing] = useState(false);
-  const analysis = useSessionAnalysis(ids.sessionId, { enabled: draftNeeded || (enabled && summaryMissing) });
+  const analysis = useSessionAnalysis(ids.sessionId, { enabled: audioDraft || (enabled && known && !fromDocument && summaryMissing) });
   const summary = useSummaryReview(ids.sessionId, { enabled, watch: analysis.draftsPending });
   const missingNow = !summary.loading && summary.sessionStatus !== null && !summary.hasSummary;
   if (missingNow !== summaryMissing) setSummaryMissing(missingNow);
-  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: draftNeeded });
-  // 회차 전체 상담원 판단. 일지 초안 재료이면서, 판단 없는 회차를 유형별 위험도로 돌려보내는 근거라 늘 부른다.
-  const overall = useOverallRiskAssessment(ids.sessionId, { enabled });
+  const signals = useRiskSignals(ids.sessionId, analysis.analysis, { enabled: audioDraft });
+  // 회차 전체 상담원 판단. 일지 초안 재료이면서, 판단 없는 회차를 유형별 위험도로 돌려보내는 근거라 늘 부른다(문서 회차는 빼고).
+  const overall = useOverallRiskAssessment(ids.sessionId, { enabled: enabled && known && !fromDocument });
   // 들어올 때 한 번만 판정한다 — 화면 안에서 '요약 수정' 으로 승인을 풀어 상태가 바뀌어도 돌려보내지 않는다(useJudgmentGate).
-  const sendBack = useJudgmentGate(ids.sessionId, detail.session?.status ?? null, overall);
+  const sendBack = useJudgmentGate(ids.sessionId, known && !fromDocument ? detail.session.status : null, overall);
   const judgmentLoaded = overall.loaded && !overall.loadError;
   const judgmentLabel = overall.assessment?.levelLabel ?? '';
+  const noteDraft = sourceDoc.document?.note_draft ?? null;
   const aiDraft = useMemo(
-    () => noteAiDraft(summary.evidence, signals.cards, { loaded: judgmentLoaded, label: judgmentLabel }),
-    [summary.evidence, signals.cards, judgmentLoaded, judgmentLabel],
+    () =>
+      fromDocument
+        ? noteDraft
+          ? { ...noteDraft, fromDocument: true }
+          : null
+        : noteAiDraft(summary.evidence, signals.cards, { loaded: judgmentLoaded, label: judgmentLabel }),
+    [fromDocument, noteDraft, summary.evidence, signals.cards, judgmentLoaded, judgmentLabel],
   );
   const theme = useTheme();
   const drafts = { pending: analysis.draftsPending, failed: analysis.draftsFailed };

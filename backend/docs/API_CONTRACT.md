@@ -604,10 +604,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순), `order`(`desc|asc`, 기본 `desc`, `sort` 가 있을 때만 쓴다)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
   - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- 각 줄의 `risk_level`(`HIGH|MEDIUM|LOW|null`)은 AI 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED`·`APPROVED`)의 상담원 판단(회차 전체)이다. 그 회차를 판단하기 전이면 `null` 이고, 앞 회차 판단이나 AI 심각도로 채우지 않는다
+  - 화면은 이 값을 먼저 쓰고, `null` 이면 `counselor_risk_level`(위험도(우선))을 보인다. 둘 다 상담원이 고른 값이다(2026-11-06)
+- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다(화면에 보이는 값과 같은 기준 — 회차 판단, 없으면 위험도(우선)). `order=asc` 는 그 반대(신고접수일 오래된순 · 하 → 중 → 상)다. 어느 쪽이든 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
 - `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
   열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
   빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
@@ -832,9 +835,20 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - 문장 `key` 는 만들 때마다 새 무작위 앞머리 + 자리 번호(예: `3f9a1c-0-0`)다. 다시 만들면 `key` 가 모두 바뀌므로 `checks` · `edits` 를
     비우고, 예전 요약을 띄운 화면이 옛 `key` 로 `PUT` 하면 `422`(새 문장에 붙지 않는다). `report`(상담원이 쓴 보고서 칸)는 남긴다.
 - `summary`: `{ source, model, generated_at, sessions: [회차 번호], groups: [{title, items: [{key, text, sessions}]}],
-  report: {initial_situation, closing_situation} }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
+  report: {initial_situation, closing_situation}, suggestions }` — `report` 는 AI 초안(각 `{text, sessions}` 또는 `null`).
+  (2026-11-04) `suggestions`: 종결보고서 안전평가 · Key Person 의 **AI 제안** `{safety: [{index: 0~10, level: HIGH·MEDIUM·LOW, basis,
+  sessions}], key_person: {text, sessions} | null}`(basis · text 는 **가린 글 기준** 80자 — 이름을 되돌린 뒤 조금 길 수 있다) — 근거가 있는 문항만, 근거 회차 검사는 문장과 같다. `source = "AI"` 일 때만 오고
+  그 밖 · 이 필드 전에 만든 요약은 `null`. 서버는 `report` 를 채우지 않는다 — 화면이 보고서를 처음 저장하기 전까지 이 제안(과 기록 제안 · 일정)을
+  1차 값으로 보이고(11/05), 상담원이 `PUT` 해야 저장된다(고치지 않은 1차 값은 아래 `report_defaults`).
 - `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
   `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD` 글자만 — 시각 · 숫자 `422`).
+  (2026-11-03) 상담원 판단 칸도 `report` 에 둔다 — `reasons`: 종결사유 5개 `bool` · `safety`: 안전평가 11문항 `HIGH`·`MEDIUM`·`LOW`·`null`
+  (피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 서식 6 안전영역과 같은 순서) · `key_person`: 300자 · `safety_scores`: 3줄 `{score: 1~10·null, reason: 300자}` · `goals`: 6줄 `{goal: 200자, service: 300자}`(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2, 상담원이 씀, 2026-11-09)
+  · (2026-11-04) `services`: 사례관리 제공 요약 · 제공된 서비스 내용 및 총량 300자(화면이 회차 기록의 상담 유형별 횟수로 먼저 채운다).
+  목록은 문항 수 그대로(아니면 `422`). 타입은 바꿔 받지 않고(`true` → 1 · `"3"` → 3 은 `422`), 모르는 칸(`reson` 오타 등)도 `422`(11/05).
+  GET 의 `report` 에도 같은 키가 온다(저장 전 `null`).
+  (2026-11-05) `report_defaults`: `report` 와 같은 모양. 화면이 고치지 않고 처음 값(AI 초안 · 회차 기록 · 1차 판단)으로 보여 준 칸 —
+  서버는 **저장된 값이 `null` 인 칸에만** 쓴다(잠근 행 기준). 다른 창이 먼저 저장한 칸을 되돌리지 않는다. `report` 에도 있는 칸은 `report` 가 이긴다.
   행을 잠그고(`FOR UPDATE`) 합쳐 쓰므로 겹친 저장이 서로의 칸을 지우지 않는다. 처음 저장 두 건이 겹치면 늦은 쪽은 `409 DUPLICATE_RESOURCE`.
 - 감사 기록 `CLOSURE_SUMMARY_GENERATED`(출처 · 회차 수 · 문장 수 · 걸린 초) · `CLOSURE_SUMMARY_UPDATED`(수 · 바뀐 보고서 칸 이름) — 문장은 남기지 않는다.
 
@@ -973,7 +987,20 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 
 ### DELETE /api/v1/sessions/{session_id} → 204
 
-음성 파일도 함께 삭제된다.
+음성 파일도 함께 삭제된다. 전사본 · AI 분석 · 요약 · 문서까지 함께 지워지고 되돌릴 수 없다(감사 기록 `SESSION_DELETED` 만 남는다).
+
+누가 지울 수 있나(2026-11-11):
+
+| 회차 상태 | 담당 상담사 | 관리자 |
+|---|---|---|
+| `CREATED` · `AUDIO_UPLOADED` · `STT_FAILED` · `STT_REVIEW_REQUIRED` (원문 확정 전) | `204` | `204` |
+| `STT_PROCESSING` (원문 변환 중) | `409 INVALID_SESSION_STATE` — 변환이 끝난 뒤 다시 | `204` |
+| `STT_CONFIRMED` · `AI_PROCESSING` · `AI_FAILED` · `AI_REVIEW_REQUIRED` · `APPROVED` (원문 확정 뒤) | `403 FORBIDDEN` | `204` |
+
+- 잘못 올린 녹음은 담당 상담사가 직접 치울 수 있게 하고, 원문을 확정한 뒤의 회차(검수본 · AI 분석 · 승인된 기록)는 실수로 지워지지 않게 관리자만 지운다.
+  전에는 담당 상담사면 상태와 상관없이 받았다.
+- 문서 회차(21절)는 문서를 올리면 바로 `AI_REVIEW_REQUIRED` 가 되므로, 문서를 올린 뒤에는 관리자만 지운다.
+- 담당이 아닌 상담사는 상태와 상관없이 `403` 이다.
 
 ---
 
@@ -1429,9 +1456,10 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
 - `evidence_strength` 는 `HIGH | MEDIUM | LOW` 로 **확률이 아니라 근거의 직접성**이다. 모델 확률 · 임계값은 이번 판에서 싣지 않는다
   (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
 - `reason` 은 AI 가 그 강도로 본 이유 한 문장(문자열, 없으면 `""`), `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과(참/거짓)다.
-- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
+- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출, 또는 2차 동반 확인으로 올림 — 아래) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
   `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
   `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+  2차 동반 확인(2026-11-11, `ai/modeling/abuse/companion_types.py`): 1차가 신체학대를 잡았는데 2차가 신체학대 근거를 못 찾고 정서학대 근거를 원문 줄에서 찾으면 정서학대를 `detected=true` 로 올린다. 이 유형도 `MODEL` 이고 `filtered_reason` 은 `null` 이다(`LLM_SUPPLEMENTARY` 로 바꿀지는 팀 확인 뒤).
 - `legal_references`(2026-10-27 제안, STT 검수 "관련 조문")는 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호)
   **하나까지**다. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고, 법 위반을 확정하는 값이 아니라 참고 링크다.
   분석 도중에는 캐시만 읽고 국가법령정보센터를 부르지 않는다(분석 시간이 늘지 않게). 캐시 갱신은 분석 밖에서 `python -m law.refresh_cache`.
@@ -1543,6 +1571,28 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
   - 아동 발화 마스킹이 비식별 검사에 막히거나 실패함(앞 단계 글과 입력이 달라 결과가 다를 수 있다)
   - LLM 실패 · 마감까지 못 끝냄
   - LLM 이 주제를 냈는데 검사에서 하나도 남지 않음(목록 밖 이름뿐 등 — 분류 실패로 본다)
+
+**안전 플래그 `safety_flags` · 재학대 요인 `reabuse_factors`(선택, 2026-11-05)** — 학대 신호 확인(2단계) '안전 플래그 · 재학대 요인' 카드의 재료다.
+모두 **AI 확인 후보**이고 판정이 아니다. 점수 · 등급으로 바꾸지 않는다.
+
+```json
+"safety_flags": [
+  { "code": "S2", "text": "말하면 더 혼난다는 말을 들었다고 함", "certainty": "CLEAR", "segment_ids": ["seg_012"] }
+],
+"reabuse_factors": [
+  { "code": "R2", "text": "아빠가 술을 마시면 때린다고 함", "segment_ids": ["seg_004"] }
+]
+```
+
+- 기준은 팀이 확인한 기준안(2026-11-05)이다. 정의는 `ai/modeling/abuse/safety_flag_llm.py` 의 `SAFETY_FLAG_DEFINITIONS`(S1~S10, '지금 이 아이가
+  안전한가') · `REABUSE_FACTOR_DEFINITIONS`(R2~R10, '앞으로 다시 일어날 가능성'). R1(중복학대)은 AI 가 내지 않고 화면이 관련 신호가 잡힌 유형 수로 센다.
+- `certainty`: `CLEAR`(진술이 분명히 해당) · `CHECK`(상담원 확인 필요). 모르는 값이면 `CHECK` 로 본다.
+- **없으면 `null`**(이 필드 전 결과 · 모듈 실패 · Mock AI · LangGraph) — `topic_tags` 처럼 `[]`(찾았지만 해당 없음)과 구분한다.
+  화면은 `null` 을 '없음' 으로 보이지 않는다(언급 없음 ≠ 안전함). 모듈이 실패했으면 `warnings` 에
+  `"안전 플래그 · 재학대 요인을 만들지 못했습니다."` 가 붙고 분석은 그대로 끝난다.
+- 모르는 코드 · 문장이 비었거나 `segment_ids` 가 빈 항목은 그 항목만 버린다.
+- 2단계 칸이라 두 번 저장(위 "두 번 저장")에서 **첫 저장에 실리고 둘째 저장에서 바뀌지 않는다**. 보호요인과 같은 마스킹된 인용 축어록으로
+  기록 초안 · 보호요인과 병렬로 부른다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
@@ -2090,6 +2140,7 @@ Query: `counselor_id` (목록과 같은 규칙)
 | `ALREADY_APPROVED` | 409 | 이미 승인됨 |
 | `NOT_APPROVED` | 409 | 승인되지 않은 요약 · 문서의 승인 풀기(`reopen`) |
 | `ANALYSIS_DRAFTS_PENDING` | 409 | 3 · 4단계 AI 초안을 만드는 중(`drafts_status: "PENDING"`, 8절 "두 번 저장") — 재분석, 요약 수정 · 승인(9절), 추가 질문 · 확인 사항 저장(18 · 18.1절). 잠시 뒤 다시 시도한다 |
+| `STALE_VERSION` | 409 | 화면이 본 판(`version`)이 서버의 지금 판과 다름 — 다른 창에서 먼저 저장 · 확정함(22절 기관 서식) |
 | `AUDIO_EMPTY_FILE` / `AUDIO_TOO_LARGE` / `AUDIO_UNSUPPORTED_TYPE` / `AUDIO_CORRUPTED` / `AUDIO_INVALID_FILENAME` / `AUDIO_STORAGE_ERROR` | 400 | 음성 검증 실패 (`AUDIO_TOO_LARGE` 는 token 이 맞는 요청의 본문 전체가 `AUDIO_MAX_SIZE_MB` + 1MB 를 넘을 때만 계정 상태 · 회기 확인보다 먼저 온다. 그보다 조금 넘는 파일은 저장할 때 재므로 확인 뒤에 온다. token 이 없거나 틀리거나 만료됐으면 크기와 상관없이 `401` — 6절) |
 | `STT_FAILED` / `STT_TIMEOUT` / `STT_INVALID_OUTPUT` | — | Session `error` 필드로 전달 |
 | `AI_FAILED` / `AI_TIMEOUT` / `AI_INVALID_OUTPUT` / `AI_AUTH_ERROR` / `AI_QUOTA_ERROR` | — | Session `error` 필드로 전달 |
@@ -2188,8 +2239,10 @@ Test 영향
 - 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
   안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
   그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
-- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
-  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- wav · flac · ogg · mp3 는 soundfile 로 읽는다. soundfile 이 열지 못하는 m4a · mp4 · webm(휴대폰 · 브라우저 녹음)은
+  `requirements-stt.txt` 의 PyAV(`av`, wheel 에 FFmpeg 라이브러리 포함 — apt 의 ffmpeg 는 필요 없다)로 처음부터 이어 읽는다.
+  PyAV 가 없거나 PyAV 도 열지 못하면 지금처럼 `DECODE_FAILED` 다. 응답 모양 · 이유 값은 그대로다. 압축 음성(mp3 포함)은
+  wav 와 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절 · 7절).
 - 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
   재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
 
@@ -2657,3 +2710,286 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 최초접수는 공유하지 않고(저장 때 `shared=false`), 다른 상담사의 목록 · 조회에서도 공유 조건에서 뺀다.
 - `deadline_done: null` · `kind: null` · `date: null` 은 `422`. 목록 `from` · `to` 도 1900-01-01 ~ 2100-12-31(그 밖 `422`).
 - 사례를 떼면(`case_id: null`) 응답의 별칭도 `null`.
+
+---
+
+## 21. Source Document (상담 기록 문서 회차, 2026-11-02)
+
+녹취 · 자료 올리기의 **문서 파일**. 상담사가 이미 쓴 상담 기록 문서를 새 회차에 올리면, 그 회차는 1(기록 확인) · 2(학대 신호 확인) 없이
+**3단계(상담 요약 · 상담 일지)** 부터 한다. 4단계(확인 사항 · 추가 질문) 초안은 3단계에 저장한 칸으로 만든다.
+
+- 회차 응답(`Session`)에 `source: "AUDIO" | "DOCUMENT"` 가 붙는다(옛 회차는 `AUDIO`). 업무 목록(`TaskItem`)에도 `session_source`.
+- 문서 회차의 상태 흐름: `CREATED` → (문서 올림) `AI_REVIEW_REQUIRED` → (요약 승인) `APPROVED`. 첫 이동은 상태 전이 표에 없고
+  이 창구만 한다(`status=CREATED · source=AUDIO` 일 때만 바꾸는 조건부 UPDATE — 음성 회차 창구에서 열리지 않는다). 올린 시각을
+  `ai_completed_at` 에 채운다(처리 대기 업무의 대기 시작 시각). 음성 · 전사본 · AI 분석은 없다:
+  `POST /analysis`(재분석 포함) · 위험도 판단 저장(`PUT /risk-assessment(s)`)은 `409 INVALID_SESSION_STATE`, 음성 업로드는 상태 때문에 `409`,
+  원문 변환 · 확정 · 음성 조회는 `404`, 조회 창구(`GET /transcript` · `/analysis` · `/voice-marks` · `/risk-assessment(s)`)는 빈 값 `200`.
+
+### POST /api/v1/sessions/{session_id}/source-document → 201 (multipart `file`)
+
+- **새 회차만**: 상태 `CREATED` 이고 음성 · 문서가 없는 회차(그 밖 `409 INVALID_SESSION_STATE`).
+- 형식: `.txt`(UTF-8 · CP949) · `.docx` · `.hwpx` · `.pdf`(글자가 든 PDF, **50쪽까지**). 10 MB 까지, 뽑은 글 30,000자까지(PDF 도 정리한 글자로 세고, 넘으면 앞 쪽만 저장하지 않고 `422`). 파일 이름의 제어 문자는 빼고 저장한다. 서버 로그에는 pypdf 로그를 남기지 않는다(파일 글자가 섞여서).
+  글자 뽑기에는 LLM 과 따로 제한 시간 `DOCUMENT_TEXT_TIMEOUT_SECONDS`(기본 20초)이 있다 — 넘으면 `422`(파일 문제로 본다).
+  서버 전체에서 동시에 `DOCUMENT_TEXT_MAX_CONCURRENCY`(기본 2)건까지 읽고, 넘으면 `429`(제한 시간을 넘긴 글자 뽑기도 실제로 끝날 때까지 자리를 쓴다).
+  압축 본문이 손상된 docx · hwpx(zlib · CRC · 암호 · 지원 안 하는 압축)도 `422`.
+  `.hwp` · 다른 확장자 · 빈 파일 · 글자 없는 PDF(스캔) · 손상 파일 · 암호 PDF 는 `422`(문구에 안내). 원본 파일은 저장하지 않는다.
+- **동기 요청**(종결 요약과 같다). `AI_PROVIDER=modeling` 이면 `ai/modeling/abuse/document_note_llm.fill_note` 가
+  마스킹(사례 별칭을 가릴 이름으로) → LLM → 검사로 문서 문장을 칸에 **그대로 옮긴다**(요약 · 창작 없음).
+  검사: 칸 이름 고정 · 길이 · 다른 나라 문자 · **원문 복사 검사**(옮긴 문장이 공백 · 문장 부호만 빼고 원문 문장 하나와 통째로 같아야 남긴다 — 낱말이 바뀌거나 앞부분만 잘라 옮긴 문장은 버린다. 숫자 사이 '~' · '-' 는 비교에 넣는다).
+  그 밖(mock 등)은 `[칸 이름]` · `칸 이름:` 머리줄로 나눈 글만 옮긴다(`fill_source: "HEADINGS"`, AI 아님).
+  제한 시간 `DOCUMENT_NOTE_TIMEOUT_SECONDS`(기본 150초) — 넘으면 `504 AI_TIMEOUT`, 옮길 칸이 없으면 `502 AI_INVALID_OUTPUT`,
+  그 밖 `502 AI_FAILED`(문구에 원문 · 예외 문구 없음). 실패하면 회차는 `CREATED` 그대로(다시 올릴 수 있다). 회차마다 한 번에 하나(`429`).
+- 성공하면: 상담 요약(`GET /summary`)이 4칸(`safety_changes` · `strengths_resources` · `safety_risks` · `desired_changes`,
+  `segment_ids` 는 빈 배열) · `overview` 로 만들어지고(DRAFT), 상담 일지 칸 초안은 `note_draft` 에 둔다(저장해야 일지가 된다).
+- 응답 `SourceDocument`:
+
+```json
+{
+  "session_id": "uuid", "filename": "8회차 기록.docx", "file_format": "docx", "char_count": 1830,
+  "text": "문서에서 뽑은 글",
+  "fill_source": "AI", "fill_model": "gpt-…",
+  "note_draft": { "statement": "", "attitude": "", "environment": "", "signals": "", "opinion": "" },
+  "followup_draft": null,
+  "created_at": "…"
+}
+```
+
+### 문서 회차 학대 신호 · 대화 주제 (2026-11-04)
+
+- `AI_PROVIDER=modeling` 서버는 업로드 응답 뒤(백그라운드) 문서 원문으로 신호 분석 행을 하나 만든다 —
+  `ai_analyses` 행(`provider: "document"`, `transcript_id: null`), 끝나면 `COMPLETED` · 실패 · 제한 시간(`DOCUMENT_SIGNALS_TIMEOUT_SECONDS`, 기본 240초)이면 `FAILED`.
+  회차 상태는 바꾸지 않는다(3단계 그대로). 다른 서버는 만들지 않는다.
+- 흐름(`ai/modeling/abuse/document_signals.py`): 문장 나누기(`doc_001`…) → 1차 상담일지 전용 모델(글 전체 + 문장 2개씩 겹친 창을 판정해 유형별로 합침) → 2차 세부 유형 · 근거 문장 → 유형별 심각도 · 대화 주제. 1차가 탐지했어도 근거 문장이 없는 유형은 빼고 `warnings` 에 "segment 근거가 없는 신호 n건을 제외했습니다." 를 남긴다.
+  결과는 4절 계약의 신호 칸(`abuse_signals` · `risk_utterances` · `severity_ratings` · `topic_tags`)만 채우고 나머지는 빈 값이다.
+- 그래서 사례 신호 이력(`GET /cases/{id}/signal-history`)의 주제 비중 · 회차별 세부 신호 · 처음 나온 이야기가 녹음 회차처럼 읽는다.
+  근거가 기록 문장이라 `subtypes[].pending` 은 늘 `false`, `topics[].start_ms` 는 `null`. 주제 비중은 문장 수 기준이다. AI 제안이며 학대 여부를 확정하지 않는다.
+- `GET …/analysis` 도 이 행을 돌려준다(문서 회차의 재분석 `POST …/analysis` 는 그대로 `409`).
+
+### GET /api/v1/sessions/{session_id}/source-document → 200
+
+올린 문서가 없으면 `404 NOT_FOUND`. 권한은 회차 조회와 같다.
+
+### POST /api/v1/sessions/{session_id}/source-document/followups → 200
+
+- 문서 회차만(그 밖 `409`), 상태 `AI_REVIEW_REQUIRED` · `APPROVED`. 동기 요청, 오류 코드는 위와 같다.
+- 입력은 **3단계에서 상담사가 저장한 칸**: 상담 요약 4칸 + 저장한 상담 일지(저장한 적이 없을 때만 `note_draft`. 빈 글로 저장했으면 초안으로 되돌아가지 않는다). 모두 비면 `409`.
+- `followup_draft = { checks: [{text}], questions: [{text, reason}], source: "AI" | "NONE", model, generated_at }`.
+  추가 질문은 `followup_question_llm` 의 유도 질문 검사(열린 질문 · 입력에 없는 인물 · 행위 낱말 금지)를 거친다. 근거 위치(segment_ids)는 없다.
+  LLM 을 쓰지 않는 서버는 `source: "NONE"` · 빈 목록(상담사가 직접 쓴다). 다시 부르면 초안을 새로 만든다(저장한 확인 사항 · 승인한 질문은 그대로).
+- 초안은 화면에서 확인 사항(18.1절) · 추가 질문(18절) 저장으로 들어간다. 감사 기록 `SOURCE_DOCUMENT_UPLOADED` · `DOCUMENT_FOLLOWUPS_DRAFTED`
+  에는 형식 · 글자 수 · 채운 칸 이름 · 초안 수만 남긴다(문서 글은 남기지 않는다).
+
+---
+
+## 22. Case Forms (기관 서식 작성, 2026-11-02)
+
+'탭 5 › 기관 서식 작성' 디자인(사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도)이 쓰고, 문서함 '기관 서식' 표 ·
+내담자 정보 '기관 서식' 카드가 작성 기록을 보인다.
+
+- **사례 단위**다(회차와 묶지 않는다). 점검표는 3개월마다 1차 · 2차 …, 사정기록지 · 척도는 초기 사정 · 재사정 때 쓰므로 서식마다
+  **차수(`round`)** 로 센다(사례 · 서식 종류마다 1부터).
+- 사례 · 서식 종류마다 **임시 저장(`DRAFT`) 차수는 하나**. **확정(`APPROVED`)한 차수는 고칠 수 없고**, 다시 쓰려면 다음 차수를 만든다.
+- **칸은 상담사가 고르고 쓴다** — 서버는 칸 값을 지어내거나 AI 로 채우지 않는다. 점수 합계 · 응답 수(`totals`)만 계산해 돌려준다
+  (군 판정 · 사정결과는 계산하지 않는다 — 상담원이 고른다).
+- 권한은 사례와 같다(담당 상담사 · 관리자, 남의 사례 `403`, 없는 사례 `404 CASE_NOT_FOUND`).
+
+### GET /api/v1/cases/{case_id}/forms[?form_type=RISK_SCALE]
+
+- `{ items: [CaseForm] }`, 서식 종류 → 차수가 큰 것(최근)부터.
+
+`CaseForm`:
+
+```json
+{
+  "id": "uuid", "case_id": "uuid", "form_type": "MANAGEMENT_CHECKLIST", "round": 3, "status": "DRAFT", "version": 4,
+  "values": { "place": "기관 면담실 B", "checks": ["NO", "YES", null, null, null, null, null, null, null],
+              "opinion": "…", "plan": "…" },
+  "totals": { "answered": 2 },
+  "created_by_id": "uuid", "updated_by_id": "uuid", "confirmed_by_id": null, "confirmed_at": null,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+`form_type` 과 `values` 꼴(목록은 문항 수 그대로, 모르는 칸은 `422`, 빈 칸은 `null` · `""`):
+
+| `form_type` | 서식 | `values` | `totals` |
+|---|---|---|---|
+| `SAFETY_ASSESSMENT` | 사정기록지 안전영역(서식 6) | `items`: 11개 `HIGH`·`MEDIUM`·`LOW`·`null`(피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 디자인 순서) · `key_person`: `YES`·`NO`·`null` · `scores`: 3개 `{score: 1~10·null, reason: ≤300자}`(피해아동 · 가족구성원 · 사례관리대상자 응답) · `opinion`: ≤5000자 · `result`: `INTENSIVE`(집중관리)·`GENERAL`(일반관리)·`MONITORING`(모니터링관리)·`null` | `{answered}` |
+| `MANAGEMENT_CHECKLIST` | 사례관리 점검표(서식 27) | `place`: ≤100자 · `checks`: 9개 `YES`·`NO`·`null` · `opinion` · `plan`: ≤5000자 | `{answered}` |
+| `RISK_SCALE` | 위험수준별 개입 사정 척도(참고자료 3) | `scores`: 43개 0~3·`null`(1~21 위험요인, 22~43 보호요인) | `{risk_sum, protect_sum, filled}` |
+| `FAMILY_SCALE` | 축약형 가족관계 척도(참고자료 1) | `respondent`: `FATHER`·`MOTHER`·`CHILD`·`null` · `answers`: 15개 1~5·`null` | `{sum, answered}` |
+
+### POST /api/v1/cases/{case_id}/forms → 201
+
+```json
+{ "form_type": "RISK_SCALE", "values": { "scores": [0, null, 2, …] } }
+```
+
+- 다음 차수를 임시 저장으로 만든다. `values` 는 빼거나 일부만 보내도 된다(나머지는 빈 칸).
+- 그 서식의 임시 저장 차수가 이미 있으면 `409 DUPLICATE_RESOURCE`(그 차수를 PATCH 로 이어 고친다). 같은 순간 두 창이 만들어도 하나만 생긴다
+  (DRAFT 행에만 거는 유일 인덱스 `uq_case_forms_one_draft`, 민규 #140 M1).
+- `values` 가 꼴에 맞지 않으면 `422 VALIDATION_ERROR`(`details.fields` 에 칸 위치만, 받은 글은 싣지 않는다).
+
+### GET /api/v1/cases/{case_id}/forms/{form_id} → 200
+
+### PATCH /api/v1/cases/{case_id}/forms/{form_id} → 200
+
+- `{ "values": {…}, "version": 4 }` — **서식 칸 전체를 바꾼다**(보내지 않은 칸은 빈 칸). 확정한 차수는 `409 ALREADY_APPROVED`.
+- **`version`** 은 화면이 본 판(응답의 `version`, 만들 때 1, 저장 · 확정마다 1 씩 증가). 서버의 지금 판과 다르면(다른 창에서 먼저 저장)
+  `409 STALE_VERSION` — 화면은 최신 기록을 다시 받아 보이고 덮어쓰지 않는다. 'DRAFT 이고 그 판인 행' 에만 거는 조건부 UPDATE 라
+  확정 뒤 겹친 저장 · 겹친 확정 둘도 하나만 성공한다(2026-11-04, 민규 #140 H2 · H3).
+- 다른 사례 주소로 부르면 `404 NOT_FOUND`.
+
+### POST /api/v1/cases/{case_id}/forms/{form_id}/confirm → 200
+
+- 본문 `{ "version": 4 }` — 고치기와 같은 판 대조(다르면 `409 STALE_VERSION`).
+
+- 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
+- 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
+- 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).
+
+---
+
+## 23. Docbox (문서함 — 기관 서식 · 참고 문서 공용 보관, 2026-11-05)
+
+11/05 디자인 '문서함(폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' 이 쓴다. 사례 · 회차와 상관없는 팀 공용 보관함이라
+로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 문서 지우기는 관리자만 할 수 있고, 폴더 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
+
+### GET /api/v1/docbox → 200
+
+```json
+{ "folders": [{ "id": "uuid", "name": "기관 서식", "count": 3 }],
+  "files": [{ "id": "uuid", "folder_id": "uuid|null", "name": "점검표 안내.txt", "content_type": "application/octet-stream",
+              "size_bytes": 1180, "preview_kind": "text", "preview_text": "점검표 안내\n…", "uploaded_by_name": "이서연",
+              "created_at": "…" }] }
+```
+
+- `folders` 는 만든 순서, `files` 는 최신순. `folder_id: null` 은 '폴더 없음'.
+- `preview_kind`: `image`(png · jpg · gif · webp — 화면이 파일을 받아 그대로 보인다) · `text`(첫 페이지 글 앞 1,500자 —
+  txt · md · csv 는 글 그대로, docx · hwpx · pdf 는 21절과 같은 글자 뽑기) · `other`(hwp · doc · xlsx · xls · pptx · ppt, 또는 뽑지 못함).
+
+### POST /api/v1/docbox/folders → 201
+
+- `{ "name": "참고 자료" }`(40자, 공백 정리). 같은 이름이 있으면 `409 DUPLICATE_RESOURCE`.
+
+### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
+
+- 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
+- 응답 `{ "files": [DocboxFile] }`.
+
+### PATCH /api/v1/docbox/files/{file_id} → 200
+
+- `{ "folder_id": "uuid" | null }` — 폴더 옮기기(null 이면 폴더 없음). 없는 문서 · 폴더는 `404`.
+
+### GET /api/v1/docbox/files/{file_id}/download → 200 (파일 본체)
+
+- 늘 첨부(`Content-Disposition: attachment`) · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`.
+  그림만 그 형식, 나머지는 `application/octet-stream`.
+### GET /api/v1/docbox/files/{file_id}/preview → 200 (그림 본체)
+
+- 문서함 화면의 그림 미리보기용. `preview_kind` 가 `image` 인 문서만 응답하고, 그 밖은 404.
+- 그림 형식 · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`. 내려받기 감사 기록을 남기지 않는다.
+
+### DELETE /api/v1/docbox/files/{file_id} → 204 (관리자만)
+
+- 잘못 올린 문서를 지운다. 표의 행과 저장소의 파일 본체를 함께 지운다. 상담원은 403, 없는 문서는 404.
+- 파일 본체를 지우지 못하면 500 이고 행은 그대로 남는다(다시 시도할 수 있다).
+
+- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` · `DOCBOX_FILE_DELETED` —
+  파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.
+
+## 24. Child App (아이 앱 콩콩, 2026-11-09)
+
+`CHILD_APP_ENABLED=false`(기본)이면 이 절의 API 는 모두 503 `CHILD_APP_DISABLED` 다. `/child-app/*` 은 아이 기기용이다. 상담사 Access Token 이 아니라 연결할 때 받은 `device_token` 을 Bearer 로 보낸다.
+앱 응답에는 이름 · 사례번호 · 위험 판정 기준을 넣지 않는다. 판정은 서버가 계산한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
+| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
+| POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
+| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER` · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
+| POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
+| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null). 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
+| POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids}` 1~8개(문항 전체) → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+| GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
+| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent}`. `recent_answers` · `level` 은 담당 상담사만 |
+| POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
+| PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}` | `{text}`(1~500자) 확인해 볼 점 고치기 |
+| PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}` | `{text, options}`(보기 2~6개) 추가 질문 고치기. 승인 전으로 돌아가고 앱에서 빠진다. 아이가 이미 답했으면 409 |
+| PUT | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}/approval` | `{approved}`. 승인하면 답하지 않은 질문에 더해 바로 앱으로 간다(묶음당 최대 8개). 풀면 뺀다. 이미 답했으면 409, 미연결이면 409 |
+
+`GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
+
+아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 사례의 마지막 긴급 알림 `{sent_at, acknowledged, overdue}`(없으면 null). `sent_at` 은 마지막으로 누른 시각(확인 전에 다시 누르면 오른다)이고, 이 기기가 연결된 뒤에 누른 것만 보인다. 확인한 알림은 마지막으로 누른 뒤 24시간만 보이고, 확인 전 알림은 시간이 지나도 남는다. `overdue` 는 처음 알린 뒤 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.
+
+미확인 긴급 넘기기(멘토 피드백 11/12 B안): 아이가 직접 보낸 긴급 알림(`ALERT`)이 `CHILD_APP_ESCALATE_MINUTES`(기본 5분) 넘게 확인 전이면 `GET /child-app-alerts/open` 에서 담당이 아닌 상담사에게도 나온다. 이때 줄은 `handed_over: true` · `escalated: true` · `can_ack: false` · `child_alias: ""` 이고 사례 번호와 `counselor_name`(담당 상담사)만 준다 — 사례를 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 하는 것이다. 담당 상담사 · 관리자의 같은 알림에는 `escalated: true` 만 더해진다. 답 기반 알림(바로 확인 답 · 연락 요청 등)은 넘기지 않는다. 푸시는 아직 없다(푸시 연결 때 이어서).
+
+근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026년 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+
+확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
+
+열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
+
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+
+---
+
+## 25. Memos (상담사 메모, 2026-11-10)
+
+앱 · 메모(현장에서 바로 적어 두기) 화면이 쓴다. 메모는 **쓴 상담사만** 읽고 고치고 지운다 — 관리자도 남의 메모는 보지 못한다(남의 메모 id 는 `404`).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/memos?page=&page_size=&case_id=` | 내 메모 목록(최신순, `PagedItems`). `page_size` 1~100(기본 20). `case_id` 로 한 사례만 |
+| POST | `/memos` | `{text, case_id?}` → `201` Memo |
+| GET | `/memos/{id}` | Memo |
+| PATCH | `/memos/{id}` | 보낸 칸만 바뀐다. `case_id: null` 이면 사례를 뗀다. `text: null` 은 `422` |
+| DELETE | `/memos/{id}` | `204` |
+
+`Memo`:
+
+```json
+{ "id": "uuid", "case_id": "uuid", "child_alias": "서윤", "text": "현관 앞에서 만남…", "unreadable": false, "created_at": "…", "updated_at": "…" }
+```
+
+- `text`: 앞뒤 공백을 지운 1~4000자. 비었거나 NUL 이 들면 `422`.
+- `case_id`: 볼 수 있는 사례만 붙인다(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `child_alias` 는 그 사례의 별칭(실명은 싣지 않는다).
+- **담당이 바뀌어 지금 볼 수 없는 사례의 메모는 목록에서 빠지고**, 한 건 읽기 · 고치기 · 지우기도 `404` 다(사례가 없는 메모는 늘 보인다).
+- 본문은 내담자 정보와 같은 키(`PII_ENCRYPTION_KEYS`)로 **암호화해 저장**한다(묶음 값 = 메모 id). 풀지 못하면(키가 없거나 암호문이 바뀜)
+  **그 메모만** `text: null` · `unreadable: true` 로 오고 목록 · 한 건은 `200` 이다(로그에는 메모 id · 키 이름만). 그 메모는 지우거나
+  새 `text` 로 고치면 된다. 다른 메모는 `unreadable: false`.
+- 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 메모도 맨 앞 키로 다시 암호화한다(감사 기록 `MEMO_UPDATED` ·
+  `detail.via` · 본문 없음). 풀지 못한 메모가 있으면 메모 id 만 출력하고 종료 코드 1 — 그때 옛 키를 빼면 안 된다.
+- 본문은 일반 로그 · 감사 기록에 넣지 않는다. 감사 기록은 `MEMO_CREATED` · `MEMO_UPDATED`(`detail.fields`: 바뀐 칸 이름) · `MEMO_DELETED` 만,
+  메모 id · 사례 id 와 함께 남는다. 읽기는 감사 기록을 남기지 않는다(쓴 사람만 읽으므로).
+- 사례를 지우면 그 사례에 붙은 메모도 지워진다(사례 영구 삭제, 4절).
+
+---
+
+## 26. Briefing Checks (상담 전 브리핑 '확인할 사항' 체크, 2026-11-11)
+
+브리핑의 '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시)를 서버에 둔다. 웹 사례 상세 브리핑과 상담사 앱 · 브리핑이 같은 값을 본다
+(전에는 기기마다 브라우저에만 기억했다).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/sessions/{id}/briefing-checks` | `{ session_id, checked: [문장], updated_at, updated_by_id }`. 아직 없으면 `checked: []` · `updated_at: null` |
+| PATCH | `/sessions/{id}/briefing-checks` | `{ text, checked, visible? }` — 문장 하나를 켜거나 끈다. 바뀐 전체를 돌려준다 |
+
+- 확인 사항 목록은 저장한 목록(18.1절)일 때도, 저장 전(AI 초안 + 다음 상담 체크리스트, 19절)일 때도 있다. 그래서 목록 행에 칸을 붙이지
+  않고 **회차마다 확인함으로 표시한 문장(text) 목록**을 따로 둔다. 화면은 보이는 줄의 문장이 이 목록에 있으면 체크해 보인다.
+  목록을 고쳐 문장이 바뀌면 그 줄은 체크가 풀린 것으로 보인다(옛 문장은 목록에 남아도 화면에 줄이 없다).
+- 한 번에 하나씩 바꾼다(목록을 통째로 보내지 않는다) — 웹 · 폰이 동시에 눌러도 서로 지우지 않는다. 같은 문장을 또 켜거나 없는 문장을 꺼도 그대로.
+- `text`: 앞뒤 공백을 지운 1~300자.
+- `visible`(선택): 화면에 지금 보이는 확인 사항 문장 목록(최대 200개, 빈 문장 · 300자 넘는 문장은 빼고 본다). 보내면 이 목록과
+  `text` 에 없는 옛 문장(목록을 고쳐 사라진 줄)의 체크를 먼저 지운다. 화면은 **확인 사항 목록을 다 받은 뒤에만** 보낸다 — 줄이 늦게
+  붙는 동안 보내면 그 줄의 체크가 지워진다. 목록을 다 받기 전이거나 모르면 빼고 보낸다(그때는 아무것도 지우지 않는다).
+- 한 회차에 60개까지 둔다. 켤 때 60개가 차 있으면 `422` 대신 **가장 오래 전에 켠 것을 밀어내고** 켠다(지금 보이는 줄을 켤 때 막히지 않게).
+- 연결이 없을 때 누른 체크는 화면이 기기에 맡겨 두었다가(누른 때의 `visible` 과 함께) 연결되면 한 줄씩 보낸다.
+- 볼 수 있는 회차만(담당 상담사 · 관리자, 남의 회차는 `403` · `404`). 회차 상태는 따지지 않는다.
+- 감사 기록 `BRIEFING_CHECK_UPDATED`: `detail` 에 켬 · 끔과 개수만(문장은 넣지 않는다).

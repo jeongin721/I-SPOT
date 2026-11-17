@@ -2,14 +2,15 @@
 //
 // Backend 에 없는 값은 지어내지 않는다(specs 대응표 Main 줄 — 팀 결정: 일정 · 아이 앱 긴급 상태 · 일지 대기 기준).
 //  - 오늘 일정 · 다음 상담까지 남은 시간(11/02 연결): 일정(API_CONTRACT 20절)에서 오늘 일정 · 지금 뒤 첫 상담 일정을 찾는다.
-//  - 긴급 업무(아이 앱 체크인): 아이 앱 연계가 없다. '—'(10/30 디자인의 머리 링크 '아이 연계 ›' 만 둔다).
+//  - 긴급 업무(11/10 연결): 확인 안 한 콩콩 알림(GET /child-app-alerts/open). 긴급(긴급 알림 · 바로 확인 답 · 연락 요청) 수를 크게,
+//    확인 필요(글 · 추가 질문 답)는 아래 줄에. 아이 앱이 꺼져 있거나 못 받으면 '—'.
 //  - 진행 중 내담자 카드 아래 줄(10/30): 최근 등록 사례 3건의 마지막 회차 판단('n회차 판단 · 상') · 그 회차 상태. 디자인의
 //    '오늘 16:00 상담' 같은 일정 문구는 쓰지 않는다(카드 줄은 회차 판단이 기준).
 //  - 미처리 업무는 회차 처리 대기(/tasks)만 센다. 디자인의 '상담 일지 작성' · '앱 확인' 은 업무 종류에 없다.
 //    오래 기다린 업무는 '지연' 이라고 쓴다(위험 신호와 헷갈리지 않게 '긴급' 이라고 쓰지 않는다 — API types TaskItem).
 // 시계 · 빠른 실행은 서버와 상관없는 화면 상태다(빠른 실행 편집은 저장하지 않는다).
 
-import { RISK_LEVEL_LABELS, type RiskLevel, type TaskType } from "../../api/types";
+import { RISK_LEVEL_LABELS, type ChildOpenAlert, type RiskLevel, type TaskType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import { HOME_TASK_COUNT, type HomeDashboardState, type HomeTask } from "../useHomeDashboard";
 import type { ScheduleState } from "../useSchedule";
@@ -67,6 +68,8 @@ interface MainScreenInput {
   home: HomeDashboardState;
   /** 오늘 ~ HOME_SCHEDULE_DAYS 일 뒤 일정(useSchedule, 사례 목록 없이). */
   schedule: ScheduleState;
+  /** 확인 안 한 콩콩 알림. 꺼져 있거나 못 받았으면 null. */
+  childAlerts?: ChildOpenAlert[] | null;
   state: MainUiState;
   setState: (patch: Partial<MainUiState>) => void;
 }
@@ -86,7 +89,77 @@ function itemHref(e: CalendarItem): string {
   return e.t === "c" && e.event.case_id ? screenHref("/PreBriefing", { caseId: e.event.case_id }) : "/Schedule";
 }
 
-export function mainValues({ session, home, schedule, state, setState }: MainScreenInput) {
+/** 홈 '긴급 업무' 카드. 알림을 못 받았으면 '—' 와 준비 중. */
+/** 긴급 업무 줄 칩(11/11 디자인 '긴급 체크인' 줄). 긴급이 아닌 알림은 '확인 필요'. */
+const ALERT_CHIP: Partial<Record<ChildOpenAlert["reason"], string>> = {
+  ALERT: "긴급 알림",
+  RED_ANSWER: "바로 확인",
+  CONTACT_REQUEST: "연락 요청",
+};
+
+/** 긴급 업무 카드에 줄로 보이는 알림 수(긴급 먼저 · 최근 먼저). */
+const HOME_ALERT_COUNT = 3;
+
+function alertWhen(value: string, now: Date): string {
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "";
+  const time = `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+  const sameDay = at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth() && at.getDate() === now.getDate();
+  return sameDay ? `오늘 ${time}` : `${at.getMonth() + 1}/${at.getDate()} ${time}`;
+}
+
+function urgentValues(alerts: ChildOpenAlert[] | null, now: Date) {
+  if (!alerts) return { urgentCount: NOT_PROVIDED, urgentText: `아이 앱 연계 ${NOT_READY}`, urgentRows: [] };
+  // 다른 상담사 사례에서 넘어온 알림(B안)은 열 수 없으니 내 숫자 · 줄에 넣지 않고 따로 적는다.
+  const handed = alerts.filter((alert) => alert.handed_over).length;
+  const all = alerts;
+  alerts = alerts.filter((alert) => !alert.handed_over);
+  const urgent = alerts.filter((alert) => alert.urgent).length;
+  const check = alerts.length - urgent;
+  const at = (alert: ChildOpenAlert) => alert.last_at ?? alert.created_at;
+  const urgentRows = [...alerts]
+    .sort((a, b) => Number(b.urgent) - Number(a.urgent) || at(b).localeCompare(at(a)))
+    .slice(0, HOME_ALERT_COUNT)
+    .map((alert) => ({
+      key: alert.id,
+      href: screenHref("/CaseApp", { caseId: alert.case_id }),
+      urgent: alert.urgent,
+      chip: alert.urgent ? "chip c-urgent" : "chip c-check",
+      label: alert.urgent ? ALERT_CHIP[alert.reason] ?? "긴급" : "확인 필요",
+      text: [alert.child_alias, alertWhen(at(alert), now)].filter(Boolean).join(" · "),
+    }));
+  return {
+    urgentCount: String(urgent),
+    urgentText: [
+      all.length === 0 ? "확인 안 한 아이 앱 알림이 없어요" : check && !urgent ? `확인 필요 ${check}건` : "",
+      handed ? `다른 상담사 미확인 긴급 ${handed}건` : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    urgentRows,
+  };
+}
+
+/** '진행 중 내담자' 줄의 오른쪽 글(11/11 디자인 '서윤 · 오늘 16:00 상담'): 다가오는 그 사례 상담 일정, 없으면 마지막 회차 상태. */
+function nextConsultText(items: CalendarItem[], caseId: string, now: Date): string | null {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const nowHm = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  const next = items
+    .filter((e) => e.t === "c" && e.event.case_id === caseId)
+    .filter((e) => {
+      const day = new Date(e.y, e.m, e.d).getTime();
+      return day > today || (day === today && (!/^\d\d:\d\d$/.test(e.time) || e.time >= nowHm));
+    })
+    .sort((a, b) => new Date(a.y, a.m, a.d).getTime() - new Date(b.y, b.m, b.d).getTime() || byTime(a, b))[0];
+  if (!next) return null;
+  const timed = /^\d\d:\d\d$/.test(next.time);
+  const isToday = new Date(next.y, next.m, next.d).getTime() === today;
+  if (isToday) return timed ? `오늘 ${next.time} 상담` : "오늘 상담";
+  const body = next.title.split(" · ").slice(1).join(" · ") || "상담";
+  return `${next.m + 1}/${next.d} ${body}`;
+}
+
+export function mainValues({ session, home, schedule, childAlerts, state, setState }: MainScreenInput) {
   const now = state.now;
   const me = session.me;
   const data = home.data;
@@ -151,11 +224,15 @@ export function mainValues({ session, home, schedule, state, setState }: MainScr
   // 10/30 디자인: 업무 종류별 한 줄 — 칩(업무 이름) · 가장 오래 기다린 회차('외' 는 더 있을 때) · 오른쪽 건수.
   const groups = data?.tasks ?? [];
   // 홈에서는 원문 검수를 단계 이름 '기록 확인' 으로 쓴다(관리자 화면은 디자인이 안 바뀌어 그대로).
-  const homeLabel = (task: HomeTask) => (task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.stageLabel);
+  // 문서 회차의 검수 업무는 AI 결과가 아니라 문서에서 옮긴 상담일지 확인이다(2026-11-02).
+  const homeLabel = (task: HomeTask) =>
+    task.taskType === "REVIEW_TRANSCRIPT" ? "기록 확인" : task.fromDocument ? "상담일지 확인" : task.stageLabel;
   const todos = groups.slice(0, HOME_TASK_COUNT).map((task) => {
     const label = homeLabel(task);
     return {
       label,
+      // 누르면 옆 작은 창에서 이 업무에 걸린 아동을 고른다(2026-11-11, TaskPickPopover). href 는 가장 오래 기다린 회차.
+      taskType: task.taskType,
       chip: TASK_CHIP[task.taskType] ?? "chip c-normal",
       text: [`${task.childAlias} ${task.sessionNumber}회차${task.count > 1 ? " 외" : ""}`, wholeOrg ? task.counselorName : "", task.overdue ? "지연" : ""]
         .filter(Boolean)
@@ -202,20 +279,18 @@ export function mainValues({ session, home, schedule, state, setState }: MainScr
     tasksCount: data ? String(data.summary.total) : NOT_PROVIDED,
     todos,
     todoNote,
-    // '진행 중 내담자' 카드 아래 줄(10/30 디자인): 마지막 회차의 상담원 판단 · 별칭 · 그 회차 상태.
-    // 사례 단위 위험도로 읽히지 않게 칩에 'n회차 판단' 을 밝힌다(민규 #122 리뷰 — 사례 위험도는 팀 결정 전).
+    // '진행 중 내담자' 카드 아래 줄(11/11 디자인): '위험도 상 · 중 · 하' 칩(사례 목록과 같은 값, 없으면 '—') · 이름 ·
+    // 다가오는 상담 일정(없으면 마지막 회차 상태).
     caseTodos: (data?.cases ?? []).map((item) => ({
       href: screenHref("/CaseDetail", { caseId: item.id }),
       chip: `chip ${item.level ? HOME_RISK_CHIP[item.level] : "c-normal"}`,
-      label: item.latest
-        ? item.level
-          ? `${item.latest.number}회차 판단 · ${RISK_LEVEL_LABELS[item.level]}`
-          : `${item.latest.number}회차 판단 전`
-        : "회차 없음",
-      text: `${item.name} · ${item.latest ? SESSION_STATUS_LABELS[item.latest.status] : "녹취를 올리면 회차가 생깁니다"}`,
+      label: `위험도 ${item.level ? RISK_LEVEL_LABELS[item.level] : "—"}`,
+      text: `${item.name} · ${
+        nextConsultText(items, item.id, now) ??
+        (item.latest ? `${item.latest.number}회차 ${SESSION_STATUS_LABELS[item.latest.status]}` : "녹취를 올리면 회차가 생깁니다")
+      }`,
     })),
-    urgentCount: NOT_PROVIDED,
-    urgentText: `아이 앱 연계 ${NOT_READY}`,
+    ...urgentValues(childAlerts ?? null, now),
     remain,
     nextTitle,
     briefHref,

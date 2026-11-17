@@ -10,11 +10,13 @@
 //  - 상담원별 업무량의 담당 사례(종결 포함): useAdminAccounts 의 계정별 사례 수
 //
 // 서버에 없어 '—' · 준비 중으로 두는 것(값을 지어내지 않는다):
-//  - 긴급 알림(아이 연계 앱의 긴급 응답 · 상담원 확인 · '담당자에게 다시 알림'): 아이 앱 서버가 없다(팀 결정 A2). 표는 만들지 않는다.
+//  - 긴급 알림 표(아이 연계 앱의 긴급 응답 · 상담원 확인 · '담당자에게 다시 알림'): 숫자 칸만 콩콩 알림으로 연결했다(11/10).
+//    표 자리는 팀 질문 D5 대로 업무 처리 현황이 쓰고, '담당자에게 다시 알림' 은 알림 발송 기능이 없어 두지 않는다.
 //  - 접속 위치(기관 내부망 · 외부): 내부망 정의가 없다. 'OTP 실패' 구분: OTP 가 없다(D1). 실패한 시도의 계정 ID: 서버가 남기지 않는다.
 //  - 업무량의 위험도 상 · 이번 주 상담 · STT 검수 대기 · 일지 미작성: 상담원별 집계 API 와 사례 단위 위험도 규칙이 없다.
 //  - 재배정 필요 건수: 비활성 상담사의 '진행 중' 사례만 셀 방법이 없다(계정별 사례 수는 종결 포함).
 
+import type { ChildOpenAlert } from "../../api/types";
 import { PENDING_TASKS_NOTE } from "../adminRows";
 import type { AdminAccountsState } from "../useAdminAccounts";
 import type { AdminDashboardState, DashboardCell } from "../useAdminDashboard";
@@ -46,6 +48,8 @@ export interface AdminHomeInput {
   /** 업무 표 묶음의 두 종류. */
   groupTasks: [AdminTasksState, AdminTasksState];
   accounts: AdminAccountsState;
+  /** 확인 안 한 콩콩 알림(관리자는 기관 전체). 꺼져 있거나 못 받았으면 null. */
+  childAlerts?: ChildOpenAlert[] | null;
   group: TaskGroupKey;
   setGroup: (key: TaskGroupKey) => void;
   /** 오늘(그릴 때). 시험에서 바꿔 넣는다. */
@@ -86,10 +90,13 @@ export function adminHomeValues(input: AdminHomeInput) {
       note: counselors ? `비활성 ${counselors.total - counselors.active}명` : "",
       href: ADMIN_PAGES.accounts,
     },
-    urgent: {
-      value: NOT_PROVIDED,
-      note: `${NOT_READY} · 아이 연계 앱 서버 없음`,
-    },
+    // 긴급 알림 · 확인 전(11/10 연결): 기관 전체의 확인 안 한 콩콩 긴급 알림 수. 아이 앱이 꺼져 있으면 '—'.
+    urgent: input.childAlerts
+      ? {
+          value: String(input.childAlerts.filter((alert) => alert.urgent).length),
+          note: `확인 필요 ${input.childAlerts.filter((alert) => !alert.urgent).length}건 · 아이 앱`,
+        }
+      : { value: NOT_PROVIDED, note: `${NOT_READY} · 아이 앱이 꺼져 있음` },
   };
 
   // ---------------- 업무 처리 현황 ----------------

@@ -326,6 +326,7 @@ OUTBOUND_STEPS = {
     "generate_checklist_draft": "text",
     "generate_record_draft": "masked_transcript_text",
     "generate_protective_factors": "masked_transcript_text",
+    "generate_safety_flags": "masked_transcript_text",
     "generate_desired_changes": "masked_transcript_text",
     "generate_narrative_summary_from_masked_text": "masked_combined_text",
     "rate_severity_from_text": "masked_evidence_text",
@@ -349,6 +350,9 @@ def _step_result(name: str, text: str) -> Any:
         return {"risk_signal_points": [point], "child_statement_points": [{"text": text, "segment_ids": ["seg_003"]}]}
     if name == "generate_protective_factors":
         return [{"text": text, "segment_ids": ["seg_003"], "category": "보호자 외 지지"}]
+    if name == "generate_safety_flags":
+        flag = {"code": "S2", "text": text, "certainty": "CLEAR", "segment_ids": ["seg_003"]}
+        return {"safety_flags": [flag], "reabuse_factors": [{"code": "R2", "text": text, "segment_ids": ["seg_002"]}]}
     if name in ("generate_desired_changes", "generate_followup_questions_from_masked_text",
                 "generate_followup_check_points_from_masked_text", "rate_severity_from_text"):
         return []
@@ -520,13 +524,14 @@ def closure_llm(gateway, monkeypatch):  # noqa: F811 — gateway 는 고정 장�
 
     monkeypatch.setattr(sys.modules[f"{PACKAGE}.second_stage_llm"], "_call_llm_with_retry", call_llm)
 
-    original = gw.mask_for_outbound
+    # 종결 요약은 회차마다 따로 가린다(closure_summary_llm.mask_case_input → privacy_gateway.review, 2026-11-04).
+    original = gw.review
 
-    def mask_for_outbound(text, known_identifiers=None):
+    def review(payload, known_identifiers=None):
         sent["known"] = list(known_identifiers or [])
-        return original(text, known_identifiers=known_identifiers)
+        return original(payload, known_identifiers=known_identifiers)
 
-    monkeypatch.setattr(gw, "mask_for_outbound", mask_for_outbound)
+    monkeypatch.setattr(gw, "review", review)
     closure_review_service.reset_limits()
     yield sent
     closure_review_service.reset_limits()
@@ -1118,3 +1123,52 @@ def test_signals_contract_keeps_other_warnings(real_analysis) -> None:
     assert any("상담 요약을 만들지 못했습니다" in warning for warning in full["warnings"])
     assert contract["warnings"] == [w for w in full["warnings"] if "상담 요약을 만들지 못했습니다" not in w]
     assert contract["warnings"]
+
+
+# =========================================================
+# 안전 플래그 · 재학대 요인(safety_flag_llm, 2026-11-05) — 2단계 값이라 콜백에 실리고, 계약에서 null 과 [] 를 구분한다
+# =========================================================
+
+
+def test_safety_flags_ride_with_the_signals_callback(real_analysis) -> None:
+    """안전 플래그는 2단계 값이라 콜백(첫 저장)에 실리고, 마지막 결과와 같다. 이름은 가려서 보내고 되돌린다."""
+
+    infer, sent, _ = real_analysis
+    handed: List[Dict[str, Any]] = []
+
+    final = infer.analyze_audio_session(stt_result=NAMED_TRANSCRIPT, client=object(), on_signals_ready=handed.append)
+
+    [partial] = handed
+    assert partial["safety_flags"] and partial["safety_flags"] == final["safety_flags"]
+    assert partial["reabuse_factors"] == final["reabuse_factors"]
+    assert sent["generate_safety_flags"]
+
+
+def _safety_contract(result):
+    contract_adapter = importlib.import_module(CONTRACT_ADAPTER)
+    partial = {"record_draft": {"risk_signal_points": [], "child_statement_points": []}, **result}
+    contract, _, _ = contract_adapter.to_ai_output_contract(partial, transcript=NAMED_TRANSCRIPT)
+    return contract, contract_adapter.SAFETY_FLAGS_UNAVAILABLE_WARNING
+
+
+def test_safety_contract_moves_candidates(real_analysis) -> None:
+    flag = {"code": "S2", "text": "혼난대요", "certainty": "CLEAR", "segment_ids": ["seg_001"]}
+    contract, warning = _safety_contract({"safety_flags": [flag], "reabuse_factors": []})
+
+    assert contract["safety_flags"] == [flag]
+    assert contract["reabuse_factors"] == []
+    assert warning not in contract["warnings"]
+
+
+def test_safety_contract_failed_module_is_null_with_warning(real_analysis) -> None:
+    contract, warning = _safety_contract({"safety_flags": None, "reabuse_factors": None})
+
+    assert contract["safety_flags"] is None and contract["reabuse_factors"] is None
+    assert warning in contract["warnings"]
+
+
+def test_safety_contract_without_the_keys_is_null_without_warning(real_analysis) -> None:
+    contract, warning = _safety_contract({})
+
+    assert contract["safety_flags"] is None
+    assert warning not in contract["warnings"]

@@ -1,7 +1,8 @@
 // 관리자 · 상담사 계정 관리(만들기 · 목록 → 상세)
 // 원본: 다솔 님 10/21 디자인 counselor-design/screens/AdminAccounts.dc.html (origin/frontend261021)
 //
-// 서버 연결: useAdminAccounts(계정 목록 · 담당 사례 수 · 계정 만들기). 화면에 쓸 값은 src/data/screens/adminAccounts.ts.
+// 서버 연결: useAdminAccounts(계정 목록 · 담당 사례 수 · 계정 만들기), useSignupRequests(가입 신청 승인 · 거절).
+// 화면에 쓸 값은 src/data/screens/adminAccounts.ts.
 // 만들면 임시 비밀번호를 한 번만 보이고 '닫기' 로 버린다. 이름을 누르면 상담사 상세(#/AdminStaffDetail?user=<계정 ID>)로 가고,
 // 비밀번호 초기화 · 잠금 해제 · 휴면 해제 · 비활성화 · 강제 로그아웃은 그 화면에서 한다.
 // 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(훅도 서버를 부르지 않는다).
@@ -13,6 +14,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useAdminAccounts } from '../data/useAdminAccounts';
+import { useSignupRequests } from '../data/useSignupRequests';
 import { needsLogin } from '../data/screens/common';
 import { INITIAL_ACCOUNTS_UI, adminAccountsValues } from '../data/screens/adminAccounts';
 import './Admin.css';
@@ -31,8 +33,9 @@ export default function AdminAccounts(props) {
   const session = useAuthSession();
   // 관리자 훅은 관리자일 때만 서버를 부른다(session.isAdmin).
   const accounts = useAdminAccounts(session);
+  const signups = useSignupRequests(session);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, accounts });
+  const v = useDC(Logic, { ...props, session, accounts, signups });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   if (!session.isAdmin) return <AdminBlocked session={session} />;
   return (
@@ -173,6 +176,81 @@ export default function AdminAccounts(props) {
             <p className="note" style={{ margin: '0' }}>
               {v.caseCountError} 담당 사례 칸은 — 로 둡니다.
             </p>
+          ) : null}
+
+          {v.signupShown ? (
+            <section
+              className="card"
+              aria-label="가입 신청"
+              style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              <h2 className="h2">{v.signupTitle}</h2>
+              <p className="note" style={{ margin: '0' }}>
+                로그인 화면에서 이메일 인증을 마친 신청입니다. 역할을 골라 승인하면 신청 때 정한 비밀번호로 로그인할 수
+                있습니다. 대기 신청은 14일 뒤 지워집니다.
+              </p>
+              {v.signupError ? (
+                <p className="acc" role="alert" style={{ margin: '0', fontSize: '13px' }}>
+                  {v.signupError}{' '}
+                  {v.signupRows.length === 0 ? (
+                    <button type="button" className="btn btn-s btn-sm" onClick={v.signupRetry}>
+                      다시 시도
+                    </button>
+                  ) : null}
+                </p>
+              ) : null}
+              {v.signupRows.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="tbl" style={{ minWidth: '760px' }}>
+                    <thead>
+                      <tr>
+                        <th scope="col">이름</th>
+                        <th scope="col">이메일(로그인 ID)</th>
+                        <th scope="col">신청</th>
+                        <th scope="col">대기 기한</th>
+                        <th scope="col">역할</th>
+                        <th scope="col">
+                          <span style={{ position: 'absolute', left: '-9999px' }}>작업</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {v.signupRows.map((r) => (
+                        <tr key={r.key}>
+                          <td>{r.name}</td>
+                          <td className="note">{r.email}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{r.requestedAt}</td>
+                          <td className="note" style={{ whiteSpace: 'nowrap' }}>
+                            {r.expiresAt}
+                          </td>
+                          <td>
+                            <select className="inp" aria-label={`${r.name} 역할`} disabled={r.busy} {...r.role}>
+                              <option value="COUNSELOR">상담원</option>
+                              <option value="ADMIN">관리자</option>
+                            </select>
+                          </td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <span style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button type="button" className="btn btn-p btn-sm" disabled={r.busy} onClick={r.approve}>
+                                {r.approveLabel}
+                              </button>
+                              <button type="button" className="btn btn-s btn-sm" disabled={r.busy} onClick={r.reject}>
+                                거절
+                              </button>
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {v.signupMore ? (
+                <p className="note" style={{ margin: '0' }}>
+                  {v.signupMore}
+                </p>
+              ) : null}
+            </section>
           ) : null}
 
           <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 12px' }}>

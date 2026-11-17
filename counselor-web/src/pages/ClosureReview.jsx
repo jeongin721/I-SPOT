@@ -17,7 +17,9 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useApprovedSummaries } from '../data/useApprovedSummaries';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSignalHistory } from '../data/useSignalHistory';
-import { closureReviewValues, closureSummaryValues } from '../data/screens/closureReview';
+import { closureChildValues, closureReviewValues, closureSummaryValues } from '../data/screens/closureReview';
+import { childApp } from '../api/endpoints';
+import { useRemote } from '../data/useRemote';
 import { useClosureSummary } from '../data/useClosureSummary';
 import { NOT_READY, needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
@@ -33,7 +35,11 @@ export default function ClosureReview() {
   const history = useSignalHistory(caseId, { enabled });
   const approved = useApprovedSummaries(history.sessions, { enabled, max: 100 });
   const [all, setAll] = useState(false);
-  const v = closureReviewValues({ caseId, detail, history, approved, all });
+  // 아이 연계(11/10): 콩콩 받은 답 · 아이가 쓴 글.
+  const appKey = enabled && caseId ? `closure-child-app:${caseId}` : null;
+  const childAppInfo = useRemote(appKey, () => childApp.get(caseId), '아이 앱 정보를 불러오지 못했습니다.', () => false);
+  const v = closureReviewValues({ caseId, detail, history, approved, all, childApp: childAppInfo.data });
+  const cv = closureChildValues(childAppInfo.data);
   const summary = useClosureSummary(caseId, { enabled });
   const [edit, setEditState] = useState({ key: null, draft: '' });
   const sv = closureSummaryValues(
@@ -280,9 +286,25 @@ export default function ClosureReview() {
             style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '12px' }}
           >
             <h2 className="h2">아이 연계</h2>
-            <p className="note" style={{ margin: 0 }}>
-              아이가 쓴 글 · 체크인 응답은 {NOT_READY}입니다(아이 앱이 서버에 없음).
-            </p>
+            {cv.note ? (
+              <p className="note" style={{ margin: 0 }}>
+                {cv.note}
+              </p>
+            ) : null}
+            {cv.written ? (
+              <div>
+                <span className="note">아이가 쓴 글 · {cv.written.at}</span>
+                <div style={{ fontWeight: 700 }}>"{cv.written.text}"</div>
+              </div>
+            ) : null}
+            {cv.changes.map((change) => (
+              <div key={change.question}>
+                <span className="note">달라진 답 · {change.at}</span>
+                <div>
+                  {change.question} — {change.from} → <b>{change.to}</b>
+                </div>
+              </div>
+            ))}
           </section>
 
           <section

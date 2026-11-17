@@ -1,7 +1,7 @@
 /* ChildDetail 화면에만 있는 규칙(디자인 ChildDetail.dc.html). 공통 규칙은 src/styles/common.css. */
 .pg-ChildDetail .qa-row {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1.5fr) minmax(0, 1fr) 92px;
+  grid-template-columns: 96px minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.8fr) 80px;
   gap: 12px;
   align-items: center;
   padding: 12px 0;
@@ -129,3 +129,15 @@
   background: #453a22 !important;
   color: #e3c77e !important;
 }
+
+/* 11/09 디자인 — 질문 및 답변 · 과거 답변 비교 */
+.pg-ChildDetail .prev {display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.pg-ChildDetail .prev .pv {display:inline-flex;align-items:center;color:#66625A;font-size:13px}
+.pg-ChildDetail .prev .pv+.pv::before {content:"→";margin:0 6px 0 2px;color:#A8A296}
+.pg-ChildDetail .chg {display:inline-flex;align-items:center;height:20px;margin-left:8px;padding:0 6px;border-radius:5px;background:#F3EAD3;color:#7A5F28;font-size:11px;font-weight:700;vertical-align:middle}
+.pg-ChildDetail a.srcl {text-decoration:none;cursor:pointer}
+.pg-ChildDetail a.srcl:hover {color:#2B2A26;text-decoration:underline}
+.pg-ChildDetail .thm-root.dark .prev .pv {color:#BDB7AA}
+.pg-ChildDetail .thm-root.dark .chg {background:#3F3729;color:#EADBB5}
+.pg-ChildDetail .thm-root.dark a.srcl:hover {color:#ECE8DF}
+@media (max-width:900px){.pg-ChildDetail .qa-row {grid-template-columns:minmax(0,1fr) !important}}

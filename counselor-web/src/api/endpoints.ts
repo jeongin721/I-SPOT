@@ -7,6 +7,12 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  DocboxFile,
+  DocboxFolder,
+  DocboxList,
+  CaseForm,
+  CaseFormType,
+  SourceDocument,
   ScheduleEvent,
   ScheduleEventCreate,
   ScheduleEventUpdate,
@@ -19,6 +25,8 @@ import type {
   CaseCreateRequest,
   CaseDetail,
   CaseListItem,
+  CaseListSort,
+  CaseListOrder,
   CaseStatus,
   CaseUpdateRequest,
   Document,
@@ -31,6 +39,12 @@ import type {
   ClosureSummarySave,
   FollowupCheck,
   FollowupCheckList,
+  ChildAiDraft,
+  ChildAppCase,
+  ChildAppCaseRow,
+  ChildAppStats,
+  ChildAppInvite,
+  ChildOpenAlert,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -42,6 +56,12 @@ import type {
   RiskAssessment,
   RiskAssessmentSaveRequest,
   TemporaryPassword,
+  SignupCodeSent,
+  SignupRequestItem,
+  SignupSettings,
+  SignupStatus,
+  SignupVerified,
+  UserRole,
   UserCreateRequest,
   UserUpdateRequest,
   AuditLog,
@@ -64,6 +84,10 @@ import type {
   TranscriptUpdateRequest,
   User,
   VoiceMarks,
+  Memo,
+  MemoCreateRequest,
+  MemoUpdateRequest,
+  BriefingChecks,
 } from "./types";
 
 /**
@@ -181,6 +205,66 @@ export const auth = {
 };
 
 // =========================================================
+// 회원가입 — API_CONTRACT 3절 '회원가입'. 0~3 은 로그인 없이, 목록 · 승인 · 거절은 관리자.
+// =========================================================
+
+export const signup = {
+  /** 켜짐 여부 · 받는 이메일 도메인. 꺼져 있어도 200 이다(공개 창구 셋만 503 SIGNUP_DISABLED). */
+  settings(): Promise<SignupSettings> {
+    return api.get<SignupSettings>("/auth/signup-requests/settings");
+  },
+
+  /**
+   * 1단계 인증번호 보내기(202). 숫자 6자리 · 5분. 새로 보내면 앞 번호는 더 맞지 않는다.
+   *
+   * 오류: 429 RATE_LIMITED(`details.retry_after_seconds`), 422 SIGNUP_EMAIL_DOMAIN_NOT_ALLOWED,
+   * 422 VALIDATION_ERROR(이메일 형식), 503 SIGNUP_DISABLED.
+   */
+  sendCode(email: string): Promise<SignupCodeSent> {
+    return api.post<SignupCodeSent>("/auth/signup-requests/send-code", { email });
+  },
+
+  /**
+   * 2단계 인증번호 확인(200).
+   *
+   * 오류: 422 VERIFICATION_CODE_MISMATCH(`details.remaining_attempts` 4 → 0),
+   * 422 VERIFICATION_CODE_EXPIRED(1단계부터 다시), 429 RATE_LIMITED, 503 SIGNUP_DISABLED.
+   */
+  verifyCode(email: string, code: string): Promise<SignupVerified> {
+    return api.post<SignupVerified>("/auth/signup-requests/verify-code", { email, code });
+  },
+
+  /**
+   * 3단계 대기 신청(201 PENDING). 역할은 보내지 않는다(승인하는 관리자가 정한다).
+   *
+   * 오류: 422 SIGNUP_TOKEN_INVALID(30분 지남 · 이미 씀 — 1단계부터 다시), 422 WEAK_PASSWORD(`details.reasons`,
+   * 같은 토큰으로 다시 낼 수 있다), 409 DUPLICATE_RESOURCE, 503 SIGNUP_DISABLED.
+   */
+  submit(payload: { verification_token: string; name: string; password: string }): Promise<{ status: SignupStatus }> {
+    return api.post<{ status: SignupStatus }>("/auth/signup-requests", payload);
+  },
+
+  /** 관리자 전용. 오래된 신청부터. status 기본 PENDING. */
+  list(params?: PageQuery & { status?: SignupStatus }): Promise<Paged<SignupRequestItem>> {
+    return api.get<Paged<SignupRequestItem>>("/auth/signup-requests", params);
+  },
+
+  /**
+   * 관리자 전용. 역할은 필수다. 신청 때 비밀번호 그대로 계정이 생긴다.
+   *
+   * 오류: 404 NOT_FOUND, 409 SIGNUP_ALREADY_DECIDED, 409 DUPLICATE_RESOURCE(그사이 같은 이메일 계정이 생김 — 거절하면 된다).
+   */
+  approve(requestId: string, role: UserRole): Promise<SignupRequestItem> {
+    return api.post<SignupRequestItem>(`/auth/signup-requests/${requestId}/approve`, { role });
+  },
+
+  /** 관리자 전용. 신청자에게 메일로 알리지 않는다. 오류: 404 NOT_FOUND, 409 SIGNUP_ALREADY_DECIDED. */
+  reject(requestId: string): Promise<SignupRequestItem> {
+    return api.post<SignupRequestItem>(`/auth/signup-requests/${requestId}/reject`, {});
+  },
+};
+
+// =========================================================
 // 사례
 // =========================================================
 
@@ -190,7 +274,7 @@ export const cases = {
    * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
    */
   list(
-    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean },
+    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean; sort?: CaseListSort; order?: CaseListOrder },
   ): Promise<Paged<CaseListItem>> {
     return api.get<Paged<CaseListItem>>("/cases", params);
   },
@@ -579,6 +663,44 @@ export const lawGuide = {
 // 일정 (API_CONTRACT 20절, 2026-11-02)
 // =========================================================
 
+// =========================================================
+// 상담사 메모(API_CONTRACT 25절) — 쓴 사람만 읽고 고치고 지운다
+// =========================================================
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절) — 웹 · 폰이 같은 값
+// =========================================================
+
+export const briefingChecks = {
+  get(sessionId: string): Promise<BriefingChecks> {
+    return api.get<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`);
+  },
+
+  /** 문장 하나를 켜거나 끈다. visible(지금 보이는 문장들)을 주면 거기 없는 옛 체크를 서버가 지운다. 바뀐 전체를 돌려준다. */
+  toggle(sessionId: string, text: string, checked: boolean, visible?: string[]): Promise<BriefingChecks> {
+    return api.patch<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`, visible ? { text, checked, visible } : { text, checked });
+  },
+};
+
+export const memos = {
+  /** 내 메모(최신순). 담당이 바뀌어 볼 수 없게 된 사례의 메모는 빠진다. */
+  list(params?: PageQuery & { case_id?: string }): Promise<Paged<Memo>> {
+    return api.get<Paged<Memo>>("/memos", params);
+  },
+
+  create(payload: MemoCreateRequest): Promise<Memo> {
+    return api.post<Memo>("/memos", payload);
+  },
+
+  update(memoId: string, payload: MemoUpdateRequest): Promise<Memo> {
+    return api.patch<Memo>(`/memos/${memoId}`, payload);
+  },
+
+  remove(memoId: string): Promise<void> {
+    return api.delete<void>(`/memos/${memoId}`);
+  },
+};
+
 export const schedule = {
   /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(처리 기한 계산용). */
   list(range: { from: string; to: string }): Promise<{ items: ScheduleEvent[] }> {
@@ -596,5 +718,145 @@ export const schedule = {
 
   remove(eventId: string): Promise<void> {
     return api.delete<void>(`/schedule/events/${eventId}`);
+  },
+};
+
+// =========================================================
+// 상담 기록 문서 회차 (API_CONTRACT 21절, 2026-11-02)
+// =========================================================
+
+export const sourceDocuments = {
+  /** 새 회차(CREATED, 음성 없음)에 문서를 올린다. AI 가 3단계 칸을 채우는 동안(1~2분) 기다리는 동기 요청이다. */
+  upload(sessionId: string, file: File): Promise<SourceDocument> {
+    const form = new FormData();
+    form.append("file", file);
+    return api.upload<SourceDocument>(`/sessions/${sessionId}/source-document`, form);
+  },
+
+  get(sessionId: string): Promise<SourceDocument> {
+    return api.get<SourceDocument>(`/sessions/${sessionId}/source-document`);
+  },
+
+  /** 3단계에 저장한 칸으로 4단계 초안(확인 사항 · 추가 질문)을 만든다(동기, 1~2분). */
+  draftFollowups(sessionId: string): Promise<SourceDocument> {
+    return api.post<SourceDocument>(`/sessions/${sessionId}/source-document/followups`, {});
+  },
+};
+
+// =========================================================
+// 기관 서식 (22절, 2026-11-02)
+// =========================================================
+
+export const caseForms = {
+  /** 그 사례의 서식 기록 전부(종류 → 차수가 큰 것부터). */
+  list(caseId: string): Promise<{ items: CaseForm[] }> {
+    return api.get<{ items: CaseForm[] }>(`/cases/${caseId}/forms`);
+  },
+
+  /** 다음 차수를 임시 저장으로 만든다. 그 서식의 임시 저장 차수가 이미 있으면 409. */
+  create(caseId: string, formType: CaseFormType, values: object): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms`, { form_type: formType, values });
+  },
+
+  /** 임시 저장 차수의 칸 전체를 바꾼다. 확정한 차수는 409 ALREADY_APPROVED, 본 판(version)이 지금 판과 다르면 409 STALE_VERSION. */
+  update(caseId: string, formId: string, values: object, version: number): Promise<CaseForm> {
+    return api.patch<CaseForm>(`/cases/${caseId}/forms/${formId}`, { values, version });
+  },
+
+  /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
+  confirm(caseId: string, formId: string, version: number): Promise<CaseForm> {
+    return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`, { version });
+  },
+};
+
+// =========================================================
+// 문서함 (API_CONTRACT 23절, 2026-11-05) — 기관 서식 · 참고 문서 공용 보관
+// =========================================================
+
+export const docbox = {
+  list(): Promise<DocboxList> {
+    return api.get<DocboxList>("/docbox");
+  },
+
+  createFolder(name: string): Promise<DocboxFolder> {
+    return api.post<DocboxFolder>("/docbox/folders", { name });
+  },
+
+  /** 한 번에 10개 · 파일마다 10MB. folderId 가 null 이면 '폴더 없음'. 하나라도 어긋나면 아무것도 올리지 않는다(422). */
+  upload(files: File[], folderId: string | null): Promise<{ files: DocboxFile[] }> {
+    const form = new FormData();
+    files.forEach((file) => form.append("files", file, file.name));
+    if (folderId) form.append("folder_id", folderId);
+    return api.upload<{ files: DocboxFile[] }>("/docbox/files", form);
+  },
+
+  move(fileId: string, folderId: string | null): Promise<DocboxFile> {
+    return api.patch<DocboxFile>(`/docbox/files/${fileId}`, { folder_id: folderId });
+  },
+
+  /** 파일 본체(내려받기 — 감사 기록이 남는다). */
+  file(fileId: string): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/download`);
+  },
+
+  /** 그림 문서 미리보기(그림만 · 내려받기 기록을 남기지 않는다). */
+  preview(fileId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/preview`, signal);
+  },
+
+  /** 문서 지우기(관리자만). */
+  remove(fileId: string): Promise<void> {
+    return api.delete<void>(`/docbox/files/${fileId}`);
+  },
+};
+
+// =========================================================
+// 아이 앱 콩콩 (API_CONTRACT 24절)
+// =========================================================
+
+export const childApp = {
+  get(caseId: string): Promise<ChildAppCase> {
+    return api.get<ChildAppCase>(`/cases/${caseId}/child-app`);
+  },
+
+  invite(caseId: string): Promise<ChildAppInvite> {
+    return api.post<ChildAppInvite>(`/cases/${caseId}/child-app/invite`);
+  },
+
+  sendQuestions(caseId: string, questionIds: string[]): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/question-sets`, { question_ids: questionIds });
+  },
+
+  /** 관리자 통계 '아이 앱 응답률'. 날짜는 YYYY-MM-DD(끝 날 포함). */
+  stats(dateFrom: string, dateTo: string): Promise<ChildAppStats> {
+    return api.get<ChildAppStats>(`/child-app-stats?date_from=${dateFrom}&date_to=${dateTo}`);
+  },
+
+  listCases(): Promise<ChildAppCaseRow[]> {
+    return api.get<ChildAppCaseRow[]>("/child-app-cases");
+  },
+
+  createAiDraft(caseId: string): Promise<ChildAiDraft> {
+    return api.post<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft`);
+  },
+
+  updateAiNote(caseId: string, draftId: string, questionId: string, text: string): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/notes/${questionId}`, { text });
+  },
+
+  updateAiQuestion(caseId: string, draftId: string, id: string, text: string, options: string[]): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}`, { text, options });
+  },
+
+  setAiApproval(caseId: string, draftId: string, id: string, approved: boolean): Promise<ChildAiDraft> {
+    return api.put<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}/approval`, { approved });
+  },
+
+  openAlerts(): Promise<ChildOpenAlert[]> {
+    return api.get<ChildOpenAlert[]>("/child-app-alerts/open");
+  },
+
+  acknowledgeAlert(caseId: string, alertId: string): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/alerts/${alertId}/ack`);
   },
 };

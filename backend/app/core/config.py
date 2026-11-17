@@ -116,6 +116,32 @@ class Settings(BaseSettings):
     # 끄면(기본) 인증번호 보내기 · 확인 · 신청이 503 SIGNUP_DISABLED 다. 설정 조회와 관리자 승인 창구는 그대로 쓴다.
     # 인증번호 횟수 · 시간 같은 숫자는 팀과 정한 값이라 설정이 아니라 signup_service 상수다.
     SIGNUP_ENABLED: bool = False
+    # 아이 앱(콩콩). 끄면(기본) 앱용 · 상담사용 API 가 모두 503 CHILD_APP_DISABLED 다. 실제 아동 데이터 전 조건이 끝난 뒤에 켠다.
+    CHILD_APP_ENABLED: bool = False
+    # 아이 답을 보고 확인해 볼 점 · 추가 질문 초안을 만든다(API_CONTRACT 24절). off(기본) · mock(OpenAI 없이 '(예시)') ·
+    # modeling(ai/modeling/abuse/child_answer_llm — 이름을 가린 뒤 OpenAI 로 보낸다).
+    # 아이가 '급하다고 알리기' 를 보낸 뒤 담당 상담사가 이만큼 확인하지 않으면 다른 상담사 화면에도 띄운다(멘토 피드백 11/12 B안).
+    # 관리자는 처음부터 전체를 본다. 기본 5분(경진 11/16) — 아이 앱이 112 · 1388 을 다시 안내하는 시간과 같다.
+    CHILD_APP_ESCALATE_MINUTES: int = Field(default=5, ge=1, le=24 * 60)
+    # 상담사가 바로 볼 수 있는 시간(한국 시간). 밖이면 아이 앱이 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+    # 요일은 0=월 … 6=일. 공휴일은 CHILD_APP_STAFF_HOLIDAYS.
+    # 시간은 같은 날 안의 HH:MM-HH:MM(시작 < 끝)만 된다. 자정을 넘기면(22:00-06:00) 늘 밖으로 본다. 값 범위(25:99)는 검사하지 않는다.
+    CHILD_APP_STAFF_HOURS: str = Field(default="09:00-18:00", pattern=r"^\d{2}:\d{2}-\d{2}:\d{2}$")
+    CHILD_APP_STAFF_DAYS: str = Field(default="0,1,2,3,4", pattern=r"^[0-6](,[0-6])*$")
+    # 근무하지 않는 날(YYYY-MM-DD, 콤마 구분). 이날은 요일과 상관없이 근무 시간 밖이다. 비우면 공휴일을 따로 빼지 않는다.
+    # 기본값은 2026년 관공서 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01. 해마다 다음 해 것을 더해야 한다.
+    CHILD_APP_STAFF_HOLIDAYS: str = Field(
+        default=(
+            "2026-01-01,2026-02-16,2026-02-17,2026-02-18,2026-03-02,2026-05-05,2026-05-25,2026-06-03,"
+            "2026-08-17,2026-09-24,2026-09-25,2026-09-28,2026-10-05,2026-10-09,2026-12-25,2027-01-01"
+        ),
+        pattern=r"^(\d{4}-\d{2}-\d{2}(,\d{4}-\d{2}-\d{2})*)?$",
+    )
+    CHILD_APP_AI_PROVIDER: Literal["off", "mock", "modeling"] = "off"
+    CHILD_APP_AI_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0)
+    CHILD_APP_AI_MAX_CONCURRENCY: int = Field(default=2, ge=1)
+    # ENV=production 에서 modeling 을 일부러 쓸 때만 true. 아이가 쓴 글이 이름 인식에 기대 가려진 뒤 나가므로 가상 데이터로만 켠다.
+    CHILD_APP_AI_ALLOW_IN_PRODUCTION: bool = False
     # 받을 이메일 도메인(콤마 구분, 정확히 일치 — 하위 도메인은 따로 적는다). 비면 전부 받는다.
     SIGNUP_ALLOWED_EMAIL_DOMAINS: Annotated[List[str], NoDecode] = Field(default_factory=list)
 
@@ -201,6 +227,14 @@ class Settings(BaseSettings):
     KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     # 종결 검토 요약(POST /cases/{id}/closure-summary) 제한 시간(2026-10-30). 동기 응답이라 넘으면 504.
     CLOSURE_SUMMARY_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
+    #: 상담 기록 문서 → 상담 일지 칸 채우기 · 4단계 초안 AI 제한 시간(동기 요청, API_CONTRACT 21절).
+    DOCUMENT_NOTE_TIMEOUT_SECONDS: float = Field(default=150.0, gt=0)
+    #: 문서 글자 뽑기(PDF · docx · hwpx)만의 제한 시간. LLM 시간과 따로 둔다(깨진 PDF 가 오래 붙잡지 않게).
+    DOCUMENT_TEXT_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0)
+    #: 문서 회차 학대 신호 · 대화 주제 분석(업로드 뒤 백그라운드, ai/modeling/abuse/document_signals) 제한 시간.
+    DOCUMENT_SIGNALS_TIMEOUT_SECONDS: float = Field(default=240.0, gt=0)
+    #: 문서 글자 뽑기 서버 전체 동시 실행 수. 넘으면 429(제한 시간을 넘긴 thread 도 끝날 때까지 자리를 쓴다).
+    DOCUMENT_TEXT_MAX_CONCURRENCY: int = Field(default=2, ge=1)
     #: 종결 요약 AI 서버 전체 동시 실행 수(사례마다는 1건).
     CLOSURE_SUMMARY_MAX_CONCURRENCY: int = Field(default=2, ge=1)
     # AI 분석 한 번의 제한 시간. 넘으면 AI_TIMEOUT 으로 실패한다. 작업 시작이 늦었거나 모델 준비가 길었으면
@@ -504,6 +538,18 @@ class Settings(BaseSettings):
             "법령 질문은 상담사가 쓴 글을 외부(OpenAI)로 보내는데, 사례와 묶이지 않아 등록 실명 대조가 돌지 않습니다. "
             "실제 상담 데이터가 있는 서버에서는 LAW_QA_PROVIDER=mock 또는 off 를 쓰세요. "
             "가상 데이터로 일부러 시험할 때만 LAW_QA_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
+        )
+
+    @model_validator(mode="after")
+    def _block_child_app_ai_in_production(self) -> "Settings":
+        """운영에서 아이 앱 AI 초안 modeling 으로 서버가 뜨지 않게 한다(분석 modeling 과 같은 방식)."""
+
+        if self.ENV != "production" or self.CHILD_APP_AI_PROVIDER != "modeling" or self.CHILD_APP_AI_ALLOW_IN_PRODUCTION:
+            return self
+
+        raise ValueError(
+            "ENV=production 에서는 CHILD_APP_AI_PROVIDER=modeling 으로 서버를 시작하지 않습니다. "
+            "가상 데이터로 일부러 시험할 때만 CHILD_APP_AI_ALLOW_IN_PRODUCTION=true 를 함께 적어 풀 수 있습니다."
         )
 
     @model_validator(mode="after")

@@ -35,6 +35,8 @@
 //    저장 대상), 저장 · 승인은 지금처럼 '일지 저장' · '일지 승인' · 아래 '저장 · …' 이 한다. 승인된 일지는 '일지 수정' 으로
 //    승인을 풀기 전에는 펼치지 않고, '일지 승인' 을 누르면 펼친 칸을 접는다.
 //  - 면접대상자/관계는 Backend 에 없어 '—'. 상담 유형은 회차 consultation_type(2026-10-30).
+//  - 문서 회차(2026-11-02, 상담 기록 문서를 올린 회차): 요약 4칸은 서버가 문서에서 옮겨 채워 두고, 일지 다섯 칸 초안은
+//    useSourceDocument 의 note_draft 다(칩 '문서에서 옮김'). 학대 신호 단계가 없어 판단 없음으로 돌려보내지 않는다(NoteWrite.jsx).
 
 import { NOT_PROVIDED } from "../caseRows";
 import type { RemoteTicket } from "../useRemote";
@@ -191,10 +193,15 @@ export interface NoteScreenInput extends SessionScreenInput {
   setState: (patch: Partial<NoteUiState> | ((current: NoteUiState) => Partial<NoteUiState>)) => void;
 }
 
-/** 일지 두 칸의 AI 초안. 둘 다 비면 초안이 없는 것이다. */
+/** 일지 칸의 AI 초안. 모두 비면 초안이 없는 것이다. 문서 회차는 다섯 칸을 문서에서 옮겨 온다(2026-11-02, note_draft). */
 export interface NoteAiDraft {
   statement: string;
   signals: string;
+  attitude?: string;
+  environment?: string;
+  opinion?: string;
+  /** 문서 회차(상담 기록 문서에서 옮긴 초안). 칩 이름이 'AI 초안' 대신 '문서에서 옮김' 이다. */
+  fromDocument?: boolean;
 }
 
 /** '아동 진술' 초안에 넣을 발화 수. */
@@ -302,6 +309,9 @@ export function noteWriteValues(input: NoteScreenInput) {
 
   let summaryChip = "요약 없음";
   if (summary.status === "APPROVED") summaryChip = `승인 · ${summary.approvedAt}`;
+  // 문서 회차는 일지를 저장한 뒤(초안이 없어도) 출처를 '문서에서 옮김' 으로 둔다(민규 #137 R9).
+  else if (summary.hasSummary && (input.aiDraft?.fromDocument || sv?.source === "DOCUMENT"))
+    summaryChip = summary.edited ? "문서에서 옮김 · 상담사 수정" : "문서에서 옮김";
   else if (summary.hasSummary) summaryChip = summary.edited ? "AI 초안 · 상담사 수정" : "AI 초안";
 
   // 학대 신호(2단계)는 저장됐고 요약 · 일지 초안을 아직 만드는 중이면 '분석 중' 으로 본다(요약 초안이 그때 생긴다).
@@ -336,11 +346,23 @@ export function noteWriteValues(input: NoteScreenInput) {
   const record = docs.consultationRecord;
   // 저장한 일지가 없고 일지 목록을 받았을 때만 AI 초안을 채워 둔다(받기 전이면 있는 일지를 모르는 채 덮을 수 있다).
   const ai = input.aiDraft ?? null;
-  const aiFilled = !record && !docs.loading && !docs.error && ai !== null && Boolean(ai.statement || ai.signals);
+  const aiFilled =
+    !record &&
+    !docs.loading &&
+    !docs.error &&
+    ai !== null &&
+    Boolean(ai.statement || ai.signals || ai.attitude || ai.environment || ai.opinion);
   const saved = record
     ? parseNote(record.content)
     : aiFilled
-      ? { ...EMPTY_NOTE, statement: ai.statement, signals: ai.signals }
+      ? {
+          ...EMPTY_NOTE,
+          statement: ai.statement,
+          signals: ai.signals,
+          attitude: ai.attitude ?? "",
+          environment: ai.environment ?? "",
+          opinion: ai.opinion ?? "",
+        }
       : EMPTY_NOTE;
   const draft = state.draft && docs.isCurrent(state.draftFor) ? state.draft : null;
   const note = draft ?? saved;
@@ -459,7 +481,10 @@ export function noteWriteValues(input: NoteScreenInput) {
   const docApproved = record !== null && record.status === "APPROVED";
   let docChip = record ? `상담원 작성 · ${record.statusLabel}` : "상담원 작성 · 작성 전";
   let docNote = record?.approvedAt ? `일지 승인 · ${record.approvedAt}` : record ? `마지막 저장 · ${record.updatedAt}` : "";
-  if (aiFilled) {
+  if (aiFilled && ai?.fromDocument) {
+    docChip = "문서에서 옮김 · 작성 전";
+    docNote = "올린 상담 기록 문서의 문장을 칸에 나눠 옮긴 초안입니다. 확인 · 수정 후 저장해 주세요.";
+  } else if (aiFilled) {
     docChip = "AI 초안 · 작성 전";
     docNote = `아동 진술 · 위험 신호 검토 결과는 ${sv ? sv.numberLabel : "이 회차"} AI 분석으로 채운 초안입니다. 확인 · 수정 후 저장해 주세요.`;
   }

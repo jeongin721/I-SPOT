@@ -9,6 +9,7 @@
 // 900px 이하의 '메뉴' 단추(#mnav 체크박스)는 상담원 메뉴와 같은 CSS 로 펼친다(common.css 반응형 블록).
 //
 // AdminBlocked: 관리자가 아니거나 로그인을 확인하지 못했을 때 모든 관리자 화면이 메뉴 대신 보이는 안내(서버는 부르지 않는다).
+import ChildAlertBanner from './ChildAlertBanner';
 import A from './A';
 import Notice from './Notice';
 import { useTheme } from '../theme';
@@ -49,6 +50,7 @@ export default function AdminSidebar({ active, session }) {
     );
   return (
     <aside className="side" aria-label="주 메뉴">
+      <ChildAlertBanner session={session} />
       <A className="logo" to="/AdminHome">
         <span className="mk">IS</span>
         <b style={{ fontSize: '17px' }}>I-SPOT</b>

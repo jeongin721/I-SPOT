@@ -53,6 +53,14 @@ class GuardianType(str, Enum):
     OTHER = "OTHER"                # 기타(guardian_note 에 직접 입력)
 
 
+class SessionSource(str, Enum):
+    """회차 자료(2026-11-02). AUDIO: 녹음 → 원문 검수 → AI 분석(1~4단계). DOCUMENT: 상담사가 쓴 상담 기록 문서를 올려
+    3(상담 요약 · 상담 일지) · 4(다음 상담 준비)단계만 쓴다 — 음성 · 전사본 · AI 분석이 없다(API_CONTRACT 21절)."""
+
+    AUDIO = "AUDIO"
+    DOCUMENT = "DOCUMENT"
+
+
 class ChildActionResult(str, Enum):
     """
     조치결과 · 피해아동(서식 4 ①, 2026-11-05).
@@ -301,6 +309,19 @@ class FollowupQuestionSource(str, Enum):
     COUNSELOR = "COUNSELOR"
 
 
+class CaseFormType(str, Enum):
+    """기관 서식 종류(2026-11-02, 탭 5 › 기관 서식 작성 디자인). 사례 단위로 차수마다 한 행을 쓴다."""
+
+    # 사정기록지 안전영역(서식 6)
+    SAFETY_ASSESSMENT = "SAFETY_ASSESSMENT"
+    # 사례관리 점검표(서식 27)
+    MANAGEMENT_CHECKLIST = "MANAGEMENT_CHECKLIST"
+    # 아동학대 위험수준별 개입 사정 척도(참고자료 3 · 43문항)
+    RISK_SCALE = "RISK_SCALE"
+    # 축약형 가족관계 척도(참고자료 1 · 15문항)
+    FAMILY_SCALE = "FAMILY_SCALE"
+
+
 class ScheduleKind(str, Enum):
     """일정 종류(2026-11-02, 일정 디자인). 상담 일정(● 둥근 표시) · 개인 · 기관 일정(■ 네모 표시)."""
 
@@ -335,6 +356,15 @@ class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
     CASE_CREATED = "CASE_CREATED"
+    CHILD_APP_INVITED = "CHILD_APP_INVITED"
+    CHILD_APP_ALERT_ACKED = "CHILD_APP_ALERT_ACKED"
+    CHILD_APP_QUESTIONS_SENT = "CHILD_APP_QUESTIONS_SENT"
+    CHILD_APP_AI_DRAFT_CREATED = "CHILD_APP_AI_DRAFT_CREATED"
+    CHILD_APP_AI_DRAFT_EDITED = "CHILD_APP_AI_DRAFT_EDITED"
+    CHILD_APP_QUESTION_WITHDRAWN = "CHILD_APP_QUESTION_WITHDRAWN"
+    CHILD_APP_UNLINKED = "CHILD_APP_UNLINKED"
+    # 담당 상담사가 아이가 보낸 내용(피드)을 받을 때. 같은 사람 · 사례는 10분에 1줄(새 내용이 오면 다시).
+    CHILD_APP_FEED_VIEWED = "CHILD_APP_FEED_VIEWED"
     CASE_UPDATED = "CASE_UPDATED"
     CLOSURE_REVIEW_REGISTERED = "CLOSURE_REVIEW_REGISTERED"
     CLOSURE_REVIEW_CANCELED = "CLOSURE_REVIEW_CANCELED"
@@ -380,10 +410,29 @@ class AuditAction(str, Enum):
     FOLLOWUP_CHECKS_UPDATED = "FOLLOWUP_CHECKS_UPDATED"
     # 다음 상담 체크리스트 만들기 · 다시 만들기 요청(19절, 2026-10-30). detail 에는 provider · 시도 번호만 남긴다(문장은 넣지 않는다).
     FOLLOWUP_CHECKLIST_REQUESTED = "FOLLOWUP_CHECKLIST_REQUESTED"
+    # 상담 기록 문서(2026-11-02). detail 에는 형식 · 글자 수 · 채운 칸 이름만 남긴다(문서 글은 넣지 않는다).
+    SOURCE_DOCUMENT_UPLOADED = "SOURCE_DOCUMENT_UPLOADED"
+    DOCUMENT_FOLLOWUPS_DRAFTED = "DOCUMENT_FOLLOWUPS_DRAFTED"
     # 일정(2026-11-02). detail 에는 종류 · 분류 · 바뀐 칸 이름만 남긴다(제목 · 장소 글은 넣지 않는다).
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
     SCHEDULE_DELETED = "SCHEDULE_DELETED"
+    # 상담사 메모(25절). 본문은 남기지 않는다(case_id · 메모 ID 만).
+    MEMO_CREATED = "MEMO_CREATED"
+    MEMO_UPDATED = "MEMO_UPDATED"
+    MEMO_DELETED = "MEMO_DELETED"
+    # 브리핑 확인할 사항 체크(26절). 문장은 남기지 않는다(켬 · 끔과 개수만).
+    BRIEFING_CHECK_UPDATED = "BRIEFING_CHECK_UPDATED"
+    # 문서함(2026-11-05). detail 에는 파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 넣지 않는다).
+    DOCBOX_FOLDER_CREATED = "DOCBOX_FOLDER_CREATED"
+    DOCBOX_FILE_UPLOADED = "DOCBOX_FILE_UPLOADED"
+    DOCBOX_FILE_MOVED = "DOCBOX_FILE_MOVED"
+    DOCBOX_FILE_DOWNLOADED = "DOCBOX_FILE_DOWNLOADED"
+    DOCBOX_FILE_DELETED = "DOCBOX_FILE_DELETED"
+    # 기관 서식(2026-11-02). detail 에는 서식 종류 · 차수만 남긴다(칸 값 · 소견 글은 넣지 않는다).
+    CASE_FORM_CREATED = "CASE_FORM_CREATED"
+    CASE_FORM_UPDATED = "CASE_FORM_UPDATED"
+    CASE_FORM_CONFIRMED = "CASE_FORM_CONFIRMED"
 
     # 계정
     # 실패는 별도 action 이 아니라 status 칸으로 표현한다.
@@ -404,3 +453,31 @@ class AuditAction(str, Enum):
     SIGNUP_REQUESTED = "SIGNUP_REQUESTED"
     SIGNUP_APPROVED = "SIGNUP_APPROVED"
     SIGNUP_REJECTED = "SIGNUP_REJECTED"
+
+
+class ChildAppLinkStatus(str, Enum):
+    """아이 앱 연결 상태. 행이 없으면 미연결이다."""
+
+    INVITED = "INVITED"
+    LINKED = "LINKED"
+
+
+class ChildQuestionSetStatus(str, Enum):
+    PENDING = "PENDING"
+    ANSWERED = "ANSWERED"
+    REPLACED = "REPLACED"
+
+
+class ChildAppEventKind(str, Enum):
+    LINKED = "LINKED"
+    UNLINKED = "UNLINKED"
+    QUESTIONS_SENT = "QUESTIONS_SENT"
+    ANSWERS = "ANSWERS"
+    ALERT = "ALERT"
+
+
+class ChildAnswerLevel(str, Enum):
+    NONE = "NONE"
+    SKIP = "SKIP"
+    AMBER = "AMBER"
+    RED = "RED"

@@ -28,8 +28,15 @@ def has_unstorable_character(value: str) -> bool:
     return _UNSTORABLE_CHARACTER.search(value) is not None
 
 
-def _contains_unstorable_text(value: Any) -> bool:
+#: 목록 · 사전을 이만큼 넘게 겹친 값은 422(민규 #140 교차검증 L5 — 480단 값이 재귀 한도를 넘어 500 이었다).
+MAX_NESTING_DEPTH = 64
+
+
+def _contains_unstorable_text(value: Any, depth: int = 0) -> bool:
     """글자 · 목록 · 튜플 · 사전(키와 값)을 끝까지 훑는다. 중첩 모델은 그 모델이 따로 검사한다."""
+
+    if depth > MAX_NESTING_DEPTH:
+        raise ValueError("값이 너무 깊게 겹쳐 있습니다.")
 
     if isinstance(value, str):
         return has_unstorable_character(value)
@@ -40,11 +47,11 @@ def _contains_unstorable_text(value: Any) -> bool:
         try:
             return has_unstorable_character("".join(value))
         except TypeError:
-            return any(_contains_unstorable_text(item) for item in value)
+            return any(_contains_unstorable_text(item, depth + 1) for item in value)
 
     if isinstance(value, dict):
         return any(
-            _contains_unstorable_text(key) or _contains_unstorable_text(item)
+            _contains_unstorable_text(key, depth + 1) or _contains_unstorable_text(item, depth + 1)
             for key, item in value.items()
         )
 

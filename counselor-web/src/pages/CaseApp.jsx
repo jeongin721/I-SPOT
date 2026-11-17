@@ -2,6 +2,9 @@
 // 11/03 다시 탭 줄의 문서함 옆으로 옮겼다(기본 정보 카드의 그 자리는 '수정')
 // 원본: 다솔 님 디자인 counselor-web-design/CaseApp.dc.html (front_new 브랜치). 화면 값은 아직 예시(가상) 데이터다.
 import { Fragment } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import CaseChildApp from './CaseChildApp';
+import { readScreenIds } from '../data/screens/links';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Sidebar from '../components/Sidebar';
@@ -165,6 +168,15 @@ class Logic extends DCLogic {
 }
 
 export default function CaseApp(props) {
+  const [params] = useSearchParams();
+  const { caseId } = readScreenIds(params);
+  // 아이 연계 › 아이 상세의 '과거 답변 기록' 에서 오면 아이 연계 메뉴 안에서 보인다(11/10 경진님).
+  const fromChild = params.get('from') === 'child';
+
+  return caseId ? <CaseChildApp caseId={caseId} fromChild={fromChild} /> : <CaseAppMock {...props} />;
+}
+
+function CaseAppMock(props) {
   // 사이드바의 내 정보 · 로그아웃 · '관리자 메뉴'(관리자일 때만)에만 쓴다. 이 화면의 값은 아직 예시 데이터다.
   const session = useAuthSession();
   const carry = useCarryHref();

@@ -119,3 +119,61 @@ def test_existing_analyses_get_drafts_done_and_downgrade_drops_columns(tmp_path)
         _alembic(database_url, "upgrade", "head")
     finally:
         engine.dispose()
+
+
+# case_forms 판 번호 · 임시 저장 하나 인덱스를 없을 때만 채우는 revision(2026-11-10, 데모 서버 DB 를 main 으로 올리기).
+ENSURE_CASE_FORMS_VERSION = "c7d8e9f0a1b2"
+
+
+def _old_case_forms_db(tmp_path, name: str, drafts: int) -> str:
+    """판 번호 칸 · 인덱스가 없던 옛 e5f6a7b8c9d0 으로 만든 DB(발표용 데모 서버)를 흉내 낸다."""
+
+    database_url = f"sqlite+pysqlite:///{(tmp_path / name).as_posix()}"
+    _alembic(database_url, "upgrade", _parent_of(ENSURE_CASE_FORMS_VERSION))
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DROP INDEX uq_case_forms_one_draft"))
+            connection.execute(text("ALTER TABLE case_forms DROP COLUMN version"))
+            for round_no in range(1, drafts + 1):
+                connection.execute(
+                    text(
+                        "INSERT INTO case_forms (id, case_id, form_type, round, status, \"values\", created_at, updated_at) "
+                        f"VALUES ('{round_no:032x}', 'fedcba9876543210fedcba9876543210', 'RISK_SCALE', {round_no}, "
+                        "'DRAFT', '{}', '2026-11-01 00:00:00', '2026-11-01 00:00:00')"
+                    )
+                )
+    finally:
+        engine.dispose()
+
+    return database_url
+
+
+def _case_forms_state(database_url: str):
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            versions = [row[0] for row in connection.execute(text("SELECT version FROM case_forms"))]
+            indexes = {row[1] for row in connection.execute(text("PRAGMA index_list('case_forms')"))}
+    finally:
+        engine.dispose()
+
+    return versions, "uq_case_forms_one_draft" in indexes
+
+
+def test_old_case_forms_get_version_and_one_draft_index(tmp_path) -> None:
+    database_url = _old_case_forms_db(tmp_path, "old.db", drafts=1)
+
+    _alembic(database_url, "upgrade", "head")
+
+    assert _case_forms_state(database_url) == ([1], True)
+
+
+def test_duplicate_drafts_keep_rows_and_skip_index(tmp_path) -> None:
+    # 상담원 기록은 지우지 않는다. 판 번호 칸은 생기고, 인덱스만 건너뛴다.
+    database_url = _old_case_forms_db(tmp_path, "dup.db", drafts=2)
+
+    _alembic(database_url, "upgrade", "head")
+
+    assert _case_forms_state(database_url) == ([1, 1], False)

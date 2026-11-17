@@ -64,7 +64,10 @@ export function useRiskSignals(
   const utterances = completed ? analysis.riskUtterances : [];
   const signals = completed ? analysis.abuseSignals : [];
   const needSource =
-    (completed && (utterances.length > 0 || hasIds(analysis.protectiveFactors) || hasIds(analysis.followupCheckPoints))) ||
+    (completed && (utterances.length > 0 || hasIds(analysis.protectiveFactors) ||
+        hasIds(analysis.safetyFlags ?? []) ||
+        hasIds(analysis.reabuseFactors ?? []) ||
+        hasIds(analysis.followupCheckPoints))) ||
     needEvidence;
   const key = enabled && sessionId && needSource ? sessionId : null;
   const source = useRemote<TranscriptEnvelope>(key, transcriptApi.get, "근거 발화를 불러오지 못했습니다.");
