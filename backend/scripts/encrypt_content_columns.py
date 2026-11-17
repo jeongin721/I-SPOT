@@ -1,8 +1,11 @@
 # 상담 본문 평문 → 암호문 옮기기 script(상담 본문 앱 암호화 1단계). 서버에서만 실행한다.
 #
 # 대상 칸(app.models.encrypted_field.ENCRYPTED_COLUMNS):
-#   documents.content · transcript_segments.text · consultation_summaries.overview · key_points · counselor_note ·
-#   consultation_sessions.memo · ai_analyses.result
+#   1단계 documents.content · transcript_segments.text · consultation_summaries.overview · key_points · counselor_note ·
+#         consultation_sessions.memo · ai_analyses.result
+#   2단계 session_source_documents.text · note_draft · followup_draft · cases.linked_background · intake_*(글 5칸) · notes ·
+#         session_followup_questions.questions · case_closure_reviews.summary · edits · report · case_forms.values ·
+#         child_app_events.payload · child_app_ai_drafts.items · docbox_files.preview_text
 #
 # 순서(PR 설명과 같다):
 #   1) 1단계 코드 배포(alembic upgrade 로 *_enc 칸이 생긴다). 이때부터 새로 쓰는 값은 암호문으로만 들어간다.
@@ -71,7 +74,7 @@ def targets() -> List[Tuple[Table, EncryptedColumn]]:
 def has_value(value: Any) -> bool:
     """평문 칸에 옮길 값이 있는가(빈 글자 · 빈 목록 · NULL 은 없음 — 읽으면 같은 빈 값이 나온다)."""
 
-    return value not in (None, "", [])
+    return value not in (None, "", [], {})
 
 
 def iter_batches(db: Session, table: Table, columns: Sequence[str], *where: Any) -> Iterator[List[Any]]:
