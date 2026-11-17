@@ -84,6 +84,10 @@ import type {
   TranscriptUpdateRequest,
   User,
   VoiceMarks,
+  Memo,
+  MemoCreateRequest,
+  MemoUpdateRequest,
+  BriefingChecks,
 } from "./types";
 
 /**
@@ -658,6 +662,44 @@ export const lawGuide = {
 // =========================================================
 // 일정 (API_CONTRACT 20절, 2026-11-02)
 // =========================================================
+
+// =========================================================
+// 상담사 메모(API_CONTRACT 25절) — 쓴 사람만 읽고 고치고 지운다
+// =========================================================
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절) — 웹 · 폰이 같은 값
+// =========================================================
+
+export const briefingChecks = {
+  get(sessionId: string): Promise<BriefingChecks> {
+    return api.get<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`);
+  },
+
+  /** 문장 하나를 켜거나 끈다. visible(지금 보이는 문장들)을 주면 거기 없는 옛 체크를 서버가 지운다. 바뀐 전체를 돌려준다. */
+  toggle(sessionId: string, text: string, checked: boolean, visible?: string[]): Promise<BriefingChecks> {
+    return api.patch<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`, visible ? { text, checked, visible } : { text, checked });
+  },
+};
+
+export const memos = {
+  /** 내 메모(최신순). 담당이 바뀌어 볼 수 없게 된 사례의 메모는 빠진다. */
+  list(params?: PageQuery & { case_id?: string }): Promise<Paged<Memo>> {
+    return api.get<Paged<Memo>>("/memos", params);
+  },
+
+  create(payload: MemoCreateRequest): Promise<Memo> {
+    return api.post<Memo>("/memos", payload);
+  },
+
+  update(memoId: string, payload: MemoUpdateRequest): Promise<Memo> {
+    return api.patch<Memo>(`/memos/${memoId}`, payload);
+  },
+
+  remove(memoId: string): Promise<void> {
+    return api.delete<void>(`/memos/${memoId}`);
+  },
+};
 
 export const schedule = {
   /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(처리 기한 계산용). */
