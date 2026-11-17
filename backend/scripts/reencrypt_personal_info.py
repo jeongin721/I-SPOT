@@ -5,6 +5,8 @@
 #   2) 이 script 로 옛 키로 만든 값을 모두 새 키(맨 앞 키)로 다시 암호화한다.
 #   3) 종료 코드가 0(풀지 못한 사례 · 겹쳐 못 바꾼 사례 모두 0)이면 옛 키를 설정에서 뺀다. 1 이면 다시 돌린다.
 # 검색 색인 키(PII_INDEX_KEY)를 바꿨으면 --reindex 로 색인도 다시 계산한다.
+# 고령자 봉인 칸(feature/senior, sealed_values — 건강 정보 · 측정값 · 확인사항 글 · 영역 기록 글)도 같은 키로 함께 다시 암호화한다
+# (민규 72fc991 리뷰 11/17 — 예전에는 빠져 있어 옛 키를 빼면 건강 정보가 풀리지 않았다).
 #
 # 값은 출력하지 않는다. 바꾼 행 · 칸 수와 풀지 못한(또는 저장이 겹쳐 손대지 못한) 사례 ID 만 출력한다.
 # 바꾼 사례마다 감사 로그에 행동한 사람(actor) 없이 detail.via 로 남는다.
@@ -30,6 +32,7 @@ from app.core.enums import AuditAction
 from app.core.pii_crypto import PersonalInfoCryptoError
 from app.models.base import utcnow
 from app.models.case_personal_info import ENCRYPTED_FIELDS, CasePersonalInfo
+from app.models.senior import CareDomainNote, HealthMeasurement, NextCheck, SeniorProfile
 from app.services import audit_service
 
 VIA = "reencrypt_personal_info script"
@@ -45,6 +48,11 @@ class ReencryptResult:
     failed_case_ids: List[uuid.UUID] = field(default_factory=list)
     # 다시 읽어도 그사이 계속 바뀌어 손대지 못한 사례 ID(서비스 중 저장이 몰림). 다시 돌리면 된다.
     busy_case_ids: List[uuid.UUID] = field(default_factory=list)
+    # 고령자 봉인 칸(sealed_values) — 행 수 · 바꾼 행 수 · 풀지 못한 · 겹친 행(표 이름:줄 ID).
+    sealed_rows: int = 0
+    sealed_changed: int = 0
+    sealed_failed: List[str] = field(default_factory=list)
+    sealed_busy: List[str] = field(default_factory=list)
 
 
 # 행을 읽은 뒤 바꾸기 전에 그사이 다른 저장(API PUT)이 끼면 다시 읽는 횟수.
@@ -153,6 +161,61 @@ def _reencrypt_one(
     result.busy_case_ids.append(case_id)
 
 
+#: 봉인 칸을 가진 고령자 표. 행마다 _sealed_field() 가 묶음 값이다(사례 ID 와 함께).
+SEALED_MODELS = (SeniorProfile, HealthMeasurement, NextCheck, CareDomainNote)
+
+
+def _reencrypt_sealed_one(db: Session, model, row_id: uuid.UUID, result: ReencryptResult, *, active_key_id: str, dry_run: bool) -> None:
+    """봉인 칸 한 행. 읽은 암호문이 그대로일 때만 바꾼다(서비스 중 저장을 덮지 않는다)."""
+
+    label = f"{model.__tablename__}:{row_id}"
+    for _ in range(_MAX_ATTEMPTS):
+        row = db.get(model, row_id, populate_existing=True)
+        if row is None:
+            db.rollback()
+            return
+        token = row.sealed_values
+        if token is None or pii_crypto.key_id_of(token) == active_key_id:
+            db.rollback()
+            return
+        field_name = row._sealed_field()
+        try:
+            plain = pii_crypto.decrypt_text(token, case_id=row.case_id, field=field_name)
+        except PersonalInfoCryptoError:
+            db.rollback()
+            result.sealed_failed.append(label)
+            return
+        if dry_run:
+            db.rollback()
+            result.sealed_changed += 1
+            return
+        new_token = pii_crypto.encrypt_text(plain, case_id=row.case_id, field=field_name)
+        updated = db.execute(
+            update(model)
+            .where(model.id == row_id, model.sealed_values == token)
+            .values(sealed_values=new_token)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        if updated != 1:
+            db.rollback()
+            continue
+        db.commit()
+        result.sealed_changed += 1
+        return
+    result.sealed_busy.append(label)
+
+
+def reencrypt_sealed(db: Session, result: ReencryptResult, *, active_key_id: str, dry_run: bool = False) -> None:
+    """고령자 봉인 칸을 맨 앞 키로. 행마다 따로 commit 한다(값은 출력하지 않는다). 감사 로그는 남기지 않는다(내용이 바뀌지 않음)."""
+
+    for model in SEALED_MODELS:
+        ids = list(db.scalars(select(model.id).where(model.sealed_values.is_not(None)).order_by(model.id)))
+        db.rollback()
+        for row_id in ids:
+            result.sealed_rows += 1
+            _reencrypt_sealed_one(db, model, row_id, result, active_key_id=active_key_id, dry_run=dry_run)
+
+
 def reencrypt_all(db: Session, *, reindex: bool = False, dry_run: bool = False) -> ReencryptResult:
     """맨 앞 키가 아닌 키로 만든 값을 맨 앞 키로 다시 암호화한다. dry_run 이면 세기만 한다.
 
@@ -168,6 +231,7 @@ def reencrypt_all(db: Session, *, reindex: bool = False, dry_run: bool = False) 
         result.rows += 1
         _reencrypt_one(db, case_id, result, active_key_id=active_key_id, reindex=reindex, dry_run=dry_run)
 
+    reencrypt_sealed(db, result, active_key_id=active_key_id, dry_run=dry_run)
     return result
 
 
@@ -182,6 +246,15 @@ def main() -> int:
 
     verb = "바꿀" if args.dry_run else "바꾼"
     print(f"전체 {result.rows}행 · {verb} 행 {result.changed_rows} · 칸 {result.changed_fields} · 색인 {result.reindexed_rows}")
+    print(f"고령자 봉인 칸 {result.sealed_rows}행 · {verb} 행 {result.sealed_changed}")
+    if result.sealed_failed:
+        print(f"풀지 못한 고령자 봉인 행 {len(result.sealed_failed)}건(그대로 둠):", file=sys.stderr)
+        for label in result.sealed_failed:
+            print(f"  {label}", file=sys.stderr)
+    if result.sealed_busy:
+        print(f"저장이 겹쳐 손대지 못한 고령자 봉인 행 {len(result.sealed_busy)}건(다시 돌려 주세요):", file=sys.stderr)
+        for label in result.sealed_busy:
+            print(f"  {label}", file=sys.stderr)
 
     if result.failed_case_ids:
         # 사례 ID 만 출력한다. 옛 키를 이미 뺐거나 값이 바뀐 것 — 키 사본으로 되살린 뒤 다시 돌린다.
@@ -195,7 +268,7 @@ def main() -> int:
         for case_id in result.busy_case_ids:
             print(f"  {case_id}", file=sys.stderr)
 
-    return 1 if result.failed_case_ids or result.busy_case_ids else 0
+    return 1 if result.failed_case_ids or result.busy_case_ids or result.sealed_failed or result.sealed_busy else 0
 
 
 if __name__ == "__main__":

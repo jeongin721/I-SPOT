@@ -196,7 +196,9 @@ class NextCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=NextCheckKind.CHECK.value,
         nullable=False,
     )
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # 봉인 칸(민규 72fc991 리뷰 '확인사항 글 평문'): text(확인 · 조치 글, 꼭 있음) · result_note(확인 결과 메모)를 JSON 으로 묶어
+    # 암호화한 값. 묶음 값은 사례 ID + "next_check:<이 줄 ID>". 글로 SQL 을 거르거나 정렬하지 않는다.
+    sealed_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # 언제까지(조치 기한, 또는 이어 붙인 재방문 일정 날짜). 지나도 OPEN 이면 '기한 지남'.
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     # 이어 붙인 재방문 · 전화 · 재상담 일정(일정을 지우면 null).
@@ -221,10 +223,20 @@ class NextCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("consultation_sessions.id", ondelete="SET NULL"), nullable=True
     )
     checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    result_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+    SEALED = ("text", "result_note")
+
+    def __init__(self, **kwargs: Any) -> None:
+        _init_sealed(self, kwargs)
+
+    def _sealed_field(self) -> str:
+        return f"next_check:{self.id}"
+
+    text = _sealed("text")
+    result_note = _sealed("result_note")
 
 
 class CareDomainNote(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -242,13 +254,12 @@ class CareDomainNote(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     domain: Mapped[CareDomain] = mapped_column(
         SAEnum(CareDomain, name="care_domain", native_enum=False, length=10), nullable=False
     )
-    # 이번 상태(어르신 말씀 · 담당자 관찰). NOT_MENTIONED 면 null.
-    text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 봉인 칸(민규 72fc991 리뷰 '영역 기록 글 평문'): text(이번 상태 — 어르신 말씀 · 담당자 관찰, NOT_MENTIONED 면 없음) ·
+    # change_note(무엇이 어떻게 달라졌는지)를 JSON 으로 묶어 암호화한 값. 묶음 값은 사례 ID + "care_domain_note:<이 줄 ID>".
+    sealed_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     change: Mapped[DomainChange] = mapped_column(
         SAEnum(DomainChange, name="domain_change", native_enum=False, length=15), nullable=False
     )
-    # 무엇이 어떻게 달라졌는지(예: '지난번 매일 산책 → 이번엔 거의 안 나가심'). 평가 낱말 없이.
-    change_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # 근거 발화(STT segment_id).
     segment_ids: Mapped[List[str]] = mapped_column(JSONType, default=list, nullable=False)
     origin: Mapped[NextCheckOrigin] = mapped_column(
@@ -263,3 +274,15 @@ class CareDomainNote(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    SEALED = ("text", "change_note")
+
+    def __init__(self, **kwargs: Any) -> None:
+        _init_sealed(self, kwargs)
+
+    def _sealed_field(self) -> str:
+        return f"care_domain_note:{self.id}"
+
+    text = _sealed("text")
+    # 무엇이 어떻게 달라졌는지(예: '지난번 매일 산책 → 이번엔 거의 안 나가심'). 평가 낱말 없이.
+    change_note = _sealed("change_note")
