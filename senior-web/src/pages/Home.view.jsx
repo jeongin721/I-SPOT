@@ -55,14 +55,14 @@ export default function View({ v }) {
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
-            + 새 사례 등록
+            + 새 대상자 등록
           </a>
           <nav className="nav" aria-label="메뉴">
             <a className="on" href="#/Home">
               홈
             </a>
             <a href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             <a href="#/Schedule">
               일정
@@ -70,13 +70,13 @@ export default function View({ v }) {
             <a href="#/Soon?name=ChildLink">
               안부 연계
               <span className="cnt">
-                4
+                {v.navLinkCnt}
               </span>
             </a>
-            <a href="#/Soon?name=Closure">
-              종결 검토
+            <a href="#/Followup">
+              후속관리
               <span className="cnt">
-                2
+                {v.navFollowCnt}
               </span>
             </a>
             <a href="#/Soon?name=DocBox">

@@ -54,7 +54,7 @@ export default function View({ v }) {
           <div style={{ padding: "24px 30px 0", display: "flex", alignItems: "flex-start", gap: "12px" }}>
             <div>
               <h1 id="reg-title" style={{ margin: "0", fontSize: "20px", fontWeight: "700" }}>
-                새 사례 등록
+                새 대상자 등록
               </h1>
               <div className="note">
                 S-01 초기상담지(시니어용) · 의뢰 · 접수 정보

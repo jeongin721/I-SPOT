@@ -1,4 +1,4 @@
-/* 13화면 공통 규칙 — tools/dc2jsx.py 가 디자인에서 뽑음 */
+/* 모든 화면 공통 규칙 — tools/dc2jsx.py 가 디자인에서 뽑음 */
 body{margin:0;background:#F4F9FD}
 *{box-sizing:border-box}
 a{color:#2F74A8}

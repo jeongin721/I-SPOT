@@ -74,7 +74,7 @@ renderVals() {
     const P = (d, time, title, sub) => ({ y: 2026, m: 9, d, time, t: 'p', title, sub, tag: sub });
     this.state = {
       y: 2026, m: 9, sel: inOct ? now.getDate() : 8, filter: 'all', adding: false, kind: 'c',
-      form: { child: '김순자 님', ctype: '정기상담', pcat: '기관 회의', title: '', time: '10:00', place: '', imp: false },
+      form: { child: '김순자 님', ctype: '방문상담', pcat: '기관 회의', title: '', time: '10:00', place: '', imp: false },
       events: [
         C(2, '15:00', '김순자 님 · 정기상담 8회차', '어르신 댁 방문'),
         P(5, '10:00', '기관 사례회의', '기관 회의'),
@@ -106,6 +106,7 @@ renderVals() {
     try { const g = this.ntGo0(); if (g) { this.state.y = g.y; this.state.m = g.m; this.state.sel = g.d; } } catch (e) {}
   }
   schedGo(y, m, d) { this.setState({ y, m, sel: d, adding: false }); }
+  schedExtra() { try { const a = JSON.parse(this.ntGet('ispot-sched-extra') || '[]'); return Array.isArray(a) ? a.filter((e) => e && typeof e.y === 'number' && typeof e.m === 'number' && typeof e.d === 'number') : []; } catch (e) { return []; } }
   renderValsBase() {
     const s = this.state;
     const days = ['일', '월', '화', '수', '목', '금', '토'];
@@ -122,9 +123,10 @@ renderVals() {
       this.ntTasks().forEach(([n, task]) => { const dd = new Date(r.y, r.m, r.d + n); const done = !!(r.done || {})[n];
         derived.push({ y: dd.getFullYear(), m: dd.getMonth(), d: dd.getDate(), time: '기한', t: 'p', title: (done ? '✓ ' : '') + r.child + ' · ' + task, sub: '접수 후 ' + n + '일 이내 · ' + (r.m + 1) + '/' + r.d + ' 접수', tag: '처리 기한', imp: !done, rid: r.id, dl: n, done }); });
     });
-    const allEv = [...s.events.map((e, i) => ({ ...e, i })), ...derived];
-    const keyOf = (e) => (e.dl ? { src: 'dl', id: e.rid, n: e.dl } : e.rid ? { src: 'rec', id: e.rid } : { src: 'ev', i: e.i });
-    const findKey = (k) => (!k ? null : allEv.find((e) => (k.src === 'ev' ? e.i === k.i && !e.rid : k.src === 'rec' ? e.rid === k.id && !e.dl : e.rid === k.id && e.dl === k.n)) || null);
+    const extra = this.schedExtra(); const saveExtra = (a) => { this.ntSet('ispot-sched-extra', JSON.stringify(a)); };
+    const allEv = [...s.events.map((e, i) => ({ ...e, i })), ...extra.map((e, k) => ({ ...e, xi: k })), ...derived];
+    const keyOf = (e) => (e.dl ? { src: 'dl', id: e.rid, n: e.dl } : e.rid ? { src: 'rec', id: e.rid } : e.xi != null ? { src: 'ex', k: e.xi } : { src: 'ev', i: e.i });
+    const findKey = (k) => (!k ? null : allEv.find((e) => (k.src === 'ex' ? e.xi === k.k : k.src === 'ev' ? e.i === k.i && !e.rid && e.xi == null : k.src === 'rec' ? e.rid === k.id && !e.dl : e.rid === k.id && e.dl === k.n)) || null);
     const show = (e) => s.filter === 'all' || (s.filter === 'i' ? !!e.imp : e.t === s.filter);
     const rk = (t) => (t === '종일' ? 0 : t === '기한' ? 1 : 2); const sortT = (a, b) => (rk(a.time) - rk(b.time) || a.time.localeCompare(b.time));
     const style = (e) => e.imp
@@ -162,6 +164,7 @@ renderVals() {
       const row = { time: e.time, title: e.title, sub: e.sub, tag: e.tag, dot: st.dot, radius: st.radius, tagBg: st.tagBg, tagFg: st.tagFg, fw: on ? 700 : 500, titleFg: on ? '#A33B2E' : '#1F3A56',
         impOn: on ? 'true' : 'false', impLabel: on ? '! 중요' : '중요 표시', impBg: on ? '#A33B2E' : '#FFFFFF', impFg: on ? '#FFFFFF' : '#66788A', impBd: on ? '#A33B2E' : '#C5D4DE',
         toggleImp: () => this.setState({ events: s.events.map((x, j) => (j === e.i ? { ...x, imp: !x.imp } : x)) }) };
+      if (e.xi != null) return { ...row, toggleImp: () => { saveExtra(this.schedExtra().map((x, j) => (j === e.xi ? { ...x, imp: !x.imp } : x))); this.setState({ __ntTick: Date.now() }); } };
       if (e.rid && !e.dl) return { ...row, toggleImp: () => updRec(e.rid, (r) => ({ ...r, imp: !r.imp })) };
       if (e.dl) { const dn = !!e.done; return { ...row, fw: dn ? 500 : 700, titleFg: dn ? '#66788A' : '#A33B2E', impOn: dn ? 'true' : 'false', impLabel: dn ? '✓ 완료' : '완료 표시', impBg: dn ? '#1F3A56' : '#FFFFFF', impFg: dn ? '#FFFFFF' : '#66788A', impBd: dn ? '#1F3A56' : '#C5D4DE',
         toggleImp: () => updRec(e.rid, (r) => ({ ...r, done: { ...(r.done || {}), [e.dl]: !dn } })) }; }
@@ -183,18 +186,18 @@ renderVals() {
       rows.push(['중요', e.imp ? '중요 일정' : '—']);
       const askNote = rec && !isDl ? '최초접수와 함께 만들어진 처리 기한 일정 3건도 같이 삭제되고, 알림에서도 빠져요.' : '삭제하면 되돌릴 수 없어요.';
       const ask = !!s.delAsk;
-      vVals = { kind: isDl ? '처리 기한' : e.t === 'c' ? '상담 일정' : '개인 · 기관 일정', title: e.title, dot: st.dot, radius: st.radius, titleFg: e.imp ? '#A33B2E' : 'inherit',
+      vVals = { kind: isDl ? '처리 기한' : e.t === 'c' ? '상담 방문 일정' : '개인 · 기관 일정', title: e.title, dot: st.dot, radius: st.radius, titleFg: e.imp ? '#A33B2E' : 'inherit',
         rows: rows.map(([k, v]) => ({ k, v })), isDl, canEdit: !isDl, ask, noAsk: !ask, askNote,
         doneLabel: e.done ? '✓ 완료 취소' : '완료 표시', doneCls: e.done ? 'btn-s' : 'btn-p',
         toggleDone: () => updRec(e.rid, (r) => ({ ...r, done: { ...(r.done || {}), [e.dl]: !e.done } })),
         goBase: () => { if (rec) this.setState({ y: rec.y, m: rec.m, sel: rec.d, view: { src: 'rec', id: rec.id } }); },
         askDel: () => this.setState({ delAsk: true }), cancelDel: () => this.setState({ delAsk: false }),
-        del: () => { if (e.rid) { this.ntSave(this.ntRecs().filter((r) => r.id !== e.rid)); this.setState({ view: null, delAsk: false, __ntTick: Date.now() }); } else { this.setState({ events: s.events.filter((x, j) => j !== e.i), view: null, delAsk: false }); } },
+        del: () => { if (e.xi != null) { saveExtra(this.schedExtra().filter((x, j) => j !== e.xi)); this.setState({ view: null, delAsk: false, __ntTick: Date.now() }); } else if (e.rid) { this.ntSave(this.ntRecs().filter((r) => r.id !== e.rid)); this.setState({ view: null, delAsk: false, __ntTick: Date.now() }); } else { this.setState({ events: s.events.filter((x, j) => j !== e.i), view: null, delAsk: false }); } },
         edit: () => { const isRec = !!rec; const c = e.t === 'c'; const ttl = e.title.split(' · ');
-          const CT = ['정기상담', '초기상담', '내방상담', '방문상담', '전화상담', '가족 상담', '종결 상담']; const rest = ttl.slice(1).join(' · '); const ct = CT.find((x) => rest.indexOf(x) === 0) || '정기상담';
+          const CT = ['방문상담', '전화상담']; const OLD = ['정기상담', '초기상담', '내방상담', '가족 상담', '종결 상담']; const rest = ttl.slice(1).join(' · '); const ct = CT.find((x) => rest.indexOf(x) === 0) || (rest.indexOf('전화') >= 0 ? '전화상담' : '방문상담'); const oldT = OLD.find((x) => rest.indexOf(x) === 0);
           const form = { ...s.form, date: `${e.y}-${pad(e.m + 1)}-${pad(e.d)}`, time: e.time === '종일' ? '' : e.time, imp: !!e.imp, place: placeOf(e),
             child: isRec ? rec.child : (c ? ttl[0] : s.form.child), ctype: c ? ct : s.form.ctype, pcat: isRec ? '최초접수' : (c ? s.form.pcat : e.tag), title: isRec || c ? '' : e.title };
-          this.setState({ adding: true, kind: c ? 'c' : 'p', form, edit: { key: keyOf(e), suffix: c && rest.indexOf(ct) === 0 ? rest.slice(ct.length) : '', allDay: e.time === '종일', done: rec ? rec.done || {} : {} }, delAsk: false }); } };
+          this.setState({ adding: true, kind: c ? 'c' : 'p', form, edit: { key: keyOf(e), suffix: c && rest.indexOf(ct) === 0 ? rest.slice(ct.length) : c && oldT ? rest.slice(oldT.length) : '', allDay: e.time === '종일', done: rec ? rec.done || {} : {} }, delAsk: false }); } };
     }
     return {
       monthLabel: `${s.y}년 ${s.m + 1}월`,
@@ -228,7 +231,7 @@ renderVals() {
           const ed = s.edit; const dp = String(f.date || '').split('-').map((x) => parseInt(x, 10)); const ok = dp.length === 3 && dp.every((x) => x > 0);
           const Y = ok ? dp[0] : s.y, M = ok ? dp[1] - 1 : s.m, D = ok ? dp[2] : s.sel; const T = f.time || (ed.allDay ? '종일' : '10:00');
           let events = s.events; let recsN = this.ntRecs();
-          if (ed.key.src === 'ev') events = events.filter((x, j) => j !== ed.key.i); else recsN = recsN.filter((r) => r.id !== ed.key.id);
+          if (ed.key.src === 'ev') events = events.filter((x, j) => j !== ed.key.i); else if (ed.key.src === 'ex') saveExtra(this.schedExtra().filter((x, j) => j !== ed.key.k)); else recsN = recsN.filter((r) => r.id !== ed.key.id);
           if (!isC && f.pcat === '최초접수') recsN = [...recsN, { id: ed.key.src === 'rec' ? ed.key.id : 'r' + Date.now().toString(36), child: f.child, y: Y, m: M, d: D, time: T, place: f.place || '', imp: !!f.imp, done: ed.key.src === 'rec' ? ed.done : {} }];
           else { const ev = isC ? { y: Y, m: M, d: D, time: T, t: 'c', title: `${f.child} · ${f.ctype}${ed.suffix || ''}`, sub: f.place || '장소 미정', tag: '상담', imp: !!f.imp }
               : { y: Y, m: M, d: D, time: T, t: 'p', title: f.title || f.pcat, sub: f.place ? `${f.pcat} · ${f.place}` : f.pcat, tag: f.pcat, imp: !!f.imp };

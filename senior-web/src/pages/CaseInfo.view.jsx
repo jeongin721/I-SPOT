@@ -55,14 +55,14 @@ export default function View({ v }) {
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
-            + 새 사례 등록
+            + 새 대상자 등록
           </a>
           <nav className="nav" aria-label="메뉴">
             <a href="#/Home">
               홈
             </a>
             <a className="on" href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             <a href="#/Schedule">
               일정
@@ -70,13 +70,13 @@ export default function View({ v }) {
             <a href="#/Soon?name=ChildLink">
               안부 연계
               <span className="cnt">
-                4
+                {v.navLinkCnt}
               </span>
             </a>
-            <a href="#/Soon?name=Closure">
-              종결 검토
+            <a href="#/Followup">
+              후속관리
               <span className="cnt">
-                2
+                {v.navFollowCnt}
               </span>
             </a>
             <a href="#/Soon?name=DocBox">
@@ -179,7 +179,7 @@ export default function View({ v }) {
           </div>
           <nav aria-label="위치" className="note">
             <a href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             {" › "}{v.crumb}
           </nav>
@@ -265,7 +265,7 @@ export default function View({ v }) {
                   {v.kvLiving}
                 </dd>
                 <dt>
-                  주 돌봄자
+                  보호자
                 </dt>
                 <dd>
                   {v.kvCarer}
@@ -281,36 +281,6 @@ export default function View({ v }) {
                 </dt>
                 <dd style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                   {v.kvConsent}
-                </dd>
-                <dt>
-                  의뢰 경로
-                </dt>
-                <dd>
-                  {v.kvReferral}
-                </dd>
-                <dt>
-                  담당 상담사
-                </dt>
-                <dd>
-                  {v.kvCounselor}
-                </dd>
-                <dt>
-                  접수일
-                </dt>
-                <dd>
-                  {v.kvReport}
-                </dd>
-                <dt>
-                  배정일
-                </dt>
-                <dd>
-                  {v.kvAssigned}
-                </dd>
-                <dt>
-                  초기상담일
-                </dt>
-                <dd>
-                  {v.kvFirst}
                 </dd>
                 <dt>
                   상담 회차
@@ -329,6 +299,67 @@ export default function View({ v }) {
                 </dt>
                 <dd>
                   {v.kvApp}
+                </dd>
+              </dl>
+            </section>
+            <section className="card" aria-label="신체·정신건강 정보" style={{ padding: "22px 24px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                <h2 className="h2">
+                  신체·정신건강 정보
+                </h2>
+              </div>
+              <dl className="kv" style={{ gridTemplateColumns: "120px 1fr" }}>
+                <dt>
+                  현재 질병
+                </dt>
+                <dd>
+                  {v.kvDisease}
+                </dd>
+                <dt>
+                  복용 약물
+                </dt>
+                <dd>
+                  {v.kvMeds}
+                </dd>
+                <dt>
+                  치매·우울 등 정신건강 상태
+                </dt>
+                <dd>
+                  {v.kvMental}
+                </dd>
+                <dt>
+                  심리검사 결과
+                </dt>
+                <dd>
+                  {v.kvTest}
+                </dd>
+                <dt>
+                  상담 축어록
+                </dt>
+                <dd>
+                  <a className="btn btn-sm btn-s" href={v.trHref}>
+                    {v.trLabel}
+                  </a>
+                </dd>
+              </dl>
+              <div className="note" style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "16px" }}>
+                복지·장애 관련 정보
+                <span className="chip c-check">
+                  민감정보
+                </span>
+              </div>
+              <dl className="kv" style={{ gridTemplateColumns: "150px 1fr", margin: "6px 0 0" }}>
+                <dt>
+                  장애 등급 및 유형
+                </dt>
+                <dd>
+                  {v.kvDisability}
+                </dd>
+                <dt>
+                  노인장기요양 등급 판정
+                </dt>
+                <dd>
+                  {v.kvGrade}
                 </dd>
               </dl>
             </section>
@@ -375,16 +406,6 @@ export default function View({ v }) {
               </div>
               <div style={{ margin: "6px 0 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {(v.commChips || []).map((t, i_t) => (
-                  <span key={i_t} className="chip c-normal">
-                    {t}
-                  </span>
-                ))}
-              </div>
-              <div className="note">
-                건강
-              </div>
-              <div style={{ margin: "6px 0 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {(v.healthChips || []).map((t, i_t) => (
                   <span key={i_t} className="chip c-normal">
                     {t}
                   </span>
@@ -623,14 +644,14 @@ export default function View({ v }) {
               기관 서식 작성
             </a>
           </section>
-          <section className="card" aria-label="종결 검토 등록" style={{ padding: "20px 24px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px" }}>
+          <section className="card" aria-label="후속관리 등록" style={{ padding: "20px 24px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px" }}>
             <b style={{ flex: "1 1 200px" }}>
-              종결 검토
+              후속관리
             </b>
             {v.notReg ? (
               <>
                 <button type="button" className="btn btn-y" onClick={v.reg}>
-                  종결 검토 등록
+                  후속관리 등록
                 </button>
               </>
             ) : null}
@@ -639,8 +660,8 @@ export default function View({ v }) {
                 <span className="chip c-ok">
                   등록됨 · 초안 생성 중
                 </span>
-                <a className="btn btn-s" href="#/Soon?name=Closure">
-                  종결 검토 보기
+                <a className="btn btn-s" href="#/Followup">
+                  후속관리 보기
                 </a>
                 <button type="button" className="btn btn-sm btn-s" onClick={v.unreg}>
                   등록 취소

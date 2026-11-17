@@ -55,14 +55,14 @@ export default function View({ v }) {
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
-            + 새 사례 등록
+            + 새 대상자 등록
           </a>
           <nav className="nav" aria-label="메뉴">
             <a href="#/Home">
               홈
             </a>
             <a className="on" href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             <a href="#/Schedule">
               일정
@@ -70,13 +70,13 @@ export default function View({ v }) {
             <a href="#/Soon?name=ChildLink">
               안부 연계
               <span className="cnt">
-                4
+                {v.navLinkCnt}
               </span>
             </a>
-            <a href="#/Soon?name=Closure">
-              종결 검토
+            <a href="#/Followup">
+              후속관리
               <span className="cnt">
-                2
+                {v.navFollowCnt}
               </span>
             </a>
             <a href="#/Soon?name=DocBox">
@@ -183,7 +183,7 @@ export default function View({ v }) {
                 담당 사례 {v.totalCount}건
               </div>
               <h1 style={{ margin: "2px 0 0", fontSize: "28px", fontWeight: "700" }}>
-                통합 사례 관리
+                대상자 관리
               </h1>
             </div>
           </header>
@@ -234,9 +234,6 @@ export default function View({ v }) {
                       </td>
                       <td>
                         <a className="nm" href={r.href}>
-                          <span className="av" style={{ width: "34px", height: "34px", fontSize: "13px" }}>
-                            {r.ini}
-                          </span>
                           <span>
                             {r.name}{" "}
                             <span className="note">
@@ -264,7 +261,7 @@ export default function View({ v }) {
               </tbody>
             </table>
           </section>
-          <nav className="pager" aria-label="사례 목록 페이지">
+          <nav className="pager" aria-label="대상자 목록 페이지">
             <button type="button" className="pg-n pg-ar" aria-label="첫 페이지" disabled={v.pager.atStart} onClick={v.pager.first}>
               <svg viewBox={"0 0 24 24"} width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M12 6l-6 6 6 6M19 6l-6 6 6 6" />

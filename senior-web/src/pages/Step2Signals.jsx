@@ -7,6 +7,8 @@
 //    이번 기록 글은 초안(또는 확정한 기록) 그대로 쓴다 — 글 고치는 칸은 디자인에 없다(3단계 상담일지에서 고친다).
 //  - 회차별 추이: 확정한 영역 기록(GET /cases/{id}/care-domains)의 앞 회차 둘 + 이번 회차(지금 고른 값).
 //  - 바로 확인할 말: safety_mentions 최대 3줄(그 이상은 '외 n개'), 시각은 원문 발화 시작 시각. 위험 · 보호요인 칸은 준비 중.
+//  - '변화 확인' 카드(11/17 새 디자인): 영역마다 지난 회차 확정 기록 ↔ 이번 기록(확정 또는 초안), 달라진 점(change_note),
+//    근거(지난 기록 · 이번 근거 발화 원문 · 시각). '맞음' = 초안의 변화 구분을 그대로 고름, '수정 필요' = 아래 영역 줄의 선택지를 연다.
 //  - '확정 · 상담일지 작성 →': 다섯 영역을 모두 고르면 PUT 하고 3단계로 간다. 실패하면 상태 줄에 이유.
 //  - 분석이 아직 돌고 있으면(AI_PROCESSING) 2.5초마다 다시 읽는다.
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,6 +32,7 @@ const CHANGE_DESC = {
   NEW: '견줄 앞 기록이 없어 처음 적어요',
   NOT_MENTIONED: '이번 상담에서 이야기가 없었어요',
 };
+const SCOPE = { MEAL: '끼니 · 식사 방식', SLEEP: '잠 · 깨는 시각', OUTING: '바깥 나들이 · 복지관', SOCIAL: '가족 · 이웃과의 연락', MOOD: '기분 · 외로움' };
 const SAFETY_LABELS = { SELF_HARM: '자해 · 자살', URGENT_HEALTH: '급한 건강' };
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const POLL_MS = 2500;
@@ -159,6 +162,47 @@ class Logic extends DesignLogic {
       };
     });
 
+    // 변화 확인 카드
+    const segText = {};
+    segs.forEach((g) => { segText[g.segment_id] = g.text; });
+    const curDate = cur ? md(cur.consulted_at || cur.created_at) : '';
+    const curSess = curNo ? `${curNo}회차${curDate ? ` · ${curDate}` : ''}` : DASH;
+    const prevOf = (r) => (r.previous ? `${r.previous.session_number}회차${r.previous.date ? ` · ${md(r.previous.date)}` : ''}` : DASH);
+    const latestPrev = rows.map((r) => r.previous).filter(Boolean).sort((a, b) => b.session_number - a.session_number)[0];
+    const chgItems = rows.map((r) => {
+      const ch = choiceOf(r);
+      const text = textOf(r);
+      const note = (r.saved && r.saved.change_note) || (r.draft && r.draft.change_note);
+      const ck = (s.chk || {})[r.domain] || '';
+      const basisIds = (r.saved && r.saved.segment_ids && r.saved.segment_ids.length ? r.saved.segment_ids : r.draft ? r.draft.segment_ids : []) || [];
+      const ev = [];
+      if (r.previous) ev.push({ side: '지난', quote: r.previous.text, where: `${prevOf(r)} 확정 기록`, link: false, href: '' });
+      basisIds.filter((x) => segText[x]).forEach((x) => ev.push({ side: '이번', quote: segText[x], where: `${curNo || ''}회차 녹취 ${clock(segAt[x])}`, link: true, href: href('Step1Record', ids) }));
+      const changed = ch === 'CHANGED';
+      return {
+        name: r.label, status: ch === 'CHANGED' ? '변화' : ch === 'SIMILAR' ? '유지' : ch ? CHANGE_LABELS[ch] : '선택 전',
+        tagCls: changed ? 'c-hi' : 'c-normal', scope: SCOPE[r.domain] || DASH,
+        prevSess: prevOf(r), curSess, prev: r.previous ? r.previous.text : '앞 기록 없음',
+        cur: ch === 'NOT_MENTIONED' ? '이번 상담에서 이야기 없음' : text || '이번 기록 글 없음', curFw: changed ? 700 : 400,
+        changed, kept: !changed, diff: changed ? note || CHANGE_DESC.CHANGED : ch ? CHANGE_DESC[ch] : '아직 고르지 않았어요',
+        ev,
+        checks: ['맞음', '수정 필요'].map((l) => ({
+          label: l, on: ck === l ? 'true' : 'false', cls: ck === l ? 'btn-p' : 'btn-s',
+          pick: () => {
+            const chk = { ...(this.state.chk || {}), [r.domain]: ck === l ? '' : l };
+            if (l === '맞음' && ck !== l) {
+              const k = r.draft ? r.draft.change : r.saved ? r.saved.change : null;
+              if (!k) { this.setState({ chk, err: `${r.label}: 초안이 없어 아래 영역 줄에서 직접 골라 주세요.` }); return; }
+              this.setState({ chk, pick: { ...this.state.pick, [r.domain]: k }, err: '' });
+            } else if (l === '수정 필요' && ck !== l) {
+              this.setState({ chk, open: { ...this.state.open, [r.domain]: true }, err: '' });
+            } else this.setState({ chk });
+          },
+        })),
+      };
+    });
+    const nChg = chgItems.filter((x) => x.changed).length;
+
     // 위기도 카드(고령자 없음)
     const levels = ['위기', '집중', '관심', '일반'].map((l) => ({ label: l, on: 'false', bg: '#FFFFFF', bd: '#C5D4DE', fg: '#B5C3CD', pick: () => this.setState({ err: '고령자 상담은 위기도를 매기지 않아요(준비 중).' }) }));
     const senior0 = data.an && data.an.analysis && data.an.analysis.result ? data.an.analysis.result.senior : null;
@@ -241,6 +285,8 @@ class Logic extends DesignLogic {
     const caseName = c ? c.child_alias || DASH : DASH;
     return {
       ...base, ...shell,
+      chgItems, chgPrevLabel: latestPrev ? `${latestPrev.session_number}회차` : '앞 기록 없음', chgCurLabel: curNo ? `${curNo}회차` : DASH,
+      chgSummary: rows.length ? `${rows.length}개 항목 중 변화 ${nChg} · 그 밖 ${rows.length - nChg}` : DASH,
       types, levels, decisionNote: '고령자 상담은 위기도를 매기지 않아요 · 준비 중', decisionShort: DASH,
       aiLevel: DASH, flagLine: senior0 ? (mentions.length ? `바로 확인할 말 ${mentions.length}개` : '바로 확인할 말 없음') : DASH, trendNote: '',
       typesTitle: '생활 · 정서 영역 변화', typesNote: '초안 · 1 비슷함 · 2 달라짐 · 3 처음 기록 · 4 이야기 없음 · 상담사가 확정',

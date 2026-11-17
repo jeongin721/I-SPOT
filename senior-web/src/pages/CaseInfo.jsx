@@ -167,6 +167,15 @@ class Logic extends DesignLogic {
       kvCount: c ? `${c.session_count ?? sessions.length}회` : DASH,
       kvLatest: latest ? `${ymd(latest.consulted_at || latest.created_at)} · ${kindLabel(latest.consultation_type)}` : DASH,
       kvApp: DASH,
+      // 신체 · 정신건강(11/17 새 디자인). 정신건강 상태 · 심리검사 · 장애 등급은 서버 칸이 없어 '—'(진단 · 판정을 쓰지 않는다).
+      kvDisease: or(p && p.health_notes),
+      kvMeds: p && p.takes_medication === true ? (p.medication_notes ? `복약 중 · ${p.medication_notes}` : '복약 중') : p && p.takes_medication === false ? '복약 없음' : DASH,
+      kvMental: DASH,
+      kvTest: DASH,
+      kvDisability: DASH,
+      kvGrade: p && p.care_grade ? CARE_GRADE_LABELS[p.care_grade] : DASH,
+      trHref: latest ? links.stepHrefs[0] : links.uploadHref,
+      trLabel: latest ? `${latest.session_number}회차 축어록 보기 (${md(latest.consulted_at || latest.created_at)}) →` : '녹취 올리기 →',
       // 주호소 · 고려사항(돌봄 상태는 위기도 칩 자리에 — 고령자의 상담사 지정 값)
       careChip: careStatus || DASH,
       careCls: careStatus ? 'chip c-check' : 'chip c-lo',

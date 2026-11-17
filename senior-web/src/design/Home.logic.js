@@ -105,9 +105,9 @@ renderValsBase() {
   const pool = {
     upload: { label: '녹취 올리기', icon: '↑', href: '#/Upload' },
     schedule: { label: '일정 추가', icon: '+', href: '#/Schedule' },
-    closure: { label: '종결 검토', icon: '✓', href: '#/Soon?name=Closure' },
-    search: { label: '사례 찾기', icon: '⌕', href: '#/CaseList' },
-    stats: { label: '통계', icon: '▦', href: '#/Soon?name=Stats' },
+    closure: { label: '후속관리', icon: '✓', href: '#/Followup' },
+    search: { label: '대상자 찾기', icon: '⌕', href: '#/CaseList' },
+    stats: { label: '통계', icon: '▦', href: '#/Stats' },
     briefing: { label: '상담 전 브리핑', icon: '☰', href: '#/CaseInfo?sec=brief' }
   };
   const quick = s.quick.map((k) => ({ ...pool[k], rmLabel: `${pool[k].label} 빼기`, remove: (ev) => { if (ev && ev.preventDefault) ev.preventDefault(); this.setState({ quick: s.quick.filter((x) => x !== k) }); } }));

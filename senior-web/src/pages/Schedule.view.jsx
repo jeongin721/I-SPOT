@@ -55,14 +55,14 @@ export default function View({ v }) {
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
-            + 새 사례 등록
+            + 새 대상자 등록
           </a>
           <nav className="nav" aria-label="메뉴">
             <a href="#/Home">
               홈
             </a>
             <a href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             <a className="on" href="#/Schedule">
               일정
@@ -70,13 +70,13 @@ export default function View({ v }) {
             <a href="#/Soon?name=ChildLink">
               안부 연계
               <span className="cnt">
-                4
+                {v.navLinkCnt}
               </span>
             </a>
-            <a href="#/Soon?name=Closure">
-              종결 검토
+            <a href="#/Followup">
+              후속관리
               <span className="cnt">
-                2
+                {v.navFollowCnt}
               </span>
             </a>
             <a href="#/Soon?name=DocBox">
@@ -283,7 +283,7 @@ export default function View({ v }) {
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", padding: "14px 18px", fontSize: "12px", color: "#55687A", borderTop: "1px solid #DDE6EC" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                   <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#66788A" }} />
-                  {"상담 일정 "}{v.countC}건
+                  {"상담 방문 일정 "}{v.countC}건
                 </span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                   <span style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#A0B0BB" }} />
@@ -449,7 +449,7 @@ export default function View({ v }) {
                   <div role="radiogroup" aria-label="일정 종류" style={{ display: "flex", gap: "8px" }}>
                     <button type="button" role="radio" aria-checked={v.isC} className="kind" onClick={v.kindC} style={{ borderColor: v.kcBorder, background: v.kcBg }}>
                       <b style={{ fontWeight: "700" }}>
-                        ● 상담 일정
+                        ● 상담 방문 일정
                       </b>
                     </button>
                     <button type="button" role="radio" aria-checked={v.isP} className="kind" onClick={v.kindP} style={{ borderColor: v.kpBorder, background: v.kpBg }}>
@@ -462,7 +462,7 @@ export default function View({ v }) {
                     <>
                       <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                         <span className="lb">
-                          어르신 (사례)
+                          대상
                         </span>
                         <select className="in" value={v.form.child} onChange={v.setChild}>
                           {(v.caseOptions || []).map((o, i_o) => (
@@ -478,25 +478,10 @@ export default function View({ v }) {
                         </span>
                         <select className="in" value={v.form.ctype} onChange={v.setCtype}>
                           <option>
-                            정기상담
-                          </option>
-                          <option>
-                            초기상담
-                          </option>
-                          <option>
-                            내방상담
-                          </option>
-                          <option>
                             방문상담
                           </option>
                           <option>
                             전화상담
-                          </option>
-                          <option>
-                            가족 상담
-                          </option>
-                          <option>
-                            종결 상담
                           </option>
                         </select>
                       </label>
@@ -542,7 +527,7 @@ export default function View({ v }) {
                         <>
                           <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                             <span className="lb">
-                              어르신 (사례)
+                              대상
                             </span>
                             <select className="in" value={v.form.child} onChange={v.setChild}>
                               {(v.caseOptions || []).map((o, i_o) => (
@@ -625,7 +610,7 @@ export default function View({ v }) {
                           {" 자동 준비"}
                         </label>
                         <span className="note">
-                          어르신 안부 앱에 큰 글씨로 일정 안내 · 가족 안내는 어르신 동의 범위 안에서만
+                          어르신 안부 앱에 큰 글씨로 일정 안내
                         </span>
                       </div>
                     </>

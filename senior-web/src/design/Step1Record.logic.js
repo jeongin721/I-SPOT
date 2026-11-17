@@ -132,7 +132,7 @@ renderValsBase() {
     return { ...g, st: st[0], stCls: st[1], bar: st[2],
       aCls: d === 'adopt' ? 'on' : '', hCls: d === 'hold' ? 'on' : '', dCls: d === 'drop' ? 'on' : '', adopt: set('adopt'), hold: set('hold'), drop: set('drop') }; });
   const decV = Object.values(s.dec);
-  return { sigs, nA: decV.filter((x) => x === 'adopt').length, nH: decV.filter((x) => x === 'hold').length, nD: decV.filter((x) => x === 'drop').length, portal: '#/Soon?name=LawGuide', toast: s.toast || '', hasToast: !!s.toast, analyzing: s.pct < 100, done: s.pct >= 100, pct: s.pct, pctW: s.pct + '%', stageLabel: stages[Math.floor(s.pct / 20)],
+  return { sigs, nA: decV.filter((x) => x === 'adopt').length, nH: decV.filter((x) => x === 'hold').length, nD: decV.filter((x) => x === 'drop').length, portal: '#/LawGuide', toast: s.toast || '', hasToast: !!s.toast, analyzing: s.pct < 100, done: s.pct >= 100, pct: s.pct, pctW: s.pct + '%', stageLabel: stages[Math.floor(s.pct / 20)],
     skip: () => this.setState({ pct: 100 }), lines, lowLeft: lowLeft + '곳', viewTitle: titles[s.view],
     chipText: s.view === 'key' ? '임시 · 검수 전' : (lowLeft ? `확인 필요 ${lowLeft}` : '모두 확인'), chipCls: s.view === 'key' ? 'chip c-sand' : (lowLeft ? 'chip c-check' : 'chip c-ok'),
     boxCls: s.view === 'all' ? 'scroll' : '', allCls: s.view === 'all' ? 'btn-p' : 'btn-s', lowCls: s.view === 'low' ? 'btn-p' : 'btn-s',

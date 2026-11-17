@@ -66,7 +66,7 @@ renderVals() {
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-constructor(props) { super(props); this.state = { lv: '', sev: {}, open: {} }; }
+constructor(props) { super(props); this.state = { lv: '', sev: {}, open: {}, chk: {} }; }
 renderValsBase() {
   const s = this.state;
   const A = {
@@ -97,7 +97,46 @@ renderValsBase() {
   });
   const levels = ['위기', '집중', '관심', '일반'].map((l) => { const on = s.lv === l; const tone = (l === '위기' || l === '집중') ? '#A33B2E' : (l === '관심' ? '#235E8C' : '#55687A');
     return { label: l, on: on ? 'true' : 'false', bg: on ? ((l === '위기' || l === '집중') ? '#F7E4DF' : l === '관심' ? '#E6F3FC' : '#ECF5FA') : '#FFFFFF', bd: on ? tone : '#C5D4DE', fg: on ? tone : '#55687A', pick: () => this.setState({ lv: on ? '' : l }) }; });
-  return { types, levels, decisionNote: s.lv ? (s.lv === '집중' ? 'AI 제안과 같음 · 상담사 확정' : 'AI 제안(집중)과 다름 · 상담사 판단으로 저장') + (s.lv === '위기' ? ' · 109 · 정신건강복지센터 연계 안내' : '') : '',
+  const P = '7회차 · 9/18', C = '8회차 · 10/2';
+  const CH = [
+    { k: 'sleep', name: '수면', changed: false, scope: '잠 · 깨는 시각',
+      prev: '밤에 한두 번 깨고, 깨면 다시 잠들기 어려움', cur: '새벽 3시쯤 깨서 다시 잠들지 못하고 앉아 계심',
+      diff: '두 회차 모두 새벽에 깨서 다시 못 주무심 · 새로 나빠졌다는 말씀은 없음 (S3 "새벽에 깨는 일 지속"과 같음)',
+      ev: [['지난', '밤에 한두 번은 꼭 깨요. 깨면 다시 잠이 안 와요.', '7회차 녹취 03:50 (화자: 어르신)', true],
+        ['사이', '자다 깼어요', '안부 앱 응답 · 9/25(금) 공통 1 "어젯밤 잠은 잘 주무셨어요?" (응답: 어르신)', false],
+        ['이번', '새벽 세 시면 깨서 그냥 앉아 있어요.', '8회차 녹취 01:08 (화자: 어르신)', true]] },
+    { k: 'meal', name: '식사', changed: true, scope: '끼니 수 · 식사 방식',
+      prev: '하루 두 끼 · 아침은 거르고 점심 · 저녁은 혼자 대충 드심', cur: '하루 한 끼 먹을까 말까 · 혼자 먹기 싫다고 하심',
+      diff: '하루 두 끼 → 한 끼 이하로 줄어듦 · 이유로 "영감 가고 나서 혼자 먹기 싫다"를 직접 말씀 (00:41 신뢰도 0.62 · "한 끼"/"한 기" 원문 확인 필요)',
+      ev: [['지난', '아침은 거르고 점심, 저녁은 대충 챙겨 먹어요.', '7회차 녹취 04:25 (화자: 어르신)', true],
+        ['이번', '영감 가고 나서는 혼자 먹기가 싫어서… 하루 한 끼 먹을까 말까 해요.', '8회차 녹취 00:41 (화자: 어르신 · 신뢰도 0.62)', true]] },
+    { k: 'out', name: '외출', changed: true, scope: '복지관 · 바깥 나들이',
+      prev: '복지관 주 2회(화 · 목) 점심 이용 · 9/18 상담도 직접 기관에 오심(내방)', cur: '복지관에 요새 통 나가지 못하심 · 이번 상담은 댁 방문',
+      diff: '주 2회 복지관 외출 → 최근 나가지 않음 · 위험요인 R4(복지관 이용 중단)와 같은 내용',
+      ev: [['지난', '화요일, 목요일은 복지관 가서 점심 먹고 와요.', '7회차 녹취 01:15 (화자: 어르신) · 9/18 내방상담 기록', true],
+        ['이번', '그냥… 그럭저럭 지내요. 복지관은 요새 통 못 나갔어요.', '8회차 녹취 00:20 (화자: 어르신)', true]] },
+    { k: 'social', name: '사회활동', changed: false, scope: '가족 · 이웃과의 연락',
+      prev: '아들(이정훈)과 주 1회 통화 · 연락은 주로 어르신이 먼저', cur: '아들과 주 1회 통화 이어짐 · 상담 중 아들 전화 받으심',
+      diff: '아들과의 통화 빈도는 같음 · "내가 먼저 해야 받아요"라는 서운함은 S6 확인 후보로 따로 확인',
+      ev: [['지난', '아들은 일요일마다 한 번 통화해요. 내가 먼저 걸 때가 많지.', '7회차 녹취 03:10 (화자: 어르신)', true],
+        ['이번', '(스피커폰 통화) 어머니, 저 정훈이에요. 상담 선생님 와 계신 거예요?', '8회차 녹취 03:05 (화자: 가족(보호자) · 아들)', true],
+        ['이번', '아들은 바빠서… 전화도 내가 먼저 해야 받아요.', '8회차 녹취 01:08 (화자: 어르신)', true]] },
+    { k: 'mood', name: '정서', changed: true, scope: '우울감 · 외로움',
+      prev: '삶의 의미 저하 언급 · S-04 선별(계획 없음) · 우울감 2', cur: '쓸쓸함을 직접 말씀 · 식사 감소 · 외출 중단이 함께 나타남 · 우울감 3 (AI 제안)',
+      diff: '우울감 2 → 3 · 쓸쓸함 표현에 식사 · 외출 등 일상 기능 저하가 겹침 · 02:15 죽음 관련 언급은 화자 확인 전이라 비교에서 뺐어요',
+      ev: [['지난', '가끔은 이렇게 살아서 뭐 하나 싶어요.', '7회차 녹취 05:10 (화자: 어르신) · 7회차 상담일지 S-04 선별', true],
+        ['이번', '쓸쓸하지요.', '8회차 녹취 01:36 (화자: 어르신)', true]] }
+  ];
+  const nChg = CH.filter((c) => c.changed).length;
+  const chgItems = CH.map((c) => {
+    const ck = s.chk[c.k] || '';
+    return { name: c.name, status: c.changed ? '변화' : '유지', tagCls: c.changed ? 'c-hi' : 'c-normal', scope: c.scope,
+      prevSess: P, curSess: C, prev: c.prev, cur: c.cur, curFw: c.changed ? 700 : 400, changed: c.changed, kept: !c.changed, diff: c.diff,
+      ev: c.ev.map((e) => ({ side: e[0], quote: e[1], where: e[2], link: e[3] })),
+      checks: ['맞음', '수정 필요'].map((l) => ({ label: l, on: ck === l ? 'true' : 'false', cls: ck === l ? 'btn-p' : 'btn-s',
+        pick: () => this.setState({ chk: { ...s.chk, [c.k]: ck === l ? '' : l } }) })) };
+  });
+  return { types, levels, chgItems, chgPrevLabel: P, chgCurLabel: C, chgSummary: CH.length + '개 항목 중 변화 ' + nChg + ' · 유지 ' + (CH.length - nChg), decisionNote: s.lv ? (s.lv === '집중' ? 'AI 제안과 같음 · 상담사 확정' : 'AI 제안(집중)과 다름 · 상담사 판단으로 저장') + (s.lv === '위기' ? ' · 109 · 정신건강복지센터 연계 안내' : '') : '',
     decisionShort: s.lv || '선택 전' };
 }
 }

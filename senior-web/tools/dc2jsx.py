@@ -13,6 +13,7 @@
 import json
 import re
 import sys
+import os
 from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
@@ -20,12 +21,22 @@ from pathlib import Path
 NAMES = [
     "Login", "Home", "Schedule", "CaseList", "CaseRegister", "CaseInfo", "CaseHistory", "SessionDetail",
     "Upload", "Step1Record", "Step2Signals", "Step3Summary", "Step4Next",
+    # 11/17 새 디자인(대상자 관리 · 후속관리)의 웹 화면. 관리자 · 앱 · 태블릿 화면은 아직 범위 밖.
+    "Start", "CaseIntake", "CaseApp", "CaseForm", "CaseDocs", "ChildLink", "ChildLinkDetail", "ChildLinkHistory",
+    "Followup", "FollowupDetail", "Overview", "LawGuide", "Stats", "Settings", "DocBox",
 ]
+# 이 이름만 골라 풀 때(옛 디자인 폴더처럼 일부 화면만 있을 때): DC2JSX_NAMES=Login,Home,...
+if os.environ.get("DC2JSX_NAMES"):
+    NAMES = os.environ["DC2JSX_NAMES"].split(",")
 # 디자인 안의 옛 파일 이름 → 이 앱의 화면 이름
 PAGE_MAP = {
     "Login": "Login", "Main": "Home", "Schedule": "Schedule", "CaseList": "CaseList", "CaseRegister": "CaseRegister",
     "CaseDetail": "CaseInfo", "CaseHistory": "CaseHistory", "SessionDetail": "SessionDetail", "UploadModal": "Upload",
     "SttReview": "Step1Record", "SignalReview": "Step2Signals", "NoteWrite": "Step3Summary", "FollowupQ": "Step4Next",
+    "FollowUp": "Followup", "FollowUpDetail": "FollowupDetail", "AdminStatus": "Overview", "ChildLink": "ChildLink",
+    "ChildDetail": "ChildLinkDetail", "ChildAnswers": "ChildLinkHistory", "CaseApp": "CaseApp", "CaseForm": "CaseForm",
+    "CaseDocs": "CaseDocs", "CaseIntake": "CaseIntake", "LawGuide": "LawGuide", "Stats": "Stats", "Settings": "Settings",
+    "DocBox": "DocBox", "Start": "Start",
 }
 
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
@@ -316,13 +327,15 @@ def main():
             encoding="utf-8",
         )
 
-    common = [r for r in per[NAMES[0]] if count[r] == len(NAMES)]
+    # 시작 화면(Start)은 사이드바 없는 표지라 공통 규칙을 거의 안 쓴다 — 공통은 나머지 화면에서 센다(Start 는 자기 규칙을 다 가진다).
+    shared = [n for n in NAMES if n != "Start"] or NAMES
+    common = [r for r in per[shared[0]] if sum(r in per[n] for n in shared) == len(shared)]
     (dst / "src/styles/design.css").write_text(
-        "/* 13화면 공통 규칙 — tools/dc2jsx.py 가 디자인에서 뽑음 */\n" + "\n".join(common) + "\n", encoding="utf-8"
+        "/* 모든 화면 공통 규칙 — tools/dc2jsx.py 가 디자인에서 뽑음 */\n" + "\n".join(common) + "\n", encoding="utf-8"
     )
     common_set = set(common)
     for name in NAMES:
-        own = [scope(r, f"pg-{name}") for r in per[name] if r not in common_set]
+        own = [scope(r, f"pg-{name}") for r in per[name] if r not in common_set or name not in shared]
         (dst / f"src/pages/{name}.css").write_text(
             f"/* {name} 화면에만 있는 규칙(.pg-{name} 아래) — tools/dc2jsx.py */\n" + "\n".join(own) + "\n", encoding="utf-8"
         )

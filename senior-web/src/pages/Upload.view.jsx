@@ -104,7 +104,7 @@ export default function View({ v }) {
                     찾는 어르신이 없나요?
                   </span>
                   <a className="btn btn-sm btn-s" href="#/CaseRegister" onClick={v.resetFlow}>
-                    + 새 사례 등록
+                    + 새 대상자 등록
                   </a>
                 </div>
               </>

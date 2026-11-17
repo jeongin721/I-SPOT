@@ -55,14 +55,14 @@ export default function View({ v }) {
             ↑ 녹취 · 자료 올리기
           </a>
           <a className="cta2" href="#/CaseRegister" onClick={v.markBack}>
-            + 새 사례 등록
+            + 새 대상자 등록
           </a>
           <nav className="nav" aria-label="메뉴">
             <a href="#/Home">
               홈
             </a>
             <a className="on" href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             <a href="#/Schedule">
               일정
@@ -70,13 +70,13 @@ export default function View({ v }) {
             <a href="#/Soon?name=ChildLink">
               안부 연계
               <span className="cnt">
-                4
+                {v.navLinkCnt}
               </span>
             </a>
-            <a href="#/Soon?name=Closure">
-              종결 검토
+            <a href="#/Followup">
+              후속관리
               <span className="cnt">
-                2
+                {v.navFollowCnt}
               </span>
             </a>
             <a href="#/Soon?name=DocBox">
@@ -179,7 +179,7 @@ export default function View({ v }) {
           </div>
           <nav aria-label="위치" className="note">
             <a href="#/CaseList">
-              사례 관리
+              대상자 관리
             </a>
             {" › "}
             <a href={v.caseHref}>
@@ -385,6 +385,120 @@ export default function View({ v }) {
                 </div>
               </Fragment>
             ))}
+          </section>
+          <section className="card" aria-label="변화 확인" style={{ overflow: "hidden" }}>
+            <div className="hd">
+              <h2 className="h2">
+                변화 확인
+              </h2>
+              <span className="note">
+                {"지난 방문·상담과 달라진 점 · "}{v.chgPrevLabel}{" → "}{v.chgCurLabel}
+              </span>
+              <span className="chip c-ai" style={{ marginLeft: "auto" }}>
+                AI 제안
+              </span>
+              <b style={{ fontSize: "14px" }}>
+                {v.chgSummary}
+              </b>
+            </div>
+            {(v.chgItems || []).map((c, i_c) => (
+              <Fragment key={i_c}>
+                <div style={{ padding: "16px 22px", borderBottom: "1px solid #DDE6EC", display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                    <b style={{ fontSize: "16px" }}>
+                      {c.name}
+                    </b>
+                    <span className={`chip ${c.tagCls}`}>
+                      {c.status}
+                    </span>
+                    <span className="note">
+                      {c.scope}
+                    </span>
+                    <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span className="note">
+                        상담사 확인
+                      </span>
+                      {(c.checks || []).map((k, i_k) => (
+                        <Fragment key={i_k}>
+                          <button type="button" className={`btn btn-sm ${k.cls}`} aria-pressed={k.on} onClick={k.pick}>
+                            {k.label}
+                          </button>
+                        </Fragment>
+                      ))}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: "8px 12px" }}>
+                    <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: "10px", background: "#F8FBFD" }}>
+                      <span className="note">
+                        {"지난 회차 · "}{c.prevSess}
+                      </span>
+                      <div style={{ fontSize: "14px", marginTop: "2px" }}>
+                        {c.prev}
+                      </div>
+                    </div>
+                    <span aria-hidden="true" style={{ alignSelf: "center", fontSize: "18px", color: "#8094A3" }}>
+                      →
+                    </span>
+                    <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: "10px", background: "#F8FBFD" }}>
+                      <span className="note">
+                        {"이번 회차 · "}{c.curSess}
+                      </span>
+                      <div style={{ fontSize: "14px", marginTop: "2px", fontWeight: c.curFw }}>
+                        {c.cur}
+                      </div>
+                    </div>
+                  </div>
+                  {c.changed ? (
+                    <>
+                      <div style={{ fontSize: "14px" }}>
+                        <span className="note">
+                          무엇이 달라졌나
+                        </span>
+                        {" · "}{c.diff}
+                      </div>
+                    </>
+                  ) : null}
+                  {c.kept ? (
+                    <>
+                      <div style={{ fontSize: "14px" }}>
+                        <span className="note">
+                          변화 없음 판단
+                        </span>
+                        {" · "}{c.diff}
+                      </div>
+                    </>
+                  ) : null}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <span className="note">
+                      근거
+                    </span>
+                    {(c.ev || []).map((e, i_e) => (
+                      <Fragment key={i_e}>
+                        <div style={{ fontSize: "13.5px" }}>
+                          <span className="chip c-normal" style={{ height: "20px", fontSize: "11px" }}>
+                            {e.side}
+                          </span>
+                          {" \""}{e.quote}{"\" "}
+                          <span className="sub2">
+                            {e.where}
+                          </span>
+                          {e.link ? (
+                            <>
+                              <a className="note" href={e.href}>
+                                녹취에서 보기
+                              </a>
+                            </>
+                          ) : null}
+                        </div>
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              </Fragment>
+            ))}
+            <p className="note" style={{ margin: "0", padding: "12px 22px" }}>
+              AI는 지난 기록과 비교해 달라진 점을 보여 줄 뿐, 판단은 상담사가 합니다.
+            </p>
           </section>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>
             <section className="card" aria-label="회차별 추이" style={{ overflowX: "auto" }}>

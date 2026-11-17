@@ -1,0 +1,45 @@
+/* Start 화면에만 있는 규칙(.pg-Start 아래) — tools/dc2jsx.py */
+body{margin:0;background:#F4F9FD}
+.pg-Start .lp,.pg-Start .lp *{box-sizing:border-box;margin:0;padding:0}
+.pg-Start .lp a{color:inherit;text-decoration:none}
+.pg-Start .lp ul{list-style:none}
+.pg-Start .lp button{cursor:pointer;background:none;border:none;font-family:inherit}
+.pg-Start .lp .btn-primary{background-color:#1F3A56;color:#D6ECFA;border-radius:20px;justify-content:center;align-items:center;gap:8px;padding:10px 20px;font-weight:500;transition:background .2s;display:inline-flex}
+.pg-Start .lp .btn-primary:hover{background-color:#2A4C6D;color:#D6ECFA}
+.pg-Start .lp .btn-text{color:#1F3A56;align-items:center;gap:4px;font-weight:500;display:inline-flex}
+.pg-Start .lp .splash-nav{-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);background-color:rgba(255,255,255,.85);border-radius:32px;justify-content:space-between;align-items:center;margin-top:24px;padding:20px 32px;display:flex;box-shadow:0 8px 32px rgba(31,58,86,.05)}
+.pg-Start .lp .nav-logo{color:#1F3A56;letter-spacing:1px;align-items:center;gap:6px;font-size:1.4rem;font-weight:800;display:flex}
+.pg-Start .lp .logo-icon{background-color:#1F3A56;color:#D6ECFA;border-radius:8px;justify-content:center;align-items:center;width:28px;height:28px;font-size:1.2rem;display:flex}
+.pg-Start .lp .nav-links{color:#1F3A56;gap:40px;font-size:.95rem;font-weight:600;display:flex}
+.pg-Start .lp .nav-links a{transition:color .2s}
+.pg-Start .lp .nav-links a:hover{color:#2F74A8}
+.pg-Start .lp .login-btn{border-radius:24px;padding:12px 28px;font-size:.95rem}
+.pg-Start .lp .hero{text-align:center;flex-direction:column;flex:1;justify-content:center;align-items:center;margin-top:20px;padding:100px 0;display:flex}
+.pg-Start .lp .hero-subtitle{color:#2F74A8;letter-spacing:.5px;background:#FFFFFF;border-radius:20px;margin-bottom:24px;padding:8px 16px;font-size:1.05rem;font-weight:700;box-shadow:0 4px 12px rgba(31,58,86,.08)}
+.pg-Start .lp .hero-title{color:#1F3A56;letter-spacing:-1.5px;margin-bottom:32px;font-size:4rem;font-weight:400;line-height:1.25}
+.pg-Start .lp .hero-title strong{font-weight:800}
+.pg-Start .lp .hero-description{color:#4A5D70;margin-bottom:56px;font-size:1.25rem;line-height:1.6}
+.pg-Start .lp .hero-buttons{align-items:center;justify-content:center;gap:20px;margin-bottom:64px;display:flex}
+.pg-Start .lp .start-btn{border-radius:32px;padding:18px 40px;font-size:1.15rem;transition:all .3s;box-shadow:0 8px 24px rgba(31,58,86,.25)}
+.pg-Start .lp .start-btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(31,58,86,.35)}
+.pg-Start .lp .explore-btn{background:#FFFFFF;border-radius:32px;padding:18px 32px;font-size:1.15rem;box-shadow:0 4px 12px rgba(31,58,86,.03)}
+.pg-Start .lp .hero-footer-text{color:#66788A;font-size:.95rem;font-weight:500}
+.pg-Start .lp .features{width:100%;max-width:1200px;margin:0 auto;padding:40px 0 100px}
+.pg-Start .lp .features-header{justify-content:space-between;align-items:flex-end;margin-bottom:40px;display:flex}
+.pg-Start .lp .features-header h2{color:#34495E;font-size:1.2rem;font-weight:700}
+.pg-Start .lp .with-ispot{color:#2F74A8;letter-spacing:1.5px;font-size:.9rem;font-weight:800}
+.pg-Start .lp .cards-container{grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;display:grid}
+.pg-Start .lp .feature-card{background:#FFFFFF;border-radius:28px;padding:48px 36px;transition:all .3s cubic-bezier(.25,.8,.25,1);box-shadow:0 12px 40px rgba(31,58,86,.05)}
+.pg-Start .lp .feature-card:hover{transform:translateY(-8px);box-shadow:0 20px 48px rgba(31,58,86,.10)}
+.pg-Start .lp .card-top{color:#2F74A8;justify-content:space-between;align-items:center;margin-bottom:40px;display:flex}
+.pg-Start .lp .card-number{font-size:1.2rem;font-weight:800}
+.pg-Start .lp .card-icon{opacity:.8}
+.pg-Start .lp .feature-card h3{color:#1F3A56;letter-spacing:-.5px;margin-bottom:16px;font-size:1.6rem;font-weight:700}
+.pg-Start .lp .feature-card p{color:#55687A;font-size:1.05rem;line-height:1.7}
+.pg-Start .lp .splash-footer{color:#66788A;border-top:1px solid rgba(31,58,86,.08);justify-content:space-between;align-items:center;width:100%;max-width:1200px;margin:0 auto;padding:40px 0;font-size:.95rem;display:flex}
+.pg-Start .lp .footer-logo{color:#34495E;margin-right:8px;font-weight:800}
+.pg-Start .lp .footer-right{gap:32px;display:flex}
+.pg-Start .lp .footer-right a{transition:color .2s}
+.pg-Start .lp .footer-right a:hover{color:#1F3A56}
+@media (max-width:1024px){.pg-Start .lp .cards-container{grid-template-columns:repeat(2,minmax(0,1fr))}.pg-Start .lp .hero-title{font-size:3.2rem}}
+@media (max-width:768px){.pg-Start .lp{padding:0 16px !important}.pg-Start .lp .splash-nav{border-radius:20px;flex-wrap:wrap;margin-top:16px;padding:16px 20px}.pg-Start .lp .nav-links{display:none}.pg-Start .lp .hero{padding:60px 0}.pg-Start .lp .hero-subtitle{margin-bottom:20px;font-size:.9rem}.pg-Start .lp .hero-title{letter-spacing:-.5px;margin-bottom:24px;font-size:2.2rem}.pg-Start .lp .hero-description{margin-bottom:40px;padding:0 16px;font-size:1.05rem}.pg-Start .lp .hero-buttons{flex-direction:column;gap:16px;width:100%;padding:0 16px}.pg-Start .lp .start-btn,.pg-Start .lp .explore-btn{justify-content:center;width:100%;padding:16px;font-size:1.1rem}.pg-Start .lp .features{padding:40px 16px 60px}.pg-Start .lp .features-header{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:32px}.pg-Start .lp .cards-container{grid-template-columns:minmax(0,1fr);gap:20px}.pg-Start .lp .feature-card{border-radius:24px;padding:32px 24px}.pg-Start .lp .feature-card h3{font-size:1.4rem}.pg-Start .lp .splash-footer{text-align:center;flex-direction:column;gap:24px;padding:32px 16px}.pg-Start .lp .footer-right{flex-wrap:wrap;justify-content:center;gap:16px}}
