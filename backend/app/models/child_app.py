@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, String, false
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enums import (
@@ -17,6 +17,7 @@ from app.core.enums import (
     ChildQuestionSetStatus,
 )
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 
 class ChildAppLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -77,7 +78,9 @@ class ChildAppEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=ChildAnswerLevel.NONE,
         nullable=False,
     )
-    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    payload_plain: Mapped[Dict[str, Any]] = mapped_column("payload", JSONType, default=dict, nullable=False)
+    payload_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payload = EncryptedColumn("payload", empty={}, json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
     # 상담사 확인이 필요한 줄(긴급 알림 · 바로 확인 답 · 연락 요청). 확인하면 누가 언제 했는지 남는다.
     needs_ack: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -97,7 +100,9 @@ class ChildAppAiDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("child_app_events.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
     )
-    items: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    items_plain: Mapped[List[Dict[str, Any]]] = mapped_column("items", JSONType, default=list, nullable=False)
+    items_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    items = EncryptedColumn("items", empty=[], json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

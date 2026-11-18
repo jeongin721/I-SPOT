@@ -90,6 +90,25 @@ def encrypt_memo(plaintext: str, *, memo_id: uuid.UUID) -> str:
     return _seal(plaintext, memo_aad_for(memo_id))
 
 
+def field_aad_for(table: str, column: str, row_id: uuid.UUID) -> bytes:
+    """상담 본문 칸(상담일지 · 원문 발화 · 요약 · 회차 메모 · 분석 결과)에 묶는 값(2026-11-16, 민규님과 합의).
+
+    다른 표 · 칸 · 행으로 옮겨 붙인 암호문은 풀리지 않는다. 바꾸면 저장된 값을 풀 수 없으므로 형식을 고정한다.
+    """
+
+    return f"ispot:{table}:{column}:{row_id}:{FORMAT_VERSION}".encode("utf-8")
+
+
+def encrypt_field(plaintext: str, *, table: str, column: str, row_id: uuid.UUID) -> str:
+    """상담 본문 칸 암호화(내담자 정보와 같은 키 · 같은 저장 모양, 묶음 값만 표 · 칸 · 행 ID)."""
+
+    return _seal(plaintext, field_aad_for(table, column, row_id))
+
+
+def decrypt_field(token: str, *, table: str, column: str, row_id: uuid.UUID) -> str:
+    return _open(token, field_aad_for(table, column, row_id))
+
+
 def key_id_of(token: str) -> Optional[str]:
     """저장 값을 만든 키 이름(키 바꾸기 · 오류 기록용). 모양이 틀리면 None."""
 
