@@ -178,6 +178,19 @@ def test_rule_check_child_app_questions_are_short_and_never_ask_about_acts():
     assert rule_check(child_app("요즘 " + "아주 " * 20 + "기분은 어때?"), "") is not None
 
 
+@pytest.mark.parametrize(("direct", "soft"), builder.QUESTION_TONE_EXAMPLES)
+def test_tone_examples_are_in_prompt_and_pass_rules(direct, soft):
+    # 프롬프트에 넣은 순화 예시가 규칙 검사에서 떨어지면 LLM 이 예시대로 써도 탈락한다.
+    assert f'"{direct}" → "{soft}"' in builder.QUESTION_SYSTEM_PROMPT
+    assert rule_check(counselor(soft), "") is None
+
+
+def test_rule_check_still_rejects_soft_sounding_confirming_endings():
+    # 부드럽게 들려도 답을 정해 두고 확인받는 끝맺음은 그대로 막는다(프롬프트가 피하라고 안내하는 끝맺음).
+    assert rule_check(counselor("말하기 싫으면 안 해도 괜찮지?"), "") is not None
+    assert rule_check(counselor("그때 어떤 마음이었는지?"), "") is not None
+
+
 # ---------------------------------------------------------------------------
 # 생성 흐름 (가짜 LLM)
 # ---------------------------------------------------------------------------
@@ -348,6 +361,49 @@ def test_two_stage_generation_validates_refs_rules_and_review(monkeypatch, no_ve
     assert validation["check_rule_rejected"] == 0
     second_prompt = [prompt for schema, prompt in fake.prompts if schema is QuestionDrafts][1]
     assert "병원에 갔지?" in second_prompt and "답을 정해 두고" in second_prompt
+
+
+def test_too_direct_question_is_rejected_and_softened_on_retry(monkeypatch, no_vector_db):
+    records = masked_records()
+    plan = ref_of(records, "7회차 안전 계획")
+    soft = "지난번에 무서울 때 할머니께 연락해 보기로 했었어. 그 뒤로는 어땠는지 궁금해."
+
+    def draft(question):
+        return QuestionDraft(check_item_id="check:1", question=question, audience="counselor", question_type="open",
+                             priority="high", rationale="안전 계획 이행 확인", case_refs=[plan],
+                             knowledge_refs=["manual:1"])
+
+    fake = FakeLLM(
+        {
+            CheckItemDrafts: [
+                CheckItemDrafts(items=[CheckItemDraft(item="조모 연락 체계가 실제로 쓰였는지", kind="plan_followup",
+                                                      priority="high", reason="안전 계획 이행 미확인",
+                                                      case_refs=[plan])])
+            ],
+            QuestionDrafts: [QuestionDrafts(items=[draft("할머니한테 연락해 본 적 있어?")]), QuestionDrafts(items=[draft(soft)])],
+            QuestionReviews: [
+                # 규칙은 통과하지만(유도 · 판단 표현 없음) 맥락 없이 사실을 바로 묻는다. 검토자가 사유를 비워 둔 경우.
+                QuestionReviews(reviews=[QuestionReview(question_id=1, leading=False, presupposes=False,
+                                                        age_inappropriate=False, judgmental=False, too_direct=True)]),
+                QuestionReviews(reviews=[QuestionReview(question_id=1, leading=False, presupposes=False,
+                                                        age_inappropriate=False, judgmental=False)]),
+            ],
+        }
+    )
+    monkeypatch.setattr(builder, "_invoke", fake)
+
+    result = builder.build_next_session_checklist(records, [], [])
+
+    assert [item["question"] for item in result["items"]] == [soft]
+    assert result["validation"]["review_rejected"] == 1
+    assert result["validation"]["rounds"] == 2
+
+    first_prompt, second_prompt = [prompt for schema, prompt in fake.prompts if schema is QuestionDrafts]
+    # 확인할 사항은 그대로 묻지 않을 상담사용 메모로 넘긴다.
+    assert "상담사용 메모" in first_prompt and "조모 연락 체계가 실제로 쓰였는지" in first_prompt
+    # 사유가 비어 있으면 걸린 기준의 사유를 다시 만들 때 알려 준다.
+    assert "할머니한테 연락해 본 적 있어?" in second_prompt
+    assert builder.REVIEW_FLAG_REASONS["too_direct"] in second_prompt
 
 
 def test_review_failure_keeps_rule_checked_questions_marked_not_reviewed(monkeypatch, no_vector_db):
