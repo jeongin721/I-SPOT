@@ -83,7 +83,7 @@ export default function ChildAlertBanner({ session }) {
         </span>
       ) : null}
       {mine ? (
-        <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: mine.case_id })}>
+        <A className="btn btn-sm btn-p" to={screenHref('/ChildDetail', { caseId: mine.case_id })}>
           내 알림 확인하러 가기 →
         </A>
       ) : null}
@@ -95,7 +95,7 @@ export default function ChildAlertBanner({ session }) {
             {first.escalated ? ` ${since}부터 확인 전이라 다른 상담사에게도 보이고 있어요.` : ''}
             {alerts.length > 1 ? ` 외 ${alerts.length - 1}건` : ''}
           </span>
-          <A className="btn btn-sm btn-p" to={screenHref('/CaseApp', { caseId: first.case_id })}>
+          <A className="btn btn-sm btn-p" to={screenHref('/ChildDetail', { caseId: first.case_id })}>
             확인하러 가기 →
           </A>
         </>

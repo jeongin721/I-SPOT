@@ -122,7 +122,7 @@ function urgentValues(alerts: ChildOpenAlert[] | null, now: Date) {
     .slice(0, HOME_ALERT_COUNT)
     .map((alert) => ({
       key: alert.id,
-      href: screenHref("/CaseApp", { caseId: alert.case_id }),
+      href: screenHref("/ChildDetail", { caseId: alert.case_id }),
       urgent: alert.urgent,
       chip: alert.urgent ? "chip c-urgent" : "chip c-check",
       label: alert.urgent ? ALERT_CHIP[alert.reason] ?? "긴급" : "확인 필요",

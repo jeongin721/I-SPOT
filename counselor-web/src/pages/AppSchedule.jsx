@@ -10,9 +10,13 @@
 //  - 수정 · 삭제는 만든 사람만(editable). 팀 공유 일정 중 남의 것은 보기만.
 //  - 날짜 고르기는 디자인처럼 그 주 7일(고치는 일정이 다른 주면 그 날도 넣는다). 다른 주는 달력에서 날을 고른 뒤 추가한다.
 //  - 디자인 상세의 '브리핑 준비됨 · 준비 중' 줄은 준비 여부를 정할 서버 값이 없어 넣지 않았다.
-import { useState } from 'react';
+//  - 11/19 디자인: 펼친 월간 달력에 ‹ › 달 이동, 'YYYY년 M월 ▾' 을 누르면 년도(‹ ›) · 월(12칸) 고르기.
+//    고른 날이 든 달이 아닌 달을 보면 그 달 달력 칸만큼 일정을 따로 받아 점을 찍는다. 날을 누르거나 접기 · 오늘을 누르면
+//    보던 달은 잊고(고른 날의 달로) 접는다. 달력 접기 · 창 닫기 · 날 바꾸기에 움직임(동작 줄이기면 끔).
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MobileAppShell from '../components/MobileAppShell';
+import { closeWithAnim, runAnim, staggerIn } from '../components/MobileAppShellMotion';
 import { schedule } from '../api/endpoints';
 import { SCHEDULE_CATEGORY_LABELS, SCHEDULE_CONSULT_LABELS } from '../api/types';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
@@ -29,6 +33,17 @@ const KINDS = [
 
 const dowOf = (d) => DOW[(d.getDay() + 6) % 7];
 const label = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일 ${dowOf(d)}요일`;
+const ymLabel = (y, m) => `${y}년 ${m + 1}월`;
+
+/** y년 m월(0부터) 달력 칸: 월요일부터, 그 달이 끝나는 주까지(디자인 — 4~6주). */
+function monthGrid(y, m) {
+  const first = new Date(y, m, 1);
+  const lead = (first.getDay() + 6) % 7;
+  const nDays = new Date(y, m + 1, 0).getDate();
+  const total = Math.ceil((lead + nDays) / 7) * 7;
+  const start = addDays(first, -lead);
+  return { start, total, end: addDays(start, total - 1) };
+}
 
 function titleOf(e, names) {
   if (e.kind === 'CONSULT') {
@@ -43,6 +58,13 @@ function ScheduleBody({ userId }) {
   const today = ymd(todayD);
   const [day, setDay] = useState(today);
   const [exp, setExp] = useState(false);
+  // 펼친 달력에서 보는 달({ y, m }, 없으면 고른 날의 달) · 년도 · 월 고르기 열림 · 고르기에서 보는 해.
+  const [cm, setCm] = useState(null);
+  const [ym, setYm] = useState(false);
+  const [py, setPy] = useState(0);
+  const mcalRef = useRef(null);
+  const ovRef = useRef(null);
+  const firstDay = useRef(true);
   const [sheet, setSheet] = useState(null);
   const [ask, setAsk] = useState(false);
   const [f, setF] = useState({});
@@ -57,6 +79,21 @@ function ScheduleBody({ userId }) {
   const gridEnd = addDays(gridStart, 41);
   const sched = useAppSchedule(!!userId, ymd(gridStart), ymd(gridEnd));
   const has = (d) => sched.items.some((e) => e.date === d);
+  // 펼친 달력이 보는 달. 고른 날의 달이 아니면 그 달 칸만큼 따로 받는다.
+  const view = exp && cm ? cm : { y: dayD.getFullYear(), m: dayD.getMonth() };
+  const otherMonth = view.y !== dayD.getFullYear() || view.m !== dayD.getMonth();
+  const grid = monthGrid(view.y, view.m);
+  const other = useAppSchedule(!!userId && otherMonth, ymd(grid.start), ymd(grid.end));
+  const hasIn = (d) => (otherMonth ? other.items : sched.items).some((e) => e.date === d);
+
+  // 날을 바꾸면 그날 일정 카드를 차례로 올린다(디자인 CH.day).
+  useEffect(() => {
+    if (firstDay.current) {
+      firstDay.current = false;
+      return;
+    }
+    staggerIn('.ma-amain .ma-card.ma-ev, .ma-amain .ma-card.ma-empty');
+  }, [day]);
 
   const weekStart = mondayOf(dayD);
   const days = DOW.map((dow, k) => {
@@ -64,20 +101,43 @@ function ScheduleBody({ userId }) {
     const key = ymd(d);
     return { key, dow, n: d.getDate(), sel: key === day, today: key === today, dot: has(key) };
   });
-  const lastRow = ymd(addDays(gridStart, 35)) > ymd(new Date(dayD.getFullYear(), dayD.getMonth() + 1, 0)) ? 35 : 42;
-  const cells = Array.from({ length: lastRow }, (_, i) => {
-    const d = addDays(gridStart, i);
+  const cells = Array.from({ length: grid.total }, (_, i) => {
+    const d = addDays(grid.start, i);
     const key = ymd(d);
-    return { key, n: d.getDate(), out: d.getMonth() !== dayD.getMonth(), sel: key === day, today: key === today, dot: has(key) };
+    return { key, n: d.getDate(), out: d.getMonth() !== view.m, sel: key === day, today: key === today, dot: hasIn(key) };
   });
+  // 달력 접기(펼친 달력이 사라진 뒤 상태를 바꾼다). 보던 달 · 년도 고르기는 잊는다.
+  const collapse = (then) =>
+    closeWithAnim(mcalRef.current, () => {
+      setExp(false);
+      setCm(null);
+      setYm(false);
+      if (then) then();
+    });
+  const shiftM = (dlt) => {
+    const t = new Date(view.y, view.m + dlt, 1);
+    setCm({ y: t.getFullYear(), m: t.getMonth() });
+    setYm(false);
+  };
+  const pickMonth = (m) => {
+    setCm({ y: py, m });
+    setYm(false);
+    window.setTimeout(() => {
+      runAnim(document.querySelector('.ma-mgrid'), [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], {
+        duration: 240,
+        easing: 'cubic-bezier(.22,.9,.3,1)',
+      });
+    }, 20);
+  };
   const evs = sched.items.filter((e) => e.date === day);
   const cur = sheet?.id ? sched.items.find((e) => e.id === sheet.id) : null;
   const stop = (ev) => ev.stopPropagation();
-  const close = () => {
-    setSheet(null);
-    setAsk(false);
-    setErr('');
-  };
+  const close = () =>
+    closeWithAnim(ovRef.current, () => {
+      setSheet(null);
+      setAsk(false);
+      setErr('');
+    });
 
   const openAdd = () => {
     setErr('');
@@ -157,39 +217,103 @@ function ScheduleBody({ userId }) {
   return (
     <>
       <div className="ma-calbar">
-        <button type="button" className="ma-btn ma-btn-sm" aria-expanded={exp ? 'true' : 'false'} onClick={() => setExp(!exp)}>
+        <button type="button" className="ma-btn ma-btn-sm" aria-expanded={exp ? 'true' : 'false'} onClick={() => (exp ? collapse() : setExp(true))}>
           {exp ? '접기 ▴' : '펼치기 ▾'}
         </button>
-        <b className="ma-calmon">{`${dayD.getFullYear()}년 ${dayD.getMonth() + 1}월`}</b>
-        <button type="button" className="ma-btn ma-btn-sm" onClick={() => setDay(today)}>
+        <div className="ma-calmon">
+          {exp ? (
+            <>
+              <button type="button" className="ma-cal-ar" aria-label="이전 달" onClick={() => shiftM(-1)}>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+              </button>
+              <button
+                type="button"
+                className="ma-cal-ym"
+                aria-expanded={ym ? 'true' : 'false'}
+                aria-label="년도 · 월 선택"
+                onClick={() => {
+                  setYm(!ym);
+                  setPy(view.y);
+                }}
+              >
+                {ymLabel(view.y, view.m)}{' '}
+                <span className={'ma-ym-caret' + (ym ? ' ma-open' : '')} aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+              <button type="button" className="ma-cal-ar" aria-label="다음 달" onClick={() => shiftM(1)}>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+              </button>
+            </>
+          ) : (
+            <b>{ymLabel(dayD.getFullYear(), dayD.getMonth())}</b>
+          )}
+        </div>
+        <button
+          type="button"
+          className="ma-btn ma-btn-sm"
+          onClick={() => {
+            setDay(today);
+            setCm(null);
+            setYm(false);
+          }}
+        >
           오늘
         </button>
       </div>
       {exp ? (
-        <div className="ma-card ma-mcal" aria-label={`${dayD.getFullYear()}년 ${dayD.getMonth() + 1}월 달력`}>
-          <div className="ma-mgrid">
-            {DOW.map((w) => (
-              <span key={w} className="ma-mdow">
-                {w}
-              </span>
-            ))}
-            {cells.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                className={'ma-mc' + (c.out ? ' ma-out' : '') + (c.sel ? ' ma-on' : '') + (c.today ? ' ma-today' : '')}
-                aria-label={`${parseYmd(c.key).getMonth() + 1}월 ${c.n}일${c.dot ? ' · 일정 있음' : ''}`}
-                aria-pressed={c.sel ? 'true' : 'false'}
-                onClick={() => {
-                  setDay(c.key);
-                  setExp(false);
-                }}
-              >
-                <span>{c.n}</span>
-                <span className={c.dot ? 'ma-dot' : 'ma-dot ma-no'}></span>
-              </button>
-            ))}
-          </div>
+        <div className="ma-card ma-mcal" ref={mcalRef} aria-label={`${ymLabel(view.y, view.m)} 달력`}>
+          {ym ? (
+            <div className="ma-ympick" aria-label="년도 · 월 선택">
+              <div className="ma-ym-y">
+                <button type="button" className="ma-cal-ar" aria-label="이전 해" onClick={() => setPy(py - 1)}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+                </button>
+                <b>{py}년</b>
+                <button type="button" className="ma-cal-ar" aria-label="다음 해" onClick={() => setPy(py + 1)}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+                </button>
+              </div>
+              <div className="ma-ym-m">
+                {Array.from({ length: 12 }, (_, k) => {
+                  const on = py === view.y && k === view.m;
+                  const curM = py === todayD.getFullYear() && k === todayD.getMonth();
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      className={'ma-ym-mb' + (on ? ' ma-on' : '') + (curM ? ' ma-cur' : '')}
+                      aria-pressed={on ? 'true' : 'false'}
+                      onClick={() => pickMonth(k)}
+                    >
+                      {k + 1}월
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="ma-mgrid">
+              {DOW.map((w) => (
+                <span key={w} className="ma-mdow">
+                  {w}
+                </span>
+              ))}
+              {cells.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  className={'ma-mc' + (c.out ? ' ma-out' : '') + (c.sel ? ' ma-on' : '') + (c.today ? ' ma-today' : '')}
+                  aria-label={`${parseYmd(c.key).getMonth() + 1}월 ${c.n}일${c.dot ? ' · 일정 있음' : ''}`}
+                  aria-pressed={c.sel ? 'true' : 'false'}
+                  onClick={() => collapse(() => setDay(c.key))}
+                >
+                  <span>{c.n}</span>
+                  <span className={c.dot ? 'ma-dot' : 'ma-dot ma-no'}></span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="ma-days" role="tablist" aria-label="이번 주">
@@ -211,6 +335,7 @@ function ScheduleBody({ userId }) {
       )}
       <p className="ma-sec-t">{label(dayD)}</p>
       {sched.error && <span className="ma-err">{sched.error}</span>}
+      {exp && otherMonth && other.error && <span className="ma-err">{other.error}</span>}
       {evs.map((e) => {
         const title = titleOf(e, names);
         const isCon = e.kind === 'CONSULT';
@@ -266,7 +391,7 @@ function ScheduleBody({ userId }) {
       </button>
 
       {sheet?.mode === 'view' && cur && (
-        <div className="ma-ov" onClick={close}>
+        <div className="ma-ov" ref={ovRef} onClick={close}>
           <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="일정 상세" onClick={stop}>
             <span className="ma-grab" aria-hidden="true"></span>
             <div className="ma-sh-hd">
@@ -316,7 +441,7 @@ function ScheduleBody({ userId }) {
       )}
 
       {sheet?.mode === 'form' && (
-        <div className="ma-ov" onClick={close}>
+        <div className="ma-ov" ref={ovRef} onClick={close}>
           <section className="ma-sheet" role="dialog" aria-modal="true" aria-label={sheet.id ? '일정 수정' : '일정 추가'} onClick={stop}>
             <span className="ma-grab" aria-hidden="true"></span>
             <div className="ma-sh-hd">

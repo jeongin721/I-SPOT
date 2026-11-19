@@ -9,9 +9,13 @@
 //  - 서버가 풀지 못한 메모(unreadable)는 '지금은 읽을 수 없어요. 관리자에게 알려 주세요' 로 보인다. 키 설정 실수면 키만 되돌려도
 //    다시 읽히므로 지우거나 새로 적으라고 권하지 않는다(민규 #170 — 그 전에 지우면 본문을 잃는다). 지우기는 그대로 둔다.
 //  - 시각은 이 폰 시각('방금' · '오늘 15:20' · '어제 18:02' · '10/27 09:40').
-import { useCallback, useEffect, useState } from 'react';
+//  - 11/19 디자인: '관련 아이 선택 안 함' → '사례 선택', 머리 작은 설명 줄 없앰, 메모 수정 창은 가운데 창.
+//    '다른 화면에서 바꾼 메모 즉시 반영'은 이 화면에 들어올 때마다 서버에서 다시 받으므로 따로 할 일이 없다
+//    (사례 목록의 메모 추가 · 수정 · 삭제도 같은 서버 메모). 목록 맨 위 메모가 바뀌면 그 카드를 올린다(디자인 CH.__m).
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import MobileAppShell, { whenText } from '../components/MobileAppShell';
+import { closeWithAnim, staggerIn } from '../components/MobileAppShellMotion';
 import { memos as memoApi } from '../api/endpoints';
 import { parseBackendTime } from '../data/time';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
@@ -34,6 +38,8 @@ function MemoBody({ userId }) {
   const [ask, setAsk] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const edRef = useRef(null);
+  const topSeen = useRef(null);
 
   const load = useCallback(
     async (upTo) => {
@@ -64,6 +70,13 @@ function MemoBody({ userId }) {
   useEffect(() => {
     void load(page);
   }, [load, page]);
+
+  // 맨 위 메모(새로 쓰거나 고친 것)가 바뀌면 그 카드를 올린다. 처음 받았을 때는 움직이지 않는다.
+  const top = rows[0] ? rows[0].id + '|' + rows[0].updated_at : '';
+  useEffect(() => {
+    if (topSeen.current !== null && top && top !== topSeen.current) staggerIn('.ma-amain .ma-card.ma-mi', 1);
+    if (top) topSeen.current = top;
+  }, [top]);
 
   // 이름은 내 사례 목록의 실명(없으면 서버가 준 별칭).
   const nameOf = (m) => {
@@ -97,19 +110,20 @@ function MemoBody({ userId }) {
     const text = (edit.text || '').trim();
     if (!text) return;
     const ok = await run(() => memoApi.update(edit.id, { text, case_id: edit.caseId || null }), '고치지 못했어요. 연결을 확인해 주세요.');
-    if (ok) setEdit(null);
+    if (ok) closeWithAnim(edRef.current, () => setEdit(null));
   };
   const del = async () => {
     const ok = await run(() => memoApi.remove(edit.id), '지우지 못했어요. 연결을 확인해 주세요.');
-    if (ok) {
-      setEdit(null);
-      setAsk(false);
-    }
+    if (ok)
+      closeWithAnim(edRef.current, () => {
+        setEdit(null);
+        setAsk(false);
+      });
   };
 
   const kidOptions = (value, current) => (
     <>
-      <option value="">관련 아이 선택 안 함</option>
+      <option value="">사례 선택</option>
       {value && !my.rows.some((r) => r.id === value) && <option value={value}>{current || '지난 사례'}</option>}
       {my.rows.map((r) => (
         <option key={r.id} value={r.id}>
@@ -161,9 +175,8 @@ function MemoBody({ userId }) {
         </button>
       )}
       {edit && (
-        <div className="ma-ov" onClick={() => setEdit(null)}>
-          <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="메모 수정" onClick={stop}>
-            <span className="ma-grab" aria-hidden="true"></span>
+        <div className="ma-ov ma-ov-c" ref={edRef} onClick={() => closeWithAnim(edRef.current, () => setEdit(null))}>
+          <section className="ma-sheet ma-sheet-c" role="dialog" aria-modal="true" aria-label="메모 수정" onClick={stop}>
             <div className="ma-sh-hd">
               <b>메모</b>
               <span className="ma-note">{edit.t}</span>
@@ -204,7 +217,7 @@ function MemoBody({ userId }) {
 
 export default function AppMemo() {
   return (
-    <MobileAppShell cur="memo" screen="memo" sub="현장에서 바로 적어 두기" title="메모">
+    <MobileAppShell cur="memo" screen="memo" title="메모">
       {(ctx) => <MemoBody {...ctx} />}
     </MobileAppShell>
   );

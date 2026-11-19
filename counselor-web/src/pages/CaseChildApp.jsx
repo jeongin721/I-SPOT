@@ -227,7 +227,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                   </div>
                   {alert.can_ack ? (
                     <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
-                      확인했어요
+                      확인했습니다
                     </button>
                   ) : null}
                 </section>

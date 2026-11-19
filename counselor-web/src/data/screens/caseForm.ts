@@ -496,7 +496,7 @@ export function caseFormValues(input: CaseFormInput) {
       setState({ note: "바꾼 칸이 없습니다." });
       return;
     }
-    if (confirm && !window.confirm(`${FORM_NAMES[tab]} ${nextRound}차를 확정할까요? 확정하면 이 차수는 고칠 수 없습니다.`)) {
+    if (confirm && !window.confirm(`${FORM_NAMES[tab]} ${nextRound}차를 확정하시겠습니까? 확정하면 이 차수는 고칠 수 없습니다.`)) {
       return;
     }
     // 앞 저장 안내가 남아 있으면 이번 저장 실패 문구(다른 창에서 바뀜 등)를 가린다.

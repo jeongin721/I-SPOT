@@ -208,7 +208,7 @@ export default function AdminCases(props) {
             </table>
             {v.empty ? (
               <p className="note" style={{ margin: '0', padding: '22px', textAlign: 'center' }}>
-                조건에 맞는 사례가 없어요.
+                조건에 맞는 사례가 없습니다.
               </p>
             ) : null}
           </section>

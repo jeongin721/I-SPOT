@@ -202,7 +202,7 @@ function SaveDialog({ defaultTitle, folders, defaultFolder, onCancel, onSave }) 
   const [err, setErr] = useState('');
   const go = async () => {
     const t = title.trim();
-    if (!t) return setErr('문서 제목을 입력해 주세요.');
+    if (!t) return setErr('문서 제목을 입력해 주십시오.');
     if (!noChild) return setErr('아이를 알아볼 수 있는 정보가 없는지 확인해 주세요.');
     setBusy(true);
     setErr('');

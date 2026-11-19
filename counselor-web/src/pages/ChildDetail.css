@@ -141,3 +141,14 @@
 .pg-ChildDetail .thm-root.dark .chg {background:#3F3729;color:#EADBB5}
 .pg-ChildDetail .thm-root.dark a.srcl:hover {color:#ECE8DF}
 @media (max-width:900px){.pg-ChildDetail .qa-row {grid-template-columns:minmax(0,1fr) !important}}
+
+/* 11/19 디자인: 콩콩 앱 연결 칸 · 연동 해지 확인창 */
+.pg-ChildDetail .kk {display:flex;align-items:center;gap:14px;padding:12px 18px}
+.pg-ChildDetail .kk-t {flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pg-ChildDetail .kk-t b {font-size:14.5px}
+.pg-ChildDetail .kk-ov {position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(43,42,38,.42)}
+.pg-ChildDetail .kk-dlg {width:100%;max-width:420px;padding:24px;border-radius:18px;background:#FFFFFF;box-shadow:0 18px 48px rgba(43,42,38,.28);display:flex;flex-direction:column;gap:18px}
+.pg-ChildDetail .kk-q {margin:0;font-size:16px;font-weight:700;line-height:1.5;color:#2B2A26}
+.pg-ChildDetail .kk-acts {display:flex;justify-content:flex-end;gap:8px}
+.pg-ChildDetail .thm-root.dark .kk-dlg {background:#2C2B27 !important}
+.pg-ChildDetail .thm-root.dark .kk-q {color:#ECE8DF !important}

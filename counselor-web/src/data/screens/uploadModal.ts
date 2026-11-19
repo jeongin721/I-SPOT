@@ -276,7 +276,7 @@ export function uploadModalValues(input: UploadScreenInput) {
     if (docUpload.phase === "done") {
       dialogMark = "✓";
       dialogTitle = "문서를 올렸어요";
-      dialogAsk = "상담 요약 · 상담 일지를 채웠습니다. 3단계(상담일지 작성)에서 확인 · 수정할까요?";
+      dialogAsk = "상담 요약 · 상담 일지를 채웠습니다. 3단계(상담일지 작성)에서 확인 · 수정하시겠습니까?";
       dialogActions = [
         { label: "나중에", href: laterHref },
         { label: "이동", href: screenHref("/NoteWrite", sessionIds), primary: true },
@@ -292,8 +292,8 @@ export function uploadModalValues(input: UploadScreenInput) {
     }
   } else if (upload.phase === "done") {
     dialogMark = "✓";
-    dialogTitle = "업로드했어요";
-    dialogAsk = "원문 변환 완료 · 검수 화면으로 이동할까요?";
+    dialogTitle = "업로드했습니다";
+    dialogAsk = "원문 변환 완료 · 검수 화면으로 이동하시겠습니까?";
     dialogActions = [
       { label: "나중에", href: laterHref },
       { label: "이동", href: screenHref("/SttReview", sessionIds), primary: true },

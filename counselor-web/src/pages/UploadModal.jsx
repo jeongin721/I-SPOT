@@ -186,7 +186,7 @@ function UploadModalScreen(props) {
           <div style={{ padding: '24px 30px', minHeight: '360px' }}>
             {v.s1 ? (
               <>
-                <p className="lb">어느 아이의 자료인가요?</p>
+                <p className="lb">어느 아이의 자료입니까?</p>
                 <input
                   className="inp"
                   type="search"
@@ -251,7 +251,7 @@ function UploadModalScreen(props) {
                     gap: '10px',
                   }}
                 >
-                  <span style={{ flex: '1 1 240px', fontSize: '13px' }}>찾는 아이가 없나요?</span>
+                  <span style={{ flex: '1 1 240px', fontSize: '13px' }}>찾는 아이가 없습니까?</span>
                   <A className="btn btn-sm btn-s" to={v.registerHref}>
                     + 새 사례 등록
                   </A>
@@ -265,7 +265,7 @@ function UploadModalScreen(props) {
                 >
                   <b style={{ fontWeight: '500' }}>{v.caseName}</b>
                 </div>
-                <p className="lb">몇 회차 상담인가요?</p>
+                <p className="lb">몇 회차 상담입니까?</p>
                 <div
                   style={{
                     display: 'flex',

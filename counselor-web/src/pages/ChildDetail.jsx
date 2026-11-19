@@ -3,7 +3,7 @@
 //
 // 사례 ID 가 있으면 콩콩 앱 서버 값을 보인다(screens/childDetail.ts). 사례 ID 가 없으면 디자인 예시를 그대로 보인다.
 //  - AI 초안 '확인해 볼 점' · 추가 질문은 서버가 만든 것만 보인다. 추가 질문은 상담사가 승인해야 아이 앱으로 간다.
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -69,8 +69,8 @@ class Logic extends DCLogic {
           },
         ],
         notes: [
-          '3주째 늘고 있고, 이번에 처음 "5일 이상"이 나왔어요. 3회차 상담 진술과 같은 방향이에요. 다음 상담에서 저녁 시간 돌봄을 확인해 보세요.',
-          '밤에 어른 없이 혼자 잤다는 답이 처음 나왔어요. 아이가 쓴 글과 같은 내용이에요.',
+          '3주째 늘고 있고, 이번에 처음 "5일 이상"이 나왔습니다. 3회차 상담 진술과 같은 방향입니다. 다음 상담에서 저녁 시간 돌봄을 확인해 보십시오.',
+          '밤에 어른 없이 혼자 잤다는 답이 처음 나왔습니다. 아이가 쓴 글과 같은 내용입니다.',
         ],
         qs: [
           {
@@ -217,8 +217,24 @@ class Logic extends DCLogic {
   }
 }
 
+// 콩콩 앱 연결 칸의 날짜(11/19 디자인 '2026.09.02 오전 10:15' 꼴).
+function kkTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const p = (x) => String(x).padStart(2, '0');
+  const h = d.getHours();
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${p(d.getMinutes())}`;
+}
+
+// 사례 ID 가 없는 예시 화면의 콩콩 앱 연결 값(디자인 예시 박지호).
+const MOCK_KK = { conn: '2026.09.02 오전 10:15', last: '2026.10.21 오후 9:05' };
+
 export default function ChildDetail(props) {
   const session = useAuthSession();
+  // 예시 화면에서만 쓰는 '해지하기' 확인창 · 해지 시각(디자인 동작 그대로). 실제 사례는 서버 해지 API 가 아직 없어 단추를 두지 않는다.
+  const [kkAsk, setKkAsk] = useState(false);
+  const [kkOff, setKkOff] = useState(null);
   const theme = useTheme();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const enabled = session.status === 'signedIn' && !!caseId;
@@ -234,7 +250,7 @@ export default function ChildDetail(props) {
           // 승인하면 바로 아이 앱으로 가므로 보냈다는 알림을 띄운다(11/10).
           setApproval: async (draftId, id, approved) => {
             if (await app.setAiApproval(draftId, id, approved)) {
-              showToast(approved ? '추가 질문을 아이 앱으로 보냈어요' : '보낸 추가 질문을 취소했어요');
+              showToast(approved ? '추가 질문을 아이 앱으로 보냈습니다' : '보낸 추가 질문을 취소했습니다');
             }
           },
         })
@@ -275,6 +291,16 @@ export default function ChildDetail(props) {
       ? { text: `확인 완료 ${childDateTime(latestAnswers.acknowledged_at)}`, cls: 'chip c-ok' }
       : { text: '확인 전', cls: 'chip c-sand' }
     : null;
+  // 콩콩 앱 연결 칸(11/19 디자인). 실제 사례는 연결된 때만 연결 일시 · 마지막 응답을 보인다(미연결 · 초대 대기는 아래 연결 코드 칸).
+  const kk = caseId
+    ? app.data?.status === 'LINKED'
+      ? { line: `연결 ${kkTime(app.data.linked_at)} · 마지막 응답 ${kkTime(app.data.last_response_at)}`, canUnlink: false }
+      : null
+    : {
+        line: kkOff ? `연동 해지 ${kkOff} · 마지막 응답 ${MOCK_KK.last}` : `연결 ${MOCK_KK.conn} · 마지막 응답 ${MOCK_KK.last}`,
+        canUnlink: !kkOff,
+        off: !!kkOff,
+      };
   const expires = app.data?.code_expires_at ? new Date(app.data.code_expires_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   return (
     <div className="pg-ChildDetail">
@@ -336,6 +362,44 @@ export default function ChildDetail(props) {
               사례 상세 보기
             </A>
           </header>
+          {kk ? (
+            <section className="card kk" aria-label="콩콩 앱 연결 상태">
+              <div className="kk-t">
+                <b>콩콩 앱 연결</b>
+                <span className="note">{kk.line}</span>
+              </div>
+              {kk.canUnlink ? (
+                <button type="button" className="btn btn-sm btn-s" onClick={() => setKkAsk(true)}>
+                  해지하기
+                </button>
+              ) : null}
+              {kk.off ? <span className="chip c-normal">해지됨</span> : null}
+            </section>
+          ) : null}
+          {kkAsk ? (
+            <div className="kk-ov" onClick={() => setKkAsk(false)}>
+              <div className="kk-dlg" role="alertdialog" aria-modal="true" aria-labelledby="kk-q" onClick={(e) => e.stopPropagation()}>
+                <p id="kk-q" className="kk-q">
+                  {v.k.name} 아이 연계 어플 연동을 해지하시겠습니까?
+                </p>
+                <div className="kk-acts">
+                  <button type="button" className="btn btn-s" onClick={() => setKkAsk(false)}>
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-p"
+                    onClick={() => {
+                      setKkAsk(false);
+                      setKkOff(kkTime(new Date()));
+                    }}
+                  >
+                    확인
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {notice ? <Notice value={notice} /> : null}
           {/* 확인 전 알림 · 답. 과거 답변 기록에 가지 않아도 여기서 확인 처리한다(멘토 피드백 11/12). */}
           {openAlerts.map((alert) => (
@@ -356,7 +420,7 @@ export default function ChildDetail(props) {
               </div>
               {alert.can_ack ? (
                 <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
-                  확인했어요
+                  확인했습니다
                 </button>
               ) : null}
             </section>

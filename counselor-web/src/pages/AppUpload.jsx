@@ -14,9 +14,11 @@
 //    폰에는 파일을 남기지 않고, 이 화면에 있는 동안만 목록에 보인다(2026-11-19 경진 — 폰은 올리기만, 결과는 웹).
 //  - 사진은 글자를 읽는 기능(OCR)이 없어 '준비 중' 안내만 보인다.
 //  - 다 올린 줄의 '기록 보기' 는 그 회차의 상담 기록(요약 · 일지, 읽기 전용) 화면으로 간다(11/19, AppSessionRecord).
-import { useEffect, useState } from 'react';
+//  - 11/19 디자인: 머리 작은 설명 줄('사진 · 문서 · 음성 파일') 없앰, 자료 올리기 창은 닫을 때 움직인다(동작 줄이기면 끔).
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
+import { closeWithAnim } from '../components/MobileAppShellMotion';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
@@ -38,6 +40,8 @@ function UploadBody({ userId, items, notReady }) {
   const [picked, setCaseId] = useState(params.get('case') ?? '');
   const caseId = rows.some((row) => row.id === picked) ? picked : rows[0]?.id ?? '';
   const [pk, setPk] = useState(false);
+  const pkRef = useRef(null);
+  const closePick = () => closeWithAnim(pkRef.current, () => setPk(false));
 
   // 목록을 열 때 다 올린 줄을 서버와 맞춘다(웹에서 지운 회차는 빼고, 남은 줄은 지금 상태를 받는다).
   // 원문 변환 · AI 분석이 도는 중인 줄이 있으면 20초마다 다시 본다(화면에 있는 동안만).
@@ -265,12 +269,12 @@ function UploadBody({ userId, items, notReady }) {
         );
       })}
       {pk && (
-        <div className="ma-ov" onClick={() => setPk(false)}>
+        <div className="ma-ov" ref={pkRef} onClick={closePick}>
           <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="자료 올리기" onClick={stop}>
             <span className="ma-grab" aria-hidden="true"></span>
             <div className="ma-sh-hd">
               <b>자료 올리기</b>
-              <button type="button" className="ma-btn ma-btn-sm" onClick={() => setPk(false)}>
+              <button type="button" className="ma-btn ma-btn-sm" onClick={closePick}>
                 닫기
               </button>
             </div>
@@ -312,7 +316,7 @@ function UploadBody({ userId, items, notReady }) {
 
 export default function AppUpload() {
   return (
-    <MobileAppShell cur="up" sub="사진 · 문서 · 음성 파일" title="업로드">
+    <MobileAppShell cur="up" title="업로드">
       {(ctx) => <UploadBody {...ctx} />}
     </MobileAppShell>
   );

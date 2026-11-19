@@ -8,6 +8,8 @@
 //  - 앱 화면에서만 '홈 화면에 추가' 정보(manifest · 아이콘)를 붙인다(useAppInstall). 짧은 주소 /app/ 은 앱 홈으로 보낸다.
 //  - 홈 · 일정 · 메모 탭과 설정 단추는 각 앱 화면으로 간다(11/10). 홈은 머리에 제목 대신 I-SPOT 표시(디자인).
 //  - 11/17 디자인(I-SPOT 상담사 웹 화면 설계 · 각진 UI ⑨): 다음 상담 준비 · 이전 상담 머리 왼쪽에 '뒤로 가기'(back).
+//  - 11/19 디자인: 화면 넘김 움직임(아래 메뉴 · 이동 · 뒤로 · 녹음), 알림 창 닫을 때 움직임(MobileAppShellMotion),
+//    아래 메뉴 홈 선택 아이콘을 같은 모양에 색만 채움. 작은 제목(sub)이 없으면 그 줄을 그리지 않는다(메모 · 업로드).
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
@@ -19,6 +21,7 @@ import { useAppRecordings } from '../data/useAppRecordings';
 import { useAppInstall } from '../data/useAppInstall';
 import { useAppSchedule, ymd } from '../data/useAppSchedule';
 import { useTheme } from '../theme';
+import { animIn, closeWithAnim, listenNav, takeNav } from './MobileAppShellMotion';
 import '../styles/mobile-app.css';
 
 const TABS = [
@@ -53,7 +56,7 @@ function TabIcon({ k }) {
     return (
       <>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 11L12 4l8.5 7"></path><path d="M6 9.5V20h4.5v-5.5h3V20H18V9.5"></path></svg>
-        <svg className="ma-fi1" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" fillRule="evenodd" d="M12 2.6 2.6 10.3c-.4.3-.6.8-.6 1.3V20a1.5 1.5 0 0 0 1.5 1.5h17A1.5 1.5 0 0 0 22 20v-8.4c0-.5-.2-1-.6-1.3zM9.8 21.5v-5.8h4.4v5.8z"></path></svg>
+        <svg className="ma-fi1" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 11L12 4l8.5 7"></path><path fill="currentColor" d="M6 9.5V20h4.5v-5.5h3V20H18V9.5L12 4.6z"></path><rect x="11.5" y="15.5" width="1" height="5.6" stroke="none" style={{ fill: 'var(--card)' }}></rect></svg>
       </>
     );
   if (k === 'rec')
@@ -105,7 +108,19 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
   const todaySchedule = useAppSchedule(!!signedId, today, today);
   const toastTimer = useRef(null);
 
+  const ntRef = useRef(null);
+
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  // 화면 넘김: 앞 화면에서 누른 이동이 이 화면이면 들어오는 움직임, 그리고 이 화면에서 누르는 이동을 듣는다.
+  useEffect(() => {
+    const n = takeNav(pathname);
+    const t = n ? window.setTimeout(() => animIn(n.kind), 30) : 0;
+    const stopListen = listenNav(pathname);
+    return () => {
+      window.clearTimeout(t);
+      stopListen();
+    };
+  }, [pathname]);
   useEffect(() => {
     if (signedId) rememberAppUser(signedId);
   }, [signedId]);
@@ -144,6 +159,7 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
     });
   }
   const stop = (ev) => ev.stopPropagation();
+  const closeNt = () => closeWithAnim(ntRef.current, () => setNtOpen(false));
   const rootCls = 'ma-app' + (screen ? ' ma-s-' + screen : '') + (theme.dark ? ' ma-dark' : '');
 
   return (
@@ -163,12 +179,12 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
             </span>
           ) : (
             <>
-              <div className="ma-sub">{typeof sub === 'function' ? sub({ userId }) : sub}</div>
+              {sub ? <div className="ma-sub">{typeof sub === 'function' ? sub({ userId }) : sub}</div> : null}
               <h1 style={titleStyle}>{title}</h1>
             </>
           )}
         </div>
-        <button type="button" className="ma-ibtn" aria-label={`알림 ${notes.length}건`} onClick={() => setNtOpen(!ntOpen)}>
+        <button type="button" className="ma-ibtn" aria-label={`알림 ${notes.length}건`} onClick={() => (ntOpen ? closeNt() : setNtOpen(true))}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg>
           {notes.length > 0 && <span className="ma-badge">{notes.length}</span>}
         </button>
@@ -201,12 +217,12 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
         })}
       </nav>
       {ntOpen && (
-        <div className="ma-ov" onClick={() => setNtOpen(false)}>
+        <div className="ma-ov" ref={ntRef} onClick={closeNt}>
           <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="알림" onClick={stop}>
             <span className="ma-grab" aria-hidden="true"></span>
             <div className="ma-sh-hd">
               <b>알림</b>
-              <button type="button" className="ma-btn ma-btn-sm" onClick={() => setNtOpen(false)}>
+              <button type="button" className="ma-btn ma-btn-sm" onClick={closeNt}>
                 닫기
               </button>
             </div>
