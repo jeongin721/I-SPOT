@@ -33,6 +33,8 @@ from app.schemas.child_app import (
     ChildScheduleRequest,
     ChildOpenAlert,
     ChildQuestionSendRequest,
+    ChildRecentAlert,
+    ChildWelfareCheckRequest,
 )
 from app.services import child_app_ai_service, child_app_service
 from app.services.access import get_case_or_404
@@ -123,6 +125,23 @@ def child_app_stats(date_from: date, date_to: date, db: DbSession, _: AdminUser)
 @list_router.get("", response_model=DataResponse[List[ChildAppCaseRow]], summary="아이 연계 목록")
 def list_child_app_cases(db: DbSession, current_user: CurrentUser) -> DataResponse[List[ChildAppCaseRow]]:
     return DataResponse(data=child_app_service.list_cases(db, current_user))
+
+
+@staff_router.get("/recent", response_model=DataResponse[List[ChildRecentAlert]], summary="관리자 홈 긴급 알림 현황")
+def list_recent_alerts(db: DbSession, current_user: AdminUser) -> DataResponse[List[ChildRecentAlert]]:
+    return DataResponse(data=child_app_service.recent_urgent_alerts(db, current_user))
+
+
+@case_router.post("/{case_id}/child-app/welfare-checks", status_code=status.HTTP_204_NO_CONTENT, summary="장기 무응답 안부 연락 처리")
+def record_welfare_check(
+    case_id: uuid.UUID,
+    payload: ChildWelfareCheckRequest,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.record_welfare_check(db, case, current_user, payload.status, payload.note, client_ip(request))
 
 
 @staff_router.get("/open", response_model=DataResponse[List[ChildOpenAlert]])

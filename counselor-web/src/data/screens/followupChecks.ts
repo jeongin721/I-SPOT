@@ -6,6 +6,7 @@
 //  - 체크(브리핑에 넣기)는 누르면 바로 저장한다. 상담 전 브리핑은 체크한 것만 보인다.
 //  - '수정' 은 모든 줄을 한 번에 고치는 모드(디자인), '확인' 을 누르면 저장한다. 비운 줄은 빠진다. AI 메모를 고치면 '상담사 수정'.
 //  - '+ 확인 사항 직접 추가' 는 수정 모드에서 새 줄을 더한다(상담사가 쓴 줄, source COUNSELOR).
+//  - 줄 오른쪽 X(10/30 디자인)는 그 줄을 빼고 바로 저장한다. 수정 중 · 저장할 수 없을 때는 멈춘다.
 // 저장할 수 없는 상태(원문 확정 전 · AI 분석 중)면 단추를 멈추고 이유를 보인다(추가 질문과 같은 규칙).
 // 다음 상담 체크리스트(19절)가 켜져 있으면 호출부(followupQ.ts)가 저장 전 초안(drafts — 메모 + rag 확인 사항)과
 // 줄 표시(annotate — rag 칩 · 이유 · 공식 근거 · 근거 위치), 목록을 저장한 뒤 만든 체크리스트의 새 항목(pending)을 넘긴다(2026-11-02).
@@ -113,6 +114,10 @@ export function checkValues(input: CheckInput) {
       toggle: () => {
         if (state.ckEditing) return;
         void save(base.map((other, i) => (i === index ? { ...other, in_briefing: !other.in_briefing } : other)));
+      },
+      del: () => {
+        if (state.ckEditing) return;
+        void save(base.filter((_, i) => i !== index));
       },
       draft: state.ckDraft[index] ?? item.text,
       setDraft: (event: { target: { value: string } }) => {

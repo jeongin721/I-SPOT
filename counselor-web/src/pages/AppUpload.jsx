@@ -13,8 +13,9 @@
 //    문서 파일과 같은 창구(21절, data/useAppDocuments). 서버가 글자를 뽑고 상담 요약 · 일지 칸을 채우면 웹에서 검수 · 승인한다.
 //    폰에는 파일을 남기지 않고, 이 화면에 있는 동안만 목록에 보인다(2026-11-19 경진 — 폰은 올리기만, 결과는 웹).
 //  - 사진은 글자를 읽는 기능(OCR)이 없어 '준비 중' 안내만 보인다.
+//  - 다 올린 줄의 '기록 보기' 는 그 회차의 상담 기록(요약 · 일지, 읽기 전용) 화면으로 간다(11/19, AppSessionRecord).
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
@@ -218,6 +219,15 @@ function UploadBody({ userId, items, notReady }) {
               </span>
               <span className={fail ? 'ma-chip ma-red' : run ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : run ? '올리는 중' : '완료'}</span>
             </div>
+            {x.status === 'done' && x.sessionId && statuses[x.id] && (
+              <Link
+                className="ma-btn ma-btn-sm"
+                to={`/AppSessionRecord?case=${x.caseId}&session=${x.sessionId}`}
+                state={{ from: '/AppUpload' }}
+              >
+                기록 보기
+              </Link>
+            )}
             {x.status === 'done' && statuses[x.id] === 'STT_FAILED' && (
               <button type="button" className="ma-btn ma-btn-sm ma-btn-p" disabled={rerunning === x.id} onClick={() => void rerunStt(x)}>
                 {rerunning === x.id ? '요청하는 중' : '원문 변환 다시 요청'}

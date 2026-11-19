@@ -95,3 +95,10 @@
 .pg-DocBox .doc {
   border-radius: 12px !important;
 }
+/* 11/09 디자인 '문서로 저장' 창(작성 양식 저장, 2026-11-19). */
+.pg-DocBox .sv-ov {position:fixed;inset:0;z-index:95;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(43,42,38,.35)}
+.pg-DocBox .sv {width:min(420px,100%);display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:14px;background:#FFFFFF;color:#2B2A26;box-shadow:0 16px 40px rgba(43,42,38,.25)}
+.pg-DocBox .sv-f {display:flex;flex-direction:column;gap:6px}
+.pg-DocBox .sv-l {font-size:13px;font-weight:600;color:#66625A}
+.pg-DocBox .thm-root.dark .sv {background:#2C2B27 !important;color:#ECE8DF !important}
+.pg-DocBox .thm-root.dark .sv-l {color:#BDB7AA !important}

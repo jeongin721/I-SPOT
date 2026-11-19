@@ -362,13 +362,25 @@ export default function CaseHistory(props) {
                     {(r.cells || []).map((x, xIndex) => (
                       <Fragment key={xIndex}>
                         <span>
-                          <span
-                            className="dot"
-                            title={x.tip}
-                            style={{ background: x.bg, color: x.fg, boxShadow: x.ring }}
-                          >
-                            {x.v}
-                          </span>
+                          {x.href ? (
+                            <A
+                              className="dot dot-go"
+                              to={x.href}
+                              title={`${x.tip} · 눌러서 해당 발화 확인`}
+                              aria-label={`${x.tip} · 해당 발화로 이동`}
+                              style={{ background: x.bg, color: x.fg, boxShadow: x.ring }}
+                            >
+                              {x.v}
+                            </A>
+                          ) : (
+                            <span
+                              className="dot"
+                              title={x.tip}
+                              style={{ background: x.bg, color: x.fg, boxShadow: x.ring }}
+                            >
+                              {x.v}
+                            </span>
+                          )}
                         </span>
                       </Fragment>
                     ))}

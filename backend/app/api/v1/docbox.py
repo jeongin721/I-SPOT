@@ -4,7 +4,7 @@ from typing import Annotated, List, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.core.deps import AdminUser, CurrentUser, DbSession
 from app.core.responses import DataResponse
@@ -60,10 +60,18 @@ def move_docbox_file(
 
 
 @router.get("/files/{file_id}/download", summary="문서 내려받기(늘 첨부로)")
-def download_docbox_file(file_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> FileResponse:
+def download_docbox_file(file_id: uuid.UUID, db: DbSession, current_user: CurrentUser) -> Response:
     row = docbox_service.get_file_or_404(db, file_id)
     path = docbox_service.file_path(row)
     docbox_service.record_download(db, current_user, row)
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(row.name)}",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+    }
+    # 작성 양식은 본체를 앱 암호화로 저장해 둔다 — 풀어서 준다.
+    if docbox_service.is_sealed(row):
+        return Response(content=docbox_service.read_sealed(row), media_type=row.content_type, headers=headers)
 
     return FileResponse(
         path,

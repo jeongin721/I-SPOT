@@ -5,12 +5,13 @@
 // useCaseDocuments 가 부르고, 화면에 쓸 값은 src/data/screens/caseDocs.ts(caseDocsValues)가 만든다.
 // 기관 서식(사정기록지 · 점검표 · 척도) 작성 기록은 useCaseForms, 종결보고서 줄은 useClosureSummary(읽기만)가 부른다. 브리핑 · 외부 문서 올리기는 서버에 없어 준비 중.
 // 10/29 디자인: 머리에 '녹음하기'(components/RecordDialog, useRecordFlow)가 더해졌다.
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import RecordDialog from '../components/RecordDialog';
+import CaseFormView from '../components/CaseFormView';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
@@ -22,6 +23,7 @@ import { useCaseDocuments } from '../data/useCaseDocuments';
 import { useCaseForms } from '../data/useCaseForms';
 import { useClosureSummary } from '../data/useClosureSummary';
 import { caseDocsValues } from '../data/screens/caseDocs';
+import { BLANK_FORM_OF, blankViewValues } from '../data/screens/caseForm';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
@@ -52,6 +54,9 @@ export default function CaseDocs(props) {
   const personal = usePersonalInfo(caseId, { enabled });
   const v = useDC(Logic, { ...props, session, detail, signals, docs, forms, closure, personal, caseId });
   const rec = useRecordFlow(session, caseId, v.canRecord);
+  // 11/10 디자인: 기관 서식 제목 · '열기' → 읽기 전용 보기 창(서식 기록이 있는 4종). 그 밖의 서식은 작성 화면으로 바로 간다.
+  const [viewing, setViewing] = useState(null);
+  const viewRow = viewing ? (v.forms || []).find((r) => r.view === viewing) : null;
   useLeaveGuard(rec.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
@@ -156,7 +161,17 @@ export default function CaseDocs(props) {
                   <Fragment key={rIndex}>
                     <tr>
                       <td>
-                        <b style={{ fontWeight: '500' }}>{r.name}</b>
+                        {r.view ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewing(r.view)}
+                            style={{ fontWeight: '500', padding: 0, border: 0, background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+                          >
+                            {r.name}
+                          </button>
+                        ) : (
+                          <b style={{ fontWeight: '500' }}>{r.name}</b>
+                        )}
                         <span className="note" style={{ display: 'block' }}>
                           {r.no}
                         </span>
@@ -166,7 +181,15 @@ export default function CaseDocs(props) {
                       <td>
                         <span className={r.stCls}>{r.st}</span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>{r.href ? <A to={r.href}>{r.go}</A> : null}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {r.view ? (
+                          <button type="button" className="btn btn-sm btn-s" onClick={() => setViewing(r.view)}>
+                            {r.go}
+                          </button>
+                        ) : r.href ? (
+                          <A to={r.href}>{r.go}</A>
+                        ) : null}
+                      </td>
                     </tr>
                   </Fragment>
                 ))}
@@ -229,6 +252,16 @@ export default function CaseDocs(props) {
           ) : null}
         </main>
       </div>
+      {viewRow ? (
+        <CaseFormView
+          name={`〈${viewRow.no}〉 ${viewRow.name}`}
+          formId={BLANK_FORM_OF[viewRow.view]}
+          values={blankViewValues(forms, viewRow.view)}
+          editHref={viewRow.href}
+          status={viewRow.st}
+          onClose={() => setViewing(null)}
+        />
+      ) : null}
     </div>
   );
 }

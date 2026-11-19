@@ -358,6 +358,7 @@ class AuditAction(str, Enum):
     CASE_CREATED = "CASE_CREATED"
     CHILD_APP_INVITED = "CHILD_APP_INVITED"
     CHILD_APP_ALERT_ACKED = "CHILD_APP_ALERT_ACKED"
+    CHILD_APP_WELFARE_CHECKED = "CHILD_APP_WELFARE_CHECKED"
     CHILD_APP_QUESTIONS_SENT = "CHILD_APP_QUESTIONS_SENT"
     CHILD_APP_AI_DRAFT_CREATED = "CHILD_APP_AI_DRAFT_CREATED"
     CHILD_APP_AI_DRAFT_EDITED = "CHILD_APP_AI_DRAFT_EDITED"
@@ -478,6 +479,8 @@ class ChildAppEventKind(str, Enum):
     MOOD = "MOOD"
     NOTE = "NOTE"
     SCHEDULE_REQUEST = "SCHEDULE_REQUEST"
+    # 장기 무응답 아이에게 상담사 · 관리자가 안부 연락한 기록(관리자 · 아이 연계 앱 관리). 아이 피드에는 보이지 않는다.
+    WELFARE_CHECK = "WELFARE_CHECK"
 
 
 class ChildAnswerLevel(str, Enum):

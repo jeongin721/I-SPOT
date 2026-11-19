@@ -3,9 +3,10 @@
 //
 // 서버 연결: useAdminDashboard(전체 사례 · 처리 대기 업무 · 상담사 수 · 최근 접속 5건) · useCaseList(진행 중 사례 수) ·
 // useAdminTasks(업무 표, 두 종류씩) · useAdminAccounts(상담원별 담당 사례 수). 화면에 쓸 값은 src/data/screens/adminHome.ts.
-// 디자인의 '긴급 알림 현황'(아이 연계 앱)은 서버가 없어 표를 만들지 않고, 그 자리에 앱에 있던 업무 처리 현황을 둔다.
+// 디자인의 '긴급 알림 현황'(아이 연계 앱)은 11/19 GET /child-app-alerts/recent 로 연결했다(오늘 · 어제 + 남은 확인 전, 30초마다 다시).
+// 앱에 있던 업무 처리 현황은 그 아래에 둔다. '담당자에게 다시 알림' 은 푸시가 없어 준비 중이다.
 // 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(훅도 서버를 부르지 않는다).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -22,6 +23,7 @@ import { needsLogin } from '../data/screens/common';
 import { DASHBOARD_TASK_ROWS, TASK_GROUPS, taskGroupTypes } from '../data/screens/admin';
 import { adminHomeValues } from '../data/screens/adminHome';
 import { childApp } from '../api/endpoints';
+import { CHILD_ALERTS_CHANGED } from '../data/useCaseChildApp';
 import { useRemote } from '../data/useRemote';
 import './Admin.css';
 
@@ -65,9 +67,48 @@ export default function AdminHome(props) {
   const theme = useTheme();
   const alertsKey = session.status === 'signedIn' && session.isAdmin ? `admin-child-alerts:${session.me.id}` : null;
   const childAlerts = useRemote(alertsKey, () => childApp.openAlerts(), '아이 앱 알림을 불러오지 못했습니다.', () => false);
+  const recentKey = alertsKey ? `admin-recent-alerts:${session.me.id}` : null;
+  const recent = useRemote(
+    recentKey,
+    () =>
+      childApp
+        .recentAlerts()
+        .then((rows) => ({ off: false, rows }))
+        .catch((caught) => {
+          if (caught?.code === 'CHILD_APP_DISABLED') return { off: true, rows: [] };
+          throw caught;
+        }),
+    '긴급 알림 현황을 불러오지 못했습니다.',
+    () => false,
+  );
+  const [urgentFilter, setUrgentFilter] = useState('all');
+  const { refresh: refreshRecent } = recent;
+  const { refresh: refreshOpen } = childAlerts;
+  useEffect(() => {
+    if (!recentKey) return undefined;
+    const again = () => {
+      refreshRecent();
+      refreshOpen();
+    };
+    const timer = window.setInterval(again, 30_000);
+    window.addEventListener(CHILD_ALERTS_CHANGED, again);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(CHILD_ALERTS_CHANGED, again);
+    };
+  }, [recentKey, refreshRecent, refreshOpen]);
   const v = useDC(Logic, {
     ...props,
     childAlerts: childAlerts.data,
+    recentAlerts: {
+      data: recent.data ? recent.data.rows : null,
+      off: Boolean(recent.data?.off),
+      loading: recent.loading,
+      error: recent.error,
+      reload: recent.reload,
+    },
+    urgentFilter,
+    setUrgentFilter,
     session,
     dashboard,
     activeCases,
@@ -142,10 +183,81 @@ export default function AdminHome(props) {
               </b>
               <span className="note">{v.kpis.counselors.note}</span>
             </A>
-            <div className="card kpi" title={v.notReady}>
-              <span className="sub">긴급 알림 · 확인 전</span>
-              <b>{v.kpis.urgent.value}</b>
+            <button
+              type="button"
+              className="card kpi kb"
+              onClick={v.kpis.urgentGo}
+              style={{ boxShadow: 'inset 0 4px 0 #A33B2E' }}
+            >
+              <span className="sub acc" style={{ fontWeight: '700' }}>
+                긴급 알림 · 확인 전
+              </span>
+              <b className="acc">{v.kpis.urgent.value}</b>
               <span className="note">{v.kpis.urgent.note}</span>
+            </button>
+          </section>
+
+          <section id={v.urgent.id} className="card" aria-label="긴급 알림 현황" style={{ overflow: 'hidden' }}>
+            <div className="hd">
+              <h2 className="h2">긴급 알림 현황</h2>
+              <span className="note">아이 연계 앱에서 ‘긴급’으로 분류된 응답</span>
+              <div style={{ marginLeft: 'auto' }}>
+                <div role="group" aria-label="긴급 알림 보기" className="seg">
+                  {v.urgent.filters.map((f) => (
+                    <button key={f.key} type="button" className={f.cls} aria-pressed={f.pressed} onClick={f.pick}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="tbl" style={{ minWidth: '860px' }}>
+                <thead>
+                  <tr>
+                    <th scope="col">발생 시각</th>
+                    <th scope="col">아동</th>
+                    <th scope="col">아이 응답</th>
+                    <th scope="col">담당 상담원</th>
+                    <th scope="col">상담원 확인</th>
+                    <th scope="col">
+                      <span style={{ position: 'absolute', left: '-9999px' }}>작업</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <PhaseRow t={v.urgent} cols={6} />
+                  {(v.urgent.phase === 'rows' ? v.urgent.rows : []).map((r) => (
+                    <tr key={r.key}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{r.t}</td>
+                      <td>
+                        <b style={{ fontWeight: '500' }}>{r.kid}</b>
+                        <span className="note" style={{ display: 'block' }}>
+                          {r.cid}
+                        </span>
+                      </td>
+                      <td>{r.msg}</td>
+                      <td>{r.who}</td>
+                      <td>
+                        <span className={r.stCls}>{r.st}</span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {r.pending ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-p"
+                            disabled
+                            title={v.urgent.nudgeTitle}
+                            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                          >
+                            담당자에게 다시 알림
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
 

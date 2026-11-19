@@ -49,6 +49,8 @@ import type {
   ChildAppStats,
   ChildAppInvite,
   ChildOpenAlert,
+  ChildRecentAlert,
+  ChildWelfareStatus,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -879,6 +881,16 @@ export const childApp = {
 
   openAlerts(): Promise<ChildOpenAlert[]> {
     return api.get<ChildOpenAlert[]>("/child-app-alerts/open");
+  },
+
+  /** 관리자 홈 '긴급 알림 현황'(관리자만). */
+  recentAlerts(): Promise<ChildRecentAlert[]> {
+    return api.get<ChildRecentAlert[]>("/child-app-alerts/recent");
+  },
+
+  /** 장기 무응답 아이 안부 연락 처리(관리자 · 담당 상담사). */
+  welfareCheck(caseId: string, status: ChildWelfareStatus, note?: string | null): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/welfare-checks`, { status, note: note ?? null });
   },
 
   acknowledgeAlert(caseId: string, alertId: string): Promise<void> {

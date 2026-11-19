@@ -2875,6 +2875,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
 
 - 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 네 칸만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 깊은 중첩 · 다른 칸이 있으면 `422`). 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명 — `docbox_service.FORM_IDENTITY_FIELDS`)이 들어오면 `422`. 본체는 앱 암호화(`PII_ENCRYPTION_KEYS`, AAD `ispot:docbox_files:body:<행 ID>:v1`)로 저장하고 `/download` 가 풀어 준다. 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 이 본체(저장소 파일)도 맨 앞 키로 다시 봉인한다 — 풀지 못한 양식이 있으면 종료 코드 1, 그때 옛 키를 빼면 그 양식 `/download` 가 실패한다. `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
 - 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
 - 응답 `{ "files": [DocboxFile] }`.
 
@@ -2932,7 +2933,11 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 미확인 긴급 넘기기(멘토 피드백 11/12 B안): 아이가 직접 보낸 긴급 알림(`ALERT`)이 `CHILD_APP_ESCALATE_MINUTES`(기본 5분) 넘게 확인 전이면 `GET /child-app-alerts/open` 에서 담당이 아닌 상담사에게도 나온다. 이때 줄은 `handed_over: true` · `escalated: true` · `can_ack: false` · `child_alias: ""` 이고 사례 번호와 `counselor_name`(담당 상담사)만 준다 — 사례를 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 하는 것이다. 담당 상담사 · 관리자의 같은 알림에는 `escalated: true` 만 더해진다. 답 기반 알림(바로 확인 답 · 연락 요청 등)은 넘기지 않는다. 푸시는 아직 없다(푸시 연결 때 이어서).
 
-근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026년 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026 · 2027년 공휴일 · 대체공휴일(2026-06-03 지방선거일 포함)과 2028-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+
+관리자 긴급 알림 현황(11/17 디자인 AdminHome, 관리자만): `GET /child-app-alerts/recent` → `[{id, case_id, case_number, child_alias, reason, repeat_count, created_at, last_at, counselor_name, acknowledged_at, acknowledged_by_name}]`. 긴급(아이가 보낸 긴급 알림 · 바로 확인 답 · 연락 요청) 중 오늘 · 어제(한국 날짜) 것은 확인했어도 넣고, 그 전 것은 확인 전일 때만 넣는다. 최신순 최대 100줄(긴급인지는 암호화된 본문을 봐야 해서 최신부터 묶음으로 읽어 긴급만 모은다 — 긴급이 아닌 확인 전 줄이 많아도 오래된 미확인 긴급이 빠지지 않음, 최대 5000줄까지 읽음). `reason` 은 `/open` 과 같은 규칙(담당이 아닌 관리자에게 답 기반은 `NEEDS_CHECK`). 상담사는 403.
+
+장기 무응답 안부 연락(11/17 디자인 AdminApp): `POST /cases/{case_id}/child-app/welfare-checks` `{status: "OPEN" | "TRIED" | "DONE", note?: 200자}` → 204. 관리자 또는 담당 상담사, 앱이 연결된 사례만(아니면 409). 사건(`WELFARE_CHECK`)으로 남지만 아이 피드 · 알림에는 들어가지 않고 아이 앱에도 가지 않는다. 감사 로그 `CHILD_APP_WELFARE_CHECKED`(값은 status 만). `GET /child-app-cases` 줄에 `linked_at` · `counselor_name` · `welfare_status` · `welfare_note` · `welfare_at` 이 더해진다 — 안부 연락은 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 것만 보이고, 그 뒤 아이가 답하면 null 이다. 장기 무응답(7일)은 화면이 `last_response_at`(없으면 `linked_at`)으로 정한다.
 
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 

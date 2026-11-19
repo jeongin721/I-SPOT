@@ -1,11 +1,12 @@
 // 문서함
 // 원본: 11/05 디자인 '문서함 (폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' DocBox.dc.html.
 //
+// 작성 양식 저장(2026-11-19): 빈 양식 창 '저장' → 제목 · 폴더 · 아이 정보 없음 확인 → .ispotform 파일, 카드의 '이어 쓰기' 로 다시 연다.
 // 서버 연결(2026-11-05): 기관 서식 · 참고 문서 공용 보관함(useDocBox, API_CONTRACT 23절). 화면 값은 src/data/screens/docBox.ts.
 //  - 디자인 예시 문서 대신 서버 목록을 보인다. 마크업 · 클래스 · 문구는 디자인 그대로다.
 //  - 디자인에 더한 것: 머리글 아래 아동 정보 업로드 금지 안내 한 줄, 관리자에게만 보이는 삭제 단추와 확인 창.
 //  - 올리기 · 폴더 만들기 · 옮기기는 서버에 저장하고, 내려받기는 서버 파일을 받는다. 그림 미리보기는 받은 파일로 보인다.
-//  - 빈 양식(11/09 디자인): 작성 양식 6종을 보여 주고 빈칸에 입력해 볼 수 있다. 저장은 없다(components/BlankForm.jsx).
+//  - 빈 양식(11/09 디자인): 작성 양식 6종을 보여 주고 빈칸에 입력해 저장할 수 있다(components/BlankForm.jsx).
 //    11/17 디자인: 서식 4종은 기관 서식, 참고자료 2종은 참고 자료 폴더에 놓인다(src/data/screens/docBox.ts).
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
@@ -229,6 +230,11 @@ export default function DocBox(props) {
                         <div className="dname">{d.name}</div>
                         <div className="dmeta">{d.meta}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          {d.isSaved ? (
+                            <button type="button" className="btn btn-sm btn-p" onClick={d.openSaved}>
+                              이어 쓰기
+                            </button>
+                          ) : null}
                           <button type="button" className="btn btn-sm btn-s" onClick={d.download}>
                             ↓ 내려받기
                           </button>
@@ -262,13 +268,18 @@ export default function DocBox(props) {
           ) : null}
           {v.openForm ? (
             <BlankFormDialog
-              key={v.openForm.id}
+              key={v.openForm.key}
               formId={v.openForm.id}
               name={v.openForm.name}
               editing={v.openForm.editing}
               onEdit={v.editForm}
               onClose={v.closeForm}
               onDownload={v.downloadForm}
+              initialValues={v.openForm.values}
+              savedTitle={v.openForm.title}
+              folders={v.openForm.folders}
+              defaultFolder={v.openForm.defaultFolder}
+              onSave={v.saveForm}
             />
           ) : null}
         </main>

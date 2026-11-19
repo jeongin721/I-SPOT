@@ -10,9 +10,23 @@
 //    전체 문서에도 함께 보이며 같이 정렬된다. 서버에 같은 이름의 폴더가 있으면 따로 만들지 않고 그 폴더에 함께 보인다
 //    (그 폴더에서 올린 문서는 그 서버 폴더로 간다). 같은 이름의 서버 폴더가 없으면 화면에만 있는 폴더라, 거기서 올린 문서는
 //    '폴더 없음' 으로 가고 전체 문서로 넘어가 보인다.
+//  - 작성 양식 저장(2026-11-19): 빈 양식 창의 '저장' 은 제목 · 폴더를 정해 .ispotform 파일로 올린다. 고른 폴더가 화면에만 있는
+//    빈 양식 폴더면 같은 이름의 서버 폴더를 만들어 거기에 둔다. 저장한 파일 카드의 '이어 쓰기' 는 내용을 받아 같은 창에 채운다.
 
 import type { DocboxFile } from "../../api/types";
-import { BLANK_FORM_DATE, BLANK_FORM_FOLDERS, BLANK_FORMS, blankFormById, downloadBlankForm } from "../blankForms";
+import { docbox } from "../../api/endpoints";
+import {
+  BLANK_FORM_DATE,
+  BLANK_FORM_FOLDERS,
+  BLANK_FORMS,
+  FORM_FILE_EXT,
+  blankFormById,
+  downloadBlankForm,
+  formFileText,
+  formFileTitle,
+  parseFormFile,
+  type FormValues,
+} from "../blankForms";
 import type { BlankForm } from "../blankForms";
 import type { AuthSession } from "../useAuthSession";
 import type { DocBoxState } from "../useDocBox";
@@ -28,8 +42,8 @@ export interface DocBoxUiState {
   msg: string;
   /** 지우기 확인 창의 대상. */
   deleting: { id: string; name: string } | null;
-  /** 열려 있는 빈 양식. 입력값은 창(BlankFormDialog)이 들고 있다. */
-  form: { id: string; editing: boolean } | null;
+  /** 열려 있는 빈 양식. 입력값은 창(BlankFormDialog)이 들고 있다. 저장한 파일을 열면 values · title 로 채운다. */
+  form: { id: string; editing: boolean; values?: FormValues; title?: string; key?: string } | null;
 }
 
 export function initialDocBoxState(): DocBoxUiState {
@@ -134,6 +148,7 @@ export function docBoxValues(input: DocBoxInput) {
   });
 
   const fileDoc = (d: DocboxFile) => {
+    const saved = extOf(d.name) === FORM_FILE_EXT.toUpperCase();
     const lines = (d.preview_text ?? "").split("\n");
     const url = box.imageUrls[d.id] ?? "";
     const isImg = d.preview_kind === "image" && !!url;
@@ -154,6 +169,15 @@ export function docBoxValues(input: DocBoxInput) {
       meta: `${ymd(d.created_at)} · ${fmtSize(d.size_bytes)} · ${extOf(d.name)}${s.cur === "all" ? " · " + fname(d.folder_id) : ""}${by}`,
       opts,
       mvLabel: `${d.name} 폴더 옮기기`,
+      // 작성 양식 파일: '이어 쓰기' 로 내용을 받아 빈 양식 창에 채운다.
+      isSaved: saved,
+      openSaved: async () => {
+        const text = await box.readText(d.id);
+        if (text === null) return;
+        const parsed = parseFormFile(text);
+        if (!parsed) return setState({ msg: `‘${d.name}’ 은(는) 열 수 없는 작성 양식 파일이에요` });
+        setState({ form: { id: parsed.formId, editing: true, values: parsed.values, title: formFileTitle(d.name), key: d.id } });
+      },
       canDelete: session.isAdmin,
       delLabel: `${d.name} 지우기`,
       askDelete: () => setState({ deleting: { id: d.id, name: d.name } }),
@@ -221,13 +245,56 @@ export function docBoxValues(input: DocBoxInput) {
   const curName = s.cur === "all" ? "전체 문서" : s.cur === NONE ? "폴더 없음" : fname(s.cur);
   const msg = box.actionError ?? (box.busy ? "처리하는 중…" : s.msg);
   const openForm = s.form ? blankFormById(s.form.id) : null;
+  // 저장할 폴더: 서버 폴더 + 화면에만 있는 빈 양식 폴더(고르면 저장할 때 같은 이름으로 만든다). 기본은 그 양식이 놓인 폴더.
+  const saveFolders = [
+    { id: "", name: "폴더 없음" },
+    ...formFolders.map((g) => ({ id: g.id, name: g.name })),
+    ...folderList.filter((f) => !formFolderOf(f.id)).map((f) => ({ id: f.id, name: f.name })),
+  ];
+  const homeFolder = openForm ? formFolders.find((g) => g.forms.includes(openForm))?.id ?? "" : "";
 
   return {
-    openForm: openForm && s.form ? { id: openForm.id, name: openForm.name, editing: s.form.editing } : null,
+    openForm:
+      openForm && s.form
+        ? {
+            id: openForm.id,
+            key: s.form.key ?? openForm.id,
+            name: openForm.name,
+            editing: s.form.editing,
+            values: s.form.values,
+            title: s.form.title,
+            folders: saveFolders,
+            defaultFolder: homeFolder,
+          }
+        : null,
     editForm: () => setState({ form: s.form ? { ...s.form, editing: true } : null }),
     closeForm: () => setState({ form: null }),
-    downloadForm: () => {
-      if (openForm) downloadBlankForm(openForm);
+    downloadForm: (values: FormValues) => {
+      if (openForm) downloadBlankForm(openForm, values, s.form?.title);
+    },
+    saveForm: async ({ title, folderId, values }: { title: string; folderId: string | null; values: FormValues }) => {
+      if (!openForm || box.busy) return false;
+      let folder = folderId;
+      let label = fname(folderId);
+      if (folder && isFixed(folder)) {
+        const name = formFolderOf(folder)?.name ?? "";
+        let made = name ? await box.createFolder(name) : null;
+        // 그사이 다른 분이 같은 이름 폴더를 만들었으면 409 — 목록을 다시 받아 그 폴더에 둔다(민규 리뷰 5).
+        if (!made && name) {
+          try {
+            made = (await docbox.list()).folders.find((f) => f.name.trim() === name)?.id ?? null;
+          } catch {
+            made = null;
+          }
+        }
+        if (!made) return false;
+        folder = made;
+        label = name;
+      }
+      const file = new File([formFileText(openForm.id, values)], `${title}.${FORM_FILE_EXT}`, { type: "application/json" });
+      const count = await box.upload([file], folder);
+      if (count > 0) setState({ msg: `‘${title}’ 을(를) ${label}에 저장했어요` });
+      return count > 0;
     },
     notice: screenNotice({ session, loading: box.loading && !data, error: box.error, retry: box.reload }),
     folders,

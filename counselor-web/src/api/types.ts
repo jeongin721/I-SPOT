@@ -1863,6 +1863,31 @@ export interface ChildAppCaseRow {
   open_alert_reason: string | null;
   open_alert_urgent: boolean;
   last_acked_at: string | null;
+  /** 관리자 · 아이 연계 앱 관리(11/17 디자인): 연결일 · 담당 상담사. */
+  linked_at: string | null;
+  counselor_name: string | null;
+  /** 마지막 응답(없으면 연결) 뒤 가장 최근 안부 연락. 그 뒤 아이가 답하면 null. */
+  welfare_status: ChildWelfareStatus | null;
+  welfare_note: string | null;
+  welfare_at: string | null;
+}
+
+/** 장기 무응답 아이 안부 연락 처리. OPEN = 미처리로 되돌림. */
+export type ChildWelfareStatus = "OPEN" | "TRIED" | "DONE";
+
+/** 관리자 홈 '긴급 알림 현황': 오늘 · 어제 긴급 알림과 그 전에 남은 확인 전 알림(GET /child-app-alerts/recent, 관리자). */
+export interface ChildRecentAlert {
+  id: string;
+  case_id: string;
+  case_number: string;
+  child_alias: string;
+  reason: "ALERT" | "NEEDS_CHECK" | "RED_ANSWER" | "CONTACT_REQUEST";
+  repeat_count: number;
+  created_at: string;
+  last_at: string | null;
+  counselor_name: string | null;
+  acknowledged_at: string | null;
+  acknowledged_by_name: string | null;
 }
 
 export interface ChildAiQuestion {

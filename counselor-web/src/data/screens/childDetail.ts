@@ -16,6 +16,22 @@ interface AnswerItem {
 }
 
 const MAX_PREVIOUS = 3;
+/** 서버 child_app_service.CONTACT_REQUEST_CHIP · AI_QUESTION_PREFIX 와 같게 둔다. */
+const CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요";
+const AI_QUESTION_PREFIX = "ai_";
+
+/**
+ * 한 묶음의 답 중 상담사가 먼저 볼 답의 순서(낮을수록 먼저). 볼 필요 없는 답은 null.
+ * 위험 답(RED) → 연락 요청 → 주의 답(AMBER) → 추가 질문(AI, 위험 답의 후속)에 대한 답. 넘긴 답('답하기 어려워요')은 빼낸다.
+ */
+function checkRank(item: AnswerItem): number | null {
+  if (item.level === "SKIP") return null;
+  if (item.level === "RED") return 0;
+  if (item.answer.includes(CONTACT_REQUEST_CHIP)) return 1;
+  if (item.level === "AMBER") return 2;
+  if (item.question_id.startsWith(AI_QUESTION_PREFIX)) return 3;
+  return null;
+}
 const RECENT_DAYS = 21;
 
 export function childDateTime(iso: string | null | undefined): string {
@@ -202,7 +218,16 @@ export function childAppHighlights(data: ChildAppCase | null | undefined) {
           : [];
       })
     : [];
+  // 가장 최근 답 묶음에서 확인이 필요한 답(같은 질문의 예전 답이 없어 '변화' 로는 안 잡히는 처음 답 · 추가 질문 답 포함).
+  const needCheck = latest
+    ? itemsOf(latest)
+        .map((item) => ({ item, rank: checkRank(item) }))
+        .filter((x): x is { item: AnswerItem; rank: number } => x.rank !== null)
+        .sort((a, b) => a.rank - b.rank)
+        .map(({ item }) => ({ question: bank.get(item.question_id)?.text ?? item.question, answer: item.answer, level: item.level }))
+    : [];
   return {
+    needCheck,
     linked: data.status === "LINKED",
     answeredCount: answered.length,
     flaggedCount: answered.filter((event) => event.level === "RED" || event.level === "AMBER").length,

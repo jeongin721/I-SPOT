@@ -11,9 +11,10 @@
 //      · 상담 일지: 그 회차 문서 중 마지막 상담일지(GET /sessions/{id}/documents). 승인 전이면 '(작성 중)'.
 //      · 주요 발화: 요약 근거 발화(summary_evidence) 중 앞의 3개를 원문에서 찾아 '시각 · 화자 "말"'(근거가 있을 때만 원문을 부른다).
 //      · 신호: 신호 이력의 세부 신호(AI 제안, 화자 확인 중이면 '보류'). 머리글 없이 칩만(디자인 그대로).
+//  - '기록 보기': 그 회차의 상담 기록 화면(AppSessionRecord — 요약 사정 관점 4칸 · 일지 전문, 읽기 전용, 11/19).
 // 고치기는 웹에서 한다. 이 화면은 폰에 아무것도 저장하지 않는다.
 import { useMemo, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import MobileAppShell from '../components/MobileAppShell';
 import { documents as documentsApi, summary as summaryApi, transcript as transcriptApi } from '../api/endpoints';
 import { DOC_TYPE_CONSULTATION_RECORD } from '../api/types';
@@ -114,6 +115,13 @@ function SessionCard({ row, historyRow }) {
           ))}
         </div>
       ) : null}
+      <Link
+        className="ma-btn ma-btn-sm"
+        to={`/AppSessionRecord?case=${row.caseId}&session=${id}`}
+        state={{ from: `/AppHistory?case=${row.caseId}` }}
+      >
+        기록 보기
+      </Link>
     </article>
   );
 }
