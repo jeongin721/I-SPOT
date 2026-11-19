@@ -2875,6 +2875,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
 
 - 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 아니면 `422`). `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
 - 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
 - 응답 `{ "files": [DocboxFile] }`.
 

@@ -184,3 +184,28 @@ def test_text_preview_survives_cut_in_middle_of_character() -> None:
     kind, text = docbox_service._preview("memo.txt", ("a" + "가" * 8000).encode("utf-8"))
     assert kind == "text"
     assert text.startswith("a가")
+
+
+def test_blank_form_file_round_trip_and_shape_check(client: TestClient, counselor_headers) -> None:
+    """11/09 디자인: 빈 양식을 채워 '별도 문서'(.ispotform JSON)로 저장하고 다시 받아 이어 쓴다. 정해 둔 꼴만 받는다."""
+
+    import json
+
+    good = {"kind": "ispot-blank-form", "form_id": "r1", "version": "2026-11-09", "values": {"f1": "보통이다", "k3": True}}
+    res = _upload(client, counselor_headers, [("가족관계 척도 연습.ispotform", json.dumps(good, ensure_ascii=False).encode(), "application/json")])
+    assert res.status_code == 201, res.text
+    saved = res.json()["data"]["files"][0]
+    assert saved["preview_kind"] == "other"
+    body = client.get(f"{URL}/files/{saved['id']}/download", headers=counselor_headers)
+    assert body.status_code == 200 and json.loads(body.content)["values"]["f1"] == "보통이다"
+
+    bad = [
+        b"not json",
+        json.dumps({**good, "kind": "x"}).encode(),
+        json.dumps({**good, "form_id": "zz"}).encode(),
+        json.dumps({**good, "values": {"bad key!": "x"}}).encode(),
+        json.dumps({**good, "values": {"f1": 3}}).encode(),
+        json.dumps({**good, "values": {"f1": "x" * 2001}}).encode(),
+    ]
+    for data in bad:
+        assert _upload(client, counselor_headers, [("x.ispotform", data, "application/json")]).status_code == 422

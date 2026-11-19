@@ -7,8 +7,13 @@
 #    잘못 올린 문서는 관리자만 지운다(표 행 · 파일 본체를 함께 지운다).
 #  - 첫 페이지 미리보기: 그림은 그대로(별도 창구 /preview — 그림만 주고 내려받기 기록을 남기지 않는다), txt · md · csv 는 앞부분 글, docx · hwpx · pdf 는 document_text 로 뽑은 앞부분 글.
 #    뽑지 못하면(손상 · 너무 김 · 시간 초과) 미리보기 없음(other)으로 둔다 — 올리기는 막지 않는다.
+#  - 작성 양식(2026-11-19, 11/09 디자인 '저장 → 제목 · 폴더를 정해 별도 문서로'): 빈 양식 6종을 화면에서 채워 .ispotform(JSON)으로
+#    올린다. 내용은 {kind, form_id, version, values} 꼴만 받는다(FORM_IDS · 칸 이름 · 값 길이 검사). 아이 정보는 넣지 않게
+#    화면이 확인을 받는다 — 공용 보관함이라 모든 상담원이 본다. 사례 서식은 사례 상세 › 문서함(case_forms)에 저장한다.
 # 감사 기록에는 파일 수 · 형식 · 크기 · 폴더 id 만 남긴다(파일 이름 · 내용은 넣지 않는다).
+import json
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -39,7 +44,40 @@ IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "g
 PLAIN_TEXT = {"txt", "md", "csv"}
 EXTRACTABLE = {"docx", "hwpx", "pdf"}
 OTHER = {"hwp", "doc", "xlsx", "xls", "pptx", "ppt"}
-ALLOWED = set(IMAGE_TYPES) | PLAIN_TEXT | EXTRACTABLE | OTHER
+#: 문서함 빈 양식을 채워 저장한 파일(JSON). 화면이 다시 열어 이어서 쓴다.
+FORM_EXT = "ispotform"
+FORM_IDS = {"f4", "f6", "f27", "f29", "r1", "r3"}
+FORM_MAX_BYTES = 256 * 1024
+FORM_MAX_FIELDS = 400
+FORM_VALUE_MAX = 2000
+_FORM_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,31}$")
+ALLOWED = set(IMAGE_TYPES) | PLAIN_TEXT | EXTRACTABLE | OTHER | {FORM_EXT}
+
+
+def _check_form(data: bytes) -> None:
+    """작성 양식 파일은 정해 둔 꼴만 받는다. 아니면 422."""
+
+    bad = _invalid("작성 양식 파일 내용이 올바르지 않습니다.")
+    if len(data) > FORM_MAX_BYTES:
+        raise bad
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise bad
+    if not isinstance(doc, dict) or doc.get("kind") != "ispot-blank-form" or doc.get("form_id") not in FORM_IDS:
+        raise bad
+    if not isinstance(doc.get("version"), str) or len(doc["version"]) > 20:
+        raise bad
+    values = doc.get("values")
+    if not isinstance(values, dict) or len(values) > FORM_MAX_FIELDS:
+        raise bad
+    for key, value in values.items():
+        if not isinstance(key, str) or not _FORM_KEY.match(key):
+            raise bad
+        if isinstance(value, bool):
+            continue
+        if not isinstance(value, str) or len(value) > FORM_VALUE_MAX:
+            raise bad
 
 
 def _invalid(message: str) -> APIError:
@@ -180,6 +218,8 @@ def upload(db: Session, user: User, files: List[Tuple[Optional[str], bytes]], fo
             raise _invalid("빈 파일은 올릴 수 없습니다.")
         if len(data) > MAX_FILE_BYTES:
             raise _invalid("파일 하나는 10 MB 까지 올릴 수 있습니다.")
+        if ext == FORM_EXT:
+            _check_form(data)
         checked.append((name, ext, data))
 
     rows: List[DocboxFile] = []
@@ -192,7 +232,7 @@ def upload(db: Session, user: User, files: List[Tuple[Optional[str], bytes]], fo
             row = DocboxFile(
                 folder_id=folder_id,
                 name=name,
-                content_type=IMAGE_TYPES.get(ext, "application/octet-stream"),
+                content_type="application/json" if ext == FORM_EXT else IMAGE_TYPES.get(ext, "application/octet-stream"),
                 size_bytes=len(data),
                 path=relative,
                 preview_kind=kind,

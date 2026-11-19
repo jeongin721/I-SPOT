@@ -1,9 +1,9 @@
 // 문서함의 빈 양식(11/09 디자인 '문서함 작성 양식', 2026-11-09).
 //
-// 디자인의 작성 양식 6종을 화면에서만 보여 준다. 입력한 값은 창이 열려 있는 동안 화면 메모리에만 있고,
-// 서버 · 브라우저 저장소 · 내려받은 파일 어디에도 넣지 않는다. 이 양식에는 아동 이름 · 생년월일 칸이 있는데
-// 문서함은 모든 상담원에게 보이므로, 저장은 사례와 권한을 정한 뒤에 따로 다룬다.
-// 사례에 남기는 작성은 지금처럼 사례 상세 › 문서함(API_CONTRACT 22절)에서 한다.
+// 디자인의 작성 양식 6종을 화면에서 보여 주고 채운다. 채운 값은 '저장' 을 눌러야 문서함에 작성 양식 파일(.ispotform, JSON —
+// formFileText)로 남고(2026-11-19), 내려받기는 적은 내용이 든 HTML 이다. 브라우저 저장소에는 넣지 않는다.
+// 이 양식에는 아동 이름 · 생년월일 칸이 있는데 문서함은 모든 상담원에게 보이므로, 저장 창에서 '아이를 알아볼 수 있는 정보 없음'
+// 확인을 받는다. 사례에 남기는 작성은 지금처럼 사례 상세 › 문서함(API_CONTRACT 22절)에서 한다.
 
 import { BLANK_FORM_DEFS } from "./blankFormDefs";
 import type { FormBlockDef, FormCellDef, FormDef } from "./blankFormDefs";
@@ -145,11 +145,52 @@ const HTML_STYLE =
   ".v{min-width:40px;border-bottom:1px solid #8E897F;padding:0 4px}.tv{flex-basis:100%;white-space:pre-wrap;min-height:40px}" +
   ".gd{flex-basis:100%;white-space:pre-wrap;font-size:12px;font-style:italic;color:#6E6A62}.q4{flex:0 0 calc(25% - 8px)}.q3{flex:0 0 calc(33% - 7px)}";
 
+/** 문서함에 저장하는 작성 양식 파일 확장자(서버 docbox_service FORM_EXT). */
+export const FORM_FILE_EXT = "ispotform";
+
+/** 칸 값(칸 이름 → 글 또는 체크). */
+export type FormValues = Record<string, string | boolean>;
+
+/** 작성 양식 파일 내용(JSON). 빈 칸 · 끈 체크는 넣지 않는다. 서버가 같은 꼴만 받는다. */
+export function formFileText(formId: string, values: FormValues): string {
+  const kept: FormValues = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (value === true || (typeof value === "string" && value.trim())) kept[key] = value;
+  }
+  return JSON.stringify({ kind: "ispot-blank-form", form_id: formId, version: BLANK_FORM_DATE, values: kept });
+}
+
+/** 작성 양식 파일을 읽는다. 꼴이 맞지 않거나 모르는 양식이면 null. */
+export function parseFormFile(text: string): { formId: string; values: FormValues } | null {
+  try {
+    const doc = JSON.parse(text);
+    if (!doc || doc.kind !== "ispot-blank-form" || !blankFormById(doc.form_id) || typeof doc.values !== "object" || !doc.values) {
+      return null;
+    }
+    const values: FormValues = {};
+    for (const [key, value] of Object.entries(doc.values as Record<string, unknown>)) {
+      if (typeof value === "string" || value === true) values[key] = value;
+    }
+    return { formId: doc.form_id, values };
+  } catch {
+    return null;
+  }
+}
+
+/** 저장 파일 이름에서 확장자를 뺀 제목. */
+export function formFileTitle(name: string): string {
+  return name.replace(new RegExp(`\\.${FORM_FILE_EXT}$`, "i"), "");
+}
+
 /**
- * 내려받을 HTML 을 만든다. 값을 받지 않으므로 항상 빈 양식이다(입력값이 파일로 나가지 않게 한다).
+ * 내려받을 HTML 을 만든다. values 를 주면 칸에 적고 고른 항목은 ☑(작성한 양식 내려받기, 11/09 디자인), 없으면 빈 양식.
  * 브라우저에서 열어 그대로 인쇄할 수 있다.
  */
-export function blankFormHtml(form: BlankForm): string {
+export function blankFormHtml(form: BlankForm, values: FormValues = {}): string {
+  const text = (key: string) => {
+    const value = values[key];
+    return typeof value === "string" && value ? escapeHtml(value) : "";
+  };
   const body = blankFormPages(form.id)
     .map((page) => {
       const blocks = page
@@ -170,13 +211,14 @@ export function blankFormHtml(form: BlankForm): string {
                       return `<span class="${g.q}"></span>`;
                     case "i":
                     case "n":
-                      return '<span class="v">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>';
+                      return `<span class="v">${text(g.key) || "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"}</span>`;
                     case "ta":
-                      return '<div class="tv"></div>';
+                      return `<div class="tv">${text(g.key)}</div>`;
                     default: {
                       const q = /q\d/.exec(g.cls)?.[0];
-                      const text = g.cls.includes("only") ? "" : ` ${escapeHtml(g.text)}`;
-                      return `<span${q ? ` class="${q}"` : ""}>☐${text}</span>`;
+                      const label = g.cls.includes("only") ? "" : ` ${escapeHtml(g.text)}`;
+                      const on = g.group ? values[g.key] === g.text : !!values[g.key];
+                      return `<span${q ? ` class="${q}"` : ""}>${on ? "☑" : "☐"}${label}</span>`;
                     }
                   }
                 })
@@ -193,13 +235,13 @@ export function blankFormHtml(form: BlankForm): string {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(form.name)}</title><style>${HTML_STYLE}</style></head><body>${body}</body></html>`;
 }
 
-/** 빈 양식을 HTML 파일로 내려받는다. 서버를 부르지 않는다. */
-export function downloadBlankForm(form: BlankForm): boolean {
+/** 양식을 HTML 파일로 내려받는다(values 가 있으면 적은 내용과 함께). 서버를 부르지 않는다. */
+export function downloadBlankForm(form: BlankForm, values: FormValues = {}, title?: string): boolean {
   try {
-    const url = URL.createObjectURL(new Blob([blankFormHtml(form)], { type: "text/html;charset=utf-8" }));
+    const url = URL.createObjectURL(new Blob([blankFormHtml(form, values)], { type: "text/html;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${form.name}.html`;
+    link.download = `${title || form.name}.html`;
     document.body.appendChild(link);
     link.click();
     link.remove();
