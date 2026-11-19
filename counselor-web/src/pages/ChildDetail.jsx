@@ -21,6 +21,7 @@ import { readScreenIds, screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
 import { useTheme } from '../theme';
 import './ChildDetail.css';
+import ChildAppQr from '../components/ChildAppQr';
 
 class Logic extends DCLogic {
   constructor(props) {
@@ -378,6 +379,7 @@ export default function ChildDetail(props) {
                   {app.invite ? (
                     <div style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '1px' }}>{app.invite.code}</div>
                   ) : null}
+                    <ChildAppQr code={app.invite?.code ?? null} />
                   <div>
                     <button type="button" className="btn btn-s" disabled={app.busy} onClick={app.createInvite}>
                       {app.data.status === 'INVITED' ? '코드 다시 만들기' : '연결 코드 만들기'}

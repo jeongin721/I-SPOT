@@ -12,6 +12,7 @@ import { useCaseDetail } from '../data/useCaseDetail';
 import { useTheme } from '../theme';
 import { screenHref } from '../data/screens/links';
 import './CaseApp.css';
+import ChildAppQr from '../components/ChildAppQr';
 
 const STATUS = {
   NOT_LINKED: ['미연결', 'chip c-check'],
@@ -178,6 +179,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                     {app.invite ? (
                       <div style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '1px' }}>{app.invite.code}</div>
                     ) : null}
+                    <ChildAppQr code={app.invite?.code ?? null} />
                     <div>
                       <button type="button" className="btn btn-s" disabled={app.busy} onClick={app.createInvite}>
                         {data.status === 'INVITED' ? '코드 다시 만들기' : '연결 코드 만들기'}
