@@ -586,14 +586,20 @@ export function caseFormValues(input: CaseFormInput) {
 
 // ---------------------------------------------------------
 // 탭 5 문서함 '열기' 읽기 전용 보기 창(11/10 디자인 CaseDocs) — 저장한 서식 값을 문서함 빈 양식(blankFormDefs)의 칸 이름으로.
-// 디자인 CaseDocs.dc.html 이 하는 대응 그대로다: 사정기록지 안전영역 a1~a11 · Key Person kp · 사정결과 res,
-// 점검표 q1~q9(예 · 아니오), 위험수준 척도 r1~r43('N점'), 가족관계 척도 f1~f15(5점 문구). 그 밖의 칸은 빈 양식대로 비어 보인다.
+// 디자인 CaseDocs.dc.html 이 하는 대응: 사정기록지 안전영역 a1~a11 · Key Person kp · 사정결과 res,
+// 점검표 q1~q9(예 · 아니오), 위험수준 척도 r1~r43('N점'), 가족관계 척도 f1~f15(5점 문구).
+// 민규 #185 리뷰 2로 더함: 사정기록지 안전점수 3칸 · 이유(k74~k79) · 담당자 소견(k80) · 가족관계 척도 응답자 · 평균(k51 · k52,
+// 가족관계 척도 기록에서), 점검표 점검일/회차(k4) · 장소(k5) · 소견(k7) · 추후 계획(k8).
+// 서식 기록에 없는 칸(신고일 · 아동 · 가족 등 사례 정보)은 빈 양식대로 비어 보인다 — 보기 창이 그렇게 안내한다(BLANK_VIEW_NOTE).
 // ---------------------------------------------------------
 
 /** 서식 → 문서함 빈 양식 ID. */
 export const BLANK_FORM_OF: Record<FormTab, string> = { A: "f6", B: "f27", C: "r3", D: "r1" };
 
 const FAMILY_LABELS = ["전혀 그렇지 않다", "대체로 그렇지 않다", "보통이다", "대체로 그렇다", "항상 그렇다"];
+
+/** 보기 창 안내 한 줄. */
+export const BLANK_VIEW_NOTE = "서식 작성 화면에서 저장한 칸만 보입니다(신고일 · 아동 · 가족 등 사례 정보 칸은 비어 보여요)";
 
 /** 이 서식의 지금 차수(임시 저장 → 확정 순, useCaseForms.currentForm) 값을 빈 양식 칸 값으로. 기록이 없으면 빈 값. */
 export function blankViewValues(forms: CaseFormsState, tab: FormTab): Record<string, string | boolean> {
@@ -612,11 +618,32 @@ export function blankViewValues(forms: CaseFormsState, tab: FormTab): Record<str
     if (kp) out.kp = kp;
     const res = label(RESULTS, v.result);
     if (res) out.res = res;
+    v.scores.forEach((row, i) => {
+      if (row.score !== null) out[`k${74 + i * 2}`] = String(row.score);
+      if (row.reason.trim()) out[`k${75 + i * 2}`] = row.reason;
+    });
+    if (v.opinion.trim()) out.k80 = v.opinion;
+    // 사정기록지 안의 '가족관계 척도 응답자( ) / 평균( )점' — 가족관계 척도 지금 차수에서.
+    const fam = currentForm(forms.items, FORM_TYPES.D);
+    if (fam) {
+      const f = normalize("FAMILY_SCALE", (fam.values as Record<string, unknown>) ?? null);
+      const who = label(RESPONDENTS, f.respondent);
+      if (who) out.k51 = who;
+      const answered = f.answers.filter((x): x is number => x !== null);
+      if (answered.length) out.k52 = (answered.reduce((a, b) => a + b, 0) / answered.length).toFixed(1);
+    }
   } else if (tab === "B") {
     const v = normalize("MANAGEMENT_CHECKLIST", raw);
     v.checks.forEach((code, i) => {
       if (code) out[`q${i + 1}`] = code === "YES" ? "예" : "아니오";
     });
+    if (row) {
+      const day = toDateOnly(row.status === "APPROVED" ? row.confirmed_at : row.updated_at);
+      out.k4 = `${day ? `${day} / ` : ""}${row.round}차`;
+    }
+    if (v.place.trim()) out.k5 = v.place;
+    if (v.opinion.trim()) out.k7 = v.opinion;
+    if (v.plan.trim()) out.k8 = v.plan;
   } else if (tab === "C") {
     const v = normalize("RISK_SCALE", raw);
     v.scores.forEach((score, i) => {

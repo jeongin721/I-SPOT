@@ -151,10 +151,26 @@ export const FORM_FILE_EXT = "ispotform";
 /** 칸 값(칸 이름 → 글 또는 체크). */
 export type FormValues = Record<string, string | boolean>;
 
-/** 작성 양식 파일 내용(JSON). 빈 칸 · 끈 체크는 넣지 않는다. 서버가 같은 꼴만 받는다. */
+/**
+ * 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명). 문서함은 모든 상담원이 보므로
+ * 작성 창에서 못 쓰게 하고 파일에서도 뺀다. 서버(docbox_service FORM_IDENTITY_FIELDS)도 이 칸이 들어오면 422(민규 리뷰).
+ */
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `k${from + i}`);
+export const IDENTITY_FIELDS: Record<string, ReadonlySet<string>> = {
+  f4: new Set(["k14", "k15", ...range(16, 25), "k32", "k60", "k67", "k74", "k81"]),
+  f6: new Set(["k10", "k11", "k12", "k13", "k14", "k15", "k16", "k17", "k24", "k27", "k30", "k33"]),
+  f27: new Set(["k1", "k3"]),
+  f29: new Set(["k1", "k4"]),
+  r1: new Set(),
+  r3: new Set(),
+};
+
+/** 작성 양식 파일 내용(JSON). 빈 칸 · 끈 체크 · 신원 칸은 넣지 않는다. 서버가 같은 꼴만 받는다. */
 export function formFileText(formId: string, values: FormValues): string {
   const kept: FormValues = {};
+  const locked = IDENTITY_FIELDS[formId] ?? new Set<string>();
   for (const [key, value] of Object.entries(values)) {
+    if (locked.has(key)) continue;
     if (value === true || (typeof value === "string" && value.trim())) kept[key] = value;
   }
   return JSON.stringify({ kind: "ispot-blank-form", form_id: formId, version: BLANK_FORM_DATE, values: kept });

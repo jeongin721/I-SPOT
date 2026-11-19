@@ -1243,3 +1243,26 @@ def test_welfare_check_for_silent_child(
     db.commit()
     row = next(r for r in client.get("/api/v1/child-app-cases", headers=admin_headers).json()["data"] if r["case_id"] == case["id"])
     assert row["welfare_status"] is None
+
+
+def test_admin_recent_alerts_keep_old_unacked_urgent_behind_many_checks(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict, db, monkeypatch
+) -> None:
+    """민규 #185 리뷰 4 — 긴급이 아닌 확인 전 줄이 많이 쌓여도 더 오래된 미확인 긴급 알림이 빠지지 않는다."""
+
+    from app.models.child_app import ChildAppEvent
+    from app.core.enums import ChildAnswerLevel
+    from app.services import child_app_service
+
+    monkeypatch.setattr(child_app_service, "OPEN_ALERT_LIMIT", 2)  # 한 번에 4줄씩 · 최대 4개
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    old = _alert_row(db, case["id"])
+    old.created_at = datetime.now(timezone.utc) - timedelta(days=3)
+    for i in range(9):  # 긴급이 아닌 확인 전 줄(글 답) — 긴급 알림보다 최근
+        db.add(ChildAppEvent(case_id=uuid.UUID(case["id"]), kind=ChildAppEventKind.ANSWERS, level=ChildAnswerLevel.AMBER,
+                             payload={"alert_reason": "TEXT_ANSWER"}, needs_ack=True,
+                             created_at=datetime.now(timezone.utc) - timedelta(days=2, minutes=i)))
+    db.commit()
+    rows = client.get("/api/v1/child-app-alerts/recent", headers=admin_headers).json()["data"]
+    assert [r["id"] for r in rows] == [str(old.id)]

@@ -324,6 +324,7 @@ export default function AdminApp() {
             <span className="note">{dlg.kid}</span>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <span className="sub">처리 내용 (선택)</span>
+              <span className="note">관리자도 보는 칸이에요. 연락한 방법 · 결과만 적고, 상담 내용은 적지 마세요.</span>
               <textarea
                 className="inp"
                 rows={3}
@@ -336,6 +337,12 @@ export default function AdminApp() {
                 {dlg.note.length} / {NOTE_MAX}
               </span>
             </label>
+            {/* 저장 실패(409 · 네트워크) 문구는 창 안에도 보인다(민규 #185 리뷰 1). */}
+            {actError ? (
+              <p className="note" role="alert" style={{ margin: 0, color: '#A33B2E' }}>
+                {actError}
+              </p>
+            ) : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button type="button" className="btn btn-s btn-sm" onClick={() => setDlg(null)} disabled={busy !== null}>
                 취소

@@ -7,6 +7,7 @@ import A from './A';
 import { Paper } from './BlankForm';
 import { blankFormPages } from '../data/blankForms';
 import { useTheme } from '../theme';
+import { BLANK_VIEW_NOTE } from '../data/screens/caseForm';
 import '../pages/DocBox.css';
 
 export default function CaseFormView({ name, formId, values, editHref, status, onClose }) {
@@ -28,7 +29,7 @@ export default function CaseFormView({ name, formId, values, editHref, status, o
           <div className="fm-bar">
             <b className="fm-t">{name}</b>
             <span className="note fm-st" role="status">
-              내용 보기 · 읽기 전용{status ? ` · ${status}` : ''}
+              내용 보기 · 읽기 전용{status ? ` · ${status}` : ''} · {BLANK_VIEW_NOTE}
             </span>
             {editHref ? (
               <A className="btn btn-sm btn-p" to={editHref}>

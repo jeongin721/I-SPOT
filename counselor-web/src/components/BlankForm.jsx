@@ -6,7 +6,9 @@
 // 내려받기는 지금 적은 내용이 든 HTML 이다(빈 칸이면 빈 양식).
 // 스타일은 DocBox.css 에 있다(.pg-DocBox 안에서만 쓴다).
 import { memo, useEffect, useRef, useState } from 'react';
-import { blankFormPages, clampScore } from '../data/blankForms';
+import { IDENTITY_FIELDS, blankFormPages, clampScore } from '../data/blankForms';
+
+const LOCKED_HINT = '문서함에는 적지 않아요';
 
 // 읽기 칸. values 를 주면(사례 문서함 '열기' 보기 창) 저장한 값을 칸에 적고, 고른 항목은 ☑ 로 보인다.
 function ReadSeg({ g, values }) {
@@ -51,7 +53,23 @@ function ReadSeg({ g, values }) {
   }
 }
 
-function EditSeg({ g, values, onSet }) {
+function EditSeg({ g, values, onSet, locked }) {
+  // 아이 · 가족을 알아볼 수 있는 칸은 문서함 작성에서 막는다(민규 리뷰 — 공용 보관함).
+  if (locked && locked.has(g.key) && (g.t === 'i' || g.t === 'n' || g.t === 'ta')) {
+    return (
+      <input
+        className="fi"
+        type="text"
+        disabled
+        aria-label={`${g.aria} — ${LOCKED_HINT}`}
+        title={LOCKED_HINT}
+        placeholder={g.fill ? LOCKED_HINT : ''}
+        value=""
+        readOnly
+        style={g.fill || g.t === 'ta' ? { width: 'auto', flex: '1 1 90px', background: '#F2EFE8' } : { width: g.width || '56px', flex: '0 0 auto', background: '#F2EFE8' }}
+      />
+    );
+  }
   switch (g.t) {
     case 'i':
       return (
@@ -101,7 +119,7 @@ function EditSeg({ g, values, onSet }) {
   }
 }
 
-export function Paper({ page, values, onSet }) {
+export function Paper({ page, values, onSet, locked }) {
   const editing = !!onSet;
   return (
     <div className="paper">
@@ -115,7 +133,7 @@ export function Paper({ page, values, onSet }) {
                 if (g.t === 'br') return <span key={gi} className="fbr" />;
                 if (g.t === 'sp') return <span key={gi} className={`fsp ${g.q}`} />;
                 return editing ? (
-                  <EditSeg key={gi} g={g} values={values} onSet={onSet} />
+                  <EditSeg key={gi} g={g} values={values} onSet={onSet} locked={locked} />
                 ) : (
                   <ReadSeg key={gi} g={g} values={values} />
                 );
@@ -248,7 +266,10 @@ export function BlankFormDialog({
   defaultFolder,
   onSave,
 }) {
-  const [values, setValues] = useState(() => ({ ...(initialValues || {}) }));
+  const [values, setValues] = useState(() => {
+    const locked = IDENTITY_FIELDS[formId] ?? new Set();
+    return Object.fromEntries(Object.entries(initialValues || {}).filter(([key]) => !locked.has(key)));
+  });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const opener = useRef(document.activeElement);
@@ -303,7 +324,7 @@ export function BlankFormDialog({
       </div>
       <div className="fm-body">
         {blankFormPages(formId).map((page, i) => (
-          <Paper key={i} page={page} values={values} onSet={editing ? set : undefined} />
+          <Paper key={i} page={page} values={values} onSet={editing ? set : undefined} locked={IDENTITY_FIELDS[formId]} />
         ))}
       </div>
       {saving ? (

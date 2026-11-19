@@ -45,6 +45,8 @@ FEED_VIEW_LOG_WINDOW = timedelta(minutes=10)
 ALERT_STATUS_SHOWN = timedelta(hours=24)
 ALERT_OVERDUE_AFTER = timedelta(minutes=5)
 OPEN_ALERT_LIMIT = 50
+# 관리자 긴급 알림 현황이 긴급을 모으려고 한 번에 읽는 확인 필요 줄의 최대 수.
+RECENT_SCAN_MAX = 5000
 AI_QUESTION_PREFIX = "ai_"
 LIST_LIMIT = 200
 RECENT_DAYS = 21
@@ -343,12 +345,16 @@ def record_welfare_check(db: Session, case: Case, user: User, status: str, note:
 
 def recent_urgent_alerts(db: Session, viewer: User) -> List[Dict[str, Any]]:
     """관리자 홈 '긴급 알림 현황'. 오늘 · 어제(한국 날짜) 긴급 알림 전부와, 그 전이라도 아직 확인 전인 긴급 알림.
-    담당이 아닌 관리자에게는 답 내용 대신 이유(ALERT · NEEDS_CHECK)만 준다."""
+    담당이 아닌 관리자에게는 답 기반 내용 대신 이유(ALERT · NEEDS_CHECK)만 준다.
+
+    긴급인지는 본문(payload, 암호화 칸)을 봐야 알 수 있어 DB 에서 거르지 못한다. 그래서 최신부터 묶음으로 읽어 긴급만 모으고,
+    100개(OPEN_ALERT_LIMIT × 2)를 모으거나 다 읽을 때까지 이어 읽는다 — 긴급이 아닌 확인 전 줄이 많이 쌓여도 오래된 미확인 긴급이
+    빠지지 않게 한다(민규 #185 리뷰 4). 한 번에 읽는 양은 RECENT_SCAN_MAX 줄까지."""
 
     start = datetime.combine(datetime.now(LOCAL_TZ).date() - timedelta(days=1), datetime.min.time(), tzinfo=LOCAL_TZ)
     counselor = aliased(User)
     acker = aliased(User)
-    rows = db.execute(
+    statement = (
         select(ChildAppEvent, Case, counselor.name, acker.name)
         .join(Case, Case.id == ChildAppEvent.case_id)
         .outerjoin(counselor, counselor.id == Case.counselor_id)
@@ -359,8 +365,17 @@ def recent_urgent_alerts(db: Session, viewer: User) -> List[Dict[str, Any]]:
             or_(ChildAppEvent.created_at >= start, ChildAppEvent.acknowledged_at.is_(None)),
         )
         .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
-        .limit(OPEN_ALERT_LIMIT * 2)
-    ).all()
+    )
+    limit = OPEN_ALERT_LIMIT * 2
+    picked = []
+    offset = 0
+    batch = limit * 2
+    while len(picked) < limit and offset < RECENT_SCAN_MAX:
+        rows = db.execute(statement.offset(offset).limit(batch)).all()
+        if not rows:
+            break
+        picked.extend(row for row in rows if _is_urgent(row[0]))
+        offset += batch
 
     return [
         {
@@ -376,8 +391,7 @@ def recent_urgent_alerts(db: Session, viewer: User) -> List[Dict[str, Any]]:
             "acknowledged_at": event.acknowledged_at,
             "acknowledged_by_name": acker_name,
         }
-        for event, case, counselor_name, acker_name in rows
-        if _is_urgent(event)
+        for event, case, counselor_name, acker_name in picked[:limit]
     ]
 
 

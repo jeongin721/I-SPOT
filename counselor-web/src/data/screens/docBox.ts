@@ -14,6 +14,7 @@
 //    빈 양식 폴더면 같은 이름의 서버 폴더를 만들어 거기에 둔다. 저장한 파일 카드의 '이어 쓰기' 는 내용을 받아 같은 창에 채운다.
 
 import type { DocboxFile } from "../../api/types";
+import { docbox } from "../../api/endpoints";
 import {
   BLANK_FORM_DATE,
   BLANK_FORM_FOLDERS,
@@ -276,10 +277,19 @@ export function docBoxValues(input: DocBoxInput) {
       let folder = folderId;
       let label = fname(folderId);
       if (folder && isFixed(folder)) {
-        const name = formFolderOf(folder)?.name;
-        folder = name ? await box.createFolder(name) : null;
-        if (!folder) return false;
-        label = name ?? label;
+        const name = formFolderOf(folder)?.name ?? "";
+        let made = name ? await box.createFolder(name) : null;
+        // 그사이 다른 분이 같은 이름 폴더를 만들었으면 409 — 목록을 다시 받아 그 폴더에 둔다(민규 리뷰 5).
+        if (!made && name) {
+          try {
+            made = (await docbox.list()).folders.find((f) => f.name.trim() === name)?.id ?? null;
+          } catch {
+            made = null;
+          }
+        }
+        if (!made) return false;
+        folder = made;
+        label = name;
       }
       const file = new File([formFileText(openForm.id, values)], `${title}.${FORM_FILE_EXT}`, { type: "application/json" });
       const count = await box.upload([file], folder);

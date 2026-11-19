@@ -1,6 +1,7 @@
 # 문서함(GET /docbox · POST /docbox/folders · POST /docbox/files · PATCH /docbox/files/{id} · GET …/download · GET …/preview · DELETE, API_CONTRACT 23절).
 # 데이터는 모두 가상이다.
 import io
+import uuid
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -186,7 +187,7 @@ def test_text_preview_survives_cut_in_middle_of_character() -> None:
     assert text.startswith("a가")
 
 
-def test_blank_form_file_round_trip_and_shape_check(client: TestClient, counselor_headers) -> None:
+def test_blank_form_file_round_trip_and_shape_check(client: TestClient, counselor_headers, db) -> None:
     """11/09 디자인: 빈 양식을 채워 '별도 문서'(.ispotform JSON)로 저장하고 다시 받아 이어 쓴다. 정해 둔 꼴만 받는다."""
 
     import json
@@ -198,6 +199,14 @@ def test_blank_form_file_round_trip_and_shape_check(client: TestClient, counselo
     assert saved["preview_kind"] == "other"
     body = client.get(f"{URL}/files/{saved['id']}/download", headers=counselor_headers)
     assert body.status_code == 200 and json.loads(body.content)["values"]["f1"] == "보통이다"
+    # 본체는 앱 암호화로 저장한다(민규 ⑥ 조건 1) — 디스크에는 평문이 없다.
+    from app.core import storage
+    from app.models.docbox import DocboxFile
+    from sqlalchemy import select as sa_select
+
+    row = db.scalar(sa_select(DocboxFile).where(DocboxFile.id == uuid.UUID(saved["id"])))
+    on_disk = (storage.storage_root() / row.path).read_bytes()
+    assert "보통이다".encode() not in on_disk and b"ispot-blank-form" not in on_disk
 
     bad = [
         b"not json",
@@ -206,6 +215,15 @@ def test_blank_form_file_round_trip_and_shape_check(client: TestClient, counselo
         json.dumps({**good, "values": {"bad key!": "x"}}).encode(),
         json.dumps({**good, "values": {"f1": 3}}).encode(),
         json.dumps({**good, "values": {"f1": "x" * 2001}}).encode(),
+        json.dumps({**good, "extra": 1}).encode(),  # 네 칸 밖(민규 리뷰 4)
+        ("[" * 100000 + "]" * 100000).encode(),  # 깊은 중첩 — RecursionError 도 422(리뷰 3)
+        json.dumps({**good, "form_id": "f4", "values": {"k15": "홍길동"}}).encode(),  # 신원 칸
+        json.dumps({**good, "form_id": "f6", "values": {"k24": "이름"}}).encode(),  # 가족 성명
+        json.dumps({**good, "form_id": "f27", "values": {"k3": "2015-01-01"}}).encode(),
+        json.dumps({**good, "form_id": "f29", "values": {"k4": "아동"}}).encode(),
     ]
     for data in bad:
-        assert _upload(client, counselor_headers, [("x.ispotform", data, "application/json")]).status_code == 422
+        assert _upload(client, counselor_headers, [("x.ispotform", data, "application/json")]).status_code == 422, data[:60]
+    # 신원 칸이 아닌 칸은 그대로 받는다.
+    ok = json.dumps({**good, "form_id": "f6", "values": {"a1": "높음", "k80": "소견"}}).encode()
+    assert _upload(client, counselor_headers, [("y.ispotform", ok, "application/json")]).status_code == 201
