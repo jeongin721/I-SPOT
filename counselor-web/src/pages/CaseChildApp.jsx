@@ -210,15 +210,18 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                 <section
                   key={alert.id}
                   role="alert"
-                  aria-label="긴급 알림"
-                  style={{ background: '#F8E6DF', border: '1.5px solid #B0452C', borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
+                  aria-label={alert.urgent ? '긴급 알림' : '확인할 알림'}
+                  style={{ background: alert.urgent ? '#F8E6DF' : '#F7EDD6', border: `1.5px solid ${alert.urgent ? '#B0452C' : '#7A5A10'}`, borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
                 >
                   <div style={{ flex: '1 1 320px' }}>
-                    <b style={{ color: '#B0452C' }}>긴급 · {dateTime(alert.last_at ?? alert.created_at)}</b>
+                    {/* 긴급(알림 · 바로 확인 답 · 연락 요청)과 확인 필요(글 · 메시지 · 일정 요청)를 아이 상세처럼 나눈다. */}
+                    <b style={{ color: alert.urgent ? '#B0452C' : '#7A5A10' }}>
+                      {alert.urgent ? '긴급' : '확인 필요'} · {dateTime(alert.last_at ?? alert.created_at)}
+                    </b>
                     <br />
-                    {CHILD_ALERT_TEXT[alert.reason]}
+                    {CHILD_ALERT_TEXT[alert.reason] || CHILD_ALERT_TEXT.NEEDS_CHECK}
                     {alert.repeat_count ? ` ${alert.repeat_count}번 더 눌렀어요.` : ''}
-                    {data.can_read_feed ? ' 아이의 안전을 고려해 연락 방법을 판단해 주세요.' : ' 담당 상담사에게 전달해 주세요.'}
+                    {data.can_read_feed ? (alert.urgent ? ' 아이의 안전을 고려해 연락 방법을 판단해 주세요.' : '') : ' 담당 상담사에게 전달해 주세요.'}
                   </div>
                   {alert.can_ack ? (
                     <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
