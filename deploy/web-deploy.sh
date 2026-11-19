@@ -17,21 +17,19 @@
 # GPU 인스턴스(g4dn 등, deploy/gpu-setup.sh 로 드라이버 · nvidia-container-toolkit 을 깐 뒤)에서는 WITH_GPU=1 을 더한다
 # (CUDA 판 torch 이미지 + 컨테이너에 GPU 를 넘김, deploy/README.md 'GPU 로 띄우기'). WITH_MODELING=1 과 같이 쓴다:
 #   sudo env WITH_MODELING=1 WITH_GPU=1 bash deploy/web-deploy.sh
-# 아이 앱(콩콩)은 상담사 화면과 다른 주소(KID_SITE)로 낸다(2026-11-19). 아이 폰의 방문 기록 · 주소창에 상담사 사이트 주소가
+# 아이 앱(콩콩)은 상담사 화면과 다른 주소(KID_SITE)로 낼 수 있다(2026-11-19). 아이 폰의 방문 기록 · 주소창에 상담사 사이트 주소가
 # 남지 않게, 그리고 브라우저 저장소(로그인 토큰)를 상담사 화면과 나눠 쓰지 않게 하려는 것이다. 그 주소에서는 아이 앱 화면과
 # 아이 기기 API(/api/v1/child-app/…)만 열고, 상담사 화면의 /child-app/ 은 그 주소로 보낸다.
-# 기본은 SITE 가 sslip.io · nip.io 면 kong.<SITE>(DNS 가 저절로 같은 서버를 가리킨다), 아니면 비어 있어 예전처럼 한 주소다.
-# 실제 도메인이면 그 이름의 DNS 를 이 서버로 맞춘 뒤 넘긴다:  sudo env KID_SITE=<아이 앱 주소> bash deploy/web-deploy.sh
-# 끄려면 KID_SITE=none. 주소가 바뀌면 이미 연결한 아이 기기는 새 주소에서 연결 코드를 다시 넣어야 한다(저장소가 주소마다 따로다).
+# 기본은 꺼짐(예전처럼 한 주소, 11/19 경진 — 가상 데이터 시연에는 필요 없음). 실제 아이에게 쓰는 서버를 열 때, 기관과 연관이 드러나지
+# 않는 도메인의 DNS 를 이 서버로 맞춘 뒤 넘긴다:  sudo env KID_SITE=<아이 앱 주소> bash deploy/web-deploy.sh
+# (sslip.io 로 시험하려면 KID_SITE=kong.<SITE>.) 주소가 바뀌면 이미 연결한 아이 기기는 새 주소에서 연결 코드를 다시 넣어야 한다(저장소가 주소마다 따로다).
 # 비밀번호 · 키 · DB 주소는 이 파일이 아니라 서버의 /opt/ispot/backend.env 에 있다(저장소에 넣지 않는다). deploy/README.md 참고.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행해 주세요"; exit 1; }
 SITE="${SITE:-15-165-250-143.sslip.io}"
 # SITE 는 아래 sed 치환 · Caddyfile 에 그대로 들어간다. 호스트 이름 · IP 글자만 받는다(| & 공백 따옴표 등은 설정을 깨뜨린다).
 [[ "$SITE" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "SITE 는 영문 · 숫자 · 점 · 하이픈만 쓸 수 있습니다: $SITE"; exit 1; }
-if [ -z "${KID_SITE+x}" ]; then
-  case "$SITE" in *.sslip.io|*.nip.io) KID_SITE="kong.$SITE" ;; *) KID_SITE="" ;; esac
-fi
+KID_SITE="${KID_SITE:-}"
 [ "$KID_SITE" = none ] && KID_SITE=""
 if [ -n "$KID_SITE" ]; then
   [[ "$KID_SITE" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "KID_SITE 는 영문 · 숫자 · 점 · 하이픈만 쓸 수 있습니다: $KID_SITE"; exit 1; }

@@ -36,8 +36,8 @@ sudo bash deploy/web-deploy.sh
   ```
 
   새 주소도 이 서버를 가리켜야 HTTPS 인증서가 발급됩니다. `backend.env` 의 `CORS_ORIGINS` 는 스크립트가 `https://<주소>` 로 고칩니다.
-- **아이 앱(콩콩) 주소(2026-11-19)**: 아이 앱은 상담사 화면과 다른 주소로 냅니다(`KID_SITE`). `SITE` 가 sslip.io · nip.io 면 기본이 `kong.<SITE>`(예: `https://kong.15-165-250-143.sslip.io/`)라 따로 할 일이 없습니다. 그 주소에서는 아이 앱 화면과 아이 기기 API(`/api/v1/child-app/…`)만 열리고, 상담사 API · `/docs` 는 404 입니다. 상담사 화면의 `/child-app/` 은 그 주소로 넘어갑니다.
-  - 실제 도메인이면 그 이름의 DNS 를 이 서버로 맞춘 뒤 `sudo env SITE=<상담사 주소> KID_SITE=<아이 앱 주소> bash deploy/web-deploy.sh`. 한 주소로 되돌리려면 `KID_SITE=none`.
+- **아이 앱(콩콩) 주소(2026-11-19)**: 아이 앱을 상담사 화면과 다른 주소로 낼 수 있습니다(`KID_SITE`). **기본은 꺼짐**(예전처럼 상담사 주소의 `/child-app/`) — 가상 데이터 시연에는 필요 없고, 실제 아이에게 쓰는 서버를 열 때 기관과 연관이 드러나지 않는 도메인으로 켭니다(sslip.io 로 시험하려면 `KID_SITE=kong.<SITE>`). 켜면 그 주소에서는 아이 앱 화면과 아이 기기 API(`/api/v1/child-app/…`)만 열리고, 상담사 API · `/docs` 는 404 입니다. 상담사 화면의 `/child-app/` 은 그 주소로 넘어갑니다.
+  - 실제 도메인이면 그 이름의 DNS 를 이 서버로 맞춘 뒤 `sudo env SITE=<상담사 주소> KID_SITE=<아이 앱 주소> bash deploy/web-deploy.sh`. 끄려면 `KID_SITE` 없이(또는 `KID_SITE=none`) 다시 배포합니다.
   - 주소가 바뀌면 이미 연결한 아이 기기는 새 주소에서 연결 코드를 다시 넣어야 합니다(브라우저 저장소가 주소마다 따로라 예전 연결 정보를 못 읽습니다). 홈 화면 바로가기도 새로 만듭니다.
 - 이전 버전으로 되돌리는 기능은 없습니다. 되돌리려면 main 에서 되돌리는 커밋을 머지한 뒤 다시 배포합니다.
 
