@@ -6,6 +6,9 @@ import A from './A';
 import { useSentToast } from './SentToast';
 import { screenHref } from '../data/screens/links';
 
+// 문항 형식 칩(콩콩 디자인 '질문 보내기' 의 카테고리 옆 칩).
+const TYPE_NAME = { scale: '표정 5단계', choice: '선택지', text: '짧은 글' };
+
 export default function ChildQuestionSender({ app, caseId, bare = false }) {
   const [picked, setPicked] = useState([]);
   const [toast, showToast] = useSentToast();
@@ -49,7 +52,8 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
           <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
             <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
             <span>
-              <span className="chip c-sand">{item.category}</span> {item.text}
+              <span className="chip c-sand">{item.category}</span>{' '}
+              {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
             </span>
           </label>
         ))}

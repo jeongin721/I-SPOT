@@ -289,6 +289,7 @@ function fresh(){
     screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, qPending:false, qi:0, ans:{},
     tickets:load(STORE.tickets, 0), keys:load(STORE.keys, []), newKey:null, large:false, noti:0,
     hidden:false, garden:freshGarden(), gSheet:null, gToast:'',
+    moodPick:null, moodWhy:'', note:'', noteChip:null,
     sheet:null, count:0, banner:null, toast:null, spin:false, sending:false, alert:null, staff:null
   };
 }
@@ -342,7 +343,7 @@ function scrOnboard(){
   return `<div class="pad">
     <div class="center" style="margin-top:12px">${img('okay', 110)}<h2 style="margin:0;font-size:1.35em">이용 안내</h2></div>
     <div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <div class="row"><span class="chip sky">1</span><span class="grow">상담 선생님이 보낸 질문에 답할 수 있어요.</span></div>
+      <div class="row"><span class="chip sky">1</span><span class="grow">상담 선생님이 보낸 질문에 답하거나, 지금 기분을 기록해 보낼 수 있어요.</span></div>
       <div class="row"><span class="chip sky">2</span><span class="grow">보낸 내용은 <b>담당 상담 선생님</b>이 확인해요. 안전이 걱정되면 도움을 주기 위해 다른 어른이나 기관에 알릴 수 있어요.</span></div>
       <div class="row"><span class="chip sky">3</span><span class="grow">다른 사람이 볼 것 같으면 오른쪽 위 <b>숨기기</b>를 누르세요. 게임 화면으로 바뀌고, 왼쪽 위 <b>돌아가기</b>로 다시 돌아와요.</span></div>
       <div class="row"><span class="chip sky">4</span><span class="grow">위험하다고 느끼면 <b>도움</b> 탭에서 바로 연락할 수 있어요.</span></div>
@@ -370,9 +371,13 @@ function scrHome(){
     <div class="row">${img('hello', 72)}<div><div style="font-size:1.4em;font-weight:700">오늘 하루는 어땠나요?</div><div class="sub" style="font-size:.92em">원할 때 답하면 돼요.</div></div></div>
     ${S.alert && !S.alert.acknowledged && S.alert.overdue ? alertCard() : ''}
     ${qCard}
+    <button class="mini-card" data-act="go" data-to="mood">
+      <span class="grow"><b style="display:block">지금 기분 기록하기</b><span class="muted">표정 하나만 골라도 돼요</span></span>
+      ${img('good', 34)}${img('meh', 34)}${img('sad', 34)}${ICON.chev}</button>
     ${S.next ? (d => `<button class="mini-card" data-act="tab" data-to="cal">
       <span class="datebox"><small>${d.m}월</small><b>${d.d}</b></span>
       <span class="grow"><span class="muted" style="display:block">다음 상담 · ${d.dday}</span><b>${esc(d.label)}</b></span>${ICON.chev}</button>`)(nextInfo()) : ''}
+    <button class="outline" data-act="go" data-to="note">선생님께 메시지 보내기</button>
     ${S.alert && !(!S.alert.acknowledged && S.alert.overdue) ? alertCard() : ''}
     ${lockLine()}
     <div style="flex:1 1 auto"></div>
@@ -491,6 +496,7 @@ function scrCal(){
       <b>다가오는 상담</b>
       <div class="card row"><span class="datebox"><small>${i0.m}월</small><b>${i0.d}</b></span><span class="grow"><b style="display:block">${esc(i0.wd)} ${esc(i0.time)}</b><span class="muted">${esc(S.next.place || '')}</span></span><span class="chip sky">${i0.dday}</span></div>
     </div>
+    <button class="outline" data-act="calHard">참석이 어려워요 (선생님께 알리기)</button>
   </div>`;
 }
 /* ---------- 키링 ---------- */
@@ -671,7 +677,7 @@ function scrHelp(){
         <li>112에 잘못 걸었다면 끊지 말고 "잘못 걸었어요"라고 말하세요. 그냥 끊으면 확인 전화가 올 수 있어요.</li>
         <li>실수해도 혼나지 않아요.</li></ul></div></details>
       <details><summary>내가 보낸 내용은 누가 보나요?</summary><div class="dbody"><ul>
-        <li>답변은 <b>담당 상담 선생님</b>이 봐요. 담당 선생님이 바뀌면 새 선생님이 이어서 봐요. 앱 안에서 보호자, 학교, 친구가 볼 수는 없어요.</li>
+        <li>답변, 기분 기록, 메시지는 <b>담당 상담 선생님</b>이 봐요. 담당 선생님이 바뀌면 새 선생님이 이어서 봐요. 앱 안에서 보호자, 학교, 친구가 볼 수는 없어요.</li>
         <li>'급하다고 알리기'를 보내거나 위험해 보이는 답을 하면 놓치지 않도록 기관 관리자에게도 <b>알림이 왔다는 사실</b>이 보여요.</li>
         <li>키링 모으기와 게임 화면은 선생님도 보지 않아요.</li>
         <li>내가 위험해 보이면, 나를 지키기 위해 다른 기관에 알릴 수 있어요. 이럴 때는 되도록 먼저 이야기해 줄 거예요.</li></ul></div></details>
@@ -905,7 +911,6 @@ function unhide(){ S.hidden = false; S.gSheet = null; gStop(); render(); toast('
 /* ---------- 동작 ---------- */
 function toast(t){ S.toast = t; renderLayer(); later(() => { S.toast = null; renderLayer(); }, 2200); }
 function notify(t){ S.banner = t; renderLayer(); later(() => { S.banner = null; renderLayer(); }, 3200); }
-function push(item){ item.t = now(); S.feed.unshift(item); S.silent = 0; }
 function go(screen){ S.screen = screen; S.sheet = null; render(); document.getElementById('screen').scrollTop = 0; }
 
 async function api(path, options){
@@ -1004,13 +1009,13 @@ document.addEventListener('click', e => {
     case 'qClose': S.sheet = {kind:'qClose'}; renderLayer(); break;
     case 'qCloseYes': S.ans = {}; go('home'); break;
     case 'mood': S.moodWhy = (document.getElementById('why') || {}).value || ''; S.moodPick = el.dataset.m; renderScreen(); break;
-    case 'sendMood': { const why = ((document.getElementById('why') || {}).value || '').trim(); push({kind:'mood', m:S.moodPick, why}); go('doneMood'); break; }
+    case 'sendMood': { const why = ((document.getElementById('why') || {}).value || '').trim(); S.moodWhy = why; postDevice('/moods', {mood:S.moodPick, why:why || null}, 'doneMood'); break; }
     case 'noteChip': S.note = (document.getElementById('note') || {}).value || ''; S.noteChip = S.noteChip === el.dataset.c ? null : el.dataset.c; renderScreen(); break;
-    case 'sendNote': { const t = ((document.getElementById('note') || {}).value || '').trim(); if (!t && !S.noteChip) { toast('내용을 입력하거나 아래에서 하나 골라 주세요'); break; } push({kind:'note', text:t, chip:S.noteChip}); go('doneNote'); break; }
+    case 'sendNote': { const t = ((document.getElementById('note') || {}).value || '').trim(); if (!t && !S.noteChip) { toast('내용을 입력하거나 아래에서 하나 골라 주세요'); break; } S.note = t; postDevice('/notes', {text:t || null, chip:S.noteChip}, 'doneNote'); break; }
     case 'calHard': S.sheet = {kind:'calHard', pick:null}; renderLayer(); break;
     case 'calReason': S.sheet.pick = el.dataset.c; renderLayer(); if (el.dataset.c === '기타') { const f = document.getElementById('calEtc'); if (f) f.focus(); } break;
     case 'calSend': { const etc = (S.sheet.etc || '').trim(); if (S.sheet.pick === '기타' && !etc) { toast('이유를 짧게 입력해 주세요'); break; }
-      push({kind:'cal', text:'11월 3일 상담에 가기 어려움', reason: S.sheet.pick === '기타' ? '기타 · ' + etc : S.sheet.pick}); } S.sheet = null; renderLayer(); toast('선생님께 알렸어요. 다른 날짜를 함께 정해요'); break;
+      postDevice('/schedule-requests', {reason:S.sheet.pick, etc:S.sheet.pick === '기타' ? etc : null}, null); break; }
     case 'gachaAgain': S.sheet = null; renderLayer();
     // falls through
     case 'gacha': {
@@ -1057,6 +1062,22 @@ document.addEventListener('input', e => {
   if (t.id === 'calEtc' && S.sheet) S.sheet.etc = t.value;
 });
 
+// 기분 · 메시지 · 참석 어려움(API_CONTRACT 24절, 11/19). 성공하면 done 화면(일정 요청은 창을 닫고 안내), 실패하면 쓴 내용을 두고 안내만.
+async function postDevice(path, body, done){
+  if (S.sending) return;
+  S.sending = true;
+  try {
+    await api(path, {method:'POST', body:JSON.stringify(body)});
+    S.sending = false;
+    if (done) go(done);
+    else { S.sheet = null; renderLayer(); toast('선생님께 알렸어요. 다른 날짜를 함께 정해요'); }
+  } catch (e) {
+    S.sending = false;
+    if (e.message === 'unlinked') return;
+    if (e.status === 409) { S.sheet = null; renderLayer(); await refreshHome(false); toast('정해진 상담이 바뀌었어요. 다시 확인해 주세요'); return; }
+    toast(e.status === 429 ? '오늘은 더 보낼 수 없어요. 내일 다시 보내 주세요' : '보내지 못했어요. 인터넷을 확인하고 다시 눌러 주세요');
+  }
+}
 async function sendAlert(){
   S.sheet = {kind:'alertSending'}; renderLayer();
   try {

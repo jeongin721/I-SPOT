@@ -474,6 +474,10 @@ class ChildAppEventKind(str, Enum):
     QUESTIONS_SENT = "QUESTIONS_SENT"
     ANSWERS = "ANSWERS"
     ALERT = "ALERT"
+    # 콩콩 홈의 '지금 기분 기록하기' · '선생님께 메시지 보내기', 일정의 '참석이 어려워요'(11/19 디자인 맞춤).
+    MOOD = "MOOD"
+    NOTE = "NOTE"
+    SCHEDULE_REQUEST = "SCHEDULE_REQUEST"
 
 
 class ChildAnswerLevel(str, Enum):

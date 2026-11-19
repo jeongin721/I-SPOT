@@ -1171,3 +1171,97 @@ def test_child_home_tells_staff_hours(client: TestClient, counselor_headers: Hea
 
     device = _linked(client, counselor_headers, case["id"])
     assert set(_home(client, device)["staff_hours"]) == {"on_duty", "label"}
+
+
+# ---------- 기분 · 메시지 · 참석 어려움(11/19 콩콩 디자인 맞춤) ----------
+
+def test_mood_reaches_feed_and_concern_mood_is_amber(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    response = client.post("/api/v1/child-app/moods", json={"mood": "good"}, headers=device)
+    assert response.status_code == 204, response.text
+    response = client.post("/api/v1/child-app/moods", json={"mood": "worried", "why": " 내일 시험이 있어서 "}, headers=device)
+    assert response.status_code == 204, response.text
+
+    view = _view(client, counselor_headers, case["id"])
+    assert view["last_response_at"] is not None
+    worried, good = view["feed"][0], view["feed"][1]
+    assert (good["kind"], good["level"], good["needs_ack"]) == ("MOOD", "NONE", False)
+    assert good["payload"] == {"mood": "good", "label": "좋음", "why": None}
+    assert (worried["level"], worried["needs_ack"]) == ("AMBER", True)
+    assert worried["payload"]["why"] == "내일 시험이 있어서"
+    assert [(a["reason"], a["urgent"]) for a in _open(client, counselor_headers)] == [("TEXT_ANSWER", False)]
+
+
+def test_mood_rejects_unknown_face(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    assert client.post("/api/v1/child-app/moods", json={"mood": "happy"}, headers=device).status_code == 400
+    assert client.post("/api/v1/child-app/moods", json={"mood": "good"}).status_code == 401
+
+
+def test_note_needs_check_and_phone_chip_is_contact_request(
+    client: TestClient, counselor_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    assert client.post("/api/v1/child-app/notes", json={}, headers=device).status_code == 400
+    assert client.post("/api/v1/child-app/notes", json={"chip": "아무 칩"}, headers=device).status_code == 400
+    response = client.post("/api/v1/child-app/notes", json={"text": "다음에 이야기해요"}, headers=device)
+    assert response.status_code == 204, response.text
+    assert [(a["reason"], a["urgent"]) for a in _open(client, counselor_headers)] == [("NOTE", False)]
+
+    response = client.post("/api/v1/child-app/notes", json={"chip": "전화로 연락받고 싶어요"}, headers=device)
+    assert response.status_code == 204, response.text
+    reasons = {a["reason"]: a["urgent"] for a in _open(client, counselor_headers)}
+    assert reasons == {"NOTE": False, "CONTACT_REQUEST": True}
+    feed = _view(client, counselor_headers, case["id"])["feed"]
+    assert feed[0]["kind"] == "NOTE" and feed[0]["payload"]["chip"] == "전화로 연락받고 싶어요"
+
+
+def test_note_text_hidden_from_unassigned_admin(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    client.post("/api/v1/child-app/notes", json={"text": "비밀메시지"}, headers=device)
+    response = client.get(f"/api/v1/cases/{case['id']}/child-app", headers=admin_headers)
+    assert response.status_code == 200
+    assert "비밀메시지" not in response.text
+    assert [a["reason"] for a in _open(client, admin_headers)] == ["NEEDS_CHECK"]
+
+
+def test_schedule_request_needs_next_consult_and_keeps_no_place(
+    client: TestClient, counselor_headers: Headers, case: dict, db
+) -> None:
+    from app.core.enums import ScheduleConsultType, ScheduleKind
+    from app.models.schedule import ScheduleEvent
+    from app.models.user import User
+
+    device = _linked(client, counselor_headers, case["id"])
+    url = "/api/v1/child-app/schedule-requests"
+    assert client.post(url, json={"reason": "몸이 안 좋아요"}, headers=device).status_code == 409
+    day = datetime.now(timezone.utc).date() + timedelta(days=3)
+    db.add(ScheduleEvent(owner_id=db.scalar(select(User)).id, kind=ScheduleKind.CONSULT, consult_type=ScheduleConsultType.REGULAR,
+                         case_id=uuid.UUID(case["id"]), title="t", event_date=day, event_time="16:00", place="기관 상담실"))
+    db.commit()
+    assert client.post(url, json={"reason": "그냥"}, headers=device).status_code == 400
+    assert client.post(url, json={"reason": "기타"}, headers=device).status_code == 400
+    response = client.post(url, json={"reason": "기타", "etc": "가족 행사가 있어요"}, headers=device)
+    assert response.status_code == 204, response.text
+
+    event = _view(client, counselor_headers, case["id"])["feed"][0]
+    assert event["kind"] == "SCHEDULE_REQUEST" and event["needs_ack"] is True
+    assert event["payload"] == {
+        "consult_date": day.isoformat(), "consult_time": "16:00", "reason": "기타", "etc": "가족 행사가 있어요",
+        "alert_reason": "SCHEDULE_REQUEST",
+    }
+    assert [(a["reason"], a["urgent"]) for a in _open(client, counselor_headers)] == [("SCHEDULE_REQUEST", False)]
+
+
+def test_device_posts_have_daily_limit(client: TestClient, counselor_headers: Headers, case: dict, monkeypatch) -> None:
+    from app.services import child_app_service
+
+    monkeypatch.setattr(child_app_service, "DEVICE_POST_DAILY_LIMIT", 2)
+    device = _linked(client, counselor_headers, case["id"])
+    for _ in range(2):
+        assert client.post("/api/v1/child-app/moods", json={"mood": "okay"}, headers=device).status_code == 204
+    assert client.post("/api/v1/child-app/moods", json={"mood": "okay"}, headers=device).status_code == 429
+    # 종류마다 따로 센다.
+    assert client.post("/api/v1/child-app/notes", json={"text": "안녕"}, headers=device).status_code == 204

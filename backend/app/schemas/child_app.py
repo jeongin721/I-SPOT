@@ -75,6 +75,33 @@ class ChildAnswersRequest(RequestModel):
     answers: List[ChildAnswerInput] = Field(max_length=10)
 
 
+class ChildMoodRequest(RequestModel):
+    """'지금 기분 기록하기'. mood 는 콩콩 표정 12개 중 하나."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mood: str = Field(min_length=1, max_length=20)
+    why: Optional[str] = Field(default=None, max_length=60)
+
+
+class ChildNoteRequest(RequestModel):
+    """'선생님께 메시지'. 글이나 칩 중 하나는 있어야 한다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: Optional[str] = Field(default=None, max_length=200)
+    chip: Optional[str] = Field(default=None, max_length=40)
+
+
+class ChildScheduleRequest(RequestModel):
+    """일정 탭 '참석이 어려워요'. 다음 상담 하나에 대해 이유를 알린다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=40)
+    etc: Optional[str] = Field(default=None, max_length=60)
+
+
 class ChildAnswersResponse(BaseModel):
     ticket_awarded: int
 

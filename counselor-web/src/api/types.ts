@@ -1790,7 +1790,7 @@ export interface ChildAppInvite {
 
 export interface ChildAppEvent {
   id: string;
-  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
+  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT" | "MOOD" | "NOTE" | "SCHEDULE_REQUEST";
   level: "NONE" | "SKIP" | "AMBER" | "RED";
   payload: Record<string, any>;
   created_at: string;
@@ -1810,6 +1810,8 @@ export interface ChildOpenAlert {
     | "TEXT_ANSWER"
     | "FOLLOWUP_ANSWER"
     | "FOLLOWUP_SKIPPED"
+    | "NOTE"
+    | "SCHEDULE_REQUEST"
     | "NEEDS_CHECK";
   /** 긴급 알림 · 바로 확인 답 · 연락 요청. 나머지는 '확인 필요'. */
   urgent: boolean;

@@ -15,6 +15,8 @@ export const CHILD_ALERT_TEXT = {
   TEXT_ANSWER: "아이가 글을 남겼어요.",
   FOLLOWUP_ANSWER: "아이가 추가 질문에 답했어요.",
   FOLLOWUP_SKIPPED: "아이가 추가 질문에 답하기 어렵다고 했어요.",
+  NOTE: "아이가 메시지를 보냈어요.",
+  SCHEDULE_REQUEST: "아이가 다음 상담에 가기 어렵다고 알렸어요.",
   NEEDS_CHECK: "아이 앱에서 확인이 필요한 알림이 왔어요.",
 } as const;
 
