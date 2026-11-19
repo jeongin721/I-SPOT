@@ -157,6 +157,17 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  /** 코드 재발급(11/19 팀 요청): 연결된 사례면 지금 기기를 끊고 새 연결 코드를 만든다(서버는 연결된 사례에 코드를 주지 않는다 — 409). */
+  const reissueInvite = useCallback(
+    (linked: boolean) =>
+      run(async () => {
+        if (!caseId) return;
+        if (linked) await childAppApi.unlink(caseId);
+        setInvite(await childAppApi.invite(caseId));
+      }, "연결 코드를 다시 만들지 못했습니다."),
+    [caseId, run],
+  );
+
   const acknowledge = useCallback(
     (alertId: string) =>
       run(async () => {
@@ -167,5 +178,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, reissueInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
 }

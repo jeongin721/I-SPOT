@@ -249,9 +249,9 @@ export default function ClosureReview() {
                 <tr>
                   <th>회차</th>
                   <th>날짜</th>
-                  <th>유형</th>
+                  <th>학대 유형</th>
                   <th>핵심</th>
-                  <th>근거</th>
+                  <th>학대 근거</th>
                 </tr>
               </thead>
               <tbody>

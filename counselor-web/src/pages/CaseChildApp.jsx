@@ -238,6 +238,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
               <section className="card" aria-label="앱 연결" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <h2 className="h2">콩콩 앱 연결</h2>
                 {data.status === 'LINKED' ? (
+                  <>
                   <div className="sub">
                     연결 {dateTime(data.linked_at)} · 마지막 응답 {dateTime(data.last_response_at)}
                     {silent !== null ? ` (${silent === 0 ? '오늘' : `${silent}일 전`}) ` : ' '}
@@ -266,6 +267,41 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                     <br />
                     아이 앱에 다음 상담 날짜 · 시간이 보여요. 장소는 정기 · 초기 · 종결 상담만 보여요.
                   </div>
+                  {/* 코드 재발급 · 해지(11/19 팀 요청). 담당 상담사만(서버도 403). 재발급은 지금 기기를 끊고 새 코드를 만든다. */}
+                  {data.can_read_feed ? (
+                    <>
+                      {app.invite ? (
+                        <div style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '1px' }}>{app.invite.code}</div>
+                      ) : null}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-s"
+                          disabled={app.busy}
+                          onClick={() => {
+                            if (window.confirm('코드를 다시 만들면 지금 연결된 아이 폰은 끊기고, 새 코드(72시간 · 한 번)를 아이에게 다시 알려 줘야 합니다. 다시 만들까요?')) {
+                              void app.reissueInvite(true);
+                            }
+                          }}
+                        >
+                          코드 재발급
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-s"
+                          disabled={app.busy}
+                          onClick={() => {
+                            if (window.confirm('아이 연계 앱 연동을 해지하시겠습니까? 아이 폰의 콩콩이 처음 화면으로 돌아가고, 다시 쓰려면 새 연결 코드를 알려 줘야 합니다. 받은 답은 남습니다.')) {
+                              void app.unlink();
+                            }
+                          }}
+                        >
+                          해지
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                  </>
                 ) : !data.can_read_feed ? (
                   <div className="sub">코드는 담당 상담사가 만들어요.</div>
                 ) : (
@@ -276,7 +312,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                     ) : null}
                     <div>
                       <button type="button" className="btn btn-s" disabled={app.busy} onClick={app.createInvite}>
-                        {data.status === 'INVITED' ? '코드 다시 만들기' : '연결 코드 만들기'}
+                        {data.status === 'INVITED' ? '코드 재발급' : '연결 코드 만들기'}
                       </button>
                     </div>
                   </>

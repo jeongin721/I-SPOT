@@ -4,8 +4,8 @@
 //  - 머리: 별칭 · 사례번호 · 출생연도 · 회차 범위 · 기간(첫 회차 ~ 마지막 회차 상담일, 없으면 등록일).
 //  - 한눈에 '상담': 회차 수와 상담 유형별 수(consultation_type). '새 학대 진술': 신호 이력(signal-history)에서 AI 관련 신호가
 //    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '위험수준 척도' 는 기관 서식 기록이 서버에 없어 준비 중.
-//  - 회차별 흐름: 회차 · 날짜 · 유형 · 핵심(승인한 상담 요약 4칸 중 처음 채워진 칸, 상담원 확정 문장) · 근거(그 칸 이름 또는
-//    AI 관련 신호). 승인 전 회차는 핵심 '승인 전'. 회차를 누르면 그 회차 상세(/SessionDetail).
+//  - 회차별 흐름: 회차 · 날짜(+ 상담 유형) · 유형(학대 유형, AI 관련 신호) · 핵심(승인한 상담 요약 4칸 중 처음 채워진 칸) ·
+//    근거(학대 근거 — 세부 신호 · 근거 발화 수, 없으면 요약 칸 이름). 11/19 팀 요청으로 유형 · 근거를 학대 유형 · 근거로 바꿈. 승인 전 회차는 핵심 '승인 전'. 회차를 누르면 그 회차 상세(/SessionDetail).
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
 //  - 아이 연계(콩콩): 머리 기간 · 한눈에 '답한 날 / 연결한 날' · 아이가 쓴 글 · 질문별 월별 가장 많은 답(디자인 표).
 //  - 서로 다른 진술은 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
@@ -17,7 +17,7 @@ import type { ApprovedSummariesState } from "../useApprovedSummaries";
 import type { ClosureSummaryState } from "../useClosureSummary";
 import type { CaseDetailState } from "../useCaseDetail";
 import type { SignalHistoryState } from "../useSignalHistory";
-import { detectedTypeLabels } from "../signalHistoryRows";
+import { TYPE_SHORT, detectedTypeLabels } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
 import { screenHref } from "./links";
 import type { ReportFirstPass } from "./closureSuggest";
@@ -204,25 +204,41 @@ export function closureReviewValues(input: ClosureReviewInput) {
     const filled = SUMMARY_ORDER.map(([key, label]) => ({ label, text: item?.assessment?.[key]?.text?.trim() ?? "" })).find(
       (field) => field.text,
     );
-    const signals = historyBy.get(row.id) ? detectedTypeLabels(historyBy.get(row.id)!) : [];
+    // 유형 = 학대 유형(AI 가 관련 신호를 찾은 유형), 근거 = 학대 근거(세부 신호와 근거 발화 수) — 11/19 팀 요청.
+    // 상담 유형(정기 · 방문 …)은 날짜 옆에 작게 붙인다. 모두 AI 제안이다.
+    const hist = historyBy.get(row.id);
+    const signals = hist ? detectedTypeLabels(hist) : [];
     let key = "";
-    let src = "";
     if (row.status === "APPROVED") {
       if (item?.failed) key = "요약을 불러오지 못했습니다";
-      else if (filled) {
-        key = clip(filled.text, 60);
-        src = `승인 요약 · ${filled.label}`;
-      } else key = item ? "요약 4칸이 비어 있습니다" : approved.loading ? "불러오는 중…" : NOT_PROVIDED;
+      else if (filled) key = clip(filled.text, 60);
+      else key = item ? "요약 4칸이 비어 있습니다" : approved.loading ? "불러오는 중…" : NOT_PROVIDED;
     } else key = `승인 전 · ${row.statusLabel}`;
-    if (signals.length) src = [src, `AI 신호 · ${signals.join(" · ")}`].filter(Boolean).join(" / ");
+
+    let kind: string;
+    if (row.source === "DOCUMENT") kind = "문서 회차";
+    else if (!history.loaded) kind = "…";
+    else if (hist?.analysis_status !== "COMPLETED") kind = "분석 전";
+    else kind = signals.length ? signals.join(" · ") : "관련 신호 없음";
+
+    const subtypes = (hist?.subtypes ?? []).filter((sub) => sub.count > 0);
+    const src = subtypes.length
+      ? `AI 신호 · ${subtypes
+          .map((sub) => `${TYPE_SHORT[sub.abuse_type] ?? ""} ${sub.subtype} ${sub.count}건${sub.pending ? "(화자 확인 중)" : ""}`.trim())
+          .join(" · ")}`
+      : signals.length
+        ? `AI 신호 · ${signals.join(" · ")}`
+        : filled && row.status === "APPROVED"
+          ? `승인 요약 · ${filled.label}`
+          : NOT_PROVIDED;
 
     // 회차를 누르면 그 회차 기록(회차 상세)으로 간다(11/19 경진).
     return {
       no: row.numberLabel,
-      date: shortDate(dateOf(row)),
-      kind: row.kindLabel,
+      date: [shortDate(dateOf(row)), row.consultationType ? row.kindLabel : ""].filter(Boolean).join(" "),
+      kind,
       key,
-      src: src || NOT_PROVIDED,
+      src,
       href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
     };
   });
