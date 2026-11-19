@@ -122,6 +122,22 @@ export async function disablePush(): Promise<void> {
   await sub.unsubscribe().catch(() => false);
 }
 
+/**
+ * 로그인이 풀렸을 때(토큰 만료 · 웹 로그아웃 · 비밀번호 변경 · 다른 탭 로그아웃) 이 폰의 구독을 지운다.
+ * 같은 폰을 다음에 쓰는 분께 앞 분의 알림이 가지 않게(민규 #186). 토큰이 이미 없어 서버에는 지우라고 못 하지만,
+ * 폰 구독을 지우면 푸시 서비스가 404 · 410 을 주고 서버는 다음 보내기 때 그 구독을 지운다.
+ */
+export async function dropPushOnSignOut(): Promise<void> {
+  const prefs = readPushPrefs();
+  if (prefs.on) writePushPrefs({ ...prefs, on: false });
+
+  if (!pushSupported()) return;
+
+  const reg = await navigator.serviceWorker.getRegistration("/");
+  const sub = await reg?.pushManager.getSubscription();
+  await sub?.unsubscribe().catch(() => false);
+}
+
 /** 상담 30분 전 · 업로드 실패 하나를 켜고 끈다. */
 export async function setPushPref(name: keyof PushPrefs, value: boolean): Promise<void> {
   const prefs = { ...readPushPrefs(), [name]: value };

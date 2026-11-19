@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.push import PUSH_ENDPOINT_MAX_LENGTH
 from app.schemas.common import RequestModel
+from app.services import webpush
 
 
 class PushConfigResponse(BaseModel):
@@ -33,8 +34,8 @@ class PushSubscriptionRequest(RequestModel):
     def _https(cls, value: str) -> str:
         value = value.strip()
 
-        if not value.startswith("https://"):
-            raise ValueError("푸시 주소는 https 여야 합니다.")
+        if not webpush.is_push_endpoint(value):
+            raise ValueError("알려진 푸시 서비스 주소가 아닙니다.")
 
         return value
 

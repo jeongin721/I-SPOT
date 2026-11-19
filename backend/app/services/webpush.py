@@ -116,6 +116,36 @@ def encrypt(payload: bytes, p256dh: str, auth: str, *, salt: Optional[bytes] = N
     return salt + struct.pack("!IB", RECORD_SIZE, len(as_public_bytes)) + as_public_bytes + ciphertext
 
 
+# 브라우저 푸시 서비스 호스트(민규 #186). 다른 주소를 받으면 서버가 아무 곳에나 요청을 보내게 된다.
+PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com")
+PUSH_HOST_SUFFIXES = (".push.apple.com", ".notify.windows.com")
+
+
+def is_push_endpoint(endpoint: str) -> bool:
+    """https 이고 호스트가 알려진 푸시 서비스이며 사용자 · 포트를 따로 적지 않은 주소만 받는다."""
+    try:
+        parts = urlsplit(endpoint)
+        host = (parts.hostname or "").lower()
+        port = parts.port
+    except ValueError:
+        return False
+
+    if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443):
+        return False
+
+    return host in PUSH_HOSTS or any(host.endswith(suffix) and len(host) > len(suffix) for suffix in PUSH_HOST_SUFFIXES)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """이동(3xx)을 따라가지 않는다 — 따라가면 Authorization 머리글과 함께 다른 주소로 다시 요청한다(민규 #186)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
 @dataclass
 class SendResult:
     status: int
@@ -128,6 +158,11 @@ class SendResult:
     def gone(self) -> bool:
         """구독이 없어졌다(앱 지움 · 알림 끔 · 만료). 지워야 한다."""
         return self.status in (404, 410)
+
+    @property
+    def auth_rejected(self) -> bool:
+        """푸시 서비스가 서버 키(VAPID)를 거절했다 — 구독 문제가 아니라 서버 설정 문제다."""
+        return self.status in (401, 403)
 
 
 def send(
@@ -142,8 +177,8 @@ def send(
     urgency: str = "high",
 ) -> SendResult:
     """한 구독에 보낸다. 연결 오류는 status 0. 응답 본문은 읽지 않는다(로그에도 남기지 않는다)."""
-    if urlsplit(endpoint).scheme != "https":
-        raise WebPushError("푸시 주소는 https 여야 합니다")
+    if not is_push_endpoint(endpoint):
+        raise WebPushError("알려진 푸시 서비스 주소가 아닙니다")
 
     body = encrypt(json.dumps(message, ensure_ascii=False).encode("utf-8"), p256dh, auth)
     req = urllib.request.Request(
@@ -160,7 +195,7 @@ def send(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=SEND_TIMEOUT_SECONDS) as res:  # noqa: S310 — https 만(위에서 확인)
+        with _opener.open(req, timeout=SEND_TIMEOUT_SECONDS) as res:  # noqa: S310 — 푸시 서비스 호스트만(위에서 확인), 이동 안 따라감
             return SendResult(res.status)
     except urllib.error.HTTPError as error:
         return SendResult(error.code)

@@ -3022,12 +3022,12 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | GET | `/push/config` | `{ enabled, public_key, before_session_minutes }`. 꺼져 있으면 `enabled: false` · `public_key: null` |
 | PUT | `/push/subscription` | `{ endpoint, keys: { p256dh, auth }, before_session, upload_failed }` — 이 폰을 켠다 · 설정을 바꾼다. `{ before_session, upload_failed }` |
 | POST | `/push/unsubscribe` | `{ endpoint }` — 이 폰을 끈다(내 것만, 없으면 그대로). `{ ok: true }` |
-| POST | `/push/test` | 내 폰들에 '알림이 켜졌어요'. `{ sent, failed }` |
+| POST | `/push/test` | 내 폰들에 '알림이 켜졌어요'. `{ sent, failed }`. 사람마다 1시간에 10번까지(넘으면 `429 RATE_LIMITED`) |
 
 - 로그인한 사람 누구나(상담사 · 관리자). 꺼져 있으면 PUT · test 는 `503 PUSH_DISABLED`.
 - 구독은 폰(브라우저) 하나가 한 행(`push_subscriptions`, endpoint 로 겹치지 않음). 같은 endpoint 를 다시 보내면 덮어쓰고, 다른 계정이
   쓰던 폰이면 **지금 계정으로 옮긴다**(한 폰은 마지막에 켠 계정 것). 한 사람 10대까지 — 넘으면 가장 오래 전에 고친 것을 지운다.
-  `endpoint` 는 `https://` 만(그 밖은 `422`). 앱은 로그아웃할 때 이 폰을 끈다.
+  `endpoint` 는 브라우저 푸시 서비스 주소만 받는다(그 밖은 `422`): `https://` 이고 호스트가 `fcm.googleapis.com` · `updates.push.services.mozilla.com` · `*.push.apple.com` · `*.notify.windows.com`, 사용자 · 포트(443 밖) 없음. 서버는 보낼 때 이동(3xx)을 따라가지 않는다(실패로 셈). 앱은 로그아웃할 때 이 폰을 끄고, 로그인이 풀릴 때(만료 · 웹 로그아웃 · 다른 탭) 폰 구독을 지운다(서버는 다음 보내기 때 `404` · `410` 을 받고 지움).
 - **상담 30분 전**(`before_session`): 서버 실행기(`PUSH_LOOP_ENABLED=true` 일 때만 앱 시작 때 뜸 — 시험 · CI · 로컬은 끔, `PUSH_LOOP_SECONDS` 마다)가 지금부터 `PUSH_BEFORE_SESSION_MINUTES`(30)
   안에 시작하는 **상담 일정(`kind=CONSULT`, 시간 있음)** 을 찾아 **일정을 만든 사람**의 켜진 폰들에 보낸다. 시각은 한국 시간.
   같은 일정 · 같은 시각은 한 번만 — 보내기 **전에** `push_deliveries` 에 (사람, 종류, 일정@시각)을 넣고, 유일 조건에 걸리면 건너뛴다
@@ -3036,6 +3036,6 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - **업로드 실패**(`upload_failed`): 녹음은 폰에 있으므로 폰이 스스로 띄운다(녹음 하나에 한 번). 서버는 설정만 기억한다.
 - 문구: 잠금 화면에 보이므로 **아이 이름 · 사례 · 일정 제목 · 장소를 넣지 않는다**. 상담 30분 전은 `"HH:MM 상담 일정이 있어요."`,
   누르면 앱 일정 화면. 본문은 폰의 키로 암호화해 보낸다(푸시 서비스는 못 읽는다). 감사 기록 · 로그에 문구 · endpoint 를 남기지 않는다.
-- 푸시 서비스가 `404` · `410` 을 주면(앱 지움 · 알림 끔 · 만료) 그 구독을 지운다. 연결 오류 · 5xx 가 10번 이어져도 지운다.
+- 푸시 서비스가 `404` · `410` 을 주면(앱 지움 · 알림 끔 · 만료) 그 구독을 지운다. 연결 오류 · 5xx 가 10번 이어져도 지운다. `401` · `403`(서버 VAPID 키 거절 — 설정 문제)은 실패 횟수에 넣지 않는다.
 - 키: `python -m scripts.make_vapid_key` 로 개인키를 만들어 backend.env 에 넣는다(Parameter Store 에도). 공개키는 서버가 계산해
   `GET /push/config` 로 준다. **키를 바꾸면 폰마다 알림을 다시 켜야 한다**(스위치를 껐다 켜면 새 키로 다시 구독한다).

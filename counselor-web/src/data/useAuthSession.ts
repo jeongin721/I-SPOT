@@ -22,6 +22,7 @@ import {
 } from "../api/client";
 import { auth } from "../api/endpoints";
 import type { User, UserRole } from "../api/types";
+import { dropPushOnSignOut } from "./appPush";
 
 /**
  * checking           저장된 토큰을 확인하는 중
@@ -120,6 +121,8 @@ export function useAuthSession(): AuthSession {
 
   useEffect(() => {
     function onUnauthorized() {
+      // 로그인이 풀리면 이 폰의 알림 구독도 지운다 — 다음에 이 폰을 쓰는 분께 앞 분의 알림이 가지 않게(민규 #186).
+      dropPushOnSignOut().catch(() => undefined);
       setMe(null);
       setError(null);
       setStatus("signedOut");

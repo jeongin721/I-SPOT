@@ -19,7 +19,7 @@ from app.core.enums import ScheduleKind
 from app.models.push import PushDelivery, PushSubscription
 from app.models.schedule import ScheduleEvent
 from app.models.user import User
-from app.services import push_service, webpush
+from app.services import push_service, signup_service, webpush
 
 KST = push_service.LOCAL_TZ
 
@@ -31,9 +31,16 @@ def _keys():
     return ua, webpush.b64url_encode(pub), auth, webpush.b64url_encode(auth)
 
 
-def _sub_body(endpoint: str = "https://push.example.com/abc", **prefs):
+def _sub_body(endpoint: str = "https://fcm.googleapis.com/fcm/send/abc", **prefs):
     _, p256dh, _, auth = _keys()
     return {"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}, **prefs}
+
+
+@pytest.fixture(autouse=True)
+def _reset_limits():
+    signup_service.reset_limits()
+    yield
+    signup_service.reset_limits()
 
 
 @pytest.fixture
@@ -125,6 +132,61 @@ def test_send_refuses_http_endpoint() -> None:
         webpush.send("http://push.example.com/x", p256dh, auth, {}, private_key=key, subject="mailto:a@b.c")
 
 
+@pytest.mark.parametrize(
+    "endpoint, ok",
+    [
+        ("https://fcm.googleapis.com/fcm/send/abc", True),
+        ("https://updates.push.services.mozilla.com/wpush/v2/abc", True),
+        ("https://web.push.apple.com/abc", True),
+        ("https://wns2-par02p.notify.windows.com/w/?token=abc", True),
+        ("http://fcm.googleapis.com/fcm/send/abc", False),
+        ("https://push.example.com/abc", False),
+        ("https://169.254.169.254/latest/meta-data", False),
+        ("https://fcm.googleapis.com.evil.example/abc", False),
+        ("https://evilpush.apple.com/abc", False),
+        ("https://push.apple.com/abc", False),
+        ("https://user@fcm.googleapis.com/abc", False),
+        ("https://fcm.googleapis.com:8443/abc", False),
+    ],
+)
+def test_only_push_service_hosts(endpoint: str, ok: bool) -> None:
+    assert webpush.is_push_endpoint(endpoint) is ok
+
+
+def test_sender_does_not_follow_redirects() -> None:
+    """푸시 서비스가 3xx 를 줘도 다른 주소로 다시 요청하지 않는다(Authorization 이 따라가지 않게, 민규 #186)."""
+    import http.server
+    import threading
+    import urllib.error
+    import urllib.request
+
+    hits = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            hits.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/inner")
+            self.end_headers()
+
+        do_GET = do_POST  # noqa: N815
+
+        def log_message(self, *args):  # noqa: ANN002
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/push", data=b"x", method="POST", headers={"Authorization": "vapid t=x"})
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            webpush._opener.open(req, timeout=5)
+        assert caught.value.code == 302
+    finally:
+        server.shutdown()
+    assert hits == ["/push"]
+
+
 # ---------------------------------------------------------------- API
 
 
@@ -175,6 +237,11 @@ def test_rejects_http_endpoint(client: TestClient, counselor_headers, push_on) -
     assert res.status_code == 422
 
 
+def test_rejects_non_push_service_endpoint(client: TestClient, counselor_headers, push_on) -> None:
+    res = client.put("/api/v1/push/subscription", json=_sub_body("https://internal.example.com/hook"), headers=counselor_headers)
+    assert res.status_code == 422
+
+
 def test_unsubscribe_only_own(client: TestClient, counselor_headers, other_counselor_headers, push_on, db) -> None:
     body = _sub_body()
     client.put("/api/v1/push/subscription", json=body, headers=counselor_headers)
@@ -189,16 +256,16 @@ def test_unsubscribe_only_own(client: TestClient, counselor_headers, other_couns
 
 def test_per_user_device_limit(client: TestClient, counselor_headers, push_on, db) -> None:
     for i in range(12):
-        client.put("/api/v1/push/subscription", json=_sub_body(f"https://push.example.com/{i}"), headers=counselor_headers)
+        client.put("/api/v1/push/subscription", json=_sub_body(f"https://fcm.googleapis.com/fcm/send/{i}"), headers=counselor_headers)
 
     rows = db.scalars(select(PushSubscription)).all()
     assert len(rows) == 10
-    assert "https://push.example.com/11" in {row.endpoint for row in rows}
+    assert "https://fcm.googleapis.com/fcm/send/11" in {row.endpoint for row in rows}
 
 
 def test_test_push_and_gone_subscription_removed(client: TestClient, counselor_headers, push_on, sent, db) -> None:
-    client.put("/api/v1/push/subscription", json=_sub_body("https://push.example.com/a"), headers=counselor_headers)
-    client.put("/api/v1/push/subscription", json=_sub_body("https://push.example.com/b"), headers=counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/a"), headers=counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/b"), headers=counselor_headers)
 
     res = client.post("/api/v1/push/test", headers=counselor_headers).json()["data"]
     assert res == {"sent": 2, "failed": 0}
@@ -222,6 +289,24 @@ def test_repeated_failures_remove_subscription(client: TestClient, counselor_hea
     client.post("/api/v1/push/test", headers=counselor_headers)
     db.expire_all()
     assert db.scalar(select(PushSubscription)) is None
+
+
+def test_key_rejection_is_not_counted_as_failure(client: TestClient, counselor_headers, push_on, sent, db) -> None:
+    client.put("/api/v1/push/subscription", json=_sub_body(), headers=counselor_headers)
+
+    for status in (401, 403):
+        sent.status["value"] = status
+        assert client.post("/api/v1/push/test", headers=counselor_headers).json()["data"] == {"sent": 0, "failed": 1}
+    db.expire_all()
+    assert db.scalar(select(PushSubscription)).fail_count == 0
+
+
+def test_test_push_is_rate_limited(client: TestClient, counselor_headers, push_on, sent) -> None:
+    client.put("/api/v1/push/subscription", json=_sub_body(), headers=counselor_headers)
+
+    for _ in range(push_service.TEST_HOURLY_LIMIT):
+        assert client.post("/api/v1/push/test", headers=counselor_headers).status_code == 200
+    assert client.post("/api/v1/push/test", headers=counselor_headers).status_code == 429
 
 
 # ---------------------------------------------------------------- 상담 30분 전
@@ -248,8 +333,8 @@ NOW = datetime(2026, 11, 19, 5, 0, tzinfo=timezone.utc)  # 한국 14:00
 def test_before_session_sends_once_with_generic_text(
     client: TestClient, counselor_headers, other_counselor_headers, push_on, sent, db, counselor_id, other_counselor_id
 ) -> None:
-    client.put("/api/v1/push/subscription", json=_sub_body("https://push.example.com/me"), headers=counselor_headers)
-    client.put("/api/v1/push/subscription", json=_sub_body("https://push.example.com/other"), headers=other_counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/me"), headers=counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/other"), headers=other_counselor_headers)
 
     soon = _event(db, counselor_id, NOW + timedelta(minutes=20))
     _event(db, counselor_id, NOW + timedelta(minutes=40))  # 아직
@@ -258,7 +343,7 @@ def test_before_session_sends_once_with_generic_text(
     _event(db, counselor_id, NOW + timedelta(minutes=10), with_time=False)  # 시간 없음
 
     assert push_service.run_before_session(db, NOW) == 1
-    assert [call["endpoint"] for call in sent] == ["https://push.example.com/me"]
+    assert [call["endpoint"] for call in sent] == ["https://fcm.googleapis.com/fcm/send/me"]
     message = sent[0]["message"]
     assert message["body"] == "14:20 상담 일정이 있어요." and message["tag"] == f"before-session-{soon.id}"
     # 잠금 화면에 보이므로 제목(아이 이름)은 넣지 않는다.

@@ -26,7 +26,7 @@ from app.models.push import PUSH_SUBSCRIPTIONS_PER_USER_MAX, PushDelivery, PushS
 from app.models.schedule import ScheduleEvent
 from app.models.user import User
 from app.schemas.push import PushConfigResponse, PushSubscriptionRequest, PushSubscriptionResponse, PushTestResponse
-from app.services import webpush
+from app.services import signup_service, webpush
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ LOCAL_TZ = ZoneInfo("Asia/Seoul")
 KIND_BEFORE_SESSION = "before_session"
 #: 연결 오류 · 5xx 가 이만큼 이어지면 그 구독을 지운다(폰을 버렸는데 푸시 서비스가 404 를 안 주는 경우).
 MAX_FAILS = 10
+#: '시험 알림 보내기' 를 사람마다 1시간에 이만큼.
+TEST_HOURLY_LIMIT = 10
 #: 보낸 기록을 이만큼 지나면 지운다(같은 일정을 다시 알릴 일이 없는 기간).
 DELIVERY_KEEP_DAYS = 3
 APP_SCHEDULE_URL = "/#/AppSchedule"
@@ -143,6 +145,10 @@ def _send_to(db: Session, rows: List[PushSubscription], message: dict, *, now: d
         elif result.gone:
             db.delete(row)
             failed += 1
+        elif result.auth_rejected:
+            # 서버 키 설정 문제라 구독 탓이 아니다 — 실패 횟수에 넣지 않는다(민규 #186).
+            failed += 1
+            logger.warning("푸시 서비스가 서버 키를 거절 status=%s — VAPID 설정 확인", result.status)
         else:
             row.fail_count = (row.fail_count or 0) + 1
             failed += 1
@@ -155,6 +161,8 @@ def _send_to(db: Session, rows: List[PushSubscription], message: dict, *, now: d
 
 def send_test(db: Session, user: User, *, now: Optional[datetime] = None) -> PushTestResponse:
     _require_enabled()
+    # 시험 보내기는 사람마다 1시간에 TEST_HOURLY_LIMIT 번까지(민규 #186).
+    signup_service._check_ip("push_test", str(user.id), TEST_HOURLY_LIMIT)
     rows = db.scalars(select(PushSubscription).where(PushSubscription.user_id == user.id)).all()
     message = {"title": "I-SPOT", "body": "알림이 켜졌어요.", "url": "/#/AppSettings", "tag": "ispot-test"}
     sent, failed = _send_to(db, list(rows), message, now=now or datetime.now(timezone.utc))

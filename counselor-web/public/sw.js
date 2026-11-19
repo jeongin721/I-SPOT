@@ -167,7 +167,8 @@ self.addEventListener("push", (event) => {
     msg = {};
   }
 
-  const url = typeof msg.url === "string" && msg.url.startsWith("/") ? msg.url : "/#/AppHome";
+  // 같은 사이트 안의 경로만 받는다. "//host" · "/\\host" 는 다른 사이트로 가므로 막는다(민규 #186).
+  const url = typeof msg.url === "string" && msg.url.startsWith("/") && !/^\/[\/\\]/.test(msg.url) ? msg.url : "/#/AppHome";
 
   event.waitUntil(
     self.registration.showNotification(msg.title || "I-SPOT", {
@@ -183,7 +184,9 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const url = new URL((event.notification.data && event.notification.data.url) || "/#/AppHome", self.location.origin).href;
+  const asked = new URL((event.notification.data && event.notification.data.url) || "/#/AppHome", self.location.origin);
+  // 알림을 누르면 이 사이트 안에서만 연다(민규 #186).
+  const url = asked.origin === self.location.origin ? asked.href : new URL("/#/AppHome", self.location.origin).href;
 
   event.waitUntil(
     (async () => {

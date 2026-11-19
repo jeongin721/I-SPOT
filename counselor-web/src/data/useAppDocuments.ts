@@ -9,11 +9,16 @@
 //  - 한 번에 하나씩 차례로 올린다(서버가 회차마다 · 서버 전체에서 동시에 읽는 수를 제한한다).
 //  - 실패하면 '다시 올리기' 는 이미 만든 회차를 다시 쓴다(빈 회차가 쌓이지 않게, useDocumentUpload 와 같음).
 //    파일 문제(형식 · 크기 · 글자 없음 422)는 다시 올려도 같으므로 '지우기' 만 보인다.
+//  - 실패하면 그 회차 상태를 서버에 먼저 묻는다. 연결이 끊겼어도 서버가 이미 끝냈으면(문서 회차가 됨) '완료' 로 바꾼다
+//    — 그대로 '다시 올리기' 를 누르면 409 다(민규 #186).
+//  - 자료가 들어가지 않은 회차(CREATED)는 '지우기' · 파일 문제 · 이 화면을 떠날 때 서버에서 지운다 — 빈 회차가 남지 않게(민규 #186).
+//  - 새 회차는 녹음 파일 올리기처럼 정기 상담 · 상담일은 파일 날짜로 만든다(웹에서 바꿀 수 있음, 민규 #186).
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
-import { cases, sourceDocuments } from "../api/endpoints";
+import { cases, sessions, sourceDocuments } from "../api/endpoints";
+import { CONSULTATION_TYPE_LABELS } from "../api/types";
 import { checkDocumentFile } from "./documentFile";
 import { notifySessionChanged } from "./sessionEvents";
 import { errorMessage } from "./useRemote";
@@ -45,6 +50,21 @@ export interface AppDocuments {
 
 let seq = 0;
 
+/** 서버가 이 회차에 문서를 이미 받았는가(연결이 끊긴 뒤 서버는 끝낸 경우). 물어보지 못하면 null. */
+async function alreadyReceived(sessionId: string): Promise<boolean | null> {
+  try {
+    const detail = await sessions.get(sessionId);
+    return detail.source === "DOCUMENT" || detail.status !== "CREATED";
+  } catch {
+    return null;
+  }
+}
+
+/** 자료가 들어가지 않은 회차면 지운다(빈 회차가 남지 않게). 다른 상태면 그대로 둔다. */
+async function dropEmptySession(sessionId: string): Promise<void> {
+  if ((await alreadyReceived(sessionId)) === false) await sessions.remove(sessionId).catch(() => undefined);
+}
+
 export function useAppDocuments(): AppDocuments {
   const [items, setItems] = useState<AppDocItem[]>([]);
   const files = useRef(new Map<string, File>());
@@ -74,7 +94,11 @@ export function useAppDocuments(): AppDocuments {
 
         try {
           if (!sessionId) {
-            const created = await cases.createSession(item.caseId, {});
+            const created = await cases.createSession(item.caseId, {
+              title: `${CONSULTATION_TYPE_LABELS.REGULAR} 기록 문서`,
+              consulted_at: new Date(file.lastModified || Date.now()).toISOString(),
+              consultation_type: "REGULAR",
+            });
             sessionId = created.id;
             patch(id, { sessionId, sessionNumber: created.session_number });
             notifySessionChanged({ sessionId, caseId: item.caseId });
@@ -85,14 +109,27 @@ export function useAppDocuments(): AppDocuments {
           files.current.delete(id);
           patch(id, { status: "done" });
         } catch (caught) {
-          // 422 는 파일 문제 — 다시 올려도 같다.
+          // 연결이 끊겼어도 서버가 이미 끝냈을 수 있다 — 먼저 묻고, 받았으면 완료로 둔다.
+          if (sessionId && (await alreadyReceived(sessionId))) {
+            notifySessionChanged({ sessionId, caseId: item.caseId });
+            files.current.delete(id);
+            patch(id, { status: "done", error: null });
+            continue;
+          }
+          // 422 는 파일 문제 — 다시 올려도 같다. 만든 빈 회차는 지운다.
           const fileProblem = caught instanceof ApiError && caught.status === 422;
           patch(id, {
             status: "fail",
             canRetry: !fileProblem,
             error: errorMessage(caught, "문서를 올리지 못했어요. 연결을 확인하고 다시 올려 주세요."),
           });
-          if (fileProblem) files.current.delete(id);
+          if (fileProblem) {
+            files.current.delete(id);
+            if (sessionId) {
+              void dropEmptySession(sessionId);
+              patch(id, { sessionId: null, sessionNumber: null });
+            }
+          }
         }
       }
     } finally {
@@ -134,11 +171,24 @@ export function useAppDocuments(): AppDocuments {
   );
 
   const remove = useCallback((id: string) => {
+    const item = state.current.find((x) => x.id === id);
+    // 올리는 중이 아닌 줄의 빈 회차는 지운다.
+    if (item?.sessionId && item.status !== "done" && item.status !== "run") void dropEmptySession(item.sessionId);
     files.current.delete(id);
     queue.current = queue.current.filter((x) => x !== id);
     state.current = state.current.filter((x) => x.id !== id);
     setItems(state.current);
   }, []);
+
+  // 이 화면을 떠나면 끝나지 않은 줄의 빈 회차를 지운다(올리는 중인 줄은 서버가 이어서 끝낼 수 있어 둔다).
+  useEffect(
+    () => () => {
+      for (const item of state.current) {
+        if (item.sessionId && (item.status === "fail" || item.status === "wait")) void dropEmptySession(item.sessionId);
+      }
+    },
+    [],
+  );
 
   return { items, add, retry, remove };
 }
