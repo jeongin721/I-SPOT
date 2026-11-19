@@ -6,6 +6,8 @@
 //    일정 기능이 서버에 없어 '—'.
 //  - 먼저 볼 것: '아이가 보낸 말'(가장 최근 아이가 쓴 글) · '체크인 응답 변화'(가장 최근 답에서 지난번과 달라진 답)는
 //    콩콩 아이 앱 값이다(11/10 연결, childAppHighlights). 담당 상담사만 보인다.
+//    '체크인 응답 변화' 는 같은 질문의 달라진 답이 없으면 가장 최근 답 중 확인이 필요한 답(위험 → 연락 요청 → 주의 → 추가 질문 답)을
+//    대신 보인다 — 처음 받은 답 · 추가 질문 답은 비교할 예전 답이 없어 '변화' 로 안 잡혀 아무것도 안 뜨던 문제(11/19 경진).
 //    '처음 나온 이야기'(2026-10-29)는 분석이 끝난 가장 최근 회차의 대화 주제 중 앞 회차들에 없던 것(signal-history topics,
 //    signalHistoryRows.newTopicsIn) — 주제 · 그 첫 아동 발화 · 회차와 시각. AI 제안이다.
 //  - 확인할 사항: 그 회차 확인 사항을 저장했으면(18.1절, 2026-10-30) '브리핑에 넣기' 로 체크한 것만, 저장 전이면
@@ -82,6 +84,8 @@ function childAppCards(app: ChildAppCase | null | undefined): FirstCard[] {
     return [{ ...child, note: "아이 앱이 연결되지 않았어요." }, { ...checkin, note: "아이 앱이 연결되지 않았어요." }];
   }
   const first = found.changes[0];
+  // 같은 질문의 달라진 답이 없으면, 가장 최근 답 중 확인이 필요한 답(위험 · 연락 요청 · 주의 · 추가 질문 답)을 보인다(11/19 경진).
+  const check = found.needCheck[0];
   return [
     found.written
       ? { ...child, note: "", main: `"${found.written.text}"`, src: `${found.written.at} · 아이 앱` }
@@ -94,7 +98,15 @@ function childAppCards(app: ChildAppCase | null | undefined): FirstCard[] {
           main: `${first.from} → ${first.to}`,
           src: `${found.changedAt} 응답 · 아이 앱`,
         }
-      : { ...checkin, note: found.answeredCount ? "지난번과 달라진 답이 없어요." : "아직 받은 답이 없어요." },
+      : check
+        ? {
+            ...checkin,
+            note: "",
+            q: `${check.question}${found.needCheck.length > 1 ? ` 외 ${found.needCheck.length - 1}개` : ""}`,
+            main: check.answer,
+            src: `${found.changedAt} 응답 · 아이 앱 · 확인 필요 답`,
+          }
+        : { ...checkin, note: found.answeredCount ? "지난번과 달라진 답이 없어요." : "아직 받은 답이 없어요." },
   ];
 }
 
