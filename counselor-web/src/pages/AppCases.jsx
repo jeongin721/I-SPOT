@@ -8,8 +8,8 @@
 //  - 다음 상담: 오늘부터 4주 안 일정 중 그 사례의 가장 가까운 상담(GET /schedule/events). '이번 주 상담' 은 다음 상담이 이번 주(월~일)인 사례.
 //  - 찾기: 이름 · 별칭 · 사례 ID 에 들어 있으면(이 폰에서 거름).
 //  - 사례 요약 창(11/17 디자인 '각진 UI ⑨' — 가운데 창): 사례 ID · 신고접수 · 다음 상담 · 메모(이 아이에 대해 쓴 내 메모,
-//    GET /memos?case_id= 최신 MEMO_N 개 — 본문은 화면에만, 폰에 저장하지 않음). 단추는 다음 상담 준비(앱 · 브리핑) ·
-//    이전 상담(앱 · 이전 상담)이고, 그 아이를 골라 둔 채 간다(?case=). 녹음 · 메모는 아래 탭에서 한다(디자인).
+//    GET /memos?case_id= 최신 MEMO_N 개 — 본문은 화면에만, 폰에 저장하지 않음). 단추는 디자인 순서대로 다음 상담 준비(앱 · 브리핑) ·
+//    자료 올리기(앱 · 업로드) · 이전 상담(앱 · 이전 상담)이고, 그 아이를 골라 둔 채 간다(?case=). 녹음 · 메모는 아래 탭에서 한다(디자인).
 //    디자인의 '다음 상담 준비중' 은 준비 여부를 정할 서버 값이 없어 늘 '다음 상담 준비' 를 보이고, 그 화면이 빈 칸을 안내한다.
 //  - 연결이 없으면 기억한 목록(이름만)이라 나이 · 위험도 · 신고접수는 '—'.
 import { useState } from 'react';
@@ -139,6 +139,9 @@ function CasesBody({ userId }) {
             <div className="ma-acts">
               <Link className="ma-btn" to={`/AppBrief?case=${cur.r.id}`} state={{ from: '/AppCases' }}>
                 다음 상담 준비
+              </Link>
+              <Link className="ma-btn" to={`/AppUpload?case=${cur.r.id}`}>
+                자료 올리기
               </Link>
               <Link className="ma-btn" to={`/AppHistory?case=${cur.r.id}`} state={{ from: '/AppCases' }}>
                 이전 상담
