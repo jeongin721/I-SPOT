@@ -158,3 +158,14 @@
 .pg-CaseHistory .thm-root.dark .src {
   color: #a8a296 !important;
 }
+
+/* 11/10 디자인: 회차별 세부 신호의 '?'(보류) 칸 → 기록 확인 해당 발화. */
+.pg-CaseHistory .dot-go {
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 700;
+}
+.pg-CaseHistory .dot-go:hover {
+  box-shadow: inset 0 0 0 2px #c2a36b !important;
+  color: #2b2a26 !important;
+}

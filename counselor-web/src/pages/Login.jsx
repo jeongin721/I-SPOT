@@ -11,6 +11,7 @@
 //    서버 설정(SIGNUP_ENABLED)이 꺼져 있으면 회원가입 단추를 숨긴다.
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { takeAppReturn } from '../data/appReturn';
 import { DCLogic, useDC } from '../dc';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
@@ -61,7 +62,9 @@ class Logic extends DCLogic {
       this.setState({ current: s.password, password: '', next: '', confirm: '', pwFor: user.id });
       this.props.session.recheck();
     } else {
-      this.props.navigate(s.role === 'admin' && user.role === 'ADMIN' ? '/AdminHome' : '/Main');
+      // 상담사 앱(폰) 화면에서 왔으면 그 화면으로 돌아간다(appReturn.ts). 아니면 원래대로.
+      const back = takeAppReturn();
+      this.props.navigate(back ?? (s.role === 'admin' && user.role === 'ADMIN' ? '/AdminHome' : '/Main'));
     }
   }
 
@@ -423,7 +426,7 @@ export default function Login(props) {
             <section role="dialog" aria-modal="true" aria-labelledby="su2-title" className="sf-dlg" style={{ background: '#FFFFFF' }}>
               <div className="sf-top">
                 <h2 id="su2-title" className="sf-title">
-                  계정 정보를 입력하세요.
+                  계정 정보를 입력하십시오.
                 </h2>
                 <button type="button" className="sf-x" aria-label="닫기" onClick={v.suClose}>
                   ×

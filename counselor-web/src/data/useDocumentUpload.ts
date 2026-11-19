@@ -9,6 +9,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { cases, sourceDocuments } from "../api/endpoints";
+import type { SessionCreateRequest } from "../api/types";
 import { checkDocumentFile } from "./documentFile";
 import { notifySessionChanged } from "./sessionEvents";
 import { errorMessage } from "./useRemote";
@@ -28,6 +29,8 @@ export interface DocumentUploadRequest {
   /** 이미 있는 빈 회차(CREATED). 없으면 새 회차를 만든다. */
   sessionId?: string | null;
   file: File;
+  /** 새 회차를 만들 때 함께 보낼 값(상담 유형, 11/19). */
+  newSession?: SessionCreateRequest;
 }
 
 export interface DocumentUploadState {
@@ -70,7 +73,7 @@ export function useDocumentUpload(): DocumentUploadState {
     try {
       if (!target) {
         setPhase("creatingSession");
-        target = (await cases.createSession(request.caseId, {})).id;
+        target = (await cases.createSession(request.caseId, request.newSession ?? {})).id;
         created.current = { caseId: request.caseId, sessionId: target };
         setSessionId(target);
         last.current = { request, sessionId: target };

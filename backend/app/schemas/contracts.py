@@ -110,6 +110,49 @@ class ProtectiveFactor(BaseModel):
     segment_ids: List[str] = Field(default_factory=list)
 
 
+class SafetyFlag(BaseModel):
+    """
+    안전 플래그 후보 하나(2026-11-05 선택 필드, API_CONTRACT 8절 safety_flags). '지금 이 아이가 안전한가' 를 본다.
+    code 는 S1~S10(기준: ai/modeling/abuse/safety_flag_llm.SAFETY_FLAG_DEFINITIONS). certainty 는 CLEAR(분명함) ·
+    CHECK(상담원 확인 필요). AI 확인 후보이고 판정이 아니다.
+    """
+
+    code: str
+    text: str
+    certainty: Literal["CLEAR", "CHECK"] = "CHECK"
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+class ReabuseFactor(BaseModel):
+    """재학대 요인 후보 하나(2026-11-05 선택 필드, API_CONTRACT 8절 reabuse_factors). code 는 R2~R10(R1 중복학대는 화면이 센다)."""
+
+    code: str
+    text: str
+    segment_ids: List[str] = Field(default_factory=list)
+
+
+_SAFETY_CODES = frozenset(f"S{n}" for n in range(1, 11))
+_REABUSE_CODES = frozenset(f"R{n}" for n in range(1, 11))
+
+
+def _keep_coded_items(value: Any, codes: frozenset) -> Any:
+    """코드 · 문장 · 근거 발화가 있는 항목만 남긴다. 목록이 아니면(null 등) 그대로 둔다."""
+
+    if not isinstance(value, list):
+        return value
+
+    return [
+        item
+        for item in value
+        if isinstance(item, dict)
+        and item.get("code") in codes
+        and isinstance(item.get("text"), str)
+        and item["text"].strip()
+        and isinstance(item.get("segment_ids"), list)
+        and item["segment_ids"]
+    ]
+
+
 class SessionChangeNote(BaseModel):
     """이전 회기와 달라진 점 메모. 나중에 근거 번호를 붙여도 모양이 같도록 객체로 받는다."""
 
@@ -188,6 +231,28 @@ class AIAnalysisResult(BaseModel):
     followup_questions: List[FollowupQuestionDraft] = Field(default_factory=list)
     # null 이면 주제를 분류하지 않았다(이 필드 전의 결과 · 분류 실패 · mock 등). [] 는 분류했지만 해당 주제 없음.
     topic_tags: Optional[List[TopicTag]] = None
+    # 안전 플래그 · 재학대 요인 후보(2026-11-05). topic_tags 처럼 null(만들지 못함 · 이 필드 전 결과 · mock)과
+    # [](찾았지만 해당 없음)을 구분한다. 2단계 칸이라 두 번 저장에서 첫 저장 값 그대로다(analysis_service._DRAFT_FIELDS 밖).
+    safety_flags: Optional[List[SafetyFlag]] = None
+    reabuse_factors: Optional[List[ReabuseFactor]] = None
+
+    @field_validator("safety_flags", mode="before")
+    @classmethod
+    def _drop_bad_safety_flags(cls, value: Any) -> Any:
+        # 모르는 코드 · 문장 · 근거 발화 없는 항목은 결과 전체를 실패시키지 않고 그 항목만 버린다(topic_tags 와 같은 규칙).
+        # 모르는 certainty 는 CHECK 로 본다(근거가 약할 때 '분명함' 으로 올리지 않는다).
+        kept = _keep_coded_items(value, _SAFETY_CODES)
+        if not isinstance(kept, list):
+            return kept
+        return [
+            item if item.get("certainty") in ("CLEAR", "CHECK") else {**item, "certainty": "CHECK"}
+            for item in kept
+        ]
+
+    @field_validator("reabuse_factors", mode="before")
+    @classmethod
+    def _drop_bad_reabuse_factors(cls, value: Any) -> Any:
+        return _keep_coded_items(value, _REABUSE_CODES)
 
     @field_validator("topic_tags", mode="before")
     @classmethod

@@ -9,10 +9,12 @@
 //  - 상담원별 지금 담당(진행 중) · 기간 안 상담 회차 · 지금 종결: 사례 응답에 담당자 ID 가 없어(사례 행은 이름만) 담당 상담사
 //    이름으로 모은다. 이름이 같은 계정이 둘 이상이면 섞이지 않게 그 줄은 '—' 로 둔다.
 //  - 아동 연령대: 출생연도로 센 나이(기간 끝 해 − 출생연도)라 만 나이와 한 살 다를 수 있다. 기간 안 등록 사례 기준.
-// 서버에 없어 '—' · 준비 중: 학대 판단 · 재신고율 · 평균 사례관리 기간 · 72시간 내 초기 개입 · 아이 앱 응답률 · 일지 기한 내 작성률,
+// 아이 앱 응답률(11/10 연결): 기간 안에 보낸 콩콩 질문 묶음 중 아이가 답한 비율(GET /child-app-stats, 화면이 기간마다 부른다).
+// 서버에 없어 '—' · 준비 중: 학대 판단 · 재신고율 · 평균 사례관리 기간 · 72시간 내 초기 개입 · 일지 기한 내 작성률,
 // 학대 유형별 · 위험도별(사례 단위 판단 · 위험도 규칙 없음 — AI 신호로 대신 세지 않는다), 행위자 관계 · 신고자 · 조치 결과 ·
 // 서비스 · 종결 사유 분포, 엑셀 · PDF 내려받기(양식 미정). 디자인의 기간별 숫자(올해 값에 계수를 곱한 예시)는 옮기지 않는다.
 
+import type { ChildAppStats } from "../../api/types";
 import type { AdminAccountsState } from "../useAdminAccounts";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseOverviewState } from "../useCaseOverview";
@@ -126,7 +128,20 @@ const PENDING_CARDS = {
   ],
 };
 
+/** '아이 앱 응답률'(11/10 연결): 기간 안에 보낸 질문 묶음 중 아이가 답한 비율(GET /child-app-stats). */
+function childRate(stats: ChildAppStats | null, label: string) {
+  if (!stats) return { label: "아이 앱 응답률", v: NOT_PROVIDED, sub: `${NOT_READY} · 아이 앱이 꺼져 있음` };
+  if (stats.sent === 0) return { label: "아이 앱 응답률", v: NOT_PROVIDED, sub: `${label} · 보낸 질문 없음 · 연결 ${stats.linked_cases}명` };
+  return {
+    label: "아이 앱 응답률",
+    v: `${Math.round((stats.answered / stats.sent) * 100)}%`,
+    sub: `${label} · 보낸 질문 ${stats.sent}번 중 ${stats.answered}번 답 · 연결 ${stats.linked_cases}명`,
+  };
+}
+
 export function adminStatsValues(input: {
+  /** 지금 기간의 콩콩 통계. 못 받았으면 null. */
+  childStats?: ChildAppStats | null;
   session: AuthSession;
   overview: CaseOverviewState;
   accounts: AdminAccountsState;
@@ -157,7 +172,7 @@ export function adminStatsValues(input: {
     { label: "재신고율", v: NOT_PROVIDED, sub: NOT_READY },
     { label: "평균 사례관리 기간", v: NOT_PROVIDED, sub: NOT_READY },
     { label: "72시간 내 초기 개입", v: NOT_PROVIDED, sub: NOT_READY },
-    { label: "아이 앱 응답률", v: NOT_PROVIDED, sub: NOT_READY },
+    childRate(input.childStats ?? null, range.label),
   ];
 
   // ---------------- 사례 등록 추이 ----------------
@@ -260,6 +275,8 @@ export function adminStatsValues(input: {
   ].filter(Boolean);
 
   return {
+    /** 화면이 콩콩 통계를 부를 기간("YYYY-MM-DD|YYYY-MM-DD"). */
+    childStatsKey: `${range.from}|${range.to}`,
     notice: screenNotice({ session, loading: overview.loading, error: overview.error, retry: overview.reload }),
     periodLabel: range.label,
     rangeLabel: `${range.from} ~ ${range.to}`,

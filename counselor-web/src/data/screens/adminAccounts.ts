@@ -169,7 +169,7 @@ export function adminAccountsValues(input: {
         });
       },
       reject: async () => {
-        if (!window.confirm(`${item.name} 님의 가입 신청을 거절할까요? 신청자에게 따로 알리지 않습니다.`)) return;
+        if (!window.confirm(`${item.name} 님의 가입 신청을 거절하시겠습니까? 신청자에게 따로 알리지 않습니다.`)) return;
         setState({ done: null });
         const rejected = await signups.reject(item.id);
         accounts.reload();

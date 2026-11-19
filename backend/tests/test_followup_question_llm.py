@@ -16,6 +16,7 @@ from app.adapters.module_loader import ensure_repo_root_on_path
 ensure_repo_root_on_path()
 
 from ai.modeling.abuse import followup_question_llm as fq  # noqa: E402
+from ai.modeling.abuse import question_rules as fq_rules  # noqa: E402
 
 SEGMENTS = [
     {"segment_id": "seg_010", "speaker": "CHILD", "text": "아빠가 술 마시고 오면 때려요."},
@@ -355,3 +356,28 @@ def test_drops_question_whose_reason_is_a_judgment():
     # 유형 이름만 있는 이유는 그대로 둔다(판정이 아니다).
     kept = fq._clean_questions([_q("등이랑 팔이 아팠던 건 지금은 어때?", reason="신체학대 관련 신호의 경과 확인")], SEGMENTS)
     assert [item["text"] for item in kept] == ["등이랑 팔이 아팠던 건 지금은 어때?"]
+
+
+# =========================================================
+# 말투 순화(2026-11-06, question_rules.QUESTION_TONE_EXAMPLES)
+# =========================================================
+
+@pytest.mark.parametrize(("direct", "soft"), fq_rules.QUESTION_TONE_EXAMPLES)
+def test_tone_examples_pass_code_checks(direct, soft):
+    # 프롬프트 예시대로 쓴 질문이 코드 검사(열린 표지 · 새 인물/행위 · 꼬리형 · 물음표 하나)에서 빠지면 안 된다.
+    cleaned = fq._clean_questions([_q(soft)], SEGMENTS)
+
+    assert [item["text"] for item in cleaned] == [soft]
+
+
+def test_generate_sends_tone_examples(fake_llm):
+    calls, response = fake_llm
+    response["value"] = {"questions": []}
+
+    fq.generate_followup_questions_from_masked_text(None, "m", _masked("- [seg_012] 등"), SEGMENTS)
+
+    prompt = calls[0]["system_prompt"]
+    assert "[말투 — 아이에게 다가가는 방식]" in prompt
+    for direct, soft in fq_rules.QUESTION_TONE_EXAMPLES:
+        assert f'"{direct}" → "{soft}"' in prompt
+    assert "{tone_examples}" not in prompt

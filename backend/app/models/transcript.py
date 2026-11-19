@@ -22,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import Speaker, TranscriptSource
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -105,7 +106,10 @@ class TranscriptSegment(UUIDPrimaryKeyMixin, Base):
     )
     start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # 발화 글은 text_enc 에 암호문으로 둔다(encrypted_field). text(평문 칸)는 옮기기 전 옛 행만 읽고 다음 PR 에서 지운다.
+    text_plain: Mapped[str] = mapped_column("text", Text, nullable=False, default="")
+    text_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    text = EncryptedColumn("text", empty="")
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
     # 상담사가 수정한 segment 를 검수 화면에서 구분할 수 있게 한다.

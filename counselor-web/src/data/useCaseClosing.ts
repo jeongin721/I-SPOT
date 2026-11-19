@@ -36,7 +36,7 @@ export function useCaseClosing(
     hint: error ?? hint,
     close: async () => {
       if (!caseId || !info || closed || busy) return;
-      if (!window.confirm(`${info.alias} 사례를 종결합니다. 사례 상태가 '종결' 로 바뀝니다. 계속할까요?`)) return;
+      if (!window.confirm(`${info.alias} 사례를 종결합니다. 사례 상태가 '종결' 로 바뀝니다. 계속하시겠습니까?`)) return;
       setBusy(true);
       setError(null);
       try {

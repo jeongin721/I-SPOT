@@ -20,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import ConsultationType, SessionSource, SessionStatus
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.source_document import SessionSourceDocument
@@ -73,7 +74,10 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         SAEnum(ConsultationType, name="consultation_type", native_enum=False, length=20),
         nullable=True,
     )
-    memo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 회차 메모는 memo_enc 에 암호문으로 둔다(encrypted_field). memo(평문 칸)는 옮기기 전 옛 행만 읽고 다음 PR 에서 지운다.
+    memo_plain: Mapped[Optional[str]] = mapped_column("memo", Text, nullable=True)
+    memo_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    memo = EncryptedColumn("memo", empty=None)
     # 회차 자료(2026-11-02). DOCUMENT 면 상담 기록 문서로 3 · 4단계만 쓴다(SessionSourceDocument).
     source: Mapped[SessionSource] = mapped_column(
         SAEnum(SessionSource, name="session_source", native_enum=False, length=20),

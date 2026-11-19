@@ -45,7 +45,7 @@ export default function PrintNameDialog({ title, goLabel, name, maskReady = true
           {title}
         </b>
         <span className="note" style={{ marginTop: '-6px' }}>
-          출력물에 들어갈 이름 표시 방식을 고르세요.
+          출력물에 들어갈 이름 표시 방식을 고르십시오.
         </span>
         <div role="radiogroup" aria-label="이름 표시 방식" className="out-opts">
           {[

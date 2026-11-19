@@ -303,7 +303,7 @@ export function caseIntakeValues(input: CaseIntakeInput) {
     isB: state.tab === "B",
     missNote:
       state.tab === "A" && state.tried && missing.length > 0
-        ? `기본 정보 필수 항목을 모두 입력해야 초기면접 내용으로 넘어갈 수 있어요 · 남은 항목: ${missing
+        ? `기본 정보 필수 항목을 모두 입력해야 초기면접 내용으로 넘어갈 수 있습니다 · 남은 항목: ${missing
             .map(([, label]) => label)
             .join(", ")}`
         : "",

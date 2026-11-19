@@ -1,0 +1,175 @@
+// 상담사 앱(폰) · 다음 상담 준비(읽기 전용, 11/17 디자인에서 '상담 전 브리핑' 이름을 바꿈)
+// 원본: 앱 · 상담 전 브리핑 (읽기 전용 · 확인할 사항 체크) 2026-11-10 zip 의 AppBrief.dc.html
+//       → 11/17 'I-SPOT 상담사 웹 화면 설계 · 각진 UI' ⑨ 의 앱 · 다음 상담 준비(이름 · 문구 · 머리 왼쪽 '뒤로 가기')
+//
+// 서버 연결: 주소 ?case=<사례 ID>. 웹 사례 상세의 상담 전 브리핑과 **같은 값**(preBriefingValues)을 폰 모양으로 보인다.
+//  - 먼저 볼 것: 아이가 보낸 말 · 체크인 응답 변화(콩콩 아이 앱) · 처음 나온 이야기(분석이 끝난 최근 회차의 새 주제, AI 제안).
+//  - 확인할 사항: 웹과 같은 목록. 체크는 서버에 회차별로 둔다(API_CONTRACT 26절 — 웹 사례 상세 브리핑과 같은 값).
+//  - 추가 질문: 그 회차에서 상담사가 승인한 질문만(승인 전 AI 초안은 안 보임).
+//  - 머리 위 줄: 이 사례의 가장 가까운 상담 일정(오늘이면 '오늘 16:00') · 다음 회차 번호. 일정이 없으면 회차 번호만.
+//  - '이 상담 녹음 시작' 은 그 아이를 골라 둔 채 앱 · 녹음으로 간다.
+// 브리핑 내용 수정 · 질문 편집은 웹에서 한다(디자인 문구 그대로).
+// '뒤로 가기' 는 들어온 앱 화면(사례 목록 · 일정 등이 Link state.from 으로 넘김)으로, 모르면(새로 고침 · 바로 연 주소) 일정으로 간다.
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import MobileAppShell from '../components/MobileAppShell';
+import { childApp } from '../api/endpoints';
+import { useAuthSession } from '../data/useAuthSession';
+import { useCaseDetail } from '../data/useCaseDetail';
+import { latestAnalyzedSession, useCaseSignals } from '../data/useCaseSignals';
+import { useFollowupChecklist } from '../data/useFollowupChecklist';
+import { useFollowupChecks } from '../data/useFollowupChecks';
+import { useFollowupQuestions } from '../data/useFollowupQuestions';
+import { useSignalHistory } from '../data/useSignalHistory';
+import { signedIn } from '../data/screens/common';
+import { checklistNeedsEvidence } from '../data/screens/followupQ';
+import { preBriefingValues } from '../data/screens/preBriefing';
+import { useRemote } from '../data/useRemote';
+import { useBriefingChecks } from '../data/useBriefingChecks';
+import { appFrom } from '../data/appReturn';
+import { childLabelOf, useAppCases } from '../data/useAppCases';
+import { addDays, parseYmd, useAppSchedule, ymd } from '../data/useAppSchedule';
+
+function useBrief(caseId) {
+  const session = useAuthSession();
+  const on = signedIn(session) && !!caseId;
+  const detail = useCaseDetail(caseId, { enabled: on });
+  const briefSessionId = latestAnalyzedSession(detail.sessions)?.id ?? null;
+  const checks = useFollowupChecks(briefSessionId, { enabled: on });
+  const checklist = useFollowupChecklist(briefSessionId, { enabled: on });
+  const needEvidence =
+    checks.items.some((item) => item.in_briefing && Array.isArray(item.segment_ids) && item.segment_ids.length > 0) ||
+    checklistNeedsEvidence(checklist.checklist, briefSessionId);
+  const signals = useCaseSignals(detail, { enabled: on, needEvidence });
+  const questions = useFollowupQuestions(signals.session?.id ?? null, { enabled: on });
+  const history = useSignalHistory(caseId, { enabled: on });
+  const appKey = on ? `case-child-app:${caseId}` : null;
+  const childAppInfo = useRemote(appKey, () => childApp.get(caseId), '아이 앱 정보를 불러오지 못했습니다.', () => false);
+  const brief = preBriefingValues({ childApp: childAppInfo.data, session, detail, signals, questions, caseId, history, checks, checklist });
+  return { brief, detail, signals };
+}
+
+function BriefBody({ caseId }) {
+  const { brief, signals } = useBrief(caseId);
+  const { ticks, toggle, error: tickError, waiting } = useBriefingChecks(
+    signals.session?.id ?? null,
+    true,
+    // 목록이 다 오기 전에는 null — 서버가 늦게 붙을 줄의 체크를 지우지 않게 visible 을 보내지 않는다(민규 #176).
+    brief.checksReady ? (brief.checks || []).map((c) => c.text) : null,
+  );
+  const checks = brief.checks || [];
+  const done = checks.filter((c) => ticks.has(c.text)).length;
+
+  return (
+    <>
+      <p className="ma-sec-t">먼저 볼 것</p>
+      {(brief.firstCards || []).map((c) => (
+        <div key={c.key} className="ma-card ma-lead">
+          <span className="ma-lead-tag">{c.title}</span>
+          {c.q ? <span className="ma-lead-q">{c.q}</span> : null}
+          {c.main ? <b className="ma-lead-main">{c.main}</b> : null}
+          <span className="ma-src">{c.src || c.note}</span>
+        </div>
+      ))}
+      <p className="ma-sec-t">
+        확인할 사항 <span className="ma-note">({done}/{checks.length})</span>
+      </p>
+      {brief.checksNote ? <span className="ma-note">{brief.checksNote}</span> : null}
+      {checks.map((c) => (
+        <label key={c.key} className="ma-rq">
+          <input type="checkbox" checked={ticks.has(c.text)} onChange={() => toggle(c.text)} />
+          <span>
+            {c.text}
+            <span className="ma-src">근거 · {c.why}</span>
+          </span>
+        </label>
+      ))}
+      {tickError ? <span className="ma-err">{tickError}</span> : null}
+      {waiting ? <span className="ma-note">연결이 돌아오면 확인 표시를 저장해요.</span> : null}
+      {brief.checksError ? <span className="ma-err">{brief.checksError}</span> : null}
+      <p className="ma-sec-t">
+        추가 질문{' '}
+        <span className="ma-chip ma-ai" style={{ marginLeft: '4px' }}>
+          AI 초안
+        </span>
+      </p>
+      {(brief.questions || []).map((q) => (
+        <div key={q.key} className="ma-rq" style={{ cursor: 'default' }}>
+          <span className="ma-chip">{q.chip}</span>
+          <span>"{q.text}"</span>
+        </div>
+      ))}
+      {brief.questionNote ? <span className="ma-note">{brief.questionNote}</span> : null}
+      <p className="ma-note" style={{ margin: 0 }}>
+        다음 상담 준비 내용 수정과 질문 편집은 웹에서 할 수 있습니다. AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.
+      </p>
+      <Link className="ma-btn ma-btn-p ma-btn-block ma-cta" to={`/AppRecord?case=${caseId}`}>
+        이 상담 녹음 시작
+      </Link>
+    </>
+  );
+}
+
+function NoCase() {
+  return (
+    <>
+      <div className="ma-card ma-empty" style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--mut)' }}>
+        다음 상담 준비를 볼 아이를 사례 목록에서 골라 주세요
+      </div>
+      <Link className="ma-btn ma-btn-p ma-btn-block" to="/AppCases">
+        사례 목록
+      </Link>
+    </>
+  );
+}
+
+/** 머리: '‹ 일정 · 오늘 16:00 · 9회차' 와 '이서윤 다음 상담 준비'. */
+function useHead(caseId, userId) {
+  const my = useAppCases(userId);
+  const detail = useCaseDetail(caseId, { enabled: !!userId && !!caseId });
+  const now = new Date();
+  const sched = useAppSchedule(!!userId && !!caseId, ymd(now), ymd(addDays(now, 27)));
+  const next = sched.items.find((e) => e.kind === 'CONSULT' && e.case_id === caseId);
+  const row = my.rows.find((r) => r.id === caseId);
+  const name = row ? childLabelOf(row) : detail.caseInfo?.alias ?? '';
+  let when = '';
+  if (next) {
+    const d = parseYmd(next.date);
+    const day = next.date === ymd(now) ? '오늘' : `${d.getMonth() + 1}/${d.getDate()}`;
+    when = `${day}${next.time ? ' ' + next.time : ''}`;
+  }
+  const count = detail.caseInfo ? `${detail.caseInfo.sessionCount + 1}회차` : '';
+  return { name, line: [when, count].filter(Boolean).join(' · ') };
+}
+
+function Head({ userId, caseId }) {
+  const head = useHead(caseId, userId);
+  return (
+    <>
+      <div className="ma-sub">
+        <Link to="/AppSchedule" style={{ color: 'inherit' }}>
+          ‹ 일정
+        </Link>
+        {head.line ? ' · ' + head.line : ''}
+      </div>
+      <h1>{head.name ? `${head.name} 다음 상담 준비` : '다음 상담 준비'}</h1>
+    </>
+  );
+}
+
+export default function AppBrief() {
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const caseId = params.get('case');
+  return (
+    <MobileAppShell
+      cur="cal"
+      screen="brief"
+      back={appFrom(location.state, '/AppBrief') ?? '/AppSchedule'}
+      head={caseId ? ({ userId }) => <Head userId={userId} caseId={caseId} /> : null}
+      sub="상담 전 확인"
+      title="다음 상담 준비"
+    >
+      {() => (caseId ? <BriefBody caseId={caseId} /> : <NoCase />)}
+    </MobileAppShell>
+  );
+}

@@ -604,10 +604,13 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `action`, `status`(`SUCCESS|FA
 
 ### GET /api/v1/cases
 
-Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`)
+Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `search`, `with_child_name`(기본 `false`), `sort`(`report_date|risk`, 없으면 등록 최신순), `order`(`desc|asc`, 기본 `desc`, `sort` 가 있을 때만 쓴다)
 
 - `search` 는 제목 · 사례 번호 · 아동 별칭에서 찾는다. `%`, `_` 도 글자 그대로 찾는다
   - 아동 실명(아래 '개인 식별 정보')은 암호화돼 있어 **정확히 같은 이름(공백 무시)** 일 때만 찾는다. 이름 일부로는 찾지 않는다(2026-10-30)
+- 각 줄의 `risk_level`(`HIGH|MEDIUM|LOW|null`)은 AI 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED`·`APPROVED`)의 상담원 판단(회차 전체)이다. 그 회차를 판단하기 전이면 `null` 이고, 앞 회차 판단이나 AI 심각도로 채우지 않는다
+  - 화면은 이 값을 먼저 쓰고, `null` 이면 `counselor_risk_level`(위험도(우선))을 보인다. 둘 다 상담원이 고른 값이다(2026-11-06)
+- `sort=report_date` 는 신고접수일 최신순, `sort=risk` 는 상 → 중 → 하 순이다(화면에 보이는 값과 같은 기준 — 회차 판단, 없으면 위험도(우선)). `order=asc` 는 그 반대(신고접수일 오래된순 · 하 → 중 → 상)다. 어느 쪽이든 값이 없는 사례는 맨 뒤, 같은 값끼리는 등록 최신순이다
 - `with_child_name=true` 면 각 줄에 `child_name`(복호화한 아동 실명, 없으면 `null`)을 싣고, 실명이 실린 사례가 있으면
   열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄(사례 ID · 수만)을 남긴다. 실명을 보여 주는 화면만 `true` 로 부른다.
   빼거나 `false` 면 `child_name` 은 늘 `null` 이고 복호화 · 기록이 없다(2026-10-30)
@@ -840,7 +843,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
 - `PUT`(보낸 칸만, 종결 검토에 등록한 사례만 — 등록 전 · 취소한 사례는 `409 INVALID_CASE_STATE`): `checks: {key: bool}` · `edits: {key: 고친 문장}`(빈 글이면 고침 취소) — 지금 요약의 `key` 만(그 밖 `422`),
   `report: {initial_situation, closing_situation, opinion, review_date, closing_date}`(글 2000자, 날짜 `YYYY-MM-DD` 글자만 — 시각 · 숫자 `422`).
   (2026-11-03) 상담원 판단 칸도 `report` 에 둔다 — `reasons`: 종결사유 5개 `bool` · `safety`: 안전평가 11문항 `HIGH`·`MEDIUM`·`LOW`·`null`
-  (피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 서식 6 안전영역과 같은 순서) · `key_person`: 300자 · `safety_scores`: 3줄 `{score: 1~10·null, reason: 300자}`
+  (피해아동 3 · 가족구성원 5 · 사례관리대상자 3, 서식 6 안전영역과 같은 순서) · `key_person`: 300자 · `safety_scores`: 3줄 `{score: 1~10·null, reason: 300자}` · `goals`: 6줄 `{goal: 200자, service: 300자}`(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2, 상담원이 씀, 2026-11-09)
   · (2026-11-04) `services`: 사례관리 제공 요약 · 제공된 서비스 내용 및 총량 300자(화면이 회차 기록의 상담 유형별 횟수로 먼저 채운다).
   목록은 문항 수 그대로(아니면 `422`). 타입은 바꿔 받지 않고(`true` → 1 · `"3"` → 3 은 `422`), 모르는 칸(`reson` 오타 등)도 `422`(11/05).
   GET 의 `report` 에도 같은 키가 온다(저장 전 `null`).
@@ -984,7 +987,20 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 
 ### DELETE /api/v1/sessions/{session_id} → 204
 
-음성 파일도 함께 삭제된다.
+음성 파일도 함께 삭제된다. 전사본 · AI 분석 · 요약 · 문서까지 함께 지워지고 되돌릴 수 없다(감사 기록 `SESSION_DELETED` 만 남는다).
+
+누가 지울 수 있나(2026-11-11):
+
+| 회차 상태 | 담당 상담사 | 관리자 |
+|---|---|---|
+| `CREATED` · `AUDIO_UPLOADED` · `STT_FAILED` · `STT_REVIEW_REQUIRED` (원문 확정 전) | `204` | `204` |
+| `STT_PROCESSING` (원문 변환 중) | `409 INVALID_SESSION_STATE` — 변환이 끝난 뒤 다시 | `204` |
+| `STT_CONFIRMED` · `AI_PROCESSING` · `AI_FAILED` · `AI_REVIEW_REQUIRED` · `APPROVED` (원문 확정 뒤) | `403 FORBIDDEN` | `204` |
+
+- 잘못 올린 녹음은 담당 상담사가 직접 치울 수 있게 하고, 원문을 확정한 뒤의 회차(검수본 · AI 분석 · 승인된 기록)는 실수로 지워지지 않게 관리자만 지운다.
+  전에는 담당 상담사면 상태와 상관없이 받았다.
+- 문서 회차(21절)는 문서를 올리면 바로 `AI_REVIEW_REQUIRED` 가 되므로, 문서를 올린 뒤에는 관리자만 지운다.
+- 담당이 아닌 상담사는 상태와 상관없이 `403` 이다.
 
 ---
 
@@ -1464,9 +1480,10 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
 - `evidence_strength` 는 `HIGH | MEDIUM | LOW` 로 **확률이 아니라 근거의 직접성**이다. 모델 확률 · 임계값은 이번 판에서 싣지 않는다
   (쓰는 곳이 없고, 구간 단위 확률을 세션 값으로 합치는 규칙이 따로 필요하다).
 - `reason` 은 AI 가 그 강도로 본 이유 한 문장(문자열, 없으면 `""`), `evidence_verified` 는 인용문이 원문과 맞는지 대조한 결과(참/거짓)다.
-- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
+- `detection_source`: `MODEL`(1차 모델이 어느 구간에서든 검출, 또는 2차 동반 확인으로 올림 — 아래) · `FILTERED`(모델은 검출했으나 아동이 명확히 부정해 필터가 내림,
   `detected=false`, 사유는 `filtered_reason`) · `null`(검출도 필터도 없음). `detected=true` 면 늘 `MODEL` 이다(출처 `null` 인 검출 신호는 없다).
   `LLM_SUPPLEMENTARY` 는 예약값이며 지금 경로(음성 회기)에서는 나오지 않는다.
+  2차 동반 확인(2026-11-11, `ai/modeling/abuse/companion_types.py`): 1차가 신체학대를 잡았는데 2차가 신체학대 근거를 못 찾고 정서학대 근거를 원문 줄에서 찾으면 정서학대를 `detected=true` 로 올린다. 이 유형도 `MODEL` 이고 `filtered_reason` 은 `null` 이다(`LLM_SUPPLEMENTARY` 로 바꿀지는 팀 확인 뒤).
 - `legal_references`(2026-10-27 제안, STT 검수 "관련 조문")는 그 유형을 직접 가리키는 금지행위 조문(아동복지법 제17조의 해당 호)
   **하나까지**다. LLM 이 아니라 법령 캐시 키워드 매칭(`legal_reference_adapter.py`)이고, 법 위반을 확정하는 값이 아니라 참고 링크다.
   분석 도중에는 캐시만 읽고 국가법령정보센터를 부르지 않는다(분석 시간이 늘지 않게). 캐시 갱신은 분석 밖에서 `python -m law.refresh_cache`.
@@ -1552,6 +1569,8 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
     "~하지 않았어?"), 이유(`reason`)에 판정 · 단정 표현(2026-10-30, rag 의 질문 검증 규칙 — `ai/modeling/abuse/question_rules.py`)
   - 300자 넘음
   입력은 이번 회차 아동 진술 · 위험 신호 요지와 사례 정보의 나이대뿐이다(초기면접 항목 · 지난 회차 요약은 넣지 않는다).
+  프롬프트는 확인할 내용(치료 여부 · 시기 · 횟수 …)을 첫마디부터 묻지 않고 아이가 한 말 · 기분 · 근황으로 열어 돌려 묻게 한다
+  (2026-11-06 말투 — 예시 `question_rules.QUESTION_TONE_EXAMPLES`, rag 질문 프롬프트와 같이 씀). 말투 자체는 코드로 거르지 않는다.
   모듈이 실패하거나 마감 전에 끝나지 않으면 `[]` 이고 분석은 그대로 끝난다(확인 메모와 병렬로 부르고 마감 전까지만 기다린다).
   Mock AI · LangGraph 어댑터는 지금도 `[]` 다.
 - **알려진 한계**: 표지 · 낱말 목록만 보는 검사라 "몇 번 맞았어?" 처럼 아이가 이미 말한 행위를 횟수 · 정도로 되묻는 꼴은 지나가고,
@@ -1576,6 +1595,28 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
   - 아동 발화 마스킹이 비식별 검사에 막히거나 실패함(앞 단계 글과 입력이 달라 결과가 다를 수 있다)
   - LLM 실패 · 마감까지 못 끝냄
   - LLM 이 주제를 냈는데 검사에서 하나도 남지 않음(목록 밖 이름뿐 등 — 분류 실패로 본다)
+
+**안전 플래그 `safety_flags` · 재학대 요인 `reabuse_factors`(선택, 2026-11-05)** — 학대 신호 확인(2단계) '안전 플래그 · 재학대 요인' 카드의 재료다.
+모두 **AI 확인 후보**이고 판정이 아니다. 점수 · 등급으로 바꾸지 않는다.
+
+```json
+"safety_flags": [
+  { "code": "S2", "text": "말하면 더 혼난다는 말을 들었다고 함", "certainty": "CLEAR", "segment_ids": ["seg_012"] }
+],
+"reabuse_factors": [
+  { "code": "R2", "text": "아빠가 술을 마시면 때린다고 함", "segment_ids": ["seg_004"] }
+]
+```
+
+- 기준은 팀이 확인한 기준안(2026-11-05)이다. 정의는 `ai/modeling/abuse/safety_flag_llm.py` 의 `SAFETY_FLAG_DEFINITIONS`(S1~S10, '지금 이 아이가
+  안전한가') · `REABUSE_FACTOR_DEFINITIONS`(R2~R10, '앞으로 다시 일어날 가능성'). R1(중복학대)은 AI 가 내지 않고 화면이 관련 신호가 잡힌 유형 수로 센다.
+- `certainty`: `CLEAR`(진술이 분명히 해당) · `CHECK`(상담원 확인 필요). 모르는 값이면 `CHECK` 로 본다.
+- **없으면 `null`**(이 필드 전 결과 · 모듈 실패 · Mock AI · LangGraph) — `topic_tags` 처럼 `[]`(찾았지만 해당 없음)과 구분한다.
+  화면은 `null` 을 '없음' 으로 보이지 않는다(언급 없음 ≠ 안전함). 모듈이 실패했으면 `warnings` 에
+  `"안전 플래그 · 재학대 요인을 만들지 못했습니다."` 가 붙고 분석은 그대로 끝난다.
+- 모르는 코드 · 문장이 비었거나 `segment_ids` 가 빈 항목은 그 항목만 버린다.
+- 2단계 칸이라 두 번 저장(위 "두 번 저장")에서 **첫 저장에 실리고 둘째 저장에서 바뀌지 않는다**. 보호요인과 같은 마스킹된 인용 축어록으로
+  기록 초안 · 보호요인과 병렬로 부른다.
 
 AI 오류 코드: `AI_FAILED`, `AI_TIMEOUT`, `AI_INVALID_OUTPUT`, `AI_AUTH_ERROR`, `AI_QUOTA_ERROR`
 
@@ -2222,8 +2263,10 @@ Test 영향
 - 제한 시간 `VOICE_MARKS_TIMEOUT_SECONDS`(기본 600초). 넘기거나, 예외가 나거나, 모듈이 없거나, 결과 모양이 어긋나면 행을
   안 남기는 것이 아니라 `status: UNDETERMINED` · `reason: ANALYSIS_ERROR` 로 구간 전부를 채운 행을 저장한다(기준값은 `null`).
   그래야 화면이 '분석 전'(행 없음) 과 '분석 불가(이유)' 를 구분한다. **회차 상태에는 영향이 없다.**
-- 읽을 수 있는 음성은 wav · flac · ogg · mp3 다. m4a · mp4 · webm(브라우저 녹음)은 ffmpeg 가 없어 `DECODE_FAILED` 다
-  (이미지에 ffmpeg 를 넣을지는 시연 뒤 팀 결정). mp3 는 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절).
+- wav · flac · ogg · mp3 는 soundfile 로 읽는다. soundfile 이 열지 못하는 m4a · mp4 · webm(휴대폰 · 브라우저 녹음)은
+  `requirements-stt.txt` 의 PyAV(`av`, wheel 에 FFmpeg 라이브러리 포함 — apt 의 ffmpeg 는 필요 없다)로 처음부터 이어 읽는다.
+  PyAV 가 없거나 PyAV 도 열지 못하면 지금처럼 `DECODE_FAILED` 다. 응답 모양 · 이유 값은 그대로다. 압축 음성(mp3 포함)은
+  wav 와 값이 조금 다를 수 있다(`stt/voice_marks.md` 6절 · 7절).
 - 검수에서 화자 · 시각을 고치는 것(`PATCH …/transcript`)만으로는 표시가 갱신되지 않는다. 확정 때 아동 구간이 달라졌으면
   재분석되고, 그 전까지는 결과 안의 분석 당시 `start_ms` · `end_ms` 로 달라진 것을 알아챈다.
 
@@ -2735,6 +2778,17 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 }
 ```
 
+### 문서 회차 학대 신호 · 대화 주제 (2026-11-04)
+
+- `AI_PROVIDER=modeling` 서버는 업로드 응답 뒤(백그라운드) 문서 원문으로 신호 분석 행을 하나 만든다 —
+  `ai_analyses` 행(`provider: "document"`, `transcript_id: null`), 끝나면 `COMPLETED` · 실패 · 제한 시간(`DOCUMENT_SIGNALS_TIMEOUT_SECONDS`, 기본 240초)이면 `FAILED`.
+  회차 상태는 바꾸지 않는다(3단계 그대로). 다른 서버는 만들지 않는다.
+- 흐름(`ai/modeling/abuse/document_signals.py`): 문장 나누기(`doc_001`…) → 1차 상담일지 전용 모델(글 전체 + 문장 2개씩 겹친 창을 판정해 유형별로 합침) → 2차 세부 유형 · 근거 문장 → 유형별 심각도 · 대화 주제. 1차가 탐지했어도 근거 문장이 없는 유형은 빼고 `warnings` 에 "segment 근거가 없는 신호 n건을 제외했습니다." 를 남긴다.
+  결과는 4절 계약의 신호 칸(`abuse_signals` · `risk_utterances` · `severity_ratings` · `topic_tags`)만 채우고 나머지는 빈 값이다.
+- 그래서 사례 신호 이력(`GET /cases/{id}/signal-history`)의 주제 비중 · 회차별 세부 신호 · 처음 나온 이야기가 녹음 회차처럼 읽는다.
+  근거가 기록 문장이라 `subtypes[].pending` 은 늘 `false`, `topics[].start_ms` 는 `null`. 주제 비중은 문장 수 기준이다. AI 제안이며 학대 여부를 확정하지 않는다.
+- `GET …/analysis` 도 이 행을 돌려준다(문서 회차의 재분석 `POST …/analysis` 는 그대로 `409`).
+
 ### GET /api/v1/sessions/{session_id}/source-document → 200
 
 올린 문서가 없으면 `404 NOT_FOUND`. 권한은 회차 조회와 같다.
@@ -2817,3 +2871,195 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 상담원 확정. `status: APPROVED`, `confirmed_at` · `confirmed_by_id` 를 채운다. 이미 확정이면 `409 ALREADY_APPROVED`.
 - 확정을 푸는 API 는 두지 않는다(고칠 일이 있으면 다음 차수 — 서식 기록이 남게).
 - 감사 기록 `CASE_FORM_CREATED` · `CASE_FORM_UPDATED` · `CASE_FORM_CONFIRMED` — 서식 종류 · 차수만(칸 값 · 소견 글은 남기지 않는다).
+
+---
+
+## 23. Docbox (문서함 — 기관 서식 · 참고 문서 공용 보관, 2026-11-05)
+
+11/05 디자인 '문서함(폴더 · 문서 올리기 · 내려받기 · 정렬 · 첫 페이지 미리보기)' 이 쓴다. 사례 · 회차와 상관없는 팀 공용 보관함이라
+로그인한 상담원 · 관리자 모두 보고 올리고 옮긴다. 문서 지우기는 관리자만 할 수 있고, 폴더 지우기와 이름 바꾸기는 디자인에 없어 두지 않는다.
+
+### GET /api/v1/docbox → 200
+
+```json
+{ "folders": [{ "id": "uuid", "name": "기관 서식", "count": 3 }],
+  "files": [{ "id": "uuid", "folder_id": "uuid|null", "name": "점검표 안내.txt", "content_type": "application/octet-stream",
+              "size_bytes": 1180, "preview_kind": "text", "preview_text": "점검표 안내\n…", "uploaded_by_name": "이서연",
+              "created_at": "…" }] }
+```
+
+- `folders` 는 만든 순서, `files` 는 최신순. `folder_id: null` 은 '폴더 없음'.
+- `preview_kind`: `image`(png · jpg · gif · webp — 화면이 파일을 받아 그대로 보인다) · `text`(첫 페이지 글 앞 1,500자 —
+  txt · md · csv 는 글 그대로, docx · hwpx · pdf 는 21절과 같은 글자 뽑기) · `other`(hwp · doc · xlsx · xls · pptx · ppt, 또는 뽑지 못함).
+
+### POST /api/v1/docbox/folders → 201
+
+- `{ "name": "참고 자료" }`(40자, 공백 정리). 같은 이름이 있으면 `409 DUPLICATE_RESOURCE`.
+
+### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
+
+- 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
+- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 네 칸만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 깊은 중첩 · 다른 칸이 있으면 `422`). 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명 — `docbox_service.FORM_IDENTITY_FIELDS`)이 들어오면 `422`. 본체는 앱 암호화(`PII_ENCRYPTION_KEYS`, AAD `ispot:docbox_files:body:<행 ID>:v1`)로 저장하고 `/download` 가 풀어 준다. 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 이 본체(저장소 파일)도 맨 앞 키로 다시 봉인한다 — 풀지 못한 양식이 있으면 종료 코드 1, 그때 옛 키를 빼면 그 양식 `/download` 가 실패한다. `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
+- 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
+- 응답 `{ "files": [DocboxFile] }`.
+
+### PATCH /api/v1/docbox/files/{file_id} → 200
+
+- `{ "folder_id": "uuid" | null }` — 폴더 옮기기(null 이면 폴더 없음). 없는 문서 · 폴더는 `404`.
+
+### GET /api/v1/docbox/files/{file_id}/download → 200 (파일 본체)
+
+- 늘 첨부(`Content-Disposition: attachment`) · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`.
+  그림만 그 형식, 나머지는 `application/octet-stream`.
+### GET /api/v1/docbox/files/{file_id}/preview → 200 (그림 본체)
+
+- 문서함 화면의 그림 미리보기용. `preview_kind` 가 `image` 인 문서만 응답하고, 그 밖은 404.
+- 그림 형식 · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store`. 내려받기 감사 기록을 남기지 않는다.
+
+### DELETE /api/v1/docbox/files/{file_id} → 204 (관리자만)
+
+- 잘못 올린 문서를 지운다. 표의 행과 저장소의 파일 본체를 함께 지운다. 상담원은 403, 없는 문서는 404.
+- 파일 본체를 지우지 못하면 500 이고 행은 그대로 남는다(다시 시도할 수 있다).
+
+- 감사 기록 `DOCBOX_FOLDER_CREATED` · `DOCBOX_FILE_UPLOADED` · `DOCBOX_FILE_MOVED` · `DOCBOX_FILE_DOWNLOADED` · `DOCBOX_FILE_DELETED` —
+  파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 남기지 않는다). 파일은 저장소(`AUDIO_STORAGE_ROOT`/docbox)에 둔다.
+
+## 24. Child App (아이 앱 콩콩, 2026-11-09)
+
+`CHILD_APP_ENABLED=false`(기본)이면 이 절의 API 는 모두 503 `CHILD_APP_DISABLED` 다. `/child-app/*` 은 아이 기기용이다. 상담사 Access Token 이 아니라 연결할 때 받은 `device_token` 을 Bearer 로 보낸다.
+앱 응답에는 이름 · 사례번호 · 위험 판정 기준을 넣지 않는다. 판정은 서버가 계산한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
+| POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만). 발송 예약 시각이 안 된 질문은 `pending` 에 없다 |
+| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409(예약 시각이 된 새 질문에 밀린 질문 포함), 발송 예약 시각 전 질문은 404 |
+| POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
+| POST | `/child-app/moods` | '지금 기분 기록하기'(2026-11-19). `{mood, why?}` → 204. `mood`: `good` · `excited` · `okay` · `meh` · `surprised` · `tired` · `lonely` · `sad` · `worried` · `scared` · `angry` · `unsure`(그 외 400), `why` 60자까지. 피드 `MOOD` 줄 `payload {mood, label, why}`. `lonely` · `sad` · `worried` · `scared` · `angry` 는 `level: AMBER`(살펴볼 기분). `why` 를 적었으면 확인 필요(`TEXT_ANSWER`) |
+| POST | `/child-app/notes` | '선생님께 메시지 보내기'(2026-11-19). `{text?, chip?}` → 204. 글(200자) · 칩 중 하나는 있어야 한다(없으면 400). `chip`: `만나서 이야기할게요` · `전화로 연락받고 싶어요` · `알려 드리고 싶었어요`. 피드 `NOTE` 줄 `payload {text, chip, alert_reason}`, 늘 확인 필요 — `전화로 연락받고 싶어요` 면 `CONTACT_REQUEST`(긴급 쪽), 아니면 `NOTE` |
+| POST | `/child-app/schedule-requests` | 일정 탭 '참석이 어려워요'(2026-11-19). `{reason, etc?}` → 204. `reason`: `몸이 안 좋아요` · `학교·학원 일정이 있어요` · `가고 싶지 않아요` · `말하기 어려워요` · `기타`(`기타` 면 `etc` 60자 필수). 다음 상담이 없으면 409 `INVALID_CASE_STATE`. 피드 `SCHEDULE_REQUEST` 줄 `payload {consult_date, consult_time, reason, etc, alert_reason: "SCHEDULE_REQUEST"}`(장소는 남기지 않음), 확인 필요 |
+| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`(글을 쓴 답 · 이유를 적은 기분) · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀) · `NOTE`(선생님께 메시지) · `SCHEDULE_REQUEST`(참석 어려움), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
+| POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
+| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null) · `scheduled_questions`(발송 예약해 둔 질문 `{id, count, deliver_at}`, 담당 상담사만 · 없으면 null). `has_pending_questions` 는 예약해 둔 질문이 있어도 true 다. 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
+| POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids, deliver?}` 1~8개(문항 전체) → 204. `deliver`: `NOW`(기본, 바로) · `EVENING`(발송 예약 — 아래). 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+| DELETE | `/cases/{case_id}/child-app/question-sets/{question_set_id}` | 발송 예약 취소 → 204. 담당 상담사만(그 외 403). 예약 시각 전에만 된다 — 이미 아이에게 보였거나 답했으면 409 `INVALID_CASE_STATE`. 이미 취소 · 대체된 것은 204(재시도 안전). 없는 것 · 다른 사례의 것은 404 |
+| GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함. 발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 안 보인 예약 · 보이기 전에 취소한 예약은 세지 않는다) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
+| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent}`. `recent_answers` · `level` 은 담당 상담사만 |
+| POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
+| PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}` | `{text}`(1~500자) 확인해 볼 점 고치기 |
+| PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}` | `{text, options}`(보기 2~6개) 추가 질문 고치기. 승인 전으로 돌아가고 앱에서 빠진다. 아이가 이미 답했으면 409 |
+| PUT | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}/approval` | `{approved}`. 승인하면 답하지 않은 질문에 더해 바로 앱으로 간다(묶음당 최대 8개). 풀면 뺀다. 이미 답했으면 409, 미연결이면 409 |
+
+`GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
+
+아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 사례의 마지막 긴급 알림 `{sent_at, acknowledged, overdue}`(없으면 null). `sent_at` 은 마지막으로 누른 시각(확인 전에 다시 누르면 오른다)이고, 이 기기가 연결된 뒤에 누른 것만 보인다. 확인한 알림은 마지막으로 누른 뒤 24시간만 보이고, 확인 전 알림은 시간이 지나도 남는다. `overdue` 는 처음 알린 뒤 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.
+
+미확인 긴급 넘기기(멘토 피드백 11/12 B안): 아이가 직접 보낸 긴급 알림(`ALERT`)이 `CHILD_APP_ESCALATE_MINUTES`(기본 5분) 넘게 확인 전이면 `GET /child-app-alerts/open` 에서 담당이 아닌 상담사에게도 나온다. 이때 줄은 `handed_over: true` · `escalated: true` · `can_ack: false` · `child_alias: ""` 이고 사례 번호와 `counselor_name`(담당 상담사)만 준다 — 사례를 열 권한이 없으니 담당 상담사 · 관리자에게 바로 알리게 하는 것이다. 담당 상담사 · 관리자의 같은 알림에는 `escalated: true` 만 더해진다. 답 기반 알림(바로 확인 답 · 연락 요청 등)은 넘기지 않는다. 푸시는 아직 없다(푸시 연결 때 이어서).
+
+근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026 · 2027년 공휴일 · 대체공휴일(2026-06-03 지방선거일 포함)과 2028-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
+
+관리자 긴급 알림 현황(11/17 디자인 AdminHome, 관리자만): `GET /child-app-alerts/recent` → `[{id, case_id, case_number, child_alias, reason, repeat_count, created_at, last_at, counselor_name, acknowledged_at, acknowledged_by_name}]`. 긴급(아이가 보낸 긴급 알림 · 바로 확인 답 · 연락 요청) 중 오늘 · 어제(한국 날짜) 것은 확인했어도 넣고, 그 전 것은 확인 전일 때만 넣는다. 최신순 최대 100줄(긴급인지는 암호화된 본문을 봐야 해서 최신부터 묶음으로 읽어 긴급만 모은다 — 긴급이 아닌 확인 전 줄이 많아도 오래된 미확인 긴급이 빠지지 않음, 최대 5000줄까지 읽음). `reason` 은 `/open` 과 같은 규칙(담당이 아닌 관리자에게 답 기반은 `NEEDS_CHECK`). 상담사는 403.
+
+장기 무응답 안부 연락(11/17 디자인 AdminApp): `POST /cases/{case_id}/child-app/welfare-checks` `{status: "OPEN" | "TRIED" | "DONE", note?: 200자}` → 204. 관리자 또는 담당 상담사, 앱이 연결된 사례만(아니면 409). 사건(`WELFARE_CHECK`)으로 남지만 아이 피드 · 알림에는 들어가지 않고 아이 앱에도 가지 않는다. 감사 로그 `CHILD_APP_WELFARE_CHECKED`(값은 status 만). `GET /child-app-cases` 줄에 `linked_at` · `counselor_name` · `welfare_status` · `welfare_note` · `welfare_at` 이 더해진다 — 안부 연락은 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 것만 보이고, 그 뒤 아이가 답하면 null 이다. 장기 무응답(7일)은 화면이 `last_response_at`(없으면 `linked_at`)으로 정한다.
+
+확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
+
+열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
+
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT` · `MOOD` · `NOTE` · `SCHEDULE_REQUEST`. 기분 · 메시지 · 참석 어려움은 사례마다 종류별로 하루(한국 시간) 20번까지(넘으면 429 `RATE_LIMITED`)이고, 보내면 `last_response_at` 이 오른다. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+
+**발송 예약(2026-11-11).** `deliver: "EVENING"` 으로 보낸 질문은 누른 날 `CHILD_APP_DELIVER_HOUR` 시(기본 18, 한국 시각)부터 아이 앱에 보인다. 시각은 서버가 정하고, 그 시가 지난 뒤에 누르면 바로 보낸다(`scheduled_questions` 는 null). 아이 기기로 가는 알림은 없다 — 아이가 앱을 열 때 받는다.
+- 예약해 둔 질문은 사례마다 하나다. 다시 예약하거나 바로 보내면 앞 예약은 취소된다.
+- 예약하는 때 아이에게 보이던 질문은 예약 시각까지 그대로 보이고, 예약 시각부터 새 질문이 대신한다(앞 질문의 답은 409).
+- AI 추가 질문 승인은 예약과 따로 바로 간다. 예약해 둔 질문에는 붙지 않는다.
+- 피드 `QUESTIONS_SENT` 의 `payload`: 바로 보냄 `{count}`, 발송 예약 `{count, deliver_at}`, 예약 취소 · AI 추가 질문 취소 `{count, withdrawn: true}`. 감사 기록에는 수와 예약 여부만 남긴다.
+- 연결을 해지하면 예약도 취소된다. 스위치가 꺼진 동안에는 취소 API 도 503 이다.
+
+---
+
+## 25. Memos (상담사 메모, 2026-11-10)
+
+앱 · 메모(현장에서 바로 적어 두기) 화면이 쓴다. 메모는 **쓴 상담사만** 읽고 고치고 지운다 — 관리자도 남의 메모는 보지 못한다(남의 메모 id 는 `404`).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/memos?page=&page_size=&case_id=` | 내 메모 목록(최신순, `PagedItems`). `page_size` 1~100(기본 20). `case_id` 로 한 사례만 |
+| POST | `/memos` | `{text, case_id?}` → `201` Memo |
+| GET | `/memos/{id}` | Memo |
+| PATCH | `/memos/{id}` | 보낸 칸만 바뀐다. `case_id: null` 이면 사례를 뗀다. `text: null` 은 `422` |
+| DELETE | `/memos/{id}` | `204` |
+
+`Memo`:
+
+```json
+{ "id": "uuid", "case_id": "uuid", "child_alias": "서윤", "text": "현관 앞에서 만남…", "unreadable": false, "created_at": "…", "updated_at": "…" }
+```
+
+- `text`: 앞뒤 공백을 지운 1~4000자. 비었거나 NUL 이 들면 `422`.
+- `case_id`: 볼 수 있는 사례만 붙인다(없으면 `404 CASE_NOT_FOUND`, 남의 사례면 `403`). `child_alias` 는 그 사례의 별칭(실명은 싣지 않는다).
+- **담당이 바뀌어 지금 볼 수 없는 사례의 메모는 목록에서 빠지고**, 한 건 읽기 · 고치기 · 지우기도 `404` 다(사례가 없는 메모는 늘 보인다).
+- 본문은 내담자 정보와 같은 키(`PII_ENCRYPTION_KEYS`)로 **암호화해 저장**한다(묶음 값 = 메모 id). 풀지 못하면(키가 없거나 암호문이 바뀜)
+  **그 메모만** `text: null` · `unreadable: true` 로 오고 목록 · 한 건은 `200` 이다(로그에는 메모 id · 키 이름만). 그 메모는 지우거나
+  새 `text` 로 고치면 된다. 다른 메모는 `unreadable: false`.
+- 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 메모도 맨 앞 키로 다시 암호화한다(감사 기록 `MEMO_UPDATED` ·
+  `detail.via` · 본문 없음). 풀지 못한 메모가 있으면 메모 id 만 출력하고 종료 코드 1 — 그때 옛 키를 빼면 안 된다.
+- 본문은 일반 로그 · 감사 기록에 넣지 않는다. 감사 기록은 `MEMO_CREATED` · `MEMO_UPDATED`(`detail.fields`: 바뀐 칸 이름) · `MEMO_DELETED` 만,
+  메모 id · 사례 id 와 함께 남는다. 읽기는 감사 기록을 남기지 않는다(쓴 사람만 읽으므로).
+- 사례를 지우면 그 사례에 붙은 메모도 지워진다(사례 영구 삭제, 4절).
+
+---
+
+## 26. Briefing Checks (상담 전 브리핑 '확인할 사항' 체크, 2026-11-11)
+
+브리핑의 '확인할 사항' 줄 앞 체크(상담 중 확인한 것 표시)를 서버에 둔다. 웹 사례 상세 브리핑과 상담사 앱 · 브리핑이 같은 값을 본다
+(전에는 기기마다 브라우저에만 기억했다).
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/sessions/{id}/briefing-checks` | `{ session_id, checked: [문장], updated_at, updated_by_id }`. 아직 없으면 `checked: []` · `updated_at: null` |
+| PATCH | `/sessions/{id}/briefing-checks` | `{ text, checked, visible? }` — 문장 하나를 켜거나 끈다. 바뀐 전체를 돌려준다 |
+
+- 확인 사항 목록은 저장한 목록(18.1절)일 때도, 저장 전(AI 초안 + 다음 상담 체크리스트, 19절)일 때도 있다. 그래서 목록 행에 칸을 붙이지
+  않고 **회차마다 확인함으로 표시한 문장(text) 목록**을 따로 둔다. 화면은 보이는 줄의 문장이 이 목록에 있으면 체크해 보인다.
+  목록을 고쳐 문장이 바뀌면 그 줄은 체크가 풀린 것으로 보인다(옛 문장은 목록에 남아도 화면에 줄이 없다).
+- 한 번에 하나씩 바꾼다(목록을 통째로 보내지 않는다) — 웹 · 폰이 동시에 눌러도 서로 지우지 않는다. 같은 문장을 또 켜거나 없는 문장을 꺼도 그대로.
+- `text`: 앞뒤 공백을 지운 1~300자.
+- `visible`(선택): 화면에 지금 보이는 확인 사항 문장 목록(최대 200개, 빈 문장 · 300자 넘는 문장은 빼고 본다). 보내면 이 목록과
+  `text` 에 없는 옛 문장(목록을 고쳐 사라진 줄)의 체크를 먼저 지운다. 화면은 **확인 사항 목록을 다 받은 뒤에만** 보낸다 — 줄이 늦게
+  붙는 동안 보내면 그 줄의 체크가 지워진다. 목록을 다 받기 전이거나 모르면 빼고 보낸다(그때는 아무것도 지우지 않는다).
+- 한 회차에 60개까지 둔다. 켤 때 60개가 차 있으면 `422` 대신 **가장 오래 전에 켠 것을 밀어내고** 켠다(지금 보이는 줄을 켤 때 막히지 않게).
+- 연결이 없을 때 누른 체크는 화면이 기기에 맡겨 두었다가(누른 때의 `visible` 과 함께) 연결되면 한 줄씩 보낸다.
+- 볼 수 있는 회차만(담당 상담사 · 관리자, 남의 회차는 `403` · `404`). 회차 상태는 따지지 않는다.
+- 감사 기록 `BRIEFING_CHECK_UPDATED`: `detail` 에 켬 · 끔과 개수만(문장은 넣지 않는다).
+
+---
+
+## 27. Push (상담사 앱(폰) 알림 — 웹 푸시, 2026-11-19)
+
+상담사 앱(폰) 설정의 알림 스위치 3개(디자인 그대로)를 켠다. 웹 푸시(RFC 8030 · 8291 · 8292)라 앱 설치 없이 되고, iPhone 은
+**홈 화면에 추가한 앱**(iOS 16.4+)에서만 된다. 서버 키(`VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`)가 없으면 꺼져 있다.
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/push/config` | `{ enabled, public_key, before_session_minutes }`. 꺼져 있으면 `enabled: false` · `public_key: null` |
+| PUT | `/push/subscription` | `{ endpoint, keys: { p256dh, auth }, before_session, upload_failed }` — 이 폰을 켠다 · 설정을 바꾼다. `{ before_session, upload_failed }` |
+| POST | `/push/unsubscribe` | `{ endpoint }` — 이 폰을 끈다(내 것만, 없으면 그대로). `{ ok: true }` |
+| POST | `/push/test` | 내 폰들에 '알림이 켜졌어요'. `{ sent, failed }`. 사람마다 1시간에 10번까지(넘으면 `429 RATE_LIMITED`) |
+
+- 로그인한 사람 누구나(상담사 · 관리자). 꺼져 있으면 PUT · test 는 `503 PUSH_DISABLED`.
+- 구독은 폰(브라우저) 하나가 한 행(`push_subscriptions`, endpoint 로 겹치지 않음). 같은 endpoint 를 다시 보내면 덮어쓰고, 다른 계정이
+  쓰던 폰이면 **지금 계정으로 옮긴다**(한 폰은 마지막에 켠 계정 것). 한 사람 10대까지 — 넘으면 가장 오래 전에 고친 것을 지운다.
+  `endpoint` 는 브라우저 푸시 서비스 주소만 받는다(그 밖은 `422`): `https://` 이고 호스트가 `fcm.googleapis.com` · `updates.push.services.mozilla.com` · `*.push.apple.com` · `*.notify.windows.com`, 사용자 · 포트(443 밖) 없음. 서버는 보낼 때 이동(3xx)을 따라가지 않는다(실패로 셈). 앱은 로그아웃할 때 이 폰을 끄고, 로그인이 풀릴 때(만료 · 웹 로그아웃 · 다른 탭) 폰 구독을 지운다(서버는 다음 보내기 때 `404` · `410` 을 받고 지움).
+- **상담 30분 전**(`before_session`): 서버 실행기(`PUSH_LOOP_ENABLED=true` 일 때만 앱 시작 때 뜸 — 시험 · CI · 로컬은 끔, `PUSH_LOOP_SECONDS` 마다)가 지금부터 `PUSH_BEFORE_SESSION_MINUTES`(30)
+  안에 시작하는 **상담 일정(`kind=CONSULT`, 시간 있음)** 을 찾아 **일정을 만든 사람**의 켜진 폰들에 보낸다. 시각은 한국 시간.
+  같은 일정 · 같은 시각은 한 번만 — 보내기 **전에** `push_deliveries` 에 (사람, 종류, 일정@시각)을 넣고, 유일 조건에 걸리면 건너뛴다
+  (먼저 읽고 넣는 방식이 아니라 서버가 여럿이어도 한 번). 바깥 푸시 서비스로 보내는 HTTP 는 스레드에서 해서 다른 API 응답을 막지 않는다. 시간을 바꾸면 새 시각에 다시 알린다.
+  켜진 폰이 없으면 기록도 남기지 않는다. 정지된 계정에는 보내지 않는다. 보낸 기록은 3일 뒤 지운다.
+- **업로드 실패**(`upload_failed`): 녹음은 폰에 있으므로 폰이 스스로 띄운다(녹음 하나에 한 번). 서버는 설정만 기억한다.
+- 문구: 잠금 화면에 보이므로 **아이 이름 · 사례 · 일정 제목 · 장소를 넣지 않는다**. 상담 30분 전은 `"HH:MM 상담 일정이 있어요."`,
+  누르면 앱 일정 화면. 본문은 폰의 키로 암호화해 보낸다(푸시 서비스는 못 읽는다). 감사 기록 · 로그에 문구 · endpoint 를 남기지 않는다.
+- 푸시 서비스가 `404` · `410` 을 주면(앱 지움 · 알림 끔 · 만료) 그 구독을 지운다. 연결 오류 · 5xx 가 10번 이어져도 지운다. `401` · `403`(서버 VAPID 키 거절 — 설정 문제)은 실패 횟수에 넣지 않는다.
+- 키: `python -m scripts.make_vapid_key` 로 개인키를 만들어 backend.env 에 넣는다(Parameter Store 에도). 공개키는 서버가 계산해
+  `GET /push/config` 로 준다. **키를 바꾸면 폰마다 알림을 다시 켜야 한다**(스위치를 껐다 켜면 새 키로 다시 구독한다).

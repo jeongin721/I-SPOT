@@ -475,8 +475,14 @@ export interface PersonalInfoRequest {
 }
 
 /** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
+/** GET /cases 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순. */
+export type CaseListSort = "report_date" | "risk";
+export type CaseListOrder = "desc" | "asc";
+
 export interface CaseListItem extends Case {
   child_name?: string | null;
+  /** 분석이 끝난 가장 최근 회차의 상담원 판단. 판단 전이면 null. */
+  risk_level?: RiskLevel | null;
 }
 
 /** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */
@@ -931,6 +937,24 @@ export interface ProtectiveFactor {
   segment_ids: string[];
 }
 
+/**
+ * 안전 플래그 후보(8절 safety_flags, 2026-11-05). '지금 이 아이가 안전한가'. code 는 S1~S10, certainty 는 CLEAR(분명함) ·
+ * CHECK(상담원 확인 필요). AI 확인 후보이고 판정이 아니다.
+ */
+export interface SafetyFlag {
+  code: string;
+  text: string;
+  certainty: "CLEAR" | "CHECK";
+  segment_ids: string[];
+}
+
+/** 재학대 요인 후보(8절 reabuse_factors, 2026-11-05). code 는 R2~R10 — R1(중복학대)은 화면이 유형 수로 센다. */
+export interface ReabuseFactor {
+  code: string;
+  text: string;
+  segment_ids: string[];
+}
+
 /** 이전 회기와 달라진 점 메모. */
 export interface SessionChangeNote {
   text: string;
@@ -974,6 +998,9 @@ export interface AnalysisResult {
   warnings: string[];
   severity_ratings: SeverityRating[];
   protective_factors: ProtectiveFactor[];
+  /** null · 없음 = 만들지 못함(옛 결과 · 모듈 실패 · Mock). [] = 찾았지만 해당 없음. */
+  safety_flags?: SafetyFlag[] | null;
+  reabuse_factors?: ReabuseFactor[] | null;
   session_change_notes: SessionChangeNote[];
   followup_check_points: FollowupCheckPoint[];
   /** 옛 결과 · 이전 서버에는 없다. */
@@ -1440,6 +1467,8 @@ export interface ClosureReportFields {
   key_person?: string | null;
   /** 안전점수 3줄(피해아동 · 가족구성원 · 사례관리대상자 응답). score 1~10. */
   safety_scores?: { score: number | null; reason: string }[] | null;
+  /** 개입목표 6줄(장기 1 · 단기 1 · 단기 2 · 장기 2 · 단기 1 · 단기 2). 상담원이 쓴다(2026-11-09). */
+  goals?: { goal: string; service: string }[] | null;
   /** 사례관리 제공 요약 · 제공된 서비스 내용 및 총량(2026-11-04, 300자). 화면이 회차 기록으로 먼저 채운다. */
   services?: string | null;
 }
@@ -1748,4 +1777,228 @@ export interface CaseForm {
   confirmed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// =========================================================
+// 문서함 — backend/app/schemas/docbox.py (API_CONTRACT 23절, 2026-11-05)
+// =========================================================
+
+export interface DocboxFolder {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface DocboxFile {
+  id: string;
+  /** null 이면 '폴더 없음'. */
+  folder_id: string | null;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  /** text(첫 페이지 글) · image(그림) · other(미리보기 없음). */
+  preview_kind: "text" | "image" | "other";
+  preview_text: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export interface DocboxList {
+  folders: DocboxFolder[];
+  files: DocboxFile[];
+}
+
+// 아이 앱 콩콩 (API_CONTRACT 24절)
+export interface ChildAppInvite {
+  code: string;
+  expires_at: string;
+}
+
+export interface ChildAppEvent {
+  id: string;
+  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT" | "MOOD" | "NOTE" | "SCHEDULE_REQUEST";
+  level: "NONE" | "SKIP" | "AMBER" | "RED";
+  payload: Record<string, any>;
+  created_at: string;
+  needs_ack: boolean;
+  acknowledged_at: string | null;
+}
+
+export interface ChildOpenAlert {
+  id: string;
+  case_id: string;
+  child_alias: string;
+  case_number: string;
+  reason:
+    | "ALERT"
+    | "RED_ANSWER"
+    | "CONTACT_REQUEST"
+    | "TEXT_ANSWER"
+    | "FOLLOWUP_ANSWER"
+    | "FOLLOWUP_SKIPPED"
+    | "NOTE"
+    | "SCHEDULE_REQUEST"
+    | "NEEDS_CHECK";
+  /** 긴급 알림 · 바로 확인 답 · 연락 요청. 나머지는 '확인 필요'. */
+  urgent: boolean;
+  can_ack: boolean;
+  repeat_count: number;
+  last_at: string | null;
+  created_at: string;
+  /** 담당 상담사가 정한 시간(기본 5분) 넘게 확인하지 않은 긴급 알림. */
+  escalated: boolean;
+  /** 다른 상담사 사례에서 넘어온 알림. 사례를 열 수 없으니 담당 상담사 · 관리자에게 알린다. */
+  handed_over: boolean;
+  /** 넘어온 알림에서만 담당 상담사 이름. */
+  counselor_name: string | null;
+}
+
+/** 질문을 언제 아이 앱에 보일지. EVENING 은 발송 예약. */
+export type ChildQuestionDeliver = "NOW" | "EVENING";
+
+export interface ChildAppCase {
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  code_expires_at: string | null;
+  linked_at: string | null;
+  last_response_at: string | null;
+  next_consult: { date: string; time: string | null; place: string | null } | null;
+  /** 예약해 둔 질문이 있어도 true. */
+  has_pending_questions: boolean;
+  /** 발송 예약해 둔(아직 아이에게 보이지 않은) 질문. 담당 상담사만, 없으면 null. id 로 예약을 취소한다. */
+  scheduled_questions: { id: string; count: number; deliver_at: string } | null;
+  can_read_feed: boolean;
+  open_alerts: ChildOpenAlert[];
+  /** 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null. */
+  last_acked_at: string | null;
+  bank: { id: string; category: string; type: string; text: string }[];
+  feed: ChildAppEvent[];
+  ai_enabled: boolean;
+  ai_draft: ChildAiDraft | null;
+}
+
+export interface ChildAppStats {
+  sent: number;
+  answered: number;
+  linked_cases: number;
+}
+
+export interface ChildAppCaseRow {
+  case_id: string;
+  case_number: string;
+  child_alias: string;
+  child_birth_year: number | null;
+  status: "NOT_LINKED" | "INVITED" | "LINKED";
+  recent_answers: number | null;
+  level: "NONE" | "SKIP" | "AMBER" | "RED" | null;
+  last_response_at: string | null;
+  open_alert_at: string | null;
+  open_alert_reason: string | null;
+  open_alert_urgent: boolean;
+  last_acked_at: string | null;
+  /** 관리자 · 아이 연계 앱 관리(11/17 디자인): 연결일 · 담당 상담사. */
+  linked_at: string | null;
+  counselor_name: string | null;
+  /** 마지막 응답(없으면 연결) 뒤 가장 최근 안부 연락. 그 뒤 아이가 답하면 null. */
+  welfare_status: ChildWelfareStatus | null;
+  welfare_note: string | null;
+  welfare_at: string | null;
+}
+
+/** 장기 무응답 아이 안부 연락 처리. OPEN = 미처리로 되돌림. */
+export type ChildWelfareStatus = "OPEN" | "TRIED" | "DONE";
+
+/** 관리자 홈 '긴급 알림 현황': 오늘 · 어제 긴급 알림과 그 전에 남은 확인 전 알림(GET /child-app-alerts/recent, 관리자). */
+export interface ChildRecentAlert {
+  id: string;
+  case_id: string;
+  case_number: string;
+  child_alias: string;
+  reason: "ALERT" | "NEEDS_CHECK" | "RED_ANSWER" | "CONTACT_REQUEST";
+  repeat_count: number;
+  created_at: string;
+  last_at: string | null;
+  counselor_name: string | null;
+  acknowledged_at: string | null;
+  acknowledged_by_name: string | null;
+}
+
+export interface ChildAiQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  edited: boolean;
+  approved: boolean;
+  answered: boolean;
+}
+
+export interface ChildAiDraft {
+  id: string;
+  event_id: string;
+  items: { question_id: string; note: string; note_edited: boolean; questions: ChildAiQuestion[] }[];
+}
+
+// =========================================================
+// 상담사 메모(API_CONTRACT 25절, 2026-11-10) — 쓴 사람만 본다
+// =========================================================
+
+export interface Memo {
+  id: string;
+  case_id: string | null;
+  /** 관련 사례의 별칭(실명 아님). 사례가 없으면 null. */
+  child_alias: string | null;
+  /** 본문. 풀지 못하면 null 이고 unreadable 이 true(그 메모만 — 지우거나 새 본문으로 고칠 수 있다). */
+  text: string | null;
+  unreadable?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoCreateRequest {
+  /** 앞뒤 공백을 지운 1~4000자. */
+  text: string;
+  case_id?: string | null;
+}
+
+/** 보낸 칸만 바뀐다. case_id: null 이면 사례를 뗀다. text 는 null 로 보낼 수 없다. */
+export interface MemoUpdateRequest {
+  text?: string;
+  case_id?: string | null;
+}
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절, 2026-11-11)
+// =========================================================
+
+export interface BriefingChecks {
+  session_id: string;
+  /** 확인함으로 표시한 확인 사항 문장들. */
+  checked: string[];
+  updated_at: string | null;
+  updated_by_id: string | null;
+}
+
+// ---------------------------------------------------------------- 상담사 앱(폰) 알림 — 웹 푸시(API_CONTRACT 27절, 2026-11-19)
+
+export interface PushConfig {
+  /** 서버에 VAPID 키가 있어 알림을 켤 수 있는가. */
+  enabled: boolean;
+  /** pushManager.subscribe 의 applicationServerKey(base64url). 꺼져 있으면 null. */
+  public_key: string | null;
+  before_session_minutes: number;
+}
+
+/** 이 폰의 알림 설정. 서버는 폰(구독)마다 따로 기억한다. */
+export interface PushPrefs {
+  before_session: boolean;
+  upload_failed: boolean;
+}
+
+export interface PushSubscriptionRequest extends PushPrefs {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+export interface PushTestResult {
+  sent: number;
+  failed: number;
 }
