@@ -392,9 +392,13 @@ export default function ChildDetail(props) {
           ) : null}
           {kkAsk ? (
             <div className="kk-ov" onClick={() => setKkAsk(false)}>
-              <div className="kk-dlg" role="alertdialog" aria-modal="true" aria-labelledby="kk-q" onClick={(e) => e.stopPropagation()}>
+              <div className="kk-dlg" role="alertdialog" aria-modal="true" aria-labelledby="kk-q" aria-describedby="kk-d" onClick={(e) => e.stopPropagation()}>
                 <p id="kk-q" className="kk-q">
                   {v.k.name} 아이 연계 어플 연동을 해지하시겠습니까?
+                </p>
+                {/* 잘못 눌러도 되돌릴 수 없다 — 아이가 새 코드를 넣어야 하는 점을 알린다(민규 #186 리뷰, 경진 11/19 결정). */}
+                <p id="kk-d" className="note" style={{ margin: '-8px 0 0' }}>
+                  해지하면 아이 폰의 콩콩이 처음 화면으로 돌아가고, 다시 쓰려면 새 연결 코드를 만들어 아이에게 알려 줘야 합니다.
                 </p>
                 <div className="kk-acts">
                   <button type="button" className="btn btn-s" onClick={() => setKkAsk(false)}>
