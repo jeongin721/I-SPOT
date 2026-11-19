@@ -3,8 +3,9 @@
 //
 // 서버 연결: 웹 일정과 같은 일정(GET · POST · PATCH · DELETE /schedule/events). 웹에서 넣은 일정이 그대로 보이고, 여기서 넣은 것도 웹에 보인다.
 //  - 이번 주 줄 · 펼친 월간 달력: 고른 날이 든 달(달력 6주)을 한 번에 받아 점(일정 있음)을 찍는다.
-//  - 상담 일정: '아이 · 상담 유형', 상담 전 브리핑(앱 · 브리핑) · 녹음 시작(앱 · 녹음)으로 그 아이를 골라 둔 채 간다.
-//    사례가 가려진 상담(담당이 바뀐 사례 등)은 두 단추 대신 '브리핑 준비 중' 처럼 흐리게.
+//  - 상담 일정: '아이 · 상담 유형', 다음 상담 준비(앱 · 브리핑) · 녹음 시작(앱 · 녹음)으로 그 아이를 골라 둔 채 간다.
+//    사례가 가려진 상담(담당이 바뀐 사례 등)은 두 단추 대신 '다음 상담 준비중' 처럼 흐리게.
+//  - 11/17 디자인(각진 UI ⑨): '상담 전 브리핑' → '다음 상담 준비', 빈 목록 문구 '~습니다'.
 //  - 개인 · 기관 일정: 제목(없으면 분류 이름). 폰에서 새로 넣으면 분류는 '기타'(웹에서 바꿀 수 있다). 고칠 때는 원래 분류를 둔다.
 //  - 수정 · 삭제는 만든 사람만(editable). 팀 공유 일정 중 남의 것은 보기만.
 //  - 날짜 고르기는 디자인처럼 그 주 7일(고치는 일정이 다른 주면 그 날도 넣는다). 다른 주는 달력에서 날을 고른 뒤 추가한다.
@@ -237,12 +238,12 @@ function ScheduleBody({ userId }) {
             {isCon && (
               <div className="ma-ev-act">
                 {e.case_id ? (
-                  <Link className="ma-btn ma-btn-sm" to={`/AppBrief?case=${e.case_id}`} onClick={stop}>
-                    상담 전 브리핑
+                  <Link className="ma-btn ma-btn-sm" to={`/AppBrief?case=${e.case_id}`} state={{ from: '/AppSchedule' }} onClick={stop}>
+                    다음 상담 준비
                   </Link>
                 ) : (
                   <span className="ma-btn ma-btn-sm" style={{ color: 'var(--mut)', cursor: 'default' }} onClick={stop}>
-                    브리핑 준비 중
+                    다음 상담 준비중
                   </span>
                 )}
                 {e.case_id ? (
@@ -259,7 +260,7 @@ function ScheduleBody({ userId }) {
           </div>
         );
       })}
-      {!sched.loading && evs.length === 0 && <div className="ma-card ma-empty">일정이 없어요</div>}
+      {!sched.loading && evs.length === 0 && <div className="ma-card ma-empty">일정이 없습니다</div>}
       <button type="button" className="ma-btn ma-btn-p ma-fab" onClick={openAdd}>
         + 일정 추가
       </button>

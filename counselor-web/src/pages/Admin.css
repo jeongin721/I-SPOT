@@ -222,3 +222,26 @@
 .pg-Admin .thm-root.dark .lab {
   color: #bdb7aa !important;
 }
+
+/* 아이 연계 앱 관리(11/17 디자인 AdminApp): 연결 비율 막대 · 오래된 무응답 강조. */
+.pg-Admin .stack {
+  display: flex;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f2efe8;
+}
+.pg-Admin .stack span {
+  display: block;
+  height: 100%;
+}
+.pg-Admin .warn {
+  color: #a33b2e;
+  font-weight: 700;
+}
+.pg-Admin .thm-root.dark .stack {
+  background: #393731 !important;
+}
+.pg-Admin .thm-root.dark .warn {
+  color: #f0907f !important;
+}

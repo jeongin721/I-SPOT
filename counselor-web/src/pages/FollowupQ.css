@@ -152,3 +152,41 @@
 .pg-FollowupQ .thm-root.dark .src-excerpt {
   color: #bdb7aa !important;
 }
+
+/* 11/10 디자인: 브리핑 '전체 확인' 으로 들어오면 확인할 사항 구역을 잠깐 강조한다. */
+.pg-FollowupQ .fq-flash {
+  box-shadow: 0 0 0 3px rgba(194, 163, 107, 0.55) !important;
+  transition: box-shadow 0.3s;
+}
+
+/* 10/30 디자인: 확인 사항 줄 오른쪽 X(삭제). */
+.pg-FollowupQ .del-x {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #7a776f;
+  cursor: pointer;
+  padding: 0;
+}
+.pg-FollowupQ .del-x:hover:not(:disabled) {
+  background: #f2efe8;
+  color: #a33b2e;
+}
+.pg-FollowupQ .del-x:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pg-FollowupQ .thm-root.dark .del-x {
+  color: #a8a296 !important;
+}
+.pg-FollowupQ .thm-root.dark .del-x:hover:not(:disabled) {
+  background: #3a3832 !important;
+  color: #f0907f !important;
+}

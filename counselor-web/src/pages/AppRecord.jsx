@@ -162,7 +162,7 @@ function RecordBody({ userId, items, loaded }) {
     <>
       {fails.length > 0 && (
         <Link className="ma-fail" to="/AppUpload">
-          <span>{'업로드 실패 ' + fails.length + '건 · 다시 올려 주세요'}</span>보기 ›
+          <span>{'업로드 실패 ' + fails.length + '건 · 다시 올리십시오'}</span>보기 ›
         </Link>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -233,7 +233,7 @@ function RecordBody({ userId, items, loaded }) {
               />
               <span>녹음 동의 완료</span>
             </label>
-            {err && <span className="ma-err">녹음 동의를 먼저 확인해 주세요</span>}
+            {err && <span className="ma-err">녹음 동의를 먼저 확인하십시오</span>}
             <button type="button" className="ma-rbig" onClick={start} aria-label="녹음 시작" disabled={!child}>
               <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
             </button>
@@ -264,7 +264,7 @@ function RecordBody({ userId, items, loaded }) {
             <b>{savedItem ? `${savedItem.childLabel} · ${savedItem.sessionNumber ? savedItem.sessionNumber + '회차' : '새 회차'} · ${kindLabel(savedItem.consultationType)} · ${mmss(savedItem.durationMs)}` : ''}</b>
             {qs === 'run' && (
               <>
-                <span className="ma-note">업로드 중이에요. 화면을 닫으면 다음에 열 때 이어서 올려요.</span>
+                <span className="ma-note">업로드 중입니다. 화면을 닫으면 다음에 열 때 이어서 올립니다.</span>
                 <div className="ma-prog">
                   <span></span>
                 </div>
@@ -272,7 +272,7 @@ function RecordBody({ userId, items, loaded }) {
             )}
             {qs === 'done' && <span style={{ fontWeight: 700 }}>✓ 업로드 완료</span>}
             {qs === 'fail' && (
-              <span className="ma-err">{savedItem?.needNewSession ? savedItem.error : '업로드 실패 · 연결이 돌아오면 다시 올려 주세요'}</span>
+              <span className="ma-err">{savedItem?.needNewSession ? savedItem.error : '업로드 실패 · 연결이 돌아오면 다시 올리십시오'}</span>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <Link className="ma-btn" to="/AppUpload">

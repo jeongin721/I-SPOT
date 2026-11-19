@@ -1163,6 +1163,9 @@ def test_child_home_tells_staff_hours(client: TestClient, counselor_headers: Hea
     assert child_app_service.staff_hours(datetime(2026, 10, 5, 10, 0, tzinfo=kst))["on_duty"] is False
     # 한국 날짜로 본다(10/4 일 15:30 UTC = 10/5 월 00:30 KST → 공휴일).
     assert child_app_service.staff_hours(datetime(2026, 10, 4, 15, 30, tzinfo=timezone.utc))["label"] == "오늘은 쉬는 날"
+    # 2027년 대체공휴일(설 연휴가 일요일과 겹침 → 2/9 화)도 기본값에 있다.
+    assert child_app_service.staff_hours(datetime(2027, 2, 9, 10, 0, tzinfo=kst))["on_duty"] is False
+    assert child_app_service.staff_hours(datetime(2027, 2, 10, 10, 0, tzinfo=kst))["on_duty"] is True
     monkeypatch.setattr(settings, "CHILD_APP_STAFF_HOLIDAYS", "")
     assert child_app_service.staff_hours(datetime(2026, 9, 25, 10, 0, tzinfo=kst))["on_duty"] is True
 
@@ -1171,3 +1174,98 @@ def test_child_home_tells_staff_hours(client: TestClient, counselor_headers: Hea
 
     device = _linked(client, counselor_headers, case["id"])
     assert set(_home(client, device)["staff_hours"]) == {"on_duty", "label"}
+
+
+def test_admin_recent_alerts_show_today_yesterday_and_older_unacked(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict, db
+) -> None:
+    """11/17 디자인 관리자 홈 '긴급 알림 현황' — 오늘 · 어제 긴급 알림(확인한 것 포함)과 그 전이라도 확인 전인 것."""
+
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    url = "/api/v1/child-app-alerts/recent"
+    assert client.get(url, headers=counselor_headers).status_code == 403
+
+    rows = client.get(url, headers=admin_headers).json()["data"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["reason"] == "ALERT" and row["case_number"] == case["case_number"]
+    assert row["counselor_name"] and row["acknowledged_at"] is None
+
+    # 확인한 알림도 오늘 · 어제면 남고, 확인한 사람이 보인다.
+    assert client.post(f"/api/v1/cases/{case['id']}/child-app/alerts/{row['id']}/ack", headers=counselor_headers).status_code == 204
+    row = client.get(url, headers=admin_headers).json()["data"][0]
+    assert row["acknowledged_at"] is not None and row["acknowledged_by_name"]
+
+    # 사흘 전 것: 확인했으면 내리고, 확인 전이면 남긴다.
+    alert_row = _alert_row(db, case["id"])
+    alert_row.created_at = datetime.now(timezone.utc) - timedelta(days=3)
+    db.commit()
+    assert client.get(url, headers=admin_headers).json()["data"] == []
+    alert_row.acknowledged_at = None
+    alert_row.acknowledged_by_id = None
+    db.commit()
+    assert len(client.get(url, headers=admin_headers).json()["data"]) == 1
+
+
+def test_welfare_check_for_silent_child(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict, db
+) -> None:
+    """11/17 디자인 관리자 · 아이 연계 앱 관리 — 장기 무응답 아이 안부 연락 처리. 아이 피드에는 들어가지 않는다."""
+
+    url = f"/api/v1/cases/{case['id']}/child-app/welfare-checks"
+    # 연결 전이면 기록할 수 없다.
+    assert client.post(url, json={"status": "DONE"}, headers=admin_headers).status_code == 409
+
+    device = _linked(client, counselor_headers, case["id"])
+    link = db.scalar(select(ChildAppLink).where(ChildAppLink.case_id == uuid.UUID(case["id"])))
+    link.linked_at = datetime.now(timezone.utc) - timedelta(days=10)
+    db.commit()
+
+    row = next(r for r in client.get("/api/v1/child-app-cases", headers=admin_headers).json()["data"] if r["case_id"] == case["id"])
+    assert row["linked_at"] is not None and row["counselor_name"] and row["welfare_status"] is None
+
+    assert client.post(url, json={"status": "TRIED", "note": "부재중 · 보호자 문자 남김"}, headers=admin_headers).status_code == 204
+    assert client.post(url, json={"status": "DONE"}, headers=other_counselor_headers).status_code in (403, 404)
+    assert client.post(url, json={"status": "WHATEVER"}, headers=admin_headers).status_code == 422
+    row = next(r for r in client.get("/api/v1/child-app-cases", headers=admin_headers).json()["data"] if r["case_id"] == case["id"])
+    assert row["welfare_status"] == "TRIED" and row["welfare_note"] == "부재중 · 보호자 문자 남김"
+
+    # 담당 상담사도 남길 수 있고, 가장 최근 것이 보인다.
+    assert client.post(url, json={"status": "DONE", "note": "통화함"}, headers=counselor_headers).status_code == 204
+    mine = next(r for r in client.get("/api/v1/child-app-cases", headers=counselor_headers).json()["data"] if r["case_id"] == case["id"])
+    assert mine["welfare_status"] == "DONE"
+    # 아이가 보낸 내용(피드)에는 들어가지 않는다.
+    assert all(item["kind"] != "WELFARE_CHECK" for item in _view(client, counselor_headers, case["id"])["feed"])
+
+    # 그 뒤 아이가 답하면 이번 무응답과 상관없는 기록이라 내려간다.
+    _alert(client, device)
+    link = db.scalar(select(ChildAppLink).where(ChildAppLink.case_id == uuid.UUID(case["id"])))
+    db.refresh(link)
+    link.last_response_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+    db.commit()
+    row = next(r for r in client.get("/api/v1/child-app-cases", headers=admin_headers).json()["data"] if r["case_id"] == case["id"])
+    assert row["welfare_status"] is None
+
+
+def test_admin_recent_alerts_keep_old_unacked_urgent_behind_many_checks(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict, db, monkeypatch
+) -> None:
+    """민규 #185 리뷰 4 — 긴급이 아닌 확인 전 줄이 많이 쌓여도 더 오래된 미확인 긴급 알림이 빠지지 않는다."""
+
+    from app.models.child_app import ChildAppEvent
+    from app.core.enums import ChildAnswerLevel
+    from app.services import child_app_service
+
+    monkeypatch.setattr(child_app_service, "OPEN_ALERT_LIMIT", 2)  # 한 번에 4줄씩 · 최대 4개
+    device = _linked(client, counselor_headers, case["id"])
+    _alert(client, device)
+    old = _alert_row(db, case["id"])
+    old.created_at = datetime.now(timezone.utc) - timedelta(days=3)
+    for i in range(9):  # 긴급이 아닌 확인 전 줄(글 답) — 긴급 알림보다 최근
+        db.add(ChildAppEvent(case_id=uuid.UUID(case["id"]), kind=ChildAppEventKind.ANSWERS, level=ChildAnswerLevel.AMBER,
+                             payload={"alert_reason": "TEXT_ANSWER"}, needs_ack=True,
+                             created_at=datetime.now(timezone.utc) - timedelta(days=2, minutes=i)))
+    db.commit()
+    rows = client.get("/api/v1/child-app-alerts/recent", headers=admin_headers).json()["data"]
+    assert [r["id"] for r in rows] == [str(old.id)]

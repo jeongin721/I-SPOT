@@ -7,8 +7,15 @@
 #    잘못 올린 문서는 관리자만 지운다(표 행 · 파일 본체를 함께 지운다).
 #  - 첫 페이지 미리보기: 그림은 그대로(별도 창구 /preview — 그림만 주고 내려받기 기록을 남기지 않는다), txt · md · csv 는 앞부분 글, docx · hwpx · pdf 는 document_text 로 뽑은 앞부분 글.
 #    뽑지 못하면(손상 · 너무 김 · 시간 초과) 미리보기 없음(other)으로 둔다 — 올리기는 막지 않는다.
+#  - 작성 양식(2026-11-19, 11/09 디자인 '저장 → 제목 · 폴더를 정해 별도 문서로'): 빈 양식 6종을 화면에서 채워 .ispotform(JSON)으로
+#    올린다. 내용은 {kind, form_id, version, values} 꼴만 받는다(FORM_IDS · 칸 이름 · 값 길이 검사). 아이 정보는 넣지 않게
+#    화면이 확인을 받는다 — 공용 보관함이라 모든 상담원이 본다. 사례 서식은 사례 상세 › 문서함(case_forms)에 저장한다.
+#    본체는 다른 상담 본문처럼 앱 암호화(PII_ENCRYPTION_KEYS, AAD ispot:docbox_files:body:<행 ID>:v1)로 저장하고, 내려받을 때 푼다
+#    (민규 ⑥ 조건 1). 그 밖의 문서 본체는 예전처럼 그대로다.
 # 감사 기록에는 파일 수 · 형식 · 크기 · 폴더 id 만 남긴다(파일 이름 · 내용은 넣지 않는다).
+import json
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -17,7 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import storage
+from app.core import pii_crypto, storage
 from app.core.concurrency import run_with_timeout
 from app.core.enums import AuditAction
 from app.core.errors import APIError, ErrorCode, conflict, not_found
@@ -39,7 +46,57 @@ IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "g
 PLAIN_TEXT = {"txt", "md", "csv"}
 EXTRACTABLE = {"docx", "hwpx", "pdf"}
 OTHER = {"hwp", "doc", "xlsx", "xls", "pptx", "ppt"}
-ALLOWED = set(IMAGE_TYPES) | PLAIN_TEXT | EXTRACTABLE | OTHER
+#: 문서함 빈 양식을 채워 저장한 파일(JSON). 화면이 다시 열어 이어서 쓴다.
+FORM_EXT = "ispotform"
+FORM_IDS = {"f4", "f6", "f27", "f29", "r1", "r3"}
+FORM_MAX_BYTES = 256 * 1024
+FORM_MAX_FIELDS = 400
+FORM_VALUE_MAX = 2000
+_FORM_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,31}$")
+_FORM_DOC_KEYS = {"kind", "form_id", "version", "values"}
+# 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명). 공용 보관함이라 이 칸이 들어오면 422
+# (민규 755283e0 리뷰). 화면(counselor-web src/data/blankForms.ts IDENTITY_FIELDS)도 같은 칸을 못 쓰게 하고 파일에서 뺀다.
+FORM_IDENTITY_FIELDS: Dict[str, frozenset] = {
+    "f4": frozenset({"k14", "k15", *(f"k{n}" for n in range(16, 26)), "k32", "k60", "k67", "k74", "k81"}),
+    "f6": frozenset({"k10", "k11", "k12", "k13", "k14", "k15", "k16", "k17", "k24", "k27", "k30", "k33"}),
+    "f27": frozenset({"k1", "k3"}),
+    "f29": frozenset({"k1", "k4"}),
+    "r1": frozenset(),
+    "r3": frozenset(),
+}
+ALLOWED = set(IMAGE_TYPES) | PLAIN_TEXT | EXTRACTABLE | OTHER | {FORM_EXT}
+
+
+def _check_form(data: bytes) -> None:
+    """작성 양식 파일은 정해 둔 꼴만 받는다. 아니면 422."""
+
+    bad = _invalid("작성 양식 파일 내용이 올바르지 않습니다.")
+    if len(data) > FORM_MAX_BYTES:
+        raise bad
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        # 깊게 중첩된 JSON 은 RecursionError(민규 리뷰 3) — 500 이 아니라 422.
+        raise bad from None
+    if not isinstance(doc, dict) or set(doc) != _FORM_DOC_KEYS:
+        raise bad
+    if doc.get("kind") != "ispot-blank-form" or doc.get("form_id") not in FORM_IDS:
+        raise bad
+    if not isinstance(doc.get("version"), str) or len(doc["version"]) > 20:
+        raise bad
+    values = doc.get("values")
+    if not isinstance(values, dict) or len(values) > FORM_MAX_FIELDS:
+        raise bad
+    identity = FORM_IDENTITY_FIELDS[doc["form_id"]]
+    for key, value in values.items():
+        if not isinstance(key, str) or not _FORM_KEY.match(key):
+            raise bad
+        if key in identity:
+            raise _invalid("작성 양식에 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 사건번호 등)은 넣을 수 없습니다.")
+        if isinstance(value, bool):
+            continue
+        if not isinstance(value, str) or len(value) > FORM_VALUE_MAX:
+            raise bad
 
 
 def _invalid(message: str) -> APIError:
@@ -101,6 +158,23 @@ def _folder_or_404(db: Session, folder_id: Optional[uuid.UUID]) -> Optional[Docb
     if folder is None:
         raise not_found(ErrorCode.NOT_FOUND, "폴더를 찾을 수 없습니다.")
     return folder
+
+
+def _seal_form(data: bytes, row_id: uuid.UUID) -> bytes:
+    """작성 양식 본체(JSON)를 앱 암호화로 봉인한다."""
+
+    return pii_crypto.encrypt_field(data.decode("utf-8"), table="docbox_files", column="body", row_id=row_id).encode("ascii")
+
+
+def is_sealed(row: DocboxFile) -> bool:
+    return _extension(row.name) == FORM_EXT
+
+
+def read_sealed(row: DocboxFile) -> bytes:
+    """봉인한 작성 양식 본체를 풀어 돌려준다(내려받기)."""
+
+    token = Path(file_path(row)).read_bytes().decode("ascii")
+    return pii_crypto.decrypt_field(token, table="docbox_files", column="body", row_id=row.id).encode("utf-8")
 
 
 def _store(data: bytes) -> str:
@@ -180,6 +254,8 @@ def upload(db: Session, user: User, files: List[Tuple[Optional[str], bytes]], fo
             raise _invalid("빈 파일은 올릴 수 없습니다.")
         if len(data) > MAX_FILE_BYTES:
             raise _invalid("파일 하나는 10 MB 까지 올릴 수 있습니다.")
+        if ext == FORM_EXT:
+            _check_form(data)
         checked.append((name, ext, data))
 
     rows: List[DocboxFile] = []
@@ -187,12 +263,15 @@ def upload(db: Session, user: User, files: List[Tuple[Optional[str], bytes]], fo
     try:
         for name, ext, data in checked:
             kind, text = _preview(name, data)
-            relative = _store(data)
+            row_id = uuid.uuid4()
+            body = _seal_form(data, row_id) if ext == FORM_EXT else data
+            relative = _store(body)
             stored.append(relative)
             row = DocboxFile(
+                id=row_id,
                 folder_id=folder_id,
                 name=name,
-                content_type=IMAGE_TYPES.get(ext, "application/octet-stream"),
+                content_type="application/json" if ext == FORM_EXT else IMAGE_TYPES.get(ext, "application/octet-stream"),
                 size_bytes=len(data),
                 path=relative,
                 preview_kind=kind,

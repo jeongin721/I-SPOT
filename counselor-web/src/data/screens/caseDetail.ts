@@ -765,7 +765,16 @@ export function caseHistoryValues(
       const item = (row.subtypes ?? []).find((s) => s.abuse_type === key.type && s.subtype === key.subtype);
       const at = `${row.session_number}회차 · ${key.subtype}`;
       if (!item) return { v: "", tip: `${at} · ${row.subtypes ? "없음" : pendingLabel(row) || "분석 전"}`, ...DOT_NONE };
-      if (item.pending) return { v: "?", tip: `${at} · 보류(화자 확인 중) · 근거 ${item.count}번`, ...DOT_RING };
+      // 11/10 디자인: '?' 칸을 누르면 그 회차 기록 확인(SttReview)의 첫 근거 발화로 간다.
+      if (item.pending) {
+        const seg = item.segment_ids?.[0];
+        return {
+          v: "?",
+          tip: `${at} · 보류(화자 확인 중) · 근거 ${item.count}번`,
+          href: seg ? segmentHref({ caseId: input.caseId, sessionId: row.session_id }, seg) : null,
+          ...DOT_RING,
+        };
+      }
       return { v: String(item.count), tip: `${at} · 근거 ${item.count}번`, ...(item.count >= 2 ? DOT_STRONG : DOT_LIGHT) };
     }),
   }));

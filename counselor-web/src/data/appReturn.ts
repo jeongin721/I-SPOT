@@ -2,7 +2,7 @@
 // 로그인 화면은 웹과 같이 쓴다. 이 표시가 없으면 로그인 화면은 원래대로 웹 홈(/Main)으로 간다.
 
 const KEY = "ispot-app-return";
-const ALLOWED = new Set(["/AppHome", "/AppCases", "/AppBrief", "/AppRecord", "/AppUpload", "/AppSchedule", "/AppMemo", "/AppSettings"]);
+const ALLOWED = new Set(["/AppHome", "/AppCases", "/AppBrief", "/AppHistory", "/AppSessionRecord", "/AppRecord", "/AppUpload", "/AppSchedule", "/AppMemo", "/AppSettings"]);
 
 export function rememberAppReturn(path: string): void {
   try {
@@ -23,4 +23,18 @@ export function takeAppReturn(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 앱 화면끼리 Link state 로 넘긴 '들어온 화면'(11/17 디자인 '뒤로 가기'). 예: { from: "/AppCases" }.
+ * 앱 화면 주소(쿼리 포함 가능)가 아니거나, 지금 화면(self) 자신이거나, 없으면(새로 고침 · 바로 연 주소) null.
+ */
+export function appFrom(state: unknown, self: string): string | null {
+  const from = (state as { from?: unknown } | null)?.from;
+
+  if (typeof from !== "string" || !/^\/App[A-Za-z]+(\?[^#]*)?$/.test(from)) return null;
+
+  const path = from.split("?")[0];
+
+  return ALLOWED.has(path) && path !== self ? from : null;
 }

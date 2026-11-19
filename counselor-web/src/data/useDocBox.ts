@@ -24,6 +24,8 @@ export interface DocBoxState {
   upload: (files: File[], folderId: string | null) => Promise<number>;
   move: (fileId: string, folderId: string | null) => Promise<boolean>;
   download: (fileId: string, name: string) => Promise<boolean>;
+  /** 문서 본문을 글로 받는다(작성 양식 파일 다시 열기). 못 받으면 null(안내 줄에 이유). */
+  readText: (fileId: string) => Promise<string | null>;
   /** 문서 지우기(관리자만 — 서버가 권한을 검사한다). */
   remove: (fileId: string) => Promise<boolean>;
 }
@@ -127,7 +129,18 @@ export function useDocBox(session: AuthSession): DocBoxState {
     }
   }, []);
 
+  const readText = useCallback(async (fileId: string) => {
+    setActionError(null);
+    try {
+      return await (await docbox.file(fileId)).text();
+    } catch (caught) {
+      setActionError(errorMessage(caught, "문서를 열지 못했습니다."));
+      return null;
+    }
+  }, []);
+
   return {
+    readText,
     data: remote.data,
     loading: remote.loading,
     error: remote.error,
