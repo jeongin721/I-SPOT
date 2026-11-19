@@ -27,7 +27,70 @@ function LevelChip({ level }) {
   return item ? <span className={item[1]}>{item[0]}</span> : null;
 }
 
+// 마지막 응답이 이만큼 지났으면 '안부 확인 필요'(콩콩 디자인 응답 상태 기준 7일).
+const SILENT_DAYS = 7;
+const daysSince = (value) => {
+  if (!value) return null;
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.round((day(new Date()) - day(new Date(value))) / 86400000);
+};
+const ackNote = (event) => (event.needs_ack ? (event.acknowledged_at ? ` · 확인 ${dateTime(event.acknowledged_at)}` : ' · 확인 전') : '');
+
+// 아이가 홈 · 일정에서 직접 보낸 것(지금 기분 · 선생님께 메시지 · 참석 어려움). 칩 · 제목은 콩콩 디자인 상담사 미리보기 그대로.
+function ChildPostItem({ event }) {
+  const p = event.payload;
+  let chip;
+  let title;
+  let body;
+  if (event.kind === 'MOOD') {
+    chip = event.level === 'AMBER' ? ['살펴볼 기분', 'chip c-check'] : ['기분', 'chip c-sand'];
+    title = '지금 기분';
+    body = (
+      <span>
+        <b>{p.label}</b>
+        {p.why ? ` · "${p.why}"` : ' · 이유는 안 적음'}
+      </span>
+    );
+  } else if (event.kind === 'NOTE') {
+    chip = p.alert_reason === 'CONTACT_REQUEST' ? ['연락 요청', 'chip c-urgent'] : ['메시지', 'chip c-sand'];
+    title = '선생님께 메시지';
+    body = (
+      <span>
+        {p.text ? `"${p.text}"` : null}
+        {p.text && p.chip ? <br /> : null}
+        {p.chip ? <span className="chip c-sand">{p.chip}</span> : null}
+      </span>
+    );
+  } else {
+    const [, m, d] = String(p.consult_date || '').split('-').map(Number);
+    chip = ['일정', 'chip c-check'];
+    title = '상담 일정 변경 요청';
+    body = (
+      <span>
+        {m && d ? `${m}월 ${d}일${p.consult_time ? ` ${p.consult_time}` : ''} 상담에 가기 어려움` : '다음 상담에 가기 어려움'} · 이유:{' '}
+        <b>{p.etc ? `${p.reason} · ${p.etc}` : p.reason}</b>
+      </span>
+    );
+  }
+  return (
+    <div style={{ padding: '12px 0', borderTop: '1px solid #E8E5DD', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+        <span className={chip[1]}>{chip[0]}</span>
+        <b>{title}</b>
+        <span className="note">
+          {dateTime(event.created_at)}
+          {ackNote(event)}
+        </span>
+      </div>
+      {body}
+    </div>
+  );
+}
+
 function FeedItem({ event }) {
+  if (event.kind === 'MOOD' || event.kind === 'NOTE' || event.kind === 'SCHEDULE_REQUEST') {
+    return <ChildPostItem event={event} />;
+  }
   if (event.kind === 'ALERT') {
     return (
       <div style={{ padding: '12px 0', borderTop: '1px solid #E8E5DD', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
@@ -49,7 +112,9 @@ function FeedItem({ event }) {
           ? '아이가 앱 연결을 해지했어요'
         : event.payload.withdrawn
           ? `보낸 질문 ${event.payload.count}개를 취소했어요`
-          : `질문 ${event.payload.count}개를 보냈어요`;
+          : event.payload.deliver_at
+            ? `질문 ${event.payload.count}개를 발송 예약했어요(${dateTime(event.payload.deliver_at)}부터 아이 앱에 보여요)`
+            : `질문 ${event.payload.count}개를 보냈어요`;
     return (
       <div className="note" style={{ padding: '10px 0', borderTop: '1px solid #E8E5DD' }}>
         {dateTime(event.created_at)} · {label}
@@ -63,7 +128,7 @@ function FeedItem({ event }) {
         <b>질문 답변</b>
         <span className="note">
           {dateTime(event.created_at)}
-          {event.needs_ack ? (event.acknowledged_at ? ` · 확인 ${dateTime(event.acknowledged_at)}` : ' · 확인 전') : ''}
+          {ackNote(event)}
         </span>
       </div>
       {event.payload.items.map((item) => (
@@ -88,6 +153,8 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
   const data = app.data;
   const status = STATUS[data?.status] ?? STATUS.NOT_LINKED;
   const info = detail.caseInfo;
+  // 응답 상태: 아이가 무엇이든 보내면(답 · 기분 · 메시지 · 긴급 · 일정) 0일로 돌아간다. 연결 뒤 아직 안 보냈으면 연결일부터 센다.
+  const silent = data?.status === 'LINKED' ? daysSince(data.last_response_at ?? data.linked_at) : null;
 
   return (
     <div className="pg-CaseApp">
@@ -145,19 +212,22 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                 <section
                   key={alert.id}
                   role="alert"
-                  aria-label="긴급 알림"
-                  style={{ background: '#F8E6DF', border: '1.5px solid #B0452C', borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
+                  aria-label={alert.urgent ? '긴급 알림' : '확인할 알림'}
+                  style={{ background: alert.urgent ? '#F8E6DF' : '#F7EDD6', border: `1.5px solid ${alert.urgent ? '#B0452C' : '#7A5A10'}`, borderRadius: '14px', padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px', color: '#2B2A26' }}
                 >
                   <div style={{ flex: '1 1 320px' }}>
-                    <b style={{ color: '#B0452C' }}>긴급 · {dateTime(alert.last_at ?? alert.created_at)}</b>
+                    {/* 긴급(알림 · 바로 확인 답 · 연락 요청)과 확인 필요(글 · 메시지 · 일정 요청)를 아이 상세처럼 나눈다. */}
+                    <b style={{ color: alert.urgent ? '#B0452C' : '#7A5A10' }}>
+                      {alert.urgent ? '긴급' : '확인 필요'} · {dateTime(alert.last_at ?? alert.created_at)}
+                    </b>
                     <br />
-                    {CHILD_ALERT_TEXT[alert.reason]}
+                    {CHILD_ALERT_TEXT[alert.reason] || CHILD_ALERT_TEXT.NEEDS_CHECK}
                     {alert.repeat_count ? ` ${alert.repeat_count}번 더 눌렀어요.` : ''}
-                    {data.can_read_feed ? ' 아이의 안전을 고려해 연락 방법을 판단해 주세요.' : ' 담당 상담사에게 전달해 주세요.'}
+                    {data.can_read_feed ? (alert.urgent ? ' 아이의 안전을 고려해 연락 방법을 판단해 주세요.' : '') : ' 담당 상담사에게 전달해 주세요.'}
                   </div>
                   {alert.can_ack ? (
                     <button type="button" className="btn btn-p" disabled={app.busy} onClick={() => app.acknowledge(alert.id)}>
-                      확인했어요
+                      확인했습니다
                     </button>
                   ) : null}
                 </section>
@@ -167,6 +237,11 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                 {data.status === 'LINKED' ? (
                   <div className="sub">
                     연결 {dateTime(data.linked_at)} · 마지막 응답 {dateTime(data.last_response_at)}
+                    {silent !== null ? ` (${silent === 0 ? '오늘' : `${silent}일 전`}) ` : ' '}
+                    <span className={silent === null || silent >= SILENT_DAYS ? 'chip c-urgent' : 'chip c-ok'}>
+                      {silent === null || silent >= SILENT_DAYS ? '안부 확인 필요' : '정상'}
+                    </span>{' '}
+                    <span className="note">기준 {SILENT_DAYS}일</span>
                     <br />
                     아이 앱에 다음 상담 날짜 · 시간이 보여요. 장소는 정기 · 초기 · 종결 상담만 보여요.
                   </div>

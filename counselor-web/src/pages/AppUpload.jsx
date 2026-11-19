@@ -9,14 +9,21 @@
 //  - 주소에 ?case= 가 있으면 그 아이를 골라 둔다(앱 사례 목록의 '자료 올리기').
 //  - 다 올린 줄 아래에 그 회차의 지금 상태('웹: 원문 검수 필요' 등)를 보인다. 처리 중이면 20초마다 다시 본다(11/12).
 //  - 서버에서 원문 변환이 실패한 회차(STT_FAILED)는 폰에서 '원문 변환 다시 요청' 으로 다시 돌릴 수 있다(멘토 피드백 11/12).
+//  - 자료 올리기 › 파일: 문서(.txt · .docx · .hwpx · .pdf)면 녹음처럼 고른 아이의 새 회차로 올린다 — 웹 '녹취 · 자료 올리기' 의
+//    문서 파일과 같은 창구(21절, data/useAppDocuments). 서버가 글자를 뽑고 상담 요약 · 일지 칸을 채우면 웹에서 검수 · 승인한다.
+//    폰에는 파일을 남기지 않고, 이 화면에 있는 동안만 목록에 보인다(2026-11-19 경진 — 폰은 올리기만, 결과는 웹).
+//  - 사진은 글자를 읽는 기능(OCR)이 없어 '준비 중' 안내만 보인다.
 //  - 다 올린 줄의 '기록 보기' 는 그 회차의 상담 기록(요약 · 일지, 읽기 전용) 화면으로 간다(11/19, AppSessionRecord).
-//  - 사진 · 문서는 사례에 붙일 서버 자리(사례 파일함)가 아직 없어 '준비 중' 안내만 보인다. 고르기 전에도 '지금은 녹음만' 을 한 줄 보인다.
-import { useEffect, useState } from 'react';
+//  - 11/19 디자인: 머리 작은 설명 줄('사진 · 문서 · 음성 파일') 없앰, 자료 올리기 창은 닫을 때 움직인다(동작 줄이기면 끔).
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
+import { closeWithAnim } from '../components/MobileAppShellMotion';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
+import { isDocumentFile } from '../data/documentFile';
+import { useAppDocuments } from '../data/useAppDocuments';
 import { SESSION_STATUS_LABELS } from '../data/sessionRows';
 import { transcript } from '../api/endpoints';
 import { errorMessage } from '../data/useRemote';
@@ -33,6 +40,8 @@ function UploadBody({ userId, items, notReady }) {
   const [picked, setCaseId] = useState(params.get('case') ?? '');
   const caseId = rows.some((row) => row.id === picked) ? picked : rows[0]?.id ?? '';
   const [pk, setPk] = useState(false);
+  const pkRef = useRef(null);
+  const closePick = () => closeWithAnim(pkRef.current, () => setPk(false));
 
   // 목록을 열 때 다 올린 줄을 서버와 맞춘다(웹에서 지운 회차는 빼고, 남은 줄은 지금 상태를 받는다).
   // 원문 변환 · AI 분석이 도는 중인 줄이 있으면 20초마다 다시 본다(화면에 있는 동안만).
@@ -61,6 +70,7 @@ function UploadBody({ userId, items, notReady }) {
     };
   }, [userId, doneIds, again]);
   const [pickErr, setPickErr] = useState('');
+  const docs = useAppDocuments();
 
   // 서버에서 원문 변환이 실패한 회차 — 같은 녹음으로 변환을 다시 요청한다.
   const rerunStt = async (x) => {
@@ -94,8 +104,17 @@ function UploadBody({ userId, items, notReady }) {
     setPk(false);
     setPickErr('');
     const isAudio = /^audio\//.test(fl.type) || /\.(m4a|mp3|wav|ogg|flac|webm|mp4)$/i.test(fl.name);
+    if (!isAudio && isDocumentFile(fl)) {
+      if (!child || !userId) {
+        setPickErr('아이를 먼저 골라 주세요.');
+        return;
+      }
+      const problem = docs.add({ caseId: child.id, childLabel: childLabelOf(child), file: fl });
+      if (problem) setPickErr(problem);
+      return;
+    }
     if (!isAudio) {
-      notReady('사진 · 문서 올리기');
+      notReady('사진 올리기');
       return;
     }
     const problem = checkAudioFile(fl);
@@ -134,12 +153,56 @@ function UploadBody({ userId, items, notReady }) {
         </span>
         자료 올리기<span className="ma-note" style={{ fontWeight: 400 }}>파일 · 사진 보관함 · 사진 찍기</span>
       </button>
-      <span className="ma-note">지금은 녹음(음성 파일)만 올릴 수 있어요. 사진 · 문서는 준비 중이에요.</span>
+      <span className="ma-note">녹음(음성 파일)과 상담 기록 문서(.txt · .docx · .hwpx · .pdf)를 올릴 수 있어요. 사진은 준비 중이에요.</span>
       {(pickErr || my.error) && <span className="ma-err">{pickErr || my.error}</span>}
       <p className="ma-sec-t">
-        올린 자료 <span className="ma-note">· 실패 {fails.length}건</span>
+        올린 자료 <span className="ma-note">· 실패 {fails.length + docs.items.filter((x) => x.status === 'fail').length}건</span>
       </p>
-      {items.length === 0 && <span className="ma-note">아직 올린 자료가 없어요. 녹음을 저장하면 여기에 보여요.</span>}
+      {items.length === 0 && docs.items.length === 0 && <span className="ma-note">아직 올린 자료가 없어요. 녹음을 저장하면 여기에 보여요.</span>}
+      {docs.items.map((x) => {
+        const run = x.status === 'run' || x.status === 'wait';
+        const fail = x.status === 'fail';
+        return (
+          <div key={x.id} className={fail ? 'ma-card ma-qi ma-f' : 'ma-card ma-qi'}>
+            <div className="ma-qi-top">
+              <span className="ma-chip">문서</span>
+              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <b>{x.fileName}</b>
+                <span className="ma-note">
+                  {whoText(x)} · {sizeText(x.size)} · {whenText(x.status === 'done' ? x.updatedAt : x.createdAt)}
+                </span>
+                {run && <span className="ma-note">문서를 읽고 상담일지 칸을 채우는 중이에요(1~2분). 이 화면에서 기다려 주세요.</span>}
+                {x.status === 'done' && (
+                  <span className="ma-note" style={{ fontWeight: 600 }}>
+                    웹: {SESSION_STATUS_LABELS.AI_REVIEW_REQUIRED}
+                  </span>
+                )}
+              </span>
+              <span className={fail ? 'ma-chip ma-red' : run ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : run ? '올리는 중' : '완료'}</span>
+            </div>
+            {run && (
+              <div className="ma-prog">
+                <span></span>
+              </div>
+            )}
+            {fail && (
+              <>
+                <span style={{ fontSize: '13.5px', color: 'var(--red)' }}>{x.error}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: x.canRetry ? '1fr 2fr' : '1fr', gap: '8px' }}>
+                  <button type="button" className="ma-btn ma-btn-sm ma-btn-red" onClick={() => docs.remove(x.id)}>
+                    지우기
+                  </button>
+                  {x.canRetry && (
+                    <button type="button" className="ma-btn ma-btn-sm ma-btn-p" onClick={() => docs.retry(x.id)}>
+                      다시 올리기
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
       {items.map((x) => {
         const run = x.status === 'run' || x.status === 'wait';
         const fail = x.status === 'fail';
@@ -206,12 +269,12 @@ function UploadBody({ userId, items, notReady }) {
         );
       })}
       {pk && (
-        <div className="ma-ov" onClick={() => setPk(false)}>
+        <div className="ma-ov" ref={pkRef} onClick={closePick}>
           <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="자료 올리기" onClick={stop}>
             <span className="ma-grab" aria-hidden="true"></span>
             <div className="ma-sh-hd">
               <b>자료 올리기</b>
-              <button type="button" className="ma-btn ma-btn-sm" onClick={() => setPk(false)}>
+              <button type="button" className="ma-btn ma-btn-sm" onClick={closePick}>
                 닫기
               </button>
             </div>
@@ -253,7 +316,7 @@ function UploadBody({ userId, items, notReady }) {
 
 export default function AppUpload() {
   return (
-    <MobileAppShell cur="up" sub="사진 · 문서 · 음성 파일" title="업로드">
+    <MobileAppShell cur="up" title="업로드">
       {(ctx) => <UploadBody {...ctx} />}
     </MobileAppShell>
   );

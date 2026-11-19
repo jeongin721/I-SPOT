@@ -227,3 +227,73 @@ def test_blank_form_file_round_trip_and_shape_check(client: TestClient, counselo
     # 신원 칸이 아닌 칸은 그대로 받는다.
     ok = json.dumps({**good, "form_id": "f6", "values": {"a1": "높음", "k80": "소견"}}).encode()
     assert _upload(client, counselor_headers, [("y.ispotform", ok, "application/json")]).status_code == 201
+
+
+def test_key_change_script_reseals_form_files(client: TestClient, counselor_headers, db, monkeypatch) -> None:
+    """민규 #185: 키 바꾸기 script 가 작성 양식 본체(저장소 파일)도 맨 앞 키로 다시 봉인해, 옛 키를 빼도 내려받기가 된다."""
+
+    import base64
+    import json
+
+    from app.core import storage
+    from app.core.config import settings
+    from app.models.docbox import DocboxFile
+    from scripts.reencrypt_personal_info import reencrypt_docbox_forms
+
+    old_keys = settings.PII_ENCRYPTION_KEYS
+    new_key = "new2:" + base64.b64encode(b"test-only-pii-encrypt-key-000002").decode()
+    form = {"kind": "ispot-blank-form", "form_id": "r1", "version": "2026-11-09", "values": {"f1": "보통이다"}}
+    res = _upload(client, counselor_headers, [("척도.ispotform", json.dumps(form, ensure_ascii=False).encode(), "application/json")])
+    assert res.status_code == 201, res.text
+    form_id = res.json()["data"]["files"][0]["id"]
+    # 양식이 아닌 파일 · 봉인 전 모양 양식은 건드리지 않는다.
+    assert _upload(client, counselor_headers, [("메모.txt", b"plain", "text/plain")]).status_code == 201
+    plain_row = db.scalar(select(DocboxFile).where(DocboxFile.name == "메모.txt"))
+    plain_before = (storage.storage_root() / plain_row.path).read_bytes()
+
+    row = db.get(DocboxFile, uuid.UUID(form_id))
+    body = storage.storage_root() / row.path
+    assert body.read_bytes().startswith(b"v1.test1.")
+
+    monkeypatch.setattr(settings, "PII_ENCRYPTION_KEYS", f"{new_key},{old_keys}")
+    dry = reencrypt_docbox_forms(db, dry_run=True)
+    assert (dry.rows, dry.changed_rows, dry.failed_ids) == (1, 1, [])
+    assert body.read_bytes().startswith(b"v1.test1.")
+
+    result = reencrypt_docbox_forms(db)
+    assert (result.rows, result.changed_rows, result.plain_rows, result.failed_ids, result.missing_ids) == (1, 1, 0, [], [])
+    assert body.read_bytes().startswith(b"v1.new2.")
+    assert (storage.storage_root() / plain_row.path).read_bytes() == plain_before
+    assert not [p for p in body.parent.iterdir() if ".reenc-" in p.name]  # 임시 파일 남지 않음
+    # 두 번 돌려도 안전하다.
+    assert reencrypt_docbox_forms(db).changed_rows == 0
+
+    # 옛 키를 빼도 내려받기가 된다.
+    monkeypatch.setattr(settings, "PII_ENCRYPTION_KEYS", new_key)
+    got = client.get(f"{URL}/files/{form_id}/download", headers=counselor_headers)
+    assert got.status_code == 200 and json.loads(got.content)["values"]["f1"] == "보통이다"
+
+
+def test_key_change_script_reports_form_files_it_cannot_read(client: TestClient, counselor_headers, db, monkeypatch) -> None:
+    import base64
+    import json
+
+    from app.core import storage
+    from app.core.config import settings
+    from app.models.docbox import DocboxFile
+    from scripts.reencrypt_personal_info import reencrypt_docbox_forms
+
+    form = {"kind": "ispot-blank-form", "form_id": "r1", "version": "1", "values": {"f1": "x"}}
+    sealed = _upload(client, counselor_headers, [("a.ispotform", json.dumps(form).encode(), "application/json")]).json()["data"]["files"][0]
+    gone = _upload(client, counselor_headers, [("b.ispotform", json.dumps(form).encode(), "application/json")]).json()["data"]["files"][0]
+    (storage.storage_root() / db.get(DocboxFile, uuid.UUID(gone["id"])).path).unlink()
+    before = (storage.storage_root() / db.get(DocboxFile, uuid.UUID(sealed["id"])).path).read_bytes()
+
+    # 옛 키를 이미 뺐다 — 풀지 못한 것으로 알리고 그대로 둔다. 본체가 없는 행은 따로 센다.
+    monkeypatch.setattr(settings, "PII_ENCRYPTION_KEYS", "new2:" + base64.b64encode(b"test-only-pii-encrypt-key-000002").decode())
+    result = reencrypt_docbox_forms(db)
+
+    assert result.failed_ids == [uuid.UUID(sealed["id"])]
+    assert result.missing_ids == [uuid.UUID(gone["id"])]
+    assert result.changed_rows == 0
+    assert (storage.storage_root() / db.get(DocboxFile, uuid.UUID(sealed["id"])).path).read_bytes() == before

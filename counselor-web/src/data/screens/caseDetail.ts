@@ -247,7 +247,8 @@ export function caseHeaderValues(input: CaseScreenInput) {
       history: screenHref("/CaseHistory", ids),
       // 10/29 디자인: 상담 전 브리핑은 탭이 아니라 내담자 정보 탭 안(#brief). HashRouter 라 주소 # 대신 view=brief 로 연다.
       briefing: briefingHref(ids.caseId ?? null),
-      app: screenHref("/CaseApp", ids),
+      // 11/19 디자인: 사례 상세 안 아이 연계 화면(CaseApp)이 빠져 '아이 연계 →' 는 그 사례 아이의 아이 상세로 간다.
+      app: screenHref("/ChildDetail", ids),
       docs: screenHref("/CaseDocs", ids),
     },
   };

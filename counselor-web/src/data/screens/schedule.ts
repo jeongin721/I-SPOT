@@ -418,7 +418,7 @@ export function scheduleValues(input: ScheduleInput) {
       canEdit,
       ask,
       noAsk: !ask,
-      askNote: intake && !isDl ? "최초접수와 함께 만들어진 처리 기한 일정 3건도 같이 삭제되고, 알림에서도 빠져요." : "삭제하면 되돌릴 수 없어요.",
+      askNote: intake && !isDl ? "최초접수와 함께 만들어진 처리 기한 일정 3건도 같이 삭제되고, 알림에서도 빠집니다." : "삭제하면 되돌릴 수 없습니다.",
       doneLabel: e.done ? "✓ 완료 취소" : "완료 표시",
       doneCls: e.done ? "btn-s" : "btn-p",
       toggleDone: () => patch(e, { deadline_done: { [String(e.dl)]: !e.done } }),

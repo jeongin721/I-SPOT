@@ -520,7 +520,7 @@ export default function SttReview(props) {
                           </button>
                         ))}
                         <span className="xa-note">
-                          1초보다 짧아 떨림 · 웅얼거림 · 작게 말함을 분석하지 않은 아동 발화예요. '이상 없음'과는 달라요.
+                          1초보다 짧아 떨림 · 웅얼거림 · 작게 말함을 분석하지 않은 아동 발화입니다. '이상 없음'과는 다릅니다.
                         </span>
                       </span>
                     </span>

@@ -5,6 +5,8 @@
 //    연결이 없을 때만 저장한 것을 내준다. 새 문서를 받으면 그 문서가 쓰지 않는 옛 화면 파일(assets)은 지운다.
 //  - 화면 파일(/assets/* — 빌드마다 이름이 바뀌므로 내용이 안 바뀜) · 앱 아이콘(/app/*): 저장한 것이 있으면 그것, 없으면 받아서 저장.
 //  - 글꼴(Google Fonts): 저장한 것을 먼저, 뒤에서 새로 받아 둔다.
+//  - 폰 알림(2026-11-19, API_CONTRACT 27절): 서버가 보낸 푸시(상담 30분 전 · 시험)를 띄우고, 누르면 앱의 그 화면을 연다.
+//    문구는 서버가 정한다(아이 이름 · 사례 내용 없음). 내용을 못 읽으면 일반 문구로 띄운다(iPhone 은 푸시마다 알림을 꼭 띄워야 한다).
 //  - API(/api/*) · 아동 앱(/child-app/*) · 그 밖의 요청은 손대지 않는다(상담 자료는 폰에 저장하지 않는다 — 녹음 대기열은 앱이 따로 둔다).
 
 const SHELL = "ispot-app-shell-v2";
@@ -154,4 +156,51 @@ self.addEventListener("fetch", (event) => {
       })(),
     );
   }
+});
+
+self.addEventListener("push", (event) => {
+  let msg = {};
+
+  try {
+    msg = event.data ? event.data.json() : {};
+  } catch {
+    msg = {};
+  }
+
+  // 같은 사이트 안의 경로만 받는다. "//host" · "/\\host" 는 다른 사이트로 가므로 막는다(민규 #186).
+  const url = typeof msg.url === "string" && msg.url.startsWith("/") && !/^\/[\/\\]/.test(msg.url) ? msg.url : "/#/AppHome";
+
+  event.waitUntil(
+    self.registration.showNotification(msg.title || "I-SPOT", {
+      body: msg.body || "새 알림이 있어요.",
+      tag: msg.tag || undefined,
+      icon: "/app/icon-192.png",
+      badge: "/app/icon-192.png",
+      data: { url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const asked = new URL((event.notification.data && event.notification.data.url) || "/#/AppHome", self.location.origin);
+  // 알림을 누르면 이 사이트 안에서만 연다(민규 #186).
+  const url = asked.origin === self.location.origin ? asked.href : new URL("/#/AppHome", self.location.origin).href;
+
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+      for (const win of wins) {
+        if (new URL(win.url).origin === self.location.origin && "focus" in win) {
+          await win.focus();
+          if ("navigate" in win) await win.navigate(url).catch(() => undefined);
+          return;
+        }
+      }
+
+      await self.clients.openWindow(url);
+    })(),
+  );
 });

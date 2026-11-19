@@ -186,7 +186,7 @@ function UploadModalScreen(props) {
           <div style={{ padding: '24px 30px', minHeight: '360px' }}>
             {v.s1 ? (
               <>
-                <p className="lb">어느 아이의 자료인가요?</p>
+                <p className="lb">어느 아이의 자료입니까?</p>
                 <input
                   className="inp"
                   type="search"
@@ -251,7 +251,7 @@ function UploadModalScreen(props) {
                     gap: '10px',
                   }}
                 >
-                  <span style={{ flex: '1 1 240px', fontSize: '13px' }}>찾는 아이가 없나요?</span>
+                  <span style={{ flex: '1 1 240px', fontSize: '13px' }}>찾는 아이가 없습니까?</span>
                   <A className="btn btn-sm btn-s" to={v.registerHref}>
                     + 새 사례 등록
                   </A>
@@ -265,7 +265,7 @@ function UploadModalScreen(props) {
                 >
                   <b style={{ fontWeight: '500' }}>{v.caseName}</b>
                 </div>
-                <p className="lb">몇 회차 상담인가요?</p>
+                <p className="lb">몇 회차 상담입니까?</p>
                 <div
                   style={{
                     display: 'flex',
@@ -312,6 +312,19 @@ function UploadModalScreen(props) {
                     </p>
                   ) : null}
                 </div>
+                {/* 상담 유형(11/19 경진) — 사례 상세 '녹음하기' 창과 같은 칸. 종결 검토 '회차별 흐름' 유형에 나온다. */}
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '16px' }}>
+                  <span className="lb" style={{ margin: 0 }}>
+                    상담 유형
+                  </span>
+                  <select className="inp" value={v.kind} onChange={v.setKind}>
+                    {v.kindOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </>
             ) : null}
             {v.s3 ? (
@@ -390,6 +403,11 @@ function UploadModalScreen(props) {
                 {v.fileError ? (
                   <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#A33B2E' }}>
                     {v.fileError}
+                  </p>
+                ) : null}
+                {v.kindError ? (
+                  <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#A33B2E' }}>
+                    {v.kindError}
                   </p>
                 ) : null}
                 <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>

@@ -16,6 +16,22 @@ interface AnswerItem {
 }
 
 const MAX_PREVIOUS = 3;
+/** 서버 child_app_service.CONTACT_REQUEST_CHIP · AI_QUESTION_PREFIX 와 같게 둔다. */
+const CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요";
+const AI_QUESTION_PREFIX = "ai_";
+
+/**
+ * 한 묶음의 답 중 상담사가 먼저 볼 답의 순서(낮을수록 먼저). 볼 필요 없는 답은 null.
+ * 위험 답(RED) → 연락 요청 → 주의 답(AMBER) → 추가 질문(AI, 위험 답의 후속)에 대한 답. 넘긴 답('답하기 어려워요')은 빼낸다.
+ */
+function checkRank(item: AnswerItem): number | null {
+  if (item.level === "SKIP") return null;
+  if (item.level === "RED") return 0;
+  if (item.answer.includes(CONTACT_REQUEST_CHIP)) return 1;
+  if (item.level === "AMBER") return 2;
+  if (item.question_id.startsWith(AI_QUESTION_PREFIX)) return 3;
+  return null;
+}
 const RECENT_DAYS = 21;
 
 export function childDateTime(iso: string | null | undefined): string {
@@ -27,6 +43,26 @@ export function childDateTime(iso: string | null | undefined): string {
 
 function itemsOf(event: ChildAppEvent): AnswerItem[] {
   return Array.isArray(event.payload.items) ? (event.payload.items as AnswerItem[]) : [];
+}
+
+/**
+ * 아이가 쓴 글(새것부터): 질문 답의 글 · 선생님께 메시지 글 · 지금 기분의 이유(11/19 콩콩 디자인 맞춤).
+ * 칩만 고르거나 표정만 고른 것은 글이 아니라 뺀다. 아이 상세 · 상담 전 브리핑 · 종결 검토의 '아이가 쓴 글' 칸이 같이 쓴다.
+ */
+export function childWritings(feed: ChildAppEvent[]): { text: string; at: string }[] {
+  return feed.flatMap((event) => {
+    const texts: unknown[] =
+      event.kind === "ANSWERS"
+        ? itemsOf(event).filter((item) => item.wrote_text).map((item) => item.written ?? item.answer)
+        : event.kind === "NOTE"
+          ? [event.payload.text]
+          : event.kind === "MOOD"
+            ? [event.payload.why]
+            : [];
+    return texts
+      .filter((text): text is string => typeof text === "string" && text.trim() !== "")
+      .map((text) => ({ text: text.trim(), at: childDateTime(event.created_at) }));
+  });
 }
 
 function nextLabel(next: ChildAppCase["next_consult"]): string {
@@ -93,8 +129,7 @@ export function childDetailValues(
       }))
     : [];
 
-  const writtenEvent = answered.find((event) => itemsOf(event).some((item) => item.wrote_text));
-  const writtenItem = writtenEvent ? itemsOf(writtenEvent).find((item) => item.wrote_text) : undefined;
+  const writing = childWritings(data.feed)[0];
 
   const draft = data.ai_draft && latest && data.ai_draft.event_id === latest.id ? data.ai_draft : null;
   const flaggedRows = rows.filter((row) => row.flagged);
@@ -129,8 +164,8 @@ export function childDetailValues(
     last: lastLabel,
     count: `응답 ${recent}번`,
     next: nextLabel(data.next_consult),
-    quote: writtenItem ? writtenItem.written ?? writtenItem.answer : "",
-    quoteAt: writtenEvent ? childDateTime(writtenEvent.created_at) : "",
+    quote: writing?.text ?? "",
+    quoteAt: writing?.at ?? "",
     prevLabel: "지난 답변 (오래된 순)",
     flowLabel: "이전 → 이번",
     answers: rows.map((row) => [
@@ -171,8 +206,7 @@ export function childAppHighlights(data: ChildAppCase | null | undefined) {
   if (!data || !data.can_read_feed) return null;
   const answered = data.feed.filter((event) => event.kind === "ANSWERS");
   const bank = new Map(data.bank.map((item) => [item.id, item]));
-  const writtenEvent = answered.find((event) => itemsOf(event).some((item) => item.wrote_text));
-  const writtenItem = writtenEvent ? itemsOf(writtenEvent).find((item) => item.wrote_text) : undefined;
+  const writing = childWritings(data.feed)[0];
   const latest = answered[0];
   const changes = latest
     ? itemsOf(latest).flatMap((item) => {
@@ -184,12 +218,21 @@ export function childAppHighlights(data: ChildAppCase | null | undefined) {
           : [];
       })
     : [];
+  // 가장 최근 답 묶음에서 확인이 필요한 답(같은 질문의 예전 답이 없어 '변화' 로는 안 잡히는 처음 답 · 추가 질문 답 포함).
+  const needCheck = latest
+    ? itemsOf(latest)
+        .map((item) => ({ item, rank: checkRank(item) }))
+        .filter((x): x is { item: AnswerItem; rank: number } => x.rank !== null)
+        .sort((a, b) => a.rank - b.rank)
+        .map(({ item }) => ({ question: bank.get(item.question_id)?.text ?? item.question, answer: item.answer, level: item.level }))
+    : [];
   return {
+    needCheck,
     linked: data.status === "LINKED",
     answeredCount: answered.length,
     flaggedCount: answered.filter((event) => event.level === "RED" || event.level === "AMBER").length,
     lastAt: data.last_response_at,
-    written: writtenItem ? { text: writtenItem.written ?? writtenItem.answer, at: childDateTime(writtenEvent?.created_at) } : null,
+    written: writing ?? null,
     changes,
     changedAt: latest ? childDateTime(latest.created_at) : "",
   };

@@ -2875,7 +2875,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
 
 - 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
-- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 네 칸만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 깊은 중첩 · 다른 칸이 있으면 `422`). 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명 — `docbox_service.FORM_IDENTITY_FIELDS`)이 들어오면 `422`. 본체는 앱 암호화(`PII_ENCRYPTION_KEYS`, AAD `ispot:docbox_files:body:<행 ID>:v1`)로 저장하고 `/download` 가 풀어 준다. `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
+- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 네 칸만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 깊은 중첩 · 다른 칸이 있으면 `422`). 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명 — `docbox_service.FORM_IDENTITY_FIELDS`)이 들어오면 `422`. 본체는 앱 암호화(`PII_ENCRYPTION_KEYS`, AAD `ispot:docbox_files:body:<행 ID>:v1`)로 저장하고 `/download` 가 풀어 준다. 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 이 본체(저장소 파일)도 맨 앞 키로 다시 봉인한다 — 풀지 못한 양식이 있으면 종료 코드 1, 그때 옛 키를 빼면 그 양식 `/download` 가 실패한다. `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
 - 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
 - 응답 `{ "files": [DocboxFile] }`.
 
@@ -2912,7 +2912,10 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만). 발송 예약 시각이 안 된 질문은 `pending` 에 없다 |
 | POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409(예약 시각이 된 새 질문에 밀린 질문 포함), 발송 예약 시각 전 질문은 404 |
 | POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
-| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER` · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
+| POST | `/child-app/moods` | '지금 기분 기록하기'(2026-11-19). `{mood, why?}` → 204. `mood`: `good` · `excited` · `okay` · `meh` · `surprised` · `tired` · `lonely` · `sad` · `worried` · `scared` · `angry` · `unsure`(그 외 400), `why` 60자까지. 피드 `MOOD` 줄 `payload {mood, label, why}`. `lonely` · `sad` · `worried` · `scared` · `angry` 는 `level: AMBER`(살펴볼 기분). `why` 를 적었으면 확인 필요(`TEXT_ANSWER`) |
+| POST | `/child-app/notes` | '선생님께 메시지 보내기'(2026-11-19). `{text?, chip?}` → 204. 글(200자) · 칩 중 하나는 있어야 한다(없으면 400). `chip`: `만나서 이야기할게요` · `전화로 연락받고 싶어요` · `알려 드리고 싶었어요`. 피드 `NOTE` 줄 `payload {text, chip, alert_reason}`, 늘 확인 필요 — `전화로 연락받고 싶어요` 면 `CONTACT_REQUEST`(긴급 쪽), 아니면 `NOTE` |
+| POST | `/child-app/schedule-requests` | 일정 탭 '참석이 어려워요'(2026-11-19). `{reason, etc?}` → 204. `reason`: `몸이 안 좋아요` · `학교·학원 일정이 있어요` · `가고 싶지 않아요` · `말하기 어려워요` · `기타`(`기타` 면 `etc` 60자 필수). 다음 상담이 없으면 409 `INVALID_CASE_STATE`. 피드 `SCHEDULE_REQUEST` 줄 `payload {consult_date, consult_time, reason, etc, alert_reason: "SCHEDULE_REQUEST"}`(장소는 남기지 않음), 확인 필요 |
+| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`(글을 쓴 답 · 이유를 적은 기분) · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀) · `NOTE`(선생님께 메시지) · `SCHEDULE_REQUEST`(참석 어려움), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
 | POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
 | GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null) · `scheduled_questions`(발송 예약해 둔 질문 `{id, count, deliver_at}`, 담당 상담사만 · 없으면 null). `has_pending_questions` 는 예약해 둔 질문이 있어도 true 다. 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
 | POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
@@ -2941,7 +2944,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
 
-`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT`. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+`status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT` · `MOOD` · `NOTE` · `SCHEDULE_REQUEST`. 기분 · 메시지 · 참석 어려움은 사례마다 종류별로 하루(한국 시간) 20번까지(넘으면 429 `RATE_LIMITED`)이고, 보내면 `last_response_at` 이 오른다. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
 
 **발송 예약(2026-11-11).** `deliver: "EVENING"` 으로 보낸 질문은 누른 날 `CHILD_APP_DELIVER_HOUR` 시(기본 18, 한국 시각)부터 아이 앱에 보인다. 시각은 서버가 정하고, 그 시가 지난 뒤에 누르면 바로 보낸다(`scheduled_questions` 는 null). 아이 기기로 가는 알림은 없다 — 아이가 앱을 열 때 받는다.
 - 예약해 둔 질문은 사례마다 하나다. 다시 예약하거나 바로 보내면 앞 예약은 취소된다.
@@ -3006,3 +3009,33 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 연결이 없을 때 누른 체크는 화면이 기기에 맡겨 두었다가(누른 때의 `visible` 과 함께) 연결되면 한 줄씩 보낸다.
 - 볼 수 있는 회차만(담당 상담사 · 관리자, 남의 회차는 `403` · `404`). 회차 상태는 따지지 않는다.
 - 감사 기록 `BRIEFING_CHECK_UPDATED`: `detail` 에 켬 · 끔과 개수만(문장은 넣지 않는다).
+
+---
+
+## 27. Push (상담사 앱(폰) 알림 — 웹 푸시, 2026-11-19)
+
+상담사 앱(폰) 설정의 알림 스위치 3개(디자인 그대로)를 켠다. 웹 푸시(RFC 8030 · 8291 · 8292)라 앱 설치 없이 되고, iPhone 은
+**홈 화면에 추가한 앱**(iOS 16.4+)에서만 된다. 서버 키(`VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`)가 없으면 꺼져 있다.
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/push/config` | `{ enabled, public_key, before_session_minutes }`. 꺼져 있으면 `enabled: false` · `public_key: null` |
+| PUT | `/push/subscription` | `{ endpoint, keys: { p256dh, auth }, before_session, upload_failed }` — 이 폰을 켠다 · 설정을 바꾼다. `{ before_session, upload_failed }` |
+| POST | `/push/unsubscribe` | `{ endpoint }` — 이 폰을 끈다(내 것만, 없으면 그대로). `{ ok: true }` |
+| POST | `/push/test` | 내 폰들에 '알림이 켜졌어요'. `{ sent, failed }`. 사람마다 1시간에 10번까지(넘으면 `429 RATE_LIMITED`) |
+
+- 로그인한 사람 누구나(상담사 · 관리자). 꺼져 있으면 PUT · test 는 `503 PUSH_DISABLED`.
+- 구독은 폰(브라우저) 하나가 한 행(`push_subscriptions`, endpoint 로 겹치지 않음). 같은 endpoint 를 다시 보내면 덮어쓰고, 다른 계정이
+  쓰던 폰이면 **지금 계정으로 옮긴다**(한 폰은 마지막에 켠 계정 것). 한 사람 10대까지 — 넘으면 가장 오래 전에 고친 것을 지운다.
+  `endpoint` 는 브라우저 푸시 서비스 주소만 받는다(그 밖은 `422`): `https://` 이고 호스트가 `fcm.googleapis.com` · `updates.push.services.mozilla.com` · `*.push.apple.com` · `*.notify.windows.com`, 사용자 · 포트(443 밖) 없음. 서버는 보낼 때 이동(3xx)을 따라가지 않는다(실패로 셈). 앱은 로그아웃할 때 이 폰을 끄고, 로그인이 풀릴 때(만료 · 웹 로그아웃 · 다른 탭) 폰 구독을 지운다(서버는 다음 보내기 때 `404` · `410` 을 받고 지움).
+- **상담 30분 전**(`before_session`): 서버 실행기(`PUSH_LOOP_ENABLED=true` 일 때만 앱 시작 때 뜸 — 시험 · CI · 로컬은 끔, `PUSH_LOOP_SECONDS` 마다)가 지금부터 `PUSH_BEFORE_SESSION_MINUTES`(30)
+  안에 시작하는 **상담 일정(`kind=CONSULT`, 시간 있음)** 을 찾아 **일정을 만든 사람**의 켜진 폰들에 보낸다. 시각은 한국 시간.
+  같은 일정 · 같은 시각은 한 번만 — 보내기 **전에** `push_deliveries` 에 (사람, 종류, 일정@시각)을 넣고, 유일 조건에 걸리면 건너뛴다
+  (먼저 읽고 넣는 방식이 아니라 서버가 여럿이어도 한 번). 바깥 푸시 서비스로 보내는 HTTP 는 스레드에서 해서 다른 API 응답을 막지 않는다. 시간을 바꾸면 새 시각에 다시 알린다.
+  켜진 폰이 없으면 기록도 남기지 않는다. 정지된 계정에는 보내지 않는다. 보낸 기록은 3일 뒤 지운다.
+- **업로드 실패**(`upload_failed`): 녹음은 폰에 있으므로 폰이 스스로 띄운다(녹음 하나에 한 번). 서버는 설정만 기억한다.
+- 문구: 잠금 화면에 보이므로 **아이 이름 · 사례 · 일정 제목 · 장소를 넣지 않는다**. 상담 30분 전은 `"HH:MM 상담 일정이 있어요."`,
+  누르면 앱 일정 화면. 본문은 폰의 키로 암호화해 보낸다(푸시 서비스는 못 읽는다). 감사 기록 · 로그에 문구 · endpoint 를 남기지 않는다.
+- 푸시 서비스가 `404` · `410` 을 주면(앱 지움 · 알림 끔 · 만료) 그 구독을 지운다. 연결 오류 · 5xx 가 10번 이어져도 지운다. `401` · `403`(서버 VAPID 키 거절 — 설정 문제)은 실패 횟수에 넣지 않는다.
+- 키: `python -m scripts.make_vapid_key` 로 개인키를 만들어 backend.env 에 넣는다(Parameter Store 에도). 공개키는 서버가 계산해
+  `GET /push/config` 로 준다. **키를 바꾸면 폰마다 알림을 다시 켜야 한다**(스위치를 껐다 켜면 새 키로 다시 구독한다).

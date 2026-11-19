@@ -258,7 +258,7 @@ export default function DocBox(props) {
               ) : null}
               {v.noDocs ? (
                 <div className="empty">
-                  이 폴더에는 아직 문서가 없어요 · ‘문서 올리기’로 추가하거나 다른 폴더의 문서를 옮겨 오세요
+                  이 폴더에는 아직 문서가 없습니다 · ‘문서 올리기’로 추가하거나 다른 폴더의 문서를 옮겨 오십시오
                 </div>
               ) : null}
             </section>

@@ -368,8 +368,8 @@ function ScheduleScreen(props) {
                   {ev.isDl ? (
                     <>
                       <p className="note" style={{ margin: '0' }}>
-                        처리 기한 일정은 최초접수 일정에 맞춰 자동으로 만들어져요. 날짜를 바꾸거나 지우려면 최초접수 일정에서 수정 ·
-                        삭제해 주세요.
+                        처리 기한 일정은 최초접수 일정에 맞춰 자동으로 만들어집니다. 날짜를 바꾸거나 지우려면 최초접수 일정에서 수정 ·
+                        삭제해 주십시오.
                       </p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end' }}>
                         <button type="button" className="btn btn-s" onClick={ev.goBase}>
@@ -395,7 +395,7 @@ function ScheduleScreen(props) {
                       ) : null}
                       {ev.ask ? (
                         <div className="vd-ask" role="alertdialog" aria-label="일정 삭제 확인">
-                          <b>이 일정을 삭제할까요?</b>
+                          <b>이 일정을 삭제하시겠습니까?</b>
                           <span className="note">{ev.askNote}</span>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                             <button type="button" className="btn btn-s" onClick={ev.cancelDel}>
@@ -498,7 +498,7 @@ function ScheduleScreen(props) {
                                 <span className="note">{p.due}까지</span>
                               </div>
                             ))}
-                            <span className="note">저장하면 기한 일정이 달력에 표시되고 알림에 추가돼요.</span>
+                            <span className="note">저장하면 기한 일정이 달력에 표시되고 알림에 추가됩니다.</span>
                           </div>
                         </>
                       ) : null}

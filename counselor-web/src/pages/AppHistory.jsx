@@ -12,10 +12,13 @@
 //      · 주요 발화: 요약 근거 발화(summary_evidence) 중 앞의 3개를 원문에서 찾아 '시각 · 화자 "말"'(근거가 있을 때만 원문을 부른다).
 //      · 신호: 신호 이력의 세부 신호(AI 제안, 화자 확인 중이면 '보류'). 머리글 없이 칩만(디자인 그대로).
 //  - '기록 보기': 그 회차의 상담 기록 화면(AppSessionRecord — 요약 사정 관점 4칸 · 일지 전문, 읽기 전용, 11/19).
+//  - 11/19 디자인: 회차 선택 목록이 아래 창이 아니라 버튼 아래로 펼쳐진다(아래 공간이 모자라면 위로, 목록 안 스크롤).
+//    회차를 고르면 그 회차 카드가 올라온다(동작 줄이기면 움직이지 않음).
 // 고치기는 웹에서 한다. 이 화면은 폰에 아무것도 저장하지 않는다.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import MobileAppShell from '../components/MobileAppShell';
+import { closeWithAnim, staggerIn } from '../components/MobileAppShellMotion';
 import { documents as documentsApi, summary as summaryApi, transcript as transcriptApi } from '../api/endpoints';
 import { DOC_TYPE_CONSULTATION_RECORD } from '../api/types';
 import { appFrom } from '../data/appReturn';
@@ -135,7 +138,21 @@ function HistoryBody({ caseId }) {
   const v = caseHistoryValues({ session, detail, history, approved, caseId });
   const [pick, setPick] = useState(null);
   const [pkOpen, setPkOpen] = useState(false);
-  const stop = (ev) => ev.stopPropagation();
+  // 펼친 목록의 방향(위로 펼침)과 높이(디자인 pkUp · pkMax).
+  const [pkUp, setPkUp] = useState(false);
+  const [pkMax, setPkMax] = useState(300);
+  const btnRef = useRef(null);
+  const dropRef = useRef(null);
+  const firstPick = useRef(true);
+
+  // 회차를 고르면 그 회차 카드를 올린다(디자인 CH.pick).
+  useEffect(() => {
+    if (firstPick.current) {
+      firstPick.current = false;
+      return;
+    }
+    staggerIn('.ma-amain .ma-ss');
+  }, [pick]);
 
   const rows = detail.sessions.map((row) => ({
     ...row,
@@ -155,6 +172,41 @@ function HistoryBody({ caseId }) {
   const historyRow = cur ? history.sessions.find((h) => h.session_id === cur.id) : null;
 
   if (detail.error) return <span className="ma-err">{detail.error}</span>;
+
+  const pkClose = (then) =>
+    closeWithAnim(dropRef.current, () => {
+      setPkOpen(false);
+      if (then) then();
+    });
+  // 버튼 아래 공간(아래 메뉴 위까지)이 모자라면 위(머리 아래까지)로 펼친다. 높이는 회차 수만큼, 최대 300px(디자인 값).
+  const pkOpenFn = () => {
+    if (pkOpen) {
+      pkClose();
+      return;
+    }
+    let up = false;
+    let mx = 300;
+    try {
+      const b = btnRef.current.getBoundingClientRect();
+      const tb = document.querySelector('.ma-tabs');
+      const hd = document.querySelector('.ma-ahd');
+      const bottomEdge = tb ? tb.getBoundingClientRect().top : window.innerHeight;
+      const topEdge = hd ? hd.getBoundingClientRect().bottom : 0;
+      const below = bottomEdge - b.bottom - 14;
+      const above = b.top - topEdge - 14;
+      const want = Math.min(300, rows.length * 58 + 16);
+      if (below >= Math.min(want, 180)) mx = Math.min(want, below);
+      else if (above > below) {
+        up = true;
+        mx = Math.min(want, above);
+      } else mx = Math.max(below, 120);
+    } catch {
+      // 자리를 못 재면 아래로 300px
+    }
+    setPkUp(up);
+    setPkMax(Math.max(120, Math.round(mx)));
+    setPkOpen(true);
+  };
 
   return (
     <>
@@ -196,49 +248,47 @@ function HistoryBody({ caseId }) {
       <p className="ma-sec-t">회차별 상담 내역 · {total}회</p>
       {v.sessionsNote ? <span className="ma-note">{v.sessionsNote}</span> : null}
       {rows.length > 0 ? (
-        <button type="button" className="ma-card ma-pk-btn" aria-haspopup="dialog" onClick={() => setPkOpen(true)}>
-          <span className="ma-pk-l">{cur ? cur.numberLabel : '회차 선택'}</span>
-          <span className="ma-pk-s">{cur ? `${cur.date} · ${cur.kindLabel}` : ''}</span>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
-        </button>
+        <div className="ma-pk-wrap">
+          <button
+            type="button"
+            ref={btnRef}
+            className={'ma-card ma-pk-btn' + (pkOpen ? ' ma-open' : '')}
+            aria-haspopup="listbox"
+            aria-expanded={pkOpen ? 'true' : 'false'}
+            onClick={pkOpenFn}
+          >
+            <span className="ma-pk-l">{cur ? cur.numberLabel : '회차 선택'}</span>
+            <span className="ma-pk-s">{cur ? `${cur.date} · ${cur.kindLabel}` : ''}</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          {pkOpen && (
+            <>
+              <div className="ma-pk-catch" onClick={() => pkClose()}></div>
+              <div ref={dropRef} className={'ma-pk-drop' + (pkUp ? ' ma-up' : '')} style={{ maxHeight: pkMax + 'px' }} role="listbox" aria-label="회차 목록">
+                {rows.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={'ma-pk-it' + (r.id === pick ? ' ma-on' : '')}
+                    role="option"
+                    aria-selected={r.id === pick ? 'true' : 'false'}
+                    onClick={() => pkClose(() => setPick(r.id))}
+                  >
+                    <b>{r.numberLabel}</b>
+                    <span className="ma-note">
+                      {r.date} · {r.kindLabel}
+                    </span>
+                    <span className={TONE_MA[r.tone] ?? 'ma-chip'} style={{ marginLeft: 'auto' }}>
+                      {r.statusLabel}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       ) : null}
       {cur ? <SessionCard key={cur.id} row={cur} historyRow={historyRow} /> : null}
-      {pkOpen && (
-        <div className="ma-ov" onClick={() => setPkOpen(false)}>
-          <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="회차 선택" onClick={stop}>
-            <span className="ma-grab" aria-hidden="true"></span>
-            <div className="ma-sh-hd">
-              <b>회차 선택</b>
-              <button type="button" className="ma-btn ma-btn-sm" onClick={() => setPkOpen(false)}>
-                닫기
-              </button>
-            </div>
-            <div className="ma-pk-list" role="listbox" aria-label="회차 목록">
-              {rows.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className={'ma-pk-it' + (r.id === pick ? ' ma-on' : '')}
-                  role="option"
-                  aria-selected={r.id === pick ? 'true' : 'false'}
-                  onClick={() => {
-                    setPick(r.id);
-                    setPkOpen(false);
-                  }}
-                >
-                  <b>{r.numberLabel}</b>
-                  <span className="ma-note">
-                    {r.date} · {r.kindLabel}
-                  </span>
-                  <span className={TONE_MA[r.tone] ?? 'ma-chip'} style={{ marginLeft: 'auto' }}>
-                    {r.statusLabel}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        </div>
-      )}
     </>
   );
 }

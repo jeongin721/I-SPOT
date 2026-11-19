@@ -394,7 +394,7 @@ export function sttReviewValues(input: SttScreenInput) {
           : null;
     let hint = "";
 
-    if (done) hint = "확인했어요";
+    if (done) hint = "확인했습니다";
     else if (row.lowConfidence) hint = "저신뢰 · 다시 듣고 확인해 주세요";
     else if (row.speakerUnknown) hint = "화자 확인 필요";
     if (row.dirty) hint = hint ? `${hint} · 저장 전` : "저장 전";

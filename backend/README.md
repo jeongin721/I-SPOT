@@ -452,6 +452,8 @@ backend/
     **옛 키는 모든 서버가 새 키로 다시 뜬 뒤 스크립트를 다시 돌려 종료 코드 0(풀지 못한 사례 · 겹쳐 못 바꾼 사례 모두 0)이 나왔을 때만 뺀다.**
     그 전에 빼면 아직 옛 키로 된 값이 `PERSONAL_INFO_UNAVAILABLE` 이 된다.
     같은 스크립트가 아래 상담 본문 칸도 맨 앞 키로 다시 암호화한다(풀지 못한 본문 행이 있어도 종료 코드 1).
+    문서함 작성 양식 파일(`.ispotform`) 본체도 같은 키라 저장소 파일을 맨 앞 키로 다시 써 넣는다(임시 파일 → 바꿔 끼우기,
+    풀지 못한 양식이 있으면 행 ID 만 출력하고 종료 코드 1, 본체 파일이 없는 행은 출력만 하고 종료 코드에 넣지 않음).
 - **상담 본문 암호화(1 · 2단계, 2026-11-16)**
   - 1단계 `documents.content` · `transcript_segments.text` · `consultation_summaries.overview · key_points · counselor_note` ·
     `consultation_sessions.memo` · `ai_analyses.result`,

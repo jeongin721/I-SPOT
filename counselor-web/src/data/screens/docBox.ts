@@ -143,7 +143,7 @@ export function docBoxValues(input: DocBoxInput) {
     open: () => setState({ form: { id: form.id, editing: true } }),
     download: () =>
       setState({
-        msg: downloadBlankForm(form) ? `‘${form.name}’ 내려받기를 시작했어요` : "이 환경에서는 내려받기를 할 수 없어요",
+        msg: downloadBlankForm(form) ? `‘${form.name}’ 내려받기를 시작했습니다` : "이 환경에서는 내려받기를 할 수 없습니다",
       }),
   });
 
@@ -182,13 +182,13 @@ export function docBoxValues(input: DocBoxInput) {
       delLabel: `${d.name} 지우기`,
       askDelete: () => setState({ deleting: { id: d.id, name: d.name } }),
       download: async () => {
-        if (await box.download(d.id, d.name)) setState({ msg: `‘${d.name}’ 내려받기를 시작했어요` });
+        if (await box.download(d.id, d.name)) setState({ msg: `‘${d.name}’ 내려받기를 시작했습니다` });
       },
       move: async (e: { target: { value: string } }) => {
         const v = e.target.value;
         const target = v === NONE ? null : v;
         if (box.busy || target === d.folder_id) return;
-        if (await box.move(d.id, target)) setState({ msg: `‘${d.name}’을(를) ${fname(target)}(으)로 옮겼어요` });
+        if (await box.move(d.id, target)) setState({ msg: `‘${d.name}’을(를) ${fname(target)}(으)로 옮겼습니다` });
       },
     };
   };
@@ -206,7 +206,7 @@ export function docBoxValues(input: DocBoxInput) {
     const folder = s.cur === "all" || s.cur === NONE || isFixed(s.cur) ? null : s.cur;
     const count = await box.upload(picked, folder);
     // 화면에만 있는 빈 양식 폴더에서 올린 문서는 그 칸에 보이지 않으므로 전체 문서로 옮겨 보여 준다.
-    if (count > 0) setState({ msg: `${count}개 문서를 ${fname(folder)}에 올렸어요`, cur: isFixed(s.cur) ? "all" : s.cur });
+    if (count > 0) setState({ msg: `${count}개 문서를 ${fname(folder)}에 올렸습니다`, cur: isFixed(s.cur) ? "all" : s.cur });
   };
 
   const sorts = (
@@ -228,7 +228,7 @@ export function docBoxValues(input: DocBoxInput) {
     const n = s.newName.trim();
     if (!n || box.busy) return;
     const id = await box.createFolder(n);
-    if (id) setState({ cur: id, adding: false, newName: "", msg: `‘${n}’ 폴더를 만들었어요` });
+    if (id) setState({ cur: id, adding: false, newName: "", msg: `‘${n}’ 폴더를 만들었습니다` });
   };
 
   const target = s.deleting;
@@ -293,7 +293,7 @@ export function docBoxValues(input: DocBoxInput) {
       }
       const file = new File([formFileText(openForm.id, values)], `${title}.${FORM_FILE_EXT}`, { type: "application/json" });
       const count = await box.upload([file], folder);
-      if (count > 0) setState({ msg: `‘${title}’ 을(를) ${label}에 저장했어요` });
+      if (count > 0) setState({ msg: `‘${title}’ 을(를) ${label}에 저장했습니다` });
       return count > 0;
     },
     notice: screenNotice({ session, loading: box.loading && !data, error: box.error, retry: box.reload }),

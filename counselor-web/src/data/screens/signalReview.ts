@@ -432,7 +432,7 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
 
     if (!completed) matched = "AI 분석이 끝나면 보입니다.";
     else if (level !== null) matched = `${level}단계 · ${SEVERITY_RUBRIC[type][level - 1]}`;
-    else if (suggestion) matched = "근거가 약해 단계를 매기지 않았어요(정보 부족).";
+    else if (suggestion) matched = "근거가 약해 단계를 매기지 않았습니다(정보 부족).";
     else matched = state === "signal" || state === "unknown" ? "AI 심각도 제안이 없습니다." : "해당 내용 없음";
 
     return {

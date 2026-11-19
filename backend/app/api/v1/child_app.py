@@ -28,6 +28,9 @@ from app.schemas.child_app import (
     ChildHomeResponse,
     ChildLinkRequest,
     ChildLinkResponse,
+    ChildMoodRequest,
+    ChildNoteRequest,
+    ChildScheduleRequest,
     ChildOpenAlert,
     ChildQuestionSendRequest,
     ChildRecentAlert,
@@ -94,6 +97,21 @@ def send_alert(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildAlert
     child_app_service.send_alert(db, link)
 
     return DataResponse(data=ChildAlertReceived())
+
+
+@device_router.post("/moods", status_code=status.HTTP_204_NO_CONTENT, summary="지금 기분 기록하기")
+def record_mood(payload: ChildMoodRequest, db: DbSession, link: CurrentChildLink) -> None:
+    child_app_service.record_mood(db, link, payload.mood, payload.why)
+
+
+@device_router.post("/notes", status_code=status.HTTP_204_NO_CONTENT, summary="선생님께 메시지 보내기")
+def send_note(payload: ChildNoteRequest, db: DbSession, link: CurrentChildLink) -> None:
+    child_app_service.send_note(db, link, payload.text, payload.chip)
+
+
+@device_router.post("/schedule-requests", status_code=status.HTTP_204_NO_CONTENT, summary="다음 상담 참석이 어려워요")
+def request_reschedule(payload: ChildScheduleRequest, db: DbSession, link: CurrentChildLink) -> None:
+    child_app_service.request_reschedule(db, link, payload.reason, payload.etc)
 
 
 @stats_router.get("", response_model=DataResponse[ChildAppStats], summary="아이 앱 응답률(관리자)")

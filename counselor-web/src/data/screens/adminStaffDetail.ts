@@ -36,19 +36,19 @@ export const INITIAL_STAFF_DETAIL_UI: StaffDetailUiState = { ask: null, issued: 
 const ASK_TEXT: Record<AccountAsk, { label: string; question: (name: string) => string }> = {
   resetPassword: {
     label: "비밀번호 초기화",
-    question: (name) => `${name} 계정의 비밀번호를 초기화할까요? 임시 비밀번호가 새로 나오고 그 계정의 로그인은 모두 끊깁니다.`,
+    question: (name) => `${name} 계정의 비밀번호를 초기화하시겠습니까? 임시 비밀번호가 새로 나오고 그 계정의 로그인은 모두 끊깁니다.`,
   },
   reactivate: {
     label: "휴면 해제",
-    question: (name) => `${name} 계정의 휴면을 풀까요? 임시 비밀번호가 새로 나옵니다.`,
+    question: (name) => `${name} 계정의 휴면을 푸시겠습니까? 임시 비밀번호가 새로 나옵니다.`,
   },
   deactivate: {
     label: "계정 비활성화",
-    question: (name) => `${name} 계정을 비활성화할까요? 그 계정의 로그인이 모두 끊기고 다시 활성화하기 전에는 로그인할 수 없습니다.`,
+    question: (name) => `${name} 계정을 비활성화하시겠습니까? 그 계정의 로그인이 모두 끊기고 다시 활성화하기 전에는 로그인할 수 없습니다.`,
   },
   logoutAll: {
     label: "강제 로그아웃",
-    question: (name) => `${name} 계정의 모든 기기 로그인을 끊을까요? 비밀번호는 그대로입니다.`,
+    question: (name) => `${name} 계정의 모든 기기 로그인을 끊으시겠습니까? 비밀번호는 그대로입니다.`,
   },
 };
 

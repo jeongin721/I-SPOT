@@ -271,7 +271,7 @@ function FollowupQScreen(props) {
                     className="edit-in"
                     rows="2"
                     aria-label="새 확인 사항"
-                    placeholder="새 확인 사항을 적어 주세요"
+                    placeholder="새 확인 사항을 적어 주십시오"
                     value={r.draft}
                     onChange={r.setDraft}
                   ></textarea>
@@ -424,7 +424,7 @@ function FollowupQScreen(props) {
                     className="edit-in"
                     rows={2}
                     aria-label="새 질문 문장"
-                    placeholder="아이에게 물어볼 질문을 적어 주세요"
+                    placeholder="아이에게 물어볼 질문을 적어 주십시오"
                     value={r.text}
                     onChange={(e) => r.setText(e.target.value)}
                   />

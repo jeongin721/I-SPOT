@@ -23,6 +23,7 @@
 
 import { ApiError, getToken, request } from "../api/client";
 import type { AudioFile, ConsultationType, Session, SessionDetail, SessionStatus } from "../api/types";
+import { notifyUploadFailed } from "./appPush";
 import { parseBackendTime } from "./time";
 
 export type RecordingStatus = "wait" | "run" | "fail" | "done";
@@ -65,6 +66,8 @@ export interface RecordingItem {
   needNewSession?: boolean;
   /** 연결 끊김 · 서버 오류(5xx) · 시간 초과로 실패했는가. 그런 줄만 자동으로 다시 올린다. 옛 줄은 키가 없다. */
   autoRetry?: boolean;
+  /** 실패를 폰 알림으로 알렸는가(녹음 하나에 한 번, 27절). */
+  failNotified?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -216,8 +219,14 @@ async function patchItem(id: string, patch: Partial<RecordingItem>): Promise<Rec
   if (!item) return null;
 
   const next = { ...item, ...patch, updatedAt: Date.now() };
+  // 처음 '실패' 가 될 때 한 번 폰 알림(설정에서 켰을 때만). 자동으로 다시 올리다 또 실패해도 다시 울리지 않는다.
+  const notify = patch.status === "fail" && item.status !== "fail" && !item.failNotified;
+
+  if (notify) next.failNotified = true;
 
   await putItem(next);
+
+  if (notify) notifyUploadFailed();
 
   return next;
 }

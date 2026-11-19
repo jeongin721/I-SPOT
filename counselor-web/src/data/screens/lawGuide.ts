@@ -169,8 +169,8 @@ export function lawGuideValues(input: LawGuideInput) {
       lead:
         // 2026-10-28: 매뉴얼 사진은 기관 대외비라 AI 에 보내지 않는다(MANUAL_QA_ATTACH_IMAGES 기본 끔, #107).
         // 그래서 AI 질문은 공개 법령만으로 답한다 — 디자인 문구의 '매뉴얼 · 매뉴얼 쪽수' 를 뺐다.
-        "공개 법령인 아동복지법 · 아동학대범죄의 처벌 등에 관한 특례법을 참조해 답해요. " +
-        "답변마다 근거 조문을 보여 드려요.",
+        "공개 법령인 아동복지법 · 아동학대범죄의 처벌 등에 관한 특례법을 참조해 답합니다. " +
+        "답변마다 근거 조문을 보여 드립니다.",
       intro: "안녕하세요. 아동복지법 · 아동학대처벌법을 바탕으로 답해 드리는 자리예요.",
       messages,
       pending: chat.pending,
@@ -184,9 +184,9 @@ export function lawGuideValues(input: LawGuideInput) {
       setDraft: (value: string) => setState({ draft: value }),
       submit: () => ask(state.draft),
       placeholder: "예: 응급조치 기간은 얼마나 돼요?",
-      note: "AI 답변은 참고용입니다. 최종 판단은 매뉴얼 원문과 법령을 확인해 주세요.",
+      note: "AI 답변은 참고용입니다. 최종 판단은 매뉴얼 원문과 법령을 확인해 주십시오.",
     },
-    refsLead: "자주 찾는 기준과 아동복지법 · 아동학대처벌법 주요 조문을 정리했어요. 줄을 누르면 펼쳐져요.",
+    refsLead: "자주 찾는 기준과 아동복지법 · 아동학대처벌법 주요 조문을 정리했습니다. 줄을 누르면 펼쳐집니다.",
     sources: [
       { label: "아동복지법", url: LAW_SOURCES.cw[1] },
       { label: "아동학대처벌법", url: LAW_SOURCES.cp[1] },
@@ -198,6 +198,6 @@ export function lawGuideValues(input: LawGuideInput) {
     clearScroll: () => setState({ scrollTo: null }),
     footNote:
       "요약과 조문은 2026 아동학대 대응 업무 매뉴얼(보건복지부)과 매뉴얼에 인용된 법령을 바탕으로 정리했습니다. " +
-      "개정 여부는 국가법령정보센터 원문으로 확인하세요.",
+      "개정 여부는 국가법령정보센터 원문으로 확인하십시오.",
   };
 }

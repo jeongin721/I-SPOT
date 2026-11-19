@@ -346,3 +346,53 @@ textarea.ma-inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .ma-pk-it{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer}
 .ma-pk-it b{font-size:15px}
 .ma-pk-it.ma-on{border-color:var(--ink,currentColor);box-shadow:inset 0 0 0 1px var(--ink,currentColor)}
+/* ===== 11/19 디자인: 화면 넘김 · 애니메이션(동작 줄이기 설정이면 끔). 이름은 웹 규칙과 겹치지 않게 ma- 를 붙였다. ===== */
+@keyframes ma-ap-ov{from{opacity:0}}
+@keyframes ma-ap-up{from{transform:translateY(100%)}}
+@keyframes ma-ap-dl{from{opacity:0;transform:translateY(8px) scale(.94)}}
+@keyframes ma-ap-cal{from{opacity:0;clip-path:inset(0 0 100% 0);transform:translateY(-8px)}to{opacity:1;clip-path:inset(0 0 0 0);transform:none}}
+@keyframes ma-ap-calup{from{opacity:0;clip-path:inset(100% 0 0 0);transform:translateY(8px)}to{opacity:1;clip-path:inset(0 0 0 0);transform:none}}
+@keyframes ma-ap-fade{from{opacity:0}}
+@media (prefers-reduced-motion: no-preference){
+.ma-ov{animation:ma-ap-ov .2s ease-out}
+.ma-sheet{animation:ma-ap-up .32s cubic-bezier(.2,.9,.25,1)}
+.ma-sheet.ma-sheet-c{animation:ma-ap-dl .26s cubic-bezier(.2,.9,.25,1)}
+.ma-mcal{animation:ma-ap-cal .34s cubic-bezier(.2,.9,.25,1)}
+.ma-days{animation:ma-ap-fade .24s ease-out}
+.ma-btn,.ma-ibtn,.ma-card[role=button],.ma-seg button,.ma-tab .ma-ti{transition:transform .14s ease,background-color .18s,color .18s,border-color .18s,box-shadow .18s}
+.ma-btn:active,.ma-ibtn:active,.ma-card[role=button]:active,.ma-seg button:active{transform:scale(.97)}
+.ma-tab:active .ma-ti{transform:scale(.88)}
+}
+/* 사례 요약 '메모 추가 / 메모 수정' 가운데 창 · 삭제 확인(AppCases) */
+.ma-mm-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ma-mm-acts.ma-mm-3{grid-template-columns:1fr 1fr 1fr}
+.ma-ov.ma-ov-mm,.ma-ov.ma-ov-ask{z-index:60}
+.ma-mm-q{font-size:16px;text-align:center;padding:6px 0 2px}
+.ma-mm-del{background:var(--red);border-color:var(--red);color:#FFFFFF}
+/* 이전 상담 회차 목록: 버튼 아래(모자라면 위)로 펼침, 목록 안 스크롤(AppHistory) */
+.ma-pk-wrap{position:relative}
+.ma-pk-btn svg{transition:transform .2s ease}
+.ma-pk-btn.ma-open svg{transform:rotate(180deg)}
+.ma-pk-catch{position:fixed;inset:0;z-index:15}
+.ma-pk-drop{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:20;display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;padding:8px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 12px 30px rgba(43,42,38,.18);transform-origin:top center}
+@media (prefers-reduced-motion: no-preference){.ma-pk-drop{animation:ma-ap-cal .26s cubic-bezier(.2,.9,.25,1)}}
+.ma-pk-drop.ma-up{top:auto;bottom:calc(100% + 6px);transform-origin:bottom center}
+@media (prefers-reduced-motion: no-preference){.ma-pk-drop.ma-up{animation:ma-ap-calup .26s cubic-bezier(.2,.9,.25,1)}}
+@media (prefers-reduced-motion: reduce){.ma-pk-btn svg{transition:none}}
+/* 일정 월간 달력 ‹ › 달 이동 · 'YYYY년 M월 ▾' 년도 · 월 고르기(AppSchedule) */
+.ma-s-cal .ma-calmon{display:flex;align-items:center;justify-content:center;gap:2px;min-width:0}
+.ma-cal-ar{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:none;border:0;border-radius:10px;background:transparent;color:inherit;cursor:pointer}
+.ma-cal-ar:hover{background:var(--soft)}
+.ma-cal-ym{display:inline-flex;align-items:center;gap:4px;padding:4px 6px;border:0;border-radius:8px;background:transparent;font:inherit;font-weight:700;color:inherit;cursor:pointer;white-space:nowrap}
+.ma-cal-ym:hover{background:var(--soft)}
+.ma-ym-caret{display:inline-block;font-size:11px;transition:transform .2s ease}
+.ma-ym-caret.ma-open{transform:rotate(180deg)}
+.ma-ympick{display:flex;flex-direction:column;gap:10px;padding:2px 2px 4px}
+.ma-ym-y{display:flex;align-items:center;justify-content:space-between}
+.ma-ym-y b{font-size:15.5px}
+.ma-ym-m{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ma-ym-mb{height:44px;border:1px solid var(--line);border-radius:10px;background:transparent;font:inherit;font-size:14px;color:var(--fg);cursor:pointer}
+.ma-ym-mb.ma-cur{font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.ma-ym-mb.ma-on{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+@media (prefers-reduced-motion: no-preference){.ma-ympick{animation:ma-ap-fade .2s ease-out}}
+@media (prefers-reduced-motion: reduce){.ma-ym-caret{transition:none}}

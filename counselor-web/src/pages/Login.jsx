@@ -426,7 +426,7 @@ export default function Login(props) {
             <section role="dialog" aria-modal="true" aria-labelledby="su2-title" className="sf-dlg" style={{ background: '#FFFFFF' }}>
               <div className="sf-top">
                 <h2 id="su2-title" className="sf-title">
-                  계정 정보를 입력하세요.
+                  계정 정보를 입력하십시오.
                 </h2>
                 <button type="button" className="sf-x" aria-label="닫기" onClick={v.suClose}>
                   ×

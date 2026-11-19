@@ -1790,7 +1790,7 @@ export interface ChildAppInvite {
 
 export interface ChildAppEvent {
   id: string;
-  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT";
+  kind: "LINKED" | "UNLINKED" | "QUESTIONS_SENT" | "ANSWERS" | "ALERT" | "MOOD" | "NOTE" | "SCHEDULE_REQUEST";
   level: "NONE" | "SKIP" | "AMBER" | "RED";
   payload: Record<string, any>;
   created_at: string;
@@ -1810,6 +1810,8 @@ export interface ChildOpenAlert {
     | "TEXT_ANSWER"
     | "FOLLOWUP_ANSWER"
     | "FOLLOWUP_SKIPPED"
+    | "NOTE"
+    | "SCHEDULE_REQUEST"
     | "NEEDS_CHECK";
   /** 긴급 알림 · 바로 확인 답 · 연락 요청. 나머지는 '확인 필요'. */
   urgent: boolean;
@@ -1947,4 +1949,30 @@ export interface BriefingChecks {
   checked: string[];
   updated_at: string | null;
   updated_by_id: string | null;
+}
+
+// ---------------------------------------------------------------- 상담사 앱(폰) 알림 — 웹 푸시(API_CONTRACT 27절, 2026-11-19)
+
+export interface PushConfig {
+  /** 서버에 VAPID 키가 있어 알림을 켤 수 있는가. */
+  enabled: boolean;
+  /** pushManager.subscribe 의 applicationServerKey(base64url). 꺼져 있으면 null. */
+  public_key: string | null;
+  before_session_minutes: number;
+}
+
+/** 이 폰의 알림 설정. 서버는 폰(구독)마다 따로 기억한다. */
+export interface PushPrefs {
+  before_session: boolean;
+  upload_failed: boolean;
+}
+
+export interface PushSubscriptionRequest extends PushPrefs {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+export interface PushTestResult {
+  sent: number;
+  failed: number;
 }

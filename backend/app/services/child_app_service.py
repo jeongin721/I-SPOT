@@ -48,11 +48,22 @@ ALERT_OVERDUE_AFTER = timedelta(minutes=5)
 OPEN_ALERT_LIMIT = 50
 # 관리자 긴급 알림 현황이 긴급을 모으려고 한 번에 읽는 확인 필요 줄의 최대 수.
 RECENT_SCAN_MAX = 5000
-AI_QUESTION_PREFIX = "ai_"
+AI_QUESTION_PREFIX = "ai_"  # 프론트 counselor-web/src/data/screens/childDetail.ts 에 같은 값(민규 #186)
 LIST_LIMIT = 200
 RECENT_DAYS = 21
-CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
+CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"  # 프론트 counselor-web/src/data/screens/childDetail.ts 에 같은 값(민규 #186)
 SKIP_TEXT = "답하기 어려워요"
+# 콩콩 '지금 기분' 표정 12개(디자인 순서). 살펴볼 기분이면 상담사 피드에 '살펴볼 기분' 으로 보인다.
+MOODS: Dict[str, str] = {
+    "good": "좋음", "excited": "신남", "okay": "괜찮음", "meh": "그저 그럼", "surprised": "놀람", "tired": "피곤함",
+    "lonely": "외로움", "sad": "슬픔", "worried": "걱정됨", "scared": "무서움", "angry": "화남", "unsure": "잘 모르겠음",
+}
+CONCERN_MOODS = {"sad", "worried", "scared", "angry", "lonely"}
+NOTE_CHIPS = ["만나서 이야기할게요", CONTACT_REQUEST_CHIP, "알려 드리고 싶었어요"]
+SCHEDULE_REASONS = ["몸이 안 좋아요", "학교·학원 일정이 있어요", "가고 싶지 않아요", "말하기 어려워요", "기타"]
+SCHEDULE_REASON_ETC = "기타"
+# 기분 · 메시지 · 일정 요청은 기기 하나가 피드를 채우지 못하게 사례마다 하루(한국 시간) 이만큼만 받는다.
+DEVICE_POST_DAILY_LIMIT = 20
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
 
 _SCALE_FACES = ["good", "okay", "meh", "worried", "sad"]
@@ -1226,6 +1237,116 @@ def submit_answers(
         payload,
         level=worst,
         needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text or followup,
+    )
+    db.commit()
+
+
+def _lock_device_link(db: Session, link: ChildAppLink, kind: ChildAppEventKind) -> ChildAppLink:
+    """기분 · 메시지 · 일정 요청 공통: 연결 행을 잠그고(해지와 겹치면 다시 연결 안내) 하루 한도를 본다."""
+
+    locked = db.scalar(
+        select(ChildAppLink)
+        .where(ChildAppLink.id == link.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+    if locked is None:
+        db.rollback()
+        raise unauthorized("앱을 다시 연결해 주세요.")
+
+    day_start = datetime.now(LOCAL_TZ).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    sent_today = db.scalar(
+        select(func.count(ChildAppEvent.id)).where(
+            ChildAppEvent.case_id == locked.case_id,
+            ChildAppEvent.kind == kind,
+            ChildAppEvent.created_at >= day_start,
+        )
+    )
+
+    if (sent_today or 0) >= DEVICE_POST_DAILY_LIMIT:
+        db.rollback()
+        raise APIError(ErrorCode.RATE_LIMITED, "오늘은 더 보낼 수 없어요. 내일 다시 보내 주세요.", status_code=429)
+
+    return locked
+
+
+def record_mood(db: Session, link: ChildAppLink, mood: str, why: Optional[str]) -> None:
+    if mood not in MOODS:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 기분입니다.")
+
+    locked = _lock_device_link(db, link, ChildAppEventKind.MOOD)
+    text = (why or "").strip() or None
+    payload: Dict[str, Any] = {"mood": mood, "label": MOODS[mood], "why": text}
+    # 글은 판정하지 않는다. 이유를 적었으면 답의 글처럼 상담사가 읽도록 확인 필요로 올린다.
+    if text:
+        payload["alert_reason"] = "TEXT_ANSWER"
+
+    locked.last_response_at = _utcnow()
+    _add_event(
+        db,
+        locked.case_id,
+        ChildAppEventKind.MOOD,
+        payload,
+        level=ChildAnswerLevel.AMBER if mood in CONCERN_MOODS else ChildAnswerLevel.NONE,
+        needs_ack=bool(text),
+    )
+    db.commit()
+
+
+def send_note(db: Session, link: ChildAppLink, text: Optional[str], chip: Optional[str]) -> None:
+    body = (text or "").strip() or None
+
+    if chip is not None and chip not in NOTE_CHIPS:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 칩입니다.")
+
+    if body is None and chip is None:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "내용을 입력하거나 하나 골라 주세요.")
+
+    locked = _lock_device_link(db, link, ChildAppEventKind.NOTE)
+    # 전화 요청은 답의 같은 칩처럼 연락 요청(긴급 쪽), 나머지 메시지는 확인 필요다.
+    wants_contact = chip == CONTACT_REQUEST_CHIP
+    locked.last_response_at = _utcnow()
+    _add_event(
+        db,
+        locked.case_id,
+        ChildAppEventKind.NOTE,
+        {"text": body, "chip": chip, "alert_reason": "CONTACT_REQUEST" if wants_contact else "NOTE"},
+        needs_ack=True,
+    )
+    db.commit()
+
+
+def request_reschedule(db: Session, link: ChildAppLink, reason: str, etc: Optional[str]) -> None:
+    if reason not in SCHEDULE_REASONS:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 이유입니다.")
+
+    detail = (etc or "").strip() or None
+
+    if reason == SCHEDULE_REASON_ETC and detail is None:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "이유를 짧게 입력해 주세요.")
+
+    locked = _lock_device_link(db, link, ChildAppEventKind.SCHEDULE_REQUEST)
+    consult = _next_consult(db, locked.case_id, datetime.now(LOCAL_TZ).date())
+
+    if consult is None:
+        db.rollback()
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "정해진 다음 상담이 없어요.")
+
+    locked.last_response_at = _utcnow()
+    # 상담사가 다른 날짜를 잡아야 하므로 확인 필요로 올린다. 장소는 남기지 않는다.
+    _add_event(
+        db,
+        locked.case_id,
+        ChildAppEventKind.SCHEDULE_REQUEST,
+        {
+            "consult_date": consult["date"],
+            "consult_time": consult["time"],
+            "reason": reason,
+            "etc": detail if reason == SCHEDULE_REASON_ETC else None,
+            "alert_reason": "SCHEDULE_REQUEST",
+        },
+        needs_ack=True,
     )
     db.commit()
 

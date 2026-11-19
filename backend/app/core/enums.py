@@ -484,6 +484,10 @@ class ChildAppEventKind(str, Enum):
     QUESTIONS_SENT = "QUESTIONS_SENT"
     ANSWERS = "ANSWERS"
     ALERT = "ALERT"
+    # 콩콩 홈의 '지금 기분 기록하기' · '선생님께 메시지 보내기', 일정의 '참석이 어려워요'(11/19 디자인 맞춤).
+    MOOD = "MOOD"
+    NOTE = "NOTE"
+    SCHEDULE_REQUEST = "SCHEDULE_REQUEST"
     # 장기 무응답 아이에게 상담사 · 관리자가 안부 연락한 기록(관리자 · 아이 연계 앱 관리). 아이 피드에는 보이지 않는다.
     WELFARE_CHECK = "WELFARE_CHECK"
 
