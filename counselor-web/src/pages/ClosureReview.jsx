@@ -3,11 +3,11 @@
 //
 // 서버 연결(2026-10-30): 머리 · 한눈에(상담 횟수 · 유형별 수 · 새 학대 진술) · 회차별 흐름은 useCaseDetail · useSignalHistory ·
 // useApprovedSummaries 의 값으로 src/data/screens/closureReview.ts 가 만든다(디자인 칸 → 서버 값은 그 파일 머리).
-// 핵심 요약은 closure-summary(만들기 · 확인 체크 · 고친 문장, useClosureSummary). 서로 다른 진술 · 아이 연계 · 위험수준 척도는
-// 서버에 없어 준비 중 — 실제 사례 옆에 예시 문장을
-// 보이지 않는다.
+// 핵심 요약은 closure-summary(만들기 · 확인 체크 · 고친 문장, useClosureSummary). 서로 다른 진술 · 위험수준 척도는 서버에 없어
+// 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다. 아이 연계는 콩콩(GET /cases/{id}/child-app)의 아이가 쓴 글 · 질문별 월별 답.
+// 회차별 흐름의 회차를 누르면 그 회차 상세로 간다(11/19).
 import { Fragment, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import A from '../components/A';
 import Notice from '../components/Notice';
 import Sidebar from '../components/Sidebar';
@@ -28,6 +28,7 @@ import './ClosureReview.css';
 
 export default function ClosureReview() {
   const session = useAuthSession();
+  const navigate = useNavigate();
   const theme = useTheme();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const enabled = signedIn(session);
@@ -256,9 +257,12 @@ export default function ClosureReview() {
               <tbody>
                 {(v.rows || []).map((r, rIndex) => (
                   <Fragment key={rIndex}>
-                    <tr>
+                    {/* 회차를 누르면 그 회차 기록으로(11/19 경진). */}
+                    <tr onClick={() => navigate(r.href)} style={{ cursor: 'pointer' }}>
                       <td>
-                        <b>{r.no}</b>
+                        <A to={r.href} onClick={(e) => e.stopPropagation()}>
+                          <b>{r.no}</b>
+                        </A>
                       </td>
                       <td className="note">{r.date}</td>
                       <td className="note">{r.kind}</td>
@@ -291,20 +295,42 @@ export default function ClosureReview() {
                 {cv.note}
               </p>
             ) : null}
-            {cv.written ? (
-              <div>
-                <span className="note">아이가 쓴 글 · {cv.written.at}</span>
-                <div style={{ fontWeight: 700 }}>"{cv.written.text}"</div>
+            {cv.written.length ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+                {cv.written.map((w, wIndex) => (
+                  <div key={wIndex} className="qt">
+                    "{w.text}"<span className="src">아이가 쓴 글 · {w.at}</span>
+                  </div>
+                ))}
               </div>
             ) : null}
-            {cv.changes.map((change) => (
-              <div key={change.question}>
-                <span className="note">달라진 답 · {change.at}</span>
-                <div>
-                  {change.question} — {change.from} → <b>{change.to}</b>
-                </div>
-              </div>
-            ))}
+            {cv.table.length ? (
+              <>
+                <table className="tbl tl">
+                  <thead>
+                    <tr>
+                      <th>질문</th>
+                      {cv.months.map((m) => (
+                        <th key={m}>{m}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cv.table.map((row) => (
+                      <tr key={row.question}>
+                        <td>{row.question}</td>
+                        {row.cells.map((cell, cIndex) => (
+                          <td key={cIndex}>{cIndex === row.cells.length - 1 ? <b>{cell}</b> : cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <span className="src" style={{ margin: 0 }}>
+                  {cv.tableSrc}
+                </span>
+              </>
+            ) : null}
           </section>
 
           <section
