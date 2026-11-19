@@ -613,8 +613,32 @@ export function sttReviewValues(input: SttScreenInput) {
   const canGoOn = status !== null && status !== "STT_REVIEW_REQUIRED" && confirmed;
   const nextLabel = mustConfirm ? "원문 확정 · 학대 신호 확인 →" : "학대 신호 확인 →";
 
+  // 11/03 디자인: '전체 STT' 제목 옆 '음향 분석 제외 n개 구간(1초 미만)' — 목소리 분석이 1초보다 짧아 건너뛴(TOO_SHORT) 아동 발화.
+  // 마우스를 올리면 목록, 누르면 그 줄로(재생 바 표시와 같은 jump). 녹음 전체가 분석됐을 때만 센다.
+  const excluded =
+    markSummary.kind === "analyzed"
+      ? review.rows.filter((row) => {
+          if (row.removed || row.speaker !== "CHILD") return false;
+          const mark = markMap.get(row.segmentId);
+          return mark?.status === "UNDETERMINED" && mark.reason === "TOO_SHORT";
+        })
+      : [];
+
   return {
     ...header,
+    xaShow: view === "all" && excluded.length > 0,
+    xaText: `음향 분석 제외 ${excluded.length}개 구간(1초 미만)`,
+    xaItems: excluded.map((row) => ({
+      key: row.segmentId,
+      t: row.startLabel,
+      text: row.text,
+      go: () =>
+        ids.sessionId &&
+        setState({
+          view: "all",
+          jump: { sessionId: ids.sessionId, segmentId: row.segmentId, from: focusSegment, n: (state.jump?.n ?? 0) + 1 },
+        }),
+    })),
     // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 기록 확인 화면으로).
     ...sessionPickValues(input, "/SttReview"),
     analyzing: progress !== null,
