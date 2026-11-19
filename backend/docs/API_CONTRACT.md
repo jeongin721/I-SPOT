@@ -2875,7 +2875,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 ### POST /api/v1/docbox/files → 201 (multipart `files` 여러 개 + 선택 `folder_id`)
 
 - 한 번에 10개, 파일마다 10 MB. 위 확장자만(그 밖 · 빈 파일 · 넘침은 `422`). 하나라도 어긋나면 아무것도 저장하지 않는다.
-- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 네 칸만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 깊은 중첩 · 다른 칸이 있으면 `422`). 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명 — `docbox_service.FORM_IDENTITY_FIELDS`)이 들어오면 `422`. 본체는 앱 암호화(`PII_ENCRYPTION_KEYS`, AAD `ispot:docbox_files:body:<행 ID>:v1`)로 저장하고 `/download` 가 풀어 준다. `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
+- 작성 양식 파일 `.ispotform`(2026-11-19, 11/09 디자인 빈 양식 '저장'): 내용은 JSON `{"kind": "ispot-blank-form", "form_id": "f4|f6|f27|f29|r1|r3", "version": "<20자 이하>", "values": {"<칸 이름>": "<2000자 이하 글>" | true}}` 네 칸만 받는다(256 KB · 칸 400개 이하, 칸 이름 `^[A-Za-z][A-Za-z0-9_]{0,31}$`, 깊은 중첩 · 다른 칸이 있으면 `422`). 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명 — `docbox_service.FORM_IDENTITY_FIELDS`)이 들어오면 `422`. 본체는 앱 암호화(`PII_ENCRYPTION_KEYS`, AAD `ispot:docbox_files:body:<행 ID>:v1`)로 저장하고 `/download` 가 풀어 준다. 키를 바꿀 때 `scripts/reencrypt_personal_info.py` 가 이 본체(저장소 파일)도 맨 앞 키로 다시 봉인한다 — 풀지 못한 양식이 있으면 종료 코드 1, 그때 옛 키를 빼면 그 양식 `/download` 가 실패한다. `content_type` 은 `application/json`, 미리보기는 `other`. 화면은 저장 전에 '아이를 알아볼 수 있는 정보 없음' 확인을 받고, 다시 열 때 `/download` 로 받아 이어 쓴다(다시 저장하면 새 문서).
 - 없는 `folder_id` 는 `404`. 파일 이름의 경로 · 제어 문자는 뺀다. 미리보기를 뽑지 못해도 올리기는 된다(`other`).
 - 응답 `{ "files": [DocboxFile] }`.
 
