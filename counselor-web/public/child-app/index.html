@@ -466,7 +466,7 @@ function freshGarden(){
 }
 function fresh(){
   return {
-    screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, qPending:false, qi:0, ans:{},
+    screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, upcoming:[], qPending:false, qi:0, ans:{},
     tickets:load(STORE.tickets, 0), keys:withKong(load(STORE.keys, [])), rep:load(STORE.rep, 'kong'), newKey:null, large:false, noti:0,
     calY:null, calM:null, calPick:false, calPickY:null, calAnim:'',
     hidden:false, garden:freshGarden(), gSheet:null, gToast:'',
@@ -576,13 +576,13 @@ function scrOnboard(){
     <button class="primary" data-act="startApp">시작하기</button>
   </div>`;
 }
-function nextInfo(){
-  const [y, m, d] = S.next.date.split('-').map(Number), dt = new Date(y, m - 1, d), t0 = new Date(); t0.setHours(0, 0, 0, 0);
+function nextInfo(c = S.next){
+  const [y, m, d] = c.date.split('-').map(Number), dt = new Date(y, m - 1, d), t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const n = Math.round((dt - t0) / 86400000), wd = '일월화수목금토'[dt.getDay()] + '요일';
   let time = '';
-  if (S.next.time) { const [h, mi] = S.next.time.split(':').map(Number); time = (h < 12 ? '오전 ' : '오후 ') + (h % 12 || 12) + '시' + (mi ? ' ' + mi + '분' : ''); }
+  if (c.time) { const [h, mi] = c.time.split(':').map(Number); time = (h < 12 ? '오전 ' : '오후 ') + (h % 12 || 12) + '시' + (mi ? ' ' + mi + '분' : ''); }
   return {y, m, d, n, first:new Date(y, m - 1, 1).getDay(), last:new Date(y, m, 0).getDate(), dday: n === 0 ? '오늘' : 'D-' + n, wd, time,
-    label:[wd, time].filter(Boolean).join(' ') + (S.next.place ? ' · ' + S.next.place : '')};
+    label:[wd, time].filter(Boolean).join(' ') + (c.place ? ' · ' + c.place : '')};
 }
 function scrHome(){
   const n = S.qset.length;
@@ -718,19 +718,20 @@ function scrNote(){
     <button class="primary" data-act="sendNote">보내기</button>
   </div>`;
 }
-// 달력: 오늘은 실제 오늘, 상담 날짜는 서버 /home 의 next(다음 상담)만. 처음 열면 다음 상담이 있는 달.
+// 달력: 오늘은 실제 오늘, 상담 날짜는 서버 /home 의 다가오는 상담(다음 상담 · 그다음 상담). 처음 열면 다음 상담이 있는 달.
 function calHomeYM(){ if (S.next) { const i = nextInfo(); return {y:i.y, m:i.m - 1}; } const t = new Date(); return {y:t.getFullYear(), m:t.getMonth()}; }
 function calGrid(){
   const {calY:y, calM:m} = S, t = new Date(), ni = S.next ? nextInfo() : null;
+  const laters = S.upcoming.slice(1).map((c) => nextInfo(c));
   const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
   const weeks = Math.ceil((first + days) / 7);
   let cells = ['일','월','화','수','목','금','토'].map((d, i) => `<span${i === 0 ? ' style="color:#B0452C"' : ''}>${d}</span>`).join('');
   for (let i = 0; i < weeks * 7; i++) {
     const n = i - first + 1;
     if (n < 1 || n > days) { cells += '<i></i>'; continue; }
-    const next = ni && ni.y === y && ni.m - 1 === m && ni.d === n ? 'next' : '';
+    const next = ni && ni.y === y && ni.m - 1 === m && ni.d === n ? 'next' : (laters.some((l) => l.y === y && l.m - 1 === m && l.d === n) ? 'later' : '');
     const today = y === t.getFullYear() && m === t.getMonth() && n === t.getDate() ? ' today' : '';
-    cells += `<i><b class="${next}${today}" aria-label="${m + 1}월 ${n}일${today ? ' 오늘' : ''}${next ? ' · 다음 상담' : ''}">${n}</b></i>`;
+    cells += `<i><b class="${next}${today}" aria-label="${m + 1}월 ${n}일${today ? ' 오늘' : ''}${next === 'next' ? ' · 다음 상담' : (next ? ' · 상담' : '')}">${n}</b></i>`;
   }
   return cells;
 }
@@ -755,7 +756,7 @@ function scrCal(){
       </div>
       <div class="cal ${S.calAnim || ''}" id="calGrid">${calGrid()}</div>
       <div class="cal-foot">
-        <span class="cal-legend">${S.next ? '<i class="lg next"></i>다음 상담' : ''}<i class="lg today"></i>오늘</span>
+        <span class="cal-legend">${S.next ? '<i class="lg next"></i>다음 상담' : ''}${S.upcoming.length > 1 ? '<i class="lg later"></i>그다음 상담' : ''}<i class="lg today"></i>오늘</span>
         ${atHome ? '' : `<button class="cal-back" data-act="calHome">${S.next ? '다음 상담 달로' : '이번 달로'}</button>`}
       </div>`;
   if (!S.next) return `${bar('일정')}<div class="pad">
@@ -769,6 +770,7 @@ function scrCal(){
     <div style="display:flex;flex-direction:column;gap:8px">
       <b>다가오는 상담</b>
       <div class="info row" style="font-size:1em"><span class="datebox" style="background:#fff"><small>${i0.m}월</small><b>${i0.d}</b></span><span class="grow"><b style="display:block">${esc(i0.wd)} ${esc(i0.time)}</b><span class="muted">${esc(S.next.place || '')}</span></span><span class="chip sky">${i0.dday}</span></div>
+      ${S.upcoming.slice(1).map((c) => (l => `<div class="info row" style="font-size:1em"><span class="datebox" style="background:#F1ECE4"><small style="color:#6B645D">${l.m}월</small><b>${l.d}</b></span><span class="grow"><b style="display:block">${esc(l.wd)} ${esc(l.time)}</b><span class="muted">${esc(c.place || '')}</span></span><span class="chip" style="background:#F1ECE4;color:#57514B">${l.dday}</span></div>`)(nextInfo(c))).join('')}
     </div>
     <button class="outline" data-act="calHard">참석이 어려워요 (선생님께 알리기)</button>
   </div>`;
@@ -1525,6 +1527,8 @@ async function unlinkDevice(){
 }
 function applyHome(d){
   S.next = d.next_consult;
+  // 다가오는 상담(가까운 순, 3개까지 — 11/19). 옛 서버면 다음 상담 하나만.
+  S.upcoming = d.upcoming_consults || (d.next_consult ? [d.next_consult] : []);
   S.alert = d.alert || null;
   S.staff = d.staff_hours || null;
   const p = d.pending, wasId = S.setId;

@@ -58,6 +58,8 @@ class ChildStaffHours(BaseModel):
 class ChildHomeResponse(BaseModel):
     pending: Optional[ChildPendingQuestions] = None
     next_consult: Optional[ChildNextConsult] = None
+    # 다가오는 상담(가까운 순, 3개까지). 첫째가 next_consult 와 같다.
+    upcoming_consults: List[ChildNextConsult] = Field(default_factory=list)
     alert: Optional[ChildAlertStatus] = None
     staff_hours: Optional[ChildStaffHours] = None
 
@@ -200,6 +202,16 @@ class ChildAppStats(BaseModel):
     linked_cases: int
 
 
+SilentDays = Literal[5, 7, 10]
+DEFAULT_SILENT_DAYS = 7
+
+
+class ChildSilentDaysRequest(RequestModel):
+    """아이 연계 응답 상태의 '기준' 일수."""
+
+    days: SilentDays
+
+
 class ChildAppCaseRow(BaseModel):
     case_id: uuid.UUID
     case_number: str
@@ -220,6 +232,8 @@ class ChildAppCaseRow(BaseModel):
     counselor_name: Optional[str] = None
     # 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 안부 연락. 그 뒤 아이가 답하면 다시 null.
     welfare_status: Optional[Literal["OPEN", "TRIED", "DONE"]] = None
+    # 응답 상태 '기준' 일수(연결 전이면 기본 7). 장기 무응답 판단에도 쓴다.
+    silent_days: int = DEFAULT_SILENT_DAYS
     welfare_note: Optional[str] = None
     welfare_at: Optional[datetime] = None
 
@@ -262,6 +276,8 @@ class ChildAppCaseResponse(BaseModel):
     code_expires_at: Optional[datetime] = None
     linked_at: Optional[datetime] = None
     last_response_at: Optional[datetime] = None
+    # 응답 상태 '기준' 일수(5 · 7 · 10, 연결 전이면 기본 7).
+    silent_days: int = DEFAULT_SILENT_DAYS
     next_consult: Optional[ChildNextConsult] = None
     has_pending_questions: bool
     # 담당 상담사만(그 외 null). 예약이 없으면 null.
