@@ -29,6 +29,26 @@ function itemsOf(event: ChildAppEvent): AnswerItem[] {
   return Array.isArray(event.payload.items) ? (event.payload.items as AnswerItem[]) : [];
 }
 
+/**
+ * 아이가 쓴 글(새것부터): 질문 답의 글 · 선생님께 메시지 글 · 지금 기분의 이유(11/19 콩콩 디자인 맞춤).
+ * 칩만 고르거나 표정만 고른 것은 글이 아니라 뺀다. 아이 상세 · 상담 전 브리핑 · 종결 검토의 '아이가 쓴 글' 칸이 같이 쓴다.
+ */
+export function childWritings(feed: ChildAppEvent[]): { text: string; at: string }[] {
+  return feed.flatMap((event) => {
+    const texts: unknown[] =
+      event.kind === "ANSWERS"
+        ? itemsOf(event).filter((item) => item.wrote_text).map((item) => item.written ?? item.answer)
+        : event.kind === "NOTE"
+          ? [event.payload.text]
+          : event.kind === "MOOD"
+            ? [event.payload.why]
+            : [];
+    return texts
+      .filter((text): text is string => typeof text === "string" && text.trim() !== "")
+      .map((text) => ({ text: text.trim(), at: childDateTime(event.created_at) }));
+  });
+}
+
 function nextLabel(next: ChildAppCase["next_consult"]): string {
   if (!next) return "—";
   const [, month, day] = next.date.split("-").map(Number);
@@ -93,8 +113,7 @@ export function childDetailValues(
       }))
     : [];
 
-  const writtenEvent = answered.find((event) => itemsOf(event).some((item) => item.wrote_text));
-  const writtenItem = writtenEvent ? itemsOf(writtenEvent).find((item) => item.wrote_text) : undefined;
+  const writing = childWritings(data.feed)[0];
 
   const draft = data.ai_draft && latest && data.ai_draft.event_id === latest.id ? data.ai_draft : null;
   const flaggedRows = rows.filter((row) => row.flagged);
@@ -129,8 +148,8 @@ export function childDetailValues(
     last: lastLabel,
     count: `응답 ${recent}번`,
     next: nextLabel(data.next_consult),
-    quote: writtenItem ? writtenItem.written ?? writtenItem.answer : "",
-    quoteAt: writtenEvent ? childDateTime(writtenEvent.created_at) : "",
+    quote: writing?.text ?? "",
+    quoteAt: writing?.at ?? "",
     prevLabel: "지난 답변 (오래된 순)",
     flowLabel: "이전 → 이번",
     answers: rows.map((row) => [
@@ -171,8 +190,7 @@ export function childAppHighlights(data: ChildAppCase | null | undefined) {
   if (!data || !data.can_read_feed) return null;
   const answered = data.feed.filter((event) => event.kind === "ANSWERS");
   const bank = new Map(data.bank.map((item) => [item.id, item]));
-  const writtenEvent = answered.find((event) => itemsOf(event).some((item) => item.wrote_text));
-  const writtenItem = writtenEvent ? itemsOf(writtenEvent).find((item) => item.wrote_text) : undefined;
+  const writing = childWritings(data.feed)[0];
   const latest = answered[0];
   const changes = latest
     ? itemsOf(latest).flatMap((item) => {
@@ -189,7 +207,7 @@ export function childAppHighlights(data: ChildAppCase | null | undefined) {
     answeredCount: answered.length,
     flaggedCount: answered.filter((event) => event.level === "RED" || event.level === "AMBER").length,
     lastAt: data.last_response_at,
-    written: writtenItem ? { text: writtenItem.written ?? writtenItem.answer, at: childDateTime(writtenEvent?.created_at) } : null,
+    written: writing ?? null,
     changes,
     changedAt: latest ? childDateTime(latest.created_at) : "",
   };

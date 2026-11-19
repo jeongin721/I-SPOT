@@ -10,7 +10,7 @@
 //  - 아이 연계(콩콩): 머리 기간 · 한눈에 '답한 날 / 연결한 날' · 아이가 쓴 글 · 질문별 월별 가장 많은 답(디자인 표).
 //  - 서로 다른 진술은 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
 
-import { childDateTime } from "./childDetail";
+import { childWritings } from "./childDetail";
 import { CONSULTATION_TYPE_LABELS, type ChildAppCase, type ChildAppEvent, type ClosureReportFields, type ConsultationType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ApprovedSummariesState } from "../useApprovedSummaries";
@@ -125,17 +125,12 @@ export function closureChildValues(app: ChildAppCase | null | undefined) {
   if (!app) return { note: `아이가 쓴 글 · 체크인 응답은 ${NOT_READY}입니다(아이 앱이 꺼져 있음).`, ...empty };
   const answered = childAnswered(app);
   if (!answered) return { note: "아이가 보낸 내용은 담당 상담사만 볼 수 있어요.", ...empty };
-  if (answered.length === 0) return { note: app.status === "LINKED" ? "아이가 보낸 답이 아직 없어요." : "아이 앱이 연결되지 않았어요.", ...empty };
+  // 아이가 쓴 글: 질문 답의 글 · 메시지 · 기분 이유(오래된 순, 최근 몇 개).
+  const written = childWritings(app.feed).reverse().slice(-CHILD_WRITTEN_MAX);
+  if (answered.length === 0 && written.length === 0) return { note: app.status === "LINKED" ? "아이가 보낸 답이 아직 없어요." : "아이 앱이 연결되지 않았어요.", ...empty };
 
   const bank = new Map(app.bank.map((item) => [item.id, item]));
 
-  const written = answered
-    .flatMap((event) =>
-      answersOf(event)
-        .filter((item) => item.wrote_text && (item.written ?? item.answer).trim())
-        .map((item) => ({ text: (item.written ?? item.answer).trim(), at: childDateTime(event.created_at) })),
-    )
-    .slice(-CHILD_WRITTEN_MAX);
 
   // 질문별 · 달별 답(아이가 쓴 글은 표에서 뺀다).
   const byQuestion = new Map<string, { question: string; months: Map<string, string[]> }>();
