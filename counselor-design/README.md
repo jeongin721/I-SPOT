@@ -1,11 +1,27 @@
-# I-SPOT 상담사 웹 · 디자인 원본 (2026-11-17)
+# I-SPOT 상담사 웹 · 디자인 원본 (2026-11-19)
 
 디자인 캔버스 **"I-SPOT 상담사 웹 화면 설계 · 각진 UI"** 의 최신 화면 원본입니다.
 Backend 연결과 `counselor-web/`(React) 반영 작업의 기준으로 쓰기 위해 올렸습니다.
 
-- 화면 50개 (시작 화면 1 · 웹 34 · 태블릿 6 · 모바일 앱 9)
+- 화면 49개 (시작 화면 1 · 웹 33 · 태블릿 6 · 모바일 앱 9)
 - 모든 값은 **예시(가상) 데이터** 입니다. 실제 아동 · 상담 정보가 아닙니다.
 - `counselor-web/` 은 이 폴더 때문에 바뀌지 않았습니다. 이 원본은 그보다 나중 디자인입니다.
+
+## 2026-11-17 판에서 바뀐 점 (11-19 판)
+
+| 화면 | 바뀐 점 |
+| --- | --- |
+| CaseApp | **삭제** · 사례 상세 안의 아이 연계 화면. CaseDetail · TabletCaseDetail '기본 정보' 옆 '아이 연계 →' 는 **ChildDetail**(왼쪽 메뉴 아이 연계의 아이 상세)로 이동하며 그 사례 아동(이서윤)이 열림 |
+| ChildDetail | 사례 아동에 따라 내용이 바뀜(박지호 · 이서윤). 이름 아래 **콩콩 앱 연결** 안내창(연결 일시 · 마지막 응답) + **해지하기** → '(이름) 아이 연계 어플 연동을 해지하시겠습니까?' 취소 · 확인. 확인 시 '연동 해지 (시각)' · '해지됨' |
+| ChildLink · ChildAnswers | 아이 목록 · 긴급 알림을 누르면 해당 아이로 아이 상세가 열림. 과거 답변 기록(이서윤)의 뒤로 · 경로를 아이 상세 · 아이 연계로 |
+| 웹 전체 (말투) | 안내 · 확인 · 오류 문구를 **하십시오체**로 통일(약 100곳: 입력해 주십시오 · 저장했습니다 · 삭제하시겠습니까? 등). 아이 · 보호자 진술 원문, 법령 예시 질문, 인사말은 그대로 |
+| Landing | 대표 문구 뒤로 **흰 반투명 곡선 리본**(canvas)이 왼쪽 → 오른쪽으로 느리게 흐르며 모양이 계속 바뀜. 동작 줄이기 설정 시 정지 |
+| App* (공통) | 화면 넘김 애니메이션(하단 메뉴 · 이동 · 뒤로 · 녹음), 아래 창 · 가운데 창 열고 닫기, 버튼 눌림 반응. 하단 홈 선택 아이콘을 같은 모양에 색만 채움 |
+| AppCases | 사례 요약에 **메모 추가 / 메모 수정** 버튼(메모 유무에 따라). 추가: 작성 · 취소 · 확인 / 수정: 삭제 · 취소 · 수정, 삭제 시 '메모를 삭제하시겠습니까?' 확인. 앱 메모와 같은 저장소 사용 |
+| AppMemo | '관련 아이 선택 안 함' → '사례 선택', 상단 설명 문구 삭제, 메모 수정 창을 가운데 창으로, 다른 화면에서 바꾼 메모 즉시 반영 |
+| AppHistory | 회차 선택 목록이 버튼 아래로 펼쳐짐(공간이 모자라면 위로), 목록 안 스크롤 |
+| AppSchedule | 월간 달력 ‹ › 달 이동, 'YYYY년 M월 ▾' 으로 년도 · 월 선택 |
+| AppUpload | 상단 설명 문구 삭제 |
 
 ## 2026-11-10 판에서 바뀐 점 (11-17 판)
 
@@ -166,10 +182,9 @@ counselor-design/
 
 | 파일 | 화면 |
 | --- | --- |
-| CaseDetail | 탭 1 · 내담자 정보 + 상담 전 브리핑 (아이 연계 바로가기, 녹음하기 팝업, 먼저 볼 것 · 확인할 사항 · 추가 질문, 기관 서식, 종결 검토 등록) |
+| CaseDetail | 탭 1 · 내담자 정보 + 상담 전 브리핑 (아이 연계 → ChildDetail 바로가기, 녹음하기 팝업, 먼저 볼 것 · 확인할 사항 · 추가 질문, 기관 서식, 종결 검토 등록) |
 | CaseHistory | 탭 2 · 상담 이력 (회차를 누르면 그 회차 상세로, 녹음하기 · 새 상담 등록) |
 | SessionDetail | 탭 2 › 회차 상세 (1~4단계 처리로 바로 가기, 회차 선택) |
-| CaseApp | 아이 연계 (사례 상세 안. 아이 상세와 같은 화면, 기본 정보의 '아이 연계 →' 로 들어감) |
 | CaseDocs | 탭 · 문서함 (기관 서식 + 녹취 · 일지 · 외부 문서) |
 | CaseForm | 기관 서식 작성 (사정기록지 안전영역 · 사례관리 점검표 · 위험수준 척도 · 가족관계 척도. 문서함에서 고른 서식이 열림) |
 | CaseIntake | 초기면접지 (아동용) · 서식 4 (문서함에서 열기) |
@@ -221,13 +236,13 @@ counselor-design/
 | 파일 | 화면 |
 | --- | --- |
 | AppHome | 홈 (시작 화면 · 인사 · 내 사례 현황 → 사례 목록 · 사내 공지사항) |
-| AppCases | 사례 목록 (찾기 · 이번 주 상담 → 가운데 창 사례 요약(메모 표시) · 다음 상담 준비 · 자료 올리기 · 이전 상담) |
-| AppHistory | 이전 상담 (뒤로 가기, 전체 요약 → 회차 선택 창에서 고른 회차의 내역. 웹 상담 이력과 같은 데이터) |
-| AppSchedule | 일정 (이번 주 · 펼치기 → 월간 달력, 오늘 상담 → 다음 상담 준비 · 녹음 시작, 일정 추가 · 수정 · 삭제) |
+| AppCases | 사례 목록 (찾기 · 이번 주 상담 → 가운데 창 사례 요약(메모 표시) · 다음 상담 준비 · 자료 올리기 · 이전 상담 · 메모 추가/수정) |
+| AppHistory | 이전 상담 (뒤로 가기, 전체 요약 → 버튼 아래(또는 위)로 펼쳐지는 회차 목록에서 고른 회차의 내역. 웹 상담 이력과 같은 데이터) |
+| AppSchedule | 일정 (이번 주 · 펼치기 → 월간 달력(달 · 년도 이동), 오늘 상담 → 다음 상담 준비 · 녹음 시작, 일정 추가 · 수정 · 삭제) |
 | AppBrief | 다음 상담 준비 (읽기 전용, 뒤로 가기 = 들어온 화면, 확인할 사항 체크, 이 상담 녹음 시작) |
 | AppRecord | 녹음 (아이 · 회차 · 유형 → 동의 → 녹음 → 저장하고 올리기 → 업로드 상태, 업로드 실패 안내 줄) |
 | AppUpload | 업로드 (사례 아동 선택 · 자료 올리기(파일 · 사진 보관함 · 사진 찍기), 업로드 목록 · 실패 시 다시 올리기 / 지우기) |
-| AppMemo | 메모 (관련 아이 선택 · 작성 · 수정 · 삭제) |
+| AppMemo | 메모 (사례 선택 · 작성 · 수정 · 삭제, 수정은 가운데 창) |
 | AppSettings | 설정 (내 정보 · 어두운 화면 · 알림 · Wi-Fi에서만 올리기 · 로그아웃) |
 
 > 공통: 위쪽 줄 오른쪽 알림(업로드 실패 · 다음 상담 준비 · 오늘 남은 상담) · 톱니바퀴(설정). 아래 고정 메뉴 홈 · 업로드 · (녹음) · 일정 · 메모. 업로드 실패 빨간 안내 줄은 녹음 화면에만.
@@ -242,15 +257,15 @@ counselor-design/
 | `ispot-back` | 각 화면 → UploadModal · CaseRegister | 팝업을 닫으면 돌아갈 화면 |
 | `ispot-ses` | CaseHistory → SessionDetail | 고른 회차 번호 |
 | `ispot-form` | CaseDocs · CaseDetail → CaseForm | 열 서식 (A 사정기록지 · B 점검표 · C 위험수준 척도 · D 가족관계 척도) |
-| `ispot-stt` | ChildDetail · CaseApp → SttReview | 근거 원문 위치(시간). STT 화면에서 그 발화로 스크롤 · 강조 |
-| `ispot-child` | ChildDetail · CaseApp → ChildAnswers | 과거 답변 기록을 볼 아이(사례 ID) |
+| `ispot-stt` | ChildDetail → SttReview | 근거 원문 위치(시간). STT 화면에서 그 발화로 스크롤 · 강조 |
+| `ispot-child` | ChildDetail → ChildAnswers | 과거 답변 기록을 볼 아이(사례 ID) |
 | `ispot-job` | UploadModal · CaseDetail(녹음 저장) → 모든 화면 | 분석 작업 `{ t: 시작 시각, name: 파일 이름 }`. 디자인에서는 시작 뒤 8초를 '분석 중', 이어서 3초를 '분석 완료' 로 흉내 냄 |
 | `ispot-intake` | Schedule(최초접수 저장) → 상담사 화면 알림 | 최초접수 기록 `[{ id, child, y, m, d, time, place, imp, done: { 3, 7, 30 } }]`. 법정 기한 일정 · 알림은 여기서 계산 |
 | `ispot-noti-read` | 알림 → 알림 | 읽은 알림 ID 목록 |
 | `ispot-sched-go` | 알림 → Schedule | 알림을 눌렀을 때 열 날짜 |
 | `ispot-staff` | AdminAccounts · AdminCases → AdminStaffDetail | 고른 상담사 정보 |
 | `ispot-app-q` | AppRecord · AppUpload → 앱 화면 전체 | 앱 업로드 목록(완료 · 올리는 중 · 실패) |
-| `ispot-app-memo` | AppMemo | 앱 메모 |
+| `ispot-app-memo` | AppMemo · AppCases(메모 추가 · 수정 · 삭제) | 앱 메모 `[{ id, child, text, t }]` |
 | `ispot-app-rec` | AppSchedule · AppBrief → AppRecord | 녹음 화면에 미리 고를 아이 |
 | `ispot-app-notice` | AppHome | 읽은 사내 공지 ID |
 | `ispot-app-set` | AppSettings | 앱 알림 · Wi-Fi에서만 올리기 설정 |
@@ -259,6 +274,8 @@ counselor-design/
 | `ispot-cf-save` | CaseForm(확정) → CaseDocs | 확정한 서식 값 `{ tab, sa, key, res, ck, sc, fam, who, t }` |
 | `ispot-ci-save` | CaseIntake(확정) → CaseDocs | 확정한 초기면접지 값 `{ f, ty, hm, tr, fam, hs, t }` |
 | `ispot-fq-go` | CaseDetail(전체 확인) → FollowupQ | 확인할 사항 영역으로 스크롤 · 강조 |
+| `ispot-cd-child` | CaseDetail · TabletCaseDetail · ChildLink → ChildDetail | 아이 상세에 열 사례 ID (`id|시각`) |
+| `ispot-app-nav` | 앱 화면 전체 | 화면 넘김 애니메이션 종류 `{ to, kind: push · back · tab · rec, t }` (디자인 전용) |
 
 ## Backend 가 필요한 부분
 
@@ -269,9 +286,9 @@ counselor-design/
 | CaseDetail · 녹음하기 팝업 | 지금 사례가 고정된 채 회차(새 회차 / 기존 회차 전체) · 상담 유형 선택 → 브라우저 녹음(MediaRecorder) → 저장 시 음성 업로드 → 분석 시작. 녹음 동의 확인 체크 |
 | UploadModal | 볼 수 있는 사례 전체 목록, 사례의 모든 회차(새 회차 맨 위), 실제로 고른 파일만 표시 |
 | CaseIntake | 사례의 초기면접지(서식 4) 조회 · 임시 저장 · 확정 |
-| ChildDetail · CaseApp | 문항별 지난 답변 3회(3주 전 → 지난주)와 이번 답변, 바뀐 답 표시 |
+| ChildDetail | 문항별 지난 답변 3회(3주 전 → 지난주)와 이번 답변, 바뀐 답 표시 |
 | ChildAnswers | 아이별 날짜 × 문항 답변 기록(최근 4주), 무응답 날, 아이가 쓴 글 |
-| ChildDetail · CaseApp 근거 | 근거 → 원문(STT) 위치 연결: 회차 + 발화 시간(또는 발화 ID) |
+| ChildDetail 근거 | 근거 → 원문(STT) 위치 연결: 회차 + 발화 시간(또는 발화 ID) |
 | CaseHistory → SessionDetail | 고른 회차의 상세 |
 | CaseForm | 서식별 저장 · 확정. 위험수준 척도 43문항(0~3점, 화면 문구는 매우 아니다 · 아니다 · 그렇다 · 매우 그렇다), 위험요인 · 보호요인 합계 |
 | FollowupQ | 확인 사항 · 추가 질문의 수정과 상담사 직접 추가(확인을 눌렀을 때만 저장) |
@@ -295,6 +312,8 @@ counselor-design/
 | Settings · 휴대폰 번호 | 상담사 휴대폰 번호 조회 · 수정(형식 확인만) |
 | CaseDocs · 서식 보기 | 사례별 기관 서식 6종의 최신 저장값 · 상태 · 최근 작성일 조회(읽기 전용 렌더링은 DocBox 양식 정의 재사용). CaseForm · CaseIntake '확정' 저장 API |
 | FollowupQ · 발송 예약 | 추가 질문 아이 앱 발송 예약(예약 시각 · 상태), 예약 취소 |
+| ChildDetail · 콩콩 앱 연결 | 사례 아동별 앱 연결 일시 · 마지막 응답 일시 조회, 연동 해지 API(해지 시각 기록, 아이 앱 알림 중단) |
+| AppCases · 메모 추가/수정 | 사례(아동)별 메모 작성 · 수정 · 삭제 API (앱 메모와 같은 데이터) |
 | AppHistory · 이전 상담 | 사례별 회차 목록과 회차별 확정 요약 · 상담 일지 · 주요 발화 · 신호, 회차 구간별 흐름 · 주제 비중(웹 CaseHistory 와 같은 API) |
 | AppCases · 메모 | 앱 메모를 서버에 저장하고 사례(아동)별로 조회 |
 | LawGuide · AI 질문 | 디자인은 키워드로 미리 정한 답을 고름. 실제로는 매뉴얼 · 두 법령을 근거로 답하는 질의 API(답변 + 매뉴얼 쪽수 · 조문 근거 목록)와 법령 개정 반영 필요 |

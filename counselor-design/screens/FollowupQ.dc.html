@@ -526,7 +526,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </sc-for>
 <sc-for list="{{ nNewRows }}" as="r" hint-placeholder-count="0">
 <div class="qcard" style="flex-direction: row; align-items: flex-start; gap: 12px; box-shadow: inset 0 0 0 2px #2B2A26;">
-<div style="flex: 1; display: flex; flex-direction: column; gap: 6px;"><textarea class="edit-in" rows="2" aria-label="새 확인 사항" placeholder="새 확인 사항을 적어 주세요" value="{{ r.draft }}" onChange="{{ r.setDraft }}"></textarea></div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 6px;"><textarea class="edit-in" rows="2" aria-label="새 확인 사항" placeholder="새 확인 사항을 적어 주십시오" value="{{ r.draft }}" onChange="{{ r.setDraft }}"></textarea></div>
 </div>
 </sc-for>
 <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;">
@@ -555,7 +555,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-for list="{{ qNewRows }}" as="r" hint-placeholder-count="0">
 <div class="qcard" style="box-shadow: inset 0 0 0 2px #2B2A26;">
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="chip c-sky">직접 작성</span></div>
-<label style="display: flex; flex-direction: column; gap: 4px;"><span class="note">질문 문장</span><textarea class="edit-in" rows="2" aria-label="새 질문 문장" placeholder="아이에게 물어볼 질문을 적어 주세요" value="{{ r.text }}" onChange="{{ r.setText }}"></textarea></label>
+<label style="display: flex; flex-direction: column; gap: 4px;"><span class="note">질문 문장</span><textarea class="edit-in" rows="2" aria-label="새 질문 문장" placeholder="아이에게 물어볼 질문을 적어 주십시오" value="{{ r.text }}" onChange="{{ r.setText }}"></textarea></label>
 <sc-if value="{{ r.withOpts }}" hint-placeholder-val="{{ false }}"><label style="display: flex; flex-direction: column; gap: 4px;"><span class="note">답 보기 (쉼표로 구분)</span><input class="edit-in" type="text" aria-label="새 질문 답 보기" placeholder="예: 없어, 1번, 여러 번, 말하기 어려워" value="{{ r.opts }}" onChange="{{ r.setOpts }}"></label></sc-if>
 </div>
 </sc-for>

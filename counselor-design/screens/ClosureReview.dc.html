@@ -686,7 +686,7 @@ renderValsBase() {
     checkAllLabel: allOk ? '모두 해제' : '모두 확인', checkAll: () => this.setState({ ok: allOk ? {} : Object.fromEntries(all.map((k) => [k, true])) }),
     setDraft: (e) => this.setState({ draft: e.target.value }), saveEdit: () => this.setState({ txt: { ...s.txt, [s.edit]: s.draft }, edit: null }), cancelEdit: () => this.setState({ edit: null }),
     rows, tlLabel: s.tlAll ? '접기' : '12회차 모두 보기', toggleAll: () => this.setState({ tlAll: !s.tlAll }),
-    doneTitle: allOk ? '전체 내역 확인 완료' : `확인 ${okCount} / ${all.length}`, doneSub: allOk ? '확인한 내용으로 종결보고서 초안이 채워져요' : '모두 확인하지 않아도 종결보고서를 작성할 수 있어요' };
+    doneTitle: allOk ? '전체 내역 확인 완료' : `확인 ${okCount} / ${all.length}`, doneSub: allOk ? '확인한 내용으로 종결보고서 초안이 채워집니다' : '모두 확인하지 않아도 종결보고서를 작성할 수 있습니다' };
 }
 }
 </script>

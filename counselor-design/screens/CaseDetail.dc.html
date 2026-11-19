@@ -559,7 +559,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </nav>
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px;">
 <section class="card" aria-label="기본 정보" style="padding: 22px 24px;">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">기본 정보</h2><a class="btn btn-sm btn-s" href="CaseApp.dc.html" style="margin-left: auto;">아이 연계 →</a></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">기본 정보</h2><a class="btn btn-sm btn-s" href="ChildDetail.dc.html" onClick="{{ goChildDetail }}" style="margin-left: auto;">아이 연계 →</a></div>
 <dl class="kv" style="grid-template-columns: 120px 1fr;"><dt>개별사건번호</dt><dd>C-2026-0351</dd><dt>이름</dt><dd>이서윤 (여)</dd><dt>생년월일</dt><dd>2013-03-14 (만 13세 · 중1)</dd><dt>사례관리대상자</dt><dd>이정훈 / 친부 · 1981-05-22 (만 45세)</dd><dt>가족유형</dt><dd>부자가정(이혼)</dd><dt>조치결과</dt><dd>피해아동 원가정보호 · 사례관리대상자 지속관찰</dd><dt>담당 상담원</dt><dd>이서연</dd><dt>신고접수일</dt><dd>2026-07-28</dd><dt>사례연계일</dt><dd>2026-07-29</dd><dt>최초면접일</dt><dd>2026-07-29</dd><dt>상담 회차</dt><dd style="font-weight: 700;">8회</dd><dt>최근 상담</dt><dd>2026-10-02 · 방문상담</dd><dt>아이 앱</dt><dd>연결됨 (9/18) · 2주 응답 12/14</dd></dl>
 </section>
 <section class="card" aria-label="주요 위험 요인" style="padding: 22px 24px;">
@@ -594,7 +594,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 <button type="button" class="btn btn-s" aria-haspopup="dialog" onClick="{{ outOpen }}">인쇄 · PDF</button><sc-if value="{{ outShow }}" hint-placeholder-val="{{ false }}"><div class="out-ov"><div class="out-dlg" role="dialog" aria-modal="true" aria-labelledby="out-t">
 <b id="out-t" style="font-size: 18px;">{{ outTitle }}</b>
-<span class="note" style="margin-top: -6px;">출력물에 들어갈 이름 표시 방식을 고르세요.</span>
+<span class="note" style="margin-top: -6px;">출력물에 들어갈 이름 표시 방식을 고르십시오.</span>
 <div role="radiogroup" aria-label="이름 표시 방식" class="out-opts"><sc-for list="{{ outOpts }}" as="o" hint-placeholder-count="2"><button type="button" role="radio" aria-checked="{{ o.on }}" class="out-opt {{ o.cls }}" onClick="{{ o.pick }}"><span class="out-rd" aria-hidden="true"></span><span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><b style="font-size: 14px;">{{ o.label }}</b><span class="note">{{ o.ex }}</span></span></button></sc-for></div>
 <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ outClose }}">취소</button><button type="button" class="btn btn-p" onClick="{{ outRun }}">{{ outGo }}</button></div>
 </div></div></sc-if>
@@ -656,8 +656,8 @@ section[aria-label="폴더"]{max-width:none !important}
 <div style="display: flex; align-items: center; justify-content: center; gap: 10px;"><span class="rec-dot {{ recDotCls }}" aria-hidden="true"></span><span class="rec-status">{{ recStatus }}</span></div>
 <div class="rec-time" aria-live="polite">{{ recTime }}</div>
 <sc-if value="{{ recIdle }}" hint-placeholder-val="{{ true }}">
-<label class="rec-consent"><input type="checkbox" checked="{{ recConsent }}" onChange="{{ recConsentSet }}"><span>상대방에게 녹음 사실을 알리고 동의를 받았어요</span></label>
-<sc-if value="{{ recErr }}" hint-placeholder-val="{{ false }}"><span class="acc" style="font-size: 13px;">녹음 동의를 먼저 확인해 주세요.</span></sc-if>
+<label class="rec-consent"><input type="checkbox" checked="{{ recConsent }}" onChange="{{ recConsentSet }}"><span>상대방에게 녹음 사실을 알리고 동의를 받았습니다</span></label>
+<sc-if value="{{ recErr }}" hint-placeholder-val="{{ false }}"><span class="acc" style="font-size: 13px;">녹음 동의를 먼저 확인해 주십시오.</span></sc-if>
 <button type="button" class="btn btn-p rec-main" onClick="{{ recStart }}"><span class="rec-dot" aria-hidden="true"></span> 녹음 시작</button>
 </sc-if>
 <sc-if value="{{ recRunning }}" hint-placeholder-val="{{ false }}">
@@ -668,10 +668,10 @@ section[aria-label="폴더"]{max-width:none !important}
 <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recReset }}">다시 녹음</button><button type="button" class="btn btn-p" onClick="{{ recSave }}">저장</button></div>
 </sc-if>
 <sc-if value="{{ recSaved }}" hint-placeholder-val="{{ false }}">
-<p style="margin: 0; text-align: center;">녹음을 저장했어요 · {{ recSummary }}<br><b>STT 분석을 시작할까요?</b></p>
+<p style="margin: 0; text-align: center;">녹음을 저장했습니다 · {{ recSummary }}<br><b>STT 분석을 시작하시겠습니까?</b></p>
 <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recClose }}">나중에</button><a class="btn btn-p" href="SttReview.dc.html" onClick="{{ recClose }}">기록 확인으로 →</a></div>
 </sc-if>
-<sc-if value="{{ recSim }}" hint-placeholder-val="{{ false }}"><span class="note" style="text-align: center;">이 미리보기에서는 마이크를 쓸 수 없어 녹음 흐름만 보여 드려요. 실제 화면에서는 마이크로 바로 녹음돼요.</span></sc-if>
+<sc-if value="{{ recSim }}" hint-placeholder-val="{{ false }}"><span class="note" style="text-align: center;">이 미리보기에서는 마이크를 쓸 수 없어 녹음 흐름만 보여 드립니다. 실제 화면에서는 마이크로 바로 녹음됩니다.</span></sc-if>
 </div>
 </div>
 </section>
@@ -778,6 +778,7 @@ recVals() {
 }
 renderVals() {
   const v = this.renderValsBase() || {};
+  v.goChildDetail = () => this.ntSet('ispot-cd-child', 'C-2026-0351|' + Date.now());
   v.goChecks = () => { this.ntSet('ispot-fq-go', 'checks|' + Date.now()); };
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
   return Object.assign({}, v, (() => { const st = this.state || {}; const mk = st.__outMask !== false; return { outShow: !!st.__outOpen, outTitle: '인쇄 · PDF', outGo: '인쇄', outOpen: () => this.setState({ __outOpen: true }), outClose: () => this.setState({ __outOpen: false }), outOpts: [[false, '실명 그대로', '예) 이서윤'], [true, '이름 가리기', '예) 이○윤 · 서○']].map(([m, label, ex]) => ({ label, ex, on: mk === m ? 'true' : 'false', cls: mk === m ? 'on' : '', pick: () => this.setState({ __outMask: m }) })), outRun: () => { this.setState({ __outOpen: false }); setTimeout(() => this.outPrint(mk), 120); } }; })(), this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), goForm: () => { const v = 'B|' + Date.now(); try { window.localStorage.setItem('ispot-form', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-form', v); } catch (e) {} try { window.top.__ispotForm = v; } catch (e) {} window.__ispotForm = v; }, markBack: () => { const v = 'CaseDetail.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',

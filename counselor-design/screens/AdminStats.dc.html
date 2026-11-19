@@ -535,7 +535,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-for list="{{ closures }}" as="g" hint-placeholder-count="5"><div class="hb sm" title="{{ g.tip }}"><span>{{ g.name }}</span><span class="track"><span style="width: {{ g.w }};"></span></span><span class="note" style="color: #2B2A26;">{{ g.v }} · {{ g.p }}</span></div></sc-for>
 </section>
 </div>
-<p class="note" style="margin: 0;">통계는 상급 기관 보고 양식 항목(신고 접수 · 학대 판단 · 피해 아동 · 학대 행위자 · 조치 결과 · 서비스 제공 · 종결)에 맞춰 정리돼 있어요.</p>
+<p class="note" style="margin: 0;">통계는 상급 기관 보고 양식 항목(신고 접수 · 학대 판단 · 피해 아동 · 학대 행위자 · 조치 결과 · 서비스 제공 · 종결)에 맞춰 정리되어 있습니다.</p>
 </main>
 </div>
 </x-dc>
@@ -616,7 +616,7 @@ renderValsBase() {
     services: bars(['상담', '심리치료', '부모교육', '가족기능 강화', '의료 지원'], sc([1820, 412, 236, 154, 88]), '회'),
     closures: bars(['위험 해소 · 안정', '타 기관 이관', '전출 · 연락 두절', '성인 도달', '기타'], sc([162, 31, 22, 8, 18]), '건'),
     staff, hasMsg: !!s.msg, msg: s.msg,
-    exportXls: say(`${d.label} 통계를 엑셀 파일로 내려받을 준비가 됐어요 (${d.range})`), exportPdf: say(`${d.label} 상급 기관 보고서 PDF를 만들었어요 (${d.range})`),
+    exportXls: say(`${d.label} 통계를 엑셀 파일로 내려받을 준비가 되었습니다 (${d.range})`), exportPdf: say(`${d.label} 상급 기관 보고서 PDF를 만들었습니다 (${d.range})`),
     periods: segOf('p', s.p, [['month', '이번 달'], ['q3', '3분기'], ['year', '올해 누적']]) };
 }
 }

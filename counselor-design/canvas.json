@@ -65,15 +65,6 @@
       "x": 9120,
       "y": 13000
     },
-    "CaseApp.dc.html": {
-      "expand": "fill",
-      "h": 1650,
-      "is_interactive": true,
-      "title": "탭 4 · 아이 연계 (아이 상세와 같은 화면)",
-      "w": 1440,
-      "x": 4560,
-      "y": 4800
-    },
     "CaseDetail.dc.html": {
       "expand": "fill",
       "h": 1960,
@@ -466,7 +457,7 @@
     "rowC": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "③ 사례 상세 · 탭 4개 (내담자 정보 + 상담 전 브리핑 · 상담 이력 · 아이 연계 · 문서함) + 기관 서식 작성",
+      "text": "③ 사례 상세 · 탭 3개 (내담자 정보 + 상담 전 브리핑 · 상담 이력 · 문서함) + 기관 서식 작성",
       "w": 240,
       "x": 0,
       "y": 4500
@@ -525,7 +516,6 @@
     "CaseDetail.dc.html",
     "CaseHistory.dc.html",
     "SessionDetail.dc.html",
-    "CaseApp.dc.html",
     "CaseDocs.dc.html",
     "CaseForm.dc.html",
     "CaseIntake.dc.html",

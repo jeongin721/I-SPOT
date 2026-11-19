@@ -298,13 +298,13 @@ section[aria-label="폴더"]{max-width:none !important}
 <label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">비밀번호</span><input class="inp" type="password" value="password"></label>
 <a class="btn btn-p" href="{{ loginHref }}" style="width: 100%; margin-top: 4px;">로그인</a>
 <button type="button" class="btn btn-s" onClick="{{ openCode }}" style="width: 100%;">회원가입</button>
-<sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}"><p class="lb" role="status" style="margin: -6px 0 0; font-weight: 400; text-align: center;">회원가입 인증이 완료됐어요. 로그인해 주세요.</p></sc-if>
+<sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}"><p class="lb" role="status" style="margin: -6px 0 0; font-weight: 400; text-align: center;">회원가입 인증이 완료되었습니다. 로그인해 주십시오.</p></sc-if>
 <div role="group" aria-label="로그인 유형" class="lseg"><sc-for list="{{ roles }}" as="r" hint-placeholder-count="2"><button type="button" class="{{ r.cls }}" aria-pressed="{{ r.pressed }}" onClick="{{ r.pick }}">{{ r.label }}</button></sc-for></div>
 </form>
 <sc-if value="{{ codeOpen }}" hint-placeholder-val="{{ false }}">
 <div style="position: absolute; inset: 0; z-index: 10; background: rgba(43,42,38,.40); display: flex; align-items: center; justify-content: center; padding: 24px;">
 <section role="dialog" aria-modal="true" aria-labelledby="code-title" style="width: 100%; max-width: 400px; background: #FFFFFF; border: 1px solid #E2DED3; border-radius: 24px; box-shadow: 0 20px 60px rgba(43,42,38,.22); padding: 30px 30px 26px; display: flex; flex-direction: column; gap: 16px;">
-<div><h2 id="code-title" style="margin: 0; font-size: 20px; font-weight: 700;">회원가입 인증번호 입력</h2><p class="lb" style="margin: 6px 0 0; font-weight: 400; line-height: 1.6;"><b style="font-weight: 700;">{{ email }}</b> 로 회원가입 인증번호 6자리를 보냈어요. 메일에서 확인 후 입력해 주세요.</p></div>
+<div><h2 id="code-title" style="margin: 0; font-size: 20px; font-weight: 700;">회원가입 인증번호 입력</h2><p class="lb" style="margin: 6px 0 0; font-weight: 400; line-height: 1.6;"><b style="font-weight: 700;">{{ email }}</b> 로 회원가입 인증번호 6자리를 보냈습니다. 메일에서 확인 후 입력해 주십시오.</p></div>
 <label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">인증번호</span><input class="inp" type="text" inputmode="numeric" maxlength="6" placeholder="6자리 숫자" value="{{ code }}" onChange="{{ setCode }}" style="letter-spacing: .2em; font-size: 18px; text-align: center;"></label>
 <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><span class="lb" style="font-weight: 400; flex: 1;">{{ sentNote }}</span><button type="button" class="btn btn-s" onClick="{{ resend }}" style="min-height: 34px; padding: 0 14px; font-size: 13px;">다시 보내기</button></div>
 <div style="display: flex; gap: 10px;">
@@ -358,7 +358,7 @@ renderValsBase() {
   return { roles, loginHref: role === 'admin' ? 'AdminHome.dc.html' : 'Main.dc.html', email, code,
     setEmail: (e) => this.setState({ email: e.target.value }), setCode: (e) => this.setState({ code: String(e.target.value).replace(/[^0-9]/g, '').slice(0, 6) }),
     codeOpen: !!st.open, openCode: () => this.setState({ open: true, code: '', sent: 1 }), closeCode: () => this.setState({ open: false, code: '' }),
-    resend: () => this.setState({ sent: (st.sent || 1) + 1, code: '' }), sentNote: (st.sent || 1) > 1 ? '인증번호를 다시 보냈어요 · 유효 시간 5분' : '유효 시간 5분',
+    resend: () => this.setState({ sent: (st.sent || 1) + 1, code: '' }), sentNote: (st.sent || 1) > 1 ? '인증번호를 다시 보냈습니다 · 유효 시간 5분' : '유효 시간 5분',
     codeOk: code.length === 6, codeWait: code.length !== 6, joined: !!st.joined, confirmCode: () => this.setState({ open: false, code: '', joined: true }) };
 }
 }

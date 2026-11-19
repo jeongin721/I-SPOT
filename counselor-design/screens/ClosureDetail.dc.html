@@ -609,7 +609,7 @@ label.cp-open > .cp-menu{display:flex}
 
 <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px;"><button type="button" class="btn btn-s" aria-haspopup="dialog" onClick="{{ outOpen }}">PDF · HWP로 내보내기</button><sc-if value="{{ outShow }}" hint-placeholder-val="{{ false }}"><div class="out-ov"><div class="out-dlg" role="dialog" aria-modal="true" aria-labelledby="out-t">
 <b id="out-t" style="font-size: 18px;">{{ outTitle }}</b>
-<span class="note" style="margin-top: -6px;">출력물에 들어갈 이름 표시 방식을 고르세요.</span>
+<span class="note" style="margin-top: -6px;">출력물에 들어갈 이름 표시 방식을 고르십시오.</span>
 <div role="radiogroup" aria-label="이름 표시 방식" class="out-opts"><sc-for list="{{ outOpts }}" as="o" hint-placeholder-count="2"><button type="button" role="radio" aria-checked="{{ o.on }}" class="out-opt {{ o.cls }}" onClick="{{ o.pick }}"><span class="out-rd" aria-hidden="true"></span><span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><b style="font-size: 14px;">{{ o.label }}</b><span class="note">{{ o.ex }}</span></span></button></sc-for></div>
 <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ outClose }}">취소</button><button type="button" class="btn btn-p" onClick="{{ outRun }}">{{ outGo }}</button></div>
 </div></div></sc-if><a class="btn btn-s" href="Schedule.dc.html">종결평가 회의 일정 잡기</a><button type="button" class="btn btn-p">보고서 저장</button></div>

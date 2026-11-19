@@ -601,7 +601,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="hd">
 <h2 class="h2">{{ viewTitle }}</h2>
 <span class="{{ chipCls }}">{{ chipText }}</span>
-<sc-if value="{{ xaShow }}" hint-placeholder-val="{{ false }}"><span class="xa" tabindex="0" aria-describedby="xa-pop">{{ xaText }}<span class="xa-pop" id="xa-pop" role="tooltip"><b>음향 분석 제외 구간</b><sc-for list="{{ xaItems }}" as="x" hint-placeholder-count="2"><button type="button" class="xa-it" onClick="{{ x.go }}"><span class="xa-t">{{ x.t }}</span><span>{{ x.text }}</span></button></sc-for><span class="xa-note">1초보다 짧아 떨림 · 웅얼거림 · 작게 말함을 분석하지 않은 아동 발화예요. '이상 없음'과는 달라요.</span></span></span></sc-if>
+<sc-if value="{{ xaShow }}" hint-placeholder-val="{{ false }}"><span class="xa" tabindex="0" aria-describedby="xa-pop">{{ xaText }}<span class="xa-pop" id="xa-pop" role="tooltip"><b>음향 분석 제외 구간</b><sc-for list="{{ xaItems }}" as="x" hint-placeholder-count="2"><button type="button" class="xa-it" onClick="{{ x.go }}"><span class="xa-t">{{ x.t }}</span><span>{{ x.text }}</span></button></sc-for><span class="xa-note">1초보다 짧아 떨림 · 웅얼거림 · 작게 말함을 분석하지 않은 아동 발화입니다. '이상 없음'과는 다릅니다.</span></span></span></sc-if>
 <div style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px;">
 <button type="button" class="btn btn-sm {{ allCls }}" onClick="{{ showAll }}">전체 STT 보기</button>
 <button type="button" class="btn btn-sm {{ lowCls }}" onClick="{{ showLow }}">확인 필요 구간 보기 · {{ lowLeft }}</button>
@@ -761,10 +761,10 @@ renderValsBase() {
     const cues = child && l.cues ? l.cues.map((c) => ({ name: c[0], num: '', hasNum: false, at: c[2] })) : [];
     const focus = s.focusT === l.t;
     return { lid: 'ln-' + l.t.replace(':', ''), ring: focus ? 'inset 0 0 0 2px #C2A36B' : 'none', t: l.t, play: play(l.t), laws, hasLaws: laws.length > 0, cues, hasCues: cues.length > 0, hold: l.hold || '', hasHold: !!l.hold && !child, sp, text: l.text, aria: `${l.t} 발화 고치기`, spFw: sp === '피해아동' ? 700 : 500, spFix: !!s.sp[l.i], spLabel, spMenu: open, spExp: open ? 'true' : 'false', spOpts, toggleSp: () => this.setState({ spOpen: open ? null : l.i }), conf: `${Math.round(l.c * 100)}%`,
-      edit, read: !edit, hint: done ? '확인했어요' : (l.low ? (l.hint || '') : (l.safe ? '신변안전 · 사례관리대상자 귀가 후 아동 발화 감소' : '')), hintFg: !done && !l.low && l.safe ? '#A33B2E' : '#7A776F',
+      edit, read: !edit, hint: done ? '확인했습니다' : (l.low ? (l.hint || '') : (l.safe ? '신변안전 · 사례관리대상자 귀가 후 아동 발화 감소' : '')), hintFg: !done && !l.low && l.safe ? '#A33B2E' : '#7A776F',
       bg: l.low && !done && s.view !== 'key' ? '#F1E3BF' : '#FFFFFF', okLabel: done ? '확인됨 ✓' : '확인', ok: () => this.setState({ ok: { ...s.ok, [l.i]: !done } }) }; });
   const lowLeft = all.filter((l) => l.low && !s.ok[l.i]).length;
-  const stages = ['화자 구분 중', '전사 중', '신뢰도 계산 중', '핵심 발화 고르는 중', '거의 끝났어요', '완료'];
+  const stages = ['화자 구분 중', '전사 중', '신뢰도 계산 중', '핵심 발화 고르는 중', '거의 끝났습니다', '완료'];
   const titles = { key: '1차 임시 핵심 발화', all: '전체 STT', low: '확인 필요 구간' };
   const sigDefs = [
     { type: '신체', title: '직접 신체 가해', at: '00:41', quote: '저한테 소리 지르고… 많이 때렸어요', why: '보호자가 아동을 때렸다는 1인칭 진술 (세부 신호 3)', check: '원문 일치 ✓', ok: true },

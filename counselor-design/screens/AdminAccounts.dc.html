@@ -466,8 +466,8 @@ section[aria-label="폴더"]{max-width:none !important}
 <label class="fl"><span class="lb">이름</span><input class="inp" type="text" placeholder="예: 홍길동" value="{{ fName }}" onChange="{{ setName }}"></label>
 <label class="fl"><span class="lb">기관 ID</span><input class="inp" type="text" placeholder="예: hong.gildong" value="{{ fId }}" onChange="{{ setId }}"></label>
 </div>
-<p class="note" style="margin: 0;">생성하면 임시 비밀번호가 발급되고, 첫 로그인 때 비밀번호 변경과 OTP 등록을 해야 해요.</p>
-<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><p class="warn" style="margin: 0; font-size: 13px;">이름과 기관 ID를 입력해 주세요.</p></sc-if>
+<p class="note" style="margin: 0;">생성하면 임시 비밀번호가 발급되고, 첫 로그인 때 비밀번호 변경과 OTP 등록을 해야 합니다.</p>
+<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><p class="warn" style="margin: 0; font-size: 13px;">이름과 기관 ID를 입력해 주십시오.</p></sc-if>
 <div style="display: flex; gap: 10px; justify-content: flex-end;"><button type="button" class="btn btn-s" onClick="{{ toggleForm }}">취소</button><button type="button" class="btn btn-p" onClick="{{ create }}">계정 생성</button></div>
 </section>
 </sc-if>
@@ -552,7 +552,7 @@ renderValsBase() {
   const onCnt = all.filter((x) => x.on).length;
   const create = () => { const n = s.name.trim(); const u = s.uid.trim();
     if (!n || !u) { this.setState({ err: true }); return; }
-    this.setState({ extra: [...s.extra, [n, u, '', '0', '접속 기록 없음', '—', true]], show: false, name: '', uid: '', err: false, msg: `${n} (${u}) 계정을 만들었어요 · 임시 비밀번호 발급됨` }); };
+    this.setState({ extra: [...s.extra, [n, u, '', '0', '접속 기록 없음', '—', true]], show: false, name: '', uid: '', err: false, msg: `${n} (${u}) 계정을 만들었습니다 · 임시 비밀번호 발급됨` }); };
   return { rows, showForm: s.show, formErr: s.err, fName: s.name, fId: s.uid, created: !!s.msg, createdMsg: s.msg,
     setName: (e) => this.setState({ name: e.target.value }), setId: (e) => this.setState({ uid: e.target.value }),
     toggleForm: () => this.setState({ show: !s.show, err: false }), create, formBtnLabel: s.show ? '닫기' : '+ 계정 생성', formBtnCls: s.show ? 'btn-s' : 'btn-p',

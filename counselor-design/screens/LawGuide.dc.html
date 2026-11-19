@@ -570,7 +570,7 @@ section[aria-label="폴더"]{max-width:none !important}
 
 <sc-if value="{{ tabAi }}" hint-placeholder-val="{{ true }}">
 <section class="card lg-chat" aria-label="AI에게 묻기">
-<div class="lg-chat-hd"><span class="lg-ai" aria-hidden="true">AI</span><div style="flex: 1; min-width: 0;"><h2 class="h2">법령 · 매뉴얼 AI에게 묻기</h2><span class="note">2026 아동학대 대응 업무 매뉴얼 · 아동복지법 · 아동학대범죄의 처벌 등에 관한 특례법을 함께 참조해 답해요. 답변마다 매뉴얼 쪽수와 조문을 근거로 보여 드려요.</span></div><button type="button" class="btn btn-sm btn-s" onClick="{{ chatReset }}">새 대화</button></div>
+<div class="lg-chat-hd"><span class="lg-ai" aria-hidden="true">AI</span><div style="flex: 1; min-width: 0;"><h2 class="h2">법령 · 매뉴얼 AI에게 묻기</h2><span class="note">2026 아동학대 대응 업무 매뉴얼 · 아동복지법 · 아동학대범죄의 처벌 등에 관한 특례법을 함께 참조해 답합니다. 답변마다 매뉴얼 쪽수와 조문을 근거로 보여 드립니다.</span></div><button type="button" class="btn btn-sm btn-s" onClick="{{ chatReset }}">새 대화</button></div>
 <div class="lg-msgs" id="lg-msgs" aria-live="polite">
 <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="2">
 <div class="lg-msg {{ m.cls }}"><div class="lg-bub"><span style="white-space: pre-line;">{{ m.text }}</span>
@@ -581,13 +581,13 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 <div class="lg-sugg"><sc-for list="{{ suggs }}" as="q" hint-placeholder-count="4"><button type="button" class="lg-chip" onClick="{{ q.ask }}">{{ q.label }}</button></sc-for></div>
 <form class="lg-ask" onSubmit="{{ submit }}"><input class="inp" type="text" placeholder="예: 즉각분리 요건이 뭐예요?" value="{{ draft }}" onChange="{{ setDraft }}" aria-label="질문 입력"><button type="submit" class="btn btn-p">보내기</button></form>
-<p class="note" style="margin: 0;">AI 답변은 참고용입니다. 최종 판단은 매뉴얼 원문과 법령을 확인해 주세요.</p>
+<p class="note" style="margin: 0;">AI 답변은 참고용입니다. 최종 판단은 매뉴얼 원문과 법령을 확인해 주십시오.</p>
 </section>
 </sc-if>
 
 <sc-if value="{{ tabRef }}" hint-placeholder-val="{{ false }}">
 <section class="card lg-refbox" aria-label="업무 단계별 참고사항">
-<div class="lg-ref-hd"><div style="flex: 1 1 280px;"><h2 class="h2">업무 단계별 참고사항 · 주요 조문</h2><span class="note">자주 찾는 기준과 아동복지법 · 아동학대처벌법 주요 조문을 정리했어요. 줄을 누르면 펼쳐져요.</span></div>
+<div class="lg-ref-hd"><div style="flex: 1 1 280px;"><h2 class="h2">업무 단계별 참고사항 · 주요 조문</h2><span class="note">자주 찾는 기준과 아동복지법 · 아동학대처벌법 주요 조문을 정리했습니다. 줄을 누르면 펼쳐집니다.</span></div>
 <div class="lg-src"><span class="note">원문 자료</span><button type="button" class="lg-chip" onClick="{{ openToc }}">매뉴얼 목차</button><a class="lg-chip" href="https://www.law.go.kr/법령/아동복지법" target="_blank" rel="noopener">아동복지법 ↗</a><a class="lg-chip" href="https://www.law.go.kr/법령/아동학대범죄의처벌등에관한특례법" target="_blank" rel="noopener">아동학대처벌법 ↗</a></div></div>
 <div class="lg-filter"><div class="seg" role="group" aria-label="분류"><sc-for list="{{ filters }}" as="p" hint-placeholder-count="4"><button type="button" class="{{ p.cls }}" aria-pressed="{{ p.on }}" onClick="{{ p.pick }}">{{ p.label }}</button></sc-for></div></div>
 <sc-for list="{{ refs }}" as="r" hint-placeholder-count="10">
@@ -601,7 +601,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </sc-for>
 </section>
 </sc-if>
-<p class="ainote">요약과 조문은 2026 아동학대 대응 업무 매뉴얼(보건복지부)과 매뉴얼에 인용된 법령을 바탕으로 정리했습니다. 개정 여부는 국가법령정보센터 원문으로 확인하세요.</p>
+<p class="ainote">요약과 조문은 2026 아동학대 대응 업무 매뉴얼(보건복지부)과 매뉴얼에 인용된 법령을 바탕으로 정리했습니다. 개정 여부는 국가법령정보센터 원문으로 확인하십시오.</p>
 </main>
 </div>
 </x-dc>
@@ -670,7 +670,7 @@ renderVals() {
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-constructor(props) { super(props); this.state = { open: { report: true }, msgs: [{ role: 'bot', text: '안녕하세요. 2026 아동학대 대응 업무 매뉴얼과 아동복지법 · 아동학대처벌법을 바탕으로 답해 드려요.\n아래 예시를 누르거나 직접 질문해 보세요.' }], draft: '', typing: false }; }
+constructor(props) { super(props); this.state = { open: { report: true }, msgs: [{ role: 'bot', text: '안녕하세요. 2026 아동학대 대응 업무 매뉴얼과 아동복지법 · 아동학대처벌법을 바탕으로 답해 드립니다.\n아래 예시를 누르거나 직접 질문해 보십시오.' }], draft: '', typing: false }; }
 componentDidMountBase() {}
 componentWillUnmountBase() { clearTimeout(this._tyT); }
 componentDidUpdate() { const id = this._scrollTo; if (id) { this._scrollTo = null; setTimeout(() => { try { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 60); } if (this._msgScroll) { this._msgScroll = false; setTimeout(() => { try { const box = document.getElementById('lg-msgs'); if (box) box.scrollTop = box.scrollHeight; } catch (e) {} }, 30); } }
@@ -808,20 +808,20 @@ renderValsBase() {
       laws: [['cw', '전문'], ['cp', '전문']] }
   ];
   const QA = [
-    { k: ['금지행위', '제17조', '구걸', '매매'], ref: 'cw17', a: '아동복지법 제17조는 누구든지 해서는 안 되는 행위로 아동 매매, 성적 학대, 신체적 학대, 정서적 학대, 방임, 장애아동 공중 관람, 구걸 강요, 유해한 곡예, 무자격 양육 알선, 아동 몫 금품의 목적 외 사용 등을 정하고 있어요(4호는 삭제). 위반하면 미성년자를 포함해 누구든지 제71조에 따라 처벌돼요.' },
-    { k: ['임시조치', '긴급임시조치', '접근금지', '접근 금지', '퇴거'], ref: 'cp13', a: '긴급임시조치는 응급조치에도 재발 우려가 있고 법원 결정을 기다릴 수 없을 때 사법경찰관이 하는 조치예요(퇴거 · 격리, 100미터 이내 접근 금지, 전기통신 접근 금지). 임시조치는 판사가 결정하며 퇴거 · 격리, 접근 금지, 친권 제한 · 정지, 상담 · 교육 위탁, 의료기관 위탁, 유치장 · 구치소 유치 7가지이고 함께 내릴 수 있어요.' },
-    { k: ['벌칙', '처벌', '방해', '과태료', '불이행'], ref: 'cp59', a: '업무를 수행 중인 경찰 · 전담공무원 · 아보전 직원을 폭행 · 협박하거나 위계 · 위력으로 방해하면 5년 이하 징역 또는 5천만원 이하 벌금이에요(아동학대처벌법 제61조). 임시조치 불이행은 2년 이하 징역 또는 2천만원 이하 벌금, 긴급임시조치 불이행은 1천만원 이하 과태료예요. 조사 거부나 아동 답변 방해는 아동복지법 제71조로 1년 이하 징역 또는 1천만원 이하 벌금이에요.' },
-    { k: ['신고의무', '신고의무자', '의무자'], ref: 'cp10', a: '누구든지 아동학대를 알거나 의심되면 신고할 수 있고, 교원 · 의료인 · 보육교직원 · 시설종사자 등 신고의무자는 직무 중 알게 되면 즉시 신고해야 해요(아동학대처벌법 제10조). 신고의무자 직군은 매뉴얼 참고자료 1에 정리돼 있어요.' },
-    { k: ['즉각분리', '일시보호', '분리'], ref: 'separate', a: '즉각분리(일시보호)는 응급조치까지는 아니지만 보호가 필요한 아동을, 보호조치 결정이 있을 때까지 일시보호시설 · 학대피해아동쉼터 등에 보호하는 제도예요. 요건은 ① 1년 이내 2회 이상 신고 + 학대피해 강한 의심 · 재학대 우려 ② 응급조치 · 긴급임시조치 종료 후 임시조치 미청구 ③ 보호자의 답변 방해 ④ 그 밖에 일시보호가 필요한 경우예요. 재학대 위험이 급박 · 현저하면 응급조치를 실시해요.' },
-    { k: ['응급조치', '72시간', '격리', '보호시설'], ref: 'emergency', a: '응급조치는 학대행위 제지, 행위자 격리, 보호시설 인도, 의료기관 인도로 이뤄지고 기간은 72시간이에요. 주말 · 공휴일이 끼면 48시간 범위에서 연장할 수 있고, 검사가 임시조치를 청구하면 법원 결정 때까지 이어져요. 36개월 미만 아동이 방치될 위험이 있으면 반드시 보호시설로 인도해요.' },
-    { k: ['신고자', '신고인', '익명', '공익'], ref: 'protect', a: '신고인의 인적사항이나 신고인임을 짐작할 수 있는 사실은 누구에게도 알리거나 공개할 수 없어요(위반 시 3년 이하 징역 또는 3천만원 이하 벌금). 현장에서 신고자를 물어도 "아동학대 신고가 접수되어 방문했다"고만 답하고, 공익신고에 해당하면 공개 · 보도 시 5년 이하 징역 또는 5천만원 이하 벌금이에요.' },
-    { k: ['사례판단', '판단', '구성요건', '고의'], ref: 'judge', a: '조사 완료 후 특별한 사유가 없으면 3~5일 이내에 판단해요. 아동학대사례는 신체 · 정서 · 성학대 · 방임 4가지로 나누고 중복 판단도 가능해요. 신체 · 정서 · 성학대는 보호자를 포함한 성인의 고의적 폭력 · 가혹행위, 방임은 보호자의 고의적 유기 · 방임이 확인돼야 하며, 미필적 고의도 고의로 봐요.' },
-    { k: ['종결', '모니터링'], ref: 'close', a: '아동보호전문기관이 지자체와 종결 평가회의를 열어 종결 여부를 정하고, 적합하면 3개월간 종결 전 모니터링을 해요. 그 결과를 담은 사례관리 종결보고서를 지자체가 검토해 최종 결정하고, 전담공무원은 종결 후 7일 이내 아동통합정보시스템에 입력해요.' },
-    { k: ['현장', '출동', '동행', '조사 기간', '2개월'], ref: 'field', a: '신고를 받은 경찰 · 아동학대전담공무원은 지체 없이 현장에 출동하고, 서로 동행을 요청할 수 있어요(아동학대처벌법 제11조). 현장에서는 권한 증표를 보여 주고 조사 · 질문 권한을 알린 뒤 출입해요. 조사는 신고접수 후 최장 2개월 안에 마치도록 노력해요.' },
-    { k: ['신변', '안전', '위험', '폭력'], ref: 'safety', a: '출동 전에 사례기록으로 폭력 · 음주 · 약물 이력을 확인하고, 행선지와 복귀 시간을 동료에게 알려요. 2인이 함께 출동하고, 피신고자가 폭력적이거나 정신질환이 의심되면 경찰과 동행해요. 위험하다고 판단되면 가정 대신 지구대 · 주민센터에서 면담해요.' },
-    { k: ['보호계획', '위험도', '평가척도'], ref: 'plan', a: '아동학대사례로 판단되면 즉시 피해아동보호계획을 세우고 아동보호전문기관에 사례를 연계할 때 함께 통보해요. 분리보호 여부는 아동학대 위험도 평가척도 결과를 고려하고, 자체사례회의 · 통합사례회의 · 전문가자문단을 활용해요.' },
-    { k: ['신고접수', '접수', '파악', '정보', '개인정보'], ref: 'report', a: '접수할 때는 아동의 현재 안전과 응급조치 필요 여부, 아동 · 피신고자 · 신고자 정보를 가능한 한 많이 파악해요. 아동 · 피신고자 정보를 받는 것은 개인정보 보호법 위반이 아니라고 신고자에게 안내하고, 증거가 없어도 의심 정황만으로 신고할 수 있어요.' },
-    { k: ['정의', '유형', '신체학대', '정서학대', '성학대', '방임'], ref: 'judge', a: '아동학대는 보호자를 포함한 성인이 아동의 건강 · 복지를 해치거나 정상적 발달을 저해할 수 있는 신체적 · 정신적 · 성적 폭력이나 가혹행위를 하는 것과, 보호자가 아동을 유기 · 방임하는 것을 말해요(아동복지법 제3조제7호). 유형은 신체학대 · 정서학대 · 성학대 · 방임 4가지예요.' }
+    { k: ['금지행위', '제17조', '구걸', '매매'], ref: 'cw17', a: '아동복지법 제17조는 누구든지 해서는 안 되는 행위로 아동 매매, 성적 학대, 신체적 학대, 정서적 학대, 방임, 장애아동 공중 관람, 구걸 강요, 유해한 곡예, 무자격 양육 알선, 아동 몫 금품의 목적 외 사용 등을 정하고 있습니다(4호는 삭제). 위반하면 미성년자를 포함해 누구든지 제71조에 따라 처벌됩니다.' },
+    { k: ['임시조치', '긴급임시조치', '접근금지', '접근 금지', '퇴거'], ref: 'cp13', a: '긴급임시조치는 응급조치에도 재발 우려가 있고 법원 결정을 기다릴 수 없을 때 사법경찰관이 하는 조치입니다(퇴거 · 격리, 100미터 이내 접근 금지, 전기통신 접근 금지). 임시조치는 판사가 결정하며 퇴거 · 격리, 접근 금지, 친권 제한 · 정지, 상담 · 교육 위탁, 의료기관 위탁, 유치장 · 구치소 유치 7가지이고 함께 내릴 수 있습니다.' },
+    { k: ['벌칙', '처벌', '방해', '과태료', '불이행'], ref: 'cp59', a: '업무를 수행 중인 경찰 · 전담공무원 · 아보전 직원을 폭행 · 협박하거나 위계 · 위력으로 방해하면 5년 이하 징역 또는 5천만원 이하 벌금입니다(아동학대처벌법 제61조). 임시조치 불이행은 2년 이하 징역 또는 2천만원 이하 벌금, 긴급임시조치 불이행은 1천만원 이하 과태료입니다. 조사 거부나 아동 답변 방해는 아동복지법 제71조로 1년 이하 징역 또는 1천만원 이하 벌금입니다.' },
+    { k: ['신고의무', '신고의무자', '의무자'], ref: 'cp10', a: '누구든지 아동학대를 알거나 의심되면 신고할 수 있고, 교원 · 의료인 · 보육교직원 · 시설종사자 등 신고의무자는 직무 중 알게 되면 즉시 신고해야 합니다(아동학대처벌법 제10조). 신고의무자 직군은 매뉴얼 참고자료 1에 정리되어 있습니다.' },
+    { k: ['즉각분리', '일시보호', '분리'], ref: 'separate', a: '즉각분리(일시보호)는 응급조치까지는 아니지만 보호가 필요한 아동을, 보호조치 결정이 있을 때까지 일시보호시설 · 학대피해아동쉼터 등에 보호하는 제도입니다. 요건은 ① 1년 이내 2회 이상 신고 + 학대피해 강한 의심 · 재학대 우려 ② 응급조치 · 긴급임시조치 종료 후 임시조치 미청구 ③ 보호자의 답변 방해 ④ 그 밖에 일시보호가 필요한 경우입니다. 재학대 위험이 급박 · 현저하면 응급조치를 실시합니다.' },
+    { k: ['응급조치', '72시간', '격리', '보호시설'], ref: 'emergency', a: '응급조치는 학대행위 제지, 행위자 격리, 보호시설 인도, 의료기관 인도로 이뤄지고 기간은 72시간입니다. 주말 · 공휴일이 끼면 48시간 범위에서 연장할 수 있고, 검사가 임시조치를 청구하면 법원 결정 때까지 이어집니다. 36개월 미만 아동이 방치될 위험이 있으면 반드시 보호시설로 인도합니다.' },
+    { k: ['신고자', '신고인', '익명', '공익'], ref: 'protect', a: '신고인의 인적사항이나 신고인임을 짐작할 수 있는 사실은 누구에게도 알리거나 공개할 수 없습니다(위반 시 3년 이하 징역 또는 3천만원 이하 벌금). 현장에서 신고자를 물어도 "아동학대 신고가 접수되어 방문했다"고만 답하고, 공익신고에 해당하면 공개 · 보도 시 5년 이하 징역 또는 5천만원 이하 벌금입니다.' },
+    { k: ['사례판단', '판단', '구성요건', '고의'], ref: 'judge', a: '조사 완료 후 특별한 사유가 없으면 3~5일 이내에 판단합니다. 아동학대사례는 신체 · 정서 · 성학대 · 방임 4가지로 나누고 중복 판단도 가능합니다. 신체 · 정서 · 성학대는 보호자를 포함한 성인의 고의적 폭력 · 가혹행위, 방임은 보호자의 고의적 유기 · 방임이 확인돼야 하며, 미필적 고의도 고의로 봅니다.' },
+    { k: ['종결', '모니터링'], ref: 'close', a: '아동보호전문기관이 지자체와 종결 평가회의를 열어 종결 여부를 정하고, 적합하면 3개월간 종결 전 모니터링을 합니다. 그 결과를 담은 사례관리 종결보고서를 지자체가 검토해 최종 결정하고, 전담공무원은 종결 후 7일 이내 아동통합정보시스템에 입력합니다.' },
+    { k: ['현장', '출동', '동행', '조사 기간', '2개월'], ref: 'field', a: '신고를 받은 경찰 · 아동학대전담공무원은 지체 없이 현장에 출동하고, 서로 동행을 요청할 수 있습니다(아동학대처벌법 제11조). 현장에서는 권한 증표를 보여 주고 조사 · 질문 권한을 알린 뒤 출입합니다. 조사는 신고접수 후 최장 2개월 안에 마치도록 노력합니다.' },
+    { k: ['신변', '안전', '위험', '폭력'], ref: 'safety', a: '출동 전에 사례기록으로 폭력 · 음주 · 약물 이력을 확인하고, 행선지와 복귀 시간을 동료에게 알립니다. 2인이 함께 출동하고, 피신고자가 폭력적이거나 정신질환이 의심되면 경찰과 동행합니다. 위험하다고 판단되면 가정 대신 지구대 · 주민센터에서 면담합니다.' },
+    { k: ['보호계획', '위험도', '평가척도'], ref: 'plan', a: '아동학대사례로 판단되면 즉시 피해아동보호계획을 세우고 아동보호전문기관에 사례를 연계할 때 함께 통보합니다. 분리보호 여부는 아동학대 위험도 평가척도 결과를 고려하고, 자체사례회의 · 통합사례회의 · 전문가자문단을 활용합니다.' },
+    { k: ['신고접수', '접수', '파악', '정보', '개인정보'], ref: 'report', a: '접수할 때는 아동의 현재 안전과 응급조치 필요 여부, 아동 · 피신고자 · 신고자 정보를 가능한 한 많이 파악합니다. 아동 · 피신고자 정보를 받는 것은 개인정보 보호법 위반이 아니라고 신고자에게 안내하고, 증거가 없어도 의심 정황만으로 신고할 수 있습니다.' },
+    { k: ['정의', '유형', '신체학대', '정서학대', '성학대', '방임'], ref: 'judge', a: '아동학대는 보호자를 포함한 성인이 아동의 건강 · 복지를 해치거나 정상적 발달을 저해할 수 있는 신체적 · 정신적 · 성적 폭력이나 가혹행위를 하는 것과, 보호자가 아동을 유기 · 방임하는 것을 말합니다(아동복지법 제3조제7호). 유형은 신체학대 · 정서학대 · 성학대 · 방임 4가지입니다.' }
   ];
 
   const byId = {}; REFS.forEach((r) => { byId[r.id] = r; });
@@ -829,7 +829,7 @@ renderValsBase() {
   const openRef = (id) => { this._scrollTo = 'ref-' + id; this.setState({ open: { ...this.state.open, [id]: true }, f: 'all', tab: 'ref' }); };
   const answer = (q) => { const t = String(q || '').replace(/\s+/g, ''); let best = null, score = 0;
     QA.forEach((x) => { const sc = x.k.filter((k) => t.includes(k.replace(/\s+/g, ''))).length; if (sc > score) { score = sc; best = x; } });
-    if (!best) return { role: 'bot', text: '매뉴얼과 법령에서 딱 맞는 내용을 찾지 못했어요. 아래 참고사항의 조문 · 목차를 확인해 보시거나, 단어를 바꿔 다시 물어봐 주세요.', refs: ['toc'], laws: [['cw', '전문'], ['cp', '전문']] };
+    if (!best) return { role: 'bot', text: '매뉴얼과 법령에서 딱 맞는 내용을 찾지 못했습니다. 아래 참고사항의 조문 · 목차를 확인해 보시거나, 단어를 바꿔 다시 물어봐 주십시오.', refs: ['toc'], laws: [['cw', '전문'], ['cp', '전문']] };
     const r = byId[best.ref]; const extra = { separate: 'cw15', emergency: 'cp12', protect: 'cp10', field: 'cp11', judge: 'cw3' }[best.ref]; return { role: 'bot', text: best.a, refs: extra ? [best.ref, extra] : [best.ref], laws: r.laws.slice(0, 2) }; };
   const ask = (q) => { const text = String(q || '').trim(); if (!text || this.state.typing) return; clearTimeout(this._tyT); this._msgScroll = true;
     this.setState({ msgs: [...this.state.msgs, { role: 'me', text }], draft: '', typing: true });

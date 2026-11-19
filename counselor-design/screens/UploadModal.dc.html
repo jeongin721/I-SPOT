@@ -418,18 +418,18 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 <div style="padding: 24px 30px; min-height: 360px;">
 <sc-if value="{{ s1 }}" hint-placeholder-val="{{ true }}">
-<p class="lb">어느 아이의 자료인가요?</p>
+<p class="lb">어느 아이의 자료입니까?</p>
 <input class="inp" type="search" aria-label="이름 또는 사례 ID 검색" placeholder="이름 또는 사례 ID 검색" style="width: 100%;">
 <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; padding-right: 6px;">
 <sc-for list="{{ cases }}" as="c" hint-placeholder-count="3">
 <button type="button" class="opt" onClick="{{ c.pick }}" style="border-color: {{ c.bd }}; background: {{ c.bg }}; font: inherit; text-align: left;"><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid {{ c.dot }}; display: inline-flex; align-items: center; justify-content: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{ c.fill }};"></span></span><span><b style="font-weight: 500;">{{ c.name }}</b> <span class="note">{{ c.meta }}</span></span></button>
 </sc-for>
 </div>
-<div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; border: 1px dashed #DAD5C9; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;"><span style="flex: 1 1 240px; font-size: 13px;">찾는 아이가 없나요?</span><a class="btn btn-sm btn-s" href="CaseRegister.dc.html" onClick="{{ resetFlow }}">+ 새 사례 등록</a></div>
+<div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; border: 1px dashed #DAD5C9; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;"><span style="flex: 1 1 240px; font-size: 13px;">찾는 아이가 없습니까?</span><a class="btn btn-sm btn-s" href="CaseRegister.dc.html" onClick="{{ resetFlow }}">+ 새 사례 등록</a></div>
 </sc-if>
 <sc-if value="{{ s2 }}" hint-placeholder-val="{{ false }}">
 <div style="padding: 12px 16px; border-radius: 14px; background: #F7F6F2; margin-bottom: 16px;"><b style="font-weight: 500;">{{ caseName }}</b></div>
-<p class="lb">몇 회차 상담인가요?</p>
+<p class="lb">몇 회차 상담입니까?</p>
 <div style="display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; padding-right: 6px;">
 <sc-for list="{{ sessions }}" as="x" hint-placeholder-count="3">
 <button type="button" class="opt" onClick="{{ x.pick }}" style="border-color: {{ x.bd }}; background: {{ x.bg }}; font: inherit; text-align: left;"><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid {{ x.dot }}; display: inline-flex; align-items: center; justify-content: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{ x.fill }};"></span></span><span><b style="font-weight: 500;">{{ x.label }}</b><span class="note" style="display: block;">{{ x.meta }}</span></span></button>
@@ -464,8 +464,8 @@ section[aria-label="폴더"]{max-width:none !important}
 <div style="position: absolute; inset: 0; background: rgba(47,58,68,0.30); display: flex; align-items: center; justify-content: center; padding: 16px;">
 <section role="alertdialog" aria-labelledby="ok-title" style="width: 100%; max-width: 440px; background: #FFFFFF; border-radius: 22px; box-shadow: 0 20px 60px rgba(43, 42, 38,0.28); padding: 28px 28px 22px; display: flex; flex-direction: column; gap: 12px;">
 <span style="width: 48px; height: 48px; border-radius: 50%; background: #F2EFE8; color: #66625A; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">✓</span>
-<h2 id="ok-title" style="margin: 0; font-size: 20px; font-weight: 700;">업로드했어요</h2>
-<p style="margin: 0;">{{ caseName }} · {{ sesLabel }}{{ confirmFile }}<br>STT 분석 시작 · <b>검수 화면으로 이동할까요?</b></p>
+<h2 id="ok-title" style="margin: 0; font-size: 20px; font-weight: 700;">업로드했습니다</h2>
+<p style="margin: 0;">{{ caseName }} · {{ sesLabel }}{{ confirmFile }}<br>STT 분석 시작 · <b>검수 화면으로 이동하시겠습니까?</b></p>
 <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;"><a class="btn btn-s" href="{{ backHref }}" onClick="{{ syncBack }}">나중에</a><a class="btn btn-p" href="SttReview.dc.html" onClick="{{ resetFlow }}">이동</a></div>
 </section>
 </div>

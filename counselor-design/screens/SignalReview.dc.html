@@ -664,7 +664,7 @@ renderValsBase() {
       sevText: cur ? String(cur) : '–', sevSuffix: cur ? '/ 5' : (t.ev === '확인 필요' ? '확인 후 판단' : ''), fixed: s.sev[t.k] !== undefined && s.sev[t.k] !== t.ai,
       boxes: [1, 2, 3, 4, 5].map((n) => ({ n, aria: t.label + ' 심각도 ' + n, bg: n <= cur ? (cur >= 4 ? '#A33B2E' : '#C2A36B') : '#FFFFFF', fg: n <= cur ? '#FFFFFF' : '#98948B', bd: n <= cur ? 'transparent' : '#DAD5C9',
         pick: () => this.setState({ sev: { ...s.sev, [t.k]: cur === n ? 0 : n } }) })),
-      matched: cur ? cur + '단계 · ' + A[t.k][cur - 1] : (t.ev === '확인 필요' ? '근거가 약해 단계를 매기지 않았어요' : '해당 내용 없음'),
+      matched: cur ? cur + '단계 · ' + A[t.k][cur - 1] : (t.ev === '확인 필요' ? '근거가 약해 단계를 매기지 않았습니다' : '해당 내용 없음'),
       refs: t.refs, open, toggleLabel: open ? '기준 닫기' : '기준 보기', toggle: () => this.setState({ open: { ...s.open, [t.k]: !open } }),
       anchors: A[t.k].map((text, i) => ({ n: i + 1, text, bg: i + 1 === cur ? '#F1EADA' : 'transparent', fg: i + 1 === cur ? '#2B2A26' : '#7A776F', fw: i + 1 === cur ? 700 : 400 })) };
   });

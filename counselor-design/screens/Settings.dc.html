@@ -514,12 +514,12 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="3"><div class="row"><b style="flex: 1; font-weight: 500;">{{ t.label }}</b><button type="button" class="sw" role="switch" aria-checked="{{ t.on }}" aria-label="{{ t.label }}" onClick="{{ t.flip }}" style="background: {{ t.bg }};"><span style="left: {{ t.x }};"></span></button></div></sc-for>
 <div class="row" style="border-bottom: 0;"><b style="flex: 1; font-weight: 500;">아이 체크인 묶음 시간</b><select class="inp" aria-label="묶음 시간" value="{{ batch }}" onChange="{{ setBatch }}"><option>08:30</option><option>09:00</option><option>13:00</option><option>17:00</option></select></div>
 </section>
-<sc-if value="{{ urgentOff }}" hint-placeholder-val="{{ false }}"><p class="acc" style="margin: 0; font-size: 13px; font-weight: 500;">긴급 응답 알림 꺼짐 · 아이의 긴급 응답을 바로 알 수 없어요</p></sc-if>
+<sc-if value="{{ urgentOff }}" hint-placeholder-val="{{ false }}"><p class="acc" style="margin: 0; font-size: 13px; font-weight: 500;">긴급 응답 알림 꺼짐 · 아이의 긴급 응답을 바로 알 수 없습니다</p></sc-if>
 </sc-if>
 <sc-if value="{{ pwOpen }}" hint-placeholder-val="{{ false }}">
 <div style="position: fixed; inset: 0; z-index: 30; background: rgba(43,42,38,.40); display: flex; align-items: center; justify-content: center; padding: 24px;">
 <section role="dialog" aria-modal="true" aria-labelledby="pw-title" style="width: 100%; max-width: 400px; background: #FFFFFF; border: 1px solid #E2DED3; border-radius: 24px; box-shadow: 0 20px 60px rgba(43,42,38,.22); padding: 30px 30px 26px; display: flex; flex-direction: column; gap: 16px;">
-<div><h2 id="pw-title" style="margin: 0; font-size: 20px; font-weight: 700;">비밀번호 확인</h2><p class="sub" style="margin: 6px 0 0; line-height: 1.6;">계정 정보를 보려면 비밀번호를 입력해 주세요.</p></div>
+<div><h2 id="pw-title" style="margin: 0; font-size: 20px; font-weight: 700;">비밀번호 확인</h2><p class="sub" style="margin: 6px 0 0; line-height: 1.6;">계정 정보를 보려면 비밀번호를 입력해 주십시오.</p></div>
 <label style="display: flex; flex-direction: column; gap: 6px;"><span class="sub" style="font-weight: 500;">비밀번호</span><input class="inp" type="password" autocomplete="current-password" value="{{ pwIn }}" onChange="{{ setPwIn }}" style="width: 100%;"></label>
 <div style="display: flex; gap: 10px;">
 <button type="button" class="btn btn-s" onClick="{{ closePw }}" style="flex: 1;">취소</button>

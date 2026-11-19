@@ -521,7 +521,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-for list="{{ v.rows }}" as="r" hint-placeholder-count="5"><div class="vd-row"><span class="vd-k">{{ r.k }}</span><span class="vd-v">{{ r.v }}</span></div></sc-for>
 </div>
 <sc-if value="{{ v.isDl }}" hint-placeholder-val="{{ false }}">
-<p class="note" style="margin: 0;">법정 기한 일정은 최초접수 일정에 맞춰 자동으로 만들어져요. 날짜를 바꾸거나 지우려면 최초접수 일정에서 수정 · 삭제해 주세요.</p>
+<p class="note" style="margin: 0;">법정 기한 일정은 최초접수 일정에 맞춰 자동으로 만들어집니다. 날짜를 바꾸거나 지우려면 최초접수 일정에서 수정 · 삭제해 주십시오.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-s" onClick="{{ v.goBase }}">최초접수 일정 보기</button><button type="button" class="btn {{ v.doneCls }}" onClick="{{ v.toggleDone }}">{{ v.doneLabel }}</button></div>
 </sc-if>
 <sc-if value="{{ v.canEdit }}" hint-placeholder-val="{{ true }}">
@@ -529,7 +529,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <div style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-p" onClick="{{ v.edit }}">수정</button><button type="button" class="btn btn-s vd-del" onClick="{{ v.askDel }}">삭제</button></div>
 </sc-if>
 <sc-if value="{{ v.ask }}" hint-placeholder-val="{{ false }}">
-<div class="vd-ask" role="alertdialog" aria-label="일정 삭제 확인"><b>이 일정을 삭제할까요?</b><span class="note">{{ v.askNote }}</span>
+<div class="vd-ask" role="alertdialog" aria-label="일정 삭제 확인"><b>이 일정을 삭제하시겠습니까?</b><span class="note">{{ v.askNote }}</span>
 <div style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-s" onClick="{{ v.cancelDel }}">취소</button><button type="button" class="btn vd-del-go" onClick="{{ v.del }}">삭제</button></div></div>
 </sc-if>
 </sc-if>
@@ -556,7 +556,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <select class="in" value="{{ form.child }}" onChange="{{ setChild }}"><option>서윤</option><option>지호</option><option>도현</option><option>예린</option><option>하은</option><option>서준</option><option>시우</option><option>하린</option><option>유나</option><option>민준</option></select></label>
 <div class="dl-box"><b style="font-size: 13px;">학대 판정 후 법정 기한 · 자동 추가</b>
 <sc-for list="{{ dlPreview }}" as="p" hint-placeholder-count="3"><div class="dl-row"><span class="dl-n">{{ p.n }}</span><span style="flex: 1;">{{ p.task }}</span><span class="note">{{ p.due }}까지</span></div></sc-for>
-<span class="note">저장하면 기한 일정이 달력에 표시되고 알림에 추가돼요.</span></div>
+<span class="note">저장하면 기한 일정이 달력에 표시되고 알림에 추가됩니다.</span></div>
 </sc-if>
 <sc-if value="{{ notIntake }}" hint-placeholder-val="{{ true }}">
 <label style="display: flex; flex-direction: column; gap: 6px;"><span class="lb">제목</span><input class="in" type="text" placeholder="예) 팀 회의" value="{{ form.title }}" onChange="{{ setTitle }}"></label>
@@ -769,7 +769,7 @@ renderVals() {
       else if (e.t === 'c') { rows.push(['아이', e.title.split(' · ')[0]]); rows.push(['상담 유형', e.title.split(' · ').slice(1).join(' · ') || '—']); rows.push(['장소', placeOf(e) || '—']); }
       else { if (rec) rows.push(['아이', rec.child]); rows.push(['분류', e.tag]); rows.push(['장소', placeOf(e) || '—']); }
       rows.push(['중요', e.imp ? '중요 일정' : '—']);
-      const askNote = rec && !isDl ? '최초접수와 함께 만들어진 법정 기한 일정 3건도 같이 삭제되고, 알림에서도 빠져요.' : '삭제하면 되돌릴 수 없어요.';
+      const askNote = rec && !isDl ? '최초접수와 함께 만들어진 법정 기한 일정 3건도 같이 삭제되고, 알림에서도 빠집니다.' : '삭제하면 되돌릴 수 없습니다.';
       const ask = !!s.delAsk;
       vVals = { kind: isDl ? '법정 기한' : e.t === 'c' ? '상담 일정' : '개인 · 기관 일정', title: e.title, dot: st.dot, radius: st.radius, titleFg: e.imp ? '#A33B2E' : 'inherit',
         rows: rows.map(([k, v]) => ({ k, v })), isDl, canEdit: !isDl, ask, noAsk: !ask, askNote,

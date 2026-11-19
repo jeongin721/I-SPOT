@@ -560,7 +560,7 @@ renderValsBase() {
     resetPw: () => this.setState({ pw: true }), notify, batch: inf[4],
     st: on ? '활성' : '비활성', stCls: on ? 'chip c-ok' : 'chip c-check',
     actLabel: self ? '본인 계정' : (on ? '계정 비활성화' : '계정 다시 활성화'), actCls: 'btn-s',
-    toggleAct: () => { if (self) return; this.setState({ act: !on, msg: on ? `${pick.name} 계정을 비활성화했어요 · 로그인할 수 없어요` : `${pick.name} 계정을 다시 활성화했어요` }); },
+    toggleAct: () => { if (self) return; this.setState({ act: !on, msg: on ? `${pick.name} 계정을 비활성화했습니다 · 로그인할 수 없습니다` : `${pick.name} 계정을 다시 활성화했습니다` }); },
     hasMsg: !!s.msg, msg: s.msg };
 }
 }
