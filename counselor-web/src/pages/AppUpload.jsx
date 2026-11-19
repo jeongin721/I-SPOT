@@ -9,9 +9,10 @@
 //  - 주소에 ?case= 가 있으면 그 아이를 골라 둔다(앱 사례 목록의 '자료 올리기').
 //  - 다 올린 줄 아래에 그 회차의 지금 상태('웹: 원문 검수 필요' 등)를 보인다. 처리 중이면 20초마다 다시 본다(11/12).
 //  - 서버에서 원문 변환이 실패한 회차(STT_FAILED)는 폰에서 '원문 변환 다시 요청' 으로 다시 돌릴 수 있다(멘토 피드백 11/12).
+//  - 다 올린 줄의 '기록 보기' 는 그 회차의 상담 기록(요약 · 일지, 읽기 전용) 화면으로 간다(11/19, AppSessionRecord).
 //  - 사진 · 문서는 사례에 붙일 서버 자리(사례 파일함)가 아직 없어 '준비 중' 안내만 보인다. 고르기 전에도 '지금은 녹음만' 을 한 줄 보인다.
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
@@ -159,6 +160,15 @@ function UploadBody({ userId, items, notReady }) {
               </span>
               <span className={fail ? 'ma-chip ma-red' : run ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : run ? '올리는 중' : '완료'}</span>
             </div>
+            {x.status === 'done' && x.sessionId && statuses[x.id] && (
+              <Link
+                className="ma-btn ma-btn-sm"
+                to={`/AppSessionRecord?case=${x.caseId}&session=${x.sessionId}`}
+                state={{ from: '/AppUpload' }}
+              >
+                기록 보기
+              </Link>
+            )}
             {x.status === 'done' && statuses[x.id] === 'STT_FAILED' && (
               <button type="button" className="ma-btn ma-btn-sm ma-btn-p" disabled={rerunning === x.id} onClick={() => void rerunStt(x)}>
                 {rerunning === x.id ? '요청하는 중' : '원문 변환 다시 요청'}
