@@ -112,7 +112,9 @@ function FeedItem({ event }) {
           ? '아이가 앱 연결을 해지했어요'
         : event.payload.withdrawn
           ? `보낸 질문 ${event.payload.count}개를 취소했어요`
-          : `질문 ${event.payload.count}개를 보냈어요`;
+          : event.payload.deliver_at
+            ? `질문 ${event.payload.count}개를 발송 예약했어요(${dateTime(event.payload.deliver_at)}부터 아이 앱에 보여요)`
+            : `질문 ${event.payload.count}개를 보냈어요`;
     return (
       <div className="note" style={{ padding: '10px 0', borderTop: '1px solid #E8E5DD' }}>
         {dateTime(event.created_at)} · {label}
