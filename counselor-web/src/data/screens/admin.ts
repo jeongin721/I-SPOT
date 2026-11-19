@@ -8,8 +8,8 @@
 //   #/AdminStats                     통계 · 보고(adminStats.ts)
 //   #/AdminTasks(?overdue=1)         업무 처리 현황 — 새 디자인에는 없고 앱에 있던 보기라 그대로 둔다(이 파일의 adminTasksValues)
 //
-// 아이 연계 앱 관리(AdminApp) · 열람 기록(AdminViewLog)은 서버가 없어(팀 결정 A2 · B2 대기) 화면을 만들지 않고
-// 관리자 메뉴(components/AdminSidebar.jsx)에 '준비 중' 으로만 둔다.
+// 아이 연계 앱 관리(AdminApp)는 서버가 없어(팀 결정 A2 대기) 화면을 만들지 않고 관리자 메뉴(components/AdminSidebar.jsx)에
+// '준비 중' 으로만 둔다. 열람 기록(AdminViewLog)은 11/17 디자인에서 빠졌다.
 // 옛 주소 #/Admin?view=tasks · accounts · audit 는 Admin.jsx 가 위 새 주소로 옮긴다(adminRedirectHref).
 //
 //  - 관리자가 아니면 훅이 서버를 부르지 않는다(adminAccess). 화면은 권한 없음 안내만 보인다(AdminSidebar.jsx 의 AdminBlocked).
