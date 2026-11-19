@@ -18,6 +18,7 @@ from app.models.followup_question import SessionFollowupQuestions
 from app.models.schedule import ScheduleEvent
 from app.models.counselor_memo import CounselorMemo
 from app.models.briefing_check import SessionBriefingChecks
+from app.models.push import PushDelivery, PushSubscription
 from app.models.child_app import ChildAppAiDraft  # noqa: F401
 from app.models.docbox import DocboxFile, DocboxFolder
 from app.models.signup import SignupEmailCode, SignupRequest
@@ -56,6 +57,8 @@ __all__ = [
     "ScheduleEvent",
     "CounselorMemo",
     "SessionBriefingChecks",
+    "PushDelivery",
+    "PushSubscription",
     "SignupEmailCode",
     "SignupRequest",
     "Transcript",

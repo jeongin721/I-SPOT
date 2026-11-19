@@ -3,7 +3,7 @@
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, List, Literal
+from typing import Annotated, List, Literal, Optional
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -123,6 +123,15 @@ class Settings(BaseSettings):
     # 아이가 '급하다고 알리기' 를 보낸 뒤 담당 상담사가 이만큼 확인하지 않으면 다른 상담사 화면에도 띄운다(멘토 피드백 11/12 B안).
     # 관리자는 처음부터 전체를 본다. 기본 5분(경진 11/16) — 아이 앱이 112 · 1388 을 다시 안내하는 시간과 같다.
     CHILD_APP_ESCALATE_MINUTES: int = Field(default=5, ge=1, le=24 * 60)
+    # 상담사 앱(폰) 알림 — 웹 푸시(API_CONTRACT 27절, 2026-11-19). VAPID_PRIVATE_KEY · VAPID_SUBJECT 가 둘 다 있어야 켜진다
+    # (없으면 GET /push/config 가 enabled=false, 앱 스위치는 '준비 중'). 키는 `python -m scripts.make_vapid_key` 로 만들어
+    # backend.env 에 넣는다(PII 키처럼 Parameter Store 에도). 키를 바꾸면 폰마다 알림을 다시 켜야 한다.
+    # VAPID_SUBJECT 는 푸시 서비스가 문제 있을 때 연락할 곳 — 'mailto:기관 대표 메일' 또는 'https://사이트 주소'.
+    VAPID_PRIVATE_KEY: Optional[str] = None
+    VAPID_SUBJECT: Optional[str] = None
+    # 상담 일정 몇 분 전에 알릴지(디자인 '상담 30분 전 알림'), 알릴 일정을 몇 초마다 찾을지.
+    PUSH_BEFORE_SESSION_MINUTES: int = Field(default=30, ge=1, le=24 * 60)
+    PUSH_LOOP_SECONDS: int = Field(default=60, ge=10, le=3600)
     # 상담사가 바로 볼 수 있는 시간(한국 시간). 밖이면 아이 앱이 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
     # 요일은 0=월 … 6=일. 공휴일은 CHILD_APP_STAFF_HOLIDAYS.
     # 시간은 같은 날 안의 HH:MM-HH:MM(시작 < 끝)만 된다. 자정을 넘기면(22:00-06:00) 늘 밖으로 본다. 값 범위(25:99)는 검사하지 않는다.

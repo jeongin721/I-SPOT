@@ -7,6 +7,10 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  PushConfig,
+  PushPrefs,
+  PushSubscriptionRequest,
+  PushTestResult,
   DocboxFile,
   DocboxFolder,
   DocboxList,
@@ -698,6 +702,27 @@ export const memos = {
 
   remove(memoId: string): Promise<void> {
     return api.delete<void>(`/memos/${memoId}`);
+  },
+};
+
+// 상담사 앱(폰) 알림 — 웹 푸시(27절, 2026-11-19).
+export const push = {
+  config(): Promise<PushConfig> {
+    return api.get<PushConfig>("/push/config");
+  },
+
+  /** 같은 endpoint 면 덮어쓴다. 다른 계정이 쓰던 폰이면 지금 계정으로 옮긴다. 서버 키가 없으면 503 PUSH_DISABLED. */
+  subscribe(payload: PushSubscriptionRequest): Promise<PushPrefs> {
+    return api.put<PushPrefs>("/push/subscription", payload);
+  },
+
+  unsubscribe(endpoint: string): Promise<{ ok: boolean }> {
+    return api.post<{ ok: boolean }>("/push/unsubscribe", { endpoint });
+  },
+
+  /** 내 폰들에 '알림이 켜졌어요' 를 보낸다. */
+  test(): Promise<PushTestResult> {
+    return api.post<PushTestResult>("/push/test");
   },
 };
 

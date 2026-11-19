@@ -2993,3 +2993,32 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 연결이 없을 때 누른 체크는 화면이 기기에 맡겨 두었다가(누른 때의 `visible` 과 함께) 연결되면 한 줄씩 보낸다.
 - 볼 수 있는 회차만(담당 상담사 · 관리자, 남의 회차는 `403` · `404`). 회차 상태는 따지지 않는다.
 - 감사 기록 `BRIEFING_CHECK_UPDATED`: `detail` 에 켬 · 끔과 개수만(문장은 넣지 않는다).
+
+---
+
+## 27. Push (상담사 앱(폰) 알림 — 웹 푸시, 2026-11-19)
+
+상담사 앱(폰) 설정의 알림 스위치 3개(디자인 그대로)를 켠다. 웹 푸시(RFC 8030 · 8291 · 8292)라 앱 설치 없이 되고, iPhone 은
+**홈 화면에 추가한 앱**(iOS 16.4+)에서만 된다. 서버 키(`VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`)가 없으면 꺼져 있다.
+
+| 메서드 | 주소 | 설명 |
+|---|---|---|
+| GET | `/push/config` | `{ enabled, public_key, before_session_minutes }`. 꺼져 있으면 `enabled: false` · `public_key: null` |
+| PUT | `/push/subscription` | `{ endpoint, keys: { p256dh, auth }, before_session, upload_failed }` — 이 폰을 켠다 · 설정을 바꾼다. `{ before_session, upload_failed }` |
+| POST | `/push/unsubscribe` | `{ endpoint }` — 이 폰을 끈다(내 것만, 없으면 그대로). `{ ok: true }` |
+| POST | `/push/test` | 내 폰들에 '알림이 켜졌어요'. `{ sent, failed }` |
+
+- 로그인한 사람 누구나(상담사 · 관리자). 꺼져 있으면 PUT · test 는 `503 PUSH_DISABLED`.
+- 구독은 폰(브라우저) 하나가 한 행(`push_subscriptions`, endpoint 로 겹치지 않음). 같은 endpoint 를 다시 보내면 덮어쓰고, 다른 계정이
+  쓰던 폰이면 **지금 계정으로 옮긴다**(한 폰은 마지막에 켠 계정 것). 한 사람 10대까지 — 넘으면 가장 오래 전에 고친 것을 지운다.
+  `endpoint` 는 `https://` 만(그 밖은 `422`). 앱은 로그아웃할 때 이 폰을 끈다.
+- **상담 30분 전**(`before_session`): 서버 실행기(앱 시작 때 뜸, `PUSH_LOOP_SECONDS` 마다)가 지금부터 `PUSH_BEFORE_SESSION_MINUTES`(30)
+  안에 시작하는 **상담 일정(`kind=CONSULT`, 시간 있음)** 을 찾아 **일정을 만든 사람**의 켜진 폰들에 보낸다. 시각은 한국 시간.
+  같은 일정 · 같은 시각은 한 번만(`push_deliveries` — 서버가 여럿이어도 한 번). 시간을 바꾸면 새 시각에 다시 알린다.
+  켜진 폰이 없으면 기록도 남기지 않는다. 정지된 계정에는 보내지 않는다. 보낸 기록은 3일 뒤 지운다.
+- **업로드 실패**(`upload_failed`): 녹음은 폰에 있으므로 폰이 스스로 띄운다(녹음 하나에 한 번). 서버는 설정만 기억한다.
+- 문구: 잠금 화면에 보이므로 **아이 이름 · 사례 · 일정 제목 · 장소를 넣지 않는다**. 상담 30분 전은 `"HH:MM 상담 일정이 있어요."`,
+  누르면 앱 일정 화면. 본문은 폰의 키로 암호화해 보낸다(푸시 서비스는 못 읽는다). 감사 기록 · 로그에 문구 · endpoint 를 남기지 않는다.
+- 푸시 서비스가 `404` · `410` 을 주면(앱 지움 · 알림 끔 · 만료) 그 구독을 지운다. 연결 오류 · 5xx 가 10번 이어져도 지운다.
+- 키: `python -m scripts.make_vapid_key` 로 개인키를 만들어 backend.env 에 넣는다(Parameter Store 에도). 공개키는 서버가 계산해
+  `GET /push/config` 로 준다. **키를 바꾸면 폰마다 알림을 다시 켜야 한다**(스위치를 껐다 켜면 새 키로 다시 구독한다).

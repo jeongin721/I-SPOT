@@ -10,6 +10,8 @@ import re
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
+import asyncio
+
 import anyio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -30,6 +32,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.responses import DataResponse
 from app.schemas.common import HealthStatus
 from app.services.document_text import MAX_DOCUMENT_BYTES
+from app.services.push_service import run_push_loop
 from app.services.voice_marks_service import start_voice_marks_warmup
 
 logger = get_logger(__name__)
@@ -70,8 +73,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.voice_marks_warmup = start_voice_marks_warmup()
     # LAW_QA_PROVIDER=modeling 이면 법령 질의 모듈과 법령 캐시도 미리 준비한다(law_qa_adapter.start_law_qa_preload).
     app.state.law_qa_preload = start_law_qa_preload()
+    # VAPID 키가 있으면 상담 30분 전 알림 실행기를 돌린다(push_service, 27절). 없으면 바로 끝난다.
+    push_loop = asyncio.create_task(run_push_loop())
 
     yield
+
+    push_loop.cancel()
 
 
 def create_app() -> FastAPI:

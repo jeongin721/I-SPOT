@@ -121,6 +121,17 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
 - 한 번 저장을 시작한 뒤 키를 바꾸면 옛 값을 풀 수 없습니다. 바꿀 때는 `backend/README.md` 7절의 '키 바꾸기' 순서(새 키를 맨 앞에 넣고 `scripts.reencrypt_personal_info`)를 따릅니다.
 - 개발용 키(`backend/.env.example` 의 값)는 `ENV=production` 에서 거절됩니다.
 
+## 상담사 앱(폰) 알림 키 (`VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`)
+
+폰 알림(상담 30분 전 등, `backend/docs/API_CONTRACT.md` 27절)을 켜는 키입니다. 없으면 알림만 꺼지고(앱 스위치 '준비 중') 나머지는 그대로 뜹니다.
+
+1. 키를 만듭니다: `sudo docker exec -w /app ispot-backend python -m scripts.make_vapid_key` — 한 줄이 나옵니다.
+2. PII 키처럼 Parameter Store(SecureString, 예: `/ispot/backend/VAPID_PRIVATE_KEY`)에 둡니다. 잃어도 데이터는 그대로이고 폰마다 알림을 다시 켜면 됩니다.
+3. `/opt/ispot/backend.env` 에 `VAPID_PRIVATE_KEY=<그 값>` 과 `VAPID_SUBJECT=mailto:<기관 대표 메일>`(또는 `https://<사이트 주소>`)을 편집기로 넣고 스크립트를 다시 돌립니다.
+
+- 키를 바꾸면 폰마다 알림을 껐다 켜야 합니다.
+- 상담 30분 전 알림 실행기는 Backend 안에서 1분마다 돕니다(Backend 가 여럿이어도 한 번만 보냄).
+
 ## 디스크 · 빌더
 
 2026-10-28 에 빌드가 두 번 `no space left on device` 로 끊긴 뒤 바꾼 것입니다.

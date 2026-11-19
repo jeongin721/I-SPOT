@@ -85,6 +85,8 @@ class ErrorCode(str, Enum):
     INVALID_CHILD_CODE = "INVALID_CHILD_CODE"
     CHILD_APP_DISABLED = "CHILD_APP_DISABLED"
     CHILD_APP_AI_DISABLED = "CHILD_APP_AI_DISABLED"
+    # 상담사 앱(폰) 알림(27절, 2026-11-19). VAPID 키가 설정에 없다. 503.
+    PUSH_DISABLED = "PUSH_DISABLED"
 
     # 개인 식별 정보 (API_CONTRACT 4절 '개인 식별 정보', 2026-10-30). 저장한 암호문을 풀 수 없음(키가 설정에 없음 · 값이 바뀜). 500.
     PERSONAL_INFO_UNAVAILABLE = "PERSONAL_INFO_UNAVAILABLE"
