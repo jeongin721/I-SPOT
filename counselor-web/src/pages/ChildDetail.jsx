@@ -400,6 +400,12 @@ export default function ChildDetail(props) {
                 <p id="kk-d" className="note" style={{ margin: '-8px 0 0' }}>
                   해지하면 아이 폰의 콩콩이 처음 화면으로 돌아가고, 다시 쓰려면 새 연결 코드를 만들어 아이에게 알려 줘야 합니다.
                 </p>
+                {/* 확인 전 긴급 알림이 있으면 해지 전에 먼저 보도록 경고한다(민규 #187 리뷰). 해지해도 알림은 남는다. */}
+                {openAlerts.some((alert) => alert.urgent) ? (
+                  <p className="note acc" role="alert" style={{ margin: '-8px 0 0', color: '#B0452C', fontWeight: 600 }}>
+                    확인하지 않은 긴급 알림이 있습니다. 해지하기 전에 먼저 확인해 주십시오.
+                  </p>
+                ) : null}
                 <div className="kk-acts">
                   <button type="button" className="btn btn-s" onClick={() => setKkAsk(false)}>
                     취소

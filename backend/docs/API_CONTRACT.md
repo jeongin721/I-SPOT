@@ -2941,7 +2941,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 장기 무응답 안부 연락(11/17 디자인 AdminApp): `POST /cases/{case_id}/child-app/welfare-checks` `{status: "OPEN" | "TRIED" | "DONE", note?: 200자}` → 204. 관리자 또는 담당 상담사, 앱이 연결된 사례만(아니면 409). 사건(`WELFARE_CHECK`)으로 남지만 아이 피드 · 알림에는 들어가지 않고 아이 앱에도 가지 않는다. 감사 로그 `CHILD_APP_WELFARE_CHECKED`(값은 status 만). `GET /child-app-cases` 줄에 `linked_at` · `counselor_name` · `welfare_status` · `welfare_note` · `welfare_at` 이 더해진다 — 안부 연락은 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 것만 보이고, 그 뒤 아이가 답하면 null 이다. 장기 무응답(7일)은 화면이 `last_response_at`(없으면 `linked_at`)으로 정한다.
 
-응답 상태 기준(2026-11-19 콩콩 디자인): `PUT /cases/{case_id}/child-app/silent-days` `{days: 5 | 7 | 10}` → 204(그 밖 422). 담당 상담사 또는 관리자, 연결(초대 포함)이 있어야 한다(없으면 409). `GET /cases/{case_id}/child-app` · `GET /child-app-cases` 행에 `silent_days`(연결 전이면 7). 마지막 응답(없으면 연결) 뒤 이 일수가 지나면 상담사 화면 '안부 확인 필요' · 관리자 '장기 무응답'. 연결을 해지하면 연결 행과 함께 없어져 다시 연결하면 7.
+응답 상태 기준(2026-11-19 콩콩 디자인): `PUT /cases/{case_id}/child-app/silent-days` `{days: 5 | 7 | 10}` → 204(그 밖 422). 담당 상담사 또는 관리자, 연결(초대 포함)이 있어야 한다(없으면 409). `GET /cases/{case_id}/child-app` · `GET /child-app-cases` 행에 `silent_days`(연결 전이면 7). 마지막 응답(없으면 연결) 뒤 이 일수가 지나면 상담사 화면 '안부 확인 필요' · 관리자 '장기 무응답'. 연결을 해지하면 연결 행과 함께 없어져 다시 연결하면 7. 값이 바뀌면 감사 로그 `CHILD_APP_SILENT_DAYS_CHANGED`(`detail: {from, to}`), 같은 값이면 남기지 않는다.
 
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 

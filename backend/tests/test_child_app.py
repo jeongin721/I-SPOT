@@ -1454,3 +1454,14 @@ def test_silent_days_setting(
     assert client.put(url, json={"days": 5}, headers=other_counselor_headers).status_code in (403, 404)
     assert client.put(url, json={"days": 5}, headers=admin_headers).status_code == 204
     assert _view(client, counselor_headers, case["id"])["silent_days"] == 5
+    # 같은 값으로 다시 보내면 기록을 늘리지 않는다.
+    assert client.put(url, json={"days": 5}, headers=admin_headers).status_code == 204
+
+
+def test_silent_days_change_is_audited(client: TestClient, counselor_headers: Headers, case: dict, db, counselor_id) -> None:
+    _linked(client, counselor_headers, case["id"])
+    url = f"/api/v1/cases/{case['id']}/child-app/silent-days"
+    client.put(url, json={"days": 10}, headers=counselor_headers)
+    client.put(url, json={"days": 10}, headers=counselor_headers)
+    rows = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_SILENT_DAYS_CHANGED)).all()
+    assert [(row.actor_id, row.detail) for row in rows] == [(counselor_id, {"from": 7, "to": 10})]

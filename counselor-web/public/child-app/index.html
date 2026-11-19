@@ -551,8 +551,11 @@ function infoHead(t){ return `<div class="info-h">${INFO_IC}<span>${t}</span></d
 function lockLine(t){ return `<div class="lock">${ICON.lock}<span>${t || '보낸 내용은 담당 상담 선생님이 확인해요. 안전이 걱정되면 도움을 주기 위해 다른 어른이나 기관에 알릴 수 있어요.'}</span></div>`; }
 
 /* ---------- 아이 앱 화면 ---------- */
+// 연결 전 화면. 상담사가 연결을 끊어 401 로 돌아왔으면(S.cut) 끊긴 것을 알리고, 연결 전이어도 112 · 1388 은 늘 둔다
+// — 도움 탭은 연결 뒤에만 보이므로(민규 #187 리뷰).
 function scrLink(){
   return `<div class="pad" style="justify-content:center">
+    ${S.cut ? `<div class="info" role="status"><b style="color:var(--ink)">선생님과의 연결이 끊겼어요</b><span>다시 쓰려면 상담 선생님께 새 연결 코드를 받아 입력하세요. 지금 위험하면 아래에서 112에, 이야기하고 싶으면 1388에 전화하세요.</span></div>` : ''}
     <div class="center">${img('hello', 120, '인사하는 캐릭터')}
       <h2 style="margin:0;font-size:1.4em">반가워요</h2>
       <p class="sub" style="margin:0">상담 선생님께 받은 연결 코드를 입력하세요.</p></div>
@@ -560,6 +563,10 @@ function scrLink(){
     <input type="text" id="code" inputmode="text" autocomplete="off" placeholder="예: KONG-2731" value="${esc(S.code)}">
         <div style="flex:1 1 auto"></div>
     <button class="primary" data-act="link">연결하기</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="outline" data-act="call" data-n="112" style="display:flex;align-items:center;justify-content:center;gap:6px;color:var(--danger);border-color:var(--danger)">${ICON.phone}112 경찰</button>
+      <button class="outline" data-act="call" data-n="1388" style="display:flex;align-items:center;justify-content:center;gap:6px">${ICON.chat}1388 상담</button>
+    </div>
   </div>`;
 }
 function scrOnboard(){
@@ -1507,7 +1514,8 @@ async function api(path, options){
   const headers = {'Content-Type':'application/json'}, token = load(STORE.token, null);
   if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch(API + path, {...options, headers});
-  if (res.status === 401 && token) { forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); render(); throw new Error('unlinked'); }
+  // 연결이 끊겼다(상담사 해지 · 아이 기기에서 해지한 뒤 남은 요청 등). 첫 화면에 '연결이 끊겼어요' 를 보인다(민규 #187).
+  if (res.status === 401 && token) { forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); S.cut = true; render(); throw new Error('unlinked'); }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) { const e = new Error('api'); e.status = res.status; e.message2 = body && body.error && body.error.message; throw e; }
   return body && body.data;
@@ -1551,7 +1559,7 @@ async function linkDevice(code){
   S.sending = true;
   try {
     const d = await api('/link', {method:'POST', body:JSON.stringify({code})});
-    save(STORE.token, d.device_token); go('onboard');
+    save(STORE.token, d.device_token); S.cut = false; go('onboard');
   } catch (e) { toast(e.status === 400 ? '연결 코드를 다시 확인해 주세요' : (e.status === 429 ? '잠시 후 다시 시도해 주세요' : '연결하지 못했어요. 인터넷을 확인해 주세요')); }
   S.sending = false;
 }

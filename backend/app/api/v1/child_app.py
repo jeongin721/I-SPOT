@@ -163,9 +163,11 @@ def acknowledge_alert(
 
 
 @case_router.put("/{case_id}/child-app/silent-days", status_code=status.HTTP_204_NO_CONTENT, summary="응답 상태 기준 일수")
-def set_silent_days(case_id: uuid.UUID, payload: ChildSilentDaysRequest, db: DbSession, current_user: CurrentUser) -> None:
+def set_silent_days(
+    case_id: uuid.UUID, payload: ChildSilentDaysRequest, request: Request, db: DbSession, current_user: CurrentUser
+) -> None:
     case = get_case_or_404(db, case_id, current_user)
-    child_app_service.set_silent_days(db, case, current_user, payload.days)
+    child_app_service.set_silent_days(db, case, current_user, payload.days, client_ip(request))
 
 
 @case_router.get("/{case_id}/child-app", response_model=DataResponse[ChildAppCaseResponse])

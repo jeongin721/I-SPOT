@@ -450,15 +450,29 @@ def _welfare_fields(event: Optional[ChildAppEvent], link: Optional[ChildAppLink]
     return {"welfare_status": payload.get("status"), "welfare_note": payload.get("note"), "welfare_at": event.created_at}
 
 
-def set_silent_days(db: Session, case: Case, user: User, days: int) -> None:
-    """응답 상태 '기준' 일수(5 · 7 · 10)를 바꾼다. 담당 상담사 · 관리자. 연결(초대 포함)이 있어야 한다."""
+def set_silent_days(db: Session, case: Case, user: User, days: int, ip_address: Optional[str] = None) -> None:
+    """응답 상태 '기준' 일수(5 · 7 · 10)를 바꾼다. 담당 상담사 · 관리자. 연결(초대 포함)이 있어야 한다. 바뀌면 감사 기록(누가 · 몇 일에서 몇 일로)."""
 
     if not user.is_admin:
         ensure_assigned(case, user)
     link = link_row(db, case.id, lock=True)
     if link is None:
         raise conflict(ErrorCode.INVALID_CASE_STATE, "아이 앱을 연결한 뒤에 정할 수 있습니다.")
+    before = link.silent_days
+    if before == days:
+        db.rollback()
+        return
     link.silent_days = days
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_SILENT_DAYS_CHANGED,
+        entity_type="child_app_link",
+        entity_id=link.id,
+        actor_id=user.id,
+        case_id=case.id,
+        ip_address=ip_address,
+        detail={"from": before, "to": days},
+    )
     db.commit()
 
 
