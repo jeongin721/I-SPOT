@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { childApp as childAppApi } from "../api/endpoints";
-import type { ChildAppCase, ChildAppInvite } from "../api/types";
+import type { ChildAppCase, ChildAppInvite, ChildQuestionDeliver } from "../api/types";
 import { errorMessage, useRemote } from "./useRemote";
 
 const REFRESH_MS = 30_000;
@@ -76,11 +76,21 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  /** deliver "EVENING" 은 발송 예약(그날 저녁 시각부터 아이 앱에 보인다, 지났으면 바로 — API_CONTRACT 24절). */
   const sendQuestions = useCallback(
-    (questionIds: string[]) =>
+    (questionIds: string[], deliver?: ChildQuestionDeliver) =>
       run(async () => {
-        if (caseId) await childAppApi.sendQuestions(caseId, questionIds);
-      }, "질문을 보내지 못했습니다."),
+        if (caseId) await childAppApi.sendQuestions(caseId, questionIds, deliver);
+      }, deliver === "EVENING" ? "발송 예약을 하지 못했습니다." : "질문을 보내지 못했습니다."),
+    [caseId, run],
+  );
+
+  /** 발송 예약 취소. 예약 시각이 지나 이미 아이에게 보였으면 서버가 409 로 거절한다. */
+  const cancelScheduled = useCallback(
+    (questionSetId: string) =>
+      run(async () => {
+        if (caseId) await childAppApi.cancelScheduledQuestions(caseId, questionSetId);
+      }, "발송 예약을 취소하지 못했습니다."),
     [caseId, run],
   );
 
@@ -139,5 +149,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, acknowledge };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, cancelScheduled, acknowledge };
 }
