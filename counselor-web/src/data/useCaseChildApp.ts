@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { ApiError } from "../api/client";
 import { childApp as childAppApi } from "../api/endpoints";
 import type { ChildAppCase, ChildAppInvite, ChildQuestionDeliver, ChildSilentDays } from "../api/types";
 import { errorMessage, useRemote } from "./useRemote";
@@ -163,9 +164,20 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
       run(async () => {
         if (!caseId) return;
         if (linked) await childAppApi.unlink(caseId);
-        setInvite(await childAppApi.invite(caseId));
+        try {
+          setInvite(await childAppApi.invite(caseId));
+        } catch (caught) {
+          if (!linked) throw caught;
+          // 해지는 됐는데 코드 만들기만 실패했다 — 아이 기기는 이미 끊겼으니 지금 상태를 알리고 화면을 '미연결' 로 맞춘다(민규 #187).
+          refresh();
+          throw new ApiError(
+            "CHILD_APP_REISSUE_PARTIAL",
+            "연결이 끊겼습니다. 새 코드를 만들지 못했으니 '연결 코드 만들기'로 코드를 다시 만들어 주세요.",
+            caught instanceof ApiError ? caught.status : 0,
+          );
+        }
       }, "연결 코드를 다시 만들지 못했습니다."),
-    [caseId, run],
+    [caseId, refresh, run],
   );
 
   const acknowledge = useCallback(

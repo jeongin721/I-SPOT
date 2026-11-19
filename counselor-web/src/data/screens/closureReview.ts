@@ -219,7 +219,8 @@ export function closureReviewValues(input: ClosureReviewInput) {
     if (row.source === "DOCUMENT") kind = "문서 회차";
     else if (!history.loaded) kind = "…";
     else if (hist?.analysis_status !== "COMPLETED") kind = "분석 전";
-    else kind = signals.length ? signals.join(" · ") : "관련 신호 없음";
+    // 확정된 유형처럼 읽히지 않게 'AI 신호 · ' 를 붙인다(머리글은 디자인 그대로 '학대 유형', 민규 #187 리뷰).
+    else kind = signals.length ? `AI 신호 · ${signals.join(" · ")}` : "AI 관련 신호 없음";
 
     const subtypes = (hist?.subtypes ?? []).filter((sub) => sub.count > 0);
     const src = subtypes.length
