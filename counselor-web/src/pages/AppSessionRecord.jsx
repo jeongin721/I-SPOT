@@ -8,6 +8,8 @@
 //  - 회차 상태 · 원문: useSessionDetail(GET /sessions/{id}). 원문 변환 · AI 분석 중이면 저절로 다시 본다.
 //  - 상담 요약: useSummaryReview(GET /sessions/{id}/summary). 요약이 생긴 회차만 부른다. 승인한 요약은 '확정',
 //    아니면 'AI 초안 · 승인 전' 칩. 개요와 사정 관점 4칸(웹 상담 요약과 같은 이름 ASSESSMENT_LABELS)을 보인다.
+//    서버는 학대 신호를 먼저 저장하며 회차를 'AI 결과 검수 필요' 로 넘기고 요약은 3 · 4단계 초안과 함께 나중에 만든다
+//    (analysis_service). 그 사이에 열면 요약이 없으므로, 녹음 회차가 검수 필요인데 요약이 없는 동안은 회차를 다시 받는다(민규 #185).
 //  - 상담일지: useSessionDocuments(GET /sessions/{id}/documents)의 가장 최근 상담일지. 승인 전이면 '작성 중'.
 // 이 화면은 아무것도 고치거나 승인하지 않는다(단추 없음). 고치기 · 승인은 웹에서 한다.
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -20,6 +22,7 @@ import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSessionDetail } from '../data/useSessionDetail';
+import { usePolling } from '../data/useRemote';
 import { useSessionDocuments } from '../data/useSessionDocuments';
 import { ASSESSMENT_KEYS, useSummaryReview } from '../data/useSummaryReview';
 
@@ -56,6 +59,9 @@ function RecordBody({ sessionId }) {
   const sum = useSummaryReview(sessionId, { enabled: on && !!s?.hasSummary });
   const docs = useSessionDocuments(sessionId, { enabled: on && !!s });
   const diary = docs.consultationRecord;
+  // 요약 초안이 아직 안 생긴 검수 필요 회차(문서 회차는 AI 요약이 없어 제외).
+  const summaryComing = !!s && s.source === 'AUDIO' && s.status === 'AI_REVIEW_REQUIRED' && !s.hasSummary;
+  usePolling(summaryComing, detail.refresh, detail.settled);
 
   if (detail.error) return <span className="ma-err">{detail.error}</span>;
   if (!s) return <span className="ma-note">불러오는 중</span>;
@@ -91,7 +97,9 @@ function RecordBody({ sessionId }) {
       <p className="ma-sec-t">상담 요약</p>
       <section className="ma-card ma-ss" aria-label="상담 요약">
         {!s.hasSummary ? (
-          <span className="ma-note">아직 상담 요약이 없습니다. AI 분석이 끝나면 초안이 보입니다.</span>
+          <span className="ma-note">
+            {summaryComing ? '상담 요약 초안을 만드는 중입니다. 끝나면 여기에 보입니다.' : '아직 상담 요약이 없습니다. AI 분석이 끝나면 초안이 보입니다.'}
+          </span>
         ) : sum.loading && !sum.hasSummary ? (
           <span className="ma-note">불러오는 중</span>
         ) : sum.error ? (
