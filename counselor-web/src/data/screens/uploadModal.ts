@@ -8,7 +8,12 @@
 // 문서 파일(2026-11-02): 상담사가 쓴 상담 기록 문서(.txt · .docx · .hwpx · .pdf)를 새 회차(녹취 없는 회차)에 올리면 서버가 글자를
 // 뽑아 3단계(상담 요약 4칸 · 상담 일지 초안)를 채우고, 그 회차는 1 · 2단계 없이 3단계부터 한다(useDocumentUpload, API_CONTRACT 21절).
 // 고른 파일의 확장자로 음성 · 문서를 가른다. 진행률(%)은 Backend 가 주지 않아 단계 이름으로 보인다.
+// 상담 유형(11/19 경진): 회차 단계에서 고른다(사례 상세 '녹음하기' 창과 같은 값, 회차 consultation_type). 새 회차면 만들 때 함께
+// 보내고, 있는 회차면 올리기 전에 그 회차 유형만 고친다. 처음 값은 그 회차에 저장된 유형, 없으면 1회차는 초기면담 · 나머지는 정기상담.
 
+import { CONSULTATION_TYPE_LABELS, type ConsultationType } from "../../api/types";
+import { sessions as sessionApi } from "../../api/endpoints";
+import { errorMessage } from "../useRemote";
 import { NOT_PROVIDED } from "../caseRows";
 import { AUDIO_ACCEPT, AUDIO_RULE_TEXT, checkAudioFile, readAudioDuration } from "../audioFile";
 import { DOCUMENT_ACCEPT, DOCUMENT_RULE_TEXT, checkDocumentFile, isDocumentFile } from "../documentFile";
@@ -93,6 +98,10 @@ export interface UploadUiState {
   dialog: boolean;
   /** 파일 칸을 새로 그릴 때 바꾸는 값('빼기' 뒤 같은 파일을 다시 고를 수 있게). */
   fileKey: number;
+  /** 고른 상담 유형. null 이면 아직 안 골랐다(그 회차에 저장된 유형 → 1회차 초기면담 · 나머지 정기상담). */
+  kind: ConsultationType | null;
+  /** 있는 회차의 유형을 고치지 못했을 때. */
+  kindError: string | null;
 }
 
 export function initialUploadState(ids: ScreenIds): UploadUiState {
@@ -105,6 +114,8 @@ export function initialUploadState(ids: ScreenIds): UploadUiState {
     measuring: false,
     dialog: false,
     fileKey: 0,
+    kind: null,
+    kindError: null,
   };
 }
 
@@ -180,8 +191,27 @@ export function uploadModalValues(input: UploadScreenInput) {
     label: option.label,
     meta: option.meta,
     ...radio(option.value === choice),
-    pick: () => setState({ choice: option.value }),
+    // 회차를 바꾸면 유형도 그 회차 값으로 다시 잡는다.
+    pick: () => setState({ choice: option.value, kind: null, kindError: null }),
   }));
+
+  // 상담 유형.
+  const chosenRow = caseDetail.sessions.find((row) => row.id === choice);
+  const newNumber = Math.max(0, ...caseDetail.sessions.map((row) => row.sessionNumber)) + 1;
+  const kind: ConsultationType =
+    state.kind ?? chosenRow?.consultationType ?? ((chosenRow ? chosenRow.sessionNumber : newNumber) === 1 ? "INITIAL" : "REGULAR");
+  const kindOptions = (Object.entries(CONSULTATION_TYPE_LABELS) as [ConsultationType, string][]).map(([value, label]) => ({ value, label }));
+  /** 있는 회차인데 유형이 다르면 올리기 전에 고친다. 못 고치면 false. */
+  const saveKind = async (): Promise<boolean> => {
+    if (!chosenRow || chosenRow.consultationType === kind) return true;
+    try {
+      await sessionApi.update(chosenRow.id, { consultation_type: kind });
+      return true;
+    } catch (caught) {
+      setState({ kindError: errorMessage(caught, "상담 유형을 저장하지 못했습니다. 다시 시도해 주세요.") });
+      return false;
+    }
+  };
   let sessionsNote = "";
   if (caseDetail.loading) sessionsNote = "불러오는 중…";
   else if (caseDetail.error) sessionsNote = caseDetail.error;
@@ -329,22 +359,31 @@ export function uploadModalValues(input: UploadScreenInput) {
     canUpload: isDoc
       ? Boolean(caseId && file && chosen.documentable && !state.fileError && !docUpload.busy)
       : Boolean(caseId && file && chosen.uploadable && !state.fileError && !state.measuring && !upload.busy),
-    upload: () => {
+    upload: async () => {
       if (isDoc) {
         if (!caseId || !file || !chosen.documentable || state.fileError || docUpload.busy) return;
+        setState({ kindError: null });
+        if (!(await saveKind())) return;
         setState({ dialog: true });
-        void docUpload.start({ caseId, sessionId: choice === NEW_SESSION ? null : choice, file });
+        void docUpload.start({ caseId, sessionId: choice === NEW_SESSION ? null : choice, file, newSession: { consultation_type: kind } });
         return;
       }
       if (!caseId || !file || !chosen.uploadable || state.fileError || state.measuring || upload.busy) return;
+      setState({ kindError: null });
+      if (!(await saveKind())) return;
       setState({ dialog: true });
       void upload.start({
         caseId,
         sessionId: choice === NEW_SESSION ? null : choice,
         file,
         durationMs: state.durationMs,
+        newSession: { consultation_type: kind },
       });
     },
+    kind,
+    kindOptions,
+    setKind: (event: { target: { value: string } }) => setState({ kind: event.target.value as ConsultationType, kindError: null }),
+    kindError: state.kindError,
     confirm: state.dialog,
     dialogMark,
     dialogTitle,

@@ -312,6 +312,19 @@ function UploadModalScreen(props) {
                     </p>
                   ) : null}
                 </div>
+                {/* 상담 유형(11/19 경진) — 사례 상세 '녹음하기' 창과 같은 칸. 종결 검토 '회차별 흐름' 유형에 나온다. */}
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '16px' }}>
+                  <span className="lb" style={{ margin: 0 }}>
+                    상담 유형
+                  </span>
+                  <select className="inp" value={v.kind} onChange={v.setKind}>
+                    {v.kindOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </>
             ) : null}
             {v.s3 ? (
@@ -390,6 +403,11 @@ function UploadModalScreen(props) {
                 {v.fileError ? (
                   <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#A33B2E' }}>
                     {v.fileError}
+                  </p>
+                ) : null}
+                {v.kindError ? (
+                  <p className="note" role="alert" style={{ margin: '8px 0 0', color: '#A33B2E' }}>
+                    {v.kindError}
                   </p>
                 ) : null}
                 <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
