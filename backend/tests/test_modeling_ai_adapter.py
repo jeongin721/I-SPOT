@@ -587,7 +587,7 @@ KEY_SCAN_STT = {
 def _key_scan(monkeypatch: pytest.MonkeyPatch, flagged: Any) -> tuple:
     """가짜 1차 모듈에 quick_risk_scan 을 붙이고 key_scan_as_contract 와 받은 인자 목록을 준다.
 
-    임시 조문 매칭(law_match)은 끈다 — 시험에는 임베딩 모델이 없다. 꺼지면 유형의 조문을 근거 없이 붙인다.
+    임시 조문 매칭(law_match)은 끈다 — 시험에는 임베딩 모델이 없다. 꺼지면 조문을 붙이지 않는다(11/19).
     """
 
     calls: List[Any] = []
@@ -607,13 +607,9 @@ def _key_scan(monkeypatch: pytest.MonkeyPatch, flagged: Any) -> tuple:
     return importlib.import_module(CONTRACT_ADAPTER).key_scan_as_contract, calls
 
 
-def _default_reference(korean_type: str) -> Dict[str, Any]:
-    return importlib.import_module("ai.modeling.abuse.law_match").default_reference(korean_type)
-
-
 def test_key_scan_keeps_child_and_unknown_speakers_in_order(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
     """검출 chunk 의 상담원 · 보호자 줄은 빼고 아동 · 화자 미확인 줄만, 원문 순서 · 영문 유형으로 준다.
-    매칭이 꺼져 있으면 유형마다 제17조 호를 근거 없이(excerpt 빈 값 · score null) 붙인다."""
+    매칭이 꺼져 있으면(모델 없음과 같음) 조문은 붙이지 않고 발화 · 유형만 준다(11/19 — 근거 없는 유형 조문 없음)."""
 
     scan, calls = _key_scan(
         monkeypatch,
@@ -631,14 +627,12 @@ def test_key_scan_keeps_child_and_unknown_speakers_in_order(modeling, monkeypatc
             {
                 "segment_id": "seg_002",
                 "abuse_types": ["PHYSICAL", "EMOTIONAL"],
-                "legal_references": [_default_reference("신체학대"), _default_reference("정서학대")],
+                "legal_references": [],
             },
-            {"segment_id": "seg_004", "abuse_types": ["NEGLECT"], "legal_references": [_default_reference("방임")]},
+            {"segment_id": "seg_004", "abuse_types": ["NEGLECT"], "legal_references": []},
         ],
     }
     assert calls == [KEY_SCAN_STT]
-    reference = _default_reference("신체학대")
-    assert reference["item_label"] == "제3호" and reference["excerpt"] == "" and reference["score"] is None
 
 
 def test_key_scan_attaches_a_reference_only_when_the_text_resembles_the_type(

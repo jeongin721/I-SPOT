@@ -53,7 +53,7 @@ def test_every_type_has_a_statute_item_and_anchors():
         assert len(lm.ANCHORS[korean]) >= 8
 
 
-def test_statute_items_match_the_screen_table():
+def test_statute_items_match_the_analysis_items():
     assert lm.statute_reference("신체학대")["item_label"] == "제3호"
     assert lm.statute_reference("정서학대")["item_label"] == "제5호"
     assert lm.statute_reference("성학대")["item_label"] == "제2호"
@@ -126,21 +126,20 @@ def test_threshold_from_config_gates_the_reference():
 
 
 # ---------------------------------------------------------------------------
-# 모델이 없거나 꺼졌을 때 — 예전처럼 유형 조문을 근거 없이
+# 모델이 없거나 꺼졌을 때 — 조문을 붙이지 않는다(11/19, PROPOSAL_stt_law_match.md §9)
 # ---------------------------------------------------------------------------
 
 
-def test_disabled_matcher_returns_default_references_without_excerpt():
+def test_disabled_matcher_attaches_no_reference():
     off = lm.LawMatcher(lm.LawMatchConfig(enabled=False), embed_fn=fake_embed)
 
-    references = off.references_for("네, 없어요.", ["신체학대", "정서학대"])
-
-    assert [r["item_label"] for r in references] == ["제3호", "제5호"]
-    assert all(r["excerpt"] == "" and r["score"] is None for r in references)
+    # 1차가 신체 · 정서로 봤어도 근거(닮은 예시)를 못 대면 조문은 없다 — 줄은 '먼저 들어볼 곳'으로 남는다.
+    assert off.references_for("네, 없어요.", ["신체학대", "정서학대"]) == []
+    assert off.references_for("아빠가 때렸어요", ["신체학대"]) == []
     assert off.similarities("아빠가 때렸어요") is None
 
 
-def test_model_load_failure_falls_back_and_does_not_retry_forever():
+def test_model_load_failure_attaches_nothing_and_does_not_retry_forever():
     calls = []
 
     def failing(texts):
@@ -149,8 +148,8 @@ def test_model_load_failure_falls_back_and_does_not_retry_forever():
 
     broken = lm.LawMatcher(lm.LawMatchConfig(), embed_fn=failing)
 
-    assert [r["item_label"] for r in broken.references_for("아빠가 때렸어요", ["신체학대"])] == ["제3호"]
-    assert broken.references_for("밥을 안 줘요", ["방임"])[0]["score"] is None
+    assert broken.references_for("아빠가 때렸어요", ["신체학대"]) == []
+    assert broken.references_for("밥을 안 줘요", ["방임"]) == []
     assert len(calls) == 1  # 한 번 실패하면 다시 올리려 하지 않는다
     assert broken.ready() is False
 

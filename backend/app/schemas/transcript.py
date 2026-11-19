@@ -39,7 +39,8 @@ class TranscriptResponse(BaseModel):
 
 class KeyScanLegalReference(BaseModel):
     """발화 글이 그 유형의 행위 예시와 닮을 때만 붙는 '임시' 관련 조문(2026-11-09, PROPOSAL_stt_law_match.md).
-    excerpt 는 닮은 예시(왜 붙었는지), score 는 유사도. 매칭 모델이 없을 때는 유형 조문만 근거 없이(excerpt 빈 값 · score null)."""
+    excerpt 는 닮은 예시(왜 붙었는지), score 는 유사도. 매칭 모델이 없으면 AI 가 조문을 주지 않는다(11/19).
+    11/09~11/19 에 근거 없이 저장된 항목(excerpt 빈 값 · score null)은 화면이 보이지 않는다."""
 
     abuse_type: Optional[str] = None
     law_name: str

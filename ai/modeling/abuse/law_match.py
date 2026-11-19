@@ -14,8 +14,10 @@ STT 검수 '1차 임시 핵심 발화'의 임시 관련 조문 — 문장과 맞
   (excerpt) + 점수. 넘지 못하면 그 유형의 조문은 붙이지 않는다(발화는 '먼저 들어볼 곳'으로 남는다).
 - 조문 본문 · 조문 링크: law_cache 의 아동복지법 제17조(캐시만 읽음 — 네트워크 없음)에서 호를 찾고, 캐시가 없으면 내장
   문구 · 법령 전체 링크.
-- 모델을 못 올리면(파일 없음 · torch 없음) 예전처럼 유형의 조문을 근거 없이 붙인다(score null, excerpt 빈 값) — 스캔은
-  실패하지 않는다. KEY_SCAN_LAW_MATCH=off 면 매칭을 끈다(시험 · 모델 없는 개발 환경).
+- 모델을 못 올리면(파일 없음 · torch 없음 · 내려받기 막힘) 조문을 붙이지 않는다 — 발화는 '먼저 들어볼 곳'으로 남고 스캔은
+  실패하지 않는다(서버 로그에 경고). KEY_SCAN_LAW_MATCH=off 면 매칭을 끄고 역시 조문을 붙이지 않는다(시험 · 모델 없는 개발 환경).
+  11/19 전에는 이때 유형의 조문을 근거 없이 붙였는데, 1차 줄 판정은 앞 상담사 질문에 끌려 "네, 없어요" · "발 옆에
+  떨어졌어요" 같은 줄도 고르므로 그 조문이 화면 오탐의 대부분이었다(PROPOSAL_stt_law_match.md §9).
 
 값은 재서 고른다: experiments/key_scan_eval.py 가 줄마다 유사도를 적고 τ 별 조문 정밀도를 비교한다.
 판정이 아니다 — 화면 문구는 '임시 · 참고 조문' 이고 법 위반을 확정하지 않는다(05_RULES).
@@ -43,7 +45,7 @@ LAW_PORTAL_FALLBACK = "https://www.law.go.kr/법령/아동복지법"
 TYPE_TO_ENGLISH = {"신체학대": "PHYSICAL", "정서학대": "EMOTIONAL", "성학대": "SEXUAL", "방임": "NEGLECT"}
 ENGLISH_TO_TYPE = {english: korean for korean, english in TYPE_TO_ENGLISH.items()}
 
-#: 유형 → 제17조 호 번호 · 본문. 본문은 화면 고정 표(counselor-web sttReview.ts KEY_SCAN_ARTICLES)와 같은 문구이고,
+#: 유형 → 제17조 호 번호 · 본문(AI 분석의 조문 연결 legal_reference_adapter 와 같은 호). 본문은 법령 · 매뉴얼 화면과 같은 문구이고,
 #: law_cache 가 있으면 캐시의 현행 문구 · 조문 링크로 바꾼다(_statute_from_cache).
 STATUTE_ITEMS: dict[str, tuple[str, str]] = {
     "성학대": ("2", "아동에게 음란한 행위를 시키거나 이를 매개하는 행위 또는 아동을 대상으로 하는 성희롱 등의 성적 학대행위"),
@@ -224,15 +226,6 @@ def statute_reference(korean_type: str) -> dict[str, Any] | None:
     }
 
 
-def default_reference(korean_type: str) -> dict[str, Any] | None:
-    """매칭 없이 유형만으로 붙이는 조문(11/06 이전과 같은 뜻). 근거 발췌 없음 · 점수 없음."""
-
-    reference = statute_reference(korean_type)
-    if reference is None:
-        return None
-    return {**reference, "excerpt": "", "score": None}
-
-
 # ---------------------------------------------------------------------------
 # 앵커
 # ---------------------------------------------------------------------------
@@ -328,7 +321,7 @@ class LawMatcher:
         return self.config.enabled
 
     def ready(self) -> bool:
-        """모델 · 앵커 임베딩을 올린다(한 번). 못 올리면 False — 이후 default_reference 로 간다."""
+        """모델 · 앵커 임베딩을 올린다(한 번). 못 올리면 False — 이후 조문을 붙이지 않는다."""
 
         if not self.config.enabled or self._failed:
             return False
@@ -346,7 +339,7 @@ class LawMatcher:
             except Exception as error:  # noqa: BLE001 — 모델이 없어도 스캔은 계속된다
                 self._failed = True
                 logger.warning(
-                    "임시 조문 매칭 모델을 올리지 못해 유형 조문을 근거 없이 붙입니다(%s=%s). type=%s",
+                    "임시 조문 매칭 모델을 올리지 못해 STT 검수 화면에 임시 조문을 붙이지 않습니다(%s=%s). type=%s",
                     ENV_MODEL,
                     self.config.model_name,
                     type(error).__name__,
@@ -369,7 +362,7 @@ class LawMatcher:
         return result
 
     def references_for(self, text: str, types: Sequence[str]) -> list[dict[str, Any]]:
-        """발화 글과 1차 유형(한글) → 붙일 조문 목록. 매칭이 안 되면(모델 없음 · 꺼짐) 유형 조문을 근거 없이."""
+        """발화 글과 1차 유형(한글) → 붙일 조문 목록. 닮은 예시가 있는 유형만. 매칭이 안 되면(모델 없음 · 꺼짐) 빈 목록."""
 
         korean_types = [ENGLISH_TO_TYPE.get(label, label) for label in types]
         korean_types = [label for label in korean_types if label in STATUTE_ITEMS]
@@ -378,7 +371,7 @@ class LawMatcher:
 
         similarity = self.similarities(text)
         if similarity is None:
-            return [reference for reference in (default_reference(label) for label in korean_types) if reference]
+            return []
 
         references: list[dict[str, Any]] = []
         for label in korean_types:
