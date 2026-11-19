@@ -132,6 +132,9 @@ class Settings(BaseSettings):
     # 상담 일정 몇 분 전에 알릴지(디자인 '상담 30분 전 알림'), 알릴 일정을 몇 초마다 찾을지.
     PUSH_BEFORE_SESSION_MINUTES: int = Field(default=30, ge=1, le=24 * 60)
     PUSH_LOOP_SECONDS: int = Field(default=60, ge=10, le=3600)
+    # 상담 30분 전 실행기를 이 Backend 에서 돌릴지(민규 11/19). 기본 끔 — 시험 · CI · 로컬에서는 돌지 않는다. 서버만 켠다.
+    # 꺼도 /push API(켜기 · 끄기 · 시험 알림)와 앱의 업로드 실패 알림은 키만 있으면 된다.
+    PUSH_LOOP_ENABLED: bool = False
     # 상담사가 바로 볼 수 있는 시간(한국 시간). 밖이면 아이 앱이 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
     # 요일은 0=월 … 6=일. 공휴일은 CHILD_APP_STAFF_HOLIDAYS.
     # 시간은 같은 날 안의 HH:MM-HH:MM(시작 < 끝)만 된다. 자정을 넘기면(22:00-06:00) 늘 밖으로 본다. 값 범위(25:99)는 검사하지 않는다.

@@ -127,10 +127,10 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
 
 1. 키를 만듭니다: `sudo docker exec -w /app ispot-backend python -m scripts.make_vapid_key` — 한 줄이 나옵니다.
 2. PII 키처럼 Parameter Store(SecureString, 예: `/ispot/backend/VAPID_PRIVATE_KEY`)에 둡니다. 잃어도 데이터는 그대로이고 폰마다 알림을 다시 켜면 됩니다.
-3. `/opt/ispot/backend.env` 에 `VAPID_PRIVATE_KEY=<그 값>` 과 `VAPID_SUBJECT=mailto:<기관 대표 메일>`(또는 `https://<사이트 주소>`)을 편집기로 넣고 스크립트를 다시 돌립니다.
+3. `/opt/ispot/backend.env` 에 `VAPID_PRIVATE_KEY=<그 값>`, `VAPID_SUBJECT=mailto:<기관 대표 메일>`(또는 `https://<사이트 주소>`), `PUSH_LOOP_ENABLED=true` 를 편집기로 넣고 스크립트를 다시 돌립니다. 값은 메신저로 주고받지 않습니다.
 
 - 키를 바꾸면 폰마다 알림을 껐다 켜야 합니다.
-- 상담 30분 전 알림 실행기는 Backend 안에서 1분마다 돕니다(Backend 가 여럿이어도 한 번만 보냄).
+- 상담 30분 전 알림 실행기는 `PUSH_LOOP_ENABLED=true` 일 때 Backend 안에서 1분마다 돕니다(Backend 가 여럿이어도 한 번만 보냄).
 
 ## 디스크 · 빌더
 

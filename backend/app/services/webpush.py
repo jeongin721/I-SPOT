@@ -30,7 +30,8 @@ RECORD_SIZE = 4096
 MAX_PAYLOAD_BYTES = 3000
 #: 보낸 뒤 폰이 꺼져 있으면 푸시 서비스가 이만큼 들고 있다가 버린다(초). 30분 전 알림이 늦게 오면 쓸모가 없어 짧게.
 DEFAULT_TTL_SECONDS = 15 * 60
-SEND_TIMEOUT_SECONDS = 10
+#: 한 기기에 보내는 시간 상한. 시험 알림(POST /push/test)은 요청 스레드에서 보내므로 짧게 둔다.
+SEND_TIMEOUT_SECONDS = 5
 
 
 class WebPushError(Exception):

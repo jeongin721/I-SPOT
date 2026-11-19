@@ -272,8 +272,11 @@ def _tick() -> None:
 
 
 async def run_push_loop() -> None:
-    """main.py lifespan 이 띄운다. 키가 없으면 바로 끝난다. 한 번 실패해도 다음 차례에 다시 한다."""
-    if not is_enabled():
+    """
+    main.py lifespan 이 띄운다. PUSH_LOOP_ENABLED 가 꺼져 있거나 키가 없으면 바로 끝난다. 한 번 실패해도 다음 차례에 다시 한다.
+    보내기(바깥 푸시 서비스로 가는 HTTP)는 스레드에서 한다 — 이벤트 루프를 막지 않아 다른 API 응답이 기다리지 않는다.
+    """
+    if not settings.PUSH_LOOP_ENABLED or not is_enabled():
         return
 
     while True:

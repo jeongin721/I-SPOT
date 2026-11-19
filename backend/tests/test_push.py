@@ -311,3 +311,18 @@ def test_cleanup_old_deliveries(db, counselor_id) -> None:
     db.commit()
     push_service.cleanup_deliveries(db, datetime.now(timezone.utc) + timedelta(days=push_service.DELIVERY_KEEP_DAYS + 1))
     assert db.scalar(select(PushDelivery)) is None
+
+
+def test_loop_off_by_default_and_without_keys(monkeypatch) -> None:
+    # 시험 · CI · 로컬에서는 실행기가 돌지 않는다(PUSH_LOOP_ENABLED 기본 끔). 켜도 키가 없으면 바로 끝난다.
+    import asyncio
+
+    assert settings.PUSH_LOOP_ENABLED is False
+    called = []
+    monkeypatch.setattr(push_service, "_tick", lambda: called.append(1))
+    asyncio.run(asyncio.wait_for(push_service.run_push_loop(), 1))
+
+    monkeypatch.setattr(settings, "PUSH_LOOP_ENABLED", True)
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", None)
+    asyncio.run(asyncio.wait_for(push_service.run_push_loop(), 1))
+    assert called == []
