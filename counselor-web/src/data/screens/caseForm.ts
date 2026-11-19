@@ -583,3 +583,50 @@ export function caseFormValues(input: CaseFormInput) {
     unsaved: Object.keys(edits).length > 0,
   };
 }
+
+// ---------------------------------------------------------
+// 탭 5 문서함 '열기' 읽기 전용 보기 창(11/10 디자인 CaseDocs) — 저장한 서식 값을 문서함 빈 양식(blankFormDefs)의 칸 이름으로.
+// 디자인 CaseDocs.dc.html 이 하는 대응 그대로다: 사정기록지 안전영역 a1~a11 · Key Person kp · 사정결과 res,
+// 점검표 q1~q9(예 · 아니오), 위험수준 척도 r1~r43('N점'), 가족관계 척도 f1~f15(5점 문구). 그 밖의 칸은 빈 양식대로 비어 보인다.
+// ---------------------------------------------------------
+
+/** 서식 → 문서함 빈 양식 ID. */
+export const BLANK_FORM_OF: Record<FormTab, string> = { A: "f6", B: "f27", C: "r3", D: "r1" };
+
+const FAMILY_LABELS = ["전혀 그렇지 않다", "대체로 그렇지 않다", "보통이다", "대체로 그렇다", "항상 그렇다"];
+
+/** 이 서식의 지금 차수(임시 저장 → 확정 순, useCaseForms.currentForm) 값을 빈 양식 칸 값으로. 기록이 없으면 빈 값. */
+export function blankViewValues(forms: CaseFormsState, tab: FormTab): Record<string, string | boolean> {
+  const row = currentForm(forms.items, FORM_TYPES[tab]);
+  const raw = (row?.values as Record<string, unknown>) ?? null;
+  const out: Record<string, string | boolean> = {};
+  const label = <C extends string>(options: [string, C][], code: C | null) => options.find(([, c]) => c === code)?.[0] ?? "";
+
+  if (tab === "A") {
+    const v = normalize("SAFETY_ASSESSMENT", raw);
+    v.items.forEach((code, i) => {
+      const text = label(LEVELS, code);
+      if (text) out[`a${i + 1}`] = text;
+    });
+    const kp = label(KEY_OPTS, v.key_person);
+    if (kp) out.kp = kp;
+    const res = label(RESULTS, v.result);
+    if (res) out.res = res;
+  } else if (tab === "B") {
+    const v = normalize("MANAGEMENT_CHECKLIST", raw);
+    v.checks.forEach((code, i) => {
+      if (code) out[`q${i + 1}`] = code === "YES" ? "예" : "아니오";
+    });
+  } else if (tab === "C") {
+    const v = normalize("RISK_SCALE", raw);
+    v.scores.forEach((score, i) => {
+      if (score !== null) out[`r${i + 1}`] = `${score}점`;
+    });
+  } else {
+    const v = normalize("FAMILY_SCALE", raw);
+    v.answers.forEach((answer, i) => {
+      if (answer !== null) out[`f${i + 1}`] = FAMILY_LABELS[answer - 1];
+    });
+  }
+  return out;
+}

@@ -6,27 +6,46 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { blankFormPages, clampScore } from '../data/blankForms';
 
-function ReadSeg({ g }) {
+// 읽기 칸. values 를 주면(사례 문서함 '열기' 보기 창) 저장한 값을 칸에 적고, 고른 항목은 ☑ 로 보인다.
+function ReadSeg({ g, values }) {
+  const val = values ? values[g.key] : undefined;
   switch (g.t) {
     case 'i':
       return g.fill ? (
-        <span className="fv" style={{ flex: '1 1 90px', minWidth: '60px' }} />
+        <span className="fv" style={{ flex: '1 1 90px', minWidth: '60px' }}>
+          {val || null}
+        </span>
       ) : (
-        <span className="fv" style={{ flex: '0 0 auto', minWidth: g.width }} />
+        <span className="fv" style={{ flex: '0 0 auto', minWidth: g.width }}>
+          {val || null}
+        </span>
       );
     case 'n':
-      return <span className="fv" style={{ flex: '0 0 auto', minWidth: '56px' }} />;
+      return (
+        <span className="fv" style={{ flex: '0 0 auto', minWidth: '56px' }}>
+          {val || null}
+        </span>
+      );
     case 'ta':
-      return <span className="fvt" style={{ minHeight: `${g.rows * 22 + 14}px` }} />;
-    default:
+      return (
+        <span className="fvt" style={{ minHeight: `${g.rows * 22 + 14}px` }}>
+          {val || null}
+        </span>
+      );
+    default: {
+      const on = values ? (g.group ? val === g.text : !!val) : false;
       return (
         <span className={`${g.cls} fvc`}>
           <span className="fbox" aria-hidden="true">
-            ☐
+            {on ? '☑' : '☐'}
           </span>
-          <span className="fcl-t">{g.text}</span>
+          <span className="fcl-t" style={on ? { fontWeight: 700 } : undefined}>
+            {g.text}
+          </span>
+          {on ? <span style={{ position: 'absolute', left: '-9999px' }}>(선택됨)</span> : null}
         </span>
       );
+    }
   }
 }
 
@@ -80,7 +99,7 @@ function EditSeg({ g, values, onSet }) {
   }
 }
 
-function Paper({ page, values, onSet }) {
+export function Paper({ page, values, onSet }) {
   const editing = !!onSet;
   return (
     <div className="paper">
@@ -93,7 +112,11 @@ function Paper({ page, values, onSet }) {
                 if (g.t === 'g') return <span key={gi} className="fgd">{g.text}</span>;
                 if (g.t === 'br') return <span key={gi} className="fbr" />;
                 if (g.t === 'sp') return <span key={gi} className={`fsp ${g.q}`} />;
-                return editing ? <EditSeg key={gi} g={g} values={values} onSet={onSet} /> : <ReadSeg key={gi} g={g} />;
+                return editing ? (
+                  <EditSeg key={gi} g={g} values={values} onSet={onSet} />
+                ) : (
+                  <ReadSeg key={gi} g={g} values={values} />
+                );
               })}
             </div>
           ))}
