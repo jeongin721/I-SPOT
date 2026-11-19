@@ -47,10 +47,10 @@ ALERT_OVERDUE_AFTER = timedelta(minutes=5)
 OPEN_ALERT_LIMIT = 50
 # 관리자 긴급 알림 현황이 긴급을 모으려고 한 번에 읽는 확인 필요 줄의 최대 수.
 RECENT_SCAN_MAX = 5000
-AI_QUESTION_PREFIX = "ai_"
+AI_QUESTION_PREFIX = "ai_"  # 프론트 counselor-web/src/data/screens/childDetail.ts 에 같은 값(민규 #186)
 LIST_LIMIT = 200
 RECENT_DAYS = 21
-CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"
+CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요"  # 프론트 counselor-web/src/data/screens/childDetail.ts 에 같은 값(민규 #186)
 SKIP_TEXT = "답하기 어려워요"
 # 콩콩 '지금 기분' 표정 12개(디자인 순서). 살펴볼 기분이면 상담사 피드에 '살펴볼 기분' 으로 보인다.
 MOODS: Dict[str, str] = {

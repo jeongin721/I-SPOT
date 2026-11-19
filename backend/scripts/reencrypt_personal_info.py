@@ -394,7 +394,8 @@ def reencrypt_docbox_forms(db: Session, *, dry_run: bool = False) -> DocboxReenc
         finally:
             temp.unlink(missing_ok=True)
 
-        if db.get(DocboxFile, row_id) is None:
+        # 앞에서 읽어 둔 행이라 db.get 은 지워진 행에 예외를 낼 수 있다 — 있는지만 새로 본다(민규 #186).
+        if db.scalar(select(DocboxFile.id).where(DocboxFile.id == row_id)) is None:
             # 그사이 행이 지워졌다(지우기는 행 먼저 · 파일 나중) — 다시 만든 본체를 남기지 않는다.
             path.unlink(missing_ok=True)
         else:
