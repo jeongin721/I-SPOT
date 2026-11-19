@@ -1,0 +1,239 @@
+// 아이 상세 화면 값(11/09 디자인 '아이 연계 › 아이 상세', 콩콩 앱 서버 값, API_CONTRACT 24절).
+//
+// 디자인은 매일 체크인 예시지만 콩콩은 상담사가 고른 질문에 아이가 답하는 구조다. 그래서 '최근 답 한 묶음'을 이번 답변으로,
+// 같은 질문의 이전 답(최대 3번)을 지난 답변으로 보인다. AI 초안은 서버가 만든 것만 보이고, 추가 질문은 상담사가 승인해야 앱으로 간다.
+
+import type { ChildAppCase, ChildAppEvent } from "../../api/types";
+
+interface AnswerItem {
+  question_id: string;
+  question: string;
+  answer: string;
+  level: string;
+  wrote_text?: boolean;
+  /** 아이가 직접 쓴 글. 이 칸이 생기기 전 답은 없고 answer 만 있다. */
+  written?: string;
+}
+
+const MAX_PREVIOUS = 3;
+/** 서버 child_app_service.CONTACT_REQUEST_CHIP · AI_QUESTION_PREFIX 와 같게 둔다. */
+const CONTACT_REQUEST_CHIP = "전화로 연락받고 싶어요";
+const AI_QUESTION_PREFIX = "ai_";
+
+/**
+ * 한 묶음의 답 중 상담사가 먼저 볼 답의 순서(낮을수록 먼저). 볼 필요 없는 답은 null.
+ * 위험 답(RED) → 연락 요청 → 주의 답(AMBER) → 추가 질문(AI, 위험 답의 후속)에 대한 답. 넘긴 답('답하기 어려워요')은 빼낸다.
+ */
+function checkRank(item: AnswerItem): number | null {
+  if (item.level === "SKIP") return null;
+  if (item.level === "RED") return 0;
+  if (item.answer.includes(CONTACT_REQUEST_CHIP)) return 1;
+  if (item.level === "AMBER") return 2;
+  if (item.question_id.startsWith(AI_QUESTION_PREFIX)) return 3;
+  return null;
+}
+const RECENT_DAYS = 21;
+
+export function childDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function itemsOf(event: ChildAppEvent): AnswerItem[] {
+  return Array.isArray(event.payload.items) ? (event.payload.items as AnswerItem[]) : [];
+}
+
+/**
+ * 아이가 쓴 글(새것부터): 질문 답의 글 · 선생님께 메시지 글 · 지금 기분의 이유(11/19 콩콩 디자인 맞춤).
+ * 칩만 고르거나 표정만 고른 것은 글이 아니라 뺀다. 아이 상세 · 상담 전 브리핑 · 종결 검토의 '아이가 쓴 글' 칸이 같이 쓴다.
+ */
+export function childWritings(feed: ChildAppEvent[]): { text: string; at: string }[] {
+  return feed.flatMap((event) => {
+    const texts: unknown[] =
+      event.kind === "ANSWERS"
+        ? itemsOf(event).filter((item) => item.wrote_text).map((item) => item.written ?? item.answer)
+        : event.kind === "NOTE"
+          ? [event.payload.text]
+          : event.kind === "MOOD"
+            ? [event.payload.why]
+            : [];
+    return texts
+      .filter((text): text is string => typeof text === "string" && text.trim() !== "")
+      .map((text) => ({ text: text.trim(), at: childDateTime(event.created_at) }));
+  });
+}
+
+function nextLabel(next: ChildAppCase["next_consult"]): string {
+  if (!next) return "—";
+  const [, month, day] = next.date.split("-").map(Number);
+  return `${month}/${day}${next.time ? ` ${next.time}` : ""}`;
+}
+
+function statusChip(data: ChildAppCase, latest: ChildAppEvent | undefined): { reason: string; rCls: string } {
+  if (data.open_alerts.some((alert) => alert.urgent) || (latest?.level === "RED" && !latest.acknowledged_at)) {
+    return { reason: "긴급", rCls: "chip c-urgent" };
+  }
+  // 바로 확인할 답(RED)을 확인했으면 '긴급' 대신 확인 완료(멘토 피드백 11/12). 확인 시각이 있을 때만(민규 #175 리뷰 2).
+  if (data.open_alerts.length === 0 && latest?.level === "RED" && latest.acknowledged_at) {
+    return { reason: `확인 완료 ${childDateTime(latest.acknowledged_at)}`, rCls: "chip c-ok" };
+  }
+  if (data.open_alerts.length > 0 || latest?.level === "AMBER") return { reason: "확인 필요", rCls: "chip c-check" };
+  // 답이 없는 것은 안전하다는 뜻이 아니다(민규 #165 리뷰 3).
+  if (!latest) return { reason: "답 없음", rCls: "chip c-normal" };
+  return { reason: "정상", rCls: "chip c-normal" };
+}
+
+export interface ChildAiActions {
+  saveNote: (draftId: string, questionId: string, text: string) => void;
+  saveQuestion: (draftId: string, id: string, text: string, options: string[]) => void;
+  setApproval: (draftId: string, id: string, approved: boolean) => void;
+}
+
+/** 최근 답에 AI 초안이 필요한 항목이 있으면 그 답 묶음의 event id, 아니면 null. */
+export function aiDraftNeeded(data: ChildAppCase): string | null {
+  if (!data.ai_enabled || data.ai_draft) return null;
+  const latest = data.feed.find((event) => event.kind === "ANSWERS");
+  return latest && itemsOf(latest).some((item) => item.level === "RED" || item.level === "AMBER") ? latest.id : null;
+}
+
+/** 서버 값을 디자인 화면의 값 묶음으로 바꾼다. now 는 시험을 위해 받는다. */
+export function childDetailValues(
+  data: ChildAppCase,
+  info: { name: string; initial: string; caseNumber: string; birthYearLabel: string },
+  actions?: ChildAiActions,
+  now: number = Date.now(),
+) {
+  const answered = data.feed.filter((event) => event.kind === "ANSWERS");
+  const latest = answered[0];
+  const earlier = answered.slice(1);
+  const bank = new Map(data.bank.map((item) => [item.id, item]));
+  const lastLabel = childDateTime(data.last_response_at);
+  const recent = answered.filter((event) => now - new Date(event.created_at).getTime() <= RECENT_DAYS * 86400000).length;
+
+  const previousOf = (questionId: string): string[] =>
+    earlier
+      .flatMap((event) => itemsOf(event).filter((item) => item.question_id === questionId))
+      .slice(0, MAX_PREVIOUS)
+      .map((item) => item.answer)
+      .reverse();
+
+  const rows = latest
+    ? itemsOf(latest).map((item) => ({
+        item,
+        category: bank.get(item.question_id)?.category ?? "",
+        question: bank.get(item.question_id)?.text ?? item.question,
+        previous: previousOf(item.question_id),
+        flagged: item.level === "RED" || item.level === "AMBER",
+      }))
+    : [];
+
+  const writing = childWritings(data.feed)[0];
+
+  const draft = data.ai_draft && latest && data.ai_draft.event_id === latest.id ? data.ai_draft : null;
+  const flaggedRows = rows.filter((row) => row.flagged);
+  const draftItems = flaggedRows.map((row) => draft?.items.find((item) => item.question_id === row.item.question_id) ?? null);
+  const aiQuestions = draftItems.flatMap((item, index) =>
+    (item?.questions ?? []).map((question) => ({
+      id: "추가",
+      text: question.text,
+      opts: question.options,
+      why: `${flaggedRows[index].category || "이번"} 답변`,
+      edited: question.edited,
+      approved: question.approved,
+      sendNote: question.answered ? "아이가 답함" : "앱으로 보냄",
+      setApproved: (next: boolean) => {
+        if (draft) actions?.setApproval(draft.id, question.id, next);
+      },
+      save: (text: string, options: string[]) => {
+        if (draft) actions?.saveQuestion(draft.id, question.id, text, options);
+      },
+      flagIndex: index,
+    })),
+  );
+
+  return {
+    name: info.name,
+    short: info.name,
+    short0: info.initial,
+    age: info.birthYearLabel,
+    types: "",
+    id: info.caseNumber,
+    ...statusChip(data, latest),
+    last: lastLabel,
+    count: `응답 ${recent}번`,
+    next: nextLabel(data.next_consult),
+    quote: writing?.text ?? "",
+    quoteAt: writing?.at ?? "",
+    prevLabel: "지난 답변 (오래된 순)",
+    flowLabel: "이전 → 이번",
+    answers: rows.map((row) => [
+      row.category,
+      row.question,
+      row.item.answer,
+      row.flagged,
+      row.previous,
+      row.item.level === "RED" ? "바로 확인" : "확인 필요",
+    ]),
+    flags: rows
+      .filter((row) => row.flagged)
+      .map((row) => ({
+        q: row.category ? `${row.question} (${row.category})` : row.question,
+        flow: [...row.previous, row.item.answer],
+        src: `${childDateTime(latest?.created_at)} 응답`,
+        qi: aiQuestions.flatMap((question, questionIndex) =>
+          question.flagIndex === flaggedRows.indexOf(row) ? [questionIndex] : [],
+        ),
+      })),
+    notes: draftItems.map((item) =>
+      item
+        ? {
+            text: item.note,
+            edited: item.note_edited,
+            save: (text: string) => {
+              if (draft) actions?.saveNote(draft.id, item.question_id, text);
+            },
+          }
+        : null,
+    ),
+    qs: aiQuestions,
+  };
+}
+
+/** 아이 앱이 보낸 것 중 브리핑 · 종결 검토가 먼저 볼 것: 가장 최근 아이가 쓴 글, 가장 최근 답에서 지난번과 달라진 답. */
+export function childAppHighlights(data: ChildAppCase | null | undefined) {
+  if (!data || !data.can_read_feed) return null;
+  const answered = data.feed.filter((event) => event.kind === "ANSWERS");
+  const bank = new Map(data.bank.map((item) => [item.id, item]));
+  const writing = childWritings(data.feed)[0];
+  const latest = answered[0];
+  const changes = latest
+    ? itemsOf(latest).flatMap((item) => {
+        const before = answered
+          .slice(1)
+          .flatMap((event) => itemsOf(event).filter((prev) => prev.question_id === item.question_id))[0];
+        return before && before.answer !== item.answer
+          ? [{ question: bank.get(item.question_id)?.text ?? item.question, from: before.answer, to: item.answer, level: item.level }]
+          : [];
+      })
+    : [];
+  // 가장 최근 답 묶음에서 확인이 필요한 답(같은 질문의 예전 답이 없어 '변화' 로는 안 잡히는 처음 답 · 추가 질문 답 포함).
+  const needCheck = latest
+    ? itemsOf(latest)
+        .map((item) => ({ item, rank: checkRank(item) }))
+        .filter((x): x is { item: AnswerItem; rank: number } => x.rank !== null)
+        .sort((a, b) => a.rank - b.rank)
+        .map(({ item }) => ({ question: bank.get(item.question_id)?.text ?? item.question, answer: item.answer, level: item.level }))
+    : [];
+  return {
+    needCheck,
+    linked: data.status === "LINKED",
+    answeredCount: answered.length,
+    flaggedCount: answered.filter((event) => event.level === "RED" || event.level === "AMBER").length,
+    lastAt: data.last_response_at,
+    written: writing ?? null,
+    changes,
+    changedAt: latest ? childDateTime(latest.created_at) : "",
+  };
+}

@@ -12,6 +12,7 @@ on:
       - "tests/test_elevenlabs_stt_provider.py"
       - "tests/test_selective_deepgram_single_speaker_fallback.py"
       - "tests/test_stt_failure_handling.py"
+      - "tests/test_stt_audio_suffix.py"
       - "backend/requirements-stt.txt"
       - ".github/workflows/stt-ci.yml"
   pull_request:
@@ -21,6 +22,7 @@ on:
       - "tests/test_elevenlabs_stt_provider.py"
       - "tests/test_selective_deepgram_single_speaker_fallback.py"
       - "tests/test_stt_failure_handling.py"
+      - "tests/test_stt_audio_suffix.py"
       - "backend/requirements-stt.txt"
       - ".github/workflows/stt-ci.yml"
 
@@ -50,4 +52,5 @@ jobs:
         run: >-
           python -B -m pytest tests/test_elevenlabs_stt_provider.py
           tests/test_stt_failure_handling.py
+          tests/test_stt_audio_suffix.py
           tests/test_selective_deepgram_single_speaker_fallback.py -q -p no:cacheprovider

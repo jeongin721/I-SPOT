@@ -3,14 +3,15 @@
 // 디자인 칸 → 서버 값:
 //  - 머리: 별칭 · 사례번호 · 출생연도 · 회차 범위 · 기간(첫 회차 ~ 마지막 회차 상담일, 없으면 등록일).
 //  - 한눈에 '상담': 회차 수와 상담 유형별 수(consultation_type). '새 학대 진술': 신호 이력(signal-history)에서 AI 관련 신호가
-//    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '아이 연계 응답' · '위험수준 척도' 는 아이 앱 ·
-//    기관 서식 기록이 서버에 없어 준비 중.
+//    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '위험수준 척도' 는 기관 서식 기록이 서버에 없어 준비 중.
 //  - 회차별 흐름: 회차 · 날짜 · 유형 · 핵심(승인한 상담 요약 4칸 중 처음 채워진 칸, 상담원 확정 문장) · 근거(그 칸 이름 또는
-//    AI 관련 신호). 승인 전 회차는 핵심 '승인 전'.
+//    AI 관련 신호). 승인 전 회차는 핵심 '승인 전'. 회차를 누르면 그 회차 상세(/SessionDetail).
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
-//  - 서로 다른 진술 · 아이 연계는 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
+//  - 아이 연계(콩콩): 머리 기간 · 한눈에 '답한 날 / 연결한 날' · 아이가 쓴 글 · 질문별 월별 가장 많은 답(디자인 표).
+//  - 서로 다른 진술은 아직 없어 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다.
 
-import { CONSULTATION_TYPE_LABELS, type ClosureReportFields, type ConsultationType } from "../../api/types";
+import { childWritings } from "./childDetail";
+import { CONSULTATION_TYPE_LABELS, type ChildAppCase, type ChildAppEvent, type ClosureReportFields, type ConsultationType } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import type { ApprovedSummariesState } from "../useApprovedSummaries";
 import type { ClosureSummaryState } from "../useClosureSummary";
@@ -43,6 +44,128 @@ export interface ClosureReviewInput {
   approved: ApprovedSummariesState;
   /** 회차별 흐름을 모두 펼쳤는가. */
   all: boolean;
+  /** 콩콩 아이 앱(GET /cases/{id}/child-app). 꺼져 있거나 못 받았으면 null. */
+  childApp?: ChildAppCase | null;
+}
+
+// ------------------------------------------------------------
+// 아이 연계(콩콩, 11/10 연결 · 11/19 디자인 칸 채움): 머리 기간 · 한눈에 응답 일수 · 아이가 쓴 글 · 질문별 월별 답
+// ------------------------------------------------------------
+
+interface ChildAnswer {
+  question_id: string;
+  question: string;
+  answer: string;
+  wrote_text?: boolean;
+  written?: string;
+}
+
+const answersOf = (event: ChildAppEvent): ChildAnswer[] =>
+  Array.isArray(event.payload.items) ? (event.payload.items as ChildAnswer[]) : [];
+/** 한국 시각 날짜 'YYYY-MM-DD'. */
+const kstDate = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+/** 'YYYY-MM-DD' 두 날짜 사이 날 수(양 끝 포함). */
+const daysBetween = (from: string, to: string) => Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
+
+/** 월별 표에 보일 달 · 질문 수 상한(디자인은 3달 · 3질문). */
+const CHILD_MONTHS_MAX = 4;
+const CHILD_QUESTIONS_MAX = 5;
+const CHILD_WRITTEN_MAX = 4;
+
+/** 받은 답(ANSWERS) — 오래된 것부터. 담당이 아니어서 못 읽으면 null. */
+function childAnswered(app: ChildAppCase | null | undefined) {
+  if (!app || !app.can_read_feed) return null;
+  return app.feed.filter((event) => event.kind === "ANSWERS").sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+/** 머리 '아이 연계 (5/2 ~ 10/11)': 연결한 날 ~ 마지막 응답. 연결한 적 없으면 빈칸. */
+function childRange(app: ChildAppCase | null | undefined): string {
+  if (!app?.linked_at) return "";
+  const from = shortDate(kstDate(app.linked_at));
+  const to = app.last_response_at ? shortDate(kstDate(app.last_response_at)) : "";
+  return `아이 연계 (${from} ~ ${to})`;
+}
+
+/** '아이 연계 응답' 칸(디자인 '128 / 163일'): 답한 날 수 / 연결한 뒤 지난 날 수 · 긴급 응답 수. */
+function childKpi(app: ChildAppCase | null | undefined) {
+  const label = "아이 연계 응답";
+  if (!app) return { label, value: NOT_PROVIDED, src: `${NOT_READY} · 아이 앱이 꺼져 있음` };
+  const answered = childAnswered(app);
+  if (!answered) return { label, value: NOT_PROVIDED, src: "담당 상담사만 볼 수 있어요" };
+  if (answered.length === 0) return { label, value: "0일", src: app.status === "LINKED" ? "받은 답이 없어요" : "아이 앱 미연결" };
+  const days = new Set(answered.map((event) => kstDate(event.created_at))).size;
+  const total = app.linked_at ? daysBetween(kstDate(app.linked_at), kstDate(new Date().toISOString())) : null;
+  const red = answered.filter((event) => event.level === "RED").length;
+  return {
+    label,
+    value: total ? `${days} / ${total}일` : `${days}일`,
+    src: [`긴급 응답 ${red}회`, app.last_response_at ? `마지막 ${shortDate(kstDate(app.last_response_at))}` : ""].filter(Boolean).join(" · "),
+  };
+}
+
+/** 한 달 안에서 가장 많은 답(같으면 나중 답). 두 번 넘으면 '무서워 · 3회'. */
+function topAnswer(answers: string[]): string {
+  const counts = new Map<string, number>();
+  answers.forEach((answer) => counts.set(answer, (counts.get(answer) ?? 0) + 1));
+  let best = "";
+  let bestCount = 0;
+  answers.forEach((answer) => {
+    const count = counts.get(answer) ?? 0;
+    if (count >= bestCount) {
+      best = answer;
+      bestCount = count;
+    }
+  });
+  return bestCount > 1 ? `${best} · ${bestCount}회` : best;
+}
+
+/** '아이 연계' 카드: 아이가 쓴 글 · 질문별 월별 가장 많은 답. */
+export function closureChildValues(app: ChildAppCase | null | undefined) {
+  const empty = { written: [], months: [], table: [], tableSrc: "" };
+  if (!app) return { note: `아이가 쓴 글 · 체크인 응답은 ${NOT_READY}입니다(아이 앱이 꺼져 있음).`, ...empty };
+  const answered = childAnswered(app);
+  if (!answered) return { note: "아이가 보낸 내용은 담당 상담사만 볼 수 있어요.", ...empty };
+  // 아이가 쓴 글: 질문 답의 글 · 메시지 · 기분 이유(오래된 순, 최근 몇 개).
+  const written = childWritings(app.feed).reverse().slice(-CHILD_WRITTEN_MAX);
+  if (answered.length === 0 && written.length === 0) return { note: app.status === "LINKED" ? "아이가 보낸 답이 아직 없어요." : "아이 앱이 연결되지 않았어요.", ...empty };
+
+  const bank = new Map(app.bank.map((item) => [item.id, item]));
+
+
+  // 질문별 · 달별 답(아이가 쓴 글은 표에서 뺀다).
+  const byQuestion = new Map<string, { question: string; months: Map<string, string[]> }>();
+  answered.forEach((event) => {
+    const month = kstDate(event.created_at).slice(0, 7);
+    answersOf(event)
+      .filter((item) => !item.wrote_text && item.answer)
+      .forEach((item) => {
+        const entry = byQuestion.get(item.question_id) ?? { question: bank.get(item.question_id)?.text ?? item.question, months: new Map() };
+        entry.months.set(month, [...(entry.months.get(month) ?? []), item.answer]);
+        byQuestion.set(item.question_id, entry);
+      });
+  });
+  const allMonths = [...new Set(answered.map((event) => kstDate(event.created_at).slice(0, 7)))].sort();
+  const months = allMonths.slice(-CHILD_MONTHS_MAX);
+  const questions = [...byQuestion.entries()]
+    .map(([id, entry]) => ({ id, ...entry, seen: months.filter((month) => entry.months.has(month)).length }))
+    .filter((entry) => entry.seen > 0)
+    .sort((a, b) => b.seen - a.seen)
+    .slice(0, CHILD_QUESTIONS_MAX);
+  const table = questions.map((entry) => ({
+    question: entry.question,
+    cells: months.map((month) => {
+      const answers = entry.months.get(month);
+      return answers ? topAnswer(answers) : NOT_PROVIDED;
+    }),
+  }));
+
+  return {
+    note: written.length || table.length ? "" : "아이가 쓴 글이나 체크인 답이 없어요.",
+    written,
+    months: months.map((month) => `${Number(month.slice(5))}월`),
+    table,
+    tableSrc: table.length ? `체크인 ${questions.map((entry) => entry.id).join(" · ")} · 월별 가장 많은 답` : "",
+  };
 }
 
 export function closureReviewValues(input: ClosureReviewInput) {
@@ -93,7 +216,15 @@ export function closureReviewValues(input: ClosureReviewInput) {
     } else key = `승인 전 · ${row.statusLabel}`;
     if (signals.length) src = [src, `AI 신호 · ${signals.join(" · ")}`].filter(Boolean).join(" / ");
 
-    return { no: row.numberLabel, date: shortDate(dateOf(row)), kind: row.kindLabel, key, src: src || NOT_PROVIDED };
+    // 회차를 누르면 그 회차 기록(회차 상세)으로 간다(11/19 경진).
+    return {
+      no: row.numberLabel,
+      date: shortDate(dateOf(row)),
+      kind: row.kindLabel,
+      key,
+      src: src || NOT_PROVIDED,
+      href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
+    };
   });
   const folded = rowsAll.length > 6 ? rowsAll.slice(0, 4).concat(rowsAll.slice(-2)) : rowsAll;
 
@@ -107,14 +238,14 @@ export function closureReviewValues(input: ClosureReviewInput) {
     connected: Boolean(caseId && info),
     crumb: info ? info.alias : "",
     title: info ? `${info.alias} · 전체 상담 내역 검토` : "전체 상담 내역 검토",
-    sub: info ? [info.caseNumber, info.birthYearLabel, range].join(" · ") : "",
+    sub: info ? [info.caseNumber, info.birthYearLabel, range, childRange(input.childApp)].filter(Boolean).join(" · ") : "",
     historyHref: screenHref("/CaseHistory", { caseId }),
     detailHref: screenHref("/ClosureDetail", { caseId }),
     reviewHref: screenHref("/ClosureReview", { caseId }),
     kpis: [
       { label: "상담", value: `${sessions.length}회`, src: kindText || "상담 유형 기록 없음" },
       { label: "새 학대 진술", value: signalValue, src: signalSrc },
-      { label: "아이 연계 응답", value: NOT_PROVIDED, src: `${NOT_READY} · 아이 앱이 서버에 없음` },
+      childKpi(input.childApp),
       { label: "위험수준 척도 (위험요인)", value: NOT_PROVIDED, src: `${NOT_READY} · 기관 서식 기록이 서버에 없음` },
     ],
     rows: input.all ? rowsAll : folded,
@@ -211,7 +342,7 @@ export function closureSummaryValues(
     doneSub: !body
       ? "회차별 흐름을 확인한 뒤 종결보고서(서식 29)를 작성합니다."
       : allOk
-        ? "확인한 내용으로 종결보고서 초안이 채워져요"
+        ? "확인한 내용으로 종결보고서 초안이 채워집니다"
         : "확인하지 않은 요약이 있어도 종결보고서를 작성할 수 있어요. 남은 요약도 확인해 주세요",
   };
 }
@@ -223,6 +354,7 @@ export function closureSummaryValues(
 type ReportTextKey = "initial_situation" | "closing_situation" | "opinion" | "review_date" | "closing_date";
 type SafetyLevel = "HIGH" | "MEDIUM" | "LOW";
 type SafetyScore = { score: number | null; reason: string };
+type GoalRow = { goal: string; service: string };
 
 /**
  * 고치는 중인(저장 전) 보고서 칸. 글 칸 다섯과 상담원 판단 칸(2026-11-03 — 종결사유 · 안전평가 · Key Person · 안전점수).
@@ -234,11 +366,13 @@ export type ReportDraft = Partial<Record<ReportTextKey, string>> & {
   key_person?: string;
   safety_scores?: SafetyScore[];
   services?: string;
+  goals?: GoalRow[];
 };
 
 const REASON_COUNT = 5;
 const SAFETY_COUNT = 11;
 const SCORE_COUNT = 3;
+const GOAL_COUNT = 6;
 const LEVELS: [string, SafetyLevel][] = [
   ["높음", "HIGH"],
   ["보통", "MEDIUM"],
@@ -293,6 +427,12 @@ export function closureReportValues(
         score: typeof row.score === "number" ? row.score : null,
         reason: typeof row.reason === "string" ? row.reason : "",
       };
+    });
+  const goals =
+    draft.goals ??
+    fixedList(saved.goals, GOAL_COUNT, (item) => {
+      const row = (item ?? {}) as { goal?: unknown; service?: unknown };
+      return { goal: typeof row.goal === "string" ? row.goal : "", service: typeof row.service === "string" ? row.service : "" };
     });
   const aiChip = (key: "initial_situation" | "closing_situation") => {
     const item = ai[key];
@@ -361,6 +501,12 @@ export function closureReportValues(
       value: services,
       onChange: (event: { target: { value: string } }) => edit({ services: event.target.value }),
     },
+    goals: goals.map((row, i) => ({
+      goal: row.goal,
+      service: row.service,
+      setGoal: (goal: string) => edit({ goals: goals.map((x, j) => (j === i ? { ...x, goal } : x)) }),
+      setService: (service: string) => edit({ goals: goals.map((x, j) => (j === i ? { ...x, service } : x)) }),
+    })),
     keyPerson: {
       value: keyPerson,
       onChange: (event: { target: { value: string } }) => edit({ key_person: event.target.value }),
@@ -402,6 +548,7 @@ export function closureReportValues(
       if (sent.key_person !== undefined) report.key_person = keyPerson.trim() || null;
       else if (before && pass.keyPerson) defaults.key_person = pass.keyPerson;
       if (sent.safety_scores) report.safety_scores = scores;
+      if (sent.goals) report.goals = goals.map((row) => ({ goal: row.goal.trim(), service: row.service.trim() }));
       // 비워 저장하면 "" 로 남겨(저장 전 null 과 구분) 다시 열어도 회차 기록 글로 채우지 않는다(민규 #140 교차검증 11/05).
       if (sent.services !== undefined) report.services = services.trim();
       else if (saved.services == null && servicesFromRecords) defaults.services = servicesFromRecords;

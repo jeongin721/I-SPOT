@@ -9,12 +9,18 @@ from app.models.base import Base
 from app.models.case import Case
 from app.models.case_form import CaseForm
 from app.models.case_personal_info import CasePersonalInfo
+from app.models.child_app import ChildAppEvent, ChildAppLink, ChildQuestionSet
 from app.models.document import Document
 from app.models.closure_review import CaseClosureReview
 from app.models.followup_check import SessionFollowupChecks
 from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.schedule import ScheduleEvent
+from app.models.counselor_memo import CounselorMemo
+from app.models.briefing_check import SessionBriefingChecks
+from app.models.push import PushDelivery, PushSubscription
+from app.models.child_app import ChildAppAiDraft  # noqa: F401
+from app.models.docbox import DocboxFile, DocboxFolder
 from app.models.signup import SignupEmailCode, SignupRequest
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment
 from app.models.session import ConsultationSession
@@ -25,6 +31,8 @@ from app.models.user import User
 from app.models.user_password_history import UserPasswordHistory
 
 __all__ = [
+    "DocboxFile",
+    "DocboxFolder",
     "AIAnalysis",
     "AudioFeature",
     "AudioFile",
@@ -33,6 +41,9 @@ __all__ = [
     "Case",
     "CaseForm",
     "CasePersonalInfo",
+    "ChildAppEvent",
+    "ChildAppLink",
+    "ChildQuestionSet",
     "ConsultationSession",
     "ConsultationSummary",
     "Document",
@@ -44,6 +55,10 @@ __all__ = [
     "SessionRiskAssessment",
     "SessionSourceDocument",
     "ScheduleEvent",
+    "CounselorMemo",
+    "SessionBriefingChecks",
+    "PushDelivery",
+    "PushSubscription",
     "SignupEmailCode",
     "SignupRequest",
     "Transcript",

@@ -78,7 +78,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
           {step === 1 ? (
             <>
               <p className="lb2" style={{ margin: '0' }}>
-                몇 회차 상담인가요?
+                몇 회차 상담입니까?
               </p>
               <div
                 style={{
@@ -125,7 +125,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
                 <textarea
                   className="ns-ta"
                   rows="6"
-                  placeholder="상담 일시 · 장소, 아동 진술, 주요 대화 내용 등을 적어 주세요"
+                  placeholder="상담 일시 · 장소, 아동 진술, 주요 대화 내용 등을 적어 주십시오"
                   value={body}
                   onChange={(e) => {
                     setBody(e.target.value);
@@ -135,7 +135,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
                 ></textarea>
                 {err ? (
                   <span className="acc" style={{ fontSize: '13px' }}>
-                    상담 내용을 입력해 주세요.
+                    상담 내용을 입력해 주십시오.
                   </span>
                 ) : null}
               </label>
@@ -144,7 +144,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
                 <textarea
                   className="ns-ta"
                   rows="4"
-                  placeholder="아동 상태에 대한 판단, 위험 요인, 향후 계획 등을 적어 주세요"
+                  placeholder="아동 상태에 대한 판단, 위험 요인, 향후 계획 등을 적어 주십시오"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                 ></textarea>
@@ -205,7 +205,7 @@ export default function NewSessionDialog({ caseId, caseName, caseSub, rows, onCl
                 ✓
               </span>
               <h2 id="ns-ok" style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>
-                상담을 등록했어요
+                상담을 등록했습니다
               </h2>
               <p style={{ margin: '0' }}>
                 {caseName} · {save.savedNumber}회차

@@ -356,6 +356,16 @@ class AuditAction(str, Enum):
     """수정/승인 이력 추적용 Audit action."""
 
     CASE_CREATED = "CASE_CREATED"
+    CHILD_APP_INVITED = "CHILD_APP_INVITED"
+    CHILD_APP_ALERT_ACKED = "CHILD_APP_ALERT_ACKED"
+    CHILD_APP_WELFARE_CHECKED = "CHILD_APP_WELFARE_CHECKED"
+    CHILD_APP_QUESTIONS_SENT = "CHILD_APP_QUESTIONS_SENT"
+    CHILD_APP_AI_DRAFT_CREATED = "CHILD_APP_AI_DRAFT_CREATED"
+    CHILD_APP_AI_DRAFT_EDITED = "CHILD_APP_AI_DRAFT_EDITED"
+    CHILD_APP_QUESTION_WITHDRAWN = "CHILD_APP_QUESTION_WITHDRAWN"
+    CHILD_APP_UNLINKED = "CHILD_APP_UNLINKED"
+    # 담당 상담사가 아이가 보낸 내용(피드)을 받을 때. 같은 사람 · 사례는 10분에 1줄(새 내용이 오면 다시).
+    CHILD_APP_FEED_VIEWED = "CHILD_APP_FEED_VIEWED"
     CASE_UPDATED = "CASE_UPDATED"
     CLOSURE_REVIEW_REGISTERED = "CLOSURE_REVIEW_REGISTERED"
     CLOSURE_REVIEW_CANCELED = "CLOSURE_REVIEW_CANCELED"
@@ -408,6 +418,18 @@ class AuditAction(str, Enum):
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
     SCHEDULE_DELETED = "SCHEDULE_DELETED"
+    # 상담사 메모(25절). 본문은 남기지 않는다(case_id · 메모 ID 만).
+    MEMO_CREATED = "MEMO_CREATED"
+    MEMO_UPDATED = "MEMO_UPDATED"
+    MEMO_DELETED = "MEMO_DELETED"
+    # 브리핑 확인할 사항 체크(26절). 문장은 남기지 않는다(켬 · 끔과 개수만).
+    BRIEFING_CHECK_UPDATED = "BRIEFING_CHECK_UPDATED"
+    # 문서함(2026-11-05). detail 에는 파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 넣지 않는다).
+    DOCBOX_FOLDER_CREATED = "DOCBOX_FOLDER_CREATED"
+    DOCBOX_FILE_UPLOADED = "DOCBOX_FILE_UPLOADED"
+    DOCBOX_FILE_MOVED = "DOCBOX_FILE_MOVED"
+    DOCBOX_FILE_DOWNLOADED = "DOCBOX_FILE_DOWNLOADED"
+    DOCBOX_FILE_DELETED = "DOCBOX_FILE_DELETED"
     # 기관 서식(2026-11-02). detail 에는 서식 종류 · 차수만 남긴다(칸 값 · 소견 글은 넣지 않는다).
     CASE_FORM_CREATED = "CASE_FORM_CREATED"
     CASE_FORM_UPDATED = "CASE_FORM_UPDATED"
@@ -432,3 +454,46 @@ class AuditAction(str, Enum):
     SIGNUP_REQUESTED = "SIGNUP_REQUESTED"
     SIGNUP_APPROVED = "SIGNUP_APPROVED"
     SIGNUP_REJECTED = "SIGNUP_REJECTED"
+
+
+class ChildAppLinkStatus(str, Enum):
+    """아이 앱 연결 상태. 행이 없으면 미연결이다."""
+
+    INVITED = "INVITED"
+    LINKED = "LINKED"
+
+
+class ChildQuestionSetStatus(str, Enum):
+    PENDING = "PENDING"
+    ANSWERED = "ANSWERED"
+    REPLACED = "REPLACED"
+    # 발송 예약한 묶음을 아이에게 보이기 전에 취소 · 새 질문으로 바꿨다(2026-11-11). 보낸 것으로 세지 않는다.
+    CANCELED = "CANCELED"
+
+
+class ChildQuestionDeliver(str, Enum):
+    """질문을 언제 아이 앱에 보일지(2026-11-11 발송 예약). EVENING 은 누른 날 CHILD_APP_DELIVER_HOUR 시(한국 시각)."""
+
+    NOW = "NOW"
+    EVENING = "EVENING"
+
+
+class ChildAppEventKind(str, Enum):
+    LINKED = "LINKED"
+    UNLINKED = "UNLINKED"
+    QUESTIONS_SENT = "QUESTIONS_SENT"
+    ANSWERS = "ANSWERS"
+    ALERT = "ALERT"
+    # 콩콩 홈의 '지금 기분 기록하기' · '선생님께 메시지 보내기', 일정의 '참석이 어려워요'(11/19 디자인 맞춤).
+    MOOD = "MOOD"
+    NOTE = "NOTE"
+    SCHEDULE_REQUEST = "SCHEDULE_REQUEST"
+    # 장기 무응답 아이에게 상담사 · 관리자가 안부 연락한 기록(관리자 · 아이 연계 앱 관리). 아이 피드에는 보이지 않는다.
+    WELFARE_CHECK = "WELFARE_CHECK"
+
+
+class ChildAnswerLevel(str, Enum):
+    NONE = "NONE"
+    SKIP = "SKIP"
+    AMBER = "AMBER"
+    RED = "RED"

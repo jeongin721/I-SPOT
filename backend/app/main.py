@@ -10,6 +10,8 @@ import re
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
+import asyncio
+
 import anyio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -30,6 +32,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.responses import DataResponse
 from app.schemas.common import HealthStatus
 from app.services.document_text import MAX_DOCUMENT_BYTES
+from app.services.push_service import run_push_loop
 from app.services.voice_marks_service import start_voice_marks_warmup
 
 logger = get_logger(__name__)
@@ -70,8 +73,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.voice_marks_warmup = start_voice_marks_warmup()
     # LAW_QA_PROVIDER=modeling 이면 법령 질의 모듈과 법령 캐시도 미리 준비한다(law_qa_adapter.start_law_qa_preload).
     app.state.law_qa_preload = start_law_qa_preload()
+    # VAPID 키가 있으면 상담 30분 전 알림 실행기를 돌린다(push_service, 27절). 없으면 바로 끝난다.
+    push_loop = asyncio.create_task(run_push_loop())
 
     yield
+
+    push_loop.cancel()
 
 
 def create_app() -> FastAPI:
@@ -213,6 +220,9 @@ _MB = 1024 * 1024
 _AUDIO_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/sessions/[^/]+/audio/?$")
 # 상담 기록 문서(POST /sessions/{session_id}/source-document, 2026-11-02)는 문서 상한(10MB)까지 받는다.
 _DOCUMENT_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/sessions/[^/]+/source-document/?$")
+# 문서함 올리기(POST /docbox/files, 2026-11-05)는 파일 10개 × 10MB 까지 받는다.
+_DOCBOX_UPLOAD_PATH = re.compile(rf"^{re.escape(settings.API_V1_PREFIX)}/docbox/files/?$")
+_DOCBOX_MAX_BODY_BYTES = 101 * 1024 * 1024
 
 
 def _media_type(scope: Scope) -> str:
@@ -250,6 +260,16 @@ def _is_document_upload(scope: Scope) -> bool:
     )
 
 
+def _is_docbox_upload(scope: Scope) -> bool:
+    """문서함 올리기인가(같은 조건 — multipart 본문만)."""
+
+    return (
+        scope.get("method") == "POST"
+        and _DOCBOX_UPLOAD_PATH.match(scope.get("path", "")) is not None
+        and _media_type(scope) == "multipart/form-data"
+    )
+
+
 async def _token_error(scope: Scope) -> Optional[APIError]:
     """
     Authorization 의 Bearer 토큰이 서명 · 만료 검사를 통과하지 못하면 그 401 오류를 돌려준다.
@@ -266,8 +286,12 @@ async def _token_error(scope: Scope) -> Optional[APIError]:
     return None
 
 
-def _body_limit(audio_upload: bool, document_upload: bool = False) -> Tuple[int, ErrorCode, str]:
+def _body_limit(audio_upload: bool, document_upload: bool = False, docbox_upload: bool = False) -> Tuple[int, ErrorCode, str]:
     """이 요청이 받을 수 있는 본문 크기(바이트)와, 넘었을 때의 오류 코드 · 문구."""
+
+    if docbox_upload:
+        # 파일마다 크기는 서비스(docbox_service)가 다시 잰다.
+        return (_DOCBOX_MAX_BODY_BYTES, ErrorCode.VALIDATION_ERROR, "문서함에는 한 번에 10개 · 파일마다 10 MB 까지 올릴 수 있습니다.")
 
     if document_upload:
         # 문서 크기는 서비스(document_text)가 다시 잰다. multipart 머리글 몫으로 1MB 를 더 준다.
@@ -355,8 +379,9 @@ class _BodySizeLimitMiddleware:
 
         audio_upload = _is_audio_upload(scope)
         document_upload = _is_document_upload(scope)
+        docbox_upload = _is_docbox_upload(scope)
 
-        if audio_upload or document_upload:
+        if audio_upload or document_upload or docbox_upload:
             error = await _token_error(scope)
 
             if error is not None:
@@ -368,7 +393,7 @@ class _BodySizeLimitMiddleware:
                 await response(scope, receive, send)
                 return
 
-        limit, code, message = _body_limit(audio_upload, document_upload)
+        limit, code, message = _body_limit(audio_upload, document_upload, docbox_upload)
         declared = _declared_length(scope)
         received = 0
 

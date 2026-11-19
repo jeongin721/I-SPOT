@@ -47,6 +47,8 @@ export interface ReportFirstPass {
 export interface Suggestion {
   chip: string;
   ev: string;
+  /** AI 가 고른 수준(안전평가만) — 그 단추에 'AI 제안' 표시를 한다(11/09 디자인). */
+  level?: string;
 }
 
 export function closureSuggestions(input: ClosureSuggestInput) {
@@ -96,7 +98,7 @@ export function closureSuggestions(input: ClosureSuggestInput) {
   const ai = summary?.source === "AI" ? summary.suggestions ?? null : null;
   const safety: (Suggestion | null)[] = Array.from({ length: 11 }, () => null);
   (ai?.safety ?? []).forEach((row) => {
-    if (row.index >= 0 && row.index < 11) safety[row.index] = { chip: `AI 제안 · ${LEVEL_LABEL[row.level]}`, ev: `${where(row.sessions)} · ${row.basis}` };
+    if (row.index >= 0 && row.index < 11) safety[row.index] = { level: LEVEL_LABEL[row.level], chip: `AI 제안 · ${LEVEL_LABEL[row.level]}`, ev: `${where(row.sessions)} · ${row.basis}` };
   });
   const keyPerson: Suggestion | null = ai?.key_person
     ? { chip: "AI 제안", ev: `${ai.key_person.text} · ${where(ai.key_person.sessions)}` }

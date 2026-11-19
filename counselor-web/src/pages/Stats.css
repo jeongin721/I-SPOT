@@ -294,3 +294,11 @@
   border-color: #eadbb5 !important;
   color: #2b2a26 !important;
 }
+
+/* 11/02 디자인: 지역별 통계 · 사례관리 기간 */
+.pg-Stats .rg-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border-radius: 10px; background: #f7f6f2; font-size: 13px; }
+.pg-Stats .rg-std { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #66625a; }
+.pg-Stats .rg-std .inp { width: 72px; height: 34px; padding: 0 10px; text-align: center; }
+.pg-Stats .rg-kpi { padding: 14px 16px; border-radius: 12px; background: #f7f6f2; }
+.pg-Stats .thm-root.dark .rg-pair, .pg-Stats .thm-root.dark .rg-kpi { background: #33312c; }
+.pg-Stats .thm-root.dark .rg-std { color: #a8a296; }

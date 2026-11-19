@@ -160,7 +160,8 @@ def _apply(db: Session, user: User, row: CaseForm, version: int, changes: Dict[s
 
 def update_form(db: Session, user: User, row: CaseForm, raw: Dict[str, Any], version: int) -> CaseForm:
     values = _values(row.form_type, raw)
-    row = _apply(db, user, row, version, {"values": values})
+    # 서식 값은 암호문 칸에 넣는다(상담 본문 암호화 2단계). 조건부 UPDATE 라 ORM 속성 대신 DB 칸 값을 직접 만든다.
+    row = _apply(db, user, row, version, CaseForm.values.db_values(row.id, values))
     _audit(db, AuditAction.CASE_FORM_UPDATED, user, row)
     db.commit()
     db.refresh(row)

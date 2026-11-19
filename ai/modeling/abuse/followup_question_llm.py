@@ -9,6 +9,9 @@ followup_check_llm 은 질문 문장을 만들지 않고 "무엇이 확인이 �
 
 1. 프롬프트 금지 — 예/아니오로 답하는 질문, 가해자 · 행위를 먼저 꺼내는 질문, 원문에 없는 사실 ·
    감정 가정, 한 번에 여러 질문.
+   (2026-11-06 말투) 확인할 내용(치료 여부 · 시기 · 횟수 …)을 첫마디부터 캐묻지 않고, 아이가 한 말 · 기분 · 근황으로
+   열어 돌려 묻게 한다. 부드럽게 만드는 것은 말투 · 순서 · 부담 덜기에서만 하고 감정 · 짐작은 보태지 않는다.
+   말투 예시(question_rules.QUESTION_TONE_EXAMPLES)는 rag 질문 프롬프트와 같이 쓴다.
 2. 코드 검사(_clean_questions) — 아래 하나라도 걸리면 그 질문을 버린다.
    - 근거 segment_ids 가 없거나 실제 발화 목록에 없다.
    - 열린 질문 표지(무엇 · 어떻게 · 어디 · 언제 · 누구 · 어땠 · 이야기해 줄래 …)가 없다 —
@@ -42,7 +45,12 @@ from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ai.modeling.abuse.case_context import AGE_BANDS
-from ai.modeling.abuse.question_rules import judgment_reason, leading_reason, question_term_reason
+from ai.modeling.abuse.question_rules import (
+    judgment_reason,
+    leading_reason,
+    question_term_reason,
+    tone_examples_text,
+)
 from ai.modeling.abuse.text_script import has_foreign_script
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -73,10 +81,22 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사가 다음 상담에
    "등이랑 팔이 아팠던 건 지금은 어때?".
 6. 아이의 나이대에 맞는 쉬운 반말로 짧게 쓴다(나이대: {age_band}).
 7. 언급은 됐지만 그 뒤가 안 나온 것(치료 여부, 지금의 안전 등)을 우선으로 고른다.
+   고른 내용도 바로 묻지 않고 아래 [말투]대로 돌려 묻는다.
    입력이 비어 있거나 물을 만한 것이 없으면 빈 리스트를 돌려준다. 최대 {max_questions}개.
 8. 질문마다 근거가 된 입력 줄의 segment_id 를 정확히 인용한다. 줄 앞에 [seg_001] 처럼 적혀 있다.
    질문에 쓴 사람 · 행위 낱말이 나온 줄은 모두 인용한다. 인용할 줄이 없으면 그 질문은 만들지 않는다.
 9. reason 에는 왜 이 질문이 필요한지 상담사에게 한 문장으로 적는다(예: "통증 이후 치료 여부가 안 나옴").
+
+[말투 — 아이에게 다가가는 방식]
+- 치료 여부 · 시기 · 횟수 같은 사실을 첫마디부터 캐묻지 않는다. 아이가 한 말을 먼저 짚거나
+  기분 · 몸 상태 · 요즘 지낸 이야기로 열어서, 아이가 자기 말로 이어 가게 한다.
+- 아이가 한 말을 짚을 때는 "~라고 이야기해 줬어."처럼 문장으로 맺고, 그 뒤에 물음 하나만 둔다.
+- "괜찮으면", "생각나는 만큼만"처럼 부담을 덜어 주는 말을 한 마디쯤 넣을 수 있다. 문장을 길게 늘이지 않는다.
+- 문장 끝은 "~이야기해 줄래?", "~어때?", "~어땠는지 궁금해."처럼 맺는다. "~지?", "~괜찮지?", "~인지?"로 끝내지 않는다.
+- 부드럽게 만드는 것은 말투 · 순서 · 부담 덜기에서만 한다. 아이가 말하지 않은 감정("많이 무서웠겠다")이나
+  짐작("혹시 ~해서 그런 거야?")을 보태지 않는다.
+예시(말투만 참고한다. 내용은 [입력]에서 가져오고 예시 문장을 그대로 쓰지 않는다):
+{tone_examples}
 
 [입력 — 이번 상담에서 확인된 아동 진술 · 위험 신호 요지]
 {session_content_input}
@@ -281,6 +301,7 @@ def generate_followup_questions_from_masked_text(
     system_prompt = SYSTEM_PROMPT.format(
         age_band=age_band if age_band in AGE_BANDS else "알 수 없음",
         max_questions=MAX_QUESTIONS,
+        tone_examples=tone_examples_text(),
         session_content_input=session_content_input,
     )
 

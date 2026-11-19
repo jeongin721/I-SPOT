@@ -9,6 +9,11 @@ rag/checklist_builder.py 에 있던 판정 · 단정 표현 검사(judgment_reas
 (rag/privacy.py), ai 쪽은 langchain 이 없어 rag 를 import 할 수 없으므로 의존성 없는 이 모듈에 둔다.
 rag/checklist_builder.py 는 여기서 import 해 같은 이름으로 쓴다.
 
+[말투 예시 — 2026-11-06]
+
+두 질문 생성 프롬프트(followup_question_llm.SYSTEM_PROMPT · rag QUESTION_SYSTEM_PROMPT)가 같은 말투 예시
+(QUESTION_TONE_EXAMPLES)를 쓴다. 순화한 질문은 위 규칙과 #118 코드 검사를 통과해야 한다(시험이 확인한다).
+
 정규식과 낱말 목록만 있다. 외부 호출 · 모델 로딩이 없다.
 """
 
@@ -54,3 +59,18 @@ def leading_reason(text: str) -> str | None:
     if _LEADING_ENDING.search(text):
         return "답을 정해 두고 확인받는 질문입니다"
     return None
+
+
+# 질문 말투 예시: 바로 묻는 질문 → 아이에게 돌려 묻는 질문(아이가 한 말 · 기분 · 근황으로 열고, 부담을 덜어 준다).
+# 두 질문 생성 프롬프트에 그대로 들어간다. 이번 회차에 아이가 한 말만 쓴다 — #118 은 이전 회차 기록을 받지 않는다.
+# 순화한 질문은 열린 질문 표지가 있고(#118 _OPEN_MARKERS), 인물 · 행위 낱말을 새로 꺼내지 않고, 꼬리 · 부정형이 아니어야 한다.
+QUESTION_TONE_EXAMPLES = (
+    ("병원에 갔어?", "지난번에 등이랑 팔이 아프다고 이야기해 줬어. 요즘은 몸이 좀 어때?"),
+    ("몇 번 그랬어?", "그런 일이 있었던 때를 생각나는 만큼만 하나씩 이야기해 줄래?"),
+    ("왜 집에 가기 싫어?", "괜찮으면 집에 가기 싫다고 했던 마음을 조금 더 이야기해 줄래?"),
+)
+
+
+def tone_examples_text() -> str:
+    """프롬프트에 넣을 말투 예시 줄들('- "바로 묻는 질문" → "돌려 묻는 질문"')."""
+    return "\n".join(f'- "{direct}" → "{soft}"' for direct, soft in QUESTION_TONE_EXAMPLES)

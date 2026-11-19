@@ -50,7 +50,7 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
 
   const close = () => {
     if (sending) return;
-    if (recordingUnsaved(recorder, upload) && !window.confirm('녹음을 저장하지 않고 닫을까요? 녹음은 사라집니다.')) return;
+    if (recordingUnsaved(recorder, upload) && !window.confirm('녹음을 저장하지 않고 닫으시겠습니까? 녹음은 사라집니다.')) return;
     recorder.reset();
     upload.reset();
     onClose();
@@ -165,11 +165,11 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
                       setConsentError(false);
                     }}
                   />
-                  <span>상대방에게 녹음 사실을 알리고 동의를 받았어요</span>
+                  <span>상대방에게 녹음 사실을 알리고 동의를 받았습니다</span>
                 </label>
                 {consentError ? (
                   <span className="acc" role="alert" style={{ fontSize: '13px' }}>
-                    녹음 동의를 먼저 확인해 주세요.
+                    녹음 동의를 먼저 확인해 주십시오.
                   </span>
                 ) : null}
                 {recorder.error ? (
@@ -241,9 +241,9 @@ export default function RecordDialog({ caseId, caseName, caseSub, targets, recor
             {saved ? (
               <>
                 <p style={{ margin: '0', textAlign: 'center' }}>
-                  녹음을 저장했어요 · {summary}
+                  녹음을 저장했습니다 · {summary}
                   <br />
-                  <b>원문 변환이 끝났어요. 기록 확인으로 이동할까요?</b>
+                  <b>원문 변환이 끝났습니다. 기록 확인으로 이동하시겠습니까?</b>
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px' }}>
                   <button type="button" className="btn btn-s" onClick={close}>

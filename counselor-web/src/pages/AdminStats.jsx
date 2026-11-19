@@ -5,7 +5,10 @@
 // 지금 셀 수 있는 것: 기간 안 사례 등록(등록일 기준 — 신고접수일 아님) · 등록 추이, 기간 안 상담 회차, 지금 종결 수,
 // 상담원별 지금 담당 · 기간 안 회차 · 지금 종결, 아동 연령대(출생연도 기준). 나머지 보고 항목 · 엑셀 · PDF 는 준비 중이다.
 // 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(훅도 서버를 부르지 않는다).
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import { childApp } from '../api/endpoints';
+import { useRemote } from '../data/useRemote';
 import { DCLogic, useDC } from '../dc';
 import AdminSidebar, { AdminBlocked } from '../components/AdminSidebar';
 import Notice from '../components/Notice';
@@ -54,7 +57,22 @@ export default function AdminStats(props) {
   const overview = useCaseOverview(adminOnly(session), 'sessions');
   const accounts = useAdminAccounts(session);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, overview, accounts });
+  // 아이 앱 응답률(11/10): 화면이 고른 기간으로 부른다. 기간은 화면 값(childStatsKey)에서 받아 다음 그리기에 넘긴다.
+  const [statsKey, setStatsKey] = useState(null);
+  const admin = session.status === 'signedIn' && session.isAdmin;
+  const childStats = useRemote(
+    admin && statsKey ? `child-app-stats:${statsKey}` : null,
+    () => {
+      const [from, to] = statsKey.split('|');
+      return childApp.stats(from, to);
+    },
+    '아이 앱 통계를 불러오지 못했습니다.',
+    () => false,
+  );
+  const v = useDC(Logic, { ...props, session, overview, accounts, childStats: childStats.data });
+  useEffect(() => {
+    if (v.childStatsKey && v.childStatsKey !== statsKey) setStatsKey(v.childStatsKey);
+  }, [v.childStatsKey, statsKey]);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   if (!session.isAdmin) return <AdminBlocked session={session} />;
   return (

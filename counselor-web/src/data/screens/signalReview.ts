@@ -2,9 +2,9 @@
 // 예전 '위험 신호 검토' 와 '유형별 위험도'(RiskProfile) 두 화면이 디자인에서 이 화면 하나가 됐다.
 //
 // 디자인 칸 → 서버 값:
-//  - 위쪽 카드 'AI 초안': 분석이 끝났으면 유형별 심각도 중 가장 높은 단계와 그 유형을 보인다(2026-10-28, severity_ratings —
-//    1~5 단계를 상 · 중 · 하로 바꾸는 규칙은 정하지 않아 단계 숫자 그대로). 안전 플래그 수 · 회차 비교는 서버에 없어
-//    준비 중이다(회차 비교는 사례 단위 signal-history API 뒤에). 그 자리에 AI 분석 상태
+//  - 위쪽 카드 'AI 초안': 분석이 끝났으면 유형별 심각도 중 가장 높은 단계를 상 · 중 · 하로 크게 보인다(2026-11-05 경진님 결정 —
+//    4~5 상 · 3 중 · 1~2 하, aiLevelFromSeverity). 옆에는 그 단계 · 유형, 지난 회차 AI 초안과 비교(↑ 증가 · → 같음 · ↓ 감소,
+//    사례 단위 signal-history)를 둔다. 디자인의 '안전 플래그 n개' 는 서버에 없어 보이지 않는다. 아래에 AI 분석 상태
 //    (분석 중 · 실패 · 요청 대기 · 완료)를 보인다 — 디자인에는 분석 요청 단계가 없고, STT 검수의 '유형별 위험도 →' 가
 //    원문 확정과 분석 요청을 같이 한다(sttReview.ts). 여기서는 실패 · 대기일 때 다시 요청할 수 있게만 둔다.
 //  - 위쪽 카드 '상담원 판단': 디자인대로 회차 전체 상 · 중 · 하 **하나**(2026-10-29, 서버 API_CONTRACT 11.1절 회차 전체 판단 —
@@ -21,7 +21,12 @@
 //  - 회차별 추이(2026-10-28, 사례 단위 signal-history API #99): 이 회차까지 최근 3회차 × 유형(신체 · 정서 · 방임 · 성).
 //    칸은 AI 심각도 숫자 · '확인 필요'(관련 신호만) · '–' · '분석 전'(signalHistoryRows), 맨 아래 '위험도 (상담원)' 줄은
 //    회차마다 상담원 판단 중 가장 높은 것. 이 회차 열은 굵게(디자인).
-//  - 안전 플래그 · 재학대 요인 · 위험요인: 서버에 없어 준비 중(예시 값을 보이지 않는다).
+//  - 안전 플래그 · 재학대 요인(2026-11-05, 분석 결과 safety_flags · reabuse_factors — 팀 확인 기준안 S1~S10 · R1~R10):
+//    AI 확인 후보다. 안전 플래그는 certainty CLEAR 면 빨간 칩 'S2', CHECK 면 회색 칩 'S7 확인 후보'(디자인 'S6 확인 후보')에
+//    문장 · 근거 위치. 재학대 요인은 아래 줄 칩(디자인 'R1 중복 유형')이고 문장 · 근거는 칩의 title. R1(중복학대)은 AI 가 아니라
+//    이 화면이 관련 신호가 잡힌 유형 수(2 이상)로 센다. null(만들지 못함 · 이 기능 전 분석)은 '없음' 과 다르게 안내한다 —
+//    언급 없음 ≠ 안전함. 플래그가 있고 사례 출생연도로 5세 이하면 '더 취약함' 을 함께 적는다(기준안 — 출생연도뿐이라 1세 미만은
+//    가리지 못한다). 사례관리 중 재신고 표시는 아직 없다.
 //  - 보호요인: protective_factors 를 읽기 전용으로 보인다(근거 위치는 원문에서).
 //  - 다음 상담에서 확인할 것(followup_check_points)은 4 · 추가 확인 · 질문 화면으로 옮겼다(followupQ.ts).
 //  - 아래 '확정 · 요약 · 일지 작성 →' 의 '확정' 은 서버에 위험 신호 확정 기록이 없어 빼고 '요약 · 일지 작성 →' 으로만 간다.
@@ -29,7 +34,7 @@
 
 import type { AbuseType, RiskLevel, SeverityRating, SignalHistorySession } from "../../api/types";
 import { ABUSE_TYPES, ABUSE_TYPE_LABELS, RISK_LEVELS, RISK_LEVEL_LABELS } from "../../api/types";
-import type { SignalCard, TypeSignal } from "../riskRows";
+import { abuseTypeLabel, type SignalCard, type TypeSignal } from "../riskRows";
 import {
   ASSESSABLE_STATUSES,
   canAssessNow,
@@ -40,7 +45,6 @@ import type { RiskSignalsState } from "../useRiskSignals";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { DASH, TREND_TYPES, TYPE_SHORT, counselorTopLabel, historyCell } from "../signalHistoryRows";
-import { NOT_READY } from "./common";
 import { type ScreenIds, screenHref } from "./links";
 import { processHeaderValues } from "./process";
 import type { SessionScreenInput } from "./sessionDetail";
@@ -292,6 +296,58 @@ export interface LevelButton {
   pick: () => void;
 }
 
+/** 재학대 요인 칩 이름(팀 확인 기준안 2026-11-05, ai/modeling/abuse/safety_flag_llm.REABUSE_FACTOR_DEFINITIONS 를 줄인 것). */
+const REABUSE_LABELS: Record<string, string> = {
+  R1: "중복 유형",
+  R2: "알코올 남용",
+  R3: "부부 폭력",
+  R4: "친부모가 행위자",
+  R5: "경제적 어려움",
+  R6: "양육 기술 부족",
+  R7: "행위자 정신건강",
+  R8: "아동에게 책임 전가",
+  R9: "개입 거부",
+  R10: "새 동거인 · 여러 행위자",
+};
+
+/**
+ * AI 심각도(1~5)를 위쪽 카드 'AI 초안' 상 · 중 · 하로(2026-11-05 경진님 결정): 4~5 상 · 3 중 · 1~2 하. 없으면 null.
+ * AI 제안을 읽기 쉽게 바꾼 것일 뿐 판정이 아니다 — 회차 위험도는 옆의 상담원 판단이 정한다.
+ */
+export function aiLevelFromSeverity(severity: number | null | undefined): RiskLevel | null {
+  if (typeof severity !== "number" || severity < 1) return null;
+  if (severity >= 4) return "HIGH";
+  if (severity === 3) return "MEDIUM";
+  return "LOW";
+}
+
+const LEVEL_RANK: Record<RiskLevel, number> = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+
+/**
+ * 지난 회차와 비교(디자인 '· 7회차 중 → ↑ 증가'). 사례 신호 이력에서 이 회차 바로 앞 회차의 AI 최고 심각도를 같은 규칙으로 바꿔 견준다.
+ * 앞 회차가 없거나 · 분석 전이거나 · 심각도 제안이 없으면 ''.
+ */
+export function aiTrendText(
+  history: SignalHistoryState | undefined,
+  sessionId: string | null | undefined,
+  current: RiskLevel | null,
+): string {
+  if (!history?.loaded || !sessionId || current === null) return "";
+
+  const index = history.sessions.findIndex((row) => row.session_id === sessionId);
+  if (index <= 0) return "";
+
+  const previous = history.sessions[index - 1];
+  const levels = previous.types.map((row) => (typeof row.ai_level === "number" ? row.ai_level : 0));
+  const before = aiLevelFromSeverity(levels.length > 0 ? Math.max(...levels) : null);
+  if (before === null) return "";
+
+  const diff = LEVEL_RANK[current] - LEVEL_RANK[before];
+  const change = diff > 0 ? "↑ 증가" : diff < 0 ? "↓ 감소" : "같음";
+
+  return `· ${previous.session_number}회차 ${RISK_LEVEL_LABELS[before]} → ${change}`;
+}
+
 /** 상 · 중 · 하 단추 색(디자인). */
 const LEVEL_TONES: Record<RiskLevel, { tone: string; bg: string }> = {
   HIGH: { tone: "#A33B2E", bg: "#F7E4DF" },
@@ -326,6 +382,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
   let aiText: string;
   let aiActionLabel = "";
   let aiAction: (() => void) | null = null;
+  let top = 0;
+  const topTypes: string[] = [];
 
   if (status === null) {
     aiText = "";
@@ -341,8 +399,6 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     aiText = view?.completedAt ? `AI 분석 완료 · ${view.completedAt}` : "AI 분석이 끝났습니다.";
 
     // 유형별 심각도(AI 제안) 중 가장 높은 단계. 같은 단계면 유형 순서(신체 · 정서 · 성 · 방임)대로 함께 적는다.
-    let top = 0;
-    const topTypes: string[] = [];
     for (const type of ABUSE_TYPES) {
       const level = completed ? severity.get(type)?.level ?? null : null;
       if (level === null || level < top) continue;
@@ -350,7 +406,6 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
       top = level;
       topTypes.push(ABUSE_TYPE_LABELS[type]);
     }
-    if (top > 0) aiText = `회차 최고 심각도 ${top}단계 · ${topTypes.join(" · ")} — ${aiText}`;
   } else {
     aiText = "기록 확인에서 원문을 확정하면 AI 분석이 시작됩니다.";
     aiActionLabel = "기록 확인으로";
@@ -377,7 +432,7 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
 
     if (!completed) matched = "AI 분석이 끝나면 보입니다.";
     else if (level !== null) matched = `${level}단계 · ${SEVERITY_RUBRIC[type][level - 1]}`;
-    else if (suggestion) matched = "근거가 약해 단계를 매기지 않았어요(정보 부족).";
+    else if (suggestion) matched = "근거가 약해 단계를 매기지 않았습니다(정보 부족).";
     else matched = state === "signal" || state === "unknown" ? "AI 심각도 제안이 없습니다." : "해당 내용 없음";
 
     return {
@@ -448,6 +503,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     assessNote = "원문을 확정하면 판단을 저장할 수 있습니다.";
   }
 
+  const aiLevel = aiLevelFromSeverity(top);
+
   const protective = completed
     ? (view?.protectiveFactors ?? [])
         .map((factor, index) => {
@@ -460,13 +517,68 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
         .filter((factor) => factor.text !== "")
     : [];
 
+  const flagsRaw = completed ? (view?.safetyFlags ?? null) : null;
+  const safetyFlags = (flagsRaw ?? [])
+    .map((flag, index) => {
+      const code = readText(flag?.code);
+      const clear = flag?.certainty === "CLEAR";
+      const where = signals.locate(flag?.segment_ids).label;
+
+      return {
+        key: `s${index}`,
+        chip: clear ? code : `${code} 확인 후보`,
+        tone: clear ? "c-hi" : "c-normal",
+        text: readText(flag?.text),
+        where: where || "근거 위치 없음",
+      };
+    })
+    .filter((flag) => flag.text !== "");
+
+  let flagEmpty = "";
+  if (!completed) flagEmpty = "AI 분석이 끝나면 안전 플래그 후보가 보입니다.";
+  else if (flagsRaw === null) flagEmpty = "안전 플래그 · 재학대 요인을 만들지 못했습니다. 다시 분석하면 만들어집니다.";
+  else if (safetyFlags.length === 0) flagEmpty = "AI 가 찾은 안전 플래그 후보가 없습니다. 언급 없음 ≠ 안전함(묻지 않았을 수 있음).";
+
+  // 더 취약함(기준안): 플래그가 있고 출생연도로 5세 이하. 상담일 연도가 없으면 올해로 센다.
+  const birthYear = input.caseDetail.caseInfo?.childBirthYear ?? null;
+  const consultedYear = Number((input.detail.session?.consultedAt ?? "").slice(0, 4)) || new Date().getFullYear();
+  const youngChild = birthYear !== null && consultedYear - birthYear <= 5;
+  const vulnerableNote =
+    safetyFlags.length > 0 && youngChild ? "더 취약함 · 출생연도로 5세 이하(어린 아동은 같은 위협에도 더 위험합니다)" : "";
+
+  // 재학대 요인: R1 은 관련 신호가 잡힌 유형이 둘 이상일 때 화면이 센다. 나머지는 AI 후보.
+  const signalTypes = completed ? signals.types.filter((row) => row.state === "signal").map((row) => abuseTypeLabel(row.abuseType)) : [];
+  const reabuseRaw = completed ? (view?.reabuseFactors ?? null) : null;
+  const reabuse = [
+    ...(signalTypes.length >= 2
+      ? [{ key: "r1", chip: `R1 ${REABUSE_LABELS.R1}`, title: `관련 신호가 잡힌 유형: ${signalTypes.join(" · ")}` }]
+      : []),
+    ...(reabuseRaw ?? [])
+      .map((factor, index) => {
+        const code = readText(factor?.code);
+        const where = signals.locate(factor?.segment_ids).label;
+
+        return {
+          key: `r${index + 2}`,
+          chip: REABUSE_LABELS[code] ? `${code} ${REABUSE_LABELS[code]}` : code,
+          title: `${readText(factor?.text)}${where ? ` · ${where}` : ""}`,
+        };
+      })
+      .filter((factor) => factor.chip !== ""),
+  ];
+
   return {
     ...header,
     aiText,
     aiActionLabel: analysis.submitting ? "요청 중…" : aiActionLabel,
     aiAction,
     aiWarnings: completed ? (view?.warnings ?? []) : [],
-    aiOverallNote: `심각도는 아래 유형별 AI 제안 중 가장 높은 값입니다. 안전 플래그 · 지난 회차와 비교는 ${NOT_READY}입니다.`,
+    /** 위 카드 'AI 초안' 큰 글자(상 · 중 · 하) · 색 · 옆 설명 · 지난 회차 비교. 심각도 제안이 없으면 aiLevel 이 ''. */
+    aiLevel: aiLevel ? RISK_LEVEL_LABELS[aiLevel] : "",
+    aiLevelColor: aiLevel ? LEVEL_TONES[aiLevel].tone : "",
+    aiLevelText: aiLevel ? `최고 심각도 ${top}/5 · ${topTypes.join(" · ")}` : "",
+    aiTrend: aiTrendText(input.history, ids.sessionId, aiLevel),
+    aiOverallNote: "AI 초안은 아래 유형별 심각도 중 가장 높은 값입니다(4~5 상 · 3 중 · 1~2 하). 위험도는 상담원 판단으로 정합니다.",
     /** 위 카드 상담원 판단: 상 · 중 · 하 단추(회차 전체 하나), 상태 안내, 저장 중 표시. */
     levels,
     assessNote,
@@ -477,15 +589,25 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     types,
     rubricNote: "단계 설명은 디자인 초안의 참고 기준이며 팀이 확정한 기준이 아닙니다.",
     ...trendValues(input.history, ids.sessionId),
-    flagNote: `안전 플래그 · 재학대 요인은 ${NOT_READY}입니다(서버에 값이 없음).`,
-    factorTitle: completed ? `위험요인 ${NOT_READY} · 보호요인 ${protective.length}` : "위험요인 · 보호요인",
+    /** 안전 플래그 후보 줄(칩 · 문장 · 근거 위치), 비었을 때 안내, 더 취약함 안내. */
+    safetyFlags,
+    flagEmpty,
+    vulnerableNote,
+    /** 재학대 요인 칩(R1 은 화면 계산). 문장 · 근거는 title. */
+    reabuse,
+    reabuseNote: completed && reabuse.length > 0 ? "R1~R6 은 통계 연구, R7~R10 은 사례 연구(14건) 근거입니다. 칩을 가리키면 근거가 보입니다." : "",
+    factorTitle: completed
+      ? // AI 후보를 만들지 못했으면(null) 개수를 세지 않는다 — R1 하나만 보고 '위험요인 1' 이라 하면 '하나뿐' 으로 읽힌다.
+        `위험요인 ${reabuseRaw === null ? "확인 못 함" : reabuse.length} · 보호요인 ${protective.length}`
+      : "위험요인 · 보호요인",
     protective,
     protectiveEmpty: !completed ? "AI 분석이 끝나면 보호요인이 보입니다." : protective.length === 0 ? "AI 가 찾은 보호요인이 없습니다." : "",
     error: overall.error ?? analysis.error,
     signalError: completed ? signals.evidenceError : null,
     sttHref,
     nextHref: screenHref("/NoteWrite", ids),
-    nextLabel: "상담일지 작성 →",
+    // '확정' 은 디자인 문구(2026-11-05). 따로 저장하는 것은 없고, 상담원 판단이 있어야 넘어간다(nextBlocked).
+    nextLabel: "확정 · 상담일지 작성 →",
     canNext: analyzed,
     /** 분석은 끝났는데 판단이 없어 다음 단추 · 단계 표시 3단계를 팝업으로 막는가. */
     nextBlocked: needsJudgment(status, overall),

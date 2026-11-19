@@ -21,6 +21,7 @@ from app.core.enums import (
     TargetActionResult,
 )
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.case_personal_info import CasePersonalInfo
@@ -78,18 +79,30 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     # 자유 글이라 개인정보가 섞일 수 있다 — 화면이 '실명 · 연락처 · 주소 등 개인정보는 적지 마세요' 를 보인다(사례 메모와 같음).
-    linked_background: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 사례연계 경위
+    linked_background_plain: Mapped[Optional[str]] = mapped_column("linked_background", Text, nullable=True)  # 사례연계 경위
+    linked_background_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    linked_background = EncryptedColumn("linked_background", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
 
     # 서식 4 ② 초기면접 내용의 가족유형 · 글 칸(2026-11-05). 사례연계 경위와 같은 규칙.
     intake_family_type: Mapped[Optional[FamilyType]] = mapped_column(
         SAEnum(FamilyType, name="intake_family_type", native_enum=False, length=20),
         nullable=True,
     )
-    intake_guardian_relation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 보호자와 아동과의 관계
-    intake_problem: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 문제력(현 상황 · 그 이유, 한 칸)
-    intake_attitude: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 대상자 태도
-    intake_environment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 물리적 환경
-    intake_opinion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 상담원 소견 및 향후 계획
+    intake_guardian_relation_plain: Mapped[Optional[str]] = mapped_column("intake_guardian_relation", Text, nullable=True)  # 보호자와 아동과의 관계
+    intake_guardian_relation_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    intake_guardian_relation = EncryptedColumn("intake_guardian_relation", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
+    intake_problem_plain: Mapped[Optional[str]] = mapped_column("intake_problem", Text, nullable=True)  # 문제력(현 상황 · 그 이유, 한 칸)
+    intake_problem_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    intake_problem = EncryptedColumn("intake_problem", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
+    intake_attitude_plain: Mapped[Optional[str]] = mapped_column("intake_attitude", Text, nullable=True)  # 대상자 태도
+    intake_attitude_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    intake_attitude = EncryptedColumn("intake_attitude", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
+    intake_environment_plain: Mapped[Optional[str]] = mapped_column("intake_environment", Text, nullable=True)  # 물리적 환경
+    intake_environment_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    intake_environment = EncryptedColumn("intake_environment", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
+    intake_opinion_plain: Mapped[Optional[str]] = mapped_column("intake_opinion", Text, nullable=True)  # 상담원 소견 및 향후 계획
+    intake_opinion_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    intake_opinion = EncryptedColumn("intake_opinion", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
 
     # 종결 검토에 등록한 시각(2026-10-30, 내담자 정보 '종결 검토 등록'). 등록 전 · 취소하면 null.
     closure_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -100,7 +113,9 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes_plain: Mapped[Optional[str]] = mapped_column("notes", Text, nullable=True)
+    notes_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes = EncryptedColumn("notes", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
 
     counselor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"),

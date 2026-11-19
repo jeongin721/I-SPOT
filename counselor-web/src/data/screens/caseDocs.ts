@@ -91,7 +91,7 @@ export function closureFormRow(
   const written = Object.values(report).some(filled);
   return written
     ? { date: toDateOnly(closure.record?.updated_at) || NOT_PROVIDED, st: "작성", stCls: "chip c-ok", href, go: href ? "열기" : "" }
-    : { date: NOT_PROVIDED, st: "작성 전", stCls: "chip c-normal", href, go: href ? "작성" : "" };
+    : { date: NOT_PROVIDED, st: "작성 전", stCls: "chip c-normal", href, go: href ? "열기" : "" };
 }
 
 /** 사례 값으로 상태를 보이는 서식(초기면접지). */
@@ -246,7 +246,8 @@ export function caseDocsValues(input: CaseDocsInput) {
       const tab = CASE_FORM_TABS[no];
       if (tab) {
         const href = input.caseId ? caseFormHref(input.caseId, tab) : null;
-        return { name, no, when, ...caseFormRow(input.forms, tab), href, go: href ? "작성" : "" };
+        // 11/10 디자인: 제목 · '열기' → 읽기 전용 보기 창(view), 창 위 '수정' → 작성 화면(href).
+        return { name, no, when, ...caseFormRow(input.forms, tab), href, go: href ? "열기" : "", view: href ? tab : null };
       }
       if (no === CLOSURE_FORM_NO) {
         const registered = detail.caseInfo ? Boolean(detail.caseInfo.closureReviewDate) : null;

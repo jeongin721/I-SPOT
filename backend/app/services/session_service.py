@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core import storage
 from app.core.config import settings
 from app.core.enums import AnalysisStatus, AuditAction, DraftsStatus, ReviewStatus, SessionStatus
-from app.core.errors import ErrorCode, conflict
+from app.core.errors import ErrorCode, conflict, forbidden
 from app.core.logging import get_logger
 from app.core.state_machine import assert_transition
 from app.models.analysis import AIAnalysis
@@ -180,11 +180,39 @@ def update_session(
     return session
 
 
+# 담당 상담사가 직접 지울 수 있는 회차 상태 — 원문을 확정하기 전(2026-11-11). 잘못 올린 녹음을 스스로 치울 수 있게 하되,
+# 원문을 확정한 뒤의 회차(검수본 · AI 분석 · 승인된 기록)는 실수로 지워지지 않게 관리자만 지운다. 삭제는 되돌릴 수 없다
+# (전사본 · 분석 · 요약 · 음성 파일까지 함께 지워지고 감사 기록만 남는다).
+COUNSELOR_DELETABLE_STATUSES = {
+    SessionStatus.CREATED,
+    SessionStatus.AUDIO_UPLOADED,
+    SessionStatus.STT_FAILED,
+    SessionStatus.STT_REVIEW_REQUIRED,
+}
+
+
+def assert_can_delete(session: ConsultationSession, current_user: User) -> None:
+    """회차를 지울 수 있는지 본다(관리자는 언제나). 사례 접근 권한은 부르는 쪽(get_session_or_404)이 이미 봤다."""
+
+    if current_user.is_admin or session.status in COUNSELOR_DELETABLE_STATUSES:
+        return
+
+    if session.status == SessionStatus.STT_PROCESSING:
+        raise conflict(
+            ErrorCode.INVALID_SESSION_STATE,
+            "원문 변환 중에는 회차를 지울 수 없습니다. 변환이 끝난 뒤 다시 해 주세요.",
+        )
+
+    raise forbidden("원문을 확정한 뒤의 회차는 관리자만 지울 수 있습니다.")
+
+
 def delete_session(
     db: Session,
     session: ConsultationSession,
     current_user: User,
 ) -> None:
+    assert_can_delete(session, current_user)
+
     # DB row 를 지우기 전에 Local Storage 의 음성 파일을 먼저 정리한다.
     audio_paths = list(
         db.scalars(select(AudioFile.path).where(AudioFile.session_id == session.id))

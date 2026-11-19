@@ -20,6 +20,8 @@ import type {
   FollowupCheckPoint,
   FollowupQuestionDraft,
   ProtectiveFactor,
+  ReabuseFactor,
+  SafetyFlag,
   RiskUtterance,
   SessionStatus,
   SeverityRating,
@@ -54,6 +56,9 @@ export interface AnalysisView {
   severityRatings: SeverityRating[];
   /** 보호 요인(선택 필드). */
   protectiveFactors: ProtectiveFactor[];
+  /** 안전 플래그 · 재학대 요인 후보(선택 필드, 2026-11-05). null 이면 만들지 못함 — '없음' 과 다르다. */
+  safetyFlags: SafetyFlag[] | null;
+  reabuseFactors: ReabuseFactor[] | null;
   /** 다음 상담에서 확인할 점에 대한 AI 확인 메모(선택 필드). 질문이 아니다. 지금은 segment_ids 가 늘 빈 배열이다. */
   followupCheckPoints: FollowupCheckPoint[];
   /** AI 추가 질문 초안(선택 필드). 상담사가 승인해야 질문 목록에 들어간다. 생성 모듈 전에는 빈 배열이다. */
@@ -198,6 +203,8 @@ export function useSessionAnalysis(
           abuseSignals: source.result?.abuse_signals ?? [],
           severityRatings: source.result?.severity_ratings ?? [],
           protectiveFactors: source.result?.protective_factors ?? [],
+          safetyFlags: source.result?.safety_flags ?? null,
+          reabuseFactors: source.result?.reabuse_factors ?? null,
           followupCheckPoints: source.result?.followup_check_points ?? [],
           followupQuestions: source.result?.followup_questions ?? [],
           transcriptVersion: source.transcript_version,

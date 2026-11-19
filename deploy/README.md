@@ -36,6 +36,9 @@ sudo bash deploy/web-deploy.sh
   ```
 
   새 주소도 이 서버를 가리켜야 HTTPS 인증서가 발급됩니다. `backend.env` 의 `CORS_ORIGINS` 는 스크립트가 `https://<주소>` 로 고칩니다.
+- **아이 앱(콩콩) 주소(2026-11-19)**: 아이 앱을 상담사 화면과 다른 주소로 낼 수 있습니다(`KID_SITE`). **기본은 꺼짐**(예전처럼 상담사 주소의 `/child-app/`) — 가상 데이터 시연에는 필요 없고, 실제 아이에게 쓰는 서버를 열 때 기관과 연관이 드러나지 않는 도메인으로 켭니다(sslip.io 로 시험하려면 `KID_SITE=kong.<SITE>`). 켜면 그 주소에서는 아이 앱 화면과 아이 기기 API(`/api/v1/child-app/…`)만 백엔드로 가고, 그 밖의 `/api/*` 는 404 입니다. `/docs` · `/health` 같은 다른 경로는 백엔드로 가지 않고 아이 앱 화면이 나옵니다(API 문서는 열리지 않음). 상담사 화면의 `/child-app/` 은 그 주소로 넘어갑니다.
+  - 실제 도메인이면 그 이름의 DNS 를 이 서버로 맞춘 뒤 `sudo env SITE=<상담사 주소> KID_SITE=<아이 앱 주소> bash deploy/web-deploy.sh`. 끄려면 `KID_SITE` 없이(또는 `KID_SITE=none`) 다시 배포합니다.
+  - 주소가 바뀌면 이미 연결한 아이 기기는 새 주소에서 연결 코드를 다시 넣어야 합니다(브라우저 저장소가 주소마다 따로라 예전 연결 정보를 못 읽습니다). 홈 화면 바로가기도 새로 만듭니다.
 - 이전 버전으로 되돌리는 기능은 없습니다. 되돌리려면 main 에서 되돌리는 커밋을 머지한 뒤 다시 배포합니다.
 
 ### 머지 전 브랜치를 데모로 확인하기 (`DEPLOY_BRANCH`)
@@ -120,6 +123,17 @@ modeling 의 분류 모델(`infer_abuse_qa_v3.py`)은 `torch.cuda.is_available()
 
 - 한 번 저장을 시작한 뒤 키를 바꾸면 옛 값을 풀 수 없습니다. 바꿀 때는 `backend/README.md` 7절의 '키 바꾸기' 순서(새 키를 맨 앞에 넣고 `scripts.reencrypt_personal_info`)를 따릅니다.
 - 개발용 키(`backend/.env.example` 의 값)는 `ENV=production` 에서 거절됩니다.
+
+## 상담사 앱(폰) 알림 키 (`VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`)
+
+폰 알림(상담 30분 전 등, `backend/docs/API_CONTRACT.md` 27절)을 켜는 키입니다. 없으면 알림만 꺼지고(앱 스위치 '준비 중') 나머지는 그대로 뜹니다.
+
+1. 키를 만듭니다: `sudo docker exec -w /app ispot-backend python -m scripts.make_vapid_key` — 한 줄이 나옵니다.
+2. PII 키처럼 Parameter Store(SecureString, 예: `/ispot/backend/VAPID_PRIVATE_KEY`)에 둡니다. 잃어도 데이터는 그대로이고 폰마다 알림을 다시 켜면 됩니다.
+3. `/opt/ispot/backend.env` 에 `VAPID_PRIVATE_KEY=<그 값>`, `VAPID_SUBJECT=mailto:<기관 대표 메일>`(또는 `https://<사이트 주소>`), `PUSH_LOOP_ENABLED=true` 를 편집기로 넣고 스크립트를 다시 돌립니다. 값은 메신저로 주고받지 않습니다.
+
+- 키를 바꾸면 폰마다 알림을 껐다 켜야 합니다.
+- 상담 30분 전 알림 실행기는 `PUSH_LOOP_ENABLED=true` 일 때 Backend 안에서 1분마다 돕니다(Backend 가 여럿이어도 한 번만 보냄).
 
 ## 디스크 · 빌더
 

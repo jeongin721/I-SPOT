@@ -7,6 +7,13 @@
 
 import { api, clearToken, setToken } from "./client";
 import type {
+  PushConfig,
+  PushPrefs,
+  PushSubscriptionRequest,
+  PushTestResult,
+  DocboxFile,
+  DocboxFolder,
+  DocboxList,
   CaseForm,
   CaseFormType,
   SourceDocument,
@@ -22,6 +29,8 @@ import type {
   CaseCreateRequest,
   CaseDetail,
   CaseListItem,
+  CaseListSort,
+  CaseListOrder,
   CaseStatus,
   CaseUpdateRequest,
   Document,
@@ -34,6 +43,15 @@ import type {
   ClosureSummarySave,
   FollowupCheck,
   FollowupCheckList,
+  ChildAiDraft,
+  ChildAppCase,
+  ChildAppCaseRow,
+  ChildAppStats,
+  ChildAppInvite,
+  ChildQuestionDeliver,
+  ChildOpenAlert,
+  ChildRecentAlert,
+  ChildWelfareStatus,
   FollowupQuestionList,
   LawGuideAnswer,
   LoginRequest,
@@ -73,6 +91,10 @@ import type {
   TranscriptUpdateRequest,
   User,
   VoiceMarks,
+  Memo,
+  MemoCreateRequest,
+  MemoUpdateRequest,
+  BriefingChecks,
 } from "./types";
 
 /**
@@ -259,7 +281,7 @@ export const cases = {
    * with_child_name=true 면 줄마다 child_name(실명)을 싣고 서버가 목록 열람 기록 1줄을 남긴다 — 이름을 보이는 화면만 쓴다.
    */
   list(
-    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean },
+    params?: PageQuery & { status?: CaseStatus; search?: string; with_child_name?: boolean; sort?: CaseListSort; order?: CaseListOrder },
   ): Promise<Paged<CaseListItem>> {
     return api.get<Paged<CaseListItem>>("/cases", params);
   },
@@ -648,6 +670,65 @@ export const lawGuide = {
 // 일정 (API_CONTRACT 20절, 2026-11-02)
 // =========================================================
 
+// =========================================================
+// 상담사 메모(API_CONTRACT 25절) — 쓴 사람만 읽고 고치고 지운다
+// =========================================================
+
+// =========================================================
+// 상담 전 브리핑 '확인할 사항' 체크(API_CONTRACT 26절) — 웹 · 폰이 같은 값
+// =========================================================
+
+export const briefingChecks = {
+  get(sessionId: string): Promise<BriefingChecks> {
+    return api.get<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`);
+  },
+
+  /** 문장 하나를 켜거나 끈다. visible(지금 보이는 문장들)을 주면 거기 없는 옛 체크를 서버가 지운다. 바뀐 전체를 돌려준다. */
+  toggle(sessionId: string, text: string, checked: boolean, visible?: string[]): Promise<BriefingChecks> {
+    return api.patch<BriefingChecks>(`/sessions/${sessionId}/briefing-checks`, visible ? { text, checked, visible } : { text, checked });
+  },
+};
+
+export const memos = {
+  /** 내 메모(최신순). 담당이 바뀌어 볼 수 없게 된 사례의 메모는 빠진다. */
+  list(params?: PageQuery & { case_id?: string }): Promise<Paged<Memo>> {
+    return api.get<Paged<Memo>>("/memos", params);
+  },
+
+  create(payload: MemoCreateRequest): Promise<Memo> {
+    return api.post<Memo>("/memos", payload);
+  },
+
+  update(memoId: string, payload: MemoUpdateRequest): Promise<Memo> {
+    return api.patch<Memo>(`/memos/${memoId}`, payload);
+  },
+
+  remove(memoId: string): Promise<void> {
+    return api.delete<void>(`/memos/${memoId}`);
+  },
+};
+
+// 상담사 앱(폰) 알림 — 웹 푸시(27절, 2026-11-19).
+export const push = {
+  config(): Promise<PushConfig> {
+    return api.get<PushConfig>("/push/config");
+  },
+
+  /** 같은 endpoint 면 덮어쓴다. 다른 계정이 쓰던 폰이면 지금 계정으로 옮긴다. 서버 키가 없으면 503 PUSH_DISABLED. */
+  subscribe(payload: PushSubscriptionRequest): Promise<PushPrefs> {
+    return api.put<PushPrefs>("/push/subscription", payload);
+  },
+
+  unsubscribe(endpoint: string): Promise<{ ok: boolean }> {
+    return api.post<{ ok: boolean }>("/push/unsubscribe", { endpoint });
+  },
+
+  /** 내 폰들에 '알림이 켜졌어요' 를 보낸다. */
+  test(): Promise<PushTestResult> {
+    return api.post<PushTestResult>("/push/test");
+  },
+};
+
 export const schedule = {
   /** from ~ to(YYYY-MM-DD, 400일까지). 기간 앞 30일 안의 최초접수도 온다(처리 기한 계산용). */
   list(range: { from: string; to: string }): Promise<{ items: ScheduleEvent[] }> {
@@ -713,5 +794,116 @@ export const caseForms = {
   /** 상담원 확정. 확정한 차수는 고칠 수 없다(다시 쓰면 다음 차수). */
   confirm(caseId: string, formId: string, version: number): Promise<CaseForm> {
     return api.post<CaseForm>(`/cases/${caseId}/forms/${formId}/confirm`, { version });
+  },
+};
+
+// =========================================================
+// 문서함 (API_CONTRACT 23절, 2026-11-05) — 기관 서식 · 참고 문서 공용 보관
+// =========================================================
+
+export const docbox = {
+  list(): Promise<DocboxList> {
+    return api.get<DocboxList>("/docbox");
+  },
+
+  createFolder(name: string): Promise<DocboxFolder> {
+    return api.post<DocboxFolder>("/docbox/folders", { name });
+  },
+
+  /** 한 번에 10개 · 파일마다 10MB. folderId 가 null 이면 '폴더 없음'. 하나라도 어긋나면 아무것도 올리지 않는다(422). */
+  upload(files: File[], folderId: string | null): Promise<{ files: DocboxFile[] }> {
+    const form = new FormData();
+    files.forEach((file) => form.append("files", file, file.name));
+    if (folderId) form.append("folder_id", folderId);
+    return api.upload<{ files: DocboxFile[] }>("/docbox/files", form);
+  },
+
+  move(fileId: string, folderId: string | null): Promise<DocboxFile> {
+    return api.patch<DocboxFile>(`/docbox/files/${fileId}`, { folder_id: folderId });
+  },
+
+  /** 파일 본체(내려받기 — 감사 기록이 남는다). */
+  file(fileId: string): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/download`);
+  },
+
+  /** 그림 문서 미리보기(그림만 · 내려받기 기록을 남기지 않는다). */
+  preview(fileId: string, signal?: AbortSignal): Promise<Blob> {
+    return api.blob(`/docbox/files/${fileId}/preview`, signal);
+  },
+
+  /** 문서 지우기(관리자만). */
+  remove(fileId: string): Promise<void> {
+    return api.delete<void>(`/docbox/files/${fileId}`);
+  },
+};
+
+// =========================================================
+// 아이 앱 콩콩 (API_CONTRACT 24절)
+// =========================================================
+
+export const childApp = {
+  get(caseId: string): Promise<ChildAppCase> {
+    return api.get<ChildAppCase>(`/cases/${caseId}/child-app`);
+  },
+
+  invite(caseId: string): Promise<ChildAppInvite> {
+    return api.post<ChildAppInvite>(`/cases/${caseId}/child-app/invite`);
+  },
+
+  /** deliver 를 빼면 바로 보낸다. "EVENING" 은 발송 예약(서버가 정한 그날 저녁 시각부터 아이 앱에 보인다. 지났으면 바로). */
+  sendQuestions(caseId: string, questionIds: string[], deliver?: ChildQuestionDeliver): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/question-sets`, {
+      question_ids: questionIds,
+      ...(deliver ? { deliver } : {}),
+    });
+  },
+
+  /** 발송 예약 취소(ChildAppCase.scheduled_questions.id). 예약 시각이 지났으면 409. */
+  cancelScheduledQuestions(caseId: string, questionSetId: string): Promise<void> {
+    return api.delete<void>(`/cases/${caseId}/child-app/question-sets/${questionSetId}`);
+  },
+
+  /** 관리자 통계 '아이 앱 응답률'. 날짜는 YYYY-MM-DD(끝 날 포함). */
+  stats(dateFrom: string, dateTo: string): Promise<ChildAppStats> {
+    return api.get<ChildAppStats>(`/child-app-stats?date_from=${dateFrom}&date_to=${dateTo}`);
+  },
+
+  listCases(): Promise<ChildAppCaseRow[]> {
+    return api.get<ChildAppCaseRow[]>("/child-app-cases");
+  },
+
+  createAiDraft(caseId: string): Promise<ChildAiDraft> {
+    return api.post<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft`);
+  },
+
+  updateAiNote(caseId: string, draftId: string, questionId: string, text: string): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/notes/${questionId}`, { text });
+  },
+
+  updateAiQuestion(caseId: string, draftId: string, id: string, text: string, options: string[]): Promise<ChildAiDraft> {
+    return api.patch<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}`, { text, options });
+  },
+
+  setAiApproval(caseId: string, draftId: string, id: string, approved: boolean): Promise<ChildAiDraft> {
+    return api.put<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft/${draftId}/questions/${id}/approval`, { approved });
+  },
+
+  openAlerts(): Promise<ChildOpenAlert[]> {
+    return api.get<ChildOpenAlert[]>("/child-app-alerts/open");
+  },
+
+  /** 관리자 홈 '긴급 알림 현황'(관리자만). */
+  recentAlerts(): Promise<ChildRecentAlert[]> {
+    return api.get<ChildRecentAlert[]>("/child-app-alerts/recent");
+  },
+
+  /** 장기 무응답 아이 안부 연락 처리(관리자 · 담당 상담사). */
+  welfareCheck(caseId: string, status: ChildWelfareStatus, note?: string | null): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/welfare-checks`, { status, note: note ?? null });
+  },
+
+  acknowledgeAlert(caseId: string, alertId: string): Promise<void> {
+    return api.post<void>(`/cases/${caseId}/child-app/alerts/${alertId}/ack`);
   },
 };

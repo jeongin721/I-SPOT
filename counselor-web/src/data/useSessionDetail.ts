@@ -110,6 +110,8 @@ export interface SessionDetailState {
   reload: () => void;
   /** '불러오는 중' 없이 다시 조회한다(다른 훅에서 요청을 보낸 뒤 단계를 맞출 때). */
   refresh: () => void;
+  /** 조회가 끝날 때마다(실패해도) 바뀐다. 화면이 따로 되풀이 조회(usePolling)할 때 넘긴다. */
+  settled: number;
 }
 
 export function useSessionDetail(
@@ -125,5 +127,5 @@ export function useSessionDetail(
 
   usePolling(poll && session !== null && isProcessing(session.status), remote.refresh, remote.settled);
 
-  return { session, loading: remote.loading, error: remote.error, reload: remote.reload, refresh: remote.refresh };
+  return { session, loading: remote.loading, error: remote.error, reload: remote.reload, refresh: remote.refresh, settled: remote.settled };
 }

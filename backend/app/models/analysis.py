@@ -7,11 +7,12 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import AnalysisStatus, DraftsStatus
 from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -43,7 +44,11 @@ class AIAnalysis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schema_version: Mapped[str] = mapped_column(String(10), default="1.0", nullable=False)
 
     # AI Output Contract 전체(summary/risk_utterances/abuse_signals/risk_factors/warnings)
-    result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    # 원문 발화 인용이 있어 result_enc 에 JSON 글자를 암호화해 둔다(encrypted_field). result(평문 칸)는 옮기기 전 옛 행만
+    # 읽고 다음 PR 에서 지운다.
+    result_plain: Mapped[Optional[Dict[str, Any]]] = mapped_column("result", JSONType, nullable=True)
+    result_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result = EncryptedColumn("result", empty=None, json_value=True)
 
     # AI 파이프라인 내부 결과인 근거 연결 정보. Contract 외 부가 정보이므로 분리 저장한다.
     summary_evidence: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(

@@ -1,0 +1,380 @@
+# 문서함(API_CONTRACT 23절, 2026-11-05, 11/05 디자인 '문서함').
+#
+# 기관 서식 · 참고 문서를 팀이 함께 보관한다. 사례 · 회차와 상관없는 공용 보관함이라 로그인한 상담원 · 관리자 모두 보고 올린다.
+#  - 폴더: 이름만(겹치면 409). 지우기 · 이름 바꾸기는 디자인에 없어 만들지 않는다.
+#  - 파일: 한 번에 MAX_FILES 개, 파일마다 MAX_FILE_BYTES 까지. 정해 둔 확장자만 받는다(실행 파일 · 스크립트를 막는다).
+#    본체는 저장소 storage/docbox/<uuid> 에 두고, 내려받기는 늘 첨부(attachment)로 · nosniff 로 준다.
+#    잘못 올린 문서는 관리자만 지운다(표 행 · 파일 본체를 함께 지운다).
+#  - 첫 페이지 미리보기: 그림은 그대로(별도 창구 /preview — 그림만 주고 내려받기 기록을 남기지 않는다), txt · md · csv 는 앞부분 글, docx · hwpx · pdf 는 document_text 로 뽑은 앞부분 글.
+#    뽑지 못하면(손상 · 너무 김 · 시간 초과) 미리보기 없음(other)으로 둔다 — 올리기는 막지 않는다.
+#  - 작성 양식(2026-11-19, 11/09 디자인 '저장 → 제목 · 폴더를 정해 별도 문서로'): 빈 양식 6종을 화면에서 채워 .ispotform(JSON)으로
+#    올린다. 내용은 {kind, form_id, version, values} 꼴만 받는다(FORM_IDS · 칸 이름 · 값 길이 검사). 아이 정보는 넣지 않게
+#    화면이 확인을 받는다 — 공용 보관함이라 모든 상담원이 본다. 사례 서식은 사례 상세 › 문서함(case_forms)에 저장한다.
+#    본체는 다른 상담 본문처럼 앱 암호화(PII_ENCRYPTION_KEYS, AAD ispot:docbox_files:body:<행 ID>:v1)로 저장하고, 내려받을 때 푼다
+#    (민규 ⑥ 조건 1). 그 밖의 문서 본체는 예전처럼 그대로다.
+# 감사 기록에는 파일 수 · 형식 · 크기 · 폴더 id 만 남긴다(파일 이름 · 내용은 넣지 않는다).
+import json
+import logging
+import re
+import uuid
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core import pii_crypto, storage
+from app.core.concurrency import run_with_timeout
+from app.core.enums import AuditAction
+from app.core.errors import APIError, ErrorCode, conflict, not_found
+from app.models.docbox import DOCBOX_FILE_NAME_MAX_LENGTH, DocboxFile, DocboxFolder
+from app.models.user import User
+from app.schemas.docbox import DocboxFileResponse, DocboxFolderResponse, DocboxListResponse
+from app.services import audit_service
+from app.services.document_text import extract_text
+
+logger = logging.getLogger(__name__)
+
+MAX_FILES = 10
+MAX_FILE_BYTES = 10 * 1024 * 1024
+#: 미리보기 글 앞부분 길이.
+PREVIEW_CHARS = 1500
+PREVIEW_TIMEOUT_SECONDS = 10.0
+
+IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+PLAIN_TEXT = {"txt", "md", "csv"}
+EXTRACTABLE = {"docx", "hwpx", "pdf"}
+OTHER = {"hwp", "doc", "xlsx", "xls", "pptx", "ppt"}
+#: 문서함 빈 양식을 채워 저장한 파일(JSON). 화면이 다시 열어 이어서 쓴다.
+FORM_EXT = "ispotform"
+FORM_IDS = {"f4", "f6", "f27", "f29", "r1", "r3"}
+FORM_MAX_BYTES = 256 * 1024
+FORM_MAX_FIELDS = 400
+FORM_VALUE_MAX = 2000
+_FORM_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,31}$")
+_FORM_DOC_KEYS = {"kind", "form_id", "version", "values"}
+# 양식마다 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 나이 · 사건번호 · 가족 성명). 공용 보관함이라 이 칸이 들어오면 422
+# (민규 755283e0 리뷰). 화면(counselor-web src/data/blankForms.ts IDENTITY_FIELDS)도 같은 칸을 못 쓰게 하고 파일에서 뺀다.
+FORM_IDENTITY_FIELDS: Dict[str, frozenset] = {
+    "f4": frozenset({"k14", "k15", *(f"k{n}" for n in range(16, 26)), "k32", "k60", "k67", "k74", "k81"}),
+    "f6": frozenset({"k10", "k11", "k12", "k13", "k14", "k15", "k16", "k17", "k24", "k27", "k30", "k33"}),
+    "f27": frozenset({"k1", "k3"}),
+    "f29": frozenset({"k1", "k4"}),
+    "r1": frozenset(),
+    "r3": frozenset(),
+}
+ALLOWED = set(IMAGE_TYPES) | PLAIN_TEXT | EXTRACTABLE | OTHER | {FORM_EXT}
+
+
+def _check_form(data: bytes) -> None:
+    """작성 양식 파일은 정해 둔 꼴만 받는다. 아니면 422."""
+
+    bad = _invalid("작성 양식 파일 내용이 올바르지 않습니다.")
+    if len(data) > FORM_MAX_BYTES:
+        raise bad
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        # 깊게 중첩된 JSON 은 RecursionError(민규 리뷰 3) — 500 이 아니라 422.
+        raise bad from None
+    if not isinstance(doc, dict) or set(doc) != _FORM_DOC_KEYS:
+        raise bad
+    if doc.get("kind") != "ispot-blank-form" or doc.get("form_id") not in FORM_IDS:
+        raise bad
+    if not isinstance(doc.get("version"), str) or len(doc["version"]) > 20:
+        raise bad
+    values = doc.get("values")
+    if not isinstance(values, dict) or len(values) > FORM_MAX_FIELDS:
+        raise bad
+    identity = FORM_IDENTITY_FIELDS[doc["form_id"]]
+    for key, value in values.items():
+        if not isinstance(key, str) or not _FORM_KEY.match(key):
+            raise bad
+        if key in identity:
+            raise _invalid("작성 양식에 아이 · 가족을 알아볼 수 있는 칸(이름 · 생년월일 · 사건번호 등)은 넣을 수 없습니다.")
+        if isinstance(value, bool):
+            continue
+        if not isinstance(value, str) or len(value) > FORM_VALUE_MAX:
+            raise bad
+
+
+def _invalid(message: str) -> APIError:
+    return APIError(ErrorCode.VALIDATION_ERROR, message, status_code=422)
+
+
+def _extension(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+def _clean_name(filename: Optional[str]) -> str:
+    """경로 · 제어 문자를 뺀 파일 이름. 길면 확장자를 살려 자른다."""
+
+    name = "".join(ch for ch in Path((filename or "").replace("\\", "/")).name if ch >= " " and ch != "\x7f").strip()
+    if not name or name in {".", ".."}:
+        raise _invalid("파일 이름이 없습니다.")
+    if len(name) > DOCBOX_FILE_NAME_MAX_LENGTH:
+        ext = _extension(name)
+        keep = DOCBOX_FILE_NAME_MAX_LENGTH - len(ext) - 1
+        name = f"{name[:keep]}.{ext}" if ext and keep > 0 else name[:DOCBOX_FILE_NAME_MAX_LENGTH]
+    return name
+
+
+def _decode(data: bytes, *, truncated: bool = False) -> Optional[str]:
+    # 앞부분만 자른 바이트는 끝이 글자 중간일 수 있다. 끝의 조각(UTF-8 은 최대 3바이트)을 떼고 다시 본다.
+    cuts = range(4) if truncated else range(1)
+    for encoding in ("utf-8-sig", "cp949"):
+        for cut in cuts:
+            try:
+                return data[: len(data) - cut].decode(encoding)
+            except UnicodeDecodeError:
+                continue
+    return None
+
+
+def _preview(name: str, data: bytes) -> Tuple[str, Optional[str]]:
+    ext = _extension(name)
+    if ext in IMAGE_TYPES:
+        return "image", None
+    text: Optional[str] = None
+    if ext in PLAIN_TEXT:
+        limit = PREVIEW_CHARS * 4
+        text = _decode(data[:limit], truncated=len(data) > limit)
+    elif ext in EXTRACTABLE:
+        try:
+            text = run_with_timeout(lambda: extract_text(name, data), PREVIEW_TIMEOUT_SECONDS)
+        except Exception:  # noqa: BLE001 — 미리보기는 덤이다. 뽑지 못하면 미리보기 없이 올린다.
+            text = None
+    if text is None:
+        return "other", None
+    text = text.replace("\r\n", "\n").replace("\x00", "").strip()
+    return ("text", text[:PREVIEW_CHARS]) if text else ("other", None)
+
+
+def _folder_or_404(db: Session, folder_id: Optional[uuid.UUID]) -> Optional[DocboxFolder]:
+    if folder_id is None:
+        return None
+    folder = db.get(DocboxFolder, folder_id)
+    if folder is None:
+        raise not_found(ErrorCode.NOT_FOUND, "폴더를 찾을 수 없습니다.")
+    return folder
+
+
+def _seal_form(data: bytes, row_id: uuid.UUID) -> bytes:
+    """작성 양식 본체(JSON)를 앱 암호화로 봉인한다."""
+
+    return pii_crypto.encrypt_field(data.decode("utf-8"), table="docbox_files", column="body", row_id=row_id).encode("ascii")
+
+
+def is_sealed(row: DocboxFile) -> bool:
+    return _extension(row.name) == FORM_EXT
+
+
+def read_sealed(row: DocboxFile) -> bytes:
+    """봉인한 작성 양식 본체를 풀어 돌려준다(내려받기)."""
+
+    token = Path(file_path(row)).read_bytes().decode("ascii")
+    return pii_crypto.decrypt_field(token, table="docbox_files", column="body", row_id=row.id).encode("utf-8")
+
+
+def _store(data: bytes) -> str:
+    relative = f"docbox/{uuid.uuid4().hex}"
+    target = (storage.storage_root() / relative).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return relative
+
+
+def to_response(row: DocboxFile, names: Dict[uuid.UUID, str]) -> DocboxFileResponse:
+    return DocboxFileResponse(
+        id=row.id,
+        folder_id=row.folder_id,
+        name=row.name,
+        content_type=row.content_type,
+        size_bytes=row.size_bytes,
+        preview_kind=row.preview_kind,
+        preview_text=row.preview_text,
+        uploaded_by_name=names.get(row.uploaded_by_id) if row.uploaded_by_id else None,
+        created_at=row.created_at,
+    )
+
+
+def _user_names(db: Session, rows: List[DocboxFile]) -> Dict[uuid.UUID, str]:
+    ids = {row.uploaded_by_id for row in rows if row.uploaded_by_id}
+    if not ids:
+        return {}
+    return {user_id: name for user_id, name in db.execute(select(User.id, User.name).where(User.id.in_(ids)))}
+
+
+def list_all(db: Session) -> DocboxListResponse:
+    folders = list(db.scalars(select(DocboxFolder).order_by(DocboxFolder.created_at.asc(), DocboxFolder.id.asc())))
+    counts = dict(db.execute(select(DocboxFile.folder_id, func.count()).group_by(DocboxFile.folder_id)).all())
+    files = list(db.scalars(select(DocboxFile).order_by(DocboxFile.created_at.desc(), DocboxFile.id.desc())))
+    names = _user_names(db, files)
+    return DocboxListResponse(
+        folders=[DocboxFolderResponse(id=f.id, name=f.name, count=int(counts.get(f.id, 0))) for f in folders],
+        files=[to_response(row, names) for row in files],
+    )
+
+
+def create_folder(db: Session, user: User, name: str) -> DocboxFolder:
+    if db.scalar(select(DocboxFolder.id).where(DocboxFolder.name == name)) is not None:
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, "같은 이름의 폴더가 있습니다.")
+    folder = DocboxFolder(name=name, created_by_id=user.id)
+    db.add(folder)
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+        raise conflict(ErrorCode.DUPLICATE_RESOURCE, "같은 이름의 폴더가 있습니다.") from error
+    audit_service.record(
+        db, action=AuditAction.DOCBOX_FOLDER_CREATED, entity_type="DocboxFolder", entity_id=folder.id, actor_id=user.id
+    )
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+def upload(db: Session, user: User, files: List[Tuple[Optional[str], bytes]], folder_id: Optional[uuid.UUID]) -> List[DocboxFile]:
+    """files: (파일 이름, 내용). 하나라도 규칙에 어긋나면 아무것도 저장하지 않는다(422)."""
+
+    if not files:
+        raise _invalid("올릴 문서를 골라 주세요.")
+    if len(files) > MAX_FILES:
+        raise _invalid(f"한 번에 {MAX_FILES}개까지 올릴 수 있습니다.")
+    _folder_or_404(db, folder_id)
+
+    checked = []
+    for filename, data in files:
+        name = _clean_name(filename)
+        ext = _extension(name)
+        if ext not in ALLOWED:
+            raise _invalid(f"올릴 수 없는 형식입니다(.{ext or '?'}). 문서 · 표 · 그림 파일만 올릴 수 있습니다.")
+        if not data:
+            raise _invalid("빈 파일은 올릴 수 없습니다.")
+        if len(data) > MAX_FILE_BYTES:
+            raise _invalid("파일 하나는 10 MB 까지 올릴 수 있습니다.")
+        if ext == FORM_EXT:
+            _check_form(data)
+        checked.append((name, ext, data))
+
+    rows: List[DocboxFile] = []
+    stored: List[str] = []
+    try:
+        for name, ext, data in checked:
+            kind, text = _preview(name, data)
+            row_id = uuid.uuid4()
+            body = _seal_form(data, row_id) if ext == FORM_EXT else data
+            relative = _store(body)
+            stored.append(relative)
+            row = DocboxFile(
+                id=row_id,
+                folder_id=folder_id,
+                name=name,
+                content_type="application/json" if ext == FORM_EXT else IMAGE_TYPES.get(ext, "application/octet-stream"),
+                size_bytes=len(data),
+                path=relative,
+                preview_kind=kind,
+                preview_text=text,
+                uploaded_by_id=user.id,
+            )
+            db.add(row)
+            rows.append(row)
+        db.flush()
+        audit_service.record(
+            db,
+            action=AuditAction.DOCBOX_FILE_UPLOADED,
+            entity_type="DocboxFile",
+            actor_id=user.id,
+            detail={
+                "count": len(rows),
+                "formats": sorted({ext for _, ext, _ in checked}),
+                "bytes": sum(len(data) for _, _, data in checked),
+                "folder_id": str(folder_id) if folder_id else None,
+            },
+        )
+        db.commit()
+    except BaseException:
+        db.rollback()
+        for relative in stored:
+            (storage.storage_root() / relative).unlink(missing_ok=True)
+        raise
+    for row in rows:
+        db.refresh(row)
+    return rows
+
+
+def get_file_or_404(db: Session, file_id: uuid.UUID) -> DocboxFile:
+    row = db.get(DocboxFile, file_id)
+    if row is None:
+        raise not_found(ErrorCode.NOT_FOUND, "문서를 찾을 수 없습니다.")
+    return row
+
+
+def move(db: Session, user: User, row: DocboxFile, folder_id: Optional[uuid.UUID]) -> DocboxFile:
+    _folder_or_404(db, folder_id)
+    row.folder_id = folder_id
+    audit_service.record(
+        db,
+        action=AuditAction.DOCBOX_FILE_MOVED,
+        entity_type="DocboxFile",
+        entity_id=row.id,
+        actor_id=user.id,
+        detail={"folder_id": str(folder_id) if folder_id else None},
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def file_path(row: DocboxFile) -> Path:
+    root = storage.storage_root()
+    target = (root / row.path).resolve()
+    if not target.is_relative_to(root) or not target.is_file():
+        raise not_found(ErrorCode.NOT_FOUND, "문서 파일을 찾을 수 없습니다.")
+    return target
+
+
+def record_download(db: Session, user: User, row: DocboxFile) -> None:
+    audit_service.record(
+        db, action=AuditAction.DOCBOX_FILE_DOWNLOADED, entity_type="DocboxFile", entity_id=row.id, actor_id=user.id
+    )
+    db.commit()
+
+
+def get_image_or_404(db: Session, file_id: uuid.UUID) -> DocboxFile:
+    """그림 미리보기용. 그림이 아닌 문서는 이 창구로 주지 않는다."""
+
+    row = get_file_or_404(db, file_id)
+    if row.preview_kind != "image":
+        raise not_found(ErrorCode.NOT_FOUND, "그림 미리보기가 없는 문서입니다.")
+    return row
+
+
+def delete(db: Session, admin: User, row: DocboxFile) -> None:
+    """행을 지운 뒤 커밋 전에 파일을 지운다 — 파일을 못 지우면 500 으로 되돌려, '지웠다'고 답하고 본체가 남는 일이 없게 한다."""
+
+    root = storage.storage_root()
+    target = (root / row.path).resolve()
+    detail = {
+        "format": _extension(row.name),
+        "bytes": row.size_bytes,
+        "folder_id": str(row.folder_id) if row.folder_id else None,
+    }
+    file_id = row.id
+    try:
+        db.delete(row)
+        db.flush()
+        audit_service.record(
+            db, action=AuditAction.DOCBOX_FILE_DELETED, entity_type="DocboxFile", entity_id=file_id, actor_id=admin.id, detail=detail
+        )
+        if target.is_relative_to(root):
+            target.unlink(missing_ok=True)
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+
+
+def names_for(db: Session, rows: List[DocboxFile]) -> Dict[uuid.UUID, str]:
+    return _user_names(db, rows)

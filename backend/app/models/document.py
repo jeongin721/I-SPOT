@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import ReviewStatus
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
     from app.models.session import ConsultationSession
@@ -28,7 +29,10 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(50), default="CONSULTATION_RECORD", nullable=False
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 본문은 content_enc 에 암호문으로 둔다(encrypted_field). content(평문 칸)는 옮기기 전 옛 행만 읽고 다음 PR 에서 지운다.
+    content_plain: Mapped[str] = mapped_column("content", Text, default="", nullable=False)
+    content_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content = EncryptedColumn("content", empty="")
 
     status: Mapped[ReviewStatus] = mapped_column(
         SAEnum(ReviewStatus, name="document_status", native_enum=False, length=20),

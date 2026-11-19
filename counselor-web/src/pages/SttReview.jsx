@@ -509,6 +509,23 @@ export default function SttReview(props) {
                 <div className="hd">
                   <h2 className="h2">{v.viewTitle}</h2>
                   <span className={v.chipCls}>{v.chipText}</span>
+                  {v.xaShow ? (
+                    <span className="xa" tabIndex={0} aria-describedby="xa-pop">
+                      {v.xaText}
+                      <span className="xa-pop" id="xa-pop" role="tooltip">
+                        <b>음향 분석 제외 구간</b>
+                        {v.xaItems.map((x) => (
+                          <button key={x.key} type="button" className="xa-it" onClick={x.go}>
+                            <span className="xa-t">{x.t}</span>
+                            <span>{x.text}</span>
+                          </button>
+                        ))}
+                        <span className="xa-note">
+                          1초보다 짧아 떨림 · 웅얼거림 · 작게 말함을 분석하지 않은 아동 발화입니다. '이상 없음'과는 다릅니다.
+                        </span>
+                      </span>
+                    </span>
+                  ) : null}
                   <div style={{ marginLeft: 'auto', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     <button type="button" className={`btn btn-sm ${v.allCls}`} onClick={v.showAll}>
                       전체 STT 보기

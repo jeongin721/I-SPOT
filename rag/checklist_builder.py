@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 
 from ai.modeling.abuse.question_rules import (
     JUDGMENT_TERMS,
+    QUESTION_TONE_EXAMPLES,  # noqa: F401 — 말투 예시(시험 · 비교 스크립트가 이 이름으로 본다)
     judgment_reason,
     leading_reason,
+    tone_examples_text,
 )
 
 from .config import ANALYZER_MODEL
@@ -111,15 +113,8 @@ REVIEW_FLAG_REASONS = {
     "too_direct": "아이에게 너무 직접적으로 캐묻습니다",
 }
 
-# 질문 말투 예시(바로 묻는 질문 → 아이에게 돌려 묻는 질문). QUESTION_SYSTEM_PROMPT 에 들어간다.
-# 순화한 질문은 rule_check 를 통과해야 한다(tests/test_rag_followup.py).
-QUESTION_TONE_EXAMPLES: tuple[tuple[str, str], ...] = (
-    ("병원에 갔어?", "지난번에 등이랑 팔이 아팠다고 이야기해 줬어. 요즘은 몸이 좀 어때?"),
-    ("할머니한테 연락했어?", "지난번에 무서울 때 할머니께 연락해 보기로 했었어. 그 뒤로는 어땠는지 궁금해."),
-    ("몇 번 그랬어?", "그런 일이 있었던 때를 생각나는 만큼만 하나씩 이야기해 줄래?"),
-    ("왜 집에 가기 싫어?", "괜찮으면 집에 가기 싫다고 했던 마음을 조금 더 이야기해 줄래?"),
-)
-_TONE_EXAMPLE_TEXT = "\n".join(f'- "{direct}" → "{soft}"' for direct, soft in QUESTION_TONE_EXAMPLES)
+# 질문 말투 예시는 #118 추가 질문 프롬프트와 같이 쓴다(ai/modeling/abuse/question_rules.QUESTION_TONE_EXAMPLES).
+_TONE_EXAMPLE_TEXT = tone_examples_text()
 
 
 CHECK_ITEM_SYSTEM_PROMPT = """당신은 아동 상담사가 다음 상담 전에 챙길 '확인할 사항'을 정리하는 보조 분석기입니다.

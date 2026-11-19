@@ -33,10 +33,10 @@
 // 이름 · 생년월일 · 사례관리대상자는 실명 정보를 받은 뒤에만 PUT …/personal-info 로 통째로(나머지 실명 · 가족 칸은 받은 값 그대로).
 // PATCH 를 먼저 보내고, PUT 만 실패하면 나눠 알린다. 출생연도는 고치지 않는다(생년월일을 저장하면 서버가 맞춘다 — Codex #129 R2).
 // 개별사건번호 · 담당 상담원(관리자, 초기면접지) · 상담 회차 · 최근 상담 · 가족유형 · 조치결과(초기면접지)는 여기서 바꾸지 않고,
-// 아이 앱은 서버에 칸이 없어 준비 중으로 둔다.
+// 아이 앱(11/10 연결): 콩콩 연결 상태 · 마지막 응답(GET /cases/{id}/child-app). 꺼져 있거나 못 받으면 '—'.
 
 import { NOT_PROVIDED } from "../caseRows";
-import { ABUSE_TYPES, RISK_LEVEL_LABELS, type RiskLevel } from "../../api/types";
+import { ABUSE_TYPES, RISK_LEVEL_LABELS, type ChildAppCase, type RiskLevel } from "../../api/types";
 import type { CaseDetailState, CaseDetailView } from "../useCaseDetail";
 import { caseChoiceLabel } from "../caseFormFields";
 import {
@@ -69,6 +69,9 @@ import { GENDER_OPTIONS, intakeFormOf, toCaseUpdateRequest, type IntakeForm } fr
 import { CASE_DATE_FIELDS } from "../useCaseRegister";
 import type { AuthSession } from "../useAuthSession";
 import { sessionDeleteTarget, type DeleteTarget } from "../useAdminDelete";
+
+// 담당 상담사가 지울 수 있는 회차 상태 — 원문 확정 전(API_CONTRACT 5절, #177). STT_PROCESSING 은 서버가 409 라 단추를 두지 않는다.
+const OWNER_DELETABLE = new Set<string>(["CREATED", "AUDIO_UPLOADED", "STT_FAILED", "STT_REVIEW_REQUIRED"]);
 import type { RemoteTicket } from "../useRemote";
 import { NOT_READY, TONE_CHIP, notice, screenNotice, sidebarValues } from "./common";
 import { COLUMN_OF, PROCESS_COLUMNS, continueLink } from "./flow";
@@ -89,6 +92,20 @@ export interface CaseScreenInput {
   questions?: FollowupQuestionsState;
   /** 실명 · 생년월일 · 가족 정보(usePersonalInfo). 없거나 못 받았으면 별칭 · 출생연도를 보인다. */
   personal?: PersonalInfoState;
+  /** 콩콩 연결 상태. 꺼져 있거나 못 받았으면 null. */
+  childApp?: ChildAppCase | null;
+}
+
+/** '아이 앱' 칸: 미연결 · 초대 대기 · 연결됨(마지막 응답). */
+export function childAppText(app: ChildAppCase | null | undefined): string {
+  if (!app) return NOT_PROVIDED;
+  const day = (iso: string | null) => {
+    const d = iso ? new Date(iso) : null;
+    return d && !Number.isNaN(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()}` : "";
+  };
+  if (app.status === "NOT_LINKED") return "미연결";
+  if (app.status === "INVITED") return app.code_expires_at ? `초대 대기 · 코드 ${day(app.code_expires_at)}까지` : "초대 대기";
+  return app.last_response_at ? `연결됨 · 마지막 응답 ${day(app.last_response_at)}` : "연결됨 · 응답 없음";
 }
 
 /** 가족유형(서식 4 ②, 상담원이 고른 값). 없으면 '—'. */
@@ -230,7 +247,8 @@ export function caseHeaderValues(input: CaseScreenInput) {
       history: screenHref("/CaseHistory", ids),
       // 10/29 디자인: 상담 전 브리핑은 탭이 아니라 내담자 정보 탭 안(#brief). HashRouter 라 주소 # 대신 view=brief 로 연다.
       briefing: briefingHref(ids.caseId ?? null),
-      app: screenHref("/CaseApp", ids),
+      // 11/19 디자인: 사례 상세 안 아이 연계 화면(CaseApp)이 빠져 '아이 연계 →' 는 그 사례 아이의 아이 상세로 간다.
+      app: screenHref("/ChildDetail", ids),
       docs: screenHref("/CaseDocs", ids),
     },
   };
@@ -461,7 +479,7 @@ function basicsEditValues(input: CaseDetailInput, lastConsulted: string) {
           ),
           { label: "상담 회차", kind: "static", value: `${info.sessionCount}회`, hint: "자동" },
           { label: "최근 상담", kind: "static", value: lastConsulted, hint: "자동" },
-          { label: "아이 앱", kind: "static", value: NOT_PROVIDED, hint: NOT_READY },
+          { label: "아이 앱", kind: "static", value: childAppText(input.childApp), hint: input.childApp ? "자동" : NOT_READY },
         ]
       : [];
 
@@ -574,13 +592,17 @@ export function caseDetailValues(input: CaseDetailInput) {
         { label: "최초면접일", value: info.firstInterviewDate },
         { label: "상담 회차", value: `${info.sessionCount}회`, strong: true },
         { label: "최근 상담", value: lastConsulted },
-        { label: "아이 앱", value: dash },
+        { label: "아이 앱", value: childAppText(input.childApp) },
       ]
     : [];
 
   // 현재 진행 상황: 가장 최근 회차가 어느 칸에 있는가. 칸을 누르면 그 회차의 그 단계 화면으로 간다(10/21 디자인).
   const column = latest ? COLUMN_OF[latest.step] : -1;
   const latestIds = latest ? { caseId: latest.caseId, sessionId: latest.id } : null;
+  const shortDate = (date: string) => {
+    const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(date || "");
+    return m ? `${Number(m[1])}/${Number(m[2])}` : "";
+  };
   const progress = PROCESS_COLUMNS.map((label, index) => {
     const done = latest !== null && index < column;
     const current = latest !== null && index === column && index < PROCESS_COLUMNS.length - 1;
@@ -598,6 +620,8 @@ export function caseDetailValues(input: CaseDetailInput) {
       current,
       pending: !done && !current,
       chip: current && latest ? latest.statusLabel : approved > 0 ? `질문 ${approved}개 승인` : "",
+      // 11/04 탭1 디자인: 지난 '상담 녹음' 칸 아래 날짜(M/D) — 가장 최근 회차의 상담일, 없으면 올린 날.
+      note: done && index === 0 && latest ? shortDate(latest.consultedDate) || shortDate(latest.createdDate) : "",
       // 녹취 올림 칸은 새로 올리기(사례만), 나머지는 가장 최근 회차의 단계 화면.
       href: latestIds
         ? index === 0
@@ -648,6 +672,8 @@ const DOT_NONE = { bg: "transparent", fg: "#9C978C", ring: "none" };
  * 회차 카드는 최근 3회차(recent)를 보이고, '전 회차 보기' 창(all)에는 불러온 회차를 모두 보인다.
  * 창이 열렸는지는 화면이 들고 있다가 historyOpen · setHistoryOpen 으로 넘긴다.
  * 관리자면(화면이 askDelete 를 줌, 2026-11-03) '전 회차 보기' 창의 회차마다 '삭제'(del)가 있다 — 'N회차' 를 입력하는 확인 창을 연다.
+ * 담당 상담사(2026-11-13, #177 서버 규칙 — API_CONTRACT 5절)는 원문 확정 전 회차(OWNER_DELETABLE)에만 '삭제' 가 있다.
+ * 서버가 거절하면(403 · 409) 확인 창에 서버 문구를 그대로 보인다(useAdminDelete).
  */
 export function caseHistoryValues(
   input: CaseScreenInput & {
@@ -655,8 +681,10 @@ export function caseHistoryValues(
     setHistoryOpen?: (open: boolean) => void;
     history?: SignalHistoryState;
     approved?: ApprovedSummariesState;
-    /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자에게만 준다. */
+    /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자 · 그 사례 담당 상담사에게만 준다. */
     askDelete?: ((target: DeleteTarget) => void) | null;
+    /** 관리자인가(모든 상태의 회차를 지울 수 있음). 아니면 원문 확정 전 회차만. */
+    deleteAny?: boolean;
   },
 ) {
   const { detail, history } = input;
@@ -690,7 +718,8 @@ export function caseHistoryValues(
       st: TONE_CHIP[row.tone],
       sig: sigOf(row.id),
       href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
-      del: askDelete
+      del:
+        askDelete && (input.deleteAny || OWNER_DELETABLE.has(row.status))
         ? () =>
             askDelete(
               sessionDeleteTarget({
@@ -737,7 +766,16 @@ export function caseHistoryValues(
       const item = (row.subtypes ?? []).find((s) => s.abuse_type === key.type && s.subtype === key.subtype);
       const at = `${row.session_number}회차 · ${key.subtype}`;
       if (!item) return { v: "", tip: `${at} · ${row.subtypes ? "없음" : pendingLabel(row) || "분석 전"}`, ...DOT_NONE };
-      if (item.pending) return { v: "?", tip: `${at} · 보류(화자 확인 중) · 근거 ${item.count}번`, ...DOT_RING };
+      // 11/10 디자인: '?' 칸을 누르면 그 회차 기록 확인(SttReview)의 첫 근거 발화로 간다.
+      if (item.pending) {
+        const seg = item.segment_ids?.[0];
+        return {
+          v: "?",
+          tip: `${at} · 보류(화자 확인 중) · 근거 ${item.count}번`,
+          href: seg ? segmentHref({ caseId: input.caseId, sessionId: row.session_id }, seg) : null,
+          ...DOT_RING,
+        };
+      }
       return { v: String(item.count), tip: `${at} · 근거 ${item.count}번`, ...(item.count >= 2 ? DOT_STRONG : DOT_LIGHT) };
     }),
   }));
