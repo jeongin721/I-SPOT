@@ -2929,6 +2929,10 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 
 근무 시간: `GET /child-app/home` 의 `staff_hours` 는 `{on_duty, label}`(예: `{"on_duty": false, "label": "평일 09:00~18:00"}`). `CHILD_APP_STAFF_HOURS`(기본 `09:00-18:00`, 같은 날 안의 시작 < 끝만 된다 — 자정을 넘겨 `22:00-06:00` 으로 적으면 늘 근무 시간 밖) · `CHILD_APP_STAFF_DAYS`(기본 `0,1,2,3,4`, 0=월) 를 한국 시간으로 본다. `CHILD_APP_STAFF_HOLIDAYS`(YYYY-MM-DD 콤마 구분, 기본은 2026년 공휴일 · 대체공휴일 · 6/3 지방선거일과 2027-01-01)에 든 날은 종일 밖이고 `label` 은 `"오늘은 쉬는 날"`. 해마다 다음 해 공휴일을 더해야 한다. 앱은 근무 시간 밖이면 '지금 위험해요' 창 · 알린 뒤 창 · 새 소식 창에 '바로 못 볼 수 있어요' 와 112 · 1388 을 먼저 안내한다.
 
+관리자 긴급 알림 현황(11/17 디자인 AdminHome, 관리자만): `GET /child-app-alerts/recent` → `[{id, case_id, case_number, child_alias, reason, repeat_count, created_at, last_at, counselor_name, acknowledged_at, acknowledged_by_name}]`. 긴급(아이가 보낸 긴급 알림 · 바로 확인 답 · 연락 요청) 중 오늘 · 어제(한국 날짜) 것은 확인했어도 넣고, 그 전 것은 확인 전일 때만 넣는다. 최신순 최대 100줄. `reason` 은 `/open` 과 같은 규칙(담당이 아닌 관리자에게 답 기반은 `NEEDS_CHECK`). 상담사는 403.
+
+장기 무응답 안부 연락(11/17 디자인 AdminApp): `POST /cases/{case_id}/child-app/welfare-checks` `{status: "OPEN" | "TRIED" | "DONE", note?: 200자}` → 204. 관리자 또는 담당 상담사, 앱이 연결된 사례만(아니면 409). 사건(`WELFARE_CHECK`)으로 남지만 아이 피드 · 알림에는 들어가지 않고 아이 앱에도 가지 않는다. 감사 로그 `CHILD_APP_WELFARE_CHECKED`(값은 status 만). `GET /child-app-cases` 줄에 `linked_at` · `counselor_name` · `welfare_status` · `welfare_note` · `welfare_at` 이 더해진다 — 안부 연락은 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 것만 보이고, 그 뒤 아이가 답하면 null 이다. 장기 무응답(7일)은 화면이 `last_response_at`(없으면 `linked_at`)으로 정한다.
+
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 
 열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.

@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.enums import (
     AuditAction,
@@ -247,6 +247,12 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
             alerts[alert["case_id"]] = alert
 
     acked = _last_acked(db, ids)
+    counselors = (
+        {user_id: name for user_id, name in db.execute(select(User.id, User.name).where(User.id.in_({c.counselor_id for c in cases if c.counselor_id})))}
+        if cases
+        else {}
+    )
+    welfare = _latest_welfare(db, ids)
     rows = []
 
     for case in cases:
@@ -267,10 +273,112 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "open_alert_reason": alert["reason"] if alert else None,
                 "open_alert_urgent": bool(alert and alert["urgent"]),
                 "last_acked_at": acked.get(case.id),
+                "linked_at": link.linked_at if link else None,
+                "counselor_name": counselors.get(case.counselor_id),
+                **_welfare_fields(welfare.get(case.id), link),
             }
         )
 
     return rows
+
+
+def _latest_welfare(db: Session, case_ids: List[uuid.UUID]) -> Dict[uuid.UUID, ChildAppEvent]:
+    """사례마다 가장 최근 안부 연락 기록."""
+
+    latest: Dict[uuid.UUID, ChildAppEvent] = {}
+    if not case_ids:
+        return latest
+    for event in db.scalars(
+        select(ChildAppEvent)
+        .where(ChildAppEvent.case_id.in_(case_ids), ChildAppEvent.kind == ChildAppEventKind.WELFARE_CHECK)
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+    ):
+        latest.setdefault(event.case_id, event)
+    return latest
+
+
+def _welfare_fields(event: Optional[ChildAppEvent], link: Optional[ChildAppLink]) -> Dict[str, Any]:
+    """마지막 응답(없으면 연결) 뒤에 남긴 안부 연락만 보인다. 그 뒤 아이가 답했으면 이번 무응답과 상관없는 기록이다."""
+
+    empty = {"welfare_status": None, "welfare_note": None, "welfare_at": None}
+    if event is None or link is None:
+        return empty
+    since = link.last_response_at or link.linked_at
+    if since is not None and _aware(event.created_at) < _aware(since):
+        return empty
+    payload = event.payload or {}
+    return {"welfare_status": payload.get("status"), "welfare_note": payload.get("note"), "welfare_at": event.created_at}
+
+
+def record_welfare_check(db: Session, case: Case, user: User, status: str, note: Optional[str], ip_address: Optional[str]) -> None:
+    """장기 무응답 아이 안부 연락 처리(관리자 · 담당 상담사). 아이 앱에는 아무것도 가지 않는다."""
+
+    if not user.is_admin:
+        ensure_assigned(case, user)
+    link = link_row(db, case.id)
+    if link is None or link.status != ChildAppLinkStatus.LINKED:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "앱이 연결된 아이에게만 안부 연락을 기록할 수 있습니다.")
+    text = (note or "").strip() or None
+    event = ChildAppEvent(
+        case_id=case.id,
+        kind=ChildAppEventKind.WELFARE_CHECK,
+        level=ChildAnswerLevel.NONE,
+        payload={"status": status, "note": text},
+        needs_ack=False,
+    )
+    db.add(event)
+    db.flush()
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_WELFARE_CHECKED,
+        entity_type="child_app_event",
+        entity_id=event.id,
+        actor_id=user.id,
+        case_id=case.id,
+        ip_address=ip_address,
+        detail={"status": status},
+    )
+    db.commit()
+
+
+def recent_urgent_alerts(db: Session, viewer: User) -> List[Dict[str, Any]]:
+    """관리자 홈 '긴급 알림 현황'. 오늘 · 어제(한국 날짜) 긴급 알림 전부와, 그 전이라도 아직 확인 전인 긴급 알림.
+    담당이 아닌 관리자에게는 답 내용 대신 이유(ALERT · NEEDS_CHECK)만 준다."""
+
+    start = datetime.combine(datetime.now(LOCAL_TZ).date() - timedelta(days=1), datetime.min.time(), tzinfo=LOCAL_TZ)
+    counselor = aliased(User)
+    acker = aliased(User)
+    rows = db.execute(
+        select(ChildAppEvent, Case, counselor.name, acker.name)
+        .join(Case, Case.id == ChildAppEvent.case_id)
+        .outerjoin(counselor, counselor.id == Case.counselor_id)
+        .outerjoin(acker, acker.id == ChildAppEvent.acknowledged_by_id)
+        .where(
+            ChildAppEvent.needs_ack.is_(True),
+            Case.status == CaseStatus.ACTIVE,
+            or_(ChildAppEvent.created_at >= start, ChildAppEvent.acknowledged_at.is_(None)),
+        )
+        .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
+        .limit(OPEN_ALERT_LIMIT * 2)
+    ).all()
+
+    return [
+        {
+            "id": event.id,
+            "case_id": case.id,
+            "case_number": case.case_number,
+            "child_alias": case.child_alias,
+            "reason": _alert_reason(event, case, viewer),
+            "repeat_count": int(event.payload.get("repeat_count", 0)),
+            "created_at": event.created_at,
+            "last_at": event.payload.get("last_at"),
+            "counselor_name": counselor_name,
+            "acknowledged_at": event.acknowledged_at,
+            "acknowledged_by_name": acker_name,
+        }
+        for event, case, counselor_name, acker_name in rows
+        if _is_urgent(event)
+    ]
 
 
 def stats(db: Session, date_from: date, date_to: date) -> Dict[str, int]:
@@ -316,7 +424,8 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
     if can_read_feed:
         rows = db.scalars(
             select(ChildAppEvent)
-            .where(ChildAppEvent.case_id == case.id)
+            # 안부 연락 기록은 상담사 · 관리자의 처리 기록이라 아이가 보낸 내용(피드)에 넣지 않는다.
+            .where(ChildAppEvent.case_id == case.id, ChildAppEvent.kind != ChildAppEventKind.WELFARE_CHECK)
             .order_by(ChildAppEvent.created_at.desc(), ChildAppEvent.id.desc())
             .limit(FEED_LIMIT)
         ).all()
