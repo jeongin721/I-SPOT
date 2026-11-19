@@ -4,6 +4,7 @@
 // 11/10 디자인(FollowupQ '승인' → '발송 예약') · #173: 단추는 '발송 예약'(deliver EVENING — 그날 저녁 시각부터 아이 앱에 보이고,
 // 그 시각이 지났으면 서버가 바로 보낸다). 예약해 둔 질문(scheduled_questions)이 있으면 '발송 예약 · 오늘 18:00 발송' 과 '예약 취소'.
 // 알림 문구는 보낸 뒤 다시 받은 값으로 정한다(예약됐는지 · 바로 갔는지는 서버가 정하므로).
+// 낮에 급하게 확인할 때를 위해 '지금 보내기'(deliver NOW)도 둔다 — 화면 기본은 예약(민규 #186 리뷰, #173 스펙).
 import { useEffect, useState } from 'react';
 import A from './A';
 import { useSentToast } from './SentToast';
@@ -26,6 +27,8 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
   const [hint, setHint] = useState('');
   // 예약을 보낸 뒤 다시 받은 값이 오면 알림을 띄운다({ count, data: 보내기 전 값 }).
   const [sent, setSent] = useState(null);
+  // 누른 단추('EVENING' · 'NOW'). 보내는 중 문구를 그 단추에만 보인다.
+  const [going, setGoing] = useState(null);
   const data = app.data;
   useEffect(() => {
     if (!sent || !data || data === sent.data) return;
@@ -42,18 +45,21 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
   };
   const countOk = picked.length >= 1;
   // 꺼진 단추 모양이 따로 없어 눌러도 아무 일 없는 것처럼 보였다(11/10). 단추는 두고, 하나도 안 골랐으면 이유를 알린다.
-  const send = async () => {
+  const send = async (deliver) => {
     if (app.busy) return;
     const count = picked.length;
     if (!countOk) {
-      setHint('발송 예약할 질문을 하나 이상 골라 주세요.');
+      setHint(deliver === 'NOW' ? '보낼 질문을 하나 이상 골라 주세요.' : '발송 예약할 질문을 하나 이상 골라 주세요.');
       return;
     }
     const before = data;
-    if (await app.sendQuestions(picked, 'EVENING')) {
-      setPicked([]);
-      setSent({ count, data: before });
-    }
+    setGoing(deliver);
+    const ok = await app.sendQuestions(picked, deliver);
+    setGoing(null);
+    if (!ok) return;
+    setPicked([]);
+    if (deliver === 'NOW') showToast(`아이에게 질문 ${count}개를 보냈어요`);
+    else setSent({ count, data: before });
   };
   const cancel = async () => {
     if (app.busy || !scheduled) return;
@@ -85,18 +91,22 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
         {scheduled ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             <span className="chip c-sel">발송 예약 · {deliverLabel(scheduled.deliver_at)} 발송</span>
-            <span className="note">질문 {scheduled.count}개 · 다시 예약하면 앞 예약은 취소돼요.</span>
+            <span className="note">질문 {scheduled.count}개 · 다시 예약하거나 지금 보내면 앞 예약은 취소돼요.</span>
             <button type="button" className="btn btn-sm btn-s" aria-disabled={app.busy} onClick={cancel} style={{ marginLeft: 'auto' }}>
               예약 취소
             </button>
           </div>
         ) : data.has_pending_questions ? (
-          <div className="note">아이가 아직 답하지 않은 질문이 있어요. 예약한 질문이 아이 앱에 보이면 새 질문으로 바뀝니다.</div>
+          <div className="note">아이가 아직 답하지 않은 질문이 있어요. 새로 보낸 질문이 아이 앱에 보이면(예약은 예약 시각부터) 그 질문으로 바뀝니다.</div>
         ) : null}
-        <div>
-          <button type="button" className="btn btn-p" aria-disabled={!countOk || app.busy} style={countOk && !app.busy ? undefined : { opacity: 0.5 }} onClick={send}>
-            {app.busy ? '예약하는 중…' : '발송 예약'}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+          <button type="button" className="btn btn-p" aria-disabled={!countOk || app.busy} style={countOk && !app.busy ? undefined : { opacity: 0.5 }} onClick={() => send('EVENING')}>
+            {going === 'EVENING' ? '예약하는 중…' : '발송 예약'}
           </button>
+          <button type="button" className="btn btn-s" aria-disabled={!countOk || app.busy} style={countOk && !app.busy ? undefined : { opacity: 0.5 }} onClick={() => send('NOW')}>
+            {going === 'NOW' ? '보내는 중…' : '지금 보내기'}
+          </button>
+          <span className="note">발송 예약은 오늘 저녁부터 아이 앱에 보여요. 급하면 지금 보내기.</span>
         </div>
         {hint ? (
           <p className="note acc" role="alert" style={{ margin: '0' }}>
