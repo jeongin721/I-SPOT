@@ -124,8 +124,7 @@ cd "$REPO"
 }
 
 echo "== 2/5 화면(counselor-web) 빌드"
-# 아이 앱 주소를 화면에 넣는다(연결 코드 화면의 주소 · QR, counselor-web/src/data/childAppUrl.ts). 없으면 화면이 같은 주소의 /child-app/.
-docker run --rm -v "$REPO/counselor-web:/w" -w /w -e VITE_CHILD_APP_URL="${KID_SITE:+https://$KID_SITE/}" node:22.12.0-alpine \
+docker run --rm -v "$REPO/counselor-web:/w" -w /w node:22.12.0-alpine \
   sh -c "npm ci --no-audit --no-fund --loglevel=error && npm run build"
 mkdir -p /opt/ispot/web
 find /opt/ispot/web -mindepth 1 -delete

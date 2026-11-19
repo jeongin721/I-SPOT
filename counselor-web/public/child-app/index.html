@@ -293,15 +293,6 @@ function fresh(){
   };
 }
 let S = fresh();
-// 상담사 웹의 QR(주소?code=…)로 열면 연결 코드를 채워 두고, 주소창 · 방문 기록에서 코드를 지운다(11/19).
-(() => {
-  try {
-    const code = new URLSearchParams(location.search).get('code');
-    if (!code) return;
-    history.replaceState(null, '', location.pathname);
-    if (!load(STORE.token, null)) S.code = code.slice(0, 32);
-  } catch (e) {}
-})();
 let timers = [];
 function later(fn, ms){ const t = setTimeout(fn, ms); timers.push(t); return t; }
 function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
