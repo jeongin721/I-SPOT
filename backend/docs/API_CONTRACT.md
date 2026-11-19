@@ -2909,18 +2909,19 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 |---|---|---|
 | POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
 | POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
-| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만) |
-| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만). 발송 예약 시각이 안 된 질문은 `pending` 에 없다 |
+| POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409(예약 시각이 된 새 질문에 밀린 질문 포함), 발송 예약 시각 전 질문은 404 |
 | POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
 | POST | `/child-app/moods` | '지금 기분 기록하기'(2026-11-19). `{mood, why?}` → 204. `mood`: `good` · `excited` · `okay` · `meh` · `surprised` · `tired` · `lonely` · `sad` · `worried` · `scared` · `angry` · `unsure`(그 외 400), `why` 60자까지. 피드 `MOOD` 줄 `payload {mood, label, why}`. `lonely` · `sad` · `worried` · `scared` · `angry` 는 `level: AMBER`(살펴볼 기분). `why` 를 적었으면 확인 필요(`TEXT_ANSWER`) |
 | POST | `/child-app/notes` | '선생님께 메시지 보내기'(2026-11-19). `{text?, chip?}` → 204. 글(200자) · 칩 중 하나는 있어야 한다(없으면 400). `chip`: `만나서 이야기할게요` · `전화로 연락받고 싶어요` · `알려 드리고 싶었어요`. 피드 `NOTE` 줄 `payload {text, chip, alert_reason}`, 늘 확인 필요 — `전화로 연락받고 싶어요` 면 `CONTACT_REQUEST`(긴급 쪽), 아니면 `NOTE` |
 | POST | `/child-app/schedule-requests` | 일정 탭 '참석이 어려워요'(2026-11-19). `{reason, etc?}` → 204. `reason`: `몸이 안 좋아요` · `학교·학원 일정이 있어요` · `가고 싶지 않아요` · `말하기 어려워요` · `기타`(`기타` 면 `etc` 60자 필수). 다음 상담이 없으면 409 `INVALID_CASE_STATE`. 피드 `SCHEDULE_REQUEST` 줄 `payload {consult_date, consult_time, reason, etc, alert_reason: "SCHEDULE_REQUEST"}`(장소는 남기지 않음), 확인 필요 |
 | GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`(글을 쓴 답 · 이유를 적은 기분) · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀) · `NOTE`(선생님께 메시지) · `SCHEDULE_REQUEST`(참석 어려움), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
 | POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
-| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null). 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
+| GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null) · `scheduled_questions`(발송 예약해 둔 질문 `{id, count, deliver_at}`, 담당 상담사만 · 없으면 null). `has_pending_questions` 는 예약해 둔 질문이 있어도 true 다. 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
 | POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
-| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids}` 1~8개(문항 전체) → 204. 답하지 않은 이전 질문은 대체. 미연결이면 409 |
-| GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids, deliver?}` 1~8개(문항 전체) → 204. `deliver`: `NOW`(기본, 바로) · `EVENING`(발송 예약 — 아래). 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+| DELETE | `/cases/{case_id}/child-app/question-sets/{question_set_id}` | 발송 예약 취소 → 204. 담당 상담사만(그 외 403). 예약 시각 전에만 된다 — 이미 아이에게 보였거나 답했으면 409 `INVALID_CASE_STATE`. 이미 취소 · 대체된 것은 204(재시도 안전). 없는 것 · 다른 사례의 것은 404 |
+| GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함. 발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 안 보인 예약 · 보이기 전에 취소한 예약은 세지 않는다) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
 | GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent}`. `recent_answers` · `level` 은 담당 상담사만 |
 | POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}` | `{text}`(1~500자) 확인해 볼 점 고치기 |
@@ -2944,6 +2945,13 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 열람 기록: `GET /cases/{case_id}/child-app` 이 담당 상담사에게 비어 있지 않은 `feed` 를 내주면 `CHILD_APP_FEED_VIEWED`(detail 은 줄 수 `events` 만, entity 는 가장 최근 줄)를 남긴다. 화면이 30초마다 다시 받으므로 같은 사람 · 사례는 10분에 1줄이고, 그사이 새 줄이 생겼으면 다시 남긴다.
 
 `status`: `NOT_LINKED` · `INVITED` · `LINKED`. `feed[].kind`: `LINKED` · `UNLINKED` · `QUESTIONS_SENT` · `ANSWERS` · `ALERT` · `MOOD` · `NOTE` · `SCHEDULE_REQUEST`. 기분 · 메시지 · 참석 어려움은 사례마다 종류별로 하루(한국 시간) 20번까지(넘으면 429 `RATE_LIMITED`)이고, 보내면 `last_response_at` 이 오른다. `level`: `NONE` · `SKIP` · `AMBER`(살펴볼 답) · `RED`(바로 확인).
+
+**발송 예약(2026-11-11).** `deliver: "EVENING"` 으로 보낸 질문은 누른 날 `CHILD_APP_DELIVER_HOUR` 시(기본 18, 한국 시각)부터 아이 앱에 보인다. 시각은 서버가 정하고, 그 시가 지난 뒤에 누르면 바로 보낸다(`scheduled_questions` 는 null). 아이 기기로 가는 알림은 없다 — 아이가 앱을 열 때 받는다.
+- 예약해 둔 질문은 사례마다 하나다. 다시 예약하거나 바로 보내면 앞 예약은 취소된다.
+- 예약하는 때 아이에게 보이던 질문은 예약 시각까지 그대로 보이고, 예약 시각부터 새 질문이 대신한다(앞 질문의 답은 409).
+- AI 추가 질문 승인은 예약과 따로 바로 간다. 예약해 둔 질문에는 붙지 않는다.
+- 피드 `QUESTIONS_SENT` 의 `payload`: 바로 보냄 `{count}`, 발송 예약 `{count, deliver_at}`, 예약 취소 · AI 추가 질문 취소 `{count, withdrawn: true}`. 감사 기록에는 수와 예약 여부만 남긴다.
+- 연결을 해지하면 예약도 취소된다. 스위치가 꺼진 동안에는 취소 API 도 503 이다.
 
 ---
 

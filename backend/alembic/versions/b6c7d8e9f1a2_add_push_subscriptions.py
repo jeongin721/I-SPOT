@@ -1,7 +1,7 @@
 """add push_subscriptions · push_deliveries
 
 Revision ID: b6c7d8e9f1a2
-Revises: a5b6c7d8e9f1
+Revises: e4f5a6b7c8d9
 Create Date: 2026-11-19 12:00:00.000000
 
 상담사 앱(폰) 알림 — 웹 푸시 구독과 보낸 기록(API_CONTRACT 27절). 새 표 둘만 만든다(기존 표는 건드리지 않는다).
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'b6c7d8e9f1a2'
-down_revision: Union[str, None] = 'a5b6c7d8e9f1'
+down_revision: Union[str, None] = 'e4f5a6b7c8d9'  # main #173 머지 뒤 부모를 main head 로
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
