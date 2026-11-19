@@ -75,6 +75,31 @@ textarea.ma-inp{padding:10px 12px;line-height:1.6;resize:vertical}
 @keyframes pg{0%{transform:translateX(-100%)}100%{transform:translateX(170%)}}
 @media (prefers-reduced-motion: reduce){.ma-rdot.ma-live,.ma-prog span{animation:none}}
 
+/* 이전 상담(11/17 디자인 '각진 UI ⑨' 앱 · 이전 상담 — 요약 카드 · 회차 카드) */
+.ma-hs-sum{display:flex;flex-direction:column;gap:14px;padding:16px 16px 14px;border-radius:18px}
+.ma-hs-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ma-hs-top b{font-size:15px;flex:1;min-width:0}
+.ma-hs-flow{display:flex;flex-direction:column;gap:0}
+.ma-hs-fl{display:grid;grid-template-columns:64px 1fr;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.ma-hs-fl:first-child{border-top:0;padding-top:0}
+.ma-hs-fl small{font-size:12px;font-weight:700;color:var(--mut);padding-top:2px}
+.ma-hs-fl span{font-size:14px;line-height:1.5}
+.ma-hs-fl span i{display:block;font-style:normal;font-size:12.5px;color:var(--mut)}
+.ma-hs-bars{display:flex;flex-direction:column;gap:7px}
+.ma-hs-bar{display:grid;grid-template-columns:96px 1fr 34px;align-items:center;gap:8px;font-size:12.5px}
+.ma-hs-bar .ma-tr{height:6px;border-radius:999px;background:var(--soft);overflow:hidden}
+.ma-hs-bar .ma-tr i{display:block;height:100%;border-radius:999px;background:var(--gold)}
+.ma-hs-bar b{font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.ma-ss{display:flex;flex-direction:column;gap:9px;padding:14px 16px}
+.ma-ss-top{display:flex;align-items:center;gap:8px}
+.ma-ss-top b{font-size:15.5px}
+.ma-ss p{margin:0;font-size:14px;line-height:1.6}
+.ma-ss-lb{font-size:12px;font-weight:700;color:var(--mut)}
+.ma-ss-q{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;background:var(--soft)}
+.ma-ss-q span{font-size:13.5px;line-height:1.5}
+.ma-ss-q small{font-size:11.5px;color:var(--mut);margin-right:6px;font-variant-numeric:tabular-nums}
+.ma-ss-sig{display:flex;flex-wrap:wrap;gap:6px}
+
 /* ===== 모던 정리 (2026-11-02) ===== */
 .ma-app{--bgA:rgba(242,242,240,.86);--cardA:rgba(255,255,255,.9);--track:rgba(43,42,38,.06);--goldT:#8C7340;--sh:0 1px 2px rgba(43,42,38,.04),0 6px 16px rgba(43,42,38,.04);letter-spacing:-.005em;-webkit-font-smoothing:antialiased}
 .ma-app.ma-dark{--bgA:rgba(34,33,30,.86);--cardA:rgba(44,43,39,.92);--track:rgba(255,255,255,.07);--goldT:#D9C08A;--sh:none}
@@ -309,3 +334,15 @@ textarea.ma-inp{padding:10px 12px;line-height:1.6;resize:vertical}
 /* 디자인에 없는 것: 서버에 없어 아직 못 쓰는 스위치 */
 .ma-tg.ma-off{opacity:.45;cursor:not-allowed}
 .ma-s-brief .ma-ahd h1{font-size:19px !important}
+/* 11/17 디자인 '각진 UI ⑨': 사례 요약 가운데 창 · 메모 칸 줄바꿈 · 이전 상담 회차 고르기 */
+.ma-kv-memo{white-space:pre-wrap}
+.ma-ov.ma-ov-c{align-items:center;padding:16px}
+.ma-sheet.ma-sheet-c{max-height:80vh;max-height:80dvh;border-radius:20px;padding:18px 18px 18px;box-shadow:0 14px 40px rgba(43,42,38,.22)}
+.ma-pk-btn{display:flex;align-items:center;gap:8px;width:100%;padding:14px 16px;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.ma-pk-l{font-size:15.5px;font-weight:700}
+.ma-pk-s{flex:1;min-width:0;font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ma-pk-empty{margin:0;padding:22px 12px;border:1px dashed var(--line);border-radius:14px;text-align:center;font-size:13.5px;color:var(--mut)}
+.ma-pk-list{display:flex;flex-direction:column;gap:6px;max-height:52vh;max-height:52dvh;overflow-y:auto;padding-right:2px}
+.ma-pk-it{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.ma-pk-it b{font-size:15px}
+.ma-pk-it.ma-on{border-color:var(--ink,currentColor);box-shadow:inset 0 0 0 1px var(--ink,currentColor)}

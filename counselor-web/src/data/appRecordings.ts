@@ -626,7 +626,7 @@ class UploadTimeout extends Error {}
 function failText(caught: unknown): string {
   if (caught instanceof UploadTimeout) return "연결이 느려 응답을 받지 못했어요. 자동으로 다시 올려요";
   if (caught instanceof ApiError) {
-    if (caught.status === 0) return "네트워크 연결이 끊겨 올리지 못했어요";
+    if (caught.status === 0) return "네트워크 연결이 끊겨 올리지 못했습니다";
     if (caught.isUnauthorized) return "로그인이 끝났어요. 다시 로그인한 뒤 다시 올려 주세요";
 
     return caught.message;
@@ -883,7 +883,7 @@ async function drain(userId: string, includeFailed: boolean): Promise<void> {
       if (queueUser !== userId) break;
       // 연결이 없으면 실패로 표시만 하고 기다린다(online 이벤트에서 다시 돈다).
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        await patchItem(item.id, { status: "fail", error: "네트워크 연결이 끊겨 올리지 못했어요", autoRetry: true });
+        await patchItem(item.id, { status: "fail", error: "네트워크 연결이 끊겨 올리지 못했습니다", autoRetry: true });
         continue;
       }
 

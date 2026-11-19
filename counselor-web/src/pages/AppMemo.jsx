@@ -126,7 +126,7 @@ function MemoBody({ userId }) {
         <select className="ma-inp" value={nCase} onChange={(ev) => setNCase(ev.target.value)} aria-label="관련 아이">
           {kidOptions(nCase, '')}
         </select>
-        <textarea className="ma-inp" rows={3} placeholder="메모를 적어 주세요" value={nText} onChange={(ev) => setNText(ev.target.value)} aria-label="메모 내용" maxLength={4000} />
+        <textarea className="ma-inp" rows={3} placeholder="메모를 입력하십시오" value={nText} onChange={(ev) => setNText(ev.target.value)} aria-label="메모 내용" maxLength={4000} />
         <button type="button" className="ma-btn ma-btn-p" onClick={add} disabled={busy}>
           메모 저장
         </button>

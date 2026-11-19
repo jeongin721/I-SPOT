@@ -3,6 +3,7 @@
     "Admin",
     "AdminAccounts",
     "AdminCases",
+    "AdminApp",
     "AdminHome",
     "AdminSecurity",
     "AdminStaffDetail",
@@ -343,6 +344,15 @@
       "w": 1440,
       "x": 0,
       "y": 7400
+    },
+    "AdminApp.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "is_interactive": true,
+      "title": "관리자 · 아이 연계 앱 관리 (11/17 디자인)",
+      "w": 1440,
+      "x": 9880,
+      "y": 10100
     }
   },
   "notes": {
@@ -417,6 +427,7 @@
     "LawGuide.dc.html",
     "AdminHome.dc.html",
     "AdminCases.dc.html",
+    "AdminApp.dc.html",
     "AdminAccounts.dc.html",
     "AdminStaffDetail.dc.html",
     "AdminSecurity.dc.html",

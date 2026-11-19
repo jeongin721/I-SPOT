@@ -4,7 +4,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -185,6 +185,38 @@ class ChildAppCaseRow(BaseModel):
     open_alert_urgent: bool = False
     # 가장 최근 '확인이 필요한 알림 · 답'을 확인한 시각. 확인 전이거나 없으면 null.
     last_acked_at: Optional[datetime] = None
+    # 관리자 · 아이 연계 앱 관리(11/17 디자인 AdminApp): 연결일 · 담당 상담사 · 장기 무응답 안부 연락.
+    linked_at: Optional[datetime] = None
+    counselor_name: Optional[str] = None
+    # 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 안부 연락. 그 뒤 아이가 답하면 다시 null.
+    welfare_status: Optional[Literal["OPEN", "TRIED", "DONE"]] = None
+    welfare_note: Optional[str] = None
+    welfare_at: Optional[datetime] = None
+
+
+class ChildWelfareCheckRequest(RequestModel):
+    """장기 무응답 아이 안부 연락 처리. OPEN 은 '미처리로 되돌리기'."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["OPEN", "TRIED", "DONE"]
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+class ChildRecentAlert(BaseModel):
+    """관리자 홈 '긴급 알림 현황'(11/17 디자인 AdminHome): 오늘 · 어제 긴급 알림과 그 전에 남은 확인 전 알림."""
+
+    id: uuid.UUID
+    case_id: uuid.UUID
+    case_number: str
+    child_alias: str
+    reason: str
+    repeat_count: int = 0
+    created_at: datetime
+    last_at: Optional[datetime] = None
+    counselor_name: Optional[str] = None
+    acknowledged_at: Optional[datetime] = None
+    acknowledged_by_name: Optional[str] = None
 
 
 class ChildAppCaseResponse(BaseModel):

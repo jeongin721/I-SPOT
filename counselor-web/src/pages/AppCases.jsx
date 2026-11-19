@@ -7,17 +7,24 @@
 //    없으면 위험도(우선)(counselor_risk_level), 둘 다 없으면 '—'.
 //  - 다음 상담: 오늘부터 4주 안 일정 중 그 사례의 가장 가까운 상담(GET /schedule/events). '이번 주 상담' 은 다음 상담이 이번 주(월~일)인 사례.
 //  - 찾기: 이름 · 별칭 · 사례 ID 에 들어 있으면(이 폰에서 거름).
-//  - 사례 요약 창: 상담 전 브리핑(앱 · 브리핑) · 녹음 시작 · 자료 올리기 · 메모로 그 아이를 골라 둔 채 간다(?case=).
-//    디자인의 '브리핑 준비 중' 은 준비 여부를 정할 서버 값이 없어 늘 '상담 전 브리핑' 을 보이고, 브리핑 화면이 빈 칸을 안내한다.
+//  - 사례 요약 창(11/17 디자인 '각진 UI ⑨' — 가운데 창): 사례 ID · 신고접수 · 다음 상담 · 메모(이 아이에 대해 쓴 내 메모,
+//    GET /memos?case_id= 최신 MEMO_N 개 — 본문은 화면에만, 폰에 저장하지 않음). 단추는 디자인 순서대로 다음 상담 준비(앱 · 브리핑) ·
+//    자료 올리기(앱 · 업로드) · 이전 상담(앱 · 이전 상담)이고, 그 아이를 골라 둔 채 간다(?case=). 녹음 · 메모는 아래 탭에서 한다(디자인).
+//    디자인의 '다음 상담 준비중' 은 준비 여부를 정할 서버 값이 없어 늘 '다음 상담 준비' 를 보이고, 그 화면이 빈 칸을 안내한다.
 //  - 연결이 없으면 기억한 목록(이름만)이라 나이 · 위험도 · 신고접수는 '—'.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import MobileAppShell from '../components/MobileAppShell';
+import MobileAppShell, { whenText } from '../components/MobileAppShell';
 import { RISK_LEVEL_LABELS, SCHEDULE_CONSULT_LABELS } from '../api/types';
+import { memos as memoApi } from '../api/endpoints';
+import { parseBackendTime } from '../data/time';
+import { useRemote } from '../data/useRemote';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
 import { addDays, mondayOf, parseYmd, useAppSchedule, ymd } from '../data/useAppSchedule';
 
 const W = ['일', '월', '화', '수', '목', '금', '토'];
+/** 사례 요약 창에 보일 그 아이 메모 수(최신순). 더 있으면 '외 N개 · 메모 탭에서'. */
+const MEMO_N = 3;
 const RC = { 상: 'ma-chip ma-red', 중: 'ma-chip ma-gold', 하: 'ma-chip' };
 
 export function consultText(e) {
@@ -105,43 +112,39 @@ function CasesBody({ userId }) {
           </span>
         </div>
       ))}
-      {!my.loading && list.length === 0 && <div className="ma-card ma-empty">찾는 사례가 없어요</div>}
+      {!my.loading && list.length === 0 && <div className="ma-card ma-empty">찾는 사례가 없습니다</div>}
       <p className="ma-note" style={{ margin: 0 }}>
-        사례 등록과 자세한 기록은 웹에서 할 수 있어요.
+        사례 등록과 자세한 기록은 웹에서 할 수 있습니다.
       </p>
       {cur && (
-        <div className="ma-ov" onClick={() => setOpen(null)}>
-          <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="사례 요약" onClick={stop}>
-            <span className="ma-grab" aria-hidden="true"></span>
+        <div className="ma-ov ma-ov-c" onClick={() => setOpen(null)}>
+          <section className="ma-sheet ma-sheet-c" role="dialog" aria-modal="true" aria-label="사례 요약" onClick={stop}>
             <div className="ma-sh-hd">
               <b>{cur.name + (cur.age ? ' · ' + cur.age : '')}</b>
               <span className={cur.rkCls}>위험도 {cur.rk}</span>
             </div>
             <div>
               {[
-                ['사례 ID', cur.id],
-                ['신고접수', cur.date],
-                ['다음 상담', cur.next ? consultText(cur.next) : '예정 없음'],
-                ['담당', cur.r.counselor_name ? cur.r.counselor_name + ' 상담원' : '—'],
-              ].map(([k, v]) => (
+                ['사례 ID', cur.id, ''],
+                ['신고접수', cur.date, ''],
+                ['다음 상담', cur.next ? consultText(cur.next) : '예정 없음', ''],
+                ['메모', <CaseMemo key="memo" caseId={cur.r.id} />, 'ma-kv-memo'],
+              ].map(([k, v, cls]) => (
                 <div key={k} className="ma-row-k">
                   <span>{k}</span>
-                  <span>{v}</span>
+                  <span className={cls}>{v}</span>
                 </div>
               ))}
             </div>
             <div className="ma-acts">
-              <Link className="ma-btn" to={`/AppBrief?case=${cur.r.id}`}>
-                상담 전 브리핑
-              </Link>
-              <Link className="ma-btn ma-btn-p" to={`/AppRecord?case=${cur.r.id}`}>
-                녹음 시작
+              <Link className="ma-btn" to={`/AppBrief?case=${cur.r.id}`} state={{ from: '/AppCases' }}>
+                다음 상담 준비
               </Link>
               <Link className="ma-btn" to={`/AppUpload?case=${cur.r.id}`}>
                 자료 올리기
               </Link>
-              <Link className="ma-btn" to={`/AppMemo?case=${cur.r.id}`}>
-                메모
+              <Link className="ma-btn" to={`/AppHistory?case=${cur.r.id}`} state={{ from: '/AppCases' }}>
+                이전 상담
               </Link>
             </div>
           </section>
@@ -149,6 +152,26 @@ function CasesBody({ userId }) {
       )}
     </>
   );
+}
+
+/** 사례 요약 창의 '메모' 칸: 그 아이에 대해 쓴 내 메모 최신 MEMO_N 개('본문 (시각)'), 없으면 '-'. */
+function CaseMemo({ caseId }) {
+  const memo = useRemote(
+    `app-case-memo:${caseId}`,
+    () => memoApi.list({ case_id: caseId, page: 1, page_size: MEMO_N }),
+    '메모를 불러오지 못했습니다.',
+    () => false,
+  );
+  if (memo.loading && !memo.data) return '불러오는 중';
+  if (memo.error) return memo.error;
+  const items = memo.data?.items ?? [];
+  if (items.length === 0) return '-';
+  const more = (memo.data?.meta?.total ?? items.length) - items.length;
+  const at = (iso) => whenText(parseBackendTime(iso)?.getTime() ?? Date.now());
+  const text = items
+    .map((m) => (m.unreadable ? '지금은 읽을 수 없는 메모' : m.text) + ' (' + at(m.updated_at) + ')')
+    .join('\n\n');
+  return more > 0 ? `${text}\n\n외 ${more}개 · 메모 탭에서 볼 수 있습니다` : text;
 }
 
 function CaseCount({ userId }) {

@@ -113,6 +113,20 @@ function FollowupQScreen(props) {
     asked.current = true;
     void sourceDoc.draftFollowups();
   }, [fromDocument, doc, sourceDoc, detail.session?.status]);
+  // 11/10 디자인: 내담자 정보 › 상담 전 브리핑의 '전체 확인'(?focus=checks)으로 오면 '다음 상담 전 확인할 사항' 으로 굴리고 잠깐 강조한다.
+  const focusChecks = useSearchParams()[0].get('focus') === 'checks';
+  const focused = useRef(false);
+  const checksRef = useRef(null);
+  const checksReady = !checks.loading && !analysis.loading;
+  useEffect(() => {
+    if (!focusChecks || focused.current || !checksReady || !checksRef.current) return undefined;
+    focused.current = true;
+    const el = checksRef.current;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.add('fq-flash');
+    const timer = window.setTimeout(() => el.classList.remove('fq-flash'), 1600);
+    return () => window.clearTimeout(timer);
+  }, [focusChecks, checksReady]);
   const theme = useTheme();
   const v = useDC(Logic, { ...props, session, ids, detail, caseDetail, analysis, signals, questions, checklist, checks, sourceDoc, go });
   // '아이 앱으로 먼저' 탭(11/10): 콩콩 질문 보내기. 그 탭을 열었을 때만 부른다.
@@ -174,9 +188,11 @@ function FollowupQScreen(props) {
           <StepNav steps={v.steps} />
 
           <section
+            ref={checksRef}
+            id="next-checks"
             className="card"
             aria-label="다음 상담 전 확인할 사항"
-            style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}
+            style={{ scrollMarginTop: '16px', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
               <h2 className="h2">다음 상담 전 확인할 사항</h2>
@@ -230,6 +246,18 @@ function FollowupQScreen(props) {
                   <Sources items={c.sources} />
                 </div>
                 {c.edited ? <span className="chip c-sand">상담사 수정</span> : null}
+                <button
+                  type="button"
+                  className="del-x"
+                  aria-label="확인 사항 삭제"
+                  title="삭제"
+                  onClick={c.del}
+                  disabled={!v.ckCanEdit || v.ckIsEdit}
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18"></path>
+                  </svg>
+                </button>
               </div>
             ))}
             {(v.newRows || []).map((r) => (

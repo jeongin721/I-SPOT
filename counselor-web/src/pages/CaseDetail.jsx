@@ -45,7 +45,7 @@ import { INITIAL_CASE_DETAIL_STATE, caseDetailValues } from '../data/screens/cas
 import { formsCardValues } from '../data/screens/caseForm';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence } from '../data/screens/followupQ';
-import { readScreenIds } from '../data/screens/links';
+import { readScreenIds, screenHref } from '../data/screens/links';
 import { caseOverviewValues } from '../data/screens/caseOverview';
 import { preBriefingValues } from '../data/screens/preBriefing';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
@@ -393,6 +393,15 @@ export default function CaseDetail(props) {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h2 className="h2">확인할 사항</h2>
+                  {/* 11/10 디자인: '전체 확인' → 4 · 다음 상담 준비의 확인할 사항으로(그 회차, 강조). */}
+                  {briefSessionId ? (
+                    <A
+                      to={`${screenHref('/FollowupQ', { caseId, sessionId: briefSessionId })}&focus=checks`}
+                      style={{ marginLeft: 'auto', fontSize: '13px' }}
+                    >
+                      전체 확인
+                    </A>
+                  ) : null}
                 </div>
                 {brief.checksNote ? <span className="note">{brief.checksNote}</span> : null}
                 {(brief.checks || []).map((c) => (
