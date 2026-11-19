@@ -51,6 +51,7 @@ import type {
   ChildQuestionDeliver,
   ChildOpenAlert,
   ChildRecentAlert,
+  ChildSilentDays,
   ChildWelfareStatus,
   FollowupQuestionList,
   LawGuideAnswer,
@@ -851,6 +852,11 @@ export const childApp = {
     return api.post<ChildAppInvite>(`/cases/${caseId}/child-app/invite`);
   },
 
+  /** 상담사가 아이 앱 연결을 해지한다(아이 상세 '해지하기', 11/19 디자인). 담당 상담사만, 연결이 없으면 204. */
+  unlink(caseId: string): Promise<void> {
+    return api.delete<void>(`/cases/${caseId}/child-app/link`);
+  },
+
   /** deliver 를 빼면 바로 보낸다. "EVENING" 은 발송 예약(서버가 정한 그날 저녁 시각부터 아이 앱에 보인다. 지났으면 바로). */
   sendQuestions(caseId: string, questionIds: string[], deliver?: ChildQuestionDeliver): Promise<void> {
     return api.post<void>(`/cases/${caseId}/child-app/question-sets`, {
@@ -896,6 +902,11 @@ export const childApp = {
   /** 관리자 홈 '긴급 알림 현황'(관리자만). */
   recentAlerts(): Promise<ChildRecentAlert[]> {
     return api.get<ChildRecentAlert[]>("/child-app-alerts/recent");
+  },
+
+  /** 응답 상태 '기준' 일수(5 · 7 · 10). 담당 상담사 · 관리자, 연결이 있어야 한다. */
+  setSilentDays(caseId: string, days: ChildSilentDays): Promise<void> {
+    return api.put<void>(`/cases/${caseId}/child-app/silent-days`, { days });
   },
 
   /** 장기 무응답 아이 안부 연락 처리(관리자 · 담당 상담사). */

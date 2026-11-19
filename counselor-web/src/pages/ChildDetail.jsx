@@ -232,9 +232,11 @@ const MOCK_KK = { conn: '2026.09.02 오전 10:15', last: '2026.10.21 오후 9:05
 
 export default function ChildDetail(props) {
   const session = useAuthSession();
-  // 예시 화면에서만 쓰는 '해지하기' 확인창 · 해지 시각(디자인 동작 그대로). 실제 사례는 서버 해지 API 가 아직 없어 단추를 두지 않는다.
+  // '해지하기' 확인창 · 해지한 시각(11/19 디자인). 실제 사례는 DELETE …/child-app/link 로 끊고, 끊은 뒤에도 이 칸에 '해지됨' 을 남긴다.
   const [kkAsk, setKkAsk] = useState(false);
   const [kkOff, setKkOff] = useState(null);
+  // 해지가 서버에서 실패했으면 그 사례에서 칸 아래에 오류를 보인다.
+  const [kkFail, setKkFail] = useState(null);
   const theme = useTheme();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const enabled = session.status === 'signedIn' && !!caseId;
@@ -291,15 +293,22 @@ export default function ChildDetail(props) {
       ? { text: `확인 완료 ${childDateTime(latestAnswers.acknowledged_at)}`, cls: 'chip c-ok' }
       : { text: '확인 전', cls: 'chip c-sand' }
     : null;
-  // 콩콩 앱 연결 칸(11/19 디자인). 실제 사례는 연결된 때만 연결 일시 · 마지막 응답을 보인다(미연결 · 초대 대기는 아래 연결 코드 칸).
+  // 콩콩 앱 연결 칸(11/19 디자인). 실제 사례는 연결된 때(또는 방금 이 화면에서 해지한 때)만 보인다 — 미연결 · 초대 대기는 아래 연결 코드 칸.
+  // 해지는 담당 상담사만 된다(서버도 403). 담당 상담사만 아이가 보낸 것을 읽으므로 can_read_feed 로 가린다.
+  const kkOffHere = kkOff && kkOff.caseId === caseId ? kkOff : null;
   const kk = caseId
     ? app.data?.status === 'LINKED'
-      ? { line: `연결 ${kkTime(app.data.linked_at)} · 마지막 응답 ${kkTime(app.data.last_response_at)}`, canUnlink: false }
-      : null
+      ? {
+          line: `연결 ${kkTime(app.data.linked_at)} · 마지막 응답 ${kkTime(app.data.last_response_at)}`,
+          canUnlink: !!app.data.can_read_feed,
+        }
+      : app.data && kkOffHere
+        ? { line: `연동 해지 ${kkOffHere.at} · 마지막 응답 ${kkTime(app.data.last_response_at)}`, canUnlink: false, off: true }
+        : null
     : {
-        line: kkOff ? `연동 해지 ${kkOff} · 마지막 응답 ${MOCK_KK.last}` : `연결 ${MOCK_KK.conn} · 마지막 응답 ${MOCK_KK.last}`,
-        canUnlink: !kkOff,
-        off: !!kkOff,
+        line: kkOffHere ? `연동 해지 ${kkOffHere.at} · 마지막 응답 ${MOCK_KK.last}` : `연결 ${MOCK_KK.conn} · 마지막 응답 ${MOCK_KK.last}`,
+        canUnlink: !kkOffHere,
+        off: !!kkOffHere,
       };
   const expires = app.data?.code_expires_at ? new Date(app.data.code_expires_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   return (
@@ -369,12 +378,17 @@ export default function ChildDetail(props) {
                 <span className="note">{kk.line}</span>
               </div>
               {kk.canUnlink ? (
-                <button type="button" className="btn btn-sm btn-s" onClick={() => setKkAsk(true)}>
+                <button type="button" className="btn btn-sm btn-s" disabled={!!caseId && app.busy} onClick={() => setKkAsk(true)}>
                   해지하기
                 </button>
               ) : null}
               {kk.off ? <span className="chip c-normal">해지됨</span> : null}
             </section>
+          ) : null}
+          {caseId && kkFail === caseId && app.actionError ? (
+            <p className="note acc" role="alert" style={{ margin: '0' }}>
+              {app.actionError}
+            </p>
           ) : null}
           {kkAsk ? (
             <div className="kk-ov" onClick={() => setKkAsk(false)}>
@@ -389,9 +403,16 @@ export default function ChildDetail(props) {
                   <button
                     type="button"
                     className="btn btn-p"
-                    onClick={() => {
+                    disabled={!!caseId && app.busy}
+                    onClick={async () => {
                       setKkAsk(false);
-                      setKkOff(kkTime(new Date()));
+                      // 예시 화면(사례 ID 없음)은 서버를 부르지 않는다.
+                      setKkFail(null);
+                      if (caseId && !(await app.unlink())) {
+                        setKkFail(caseId);
+                        return;
+                      }
+                      setKkOff({ caseId, at: kkTime(new Date()) });
                     }}
                   >
                     확인

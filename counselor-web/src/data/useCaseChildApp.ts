@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { childApp as childAppApi } from "../api/endpoints";
-import type { ChildAppCase, ChildAppInvite, ChildQuestionDeliver } from "../api/types";
+import type { ChildAppCase, ChildAppInvite, ChildQuestionDeliver, ChildSilentDays } from "../api/types";
 import { errorMessage, useRemote } from "./useRemote";
 
 const REFRESH_MS = 30_000;
@@ -85,6 +85,15 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  /** 응답 상태 '기준' 일수 바꾸기(5 · 7 · 10일). */
+  const setSilentDays = useCallback(
+    (days: ChildSilentDays) =>
+      run(async () => {
+        if (caseId) await childAppApi.setSilentDays(caseId, days);
+      }, "기준을 바꾸지 못했습니다."),
+    [caseId, run],
+  );
+
   /** 발송 예약 취소. 예약 시각이 지나 이미 아이에게 보였으면 서버가 409 로 거절한다. */
   const cancelScheduled = useCallback(
     (questionSetId: string) =>
@@ -139,6 +148,15 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  /** 아이 앱 연결 해지(담당 상담사). 그 기기는 바로 끊기고 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남는다. */
+  const unlink = useCallback(
+    () =>
+      run(async () => {
+        if (caseId) await childAppApi.unlink(caseId);
+      }, "앱 연동을 해지하지 못했습니다."),
+    [caseId, run],
+  );
+
   const acknowledge = useCallback(
     (alertId: string) =>
       run(async () => {
@@ -149,5 +167,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, cancelScheduled, acknowledge };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
 }

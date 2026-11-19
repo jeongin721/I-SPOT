@@ -1,6 +1,7 @@
 // 실제 사례의 아이 연계 탭. 콩콩 앱과 같은 구조(연결 · 아이가 보낸 것 · 질문 보내기)로 서버 값을 보인다.
 // 사례 ID 가 없는 예시 화면은 CaseApp.jsx 의 디자인 목업을 그대로 쓴다.
 import A from '../components/A';
+import { CHILD_SILENT_DAYS } from '../api/types';
 import ChildQuestionSender from '../components/ChildQuestionSender';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
@@ -27,8 +28,7 @@ function LevelChip({ level }) {
   return item ? <span className={item[1]}>{item[0]}</span> : null;
 }
 
-// 마지막 응답이 이만큼 지났으면 '안부 확인 필요'(콩콩 디자인 응답 상태 기준 7일).
-const SILENT_DAYS = 7;
+// 마지막 응답이 사례의 기준(5 · 7 · 10일, 기본 7 — 서버 silent_days)만큼 지났으면 '안부 확인 필요'(콩콩 디자인 응답 상태).
 const daysSince = (value) => {
   if (!value) return null;
   const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -109,7 +109,9 @@ function FeedItem({ event }) {
       event.kind === 'LINKED'
         ? '아이가 앱을 연결했어요'
         : event.kind === 'UNLINKED'
-          ? '아이가 앱 연결을 해지했어요'
+          ? event.payload.by === 'counselor'
+            ? '상담사가 앱 연동을 해지했습니다'
+            : '아이가 앱 연결을 해지했어요'
         : event.payload.withdrawn
           ? `보낸 질문 ${event.payload.count}개를 취소했어요`
           : event.payload.deliver_at
@@ -155,6 +157,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
   const info = detail.caseInfo;
   // 응답 상태: 아이가 무엇이든 보내면(답 · 기분 · 메시지 · 긴급 · 일정) 0일로 돌아간다. 연결 뒤 아직 안 보냈으면 연결일부터 센다.
   const silent = data?.status === 'LINKED' ? daysSince(data.last_response_at ?? data.linked_at) : null;
+  const silentDays = data?.silent_days ?? 7;
 
   return (
     <div className="pg-CaseApp">
@@ -238,10 +241,28 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                   <div className="sub">
                     연결 {dateTime(data.linked_at)} · 마지막 응답 {dateTime(data.last_response_at)}
                     {silent !== null ? ` (${silent === 0 ? '오늘' : `${silent}일 전`}) ` : ' '}
-                    <span className={silent === null || silent >= SILENT_DAYS ? 'chip c-urgent' : 'chip c-ok'}>
-                      {silent === null || silent >= SILENT_DAYS ? '안부 확인 필요' : '정상'}
+                    <span className={silent === null || silent >= silentDays ? 'chip c-urgent' : 'chip c-ok'}>
+                      {silent === null || silent >= silentDays ? '안부 확인 필요' : '정상'}
                     </span>{' '}
-                    <span className="note">기준 {SILENT_DAYS}일</span>
+                    {data.can_read_feed ? (
+                      <label className="note">
+                        기준{' '}
+                        <select
+                          value={silentDays}
+                          disabled={app.busy}
+                          onChange={(event) => app.setSilentDays(Number(event.target.value))}
+                          aria-label="응답 상태 기준 일수"
+                        >
+                          {CHILD_SILENT_DAYS.map((days) => (
+                            <option key={days} value={days}>
+                              {days}일
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="note">기준 {silentDays}일</span>
+                    )}
                     <br />
                     아이 앱에 다음 상담 날짜 · 시간이 보여요. 장소는 정기 · 초기 · 종결 상담만 보여요.
                   </div>

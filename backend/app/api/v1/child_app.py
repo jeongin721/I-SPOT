@@ -31,6 +31,7 @@ from app.schemas.child_app import (
     ChildMoodRequest,
     ChildNoteRequest,
     ChildScheduleRequest,
+    ChildSilentDaysRequest,
     ChildOpenAlert,
     ChildQuestionSendRequest,
     ChildRecentAlert,
@@ -161,6 +162,12 @@ def acknowledge_alert(
     child_app_service.acknowledge_alert(db, case, current_user, alert_id, client_ip(request))
 
 
+@case_router.put("/{case_id}/child-app/silent-days", status_code=status.HTTP_204_NO_CONTENT, summary="응답 상태 기준 일수")
+def set_silent_days(case_id: uuid.UUID, payload: ChildSilentDaysRequest, db: DbSession, current_user: CurrentUser) -> None:
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.set_silent_days(db, case, current_user, payload.days)
+
+
 @case_router.get("/{case_id}/child-app", response_model=DataResponse[ChildAppCaseResponse])
 def get_case_child_app(
     case_id: uuid.UUID,
@@ -187,6 +194,19 @@ def create_invite(
     result = child_app_service.create_invite(db, case, current_user, client_ip(request))
 
     return DataResponse(data=ChildAppInviteResponse(**result))
+
+
+@case_router.delete("/{case_id}/child-app/link", status_code=status.HTTP_204_NO_CONTENT, summary="아이 앱 연결 해지(상담사)")
+def unlink_case_child_app(
+    case_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """아이 상세 '해지하기'. 담당 상담사만. 연결이 없으면 204(재시도 안전)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.unlink_by_counselor(db, case, current_user, client_ip(request))
 
 
 @case_router.post("/{case_id}/child-app/question-sets", status_code=status.HTTP_204_NO_CONTENT)

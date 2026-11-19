@@ -2909,7 +2909,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 |---|---|---|
 | POST | `/child-app/link` | `{code}` → `{device_token}`. 틀림 · 만료 · 사용됨은 모두 400 `INVALID_CHILD_CODE`. IP 당 시간 20번 초과는 429 |
 | POST | `/child-app/unlink` | 아이가 앱 설정에서 연결을 해지한다 → 204. 연결 행을 지워 상담사가 새 코드를 만들 수 있고(상태 `NOT_LINKED`), 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남고 피드에 `UNLINKED` 줄이 생긴다 |
-| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}}`(장소는 정기 · 초기 · 종결 상담만). 발송 예약 시각이 안 된 질문은 `pending` 에 없다 |
+| GET | `/child-app/home` | `{pending: {id, questions}, next_consult: {date, time, place}, upcoming_consults: [{date, time, place}]}`(장소는 정기 · 초기 · 종결 상담만). `upcoming_consults` 는 오늘부터 다가오는 상담 가까운 순 3개까지(2026-11-19), 첫째가 `next_consult`. 발송 예약 시각이 안 된 질문은 `pending` 에 없다 |
 | POST | `/child-app/question-sets/{id}/answers` | `{answers: [{question_id, choice_index?, skipped?, text?, chip?}]}` → `{ticket_awarded}`. 끝난 질문은 409(예약 시각이 된 새 질문에 밀린 질문 포함), 발송 예약 시각 전 질문은 404 |
 | POST | `/child-app/alerts` | 급하다고 알리기. `{received: true}`. 확인 전 알림이 있으면 새 알림 대신 `repeat_count` 를 올린다(재시도 안전). 취소는 앱 안에서 끝나 서버로 오지 않는다 |
 | POST | `/child-app/moods` | '지금 기분 기록하기'(2026-11-19). `{mood, why?}` → 204. `mood`: `good` · `excited` · `okay` · `meh` · `surprised` · `tired` · `lonely` · `sad` · `worried` · `scared` · `angry` · `unsure`(그 외 400), `why` 60자까지. 피드 `MOOD` 줄 `payload {mood, label, why}`. `lonely` · `sad` · `worried` · `scared` · `angry` 는 `level: AMBER`(살펴볼 기분). `why` 를 적었으면 확인 필요(`TEXT_ANSWER`) |
@@ -2921,6 +2921,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
 | POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids, deliver?}` 1~8개(문항 전체) → 204. `deliver`: `NOW`(기본, 바로) · `EVENING`(발송 예약 — 아래). 답하지 않은 이전 질문은 대체. 미연결이면 409 |
 | DELETE | `/cases/{case_id}/child-app/question-sets/{question_set_id}` | 발송 예약 취소 → 204. 담당 상담사만(그 외 403). 예약 시각 전에만 된다 — 이미 아이에게 보였거나 답했으면 409 `INVALID_CASE_STATE`. 이미 취소 · 대체된 것은 204(재시도 안전). 없는 것 · 다른 사례의 것은 404 |
+| DELETE | `/cases/{case_id}/child-app/link` | 상담사가 아이 앱 연결을 해지한다(아이 상세 '콩콩 앱 연결 › 해지하기', 2026-11-19) → 204. 담당 상담사만(관리자 · 다른 상담사 403). `/child-app/unlink` 와 같은 처리 — 연결 행을 지워 그 기기 토큰은 바로 401, 답하지 않은 질문 · 발송 예약은 거두고, 받은 답 · 알림은 남는다. 연결돼 있었으면 피드에 `UNLINKED` 줄(`payload.by = "counselor"`, 기기 해지는 `{}`). 초대 대기(코드만 발급)도 지워 코드를 무효로 한다(피드 줄 없음). 연결이 없으면 204(재시도 안전). 종결 사례에서도 된다. 감사 기록 `CHILD_APP_UNLINKED` `detail.by = counselor` |
 | GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함. 발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 안 보인 예약 · 보이기 전에 취소한 예약은 세지 않는다) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
 | GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent}`. `recent_answers` · `level` 은 담당 상담사만 |
 | POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
@@ -2939,6 +2940,8 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 관리자 긴급 알림 현황(11/17 디자인 AdminHome, 관리자만): `GET /child-app-alerts/recent` → `[{id, case_id, case_number, child_alias, reason, repeat_count, created_at, last_at, counselor_name, acknowledged_at, acknowledged_by_name}]`. 긴급(아이가 보낸 긴급 알림 · 바로 확인 답 · 연락 요청) 중 오늘 · 어제(한국 날짜) 것은 확인했어도 넣고, 그 전 것은 확인 전일 때만 넣는다. 최신순 최대 100줄(긴급인지는 암호화된 본문을 봐야 해서 최신부터 묶음으로 읽어 긴급만 모은다 — 긴급이 아닌 확인 전 줄이 많아도 오래된 미확인 긴급이 빠지지 않음, 최대 5000줄까지 읽음). `reason` 은 `/open` 과 같은 규칙(담당이 아닌 관리자에게 답 기반은 `NEEDS_CHECK`). 상담사는 403.
 
 장기 무응답 안부 연락(11/17 디자인 AdminApp): `POST /cases/{case_id}/child-app/welfare-checks` `{status: "OPEN" | "TRIED" | "DONE", note?: 200자}` → 204. 관리자 또는 담당 상담사, 앱이 연결된 사례만(아니면 409). 사건(`WELFARE_CHECK`)으로 남지만 아이 피드 · 알림에는 들어가지 않고 아이 앱에도 가지 않는다. 감사 로그 `CHILD_APP_WELFARE_CHECKED`(값은 status 만). `GET /child-app-cases` 줄에 `linked_at` · `counselor_name` · `welfare_status` · `welfare_note` · `welfare_at` 이 더해진다 — 안부 연락은 마지막 응답(없으면 연결) 뒤에 남긴 가장 최근 것만 보이고, 그 뒤 아이가 답하면 null 이다. 장기 무응답(7일)은 화면이 `last_response_at`(없으면 `linked_at`)으로 정한다.
+
+응답 상태 기준(2026-11-19 콩콩 디자인): `PUT /cases/{case_id}/child-app/silent-days` `{days: 5 | 7 | 10}` → 204(그 밖 422). 담당 상담사 또는 관리자, 연결(초대 포함)이 있어야 한다(없으면 409). `GET /cases/{case_id}/child-app` · `GET /child-app-cases` 행에 `silent_days`(연결 전이면 7). 마지막 응답(없으면 연결) 뒤 이 일수가 지나면 상담사 화면 '안부 확인 필요' · 관리자 '장기 무응답'. 연결을 해지하면 연결 행과 함께 없어져 다시 연결하면 7.
 
 확인 상태: `GET /child-app-cases` 행과 `GET /cases/{case_id}/child-app` 에 `last_acked_at` — 가장 최근 '확인이 필요한 알림 · 답'(`needs_ack`)을 확인한 시각, 확인 전이거나 없으면 null. 화면은 열린 알림이 있으면 '확인 전', 없고 이 값이 있으면 '확인 완료'를 보인다.
 
