@@ -900,7 +900,9 @@ def acknowledge_alert(
 # 아이 앱
 # =========================================================
 
-def send_alert(db: Session, link: ChildAppLink) -> None:
+def send_alert(db: Session, link: ChildAppLink) -> Optional[uuid.UUID]:
+    """아이가 '급해요' 를 눌렀다. 새 알림 줄을 만들었으면 그 id 를, 확인 전 알림에 횟수만 올렸으면 None 을 돌려준다
+    (새 알림일 때만 담당 상담사 폰에 알린다 — push_service.notify_child_alert)."""
     # 같은 기기의 동시 요청을 줄 세워 알림이 두 건 생기지 않게 한다.
     locked = db.scalar(
         select(ChildAppLink)
@@ -927,8 +929,15 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
     )
     locked.last_response_at = now
 
+    created: Optional[uuid.UUID] = None
+
     if current is None:
-        _add_event(db, locked.case_id, ChildAppEventKind.ALERT, {}, level=ChildAnswerLevel.RED, needs_ack=True)
+        event = ChildAppEvent(
+            case_id=locked.case_id, kind=ChildAppEventKind.ALERT, level=ChildAnswerLevel.RED, payload={}, needs_ack=True
+        )
+        db.add(event)
+        db.flush()
+        created = event.id
     else:
         current.payload = {
             **current.payload,
@@ -937,6 +946,8 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
         }
 
     db.commit()
+
+    return created
 
 
 def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) -> None:

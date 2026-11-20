@@ -7,6 +7,9 @@
 #    같은 일정 · 같은 시각은 한 번만(push_deliveries 에 먼저 넣고, 겹치면 건너뜀 — 서버가 둘이어도 한 번).
 #    시간이 없는 상담 일정 · 개인 · 기관 일정(OTHER)은 알리지 않는다. 일정을 만든 사람(owner)에게만 간다.
 #  - 업로드 실패: 녹음은 폰에 있으므로 폰이 스스로 알린다. 서버는 그 설정(upload_failed)만 기억한다.
+#  - 아이 긴급 알림(2026-11-20): 아이가 콩콩에서 '급해요' 를 눌러 새 알림이 생기면 그 사례 담당 상담사의 폰에 바로 알린다.
+#    앱 설정에 따로 끄는 칸이 없으므로(디자인 그대로) 폰 알림을 켠 기기면 모두 받는다. 확인 전 알림에 다시 누른 것은
+#    새로 알리지 않는다(같은 알림 · 횟수만 올라감). 같은 알림은 한 번만(push_deliveries).
 #  - 잠금 화면에 보이므로 문구에 아이 이름 · 사례 · 일정 제목 · 장소를 넣지 않는다(시각만). 감사 기록에도 문구를 남기지 않는다.
 import asyncio
 import logging
@@ -22,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.enums import ScheduleKind
 from app.core.errors import APIError, ErrorCode
+from app.models.case import Case
 from app.models.push import PUSH_SUBSCRIPTIONS_PER_USER_MAX, PushDelivery, PushSubscription
 from app.models.schedule import ScheduleEvent
 from app.models.user import User
@@ -39,6 +43,10 @@ TEST_HOURLY_LIMIT = 10
 #: 보낸 기록을 이만큼 지나면 지운다(같은 일정을 다시 알릴 일이 없는 기간).
 DELIVERY_KEEP_DAYS = 3
 APP_SCHEDULE_URL = "/#/AppSchedule"
+KIND_CHILD_ALERT = "child_alert"
+#: 잠금 화면에 보이므로 아이 이름 · 사례 번호는 넣지 않는다. 누르면 그 아이 상세(사례 ID 는 화면에 안 보임).
+CHILD_ALERT_TITLE = "긴급 알림"
+CHILD_ALERT_BODY = "아이 앱에서 긴급 알림이 왔어요. 바로 확인해 주세요."
 
 
 def _private_key():
@@ -259,6 +267,64 @@ def run_before_session(db: Session, now: Optional[datetime] = None) -> int:
         count += 1
 
     return count
+
+
+def send_child_alert(db: Session, case_id: uuid.UUID, alert_id: uuid.UUID, *, now: Optional[datetime] = None) -> int:
+    """새 아이 긴급 알림을 담당 상담사 폰에 보낸다. 보낸 기기 수를 돌려준다."""
+    if not is_enabled():
+        return 0
+
+    case = db.get(Case, case_id)
+
+    if case is None or case.counselor_id is None:
+        return 0
+
+    owner = case.counselor_id
+    rows = db.scalars(
+        select(PushSubscription)
+        .join(User, User.id == PushSubscription.user_id)
+        .where(PushSubscription.user_id == owner, User.is_active.is_(True))
+    ).all()
+
+    if not rows:
+        return 0
+
+    delivery = PushDelivery(user_id=owner, kind=KIND_CHILD_ALERT, ref_key=str(alert_id), sent=0)
+    db.add(delivery)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return 0
+
+    message = {
+        "title": CHILD_ALERT_TITLE,
+        "body": CHILD_ALERT_BODY,
+        "url": f"/#/ChildDetail?case={case_id}",
+        "tag": f"child-alert-{alert_id}",
+    }
+    live = db.scalars(select(PushSubscription).where(PushSubscription.id.in_([row.id for row in rows]))).all()
+    sent, _ = _send_to(db, list(live), message, now=now or datetime.now(timezone.utc))
+    delivery.sent = sent
+    db.commit()
+
+    return sent
+
+
+def notify_child_alert(case_id: uuid.UUID, alert_id: uuid.UUID) -> None:
+    """응답을 보낸 뒤 돌린다(BackgroundTasks). 아이의 '급해요' 응답을 푸시 서비스 때문에 늦추거나 실패시키지 않는다."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+
+    try:
+        send_child_alert(db, case_id, alert_id)
+    except Exception:  # noqa: BLE001 — 알림 실패가 아이 앱 응답 · 실행기에 번지지 않게
+        db.rollback()
+        logger.exception("아이 긴급 알림 푸시 실패")
+    finally:
+        db.close()
 
 
 def cleanup_deliveries(db: Session, now: Optional[datetime] = None) -> None:
