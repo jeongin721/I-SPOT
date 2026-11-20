@@ -3,8 +3,8 @@
 //
 // 서버 연결(2026-10-30): 머리 · 한눈에(상담 횟수 · 유형별 수 · 새 학대 진술) · 회차별 흐름은 useCaseDetail · useSignalHistory ·
 // useApprovedSummaries 의 값으로 src/data/screens/closureReview.ts 가 만든다(디자인 칸 → 서버 값은 그 파일 머리).
-// 핵심 요약은 closure-summary(만들기 · 확인 체크 · 고친 문장, useClosureSummary). 서로 다른 진술 · 위험수준 척도는 서버에 없어
-// 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다. 아이 연계는 콩콩(GET /cases/{id}/child-app)의 아이가 쓴 글 · 질문별 월별 답.
+// 핵심 요약은 closure-summary(만들기 · 확인 체크 · 고친 문장, useClosureSummary). 서로 다른 진술은 서버에 없어
+// 준비 중 — 실제 사례 옆에 예시 문장을 보이지 않는다. 위험수준 척도는 기관 서식 확정 기록(useCaseForms, 11/20). 아이 연계는 콩콩(GET /cases/{id}/child-app)의 아이가 쓴 글 · 질문별 월별 답.
 // 회차별 흐름의 회차를 누르면 그 회차 상세로 간다(11/19).
 import { Fragment, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -15,6 +15,7 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { useApprovedSummaries } from '../data/useApprovedSummaries';
+import { useCaseForms } from '../data/useCaseForms';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useSignalHistory } from '../data/useSignalHistory';
 import { closureChildValues, closureReviewValues, closureSummaryValues } from '../data/screens/closureReview';
@@ -39,7 +40,8 @@ export default function ClosureReview() {
   // 아이 연계(11/10): 콩콩 받은 답 · 아이가 쓴 글.
   const appKey = enabled && caseId ? `closure-child-app:${caseId}` : null;
   const childAppInfo = useRemote(appKey, () => childApp.get(caseId), '아이 앱 정보를 불러오지 못했습니다.', () => false);
-  const v = closureReviewValues({ caseId, detail, history, approved, all, childApp: childAppInfo.data });
+  const forms = useCaseForms(caseId, { enabled });
+  const v = closureReviewValues({ caseId, detail, history, approved, all, childApp: childAppInfo.data, forms });
   const cv = closureChildValues(childAppInfo.data);
   const summary = useClosureSummary(caseId, { enabled });
   const [edit, setEditState] = useState({ key: null, draft: '' });

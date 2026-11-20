@@ -20,6 +20,8 @@ class AudioResponse(BaseModel):
     size_bytes: int
     duration_ms: Optional[int]
     checksum_sha256: str
+    # 녹음 동의를 확인한 시각(폰 앱 녹음만). 없으면 null.
+    consent_at: Optional[datetime] = None
     created_at: datetime
 
 

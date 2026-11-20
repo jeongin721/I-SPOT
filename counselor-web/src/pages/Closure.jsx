@@ -2,7 +2,7 @@
 // 원본: 다솔 님 디자인 counselor-web-design/Closure.dc.html (front_new 브랜치)
 //
 // 서버 연결: 사례 기본정보 · 회차 수는 useCaseOverview(mode 'counts'), 화면에 쓸 값은 src/data/screens/closure.ts(closureValues).
-// 10/30: 종결 검토 등록(closure_review_at)한 사례만 보이고 등록일 · '① 내역 검토' 를 보인다. 내역 검토 진행률은 준비 중.
+// 10/30: 종결 검토 등록(closure_review_at)한 사례만 보이고 등록일 · 진행 단계를 보인다. 진행률은 사례마다 closure-summary(11/20).
 // 10/30 디자인대로 '실명 보기' 토글을 뺐다. 이름을 누르면 그 사례의 ① 전체 상담 내역 검토로 간다. 검색어는 계정에 묶는다(useAccountSearch).
 import { Fragment } from 'react';
 import { Navigate } from 'react-router-dom';
@@ -16,6 +16,8 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useCaseOverview } from '../data/useCaseOverview';
 import { closureValues } from '../data/screens/closure';
 import { useAccountSearch } from '../data/useAccountSearch';
+import { useRemote } from '../data/useRemote';
+import { cases as casesApi } from '../api/endpoints';
 import { needsLogin } from '../data/screens/common';
 import { useTheme } from '../theme';
 import './Closure.css';
@@ -31,7 +33,21 @@ export default function Closure(props) {
   const overview = useCaseOverview(session, 'counts', { withNames: true });
   const [search, setSearch] = useAccountSearch(session);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, overview, search, setSearch });
+  // 등록한 사례마다 종결 요약(확인 체크 수)을 받는다. 하나가 실패해도 나머지는 보인다.
+  const ids = (overview.data?.items ?? [])
+    .filter(({ caseRow }) => Boolean(caseRow.closureReviewDate))
+    .map(({ caseRow }) => caseRow.id)
+    .sort();
+  const summaries = useRemote(
+    ids.length ? `closure-summaries:${ids.join(',')}` : null,
+    async () =>
+      Object.fromEntries(
+        await Promise.all(ids.map(async (id) => [id, await casesApi.getClosureSummary(id).catch(() => null)])),
+      ),
+    '종결 요약을 불러오지 못했습니다.',
+    () => false,
+  );
+  const v = useDC(Logic, { ...props, session, overview, search, setSearch, summaries: summaries.data });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-Closure">

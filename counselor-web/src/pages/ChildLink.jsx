@@ -25,14 +25,14 @@ function rowState(row) {
   if (row.open_alert_reason) return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   if (row.status === 'NOT_LINKED') return { reason: '앱 미연결 · 초대 전', rCls: 'chip c-normal', need: false };
   if (row.status === 'INVITED') return { reason: '초대 대기', rCls: 'chip c-normal', need: false };
-  // 바로 확인할 답(RED)은 서버가 확인 시각을 줄 때만 '확인 완료'(멘토 피드백 11/12). 열린 알림은 최신 50건만 오므로
-  // 열린 알림이 없다고 확인을 마쳤다고 보지 않는다(민규 #175 리뷰 2).
-  if (row.level === 'RED') {
-    return row.last_acked_at
-      ? { reason: `확인 완료 ${childDateTime(row.last_acked_at)}`, rCls: 'chip c-ok', need: false, acked: true }
-      : { reason: '긴급', rCls: 'chip c-urgent', need: true };
+  // 바로 확인할 답(RED) · 살펴볼 답(AMBER)은 서버가 그 답 묶음의 확인 시각을 줄 때만 '확인 완료'(멘토 피드백 11/12, AMBER 는 11/20).
+  // 열린 알림은 최신 50건만 오므로 열린 알림이 없다고 확인을 마쳤다고 보지 않는다(민규 #175 리뷰 2).
+  // answer_acked_at 이 없는 옛 서버는 RED 만 사례의 마지막 확인 시각(last_acked_at)으로 본다.
+  if (row.level === 'RED' || row.level === 'AMBER') {
+    const acked = 'answer_acked_at' in row ? row.answer_acked_at : row.level === 'RED' ? row.last_acked_at : null;
+    if (acked) return { reason: `확인 완료 ${childDateTime(acked)}`, rCls: 'chip c-ok', need: false, acked: true };
+    return row.level === 'RED' ? { reason: '긴급', rCls: 'chip c-urgent', need: true } : { reason: '확인 필요', rCls: 'chip c-check', need: true };
   }
-  if (row.level === 'AMBER') return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   return { reason: '정상', rCls: 'chip c-normal', need: false };
 }
 

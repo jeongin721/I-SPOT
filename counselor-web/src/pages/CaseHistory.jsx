@@ -24,6 +24,7 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
+import { useNextConsult } from '../data/useCaseSchedule';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
@@ -64,6 +65,7 @@ export default function CaseHistory(props) {
   });
   const owner = Boolean(session.me?.id) && detail.caseInfo?.counselorId === session.me?.id;
   const askDelete = session.isAdmin || owner ? del.ask : null;
+  const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
   const v = useDC(Logic, {
     ...props,
     session,
@@ -72,6 +74,7 @@ export default function CaseHistory(props) {
     history,
     approved,
     personal,
+    nextConsult,
     caseId,
     historyOpen,
     setHistoryOpen,

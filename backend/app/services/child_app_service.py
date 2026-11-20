@@ -362,17 +362,21 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
     links = {row.case_id: row for row in db.scalars(select(ChildAppLink).where(ChildAppLink.case_id.in_(ids)))} if ids else {}
     since = _utcnow() - timedelta(days=RECENT_DAYS)
     latest_level: Dict[uuid.UUID, str] = {}
+    latest_acked: Dict[uuid.UUID, Optional[datetime]] = {}
     recent: Dict[uuid.UUID, int] = {}
 
     if ids:
         answered = db.execute(
-            select(ChildAppEvent.case_id, ChildAppEvent.level, ChildAppEvent.created_at)
+            select(ChildAppEvent.case_id, ChildAppEvent.level, ChildAppEvent.created_at, ChildAppEvent.acknowledged_at)
             .where(ChildAppEvent.case_id.in_(ids), ChildAppEvent.kind == ChildAppEventKind.ANSWERS)
             .order_by(ChildAppEvent.created_at.desc())
         ).all()
 
-        for case_id, level, created_at in answered:
-            latest_level.setdefault(case_id, level.value)
+        for case_id, level, created_at, acknowledged_at in answered:
+            if case_id not in latest_level:
+                latest_level[case_id] = level.value
+                # 가장 최근 답 묶음을 상담사가 확인한 시각. 목록의 '확인 필요' · '긴급'(답)을 끄는 기준이다.
+                latest_acked[case_id] = acknowledged_at
 
             if _aware(created_at) >= since:
                 recent[case_id] = recent.get(case_id, 0) + 1
@@ -407,6 +411,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "status": link.status.value if link else "NOT_LINKED",
                 "recent_answers": recent.get(case.id, 0) if assigned else None,
                 "level": latest_level.get(case.id) if assigned else None,
+                "answer_acked_at": latest_acked.get(case.id) if assigned else None,
                 "last_response_at": link.last_response_at if link else None,
                 "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
                 "open_alert_reason": alert["reason"] if alert else None,
@@ -726,7 +731,19 @@ def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
     if case.counselor_id != viewer.id:
         return "NEEDS_CHECK"
 
-    return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else event.payload.get("alert_reason", "CONTACT_REQUEST")
+    if event.level == ChildAnswerLevel.RED:
+        return "RED_ANSWER"
+
+    reason = event.payload.get("alert_reason")
+
+    if reason:
+        return reason
+
+    # 글 · 연락 요청 · 추가 질문 없이 살펴볼 답(AMBER)만 있는 답 묶음.
+    if event.kind == ChildAppEventKind.ANSWERS and event.level == ChildAnswerLevel.AMBER:
+        return "AMBER_ANSWER"
+
+    return "CONTACT_REQUEST"
 
 
 def _is_urgent(event: ChildAppEvent) -> bool:
@@ -900,7 +917,9 @@ def acknowledge_alert(
 # 아이 앱
 # =========================================================
 
-def send_alert(db: Session, link: ChildAppLink) -> None:
+def send_alert(db: Session, link: ChildAppLink) -> Optional[uuid.UUID]:
+    """아이가 '급해요' 를 눌렀다. 새 알림 줄을 만들었으면 그 id 를, 확인 전 알림에 횟수만 올렸으면 None 을 돌려준다
+    (새 알림일 때만 담당 상담사 폰에 알린다 — push_service.notify_child_alert)."""
     # 같은 기기의 동시 요청을 줄 세워 알림이 두 건 생기지 않게 한다.
     locked = db.scalar(
         select(ChildAppLink)
@@ -927,8 +946,15 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
     )
     locked.last_response_at = now
 
+    created: Optional[uuid.UUID] = None
+
     if current is None:
-        _add_event(db, locked.case_id, ChildAppEventKind.ALERT, {}, level=ChildAnswerLevel.RED, needs_ack=True)
+        event = ChildAppEvent(
+            case_id=locked.case_id, kind=ChildAppEventKind.ALERT, level=ChildAnswerLevel.RED, payload={}, needs_ack=True
+        )
+        db.add(event)
+        db.flush()
+        created = event.id
     else:
         current.payload = {
             **current.payload,
@@ -937,6 +963,8 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
         }
 
     db.commit()
+
+    return created
 
 
 def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) -> None:
@@ -1302,7 +1330,8 @@ def submit_answers(
         ChildAppEventKind.ANSWERS,
         payload,
         level=worst,
-        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text or followup,
+        # 살펴볼 답(AMBER)도 확인할 알림으로 남겨 상담사가 확인하면 '확인 필요'가 꺼진다(11/20 경진님). 긴급은 아니다.
+        needs_ack=worst in (ChildAnswerLevel.RED, ChildAnswerLevel.AMBER) or wants_contact or wrote_text or followup,
     )
     db.commit()
 

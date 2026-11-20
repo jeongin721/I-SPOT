@@ -16,6 +16,7 @@ import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useNextConsult } from '../data/useCaseSchedule';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { usePersonalInfo } from '../data/usePersonalInfo';
 import { useCaseSignals } from '../data/useCaseSignals';
@@ -52,7 +53,8 @@ export default function CaseDocs(props) {
   const closure = useClosureSummary(caseId, { enabled: enabled && Boolean(detail.caseInfo?.closureReviewDate) });
   const theme = useTheme();
   const personal = usePersonalInfo(caseId, { enabled });
-  const v = useDC(Logic, { ...props, session, detail, signals, docs, forms, closure, personal, caseId });
+  const nextConsult = useNextConsult(caseId, { enabled });
+  const v = useDC(Logic, { ...props, session, detail, signals, docs, forms, closure, personal, caseId, nextConsult });
   const rec = useRecordFlow(session, caseId, v.canRecord);
   // 11/10 디자인: 기관 서식 제목 · '열기' → 읽기 전용 보기 창(서식 기록이 있는 4종). 그 밖의 서식은 작성 화면으로 바로 간다.
   const [viewing, setViewing] = useState(null);

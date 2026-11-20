@@ -6,8 +6,8 @@
 //  - 기간 안 사례 등록 수 · 등록 추이: 사례 등록일(created_at) 기준이다. **신고접수일이 아니다** — '신규 접수' 라고 부르지 않는다.
 //  - 기간 안 상담 회차 수: 상담 일시 기준. 상담 일시를 넣지 않은 회차는 등록일로 대신하지 않고 뺀다.
 //  - 종결: 사례에 종결일이 없어 기간으로 거를 수 없다. 지금 종결 상태인 사례 수만 보인다.
-//  - 상담원별 지금 담당(진행 중) · 기간 안 상담 회차 · 지금 종결: 사례 응답에 담당자 ID 가 없어(사례 행은 이름만) 담당 상담사
-//    이름으로 모은다. 이름이 같은 계정이 둘 이상이면 섞이지 않게 그 줄은 '—' 로 둔다.
+//  - 상담원별 지금 담당(진행 중) · 기간 안 상담 회차 · 지금 종결: 사례의 담당 계정 ID(counselor_id)로 모은다(11/20 점검).
+//    같은 이름의 계정이 있어도 섞이지 않는다.
 //  - 아동 연령대: 출생연도로 센 나이(기간 끝 해 − 출생연도)라 만 나이와 한 살 다를 수 있다. 기간 안 등록 사례 기준.
 // 아이 앱 응답률(11/10 연결): 기간 안에 보낸 콩콩 질문 묶음 중 아이가 답한 비율(GET /child-app-stats, 화면이 기간마다 부른다).
 // 서버에 없어 '—' · 준비 중: 학대 판단 · 재신고율 · 평균 사례관리 기간 · 72시간 내 초기 개입 · 일지 기한 내 작성률,
@@ -192,15 +192,11 @@ export function adminStatsValues(input: {
     : "사례 등록 추이를 아직 불러오지 못했습니다";
 
   // ---------------- 상담원별 ----------------
-  // 이름으로 모으므로 같은 이름의 계정이 있으면 그 줄은 세지 않는다.
-  const nameCount = new Map<string, number>();
-  for (const row of accounts.rows) nameCount.set(row.name, (nameCount.get(row.name) ?? 0) + 1);
-
   const counselorRows = accounts.rows.filter((row) => row.role === "COUNSELOR");
   const staffCounts = counselorRows.map((row) => {
-    if (!has || nameCount.get(row.name) !== 1) return null;
+    if (!has) return null;
 
-    const mine = items.filter((item) => item.caseRow.counselorName === row.name);
+    const mine = items.filter((item) => item.caseRow.counselorId === row.id);
 
     return {
       active: mine.filter((item) => item.caseRow.status === "ACTIVE").length,
@@ -232,7 +228,6 @@ export function adminStatsValues(input: {
       : staff.length === 0
         ? "상담원 계정이 없습니다."
         : "";
-  const sameName = counselorRows.some((row) => nameCount.get(row.name) !== 1);
 
   // ---------------- 아동 연령대 ----------------
   const ageCounts = AGE_GROUPS.map(() => 0);
@@ -296,9 +291,7 @@ export function adminStatsValues(input: {
     pendingRisk: PENDING_CARDS.risk,
     staff,
     staffText,
-    staffNote: sameName
-      ? "담당 상담사 이름으로 모았습니다. 이름이 같은 계정이 있어 그 줄은 — 로 둡니다."
-      : "담당 상담사 이름으로 모았습니다. 담당 · 종결은 지금 상태, 상담 회차는 기간 안 상담 일시 기준입니다.",
+    staffNote: "담당 · 종결은 지금 상태, 상담 회차는 기간 안 상담 일시 기준입니다.",
     ages,
     ageNote,
     pendingMore: PENDING_CARDS.more,

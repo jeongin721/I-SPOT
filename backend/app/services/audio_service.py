@@ -8,6 +8,7 @@
 
 import logging
 import struct
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterator, Optional, Set, Tuple
 
@@ -205,6 +206,17 @@ def _stream_chunks(header: bytes, file: BinaryIO) -> Iterator[bytes]:
 # Upload
 # =========================================================
 
+def _consent_time(value: Optional[datetime]) -> Optional[datetime]:
+    """동의 확인 시각. 시간대가 없으면 UTC 로 본다. 폰 시계가 앞서 있어도 올린 시각보다 뒤로 남기지 않는다."""
+
+    if value is None:
+        return None
+
+    value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+    return min(value, datetime.now(timezone.utc))
+
+
 def upload_audio(
     db: Session,
     session: ConsultationSession,
@@ -214,6 +226,7 @@ def upload_audio(
     content_type: Optional[str],
     file: BinaryIO,
     duration_ms: Optional[int] = None,
+    consent_at: Optional[datetime] = None,
 ) -> AudioFile:
     """
     음성 파일을 저장하고 Session 상태를 AUDIO_UPLOADED 로 전이한다.
@@ -265,6 +278,7 @@ def upload_audio(
         duration_ms=resolved_duration,
         checksum_sha256=stored.checksum_sha256,
         uploaded_by_id=current_user.id,
+        consent_at=_consent_time(consent_at),
     )
 
     db.add(audio)
@@ -284,6 +298,7 @@ def upload_audio(
             "size_bytes": stored.size_bytes,
             "mime_type": mime_type,
             "duration_ms": resolved_duration,
+            "consent": consent_at is not None,
         },
     )
 

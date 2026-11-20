@@ -5,7 +5,7 @@
 //    연결이 없을 때만 저장한 것을 내준다. 새 문서를 받으면 그 문서가 쓰지 않는 옛 화면 파일(assets)은 지운다.
 //  - 화면 파일(/assets/* — 빌드마다 이름이 바뀌므로 내용이 안 바뀜) · 앱 아이콘(/app/*): 저장한 것이 있으면 그것, 없으면 받아서 저장.
 //  - 글꼴(Google Fonts): 저장한 것을 먼저, 뒤에서 새로 받아 둔다.
-//  - 폰 알림(2026-11-19, API_CONTRACT 27절): 서버가 보낸 푸시(상담 30분 전 · 시험)를 띄우고, 누르면 앱의 그 화면을 연다.
+//  - 폰 알림(2026-11-19, API_CONTRACT 27절): 서버가 보낸 푸시(상담 30분 전 · 아이 긴급 알림 · 시험)를 띄우고, 누르면 앱의 그 화면을 연다.
 //    문구는 서버가 정한다(아이 이름 · 사례 내용 없음). 내용을 못 읽으면 일반 문구로 띄운다(iPhone 은 푸시마다 알림을 꼭 띄워야 한다).
 //  - API(/api/*) · 아동 앱(/child-app/*) · 그 밖의 요청은 손대지 않는다(상담 자료는 폰에 저장하지 않는다 — 녹음 대기열은 앱이 따로 둔다).
 
@@ -178,6 +178,17 @@ self.addEventListener("push", (event) => {
       badge: "/app/icon-192.png",
       data: { url },
     }),
+  );
+});
+
+// 브라우저가 구독을 바꾸거나 없앴으면 같은 서버 키로 다시 구독해 둔다(11/20 점검).
+// 서비스워커에는 로그인 토큰이 없어 서버에 바로 알리지 못한다 — 앱을 열 때 syncPush 가 새 구독을 서버에 저장하고,
+// 옛 구독은 서버가 다음에 보낼 때 404 · 410 을 받고 지운다.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const key = event.oldSubscription && event.oldSubscription.options && event.oldSubscription.options.applicationServerKey;
+  if (!key || event.newSubscription) return;
+  event.waitUntil(
+    self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }).catch(() => undefined),
   );
 });
 

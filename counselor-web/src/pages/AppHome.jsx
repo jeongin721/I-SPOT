@@ -5,13 +5,100 @@
 //  - 인사: 로그인한 상담사 이름(GET /auth/me). 아래 줄은 오늘 날짜 · 오늘 상담 수.
 //  - 내 사례 현황: 담당 사례 = 내 진행 중 사례 수(useAppCases), 이번 주 상담 · 오늘 상담 = 이번 주(월~일) · 오늘 일정 중 상담(GET /schedule/events).
 //    누르면 앱 · 사례 목록.
-//  - 사내 공지사항: 공지를 둘 서버 자리가 없어 '준비 중' 한 줄만 보인다(디자인의 예시 공지 3개는 넣지 않았다).
+//  - 사내 공지사항: GET /notices(28절, 최신 20건). 누르면 내용 창, 읽은 공지는 디자인처럼 폰에 둔다(ispot-app-notice).
+//    '중요' 는 빨간 표시. 아래 줄은 '날짜 · 부서'(부서가 없으면 쓴 사람). 공지가 없으면 한 줄 안내.
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MobileAppShell from '../components/MobileAppShell';
+import { closeWithAnim } from '../components/MobileAppShellMotion';
+import { notices as noticesApi } from '../api/endpoints';
+import { useRemote } from '../data/useRemote';
 import { useAppCases } from '../data/useAppCases';
 import { addDays, mondayOf, useAppSchedule, ymd } from '../data/useAppSchedule';
 
 const W = ['일', '월', '화', '수', '목', '금', '토'];
+const READ_KEY = 'ispot-app-notice';
+
+function readMarks() {
+  try {
+    const value = JSON.parse(localStorage.getItem(READ_KEY) || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function noticeMeta(n) {
+  const d = new Date(n.created_at);
+  const who = n.team || n.author_name;
+  return `${d.getMonth() + 1}/${d.getDate()}${who ? ` · ${who}` : ''}`;
+}
+
+function Notices() {
+  const list = useRemote('notices', () => noticesApi.list(20), '공지사항을 불러오지 못했습니다.', () => false);
+  const [read, setRead] = useState(readMarks);
+  const [open, setOpen] = useState(null);
+  const ovRef = useRef(null);
+  const rows = list.data || [];
+  const unread = rows.filter((n) => !read[n.id]).length;
+  const cur = open ? rows.find((n) => n.id === open) : null;
+  const show = (n) => {
+    const next = { ...read, [n.id]: 1 };
+    // 읽음 표시가 너무 쌓이지 않게 지금 목록에 있는 공지만 남긴다.
+    const kept = Object.fromEntries(rows.filter((r) => next[r.id]).map((r) => [r.id, 1]));
+    setRead(kept);
+    try {
+      localStorage.setItem(READ_KEY, JSON.stringify(kept));
+    } catch {
+      // 저장이 막힌 브라우저 — 이번 화면에서만 읽음으로 둔다.
+    }
+    setOpen(n.id);
+  };
+  const close = () => closeWithAnim(ovRef.current, () => setOpen(null));
+  const stop = (ev) => ev.stopPropagation();
+
+  return (
+    <>
+      <div className="ma-sec-h">
+        <h2>사내 공지사항</h2>
+        {rows.length > 0 && <span className="ma-note">{unread ? `읽지 않음 ${unread}건` : '모두 읽음'}</span>}
+      </div>
+      <section className="ma-card ma-list" aria-label="사내 공지사항">
+        {rows.map((n) => (
+          <button key={n.id} type="button" className={read[n.id] ? 'ma-li' : 'ma-li ma-unread'} onClick={() => show(n)}>
+            <span className="ma-lt">
+              <b>{n.title}</b>
+              <span className="ma-note">{noticeMeta(n)}</span>
+            </span>
+            {n.important && <span className="ma-chip ma-red">중요</span>}
+          </button>
+        ))}
+        {rows.length === 0 && (
+          <div className="ma-li" style={{ cursor: 'default' }}>
+            <span className="ma-lt">
+              <span className="ma-note">{list.loading ? '불러오는 중입니다' : list.error || '공지사항이 없습니다'}</span>
+            </span>
+          </div>
+        )}
+      </section>
+      {cur && (
+        <div className="ma-ov" ref={ovRef} onClick={close}>
+          <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="공지사항" onClick={stop}>
+            <span className="ma-grab" aria-hidden="true"></span>
+            <div className="ma-sh-hd">
+              <b>{cur.title}</b>
+            </div>
+            <span className="ma-note">{noticeMeta(cur)}</span>
+            <p className="ma-body">{cur.body}</p>
+            <button type="button" className="ma-btn ma-btn-block" onClick={close}>
+              닫기
+            </button>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
 
 function HomeBody({ userId, me }) {
   const my = useAppCases(userId);
@@ -54,16 +141,7 @@ function HomeBody({ userId, me }) {
         </span>
       </Link>
       {(my.error || week.error) && <span className="ma-err">{my.error || week.error}</span>}
-      <div className="ma-sec-h">
-        <h2>사내 공지사항</h2>
-      </div>
-      <section className="ma-card ma-list" aria-label="사내 공지사항">
-        <div className="ma-li" style={{ cursor: 'default' }}>
-          <span className="ma-lt">
-            <span className="ma-note">공지사항은 준비 중이에요</span>
-          </span>
-        </div>
-      </section>
+      <Notices />
     </>
   );
 }

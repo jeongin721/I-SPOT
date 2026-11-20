@@ -15,6 +15,8 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
 import { useAdminAccounts } from '../data/useAdminAccounts';
+import { useRemote } from '../data/useRemote';
+import { auth } from '../api/endpoints';
 import { needsLogin } from '../data/screens/common';
 import { readStaffId } from '../data/screens/admin';
 import { INITIAL_STAFF_DETAIL_UI, adminStaffDetailValues } from '../data/screens/adminStaffDetail';
@@ -36,7 +38,16 @@ export default function AdminStaffDetail(props) {
   // 관리자 훅은 관리자일 때만 서버를 부른다(session.isAdmin).
   const accounts = useAdminAccounts(session);
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, staffId, accounts });
+  // 접속 IP: 이 계정의 가장 최근 로그인 성공 감사 기록(GET /auth/audit-logs?actor_id=, 관리자만).
+  const ipKey = session.isAdmin && staffId ? `staff-ip:${staffId}` : null;
+  const lastLogin = useRemote(
+    ipKey,
+    () => auth.auditLogs({ actor_id: staffId, action: 'LOGIN', status: 'SUCCESS', page: 1, page_size: 1 }),
+    '접속 기록을 불러오지 못했습니다.',
+    () => false,
+  );
+  const lastIp = lastLogin.data?.items?.[0]?.ip_address ?? null;
+  const v = useDC(Logic, { ...props, session, staffId, accounts, lastIp });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   if (!session.isAdmin) return <AdminBlocked session={session} />;
   return (

@@ -44,6 +44,8 @@ export interface CaseRow {
   lastSessionDate: string;
   /** 담당 상담사 이름. 계정이 지워졌으면 NOT_PROVIDED. */
   counselorName: string;
+  /** 담당 상담사 계정 ID. */
+  counselorId: string;
   status: CaseStatus;
   statusLabel: string;
   /** 신고접수일 · 사례연계일 · 최초면접일(서식 4 ①, 2026-10-30). 없으면 NOT_PROVIDED. */
@@ -78,6 +80,7 @@ export function toCaseRow(source: CaseListItem): CaseRow {
     birthYear: source.child_birth_year ?? null,
     lastSessionDate: toDateOnly(source.last_session_at) || NOT_PROVIDED,
     counselorName: source.counselor_name ?? NOT_PROVIDED,
+    counselorId: source.counselor_id,
     status: source.status,
     statusLabel: CASE_STATUS_LABELS[source.status],
     reportDate: source.report_date || NOT_PROVIDED,

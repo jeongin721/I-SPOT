@@ -1,6 +1,7 @@
 # /sessions/{session_id}/audio
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, File, Form, UploadFile, status
@@ -30,6 +31,10 @@ def upload_audio(
         Optional[int],
         Form(ge=0, description="클라이언트가 측정한 녹음 길이(ms). WAV 는 서버가 계산한다."),
     ] = None,
+    consent_at: Annotated[
+        Optional[datetime],
+        Form(description="녹음 동의를 확인한 시각(폰 앱 '녹음 동의 완료'). 확인하지 않은 파일은 보내지 않는다."),
+    ] = None,
 ) -> DataResponse[AudioUploadResponse]:
     session = get_session_or_404(db, session_id, current_user)
 
@@ -41,6 +46,7 @@ def upload_audio(
         content_type=file.content_type,
         file=file.file,
         duration_ms=duration_ms,
+        consent_at=consent_at,
     )
 
     return DataResponse(

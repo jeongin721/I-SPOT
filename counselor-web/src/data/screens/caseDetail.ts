@@ -94,6 +94,8 @@ export interface CaseScreenInput {
   personal?: PersonalInfoState;
   /** 콩콩 연결 상태. 꺼져 있거나 못 받았으면 null. */
   childApp?: ChildAppCase | null;
+  /** 일정에 잡힌 다음 상담 일시(useNextConsult). 없으면 '—'. */
+  nextConsult?: string | null;
 }
 
 /** '아이 앱' 칸: 미연결 · 초대 대기 · 연결됨(마지막 응답). */
@@ -236,7 +238,7 @@ export function caseHeaderValues(input: CaseScreenInput) {
       : null,
     riskChip: `위험도 ${input.signals?.topLevelLabel || NOT_PROVIDED}`,
     riskCls: input.signals?.topLevel ? RISK_CHIP[input.signals.topLevel] : "c-normal",
-    meta: info ? `${info.caseNumber} · 다음 상담 ${NOT_PROVIDED}` : "",
+    meta: info ? `${info.caseNumber} · 다음 상담 ${input.nextConsult || NOT_PROVIDED}` : "",
     uploadHref: screenHref("/UploadModal", ids),
     // 녹음하기 창(사례 상세 · 상담 이력 · 문서함, 10/29 디자인).
     recordCase: info ? `${info.alias} · ${info.caseNumber}` : "",

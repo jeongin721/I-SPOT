@@ -17,7 +17,8 @@ export default function DeleteConfirmDialog({ del }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [close]);
   if (!target) return null;
-  const ok = typed.trim() === target.confirmText;
+  // 회차는 번호를 당길지 비워 둘지 골라야 지운다(기본값 없음, 민규 #190 리뷰 2).
+  const ok = typed.trim() === target.confirmText && (target.kind !== 'session' || del.renumber !== null);
   const what = target.kind === 'case' ? '사례 번호' : '회차';
   return (
     <div className="rm-ov">
@@ -37,6 +38,22 @@ export default function DeleteConfirmDialog({ del }) {
             <span>음성 변환 · AI 분석이 진행 중인 회차입니다. 처리가 끝난 뒤 지우는 것이 안전합니다.</span>
           ) : null}
         </div>
+        {target.kind === 'session' ? (
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }} disabled={busy}>
+            <legend style={{ padding: 0, marginBottom: '6px', fontWeight: 600 }}>뒤 회차 번호</legend>
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <input type="radio" name="rm-renumber" checked={del.renumber === true} onChange={() => del.setRenumber(true)} />
+              <span>잘못 올린 회차입니다 — 뒤 회차 번호를 하나씩 당깁니다(예: 5회차 → 4회차).</span>
+            </label>
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <input type="radio" name="rm-renumber" checked={del.renumber === false} onChange={() => del.setRenumber(false)} />
+              <span>실제 상담 기록입니다 — 회차 번호를 비워 둡니다.</span>
+            </label>
+            <span className="note">
+              하나를 골라야 지울 수 있습니다. 당겨도 이미 만든 종결 요약 · 다음 상담 체크리스트 글 속 'N회차'는 옛 번호로 남습니다.
+            </span>
+          </fieldset>
+        ) : null}
         <span className="note" style={{ marginTop: '-4px' }}>
           누가 언제 지웠는지는 감사 기록에 남습니다.
         </span>

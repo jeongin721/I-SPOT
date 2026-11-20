@@ -29,7 +29,8 @@ class Logic extends DCLogic {
   }
   renderVals() {
     const live = this.props.live;
-    const K = live || {
+    // 실제 사례를 여는 중이거나 불러오지 못했으면 예시 아이(박지호)를 보이지 않고 빈 칸으로 둔다(11/20 점검).
+    const K = live || (this.props.real ? EMPTY_K : {
       ...{
         name: '박지호',
         short: '지호',
@@ -90,7 +91,7 @@ class Logic extends DCLogic {
         ],
       },
       short0: '지',
-    };
+    });
     const s = this.state;
     const hasOptsAt = (i) => (K.qs.at(i).opts || []).length > 0;
 
@@ -227,6 +228,13 @@ function kkTime(value) {
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${p(d.getMinutes())}`;
 }
 
+// 실제 사례인데 아직 값이 없을 때(불러오는 중 · 오류)의 빈 값.
+const EMPTY_K = {
+  name: '', short: '', ini: '', age: '', types: '', id: '', reason: '', rCls: 'chip',
+  last: '—', count: '—', next: '—', urgent: false, quote: '', quoteAt: '',
+  answers: [], flags: [], notes: [], qs: [], short0: '',
+};
+
 // 사례 ID 가 없는 예시 화면의 콩콩 앱 연결 값(디자인 예시 박지호).
 const MOCK_KK = { conn: '2026.09.02 오전 10:15', last: '2026.10.21 오후 9:05' };
 
@@ -260,7 +268,7 @@ export default function ChildDetail(props) {
   // 아이 글이 외부 AI 로 나가므로 상담사가 단추를 누를 때만 만든다(민규 #165 리뷰 4).
   const needed = app.data ? aiDraftNeeded(app.data) : null;
   const { createAiDraft } = app;
-  const v = useDC(Logic, { ...props, live });
+  const v = useDC(Logic, { ...props, live, real: !!caseId });
   if (caseId && needsLogin(session)) return <Navigate to="/Login" replace />;
   const notice = caseId
     ? screenNotice({

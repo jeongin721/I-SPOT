@@ -47,6 +47,8 @@ import { screenHref } from "./links";
 
 export interface BriefingScreenInput {
   session: AuthSession;
+  /** 일정에 잡힌 다음 상담 일시(useNextConsult). 없으면 '—'. */
+  nextConsult?: string | null;
   detail: CaseDetailState;
   caseId: string | null;
   signals: CaseSignalsState;
@@ -242,7 +244,7 @@ export function preBriefingValues(input: BriefingScreenInput) {
 
   return {
     ...header,
-    lead: info ? `다음 상담 ${nextNumber} · 상담 일시 ${NOT_PROVIDED}` : "",
+    lead: info ? `다음 상담 ${nextNumber} · 상담 일시 ${input.nextConsult || NOT_PROVIDED}` : "",
     firstCards: [
       ...childAppCards(input.childApp),
       firstStoryCard(source, input.history),

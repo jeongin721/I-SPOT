@@ -8,13 +8,15 @@
 //    '상담 30분 전 알림' 은 서버가, '업로드 실패 알림' 은 폰이 스스로 띄운다. 둘은 알림 받기가 켜져 있을 때만 누를 수 있다.
 //    서버에 키가 없으면 '준비 중', 이 브라우저가 못 하면(iPhone 은 홈 화면에 추가한 앱에서만 됨) '홈 화면 앱에서' 를 보인다.
 //    업로드 실패는 앱 안의 알림(종)에도 늘 보인다.
-//  - Wi-Fi에서만 올리기: 연결 종류를 아는 기능이 아직 없어 흐린 '준비 중' 스위치로 둔다(누를 수 없음).
+//  - Wi-Fi에서만 올리기(11/20): 이 폰에 기억(ispot-app-set). 켜면 모바일 데이터일 때 녹음을 미뤘다가 Wi-Fi에서 올린다(data/appRecordings).
+//    연결 종류를 알려 주지 않는 브라우저(iPhone 등)에서는 누를 수 없고 '이 폰에서는 쓸 수 없어요'.
 //  - 로그아웃: 이 폰의 알림을 먼저 끈다(다음 사람이 앞 사람 알림을 받지 않게). 그다음 웹과 같은 로그아웃. 폰에 기억한 계정 · 사례 목록도 지운다(client.clearToken).
 //    올리지 못한 녹음 · 메모는 남는다(같은 계정으로 다시 로그인하면 보인다).
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { push } from '../api/endpoints';
 import { disablePush, enablePush, pushSupported, readPushPrefs, setPushPref, syncPush } from '../data/appPush';
+import { connectionKnown, readWifiOnly, setWifiOnly } from '../data/appRecordings';
 import MobileAppShell from '../components/MobileAppShell';
 import { useTheme } from '../theme';
 
@@ -41,6 +43,24 @@ function Toggle({ label, on, onClick, off, note }) {
   );
 }
 
+function WifiOnlyToggle() {
+  const known = connectionKnown();
+  const [on, setOn] = useState(() => known && readWifiOnly());
+
+  return (
+    <Toggle
+      label="Wi-Fi에서만 올리기"
+      on={on}
+      off={!known}
+      note={known ? (on ? '모바일 데이터에서는 녹음을 미뤘다가 Wi-Fi에서 올려요' : null) : '이 폰에서는 쓸 수 없어요'}
+      onClick={() => {
+        setWifiOnly(!on);
+        setOn(!on);
+      }}
+    />
+  );
+}
+
 const ENABLE_NOTE = {
   denied: '폰 설정에서 이 앱의 알림을 허용해 주세요',
   unsupported: '홈 화면에 추가한 앱에서 켤 수 있어요',
@@ -51,6 +71,9 @@ const ENABLE_NOTE = {
 function usePushSettings() {
   const [prefs, setPrefs] = useState(readPushPrefs);
   const [ready, setReady] = useState(null);
+  // 상담 전 알림을 서버가 실제로 보내는가 · 몇 분 전인가(GET /push/config). 연결이 안 되면 offline.
+  const [loop, setLoop] = useState({ on: null, minutes: 30 });
+  const [offline, setOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
 
@@ -59,8 +82,12 @@ function usePushSettings() {
 
     push
       .config()
-      .then((config) => live && setReady(config.enabled))
-      .catch(() => live && setReady(false));
+      .then((config) => {
+        if (!live) return;
+        setReady(config.enabled);
+        setLoop({ on: config.before_session_enabled ?? config.enabled, minutes: config.before_session_minutes || 30 });
+      })
+      .catch(() => live && setOffline(true));
     syncPush()
       .then((on) => live && setPrefs({ ...readPushPrefs(), on }))
       .catch(() => undefined);
@@ -99,9 +126,13 @@ function usePushSettings() {
   const supported = pushSupported();
   // 서버 키가 없으면 '준비 중'. 이 브라우저가 못 하면 켤 때 안내한다(누르기 전에도 보인다).
   const masterOff = ready === false;
-  const masterNote = masterOff ? '준비 중' : note ?? (supported ? null : ENABLE_NOTE.unsupported);
+  const masterNote = masterOff
+    ? '준비 중'
+    : note ?? (offline && ready === null ? '연결을 확인해 주세요' : supported ? null : ENABLE_NOTE.unsupported);
+  // 키는 있어도 상담 전 알림 발송이 꺼져 있으면 그 스위치만 '준비 중'.
+  const loopOff = masterOff || loop.on === false;
 
-  return { prefs, busy, masterOff, masterNote, toggleOn, toggle };
+  return { prefs, busy, masterOff, masterNote, toggleOn, toggle, loopOff, minutes: loop.minutes };
 }
 
 function SettingsBody({ me, logout }) {
@@ -138,16 +169,16 @@ function SettingsBody({ me, logout }) {
           note={pushUi.masterOff ? '준비 중' : null}
         />
         <Toggle
-          label="상담 30분 전 알림"
-          on={!subOff && pushUi.prefs.before_session}
+          label={`상담 ${pushUi.minutes}분 전 알림`}
+          on={!subOff && !pushUi.loopOff && pushUi.prefs.before_session}
           onClick={pushUi.toggle('before_session')}
-          off={subOff}
-          note={pushUi.masterOff ? '준비 중' : null}
+          off={subOff || pushUi.loopOff}
+          note={pushUi.loopOff ? '준비 중' : null}
         />
       </section>
       <p className="ma-sec-t">업로드</p>
       <section className="ma-card ma-grp">
-        <Toggle label="Wi-Fi에서만 올리기" on={false} off />
+        <WifiOnlyToggle />
       </section>
       <p className="ma-sec-t">앱 정보</p>
       <section className="ma-card ma-grp">
