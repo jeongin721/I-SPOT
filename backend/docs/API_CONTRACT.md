@@ -1508,8 +1508,10 @@ API 모양은 바뀌지 않는다. `ModelingAIAdapter` 로 분석할 때만 그 
 모두 **선택**이라 AI 가 보내지 않으면 빈 배열(`[]`)이 된다. `schema_version` 은 `"1.0"` 그대로이고,
 이 필드가 생기기 전에 저장된 결과도 그대로 읽힌다(응답에는 빈 배열로 나온다).
 지금 `mock` · `pipeline` · `langgraph` 는 이 필드를 만들지 않아 모두 빈 배열이다.
-`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). `severity_ratings` · `session_change_notes` 의 `segment_ids` 는
-아직 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 자체도 늘 빈 배열이다.
+`modeling` 은 이 4개를 채운다(`ai/modeling/abuse/contract_adapter.py`). `severity_ratings[].segment_ids` 는 2026-11-20 부터 채운다 —
+같은 유형 `risk_utterances` 중 `matched_evidence`(근거 발췌)와 글이 겹치는 발화의 번호, 겹치는 것이 없으면 같은 유형 발화 전부(유형에 위험 신호가
+없으면 빈 배열). Transcript 에 없는 번호는 서버가 저장 전에 지운다(제안은 남는다). 화면(위험 신호 확인)은 이 번호를 가리키는 근거 발화를 먼저 보인다.
+`session_change_notes` 의 `segment_ids` 는 아직 늘 빈 배열이고, 서버 경로는 `case_id` 를 넘기지 않아 `session_change_notes` 자체도 늘 빈 배열이다.
 `followup_check_points[].segment_ids` 는 2026-10-27(#84)부터 `modeling` 이 채운다 — LLM 이 인용한 발화 번호를 실제 발화 목록과
 대조해 남기고, 유효한 근거가 하나도 없는 메모는 모델 쪽에서 뺀다. 그 전에 저장된 결과는 빈 배열이다.
 

@@ -441,9 +441,11 @@ def test_optional_fields_are_filled_from_module_output(modeling) -> None:
             "level": 3,
             "reason": "가상 심각도 근거",
             "matched_evidence": "가상 발췌",
-            "segment_ids": [],
+            # 발췌와 겹치는 발화가 없으면 같은 유형 위험 신호 발화 전부(2026-11-20).
+            "segment_ids": ["seg_002"],
             "reviewed": False,
         },
+        # 같은 유형 위험 신호가 없으면 빈 배열.
         {"major_type": "방임", "level": None, "reason": "", "matched_evidence": "", "segment_ids": [], "reviewed": False},
     ]
     assert stored["protective_factors"] == [
@@ -451,6 +453,40 @@ def test_optional_fields_are_filled_from_module_output(modeling) -> None:
     ]
     assert stored["session_change_notes"] == [{"text": "가상 회차 변화", "segment_ids": []}]
     assert stored["followup_check_points"] == [{"text": "가상 확인사항", "segment_ids": ["seg_002"]}]
+
+
+def test_severity_segment_ids_follow_matched_evidence(modeling) -> None:
+    """심각도 제안의 근거 발화 번호(2026-11-20): 발췌와 겹치는 같은 유형 발화만, 없으면 같은 유형 전부."""
+
+    points = [
+        dict(GROUNDED_POINT, text="아빠가 화나면 때려요.", segment_ids=["seg_002"]),
+        dict(GROUNDED_POINT, text="엄마가 머리를 잡아당겼어요", segment_ids=["seg_003"]),
+        dict(GROUNDED_POINT, text="네", segment_ids=["seg_001"]),
+        dict(GROUNDED_POINT, major_type="정서학대", text="너 같은 건 필요 없대요", segment_ids=["seg_001"]),
+    ]
+    modeling["result"]["record_draft"]["risk_signal_points"] = points
+    modeling["result"]["major_types"]["정서학대"] = {"detected": True}
+    modeling["result"]["severity_ratings"] = [
+        # 따옴표 · 띄어쓰기가 달라도 겹치는 발화만 고른다(짧은 '네'는 견주지 않는다).
+        {"major_type": "신체학대", "level": 4, "reason": "r", "matched_evidence": "“엄마가 머리를 잡아 당겼어요” 라고 함", "reviewed": False},
+        # 말을 바꿔 적어 겹치는 발화가 없으면 같은 유형 전부.
+        {"major_type": "정서학대", "level": 2, "reason": "r", "matched_evidence": "존재를 부정하는 말", "reviewed": False},
+        {"major_type": "성학대", "level": None, "reason": "", "matched_evidence": "", "reviewed": False},
+    ]
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert [rating["segment_ids"] for rating in stored["severity_ratings"]] == [["seg_003"], ["seg_001"], []]
+
+
+def test_severity_segment_ids_outside_transcript_are_removed(modeling) -> None:
+    """Transcript 에 없는 근거 번호는 심각도 제안에서 지운다(제안 자체는 남는다)."""
+
+    modeling["result"]["record_draft"]["risk_signal_points"] = [dict(GROUNDED_POINT), dict(GROUNDED_POINT, text="다른 말", segment_ids=["seg_999"])]
+
+    stored = ModelingAIAdapter().analyze(TRANSCRIPT).result.model_dump()
+
+    assert stored["severity_ratings"][0]["level"] == 3 and stored["severity_ratings"][0]["segment_ids"] == ["seg_002"]
 
 
 def test_followup_check_points_accept_legacy_strings(modeling) -> None:
