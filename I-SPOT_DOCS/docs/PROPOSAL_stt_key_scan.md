@@ -100,3 +100,41 @@
 > **2026-11-03 바뀜(민규 님)**: 답 3 의 '유형 이름 표시'는 지금도 칩으로는 보이지 않지만, 원문 확정 전 STT 검수 화면이 1차 유형으로 고른 **'임시' 관련 조문**(아동복지법 제17조 해당 호 — 신체 3 · 정서 5 · 성 2 · 방임 6)을 그 발화 아래 보인다(점선 테두리 · '임시 · 1차 모델' 표, 범례 안내). 원문을 확정하고 AI 분석이 끝나면 분석 결과의 조문만 보인다. 화면만 바뀜 — Backend · Contract 변경 없음.
 
 순서(민규 님): signal-history API → key_scan Backend → case_context PR 1 → law-guide API. AI PR 1 이 늦으면 Backend 는 가짜 모듈 시험으로 먼저 올리고 머지는 PR 1 뒤.
+
+## 9. 정밀도 개선 — 관련 없는 발화에 '임시' 조문이 붙는 문제 (2026-11-06)
+
+11/06 데모 화면: 같은 구간의 아동 발화 여섯 줄("네, 없어요. 아빠가 교육 또 갔다 왔어요" · "아니요. 발 옆에 떨어졌어요" 까지)에 모두 조문이 붙었다(다섯 줄 신체 · 한 줄 정서).
+원인은 조문 검색이 아니다 — 화면의 조문은 유형 → 아동복지법 제17조 해당 호 **고정 표**(`counselor-web/src/data/screens/sttReview.ts` 의 `keyScanLaws`)이고,
+문제는 **1차 모델이 어느 줄을 고르느냐**(`quick_risk_scan` → `key_scan_refine`)다.
+
+| 원인 | 내용 |
+| --- | --- |
+| 되돌림 규칙 | 10/30 `pick_segments`: 덩어리(500자)에서 걸린 유형이 어느 줄에서도 다시 안 걸리면 **덩어리 아동 발화 전체**에 붙임. 화면에 유형이 안 보일 때는 괜찮았으나 11/03 조문 칩이 생기면서 가장 큰 오탐 원인이 됨 |
+| 회기 단위 라벨 | 모델은 AI-Hub 회기 '학대여부' 점수(`consultation_preprocessor.extract_multilabel`)로 학습돼 발화 단위 라벨이 없음. 질문 1개 + 답 1개짜리 짧은 입력의 판정은 흔들림 |
+| 확률 없이 0.5 | `_simplify_predictions` 가 확률을 버리고 checkpoint 임계값(macro F1 기준)만 씀. 정식 분석은 2차 LLM 이 "1차가 탐지했어도 근거 없으면 빈 배열"(`second_stage_llm` 원칙 3 · 4)로 거르지만, 스캔은 1차 결과가 **그대로** 화면에 감 |
+| 부정 응답 필터 | 성학대에만 있음(10/01 검증에서 신체 · 정서 · 방임은 해가 커서 뺌). "네, 없어요" 류는 안 걸러짐. 키워드 규칙 재도입은 같은 이유로 하지 않음 |
+
+### 바꾼 것 (AI 쪽만 — Contract · Backend · 화면 변경 없음)
+
+| 곳 | 내용 |
+| --- | --- |
+| `infer_abuse_v3_adapter.predict_major_types_detail` · `_batch` | `predict_major_types(qa)` 와 같은 판정 경로(순서 유지 QA 텍스트 · checkpoint 임계값 · 부정 응답 필터)에 확률 · 임계값을 붙여 줌. **서버 안 스캔 전용** — Contract 에는 여전히 유형만 나감. 줄 판정은 여러 줄을 한 번에(동적 패딩, `infer_abuse_qa_v3.predict_probabilities_batch`) — 512 로 채우던 때보다 훨씬 싸다 |
+| `key_scan_refine` | 줄 확률 ≥ 줄 임계값(기본 checkpoint 값, `KEY_SCAN_LINE_THRESHOLD` 로 올림)인 줄에만 붙임. 덩어리에서만 걸린 유형은 `KEY_SCAN_CHUNK_FALLBACK` — `top1`(기본: 확률 가장 높은 줄 하나, `KEY_SCAN_FALLBACK_MIN_PROBABILITY` 0.2 이상) · `none` · `all`(10/30 규칙). 줄 판정 상한 `KEY_SCAN_MAX_LINE_PREDICTIONS` 기본 400(걸린 덩어리부터, 못 든 덩어리는 `all` 일 때만 덩어리 전체 + 경고 로그). 설정은 환경 변수(루트 `.env.example`), 잘못된 값은 경고 뒤 기본값 |
+| `experiments/key_scan_eval.py` (0단계 측정) | `sheet`(전사본 → 라벨 시트 CSV, 아동 발화마다 gold_types 를 사람이 적음) → `score`(모델을 **한 번만** 돌려 덩어리 · 줄 확률을 JSONL 로, 상한 없이, 시간 기록, `--self-check` 로 묶음 판정 = 한 줄 판정 확인) → `evaluate`(같은 점수로 지금 설정 · 10/30 규칙 · 임계값 × 되돌림 조합의 정밀도 · 재현율 · F1 표, 모델 없이 어디서나). 시트 · 점수에는 원문이 들어가니 `results/` 아래에 두고 올리지 않음 |
+
+기본값은 **되돌림만** 바꿨다(all → top1). 줄 임계값은 라벨 데이터가 생기기 전까지 checkpoint 값 그대로다 — 올릴 값은 0단계 표로 정한다.
+
+```bash
+python experiments/key_scan_eval.py sheet    --transcripts results/key_scan/transcripts/ --out results/key_scan/labels.csv
+python experiments/key_scan_eval.py score    --transcripts results/key_scan/transcripts/ --out results/key_scan/scores.jsonl --self-check 20
+python experiments/key_scan_eval.py evaluate --scores results/key_scan/scores.jsonl --labels results/key_scan/labels.csv --out results/key_scan/report.md
+```
+
+### 다음
+
+| 단계 | 내용 |
+| --- | --- |
+| 0 | 데모 녹취(11/06 화면 것 포함)로 시트 라벨링 — 아동 발화 100~200줄. `evaluate` 표로 `KEY_SCAN_LINE_THRESHOLD` · `KEY_SCAN_CHUNK_FALLBACK` 을 정하고, `score` 가 적는 시간으로 상한(400) · `KEY_SCAN_TIMEOUT_SECONDS` 를 확인 |
+| 1 (뒤) | 줄 입력을 학습 분포에 맞추기 — 덩어리에서 그 줄을 뺐을 때 확률이 얼마나 떨어지는지(leave-one-out) 또는 앞뒤 3~5턴 창. 0단계 표로 효과를 보고 결정 |
+| 2 | 정식 분석의 2차 LLM 이 근거로 인용한 줄(`risk_utterances.segment_ids`)을 약한 라벨로 모아 줄 단위 분류기(서버 안 데이터 · 마스킹 규칙 확인) |
+| 화면(선택) | 모델을 고치기 전 완화 — key 보기에서 조문 칩을 접고 '관련 조문 보기' 토글(§8 답 3 의 원래 취지) |

@@ -157,6 +157,10 @@ def build_envelope(db: Session, session: ConsultationSession) -> TranscriptEnvel
 
     transcript = get_latest_transcript(db, session.id)
 
+    # 원문 수정 뒤 다시 스캔(key_scan REFRESHING)이 제한 시간을 한참 넘겼으면 FAILED 로 마감한다(작업이 사라진 경우).
+    if transcript is not None:
+        key_scan_service.expire_stale(db, transcript)
+
     return TranscriptEnvelope(
         session_id=session.id,
         session_status=session.status,
@@ -332,6 +336,10 @@ def _save_stt_result(
         or 0
     ) + 1
 
+    # 스캔 결과가 어느 version 의 원문으로 만든 것인지 적는다(key_scan.scanned_version — API_CONTRACT 7절).
+    if isinstance(key_scan, dict) and key_scan.get("status") == key_scan_service.STATUS_DONE:
+        key_scan = {**key_scan, "scanned_version": next_version}
+
     transcript = Transcript(
         session_id=session.id,
         version=next_version,
@@ -468,8 +476,14 @@ def update_transcript(
         stt_provider=latest.stt_provider,
         stt_model=latest.stt_model,
         created_by_id=current_user.id,
-        # 지운 발화만 빼고 복사한다(문장이 바뀐 발화를 다시 스캔하지 않음 — 임시 표시라서).
-        key_scan=key_scan_service.copy_for_new_version(latest.key_scan, removed),
+        # modeling 이면 직전 결과를 복사해 두고 REFRESHING 으로 시작한다 — 저장한 원문으로 다시 스캔하는 작업은 응답 뒤
+        # 백그라운드로 돈다(api/v1/transcript.update_transcript → key_scan_service.schedule_refresh, 2026-11-09).
+        # 아니면 예전처럼 지운 발화만 빼고 복사한다.
+        key_scan=(
+            key_scan_service.begin_refresh(latest.key_scan, removed)
+            if key_scan_service.should_refresh()
+            else key_scan_service.copy_for_new_version(latest.key_scan, removed)
+        ),
     )
 
     db.add(new_transcript)

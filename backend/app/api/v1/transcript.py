@@ -15,7 +15,7 @@ from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptUpdateRequest,
 )
-from app.services import transcript_service, voice_marks_service
+from app.services import key_scan_service, transcript_service, voice_marks_service
 from app.services.access import get_session_or_404
 
 router = APIRouter(prefix="/sessions", tags=["transcript"])
@@ -72,9 +72,14 @@ def update_transcript(
     payload: TranscriptUpdateRequest,
     db: DbSession,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ) -> DataResponse[TranscriptResponse]:
     session = get_session_or_404(db, session_id, current_user)
     transcript = transcript_service.update_transcript(db, session, current_user, payload)
+
+    # 저장한 원문으로 '1차 임시 핵심 발화' 를 다시 스캔한다(AI_PROVIDER=modeling, 응답은 REFRESHING — API_CONTRACT 7절).
+    # 응답을 막지 않도록 백그라운드로 돌리고, 끝나면 GET /transcript 의 key_scan 이 DONE · FAILED 로 바뀐다.
+    key_scan_service.schedule_refresh(background_tasks, transcript)
 
     return DataResponse(data=transcript_service.to_transcript_response(transcript))
 

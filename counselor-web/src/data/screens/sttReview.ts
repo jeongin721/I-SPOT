@@ -9,7 +9,8 @@
 //    원문 확정 전이면 이 보기로 먼저 연다(디자인 view 'key' — 제목 '1차 임시 핵심 발화' · 칩 '임시 · 검수 전'). 이 보기의 줄은
 //    디자인처럼 고치지 않고 읽기만 한다. '전체 STT 보기' · '저신뢰 구간 보기' 를 다시 누르면 이 보기로 돌아온다(디자인 토글).
 //    스캔이 없거나(null · FAILED · SKIPPED · 빈 목록) 확정 뒤 · 주소에 seg 가 있으면 전체 STT 로 연다. 유형 칩은 보이지 않고,
-//    11/03 부터 원문 확정 전에는 그 유형의 '임시' 관련 조문을 발화 아래 보인다(keyScanLaws).
+//    원문 확정 전에는 아이 말이 그 유형의 행위 예시와 닮은 발화에만 '임시' 관련 조문을 닮은 예시와 함께 보인다(keyScanLaws,
+//    11/09). 11/03 의 유형 → 제17조 호 고정 표는 오탐이 커서 11/19 에 뺐다 — 근거(닮은 예시) 없는 조문은 보이지 않는다.
 //  - 화자는 Backend 5종(아동 · 상담원 · 보호자 · 기타 · 화자 미확인)만 쓴다. '사례관리대상자' 는 Backend 에 없다.
 //
 // 10/21 디자인(counselor-design/screens/SttReview.dc.html) 반영:
@@ -48,12 +49,11 @@ import type { LegalReference, RiskUtterance } from "../../api/types";
 import { NOT_PROVIDED } from "../caseRows";
 import { formatClock } from "../time";
 import type { SessionAnalysisState } from "../useSessionAnalysis";
-import type { TranscriptReviewState } from "../useTranscriptReview";
+import type { KeyScanReference, TranscriptReviewState } from "../useTranscriptReview";
 import type { AudioPlayerState } from "../useAudioPlayer";
 import type { VoiceMarksState } from "../useVoiceMarks";
 import { marksBySegment, reasonLabel, type SegmentMarks, type VoiceCue, voiceMarksSummary } from "../voiceMarkRows";
 import { isLowConfidence, type SegmentRow, SPEAKER_LABELS, SPEAKER_OPTIONS } from "../transcriptRows";
-import { LAW_SOURCES } from "./lawGuideRefs";
 import { type ScreenIds, screenHref, withBack } from "./links";
 import { processHeaderValues } from "./process";
 import { type SessionScreenInput, sessionPickValues } from "./sessionDetail";
@@ -76,42 +76,49 @@ export interface LawLine {
   url: string | null;
   /** 임시 조문이면 덧말(원문 확정 전 1차 모델 유형으로 고른 것). AI 분석 결과의 조문은 없음. */
   tmp?: string;
+  /** 왜 이 조문인지 — 발화와 닮은 행위 예시(2026-11-09, key_scan legal_references.excerpt). 없으면 빈 값. */
+  why?: string;
 }
 
 /**
- * 1차 임시 핵심 발화 유형 → 아동복지법 제17조 해당 호(2026-11-03). 문구는 법령 · 매뉴얼 화면(lawGuideRefs.ts 의 cw17)과 같고,
- * AI 분석의 조문 연결(ai/modeling/abuse/legal_reference_adapter.py)도 유형마다 이 호(신체 3 · 정서 5 · 성 2 · 방임 6)를 고른다.
+ * 서버가 준 임시 조문 하나 → 줄. 법령 이름 · 조문이 없거나 **닮은 예시(excerpt)가 없으면 null** — 근거 없이 유형만으로 붙은
+ * 조문(11/09~11/19 사이 매칭 모델을 못 올린 서버가 저장한 결과)은 보이지 않는다. 국가법령정보센터 주소만 링크로 쓴다.
  */
-const KEY_SCAN_ARTICLES: Record<string, { art: string; sum: string }> = {
-  PHYSICAL: { art: "제17조 제3호", sum: "아동의 신체에 손상을 주거나 신체의 건강 및 발달을 해치는 신체적 학대행위" },
-  EMOTIONAL: { art: "제17조 제5호", sum: "아동의 정신건강 및 발달에 해를 끼치는 정서적 학대행위" },
-  SEXUAL: {
-    art: "제17조 제2호",
-    sum: "아동에게 음란한 행위를 시키거나 이를 매개하는 행위 또는 아동을 대상으로 하는 성희롱 등의 성적 학대행위",
-  },
-  NEGLECT: {
-    art: "제17조 제6호",
-    sum: "자신의 보호 · 감독을 받는 아동을 유기하거나 의식주를 포함한 기본적 보호 · 양육 · 치료 및 교육을 소홀히 하는 방임행위",
-  },
-};
+function keyScanLineFromReference(reference: KeyScanReference): LawLine | null {
+  if (!isLegalReference(reference)) return null;
+  const excerpt = typeof reference.excerpt === "string" ? reference.excerpt.trim() : "";
+  if (!excerpt) return null;
+  const type = typeof reference.abuse_type === "string" ? reference.abuse_type : "";
+  const itemLabel = typeof reference.item_label === "string" ? reference.item_label : "";
+  const art = [reference.article, itemLabel].filter(Boolean).join(" ");
+  const url = typeof reference.portal_url === "string" ? reference.portal_url : "";
+  return {
+    key: `tmp|${type || "관련"}|${reference.law_name}|${art}`,
+    sig: LAW_TYPE_LABELS[type] ?? "관련",
+    law: reference.law_name,
+    art,
+    sum: typeof reference.text === "string" ? reference.text : "",
+    url: url.startsWith("https://www.law.go.kr/") ? url : null,
+    tmp: "임시 · 1차 모델",
+    why: `닮은 예시 "${excerpt}"`,
+  };
+}
 
-/** 1차 임시 핵심 발화(key_scan)의 발화별 유형 → 발화 ID 별 임시 관련 조문. 모르는 유형은 건너뛴다. */
-export function keyScanLaws(keyTypes: Record<string, string[]>): Map<string, LawLine[]> {
+/**
+ * 1차 임시 핵심 발화(key_scan)의 발화별 조문 → 발화 ID 별 임시 관련 조문.
+ * 서버가 발화마다 준 legal_references(2026-11-09) 가운데 닮은 예시가 있는 것만 — 아이 말이 그 유형의 행위 예시와 닮을 때만
+ * 들어 있다. 없으면 조문 없이 '먼저 들어볼 곳'으로만 남는다.
+ * 2026-11-19: 1차 유형 → 제17조 호 고정 표는 쓰지 않는다. 그 표는 앞 상담사 질문만 보고 걸린 줄("네, 없어요" ·
+ * "발 옆에 떨어졌어요")에도 같은 호를 붙여 오탐이 컸다(11/06 · 11/19 화면). 그 칸이 없는 예전 결과도 조문 없이 보인다.
+ */
+export function keyScanLaws(keyLaws: Record<string, KeyScanReference[] | undefined>): Map<string, LawLine[]> {
   const bySegment = new Map<string, LawLine[]>();
-  for (const [segmentId, types] of Object.entries(keyTypes)) {
+  for (const [segmentId, references] of Object.entries(keyLaws)) {
+    if (!Array.isArray(references)) continue;
     const lines: LawLine[] = [];
-    for (const type of types) {
-      const article = KEY_SCAN_ARTICLES[type];
-      if (!article || lines.some((line) => line.key === `tmp|${type}`)) continue;
-      lines.push({
-        key: `tmp|${type}`,
-        sig: LAW_TYPE_LABELS[type] ?? "관련",
-        law: LAW_SOURCES.cw[0],
-        art: article.art,
-        sum: article.sum,
-        url: LAW_SOURCES.cw[1],
-        tmp: "임시 · 1차 모델",
-      });
+    for (const reference of references) {
+      const line = keyScanLineFromReference(reference);
+      if (line && !lines.some((item) => item.key === line.key)) lines.push(line);
     }
     if (lines.length > 0) bySegment.set(segmentId, lines);
   }
@@ -321,6 +328,10 @@ export function sttReviewValues(input: SttScreenInput) {
   if (view === "key" && !hasKey) view = "all";
   // 가리킬 발화(주소의 seg · 재생 바 표시)가 핵심 목록에 없으면 전체 보기로 — 핵심 보기를 남긴 채 &seg= 로 와도 그 줄이 보이게(민규 #115 R4).
   if (view === "key" && focusId && !keyRows.some((row) => row.segmentId === focusId)) view = "all";
+  // 보기를 고르지 않은 채(auto) 전체 STT 에서 고치기 시작하면 그 보기를 고정한다. 원문을 저장하면 서버가 핵심 발화를 다시
+  // 고르는데(key_scan REFRESHING → DONE), 처음에 0건이던 핵심 발화가 그 결과로 생기면 auto 가 읽기 전용 '핵심 발화' 보기로
+  // 넘어가 고치던 입력칸이 사라진다(#188 리뷰). 고치기를 시작하는 단추(문장 누르기 · 화자 목록 열기)가 이 값을 같이 넣는다.
+  const pinAll: Partial<SttUiState> = state.view === "auto" && view === "all" ? { view: "all" } : {};
   const home = hasKey ? "key" : "all";
   // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게). 표시할 줄도 둔다.
   const visible =
@@ -342,7 +353,7 @@ export function sttReviewValues(input: SttScreenInput) {
   // 판정이 아니라 다시 들어 볼 곳의 참고이며, 원문을 확정하고 분석이 끝나면 분석 결과의 조문으로 바뀐다.
   const tmpLaws = !analysis.analysis && review.info && !review.info.confirmed;
   const laws = tmpLaws
-    ? keyScanLaws(review.info?.keyTypes ?? {})
+    ? keyScanLaws(review.info?.keyLaws ?? {})
     : lawsBySegment(analysis.analysis?.riskUtterances ?? []);
   const markMap = marksBySegment(voice.marks);
   const markSummary = voiceMarksSummary(voice.marks, review.info?.version ?? null, voice.waiting);
@@ -388,7 +399,7 @@ export function sttReviewValues(input: SttScreenInput) {
     const tapPick = !tap
       ? null
       : lineEditable
-        ? () => setState({ editSeg: editing ? null : key, spOpen: null })
+        ? () => setState({ editSeg: editing ? null : key, spOpen: null, ...pinAll })
         : canPlay
           ? () => void player.playFrom(row.startMs)
           : null;
@@ -419,7 +430,7 @@ export function sttReviewValues(input: SttScreenInput) {
       spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
-      toggleSp: () => setState({ spOpen: open ? null : key }),
+      toggleSp: () => setState({ spOpen: open ? null : key, ...pinAll }),
       /** 목록에서 Esc 를 누르면 닫는다. */
       spKey: (event: { key: string }) => {
         if (open && event.key === "Escape") setState({ spOpen: null });
@@ -507,7 +518,7 @@ export function sttReviewValues(input: SttScreenInput) {
       spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
-      toggleSp: () => setState({ spOpen: open ? null : key }),
+      toggleSp: () => setState({ spOpen: open ? null : key, ...pinAll }),
       spKey: (event: { key: string }) => {
         if (open && event.key === "Escape") setState({ spOpen: null });
       },
@@ -526,7 +537,7 @@ export function sttReviewValues(input: SttScreenInput) {
         const sentenceKey = okKey(row.segmentId);
         const on = index === editing;
         const pick = lineEditable
-          ? () => setState({ editSeg: on ? null : sentenceKey, spOpen: null })
+          ? () => setState({ editSeg: on ? null : sentenceKey, spOpen: null, ...pinAll })
           : group[index].play;
         return {
           key: row.segmentId,
@@ -710,8 +721,19 @@ export function sttReviewValues(input: SttScreenInput) {
       : "녹음 파일이 없어 다시 듣기를 할 수 없습니다.",
     cueNote: [voice.error ?? markSummary.text, markSummary.versionNote, CUE_LIMITS].filter(Boolean).join(" "),
     lawNote: tmpLaws
-      ? "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화에 '임시' 관련 조문을 표시합니다. 원문을 확정하고 AI 분석이 끝나면 " +
-        "분석 결과의 조문으로 바뀝니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다."
+      ? [
+          review.info?.keyScanStatus === "REFRESHING"
+            ? "저장한 원문으로 임시 조문을 다시 고르는 중입니다(지금 보이는 것은 저장 전 결과)."
+            : review.info?.keyScanStatus === "FAILED"
+              ? "저장한 원문으로 다시 고르지 못해 저장 전 결과를 보입니다."
+              : "",
+          "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화 가운데 아이 말이 그 유형의 행위 예시와 닮은 발화에만 '임시' 관련 " +
+            "조문을 표시하고, 닮은 예시를 함께 보입니다. 닮은 예시가 없으면 조문 없이 발화만 보입니다. 원문을 저장하면 저장한 원문으로 " +
+            "다시 고릅니다. 원문을 확정하고 AI 분석이 끝나면 " +
+            "분석 결과의 조문으로 바뀝니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
+        ]
+          .filter(Boolean)
+          .join(" ")
       : "학대 유형이 감지된 발화에 관련 조문을 표시합니다(AI 분석이 끝난 뒤). 원문보기를 누르면 국가법령정보센터에서 " +
         "조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
     error: review.error,
