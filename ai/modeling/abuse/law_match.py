@@ -239,7 +239,8 @@ def load_anchors(path: str = "") -> dict[str, list[str]]:
         return anchors
     try:
         extra = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    # ValueError: JSON 모양 오류(JSONDecodeError)와 UTF-8 이 아닌 파일(UnicodeDecodeError — 예: CP949 로 저장)을 함께 받는다.
+    except (OSError, ValueError) as error:
         logger.warning("%s 파일을 읽지 못해 내장 앵커만 씁니다. type=%s", ENV_ANCHORS, type(error).__name__)
         return anchors
     if not isinstance(extra, dict):
@@ -407,8 +408,23 @@ def reset_matcher() -> None:
     getattr(_statute_from_cache, "cache_clear", lambda: None)()
 
 
+#: 매칭 오류 경고를 종류마다 한 번만 남긴다(발화마다 부르므로 같은 오류가 수백 줄 쌓이지 않게).
+_logged_match_errors: set[str] = set()
+
+
 def references_for(text: str, types: Sequence[str]) -> list[dict[str, Any]]:
-    return get_matcher().references_for(text, types)
+    """1차 스캔이 발화마다 부른다. 매칭기 준비 · 임베딩 중 어떤 오류가 나도 예외를 올리지 않고 빈 목록을 준다 —
+    조문은 덤이라, 매칭 오류로 스캔 전체가 FAILED 가 되어 '먼저 들어볼 곳'까지 사라지면 안 된다(#188 리뷰).
+    로그에는 오류 종류만 남긴다(발화 글 · 예외 문구는 남기지 않는다)."""
+
+    try:
+        return get_matcher().references_for(text, types)
+    except Exception as error:  # noqa: BLE001 — 조문 매칭 실패가 1차 스캔을 실패시키지 않는다
+        name = type(error).__name__
+        if name not in _logged_match_errors:
+            _logged_match_errors.add(name)
+            logger.warning("임시 조문 매칭 중 오류가 나 이 발화에는 조문을 붙이지 않습니다. type=%s", name)
+        return []
 
 
 def similarities(text: str) -> dict[str, dict[str, Any]] | None:
