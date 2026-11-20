@@ -94,6 +94,9 @@ import type {
   VoiceMarks,
   Memo,
   MemoCreateRequest,
+  Notice,
+  NoticeCreateRequest,
+  NoticeUpdateRequest,
   MemoUpdateRequest,
   BriefingChecks,
 } from "./types";
@@ -706,6 +709,25 @@ export const memos = {
 
   remove(memoId: string): Promise<void> {
     return api.delete<void>(`/memos/${memoId}`);
+  },
+};
+
+// 사내 공지사항(28절, 2026-11-20). 최신부터. 쓰고 고치고 지우기는 관리자만(403).
+export const notices = {
+  list(limit = 20): Promise<Notice[]> {
+    return api.get<Notice[]>("/notices", { limit });
+  },
+
+  create(payload: NoticeCreateRequest): Promise<Notice> {
+    return api.post<Notice>("/notices", payload);
+  },
+
+  update(noticeId: string, payload: NoticeUpdateRequest): Promise<Notice> {
+    return api.patch<Notice>(`/notices/${noticeId}`, payload);
+  },
+
+  remove(noticeId: string): Promise<void> {
+    return api.delete<void>(`/notices/${noticeId}`);
   },
 };
 

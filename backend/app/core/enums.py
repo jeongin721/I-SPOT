@@ -424,6 +424,10 @@ class AuditAction(str, Enum):
     MEMO_CREATED = "MEMO_CREATED"
     MEMO_UPDATED = "MEMO_UPDATED"
     MEMO_DELETED = "MEMO_DELETED"
+    # 사내 공지사항(28절). 제목 · 본문은 남기지 않는다(중요 여부 · 바뀐 칸 이름만).
+    NOTICE_CREATED = "NOTICE_CREATED"
+    NOTICE_UPDATED = "NOTICE_UPDATED"
+    NOTICE_DELETED = "NOTICE_DELETED"
     # 브리핑 확인할 사항 체크(26절). 문장은 남기지 않는다(켬 · 끔과 개수만).
     BRIEFING_CHECK_UPDATED = "BRIEFING_CHECK_UPDATED"
     # 문서함(2026-11-05). detail 에는 파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 넣지 않는다).

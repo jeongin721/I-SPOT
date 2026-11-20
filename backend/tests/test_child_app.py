@@ -398,11 +398,39 @@ def test_contact_request_opens_alert(client: TestClient, counselor_headers: Head
     assert [item["reason"] for item in _open(client, counselor_headers)] == ["CONTACT_REQUEST"]
 
 
-def test_amber_answer_does_not_open_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+def test_amber_answer_needs_check_and_can_be_acknowledged(
+    client: TestClient, counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    # 살펴볼 답(AMBER)도 확인할 알림이 되어 상담사가 확인하면 목록의 '확인 필요'가 꺼진다(11/20). 긴급은 아니다.
     device = _linked(client, counselor_headers, case["id"])
     _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
             [{"question_id": "safe", "choice_index": 1}, *_skips("home", "meal")])
+    mine = _open(client, counselor_headers)
+    assert [(item["reason"], item["urgent"], item["can_ack"]) for item in mine] == [("AMBER_ANSWER", False, True)]
+    assert [item["reason"] for item in _open(client, admin_headers)] == ["NEEDS_CHECK"]
+    row = _list_row(client, counselor_headers, case["id"])
+    assert (row["level"], row["answer_acked_at"], row["open_alert_urgent"]) == ("AMBER", None, False)
+    assert _list_row(client, admin_headers, case["id"])["answer_acked_at"] is None
+
+    url = f"/api/v1/cases/{case['id']}/child-app/alerts/{mine[0]['id']}/ack"
+    assert client.post(url, headers=counselor_headers).status_code == 204
     assert _open(client, counselor_headers) == []
+    row = _list_row(client, counselor_headers, case["id"])
+    assert row["level"] == "AMBER" and row["answer_acked_at"] is not None and row["open_alert_reason"] is None
+
+    # 다음 답 묶음이 오면 그 묶음 기준으로 다시 본다.
+    _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
+            [{"question_id": "safe", "choice_index": 1}, *_skips("home", "meal")])
+    assert _list_row(client, counselor_headers, case["id"])["answer_acked_at"] is None
+
+
+def test_plain_answer_has_no_answer_ack(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _answer(client, counselor_headers, device, case["id"], ["safe", "home", "meal"],
+            [{"question_id": "safe", "choice_index": 0}, *_skips("home", "meal")])
+    assert _open(client, counselor_headers) == []
+    row = _list_row(client, counselor_headers, case["id"])
+    assert (row["level"], row["answer_acked_at"]) == ("NONE", None)
 
 
 def test_alert_right_after_ack_is_new_alert(client: TestClient, counselor_headers: Headers, case: dict) -> None:

@@ -8,13 +8,15 @@
 //    '상담 30분 전 알림' 은 서버가, '업로드 실패 알림' 은 폰이 스스로 띄운다. 둘은 알림 받기가 켜져 있을 때만 누를 수 있다.
 //    서버에 키가 없으면 '준비 중', 이 브라우저가 못 하면(iPhone 은 홈 화면에 추가한 앱에서만 됨) '홈 화면 앱에서' 를 보인다.
 //    업로드 실패는 앱 안의 알림(종)에도 늘 보인다.
-//  - Wi-Fi에서만 올리기: 연결 종류를 아는 기능이 아직 없어 흐린 '준비 중' 스위치로 둔다(누를 수 없음).
+//  - Wi-Fi에서만 올리기(11/20): 이 폰에 기억(ispot-app-set). 켜면 모바일 데이터일 때 녹음을 미뤘다가 Wi-Fi에서 올린다(data/appRecordings).
+//    연결 종류를 알려 주지 않는 브라우저(iPhone 등)에서는 누를 수 없고 '이 폰에서는 쓸 수 없어요'.
 //  - 로그아웃: 이 폰의 알림을 먼저 끈다(다음 사람이 앞 사람 알림을 받지 않게). 그다음 웹과 같은 로그아웃. 폰에 기억한 계정 · 사례 목록도 지운다(client.clearToken).
 //    올리지 못한 녹음 · 메모는 남는다(같은 계정으로 다시 로그인하면 보인다).
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { push } from '../api/endpoints';
 import { disablePush, enablePush, pushSupported, readPushPrefs, setPushPref, syncPush } from '../data/appPush';
+import { connectionKnown, readWifiOnly, setWifiOnly } from '../data/appRecordings';
 import MobileAppShell from '../components/MobileAppShell';
 import { useTheme } from '../theme';
 
@@ -38,6 +40,24 @@ function Toggle({ label, on, onClick, off, note }) {
         onClick={off ? undefined : onClick}
       ></button>
     </div>
+  );
+}
+
+function WifiOnlyToggle() {
+  const known = connectionKnown();
+  const [on, setOn] = useState(() => known && readWifiOnly());
+
+  return (
+    <Toggle
+      label="Wi-Fi에서만 올리기"
+      on={on}
+      off={!known}
+      note={known ? (on ? '모바일 데이터에서는 녹음을 미뤘다가 Wi-Fi에서 올려요' : null) : '이 폰에서는 쓸 수 없어요'}
+      onClick={() => {
+        setWifiOnly(!on);
+        setOn(!on);
+      }}
+    />
   );
 }
 
@@ -158,7 +178,7 @@ function SettingsBody({ me, logout }) {
       </section>
       <p className="ma-sec-t">업로드</p>
       <section className="ma-card ma-grp">
-        <Toggle label="Wi-Fi에서만 올리기" on={false} off />
+        <WifiOnlyToggle />
       </section>
       <p className="ma-sec-t">앱 정보</p>
       <section className="ma-card ma-grp">

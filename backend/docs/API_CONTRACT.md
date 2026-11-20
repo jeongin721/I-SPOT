@@ -1025,6 +1025,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
 |---|---|---|
 | `file` | O | 녹음 파일 |
 | `duration_ms` | X | 클라이언트 측정 길이(ms). WAV 는 서버가 계산 |
+| `consent_at` | X | 녹음 동의를 확인한 시각(ISO 8601, 2026-11-20). 폰 앱 녹음의 '녹음 동의 완료'를 체크하고 시작한 녹음만 보낸다. 시간대가 없으면 UTC, 서버 시각보다 뒤면 서버 시각으로 남긴다. 확인한 사람은 올린 상담사(`uploaded_by`). 감사 기록 `detail.consent`(true/false) |
 
 ```json
 {
@@ -1038,6 +1039,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`
       "size_bytes": 183245,
       "duration_ms": 45000,
       "checksum_sha256": "...",
+      "consent_at": "2026-11-20T01:00:00Z",
       "created_at": "..."
     },
     "session_status": "AUDIO_UPLOADED"
@@ -2673,6 +2675,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - `deadline_done`: 최초접수만 `{"3": bool, "7": bool, "30": bool}`(처리 기한 완료 표시), 그 밖 `{}`.
   **기한 일정은 행이 아니다** — 화면이 접수일로 계산한다(판정 후 3일 유선 상담 · 7일 주변 인물 만남 · 30일 계획서 제출).
 - `editable`: 지금 사용자가 고치고 지울 수 있는가(만든 사람 · 관리자). 공유받은 일정은 `false`.
+- `briefing_ready`(2026-11-20): 상담 일정의 사례에 분석이 끝난 회차(`AI_REVIEW_REQUIRED` · `APPROVED`)가 있어 '다음 상담 준비'를 볼 수 있으면 `true`, 없으면 `false`. 상담 일정이 아니거나 사례가 가려졌으면 `null`(앱 · 일정 상세 '다음 상담 준비 · 준비됨 / 준비 중').
 - **최초접수는 팀 공유하지 않는다** — `shared: true` 로 보내도 `false` 로 저장한다(처리 기한은 접수한 상담사의 할 일). 화면은
   처리 기한을 만든 사람의 달력 · 알림 종에만 놓는다(관리자가 남의 최초접수를 봐도 기한은 띄우지 않는다).
 - **일정은 만든 사람 것이다.** 사례 담당자를 바꿔도 일정 · 처리 기한은 새 담당자에게 옮겨 가지 않는다(새 담당자 달력에는 없고,
@@ -2915,7 +2918,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | POST | `/child-app/moods` | '지금 기분 기록하기'(2026-11-19). `{mood, why?}` → 204. `mood`: `good` · `excited` · `okay` · `meh` · `surprised` · `tired` · `lonely` · `sad` · `worried` · `scared` · `angry` · `unsure`(그 외 400), `why` 60자까지. 피드 `MOOD` 줄 `payload {mood, label, why}`. `lonely` · `sad` · `worried` · `scared` · `angry` 는 `level: AMBER`(살펴볼 기분). `why` 를 적었으면 확인 필요(`TEXT_ANSWER`) |
 | POST | `/child-app/notes` | '선생님께 메시지 보내기'(2026-11-19). `{text?, chip?}` → 204. 글(200자) · 칩 중 하나는 있어야 한다(없으면 400). `chip`: `만나서 이야기할게요` · `전화로 연락받고 싶어요` · `알려 드리고 싶었어요`. 피드 `NOTE` 줄 `payload {text, chip, alert_reason}`, 늘 확인 필요 — `전화로 연락받고 싶어요` 면 `CONTACT_REQUEST`(긴급 쪽), 아니면 `NOTE` |
 | POST | `/child-app/schedule-requests` | 일정 탭 '참석이 어려워요'(2026-11-19). `{reason, etc?}` → 204. `reason`: `몸이 안 좋아요` · `학교·학원 일정이 있어요` · `가고 싶지 않아요` · `말하기 어려워요` · `기타`(`기타` 면 `etc` 60자 필수). 다음 상담이 없으면 409 `INVALID_CASE_STATE`. 피드 `SCHEDULE_REQUEST` 줄 `payload {consult_date, consult_time, reason, etc, alert_reason: "SCHEDULE_REQUEST"}`(장소는 남기지 않음), 확인 필요 |
-| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답. `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`(글을 쓴 답 · 이유를 적은 기분) · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀) · `NOTE`(선생님께 메시지) · `SCHEDULE_REQUEST`(참석 어려움), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
+| GET | `/child-app-alerts/open` | 확인 안 된 알림(최신부터 50건): 긴급 알림 · `RED` 답 · 연락 요청 · 글을 쓴 답 · `AMBER` 답(2026-11-20). `reason`: `ALERT` · `RED_ANSWER` · `CONTACT_REQUEST` · `TEXT_ANSWER`(글을 쓴 답 · 이유를 적은 기분) · `FOLLOWUP_ANSWER`(AI 추가 질문 답) · `FOLLOWUP_SKIPPED`(추가 질문을 모두 건너뜀) · `AMBER_ANSWER`(살펴볼 답만 있는 답 묶음, 긴급 아님) · `NOTE`(선생님께 메시지) · `SCHEDULE_REQUEST`(참석 어려움), `urgent`(긴급 알림 · `RED` 답 · 연락 요청이면 true — 담당이 아닌 관리자도 받는다), `can_ack`, `repeat_count`, `last_at`. 담당이 아닌 관리자는 답 기반 알림이 `NEEDS_CHECK`. 상담사는 담당 사례, 관리자는 전체 |
 | POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
 | GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null) · `scheduled_questions`(발송 예약해 둔 질문 `{id, count, deliver_at}`, 담당 상담사만 · 없으면 null). `has_pending_questions` 는 예약해 둔 질문이 있어도 true 다. 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
 | POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
@@ -2923,7 +2926,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | DELETE | `/cases/{case_id}/child-app/question-sets/{question_set_id}` | 발송 예약 취소 → 204. 담당 상담사만(그 외 403). 예약 시각 전에만 된다 — 이미 아이에게 보였거나 답했으면 409 `INVALID_CASE_STATE`. 이미 취소 · 대체된 것은 204(재시도 안전). 없는 것 · 다른 사례의 것은 404 |
 | DELETE | `/cases/{case_id}/child-app/link` | 상담사가 아이 앱 연결을 해지한다(아이 상세 '콩콩 앱 연결 › 해지하기', 2026-11-19) → 204. 담당 상담사만(관리자 · 다른 상담사 403). `/child-app/unlink` 와 같은 처리 — 연결 행을 지워 그 기기 토큰은 바로 401, 답하지 않은 질문 · 발송 예약은 거두고, 받은 답 · 알림은 남는다. 연결돼 있었으면 피드에 `UNLINKED` 줄(`payload.by = "counselor"`, 기기 해지는 `{}`). 초대 대기(코드만 발급)도 지워 코드를 무효로 한다(피드 줄 없음). 연결이 없으면 204(재시도 안전). 종결 사례에서도 된다. 감사 기록 `CHILD_APP_UNLINKED` `detail.by = counselor` |
 | GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함. 발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 안 보인 예약 · 보이기 전에 취소한 예약은 세지 않는다) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
-| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent}`. `recent_answers` · `level` 은 담당 상담사만 |
+| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent, answer_acked_at}`. `recent_answers` · `level` · `answer_acked_at`(가장 최근 답 묶음을 확인한 시각, 확인 전 · 확인할 답이 아니면 null — 2026-11-20) 은 담당 상담사만 |
 | POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}` | `{text}`(1~500자) 확인해 볼 점 고치기 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}` | `{text, options}`(보기 2~6개) 추가 질문 고치기. 승인 전으로 돌아가고 앱에서 빠진다. 아이가 이미 답했으면 409 |
@@ -3048,3 +3051,19 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 - 푸시 서비스가 `404` · `410` 을 주면(앱 지움 · 알림 끔 · 만료) 그 구독을 지운다. 연결 오류 · 5xx 가 10번 이어져도 지운다. `401` · `403`(서버 VAPID 키 거절 — 설정 문제)은 실패 횟수에 넣지 않는다.
 - 키: `python -m scripts.make_vapid_key` 로 개인키를 만들어 backend.env 에 넣는다(Parameter Store 에도). 공개키는 서버가 계산해
   `GET /push/config` 로 준다. **키를 바꾸면 폰마다 알림을 다시 켜야 한다**(스위치를 껐다 켜면 새 키로 다시 구독한다).
+
+## 28. Notices (사내 공지사항, 2026-11-20)
+
+상담사 앱 · 홈의 '사내 공지사항'(11/19 디자인 README: 목록 · 내용 · 읽음). 읽기는 로그인한 누구나, 쓰고 고치고 지우기는 관리자만(그 외 403).
+기관 공지라 **내담자 정보(아이 이름 등)를 적지 않는다**(본문을 암호화하지 않는다). 읽음 표시는 디자인처럼 폰에 둔다(`ispot-app-notice`).
+관리자 화면(쓰기 · 고치기)은 아직 디자인이 없어 API 만 있다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/notices?limit=20` | 최신부터(최대 50). `[{id, title, body, important, team, author_name, created_at, updated_at}]` |
+| POST | `/notices` | 관리자. `{title: 1~120자, body: 1~4000자, important?: false, team?: 40자}` → 201. 앞뒤 공백은 지운다 |
+| PATCH | `/notices/{id}` | 관리자. 보낸 칸만 바뀐다. `team: null` 은 부서를 지운다. `title` · `body` · `important` 는 null 불가(422) |
+| DELETE | `/notices/{id}` | 관리자 → 204. 없으면 404 |
+
+- `team`: 공지를 낸 부서(앱의 '10/28 · 운영지원팀'). 없으면 앱은 `author_name` 을 보인다. `important` 는 앱 목록의 빨간 '중요'.
+- 감사 로그 `NOTICE_CREATED` · `NOTICE_UPDATED`(`detail.fields`) · `NOTICE_DELETED` — 제목 · 본문은 남기지 않는다.

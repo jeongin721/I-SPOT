@@ -226,6 +226,8 @@ def test_reassigned_case_cannot_be_swapped_but_place_can_change(
     place = client.patch(f"{URL}/{consult['id']}", json={"place": "면담실 C"}, headers=counselor_headers)
 
     assert hidden[consult["id"]]["case_hidden"] is True and hidden[consult["id"]]["case_id"] is None
+    # 가려진 사례는 '다음 상담 준비' 여부도 주지 않는다.
+    assert hidden[consult["id"]]["briefing_ready"] is None
     assert swap.status_code == 409 and unlink.status_code == 409
     assert place.status_code == 200 and place.json()["data"]["case_hidden"] is True
     admin_view = {item["id"]: item for item in _list(client, admin_headers)}
@@ -255,3 +257,30 @@ def test_unlinking_case_clears_alias_in_response(client: TestClient, counselor_h
     data = client.patch(f"{URL}/{meeting['id']}", json={"case_id": None}, headers=counselor_headers).json()["data"]
 
     assert data["case_id"] is None and data["child_alias"] is None and data["case_hidden"] is False
+
+
+def test_consult_shows_briefing_ready_only_after_analysis(client: TestClient, counselor_headers, case: dict, db) -> None:
+    # 앱 · 일정 상세의 '다음 상담 준비 · 준비됨 / 준비 중'(11/20): 그 사례에 분석이 끝난 회차가 있으면 준비됨.
+    import uuid as uuid_mod
+
+    from app.core.enums import SessionStatus
+    from app.models.session import ConsultationSession
+
+    created = client.post(URL, json=_consult(case["id"]), headers=counselor_headers).json()["data"]
+    other = client.post(URL, json=_other(), headers=counselor_headers).json()["data"]
+    assert created["briefing_ready"] is False and other["briefing_ready"] is None
+
+    session = client.post(
+        f"/api/v1/cases/{case['id']}/sessions",
+        json={"title": "1회차", "consulted_at": "2026-11-01T10:00:00+09:00", "consultation_type": "REGULAR"},
+        headers=counselor_headers,
+    ).json()["data"]
+    assert {item["id"]: item["briefing_ready"] for item in _list(client, counselor_headers)} == {created["id"]: False, other["id"]: None}
+
+    row = db.get(ConsultationSession, uuid_mod.UUID(session["id"]))
+    row.status = SessionStatus.AI_REVIEW_REQUIRED
+    db.commit()
+    assert {item["id"]: item["briefing_ready"] for item in _list(client, counselor_headers)} == {created["id"]: True, other["id"]: None}
+    patched = client.patch(f"{URL}/{created['id']}", json={"place": "면담실 B"}, headers=counselor_headers).json()["data"]
+    assert patched["briefing_ready"] is True
+
