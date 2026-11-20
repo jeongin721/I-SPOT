@@ -50,6 +50,8 @@ class KeyScanLegalReference(BaseModel):
     portal_url: str = ""
     excerpt: str = ""
     score: Optional[float] = None
+    # 2026-11-20: LLM(이름 가린 일부 줄을 LLM 이 확인 — excerpt 는 이유) · EMBEDDING(로컬 임베딩 — excerpt 는 닮은 예시) · None(그 전 결과).
+    basis: Optional[Literal["LLM", "EMBEDDING"]] = None
 
 
 class KeyScanSegment(BaseModel):

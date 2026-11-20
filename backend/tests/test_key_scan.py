@@ -36,7 +36,7 @@ REFERENCE = {
     "excerpt": "소리 지르고 욕을 해요",
     "score": 0.6123,
 }
-SAVED_REFERENCE = {**REFERENCE, "score": 0.612}
+SAVED_REFERENCE = {**REFERENCE, "score": 0.612, "basis": None}
 
 
 @pytest.fixture
@@ -235,6 +235,84 @@ def test_legal_references_are_kept_per_segment_and_junk_is_dropped(
     ]
     assert len(segments[1]["legal_references"]) == key_scan_service.MAX_REFERENCES_PER_SEGMENT
     assert segments[2] == _seg("seg_003", ["PHYSICAL"])
+
+
+def test_reference_basis_is_kept_only_when_known(
+    client: TestClient, counselor_headers, session: dict, modeling, monkeypatch
+) -> None:
+    """조문의 basis(2026-11-20) — LLM · EMBEDDING 만 두고 모르는 값은 None. LLM 확인 조문은 점수 없이 이유(excerpt)만 온다."""
+
+    _use_scanner(
+        monkeypatch,
+        lambda stt_result: {
+            "model": "roberta_abuse_qa_child_v3+llm_verify",
+            "segments": [
+                {
+                    "segment_id": "seg_001",
+                    "abuse_types": ["EMOTIONAL"],
+                    "legal_references": [
+                        {**REFERENCE, "excerpt": "아빠가 욕을 한다고 말함", "score": None, "basis": "LLM"},
+                        {**REFERENCE, "item_label": "제6호", "basis": "EMBEDDING"},
+                        {**REFERENCE, "item_label": "제7호", "basis": "GUESS"},
+                    ],
+                },
+            ],
+        },
+    )
+
+    key_scan = _key_scan(transcribed_session(client, counselor_headers, session["id"]))
+
+    assert key_scan["model"] == "roberta_abuse_qa_child_v3+llm_verify"
+    assert [reference["basis"] for reference in key_scan["segments"][0]["legal_references"]] == ["LLM", "EMBEDDING", None]
+    assert key_scan["segments"][0]["legal_references"][0]["score"] is None
+    assert key_scan["segments"][0]["legal_references"][0]["excerpt"] == "아빠가 욕을 한다고 말함"
+
+
+def test_registered_names_go_only_to_a_scanner_that_takes_them(
+    client: TestClient, counselor_headers, session: dict, modeling, monkeypatch
+) -> None:
+    """스캔이 고른 줄을 LLM 으로 확인할 때 가릴 사례 이름(2026-11-20)을 known_identifiers 로 넘긴다 — 받는 스캐너에만.
+    원문만 받는 스캐너(예전 모듈 · 다른 시험)는 그대로 불린다."""
+
+    seen: List[Any] = []
+
+    def scanner(stt_result, known_identifiers=None):
+        seen.append(known_identifiers)
+        return {"model": "m", "segments": []}
+
+    _use_scanner(monkeypatch, scanner)
+    transcribed_session(client, counselor_headers, session["id"])
+
+    assert len(seen) == 1 and isinstance(seen[0], list)
+
+    plain_calls: List[Any] = []
+    _use_scanner(monkeypatch, lambda stt_result: plain_calls.append(stt_result) or {"model": "m", "segments": []})
+
+    assert key_scan_service._run_scanner({"segments": []}, ["김하늘"]) == {"model": "m", "segments": []}
+    assert plain_calls == [{"segments": []}]
+
+
+def test_known_names_is_none_without_modeling_or_on_error(session: dict, monkeypatch) -> None:
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        monkeypatch.setattr(settings, "AI_PROVIDER", "mock")
+        case_id = uuid.UUID(str(session["case_id"]))
+        assert key_scan_service.known_names(db, case_id) is None
+
+        monkeypatch.setattr(settings, "AI_PROVIDER", "modeling")
+        assert key_scan_service.known_names(db, None) is None
+
+        from app.services import personal_info_service
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("db")
+
+        monkeypatch.setattr(personal_info_service, "known_identifiers", broken)
+        assert key_scan_service.known_names(db, case_id) is None
+    finally:
+        db.close()
 
 
 @pytest.mark.parametrize(

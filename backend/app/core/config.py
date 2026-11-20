@@ -243,7 +243,8 @@ class Settings(BaseSettings):
     # STT 검수 '1차 임시 핵심 발화' 스캔(API_CONTRACT 7절 key_scan). AI_PROVIDER=modeling 일 때만 process_stt 끝에서
     # 1차 분류기(로컬)를 돌린다. 한 번의 제한 시간 — 넘기면 key_scan.status=FAILED 이고 STT 는 그대로 성공이다.
     # 멈춘 STT 작업 마감 기준(STT_TIMEOUT_SECONDS + 여유)에 이 값을 더한다(session_service).
-    KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
+    # 2026-11-20: 고른 줄을 LLM 으로 확인하므로(AI 쪽 KEY_SCAN_LLM_TIMEOUT_SECONDS 기본 30초) 30 → 60.
+    KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     #: 원문 수정 뒤 다시 스캔(key_scan REFRESHING, 2026-11-09) 서버 전체 동시 실행 수. 로컬 모델이 GPU 하나라 기본 1 —
     #: 자리를 기다리는 사이 또 저장되면 앞 version 은 돌리지 않는다.
     KEY_SCAN_MAX_CONCURRENCY: int = Field(default=1, ge=1)

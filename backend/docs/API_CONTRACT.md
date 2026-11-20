@@ -1190,16 +1190,16 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 - `child_handoff` 는 `null` 일 수 있다. Backend 가 STT 모듈(`stt/`)을 불러오지 못하는 배포(예: backend 폴더만 담은 이미지)에서는 비워서 준다.
 - 분류 모델의 판단이 아니라 `speaker` 값을 옮겨 담은 참고용 보기다. 화자 확인은 상담사가 한다.
 
-#### key_scan (1차 임시 핵심 발화, 2026-10-28 · 임시 조문 · 다시 스캔 2026-11-09)
+#### key_scan (1차 임시 핵심 발화, 2026-10-28 · 임시 조문 · 다시 스캔 2026-11-09 · LLM 확인 2026-11-20)
 
 STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SPOT_DOCS/docs/PROPOSAL_stt_key_scan.md · PROPOSAL_stt_law_match.md). STT 작업이 전사를 마친 뒤
-**같은 작업 안에서** 1차 분류기(서버 안 로컬 모델, LLM 없음 — 원문이 밖으로 나가지 않음)를 돌려 고르고, 끝나면 `STT_REVIEW_REQUIRED` 로 넘긴다.
+**같은 작업 안에서** 1차 분류기(서버 안 로컬 모델)를 돌려 고르고, 고른 줄을 LLM 으로 한 번 더 확인한 뒤(2026-11-20, 아래) `STT_REVIEW_REQUIRED` 로 넘긴다.
 응답마다 계산하지 않고 **저장한 값**이다.
 
 ```json
 "key_scan": {
   "status": "DONE",
-  "model": "roberta_abuse_qa_child_v3",
+  "model": "roberta_abuse_qa_child_v3+llm_verify",
   "scanned_version": 2,
   "started_at": null,
   "segments": [
@@ -1209,7 +1209,7 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
       "legal_references": [
         { "abuse_type": "PHYSICAL", "law_name": "아동복지법", "article": "제17조", "item_label": "제3호",
           "text": "아동의 신체에 손상을 주거나 …", "portal_url": "https://www.law.go.kr/…",
-          "excerpt": "허리띠로 맞았어요", "score": 0.61 }
+          "excerpt": "아빠가 허리띠로 때린다고 말함", "score": null, "basis": "LLM" }
       ]
     }
   ]
@@ -1219,7 +1219,7 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
 | `status` | 뜻 |
 |---|---|
 | `DONE` | 스캔 성공. `segments` 가 비어 있을 수 있다(고른 발화 없음) |
-| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 30초 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만). 원문 수정 뒤 다시 스캔하다 실패했으면 **저장 전 결과(`segments` · `scanned_version`)는 그대로 둔다** |
+| `FAILED` | 시간 초과(`KEY_SCAN_TIMEOUT_SECONDS`, 기본 60초 — 2026-11-20 LLM 확인으로 30 → 60 — **모듈 불러오기 시간도 포함**, 첫 STT 는 import 시간이 들어간다) · 모듈 불러오기 · 실행 중 어떤 예외든 · 결과 모양 오류. **STT 는 그대로 성공**이고 `error` 도 없다. 원인은 서버 로그에만(종류 이름만). 원문 수정 뒤 다시 스캔하다 실패했으면 **저장 전 결과(`segments` · `scanned_version`)는 그대로 둔다** |
 | `SKIPPED` | `AI_PROVIDER` 가 `modeling` 이 아니라 부르지 않음 |
 | `REFRESHING` | 원문 수정(PATCH)으로 새 version 이 생겨 **저장한 원문으로 다시 스캔하는 중**(백그라운드, 2026-11-09). 그동안 `segments` 는 직전 version 의 것(지운 발화만 뺌)이고 `scanned_version` 이 그 version, `started_at` 이 시작 시각이다. 끝나면 `DONE` · `FAILED` 로 바뀌므로 화면은 GET 을 다시 조회한다(STT 처리 중 폴링과 같은 방식). 제한 시간 + 여유 60초를 넘긴 REFRESHING 은 조회 때 `FAILED` 로 마감한다(작업이 사라진 경우 — 저장 전 결과는 둠) |
 
@@ -1229,6 +1229,15 @@ STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SP
   다듬는다(모르는 유형 · 법령 이름 없는 항목은 뺌, 발화당 8개 · 글자 수 상한). 매칭 모델이 없거나 꺼져 있으면 **빈 목록**이다(2026-11-19 — 근거 없는 유형 조문은 주지 않는다).
   11/09~11/19 에 근거 없이 저장된 항목(`excerpt` 빈 값 · `score` null)과 이 칸이 없는 예전 결과는 화면이 조문 없이 보인다.
   **비어 있으면 화면은 조문 없이 '먼저 들어볼 곳'만** 보인다. 법 위반을 확정하지 않는다.
+- **LLM 확인(2026-11-20, 팀장 결정 — 11/09 '검수 전은 로컬' 을 바꿈, `ai/modeling/abuse/key_scan_llm.py`)**: 1차가 고른 아동 발화와 **그 앞뒤 2줄만**
+  (`KEY_SCAN_LLM_CONTEXT_LINES`) 이름을 가려(`mask_for_outbound` 차단형 재검사 + 사례 등록 이름 · 사례 별칭, 등록 이름과 성이 같고 한 글자만 다른 STT 표기도 더함)
+  OpenAI 로 보내, 1차 후보 유형 가운데 실제로 해당하는 것만 남긴다. 원문 전체는 지금처럼 확정 뒤 정식 분석에서만 나간다.
+  - 확인되면 `model` 이 `roberta_abuse_qa_child_v3+llm_verify`, 조문은 확인된 유형에만 붙고 `basis: "LLM"`, `excerpt` 는 **확인 이유**(60자 안), `score` 는 null.
+    어느 유형도 확인되지 않은 발화(교통사고 · 또래 다툼 · 부정 대답 같은 1차 오탐)는 `segments` 에서 빠진다. `abuse_types` 도 확인된 유형만이다.
+  - 확인을 못 하면(`KEY_SCAN_LLM_VERIFY=off` · `OPENAI_API_KEY` 없음 · 가리기 차단 · 시간 초과(`KEY_SCAN_LLM_TIMEOUT_SECONDS`, 기본 30초) · 응답 모양 오류)
+    위의 로컬 임베딩 매칭으로 돌아가고 조문은 `basis: "EMBEDDING"`(`excerpt` 는 닮은 예시), `model` 은 `roberta_abuse_qa_child_v3` 이다. 스캔은 실패하지 않는다.
+  - `basis` 는 `LLM` · `EMBEDDING` 만 저장하고 그 밖(이 칸이 생기기 전 결과 포함)은 `null`. 화면은 `LLM` 이면 덧말 '임시 · AI 확인' · 'AI 확인 "…"', 그 밖은 '임시 · 1차 모델' · '닮은 예시 "…"'.
+  - 등록 이름은 메모리에서만 쓴다(로그 · DB · 결과에 넣지 않음). 녹음 파일은 STT 를 위해 이미 외부(ElevenLabs)로 나가고 있고, 새로 늘어난 것은 **이름을 가린 일부 문장의 OpenAI 전송**이다.
 
 - 고르는 방식(2026-10-30, 정밀도 개선 2026-11-06 — `ai/modeling/abuse/key_scan_refine.py`, 제안서 §9): 1차 분류기는 여러 문답 덩어리 단위로
   판정하므로, 덩어리 안 아동 발화를 줄마다(바로 앞 상담사 질문과 묶어) 다시 판정해 **확률이 줄 임계값 이상인 줄에만** 그 유형을 붙인다
