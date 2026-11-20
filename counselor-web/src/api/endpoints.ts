@@ -376,8 +376,9 @@ export const sessions = {
     return api.patch<Session>(`/sessions/${sessionId}`, payload);
   },
 
-  remove(sessionId: string): Promise<void> {
-    return api.delete<void>(`/sessions/${sessionId}`);
+  /** renumber: 잘못 올린 회차라 뒤 회차 번호를 하나씩 당긴다(2026-11-20). 빼면 번호를 비워 둔다. */
+  remove(sessionId: string, opts?: { renumber?: boolean }): Promise<void> {
+    return api.delete<void>(opts?.renumber ? `/sessions/${sessionId}?renumber=true` : `/sessions/${sessionId}`);
   },
 
   /** 상담 음성 업로드. 성공하면 회차 상태가 AUDIO_UPLOADED 가 된다. */

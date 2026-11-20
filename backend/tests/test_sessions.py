@@ -438,3 +438,62 @@ def test_last_session_at_reflects_offset_consulted_at(
     parsed = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
     assert parsed == datetime(2026, 9, 1, 5, 30, tzinfo=timezone.utc)
+
+
+# =========================================================
+# 잘못 올린 회차를 지울 때 뒤 회차 번호 당기기(2026-11-20).
+# =========================================================
+
+def _numbers(client: TestClient, headers, case_id: str) -> list:
+    response = client.get(f"/api/v1/cases/{case_id}/sessions", params={"page_size": 50}, headers=headers)
+    assert response.status_code == 200, response.text
+    return sorted((row["session_number"], row["id"]) for row in response.json()["data"]["items"])
+
+
+def test_delete_with_renumber_moves_later_sessions_down(client: TestClient, counselor_headers, case: dict, db) -> None:
+    rows = [create_session(client, counselor_headers, case["id"]) for _ in range(5)]
+    ids = [row["id"] for row in rows]
+
+    # 3 · 4회차를 잘못 올렸다 — 3회차를 지우면 4 · 5 가 3 · 4 로, 다시 (지금) 3회차를 지우면 5회차였던 것이 3회차.
+    assert client.delete(f"/api/v1/sessions/{ids[2]}?renumber=true", headers=counselor_headers).status_code == 204
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[1]), (3, ids[3]), (4, ids[4])]
+    assert client.delete(f"/api/v1/sessions/{ids[3]}?renumber=true", headers=counselor_headers).status_code == 204
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[1]), (3, ids[4])]
+
+    # 다음 회차는 4회차.
+    assert create_session(client, counselor_headers, case["id"])["session_number"] == 4
+
+    logs = list(db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.SESSION_DELETED).order_by(AuditLog.created_at)))
+    assert [log.detail["renumbered"] for log in logs] == [[[4, 3], [5, 4]], [[4, 3]]]
+    assert [log.detail["session_number"] for log in logs] == [3, 3]
+
+
+def test_delete_without_renumber_leaves_gap(client: TestClient, counselor_headers, case: dict, db) -> None:
+    ids = [create_session(client, counselor_headers, case["id"])["id"] for _ in range(3)]
+    assert client.delete(f"/api/v1/sessions/{ids[1]}", headers=counselor_headers).status_code == 204
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (3, ids[2])]
+    log = db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.SESSION_DELETED))
+    assert log.detail["renumber"] is False and "renumbered" not in log.detail
+
+
+def test_renumber_script_fills_gaps(client: TestClient, counselor_headers, case: dict, db) -> None:
+    from scripts.renumber_sessions import RenumberError, renumber
+
+    ids = [create_session(client, counselor_headers, case["id"])["id"] for _ in range(5)]
+    for sid in ids[2:4]:
+        assert client.delete(f"/api/v1/sessions/{sid}", headers=counselor_headers).status_code == 204
+
+    with SessionLocal() as other:
+        assert renumber(other, case["case_number"]) == [[5, 3]]  # 보기만
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[1]), (5, ids[4])]
+
+    with SessionLocal() as other:
+        assert renumber(other, case["case_number"], apply=True) == [[5, 3]]
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[1]), (3, ids[4])]
+    with SessionLocal() as other:
+        assert renumber(other, case["case_number"], apply=True) == []
+        with pytest.raises(RenumberError):
+            renumber(other, "C-없는-사례")
+
+    log = db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.SESSION_RENUMBERED))
+    assert log.detail == {"via": "renumber_sessions script", "renumbered": [[5, 3]]}

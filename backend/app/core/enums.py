@@ -382,6 +382,8 @@ class AuditAction(str, Enum):
     SESSION_CREATED = "SESSION_CREATED"
     SESSION_UPDATED = "SESSION_UPDATED"
     SESSION_DELETED = "SESSION_DELETED"
+    # 비어 있는 회차 번호를 당겨 1, 2, 3… 으로 맞춤(scripts.renumber_sessions, 2026-11-20). detail.renumbered = [[옛, 새], …]
+    SESSION_RENUMBERED = "SESSION_RENUMBERED"
     AUDIO_UPLOADED = "AUDIO_UPLOADED"
     STT_REQUESTED = "STT_REQUESTED"
     STT_COMPLETED = "STT_COMPLETED"

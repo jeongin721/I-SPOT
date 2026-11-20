@@ -206,34 +206,75 @@ def assert_can_delete(session: ConsultationSession, current_user: User) -> None:
     raise forbidden("원문을 확정한 뒤의 회차는 관리자만 지울 수 있습니다.")
 
 
+def shift_numbers_down(db: Session, case_id: uuid.UUID, removed_number: int) -> List[List[int]]:
+    """removed_number 뒤 회차 번호를 하나씩 당긴다(잘못 올린 회차를 지웠을 때, 2026-11-20). [[옛 번호, 새 번호], …].
+
+    (case_id, session_number) 가 유일해야 하므로 작은 번호부터 한 줄씩 바꾼다(한 번에 바꾸면 중간에 겹친다).
+    회차는 ID 로 묶여 있어 원문 · 분석 · 확인 사항 등은 그대로 따라간다. 이미 내려받은 문서 · 파일 이름의 번호는 바뀌지 않는다."""
+
+    later = list(
+        db.scalars(
+            select(ConsultationSession)
+            .where(ConsultationSession.case_id == case_id, ConsultationSession.session_number > removed_number)
+            .order_by(ConsultationSession.session_number.asc())
+            .with_for_update()
+        )
+    )
+    moved: List[List[int]] = []
+
+    for row in later:
+        moved.append([row.session_number, row.session_number - 1])
+        row.session_number -= 1
+        db.flush()
+
+    return moved
+
+
 def delete_session(
     db: Session,
     session: ConsultationSession,
     current_user: User,
-) -> None:
+    *,
+    renumber: bool = False,
+) -> List[List[int]]:
+    """회차를 지운다. renumber 면 뒤 회차 번호를 하나씩 당긴다(잘못 올린 회차). 실제 상담 기록이면 번호를 비워 둔다.
+    당긴 번호 [[옛, 새], …] 를 돌려준다."""
+
     assert_can_delete(session, current_user)
 
     # DB row 를 지우기 전에 Local Storage 의 음성 파일을 먼저 정리한다.
     audio_paths = list(
         db.scalars(select(AudioFile.path).where(AudioFile.session_id == session.id))
     )
+    case_id = session.case_id
+    number = session.session_number
 
-    audit_service.record(
+    log = audit_service.record(
         db,
         action=AuditAction.SESSION_DELETED,
         entity_type="ConsultationSession",
         entity_id=session.id,
         actor_id=current_user.id,
-        case_id=session.case_id,
+        case_id=case_id,
         session_id=session.id,
-        detail={"audio_file_count": len(audio_paths)},
+        detail={"audio_file_count": len(audio_paths), "session_number": number, "renumber": renumber},
     )
 
     db.delete(session)
+    db.flush()
+    moved: List[List[int]] = []
+
+    if renumber:
+        moved = shift_numbers_down(db, case_id, number)
+        # 누가 언제 어느 번호를 당겼는지 지운 기록에 함께 남긴다.
+        log.detail = {**(log.detail or {}), "renumbered": moved}
+
     db.commit()
 
     for path in audio_paths:
         storage.delete_stored_audio(path)
+
+    return moved
 
 
 def build_session_detail(
