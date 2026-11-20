@@ -497,6 +497,27 @@ def test_child_alert_push_error_does_not_reach_child(
     assert client.get(f"/api/v1/cases/{case['id']}/child-app", headers=counselor_headers).json()["data"]["open_alerts"]
 
 
+
+@pytest.mark.parametrize(("first", "tries"), [(503, 2), (0, 2), (410, 1), (201, 1)])
+def test_child_alert_retries_once_on_brief_failure(
+    client: TestClient, counselor_headers, case, child_on, push_on, monkeypatch, first, tries
+) -> None:
+    # 잠깐의 실패(5xx · 연결 실패)면 한 번 더 보낸다. 구독이 없어졌거나(410) 보냈으면 다시 보내지 않는다(민규 #190 리뷰 1).
+    monkeypatch.setattr(push_service, "CHILD_ALERT_RETRY_SECONDS", 0)
+    client.put("/api/v1/push/subscription", json=_sub_body(), headers=counselor_headers)
+    calls = []
+
+    def flaky(endpoint, p256dh, auth, message, **kwargs):
+        calls.append(endpoint)
+        return webpush.SendResult(first if len(calls) == 1 else 201)
+
+    monkeypatch.setattr(webpush, "send", flaky)
+    device = _child_device(client, counselor_headers, case["id"])
+
+    _press(client, device)
+
+    assert len(calls) == tries
+
 # ---------------------------------------------------------------- 토큰을 끊으면 폰 구독도 지운다(11/20 점검)
 
 @pytest.mark.parametrize("action", ["logout-all", "password-reset"])

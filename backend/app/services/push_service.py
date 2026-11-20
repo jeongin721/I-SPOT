@@ -13,6 +13,7 @@
 #  - 잠금 화면에 보이므로 문구에 아이 이름 · 사례 · 일정 제목 · 장소를 넣지 않는다(시각만). 감사 기록에도 문구를 남기지 않는다.
 import asyncio
 import logging
+import time as time_mod
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
@@ -47,6 +48,8 @@ KIND_CHILD_ALERT = "child_alert"
 #: 잠금 화면에 보이므로 아이 이름 · 사례 번호는 넣지 않는다. 누르면 그 아이 상세(사례 ID 는 화면에 안 보임).
 CHILD_ALERT_TITLE = "긴급 알림"
 CHILD_ALERT_BODY = "아이 앱에서 긴급 알림이 왔어요. 바로 확인해 주세요."
+#: 긴급 알림이 잠깐 실패(연결 실패 · 5xx · 429)했을 때 다시 보내기 전 기다리는 초. 한 번만 다시 보낸다.
+CHILD_ALERT_RETRY_SECONDS = 5
 
 
 def _private_key():
@@ -129,8 +132,19 @@ def unsubscribe(db: Session, user: User, endpoint: str) -> None:
     db.commit()
 
 
-def _send_to(db: Session, rows: List[PushSubscription], message: dict, *, now: datetime) -> Tuple[int, int]:
-    """구독들에 보내고 결과를 반영한다(없어진 구독 지우기 · 실패 횟수). 커밋은 하지 않는다."""
+def _send_to(
+    db: Session,
+    rows: List[PushSubscription],
+    message: dict,
+    *,
+    now: datetime,
+    retry: Optional[List[uuid.UUID]] = None,
+) -> Tuple[int, int]:
+    """
+    구독들에 보내고 결과를 반영한다(없어진 구독 지우기 · 실패 횟수). 커밋은 하지 않는다.
+
+    retry 를 주면 잠깐의 실패(연결 실패 · 5xx · 429 등, 구독은 남음)였던 구독 id 를 담는다.
+    """
     key = _private_key()
 
     if key is None:
@@ -164,6 +178,8 @@ def _send_to(db: Session, rows: List[PushSubscription], message: dict, *, now: d
             logger.warning("푸시 보내기 실패 status=%s fail_count=%s", result.status, row.fail_count)
             if row.fail_count >= MAX_FAILS:
                 db.delete(row)
+            elif retry is not None:
+                retry.append(row.id)
 
     return sent, failed
 
@@ -306,9 +322,20 @@ def send_child_alert(db: Session, case_id: uuid.UUID, alert_id: uuid.UUID, *, no
         "tag": f"child-alert-{alert_id}",
     }
     live = db.scalars(select(PushSubscription).where(PushSubscription.id.in_([row.id for row in rows]))).all()
-    sent, _ = _send_to(db, list(live), message, now=now or datetime.now(timezone.utc))
+    retry: List[uuid.UUID] = []
+    sent, _ = _send_to(db, list(live), message, now=now or datetime.now(timezone.utc), retry=retry)
     delivery.sent = sent
     db.commit()
+
+    # 긴급 알림이라 잠깐의 실패(연결 실패 · 5xx · 429)는 잠시 뒤 한 번 더 보낸다(민규 #190 리뷰 1).
+    # 발송 기록은 이미 남겼으므로 같은 알림이 다른 경로로 두 번 가지 않는다.
+    if retry:
+        time_mod.sleep(CHILD_ALERT_RETRY_SECONDS)
+        again = db.scalars(select(PushSubscription).where(PushSubscription.id.in_(retry))).all()
+        more, _ = _send_to(db, list(again), message, now=now or datetime.now(timezone.utc))
+        sent += more
+        delivery.sent = sent
+        db.commit()
 
     return sent
 
