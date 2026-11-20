@@ -1514,8 +1514,12 @@ async function api(path, options){
   const headers = {'Content-Type':'application/json'}, token = load(STORE.token, null);
   if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch(API + path, {...options, headers});
-  // 연결이 끊겼다(상담사 해지 · 아이 기기에서 해지한 뒤 남은 요청 등). 첫 화면에 '연결이 끊겼어요' 를 보인다(민규 #187).
-  if (res.status === 401 && token) { forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); S.cut = true; render(); throw new Error('unlinked'); }
+  // 연결이 끊겼다(상담사 해지 등). 첫 화면에 '연결이 끊겼어요' 를 보인다(민규 #187).
+  // 아이가 스스로 해지해 이 폰의 토큰을 이미 지웠으면, 먼저 보낸 요청이 늦게 401 로 돌아와도 안내를 띄우지 않는다(민규 #187 머지 뒤 리뷰).
+  if (res.status === 401 && token) {
+    if (load(STORE.token, null) !== token) throw new Error('unlinked');
+    forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); S.cut = true; render(); throw new Error('unlinked');
+  }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) { const e = new Error('api'); e.status = res.status; e.message2 = body && body.error && body.error.message; throw e; }
   return body && body.data;
