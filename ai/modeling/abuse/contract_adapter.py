@@ -625,6 +625,8 @@ def analyze_audio_session_as_contract(
 
 #: 1차 분류기 이름(infer_abuse_qa_v3.py 의 roberta_abuse_qa_child_v3_best.pth).
 KEY_SCAN_MODEL = "roberta_abuse_qa_child_v3"
+#: LLM 확인(key_scan_llm)을 거친 결과의 model 값(2026-11-20).
+KEY_SCAN_MODEL_LLM = "roberta_abuse_qa_child_v3+llm_verify"
 
 #: 핵심 발화로 남기는 화자. 검출된 chunk 안의 상담원 · 보호자 · 기타 줄은 '다시 들어볼 아동 발화' 가
 #: 아니라 뺀다. 화자 미확인 줄은 아동 발화일 수 있어 남긴다(저신뢰 보기와 겹쳐도 괜찮음).
@@ -643,31 +645,42 @@ def preload_key_scan() -> None:
         pass
 
 
-def key_scan_as_contract(stt_result: Dict[str, Any]) -> Dict[str, Any]:
+def key_scan_as_contract(
+    stt_result: Dict[str, Any],
+    known_identifiers: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
-    원문 확정 전 1차 스캔. infer_audio_session.quick_risk_scan(1차 RoBERTa 만, LLM 없음, 로컬 —
+    원문 확정 전 1차 스캔. infer_audio_session.quick_risk_scan(1차 RoBERTa 만, 로컬 —
     정식 분석과 같은 chunk 분할)의 {segment_id: [한글 대분류]} 를 Contract 모양으로 바꾼다.
 
     stt_result: 분석에 넘기는 것과 같은 STT Contract({"segments": [...]}).
-    반환: {"model": KEY_SCAN_MODEL, "segments": [{"segment_id", "abuse_types": [영문 4종], "legal_references": [...]}]} —
+    known_identifiers: 그 사례의 등록 이름(가리기용, 메모리에서만). 없으면 NER · 정규식만으로 가린다.
+    반환: {"model", "segments": [{"segment_id", "abuse_types": [영문 4종], "legal_references": [...]}]} —
     원문 순서, 아동 · 화자 미확인 발화만, 없으면 빈 배열. 영문 4종 밖의 유형은 버린다.
-    legal_references(2026-11-09, PROPOSAL_stt_law_match.md)는 그 발화 글이 유형의 행위 예시와 닮을 때만 붙는 아동복지법
-    제17조 호(law_match — 서버 로컬 임베딩, 외부 전송 없음). 닮은 예시(excerpt)와 점수를 같이 준다. 매칭 모델이 없거나
-    꺼져 있으면 빈 목록이다(11/19 — 근거 없는 유형 조문은 붙이지 않는다). 비어 있으면 화면은 조문 없이 '먼저 들어볼 곳'만 보인다.
-    status 는 붙이지 않는다(Backend 가 정함). 모델 실패는 예외를 그대로 올린다.
+
+    legal_references 는 두 길 가운데 하나로 붙는다.
+    - LLM 확인(2026-11-20, 팀장 결정 · key_scan_llm): 1차가 고른 줄과 앞뒤 몇 줄만 이름을 가려 OpenAI 로 보내, 실제로 해당하는
+      유형만 남긴다. 확인된 유형에만 제17조 호를 붙이고 이유를 excerpt 로, basis="LLM". 어느 유형도 확인되지 않은 줄은 뺀다
+      (교통사고 · 부정 대답 같은 1차 오탐). model 은 KEY_SCAN_MODEL_LLM.
+    - 임베딩 매칭(2026-11-09, PR #188 · law_match): LLM 확인이 꺼졌거나 실패하면(키 없음 · 가리기 차단 · 시간 초과) 그 발화
+      글이 유형의 행위 예시와 닮을 때만 조문을 붙이고 닮은 예시를 excerpt 로, basis="EMBEDDING". 서버 로컬, 외부 전송 없음.
+      매칭 모델이 없거나 꺼져 있으면 빈 목록(근거 없는 유형 조문은 붙이지 않는다 — 11/19). 비어 있으면 화면은 조문 없이
+      '먼저 들어볼 곳'만 보인다.
+    status 는 붙이지 않는다(Backend 가 정함). 1차 모델 실패는 예외를 그대로 올린다.
     """
 
     # 지연 import: backend 시험은 infer_audio_session 을 가짜 모듈로 바꾸는데, 모듈 맨 위에서
     # 가져오면 그 가짜에 이 함수가 없을 때 contract_adapter import 자체가 깨진다.
-    from ai.modeling.abuse import law_match
+    from ai.modeling.abuse import key_scan_llm, law_match
     from ai.modeling.abuse.infer_audio_session import quick_risk_scan
 
     flagged = quick_risk_scan(stt_result) or {}
     segments = stt_result.get("segments") if isinstance(stt_result, dict) else None
+    segments = segments if isinstance(segments, list) else []
     known = set(MAJOR_TYPE_TO_ENGLISH.values())
-    picked: List[Dict[str, Any]] = []
+    candidates: List[Tuple[str, str, List[str]]] = []  # (segment_id, 글, 한글 유형)
 
-    for segment in segments if isinstance(segments, list) else []:
+    for segment in segments:
         if not isinstance(segment, dict):
             continue
 
@@ -677,22 +690,55 @@ def key_scan_as_contract(stt_result: Dict[str, Any]) -> Dict[str, Any]:
         if not segment_id or segment_id not in flagged or speaker not in KEY_SCAN_SPEAKERS:
             continue
 
-        abuse_types: List[str] = []
         labels: List[str] = []
 
         for label in flagged.get(segment_id) or []:
-            english = MAJOR_TYPE_TO_ENGLISH.get(label)
-            if english in known and english not in abuse_types:
-                abuse_types.append(english)
+            if MAJOR_TYPE_TO_ENGLISH.get(label) in known and label not in labels:
                 labels.append(label)
 
-        if abuse_types:
+        if labels:
+            candidates.append((segment_id, str(segment.get("text") or ""), labels))
+
+    verified = (
+        key_scan_llm.verify_picks(
+            segments,
+            {segment_id: labels for segment_id, _, labels in candidates},
+            known_identifiers,
+        )
+        if candidates
+        else None
+    )
+
+    picked: List[Dict[str, Any]] = []
+
+    for segment_id, text, labels in candidates:
+        if verified is None:
             picked.append(
                 {
                     "segment_id": segment_id,
-                    "abuse_types": abuse_types,
-                    "legal_references": law_match.references_for(str(segment.get("text") or ""), labels),
+                    "abuse_types": [MAJOR_TYPE_TO_ENGLISH[label] for label in labels],
+                    "legal_references": [
+                        {**reference, "basis": "EMBEDDING"} for reference in law_match.references_for(text, labels)
+                    ],
+                }
+            )
+            continue
+
+        confirmed = verified.get(segment_id) or []
+        references: List[Dict[str, Any]] = []
+
+        for entry in confirmed:
+            reference = law_match.statute_reference(entry["type"])
+            if reference is not None:
+                references.append({**reference, "excerpt": entry["reason"], "score": None, "basis": "LLM"})
+
+        if confirmed:
+            picked.append(
+                {
+                    "segment_id": segment_id,
+                    "abuse_types": [MAJOR_TYPE_TO_ENGLISH[entry["type"]] for entry in confirmed],
+                    "legal_references": references,
                 }
             )
 
-    return {"model": KEY_SCAN_MODEL, "segments": picked}
+    return {"model": KEY_SCAN_MODEL if verified is None else KEY_SCAN_MODEL_LLM, "segments": picked}

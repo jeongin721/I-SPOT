@@ -22,11 +22,13 @@ from fastapi import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.ai_adapter import accepts_keyword
 from app.adapters.module_loader import ModuleLoadError, load_callable
 from app.core.concurrency import OperationTimeout, run_with_timeout
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import get_logger
+from app.models.session import ConsultationSession
 from app.models.transcript import Transcript
 
 logger = get_logger(__name__)
@@ -51,6 +53,9 @@ _REFERENCE_TEXT_LIMITS = {
     "portal_url": 500,
     "excerpt": 300,
 }
+
+#: 조문이 어떤 근거로 붙었나(2026-11-20) — LLM(이름 가린 일부 줄을 LLM 이 확인) · EMBEDDING(로컬 임베딩의 닮은 예시). 그 밖은 None.
+REFERENCE_BASES = ("LLM", "EMBEDDING")
 
 #: 멈춤 판정 여유(초). 살아 있는 작업은 KEY_SCAN_TIMEOUT_SECONDS 안에 끝나므로, 그 뒤로 이만큼 더 지난 REFRESHING 만 마감한다.
 STALE_GRACE_SECONDS = 60
@@ -99,6 +104,35 @@ def _load_scanner() -> Callable[[Dict[str, Any]], Any]:
     return load_callable(KEY_SCAN_MODULE, KEY_SCAN_FUNCTION)
 
 
+def _run_scanner(stt_contract: Dict[str, Any], known_identifiers: Optional[List[str]]) -> Any:
+    """스캐너를 부른다. 등록 이름은 받는 스캐너에만 키워드로 넘긴다(예전 모듈 · 시험의 가짜 스캐너는 원문만 받는다)."""
+
+    scanner = _load_scanner()
+    if known_identifiers is not None and accepts_keyword(scanner, "known_identifiers"):
+        return scanner(stt_contract, known_identifiers=known_identifiers)
+    return scanner(stt_contract)
+
+
+def known_names(db: Session, case_id: Any) -> Optional[List[str]]:
+    """스캔 LLM 확인의 가리기에 넘길 등록 이름 — 사례 별칭 + 등록 실명. 어떤 실패든 None(이름 없이 NER · 정규식만으로 가린다).
+
+    읽기만 한 뒤 부른다(personal_info_service.known_identifiers 는 DB 오류 때 거래를 되돌린다). modeling 이 아니면 부르지 않는다.
+    """
+
+    if settings.AI_PROVIDER != "modeling" or case_id is None:
+        return None
+
+    try:
+        from app.models.case import Case
+        from app.services import personal_info_service
+
+        case = db.get(Case, case_id)
+        return personal_info_service.known_identifiers(db, case_id, extra=[getattr(case, "child_alias", None)])
+    except Exception as error:  # noqa: BLE001 — 이름 목록이 없어도 스캔은 계속된다
+        logger.warning("1차 핵심 발화 스캔에 넘길 등록 이름을 읽지 못했습니다. type=%s", type(error).__name__)
+        return None
+
+
 def _clean_reference(item: Any) -> Optional[Dict[str, Any]]:
     """조문 하나를 저장할 모양으로. 법령 이름 · 조문이 없거나 유형이 모르는 값이면 None(그 항목만 버린다)."""
 
@@ -116,6 +150,9 @@ def _clean_reference(item: Any) -> Optional[Dict[str, Any]]:
 
     if not cleaned["law_name"] or not cleaned["article"]:
         return None
+
+    basis = item.get("basis")
+    cleaned["basis"] = basis if basis in REFERENCE_BASES else None
 
     score = item.get("score")
     cleaned["score"] = round(float(score), 3) if isinstance(score, (int, float)) and not isinstance(score, bool) else None
@@ -186,8 +223,17 @@ def _clean(raw: Any, known_ids: Iterable[str]) -> Optional[Dict[str, Any]]:
     return _result(STATUS_DONE, model if isinstance(model, str) else None, segments)
 
 
-def scan(stt_contract: Dict[str, Any], *, scanned_version: Optional[int] = None) -> Dict[str, Any]:
-    """전사 결과(STT Contract dict)를 1차 스캔한다. 어떤 실패든 예외를 올리지 않고 FAILED 를 돌려준다."""
+def scan(
+    stt_contract: Dict[str, Any],
+    *,
+    scanned_version: Optional[int] = None,
+    known_identifiers: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """전사 결과(STT Contract dict)를 1차 스캔한다. 어떤 실패든 예외를 올리지 않고 FAILED 를 돌려준다.
+
+    known_identifiers: 그 사례의 등록 이름(personal_info_service.known_identifiers, 메모리에서만). 스캔이 고른 줄을 LLM 으로
+    확인할 때(2026-11-20, 팀장 결정) 이름을 가리는 데만 쓴다. 로그 · DB · 결과에 넣지 않는다.
+    """
 
     if settings.AI_PROVIDER != "modeling":
         return _result(STATUS_SKIPPED)
@@ -202,7 +248,7 @@ def scan(stt_contract: Dict[str, Any], *, scanned_version: Optional[int] = None)
     # ImportError 가 아닌 예외(모델 파일 · CUDA 초기화의 OSError · RuntimeError 등)도 STT 를 실패시키지 않게
     # 모두 FAILED 로 받는다(민규 #114 R1).
     try:
-        raw = run_with_timeout(lambda: _load_scanner()(stt_contract), settings.KEY_SCAN_TIMEOUT_SECONDS)
+        raw = run_with_timeout(lambda: _run_scanner(stt_contract, known_identifiers), settings.KEY_SCAN_TIMEOUT_SECONDS)
     except OperationTimeout:
         logger.warning("1차 핵심 발화 스캔이 제한 시간(%.0f초)을 넘겼습니다.", settings.KEY_SCAN_TIMEOUT_SECONDS)
         return _result(STATUS_FAILED)
@@ -327,15 +373,19 @@ def _refresh_target(transcript: Optional[Transcript], started_at: str) -> bool:
     return key_scan is not None and key_scan.get("status") == STATUS_REFRESHING and key_scan.get("started_at") == started_at
 
 
-def _load_for_refresh(transcript_id: uuid.UUID, started_at: str) -> Optional[Tuple[Dict[str, Any], int, Dict[str, Any]]]:
-    """(스캔할 Contract, version, 시작 값) — 행이 바뀌었거나 더 새 version 이 있으면 None(일은 하지 않는다)."""
+def _load_for_refresh(
+    transcript_id: uuid.UUID, started_at: str
+) -> Optional[Tuple[Dict[str, Any], int, Dict[str, Any], Optional[List[str]]]]:
+    """(스캔할 Contract, version, 시작 값, 등록 이름) — 행이 바뀌었거나 더 새 version 이 있으면 None(일은 하지 않는다)."""
 
     db = SessionLocal()
     try:
         transcript = db.get(Transcript, transcript_id)
         if not _refresh_target(transcript, started_at) or not _is_latest(db, transcript):
             return None
-        return _contract_of(transcript), transcript.version, dict(transcript.key_scan)
+        contract, version, previous = _contract_of(transcript), transcript.version, dict(transcript.key_scan)
+        session = db.get(ConsultationSession, transcript.session_id)
+        return contract, version, previous, known_names(db, session.case_id if session is not None else None)
     finally:
         db.close()
 
@@ -376,7 +426,7 @@ def refresh(transcript_id: uuid.UUID, started_at: str) -> None:
         loaded = _load_for_refresh(transcript_id, started_at)
         if loaded is None:
             return
-        contract, version, previous = loaded
+        contract, version, previous, names = loaded
 
         with _limits.slots:
             # 자리를 기다리는 사이 또 저장됐으면 모델을 돌리지 않는다.
@@ -387,7 +437,7 @@ def refresh(transcript_id: uuid.UUID, started_at: str) -> None:
                     return
             finally:
                 db.close()
-            result = scan(contract, scanned_version=version)
+            result = scan(contract, scanned_version=version, known_identifiers=names)
 
         _finish_refresh(transcript_id, started_at, result, previous)
     except Exception as error:  # noqa: BLE001 — 백그라운드 작업이라 예외를 밖으로 내지 않는다

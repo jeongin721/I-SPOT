@@ -770,8 +770,13 @@ export interface KeyScanLegalReference extends LegalReference {
   abuse_type: string | null;
   /** 왜 이 조문인지 — 발화와 닮은 행위 예시. 매칭 모델이 없으면 "". */
   excerpt: string;
-  /** 유사도 0~1. 매칭 모델이 없으면 null. */
+  /** 유사도 0~1. 매칭 모델이 없거나 LLM 확인이면 null. */
   score: number | null;
+  /**
+   * 어떤 근거로 붙었나(2026-11-20). LLM: 이름을 가린 일부 줄을 LLM 이 확인 — excerpt 는 이유. EMBEDDING: 로컬 임베딩 — excerpt 는
+   * 닮은 예시. 없으면(그 전 결과) 닮은 예시로 본다.
+   */
+  basis?: "LLM" | "EMBEDDING" | null;
 }
 
 /**

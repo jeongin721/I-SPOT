@@ -285,7 +285,11 @@ def process_stt(session_id: uuid.UUID) -> None:
 
             # '1차 임시 핵심 발화' 스캔(디자인의 '핵심 발화 고르는 중' 단계). 검수 필요로 넘기기 전에 같은 작업에서 돌려
             # 화면이 한 번에 열리게 한다. 실패해도 예외를 올리지 않고 status=FAILED 로 STT 는 성공한다.
-            key_scan = key_scan_service.scan(result.model_dump(mode="json"))
+            # 고른 줄은 LLM 으로 한 번 더 확인한다(2026-11-20) — 이름을 가리는 데 쓸 사례 등록 이름을 넘긴다(메모리에서만).
+            key_scan = key_scan_service.scan(
+                result.model_dump(mode="json"),
+                known_identifiers=key_scan_service.known_names(db, session.case_id),
+            )
 
             transcript = _save_stt_result(
                 db,

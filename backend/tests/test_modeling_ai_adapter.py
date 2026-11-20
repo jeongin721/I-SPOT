@@ -681,6 +681,66 @@ def test_key_scan_failure_is_raised_for_backend_to_mark_failed(modeling, monkeyp
         scan(KEY_SCAN_STT)
 
 
+def test_key_scan_keeps_only_what_the_llm_confirmed(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """LLM 확인(2026-11-20)이 되면 확인된 유형에만 제17조 호 · 이유(basis LLM)를 붙이고, 아무 유형도 확인되지 않은 줄(교통사고 같은
+    1차 오탐)은 뺀다. 고른 줄 · 후보 유형 · 등록 이름이 그대로 넘어가고 model 이 바뀐다. 임베딩 매칭은 부르지 않는다."""
+
+    scan, _ = _key_scan(monkeypatch, {"seg_002": ["신체학대", "방임"], "seg_004": ["방임"], "seg_005": ["신체학대"]})
+    key_scan_llm = importlib.import_module("ai.modeling.abuse.key_scan_llm")
+    law_match = importlib.import_module("ai.modeling.abuse.law_match")
+    seen: List[Any] = []
+
+    def verify_picks(segments, targets, known_identifiers=None):
+        seen.append((targets, known_identifiers))
+        return {
+            "seg_002": [{"type": "신체학대", "reason": "아빠가 때렸다고 대답함"}],
+            "seg_004": [{"type": "방임", "reason": "밥을 안 준다고 말함"}],
+            "seg_005": [],
+        }
+
+    def must_not_match(*args, **kwargs):
+        raise AssertionError("LLM 확인이 되면 임베딩 매칭을 쓰지 않는다")
+
+    monkeypatch.setattr(key_scan_llm, "verify_picks", verify_picks)
+    monkeypatch.setattr(law_match, "references_for", must_not_match)
+
+    result = scan(KEY_SCAN_STT, known_identifiers=["김하늘"])
+
+    assert seen == [({"seg_002": ["신체학대", "방임"], "seg_004": ["방임"], "seg_005": ["신체학대"]}, ["김하늘"])]
+    assert result["model"] == "roberta_abuse_qa_child_v3+llm_verify"
+    assert [item["segment_id"] for item in result["segments"]] == ["seg_002", "seg_004"]
+    assert result["segments"][0]["abuse_types"] == ["PHYSICAL"]
+    reference = result["segments"][0]["legal_references"][0]
+    assert (reference["item_label"], reference["excerpt"], reference["score"], reference["basis"]) == (
+        "제3호",
+        "아빠가 때렸다고 대답함",
+        None,
+        "LLM",
+    )
+    assert result["segments"][1]["legal_references"][0]["item_label"] == "제6호"
+
+
+def test_key_scan_falls_back_to_embedding_when_llm_check_is_unavailable(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """LLM 확인을 못 하면(None — 꺼짐 · 키 없음 · 가리기 차단 · 시간 초과) PR #188 의 임베딩 매칭 결과를 basis EMBEDDING 으로 준다."""
+
+    scan, _ = _key_scan(monkeypatch, {"seg_002": ["신체학대"]})
+    key_scan_llm = importlib.import_module("ai.modeling.abuse.key_scan_llm")
+    law_match = importlib.import_module("ai.modeling.abuse.law_match")
+
+    monkeypatch.setattr(key_scan_llm, "verify_picks", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        law_match,
+        "references_for",
+        lambda text, types: [{**law_match.statute_reference("신체학대"), "excerpt": "엄마한테 많이 맞았어요", "score": 0.71}],
+    )
+
+    result = scan(KEY_SCAN_STT)
+
+    assert result["model"] == "roberta_abuse_qa_child_v3"
+    assert result["segments"][0]["abuse_types"] == ["PHYSICAL"]
+    assert result["segments"][0]["legal_references"][0]["basis"] == "EMBEDDING"
+
+
 def _capture_pipeline_kwargs(monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
     """가짜 analyze_audio_session 이 받은 키워드를 모은다."""
 

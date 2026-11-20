@@ -11,6 +11,8 @@
 //    스캔이 없거나(null · FAILED · SKIPPED · 빈 목록) 확정 뒤 · 주소에 seg 가 있으면 전체 STT 로 연다. 유형 칩은 보이지 않고,
 //    원문 확정 전에는 아이 말이 그 유형의 행위 예시와 닮은 발화에만 '임시' 관련 조문을 닮은 예시와 함께 보인다(keyScanLaws,
 //    11/09). 11/03 의 유형 → 제17조 호 고정 표는 오탐이 커서 11/19 에 뺐다 — 근거(닮은 예시) 없는 조문은 보이지 않는다.
+//    2026-11-20(팀장 결정): 서버가 고른 줄을 앞뒤 몇 줄과 함께 이름을 가려 LLM 으로 확인하면 조문의 basis 가 LLM 이고 excerpt 는
+//    확인 이유다 — 덧말 '임시 · AI 확인', 이유 'AI 확인 "…"'. 확인을 못 한 서버 결과는 예전처럼 닮은 예시로 보인다.
 //  - 화자는 Backend 5종(아동 · 상담원 · 보호자 · 기타 · 화자 미확인)만 쓴다. '사례관리대상자' 는 Backend 에 없다.
 //
 // 10/21 디자인(counselor-design/screens/SttReview.dc.html) 반영:
@@ -99,8 +101,9 @@ function keyScanLineFromReference(reference: KeyScanReference): LawLine | null {
     art,
     sum: typeof reference.text === "string" ? reference.text : "",
     url: url.startsWith("https://www.law.go.kr/") ? url : null,
-    tmp: "임시 · 1차 모델",
-    why: `닮은 예시 "${excerpt}"`,
+    // 2026-11-20: 고른 줄을 LLM 이 확인했으면(basis LLM) excerpt 는 이유다. 그 전 결과 · 임베딩 매칭은 닮은 예시.
+    tmp: reference.basis === "LLM" ? "임시 · AI 확인" : "임시 · 1차 모델",
+    why: reference.basis === "LLM" ? `AI 확인 "${excerpt}"` : `닮은 예시 "${excerpt}"`,
   };
 }
 
@@ -723,8 +726,9 @@ export function sttReviewValues(input: SttScreenInput) {
             : review.info?.keyScanStatus === "FAILED"
               ? "저장한 원문으로 다시 고르지 못해 저장 전 결과를 보입니다."
               : "",
-          "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화 가운데 아이 말이 그 유형의 행위 예시와 닮은 발화에만 '임시' 관련 " +
-            "조문을 표시하고, 닮은 예시를 함께 보입니다. 닮은 예시가 없으면 조문 없이 발화만 보입니다. 원문을 저장하면 저장한 원문으로 " +
+          "원문 확정 전에는 1차 모델이 먼저 들어볼 곳으로 고른 발화를 AI 가 앞뒤 문맥과 함께 한 번 더 확인해, 해당하는 유형에만 " +
+            "'임시' 관련 조문과 확인 이유를 표시합니다(AI 확인을 못 하면 그 유형의 행위 예시와 닮은 발화에만 닮은 예시와 함께 " +
+            "표시합니다). 근거가 없으면 조문 없이 발화만 보입니다. 원문을 저장하면 저장한 원문으로 " +
             "다시 고릅니다. 원문을 확정하고 AI 분석이 끝나면 " +
             "분석 결과의 조문으로 바뀝니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. 법 위반을 확정하지 않습니다.",
         ]

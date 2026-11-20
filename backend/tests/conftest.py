@@ -38,6 +38,8 @@ os.environ["DEBUG"] = "false"
 # STT 검수 1차 스캔의 임시 조문 매칭(ai/modeling/abuse/law_match)은 로컬 임베딩 모델이 필요하다 — 시험에서는 끈다
 # (끄면 조문을 붙이지 않는다). 켜 두면 가짜 모듈 시험이 모델을 내려받으려 든다.
 os.environ.setdefault("KEY_SCAN_LAW_MATCH", "off")
+# 같은 스캔의 LLM 확인(ai/modeling/abuse/key_scan_llm, 2026-11-20)은 OpenAI · 가리기 모델이 필요하다 — 시험에서는 끄고, 켜는 시험은 가짜를 넣는다.
+os.environ.setdefault("KEY_SCAN_LLM_VERIFY", "off")
 os.environ["DATABASE_URL"] = _test_database_url()
 os.environ["AUDIO_STORAGE_ROOT"] = str(_TMP_ROOT / "audio")
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-key-not-for-production-use-0123456789"
