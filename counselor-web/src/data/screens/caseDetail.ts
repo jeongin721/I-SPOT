@@ -610,20 +610,29 @@ export function caseDetailValues(input: CaseDetailInput) {
     // 추가 질문이 있으면 그 수를 칩으로 보인다(18절).
     const last = index === PROCESS_COLUMNS.length - 1;
     const approved = last ? input.questions?.questions.length ?? 0 : 0;
+    // 문서 회차(상담 기록 문서만 올린 회차, 11/19 팀 요청): 녹음 · 기록 확인 · 학대 신호 확인은 건너뛴 단계로 보이고 누를 수 없다.
+    // 문서를 올리면 바로 상담일지 작성(요약) → 다음 상담 준비(질문 추천)로 간다.
+    const skipped = latest?.source === "DOCUMENT" && index < 3;
 
     return {
       label,
       // 원래 화면처럼 '녹취 올림' 칸은 번호 없이, 나머지는 1 · 2 · 3 · 4.
-      mark: done ? "✓" : index === 0 ? "↑" : String(index),
+      mark: skipped ? "—" : done ? "✓" : index === 0 ? "↑" : String(index),
       dot: done ? DOT_DONE : current ? DOT_CURRENT : DOT_PENDING,
       done,
       current,
       pending: !done && !current,
       chip: current && latest ? latest.statusLabel : approved > 0 ? `질문 ${approved}개 승인` : "",
       // 11/04 탭1 디자인: 지난 '상담 녹음' 칸 아래 날짜(M/D) — 가장 최근 회차의 상담일, 없으면 올린 날.
-      note: done && index === 0 && latest ? shortDate(latest.consultedDate) || shortDate(latest.createdDate) : "",
+      note: skipped
+        ? index === 0
+          ? "문서로 기록"
+          : "건너뜀"
+        : done && index === 0 && latest
+          ? shortDate(latest.consultedDate) || shortDate(latest.createdDate)
+          : "",
       // 녹취 올림 칸은 새로 올리기(사례만), 나머지는 가장 최근 회차의 단계 화면.
-      href: latestIds
+      href: latestIds && !(skipped && index > 0)
         ? index === 0
           ? screenHref("/UploadModal", { caseId: latestIds.caseId })
           : screenHref(STEP_PAGES[index], latestIds)
@@ -645,7 +654,8 @@ export function caseDetailValues(input: CaseDetailInput) {
     ...riskCardValues(input.signals),
     latestLabel: latest ? `${latest.numberLabel} · ${latest.statusLabel}` : info ? "회차 없음" : "",
     continueHref: next ? next.href : screenHref("/UploadModal", { caseId: input.caseId }),
-    continueLabel: next ? next.label : "녹취 올려 시작하기",
+    // 녹음 없이 상담 기록 문서만 올려도 시작할 수 있다(같은 '녹취 · 자료 올리기' 창, 11/19 팀 요청).
+    continueLabel: next ? next.label : "녹취 · 문서 올려 시작하기",
     progress,
     notReady: NOT_READY,
     // 녹음하기 창(components/RecordDialog.jsx)

@@ -14,7 +14,7 @@ import { CHILD_ALERT_TEXT } from '../data/useCaseChildApp';
 import { screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
 import { useRemote } from '../data/useRemote';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import './ChildLink.css';
 
 const childDateTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -118,6 +118,7 @@ class Logic extends DCLogic {
 
 export default function ChildLink(props) {
   const session = useAuthSession();
+  const navigate = useNavigate();
   const theme = useTheme();
   const key = session.status === 'signedIn' ? `child-link:${session.me.id}` : null;
   const remote = useRemote(key, () => childApp.listCases(), '아이 연계 목록을 불러오지 못했습니다.', () => false);
@@ -217,9 +218,10 @@ export default function ChildLink(props) {
               <tbody>
                 {(v.rows || []).map((r, rIndex) => (
                   <Fragment key={rIndex}>
-                    <tr>
+                    {/* 줄 어디를 눌러도 아이 상세로(11/19 경진). 이름 링크는 그대로 둔다(키보드 · 화면 읽기). */}
+                    <tr onClick={() => navigate(r.to)} style={{ cursor: 'pointer' }}>
                       <td>
-                        <A className="nm" to={r.to}>
+                        <A className="nm" to={r.to} onClick={(e) => e.stopPropagation()}>
                           <span className="av" style={{ width: '34px', height: '34px', fontSize: '13px' }}>
                             {r.ini}
                           </span>

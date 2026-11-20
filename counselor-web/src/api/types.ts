@@ -1830,11 +1830,17 @@ export interface ChildOpenAlert {
 /** 질문을 언제 아이 앱에 보일지. EVENING 은 발송 예약. */
 export type ChildQuestionDeliver = "NOW" | "EVENING";
 
+/** 아이 연계 응답 상태의 '기준' 일수(2026-11-19). */
+export type ChildSilentDays = 5 | 7 | 10;
+export const CHILD_SILENT_DAYS: ChildSilentDays[] = [5, 7, 10];
+
 export interface ChildAppCase {
   status: "NOT_LINKED" | "INVITED" | "LINKED";
   code_expires_at: string | null;
   linked_at: string | null;
   last_response_at: string | null;
+  /** 응답 상태 '기준' 일수(5 · 7 · 10, 연결 전이면 7). */
+  silent_days: ChildSilentDays;
   next_consult: { date: string; time: string | null; place: string | null } | null;
   /** 예약해 둔 질문이 있어도 true. */
   has_pending_questions: boolean;
@@ -1876,6 +1882,8 @@ export interface ChildAppCaseRow {
   welfare_status: ChildWelfareStatus | null;
   welfare_note: string | null;
   welfare_at: string | null;
+  /** 응답 상태 '기준' 일수(연결 전이면 7). 장기 무응답 판단에 쓴다. */
+  silent_days: ChildSilentDays;
 }
 
 /** 장기 무응답 아이 안부 연락 처리. OPEN = 미처리로 되돌림. */

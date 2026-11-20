@@ -17,6 +17,7 @@ import { tablePhase } from "./admin";
 import { alertWhen } from "./adminHome";
 
 /** 이만큼(일) 응답이 없으면 장기 무응답(디자인 '7일 이상'). */
+/** 응답 상태 기준의 기본값. 사례마다 silent_days 로 바꿀 수 있다(5 · 7 · 10). */
 export const LONG_SILENT_DAYS = 7;
 /** 이만큼 넘으면 무응답 일수를 붉게(디자인 14일). */
 const WARN_DAYS = 14;
@@ -92,7 +93,8 @@ export function adminAppValues(input: AdminAppInput) {
 
   const silentAll = rows
     .map((r) => ({ r, days: silentDays(r, now) }))
-    .filter((x): x is { r: ChildAppCaseRow; days: number } => x.days !== null && x.days >= LONG_SILENT_DAYS)
+    // 사례마다 담당 상담사가 정한 응답 상태 기준(5 · 7 · 10일, 기본 7 — 11/19)을 넘으면 장기 무응답.
+    .filter((x): x is { r: ChildAppCaseRow; days: number } => x.days !== null && x.days >= (x.r.silent_days ?? LONG_SILENT_DAYS))
     .sort((a, b) => b.days - a.days)
     .map(({ r, days }) => {
       const done = r.welfare_status === "DONE";

@@ -878,6 +878,47 @@ def test_device_unlink_lets_counselor_link_again(client: TestClient, counselor_h
     assert _home(client, again)["pending"] is None
 
 
+def test_counselor_unlink_cuts_device_and_keeps_feed(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+    # 아이 상세 '콩콩 앱 연결 › 해지하기'(11/19 디자인). 기기 해지와 같은 처리 + 그 기기 토큰은 바로 401.
+    device = _linked(client, counselor_headers, case["id"])
+    _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
+    url = f"/api/v1/cases/{case['id']}/child-app/link"
+
+    assert client.delete(url, headers=counselor_headers).status_code == 204
+    assert client.get("/api/v1/child-app/home", headers=device).status_code == 401
+
+    view = _view(client, counselor_headers, case["id"])
+    assert view["status"] == "NOT_LINKED" and view["has_pending_questions"] is False
+    assert view["feed"][0]["kind"] == "UNLINKED" and view["feed"][0]["payload"] == {"by": "counselor"}
+    assert any(event["kind"] == "QUESTIONS_SENT" for event in view["feed"])
+    audit = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_UNLINKED)).one()
+    assert audit.detail == {"by": "counselor", "was": "LINKED"} and audit.actor_id is not None
+
+    # 다시 눌러도(재시도) 204, 새로 연결할 수 있다.
+    assert client.delete(url, headers=counselor_headers).status_code == 204
+    again = _linked(client, counselor_headers, case["id"])
+    assert _home(client, again)["pending"] is None
+
+
+def test_counselor_unlink_invite_voids_code(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    code = _invite(client, counselor_headers, case["id"])
+    assert client.delete(f"/api/v1/cases/{case['id']}/child-app/link", headers=counselor_headers).status_code == 204
+    assert client.post("/api/v1/child-app/link", json={"code": code}).status_code != 200
+    view = _view(client, counselor_headers, case["id"])
+    # 연결된 적이 없으면 피드 줄은 남기지 않는다.
+    assert view["status"] == "NOT_LINKED" and all(event["kind"] != "UNLINKED" for event in view["feed"])
+
+
+def test_counselor_unlink_only_assigned_counselor(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    url = f"/api/v1/cases/{case['id']}/child-app/link"
+    assert client.delete(url, headers=other_counselor_headers).status_code == 403
+    assert client.delete(url, headers=admin_headers).status_code == 403
+    assert _home(client, device)["pending"] is None
+
+
 def test_alert_after_unlink_in_between_is_401_not_500(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
     # 인증을 통과한 뒤 그사이 해지가 끝난 경우(민규 #167): 연결 행이 사라져도 500 이 아니라 다시 연결하라는 401.
     from sqlalchemy import delete
@@ -1361,3 +1402,66 @@ def test_admin_recent_alerts_keep_old_unacked_urgent_behind_many_checks(
     db.commit()
     rows = client.get("/api/v1/child-app-alerts/recent", headers=admin_headers).json()["data"]
     assert [r["id"] for r in rows] == [str(old.id)]
+
+
+def test_home_lists_up_to_three_upcoming_consults_without_visit_place(
+    client: TestClient, counselor_headers: Headers, case: dict, db
+) -> None:
+    from app.core.enums import ScheduleConsultType, ScheduleKind
+    from app.models.schedule import ScheduleEvent
+    from app.models.user import User
+
+    device = _linked(client, counselor_headers, case["id"])
+    owner = db.scalar(select(User))
+    today = datetime.now(timezone.utc).date()
+    rows = [
+        (today - timedelta(days=1), ScheduleConsultType.REGULAR, "지난 상담실"),
+        (today + timedelta(days=9), ScheduleConsultType.VISIT, "집 주소"),
+        (today + timedelta(days=2), ScheduleConsultType.REGULAR, "기관 상담실"),
+        (today + timedelta(days=20), ScheduleConsultType.CLOSING, "학교 상담실"),
+        (today + timedelta(days=30), ScheduleConsultType.REGULAR, "네 번째"),
+    ]
+    for day, kind, place in rows:
+        db.add(ScheduleEvent(owner_id=owner.id, kind=ScheduleKind.CONSULT, consult_type=kind, case_id=uuid.UUID(case["id"]),
+                             title="t", event_date=day, event_time="16:00", place=place))
+    db.commit()
+
+    home = _home(client, device)
+    assert home["upcoming_consults"] == [
+        {"date": (today + timedelta(days=2)).isoformat(), "time": "16:00", "place": "기관 상담실"},
+        {"date": (today + timedelta(days=9)).isoformat(), "time": "16:00", "place": None},
+        {"date": (today + timedelta(days=20)).isoformat(), "time": "16:00", "place": "학교 상담실"},
+    ]
+    assert home["next_consult"] == home["upcoming_consults"][0]
+
+
+def test_silent_days_setting(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, admin_headers: Headers, case: dict
+) -> None:
+    url = f"/api/v1/cases/{case['id']}/child-app/silent-days"
+    assert _view(client, counselor_headers, case["id"])["silent_days"] == 7
+    # 연결 전에는 정할 수 없다.
+    assert client.put(url, json={"days": 10}, headers=counselor_headers).status_code == 409
+
+    _linked(client, counselor_headers, case["id"])
+    assert client.put(url, json={"days": 6}, headers=counselor_headers).status_code == 422
+    assert client.put(url, json={"days": 10}, headers=counselor_headers).status_code == 204
+    assert _view(client, counselor_headers, case["id"])["silent_days"] == 10
+    rows = client.get("/api/v1/child-app-cases", headers=counselor_headers).json()["data"]
+    assert [row["silent_days"] for row in rows if row["case_id"] == case["id"]] == [10]
+
+    # 담당이 아닌 상담사는 못 바꾸고, 관리자는 바꾼다(장기 무응답 관리).
+    assert client.put(url, json={"days": 5}, headers=other_counselor_headers).status_code in (403, 404)
+    assert client.put(url, json={"days": 5}, headers=admin_headers).status_code == 204
+    assert _view(client, counselor_headers, case["id"])["silent_days"] == 5
+    # 같은 값으로 다시 보내면 기록을 늘리지 않는다.
+    assert client.put(url, json={"days": 5}, headers=admin_headers).status_code == 204
+
+
+def test_silent_days_change_is_audited(client: TestClient, counselor_headers: Headers, case: dict, db, counselor_id) -> None:
+    _linked(client, counselor_headers, case["id"])
+    url = f"/api/v1/cases/{case['id']}/child-app/silent-days"
+    client.put(url, json={"days": 10}, headers=counselor_headers)
+    client.put(url, json={"days": 10}, headers=counselor_headers)
+    rows = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_SILENT_DAYS_CHANGED)).all()
+    assert [(row.actor_id, row.detail) for row in rows] == [(counselor_id, {"from": 7, "to": 10})]

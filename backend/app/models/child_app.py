@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, String, Text, false
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enums import (
@@ -37,6 +37,8 @@ class ChildAppLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     device_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True, index=True)
     linked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 응답 상태 '기준'(5 · 7 · 10일). 마지막 응답 뒤 이만큼 지나면 '안부 확인 필요'. 연결을 해지하면 행과 함께 없어진다.
+    silent_days: Mapped[int] = mapped_column(Integer, default=7, server_default="7", nullable=False)
 
 
 class ChildQuestionSet(UUIDPrimaryKeyMixin, TimestampMixin, Base):
