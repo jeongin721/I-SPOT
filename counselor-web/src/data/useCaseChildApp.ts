@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { ApiError } from "../api/client";
 import { childApp as childAppApi } from "../api/endpoints";
-import type { ChildAppCase, ChildAppInvite, ChildQuestionDeliver } from "../api/types";
+import type { ChildAppCase, ChildAppInvite, ChildQuestionDeliver, ChildSilentDays } from "../api/types";
 import { errorMessage, useRemote } from "./useRemote";
 
 const REFRESH_MS = 30_000;
@@ -85,6 +86,15 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  /** 응답 상태 '기준' 일수 바꾸기(5 · 7 · 10일). */
+  const setSilentDays = useCallback(
+    (days: ChildSilentDays) =>
+      run(async () => {
+        if (caseId) await childAppApi.setSilentDays(caseId, days);
+      }, "기준을 바꾸지 못했습니다."),
+    [caseId, run],
+  );
+
   /** 발송 예약 취소. 예약 시각이 지나 이미 아이에게 보였으면 서버가 409 로 거절한다. */
   const cancelScheduled = useCallback(
     (questionSetId: string) =>
@@ -139,6 +149,37 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
+  /** 아이 앱 연결 해지(담당 상담사). 그 기기는 바로 끊기고 답하지 않은 질문은 거둔다. 받은 답 · 알림은 남는다. */
+  const unlink = useCallback(
+    () =>
+      run(async () => {
+        if (caseId) await childAppApi.unlink(caseId);
+      }, "앱 연동을 해지하지 못했습니다."),
+    [caseId, run],
+  );
+
+  /** 코드 재발급(11/19 팀 요청): 연결된 사례면 지금 기기를 끊고 새 연결 코드를 만든다(서버는 연결된 사례에 코드를 주지 않는다 — 409). */
+  const reissueInvite = useCallback(
+    (linked: boolean) =>
+      run(async () => {
+        if (!caseId) return;
+        if (linked) await childAppApi.unlink(caseId);
+        try {
+          setInvite(await childAppApi.invite(caseId));
+        } catch (caught) {
+          if (!linked) throw caught;
+          // 해지는 됐는데 코드 만들기만 실패했다 — 아이 기기는 이미 끊겼으니 지금 상태를 알리고 화면을 '미연결' 로 맞춘다(민규 #187).
+          refresh();
+          throw new ApiError(
+            "CHILD_APP_REISSUE_PARTIAL",
+            "연결이 끊겼습니다. 새 코드를 만들지 못했으니 '연결 코드 만들기'로 코드를 다시 만들어 주세요.",
+            caught instanceof ApiError ? caught.status : 0,
+          );
+        }
+      }, "연결 코드를 다시 만들지 못했습니다."),
+    [caseId, refresh, run],
+  );
+
   const acknowledge = useCallback(
     (alertId: string) =>
       run(async () => {
@@ -149,5 +190,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, sendQuestions, cancelScheduled, acknowledge };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, reissueInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
 }

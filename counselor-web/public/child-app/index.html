@@ -466,7 +466,7 @@ function freshGarden(){
 }
 function fresh(){
   return {
-    screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, qPending:false, qi:0, ans:{},
+    screen: load(STORE.token, null) ? 'home' : 'link', tab:'home', code:'', qset:[], setId:null, next:null, upcoming:[], qPending:false, qi:0, ans:{},
     tickets:load(STORE.tickets, 0), keys:withKong(load(STORE.keys, [])), rep:load(STORE.rep, 'kong'), newKey:null, large:false, noti:0,
     calY:null, calM:null, calPick:false, calPickY:null, calAnim:'',
     hidden:false, garden:freshGarden(), gSheet:null, gToast:'',
@@ -551,8 +551,11 @@ function infoHead(t){ return `<div class="info-h">${INFO_IC}<span>${t}</span></d
 function lockLine(t){ return `<div class="lock">${ICON.lock}<span>${t || '보낸 내용은 담당 상담 선생님이 확인해요. 안전이 걱정되면 도움을 주기 위해 다른 어른이나 기관에 알릴 수 있어요.'}</span></div>`; }
 
 /* ---------- 아이 앱 화면 ---------- */
+// 연결 전 화면. 상담사가 연결을 끊어 401 로 돌아왔으면(S.cut) 끊긴 것을 알리고, 연결 전이어도 112 · 1388 은 늘 둔다
+// — 도움 탭은 연결 뒤에만 보이므로(민규 #187 리뷰).
 function scrLink(){
   return `<div class="pad" style="justify-content:center">
+    ${S.cut ? `<div class="info" role="status"><b style="color:var(--ink)">선생님과의 연결이 끊겼어요</b><span>다시 쓰려면 상담 선생님께 새 연결 코드를 받아 입력하세요. 지금 위험하면 아래에서 112에, 이야기하고 싶으면 1388에 전화하세요.</span></div>` : ''}
     <div class="center">${img('hello', 120, '인사하는 캐릭터')}
       <h2 style="margin:0;font-size:1.4em">반가워요</h2>
       <p class="sub" style="margin:0">상담 선생님께 받은 연결 코드를 입력하세요.</p></div>
@@ -560,6 +563,10 @@ function scrLink(){
     <input type="text" id="code" inputmode="text" autocomplete="off" placeholder="예: KONG-2731" value="${esc(S.code)}">
         <div style="flex:1 1 auto"></div>
     <button class="primary" data-act="link">연결하기</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="outline" data-act="call" data-n="112" style="display:flex;align-items:center;justify-content:center;gap:6px;color:var(--danger);border-color:var(--danger)">${ICON.phone}112 경찰</button>
+      <button class="outline" data-act="call" data-n="1388" style="display:flex;align-items:center;justify-content:center;gap:6px">${ICON.chat}1388 상담</button>
+    </div>
   </div>`;
 }
 function scrOnboard(){
@@ -576,13 +583,13 @@ function scrOnboard(){
     <button class="primary" data-act="startApp">시작하기</button>
   </div>`;
 }
-function nextInfo(){
-  const [y, m, d] = S.next.date.split('-').map(Number), dt = new Date(y, m - 1, d), t0 = new Date(); t0.setHours(0, 0, 0, 0);
+function nextInfo(c = S.next){
+  const [y, m, d] = c.date.split('-').map(Number), dt = new Date(y, m - 1, d), t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const n = Math.round((dt - t0) / 86400000), wd = '일월화수목금토'[dt.getDay()] + '요일';
   let time = '';
-  if (S.next.time) { const [h, mi] = S.next.time.split(':').map(Number); time = (h < 12 ? '오전 ' : '오후 ') + (h % 12 || 12) + '시' + (mi ? ' ' + mi + '분' : ''); }
+  if (c.time) { const [h, mi] = c.time.split(':').map(Number); time = (h < 12 ? '오전 ' : '오후 ') + (h % 12 || 12) + '시' + (mi ? ' ' + mi + '분' : ''); }
   return {y, m, d, n, first:new Date(y, m - 1, 1).getDay(), last:new Date(y, m, 0).getDate(), dday: n === 0 ? '오늘' : 'D-' + n, wd, time,
-    label:[wd, time].filter(Boolean).join(' ') + (S.next.place ? ' · ' + S.next.place : '')};
+    label:[wd, time].filter(Boolean).join(' ') + (c.place ? ' · ' + c.place : '')};
 }
 function scrHome(){
   const n = S.qset.length;
@@ -718,19 +725,20 @@ function scrNote(){
     <button class="primary" data-act="sendNote">보내기</button>
   </div>`;
 }
-// 달력: 오늘은 실제 오늘, 상담 날짜는 서버 /home 의 next(다음 상담)만. 처음 열면 다음 상담이 있는 달.
+// 달력: 오늘은 실제 오늘, 상담 날짜는 서버 /home 의 다가오는 상담(다음 상담 · 그다음 상담). 처음 열면 다음 상담이 있는 달.
 function calHomeYM(){ if (S.next) { const i = nextInfo(); return {y:i.y, m:i.m - 1}; } const t = new Date(); return {y:t.getFullYear(), m:t.getMonth()}; }
 function calGrid(){
   const {calY:y, calM:m} = S, t = new Date(), ni = S.next ? nextInfo() : null;
+  const laters = S.upcoming.slice(1).map((c) => nextInfo(c));
   const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
   const weeks = Math.ceil((first + days) / 7);
   let cells = ['일','월','화','수','목','금','토'].map((d, i) => `<span${i === 0 ? ' style="color:#B0452C"' : ''}>${d}</span>`).join('');
   for (let i = 0; i < weeks * 7; i++) {
     const n = i - first + 1;
     if (n < 1 || n > days) { cells += '<i></i>'; continue; }
-    const next = ni && ni.y === y && ni.m - 1 === m && ni.d === n ? 'next' : '';
+    const next = ni && ni.y === y && ni.m - 1 === m && ni.d === n ? 'next' : (laters.some((l) => l.y === y && l.m - 1 === m && l.d === n) ? 'later' : '');
     const today = y === t.getFullYear() && m === t.getMonth() && n === t.getDate() ? ' today' : '';
-    cells += `<i><b class="${next}${today}" aria-label="${m + 1}월 ${n}일${today ? ' 오늘' : ''}${next ? ' · 다음 상담' : ''}">${n}</b></i>`;
+    cells += `<i><b class="${next}${today}" aria-label="${m + 1}월 ${n}일${today ? ' 오늘' : ''}${next === 'next' ? ' · 다음 상담' : (next ? ' · 상담' : '')}">${n}</b></i>`;
   }
   return cells;
 }
@@ -755,7 +763,7 @@ function scrCal(){
       </div>
       <div class="cal ${S.calAnim || ''}" id="calGrid">${calGrid()}</div>
       <div class="cal-foot">
-        <span class="cal-legend">${S.next ? '<i class="lg next"></i>다음 상담' : ''}<i class="lg today"></i>오늘</span>
+        <span class="cal-legend">${S.next ? '<i class="lg next"></i>다음 상담' : ''}${S.upcoming.length > 1 ? '<i class="lg later"></i>그다음 상담' : ''}<i class="lg today"></i>오늘</span>
         ${atHome ? '' : `<button class="cal-back" data-act="calHome">${S.next ? '다음 상담 달로' : '이번 달로'}</button>`}
       </div>`;
   if (!S.next) return `${bar('일정')}<div class="pad">
@@ -769,6 +777,7 @@ function scrCal(){
     <div style="display:flex;flex-direction:column;gap:8px">
       <b>다가오는 상담</b>
       <div class="info row" style="font-size:1em"><span class="datebox" style="background:#fff"><small>${i0.m}월</small><b>${i0.d}</b></span><span class="grow"><b style="display:block">${esc(i0.wd)} ${esc(i0.time)}</b><span class="muted">${esc(S.next.place || '')}</span></span><span class="chip sky">${i0.dday}</span></div>
+      ${S.upcoming.slice(1).map((c) => (l => `<div class="info row" style="font-size:1em"><span class="datebox" style="background:#F1ECE4"><small style="color:#6B645D">${l.m}월</small><b>${l.d}</b></span><span class="grow"><b style="display:block">${esc(l.wd)} ${esc(l.time)}</b><span class="muted">${esc(c.place || '')}</span></span><span class="chip" style="background:#F1ECE4;color:#57514B">${l.dday}</span></div>`)(nextInfo(c))).join('')}
     </div>
     <button class="outline" data-act="calHard">참석이 어려워요 (선생님께 알리기)</button>
   </div>`;
@@ -1505,7 +1514,12 @@ async function api(path, options){
   const headers = {'Content-Type':'application/json'}, token = load(STORE.token, null);
   if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch(API + path, {...options, headers});
-  if (res.status === 401 && token) { forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); render(); throw new Error('unlinked'); }
+  // 연결이 끊겼다(상담사 해지 등). 첫 화면에 '연결이 끊겼어요' 를 보인다(민규 #187).
+  // 아이가 스스로 해지해 이 폰의 토큰을 이미 지웠으면, 먼저 보낸 요청이 늦게 401 로 돌아와도 안내를 띄우지 않는다(민규 #187 머지 뒤 리뷰).
+  if (res.status === 401 && token) {
+    if (load(STORE.token, null) !== token) throw new Error('unlinked');
+    forget(STORE.token); forget(STORE.alertSeen); clearTimers(); S = fresh(); S.cut = true; render(); throw new Error('unlinked');
+  }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) { const e = new Error('api'); e.status = res.status; e.message2 = body && body.error && body.error.message; throw e; }
   return body && body.data;
@@ -1525,6 +1539,8 @@ async function unlinkDevice(){
 }
 function applyHome(d){
   S.next = d.next_consult;
+  // 다가오는 상담(가까운 순, 3개까지 — 11/19). 옛 서버면 다음 상담 하나만.
+  S.upcoming = d.upcoming_consults || (d.next_consult ? [d.next_consult] : []);
   S.alert = d.alert || null;
   S.staff = d.staff_hours || null;
   const p = d.pending, wasId = S.setId;
@@ -1547,7 +1563,7 @@ async function linkDevice(code){
   S.sending = true;
   try {
     const d = await api('/link', {method:'POST', body:JSON.stringify({code})});
-    save(STORE.token, d.device_token); go('onboard');
+    save(STORE.token, d.device_token); S.cut = false; go('onboard');
   } catch (e) { toast(e.status === 400 ? '연결 코드를 다시 확인해 주세요' : (e.status === 429 ? '잠시 후 다시 시도해 주세요' : '연결하지 못했어요. 인터넷을 확인해 주세요')); }
   S.sending = false;
 }
