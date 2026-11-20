@@ -328,6 +328,10 @@ export function sttReviewValues(input: SttScreenInput) {
   if (view === "key" && !hasKey) view = "all";
   // 가리킬 발화(주소의 seg · 재생 바 표시)가 핵심 목록에 없으면 전체 보기로 — 핵심 보기를 남긴 채 &seg= 로 와도 그 줄이 보이게(민규 #115 R4).
   if (view === "key" && focusId && !keyRows.some((row) => row.segmentId === focusId)) view = "all";
+  // 보기를 고르지 않은 채(auto) 전체 STT 에서 고치기 시작하면 그 보기를 고정한다. 원문을 저장하면 서버가 핵심 발화를 다시
+  // 고르는데(key_scan REFRESHING → DONE), 처음에 0건이던 핵심 발화가 그 결과로 생기면 auto 가 읽기 전용 '핵심 발화' 보기로
+  // 넘어가 고치던 입력칸이 사라진다(#188 리뷰). 고치기를 시작하는 단추(문장 누르기 · 화자 목록 열기)가 이 값을 같이 넣는다.
+  const pinAll: Partial<SttUiState> = state.view === "auto" && view === "all" ? { view: "all" } : {};
   const home = hasKey ? "key" : "all";
   // '확인할 곳' 보기에서 고친 줄은 그대로 둔다(고치면 저신뢰 표시가 꺼져 고치던 줄이 사라지지 않게). 표시할 줄도 둔다.
   const visible =
@@ -395,7 +399,7 @@ export function sttReviewValues(input: SttScreenInput) {
     const tapPick = !tap
       ? null
       : lineEditable
-        ? () => setState({ editSeg: editing ? null : key, spOpen: null })
+        ? () => setState({ editSeg: editing ? null : key, spOpen: null, ...pinAll })
         : canPlay
           ? () => void player.playFrom(row.startMs)
           : null;
@@ -426,7 +430,7 @@ export function sttReviewValues(input: SttScreenInput) {
       spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
-      toggleSp: () => setState({ spOpen: open ? null : key }),
+      toggleSp: () => setState({ spOpen: open ? null : key, ...pinAll }),
       /** 목록에서 Esc 를 누르면 닫는다. */
       spKey: (event: { key: string }) => {
         if (open && event.key === "Escape") setState({ spOpen: null });
@@ -514,7 +518,7 @@ export function sttReviewValues(input: SttScreenInput) {
       spStaticNote,
       canEdit: lineEditable,
       spMenu: open,
-      toggleSp: () => setState({ spOpen: open ? null : key }),
+      toggleSp: () => setState({ spOpen: open ? null : key, ...pinAll }),
       spKey: (event: { key: string }) => {
         if (open && event.key === "Escape") setState({ spOpen: null });
       },
@@ -533,7 +537,7 @@ export function sttReviewValues(input: SttScreenInput) {
         const sentenceKey = okKey(row.segmentId);
         const on = index === editing;
         const pick = lineEditable
-          ? () => setState({ editSeg: on ? null : sentenceKey, spOpen: null })
+          ? () => setState({ editSeg: on ? null : sentenceKey, spOpen: null, ...pinAll })
           : group[index].play;
         return {
           key: row.segmentId,
