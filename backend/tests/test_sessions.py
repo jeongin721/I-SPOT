@@ -497,3 +497,29 @@ def test_renumber_script_fills_gaps(client: TestClient, counselor_headers, case:
 
     log = db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.SESSION_RENUMBERED))
     assert log.detail == {"via": "renumber_sessions script", "renumbered": [[5, 3]]}
+
+
+def test_counselor_cannot_renumber_past_confirmed_sessions(client: TestClient, counselor_headers, admin_headers, case: dict) -> None:
+    # 담당 상담사가 확정 전 회차를 지우며 뒤의 확정 · 승인 회차 번호를 바꾸지 못한다(민규 #190 리뷰 3). 관리자는 된다.
+    ids = [create_session(client, counselor_headers, case["id"])["id"] for _ in range(3)]
+    _set_status(ids[2], SessionStatus.APPROVED)
+
+    refused = client.delete(f"/api/v1/sessions/{ids[1]}?renumber=true", headers=counselor_headers)
+    assert refused.status_code == 403, refused.text
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[1]), (3, ids[2])]
+
+    # 번호를 비워 두는 삭제는 그대로 된다.
+    assert client.delete(f"/api/v1/sessions/{ids[1]}", headers=counselor_headers).status_code == 204
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (3, ids[2])]
+
+
+def test_counselor_can_renumber_when_later_sessions_are_unconfirmed(client: TestClient, counselor_headers, admin_headers, case: dict) -> None:
+    ids = [create_session(client, counselor_headers, case["id"])["id"] for _ in range(3)]
+    _set_status(ids[2], SessionStatus.STT_REVIEW_REQUIRED)
+    assert client.delete(f"/api/v1/sessions/{ids[1]}?renumber=true", headers=counselor_headers).status_code == 204
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[2])]
+
+    more = [create_session(client, counselor_headers, case["id"])["id"] for _ in range(2)]
+    _set_status(more[1], SessionStatus.APPROVED)
+    assert client.delete(f"/api/v1/sessions/{more[0]}?renumber=true", headers=admin_headers).status_code == 204
+    assert _numbers(client, counselor_headers, case["id"]) == [(1, ids[0]), (2, ids[2]), (3, more[1])]

@@ -616,7 +616,7 @@ def drop_ungrounded_risk_items(
     ]
     update: Dict[str, Any] = {}
 
-    if any(new is not old for new, old in zip(severity, result.severity_ratings)):
+    if any(new is not old for new, old in zip(severity, result.severity_ratings, strict=True)):
         update["severity_ratings"] = severity
 
     if not dropped:

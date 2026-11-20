@@ -238,9 +238,25 @@ def delete_session(
     renumber: bool = False,
 ) -> List[List[int]]:
     """회차를 지운다. renumber 면 뒤 회차 번호를 하나씩 당긴다(잘못 올린 회차). 실제 상담 기록이면 번호를 비워 둔다.
-    당긴 번호 [[옛, 새], …] 를 돌려준다."""
+    당긴 번호 [[옛, 새], …] 를 돌려준다. 이미 저장된 글(종결 요약 · 다음 상담 체크리스트 등)의 'N회차' 는 옛 번호로 남는다."""
 
     assert_can_delete(session, current_user)
+
+    # 담당 상담사가 확정 전 회차를 지우면서 뒤의 확정 · 승인된 회차 번호까지 바꾸지 않게 한다(민규 #190 리뷰 3) —
+    # 원문을 확정한 회차는 관리자만 지우는 것과 같은 선으로, 그런 회차의 번호를 당기는 것도 관리자만.
+    if renumber and not current_user.is_admin:
+        locked_later = db.scalars(
+            select(ConsultationSession.status).where(
+                ConsultationSession.case_id == session.case_id,
+                ConsultationSession.session_number > session.session_number,
+            )
+        ).all()
+
+        if any(status not in COUNSELOR_DELETABLE_STATUSES for status in locked_later):
+            raise forbidden(
+                "뒤 회차 중 원문을 확정한 회차가 있어 번호 당기기는 관리자만 할 수 있습니다. "
+                "번호를 비워 두고 지우거나 관리자에게 요청해 주세요."
+            )
 
     # DB row 를 지우기 전에 Local Storage 의 음성 파일을 먼저 정리한다.
     audio_paths = list(
