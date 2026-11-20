@@ -522,7 +522,7 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
-  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read') + this.ntGet('ispot-app-newcase'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read') + this.ntGet('ispot-app-newcase'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
   this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
@@ -577,8 +577,12 @@ renderValsBase() {
     ['C-2026-0298', '윤', '하은', '10세', '2026-06-20', '중'], ['C-2026-0229', '신', '유나', '8세', '2026-05-14', '하'],
     ['C-2026-0312', '강', '시우', '7세', '2026-04-08', '하'], ['C-2026-0251', '조', '하린', '14세', '2026-05-30', '하']
   ];
+  let NC = []; try { NC = JSON.parse(this.ntGet('ispot-app-newcase') || '[]'); } catch (e) {} if (!Array.isArray(NC)) NC = [];
+  const ageOf = (b) => { const p = (b || '').split('-').map(Number); if (p.length !== 3) return '-'; const n = new Date(); let a = n.getFullYear() - p[0]; if (n.getMonth() + 1 < p[1] || (n.getMonth() + 1 === p[1] && n.getDate() < p[2])) a -= 1; return Math.max(0, a) + '세'; };
+  data.unshift(...NC.map((x) => [x.id, x.name.slice(0, 1), x.name.slice(1), ageOf(x.birth), '-', '-']));
+  cls['-'] = 'chip';
   const sort = s.sort || 'none'; const dir = s.dir || 'up';
-  const RK = { '상': 0, '중': 1, '하': 2 };
+  const RK = { '상': 0, '중': 1, '하': 2, '-': 3 };
   const list = data.slice();
   if (sort === 'date') list.sort((a, b) => dir === 'up' ? b[4].localeCompare(a[4]) : a[4].localeCompare(b[4]));
   if (sort === 'risk') list.sort((a, b) => dir === 'up' ? RK[a[5]] - RK[b[5]] : RK[b[5]] - RK[a[5]]);

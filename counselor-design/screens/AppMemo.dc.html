@@ -171,7 +171,7 @@ textarea.inp{padding:10px 12px;line-height:1.6;resize:vertical}
 <sc-if value="{{ ask }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: var(--redsoft);"><b style="color: var(--red);">이 메모를 삭제할까요?</b><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><button type="button" class="btn" onClick="{{ cancelDel }}">취소</button><button type="button" class="btn" style="background: var(--red); border-color: var(--red); color: #FFFFFF;" onClick="{{ del }}">삭제</button></div></div></sc-if>
 </section></div></sc-if>
 <sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="ov" onClick="{{ ntClose }}"><section class="sheet" role="dialog" aria-modal="true" aria-label="알림" onClick="{{ stop }}">
-<span class="grab" aria-hidden="true"></span><div class="sh-hd"><b>알림</b><button type="button" class="btn btn-sm" onClick="{{ ntClose }}">닫기</button></div>
+<div class="sh-hd"><b>알림</b><button type="button" class="btn btn-sm" onClick="{{ ntClose }}">닫기</button></div>
 <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2"><div class="nt {{ n.red }}"><b>{{ n.title }}</b><span class="note">{{ n.sub }}</span><sc-if value="{{ n.desc }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13.5px;">{{ n.desc }}</span></sc-if>
 <sc-if value="{{ n.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-sm btn-p" style="align-self: flex-start;" onClick="{{ n.go }}">{{ n.act }}</button></sc-if>
 <sc-if value="{{ n.hasLink }}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" style="align-self: flex-start;" href="{{ n.href }}" onClick="{{ n.nav }}">{{ n.linkLabel }}</a></sc-if></div></sc-for>

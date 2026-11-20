@@ -510,6 +510,7 @@ label.cp-in > textarea{padding-right:42px}
 .thm-root.dark .hs-tbl,.thm-root.dark .hs-row,.thm-root.dark .hs-k{border-color:#45423B}
 .thm-root.dark .hs-k{background:#33312C}
 .thm-root.dark .hs-t{color:#A8A296}
+.thm-root.reg-emb{min-height:0 !important;background:transparent !important}
 </style>
 </helmet>
 <div class="{{ themeCls }}" style="min-height: 1700px; background: rgba(47,58,68,0.40); font-family: 'IBM Plex Sans KR', sans-serif; font-size: 14px; line-height: 1.6; color: #2B2A26; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; position: relative;">
@@ -517,8 +518,8 @@ label.cp-in > textarea{padding-right:42px}
 <div class="thm-abs"><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
 <section role="dialog" aria-modal="true" aria-labelledby="reg-title" style="width: 100%; max-width: 860px; background: #FFFFFF; border-radius: 24px; box-shadow: 0 20px 60px rgba(43, 42, 38,0.22); overflow: hidden;">
 <div style="padding: 24px 30px 0; display: flex; align-items: flex-start; gap: 12px;">
-<div><h1 id="reg-title" style="margin: 0; font-size: 20px; font-weight: 700;">새 사례 등록</h1><div class="note">초기면접지(아동용) · 서식 4</div></div>
-<a href="{{ backHref }}" onClick="{{ syncBack }}" aria-label="닫기" style="margin-left: auto; width: 40px; height: 40px; border-radius: 50%; background: #F7F6F2; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; color: #2B2A26; font-size: 18px;">×</a>
+<div><h1 id="reg-title" style="margin: 0; font-size: 20px; font-weight: 700;">{{ regTitle }}</h1><div class="note">초기면접지(아동용) · 서식 4</div></div>
+<sc-if value="{{ notEmb }}" hint-placeholder-val="{{ true }}"><a href="{{ backHref }}" onClick="{{ syncBack }}" aria-label="닫기" style="margin-left: auto; width: 40px; height: 40px; border-radius: 50%; background: #F7F6F2; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; color: #2B2A26; font-size: 18px;">×</a></sc-if><sc-if value="{{ isEmb }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ embClose }}" aria-label="닫기" style="margin-left: auto; width: 40px; height: 40px; border: 0; border-radius: 50%; background: #F7F6F2; display: inline-flex; align-items: center; justify-content: center; color: #2B2A26; font-size: 18px; cursor: pointer;">×</button></sc-if>
 </div>
 <div role="tablist" style="display: flex; margin: 16px 30px 0; border-bottom: 1px solid #EAE7DF;">
 <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2"><button type="button" role="tab" class="tabb" aria-selected="{{ t.sel }}" onClick="{{ t.go }}" style="border-bottom-color: {{ t.bd }}; color: {{ t.fg }}; font-weight: {{ t.fw }};">{{ t.label }}</button></sc-for>
@@ -621,15 +622,15 @@ label.cp-in > textarea{padding-right:42px}
 
 <sc-if value="{{ showMiss }}" hint-placeholder-val="{{ false }}"><p class="req" role="alert" style="margin: 0; font-size: 13px; font-weight: 500;">기본 정보 필수 항목을 모두 입력해야 초기면접 내용으로 넘어갈 수 있습니다 · 남은 항목: {{ missText }}</p></sc-if>
 <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid #EAE7DF; padding-top: 18px;">
-<a class="btn btn-s" href="{{ backHref }}" onClick="{{ syncBack }}">취소</a>
+<sc-if value="{{ notEmb }}" hint-placeholder-val="{{ true }}"><a class="btn btn-s" href="{{ backHref }}" onClick="{{ syncBack }}">취소</a></sc-if><sc-if value="{{ isEmb }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-s" onClick="{{ embClose }}">취소</button></sc-if>
 <button type="button" class="btn btn-s" onClick="{{ goB }}">{{ midLabel }}</button>
-<a class="btn btn-p" href="CaseDetail.dc.html">등록</a>
+<sc-if value="{{ notEmb }}" hint-placeholder-val="{{ true }}"><a class="btn btn-p" href="CaseDetail.dc.html">등록</a></sc-if><sc-if value="{{ isEmb }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-p" onClick="{{ embSave }}">저장</button></sc-if>
 </div>
 </form>
 </section>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1700}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1700},"embed":{"editor":null},"editCase":{"editor":null},"onClose":{"editor":null},"onSave":{"editor":null}}'>
 class Component extends DCLogic {
 backRead() {
   let v = null;
@@ -676,11 +677,16 @@ cpDo(e, mask) { const l = e && e.currentTarget && e.currentTarget.closest ? e.cu
 renderVals() {
   const v = this.renderValsBase() || {};
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
-  return Object.assign({}, v, { copyMenu: (e) => { const l = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('label') : null; if (!l) return; const was = l.classList.contains('cp-open'); try { document.querySelectorAll('label.cp-open').forEach((x) => x.classList.remove('cp-open')); } catch (er) {} if (!was) l.classList.add('cp-open'); }, copyRaw: (e) => this.cpDo(e, false), copyMask: (e) => this.cpDo(e, true), jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), backHref: this.backShow(), syncBack: (e) => { try { const h = this.backRead(); if (e && e.currentTarget) e.currentTarget.setAttribute('href', h); } catch (err) {} }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
+  const emb = !!(this.props && this.props.embed);
+  Object.assign(v, { isEmb: emb, notEmb: !emb, regTitle: emb ? (this._embTitle || '사례 수정') : '새 사례 등록',
+    embClose: () => { if (this.props.onClose) this.props.onClose(); },
+    embSave: () => { const t = this.state; const snap = {}; ['f', 'fam', 'famOther', 'ty', 'hm', 'hmOther', 'tr', 'trOther', 'hs', 'rows'].forEach((k) => { if (t[k] !== undefined) snap[k] = t[k]; }); if (this.props.onSave) this.props.onSave(snap); if (this.props.onClose) this.props.onClose(); } });
+  return Object.assign({}, v, { copyMenu: (e) => { const l = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('label') : null; if (!l) return; const was = l.classList.contains('cp-open'); try { document.querySelectorAll('label.cp-open').forEach((x) => x.classList.remove('cp-open')); } catch (er) {} if (!was) l.classList.add('cp-open'); }, copyRaw: (e) => this.cpDo(e, false), copyMask: (e) => this.cpDo(e, true), jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), backHref: this.backShow(), syncBack: (e) => { try { const h = this.backRead(); if (e && e.currentTarget) e.currentTarget.setAttribute('href', h); } catch (err) {} }, themeCls: (dark ? 'thm-root dark' : 'thm-root') + (this.props && this.props.embed ? ' reg-emb' : ''), themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',
     toggleTheme: () => { this.themeWrite(!this.themeRead()); this.setState({ __thmTick: Date.now() }); } });
 }
 
-constructor(props) { super(props); this.state = { tab: 'A', ty: {}, hm: {}, hmEdit: false, hmDraft: '', hmOther: '', trEdit: false, trDraft: '', trOther: '', tr: {}, fam: '', rows: 2, tried: false, f: { report: '2026-10-12', link: '2026-10-12', no: 'C-2026-0352', child: '', sex: '선택', birth: '', target: '', rel: '선택', m1: '원가정보호', m2: '지속관찰', how: '', first: '', tbirth: '' } }; }
+constructor(props) { super(props); this.state = { tab: 'A', ty: {}, hm: {}, hmEdit: false, hmDraft: '', hmOther: '', trEdit: false, trDraft: '', trOther: '', tr: {}, fam: '', rows: 2, tried: false, f: { report: '2026-10-12', link: '2026-10-12', no: 'C-2026-0352', child: '', sex: '선택', birth: '', target: '', rel: '선택', m1: '원가정보호', m2: '지속관찰', how: '', first: '', tbirth: '' } };
+  const ec = props && props.editCase; if (ec) { this.state = { ...this.state, ...ec, f: { ...this.state.f, ...(ec.f || {}) }, tab: 'A', tried: false }; this._embTitle = (ec.f && ec.f.child) || ''; } }
 dpBuild(k, val, set, minS, maxS, defY) {
   const st = this.state.dp || {}; const open = st.k === k;
   const p = (x) => String(x).padStart(2, '0');

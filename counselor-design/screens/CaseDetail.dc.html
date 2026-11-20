@@ -46,6 +46,7 @@ a{color:#8C7340}a:hover{color:#2B2A26}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 18px;border-radius:12px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;text-decoration:none;white-space:nowrap}
 .btn-p{background:#2B2A26;color:#EADBB5;font-weight:700}.btn-p:hover{background:#3A3833;color:#EADBB5}
 .btn-s{background:#FFFFFF;color:#2B2A26;border-color:#DAD5C9}.btn-s:hover{border-color:#2B2A26;color:#2B2A26}
+.cd-edit-ov{position:fixed;inset:0;z-index:300;background:rgba(47,58,68,.40);overflow-y:auto;overscroll-behavior:contain}
 .btn-y{background:#FFFFFF;color:#2B2A26;border-color:#DAD5C9}.btn-y:hover{border-color:#2B2A26;color:#2B2A26}
 .btn-sm{min-height:34px;padding:0 12px;font-size:13px}
 .sub{color:#6E6A62;font-size:13px}
@@ -543,7 +544,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </aside>
 <main style="flex: 999 1 640px; min-width: 0; padding: 30px 36px 56px; display: flex; flex-direction: column; gap: 20px;">
 <div class="thm-bar"><div class="nt-wrap"><button type="button" class="nt-btn" aria-label="{{ ntLabel }}" aria-expanded="{{ ntExp }}" aria-haspopup="true" onClick="{{ ntToggle }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9a.6.6 0 0 1-.45 1H4.25a.6.6 0 0 1-.45-1C4.6 15.5 6 13.7 6 9.5z"></path><path d="M10 20.2a2.2 2.2 0 0 0 4 0"></path></svg><sc-if value="{{ ntHasBadge }}" hint-placeholder-val="{{ false }}"><span class="nt-badge">{{ ntBadge }}</span></sc-if></button><sc-if value="{{ ntOpen }}" hint-placeholder-val="{{ false }}"><div class="nt-pop" role="region" aria-label="알림 목록"><div class="nt-hd"><b style="font-size: 15px;">알림</b><span class="nt-sub">{{ ntSub }}</span><button type="button" class="nt-all" onClick="{{ ntReadAll }}">모두 읽음</button></div><div class="nt-list"><sc-for list="{{ ntItems }}" as="n" hint-placeholder-count="3"><a class="nt-item {{ n.cls }}" href="Schedule.dc.html" onClick="{{ n.go }}"><span class="nt-dot" aria-hidden="true"></span><span class="nt-main"><b class="nt-t">{{ n.title }}</b><span class="nt-s">{{ n.sub }}</span></span><span class="nt-dd {{ n.ddCls }}">{{ n.dd }}</span></a></sc-for><sc-if value="{{ ntEmpty }}" hint-placeholder-val="{{ false }}"><p class="nt-empty">새 알림이 없습니다.</p></sc-if></div></div></sc-if></div><button type="button" class="thm-tg" aria-pressed="{{ themePressed }}" aria-label="{{ themeLabel }}" onClick="{{ toggleTheme }}"><span class="thm-knob"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg></span></button></div>
-<nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
+<sc-if value="{{ notNew }}" hint-placeholder-val="{{ true }}"><nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › 이서윤 C-2026-0351</nav>
 <section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
 <a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a>
 <div style="flex: 1 1 320px;">
@@ -551,15 +552,25 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="note">C-2026-0351 · 다음 상담 오늘 16:00</div>
 </div>
 <div style="display: flex; flex-wrap: wrap; gap: 8px;"><button type="button" class="btn btn-s" onClick="{{ recOpen }}"><span class="rec-dot" aria-hidden="true"></span> 녹음하기</button><a class="btn btn-s" href="UploadModal.dc.html" onClick="{{ markBack }}">↑ 녹취 올리기</a></div>
+</section></sc-if>
+<sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}">
+<nav aria-label="위치" class="note"><a href="CaseList.dc.html">사례 관리</a> › {{ nc.name }} {{ nc.id }}</nav>
+<section style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;">
+<a class="btn btn-sm btn-s" href="CaseList.dc.html">← 목록</a>
+<div style="flex: 1 1 320px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h1 class="h1-sans" style="margin: 0; font-size: 28px; font-weight: 700;">{{ nc.name }}</h1><span class="sub">{{ nc.age }}</span><span class="chip c-normal">위험도 미정</span></div>
+<div class="note">{{ nc.id }} · 예정된 상담 없음</div>
+</div>
 </section>
+</sc-if>
 <nav class="tabs" aria-label="사례 상세 메뉴">
 <a class="on" aria-current="page" href="CaseDetail.dc.html">내담자 정보</a>
 <a href="CaseHistory.dc.html">상담 이력</a>
 <a href="CaseDocs.dc.html">문서함</a>
 </nav>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px;">
+<sc-if value="{{ notNew }}" hint-placeholder-val="{{ true }}"><div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px;">
 <section class="card" aria-label="기본 정보" style="padding: 22px 24px;">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">기본 정보</h2><a class="btn btn-sm btn-s" href="ChildDetail.dc.html" onClick="{{ goChildDetail }}" style="margin-left: auto;">아이 연계 →</a></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">기본 정보</h2><button type="button" class="btn btn-sm btn-s" aria-haspopup="dialog" onClick="{{ editOpen }}" style="margin-left: auto;">수정</button><a class="btn btn-sm btn-s" href="ChildDetail.dc.html" onClick="{{ goChildDetail }}">아이 연계 →</a></div>
 <dl class="kv" style="grid-template-columns: 120px 1fr;"><dt>개별사건번호</dt><dd>C-2026-0351</dd><dt>이름</dt><dd>이서윤 (여)</dd><dt>생년월일</dt><dd>2013-03-14 (만 13세 · 중1)</dd><dt>사례관리대상자</dt><dd>이정훈 / 친부 · 1981-05-22 (만 45세)</dd><dt>가족유형</dt><dd>부자가정(이혼)</dd><dt>조치결과</dt><dd>피해아동 원가정보호 · 사례관리대상자 지속관찰</dd><dt>담당 상담원</dt><dd>이서연</dd><dt>신고접수일</dt><dd>2026-07-28</dd><dt>사례연계일</dt><dd>2026-07-29</dd><dt>최초면접일</dt><dd>2026-07-29</dd><dt>상담 회차</dt><dd style="font-weight: 700;">8회</dd><dt>최근 상담</dt><dd>2026-10-02 · 방문상담</dd><dt>아이 앱</dt><dd>연결됨 (9/18) · 2주 응답 12/14</dd></dl>
 </section>
 <section class="card" aria-label="주요 위험 요인" style="padding: 22px 24px;">
@@ -570,9 +581,23 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="note">주요 키워드</div>
 <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;"><span class="chip c-normal">#체벌</span><span class="chip c-normal">#두려움</span><span class="chip c-normal">#진술압박</span><span class="chip c-normal">#등·팔 통증</span><span class="chip c-normal">#식사</span></div>
 </section>
-</div>
+</div></sc-if>
+<sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}"><div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px;">
+<section class="card" aria-label="기본 정보" style="padding: 22px 24px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><h2 class="h2">기본 정보</h2><button type="button" class="btn btn-sm btn-s" aria-haspopup="dialog" onClick="{{ editOpen }}" style="margin-left: auto;">수정</button></div>
+<dl class="kv" style="grid-template-columns: 120px 1fr;"><sc-for list="{{ nc.kv }}" as="k" hint-placeholder-count="10"><dt>{{ k.k }}</dt><dd>{{ k.v }}</dd></sc-for></dl>
+</section>
+<section class="card" aria-label="주요 위험 요인" style="padding: 22px 24px;">
+<div style="display: flex; align-items: center; gap: 8px;"><h2 class="h2">주요 위험 요인</h2><span class="chip c-normal" style="margin-left: auto;">위험도 미정</span></div>
+<div class="note" style="margin-top: 10px;">학대 유형</div>
+<sc-if value="{{ nc.hasTy }}" hint-placeholder-val="{{ false }}"><div style="margin: 6px 0 16px; display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{ nc.ty }}" as="t" hint-placeholder-count="2"><span class="chip c-normal">{{ t }}</span></sc-for></div></sc-if>
+<sc-if value="{{ nc.noTy }}" hint-placeholder-val="{{ true }}"><div style="margin: 6px 0 16px;">-</div></sc-if>
+<div class="note">주요 키워드</div>
+<div style="margin-top: 6px;">-</div>
+</section>
+</div></sc-if>
 
-<section class="card" aria-label="현재 진행 상황" style="padding: 22px 24px;">
+<sc-if value="{{ notNew }}" hint-placeholder-val="{{ true }}"><section class="card" aria-label="현재 진행 상황" style="padding: 22px 24px;">
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px;"><h2 class="h2">현재 진행 상황</h2><span class="note">8회차 (10/2)</span><a class="btn btn-p btn-sm" href="SttReview.dc.html" style="margin-left: auto;">이어서 하기 · 기록 확인</a></div>
 <div style="overflow-x: auto;">
 <div style="min-width: 660px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: relative;">
@@ -628,9 +653,13 @@ section[aria-label="폴더"]{max-width:none !important}
 <div class="rq"><span class="chip c-normal">QB-N-01</span><span>"요즘 밥은 주로 어떻게 먹어?"</span></div>
 </section>
 </div>
-</div>
+</div></sc-if>
+<sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}"><section class="card" aria-label="현재 진행 상황" style="padding: 22px 24px;">
+<h2 class="h2">현재 진행 상황</h2>
+<p class="note" style="margin: 10px 0 0;">아직 상담 기록이 없습니다. 첫 상담을 녹음하거나 녹취를 올리면 이곳에 진행 상황이 표시됩니다.</p>
+</section></sc-if>
 
-<section class="card" aria-label="기관 서식" style="padding: 20px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+<sc-if value="{{ notNew }}" hint-placeholder-val="{{ true }}"><section class="card" aria-label="기관 서식" style="padding: 20px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
 <b style="flex: 1 1 200px;">기관 서식</b>
 <span class="chip c-check">점검표 3차 작성 전</span><a class="btn btn-p" href="CaseForm.dc.html" onClick="{{ goForm }}">기관 서식 작성</a>
 </section>
@@ -639,7 +668,7 @@ section[aria-label="폴더"]{max-width:none !important}
 <b style="flex: 1 1 200px;">종결 검토</b>
 <sc-if value="{{ notReg }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn btn-y" onClick="{{ reg }}">종결 검토 등록</button></sc-if>
 <sc-if value="{{ isReg }}" hint-placeholder-val="{{ false }}"><span class="chip c-ok">등록됨 · 초안 생성 중</span><a class="btn btn-s" href="Closure.dc.html">종결 검토 보기</a><button type="button" class="btn btn-sm btn-s" onClick="{{ unreg }}">등록 취소</button></sc-if>
-</section>
+</section></sc-if>
 <p class="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
 </main>
 <sc-if value="{{ recShow }}" hint-placeholder-val="{{ false }}">
@@ -678,6 +707,7 @@ section[aria-label="폴더"]{max-width:none !important}
 </div>
 </sc-if>
 
+<sc-if value="{{ editShow }}" hint-placeholder-val="{{ false }}"><div class="cd-edit-ov"><dc-import name="CaseRegister" embed="{{ true }}" edit-case="{{ editCase }}" on-close="{{ editClose }}" on-save="{{ editSave }}" hint-size="100%,1700px"></dc-import></div></sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1960}}'>
@@ -702,7 +732,7 @@ jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Dat
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
   try { if (String(window.location.hash || '') === '#brief') setTimeout(() => { try { const el = document.getElementById('brief'); if (el) el.scrollIntoView({ block: 'start' }); } catch (e) {} }, 120); } catch (e) {}
-  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read') + this.ntGet('ispot-cd-case') + this.ntGet('ispot-app-newcase') + this.ntGet('ispot-case-edit'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read') + this.ntGet('ispot-cd-case') + this.ntGet('ispot-app-newcase') + this.ntGet('ispot-case-edit'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
   this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
@@ -779,6 +809,28 @@ recVals() {
 renderVals() {
   const v = this.renderValsBase() || {};
   v.goChildDetail = () => this.ntSet('ispot-cd-child', 'C-2026-0351|' + Date.now());
+  { let SV = {}; try { SV = JSON.parse(this.ntGet('ispot-case-edit') || '{}') || {}; } catch (e) {}
+    let NCL = []; try { NCL = JSON.parse(this.ntGet('ispot-app-newcase') || '[]'); } catch (e) {} if (!Array.isArray(NCL)) NCL = [];
+    const selId = String(this.ntGet('ispot-cd-case') || '').split('|')[0]; const NCa = NCL.find((x) => x.id === selId) || null;
+    const ID = NCa ? NCa.id : 'C-2026-0351';
+    const base = NCa ? { f: { report: '', link: '', no: ID, child: NCa.name, sex: NCa.sex || '선택', birth: NCa.birth || '', target: '', rel: '선택', how: '', first: '', tbirth: '' } }
+      : { f: { report: '2026-07-28', link: '2026-07-29', no: ID, child: '이서윤', sex: '여', birth: '2013-03-14', target: '이정훈', rel: '친부', m1: '원가정보호', m2: '지속관찰', how: '', first: '2026-07-29', tbirth: '1981-05-22' }, fam: '부자가정(이혼)', ty: { '신체학대': true, '정서학대': true, '방임': true } };
+    const sv = SV[ID]; const ec = sv ? { ...base, ...sv, f: { ...base.f, ...(sv.f || {}) } } : base; v.editCase = ec;
+    v.editShow = !!(this.state && this.state.__edit); v.editOpen = () => this.setState({ __edit: true }); v.editClose = () => this.setState({ __edit: false });
+    v.editSave = (snap) => { let A = {}; try { A = JSON.parse(this.ntGet('ispot-case-edit') || '{}') || {}; } catch (e) {} A[ID] = snap; this.ntSet('ispot-case-edit', JSON.stringify(A));
+      if (NCa && snap && snap.f) { const nf = snap.f; this.ntSet('ispot-app-newcase', JSON.stringify(NCL.map((x) => (x.id === ID ? { ...x, name: String(nf.child || x.name).trim() || x.name, birth: /^\d{4}-\d{2}-\d{2}$/.test(nf.birth || '') ? nf.birth : x.birth, sex: nf.sex === '남' || nf.sex === '여' ? nf.sex : x.sex } : x)))); }
+      this.setState({ __ntTick: Date.now() }); };
+    v.isNew = !!NCa; v.notNew = !NCa;
+    if (NCa) { const F = ec.f || {}; const d = (x) => (String(x || '').trim() && x !== '선택' ? String(x).trim() : '-');
+      const ageOf = (b) => { const p = String(b || '').split('-').map(Number); if (p.length !== 3 || !p[0]) return ''; const n = new Date(); let a = n.getFullYear() - p[0]; if (n.getMonth() + 1 < p[1] || (n.getMonth() + 1 === p[1] && n.getDate() < p[2])) a -= 1; return '만 ' + Math.max(0, a) + '세'; };
+      const nm = d(F.child); const sx = d(F.sex); const ag = ageOf(F.birth);
+      const tgt = d(F.target) === '-' ? '-' : d(F.target) + (d(F.rel) !== '-' ? ' / ' + F.rel : '') + (d(F.tbirth) !== '-' ? ' · ' + F.tbirth + (ageOf(F.tbirth) ? ' (' + ageOf(F.tbirth) + ')' : '') : '');
+      const fam = ec.fam ? ec.fam + (ec.famOther ? ' · ' + ec.famOther : '') : '-';
+      const act = sv && sv.f && (sv.f.m1 || sv.f.m2) ? '피해아동 ' + d(sv.f.m1) + ' · 사례관리대상자 ' + d(sv.f.m2) : '-';
+      const tys = Object.keys(ec.ty || {}).filter((k) => ec.ty[k]);
+      v.nc = { id: ID, name: nm, age: ag ? ag.replace('만 ', '') : '-', hasTy: tys.length > 0, noTy: tys.length === 0, ty: tys,
+        kv: [['개별사건번호', ID], ['이름', nm + (sx !== '-' ? ' (' + sx + ')' : '')], ['생년월일', d(F.birth) + (ag ? ' (' + ag + ')' : '')], ['사례관리대상자', tgt], ['가족유형', fam], ['조치결과', act], ['담당 상담원', '이서연'], ['신고접수일', d(F.report)], ['사례연계일', d(F.link)], ['최초면접일', d(F.first)], ['사례연계 경위', d(F.how)], ['상담 회차', '0회'], ['아이 앱', '연결 안 됨']].map(([k, val]) => ({ k, v: val })) };
+    } else v.nc = { id: '', name: '', age: '', kv: [], ty: [], hasTy: false, noTy: true }; }
   v.goChecks = () => { this.ntSet('ispot-fq-go', 'checks|' + Date.now()); };
   const dark = this.themeRead(); this._thmShown = dark; const jp = this.jobPhase(); this._jobPh = jp; const jj = jp ? (this.jobRead() || {}) : {};
   return Object.assign({}, v, (() => { const st = this.state || {}; const mk = st.__outMask !== false; return { outShow: !!st.__outOpen, outTitle: '인쇄 · PDF', outGo: '인쇄', outOpen: () => this.setState({ __outOpen: true }), outClose: () => this.setState({ __outOpen: false }), outOpts: [[false, '실명 그대로', '예) 이서윤'], [true, '이름 가리기', '예) 이○윤 · 서○']].map(([m, label, ex]) => ({ label, ex, on: mk === m ? 'true' : 'false', cls: mk === m ? 'on' : '', pick: () => this.setState({ __outMask: m }) })), outRun: () => { this.setState({ __outOpen: false }); setTimeout(() => this.outPrint(mk), 120); } }; })(), this.ntVals(), { jobShow: !!jp, jobRun: jp === 'run', jobDone: jp === 'done' || jp === 'out', jobCls: jp === 'out' ? 'out' : '', jobName: jj.name || '', jobGo: () => this.jobWrite(''), goForm: () => { const v = 'B|' + Date.now(); try { window.localStorage.setItem('ispot-form', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-form', v); } catch (e) {} try { window.top.__ispotForm = v; } catch (e) {} window.__ispotForm = v; }, markBack: () => { const v = 'CaseDetail.dc.html'; try { window.localStorage.setItem('ispot-back', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-back', v); } catch (e) {} try { window.top.__ispotBack = v; } catch (e) {} window.__ispotBack = v; }, themeCls: dark ? 'thm-root dark' : 'thm-root', themePressed: dark ? 'true' : 'false', themeLabel: dark ? '라이트 모드로 전환' : '다크 모드로 전환',

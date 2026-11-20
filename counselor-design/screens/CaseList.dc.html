@@ -501,10 +501,10 @@ section[aria-label="폴더"]{max-width:none !important}
 <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
 <tr>
 <td class="note">{{ r.id }}</td>
-<td><a class="nm" href="CaseDetail.dc.html"><span class="av" style="width: 34px; height: 34px; font-size: 13px;">{{ r.ini }}</span><span>{{ r.name }} <span class="note">{{ r.age }}</span></span></a></td>
+<td><a class="nm" href="CaseDetail.dc.html" onClick="{{ r.go }}"><span class="av" style="width: 34px; height: 34px; font-size: 13px;">{{ r.ini }}</span><span>{{ r.name }} <span class="note">{{ r.age }}</span></span></a></td>
 <td>{{ r.date }}</td>
 <td><span class="{{ r.cls }}" style="min-width: 44px; justify-content: center;">{{ r.risk }}</span></td>
-<td style="text-align: right;"><a href="CaseDetail.dc.html">상세</a></td>
+<td style="text-align: right;"><a href="CaseDetail.dc.html" onClick="{{ r.go }}">상세</a></td>
 </tr>
 </sc-for>
 </tbody>
@@ -541,7 +541,7 @@ jobRead() { let v = null; try { v = window.localStorage.getItem('ispot-job'); } 
 jobPhase() { const j = this.jobRead(); if (!j || !j.t) return ''; const el = Date.now() - j.t; return el < 8000 ? 'run' : el < 11000 ? 'done' : el < 11500 ? 'out' : ''; }
 jobWrite(v) { try { window.localStorage.setItem('ispot-job', v); } catch (e) {} try { window.sessionStorage.setItem('ispot-job', v); } catch (e) {} try { window.top.__ispotJob = v; } catch (e) {} window.__ispotJob = v; }
 componentDidMount() {
-  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
+  this._ntRaw = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read') + this.ntGet('ispot-app-newcase'); this._ntT = setInterval(() => { const r = this.ntGet('ispot-intake') + this.ntGet('ispot-noti-read') + this.ntGet('ispot-app-newcase'); if (r !== this._ntRaw) { this._ntRaw = r; this.setState({ __ntTick: Date.now() }); } }, 700);
   this._ntDoc = (e) => { if (this.state && this.state.__ntOpen && !(e.target && e.target.closest && e.target.closest('.nt-wrap'))) this.setState({ __ntOpen: false }); }; try { document.addEventListener('mousedown', this._ntDoc); } catch (e) {}
   this._thmT = setInterval(() => { if (this.jobPhase() !== this._jobPh || this.themeRead() !== this._thmShown) this.setState({ __thmTick: Date.now() }); }, 300);
   if (this.componentDidMountBase) this.componentDidMountBase();
@@ -600,8 +600,12 @@ renderValsBase() {
   const GN = ['지우', '수아', '은우', '하윤', '도윤', '서아', '이준', '지안', '시아', '건우', '나윤', '우진', '채원', '태오', '아린', '주원', '소율', '로운', '다은', '준서', '예나'];
   for (let i = 0; i < 42; i++) { const m = 1 + (i * 7) % 10; const dd = 1 + (i * 11) % 28;
     data.push(['C-2026-' + String(140 + i * 3).padStart(4, '0'), FN[i % FN.length], GN[(i * 5) % GN.length], (6 + (i * 3) % 9) + '세', '2026-' + String(m).padStart(2, '0') + '-' + String(dd).padStart(2, '0'), ['상', '중', '하', '중', '하'][i % 5]]); }
+  let NC = []; try { NC = JSON.parse(this.ntGet('ispot-app-newcase') || '[]'); } catch (e) {} if (!Array.isArray(NC)) NC = [];
+  const ageOf = (b) => { const p = (b || '').split('-').map(Number); if (p.length !== 3) return '-'; const n = new Date(); let a = n.getFullYear() - p[0]; if (n.getMonth() + 1 < p[1] || (n.getMonth() + 1 === p[1] && n.getDate() < p[2])) a -= 1; return Math.max(0, a) + '세'; };
+  data.unshift(...NC.map((x) => [x.id, x.name.slice(0, 1), x.name.slice(1), ageOf(x.birth), '-', '-']));
+  cls['-'] = 'chip';
   const sort = s.sort || 'none'; const dir = s.dir || 'up';
-  const RK = { '상': 0, '중': 1, '하': 2 };
+  const RK = { '상': 0, '중': 1, '하': 2, '-': 3 };
   const list = data.slice();
   if (sort === 'date') list.sort((a, b) => dir === 'up' ? b[4].localeCompare(a[4]) : a[4].localeCompare(b[4]));
   if (sort === 'risk') list.sort((a, b) => dir === 'up' ? RK[a[5]] - RK[b[5]] : RK[b[5]] - RK[a[5]]);
@@ -614,7 +618,7 @@ renderValsBase() {
   if (be < total) pages.push({ label: '…', cls: 'pg-n pg-gap', go: go(be + 1), aria: (be + 1) + '쪽', cur: 'false' });
   const pager = { pages, first: go(1), prev: go(pg - 1), next: go(pg + 1), last: go(total), atStart: pg === 1, atEnd: pg === total, info: list.length + '건 중 ' + ((pg - 1) * PER + 1) + '–' + Math.min(pg * PER, list.length) };
   const rows = list.slice((pg - 1) * PER, pg * PER).map((d) => ({
-    id: d[0], ini: d[1], name: d[1] + d[2], age: d[3], date: d[4], risk: d[5], cls: cls[d[5]] }));
+    id: d[0], ini: d[1], name: d[1] + d[2], age: d[3], date: d[4], risk: d[5], cls: cls[d[5]], go: () => this.ntSet('ispot-cd-case', d[0] + '|' + Date.now()) }));
   const arrow = (k) => k !== 'none' && sort === k ? (dir === 'up' ? ' ↑' : ' ↓') : '';
   const press = (k) => () => { if (k === 'none') this.setState({ sort: 'none', dir: 'up', pg: 1 }); else if (sort !== k) this.setState({ sort: k, dir: 'up', pg: 1 }); else this.setState({ dir: dir === 'up' ? 'down' : 'up', pg: 1 }); };
   const filters = [['none', '전체'], ['date', '신고접수일'], ['risk', '위험도']].map(([k, label]) => ({ label: label + arrow(k), cls: sort === k ? 'on' : '', pressed: sort === k ? 'true' : 'false', pick: press(k) }));
