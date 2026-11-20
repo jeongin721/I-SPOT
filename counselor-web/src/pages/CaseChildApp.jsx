@@ -158,6 +158,10 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
   // 응답 상태: 아이가 무엇이든 보내면(답 · 기분 · 메시지 · 긴급 · 일정) 0일로 돌아간다. 연결 뒤 아직 안 보냈으면 연결일부터 센다.
   const silent = data?.status === 'LINKED' ? daysSince(data.last_response_at ?? data.linked_at) : null;
   const silentDays = data?.silent_days ?? 7;
+  // 확인 전 긴급 알림이 있으면 재발급 · 해지 확인창 맨 앞에 경고한다(아이 상세 해지 확인창과 같게, 민규 #187 머지 뒤 리뷰).
+  const urgentWarning = data?.open_alerts?.some((alert) => alert.urgent)
+    ? '확인하지 않은 긴급 알림이 있습니다. 해지하기 전에 먼저 확인해 주십시오.\n\n'
+    : '';
 
   return (
     <div className="pg-CaseApp">
@@ -279,7 +283,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                           className="btn btn-s"
                           disabled={app.busy}
                           onClick={() => {
-                            if (window.confirm('코드를 다시 만들면 지금 연결된 아이 폰은 끊기고, 새 코드(72시간 · 한 번)를 아이에게 다시 알려 줘야 합니다. 다시 만들까요?')) {
+                            if (window.confirm(`${urgentWarning}코드를 다시 만들면 지금 연결된 아이 폰은 끊기고, 새 코드(72시간 · 한 번)를 아이에게 다시 알려 줘야 합니다. 다시 만들까요?`)) {
                               void app.reissueInvite(true);
                             }
                           }}
@@ -291,7 +295,7 @@ export default function CaseChildApp({ caseId, fromChild = false }) {
                           className="btn btn-s"
                           disabled={app.busy}
                           onClick={() => {
-                            if (window.confirm('아이 연계 앱 연동을 해지하시겠습니까? 아이 폰의 콩콩이 처음 화면으로 돌아가고, 다시 쓰려면 새 연결 코드를 알려 줘야 합니다. 받은 답은 남습니다.')) {
+                            if (window.confirm(`${urgentWarning}아이 연계 앱 연동을 해지하시겠습니까? 아이 폰의 콩콩이 처음 화면으로 돌아가고, 다시 쓰려면 새 연결 코드를 알려 줘야 합니다. 받은 답은 남습니다.`)) {
                               void app.unlink();
                             }
                           }}
