@@ -14,6 +14,7 @@ from ai.modeling.abuse.infer_abuse_qa_v3 import (
     BASE_DIR,
     AbuseQAModel,
     predict_abuse as predict_abuse_v3,
+    predict_probabilities_batch,
     predict_qa,
     predict_child_only,
 )
@@ -504,3 +505,95 @@ def predict_major_types(
     return _simplify_predictions(
         predictions
     )
+
+
+# ============================================================
+# 7. STT 검수 1차 스캔용 — 확률까지 돌려주는 QA 판정
+# ============================================================
+# quick_risk_scan(infer_audio_session)은 줄 단위 점수로 '먼저 들어볼 곳'을
+# 고르고, 되돌림(top1) · 줄 임계값에 확률이 필요하다(key_scan_refine).
+# 이 둘은 서버 안에서만 쓰고 Contract(contract_adapter.key_scan_as_contract)
+# 에는 유형만 나간다 — "확률은 판정에만, 외부에는 detected 만" 원칙은
+# 그대로다. 판정 경로(순서 유지 QA 텍스트 · checkpoint 임계값 · 부정 응답
+# 필터)는 predict_major_types(input_mode="qa") 와 같다.
+
+def _qa_detail(text, probabilities, detected=None):
+    """
+    순서 유지 QA 텍스트 하나의 유형별 확률 → {유형: {probability, detected,
+    threshold}} + 부정 응답 필터. detected 를 주면(predict_abuse 가 반올림 전
+    확률로 판정한 값) 그대로 쓰고, 없으면 확률과 임계값으로 판정한다.
+    """
+
+    counselor_text, child_text = (
+        _split_counselor_child_text(text)
+    )
+
+    predictions = {}
+
+    for label, probability in probabilities.items():
+        threshold = _engine.threshold_for(label)
+
+        predictions[label] = {
+            "probability": round(float(probability), 4),
+            "detected": (
+                bool(detected[label])
+                if detected is not None and label in detected
+                else float(probability) >= threshold
+            ),
+            "threshold": threshold,
+        }
+
+    return _suppress_denied_labels(
+        child_text,
+        predictions,
+        counselor_text=counselor_text,
+    )
+
+
+def predict_major_types_detail(
+    text: str,
+    input_mode: str = "qa",
+) -> dict:
+    """
+    predict_major_types(input_mode="qa") 와 같은 판정에 유형별 probability ·
+    threshold 를 붙여 돌려준다. 서버 안 1차 스캔 전용(외부로 내보내지 않는다).
+    """
+
+    if input_mode != "qa":
+        raise ValueError(
+            "predict_major_types_detail 은 input_mode='qa' 만 받는다"
+        )
+
+    raw_result = predict_abuse_v3(
+        _engine,
+        _build_ordered_qa_text(text),
+    )
+
+    return _qa_detail(
+        text,
+        {label: info["probability"] for label, info in raw_result.items()},
+        detected={label: info["detected"] for label, info in raw_result.items()},
+    )
+
+
+def predict_major_types_detail_batch(
+    texts,
+    batch_size: int = 16,
+) -> list:
+    """
+    여러 QA 텍스트를 한 번에 판정한다(predict_probabilities_batch — 동적 패딩).
+    입력 순서대로 predict_major_types_detail 과 같은 모양의 dict 를 돌려준다.
+    """
+
+    texts = list(texts)
+
+    rows = predict_probabilities_batch(
+        _engine,
+        [_build_ordered_qa_text(text) for text in texts],
+        batch_size=batch_size,
+    )
+
+    return [
+        _qa_detail(text, row)
+        for text, row in zip(texts, rows, strict=True)
+    ]

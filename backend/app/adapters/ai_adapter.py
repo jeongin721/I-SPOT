@@ -357,6 +357,15 @@ class ModelingAIAdapter:
 
         self._load_pipeline()
 
+        # STT 검수 1차 스캔의 임시 조문 매칭 모델(로컬 임베딩, ai/modeling/abuse/law_match)도 백그라운드로 미리 올린다 —
+        # 첫 STT 가 모델 로드 시간 때문에 KEY_SCAN_TIMEOUT_SECONDS 를 넘기지 않게. 없거나 실패해도 분석 준비는 그대로다.
+        try:
+            from ai.modeling.abuse.contract_adapter import preload_key_scan
+
+            preload_key_scan()
+        except Exception:  # noqa: BLE001 — 미리 올리기는 선택이다
+            pass
+
     def _load_pipeline(self) -> Tuple[Any, Callable[..., Any]]:
         ensure_repo_root_on_path()
         export_llm_env()
