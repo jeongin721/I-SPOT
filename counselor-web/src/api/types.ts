@@ -1967,6 +1967,8 @@ export interface PushConfig {
   /** pushManager.subscribe 의 applicationServerKey(base64url). 꺼져 있으면 null. */
   public_key: string | null;
   before_session_minutes: number;
+  /** 상담 전 알림을 서버가 실제로 보내는가(키 + PUSH_LOOP_ENABLED, 11/20). 옛 서버면 없음. */
+  before_session_enabled?: boolean;
 }
 
 /** 이 폰의 알림 설정. 서버는 폰(구독)마다 따로 기억한다. */

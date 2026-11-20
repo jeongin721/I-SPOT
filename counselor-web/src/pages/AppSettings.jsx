@@ -51,6 +51,9 @@ const ENABLE_NOTE = {
 function usePushSettings() {
   const [prefs, setPrefs] = useState(readPushPrefs);
   const [ready, setReady] = useState(null);
+  // 상담 전 알림을 서버가 실제로 보내는가 · 몇 분 전인가(GET /push/config). 연결이 안 되면 offline.
+  const [loop, setLoop] = useState({ on: null, minutes: 30 });
+  const [offline, setOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
 
@@ -59,8 +62,12 @@ function usePushSettings() {
 
     push
       .config()
-      .then((config) => live && setReady(config.enabled))
-      .catch(() => live && setReady(false));
+      .then((config) => {
+        if (!live) return;
+        setReady(config.enabled);
+        setLoop({ on: config.before_session_enabled ?? config.enabled, minutes: config.before_session_minutes || 30 });
+      })
+      .catch(() => live && setOffline(true));
     syncPush()
       .then((on) => live && setPrefs({ ...readPushPrefs(), on }))
       .catch(() => undefined);
@@ -99,9 +106,13 @@ function usePushSettings() {
   const supported = pushSupported();
   // 서버 키가 없으면 '준비 중'. 이 브라우저가 못 하면 켤 때 안내한다(누르기 전에도 보인다).
   const masterOff = ready === false;
-  const masterNote = masterOff ? '준비 중' : note ?? (supported ? null : ENABLE_NOTE.unsupported);
+  const masterNote = masterOff
+    ? '준비 중'
+    : note ?? (offline && ready === null ? '연결을 확인해 주세요' : supported ? null : ENABLE_NOTE.unsupported);
+  // 키는 있어도 상담 전 알림 발송이 꺼져 있으면 그 스위치만 '준비 중'.
+  const loopOff = masterOff || loop.on === false;
 
-  return { prefs, busy, masterOff, masterNote, toggleOn, toggle };
+  return { prefs, busy, masterOff, masterNote, toggleOn, toggle, loopOff, minutes: loop.minutes };
 }
 
 function SettingsBody({ me, logout }) {
@@ -138,11 +149,11 @@ function SettingsBody({ me, logout }) {
           note={pushUi.masterOff ? '준비 중' : null}
         />
         <Toggle
-          label="상담 30분 전 알림"
-          on={!subOff && pushUi.prefs.before_session}
+          label={`상담 ${pushUi.minutes}분 전 알림`}
+          on={!subOff && !pushUi.loopOff && pushUi.prefs.before_session}
           onClick={pushUi.toggle('before_session')}
-          off={subOff}
-          note={pushUi.masterOff ? '준비 중' : null}
+          off={subOff || pushUi.loopOff}
+          note={pushUi.loopOff ? '준비 중' : null}
         />
       </section>
       <p className="ma-sec-t">업로드</p>

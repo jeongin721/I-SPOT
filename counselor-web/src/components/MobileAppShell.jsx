@@ -19,6 +19,7 @@ import { cachedAppUserId, rememberAppUser } from '../data/appOffline';
 import { retryRecording, uploadAsNewSession } from '../data/appRecordings';
 import { useAppRecordings } from '../data/useAppRecordings';
 import { useAppInstall } from '../data/useAppInstall';
+import { syncPush } from '../data/appPush';
 import { useAppSchedule, ymd } from '../data/useAppSchedule';
 import { useTheme } from '../theme';
 import { animIn, closeWithAnim, listenNav, takeNav } from './MobileAppShellMotion';
@@ -94,6 +95,9 @@ function TabIcon({ k }) {
  * @param back      제목 왼쪽 '뒤로 가기' 단추가 갈 앱 화면 주소(11/17 디자인 — 다음 상담 준비 · 이전 상담). 없으면 단추 없음.
  * @param children  (ctx) => 본문. ctx = { userId, me, logout, items, fails, loaded, storageError, notReady }
  */
+// 이 페이지에서 알림 구독을 서버와 맞춘 계정(앱을 열 때 한 번).
+let pushSyncedFor = null;
+
 export default function MobileAppShell({ cur, screen, sub, title, titleStyle, brand, head, back, children }) {
   const session = useAuthSession();
   const { pathname } = useLocation();
@@ -123,6 +127,12 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
   }, [pathname]);
   useEffect(() => {
     if (signedId) rememberAppUser(signedId);
+  }, [signedId]);
+  // 알림 구독을 앱을 열 때 서버와 맞춘다(설정 화면을 열기 전에도, 11/20 점검). 계정마다 한 번.
+  useEffect(() => {
+    if (!signedId || pushSyncedFor === signedId) return;
+    pushSyncedFor = signedId;
+    syncPush().catch(() => undefined);
   }, [signedId]);
 
   if (needsLogin(session)) {

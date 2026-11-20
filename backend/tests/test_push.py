@@ -495,3 +495,27 @@ def test_child_alert_push_error_does_not_reach_child(
     _press(client, device)
 
     assert client.get(f"/api/v1/cases/{case['id']}/child-app", headers=counselor_headers).json()["data"]["open_alerts"]
+
+
+# ---------------------------------------------------------------- 토큰을 끊으면 폰 구독도 지운다(11/20 점검)
+
+@pytest.mark.parametrize("action", ["logout-all", "password-reset"])
+def test_revoking_tokens_drops_push_subscriptions(
+    client: TestClient, admin_headers, counselor_headers, other_counselor_headers, push_on, db, counselor_id, action
+) -> None:
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/mine"), headers=counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/other"), headers=other_counselor_headers)
+
+    assert client.post(f"/api/v1/auth/users/{counselor_id}/{action}", headers=admin_headers).status_code in (200, 204)
+
+    db.expire_all()
+    rows = db.scalars(select(PushSubscription)).all()
+    # 끊은 계정 것만 지우고 다른 계정 것은 남긴다.
+    assert [row.endpoint for row in rows] == ["https://fcm.googleapis.com/fcm/send/other"]
+
+
+def test_before_session_enabled_needs_loop(client: TestClient, counselor_headers, push_on, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "PUSH_LOOP_ENABLED", False)
+    assert client.get("/api/v1/push/config", headers=counselor_headers).json()["data"]["before_session_enabled"] is False
+    monkeypatch.setattr(settings, "PUSH_LOOP_ENABLED", True)
+    assert client.get("/api/v1/push/config", headers=counselor_headers).json()["data"]["before_session_enabled"] is True

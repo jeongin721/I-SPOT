@@ -181,6 +181,17 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// 브라우저가 구독을 바꾸거나 없앴으면 같은 서버 키로 다시 구독해 둔다(11/20 점검).
+// 서비스워커에는 로그인 토큰이 없어 서버에 바로 알리지 못한다 — 앱을 열 때 syncPush 가 새 구독을 서버에 저장하고,
+// 옛 구독은 서버가 다음에 보낼 때 404 · 410 을 받고 지운다.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const key = event.oldSubscription && event.oldSubscription.options && event.oldSubscription.options.applicationServerKey;
+  if (!key || event.newSubscription) return;
+  event.waitUntil(
+    self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }).catch(() => undefined),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 

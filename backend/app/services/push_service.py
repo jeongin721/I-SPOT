@@ -71,6 +71,7 @@ def get_config() -> PushConfigResponse:
         enabled=key is not None,
         public_key=webpush.vapid_public_key(key) if key is not None else None,
         before_session_minutes=settings.PUSH_BEFORE_SESSION_MINUTES,
+        before_session_enabled=key is not None and settings.PUSH_LOOP_ENABLED,
     )
 
 

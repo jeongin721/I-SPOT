@@ -148,6 +148,7 @@ function ScheduleBody({ userId }) {
     setErr('');
     setF({
       t: e.kind === 'CONSULT' ? 'c' : 'p',
+      wasConsult: e.kind === 'CONSULT',
       caseId: e.case_id ?? my.rows[0]?.id ?? '',
       hidden: !!e.case_hidden,
       ctype: e.consult_type && e.consult_type !== 'CLOSING' ? e.consult_type : e.consult_type ?? 'REGULAR',
@@ -178,7 +179,12 @@ function ScheduleBody({ userId }) {
       place: (f.place || '').trim() || null,
       ...(isC
         ? { consult_type: f.ctype, ...(f.hidden ? {} : { case_id: f.caseId }) }
-        : { title: f.title.trim(), category: f.category ?? 'ETC' }),
+        : {
+            title: f.title.trim(),
+            category: f.category ?? 'ETC',
+            // 상담 일정을 개인 · 기관 일정으로 바꾸면 붙어 있던 사례를 뗀다(11/20 점검). 가려진 사례는 서버가 막으므로 보내지 않는다.
+            ...(f.wasConsult && !f.hidden ? { case_id: null } : {}),
+          }),
     };
     setBusy(true);
     setErr('');

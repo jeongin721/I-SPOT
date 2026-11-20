@@ -14,6 +14,8 @@ class PushConfigResponse(BaseModel):
     # 브라우저 pushManager.subscribe 의 applicationServerKey(base64url). 꺼져 있으면 null.
     public_key: Optional[str] = None
     before_session_minutes: int
+    # 상담 전 알림을 실제로 보내는가(키 + PUSH_LOOP_ENABLED). 꺼져 있으면 앱은 그 스위치를 '준비 중' 으로 둔다(11/20).
+    before_session_enabled: bool = False
 
 
 class PushKeys(RequestModel):

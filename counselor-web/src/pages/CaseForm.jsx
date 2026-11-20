@@ -17,6 +17,7 @@ import NotiBell from '../components/NotiBell';
 import CopyButton from '../components/CopyButton';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
+import { useNextConsult } from '../data/useCaseSchedule';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseForms } from '../data/useCaseForms';
 import { useCaseSignals } from '../data/useCaseSignals';
@@ -48,7 +49,8 @@ export default function CaseForm(props) {
   const personal = usePersonalInfo(caseId, { enabled });
   const forms = useCaseForms(caseId, { enabled });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, signals, personal, forms, caseId, formParam: params.get(FORM_PARAM) });
+  const nextConsult = useNextConsult(caseId, { enabled });
+  const v = useDC(Logic, { ...props, session, detail, signals, personal, forms, caseId, formParam: params.get(FORM_PARAM), nextConsult });
   useLeaveGuard(v.unsaved, { guardBack: true });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
