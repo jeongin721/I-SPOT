@@ -681,6 +681,33 @@ def test_key_scan_failure_is_raised_for_backend_to_mark_failed(modeling, monkeyp
         scan(KEY_SCAN_STT)
 
 
+def test_key_scan_keeps_flagged_lines_when_law_matching_fails(modeling, monkeypatch: pytest.MonkeyPatch) -> None:
+    """임시 조문 매칭이 실행 중 실패해도(임베딩 오류 · 매칭기 준비 오류) 1차 스캔 결과는 남는다 — 조문만 비운다.
+    매칭 오류가 그대로 올라가면 Backend 가 스캔 전체를 FAILED 로 두어 '먼저 들어볼 곳'까지 사라진다(#188 리뷰)."""
+
+    scan, _ = _key_scan(monkeypatch, {"seg_002": ["신체학대"], "seg_004": ["방임"]})
+    law_match = importlib.import_module("ai.modeling.abuse.law_match")
+    expected = [
+        {"segment_id": "seg_002", "abuse_types": ["PHYSICAL"], "legal_references": []},
+        {"segment_id": "seg_004", "abuse_types": ["NEGLECT"], "legal_references": []},
+    ]
+
+    class BrokenMatcher:
+        def references_for(self, text: str, types: List[str]) -> List[Dict[str, Any]]:
+            raise RuntimeError("CUDA out of memory")
+
+    # 모델을 올린 뒤 발화 하나를 임베딩하다 난 오류.
+    monkeypatch.setattr(law_match, "get_matcher", lambda: BrokenMatcher())
+    assert scan(KEY_SCAN_STT)["segments"] == expected
+
+    # 매칭기를 만드는 단계의 오류(예: 앵커 파일을 읽다 난 오류).
+    def broken_get_matcher() -> Any:
+        raise ValueError("anchors")
+
+    monkeypatch.setattr(law_match, "get_matcher", broken_get_matcher)
+    assert scan(KEY_SCAN_STT)["segments"] == expected
+
+
 def _capture_pipeline_kwargs(monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
     """가짜 analyze_audio_session 이 받은 키워드를 모은다."""
 
