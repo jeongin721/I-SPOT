@@ -9,7 +9,7 @@ from functools import lru_cache
 from secrets import compare_digest, token_urlsafe
 from typing import List, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.core.security import hash_password, verify_password
 from app.models.audit_log import AuditLog
 from app.models.base import as_utc
 from app.models.user import User
+from app.models.push import PushSubscription
 from app.models.user_password_history import UserPasswordHistory
 from app.schemas.auth import PasswordChangeRequest, UserCreateRequest
 from app.services import audit_service
@@ -610,6 +611,12 @@ def remember_password(db: Session, user: User, hashed_password: str) -> None:
         db.delete(row)
 
 
+def _forget_push(db: Session, user: User) -> None:
+    """Token 을 모두 끊을 때 그 계정의 폰 알림 구독도 지운다(account_service.forget_push 와 같음)."""
+
+    db.execute(delete(PushSubscription).where(PushSubscription.user_id == user.id))
+
+
 def _password_change_failures(db: Session, user: User) -> int:
     """
     마지막 로그인(또는 비밀번호 변경) 뒤로 현재 비밀번호 확인에 실패한 시도 수. 감사 로그로 센다.
@@ -700,6 +707,7 @@ def _logout_after_failures(
     ).rowcount
 
     if revoked:
+        _forget_push(db, user)
         audit_service.record(
             db,
             action=AuditAction.LOGOUT_ALL,
@@ -831,6 +839,9 @@ def change_password(
             )
 
         raise unauthorized("다시 로그인해 주세요.")
+
+    # 다른 기기의 Token 이 끊겼으니 폰 알림 구독도 지운다. 지금 기기는 앱을 열 때 다시 맞춘다(11/20 점검).
+    _forget_push(db, user)
 
     # 미리 남긴 시도 기록을 성공으로 바꾼다. detail 에 비밀번호를 담지 않는다.
     attempt.status = "SUCCESS"

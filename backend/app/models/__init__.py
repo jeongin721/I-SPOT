@@ -17,6 +17,7 @@ from app.models.followup_checklist import SessionFollowupChecklist
 from app.models.followup_question import SessionFollowupQuestions
 from app.models.schedule import ScheduleEvent
 from app.models.counselor_memo import CounselorMemo
+from app.models.notice import Notice
 from app.models.briefing_check import SessionBriefingChecks
 from app.models.push import PushDelivery, PushSubscription
 from app.models.child_app import ChildAppAiDraft  # noqa: F401
@@ -56,6 +57,7 @@ __all__ = [
     "SessionSourceDocument",
     "ScheduleEvent",
     "CounselorMemo",
+    "Notice",
     "SessionBriefingChecks",
     "PushDelivery",
     "PushSubscription",

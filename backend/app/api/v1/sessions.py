@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.core.deps import CurrentUser, DbSession
 from app.core.responses import DataResponse
@@ -52,6 +52,7 @@ def delete_session(
     session_id: uuid.UUID,
     db: DbSession,
     current_user: CurrentUser,
+    renumber: bool = Query(False, description="잘못 올린 회차라 뒤 회차 번호를 하나씩 당긴다(2026-11-20). 빼면 번호를 비워 둔다."),
 ) -> None:
     session = get_session_or_404(db, session_id, current_user)
-    session_service.delete_session(db, session, current_user)
+    session_service.delete_session(db, session, current_user, renumber=renumber)

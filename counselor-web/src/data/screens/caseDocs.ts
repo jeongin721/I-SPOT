@@ -133,7 +133,20 @@ export function sessionDocRows({ session, documents }: SessionDocs): DocRow[] {
   const ses = session.numberLabel;
   const rows: DocRow[] = [];
 
-  rows.push(
+  // 문서로 만든 회차(2026-11-02)는 녹음 · STT 원문 단계가 없다 — 올린 문서 한 줄로 보인다(11/20 점검).
+  if (session.source === "DOCUMENT") {
+    rows.push({
+      name: "상담 기록 문서",
+      kind: "외부 문서",
+      ses,
+      date: session.createdDate || NOT_PROVIDED,
+      st: "올림",
+      stCls: "chip c-ok",
+      href: screenHref("/SessionDetail", ids),
+      go: "회차 보기",
+      filter: "ext",
+    });
+  } else rows.push(
     session.hasAudio
       ? {
           name: session.audio?.fileName ?? "녹음 파일",
@@ -224,9 +237,11 @@ export function caseDocsValues(input: CaseDocsInput) {
 
   let rowsNote = "";
   if (filter === "brief") rowsNote = `상담 전 브리핑 보관은 ${NOT_READY}입니다(서버에 아직 없는 기능).`;
-  else if (filter === "ext") rowsNote = `외부 문서(PDF · HWPX) 올리기 · 열기는 ${NOT_READY}입니다(서버에 아직 없는 기능).`;
+  else if (filter === "ext" && detail.caseInfo && !docs.loading && !docs.error && rows.length === 0) {
+    rowsNote = "문서로 올린 회차가 없습니다. 녹취 · 문서 올리기에서 PDF · HWPX · DOCX 를 올리면 회차가 생깁니다.";
+  }
   else if (detail.caseInfo && !docs.loading && !docs.error && docs.items.length === 0) {
-    rowsNote = "회차가 없습니다. 녹취를 올리면 회차가 생깁니다.";
+    rowsNote = "회차가 없습니다. 녹취나 상담 기록 문서를 올리면 회차가 생깁니다.";
   } else if (detail.sessionTotal !== null && detail.sessionTotal > detail.sessions.length) {
     rowsNote = `최근 ${detail.sessions.length}회차의 문서만 보입니다(전체 ${detail.sessionTotal}회차).`;
   }
@@ -273,6 +288,6 @@ export function caseDocsValues(input: CaseDocsInput) {
     formsNote:
       "초기면접지는 사례 등록 때 쓴 칸으로 상태를 보이고, 열어 고칠 수 있습니다. " +
       "사정기록지 · 점검표 · 척도는 차수마다 임시 저장 · 확정한 기록을 보입니다.",
-    uploadNote: `지금은 녹음만 올릴 수 있습니다. 외부 문서 올리기는 ${NOT_READY}.`,
+    uploadNote: "녹음 파일이나 상담 기록 문서(PDF · HWPX · DOCX)를 올릴 수 있습니다.",
   };
 }

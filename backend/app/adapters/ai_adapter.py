@@ -607,12 +607,24 @@ def drop_ungrounded_risk_items(
         dropped += len(items) - len(grounded)
         kept[name] = grounded
 
+    # 심각도 제안은 빼지 않고, Transcript 에 없는 근거 번호만 지운다(2026-11-20 — 번호는 contract_adapter 가 위험 신호에서 붙인다).
+    severity = [
+        rating
+        if all(segment_id in known for segment_id in rating.segment_ids)
+        else rating.model_copy(update={"segment_ids": [segment_id for segment_id in rating.segment_ids if segment_id in known]})
+        for rating in result.severity_ratings
+    ]
+    update: Dict[str, Any] = {}
+
+    if any(new is not old for new, old in zip(severity, result.severity_ratings, strict=True)):
+        update["severity_ratings"] = severity
+
     if not dropped:
-        return result, 0
+        return (result.model_copy(update=update) if update else result), 0
 
     warnings = [*result.warnings, f"segment 근거가 없는 신호 {dropped}건을 제외했습니다."]
 
-    return result.model_copy(update={**kept, "warnings": warnings}), dropped
+    return result.model_copy(update={**kept, **update, "warnings": warnings}), dropped
 
 
 # =========================================================

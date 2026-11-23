@@ -1654,6 +1654,8 @@ export interface ScheduleEvent {
   owner_name: string | null;
   /** 지금 사용자가 고치고 지울 수 있는가. */
   editable: boolean;
+  /** 상담 일정의 '다음 상담 준비'가 있는가(분석이 끝난 회차가 있는 사례). 상담 일정이 아니거나 사례가 가려졌으면 null. 옛 서버는 없다. */
+  briefing_ready?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -1836,6 +1838,7 @@ export interface ChildOpenAlert {
     | "TEXT_ANSWER"
     | "FOLLOWUP_ANSWER"
     | "FOLLOWUP_SKIPPED"
+    | "AMBER_ANSWER"
     | "NOTE"
     | "SCHEDULE_REQUEST"
     | "NEEDS_CHECK";
@@ -1896,6 +1899,8 @@ export interface ChildAppCaseRow {
   status: "NOT_LINKED" | "INVITED" | "LINKED";
   recent_answers: number | null;
   level: "NONE" | "SKIP" | "AMBER" | "RED" | null;
+  /** 가장 최근 답 묶음(바로 확인 · 살펴볼 답)을 상담사가 확인한 시각. 확인 전이면 null. 담당 상담사만. 옛 서버는 없다. */
+  answer_acked_at?: string | null;
   last_response_at: string | null;
   open_alert_at: string | null;
   open_alert_reason: string | null;
@@ -1993,6 +1998,8 @@ export interface PushConfig {
   /** pushManager.subscribe 의 applicationServerKey(base64url). 꺼져 있으면 null. */
   public_key: string | null;
   before_session_minutes: number;
+  /** 상담 전 알림을 서버가 실제로 보내는가(키 + PUSH_LOOP_ENABLED, 11/20). 옛 서버면 없음. */
+  before_session_enabled?: boolean;
 }
 
 /** 이 폰의 알림 설정. 서버는 폰(구독)마다 따로 기억한다. */
@@ -2010,3 +2017,25 @@ export interface PushTestResult {
   sent: number;
   failed: number;
 }
+
+// 사내 공지사항(28절, 2026-11-20). 읽기는 누구나, 쓰고 고치고 지우기는 관리자.
+export interface Notice {
+  id: string;
+  title: string;
+  body: string;
+  important: boolean;
+  /** 공지를 낸 부서. 없으면 author_name 을 보인다. */
+  team: string | null;
+  author_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoticeCreateRequest {
+  title: string;
+  body: string;
+  important?: boolean;
+  team?: string | null;
+}
+
+export type NoticeUpdateRequest = Partial<NoticeCreateRequest>;

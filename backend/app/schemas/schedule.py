@@ -113,6 +113,9 @@ class ScheduleEventResponse(BaseModel):
     owner_name: Optional[str]
     #: 지금 사용자가 고치고 지울 수 있는가(만든 사람 · 관리자).
     editable: bool
+    #: 상담 일정의 '다음 상담 준비'를 볼 수 있는가 — 그 사례에 분석이 끝난 회차(AI_REVIEW_REQUIRED · APPROVED)가 있다.
+    #: 상담 일정이 아니거나 사례가 가려졌으면 null(앱 · 일정 상세 '다음 상담 준비 준비됨 · 준비 중', 11/20).
+    briefing_ready: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
 

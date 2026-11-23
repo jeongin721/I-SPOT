@@ -221,6 +221,8 @@ class ChildAppCaseRow(BaseModel):
     # 최근 21일 답 묶음 수 · 가장 최근 답의 수준. 담당 상담사만(그 외 null).
     recent_answers: Optional[int] = None
     level: Optional[str] = None
+    # 가장 최근 답 묶음을 상담사가 확인한 시각(바로 확인 · 살펴볼 답). 확인 전이면 null. 담당 상담사만.
+    answer_acked_at: Optional[datetime] = None
     last_response_at: Optional[datetime] = None
     open_alert_at: Optional[datetime] = None
     open_alert_reason: Optional[str] = None

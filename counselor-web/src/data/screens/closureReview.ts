@@ -3,7 +3,7 @@
 // 디자인 칸 → 서버 값:
 //  - 머리: 별칭 · 사례번호 · 출생연도 · 회차 범위 · 기간(첫 회차 ~ 마지막 회차 상담일, 없으면 등록일).
 //  - 한눈에 '상담': 회차 수와 상담 유형별 수(consultation_type). '새 학대 진술': 신호 이력(signal-history)에서 AI 관련 신호가
-//    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '위험수준 척도' 는 기관 서식 기록이 서버에 없어 준비 중.
+//    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '위험수준 척도' 는 기관 서식(위험수준 척도) 확정 기록의 위험요인 합계.
 //  - 회차별 흐름: 회차 · 날짜(+ 상담 유형) · 유형(학대 유형, AI 관련 신호) · 핵심(승인한 상담 요약 4칸 중 처음 채워진 칸) ·
 //    근거(학대 근거 — 세부 신호 · 근거 발화 수, 없으면 요약 칸 이름). 11/19 팀 요청으로 유형 · 근거를 학대 유형 · 근거로 바꿈. 승인 전 회차는 핵심 '승인 전'. 회차를 누르면 그 회차 상세(/SessionDetail).
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
@@ -16,6 +16,7 @@ import { NOT_PROVIDED } from "../caseRows";
 import type { ApprovedSummariesState } from "../useApprovedSummaries";
 import type { ClosureSummaryState } from "../useClosureSummary";
 import type { CaseDetailState } from "../useCaseDetail";
+import { formRounds, type CaseFormsState } from "../useCaseForms";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { TYPE_SHORT, detectedTypeLabels } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
@@ -46,6 +47,28 @@ export interface ClosureReviewInput {
   all: boolean;
   /** 콩콩 아이 앱(GET /cases/{id}/child-app). 꺼져 있거나 못 받았으면 null. */
   childApp?: ChildAppCase | null;
+  /** 기관 서식 기록(useCaseForms). '위험수준 척도' 칸에 쓴다. */
+  forms?: CaseFormsState;
+}
+
+/** '위험수준 척도 (위험요인)' 칸: 가장 최근 확정 차수의 위험요인 합계와, 첫 확정 차수와 다르면 그 값(11/20 점검). */
+export function riskScaleKpi(forms: CaseFormsState | undefined): { label: string; value: string; src: string } {
+  const label = "위험수준 척도 (위험요인)";
+  if (!forms) return { label, value: NOT_PROVIDED, src: "" };
+  if (forms.loadError) return { label, value: NOT_PROVIDED, src: "서식 기록을 불러오지 못함" };
+  if (!forms.loaded) return { label, value: NOT_PROVIDED, src: "불러오는 중…" };
+  const done = formRounds(forms.items, "RISK_SCALE")
+    .filter((row) => row.status === "APPROVED" && typeof row.totals?.risk_sum === "number")
+    .sort((a, b) => a.round - b.round);
+  if (done.length === 0) return { label, value: NOT_PROVIDED, src: "확정한 위험수준 척도 기록 없음" };
+  const md = (row: (typeof done)[number]) => {
+    const d = (row.confirmed_at ?? row.updated_at).slice(0, 10);
+    return `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+  };
+  const last = done[done.length - 1];
+  const first = done[0];
+  const from = first.id !== last.id ? ` · 처음 ${first.totals.risk_sum}점(${md(first)})` : "";
+  return { label, value: `${last.totals.risk_sum}점`, src: `${last.round}차 ${md(last)} 확정${from}` };
 }
 
 // ------------------------------------------------------------
@@ -263,7 +286,7 @@ export function closureReviewValues(input: ClosureReviewInput) {
       { label: "상담", value: `${sessions.length}회`, src: kindText || "상담 유형 기록 없음" },
       { label: "새 학대 진술", value: signalValue, src: signalSrc },
       childKpi(input.childApp),
-      { label: "위험수준 척도 (위험요인)", value: NOT_PROVIDED, src: `${NOT_READY} · 기관 서식 기록이 서버에 없음` },
+      riskScaleKpi(input.forms),
     ],
     rows: input.all ? rowsAll : folded,
     canFold: rowsAll.length > 6,

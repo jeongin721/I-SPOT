@@ -44,6 +44,8 @@ export interface RecordingItem {
   consultationType: ConsultationType;
   /** 녹음 시작 시각(UTC ISO). 새 회차의 상담 일시로 쓴다. */
   consultedAt: string;
+  /** '녹음 동의 완료'를 확인하고 녹음을 시작한 시각(UTC ISO). 올릴 때 서버에 남긴다. 다른 녹음 앱 파일 · 옛 줄은 없다. */
+  consentAt?: string;
   fileName: string;
   mime: string;
   size: number;
@@ -83,6 +85,7 @@ export interface RecordingDraft {
   expectStatus?: SessionStatus;
   consultationType: ConsultationType;
   consultedAt: string;
+  consentAt?: string;
   mime: string;
   ext: string;
   durationMs: number;
@@ -448,6 +451,7 @@ function itemFromDraft(draft: RecordingDraft, fileName: string, size: number, du
     expectStatus: draft.sessionId ? draft.expectStatus : "CREATED",
     consultationType: draft.consultationType,
     consultedAt: draft.consultedAt,
+    consentAt: draft.consentAt,
     fileName,
     mime: draft.mime,
     size,
@@ -801,6 +805,7 @@ async function uploadOne(id: string, kindTitle: (type: ConsultationType) => stri
         form.append("file", new File([body], item.fileName, { type: item.mime }));
         // 본문 Blob 은 조각을 이은 것이라 여기서 바이트를 새로 복사하지 않는다.
         if (item.durationMs > 0) form.append("duration_ms", String(Math.round(item.durationMs)));
+        if (item.consentAt) form.append("consent_at", item.consentAt);
 
         item = (await patchItem(id, { uploadSent: true })) ?? item;
         await call(uploadMs(item.size), (signal) => request(`/sessions/${item!.sessionId}/audio`, { method: "POST", body: form, signal }));
@@ -868,6 +873,57 @@ export async function processQueue(includeFailed = false): Promise<void> {
   }
 }
 
+// --- Wi-Fi에서만 올리기(앱 · 설정, 11/20) -----------------------------------------------------------
+// 설정은 디자인처럼 이 폰에 둔다(ispot-app-set). 폰이 연결 종류를 알려 줄 때(안드로이드 Chrome 의 navigator.connection.type)만
+// 모바일 데이터에서 녹음 올리기를 미룬다. 알려 주지 않는 브라우저(iPhone Safari 등)는 설정 화면에서 켤 수 없다.
+// 문서(상담 기록 문서)는 작아서 그대로 올린다.
+
+const SETTINGS_KEY = "ispot-app-set";
+/** 모바일 데이터라 미뤄 둔 녹음 줄의 안내(실패가 아니라 기다림). */
+export const WIFI_WAIT_TEXT = "Wi-Fi에 연결되면 올립니다";
+
+interface NetworkInfo {
+  type?: string;
+  addEventListener?: (name: string, fn: () => void) => void;
+}
+
+function network(): NetworkInfo | undefined {
+  return typeof navigator !== "undefined" ? (navigator as Navigator & { connection?: NetworkInfo }).connection : undefined;
+}
+
+/** 이 폰이 연결 종류(Wi-Fi · 모바일 데이터)를 알려 주는가. */
+export function connectionKnown(): boolean {
+  return typeof network()?.type === "string";
+}
+
+function onCellular(): boolean {
+  const type = network()?.type;
+
+  return type === "cellular" || type === "wimax";
+}
+
+export function readWifiOnly(): boolean {
+  try {
+    const value = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+
+    return !!(value && value.wifiOnly);
+  } catch {
+    return false;
+  }
+}
+
+export function setWifiOnly(on: boolean): void {
+  try {
+    const value = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
+
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...value, wifiOnly: on }));
+  } catch {
+    // 저장이 막힌 브라우저 — 설정을 기억하지 못한다(설정 화면이 그대로 꺼진 것으로 보인다).
+  }
+  // 끄면 미뤄 둔 녹음을 바로 올린다.
+  if (!on) void processQueue(true);
+}
+
 async function drain(userId: string, includeFailed: boolean): Promise<void> {
   do {
     again = false;
@@ -887,6 +943,14 @@ async function drain(userId: string, includeFailed: boolean): Promise<void> {
           (item.status === "wait" || item.status === "run" || (includeFailed && item.status === "fail" && item.autoRetry === true)),
       )
       .sort((a, b) => a.createdAt - b.createdAt);
+
+    // Wi-Fi에서만 올리기를 켰는데 지금 모바일 데이터면 기다림으로 두고 연결이 바뀔 때 다시 돈다.
+    if (readWifiOnly() && onCellular()) {
+      for (const item of todo) {
+        if (item.status !== "wait" || item.error !== WIFI_WAIT_TEXT) await patchItem(item.id, { status: "wait", error: WIFI_WAIT_TEXT });
+      }
+      continue;
+    }
 
     for (const item of todo) {
       if (queueUser !== userId) break;
@@ -935,4 +999,6 @@ export function isUploading(id: string): boolean {
 
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => void processQueue(true));
+  // 모바일 데이터 ↔ Wi-Fi 가 바뀌면 미뤄 둔 녹음을 다시 본다(되는 브라우저만).
+  network()?.addEventListener?.("change", () => void processQueue(true));
 }

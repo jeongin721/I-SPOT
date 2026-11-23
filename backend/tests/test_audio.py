@@ -379,3 +379,41 @@ def test_get_audio_file_returns_latest_upload(
     assert response.status_code == 200
     assert response.content == second
     assert response.headers["content-disposition"] == 'inline; filename="second.wav"'
+
+
+def test_upload_keeps_recording_consent_time(client: TestClient, counselor_headers, session: dict, db) -> None:
+    # 폰 앱 녹음의 '녹음 동의 완료'(11/20): 확인한 시각을 남긴다. 폰 시계가 앞서도 올린 시각보다 뒤로 남기지 않는다.
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select
+
+    from app.core.enums import AuditAction
+    from app.models.audit_log import AuditLog
+    from tests.conftest import make_wav_bytes
+
+    def send(session_id: str, consent_at: str | None):
+        data = {"consent_at": consent_at} if consent_at else {}
+        response = client.post(
+            f"/api/v1/sessions/{session_id}/audio",
+            files={"file": ("consultation.wav", make_wav_bytes(), "audio/wav")},
+            data=data,
+            headers=counselor_headers,
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["data"]["audio"]
+
+    def utc(text: str) -> datetime:
+        value = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+    first = send(session["id"], "2026-11-20T10:00:00+09:00")
+    assert utc(first["consent_at"]) == datetime(2026, 11, 20, 1, 0, tzinfo=timezone.utc)
+
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    again = send(session["id"], future)
+    assert utc(again["consent_at"]) <= datetime.now(timezone.utc)
+
+    plain = send(session["id"], None)
+    assert plain["consent_at"] is None
+    details = [row.detail for row in db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.AUDIO_UPLOADED).order_by(AuditLog.created_at))]
+    assert [d.get("consent") for d in details][-3:] == [True, True, False]

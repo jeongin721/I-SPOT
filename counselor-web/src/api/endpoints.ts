@@ -94,6 +94,9 @@ import type {
   VoiceMarks,
   Memo,
   MemoCreateRequest,
+  Notice,
+  NoticeCreateRequest,
+  NoticeUpdateRequest,
   MemoUpdateRequest,
   BriefingChecks,
 } from "./types";
@@ -373,8 +376,9 @@ export const sessions = {
     return api.patch<Session>(`/sessions/${sessionId}`, payload);
   },
 
-  remove(sessionId: string): Promise<void> {
-    return api.delete<void>(`/sessions/${sessionId}`);
+  /** renumber: 잘못 올린 회차라 뒤 회차 번호를 하나씩 당긴다(2026-11-20). 빼면 번호를 비워 둔다. */
+  remove(sessionId: string, opts?: { renumber?: boolean }): Promise<void> {
+    return api.delete<void>(opts?.renumber ? `/sessions/${sessionId}?renumber=true` : `/sessions/${sessionId}`);
   },
 
   /** 상담 음성 업로드. 성공하면 회차 상태가 AUDIO_UPLOADED 가 된다. */
@@ -706,6 +710,25 @@ export const memos = {
 
   remove(memoId: string): Promise<void> {
     return api.delete<void>(`/memos/${memoId}`);
+  },
+};
+
+// 사내 공지사항(28절, 2026-11-20). 최신부터. 쓰고 고치고 지우기는 관리자만(403).
+export const notices = {
+  list(limit = 20): Promise<Notice[]> {
+    return api.get<Notice[]>("/notices", { limit });
+  },
+
+  create(payload: NoticeCreateRequest): Promise<Notice> {
+    return api.post<Notice>("/notices", payload);
+  },
+
+  update(noticeId: string, payload: NoticeUpdateRequest): Promise<Notice> {
+    return api.patch<Notice>(`/notices/${noticeId}`, payload);
+  },
+
+  remove(noticeId: string): Promise<void> {
+    return api.delete<void>(`/notices/${noticeId}`);
   },
 };
 

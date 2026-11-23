@@ -17,6 +17,7 @@ from app.api.v1 import (
     followup_questions,
     law_guide,
     memos,
+    notices,
     push,
     risk_assessments,
     schedule,
@@ -59,6 +60,8 @@ api_router.include_router(memos.router)
 api_router.include_router(briefing_checks.router)
 # /push — 상담사 앱(폰) 알림(웹 푸시, 27절, 2026-11-19).
 api_router.include_router(push.router)
+# /notices — 사내 공지사항(28절, 2026-11-20). 읽기는 누구나, 쓰기는 관리자.
+api_router.include_router(notices.router)
 # /sessions/{session_id}/source-document — 상담 기록 문서 회차(21절, 2026-11-02).
 api_router.include_router(source_documents.router)
 # /cases/{case_id}/forms — 기관 서식 작성 기록(22절, 2026-11-02).

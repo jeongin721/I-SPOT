@@ -20,7 +20,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import MobileAppShell, { sizeText, whenText, whoText } from '../components/MobileAppShell';
 import { closeWithAnim } from '../components/MobileAppShellMotion';
 import { childLabelOf, useAppCases } from '../data/useAppCases';
-import { enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
+import { WIFI_WAIT_TEXT, enqueueAudioFile, removeRecording, retryRecording, syncDoneWithServer, uploadAsNewSession } from '../data/appRecordings';
 import { checkAudioFile, readAudioDuration } from '../data/audioFile';
 import { isDocumentFile } from '../data/documentFile';
 import { useAppDocuments } from '../data/useAppDocuments';
@@ -204,7 +204,9 @@ function UploadBody({ userId, items, notReady }) {
         );
       })}
       {items.map((x) => {
-        const run = x.status === 'run' || x.status === 'wait';
+        // Wi-Fi에서만 올리기로 미뤄 둔 녹음(실패 아님).
+        const held = x.status === 'wait' && x.error === WIFI_WAIT_TEXT;
+        const run = !held && (x.status === 'run' || x.status === 'wait');
         const fail = x.status === 'fail';
         return (
           <div key={x.id} className={fail ? 'ma-card ma-qi ma-f' : 'ma-card ma-qi'}>
@@ -215,13 +217,14 @@ function UploadBody({ userId, items, notReady }) {
                 <span className="ma-note">
                   {whoText(x)} · {sizeText(x.size)} · {whenText(x.status === 'done' ? x.updatedAt : x.createdAt)}
                 </span>
+                {held && <span className="ma-note">{WIFI_WAIT_TEXT}</span>}
                 {x.status === 'done' && statuses[x.id] && (
                   <span className="ma-note" style={FAILED.has(statuses[x.id]) ? { color: 'var(--red)', fontWeight: 600 } : { fontWeight: 600 }}>
                     웹: {SESSION_STATUS_LABELS[statuses[x.id]] ?? statuses[x.id]}
                   </span>
                 )}
               </span>
-              <span className={fail ? 'ma-chip ma-red' : run ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : run ? '올리는 중' : '완료'}</span>
+              <span className={fail ? 'ma-chip ma-red' : run || held ? 'ma-chip ma-gold' : 'ma-chip'}>{fail ? '실패' : held ? '대기' : run ? '올리는 중' : '완료'}</span>
             </div>
             {x.status === 'done' && x.sessionId && statuses[x.id] && (
               <Link

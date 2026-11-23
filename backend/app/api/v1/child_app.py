@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.deps import AdminUser, CurrentUser, DbSession, bearer_scheme, client_ip
@@ -37,7 +37,7 @@ from app.schemas.child_app import (
     ChildRecentAlert,
     ChildWelfareCheckRequest,
 )
-from app.services import child_app_ai_service, child_app_service
+from app.services import child_app_ai_service, child_app_service, push_service
 from app.services.access import get_case_or_404
 
 _enabled = [Depends(child_app_service.ensure_enabled)]
@@ -94,8 +94,13 @@ def submit_answers(
 
 
 @device_router.post("/alerts", response_model=DataResponse[ChildAlertReceived])
-def send_alert(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildAlertReceived]:
-    child_app_service.send_alert(db, link)
+def send_alert(db: DbSession, link: CurrentChildLink, background: BackgroundTasks) -> DataResponse[ChildAlertReceived]:
+    case_id = link.case_id
+    alert_id = child_app_service.send_alert(db, link)
+
+    # 새 긴급 알림이면 담당 상담사 폰에 알린다(응답을 보낸 뒤 — 아이 쪽은 기다리지 않는다).
+    if alert_id is not None:
+        background.add_task(push_service.notify_child_alert, case_id, alert_id)
 
     return DataResponse(data=ChildAlertReceived())
 

@@ -24,6 +24,7 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { FamilyTable, HealthTable } from '../components/PersonalTables';
 import { useAuthSession } from '../data/useAuthSession';
+import { useNextConsult } from '../data/useCaseSchedule';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseSignals } from '../data/useCaseSignals';
 import { useIntakeCounselors } from '../data/useCaseIntake';
@@ -64,7 +65,8 @@ export default function CaseIntake(props) {
   const counselors = useIntakeCounselors(session);
   const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
   const theme = useTheme();
-  const v = useDC(Logic, { ...props, session, detail, signals, counselors, personal, caseId });
+  const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, counselors, personal, caseId, nextConsult });
   useLeaveGuard(v.unsaved);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (

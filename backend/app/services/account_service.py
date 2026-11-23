@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.enums import AuditAction, UserRole
@@ -18,6 +18,7 @@ from app.core.password_policy import generate_password
 from app.core.security import hash_password
 from app.models.audit_log import AuditLog
 from app.models.base import to_utc
+from app.models.push import PushSubscription
 from app.models.user import User
 from app.schemas.auth import UserUpdateRequest
 from app.services import audit_service, user_service
@@ -74,8 +75,20 @@ def issue_temporary_password(db: Session, user: User) -> str:
 
     # 이전에 발급된 Token 을 모두 무효로 만든다.
     user.token_version += 1
+    forget_push(db, user)
 
     return temporary
+
+
+def forget_push(db: Session, user: User) -> None:
+    """
+    Token 을 모두 끊을 때 그 계정의 폰 알림 구독도 지운다(11/20 점검).
+
+    끊긴 폰은 앱을 다시 열어 401 을 받기 전까지 아이 긴급 · 상담 알림을 계속 받기 때문이다.
+    다시 로그인한 폰은 앱을 열 때 구독을 다시 맞춘다(counselor-web data/appPush.syncPush).
+    """
+
+    db.execute(delete(PushSubscription).where(PushSubscription.user_id == user.id))
 
 
 def reset_password(db: Session, actor: User, user: User) -> str:
@@ -152,6 +165,7 @@ def logout_all(db: Session, actor: User, user: User) -> None:
         )
 
     user.token_version += 1
+    forget_push(db, user)
 
     audit_service.record(
         db,
@@ -202,6 +216,7 @@ def update_user(
         # 역할이 바뀌면 이미 발급된 Token 의 권한 정보가 낡는다.
         if "role" in changed or "is_active" in changed:
             user.token_version += 1
+            forget_push(db, user)
 
         audit_service.record(
             db,
