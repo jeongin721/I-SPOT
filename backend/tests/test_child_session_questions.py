@@ -398,8 +398,10 @@ def test_edit_self_harm_check_lets_ordinary_sentences_through(client: TestClient
     free = _create(client, counselor_headers, case["id"]).json()["data"]["items"][1]
 
     for text in ("요즘 입맛이 없어졌나요?", "걱정이 좀 사라졌나요?", "아침에 죽을 먹었나요?", "친구들 앞에서 기죽은 적이 있나요?",
-                 "숙제를 빨리 끝내고 싶을 때가 있나요?", "힘이 없어지는 때가 있나요?", "그림에 선을 긋는 걸 좋아하나요?"):
+                 "숙제를 빨리 끝내고 싶을 때가 있나요?", "힘이 없어지는 때가 있나요?", "그림에 선을 긋는 걸 좋아하나요?",
+                 "손목시계를 차고 다니나요?"):
         assert _patch(client, counselor_headers, case["id"], free["id"], {"text": text}).status_code == 200, text
 
-    for text in ("내가 죽었으면 좋겠다고 생각한 적이 있나요?", "그만 살고 싶다고 느낀 적이 있나요?", "손목을 긋고 싶은 적이 있나요?"):
+    for text in ("내가 죽었으면 좋겠다고 생각한 적이 있나요?", "그만 살고 싶다고 느낀 적이 있나요?", "손목을 긋고 싶은 적이 있나요?",
+                 "차라리 죽으면 편하겠다고 느낀 적이 있나요?", "태어나지 않았으면 좋았겠다고 생각한 적이 있나요?"):
         assert _patch(client, counselor_headers, case["id"], free["id"], {"text": text}).status_code == 400, text
