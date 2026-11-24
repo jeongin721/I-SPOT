@@ -45,6 +45,7 @@ from app.services import (
     case_context_service,
     followup_checklist_service,
     personal_info_service,
+    pre_analysis_service,
     session_service,
     transcript_service,
 )
@@ -345,18 +346,35 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             if transcript is None:
                 raise AIError("Transcript 가 없습니다.", ErrorCode.AI_FAILED)
 
-            payload = transcript_service.transcript_to_contract(transcript)
-            case_context = _build_case_context(db, session)
-            adapter = get_ai_adapter()
-            known_identifiers = _known_identifiers(db, session, adapter)
+            # 원문 확정 전에 돌린 AI 전체 분석(2026-11-24)이 있고 확정한 원문이 그 판과 같으면 그 결과를 그대로 쓴다(외부 AI 를
+            # 다시 부르지 않음). 첫 분석일 때만이고, 없거나 한 줄이라도 고쳤으면 None → 아래에서 새로 분석한다.
+            reuse = pre_analysis_service.cached_bundle(db, session, transcript)
+            bundle = reuse.bundle if reuse is not None else None
 
-            _prepare_adapter(adapter, job_deadline)
+            if reuse is not None:
+                audit_service.record(
+                    db,
+                    action=AuditAction.PRE_ANALYSIS_REUSED,
+                    entity_type="AIAnalysis",
+                    entity_id=analysis.id,
+                    case_id=session.case_id,
+                    session_id=session.id,
+                    detail={"from_version": reuse.from_version, "transcript_version": transcript.version},
+                )
 
-            time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
-            bundle = run_with_timeout(
-                lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers, signals),
-                time_limit,
-            )
+            if bundle is None:
+                payload = transcript_service.transcript_to_contract(transcript)
+                case_context = _build_case_context(db, session)
+                adapter = get_ai_adapter()
+                known_identifiers = _known_identifiers(db, session, adapter)
+
+                _prepare_adapter(adapter, job_deadline)
+
+                time_limit = _time_limit(job_deadline, settings.AI_TIMEOUT_SECONDS)
+                bundle = run_with_timeout(
+                    lambda: _analyze(adapter, payload, time_limit, case_context, known_identifiers, signals),
+                    time_limit,
+                )
 
             # 첫 저장을 했으면 둘째 저장, 아니면(콜백이 안 불림 · 첫 저장 실패 · 버림) 지금처럼 한 번에 저장한다.
             if signals.saved:

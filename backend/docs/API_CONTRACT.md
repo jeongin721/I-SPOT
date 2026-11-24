@@ -789,6 +789,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   `(abuse_type, subtype)` 으로 묶은 것이다. `count` 는 근거 발화 수(`segment_ids` 를 겹치지 않게 센 수), 처음 나온 순서.
   `pending` 은 근거 발화가 **모두** 화자 미확인(그 분석이 쓴 전사본의 `speaker` 가 `UNKNOWN` 이거나 전사본에 없는 번호)일 때 `true` — 화면 '보류 (화자 확인 중)'.
   유형 · 세부 유형 · 근거 발화가 없는 항목은 뺀다. 분석이 끝나지 않았으면 `null`, 세부 신호가 없으면 `[]`. 세부 유형 이름은 2차 모델의 고정 14종이다. **AI 제안이다.**
+- `key_quote`(2026-11-24, 종결 검토 '회차별 흐름 › 핵심'): 그 회차의 **아동 핵심 발화** 하나 `{text, segment_id, start_ms, source}`. 최신 완료 분석 결과의 근거 인용 중 **원문과 같은 글만** 쓴다(AI 를 새로 돌리지 않음) — `risk_utterances` 중 근거 발화에 화자 `CHILD` 가 있고 인용 대조(`evidence_verified`)가 `true` 인 항목을 근거 강도(`HIGH` · `MEDIUM` · `LOW`) → 처음 나온 순으로 골라 `source: "RISK"`, 없으면 `topic_tags` 중 첫 근거 발화가 지금도 `CHILD` 인 첫 주제의 `quote`(분석 때 전사본 글 그대로, 길면 잘림)로 `source: "TOPIC"`. 화면은 승인(`APPROVED`) 회차에만 보이고, 승인 전은 '승인 전 · 상태'. `segment_id` · `start_ms` 는 그 아동 발화(전사본에서 못 찾으면 `start_ms: null`). 분석 전 · 문서 회차(전사본 없음) · 아동 근거 발화가 없으면(화자 미확인 포함) `null`. **AI 제안이다.**
 - 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
 - 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
 
@@ -1206,6 +1207,29 @@ GET 뿐 아니라 PATCH · confirm 응답(같은 Transcript 모양)에도 들어
 STT 검수에서 **원문 확정 전에 먼저 들어볼 아동 발화**다(I-SPOT_DOCS/docs/PROPOSAL_stt_key_scan.md · PROPOSAL_stt_law_match.md). STT 작업이 전사를 마친 뒤
 **같은 작업 안에서** 1차 분류기(서버 안 로컬 모델, LLM 없음 — 원문이 밖으로 나가지 않음)를 돌려 고르고, 끝나면 `STT_REVIEW_REQUIRED` 로 넘긴다.
 응답마다 계산하지 않고 **저장한 값**이다.
+
+**원문 확정 전 AI 전체 분석(2026-11-24, `ANALYZE_BEFORE_CONFIRM=true`, 기본 꺼짐 · `AI_PROVIDER=modeling` 일 때만):** 팀장님 확인으로
+확정 전에도 이름을 가린 원문 전체를 외부 AI 로 보낸다. STT 작업이 1차 분류기 대신 **AI 전체 분석**(확정 뒤 분석과 같은 어댑터 ·
+사례 정보 · 등록 이름 · 가리기)을 같은 작업에서 돌리고, 위험 발화(`risk_utterances`)로 `key_scan` 을 채운 뒤 `STT_REVIEW_REQUIRED` 로
+넘긴다 — 회차는 그동안 `STT_PROCESSING` 이라 분석이 끝나야 원문이 보인다(멈춤 판정에 `AI_TIMEOUT_SECONDS` + 준비 시간을 더함).
+- `key_scan.model` 은 `"ai_analysis"`. `segments[]` 는 위험 발화의 발화 번호(원문 순서) · `abuse_types` · `legal_references`(분석 결과의 조문,
+  `excerpt` 에는 닮은 예시 대신 `"세부 유형 · 근거 직접성 높음"`, `score` 는 null). key_scan 은 암호화하지 않는 칸이라 **원문 글 · 이유 글은 넣지 않는다**.
+- 분석 결과 전체는 그 전사 판의 `transcripts.pre_analysis` 에 **암호문으로만** 둔다(응답에 없음).
+- 원문을 고쳐도(PATCH) 1차 스캔으로 다시 고르지 않고 지운 발화만 빼고 복사한다(REFRESHING 없음).
+- 원문을 확정하고 **첫 분석**을 할 때, 확정한 원문의 **모든 발화**(번호 · 화자 · 글 · 개수 · 순서)가 확정 판 바로 앞의 STT 판(재전사했으면
+  새 판)과 같고 그 판에 이 결과가 있으면 그대로 저장한다(외부 AI 를 다시 부르지 않음, 확정 판으로 근거 검사는 한 번 더). 결과의 `warnings` 에
+  "원문 확정 전 AI 분석(원문 N판)을 그대로 썼습니다 …" 를 더하고(2단계 화면에 보임) 감사 기록 `PRE_ANALYSIS_REUSED`(`detail.from_version`)를
+  남긴다. 한 줄이라도 고쳤거나, 스위치가 꺼졌거나, 저장한 값을 풀지 못하면 확정한 원문으로 새로 분석한다. 재분석(두 번째부터)은 늘 새로 한다
+  (민규 #195 리뷰 11/24).
+- 확정 전 원문을 외부 AI 로 보낼 때 감사 기록 `PRE_ANALYSIS_SENT`(`detail: {segments, registered_names}` — 글 · 이름은 남기지 않음).
+- 분석이 실패하면(시간 초과 · 오류) 1차 분류기로 돌아가 지금처럼 고르고 STT 는 그대로 성공한다.
+- 이름 가리기(민규 11/24): 확정 전 원문은 아무도 읽지 않은 STT 결과라 **등록 이름을 하나라도 못 읽거나 등록 이름이 하나도 없으면 보내지 않고** 1차 분류기로
+  돌아간다(초기면접지를 먼저 쓰므로 실제로는 늘 있다 — 경진 11/24).
+  등록 이름과 성이 같고 이름 한 글자만 다른 표기(STT 오인식, 김수아 → 김수하, 세 글자 이상)도 등록 이름으로 더해 가린다. 일반 낱말을 가리지
+  않게 다른 글자는 첫소리만 달라야 하고(모음 · 받침 같음), 앞이 한글이면(낱말 가운데) 보지 않으며, 뒤가 한글이면 조사일 때만, 마지막 글자가
+  조사가 된 꼴('고민지' → '고민이')은 뺀다(민규 #195 리뷰).
+- 회차 상태 · `ai_analyses` 는 바꾸지 않는다(사례 신호 이력 · 요약 · 다음 상담 체크리스트에 섞이지 않음). 화면은 '임시 · AI 참고' 로 보이고,
+  확정 뒤 2단계(학대 신호 확인)의 상담원 확인을 대신하지 않는다.
 
 ```json
 "key_scan": {
@@ -2958,16 +2982,19 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | POST | `/cases/{case_id}/child-app/alerts/{alert_id}/ack` | 확인 처리 → 204. 이미 확인됐으면 먼저 확인한 기록 유지. 긴급 알림은 담당 상담사 · 관리자, 답 기반 알림은 담당 상담사만(그 외 403) |
 | GET | `/cases/{case_id}/child-app` | 연결 상태 · 문항 목록(`bank`) · 시간순 `feed`(최근 100건) · `next_consult`(`{date, time, place}`, 담당 상담사만 · 없으면 null) · `scheduled_questions`(발송 예약해 둔 질문 `{id, count, deliver_at}`, 담당 상담사만 · 없으면 null). `has_pending_questions` 는 예약해 둔 질문이 있어도 true 다. 글을 쓴 답의 `feed[].payload.items[]` 에는 아이가 쓴 글만 담은 `written` 이 있다. 담당 상담사만 `feed` 를 받고, 담당이 아닌 관리자는 빈 목록 |
 | POST | `/cases/{case_id}/child-app/invite` | 담당 상담사만. `{code, expires_at}`(72시간, 평문은 이때만). 이전 코드는 무효. 이미 연결이면 409 |
-| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids, deliver?}` 1~8개(문항 전체) → 204. `deliver`: `NOW`(기본, 바로) · `EVENING`(발송 예약 — 아래). 답하지 않은 이전 질문은 대체. 미연결이면 409 |
+| POST | `/cases/{case_id}/child-app/question-sets` | 담당 상담사만. `{question_ids, deliver?}` 1~8개(문항 전체 — 고정 문항 id 와 이번 회차 맞춤 질문 `sq_…` id 를 섞어도 된다. 맞춤 질문은 가장 최근 분석 회차 초안에 있는 것만, 아니면 400) → 204. `deliver`: `NOW`(기본, 바로) · `EVENING`(발송 예약 — 아래). 답하지 않은 이전 질문은 대체. 미연결이면 409 |
 | DELETE | `/cases/{case_id}/child-app/question-sets/{question_set_id}` | 발송 예약 취소 → 204. 담당 상담사만(그 외 403). 예약 시각 전에만 된다 — 이미 아이에게 보였거나 답했으면 409 `INVALID_CASE_STATE`. 이미 취소 · 대체된 것은 204(재시도 안전). 없는 것 · 다른 사례의 것은 404 |
 | DELETE | `/cases/{case_id}/child-app/link` | 상담사가 아이 앱 연결을 해지한다(아이 상세 '콩콩 앱 연결 › 해지하기', 2026-11-19) → 204. 담당 상담사만(관리자 · 다른 상담사 403). `/child-app/unlink` 와 같은 처리 — 연결 행을 지워 그 기기 토큰은 바로 401, 답하지 않은 질문 · 발송 예약은 거두고, 받은 답 · 알림은 남는다. 연결돼 있었으면 피드에 `UNLINKED` 줄(`payload.by = "counselor"`, 기기 해지는 `{}`). 초대 대기(코드만 발급)도 지워 코드를 무효로 한다(피드 줄 없음). 연결이 없으면 204(재시도 안전). 종결 사례에서도 된다. 감사 기록 `CHILD_APP_UNLINKED` `detail.by = counselor` |
 | GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함. 발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 안 보인 예약 · 보이기 전에 취소한 예약은 세지 않는다) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
 | GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent, answer_acked_at}`. `recent_answers` · `level` · `answer_acked_at`(가장 최근 답 묶음을 확인한 시각, 확인 전 · 확인할 답이 아니면 null — 2026-11-20) 은 담당 상담사만 |
+| POST | `/cases/{case_id}/child-app/session-questions?regenerate=` | 담당 상담사만, 진행 중 사례만(그 외 403 · 409). 이번 회차 맞춤 질문(2026-11-24) — 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED` · `APPROVED`)의 확인할 사항 · 추가 질문 · 승인된 요약과 초기면접지 단어 칸(나이대 · 성별 · 아동 특성 · 가정 상황)으로 아이에게 물을 질문 2~5개를 만들고 `{session_id, session_label, created_at, items: [{id, category, type: choice\|text, text, options, reason, edited}]}` 를 돌려준다. 회차마다 하나, 이미 있으면 그대로, `regenerate=true` 면 새로(앞 초안의 `sq_` id 는 보낼 수 없게 된다). 이름을 가린 뒤 외부 AI 로 보낸다. 질문 · 보기에는 회차의 사건 · 가족을 가리키는 말을 넣지 않는다(아이 폰을 다른 가족이 볼 수 있음). `reason` 은 상담사에게만 보이고 아이 앱으로 가지 않는다. 맞춤 질문의 답은 건너뛰지 않으면 무엇이든 살펴볼 답(`AMBER`)으로 들어간다 — AI 가 보기별 수준을 정하지 않는다(바로 확인 `RED` 는 두지 않는다, 기준은 아이 앱으로 가지 않는다). 보기에 '말하기 어려워요' 같은 건너뛰기 보기는 넣지 않는다(앱에 건너뛰기가 있다). 자해 · 자살 · 죽음을 묻는 질문, 가족 · 어른 · 선생님(상담 선생님 빼고)을 가리키는 말, 술 · 때림 같은 사건 낱말, 그 사례 등록 이름이 든 질문 · 보기는 버린다. 승인 전 회차면 상담사가 승인한 추가 질문만 넣고 AI 추가 질문 초안은 넣지 않는다. 화면은 상담사가 '맞춤 질문 만들기' 를 눌렀을 때만 이 API 를 부른다(회차 내용이 외부 AI 로 가므로). 분석이 끝난 회차가 없으면 409, 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504, 실패 · 쓸 만한 질문 없음 502 |
+| PATCH | `/cases/{case_id}/child-app/session-questions/{question_id}` | 담당 상담사만, 진행 중 사례만. `{text, options?}` 맞춤 질문 고치기(가장 최근 분석 회차 초안만, 없으면 404). text 1~120자. 선택지 질문은 보기 2~5개(겹친 보기는 하나로, 아니면 400). 짧은 글 질문에 보기를 넣으면 400. 응답은 위 맞춤 질문 모양(고친 질문은 `edited: true`). 이미 보낸 질문은 바뀌지 않는다. 다시 만들기(`regenerate`)를 하면 고친 것도 새 초안으로 바뀐다. 감사 `CHILD_APP_SESSION_QUESTIONS_EDITED`(글은 넣지 않음) |
 | POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/notes/{question_id}` | `{text}`(1~500자) 확인해 볼 점 고치기 |
 | PATCH | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}` | `{text, options}`(보기 2~6개) 추가 질문 고치기. 승인 전으로 돌아가고 앱에서 빠진다. 아이가 이미 답했으면 409 |
 | PUT | `/cases/{case_id}/child-app/ai-draft/{draft_id}/questions/{id}/approval` | `{approved}`. 승인하면 답하지 않은 질문에 더해 바로 앱으로 간다(묶음당 최대 8개). 풀면 뺀다. 이미 답했으면 409, 미연결이면 409 |
 
+`GET /cases/{case_id}/child-app` 응답에는 `session_questions`(위 맞춤 질문 모양, 가장 최근 분석 회차 것이 없으면 null)와 `session_questions_available`(담당 · AI 켜짐 · 분석이 끝난 회차 있음 — 화면이 이 값이 true 이고 초안이 없으면 '맞춤 질문 만들기' 단추를 보인다)가 있다(담당 상담사가 아니면 null · false). 맞춤 질문 글 · 이유는 감사 기록에 넣지 않는다(`CHILD_APP_SESSION_QUESTIONS_CREATED` 에 수만).
 `GET /cases/{case_id}/child-app` 응답에는 `ai_enabled` 와 최근 답의 `ai_draft`(`{id, event_id, items: [{question_id, note, note_edited, questions: [{id, text, options, edited, approved, answered}]}]}`, 담당 상담사만)가 있다. AI 초안의 메모 · 질문 문장은 감사 기록에 넣지 않는다.
 
 아이 앱 긴급 알림 확인 여부: `GET /child-app/home` 응답의 `alert` 는 사례의 마지막 긴급 알림 `{sent_at, acknowledged, overdue}`(없으면 null). `sent_at` 은 마지막으로 누른 시각(확인 전에 다시 누르면 오른다)이고, 이 기기가 연결된 뒤에 누른 것만 보인다. 확인한 알림은 마지막으로 누른 뒤 24시간만 보이고, 확인 전 알림은 시간이 지나도 남는다. `overdue` 는 처음 알린 뒤 확인 전으로 5분이 지났는지(서버 시계). 확인한 사람 · 시각은 보내지 않는다. 앱은 `overdue` 면 112 · 1388 을 다시 안내한다.

@@ -12,6 +12,8 @@
 #  - 회차 줄의 topics: 최신 완료 분석 결과 topic_tags(아동 발화 대화 주제, 2026-10-29). 없으면 null
 #  - 회차 줄의 subtypes: 최신 완료 분석 결과 risk_utterances 를 (유형, 세부 유형)으로 묶은 근거 발화 수(2026-10-30).
 #    pending 은 근거 발화가 모두 화자 미확인(분석이 쓴 전사본의 speaker UNKNOWN)일 때 — 화면 '보류 (화자 확인 중)'.
+#  - 회차 줄의 key_quote: 아동 핵심 발화(종결 검토 회차별 흐름 '핵심', 2026-11-24). 분석 결과의 근거 인용 중 화자가
+#    아동(CHILD)인 발화 하나 — 위험 발화가 먼저, 없으면 대화 주제. 시작 시각은 전사본 발화에서 읽는다(글은 읽지 않는다).
 # 처리 중 회기의 작업 유실 마감(expire_stale_processing)은 여기서 하지 않는다 — 회차 목록 · 상세가 이미 하고,
 # 이 창구는 읽기만 한다.
 import uuid
@@ -29,6 +31,7 @@ from app.models.session import ConsultationSession
 from app.models.transcript import TranscriptSegment
 from app.services.risk_assessment_service import ai_levels_by_type
 from app.schemas.signal_history import (
+    SignalHistoryKeyQuote,
     SignalHistoryResponse,
     SignalHistorySession,
     SignalHistorySubtype,
@@ -75,8 +78,9 @@ def build_signal_history(db: Session, case: Case) -> SignalHistoryResponse:
         ):
             overall[assessment.session_id] = assessment
 
-    # 분석이 쓴 전사본의 발화 화자(세부 신호 '보류' 판단용). 완료 분석의 전사본만 한 번에 읽는다.
+    # 분석이 쓴 전사본의 발화 화자(세부 신호 '보류' 판단 · 아동 핵심 발화용)와 시작 시각. 완료 분석의 전사본만 한 번에 읽는다.
     speakers: Dict[uuid.UUID, Dict[str, Speaker]] = defaultdict(dict)
+    starts: Dict[uuid.UUID, Dict[str, int]] = defaultdict(dict)
     transcript_ids = {
         analysis.transcript_id
         for analysis in latest_analysis.values()
@@ -84,12 +88,16 @@ def build_signal_history(db: Session, case: Case) -> SignalHistoryResponse:
     }
 
     if transcript_ids:
-        for transcript_id, segment_id, speaker in db.execute(
-            select(TranscriptSegment.transcript_id, TranscriptSegment.segment_id, TranscriptSegment.speaker).where(
-                TranscriptSegment.transcript_id.in_(transcript_ids)
-            )
+        for transcript_id, segment_id, speaker, start_ms in db.execute(
+            select(
+                TranscriptSegment.transcript_id,
+                TranscriptSegment.segment_id,
+                TranscriptSegment.speaker,
+                TranscriptSegment.start_ms,
+            ).where(TranscriptSegment.transcript_id.in_(transcript_ids))
         ):
             speakers[transcript_id][segment_id] = speaker
+            starts[transcript_id][segment_id] = start_ms
 
     rows = [
         _session_row(
@@ -98,6 +106,7 @@ def build_signal_history(db: Session, case: Case) -> SignalHistoryResponse:
             judged.get(session.id, {}),
             overall.get(session.id),
             speakers,
+            starts,
         )
         for session in sessions
     ]
@@ -111,6 +120,7 @@ def _session_row(
     judged: Dict[AbuseType, SessionRiskAssessment],
     overall: Optional[SessionOverallRiskAssessment],
     speakers: Dict[uuid.UUID, Dict[str, Speaker]],
+    starts: Dict[uuid.UUID, Dict[str, int]],
 ) -> SignalHistorySession:
     completed = analysis is not None and analysis.status == AnalysisStatus.COMPLETED
     result = analysis.result if completed and isinstance(analysis.result, dict) else {}
@@ -139,7 +149,59 @@ def _session_row(
             if completed and analysis is not None
             else None
         ),
+        key_quote=(
+            _key_quote(result, speakers.get(analysis.transcript_id, {}), starts.get(analysis.transcript_id, {}))
+            if completed and analysis is not None and analysis.transcript_id is not None
+            else None
+        ),
     )
+
+
+_STRENGTH_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+
+
+def _key_quote(
+    result: Dict[str, Any], speakers: Dict[str, Speaker], starts: Dict[str, int]
+) -> Optional[SignalHistoryKeyQuote]:
+    """아동 핵심 발화 하나. 원문과 같은 글만 쓴다(민규 #195 리뷰).
+    - 위험 발화: AI 가 뽑은 인용이라 원문과 다를 수 있다 — 인용 대조(evidence_verified)가 true 인 것만, 근거 강도 → 처음 나온 순.
+      근거 발화 중 화자가 CHILD 인 첫 발화의 시각을 붙인다.
+    - 없으면 대화 주제: quote 는 분석 때 전사본의 첫 근거 발화 글 그대로(길면 잘림)다. 그 첫 발화가 지금도 CHILD 일 때만.
+    아동 발화가 없으면 None."""
+
+    def child_segment(ids: Any) -> Optional[str]:
+        for sid in ids if isinstance(ids, list) else []:
+            if isinstance(sid, str) and speakers.get(sid) == Speaker.CHILD:
+                return sid
+        return None
+
+    candidates = []
+    utterances = result.get("risk_utterances")
+    for index, item in enumerate(utterances if isinstance(utterances, list) else []):
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        sid = child_segment(item.get("segment_ids"))
+        if not isinstance(text, str) or not text.strip() or sid is None or item.get("evidence_verified") is not True:
+            continue
+        rank = (_STRENGTH_RANK.get(item.get("evidence_strength"), 3), index)
+        candidates.append((rank, text.strip(), sid))
+
+    if candidates:
+        _, text, sid = min(candidates)
+        return SignalHistoryKeyQuote(text=text, segment_id=sid, start_ms=starts.get(sid), source="RISK")
+
+    tags = result.get("topic_tags")
+    for tag in tags if isinstance(tags, list) else []:
+        if not isinstance(tag, dict):
+            continue
+        quote = tag.get("quote")
+        ids = tag.get("segment_ids")
+        sid = ids[0] if isinstance(ids, list) and ids and isinstance(ids[0], str) else None
+        if isinstance(quote, str) and quote.strip() and sid is not None and speakers.get(sid) == Speaker.CHILD:
+            return SignalHistoryKeyQuote(text=quote.strip(), segment_id=sid, start_ms=starts.get(sid), source="TOPIC")
+
+    return None
 
 
 def _subtype_rows(utterances: Any, speakers: Dict[str, Speaker], speaker_check: bool = True) -> List[SignalHistorySubtype]:

@@ -44,6 +44,7 @@ import type {
   FollowupCheck,
   FollowupCheckList,
   ChildAiDraft,
+  ChildSessionQuestions,
   ChildAppCase,
   ChildAppCaseRow,
   ChildAppStats,
@@ -902,6 +903,20 @@ export const childApp = {
     return api.get<ChildAppCaseRow[]>("/child-app-cases");
   },
 
+  /** 이번 회차 맞춤 질문 만들기. 이미 있으면 그대로, regenerate 면 새로 만든다. */
+  createSessionQuestions(caseId: string, regenerate = false): Promise<ChildSessionQuestions> {
+    return api.post<ChildSessionQuestions>(
+      `/cases/${caseId}/child-app/session-questions${regenerate ? "?regenerate=true" : ""}`,
+    );
+  },
+  /** 맞춤 질문 고치기. 짧은 글 질문은 options 를 비운다. */
+  updateSessionQuestion(
+    caseId: string,
+    questionId: string,
+    body: { text: string; options: string[] },
+  ): Promise<ChildSessionQuestions> {
+    return api.patch<ChildSessionQuestions>(`/cases/${caseId}/child-app/session-questions/${questionId}`, body);
+  },
   createAiDraft(caseId: string): Promise<ChildAiDraft> {
     return api.post<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft`);
   },

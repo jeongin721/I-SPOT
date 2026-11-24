@@ -404,3 +404,79 @@ def test_analysis_without_risk_utterances_has_empty_subtypes(
     _set_result(db, session["id"], risk_utterances=[])
 
     assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["subtypes"] == []
+
+
+# ---------------------------------------------------------
+# 아동 핵심 발화(key_quote, 2026-11-24) — 종결 검토 회차별 흐름 '핵심'
+# ---------------------------------------------------------
+
+def test_session_before_analysis_has_no_key_quote(client: TestClient, counselor_headers, case: dict, session: dict) -> None:
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["key_quote"] is None
+
+
+def test_key_quote_prefers_verified_strong_child_risk_utterance(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    from app.core.enums import Speaker
+
+    analyzed_session(client, counselor_headers, session["id"])
+    segments = _analysis_segments(db, session["id"])
+    assert len(segments) >= 3
+    child_a, child_b, adult = segments[0], segments[1], segments[2]
+    child_a.speaker = Speaker.CHILD
+    child_b.speaker = Speaker.CHILD
+    adult.speaker = Speaker.COUNSELOR
+    db.commit()
+    _set_result(
+        db,
+        session["id"],
+        risk_utterances=[
+            # 상담원 발화만 근거 → 후보 아님
+            {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [adult.segment_id], "text": "상담원 말", "evidence_strength": "HIGH", "evidence_verified": True},
+            # 아동 발화지만 인용 대조 안 됨 → 원문과 다를 수 있어 쓰지 않음
+            {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [child_a.segment_id], "text": "대조 안 된 말", "evidence_strength": "HIGH", "evidence_verified": False},
+            {"abuse_type": "EMOTIONAL", "subtype": "y", "segment_ids": [child_a.segment_id], "text": "약한 근거", "evidence_strength": "LOW", "evidence_verified": True},
+            # 상담원 + 아동 섞임 → 아동 발화 시각을 붙인다
+            {"abuse_type": "EMOTIONAL", "subtype": "y", "segment_ids": [adult.segment_id, child_b.segment_id], "text": " 엄마가 소리 지르면 숨고 싶어요 ", "evidence_strength": "HIGH", "evidence_verified": True},
+        ],
+        topic_tags=[{"topic": "가족", "segment_ids": [child_a.segment_id], "quote": "주제 인용", "start_ms": 1}],
+    )
+
+    quote = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["key_quote"]
+
+    assert quote == {"text": "엄마가 소리 지르면 숨고 싶어요", "segment_id": child_b.segment_id, "start_ms": child_b.start_ms, "source": "RISK"}
+
+
+def test_key_quote_falls_back_to_child_topic_then_null(
+    client: TestClient, counselor_headers, db, case: dict, session: dict
+) -> None:
+    from app.core.enums import Speaker
+
+    analyzed_session(client, counselor_headers, session["id"])
+    segments = _analysis_segments(db, session["id"])
+    child, adult = segments[0], segments[1]
+    child.speaker = Speaker.CHILD
+    adult.speaker = Speaker.GUARDIAN
+    db.commit()
+    _set_result(
+        db,
+        session["id"],
+        risk_utterances=[
+            {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [adult.segment_id], "text": "보호자 말", "evidence_verified": True},
+            # 아동 발화지만 대조 안 됨 → 주제로 넘어간다
+            {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [child.segment_id], "text": "대조 안 됨", "evidence_verified": False},
+        ],
+        topic_tags=[
+            {"topic": "학교", "segment_ids": [adult.segment_id], "quote": "보호자 주제"},
+            # 첫 근거 발화가 아동이 아니면 그 주제는 쓰지 않는다
+            {"topic": "가족", "segment_ids": [adult.segment_id, child.segment_id], "quote": "보호자 첫 발화"},
+            {"topic": "친구", "segment_ids": [child.segment_id], "quote": "친구랑 놀았어요"},
+        ],
+    )
+    quote = _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["key_quote"]
+    assert quote == {"text": "친구랑 놀았어요", "segment_id": child.segment_id, "start_ms": child.start_ms, "source": "TOPIC"}
+
+    # 아동이 한 근거 발화가 없으면 null(화자 미확인도 아동으로 보지 않는다).
+    child.speaker = Speaker.UNKNOWN
+    db.commit()
+    assert _get(client, counselor_headers, case["id"]).json()["data"]["sessions"][0]["key_quote"] is None
