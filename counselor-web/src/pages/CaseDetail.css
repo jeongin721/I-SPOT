@@ -189,3 +189,5 @@
 .pg-CaseDetail .thm-root.dark .lead-arrow{color:#F0907F !important}
 .pg-CaseDetail .brief-wrap{display:flex;flex-direction:column;gap:18px}
 @media print{body.print-brief *{visibility:hidden !important}body.print-brief .brief-wrap,body.print-brief .brief-wrap *{visibility:visible !important}body.print-brief .brief-wrap{position:absolute;left:0;top:0;width:100%}body.print-brief .brief-wrap button{display:none !important}}
+/* 기본 정보 '수정' 창(11/20 디자인 cd-edit-ov): 사례 상세 위를 덮고 안에서 세로로 스크롤한다. */
+.pg-CaseDetail .cd-edit-ov{position:fixed;inset:0;z-index:300;background:rgba(47,58,68,.40);overflow-y:auto;overscroll-behavior:contain}

@@ -397,9 +397,8 @@ function ScheduleBody({ userId }) {
       </button>
 
       {sheet?.mode === 'view' && cur && (
-        <div className="ma-ov" ref={ovRef} onClick={close}>
-          <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="일정 상세" onClick={stop}>
-            <span className="ma-grab" aria-hidden="true"></span>
+        <div className="ma-ov ma-ov-c" ref={ovRef} onClick={close}>
+          <section className="ma-sheet ma-sheet-c" role="dialog" aria-modal="true" aria-label="일정 상세" onClick={stop}>
             <div className="ma-sh-hd">
               <b>{titleOf(cur, names)}</b>
               <span className={cur.kind === 'CONSULT' ? 'ma-chip ma-gold' : 'ma-chip'}>{cur.kind === 'CONSULT' ? '상담' : '개인 · 기관'}</span>

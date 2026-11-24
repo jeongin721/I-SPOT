@@ -184,3 +184,5 @@
 .pg-CaseIntake .hs-wide{max-width:none}
 .pg-CaseIntake .thm-root.dark .ft-del{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
 .pg-CaseIntake .thm-root.dark .ftg select.ft-sel option{background:#2C2B27}
+/* 사례 상세 '수정' 창으로 띄울 때(embed): 바탕은 덮는 막(cd-edit-ov)이 맡는다(디자인 CaseRegister 의 reg-emb). */
+.pg-CaseIntake .thm-root.ci-emb{min-height:0 !important;background:transparent !important}
