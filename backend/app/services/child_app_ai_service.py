@@ -499,9 +499,13 @@ def update_question(
     payload: ChildAiQuestionUpdateRequest,
     ip_address: Optional[str],
 ) -> ChildAppAiDraft:
-    """고치면 승인 전으로 돌아간다(디자인 동작). 이미 앱에 갔으면 뺀 뒤 고친다."""
+    """고치면 승인 전으로 돌아간다(디자인 동작). 이미 앱에 갔으면 뺀 뒤 고친다.
+    자해 · 죽음 말은 받지 않는다(맞춤 질문 고치기와 같은 기준, 경진 11/24) — 고치기 전에 거절해 앱에 간 질문을 빼지 않는다."""
+
+    from app.services import child_session_question_service
 
     row = _locked_draft(db, case, user, draft_id)
+    child_session_question_service.ensure_no_self_harm(payload.text, list(payload.options))
     items = copy.deepcopy(row.items)
     question = _find_question(items, question_id)
     _unsend(db, case, user, question, ip_address)

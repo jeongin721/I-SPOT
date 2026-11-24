@@ -246,7 +246,7 @@ class Settings(BaseSettings):
     KEY_SCAN_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     # 원문 확정 전 AI 전체 분석(2026-11-24, 팀장님 확인 — 확정 전에도 이름을 가린 원문 전체를 외부 AI 로 보냄).
     # 켜면 STT 작업이 전사 뒤 1차 스캔 대신 AI 전체 분석(학대 신호 · 근거)을 돌리고, 그 결과로 '먼저 들어볼 곳'을 채운 뒤에
-    # 검수 필요로 넘긴다(분석이 끝나야 원문이 보인다). 결과는 암호화해 두었다가 원문을 확정할 때 근거 줄이 그대로면 다시 쓴다
+    # 검수 필요로 넘긴다(분석이 끝나야 원문이 보인다). 결과는 암호화해 두었다가 원문을 확정할 때 모든 발화가 바로 앞 STT 판과 같으면(한 줄도 안 고쳤으면) 다시 쓴다
     # (pre_analysis_service). 실패하면 1차 스캔으로 돌아간다. AI_PROVIDER=modeling 일 때만. 기본 꺼짐.
     ANALYZE_BEFORE_CONFIRM: bool = False
     #: 원문 수정 뒤 다시 스캔(key_scan REFRESHING, 2026-11-09) 서버 전체 동시 실행 수. 로컬 모델이 GPU 하나라 기본 1 —

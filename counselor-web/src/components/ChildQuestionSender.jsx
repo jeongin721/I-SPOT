@@ -158,6 +158,11 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
                       </label>
                     </>
                   ) : null}
+                  {app.actionError ? (
+                    <p className="note acc" role="alert" style={{ margin: '0' }}>
+                      {app.actionError}
+                    </p>
+                  ) : null}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                     <button
                       type="button"
