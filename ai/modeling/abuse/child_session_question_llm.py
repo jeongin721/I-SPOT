@@ -120,11 +120,23 @@ def format_input(context: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def has_self_harm(text: str) -> bool:
-    """자해 · 자살 · 죽음 말이 있는지. 상담사가 아이 앱 질문을 고칠 때도 같은 기준으로 막는다(경진 11/24,
-    Backend child_session_question_service.ensure_no_self_harm)."""
+# 상담사가 고친 문장에 쓰는 좁은 목록(민규 #198 리뷰). 위 _SELF_HARM 은 AI 초안을 넉넉히 버리려고 '죽 · 긋 · 없어지' 처럼
+# 넓어서, 고치기에 쓰면 '아침에 죽을 먹었나요?' · '선을 긋는 걸 좋아하나요?' · '입맛이 없어졌나요?' 같은 평범한 문장도 막는다.
+# 여기에는 뜻이 분명한 말만 둔다.
+_SELF_HARM_STRICT = re.compile(
+    r"자해|자살|극단적|목숨|죽음|죽고\s*싶|죽었으면|죽어\s*버리|죽는\s*게\s*나|죽을까|"
+    r"사라지고\s*싶|사라져\s*버리|사라졌으면|없어지고\s*싶|없어졌으면|없었으면\s*좋|태어나지\s*말|"
+    r"살기\s*싫|살고\s*싶지|그만\s*살|삶을\s*끝|모든\s*걸\s*끝내|다\s*끝내고\s*싶|"
+    r"상처를\s*(?:내|낸|냈)|손목|뛰어내리|약을\s*한꺼번에|약을\s*많이\s*먹|"
+    r"(?:나|스스로|자신|자기|몸|내\s*몸)(?:를|을)?\s*(?:일부러\s*)?(?:다치게|아프게)\s*(?:하|했|한|할|만들|만든)"
+)
 
-    return bool(_SELF_HARM.search(text))
+
+def has_self_harm(text: str) -> bool:
+    """상담사가 아이 앱 질문을 고칠 때 막을 자해 · 자살 · 죽음 말이 있는지(경진 11/24, 좁은 목록 — 민규 #198 리뷰).
+    Backend child_session_question_service.ensure_no_self_harm 이 쓴다."""
+
+    return bool(_SELF_HARM_STRICT.search(text))
 
 
 def _bad_text(text: str, names: Iterable[str] = ()) -> bool:
