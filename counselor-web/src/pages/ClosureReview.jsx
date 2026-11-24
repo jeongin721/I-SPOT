@@ -246,7 +246,7 @@ export default function ClosureReview() {
                 </button>
               ) : null}
             </div>
-            <table className="tbl tl" style={{ minWidth: '680px' }}>
+            <table className="tbl tl tl-flow" style={{ minWidth: '680px' }}>
               <thead>
                 <tr>
                   <th>회차</th>
