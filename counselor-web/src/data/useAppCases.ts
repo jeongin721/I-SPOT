@@ -38,8 +38,25 @@ function loadCases(): ReturnType<typeof cases.list> {
   return promise;
 }
 
+// 다시 부르기(앱에서 새 사례를 등록한 뒤 등): 5초 묶음을 버리고, 이 훅을 쓰는 곳(머리 '담당 N명' · 본문)이 모두 다시 부른다.
+const reloaders = new Set<() => void>();
+
+export function reloadAppCases(): void {
+  inflight = null;
+  reloaders.forEach((reload) => reload());
+}
+
 export function useAppCases(userId: string | null): AppCasesState {
   const [state, setState] = useState<AppCasesState>({ rows: [], loading: true, offline: false, error: null });
+  const [ver, setVer] = useState(0);
+
+  useEffect(() => {
+    const reload = () => setVer((v) => v + 1);
+    reloaders.add(reload);
+    return () => {
+      reloaders.delete(reload);
+    };
+  }, []);
 
   useEffect(() => {
     if (!userId) return undefined;
@@ -68,7 +85,7 @@ export function useAppCases(userId: string | null): AppCasesState {
     return () => {
       live = false;
     };
-  }, [userId]);
+  }, [userId, ver]);
 
   return state;
 }

@@ -84,10 +84,11 @@ export interface LawLine {
  * 서버가 준 임시 조문 하나 → 줄. 법령 이름 · 조문이 없거나 **닮은 예시(excerpt)가 없으면 null** — 근거 없이 유형만으로 붙은
  * 조문(11/09~11/19 사이 매칭 모델을 못 올린 서버가 저장한 결과)은 보이지 않는다. 국가법령정보센터 주소만 링크로 쓴다.
  */
-function keyScanLineFromReference(reference: KeyScanReference): LawLine | null {
+function keyScanLineFromReference(reference: KeyScanReference, fromAnalysis = false): LawLine | null {
   if (!isLegalReference(reference)) return null;
   const excerpt = typeof reference.excerpt === "string" ? reference.excerpt.trim() : "";
-  if (!excerpt) return null;
+  // AI 전체 분석이 고른 조문(2026-11-24)은 닮은 예시 대신 세부 유형 · 근거 직접성이 들어 있고, 없어도 보인다.
+  if (!excerpt && !fromAnalysis) return null;
   const type = typeof reference.abuse_type === "string" ? reference.abuse_type : "";
   const itemLabel = typeof reference.item_label === "string" ? reference.item_label : "";
   const art = [reference.article, itemLabel].filter(Boolean).join(" ");
@@ -99,8 +100,8 @@ function keyScanLineFromReference(reference: KeyScanReference): LawLine | null {
     art,
     sum: typeof reference.text === "string" ? reference.text : "",
     url: url.startsWith("https://www.law.go.kr/") ? url : null,
-    tmp: "임시 · 1차 모델",
-    why: `닮은 예시 "${excerpt}"`,
+    tmp: fromAnalysis ? "임시 · AI 참고" : "임시 · 1차 모델",
+    why: fromAnalysis ? excerpt : `닮은 예시 "${excerpt}"`,
   };
 }
 
@@ -111,13 +112,16 @@ function keyScanLineFromReference(reference: KeyScanReference): LawLine | null {
  * 2026-11-19: 1차 유형 → 제17조 호 고정 표는 쓰지 않는다. 그 표는 앞 상담사 질문만 보고 걸린 줄("네, 없어요" ·
  * "발 옆에 떨어졌어요")에도 같은 호를 붙여 오탐이 컸다(11/06 · 11/19 화면). 그 칸이 없는 예전 결과도 조문 없이 보인다.
  */
-export function keyScanLaws(keyLaws: Record<string, KeyScanReference[] | undefined>): Map<string, LawLine[]> {
+export function keyScanLaws(
+  keyLaws: Record<string, KeyScanReference[] | undefined>,
+  fromAnalysis = false,
+): Map<string, LawLine[]> {
   const bySegment = new Map<string, LawLine[]>();
   for (const [segmentId, references] of Object.entries(keyLaws)) {
     if (!Array.isArray(references)) continue;
     const lines: LawLine[] = [];
     for (const reference of references) {
-      const line = keyScanLineFromReference(reference);
+      const line = keyScanLineFromReference(reference, fromAnalysis);
       if (line && !lines.some((item) => item.key === line.key)) lines.push(line);
     }
     if (lines.length > 0) bySegment.set(segmentId, lines);
@@ -294,7 +298,7 @@ export function sttReviewValues(input: SttScreenInput) {
     progress = { chip: "불러오기 실패", stage: "", actionLabel: "다시 시도", action: review.reload };
   } else if (status !== null && !review.info) {
     if (status === "STT_PROCESSING") {
-      progress = { chip: "변환 중", stage: "원문으로 바꾸는 중… 끝나면 이 화면이 저절로 바뀝니다.", actionLabel: "", action: null };
+      progress = { chip: "변환 중", stage: "원문으로 바꾸고 먼저 들어볼 곳을 고르는 중… 끝나면 이 화면이 저절로 바뀝니다.", actionLabel: "", action: null };
     } else if (status === "CREATED") {
       progress = {
         chip: "녹음 없음",
@@ -352,8 +356,9 @@ export function sttReviewValues(input: SttScreenInput) {
   // 조문을 '임시' 로 보인다(2026-11-03, 사용자 요청 — PROPOSAL_stt_key_scan §8 답 3 '유형은 화면에 안 보임' 을 바꿈).
   // 판정이 아니라 다시 들어 볼 곳의 참고이며, 원문을 확정하고 분석이 끝나면 분석 결과의 조문으로 바뀐다.
   const tmpLaws = !analysis.analysis && review.info && !review.info.confirmed;
+  const fromAnalysis = review.info?.keyFromAnalysis ?? false;
   const laws = tmpLaws
-    ? keyScanLaws(review.info?.keyLaws ?? {})
+    ? keyScanLaws(review.info?.keyLaws ?? {}, review.info?.keyFromAnalysis ?? false)
     : lawsBySegment(analysis.analysis?.riskUtterances ?? []);
   const markMap = marksBySegment(voice.marks);
   const markSummary = voiceMarksSummary(voice.marks, review.info?.version ?? null, voice.waiting);
@@ -698,8 +703,17 @@ export function sttReviewValues(input: SttScreenInput) {
             markLabel: marks.length ? `확인할 곳 ${marks.length}곳` : "",
           },
     lowLeft: `${left}곳`,
-    viewTitle: view === "key" ? "1차 임시 핵심 발화" : view === "all" ? "전체 STT" : "확인할 곳(저신뢰 · 화자 미확인)",
-    chipText: view === "key" && !review.counts.pending ? "임시 · 검수 전" : chipText,
+    // AI 전체 분석이 고른 핵심 발화(2026-11-24)면 '1차' 대신 'AI 참고' 로 적는다 — 확정 뒤 2단계 상담사 확인을 대신하지 않는
+    // 임시 참고라는 뜻(민규 11/24).
+    viewTitle:
+      view === "key"
+        ? fromAnalysis
+          ? "임시 핵심 발화(AI 참고)"
+          : "1차 임시 핵심 발화"
+        : view === "all"
+          ? "전체 STT"
+          : "확인할 곳(저신뢰 · 화자 미확인)",
+    chipText: view === "key" && !review.counts.pending ? (fromAnalysis ? "임시 · AI 참고" : "임시 · 검수 전") : chipText,
     chipCls:
       view === "key" && !review.counts.pending
         ? "chip c-sand"
@@ -720,7 +734,12 @@ export function sttReviewValues(input: SttScreenInput) {
         "아래 재생 바로 재생 · 정지 · 5초 이동 · 위치 이동을 합니다."
       : "녹음 파일이 없어 다시 듣기를 할 수 없습니다.",
     cueNote: [voice.error ?? markSummary.text, markSummary.versionNote, CUE_LIMITS].filter(Boolean).join(" "),
-    lawNote: tmpLaws
+    lawNote: tmpLaws && fromAnalysis
+      ? "원문 확정 전에 AI 가 녹음 원문 전체를 분석해 학대 신호의 근거가 된 발화를 먼저 들어볼 곳으로 고르고, 그 발화에 관련 조문과 " +
+        "세부 유형 · 근거 직접성을 보입니다. 원문을 고쳐도 다시 고르지 않습니다. 근거가 된 발화를 고친 채 확정하면 확정한 원문으로 " +
+        "다시 분석하고, 아니면 이 분석을 그대로 씁니다. 임시 참고이며 2단계(학대 신호 확인)의 상담원 확인을 대신하지 않습니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. " +
+        "법 위반을 확정하지 않습니다."
+      : tmpLaws
       ? [
           review.info?.keyScanStatus === "REFRESHING"
             ? "저장한 원문으로 임시 조문을 다시 고르는 중입니다(지금 보이는 것은 저장 전 결과)."
