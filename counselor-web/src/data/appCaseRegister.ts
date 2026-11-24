@@ -4,9 +4,10 @@
 // (useCaseRegister.ts toCaseCreateRequest)로 만든다 — 실명 · 생년월일은 personal_info(서버가 암호화해 저장),
 // 성별은 사례의 child_gender, 출생연도는 생년월일의 해(서버도 같은 해로 맞춘다). 이 폰에 저장하지 않는다.
 //
-// 서버 필수 칸(제목 · 아동 별칭): 웹은 상담원이 직접 적는 칸인데 앱 창에는 그 칸이 없다(디자인).
-// 실명이나 실명 일부를 별칭에 넣으면 실명이 평문 칸으로 새므로 넣지 않고, '앱에서 등록해 아직 적지 않았다' 는 표시만 보낸다.
-// 웹 사례 상세에서 상담원이 고쳐 적는다. (서버가 두 칸을 비워 받을 수 있게 되면 이 표시를 빼야 한다.)
+// 제목 · 아동 별칭(민규 11/24 제안, 팀장 확인 대기): 앱 창에는 그 칸이 없다(디자인). 실명이나 실명 일부를 별칭에 넣으면
+// 실명이 평문 칸으로 새므로 넣지 않는다. 두 칸을 **빼고** 보내면 서버가 사례번호로 채운다(별칭 '아동_0031', 제목 'C-2026-0031 사례').
+// 이 규칙은 서버 PR 이 들어가야 동작한다 — 그 전에는 POST /cases 가 두 칸을 필수로 받아 422 이므로, 앱 '+ 새 사례 등록' 단추를
+// APP_CASE_REGISTER_ENABLED 로 숨겨 둔다. 서버 PR 이 main 에 들어가면 true 로 바꾼다. '미입력' 같은 표시 글자는 보내지 않는다.
 
 import type { CaseCreateRequest } from "../api/types";
 import { emptyPersonalInput, todayKst } from "./personalInfo";
@@ -14,9 +15,10 @@ import { EMPTY_CASE_INPUT, toCaseCreateRequest } from "./useCaseRegister";
 
 /** 디자인 이름 칸 최대 글자 수(setRgName 의 slice(0, 10)). */
 export const APP_CASE_NAME_MAX = 10;
-/** 앱 창에 없는 서버 필수 칸에 보내는 '아직 적지 않음' 표시. */
-export const APP_CASE_TITLE_UNSET = "앱에서 등록(제목 미입력)";
-export const APP_CASE_ALIAS_UNSET = "별칭 미입력";
+/** 앱 '+ 새 사례 등록' 을 보일지. 서버가 제목 · 별칭을 빼고 받는 PR(민규)이 들어가기 전까지 false. */
+export const APP_CASE_REGISTER_ENABLED = false;
+/** 앱 등록 요청: 제목 · 별칭을 뺀 POST /cases(서버가 사례번호로 채움). */
+export type AppCaseCreateRequest = Omit<CaseCreateRequest, "title" | "child_alias">;
 export const APP_CASE_SEXES = ["남", "여"] as const;
 
 export const BIRTH_FORMAT_ERROR = "생년월일은 YYYY-MM-DD 형식의 올바른 날짜로 입력하십시오";
@@ -87,14 +89,18 @@ export function appRegisterReady(r: AppCaseRegisterInput | null): boolean {
 export function toAppCaseCreateRequest(
   r: AppCaseRegisterInput,
   meId: string | null,
-): { payload: CaseCreateRequest; problem: null } | { payload: null; problem: string } {
+): { payload: AppCaseCreateRequest; problem: null } | { payload: null; problem: string } {
   if (!appRegisterReady(r)) return { payload: null, problem: REGISTER_MISSING_ERROR };
-  return toCaseCreateRequest(
-    { ...EMPTY_CASE_INPUT, title: APP_CASE_TITLE_UNSET, alias: APP_CASE_ALIAS_UNSET, gender: r.sex },
+  // 웹 등록과 같은 함수로 확인 · 변환한 뒤 제목 · 별칭만 뺀다(함수가 두 칸을 필수로 확인해 자리 글자를 잠깐 넣는다 — 보내지 않는다).
+  const checked = toCaseCreateRequest(
+    { ...EMPTY_CASE_INPUT, title: "-", alias: "-", gender: r.sex },
     {
       isAdmin: false,
       meId,
       personal: { ...emptyPersonalInput(), childName: r.name.trim(), childBirthDate: r.birth },
     },
   );
+  if (checked.payload === null) return checked;
+  const { title: _title, child_alias: _alias, ...payload } = checked.payload;
+  return { payload, problem: null };
 }

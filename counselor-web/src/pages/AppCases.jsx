@@ -41,6 +41,7 @@ import {
   appRegisterReady,
   nextBirthValue,
   toAppCaseCreateRequest,
+  APP_CASE_REGISTER_ENABLED,
 } from '../data/appCaseRegister';
 import { addDays, mondayOf, parseYmd, useAppSchedule, ymd } from '../data/useAppSchedule';
 
@@ -188,7 +189,8 @@ function CasesBody({ userId }) {
     }
     setRgBusy(true);
     try {
-      await caseApi.create(checked.payload);
+      // 제목 · 별칭을 뺀 요청(서버가 사례번호로 채움). 서버 PR 전에는 단추가 숨어 있어 여기 오지 않는다.
+      await caseApi.create(/** @type {any} */ (checked.payload));
       reloadAppCases();
       closeWithAnim(rgRef.current, () => setRg(null));
       setF('all');
@@ -232,9 +234,11 @@ function CasesBody({ userId }) {
           </button>
         ))}
       </div>
+      {APP_CASE_REGISTER_ENABLED ? (
       <button type="button" className="ma-btn ma-btn-block ma-reg-btn" onClick={() => setRg({ name: '', birth: '', sex: '', err: '' })}>
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>새 사례 등록
       </button>
+      ) : null}
       <p className="ma-sec-t">{my.loading ? '불러오는 중' : list.length + '명'}</p>
       {(my.error || sched.error) && <span className="ma-err">{my.error || sched.error}</span>}
       {list.map((x) => (
