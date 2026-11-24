@@ -373,6 +373,8 @@ export function caseIntakeValues(input: CaseIntakeInput) {
               { alert: true },
             )
           : null,
+    /** 마지막 저장이 끝났고 그 뒤로 고친 칸이 없다(사례 상세 '수정' 팝업이 이때 닫힌다). */
+    savedOk,
     statusNote: savedOk ? "저장했습니다." : dirty ? "저장하지 않은 수정이 있습니다." : "",
     save,
     saving,

@@ -184,3 +184,8 @@
 .pg-CaseIntake .hs-wide{max-width:none}
 .pg-CaseIntake .thm-root.dark .ft-del{background:#2C2B27;border-color:#4E4B44;color:#ECE8DF}
 .pg-CaseIntake .thm-root.dark .ftg select.ft-sel option{background:#2C2B27}
+
+/* 사례 상세 '수정' 팝업(11/20 디자인 — 새 사례 등록 팝업의 수정 모드). 사례 상세 위에 겹쳐 띄운다. */
+.pg-CaseIntake.cd-edit-ov {position:fixed;inset:0;z-index:300;background:rgba(47,58,68,.40);overflow-y:auto;overscroll-behavior:contain}
+.pg-CaseIntake .cd-edit-dlg .card {box-shadow:none !important;border:0 !important;background:transparent !important}
+.pg-CaseIntake .thm-root.dark .cd-edit-dlg {background:#2C2B27 !important}

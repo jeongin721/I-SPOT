@@ -396,3 +396,10 @@ textarea.ma-inp{padding:10px 12px;line-height:1.6;resize:vertical}
 .ma-ym-mb.ma-on{background:var(--ink);border-color:var(--ink);color:var(--onink)}
 @media (prefers-reduced-motion: no-preference){.ma-ympick{animation:ma-ap-fade .2s ease-out}}
 @media (prefers-reduced-motion: reduce){.ma-ym-caret{transition:none}}
+/* 11/20 디자인: 사례 목록 '새 사례 등록' 단추 · 가운데 창(AppCases) */
+.ma-reg-btn{gap:6px}
+.ma-ov.ma-ov-reg{z-index:60}
+.ma-rg-f{display:flex;flex-direction:column;gap:6px}
+.ma-rg-f > span{font-size:13px;font-weight:700;color:var(--mut)}
+.ma-rg-err{margin:0;font-size:13px;color:var(--red)}
+.ma-s-cases .ma-btn[disabled]{opacity:.45;cursor:default}

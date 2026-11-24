@@ -17,15 +17,31 @@
 //    서버가 거절하면(연결 없음 등) 창 안에 오류를 보이고 적은 글은 그대로 둔다(디자인에 없는 줄).
 //  - 걸러 보기를 바꾸면 카드가 차례로 올라오고, 창은 열고 닫을 때 움직인다(MobileAppShellMotion, 동작 줄이기면 끔).
 //  - 연결이 없으면 기억한 목록(이름만)이라 나이 · 위험도 · 신고접수는 '—'.
+//  - 11/20 디자인: '전체 / 이번 주 상담' 아래 '+ 새 사례 등록' → 가운데 창(아동 이름 · 생년월일 · 성별, 셋 다 채워야 '등록').
+//    POST /cases 로 서버에 만든다(보낼 값은 appCaseRegister.ts — 웹 등록과 같은 함수, 실명 · 생년월일은 personal_info 로 암호화 저장,
+//    성별 · 출생연도는 사례 칸). 성공하면 '전체' · 찾기 비움으로 돌리고 사례 목록을 다시 부른다(서버 기본 순서가 등록 최신순이라 맨 위).
+//    서버가 거절하면 창 안 오류 줄에 보이고 적은 값은 그대로 둔다. 하단 '사례 등록과 자세한 기록은 웹에서…' 문구는 디자인대로 뺐다.
+//  - 사례 요약의 생년월일 · 성별 줄(11/20 디자인): 성별은 사례의 child_gender, 생년월일은 실명 정보 창구
+//    (GET /cases/{id}/personal-info — 부를 때마다 서버에 열람 기록이 남는다). 그래서 요약 창을 열 때만, 출생연도가 있는 사례
+//    (생년월일이 저장됐을 수 있는 사례)만 부른다. 둘 다 없으면 줄을 보이지 않는다(디자인: 생년월일이 있는 사례만).
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MobileAppShell, { whenText } from '../components/MobileAppShell';
 import { RISK_LEVEL_LABELS, SCHEDULE_CONSULT_LABELS } from '../api/types';
-import { memos as memoApi } from '../api/endpoints';
+import { cases as caseApi, memos as memoApi } from '../api/endpoints';
 import { parseBackendTime } from '../data/time';
 import { closeWithAnim, staggerIn } from '../components/MobileAppShellMotion';
 import { errorMessage, useRemote } from '../data/useRemote';
-import { childLabelOf, useAppCases } from '../data/useAppCases';
+import { childLabelOf, reloadAppCases, useAppCases } from '../data/useAppCases';
+import {
+  APP_CASE_NAME_MAX,
+  APP_CASE_SEXES,
+  BIRTH_FORMAT_ERROR,
+  REGISTER_MISSING_ERROR,
+  appRegisterReady,
+  nextBirthValue,
+  toAppCaseCreateRequest,
+} from '../data/appCaseRegister';
 import { addDays, mondayOf, parseYmd, useAppSchedule, ymd } from '../data/useAppSchedule';
 
 const W = ['일', '월', '화', '수', '목', '금', '토'];
@@ -56,10 +72,22 @@ function CasesBody({ userId }) {
   const mmRef = useRef(null);
   const askRef = useRef(null);
   const firstF = useRef(true);
+  // 새 사례 등록 창: { name, birth, sex, err }. 닫혀 있으면 null.
+  const [rg, setRg] = useState(null);
+  const [rgBusy, setRgBusy] = useState(false);
+  const rgRef = useRef(null);
   const memo = useRemote(
     open ? `app-case-memo:${open}` : null,
     () => memoApi.list({ case_id: open, page: 1, page_size: MEMO_N }),
     '메모를 불러오지 못했습니다.',
+    () => false,
+  );
+  // 사례 요약의 생년월일(실명 정보 창구 — 열람 기록이 남아 요약을 열 때 · 출생연도가 있는 사례만 부른다).
+  const openRow = open ? my.rows.find((r) => r.id === open) : null;
+  const pi = useRemote(
+    open && openRow?.child_birth_year ? `app-case-pi:${open}` : null,
+    () => caseApi.getPersonalInfo(open),
+    '생년월일을 불러오지 못했습니다.',
     () => false,
   );
 
@@ -146,6 +174,49 @@ function CasesBody({ userId }) {
     // 지우면 확인 창과 메모 창을 함께 닫는다.
     void mmRun(() => memoApi.remove(mm.id), '메모를 삭제하지 못했습니다. 연결을 확인해 주십시오.', [askRef.current, mmRef.current]);
   };
+  const rgCancel = () => closeWithAnim(rgRef.current, () => setRg(null));
+  const rgSave = async () => {
+    if (!rg || rgBusy) return;
+    if (!appRegisterReady(rg)) {
+      setRg({ ...rg, err: REGISTER_MISSING_ERROR });
+      return;
+    }
+    const checked = toAppCaseCreateRequest(rg, userId);
+    if (checked.problem !== null) {
+      setRg({ ...rg, err: checked.problem });
+      return;
+    }
+    setRgBusy(true);
+    try {
+      await caseApi.create(checked.payload);
+      reloadAppCases();
+      closeWithAnim(rgRef.current, () => setRg(null));
+      setF('all');
+      setQ('');
+    } catch (caught) {
+      setRg((cur0) => cur0 && { ...cur0, err: errorMessage(caught, '사례를 등록하지 못했습니다. 연결을 확인해 주십시오.') });
+    } finally {
+      setRgBusy(false);
+    }
+  };
+  const setRgBirth = (ev) => {
+    const el = ev.target;
+    const next = nextBirthValue(el.value);
+    const prev = rg?.birth ?? '';
+    if (!next.ok) {
+      el.value = prev;
+      setRg({ ...rg, birth: prev, err: BIRTH_FORMAT_ERROR });
+      return;
+    }
+    setRg({ ...rg, birth: next.value, err: '' });
+  };
+  const birthOf = () => {
+    if (!cur?.r.child_birth_year) return '';
+    if (pi.loading && !pi.data) return '불러오는 중';
+    return pi.data?.child_birth_date ?? '';
+  };
+  const birth = birthOf();
+  const sex = cur?.r.child_gender ?? '';
   const F = [
     ['all', '전체'],
     ['wk', '이번 주 상담'],
@@ -161,6 +232,9 @@ function CasesBody({ userId }) {
           </button>
         ))}
       </div>
+      <button type="button" className="ma-btn ma-btn-block ma-reg-btn" onClick={() => setRg({ name: '', birth: '', sex: '', err: '' })}>
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>새 사례 등록
+      </button>
       <p className="ma-sec-t">{my.loading ? '불러오는 중' : list.length + '명'}</p>
       {(my.error || sched.error) && <span className="ma-err">{my.error || sched.error}</span>}
       {list.map((x) => (
@@ -190,9 +264,6 @@ function CasesBody({ userId }) {
         </div>
       ))}
       {!my.loading && list.length === 0 && <div className="ma-card ma-empty">찾는 사례가 없습니다</div>}
-      <p className="ma-note" style={{ margin: 0 }}>
-        사례 등록과 자세한 기록은 웹에서 할 수 있습니다.
-      </p>
       {cur && (
         <div className="ma-ov ma-ov-c" ref={shRef} onClick={shClose}>
           <section className="ma-sheet ma-sheet-c" role="dialog" aria-modal="true" aria-label="사례 요약" onClick={stop}>
@@ -203,6 +274,12 @@ function CasesBody({ userId }) {
             <div>
               {[
                 ['사례 ID', cur.id, ''],
+                ...(birth || sex
+                  ? [
+                      ['생년월일', birth || '—', ''],
+                      ['성별', sex || '—', ''],
+                    ]
+                  : []),
                 ['신고접수', cur.date, ''],
                 ['다음 상담', cur.next ? consultText(cur.next) : '예정 없음', ''],
                 ['메모', <CaseMemo key="memo" memo={memo} />, 'ma-kv-memo'],
@@ -283,6 +360,69 @@ function CasesBody({ userId }) {
               </button>
               <button type="button" className="ma-btn ma-mm-del" onClick={mmDel} disabled={busy}>
                 삭제
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {rg && (
+        <div className="ma-ov ma-ov-c ma-ov-reg" ref={rgRef} onClick={rgCancel}>
+          <section className="ma-sheet ma-sheet-c" role="dialog" aria-modal="true" aria-label="새 사례 등록" onClick={stop}>
+            <div className="ma-sh-hd">
+              <b>새 사례 등록</b>
+            </div>
+            <label className="ma-rg-f">
+              <span>아동 이름</span>
+              <input
+                className="ma-inp"
+                type="text"
+                placeholder="이름을 입력하십시오"
+                value={rg.name}
+                onChange={(ev) => setRg({ ...rg, name: ev.target.value.slice(0, APP_CASE_NAME_MAX), err: '' })}
+                aria-label="아동 이름"
+              />
+            </label>
+            <label className="ma-rg-f">
+              <span>생년월일</span>
+              <input
+                className="ma-inp"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="YYYY-MM-DD"
+                value={rg.birth}
+                onChange={setRgBirth}
+                aria-label="생년월일 (YYYY-MM-DD)"
+              />
+            </label>
+            <div className="ma-rg-f">
+              <span>성별</span>
+              <div className="ma-seg" role="radiogroup" aria-label="성별">
+                {APP_CASE_SEXES.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    role="radio"
+                    aria-checked={rg.sex === g ? 'true' : 'false'}
+                    className={rg.sex === g ? 'ma-on' : ''}
+                    onClick={() => setRg({ ...rg, sex: g, err: '' })}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {rg.err && (
+              <p className="ma-rg-err" role="alert">
+                {rg.err}
+              </p>
+            )}
+            <div className="ma-mm-acts">
+              <button type="button" className="ma-btn" onClick={rgCancel}>
+                취소
+              </button>
+              <button type="button" className="ma-btn ma-btn-p" disabled={!appRegisterReady(rg) || rgBusy} onClick={rgSave}>
+                등록
               </button>
             </div>
           </section>

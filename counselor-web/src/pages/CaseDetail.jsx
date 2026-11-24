@@ -25,6 +25,7 @@ import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
 import CaseOverviewCard from '../components/CaseOverviewCard';
 import Notice from '../components/Notice';
+import { CaseEditDialog } from './CaseIntake';
 import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import RecordDialog from '../components/RecordDialog';
 import Sidebar from '../components/Sidebar';
@@ -123,6 +124,8 @@ export default function CaseDetail(props) {
   const ticks = briefTicks.ticks;
   const toggleTick = briefTicks.toggle;
   const [outOpen, setOutOpen] = useState(false);
+  // 기본 정보 '수정' 팝업(11/20 디자인 — 새 사례 등록 팝업의 수정 모드).
+  const [editOpen, setEditOpen] = useState(false);
   const wantBrief = params.get('view') === 'brief';
   const briefReady = Boolean(detail.caseInfo);
   useEffect(() => {
@@ -224,7 +227,18 @@ export default function CaseDetail(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h2 className="h2">기본 정보</h2>
                 {/* 11/04 탭1 디자인: 아이 연계는 탭이 아니라 기본 정보 머리의 '아이 연계 →' 단추로 들어간다. */}
-                <A className="btn btn-sm btn-s" to={v.tabs.app} style={{ marginLeft: 'auto' }}>
+                {/* 11/20 디자인: '아이 연계 →' 왼쪽 '수정' → 사례 상세 위에 새 사례 등록 팝업(수정 모드). */}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-s"
+                  aria-haspopup="dialog"
+                  disabled={!caseId || !v.basics}
+                  onClick={() => setEditOpen(true)}
+                  style={{ marginLeft: 'auto' }}
+                >
+                  수정
+                </button>
+                <A className="btn btn-sm btn-s" to={v.tabs.app}>
                   아이 연계 →
                 </A>
               </div>
@@ -504,6 +518,16 @@ export default function CaseDetail(props) {
             ) : null}
           </section>
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+          {editOpen && caseId ? (
+            <CaseEditDialog
+              caseId={caseId}
+              onClose={() => setEditOpen(false)}
+              onSaved={() => {
+                detail.refresh();
+                personal.reload();
+              }}
+            />
+          ) : null}
           {rec.show ? (
             <RecordDialog
               caseId={caseId}

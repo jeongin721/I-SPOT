@@ -82,9 +82,8 @@ function Notices() {
         )}
       </section>
       {cur && (
-        <div className="ma-ov" ref={ovRef} onClick={close}>
-          <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="공지사항" onClick={stop}>
-            <span className="ma-grab" aria-hidden="true"></span>
+        <div className="ma-ov ma-ov-c" ref={ovRef} onClick={close}>
+          <section className="ma-sheet ma-sheet-c" role="dialog" aria-modal="true" aria-label="공지사항" onClick={stop}>
             <div className="ma-sh-hd">
               <b>{cur.title}</b>
             </div>

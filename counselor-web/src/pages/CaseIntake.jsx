@@ -13,7 +13,7 @@
 // 10/29 디자인: ① 칸 묶음(rg-*) · 사례관리대상자 생년월일, ② 가족유형 21개 · 문제력 한 칸 · 건강정도 표(hs-*) · 칸 복사 단추.
 // 복사 단추의 '이름 가려서' 는 이 사례에 등록된 이름 전부(실명 · 가족 · 별칭)를 가린다.
 // 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard). 다른 사례로 옮기거나 다시 로그인하면 고치던 것을 버린다.
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -57,96 +57,19 @@ const LOCKED_GROUP = {
   gap: '18px',
 };
 
-export default function CaseIntake(props) {
-  const session = useAuthSession();
-  const { caseId } = readScreenIds(useSearchParams()[0]);
-  const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
-  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
-  const counselors = useIntakeCounselors(session);
-  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
-  const theme = useTheme();
-  const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
-  const v = useDC(Logic, { ...props, session, detail, signals, counselors, personal, caseId, nextConsult });
-  useLeaveGuard(v.unsaved);
-  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+/**
+ * 초기면접지(서식 4) 칸 묶음. 문서함의 초기면접지 화면과 사례 상세 '수정' 팝업(11/20 디자인 — 새 사례 등록 팝업의 수정 모드)이
+ * 같이 쓴다. embed 면 '되돌리기' 대신 '취소'(팝업 닫기)를 둔다.
+ */
+function IntakeCard({ v, embed = false, onCancel }) {
   return (
-    <div className="pg-CaseIntake">
-      <div
-        className={theme.cls}
-        style={{
-          minHeight: '1880px',
-          background: '#E9E7E1',
-          color: '#2B2A26',
-          fontFamily: "'IBM Plex Sans KR', sans-serif",
-          fontSize: '14px',
-          lineHeight: '1.6',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'stretch',
-        }}
-      >
-        <Sidebar active="CaseList" session={session} />
-        <main
-          style={{
-            flex: '999 1 640px',
-            minWidth: '0',
-            padding: '30px 36px 56px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '20px',
-          }}
-        >
-          <div className="thm-bar">
-            <NotiBell session={session} />
-            <ThemeToggle />
-          </div>
-          <div>
-            <A className="btn btn-sm btn-s" to="/CaseList">
-              ← 목록
-            </A>
-          </div>
-          <nav aria-label="위치" className="note">
-            <A to="/CaseList">사례 관리</A> › {v.crumb}
-          </nav>
-          <Notice value={v.notice} />
-          <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
-            <A
-              className="btn btn-sm btn-s"
-              to={v.backHref}
-              aria-label="문서함으로 돌아가기"
-              title="문서함으로 돌아가기"
-            >
-              ←
-            </A>
-            <div style={{ flex: '1 1 320px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
-                <span className="sub">{v.sub}</span>
-                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
-              </div>
-              <div className="note">{v.meta}</div>
-            </div>
-            <A className="btn btn-s" to={v.uploadHref}>
-              ↑ 녹취 올리기
-            </A>
-          </section>
-          <nav className="tabs" aria-label="사례 상세 메뉴">
-            <A to={v.tabs.detail}>내담자 정보</A>
-            <A to={v.tabs.history}>상담 이력</A>
-            <A className="on" aria-current="page" to={v.tabs.docs}>
-              문서함
-            </A>
-          </nav>
-          <nav aria-label="위치" className="note" style={{ marginTop: '-8px' }}>
-            <A to={v.backHref}>문서함</A> › 초기면접지 (아동용)
-          </nav>
-
-          {v.ready ? (
             <section className="card" aria-label="초기면접지 (아동용)" style={{ padding: '0 0 6px' }}>
-              <div style={{ padding: '22px 30px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
-                <h2 className="h2">초기면접지 (아동용)</h2>
-                <span className="note">{v.headNote}</span>
-              </div>
+              {embed ? null : (
+                <div style={{ padding: '22px 30px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+                  <h2 className="h2">초기면접지 (아동용)</h2>
+                  <span className="note">{v.headNote}</span>
+                </div>
+              )}
               <div role="tablist" style={{ display: 'flex', margin: '16px 30px 0', borderBottom: '1px solid #EAE7DF' }}>
                 {(v.formTabs || []).map((t, tIndex) => (
                   <Fragment key={tIndex}>
@@ -638,10 +561,15 @@ export default function CaseIntake(props) {
                       {v.statusNote}
                     </span>
                   ) : null}
+                  {embed ? (
+                    <button type="button" className="btn btn-s" onClick={onCancel}>
+                      취소
+                    </button>
+                  ) : null}
                   <button type="button" className="btn btn-s" onClick={v.goB}>
                     {v.midLabel}
                   </button>
-                  {v.canReset ? (
+                  {v.canReset && !embed ? (
                     <button type="button" className="btn btn-s" onClick={v.reset}>
                       되돌리기
                     </button>
@@ -652,7 +580,166 @@ export default function CaseIntake(props) {
                 </div>
               </form>
             </section>
-          ) : null}
+  );
+}
+
+/**
+ * 사례 상세 '기본 정보 › 수정'(11/20 디자인): 사례 상세 위에 새 사례 등록 팝업을 수정 모드로 띄운다. 제목은 아동 이름,
+ * 이미 있는 값은 채워진 채로, 단추는 '저장'. 저장은 초기면접지와 같은 창구(바꾼 칸만 PATCH /cases/{id} · 실명 · 가족은
+ * PUT …/personal-info)라 서버 연결은 그대로 쓴다. 저장이 끝나면 닫고 사례 상세 값을 다시 받는다(onSaved).
+ */
+export function CaseEditDialog({ caseId, onClose, onSaved }) {
+  const session = useAuthSession();
+  const enabled = signedIn(session) && !!caseId;
+  const detail = useCaseDetail(caseId, { enabled });
+  const signals = useCaseSignals(detail, { enabled });
+  const counselors = useIntakeCounselors(session);
+  const personal = usePersonalInfo(caseId, { enabled });
+  const theme = useTheme();
+  const nextConsult = useNextConsult(caseId, { enabled });
+  const v = useDC(Logic, { session, detail, signals, counselors, personal, caseId, nextConsult });
+  const latest = useRef(v);
+  latest.current = v;
+  const [waiting, setWaiting] = useState(false);
+  useLeaveGuard(v.unsaved);
+  // '저장' 을 누른 뒤 저장이 끝나 고친 칸이 없어지면(savedOk) 닫는다. 실패면 팝업에 오류가 남는다.
+  useEffect(() => {
+    if (waiting && !v.saving && v.savedOk) {
+      setWaiting(false);
+      if (onSaved) onSaved();
+      onClose();
+    }
+  }, [waiting, v.saving, v.savedOk, onClose, onSaved]);
+  const close = () => {
+    if (latest.current.unsaved && !window.confirm('저장하지 않은 수정이 있습니다. 닫으시겠습니까?')) return;
+    onClose();
+  };
+  const submit = async (event) => {
+    if (event && event.preventDefault) event.preventDefault();
+    setWaiting(true);
+    await latest.current.save();
+  };
+  return (
+    <div className="pg-CaseIntake cd-edit-ov" onKeyDown={(e) => e.key === 'Escape' && close()}>
+      <div className={theme.cls} style={{ minHeight: '0', background: 'transparent', display: 'flex', justifyContent: 'center', padding: '48px 16px', fontFamily: "'IBM Plex Sans KR', sans-serif", fontSize: '14px', lineHeight: '1.6', color: '#2B2A26' }}>
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reg-title"
+          className="cd-edit-dlg"
+          style={{ width: '100%', maxWidth: '860px', background: '#FFFFFF', borderRadius: '24px', boxShadow: '0 20px 60px rgba(43, 42, 38,0.22)', overflow: 'hidden' }}
+        >
+          <div style={{ padding: '24px 30px 0', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <div>
+              <h1 id="reg-title" style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>
+                {v.ready && v.title ? v.title : '사례 수정'}
+              </h1>
+              <div className="note">초기면접지(아동용) · 서식 4</div>
+            </div>
+            <button
+              type="button"
+              onClick={close}
+              aria-label="닫기"
+              style={{ marginLeft: 'auto', width: '40px', height: '40px', border: '0', borderRadius: '50%', background: '#F7F6F2', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2B2A26', fontSize: '18px', cursor: 'pointer' }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ padding: '0 0 6px' }}>
+            <Notice value={v.notice} />
+            {v.ready ? <IntakeCard v={{ ...v, save: submit }} embed onCancel={close} /> : null}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export default function CaseIntake(props) {
+  const session = useAuthSession();
+  const { caseId } = readScreenIds(useSearchParams()[0]);
+  const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
+  const signals = useCaseSignals(detail, { enabled: signedIn(session) });
+  const counselors = useIntakeCounselors(session);
+  const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
+  const theme = useTheme();
+  const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, counselors, personal, caseId, nextConsult });
+  useLeaveGuard(v.unsaved);
+  if (needsLogin(session)) return <Navigate to="/Login" replace />;
+  return (
+    <div className="pg-CaseIntake">
+      <div
+        className={theme.cls}
+        style={{
+          minHeight: '1880px',
+          background: '#E9E7E1',
+          color: '#2B2A26',
+          fontFamily: "'IBM Plex Sans KR', sans-serif",
+          fontSize: '14px',
+          lineHeight: '1.6',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'stretch',
+        }}
+      >
+        <Sidebar active="CaseList" session={session} />
+        <main
+          style={{
+            flex: '999 1 640px',
+            minWidth: '0',
+            padding: '30px 36px 56px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}
+        >
+          <div className="thm-bar">
+            <NotiBell session={session} />
+            <ThemeToggle />
+          </div>
+          <div>
+            <A className="btn btn-sm btn-s" to="/CaseList">
+              ← 목록
+            </A>
+          </div>
+          <nav aria-label="위치" className="note">
+            <A to="/CaseList">사례 관리</A> › {v.crumb}
+          </nav>
+          <Notice value={v.notice} />
+          <section style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 18px' }}>
+            <A
+              className="btn btn-sm btn-s"
+              to={v.backHref}
+              aria-label="문서함으로 돌아가기"
+              title="문서함으로 돌아가기"
+            >
+              ←
+            </A>
+            <div style={{ flex: '1 1 320px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                <h1 style={{ margin: '0', fontSize: '28px', fontWeight: '700' }}>{v.title}</h1>
+                <span className="sub">{v.sub}</span>
+                <span className={`chip ${v.riskCls}`}>{v.riskChip}</span>
+              </div>
+              <div className="note">{v.meta}</div>
+            </div>
+            <A className="btn btn-s" to={v.uploadHref}>
+              ↑ 녹취 올리기
+            </A>
+          </section>
+          <nav className="tabs" aria-label="사례 상세 메뉴">
+            <A to={v.tabs.detail}>내담자 정보</A>
+            <A to={v.tabs.history}>상담 이력</A>
+            <A className="on" aria-current="page" to={v.tabs.docs}>
+              문서함
+            </A>
+          </nav>
+          <nav aria-label="위치" className="note" style={{ marginTop: '-8px' }}>
+            <A to={v.backHref}>문서함</A> › 초기면접지 (아동용)
+          </nav>
+
+          {v.ready ? <IntakeCard v={v} /> : null}
           <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
         </main>
       </div>
