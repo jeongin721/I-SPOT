@@ -655,7 +655,7 @@ export function sttReviewValues(input: SttScreenInput) {
           jump: { sessionId: ids.sessionId, segmentId: row.segmentId, from: focusSegment, n: (state.jump?.n ?? 0) + 1 },
         }),
     })),
-    // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 기록 확인 화면으로).
+    // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 STT 검수 화면으로).
     ...sessionPickValues(input, "/SttReview"),
     analyzing: progress !== null,
     done: review.info !== null,
@@ -736,8 +736,8 @@ export function sttReviewValues(input: SttScreenInput) {
     cueNote: [voice.error ?? markSummary.text, markSummary.versionNote, CUE_LIMITS].filter(Boolean).join(" "),
     lawNote: tmpLaws && fromAnalysis
       ? "원문 확정 전에 AI 가 녹음 원문 전체를 분석해 학대 신호의 근거가 된 발화를 먼저 들어볼 곳으로 고르고, 그 발화에 관련 조문과 " +
-        "세부 유형 · 근거 직접성을 보입니다. 원문을 고쳐도 다시 고르지 않습니다. 근거가 된 발화를 고친 채 확정하면 확정한 원문으로 " +
-        "다시 분석하고, 아니면 이 분석을 그대로 씁니다. 임시 참고이며 2단계(학대 신호 확인)의 상담원 확인을 대신하지 않습니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. " +
+        "세부 유형 · 근거 직접성을 보입니다. 원문을 고쳐도 다시 고르지 않습니다. 원문을 한 줄이라도 고친 채 확정하면 확정한 원문으로 " +
+        "다시 분석하고, 하나도 고치지 않았으면 이 분석을 그대로 씁니다. 임시 참고이며 2단계(학대 신호 확인)의 상담원 확인을 대신하지 않습니다. 원문보기를 누르면 국가법령정보센터에서 조문 전문을 확인할 수 있습니다. " +
         "법 위반을 확정하지 않습니다."
       : tmpLaws
       ? [

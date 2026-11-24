@@ -699,6 +699,12 @@ def test_editing_returns_to_unapproved_and_answered_cannot_withdraw(client: Test
 
     url = f"{base}/questions/{question['id']}"
     client.put(f"{url}/approval", json={"approved": True}, headers=counselor_headers)
+    # 자해 · 죽음 말로 고치면 거절하고, 앱에 간 질문도 그대로 둔다(경진 11/24).
+    for body in ({"text": "요즘 죽고 싶은 생각이 드나요?", "options": ["네", "아니요"]},
+                 {"text": "요즘 기분은 어때요?", "options": ["괜찮아요", "사라지고 싶어요"]}):
+        refused = client.patch(url, json=body, headers=counselor_headers)
+        assert refused.status_code == 400 and "상담에서 직접" in refused.text
+    assert _home(client, device)["pending"]["questions"][0]["text"] == question["text"]
     edited = client.patch(url, json={"text": "고친 질문", "options": ["네", "아니요"]}, headers=counselor_headers)
     item = edited.json()["data"]["items"][0]["questions"][0]
     assert item["edited"] is True and item["approved"] is False and item["text"] == "고친 질문"

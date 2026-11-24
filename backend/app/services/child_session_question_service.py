@@ -300,6 +300,20 @@ def create_draft(db: Session, case: Case, user: User, *, regenerate: bool = Fals
     return to_view(row, session)
 
 
+SELF_HARM_MESSAGE = "자해 · 죽음에 관한 질문은 아이 앱으로 보내지 않아요. 다음 상담에서 직접 물어 주세요."
+
+
+def ensure_no_self_harm(text: str, options: List[str]) -> None:
+    """상담사가 아이 앱 질문을 고칠 때도 자해 · 자살 · 죽음 말은 받지 않는다(경진 11/24 — 아이가 밤에 혼자 답해도
+    그 자리에서 도울 사람이 없다). AI 초안과 같은 기준(child_session_question_llm.has_self_harm). 맞춤 질문 · 아이 답 AI
+    추가 질문 고치기가 함께 쓴다."""
+
+    check = load_callable(MODULE, "has_self_harm")
+
+    if any(check(value) for value in [text, *options]):
+        raise bad_request(ErrorCode.VALIDATION_ERROR, SELF_HARM_MESSAGE)
+
+
 def update_question(
     db: Session,
     case: Case,
@@ -326,6 +340,11 @@ def update_question(
         raise not_found(ErrorCode.NOT_FOUND, "맞춤 질문을 찾을 수 없습니다. 화면을 새로고침해 주세요.")
 
     text = text.strip()
+
+    # 공백만 보내면 빈 질문이 아이 앱으로 나간다(민규 #195 머지 뒤 리뷰 1).
+    if not text:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "질문 문장을 적어 주세요.")
+
     cleaned: List[str] = []
 
     for option in options:
@@ -339,6 +358,8 @@ def update_question(
             raise bad_request(ErrorCode.VALIDATION_ERROR, "짧은 글 질문에는 보기를 넣지 않습니다.")
     elif not 2 <= len(cleaned) <= 5:
         raise bad_request(ErrorCode.VALIDATION_ERROR, "보기는 2~5개로 적어 주세요.")
+
+    ensure_no_self_harm(text, cleaned)
 
     item["text"] = text
     item["options"] = cleaned if item["type"] == "choice" else []
