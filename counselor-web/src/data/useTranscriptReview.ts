@@ -70,9 +70,13 @@ export interface TranscriptInfo {
   keyScanStatus: KeyScanValue["status"] | null;
   /** 지금 보이는 핵심 발화를 만든 원문 version. 모르면 null. version 보다 작으면 저장 전 원문 기준이다. */
   keyScannedVersion: number | null;
+  /** 핵심 발화를 1차 모델이 아니라 원문 확정 전 AI 전체 분석(key_scan.model=ai_analysis, 2026-11-24)이 골랐는가. */
+  keyFromAnalysis: boolean;
 }
 
 type KeyScanValue = NonNullable<Transcript["key_scan"]>;
+/** 원문 확정 전 AI 전체 분석으로 채운 key_scan 의 model(서버 pre_analysis_service.KEY_SCAN_MODEL). */
+export const KEY_SCAN_ANALYSIS_MODEL = "ai_analysis";
 export type KeyScanReference = NonNullable<KeyScanValue["segments"][number]["legal_references"]>[number];
 
 /**
@@ -81,7 +85,7 @@ export type KeyScanReference = NonNullable<KeyScanValue["segments"][number]["leg
  */
 function keyScanView(scan: KeyScanValue | null | undefined): Pick<
   TranscriptInfo,
-  "keySegmentIds" | "keyTypes" | "keyLaws" | "keyScanStatus" | "keyScannedVersion"
+  "keySegmentIds" | "keyTypes" | "keyLaws" | "keyScanStatus" | "keyScannedVersion" | "keyFromAnalysis"
 > {
   const segments = scan && Array.isArray(scan.segments) ? scan.segments : [];
   const active =
@@ -101,6 +105,7 @@ function keyScanView(scan: KeyScanValue | null | undefined): Pick<
     ),
     keyScanStatus: active && scan ? scan.status : null,
     keyScannedVersion: typeof scan?.scanned_version === "number" ? scan.scanned_version : null,
+    keyFromAnalysis: scan?.model === KEY_SCAN_ANALYSIS_MODEL,
   };
 }
 

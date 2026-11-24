@@ -35,7 +35,14 @@ from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptUpdateRequest,
 )
-from app.services import audit_service, audio_service, key_scan_service, session_service, voice_marks_service
+from app.services import (
+    audit_service,
+    audio_service,
+    key_scan_service,
+    pre_analysis_service,
+    session_service,
+    voice_marks_service,
+)
 
 logger = get_logger(__name__)
 
@@ -169,6 +176,10 @@ def build_envelope(db: Session, session: ConsultationSession) -> TranscriptEnvel
     )
 
 
+def _analysis_key_scan(key_scan: Any) -> bool:
+    return isinstance(key_scan, dict) and key_scan.get("model") == pre_analysis_service.KEY_SCAN_MODEL
+
+
 def transcript_to_contract(transcript: Transcript) -> Dict[str, object]:
     """AI Service 로 전달할 STT Contract payload 를 만든다."""
 
@@ -283,9 +294,17 @@ def process_stt(session_id: uuid.UUID) -> None:
             if not result.segments:
                 raise STTError(EMPTY_STT_RESULT_MESSAGE)
 
+            stt_contract = result.model_dump(mode="json")
+            # 원문 확정 전 AI 전체 분석(ANALYZE_BEFORE_CONFIRM, 2026-11-24): 켜져 있으면 1차 스캔 대신 AI 전체 분석으로 '먼저
+            # 들어볼 곳'을 채운다. 회차는 그동안 STT_PROCESSING 이라 분석이 끝나야 원문이 보인다. 실패하면 1차 스캔으로 돌아간다.
+            pre_analysis = pre_analysis_service.run(db, session, stt_contract) if pre_analysis_service.enabled() else None
             # '1차 임시 핵심 발화' 스캔(디자인의 '핵심 발화 고르는 중' 단계). 검수 필요로 넘기기 전에 같은 작업에서 돌려
             # 화면이 한 번에 열리게 한다. 실패해도 예외를 올리지 않고 status=FAILED 로 STT 는 성공한다.
-            key_scan = key_scan_service.scan(result.model_dump(mode="json"))
+            key_scan = (
+                pre_analysis_service.as_key_scan(pre_analysis, stt_contract)
+                if pre_analysis is not None
+                else key_scan_service.scan(stt_contract)
+            )
 
             transcript = _save_stt_result(
                 db,
@@ -294,6 +313,7 @@ def process_stt(session_id: uuid.UUID) -> None:
                 provider=getattr(adapter, "name", "unknown"),
                 model=getattr(adapter, "model", None),
                 key_scan=key_scan,
+                pre_analysis=pre_analysis_service.dump(pre_analysis),
             )
 
         except OperationTimeout as error:
@@ -326,6 +346,7 @@ def _save_stt_result(
     provider: str,
     model: Optional[str],
     key_scan: Optional[Dict[str, Any]] = None,
+    pre_analysis: Optional[Dict[str, Any]] = None,
 ) -> Transcript:
     next_version = (
         db.scalar(
@@ -353,6 +374,10 @@ def _save_stt_result(
 
     db.add(transcript)
     db.flush()
+
+    if pre_analysis is not None:
+        # 암호문은 행 ID 로 묶이므로 ID 가 생긴 뒤에 넣는다(encrypted_field).
+        transcript.pre_analysis = pre_analysis
 
     for index, segment in enumerate(result.segments):
         db.add(
@@ -479,9 +504,11 @@ def update_transcript(
         # modeling 이면 직전 결과를 복사해 두고 REFRESHING 으로 시작한다 — 저장한 원문으로 다시 스캔하는 작업은 응답 뒤
         # 백그라운드로 돈다(api/v1/transcript.update_transcript → key_scan_service.schedule_refresh, 2026-11-09).
         # 아니면 예전처럼 지운 발화만 빼고 복사한다.
+        # AI 전체 분석으로 채운 '먼저 들어볼 곳'(model=ai_analysis)은 1차 스캔으로 다시 고르지 않고 지운 발화만 빼고 복사한다
+        # (다시 고르면 분석 결과가 1차 모델 결과로 바뀐다, 2026-11-24).
         key_scan=(
             key_scan_service.begin_refresh(latest.key_scan, removed)
-            if key_scan_service.should_refresh()
+            if key_scan_service.should_refresh() and not _analysis_key_scan(latest.key_scan)
             else key_scan_service.copy_for_new_version(latest.key_scan, removed)
         ),
     )

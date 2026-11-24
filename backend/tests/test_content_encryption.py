@@ -65,7 +65,12 @@ STAGE_TWO_COLUMNS = {
     "case_forms": {"values"},
     "child_app_events": {"payload"},
     "child_app_ai_drafts": {"items"},
+    "child_session_question_drafts": {"items"},  # 2026-11-24 새 표 — 처음부터 암호문
     "docbox_files": {"preview_text"},
+}
+# 처음부터 암호문으로만 두는 칸(옮길 옛 평문이 없음): 원문 확정 전 AI 전체 분석(2026-11-24, pre_analysis_service).
+NEW_ENCRYPTED_COLUMNS = {
+    "transcripts": {"pre_analysis"},
 }
 
 
@@ -122,7 +127,7 @@ def test_registered_columns_are_stage_one_and_two() -> None:
     for model, columns in ENCRYPTED_COLUMNS.items():
         found.setdefault(model.__tablename__, set()).update(column.column for column in columns)
 
-    assert found == {**EXPECTED_COLUMNS, **STAGE_TWO_COLUMNS}
+    assert found == {**EXPECTED_COLUMNS, **STAGE_TWO_COLUMNS, **NEW_ENCRYPTED_COLUMNS}
 
 
 def test_db_holds_only_ciphertext_and_api_shape_is_unchanged(

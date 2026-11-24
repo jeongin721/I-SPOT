@@ -82,6 +82,19 @@ def _generator() -> Callable[..., List[Dict[str, Any]]]:
 
 
 def _run_ai(case_id: uuid.UUID, items: List[Dict[str, Any]], written: Optional[str], names: List[str]) -> List[Dict[str, Any]]:
+    return run_limited(case_id, lambda run, deadline: run(items, written=written, known_identifiers=names, deadline=deadline), _generator)
+
+
+def run_limited(
+    case_id: uuid.UUID,
+    call: Callable[[Callable[..., Any], float], Any],
+    generator: Callable[[], Callable[..., Any]],
+) -> Any:
+    """사례마다 하나 · 전체 CHILD_APP_AI_MAX_CONCURRENCY 개까지, CHILD_APP_AI_TIMEOUT_SECONDS 안에서 AI 를 부른다.
+
+    회차 맞춤 질문(child_session_question_service)도 같은 한도를 쓴다.
+    """
+
     limits = _limits
 
     with limits.lock:
@@ -108,7 +121,7 @@ def _run_ai(case_id: uuid.UUID, items: List[Dict[str, Any]], written: Optional[s
 
     try:
         deadline = time.monotonic() + settings.CHILD_APP_AI_TIMEOUT_SECONDS
-        run = _generator()
+        run = generator()
     except BaseException:
         release()
         raise
@@ -117,7 +130,7 @@ def _run_ai(case_id: uuid.UUID, items: List[Dict[str, Any]], written: Optional[s
         started.set()
 
         try:
-            return run(items, written=written, known_identifiers=names, deadline=deadline)
+            return call(run, deadline)
         finally:
             release()
 

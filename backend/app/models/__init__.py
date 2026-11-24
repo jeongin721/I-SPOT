@@ -20,7 +20,7 @@ from app.models.counselor_memo import CounselorMemo
 from app.models.notice import Notice
 from app.models.briefing_check import SessionBriefingChecks
 from app.models.push import PushDelivery, PushSubscription
-from app.models.child_app import ChildAppAiDraft  # noqa: F401
+from app.models.child_app import ChildAppAiDraft, ChildSessionQuestionDraft  # noqa: F401
 from app.models.docbox import DocboxFile, DocboxFolder
 from app.models.signup import SignupEmailCode, SignupRequest
 from app.models.risk_assessment import SessionOverallRiskAssessment, SessionRiskAssessment

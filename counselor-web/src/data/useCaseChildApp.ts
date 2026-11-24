@@ -126,6 +126,40 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     }
   }, [caseId, refresh]);
 
+  // 이번 회차 맞춤 질문. 만들기는 질문 보내기가 처음 열릴 때 한 번 부른다(실패하면 다시 만들기 단추).
+  const [sqCreating, setSqCreating] = useState(false);
+  const [sqError, setSqError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSqError(null);
+  }, [caseId]);
+
+  const createSessionQuestions = useCallback(
+    async (regenerate = false) => {
+      if (!caseId) return;
+      setSqCreating(true);
+      setSqError(null);
+      try {
+        await childAppApi.createSessionQuestions(caseId, regenerate);
+        refresh();
+      } catch (caught) {
+        setSqError(errorMessage(caught, "맞춤 질문을 만들지 못했습니다."));
+      } finally {
+        setSqCreating(false);
+      }
+    },
+    [caseId, refresh],
+  );
+
+  /** 맞춤 질문 고치기. 성공하면 true(화면이 고치기 칸을 닫는다). */
+  const saveSessionQuestion = useCallback(
+    (questionId: string, text: string, options: string[]) =>
+      run(async () => {
+        if (caseId) await childAppApi.updateSessionQuestion(caseId, questionId, { text, options });
+      }, "맞춤 질문을 고치지 못했습니다."),
+    [caseId, run],
+  );
+
   const saveAiNote = useCallback(
     (draftId: string, questionId: string, text: string) =>
       run(async () => {
@@ -191,5 +225,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, saveAiNote, saveAiQuestion, setAiApproval, createInvite, reissueInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, sqCreating, sqError, createSessionQuestions, saveSessionQuestion, saveAiNote, saveAiQuestion, setAiApproval, createInvite, reissueInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
 }

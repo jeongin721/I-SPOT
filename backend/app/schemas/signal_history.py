@@ -50,6 +50,21 @@ class SignalHistorySubtype(BaseModel):
     pending: bool
 
 
+class SignalHistoryKeyQuote(BaseModel):
+    """회차의 아동 핵심 발화 하나(종결 검토 '회차별 흐름 › 핵심', 2026-11-24). 'AI 제안' 이다.
+
+    원문과 같은 글만 쓴다 — 위험 발화(risk_utterances) 중 인용 대조(evidence_verified)된 아동 발화가 먼저(근거 강도 →
+    처음 나온 순), 없으면 대화 주제(topic_tags)의 첫 근거 발화 글(전사본 그대로). 새로 AI 를 돌리지 않는다.
+    """
+
+    text: str
+    segment_id: str
+    # 그 발화 시작 시각(ms). 전사본에서 찾지 못했으면 null.
+    start_ms: Optional[int]
+    # RISK = 위험 발화 근거, TOPIC = 대화 주제 근거.
+    source: str
+
+
 class SignalHistorySession(BaseModel):
     """회차 한 줄. 분석이 끝나지 않았고 유형별 상담원 판단도 없으면 types 는 빈 목록이다."""
 
@@ -68,6 +83,8 @@ class SignalHistorySession(BaseModel):
     topics: Optional[List[SignalHistoryTopic]] = None
     # 세부 신호(상담 이력 '회차별 세부 신호' 행렬, 2026-10-30). 분석이 끝나지 않았으면 null, 세부 신호가 없으면 [].
     subtypes: Optional[List[SignalHistorySubtype]] = None
+    # 아동 핵심 발화(2026-11-24). 분석 전이거나 아동이 한 근거 발화가 없으면 null. 문서 회차(전사본 없음)도 null.
+    key_quote: Optional[SignalHistoryKeyQuote] = None
 
 
 class SignalHistoryResponse(BaseModel):
