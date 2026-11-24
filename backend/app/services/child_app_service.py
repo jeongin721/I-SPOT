@@ -994,10 +994,28 @@ def send_alert(db: Session, link: ChildAppLink) -> Optional[uuid.UUID]:
     return created
 
 
+def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) -> None:
+    """아이가 앱 설정에서 해지한다. 연결 행을 지워 상담사가 새 코드를 만들 수 있게 하고, 답하지 않은 질문은 거둔다.
+    받은 답 · 알림 기록(피드)은 그대로 둔다."""
+
+    # 다른 요청과 같은 순서(연결 행 → 질문 묶음)로 잠근다. 질문 묶음을 먼저 바꾸면 PostgreSQL 에서 질문 보내기 ·
+    # 추가 질문 승인과 서로 기다리다 교착(500)이 나고, 그사이 보낸 질문이 연결 없이 남았다(11/10 동시 요청 시험).
+    # 이미 해지됐으면 할 일이 없다.
+    locked = db.scalar(
+        select(ChildAppLink)
+        .where(ChildAppLink.id == link.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None:
+        db.rollback()
+        return
+    _unlink(db, locked, ip_address, by="device", actor_id=None)
+
+
 def unlink_by_counselor(db: Session, case: Case, user: User, ip_address: Optional[str]) -> None:
-    """상담사가 아이 상세 '콩콩 앱 연결 › 해지하기' 로 끊는다(11/19 디자인). 해지는 담당 상담사만 한다 — 아이 앱에서
-    스스로 해지하는 길은 없앴다(경진 11/24). 연결 행을 지워 그 기기의 토큰은 바로 401 이 되고, 답하지 않은 질문은 거두며,
-    받은 답 · 알림 기록(피드)은 그대로 둔다. 초대 대기(코드만 발급)도 지워 코드를 무효로 한다.
+    """상담사가 아이 상세 '콩콩 앱 연결 › 해지하기' 로 끊는다(11/19 디자인). 기기 해지와 같은 처리를 하고,
+    그 기기의 토큰은 바로 401 이 된다. 초대 대기(코드만 발급)도 지워 코드를 무효로 한다.
     연결이 없으면 할 일이 없다(재시도 안전). 코드 발급처럼 담당 상담사의 일이다. 종결 사례에서도 끊을 수 있다."""
 
     ensure_assigned(case, user)
@@ -1017,7 +1035,7 @@ def _unlink(
     was_linked = link.status == ChildAppLinkStatus.LINKED
     _retire(_pending_rows(db, case_id, lock=True), _utcnow())
     if was_linked:
-        # 피드 문구가 누가 끊었는지 나눠 보이도록 상담사가 끊으면 by 를 싣는다(11/24 전 기기 해지 줄은 빈 값으로 남아 있다).
+        # 피드 문구가 누가 끊었는지 나눠 보이도록 상담사가 끊으면 by 를 싣는다(기기 해지는 예전처럼 빈 값).
         _add_event(db, case_id, ChildAppEventKind.UNLINKED, {"by": "counselor"} if by == "counselor" else {})
     audit_service.record(
         db,

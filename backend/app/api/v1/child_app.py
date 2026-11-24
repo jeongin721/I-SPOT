@@ -70,8 +70,9 @@ def link_device(payload: ChildLinkRequest, request: Request, db: DbSession) -> D
     return DataResponse(data=ChildLinkResponse(device_token=token))
 
 
-# 아이가 앱에서 스스로 해지하는 길(POST /child-app/unlink)은 없앴다(경진 11/24) — 해지는 담당 상담사만
-# (DELETE /cases/{case_id}/child-app/link). 아이가 혼자 끊으면 긴급 알림 · 질문이 상담사 모르게 멈춘다.
+@device_router.post("/unlink", status_code=status.HTTP_204_NO_CONTENT, summary="아이 앱 연결 해지(기기에서)")
+def unlink_device(request: Request, db: DbSession, link: CurrentChildLink) -> None:
+    child_app_service.unlink_device(db, link, client_ip(request))
 
 
 @device_router.get("/home", response_model=DataResponse[ChildHomeResponse])
