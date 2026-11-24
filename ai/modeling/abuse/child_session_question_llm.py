@@ -47,7 +47,7 @@ _PEOPLE = re.compile(
 # 앱으로 묻지 않는 주제. 상담에서 직접 묻는다(민규 #195 리뷰에서 지어낸 17문장이 모두 걸리게 더함).
 _SELF_HARM = re.compile(
     r"자해|자살|죽|다치게 하|해치|목숨|극단|사라지|사라져|사라졌|없어지|없어졌|없었으면|살고 싶지|살기 싫|그만 살|"
-    r"상처를 내|상처를 낸|(?:나|스스로|자신|자기|몸|내 몸)(?:를|을)? ?아프게|끝내고 싶|긋|뛰어내|태어나지|약을 한꺼번에|약을 많이"
+    r"상처를 내|상처를 낸|(?:나|스스로|자신|자기|몸|내 몸)(?:를|을)? ?아프게|아프게\s*(?:하|했|한|할|만들|만든)|끝내고 싶|긋|뛰어내|태어나지|약을 한꺼번에|약을 많이"
 )
 # 회차의 사건이 드러나는 낱말 몇 개. 낱말로 다 막을 수는 없다(화면 안내로 상담사가 본다).
 # '미술 · 술래' · '맞은편' 같은 평범한 말은 남긴다(민규 #195 머지 뒤 리뷰 3).
@@ -118,6 +118,13 @@ def format_input(context: Dict[str, Any]) -> str:
     ]
 
     return "\n".join(lines)
+
+
+def has_self_harm(text: str) -> bool:
+    """자해 · 자살 · 죽음 말이 있는지. 상담사가 아이 앱 질문을 고칠 때도 같은 기준으로 막는다(경진 11/24,
+    Backend child_session_question_service.ensure_no_self_harm)."""
+
+    return bool(_SELF_HARM.search(text))
 
 
 def _bad_text(text: str, names: Iterable[str] = ()) -> bool:

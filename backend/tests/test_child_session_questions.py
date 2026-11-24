@@ -368,3 +368,24 @@ def test_llm_filter_edges_from_review() -> None:
 
     for text in ("미술 시간은 재미있나요?", "맞은편 자리 친구와 친한가요?", "요즘 몸이 아프게 느껴질 때가 있나요?"):
         assert kept(text), text
+
+
+def test_edit_refuses_self_harm_words(client: TestClient, counselor_headers, case, db) -> None:
+    """상담사가 고칠 때도 자해 · 죽음 말은 받지 않는다(경진 11/24). 문장 · 보기 둘 다."""
+
+    _analyzed(client, counselor_headers, db, case["id"])
+    choice, free = _create(client, counselor_headers, case["id"]).json()["data"]["items"]
+
+    for question_id, body in (
+        (free["id"], {"text": "요즘 죽고 싶다는 생각이 든 적이 있나요?"}),
+        (choice["id"], {"text": "요즘 기분은 어때요?", "options": ["괜찮아요", "살기 싫어요"]}),
+        (choice["id"], {"text": "스스로 상처를 낸 적이 있나요?", "options": ["네", "아니요"]}),
+        (choice["id"], {"text": "내 몸을 일부러 아프게 한 적이 있나요?", "options": ["네", "아니요"]}),  # 민규 리뷰
+    ):
+        response = _patch(client, counselor_headers, case["id"], question_id, body)
+        assert response.status_code == 400 and "상담에서 직접" in response.text, body
+
+    items = _view(client, counselor_headers, case["id"])["session_questions"]["items"]
+    assert [item["text"] for item in items] == [choice["text"], free["text"]]
+    # 평범한 말은 그대로 된다.
+    assert _patch(client, counselor_headers, case["id"], free["id"], {"text": "요즘 몸이 아프게 느껴질 때가 있나요?"}).status_code == 200
