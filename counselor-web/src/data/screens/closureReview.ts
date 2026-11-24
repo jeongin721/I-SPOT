@@ -4,7 +4,9 @@
 //  - 머리: 별칭 · 사례번호 · 출생연도 · 회차 범위 · 기간(첫 회차 ~ 마지막 회차 상담일, 없으면 등록일).
 //  - 한눈에 '상담': 회차 수와 상담 유형별 수(consultation_type). '새 학대 진술': 신호 이력(signal-history)에서 AI 관련 신호가
 //    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '위험수준 척도' 는 기관 서식(위험수준 척도) 확정 기록의 위험요인 합계.
-//  - 회차별 흐름: 회차 · 날짜(+ 상담 유형) · 유형(학대 유형, AI 관련 신호) · 핵심(승인한 상담 요약 4칸 중 처음 채워진 칸) ·
+//  - 회차별 흐름: 회차 · 날짜(+ 상담 유형) · 유형(학대 유형, AI 관련 신호) · 핵심(아동이 한 핵심 발화 — signal-history key_quote,
+//    디자인 '"엄마가 소리 지르면 숨고 싶어요"' 처럼 아동 말 그대로 + 발화 시각. 11/24 경진: 상담일지 요약이 아니라 아동 발화.
+//    문서 회차는 아동 발화가 없어 승인한 기록 요약 첫 칸) ·
 //    근거(학대 근거 — 세부 신호 · 근거 발화 수, 없으면 요약 칸 이름). 11/19 팀 요청으로 유형 · 근거를 학대 유형 · 근거로 바꿈. 승인 전 회차는 핵심 '승인 전'. 회차를 누르면 그 회차 상세(/SessionDetail).
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
 //  - 아이 연계(콩콩): 머리 기간 · 한눈에 '답한 날 / 연결한 날' · 아이가 쓴 글 · 질문별 월별 가장 많은 답(디자인 표).
@@ -20,6 +22,7 @@ import { formRounds, type CaseFormsState } from "../useCaseForms";
 import type { SignalHistoryState } from "../useSignalHistory";
 import { TYPE_SHORT, detectedTypeLabels } from "../signalHistoryRows";
 import { NOT_READY } from "./common";
+import { formatClock } from "../time";
 import { screenHref } from "./links";
 import type { ReportFirstPass } from "./closureSuggest";
 import { CLOSURE_MEETING_PRESET, PRESET_PARAM } from "./schedule";
@@ -231,12 +234,24 @@ export function closureReviewValues(input: ClosureReviewInput) {
     // 상담 유형(정기 · 방문 …)은 날짜 옆에 작게 붙인다. 모두 AI 제안이다.
     const hist = historyBy.get(row.id);
     const signals = hist ? detectedTypeLabels(hist) : [];
+    // 핵심 = 아동 핵심 발화(디자인: 아동 말 그대로). 시각은 아래 작은 줄에.
+    const quote = hist?.key_quote;
     let key = "";
-    if (row.status === "APPROVED") {
-      if (item?.failed) key = "요약을 불러오지 못했습니다";
-      else if (filled) key = clip(filled.text, 60);
-      else key = item ? "요약 4칸이 비어 있습니다" : approved.loading ? "불러오는 중…" : NOT_PROVIDED;
-    } else key = `승인 전 · ${row.statusLabel}`;
+    let keyNote = "";
+    if (quote) {
+      key = `"${clip(quote.text, 60)}"`;
+      keyNote = ["아동 발화", quote.start_ms != null ? formatClock(quote.start_ms) : ""].filter(Boolean).join(" · ");
+    } else if (row.source === "DOCUMENT") {
+      // 문서 회차는 아동 발화가 없다 — 승인한 기록 요약 첫 칸.
+      if (row.status !== "APPROVED") key = `승인 전 · ${row.statusLabel}`;
+      else if (item?.failed) key = "요약을 불러오지 못했습니다";
+      else if (filled) {
+        key = clip(filled.text, 60);
+        keyNote = `기록 요약 · ${filled.label}`;
+      } else key = item ? "요약 4칸이 비어 있습니다" : approved.loading ? "불러오는 중…" : NOT_PROVIDED;
+    } else if (!history.loaded) key = "불러오는 중…";
+    else if (hist?.analysis_status !== "COMPLETED") key = "분석 전";
+    else key = "아동 핵심 발화 없음";
 
     let kind: string;
     if (row.source === "DOCUMENT") kind = "문서 회차";
@@ -262,6 +277,7 @@ export function closureReviewValues(input: ClosureReviewInput) {
       date: [shortDate(dateOf(row)), row.consultationType ? row.kindLabel : ""].filter(Boolean).join(" "),
       kind,
       key,
+      keyNote,
       src,
       href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
     };

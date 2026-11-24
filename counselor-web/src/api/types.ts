@@ -1285,6 +1285,16 @@ export interface SignalHistorySubtype {
   pending: boolean;
 }
 
+/** 회차의 아동 핵심 발화(종결 검토 회차별 흐름 '핵심', 4절 2026-11-24). 분석 결과의 근거 인용 중 아동이 한 말 하나. AI 제안이다. */
+export interface SignalHistoryKeyQuote {
+  text: string;
+  segment_id: string;
+  /** 발화 시작 시각(ms). 전사본에서 못 찾았으면 null. */
+  start_ms: number | null;
+  /** RISK = 위험 발화 근거, TOPIC = 대화 주제 근거. */
+  source: "RISK" | "TOPIC";
+}
+
 export interface SignalHistorySession {
   session_id: string;
   session_number: number;
@@ -1300,6 +1310,8 @@ export interface SignalHistorySession {
   topics?: SignalHistoryTopic[] | null;
   /** 세부 신호. 분석 전이면 null, 없으면 []. 옛 서버면 키가 없다. */
   subtypes?: SignalHistorySubtype[] | null;
+  /** 아동 핵심 발화. 분석 전 · 문서 회차 · 아동 근거 발화가 없으면 null. 옛 서버면 키가 없다. */
+  key_quote?: SignalHistoryKeyQuote | null;
 }
 
 /** session_number 오름차순, 분석 전 회차 포함 전부. */

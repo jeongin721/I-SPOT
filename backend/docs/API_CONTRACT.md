@@ -789,6 +789,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   `(abuse_type, subtype)` 으로 묶은 것이다. `count` 는 근거 발화 수(`segment_ids` 를 겹치지 않게 센 수), 처음 나온 순서.
   `pending` 은 근거 발화가 **모두** 화자 미확인(그 분석이 쓴 전사본의 `speaker` 가 `UNKNOWN` 이거나 전사본에 없는 번호)일 때 `true` — 화면 '보류 (화자 확인 중)'.
   유형 · 세부 유형 · 근거 발화가 없는 항목은 뺀다. 분석이 끝나지 않았으면 `null`, 세부 신호가 없으면 `[]`. 세부 유형 이름은 2차 모델의 고정 14종이다. **AI 제안이다.**
+- `key_quote`(2026-11-24, 종결 검토 '회차별 흐름 › 핵심'): 그 회차의 **아동 핵심 발화** 하나 `{text, segment_id, start_ms, source}`. 최신 완료 분석 결과의 근거 인용을 그대로 쓴다(AI 를 새로 돌리지 않음) — `risk_utterances` 중 근거 발화에 화자 `CHILD` 가 있는 항목을 인용 대조됨(`evidence_verified`) → 근거 강도(`HIGH` · `MEDIUM` · `LOW`) → 처음 나온 순으로 골라 `source: "RISK"`, 없으면 `topic_tags` 중 아동 근거 발화가 있는 첫 주제의 `quote` 로 `source: "TOPIC"`. `segment_id` · `start_ms` 는 그 아동 발화(전사본에서 못 찾으면 `start_ms: null`). 분석 전 · 문서 회차(전사본 없음) · 아동 근거 발화가 없으면(화자 미확인 포함) `null`. **AI 제안이다.**
 - 재분석하면 최신 분석 기준으로 바뀐다. 상담원 판단에 저장된 `ai_level`(판단 당시 값)과 다를 수 있다(11절).
 - 권한 · 오류는 `GET /api/v1/cases/{case_id}` 와 같다: `404 CASE_NOT_FOUND`, `403 FORBIDDEN`.
 

@@ -268,7 +268,14 @@ export default function ClosureReview() {
                       </td>
                       <td className="note">{r.date}</td>
                       <td className="note">{r.kind}</td>
-                      <td>{r.key}</td>
+                      <td>
+                        {r.key}
+                        {r.keyNote ? (
+                          <span className="src" style={{ display: 'block', margin: '2px 0 0' }}>
+                            {r.keyNote}
+                          </span>
+                        ) : null}
+                      </td>
                       <td>
                         <span className="src" style={{ margin: '0' }}>
                           {r.src}
