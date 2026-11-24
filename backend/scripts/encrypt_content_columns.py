@@ -5,7 +5,8 @@
 #         consultation_sessions.memo · ai_analyses.result
 #   2단계 session_source_documents.text · note_draft · followup_draft · cases.linked_background · intake_*(글 5칸) · notes ·
 #         session_followup_questions.questions · case_closure_reviews.summary · edits · report · case_forms.values ·
-#         child_app_events.payload · child_app_ai_drafts.items · docbox_files.preview_text
+#         child_app_events.payload · child_app_ai_drafts.items · docbox_files.preview_text ·
+#         child_session_question_drafts.items(11/24 새 표, 처음부터 암호문)
 #   (2026-11-24 transcripts.pre_analysis 는 처음부터 암호문으로만 저장해 옮길 것이 없다 — 이 script 가 훑어도 0행)
 #
 # 순서(PR 설명과 같다):

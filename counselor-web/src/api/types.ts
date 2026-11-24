@@ -1895,6 +1895,26 @@ export interface ChildAppCase {
   feed: ChildAppEvent[];
   ai_enabled: boolean;
   ai_draft: ChildAiDraft | null;
+  /** 이번 회차 맞춤 질문(가장 최근 분석 회차로 만든 AI 초안, 담당 상담사만). 아직 없으면 null. */
+  session_questions: ChildSessionQuestions | null;
+  /** 맞춤 질문을 만들 수 있는지(담당 · AI 켜짐 · 분석이 끝난 회차 있음). */
+  session_questions_available: boolean;
+}
+
+/** 이번 회차 맞춤 질문(API_CONTRACT 24절, 2026-11-24). id 는 'sq_' 로 시작하고 질문 보내기 question_ids 에 고정 문항과 함께 넣는다. */
+export interface ChildSessionQuestions {
+  session_id: string;
+  session_label: string;
+  created_at: string;
+  items: {
+    id: string;
+    category: string;
+    type: "choice" | "text";
+    text: string;
+    options: string[];
+    /** 상담사에게만 보인다. */
+    reason: string;
+  }[];
 }
 
 export interface ChildAppStats {

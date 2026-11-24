@@ -273,6 +273,25 @@ class ChildScheduledQuestions(BaseModel):
     deliver_at: datetime
 
 
+class ChildSessionQuestionItem(BaseModel):
+    id: str
+    category: str
+    type: str
+    text: str
+    options: List[str] = Field(default_factory=list)
+    # 상담사에게만 보인다(이번 회차의 어떤 내용과 이어지는지).
+    reason: str = ""
+
+
+class ChildSessionQuestions(BaseModel):
+    """이번 회차 맞춤 질문(API_CONTRACT 24절). 가장 최근 분석 회차로 만든 AI 초안."""
+
+    session_id: uuid.UUID
+    session_label: str
+    created_at: datetime
+    items: List[ChildSessionQuestionItem]
+
+
 class ChildAppCaseResponse(BaseModel):
     status: str
     code_expires_at: Optional[datetime] = None
@@ -291,3 +310,5 @@ class ChildAppCaseResponse(BaseModel):
     feed: List[ChildAppEventResponse]
     ai_enabled: bool = False
     ai_draft: Optional[ChildAiDraftResponse] = None
+    session_questions: Optional[ChildSessionQuestions] = None
+    session_questions_available: bool = False

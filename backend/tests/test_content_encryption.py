@@ -65,6 +65,7 @@ STAGE_TWO_COLUMNS = {
     "case_forms": {"values"},
     "child_app_events": {"payload"},
     "child_app_ai_drafts": {"items"},
+    "child_session_question_drafts": {"items"},  # 2026-11-24 새 표 — 처음부터 암호문
     "docbox_files": {"preview_text"},
 }
 # 처음부터 암호문으로만 두는 칸(옮길 옛 평문이 없음): 원문 확정 전 AI 전체 분석(2026-11-24, pre_analysis_service).

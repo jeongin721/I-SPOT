@@ -108,3 +108,26 @@ class ChildAppAiDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class ChildSessionQuestionDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """회차 하나의 '이번 회차 맞춤 질문' AI 초안(2026-11-24). 상담사가 골라 질문 보내기로 함께 보낸다.
+
+    items: [{id, category, type, text, options, reason}]. id 는 'sq_' 로 시작한다(질문 보내기가 고정 문항과 구별).
+    다시 만들면 items 를 통째로 바꾼다 — 이미 보낸 질문은 질문 묶음에 복사돼 있어 영향이 없다.
+    """
+
+    __tablename__ = "child_session_question_drafts"
+
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("consultation_sessions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    items_plain: Mapped[List[Dict[str, Any]]] = mapped_column("items", JSONType, default=list, nullable=False)
+    items_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    items = EncryptedColumn("items", empty=[], json_value=True)  # 이유(reason)에 회차 내용이 들어가 처음부터 암호화
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

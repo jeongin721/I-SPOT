@@ -69,6 +69,8 @@ UPCOMING_CONSULT_LIMIT = 3
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
 
 _SCALE_FACES = ["good", "okay", "meh", "worried", "sad"]
+# 짧은 글 문항의 칩. 회차 맞춤 질문(child_session_question_service)의 짧은 글 문항도 같은 칩을 쓴다.
+FREE_TEXT_CHIPS = ["없어요", "만나서 이야기할게요", CONTACT_REQUEST_CHIP, SKIP_TEXT]
 
 QUESTION_BANK: List[Dict[str, Any]] = [
     {"id": "sleep", "category": "생활", "type": "scale", "text": "최근 일주일 동안 잠은 잘 잤나요?", "short": "수면",
@@ -88,7 +90,7 @@ QUESTION_BANK: List[Dict[str, Any]] = [
     {"id": "week", "category": "마음", "type": "scale", "text": "이번 주 기분은 전반적으로 어땠나요?", "short": "이번 주 기분",
      "options": ["좋았어요", "괜찮았어요", "보통이었어요", "힘들었어요", "많이 힘들었어요"], "faces": _SCALE_FACES, "flag": 3},
     {"id": "free", "category": "마음", "type": "text", "text": "상담 선생님께 더 전하고 싶은 말이 있나요?", "short": "전하고 싶은 말",
-     "chips": ["없어요", "만나서 이야기할게요", CONTACT_REQUEST_CHIP, SKIP_TEXT]},
+     "chips": FREE_TEXT_CHIPS},
 ]
 _BANK_BY_ID = {item["id"]: item for item in QUESTION_BANK}
 
@@ -257,7 +259,24 @@ def send_questions(
     ensure_assigned(case, user)
     ensure_active(case)
 
-    if len(set(question_ids)) != len(question_ids) or any(item not in _BANK_BY_ID for item in question_ids):
+    # 고정 문항이거나, 가장 최근 분석 회차의 맞춤 질문 초안에 있는 것만 보낸다(글은 서버에 있는 것을 복사한다).
+    picked: List[Dict[str, Any]] = []
+
+    for item in question_ids:
+        question = (
+            dict(_BANK_BY_ID[item])
+            if item in _BANK_BY_ID
+            else child_session_question_service.question_for_send(db, case.id, item)
+            if item.startswith(child_session_question_service.ID_PREFIX)
+            else None
+        )
+
+        if question is None:
+            raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 질문이 들어 있습니다.")
+
+        picked.append(question)
+
+    if len(set(question_ids)) != len(question_ids):
         raise bad_request(ErrorCode.VALIDATION_ERROR, "보낼 수 없는 질문이 들어 있습니다.")
 
     link = link_row(db, case.id, lock=True)
@@ -282,11 +301,12 @@ def send_questions(
         ChildQuestionSet(
             case_id=case.id,
             sent_by_id=user.id,
-            questions=[dict(_BANK_BY_ID[item]) for item in question_ids],
+            questions=picked,
             deliver_at=deliver_at,
         )
     )
     scheduled = deliver_at is not None
+    session_count = sum(1 for question in picked if question["id"].startswith(child_session_question_service.ID_PREFIX))
     _add_event(
         db,
         case.id,
@@ -299,7 +319,11 @@ def send_questions(
         entity_type="child_question_set",
         actor_id=user.id,
         case_id=case.id,
-        detail={"count": len(question_ids), **({"scheduled": True} if scheduled else {})},
+        detail={
+            "count": len(question_ids),
+            **({"session_questions": session_count} if session_count else {}),
+            **({"scheduled": True} if scheduled else {}),
+        },
         ip_address=ip_address,
     )
     db.commit()
@@ -647,6 +671,9 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         ],
         ai_enabled=child_app_ai_service.is_enabled() and can_read_feed,
         ai_draft=child_app_ai_service.latest_draft(db, case.id) if can_read_feed else None,
+        # 이번 회차 맞춤 질문(담당 상담사만). 없고 만들 수 있으면 화면이 만들기를 부른다.
+        session_questions=child_session_question_service.view_for_case(db, case, user) if can_read_feed else None,
+        session_questions_available=child_session_question_service.can_create(db, case, user) if can_read_feed else False,
         feed=[
             {
                 "id": row.id,
@@ -1446,4 +1473,4 @@ def request_reschedule(db: Session, link: ChildAppLink, reason: str, etc: Option
     db.commit()
 
 
-from app.services import child_app_ai_service  # noqa: E402 — 서로 부르므로 맨 끝에서 불러온다.
+from app.services import child_app_ai_service, child_session_question_service  # noqa: E402 — 서로 부르므로 맨 끝에서 불러온다.

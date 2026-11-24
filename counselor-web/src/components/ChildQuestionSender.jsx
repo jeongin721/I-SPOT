@@ -5,6 +5,8 @@
 // 그 시각이 지났으면 서버가 바로 보낸다). 예약해 둔 질문(scheduled_questions)이 있으면 '발송 예약 · 오늘 18:00 발송' 과 '예약 취소'.
 // 알림 문구는 보낸 뒤 다시 받은 값으로 정한다(예약됐는지 · 바로 갔는지는 서버가 정하므로).
 // 낮에 급하게 확인할 때를 위해 '지금 보내기'(deliver NOW)도 둔다 — 화면 기본은 예약(민규 #186 리뷰, #173 스펙).
+// 11/24: 고정 8문항만 있어 회차마다 질문이 같았다 → 위에 '이번 회차 맞춤 질문'(가장 최근 분석 회차로 만든 AI 초안)을 두고
+// 고정 문항과 함께 고른다. 처음 열릴 때 한 번 만들고(있으면 서버가 그대로 돌려줌), 이유(reason)는 상담사에게만 보인다.
 import { useEffect, useState } from 'react';
 import A from './A';
 import { useSentToast } from './SentToast';
@@ -23,6 +25,16 @@ function deliverLabel(iso) {
 
 export default function ChildQuestionSender({ app, caseId, bare = false }) {
   const [picked, setPicked] = useState([]);
+  const sq = app.data?.session_questions ?? null;
+  const sqWanted = Boolean(app.data?.status === 'LINKED' && app.data?.session_questions_available && !sq);
+  // 맞춤 질문이 없고 만들 수 있으면 사례마다 한 번 만든다(실패하면 '다시 만들기' 로).
+  const [sqTried, setSqTried] = useState(null);
+  const { createSessionQuestions } = app;
+  useEffect(() => {
+    if (!sqWanted || !caseId || sqTried === caseId) return;
+    setSqTried(caseId);
+    createSessionQuestions(false);
+  }, [sqWanted, caseId, sqTried, createSessionQuestions]);
   const [toast, showToast] = useSentToast();
   const [hint, setHint] = useState('');
   // 예약을 보낸 뒤 다시 받은 값이 오면 알림을 띄운다({ count, data: 보내기 전 값 }).
@@ -61,6 +73,12 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
     if (deliver === 'NOW') showToast(`아이에게 질문 ${count}개를 보냈어요`);
     else setSent({ count, data: before });
   };
+  const regenerate = async () => {
+    if (app.sqCreating) return;
+    // 다시 만들면 앞 초안의 질문 번호는 보낼 수 없다.
+    setPicked((cur) => cur.filter((id) => !id.startsWith('sq_')));
+    await createSessionQuestions(true);
+  };
   const cancel = async () => {
     if (app.busy || !scheduled) return;
     if (await app.cancelScheduled(scheduled.id)) showToast('발송 예약을 취소했어요');
@@ -79,6 +97,43 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
   } else {
     body = (
       <>
+        {sq ? (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+              <b>이번 회차 맞춤 질문</b>
+              <span className="chip c-ai">AI 제안</span>
+              <span className="note">{sq.session_label} 상담 내용으로 만든 초안이에요. 골라야 아이에게 가요.</span>
+              <button type="button" className="btn btn-sm btn-s" aria-disabled={app.sqCreating} onClick={regenerate} style={{ marginLeft: 'auto' }}>
+                {app.sqCreating ? '만드는 중…' : '다시 만들기'}
+              </button>
+            </div>
+            {sq.items.map((item) => (
+              <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
+                <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
+                <span>
+                  <span className="chip c-sand">{item.category}</span>{' '}
+                  {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
+                  {item.options.length ? <span className="note"> · {item.options.join(' / ')}</span> : null}
+                  {item.reason ? (
+                    <span className="note" style={{ display: 'block', fontSize: '12px' }}>
+                      왜: {item.reason}
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+            ))}
+            <b>기본 문항</b>
+          </>
+        ) : app.sqCreating ? (
+          <div className="note">이번 회차 상담 내용으로 맞춤 질문을 만드는 중이에요…</div>
+        ) : app.sqError && data.session_questions_available ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+            <span className="note acc">{app.sqError}</span>
+            <button type="button" className="btn btn-sm btn-s" onClick={() => createSessionQuestions(false)}>
+              다시 만들기
+            </button>
+          </div>
+        ) : null}
         {data.bank.map((item) => (
           <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
             <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />

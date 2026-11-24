@@ -31,13 +31,14 @@ from app.schemas.child_app import (
     ChildMoodRequest,
     ChildNoteRequest,
     ChildScheduleRequest,
+    ChildSessionQuestions,
     ChildSilentDaysRequest,
     ChildOpenAlert,
     ChildQuestionSendRequest,
     ChildRecentAlert,
     ChildWelfareCheckRequest,
 )
-from app.services import child_app_ai_service, child_app_service, push_service
+from app.services import child_app_ai_service, child_app_service, child_session_question_service, push_service
 from app.services.access import get_case_or_404
 
 _enabled = [Depends(child_app_service.ensure_enabled)]
@@ -242,6 +243,19 @@ def cancel_question_set(
 
     case = get_case_or_404(db, case_id, current_user)
     child_app_service.cancel_question_set(db, case, current_user, question_set_id, client_ip(request))
+
+
+@case_router.post("/{case_id}/child-app/session-questions", response_model=DataResponse[ChildSessionQuestions])
+def create_session_questions(
+    case_id: uuid.UUID, db: DbSession, current_user: CurrentUser, regenerate: bool = False
+) -> DataResponse[ChildSessionQuestions]:
+    """가장 최근 분석 회차로 아이 앱 맞춤 질문 초안을 만든다(있으면 그대로, regenerate 면 새로)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+
+    return DataResponse(
+        data=child_session_question_service.create_draft(db, case, current_user, regenerate=regenerate)
+    )
 
 
 @case_router.post("/{case_id}/child-app/ai-draft", response_model=DataResponse[ChildAiDraftResponse])
