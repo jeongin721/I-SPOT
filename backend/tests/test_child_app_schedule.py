@@ -326,7 +326,7 @@ def test_unlink_cancels_reservation(client: TestClient, counselor_headers: Heade
     _send(client, counselor_headers, case["id"], ["meal"], deliver="EVENING")
     reserved = _view(client, counselor_headers, case["id"])["scheduled_questions"]["id"]
 
-    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    assert client.delete(f"/api/v1/cases/{case['id']}/child-app/link", headers=counselor_headers).status_code == 204
     assert _status(db, shown) == ChildQuestionSetStatus.REPLACED
     assert _status(db, reserved) == ChildQuestionSetStatus.CANCELED
     view = _view(client, counselor_headers, case["id"])
