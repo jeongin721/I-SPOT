@@ -612,7 +612,7 @@ export function caseDetailValues(input: CaseDetailInput) {
     // 추가 질문이 있으면 그 수를 칩으로 보인다(18절).
     const last = index === PROCESS_COLUMNS.length - 1;
     const approved = last ? input.questions?.questions.length ?? 0 : 0;
-    // 문서 회차(상담 기록 문서만 올린 회차, 11/19 팀 요청): 녹음 · 기록 확인 · 학대 신호 확인은 건너뛴 단계로 보이고 누를 수 없다.
+    // 문서 회차(상담 기록 문서만 올린 회차, 11/19 팀 요청): 녹음 · STT 검수 · 학대 신호 확인은 건너뛴 단계로 보이고 누를 수 없다.
     // 문서를 올리면 바로 상담일지 작성(요약) → 다음 상담 준비(질문 추천)로 간다.
     const skipped = latest?.source === "DOCUMENT" && index < 3;
 
@@ -778,7 +778,7 @@ export function caseHistoryValues(
       const item = (row.subtypes ?? []).find((s) => s.abuse_type === key.type && s.subtype === key.subtype);
       const at = `${row.session_number}회차 · ${key.subtype}`;
       if (!item) return { v: "", tip: `${at} · ${row.subtypes ? "없음" : pendingLabel(row) || "분석 전"}`, ...DOT_NONE };
-      // 11/10 디자인: '?' 칸을 누르면 그 회차 기록 확인(SttReview)의 첫 근거 발화로 간다.
+      // 11/10 디자인: '?' 칸을 누르면 그 회차 STT 검수(SttReview)의 첫 근거 발화로 간다.
       if (item.pending) {
         const seg = item.segment_ids?.[0];
         return {
