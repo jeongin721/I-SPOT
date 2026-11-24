@@ -229,7 +229,6 @@ export default function MobileAppShell({ cur, screen, sub, title, titleStyle, br
       {ntOpen && (
         <div className="ma-ov" ref={ntRef} onClick={closeNt}>
           <section className="ma-sheet" role="dialog" aria-modal="true" aria-label="알림" onClick={stop}>
-            <span className="ma-grab" aria-hidden="true"></span>
             <div className="ma-sh-hd">
               <b>알림</b>
               <button type="button" className="ma-btn ma-btn-sm" onClick={closeNt}>

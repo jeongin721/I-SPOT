@@ -12,8 +12,11 @@
 // 디자인의 '임시 저장' · '확정' 은 서식 작성 기록 · 확정 상태가 서버에 없어 '저장' 하나로 두었다.
 // 10/29 디자인: ① 칸 묶음(rg-*) · 사례관리대상자 생년월일, ② 가족유형 21개 · 문제력 한 칸 · 건강정도 표(hs-*) · 칸 복사 단추.
 // 복사 단추의 '이름 가려서' 는 이 사례에 등록된 이름 전부(실명 · 가족 · 별칭)를 가린다.
+// 11/20 디자인: 사례 상세(CaseDetail) '기본 정보' 의 '수정' 이 이 서식을 창으로 띄운다(embed 속성 — 사이드바 · 머리 · 탭 없이
+// 서식 카드만, 제목은 아동 이름, '취소' · × 로 닫고 '저장' 이 끝나면 닫힌다). 디자인은 새 사례 등록 팝업(CaseRegister)의 수정 모드지만
+// 같은 서식 · 같은 저장(바꾼 칸만 PATCH, 실명 · 가족은 받아 온 값을 통째로 PUT)이 여기 있어 이 화면을 쓴다.
 // 저장하지 않은 수정이 있으면 화면을 떠날 때 묻는다(useLeaveGuard). 다른 사례로 옮기거나 다시 로그인하면 고치던 것을 버린다.
-import { Fragment } from 'react';
+import { Fragment, useEffect } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
 import A from '../components/A';
@@ -57,7 +60,35 @@ const LOCKED_GROUP = {
   gap: '18px',
 };
 
+// 사례 상세 '수정' 창(embed, 11/20 디자인 CaseDetail 의 cd-edit-ov)으로 띄울 때의 바깥 · 본문 배치.
+// 사이드바 · 머리 · 탭 없이 서식 카드만 가운데에 놓는다. 값 · 저장은 화면으로 열 때와 같다.
+const EMBED_ROOT = {
+  color: '#2B2A26',
+  fontFamily: "'IBM Plex Sans KR', sans-serif",
+  fontSize: '14px',
+  lineHeight: '1.6',
+  display: 'flex',
+  justifyContent: 'center',
+  padding: '48px 16px',
+};
+const EMBED_MAIN = { width: '100%', maxWidth: '860px', minWidth: '0', display: 'flex', flexDirection: 'column', gap: '20px' };
+const EMBED_CLOSE = {
+  marginLeft: 'auto',
+  alignSelf: 'center',
+  width: '40px',
+  height: '40px',
+  border: '0',
+  borderRadius: '50%',
+  background: '#F7F6F2',
+  color: '#2B2A26',
+  fontSize: '18px',
+  cursor: 'pointer',
+};
+const CLOSE_MESSAGE = '저장하지 않은 수정이 있습니다. 닫으면 수정이 사라집니다. 닫을까요?';
+
 export default function CaseIntake(props) {
+  // embed: 사례 상세 위에 수정 창으로 띄운다. onClose 는 닫기 · 취소, onSaved 는 저장이 끝났을 때 부른다.
+  const { embed = false, onClose, onSaved } = props;
   const session = useAuthSession();
   const { caseId } = readScreenIds(useSearchParams()[0]);
   const detail = useCaseDetail(caseId, { enabled: signedIn(session) });
@@ -68,12 +99,26 @@ export default function CaseIntake(props) {
   const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
   const v = useDC(Logic, { ...props, session, detail, signals, counselors, personal, caseId, nextConsult });
   useLeaveGuard(v.unsaved);
+  // 수정 창: 저장이 끝나면 부모(사례 상세)가 값을 다시 받고 창을 닫는다. 일부만 저장됐으면(실명 · 가족 칸 실패) 열어 둔다.
+  const savedOk = Boolean(v.savedOk);
+  useEffect(() => {
+    if (embed && savedOk && onSaved) onSaved();
+    // onSaved 는 부모가 그릴 때마다 새로 만들어져 의존 목록에 넣지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embed, savedOk]);
+  const closeEmbed = () => {
+    if (v.unsaved && !window.confirm(CLOSE_MESSAGE)) return;
+    if (onClose) onClose();
+  };
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-CaseIntake">
       <div
-        className={theme.cls}
-        style={{
+        className={embed ? `${theme.cls} ci-emb` : theme.cls}
+        style={
+          embed
+            ? EMBED_ROOT
+            : {
           minHeight: '1880px',
           background: '#E9E7E1',
           color: '#2B2A26',
@@ -83,19 +128,43 @@ export default function CaseIntake(props) {
           display: 'flex',
           flexWrap: 'wrap',
           alignItems: 'stretch',
-        }}
+              }
+        }
       >
-        <Sidebar active="CaseList" session={session} />
+        {embed ? null : <Sidebar active="CaseList" session={session} />}
         <main
-          style={{
+          style={
+            embed
+              ? EMBED_MAIN
+              : {
             flex: '999 1 640px',
             minWidth: '0',
             padding: '30px 36px 56px',
             display: 'flex',
             flexDirection: 'column',
             gap: '20px',
-          }}
+                }
+          }
         >
+          {embed ? (
+            v.ready ? null : (
+              <section
+                className="card"
+                role="dialog"
+                aria-modal="true"
+                aria-label="사례 수정"
+                style={{ padding: '22px 30px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}
+              >
+                <div style={{ flex: '1 1 320px' }}>
+                  <Notice value={v.notice} />
+                </div>
+                <button type="button" className="btn btn-s" onClick={closeEmbed}>
+                  닫기
+                </button>
+              </section>
+            )
+          ) : (
+            <>
           <div className="thm-bar">
             <NotiBell session={session} />
             <ThemeToggle />
@@ -140,12 +209,36 @@ export default function CaseIntake(props) {
           <nav aria-label="위치" className="note" style={{ marginTop: '-8px' }}>
             <A to={v.backHref}>문서함</A> › 초기면접지 (아동용)
           </nav>
+            </>
+          )}
 
           {v.ready ? (
-            <section className="card" aria-label="초기면접지 (아동용)" style={{ padding: '0 0 6px' }}>
+            <section
+              className="card"
+              aria-label={embed ? undefined : '초기면접지 (아동용)'}
+              role={embed ? 'dialog' : undefined}
+              aria-modal={embed ? 'true' : undefined}
+              aria-labelledby={embed ? 'ci-emb-title' : undefined}
+              style={{ padding: '0 0 6px' }}
+            >
               <div style={{ padding: '22px 30px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+                {embed ? (
+                  <>
+                    {/* 11/20 디자인: 수정 창 제목은 아동 이름(사례 상세 머리와 같은 이름). */}
+                    <h2 className="h2" id="ci-emb-title">
+                      {v.title}
+                    </h2>
+                    <span className="note">초기면접지 (아동용) · {v.headNote}</span>
+                    <button type="button" aria-label="닫기" onClick={closeEmbed} style={EMBED_CLOSE}>
+                      ×
+                    </button>
+                  </>
+                ) : (
+                  <>
                 <h2 className="h2">초기면접지 (아동용)</h2>
                 <span className="note">{v.headNote}</span>
+                  </>
+                )}
               </div>
               <div role="tablist" style={{ display: 'flex', margin: '16px 30px 0', borderBottom: '1px solid #EAE7DF' }}>
                 {(v.formTabs || []).map((t, tIndex) => (
@@ -171,6 +264,7 @@ export default function CaseIntake(props) {
                 <p className="note" style={{ margin: 0 }}>
                   {v.savedNote}
                 </p>
+                {embed ? <Notice value={v.notice} /> : null}
                 <Notice value={v.personalNote} />
                 {v.isA ? (
                   <fieldset disabled={v.locked} style={LOCKED_GROUP}>
@@ -638,6 +732,11 @@ export default function CaseIntake(props) {
                       {v.statusNote}
                     </span>
                   ) : null}
+                  {embed ? (
+                    <button type="button" className="btn btn-s" onClick={closeEmbed}>
+                      취소
+                    </button>
+                  ) : null}
                   <button type="button" className="btn btn-s" onClick={v.goB}>
                     {v.midLabel}
                   </button>
@@ -653,7 +752,7 @@ export default function CaseIntake(props) {
               </form>
             </section>
           ) : null}
-          <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>
+          {embed ? null : <p className="ainote">AI 분석은 참고용이며, 최종 판단은 상담사가 합니다.</p>}
         </main>
       </div>
     </div>

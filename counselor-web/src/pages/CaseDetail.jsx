@@ -8,6 +8,8 @@
 // 11/05 탭1 디자인(2)에 맞춰 디자인에 없던 '초기면접 내용' 카드와 '기본 정보' 의 '수정' 단추를 뺐다 — 같은 칸은
 // 문서함 › 초기면접지(CaseIntake)에서 고친다. '확인할 사항' 은 줄마다 체크(이 브라우저에 회차별로 기억),
 // 진행 단계의 지난 '상담 녹음' 칸 아래 날짜를 보인다.
+// 11/20 디자인: '기본 정보' 머리에 '수정' 단추가 다시 생겼다 — 누르면 이 화면 위에 서식 4 수정 창이 뜬다(초기면접지 CaseIntake 를
+// embed 로 띄움. 저장 · 확인 규칙은 초기면접지와 같고, 닫으면 사례 · 실명 값을 다시 받는다).
 // 11/04 탭1 디자인: 사례 상세 탭은 내담자 정보 · 상담 이력 · 문서함 셋이고, 아이 연계는 기본 정보 머리의 '아이 연계 →' 단추로 들어간다.
 // 10/21 디자인(counselor-design/screens/CaseDetail.dc.html): '녹음하기' 창(마이크 녹음 → 녹취 올리기와 같은 업로드 · 원문 변환,
 // components/RecordDialog.jsx), '아이 연계 →' 단추(탭에서 빠짐 — 11/03 다시 탭 줄로), 진행 단계 칸 링크, 사정결과 · 서비스 · 다음 일정 상자 삭제.
@@ -53,6 +55,7 @@ import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useRecordFlow } from '../data/useRecordFlow';
 import { cases, childApp } from '../api/endpoints';
 import { errorMessage, useRemote } from '../data/useRemote';
+import CaseIntake from './CaseIntake';
 import './CaseDetail.css';
 
 class Logic extends DCLogic {
@@ -87,6 +90,13 @@ export default function CaseDetail(props) {
   const childAppInfo = useRemote(appKey, () => childApp.get(caseId), '아이 앱 정보를 불러오지 못했습니다.', () => false);
   const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
   const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId, childApp: childAppInfo.data, nextConsult });
+  // 기본 정보 '수정' 창(11/20 디자인). 닫을 때 사례 · 실명 값을 다시 받아 이 화면에 바로 보인다(저장 없이 닫아도 받는다).
+  const [editOpen, setEditOpen] = useState(false);
+  const closeEdit = () => {
+    setEditOpen(false);
+    detail.refresh();
+    personal.reload();
+  };
   const formsCard = formsCardValues(useCaseForms(caseId, { enabled: signedIn(session) }), caseId);
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
@@ -224,7 +234,19 @@ export default function CaseDetail(props) {
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <h2 className="h2">기본 정보</h2>
                 {/* 11/04 탭1 디자인: 아이 연계는 탭이 아니라 기본 정보 머리의 '아이 연계 →' 단추로 들어간다. */}
-                <A className="btn btn-sm btn-s" to={v.tabs.app} style={{ marginLeft: 'auto' }}>
+                {/* 11/20 디자인: '아이 연계 →' 왼쪽 '수정' — 사례 상세 위에 서식 4 수정 창을 띄운다. 디자인은 새 사례 등록 팝업을
+                    수정 모드로 쓰지만, 같은 서식을 사례 값으로 채워 고치는 화면이 이미 있어(초기면접지 CaseIntake) 그것을 창으로 띄운다. */}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-s"
+                  aria-haspopup="dialog"
+                  onClick={() => setEditOpen(true)}
+                  disabled={!detail.caseInfo}
+                  style={{ marginLeft: 'auto' }}
+                >
+                  수정
+                </button>
+                <A className="btn btn-sm btn-s" to={v.tabs.app}>
                   아이 연계 →
                 </A>
               </div>
@@ -514,6 +536,11 @@ export default function CaseDetail(props) {
               upload={rec.upload}
               onClose={rec.close}
             />
+          ) : null}
+          {editOpen ? (
+            <div className="cd-edit-ov">
+              <CaseIntake embed onClose={closeEdit} onSaved={closeEdit} />
+            </div>
           ) : null}
         </main>
       </div>

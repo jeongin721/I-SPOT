@@ -374,6 +374,8 @@ export function caseIntakeValues(input: CaseIntakeInput) {
             )
           : null,
     statusNote: savedOk ? "저장했습니다." : dirty ? "저장하지 않은 수정이 있습니다." : "",
+    // 사례 상세의 '수정' 창(CaseIntake embed)이 저장이 끝난 것을 알고 닫는 데 쓴다.
+    savedOk,
     save,
     saving,
     canSave: info !== null && dirty && !saving,
