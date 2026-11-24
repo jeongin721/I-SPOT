@@ -116,7 +116,7 @@ function noteCard(sv: SessionDetailView): { st: string; preview: string } {
 
 /**
  * '다른 회차' 고르기(10/29 디자인 sl-*, components/SessionPick): 같은 사례의 회차를 최근 것부터. 고르면 그 회차의 page 화면으로
- * 옮긴다(회차 상세 · STT 검수).
+ * 옮긴다(회차 상세 · 기록 확인).
  */
 export function sessionPickValues(input: SessionScreenInput, page: string) {
   const { caseDetail, go } = input;
@@ -165,7 +165,7 @@ export function sessionDetailValues(input: SessionScreenInput) {
     const defs = [
       {
         href: screenHref(sv.step === "upload" ? "/UploadModal" : "/SttReview", ids),
-        label: "STT 검수",
+        label: "기록 확인",
         ...sttCard(sv),
       },
       { href: screenHref("/SignalReview", ids), label: "학대 신호 확인", ...analysisCard(sv) },

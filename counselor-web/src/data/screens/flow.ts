@@ -10,7 +10,7 @@ import type { SessionRow, SessionStep } from "../sessionRows";
 import { type ScreenIds, screenHref } from "./links";
 
 /** 화면의 회차 처리 단계. index 는 사례 상세 '현재 진행 상황' 의 칸 순서다. */
-export const PROCESS_COLUMNS = ["상담 녹음", "STT 검수", "학대 신호 확인", "상담일지 작성", "다음 상담 준비"] as const;
+export const PROCESS_COLUMNS = ["상담 녹음", "기록 확인", "학대 신호 확인", "상담일지 작성", "다음 상담 준비"] as const;
 
 /** 회차 단계가 화면의 몇 번째 칸인가. 승인 완료(done)는 앞 네 칸을 모두 지난 것으로 본다. */
 export const COLUMN_OF: Record<SessionStep, number> = {
@@ -34,8 +34,8 @@ export const STEP_SCREEN: Record<SessionStep, string> = {
 
 const CONTINUE_LABEL: Record<SessionStep, string> = {
   upload: "녹취 올리기",
-  stt: "STT 검수",
-  sttReview: "STT 검수",
+  stt: "기록 확인",
+  sttReview: "기록 확인",
   analysis: "학대 신호 확인 · AI 분석",
   summaryReview: "상담일지 작성",
   done: "회차 보기",
@@ -63,7 +63,7 @@ export const CARD_OF: Record<SessionStep, number> = {
 };
 
 const PROCESS_SCREENS = [
-  { page: "/SttReview", label: "STT 검수" },
+  { page: "/SttReview", label: "기록 확인" },
   { page: "/SignalReview", label: "학대 신호 확인" },
   { page: "/NoteWrite", label: "상담일지 작성" },
   { page: "/FollowupQ", label: "다음 상담 준비" },
@@ -72,7 +72,7 @@ const PROCESS_SCREENS = [
 /** 잠긴 단계 칸에 마우스를 올리면 보이는 안내. */
 export const LOCKED_HINT = "앞 단계를 끝내면 열립니다.";
 /** 문서 회차(상담 기록 문서를 올린 회차)의 1 · 2단계 칸 안내(2026-11-02). */
-export const DOCUMENT_SKIP_HINT = "상담 기록 문서로 만든 회차라 STT 검수 · 학대 신호 확인 단계가 없습니다.";
+export const DOCUMENT_SKIP_HINT = "상담 기록 문서로 만든 회차라 기록 확인 · 학대 신호 확인 단계가 없습니다.";
 
 /**
  * 회차 처리 화면 위의 단계 표시(.steps). here 는 지금 화면의 칸(0~3).

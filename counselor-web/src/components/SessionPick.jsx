@@ -1,4 +1,4 @@
-// 회차 처리 화면 '다른 회차' 고르기(10/29 디자인 sl-*) — 회차 상세 · STT 검수. 값은 sessionDetail.ts 의 sessionPickValues.
+// 회차 처리 화면 '다른 회차' 고르기(10/29 디자인 sl-*) — 회차 상세 · 기록 확인. 값은 sessionDetail.ts 의 sessionPickValues.
 import { useEffect, useRef, useState } from 'react';
 import './SessionPick.css';
 

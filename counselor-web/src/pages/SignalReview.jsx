@@ -490,7 +490,7 @@ export default function SignalReview(props) {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
             <A className="btn btn-s" to={v.sttHref}>
-              ← STT 검수 · 위험 신호
+              ← 기록 확인 · 위험 신호
             </A>
             {v.canNext && !v.nextBlocked ? (
               <A className="btn btn-p" to={v.nextHref} style={{ marginLeft: 'auto' }}>

@@ -407,8 +407,8 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
       topTypes.push(ABUSE_TYPE_LABELS[type]);
     }
   } else {
-    aiText = "STT 검수에서 원문을 확정하면 AI 분석이 시작됩니다.";
-    aiActionLabel = "STT 검수로";
+    aiText = "기록 확인에서 원문을 확정하면 AI 분석이 시작됩니다.";
+    aiActionLabel = "기록 확인으로";
     aiAction = () => go(sttHref);
   }
 
