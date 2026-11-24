@@ -32,6 +32,7 @@ import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../theme';
 import { useAuthSession } from '../data/useAuthSession';
+import { useNextConsult } from '../data/useCaseSchedule';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseForms } from '../data/useCaseForms';
 import { usePersonalInfo } from '../data/usePersonalInfo';
@@ -84,13 +85,15 @@ export default function CaseDetail(props) {
   // 기본 정보 '아이 앱' 칸(11/10): 콩콩 연결 상태. 아이 앱이 꺼져 있으면 오류라 '—' 로 둔다.
   const appKey = signedIn(session) && caseId ? `case-child-app:${caseId}` : null;
   const childAppInfo = useRemote(appKey, () => childApp.get(caseId), '아이 앱 정보를 불러오지 못했습니다.', () => false);
-  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId, childApp: childAppInfo.data });
+  const nextConsult = useNextConsult(caseId, { enabled: signedIn(session) });
+  const v = useDC(Logic, { ...props, session, detail, signals, questions, personal, caseId, childApp: childAppInfo.data, nextConsult });
   const formsCard = formsCardValues(useCaseForms(caseId, { enabled: signedIn(session) }), caseId);
   const [params] = useSearchParams();
   const briefQuestions = useFollowupQuestions(signals.session?.id ?? null, { enabled: signedIn(session) });
   const history = useSignalHistory(caseId, { enabled: signedIn(session) });
   const brief = preBriefingValues({
     childApp: childAppInfo.data,
+    nextConsult,
     session,
     detail,
     signals,

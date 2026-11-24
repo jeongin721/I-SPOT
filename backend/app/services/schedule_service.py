@@ -10,15 +10,16 @@
 
 import uuid
 from datetime import date, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional, Set
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.enums import AuditAction, ScheduleCategory, ScheduleKind
+from app.core.enums import AuditAction, ScheduleCategory, ScheduleKind, SessionStatus
 from app.core.errors import APIError, ErrorCode, conflict, forbidden, not_found
 from app.models.case import Case
 from app.models.schedule import INTAKE_DEADLINE_DAYS, ScheduleEvent
+from app.models.session import ConsultationSession
 from app.models.user import User
 from app.schemas.schedule import (
     DEADLINE_KEYS,
@@ -46,7 +47,28 @@ def _can_edit(user: User, row: ScheduleEvent) -> bool:
     return user.is_admin or row.owner_id == user.id
 
 
-def to_response(row: ScheduleEvent, user: User) -> ScheduleEventResponse:
+#: 이 상태의 회차가 있으면 '다음 상담 준비'(사례 상세 브리핑 · 앱 브리핑)에 보일 분석 결과가 있다(화면의 latestAnalyzedSession 과 같다).
+BRIEFING_READY_STATUSES = (SessionStatus.AI_REVIEW_REQUIRED, SessionStatus.APPROVED)
+
+
+def briefing_ready_cases(db: Session, rows: Iterable[ScheduleEvent]) -> Set[uuid.UUID]:
+    """상담 일정이 붙은 사례 중 분석이 끝난 회차가 있는 사례(한 번에 읽는다)."""
+
+    ids = {row.case_id for row in rows if row.kind == ScheduleKind.CONSULT and row.case_id is not None}
+
+    if not ids:
+        return set()
+
+    return set(
+        db.scalars(
+            select(ConsultationSession.case_id)
+            .where(ConsultationSession.case_id.in_(ids), ConsultationSession.status.in_(BRIEFING_READY_STATUSES))
+            .distinct()
+        )
+    )
+
+
+def to_response(row: ScheduleEvent, user: User, ready_cases: Optional[Set[uuid.UUID]] = None) -> ScheduleEventResponse:
     show_case = _can_see_case(user, row.case)
     return ScheduleEventResponse(
         id=row.id,
@@ -68,6 +90,9 @@ def to_response(row: ScheduleEvent, user: User) -> ScheduleEventResponse:
         owner_id=row.owner_id,
         owner_name=row.owner.name if row.owner else None,
         editable=_can_edit(user, row),
+        briefing_ready=(row.case_id in ready_cases)
+        if ready_cases is not None and show_case and row.kind == ScheduleKind.CONSULT
+        else None,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

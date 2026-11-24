@@ -14,7 +14,7 @@ import { CHILD_ALERT_TEXT } from '../data/useCaseChildApp';
 import { screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
 import { useRemote } from '../data/useRemote';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import './ChildLink.css';
 
 const childDateTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -25,14 +25,14 @@ function rowState(row) {
   if (row.open_alert_reason) return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   if (row.status === 'NOT_LINKED') return { reason: '앱 미연결 · 초대 전', rCls: 'chip c-normal', need: false };
   if (row.status === 'INVITED') return { reason: '초대 대기', rCls: 'chip c-normal', need: false };
-  // 바로 확인할 답(RED)은 서버가 확인 시각을 줄 때만 '확인 완료'(멘토 피드백 11/12). 열린 알림은 최신 50건만 오므로
-  // 열린 알림이 없다고 확인을 마쳤다고 보지 않는다(민규 #175 리뷰 2).
-  if (row.level === 'RED') {
-    return row.last_acked_at
-      ? { reason: `확인 완료 ${childDateTime(row.last_acked_at)}`, rCls: 'chip c-ok', need: false, acked: true }
-      : { reason: '긴급', rCls: 'chip c-urgent', need: true };
+  // 바로 확인할 답(RED) · 살펴볼 답(AMBER)은 서버가 그 답 묶음의 확인 시각을 줄 때만 '확인 완료'(멘토 피드백 11/12, AMBER 는 11/20).
+  // 열린 알림은 최신 50건만 오므로 열린 알림이 없다고 확인을 마쳤다고 보지 않는다(민규 #175 리뷰 2).
+  // answer_acked_at 이 없는 옛 서버는 RED 만 사례의 마지막 확인 시각(last_acked_at)으로 본다.
+  if (row.level === 'RED' || row.level === 'AMBER') {
+    const acked = 'answer_acked_at' in row ? row.answer_acked_at : row.level === 'RED' ? row.last_acked_at : null;
+    if (acked) return { reason: `확인 완료 ${childDateTime(acked)}`, rCls: 'chip c-ok', need: false, acked: true };
+    return row.level === 'RED' ? { reason: '긴급', rCls: 'chip c-urgent', need: true } : { reason: '확인 필요', rCls: 'chip c-check', need: true };
   }
-  if (row.level === 'AMBER') return { reason: '확인 필요', rCls: 'chip c-check', need: true };
   return { reason: '정상', rCls: 'chip c-normal', need: false };
 }
 
@@ -118,6 +118,7 @@ class Logic extends DCLogic {
 
 export default function ChildLink(props) {
   const session = useAuthSession();
+  const navigate = useNavigate();
   const theme = useTheme();
   const key = session.status === 'signedIn' ? `child-link:${session.me.id}` : null;
   const remote = useRemote(key, () => childApp.listCases(), '아이 연계 목록을 불러오지 못했습니다.', () => false);
@@ -217,9 +218,10 @@ export default function ChildLink(props) {
               <tbody>
                 {(v.rows || []).map((r, rIndex) => (
                   <Fragment key={rIndex}>
-                    <tr>
+                    {/* 줄 어디를 눌러도 아이 상세로(11/19 경진). 이름 링크는 그대로 둔다(키보드 · 화면 읽기). */}
+                    <tr onClick={() => navigate(r.to)} style={{ cursor: 'pointer' }}>
                       <td>
-                        <A className="nm" to={r.to}>
+                        <A className="nm" to={r.to} onClick={(e) => e.stopPropagation()}>
                           <span className="av" style={{ width: '34px', height: '34px', fontSize: '13px' }}>
                             {r.ini}
                           </span>

@@ -9,7 +9,7 @@
 //  - 비밀번호 초기화(디자인의 '재설정 링크 보내기' 자리). 서버는 링크 · 메일이 아니라 임시 비밀번호를 한 번 준다 — 한 번 더 묻고,
 //    받은 임시 비밀번호는 이 화면 상태에만 한 번 보인다.
 //  - 잠금 해제 · 휴면 해제(임시 비밀번호 새로 발급, 한 번 더 물음) · 강제 로그아웃(한 번 더 물음).
-// 서버에 없어 '—' · 준비 중: 비밀번호 마지막 변경일(응답에 없음), 소속 기관(모델 없음), 접속 IP(감사 로그를 계정으로 거르는 훅이 없음),
+// 서버에 없어 '—' · 준비 중: 비밀번호 마지막 변경일(응답에 없음), 소속 기관(모델 없음),
 // 알림 설정(저장소 없음). OTP 줄은 OTP 가 없어(D1) 두지 않는다.
 
 import type { AccountRow, TemporaryPasswordView } from "../adminRows";
@@ -58,6 +58,8 @@ export function adminStaffDetailValues(input: {
   session: AuthSession;
   /** 주소의 user 쿼리. 없으면 null. */
   staffId: string | null;
+  /** 이 계정의 마지막 로그인 IP(감사 로그 LOGIN 성공, 11/20). 없거나 못 받았으면 null. */
+  lastIp?: string | null;
   accounts: AdminAccountsState;
   state: StaffDetailUiState;
   setState: (patch: Partial<StaffDetailUiState>) => void;
@@ -163,7 +165,7 @@ export function adminStaffDetailValues(input: {
     stateNote: row && stateActions.length === 0 ? (row.isSelf ? "자기 계정" : "할 수 있는 요청이 없습니다.") : "",
     created: row ? row.createdAt || NOT_PROVIDED : "",
     last: row ? row.lastLoginAt : "",
-    ip: NOT_PROVIDED,
+    ip: input.lastIp || NOT_PROVIDED,
     busy,
     busyText: busy ? "처리 중…" : "",
     asking: asking

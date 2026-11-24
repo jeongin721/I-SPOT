@@ -82,6 +82,14 @@ def test_extra_anchors_from_json_file(tmp_path):
     assert lm.load_anchors(str(tmp_path / "없음.json")) == {k: list(v) for k, v in lm.ANCHORS.items()}
 
 
+def test_anchor_file_in_another_encoding_falls_back_to_builtin(tmp_path):
+    # Windows 메모장 등에서 CP949 로 저장한 파일 — UTF-8 로 못 읽어도 스캔을 실패시키지 않고 내장 앵커만 쓴다(#188 리뷰).
+    path = tmp_path / "anchors-cp949.json"
+    path.write_bytes(json.dumps({"신체학대": ["매뉴얼 예시 문장"]}, ensure_ascii=False).encode("cp949"))
+
+    assert lm.load_anchors(str(path)) == {k: list(v) for k, v in lm.ANCHORS.items()}
+
+
 # ---------------------------------------------------------------------------
 # 매칭
 # ---------------------------------------------------------------------------
@@ -152,6 +160,27 @@ def test_model_load_failure_attaches_nothing_and_does_not_retry_forever():
     assert broken.references_for("밥을 안 줘요", ["방임"]) == []
     assert len(calls) == 1  # 한 번 실패하면 다시 올리려 하지 않는다
     assert broken.ready() is False
+
+
+def test_matching_error_after_load_attaches_nothing_instead_of_failing_the_scan(monkeypatch):
+    # 모델은 올라갔는데 발화를 임베딩하다 오류(GPU 메모리 등) — 모듈 함수는 예외를 올리지 않고 빈 목록을 준다(#188 리뷰).
+    def flaky(texts):
+        if len(texts) == 1:  # 앵커는 여러 문장, 발화는 한 문장씩 들어온다
+            raise RuntimeError("CUDA out of memory")
+        return fake_embed(texts)
+
+    flaky_matcher = lm.LawMatcher(lm.LawMatchConfig(min_similarity=0.5), embed_fn=flaky)
+    assert flaky_matcher.ready() is True
+    monkeypatch.setattr(lm, "get_matcher", lambda: flaky_matcher)
+
+    assert lm.references_for("허리띠로 맞았어요", ["신체학대"]) == []
+
+    # 매칭기를 만들다 난 오류도 같다.
+    def broken_get_matcher():
+        raise ValueError("anchors")
+
+    monkeypatch.setattr(lm, "get_matcher", broken_get_matcher)
+    assert lm.references_for("허리띠로 맞았어요", ["신체학대"]) == []
 
 
 # ---------------------------------------------------------------------------

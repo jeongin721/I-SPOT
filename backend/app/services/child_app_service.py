@@ -64,6 +64,8 @@ SCHEDULE_REASONS = ["몸이 안 좋아요", "학교·학원 일정이 있어요"
 SCHEDULE_REASON_ETC = "기타"
 # 기분 · 메시지 · 일정 요청은 기기 하나가 피드를 채우지 못하게 사례마다 하루(한국 시간) 이만큼만 받는다.
 DEVICE_POST_DAILY_LIMIT = 20
+# 아이 앱 일정 '다가오는 상담' 에 보이는 수.
+UPCOMING_CONSULT_LIMIT = 3
 LOCAL_TZ = ZoneInfo("Asia/Seoul")
 
 _SCALE_FACES = ["good", "okay", "meh", "worried", "sad"]
@@ -360,17 +362,21 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
     links = {row.case_id: row for row in db.scalars(select(ChildAppLink).where(ChildAppLink.case_id.in_(ids)))} if ids else {}
     since = _utcnow() - timedelta(days=RECENT_DAYS)
     latest_level: Dict[uuid.UUID, str] = {}
+    latest_acked: Dict[uuid.UUID, Optional[datetime]] = {}
     recent: Dict[uuid.UUID, int] = {}
 
     if ids:
         answered = db.execute(
-            select(ChildAppEvent.case_id, ChildAppEvent.level, ChildAppEvent.created_at)
+            select(ChildAppEvent.case_id, ChildAppEvent.level, ChildAppEvent.created_at, ChildAppEvent.acknowledged_at)
             .where(ChildAppEvent.case_id.in_(ids), ChildAppEvent.kind == ChildAppEventKind.ANSWERS)
             .order_by(ChildAppEvent.created_at.desc())
         ).all()
 
-        for case_id, level, created_at in answered:
-            latest_level.setdefault(case_id, level.value)
+        for case_id, level, created_at, acknowledged_at in answered:
+            if case_id not in latest_level:
+                latest_level[case_id] = level.value
+                # 가장 최근 답 묶음을 상담사가 확인한 시각. 목록의 '확인 필요' · '긴급'(답)을 끄는 기준이다.
+                latest_acked[case_id] = acknowledged_at
 
             if _aware(created_at) >= since:
                 recent[case_id] = recent.get(case_id, 0) + 1
@@ -405,6 +411,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "status": link.status.value if link else "NOT_LINKED",
                 "recent_answers": recent.get(case.id, 0) if assigned else None,
                 "level": latest_level.get(case.id) if assigned else None,
+                "answer_acked_at": latest_acked.get(case.id) if assigned else None,
                 "last_response_at": link.last_response_at if link else None,
                 "open_alert_at": (alert["last_at"] or alert["created_at"]) if alert else None,
                 "open_alert_reason": alert["reason"] if alert else None,
@@ -413,6 +420,7 @@ def list_cases(db: Session, user: User) -> List[Dict[str, Any]]:
                 "linked_at": link.linked_at if link else None,
                 "counselor_name": counselors.get(case.counselor_id),
                 **_welfare_fields(welfare.get(case.id), link),
+                "silent_days": link.silent_days if link else 7,
             }
         )
 
@@ -445,6 +453,32 @@ def _welfare_fields(event: Optional[ChildAppEvent], link: Optional[ChildAppLink]
         return empty
     payload = event.payload or {}
     return {"welfare_status": payload.get("status"), "welfare_note": payload.get("note"), "welfare_at": event.created_at}
+
+
+def set_silent_days(db: Session, case: Case, user: User, days: int, ip_address: Optional[str] = None) -> None:
+    """응답 상태 '기준' 일수(5 · 7 · 10)를 바꾼다. 담당 상담사 · 관리자. 연결(초대 포함)이 있어야 한다. 바뀌면 감사 기록(누가 · 몇 일에서 몇 일로)."""
+
+    if not user.is_admin:
+        ensure_assigned(case, user)
+    link = link_row(db, case.id, lock=True)
+    if link is None:
+        raise conflict(ErrorCode.INVALID_CASE_STATE, "아이 앱을 연결한 뒤에 정할 수 있습니다.")
+    before = link.silent_days
+    if before == days:
+        db.rollback()
+        return
+    link.silent_days = days
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_SILENT_DAYS_CHANGED,
+        entity_type="child_app_link",
+        entity_id=link.id,
+        actor_id=user.id,
+        case_id=case.id,
+        ip_address=ip_address,
+        detail={"from": before, "to": days},
+    )
+    db.commit()
 
 
 def record_welfare_check(db: Session, case: Case, user: User, status: str, note: Optional[str], ip_address: Optional[str]) -> None:
@@ -592,6 +626,7 @@ def get_case_view(db: Session, case: Case, user: User) -> ChildAppCaseResponse:
         code_expires_at=link.code_expires_at if link and link.status == ChildAppLinkStatus.INVITED else None,
         linked_at=link.linked_at if link else None,
         last_response_at=link.last_response_at if link else None,
+        silent_days=link.silent_days if link else 7,
         # 담당 상담사의 아이 상세 머리글에 보인다. 담당이 아닌 관리자는 연결 상태와 응답 시각만 본다.
         next_consult=_next_consult(db, case.id, datetime.now(LOCAL_TZ).date()) if can_read_feed else None,
         # 예약해 둔 질문도 답 전 질문이다(새로 보내면 바뀐다).
@@ -696,7 +731,19 @@ def _alert_reason(event: ChildAppEvent, case: Case, viewer: User) -> str:
     if case.counselor_id != viewer.id:
         return "NEEDS_CHECK"
 
-    return "RED_ANSWER" if event.level == ChildAnswerLevel.RED else event.payload.get("alert_reason", "CONTACT_REQUEST")
+    if event.level == ChildAnswerLevel.RED:
+        return "RED_ANSWER"
+
+    reason = event.payload.get("alert_reason")
+
+    if reason:
+        return reason
+
+    # 글 · 연락 요청 · 추가 질문 없이 살펴볼 답(AMBER)만 있는 답 묶음.
+    if event.kind == ChildAppEventKind.ANSWERS and event.level == ChildAnswerLevel.AMBER:
+        return "AMBER_ANSWER"
+
+    return "CONTACT_REQUEST"
 
 
 def _is_urgent(event: ChildAppEvent) -> bool:
@@ -870,7 +917,9 @@ def acknowledge_alert(
 # 아이 앱
 # =========================================================
 
-def send_alert(db: Session, link: ChildAppLink) -> None:
+def send_alert(db: Session, link: ChildAppLink) -> Optional[uuid.UUID]:
+    """아이가 '급해요' 를 눌렀다. 새 알림 줄을 만들었으면 그 id 를, 확인 전 알림에 횟수만 올렸으면 None 을 돌려준다
+    (새 알림일 때만 담당 상담사 폰에 알린다 — push_service.notify_child_alert)."""
     # 같은 기기의 동시 요청을 줄 세워 알림이 두 건 생기지 않게 한다.
     locked = db.scalar(
         select(ChildAppLink)
@@ -897,8 +946,15 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
     )
     locked.last_response_at = now
 
+    created: Optional[uuid.UUID] = None
+
     if current is None:
-        _add_event(db, locked.case_id, ChildAppEventKind.ALERT, {}, level=ChildAnswerLevel.RED, needs_ack=True)
+        event = ChildAppEvent(
+            case_id=locked.case_id, kind=ChildAppEventKind.ALERT, level=ChildAnswerLevel.RED, payload={}, needs_ack=True
+        )
+        db.add(event)
+        db.flush()
+        created = event.id
     else:
         current.payload = {
             **current.payload,
@@ -908,12 +964,13 @@ def send_alert(db: Session, link: ChildAppLink) -> None:
 
     db.commit()
 
+    return created
+
 
 def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) -> None:
     """아이가 앱 설정에서 해지한다. 연결 행을 지워 상담사가 새 코드를 만들 수 있게 하고, 답하지 않은 질문은 거둔다.
     받은 답 · 알림 기록(피드)은 그대로 둔다."""
 
-    case_id = link.case_id
     # 다른 요청과 같은 순서(연결 행 → 질문 묶음)로 잠근다. 질문 묶음을 먼저 바꾸면 PostgreSQL 에서 질문 보내기 ·
     # 추가 질문 승인과 서로 기다리다 교착(500)이 나고, 그사이 보낸 질문이 연결 없이 남았다(11/10 동시 요청 시험).
     # 이미 해지됐으면 할 일이 없다.
@@ -926,16 +983,41 @@ def unlink_device(db: Session, link: ChildAppLink, ip_address: Optional[str]) ->
     if locked is None:
         db.rollback()
         return
-    link = locked
+    _unlink(db, locked, ip_address, by="device", actor_id=None)
+
+
+def unlink_by_counselor(db: Session, case: Case, user: User, ip_address: Optional[str]) -> None:
+    """상담사가 아이 상세 '콩콩 앱 연결 › 해지하기' 로 끊는다(11/19 디자인). 기기 해지와 같은 처리를 하고,
+    그 기기의 토큰은 바로 401 이 된다. 초대 대기(코드만 발급)도 지워 코드를 무효로 한다.
+    연결이 없으면 할 일이 없다(재시도 안전). 코드 발급처럼 담당 상담사의 일이다. 종결 사례에서도 끊을 수 있다."""
+
+    ensure_assigned(case, user)
+    link = link_row(db, case.id, lock=True)
+    if link is None:
+        db.rollback()
+        return
+    _unlink(db, link, ip_address, by="counselor", actor_id=user.id)
+
+
+def _unlink(
+    db: Session, link: ChildAppLink, ip_address: Optional[str], *, by: str, actor_id: Optional[uuid.UUID]
+) -> None:
+    """잠근 연결 행을 지운다. 답하지 않은 질문은 거두고, 연결돼 있었으면 피드에 UNLINKED 줄을 남긴다."""
+
+    case_id = link.case_id
+    was_linked = link.status == ChildAppLinkStatus.LINKED
     _retire(_pending_rows(db, case_id, lock=True), _utcnow())
-    _add_event(db, case_id, ChildAppEventKind.UNLINKED, {})
+    if was_linked:
+        # 피드 문구가 누가 끊었는지 나눠 보이도록 상담사가 끊으면 by 를 싣는다(기기 해지는 예전처럼 빈 값).
+        _add_event(db, case_id, ChildAppEventKind.UNLINKED, {"by": "counselor"} if by == "counselor" else {})
     audit_service.record(
         db,
         action=AuditAction.CHILD_APP_UNLINKED,
         entity_type="child_app_link",
         entity_id=link.id,
+        actor_id=actor_id,
         case_id=case_id,
-        detail={"by": "device"},
+        detail={"by": by, "was": link.status.value},
         ip_address=ip_address,
     )
     db.delete(link)
@@ -993,8 +1075,9 @@ def get_link_by_token(db: Session, token: str) -> ChildAppLink:
     return link
 
 
-def _next_consult(db: Session, case_id: uuid.UUID, today: date) -> Optional[Dict[str, Any]]:
-    event = db.scalar(
+def _upcoming_consults(db: Session, case_id: uuid.UUID, today: date, limit: int = UPCOMING_CONSULT_LIMIT) -> List[Dict[str, Any]]:
+    """오늘부터 다가오는 상담(가까운 순, limit 개). 아이 앱 일정 '다가오는 상담' 목록(11/19 콩콩 디자인)."""
+    events = db.scalars(
         select(ScheduleEvent)
         .where(
             ScheduleEvent.case_id == case_id,
@@ -1002,11 +1085,20 @@ def _next_consult(db: Session, case_id: uuid.UUID, today: date) -> Optional[Dict
             ScheduleEvent.event_date >= today,
         )
         .order_by(ScheduleEvent.event_date, ScheduleEvent.event_time)
-        .limit(1)
-    )
+        .limit(limit)
+    ).all()
 
-    if event is None:
-        return None
+    return [_consult_view(event) for event in events]
+
+
+def _next_consult(db: Session, case_id: uuid.UUID, today: date) -> Optional[Dict[str, Any]]:
+    upcoming = _upcoming_consults(db, case_id, today, limit=1)
+
+    return upcoming[0] if upcoming else None
+
+
+def _consult_view(event: ScheduleEvent) -> Dict[str, Any]:
+    """아이 기기에 보낼 상담 한 건: 날짜 · 시간 · 장소(기관 상담만)."""
 
     # 방문 · 전화 상담의 장소 칸은 집 주소나 메모일 수 있어 아이 기기로 보내지 않는다.
     institutional = event.consult_type in (
@@ -1019,6 +1111,7 @@ def _next_consult(db: Session, case_id: uuid.UUID, today: date) -> Optional[Dict
 
 
 def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
+    upcoming = _upcoming_consults(db, link.case_id, datetime.now(LOCAL_TZ).date())
     # 발송 예약 시각이 아직 오지 않은 묶음은 주지 않는다.
     row = current_set(db, link.case_id, _utcnow())
     pending = None
@@ -1033,7 +1126,8 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
 
     return ChildHomeResponse(
         pending=pending,
-        next_consult=_next_consult(db, link.case_id, datetime.now(LOCAL_TZ).date()),
+        next_consult=upcoming[0] if upcoming else None,
+        upcoming_consults=upcoming,
         alert=_child_alert_status(db, link),
         staff_hours=staff_hours(),
     )
@@ -1236,7 +1330,8 @@ def submit_answers(
         ChildAppEventKind.ANSWERS,
         payload,
         level=worst,
-        needs_ack=worst == ChildAnswerLevel.RED or wants_contact or wrote_text or followup,
+        # 살펴볼 답(AMBER)도 확인할 알림으로 남겨 상담사가 확인하면 '확인 필요'가 꺼진다(11/20 경진님). 긴급은 아니다.
+        needs_ack=worst in (ChildAnswerLevel.RED, ChildAnswerLevel.AMBER) or wants_contact or wrote_text or followup,
     )
     db.commit()
 

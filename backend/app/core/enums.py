@@ -359,6 +359,8 @@ class AuditAction(str, Enum):
     CHILD_APP_INVITED = "CHILD_APP_INVITED"
     CHILD_APP_ALERT_ACKED = "CHILD_APP_ALERT_ACKED"
     CHILD_APP_WELFARE_CHECKED = "CHILD_APP_WELFARE_CHECKED"
+    # 응답 상태 기준 일수를 바꿈(detail: from · to, 2026-11-19).
+    CHILD_APP_SILENT_DAYS_CHANGED = "CHILD_APP_SILENT_DAYS_CHANGED"
     CHILD_APP_QUESTIONS_SENT = "CHILD_APP_QUESTIONS_SENT"
     CHILD_APP_AI_DRAFT_CREATED = "CHILD_APP_AI_DRAFT_CREATED"
     CHILD_APP_AI_DRAFT_EDITED = "CHILD_APP_AI_DRAFT_EDITED"
@@ -380,6 +382,8 @@ class AuditAction(str, Enum):
     SESSION_CREATED = "SESSION_CREATED"
     SESSION_UPDATED = "SESSION_UPDATED"
     SESSION_DELETED = "SESSION_DELETED"
+    # 비어 있는 회차 번호를 당겨 1, 2, 3… 으로 맞춤(scripts.renumber_sessions, 2026-11-20). detail.renumbered = [[옛, 새], …]
+    SESSION_RENUMBERED = "SESSION_RENUMBERED"
     AUDIO_UPLOADED = "AUDIO_UPLOADED"
     STT_REQUESTED = "STT_REQUESTED"
     STT_COMPLETED = "STT_COMPLETED"
@@ -422,6 +426,10 @@ class AuditAction(str, Enum):
     MEMO_CREATED = "MEMO_CREATED"
     MEMO_UPDATED = "MEMO_UPDATED"
     MEMO_DELETED = "MEMO_DELETED"
+    # 사내 공지사항(28절). 제목 · 본문은 남기지 않는다(중요 여부 · 바뀐 칸 이름만).
+    NOTICE_CREATED = "NOTICE_CREATED"
+    NOTICE_UPDATED = "NOTICE_UPDATED"
+    NOTICE_DELETED = "NOTICE_DELETED"
     # 브리핑 확인할 사항 체크(26절). 문장은 남기지 않는다(켬 · 끔과 개수만).
     BRIEFING_CHECK_UPDATED = "BRIEFING_CHECK_UPDATED"
     # 문서함(2026-11-05). detail 에는 파일 수 · 형식 · 크기 · 폴더 id 만(파일 이름 · 내용은 넣지 않는다).

@@ -423,7 +423,12 @@ export function signalReviewValues(input: SignalScreenInput, open: Partial<Recor
     const suggestion = severity.get(type);
     const level = suggestion?.level ?? null;
     const isOpen = !!open[type];
-    const cards = cardsByType.get(type) ?? [];
+    // AI 심각도 제안의 근거 발화(severity_ratings[].segment_ids, 2026-11-20)를 가리키는 카드를 앞에 둔다 — 접힌 목록에도 먼저 보인다.
+    // 나머지 순서는 그대로. 근거 번호가 없으면 순서를 바꾸지 않는다.
+    const basis = new Set(suggestion?.segmentIds ?? []);
+    const hits = (card: SignalCard) => card.evidence.some((item) => item.segmentId !== null && basis.has(item.segmentId));
+    const typeCards = cardsByType.get(type) ?? [];
+    const cards = basis.size ? [...typeCards.filter(hits), ...typeCards.filter((card) => !hits(card))] : typeCards;
     const lines = cards.map((card) => refLine(card, sessionLabel, ids));
     const shown = isOpen ? lines : lines.slice(0, REFS_SHOWN);
     const [evBg, evFg] = CHIP_TONES[completed ? STATE_TONE[state] : "none"];

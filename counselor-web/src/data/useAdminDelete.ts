@@ -7,6 +7,8 @@
 //    서버가 거절하면(403 · 409) 서버 문구를 확인 창에 그대로 보인다.
 //  - 되돌릴 수 없어 확인 창에서 confirmText(사례는 사례 번호, 회차는 'N회차')를 그대로 쳐야 지운다.
 //  - 사례를 지울 때는 함께 지워질 회차 수를 먼저 받아 보인다(GET /cases/{id}/sessions 의 meta.total). 못 받으면 '전부' 로 쓴다.
+//  - 회차는 확인 창에서 고른다(2026-11-20): 잘못 올린 회차면 뒤 회차 번호를 하나씩 당기고, 실제 상담 기록이면 번호를 비워 둔다.
+//    되돌릴 수 없어 기본값 없이 골라야 지운다(민규 #190 리뷰 2).
 //  - 지우면 onDeleted(목록 다시 부르기)를 부르고, 지운 회차(사례면 그 사례 회차)의 원문 변환 알림을 닫는다.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -63,6 +65,9 @@ export interface AdminDeleteState {
   /** 함께 지워지는 것(확인 창 목록). */
   items: string[];
   busy: boolean;
+  /** 회차: 뒤 회차 번호를 당기는가(잘못 올린 회차). 실제 상담 기록이면 false. 아직 고르지 않았으면 null(지울 수 없음). */
+  renumber: boolean | null;
+  setRenumber: (on: boolean) => void;
   /** 지우지 못한 이유(서버 문구 그대로). */
   error: string | null;
   /** 지운 뒤 화면에 보일 안내. */
@@ -79,6 +84,7 @@ export function useAdminDelete(onDeleted: () => void): AdminDeleteState {
   // 사례의 회차 수: 받는 중이면 null, 못 받았으면 -1.
   const [count, setCount] = useState<{ caseId: string; total: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [renumber, setRenumber] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -100,6 +106,7 @@ export function useAdminDelete(onDeleted: () => void): AdminDeleteState {
   const ask = useCallback((next: DeleteTarget) => {
     setError(null);
     setDone(null);
+    setRenumber(null);
     setTarget(next);
   }, []);
 
@@ -111,17 +118,18 @@ export function useAdminDelete(onDeleted: () => void): AdminDeleteState {
 
   const run = useCallback(async () => {
     if (!target || inFlight.current) return;
+    if (target.kind === "session" && renumber === null) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
       if (target.kind === "case") await cases.remove(target.id);
-      else await sessions.remove(target.id);
+      else await sessions.remove(target.id, { renumber: renumber === true });
       for (const job of getTranscriptionJobs()) {
         if (target.kind === "case" ? job.caseId === target.id : job.sessionId === target.id) dismissTranscription(job.sessionId);
       }
       setTarget(null);
-      setDone(`지웠습니다 — ${target.label}`);
+      setDone(target.kind === "session" && renumber === true ? `지웠습니다 — ${target.label}. 뒤 회차 번호를 하나씩 당겼습니다.` : `지웠습니다 — ${target.label}`);
       onDeleted();
     } catch (caught) {
       setError(errorMessage(caught, "지우지 못했습니다. 잠시 후 다시 시도해 주세요."));
@@ -129,7 +137,7 @@ export function useAdminDelete(onDeleted: () => void): AdminDeleteState {
       inFlight.current = false;
       setBusy(false);
     }
-  }, [target, onDeleted]);
+  }, [target, onDeleted, renumber]);
 
   let items = SESSION_ITEMS;
   if (target?.kind === "case") {
@@ -149,6 +157,8 @@ export function useAdminDelete(onDeleted: () => void): AdminDeleteState {
     title: target?.kind === "case" ? "사례 영구 삭제" : "회차 영구 삭제",
     items,
     busy,
+    renumber,
+    setRenumber,
     error,
     done,
     ask,

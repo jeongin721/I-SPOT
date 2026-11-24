@@ -2,9 +2,10 @@
 # 파일 자체는 Local Storage 에 있고, DB 에는 경로/타입/크기/길이만 저장한다.
 
 import uuid
+from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -34,6 +35,9 @@ class AudioFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     uploaded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # 녹음 동의를 받았다고 상담사가 확인한 시각(폰 앱 녹음의 '녹음 동의 완료', 11/20 경진님). 확인한 사람은 uploaded_by.
+    # 다른 녹음 앱 파일 · 웹에서 올린 파일은 앱이 동의를 묻지 않아 null 이다.
+    consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     session: Mapped["ConsultationSession"] = relationship(back_populates="audio_files")
     features: Mapped[List["AudioFeature"]] = relationship(

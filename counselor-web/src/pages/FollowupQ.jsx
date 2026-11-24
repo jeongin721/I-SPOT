@@ -214,6 +214,7 @@ function FollowupQScreen(props) {
             {(v.checks || []).map((c) => (
               <div key={c.key} className="qcard" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: '12px' }}>
                 <input
+                  id={`ck-${c.key}`}
                   type="checkbox"
                   checked={c.on}
                   onChange={c.toggle}
@@ -231,7 +232,15 @@ function FollowupQScreen(props) {
                       ))}
                     </div>
                   ) : null}
-                  {v.ckNotEdit ? <span style={{ fontSize: '15px' }}>{c.text}</span> : null}
+                  {/* 글씨를 눌러도 체크된다(11/19 팀 요청) — 체크칸과 묶은 label. */}
+                  {v.ckNotEdit ? (
+                    <label
+                      htmlFor={`ck-${c.key}`}
+                      style={{ fontSize: '15px', cursor: v.ckCanEdit ? 'pointer' : 'default' }}
+                    >
+                      {c.text}
+                    </label>
+                  ) : null}
                   {v.ckIsEdit ? (
                     <textarea className="edit-in" rows="2" aria-label="확인 사항 수정" value={c.draft} onChange={c.setDraft}></textarea>
                   ) : null}

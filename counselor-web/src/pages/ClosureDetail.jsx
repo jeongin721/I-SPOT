@@ -19,7 +19,7 @@ import PrintNameDialog, { printMasked } from '../components/PrintNameDialog';
 import Sidebar from '../components/Sidebar';
 import NotiBell from '../components/NotiBell';
 import ThemeToggle from '../components/ThemeToggle';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuthSession } from '../data/useAuthSession';
 import { useCaseDetail } from '../data/useCaseDetail';
 import { useCaseClosing } from '../data/useCaseClosing';
@@ -30,7 +30,7 @@ import { closureSuggestions } from '../data/screens/closureSuggest';
 import { useClosureSummary } from '../data/useClosureSummary';
 import { closureReportValues } from '../data/screens/closureReview';
 import { familyScaleLine } from '../data/screens/caseForm';
-import { signedIn } from '../data/screens/common';
+import { needsLogin, signedIn } from '../data/screens/common';
 import { readScreenIds } from '../data/screens/links';
 import { useLeaveGuard } from '../data/screens/useLeaveGuard';
 import { useTheme } from '../theme';
@@ -209,6 +209,8 @@ function ClosureDetailScreen(props) {
       setSavedNote(`보고서를 저장했습니다 · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
     }
   };
+  // 실제 사례 주소는 로그인해야 연다(다른 화면과 같이, 11/20 점검).
+  if (caseId && needsLogin(session)) return <Navigate to="/Login" replace />;
   const name = r.alias || '강시우';
   return (
     <div className="pg-ClosureDetail">

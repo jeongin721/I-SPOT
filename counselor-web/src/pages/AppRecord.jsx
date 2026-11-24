@@ -129,6 +129,8 @@ function RecordBody({ userId, items, loaded }) {
       expectStatus: session ? session.status : 'CREATED',
       consultationType: kind,
       consultedAt: new Date().toISOString(),
+      // '녹음 동의 완료'를 확인하고 시작했다. 올릴 때 서버에 동의 시각으로 남긴다(11/20).
+      consentAt: new Date().toISOString(),
     });
   };
 

@@ -9,7 +9,7 @@
 //  - 개인 · 기관 일정: 제목(없으면 분류 이름). 폰에서 새로 넣으면 분류는 '기타'(웹에서 바꿀 수 있다). 고칠 때는 원래 분류를 둔다.
 //  - 수정 · 삭제는 만든 사람만(editable). 팀 공유 일정 중 남의 것은 보기만.
 //  - 날짜 고르기는 디자인처럼 그 주 7일(고치는 일정이 다른 주면 그 날도 넣는다). 다른 주는 달력에서 날을 고른 뒤 추가한다.
-//  - 디자인 상세의 '브리핑 준비됨 · 준비 중' 줄은 준비 여부를 정할 서버 값이 없어 넣지 않았다.
+//  - 상세의 '다음 상담 준비 · 준비됨 / 준비 중' 줄: 서버 briefing_ready(그 사례에 분석이 끝난 회차가 있는가, 11/20).
 //  - 11/19 디자인: 펼친 월간 달력에 ‹ › 달 이동, 'YYYY년 M월 ▾' 을 누르면 년도(‹ ›) · 월(12칸) 고르기.
 //    고른 날이 든 달이 아닌 달을 보면 그 달 달력 칸만큼 일정을 따로 받아 점을 찍는다. 날을 누르거나 접기 · 오늘을 누르면
 //    보던 달은 잊고(고른 날의 달로) 접는다. 달력 접기 · 창 닫기 · 날 바꾸기에 움직임(동작 줄이기면 끔).
@@ -148,6 +148,7 @@ function ScheduleBody({ userId }) {
     setErr('');
     setF({
       t: e.kind === 'CONSULT' ? 'c' : 'p',
+      wasConsult: e.kind === 'CONSULT',
       caseId: e.case_id ?? my.rows[0]?.id ?? '',
       hidden: !!e.case_hidden,
       ctype: e.consult_type && e.consult_type !== 'CLOSING' ? e.consult_type : e.consult_type ?? 'REGULAR',
@@ -178,7 +179,12 @@ function ScheduleBody({ userId }) {
       place: (f.place || '').trim() || null,
       ...(isC
         ? { consult_type: f.ctype, ...(f.hidden ? {} : { case_id: f.caseId }) }
-        : { title: f.title.trim(), category: f.category ?? 'ETC' }),
+        : {
+            title: f.title.trim(),
+            category: f.category ?? 'ETC',
+            // 상담 일정을 개인 · 기관 일정으로 바꾸면 붙어 있던 사례를 뗀다(11/20 점검). 가려진 사례는 서버가 막으므로 보내지 않는다.
+            ...(f.wasConsult && !f.hidden ? { case_id: null } : {}),
+          }),
     };
     setBusy(true);
     setErr('');
@@ -403,6 +409,8 @@ function ScheduleBody({ userId }) {
                 ['날짜', label(parseYmd(cur.date))],
                 ['시간', cur.time || '종일'],
                 ['장소', cur.place || '—'],
+                // 디자인의 '다음 상담 준비 · 준비됨 / 준비 중' 줄. 서버가 값을 줄 때(상담 일정 · 볼 수 있는 사례)만.
+                ...(cur.kind === 'CONSULT' && typeof cur.briefing_ready === 'boolean' ? [['다음 상담 준비', cur.briefing_ready ? '준비됨' : '준비 중']] : []),
                 ...(cur.editable ? [] : [['만든 사람', cur.owner_name || '—']]),
               ].map(([k, v]) => (
                 <div key={k} className="ma-row-k">

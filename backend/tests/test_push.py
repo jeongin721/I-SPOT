@@ -411,3 +411,132 @@ def test_loop_off_by_default_and_without_keys(monkeypatch) -> None:
     monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", None)
     asyncio.run(asyncio.wait_for(push_service.run_push_loop(), 1))
     assert called == []
+
+
+# ---------------------------------------------------------------- 아이 긴급 알림(2026-11-20)
+
+
+@pytest.fixture
+def child_on(monkeypatch):
+    monkeypatch.setattr(settings, "CHILD_APP_ENABLED", True)
+
+
+def _child_device(client: TestClient, headers, case_id: str) -> dict:
+    code = client.post(f"/api/v1/cases/{case_id}/child-app/invite", headers=headers).json()["data"]["code"]
+    token = client.post("/api/v1/child-app/link", json={"code": code}).json()["data"]["device_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _press(client: TestClient, device: dict) -> None:
+    res = client.post("/api/v1/child-app/alerts", headers=device)
+    assert res.status_code == 200, res.text
+
+
+def test_child_alert_pushes_to_case_counselor_once(
+    client: TestClient, counselor_headers, other_counselor_headers, case, child_on, push_on, sent, db
+) -> None:
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/mine"), headers=counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/other"), headers=other_counselor_headers)
+    # 상담 30분 전 · 업로드 실패를 꺼 둔 폰도 긴급 알림은 받는다(따로 끄는 칸이 없다).
+    client.put(
+        "/api/v1/push/subscription",
+        json=_sub_body("https://fcm.googleapis.com/fcm/send/mine2", before_session=False, upload_failed=False),
+        headers=counselor_headers,
+    )
+    device = _child_device(client, counselor_headers, case["id"])
+
+    _press(client, device)
+
+    assert sorted(call["endpoint"] for call in sent) == [
+        "https://fcm.googleapis.com/fcm/send/mine",
+        "https://fcm.googleapis.com/fcm/send/mine2",
+    ]
+    message = sent[0]["message"]
+    assert message["title"] == push_service.CHILD_ALERT_TITLE and message["body"] == push_service.CHILD_ALERT_BODY
+    assert message["url"] == f"/#/ChildDetail?case={case['id']}"
+    # 잠금 화면 문구에 아이 가명 · 사례 번호가 없다.
+    assert case["child_alias"] not in json.dumps(message, ensure_ascii=False)
+    assert case.get("case_number", "C-") not in message["body"]
+
+    # 확인 전에 다시 누르면 같은 알림(횟수만) — 새로 보내지 않는다.
+    _press(client, device)
+    assert len(sent) == 2
+
+    # 상담사가 확인한 뒤 다시 누르면 새 알림이라 다시 보낸다.
+    alert_id = client.get(f"/api/v1/cases/{case['id']}/child-app", headers=counselor_headers).json()["data"]["open_alerts"][0]["id"]
+    assert client.post(f"/api/v1/cases/{case['id']}/child-app/alerts/{alert_id}/ack", headers=counselor_headers).status_code == 204
+    _press(client, device)
+    assert len(sent) == 4
+    db.expire_all()
+    assert len(db.scalars(select(PushDelivery).where(PushDelivery.kind == push_service.KIND_CHILD_ALERT)).all()) == 2
+
+
+def test_child_alert_works_without_push(client: TestClient, counselor_headers, case, child_on, sent, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", None)
+    device = _child_device(client, counselor_headers, case["id"])
+
+    _press(client, device)
+
+    assert sent == []
+    assert client.get(f"/api/v1/cases/{case['id']}/child-app", headers=counselor_headers).json()["data"]["open_alerts"]
+
+
+def test_child_alert_push_error_does_not_reach_child(
+    client: TestClient, counselor_headers, case, child_on, push_on, monkeypatch
+) -> None:
+    client.put("/api/v1/push/subscription", json=_sub_body(), headers=counselor_headers)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("push service down")
+
+    monkeypatch.setattr(webpush, "send", boom)
+    device = _child_device(client, counselor_headers, case["id"])
+
+    _press(client, device)
+
+    assert client.get(f"/api/v1/cases/{case['id']}/child-app", headers=counselor_headers).json()["data"]["open_alerts"]
+
+
+
+@pytest.mark.parametrize(("first", "tries"), [(503, 2), (0, 2), (410, 1), (201, 1)])
+def test_child_alert_retries_once_on_brief_failure(
+    client: TestClient, counselor_headers, case, child_on, push_on, monkeypatch, first, tries
+) -> None:
+    # 잠깐의 실패(5xx · 연결 실패)면 한 번 더 보낸다. 구독이 없어졌거나(410) 보냈으면 다시 보내지 않는다(민규 #190 리뷰 1).
+    monkeypatch.setattr(push_service, "CHILD_ALERT_RETRY_SECONDS", 0)
+    client.put("/api/v1/push/subscription", json=_sub_body(), headers=counselor_headers)
+    calls = []
+
+    def flaky(endpoint, p256dh, auth, message, **kwargs):
+        calls.append(endpoint)
+        return webpush.SendResult(first if len(calls) == 1 else 201)
+
+    monkeypatch.setattr(webpush, "send", flaky)
+    device = _child_device(client, counselor_headers, case["id"])
+
+    _press(client, device)
+
+    assert len(calls) == tries
+
+# ---------------------------------------------------------------- 토큰을 끊으면 폰 구독도 지운다(11/20 점검)
+
+@pytest.mark.parametrize("action", ["logout-all", "password-reset"])
+def test_revoking_tokens_drops_push_subscriptions(
+    client: TestClient, admin_headers, counselor_headers, other_counselor_headers, push_on, db, counselor_id, action
+) -> None:
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/mine"), headers=counselor_headers)
+    client.put("/api/v1/push/subscription", json=_sub_body("https://fcm.googleapis.com/fcm/send/other"), headers=other_counselor_headers)
+
+    assert client.post(f"/api/v1/auth/users/{counselor_id}/{action}", headers=admin_headers).status_code in (200, 204)
+
+    db.expire_all()
+    rows = db.scalars(select(PushSubscription)).all()
+    # 끊은 계정 것만 지우고 다른 계정 것은 남긴다.
+    assert [row.endpoint for row in rows] == ["https://fcm.googleapis.com/fcm/send/other"]
+
+
+def test_before_session_enabled_needs_loop(client: TestClient, counselor_headers, push_on, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "PUSH_LOOP_ENABLED", False)
+    assert client.get("/api/v1/push/config", headers=counselor_headers).json()["data"]["before_session_enabled"] is False
+    monkeypatch.setattr(settings, "PUSH_LOOP_ENABLED", True)
+    assert client.get("/api/v1/push/config", headers=counselor_headers).json()["data"]["before_session_enabled"] is True

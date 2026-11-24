@@ -4,7 +4,7 @@
 //
 // Backend 에 없는 값은 다른 값으로 대신 채우지 않는다(caseRows.ts 와 같은 규칙).
 //  - 위험도 · 신고접수일은 사례 목록과 같은 값(없으면 '—'). '위험도 상' 칸은 받은 목록에서 '상' 인 사례를 센다.
-//  - 관리 기간은 '—', 위험도 거르기 · 정렬 단추는 준비 중.
+//  - 관리 기간은 '—'(정렬도 준비 중). 위험도 거르기 · 최근 접수 · 위험도 정렬은 받은 목록에서 한다(11/20).
 //  - 최근 상담: 사례의 last_session_at 은 상담 일시를 넣지 않은 회차를 등록일로 채워 셈하므로 최근 상담일로 보이지 않는다.
 //  - 진행 단계(초기 조사 · 종결 검토): 없다. 사례 상태(진행 · 종결)만 보인다.
 //  - 재배정 필요(디자인: 담당 상담원 비활성): 진행 중 사례의 담당 계정이 비활성이거나 지워졌으면 그렇게 보인다.
@@ -25,13 +25,21 @@ import { screenHref } from "./links";
 /** 상담원 거르기. ALL_STAFF 이면 전체, 아니면 담당 계정 ID. */
 export const ALL_STAFF = "all";
 
+export type AdminRiskFilter = "all" | "상" | "중" | "하";
+/** 정렬. "" 이면 사례 등록 최신순(서버 순서). */
+export type AdminCasesSort = "" | "date" | "risk";
+
 export interface AdminCasesUiState {
   who: string;
+  risk: AdminRiskFilter;
+  sort: AdminCasesSort;
 }
 
 export function initialAdminCasesState(): AdminCasesUiState {
-  return { who: ALL_STAFF };
+  return { who: ALL_STAFF, risk: "all", sort: "" };
 }
+
+const RISK_RANK: Record<string, number> = { 상: 0, 중: 1, 하: 2 };
 
 interface AdminCasesInput {
   session: AuthSession;
@@ -92,6 +100,7 @@ export function adminCasesValues(input: AdminCasesInput) {
   const q = input.search.trim().toLowerCase();
   const rows = all
     .filter(({ source }) => who === ALL_STAFF || source.counselor_id === who)
+    .filter(({ row }) => state.risk === "all" || row.riskLabel === state.risk)
     .filter(
       ({ row }) =>
         !q ||
@@ -99,6 +108,16 @@ export function adminCasesValues(input: AdminCasesInput) {
         row.alias.toLowerCase().includes(q) ||
         row.caseNumber.toLowerCase().includes(q),
     )
+    .sort((a, b) => {
+      if (state.sort === "risk") return (RISK_RANK[a.row.riskLabel] ?? 9) - (RISK_RANK[b.row.riskLabel] ?? 9);
+      if (state.sort === "date") {
+        // 신고접수일 최신순, 없는 사례는 뒤로.
+        const da = a.row.reportDate === NOT_PROVIDED ? "" : a.row.reportDate;
+        const db = b.row.reportDate === NOT_PROVIDED ? "" : b.row.reportDate;
+        return db.localeCompare(da);
+      }
+      return 0;
+    })
     .map(({ source, row }) => {
       const reassign = needsReassign(row, source.counselor_id, users);
       return {
@@ -122,19 +141,33 @@ export function adminCasesValues(input: AdminCasesInput) {
       };
     });
 
-  // 위험도 거르기(디자인: 전체 · 상 · 중 · 하). 사례 단위 위험도가 Backend 에 없어 '전체' 만 고를 수 있다(CaseList 와 같음).
-  const riskF = [
-    ["all", "전체"],
-    ["상", "상"],
-    ["중", "중"],
-    ["하", "하"],
-  ].map(([key, label]) => ({ key, label, cls: key === "all" ? "on" : "", pressed: key === "all", disabled: key !== "all" }));
-  // 정렬(디자인: 최근 접수 · 위험도 · 관리 기간)은 모두 Backend 에 없는 값으로 해서 고를 수 없다. 목록은 사례 등록 최신순이다.
+  // 위험도 거르기(디자인: 전체 · 상 · 중 · 하). 사례 목록의 위험도(상담원이 고른 위험도 우선)로 받은 목록에서 거른다(11/20).
+  const riskF = (["all", "상", "중", "하"] as AdminRiskFilter[]).map((key) => ({
+    key,
+    label: key === "all" ? "전체" : key,
+    cls: state.risk === key ? "on" : "",
+    pressed: state.risk === key,
+    disabled: false,
+    pick: () => setState({ risk: key }),
+  }));
+  // 정렬(디자인: 최근 접수 · 위험도 · 관리 기간). 최근 접수는 신고접수일, 위험도는 상 → 중 → 하. 다시 누르면 등록 최신순.
+  // 관리 기간은 서버에 없는 값이라 준비 중.
   const sortF = [
     ["date", "최근 접수"],
     ["risk", "위험도"],
     ["long", "관리 기간"],
-  ].map(([key, label]) => ({ key, label, cls: "", pressed: false, disabled: true }));
+  ].map(([key, label]) => {
+    const ready = key !== "long";
+    const on = ready && state.sort === key;
+    return {
+      key,
+      label,
+      cls: on ? "on" : "",
+      pressed: on,
+      disabled: !ready,
+      pick: ready ? () => setState({ sort: on ? "" : (key as AdminCasesSort) }) : undefined,
+    };
+  });
   const staffF = [{ id: ALL_STAFF, name: "전체", count: all.length }, ...staff].map((s) => ({
     key: s.id,
     label: `${s.name} ${s.count}`,
@@ -162,7 +195,13 @@ export function adminCasesValues(input: AdminCasesInput) {
         v: casesLoaded ? `${all.filter(({ row }) => row.riskLabel === "상").length}건` : NOT_PROVIDED,
         note: casesLoaded ? "상담원이 고른 위험도(우선)" : "",
       },
-      { label: "종결 검토", v: NOT_PROVIDED, note: NOT_READY },
+      {
+        label: "종결 검토",
+        v: casesLoaded
+          ? `${all.filter(({ row }) => row.status === "ACTIVE" && row.closureReviewDate).length}건`
+          : NOT_PROVIDED,
+        note: casesLoaded ? "종결 검토로 등록한 진행 사례" : "",
+      },
       {
         label: "재배정 필요",
         v: casesLoaded ? `${reassignCount}건` : NOT_PROVIDED,
@@ -177,9 +216,11 @@ export function adminCasesValues(input: AdminCasesInput) {
     notReady: NOT_READY,
     rows,
     empty: casesLoaded && rows.length === 0,
-    countLabel: casesLoaded ? `사례 ${rows.length}건 표시 · 사례 등록 최신순` : "",
+    countLabel: casesLoaded
+      ? `사례 ${rows.length}건 표시 · ${state.sort === "date" ? "신고접수일 최신순" : state.sort === "risk" ? "위험도 높은 순" : "사례 등록 최신순"}`
+      : "",
     dataNote:
-      `관리 기간 · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)와 위험도 거르기 · 정렬은 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
+      `관리 기간(정렬 포함) · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)는 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
       "위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)이고, 진행 단계 칸에는 사례 상태(진행 · 종결)를 보입니다.",
     usersError: list.usersError,
   };

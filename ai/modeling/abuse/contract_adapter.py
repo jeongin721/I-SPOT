@@ -31,8 +31,10 @@ protective_factors/session_change_notes/followup_check_points를
 
 - severity_ratings: severity_llm.rate_severity_from_text()의 출력
   키(major_type/level/reason/matched_evidence/reviewed)가 Contract의
-  SeverityRating과 이름이 같아 그대로 옮긴다. segment_ids는 아직
-  없어서 Contract 기본값(빈 배열)으로 비워 둔다.
+  SeverityRating과 이름이 같아 그대로 옮긴다. segment_ids는 모듈이 주지
+  않아 여기서 붙인다(2026-11-20, _severity_segment_ids): 같은 유형
+  risk_signal_points 중 matched_evidence(근거 발췌)와 글이 겹치는 것의
+  segment_ids, 겹치는 것이 없으면 같은 유형 risk_signal_points 전부.
 - protective_factors: protective_factor_llm.generate_protective_factors()의
   출력(category/text/segment_ids)이 이미 ProtectiveFactor와 모양이
   같아 그대로 옮긴다.
@@ -126,6 +128,7 @@ main에 머지됨)를 그대로 쓴다 — 아동(CHILD) 발화만 근거로 남
   (한글)을 그대로 둔다.
 """
 
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from agent.summary_converter import OVERVIEW_EMPTY_WARNING, convert_summary
@@ -207,6 +210,50 @@ def _legal_references(value: Any) -> List[Dict[str, str]]:
         )
 
     return references
+
+
+# 근거 발췌와 발화 글을 견줄 때 지우는 글자(띄어쓰기 · 문장 부호 · 따옴표). 마스킹 표시([이름1] 등)는 남는다.
+_NOT_TEXT = re.compile(r"[\s.,!?~…·'\"“”‘’「」『』()\-]+")
+# 발췌를 이 글자들로 나눠 조각마다 견준다(LLM 이 여러 발화를 이어 붙여 줄 때).
+_EXCERPT_SPLIT = re.compile(r"[\n/|]+|[“”\"]|\.{3}|…")
+# 이보다 짧은 조각은 '네', '아니요' 같은 흔한 말이라 견주지 않는다.
+_MIN_EXCERPT = 4
+
+
+def _plain(text: Any) -> str:
+    return _NOT_TEXT.sub("", text) if isinstance(text, str) else ""
+
+
+def _severity_segment_ids(rating: Dict[str, Any], risk_signal_points: List[Dict[str, Any]]) -> List[str]:
+    """심각도 제안의 근거 발화 번호(2026-11-20, 위험 신호 segment_ids 남은 일).
+
+    severity_llm 은 근거를 글(matched_evidence)로만 준다. 같은 유형 risk_signal_points 중 그 글과 겹치는 발화
+    (한쪽이 다른 쪽을 품으면)의 segment_ids 를 모은다. 겹치는 것이 없으면(발췌가 비었거나 LLM 이 말을 바꿔 적음)
+    같은 유형 risk_signal_points 전부 — 화면이 지금까지 대신 보이던 것과 같다. 단계가 없는(정보 부족) 제안도 같다."""
+
+    same_type = [point for point in risk_signal_points if point.get("major_type") == rating.get("major_type")]
+    excerpt = rating.get("matched_evidence")
+    pieces = [_plain(piece) for piece in _EXCERPT_SPLIT.split(excerpt)] if isinstance(excerpt, str) else []
+    pieces = [piece for piece in pieces if len(piece) >= _MIN_EXCERPT]
+    whole = _plain(excerpt)
+
+    def overlaps(point: Dict[str, Any]) -> bool:
+        text = _plain(point.get("text"))
+
+        if len(text) < _MIN_EXCERPT:
+            return False
+
+        return text in whole or any(piece in text or text in piece for piece in pieces)
+
+    matched = [point for point in same_type if overlaps(point)]
+    ids: List[str] = []
+
+    for point in matched or same_type:
+        for segment_id in point.get("segment_ids") or []:
+            if isinstance(segment_id, str) and segment_id not in ids:
+                ids.append(segment_id)
+
+    return ids
 
 
 def _assessment_field(text: Any, segment_ids: Any) -> Dict[str, Any]:
@@ -410,6 +457,7 @@ def to_ai_output_contract(
             "level": rating.get("level"),
             "reason": rating.get("reason", ""),
             "matched_evidence": rating.get("matched_evidence", ""),
+            "segment_ids": _severity_segment_ids(rating, risk_signal_points),
             "reviewed": rating.get("reviewed", False),
         }
         for rating in result.get("severity_ratings") or []

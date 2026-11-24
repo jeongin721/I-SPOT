@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.deps import AdminUser, CurrentUser, DbSession, bearer_scheme, client_ip
@@ -31,12 +31,13 @@ from app.schemas.child_app import (
     ChildMoodRequest,
     ChildNoteRequest,
     ChildScheduleRequest,
+    ChildSilentDaysRequest,
     ChildOpenAlert,
     ChildQuestionSendRequest,
     ChildRecentAlert,
     ChildWelfareCheckRequest,
 )
-from app.services import child_app_ai_service, child_app_service
+from app.services import child_app_ai_service, child_app_service, push_service
 from app.services.access import get_case_or_404
 
 _enabled = [Depends(child_app_service.ensure_enabled)]
@@ -93,8 +94,13 @@ def submit_answers(
 
 
 @device_router.post("/alerts", response_model=DataResponse[ChildAlertReceived])
-def send_alert(db: DbSession, link: CurrentChildLink) -> DataResponse[ChildAlertReceived]:
-    child_app_service.send_alert(db, link)
+def send_alert(db: DbSession, link: CurrentChildLink, background: BackgroundTasks) -> DataResponse[ChildAlertReceived]:
+    case_id = link.case_id
+    alert_id = child_app_service.send_alert(db, link)
+
+    # 새 긴급 알림이면 담당 상담사 폰에 알린다(응답을 보낸 뒤 — 아이 쪽은 기다리지 않는다).
+    if alert_id is not None:
+        background.add_task(push_service.notify_child_alert, case_id, alert_id)
 
     return DataResponse(data=ChildAlertReceived())
 
@@ -161,6 +167,14 @@ def acknowledge_alert(
     child_app_service.acknowledge_alert(db, case, current_user, alert_id, client_ip(request))
 
 
+@case_router.put("/{case_id}/child-app/silent-days", status_code=status.HTTP_204_NO_CONTENT, summary="응답 상태 기준 일수")
+def set_silent_days(
+    case_id: uuid.UUID, payload: ChildSilentDaysRequest, request: Request, db: DbSession, current_user: CurrentUser
+) -> None:
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.set_silent_days(db, case, current_user, payload.days, client_ip(request))
+
+
 @case_router.get("/{case_id}/child-app", response_model=DataResponse[ChildAppCaseResponse])
 def get_case_child_app(
     case_id: uuid.UUID,
@@ -187,6 +201,19 @@ def create_invite(
     result = child_app_service.create_invite(db, case, current_user, client_ip(request))
 
     return DataResponse(data=ChildAppInviteResponse(**result))
+
+
+@case_router.delete("/{case_id}/child-app/link", status_code=status.HTTP_204_NO_CONTENT, summary="아이 앱 연결 해지(상담사)")
+def unlink_case_child_app(
+    case_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """아이 상세 '해지하기'. 담당 상담사만. 연결이 없으면 204(재시도 안전)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+    child_app_service.unlink_by_counselor(db, case, current_user, client_ip(request))
 
 
 @case_router.post("/{case_id}/child-app/question-sets", status_code=status.HTTP_204_NO_CONTENT)

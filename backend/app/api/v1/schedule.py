@@ -26,8 +26,9 @@ def list_schedule_events(
     end: date = Query(alias="to"),
 ) -> DataResponse[ScheduleListResponse]:
     rows = schedule_service.list_events(db, current_user, start, end)
+    ready = schedule_service.briefing_ready_cases(db, rows)
 
-    return DataResponse(data=ScheduleListResponse(items=[schedule_service.to_response(row, current_user) for row in rows]))
+    return DataResponse(data=ScheduleListResponse(items=[schedule_service.to_response(row, current_user, ready) for row in rows]))
 
 
 @router.post("/events", response_model=DataResponse[ScheduleEventResponse], status_code=status.HTTP_201_CREATED)
@@ -38,7 +39,7 @@ def create_schedule_event(
 ) -> DataResponse[ScheduleEventResponse]:
     row = schedule_service.create_event(db, current_user, payload)
 
-    return DataResponse(data=schedule_service.to_response(row, current_user))
+    return DataResponse(data=schedule_service.to_response(row, current_user, schedule_service.briefing_ready_cases(db, [row])))
 
 
 @router.patch("/events/{event_id}", response_model=DataResponse[ScheduleEventResponse])
@@ -51,7 +52,7 @@ def update_schedule_event(
     row = schedule_service.get_event_or_404(db, event_id, current_user, edit=True)
     row = schedule_service.update_event(db, current_user, row, payload)
 
-    return DataResponse(data=schedule_service.to_response(row, current_user))
+    return DataResponse(data=schedule_service.to_response(row, current_user, schedule_service.briefing_ready_cases(db, [row])))
 
 
 @router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
