@@ -252,6 +252,25 @@ def test_similar_name_variants() -> None:
     assert similar_name_variants("하지만 괜찮아요. 고민이 있어요. 오늘하지만", ["하지원", "고민지"]) == []
 
 
+def test_similar_name_variants_missed_cases_from_review() -> None:
+    """민규 #195 리뷰(79d1d466): 고치기 전에는 가렸는데 안 가리게 된 표기(모두 가상 이름)."""
+
+    from app.services.pre_analysis_service import similar_name_variants
+
+    # (가) 틀린 표기의 끝 글자가 조사 꼴 — 이름 앞 두 글자가 흔한 낱말이 아니면 이름으로 본다.
+    assert similar_name_variants("김수아가 왔어요. 김수아 학생이", ["김수하"]) == ["김수아"]
+    assert similar_name_variants("최유아가 왔어", ["최유하"]) == ["최유아"]
+    # (나) 뒤에 붙는 말 · 앞에 붙여 쓴 '우리'.
+    for text in ("김수하와", "김수하라고", "김수하예요", "김수하하고", "김수하만", "김수하네", "김수하처럼", "김수하입니다", "우리김수하가"):
+        assert similar_name_variants(text, ["김수아"]) == ["김수하"], text
+    # (다) 모음 · 받침 하나만 다른 표기.
+    pairs = {"박서윤": "박서연", "김민준": "김민중", "이예린": "이예림", "정하윤": "정하율"}
+    for name, heard in pairs.items():
+        assert similar_name_variants(f"{heard}이 왔어요", [name]) == [heard], name
+    # 흔한 낱말 + 조사 · 두 군데 이상 다른 낱말은 그대로 둔다.
+    assert similar_name_variants("고민이 있어요. 사람이 많아. 하지만", ["고민지", "사람지", "하지원"]) == []
+
+
 def test_switch_off_does_not_reuse_saved_result(client: TestClient, counselor_headers, session: dict, before_confirm, monkeypatch, calls) -> None:
     transcribed_session(client, counselor_headers, session["id"])
     monkeypatch.setattr(settings, "ANALYZE_BEFORE_CONFIRM", False)
