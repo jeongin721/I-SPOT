@@ -72,6 +72,18 @@
 .pg-ClosureReview .tl th {
   padding: 10px 14px;
 }
+/* 회차별 흐름 표(.tl-flow)의 회차 · 날짜 · 학대 유형 칸은 낱말을 쪼개지 않는다. main 의 overflow-wrap:anywhere(common.css)
+   때문에 표가 좁은 칸을 글자 하나 너비까지 줄여 '1 / 회 / 차' 처럼 세로로 꺾였다. 회차는 한 줄로, 날짜 · 유형은 빈칸에서만
+   줄을 바꾼다. 아이 연계의 질문 표(.tl)는 첫 칸이 긴 글이라 여기에 넣지 않는다. */
+.pg-ClosureReview .tl-flow th:nth-child(-n + 3),
+.pg-ClosureReview .tl-flow td:nth-child(-n + 3) {
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.pg-ClosureReview .tl-flow th:first-child,
+.pg-ClosureReview .tl-flow td:first-child {
+  white-space: nowrap;
+}
 .pg-ClosureReview .qt {
   padding: 12px 14px;
   border-radius: 12px;
