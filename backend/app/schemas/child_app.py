@@ -279,6 +279,8 @@ class ChildSessionQuestionItem(BaseModel):
     type: str
     text: str
     options: List[str] = Field(default_factory=list)
+    # 아이가 고르면 살펴볼 답(AMBER)으로 뜨는 보기. 상담사에게만 보인다.
+    concern: List[str] = Field(default_factory=list)
     # 상담사에게만 보인다(이번 회차의 어떤 내용과 이어지는지).
     reason: str = ""
 

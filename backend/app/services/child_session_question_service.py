@@ -64,6 +64,7 @@ def _mock(context: Dict[str, Any], **_: Any) -> List[Dict[str, Any]]:
             "type": "choice",
             "text": "(예시) 요즘 마음이 가장 편한 때는 언제인가요?",
             "options": ["학교에 있을 때", "집에 있을 때", "친구랑 있을 때", "말하기 어려워요"],
+            "concern": [],
             "reason": f"(예시) {label} 확인할 사항과 이어지는 질문입니다.",
         },
         {
@@ -71,6 +72,7 @@ def _mock(context: Dict[str, Any], **_: Any) -> List[Dict[str, Any]]:
             "type": "text",
             "text": "(예시) 이번 주에 기억에 남는 일을 짧게 알려 줄래요?",
             "options": [],
+            "concern": [],
             "reason": f"(예시) {label} 뒤 지낸 이야기를 먼저 들어 봅니다.",
         },
     ]
@@ -123,6 +125,7 @@ def to_view(row: ChildSessionQuestionDraft, session: ConsultationSession) -> Dic
                 "type": item["type"],
                 "text": item["text"],
                 "options": list(item.get("options") or []),
+                "concern": list(item.get("concern") or []),
                 "reason": item.get("reason") or "",
             }
             for item in row.items
@@ -246,6 +249,8 @@ def create_draft(db: Session, case: Case, user: User, *, regenerate: bool = Fals
             "type": entry["type"],
             "text": entry["text"],
             "options": list(entry.get("options") or []),
+            # 살펴볼 답은 보기 글 그대로, 보기에 있는 것만(모든 보기면 없앤다).
+            "concern": _concern_of(entry),
             "reason": entry.get("reason") or "",
         }
         for entry in generated or []
@@ -293,6 +298,13 @@ def create_draft(db: Session, case: Case, user: User, *, regenerate: bool = Fals
     return to_view(row, session)
 
 
+def _concern_of(entry: Dict[str, Any]) -> List[str]:
+    options = list(entry.get("options") or [])
+    concern = [text for text in options if text in set(entry.get("concern") or [])]
+
+    return [] if entry.get("type") != "choice" or len(concern) >= len(options) else concern
+
+
 def question_for_send(db: Session, case_id: uuid.UUID, question_id: str) -> Optional[Dict[str, Any]]:
     """질문 보내기로 보낼 맞춤 질문(질문 묶음에 넣을 모양). 이 사례의 가장 최근 분석 회차 초안에 있는 것만."""
 
@@ -315,5 +327,10 @@ def question_for_send(db: Session, case_id: uuid.UUID, question_id: str) -> Opti
         copied["chips"] = list(child_app_service.FREE_TEXT_CHIPS)
     else:
         copied["options"] = list(item["options"])
+        # 아이가 이 보기를 고르면 살펴볼 답(AMBER). 판정 기준이라 아이 앱으로 보내지 않는다(get_home hidden).
+        concern = set(item.get("concern") or [])
+
+        if concern:
+            copied["flag_options"] = [index for index, text in enumerate(item["options"]) if text in concern]
 
     return copied

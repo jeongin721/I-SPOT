@@ -11,6 +11,10 @@ privacy_gateway 로 가린 뒤 보내고, 상담사에게만 보이는 이유(re
  2. 가족 · 친척을 가리키는 말(아빠 · 엄마 · 할머니 …)이 있으면 버린다(누가 무엇을 했는지 폰에 남지 않게).
  3. 가린 이름 토큰이 남았거나 한국어가 아닌 글자가 있으면 버린다.
  4. 이미 보낸 질문 · 고정 문항과 글이 같으면 버린다.
+ 5. 자해 · 자살 · 죽음을 묻는 질문은 버린다(11/24 데모 실측). 아이가 밤에 앱으로 "지금도 있어요" 를 골라도 그 자리에서
+    대응할 사람이 없다 — 이 주제는 상담에서 직접 묻는다.
+보기마다 '살펴볼 답'(concern)을 AI 가 고르면, 아이가 그 답을 골랐을 때 상담사 피드에 살펴볼 답(AMBER)으로 뜬다.
+바로 확인(RED)은 AI 가 정하지 않는다.
 초안은 상담사가 골라야 앱으로 간다(Backend child_session_question_service).
 """
 
@@ -34,6 +38,8 @@ _PEOPLE = re.compile(
     r"아빠|아버지|엄마|어머니|부모|할머니|할아버지|외할|친할|삼촌|이모|고모|숙모|외숙|오빠|언니|누나|형이|형은|형한테|형과|동생|"
     r"계부|계모|새아빠|새엄마|양부|양모|보호자|가족 중|친척"
 )
+# 앱으로 묻지 않는 주제. 상담에서 직접 묻는다.
+_SELF_HARM = re.compile(r"자해|자살|죽고|죽을|죽음|죽는|다치게 하|해치|해치고|사라지고 싶|없어지고 싶|목숨|극단|살고 싶지")
 
 SYSTEM_PROMPT = """너는 아동보호전문기관 상담사를 돕는 보조 도구다. 상담사가 다음 상담 전에 아이 앱으로 먼저 물어볼 질문 초안을 쓴다.
 상담사가 고르고 고친 뒤에만 아이에게 간다. 최종 판단은 상담사가 한다.
@@ -48,6 +54,7 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사를 돕는 보조 �
 - type: "choice"(보기에서 고름) 또는 "text"(짧게 씀). text 는 많아야 1개.
 - text: 아이에게 할 질문 한 문장
 - options: choice 일 때 보기 2~4개(text 면 빈 목록)
+- concern: choice 일 때 아이가 고르면 상담사가 살펴볼 만한 보기(options 의 글 그대로). 모든 보기를 넣지는 않는다. 없으면 빈 목록.
 - reason: 상담사에게만 보이는 한 문장. 이번 회차의 어떤 확인 사항 · 내용과 이어지는지.
 
 [절대 원칙]
@@ -63,9 +70,11 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사를 돕는 보조 �
 8. 보기는 치우치지 않게 쓴다. '말하기 어려워요' 는 시스템이 붙이니 넣지 않는다.
 9. 이미 보낸 질문과 같은 질문을 다시 쓰지 않는다.
 10. 문장은 한국어로만 쓴다.
+11. 자해 · 자살 · 죽음 · 스스로를 다치게 하는 생각은 앱으로 묻지 않는다. 아이가 혼자 있을 때 답하면 바로 도울 사람이 없다.
+    확인할 사항에 이런 내용이 있으면 그 항목은 건너뛴다(상담사가 상담에서 직접 묻는다).
 
 반드시 아래 JSON 형식으로만 답한다.
-{"questions": [{"category": "마음", "type": "choice", "text": "...", "options": ["...", "..."], "reason": "..."}]}
+{"questions": [{"category": "마음", "type": "choice", "text": "...", "options": ["...", "..."], "concern": ["..."], "reason": "..."}]}
 """
 
 
@@ -101,7 +110,13 @@ def _bad_text(text: str) -> bool:
     from ai.modeling.abuse.question_rules import question_term_reason
     from ai.modeling.abuse.text_script import has_foreign_script
 
-    return bool(_MASK_TOKEN.search(text) or has_foreign_script(text) or question_term_reason(text) or _PEOPLE.search(text))
+    return bool(
+        _MASK_TOKEN.search(text)
+        or has_foreign_script(text)
+        or question_term_reason(text)
+        or _PEOPLE.search(text)
+        or _SELF_HARM.search(text)
+    )
 
 
 def _norm(text: str) -> str:
@@ -169,15 +184,26 @@ def clean_output(raw: Any, sent: Iterable[str] = ()) -> List[Dict[str, Any]]:
             if len(options) < 2:
                 continue
 
-            # 아이가 답하지 않을 길을 늘 둔다.
+            # 살펴볼 답은 남은 보기 글과 같은 것만, 모든 보기가 살펴볼 답이면 치우친 것이라 버린다.
+            raw_concern = entry.get("concern")
+            wanted = {item.strip() for item in raw_concern if isinstance(item, str)} if isinstance(raw_concern, list) else set()
+            concern = [option for option in options if option in wanted]
+
+            if len(concern) == len(options):
+                concern = []
+
+            # 아이가 답하지 않을 길을 늘 둔다(살펴볼 답이 아니다).
             options.append(HARD_TO_SAY)
         elif has_text:
             continue
         else:
             has_text = True
+            concern = []
 
         seen.add(_norm(text))
-        cleaned.append({"category": category, "type": kind, "text": text, "options": options, "reason": reason})
+        cleaned.append(
+            {"category": category, "type": kind, "text": text, "options": options, "concern": concern, "reason": reason}
+        )
 
     return cleaned
 

@@ -28,7 +28,8 @@ def _fake(context, known_identifiers=(), deadline=None):
 
     return [
         {"category": "생활", "type": "choice", "text": f"{label} 뒤로 밤에 잠은 잘 자나요?",
-         "options": ["잘 자요", "가끔 깨요", "말하기 어려워요"], "reason": "확인할 사항의 수면 상태와 이어짐"},
+         "options": ["잘 자요", "가끔 깨요", "자주 깨요", "말하기 어려워요"], "concern": ["자주 깨요"],
+         "reason": "확인할 사항의 수면 상태와 이어짐"},
         {"category": "마음", "type": "text", "text": "요즘 기억에 남는 일을 짧게 알려 줄래요?", "options": [], "reason": "지낸 이야기"},
     ]
 
@@ -126,6 +127,9 @@ def test_send_mixes_bank_and_session_questions(client: TestClient, counselor_hea
     pending = _home(client, device)["pending"]
     by_id = {question["id"]: question for question in pending["questions"]}
     assert by_id[items[0]["id"]]["options"] == items[0]["options"]
+    assert items[0]["concern"] == ["자주 깨요"]
+    # 살펴볼 답(판정 기준)은 아이 앱으로 가지 않는다.
+    assert "flag_options" not in str(pending)
     assert by_id[items[1]["id"]]["type"] == "text" and by_id[items[1]["id"]]["chips"]
     # 상담사용 이유는 아이 앱으로 가지 않는다.
     assert "reason" not in str(pending)
@@ -140,6 +144,32 @@ def test_send_mixes_bank_and_session_questions(client: TestClient, counselor_hea
     feed = _view(client, counselor_headers, case["id"])["feed"]
     answer_items = next(row for row in feed if row["kind"] == "ANSWERS")["payload"]["items"]
     assert [item["answer"] for item in answer_items][1:] == ["가끔 깨요", "학교에서 발표했어요"]
+    assert [item["level"] for item in answer_items][1:] == ["NONE", "NONE"]
+
+
+def test_concern_answer_shows_as_amber(client: TestClient, counselor_headers, case, db) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _analyzed(client, counselor_headers, db, case["id"])
+    item = _create(client, counselor_headers, case["id"]).json()["data"]["items"][0]
+    client.post(
+        f"/api/v1/cases/{case['id']}/child-app/question-sets", json={"question_ids": [item["id"]]}, headers=counselor_headers
+    )
+    pending = _home(client, device)["pending"]
+
+    for index, level in ((2, "AMBER"), (3, "NONE")):  # 자주 깨요 → 살펴볼 답, 말하기 어려워요 → 아님
+        if index == 3:
+            client.post(
+                f"/api/v1/cases/{case['id']}/child-app/question-sets", json={"question_ids": [item["id"]]}, headers=counselor_headers
+            )
+            pending = _home(client, device)["pending"]
+        answered = client.post(
+            f"/api/v1/child-app/question-sets/{pending['id']}/answers",
+            json={"answers": [{"question_id": item["id"], "choice_index": index}]},
+            headers=device,
+        )
+        assert answered.status_code == 200, answered.text
+        feed = _view(client, counselor_headers, case["id"])["feed"]
+        assert next(row for row in feed if row["kind"] == "ANSWERS")["payload"]["items"][0]["level"] == level
 
 
 def test_send_rejects_unknown_or_old_session_question(client: TestClient, counselor_headers, case, db) -> None:
@@ -205,22 +235,33 @@ def test_llm_output_filter_keeps_phone_safe_questions() -> None:
         "questions": [
             {"category": "집", "type": "choice", "text": "아빠가 소리 지를 때 무서웠나요?", "options": ["네", "아니요"], "reason": "가족"},
             {"category": "생활", "type": "choice", "text": "최근 일주일 동안 잠은 잘 잤나요?", "options": ["네", "아니요"], "reason": "겹침"},
-            {"category": "마음", "type": "choice", "text": "요즘 집에 있을 때 마음이 편한가요?", "options": ["편해요", "조금 불편해요", "말하기 어려워요"], "reason": "확인할 사항 1"},
+            {"category": "마음", "type": "choice", "text": "요즘 집에 있을 때 마음이 편한가요?", "options": ["편해요", "조금 불편해요", "말하기 어려워요"],
+             "concern": ["조금 불편해요", "없는 보기"], "reason": "확인할 사항 1"},
+            {"category": "생활", "type": "choice", "text": "요즘 아침은 먹고 가나요?", "options": ["먹어요", "못 먹어요"],
+             "concern": ["먹어요", "못 먹어요"], "reason": "모든 보기가 살펴볼 답 → 없앰"},
             {"category": "안전", "type": "choice", "text": "[PERSON_01] 님과 지내는 게 괜찮나요?", "options": ["네", "아니요"], "reason": "토큰"},
             {"category": "마음", "type": "choice", "text": "학대를 받은 적이 있나요?", "options": ["네", "아니요"], "reason": "용어"},
             {"category": "학교", "type": "text", "text": "학교에서 있었던 일을 알려 줄래요?", "options": [], "reason": "학교"},
             {"category": "학교", "type": "text", "text": "친구 이야기를 해 줄래요?", "options": [], "reason": "글 두 번째"},
             {"category": "기타", "type": "choice", "text": "어때요?", "options": ["좋아요", "싫어요"], "reason": "분류 밖"},
             {"category": "마음", "type": "choice", "text": "오늘 기분은 어떤가요?", "options": ["좋아요"], "reason": "보기 하나"},
+            {"category": "안전", "type": "choice", "text": "최근에 너무 힘들 때, 나를 다치게 하고 싶은 생각이 든 적이 있나요?",
+             "options": ["없었어요", "가끔 있었어요", "지금도 있어요"], "reason": "자해 — 앱으로 묻지 않음"},
+            {"category": "마음", "type": "choice", "text": "요즘 기운은 어때요?", "options": ["괜찮아요", "사라지고 싶어요"], "reason": "보기에 자해 말"},
         ]
     }
 
     cleaned = clean_output(raw, sent=["최근 일주일 동안 잠은 잘 잤나요?"])
 
-    assert [item["text"] for item in cleaned] == ["요즘 집에 있을 때 마음이 편한가요?", "학교에서 있었던 일을 알려 줄래요?"]
+    assert [item["text"] for item in cleaned] == [
+        "요즘 집에 있을 때 마음이 편한가요?",
+        "요즘 아침은 먹고 가나요?",
+        "학교에서 있었던 일을 알려 줄래요?",
+    ]
+    assert [item["concern"] for item in cleaned] == [["조금 불편해요"], [], []]
     # '말하기 어려워요' 는 한 번만, 맨 끝에.
     assert cleaned[0]["options"] == ["편해요", "조금 불편해요", hard_to_say]
-    assert cleaned[1]["options"] == []
+    assert cleaned[2]["options"] == []
     assert clean_output({"questions": "x"}) == [] and clean_output(None) == []
 
     text = format_input({"child": {"age_band": "만 10~13세"}, "session_label": "3회차", "checks": [CHECK], "sent": []})

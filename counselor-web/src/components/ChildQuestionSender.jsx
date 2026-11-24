@@ -114,6 +114,11 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
                   <span className="chip c-sand">{item.category}</span>{' '}
                   {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
                   {item.options.length ? <span className="note"> · {item.options.join(' / ')}</span> : null}
+                  {item.concern?.length ? (
+                    <span className="note" style={{ display: 'block', fontSize: '12px' }}>
+                      살펴볼 답: {item.concern.join(' · ')}
+                    </span>
+                  ) : null}
                   {item.reason ? (
                     <span className="note" style={{ display: 'block', fontSize: '12px' }}>
                       왜: {item.reason}
