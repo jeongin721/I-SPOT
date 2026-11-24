@@ -1145,7 +1145,7 @@ def get_home(db: Session, link: ChildAppLink) -> ChildHomeResponse:
 
     if row is not None:
         # flag · red 는 판정 기준이라 앱으로 보내지 않는다.
-        hidden = {"flag", "red", "flag_options", "category", "short"}
+        hidden = {"flag", "red", "amber_any", "category", "short"}
         pending = {
             "id": row.id,
             "questions": [{key: value for key, value in item.items() if key not in hidden} for item in row.questions],
@@ -1250,7 +1250,8 @@ def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]
             "wrote_text": bool(text),
             # 상담사 화면의 '아이가 쓴 글'에는 고른 칩을 빼고 아이가 쓴 글만 보인다.
             "written": text or None,
-            "level": ChildAnswerLevel.NONE.value,
+            # 회차 맞춤 질문은 답하면 살펴볼 답(child_session_question_service.question_for_send).
+            "level": (ChildAnswerLevel.AMBER if question.get("amber_any") else ChildAnswerLevel.NONE).value,
         }
 
     if answer.skipped:
@@ -1267,8 +1268,8 @@ def _grade(question: Dict[str, Any], answer: ChildAnswerInput) -> Dict[str, Any]
         level = ChildAnswerLevel.RED
     elif question.get("flag") is not None and answer.choice_index >= question["flag"]:
         level = ChildAnswerLevel.AMBER
-    elif answer.choice_index in (question.get("flag_options") or []):
-        # 회차 맞춤 질문: AI 가 고른 '살펴볼 답'(child_session_question_service). 바로 확인(RED)은 두지 않는다.
+    elif question.get("amber_any"):
+        # 회차 맞춤 질문: 건너뛰지 않은 답은 모두 살펴볼 답. 바로 확인(RED)은 두지 않는다.
         level = ChildAnswerLevel.AMBER
 
     return {**item, "answer": options[answer.choice_index], "level": level.value}

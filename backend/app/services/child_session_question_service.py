@@ -10,6 +10,7 @@
 #   이미 보낸 질문 글. 이름 · 생년월일 · 연락처 · 사건번호 · 메모는 넣지 않는다.
 # - 감사 기록에는 수만 남긴다(질문 · 이유 글은 넣지 않는다).
 
+import copy
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
@@ -22,7 +23,7 @@ from app.adapters.module_loader import ModuleLoadError, load_callable
 from app.core.concurrency import OperationTimeout
 from app.core.config import settings
 from app.core.enums import AuditAction, SessionStatus
-from app.core.errors import APIError, ErrorCode, conflict
+from app.core.errors import APIError, ErrorCode, bad_request, conflict, not_found
 from app.models.case import Case
 from app.models.child_app import ChildQuestionSet, ChildSessionQuestionDraft
 from app.models.session import ConsultationSession
@@ -63,8 +64,7 @@ def _mock(context: Dict[str, Any], **_: Any) -> List[Dict[str, Any]]:
             "category": "마음",
             "type": "choice",
             "text": "(예시) 요즘 마음이 가장 편한 때는 언제인가요?",
-            "options": ["학교에 있을 때", "집에 있을 때", "친구랑 있을 때", "말하기 어려워요"],
-            "concern": [],
+            "options": ["학교에 있을 때", "집에 있을 때", "친구랑 있을 때"],
             "reason": f"(예시) {label} 확인할 사항과 이어지는 질문입니다.",
         },
         {
@@ -72,7 +72,6 @@ def _mock(context: Dict[str, Any], **_: Any) -> List[Dict[str, Any]]:
             "type": "text",
             "text": "(예시) 이번 주에 기억에 남는 일을 짧게 알려 줄래요?",
             "options": [],
-            "concern": [],
             "reason": f"(예시) {label} 뒤 지낸 이야기를 먼저 들어 봅니다.",
         },
     ]
@@ -125,8 +124,8 @@ def to_view(row: ChildSessionQuestionDraft, session: ConsultationSession) -> Dic
                 "type": item["type"],
                 "text": item["text"],
                 "options": list(item.get("options") or []),
-                "concern": list(item.get("concern") or []),
                 "reason": item.get("reason") or "",
+                "edited": bool(item.get("edited")),
             }
             for item in row.items
         ],
@@ -156,12 +155,17 @@ def _texts(values: Any) -> List[str]:
 
 
 def _counselor_questions(db: Session, session: ConsultationSession, result: Any) -> List[str]:
-    """상담원이 승인한 추가 질문. 없으면 AI 추가 질문 초안."""
+    """상담원이 승인한 추가 질문. 없으면 AI 추가 질문 초안 — 단 승인한 회차만(민규 #195 리뷰: 승인 전 회차의
+    상담사가 아직 보지 않은 AI 초안은 넣지 않는다)."""
 
     row = followup_question_service.get_row(db, session.id)
     approved = [item.get("text") for item in (row.questions if row is not None else []) or [] if isinstance(item, dict)]
+    approved = [text for text in approved if text]
 
-    return _texts([text for text in approved if text] or [draft["text"] for draft in followup_checklist_service.drafts_of(result)])
+    if approved or session.status != SessionStatus.APPROVED:
+        return _texts(approved)
+
+    return _texts(draft["text"] for draft in followup_checklist_service.drafts_of(result))
 
 
 def _sent_texts(db: Session, case_id: uuid.UUID) -> List[str]:
@@ -249,8 +253,6 @@ def create_draft(db: Session, case: Case, user: User, *, regenerate: bool = Fals
             "type": entry["type"],
             "text": entry["text"],
             "options": list(entry.get("options") or []),
-            # 살펴볼 답은 보기 글 그대로, 보기에 있는 것만(모든 보기면 없앤다).
-            "concern": _concern_of(entry),
             "reason": entry.get("reason") or "",
         }
         for entry in generated or []
@@ -298,11 +300,66 @@ def create_draft(db: Session, case: Case, user: User, *, regenerate: bool = Fals
     return to_view(row, session)
 
 
-def _concern_of(entry: Dict[str, Any]) -> List[str]:
-    options = list(entry.get("options") or [])
-    concern = [text for text in options if text in set(entry.get("concern") or [])]
+def update_question(
+    db: Session,
+    case: Case,
+    user: User,
+    question_id: str,
+    text: str,
+    options: List[str],
+    ip_address: Optional[str],
+) -> Dict[str, Any]:
+    """상담사가 맞춤 질문 문장 · 보기를 고친다(가장 최근 분석 회차 초안만).
 
-    return [] if entry.get("type") != "choice" or len(concern) >= len(options) else concern
+    이미 보낸 질문은 질문 묶음에 복사돼 있어 바뀌지 않는다 — 고친 글은 다음에 보낼 때부터 간다.
+    건너뛰기는 아이 앱에 따로 있다. 글은 감사 기록에 넣지 않는다.
+    """
+
+    child_app_service.ensure_assigned(case, user)
+    child_app_service.ensure_active(case)
+    session = latest_session(db, case.id)
+    row = _draft_for(db, session.id, lock=True) if session is not None else None
+    items = copy.deepcopy(row.items) if row is not None else []
+    item = next((entry for entry in items if entry["id"] == question_id), None)
+
+    if row is None or item is None:
+        raise not_found(ErrorCode.NOT_FOUND, "맞춤 질문을 찾을 수 없습니다. 화면을 새로고침해 주세요.")
+
+    text = text.strip()
+    cleaned: List[str] = []
+
+    for option in options:
+        option = option.strip()
+
+        if option and option not in cleaned:
+            cleaned.append(option)
+
+    if item["type"] == "text":
+        if cleaned:
+            raise bad_request(ErrorCode.VALIDATION_ERROR, "짧은 글 질문에는 보기를 넣지 않습니다.")
+    elif not 2 <= len(cleaned) <= 5:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "보기는 2~5개로 적어 주세요.")
+
+    item["text"] = text
+    item["options"] = cleaned if item["type"] == "choice" else []
+    item.pop("concern", None)
+    item["edited"] = True
+    row.items = items
+    row.updated_at = datetime.now(timezone.utc)
+    audit_service.record(
+        db,
+        action=AuditAction.CHILD_APP_SESSION_QUESTIONS_EDITED,
+        entity_type="child_session_question_draft",
+        entity_id=row.id,
+        actor_id=user.id,
+        case_id=case.id,
+        detail={"what": "question"},
+        ip_address=ip_address,
+    )
+    db.commit()
+    db.refresh(row)
+
+    return to_view(row, session)
 
 
 def question_for_send(db: Session, case_id: uuid.UUID, question_id: str) -> Optional[Dict[str, Any]]:
@@ -319,18 +376,26 @@ def question_for_send(db: Session, case_id: uuid.UUID, question_id: str) -> Opti
         "id": item["id"],
         "category": item["category"],
         "type": item["type"],
-        "short": item["text"],
+        # 상담사 화면 답 목록의 짧은 이름 칸. 문장이 길면 앞부분만.
+        "short": _short(item["text"]),
         "text": item["text"],
+        # 건너뛰지 않은 답은 무엇이든 살펴볼 답(AMBER) — AI 가 보기별 수준을 정하지 않는다(민규 #195 리뷰, 경진 11/24).
+        # 판정 기준이라 아이 앱으로 보내지 않는다(get_home hidden).
+        "amber_any": True,
     }
 
     if item["type"] == "text":
         copied["chips"] = list(child_app_service.FREE_TEXT_CHIPS)
     else:
         copied["options"] = list(item["options"])
-        # 아이가 이 보기를 고르면 살펴볼 답(AMBER). 판정 기준이라 아이 앱으로 보내지 않는다(get_home hidden).
-        concern = set(item.get("concern") or [])
-
-        if concern:
-            copied["flag_options"] = [index for index, text in enumerate(item["options"]) if text in concern]
 
     return copied
+
+
+SHORT_CHARS = 18
+
+
+def _short(text: str) -> str:
+    flat = text.strip().rstrip("?").strip()
+
+    return flat if len(flat) <= SHORT_CHARS else f"{flat[:SHORT_CHARS]}…"

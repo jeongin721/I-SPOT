@@ -909,6 +909,14 @@ export const childApp = {
       `/cases/${caseId}/child-app/session-questions${regenerate ? "?regenerate=true" : ""}`,
     );
   },
+  /** 맞춤 질문 고치기. 짧은 글 질문은 options 를 비운다. */
+  updateSessionQuestion(
+    caseId: string,
+    questionId: string,
+    body: { text: string; options: string[] },
+  ): Promise<ChildSessionQuestions> {
+    return api.patch<ChildSessionQuestions>(`/cases/${caseId}/child-app/session-questions/${questionId}`, body);
+  },
   createAiDraft(caseId: string): Promise<ChildAiDraft> {
     return api.post<ChildAiDraft>(`/cases/${caseId}/child-app/ai-draft`);
   },

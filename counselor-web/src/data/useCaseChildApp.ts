@@ -151,6 +151,15 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, refresh],
   );
 
+  /** 맞춤 질문 고치기. 성공하면 true(화면이 고치기 칸을 닫는다). */
+  const saveSessionQuestion = useCallback(
+    (questionId: string, text: string, options: string[]) =>
+      run(async () => {
+        if (caseId) await childAppApi.updateSessionQuestion(caseId, questionId, { text, options });
+      }, "맞춤 질문을 고치지 못했습니다."),
+    [caseId, run],
+  );
+
   const saveAiNote = useCallback(
     (draftId: string, questionId: string, text: string) =>
       run(async () => {
@@ -216,5 +225,5 @@ export function useCaseChildApp(caseId: string | null, enabled: boolean) {
     [caseId, run],
   );
 
-  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, sqCreating, sqError, createSessionQuestions, saveAiNote, saveAiQuestion, setAiApproval, createInvite, reissueInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
+  return { ...remote, invite, busy, actionError, aiCreating, aiError, createAiDraft, sqCreating, sqError, createSessionQuestions, saveSessionQuestion, saveAiNote, saveAiQuestion, setAiApproval, createInvite, reissueInvite, sendQuestions, cancelScheduled, setSilentDays, acknowledge, unlink };
 }

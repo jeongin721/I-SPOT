@@ -28,8 +28,7 @@ def _fake(context, known_identifiers=(), deadline=None):
 
     return [
         {"category": "생활", "type": "choice", "text": f"{label} 뒤로 밤에 잠은 잘 자나요?",
-         "options": ["잘 자요", "가끔 깨요", "자주 깨요", "말하기 어려워요"], "concern": ["자주 깨요"],
-         "reason": "확인할 사항의 수면 상태와 이어짐"},
+         "options": ["잘 자요", "가끔 깨요", "자주 깨요"], "reason": "확인할 사항의 수면 상태와 이어짐"},
         {"category": "마음", "type": "text", "text": "요즘 기억에 남는 일을 짧게 알려 줄래요?", "options": [], "reason": "지낸 이야기"},
     ]
 
@@ -86,7 +85,8 @@ def test_create_uses_latest_session_and_is_cached(client: TestClient, counselor_
 
     context = calls[0]["context"]
     assert context["checks"] == [CHECK]
-    assert context["counselor_questions"] == ["요즘 잠은 몇 시쯤 자나요?"]
+    # 승인 전 회차라 상담사가 아직 보지 않은 AI 추가 질문 초안은 넣지 않는다(민규 #195 리뷰).
+    assert context["counselor_questions"] == []
     # 고정 문항은 '이미 보낸 질문' 으로 넘어가 겹치지 않게 한다. 사례 이름은 가리기에만 쓴다.
     assert "최근 일주일 동안 잠은 잘 잤나요?" in context["sent"]
     assert "child_alias" not in str(context)
@@ -127,9 +127,8 @@ def test_send_mixes_bank_and_session_questions(client: TestClient, counselor_hea
     pending = _home(client, device)["pending"]
     by_id = {question["id"]: question for question in pending["questions"]}
     assert by_id[items[0]["id"]]["options"] == items[0]["options"]
-    assert items[0]["concern"] == ["자주 깨요"]
-    # 살펴볼 답(판정 기준)은 아이 앱으로 가지 않는다.
-    assert "flag_options" not in str(pending)
+    # 살펴볼 답 기준(amber_any)은 아이 앱으로 가지 않는다.
+    assert "amber_any" not in str(pending)
     assert by_id[items[1]["id"]]["type"] == "text" and by_id[items[1]["id"]]["chips"]
     # 상담사용 이유는 아이 앱으로 가지 않는다.
     assert "reason" not in str(pending)
@@ -144,32 +143,37 @@ def test_send_mixes_bank_and_session_questions(client: TestClient, counselor_hea
     feed = _view(client, counselor_headers, case["id"])["feed"]
     answer_items = next(row for row in feed if row["kind"] == "ANSWERS")["payload"]["items"]
     assert [item["answer"] for item in answer_items][1:] == ["가끔 깨요", "학교에서 발표했어요"]
-    assert [item["level"] for item in answer_items][1:] == ["NONE", "NONE"]
+    # 고정 문항은 기준대로(잘 잤어요 → 보통), 맞춤 질문은 답하면 무엇이든 살펴볼 답(경진 11/24 · 민규 #195 리뷰).
+    assert [item["level"] for item in answer_items] == ["NONE", "AMBER", "AMBER"]
+    # 상담사 화면의 짧은 이름 칸은 문장 앞부분만.
+    assert len(answer_items[1]["question"]) <= 19 and answer_items[2]["question"].startswith("요즘 기억에")
 
 
-def test_concern_answer_shows_as_amber(client: TestClient, counselor_headers, case, db) -> None:
+def test_session_question_skip_stays_skip(client: TestClient, counselor_headers, case, db) -> None:
     device = _linked(client, counselor_headers, case["id"])
     _analyzed(client, counselor_headers, db, case["id"])
-    item = _create(client, counselor_headers, case["id"]).json()["data"]["items"][0]
+    choice, free = _create(client, counselor_headers, case["id"]).json()["data"]["items"]
     client.post(
-        f"/api/v1/cases/{case['id']}/child-app/question-sets", json={"question_ids": [item["id"]]}, headers=counselor_headers
+        f"/api/v1/cases/{case['id']}/child-app/question-sets",
+        json={"question_ids": [choice["id"], free["id"]]},
+        headers=counselor_headers,
     )
     pending = _home(client, device)["pending"]
+    answered = client.post(
+        f"/api/v1/child-app/question-sets/{pending['id']}/answers",
+        json={"answers": [{"question_id": choice["id"], "skipped": True}, {"question_id": free["id"], "chip": "답하기 어려워요"}]},
+        headers=device,
+    )
+    assert answered.status_code == 200, answered.text
+    feed = _view(client, counselor_headers, case["id"])["feed"]
+    levels = [item["level"] for item in next(row for row in feed if row["kind"] == "ANSWERS")["payload"]["items"]]
+    assert levels == ["SKIP", "SKIP"]
 
-    for index, level in ((2, "AMBER"), (3, "NONE")):  # 자주 깨요 → 살펴볼 답, 말하기 어려워요 → 아님
-        if index == 3:
-            client.post(
-                f"/api/v1/cases/{case['id']}/child-app/question-sets", json={"question_ids": [item["id"]]}, headers=counselor_headers
-            )
-            pending = _home(client, device)["pending"]
-        answered = client.post(
-            f"/api/v1/child-app/question-sets/{pending['id']}/answers",
-            json={"answers": [{"question_id": item["id"], "choice_index": index}]},
-            headers=device,
-        )
-        assert answered.status_code == 200, answered.text
-        feed = _view(client, counselor_headers, case["id"])["feed"]
-        assert next(row for row in feed if row["kind"] == "ANSWERS")["payload"]["items"][0]["level"] == level
+
+def test_approved_session_uses_ai_question_drafts(client: TestClient, counselor_headers, case, db) -> None:
+    _analyzed(client, counselor_headers, db, case["id"], SessionStatus.APPROVED)
+    _create(client, counselor_headers, case["id"])
+    assert calls[0]["context"]["counselor_questions"] == ["요즘 잠은 몇 시쯤 자나요?"]
 
 
 def test_send_rejects_unknown_or_old_session_question(client: TestClient, counselor_headers, case, db) -> None:
@@ -229,16 +233,22 @@ def test_llm_output_filter_keeps_phone_safe_questions() -> None:
     module = "ai.modeling.abuse.child_session_question_llm"
     clean_output = load_callable(module, "clean_output")
     format_input = load_callable(module, "format_input")
-    hard_to_say = "말하기 어려워요"
 
     raw = {
         "questions": [
             {"category": "집", "type": "choice", "text": "아빠가 소리 지를 때 무서웠나요?", "options": ["네", "아니요"], "reason": "가족"},
             {"category": "생활", "type": "choice", "text": "최근 일주일 동안 잠은 잘 잤나요?", "options": ["네", "아니요"], "reason": "겹침"},
             {"category": "마음", "type": "choice", "text": "요즘 집에 있을 때 마음이 편한가요?", "options": ["편해요", "조금 불편해요", "말하기 어려워요"],
-             "concern": ["조금 불편해요", "없는 보기"], "reason": "확인할 사항 1"},
-            {"category": "생활", "type": "choice", "text": "요즘 아침은 먹고 가나요?", "options": ["먹어요", "못 먹어요"],
-             "concern": ["먹어요", "못 먹어요"], "reason": "모든 보기가 살펴볼 답 → 없앰"},
+             "reason": "확인할 사항 1"},
+            {"category": "생활", "type": "choice", "text": "요즘 아침은 먹고 가나요?", "options": ["먹어요", "못 먹어요", "하늘이랑 먹어요"],
+             "reason": "보기에 등록 이름 → 그 보기만 뺌"},
+            {"category": "집", "type": "choice", "text": "형에게 맞은 적이 있나요?", "options": ["네", "아니요"], "reason": "형 · 사건"},
+            {"category": "집", "type": "choice", "text": "요즘 가족이 화를 낼 때 무서운가요?", "options": ["네", "아니요"], "reason": "가족"},
+            {"category": "집", "type": "choice", "text": "술 마신 날에는 집이 어떤가요?", "options": ["조용해요", "시끄러워요"], "reason": "사건"},
+            {"category": "학교", "type": "choice", "text": "학원 선생님이 무섭게 한 적이 있나요?", "options": ["네", "아니요"], "reason": "선생님"},
+            {"category": "마음", "type": "choice", "text": "하늘이는 요즘 기분이 어때요?", "options": ["좋아요", "나빠요"], "reason": "등록 이름"},
+            {"category": "마음", "type": "choice", "text": "살기 싫다는 생각이 든 적이 있나요?", "options": ["네", "아니요"], "reason": "자해"},
+            {"category": "마음", "type": "choice", "text": "좋아하는 인형이 있나요?", "options": ["있어요", "없어요"], "reason": "인형은 남김"},
             {"category": "안전", "type": "choice", "text": "[PERSON_01] 님과 지내는 게 괜찮나요?", "options": ["네", "아니요"], "reason": "토큰"},
             {"category": "마음", "type": "choice", "text": "학대를 받은 적이 있나요?", "options": ["네", "아니요"], "reason": "용어"},
             {"category": "학교", "type": "text", "text": "학교에서 있었던 일을 알려 줄래요?", "options": [], "reason": "학교"},
@@ -251,18 +261,81 @@ def test_llm_output_filter_keeps_phone_safe_questions() -> None:
         ]
     }
 
-    cleaned = clean_output(raw, sent=["최근 일주일 동안 잠은 잘 잤나요?"])
+    cleaned = clean_output(raw, sent=["최근 일주일 동안 잠은 잘 잤나요?"], names=["김하늘", "하늘", "김"])
 
     assert [item["text"] for item in cleaned] == [
         "요즘 집에 있을 때 마음이 편한가요?",
         "요즘 아침은 먹고 가나요?",
+        "좋아하는 인형이 있나요?",
         "학교에서 있었던 일을 알려 줄래요?",
     ]
-    assert [item["concern"] for item in cleaned] == [["조금 불편해요"], [], []]
-    # '말하기 어려워요' 는 한 번만, 맨 끝에.
-    assert cleaned[0]["options"] == ["편해요", "조금 불편해요", hard_to_say]
-    assert cleaned[2]["options"] == []
+    # 건너뛰기 같은 보기 · 등록 이름이 든 보기는 뺀다(앱에 건너뛰기가 따로 있다). AI 가 정하는 살펴볼 답은 없다.
+    assert cleaned[0]["options"] == ["편해요", "조금 불편해요"]
+    assert cleaned[1]["options"] == ["먹어요", "못 먹어요"]
+    assert all("concern" not in item for item in cleaned)
+    assert cleaned[3]["options"] == []
     assert clean_output({"questions": "x"}) == [] and clean_output(None) == []
 
     text = format_input({"child": {"age_band": "만 10~13세"}, "session_label": "3회차", "checks": [CHECK], "sent": []})
     assert "3회차" in text and CHECK in text and "- 없음" in text
+
+
+def _patch(client: TestClient, headers: Headers, case_id: str, question_id: str, body: dict):
+    return client.patch(f"/api/v1/cases/{case_id}/child-app/session-questions/{question_id}", json=body, headers=headers)
+
+
+def test_counselor_edits_question_and_sends_edited_text(client: TestClient, counselor_headers, case, db) -> None:
+    device = _linked(client, counselor_headers, case["id"])
+    _analyzed(client, counselor_headers, db, case["id"])
+    choice, free = _create(client, counselor_headers, case["id"]).json()["data"]["items"]
+
+    response = _patch(
+        client, counselor_headers, case["id"], choice["id"],
+        {"text": " 요즘 밤에 잠은 어때요? ", "options": ["잘 자요", "자주 깨요", "잘 자요", "무서워서 깨요"]},
+    )
+    assert response.status_code == 200, response.text
+    edited = response.json()["data"]["items"][0]
+    assert edited["text"] == "요즘 밤에 잠은 어때요?" and edited["edited"] is True
+    # 겹친 보기는 하나로.
+    assert edited["options"] == ["잘 자요", "자주 깨요", "무서워서 깨요"]
+    assert _view(client, counselor_headers, case["id"])["session_questions"]["items"][0]["edited"] is True
+
+    assert _patch(client, counselor_headers, case["id"], free["id"], {"text": "이번 주 이야기를 들려줄래요?"}).status_code == 200
+
+    client.post(
+        f"/api/v1/cases/{case['id']}/child-app/question-sets",
+        json={"question_ids": [choice["id"], free["id"]]},
+        headers=counselor_headers,
+    )
+    pending = _home(client, device)["pending"]
+    assert [question["text"] for question in pending["questions"]] == ["요즘 밤에 잠은 어때요?", "이번 주 이야기를 들려줄래요?"]
+    answered = client.post(
+        f"/api/v1/child-app/question-sets/{pending['id']}/answers",
+        json={"answers": [{"question_id": choice["id"], "choice_index": 2}, {"question_id": free["id"], "skipped": True}]},
+        headers=device,
+    )
+    assert answered.status_code == 200, answered.text
+    feed = _view(client, counselor_headers, case["id"])["feed"]
+    assert next(row for row in feed if row["kind"] == "ANSWERS")["payload"]["items"][0]["level"] == "AMBER"
+
+    log = db.scalar(select(AuditLog).where(AuditLog.action == AuditAction.CHILD_APP_SESSION_QUESTIONS_EDITED))
+    assert log.detail == {"what": "question"} and "밤에" not in str(log.detail)
+
+
+def test_edit_rules(client: TestClient, counselor_headers, other_counselor_headers, case, db) -> None:
+    _analyzed(client, counselor_headers, db, case["id"])
+    choice, free = _create(client, counselor_headers, case["id"]).json()["data"]["items"]
+    url_case = case["id"]
+
+    bad = [
+        (free["id"], {"text": "이번 주는?", "options": ["좋아요", "싫어요"]}),  # 짧은 글에 보기
+        (choice["id"], {"text": "잠은?", "options": ["잘 자요"]}),  # 보기 하나
+        (choice["id"], {"text": "잠은?", "options": ["1", "2", "3", "4", "5", "6"]}),  # 보기 여섯
+    ]
+    for question_id, body in bad:
+        assert _patch(client, counselor_headers, url_case, question_id, body).status_code == 400, body
+
+    assert _patch(client, counselor_headers, url_case, choice["id"], {"text": ""}).status_code == 422
+    assert _patch(client, counselor_headers, url_case, "sq_0000000000000000", {"text": "잠은?"}).status_code == 404
+    assert _patch(client, other_counselor_headers, url_case, choice["id"], {"text": "잠은?", "options": ["a", "b"]}).status_code in (403, 404)
+    assert _view(client, counselor_headers, url_case)["session_questions"]["items"][0]["text"] == choice["text"]

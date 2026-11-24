@@ -1912,10 +1912,10 @@ export interface ChildSessionQuestions {
     type: "choice" | "text";
     text: string;
     options: string[];
-    /** 아이가 고르면 '살펴볼 답'(AMBER)으로 뜨는 보기. 상담사에게만 보인다. */
-    concern: string[];
     /** 상담사에게만 보인다. */
     reason: string;
+    /** 상담사가 고친 질문. */
+    edited: boolean;
   }[];
 }
 

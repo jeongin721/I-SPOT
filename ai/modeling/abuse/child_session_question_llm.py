@@ -8,13 +8,15 @@ privacy_gateway 로 가린 뒤 보내고, 상담사에게만 보이는 이유(re
 아이 폰은 다른 가족이 볼 수 있다. 그래서 질문은 회차에서 나온 사건 · 사람을 드러내지 않고, 아이의 생활 · 마음 · 안전을
 일반적인 말로 묻는다. 나가는 질문은 네 겹으로 막는다.
  1. 판단 · 법률 용어(question_term_reason) · 답을 정해 둔 꼬리 질문(leading_reason)이 있으면 버린다.
- 2. 가족 · 친척을 가리키는 말(아빠 · 엄마 · 할머니 …)이 있으면 버린다(누가 무엇을 했는지 폰에 남지 않게).
- 3. 가린 이름 토큰이 남았거나 한국어가 아닌 글자가 있으면 버린다.
+ 2. 가족 · 친척 · 어른을 가리키는 말(아빠 · 엄마 · 형 · 가족 · 어른 · 사촌 …)이 있으면 버린다(누가 무엇을 했는지 폰에 남지 않게).
+ 3. 가린 이름 토큰 · 그 사례의 등록 이름(known_identifiers, 가족 이름 포함)이 있거나 한국어가 아닌 글자가 있으면 버린다.
  4. 이미 보낸 질문 · 고정 문항과 글이 같으면 버린다.
- 5. 자해 · 자살 · 죽음을 묻는 질문은 버린다(11/24 데모 실측). 아이가 밤에 앱으로 "지금도 있어요" 를 골라도 그 자리에서
-    대응할 사람이 없다 — 이 주제는 상담에서 직접 묻는다.
-보기마다 '살펴볼 답'(concern)을 AI 가 고르면, 아이가 그 답을 골랐을 때 상담사 피드에 살펴볼 답(AMBER)으로 뜬다.
-바로 확인(RED)은 AI 가 정하지 않는다.
+ 5. 자해 · 자살 · 죽음을 묻는 질문은 버린다(11/24 데모 실측 · 민규 #195 리뷰). 아이가 밤에 앱으로 "지금도 있어요" 를 골라도
+    그 자리에서 대응할 사람이 없다 — 이 주제는 상담에서 직접 묻는다.
+ 6. 사건 단서가 되는 몇 낱말(술 · 허리띠 · 때리 · 맞은 · 만지 …)이 있으면 버린다. 낱말로 다 막을 수는 없어 화면에
+    "아이 폰은 가족이 볼 수 있어요" 안내를 두고 상담사가 고른다.
+살펴볼 답은 AI 가 정하지 않는다 — 맞춤 질문은 건너뛰지 않은 답이면 모두 살펴볼 답(AMBER)이다(Backend, 민규 #195 리뷰).
+'말하기 어려워요' 같은 보기도 넣지 않는다 — 아이 앱에 '답하기 어려워요'(건너뛰기)가 있다.
 초안은 상담사가 골라야 앱으로 간다(Backend child_session_question_service).
 """
 
@@ -27,19 +29,27 @@ DEFAULT_MODEL = "gpt-5.6-luna"
 MAX_QUESTIONS = 5
 MAX_QUESTION_CHARS = 80
 MAX_OPTION_CHARS = 20
-MAX_OPTIONS = 5
+MAX_OPTIONS = 4
 MAX_REASON_CHARS = 200
-HARD_TO_SAY = "말하기 어려워요"
+# 아이 앱의 건너뛰기와 겹치는 보기. 보기에서 뺀다.
+SKIP_LIKE = {"말하기 어려워요", "답하기 어려워요", "말하고 싶지 않아요"}
 CATEGORIES = ("생활", "집", "안전", "학교", "마음")
 TYPES = ("choice", "text")
 _MASK_TOKEN = re.compile(r"\[[A-Z]+_\d+\]")
 # 폰에 남으면 누가 무엇을 했는지 드러날 수 있는 말. '상담 선생님' 은 앱이 늘 쓰는 말이라 뺀다.
 _PEOPLE = re.compile(
-    r"아빠|아버지|엄마|어머니|부모|할머니|할아버지|외할|친할|삼촌|이모|고모|숙모|외숙|오빠|언니|누나|형이|형은|형한테|형과|동생|"
-    r"계부|계모|새아빠|새엄마|양부|양모|보호자|가족 중|친척"
+    r"아빠|아버지|아버님|엄마|어머니|어머님|부모|할머니|할아버지|할매|할배|외할|친할|삼촌|이모|고모|숙모|외숙|오빠|언니|누나|동생|"
+    r"(?<![가-힣])(?:큰|작은|친|둘째|첫째)?형(?![태식편광성])|"  # 형 · 큰형(인형 · 형태 · 형편은 남긴다)
+    r"사촌|아저씨|아줌마|계부|계모|새아빠|새엄마|양부|양모|보호자|가족|식구|친척|어른|"
+    r"(?<!상담 )선생님"  # '상담 선생님' 은 앱이 늘 쓰는 말
 )
-# 앱으로 묻지 않는 주제. 상담에서 직접 묻는다.
-_SELF_HARM = re.compile(r"자해|자살|죽고|죽을|죽음|죽는|다치게 하|해치|해치고|사라지고 싶|없어지고 싶|목숨|극단|살고 싶지")
+# 앱으로 묻지 않는 주제. 상담에서 직접 묻는다(민규 #195 리뷰에서 지어낸 17문장이 모두 걸리게 더함).
+_SELF_HARM = re.compile(
+    r"자해|자살|죽|다치게 하|해치|목숨|극단|사라지|사라져|사라졌|없어지|없어졌|없었으면|살고 싶지|살기 싫|그만 살|"
+    r"상처를 내|상처를 낸|아프게|끝내고 싶|긋|뛰어내|태어나지|약을 한꺼번에|약을 많이"
+)
+# 회차의 사건이 드러나는 낱말 몇 개. 낱말로 다 막을 수는 없다(화면 안내로 상담사가 본다).
+_INCIDENT = re.compile(r"술|허리띠|때리|때린|때렸|맞은|맞았|맞을|만지|만져|만졌|매를|벗겨|벗으")
 
 SYSTEM_PROMPT = """너는 아동보호전문기관 상담사를 돕는 보조 도구다. 상담사가 다음 상담 전에 아이 앱으로 먼저 물어볼 질문 초안을 쓴다.
 상담사가 고르고 고친 뒤에만 아이에게 간다. 최종 판단은 상담사가 한다.
@@ -54,12 +64,11 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사를 돕는 보조 �
 - type: "choice"(보기에서 고름) 또는 "text"(짧게 씀). text 는 많아야 1개.
 - text: 아이에게 할 질문 한 문장
 - options: choice 일 때 보기 2~4개(text 면 빈 목록)
-- concern: choice 일 때 아이가 고르면 상담사가 살펴볼 만한 보기(options 의 글 그대로). 모든 보기를 넣지는 않는다. 없으면 빈 목록.
 - reason: 상담사에게만 보이는 한 문장. 이번 회차의 어떤 확인 사항 · 내용과 이어지는지.
 
 [절대 원칙]
 1. 아이 폰은 다른 가족이 볼 수 있다. 질문 · 보기에 회차에서 나온 구체적인 사건 · 장소 · 사람을 쓰지 않는다.
-   아빠 · 엄마 · 할머니 · 형 같은 가족을 가리키는 말을 쓰지 않는다. 대신 그 주제를 아이의 생활 · 기분 · 잠 · 식사 ·
+   아빠 · 엄마 · 할머니 · 형 · 가족 · 어른 · 선생님처럼 사람을 가리키는 말을 쓰지 않는다. 술 · 때림 같은 사건 낱말도 쓰지 않는다. 대신 그 주제를 아이의 생활 · 기분 · 잠 · 식사 ·
    학교 · 안전감 · 도움받을 곳 같은 일반적인 말로 묻는다. (예: 집에서 큰 소리가 났던 일 → "요즘 집에 있을 때 마음이 편한가요?")
 2. 입력에 없는 사실을 지어내지 않는다. 원인을 추측하지 않는다.
 3. 학대 여부 · 위험을 확정하거나 단정하지 않는다. 누구를 행위자 · 피해자로 못박지 않는다.
@@ -67,14 +76,14 @@ SYSTEM_PROMPT = """너는 아동보호전문기관 상담사를 돕는 보조 �
 5. '학대 · 처벌 · 신고 · 범죄 · 가해 · 피해자 · 폭행 · 위반 · 고소 · 법적 · 법률' 같은 말을 쓰지 않는다.
 6. 답을 정해 두고 확인받는 질문("~했지?", "~않았어요?")을 쓰지 않는다.
 7. 사람 이름이나 [PERSON_01] 같은 표시를 넣지 않는다.
-8. 보기는 치우치지 않게 쓴다. '말하기 어려워요' 는 시스템이 붙이니 넣지 않는다.
+8. 보기는 치우치지 않게 쓴다. '말하기 어려워요' 같은 건너뛰기 보기는 넣지 않는다(앱에 건너뛰기가 따로 있다).
 9. 이미 보낸 질문과 같은 질문을 다시 쓰지 않는다.
 10. 문장은 한국어로만 쓴다.
 11. 자해 · 자살 · 죽음 · 스스로를 다치게 하는 생각은 앱으로 묻지 않는다. 아이가 혼자 있을 때 답하면 바로 도울 사람이 없다.
     확인할 사항에 이런 내용이 있으면 그 항목은 건너뛴다(상담사가 상담에서 직접 묻는다).
 
 반드시 아래 JSON 형식으로만 답한다.
-{"questions": [{"category": "마음", "type": "choice", "text": "...", "options": ["...", "..."], "concern": ["..."], "reason": "..."}]}
+{"questions": [{"category": "마음", "type": "choice", "text": "...", "options": ["...", "..."], "reason": "..."}]}
 """
 
 
@@ -106,7 +115,7 @@ def format_input(context: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _bad_text(text: str) -> bool:
+def _bad_text(text: str, names: Iterable[str] = ()) -> bool:
     from ai.modeling.abuse.question_rules import question_term_reason
     from ai.modeling.abuse.text_script import has_foreign_script
 
@@ -116,6 +125,8 @@ def _bad_text(text: str) -> bool:
         or question_term_reason(text)
         or _PEOPLE.search(text)
         or _SELF_HARM.search(text)
+        or _INCIDENT.search(text)
+        or any(name in text for name in names)
     )
 
 
@@ -123,8 +134,11 @@ def _norm(text: str) -> str:
     return re.sub(r"[\s?.!·]", "", text)
 
 
-def clean_output(raw: Any, sent: Iterable[str] = ()) -> List[Dict[str, Any]]:
-    """규칙에 맞는 질문만 남긴다. reason 을 쓸 수 없는 질문도 버린다(상담사가 왜 나왔는지 알아야 고른다)."""
+def clean_output(raw: Any, sent: Iterable[str] = (), names: Iterable[str] = ()) -> List[Dict[str, Any]]:
+    """규칙에 맞는 질문만 남긴다. reason 을 쓸 수 없는 질문도 버린다(상담사가 왜 나왔는지 알아야 고른다).
+
+    names: 그 사례의 등록 이름(두 글자 이상만 쓴다). 질문 · 보기에 들어 있으면 버린다.
+    """
 
     from ai.modeling.abuse.question_rules import judgment_reason, leading_reason
     from ai.modeling.abuse.text_script import has_foreign_script
@@ -132,6 +146,7 @@ def clean_output(raw: Any, sent: Iterable[str] = ()) -> List[Dict[str, Any]]:
     if not isinstance(raw, dict) or not isinstance(raw.get("questions"), list):
         return []
 
+    names = [name.strip() for name in names if name and len(name.strip()) >= 2]
     seen = {_norm(text) for text in sent}
     cleaned: List[Dict[str, Any]] = []
     has_text = False
@@ -153,7 +168,7 @@ def clean_output(raw: Any, sent: Iterable[str] = ()) -> List[Dict[str, Any]]:
         if (
             not text
             or len(text) > MAX_QUESTION_CHARS
-            or _bad_text(text)
+            or _bad_text(text, names)
             or leading_reason(text)
             or _norm(text) in seen
             or not reason
@@ -174,36 +189,28 @@ def clean_output(raw: Any, sent: Iterable[str] = ()) -> List[Dict[str, Any]]:
 
                 option = option.strip()
 
-                if not option or len(option) > MAX_OPTION_CHARS or option in options or option == HARD_TO_SAY or _bad_text(option):
+                if (
+                    not option
+                    or len(option) > MAX_OPTION_CHARS
+                    or option in options
+                    or option in SKIP_LIKE
+                    or _bad_text(option, names)
+                ):
                     continue
 
                 options.append(option)
 
-            options = options[: MAX_OPTIONS - 1]
+            options = options[:MAX_OPTIONS]
 
             if len(options) < 2:
                 continue
-
-            # 살펴볼 답은 남은 보기 글과 같은 것만, 모든 보기가 살펴볼 답이면 치우친 것이라 버린다.
-            raw_concern = entry.get("concern")
-            wanted = {item.strip() for item in raw_concern if isinstance(item, str)} if isinstance(raw_concern, list) else set()
-            concern = [option for option in options if option in wanted]
-
-            if len(concern) == len(options):
-                concern = []
-
-            # 아이가 답하지 않을 길을 늘 둔다(살펴볼 답이 아니다).
-            options.append(HARD_TO_SAY)
         elif has_text:
             continue
         else:
             has_text = True
-            concern = []
 
         seen.add(_norm(text))
-        cleaned.append(
-            {"category": category, "type": kind, "text": text, "options": options, "concern": concern, "reason": reason}
-        )
+        cleaned.append({"category": category, "type": kind, "text": text, "options": options, "reason": reason})
 
     return cleaned
 
@@ -222,6 +229,7 @@ def generate_child_session_questions(
     from ai.modeling.abuse.second_stage_llm import _call_llm_with_retry
 
     masked, entity_map = mask_for_outbound(format_input(context), known_identifiers=list(known_identifiers))
+
     client, model_name = build_openai_client_and_model(model or DEFAULT_MODEL)
     parsed = _call_llm_with_retry(
         client=client,
@@ -232,7 +240,8 @@ def generate_child_session_questions(
         timeout_seconds=60.0,
         deadline=deadline,
     )
-    cleaned = clean_output(parsed, context.get("sent") or [])
+    names = list(known_identifiers)
+    cleaned = clean_output(parsed, context.get("sent") or [], names)
 
     # 이유만 되돌린다. 질문 · 보기에는 토큰이 없다(_bad_text).
     for entry in cleaned:

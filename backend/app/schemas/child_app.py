@@ -279,10 +279,17 @@ class ChildSessionQuestionItem(BaseModel):
     type: str
     text: str
     options: List[str] = Field(default_factory=list)
-    # 아이가 고르면 살펴볼 답(AMBER)으로 뜨는 보기. 상담사에게만 보인다.
-    concern: List[str] = Field(default_factory=list)
     # 상담사에게만 보인다(이번 회차의 어떤 내용과 이어지는지).
     reason: str = ""
+    # 상담사가 고친 질문인지.
+    edited: bool = False
+
+
+class ChildSessionQuestionUpdateRequest(RequestModel):
+    """맞춤 질문 고치기. 짧은 글 질문이면 options 는 비운다."""
+
+    text: str = Field(min_length=1, max_length=120)
+    options: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=6)
 
 
 class ChildSessionQuestions(BaseModel):

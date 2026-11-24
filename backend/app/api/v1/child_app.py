@@ -32,6 +32,7 @@ from app.schemas.child_app import (
     ChildNoteRequest,
     ChildScheduleRequest,
     ChildSessionQuestions,
+    ChildSessionQuestionUpdateRequest,
     ChildSilentDaysRequest,
     ChildOpenAlert,
     ChildQuestionSendRequest,
@@ -255,6 +256,28 @@ def create_session_questions(
 
     return DataResponse(
         data=child_session_question_service.create_draft(db, case, current_user, regenerate=regenerate)
+    )
+
+
+@case_router.patch(
+    "/{case_id}/child-app/session-questions/{question_id}", response_model=DataResponse[ChildSessionQuestions]
+)
+def update_session_question(
+    case_id: uuid.UUID,
+    question_id: str,
+    payload: ChildSessionQuestionUpdateRequest,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[ChildSessionQuestions]:
+    """맞춤 질문 문장 · 보기 · 살펴볼 답 고치기(가장 최근 분석 회차 초안만)."""
+
+    case = get_case_or_404(db, case_id, current_user)
+
+    return DataResponse(
+        data=child_session_question_service.update_question(
+            db, case, current_user, question_id, payload.text, payload.options, client_ip(request)
+        )
     )
 
 
