@@ -270,7 +270,7 @@ def update_session_question(
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[ChildSessionQuestions]:
-    """맞춤 질문 문장 · 보기 · 살펴볼 답 고치기(가장 최근 분석 회차 초안만)."""
+    """맞춤 질문 문장 · 보기 고치기(가장 최근 분석 회차 초안만)."""
 
     case = get_case_or_404(db, case_id, current_user)
 

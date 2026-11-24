@@ -326,6 +326,11 @@ def update_question(
         raise not_found(ErrorCode.NOT_FOUND, "맞춤 질문을 찾을 수 없습니다. 화면을 새로고침해 주세요.")
 
     text = text.strip()
+
+    # 공백만 보내면 빈 질문이 아이 앱으로 나간다(민규 #195 머지 뒤 리뷰 1).
+    if not text:
+        raise bad_request(ErrorCode.VALIDATION_ERROR, "질문 문장을 적어 주세요.")
+
     cleaned: List[str] = []
 
     for option in options:
