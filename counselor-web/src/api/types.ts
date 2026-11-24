@@ -987,6 +987,18 @@ export interface FollowupQuestionDraft {
   bank_code: string | null;
 }
 
+/**
+ * 한 회차의 아동 발화 대화 주제 하나(선택 필드, 2026-10-29, API_CONTRACT 8절 topic_tags). AI 제안이다.
+ * topic 은 AI 의 고정 목록 이름이고, segment_ids 는 그 주제로 나눈 아동 발화다.
+ */
+export interface AnalysisTopicTag {
+  topic: string;
+  segment_ids: string[];
+  /** 첫 근거 발화 앞부분 · 시작 시각(ms). 없으면 빈 글 · null. */
+  quote: string;
+  start_ms: number | null;
+}
+
 export interface AnalysisResult {
   /** AI Output Contract 버전. 지금은 "1.0". */
   schema_version: string;
@@ -1005,6 +1017,8 @@ export interface AnalysisResult {
   followup_check_points: FollowupCheckPoint[];
   /** 옛 결과 · 이전 서버에는 없다. */
   followup_questions?: FollowupQuestionDraft[];
+  /** 대화 주제. null · 없음 = 주제 분류가 없는 분석(이 필드 전 · 실패 · Mock). [] = 분류했지만 해당 없음. */
+  topic_tags?: AnalysisTopicTag[] | null;
 }
 
 /**

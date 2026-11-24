@@ -5,6 +5,8 @@
 // 그 시각이 지났으면 서버가 바로 보낸다). 예약해 둔 질문(scheduled_questions)이 있으면 '발송 예약 · 오늘 18:00 발송' 과 '예약 취소'.
 // 알림 문구는 보낸 뒤 다시 받은 값으로 정한다(예약됐는지 · 바로 갔는지는 서버가 정하므로).
 // 낮에 급하게 확인할 때를 위해 '지금 보내기'(deliver NOW)도 둔다 — 화면 기본은 예약(민규 #186 리뷰, #173 스펙).
+// related(11/24, '아이 앱으로 먼저' 탭만 넘긴다): 이 회차 AI 분석과 관련 있는 문항 { ids, reasons }(childQuestionRelevance).
+// 그 문항을 위에 올리고 이유를 적을 뿐, 문장 · 보기는 그대로이고 체크는 꺼진 채다 — 보낼 문항은 상담사가 고른다.
 import { useEffect, useState } from 'react';
 import A from './A';
 import { useSentToast } from './SentToast';
@@ -21,7 +23,7 @@ function deliverLabel(iso) {
   return d.toDateString() === new Date().toDateString() ? `오늘 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 
-export default function ChildQuestionSender({ app, caseId, bare = false }) {
+export default function ChildQuestionSender({ app, caseId, bare = false, related = null }) {
   const [picked, setPicked] = useState([]);
   const [toast, showToast] = useSentToast();
   const [hint, setHint] = useState('');
@@ -77,17 +79,39 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
       </div>
     );
   } else {
+    // 관련 문항은 서버가 준 문항 목록에 있는 것만 올린다(모르는 id 는 버린다).
+    const top = (related?.ids ?? []).map((id) => data.bank.find((item) => item.id === id)).filter(Boolean);
+    const rest = top.length ? data.bank.filter((item) => !top.includes(item)) : data.bank;
+    const row = (item, reasons) => (
+      <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
+        <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
+        <span>
+          <span className="chip c-sand">{item.category}</span>{' '}
+          {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
+          {reasons?.length ? (
+            <span className="note" style={{ display: 'block', marginTop: '2px' }}>
+              {reasons.join(' · ')}
+            </span>
+          ) : null}
+        </span>
+      </label>
+    );
     body = (
       <>
-        {data.bank.map((item) => (
-          <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
-            <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
-            <span>
-              <span className="chip c-sand">{item.category}</span>{' '}
-              {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
+        {top.length ? (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 8px' }}>
+              <span className="chip c-ai">AI 분석 참고</span>
+              <b style={{ fontSize: '14px' }}>이번 상담과 관련 있는 문항</b>
+            </div>
+            <span className="note">
+              이 회차의 AI 신호와 아이가 이야기한 주제를 기준으로 위에 올렸어요. 보낼 문항은 상담사가 고릅니다.
             </span>
-          </label>
-        ))}
+            {top.map((item) => row(item, related.reasons[item.id]))}
+            <b style={{ fontSize: '14px', marginTop: '4px' }}>그 밖의 문항</b>
+          </>
+        ) : null}
+        {rest.map((item) => row(item))}
         {scheduled ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             <span className="chip c-sel">발송 예약 · {deliverLabel(scheduled.deliver_at)} 발송</span>

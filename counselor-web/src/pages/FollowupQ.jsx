@@ -31,6 +31,7 @@ import { useRiskSignals } from '../data/useRiskSignals';
 import { useSessionAnalysis } from '../data/useSessionAnalysis';
 import { useSessionDetail } from '../data/useSessionDetail';
 import { useSourceDocument } from '../data/useSourceDocument';
+import { relatedBankQuestions } from '../data/screens/childQuestionRelevance';
 import { needsLogin, signedIn } from '../data/screens/common';
 import { checklistNeedsEvidence, followupQValues } from '../data/screens/followupQ';
 import { initialCheckState } from '../data/screens/followupChecks';
@@ -94,6 +95,9 @@ function FollowupQScreen(props) {
   const fromDocument = detail.session?.source === 'DOCUMENT';
   const analysis = useSessionAnalysis(ids.sessionId, { enabled: enabled && known && !fromDocument });
   const sourceDoc = useSourceDocument(ids.sessionId, { enabled: enabled && fromDocument });
+  // 문서 회차도 AI 신호 · 대화 주제는 분석 결과에 있다(#164). 화면 초안은 위 sourceDoc 을 쓰고, 이 값은
+  // '아이 앱으로 먼저' 탭의 관련 문항 표시에만 쓴다(11/24).
+  const docSignals = useSessionAnalysis(ids.sessionId, { enabled: enabled && fromDocument });
   const questions = useFollowupQuestions(ids.sessionId, { enabled });
   // 문서 회차는 분석이 없어 rag 체크리스트를 부르지 않는다.
   const checklist = useFollowupChecklist(ids.sessionId, { enabled: enabled && known && !fromDocument, watch: analysis.processing || analysis.draftsPending });
@@ -132,6 +136,9 @@ function FollowupQScreen(props) {
   // '아이 앱으로 먼저' 탭(11/10): 콩콩 질문 보내기. 그 탭을 열었을 때만 부른다.
   const childCaseId = sessionCaseId(ids, detail);
   const childApp = useCaseChildApp(childCaseId, enabled && v.appCls === 'on');
+  // '아이 앱으로 먼저' 탭: 이 회차 AI 신호 · 대화 주제와 관련 있는 문항을 위에 올린다(11/24). 분석이 없으면 빈 값 — 목록은 그대로.
+  const signalSource = fromDocument ? docSignals.analysis : analysis.analysis;
+  const relatedQuestions = relatedBankQuestions(signalSource?.abuseSignals ?? [], signalSource?.topicTags ?? null);
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   return (
     <div className="pg-FollowupQ">
@@ -377,7 +384,7 @@ function FollowupQScreen(props) {
               </div>
             </div>
             {v.qNote ? <span className="note">{v.qNote}</span> : null}
-            {v.appCls === 'on' ? <ChildQuestionSender app={childApp} caseId={childCaseId} bare /> : null}
+            {v.appCls === 'on' ? <ChildQuestionSender app={childApp} caseId={childCaseId} related={relatedQuestions} bare /> : null}
             {v.qs.map((q) => (
               <div key={q.key} className="qcard">
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
