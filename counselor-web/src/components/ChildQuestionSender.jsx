@@ -42,10 +42,6 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
     showToast(sq ? `질문 ${sent.count}개를 발송 예약했어요 · ${deliverLabel(sq.deliver_at)} 발송` : `아이에게 질문 ${sent.count}개를 보냈어요`);
     setSent(null);
   }, [data, sent, showToast]);
-  // 고치는 중인 맞춤 질문 id 와 그 칸 값(보기는 쉼표로 구분, 건너뛰기는 아이 앱에 따로 있다).
-  // 훅은 아래 'if (!data) return' 보다 앞에 둔다 — 뒤에 두면 자료가 온 뒤 훅 수가 달라져 화면이 하얗게 멈춘다(민규 11/24).
-  const [editId, setEditId] = useState(null);
-  const [draft, setDraft] = useState({ text: '', opts: '' });
   if (!data) return toast;
   const scheduled = data.can_read_feed ? data.scheduled_questions ?? null : null;
 
@@ -71,6 +67,9 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
     if (deliver === 'NOW') showToast(`아이에게 질문 ${count}개를 보냈어요`);
     else setSent({ count, data: before });
   };
+  // 고치는 중인 맞춤 질문 id 와 그 칸 값(보기는 쉼표로 구분, 건너뛰기는 아이 앱에 따로 있다).
+  const [editId, setEditId] = useState(null);
+  const [draft, setDraft] = useState({ text: '', opts: '' });
   const splitList = (value) =>
     value
       .split(',')
