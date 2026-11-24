@@ -13,6 +13,8 @@ from sqlalchemy import select
 from app.adapters.ai_adapter import AIAnalysisBundle, MockAIAdapter
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.enums import AuditAction
+from app.models.audit_log import AuditLog
 from app.models.transcript import Transcript
 from app.services import analysis_service, key_scan_service
 from tests.test_stt_transcript import transcribed_session
@@ -127,6 +129,13 @@ def test_confirm_without_editing_reuses_result(client: TestClient, counselor_hea
 
     assert len(calls) == 1
     assert [item["subtype"] for item in _risk(analysis)] == ["직접 신체 가해"]
+    # 다시 쓴 것은 2단계 경고와 감사 기록에 판 번호로 남는다(민규 #195 리뷰 3).
+    assert "원문 확정 전 AI 분석(원문 1판)을 그대로 썼습니다" in " ".join((analysis.get("analysis") or analysis)["result"]["warnings"])
+    with SessionLocal() as db:
+        sent = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.PRE_ANALYSIS_SENT)).all()
+        reused = db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.PRE_ANALYSIS_REUSED)).all()
+        assert len(sent) == 1 and sent[0].detail["segments"] > 0
+        assert [row.detail["from_version"] for row in reused] == [1]
 
     # 재분석(두 번째 분석)은 새로 한다.
     response = client.post(f"/api/v1/sessions/{session['id']}/analysis", headers=counselor_headers)
@@ -134,7 +143,8 @@ def test_confirm_without_editing_reuses_result(client: TestClient, counselor_hea
     assert len(calls) == 2
 
 
-def test_editing_a_non_evidence_line_still_reuses(client: TestClient, counselor_headers, session: dict, before_confirm, calls, scans) -> None:
+def test_editing_any_line_analyzes_again(client: TestClient, counselor_headers, session: dict, before_confirm, calls, scans) -> None:
+    # 근거가 아닌 줄을 고쳐도(모델이 놓친 위험 발화를 바로잡았을 수 있음) 확정 원문으로 새로 분석한다(민규 #195 리뷰 1).
     envelope = transcribed_session(client, counselor_headers, session["id"])
     first = envelope["transcript"]["segments"][0]
 
@@ -146,8 +156,9 @@ def test_editing_a_non_evidence_line_still_reuses(client: TestClient, counselor_
     assert response.json()["data"]["key_scan"]["model"] == "ai_analysis" and response.json()["data"]["key_scan"]["status"] == "DONE"
     assert scans == []
 
-    _confirm_and_analyze(client, counselor_headers, session["id"])
-    assert len(calls) == 1
+    analysis = _confirm_and_analyze(client, counselor_headers, session["id"])
+    assert len(calls) == 2 and calls[1]["segments"][0]["text"] == "고친 가상 문장"
+    assert not any("그대로 썼습니다" in warning for warning in (analysis.get("analysis") or analysis)["result"]["warnings"])
 
 
 def test_editing_an_evidence_line_analyzes_again(client: TestClient, counselor_headers, session: dict, before_confirm, calls) -> None:
@@ -206,6 +217,19 @@ def test_unreadable_registered_names_are_not_sent(client: TestClient, counselor_
     assert envelope["transcript"]["key_scan"]["model"] == "roberta_test"
 
 
+def test_case_without_registered_names_is_not_sent(client: TestClient, counselor_headers, session: dict, before_confirm, monkeypatch, calls, scans) -> None:
+    # 등록 이름이 하나도 없으면 보내지 않는다(민규 #195 리뷰 6 · 경진 11/24).
+    from app.services import personal_info_service
+
+    monkeypatch.setattr(analysis_service, "get_ai_adapter", lambda: NamedAdapter(calls))
+    monkeypatch.setattr(personal_info_service, "known_identifiers", lambda db, case_id, **kwargs: [])
+
+    envelope = transcribed_session(client, counselor_headers, session["id"])
+
+    assert calls == [] and len(scans) == 1
+    assert envelope["transcript"]["key_scan"]["model"] == "roberta_test"
+
+
 def test_registered_names_and_one_letter_variants_are_masked(client: TestClient, counselor_headers, session: dict, before_confirm, monkeypatch, calls) -> None:
     from app.services import personal_info_service, pre_analysis_service
 
@@ -222,5 +246,29 @@ def test_registered_names_and_one_letter_variants_are_masked(client: TestClient,
 def test_similar_name_variants() -> None:
     from app.services.pre_analysis_service import similar_name_variants
 
-    text = "김수하가 왔어요. 김민수도 왔고 이수아도 있어요. 김수아는 집에."
+    text = "김수하가 왔어요. 김수하 학생. 김민수도 왔고 이수아도 있어요. 김수아는 집에."
     assert similar_name_variants(text, ["김수아", "수아"]) == ["김수하"]
+    # 일반 낱말은 가리지 않는다(민규 #195 리뷰 5): 첫소리만 다른 것 · 낱말 경계 · 조사가 된 꼴.
+    assert similar_name_variants("하지만 괜찮아요. 고민이 있어요. 오늘하지만", ["하지원", "고민지"]) == []
+
+
+def test_switch_off_does_not_reuse_saved_result(client: TestClient, counselor_headers, session: dict, before_confirm, monkeypatch, calls) -> None:
+    transcribed_session(client, counselor_headers, session["id"])
+    monkeypatch.setattr(settings, "ANALYZE_BEFORE_CONFIRM", False)
+
+    _confirm_and_analyze(client, counselor_headers, session["id"])
+
+    assert len(calls) == 2
+
+
+def test_unreadable_saved_result_analyzes_again(client: TestClient, counselor_headers, session: dict, before_confirm, calls) -> None:
+    # 저장한 값을 풀지 못하면 AI_FAILED 를 되풀이하지 않고 새로 분석한다(민규 #195 리뷰 4).
+    transcribed_session(client, counselor_headers, session["id"])
+    with SessionLocal() as db:
+        row = db.scalar(select(Transcript).where(Transcript.version == 1))
+        row.pre_analysis_enc = "v1.broken.value"
+        db.commit()
+
+    analysis = _confirm_and_analyze(client, counselor_headers, session["id"])
+
+    assert len(calls) == 2 and (analysis.get("analysis") or analysis)["status"] == "COMPLETED"

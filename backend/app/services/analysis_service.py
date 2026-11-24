@@ -346,9 +346,21 @@ def process_analysis(session_id: uuid.UUID, analysis_id: uuid.UUID) -> None:
             if transcript is None:
                 raise AIError("Transcript 가 없습니다.", ErrorCode.AI_FAILED)
 
-            # 원문 확정 전에 돌린 AI 전체 분석(2026-11-24)이 있고 근거 줄을 고치지 않았으면 그 결과를 그대로 쓴다(외부 AI 를
-            # 다시 부르지 않음). 첫 분석일 때만이고, 없거나 근거 줄을 고쳤으면 None → 아래에서 새로 분석한다.
-            bundle = pre_analysis_service.cached_bundle(db, session, transcript)
+            # 원문 확정 전에 돌린 AI 전체 분석(2026-11-24)이 있고 확정한 원문이 그 판과 같으면 그 결과를 그대로 쓴다(외부 AI 를
+            # 다시 부르지 않음). 첫 분석일 때만이고, 없거나 한 줄이라도 고쳤으면 None → 아래에서 새로 분석한다.
+            reuse = pre_analysis_service.cached_bundle(db, session, transcript)
+            bundle = reuse.bundle if reuse is not None else None
+
+            if reuse is not None:
+                audit_service.record(
+                    db,
+                    action=AuditAction.PRE_ANALYSIS_REUSED,
+                    entity_type="AIAnalysis",
+                    entity_id=analysis.id,
+                    case_id=session.case_id,
+                    session_id=session.id,
+                    detail={"from_version": reuse.from_version, "transcript_version": transcript.version},
+                )
 
             if bundle is None:
                 payload = transcript_service.transcript_to_contract(transcript)
