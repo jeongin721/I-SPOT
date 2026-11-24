@@ -35,6 +35,11 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
   const [sent, setSent] = useState(null);
   // 누른 단추('EVENING' · 'NOW'). 보내는 중 문구를 그 단추에만 보인다.
   const [going, setGoing] = useState(null);
+  // 고치는 중인 맞춤 질문 id 와 그 칸 값(보기는 쉼표로 구분, 건너뛰기는 아이 앱에 따로 있다).
+  // 훅은 아래 '자료가 아직 없으면 돌아가기'(if (!data) return) 보다 위에 둔다 — 아래에 두면 자료가 온 뒤 훅 수가 달라져
+  // 화면이 통째로 하얗게 된다(11/24 아이 상세 · '아이 앱으로 먼저' 탭).
+  const [editId, setEditId] = useState(null);
+  const [draft, setDraft] = useState({ text: '', opts: '' });
   const data = app.data;
   useEffect(() => {
     if (!sent || !data || data === sent.data) return;
@@ -67,9 +72,6 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
     if (deliver === 'NOW') showToast(`아이에게 질문 ${count}개를 보냈어요`);
     else setSent({ count, data: before });
   };
-  // 고치는 중인 맞춤 질문 id 와 그 칸 값(보기는 쉼표로 구분, 건너뛰기는 아이 앱에 따로 있다).
-  const [editId, setEditId] = useState(null);
-  const [draft, setDraft] = useState({ text: '', opts: '' });
   const splitList = (value) =>
     value
       .split(',')
