@@ -381,7 +381,9 @@ def _variants(name: str) -> List[str]:
     return list(dict.fromkeys(variants))
 
 
-def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Optional[str]] = ()) -> List[str]:
+def known_identifiers(
+    db: Session, case_id: uuid.UUID, *, extra: Iterable[Optional[str]] = (), strict: bool = False
+) -> Optional[List[str]]:
     """외부 AI 로 보내기 전 가리기(privacy_gateway 의 known_identifiers)에 넘길 그 사례의 등록 이름.
 
     아동 · 사례관리대상자 · 면접대상자 · 가족관계 표 · 건강정도 대상자 이름과 그 성 뺀 이름이다. extra(예: 사례 별칭)는 앞뒤 공백만
@@ -389,7 +391,8 @@ def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Option
 
     메모리에서만 쓴다: 돌려준 값을 로그 · 감사 detail · DB · 오류 문구에 넣지 않는다. 열람 기록도 남기지 않는다(모듈 머리 주석).
     어떤 실패도 올리지 않는다. 풀지 못한 칸 · 모양이 틀린 칸은 빼고 경고만(칸 이름 · 키 이름 · 예외 종류, 값 없이) 남기고,
-    DB 오류 같은 나머지 실패는 등록 이름 없이(extra 만) 돌려준다 — 실명 없이 지금처럼 가린다. DB 오류 뒤에는 거래를 되돌리므로
+    DB 오류 같은 나머지 실패는 등록 이름 없이(extra 만) 돌려준다 — 실명 없이 지금처럼 가린다. strict 면(원문 확정 전 전체 전송,
+    2026-11-24 민규) 칸 하나라도 못 풀거나 실패하면 None — 부르는 쪽이 보내지 않는다. DB 오류 뒤에는 거래를 되돌리므로
     (PostgreSQL 은 SQL 오류 뒤 거래가 깨진다) 부르기 전에 쓴 변경이 없어야 한다. 지금 부르는 곳(분석 · 다음 상담 체크리스트 ·
     종결 요약)은 모두 읽기만 한 뒤 부른다.
     """
@@ -411,6 +414,8 @@ def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Option
                     pii_crypto.key_id_for_log(getattr(row, f"{field}_enc") or ""),
                     type(error).__name__,
                 )
+                if strict:
+                    return None
                 continue
 
             for name in found:
@@ -428,6 +433,9 @@ def known_identifiers(db: Session, case_id: uuid.UUID, *, extra: Iterable[Option
             db.rollback()
         except Exception as rollback_error:  # noqa: BLE001
             logger.warning("등록 이름을 읽다 깨진 거래를 되돌리지 못했습니다. reason=%s", type(rollback_error).__name__)
+
+        if strict:
+            return None
 
     names += [value.strip() for value in extra if isinstance(value, str) and value.strip()]
 

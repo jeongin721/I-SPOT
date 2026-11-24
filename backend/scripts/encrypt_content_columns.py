@@ -6,6 +6,7 @@
 #   2단계 session_source_documents.text · note_draft · followup_draft · cases.linked_background · intake_*(글 5칸) · notes ·
 #         session_followup_questions.questions · case_closure_reviews.summary · edits · report · case_forms.values ·
 #         child_app_events.payload · child_app_ai_drafts.items · docbox_files.preview_text
+#   (2026-11-24 transcripts.pre_analysis 는 처음부터 암호문으로만 저장해 옮길 것이 없다 — 이 script 가 훑어도 0행)
 #
 # 순서(PR 설명과 같다):
 #   1) 1단계 코드 배포(alembic upgrade 로 *_enc 칸이 생긴다). 이때부터 새로 쓰는 값은 암호문으로만 들어간다.

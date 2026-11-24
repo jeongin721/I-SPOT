@@ -62,6 +62,11 @@ class Transcript(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # STT 검수 '1차 임시 핵심 발화'(API_CONTRACT 7절): {status, model, segments[{segment_id, abuse_types}]}.
     # 응답마다 계산하지 않고 저장한 값을 준다. 이 기능 전 전사본은 null(스캔 안 함). 원문 수정 때는 지운 발화만 빼고 복사한다.
     key_scan: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    # 원문 확정 전 AI 전체 분석 결과(ANALYZE_BEFORE_CONFIRM, 2026-11-24) — AIAnalysisBundle 을 JSON 으로. 원문 인용 · 이름이
+    # 들어 있어 pre_analysis_enc 에 암호문으로만 둔다(encrypted_field). STT 결과로 만든 판에만 있고 원문 수정 판에는 없다.
+    pre_analysis_plain: Mapped[Optional[Dict[str, Any]]] = mapped_column("pre_analysis", JSONType, nullable=True)
+    pre_analysis_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pre_analysis = EncryptedColumn("pre_analysis", empty=None, json_value=True)
 
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

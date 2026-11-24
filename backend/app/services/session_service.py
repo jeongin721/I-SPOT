@@ -479,6 +479,10 @@ def expire_stale_processing(db: Session, session: ConsultationSession) -> bool:
     # STT 작업은 전사 뒤 같은 작업에서 1차 핵심 발화 스캔을 돌린다(modeling 일 때만, key_scan_service).
     if session.status == SessionStatus.STT_PROCESSING and settings.AI_PROVIDER == "modeling":
         limit_seconds += settings.KEY_SCAN_TIMEOUT_SECONDS
+
+        # 원문 확정 전 AI 전체 분석을 켜면 그 분석도 같은 작업에서 돈다(pre_analysis_service, 2026-11-24).
+        if settings.ANALYZE_BEFORE_CONFIRM:
+            limit_seconds += AI_PREPARE_TIMEOUT_SECONDS + settings.AI_TIMEOUT_SECONDS
     read_started_at = getattr(session, rule.started_field)
     started_at = read_started_at
 
