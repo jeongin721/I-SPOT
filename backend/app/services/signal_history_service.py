@@ -163,8 +163,11 @@ _STRENGTH_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 def _key_quote(
     result: Dict[str, Any], speakers: Dict[str, Speaker], starts: Dict[str, int]
 ) -> Optional[SignalHistoryKeyQuote]:
-    """아동 핵심 발화 하나. 위험 발화 근거 중 아동이 한 말(인용 대조됨 → 근거 강도 → 처음 나온 순), 없으면 대화 주제의 첫 근거 발화.
-    근거 발화 중 화자가 CHILD 인 첫 발화의 시각을 붙인다. 아동 발화가 없으면 None."""
+    """아동 핵심 발화 하나. 원문과 같은 글만 쓴다(민규 #195 리뷰).
+    - 위험 발화: AI 가 뽑은 인용이라 원문과 다를 수 있다 — 인용 대조(evidence_verified)가 true 인 것만, 근거 강도 → 처음 나온 순.
+      근거 발화 중 화자가 CHILD 인 첫 발화의 시각을 붙인다.
+    - 없으면 대화 주제: quote 는 분석 때 전사본의 첫 근거 발화 글 그대로(길면 잘림)다. 그 첫 발화가 지금도 CHILD 일 때만.
+    아동 발화가 없으면 None."""
 
     def child_segment(ids: Any) -> Optional[str]:
         for sid in ids if isinstance(ids, list) else []:
@@ -179,13 +182,9 @@ def _key_quote(
             continue
         text = item.get("text")
         sid = child_segment(item.get("segment_ids"))
-        if not isinstance(text, str) or not text.strip() or sid is None:
+        if not isinstance(text, str) or not text.strip() or sid is None or item.get("evidence_verified") is not True:
             continue
-        rank = (
-            0 if item.get("evidence_verified") is True else 1,
-            _STRENGTH_RANK.get(item.get("evidence_strength"), 3),
-            index,
-        )
+        rank = (_STRENGTH_RANK.get(item.get("evidence_strength"), 3), index)
         candidates.append((rank, text.strip(), sid))
 
     if candidates:
@@ -197,8 +196,9 @@ def _key_quote(
         if not isinstance(tag, dict):
             continue
         quote = tag.get("quote")
-        sid = child_segment(tag.get("segment_ids"))
-        if isinstance(quote, str) and quote.strip() and sid is not None:
+        ids = tag.get("segment_ids")
+        sid = ids[0] if isinstance(ids, list) and ids and isinstance(ids[0], str) else None
+        if isinstance(quote, str) and quote.strip() and sid is not None and speakers.get(sid) == Speaker.CHILD:
             return SignalHistoryKeyQuote(text=quote.strip(), segment_id=sid, start_ms=starts.get(sid), source="TOPIC")
 
     return None

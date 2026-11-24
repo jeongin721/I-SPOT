@@ -6,6 +6,7 @@
 //    나온 회차 — 있으면 그 회차들, 없으면 '없음'(분석한 회차 기준, AI 제안). '위험수준 척도' 는 기관 서식(위험수준 척도) 확정 기록의 위험요인 합계.
 //  - 회차별 흐름: 회차 · 날짜(+ 상담 유형) · 유형(학대 유형, AI 관련 신호) · 핵심(아동이 한 핵심 발화 — signal-history key_quote,
 //    디자인 '"엄마가 소리 지르면 숨고 싶어요"' 처럼 아동 말 그대로 + 발화 시각. 11/24 경진: 상담일지 요약이 아니라 아동 발화.
+//    승인 전 회차는 '승인 전 · 상태'(민규 #195 리뷰). 서버는 원문과 같은 글(대조된 위험 발화 인용 · 주제 첫 발화)만 준다.
 //    문서 회차는 아동 발화가 없어 승인한 기록 요약 첫 칸) ·
 //    근거(학대 근거 — 세부 신호 · 근거 발화 수, 없으면 요약 칸 이름). 11/19 팀 요청으로 유형 · 근거를 학대 유형 · 근거로 바꿈. 승인 전 회차는 핵심 '승인 전'. 회차를 누르면 그 회차 상세(/SessionDetail).
 //  - 핵심 요약(2026-10-30): closure-summary — 승인 회차 요약으로 만든 묶음(AI 초안 또는 승인 요약 모음) · 확인 체크 · 고친 문장.
@@ -235,16 +236,17 @@ export function closureReviewValues(input: ClosureReviewInput) {
     const hist = historyBy.get(row.id);
     const signals = hist ? detectedTypeLabels(hist) : [];
     // 핵심 = 아동 핵심 발화(디자인: 아동 말 그대로). 시각은 아래 작은 줄에.
+    // 상담원이 승인하기 전 회차는 예전처럼 '승인 전 · 상태'만 — 화자 · 원문이 확정되기 전이라서(민규 #195 리뷰).
     const quote = hist?.key_quote;
     let key = "";
     let keyNote = "";
-    if (quote) {
+    if (row.status !== "APPROVED") key = `승인 전 · ${row.statusLabel}`;
+    else if (quote) {
       key = `"${clip(quote.text, 60)}"`;
       keyNote = ["아동 발화", quote.start_ms != null ? formatClock(quote.start_ms) : ""].filter(Boolean).join(" · ");
     } else if (row.source === "DOCUMENT") {
       // 문서 회차는 아동 발화가 없다 — 승인한 기록 요약 첫 칸.
-      if (row.status !== "APPROVED") key = `승인 전 · ${row.statusLabel}`;
-      else if (item?.failed) key = "요약을 불러오지 못했습니다";
+      if (item?.failed) key = "요약을 불러오지 못했습니다";
       else if (filled) {
         key = clip(filled.text, 60);
         keyNote = `기록 요약 · ${filled.label}`;

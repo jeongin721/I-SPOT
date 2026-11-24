@@ -433,7 +433,7 @@ def test_key_quote_prefers_verified_strong_child_risk_utterance(
         risk_utterances=[
             # 상담원 발화만 근거 → 후보 아님
             {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [adult.segment_id], "text": "상담원 말", "evidence_strength": "HIGH", "evidence_verified": True},
-            # 아동 발화지만 인용 대조 안 됨 → 뒤로
+            # 아동 발화지만 인용 대조 안 됨 → 원문과 다를 수 있어 쓰지 않음
             {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [child_a.segment_id], "text": "대조 안 된 말", "evidence_strength": "HIGH", "evidence_verified": False},
             {"abuse_type": "EMOTIONAL", "subtype": "y", "segment_ids": [child_a.segment_id], "text": "약한 근거", "evidence_strength": "LOW", "evidence_verified": True},
             # 상담원 + 아동 섞임 → 아동 발화 시각을 붙인다
@@ -461,9 +461,15 @@ def test_key_quote_falls_back_to_child_topic_then_null(
     _set_result(
         db,
         session["id"],
-        risk_utterances=[{"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [adult.segment_id], "text": "보호자 말"}],
+        risk_utterances=[
+            {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [adult.segment_id], "text": "보호자 말", "evidence_verified": True},
+            # 아동 발화지만 대조 안 됨 → 주제로 넘어간다
+            {"abuse_type": "PHYSICAL", "subtype": "x", "segment_ids": [child.segment_id], "text": "대조 안 됨", "evidence_verified": False},
+        ],
         topic_tags=[
             {"topic": "학교", "segment_ids": [adult.segment_id], "quote": "보호자 주제"},
+            # 첫 근거 발화가 아동이 아니면 그 주제는 쓰지 않는다
+            {"topic": "가족", "segment_ids": [adult.segment_id, child.segment_id], "quote": "보호자 첫 발화"},
             {"topic": "친구", "segment_ids": [child.segment_id], "quote": "친구랑 놀았어요"},
         ],
     )

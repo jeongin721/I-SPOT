@@ -53,8 +53,8 @@ class SignalHistorySubtype(BaseModel):
 class SignalHistoryKeyQuote(BaseModel):
     """회차의 아동 핵심 발화 하나(종결 검토 '회차별 흐름 › 핵심', 2026-11-24). 'AI 제안' 이다.
 
-    분석 결과가 고른 근거 인용을 그대로 쓴다 — 위험 발화(risk_utterances) 중 아동이 한 말이 먼저(인용 대조된 것 ·
-    근거 강도 높은 것 · 처음 나온 것 순), 없으면 대화 주제(topic_tags)의 첫 근거 발화. 새로 AI 를 돌리지 않는다.
+    원문과 같은 글만 쓴다 — 위험 발화(risk_utterances) 중 인용 대조(evidence_verified)된 아동 발화가 먼저(근거 강도 →
+    처음 나온 순), 없으면 대화 주제(topic_tags)의 첫 근거 발화 글(전사본 그대로). 새로 AI 를 돌리지 않는다.
     """
 
     text: str
