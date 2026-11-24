@@ -388,8 +388,12 @@ export interface CaseDetail extends Case {
 }
 
 export interface CaseCreateRequest extends CaseFormFields {
-  title: string;
-  child_alias: string;
+  /**
+   * 제목 · 아동 별칭(2026-11-24). 빼거나 null 로 보내면 서버가 사례번호로 채운다 — 제목 `C-2026-0031 사례`, 별칭 `아동_0031`.
+   * 빈 글("")은 422. 실명을 별칭에 넣지 않는다(별칭은 암호화하지 않는 칸 — 실명은 personal_info 로).
+   */
+  title?: string | null;
+  child_alias?: string | null;
   child_birth_year?: number | null;
   child_gender?: string | null;
   guardian_type?: GuardianType | null;
