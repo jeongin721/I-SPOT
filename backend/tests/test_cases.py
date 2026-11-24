@@ -60,17 +60,139 @@ def test_create_case_rejects_duplicate_case_number(
     assert response.json()["error"]["code"] == "DUPLICATE_RESOURCE"
 
 
-def test_create_case_requires_title_and_alias(
+def test_create_case_rejects_empty_title_and_alias(
     client: TestClient, counselor_headers
 ) -> None:
-    response = client.post("/api/v1/cases", json={"title": ""}, headers=counselor_headers)
+    """빈 글로 보낸 제목 · 별칭은 여전히 422 다(빼거나 null 일 때만 서버가 채운다 — 2026-11-24)."""
 
-    assert response.status_code == 422
+    for payload in ({"title": ""}, {"child_alias": ""}, {"title": "", "child_alias": ""}):
+        response = client.post("/api/v1/cases", json=payload, headers=counselor_headers)
 
-    body = response.json()
+        assert response.status_code == 422, payload
 
-    assert body["error"]["code"] == "VALIDATION_ERROR"
-    assert body["error"]["details"]["fields"]
+        body = response.json()
+
+        assert body["error"]["code"] == "VALIDATION_ERROR"
+        assert body["error"]["details"]["fields"]
+
+
+# =========================================================
+# 제목 · 별칭을 빼고 보내면 서버가 사례번호로 채운다(2026-11-24)
+#   상담사 앱(폰)의 '새 사례 등록' 창에는 이름 · 생년월일 · 성별 칸만 있다.
+# =========================================================
+
+def test_create_case_fills_title_and_alias_from_case_number_when_omitted(
+    client: TestClient, counselor_headers
+) -> None:
+    response = client.post("/api/v1/cases", json={"child_gender": "여"}, headers=counselor_headers)
+
+    assert response.status_code == 201, response.text
+
+    data = response.json()["data"]
+    case_number = data["case_number"]
+    serial = case_number.rsplit("-", 1)[-1]
+
+    assert case_number.startswith("C-") and serial.isdigit()
+    assert data["title"] == f"{case_number} 사례"
+    assert data["child_alias"] == f"아동_{serial}"
+
+    # 저장된 값이다 — 다시 읽어도 같다.
+    detail = client.get(f"/api/v1/cases/{data['id']}", headers=counselor_headers).json()["data"]
+
+    assert (detail["title"], detail["child_alias"]) == (data["title"], data["child_alias"])
+
+
+def test_create_case_treats_null_title_and_alias_as_omitted(
+    client: TestClient, counselor_headers
+) -> None:
+    response = client.post(
+        "/api/v1/cases", json={"title": None, "child_alias": None}, headers=counselor_headers
+    )
+
+    assert response.status_code == 201, response.text
+
+    data = response.json()["data"]
+
+    assert data["title"] == f"{data['case_number']} 사례"
+    assert data["child_alias"] == f"아동_{data['case_number'].rsplit('-', 1)[-1]}"
+
+
+def test_create_case_fills_only_the_missing_one(client: TestClient, counselor_headers) -> None:
+    only_title = client.post(
+        "/api/v1/cases", json={"title": "직접 쓴 제목"}, headers=counselor_headers
+    ).json()["data"]
+
+    assert only_title["title"] == "직접 쓴 제목"
+    assert only_title["child_alias"] == f"아동_{only_title['case_number'].rsplit('-', 1)[-1]}"
+
+    only_alias = client.post(
+        "/api/v1/cases", json={"child_alias": "직접 쓴 별칭"}, headers=counselor_headers
+    ).json()["data"]
+
+    assert only_alias["child_alias"] == "직접 쓴 별칭"
+    assert only_alias["title"] == f"{only_alias['case_number']} 사례"
+
+
+def test_create_case_fills_from_a_given_case_number(client: TestClient, counselor_headers) -> None:
+    """사례번호를 직접 준 경우에도 그 번호로 채운다. '-' 가 없는 번호는 번호 전체를 별칭에 쓴다."""
+
+    dashed = client.post(
+        "/api/v1/cases", json={"case_number": "C-FIXED-0007"}, headers=counselor_headers
+    ).json()["data"]
+
+    assert (dashed["title"], dashed["child_alias"]) == ("C-FIXED-0007 사례", "아동_0007")
+
+    plain = client.post(
+        "/api/v1/cases", json={"case_number": "사건123"}, headers=counselor_headers
+    ).json()["data"]
+
+    assert (plain["title"], plain["child_alias"]) == ("사건123 사례", "아동_사건123")
+
+
+def test_create_case_never_builds_alias_from_the_real_name(
+    client: TestClient, counselor_headers
+) -> None:
+    """별칭은 암호화하지 않는 칸이다. 실명을 같이 보내도 실명(성 포함)에서 별칭 · 제목을 만들지 않는다."""
+
+    response = client.post(
+        "/api/v1/cases",
+        json={"personal_info": {"child_name": "남궁하늘", "child_birth_date": "2015-03-02"}},
+        headers=counselor_headers,
+    )
+
+    assert response.status_code == 201, response.text
+
+    data = response.json()["data"]
+
+    for value in (data["title"], data["child_alias"]):
+        assert "남궁" not in value and "하늘" not in value
+
+    assert data["child_alias"] == f"아동_{data['case_number'].rsplit('-', 1)[-1]}"
+
+
+def test_create_case_refills_title_and_alias_when_the_number_is_retried(
+    client: TestClient, counselor_headers, monkeypatch
+) -> None:
+    """번호가 겹쳐 다시 만들 때 제목 · 별칭도 새 번호로 다시 채운다(옛 번호의 값이 남지 않는다)."""
+
+    from app.services import case_service
+
+    taken = create_case(client, counselor_headers)["case_number"]
+    numbers = iter([taken, "C-RETRY-0042"])
+
+    monkeypatch.setattr(case_service, "_generate_case_number", lambda db: next(numbers))
+
+    response = client.post("/api/v1/cases", json={}, headers=counselor_headers)
+
+    assert response.status_code == 201, response.text
+
+    data = response.json()["data"]
+
+    assert (data["case_number"], data["title"], data["child_alias"]) == (
+        "C-RETRY-0042",
+        "C-RETRY-0042 사례",
+        "아동_0042",
+    )
 
 
 def test_create_case_rejects_invalid_birth_year(
