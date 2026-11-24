@@ -655,7 +655,7 @@ export function sttReviewValues(input: SttScreenInput) {
           jump: { sessionId: ids.sessionId, segmentId: row.segmentId, from: focusSegment, n: (state.jump?.n ?? 0) + 1 },
         }),
     })),
-    // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 STT 검수 화면으로).
+    // 10/29 디자인: 제목 옆 다른 회차 고르기(같은 기록 확인 화면으로).
     ...sessionPickValues(input, "/SttReview"),
     analyzing: progress !== null,
     done: review.info !== null,
