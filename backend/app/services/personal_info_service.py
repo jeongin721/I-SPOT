@@ -253,6 +253,8 @@ def put_personal_info(
 ) -> PersonalInfoResponse:
     case_id = case.id
     apply_personal_info(db, case, current_user, payload)
+    # 이름 · 가족 정보만 고치면 사례 행은 그대로다. 저장한 사례가 목록 맨 위로 오게 수정 시각을 찍는다(목록 기본 순서 = 최근 수정순).
+    case.touch()
     db.commit()
 
     row = db.get(CasePersonalInfo, case_id)

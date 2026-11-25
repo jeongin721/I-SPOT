@@ -161,7 +161,7 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
     raise conflict(ErrorCode.DUPLICATE_RESOURCE, "사례 번호 생성에 실패했습니다.")
 
 
-# 목록 정렬(API_CONTRACT 4절). 없으면 등록 최신순.
+# 목록 정렬(API_CONTRACT 4절). 없으면 최근 수정순(방금 고친 · 등록한 사례가 맨 위).
 CaseSort = Literal["report_date", "risk"]
 CaseSortOrder = Literal["desc", "asc"]
 
@@ -232,9 +232,13 @@ def list_cases(
 
 
 def _case_order(sort: Optional[CaseSort], risk_level, order: CaseSortOrder = "desc") -> list:
-    """목록 순서. desc 는 신고접수일 최신 · 위험도 상부터, asc 는 그 반대다(11/09 디자인 ↑ · ↓). 어느 쪽이든 값이 없는 사례는 맨 뒤고, 같은 값끼리는 등록 최신순이다(id 는 쪽을 넘겨도 순서가 흔들리지 않게)."""
+    """목록 순서. desc 는 신고접수일 최신 · 위험도 상부터, asc 는 그 반대다(11/09 디자인 ↑ · ↓). 어느 쪽이든 값이 없는 사례는 맨 뒤고, 같은 값끼리는 최근 수정순이다(id 는 쪽을 넘겨도 순서가 흔들리지 않게).
 
-    latest_first = [Case.created_at.desc(), Case.id.desc()]
+    sort 가 없으면 최근 수정순이다(2026-11-25): 사례를 고치거나 그 사례의 개인 식별 정보 · 기관 서식을 저장하면 맨 위로 온다(Case.touch).
+    등록도 수정으로 쳐서, 한 번도 고치지 않은 사례끼리는 전과 같이 등록 최신순이다. 회차 작업(녹취 · 검수 · 분석)은 순서를 바꾸지 않는다.
+    """
+
+    latest_first = [Case.updated_at.desc(), Case.id.desc()]
 
     if sort == "report_date":
         column = Case.report_date.asc() if order == "asc" else Case.report_date.desc()
@@ -397,6 +401,9 @@ def update_case(
             changed_fields.append(field)
 
     if changed_fields:
+        # 값이 그대로인 저장이면 DB 가 updated_at 을 안 바꾼다. 저장한 사례가 목록 맨 위로 오게 직접 찍는다.
+        case.touch()
+
         audit_service.record(
             db,
             action=AuditAction.CASE_UPDATED,

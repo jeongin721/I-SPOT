@@ -9,6 +9,9 @@
 // 고정 문항과 함께 고른다. 만들기는 상담사가 '맞춤 질문 만들기' 를 눌렀을 때만(회차 내용이 외부 AI 로 가므로 — 민규 #195 리뷰),
 // 한 번 만든 뒤에는 열 때마다 바로 보인다. 이유(reason)는 상담사에게만 보인다. 맞춤 질문 답은 건너뛰지 않으면 모두 살펴볼 답.
 // 맞춤 질문은 '고치기'로 문장 · 보기를 고칠 수 있다(아이 추가 질문 고치기와 같은 칸 모양 — ChildDetail).
+// related(11/24, '아이 앱으로 먼저' 탭만 넘긴다): 이 회차 AI 분석과 관련 있는 기본 문항 { ids, reasons }(childQuestionRelevance).
+// 기본 문항 안에서 그 문항을 위에 올리고 이유를 적을 뿐, 문장 · 보기는 그대로이고 체크는 꺼진 채다 — 보낼 문항은 상담사가 고른다.
+// 외부 AI 를 부르지 않는다(이미 있는 분석 결과만 본다) — 맞춤 질문이 꺼진 곳에서도 보인다.
 import { useEffect, useState } from 'react';
 import A from './A';
 import { useSentToast } from './SentToast';
@@ -25,7 +28,7 @@ function deliverLabel(iso) {
   return d.toDateString() === new Date().toDateString() ? `오늘 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 
-export default function ChildQuestionSender({ app, caseId, bare = false }) {
+export default function ChildQuestionSender({ app, caseId, bare = false, related = null }) {
   const [picked, setPicked] = useState([]);
   const sq = app.data?.session_questions ?? null;
   const { createSessionQuestions } = app;
@@ -118,6 +121,23 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
       </div>
     );
   } else {
+    // 관련 문항은 서버가 준 기본 문항 목록에 있는 것만 올린다(모르는 id 는 버린다).
+    const top = (related?.ids ?? []).map((id) => data.bank.find((item) => item.id === id)).filter(Boolean);
+    const rest = top.length ? data.bank.filter((item) => !top.includes(item)) : data.bank;
+    const row = (item, reasons) => (
+      <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
+        <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
+        <span>
+          <span className="chip c-sand">{item.category}</span>{' '}
+          {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
+          {reasons?.length ? (
+            <span className="note" style={{ display: 'block', marginTop: '2px' }}>
+              {reasons.join(' · ')}
+            </span>
+          ) : null}
+        </span>
+      </label>
+    );
     body = (
       <>
         {sq ? (
@@ -221,15 +241,20 @@ export default function ChildQuestionSender({ app, caseId, bare = false }) {
             </button>
           </div>
         ) : null}
-        {data.bank.map((item) => (
-          <label key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
-            <input type="checkbox" checked={picked.includes(item.id)} onChange={() => toggle(item.id)} />
-            <span>
-              <span className="chip c-sand">{item.category}</span>{' '}
-              {TYPE_NAME[item.type] ? <span className="chip c-sand">{TYPE_NAME[item.type]}</span> : null} {item.text}
+        {top.length ? (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 8px' }}>
+              <span className="chip c-ai">AI 분석 참고</span>
+              <b style={{ fontSize: '14px' }}>이번 상담과 관련 있는 문항</b>
+            </div>
+            <span className="note">
+              이 회차의 AI 신호와 아이가 이야기한 주제를 기준으로 위에 올렸어요. 보낼 문항은 상담사가 고릅니다.
             </span>
-          </label>
-        ))}
+            {top.map((item) => row(item, related.reasons[item.id]))}
+            <b style={{ fontSize: '14px', marginTop: '4px' }}>그 밖의 문항</b>
+          </>
+        ) : null}
+        {rest.map((item) => row(item))}
         {scheduled ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             <span className="chip c-sel">발송 예약 · {deliverLabel(scheduled.deliver_at)} 발송</span>

@@ -12,7 +12,7 @@ import { loadAllCases } from "./useAdminAccounts";
 import { useRemote } from "./useRemote";
 
 export interface AdminCasesState {
-  /** 기관 전체 사례(등록 최신순, 서버 순서 그대로). 아직 못 받았으면 null. */
+  /** 기관 전체 사례(최근 수정순, 서버 순서 그대로). 아직 못 받았으면 null. */
   cases: CaseListItem[] | null;
   /** 계정 목록. 못 받았으면 null. */
   users: User[] | null;
