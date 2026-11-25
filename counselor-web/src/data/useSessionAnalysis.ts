@@ -17,6 +17,7 @@ import type {
   AbuseSignal,
   AnalysisEnvelope,
   AnalysisStatus,
+  AnalysisTopicTag,
   FollowupCheckPoint,
   FollowupQuestionDraft,
   ProtectiveFactor,
@@ -63,6 +64,8 @@ export interface AnalysisView {
   followupCheckPoints: FollowupCheckPoint[];
   /** AI 추가 질문 초안(선택 필드). 상담사가 승인해야 질문 목록에 들어간다. 생성 모듈 전에는 빈 배열이다. */
   followupQuestions: FollowupQuestionDraft[];
+  /** 아동 발화 대화 주제(선택 필드). null 이면 주제 분류가 없는 분석이다 — '해당 없음'([]) 과 다르다. */
+  topicTags: AnalysisTopicTag[] | null;
   /** 분석에 쓴 원문 버전. */
   transcriptVersion: number | null;
   provider: string | null;
@@ -207,6 +210,7 @@ export function useSessionAnalysis(
           reabuseFactors: source.result?.reabuse_factors ?? null,
           followupCheckPoints: source.result?.followup_check_points ?? [],
           followupQuestions: source.result?.followup_questions ?? [],
+          topicTags: source.result?.topic_tags ?? null,
           transcriptVersion: source.transcript_version,
           provider: source.provider,
           model: source.model,
