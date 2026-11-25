@@ -10,17 +10,21 @@
 //    같은 이름의 계정이 있어도 섞이지 않는다.
 //  - 아동 연령대: 출생연도로 센 나이(기간 끝 해 − 출생연도)라 만 나이와 한 살 다를 수 있다. 기간 안 등록 사례 기준.
 // 아이 앱 응답률(11/10 연결): 기간 안에 보낸 콩콩 질문 묶음 중 아이가 답한 비율(GET /child-app-stats, 화면이 기간마다 부른다).
-// 서버에 없어 '—' · 준비 중: 학대 판단 · 재신고율 · 평균 사례관리 기간 · 72시간 내 초기 개입 · 일지 기한 내 작성률,
-// 학대 유형별 · 위험도별(사례 단위 판단 · 위험도 규칙 없음 — AI 신호로 대신 세지 않는다), 행위자 관계 · 신고자 · 조치 결과 ·
-// 서비스 · 종결 사유 분포, 엑셀 · PDF 내려받기(양식 미정). 디자인의 기간별 숫자(올해 값에 계수를 곱한 예시)는 옮기지 않는다.
+// 11/25 채움: 평균 사례관리 기간(진행 중 사례, 사례연계일 → 신고접수일 → 등록일부터 오늘까지 — 통계 화면과 같은 규칙),
+//   위험도별(진행 중 사례의 지금 위험도 — 사례 목록과 같은 값, 상담원이 고른 위험도 우선. 학대 판단 시점 값은 서버에 없다),
+//   조치 결과(상담원이 고른 조치결과 · 피해아동, 서식 4 ①). 셋 다 지금 상태라 기간과 무관하다.
+// 서버에 없어 '—' · 준비 중: 학대 판단 · 재신고율 · 72시간 내 초기 개입 · 일지 기한 내 작성률,
+// 학대 유형별(사례 단위 판단 없음 — AI 신호로 대신 세지 않는다), 행위자 관계 · 신고자 · 서비스 · 종결 사유 분포,
+// 엑셀 · PDF 내려받기(양식 미정). 디자인의 기간별 숫자(올해 값에 계수를 곱한 예시)는 옮기지 않는다.
 
-import type { ChildAppStats } from "../../api/types";
+import { CHILD_ACTION_LABELS, type ChildActionResult, type ChildAppStats } from "../../api/types";
 import type { AdminAccountsState } from "../useAdminAccounts";
 import type { AuthSession } from "../useAuthSession";
 import type { CaseOverviewState } from "../useCaseOverview";
 import { NOT_PROVIDED } from "../caseRows";
 import { NOT_READY, screenNotice } from "./common";
 import { localDate, segButton } from "./admin";
+import { manageDays } from "./adminCases";
 
 export type StatsPeriod = "month" | "quarter" | "year";
 
@@ -115,14 +119,19 @@ const AGE_GROUPS: readonly { label: string; min: number; max: number }[] = [
   { label: "14~17세", min: 14, max: 17 },
 ];
 
+/** 위험도별 색(디자인 AdminStats risk). */
+const RISK_COLORS: readonly (readonly [string, string])[] = [
+  ["상", "#A33B2E"],
+  ["중", "#C2A36B"],
+  ["하", "#B9B2A2"],
+];
+
 /** 서버에 원천 데이터가 없어 비워 두는 카드. 디자인의 자리만 남긴다. */
 const PENDING_CARDS = {
   types: { title: "학대 유형별", note: "학대 판단 사례 기준", text: "사례 단위 학대 판단을 입력 · 저장하는 곳이 없습니다. AI 신호로 대신 세지 않습니다." },
-  risk: { title: "위험도별", note: "학대 판단 시점 기준", text: "사례 단위 위험도 규칙이 없습니다(회차 단위 상담원 판단만 있음)." },
   more: [
     { title: "학대 행위자 관계별", note: "", text: "행위자 관계를 저장하는 칸이 없습니다(보호자 유형과 다름)." },
     { title: "신고자 유형별", note: "", text: "신고자 정보를 저장하는 칸이 없습니다." },
-    { title: "조치 결과", note: "피해 아동 기준", text: "조치 결과를 저장하는 칸이 없습니다." },
     { title: "서비스 제공 (회)", note: "", text: "서비스 제공 실적을 저장하는 곳이 없습니다." },
     { title: "종결 사유", note: "종결 사례 기준", text: "종결 사유 · 종결일을 저장하는 칸이 없습니다." },
   ],
@@ -163,6 +172,17 @@ export function adminStatsValues(input: {
   const undated = allSessions.filter((row) => !/^\d{4}-\d{2}-\d{2}$/.test(row.consultedDate)).length;
   const closedNow = items.filter((item) => item.caseRow.status === "CLOSED").length;
 
+  // ---------------- 평균 사례관리 기간(지금 진행 중 사례) ----------------
+  const nowMs = (input.now ?? new Date()).getTime();
+  const manage = items
+    .map((item) => manageDays(item.caseRow, `${item.createdDate}T00:00:00+09:00`, nowMs))
+    .filter((days): days is number => days !== null);
+  const manageKpi = {
+    label: "평균 사례관리 기간",
+    v: has && manage.length ? `${(manage.reduce((sum, d) => sum + d / 30.44, 0) / manage.length).toFixed(1)}개월` : NOT_PROVIDED,
+    sub: has ? (manage.length ? `진행 중 ${manage.length}건 · 사례연계일부터 오늘까지` : "진행 중 사례 없음") : "",
+  };
+
   // ---------------- 핵심 지표 ----------------
   const kpis = [
     { label: "사례 등록", v: count(registered.length, "건"), sub: `${range.label} · 등록일 기준(신고접수일 아님)` },
@@ -170,7 +190,7 @@ export function adminStatsValues(input: {
     { label: "종결", v: count(closedNow, "건"), sub: "지금 종결 상태 · 종결일이 없어 기간과 무관" },
     { label: "상담 회차", v: count(sessionsIn.length, "회"), sub: `${range.label} · 상담 일시 기준` },
     { label: "재신고율", v: NOT_PROVIDED, sub: NOT_READY },
-    { label: "평균 사례관리 기간", v: NOT_PROVIDED, sub: NOT_READY },
+    manageKpi,
     { label: "72시간 내 초기 개입", v: NOT_PROVIDED, sub: NOT_READY },
     childRate(input.childStats ?? null, range.label),
   ];
@@ -260,6 +280,43 @@ export function adminStatsValues(input: {
     w: has && ageMax > 0 ? `${Math.round((ageCounts[index] / ageMax) * 100)}%` : "0%",
     tip: has ? `${g.label} ${ageCounts[index]}건` : g.label,
   }));
+  // ---------------- 위험도별(진행 중 사례의 지금 위험도) ----------------
+  const activeItems = items.filter((item) => item.caseRow.status === "ACTIVE");
+  const riskCounts = RISK_COLORS.map(([name]) => activeItems.filter((item) => item.caseRow.riskLabel === name).length);
+  const riskTotal = riskCounts.reduce((sum, v) => sum + v, 0);
+  const risk = RISK_COLORS.map(([name, c], index) => ({
+    key: name,
+    name,
+    c,
+    v: has ? String(riskCounts[index]) : NOT_PROVIDED,
+    p: has && riskTotal > 0 ? `${Math.round((riskCounts[index] / riskTotal) * 100)}%` : NOT_PROVIDED,
+    w: riskTotal > 0 ? `${(riskCounts[index] / riskTotal) * 100}%` : "0%",
+    tip: `위험도 ${name} ${has ? riskCounts[index] : NOT_PROVIDED}건`,
+  }));
+  const riskAria = has ? risk.map((r) => `위험도 ${r.name} ${r.v}건`).join(", ") : "위험도별을 아직 불러오지 못했습니다";
+  const riskNote = has && activeItems.length > riskTotal ? `위험도를 정하지 않은 진행 사례 ${activeItems.length - riskTotal}건은 빼고 셈` : "";
+
+  // ---------------- 조치 결과(피해 아동, 상담원이 고른 값) ----------------
+  const actionKeys = Object.keys(CHILD_ACTION_LABELS) as ChildActionResult[];
+  const actionCounts = actionKeys.map((key) => items.filter((item) => item.childAction === key).length);
+  const actionTotal = actionCounts.reduce((sum, v) => sum + v, 0);
+  const actionMax = Math.max(0, ...actionCounts);
+  const measures = actionKeys.map((key, index) => ({
+    key,
+    name: CHILD_ACTION_LABELS[key],
+    v: has ? `${actionCounts[index]}명` : NOT_PROVIDED,
+    p: has && actionTotal > 0 ? `${Math.round((actionCounts[index] / actionTotal) * 1000) / 10}%` : NOT_PROVIDED,
+    w: has && actionMax > 0 ? `${Math.round((actionCounts[index] / actionMax) * 100)}%` : "0%",
+    tip: has ? `${CHILD_ACTION_LABELS[key]} ${actionCounts[index]}명` : CHILD_ACTION_LABELS[key],
+  }));
+  const measuresNote = has
+    ? actionTotal === 0
+      ? "조치 결과를 고른 사례가 없습니다."
+      : items.length > actionTotal
+        ? `조치 결과를 고르지 않은 사례 ${items.length - actionTotal}건은 빼고 셈`
+        : ""
+    : "";
+
   const ageNote = has && noBirthYear + outside > 0 ? `출생연도 없음 ${noBirthYear}건 · 그 밖 나이 ${outside}건은 빼고 셈` : "";
 
   // ---------------- 안내 ----------------
@@ -288,7 +345,11 @@ export function adminStatsValues(input: {
     trend,
     trendAria,
     pendingTypes: PENDING_CARDS.types,
-    pendingRisk: PENDING_CARDS.risk,
+    risk,
+    riskAria,
+    riskNote,
+    measures,
+    measuresNote,
     staff,
     staffText,
     staffNote: "담당 · 종결은 지금 상태, 상담 회차는 기간 안 상담 일시 기준입니다.",

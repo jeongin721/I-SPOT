@@ -2,7 +2,7 @@
 // 원본: 다솔 님 10/21 디자인 counselor-design/screens/AdminHome.dc.html (origin/frontend261021)
 //
 // 서버 연결: useAdminDashboard(전체 사례 · 처리 대기 업무 · 상담사 수 · 최근 접속 5건) · useCaseList(진행 중 사례 수) ·
-// useAdminTasks(업무 표, 두 종류씩) · useAdminAccounts(상담원별 담당 사례 수). 화면에 쓸 값은 src/data/screens/adminHome.ts.
+// useAdminTasks(업무 표, 두 종류씩) · useAdminAccounts(상담원별 담당 사례 수) · useCounselorSttWaits(상담원별 STT 검수 대기, 11/25). 화면에 쓸 값은 src/data/screens/adminHome.ts.
 // 디자인의 '긴급 알림 현황'(아이 연계 앱)은 11/19 GET /child-app-alerts/recent 로 연결했다(오늘 · 어제 + 남은 확인 전, 30초마다 다시).
 // 앱에 있던 업무 처리 현황은 그 아래에 둔다. '담당자에게 다시 알림' 은 푸시가 없어 준비 중이다.
 // 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(훅도 서버를 부르지 않는다).
@@ -18,6 +18,7 @@ import { useAuthSession } from '../data/useAuthSession';
 import { useAdminDashboard } from '../data/useAdminDashboard';
 import { useAdminTasks } from '../data/useAdminTasks';
 import { useAdminAccounts } from '../data/useAdminAccounts';
+import { useCounselorSttWaits } from '../data/useCounselorSttWaits';
 import { useCaseList } from '../data/useCaseList';
 import { needsLogin } from '../data/screens/common';
 import { DASHBOARD_TASK_ROWS, TASK_GROUPS, taskGroupTypes } from '../data/screens/admin';
@@ -64,6 +65,11 @@ export default function AdminHome(props) {
   const groupA = useAdminTasks(session, { taskType: typeA, pageSize: DASHBOARD_TASK_ROWS });
   const groupB = useAdminTasks(session, { taskType: typeB, pageSize: DASHBOARD_TASK_ROWS });
   const accounts = useAdminAccounts(session);
+  // 상담원별 STT 검수 대기(11/25) — 상담원 계정마다 업무 요약을 한 번씩 부른다.
+  const sttWaits = useCounselorSttWaits(
+    session,
+    accounts.rows.filter((row) => row.role === 'COUNSELOR').map((row) => row.id),
+  );
   const theme = useTheme();
   const alertsKey = session.status === 'signedIn' && session.isAdmin ? `admin-child-alerts:${session.me.id}` : null;
   const childAlerts = useRemote(alertsKey, () => childApp.openAlerts(), '아이 앱 알림을 불러오지 못했습니다.', () => false);
@@ -114,6 +120,7 @@ export default function AdminHome(props) {
     activeCases,
     groupTasks: [groupA, groupB],
     accounts,
+    sttWaits,
     group,
     setGroup,
   });

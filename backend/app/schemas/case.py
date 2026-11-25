@@ -301,6 +301,9 @@ class CaseListItemResponse(CaseResponse):
     child_name: Optional[str] = Field(default=None, repr=False)
     # 분석이 끝난 가장 최근 회차의 상담원 판단(회차 전체 상 · 중 · 하). 판단 전이면 null. AI 심각도로 채우지 않는다.
     risk_level: Optional[RiskLevel] = None
+    # 가장 최근 실제 상담 일시(회차의 consulted_at 최댓값, 2026-11-25 관리자 사례 목록 '최근 상담'). 상담 일시를 넣은 회차가 없으면 null.
+    # last_session_at 은 상담 일시가 빈 회차를 등록 시각으로 채워 세므로 뜻이 다르다.
+    last_consulted_at: Optional[datetime] = None
 
 
 class CaseDetailResponse(CaseResponse):

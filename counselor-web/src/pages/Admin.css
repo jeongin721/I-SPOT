@@ -242,6 +242,16 @@
 .pg-Admin .thm-root.dark .stack {
   background: #393731 !important;
 }
+/* 통계 '위험도별' 칸(디자인 AdminStats .box, 11/25) */
+.pg-Admin .box {
+  background: #f7f6f2;
+  border: 1px solid #eae7df;
+  box-shadow: inset 1px 1px 3px var(--sd);
+}
+.pg-Admin .thm-root.dark .box {
+  background: #33312c !important;
+  border: 1px solid #45423b !important;
+}
 .pg-Admin .thm-root.dark .warn {
   color: #f0907f !important;
 }

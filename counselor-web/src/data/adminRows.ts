@@ -12,7 +12,7 @@ import type { AuditLog, Case, TaskItem, TaskSummary, TaskType, TemporaryPassword
 import { TASK_LABELS } from "../api/types";
 import { NOT_PROVIDED } from "./caseRows";
 import { ROLE_LABELS } from "./profile";
-import { pad2, parseBackendTime, toDateTime } from "./time";
+import { pad2, parseBackendTime, toDateOnly, toDateTime } from "./time";
 
 // =========================================================
 // 날짜
@@ -128,6 +128,8 @@ export interface AccountRow {
   /** 최근 로그인 일시. 없으면 NOT_PROVIDED. */
   lastLoginAt: string;
   createdAt: string;
+  /** 비밀번호를 마지막으로 바꾼 날짜(password_changed_at, 11/25). 없으면 NOT_PROVIDED. */
+  passwordChangedAt: string;
   /** 담당 사례 수(종결 포함). 세지 못했으면 null. */
   caseCount: number | null;
   /** caseCount 를 글자로. 세지 못했으면 NOT_PROVIDED. */
@@ -152,6 +154,7 @@ export function toAccountRow(user: User, meId: string | null, caseCounts: Map<st
     lockedUntil: toDateTime(user.locked_until),
     lastLoginAt: toDateTime(user.last_login_at) || NOT_PROVIDED,
     createdAt: toDateTime(user.created_at),
+    passwordChangedAt: toDateOnly(user.password_changed_at ?? null) || NOT_PROVIDED,
     caseCount,
     caseCountLabel: caseCount === null ? NOT_PROVIDED : String(caseCount),
     can: {

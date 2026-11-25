@@ -14,8 +14,9 @@
 // 서버에 없어 '—' · 준비 중으로 두는 것(값을 지어내지 않는다):
 //  - 긴급 알림 표의 '담당자에게 다시 알림': 알림(푸시) 발송이 없어 단추를 준비 중으로 둔다.
 //  - 접속 위치(기관 내부망 · 외부): 내부망 정의가 없다. 'OTP 실패' 구분: OTP 가 없다(D1). 실패한 시도의 계정 ID: 서버가 남기지 않는다.
-//  - 업무량의 위험도 상 · 이번 주 상담 · STT 검수 대기 · 일지 미작성: 상담원별 집계 API 와 사례 단위 위험도 규칙이 없다.
-//  - 재배정 필요 건수: 비활성 상담사의 '진행 중' 사례만 셀 방법이 없다(계정별 사례 수는 종결 포함).
+//  - 업무량의 이번 주 상담 · 일지 미작성: 상담원별 회차 집계 API · '미작성' 정의가 없다.
+//  업무량의 위험도 상(11/25): 진행 중 사례 목록(activeCases, 최대 100건)에서 담당별로 위험도 '상'(사례 목록과 같은 값 — 상담원 판단 우선)을 센다.
+//  업무량의 STT 검수 대기(11/25): 상담원마다 GET /tasks/summary?counselor_id= 의 원문 검수(REVIEW_TRANSCRIPT) 수(useCounselorSttWaits).
 
 import type { ChildOpenAlert, ChildRecentAlert } from "../../api/types";
 import { CHILD_ALERT_TEXT } from "../useCaseChildApp";
@@ -53,6 +54,8 @@ export interface AdminHomeInput {
   /** 업무 표 묶음의 두 종류. */
   groupTasks: [AdminTasksState, AdminTasksState];
   accounts: AdminAccountsState;
+  /** 상담원별 STT 검수 대기(useCounselorSttWaits, 11/25). 계정 ID → 원문 검수 업무 수. */
+  sttWaits?: { data: Map<string, number> | null; error: string | null };
   /** 확인 안 한 콩콩 알림(관리자는 기관 전체). 꺼져 있거나 못 받았으면 null. */
   childAlerts?: ChildOpenAlert[] | null;
   /** 긴급 알림 현황(GET /child-app-alerts/recent). 아이 앱이 꺼져 있으면 null. */
@@ -226,6 +229,11 @@ export function adminHomeValues(input: AdminHomeInput) {
 
   // ---------------- 상담원별 업무량 ----------------
   const counselorRows = accounts.rows.filter((row) => row.role === "COUNSELOR");
+  // 위험도 상: 진행 중 사례(첫 쪽)를 담당별로. 목록을 다 받지 못했으면(100건 넘음) 칸은 그대로 세되 안내에 적는다.
+  const activeLoaded = activeCases.total !== null;
+  const activePartial = activeLoaded && (activeCases.total ?? 0) > activeCases.rows.length;
+  const highOf = (id: string) => activeCases.rows.filter((row) => row.counselorId === id && row.riskLabel === "상").length;
+  const stt = input.sttWaits?.data ?? null;
   const maxCases = Math.max(0, ...counselorRows.map((row) => row.caseCount ?? 0));
   const loadRows = counselorRows.map((row) => ({
     key: row.id,
@@ -237,9 +245,9 @@ export function adminHomeValues(input: AdminHomeInput) {
     op: row.active ? 1 : 0.6,
     cases: row.caseCountLabel,
     w: row.caseCount !== null && maxCases > 0 ? `${Math.round((row.caseCount / maxCases) * 100)}%` : "0%",
-    hi: NOT_PROVIDED,
+    hi: activeLoaded ? `${highOf(row.id)}건` : NOT_PROVIDED,
     week: NOT_PROVIDED,
-    stt: NOT_PROVIDED,
+    stt: stt?.has(row.id) ? `${stt.get(row.id)}건` : NOT_PROVIDED,
     note: NOT_PROVIDED,
   }));
   const load = {
@@ -248,11 +256,12 @@ export function adminHomeValues(input: AdminHomeInput) {
     emptyText: "상담원 계정이 없습니다.",
     errorText: accounts.error,
     retry: accounts.reload,
-    // 이번 주 상담 · STT 검수 대기는 서버 조회(회차 목록 · GET /tasks/summary?counselor_id=)가 있지만 상담원마다 부르는 훅이 없다.
-    // 위험도 상 · 일지 미작성은 사례 단위 위험도 규칙 · '미작성' 정의가 없다.
+    // 이번 주 상담은 상담원별 회차 집계가 없고, 일지 미작성은 '미작성' 정의가 없다.
     note:
-      `위험도 상 · 일지 미작성은 ${NOT_READY}입니다(사례 단위 기준이 정해지지 않음). ` +
-      `이번 주 상담 · STT 검수 대기도 ${NOT_READY}입니다(상담원별로 세는 연결이 아직 없음).` +
+      `위험도 상은 진행 중 사례의 지금 위험도(상담원 판단 우선)입니다. ` +
+      (activePartial ? `진행 중 사례가 많아 앞 ${activeCases.rows.length}건만 셌습니다. ` : "") +
+      (input.sttWaits?.error ? `${input.sttWaits.error} ` : "") +
+      `이번 주 상담 · 일지 미작성은 ${NOT_READY}입니다.` +
       (accounts.caseCountError ? ` ${accounts.caseCountError} 담당 사례 칸은 ${NOT_PROVIDED} 로 둡니다.` : ""),
     href: ADMIN_PAGES.accounts,
   };

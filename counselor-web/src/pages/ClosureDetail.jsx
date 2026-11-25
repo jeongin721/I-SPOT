@@ -4,7 +4,7 @@
 // AI 초안) · 종결 심의일 · 종결 상담일 · 종합의견 · '보고서 저장'(PUT closure-summary report). closureReview.ts closureReportValues.
 // 실제 사례로 열면 예시 AI 제안 · 근거 · 기본값을 지운다.
 // 11/03: 종결사유 · 안전평가 · Key Person · 안전점수도 report 에 저장한다(상담원이 고른 값만, AI 가 채우지 않음). 저장하면 카드 아래에
-// '저장했습니다' 를 보이고, 저장하지 않은 수정이 있으면 떠날 때 묻는다(useLeaveGuard). 사례관리 제공 요약은 서버 칸이 없어 준비 중.
+// '저장했습니다' 를 보이고, 저장하지 않은 수정이 있으면 떠날 때 묻는다(useLeaveGuard). 사례관리 제공 요약은 아래 11/04 줄(report.services).
 // 가족관계척도 줄은 기관 서식(가족관계 척도, useCaseForms) 가장 최근 기록의 평균을 보인다.
 // 11/04 디자인: 'AI 제안' 자리를 실제 사례 값으로 — 안전평가 · Key Person 은 요약 AI 제안(summary.suggestions), 종결사유는 기록 제안,
 // 종결 상담일은 일정, 학대유형은 AI 관련 신호, 사례관리 제공 요약은 회차 기록(report.services 로 저장). 칩 · 근거로 무엇이 제안인지 보인다.

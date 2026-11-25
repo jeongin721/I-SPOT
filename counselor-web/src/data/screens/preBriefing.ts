@@ -116,7 +116,7 @@ function childAppCards(app: ChildAppCase | null | undefined): FirstCard[] {
 function firstStoryCard(source: { id: string } | null, history: SignalHistoryState | undefined): FirstCard {
   const base = { key: "first", title: "처음 나온 이야기" };
 
-  if (!history) return { ...base, note: `${NOT_READY} · 회차 간 비교 값이 서버에 없음` };
+  if (!history) return { ...base, note: `${NOT_READY} · 사례 화면에서 보입니다` };
   if (history.error) return { ...base, note: history.error };
   if (!history.loaded) return { ...base, note: history.loading ? "불러오는 중…" : "" };
   if (!source) return { ...base, note: "AI 분석이 끝난 회차가 없습니다." };

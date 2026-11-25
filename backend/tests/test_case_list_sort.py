@@ -364,3 +364,24 @@ def test_views_failures_and_rollbacks_do_not_move_the_case(client: TestClient, c
     db.commit()
 
     assert _ids(client, counselor_headers) == [new, old]
+
+
+def test_last_consulted_at_uses_only_recorded_consult_times(client: TestClient, counselor_headers, db) -> None:
+    """'최근 상담'(2026-11-25)은 회차의 실제 상담 일시만 본다 — 상담 일시가 빈 회차를 등록 시각으로 채우지 않는다."""
+
+    empty = create_case(client, counselor_headers)
+    _session(client, counselor_headers, db, empty["id"], SessionStatus.CREATED)
+
+    case = create_case(client, counselor_headers)
+    first = _session(client, counselor_headers, db, case["id"], SessionStatus.CREATED)
+    later = _session(client, counselor_headers, db, case["id"], SessionStatus.CREATED)
+    _session(client, counselor_headers, db, case["id"], SessionStatus.CREATED)  # 상담 일시 없음
+    db.get(ConsultationSession, uuid.UUID(first)).consulted_at = datetime(2026, 11, 3, 10, 0, tzinfo=timezone.utc)
+    db.get(ConsultationSession, uuid.UUID(later)).consulted_at = datetime(2026, 11, 20, 15, 30, tzinfo=timezone.utc)
+    db.commit()
+
+    by_id = {item["id"]: item for item in _list(client, counselor_headers)}
+
+    assert by_id[empty["id"]]["last_consulted_at"] is None
+    assert by_id[empty["id"]]["last_session_at"] is not None  # 옛 값은 그대로 등록 시각으로 채운다
+    assert by_id[case["id"]]["last_consulted_at"].startswith("2026-11-20T15:30")

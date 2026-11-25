@@ -4,7 +4,8 @@
 // 주소: #/AdminStaffDetail?user=<계정 ID>(계정 목록의 이름 · '상세'). 디자인은 브라우저 저장소로 넘기지만 앱은 주소 쿼리로 받는다.
 // 서버 연결: useAdminAccounts(계정 목록에서 이 계정을 찾음 — 한 계정만 받는 API 는 없다, 요청 6종). 값은 src/data/screens/adminStaffDetail.ts.
 // 비활성화 · 비밀번호 초기화 · 휴면 해제 · 강제 로그아웃은 한 번 더 묻고, 임시 비밀번호는 이 화면 상태에만 한 번 보인다.
-// 비밀번호 마지막 변경일 · 소속 기관 · 접속 IP · 알림 설정은 서버에 없어 '—' · 준비 중이고, OTP 줄은 두지 않는다(OTP 없음, 팀 결정 D1).
+// 비밀번호 마지막 변경일은 계정 응답의 password_changed_at(11/25), 접속 IP 는 로그인 기록(lastIp). 소속 기관 · 알림 설정은 서버에 없어
+// '—' · 준비 중이고, OTP 줄은 두지 않는다(OTP 없음, 팀 결정 D1).
 // 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(훅도 서버를 부르지 않는다).
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';

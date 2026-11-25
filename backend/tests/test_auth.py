@@ -87,6 +87,25 @@ def test_me_returns_current_user(client: TestClient, counselor_headers) -> None:
     assert response.json()["data"]["email"] == "counselor.a@ispot.example.com"
 
 
+def test_me_returns_password_changed_at(client: TestClient, counselor_headers, db) -> None:
+    """설정 · 관리자 상담사 상세의 '비밀번호 마지막 변경일'(2026-11-25)은 계정 응답의 password_changed_at 이다."""
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.models.user import User
+
+    user = db.scalar(select(User).where(User.email == "counselor.a@ispot.example.com"))
+    user.password_changed_at = datetime(2026, 11, 1, 9, 0, tzinfo=timezone.utc)
+    db.commit()
+
+    response = client.get("/api/v1/auth/me", headers=counselor_headers)
+
+    assert response.status_code == 200
+    assert response.json()["data"]["password_changed_at"].startswith("2026-11-01T09:00")
+
+
 def test_no_instant_signup_endpoint(client: TestClient) -> None:
     """
     바로 계정이 생기는 가입 경로는 없다. 회원가입은 대기 신청(승인제)이고 기본은 꺼져 있다.

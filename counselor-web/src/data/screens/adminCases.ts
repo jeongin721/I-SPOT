@@ -4,9 +4,12 @@
 //
 // Backend 에 없는 값은 다른 값으로 대신 채우지 않는다(caseRows.ts 와 같은 규칙).
 //  - 위험도 · 신고접수일은 사례 목록과 같은 값(없으면 '—'). '위험도 상' 칸은 받은 목록에서 '상' 인 사례를 센다.
-//  - 관리 기간은 '—'(정렬도 준비 중). 위험도 거르기 · 최근 접수 · 위험도 정렬은 받은 목록에서 한다(11/20).
-//  - 최근 상담: 사례의 last_session_at 은 상담 일시를 넣지 않은 회차를 등록일로 채워 셈하므로 최근 상담일로 보이지 않는다.
-//  - 진행 단계(초기 조사 · 종결 검토): 없다. 사례 상태(진행 · 종결)만 보인다.
+//  - 관리 기간(11/25): 진행 중 사례만, 시작 = 사례연계일 → 신고접수일 → 사례 등록일(통계 화면과 같은 규칙)부터 오늘까지.
+//    디자인 period() 처럼 30일 안은 'N일', 넘으면 'N개월' · 'N년 N개월'. 종결 사례는 끝난 날이 서버에 없어 '—'. 정렬도 이 값(긴 순).
+//    위험도 거르기 · 최근 접수 · 위험도 정렬은 받은 목록에서 한다(11/20).
+//  - 최근 상담(11/25): 서버 last_consulted_at(회차에 넣은 실제 상담 일시 최댓값)을 'MM/DD'(한국 날짜)로. 없으면 '—'.
+//    last_session_at 은 상담 일시가 빈 회차를 등록일로 채워 세므로 쓰지 않는다.
+//  - 진행 단계: 재배정 필요 → 종결 검토(종결 검토로 등록한 진행 사례, 11/25) → 사례 상태(진행 · 종결). '초기 조사' 는 정의가 없어 쓰지 않는다.
 //  - 재배정 필요(디자인: 담당 상담원 비활성): 진행 중 사례의 담당 계정이 비활성이거나 지워졌으면 그렇게 보인다.
 //    계정 목록을 받지 못하면 비활성은 알 수 없어 지워진 계정만 센다.
 // 이름은 아동 실명(등록된 사례), 없으면 별칭이다(실명과 함께 부름). 검색은 받은 목록 안에서 이름 · 별칭 · 사례 ID 의 일부로 찾는다.
@@ -27,7 +30,7 @@ export const ALL_STAFF = "all";
 
 export type AdminRiskFilter = "all" | "상" | "중" | "하";
 /** 정렬. "" 이면 최근 수정순(서버 순서 — 방금 등록 · 수정한 사례부터). */
-export type AdminCasesSort = "" | "date" | "risk";
+export type AdminCasesSort = "" | "date" | "risk" | "long";
 
 export interface AdminCasesUiState {
   who: string;
@@ -40,6 +43,51 @@ export function initialAdminCasesState(): AdminCasesUiState {
 }
 
 const RISK_RANK: Record<string, number> = { 상: 0, 중: 1, 하: 2 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const KST_MS = 9 * 60 * 60 * 1000;
+
+/** 'YYYY-MM-DD'(또는 ISO 시각의 앞 10글자)를 그날 0시(UTC 기준 날짜 수)로. 못 읽으면 NaN. */
+function dayNumber(text: string | null | undefined): number {
+  if (!text) return NaN;
+  const ms = Date.parse(`${text.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(ms) ? NaN : Math.floor(ms / DAY_MS);
+}
+
+/** 관리 시작일: 사례연계일 → 신고접수일 → 사례 등록일(한국 날짜). 통계 화면 사례관리 기간과 같은 규칙. */
+function manageStartDay(row: CaseRow, createdAt: string): number {
+  if (row.linkedDate !== NOT_PROVIDED) return dayNumber(row.linkedDate);
+  if (row.reportDate !== NOT_PROVIDED) return dayNumber(row.reportDate);
+  const created = Date.parse(createdAt);
+  return Number.isNaN(created) ? NaN : Math.floor((created + KST_MS) / DAY_MS);
+}
+
+/** 관리 일수(진행 중 사례만). 종결 사례 · 시작일을 모르면 null. */
+export function manageDays(row: CaseRow, createdAt: string, now: number = Date.now()): number | null {
+  if (row.status !== "ACTIVE") return null;
+  const start = manageStartDay(row, createdAt);
+  if (Number.isNaN(start)) return null;
+  return Math.max(0, Math.floor((now + KST_MS) / DAY_MS) - start);
+}
+
+/** 디자인 period(): 30일 안은 'N일', 넘으면 'N개월', 12개월부터 'N년 N개월'. */
+export function periodLabel(days: number | null): string {
+  if (days === null) return NOT_PROVIDED;
+  if (days < 30) return `${days}일`;
+  const months = Math.max(1, Math.floor(days / 30.44));
+  if (months < 12) return `${months}개월`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return rest ? `${years}년 ${rest}개월` : `${years}년`;
+}
+
+/** 최근 상담 'MM/DD'(한국 날짜). 없으면 '—'. */
+export function lastConsultLabel(iso: string | null | undefined): string {
+  const ms = iso ? Date.parse(iso) : NaN;
+  if (Number.isNaN(ms)) return NOT_PROVIDED;
+  const kst = new Date(ms + KST_MS).toISOString();
+  return `${kst.slice(5, 7)}/${kst.slice(8, 10)}`;
+}
 
 interface AdminCasesInput {
   session: AuthSession;
@@ -85,7 +133,11 @@ function staffList(counts: Map<string, { name: string; count: number }>, users: 
 
 export function adminCasesValues(input: AdminCasesInput) {
   const { session, list, state, setState } = input;
-  const all = (list.cases ?? []).map((source) => ({ source, row: toCaseRow(source) }));
+  const now = Date.now();
+  const all = (list.cases ?? []).map((source) => {
+    const row = toCaseRow(source);
+    return { source, row, days: manageDays(row, source.created_at, now) };
+  });
   const users = list.users ? new Map(list.users.map((user) => [user.id, user])) : null;
 
   const counts = new Map<string, { name: string; count: number }>();
@@ -109,6 +161,8 @@ export function adminCasesValues(input: AdminCasesInput) {
         row.caseNumber.toLowerCase().includes(q),
     )
     .sort((a, b) => {
+      // 관리 기간 긴 순, 모르는 사례(종결 등)는 뒤로.
+      if (state.sort === "long") return (b.days ?? -1) - (a.days ?? -1);
       if (state.sort === "risk") return (RISK_RANK[a.row.riskLabel] ?? 9) - (RISK_RANK[b.row.riskLabel] ?? 9);
       if (state.sort === "date") {
         // 신고접수일 최신순, 없는 사례는 뒤로.
@@ -118,8 +172,9 @@ export function adminCasesValues(input: AdminCasesInput) {
       }
       return 0;
     })
-    .map(({ source, row }) => {
+    .map(({ source, row, days }) => {
       const reassign = needsReassign(row, source.counselor_id, users);
+      const closureReview = row.status === "ACTIVE" && Boolean(row.closureReviewDate);
       return {
         key: row.id,
         id: row.caseNumber,
@@ -132,10 +187,10 @@ export function adminCasesValues(input: AdminCasesInput) {
         risk: row.riskLabel,
         riskCls: riskChipClass(row.riskLabel),
         date: row.reportDate,
-        period: NOT_PROVIDED,
-        last: NOT_PROVIDED,
-        stage: reassign ? "재배정 필요" : `사례 ${row.statusLabel}`,
-        stCls: reassign ? "chip c-urgent" : row.status === "CLOSED" ? "chip c-check" : "chip c-normal",
+        period: periodLabel(days),
+        last: lastConsultLabel(source.last_consulted_at),
+        stage: reassign ? "재배정 필요" : closureReview ? "종결 검토" : `사례 ${row.statusLabel}`,
+        stCls: reassign ? "chip c-urgent" : closureReview || row.status === "CLOSED" ? "chip c-check" : "chip c-normal",
         historyHref: screenHref("/CaseHistory", { caseId: row.id }),
         del: () => input.askDelete?.(caseDeleteTarget({ id: row.id, caseNumber: row.caseNumber, name: row.name })),
       };
@@ -150,15 +205,15 @@ export function adminCasesValues(input: AdminCasesInput) {
     disabled: false,
     pick: () => setState({ risk: key }),
   }));
-  // 정렬(디자인: 최근 접수 · 위험도 · 관리 기간). 최근 접수는 신고접수일, 위험도는 상 → 중 → 하. 다시 누르면 최근 수정순.
-  // 관리 기간은 서버에 없는 값이라 준비 중.
+  // 정렬(디자인: 최근 접수 · 위험도 · 관리 기간). 최근 접수는 신고접수일, 위험도는 상 → 중 → 하, 관리 기간은 긴 순(11/25).
+  // 다시 누르면 최근 수정순.
   const sortF = [
     ["date", "최근 접수"],
     ["risk", "위험도"],
     ["long", "관리 기간"],
   ].map(([key, label]) => {
-    const ready = key !== "long";
-    const on = ready && state.sort === key;
+    const ready = true;
+    const on = state.sort === key;
     return {
       key,
       label,
@@ -217,11 +272,12 @@ export function adminCasesValues(input: AdminCasesInput) {
     rows,
     empty: casesLoaded && rows.length === 0,
     countLabel: casesLoaded
-      ? `사례 ${rows.length}건 표시 · ${state.sort === "date" ? "신고접수일 최신순" : state.sort === "risk" ? "위험도 높은 순" : "최근 수정순"}`
+      ? `사례 ${rows.length}건 표시 · ${state.sort === "date" ? "신고접수일 최신순" : state.sort === "risk" ? "위험도 높은 순" : state.sort === "long" ? "관리 기간 긴 순" : "최근 수정순"}`
       : "",
     dataNote:
-      `관리 기간(정렬 포함) · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)는 ${NOT_READY}입니다(서버에 아직 없는 값). ` +
-      "위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)이고, 진행 단계 칸에는 사례 상태(진행 · 종결)를 보입니다.",
+      "관리 기간은 진행 중 사례의 사례연계일(없으면 신고접수일 · 등록일)부터 오늘까지, 최근 상담은 회차에 넣은 상담 일시입니다. " +
+      "위험도는 상담원이 사례 등록 · 초기면접지에서 고른 위험도(우선)이고, 진행 단계는 종결 검토 등록 여부와 사례 상태(진행 · 종결)입니다. " +
+      `진행 단계 '초기 조사' 는 ${NOT_READY}입니다(기준 미정).`,
     usersError: list.usersError,
   };
 }
