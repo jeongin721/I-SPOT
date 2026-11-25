@@ -6,10 +6,12 @@ from typing import List, Optional
 
 from fastapi.testclient import TestClient
 
-from app.core.enums import RiskLevel, SessionStatus
+from app.core.enums import AuditAction, RiskLevel, SessionStatus
 from app.models.risk_assessment import SessionOverallRiskAssessment
 from app.models.session import ConsultationSession
+from app.services import audit_service
 from tests.conftest import create_case, create_session
+from tests.test_analysis import analyzed_session
 
 
 def _session(client, headers, db, case_id: str, status: SessionStatus, level: Optional[RiskLevel] = None) -> str:
@@ -262,3 +264,103 @@ def test_same_sort_value_ties_break_by_latest_modified(client: TestClient, couns
     assert _ids(client, counselor_headers, sort="risk", order="asc") == [low, first, second]
     assert _ids(client, counselor_headers, sort="report_date") == [first, second, low]
     assert _ids(client, counselor_headers, sort="report_date", order="asc") == [low, first, second]
+
+
+# ---- 사례에 딸린 것(회차 · 상담 요약 · 문서 …)을 저장해도 그 사례가 맨 위(2026-11-25 넓힘) ----
+# 처음에는 사례 정보 · 개인 식별 정보 · 서식만 쳤다. 발표 서버에서 요약 · 문서를 고쳐도 순서가 그대로여서 넓혔다.
+
+
+def test_creating_a_session_moves_the_case_to_the_top(client: TestClient, counselor_headers) -> None:
+    old = create_case(client, counselor_headers)["id"]
+    new = create_case(client, counselor_headers)["id"]
+
+    create_session(client, counselor_headers, old)
+
+    assert _ids(client, counselor_headers) == [old, new]
+
+
+def test_editing_summary_and_documents_moves_the_case_to_the_top(client: TestClient, counselor_headers) -> None:
+    """상담 요약 고치기 · 승인, 상담 기록 문서 만들기 · 고치기 · 승인마다 그 사례가 맨 위로 온다."""
+
+    target = create_case(client, counselor_headers)["id"]
+    session_id = create_session(client, counselor_headers, target)["id"]
+    analyzed_session(client, counselor_headers, session_id)
+    other = create_case(client, counselor_headers)["id"]
+    summary = f"/api/v1/sessions/{session_id}/summary"
+    documents = f"/api/v1/sessions/{session_id}/documents"
+
+    assert _ids(client, counselor_headers) == [other, target]
+
+    edited = client.patch(summary, json={"overview": "상담사가 고친 가상 요약"}, headers=counselor_headers)
+    assert edited.status_code == 200, edited.text
+    assert _ids(client, counselor_headers) == [target, other]
+
+    _patch(client, counselor_headers, other, {"notes": "가상 메모 1"})
+    assert client.post(f"{summary}/approve", headers=counselor_headers).status_code == 200
+    assert _ids(client, counselor_headers) == [target, other]
+
+    _patch(client, counselor_headers, other, {"notes": "가상 메모 2"})
+    created = client.post(documents, json={"title": "상담 기록", "content": "합성 기록 본문"}, headers=counselor_headers)
+    assert created.status_code == 201, created.text
+    document = f"{documents}/{created.json()['data']['id']}"
+    assert _ids(client, counselor_headers) == [target, other]
+
+    _patch(client, counselor_headers, other, {"notes": "가상 메모 3"})
+    assert client.patch(document, json={"title": "고친 제목"}, headers=counselor_headers).status_code == 200
+    assert _ids(client, counselor_headers) == [target, other]
+
+    _patch(client, counselor_headers, other, {"notes": "가상 메모 4"})
+    assert client.post(f"{document}/approve", headers=counselor_headers).status_code == 200
+    assert _ids(client, counselor_headers) == [target, other]
+
+
+def test_any_recorded_change_of_a_case_moves_it_to_the_top(client: TestClient, counselor_headers, db) -> None:
+    """감사 기록에 사례가 걸린 변경이면 종류와 상관없이 올린다(추가 질문 · 위험도 판단 · 메모 · 아이 앱 질문 …)."""
+
+    first = create_case(client, counselor_headers)["id"]
+    second = create_case(client, counselor_headers)["id"]
+    order = [second, first]
+
+    for action in (
+        AuditAction.FOLLOWUP_QUESTIONS_UPDATED,
+        AuditAction.OVERALL_RISK_ASSESSMENT_UPDATED,
+        AuditAction.MEMO_CREATED,
+        AuditAction.CHILD_APP_QUESTIONS_SENT,
+        AuditAction.ANALYSIS_COMPLETED,
+    ):
+        bottom = order[-1]
+        audit_service.record(db, action=action, entity_type="Test", case_id=uuid.UUID(bottom))
+        db.commit()
+        order = [bottom, order[0]]
+
+        assert _ids(client, counselor_headers) == order, action
+
+
+def test_views_failures_and_rollbacks_do_not_move_the_case(client: TestClient, counselor_headers, db) -> None:
+    """조회 · 내려받기 · 실패한 작업 · 되돌린 저장은 사례를 올리지 않는다."""
+
+    old = create_case(client, counselor_headers)["id"]
+    new = create_case(client, counselor_headers)["id"]
+    old_id = uuid.UUID(old)
+
+    for action in (
+        AuditAction.CASE_PERSONAL_INFO_VIEWED,
+        AuditAction.CHILD_APP_FEED_VIEWED,
+        AuditAction.DOCBOX_FILE_DOWNLOADED,
+        AuditAction.LAW_QA_ASKED,
+        AuditAction.STT_FAILED,
+        AuditAction.ANALYSIS_FAILED,
+    ):
+        audit_service.record(db, action=action, entity_type="Test", case_id=old_id)
+        db.commit()
+
+    audit_service.record(db, action=AuditAction.SUMMARY_UPDATED, entity_type="Test", case_id=old_id, status="FAILED")
+    db.commit()
+
+    # 기록한 뒤 되돌리면 다음 커밋에서도 올리지 않는다.
+    audit_service.record(db, action=AuditAction.SUMMARY_UPDATED, entity_type="Test", case_id=old_id)
+    db.rollback()
+    audit_service.record(db, action=AuditAction.LOGIN, entity_type="User")
+    db.commit()
+
+    assert _ids(client, counselor_headers) == [new, old]
