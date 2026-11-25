@@ -154,8 +154,8 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         """
         수정 시각(updated_at)을 지금으로 찍는다. 사례 목록의 기본 순서가 이 값이다(최근 수정순, API_CONTRACT 4절).
 
-        이 표의 칸이 바뀌면 updated_at 은 저절로 바뀐다. 이 표가 그대로인 저장(개인 식별 정보 · 기관 서식 · 값이 같은 다시 저장)에서
-        부른다. 조회에서는 부르지 않는다.
+        이 표의 칸이 바뀌면 updated_at 은 저절로 바뀌고, 사례에 딸린 변경(회차 · 요약 · 문서 …)은 감사 기록을 남길 때
+        audit_service 가 찍는다. 이 메서드는 그 둘에 안 걸리는 저장(값이 같은 다시 저장 등)에서 부른다. 조회에서는 부르지 않는다.
         """
 
         self.updated_at = utcnow()
