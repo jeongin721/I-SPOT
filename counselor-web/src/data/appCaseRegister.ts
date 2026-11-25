@@ -4,10 +4,9 @@
 // (useCaseRegister.ts toCaseCreateRequest)로 만든다 — 실명 · 생년월일은 personal_info(서버가 암호화해 저장),
 // 성별은 사례의 child_gender, 출생연도는 생년월일의 해(서버도 같은 해로 맞춘다). 이 폰에 저장하지 않는다.
 //
-// 제목 · 아동 별칭(민규 11/24 제안, 팀장 확인 대기): 앱 창에는 그 칸이 없다(디자인). 실명이나 실명 일부를 별칭에 넣으면
+// 제목 · 아동 별칭(민규 11/24 제안, #197 로 main 머지 11/25): 앱 창에는 그 칸이 없다(디자인). 실명이나 실명 일부를 별칭에 넣으면
 // 실명이 평문 칸으로 새므로 넣지 않는다. 두 칸을 **빼고** 보내면 서버가 사례번호로 채운다(별칭 '아동_0031', 제목 'C-2026-0031 사례').
-// 이 규칙은 서버 PR 이 들어가야 동작한다 — 그 전에는 POST /cases 가 두 칸을 필수로 받아 422 이므로, 앱 '+ 새 사례 등록' 단추를
-// APP_CASE_REGISTER_ENABLED 로 숨겨 둔다. 서버 PR 이 main 에 들어가면 true 로 바꾼다. '미입력' 같은 표시 글자는 보내지 않는다.
+// 서버 규칙(#197)이 main 에 들어가 앱 '+ 새 사례 등록' 단추를 켠다(APP_CASE_REGISTER_ENABLED, 11/25). '미입력' 같은 표시 글자는 보내지 않는다.
 
 import type { CaseCreateRequest } from "../api/types";
 import { emptyPersonalInput, todayKst } from "./personalInfo";
@@ -15,8 +14,8 @@ import { EMPTY_CASE_INPUT, toCaseCreateRequest } from "./useCaseRegister";
 
 /** 디자인 이름 칸 최대 글자 수(setRgName 의 slice(0, 10)). */
 export const APP_CASE_NAME_MAX = 10;
-/** 앱 '+ 새 사례 등록' 을 보일지. 서버가 제목 · 별칭을 빼고 받는 PR(민규)이 들어가기 전까지 false. */
-export const APP_CASE_REGISTER_ENABLED = false;
+/** 앱 '+ 새 사례 등록' 을 보일지. 서버가 제목 · 별칭을 빼고 받는 #197 이 main 에 들어가 켬(11/25). */
+export const APP_CASE_REGISTER_ENABLED = true;
 /** 앱 등록 요청: 제목 · 별칭을 뺀 POST /cases(서버가 사례번호로 채움). */
 export type AppCaseCreateRequest = Omit<CaseCreateRequest, "title" | "child_alias">;
 export const APP_CASE_SEXES = ["남", "여"] as const;
