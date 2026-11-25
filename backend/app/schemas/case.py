@@ -135,8 +135,11 @@ class CaseCreateRequest(GuardianFields, CaseFormFields):
     # 남는다(Codex #127 재검증 R4). 422 응답은 원래 값을 빼고 보낸다(main.py).
     model_config = ConfigDict(hide_input_in_errors=True)
 
-    title: str = Field(..., min_length=1, max_length=200)
-    child_alias: str = Field(..., min_length=1, max_length=100)
+    # 제목 · 아동 별칭(2026-11-24): 빼거나 null 이면 서버가 사례번호로 채운다(case_service.create_case) — 상담사 앱(폰)의
+    # '새 사례 등록' 창에는 이름 · 생년월일 · 성별 칸만 있다. 빈 글("")은 지금처럼 422 다.
+    # 실명(personal_info)에서는 만들지 않는다 — 별칭은 암호화하지 않는 칸이고 목록 · 일정 · 메모 · 검색에 그대로 나온다.
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    child_alias: Optional[str] = Field(default=None, min_length=1, max_length=100)
     child_birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     child_gender: Optional[str] = Field(default=None, max_length=10)
     notes: Optional[str] = Field(default=None, max_length=4000)

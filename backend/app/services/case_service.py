@@ -42,6 +42,21 @@ def _generate_case_number(db: Session) -> str:
     return f"{prefix}{max(serials, default=0) + 1:04d}"
 
 
+def _default_title(case_number: str) -> str:
+    """제목을 빼고 보낸 사례의 제목(2026-11-24). 예: C-2026-0031 → 'C-2026-0031 사례'."""
+
+    return f"{case_number} 사례"
+
+
+def _default_child_alias(case_number: str) -> str:
+    """별칭을 빼고 보낸 사례의 별칭(2026-11-24). 사례번호의 마지막 '-' 뒤 — C-2026-0031 → '아동_0031'.
+
+    '-' 가 없거나 '-' 로 끝나는 번호는 번호 전체를 쓴다. 실명에서 만들지 않는다(별칭은 암호화하지 않는 칸).
+    """
+
+    return f"아동_{case_number.rsplit('-', 1)[-1] or case_number}"
+
+
 def _resolve_counselor(
     db: Session,
     current_user: User,
@@ -84,10 +99,13 @@ def create_case(db: Session, current_user: User, payload: CaseCreateRequest) -> 
     for attempt in range(_CASE_NUMBER_MAX_RETRY):
         case_number = payload.case_number or _generate_case_number(db)
 
+        # 제목 · 별칭을 빼고 보냈으면 이번 시도의 사례번호로 채운다. 번호가 겹쳐 다시 돌 때는 새 번호로 다시 만든다.
         case = Case(
             case_number=case_number,
-            title=payload.title,
-            child_alias=payload.child_alias,
+            title=payload.title if payload.title is not None else _default_title(case_number),
+            child_alias=(
+                payload.child_alias if payload.child_alias is not None else _default_child_alias(case_number)
+            ),
             child_birth_year=payload.child_birth_year,
             child_gender=payload.child_gender,
             guardian_type=payload.guardian_type,

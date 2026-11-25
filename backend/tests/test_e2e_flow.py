@@ -231,14 +231,15 @@ def test_every_response_uses_data_or_error_envelope(
         assert list(body.keys()) == ["data"], url
 
     failure_cases = [
-        ("GET", "/api/v1/cases/00000000-0000-0000-0000-000000000000", 404),
-        ("GET", "/api/v1/nope", 404),
-        ("POST", "/api/v1/cases", 422),
-        ("GET", f"/api/v1/sessions/{session['id']}/audio", 404),
+        ("GET", "/api/v1/cases/00000000-0000-0000-0000-000000000000", {}, 404),
+        ("GET", "/api/v1/nope", {}, 404),
+        # 제목 · 별칭을 빼면 서버가 채우므로(2026-11-24) 빈 본문은 이제 201 이다. 빈 글 제목으로 422 를 만든다.
+        ("POST", "/api/v1/cases", {"title": ""}, 422),
+        ("GET", f"/api/v1/sessions/{session['id']}/audio", {}, 404),
     ]
 
-    for method, url, expected_status in failure_cases:
-        response = client.request(method, url, json={}, headers=counselor_headers)
+    for method, url, payload, expected_status in failure_cases:
+        response = client.request(method, url, json=payload, headers=counselor_headers)
 
         assert response.status_code == expected_status, url
 
