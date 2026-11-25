@@ -136,3 +136,129 @@ def test_unknown_order_is_rejected(client: TestClient, counselor_headers) -> Non
     response = client.get("/api/v1/cases", params={"sort": "risk", "order": "up"}, headers=counselor_headers)
 
     assert response.status_code == 422
+
+
+# ---- 기본 순서(sort 없음 — 화면의 '전체'): 최근 수정순(2026-11-25) ----
+
+
+def _ids(client, headers, **params) -> List[str]:
+    return [item["id"] for item in _list(client, headers, **params)]
+
+
+def _patch(client, headers, case_id: str, body: dict) -> None:
+    response = client.patch(f"/api/v1/cases/{case_id}", json=body, headers=headers)
+
+    assert response.status_code == 200, response.text
+
+
+def test_default_order_puts_the_latest_modified_case_first(client: TestClient, counselor_headers) -> None:
+    """방금 고친 사례가 맨 위다. 고치지 않은 사례끼리는 등록 최신순 그대로(등록도 수정으로 친다)."""
+
+    first = create_case(client, counselor_headers)["id"]
+    second = create_case(client, counselor_headers)["id"]
+    third = create_case(client, counselor_headers)["id"]
+
+    assert _ids(client, counselor_headers) == [third, second, first]
+
+    _patch(client, counselor_headers, first, {"notes": "가상 메모"})
+
+    assert _ids(client, counselor_headers) == [first, third, second]
+
+    # 값이 그대로인 저장도 '저장한 사례' 로 올린다(화면에서 저장을 누른 순서와 같게).
+    _patch(client, counselor_headers, second, {"title": "테스트 사례"})
+
+    assert _ids(client, counselor_headers) == [second, first, third]
+
+
+def test_saving_personal_info_moves_the_case_to_the_top(client: TestClient, counselor_headers) -> None:
+    """이름만 고치면 사례 행은 그대로라, 따로 올려 주지 않으면 순서가 안 바뀐다."""
+
+    old = create_case(client, counselor_headers)["id"]
+    new = create_case(client, counselor_headers)["id"]
+    url = f"/api/v1/cases/{old}/personal-info"
+
+    assert client.put(url, json={"child_name": "한가람"}, headers=counselor_headers).status_code == 200
+    assert _ids(client, counselor_headers) == [old, new]
+
+    _patch(client, counselor_headers, new, {"notes": "가상 메모"})
+    assert _ids(client, counselor_headers) == [new, old]
+
+    # 같은 값을 다시 저장해도 올린다(사례 수정과 같은 기준).
+    assert client.put(url, json={"child_name": "한가람"}, headers=counselor_headers).status_code == 200
+    assert _ids(client, counselor_headers) == [old, new]
+
+
+def test_saving_a_case_form_moves_the_case_to_the_top(client: TestClient, counselor_headers) -> None:
+    """서식을 새로 쓰기 · 임시 저장 · 확정할 때마다 그 사례가 맨 위로 온다."""
+
+    target = create_case(client, counselor_headers)["id"]
+    other = create_case(client, counselor_headers)["id"]
+    forms = f"/api/v1/cases/{target}/forms"
+
+    created = client.post(forms, json={"form_type": "RISK_SCALE", "values": {}}, headers=counselor_headers)
+    assert created.status_code == 201, created.text
+    form_id = created.json()["data"]["id"]
+    assert _ids(client, counselor_headers) == [target, other]
+
+    _patch(client, counselor_headers, other, {"notes": "가상 메모 1"})
+    saved = client.patch(f"{forms}/{form_id}", json={"values": {}, "version": 1}, headers=counselor_headers)
+    assert saved.status_code == 200, saved.text
+    assert _ids(client, counselor_headers) == [target, other]
+
+    _patch(client, counselor_headers, other, {"notes": "가상 메모 2"})
+    confirmed = client.post(f"{forms}/{form_id}/confirm", json={"version": 2}, headers=counselor_headers)
+    assert confirmed.status_code == 200, confirmed.text
+    assert _ids(client, counselor_headers) == [target, other]
+
+
+def test_stale_form_save_does_not_move_the_case(client: TestClient, counselor_headers) -> None:
+    """옛 판 번호로 보내 409 가 난 서식 저장은 사례 순서를 바꾸지 않는다."""
+
+    target = create_case(client, counselor_headers)["id"]
+    forms = f"/api/v1/cases/{target}/forms"
+    form_id = client.post(forms, json={"form_type": "RISK_SCALE", "values": {}}, headers=counselor_headers).json()["data"]["id"]
+    other = create_case(client, counselor_headers)["id"]
+
+    stale = client.patch(f"{forms}/{form_id}", json={"values": {}, "version": 9}, headers=counselor_headers)
+
+    assert stale.status_code == 409
+    assert _ids(client, counselor_headers) == [other, target]
+
+
+def test_closure_review_moves_the_case_to_the_top(client: TestClient, counselor_headers) -> None:
+    old = create_case(client, counselor_headers)["id"]
+    new = create_case(client, counselor_headers)["id"]
+
+    assert client.post(f"/api/v1/cases/{old}/closure-review", headers=counselor_headers).status_code == 200
+
+    assert _ids(client, counselor_headers) == [old, new]
+
+
+def test_reading_a_case_does_not_reorder(client: TestClient, counselor_headers) -> None:
+    """열어 보기만 한 사례는 올라오지 않는다(열람 기록을 남기는 조회 포함)."""
+
+    old = create_case(client, counselor_headers, personal_info={"child_name": "한가람"})["id"]
+    new = create_case(client, counselor_headers)["id"]
+
+    for url in (f"/api/v1/cases/{old}", f"/api/v1/cases/{old}/personal-info", f"/api/v1/cases/{old}/forms"):
+        assert client.get(url, headers=counselor_headers).status_code == 200
+
+    assert _ids(client, counselor_headers, with_child_name="true") == [new, old]
+    assert _ids(client, counselor_headers) == [new, old]
+
+
+def test_same_sort_value_ties_break_by_latest_modified(client: TestClient, counselor_headers) -> None:
+    """위험도 · 신고접수일이 같은 사례끼리도 최근 수정순이다(↑ · ↓ 어느 쪽이든)."""
+
+    first = create_case(client, counselor_headers, counselor_risk_level="HIGH", report_date="2026-07-01")["id"]
+    second = create_case(client, counselor_headers, counselor_risk_level="HIGH", report_date="2026-07-01")["id"]
+    low = create_case(client, counselor_headers, counselor_risk_level="LOW", report_date="2026-01-01")["id"]
+
+    assert _ids(client, counselor_headers, sort="risk") == [second, first, low]
+
+    _patch(client, counselor_headers, first, {"notes": "가상 메모"})
+
+    assert _ids(client, counselor_headers, sort="risk") == [first, second, low]
+    assert _ids(client, counselor_headers, sort="risk", order="asc") == [low, first, second]
+    assert _ids(client, counselor_headers, sort="report_date") == [first, second, low]
+    assert _ids(client, counselor_headers, sort="report_date", order="asc") == [low, first, second]
