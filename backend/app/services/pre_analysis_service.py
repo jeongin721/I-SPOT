@@ -59,11 +59,10 @@ def _jamo(char: str) -> tuple:
 
 
 def _sounds_alike(a: str, b: str) -> bool:
-    """두 음절이 첫소리만 다르다(모음 · 받침이 같다) — STT 가 흔히 헷갈리는 꼴(수아 → 수하, ㅇ ↔ ㅎ)."""
+    """두 음절이 첫소리 · 모음 · 받침 가운데 **하나만** 다르다 — STT 가 흔히 헷갈리는 꼴
+    (첫소리 수아 → 수하, 모음 서윤 → 서연, 받침 민준 → 민중 · 예린 → 예림 · 하윤 → 하율, 민규 #195 리뷰 (다))."""
 
-    first_a, vowel_a, final_a = _jamo(a)
-    first_b, vowel_b, final_b = _jamo(b)
-    return first_a != first_b and (vowel_a, final_a) == (vowel_b, final_b)
+    return sum(x != y for x, y in zip(_jamo(a), _jamo(b), strict=True)) == 1
 
 
 def _is_hangul(char: str) -> bool:
@@ -71,11 +70,14 @@ def _is_hangul(char: str) -> bool:
 
 
 def similar_name_variants(text: str, names: List[str]) -> List[str]:
-    """등록 이름과 성이 같고 이름 한 글자만 **첫소리가 다른** 표기 — 확정 전 STT 오인식(김수아 → 김수하)도 가리려고(민규 #191 · 11/24).
+    """등록 이름과 성이 같고 이름 한 글자만 **소리가 비슷하게 다른** 표기 — 확정 전 STT 오인식(김수아 → 김수하 · 박서윤 → 박서연)도
+    가리려고(민규 #191 · 11/24).
 
     일반 낱말을 가리지 않게(민규 #195 리뷰 — '하지원' → '하지만', '고민지' → '고민이'):
-    - 다른 한 글자는 모음 · 받침이 같고 첫소리만 달라야 한다(소리가 비슷한 오인식만).
-    - 앞 글자가 한글이면(더 긴 낱말의 가운데) 보지 않는다. 뒤가 한글이면 조사(가 · 는 · 이 · 야 · 랑 · 한테 등)일 때만.
+    - 다른 한 글자는 첫소리 · 모음 · 받침 가운데 하나만 달라야 한다(소리가 비슷한 오인식만).
+    - 앞 글자가 한글이면(더 긴 낱말의 가운데) 보지 않는다('우리 · 저희' 뒤는 본다). 뒤가 한글이면 조사 · 부름말일 때만.
+    - 앞 두 글자가 흔한 낱말(고민 · 사람 · 친구 …)이고 끝 글자가 조사 꼴이면 낱말 + 조사로 본다('고민이').
+      예전에는 끝 글자가 조사 꼴이면 모두 뺐는데, 그러면 실제 이름 쪽(김수하 → 김수아가)도 빠져서 좁혔다(민규 #195 리뷰 (가)).
     그래도 남는 오탐은 더 가리는 쪽이다(같은 성의 다른 사람 이름을 가려도 안전)."""
 
     variants: List[str] = []
@@ -93,7 +95,7 @@ def similar_name_variants(text: str, names: List[str]) -> List[str]:
             if word in seen or word[0] != name[0] or not _HANGUL_NAME.match(word):
                 continue
 
-            if start > 0 and _is_hangul(text[start - 1]):
+            if start > 0 and _is_hangul(text[start - 1]) and not text[:start].endswith(_NAME_PREFIXES):
                 continue
 
             rest = text[start + size :]
@@ -103,8 +105,8 @@ def similar_name_variants(text: str, names: List[str]) -> List[str]:
 
             differ = [(a, b) for a, b in zip(word, name, strict=True) if a != b]
 
-            # 마지막 글자가 바뀌어 조사가 된 꼴('고민지' → '고민' + '이')은 낱말 + 조사로 본다.
-            if word[-1] != name[-1] and word[-1] in _ONE_CHAR_PARTICLES:
+            # 흔한 낱말 + 조사가 된 꼴('고민지' → '고민' + '이')은 낱말로 본다. 이름 앞 두 글자가 흔한 낱말이 아니면 이름으로 본다.
+            if word[-1] != name[-1] and word[-1] in _ONE_CHAR_PARTICLES and word[:-1] in _COMMON_WORDS:
                 continue
 
             if len(differ) == 1 and _sounds_alike(*differ[0]):
@@ -114,9 +116,22 @@ def similar_name_variants(text: str, names: List[str]) -> List[str]:
     return variants
 
 
-# 이름 바로 뒤에 붙는 조사 · 부름말. 뒤가 한글인데 이것으로 시작하지 않으면 더 긴 낱말로 본다.
-_ONE_CHAR_PARTICLES = set("가는은이야아도를을의")
-_PARTICLES = ("이가", "이는", "이랑", "이도", "이를", "이한테", "한테", "에게", "랑", "가", "는", "은", "이", "야", "아", "도", "를", "을", "의", "씨", "님")
+# 이름 바로 뒤에 붙는 조사 · 부름말 · 서술어. 뒤가 한글인데 이것으로 시작하지 않으면 더 긴 낱말로 본다
+# (민규 #195 리뷰 (나) — 와 · 하고 · 라고 · 예요 · 만 · 네 · 처럼 · 입니다 를 더함).
+_ONE_CHAR_PARTICLES = set("가는은이야아도를을의와과만네")
+_PARTICLES = (
+    "이가", "이는", "이랑", "이도", "이를", "이한테", "이하고", "이라고", "이라는", "이에요", "이예요", "이야", "이네", "이처럼", "이만",
+    "한테", "에게", "께서", "하고", "라고", "라는", "예요", "에요", "입니다", "이다", "처럼", "보다", "부터", "까지", "마저", "조차",
+    "랑", "가", "는", "은", "이", "야", "아", "도", "를", "을", "의", "와", "과", "만", "네", "께", "씨", "님", "군", "양",
+)
+# 이름 바로 앞에 붙여 쓰는 말('우리김수하가'). 이 뒤는 낱말 가운데로 보지 않는다.
+_NAME_PREFIXES = ("우리", "저희")
+# 앞 두 글자가 이 낱말이고 끝 글자가 조사 꼴이면 이름이 아니라 낱말 + 조사로 본다('고민이' · '사람이').
+_COMMON_WORDS = {
+    "고민", "사람", "친구", "선생", "동생", "언니", "오빠", "누나", "엄마", "아빠", "정말", "진짜", "학교", "생각", "마음", "이름",
+    "사랑", "시간", "공부", "문제", "걱정", "기분", "얘기", "이야", "어제", "오늘", "내일", "그거", "이거", "저거", "무엇", "누구",
+    "가족", "집에", "아이", "어른", "장난", "숙제", "학원", "방학", "주말", "아침", "저녁", "점심", "하나", "두개", "처음", "다음",
+}
 
 
 def _known_identifiers(db: Session, session: ConsultationSession, adapter, stt_contract: Dict[str, Any]) -> Any:

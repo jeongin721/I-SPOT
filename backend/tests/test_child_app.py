@@ -699,6 +699,12 @@ def test_editing_returns_to_unapproved_and_answered_cannot_withdraw(client: Test
 
     url = f"{base}/questions/{question['id']}"
     client.put(f"{url}/approval", json={"approved": True}, headers=counselor_headers)
+    # 자해 · 죽음 말로 고치면 거절하고, 앱에 간 질문도 그대로 둔다(경진 11/24).
+    for body in ({"text": "요즘 죽고 싶은 생각이 드나요?", "options": ["네", "아니요"]},
+                 {"text": "요즘 기분은 어때요?", "options": ["괜찮아요", "사라지고 싶어요"]}):
+        refused = client.patch(url, json=body, headers=counselor_headers)
+        assert refused.status_code == 400 and "상담에서 직접" in refused.text
+    assert _home(client, device)["pending"]["questions"][0]["text"] == question["text"]
     edited = client.patch(url, json={"text": "고친 질문", "options": ["네", "아니요"]}, headers=counselor_headers)
     item = edited.json()["data"]["items"][0]["questions"][0]
     assert item["edited"] is True and item["approved"] is False and item["text"] == "고친 질문"
@@ -889,12 +895,25 @@ def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
     assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None
 
 
-def test_device_unlink_lets_counselor_link_again(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
+def _counselor_unlink(client: TestClient, headers: Headers, case_id: str) -> None:
+    assert client.delete(f"/api/v1/cases/{case_id}/child-app/link", headers=headers).status_code == 204
+
+
+def test_child_cannot_unlink_from_app(client: TestClient, counselor_headers: Headers, case: dict) -> None:
+    """해지는 담당 상담사만 한다(경진 11/24). 아이 앱에서 스스로 해지하는 길은 없다."""
+
+    device = _linked(client, counselor_headers, case["id"])
+
+    assert client.post("/api/v1/child-app/unlink", headers=device).status_code in (404, 405)
+    assert _home(client, device)
+    assert _view(client, counselor_headers, case["id"])["status"] == "LINKED"
+
+
+def test_counselor_unlink_lets_counselor_link_again(client: TestClient, counselor_headers: Headers, case: dict, db) -> None:
     device = _linked(client, counselor_headers, case["id"])
     _send(client, counselor_headers, case["id"], ["sleep", "home", "safe"])
 
-    assert client.post("/api/v1/child-app/unlink").status_code == 401
-    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    _counselor_unlink(client, counselor_headers, case["id"])
     assert client.get("/api/v1/child-app/home", headers=device).status_code == 401
 
     view = _view(client, counselor_headers, case["id"])
@@ -1112,7 +1131,7 @@ def test_child_home_alert_hidden_after_a_day_once_acked_and_for_new_device(
 
     # 해지하고 새로 연결한 기기에는 (새 기기에서 누르기 전까지) 예전 알림이 보이지 않는다.
     _alert(client, device)
-    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    _counselor_unlink(client, counselor_headers, case["id"])
     new_device = _linked(client, counselor_headers, case["id"])
     assert _home(client, new_device)["alert"] is None
 
@@ -1146,7 +1165,7 @@ def test_child_home_alert_shows_on_new_device_that_presses_again(
     device = _linked(client, counselor_headers, case["id"])
     _alert(client, device)
     _age_alert(db, case["id"], 2)
-    assert client.post("/api/v1/child-app/unlink", headers=device).status_code == 204
+    _counselor_unlink(client, counselor_headers, case["id"])
 
     new_device = _linked(client, counselor_headers, case["id"])
     assert _home(client, new_device)["alert"] is None
