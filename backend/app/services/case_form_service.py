@@ -128,6 +128,8 @@ def create_form(db: Session, user: User, case: Case, payload: CaseFormCreateRequ
             "다른 창에서 같은 서식을 먼저 만들었습니다. 다시 열어 이어서 고쳐 주세요.",
         ) from None
     _audit(db, AuditAction.CASE_FORM_CREATED, user, row)
+    # 서식을 저장한 사례가 목록 맨 위로 오게 한다(사례 목록 기본 순서 = 최근 수정순, API_CONTRACT 4절). 아래 고치기 · 확정도 같다.
+    case.touch()
     db.commit()
     db.refresh(row)
     return row
@@ -163,6 +165,7 @@ def update_form(db: Session, user: User, row: CaseForm, raw: Dict[str, Any], ver
     # 서식 값은 암호문 칸에 넣는다(상담 본문 암호화 2단계). 조건부 UPDATE 라 ORM 속성 대신 DB 칸 값을 직접 만든다.
     row = _apply(db, user, row, version, CaseForm.values.db_values(row.id, values))
     _audit(db, AuditAction.CASE_FORM_UPDATED, user, row)
+    row.case.touch()
     db.commit()
     db.refresh(row)
     return row
@@ -177,6 +180,7 @@ def confirm_form(db: Session, user: User, row: CaseForm, version: int) -> CaseFo
         {"status": ReviewStatus.APPROVED, "confirmed_by_id": user.id, "confirmed_at": datetime.now(timezone.utc)},
     )
     _audit(db, AuditAction.CASE_FORM_CONFIRMED, user, row)
+    row.case.touch()
     db.commit()
     db.refresh(row)
     return row

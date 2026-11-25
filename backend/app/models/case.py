@@ -20,7 +20,7 @@ from app.core.enums import (
     RiskLevel,
     TargetActionResult,
 )
-from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin, utcnow
 from app.models.encrypted_field import EncryptedColumn
 
 if TYPE_CHECKING:
@@ -149,6 +149,16 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         passive_deletes=True,
         uselist=False,
     )
+
+    def touch(self) -> None:
+        """
+        수정 시각(updated_at)을 지금으로 찍는다. 사례 목록의 기본 순서가 이 값이다(최근 수정순, API_CONTRACT 4절).
+
+        이 표의 칸이 바뀌면 updated_at 은 저절로 바뀐다. 이 표가 그대로인 저장(개인 식별 정보 · 기관 서식 · 값이 같은 다시 저장)에서
+        부른다. 조회에서는 부르지 않는다.
+        """
+
+        self.updated_at = utcnow()
 
     def __repr__(self) -> str:
         return f"<Case id={self.id} case_number={self.case_number}>"
