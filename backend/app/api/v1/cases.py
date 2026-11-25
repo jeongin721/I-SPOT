@@ -76,7 +76,7 @@ def list_cases(
     search: Annotated[Optional[str], Query(max_length=100), StorableQueryText] = None,
     # 아동 실명을 실을지(API_CONTRACT 4절 '개인 식별 정보'). 실명을 보여 주는 화면만 true 로 부른다 — 그때만 복호화하고 열람 기록 1줄을 남긴다.
     with_child_name: bool = False,
-    # 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순.
+    # 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 최근 수정순.
     sort: Optional[case_service.CaseSort] = None,
     order: case_service.CaseSortOrder = "desc",
 ) -> DataResponse[PagedItems[CaseListItemResponse]]:

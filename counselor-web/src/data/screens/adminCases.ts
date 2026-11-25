@@ -26,7 +26,7 @@ import { screenHref } from "./links";
 export const ALL_STAFF = "all";
 
 export type AdminRiskFilter = "all" | "상" | "중" | "하";
-/** 정렬. "" 이면 사례 등록 최신순(서버 순서). */
+/** 정렬. "" 이면 최근 수정순(서버 순서 — 방금 등록 · 수정한 사례부터). */
 export type AdminCasesSort = "" | "date" | "risk";
 
 export interface AdminCasesUiState {
@@ -150,7 +150,7 @@ export function adminCasesValues(input: AdminCasesInput) {
     disabled: false,
     pick: () => setState({ risk: key }),
   }));
-  // 정렬(디자인: 최근 접수 · 위험도 · 관리 기간). 최근 접수는 신고접수일, 위험도는 상 → 중 → 하. 다시 누르면 등록 최신순.
+  // 정렬(디자인: 최근 접수 · 위험도 · 관리 기간). 최근 접수는 신고접수일, 위험도는 상 → 중 → 하. 다시 누르면 최근 수정순.
   // 관리 기간은 서버에 없는 값이라 준비 중.
   const sortF = [
     ["date", "최근 접수"],
@@ -217,7 +217,7 @@ export function adminCasesValues(input: AdminCasesInput) {
     rows,
     empty: casesLoaded && rows.length === 0,
     countLabel: casesLoaded
-      ? `사례 ${rows.length}건 표시 · ${state.sort === "date" ? "신고접수일 최신순" : state.sort === "risk" ? "위험도 높은 순" : "사례 등록 최신순"}`
+      ? `사례 ${rows.length}건 표시 · ${state.sort === "date" ? "신고접수일 최신순" : state.sort === "risk" ? "위험도 높은 순" : "최근 수정순"}`
       : "",
     dataNote:
       `관리 기간(정렬 포함) · 최근 상담 · 진행 단계(초기 조사 · 종결 검토)는 ${NOT_READY}입니다(서버에 아직 없는 값). ` +

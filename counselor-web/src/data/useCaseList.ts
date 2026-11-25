@@ -25,7 +25,7 @@ export interface CaseListOptions {
   enabled?: boolean;
   /** 이름 칸에 실명을 보이는 화면만 true(with_child_name=true, 서버가 목록 열람 기록을 남김). 기본 false. */
   withNames?: boolean;
-  /** 서버 정렬(신고접수일 · 위험도). 없으면 등록 최신순. */
+  /** 서버 정렬(신고접수일 · 위험도). 없으면 최근 수정순. */
   sort?: CaseListSort;
   /** desc(신고접수일 최신 · 위험도 상부터) · asc(반대). sort 가 있을 때만 쓴다. */
   order?: CaseListOrder;
