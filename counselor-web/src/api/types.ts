@@ -475,7 +475,7 @@ export interface PersonalInfoRequest {
 }
 
 /** 사례 목록 줄(GET /cases). with_child_name=true 로 부를 때만 child_name 에 실명이 실린다(미등록 · 풀 수 없으면 null). */
-/** GET /cases 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 등록 최신순. */
+/** GET /cases 정렬(신고접수일 최신순 · 위험도 높은 순). 없으면 최근 수정순(방금 고친 · 등록한 사례부터). */
 export type CaseListSort = "report_date" | "risk";
 export type CaseListOrder = "desc" | "asc";
 
