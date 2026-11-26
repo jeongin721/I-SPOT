@@ -280,6 +280,9 @@ export const signup = {
 // 사례
 // =========================================================
 
+/** GET /cases/child-names 가 한 번에 받는 사례 수(Backend personal_info_service.CHILD_NAMES_MAX 와 같다). */
+export const CHILD_NAMES_MAX = 50;
+
 export const cases = {
   /**
    * search 는 제목·사례번호·아동 별칭(부분)과 아동 실명(공백 무시 정확히 같을 때)에서 찾는다.
@@ -301,7 +304,7 @@ export const cases = {
 
   /** 받은 사례 ID 의 아동 실명만(긴급 알림 띠 · 알림 종). 볼 수 있고 실명이 있는 사례만 온다. 실명이 있으면 열람 기록 1줄. 최대 50개. */
   childNames(caseIds: string[]): Promise<Record<string, string>> {
-    const query = caseIds.slice(0, 50).map((id) => `ids=${encodeURIComponent(id)}`).join("&");
+    const query = caseIds.slice(0, CHILD_NAMES_MAX).map((id) => `ids=${encodeURIComponent(id)}`).join("&");
     return api.get<Record<string, string>>(`/cases/child-names?${query}`);
   },
 

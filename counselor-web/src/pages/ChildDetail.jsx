@@ -3,7 +3,8 @@
 //
 // 사례 ID 가 있으면 콩콩 앱 서버 값을 보인다(screens/childDetail.ts). 사례 ID 가 없으면 디자인 예시를 그대로 보인다.
 //  - AI 초안 '확인해 볼 점' · 추가 질문은 서버가 만든 것만 보인다. 추가 질문은 상담사가 승인해야 아이 앱으로 간다.
-//  - 이름(제목 · 위치 줄 · 해지 확인 문구)은 사례 상세와 같이 실명(GET …/personal-info, 서버가 열람 기록), 없으면 별칭(2026-11-26 민규 #207).
+//  - 이름(제목 · 위치 줄 · 해지 확인 문구)은 사례 상세와 같이 실명, 없으면 별칭(2026-11-26 민규 #207). 이름만 쓰므로
+//    GET /cases/child-names 로 이름만 받는다(생년월일 · 가족 정보는 받지 않는다 — 민규 11/26 리뷰, useChildNames 가 탭에 기억).
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -17,7 +18,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { CHILD_ALERT_TEXT, useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
-import { usePersonalInfo } from '../data/usePersonalInfo';
+import { useChildNames } from '../data/useChildNames';
 import { aiDraftNeeded, childDateTime, childDetailValues } from '../data/screens/childDetail';
 import { readScreenIds, screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
@@ -253,8 +254,8 @@ export default function ChildDetail(props) {
   const detail = useCaseDetail(caseId, { enabled });
   const app = useCaseChildApp(caseId, enabled);
   const [toast, showToast] = useSentToast();
-  const personal = usePersonalInfo(caseId, { enabled });
-  const realName = personal.info?.child_name?.trim() || null;
+  const nameOf = useChildNames(enabled ? session.me?.id : null, [caseId]);
+  const realName = nameOf(caseId, '') || null;
   const info = detail.caseInfo && realName ? { ...detail.caseInfo, name: realName, initial: Array.from(realName)[0] } : detail.caseInfo;
   const live =
     caseId && app.data && info
