@@ -3,6 +3,7 @@
 //
 // 사례 ID 가 있으면 콩콩 앱 서버 값을 보인다(screens/childDetail.ts). 사례 ID 가 없으면 디자인 예시를 그대로 보인다.
 //  - AI 초안 '확인해 볼 점' · 추가 질문은 서버가 만든 것만 보인다. 추가 질문은 상담사가 승인해야 아이 앱으로 간다.
+//  - 이름(제목 · 위치 줄 · 해지 확인 문구)은 사례 상세와 같이 실명(GET …/personal-info, 서버가 열람 기록), 없으면 별칭(2026-11-26 민규 #207).
 import { Fragment, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DCLogic, useDC } from '../dc';
@@ -16,6 +17,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { useAuthSession } from '../data/useAuthSession';
 import { CHILD_ALERT_TEXT, useCaseChildApp } from '../data/useCaseChildApp';
 import { useCaseDetail } from '../data/useCaseDetail';
+import { usePersonalInfo } from '../data/usePersonalInfo';
 import { aiDraftNeeded, childDateTime, childDetailValues } from '../data/screens/childDetail';
 import { readScreenIds, screenHref } from '../data/screens/links';
 import { needsLogin, screenNotice } from '../data/screens/common';
@@ -251,7 +253,9 @@ export default function ChildDetail(props) {
   const detail = useCaseDetail(caseId, { enabled });
   const app = useCaseChildApp(caseId, enabled);
   const [toast, showToast] = useSentToast();
-  const info = detail.caseInfo;
+  const personal = usePersonalInfo(caseId, { enabled });
+  const realName = personal.info?.child_name?.trim() || null;
+  const info = detail.caseInfo && realName ? { ...detail.caseInfo, name: realName, initial: Array.from(realName)[0] } : detail.caseInfo;
   const live =
     caseId && app.data && info
       ? childDetailValues(app.data, info, {
