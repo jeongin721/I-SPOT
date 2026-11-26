@@ -872,3 +872,36 @@ def test_deploy_stops_before_switching_when_keys_are_missing(tmp_path: Path, env
     assert (result.returncode == 1) is stops
     assert ("PASSED" in result.stdout) is not stops
     assert "abc" not in result.stdout + result.stderr
+
+
+def test_child_names_by_ids_only_visible_cases_and_audited_once(
+    client: TestClient, counselor_headers, other_counselor_headers, admin_headers, counselor_id, db
+) -> None:
+    """긴급 알림 띠 · 알림 종이 받은 사례의 실명(GET /cases/child-names, 2026-11-26) — 볼 수 있는 사례만, 실명이 있으면 열람 기록 1줄."""
+
+    named = create_case(client, counselor_headers, personal_info={"child_name": CHILD})
+    unnamed = create_case(client, counselor_headers)
+    others = create_case(client, other_counselor_headers, personal_info={"child_name": SIBLING})
+    url = "/api/v1/cases/child-names"
+
+    response = client.get(url, params={"ids": [named["id"], unnamed["id"], others["id"]]}, headers=counselor_headers)
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {named["id"]: CHILD}  # 남의 사례 · 실명 없는 사례는 빠진다
+
+    logs = _audit(db, AuditAction.CASE_LIST_PERSONAL_INFO_VIEWED)
+    assert len(logs) == 1 and logs[0].actor_id == counselor_id
+    assert logs[0].detail == {"case_ids": [named["id"]], "count": 1}
+
+    # 실명이 없는 사례만 물으면 기록하지 않는다.
+    assert client.get(url, params={"ids": [unnamed["id"]]}, headers=counselor_headers).json()["data"] == {}
+    assert len(_audit(db, AuditAction.CASE_LIST_PERSONAL_INFO_VIEWED)) == 1
+
+    # 관리자는 전체.
+    admin = client.get(url, params={"ids": [named["id"], others["id"]]}, headers=admin_headers).json()["data"]
+    assert admin == {named["id"]: CHILD, others["id"]: SIBLING}
+
+    # 로그인 필요 · 51개부터 422 · 잘못된 ID 422. /cases/{case_id} 와 섞이지 않는다.
+    assert client.get(url, params={"ids": [named["id"]]}).status_code == 401
+    assert client.get(url, params={"ids": [str(uuid.uuid4()) for _ in range(51)]}, headers=counselor_headers).status_code == 422
+    assert client.get(url, params={"ids": ["x"]}, headers=counselor_headers).status_code == 422

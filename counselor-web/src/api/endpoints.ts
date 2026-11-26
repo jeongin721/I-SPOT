@@ -299,6 +299,12 @@ export const cases = {
     return api.post<Case>("/cases", payload);
   },
 
+  /** 받은 사례 ID 의 아동 실명만(긴급 알림 띠 · 알림 종). 볼 수 있고 실명이 있는 사례만 온다. 실명이 있으면 열람 기록 1줄. 최대 50개. */
+  childNames(caseIds: string[]): Promise<Record<string, string>> {
+    const query = caseIds.slice(0, 50).map((id) => `ids=${encodeURIComponent(id)}`).join("&");
+    return api.get<Record<string, string>>(`/cases/child-names?${query}`);
+  },
+
   /** 실명 · 생년월일 · 가족 정보(복호화한 값). 부를 때마다 서버에 열람 기록이 남는다. 권한은 사례 조회와 같다. */
   getPersonalInfo(caseId: string): Promise<PersonalInfo> {
     return api.get<PersonalInfo>(`/cases/${caseId}/personal-info`);

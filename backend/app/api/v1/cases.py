@@ -1,7 +1,7 @@
 # /cases 및 /cases/{case_id}/sessions
 
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Dict, List, Optional
 
 from fastapi import APIRouter, Query, status
 
@@ -124,6 +124,17 @@ def create_case(
     case = case_service.create_case(db, current_user, payload)
 
     return DataResponse(data=_case_response(case))
+
+
+@router.get("/child-names", response_model=DataResponse[Dict[uuid.UUID, str]], summary="화면이 받은 사례의 아동 실명")
+def get_child_names(
+    db: DbSession,
+    current_user: CurrentUser,
+    # 긴급 알림 띠 · 알림 종처럼 별칭으로 받은 줄의 이름 칸을 실명으로 바꿀 때만 부른다(API_CONTRACT 4절).
+    # 볼 수 있는 사례 중 실명이 있는 것만 돌려주고 열람 기록 1줄. 처음 보는 사례만 묻도록 화면이 기억한다.
+    ids: Annotated[List[uuid.UUID], Query(max_length=personal_info_service.CHILD_NAMES_MAX)],
+) -> DataResponse[Dict[uuid.UUID, str]]:
+    return DataResponse(data=personal_info_service.visible_child_names(db, current_user, ids))
 
 
 @router.get("/{case_id}", response_model=DataResponse[CaseDetailResponse])

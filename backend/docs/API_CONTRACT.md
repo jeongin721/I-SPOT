@@ -914,7 +914,11 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `health.items[].kind` 는 `질병` · `장애` · `병원치료` · `정신과 진단` · `타기관 상담` 가운데 하나, 같은 항목은 한 번만. `detail` 200자
 - 권한: `GET /api/v1/cases/{case_id}` 와 같다 — 상담사는 담당 사례만(`403 FORBIDDEN`), 관리자는 전체. 없는 사례 `404 CASE_NOT_FOUND`
 - 저장된 값을 풀 수 없으면(키가 설정에 없음 · 값이 바뀜) `500 PERSONAL_INFO_UNAVAILABLE`. 목록 `with_child_name` 은 그 줄만 `null` 로 둔다
-- 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name`(`GET /cases` · `GET /child-app-cases`) 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
+- 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name`(`GET /cases` · `GET /child-app-cases`) · `GET /cases/child-names` 로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
+- `GET /api/v1/cases/child-names?ids=<uuid>&ids=<uuid>…`(2026-11-26): 화면이 별칭으로 받은 줄(긴급 알림 띠 · 알림 종)의 이름 칸을 실명으로 바꿀 때 부른다.
+  `ids` 최대 50개(넘거나 UUID 가 아니면 `422`). 응답 `data` 는 `{사례 ID: 아동 실명}` — 볼 수 있는 사례(관리자 전체, 상담사 담당) 중 실명이 있는 것만 싣는다(나머지는 빠짐).
+  실명이 실리면 `with_child_name` 과 같은 열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄. 30초마다 다시 부르는 알림 목록에 실명을 싣지 않으려고 따로 두었고,
+  화면은 처음 보는 사례만 한 번 묻고 그 탭에 기억한다(다시 불러올 때마다 기록이 쌓이지 않음). 다른 상담사에게 넘어온 긴급 알림 줄은 묻지 않는다
 - **AI 가리기(2026-11-02, 응답 모양은 바뀌지 않음)**: 외부 AI(OpenAI)로 상담 글을 보내는 세 곳 — 분석(8절, `AI_PROVIDER=modeling`) ·
   다음 상담 체크리스트(19절, `FOLLOWUP_PROVIDER=module`) · 종결 요약(위 closure-summary, 별칭과 함께) — 은 보내기 전에 그 사례의
   등록 이름을 가릴 이름 목록(`known_identifiers`)으로 넘긴다. 서버가 메모리에서만 풀어 만들고 DB · 로그 · 감사 기록에 남기지 않는다.

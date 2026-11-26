@@ -301,6 +301,31 @@ def child_names(db: Session, current_user: User, case_ids: List[uuid.UUID]) -> D
     return names
 
 
+CHILD_NAMES_MAX = 50
+
+
+def visible_child_names(db: Session, current_user: User, case_ids: List[uuid.UUID]) -> Dict[uuid.UUID, str]:
+    """GET /cases/child-names — 화면이 이미 받은 사례 ID 의 아동 실명(긴급 알림 띠 · 알림 종, 2026-11-26).
+
+    볼 수 있는 사례(관리자는 전체, 상담사는 담당)만 풀고, 실명이 있으면 child_names 와 같이 열람 기록 1줄.
+    다시 불러오는 목록(30초마다)에 실명을 싣지 않으려고 따로 둔다 — 화면은 처음 보는 사례만 한 번 묻고 기억한다.
+    """
+
+    wanted = list(dict.fromkeys(case_ids))[:CHILD_NAMES_MAX]
+
+    if not wanted:
+        return {}
+
+    query = select(Case.id).where(Case.id.in_(wanted))
+
+    if not current_user.is_admin:
+        query = query.where(Case.counselor_id == current_user.id)
+
+    visible = set(db.scalars(query))
+
+    return child_names(db, current_user, [case_id for case_id in wanted if case_id in visible])
+
+
 def name_search_condition(term: str) -> Optional[ColumnElement[bool]]:
     """검색어가 아동 실명과 정확히 같은(공백 무시) 사례. 검색어가 공백뿐이면 None."""
 
