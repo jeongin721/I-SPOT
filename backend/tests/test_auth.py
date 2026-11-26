@@ -7,6 +7,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from tests.conftest import ADMIN_PASSWORD, COUNSELOR_PASSWORD
+from tests.test_cases import _instant
 
 
 def test_login_success(client: TestClient, counselor_id: uuid.UUID) -> None:
@@ -103,7 +104,7 @@ def test_me_returns_password_changed_at(client: TestClient, counselor_headers, d
     response = client.get("/api/v1/auth/me", headers=counselor_headers)
 
     assert response.status_code == 200
-    assert response.json()["data"]["password_changed_at"].startswith("2026-11-01T09:00")
+    assert _instant(response.json()["data"]["password_changed_at"]) == datetime(2026, 11, 1, 9, 0, tzinfo=timezone.utc)
 
 
 def test_no_instant_signup_endpoint(client: TestClient) -> None:

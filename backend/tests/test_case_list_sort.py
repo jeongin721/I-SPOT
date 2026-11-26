@@ -12,6 +12,7 @@ from app.models.session import ConsultationSession
 from app.services import audit_service
 from tests.conftest import create_case, create_session
 from tests.test_analysis import analyzed_session
+from tests.test_cases import _instant
 
 
 def _session(client, headers, db, case_id: str, status: SessionStatus, level: Optional[RiskLevel] = None) -> str:
@@ -384,4 +385,4 @@ def test_last_consulted_at_uses_only_recorded_consult_times(client: TestClient, 
 
     assert by_id[empty["id"]]["last_consulted_at"] is None
     assert by_id[empty["id"]]["last_session_at"] is not None  # 옛 값은 그대로 등록 시각으로 채운다
-    assert by_id[case["id"]]["last_consulted_at"].startswith("2026-11-20T15:30")
+    assert _instant(by_id[case["id"]]["last_consulted_at"]) == datetime(2026, 11, 20, 15, 30, tzinfo=timezone.utc)

@@ -24,6 +24,7 @@ import type { AuthSession } from "../useAuthSession";
 import { staffDetailHref } from "./admin";
 import { NOT_READY, screenNotice, sidebarValues } from "./common";
 import { screenHref } from "./links";
+import { parseBackendTime } from "../time";
 
 /** 상담원 거르기. ALL_STAFF 이면 전체, 아니면 담당 계정 ID. */
 export const ALL_STAFF = "all";
@@ -58,7 +59,8 @@ function dayNumber(text: string | null | undefined): number {
 function manageStartDay(row: CaseRow, createdAt: string): number {
   if (row.linkedDate !== NOT_PROVIDED) return dayNumber(row.linkedDate);
   if (row.reportDate !== NOT_PROVIDED) return dayNumber(row.reportDate);
-  const created = Date.parse(createdAt);
+  // 시간대 표시 없이 오는 값(SQLite)은 UTC 로 읽는다 — Date.parse 는 지역 시각으로 읽어 하루 밀린다.
+  const created = parseBackendTime(createdAt)?.getTime() ?? NaN;
   return Number.isNaN(created) ? NaN : Math.floor((created + KST_MS) / DAY_MS);
 }
 
@@ -83,7 +85,7 @@ export function periodLabel(days: number | null): string {
 
 /** 최근 상담 'MM/DD'(한국 날짜). 없으면 '—'. */
 export function lastConsultLabel(iso: string | null | undefined): string {
-  const ms = iso ? Date.parse(iso) : NaN;
+  const ms = iso ? parseBackendTime(iso)?.getTime() ?? NaN : NaN;
   if (Number.isNaN(ms)) return NOT_PROVIDED;
   const kst = new Date(ms + KST_MS).toISOString();
   return `${kst.slice(5, 7)}/${kst.slice(8, 10)}`;
