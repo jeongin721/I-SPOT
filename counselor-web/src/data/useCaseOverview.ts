@@ -16,7 +16,7 @@
 // 행위자 · 서비스 실적, 개인 · 기관 일정, 종결 검토 등록 · 진행률.
 
 import { cases } from "../api/endpoints";
-import type { Paged } from "../api/types";
+import type { ChildActionResult, Paged } from "../api/types";
 import { toCaseRow, type CaseRow } from "./caseRows";
 import { mapLimited } from "./mapLimited";
 import { toSessionRow, type SessionRow } from "./sessionRows";
@@ -43,6 +43,8 @@ export interface CaseOverviewItem {
   sessionTotal: number;
   /** mode "sessions" 면 이 사례의 회차(최신부터), "counts" 면 빈 배열. */
   sessions: SessionRow[];
+  /** 조치결과 · 피해아동(상담원이 고른 값, 2026-11-05 칸). 고르지 않았으면 null. 관리자 통계 '조치 결과'(11/25). */
+  childAction?: ChildActionResult | null;
 }
 
 export interface CaseOverviewData {
@@ -110,7 +112,11 @@ async function loadCaseOverview(mode: OverviewMode, withNames: boolean, live: ()
   let sessionsTruncated = false;
 
   const items = await mapLimited(caseList.items, OVERVIEW_CONCURRENCY, async (source): Promise<CaseOverviewItem> => {
-    const base = { caseRow: toCaseRow(source), createdDate: toDateOnly(source.created_at) };
+    const base = {
+      caseRow: toCaseRow(source),
+      createdDate: toDateOnly(source.created_at),
+      childAction: source.child_action_result ?? null,
+    };
 
     stillCurrent();
     if (mode === "counts") {

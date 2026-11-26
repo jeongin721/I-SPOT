@@ -3,7 +3,7 @@
 //
 // 서버 연결: 내 정보는 useAuthSession, 비밀번호 변경은 usePasswordChange 가 하고, 화면에 쓸 값은
 // src/data/screens/settings.ts 가 만든다. 이 파일은 훅을 부르고 배치만 한다.
-//  - 이름 · 이메일 바꾸기, 소속 기관, 마지막 비밀번호 변경일, 알림 설정은 서버에 없어 '—' · 준비 중이다.
+//  - 이름 · 이메일 바꾸기, 소속 기관, 알림 설정은 서버에 없어 '—' · 준비 중이다. 마지막 비밀번호 변경일은 password_changed_at(11/25).
 //  - 비밀번호는 현재 비밀번호를 넣고 바꾼다. 바꾸면 로그아웃되어 로그인 화면으로 간다.
 // 10/21 디자인(counselor-design/screens/Settings.dc.html): 왼쪽 메뉴를 누르면 설정 첫 화면으로(leaveReset — 같은 주소인 '설정' 도,
 // settings.ts 의 navKey). '계정' 진입 전 비밀번호 확인 창은 서버에 확인 API 가 없어 만들지 않았다(settings.ts 머리말).
@@ -192,7 +192,7 @@ export default function Settings(props) {
                 </div>
               </section>
               <p className="note" style={{ margin: '0' }}>
-                이름 · 이메일 바꾸기와 소속 기관 · 마지막 비밀번호 변경일은 {v.notReady}입니다(서버에 아직 없음). 이름은
+                이름 · 이메일 바꾸기와 소속 기관은 {v.notReady}입니다(서버에 아직 없음). 이름은
                 관리자가 바꿀 수 있습니다.
               </p>
             </>

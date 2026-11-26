@@ -5,7 +5,8 @@
 // src/data/screens/caseDetail.ts(caseHistoryValues)가 만든다. 이 파일은 훅을 부르고 배치만 한다.
 // 회차 카드 신호 · 회차별 세부 신호는 사례 단위 신호 이력(useSignalHistory), 누적 요약은 승인된 회차 요약 모음
 // (useApprovedSummaries — AI 생성 아님)이다. 주제 비중 · 덜 다룬 부분은 신호 이력의 회차별 대화 주제(AI 제안, 2026-10-29).
-// 상담 유형 · 신호 채택 수는 서버에 없어 준비 중 · '—'.
+// 상담 유형은 회차의 consultation_type(입력하지 않은 회차만 '—'). 신호 채택 수는 서버에 채택 기록이 없어 준비 중 · '—'.
+// '전 회차 보기' 창의 '신호 있는 회차만'(11/25): 신호 이력에서 AI 가 관련 신호를 찾은 회차만 남긴다(신호 이력을 받은 뒤에 켜짐).
 // 10/29 디자인: 머리 단추가 '녹음하기'(components/RecordDialog, useRecordFlow) · '+ 새 상담 등록'(components/NewSessionDialog —
 // 녹음 없이 상담 내용 · 소견을 회차 메모에 저장)으로 바뀌었다.
 // 관리자 회차 삭제(2026-11-03, 디자인에 없어 더함): 관리자에게만 '전 회차 보기' 창의 회차 줄 옆에 '삭제' 가 보인다.
@@ -41,7 +42,7 @@ import './CaseHistory.css';
 class Logic extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { open: false, sigOnly: false };
+    this.state = { open: false };
   }
   renderVals() {
     return caseHistoryValues(this.props);
@@ -58,6 +59,8 @@ export default function CaseHistory(props) {
   const theme = useTheme();
   // '전 회차 보기' 창이 열렸는가(화면 안에서만 쓰는 값).
   const [historyOpen, setHistoryOpen] = useState(false);
+  // '신호 있는 회차만' 체크(11/25).
+  const [sigOnly, setSigOnly] = useState(false);
   const personal = usePersonalInfo(caseId, { enabled: signedIn(session) });
   const del = useAdminDelete(() => {
     detail.reload();
@@ -78,6 +81,8 @@ export default function CaseHistory(props) {
     caseId,
     historyOpen,
     setHistoryOpen,
+    sigOnly,
+    setSigOnly,
     askDelete,
     deleteAny: session.isAdmin,
   });
@@ -279,9 +284,10 @@ export default function CaseHistory(props) {
                     >
                       <input
                         type="checkbox"
-                        checked={false}
-                        disabled
-                        title={v.notReady}
+                        checked={v.sigOnly}
+                        disabled={!v.sigOnlyReady}
+                        onChange={v.toggleSigOnly}
+                        title={v.sigOnlyReady ? 'AI 가 관련 신호를 찾은 회차만 보기' : '신호 이력을 불러오는 중'}
                         style={{ accentColor: '#C2A36B' }}
                       />
                       신호 있는 회차만
@@ -303,6 +309,11 @@ export default function CaseHistory(props) {
                     </button>
                   </div>
                   <div style={{ maxHeight: '360px', overflowY: 'auto', padding: '4px 8px 8px' }}>
+                    {v.sigOnlyEmpty ? (
+                      <p className="note" style={{ margin: '0', padding: '10px 8px' }}>
+                        {v.sigOnlyEmpty}
+                      </p>
+                    ) : null}
                     {(v.all || []).map((s, sIndex) => (
                       <div key={sIndex} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <A className="prow" to={s.href} style={{ flex: '1 1 auto', minWidth: '0' }}>

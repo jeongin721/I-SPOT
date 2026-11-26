@@ -216,7 +216,8 @@ APPROVED → AI_REVIEW_REQUIRED   요약을 다시 고친 뒤 다시 승인한�
       "must_change_password": false,
       "is_locked": false,
       "locked_until": null,
-      "dormant_at": null
+      "dormant_at": null,
+      "password_changed_at": "2026-09-01T10:00:00Z"
     }
   }
 }
@@ -355,7 +356,7 @@ Token 만 가진 사람이 이 창구로 현재 비밀번호를 끝없이 맞혀
 다른 관리자가 있으면 그 관리자가 초기화한다. 거절되면 비밀번호 · 토큰 · 이력 · 감사 로그는 바뀌지 않는다.
 
 계정 응답에는 상태를 구분할 수 있게 `last_login_at` · `must_change_password` ·
-`is_locked` · `locked_until` · `dormant_at` 이 함께 온다.
+`is_locked` · `locked_until` · `dormant_at` 이 함께 온다. `password_changed_at` 은 비밀번호를 마지막으로 바꾼(처음 만든) 시각이다(2026-11-25, 설정 · 관리자 상담사 상세 '비밀번호 마지막 변경일').
 
 - **잠김 여부는 `is_locked` 로 본다.** 기본 설정(`LOGIN_LOCK_MINUTES`=0)에서는 시간이 지나도 풀리지 않아
   `locked_until` 이 비어 있다. `locked_until` 은 시간 잠금일 때 풀리는 시각이고, 그 시각이 지나면 `is_locked` 는 `false` 다.
@@ -646,6 +647,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
         "created_at": "...",
         "updated_at": "...",
         "last_session_at": "2026-09-01T14:30:00Z",
+        "last_consulted_at": "2026-09-01T14:30:00Z",
         "child_name": null
       }
     ],
@@ -660,6 +662,9 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
 `last_session_at` 은 Case List 화면(`03_UI_UX.md` S02)의 **최근 상담일**이다.
 목록 조회에서 함께 계산되므로 Case 별로 Session 을 다시 호출할 필요가 없다.
 Session 이 없으면 `null`, `consulted_at` 이 기록되지 않은 Session 은 생성 시각으로 대체된다.
+
+`last_consulted_at`(목록만, 2026-11-25)은 회차에 기록된 **실제 상담 일시**(`consulted_at`)의 최댓값이다.
+생성 시각으로 대신 채우지 않아, 상담 일시를 넣은 회차가 없으면 `null` 이다(관리자 사례 목록 '최근 상담').
 
 `counselor_name` 은 담당 상담사 이름이다. 화면이 담당자를 이름으로 표시하므로
 목록에서 함께 내려준다. 상담사 계정이 삭제되었으면 `null`.

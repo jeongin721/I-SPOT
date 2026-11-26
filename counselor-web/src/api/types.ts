@@ -230,6 +230,8 @@ export interface User {
   is_locked?: boolean;
   locked_until?: string | null;
   dormant_at?: string | null;
+  /** 비밀번호를 마지막으로 바꾼(처음 만든) 시각(2026-11-25). */
+  password_changed_at?: string | null;
 }
 
 /**
@@ -487,6 +489,8 @@ export interface CaseListItem extends Case {
   child_name?: string | null;
   /** 분석이 끝난 가장 최근 회차의 상담원 판단. 판단 전이면 null. */
   risk_level?: RiskLevel | null;
+  /** 가장 최근 실제 상담 일시(회차 consulted_at 최댓값, 2026-11-25). 상담 일시를 넣은 회차가 없으면 null. */
+  last_consulted_at?: string | null;
 }
 
 /** GET · PUT 응답. registered=false 면 아직 저장한 칸이 없다(모든 칸 null · 가족 []). */

@@ -157,7 +157,7 @@ export function adminStaffDetailValues(input: {
     toggle,
     email: row ? row.email : "",
     role: row ? row.roleLabel : "",
-    pwText: mustChange ? "임시 비밀번호 사용 중 · 첫 로그인 때 새 비밀번호로 바꿈" : `마지막 변경 ${NOT_PROVIDED}`,
+    pwText: mustChange ? "임시 비밀번호 사용 중 · 첫 로그인 때 새 비밀번호로 바꿈" : `마지막 변경 ${row ? row.passwordChangedAt : NOT_PROVIDED}`,
     reset: row && row.can.resetPassword ? { label: "비밀번호 초기화", onClick: ask("resetPassword") } : null,
     resetNote: row && row.isSelf ? "자기 비밀번호는 설정의 비밀번호 변경에서 바꿉니다." : "",
     org: NOT_PROVIDED,

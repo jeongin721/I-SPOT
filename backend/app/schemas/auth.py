@@ -39,6 +39,8 @@ class UserResponse(BaseModel):
     is_locked: bool = False
     locked_until: Optional[datetime] = None
     dormant_at: Optional[datetime] = None
+    # 비밀번호를 마지막으로 바꾼(처음 만든) 시각(2026-11-25, 설정 · 관리자 상담사 상세 '비밀번호 마지막 변경일').
+    password_changed_at: Optional[datetime] = None
 
 
 class LoginResponse(BaseModel):

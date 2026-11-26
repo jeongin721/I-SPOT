@@ -4,9 +4,9 @@
 // (현재 비밀번호를 넣고 바꾸는 방식. 성공하면 서버가 토큰을 모두 끊어 다시 로그인하게 된다).
 // /auth/me 는 useAuthSession 이 이미 부르므로 여기서 다시 부르지 않는다.
 //
+// 마지막 비밀번호 변경일(11/25): 응답의 password_changed_at(날짜). 없으면 NOT_PROVIDED.
 // Backend 에 없는 값은 NOT_PROVIDED 로 둔다(팀 결정 — 일정 · 인증 · 알림):
 //  - 기관 이름, 알림 설정
-//  - 마지막 비밀번호 변경일: DB 에는 있지만(users.password_changed_at) 응답(UserResponse)에 없다. 내보내려면 계약 변경이다
 //  - 이름 · 이메일 바꾸기(본인이 바꾸는 API 가 없다. 이름은 관리자만 바꾼다)
 //  - '재설정 링크 30분' 메일 발송(기존 결정은 이메일 임시 코드 3분이고 아직 구현 전)
 
@@ -32,7 +32,7 @@ export interface ProfileView {
   mustChangePassword: boolean;
   /** Backend 에 없는 값. 팀 결정 전까지 항상 NOT_PROVIDED. */
   organization: string;
-  /** Backend 에 없는 값. 팀 결정 전까지 항상 NOT_PROVIDED. */
+  /** 비밀번호를 마지막으로 바꾼 날짜(password_changed_at, 11/25). 없으면 NOT_PROVIDED. */
   passwordChangedAt: string;
 }
 
@@ -46,6 +46,6 @@ export function toProfileView(user: User): ProfileView {
     lastLoginAt: toDateTime(user.last_login_at) || NOT_PROVIDED,
     mustChangePassword: user.must_change_password ?? false,
     organization: NOT_PROVIDED,
-    passwordChangedAt: NOT_PROVIDED,
+    passwordChangedAt: toDateOnly(user.password_changed_at ?? null) || NOT_PROVIDED,
   };
 }

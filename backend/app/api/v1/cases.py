@@ -99,9 +99,10 @@ def list_cases(
 
     items = []
 
-    for case, last_session_at, counselor_name, risk_level in cases:
+    for case, last_session_at, counselor_name, risk_level, last_consulted_at in cases:
         item = CaseListItemResponse.model_validate(case)
         item.last_session_at = last_session_at
+        item.last_consulted_at = last_consulted_at
         item.counselor_name = counselor_name
         item.child_name = names.get(case.id)
         item.risk_level = risk_level

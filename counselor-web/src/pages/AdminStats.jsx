@@ -3,7 +3,8 @@
 //
 // 서버 연결: useCaseOverview(기관 전체 사례 + 사례마다 회차) · useAdminAccounts(상담원 목록). 값은 src/data/screens/adminStats.ts.
 // 지금 셀 수 있는 것: 기간 안 사례 등록(등록일 기준 — 신고접수일 아님) · 등록 추이, 기간 안 상담 회차, 지금 종결 수,
-// 상담원별 지금 담당 · 기간 안 회차 · 지금 종결, 아동 연령대(출생연도 기준). 나머지 보고 항목 · 엑셀 · PDF 는 준비 중이다.
+// 상담원별 지금 담당 · 기간 안 회차 · 지금 종결, 아동 연령대(출생연도 기준), 평균 사례관리 기간 · 위험도별 · 조치 결과(11/25, 지금 상태).
+// 나머지 보고 항목 · 엑셀 · PDF 는 준비 중이다.
 // 관리자 계정만 본다: 로그인하지 않았으면 로그인 화면으로, 상담원 계정이면 안내만 보인다(훅도 서버를 부르지 않는다).
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
@@ -186,7 +187,33 @@ export default function AdminStats(props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '18px' }}>
             <PendingCard c={v.pendingTypes} notReady={v.notReady} />
-            <PendingCard c={v.pendingRisk} notReady={v.notReady} />
+            <section
+              className="card"
+              aria-label="위험도별"
+              style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+                <h2 className="h2">위험도별</h2>
+                <span className="note">진행 중 사례 · 지금 위험도(상담원 판단 우선)</span>
+              </div>
+              <div className="stack" role="img" aria-label={v.riskAria}>
+                {v.risk.map((r) => (
+                  <span key={r.key} style={{ width: r.w, background: r.c }} title={r.tip}></span>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
+                {v.risk.map((r) => (
+                  <div key={r.key} className="box" style={{ padding: '12px 14px', borderRadius: '12px' }}>
+                    <span className="lg">
+                      <i style={{ background: r.c }}></i>위험도 {r.name}
+                    </span>
+                    <div style={{ fontSize: '22px', fontWeight: 700, lineHeight: 1.3 }}>{r.v}건</div>
+                    <span className="note">{r.p}</span>
+                  </div>
+                ))}
+              </div>
+              {v.riskNote ? <span className="note">{v.riskNote}</span> : null}
+            </section>
           </div>
 
           <section className="card" aria-label="상담원별" style={{ overflow: 'hidden' }}>
@@ -267,7 +294,32 @@ export default function AdminStats(props) {
               ))}
               {v.ageNote ? <span className="note">{v.ageNote}</span> : null}
             </section>
-            {v.pendingMore.map((c) => (
+            {v.pendingMore.slice(0, 2).map((c) => (
+              <PendingCard key={c.title} c={c} notReady={v.notReady} />
+            ))}
+            <section
+              className="card"
+              aria-label="조치 결과"
+              style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+                <h2 className="h2">조치 결과</h2>
+                <span className="note">피해 아동 기준 · 상담원이 고른 값</span>
+              </div>
+              {v.measures.map((g) => (
+                <div key={g.key} className="hb sm" title={g.tip}>
+                  <span>{g.name}</span>
+                  <span className="track">
+                    <span style={{ width: g.w }}></span>
+                  </span>
+                  <span className="note" style={{ color: '#2B2A26' }}>
+                    {g.v} · {g.p}
+                  </span>
+                </div>
+              ))}
+              {v.measuresNote ? <span className="note">{v.measuresNote}</span> : null}
+            </section>
+            {v.pendingMore.slice(2).map((c) => (
               <PendingCard key={c.title} c={c} notReady={v.notReady} />
             ))}
           </div>

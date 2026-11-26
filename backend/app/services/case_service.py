@@ -218,7 +218,7 @@ def list_cases(
     # 남아도 User row 는 없을 수 있고, 그때도 사례는 조회되어야 한다.
     risk_level = _risk_level_subquery()
     rows = db.execute(
-        select(Case, _last_session_at_subquery(), User.name, risk_level)
+        select(Case, _last_session_at_subquery(), User.name, risk_level, _last_consulted_at_subquery())
         .outerjoin(User, User.id == Case.counselor_id)
         .where(*conditions)
         .order_by(*_case_order(sort, risk_level, order))
@@ -226,7 +226,7 @@ def list_cases(
         .limit(limit)
     ).all()
 
-    cases = [(row[0], row[1], row[2], row[3]) for row in rows]
+    cases = [(row[0], row[1], row[2], row[3], row[4]) for row in rows]
 
     return cases, total
 
@@ -303,6 +303,21 @@ def _last_session_at_subquery():
                 )
             )
         )
+        .where(ConsultationSession.case_id == Case.id)
+        .correlate(Case)
+        .scalar_subquery()
+    )
+
+
+def _last_consulted_at_subquery():
+    """
+    Case 의 가장 최근 실제 상담 일시(2026-11-25, 관리자 사례 목록 '최근 상담').
+
+    _last_session_at_subquery 와 달리 생성 시각으로 대신 채우지 않는다 — 상담 일시를 넣은 회차가 없으면 null.
+    """
+
+    return (
+        select(func.max(ConsultationSession.consulted_at))
         .where(ConsultationSession.case_id == Case.id)
         .correlate(Case)
         .scalar_subquery()

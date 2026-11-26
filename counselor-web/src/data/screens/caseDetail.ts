@@ -691,6 +691,9 @@ export function caseHistoryValues(
   input: CaseScreenInput & {
     historyOpen?: boolean;
     setHistoryOpen?: (open: boolean) => void;
+    /** '전 회차 보기' 창의 '신호 있는 회차만'(11/25). AI 가 관련 신호를 찾은 회차만 보인다. */
+    sigOnly?: boolean;
+    setSigOnly?: (on: boolean) => void;
     history?: SignalHistoryState;
     approved?: ApprovedSummariesState;
     /** 회차 삭제 확인 창을 연다(useAdminDelete.ask). 관리자 · 그 사례 담당 상담사에게만 준다. */
@@ -714,8 +717,15 @@ export function caseHistoryValues(
     const top = counselorTop(row);
     return top ? `${ai} / 판단 ${RISK_LEVEL_LABELS[top]}` : ai;
   };
+  // AI 가 관련 신호를 하나라도 찾은 회차인가(신호 이력 기준, AI 제안). 이력을 받기 전이면 모른다.
+  const hasSig = (sessionId: string) => {
+    const row = historyBySession.get(sessionId);
+    return Boolean(row && !pendingLabel(row) && detectedTypeLabels(row).length > 0);
+  };
   const open = Boolean(input.historyOpen);
   const askDelete = input.askDelete;
+  const sigOnlyReady = Boolean(history?.loaded);
+  const sigOnly = sigOnlyReady && Boolean(input.sigOnly);
   const caseNumber = detail.caseInfo?.caseNumber ?? "";
 
   const sessions = detail.sessions.map((row) => {
@@ -729,6 +739,7 @@ export function caseHistoryValues(
       status: row.statusLabel,
       st: TONE_CHIP[row.tone],
       sig: sigOf(row.id),
+      hasSig: hasSig(row.id),
       href: screenHref("/SessionDetail", { caseId: row.caseId, sessionId: row.id }),
       del:
         askDelete && (input.deleteAny || OWNER_DELETABLE.has(row.status))
@@ -877,7 +888,12 @@ export function caseHistoryValues(
     insights,
     sessions,
     recent: sessions.slice(0, 3),
-    all: sessions,
+    all: sigOnly ? sessions.filter((row) => row.hasSig) : sessions,
+    // '신호 있는 회차만'(11/25): 신호 이력을 받은 뒤에만 켤 수 있다.
+    sigOnly,
+    sigOnlyReady,
+    toggleSigOnly: () => input.setSigOnly?.(!sigOnly),
+    sigOnlyEmpty: sigOnly && !sessions.some((row) => row.hasSig) ? "AI 가 관련 신호를 찾은 회차가 없습니다." : "",
     total: detail.sessionTotal ?? sessions.length,
     shownCount: `${sessions.length}개`,
     open,
