@@ -39,7 +39,7 @@ from app.schemas.child_app import (
     ChildRecentAlert,
     ChildWelfareCheckRequest,
 )
-from app.services import child_app_ai_service, child_app_service, child_session_question_service, push_service
+from app.services import child_app_ai_service, child_app_service, child_session_question_service, personal_info_service, push_service
 from app.services.access import get_case_or_404
 
 _enabled = [Depends(child_app_service.ensure_enabled)]
@@ -130,8 +130,21 @@ def child_app_stats(date_from: date, date_to: date, db: DbSession, _: AdminUser)
 
 
 @list_router.get("", response_model=DataResponse[List[ChildAppCaseRow]], summary="아이 연계 목록")
-def list_child_app_cases(db: DbSession, current_user: CurrentUser) -> DataResponse[List[ChildAppCaseRow]]:
-    return DataResponse(data=child_app_service.list_cases(db, current_user))
+def list_child_app_cases(
+    db: DbSession,
+    current_user: CurrentUser,
+    # 아동 실명을 실을지(API_CONTRACT 4절 '개인 식별 정보', GET /cases 와 같은 규칙). 실명을 보여 주는 화면(아이 연계 목록)만
+    # true 로 부른다 — 그때만 복호화하고 열람 기록 1줄을 남긴다. 실명이 없거나 풀지 못한 사례는 null(화면은 별칭).
+    with_child_name: bool = False,
+) -> DataResponse[List[ChildAppCaseRow]]:
+    rows = child_app_service.list_cases(db, current_user)
+
+    if with_child_name:
+        names = personal_info_service.child_names(db, current_user, [row["case_id"] for row in rows])
+        for row in rows:
+            row["child_name"] = names.get(row["case_id"])
+
+    return DataResponse(data=rows)
 
 
 @staff_router.get("/recent", response_model=DataResponse[List[ChildRecentAlert]], summary="관리자 홈 긴급 알림 현황")

@@ -1,5 +1,6 @@
 // 아이 연계 · 긴급 알림 + 아이 목록 (응답 · 상태)
 // 원본: 다솔 님 디자인 counselor-web-design/ChildLink.dc.html. 담당 사례의 콩콩 연결 상태를 서버 값으로 보인다(API_CONTRACT 24절).
+// 이름 칸은 아동 실명(with_child_name=true, 서버가 열람 기록), 없으면 별칭 — 사례 목록과 같다(2026-11-26).
 // 사례를 누르면 아이 상세로 간다. 연결 전이면 아이 상세에서 연결 코드를 만든다.
 import { Fragment } from 'react';
 import { DCLogic, useDC } from '../dc';
@@ -50,12 +51,15 @@ class Logic extends DCLogic {
     const all = (this.props.list || []).map((row) => {
       const state = rowState(row);
       const linked = row.status === 'LINKED';
+      // 이름 칸은 사례 목록과 같이 실명, 없으면 별칭(10/30 팀 결정 · caseRows name).
+      const name = row.child_name?.trim() || row.child_alias;
       return {
         ...state,
-        name: row.child_alias,
+        name,
+        alias: row.child_alias,
         age: row.child_birth_year ? `${row.child_birth_year}년생` : '',
         id: row.case_number,
-        ini: row.child_alias.slice(0, 1),
+        ini: Array.from(name)[0] || '',
         last: childDateTime(row.last_response_at),
         count: linked ? (row.recent_answers === null ? '—' : `응답 ${row.recent_answers}번`) : '미연결',
         // 늘 아이 상세(아이 연계 메뉴 안)로 간다. 연결 전이면 그 화면에서 연결 코드를 만든다(11/10 경진님).
@@ -76,7 +80,7 @@ class Logic extends DCLogic {
     const need = all.filter((row) => row.need);
     const filter = s.f || (need.length ? 'need' : 'all');
     const term = s.q.trim();
-    const matched = (filter === 'need' ? need : all).filter((row) => !term || row.name.includes(term) || row.id.includes(term));
+    const matched = (filter === 'need' ? need : all).filter((row) => !term || row.name.includes(term) || row.alias.includes(term) || row.id.includes(term));
     // 쪽 번호(사례 관리 목록과 같게 10줄씩, 번호는 4개씩 묶음).
     const totalPages = Math.max(1, Math.ceil(matched.length / PER_PAGE));
     const current = Math.min(Math.max(1, s.page), totalPages);
@@ -121,7 +125,7 @@ export default function ChildLink(props) {
   const navigate = useNavigate();
   const theme = useTheme();
   const key = session.status === 'signedIn' ? `child-link:${session.me.id}` : null;
-  const remote = useRemote(key, () => childApp.listCases(), '아이 연계 목록을 불러오지 못했습니다.', () => false);
+  const remote = useRemote(key, () => childApp.listCases({ withChildName: true }), '아이 연계 목록을 불러오지 못했습니다.', () => false);
   const v = useDC(Logic, { ...props, list: remote.data });
   if (needsLogin(session)) return <Navigate to="/Login" replace />;
   const notice = screenNotice({ session, loading: remote.loading && !remote.data, error: remote.error, retry: remote.reload });
