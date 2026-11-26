@@ -895,6 +895,31 @@ def test_child_link_list_shows_own_cases_and_hides_content_from_admin(
     assert admin["status"] == "LINKED" and admin["recent_answers"] is None and admin["level"] is None
 
 
+def test_child_link_list_child_name_only_when_asked_and_audited(
+    client: TestClient, counselor_headers: Headers, other_counselor_headers: Headers, db
+) -> None:
+    """아이 연계 목록 이름 칸은 사례 목록과 같이 실명(2026-11-26) — with_child_name=true 일 때만 풀고 열람 기록 1줄, 남의 사례 실명은 안 나온다."""
+
+    named = create_case(client, counselor_headers, personal_info={"child_name": "한가람"})
+    unnamed = create_case(client, counselor_headers)
+    create_case(client, other_counselor_headers, personal_info={"child_name": "남의아이"})
+    url = "/api/v1/child-app-cases"
+
+    def _viewed() -> list:
+        return db.scalars(select(AuditLog).where(AuditLog.action == AuditAction.CASE_LIST_PERSONAL_INFO_VIEWED)).all()
+
+    plain = client.get(url, headers=counselor_headers).json()["data"]
+    assert all(row["child_name"] is None for row in plain)
+    assert _viewed() == []
+
+    rows = client.get(url, params={"with_child_name": "true"}, headers=counselor_headers).json()["data"]
+    assert {row["case_id"]: row["child_name"] for row in rows} == {named["id"]: "한가람", unnamed["id"]: None}
+    assert all(row["child_alias"] for row in rows)  # 별칭은 그대로 — 실명이 없으면 화면이 별칭을 쓴다
+
+    logs = _viewed()
+    assert len(logs) == 1 and logs[0].detail == {"case_ids": [named["id"]], "count": 1}
+
+
 def _counselor_unlink(client: TestClient, headers: Headers, case_id: str) -> None:
     assert client.delete(f"/api/v1/cases/{case_id}/child-app/link", headers=headers).status_code == 204
 

@@ -656,7 +656,7 @@ Query: `page`(≤1,000,000), `page_size`(≤100), `status`(`ACTIVE|CLOSED`), `se
 }
 ```
 
-> 개인정보 최소화 원칙에 따라 **사례 응답에는 아동 실명 필드가 없다.** `child_alias` 를 사용한다(예외: 목록 `with_child_name=true` 의 `child_name`).
+> 개인정보 최소화 원칙에 따라 **사례 응답에는 아동 실명 필드가 없다.** `child_alias` 를 사용한다(예외: 목록 `with_child_name=true` 의 `child_name` — `GET /cases` · `GET /child-app-cases`).
 > 실명 · 생년월일 · 보호자 · 가족 이름은 2026-10-30 팀 결정으로 **암호화해 따로 저장**하고 아래 '개인 식별 정보' 창구로만 주고받는다.
 
 `last_session_at` 은 Case List 화면(`03_UI_UX.md` S02)의 **최근 상담일**이다.
@@ -914,7 +914,7 @@ PARENTS | FATHER | MOTHER | GRANDPARENTS | RELATIVE | FOSTER | FACILITY | OTHER
   - `health.items[].kind` 는 `질병` · `장애` · `병원치료` · `정신과 진단` · `타기관 상담` 가운데 하나, 같은 항목은 한 번만. `detail` 200자
 - 권한: `GET /api/v1/cases/{case_id}` 와 같다 — 상담사는 담당 사례만(`403 FORBIDDEN`), 관리자는 전체. 없는 사례 `404 CASE_NOT_FOUND`
 - 저장된 값을 풀 수 없으면(키가 설정에 없음 · 값이 바뀜) `500 PERSONAL_INFO_UNAVAILABLE`. 목록 `with_child_name` 은 그 줄만 `null` 로 둔다
-- 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name` 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
+- 실명은 이 창구 · `POST /api/v1/cases` 의 `personal_info` · 목록 `with_child_name`(`GET /cases` · `GET /child-app-cases`) 으로만 오간다. 다른 사례 응답 · 로그 · 감사 기록에는 싣지 않는다
 - **AI 가리기(2026-11-02, 응답 모양은 바뀌지 않음)**: 외부 AI(OpenAI)로 상담 글을 보내는 세 곳 — 분석(8절, `AI_PROVIDER=modeling`) ·
   다음 상담 체크리스트(19절, `FOLLOWUP_PROVIDER=module`) · 종결 요약(위 closure-summary, 별칭과 함께) — 은 보내기 전에 그 사례의
   등록 이름을 가릴 이름 목록(`known_identifiers`)으로 넘긴다. 서버가 메모리에서만 풀어 만들고 DB · 로그 · 감사 기록에 남기지 않는다.
@@ -3001,7 +3001,7 @@ HTTP 오류: `403 FORBIDDEN`, `404 SESSION_NOT_FOUND`, `409 INVALID_SESSION_STAT
 | DELETE | `/cases/{case_id}/child-app/question-sets/{question_set_id}` | 발송 예약 취소 → 204. 담당 상담사만(그 외 403). 예약 시각 전에만 된다 — 이미 아이에게 보였거나 답했으면 409 `INVALID_CASE_STATE`. 이미 취소 · 대체된 것은 204(재시도 안전). 없는 것 · 다른 사례의 것은 404 |
 | DELETE | `/cases/{case_id}/child-app/link` | 상담사가 아이 앱 연결을 해지한다(아이 상세 '콩콩 앱 연결 › 해지하기', 2026-11-19) → 204. 담당 상담사만(관리자 · 다른 상담사 403). 해지는 담당 상담사만 한다 — 아이 앱에서 스스로 해지하던 `POST /child-app/unlink` 는 없앴다(2026-11-24, 아이가 혼자 끊으면 긴급 알림 · 질문이 상담사 모르게 멈춤). 연결 행을 지워 그 기기 토큰은 바로 401, 답하지 않은 질문 · 발송 예약은 거두고, 받은 답 · 알림은 남는다. 연결돼 있었으면 피드에 `UNLINKED` 줄(`payload.by = "counselor"`, 11/24 전 기기 해지 줄은 `{}`). 초대 대기(코드만 발급)도 지워 코드를 무효로 한다(피드 줄 없음). 연결이 없으면 204(재시도 안전). 종결 사례에서도 된다. 감사 기록 `CHILD_APP_UNLINKED` `detail.by = counselor` |
 | GET | `/child-app-stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | 관리자만. 기간 안에 보낸 질문 묶음 `sent`(대체된 것 포함. 발송 예약은 아이에게 보이기 시작한 시각으로 세고, 아직 안 보인 예약 · 보이기 전에 취소한 예약은 세지 않는다) · 그중 아이가 답한 `answered` · 지금 연결된 사례 `linked_cases`. 끝이 시작보다 앞이면 400 |
-| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent, answer_acked_at}`. `recent_answers` · `level` · `answer_acked_at`(가장 최근 답 묶음을 확인한 시각, 확인 전 · 확인할 답이 아니면 null — 2026-11-20) 은 담당 상담사만 |
+| GET | `/child-app-cases` | 아이 연계 목록(진행 중 사례, 최대 200건). 상담사는 담당 사례, 관리자는 전체. `{case_id, case_number, child_alias, child_name, child_birth_year, status, recent_answers, level, last_response_at, open_alert_at, open_alert_reason, open_alert_urgent, answer_acked_at}`. `recent_answers` · `level` · `answer_acked_at`(가장 최근 답 묶음을 확인한 시각, 확인 전 · 확인할 답이 아니면 null — 2026-11-20) 은 담당 상담사만. Query `with_child_name`(기본 `false`): `true` 면 `child_name`(아동 실명, 없거나 풀지 못하면 `null`)을 싣고 `GET /cases` 와 같이 열람 기록 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄 — 아이 연계 목록 화면만 `true`(이름 칸은 실명, 없으면 별칭, 2026-11-26) |
 | POST | `/cases/{case_id}/child-app/session-questions?regenerate=` | 담당 상담사만, 진행 중 사례만(그 외 403 · 409). 이번 회차 맞춤 질문(2026-11-24) — 분석이 끝난 가장 최근 회차(`AI_REVIEW_REQUIRED` · `APPROVED`)의 확인할 사항 · 추가 질문 · 승인된 요약과 초기면접지 단어 칸(나이대 · 성별 · 아동 특성 · 가정 상황)으로 아이에게 물을 질문 2~5개를 만들고 `{session_id, session_label, created_at, items: [{id, category, type: choice\|text, text, options, reason, edited}]}` 를 돌려준다. 회차마다 하나, 이미 있으면 그대로, `regenerate=true` 면 새로(앞 초안의 `sq_` id 는 보낼 수 없게 된다). 이름을 가린 뒤 외부 AI 로 보낸다. 질문 · 보기에는 회차의 사건 · 가족을 가리키는 말을 넣지 않는다(아이 폰을 다른 가족이 볼 수 있음). `reason` 은 상담사에게만 보이고 아이 앱으로 가지 않는다. 맞춤 질문의 답은 건너뛰지 않으면 무엇이든 살펴볼 답(`AMBER`)으로 들어간다 — AI 가 보기별 수준을 정하지 않는다(바로 확인 `RED` 는 두지 않는다, 기준은 아이 앱으로 가지 않는다). 보기에 '말하기 어려워요' 같은 건너뛰기 보기는 넣지 않는다(앱에 건너뛰기가 있다). 자해 · 자살 · 죽음을 묻는 질문, 가족 · 어른 · 선생님(상담 선생님 빼고)을 가리키는 말, 술 · 때림 같은 사건 낱말, 그 사례 등록 이름이 든 질문 · 보기는 버린다. 승인 전 회차면 상담사가 승인한 추가 질문만 넣고 AI 추가 질문 초안은 넣지 않는다. 화면은 상담사가 '맞춤 질문 만들기' 를 눌렀을 때만 이 API 를 부른다(회차 내용이 외부 AI 로 가므로). 분석이 끝난 회차가 없으면 409, 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504, 실패 · 쓸 만한 질문 없음 502 |
 | PATCH | `/cases/{case_id}/child-app/session-questions/{question_id}` | 담당 상담사만, 진행 중 사례만. `{text, options?}` 맞춤 질문 고치기(가장 최근 분석 회차 초안만, 없으면 404). text 1~120자. 선택지 질문은 보기 2~5개(겹친 보기는 하나로, 아니면 400). 짧은 글 질문에 보기를 넣으면 400. 문장 · 보기에 자해 · 자살 · 죽음 말이 있으면 400(아이 앱으로 묻지 않고 상담에서 직접 — AI 초안과 같은 기준, 아이 답 AI 추가 질문 고치기도 같음, 2026-11-24). 응답은 위 맞춤 질문 모양(고친 질문은 `edited: true`). 이미 보낸 질문은 바뀌지 않는다. 다시 만들기(`regenerate`)를 하면 고친 것도 새 초안으로 바뀐다. 감사 `CHILD_APP_SESSION_QUESTIONS_EDITED`(글은 넣지 않음) |
 | POST | `/cases/{case_id}/child-app/ai-draft` | 담당 상담사만. 가장 최근 답에서 확인이 필요한 항목(`AMBER` · `RED`)의 AI 초안을 만들고 돌려준다. 이미 있으면 그대로. 이름을 가린 뒤 외부 AI 로 보낸다. 꺼져 있으면 503 `CHILD_APP_AI_DISABLED`, 시간 초과 504 `AI_TIMEOUT`, 실패 502 `AI_FAILED`, 답이나 확인할 항목이 없으면 409 |
