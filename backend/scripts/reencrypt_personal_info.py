@@ -8,7 +8,7 @@
 # 검색 색인 키(PII_INDEX_KEY)를 바꿨으면 --reindex 로 색인도 다시 계산한다.
 #
 # 같은 키 링을 쓰는 상담 본문 칸(상담일지 · 원문 발화 · 요약 · 회차 메모 · 분석 결과, encrypted_field.ENCRYPTED_COLUMNS)도
-# 함께 다시 암호화한다. 원문 조각처럼 큰 표는 묶음(encrypt_content_columns.BATCH_SIZE)씩 읽고 묶음마다 commit 한다.
+# 함께 다시 암호화한다. 원문 조각처럼 큰 표는 묶음(BATCH_SIZE)씩 읽고 묶음마다 commit 한다.
 # 본문 칸은 감사 로그를 남기지 않는다(행이 많다). 출력의 칸별 수로 확인한다.
 # 문서함 작성 양식 파일(.ispotform, API_CONTRACT 23절)의 본체도 같은 키 링이다. 본체는 DB 가 아니라 저장소 파일
 # (storage/docbox/<uuid>)이라 파일을 다시 써서 바꾼다(민규 #185 — 전에는 건너뛰어 옛 키를 빼면 /download 가 깨졌다).
@@ -27,9 +27,9 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
-from sqlalchemy import select, update
+from sqlalchemy import Table, select, update
 from sqlalchemy.orm import Session
 
 from app.core import pii_crypto
@@ -42,7 +42,39 @@ from app.models.case_personal_info import ENCRYPTED_FIELDS, CasePersonalInfo
 from app.models.counselor_memo import CounselorMemo
 from app.models.docbox import DocboxFile
 from app.services import audit_service, docbox_service
-from scripts.encrypt_content_columns import iter_batches, targets
+import app.models  # noqa: F401 — 모든 모델을 올려 ENCRYPTED_COLUMNS 를 채운다.
+from app.models.encrypted_field import ENCRYPTED_COLUMNS, EncryptedColumn
+
+BATCH_SIZE = 500
+
+
+def targets() -> List[Tuple[Table, EncryptedColumn]]:
+    """(표, 상담 본문 암호화 칸) 목록. 표 이름 · 칸 순으로 고정한다."""
+
+    found = [(model.__table__, column) for model, columns in ENCRYPTED_COLUMNS.items() for column in columns]
+
+    return sorted(found, key=lambda item: (item[1].table, item[1].column))
+
+
+def iter_batches(db: Session, table: Table, columns: Sequence[str], *where: Any) -> Iterator[List[Any]]:
+    """행 ID 순으로 BATCH_SIZE 씩 읽는다(원문 조각처럼 큰 표도 한 번에 올리지 않는다)."""
+
+    last_id: Optional[uuid.UUID] = None
+
+    while True:
+        query = select(table.c.id, *(table.c[name] for name in columns)).where(*where)
+
+        if last_id is not None:
+            query = query.where(table.c.id > last_id)
+
+        rows = db.execute(query.order_by(table.c.id).limit(BATCH_SIZE)).all()
+        db.rollback()
+
+        if not rows:
+            return
+
+        yield rows
+        last_id = rows[-1][0]
 
 VIA = "reencrypt_personal_info script"
 

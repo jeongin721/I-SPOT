@@ -5,8 +5,8 @@
 #
 # - 암호화는 pii_crypto.encrypt_field(내담자 정보와 같은 키 · 같은 저장 모양). 묶음 값(AAD)은
 #   `ispot:<표>:<칸>:<행 ID>:v1` 이라 다른 표 · 칸 · 행으로 옮겨 붙인 암호문은 풀리지 않는다.
-# - 쓸 때: `<칸>_enc` 에만 넣고 평문 칸(`<칸>_plain`, DB 이름은 그대로 `<칸>`)은 빈 값("" · [] · None)으로 둔다.
-# - 읽을 때: `<칸>_enc` 가 있으면 풀고, 없으면 평문 칸 값(옮기기 전 옛 행). 평문 칸은 다음 PR 에서 지운다.
+# - DB 에는 `<칸>_enc` 하나만 있다. 옛 평문 칸(DB 이름 `<칸>`)은 옮기기(11/26 데모 --apply · --check 0) 뒤
+#   마이그레이션 b2c3d4e5f6a8 로 지웠다(2026-11-27). 값이 없으면(NULL) 빈 값("" · [] · {} · None)을 돌려준다.
 # - JSON 칸(key_points · result)은 JSON 글자로 바꿔 암호화하고, 읽을 때마다 새로 풀어 준다(제자리 수정은 저장되지 않으니
 #   예전처럼 통째로 다시 넣는다 — 지금 코드는 모두 통째로 넣는다).
 # - 행 ID 는 암호화 전에 정해져야 한다. 아직 ID 가 없는 새 행은 값을 들고 있다가 INSERT 직전(before_insert)에
@@ -29,13 +29,12 @@ ENCRYPTED_COLUMNS: Dict[Type[Any], List["EncryptedColumn"]] = {}
 
 
 class EncryptedColumn:
-    """본문 칸 하나. `<칸>_plain`(DB 이름 `<칸>`) · `<칸>_enc` 두 매핑 칸을 감싼다."""
+    """본문 칸 하나. 암호문 매핑 칸 `<칸>_enc` 를 감싼다."""
 
     def __init__(self, column: str, *, empty: Any, json_value: bool = False) -> None:
         self.column = column
         self.json_value = json_value
         self._empty = empty
-        self.plain_attr = f"{column}_plain"
         self.enc_attr = f"{column}_enc"
         self._pending_key = f"_encrypted_pending_{column}"
         self._cache_key = f"_encrypted_cache_{column}"
@@ -53,15 +52,15 @@ class EncryptedColumn:
         return type(self._empty)(self._empty) if isinstance(self._empty, (list, dict)) else self._empty
 
     def db_values(self, row_id: uuid.UUID, value: Any) -> Dict[str, Any]:
-        """`update(Model).values(...)` 에 넣을 값(평문 칸은 빈 값, 암호문 칸은 이 행 ID 로 암호화한 값).
+        """`update(Model).values(...)` 에 넣을 값(암호문 칸에 이 행 ID 로 암호화한 값).
 
         ORM 속성을 거치지 않고 조건부 UPDATE 로 저장하는 곳(기관 서식 판 번호 대조 등)이 쓴다.
-        키는 모델 속성 이름(`<칸>_plain` · `<칸>_enc`)이다 — `update(Model)` 은 키를 속성 이름으로 찾는다.
+        키는 모델 속성 이름(`<칸>_enc`)이다 — `update(Model)` 은 키를 속성 이름으로 찾는다.
         """
 
         token = None if value is None else self.encrypt(self.dumps(value), row_id)
 
-        return {self.plain_attr: self.empty(), self.enc_attr: token}
+        return {self.enc_attr: token}
 
     # --- 글자 ↔ 값 ---
 
@@ -91,7 +90,7 @@ class EncryptedColumn:
         token = getattr(obj, self.enc_attr)
 
         if token is None:
-            return getattr(obj, self.plain_attr)
+            return self.empty()
 
         cached: Tuple[str, str] = state.get(self._cache_key)
 
@@ -107,7 +106,7 @@ class EncryptedColumn:
         state = obj.__dict__
 
         # 이미 암호문이고 값이 같으면 그대로 둔다. 매번 새 nonce 로 다시 쓰면 값이 같아도 행이 바뀐 것으로 잡혀
-        # (예전 평문 칸과 달리) updated_at 이 움직인다.
+        # updated_at 이 움직인다.
         if (
             value is not None
             and self._pending_key not in state
@@ -119,7 +118,6 @@ class EncryptedColumn:
 
         state.pop(self._pending_key, None)
         state.pop(self._cache_key, None)
-        setattr(obj, self.plain_attr, self.empty())
 
         if value is None:
             setattr(obj, self.enc_attr, None)

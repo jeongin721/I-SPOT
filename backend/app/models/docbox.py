@@ -35,7 +35,6 @@ class DocboxFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 'text'(첫 페이지 글) · 'image'(그림 그대로) · 'other'(미리보기 없음).
     preview_kind: Mapped[str] = mapped_column(String(10), nullable=False)
     # 첫 페이지 글(앞부분만). txt · md · csv · docx · hwpx · pdf 에서 뽑는다.
-    preview_text_plain: Mapped[Optional[str]] = mapped_column("preview_text", Text, nullable=True)
     preview_text_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     preview_text = EncryptedColumn("preview_text", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
     uploaded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

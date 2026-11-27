@@ -80,7 +80,6 @@ class ChildAppEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=ChildAnswerLevel.NONE,
         nullable=False,
     )
-    payload_plain: Mapped[Dict[str, Any]] = mapped_column("payload", JSONType, default=dict, nullable=False)
     payload_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     payload = EncryptedColumn("payload", empty={}, json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
     # 상담사 확인이 필요한 줄(긴급 알림 · 바로 확인 답 · 연락 요청). 확인하면 누가 언제 했는지 남는다.
@@ -102,7 +101,6 @@ class ChildAppAiDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("child_app_events.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
     )
-    items_plain: Mapped[List[Dict[str, Any]]] = mapped_column("items", JSONType, default=list, nullable=False)
     items_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     items = EncryptedColumn("items", empty=[], json_value=True)  # 상담 본문 암호화 2단계(encrypted_field)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -125,7 +123,6 @@ class ChildSessionQuestionDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("consultation_sessions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
     )
-    items_plain: Mapped[List[Dict[str, Any]]] = mapped_column("items", JSONType, default=list, nullable=False)
     items_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     items = EncryptedColumn("items", empty=[], json_value=True)  # 이유(reason)에 회차 내용이 들어가 처음부터 암호화
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(

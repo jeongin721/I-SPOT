@@ -463,13 +463,12 @@ backend/
     `child_app_events.payload` · `child_app_ai_drafts.items` · `docbox_files.preview_text`
     는 같은 키로 암호화해 `<칸>_enc` 에 둔다(`app/models/encrypted_field.py`).
   - `update(Model).values(...)` 로 이 칸을 직접 저장하면 평문이 들어간다 — `Model.<칸>.db_values(행 ID, 값)` 을 넣는다(기관 서식 참고).
-    시험은 끝날 때마다 평문 칸이 비었는지 본다(`tests/conftest.py`).
     묶음 값은 `ispot:<표>:<칸>:<행 ID>:v1` 이라 다른 표 · 칸 · 행으로 옮긴 암호문은 풀리지 않는다.
-  - 모델 속성 이름(`document.content` 등)은 그대로다. 쓸 때 `_enc` 에만 넣고 평문 칸은 빈 값, 읽을 때 `_enc` 가 없으면 평문 칸(옮기기 전 옛 행).
+  - 모델 속성 이름(`document.content` 등)은 그대로다. DB 에는 `_enc` 칸만 있다.
     본문 칸을 DB 검색 조건(`where Document.content …`)에 쓰지 않는다.
-  - 기존 평문 옮기기: `python -m scripts.encrypt_content_columns`(dry-run) → `--apply` → `--check`(남은 평문 0 · 모두 풀림이면 종료 코드 0).
-    1단계 코드를 내려야 하면 먼저 `--decrypt-back --apply` 로 평문 칸에 되돌린다(옛 코드는 평문 칸만 읽는다).
-  - 같은 DB 를 쓰는 서버(데모 포함)는 모두 1단계 코드여야 한다 — 옛 코드는 새로 쓴 행을 빈 값으로 본다.
+  - 옛 평문 칸은 옮기기(`scripts.encrypt_content_columns --apply → --check`, 11/26 데모 끝) 뒤 migration `b2c3d4e5f6a8` 로 지웠다(2026-11-27).
+    평문 칸에 값이 남은 DB 에서는 이 migration 이 지우지 않고 멈춘다 — 그때는 이 migration 전 코드(main 480edcbd 등)로 옮기기부터 끝낸다.
+    옮기기 script 는 이 PR 에서 지웠다.
   - 실명을 풀어서 내줄 때마다 감사 로그(`CASE_PERSONAL_INFO_VIEWED` · 목록은 `CASE_LIST_PERSONAL_INFO_VIEWED` 1줄)를 남기고, 값은 넣지 않는다.
   - migration `5c9e2f7a1b30` 을 되돌리면(downgrade) 표를 지워 **저장한 실명이 모두 사라진다.**
   - 녹취 원문 · 요약 · 상담일지 같은 자유 글 속 이름은 이 암호화 대상이 아니다(DB 저장 암호화 · 접근 권한으로 지킨다).
