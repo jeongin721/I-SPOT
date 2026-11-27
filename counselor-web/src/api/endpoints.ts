@@ -899,9 +899,8 @@ export const childApp = {
     return api.get<ChildAppStats>(`/child-app-stats?date_from=${dateFrom}&date_to=${dateTo}`);
   },
 
-  /** 아이 연계 목록. withChildName 이면 아동 실명(child_name)도 싣는다 — 서버가 열람 기록 1줄(GET /cases 와 같은 규칙). */
-  listCases(options: { withChildName?: boolean } = {}): Promise<ChildAppCaseRow[]> {
-    return api.get<ChildAppCaseRow[]>(`/child-app-cases${options.withChildName ? "?with_child_name=true" : ""}`);
+  listCases(): Promise<ChildAppCaseRow[]> {
+    return api.get<ChildAppCaseRow[]>("/child-app-cases");
   },
 
   /** 이번 회차 맞춤 질문 만들기. 이미 있으면 그대로, regenerate 면 새로 만든다. */

@@ -216,8 +216,6 @@ class ChildAppCaseRow(BaseModel):
     case_id: uuid.UUID
     case_number: str
     child_alias: str
-    # 아동 실명(with_child_name=true 일 때만, 없거나 풀지 못하면 null). 화면은 실명, 없으면 별칭.
-    child_name: Optional[str] = None
     child_birth_year: Optional[int] = None
     status: str
     # 최근 21일 답 묶음 수 · 가장 최근 답의 수준. 담당 상담사만(그 외 null).
