@@ -79,7 +79,6 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     # 자유 글이라 개인정보가 섞일 수 있다 — 화면이 '실명 · 연락처 · 주소 등 개인정보는 적지 마세요' 를 보인다(사례 메모와 같음).
-    linked_background_plain: Mapped[Optional[str]] = mapped_column("linked_background", Text, nullable=True)  # 사례연계 경위
     linked_background_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     linked_background = EncryptedColumn("linked_background", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
 
@@ -88,19 +87,14 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         SAEnum(FamilyType, name="intake_family_type", native_enum=False, length=20),
         nullable=True,
     )
-    intake_guardian_relation_plain: Mapped[Optional[str]] = mapped_column("intake_guardian_relation", Text, nullable=True)  # 보호자와 아동과의 관계
     intake_guardian_relation_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     intake_guardian_relation = EncryptedColumn("intake_guardian_relation", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
-    intake_problem_plain: Mapped[Optional[str]] = mapped_column("intake_problem", Text, nullable=True)  # 문제력(현 상황 · 그 이유, 한 칸)
     intake_problem_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     intake_problem = EncryptedColumn("intake_problem", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
-    intake_attitude_plain: Mapped[Optional[str]] = mapped_column("intake_attitude", Text, nullable=True)  # 대상자 태도
     intake_attitude_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     intake_attitude = EncryptedColumn("intake_attitude", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
-    intake_environment_plain: Mapped[Optional[str]] = mapped_column("intake_environment", Text, nullable=True)  # 물리적 환경
     intake_environment_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     intake_environment = EncryptedColumn("intake_environment", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
-    intake_opinion_plain: Mapped[Optional[str]] = mapped_column("intake_opinion", Text, nullable=True)  # 상담원 소견 및 향후 계획
     intake_opinion_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     intake_opinion = EncryptedColumn("intake_opinion", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
 
@@ -113,7 +107,6 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    notes_plain: Mapped[Optional[str]] = mapped_column("notes", Text, nullable=True)
     notes_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     notes = EncryptedColumn("notes", empty=None)  # 상담 본문 암호화 2단계(encrypted_field)
 

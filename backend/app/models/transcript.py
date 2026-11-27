@@ -64,7 +64,6 @@ class Transcript(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     key_scan: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     # 원문 확정 전 AI 전체 분석 결과(ANALYZE_BEFORE_CONFIRM, 2026-11-24) — AIAnalysisBundle 을 JSON 으로. 원문 인용 · 이름이
     # 들어 있어 pre_analysis_enc 에 암호문으로만 둔다(encrypted_field). STT 결과로 만든 판에만 있고 원문 수정 판에는 없다.
-    pre_analysis_plain: Mapped[Optional[Dict[str, Any]]] = mapped_column("pre_analysis", JSONType, nullable=True)
     pre_analysis_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     pre_analysis = EncryptedColumn("pre_analysis", empty=None, json_value=True)
 
@@ -111,8 +110,7 @@ class TranscriptSegment(UUIDPrimaryKeyMixin, Base):
     )
     start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
-    # 발화 글은 text_enc 에 암호문으로 둔다(encrypted_field). text(평문 칸)는 옮기기 전 옛 행만 읽고 다음 PR 에서 지운다.
-    text_plain: Mapped[str] = mapped_column("text", Text, nullable=False, default="")
+    # 발화 글은 text_enc 에 암호문으로 둔다(encrypted_field). 평문 칸은 없다(11/27 지움).
     text_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     text = EncryptedColumn("text", empty="")
     confidence: Mapped[float] = mapped_column(Float, nullable=False)

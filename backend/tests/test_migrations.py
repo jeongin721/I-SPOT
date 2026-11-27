@@ -218,3 +218,71 @@ def test_duplicate_drafts_keep_rows_and_skip_index(tmp_path) -> None:
     _alembic(database_url, "upgrade", "head")
 
     assert _case_forms_state(database_url) == ([1, 1], False)
+
+
+# 상담 본문 평문 칸 지우기(2026-11-27). 옮기기 전 평문이 남은 DB 에서는 지우지 않고 멈춘다.
+DROP_CONTENT_PLAINTEXT = "b2c3d4e5f6a8"
+
+
+def _alembic_result(database_url: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", *args],
+        cwd=BACKEND_DIR,
+        env={**os.environ, "DATABASE_URL": database_url},
+        capture_output=True,
+    )
+
+
+def _columns(database_url: str, table: str) -> set:
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            return {row[1] for row in connection.execute(text(f"PRAGMA table_info('{table}')"))}
+    finally:
+        engine.dispose()
+
+
+def test_drop_content_plaintext_stops_while_plaintext_is_left(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{(tmp_path / 'plaintext.db').as_posix()}"
+    _alembic(database_url, "upgrade", _parent_of(DROP_CONTENT_PLAINTEXT))
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            # 옮긴 행(평문 칸은 빈 값)과, 아직 옮기지 않은 행(평문 칸에 값).
+            for row_id, plain, enc in (("1" * 32, "{}", "v1.k.moved"), ("2" * 32, '{"소견": "가상"}', None)):
+                connection.execute(
+                    text(
+                        "INSERT INTO case_forms (id, case_id, form_type, round, status, \"values\", values_enc, version, "
+                        "created_at, updated_at) VALUES (:id, 'fedcba9876543210fedcba9876543210', 'RISK_SCALE', :round, "
+                        "'SUBMITTED', :plain, :enc, 1, '2026-11-01 00:00:00', '2026-11-01 00:00:00')"
+                    ),
+                    {"id": row_id, "round": int(row_id[0]), "plain": plain, "enc": enc},
+                )
+    finally:
+        engine.dispose()
+
+    stopped = _alembic_result(database_url, "upgrade", "head")
+    message = stopped.stderr.decode("utf-8", errors="replace")
+
+    assert stopped.returncode != 0
+    assert "case_forms.values" in message and "documents.content" not in message
+    assert "가상" not in message  # 값은 알리지 않는다.
+    assert "values" in _columns(database_url, "case_forms")
+
+    # 옮긴 뒤(평문 칸 비움)에는 지운다. 내렸다 올려도 된다.
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE case_forms SET \"values\" = '{}', values_enc = 'v1.k.moved2' WHERE values_enc IS NULL"))
+    finally:
+        engine.dispose()
+
+    _alembic(database_url, "upgrade", "head")
+    assert "values" not in _columns(database_url, "case_forms") and "values_enc" in _columns(database_url, "case_forms")
+    assert "content" not in _columns(database_url, "documents")
+
+    _alembic(database_url, "downgrade", _parent_of(DROP_CONTENT_PLAINTEXT))
+    assert {"values", "values_enc"} <= _columns(database_url, "case_forms")
+    _alembic(database_url, "upgrade", "head")
+    assert "values" not in _columns(database_url, "case_forms")

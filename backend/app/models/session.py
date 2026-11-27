@@ -74,8 +74,7 @@ class ConsultationSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         SAEnum(ConsultationType, name="consultation_type", native_enum=False, length=20),
         nullable=True,
     )
-    # 회차 메모는 memo_enc 에 암호문으로 둔다(encrypted_field). memo(평문 칸)는 옮기기 전 옛 행만 읽고 다음 PR 에서 지운다.
-    memo_plain: Mapped[Optional[str]] = mapped_column("memo", Text, nullable=True)
+    # 회차 메모는 memo_enc 에 암호문으로 둔다(encrypted_field). 평문 칸은 없다(11/27 지움).
     memo_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     memo = EncryptedColumn("memo", empty=None)
     # 회차 자료(2026-11-02). DOCUMENT 면 상담 기록 문서로 3 · 4단계만 쓴다(SessionSourceDocument).

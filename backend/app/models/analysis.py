@@ -44,9 +44,7 @@ class AIAnalysis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schema_version: Mapped[str] = mapped_column(String(10), default="1.0", nullable=False)
 
     # AI Output Contract 전체(summary/risk_utterances/abuse_signals/risk_factors/warnings)
-    # 원문 발화 인용이 있어 result_enc 에 JSON 글자를 암호화해 둔다(encrypted_field). result(평문 칸)는 옮기기 전 옛 행만
-    # 읽고 다음 PR 에서 지운다.
-    result_plain: Mapped[Optional[Dict[str, Any]]] = mapped_column("result", JSONType, nullable=True)
+    # 원문 발화 인용이 있어 result_enc 에 JSON 글자를 암호화해 둔다(encrypted_field). 평문 칸은 없다(11/27 지움).
     result_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     result = EncryptedColumn("result", empty=None, json_value=True)
 

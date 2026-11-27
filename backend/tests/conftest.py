@@ -86,30 +86,8 @@ def _create_schema() -> Iterator[None]:
     shutil.rmtree(_TMP_ROOT, ignore_errors=True)
 
 
-def _plaintext_left_in_encrypted_columns() -> list:
-    """암호화 칸(encrypted_field.ENCRYPTED_COLUMNS)의 평문 칸에 값이 남은 '표.칸' 목록(값은 담지 않는다)."""
-
-    from sqlalchemy import select
-
-    from app.models.encrypted_field import ENCRYPTED_COLUMNS
-
-    found = []
-
-    with engine.connect() as connection:
-        for model, columns in ENCRYPTED_COLUMNS.items():
-            table = model.__table__
-
-            for column in columns:
-                values = connection.execute(select(table.c[column.column])).scalars()
-
-                if any(value not in (None, "", [], {}) for value in values):
-                    found.append(f"{column.table}.{column.column}")
-
-    return found
-
-
 @pytest.fixture(autouse=True)
-def _reset_state(request: pytest.FixtureRequest) -> Iterator[None]:
+def _reset_state() -> Iterator[None]:
     """각 테스트를 독립적으로 유지한다."""
 
     set_stt_adapter_override(None)
@@ -122,10 +100,6 @@ def _reset_state(request: pytest.FixtureRequest) -> Iterator[None]:
     set_ai_adapter_override(None)
     set_followup_checklist_adapter_override(None)
 
-    # 상담 본문 암호화: 어떤 API · 서비스도 평문 칸에 쓰지 않는다(모든 시험이 끝날 때 본다).
-    # 옛 평문 행을 일부러 만드는 시험만 legacy_plaintext 표시로 뺀다.
-    leaked = [] if request.node.get_closest_marker("legacy_plaintext") else _plaintext_left_in_encrypted_columns()
-
     with engine.begin() as connection:
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
@@ -134,8 +108,6 @@ def _reset_state(request: pytest.FixtureRequest) -> Iterator[None]:
 
     if audio_root.exists():
         shutil.rmtree(audio_root, ignore_errors=True)
-
-    assert not leaked, f"암호화 칸의 평문 칸에 값이 남았습니다: {leaked}"
 
 
 @pytest.fixture

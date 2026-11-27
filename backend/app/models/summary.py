@@ -7,7 +7,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -41,12 +41,10 @@ class ConsultationSummary(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("ai_analyses.id", ondelete="SET NULL"), nullable=True
     )
 
-    # overview · key_points · counselor_note 는 *_enc 에 암호문으로 둔다(encrypted_field). 평문 칸은 옮기기 전 옛 행만
-    # 읽고 다음 PR 에서 지운다. key_points 는 JSON 글자로 바꿔 암호화한다.
-    overview_plain: Mapped[str] = mapped_column("overview", Text, default="", nullable=False)
+    # overview · key_points · counselor_note 는 *_enc 에 암호문으로 둔다(encrypted_field). 평문 칸은 없다(11/27 지움).
+    # key_points 는 JSON 글자로 바꿔 암호화한다.
     overview_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     overview = EncryptedColumn("overview", empty="")
-    key_points_plain: Mapped[List[str]] = mapped_column("key_points", JSONType, default=list, nullable=False)
     key_points_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     key_points = EncryptedColumn("key_points", empty=[], json_value=True)
 
@@ -55,7 +53,6 @@ class ConsultationSummary(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     assessment: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
 
     # 상담사 추가 의견. AI 결과와 구분해서 보관한다.
-    counselor_note_plain: Mapped[Optional[str]] = mapped_column("counselor_note", Text, nullable=True)
     counselor_note_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     counselor_note = EncryptedColumn("counselor_note", empty=None)
 

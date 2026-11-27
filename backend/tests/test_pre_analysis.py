@@ -119,7 +119,7 @@ def test_stt_fills_first_listen_from_full_analysis(client: TestClient, counselor
 
     with SessionLocal() as db:
         row = db.scalar(select(Transcript).where(Transcript.version == 1))
-        assert row.pre_analysis_plain is None and row.pre_analysis_enc
+        assert row.pre_analysis_enc
         assert row.pre_analysis["result"]["risk_utterances"][0]["text"] == "가상 근거 문장"
 
 

@@ -5,11 +5,10 @@
 # 2단계: session_source_documents · cases(사례연계 경위 · 초기면접 글 · 메모) · 추가 질문 · 종결 검토 · 기관 서식 값 ·
 #        아동 앱 답 · 긴급 알림 · AI 초안 · 문서함 preview_text
 #
-# 모든 시험이 끝날 때 conftest 가 '암호화 칸의 평문 칸이 비었는가' 를 본다(다른 기능 시험이 모든 쓰기 경로를 훑는다).
+# 옛 평문 칸은 옮기기 뒤 migration b2c3d4e5f6a8 로 지웠다(2026-11-27) — 평문을 쓸 칸이 DB 에 없다.
 #
-# - DB 에는 *_enc 암호문만 있고 평문 칸은 빈 값이다. API 응답은 예전 모양 그대로다.
+# - DB 에는 *_enc 암호문만 있다. API 응답은 예전 모양 그대로다.
 # - 묶음 값(AAD)이 표 · 칸 · 행 ID 라 다른 행으로 옮겨 붙이면 풀리지 않는다.
-# - 옛 평문 행은 그대로 읽히고, 옮기기 script 가 암호문으로 옮긴다(dry-run 기본 · 확인 · 되돌리기).
 # - 키 바꾸기 script 가 본문 칸도 맨 앞 키로 다시 암호화한다.
 
 import json
@@ -20,7 +19,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
-import scripts.encrypt_content_columns as move_script
 from app.core.config import settings
 from app.core.pii_crypto import PersonalInfoCryptoError
 from app.models import (
@@ -130,6 +128,14 @@ def test_registered_columns_are_stage_one_and_two() -> None:
     assert found == {**EXPECTED_COLUMNS, **STAGE_TWO_COLUMNS, **NEW_ENCRYPTED_COLUMNS}
 
 
+def test_encrypted_tables_have_no_plaintext_column() -> None:
+    # 옛 평문 칸(DB 이름 = 속성 이름)은 지웠다. 남아 있으면 그 칸에 평문을 쓰는 길이 다시 생길 수 있다.
+    for model, columns in ENCRYPTED_COLUMNS.items():
+        for column in columns:
+            assert column.column not in model.__table__.c, f"{column.table}.{column.column}"
+            assert f"{column.column}_enc" in model.__table__.c
+
+
 def test_db_holds_only_ciphertext_and_api_shape_is_unchanged(
     client: TestClient, counselor_headers, case: dict, db
 ) -> None:
@@ -160,14 +166,12 @@ def test_db_holds_only_ciphertext_and_api_shape_is_unchanged(
         "consultation_sessions": _raw_rows(db, ConsultationSession),
         "ai_analyses": _raw_rows(db, AIAnalysis),
     }
-    empty = (None, "", [])
-
     for table, columns in EXPECTED_COLUMNS.items():
         assert raw[table], table
 
         for row in raw[table]:
             for column in columns:
-                assert row[column] in empty, f"{table}.{column}"
+                assert column not in row, f"{table}.{column}"
                 assert row[f"{column}_enc"] is None or row[f"{column}_enc"].startswith("v1.test1."), f"{table}.{column}"
 
     dumped = json.dumps([[dict(row) for row in rows] for rows in raw.values()], ensure_ascii=False, default=str)
@@ -241,7 +245,6 @@ def test_new_row_gets_id_before_encryption_whatever_the_argument_order(
 
     assert db.get(Document, row_id).content == RECORD
     assert db.get(Document, no_id.id).content == "ID 없이 만든 행"
-    assert db.get(Document, row_id).content_plain == ""
 
 
 def test_setting_none_clears_both_columns(client: TestClient, counselor_headers, session: dict, db) -> None:
@@ -258,7 +261,7 @@ def test_setting_none_clears_both_columns(client: TestClient, counselor_headers,
     db.expire_all()
     row = db.get(ConsultationSession, uuid.UUID(session["id"]))
 
-    assert (row.memo, row.memo_enc, row.memo_plain) == (None, None, None)
+    assert (row.memo, row.memo_enc) == (None, None)
 
 
 def test_same_value_does_not_rewrite_the_row(client: TestClient, counselor_headers, session: dict, db) -> None:
@@ -281,26 +284,8 @@ def test_same_value_does_not_rewrite_the_row(client: TestClient, counselor_heade
 # =========================================================
 
 
-def _make_legacy(db) -> None:
-    """지금 행들을 1단계 전 모양(평문 칸에만 값)으로 되돌린다."""
-
-    for model, columns in ENCRYPTED_COLUMNS.items():
-        for row in db.scalars(select(model)).all():
-            values = {}
-
-            for column in columns:
-                value = getattr(row, column.column)
-                values[column.column] = value if value is not None else column.empty()
-                values[f"{column.column}_enc"] = None
-
-            db.execute(update(model.__table__).where(model.__table__.c.id == row.id).values(values))
-
-    db.commit()
-    db.expire_all()
-
-
 def _without_updated_at(value):
-    # 옮기기 · 다시 암호화는 행을 고치므로 updated_at 만 달라진다.
+    # 다시 암호화는 행을 고치므로 updated_at 만 달라진다.
     if isinstance(value, dict):
         return {key: _without_updated_at(item) for key, item in value.items() if key != "updated_at"}
 
@@ -317,97 +302,6 @@ def _api_snapshot(client: TestClient, headers, session_id: str) -> dict:
         path: _without_updated_at(client.get(f"/api/v1/sessions/{session_id}{path}", headers=headers).json()["data"])
         for path in paths
     }
-
-
-@pytest.mark.legacy_plaintext
-def test_move_script_dry_run_apply_check_and_decrypt_back(
-    client: TestClient, counselor_headers, case: dict, db, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    session_id = _run_flow(client, counselor_headers, case["id"])
-    before = _api_snapshot(client, counselor_headers, session_id)
-    _make_legacy(db)
-    monkeypatch.setattr(move_script, "BATCH_SIZE", 2)  # 묶음 넘김도 본다.
-
-    # 옛 평문 행도 API 로 그대로 읽힌다.
-    assert _api_snapshot(client, counselor_headers, session_id) == before
-
-    plain_left = {report.name: report.plain_left for report in move_script.run(db, mode="check")}
-
-    # 이 흐름은 1단계 칸을 모두 채운다(2단계 칸은 아래 시험 · 다른 기능 시험이 본다).
-    assert all(plain_left[f"{table}.{column}"] > 0 for table, columns in EXPECTED_COLUMNS.items() for column in columns)
-
-    # dry-run: 세기만 한다.
-    dry = {report.name: report.changed for report in move_script.run(db, mode="move")}
-
-    assert dry == plain_left
-    assert {report.name: report.plain_left for report in move_script.run(db, mode="check")} == plain_left
-
-    applied = move_script.run(db, mode="move", apply=True)
-
-    assert {report.name: report.changed for report in applied} == plain_left
-    assert all(not report.failed_ids and not report.skipped for report in applied)
-
-    check = move_script.run(db, mode="check")
-
-    assert all(report.plain_left == 0 and not report.failed_ids for report in check)
-    db.expire_all()
-    assert _api_snapshot(client, counselor_headers, session_id) == before
-
-    # 다시 돌려도 옮길 것이 없다.
-    assert all(report.changed == 0 for report in move_script.run(db, mode="move", apply=True))
-
-    # 되돌리기: 암호문을 평문 칸으로.
-    back = move_script.run(db, mode="decrypt-back", apply=True)
-
-    assert {report.name: report.changed for report in back} == plain_left
-    raw = _raw_rows(db, ConsultationSession)
-
-    assert raw[0]["memo"] == MEMO and raw[0]["memo_enc"] is None
-    db.expire_all()
-    assert _api_snapshot(client, counselor_headers, session_id) == before
-
-
-@pytest.mark.legacy_plaintext
-def test_move_script_does_not_overwrite_a_save_made_meanwhile(
-    client: TestClient, counselor_headers, case: dict, db, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    session_id = _run_flow(client, counselor_headers, case["id"])
-    _make_legacy(db)
-    original = move_script._round_trip_ok
-
-    def encrypt_then_api_saves(column, row_id, value):
-        token = original(column, row_id, value)
-
-        if column.table == "consultation_sessions":
-            client.patch(f"/api/v1/sessions/{session_id}", json={"memo": "그사이 저장"}, headers=counselor_headers)
-
-        return token
-
-    monkeypatch.setattr(move_script, "_round_trip_ok", encrypt_then_api_saves)
-    reports = {report.name: report for report in move_script.run(db, mode="move", apply=True)}
-
-    assert reports["consultation_sessions.memo"].skipped == 1
-    db.expire_all()
-    assert client.get(f"/api/v1/sessions/{session_id}", headers=counselor_headers).json()["data"]["memo"] == "그사이 저장"
-
-
-@pytest.mark.legacy_plaintext
-def test_move_script_main_is_dry_run_by_default(
-    client: TestClient, counselor_headers, case: dict, db, monkeypatch: pytest.MonkeyPatch, capsys
-) -> None:
-    _run_flow(client, counselor_headers, case["id"])
-    _make_legacy(db)
-    monkeypatch.setattr("sys.argv", ["encrypt_content_columns"])
-
-    assert move_script.main() == 0
-    out = capsys.readouterr()
-
-    assert "dry-run" in out.out
-    assert MEMO not in out.out + out.err
-    assert _raw_rows(db, ConsultationSession)[0]["memo"] == MEMO
-
-    monkeypatch.setattr("sys.argv", ["encrypt_content_columns", "--check"])
-    assert move_script.main() == 1
 
 
 # =========================================================
@@ -498,9 +392,9 @@ def test_case_text_and_form_values_are_ciphertext_and_round_trip(
     dumped = json.dumps([dict(case_row), dict(form_row)], ensure_ascii=False, default=str)
 
     for key in INTAKE:
-        assert case_row[key] is None and case_row[f"{key}_enc"].startswith("v1.test1.")
+        assert key not in case_row and case_row[f"{key}_enc"].startswith("v1.test1.")
 
-    assert form_row["values"] == {} and form_row["values_enc"].startswith("v1.test1.")
+    assert "values" not in form_row and form_row["values_enc"].startswith("v1.test1.")
 
     for secret in (*INTAKE.values(), "가상 서식 소견", "가상 계획", "가상 면담실"):
         assert secret not in dumped
@@ -529,21 +423,3 @@ def test_case_text_and_form_values_are_ciphertext_and_round_trip(
     assert client.get(form_url, headers=counselor_headers).json()["data"]["items"][0]["values"] == FORM_VALUES
 
 
-@pytest.mark.legacy_plaintext
-def test_stage_two_legacy_rows_are_read_and_moved(client: TestClient, counselor_headers, case: dict, db) -> None:
-    from app.models import Case
-
-    assert client.patch(f"/api/v1/cases/{case['id']}", json=INTAKE, headers=counselor_headers).status_code == 200
-    _make_legacy(db)
-
-    assert _raw_rows(db, Case)[0]["notes"] == INTAKE["notes"]
-    reopened = client.get(f"/api/v1/cases/{case['id']}", headers=counselor_headers).json()["data"]
-    assert {key: reopened[key] for key in INTAKE} == INTAKE
-
-    moved = {report.name: report.changed for report in move_script.run(db, mode="move", apply=True)}
-
-    assert all(moved[f"cases.{key}"] == 1 for key in INTAKE)
-    assert all(report.plain_left == 0 for report in move_script.run(db, mode="check"))
-    db.expire_all()
-    reopened = client.get(f"/api/v1/cases/{case['id']}", headers=counselor_headers).json()["data"]
-    assert {key: reopened[key] for key in INTAKE} == INTAKE

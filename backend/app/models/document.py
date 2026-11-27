@@ -29,8 +29,7 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(50), default="CONSULTATION_RECORD", nullable=False
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    # 본문은 content_enc 에 암호문으로 둔다(encrypted_field). content(평문 칸)는 옮기기 전 옛 행만 읽고 다음 PR 에서 지운다.
-    content_plain: Mapped[str] = mapped_column("content", Text, default="", nullable=False)
+    # 본문은 content_enc 에 암호문으로 둔다(encrypted_field). 평문 칸은 없다(11/27 지움).
     content_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content = EncryptedColumn("content", empty="")
 
