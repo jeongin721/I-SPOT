@@ -1951,8 +1951,6 @@ export interface ChildAppCaseRow {
   case_id: string;
   case_number: string;
   child_alias: string;
-  /** 아동 실명. with_child_name=true 로 부른 목록에만, 없거나 풀지 못하면 null. 옛 서버는 없다. */
-  child_name?: string | null;
   child_birth_year: number | null;
   status: "NOT_LINKED" | "INVITED" | "LINKED";
   recent_answers: number | null;

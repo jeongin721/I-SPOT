@@ -280,9 +280,6 @@ export const signup = {
 // 사례
 // =========================================================
 
-/** GET /cases/child-names 가 한 번에 받는 사례 수(Backend personal_info_service.CHILD_NAMES_MAX 와 같다). */
-export const CHILD_NAMES_MAX = 50;
-
 export const cases = {
   /**
    * search 는 제목·사례번호·아동 별칭(부분)과 아동 실명(공백 무시 정확히 같을 때)에서 찾는다.
@@ -300,12 +297,6 @@ export const cases = {
 
   create(payload: CaseCreateRequest): Promise<Case> {
     return api.post<Case>("/cases", payload);
-  },
-
-  /** 받은 사례 ID 의 아동 실명만(긴급 알림 띠 · 알림 종). 볼 수 있고 실명이 있는 사례만 온다. 실명이 있으면 열람 기록 1줄. 최대 50개. */
-  childNames(caseIds: string[]): Promise<Record<string, string>> {
-    const query = caseIds.slice(0, CHILD_NAMES_MAX).map((id) => `ids=${encodeURIComponent(id)}`).join("&");
-    return api.get<Record<string, string>>(`/cases/child-names?${query}`);
   },
 
   /** 실명 · 생년월일 · 가족 정보(복호화한 값). 부를 때마다 서버에 열람 기록이 남는다. 권한은 사례 조회와 같다. */
@@ -908,9 +899,8 @@ export const childApp = {
     return api.get<ChildAppStats>(`/child-app-stats?date_from=${dateFrom}&date_to=${dateTo}`);
   },
 
-  /** 아이 연계 목록. withChildName 이면 아동 실명(child_name)도 싣는다 — 서버가 열람 기록 1줄(GET /cases 와 같은 규칙). */
-  listCases(options: { withChildName?: boolean } = {}): Promise<ChildAppCaseRow[]> {
-    return api.get<ChildAppCaseRow[]>(`/child-app-cases${options.withChildName ? "?with_child_name=true" : ""}`);
+  listCases(): Promise<ChildAppCaseRow[]> {
+    return api.get<ChildAppCaseRow[]>("/child-app-cases");
   },
 
   /** 이번 회차 맞춤 질문 만들기. 이미 있으면 그대로, regenerate 면 새로 만든다. */

@@ -2,12 +2,10 @@
 // 30일 계획서, 11/02 일정 연결)이다. 내가 접수한 최초접수의 기한 중 완료 표시하지 않은 것만, 마감이 가까운 것부터 보인다.
 // 읽음은 이 브라우저에만 남긴다(ispot-noti-read — 기기마다 따로, 서버에 남기지 않는다). 누르면 그 날 달력으로 간다.
 // session 은 화면의 useAuthSession() 결과(종이 /auth/me 를 따로 부르지 않게). 바깥을 누르거나 Esc 를 누르면 닫힌다.
-// 이름은 실명, 없으면 별칭(2026-11-26). 종을 열었을 때만 그 사례들을 한 번 물어 기억한다(useChildNames — 열람 기록은 처음 1줄).
 import { useEffect, useRef, useState } from 'react';
 import A from './A';
 import { pad2 } from '../data/time';
 import { useSchedule } from '../data/useSchedule';
-import { useChildNames } from '../data/useChildNames';
 import { INTAKE_TASKS, DATE_PARAM } from '../data/screens/schedule';
 
 const READ_KEY = 'ispot-noti-read';
@@ -83,18 +81,13 @@ export default function NotiBell({ session }) {
         due,
         diff,
         unread: !read.includes(id),
-        caseId: event.case_id,
-        alias: event.child_alias ?? '—',
-        task,
+        title: `${event.child_alias ?? '—'} · ${task}`,
         sub: `판정 후 ${n}일 이내 · ${due.getMonth() + 1}/${due.getDate()}(${DAYS[due.getDay()]})까지`,
         href: `/Schedule?${DATE_PARAM}=${ymd(due)}`,
       });
     }
   }
   items.sort((a, b) => a.due - b.due);
-  // 열었을 때만 실명을 묻는다(닫힌 종은 개수만 보여 이름이 필요 없다).
-  const nameOf = useChildNames(myId, open ? items.map((x) => x.caseId) : []);
-  for (const x of items) x.title = `${nameOf(x.caseId, x.alias)} · ${x.task}`;
   const unread = items.filter((x) => x.unread).length;
   const markRead = (ids) => {
     const next = [...read, ...ids.filter((id) => !read.includes(id))];
